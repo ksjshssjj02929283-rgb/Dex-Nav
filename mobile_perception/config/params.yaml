@@ -1,0 +1,9 @@
+# config/params.yaml
+goal_position:
+  x: 1.652
+  y: 0.414
+  z: 0.0
+goal_orientation:
+  z: 0.707 # 90度偏航角 (sin(90/2) ≈ 0.707)
+  w: 0.707 # cos(90/2) ≈ 0.707
+frame_id: "map"  # 目标点坐标系

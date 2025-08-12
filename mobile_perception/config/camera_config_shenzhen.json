@@ -1,0 +1,34 @@
+{ 
+  "cameras": [ 
+    {
+      "id": 0,
+      "name": "Shenzhen",
+      "synchronize": true, 
+      "topic_name": "/camera_02/color/image_raw",
+      "base_link_name": "base_link",
+      "camera_link": "camera_02_link_color",
+      "desired_encoding": "'rgb8'",
+      "settings": { 
+        "resolution": "640x480",
+        "frame_rate": 30.0,
+        "frame_width":640,
+        "frame_height":480,
+        "intrinsic_params": {
+          "fx": 478.4943542,
+          "fy": 478.516052246,
+          "cx": 323.37243652,
+          "cy": 242.31643676
+        },
+        "dist_coeffs": [
+        -0.01854391,
+        0.00409611,
+        -0.000236274,
+        0.0001713,
+        -0.0,
+        0.0,
+        0.0,
+        0.0 ] 
+      }
+    }
+  ]
+}

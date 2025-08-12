@@ -1,0 +1,39 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format ="3">
+    <name>nonpersistent_voxel_layer</name>
+    <version>2.4.0</version>
+    <description>include
+        This package provides an implementation of a 3D costmap that takes in sensor
+        data from the world, builds a 3D occupancy grid of the data for only one iteration.
+    </description>
+    <author>Steven Macenski</author>
+    <author>stevenmacenski@gmail.com</author>
+    <maintainer email="stevenmacenski@gmail.com">Steven Macenski</maintainer>
+    <license>BSD</license>
+    <url>http://wiki.ros.org/non-persisent-voxel-layer</url>
+
+    <buildtool_depend>ament_cmake</buildtool_depend>
+
+    <depend>geometry_msgs</depend>
+    <depend>laser_geometry</depend>
+    <depend>map_msgs</depend>
+    <depend>nav_msgs</depend>
+    <depend>nav2_msgs</depend>
+    <depend>pluginlib</depend>
+    <depend>rclcpp</depend>
+    <depend>sensor_msgs</depend>
+    <depend>std_msgs</depend>
+    <depend>tf2_ros</depend>
+    <depend>tf2</depend>
+    <depend>visualization_msgs</depend>
+    <depend>nav2_voxel_grid</depend>
+    <depend>nav2_costmap_2d</depend>
+
+    <test_depend>ament_lint_auto</test_depend>
+
+  <export>
+    <nav2_costmap_2d plugin="${prefix}/costmap_plugins.xml" />
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

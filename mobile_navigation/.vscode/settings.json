@@ -1,0 +1,36 @@
+{
+    "python.autoComplete.extraPaths": [
+        "/home/grabotics/b1_main_v1/b1_devel/b1_navigation/install/dwb_msgs/local/lib/python3.10/dist-packages",
+        "/home/grabotics/b1_main_v1/b1_devel/b1_navigation/install/nav_2d_msgs/local/lib/python3.10/dist-packages",
+        "/home/grabotics/b1_main_v1/b1_devel/b1_navigation/install/nav2_simple_commander/lib/python3.10/site-packages",
+        "/home/grabotics/b1_main_v1/b1_devel/b1_navigation/install/nav2_msgs/local/lib/python3.10/dist-packages",
+        "/home/grabotics/b1_main_v1/b1_devel/b1_navigation/install/nav2_common/local/lib/python3.10/dist-packages",
+        "/home/grabotics/b1_main_v1/b1_devel/b1_sensor/install/b1_msf/lib/python3.8/site-packages",
+        "/home/grabotics/B1-Project-new/b1_devel/b1_slam/install/cartographer_ros_msgs/lib/python3.8/site-packages",
+        "/home/grabotics/B1-Project-new/b1_devel/b1_navigation/install/dwb_msgs/lib/python3.8/site-packages",
+        "/home/grabotics/B1-Project-new/b1_devel/b1_navigation/install/nav_2d_msgs/lib/python3.8/site-packages",
+        "/home/grabotics/B1-Project-new/b1_devel/b1_navigation/install/nav2_simple_commander/lib/python3.8/site-packages",
+        "/home/grabotics/B1-Project-new/b1_devel/b1_navigation/install/nav2_msgs/lib/python3.8/site-packages",
+        "/home/grabotics/B1-Project-new/b1_devel/b1_navigation/install/nav2_gazebo_spawner/lib/python3.8/site-packages",
+        "/home/grabotics/B1-Project-new/b1_devel/b1_navigation/install/nav2_common/lib/python3.8/site-packages",
+        "/home/grabotics/B1-Project-new/b1_devel/b1_sensor/install/b1_msf/lib/python3.8/site-packages",
+        "/opt/ros/galactic/lib/python3.8/site-packages"
+    ],
+    "python.analysis.extraPaths": [
+        "/home/grabotics/b1_main_v1/b1_devel/b1_navigation/install/dwb_msgs/local/lib/python3.10/dist-packages",
+        "/home/grabotics/b1_main_v1/b1_devel/b1_navigation/install/nav_2d_msgs/local/lib/python3.10/dist-packages",
+        "/home/grabotics/b1_main_v1/b1_devel/b1_navigation/install/nav2_simple_commander/lib/python3.10/site-packages",
+        "/home/grabotics/b1_main_v1/b1_devel/b1_navigation/install/nav2_msgs/local/lib/python3.10/dist-packages",
+        "/home/grabotics/b1_main_v1/b1_devel/b1_navigation/install/nav2_common/local/lib/python3.10/dist-packages",
+        "/home/grabotics/b1_main_v1/b1_devel/b1_sensor/install/b1_msf/lib/python3.8/site-packages",
+        "/home/grabotics/B1-Project-new/b1_devel/b1_slam/install/cartographer_ros_msgs/lib/python3.8/site-packages",
+        "/home/grabotics/B1-Project-new/b1_devel/b1_navigation/install/dwb_msgs/lib/python3.8/site-packages",
+        "/home/grabotics/B1-Project-new/b1_devel/b1_navigation/install/nav_2d_msgs/lib/python3.8/site-packages",
+        "/home/grabotics/B1-Project-new/b1_devel/b1_navigation/install/nav2_simple_commander/lib/python3.8/site-packages",
+        "/home/grabotics/B1-Project-new/b1_devel/b1_navigation/install/nav2_msgs/lib/python3.8/site-packages",
+        "/home/grabotics/B1-Project-new/b1_devel/b1_navigation/install/nav2_gazebo_spawner/lib/python3.8/site-packages",
+        "/home/grabotics/B1-Project-new/b1_devel/b1_navigation/install/nav2_common/lib/python3.8/site-packages",
+        "/home/grabotics/B1-Project-new/b1_devel/b1_sensor/install/b1_msf/lib/python3.8/site-packages",
+        "/opt/ros/galactic/lib/python3.8/site-packages"
+    ]
+}
