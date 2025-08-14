@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.5)
-project(b1_perception)
+project(mobile_perception)
 
 # Default to C++14
 if(NOT CMAKE_CXX_STANDARD)
@@ -26,27 +26,27 @@ find_package(tf2_ros REQUIRED)
 include_directories(include ${OpenCV_INCLUDE_DIRS})
 
 # Declare a C++ executable
-add_executable(b1_perception_node src/b1_perception_node.cpp)
-ament_target_dependencies(b1_perception_node rclcpp cv_bridge apriltag_ros)
+add_executable(mobile_perception_node src/mobile_perception_node.cpp)
+ament_target_dependencies(mobile_perception_node rclcpp cv_bridge apriltag_ros)
 
 # Link libraries
-target_link_libraries(b1_perception_node ${OpenCV_LIBRARIES} ${apriltag_ros_LIBRARIES})
+target_link_libraries(mobile_perception_node ${OpenCV_LIBRARIES} ${apriltag_ros_LIBRARIES})
 
 # Install C++ executable
 install(TARGETS
-  b1_perception_node
+  mobile_perception_node
   DESTINATION lib/${PROJECT_NAME})
 
-add_executable(b1_docking_control_node src/b1_docking_control_node.cpp)
-ament_target_dependencies(b1_docking_control_node rclcpp yaml-cpp nav2_graceful_controller nav2_util)
+add_executable(mobile_docking_control_node src/mobile_docking_control_node.cpp)
+ament_target_dependencies(mobile_docking_control_node rclcpp yaml-cpp nav2_graceful_controller nav2_util)
   
 target_link_libraries(
-  b1_docking_control_node
+  mobile_docking_control_node
   yaml-cpp
 )
   # Install C++ executable
 install(TARGETS
-  b1_docking_control_node
+  mobile_docking_control_node
   DESTINATION lib/${PROJECT_NAME})
 
 # Install Python scripts
