@@ -324,7 +324,7 @@ class UnifiedDetector(Node):
 def main(args=None):
     rclpy.init(args=args)
     
-    package_path = get_package_path('b1_perception')
+    package_path = get_package_path('mobile_perception')
     camera_config_path = os.path.join(package_path + '/config/camera_config.json')
     apriltags_feild_path = os.path.join(package_path + '/config/tags_config.json')
 
