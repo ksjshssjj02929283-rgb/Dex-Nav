@@ -120,8 +120,8 @@ controller_server:
     # general_goal_checker:
     #   stateful: True
     #   plugin: "nav2_controller::SimpleGoalChecker"
-    #   xy_goal_tolerance: 0.25
-    #   yaw_goal_tolerance: 0.25
+    #   xy_goal_tolerance: 0.1
+    #   yaw_goal_tolerance: 0.05
     progress_checker:
       plugin: "nav2_controller::SimpleProgressChecker"
       required_movement_radius: 0.5
@@ -233,149 +233,40 @@ local_costmap:
       publish_frequency: 14.0 # 2.0
       global_frame: map # odom
       robot_base_frame: base_link
-      use_sim_time: false
+      use_sim_time: True
       rolling_window: true
       width: 8 # 6
       height: 8 # 6
       resolution: 0.05
-      # footprint: "[ [0.5, 0.3], [0.5, -0.3], [-0.5, -0.3], [-0.5, 0.3] ]" # Slightly increased for better planning efficiency and safety (real size: 0.95*0.55)
       footprint: "[ [0.7, 0.35], [0.7, -0.35], [-0.55, -0.35], [-0.55, 0.35] ]" # Slightly increased for better planning efficiency and safety (real size: 0.95*0.55)
-      plugins: ["obstacle_layer", "stvl_layer", "denoise_layer", "inflation_layer"]
+      # footprint: "[ [0.55, 0.35], [0.55, -0.35], [-0.55, -0.35], [-0.55, 0.35] ]" # Slightly increased for better planning efficiency and safety (real size: 0.95*0.55)
       # plugins: ["voxel_layer", "denoise_layer", "inflation_layer"]
-      # plugins: ["obstacle_layer", "denoise_layer", "inflation_layer"]   
+      plugins: ["obstacle_layer", "denoise_layer", "inflation_layer"]   
       # plugins: ["obstacle_layer", "voxel_layer", "denoise_layer", "inflation_layer"]
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 10.0
-        inflation_radius: 0.6 # 0.8 # 0.75 # 0.55
+        inflation_radius: 0.7 # 0.75 # 0.55
       denoise_layer:
         plugin: "nav2_costmap_2d::DenoiseLayer"
         enabled: True
-        minimal_group_size: 3
-        group_connectivity_type: 8
-      stvl_layer:
-        plugin: "spatio_temporal_voxel_layer/SpatioTemporalVoxelLayer"
-        enabled:               true
-        voxel_decay:           15.0     #seconds if linear, e^n if exponential
-        decay_model:           0      #0=linear, 1=exponential, -1=persistent
-        voxel_size:            0.05   #meters
-        track_unknown_space:   true   #default space is unknown
-        observation_persistence: 0.0  #seconds
-        max_obstacle_height:   1.5    #meters
-        mark_threshold:        0      #voxel height
-        update_footprint_enabled: true
-        combination_method:    1      #1=max, 0=override
-        obstacle_range:        3.0    #meters
-        origin_z:              -0.3    #meters
-        publish_voxel_map:     true   # default off
-        transform_tolerance:   0.2    # seconds
-        mapping_mode:          false  # default off, saves map not for navigation
-        map_save_duration:     60.0     #default 60s, how often to autosave
-        observation_sources:   rgbd1_clear rgbd1_mark
-        rgbd1_mark:
-          data_type: PointCloud2
-          topic: /camera_01/depth/ds_points
-          marking: true
-          clearing: false
-          min_obstacle_height: -0.18     #default 0, meters
-          max_obstacle_height: 2.0     #defaule 3, meters
-          expected_update_rate: 0.0    #default 0, if not updating at this rate at least, remove from buffer
-          observation_persistence: 0.0 #default 0, use all measurements taken during now-value, 0=latest 
-          inf_is_valid: false          #default false, for laser scans
-          clear_after_reading: true    #default false, clear the buffer after the layer gets readings from it
-          filter: "voxel"              #default passthrough, apply "voxel", "passthrough", or no filter to sensor data, recommended to have at one filter on
-          voxel_min_points: 0          #default 0, minimum points per voxel for voxel filter
-        rgbd1_clear:
-          enabled: true                #default true, can be toggled on/off with associated service call
-          data_type: PointCloud2
-          topic: /camera_01/depth/ds_points
-          marking: false
-          clearing: true
-          min_z: -0.3                  #default 0, meters
-          max_z: 5.0                   #default 10, meters
-          vertical_fov_angle: 1.09     #default 0.7, radians
-          horizontal_fov_angle: 1.59   #default 1.04, radians
-          decay_acceleration: 1.       #default 0, 1/s^2. If laser scanner MUST be 0
-          model_type: 0                #default 0 (depth camera). Use 1 for 3D Lidar
-      voxel_layer:
-        plugin: "nav2_costmap_2d::VoxelLayer"
-        enabled: True
-        footprint_clearing_enabled: True
-        publish_voxel_map: True # True
-        origin_z: -0.3 # -0.1
-        z_resolution: 0.05
-        z_voxels: 36 # 16
-        max_obstacle_height: 1.5
-        min_obstacle_height: -0.5 # -0.05
-        mark_threshold: 0
-        combination_method: 1
-        observation_sources: orbbec_front_clear orbbec_front_mark orbbec_back_clear orbbec_back_mark # deptrum_front deptrum_back
-        orbbec_front_clear:
-          topic: /camera_01/depth/ds_points
-          clearing: True
-          marking: False
-          data_type: "PointCloud2"
-          raytrace_max_range: 3.0 # 3.0
-          raytrace_min_range: 0.0
-          obstacle_max_range: 2.5 # 3.2 # 2.5
-          obstacle_min_range: 0.0
-          max_obstacle_height: 1.5
-          min_obstacle_height: -0.3 # -0.05
-        orbbec_front_mark:
-          topic: /camera_01/depth/ds_points
-          clearing: False
-          marking: True
-          data_type: "PointCloud2"
-          raytrace_max_range: 2.5 # 3.0
-          raytrace_min_range: 0.0
-          obstacle_max_range: 2.0 # 3.2 # 2.5
-          obstacle_min_range: 0.0
-          max_obstacle_height: 1.5
-          min_obstacle_height: -0.2 # -0.05
-        orbbec_back_clear:
-          topic: /camera_02/depth/ds_points
-          clearing: True
-          marking: False
-          data_type: "PointCloud2"
-          raytrace_max_range: 3.0 # 3.0
-          raytrace_min_range: 0.0
-          obstacle_max_range: 2.5 # 3.2 # 2.5
-          obstacle_min_range: 0.0
-          max_obstacle_height: 1.5
-          min_obstacle_height: -0.3 # -0.05
-        orbbec_back_mark:
-          topic: /camera_02/depth/ds_points
-          clearing: False
-          marking: True
-          data_type: "PointCloud2"
-          raytrace_max_range: 2.5 # 3.0
-          raytrace_min_range: 0.0
-          obstacle_max_range: 2.0 # 3.2 # 2.5
-          obstacle_min_range: 0.0
-          max_obstacle_height: 1.5
-          min_obstacle_height: -0.18 # -0.05
-        deptrum_front:
-          topic: /stellar_1/ds_points
-          clearing: True
-          marking: True
-          data_type: "PointCloud2"
-          raytrace_max_range: 2.5 # 3.0
-          raytrace_min_range: 0.3
-          obstacle_max_range: 2.5 # 3.2 # 2.5
-          obstacle_min_range: 0.3
-          max_obstacle_height: 1.7
-          min_obstacle_height: 0.0 # -0.05
-        deptrum_back:
-          topic: /stellar_2/ds_points
-          clearing: True
-          marking: True
-          data_type: "PointCloud2"
-          raytrace_max_range: 2.5 # 3.0
-          raytrace_min_range: 0.3
-          obstacle_max_range: 2.5 # 3.2 # 2.5
-          obstacle_min_range: 0.3
-          max_obstacle_height: 1.7
-          min_obstacle_height: 0.0 # -0.05
+      # obstacle_layer:
+      #   plugin: "nav2_costmap_2d::ObstacleLayer"
+      #   enabled: True
+      #   publish_voxel_map: False # True
+      #   origin_z: -0.1
+      #   z_resolution: 0.05
+      #   z_voxels: 16
+      #   max_obstacle_height: 2.0
+      #   min_obstacle_height: -0.1
+      #   scan:
+      #     topic: /merged_scan # /scan
+      #     max_obstacle_height: 2.0
+      #     min_obstacle_height: -0.1
+      #     clearing: True
+      #     marking: True
+      #     data_type: "LaserScan"
+      #     inf_is_valid: false       
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
         enabled: True
@@ -384,19 +275,19 @@ local_costmap:
         max_obstacle_height: 2.0
         min_obstacle_height: -0.1
         scan_1:
-          topic: /scan_1 # /scan
+          topic: /laser_scan/front # /scan
           obstacle_max_range: 5.0
           obstacle_min_range: 0.0
           raytrace_max_range: 5.0
           raytrace_min_range: 0.0
           max_obstacle_height: 2.0
-          min_obstacle_height: -0.1
+          min_obstacle_height: -0.05
           clearing: True
           marking: True
           data_type: "LaserScan"
           inf_is_valid: false       
         scan_2:
-          topic: /scan_2 # /scan
+          topic: /laser_scan/rear # /scan
           obstacle_max_range: 5.0
           obstacle_min_range: 0.0
           raytrace_max_range: 5.0
@@ -407,9 +298,9 @@ local_costmap:
           marking: True
           data_type: "LaserScan"
           inf_is_valid: false      
-      # static_layer:
-      #   plugin: "nav2_costmap_2d::StaticLayer"
-      #   map_subscribe_transient_local: True
+      static_layer:
+        plugin: "nav2_costmap_2d::StaticLayer"
+        map_subscribe_transient_local: True
       always_send_full_costmap: True  
 
 global_costmap:
@@ -420,178 +311,73 @@ global_costmap:
       global_frame: map
       robot_base_frame: base_link
       use_sim_time: True
-      # footprint: "[ [0.6, 0.4], [0.6, -0.4], [-0.6, -0.4], [-0.6, 0.4] ]" # Avoiding exploring unnecessary narrow corridors
-      footprint: "[ [0.65, 0.35], [0.65, -0.35], [-0.55, -0.35], [-0.55, 0.35] ]" # Slightly increased for better planning efficiency and safety (real size: 0.95*0.55)
+      # footprint: "[ [0.55, 0.35], [0.55, -0.35], [-0.55, -0.35], [-0.55, 0.35] ]" # Slightly increased for better planning efficiency and safety (real size: 0.95*0.55)
+      footprint: "[ [0.7, 0.35], [0.7, -0.35], [-0.55, -0.35], [-0.55, 0.35] ]" # Slightly increased for better planning efficiency and safety (real size: 0.95*0.55)
       resolution: 0.05
       track_unknown_space: false # True
-      # plugins: ["static_layer", "obstacle_layer", “stvl_layer”, "denoise_layer", "inflation_layer"]
+      plugins: ["static_layer", "obstacle_layer", "denoise_layer", "inflation_layer"]
       # plugins: ["static_layer", "voxel_layer", "denoise_layer", "inflation_layer"]
-      plugins: ["static_layer", "obstacle_layer", "voxel_layer", "denoise_layer", "inflation_layer"]
-      # plugins: ["static_layer", "nonpersisting_obstacle_layer", "denoise_layer", "inflation_layer"]
+      # plugins: ["static_layer", "obstacle_layer", "voxel_layer", "denoise_layer", "inflation_layer"]
       denoise_layer:
         plugin: "nav2_costmap_2d::DenoiseLayer"
         enabled: True
+      # obstacle_layer:
+      #   plugin: "nav2_costmap_2d::ObstacleLayer"
+      #   enabled: True
+      #   observation_sources: scan
+      #   footprint_clearing_enabled: true
+      #   max_obstacle_height: 2.0
+      #   min_obstacle_height: -0.1
+      #   scan:
+      #     topic: /merged_scan # /scan
+      #     obstacle_max_range: 30.0
+      #     obstacle_min_range: 0.0
+      #     raytrace_max_range: 30.0
+      #     raytrace_min_range: 0.0
+      #     max_obstacle_height: 2.0
+      #     min_obstacle_height: -0.1
+      #     clearing: True
+      #     marking: True
+      #     data_type: "LaserScan"
+      #     inf_is_valid: false
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
         enabled: True
-        observation_sources: scan_1 scan_2
+        observation_sources: scan
         footprint_clearing_enabled: true
         max_obstacle_height: 2.0
-        min_obstacle_height: -0.1
+        min_obstacle_height: -0.05
         scan_1:
           topic: /scan_1 # /scan
-          obstacle_max_range: 8.0 # 30.0
+          obstacle_max_range: 30.0
           obstacle_min_range: 0.0
-          raytrace_max_range: 8.0 # 30.0
+          raytrace_max_range: 30.0
           raytrace_min_range: 0.0
           max_obstacle_height: 2.0
-          min_obstacle_height: -0.1
+          min_obstacle_height: -0.05
           clearing: True
           marking: True
           data_type: "LaserScan"
           inf_is_valid: false
         scan_2:
           topic: /scan_2 # /scan
-          obstacle_max_range: 8.0 # 30.0
+          obstacle_max_range: 30.0
           obstacle_min_range: 0.0
-          raytrace_max_range: 8.0 # 30.0
-          raytrace_min_range: 0.0 
+          raytrace_max_range: 30.0
+          raytrace_min_range: 0.0
           max_obstacle_height: 2.0
           min_obstacle_height: -0.1
           clearing: True
           marking: True
           data_type: "LaserScan"
           inf_is_valid: false
-      stvl_layer:
-        plugin: "spatio_temporal_voxel_layer/SpatioTemporalVoxelLayer"
-        enabled:               true
-        voxel_decay:           15.0     #seconds if linear, e^n if exponential
-        decay_model:           0      #0=linear, 1=exponential, -1=persistent
-        voxel_size:            0.05   #meters
-        track_unknown_space:   true   #default space is unknown
-        observation_persistence: 0.0  #seconds
-        max_obstacle_height:   1.5    #meters
-        mark_threshold:        0      #voxel height
-        update_footprint_enabled: true
-        combination_method:    1      #1=max, 0=override
-        obstacle_range:        3.0    #meters
-        origin_z:              -0.3    #meters
-        publish_voxel_map:     true   # default off
-        transform_tolerance:   0.2    # seconds
-        mapping_mode:          false  # default off, saves map not for navigation
-        map_save_duration:     60.0     #default 60s, how often to autosave
-        observation_sources:   rgbd1_clear rgbd1_mark
-        rgbd1_mark:
-          data_type: PointCloud2
-          topic: /camera_01/depth/ds_points
-          marking: true
-          clearing: false
-          min_obstacle_height: -0.19     #default 0, meters
-          max_obstacle_height: 2.0     #defaule 3, meters
-          expected_update_rate: 0.0    #default 0, if not updating at this rate at least, remove from buffer
-          observation_persistence: 0.0 #default 0, use all measurements taken during now-value, 0=latest 
-          inf_is_valid: false          #default false, for laser scans
-          clear_after_reading: true    #default false, clear the buffer after the layer gets readings from it
-          filter: "voxel"              #default passthrough, apply "voxel", "passthrough", or no filter to sensor data, recommended to have at one filter on
-          voxel_min_points: 0          #default 0, minimum points per voxel for voxel filter
-        rgbd1_clear:
-          enabled: true                #default true, can be toggled on/off with associated service call
-          data_type: PointCloud2
-          topic: /camera_01/depth/ds_points
-          marking: false
-          clearing: true
-          min_z: -0.3                  #default 0, meters
-          max_z: 5.0                   #default 10, meters
-          vertical_fov_angle: 1.09     #default 0.7, radians
-          horizontal_fov_angle: 1.59   #default 1.04, radians
-          decay_acceleration: 1.       #default 0, 1/s^2. If laser scanner MUST be 0
-          model_type: 0                #default 0 (depth camera). Use 1 for 3D Lidar
-      voxel_layer:
-        plugin: "nav2_costmap_2d::VoxelLayer"
-        enabled: True
-        footprint_clearing_enabled: True
-        publish_voxel_map: True # True
-        origin_z: -0.3 # -0.1
-        z_resolution: 0.05
-        z_voxels: 36 # 16
-        max_obstacle_height: 1.5
-        min_obstacle_height: -0.5 # -0.05
-        mark_threshold: 0
-        combination_method: 1
-        observation_sources: orbbec_front_clear orbbec_front_mark orbbec_back_clear orbbec_back_mark # deptrum_front deptrum_back
-        orbbec_front_clear:
-          topic: /camera_01/depth/ds_points
-          clearing: True
-          marking: False
-          data_type: "PointCloud2"
-          raytrace_max_range: 3.0 # 3.0
-          raytrace_min_range: 0.0
-          obstacle_max_range: 2.5 # 3.2 # 2.5
-          obstacle_min_range: 0.0
-          max_obstacle_height: 1.5
-          min_obstacle_height: -0.3 # -0.05
-        orbbec_front_mark:
-          topic: /camera_01/depth/ds_points
-          clearing: False
-          marking: True
-          data_type: "PointCloud2"
-          raytrace_max_range: 2.5 # 3.0
-          raytrace_min_range: 0.0
-          obstacle_max_range: 2.0 # 3.2 # 2.5
-          obstacle_min_range: 0.0
-          max_obstacle_height: 1.5
-          min_obstacle_height: -0.19 # -0.05
-        orbbec_back_clear:
-          topic: /camera_02/depth/ds_points
-          clearing: True
-          marking: False
-          data_type: "PointCloud2"
-          raytrace_max_range: 3.0 # 3.0
-          raytrace_min_range: 0.0
-          obstacle_max_range: 2.5 # 3.2 # 2.5
-          obstacle_min_range: 0.0
-          max_obstacle_height: 1.5
-          min_obstacle_height: -0.3 # -0.05
-        orbbec_back_mark:
-          topic: /camera_02/depth/ds_points
-          clearing: False
-          marking: True
-          data_type: "PointCloud2"
-          raytrace_max_range: 2.5 # 3.0
-          raytrace_min_range: 0.0
-          obstacle_max_range: 2.0 # 3.2 # 2.5
-          obstacle_min_range: 0.0
-          max_obstacle_height: 1.5
-          min_obstacle_height: -0.18 # -0.05
-        deptrum_front:
-          topic: /stellar_1/ds_points
-          clearing: True
-          marking: True
-          data_type: "PointCloud2"
-          raytrace_max_range: 2.5 # 3.0
-          raytrace_min_range: 0.3
-          obstacle_max_range: 2.5 # 3.2 # 2.5
-          obstacle_min_range: 0.3
-          max_obstacle_height: 1.7
-          min_obstacle_height: 0.0 # -0.05
-        deptrum_back:
-          topic: /stellar_2/ds_points
-          clearing: True
-          marking: True
-          data_type: "PointCloud2"
-          raytrace_max_range: 2.5 # 3.0
-          raytrace_min_range: 0.3
-          obstacle_max_range: 2.5 # 3.2 # 2.5
-          obstacle_min_range: 0.3
-          max_obstacle_height: 1.7
-          min_obstacle_height: 0.0 # -0.05 
       static_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
         map_subscribe_transient_local: True
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 10.0
-        inflation_radius: 0.6 # 0.75 # 0.55
+        inflation_radius: 0.7 # 0.75 # 0.55
       always_send_full_costmap: True
 
 map_server:
@@ -611,7 +397,7 @@ map_saver:
 
 planner_server:
   ros__parameters:
-    expected_planner_frequency: 0.5 # 0.2 # 0.5 # 20.0
+    expected_planner_frequency: 0.2 # 0.5 # 20.0
     use_sim_time: True
     planner_plugins: ["GridBased"]
     GridBased:
@@ -635,7 +421,7 @@ planner_server:
       cost_penalty: 2.0                   # Penalty to apply to higher cost areas when adding into the obstacle map dynamic programming distance expansion heuristic. This drives the robot more towards the center of passages. A value between 1.3 - 3.5 is reasonable.
       rotation_penalty: 5.0               # Penalty to apply to in-place rotations, if minimum control set contains them
       retrospective_penalty: 0.015
-      lattice_filepath: "/home/Projects/b1_main_v1/b1_devel/b1_navigation/src/navigation2/nav2_smac_planner/test/output.json"                # The filepath to the state lattice graph
+      lattice_filepath: "default" # rewrite in launch                # The filepath to the state lattice graph
       lookup_table_size: 20.0             # Size of the dubin/reeds-sheep distance window to cache, in meters.
       cache_obstacle_heuristic: false     # Cache the obstacle map dynamic programming distance expansion heuristic between subsiquent replannings of the same goal location. Dramatically speeds up replanning performance (40x) if costmap is largely static.
       allow_reverse_expansion: false      # If true, allows the robot to use the primitives to expand in the mirrored opposite direction of the current robot's orientation (to reverse).
