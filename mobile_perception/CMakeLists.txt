@@ -69,7 +69,7 @@ install(PROGRAMS
 
 # Install directories
 install(DIRECTORY
-  launch
+#  launch
   config
   images
   DESTINATION share/${PROJECT_NAME})
