@@ -49,6 +49,18 @@ install(TARGETS
   mobile_docking_control_node
   DESTINATION lib/${PROJECT_NAME})
 
+add_executable(test_docking_node src/test_docking_node.cpp)
+ament_target_dependencies(test_docking_node rclcpp yaml-cpp nav2_graceful_controller nav2_util)
+  
+target_link_libraries(
+  test_docking_node
+  yaml-cpp
+)
+  # Install C++ executable
+install(TARGETS
+  test_docking_node
+  DESTINATION lib/${PROJECT_NAME})
+
 # Install Python scripts
 install(PROGRAMS
   scripts/detect_apriltags.py
