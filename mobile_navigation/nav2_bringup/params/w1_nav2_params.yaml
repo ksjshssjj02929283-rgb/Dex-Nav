@@ -127,9 +127,9 @@ controller_server:
       required_movement_radius: 0.5
       movement_time_allowance: 10.0
     goal_checker:
-      plugin: "nav2_controller::SimpleGoalChecker"
-      xy_goal_tolerance: 0.2
-      yaw_goal_tolerance: 0.1 # 0.25
+      plugin: "nav2_controller::LongitudinalGoalChecker"
+      lon_goal_tolerance: 0.05
+      lat_goal_tolerance: 0.05
       stateful: True    
     FollowPath:
       plugin: "nav2_mppi_controller::MPPIController"

@@ -55,7 +55,7 @@ install(PROGRAMS
   scripts/detect_apriltags.py
   scripts/detect_apriltag_nostop.py
   scripts/control_robot.py
-  scripts/control_robot_1.py
+  scripts/nav_then_precise.py
   scripts/goal_controller.py
   scripts/stop_robot.py
   scripts/spin_robot.py
