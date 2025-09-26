@@ -3,6 +3,7 @@
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Image
+from sensor_interfaces.msg import RGBD
 from cv_bridge import CvBridge, CvBridgeError
 from geometry_msgs.msg import Pose, PoseArray, TransformStamped
 from tf2_ros import Buffer, TransformListener
@@ -181,7 +182,7 @@ class UnifiedDetector(Node):
     
     def detect_by_camera_topics(self, topic_name):
         self.create_subscription(
-            Image,
+            RGBD,
             # topic_name,
             self.topic_name,
             self.image_callback,
@@ -223,7 +224,7 @@ class UnifiedDetector(Node):
         # print("here msg encoding: ", msg.encoding)
         try:
             # Convert ROS Image message to OpenCV BGR image
-            cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
+            cv_image = self.bridge.imgmsg_to_cv2(msg.rgb, desired_encoding='bgr8')
 
             # Convert the BGR image to grayscale
             gray_image = cv2.cvtColor(cv_image, cv2.COLOR_BGR2GRAY)
@@ -296,8 +297,8 @@ class UnifiedDetector(Node):
                     x=transformed_pose.position.x
                     y=transformed_pose.position.y
                     z=transformed_pose.position.z
-                    # print('tag in Base_link x,y,z: ' , x, y, z)
-                    # print(' quatanion: ' , transformed_pose.orientation)
+                    print('tag in Base_link x,y,z: ' , x, y, z)
+                    print(' quatanion: ' , transformed_pose.orientation)
                     
                     pose_array.poses.append(transformed_pose)
                     
@@ -324,7 +325,7 @@ class UnifiedDetector(Node):
 def main(args=None):
     rclpy.init(args=args)
     
-    package_path = get_package_path('b1_perception')
+    package_path = get_package_path('mobile_perception')
     camera_config_path = os.path.join(package_path + '/config/camera_config.json')
     apriltags_feild_path = os.path.join(package_path + '/config/tags_config.json')
 
@@ -338,8 +339,8 @@ def main(args=None):
 
     executor = rclpy.executors.SingleThreadedExecutor()
     executor.add_node(unified_detector)
-
-    executor.spin()
+    while rclpy.ok():
+        executor.spin_once(timeout_sec=0.001)   # 1 ms 阻塞等待
 
 if __name__ == "__main__":
     main()

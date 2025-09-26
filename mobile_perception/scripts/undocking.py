@@ -10,12 +10,12 @@ import argparse
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Control Node for Docking')
     parser.add_argument('--timeout', type=float, default=5.0, help='Timeout for the control loop in seconds')
-    parser.add_argument('--speed', type=float, default=0.015, help='Speed of the robot')
+    parser.add_argument('--speed', type=float, default=0.05, help='Speed of the robot')
     parser.add_argument('--direction', type=int, default=1, help='Direction of the robot movement, 1 for forward, -1 for backward')
     return parser.parse_args()
 
 class ControlNode(Node):
-    def __init__(self, time_out=5.0, speed=0.015, direction=1):
+    def __init__(self, time_out=5.0, speed=0.05, direction=1):
         super().__init__('control_node')
         
         self.time_out = time_out
@@ -26,7 +26,7 @@ class ControlNode(Node):
         self.start_time = self.get_clock().now()
         
         # Publisher for cmd_vel
-        self.cmd_vel_pub = self.create_publisher(Twist, 'cmd_vel', 10)
+        self.cmd_vel_pub = self.create_publisher(Twist, 'control/cmd_vel', 10)
         
         # Timer for control loop
         self.timer = self.create_timer(0.1, self.control_loop)

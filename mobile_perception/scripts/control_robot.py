@@ -45,7 +45,7 @@ class ControlNode(Node):
         # Target pose in the robot base link frame
         self.target_pose = target_pose 
         self.time_out = time_out
-        
+        self.stop_time = self.get_clock().now()
         # Initialize start time
         self.start_time = self.get_clock().now()
          
@@ -53,7 +53,7 @@ class ControlNode(Node):
         self.control_result = 2 
         
         # Publisher for cmd_vel
-        self.cmd_vel_pub = self.create_publisher(Twist, 'cmd_vel', 10)
+        self.cmd_vel_pub = self.create_publisher(Twist, 'control/cmd_vel', 10)
         
         # Publisher for control result
         self.result_pub = self.create_publisher(Int32, 'docking_ctrl_result', 10)
@@ -144,15 +144,15 @@ class ControlNode(Node):
         #     self.get_logger().info(f"subindex024: {self.latest_status.subindex024}")
             
         # Check the latest status message
-        if self.latest_status and self.latest_status.subindex024 > 0.5:
-            self.get_logger().info('subindex024 is greater than 0.5, acting as goal reached')
-            self.reset_start_time()
-            self.control_result = 0  # Success
-            self.publish_twist(0.0, 0.0)
-            self.publish_result()
-            self.timer.cancel()  # Stop the timer
-            self.shutdown()
-            return
+        # if self.latest_status and self.latest_status.subindex024 > 0.5:
+        #     self.get_logger().info('subindex024 is greater than 0.5, acting as goal reached')
+        #     self.reset_start_time()
+        #     self.control_result = 0  # Success
+        #     self.publish_twist(0.0, 0.0)
+        #     self.publish_result()
+        #     self.timer.cancel()  # Stop the timer
+        #     self.shutdown()
+        #     return
 
         if self.fdb_pose is None:
             self.get_logger().info('No tag detected yet')
@@ -170,8 +170,24 @@ class ControlNode(Node):
         # Calculate velocities
         cur = self.fdb_pose
         goal = self.target_pose
+        self.controller.set_linear_tolerance(0.02)
+        self.controller.set_min_angular_speed(0.035)
         vel, omega = self.controller.get_velocity(cur, goal, 0.1, direction=-1)
-        
+        # if abs(omega)< 0.05 and abs(omega) > 0.01:
+        #     omega =
+        if abs(vel) >= 0.0105 or abs(omega) >= 0.0105:
+            print(f'vel: {vel:0.3f}, omega: {omega:0.3f}')
+            self.stop_time = self.get_clock().now()
+        else:
+            print(f'vel: {vel:0.3f}, omega: {omega:0.3f}')
+        gap = (self.get_clock().now() - self.stop_time).nanoseconds * 1e-9
+        if gap > 1.0:
+            self.publish_twist(0.0, 0.0)
+            self.get_logger().info('Sleep for 3s')
+            self.control_result = 0  # Success
+            self.shutdown()
+            # rclpy.shutdown()
+
         # Check if the robot has reached the goal
         if self.controller.at_goal(goal, cur):  
             self.get_logger().info('Goal reached')
@@ -213,7 +229,7 @@ def main(args=None):
     rclpy.init(args=args)
     
     # Get the path to the package
-    package_path = get_package_path('b1_perception')
+    package_path = get_package_path('mobile_perception')
     # if package_path:
     #     print(f"The path to the package is: {package_path}") 
     
@@ -236,7 +252,7 @@ def main(args=None):
     target_pose.orientation.w = docking_config[goal_name]["quaternion"]["w"]
 
     # Print pose
-    # print("target_pose: ", target_pose)
+    print("target_pose: ", target_pose)
     
     # Create the control node
     control_node = ControlNode(target_pose, time_out=50.0)

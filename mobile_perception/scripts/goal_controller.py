@@ -13,17 +13,17 @@ class GoalController:
     a goal pose.
     """
     def __init__(self):
-        self.kA =  0.0950*1.05 #1.18  
+        self.kA =  0.1050*1.05 #1.18  
         self.kP =  0.0800*1.05 #0.2
         self.kB = -0.0040*1.05 #2.0 #-0.15  
-        self.max_linear_speed = 0.20 #0.2
+        self.max_linear_speed = 0.50 #0.2
         self.min_linear_speed = 0
         self.max_angular_speed = 0.500 #0.2
         self.min_angular_speed = -0.500 #0.2
         self.max_linear_acceleration = 2.5
         self.max_angular_acceleration = 2.5
-        self.linear_tolerance = 0.01520 # 8mm
-        self.angular_tolerance = 0.042 #0.035 # 2degrees
+        self.linear_tolerance = 0.03 # 8mm
+        self.angular_tolerance = 0.035 #0.035 # 2degrees
         self.forward_movement_only = False
         self.cur_theta = 0
         self.goal_theta = 0
@@ -78,8 +78,9 @@ class GoalController:
             return True
         d = self.get_goal_distance(cur, goal)   
         err_theta,_,_  = self.compute_rotation_error(goal, cur, order='zyx')
+        dy = abs(cur.position.y - goal.position.y)
         dTh = abs(self.normalize_pi(err_theta))
-        self.res_ = ( d < self.linear_tolerance and dTh < self.angular_tolerance )
+        self.res_ = ( d < self.linear_tolerance and dTh < self.angular_tolerance and dy < 0.01)
         if self.res_:
             print("dist_err = ", d, "theta_yaw_err = ", dTh) 
         return self.res_
@@ -198,12 +199,17 @@ class GoalController:
         if abs(self.xVel) > 0 and abs(self.xVel) < self.min_linear_speed:
             ratio = self.min_linear_speed / abs(self.xVel)
             self.xVel *= ratio
-            self.thetaVel *= ratio
+            self.thetaVel *= max(ratio*0.75, 1.0)
         elif self.xVel==0 and abs(self.thetaVel) < self.min_angular_speed:
             ratio = self.min_angular_speed / abs(self.thetaVel)
             self.xVel *= ratio
             self.thetaVel *= ratio
-
+        if abs(self.thetaVel) < self.min_angular_speed:
+            print(f' omega: {self.thetaVel:0.4f}')
+            ratio = self.min_angular_speed / abs(self.thetaVel)
+            # self.xVel *= ratio
+            if abs(self.thetaVel) > 0.002:
+                self.thetaVel *= ratio
         return self.xVel, self.thetaVel
 
     def normalize_half_pi(self, alpha):

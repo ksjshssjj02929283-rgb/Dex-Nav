@@ -4,9 +4,9 @@
       "id": 0,
       "name": "shenzhen_new_tag",
       "synchronize": true, 
-      "topic_name": "/camera_04/color/image_raw",
+      "topic_name": "/orbbec/rear",
       "base_link_name": "base_link",
-      "camera_link": "camera_04_link_color",
+      "camera_link": "rear_rgb",
       "desired_encoding": "'rgb8'",
       "settings": { 
         "resolution": "640x480",
