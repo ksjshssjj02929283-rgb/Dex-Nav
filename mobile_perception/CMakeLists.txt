@@ -49,12 +49,13 @@ install(TARGETS
   mobile_docking_control_node
   DESTINATION lib/${PROJECT_NAME})
 
+
 # Install Python scripts
 install(PROGRAMS
   scripts/detect_apriltags.py
   scripts/detect_apriltag_nostop.py
   scripts/control_robot.py
-  scripts/control_robot_1.py
+  scripts/nav_then_precise.py
   scripts/goal_controller.py
   scripts/stop_robot.py
   scripts/spin_robot.py
@@ -69,7 +70,7 @@ install(PROGRAMS
 
 # Install directories
 install(DIRECTORY
-  launch
+#  launch
   config
   images
   DESTINATION share/${PROJECT_NAME})
