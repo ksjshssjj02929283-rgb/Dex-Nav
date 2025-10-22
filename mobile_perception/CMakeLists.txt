@@ -66,6 +66,7 @@ install(PROGRAMS
   scripts/nav_goal_publisher_loop.py
   scripts/pub_current_position.py
   scripts/pub_goal_loop_office.py
+  scripts/create_charging_pose.py
   DESTINATION lib/${PROJECT_NAME})
 
 # Install directories
