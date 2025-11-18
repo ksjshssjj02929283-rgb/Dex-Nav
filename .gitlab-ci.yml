@@ -1,0 +1,4 @@
+include:
+  project: 'commonpub/gitlab_ci_script'
+  ref: main
+  file: 'loader.yml'
