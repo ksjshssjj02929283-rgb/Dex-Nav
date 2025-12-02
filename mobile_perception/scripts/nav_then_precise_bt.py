@@ -12,7 +12,7 @@ import sys
 import py_trees
 from py_trees import common
 import rclpy
-from sensor_msgs.msg import BatteryState
+from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus
 from rclpy.action import ActionClient
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
@@ -59,8 +59,12 @@ class NavThenPreciseNode(Node):
             history=HistoryPolicy.KEEP_LAST, 
             depth=1
         )
-        self._sub_charging = self.create_subscription(
-            BatteryState, '/feedback/battery', self._cb_charging, qos
+
+        self._sub_diagnostics = self.create_subscription(
+        DiagnosticArray, 
+        '/diagnostics_agg', 
+        self._cb_diagnostics, 
+        qos
         )
         self.is_charging = False
 
@@ -122,14 +126,26 @@ class NavThenPreciseNode(Node):
         except Exception as e:
             self.get_logger().error(f"关闭 AprilTag 检测节点时出错: {e}")
 
-    def _cb_charging(self, msg: BatteryState):
-        """充电状态回调"""
-        self.get_logger().info(f"电源状态码: {msg.power_supply_status}")
-    
-        if msg.power_supply_status == 1:
-            self.is_charging = True
-        else:
-            self.is_charging = False
+    def _cb_diagnostics(self, msg: DiagnosticArray):
+        """从诊断数据中提取充电状态"""
+        # 遍历所有诊断状态
+        for status in msg.status:
+            # 找到电源板相关的诊断项
+            if status.name == '/Devices/System/PowerBoard/collector_node: PowerBoard':
+                # 遍历键值对查找充电状态
+                for value in status.values:
+                    if value.key == 'battery_charging':
+                        # 将字符串'true'/'false'转换为布尔值
+                        self.is_charging = value.value.lower() == 'true'
+                        self.get_logger().info(f"充电状态: {self.is_charging}")
+                        return  # 找到后提前退出
+                
+                # 如果没有找到battery_charging键
+                self.get_logger().warn("未找到battery_charging键")
+                return
+        
+        # 如果没有找到电源板诊断项
+        self.get_logger().warn("未找到PowerBoard诊断信息")
 
     def nav_to_pose(self, goal_pose: PoseStamped) -> bool:
         """导航到指定位置（模拟）
@@ -361,7 +377,7 @@ class RetryWithUndocking(py_trees.behaviour.Behaviour):
         
         # 状态机成员
         self._dock = dock_subtree
-        self._check = CheckCharging(node, timeout=5.0)
+        self._check = CheckCharging(node, timeout=10.0)
         self._phase = 'DOCK'  # 'DOCK', 'CHECK', 'UNDOCK'
         self._apriltag_started = False  # 标记是否已启动AprilTag
 
