@@ -67,6 +67,7 @@ install(PROGRAMS
   scripts/pub_goal_loop_office.py
   scripts/create_charging_pose.py
   scripts/nav_then_precise_bt.py
+  scripts/nav_goal_server.py
   DESTINATION lib/${PROJECT_NAME})
 
 # Install directories
