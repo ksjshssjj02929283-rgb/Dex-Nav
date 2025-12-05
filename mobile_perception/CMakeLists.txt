@@ -28,30 +28,6 @@ find_package(nav_msgs REQUIRED)
 
 include_directories(include ${OpenCV_INCLUDE_DIRS})
 
-# Declare a C++ executable
-add_executable(mobile_perception_node src/mobile_perception_node.cpp)
-ament_target_dependencies(mobile_perception_node rclcpp cv_bridge apriltag_ros)
-
-# Link libraries
-target_link_libraries(mobile_perception_node ${OpenCV_LIBRARIES} ${apriltag_ros_LIBRARIES})
-
-# Install C++ executable
-install(TARGETS
-  mobile_perception_node
-  DESTINATION lib/${PROJECT_NAME})
-
-add_executable(mobile_docking_control_node src/mobile_docking_control_node.cpp)
-ament_target_dependencies(mobile_docking_control_node rclcpp yaml-cpp nav2_graceful_controller nav2_util)
-  
-target_link_libraries(
-  mobile_docking_control_node
-  yaml-cpp
-)
-  # Install C++ executable
-install(TARGETS
-  mobile_docking_control_node
-  DESTINATION lib/${PROJECT_NAME})
-
 # mobile_control_node
 add_executable(mobile_control_node src/mobile_control_node.cpp)
 ament_target_dependencies(mobile_control_node rclcpp tf2 tf2_ros tf2_geometry_msgs geometry_msgs nav_msgs)
