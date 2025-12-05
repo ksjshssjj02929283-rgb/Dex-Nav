@@ -20,7 +20,11 @@ find_package(apriltag_ros REQUIRED)  # Ensure this is the correct package name
 find_package(nav2_graceful_controller REQUIRED)
 find_package(nav2_util REQUIRED)
 find_package(yaml-cpp REQUIRED)
+find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
+find_package(tf2_geometry_msgs REQUIRED)
+find_package(geometry_msgs REQUIRED)
+find_package(nav_msgs REQUIRED)
 
 include_directories(include ${OpenCV_INCLUDE_DIRS})
 
@@ -48,6 +52,12 @@ install(TARGETS
   mobile_docking_control_node
   DESTINATION lib/${PROJECT_NAME})
 
+# mobile_control_node
+add_executable(mobile_control_node src/mobile_control_node.cpp)
+ament_target_dependencies(mobile_control_node rclcpp tf2 tf2_ros tf2_geometry_msgs geometry_msgs nav_msgs)
+install(TARGETS
+  mobile_control_node
+  DESTINATION lib/${PROJECT_NAME})
 
 # Install Python scripts
 install(PROGRAMS
@@ -71,7 +81,7 @@ install(PROGRAMS
 
 # Install directories
 install(DIRECTORY
-#  launch
+  launch
   config
   images
   DESTINATION share/${PROJECT_NAME})
