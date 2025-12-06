@@ -26,8 +26,8 @@ public:
         this->declare_parameter("rotate_to_heading_max_angular_accel", 1.0);
         
         // Graceful Controller Gains
-        this->declare_parameter("k_rho", 1.0);
-        this->declare_parameter("k_alpha", 2.5);
+        this->declare_parameter("k_rho", 0.8);
+        this->declare_parameter("k_alpha", 1.5);
         this->declare_parameter("k_beta", -1.0); 
         
         // [新增] 允许前进的最大朝向误差 (弧度)，超过这个角度则原地旋转
@@ -117,12 +117,14 @@ private:
         double dx = target_pose.position.x;
         double dy = target_pose.position.y;
         double dyaw = tf2::getYaw(target_pose.orientation);
+        RCLCPP_INFO(this->get_logger(), "dyaw: %0.3f", dyaw);
 
         // 1. 计算误差变量
         double rho = std::hypot(dx, dy);      // 距离
         double alpha = std::atan2(dy, dx);    // 目标方位角（相对于当前车头）
         double beta = dyaw - alpha;           // 目标朝向误差
-
+        RCLCPP_INFO(this->get_logger(), "The alpha: %0.3f, the beta %0.3f, the dx: %0.3f, dy: %0.3f",
+                    alpha, beta, dx, dy);
         // 规范化角度到 -PI ~ PI
         alpha = std::atan2(std::sin(alpha), std::cos(alpha));
         beta = std::atan2(std::sin(beta), std::cos(beta));
@@ -201,6 +203,9 @@ private:
         
         double beta = dyaw - rear_alpha;  // 目标朝向误差
         beta = std::atan2(std::sin(beta), std::cos(beta));
+
+        RCLCPP_INFO(this->get_logger(), "Reverse alpha: %0.3f, the beta %0.3f, the dx: %0.3f, dy: %0.3f",
+                    alpha, beta, dx, dy);
 
         double v = 0.0;
         double w = 0.0;

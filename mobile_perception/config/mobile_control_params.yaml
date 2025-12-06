@@ -4,6 +4,10 @@ mobile_control_node:
     max_v: 0.25          # 最大前进速度
     max_w: 1.0           # 最大角速度
     max_forward_angle_error: 1.0  # 前向扇区角度（弧度）
+
+    k_rho: 0.8
+    k_alpha: 1.0
+    k_beta: -0.8  
     
     # # [新增]后退专用参数
     # max_reverse_angle_error: 1.0  # 后向扇区角度（弧度）
