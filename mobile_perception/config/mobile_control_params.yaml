@@ -1,0 +1,10 @@
+# 为后退模式添加专用参数
+mobile_control_node:
+  ros__parameters:
+    max_v: 0.25          # 最大前进速度
+    max_w: 1.0           # 最大角速度
+    max_forward_angle_error: 1.0  # 前向扇区角度（弧度）
+    
+    # # [新增]后退专用参数
+    # max_reverse_angle_error: 1.0  # 后向扇区角度（弧度）
+    # reverse_speed_factor: 0.8     # 后退速度系数（通常比前进慢）

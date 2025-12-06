@@ -8,123 +8,8 @@
 #include <tf2/utils.h>
 #include <cmath>
 #include <algorithm>
-#include <deque>
 
 using namespace std::chrono_literals;
-
-namespace controller_common {
-
-struct PidConf {
-  bool integrator_enable = false;
-  double integrator_saturation_level = 0.0;
-  double output_saturation_level = 0.0;
-  double kp = 0.0;
-  double ki = 0.0;
-  double kd = 0.0;
-  double kaw = 0.0;
-};
-
-/**
- * @brief Simple PID Controller implementation
- */
-class PIDController {
-public:
-  void Init(const PidConf &pid_conf) {
-    previous_error_ = 0.0;
-    previous_output_ = 0.0;
-    integral_ = 0.0;
-    first_hit_ = true;
-    integrator_enabled_ = pid_conf.integrator_enable;
-    integrator_saturation_high_ = std::fabs(pid_conf.integrator_saturation_level);
-    integrator_saturation_low_ = -std::fabs(pid_conf.integrator_saturation_level);
-    integrator_saturation_status_ = 0;
-    integrator_hold_ = false;
-    output_saturation_high_ = std::fabs(pid_conf.output_saturation_level);
-    output_saturation_low_ = -std::fabs(pid_conf.output_saturation_level);
-    output_saturation_status_ = 0;
-    SetPID(pid_conf);
-  }
-
-  void SetPID(const PidConf &pid_conf) {
-    kp_ = pid_conf.kp;
-    ki_ = pid_conf.ki;
-    kd_ = pid_conf.kd;
-    kaw_ = pid_conf.kaw;
-  }
-
-  void Reset() {
-    previous_error_ = 0.0;
-    previous_output_ = 0.0;
-    integral_ = 0.0;
-    first_hit_ = true;
-    integrator_saturation_status_ = 0;
-    output_saturation_status_ = 0;
-  }
-
-  void Reset_integral() {
-    integral_ = 0.0;
-    integrator_saturation_status_ = 0;
-  }
-
-  double Control(const double error, const double dt) {
-    if (dt <= 0) {
-      return previous_output_;
-    }
-    
-    double diff = 0;
-    double output = 0;
-
-    if (first_hit_) {
-      first_hit_ = false;
-    } else {
-      diff = (error - previous_error_) / dt;
-    }
-    
-    // integral hold
-    if (!integrator_enabled_) {
-      integral_ = 0;
-    } else if (!integrator_hold_) {
-      integral_ += error * dt * ki_;
-      if (integral_ > integrator_saturation_high_) {
-        integral_ = integrator_saturation_high_;
-        integrator_saturation_status_ = 1;
-      } else if (integral_ < integrator_saturation_low_) {
-        integral_ = integrator_saturation_low_;
-        integrator_saturation_status_ = -1;
-      } else {
-        integrator_saturation_status_ = 0;
-      }
-    }
-    
-    previous_error_ = error;
-    output = error * kp_ + integral_ + diff * kd_;
-    previous_output_ = output;
-    return output;
-  }
-
-  bool IntegratorHold() const { return integrator_hold_; }
-  void SetIntegratorHold(bool hold) { integrator_hold_ = hold; }
-
-private:
-  double kp_ = 0.0;
-  double ki_ = 0.0;
-  double kd_ = 0.0;
-  double kaw_ = 0.0;
-  double previous_error_ = 0.0;
-  double previous_output_ = 0.0;
-  double integral_ = 0.0;
-  double integrator_saturation_high_ = 0.0;
-  double integrator_saturation_low_ = 0.0;
-  bool first_hit_ = false;
-  bool integrator_enabled_ = false;
-  bool integrator_hold_ = false;
-  int integrator_saturation_status_ = 0;
-  double output_saturation_high_ = 0.0;
-  double output_saturation_low_ = 0.0;
-  int output_saturation_status_ = 0;
-};
-
-}  // namespace controller_common
 
 class MobileControlNode : public rclcpp::Node
 {
@@ -134,120 +19,31 @@ public:
         // 1. 参数声明
         this->declare_parameter("control_frequency", 20.0);
         this->declare_parameter("max_v", 0.35);
-        this->declare_parameter("min_v", 0.0);
+        this->declare_parameter("min_v", 0.0); // 最小非零速度
         this->declare_parameter("max_w", 1.0);
         this->declare_parameter("accel_x_max", 0.5);
+        this->declare_parameter("rotate_to_heading_angular_vel", 0.4);
+        this->declare_parameter("rotate_to_heading_max_angular_accel", 1.0);
         
-        // LatLon controller specific parameters
-        this->declare_parameter("p_window", 0.5);
-        this->declare_parameter("long_precision", 0.02);
-        this->declare_parameter("lat_precision", 0.04);
-        this->declare_parameter("o_precision", 0.5);
-        this->declare_parameter("k_theta", 0.5);
-        this->declare_parameter("switch_speed", 0.1);
-        this->declare_parameter("adjust_heading_dist", 0.25);
-        this->declare_parameter("reverse_enabled", false);
+        // Graceful Controller Gains
+        this->declare_parameter("k_rho", 1.0);
+        this->declare_parameter("k_alpha", 2.5);
+        this->declare_parameter("k_beta", -1.0); 
         
-        // PID parameters for high speed
-        this->declare_parameter("high_speed_station_pid_conf.kp", 1.0);
-        this->declare_parameter("high_speed_station_pid_conf.ki", 0.01);
-        this->declare_parameter("high_speed_station_pid_conf.kd", 0.1);
-        this->declare_parameter("high_speed_station_pid_conf.integrator_enable", true);
-        this->declare_parameter("high_speed_station_pid_conf.integrator_saturation_level", 0.3);
-        
-        // PID parameters for low speed
-        this->declare_parameter("low_speed_station_pid_conf.kp", 1.0);
-        this->declare_parameter("low_speed_station_pid_conf.ki", 0.01);
-        this->declare_parameter("low_speed_station_pid_conf.kd", 0.1);
-        this->declare_parameter("low_speed_station_pid_conf.integrator_enable", true);
-        this->declare_parameter("low_speed_station_pid_conf.integrator_saturation_level", 0.3);
-        
-        // PID parameters for high speed linear
-        this->declare_parameter("high_speed_pid_conf.kp", 1.0);
-        this->declare_parameter("high_speed_pid_conf.ki", 0.01);
-        this->declare_parameter("high_speed_pid_conf.kd", 0.1);
-        this->declare_parameter("high_speed_pid_conf.integrator_enable", true);
-        this->declare_parameter("high_speed_pid_conf.integrator_saturation_level", 0.3);
-        
-        // PID parameters for low speed linear
-        this->declare_parameter("low_speed_pid_conf.kp", 1.0);
-        this->declare_parameter("low_speed_pid_conf.ki", 0.01);
-        this->declare_parameter("low_speed_pid_conf.kd", 0.1);
-        this->declare_parameter("low_speed_pid_conf.integrator_enable", true);
-        this->declare_parameter("low_speed_pid_conf.integrator_saturation_level", 0.3);
-        
-        // PID parameters for angular
-        this->declare_parameter("angular_station_pid_conf.kp", 1.0);
-        this->declare_parameter("angular_station_pid_conf.ki", 0.01);
-        this->declare_parameter("angular_station_pid_conf.kd", 0.1);
-        this->declare_parameter("angular_station_pid_conf.integrator_enable", true);
-        this->declare_parameter("angular_station_pid_conf.integrator_saturation_level", 0.5);
+        // [新增] 允许前进的最大朝向误差 (弧度)，超过这个角度则原地旋转
+        // 默认 1.0 弧度 (约 57度)。意味着只有目标在前方 +-57度扇区内，车才会走动
+        this->declare_parameter("max_forward_angle_error", 1.0); 
 
         // 获取参数
         control_frequency_ = this->get_parameter("control_frequency").as_double();
         accel_x_max_ = this->get_parameter("accel_x_max").as_double();
-        max_v_ = this->get_parameter("max_v").as_double();
-        min_v_ = this->get_parameter("min_v").as_double();
-        max_w_ = this->get_parameter("max_w").as_double();
+        rotate_to_heading_angular_vel_ = this->get_parameter("rotate_to_heading_angular_vel").as_double();
+        rotate_to_heading_max_angular_accel_ = this->get_parameter("rotate_to_heading_max_angular_accel").as_double();
         
-        p_window_ = this->get_parameter("p_window").as_double();
-        long_precision_ = this->get_parameter("long_precision").as_double();
-        lat_precision_ = this->get_parameter("lat_precision").as_double();
-        o_precision_ = this->get_parameter("o_precision").as_double();
-        k_theta_ = this->get_parameter("k_theta").as_double();
-        switch_speed_ = this->get_parameter("switch_speed").as_double();
-        adjust_heading_dist_ = this->get_parameter("adjust_heading_dist").as_double();
-        reverse_enabled_ = this->get_parameter("reverse_enabled").as_bool();
-        
-        d_t_ = 1.0 / control_frequency_;
-
-        // Load PID configurations
-        controller_common::PidConf high_speed_station_pid_conf;
-        high_speed_station_pid_conf.kp = this->get_parameter("high_speed_station_pid_conf.kp").as_double();
-        high_speed_station_pid_conf.ki = this->get_parameter("high_speed_station_pid_conf.ki").as_double();
-        high_speed_station_pid_conf.kd = this->get_parameter("high_speed_station_pid_conf.kd").as_double();
-        high_speed_station_pid_conf.integrator_enable = this->get_parameter("high_speed_station_pid_conf.integrator_enable").as_bool();
-        high_speed_station_pid_conf.integrator_saturation_level = this->get_parameter("high_speed_station_pid_conf.integrator_saturation_level").as_double();
-
-        controller_common::PidConf low_speed_station_pid_conf;
-        low_speed_station_pid_conf.kp = this->get_parameter("low_speed_station_pid_conf.kp").as_double();
-        low_speed_station_pid_conf.ki = this->get_parameter("low_speed_station_pid_conf.ki").as_double();
-        low_speed_station_pid_conf.kd = this->get_parameter("low_speed_station_pid_conf.kd").as_double();
-        low_speed_station_pid_conf.integrator_enable = this->get_parameter("low_speed_station_pid_conf.integrator_enable").as_bool();
-        low_speed_station_pid_conf.integrator_saturation_level = this->get_parameter("low_speed_station_pid_conf.integrator_saturation_level").as_double();
-
-        controller_common::PidConf high_speed_pid_conf;
-        high_speed_pid_conf.kp = this->get_parameter("high_speed_pid_conf.kp").as_double();
-        high_speed_pid_conf.ki = this->get_parameter("high_speed_pid_conf.ki").as_double();
-        high_speed_pid_conf.kd = this->get_parameter("high_speed_pid_conf.kd").as_double();
-        high_speed_pid_conf.integrator_enable = this->get_parameter("high_speed_pid_conf.integrator_enable").as_bool();
-        high_speed_pid_conf.integrator_saturation_level = this->get_parameter("high_speed_pid_conf.integrator_saturation_level").as_double();
-
-        controller_common::PidConf low_speed_pid_conf;
-        low_speed_pid_conf.kp = this->get_parameter("low_speed_pid_conf.kp").as_double();
-        low_speed_pid_conf.ki = this->get_parameter("low_speed_pid_conf.ki").as_double();
-        low_speed_pid_conf.kd = this->get_parameter("low_speed_pid_conf.kd").as_double();
-        low_speed_pid_conf.integrator_enable = this->get_parameter("low_speed_pid_conf.integrator_enable").as_bool();
-        low_speed_pid_conf.integrator_saturation_level = this->get_parameter("low_speed_pid_conf.integrator_saturation_level").as_double();
-
-        controller_common::PidConf angular_station_pid_conf;
-        angular_station_pid_conf.kp = this->get_parameter("angular_station_pid_conf.kp").as_double();
-        angular_station_pid_conf.ki = this->get_parameter("angular_station_pid_conf.ki").as_double();
-        angular_station_pid_conf.kd = this->get_parameter("angular_station_pid_conf.kd").as_double();
-        angular_station_pid_conf.integrator_enable = this->get_parameter("angular_station_pid_conf.integrator_enable").as_bool();
-        angular_station_pid_conf.integrator_saturation_level = this->get_parameter("angular_station_pid_conf.integrator_saturation_level").as_double();
-
-        // Store PID configurations
-        high_speed_station_pid_conf_ = high_speed_station_pid_conf;
-        low_speed_station_pid_conf_ = low_speed_station_pid_conf;
-        high_speed_pid_conf_ = high_speed_pid_conf;
-        low_speed_pid_conf_ = low_speed_pid_conf;
-        angular_station_pid_conf_ = angular_station_pid_conf;
-
-        // Initialize PID controllers
-        station_pid_controller_.Init(low_speed_station_pid_conf_);
-        speed_pid_controller_.Init(low_speed_pid_conf_);
-        angular_station_pid_controller_.Init(angular_station_pid_conf_);
+        k_rho_ = this->get_parameter("k_rho").as_double();
+        k_alpha_ = this->get_parameter("k_alpha").as_double();
+        k_beta_ = this->get_parameter("k_beta").as_double();
+        max_forward_angle_error_ = this->get_parameter("max_forward_angle_error").as_double();
 
         // 2. 初始化 TF 和 通信
         tf_buffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
@@ -255,15 +51,10 @@ public:
 
         cmd_vel_pub_ = this->create_publisher<geometry_msgs::msg::Twist>("control/cmd_vel", 10);
         
-        // 订阅 base_link 坐标系下的目标点
+        // 订阅 Odom 坐标系下的目标点
         target_sub_ = this->create_subscription<geometry_msgs::msg::PoseStamped>(
             "control/ctrl_pose", 10, 
             std::bind(&MobileControlNode::targetCallback, this, std::placeholders::_1));
-
-        // 订阅 odom 话题获取机器人实际速度
-        odom_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
-            "feedback/odom", 10, 
-            std::bind(&MobileControlNode::odomCallback, this, std::placeholders::_1));
 
         // 3. 定时器
         timer_ = this->create_wall_timer(
@@ -271,372 +62,300 @@ public:
             std::bind(&MobileControlNode::controlLoop, this));
 
         // 状态初始化
-        get_target_pose_ = false;
-        target_pose_odom_initialized_ = false;
-        curr_controller_stage_ = ControllerStage::FINISH;
-        prev_controller_stage_ = ControllerStage::FINISH;
-        desired_linear_vel_ = 0.0;
+        get_map_pose_ = false;
+        is_goal_ = false;
         stop_count_ = 0;
-        robot_actual_vel_.linear.x = 0.0;
-        robot_actual_vel_.angular.z = 0.0;
     }
 
 private:
-    enum ControllerStage {
-        FINISH = 0,
-        APPROACHING = 1,
-        ADJUST_HEADING = 2,
-        ADJUST_DISTANCE = 3,
-        ROTATING_TO_GOAL = 4
-    };
-
     rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_pub_;
     rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr target_sub_;
-    rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
     rclcpp::TimerBase::SharedPtr timer_;
     
     std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
     std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
 
-    geometry_msgs::msg::PoseStamped target_pose_base_link_;  // 接收到的相对目标点
-    geometry_msgs::msg::PoseStamped target_pose_odom_;       // 转换到 odom 坐标系的绝对目标点
-    geometry_msgs::msg::Twist robot_actual_vel_;             // 从 odom 话题获取的机器人实际速度
-    bool get_target_pose_;
-    bool target_pose_odom_initialized_;
+    geometry_msgs::msg::PoseStamped target_pose_odom_; 
+    geometry_msgs::msg::Twist pre_cmd_vel_;
+    bool get_map_pose_;
+    bool is_goal_;
+    int stop_count_;
     
     double control_frequency_;
     double accel_x_max_;
-    double max_v_, min_v_, max_w_;
-    
-    // LatLon controller parameters
-    double p_window_;
-    double long_precision_, lat_precision_, o_precision_;
-    double k_theta_;
-    double switch_speed_;
-    double adjust_heading_dist_;
-    bool reverse_enabled_;
-    double d_t_;
-    double desired_linear_vel_;
-    
-    ControllerStage curr_controller_stage_;
-    ControllerStage prev_controller_stage_;
-    
-    std::deque<double> theta_errors_;
-    std::deque<double> longitude_errors_;
-    
-    // PID Controllers
-    controller_common::PIDController station_pid_controller_;
-    controller_common::PIDController speed_pid_controller_;
-    controller_common::PIDController angular_station_pid_controller_;
-    
-    // PID Configurations
-    controller_common::PidConf high_speed_station_pid_conf_;
-    controller_common::PidConf low_speed_station_pid_conf_;
-    controller_common::PidConf high_speed_pid_conf_;
-    controller_common::PidConf low_speed_pid_conf_;
-    controller_common::PidConf angular_station_pid_conf_;
-    
-    int stop_count_;
+    double rotate_to_heading_angular_vel_;
+    double rotate_to_heading_max_angular_accel_;
+    double k_rho_, k_alpha_, k_beta_;
+    double max_forward_angle_error_;
 
     void targetCallback(const geometry_msgs::msg::PoseStamped::SharedPtr msg)
     {
-        // Target is in base_link frame (relative position)
-        if (msg->header.frame_id == "base_link") {
-            target_pose_base_link_ = *msg;
-            
-            // Convert relative target in base_link to absolute target in odom frame
-            try {
-                // Get current robot pose in odom frame
-                geometry_msgs::msg::TransformStamped transform = tf_buffer_->lookupTransform(
-                    "odom", "base_link", tf2::TimePointZero);
-                
-                geometry_msgs::msg::PoseStamped target_in_odom;
-                target_in_odom.header.frame_id = "base_link";
-                target_in_odom.header.stamp = msg->header.stamp;
-                target_in_odom.pose = msg->pose;
-                
-                // Transform target from base_link to odom
-                tf2::doTransform(target_in_odom, target_pose_odom_, transform);
-                target_pose_odom_.header.frame_id = "odom";
-                
-                get_target_pose_ = true;
-                target_pose_odom_initialized_ = true;
-                curr_controller_stage_ = ControllerStage::APPROACHING;
-                stop_count_ = 0;
-                theta_errors_.clear();
-                longitude_errors_.clear();
-                
-                RCLCPP_INFO(this->get_logger(), 
-                    "New target received in base_link frame. Converted to odom: (%.3f, %.3f, %.3f)",
-                    target_pose_odom_.pose.position.x, 
-                    target_pose_odom_.pose.position.y,
-                    tf2::getYaw(target_pose_odom_.pose.orientation));
-            } catch (tf2::TransformException &ex) {
-                RCLCPP_WARN(this->get_logger(), "Cannot transform target to odom: %s", ex.what());
-                get_target_pose_ = false;
+        try {
+            geometry_msgs::msg::PoseStamped msg_transformed;
+            if (msg->header.frame_id != "odom") {
+                 msg_transformed = tf_buffer_->transform(*msg, "odom", tf2::durationFromSec(0.1));
+            } else {
+                msg_transformed = *msg;
             }
-        } else {
-            RCLCPP_WARN(this->get_logger(), "Target frame is %s, expected base_link", msg->header.frame_id.c_str());
+            target_pose_odom_ = msg_transformed;
+            get_map_pose_ = true;
+            is_goal_ = false;
+            stop_count_ = 0;
+            RCLCPP_INFO(this->get_logger(), "New target received in Odom frame");
+        } catch (tf2::TransformException &ex) {
+            RCLCPP_WARN(this->get_logger(), "Cannot transform goal to odom: %s", ex.what());
         }
     }
 
-    void odomCallback(const nav_msgs::msg::Odometry::SharedPtr msg)
+    /**
+     * @brief 核心修改：禁止倒车的 Graceful Velocity 计算
+     */
+    geometry_msgs::msg::Twist calculateNoReverseGracefulVelocity(const geometry_msgs::msg::Pose &target_pose)
     {
-        // 从 odom 话题获取机器人实际速度
-        robot_actual_vel_.linear.x = msg->twist.twist.linear.x;
-        robot_actual_vel_.angular.z = msg->twist.twist.angular.z;
-    }
-
-    /**
-     * @brief Regularize angle to [-PI, PI]
-     */
-    void regularizeAngle(double& angle) {
-        angle = angle - 2.0 * M_PI * std::floor((angle + M_PI) / (2.0 * M_PI));
-    }
-
-    /**
-     * @brief Calculate mean of deque
-     */
-    double CalculateMean(const std::deque<double>& data) {
-        if (data.empty()) return 0.0;
-        double sum = 0.0;
-        for (const auto& value : data) {
-            sum += value;
-        }
-        return sum / static_cast<double>(data.size());
-    }
-
-    /**
-     * @brief Check if should rotate to path
-     */
-    bool shouldRotateToPath(double angle_to_path) {
-        return (std::fabs(angle_to_path) > M_PI / 6.0);  // 30 degrees
-    }
-
-    /**
-     * @brief Rotate to heading
-     */
-    void rotateToHeading(double & linear_vel, double & angular_vel, const double & angle_to_path) {
-        linear_vel = 0.0;
-        const double sign = angle_to_path > 0.0 ? 1.0 : -1.0;
-        angular_vel = sign * 0.6;
-        angular_vel = std::clamp(angular_vel, -max_w_, max_w_);
-    }
-
-    /**
-     * @brief Linear speed control using PID
-     */
-    double LinearSpeedControl(double current_vel, double err_x) {
-        // Select PID configuration based on current velocity
-        if (current_vel < switch_speed_) {
-            station_pid_controller_.SetPID(low_speed_station_pid_conf_);
-            speed_pid_controller_.SetPID(low_speed_pid_conf_);
-        } else {
-            station_pid_controller_.SetPID(high_speed_station_pid_conf_);
-            speed_pid_controller_.SetPID(high_speed_pid_conf_);
-        }
-
-        double speed_error = desired_linear_vel_ - current_vel;
-        double speed_offset = station_pid_controller_.Control(err_x, d_t_);
-        double speed_controller_input = speed_offset + speed_error;
-        double acceleration_cmd = speed_pid_controller_.Control(speed_controller_input, d_t_);
-        double acceleration_cmd_limited = std::clamp(acceleration_cmd, -accel_x_max_, accel_x_max_);
-        double v_output = current_vel + acceleration_cmd_limited * d_t_;
-
-        if (!std::isfinite(v_output)) {
-            v_output = 0.0;
-        }
-
-        v_output = std::clamp(v_output, min_v_, desired_linear_vel_ * 1.5);
-        return v_output;
-    }
-
-    /**
-     * @brief Angular speed control using PID
-     */
-    double AngularSpeedControl(double err_theta) {
-        regularizeAngle(err_theta);
-        double vel_angular_output = angular_station_pid_controller_.Control(err_theta, d_t_);
+        geometry_msgs::msg::Twist cmd;
         
-        if (!std::isfinite(vel_angular_output)) {
-            vel_angular_output = 0.0;
+        double dx = target_pose.position.x;
+        double dy = target_pose.position.y;
+        double dyaw = tf2::getYaw(target_pose.orientation);
+
+        // 1. 计算误差变量
+        double rho = std::hypot(dx, dy);      // 距离
+        double alpha = std::atan2(dy, dx);    // 目标方位角（相对于当前车头）
+        double beta = dyaw - alpha;           // 目标朝向误差
+
+        // 规范化角度到 -PI ~ PI
+        alpha = std::atan2(std::sin(alpha), std::cos(alpha));
+        beta = std::atan2(std::sin(beta), std::cos(beta));
+
+        double v = 0.0;
+        double w = 0.0;
+
+        // 2. 判断目标是否在前方扇区内 (No Reverse Logic)
+        // 如果 alpha 绝对值很大，说明目标在侧面或后面，此时不能给线速度
+        if (std::abs(alpha) > max_forward_angle_error_)
+        {
+            // 【策略 A：原地转向】
+            // 目标不在视野前方，强制线速度为0，只旋转对准目标
+            v = 0.0;
+            
+            // 使用简单的 P 控制旋转，或者使用固定角速度
+            double w_p = 2.0 * alpha; // P gain for rotation
+            // 限制最大旋转速度
+            double max_w = this->get_parameter("max_w").as_double();
+            w = std::clamp(w_p, -max_w, max_w);
+            
+            // 如果角度误差非常大，确保角速度足够大以克服静摩擦，但也别太大
+            if (std::abs(w) < 0.1) w = (alpha > 0 ? 0.1 : -0.1);
         }
+        else
+        {
+            // 【策略 B：Graceful Control 平滑逼近】
+            // 目标在前方，使用 Lyapunov 控制律
+            v = k_rho_ * rho;
+            w = k_alpha_ * alpha + k_beta_ * beta;
+
+            // 再次确保线速度不为负 (Strict No Reverse)
+            // 理论上 rho 总是正的，但在浮点数计算或极端 alpha 情况下做个防护
+            if (v < 0.0) v = 0.0;
+
+            // 当角度接近边界时，适当减速线速度，防止转弯过大
+            // 简单的线性衰减：角度越大，允许的最大线速度越小
+            double angle_factor = 1.0 - (std::abs(alpha) / max_forward_angle_error_);
+            v *= angle_factor;
+        }
+
+        // 3. 速度限幅
+        double max_v = this->get_parameter("max_v").as_double();
+        double max_w = this->get_parameter("max_w").as_double();
         
-        vel_angular_output = std::clamp(vel_angular_output, -max_w_, max_w_);
-        return vel_angular_output;
+        cmd.linear.x = std::clamp(v, 0.0, max_v); // 下限锁死为 0.0
+        cmd.angular.z = std::clamp(w, -max_w, max_w);
+
+        return cmd;
     }
 
+
+        // [新增] 后退模式检测和后向控制
+    geometry_msgs::msg::Twist calculateReverseGracefulVelocity(
+        const geometry_msgs::msg::Pose &target_pose)
+    {
+        geometry_msgs::msg::Twist cmd;
+        
+        // 后退时：从"后保险杠视角"看目标
+        // 在base_link下，x为负表示目标在后方
+        double dx = target_pose.position.x;  // 在base_link下，x为负
+        double dy = target_pose.position.y;
+        double dyaw = tf2::getYaw(target_pose.orientation);
+
+        // 距离（用绝对值，因为后退时x为负）
+        double rho = std::hypot(dx, dy);
+        // 计算相对于后退方向的角度（镜像前向逻辑）
+        // 后退时"前方"是base_link的-x方向
+        double alpha = std::atan2(dy, dx);  // 目标相对于当前朝向的角度
+        
+        // 关键：切换到"后视角"坐标系
+        // 对于后退，我们假装机器人后方是前方
+        // 所以角度需要反向，且我们关心的是目标相对于后退方向的偏差
+        double rear_alpha = M_PI - alpha;  // 转换到后退视角
+        rear_alpha = std::atan2(std::sin(rear_alpha), std::cos(rear_alpha));
+        
+        double beta = dyaw - rear_alpha;  // 目标朝向误差
+        beta = std::atan2(std::sin(beta), std::cos(beta));
+
+        double v = 0.0;
+        double w = 0.0;
+
+        // 后退控制逻辑：镜像前向但速度为负
+        // 只允许在"后方扇区"内后退
+        if (std::abs(rear_alpha) > max_forward_angle_error_)
+        {
+            // 目标不在后方视野内，原地旋转调整
+            v = 0.0;
+            double w_p = 2.0 * rear_alpha;
+            double max_w = this->get_parameter("max_w").as_double();
+            w = std::clamp(w_p, -max_w, max_w);
+            
+            if (std::abs(w) < 0.1) w = (rear_alpha > 0 ? 0.1 : -0.1);
+        }
+        else
+        {
+            // 在后方扇区内，执行后退
+            v = -k_rho_ * rho;  // 速度为负！
+            w = -k_alpha_ * rear_alpha - k_beta_ * beta;  // 转向镜像
+            
+            if (v > 0.0) v = 0.0;  // 确保不会变成正速度
+            
+            // 角度越大，后退速度越小
+            double angle_factor = 1.0 - (std::abs(rear_alpha) / max_forward_angle_error_);
+            v *= angle_factor;
+        }
+
+        // 速度限幅
+        double max_v = this->get_parameter("max_v").as_double();
+        double max_w = this->get_parameter("max_w").as_double();
+        
+        cmd.linear.x = std::clamp(v, -max_v, 0.0);  // 速度限制在负数范围
+        cmd.angular.z = std::clamp(w, -max_w, max_w);
+
+        return cmd;
+    }
+
+
+    geometry_msgs::msg::Twist computeRotateToHeadingCommand(
+        const double & angular_distance_to_heading,
+        const geometry_msgs::msg::Twist & current_velocity,
+        const double & dt)
+    {
+        geometry_msgs::msg::Twist cmd_vel;
+        const double sign = angular_distance_to_heading > 0.0 ? 1.0 : -1.0;
+        
+        double angular_vel = sign * rotate_to_heading_angular_vel_;
+        
+        const double min_feasible = current_velocity.angular.z - rotate_to_heading_max_angular_accel_ * dt;
+        const double max_feasible = current_velocity.angular.z + rotate_to_heading_max_angular_accel_ * dt;
+        
+        cmd_vel.angular.z = std::clamp(angular_vel, min_feasible, max_feasible);
+
+        double max_vel_to_stop = std::sqrt(2 * rotate_to_heading_max_angular_accel_ * std::fabs(angular_distance_to_heading));
+        
+        if (std::fabs(cmd_vel.angular.z) > max_vel_to_stop) {
+            cmd_vel.angular.z = sign * max_vel_to_stop;
+        }
+        
+        cmd_vel.linear.x = 0.0;
+        return cmd_vel;
+    }
+
+        
+    // [修改] 主循环中的检测逻辑
     void controlLoop()
     {
         if (stop_count_ > 50) return;
+        if(!get_map_pose_) return;
 
-        if (!get_target_pose_ || !target_pose_odom_initialized_) return;
-
-        // Transform target from odom to current base_link frame
-        geometry_msgs::msg::PoseStamped target_in_base_link;
+        geometry_msgs::msg::PoseStamped target_pose_in_base;
         try {
-            target_in_base_link = target_pose_odom_;
-            target_in_base_link.header.stamp = rclcpp::Time(0);
-            tf_buffer_->transform(target_in_base_link, target_in_base_link, "base_link");
+            geometry_msgs::msg::TransformStamped transform = tf_buffer_->lookupTransform(
+                "base_link", "odom", tf2::TimePointZero);
+            tf2::doTransform(target_pose_odom_, target_pose_in_base, transform);
         } catch (tf2::TransformException &ex) {
-            RCLCPP_WARN(this->get_logger(), "Cannot transform target to base_link: %s", ex.what());
             return;
         }
 
-        // Extract errors directly from target in base_link frame
-        // Since base_link origin is at robot center, errors are relative to robot
-        double err_x = target_in_base_link.pose.position.x;  // longitudinal error
-        double err_y = target_in_base_link.pose.position.y;  // lateral error
-        double err_theta = tf2::getYaw(target_in_base_link.pose.orientation);
-        
-        regularizeAngle(err_theta);
-
-        double dist = std::hypot(err_x, err_y);
-
-        RCLCPP_INFO(this->get_logger(), 
-            "Errors -> Longitudinal: %.3f m, Lateral: %.3f m, Yaw: %.3f rad, Dist: %.3f m",
-            err_x, err_y, err_theta, dist);
-
-        // State machine logic
-        longitude_errors_.push_back(std::fabs(err_x));
-        while (longitude_errors_.size() > 20) {
-            longitude_errors_.pop_front();
-        }
-
-        double longitude_mean = std::numeric_limits<double>::max();
-        if (longitude_errors_.size() >= 20) {
-            longitude_mean = CalculateMean(longitude_errors_);
-        }
-
-        theta_errors_.push_back(std::fabs(err_theta));
-        while (theta_errors_.size() > 50) {
-            theta_errors_.pop_front();
-        }
-
-        double theta_mean = std::numeric_limits<double>::max();
-        if (theta_errors_.size() >= 50) {
-            theta_mean = CalculateMean(theta_errors_);
-        }
-
-        // State transitions
-        if (dist > 0.2 || curr_controller_stage_ == ControllerStage::FINISH ||
-            (dist > 0.05 && curr_controller_stage_ == ControllerStage::ROTATING_TO_GOAL)) {
-            curr_controller_stage_ = ControllerStage::APPROACHING;
-            theta_errors_.clear();
-            longitude_errors_.clear();
-        }
-
-        // 如果只有角度偏差，直接进入旋转到目标阶段
-        if (dist < long_precision_ && std::fabs(err_theta) > o_precision_) {
-            curr_controller_stage_ = ControllerStage::ROTATING_TO_GOAL;
-        }
-
-        if (curr_controller_stage_ == ControllerStage::APPROACHING && dist < adjust_heading_dist_) {
-            curr_controller_stage_ = ControllerStage::ADJUST_HEADING;
-        }
-
-        if (curr_controller_stage_ == ControllerStage::ADJUST_HEADING) {
-            if (theta_mean < o_precision_) {
-                curr_controller_stage_ = ControllerStage::ADJUST_DISTANCE;
-            }
-        }
-
-        if (curr_controller_stage_ == ControllerStage::ADJUST_DISTANCE) {
-            if (longitude_mean < long_precision_ && std::fabs(err_y) > lat_precision_) {
-                curr_controller_stage_ = ControllerStage::ADJUST_HEADING;
-            }
-        }
-
-        if (longitude_mean < long_precision_ * 0.5 &&
-            std::fabs(err_x) < long_precision_ && std::fabs(err_y) < lat_precision_ * 0.75) {
-            curr_controller_stage_ = ControllerStage::ROTATING_TO_GOAL;
-        }
-
-        if (curr_controller_stage_ != prev_controller_stage_) {
-            RCLCPP_INFO(this->get_logger(), 
-                "Controller Stage changed to: %d (0:FINISH, 1:APPROACH, 2:ADJUST_H, 3:ADJUST_D, 4:ROTATE)",
-                static_cast<int>(curr_controller_stage_));
-        }
-        prev_controller_stage_ = curr_controller_stage_;
-
-        // Compute velocity commands based on stage
         geometry_msgs::msg::Twist cmd_vel;
-        cmd_vel.linear.x = 0.0;
-        cmd_vel.angular.z = 0.0;
+        double dist = std::hypot(target_pose_in_base.pose.position.x, 
+                                target_pose_in_base.pose.position.y);
+        double yaw_error = tf2::getYaw(target_pose_in_base.pose.orientation);
 
-        double angle_to_path = std::atan2(err_y, err_x);
+        // 容差设置
+        double xy_tolerance = 0.03;
+        double yaw_tolerance = 0.02;
+
+        // --- [新增] 后退模式检测 ---
+        // 判断条件：目标在base_link下x为负，且y接近0（纯后退）
+        // 或者你可以通过topic标志位来触发
+        bool is_reverse_mode = (target_pose_in_base.pose.position.x < 0.0 && 
+                            std::abs(target_pose_in_base.pose.position.y) < 0.5);
         
-        if (curr_controller_stage_ != ControllerStage::ROTATING_TO_GOAL && 
-            shouldRotateToPath(angle_to_path)) {
-            // Need to rotate to face the target
-            rotateToHeading(cmd_vel.linear.x, cmd_vel.angular.z, angle_to_path);
-        } else {
-            // Use PID-based control
-            desired_linear_vel_ = max_v_;
-            
-            switch (curr_controller_stage_) {
-                case ControllerStage::FINISH:
-                    cmd_vel.linear.x = 0.0;
-                    cmd_vel.angular.z = 0.0;
-                    break;
-                    
-                case ControllerStage::APPROACHING:
-                    cmd_vel.linear.x = LinearSpeedControl(robot_actual_vel_.linear.x, err_x);
-                    cmd_vel.angular.z = AngularSpeedControl(err_theta);
-                    break;
-                    
-                case ControllerStage::ADJUST_HEADING:
-                    cmd_vel.linear.x = LinearSpeedControl(robot_actual_vel_.linear.x, err_x) * 0.75;
-                    cmd_vel.angular.z = AngularSpeedControl(err_theta);
-                    break;
-                    
-                case ControllerStage::ADJUST_DISTANCE:
-                    cmd_vel.linear.x = LinearSpeedControl(robot_actual_vel_.linear.x, err_x) * 0.75;
-                    cmd_vel.angular.z = AngularSpeedControl(err_theta);
-                    break;
-                    
-                case ControllerStage::ROTATING_TO_GOAL:
-                    // 如果只有角度偏差（距离很小），则只旋转不移动
-                    if (dist < long_precision_) {
-                        cmd_vel.linear.x = 0.0;
-                    } else {
-                        cmd_vel.linear.x = LinearSpeedControl(robot_actual_vel_.linear.x, err_x) * 0.25;
-                    }
-                    cmd_vel.angular.z = AngularSpeedControl(err_theta);
-                    break;
+        // --- 状态机 ---
+        if(std::fabs(dist) < xy_tolerance)
+        {
+            // 到位后旋转调整朝向
+            double dt = 1.0 / control_frequency_;
+            cmd_vel = computeRotateToHeadingCommand(yaw_error, pre_cmd_vel_, dt);
+        }
+        else
+        {
+            // [修改] 根据模式选择控制函数
+            if(is_reverse_mode)
+            {
+                cmd_vel = calculateReverseGracefulVelocity(target_pose_in_base.pose);
+                RCLCPP_INFO(this->get_logger(), "[REVERSE MODE] x=%.2f, y=%.2f", 
+                        target_pose_in_base.pose.position.x, 
+                        target_pose_in_base.pose.position.y);
+            }
+            else
+            {
+                cmd_vel = calculateNoReverseGracefulVelocity(target_pose_in_base.pose);
+            }
+
+            // 加速度平滑
+            if(cmd_vel.linear.x < pre_cmd_vel_.linear.x)
+            {
+                cmd_vel.linear.x = std::max(cmd_vel.linear.x, pre_cmd_vel_.linear.x - 0.05 * accel_x_max_);
+            }
+            if(cmd_vel.linear.x >= pre_cmd_vel_.linear.x)
+            {
+                cmd_vel.linear.x = std::min(cmd_vel.linear.x, pre_cmd_vel_.linear.x + 0.02 * accel_x_max_);
             }
         }
 
-        // Check if goal reached
-        if (std::fabs(err_x) < long_precision_ && std::fabs(err_y) < lat_precision_ && 
-            std::fabs(err_theta) < o_precision_) {
-            curr_controller_stage_ = ControllerStage::FINISH;
-        }
-        
-        // 如果在旋转阶段且只有角度偏差，当角度误差足够小时完成
-        if (curr_controller_stage_ == ControllerStage::ROTATING_TO_GOAL && 
-            dist < long_precision_ && std::fabs(err_theta) < o_precision_) {
-            curr_controller_stage_ = ControllerStage::FINISH;
+        // 判断到达
+        if(std::fabs(dist) < xy_tolerance && std::fabs(yaw_error) < yaw_tolerance)
+        {
+            is_goal_ = true;
         }
 
-        // Handle goal reached state
-        if (curr_controller_stage_ == ControllerStage::FINISH) {
+        if(is_goal_)
+        {
             cmd_vel.linear.x = 0.0;
             cmd_vel.angular.z = 0.0;
             stop_count_++;
-            if (stop_count_ <= 50) {
+            if(stop_count_ <= 50) {
                 cmd_vel_pub_->publish(cmd_vel);
-                if (stop_count_ % 10 == 0) {
+                if(stop_count_ % 10 == 0) {
                     RCLCPP_INFO(this->get_logger(), "Goal Reached. Stopping... %d", stop_count_);
                 }
             }
-        } else {
+        } 
+        else 
+        {
             stop_count_ = 0;
             cmd_vel_pub_->publish(cmd_vel);
-            RCLCPP_INFO(this->get_logger(), 
-                "Velocity Command -> Linear: %.3f m/s, Angular: %.3f rad/s",
-                cmd_vel.linear.x, cmd_vel.angular.z);
+            RCLCPP_INFO(this->get_logger(), "vel=%0.3f, ang=%0.3f", cmd_vel.linear.x, cmd_vel.angular.z);
         }
+
+        pre_cmd_vel_ = cmd_vel;
     }
 };
 
