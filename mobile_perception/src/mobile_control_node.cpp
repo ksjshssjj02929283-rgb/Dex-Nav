@@ -6,6 +6,7 @@
 #include <tf2_ros/transform_listener.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <tf2/utils.h>
+#include <std_srvs/srv/trigger.hpp>
 #include <cmath>
 #include <algorithm>
 
@@ -56,6 +57,18 @@ public:
             "control/ctrl_pose", 10, 
             std::bind(&MobileControlNode::targetCallback, this, std::placeholders::_1));
 
+        // 创建状态查询服务
+        status_service_ = this->create_service<std_srvs::srv::Trigger>(
+            "control/get_status",
+            std::bind(&MobileControlNode::getStatusCallback, this, 
+                     std::placeholders::_1, std::placeholders::_2));
+
+        // 创建取消控制服务
+        cancel_control_service_ = this->create_service<std_srvs::srv::Trigger>(
+            "control/cancel_control",
+            std::bind(&MobileControlNode::cancelControlCallback, this,
+                     std::placeholders::_1, std::placeholders::_2));
+
         // 3. 定时器
         timer_ = this->create_wall_timer(
             std::chrono::milliseconds((int)(1000.0 / control_frequency_)),
@@ -64,6 +77,7 @@ public:
         // 状态初始化
         get_map_pose_ = false;
         is_goal_ = false;
+        is_cancelling_ = false;
         stop_count_ = 0;
     }
 
@@ -71,6 +85,8 @@ private:
     rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_pub_;
     rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr target_sub_;
     rclcpp::TimerBase::SharedPtr timer_;
+    rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr status_service_;
+    rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr cancel_control_service_;
     
     std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
     std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
@@ -79,6 +95,7 @@ private:
     geometry_msgs::msg::Twist pre_cmd_vel_;
     bool get_map_pose_;
     bool is_goal_;
+    bool is_cancelling_;
     int stop_count_;
     
     double control_frequency_;
@@ -104,6 +121,72 @@ private:
             RCLCPP_INFO(this->get_logger(), "New target received in Odom frame");
         } catch (tf2::TransformException &ex) {
             RCLCPP_WARN(this->get_logger(), "Cannot transform goal to odom: %s", ex.what());
+        }
+    }
+
+    /**
+     * @brief 状态查询服务回调函数
+     * @param request 服务请求（Trigger服务不需要请求参数）
+     * @param response 服务响应，包含状态信息
+     */
+    void getStatusCallback(
+        const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
+        std::shared_ptr<std_srvs::srv::Trigger::Response> response)
+    {
+        // 状态判断优先级：
+        // 1. "取消控制中"：正在取消控制（is_cancelling_ == true）
+        // 2. "空闲中"：已到达目标并停止（is_goal_ == true 且 stop_count_ > 50）
+        // 3. "控制中"：正在执行控制任务（get_map_pose_ == true 且 !is_goal_）
+        // 4. "空闲中"：其他情况（没有目标且不在取消控制中）
+        if (is_cancelling_)
+        {
+            response->message = "CANCEL CONTROL";
+            response->success = true;
+        }
+        else if (is_goal_ && stop_count_ > 50)
+        {
+            response->message = "IDLE";
+            response->success = true;
+        }
+        else if (get_map_pose_ && !is_goal_)
+        {
+            response->message = "CONTROL";
+            response->success = true;
+        }
+        else
+        {
+            response->message = "IDLE";
+            response->success = true;
+        }
+        
+        RCLCPP_INFO(this->get_logger(), "Status query: %s", response->message.c_str());
+    }
+
+    /**
+     * @brief 取消控制服务回调函数
+     * @param request 服务请求（Trigger服务不需要请求参数）
+     * @param response 服务响应
+     */
+    void cancelControlCallback(
+        const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
+        std::shared_ptr<std_srvs::srv::Trigger::Response> response)
+    {
+        // 如果机器人在控制中，则启动取消控制流程
+        if (get_map_pose_ && !is_goal_)
+        {
+            is_cancelling_ = true;
+            get_map_pose_ = false;  // 清除目标
+            is_goal_ = false;
+            stop_count_ = 0;
+            response->message = "开始取消控制，正在平滑停止";
+            response->success = true;
+            RCLCPP_INFO(this->get_logger(), "Cancel control requested, starting smooth stop");
+        }
+        else
+        {
+            response->message = "当前不在控制中，无需取消";
+            response->success = true;
+            RCLCPP_INFO(this->get_logger(), "Cancel control requested but not in control state");
         }
     }
 
@@ -275,6 +358,59 @@ private:
     // [修改] 主循环中的检测逻辑
     void controlLoop()
     {
+        // --- [新增] 取消控制检测和平滑减速 ---
+        if (is_cancelling_)
+        {
+            geometry_msgs::msg::Twist cmd_vel;
+            double dt = 1.0 / control_frequency_;
+            
+            // 平滑减速：线速度按加速度限制逐渐减到0
+            double linear_decel = accel_x_max_ * dt;
+            if (pre_cmd_vel_.linear.x > 0.0)
+            {
+                cmd_vel.linear.x = std::max(0.0, pre_cmd_vel_.linear.x - linear_decel);
+            }
+            else if (pre_cmd_vel_.linear.x < 0.0)
+            {
+                cmd_vel.linear.x = std::min(0.0, pre_cmd_vel_.linear.x + linear_decel);
+            }
+            else
+            {
+                cmd_vel.linear.x = 0.0;
+            }
+            
+            // 平滑减速：角速度按加速度限制逐渐减到0
+            double angular_decel = rotate_to_heading_max_angular_accel_ * dt;
+            if (pre_cmd_vel_.angular.z > 0.0)
+            {
+                cmd_vel.angular.z = std::max(0.0, pre_cmd_vel_.angular.z - angular_decel);
+            }
+            else if (pre_cmd_vel_.angular.z < 0.0)
+            {
+                cmd_vel.angular.z = std::min(0.0, pre_cmd_vel_.angular.z + angular_decel);
+            }
+            else
+            {
+                cmd_vel.angular.z = 0.0;
+            }
+            
+            // 检查是否已经停止（速度接近0）
+            const double velocity_threshold = 0.01;
+            if (std::abs(cmd_vel.linear.x) < velocity_threshold && 
+                std::abs(cmd_vel.angular.z) < velocity_threshold)
+            {
+                cmd_vel.linear.x = 0.0;
+                cmd_vel.angular.z = 0.0;
+                is_cancelling_ = false;  // 停止完成，退出取消控制状态
+                stop_count_ = 0;
+                RCLCPP_INFO(this->get_logger(), "Cancel control completed, robot stopped");
+            }
+            
+            cmd_vel_pub_->publish(cmd_vel);
+            pre_cmd_vel_ = cmd_vel;
+            return;
+        }
+        
         if (stop_count_ > 50) return;
         if(!get_map_pose_) return;
 
