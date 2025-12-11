@@ -59,7 +59,7 @@ public:
 
         // 创建状态查询服务
         status_service_ = this->create_service<std_srvs::srv::Trigger>(
-            "control/get_status",
+            "control/get_control_status",
             std::bind(&MobileControlNode::getStatusCallback, this, 
                      std::placeholders::_1, std::placeholders::_2));
 
