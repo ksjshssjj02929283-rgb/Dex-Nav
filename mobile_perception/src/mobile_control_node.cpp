@@ -78,6 +78,7 @@ public:
         get_map_pose_ = false;
         is_goal_ = false;
         is_cancelling_ = false;
+        succeed_returned_ = false;
         stop_count_ = 0;
     }
 
@@ -96,6 +97,7 @@ private:
     bool get_map_pose_;
     bool is_goal_;
     bool is_cancelling_;
+    bool succeed_returned_;  // 标记是否已返回过 SUCCEED
     int stop_count_;
     
     double control_frequency_;
@@ -117,6 +119,7 @@ private:
             target_pose_odom_ = msg_transformed;
             get_map_pose_ = true;
             is_goal_ = false;
+            succeed_returned_ = false;  // 新目标到达，重置SUCCEED一次性标志
             stop_count_ = 0;
             RCLCPP_INFO(this->get_logger(), "New target received in Odom frame");
         } catch (tf2::TransformException &ex) {
@@ -135,26 +138,41 @@ private:
     {
         // 状态判断优先级：
         // 1. "取消控制中"：正在取消控制（is_cancelling_ == true）
-        // 2. "空闲中"：已到达目标并停止（is_goal_ == true 且 stop_count_ > 50）
-        // 3. "控制中"：正在执行控制任务（get_map_pose_ == true 且 !is_goal_）
-        // 4. "空闲中"：其他情况（没有目标且不在取消控制中）
+        // 2. "SUCCEED"：已到达目标并停止，且第一次返回此状态（is_goal_ == true 且 stop_count_ > 20 且 !succeed_returned_）
+        // 3. "IDLE"：已到达目标并停止，且已返回过 SUCCEED（is_goal_ == true 且 stop_count_ > 20 且 succeed_returned_）
+        // 4. "CONTROL"：正在执行控制任务（get_map_pose_ == true 且 !is_goal_）或正在停止（is_goal_ && stop_count_ <= 20）
         if (is_cancelling_)
         {
             response->message = "CANCEL CONTROL";
             response->success = true;
         }
-        else if (is_goal_ && stop_count_ > 50)
+        else if (is_goal_ && stop_count_ > 20)
         {
-            response->message = "IDLE";
-            response->success = true;
+            // 已到达目标并停止
+            if (!succeed_returned_)
+            {
+                // 第一次返回 SUCCEED
+                response->message = "SUCCEED";
+                response->success = true;
+                succeed_returned_ = true;
+                RCLCPP_INFO(this->get_logger(), "Goal reached, returning SUCCEED");
+            }
+            else
+            {
+                // 之后的 call 返回 IDLE
+                response->message = "IDLE";
+                response->success = true;
+                RCLCPP_INFO(this->get_logger(), "Already succeeded, returning IDLE");
+            }
         }
-        else if (get_map_pose_ && !is_goal_)
+        else if ((get_map_pose_ && !is_goal_) || (is_goal_ && stop_count_ <= 20))
         {
             response->message = "CONTROL";
             response->success = true;
         }
         else
         {
+            // 默认空闲
             response->message = "IDLE";
             response->success = true;
         }
@@ -177,6 +195,7 @@ private:
             is_cancelling_ = true;
             get_map_pose_ = false;  // 清除目标
             is_goal_ = false;
+            succeed_returned_ = false;  // 重置SUCCEED标志
             stop_count_ = 0;
             response->message = "开始取消控制，正在平滑停止";
             response->success = true;
@@ -402,6 +421,7 @@ private:
                 cmd_vel.linear.x = 0.0;
                 cmd_vel.angular.z = 0.0;
                 is_cancelling_ = false;  // 停止完成，退出取消控制状态
+                succeed_returned_ = false;  // 重置SUCCEED标志
                 stop_count_ = 0;
                 RCLCPP_INFO(this->get_logger(), "Cancel control completed, robot stopped");
             }
@@ -411,7 +431,10 @@ private:
             return;
         }
         
-        if (stop_count_ > 50) return;
+        if (stop_count_ > 40)
+        {
+          return;  
+        } 
         if(!get_map_pose_) return;
 
         geometry_msgs::msg::PoseStamped target_pose_in_base;
@@ -482,12 +505,13 @@ private:
             cmd_vel.linear.x = 0.0;
             cmd_vel.angular.z = 0.0;
             stop_count_++;
-            if(stop_count_ <= 50) {
+            if(stop_count_ <= 20) {
                 cmd_vel_pub_->publish(cmd_vel);
                 if(stop_count_ % 10 == 0) {
                     RCLCPP_INFO(this->get_logger(), "Goal Reached. Stopping... %d", stop_count_);
                 }
             }
+            RCLCPP_INFO(this->get_logger(), "stop count_ %d", stop_count_);
         } 
         else 
         {
