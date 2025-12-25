@@ -331,8 +331,8 @@ bool SmacPlannerLattice::isAreaFree(nav2_costmap_2d::Costmap2D* costmap, const g
     m.getRPY(roll, pitch, yaw);
 
     // 遍历长方形区域内的所有点
-    for (double x = -0.45; x <= 0.6; x += costmap->getResolution()) {
-        for (double y = -0.25; y <= 0.25; y += costmap->getResolution()) {
+    for (double x = -0.40; x <= 0.40; x += costmap->getResolution()) {
+        for (double y = -0.30; y <= 0.30; y += costmap->getResolution()) {
             // 旋转点坐标
             double rotated_x = x * cos(yaw) - y * sin(yaw);
             double rotated_y = x * sin(yaw) + y * cos(yaw);
@@ -348,7 +348,7 @@ bool SmacPlannerLattice::isAreaFree(nav2_costmap_2d::Costmap2D* costmap, const g
             }
 
             // 检查点的代价值
-            if (costmap->getCost(map_x, map_y) >= nav2_costmap_2d::INSCRIBED_INFLATED_OBSTACLE) { // >= nav2_costmap_2d::LETHAL_OBSTACLE
+            if (costmap->getCost(map_x, map_y) >= nav2_costmap_2d::LETHAL_OBSTACLE) { // >= nav2_costmap_2d::LETHAL_OBSTACLE
                 return false; // 如果点的代价值大于等于 LETHAL_OBSTACLE，认为有障碍物
             }
         }
