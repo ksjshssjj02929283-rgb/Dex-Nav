@@ -53,8 +53,10 @@ install(TARGETS
 install(PROGRAMS
   scripts/detect_apriltags.py
   scripts/detect_apriltag_nostop.py
+  scripts/detect_apriltags_service.py
   scripts/control_robot.py
   scripts/nav_then_precise.py
+  scripts/nav_then_precise_bt.py
   scripts/goal_controller.py
   scripts/stop_robot.py
   scripts/spin_robot.py
