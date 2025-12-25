@@ -224,7 +224,7 @@ void ObservationBuffer::purgeStaleObservations()
       auto keep_time = observation_keep_time_;
       if (delta_t > observation_keep_time_)
       {
-        std::cout << "[hz test]delta_t:  " << delta_t.seconds() << ", observation_keep_time_:  " << keep_time.seconds() << std::endl;
+        // std::cout << "[hz test]delta_t:  " << delta_t.seconds() << ", observation_keep_time_:  " << keep_time.seconds() << std::endl;
         // std::cout << "Erasing observation from buffer 2" << std::endl;
         observation_list_.erase(obs_it, observation_list_.end());
         return;
