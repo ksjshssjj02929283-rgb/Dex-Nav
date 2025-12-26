@@ -22,10 +22,44 @@ find_package(nav2_util REQUIRED)
 find_package(yaml-cpp REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
-find_package(tf2_geometry_msgs REQUIRED)
+find_package(apriltag REQUIRED)
+
+
+find_package(sensor_msgs REQUIRED)  
 find_package(geometry_msgs REQUIRED)
-find_package(nav_msgs REQUIRED)
+find_package(tf2_ros REQUIRED)
+find_package(tf2_geometry_msgs REQUIRED)
+find_package(ament_index_cpp REQUIRED)
+find_package(nlohmann_json REQUIRED)
 find_package(std_srvs REQUIRED)
+
+
+add_executable(apriltag_detection_node
+  src/apriltag_detection_node.cpp
+)
+
+ament_target_dependencies(apriltag_detection_node
+  rclcpp
+  sensor_msgs
+  geometry_msgs
+  tf2_ros
+  tf2_geometry_msgs
+  cv_bridge
+  OpenCV
+  ament_index_cpp
+  nlohmann_json
+  std_srvs
+)
+target_link_libraries(apriltag_detection_node
+  apriltag::apriltag
+  ${OpenCV_LIBS}
+)
+
+
+install(TARGETS apriltag_detection_node
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 
 include_directories(include ${OpenCV_INCLUDE_DIRS})
 
@@ -40,8 +74,10 @@ install(TARGETS
 install(PROGRAMS
   scripts/detect_apriltags.py
   scripts/detect_apriltag_nostop.py
+  scripts/detect_apriltags_service.py
   scripts/control_robot.py
   scripts/nav_then_precise.py
+  scripts/nav_then_precise_bt.py
   scripts/goal_controller.py
   scripts/stop_robot.py
   scripts/spin_robot.py
@@ -54,6 +90,7 @@ install(PROGRAMS
   scripts/pub_goal_loop_office.py
   scripts/create_charging_pose.py
   scripts/nav_then_precise_bt.py
+  scripts/nav_goal_server.py
   DESTINATION lib/${PROJECT_NAME})
 
 # Install directories
