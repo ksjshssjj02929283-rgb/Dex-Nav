@@ -21,6 +21,44 @@ find_package(nav2_graceful_controller REQUIRED)
 find_package(nav2_util REQUIRED)
 find_package(yaml-cpp REQUIRED)
 find_package(tf2_ros REQUIRED)
+find_package(apriltag REQUIRED)
+
+
+find_package(sensor_msgs REQUIRED)  
+find_package(geometry_msgs REQUIRED)
+find_package(tf2_ros REQUIRED)
+find_package(tf2_geometry_msgs REQUIRED)
+find_package(ament_index_cpp REQUIRED)
+find_package(nlohmann_json REQUIRED)
+find_package(std_srvs REQUIRED)
+
+
+add_executable(apriltag_detection_node
+  src/apriltag_detection_node.cpp
+)
+
+ament_target_dependencies(apriltag_detection_node
+  rclcpp
+  sensor_msgs
+  geometry_msgs
+  tf2_ros
+  tf2_geometry_msgs
+  cv_bridge
+  OpenCV
+  ament_index_cpp
+  nlohmann_json
+  std_srvs
+)
+target_link_libraries(apriltag_detection_node
+  apriltag::apriltag
+  ${OpenCV_LIBS}
+)
+
+
+install(TARGETS apriltag_detection_node
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 
 include_directories(include ${OpenCV_INCLUDE_DIRS})
 
