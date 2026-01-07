@@ -308,6 +308,8 @@ protected:
   double max_robot_pose_search_dist_;
   bool use_interpolation_;
 
+  bool should_rotate_to_goal_heading_;
+  
   nav_msgs::msg::Path global_plan_;
   std::shared_ptr<rclcpp_lifecycle::LifecyclePublisher<nav_msgs::msg::Path>> global_path_pub_;
   std::shared_ptr<rclcpp_lifecycle::LifecyclePublisher<geometry_msgs::msg::PointStamped>>

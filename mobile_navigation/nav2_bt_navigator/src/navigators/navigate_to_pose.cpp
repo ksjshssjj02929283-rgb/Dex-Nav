@@ -17,6 +17,10 @@
 #include <set>
 #include <memory>
 #include <limits>
+
+#include "tf2/utils.h"
+#include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
+
 #include "nav2_bt_navigator/navigators/navigate_to_pose.hpp"
 
 namespace nav2_bt_navigator
@@ -210,10 +214,14 @@ NavigateToPoseNavigator::initializeGoalPose(ActionT::Goal::ConstSharedPtr goal)
     feedback_utils_.global_frame, feedback_utils_.robot_frame,
     feedback_utils_.transform_tolerance);
 
+  const double current_yaw = tf2::getYaw(current_pose.pose.orientation);
+  const double goal_yaw = tf2::getYaw(goal->pose.pose.orientation);
+
   RCLCPP_INFO(
-    logger_, "Begin navigating from current location (%.2f, %.2f) to (%.2f, %.2f)",
-    current_pose.pose.position.x, current_pose.pose.position.y,
-    goal->pose.pose.position.x, goal->pose.pose.position.y);
+    logger_,
+    "Begin navigating from current location (%.2f, %.2f, yaw=%.2f) to (%.2f, %.2f, yaw=%.2f)",
+    current_pose.pose.position.x, current_pose.pose.position.y, current_yaw,
+    goal->pose.pose.position.x, goal->pose.pose.position.y, goal_yaw);
 
   // Reset state for new action feedback
   start_time_ = clock_->now();

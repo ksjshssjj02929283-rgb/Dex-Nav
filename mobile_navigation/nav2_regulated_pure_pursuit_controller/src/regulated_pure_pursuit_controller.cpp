@@ -282,6 +282,8 @@ geometry_msgs::msg::TwistStamped RegulatedPurePursuitController::computeVelocity
 {
   std::lock_guard<std::mutex> lock_reinit(mutex_);
 
+  should_rotate_to_goal_heading_ = false;
+  
   nav2_costmap_2d::Costmap2D * costmap = costmap_ros_->getCostmap();
   std::unique_lock<nav2_costmap_2d::Costmap2D::mutex_t> lock(*(costmap->getMutex()));
 
@@ -338,6 +340,7 @@ geometry_msgs::msg::TwistStamped RegulatedPurePursuitController::computeVelocity
 
   // Make sure we're in compliance with basic constraints
   double angle_to_heading;
+  should_rotate_to_goal_heading_ = shouldRotateToGoalHeading(carrot_pose);
   if (shouldRotateToGoalHeading(carrot_pose)) {
     double angle_to_goal = tf2::getYaw(transformed_plan.poses.back().pose.orientation);
     rotateToHeading(linear_vel, angular_vel, angle_to_goal, speed);
@@ -387,15 +390,48 @@ void RegulatedPurePursuitController::rotateToHeading(
   double & linear_vel, double & angular_vel,
   const double & angle_to_path, const geometry_msgs::msg::Twist & curr_speed)
 {
-  // Rotate in place using max angular velocity / acceleration possible
+  // Rotate in place using max angular velocity / acceleration possible.
+  // When rotating to the final goal heading, taper the maximum angular velocity and
+  // acceleration as we get closer to the goal to avoid overshoot / oscillation.
+
   linear_vel = 0.0;
+
+  // Base limits
+  double max_ang_vel = 0.4;
+  double max_ang_accel = 0.2;
+
+  if (should_rotate_to_goal_heading_ && fabs(angle_to_path) < 0.3) {
+    // When close to the desired heading, taper the angular accel (and vel)
+    // to avoid overshoot / oscillation.
+    // angle_to_path is the remaining yaw error (rad).
+    // - at |angle| >= rotate_to_heading_min_angle_ -> scale = 1.0
+    // - at |angle| == 0                           -> scale = min_scale
+    const double abs_angle = std::fabs(angle_to_path);
+    const double denom = std::max(rotate_to_heading_min_angle_, 1e-6);
+    double scale = std::clamp(abs_angle / denom, 0.0, 1.0);
+
+    // Keep some minimum authority so we can still converge.
+    constexpr double min_scale = 0.5;
+    scale = min_scale + (1.0 - min_scale) * scale;
+
+    max_ang_vel = max_ang_vel * max(0.1, fabs(angle_to_path));
+    max_ang_accel *= scale;
+  }
+
   const double sign = angle_to_path > 0.0 ? 1.0 : -1.0;
-  angular_vel = sign * rotate_to_heading_angular_vel_;
+  angular_vel = sign * max_ang_vel;
 
   const double & dt = control_duration_;
-  const double min_feasible_angular_speed = curr_speed.angular.z - max_angular_accel_ * dt;
-  const double max_feasible_angular_speed = curr_speed.angular.z + max_angular_accel_ * dt;
+  const double min_feasible_angular_speed = curr_speed.angular.z - max_ang_accel * dt;
+  const double max_feasible_angular_speed = curr_speed.angular.z + max_ang_accel * dt;
   angular_vel = std::clamp(angular_vel, min_feasible_angular_speed, max_feasible_angular_speed);
+
+  // Enforce a minimum angular speed magnitude to avoid stalling due to scaling.
+  // Keep the commanded sign (direction of rotation).
+  constexpr double kMinAngularSpeed = 0.015;  // rad/s
+  if (std::fabs(angular_vel) < kMinAngularSpeed) {
+    angular_vel = sign * kMinAngularSpeed;
+  }
 }
 
 geometry_msgs::msg::Point RegulatedPurePursuitController::circleSegmentIntersection(
