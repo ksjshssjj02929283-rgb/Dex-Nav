@@ -299,6 +299,85 @@ geometry_msgs::msg::TwistStamped RegulatedPurePursuitController::computeVelocity
   // Transform path to robot base frame
   auto transformed_plan = transformGlobalPlan(pose);
 
+  // ===== Goal in base_link frame =====
+  const auto & goal_bl = transformed_plan.poses.back();
+
+  // position error (base_link)
+  double dist_to_goal = std::hypot(
+    goal_bl.pose.position.x,
+    goal_bl.pose.position.y);
+    // ===============================
+    // 模式切换
+    // ===============================
+  if (mode_ == ControlMode::FOLLOW_PATH &&
+      dist_to_goal < position_control_dist_)
+  {
+    mode_ = ControlMode::POSITION_APPROACH;
+  }
+
+  if (mode_ == ControlMode::POSITION_APPROACH &&
+      dist_to_goal < pos_tol_for_align_)
+  {
+    mode_ = ControlMode::FINAL_ALIGN;
+  }
+
+  geometry_msgs::msg::TwistStamped cmd;
+  cmd.header = pose.header;
+
+  // ===============================
+  // FINAL_ALIGN：复用你已有角度控制
+  // ===============================
+  if (mode_ == ControlMode::FINAL_ALIGN) {
+    double linear_vel = 0.0;
+    double angular_vel = 0.0;
+
+    double angle_to_goal = tf2::getYaw(goal_bl.pose.orientation);
+
+    rotateToHeading(
+      linear_vel, angular_vel,
+      angle_to_goal,
+      speed);
+
+    // 角度渐进减速（防超调）
+    double slow_down_yaw = 0.15;  // ≈ 8.6 deg
+    double w_max_align =
+      max_angular_vel_ * std::tanh(fabs(angle_to_goal) / slow_down_yaw);
+
+    angular_vel = std::clamp(
+      angular_vel, -w_max_align, w_max_align);
+
+    cmd.twist.linear.x = 0.0;
+    cmd.twist.angular.z = angular_vel;
+    return cmd;
+  }
+
+  // ===============================
+  // POSITION_APPROACH
+  // ===============================
+  if (mode_ == ControlMode::POSITION_APPROACH) {
+    cmd = computePositionApproachCommand(pose, transformed_plan);
+
+    double carrot_dist = hypot(
+      goal_bl.pose.position.x,
+      goal_bl.pose.position.y);
+
+    if (use_collision_detection_ &&
+        isCollisionImminent(
+          pose,
+          cmd.twist.linear.x,
+          cmd.twist.angular.z,
+          carrot_dist))
+    {
+      throw nav2_core::PlannerException(
+        "Collision in POSITION_APPROACH");
+    }
+
+    return cmd;
+  }
+
+// ===============================
+// FOLLOW_PATH：原 Nav2 RPP
+// ===============================
   // Find look ahead distance and point on path and publish
   double lookahead_dist = getLookAheadDistance(speed);
 
@@ -369,6 +448,74 @@ geometry_msgs::msg::TwistStamped RegulatedPurePursuitController::computeVelocity
   cmd_vel.twist.angular.z = angular_vel;
   return cmd_vel;
 }
+
+geometry_msgs::msg::TwistStamped
+RegulatedPurePursuitController::computePositionApproachCommand(
+  const geometry_msgs::msg::PoseStamped & pose,
+  const nav_msgs::msg::Path & transformed_plan)
+{
+  geometry_msgs::msg::TwistStamped cmd;
+  cmd.header = pose.header;
+
+  const auto & goal = transformed_plan.poses.back();
+
+  // ===============================
+  // 1. 误差（base_link）
+  // ===============================
+  double ex = goal.pose.position.x;
+  double ey = goal.pose.position.y;
+
+  double rho = hypot(ex, ey);
+
+  double e_yaw = tf2::getYaw(goal.pose.orientation);
+
+  // ===============================
+  // 2. 控制参数（建议作为 ROS 参数）
+  // ===============================
+  const double k_rho = 0.8;        // 位置收敛
+  const double k_y = 2.0;          // 横向误差
+  const double k_yaw_soft = 0.4;   // 软角度修正
+
+  const double v_max_approach = 0.25;   // 最大接近速度
+  const double slow_down_dist = 0.20;   // 开始明显减速的距离
+
+  const double w_max_approach = 0.6;
+  const double slow_down_yaw = 0.15;    // ≈ 8.6 deg
+
+  // ===============================
+  // 3. 原始控制律
+  // ===============================
+  double v_raw = k_rho * rho;
+  double w_raw = k_y * ey + k_yaw_soft * e_yaw;
+
+  // ===============================
+  // 4. 距离相关线速度限幅（核心）
+  // ===============================
+  double v_max_dist =
+    v_max_approach * std::tanh(rho / slow_down_dist);
+
+  double v = std::clamp(v_raw, -v_max_dist, v_max_dist);
+
+  // ===============================
+  // 5. 角度相关角速度限幅
+  // ===============================
+  double w_max_yaw =
+    w_max_approach * std::tanh(fabs(e_yaw) / slow_down_yaw);
+
+  double w = std::clamp(w_raw, -w_max_yaw, w_max_yaw);
+
+  // ===============================
+  // 6. 极近距离保护（防抖）
+  // ===============================
+  if (rho < goal_dist_tol_) {
+    v = 0.0;
+  }
+
+  cmd.twist.linear.x = v;
+  cmd.twist.angular.z = w;
+  return cmd;
+}
+
 
 bool RegulatedPurePursuitController::shouldRotateToPath(
   const geometry_msgs::msg::PoseStamped & carrot_pose, double & angle_to_path)

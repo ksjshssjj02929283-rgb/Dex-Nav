@@ -31,6 +31,15 @@
 #include "nav2_util/geometry_utils.hpp"
 #include "geometry_msgs/msg/pose2_d.hpp"
 
+// === 控制模式枚举 ===
+enum class ControlMode
+{
+  FOLLOW_PATH = 0,      // 原 Regulated Pure Pursuit
+  POSITION_APPROACH,   // 到点位置控制（3-DoF）
+  FINAL_ALIGN           // 最终角度对齐
+};
+
+
 namespace nav2_regulated_pure_pursuit_controller
 {
 
@@ -157,6 +166,12 @@ protected:
   bool shouldRotateToPath(
     const geometry_msgs::msg::PoseStamped & carrot_pose, double & angle_to_path);
 
+  geometry_msgs::msg::TwistStamped computePositionApproachCommand(
+      const geometry_msgs::msg::PoseStamped & pose,
+      const nav_msgs::msg::Path & transformed_plan);
+      
+
+    
   /**
    * @brief Whether robot should rotate to final goal orientation
    * @param carrot_pose current lookahead point
@@ -309,6 +324,13 @@ protected:
   bool use_interpolation_;
 
   bool should_rotate_to_goal_heading_;
+  ControlMode mode_{ControlMode::FOLLOW_PATH};
+  // ===== Position / Final approach control params =====
+  double position_control_dist_{0.6};   // [m] 进入位置控制的距离
+  double pos_tol_for_align_{0.15};       // [m] 只剩角度对齐的距离
+  double max_angular_vel_{1.2};          // [rad/s] 最大角速度（先写死）
+
+
   
   nav_msgs::msg::Path global_plan_;
   std::shared_ptr<rclcpp_lifecycle::LifecyclePublisher<nav_msgs::msg::Path>> global_path_pub_;

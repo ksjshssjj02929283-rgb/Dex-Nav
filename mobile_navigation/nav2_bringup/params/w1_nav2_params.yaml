@@ -205,8 +205,8 @@ controller_server:
       movement_time_allowance: 10.0
     goal_checker:
       plugin: "nav2_controller::LongitudinalGoalChecker"
-      lon_goal_tolerance: 0.02
-      lat_goal_tolerance: 0.02
+      lon_goal_tolerance: 0.03
+      lat_goal_tolerance: 0.03
       yaw_goal_tolerance: 0.02
       stateful: True    
     FollowPath:
