@@ -168,6 +168,7 @@ protected:
 
   geometry_msgs::msg::TwistStamped computePositionApproachCommand(
       const geometry_msgs::msg::PoseStamped & pose,
+      const geometry_msgs::msg::Twist & speed,
       const nav_msgs::msg::Path & transformed_plan);
       
 
@@ -325,10 +326,24 @@ protected:
 
   bool should_rotate_to_goal_heading_;
   ControlMode mode_{ControlMode::FOLLOW_PATH};
+  ControlMode previous_mode_{ControlMode::FOLLOW_PATH};
   // ===== Position / Final approach control params =====
-  double position_control_dist_{0.6};   // [m] 进入位置控制的距离
-  double pos_tol_for_align_{0.15};       // [m] 只剩角度对齐的距离
-  double max_angular_vel_{1.2};          // [rad/s] 最大角速度（先写死）
+  double position_control_dist_{0.3};   // [m] 进入位置控制的距离
+  double pos_tol_for_align_{0.02};       // [m] 只剩角度对齐的距离
+  double max_angular_vel_{1.2};          // [rad/s] 最大角速度（先写死
+  // Final approach parameters
+  double approach_k_rho_{0.45};
+  double approach_k_y_{2.0};
+  double approach_k_yaw_soft_{0.4};
+
+  double approach_v_max_{0.05};
+  double approach_slow_down_dist_{0.12};
+
+  double approach_w_max_{0.2};
+  double approach_slow_down_yaw_{0.15};
+
+  double approach_stop_dist_{0.04};
+
 
 
   

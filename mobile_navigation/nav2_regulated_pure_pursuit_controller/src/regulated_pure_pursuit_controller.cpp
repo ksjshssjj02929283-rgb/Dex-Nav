@@ -118,6 +118,41 @@ void RegulatedPurePursuitController::configure(
     node, plugin_name_ + ".use_interpolation",
     rclcpp::ParameterValue(true));
 
+  // ===============================
+  // Final position approach params
+  // ===============================
+  declare_parameter_if_not_declared(
+    node, plugin_name_ + ".position_control_dist",
+    rclcpp::ParameterValue(0.2));
+  
+  declare_parameter_if_not_declared(
+    node, plugin_name_ + ".pos_tol_for_align",
+    rclcpp::ParameterValue(0.05));  
+  declare_parameter_if_not_declared(
+    node, plugin_name_ + ".approach.k_rho", rclcpp::ParameterValue(0.45));
+
+  declare_parameter_if_not_declared(
+    node, plugin_name_ + ".approach.k_y", rclcpp::ParameterValue(2.0));
+
+  declare_parameter_if_not_declared(
+    node, plugin_name_ + ".approach.k_yaw_soft", rclcpp::ParameterValue(0.4));
+
+  declare_parameter_if_not_declared(
+    node, plugin_name_ + ".approach.v_max", rclcpp::ParameterValue(0.05));
+
+  declare_parameter_if_not_declared(
+    node, plugin_name_ + ".approach.slow_down_dist", rclcpp::ParameterValue(0.12));
+
+  declare_parameter_if_not_declared(
+    node, plugin_name_ + ".approach.w_max", rclcpp::ParameterValue(0.2));
+
+  declare_parameter_if_not_declared(
+    node, plugin_name_ + ".approach.slow_down_yaw", rclcpp::ParameterValue(0.15));
+
+  declare_parameter_if_not_declared(
+    node, plugin_name_ + ".approach.stop_dist", rclcpp::ParameterValue(0.04));
+
+
   node->get_parameter(plugin_name_ + ".desired_linear_vel", desired_linear_vel_);
   base_desired_linear_vel_ = desired_linear_vel_;
   node->get_parameter(plugin_name_ + ".lookahead_dist", lookahead_dist_);
@@ -176,6 +211,34 @@ void RegulatedPurePursuitController::configure(
   node->get_parameter(
     plugin_name_ + ".use_interpolation",
     use_interpolation_);
+  node->get_parameter(
+  plugin_name_ + ".position_control_dist",
+  position_control_dist_);
+
+  node->get_parameter(
+  plugin_name_ + ".pos_tol_for_align",
+  pos_tol_for_align_);
+
+  node->get_parameter(
+  plugin_name_ + ".approach.k_rho", approach_k_rho_);
+  node->get_parameter(
+    plugin_name_ + ".approach.k_y", approach_k_y_);
+  node->get_parameter(
+    plugin_name_ + ".approach.k_yaw_soft", approach_k_yaw_soft_);
+
+  node->get_parameter(
+    plugin_name_ + ".approach.v_max", approach_v_max_);
+  node->get_parameter(
+    plugin_name_ + ".approach.slow_down_dist", approach_slow_down_dist_);
+
+  node->get_parameter(
+    plugin_name_ + ".approach.w_max", approach_w_max_);
+  node->get_parameter(
+    plugin_name_ + ".approach.slow_down_yaw", approach_slow_down_yaw_);
+
+  node->get_parameter(
+    plugin_name_ + ".approach.stop_dist", approach_stop_dist_);
+
 
   transform_tolerance_ = tf2::durationFromSec(transform_tolerance);
   control_duration_ = 1.0 / control_frequency;
@@ -306,56 +369,39 @@ geometry_msgs::msg::TwistStamped RegulatedPurePursuitController::computeVelocity
   double dist_to_goal = std::hypot(
     goal_bl.pose.position.x,
     goal_bl.pose.position.y);
-    // ===============================
-    // 模式切换
-    // ===============================
-  if (mode_ == ControlMode::FOLLOW_PATH &&
+  // ===============================
+  // 模式切换
+  // ===============================
+  if (previous_mode_ != ControlMode::FINAL_ALIGN &&
       dist_to_goal < position_control_dist_)
   {
     mode_ = ControlMode::POSITION_APPROACH;
+    previous_mode_ = ControlMode::POSITION_APPROACH;
   }
 
-  if (mode_ == ControlMode::POSITION_APPROACH &&
+  if (previous_mode_ != ControlMode::FOLLOW_PATH &&
       dist_to_goal < pos_tol_for_align_)
   {
     mode_ = ControlMode::FINAL_ALIGN;
+    previous_mode_ = ControlMode::FINAL_ALIGN;
   }
 
   geometry_msgs::msg::TwistStamped cmd;
   cmd.header = pose.header;
-
-  // ===============================
-  // FINAL_ALIGN：复用你已有角度控制
-  // ===============================
-  if (mode_ == ControlMode::FINAL_ALIGN) {
-    double linear_vel = 0.0;
-    double angular_vel = 0.0;
-
-    double angle_to_goal = tf2::getYaw(goal_bl.pose.orientation);
-
-    rotateToHeading(
-      linear_vel, angular_vel,
-      angle_to_goal,
-      speed);
-
-    // 角度渐进减速（防超调）
-    double slow_down_yaw = 0.15;  // ≈ 8.6 deg
-    double w_max_align =
-      max_angular_vel_ * std::tanh(fabs(angle_to_goal) / slow_down_yaw);
-
-    angular_vel = std::clamp(
-      angular_vel, -w_max_align, w_max_align);
-
-    cmd.twist.linear.x = 0.0;
-    cmd.twist.angular.z = angular_vel;
-    return cmd;
-  }
-
+  //-- 先测试下到达阶段的PID是否合理，
+  
   // ===============================
   // POSITION_APPROACH
   // ===============================
   if (mode_ == ControlMode::POSITION_APPROACH) {
-    cmd = computePositionApproachCommand(pose, transformed_plan);
+    // geometry_msgs::msg::Twist cmd_vel;
+
+    // cmd_vel.linear.x  = linear_vel;
+    // cmd_vel.linear.y  = 0.0;          // 全向底盘你可以改
+    // cmd_vel.angular.z = angular_vel;
+
+
+    cmd = computePositionApproachCommand(pose, speed, transformed_plan);
 
     double carrot_dist = hypot(
       goal_bl.pose.position.x,
@@ -371,9 +417,42 @@ geometry_msgs::msg::TwistStamped RegulatedPurePursuitController::computeVelocity
       throw nav2_core::PlannerException(
         "Collision in POSITION_APPROACH");
     }
-
+    RCLCPP_INFO(logger_, "POSITION_APPROACH cmd: linear.x = %f, angular.z = %f", cmd.twist.linear.x, cmd.twist.angular.z);
     return cmd;
   }
+  // ===============================
+  // FINAL_ALIGN：复用你已有角度控制
+  // ===============================
+  // if (mode_ == ControlMode::FINAL_ALIGN) {
+  //   double linear_vel = 0.0;
+  //   double angular_vel = 0.0;
+
+  //   double angle_to_goal = tf2::getYaw(goal_bl.pose.orientation);
+
+  //   rotateToHeading(
+  //     linear_vel, angular_vel,
+  //     angle_to_goal,
+  //     speed);
+
+  //   // 角度渐进减速（防超调）
+  //   double w_max_align =
+  //     max_angular_vel_ * std::tanh(fabs(angle_to_goal) / approach_slow_down_yaw_);
+
+  //   angular_vel = std::clamp(
+  //     angular_vel, -w_max_align, w_max_align);
+
+  //   const double sign = angle_to_goal > 0.0 ? 1.0 : -1.0;
+  //   constexpr double kMinAngularSpeed = 0.012;  // rad/s
+  //   if (std::fabs(angular_vel) < kMinAngularSpeed) {
+  //     angular_vel = sign * kMinAngularSpeed;
+  //   }
+
+  //   cmd.twist.linear.x = 0.0;
+  //   cmd.twist.angular.z = angular_vel;
+  
+  //   return cmd;
+  // }
+
 
 // ===============================
 // FOLLOW_PATH：原 Nav2 RPP
@@ -421,8 +500,11 @@ geometry_msgs::msg::TwistStamped RegulatedPurePursuitController::computeVelocity
   double angle_to_heading;
   should_rotate_to_goal_heading_ = shouldRotateToGoalHeading(carrot_pose);
   if (shouldRotateToGoalHeading(carrot_pose)) {
+    mode_ = ControlMode::FINAL_ALIGN;
+    previous_mode_ = ControlMode::FINAL_ALIGN;
     double angle_to_goal = tf2::getYaw(transformed_plan.poses.back().pose.orientation);
     rotateToHeading(linear_vel, angular_vel, angle_to_goal, speed);
+    RCLCPP_INFO(logger_, "FINAL_ALIGN cmd: linear.x = %f, angular.z = %f", linear_vel, angular_vel);
   } else if (shouldRotateToPath(carrot_pose, angle_to_heading)) {
     rotateToHeading(linear_vel, angular_vel, angle_to_heading, speed);
   } else {
@@ -452,6 +534,7 @@ geometry_msgs::msg::TwistStamped RegulatedPurePursuitController::computeVelocity
 geometry_msgs::msg::TwistStamped
 RegulatedPurePursuitController::computePositionApproachCommand(
   const geometry_msgs::msg::PoseStamped & pose,
+  const geometry_msgs::msg::Twist & speed,
   const nav_msgs::msg::Path & transformed_plan)
 {
   geometry_msgs::msg::TwistStamped cmd;
@@ -470,44 +553,35 @@ RegulatedPurePursuitController::computePositionApproachCommand(
   double e_yaw = tf2::getYaw(goal.pose.orientation);
 
   // ===============================
-  // 2. 控制参数（建议作为 ROS 参数）
-  // ===============================
-  const double k_rho = 0.8;        // 位置收敛
-  const double k_y = 2.0;          // 横向误差
-  const double k_yaw_soft = 0.4;   // 软角度修正
-
-  const double v_max_approach = 0.25;   // 最大接近速度
-  const double slow_down_dist = 0.20;   // 开始明显减速的距离
-
-  const double w_max_approach = 0.6;
-  const double slow_down_yaw = 0.15;    // ≈ 8.6 deg
-
-  // ===============================
   // 3. 原始控制律
   // ===============================
-  double v_raw = k_rho * rho;
-  double w_raw = k_y * ey + k_yaw_soft * e_yaw;
+  double v_raw = approach_k_rho_ * rho;
+  double ey_weight = std::tanh(rho / 0.10);
+  double w_raw = approach_k_y_ * ey * ey_weight + approach_k_yaw_soft_ * e_yaw;
 
   // ===============================
   // 4. 距离相关线速度限幅（核心）
   // ===============================
   double v_max_dist =
-    v_max_approach * std::tanh(rho / slow_down_dist);
-
+  max(fabs(speed.linear.x), approach_v_max_ * std::tanh(rho / approach_slow_down_dist_));
+  
   double v = std::clamp(v_raw, -v_max_dist, v_max_dist);
 
   // ===============================
   // 5. 角度相关角速度限幅
   // ===============================
   double w_max_yaw =
-    w_max_approach * std::tanh(fabs(e_yaw) / slow_down_yaw);
+  max(fabs(speed.angular.z), approach_w_max_ * std::tanh(fabs(e_yaw) / approach_slow_down_yaw_));
 
   double w = std::clamp(w_raw, -w_max_yaw, w_max_yaw);
 
   // ===============================
   // 6. 极近距离保护（防抖）
   // ===============================
-  if (rho < goal_dist_tol_) {
+  if (rho < 0.06) {
+    v *= rho / 0.06;
+  }
+  if(rho < approach_stop_dist_) {
     v = 0.0;
   }
 
@@ -851,6 +925,7 @@ void RegulatedPurePursuitController::applyConstraints(
 
 void RegulatedPurePursuitController::setPlan(const nav_msgs::msg::Path & path)
 {
+  mode_ = ControlMode::FOLLOW_PATH; 
   global_plan_ = path;
 }
 

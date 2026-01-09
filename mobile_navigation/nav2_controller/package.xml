@@ -3,7 +3,7 @@
 <package format="3">
   <name>nav2_controller</name>
   <version>1.1.14</version>
-  <description>Controller action interface</description>
+  <description>01091050Controller action interface</description>
   <maintainer email="carl.r.delsey@intel.com">Carl Delsey</maintainer>
   <license>Apache-2.0</license>
 
