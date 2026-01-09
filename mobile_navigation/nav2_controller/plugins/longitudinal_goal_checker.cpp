@@ -110,10 +110,10 @@ bool LongitudinalGoalChecker::isGoalReached(
     if(fabs(lon_err) > lon_goal_tolerance_ || 
        fabs(lat_err) > lat_goal_tolerance_) 
     {
-      RCLCPP_INFO(
-        rclcpp::get_logger("LongitudinalGoalChecker"),
-        "LongitudinalGoalChecker: Goal not reached! lon_err: %.3f, lat_err: %.3f",
-        lon_err, lat_err);
+      // RCLCPP_INFO(
+      //   rclcpp::get_logger("LongitudinalGoalChecker"),
+      //   "LongitudinalGoalChecker: Goal not reached! lon_err: %.3f, lat_err: %.3f",
+      //   lon_err, lat_err);
       return false;
     }
     // We are within the window
@@ -127,10 +127,10 @@ bool LongitudinalGoalChecker::isGoalReached(
     tf2::getYaw(goal_pose.orientation));
   if(!(fabs(dyaw) < yaw_goal_tolerance_))
   {
-    RCLCPP_INFO(
-      rclcpp::get_logger("LongitudinalGoalChecker"),
-      "LongitudinalGoalChecker: Goal not reached! yaw_err: %.3f",
-      dyaw);
+    // RCLCPP_INFO(
+    //   rclcpp::get_logger("LongitudinalGoalChecker"),
+    //   "LongitudinalGoalChecker: Goal not reached! yaw_err: %.3f",
+    //   dyaw);
     return false;
   }
   RCLCPP_INFO(

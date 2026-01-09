@@ -417,7 +417,7 @@ geometry_msgs::msg::TwistStamped RegulatedPurePursuitController::computeVelocity
       throw nav2_core::PlannerException(
         "Collision in POSITION_APPROACH");
     }
-    RCLCPP_INFO(logger_, "POSITION_APPROACH cmd: linear.x = %f, angular.z = %f", cmd.twist.linear.x, cmd.twist.angular.z);
+    // RCLCPP_INFO(logger_, "POSITION_APPROACH cmd: linear.x = %f, angular.z = %f", cmd.twist.linear.x, cmd.twist.angular.z);
     return cmd;
   }
   // ===============================
@@ -504,7 +504,7 @@ geometry_msgs::msg::TwistStamped RegulatedPurePursuitController::computeVelocity
     previous_mode_ = ControlMode::FINAL_ALIGN;
     double angle_to_goal = tf2::getYaw(transformed_plan.poses.back().pose.orientation);
     rotateToHeading(linear_vel, angular_vel, angle_to_goal, speed);
-    RCLCPP_INFO(logger_, "FINAL_ALIGN cmd: linear.x = %f, angular.z = %f", linear_vel, angular_vel);
+    // RCLCPP_INFO(logger_, "FINAL_ALIGN cmd: linear.x = %f, angular.z = %f", linear_vel, angular_vel);
   } else if (shouldRotateToPath(carrot_pose, angle_to_heading)) {
     rotateToHeading(linear_vel, angular_vel, angle_to_heading, speed);
   } else {

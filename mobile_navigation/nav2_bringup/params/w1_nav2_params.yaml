@@ -199,9 +199,14 @@ controller_server:
     goal_checker_plugins: ["goal_checker"]
     controller_plugins: ["FollowPath"]
 
+    # progress_checker:
+    #   plugin: "nav2_controller::SimpleProgressChecker"
+    #   required_movement_radius: 0.1
+    #   movement_time_allowance: 10.0
     progress_checker:
-      plugin: "nav2_controller::SimpleProgressChecker"
+      plugin: "nav2_controller::PoseProgressChecker"
       required_movement_radius: 0.1
+      required_movement_angle: 0.02
       movement_time_allowance: 10.0
     goal_checker:
       plugin: "nav2_controller::LongitudinalGoalChecker"
@@ -242,16 +247,16 @@ controller_server:
       pos_tol_for_align: 0.03
       approach:
         # --- 位置 & 姿态控制增益 ---
-        k_rho: 0.2         # 距离收敛增益（稳）
-        k_y: 1.0             # 横向误差增益
-        k_yaw_soft: 0.35      # 角度软耦合
+        k_rho: 0.15         # 距离收敛增益（稳）
+        k_y: 1.2             # 横向误差增益
+        k_yaw_soft: 0.15      # 角度软耦合
 
         # --- 线速度 ---
-        v_max: 0.05         # 最大接近速度（防超调）
-        slow_down_dist: 0.15 # 距离减速区
+        v_max: 0.05        # 最大接近速度（防超调）
+        slow_down_dist: 0.20 # 距离减速区
 
         # --- 角速度 ---
-        w_max: 0.1           # ⚠️ 可后期提高到 0.25~0.3
+        w_max: 0.08           # ⚠️ 可后期提高到 0.25~0.3
         slow_down_yaw: 0.1  # ≈ 8.6 deg
 
         # --- 极近距离保护 ---
