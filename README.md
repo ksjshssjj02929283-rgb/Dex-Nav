@@ -15,14 +15,14 @@ Already a pro? Just edit this README.md and make it your own. Want to make it ea
 
 ```
 cd existing_repo
-git remote add origin http://69.235.177.182:8081/dexembodied/dexe_mobile_nav.git
+git remote add origin http://192.168.3.16/dexembodied/dexe_mobile_nav.git
 git branch -M main
 git push -uf origin main
 ```
 
 ## Integrate with your tools
 
-- [ ] [Set up project integrations](http://69.235.177.182:8081/dexembodied/dexe_mobile_nav/-/settings/integrations)
+- [ ] [Set up project integrations](http://192.168.3.16/dexembodied/dexe_mobile_nav/-/settings/integrations)
 
 ## Collaborate with your team
 
