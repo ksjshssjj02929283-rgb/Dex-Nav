@@ -17,7 +17,7 @@ find_package(rclpy REQUIRED)
 find_package(cv_bridge REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(apriltag_ros REQUIRED)  # Ensure this is the correct package name
-find_package(nav2_graceful_controller REQUIRED)
+# find_package(nav2_graceful_controller REQUIRED)
 find_package(nav2_util REQUIRED)
 find_package(yaml-cpp REQUIRED)
 find_package(tf2 REQUIRED)
