@@ -195,14 +195,7 @@ controller_server:
     min_x_velocity_threshold: 0.001
     min_y_velocity_threshold: 0.5
     min_theta_velocity_threshold: 0.001
-    use_sim_time: False
-    odom_topic: /feedback/odom
-    controller_frequency: 20.0
-    min_x_velocity_threshold: 0.001
-    min_y_velocity_threshold: 0.5
-    min_theta_velocity_threshold: 0.001
     progress_checker_plugins: ["progress_checker"] # progress_checker_plugin: "progress_checker" For Humble and older
-    goal_checker_plugins: ["goal_checker"]
     goal_checker_plugins: ["goal_checker"]
     controller_plugins: ["FollowPath"]
 
@@ -291,7 +284,6 @@ local_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 10.0
-        inflation_radius: 0.35 # 0.75 # 0.55
         inflation_radius: 0.35 # 0.75 # 0.55
       denoise_layer:
         plugin: "nav2_costmap_2d::DenoiseLayer"
