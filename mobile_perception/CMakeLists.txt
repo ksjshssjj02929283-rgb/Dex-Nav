@@ -20,34 +20,55 @@ find_package(apriltag_ros REQUIRED)  # Ensure this is the correct package name
 find_package(nav2_graceful_controller REQUIRED)
 find_package(nav2_util REQUIRED)
 find_package(yaml-cpp REQUIRED)
+find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
+find_package(apriltag REQUIRED)
+
+
+find_package(sensor_msgs REQUIRED)  
+find_package(geometry_msgs REQUIRED)
+find_package(tf2_ros REQUIRED)
+find_package(tf2_geometry_msgs REQUIRED)
+find_package(ament_index_cpp REQUIRED)
+find_package(nlohmann_json REQUIRED)
+find_package(std_srvs REQUIRED)
+
+
+add_executable(apriltag_detection_node
+  src/apriltag_detection_node.cpp
+)
+
+ament_target_dependencies(apriltag_detection_node
+  rclcpp
+  sensor_msgs
+  geometry_msgs
+  tf2_ros
+  tf2_geometry_msgs
+  cv_bridge
+  OpenCV
+  ament_index_cpp
+  nlohmann_json
+  std_srvs
+)
+target_link_libraries(apriltag_detection_node
+  apriltag::apriltag
+  ${OpenCV_LIBS}
+)
+
+
+install(TARGETS apriltag_detection_node
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 
 include_directories(include ${OpenCV_INCLUDE_DIRS})
 
-# Declare a C++ executable
-add_executable(mobile_perception_node src/mobile_perception_node.cpp)
-ament_target_dependencies(mobile_perception_node rclcpp cv_bridge apriltag_ros)
-
-# Link libraries
-target_link_libraries(mobile_perception_node ${OpenCV_LIBRARIES} ${apriltag_ros_LIBRARIES})
-
-# Install C++ executable
+# mobile_control_node
+add_executable(mobile_control_node src/mobile_control_node.cpp)
+ament_target_dependencies(mobile_control_node rclcpp tf2 tf2_ros tf2_geometry_msgs geometry_msgs nav_msgs std_srvs)
 install(TARGETS
-  mobile_perception_node
+  mobile_control_node
   DESTINATION lib/${PROJECT_NAME})
-
-add_executable(mobile_docking_control_node src/mobile_docking_control_node.cpp)
-ament_target_dependencies(mobile_docking_control_node rclcpp yaml-cpp nav2_graceful_controller nav2_util)
-  
-target_link_libraries(
-  mobile_docking_control_node
-  yaml-cpp
-)
-  # Install C++ executable
-install(TARGETS
-  mobile_docking_control_node
-  DESTINATION lib/${PROJECT_NAME})
-
 
 # Install Python scripts
 install(PROGRAMS
@@ -74,7 +95,7 @@ install(PROGRAMS
 
 # Install directories
 install(DIRECTORY
-#  launch
+  launch
   config
   images
   DESTINATION share/${PROJECT_NAME})

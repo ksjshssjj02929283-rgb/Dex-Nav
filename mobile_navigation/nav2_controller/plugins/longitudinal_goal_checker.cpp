@@ -122,9 +122,7 @@ bool LongitudinalGoalChecker::isGoalReached(
       check_xy_ = false;
     }
   }
-  double dyaw = angles::shortest_angular_distance(
-    tf2::getYaw(query_pose.orientation),
-    tf2::getYaw(goal_pose.orientation));
+
   if(!(fabs(dyaw) < yaw_goal_tolerance_))
   {
     // RCLCPP_INFO(
