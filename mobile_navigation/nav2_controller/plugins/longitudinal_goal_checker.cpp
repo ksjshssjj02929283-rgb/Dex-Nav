@@ -106,6 +106,10 @@ bool LongitudinalGoalChecker::isGoalReached(
 {
   double lon_err = query_pose.position.x - goal_pose.position.x;
   double lat_err = query_pose.position.y - goal_pose.position.y;
+  double dyaw = angles::shortest_angular_distance(
+    tf2::getYaw(query_pose.orientation),
+    tf2::getYaw(goal_pose.orientation));
+
   if (check_xy_) {
     if(fabs(lon_err) > lon_goal_tolerance_ || 
        fabs(lat_err) > lat_goal_tolerance_) 
