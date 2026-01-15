@@ -83,6 +83,32 @@ void Optimizer::getParams()
 
   getParam(motion_model_name, "motion_model", std::string("DiffDrive"));
 
+  /* ========== Adaptive MPPI parameters ========== */
+  getParam(adapt_dist_max_,  "adaptive.dist_max",  1.2);
+  getParam(adapt_dist_mid_,  "adaptive.dist_mid",  0.5);
+  getParam(adapt_dist_near_, "adaptive.dist_near", 0.15);
+
+  // Mid-distance targets
+  getParam(target_vx_std_mid_, "adaptive.mid.vx_std", 0.08);
+  getParam(target_wz_std_mid_, "adaptive.mid.wz_std", 0.15);
+  getParam(target_temp_mid_,   "adaptive.mid.temperature", 0.18);
+
+  // Near-goal targets
+  getParam(target_vx_std_near_, "adaptive.near.vx_std", 0.05);
+  getParam(target_wz_std_near_, "adaptive.near.wz_std", 0.10);
+  getParam(target_temp_near_,   "adaptive.near.temperature", 0.15);
+
+  // Safety minimums
+  getParam(min_vx_std_, "adaptive.min.vx_std", 0.03);
+  getParam(min_wz_std_, "adaptive.min.wz_std", 0.02);
+  getParam(min_temperature_, "adaptive.min.temperature", 0.12);
+
+  // Adaptation rates
+  getParam(alpha_std_,  "adaptive.alpha.std",  0.5);
+  getParam(alpha_temp_, "adaptive.alpha.temp", 0.2);
+  getParam(alpha_vel_,  "adaptive.alpha.vel",  0.5);
+
+
   s.constraints = s.base_constraints;
   setMotionModel(motion_model_name);
   parameters_handler_->addPostCallback([this]() {reset();});
@@ -137,6 +163,11 @@ geometry_msgs::msg::TwistStamped Optimizer::evalControl(
   prepare(robot_pose, robot_speed, plan, goal_checker);
 
   do {
+    // //TODO 更新控制序列生成参数
+    updateParameters(robot_pose, plan);
+    noise_generator_.reset(settings_, isHolonomic());
+    // //TODO 更新轨迹评价参数
+    // updateCriticsData();
     optimize();
   } while (fallback(critics_data_.fail_flag));
 
@@ -149,6 +180,185 @@ geometry_msgs::msg::TwistStamped Optimizer::evalControl(
 
   return control;
 }
+void Optimizer::updateParameters(
+  const geometry_msgs::msg::PoseStamped & robot_pose,
+  const nav_msgs::msg::Path & plan)
+{
+  if (plan.poses.empty()) {
+    return;
+  }
+  /*重置参数，防止第二次导航触发时参数为近距离参数*/
+  getParams();
+
+  /* ================= 1. 目标距离 ================= */
+  const auto & goal_pose = plan.poses.back();
+  const double dx = robot_pose.pose.position.x - goal_pose.pose.position.x;
+  const double dy = robot_pose.pose.position.y - goal_pose.pose.position.y;
+  const double dist = std::hypot(dx, dy);
+
+  /* ================= 2. 超过作用范围直接返回 ================= */
+  if (dist > 1.2) {
+    return;
+  }
+
+  /* ================= 3. 读取基础参数 ================= */
+  auto getParam = parameters_handler_->getParamGetter(name_);
+
+  double base_vx_std = 0.20;
+  double base_wz_std = 0.40;
+  double base_temp   = 0.30;
+
+  double base_vx_max = 0.50;
+  double base_wz_max = 0.50;
+  double base_vx_min = -0.50;
+
+  getParam(base_vx_std, "vx_std", base_vx_std);
+  getParam(base_wz_std, "wz_std", base_wz_std);
+  getParam(base_temp,   "temperature", base_temp);
+
+  getParam(base_vx_max, "vx_max", base_vx_max);
+  getParam(base_wz_max, "wz_max", base_wz_max);
+  getParam(base_vx_min, "vx_min", base_vx_min);
+
+  /* ================= 4. 分段目标参数（关键） ================= */
+  // double target_vx_std;
+  // double target_wz_std;
+  // double target_temp;
+
+  double scale = std::clamp(0.1 + 0.5 * dist, 0.1, 0.7);
+
+  /* ============ 5. 目标参数 ============ */
+  double target_vx_std;
+  double target_wz_std;
+  double target_temp;
+
+  if (dist > adapt_dist_mid_) {
+    target_vx_std = settings_.sampling_std.vx * scale;
+    target_wz_std = settings_.sampling_std.wz * scale;
+    target_temp   = settings_.temperature     * scale;
+
+  } else if (dist > adapt_dist_near_) {
+    target_vx_std = target_vx_std_mid_;
+    target_wz_std = target_wz_std_mid_;
+    target_temp   = target_temp_mid_;
+
+  } else {
+    target_vx_std = target_vx_std_near_;
+    target_wz_std = target_wz_std_near_;
+    target_temp   = target_temp_near_;
+  }
+
+  /* ============ 6. 安全下限 ============ */
+  target_vx_std = std::max(min_vx_std_, target_vx_std);
+  target_wz_std = std::max(min_wz_std_, target_wz_std);
+  target_temp   = std::max(min_temperature_, target_temp);
+
+
+  // if (dist > 0.5) {
+  //   // 中距离：正常 MPPI
+  //   target_vx_std = base_vx_std * scale;
+  //   target_wz_std = base_wz_std * scale;
+  //   target_temp   = base_temp   * scale;
+
+  // } else if (dist > 0.15) {
+  //   // 接近目标：明显抑制探索
+  //   target_vx_std = 0.08;
+  //   target_wz_std = 0.15;
+  //   target_temp   = 0.18;
+
+  // }
+  //  else {
+  //   // 最后 15cm：准确定性
+  //   target_vx_std = 0.08;
+  //   target_wz_std = 0.1;
+  //   target_temp   = 0.18;
+  // }
+
+  /* ============ 5. 速度约束目标 ============ */
+  const double target_vx_max =
+    std::max(0.08, settings_.base_constraints.vx_max * scale);
+  const double target_wz_max =
+    std::max(0.15, settings_.base_constraints.wz * scale);
+  const double target_vx_min =
+    std::min(-0.08, settings_.base_constraints.vx_min * scale);
+
+  /* ================= 6. 调节率 ================= */
+  // constexpr double alpha_std  = 0.5;   // sampling std
+  // constexpr double alpha_temp = 0.2;   // temperature
+  // constexpr double alpha_vel  = 0.5;   // constraints
+
+  /* ================= 7. 滤波器 ================= */
+  auto smooth = [](double cur, double tgt, double a) {
+    return cur + a * (tgt - cur);
+  };
+
+  /* ============ 6. 平滑更新 ============ */
+  settings_.sampling_std.vx =
+    smooth(settings_.sampling_std.vx, target_vx_std, alpha_std_);
+  settings_.sampling_std.wz =
+    smooth(settings_.sampling_std.wz, target_wz_std, alpha_std_);
+
+  settings_.temperature =
+    smooth(settings_.temperature, target_temp, alpha_temp_);
+
+  settings_.base_constraints.vx_max =
+    smooth(settings_.base_constraints.vx_max, target_vx_max, alpha_vel_);
+  settings_.base_constraints.wz =
+    smooth(settings_.base_constraints.wz, target_wz_max, alpha_vel_);
+  settings_.base_constraints.vx_min =
+    smooth(settings_.base_constraints.vx_min, target_vx_min, alpha_vel_);
+
+  /* ================= 8. 超近距离确定性兜底 ================= */
+  // if (dist < 0.08) {
+  //   settings_.sampling_std.vx = 0.01;
+  //   settings_.sampling_std.wz = 0.01;
+  //   settings_.temperature    = 0.10;
+  // }
+}
+
+// void Optimizer::updateParameters(
+//   const geometry_msgs::msg::PoseStamped & robot_pose, const nav_msgs::msg::Path & plan)
+// {
+//   if (plan.poses.empty()) {
+//     return;
+//   }
+
+//   const auto & goal_pose = plan.poses.back();
+//   const double dx = robot_pose.pose.position.x - goal_pose.pose.position.x;
+//   const double dy = robot_pose.pose.position.y - goal_pose.pose.position.y;
+//   const double distance_to_goal = std::sqrt(dx * dx + dy * dy);
+
+//   double scale = 1.0;
+//   if (distance_to_goal < 1.2) {
+//     scale = 0.3 + 0.5 * distance_to_goal;
+//   }
+//   else{
+//     return;
+//   }
+//   auto getParam = parameters_handler_->getParamGetter(name_);
+
+//   double base_vx_std = 0.2, base_wz_std = 0.4, base_temp = 0.3;
+//   double base_vx_max = 0.5, base_wz_max = 0.5;
+//   double base_vx_min = -0.5;
+//   getParam(base_vx_std, "vx_std", base_vx_std);
+//   getParam(base_wz_std, "wz_std", base_wz_std);
+//   getParam(base_temp, "temperature", base_temp);
+  
+//   getParam(base_vx_max, "vx_max", base_vx_max);
+//   getParam(base_wz_max, "wz_max", base_wz_max);
+
+//   getParam(base_vx_min, "vx_min", base_vx_min);
+//   settings_.sampling_std.vx = std::max(0.1, base_vx_std * scale);
+//   settings_.sampling_std.wz = std::max(0.05, base_wz_std * scale);
+//   settings_.temperature = std::max(0.15, base_temp * scale);
+
+//   // Also scale down max velocities
+//   settings_.base_constraints.vx_max = std::max(0.1, base_vx_max * scale);
+//   settings_.base_constraints.wz = std::max(0.15, base_wz_max * scale);
+
+//   settings_.base_constraints.vx_min = std::min(-0.1, base_vx_min * scale);
+// }
+
 
 void Optimizer::optimize()
 {

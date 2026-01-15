@@ -632,6 +632,11 @@ nav_msgs::msg::Path SmacPlannerLattice::createPlan(
     plan.poses.push_back(pose);
   }
 
+  if(isAreaFree(_costmap, goal))
+  {
+    plan.poses.push_back(goal);
+  }
+
   // Publish raw path for debug
   if (_raw_plan_publisher->get_subscription_count() > 0) {
     _raw_plan_publisher->publish(plan);

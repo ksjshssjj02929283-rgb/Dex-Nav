@@ -231,6 +231,15 @@ protected:
    */
   bool fallback(bool fail);
 
+  /**
+   * @brief Update sampling parameters based on robot state and path
+   * @param robot_pose Current pose of the robot
+   * @param plan Current path plan
+   */
+  void updateParameters(
+    const geometry_msgs::msg::PoseStamped & robot_pose,
+    const nav_msgs::msg::Path & plan);
+
 protected:
   rclcpp_lifecycle::LifecycleNode::WeakPtr parent_;
   std::shared_ptr<nav2_costmap_2d::Costmap2DROS> costmap_ros_;
@@ -255,6 +264,33 @@ protected:
   CriticData critics_data_ =
   {state_, generated_trajectories_, path_, costs_, settings_.model_dt, false, nullptr, nullptr,
     std::nullopt, std::nullopt};  /// Caution, keep references
+
+  // ============ Adaptive MPPI Parameters ============
+
+  // Distance thresholds
+  double adapt_dist_max_;        // e.g. 1.2
+  double adapt_dist_mid_;        // e.g. 0.5
+  double adapt_dist_near_;       // e.g. 0.15
+
+  // Target std & temperature
+  double target_vx_std_mid_;
+  double target_wz_std_mid_;
+  double target_temp_mid_;
+
+  double target_vx_std_near_;
+  double target_wz_std_near_;
+  double target_temp_near_;
+
+  // Minimum allowed std / temperature
+  double min_vx_std_;
+  double min_wz_std_;
+  double min_temperature_;
+
+  // Adaptation rates
+  double alpha_std_;
+  double alpha_temp_;
+  double alpha_vel_;
+  
 
   rclcpp::Logger logger_{rclcpp::get_logger("MPPIController")};
 };
