@@ -312,9 +312,9 @@ void SmacPlannerLattice::cleanup()
 // TODO:如果local costmap有障碍物，而global costmap没有显示障碍物，该功能无法生效
 bool SmacPlannerLattice::isAreaFree(nav2_costmap_2d::Costmap2D* costmap, const geometry_msgs::msg::PoseStamped& goal) {
     // 车的四个顶点相对于车中心的坐标
-    std::vector<std::pair<double, double>> vertices = {
-        {0.7, 0.35}, {0.7, -0.35}, {-0.55, -0.35}, {-0.55, 0.35}
-    };
+    // std::vector<std::pair<double, double>> vertices = {
+    //     {0.7, 0.35}, {0.7, -0.35}, {-0.55, -0.35}, {-0.55, 0.35}
+    // };
 
     // 提取目标点的位置信息
     double goal_x = goal.pose.position.x;
@@ -331,8 +331,8 @@ bool SmacPlannerLattice::isAreaFree(nav2_costmap_2d::Costmap2D* costmap, const g
     m.getRPY(roll, pitch, yaw);
 
     // 遍历长方形区域内的所有点
-    for (double x = -0.40; x <= 0.40; x += costmap->getResolution()) {
-        for (double y = -0.30; y <= 0.30; y += costmap->getResolution()) {
+    for (double x = -0.35; x <= 0.35; x += costmap->getResolution()) {
+        for (double y = -0.29; y <= 0.29; y += costmap->getResolution()) {
             // 旋转点坐标
             double rotated_x = x * cos(yaw) - y * sin(yaw);
             double rotated_y = x * sin(yaw) + y * cos(yaw);
