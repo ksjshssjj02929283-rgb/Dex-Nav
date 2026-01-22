@@ -116,20 +116,20 @@ controller_server:
        # ===== 新增：Adaptive MPPI 参数 =====
       adaptive:
         # ---------- 距离阈值 ----------
-        dist_max: 0.5     # 超过该距离，不做自适应
-        dist_mid: 0.5     # 中距离
-        dist_near: 0.2   # 接近目标点
+        dist_max: 1.0     # 超过该距离，不做自适应
+        dist_mid: 0.8     # 中距离
+        dist_near: 0.5   # 接近目标点
 
         # ---------- 中距离目标参数 ----------
         mid:
-          vx_std: 0.08
-          wz_std: 0.15
+          vx_std: 0.05
+          wz_std: 0.05
           temperature: 0.1
 
         # ---------- 近距离目标参数（到位精度关键） ----------
         near:
           vx_std: 0.03
-          wz_std: 0.05
+          wz_std: 0.03
           temperature: 0.08
 
         # ---------- 安全下限（防止发散 / 抖动） ----------
@@ -142,7 +142,7 @@ controller_server:
         alpha:
           std: 0.6    # 采样方差收敛速度
           temp: 0.6    # temperature 收敛速度
-          vel: 0.7    # 速度上下限收敛速度
+          vel: 0.8    # 速度上下限收敛速度
       TrajectoryVisualizer:
         trajectory_step: 5
         time_step: 3
@@ -157,13 +157,13 @@ controller_server:
       GoalCritic:
         enabled: true
         cost_power: 1
-        cost_weight: 6.0
+        cost_weight: 7.0
         threshold_to_consider: 1.5 # 1.4
       GoalAngleCritic:
         enabled: true
         cost_power: 1
         cost_weight: 3.0 # 3.0
-        threshold_to_consider: 0.10 # 0.5
+        threshold_to_consider: 0.05 # 0.5
       PreferForwardCritic:
         enabled: true
         cost_power: 1
