@@ -239,73 +239,7 @@ void SmacPlannerLattice::cleanup()
   _raw_plan_publisher.reset();
 }
 
-// added by hz
-// TODO:需要修改判断不可达的条件
-// bool SmacPlannerLattice::isAreaFree(nav2_costmap_2d::Costmap2D* costmap, int mx, int my) {
-//     for (int dx = -5; dx <= 5; ++dx) {
-//         for (int dy = -5; dy <= 5; ++dy) {
-//             int check_mx = mx + dx;
-//             int check_my = my + dy;
 
-//             if (check_mx >= 0 && check_mx < static_cast<int>(costmap->getSizeInCellsX()) &&
-//                 check_my >= 0 && check_my < static_cast<int>(costmap->getSizeInCellsY())) {
-//                 if (costmap->getCost(check_mx, check_my) >= nav2_costmap_2d::LETHAL_OBSTACLE) {
-//                     return false;
-//                 }
-//             } else {
-//                 return false;
-//             }
-//         }
-//     }
-//     return true;
-// }
-
-// version 1
-// bool SmacPlannerLattice::isAreaFree(nav2_costmap_2d::Costmap2D* costmap, const geometry_msgs::msg::PoseStamped& goal) {
-//     // 车的四个顶点相对于车中心的坐标
-//     std::vector<std::pair<double, double>> vertices = {
-//         {0.7, 0.35}, {0.7, -0.35}, {-0.55, -0.35}, {-0.55, 0.35}
-//     };
-
-//     // 提取目标点的位置信息
-//     double goal_x = goal.pose.position.x;
-//     double goal_y = goal.pose.position.y;
-
-//     // 提取目标点的四元数并转换为欧拉角
-//     tf2::Quaternion q(
-//         goal.pose.orientation.x,
-//         goal.pose.orientation.y,
-//         goal.pose.orientation.z,
-//         goal.pose.orientation.w);
-//     tf2::Matrix3x3 m(q);
-//     double roll, pitch, yaw;
-//     m.getRPY(roll, pitch, yaw);
-
-//     // 遍历长方形区域内的所有点
-//     for (double x = -0.55; x <= 0.7; x += costmap->getResolution()) {
-//         for (double y = -0.35; y <= 0.35; y += costmap->getResolution()) {
-//             // 旋转点坐标
-//             double rotated_x = x * cos(yaw) - y * sin(yaw);
-//             double rotated_y = x * sin(yaw) + y * cos(yaw);
-
-//             // 将旋转后的点坐标转换到世界坐标系
-//             double world_x = goal_x + rotated_x;
-//             double world_y = goal_y + rotated_y;
-
-//             // 将世界坐标转换到栅格地图坐标
-//             unsigned int map_x, map_y;
-//             if (!costmap->worldToMap(world_x, world_y, map_x, map_y)) {
-//                 return false; // 如果点在地图外，认为有障碍物
-//             }
-
-//             // 检查点的代价值
-//             if (costmap->getCost(map_x, map_y) >= nav2_costmap_2d::LETHAL_OBSTACLE) {
-//                 return false; // 如果点的代价值大于等于 LETHAL_OBSTACLE，认为有障碍物
-//             }
-//         }
-//     }
-//     return true; // 如果所有点都没有障碍物，认为区域无障碍物
-//  }
 
 // version 2
 // TODO:这个方式会靠障碍物很远
@@ -356,6 +290,47 @@ bool SmacPlannerLattice::isAreaFree(nav2_costmap_2d::Costmap2D* costmap, const g
     return true; // 如果所有点都没有障碍物，认为区域无障碍物
 }
 // end
+
+nav_msgs::msg::Path SmacPlannerLattice::interpolatePath(
+  const geometry_msgs::msg::PoseStamped & start,
+  const geometry_msgs::msg::PoseStamped & goal,
+  double step)   // 5cm
+{
+  nav_msgs::msg::Path path;
+  path.header.stamp = _clock->now(); 
+  path.header.frame_id = _global_frame; 
+
+  double dx = goal.pose.position.x - start.pose.position.x;
+  double dy = goal.pose.position.y - start.pose.position.y;
+  double dist = std::hypot(dx, dy);
+
+  int steps = std::max(1, static_cast<int>(dist / step));
+
+  double yaw_start = tf2::getYaw(start.pose.orientation);
+  double yaw_goal  = tf2::getYaw(goal.pose.orientation);
+  double yaw_diff  = angles::shortest_angular_distance(yaw_start, yaw_goal);
+
+  for (int i = 0; i <= steps; ++i) {
+    double t = static_cast<double>(i) / steps;
+
+    geometry_msgs::msg::PoseStamped p;
+    p.header = path.header;
+    p.pose.position.x = start.pose.position.x + t * dx;
+    p.pose.position.y = start.pose.position.y + t * dy;
+    p.pose.position.z = 0.0;
+
+    double yaw = yaw_start + t * yaw_diff;
+    tf2::Quaternion q;
+    q.setRPY(0, 0, yaw);
+    p.pose.orientation = tf2::toMsg(q);
+
+    path.poses.push_back(p);
+  }
+
+  return path;
+}
+
+
 nav_msgs::msg::Path SmacPlannerLattice::createPlan(
   const geometry_msgs::msg::PoseStamped & start,
   const geometry_msgs::msg::PoseStamped & goal)
@@ -382,99 +357,7 @@ nav_msgs::msg::Path SmacPlannerLattice::createPlan(
   // Set goal point, in A* bin search coordinates
   _costmap->worldToMap(goal.pose.position.x, goal.pose.position.y, mx, my);
 
-  // added by hz
-  // version 1
-  // goal checker
-  // 定义方向数组，用于遍历八领域的相邻网格
-  // const int directions[8][2] = {
-  //   {1, 0}, {-1, 0}, {0, 1}, {0, -1}, 
-  //   {1, 1}, {1, -1}, {-1, 1}, {-1, -1}
-  // };
-
-  // if (!isAreaFree(_costmap, goal)) {
-  //   RCLCPP_WARN(
-  //     _logger,
-  //     "Goal is in collision, searching for nearest free space.");
-
-  //   // 使用队列进行广度优先搜索
-  //   std::queue<std::tuple<unsigned int, unsigned int>> q;
-  //   q.push(std::make_tuple(mx, my));
-
-  //   // 使用 unordered_set 标记已访问的节点
-  //   std::unordered_set<unsigned int> visited;
-  //   visited.insert(mx * _costmap->getSizeInCellsY() + my);
-
-  //   bool found = false;
-  //   unsigned int new_mx = mx, new_my = my;
-
-  //   while (!q.empty() && !found) {
-  //       auto [current_mx, current_my] = q.front();
-  //       q.pop();
-
-  //       // 遍历相邻的网格
-  //       for (const auto& direction : directions) {
-  //           int next_mx = static_cast<int>(current_mx) + direction[0];
-  //           int next_my = static_cast<int>(current_my) + direction[1];
-
-  //           // 检查边界条件
-  //           if (next_mx >= 0 && next_mx < static_cast<int>(_costmap->getSizeInCellsX()) &&
-  //               next_my >= 0 && next_my < static_cast<int>(_costmap->getSizeInCellsY())) {
-  //               unsigned int next_index = next_mx * _costmap->getSizeInCellsY() + next_my;
-  //               if (visited.find(next_index) == visited.end()) {
-  //                   visited.insert(next_index);
-  //                   auto next_value = _costmap->getCost(next_mx, next_my);
-
-  //                   // 如果找到自由空间
-  //                   if (next_value < nav2_costmap_2d::MAX_NON_OBSTACLE) {
-  //                       bool area_free = true;
-
-  //                       // 检查以找到的点为中心的 10*10 区域
-  //                       for (int dx = -5; dx <= 5 && area_free; ++dx) {
-  //                           for (int dy = -5; dy <= 5; ++dy) {
-  //                               int check_mx = next_mx + dx;
-  //                               int check_my = next_my + dy;
-
-  //                               if (check_mx >= 0 && check_mx < static_cast<int>(_costmap->getSizeInCellsX()) &&
-  //                                   check_my >= 0 && check_my < static_cast<int>(_costmap->getSizeInCellsY())) {
-  //                                   if (_costmap->getCost(check_mx, check_my) >= nav2_costmap_2d::INSCRIBED_INFLATED_OBSTACLE) {
-  //                                       area_free = false;
-  //                                       break;
-  //                                   }
-  //                               } else {
-  //                                   area_free = false;
-  //                                   break;
-  //                               }
-  //                           }
-  //                       }
-
-  //                       if (area_free) {
-  //                           new_mx = next_mx;
-  //                           new_my = next_my;
-  //                           found = true;
-  //                           break;
-  //                       }
-  //                   }
-
-  //                   // 将相邻的网格加入队列
-  //                   q.push(std::make_tuple(next_mx, next_my));
-  //               }
-  //           }
-  //       }
-  //   }
-  //   if (found) {
-  //     RCLCPP_INFO(
-  //       _logger,
-  //       "Found nearest free space at (%u, %u).", new_mx, new_my);
-  //     mx = new_mx;
-  //     my = new_my;
-  //   } else {
-  //     RCLCPP_ERROR(
-  //       _logger,
-  //       "No free space found near the goal.");
-  //   }
-  // }
-  // end
-
+ 
   // added by hz
   // version 2
   // TODO:会出现一个问题，如果定位出现问题，它依然会寻找一个可达点，可能会乱跑
@@ -604,14 +487,43 @@ nav_msgs::msg::Path SmacPlannerLattice::createPlan(
     elapsed_time.count());
   // end
 
+  // if (!error.empty()) {
+  //   RCLCPP_WARN(
+  //     _logger,
+  //     "%s: failed to create plan, %s.",
+  //     _name.c_str(), error.c_str());
+  //   return plan;
+  // }
   if (!error.empty()) {
+    double dx = goal.pose.position.x - start.pose.position.x;
+    double dy = goal.pose.position.y - start.pose.position.y;
+    double dist = std::hypot(dx, dy);
+  
     RCLCPP_WARN(
       _logger,
-      "%s: failed to create plan, %s.",
-      _name.c_str(), error.c_str());
+      "%s: failed to create plan (%s), dist to goal = %.3f",
+      _name.c_str(), error.c_str(), dist);
+  
+    // 兜底条件：距离近 + 目标区域可达
+    if (dist < 0.2 && isAreaFree(_costmap, goal)) {
+      RCLCPP_WARN(
+        _logger,
+        "Using interpolated path fallback (distance %.2f m).",
+        dist);
+  
+      auto interp_path = interpolatePath(
+        start, goal, 0.02);
+  
+      if (_raw_plan_publisher->get_subscription_count() > 0) {
+        _raw_plan_publisher->publish(interp_path);
+      }
+  
+      return interp_path;
+    }
+  
+    // 否则保持原行为
     return plan;
   }
-
   // Convert to world coordinates
   plan.poses.reserve(path.size());
   geometry_msgs::msg::PoseStamped last_pose = pose;
