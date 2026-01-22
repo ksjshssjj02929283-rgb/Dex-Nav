@@ -127,7 +127,7 @@ public:
 
     collision_checker_ = collision_checker;
 
-    vel_pub_ = node->template create_publisher<geometry_msgs::msg::Twist>("control/cmd_vel", 1);
+    vel_pub_ = node->template create_publisher<geometry_msgs::msg::Twist>("control/cmd_vel_nav", 1);
 
     onConfigure();
   }

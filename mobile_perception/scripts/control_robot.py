@@ -53,7 +53,7 @@ class ControlNode(Node):
         self.control_result = 2 
         
         # Publisher for cmd_vel
-        self.cmd_vel_pub = self.create_publisher(Twist, 'control/cmd_vel', 10)
+        self.cmd_vel_pub = self.create_publisher(Twist, 'control/cmd_vel_nav', 10)
         
         # Publisher for control result
         self.result_pub = self.create_publisher(Int32, 'docking_ctrl_result', 10)
