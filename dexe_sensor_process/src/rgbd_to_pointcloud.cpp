@@ -27,7 +27,22 @@
 #include <cmath>
 #include <tf2_ros/transform_listener.hpp>  
 
+#include <unordered_set>
 
+struct XZKey {
+    int x;
+    int z;
+
+    bool operator==(const XZKey & other) const {
+        return x == other.x && z == other.z;
+    }
+};
+
+struct XZKeyHash {
+    std::size_t operator()(const XZKey & k) const {
+        return std::hash<int>()(k.x) ^ (std::hash<int>()(k.z) << 1);
+    }
+};
 
 class RgbdToPointCloud : public rclcpp::Node {
 public:
@@ -49,6 +64,7 @@ public:
         this->declare_parameter<int>("sor_mean_k", 50);
         this->declare_parameter<double>("sor_stddev_mul_thresh", 1.0);
         this->declare_parameter<double>("ground_filter_threshold", 0.12);
+        this->declare_parameter<double>("flatten_resolution", 0.02);
         
         // （虚拟点云相关参数已移除）
         
@@ -84,6 +100,7 @@ public:
         sor_stddev_mul_thresh_ = this->get_parameter("sor_stddev_mul_thresh").as_double();
         ground_filter_threshold_ = this->get_parameter("ground_filter_threshold").as_double();
         
+        flatten_resolution_ = this->get_parameter("flatten_resolution").as_double();
 
         
         // 创建原生 ROS 订阅（不再使用时间同步器）
@@ -382,11 +399,27 @@ private:
         pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_y_filtered(new pcl::PointCloud<pcl::PointXYZ>);
         cloud_y_filtered->header = cloud_xyz->header;
         cloud_y_filtered->is_dense = cloud_xyz->is_dense;
-        
+        std::unordered_set<XZKey, XZKeyHash> occupied_cells;
         for (const auto& point : cloud_xyz->points) {
             // 只保留 Y 坐标小于等于阈值的点
-            if (point.y <= static_cast<float>(ground_filter_threshold_)) {
-                cloud_y_filtered->points.push_back(point);
+            if (point.y > static_cast<float>(ground_filter_threshold_)) {
+                // cloud_y_filtered->points.push_back(point);
+                continue;
+            }
+
+            // 2️⃣ x-z 平面离散化
+            const int gx = static_cast<int>(std::floor(point.x / flatten_resolution_));
+            const int gz = static_cast<int>(std::floor(point.z / flatten_resolution_));
+
+            XZKey key{gx, gz};
+
+            // 3️⃣ 同一个 (x,z) 栅格只保留一个点
+            if (occupied_cells.insert(key).second) {
+                pcl::PointXYZ p;
+                p.x = (gx + 0.5f) * flatten_resolution_; // 可选：栅格中心
+                p.y = 0.0f;
+                p.z = (gz + 0.5f) * flatten_resolution_;
+                cloud_y_filtered->points.push_back(p);
             }
         }
         cloud_y_filtered->width = cloud_y_filtered->points.size();
@@ -534,6 +567,7 @@ private:
     int sor_mean_k_ = 50;
     double sor_stddev_mul_thresh_ = 1.0;
     double ground_filter_threshold_ = 0.12;
+    double flatten_resolution_ = 0.02;
     
 
 };

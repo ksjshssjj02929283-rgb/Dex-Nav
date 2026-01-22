@@ -22,6 +22,22 @@ find_package(nav2_util REQUIRED)
 find_package(yaml-cpp REQUIRED)
 find_package(tf2_ros REQUIRED)
 
+
+
+find_package(std_srvs REQUIRED)
+find_package(tf2_ros REQUIRED)
+find_package(geometry_msgs REQUIRED)
+find_package(tf2_geometry_msgs REQUIRED)
+find_package(nlohmann_json REQUIRED)
+
+add_executable(charging_pose_service_node src/charging_pose_service.cpp)
+ament_target_dependencies(charging_pose_service_node
+  rclcpp std_srvs tf2_ros geometry_msgs tf2_geometry_msgs nlohmann_json
+)
+install( TARGETS
+    charging_pose_service_node
+    DESTINATION lib/${PROJECT_NAME}) 
+
 include_directories(include ${OpenCV_INCLUDE_DIRS})
 
 # Declare a C++ executable
