@@ -96,24 +96,13 @@ def main():
 
 
 def parse_command_line():
-    parser = argparse.ArgumentParser(
-        description='Convert a behavior tree XML file to an image')
+    parser = argparse.ArgumentParser(description='Convert a behavior tree XML file to an image')
+    parser.add_argument('--behavior_tree', required=True, help='the behavior tree XML file to convert to an image')
     parser.add_argument(
-        '--behavior_tree',
-        required=True,
-        help='the behavior tree XML file to convert to an image')
+        '--image_out', required=True, help='The name of the output image file. Leave off the .png extension')
+    parser.add_argument('--display', action="store_true", help='If specified, opens the image in the default viewer')
     parser.add_argument(
-        '--image_out',
-        required=True,
-        help='The name of the output image file. Leave off the .png extension')
-    parser.add_argument(
-        '--display',
-        action="store_true",
-        help='If specified, opens the image in the default viewer')
-    parser.add_argument(
-        '--save_dot',
-        type=argparse.FileType('w'),
-        help='Saves the intermediate dot source to the specified file')
+        '--save_dot', type=argparse.FileType('w'), help='Saves the intermediate dot source to the specified file')
     parser.add_argument('--legend', help='Generate a legend image as well')
     return parser.parse_args()
 
@@ -131,8 +120,7 @@ def find_behavior_tree(xml_tree, tree_name):
         if tree_name == tree.get('ID'):
             return tree
 
-    raise RuntimeError(
-        f'No behavior tree for name {tree_name} found in the XML file')
+    raise RuntimeError(f'No behavior tree for name {tree_name} found in the XML file')
 
 
 # Generate a dot description of the root of the behavior tree.
@@ -165,11 +153,7 @@ def add_sub_tree(dot, parent_dot_name, parent_node):
 def add_nodes(dot, parent_dot_name, parent_node):
     for node in list(parent_node):
         label = make_label(node)
-        dot.node(str(hash(node)),
-                 label,
-                 color=node_color(node.tag),
-                 style='filled',
-                 shape='box')
+        dot.node(str(hash(node)), label, color=node_color(node.tag), style='filled', shape='box')
         dot_name = str(hash(node))
         dot.edge(parent_dot_name, dot_name)
         convert_subtree(dot, node, dot_name)
@@ -210,21 +194,9 @@ def make_legend():
     legend = graphviz.Digraph(graph_attr={'rankdir': 'LR'})
     legend.attr(label='Legend')
     legend.node('Unknown', shape='box', style='filled', color="grey")
-    legend.node('Action',
-                'Action Node',
-                shape='box',
-                style='filled',
-                color="cornflowerblue")
-    legend.node('Condition',
-                'Condition Node',
-                shape='box',
-                style='filled',
-                color="yellow2")
-    legend.node('Control',
-                'Control Node',
-                shape='box',
-                style='filled',
-                color="chartreuse4")
+    legend.node('Action', 'Action Node', shape='box', style='filled', color="cornflowerblue")
+    legend.node('Condition', 'Condition Node', shape='box', style='filled', color="yellow2")
+    legend.node('Control', 'Control Node', shape='box', style='filled', color="chartreuse4")
 
     return legend
 

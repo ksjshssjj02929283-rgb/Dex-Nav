@@ -22,13 +22,10 @@ class NavGoalServer(Node):
         self.frame_id = 'map'  # 固定使用map坐标系
 
         # 创建订阅器
-        self.subscription = self.create_subscription(PoseStamped,
-                                                     '/control/nav2_pose',
-                                                     self.goal_callback, 10)
+        self.subscription = self.create_subscription(PoseStamped, '/control/nav2_pose', self.goal_callback, 10)
 
         # 创建Action客户端
-        self._action_client = ActionClient(self, NavigateToPose,
-                                           'navigate_to_pose')
+        self._action_client = ActionClient(self, NavigateToPose, 'navigate_to_pose')
 
         # 等待Action服务器
         self.get_logger().info("Waiting for action server...")
@@ -37,8 +34,7 @@ class NavGoalServer(Node):
 
         # 导航超时设置
         self.navigation_timeout = 120.0  # 2分钟超时
-        self.navigation_timer = self.create_timer(1.0,
-                                                  self.check_navigation_timeout)
+        self.navigation_timer = self.create_timer(1.0, self.check_navigation_timeout)
         self.start_time = None
 
         # 目标句柄
@@ -65,8 +61,7 @@ class NavGoalServer(Node):
         # 如果正在导航，先取消当前导航
         if self.is_navigating:
             if not self.is_canceling:
-                self.get_logger().info(
-                    "Canceling current navigation to accept new goal...")
+                self.get_logger().info("Canceling current navigation to accept new goal...")
                 self.cancel_current_navigation()
         else:
             # 没有正在进行的导航，直接发送新目标
@@ -115,8 +110,7 @@ class NavGoalServer(Node):
             if len(cancel_response.goals_canceling) > 0:
                 self.get_logger().info("Navigation canceled successfully")
             else:
-                self.get_logger().warn(
-                    "Cancel response empty, assuming canceled")
+                self.get_logger().warn("Cancel response empty, assuming canceled")
         except Exception as e:
             self.get_logger().error(f"Cancel failed: {str(e)}")
         finally:
@@ -158,8 +152,7 @@ class NavGoalServer(Node):
         self.start_time = time.time()
 
         # 发送目标
-        self._send_goal_future = self._action_client.send_goal_async(
-            goal_msg, feedback_callback=self.feedback_callback)
+        self._send_goal_future = self._action_client.send_goal_async(goal_msg, feedback_callback=self.feedback_callback)
         self._send_goal_future.add_done_callback(self.goal_response_callback)
 
     def goal_response_callback(self, future):
@@ -197,8 +190,7 @@ class NavGoalServer(Node):
             elif status == 6:  # ABORTED
                 self.get_logger().warn("Navigation aborted!")
             else:
-                self.get_logger().warn(
-                    f"Navigation ended with status: {status}")
+                self.get_logger().warn(f"Navigation ended with status: {status}")
 
         except Exception as e:
             self.get_logger().error(f"Error in result callback: {str(e)}")
@@ -211,8 +203,7 @@ class NavGoalServer(Node):
                 self.get_logger().info("Sending pending goal after completion")
                 self.send_new_goal()
             else:
-                self.get_logger().info(
-                    "Navigation completed. Waiting for next goal...")
+                self.get_logger().info("Navigation completed. Waiting for next goal...")
 
     def feedback_callback(self, feedback_msg):
         """处理导航反馈"""
@@ -221,12 +212,9 @@ class NavGoalServer(Node):
 
         if hasattr(feedback, 'estimated_time_remaining'):
             eta = feedback.estimated_time_remaining.sec
-            self.get_logger().info(
-                f'Progress - Distance: {distance:.2f}m, ETA: {eta}s',
-                throttle_duration_sec=2.0)
+            self.get_logger().info(f'Progress - Distance: {distance:.2f}m, ETA: {eta}s', throttle_duration_sec=2.0)
         else:
-            self.get_logger().info(f'Distance remaining: {distance:.2f}m',
-                                   throttle_duration_sec=2.0)
+            self.get_logger().info(f'Distance remaining: {distance:.2f}m', throttle_duration_sec=2.0)
 
         # 更新超时计时器（有反馈说明还在运行）
         self.start_time = time.time()
@@ -238,9 +226,7 @@ class NavGoalServer(Node):
 
         elapsed = time.time() - self.start_time
         if elapsed > self.navigation_timeout:
-            self.get_logger().error(
-                f"Navigation timeout after {elapsed:.1f}s (limit: {self.navigation_timeout}s)"
-            )
+            self.get_logger().error(f"Navigation timeout after {elapsed:.1f}s (limit: {self.navigation_timeout}s)")
             self.cancel_current_navigation()
 
 
@@ -250,13 +236,11 @@ def main(args=None):
     nav_goal_server = None
     try:
         nav_goal_server = NavGoalServer()
-        nav_goal_server.get_logger().info(
-            "Nav goal server started, waiting for goals on /control/nav2_pose")
+        nav_goal_server.get_logger().info("Nav goal server started, waiting for goals on /control/nav2_pose")
         rclpy.spin(nav_goal_server)
     except KeyboardInterrupt:
         if nav_goal_server:
-            nav_goal_server.get_logger().info(
-                "Shutting down by keyboard interrupt")
+            nav_goal_server.get_logger().info("Shutting down by keyboard interrupt")
     except Exception as e:
         if nav_goal_server:
             nav_goal_server.get_logger().error(f"Error in main: {str(e)}")

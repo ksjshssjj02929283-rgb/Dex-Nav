@@ -27,8 +27,7 @@ from custom_interfaces.msg import Status
 
 def get_package_path(package_name):
     try:
-        return ament_index_python.packages.get_package_share_directory(
-            package_name)
+        return ament_index_python.packages.get_package_share_directory(package_name)
     except ament_index_python.packages.PackageNotFoundError:
         print(f"Package '{package_name}' not found.")
         return None
@@ -46,8 +45,7 @@ class UnifiedDetector(Node):
         self.apriltags_feild_path = apriltags_feild_path
 
         # Initialize the detector
-        self.apriltag_detector = Detector(
-            families=self.apriltags_feild_config["tag_family"])
+        self.apriltag_detector = Detector(families=self.apriltags_feild_config["tag_family"])
 
         # CV Bridge for ROS2 Image messages
         self.bridge = CvBridge()
@@ -69,8 +67,7 @@ class UnifiedDetector(Node):
         # Variable to store the latest status
         self.latest_status = None
 
-        self.status_sub = self.create_subscription(Status, 'status',
-                                                   self.status_callback, 30)
+        self.status_sub = self.create_subscription(Status, 'status', self.status_callback, 30)
         self.timer = self.create_timer(0.1, self.check_status_and_shutdown)
 
     def check_status_and_shutdown(self):
@@ -102,14 +99,10 @@ class UnifiedDetector(Node):
     def detect_by_photography(self, image_path):
         image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
         if image is None:
-            raise ValueError(
-                f"Image not loaded correctly. Check the path: {image_path}")
+            raise ValueError(f"Image not loaded correctly. Check the path: {image_path}")
         tag_size = self.apriltags_feild_config["tag_size"]
 
-        tags = self.apriltag_detector.detect(image,
-                                             estimate_tag_pose=False,
-                                             camera_params=None,
-                                             tag_size=tag_size)
+        tags = self.apriltag_detector.detect(image, estimate_tag_pose=False, camera_params=None, tag_size=tag_size)
 
         # Print the detected tags
         for tag in tags:
@@ -125,9 +118,7 @@ class UnifiedDetector(Node):
         # Lookup the transformation from camera_rgb_optical_frame to base_link, camera_color_optical_frame(buddi)
         # change to the same transname in the Buddi
         # link_name = 'camera_color_optical_frame'
-        transform = self.tf_buffer.lookup_transform('base_link',
-                                                    self.camera_link,
-                                                    rclpy.time.Time())
+        transform = self.tf_buffer.lookup_transform('base_link', self.camera_link, rclpy.time.Time())
         # print()
         # Extract the translation and rotation from the transformation
         translation = transform.transform.translation
@@ -137,10 +128,8 @@ class UnifiedDetector(Node):
         # print("translation: ", translation)
         # print("rotation: ", rotation)
 
-        translation_vec = np.array(
-            [translation.x, translation.y, translation.z])
-        rotation_quat = np.array(
-            [rotation.x, rotation.y, rotation.z, rotation.w])
+        translation_vec = np.array([translation.x, translation.y, translation.z])
+        rotation_quat = np.array([rotation.x, rotation.y, rotation.z, rotation.w])
 
         # Print rotation quaternion
         # quaternion = [rotation.x, rotation.y, rotation.z, rotation.w]
@@ -156,8 +145,7 @@ class UnifiedDetector(Node):
         # print("rotation_quaternion11: ", rotation_quaternion11)
 
         # Construct the transformation matrix from the translation and rotation
-        transformation_matrix = t3d.affines.compose(
-            translation_vec, t3d.quaternions.quat2mat(rotation_quat), [1, 1, 1])
+        transformation_matrix = t3d.affines.compose(translation_vec, t3d.quaternions.quat2mat(rotation_quat), [1, 1, 1])
         transformation_matrix = np.round(transformation_matrix, 4)
         # print("111transformation_matrix: ", transformation_matrix)
         # print("pose_matrix: ", pose_matrix)
@@ -242,8 +230,7 @@ class UnifiedDetector(Node):
         except AttributeError as e:
             if '_ARRAY_API' in str(e):
                 self.get_logger().error(
-                    "AttributeError: _ARRAY_API not found. This may be due to NumPy version incompatibility."
-                )
+                    "AttributeError: _ARRAY_API not found. This may be due to NumPy version incompatibility.")
                 return
             else:
                 raise e
@@ -251,10 +238,7 @@ class UnifiedDetector(Node):
         tag_size = self.apriltags_feild_config["tag_size"]
 
         # Detect AprilTags
-        tags = self.apriltag_detector.detect(gray_image,
-                                             estimate_tag_pose=False,
-                                             camera_params=None,
-                                             tag_size=tag_size)
+        tags = self.apriltag_detector.detect(gray_image, estimate_tag_pose=False, camera_params=None, tag_size=tag_size)
 
         # Access the camera intrinsic parameters and distortion coefficients
         camera_settings = self.camera_config['cameras'][0]['settings']
@@ -262,18 +246,21 @@ class UnifiedDetector(Node):
 
         # Camera intrinsic parameters
         camera_matrix = np.array(
-            [[intrinsic_params['fx'], 0, intrinsic_params['cx']],
-             [0, intrinsic_params['fy'], intrinsic_params['cy']], [0, 0, 1]])
+            [
+                [intrinsic_params['fx'], 0, intrinsic_params['cx']],
+                [0, intrinsic_params['fy'], intrinsic_params['cy']], [0, 0, 1]
+            ])
         # print("camera_matrix", camera_matrix)
         # Distortion coefficients
         dist_coeffs = np.array(camera_settings['dist_coeffs'])
 
         # 3D coordinates of the AprilTag corners in the tag coordinate system
         tag_half_size = tag_size / 2
-        object_points = np.array([[-tag_half_size, -tag_half_size, 0],
-                                  [tag_half_size, -tag_half_size, 0],
-                                  [tag_half_size, tag_half_size, 0],
-                                  [-tag_half_size, tag_half_size, 0]])
+        object_points = np.array(
+            [
+                [-tag_half_size, -tag_half_size, 0], [tag_half_size, -tag_half_size, 0],
+                [tag_half_size, tag_half_size, 0], [-tag_half_size, tag_half_size, 0]
+            ])
 
         pose_array = PoseArray()
         pose_array.header.stamp = self.get_clock().now().to_msg()
@@ -283,26 +270,22 @@ class UnifiedDetector(Node):
             # Estimate Pose3D by solvePnP (center of the AprilTags to the camera)
             for tag in tags:
                 # 2D coordinates of the detected tag corners in the image plane
-                image_points = np.array([[tag.corners[0][0], tag.corners[0][1]],
-                                         [tag.corners[1][0], tag.corners[1][1]],
-                                         [tag.corners[2][0], tag.corners[2][1]],
-                                         [tag.corners[3][0],
-                                          tag.corners[3][1]]])
+                image_points = np.array(
+                    [
+                        [tag.corners[0][0], tag.corners[0][1]], [tag.corners[1][0], tag.corners[1][1]],
+                        [tag.corners[2][0], tag.corners[2][1]], [tag.corners[3][0], tag.corners[3][1]]
+                    ])
 
                 # SolvePnP to find the rotation and translation vectors
                 # Use a more stable PnP method
-                success, rvec, tvec = cv2.solvePnP(object_points,
-                                                   image_points,
-                                                   camera_matrix,
-                                                   dist_coeffs,
-                                                   flags=SOLVEPNP_ITERATIVE)
+                success, rvec, tvec = cv2.solvePnP(
+                    object_points, image_points, camera_matrix, dist_coeffs, flags=SOLVEPNP_ITERATIVE)
 
                 if success:
                     det_matrix = self.create_transformation_matrix(rvec, tvec)
                     # print("tag in camera detect tvec : ", tvec)
                     # print("tag in camera detect rvec : ", rvec)
-                    transformed_pose = self.transform_pose_to_base_frame(
-                        det_matrix)
+                    transformed_pose = self.transform_pose_to_base_frame(det_matrix)
                     x = transformed_pose.position.x
                     y = transformed_pose.position.y
                     z = transformed_pose.position.z
@@ -312,8 +295,7 @@ class UnifiedDetector(Node):
                     pose_array.poses.append(transformed_pose)
 
                 else:
-                    self.get_logger().warn(
-                        f'Could not estimate pose for tag ID {tag.tag_id}')
+                    self.get_logger().warn(f'Could not estimate pose for tag ID {tag.tag_id}')
 
             # Publish the pose array
             self.pose_pub.publish(pose_array)
@@ -337,10 +319,8 @@ def main(args=None):
     rclpy.init(args=args)
 
     package_path = get_package_path('b1_perception')
-    camera_config_path = os.path.join(package_path +
-                                      '/config/camera_config.json')
-    apriltags_feild_path = os.path.join(package_path +
-                                        '/config/tags_config.json')
+    camera_config_path = os.path.join(package_path + '/config/camera_config.json')
+    apriltags_feild_path = os.path.join(package_path + '/config/tags_config.json')
 
     unified_detector = UnifiedDetector(camera_config_path, apriltags_feild_path)
     unified_detector.detect_by_camera_topics('/camera/image_raw')

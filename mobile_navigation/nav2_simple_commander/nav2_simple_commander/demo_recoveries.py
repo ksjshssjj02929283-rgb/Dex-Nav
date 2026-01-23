@@ -56,9 +56,9 @@ def main():
         i += 1
         feedback = navigator.getFeedback()
         if feedback and i % 5 == 0:
-            print(f'Estimated time of arrival to destination is: \
-                {Duration.from_msg(feedback.estimated_time_remaining).nanoseconds / 1e9}'
-                 )
+            print(
+                f'Estimated time of arrival to destination is: \
+                {Duration.from_msg(feedback.estimated_time_remaining).nanoseconds / 1e9}')
 
     # Robot hit a dead end, back it up
     print('Robot hit a dead end, backing up...')

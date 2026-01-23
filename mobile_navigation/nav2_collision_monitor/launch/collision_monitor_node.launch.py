@@ -41,30 +41,23 @@ def generate_launch_description():
     params_file = LaunchConfiguration('params_file')
 
     # 2. Declare the launch arguments
-    declare_namespace_cmd = DeclareLaunchArgument(
-        'namespace', default_value='', description='Top-level namespace')
+    declare_namespace_cmd = DeclareLaunchArgument('namespace', default_value='', description='Top-level namespace')
 
     declare_use_sim_time_cmd = DeclareLaunchArgument(
-        'use_sim_time',
-        default_value='True',
-        description='Use simulation (Gazebo) clock if true')
+        'use_sim_time', default_value='True', description='Use simulation (Gazebo) clock if true')
 
     declare_params_file_cmd = DeclareLaunchArgument(
         'params_file',
-        default_value=os.path.join(package_dir, 'params',
-                                   'collision_monitor_params.yaml'),
-        description=
-        'Full path to the ROS2 parameters file to use for all launched nodes')
+        default_value=os.path.join(package_dir, 'params', 'collision_monitor_params.yaml'),
+        description='Full path to the ROS2 parameters file to use for all launched nodes')
 
     # Create our own temporary YAML files that include substitutions
     param_substitutions = {'use_sim_time': use_sim_time}
 
-    configured_params = ParameterFile(RewrittenYaml(
-        source_file=params_file,
-        root_key=namespace,
-        param_rewrites=param_substitutions,
-        convert_types=True),
-                                      allow_substs=True)
+    configured_params = ParameterFile(
+        RewrittenYaml(
+            source_file=params_file, root_key=namespace, param_rewrites=param_substitutions, convert_types=True),
+        allow_substs=True)
 
     # Nodes launching commands
     start_lifecycle_manager_cmd = Node(

@@ -27,11 +27,9 @@ class ChargingPoseSaver(Node):
         self.save_path = os.path.join(pkg_path, 'config', 'charging_pose.json')
 
         # Service
-        self.srv = self.create_service(Trigger, 'save_charging_pose',
-                                       self.handle_save_request)
+        self.srv = self.create_service(Trigger, 'save_charging_pose', self.handle_save_request)
 
-        self.get_logger().info(
-            f'Charging pose saver service ready. Save path: {self.save_path}')
+        self.get_logger().info(f'Charging pose saver service ready. Save path: {self.save_path}')
 
     # ===============================
     # Service callback
@@ -54,12 +52,13 @@ class ChargingPoseSaver(Node):
                 'y': pose.pose.position.y,
                 'z': pose.pose.position.z
             },
-            'orientation': {
-                'x': pose.pose.orientation.x,
-                'y': pose.pose.orientation.y,
-                'z': pose.pose.orientation.z,
-                'w': pose.pose.orientation.w
-            }
+            'orientation':
+                {
+                    'x': pose.pose.orientation.x,
+                    'y': pose.pose.orientation.y,
+                    'z': pose.pose.orientation.z,
+                    'w': pose.pose.orientation.w
+                }
         }
 
         response.success = True
@@ -83,10 +82,7 @@ class ChargingPoseSaver(Node):
             for retry in range(20):
                 try:
                     trans = self.tf_buffer.lookup_transform(
-                        'map',
-                        'base_link',
-                        rclpy.time.Time(),
-                        timeout=rclpy.duration.Duration(seconds=0.2))
+                        'map', 'base_link', rclpy.time.Time(), timeout=rclpy.duration.Duration(seconds=0.2))
                     break
                 except Exception as e:
                     self.get_logger().warn(f'第{i+1}次 TF 查找重试 {retry+1}: {e}')
@@ -100,15 +96,14 @@ class ChargingPoseSaver(Node):
             if header is None:
                 header = trans.header
 
-            positions.append([
-                trans.transform.translation.x, trans.transform.translation.y,
-                trans.transform.translation.z
-            ])
+            positions.append(
+                [trans.transform.translation.x, trans.transform.translation.y, trans.transform.translation.z])
 
-            orientations.append([
-                trans.transform.rotation.x, trans.transform.rotation.y,
-                trans.transform.rotation.z, trans.transform.rotation.w
-            ])
+            orientations.append(
+                [
+                    trans.transform.rotation.x, trans.transform.rotation.y, trans.transform.rotation.z,
+                    trans.transform.rotation.w
+                ])
 
         pos_mean = np.mean(positions, axis=0)
         ori_mean = np.mean(orientations, axis=0)
@@ -136,12 +131,13 @@ class ChargingPoseSaver(Node):
                 'y': pose.pose.position.y,
                 'z': pose.pose.position.z
             },
-            'orientation': {
-                'x': pose.pose.orientation.x,
-                'y': pose.pose.orientation.y,
-                'z': pose.pose.orientation.z,
-                'w': pose.pose.orientation.w
-            }
+            'orientation':
+                {
+                    'x': pose.pose.orientation.x,
+                    'y': pose.pose.orientation.y,
+                    'z': pose.pose.orientation.z,
+                    'w': pose.pose.orientation.w
+                }
         }
 
         os.makedirs(os.path.dirname(self.save_path), exist_ok=True)

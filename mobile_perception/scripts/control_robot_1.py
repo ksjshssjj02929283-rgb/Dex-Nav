@@ -23,8 +23,7 @@ import os
 
 def get_package_path(package_name):
     try:
-        return ament_index_python.packages.get_package_share_directory(
-            package_name)
+        return ament_index_python.packages.get_package_share_directory(package_name)
     except ament_index_python.packages.PackageNotFoundError:
         print(f"Package '{package_name}' not found.")
         return None
@@ -49,12 +48,10 @@ class ControlNode(Node):
         self.cmd_vel_pub = self.create_publisher(Twist, 'cmd_vel', 10)
 
         # Publisher for control result
-        self.result_pub = self.create_publisher(Int32, 'docking_ctrl_result',
-                                                10)
+        self.result_pub = self.create_publisher(Int32, 'docking_ctrl_result', 10)
 
         # Subscriber for AprilTag poses
-        self.pose_sub = self.create_subscription(PoseArray, 'apriltag_poses',
-                                                 self.pose_callback, 10)
+        self.pose_sub = self.create_subscription(PoseArray, 'apriltag_poses', self.pose_callback, 10)
 
         # Timer for control loop
         self.timer = self.create_timer(0.1, self.control_loop)

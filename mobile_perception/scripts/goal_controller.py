@@ -82,8 +82,7 @@ class GoalController:
         err_theta, _, _ = self.compute_rotation_error(goal, cur, order='zyx')
         dy = abs(cur.position.y - goal.position.y)
         dTh = abs(self.normalize_pi(err_theta))
-        self.res_ = (d < self.linear_tolerance and
-                     dTh < self.angular_tolerance and dy < 0.01)
+        self.res_ = (d < self.linear_tolerance and dTh < self.angular_tolerance and dy < 0.01)
         if self.res_:
             print("dist_err = ", d, "theta_yaw_err = ", dTh)
         return self.res_
@@ -93,10 +92,7 @@ class GoalController:
         q_yaw = R.from_euler(order, [yaw, 0, 0], degrees=False)
 
         # Create a rotation from the pose's orientation quaternion
-        q1 = R.from_quat([
-            pose.orientation.x, pose.orientation.y, pose.orientation.z,
-            pose.orientation.w
-        ])
+        q1 = R.from_quat([pose.orientation.x, pose.orientation.y, pose.orientation.z, pose.orientation.w])
 
         # Apply the yaw rotation to the pose's orientation
         q_new = q_yaw * q1
@@ -116,14 +112,10 @@ class GoalController:
 
     def compute_rotation_error(self, tar_pose, orin_pose, order='zyx'):
         # Create rotations from the poses' orientation quaternions
-        q_tar = R.from_quat([
-            tar_pose.orientation.x, tar_pose.orientation.y,
-            tar_pose.orientation.z, tar_pose.orientation.w
-        ])
-        q_orin = R.from_quat([
-            orin_pose.orientation.x, orin_pose.orientation.y,
-            orin_pose.orientation.z, orin_pose.orientation.w
-        ])
+        q_tar = R.from_quat(
+            [tar_pose.orientation.x, tar_pose.orientation.y, tar_pose.orientation.z, tar_pose.orientation.w])
+        q_orin = R.from_quat(
+            [orin_pose.orientation.x, orin_pose.orientation.y, orin_pose.orientation.z, orin_pose.orientation.w])
 
         # Compute the rotation error
         q_error = q_tar * q_orin.inv()
@@ -134,18 +126,14 @@ class GoalController:
         return yaw, pitch, roll
 
     def get_pose_yaw(self, pose, order='zyx'):
-        q = R.from_quat([
-            pose.orientation.x, pose.orientation.y, pose.orientation.z,
-            pose.orientation.w
-        ])
+        q = R.from_quat([pose.orientation.x, pose.orientation.y, pose.orientation.z, pose.orientation.w])
         yaw, pitch, roll = q.as_euler(order, degrees=False)
         return yaw
 
     def get_velocity(self, cur, goal, dT, direction=1):
         #  a is the difference between the current yaw (cur_yaw) and the direction to the goal (goal_heading)
         # b is the error in heading, considering the goal's orientation (goal_yaw), adjusted by a.
-        goal_heading = atan2(cur.position.y - goal.position.y,
-                             cur.position.x - goal.position.x)
+        goal_heading = atan2(cur.position.y - goal.position.y, cur.position.x - goal.position.x)
 
         normalized_goal_heading = self.normalize_pi(goal_heading)
         tar1 = self.add_yaw(cur, normalized_goal_heading, order='zyx')

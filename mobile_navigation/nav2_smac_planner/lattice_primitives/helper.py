@@ -123,5 +123,4 @@ def get_rotation_matrix(angle):
     A 2x2 matrix representing a 2D rotation by angle
 
     """
-    return np.array([[np.cos(angle), -np.sin(angle)],
-                     [np.sin(angle), np.cos(angle)]])
+    return np.array([[np.cos(angle), -np.sin(angle)], [np.sin(angle), np.cos(angle)]])

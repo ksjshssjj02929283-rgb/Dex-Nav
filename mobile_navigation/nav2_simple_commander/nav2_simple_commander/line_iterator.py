@@ -86,8 +86,7 @@ class LineIterator():
             self.b_ = y1 - (self.m_ * x1)
         else:
             self.valid_ = False
-            raise ValueError(
-                "Line has zero length (All 4 points have same coordinates)")
+            raise ValueError("Line has zero length (All 4 points have same coordinates)")
 
     def isValid(self):
         """Check if line is valid."""
@@ -97,33 +96,25 @@ class LineIterator():
         """Advance to the next point in the line."""
         if self.x1_ > self.x0_:
             if self.x_ < self.x1_:
-                self.x_ = round(
-                    self.clamp(self.x_ + self.step_size_, self.x0_, self.x1_),
-                    5)
+                self.x_ = round(self.clamp(self.x_ + self.step_size_, self.x0_, self.x1_), 5)
                 self.y_ = round(self.m_ * self.x_ + self.b_, 5)
             else:
                 self.valid_ = False
         elif self.x1_ < self.x0_:
             if self.x_ > self.x1_:
-                self.x_ = round(
-                    self.clamp(self.x_ - self.step_size_, self.x1_, self.x0_),
-                    5)
+                self.x_ = round(self.clamp(self.x_ - self.step_size_, self.x1_, self.x0_), 5)
                 self.y_ = round(self.m_ * self.x_ + self.b_, 5)
             else:
                 self.valid_ = False
         else:
             if self.y1_ > self.y0_:
                 if self.y_ < self.y1_:
-                    self.y_ = round(
-                        self.clamp(self.y_ + self.step_size_, self.y0_,
-                                   self.y1_), 5)
+                    self.y_ = round(self.clamp(self.y_ + self.step_size_, self.y0_, self.y1_), 5)
                 else:
                     self.valid_ = False
             elif self.y1_ < self.y0_:
                 if self.y_ > self.y1_:
-                    self.y_ = round(
-                        self.clamp(self.y_ - self.step_size_, self.y1_,
-                                   self.y0_), 5)
+                    self.y_ = round(self.clamp(self.y_ - self.step_size_, self.y1_, self.y0_), 5)
                 else:
                     self.valid_ = False
             else:

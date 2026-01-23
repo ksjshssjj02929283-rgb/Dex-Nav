@@ -68,75 +68,52 @@ def generate_launch_description():
     remappings = [('/tf', 'tf'), ('/tf_static', 'tf_static')]
 
     # Declare the launch arguments
-    declare_namespace_cmd = DeclareLaunchArgument(
-        'namespace', default_value='', description='Top-level namespace')
+    declare_namespace_cmd = DeclareLaunchArgument('namespace', default_value='', description='Top-level namespace')
 
     declare_use_namespace_cmd = DeclareLaunchArgument(
-        'use_namespace',
-        default_value='false',
-        description='Whether to apply a namespace to the navigation stack')
+        'use_namespace', default_value='false', description='Whether to apply a namespace to the navigation stack')
 
-    declare_slam_cmd = DeclareLaunchArgument('slam',
-                                             default_value='False',
-                                             description='Whether run a SLAM')
+    declare_slam_cmd = DeclareLaunchArgument('slam', default_value='False', description='Whether run a SLAM')
 
     declare_map_yaml_cmd = DeclareLaunchArgument(
         'map',
-        default_value=os.path.join(bringup_dir, 'maps',
-                                   'turtlebot3_world.yaml'),
+        default_value=os.path.join(bringup_dir, 'maps', 'turtlebot3_world.yaml'),
         description='Full path to map file to load')
 
     declare_use_sim_time_cmd = DeclareLaunchArgument(
-        'use_sim_time',
-        default_value='true',
-        description='Use simulation (Gazebo) clock if true')
+        'use_sim_time', default_value='true', description='Use simulation (Gazebo) clock if true')
 
     declare_params_file_cmd = DeclareLaunchArgument(
         'params_file',
         default_value=os.path.join(bringup_dir, 'params', 'nav2_params.yaml'),
-        description=
-        'Full path to the ROS2 parameters file to use for all launched nodes')
+        description='Full path to the ROS2 parameters file to use for all launched nodes')
 
     declare_autostart_cmd = DeclareLaunchArgument(
-        'autostart',
-        default_value='true',
-        description='Automatically startup the nav2 stack')
+        'autostart', default_value='true', description='Automatically startup the nav2 stack')
 
     declare_use_composition_cmd = DeclareLaunchArgument(
-        'use_composition',
-        default_value='True',
-        description='Whether to use composed bringup')
+        'use_composition', default_value='True', description='Whether to use composed bringup')
 
     declare_use_respawn_cmd = DeclareLaunchArgument(
         'use_respawn',
         default_value='False',
-        description=
-        'Whether to respawn if a node crashes. Applied when composition is disabled.'
-    )
+        description='Whether to respawn if a node crashes. Applied when composition is disabled.')
 
     declare_rviz_config_file_cmd = DeclareLaunchArgument(
         'rviz_config_file',
-        default_value=os.path.join(bringup_dir, 'rviz',
-                                   'nav2_default_view.rviz'),
+        default_value=os.path.join(bringup_dir, 'rviz', 'nav2_default_view.rviz'),
         description='Full path to the RVIZ config file to use')
 
     declare_use_simulator_cmd = DeclareLaunchArgument(
-        'use_simulator',
-        default_value='True',
-        description='Whether to start the simulator')
+        'use_simulator', default_value='True', description='Whether to start the simulator')
 
     declare_use_robot_state_pub_cmd = DeclareLaunchArgument(
-        'use_robot_state_pub',
-        default_value='True',
-        description='Whether to start the robot state publisher')
+        'use_robot_state_pub', default_value='True', description='Whether to start the robot state publisher')
 
-    declare_use_rviz_cmd = DeclareLaunchArgument(
-        'use_rviz', default_value='True', description='Whether to start RVIZ')
+    declare_use_rviz_cmd = DeclareLaunchArgument('use_rviz', default_value='True', description='Whether to start RVIZ')
 
     declare_simulator_cmd = DeclareLaunchArgument(
-        'headless',
-        default_value='True',
-        description='Whether to execute gzclient)')
+        'headless', default_value='True', description='Whether to execute gzclient)')
 
     declare_world_cmd = DeclareLaunchArgument(
         'world',
@@ -148,9 +125,7 @@ def generate_launch_description():
         description='Full path to world model file to load')
 
     declare_robot_name_cmd = DeclareLaunchArgument(
-        'robot_name',
-        default_value='turtlebot3_waffle',
-        description='name of the robot')
+        'robot_name', default_value='turtlebot3_waffle', description='name of the robot')
 
     declare_robot_sdf_cmd = DeclareLaunchArgument(
         'robot_sdf',
@@ -160,18 +135,15 @@ def generate_launch_description():
     # Specify the actions
     start_gazebo_server_cmd = ExecuteProcess(
         condition=IfCondition(use_simulator),
-        cmd=[
-            'gzserver', '-s', 'libgazebo_ros_init.so', '-s',
-            'libgazebo_ros_factory.so', world
-        ],
+        cmd=['gzserver', '-s', 'libgazebo_ros_init.so', '-s', 'libgazebo_ros_factory.so', world],
         cwd=[launch_dir],
         output='screen')
 
-    start_gazebo_client_cmd = ExecuteProcess(condition=IfCondition(
-        PythonExpression([use_simulator, ' and not ', headless])),
-                                             cmd=['gzclient'],
-                                             cwd=[launch_dir],
-                                             output='screen')
+    start_gazebo_client_cmd = ExecuteProcess(
+        condition=IfCondition(PythonExpression([use_simulator, ' and not ', headless])),
+        cmd=['gzclient'],
+        cwd=[launch_dir],
+        output='screen')
 
     urdf = os.path.join(bringup_dir, 'urdf', 'turtlebot3_waffle.urdf')
     with open(urdf, 'r') as infp:
@@ -195,23 +167,21 @@ def generate_launch_description():
         executable='spawn_entity.py',
         output='screen',
         arguments=[
-            '-entity', robot_name, '-file', robot_sdf, '-robot_namespace',
-            namespace, '-x', pose['x'], '-y', pose['y'], '-z', pose['z'], '-R',
-            pose['R'], '-P', pose['P'], '-Y', pose['Y']
+            '-entity', robot_name, '-file', robot_sdf, '-robot_namespace', namespace, '-x', pose['x'], '-y', pose['y'],
+            '-z', pose['z'], '-R', pose['R'], '-P', pose['P'], '-Y', pose['Y']
         ])
 
-    rviz_cmd = IncludeLaunchDescription(PythonLaunchDescriptionSource(
-        os.path.join(launch_dir, 'rviz_launch.py')),
-                                        condition=IfCondition(use_rviz),
-                                        launch_arguments={
-                                            'namespace': namespace,
-                                            'use_namespace': use_namespace,
-                                            'rviz_config': rviz_config_file
-                                        }.items())
+    rviz_cmd = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(os.path.join(launch_dir, 'rviz_launch.py')),
+        condition=IfCondition(use_rviz),
+        launch_arguments={
+            'namespace': namespace,
+            'use_namespace': use_namespace,
+            'rviz_config': rviz_config_file
+        }.items())
 
     bringup_cmd = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            os.path.join(launch_dir, 'bringup_launch.py')),
+        PythonLaunchDescriptionSource(os.path.join(launch_dir, 'bringup_launch.py')),
         launch_arguments={
             'namespace': namespace,
             'use_namespace': use_namespace,

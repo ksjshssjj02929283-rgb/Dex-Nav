@@ -22,8 +22,7 @@ def _init_ros2():
         if not rclpy.ok():
             rclpy.init()
         _node_instance = Node('get_control_status_client')
-        _service_client = _node_instance.create_client(Trigger,
-                                                       'control/get_status')
+        _service_client = _node_instance.create_client(Trigger, 'control/get_status')
 
         # 等待服务可用
         if not _service_client.wait_for_service(timeout_sec=2.0):
@@ -60,9 +59,7 @@ def get_control_status():
     # 调用服务
     try:
         future = _service_client.call_async(request)
-        rclpy.spin_until_future_complete(_node_instance,
-                                         future,
-                                         timeout_sec=1.0)
+        rclpy.spin_until_future_complete(_node_instance, future, timeout_sec=1.0)
 
         if future.done():
             response = future.result()

@@ -23,8 +23,7 @@ import os
 
 def get_package_path(package_name):
     try:
-        return ament_index_python.packages.get_package_share_directory(
-            package_name)
+        return ament_index_python.packages.get_package_share_directory(package_name)
     except ament_index_python.packages.PackageNotFoundError:
         print(f"Package '{package_name}' not found.")
         return None
@@ -49,12 +48,10 @@ class ControlNode(Node):
         self.cmd_vel_pub = self.create_publisher(Twist, 'cmd_vel', 10)
 
         # Publisher for control result
-        self.result_pub = self.create_publisher(Int32, 'docking_ctrl_result',
-                                                10)
+        self.result_pub = self.create_publisher(Int32, 'docking_ctrl_result', 10)
 
         # Subscriber for AprilTag poses
-        self.pose_sub = self.create_subscription(PoseArray, 'apriltag_poses',
-                                                 self.pose_callback, 10)
+        self.pose_sub = self.create_subscription(PoseArray, 'apriltag_poses', self.pose_callback, 10)
 
         # Timer for control loop
         self.timer = self.create_timer(0.1, self.control_loop)
@@ -113,20 +110,13 @@ def main(args=None):
 
     # Define the target pose using data from the JSON file
     target_pose = Pose()
-    target_pose.position.x = docking_config["pre_charging_pose_03"]["position"][
-        "x"]
-    target_pose.position.y = docking_config["pre_charging_pose_03"]["position"][
-        "y"]
-    target_pose.position.z = docking_config["pre_charging_pose_03"]["position"][
-        "z"]
-    target_pose.orientation.x = docking_config["pre_charging_pose_03"][
-        "quaternion"]["x"]
-    target_pose.orientation.y = docking_config["pre_charging_pose_03"][
-        "quaternion"]["y"]
-    target_pose.orientation.z = docking_config["pre_charging_pose_03"][
-        "quaternion"]["z"]
-    target_pose.orientation.w = docking_config["pre_charging_pose_03"][
-        "quaternion"]["w"]
+    target_pose.position.x = docking_config["pre_charging_pose_03"]["position"]["x"]
+    target_pose.position.y = docking_config["pre_charging_pose_03"]["position"]["y"]
+    target_pose.position.z = docking_config["pre_charging_pose_03"]["position"]["z"]
+    target_pose.orientation.x = docking_config["pre_charging_pose_03"]["quaternion"]["x"]
+    target_pose.orientation.y = docking_config["pre_charging_pose_03"]["quaternion"]["y"]
+    target_pose.orientation.z = docking_config["pre_charging_pose_03"]["quaternion"]["z"]
+    target_pose.orientation.w = docking_config["pre_charging_pose_03"]["quaternion"]["w"]
 
     # print pose
     # print("target_pose: ", target_pose)

@@ -16,16 +16,14 @@ class NavGoalPublisher(Node):
 
         # 声明参数文件路径
         self.declare_parameter('params_file', 'config/params.yaml')
-        params_file = self.get_parameter(
-            'params_file').get_parameter_value().string_value
+        params_file = self.get_parameter('params_file').get_parameter_value().string_value
 
         # 加载参数文件
         self.goal_params = self.load_params(params_file)
         self.get_logger().info(f"Loaded goal: {self.goal_params}")
 
         # 创建Action客户端
-        self._action_client = ActionClient(self, NavigateToPose,
-                                           'navigate_to_pose')
+        self._action_client = ActionClient(self, NavigateToPose, 'navigate_to_pose')
 
         # 等待Action服务器
         self.get_logger().info("Waiting for action server...")
@@ -55,18 +53,7 @@ class NavGoalPublisher(Node):
         except Exception as e:
             self.get_logger().error(f"Failed to load parameters: {str(e)}")
             self.safe_shutdown()
-            return {
-                'position': {
-                    'x': 0.0,
-                    'y': 0.0,
-                    'z': 0.0
-                },
-                'orientation': {
-                    'z': 0.0,
-                    'w': 1.0
-                },
-                'frame_id': 'map'
-            }
+            return {'position': {'x': 0.0, 'y': 0.0, 'z': 0.0}, 'orientation': {'z': 0.0, 'w': 1.0}, 'frame_id': 'map'}
 
     def send_goal(self):
         """构造并发送导航目标"""
@@ -90,8 +77,7 @@ class NavGoalPublisher(Node):
         self.get_logger().info(f"Sending goal: {pose_stamped}")
 
         # 异步发送目标
-        self._send_goal_future = self._action_client.send_goal_async(
-            goal_msg, feedback_callback=self.feedback_callback)
+        self._send_goal_future = self._action_client.send_goal_async(goal_msg, feedback_callback=self.feedback_callback)
         self._send_goal_future.add_done_callback(self.goal_response_callback)
 
     def goal_response_callback(self, future):
@@ -122,8 +108,7 @@ class NavGoalPublisher(Node):
     def feedback_callback(self, feedback_msg):
         """处理反馈"""
         feedback = feedback_msg.feedback
-        self.get_logger().info(
-            f'Distance remaining: {feedback.distance_remaining:.2f} meters')
+        self.get_logger().info(f'Distance remaining: {feedback.distance_remaining:.2f} meters')
         # 重置超时计时器
         self.start_time = time.time()
 
@@ -131,8 +116,7 @@ class NavGoalPublisher(Node):
         """检查导航是否超时"""
         elapsed = time.time() - self.start_time
         if elapsed > self.navigation_timeout:
-            self.get_logger().error(
-                f"Navigation timed out after {elapsed:.1f} seconds")
+            self.get_logger().error(f"Navigation timed out after {elapsed:.1f} seconds")
             self.safe_shutdown()
 
     def safe_shutdown(self):
@@ -149,8 +133,7 @@ def main(args=None):
         nav_goal_publisher = NavGoalPublisher()
         rclpy.spin(nav_goal_publisher)
     except KeyboardInterrupt:
-        nav_goal_publisher.get_logger().info(
-            "Node shutdown by keyboard interrupt")
+        nav_goal_publisher.get_logger().info("Node shutdown by keyboard interrupt")
     except Exception as e:
         nav_goal_publisher.get_logger().error(f"Error in main: {str(e)}")
     finally:

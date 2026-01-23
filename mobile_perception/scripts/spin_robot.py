@@ -12,19 +12,10 @@ import json
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Control Node for Spinning')
-    parser.add_argument('--speed',
-                        type=float,
-                        default=0.02,
-                        help='Spin speed of the robot')
-    parser.add_argument('--timeout',
-                        type=float,
-                        default=5.0,
-                        help='Timeout for the spinning loop in seconds')
+    parser.add_argument('--speed', type=float, default=0.02, help='Spin speed of the robot')
+    parser.add_argument('--timeout', type=float, default=5.0, help='Timeout for the spinning loop in seconds')
     parser.add_argument(
-        '--direction',
-        type=int,
-        default=1,
-        help='Spin direction, 1 for clockwise, -1 for counter-clockwise')
+        '--direction', type=int, default=1, help='Spin direction, 1 for clockwise, -1 for counter-clockwise')
     return parser.parse_args()
 
 
@@ -83,9 +74,7 @@ def main(args=None):
     args = parse_arguments()
 
     # Create the control node
-    control_node = ControlNode(spin_speed=args.speed,
-                               time_out=args.timeout,
-                               direction=args.direction)
+    control_node = ControlNode(spin_speed=args.speed, time_out=args.timeout, direction=args.direction)
 
     def sigint_handler(signal, frame):
         control_node.get_logger().info('SIGINT received, shutting down...')

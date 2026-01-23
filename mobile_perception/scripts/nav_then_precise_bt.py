@@ -51,19 +51,15 @@ class NavThenPreciseNode(Node):
         # self.executor = MultiThreadedExecutor(num_threads=4)
         # self.executor.add_node(self)
         # 导航客户端
-        self._nav_client = ActionClient(self, NavigateToPose,
-                                        'navigate_to_pose')
+        self._nav_client = ActionClient(self, NavigateToPose, 'navigate_to_pose')
 
         # 速度发布器
         self._cmd_pub = self.create_publisher(Twist, 'control/cmd_vel', 10)
 
         # 充电状态订阅器
-        qos = QoSProfile(reliability=ReliabilityPolicy.RELIABLE,
-                         history=HistoryPolicy.KEEP_LAST,
-                         depth=1)
+        qos = QoSProfile(reliability=ReliabilityPolicy.RELIABLE, history=HistoryPolicy.KEEP_LAST, depth=1)
 
-        self._sub_diagnostics = self.create_subscription(
-            DiagnosticArray, '/diagnostics_agg', self._cb_diagnostics, qos)
+        self._sub_diagnostics = self.create_subscription(DiagnosticArray, '/diagnostics_agg', self._cb_diagnostics, qos)
         self.is_charging = False
 
         # 后退参数（保持原始参数）
@@ -88,16 +84,12 @@ class NavThenPreciseNode(Node):
                 return True
             # 获取配置文件路径
             package_path = get_package_path('mobile_perception')
-            camera_config_path = os.path.join(package_path,
-                                              'config/camera_config.json')
-            apriltags_field_path = os.path.join(package_path,
-                                                'config/tags_config.json')
+            camera_config_path = os.path.join(package_path, 'config/camera_config.json')
+            apriltags_field_path = os.path.join(package_path, 'config/tags_config.json')
 
             # 创建检测节点并订阅话题
-            self.apriltag_detector_node = UnifiedDetector(
-                camera_config_path, apriltags_field_path)
-            self.apriltag_detector_node.detect_by_camera_topics(
-                '/camera/image_raw')
+            self.apriltag_detector_node = UnifiedDetector(camera_config_path, apriltags_field_path)
+            self.apriltag_detector_node.detect_by_camera_topics('/camera/image_raw')
 
             # 延迟加入执行器：仅打标记，主循环里统一加入，避免此处 executor 为空
             self._apriltag_needs_add = True
@@ -116,8 +108,7 @@ class NavThenPreciseNode(Node):
                 try:
                     if self.executor is not None:
                         try:
-                            self.executor.remove_node(
-                                self.apriltag_detector_node)
+                            self.executor.remove_node(self.apriltag_detector_node)
                         except Exception:
                             pass
                 finally:
@@ -183,10 +174,7 @@ class NavThenPreciseNode(Node):
 
         # --- 真实实现（请在需要时取消注释恢复） ---
         self.get_logger().info(f"执行：{' '.join(cmd)}")
-        proc = subprocess.run(cmd,
-                              stdout=subprocess.PIPE,
-                              stderr=subprocess.STDOUT,
-                              text=True)
+        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
         print(proc.stdout)
         return proc.returncode
 
@@ -258,22 +246,20 @@ class AprilTagAndDock(py_trees.behaviour.Behaviour):
         if self.apriltag_proc is None:
             self.node.get_logger().info("启动 AprilTag 检测进程 (ros2 run)...")
             # 新会话启动，便于按进程组发送信号
-            self.apriltag_proc = subprocess.Popen([
-                "bash", "-lc",
-                "cd ~/w1 && source install/setup.bash && exec ros2 run mobile_perception detect_apriltags.py"
-            ],
-                                                  start_new_session=True,
-                                                  stdout=subprocess.DEVNULL,
-                                                  stderr=subprocess.DEVNULL)
-            self.node.get_logger().info(
-                f"AprilTag 进程已启动，pid={self.apriltag_proc.pid}")
+            self.apriltag_proc = subprocess.Popen(
+                [
+                    "bash", "-lc",
+                    "cd ~/w1 && source install/setup.bash && exec ros2 run mobile_perception detect_apriltags.py"
+                ],
+                start_new_session=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL)
+            self.node.get_logger().info(f"AprilTag 进程已启动，pid={self.apriltag_proc.pid}")
 
     def update(self):
         """执行精定位和后退"""
-        ret = self.node.run_subprocess([
-            "ros2", "run", "mobile_perception", "control_robot.py",
-            "--goal_name", "charging_pose"
-        ])
+        ret = self.node.run_subprocess(
+            ["ros2", "run", "mobile_perception", "control_robot.py", "--goal_name", "charging_pose"])
         if ret != 0:
             self.node.get_logger().error("control_robot.py 失败")
             return common.Status.FAILURE
@@ -355,8 +341,7 @@ class CheckCharging(py_trees.behaviour.Behaviour):
         """检查充电状态"""
         elapsed = (self.node.get_clock().now() - self.start).nanoseconds * 1e-9
 
-        self.node.get_logger().info(
-            f"电源状态码：{self.node.is_charging}, 已等待{elapsed:.1f}s")
+        self.node.get_logger().info(f"电源状态码：{self.node.is_charging}, 已等待{elapsed:.1f}s")
 
         if self.node.is_charging:
             self.node.get_logger().info("✅ 检测到充电状态！")
@@ -387,8 +372,7 @@ class Undocking(py_trees.behaviour.Behaviour):
 class RetryWithUndocking(py_trees.behaviour.Behaviour):
     """带undocking的重试节点：最多尝试5次"""
 
-    def __init__(self, name: str, node: NavThenPreciseNode,
-                 dock_subtree: py_trees.behaviour.Behaviour):
+    def __init__(self, name: str, node: NavThenPreciseNode, dock_subtree: py_trees.behaviour.Behaviour):
         super().__init__(name)
         self.node = node
         self.counter = 0
@@ -455,8 +439,7 @@ class RetryWithUndocking(py_trees.behaviour.Behaviour):
                 self.node.get_logger().error(f"已达到最大重试次数{self.max_tries}")
                 return common.Status.FAILURE
 
-            self.node.get_logger().info(
-                f"第{self.counter}/{self.max_tries}次undocking...")
+            self.node.get_logger().info(f"第{self.counter}/{self.max_tries}次undocking...")
             self.node.undocking()
 
             # 重置状态，准备下一次尝试（不再调用initialise，保持AprilTag进程运行）
@@ -466,8 +449,7 @@ class RetryWithUndocking(py_trees.behaviour.Behaviour):
     def terminate(self, new_status):
         """树结束时清理AprilTag进程"""
         if self._apriltag_started:
-            self.node.get_logger().info(
-                f"行为树结束（状态：{new_status}），清理AprilTag检测进程...")
+            self.node.get_logger().info(f"行为树结束（状态：{new_status}），清理AprilTag检测进程...")
             self._dock.cleanup_apriltag()
             self._apriltag_started = False
 
@@ -499,8 +481,7 @@ def main():
 
     try:
         # 读取充电点位置
-        charging_pose_path = os.path.join(os.path.dirname(__file__),
-                                          'charging_pose.json')
+        charging_pose_path = os.path.join(os.path.dirname(__file__), 'charging_pose.json')
         goal_pose = read_charging_pose(charging_pose_path)
 
         # 创建行为树
@@ -511,8 +492,7 @@ def main():
         node.get_logger().info("开始执行一键回充行为树...")
 
         # 执行行为树
-        while rclpy.ok() and root.status not in (common.Status.SUCCESS,
-                                                 common.Status.FAILURE):
+        while rclpy.ok() and root.status not in (common.Status.SUCCESS, common.Status.FAILURE):
             tree.tick()
             rclpy.spin_once(node, timeout_sec=0.1)
             time.sleep(0.1)

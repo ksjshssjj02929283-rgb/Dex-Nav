@@ -56,8 +56,7 @@ class TrajectoryParameters:
     @property
     def arc_length(self):
         """Arc length of the trajectory."""
-        return self.turning_radius * angle_difference(
-            self.start_angle, self.end_angle, self.left_turn)
+        return self.turning_radius * angle_difference(self.start_angle, self.end_angle, self.left_turn)
 
     @property
     def start_straight_length(self):

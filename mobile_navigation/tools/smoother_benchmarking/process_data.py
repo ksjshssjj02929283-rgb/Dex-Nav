@@ -44,13 +44,11 @@ def getTimes(results):
     for i in range(len(results)):
         if (i % 2) == 0:
             # Append non-smoothed time
-            times.append(results[i].planning_time.nanosec / 1e09 +
-                         results[i].planning_time.sec)
+            times.append(results[i].planning_time.nanosec / 1e09 + results[i].planning_time.sec)
         else:
             # Append smoothed times array
             for result in results[i]:
-                times.append(result.smoothing_duration.nanosec / 1e09 +
-                             result.smoothing_duration.sec)
+                times.append(result.smoothing_duration.nanosec / 1e09 + result.smoothing_duration.sec)
     return times
 
 
@@ -74,8 +72,7 @@ def getPathLength(path):
     for i in range(1, len(path.poses)):
         x_curr = path.poses[i].pose.position.x
         y_curr = path.poses[i].pose.position.y
-        path_length = path_length + math.sqrt((x_curr - x_prev)**2 +
-                                              (y_curr - y_prev)**2)
+        path_length = path_length + math.sqrt((x_curr - x_prev)**2 + (y_curr - y_prev)**2)
         x_prev = x_curr
         y_prev = y_curr
     return path_length
@@ -138,8 +135,7 @@ def arcCenter(pt_prev, pt, pt_next):
     n2 = (-d2[1], d2[0])
     det1 = (mid1[0] + n1[0]) * mid1[1] - (mid1[1] + n1[1]) * mid1[0]
     det2 = (mid2[0] + n2[0]) * mid2[1] - (mid2[1] + n2[1]) * mid2[0]
-    center = np.array([(det1 * n2[0] - det2 * n1[0]) / det,
-                       (det1 * n2[1] - det2 * n1[1]) / det])
+    center = np.array([(det1 * n2[0] - det2 * n1[0]) / det, (det1 * n2[1] - det2 * n1[1]) / det])
     return center
 
 
@@ -193,8 +189,7 @@ def averagePathCost(paths, costmap, num_of_planners):
     for i in range(0, len(coords), 2):
         costs = []
         for j in range(len(coords[i])):
-            costs.append(data[math.floor(coords[i + 1][j])][math.floor(
-                coords[i][j])])
+            costs.append(data[math.floor(coords[i + 1][j])][math.floor(coords[i][j])])
         average_path_costs[k % num_of_planners].append(sum(costs) / len(costs))
         k += 1
 
@@ -260,8 +255,7 @@ def main():
     times = np.transpose(times)
 
     # Costs
-    average_path_costs = np.asarray(averagePathCost(paths, costmap,
-                                                    methods_num))
+    average_path_costs = np.asarray(averagePathCost(paths, costmap, methods_num))
     max_path_costs = np.asarray(maxPathCost(paths, costmap, methods_num))
 
     # Smoothness
@@ -277,31 +271,35 @@ def main():
     curvatures = np.transpose(curvatures)
 
     # Generate table
-    planner_table = [[
-        'Planner', 'Time (s)', 'Path length (m)', 'Average cost', 'Max cost',
-        'Path smoothness (x100)', 'Average turning rad (m)'
-    ]]
+    planner_table = [
+        [
+            'Planner', 'Time (s)', 'Path length (m)', 'Average cost', 'Max cost', 'Path smoothness (x100)',
+            'Average turning rad (m)'
+        ]
+    ]
     # for path planner
-    planner_table.append([
-        planner,
-        np.average(times[0]),
-        np.average(path_lengths[0]),
-        np.average(average_path_costs[0]),
-        np.average(max_path_costs[0]),
-        np.average(smoothnesses[0]) * 100,
-        np.average(curvatures[0])
-    ])
+    planner_table.append(
+        [
+            planner,
+            np.average(times[0]),
+            np.average(path_lengths[0]),
+            np.average(average_path_costs[0]),
+            np.average(max_path_costs[0]),
+            np.average(smoothnesses[0]) * 100,
+            np.average(curvatures[0])
+        ])
     # for path smoothers
     for i in range(1, methods_num):
-        planner_table.append([
-            smoothers[i - 1],
-            np.average(times[i]),
-            np.average(path_lengths[i]),
-            np.average(average_path_costs[i]),
-            np.average(max_path_costs[i]),
-            np.average(smoothnesses[i]) * 100,
-            np.average(curvatures[i])
-        ])
+        planner_table.append(
+            [
+                smoothers[i - 1],
+                np.average(times[i]),
+                np.average(path_lengths[i]),
+                np.average(average_path_costs[i]),
+                np.average(max_path_costs[i]),
+                np.average(smoothnesses[i]) * 100,
+                np.average(curvatures[i])
+            ])
 
     # Visualize results
     print(tabulate(planner_table))

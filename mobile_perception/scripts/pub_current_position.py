@@ -13,12 +13,10 @@ class BaseLinkPosition(Node):
     def __init__(self):
         super().__init__("baselink_position")
         # 设置TF buffer cache时间为10秒，减少内存占用和提高查询效率
-        self.tf2_buffer = Buffer(cache_time=rclpy.duration.Duration(
-            seconds=10.0))
+        self.tf2_buffer = Buffer(cache_time=rclpy.duration.Duration(seconds=10.0))
         self.listener = TransformListener(self.tf2_buffer, self)
 
-        self.publisher = self.create_publisher(PoseStamped,
-                                               '/feedback/chassis_pose', 10)
+        self.publisher = self.create_publisher(PoseStamped, '/feedback/chassis_pose', 10)
         # 不使用定时器，改用手动控制循环频率
 
         # 错误计数器，避免频繁日志输出
@@ -62,8 +60,7 @@ class BaseLinkPosition(Node):
             self.error_count += 1
             # 减少错误日志频率，避免频繁输出
             if self.error_count % self.error_log_interval == 0:
-                self.get_logger().error(
-                    f'TF error after {self.error_count} attempts: {str(e)}')
+                self.get_logger().error(f'TF error after {self.error_count} attempts: {str(e)}')
             # 静默失败，不阻塞主循环
 
 

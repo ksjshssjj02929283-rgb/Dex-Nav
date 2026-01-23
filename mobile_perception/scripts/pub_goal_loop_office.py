@@ -187,10 +187,7 @@ class Nav2GoalSender(Node):
 
         # 创建NavigateToPose动作客户端
         self.action_client = ActionClient(
-            self,
-            NavigateToPose,
-            'navigate_to_pose',
-            callback_group=self.action_callback_group)
+            self, NavigateToPose, 'navigate_to_pose', callback_group=self.action_callback_group)
 
         self.get_logger().info('等待NavigateToPose动作服务器...')
         self.action_client.wait_for_server()
@@ -198,8 +195,7 @@ class Nav2GoalSender(Node):
 
         # 创建两个目标位姿
         self.goal1 = self.create_pose(-1.3, 21.0, 0.0, 0.0)  # 位置(0,0,0) 方向180度
-        self.goal2 = self.create_pose(22.0, 21.0, 0.0,
-                                      -90.0)  # 位置(0.9,0,0) 方向0度
+        self.goal2 = self.create_pose(22.0, 21.0, 0.0, -90.0)  # 位置(0.9,0,0) 方向0度
         self.goal3 = self.create_pose(20.0, 0.0, 0.0, 180.0)
         self.goal4 = self.create_pose(-1.0, 0.0, 0.0, 90.0)
 
@@ -243,13 +239,11 @@ class Nav2GoalSender(Node):
         pos = goal_pose.pose.position
         orient = goal_pose.pose.orientation
         self.get_logger().info(
-            '发送目标 #{}: 位置({:.1f}, {:.1f}, {:.1f}) 方向(z: {:.2f}, w: {:.2f})'.
-            format(self.goal_count + 1, pos.x, pos.y, pos.z, orient.z,
-                   orient.w))
+            '发送目标 #{}: 位置({:.1f}, {:.1f}, {:.1f}) 方向(z: {:.2f}, w: {:.2f})'.format(
+                self.goal_count + 1, pos.x, pos.y, pos.z, orient.z, orient.w))
 
         # 异步发送目标
-        send_goal_future = self.action_client.send_goal_async(
-            goal_msg, feedback_callback=self.feedback_callback)
+        send_goal_future = self.action_client.send_goal_async(goal_msg, feedback_callback=self.feedback_callback)
 
         # 添加完成回调
         send_goal_future.add_done_callback(self.goal_response_callback)

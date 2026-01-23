@@ -27,17 +27,13 @@ from custom_interfaces.msg import Status
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Control Node for Docking')
-    parser.add_argument('--goal_name',
-                        type=str,
-                        required=True,
-                        help='Name of the goal from the JSON config')
+    parser.add_argument('--goal_name', type=str, required=True, help='Name of the goal from the JSON config')
     return parser.parse_args()
 
 
 def get_package_path(package_name):
     try:
-        return ament_index_python.packages.get_package_share_directory(
-            package_name)
+        return ament_index_python.packages.get_package_share_directory(package_name)
     except ament_index_python.packages.PackageNotFoundError:
         print(f"Package '{package_name}' not found.")
         return None
@@ -66,15 +62,12 @@ class ControlNode(Node):
         self.cmd_vel_pub = self.create_publisher(Twist, 'control/cmd_vel', 10)
 
         # Publisher for control result
-        self.result_pub = self.create_publisher(Int32, 'docking_ctrl_result',
-                                                10)
+        self.result_pub = self.create_publisher(Int32, 'docking_ctrl_result', 10)
 
         # Subscriber for AprilTag poses
-        self.pose_sub = self.create_subscription(PoseArray, 'apriltag_poses',
-                                                 self.pose_callback, 30)
+        self.pose_sub = self.create_subscription(PoseArray, 'apriltag_poses', self.pose_callback, 30)
 
-        self.status_sub = self.create_subscription(Status, 'status',
-                                                   self.status_callback, 40)
+        self.status_sub = self.create_subscription(Status, 'status', self.status_callback, 40)
 
         # Timer for control loop
         self.timer = self.create_timer(0.10, self.control_loop)
@@ -147,8 +140,7 @@ class ControlNode(Node):
 
         # Check the latest status message
         if self.latest_status and self.latest_status.subindex024 > 0.5:
-            self.get_logger().info(
-                'subindex024 is greater than 0.5, acting as goal reached')
+            self.get_logger().info('subindex024 is greater than 0.5, acting as goal reached')
             self.reset_start_time()
             self.control_result = 0  # Success
             self.publish_twist(0.0, 0.0)
@@ -172,8 +164,7 @@ class ControlNode(Node):
 
         # Backward phase
         if getattr(self, "backwarding", False):
-            elapsed = (self.get_clock().now() -
-                       self.backward_start_time).nanoseconds * 1e-9
+            elapsed = (self.get_clock().now() - self.backward_start_time).nanoseconds * 1e-9
             if elapsed < self.backward_duration:
                 self.publish_twist(self.backward_speed, 0.0)
                 self.control_result = 2

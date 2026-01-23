@@ -11,10 +11,8 @@ class PoseModifier:
         q_yaw = R.from_euler(order, [yaw, 0, 0], degrees=False)
 
         # Create a rotation from the pose's orientation quaternion
-        q1 = R.from_quat([
-            orin_pose.orientation.x, orin_pose.orientation.y,
-            orin_pose.orientation.z, orin_pose.orientation.w
-        ])
+        q1 = R.from_quat(
+            [orin_pose.orientation.x, orin_pose.orientation.y, orin_pose.orientation.z, orin_pose.orientation.w])
 
         # Apply the yaw rotation to the pose's orientation
         q_new = q_yaw * q1
@@ -33,14 +31,10 @@ class PoseModifier:
 
     def compute_rotation_error(self, tar_pose, orin_pose, order='zyx'):
         # Create rotations from the poses' orientation quaternions
-        q_tar = R.from_quat([
-            tar_pose.orientation.x, tar_pose.orientation.y,
-            tar_pose.orientation.z, tar_pose.orientation.w
-        ])
-        q_orin = R.from_quat([
-            orin_pose.orientation.x, orin_pose.orientation.y,
-            orin_pose.orientation.z, orin_pose.orientation.w
-        ])
+        q_tar = R.from_quat(
+            [tar_pose.orientation.x, tar_pose.orientation.y, tar_pose.orientation.z, tar_pose.orientation.w])
+        q_orin = R.from_quat(
+            [orin_pose.orientation.x, orin_pose.orientation.y, orin_pose.orientation.z, orin_pose.orientation.w])
 
         # Compute the rotation error
         q_error = q_tar * q_orin.inv()
@@ -51,10 +45,7 @@ class PoseModifier:
         return yaw, pitch, roll
 
     def get_pose_yaw(self, pose, order='zyx'):
-        q = R.from_quat([
-            pose.orientation.x, pose.orientation.y, pose.orientation.z,
-            pose.orientation.w
-        ])
+        q = R.from_quat([pose.orientation.x, pose.orientation.y, pose.orientation.z, pose.orientation.w])
         yaw, pitch, roll = q.as_euler(order, degrees=False)
         return yaw
 
@@ -69,8 +60,7 @@ class PoseModifier:
         #  a is the difference between the current yaw (cur_yaw) and the direction to the goal (goal_heading)
         # b is the error in heading, considering the goal's orientation (goal_yaw), adjusted by a.
 
-        goal_heading = atan2(goal.position.y - cur.position.y,
-                             goal.position.x - cur.position.x)
+        goal_heading = atan2(goal.position.y - cur.position.y, goal.position.x - cur.position.x)
         normalized_goal_heading = self.normalize_pi(goal_heading)
         # a = -self.cur_theta + goal_heading # goal_theta - cur_theta
         tar1 = self.add_yaw(cur, normalized_goal_heading, order='zyx')
@@ -119,9 +109,6 @@ print(f"Original pose: {orin_pose}")
 print(f"New pose: {tar_pose}")
 
 # Compute and print the rotation error
-yaw_error, pitch_error, roll_error = modifier.compute_rotation_error(
-    tar_pose, orin_pose)
-print(
-    f"Yaw error: {yaw_error}, Pitch error: {pitch_error}, Roll error: {roll_error}"
-)
+yaw_error, pitch_error, roll_error = modifier.compute_rotation_error(tar_pose, orin_pose)
+print(f"Yaw error: {yaw_error}, Pitch error: {pitch_error}, Roll error: {roll_error}")
 modifier.get_velocity(orin_pose, tar_pose, 0.1)

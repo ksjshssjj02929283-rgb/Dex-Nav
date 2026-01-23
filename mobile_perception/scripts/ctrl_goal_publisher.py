@@ -30,8 +30,7 @@ class SingleCtrlPosePublisher(Node):
         msg.pose.orientation.w = cy
 
         self.pub.publish(msg)
-        self.get_logger().info(
-            f"[Single Publish] x={x:.2f}, y={y:.2f}, yaw={yaw:.2f}")
+        self.get_logger().info(f"[Single Publish] x={x:.2f}, y={y:.2f}, yaw={yaw:.2f}")
 
         # 给一点时间确保消息发出
         time.sleep(0.1)

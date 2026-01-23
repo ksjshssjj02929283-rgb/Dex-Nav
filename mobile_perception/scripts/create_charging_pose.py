@@ -27,10 +27,7 @@ class ChargingPoseSaver(Node):
             for retry in range(20):
                 try:
                     trans = self.tf_buffer.lookup_transform(
-                        'map',
-                        'base_link',
-                        rclpy.time.Time(),
-                        timeout=rclpy.duration.Duration(seconds=0.2))
+                        'map', 'base_link', rclpy.time.Time(), timeout=rclpy.duration.Duration(seconds=0.2))
                     break
                 except Exception as e:
                     self.get_logger().warn(f"第{i+1}次TF查找重试{retry+1}: {e}")
@@ -41,14 +38,13 @@ class ChargingPoseSaver(Node):
                 return None
             if header is None:
                 header = trans.header
-            positions.append([
-                trans.transform.translation.x, trans.transform.translation.y,
-                trans.transform.translation.z
-            ])
-            orientations.append([
-                trans.transform.rotation.x, trans.transform.rotation.y,
-                trans.transform.rotation.z, trans.transform.rotation.w
-            ])
+            positions.append(
+                [trans.transform.translation.x, trans.transform.translation.y, trans.transform.translation.z])
+            orientations.append(
+                [
+                    trans.transform.rotation.x, trans.transform.rotation.y, trans.transform.rotation.z,
+                    trans.transform.rotation.w
+                ])
         # 计算均值
         import numpy as np
         pos_mean = np.mean(positions, axis=0)
@@ -72,12 +68,13 @@ class ChargingPoseSaver(Node):
                 'y': pose.pose.position.y,
                 'z': pose.pose.position.z
             },
-            'orientation': {
-                'x': pose.pose.orientation.x,
-                'y': pose.pose.orientation.y,
-                'z': pose.pose.orientation.z,
-                'w': pose.pose.orientation.w
-            }
+            'orientation':
+                {
+                    'x': pose.pose.orientation.x,
+                    'y': pose.pose.orientation.y,
+                    'z': pose.pose.orientation.z,
+                    'w': pose.pose.orientation.w
+                }
         }
         with open(SAVE_PATH, 'w') as f:
             json.dump(data, f, indent=2)

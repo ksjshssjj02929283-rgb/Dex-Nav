@@ -33,10 +33,7 @@ from transforms3d.euler import euler2quat
 
 
 def getPlannerResults(navigator, initial_pose, goal_pose, planner):
-    return navigator._getPathImpl(initial_pose,
-                                  goal_pose,
-                                  planner,
-                                  use_start=True)
+    return navigator._getPathImpl(initial_pose, goal_pose, planner, use_start=True)
 
 
 def getSmootherResults(navigator, path, smoothers):
@@ -131,14 +128,12 @@ def main():
     while i < random_pairs:
         print("Cycle: ", i, "out of: ", random_pairs)
         start = getRandomStart(costmap, max_cost, side_buffer, time_stamp, res)
-        goal = getRandomGoal(costmap, start, max_cost, side_buffer, time_stamp,
-                             res)
+        goal = getRandomGoal(costmap, start, max_cost, side_buffer, time_stamp, res)
         print("Start", start)
         print("Goal", goal)
         result = getPlannerResults(navigator, start, goal, planner)
         if result is not None:
-            smoothed_results = getSmootherResults(navigator, result.path,
-                                                  smoothers)
+            smoothed_results = getSmootherResults(navigator, result.path, smoothers)
             if smoothed_results is not None:
                 results.append(result)
                 results.append(smoothed_results)

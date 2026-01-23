@@ -21,8 +21,7 @@ class NavThenPreciseControl(Node):
 
     def __init__(self):
         super().__init__('nav_then_precise_control')
-        self._nav_client = ActionClient(self, NavigateToPose,
-                                        'navigate_to_pose')
+        self._nav_client = ActionClient(self, NavigateToPose, 'navigate_to_pose')
 
         # ---- 后退参数 ----
         self.backward_speed = -0.08  # m/s（负号=后退）
@@ -64,10 +63,7 @@ class NavThenPreciseControl(Node):
     # ---------------- 子进程封装 ----------------
     def run_subprocess(self, cmd: list) -> int:
         self.get_logger().info(f"执行：{' '.join(cmd)}")
-        proc = subprocess.run(cmd,
-                              stdout=subprocess.PIPE,
-                              stderr=subprocess.STDOUT,
-                              text=True)
+        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
         print(proc.stdout)
         return proc.returncode
 
@@ -79,16 +75,12 @@ class NavThenPreciseControl(Node):
 
             # 获取配置文件路径
             package_path = get_package_path('mobile_perception')
-            camera_config_path = os.path.join(package_path,
-                                              'config/camera_config.json')
-            apriltags_field_path = os.path.join(package_path,
-                                                'config/tags_config.json')
+            camera_config_path = os.path.join(package_path, 'config/camera_config.json')
+            apriltags_field_path = os.path.join(package_path, 'config/tags_config.json')
 
             # 创建 AprilTag 检测节点
-            self.apriltag_detector_node = UnifiedDetector(
-                camera_config_path, apriltags_field_path)
-            self.apriltag_detector_node.detect_by_camera_topics(
-                '/camera/image_raw')
+            self.apriltag_detector_node = UnifiedDetector(camera_config_path, apriltags_field_path)
+            self.apriltag_detector_node.detect_by_camera_topics('/camera/image_raw')
 
             self.get_logger().info("AprilTag 检测节点已启动")
             return True
@@ -117,8 +109,7 @@ class NavThenPreciseControl(Node):
     def update_backward(self):
         if not self._backwarding:
             return False  # 未在后退
-        elapsed = (self.get_clock().now() -
-                   self._backward_start).nanoseconds * 1e-9
+        elapsed = (self.get_clock().now() - self._backward_start).nanoseconds * 1e-9
         if elapsed < self.backward_duration:
             twist = Twist()
             twist.linear.x = self.backward_speed
@@ -143,8 +134,7 @@ def main():
 
     # 1. 读取充电点
     import os, json
-    charging_pose_path = os.path.join(os.path.dirname(__file__),
-                                      'charging_pose.json')
+    charging_pose_path = os.path.join(os.path.dirname(__file__), 'charging_pose.json')
     goal_a = PoseStamped()
     try:
         with open(charging_pose_path, 'r') as f:
@@ -182,10 +172,8 @@ def main():
                 executor.add_node(node.apriltag_detector_node)
 
             # 4. 精定位 charging
-            ret = node.run_subprocess([
-                "ros2", "run", "mobile_perception", "control_robot.py",
-                "--goal_name", "charging_pose"
-            ])
+            ret = node.run_subprocess(
+                ["ros2", "run", "mobile_perception", "control_robot.py", "--goal_name", "charging_pose"])
             if ret != 0:
                 node.get_logger().error("control_robot.py 失败")
                 node.execution_completed = True

@@ -32,9 +32,10 @@ def main():
 
     # Inspection route, probably read in from a file for a real application
     # from either a map or drive and repeat.
-    inspection_route = [[3.461, -0.450], [5.531, -0.450], [3.461, -2.200],
-                        [5.531, -2.200], [3.661, -4.121], [5.431, -4.121],
-                        [3.661, -5.850], [5.431, -5.800]]
+    inspection_route = [
+        [3.461, -0.450], [5.531, -0.450], [3.461, -2.200], [5.531, -2.200], [3.661, -4.121], [5.431, -4.121],
+        [3.661, -5.850], [5.431, -5.800]
+    ]
 
     # Set our demo's initial pose
     initial_pose = PoseStamped()
@@ -69,9 +70,8 @@ def main():
         i += 1
         feedback = navigator.getFeedback()
         if feedback and i % 5 == 0:
-            print('Executing current waypoint: ' +
-                  str(feedback.current_waypoint + 1) + '/' +
-                  str(len(inspection_points)))
+            print(
+                'Executing current waypoint: ' + str(feedback.current_waypoint + 1) + '/' + str(len(inspection_points)))
 
     result = navigator.getResult()
     if result == TaskResult.SUCCEEDED:

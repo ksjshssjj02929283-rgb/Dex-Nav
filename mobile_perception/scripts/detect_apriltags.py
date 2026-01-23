@@ -53,8 +53,7 @@ class UnifiedDetector(Node):
         self.pose_pub = self.create_publisher(PoseArray, 'apriltag_poses', 30)
 
         # ---------- sub ----------
-        self.create_subscription(Image, self.image_topic, self.image_callback,
-                                 30)
+        self.create_subscription(Image, self.image_topic, self.image_callback, 30)
 
         self.create_subscription(Status, 'status', self.status_callback, 10)
 
@@ -92,24 +91,18 @@ class UnifiedDetector(Node):
         cam = self.camera_config['cameras'][0]['settings']
         intr = cam['intrinsic_params']
 
-        K = np.array([[intr['fx'], 0, intr['cx']], [0, intr['fy'], intr['cy']],
-                      [0, 0, 1]])
+        K = np.array([[intr['fx'], 0, intr['cx']], [0, intr['fy'], intr['cy']], [0, 0, 1]])
         dist = np.array(cam['dist_coeffs'])
 
         half = self.tag_size / 2.0
-        obj_pts = np.array([[-half, -half, 0], [half, -half, 0],
-                            [half, half, 0], [-half, half, 0]])
+        obj_pts = np.array([[-half, -half, 0], [half, -half, 0], [half, half, 0], [-half, half, 0]])
 
         self.detected_tag_ids.clear()
 
         for tag in tags:
             img_pts = np.array(tag.corners, dtype=np.float32)
 
-            ok, rvec, tvec = cv2.solvePnP(obj_pts,
-                                          img_pts,
-                                          K,
-                                          dist,
-                                          flags=cv2.SOLVEPNP_ITERATIVE)
+            ok, rvec, tvec = cv2.solvePnP(obj_pts, img_pts, K, dist, flags=cv2.SOLVEPNP_ITERATIVE)
             if not ok:
                 continue
 
@@ -126,10 +119,7 @@ class UnifiedDetector(Node):
         for tag_id in self.detected_tag_ids:
             try:
                 tf = self.tf_buffer.lookup_transform(
-                    'base_link',
-                    f'apriltag_{tag_id}',
-                    rclpy.time.Time(),
-                    timeout=rclpy.duration.Duration(seconds=0.05))
+                    'base_link', f'apriltag_{tag_id}', rclpy.time.Time(), timeout=rclpy.duration.Duration(seconds=0.05))
 
                 pose = Pose()
                 pose.position.x = tf.transform.translation.x

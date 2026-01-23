@@ -33,13 +33,15 @@ def generate_launch_description():
         executable='map_saver_server',
         output='screen',
         emulate_tty=True,  # https://github.com/ros2/launch/issues/188
-        parameters=[{
-            'save_map_timeout': save_map_timeout
-        }, {
-            'free_thresh_default': free_thresh_default
-        }, {
-            'occupied_thresh_default': occupied_thresh_default
-        }])
+        parameters=[
+            {
+                'save_map_timeout': save_map_timeout
+            }, {
+                'free_thresh_default': free_thresh_default
+            }, {
+                'occupied_thresh_default': occupied_thresh_default
+            }
+        ])
 
     start_lifecycle_manager_cmd = launch_ros.actions.Node(
         package='nav2_lifecycle_manager',

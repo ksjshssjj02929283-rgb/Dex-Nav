@@ -10,19 +10,10 @@ import argparse
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Control Node for Docking')
-    parser.add_argument('--timeout',
-                        type=float,
-                        default=5.0,
-                        help='Timeout for the control loop in seconds')
-    parser.add_argument('--speed',
-                        type=float,
-                        default=0.05,
-                        help='Speed of the robot')
+    parser.add_argument('--timeout', type=float, default=5.0, help='Timeout for the control loop in seconds')
+    parser.add_argument('--speed', type=float, default=0.05, help='Speed of the robot')
     parser.add_argument(
-        '--direction',
-        type=int,
-        default=1,
-        help='Direction of the robot movement, 1 for forward, -1 for backward')
+        '--direction', type=int, default=1, help='Direction of the robot movement, 1 for forward, -1 for backward')
     return parser.parse_args()
 
 
@@ -82,9 +73,7 @@ def main(args=None):
     args = parse_arguments()
 
     # Create the control node
-    control_node = ControlNode(time_out=args.timeout,
-                               speed=args.speed,
-                               direction=args.direction)
+    control_node = ControlNode(time_out=args.timeout, speed=args.speed, direction=args.direction)
 
     def sigint_handler(signal, frame):
         control_node.get_logger().info('SIGINT received, shutting down...')

@@ -1,2 +1,11 @@
 [style]
 based_on_style = google
+
+# 关键：调整列宽（避免因列宽不足强制换行，设为 120 足够容纳矩阵行）
+column_limit = 120
+
+# 强制数组/矩阵的每个元素组（行）单独换行
+split_before_first_argument = True
+
+# 闭合括号与数组第一行对齐（视觉上更规整）
+align_closing_bracket_with_visual_indent = True

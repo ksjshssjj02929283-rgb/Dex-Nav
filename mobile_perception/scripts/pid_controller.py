@@ -18,16 +18,17 @@ from goal_controller import GoalController
 
 class PIDController:
 
-    def __init__(self,
-                 kp,
-                 ki=0.0,
-                 kd=0.0,
-                 output_limits=(None, None),
-                 integral_limits=(None, None),
-                 zone_limit=None,
-                 timeout=None,
-                 tolerance=None,
-                 tolerance_duration=None):
+    def __init__(
+            self,
+            kp,
+            ki=0.0,
+            kd=0.0,
+            output_limits=(None, None),
+            integral_limits=(None, None),
+            zone_limit=None,
+            timeout=None,
+            tolerance=None,
+            tolerance_duration=None):
         self.kp = kp
         self.ki = ki
         self.kd = kd
@@ -49,16 +50,14 @@ class PIDController:
         self.previous_time = current_time
 
         # Check timeout
-        if self.timeout is not None and (current_time -
-                                         self.start_time) > self.timeout:
+        if self.timeout is not None and (current_time - self.start_time) > self.timeout:
             return 0.0  # Stop the PID controller
 
         # Check tolerance
         if self.tolerance is not None and abs(error) < self.tolerance:
             if self.tolerance_start_time is None:
                 self.tolerance_start_time = current_time
-            elif (current_time -
-                  self.tolerance_start_time) >= self.tolerance_duration:
+            elif (current_time - self.tolerance_start_time) >= self.tolerance_duration:
                 return 0.0  # Stop the PID controller
         else:
             self.tolerance_start_time = None
@@ -74,8 +73,7 @@ class PIDController:
         if self.integral_max is not None:
             integral_term = min(self.integral_max, integral_term)
 
-        derivative = (
-            error - self.previous_error) / delta_time if delta_time > 0 else 0.0
+        derivative = (error - self.previous_error) / delta_time if delta_time > 0 else 0.0
 
         # Calculate PID output
         output = self.kp * error + integral_term + self.kd * derivative
@@ -109,25 +107,27 @@ class ControlNode(Node):
         self.tolerance = 0.05
 
         # PID controllers for x, y, and yaw (theta) axes
-        self.pid_x = PIDController(kp=0.5,
-                                   ki=0.001,
-                                   kd=0.01,
-                                   output_limits=(-0.5, 0.5),
-                                   integral_limits=(-0.10, 0.10),
-                                   zone_limit=None,
-                                   timeout=None,
-                                   tolerance=0.01,
-                                   tolerance_duration=0.5)
+        self.pid_x = PIDController(
+            kp=0.5,
+            ki=0.001,
+            kd=0.01,
+            output_limits=(-0.5, 0.5),
+            integral_limits=(-0.10, 0.10),
+            zone_limit=None,
+            timeout=None,
+            tolerance=0.01,
+            tolerance_duration=0.5)
 
-        self.pid_yaw = PIDController(kp=0.50,
-                                     ki=0.0001,
-                                     kd=0.0015,
-                                     output_limits=(-0.5, 0.5),
-                                     integral_limits=(-0.15, 0.15),
-                                     zone_limit=None,
-                                     timeout=None,
-                                     tolerance=0.01,
-                                     tolerance_duration=0.5)
+        self.pid_yaw = PIDController(
+            kp=0.50,
+            ki=0.0001,
+            kd=0.0015,
+            output_limits=(-0.5, 0.5),
+            integral_limits=(-0.15, 0.15),
+            zone_limit=None,
+            timeout=None,
+            tolerance=0.01,
+            tolerance_duration=0.5)
         # Publisher for Result, 0, 1, 2 for Success, Failure, Running
         # Todo: Add a publisher for the result
         self.control_result = 2
@@ -136,8 +136,7 @@ class ControlNode(Node):
         self.cmd_vel_pub = self.create_publisher(Twist, 'cmd_vel', 10)
 
         # Subscriber for AprilTag poses
-        self.pose_sub = self.create_subscription(PoseArray, 'apriltag_poses',
-                                                 self.pose_callback, 10)
+        self.pose_sub = self.create_subscription(PoseArray, 'apriltag_poses', self.pose_callback, 10)
 
         # TF buffer and listener for transformations
         self.tf_buffer = Buffer()

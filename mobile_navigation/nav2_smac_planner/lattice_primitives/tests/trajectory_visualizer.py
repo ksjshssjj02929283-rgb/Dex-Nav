@@ -31,12 +31,7 @@ import numpy as np
 
 def plot_arrow(x, y, yaw, length=1.0, fc='r', ec='k'):
     """Plot arrow."""
-    plt.arrow(x,
-              y,
-              length * np.cos(yaw),
-              length * np.sin(yaw),
-              width=0.05 * length,
-              length_includes_head=True)
+    plt.arrow(x, y, length * np.cos(yaw), length * np.sin(yaw), width=0.05 * length, length_includes_head=True)
     plt.plot(x, y)
     plt.plot(0, 0)
 
@@ -53,33 +48,16 @@ cur_file_path = Path(__file__)
 trajectory_file_path = cur_file_path.parent.parent / 'output.json'
 
 trajectory_data = read_trajectories_data(trajectory_file_path)
-min_x = min([
-    min([pose[0]
-         for pose in primitive['poses']])
-    for primitive in trajectory_data['primitives']
-])
-max_x = max([
-    max([pose[0]
-         for pose in primitive['poses']])
-    for primitive in trajectory_data['primitives']
-])
+min_x = min([min([pose[0] for pose in primitive['poses']]) for primitive in trajectory_data['primitives']])
+max_x = max([max([pose[0] for pose in primitive['poses']]) for primitive in trajectory_data['primitives']])
 
-min_y = min([
-    min([pose[1]
-         for pose in primitive['poses']])
-    for primitive in trajectory_data['primitives']
-])
-max_y = max([
-    max([pose[1]
-         for pose in primitive['poses']])
-    for primitive in trajectory_data['primitives']
-])
+min_y = min([min([pose[1] for pose in primitive['poses']]) for primitive in trajectory_data['primitives']])
+max_y = max([max([pose[1] for pose in primitive['poses']]) for primitive in trajectory_data['primitives']])
 
 heading_angles = trajectory_data['lattice_metadata']['heading_angles']
 
 for primitive in trajectory_data['primitives']:
-    arrow_length = (primitive['arc_length'] +
-                    primitive['straight_length']) / len(primitive['poses'])
+    arrow_length = (primitive['arc_length'] + primitive['straight_length']) / len(primitive['poses'])
 
     if arrow_length == 0:
         arrow_length = max_x / len(primitive['poses'])

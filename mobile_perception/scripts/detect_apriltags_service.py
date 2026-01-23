@@ -60,13 +60,10 @@ class AprilTagDetectionNode(Node):
 
         self.pose_pub = self.create_publisher(PoseArray, 'apriltag_poses', 10)
 
-        self.create_service(StartDetection, 'start_apriltag_detection',
-                            self.start_cb)
-        self.create_service(StopDetection, 'stop_apriltag_detection',
-                            self.stop_cb)
+        self.create_service(StartDetection, 'start_apriltag_detection', self.start_cb)
+        self.create_service(StopDetection, 'stop_apriltag_detection', self.stop_cb)
 
-        self.get_logger().info(
-            'AprilTag Detection Node (NO TF broadcast) ready.')
+        self.get_logger().info('AprilTag Detection Node (NO TF broadcast) ready.')
 
     # ==================================================
     # Services
@@ -79,10 +76,8 @@ class AprilTagDetectionNode(Node):
             return res
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
-        self.image_sub = self.create_subscription(Image, self.image_topic,
-                                                  self.image_cb, 10)
-        self.detector = Detector(families=self.tag_config['tag_family'],
-                                 nthreads=1)
+        self.image_sub = self.create_subscription(Image, self.image_topic, self.image_cb, 10)
+        self.detector = Detector(families=self.tag_config['tag_family'], nthreads=1)
         self.is_detecting = True
         res.success = True
         res.message = f'Detection started: {self.image_topic}'
@@ -124,13 +119,9 @@ class AprilTagDetectionNode(Node):
         # ---------- TF lookup (base <- camera) ----------
         try:
             tf = self.tf_buffer.lookup_transform(
-                'base_link',
-                self.camera_link,
-                rclpy.time.Time(),
-                timeout=rclpy.duration.Duration(seconds=0.05))
+                'base_link', self.camera_link, rclpy.time.Time(), timeout=rclpy.duration.Duration(seconds=0.05))
         except Exception as e:
-            self.get_logger().warn(f'TF lookup failed: {e}',
-                                   throttle_duration_sec=2.0)
+            self.get_logger().warn(f'TF lookup failed: {e}', throttle_duration_sec=2.0)
             return
 
         # ---------- image ----------
@@ -148,13 +139,11 @@ class AprilTagDetectionNode(Node):
         cam = self.camera_config['cameras'][0]['settings']
         intr = cam['intrinsic_params']
 
-        K = np.array([[intr['fx'], 0, intr['cx']], [0, intr['fy'], intr['cy']],
-                      [0, 0, 1]])
+        K = np.array([[intr['fx'], 0, intr['cx']], [0, intr['fy'], intr['cy']], [0, 0, 1]])
         dist = np.array(cam['dist_coeffs'])
 
         half = self.tag_size / 2.0
-        obj_pts = np.array([[-half, -half, 0], [half, -half, 0],
-                            [half, half, 0], [-half, half, 0]])
+        obj_pts = np.array([[-half, -half, 0], [half, -half, 0], [half, half, 0], [-half, half, 0]])
 
         # ---------- TF matrix ----------
         t = tf.transform.translation
