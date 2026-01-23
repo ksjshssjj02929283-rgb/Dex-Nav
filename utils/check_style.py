@@ -33,25 +33,34 @@ if yapf.__version__ != "0.43.0":
         "yapf 0.43.0 required. Install with `pip install yapf==0.43.0`.")
 print("Using yapf version {}".format(yapf.__version__))
 
-PYTHON_FORMAT_DIRS = [
-    "imu",
-    "kfc",
+PYTHON_EXCLUDE_DIRS = [
+    "build",
+    "install",
+    ".git",
+    "third_party",
+    "startup",
+    "visualization",
     "utils",
 ]
 
-# Note: also modify CPP_FORMAT_DIRS in check_cpp_style.cmake.
-CPP_FORMAT_DIRS = [
-    "imu",
-    "kfc",
+CPP_EXCLUDE_DIRS = [
+    "build",
+    "install",
+    ".git",
+    "third_party",
+    "startup",
+    "visualization",
+    "utils",
 ]
 
 
-def _glob_files(directories, extensions):
+def _glob_files(exclude_directories, extensions):
     """
-    Find files with certain extensions in directories recursively.
+    Find files with certain extensions in the root directory recursively,
+    excluding specified directories.
 
     Args:
-        directories: list of directories, relative to the root repo directory.
+        exclude_directories: list of directories to exclude, relative to the root repo directory.
         extensions: list of extensions, e.g. ["cpp", "h"].
 
     Return:
@@ -60,15 +69,25 @@ def _glob_files(directories, extensions):
     pwd = Path(os.path.dirname(os.path.abspath(__file__)))
     root_dir = pwd.parent
 
-    file_paths = []
-    for directory in directories:
-        directory = root_dir / directory
-        for extension in extensions:
-            extension_regex = "*." + extension
-            file_paths.extend(directory.rglob(extension_regex))
-    file_paths = [str(file_path) for file_path in file_paths]
-    file_paths = sorted(list(set(file_paths)))
-    return file_paths
+    all_files = []
+    for extension in extensions:
+        extension_regex = f"*.{extension}"
+        all_files.extend(root_dir.rglob(extension_regex))
+
+    # Convert excluded dirs to absolute paths for comparison
+    exclude_paths = [root_dir / d for d in exclude_directories]
+
+    filtered_files = []
+    for file_path in all_files:
+        is_excluded = False
+        for exclude_path in exclude_paths:
+            if exclude_path.is_dir() and exclude_path in file_path.parents:
+                is_excluded = True
+                break
+        if not is_excluded:
+            filtered_files.append(str(file_path))
+
+    return sorted(list(set(filtered_files)))
 
 
 def _find_clang_format():
@@ -314,13 +333,13 @@ if __name__ == "__main__":
 
     cpp_ignored_files = []
     cpp_files = _glob_files(
-        CPP_FORMAT_DIRS,
+        CPP_EXCLUDE_DIRS,
         ["h", "hpp", "cpp", "cuh", "cu", "isph", "ispc", "h.in"])
-    cpp_files = _filter_files(cpp_files, cpp_ignored_files)
+    # cpp_files = _filter_files(cpp_files, cpp_ignored_files)
 
     # Check or apply style
     cpp_formatter = CppFormatter(cpp_files, clang_format_bin=clang_format_bin)
-    python_formatter = PythonFormatter(_glob_files(PYTHON_FORMAT_DIRS, ["py"]),
+    python_formatter = PythonFormatter(_glob_files(PYTHON_EXCLUDE_DIRS, ["py"]),
                                        style_config=python_style_config)
 
     changed_files = []
