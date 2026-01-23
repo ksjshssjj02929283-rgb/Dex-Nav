@@ -20,23 +20,19 @@
 #include "nav2_behavior_tree/bt_service_node.hpp"
 #include "std_srvs/srv/empty.hpp"
 
-namespace nav2_behavior_tree
-{
+namespace nav2_behavior_tree {
 
 /**
  * @brief A nav2_behavior_tree::BtServiceNode class that wraps nav2_msgs::srv::Empty
  */
-class ReinitializeGlobalLocalizationService : public BtServiceNode<std_srvs::srv::Empty>
-{
+class ReinitializeGlobalLocalizationService : public BtServiceNode<std_srvs::srv::Empty> {
 public:
-  /**
-   * @brief A constructor for nav2_behavior_tree::ReinitializeGlobalLocalizationService
-   * @param service_node_name Service name this node creates a client for
-   * @param conf BT node configuration
-   */
-  ReinitializeGlobalLocalizationService(
-    const std::string & service_node_name,
-    const BT::NodeConfiguration & conf);
+    /**
+     * @brief A constructor for nav2_behavior_tree::ReinitializeGlobalLocalizationService
+     * @param service_node_name Service name this node creates a client for
+     * @param conf BT node configuration
+     */
+    ReinitializeGlobalLocalizationService(const std::string& service_node_name, const BT::NodeConfiguration& conf);
 };
 
 }  // namespace nav2_behavior_tree

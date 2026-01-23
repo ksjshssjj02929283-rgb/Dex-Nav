@@ -17,7 +17,6 @@ from geometry_msgs.msg import PoseStamped
 from nav2_simple_commander.robot_navigator import BasicNavigator, TaskResult
 import rclpy
 from rclpy.duration import Duration
-
 """
 Basic navigation demo to go to poses.
 """
@@ -102,7 +101,8 @@ def main():
         feedback = navigator.getFeedback()
         if feedback and i % 5 == 0:
             print('Executing current waypoint: ' +
-                  str(feedback.current_waypoint + 1) + '/' + str(len(goal_poses)))
+                  str(feedback.current_waypoint + 1) + '/' +
+                  str(len(goal_poses)))
             now = navigator.get_clock().now()
 
             # Some navigation timeout to demo cancellation

@@ -16,21 +16,24 @@ import os
 # 导入 AprilTag 检测节点
 from detect_apriltags import UnifiedDetector, get_package_path
 
+
 class NavThenPreciseControl(Node):
+
     def __init__(self):
         super().__init__('nav_then_precise_control')
-        self._nav_client = ActionClient(self, NavigateToPose, 'navigate_to_pose')
+        self._nav_client = ActionClient(self, NavigateToPose,
+                                        'navigate_to_pose')
 
         # ---- 后退参数 ----
-        self.backward_speed   = -0.08         # m/s（负号=后退）
-        self.backward_duration = 2.5           # s
+        self.backward_speed = -0.08  # m/s（负号=后退）
+        self.backward_duration = 2.5  # s
         self._cmd_pub = self.create_publisher(Twist, 'control/cmd_vel', 10)
         self._backward_start = None
         self._backwarding = False
 
         # AprilTag 检测节点相关
         self.apriltag_detector_node = None
-        
+
         # 执行完成标志
         self.execution_completed = False
 
@@ -51,7 +54,7 @@ class NavThenPreciseControl(Node):
         result_future = goal_handle.get_result_async()
         rclpy.spin_until_future_complete(self, result_future)
         status = result_future.result().status
-        if status == 4:     # SUCCEEDED
+        if status == 4:  # SUCCEEDED
             self.get_logger().info("导航完成！")
             return True
         else:
@@ -61,7 +64,10 @@ class NavThenPreciseControl(Node):
     # ---------------- 子进程封装 ----------------
     def run_subprocess(self, cmd: list) -> int:
         self.get_logger().info(f"执行：{' '.join(cmd)}")
-        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        proc = subprocess.run(cmd,
+                              stdout=subprocess.PIPE,
+                              stderr=subprocess.STDOUT,
+                              text=True)
         print(proc.stdout)
         return proc.returncode
 
@@ -70,19 +76,23 @@ class NavThenPreciseControl(Node):
         """启动 AprilTag 检测节点"""
         try:
             self.get_logger().info("启动 AprilTag 检测节点...")
-            
+
             # 获取配置文件路径
             package_path = get_package_path('mobile_perception')
-            camera_config_path = os.path.join(package_path, 'config/camera_config.json')
-            apriltags_field_path = os.path.join(package_path, 'config/tags_config.json')
-            
+            camera_config_path = os.path.join(package_path,
+                                              'config/camera_config.json')
+            apriltags_field_path = os.path.join(package_path,
+                                                'config/tags_config.json')
+
             # 创建 AprilTag 检测节点
-            self.apriltag_detector_node = UnifiedDetector(camera_config_path, apriltags_field_path)
-            self.apriltag_detector_node.detect_by_camera_topics('/camera/image_raw')
-            
+            self.apriltag_detector_node = UnifiedDetector(
+                camera_config_path, apriltags_field_path)
+            self.apriltag_detector_node.detect_by_camera_topics(
+                '/camera/image_raw')
+
             self.get_logger().info("AprilTag 检测节点已启动")
             return True
-            
+
         except Exception as e:
             self.get_logger().error(f"启动 AprilTag 检测节点失败: {e}")
             return False
@@ -106,24 +116,26 @@ class NavThenPreciseControl(Node):
 
     def update_backward(self):
         if not self._backwarding:
-            return False     # 未在后退
-        elapsed = (self.get_clock().now() - self._backward_start).nanoseconds * 1e-9
+            return False  # 未在后退
+        elapsed = (self.get_clock().now() -
+                   self._backward_start).nanoseconds * 1e-9
         if elapsed < self.backward_duration:
             twist = Twist()
             twist.linear.x = self.backward_speed
             twist.angular.z = 0.0
             self._cmd_pub.publish(twist)
-            return True      # 继续后退
+            return True  # 继续后退
         else:
             self.get_logger().info("后退完成，发布零速度")
             twist = Twist()
             self._cmd_pub.publish(twist)
             self._backwarding = False
-            return False     # 后退结束
+            return False  # 后退结束
+
 
 def main():
     rclpy.init()
-    
+
     # 创建多线程执行器
     executor = MultiThreadedExecutor(num_threads=4)
     node = NavThenPreciseControl()
@@ -131,7 +143,8 @@ def main():
 
     # 1. 读取充电点
     import os, json
-    charging_pose_path = os.path.join(os.path.dirname(__file__), 'charging_pose.json')
+    charging_pose_path = os.path.join(os.path.dirname(__file__),
+                                      'charging_pose.json')
     goal_a = PoseStamped()
     try:
         with open(charging_pose_path, 'r') as f:
@@ -163,15 +176,15 @@ def main():
                 node.get_logger().error("启动 AprilTag 检测失败，退出。")
                 node.execution_completed = True
                 return False
-            
+
             # 将 AprilTag 检测节点添加到执行器
             if node.apriltag_detector_node:
                 executor.add_node(node.apriltag_detector_node)
 
             # 4. 精定位 charging
             ret = node.run_subprocess([
-                "ros2", "run", "mobile_perception",
-                "control_robot.py", "--goal_name", "charging_pose"
+                "ros2", "run", "mobile_perception", "control_robot.py",
+                "--goal_name", "charging_pose"
             ])
             if ret != 0:
                 node.get_logger().error("control_robot.py 失败")
@@ -187,7 +200,7 @@ def main():
             node.get_logger().info("全部流程完成！程序将自动退出...")
             node.execution_completed = True
             return True
-            
+
         except KeyboardInterrupt:
             node.get_logger().info("用户中断")
             node.execution_completed = True
@@ -206,34 +219,34 @@ def main():
         # 执行器运行，直到执行完成
         while not node.execution_completed:
             executor.spin_once(timeout_sec=0.1)
-            
+
     except KeyboardInterrupt:
         node.get_logger().info("用户中断，正在关闭...")
         node.execution_completed = True
-        
+
     finally:
         # 清理工作
         try:
             # 停止 AprilTag 检测节点
             node.stop_apriltag_detection()
-            
+
             # 确保停车
             node._cmd_pub.publish(Twist())
-            
+
             # 关闭执行器和节点
             executor.shutdown()
             node.destroy_node()
             rclpy.shutdown()
-            
+
         except Exception as e:
             print(f"清理过程中出错: {e}")
 
     # 等待执行线程结束
     execution_thread.join(timeout=1.0)
-    
+
     node.get_logger().info("程序已退出")
     return 0
 
+
 if __name__ == '__main__':
     sys.exit(main())
-

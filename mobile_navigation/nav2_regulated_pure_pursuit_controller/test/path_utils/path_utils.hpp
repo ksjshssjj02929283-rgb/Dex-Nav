@@ -23,88 +23,69 @@
 
 #include "nav_msgs/msg/path.hpp"
 
-namespace path_utils
-{
+namespace path_utils {
 
 /**
  * Build human-readable test paths
  */
-class PathSegment
-{
+class PathSegment {
 public:
-  virtual void append(nav_msgs::msg::Path & path, double spacing) const = 0;
-  virtual ~PathSegment() {}
+    virtual void append(nav_msgs::msg::Path& path, double spacing) const = 0;
+    virtual ~PathSegment() {}
 };
 
-class Arc : public PathSegment
-{
+class Arc : public PathSegment {
 public:
-  explicit Arc(double radius, double radians)
-  : radius_(radius), radians_(radians) {}
-  void append(nav_msgs::msg::Path & path, double spacing) const override;
+    explicit Arc(double radius, double radians) : radius_(radius), radians_(radians) {}
+    void append(nav_msgs::msg::Path& path, double spacing) const override;
 
 private:
-  double radius_;
-  double radians_;
+    double radius_;
+    double radians_;
 };
 
-class Straight : public PathSegment
-{
+class Straight : public PathSegment {
 public:
-  explicit Straight(double length)
-  : length_(length) {}
-  void append(nav_msgs::msg::Path & path, double spacing) const override;
+    explicit Straight(double length) : length_(length) {}
+    void append(nav_msgs::msg::Path& path, double spacing) const override;
 
 private:
-  double length_;
+    double length_;
 };
 
-class LeftTurn : public Arc
-{
+class LeftTurn : public Arc {
 public:
-  explicit LeftTurn(double radius)
-  : Arc(radius, M_PI_2) {}
+    explicit LeftTurn(double radius) : Arc(radius, M_PI_2) {}
 };
 
-class RightTurn : public Arc
-{
+class RightTurn : public Arc {
 public:
-  explicit RightTurn(double radius)
-  : Arc(radius, -M_PI_2) {}
+    explicit RightTurn(double radius) : Arc(radius, -M_PI_2) {}
 };
 
-class LeftTurnAround : public Arc
-{
+class LeftTurnAround : public Arc {
 public:
-  explicit LeftTurnAround(double radius)
-  : Arc(radius, M_PI) {}
+    explicit LeftTurnAround(double radius) : Arc(radius, M_PI) {}
 };
 
-class RightTurnAround : public Arc
-{
+class RightTurnAround : public Arc {
 public:
-  explicit RightTurnAround(double radius)
-  : Arc(radius, -M_PI) {}
+    explicit RightTurnAround(double radius) : Arc(radius, -M_PI) {}
 };
 
-class LeftCircle : public Arc
-{
+class LeftCircle : public Arc {
 public:
-  explicit LeftCircle(double radius)
-  : Arc(radius, 2.0 * M_PI) {}
+    explicit LeftCircle(double radius) : Arc(radius, 2.0 * M_PI) {}
 };
 
-class RightCircle : public Arc
-{
+class RightCircle : public Arc {
 public:
-  explicit RightCircle(double radius)
-  : Arc(radius, -2.0 * M_PI) {}
+    explicit RightCircle(double radius) : Arc(radius, -2.0 * M_PI) {}
 };
 
-nav_msgs::msg::Path generate_path(
-  geometry_msgs::msg::PoseStamped start,
-  double spacing,
-  std::initializer_list<std::unique_ptr<PathSegment>> segments);
+nav_msgs::msg::Path generate_path(geometry_msgs::msg::PoseStamped start,
+                                  double spacing,
+                                  std::initializer_list<std::unique_ptr<PathSegment>> segments);
 
 }  // namespace path_utils
 

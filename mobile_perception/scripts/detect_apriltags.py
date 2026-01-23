@@ -53,25 +53,15 @@ class UnifiedDetector(Node):
         self.pose_pub = self.create_publisher(PoseArray, 'apriltag_poses', 30)
 
         # ---------- sub ----------
-        self.create_subscription(
-            Image,
-            self.image_topic,
-            self.image_callback,
-            30
-        )
+        self.create_subscription(Image, self.image_topic, self.image_callback,
+                                 30)
 
-        self.create_subscription(
-            Status,
-            'status',
-            self.status_callback,
-            10
-        )
+        self.create_subscription(Status, 'status', self.status_callback, 10)
 
         # ---------- timers ----------
         self.tf_query_timer = self.create_timer(
-            0.05,   # 20Hz
-            self.tf_query_callback
-        )
+            0.05,  # 20Hz
+            self.tf_query_callback)
 
         # ---------- runtime state ----------
         self.detected_tag_ids = set()
@@ -102,41 +92,30 @@ class UnifiedDetector(Node):
         cam = self.camera_config['cameras'][0]['settings']
         intr = cam['intrinsic_params']
 
-        K = np.array([
-            [intr['fx'], 0, intr['cx']],
-            [0, intr['fy'], intr['cy']],
-            [0, 0, 1]
-        ])
+        K = np.array([[intr['fx'], 0, intr['cx']], [0, intr['fy'], intr['cy']],
+                      [0, 0, 1]])
         dist = np.array(cam['dist_coeffs'])
 
         half = self.tag_size / 2.0
-        obj_pts = np.array([
-            [-half, -half, 0],
-            [ half, -half, 0],
-            [ half,  half, 0],
-            [-half,  half, 0]
-        ])
+        obj_pts = np.array([[-half, -half, 0], [half, -half, 0],
+                            [half, half, 0], [-half, half, 0]])
 
         self.detected_tag_ids.clear()
 
         for tag in tags:
             img_pts = np.array(tag.corners, dtype=np.float32)
 
-            ok, rvec, tvec = cv2.solvePnP(
-                obj_pts, img_pts, K, dist,
-                flags=cv2.SOLVEPNP_ITERATIVE
-            )
+            ok, rvec, tvec = cv2.solvePnP(obj_pts,
+                                          img_pts,
+                                          K,
+                                          dist,
+                                          flags=cv2.SOLVEPNP_ITERATIVE)
             if not ok:
                 continue
 
             self.detected_tag_ids.add(tag.tag_id)
 
-            self.publish_tag_tf_camera(
-                tag.tag_id,
-                rvec,
-                tvec,
-                msg.header.stamp
-            )
+            self.publish_tag_tf_camera(tag.tag_id, rvec, tvec, msg.header.stamp)
 
     # ---------- TF query callback (ONLY lookup + publish pose) ----------
     def tf_query_callback(self):
@@ -150,8 +129,7 @@ class UnifiedDetector(Node):
                     'base_link',
                     f'apriltag_{tag_id}',
                     rclpy.time.Time(),
-                    timeout=rclpy.duration.Duration(seconds=0.05)
-                )
+                    timeout=rclpy.duration.Duration(seconds=0.05))
 
                 pose = Pose()
                 pose.position.x = tf.transform.translation.x
@@ -184,7 +162,6 @@ class UnifiedDetector(Node):
         t.transform.translation.x = float(tvec[0])
         t.transform.translation.y = float(tvec[1])
         t.transform.translation.z = float(tvec[2])
-
 
         t.transform.rotation.x = q[0]
         t.transform.rotation.y = q[1]

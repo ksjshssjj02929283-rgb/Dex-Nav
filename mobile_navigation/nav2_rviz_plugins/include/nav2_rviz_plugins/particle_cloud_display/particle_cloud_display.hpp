@@ -50,107 +50,97 @@
 #include <vector>
 
 #include "nav2_msgs/msg/particle_cloud.hpp"
-
-#include "rviz_rendering/objects/shape.hpp"
 #include "rviz_common/message_filter_display.hpp"
+#include "rviz_rendering/objects/shape.hpp"
 
-namespace Ogre
-{
+namespace Ogre {
 class ManualObject;
 }  // namespace Ogre
 
-namespace rviz_common
-{
-namespace properties
-{
+namespace rviz_common {
+namespace properties {
 class EnumProperty;
 class ColorProperty;
 class FloatProperty;
 }  // namespace properties
 }  // namespace rviz_common
 
-namespace rviz_rendering
-{
+namespace rviz_rendering {
 class Arrow;
 class Axes;
 }  // namespace rviz_rendering
 
-namespace nav2_rviz_plugins
-{
+namespace nav2_rviz_plugins {
 class FlatWeightedArrowsArray;
-struct OgrePoseWithWeight
-{
-  Ogre::Vector3 position;
-  Ogre::Quaternion orientation;
-  float weight;
+struct OgrePoseWithWeight {
+    Ogre::Vector3 position;
+    Ogre::Quaternion orientation;
+    float weight;
 };
 
 /** @brief Displays a nav2_msgs/ParticleCloud message as a bunch of line-drawn weighted arrows. */
-class ParticleCloudDisplay : public rviz_common::MessageFilterDisplay<nav2_msgs::msg::ParticleCloud>
-{
-  Q_OBJECT
+class ParticleCloudDisplay : public rviz_common::MessageFilterDisplay<nav2_msgs::msg::ParticleCloud> {
+    Q_OBJECT
 
 public:
-  // TODO(botteroa-si): Constructor for testing, remove once ros_nodes can be mocked and call
-  // initialize instead
-  ParticleCloudDisplay(
-    rviz_common::DisplayContext * display_context,
-    Ogre::SceneNode * scene_node);
-  ParticleCloudDisplay();
-  ~ParticleCloudDisplay() override;
+    // TODO(botteroa-si): Constructor for testing, remove once ros_nodes can be mocked and call
+    // initialize instead
+    ParticleCloudDisplay(rviz_common::DisplayContext* display_context, Ogre::SceneNode* scene_node);
+    ParticleCloudDisplay();
+    ~ParticleCloudDisplay() override;
 
-  void processMessage(nav2_msgs::msg::ParticleCloud::ConstSharedPtr msg) override;
-  void setShape(QString shape);  // for testing
+    void processMessage(nav2_msgs::msg::ParticleCloud::ConstSharedPtr msg) override;
+    void setShape(QString shape);  // for testing
 
 protected:
-  void onInitialize() override;
-  void reset() override;
+    void onInitialize() override;
+    void reset() override;
 
 private Q_SLOTS:
-  /// Update the interface and visible shapes based on the selected shape type.
-  void updateShapeChoice();
+    /// Update the interface and visible shapes based on the selected shape type.
+    void updateShapeChoice();
 
-  /// Update the arrow color.
-  void updateArrowColor();
+    /// Update the arrow color.
+    void updateArrowColor();
 
-  /// Update arrow geometry
-  void updateGeometry();
+    /// Update arrow geometry
+    void updateGeometry();
 
 private:
-  void initializeProperties();
-  bool validateFloats(const nav2_msgs::msg::ParticleCloud & msg);
-  bool setTransform(std_msgs::msg::Header const & header);
-  void updateDisplay();
-  void updateArrows2d();
-  void updateArrows3d();
-  void updateAxes();
-  void updateArrow3dGeometry();
-  void updateAxesGeometry();
+    void initializeProperties();
+    bool validateFloats(const nav2_msgs::msg::ParticleCloud& msg);
+    bool setTransform(std_msgs::msg::Header const& header);
+    void updateDisplay();
+    void updateArrows2d();
+    void updateArrows3d();
+    void updateAxes();
+    void updateArrow3dGeometry();
+    void updateAxesGeometry();
 
-  std::unique_ptr<rviz_rendering::Axes> makeAxes();
-  std::unique_ptr<rviz_rendering::Arrow> makeArrow3d();
+    std::unique_ptr<rviz_rendering::Axes> makeAxes();
+    std::unique_ptr<rviz_rendering::Arrow> makeArrow3d();
 
-  std::vector<OgrePoseWithWeight> poses_;
-  std::unique_ptr<FlatWeightedArrowsArray> arrows2d_;
-  std::vector<std::unique_ptr<rviz_rendering::Arrow>> arrows3d_;
-  std::vector<std::unique_ptr<rviz_rendering::Axes>> axes_;
+    std::vector<OgrePoseWithWeight> poses_;
+    std::unique_ptr<FlatWeightedArrowsArray> arrows2d_;
+    std::vector<std::unique_ptr<rviz_rendering::Arrow>> arrows3d_;
+    std::vector<std::unique_ptr<rviz_rendering::Axes>> axes_;
 
-  Ogre::SceneNode * arrow_node_;
-  Ogre::SceneNode * axes_node_;
+    Ogre::SceneNode* arrow_node_;
+    Ogre::SceneNode* axes_node_;
 
-  rviz_common::properties::EnumProperty * shape_property_;
-  rviz_common::properties::ColorProperty * arrow_color_property_;
-  rviz_common::properties::FloatProperty * arrow_alpha_property_;
+    rviz_common::properties::EnumProperty* shape_property_;
+    rviz_common::properties::ColorProperty* arrow_color_property_;
+    rviz_common::properties::FloatProperty* arrow_alpha_property_;
 
-  rviz_common::properties::FloatProperty * arrow_min_length_property_;
-  rviz_common::properties::FloatProperty * arrow_max_length_property_;
+    rviz_common::properties::FloatProperty* arrow_min_length_property_;
+    rviz_common::properties::FloatProperty* arrow_max_length_property_;
 
-  float min_length_;
-  float max_length_;
-  float length_scale_;
-  float head_radius_scale_;
-  float head_length_scale_;
-  float shaft_radius_scale_;
+    float min_length_;
+    float max_length_;
+    float length_scale_;
+    float head_radius_scale_;
+    float head_length_scale_;
+    float shaft_radius_scale_;
 };
 
 }  // namespace nav2_rviz_plugins

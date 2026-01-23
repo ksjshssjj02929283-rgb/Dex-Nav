@@ -19,14 +19,11 @@
 #include <memory>
 #include <string>
 
+#include "behaviortree_cpp_v3/action_node.h"
+#include "rclcpp/rclcpp.hpp"
 #include "std_msgs/msg/string.hpp"
 
-#include "behaviortree_cpp_v3/action_node.h"
-
-#include "rclcpp/rclcpp.hpp"
-
-namespace nav2_behavior_tree
-{
+namespace nav2_behavior_tree {
 
 /**
  * @brief The GoalCheckerSelector behavior is used to switch the goal checker
@@ -35,61 +32,51 @@ namespace nav2_behavior_tree
  * the FollowPath. The selected_goal_checker output port is passed to goal_checker_id
  * input port of the FollowPath
  */
-class GoalCheckerSelector : public BT::SyncActionNode
-{
+class GoalCheckerSelector : public BT::SyncActionNode {
 public:
-  /**
-   * @brief A constructor for nav2_behavior_tree::GoalCheckerSelector
-   *
-   * @param xml_tag_name Name for the XML tag for this node
-   * @param conf  BT node configuration
-   */
-  GoalCheckerSelector(
-    const std::string & xml_tag_name,
-    const BT::NodeConfiguration & conf);
+    /**
+     * @brief A constructor for nav2_behavior_tree::GoalCheckerSelector
+     *
+     * @param xml_tag_name Name for the XML tag for this node
+     * @param conf  BT node configuration
+     */
+    GoalCheckerSelector(const std::string& xml_tag_name, const BT::NodeConfiguration& conf);
 
-  /**
-   * @brief Creates list of BT ports
-   * @return BT::PortsList Containing basic ports along with node-specific ports
-   */
-  static BT::PortsList providedPorts()
-  {
-    return {
-      BT::InputPort<std::string>(
-        "default_goal_checker",
-        "the default goal_checker to use if there is not any external topic message received."),
+    /**
+     * @brief Creates list of BT ports
+     * @return BT::PortsList Containing basic ports along with node-specific ports
+     */
+    static BT::PortsList providedPorts() {
+        return {BT::InputPort<std::string>(
+                    "default_goal_checker",
+                    "the default goal_checker to use if there is not any external topic message received."),
 
-      BT::InputPort<std::string>(
-        "topic_name",
-        "goal_checker_selector",
-        "the input topic name to select the goal_checker"),
+                BT::InputPort<std::string>("topic_name", "goal_checker_selector",
+                                           "the input topic name to select the goal_checker"),
 
-      BT::OutputPort<std::string>(
-        "selected_goal_checker",
-        "Selected goal_checker by subscription")
-    };
-  }
+                BT::OutputPort<std::string>("selected_goal_checker", "Selected goal_checker by subscription")};
+    }
 
 private:
-  /**
-   * @brief Function to perform some user-defined operation on tick
-   */
-  BT::NodeStatus tick() override;
+    /**
+     * @brief Function to perform some user-defined operation on tick
+     */
+    BT::NodeStatus tick() override;
 
-  /**
-   * @brief callback function for the goal_checker_selector topic
-   *
-   * @param msg the message with the id of the goal_checker_selector
-   */
-  void callbackGoalCheckerSelect(const std_msgs::msg::String::SharedPtr msg);
+    /**
+     * @brief callback function for the goal_checker_selector topic
+     *
+     * @param msg the message with the id of the goal_checker_selector
+     */
+    void callbackGoalCheckerSelect(const std_msgs::msg::String::SharedPtr msg);
 
-  rclcpp::Subscription<std_msgs::msg::String>::SharedPtr goal_checker_selector_sub_;
+    rclcpp::Subscription<std_msgs::msg::String>::SharedPtr goal_checker_selector_sub_;
 
-  std::string last_selected_goal_checker_;
+    std::string last_selected_goal_checker_;
 
-  rclcpp::Node::SharedPtr node_;
+    rclcpp::Node::SharedPtr node_;
 
-  std::string topic_name_;
+    std::string topic_name_;
 };
 
 }  // namespace nav2_behavior_tree

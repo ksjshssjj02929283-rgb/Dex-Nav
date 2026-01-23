@@ -12,36 +12,27 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <string>
+#include "nav2_behavior_tree/plugins/action/controller_cancel_node.hpp"
+
 #include <memory>
+#include <string>
 
 #include "std_msgs/msg/string.hpp"
 
-#include "nav2_behavior_tree/plugins/action/controller_cancel_node.hpp"
+namespace nav2_behavior_tree {
 
-namespace nav2_behavior_tree
-{
-
-ControllerCancel::ControllerCancel(
-  const std::string & xml_tag_name,
-  const std::string & action_name,
-  const BT::NodeConfiguration & conf)
-: BtCancelActionNode<nav2_msgs::action::FollowPath>(xml_tag_name, action_name, conf)
-{
-}
+ControllerCancel::ControllerCancel(const std::string& xml_tag_name,
+                                   const std::string& action_name,
+                                   const BT::NodeConfiguration& conf)
+    : BtCancelActionNode<nav2_msgs::action::FollowPath>(xml_tag_name, action_name, conf) {}
 
 }  // namespace nav2_behavior_tree
 
 #include "behaviortree_cpp_v3/bt_factory.h"
-BT_REGISTER_NODES(factory)
-{
-  BT::NodeBuilder builder =
-    [](const std::string & name, const BT::NodeConfiguration & config)
-    {
-      return std::make_unique<nav2_behavior_tree::ControllerCancel>(
-        name, "follow_path", config);
+BT_REGISTER_NODES(factory) {
+    BT::NodeBuilder builder = [](const std::string& name, const BT::NodeConfiguration& config) {
+        return std::make_unique<nav2_behavior_tree::ControllerCancel>(name, "follow_path", config);
     };
 
-  factory.registerBuilder<nav2_behavior_tree::ControllerCancel>(
-    "CancelControl", builder);
+    factory.registerBuilder<nav2_behavior_tree::ControllerCancel>("CancelControl", builder);
 }

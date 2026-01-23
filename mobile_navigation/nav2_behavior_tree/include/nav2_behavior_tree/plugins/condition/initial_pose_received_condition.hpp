@@ -17,13 +17,12 @@
 
 #include "behaviortree_cpp_v3/behavior_tree.h"
 
-namespace nav2_behavior_tree
-{
+namespace nav2_behavior_tree {
 /**
  * @brief A BT::ConditionNode that returns SUCCESS if initial pose
  * has been received and FAILURE otherwise
  */
-BT::NodeStatus initialPoseReceived(BT::TreeNode & tree_node);
-}
+BT::NodeStatus initialPoseReceived(BT::TreeNode& tree_node);
+}  // namespace nav2_behavior_tree
 
 #endif  // NAV2_BEHAVIOR_TREE__PLUGINS__CONDITION__INITIAL_POSE_RECEIVED_CONDITION_HPP_

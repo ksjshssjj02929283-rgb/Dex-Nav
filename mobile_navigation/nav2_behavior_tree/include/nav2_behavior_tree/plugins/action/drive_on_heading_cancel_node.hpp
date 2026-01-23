@@ -18,40 +18,31 @@
 #include <memory>
 #include <string>
 
+#include "nav2_behavior_tree/bt_cancel_action_node.hpp"
 #include "nav2_msgs/action/drive_on_heading.hpp"
 
-#include "nav2_behavior_tree/bt_cancel_action_node.hpp"
-
-namespace nav2_behavior_tree
-{
+namespace nav2_behavior_tree {
 
 /**
  * @brief A nav2_behavior_tree::BtActionNode class that wraps nav2_msgs::action::DriveOnHeading
  */
-class DriveOnHeadingCancel : public BtCancelActionNode<nav2_msgs::action::DriveOnHeading>
-{
+class DriveOnHeadingCancel : public BtCancelActionNode<nav2_msgs::action::DriveOnHeading> {
 public:
-  /**
-   * @brief A constructor for nav2_behavior_tree::DriveOnHeadingCancel
-   * @param xml_tag_name Name for the XML tag for this node
-   * @param action_name Action name this node creates a client for
-   * @param conf BT node configuration
-   */
-  DriveOnHeadingCancel(
-    const std::string & xml_tag_name,
-    const std::string & action_name,
-    const BT::NodeConfiguration & conf);
+    /**
+     * @brief A constructor for nav2_behavior_tree::DriveOnHeadingCancel
+     * @param xml_tag_name Name for the XML tag for this node
+     * @param action_name Action name this node creates a client for
+     * @param conf BT node configuration
+     */
+    DriveOnHeadingCancel(const std::string& xml_tag_name,
+                         const std::string& action_name,
+                         const BT::NodeConfiguration& conf);
 
-  /**
-   * @brief Creates list of BT ports
-   * @return BT::PortsList Containing basic ports along with node-specific ports
-   */
-  static BT::PortsList providedPorts()
-  {
-    return providedBasicPorts(
-      {
-      });
-  }
+    /**
+     * @brief Creates list of BT ports
+     * @return BT::PortsList Containing basic ports along with node-specific ports
+     */
+    static BT::PortsList providedPorts() { return providedBasicPorts({}); }
 };
 
 }  // namespace nav2_behavior_tree

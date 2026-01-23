@@ -9,7 +9,6 @@ from rclpy.node import Node
 from std_srvs.srv import Trigger
 import sys
 
-
 # 全局变量用于管理ROS2节点
 _node_instance = None
 _service_client = None
@@ -18,13 +17,14 @@ _service_client = None
 def _init_ros2():
     """初始化ROS2（如果尚未初始化）"""
     global _node_instance, _service_client
-    
+
     if _node_instance is None:
         if not rclpy.ok():
             rclpy.init()
         _node_instance = Node('get_control_status_client')
-        _service_client = _node_instance.create_client(Trigger, 'control/get_status')
-        
+        _service_client = _node_instance.create_client(Trigger,
+                                                       'control/get_status')
+
         # 等待服务可用
         if not _service_client.wait_for_service(timeout_sec=2.0):
             _node_instance.get_logger().warn('服务 control/get_status 不可用')
@@ -48,20 +48,22 @@ def get_control_status():
         >>> print(f"当前状态: {status}")
     """
     global _node_instance, _service_client
-    
+
     # 初始化ROS2
     if not _init_ros2():
         print("错误: 无法连接到服务 control/get_status")
         return None
-    
+
     # 创建请求
     request = Trigger.Request()
-    
+
     # 调用服务
     try:
         future = _service_client.call_async(request)
-        rclpy.spin_until_future_complete(_node_instance, future, timeout_sec=1.0)
-        
+        rclpy.spin_until_future_complete(_node_instance,
+                                         future,
+                                         timeout_sec=1.0)
+
         if future.done():
             response = future.result()
             if response.success:
@@ -105,4 +107,3 @@ def main(args=None):
 
 if __name__ == '__main__':
     sys.exit(main())
-

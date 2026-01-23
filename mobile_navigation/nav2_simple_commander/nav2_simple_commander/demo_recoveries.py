@@ -17,8 +17,6 @@ from geometry_msgs.msg import PoseStamped
 from nav2_simple_commander.robot_navigator import BasicNavigator, TaskResult
 import rclpy
 from rclpy.duration import Duration
-
-
 """
 Basic recoveries demo. In this demonstration, the robot navigates
 to a dead-end where recoveries such as backup and spin are used
@@ -58,10 +56,9 @@ def main():
         i += 1
         feedback = navigator.getFeedback()
         if feedback and i % 5 == 0:
-            print(
-                f'Estimated time of arrival to destination is: \
+            print(f'Estimated time of arrival to destination is: \
                 {Duration.from_msg(feedback.estimated_time_remaining).nanoseconds / 1e9}'
-            )
+                 )
 
     # Robot hit a dead end, back it up
     print('Robot hit a dead end, backing up...')

@@ -36,15 +36,14 @@
 
 #include <gtest/gtest.h>
 
-#include <string>
-#include <memory>
 #include <chrono>
-
-#include "rclcpp/rclcpp.hpp"
-#include "nav2_util/lifecycle_node.hpp"
-#include "nav2_costmap_2d/costmap_filters/filter_values.hpp"
+#include <memory>
+#include <string>
 
 #include "dwb_plugins/kinematic_parameters.hpp"
+#include "nav2_costmap_2d/costmap_filters/filter_values.hpp"
+#include "nav2_util/lifecycle_node.hpp"
+#include "rclcpp/rclcpp.hpp"
 
 using namespace std::chrono_literals;
 
@@ -56,116 +55,103 @@ static const double MAX_VEL_Y = 30.0;
 static const double MAX_VEL_THETA = 15.0;
 static const double MAX_VEL_LINEAR = 50.0;
 
-class TestNode : public ::testing::Test
-{
+class TestNode : public ::testing::Test {
 public:
-  TestNode()
-  {
-    const std::string node_name = NODE_NAME;
-    node_ = nav2_util::LifecycleNode::make_shared(node_name);
+    TestNode() {
+        const std::string node_name = NODE_NAME;
+        node_ = nav2_util::LifecycleNode::make_shared(node_name);
 
-    node_->declare_parameter(
-      node_name + ".max_vel_x", rclcpp::ParameterValue(MAX_VEL_X));
-    node_->set_parameter(
-      rclcpp::Parameter(node_name + ".max_vel_x", MAX_VEL_X));
+        node_->declare_parameter(node_name + ".max_vel_x", rclcpp::ParameterValue(MAX_VEL_X));
+        node_->set_parameter(rclcpp::Parameter(node_name + ".max_vel_x", MAX_VEL_X));
 
-    node_->declare_parameter(
-      node_name + ".max_vel_y", rclcpp::ParameterValue(MAX_VEL_Y));
-    node_->set_parameter(
-      rclcpp::Parameter(node_name + ".max_vel_y", MAX_VEL_Y));
+        node_->declare_parameter(node_name + ".max_vel_y", rclcpp::ParameterValue(MAX_VEL_Y));
+        node_->set_parameter(rclcpp::Parameter(node_name + ".max_vel_y", MAX_VEL_Y));
 
-    node_->declare_parameter(
-      node_name + ".max_vel_theta", rclcpp::ParameterValue(MAX_VEL_THETA));
-    node_->set_parameter(
-      rclcpp::Parameter(node_name + ".max_vel_theta", MAX_VEL_THETA));
+        node_->declare_parameter(node_name + ".max_vel_theta", rclcpp::ParameterValue(MAX_VEL_THETA));
+        node_->set_parameter(rclcpp::Parameter(node_name + ".max_vel_theta", MAX_VEL_THETA));
 
-    node_->declare_parameter(
-      node_name + ".max_speed_xy", rclcpp::ParameterValue(MAX_VEL_LINEAR));
-    node_->set_parameter(
-      rclcpp::Parameter(node_name + ".max_speed_xy", MAX_VEL_LINEAR));
-  }
+        node_->declare_parameter(node_name + ".max_speed_xy", rclcpp::ParameterValue(MAX_VEL_LINEAR));
+        node_->set_parameter(rclcpp::Parameter(node_name + ".max_speed_xy", MAX_VEL_LINEAR));
+    }
 
-  ~TestNode() {}
+    ~TestNode() {}
 
 protected:
-  nav2_util::LifecycleNode::SharedPtr node_;
+    nav2_util::LifecycleNode::SharedPtr node_;
 };
 
-TEST_F(TestNode, TestPercentLimit)
-{
-  dwb_plugins::KinematicsHandler kh;
-  kh.initialize(node_, NODE_NAME);
+TEST_F(TestNode, TestPercentLimit) {
+    dwb_plugins::KinematicsHandler kh;
+    kh.initialize(node_, NODE_NAME);
 
-  dwb_plugins::KinematicParameters kp = kh.getKinematics();
-  EXPECT_NEAR(kp.getMaxX(), MAX_VEL_X, EPSILON);
-  EXPECT_NEAR(kp.getMaxY(), MAX_VEL_Y, EPSILON);
-  EXPECT_NEAR(kp.getMaxTheta(), MAX_VEL_THETA, EPSILON);
-  EXPECT_NEAR(kp.getMaxSpeedXY(), MAX_VEL_LINEAR, EPSILON);
+    dwb_plugins::KinematicParameters kp = kh.getKinematics();
+    EXPECT_NEAR(kp.getMaxX(), MAX_VEL_X, EPSILON);
+    EXPECT_NEAR(kp.getMaxY(), MAX_VEL_Y, EPSILON);
+    EXPECT_NEAR(kp.getMaxTheta(), MAX_VEL_THETA, EPSILON);
+    EXPECT_NEAR(kp.getMaxSpeedXY(), MAX_VEL_LINEAR, EPSILON);
 
-  // Set speed limit 30% from maximum robot speed
-  kh.setSpeedLimit(30, true);
+    // Set speed limit 30% from maximum robot speed
+    kh.setSpeedLimit(30, true);
 
-  // Update KinematicParameters values from KinematicsHandler
-  kp = kh.getKinematics();
-  EXPECT_NEAR(kp.getMaxX(), MAX_VEL_X * 0.3, EPSILON);
-  EXPECT_NEAR(kp.getMaxY(), MAX_VEL_Y * 0.3, EPSILON);
-  EXPECT_NEAR(kp.getMaxTheta(), MAX_VEL_THETA * 0.3, EPSILON);
-  EXPECT_NEAR(kp.getMaxSpeedXY(), MAX_VEL_LINEAR * 0.3, EPSILON);
+    // Update KinematicParameters values from KinematicsHandler
+    kp = kh.getKinematics();
+    EXPECT_NEAR(kp.getMaxX(), MAX_VEL_X * 0.3, EPSILON);
+    EXPECT_NEAR(kp.getMaxY(), MAX_VEL_Y * 0.3, EPSILON);
+    EXPECT_NEAR(kp.getMaxTheta(), MAX_VEL_THETA * 0.3, EPSILON);
+    EXPECT_NEAR(kp.getMaxSpeedXY(), MAX_VEL_LINEAR * 0.3, EPSILON);
 
-  // Restore maximum speed to its default
-  kh.setSpeedLimit(nav2_costmap_2d::NO_SPEED_LIMIT, true);
+    // Restore maximum speed to its default
+    kh.setSpeedLimit(nav2_costmap_2d::NO_SPEED_LIMIT, true);
 
-  // Update KinematicParameters values from KinematicsHandler
-  kp = kh.getKinematics();
-  EXPECT_NEAR(kp.getMaxX(), MAX_VEL_X, EPSILON);
-  EXPECT_NEAR(kp.getMaxY(), MAX_VEL_Y, EPSILON);
-  EXPECT_NEAR(kp.getMaxTheta(), MAX_VEL_THETA, EPSILON);
-  EXPECT_NEAR(kp.getMaxSpeedXY(), MAX_VEL_LINEAR, EPSILON);
+    // Update KinematicParameters values from KinematicsHandler
+    kp = kh.getKinematics();
+    EXPECT_NEAR(kp.getMaxX(), MAX_VEL_X, EPSILON);
+    EXPECT_NEAR(kp.getMaxY(), MAX_VEL_Y, EPSILON);
+    EXPECT_NEAR(kp.getMaxTheta(), MAX_VEL_THETA, EPSILON);
+    EXPECT_NEAR(kp.getMaxSpeedXY(), MAX_VEL_LINEAR, EPSILON);
 }
 
-TEST_F(TestNode, TestAbsoluteLimit)
-{
-  dwb_plugins::KinematicsHandler kh;
-  kh.initialize(node_, NODE_NAME);
+TEST_F(TestNode, TestAbsoluteLimit) {
+    dwb_plugins::KinematicsHandler kh;
+    kh.initialize(node_, NODE_NAME);
 
-  dwb_plugins::KinematicParameters kp = kh.getKinematics();
-  EXPECT_NEAR(kp.getMaxX(), MAX_VEL_X, EPSILON);
-  EXPECT_NEAR(kp.getMaxY(), MAX_VEL_Y, EPSILON);
-  EXPECT_NEAR(kp.getMaxTheta(), MAX_VEL_THETA, EPSILON);
-  EXPECT_NEAR(kp.getMaxSpeedXY(), MAX_VEL_LINEAR, EPSILON);
+    dwb_plugins::KinematicParameters kp = kh.getKinematics();
+    EXPECT_NEAR(kp.getMaxX(), MAX_VEL_X, EPSILON);
+    EXPECT_NEAR(kp.getMaxY(), MAX_VEL_Y, EPSILON);
+    EXPECT_NEAR(kp.getMaxTheta(), MAX_VEL_THETA, EPSILON);
+    EXPECT_NEAR(kp.getMaxSpeedXY(), MAX_VEL_LINEAR, EPSILON);
 
-  // Set speed limit 35.0 m/s
-  kh.setSpeedLimit(35.0, false);
+    // Set speed limit 35.0 m/s
+    kh.setSpeedLimit(35.0, false);
 
-  // Update KinematicParameters values from KinematicsHandler
-  kp = kh.getKinematics();
-  EXPECT_NEAR(kp.getMaxX(), MAX_VEL_X * 35.0 / MAX_VEL_LINEAR, EPSILON);
-  EXPECT_NEAR(kp.getMaxY(), MAX_VEL_Y * 35.0 / MAX_VEL_LINEAR, EPSILON);
-  EXPECT_NEAR(kp.getMaxTheta(), MAX_VEL_THETA * 35.0 / MAX_VEL_LINEAR, EPSILON);
-  EXPECT_NEAR(kp.getMaxSpeedXY(), 35.0, EPSILON);
+    // Update KinematicParameters values from KinematicsHandler
+    kp = kh.getKinematics();
+    EXPECT_NEAR(kp.getMaxX(), MAX_VEL_X * 35.0 / MAX_VEL_LINEAR, EPSILON);
+    EXPECT_NEAR(kp.getMaxY(), MAX_VEL_Y * 35.0 / MAX_VEL_LINEAR, EPSILON);
+    EXPECT_NEAR(kp.getMaxTheta(), MAX_VEL_THETA * 35.0 / MAX_VEL_LINEAR, EPSILON);
+    EXPECT_NEAR(kp.getMaxSpeedXY(), 35.0, EPSILON);
 
-  // Restore maximum speed to its default
-  kh.setSpeedLimit(nav2_costmap_2d::NO_SPEED_LIMIT, false);
+    // Restore maximum speed to its default
+    kh.setSpeedLimit(nav2_costmap_2d::NO_SPEED_LIMIT, false);
 
-  // Update KinematicParameters values from KinematicsHandler
-  kp = kh.getKinematics();
-  EXPECT_NEAR(kp.getMaxX(), MAX_VEL_X, EPSILON);
-  EXPECT_NEAR(kp.getMaxY(), MAX_VEL_Y, EPSILON);
-  EXPECT_NEAR(kp.getMaxTheta(), MAX_VEL_THETA, EPSILON);
-  EXPECT_NEAR(kp.getMaxSpeedXY(), MAX_VEL_LINEAR, EPSILON);
+    // Update KinematicParameters values from KinematicsHandler
+    kp = kh.getKinematics();
+    EXPECT_NEAR(kp.getMaxX(), MAX_VEL_X, EPSILON);
+    EXPECT_NEAR(kp.getMaxY(), MAX_VEL_Y, EPSILON);
+    EXPECT_NEAR(kp.getMaxTheta(), MAX_VEL_THETA, EPSILON);
+    EXPECT_NEAR(kp.getMaxSpeedXY(), MAX_VEL_LINEAR, EPSILON);
 }
 
-int main(int argc, char ** argv)
-{
-  // Initialize the system
-  testing::InitGoogleTest(&argc, argv);
-  rclcpp::init(argc, argv);
+int main(int argc, char** argv) {
+    // Initialize the system
+    testing::InitGoogleTest(&argc, argv);
+    rclcpp::init(argc, argv);
 
-  // Actual testing
-  bool test_result = RUN_ALL_TESTS();
+    // Actual testing
+    bool test_result = RUN_ALL_TESTS();
 
-  // Shutdown
-  rclcpp::shutdown();
+    // Shutdown
+    rclcpp::shutdown();
 
-  return test_result;
+    return test_result;
 }

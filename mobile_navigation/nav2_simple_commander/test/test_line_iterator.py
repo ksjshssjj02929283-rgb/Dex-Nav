@@ -57,7 +57,7 @@ class TestLineIterator(unittest.TestCase):
         i = 0
         while lt.isValid():
             self.assertEqual(lt.getX(), lt.getX0() + i)
-            self.assertEqual(lt.getY(), lt.getY0() + (i*2))
+            self.assertEqual(lt.getY(), lt.getY0() + (i * 2))
             lt.advance()
             i += 1
 
@@ -66,7 +66,7 @@ class TestLineIterator(unittest.TestCase):
         i = 0
         while lt.isValid():
             self.assertEqual(lt.getX(), lt.getX0() + i)
-            self.assertEqual(lt.getY(), lt.getY0() + (-i*2))
+            self.assertEqual(lt.getY(), lt.getY0() + (-i * 2))
             lt.advance()
             i += 1
 

@@ -20,47 +20,39 @@
 #include <vector>
 
 #include "behaviortree_cpp_v3/decorator_node.h"
-
-#include "rclcpp/rclcpp.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
+#include "rclcpp/rclcpp.hpp"
 
-namespace nav2_behavior_tree
-{
+namespace nav2_behavior_tree {
 
 /**
  * @brief A BT::DecoratorNode that ticks its child if the goal was updated
  */
-class GoalUpdatedController : public BT::DecoratorNode
-{
+class GoalUpdatedController : public BT::DecoratorNode {
 public:
-  /**
-   * @brief A constructor for nav2_behavior_tree::GoalUpdatedController
-   * @param name Name for the XML tag for this node
-   * @param conf BT node configuration
-   */
-  GoalUpdatedController(
-    const std::string & name,
-    const BT::NodeConfiguration & conf);
+    /**
+     * @brief A constructor for nav2_behavior_tree::GoalUpdatedController
+     * @param name Name for the XML tag for this node
+     * @param conf BT node configuration
+     */
+    GoalUpdatedController(const std::string& name, const BT::NodeConfiguration& conf);
 
-  /**
-   * @brief Creates list of BT ports
-   * @return BT::PortsList Containing node-specific ports
-   */
-  static BT::PortsList providedPorts()
-  {
-    return {};
-  }
+    /**
+     * @brief Creates list of BT ports
+     * @return BT::PortsList Containing node-specific ports
+     */
+    static BT::PortsList providedPorts() { return {}; }
 
 private:
-  /**
-   * @brief The main override required by a BT action
-   * @return BT::NodeStatus Status of tick execution
-   */
-  BT::NodeStatus tick() override;
+    /**
+     * @brief The main override required by a BT action
+     * @return BT::NodeStatus Status of tick execution
+     */
+    BT::NodeStatus tick() override;
 
-  bool goal_was_updated_;
-  geometry_msgs::msg::PoseStamped goal_;
-  std::vector<geometry_msgs::msg::PoseStamped> goals_;
+    bool goal_was_updated_;
+    geometry_msgs::msg::PoseStamped goal_;
+    std::vector<geometry_msgs::msg::PoseStamped> goals_;
 };
 
 }  // namespace nav2_behavior_tree

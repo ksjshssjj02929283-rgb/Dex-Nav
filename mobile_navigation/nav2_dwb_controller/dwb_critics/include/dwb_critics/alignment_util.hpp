@@ -37,8 +37,7 @@
 
 #include "geometry_msgs/msg/pose2_d.hpp"
 
-namespace dwb_critics
-{
+namespace dwb_critics {
 /**
  * @brief Projects the given pose forward the specified distance in the x direction.
  * @param pose Input pose
@@ -47,7 +46,7 @@ namespace dwb_critics
  *
  * (used in both path_align and dist_align)
  */
-geometry_msgs::msg::Pose2D getForwardPose(const geometry_msgs::msg::Pose2D & pose, double distance);
+geometry_msgs::msg::Pose2D getForwardPose(const geometry_msgs::msg::Pose2D& pose, double distance);
 
 }  // namespace dwb_critics
 

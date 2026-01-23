@@ -18,11 +18,10 @@
 #include "nav2_util/lifecycle_node.hpp"
 #include "rclcpp/rclcpp.hpp"
 
-class RclCppFixture
-{
+class RclCppFixture {
 public:
-  RclCppFixture() {rclcpp::init(0, nullptr);}
-  ~RclCppFixture() {rclcpp::shutdown();}
+    RclCppFixture() { rclcpp::init(0, nullptr); }
+    ~RclCppFixture() { rclcpp::shutdown(); }
 };
 RclCppFixture g_rclcppfixture;
 
@@ -30,56 +29,49 @@ RclCppFixture g_rclcppfixture;
 // the overall test will hang since the rclcpp thread will still be running,
 // preventing the executable from exiting (the test will hang)
 
-TEST(LifecycleNode, RclcppNodeExitsCleanly)
-{
-  // Make sure the node exits cleanly when using an rclcpp_node and associated thread
-  auto node1 = std::make_shared<nav2_util::LifecycleNode>("test_node", "");
-  std::this_thread::sleep_for(std::chrono::seconds(1));
-  SUCCEED();
+TEST(LifecycleNode, RclcppNodeExitsCleanly) {
+    // Make sure the node exits cleanly when using an rclcpp_node and associated thread
+    auto node1 = std::make_shared<nav2_util::LifecycleNode>("test_node", "");
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+    SUCCEED();
 }
 
-TEST(LifecycleNode, MultipleRclcppNodesExitCleanly)
-{
-  // Try a couple nodes w/ rclcpp_node and threads
-  auto node1 = std::make_shared<nav2_util::LifecycleNode>("test_node1", "");
-  auto node2 = std::make_shared<nav2_util::LifecycleNode>("test_node2", "");
+TEST(LifecycleNode, MultipleRclcppNodesExitCleanly) {
+    // Try a couple nodes w/ rclcpp_node and threads
+    auto node1 = std::make_shared<nav2_util::LifecycleNode>("test_node1", "");
+    auto node2 = std::make_shared<nav2_util::LifecycleNode>("test_node2", "");
 
-  std::this_thread::sleep_for(std::chrono::seconds(1));
-  SUCCEED();
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+    SUCCEED();
 }
 
-TEST(LifecycleNode, OnPreshutdownCbFires)
-{
-  // Ensure the on_rcl_preshutdown_cb fires
+TEST(LifecycleNode, OnPreshutdownCbFires) {
+    // Ensure the on_rcl_preshutdown_cb fires
 
-  class MyNodeType : public nav2_util::LifecycleNode
-  {
-public:
-    MyNodeType(
-      const std::string & node_name)
-    : nav2_util::LifecycleNode(node_name) {}
+    class MyNodeType : public nav2_util::LifecycleNode {
+    public:
+        MyNodeType(const std::string& node_name) : nav2_util::LifecycleNode(node_name) {}
 
-    bool fired = false;
+        bool fired = false;
 
-protected:
-    void on_rcl_preshutdown() override
-    {
-      fired = true;
+    protected:
+        void on_rcl_preshutdown() override {
+            fired = true;
 
-      nav2_util::LifecycleNode::on_rcl_preshutdown();
-    }
-  };
+            nav2_util::LifecycleNode::on_rcl_preshutdown();
+        }
+    };
 
-  auto node = std::make_shared<MyNodeType>("test_node");
+    auto node = std::make_shared<MyNodeType>("test_node");
 
-  ASSERT_EQ(node->fired, false);
+    ASSERT_EQ(node->fired, false);
 
-  rclcpp::shutdown();
+    rclcpp::shutdown();
 
-  ASSERT_EQ(node->fired, true);
+    ASSERT_EQ(node->fired, true);
 
-  // Fire dtor to ensure nothing insane happens, e.g. exceptions.
-  node.reset();
+    // Fire dtor to ensure nothing insane happens, e.g. exceptions.
+    node.reset();
 
-  SUCCEED();
+    SUCCEED();
 }

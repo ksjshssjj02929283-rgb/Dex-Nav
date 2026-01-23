@@ -38,12 +38,12 @@
 extern const unsigned int g_valid_image_width;
 extern const unsigned int g_valid_image_height;
 extern const char g_valid_image_content[];
-extern const char * g_valid_map_name;
-extern const char * g_valid_png_file;
-extern const char * g_valid_bmp_file;
-extern const char * g_valid_pgm_file;
-extern const char * g_valid_yaml_file;
-extern const char * g_tmp_dir;
+extern const char* g_valid_map_name;
+extern const char* g_valid_png_file;
+extern const char* g_valid_bmp_file;
+extern const char* g_valid_pgm_file;
+extern const char* g_valid_yaml_file;
+extern const char* g_tmp_dir;
 
 extern const double g_valid_image_res;
 // *INDENT-OFF*

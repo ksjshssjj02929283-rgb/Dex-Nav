@@ -35,15 +35,15 @@
 #ifndef DWB_CRITICS__OSCILLATION_HPP_
 #define DWB_CRITICS__OSCILLATION_HPP_
 
-#include <vector>
-#include <string>
 #include <chrono>
+#include <string>
+#include <vector>
+
 #include "dwb_core/trajectory_critic.hpp"
 
 using namespace std::chrono_literals;  // NOLINT
 
-namespace dwb_critics
-{
+namespace dwb_critics {
 
 /**
  * @class OscillationCritic
@@ -79,83 +79,81 @@ namespace dwb_critics
  * This assumes that oscillation_reset_dist_ or oscillation_reset_angle_ are positive. Otherwise,
  * it uses a time based delay reset function.
  */
-class OscillationCritic : public dwb_core::TrajectoryCritic
-{
+class OscillationCritic : public dwb_core::TrajectoryCritic {
 public:
-  OscillationCritic()
-  : oscillation_reset_time_(0s) {}
-  void onInit() override;
-  bool prepare(
-    const geometry_msgs::msg::Pose2D & pose, const nav_2d_msgs::msg::Twist2D & vel,
-    const geometry_msgs::msg::Pose2D & goal, const nav_2d_msgs::msg::Path2D & global_plan) override;
-  double scoreTrajectory(const dwb_msgs::msg::Trajectory2D & traj) override;
-  void reset() override;
-  void debrief(const nav_2d_msgs::msg::Twist2D & cmd_vel) override;
+    OscillationCritic() : oscillation_reset_time_(0s) {}
+    void onInit() override;
+    bool prepare(const geometry_msgs::msg::Pose2D& pose,
+                 const nav_2d_msgs::msg::Twist2D& vel,
+                 const geometry_msgs::msg::Pose2D& goal,
+                 const nav_2d_msgs::msg::Path2D& global_plan) override;
+    double scoreTrajectory(const dwb_msgs::msg::Trajectory2D& traj) override;
+    void reset() override;
+    void debrief(const nav_2d_msgs::msg::Twist2D& cmd_vel) override;
 
 private:
-  /**
-   * @class CommandTrend
-   * @brief Helper class for performing the same logic on the x,y and theta dimensions
-   */
-  class CommandTrend
-  {
-public:
-    CommandTrend();
-    void reset();
+    /**
+     * @class CommandTrend
+     * @brief Helper class for performing the same logic on the x,y and theta dimensions
+     */
+    class CommandTrend {
+    public:
+        CommandTrend();
+        void reset();
+
+        /**
+         * @brief update internal flags based on the commanded velocity
+         * @param velocity commanded velocity for the dimension this trend is tracking
+         * @return true if the sign has flipped
+         */
+        bool update(double velocity);
+
+        /**
+         * @brief Check to see whether the proposed velocity would be considered oscillating
+         * @param velocity the velocity to evaluate
+         * @return true if the sign has flipped more than once
+         */
+        bool isOscillating(double velocity);
+
+        /**
+         * @brief Check whether we are currently tracking a flipped sign
+         * @return True if the sign has flipped
+         */
+        bool hasSignFlipped();
+
+    private:
+        // Simple Enum for Tracking
+        // cppcheck-suppress syntaxError
+        enum class Sign { ZERO, POSITIVE, NEGATIVE };
+
+        Sign sign_;
+        bool positive_only_, negative_only_;
+    };
 
     /**
-     * @brief update internal flags based on the commanded velocity
-     * @param velocity commanded velocity for the dimension this trend is tracking
-     * @return true if the sign has flipped
+     * @brief Given a command that has been selected, track each component's sign for oscillations
+     * @param cmd_vel The command velocity selected by the algorithm
+     * @return True if the sign on any of the components flipped
      */
-    bool update(double velocity);
+    bool setOscillationFlags(const nav_2d_msgs::msg::Twist2D& cmd_vel);
 
     /**
-     * @brief Check to see whether the proposed velocity would be considered oscillating
-     * @param velocity the velocity to evaluate
-     * @return true if the sign has flipped more than once
+     * @brief Return true if the robot has travelled far enough or waited long enough
      */
-    bool isOscillating(double velocity);
+    bool resetAvailable();
 
-    /**
-     * @brief Check whether we are currently tracking a flipped sign
-     * @return True if the sign has flipped
-     */
-    bool hasSignFlipped();
+    CommandTrend x_trend_, y_trend_, theta_trend_;
+    double oscillation_reset_dist_, oscillation_reset_angle_, x_only_threshold_;
+    rclcpp::Duration oscillation_reset_time_;
 
-private:
-    // Simple Enum for Tracking
-    // cppcheck-suppress syntaxError
-    enum class Sign { ZERO, POSITIVE, NEGATIVE };
+    // Cached square parameter
+    double oscillation_reset_dist_sq_;
 
-    Sign sign_;
-    bool positive_only_, negative_only_;
-  };
-
-  /**
-   * @brief Given a command that has been selected, track each component's sign for oscillations
-   * @param cmd_vel The command velocity selected by the algorithm
-   * @return True if the sign on any of the components flipped
-   */
-  bool setOscillationFlags(const nav_2d_msgs::msg::Twist2D & cmd_vel);
-
-  /**
-   * @brief Return true if the robot has travelled far enough or waited long enough
-   */
-  bool resetAvailable();
-
-  CommandTrend x_trend_, y_trend_, theta_trend_;
-  double oscillation_reset_dist_, oscillation_reset_angle_, x_only_threshold_;
-  rclcpp::Duration oscillation_reset_time_;
-
-  // Cached square parameter
-  double oscillation_reset_dist_sq_;
-
-  // Saved positions
-  geometry_msgs::msg::Pose2D pose_, prev_stationary_pose_;
-  // Saved timestamp
-  rclcpp::Time prev_reset_time_;
-  rclcpp::Clock::SharedPtr clock_;
+    // Saved positions
+    geometry_msgs::msg::Pose2D pose_, prev_stationary_pose_;
+    // Saved timestamp
+    rclcpp::Time prev_reset_time_;
+    rclcpp::Clock::SharedPtr clock_;
 };
 
 }  // namespace dwb_critics

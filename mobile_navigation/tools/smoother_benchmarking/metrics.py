@@ -29,11 +29,15 @@ from random import uniform
 
 from transforms3d.euler import euler2quat
 
-
 # Note: Map origin is assumed to be (0,0)
 
+
 def getPlannerResults(navigator, initial_pose, goal_pose, planner):
-    return navigator._getPathImpl(initial_pose, goal_pose, planner, use_start=True)
+    return navigator._getPathImpl(initial_pose,
+                                  goal_pose,
+                                  planner,
+                                  use_start=True)
+
 
 def getSmootherResults(navigator, path, smoothers):
     smoothed_results = []
@@ -46,19 +50,20 @@ def getSmootherResults(navigator, path, smoothers):
             return None
     return smoothed_results
 
+
 def getRandomStart(costmap, max_cost, side_buffer, time_stamp, res):
     start = PoseStamped()
     start.header.frame_id = 'map'
     start.header.stamp = time_stamp
     while True:
-        row = randint(side_buffer, costmap.shape[0]-side_buffer)
-        col = randint(side_buffer, costmap.shape[1]-side_buffer)
+        row = randint(side_buffer, costmap.shape[0] - side_buffer)
+        col = randint(side_buffer, costmap.shape[1] - side_buffer)
 
         if costmap[row, col] < max_cost:
-            start.pose.position.x = col*res
-            start.pose.position.y = row*res
+            start.pose.position.x = col * res
+            start.pose.position.y = row * res
 
-            yaw = uniform(0, 1) * 2*math.pi
+            yaw = uniform(0, 1) * 2 * math.pi
             quad = euler2quat(0.0, 0.0, yaw)
             start.pose.orientation.w = quad[0]
             start.pose.orientation.x = quad[1]
@@ -67,27 +72,28 @@ def getRandomStart(costmap, max_cost, side_buffer, time_stamp, res):
             break
     return start
 
+
 def getRandomGoal(costmap, start, max_cost, side_buffer, time_stamp, res):
     goal = PoseStamped()
     goal.header.frame_id = 'map'
     goal.header.stamp = time_stamp
     while True:
-        row = randint(side_buffer, costmap.shape[0]-side_buffer)
-        col = randint(side_buffer, costmap.shape[1]-side_buffer)
+        row = randint(side_buffer, costmap.shape[0] - side_buffer)
+        col = randint(side_buffer, costmap.shape[1] - side_buffer)
 
         start_x = start.pose.position.x
         start_y = start.pose.position.y
-        goal_x = col*res
-        goal_y = row*res
+        goal_x = col * res
+        goal_y = row * res
         x_diff = goal_x - start_x
         y_diff = goal_y - start_y
-        dist = math.sqrt(x_diff ** 2 + y_diff ** 2)
+        dist = math.sqrt(x_diff**2 + y_diff**2)
 
         if costmap[row, col] < max_cost and dist > 3.0:
             goal.pose.position.x = goal_x
             goal.pose.position.y = goal_y
 
-            yaw = uniform(0, 1) * 2*math.pi
+            yaw = uniform(0, 1) * 2 * math.pi
             quad = euler2quat(0.0, 0.0, yaw)
             goal.pose.orientation.w = quad[0]
             goal.pose.orientation.x = quad[1]
@@ -95,6 +101,7 @@ def getRandomGoal(costmap, start, max_cost, side_buffer, time_stamp, res):
             goal.pose.orientation.z = quad[3]
             break
     return goal
+
 
 def main():
     rclpy.init()
@@ -124,16 +131,18 @@ def main():
     while i < random_pairs:
         print("Cycle: ", i, "out of: ", random_pairs)
         start = getRandomStart(costmap, max_cost, side_buffer, time_stamp, res)
-        goal = getRandomGoal(costmap, start, max_cost, side_buffer, time_stamp, res)
+        goal = getRandomGoal(costmap, start, max_cost, side_buffer, time_stamp,
+                             res)
         print("Start", start)
         print("Goal", goal)
         result = getPlannerResults(navigator, start, goal, planner)
         if result is not None:
-            smoothed_results = getSmootherResults(navigator, result.path, smoothers)
+            smoothed_results = getSmootherResults(navigator, result.path,
+                                                  smoothers)
             if smoothed_results is not None:
-              results.append(result)
-              results.append(smoothed_results)
-              i += 1
+                results.append(result)
+                results.append(smoothed_results)
+                i += 1
         else:
             print(planner, " planner failed to produce the path")
 

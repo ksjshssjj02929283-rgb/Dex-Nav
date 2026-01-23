@@ -15,56 +15,54 @@
 #ifndef NAV2_CORE__BEHAVIOR_HPP_
 #define NAV2_CORE__BEHAVIOR_HPP_
 
-#include <string>
 #include <memory>
+#include <string>
 
-#include "rclcpp/rclcpp.hpp"
-#include "nav2_util/lifecycle_node.hpp"
-#include "tf2_ros/buffer.h"
 #include "nav2_costmap_2d/costmap_topic_collision_checker.hpp"
+#include "nav2_util/lifecycle_node.hpp"
+#include "rclcpp/rclcpp.hpp"
+#include "tf2_ros/buffer.h"
 
-namespace nav2_core
-{
+namespace nav2_core {
 
 /**
  * @class Behavior
  * @brief Abstract interface for behaviors to adhere to with pluginlib
  */
-class Behavior
-{
+class Behavior {
 public:
-  using Ptr = std::shared_ptr<Behavior>;
+    using Ptr = std::shared_ptr<Behavior>;
 
-  /**
-   * @brief Virtual destructor
-   */
-  virtual ~Behavior() {}
+    /**
+     * @brief Virtual destructor
+     */
+    virtual ~Behavior() {}
 
-  /**
-   * @param  parent pointer to user's node
-   * @param  name The name of this planner
-   * @param  tf A pointer to a TF buffer
-   * @param  costmap_ros A pointer to the costmap
-   */
-  virtual void configure(
-    const rclcpp_lifecycle::LifecycleNode::WeakPtr & parent,
-    const std::string & name, std::shared_ptr<tf2_ros::Buffer> tf,
-    std::shared_ptr<nav2_costmap_2d::CostmapTopicCollisionChecker> collision_checker) = 0;
+    /**
+     * @param  parent pointer to user's node
+     * @param  name The name of this planner
+     * @param  tf A pointer to a TF buffer
+     * @param  costmap_ros A pointer to the costmap
+     */
+    virtual void configure(const rclcpp_lifecycle::LifecycleNode::WeakPtr& parent,
+                           const std::string& name,
+                           std::shared_ptr<tf2_ros::Buffer> tf,
+                           std::shared_ptr<nav2_costmap_2d::CostmapTopicCollisionChecker> collision_checker) = 0;
 
-  /**
-   * @brief Method to cleanup resources used on shutdown.
-   */
-  virtual void cleanup() = 0;
+    /**
+     * @brief Method to cleanup resources used on shutdown.
+     */
+    virtual void cleanup() = 0;
 
-  /**
-   * @brief Method to active Behavior and any threads involved in execution.
-   */
-  virtual void activate() = 0;
+    /**
+     * @brief Method to active Behavior and any threads involved in execution.
+     */
+    virtual void activate() = 0;
 
-  /**
-   * @brief Method to deactive Behavior and any threads involved in execution.
-   */
-  virtual void deactivate() = 0;
+    /**
+     * @brief Method to deactive Behavior and any threads involved in execution.
+     */
+    virtual void deactivate() = 0;
 };
 
 }  // namespace nav2_core

@@ -8,7 +8,9 @@ import os
 
 SAVE_PATH = os.path.join(os.path.dirname(__file__), 'charging_pose.json')
 
+
 class ChargingPoseSaver(Node):
+
     def __init__(self):
         super().__init__('charging_pose_saver')
         self.tf_buffer = Buffer()
@@ -24,7 +26,11 @@ class ChargingPoseSaver(Node):
             trans = None
             for retry in range(20):
                 try:
-                    trans = self.tf_buffer.lookup_transform('map', 'base_link', rclpy.time.Time(), timeout=rclpy.duration.Duration(seconds=0.2))
+                    trans = self.tf_buffer.lookup_transform(
+                        'map',
+                        'base_link',
+                        rclpy.time.Time(),
+                        timeout=rclpy.duration.Duration(seconds=0.2))
                     break
                 except Exception as e:
                     self.get_logger().warn(f"第{i+1}次TF查找重试{retry+1}: {e}")
@@ -36,15 +42,12 @@ class ChargingPoseSaver(Node):
             if header is None:
                 header = trans.header
             positions.append([
-                trans.transform.translation.x,
-                trans.transform.translation.y,
+                trans.transform.translation.x, trans.transform.translation.y,
                 trans.transform.translation.z
             ])
             orientations.append([
-                trans.transform.rotation.x,
-                trans.transform.rotation.y,
-                trans.transform.rotation.z,
-                trans.transform.rotation.w
+                trans.transform.rotation.x, trans.transform.rotation.y,
+                trans.transform.rotation.z, trans.transform.rotation.w
             ])
         # 计算均值
         import numpy as np
@@ -90,6 +93,7 @@ def main():
         node.save_pose(pose)
     node.destroy_node()
     rclpy.shutdown()
+
 
 if __name__ == '__main__':
     main()

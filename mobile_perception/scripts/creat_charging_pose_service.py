@@ -27,15 +27,11 @@ class ChargingPoseSaver(Node):
         self.save_path = os.path.join(pkg_path, 'config', 'charging_pose.json')
 
         # Service
-        self.srv = self.create_service(
-            Trigger,
-            'save_charging_pose',
-            self.handle_save_request
-        )
+        self.srv = self.create_service(Trigger, 'save_charging_pose',
+                                       self.handle_save_request)
 
         self.get_logger().info(
-            f'Charging pose saver service ready. Save path: {self.save_path}'
-        )
+            f'Charging pose saver service ready. Save path: {self.save_path}')
 
     # ===============================
     # Service callback
@@ -90,13 +86,10 @@ class ChargingPoseSaver(Node):
                         'map',
                         'base_link',
                         rclpy.time.Time(),
-                        timeout=rclpy.duration.Duration(seconds=0.2)
-                    )
+                        timeout=rclpy.duration.Duration(seconds=0.2))
                     break
                 except Exception as e:
-                    self.get_logger().warn(
-                        f'第{i+1}次 TF 查找重试 {retry+1}: {e}'
-                    )
+                    self.get_logger().warn(f'第{i+1}次 TF 查找重试 {retry+1}: {e}')
                     rclpy.spin_once(self, timeout_sec=0.2)
                     time.sleep(0.1)
 
@@ -108,16 +101,13 @@ class ChargingPoseSaver(Node):
                 header = trans.header
 
             positions.append([
-                trans.transform.translation.x,
-                trans.transform.translation.y,
+                trans.transform.translation.x, trans.transform.translation.y,
                 trans.transform.translation.z
             ])
 
             orientations.append([
-                trans.transform.rotation.x,
-                trans.transform.rotation.y,
-                trans.transform.rotation.z,
-                trans.transform.rotation.w
+                trans.transform.rotation.x, trans.transform.rotation.y,
+                trans.transform.rotation.z, trans.transform.rotation.w
             ])
 
         pos_mean = np.mean(positions, axis=0)
@@ -172,4 +162,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-

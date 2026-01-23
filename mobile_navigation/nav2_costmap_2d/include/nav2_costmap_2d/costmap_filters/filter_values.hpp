@@ -40,8 +40,7 @@
 
 /** Provides constants used in costmap filters */
 
-namespace nav2_costmap_2d
-{
+namespace nav2_costmap_2d {
 
 /** Types of costmap filter */
 static constexpr uint8_t KEEPOUT_FILTER = 0;

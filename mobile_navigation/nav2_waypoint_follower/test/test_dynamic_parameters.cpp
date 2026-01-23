@@ -23,54 +23,42 @@
 #include "nav2_waypoint_follower/waypoint_follower.hpp"
 #include "rclcpp/rclcpp.hpp"
 
-class WPShim : public nav2_waypoint_follower::WaypointFollower
-{
+class WPShim : public nav2_waypoint_follower::WaypointFollower {
 public:
-  WPShim()
-  : nav2_waypoint_follower::WaypointFollower(rclcpp::NodeOptions())
-  {
-  }
+    WPShim() : nav2_waypoint_follower::WaypointFollower(rclcpp::NodeOptions()) {}
 
-  void configure()
-  {
-    rclcpp_lifecycle::State state;
-    this->on_configure(state);
-  }
+    void configure() {
+        rclcpp_lifecycle::State state;
+        this->on_configure(state);
+    }
 
-  void activate()
-  {
-    rclcpp_lifecycle::State state;
-    this->on_activate(state);
-  }
+    void activate() {
+        rclcpp_lifecycle::State state;
+        this->on_activate(state);
+    }
 };
 
-class RclCppFixture
-{
+class RclCppFixture {
 public:
-  RclCppFixture() {rclcpp::init(0, nullptr);}
-  ~RclCppFixture() {rclcpp::shutdown();}
+    RclCppFixture() { rclcpp::init(0, nullptr); }
+    ~RclCppFixture() { rclcpp::shutdown(); }
 };
 RclCppFixture g_rclcppfixture;
 
-TEST(WPTest, test_dynamic_parameters)
-{
-  auto follower = std::make_shared<WPShim>();
-  follower->configure();
-  follower->activate();
+TEST(WPTest, test_dynamic_parameters) {
+    auto follower = std::make_shared<WPShim>();
+    follower->configure();
+    follower->activate();
 
-  auto rec_param = std::make_shared<rclcpp::AsyncParametersClient>(
-    follower->get_node_base_interface(), follower->get_node_topics_interface(),
-    follower->get_node_graph_interface(),
-    follower->get_node_services_interface());
+    auto rec_param = std::make_shared<rclcpp::AsyncParametersClient>(
+        follower->get_node_base_interface(), follower->get_node_topics_interface(),
+        follower->get_node_graph_interface(), follower->get_node_services_interface());
 
-  auto results = rec_param->set_parameters_atomically(
-    {rclcpp::Parameter("loop_rate", 100),
-      rclcpp::Parameter("stop_on_failure", false)});
+    auto results = rec_param->set_parameters_atomically(
+        {rclcpp::Parameter("loop_rate", 100), rclcpp::Parameter("stop_on_failure", false)});
 
-  rclcpp::spin_until_future_complete(
-    follower->get_node_base_interface(),
-    results);
+    rclcpp::spin_until_future_complete(follower->get_node_base_interface(), results);
 
-  EXPECT_EQ(follower->get_parameter("loop_rate").as_int(), 100);
-  EXPECT_EQ(follower->get_parameter("stop_on_failure").as_bool(), false);
+    EXPECT_EQ(follower->get_parameter("loop_rate").as_int(), 100);
+    EXPECT_EQ(follower->get_parameter("stop_on_failure").as_bool(), false);
 }

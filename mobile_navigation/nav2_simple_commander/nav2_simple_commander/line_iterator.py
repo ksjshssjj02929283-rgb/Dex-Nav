@@ -13,7 +13,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 """
 This is a Python3 API for a line iterator.
 
@@ -77,14 +76,14 @@ class LineIterator():
 
         if x1 != x0 and y1 != y0:
             self.valid_ = True
-            self.m_ = (y1-y0)/(x1-x0)
-            self.b_ = y1 - (self.m_*x1)
+            self.m_ = (y1 - y0) / (x1 - x0)
+            self.b_ = y1 - (self.m_ * x1)
         elif x1 == x0 and y1 != y0:
             self.valid_ = True
         elif y1 == y1 and x1 != x0:
             self.valid_ = True
-            self.m_ = (y1-y0)/(x1-x0)
-            self.b_ = y1 - (self.m_*x1)
+            self.m_ = (y1 - y0) / (x1 - x0)
+            self.b_ = y1 - (self.m_ * x1)
         else:
             self.valid_ = False
             raise ValueError(
@@ -98,29 +97,33 @@ class LineIterator():
         """Advance to the next point in the line."""
         if self.x1_ > self.x0_:
             if self.x_ < self.x1_:
-                self.x_ = round(self.clamp(
-                    self.x_ + self.step_size_, self.x0_, self.x1_), 5)
+                self.x_ = round(
+                    self.clamp(self.x_ + self.step_size_, self.x0_, self.x1_),
+                    5)
                 self.y_ = round(self.m_ * self.x_ + self.b_, 5)
             else:
                 self.valid_ = False
         elif self.x1_ < self.x0_:
             if self.x_ > self.x1_:
-                self.x_ = round(self.clamp(
-                    self.x_ - self.step_size_, self.x1_, self.x0_), 5)
+                self.x_ = round(
+                    self.clamp(self.x_ - self.step_size_, self.x1_, self.x0_),
+                    5)
                 self.y_ = round(self.m_ * self.x_ + self.b_, 5)
             else:
                 self.valid_ = False
         else:
             if self.y1_ > self.y0_:
                 if self.y_ < self.y1_:
-                    self.y_ = round(self.clamp(
-                        self.y_ + self.step_size_, self.y0_, self.y1_), 5)
+                    self.y_ = round(
+                        self.clamp(self.y_ + self.step_size_, self.y0_,
+                                   self.y1_), 5)
                 else:
                     self.valid_ = False
             elif self.y1_ < self.y0_:
                 if self.y_ > self.y1_:
-                    self.y_ = round(self.clamp(
-                        self.y_ - self.step_size_, self.y1_, self.y0_), 5)
+                    self.y_ = round(
+                        self.clamp(self.y_ - self.step_size_, self.y1_,
+                                   self.y0_), 5)
                 else:
                     self.valid_ = False
             else:

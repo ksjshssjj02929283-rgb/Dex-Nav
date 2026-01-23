@@ -12,77 +12,70 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "nav2_behavior_tree/plugins/decorator/goal_updated_controller.hpp"
+
 #include <chrono>
 #include <string>
 
-#include "rclcpp/rclcpp.hpp"
-#include "geometry_msgs/msg/pose_stamped.hpp"
 #include "behaviortree_cpp_v3/decorator_node.h"
-#include "nav2_behavior_tree/plugins/decorator/goal_updated_controller.hpp"
+#include "geometry_msgs/msg/pose_stamped.hpp"
+#include "rclcpp/rclcpp.hpp"
 
+namespace nav2_behavior_tree {
 
-namespace nav2_behavior_tree
-{
+GoalUpdatedController::GoalUpdatedController(const std::string& name, const BT::NodeConfiguration& conf)
+    : BT::DecoratorNode(name, conf) {}
 
-GoalUpdatedController::GoalUpdatedController(
-  const std::string & name,
-  const BT::NodeConfiguration & conf)
-: BT::DecoratorNode(name, conf)
-{
-}
+BT::NodeStatus GoalUpdatedController::tick() {
+    if (status() == BT::NodeStatus::IDLE) {
+        // Reset since we're starting a new iteration of
+        // the goal updated controller (moving from IDLE to RUNNING)
 
-BT::NodeStatus GoalUpdatedController::tick()
-{
-  if (status() == BT::NodeStatus::IDLE) {
-    // Reset since we're starting a new iteration of
-    // the goal updated controller (moving from IDLE to RUNNING)
+        config().blackboard->get<std::vector<geometry_msgs::msg::PoseStamped>>("goals", goals_);
+        config().blackboard->get<geometry_msgs::msg::PoseStamped>("goal", goal_);
 
-    config().blackboard->get<std::vector<geometry_msgs::msg::PoseStamped>>("goals", goals_);
-    config().blackboard->get<geometry_msgs::msg::PoseStamped>("goal", goal_);
-
-    goal_was_updated_ = true;
-  }
-
-  setStatus(BT::NodeStatus::RUNNING);
-
-  std::vector<geometry_msgs::msg::PoseStamped> current_goals;
-  config().blackboard->get<std::vector<geometry_msgs::msg::PoseStamped>>("goals", current_goals);
-  geometry_msgs::msg::PoseStamped current_goal;
-  config().blackboard->get<geometry_msgs::msg::PoseStamped>("goal", current_goal);
-
-  if (goal_ != current_goal || goals_ != current_goals) {
-    goal_ = current_goal;
-    goals_ = current_goals;
-    goal_was_updated_ = true;
-  }
-
-  // The child gets ticked the first time through and any time the goal has
-  // changed or preempted. In addition, once the child begins to run, it is ticked each time
-  // 'til completion
-  if ((child_node_->status() == BT::NodeStatus::RUNNING) || goal_was_updated_) {
-    goal_was_updated_ = false;
-    const BT::NodeStatus child_state = child_node_->executeTick();
-
-    switch (child_state) {
-      case BT::NodeStatus::RUNNING:
-        return BT::NodeStatus::RUNNING;
-
-      case BT::NodeStatus::SUCCESS:
-        return BT::NodeStatus::SUCCESS;
-
-      case BT::NodeStatus::FAILURE:
-      default:
-        return BT::NodeStatus::FAILURE;
+        goal_was_updated_ = true;
     }
-  }
 
-  return status();
+    setStatus(BT::NodeStatus::RUNNING);
+
+    std::vector<geometry_msgs::msg::PoseStamped> current_goals;
+    config().blackboard->get<std::vector<geometry_msgs::msg::PoseStamped>>("goals", current_goals);
+    geometry_msgs::msg::PoseStamped current_goal;
+    config().blackboard->get<geometry_msgs::msg::PoseStamped>("goal", current_goal);
+
+    if (goal_ != current_goal || goals_ != current_goals) {
+        goal_ = current_goal;
+        goals_ = current_goals;
+        goal_was_updated_ = true;
+    }
+
+    // The child gets ticked the first time through and any time the goal has
+    // changed or preempted. In addition, once the child begins to run, it is ticked each time
+    // 'til completion
+    if ((child_node_->status() == BT::NodeStatus::RUNNING) || goal_was_updated_) {
+        goal_was_updated_ = false;
+        const BT::NodeStatus child_state = child_node_->executeTick();
+
+        switch (child_state) {
+            case BT::NodeStatus::RUNNING:
+                return BT::NodeStatus::RUNNING;
+
+            case BT::NodeStatus::SUCCESS:
+                return BT::NodeStatus::SUCCESS;
+
+            case BT::NodeStatus::FAILURE:
+            default:
+                return BT::NodeStatus::FAILURE;
+        }
+    }
+
+    return status();
 }
 
 }  // namespace nav2_behavior_tree
 
 #include "behaviortree_cpp_v3/bt_factory.h"
-BT_REGISTER_NODES(factory)
-{
-  factory.registerNodeType<nav2_behavior_tree::GoalUpdatedController>("GoalUpdatedController");
+BT_REGISTER_NODES(factory) {
+    factory.registerNodeType<nav2_behavior_tree::GoalUpdatedController>("GoalUpdatedController");
 }

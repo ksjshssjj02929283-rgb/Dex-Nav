@@ -12,41 +12,34 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "nav2_behaviors/plugins/wait.hpp"
+
 #include <chrono>
 #include <memory>
 
-#include "nav2_behaviors/plugins/wait.hpp"
+namespace nav2_behaviors {
 
-namespace nav2_behaviors
-{
-
-Wait::Wait()
-: TimedBehavior<WaitAction>(),
-  feedback_(std::make_shared<WaitAction::Feedback>())
-{
-}
+Wait::Wait() : TimedBehavior<WaitAction>(), feedback_(std::make_shared<WaitAction::Feedback>()) {}
 
 Wait::~Wait() = default;
 
-Status Wait::onRun(const std::shared_ptr<const WaitAction::Goal> command)
-{
-  wait_end_ = node_.lock()->now() + rclcpp::Duration(command->time);
-  return Status::SUCCEEDED;
+Status Wait::onRun(const std::shared_ptr<const WaitAction::Goal> command) {
+    wait_end_ = node_.lock()->now() + rclcpp::Duration(command->time);
+    return Status::SUCCEEDED;
 }
 
-Status Wait::onCycleUpdate()
-{
-  auto current_point = node_.lock()->now();
-  auto time_left = wait_end_ - current_point;
+Status Wait::onCycleUpdate() {
+    auto current_point = node_.lock()->now();
+    auto time_left = wait_end_ - current_point;
 
-  feedback_->time_left = time_left;
-  action_server_->publish_feedback(feedback_);
+    feedback_->time_left = time_left;
+    action_server_->publish_feedback(feedback_);
 
-  if (time_left.nanoseconds() > 0) {
-    return Status::RUNNING;
-  } else {
-    return Status::SUCCEEDED;
-  }
+    if (time_left.nanoseconds() > 0) {
+        return Status::RUNNING;
+    } else {
+        return Status::SUCCEEDED;
+    }
 }
 
 }  // namespace nav2_behaviors

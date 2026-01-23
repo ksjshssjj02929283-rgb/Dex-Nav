@@ -15,30 +15,27 @@
 #ifndef NAV2_MPPI_CONTROLLER__MODELS__CONSTRAINTS_HPP_
 #define NAV2_MPPI_CONTROLLER__MODELS__CONSTRAINTS_HPP_
 
-namespace mppi::models
-{
+namespace mppi::models {
 
 /**
  * @struct mppi::models::ControlConstraints
  * @brief Constraints on control
  */
-struct ControlConstraints
-{
-  float vx_max;
-  float vx_min;
-  float vy;
-  float wz;
+struct ControlConstraints {
+    float vx_max;
+    float vx_min;
+    float vy;
+    float wz;
 };
 
 /**
  * @struct mppi::models::SamplingStd
  * @brief Noise parameters for sampling trajectories
  */
-struct SamplingStd
-{
-  float vx;
-  float vy;
-  float wz;
+struct SamplingStd {
+    float vx;
+    float vy;
+    float wz;
 };
 
 }  // namespace mppi::models

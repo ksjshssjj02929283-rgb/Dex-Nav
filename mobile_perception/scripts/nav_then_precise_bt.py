@@ -21,6 +21,7 @@ from nav2_msgs.action import NavigateToPose
 from std_msgs.msg import Bool
 import threading
 
+
 # ---------------- 工具函数 ---------------- #
 def read_charging_pose(json_path: str) -> PoseStamped:
     """读取充电点位置"""
@@ -41,38 +42,33 @@ def read_charging_pose(json_path: str) -> PoseStamped:
         print(f"充电点读取失败: {e}")
         raise
 
+
 # ---------------- ROS2节点封装 ---------------- #
 class NavThenPreciseNode(Node):
+
     def __init__(self):
         super().__init__('nav_then_precise_bt_node')
         # self.executor = MultiThreadedExecutor(num_threads=4)
-        # self.executor.add_node(self) 
+        # self.executor.add_node(self)
         # 导航客户端
-        self._nav_client = ActionClient(self, NavigateToPose, 'navigate_to_pose')
-        
+        self._nav_client = ActionClient(self, NavigateToPose,
+                                        'navigate_to_pose')
+
         # 速度发布器
         self._cmd_pub = self.create_publisher(Twist, 'control/cmd_vel', 10)
-        
+
         # 充电状态订阅器
-        qos = QoSProfile(
-            reliability=ReliabilityPolicy.RELIABLE,
-            history=HistoryPolicy.KEEP_LAST, 
-            depth=1
-        )
+        qos = QoSProfile(reliability=ReliabilityPolicy.RELIABLE,
+                         history=HistoryPolicy.KEEP_LAST,
+                         depth=1)
 
         self._sub_diagnostics = self.create_subscription(
-        DiagnosticArray, 
-        '/diagnostics_agg', 
-        self._cb_diagnostics, 
-        qos
-        )
+            DiagnosticArray, '/diagnostics_agg', self._cb_diagnostics, qos)
         self.is_charging = False
 
-
-        
         # 后退参数（保持原始参数）
-        self.backward_speed = -0.08         # m/s（负号=后退）
-        self.backward_duration = 2.5        # s
+        self.backward_speed = -0.08  # m/s（负号=后退）
+        self.backward_duration = 2.5  # s
 
         # 模拟控制开关：是否强制让充电检测失败以触发重试
         # 可通过环境变量 BT_SIM_CHECK_FAIL=1 打开
@@ -92,12 +88,16 @@ class NavThenPreciseNode(Node):
                 return True
             # 获取配置文件路径
             package_path = get_package_path('mobile_perception')
-            camera_config_path = os.path.join(package_path, 'config/camera_config.json')
-            apriltags_field_path = os.path.join(package_path, 'config/tags_config.json')
+            camera_config_path = os.path.join(package_path,
+                                              'config/camera_config.json')
+            apriltags_field_path = os.path.join(package_path,
+                                                'config/tags_config.json')
 
             # 创建检测节点并订阅话题
-            self.apriltag_detector_node = UnifiedDetector(camera_config_path, apriltags_field_path)
-            self.apriltag_detector_node.detect_by_camera_topics('/camera/image_raw')
+            self.apriltag_detector_node = UnifiedDetector(
+                camera_config_path, apriltags_field_path)
+            self.apriltag_detector_node.detect_by_camera_topics(
+                '/camera/image_raw')
 
             # 延迟加入执行器：仅打标记，主循环里统一加入，避免此处 executor 为空
             self._apriltag_needs_add = True
@@ -116,7 +116,8 @@ class NavThenPreciseNode(Node):
                 try:
                     if self.executor is not None:
                         try:
-                            self.executor.remove_node(self.apriltag_detector_node)
+                            self.executor.remove_node(
+                                self.apriltag_detector_node)
                         except Exception:
                             pass
                 finally:
@@ -139,11 +140,11 @@ class NavThenPreciseNode(Node):
                         self.is_charging = value.value.lower() == 'true'
                         self.get_logger().info(f"充电状态: {self.is_charging}")
                         return  # 找到后提前退出
-                
+
                 # 如果没有找到battery_charging键
                 self.get_logger().warn("未找到battery_charging键")
                 return
-        
+
         # 如果没有找到电源板诊断项
         self.get_logger().warn("未找到PowerBoard诊断信息")
 
@@ -180,10 +181,12 @@ class NavThenPreciseNode(Node):
         注意：保留真实实现于下方注释，便于随时恢复。
         """
 
-
         # --- 真实实现（请在需要时取消注释恢复） ---
         self.get_logger().info(f"执行：{' '.join(cmd)}")
-        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        proc = subprocess.run(cmd,
+                              stdout=subprocess.PIPE,
+                              stderr=subprocess.STDOUT,
+                              text=True)
         print(proc.stdout)
         return proc.returncode
 
@@ -227,9 +230,11 @@ class NavThenPreciseNode(Node):
             time.sleep(0.02)
         self._cmd_pub.publish(Twist())
 
+
 # ---------------- 行为树叶子节点 ---------------- #
 class NavigateToCharging(py_trees.behaviour.Behaviour):
     """导航到充电点"""
+
     def __init__(self, node: NavThenPreciseNode, pose: PoseStamped):
         super().__init__('NavigateToCharging')
         self.node = node
@@ -239,8 +244,10 @@ class NavigateToCharging(py_trees.behaviour.Behaviour):
         ok = self.node.nav_to_pose(self.pose)
         return common.Status.SUCCESS if ok else common.Status.FAILURE
 
+
 class AprilTagAndDock(py_trees.behaviour.Behaviour):
     """AprilTag检测和精定位（子进程 ros2 run 方式）"""
+
     def __init__(self, node: NavThenPreciseNode):
         super().__init__('AprilTagAndDock')
         self.node = node
@@ -254,14 +261,18 @@ class AprilTagAndDock(py_trees.behaviour.Behaviour):
             self.apriltag_proc = subprocess.Popen([
                 "bash", "-lc",
                 "cd ~/w1 && source install/setup.bash && exec ros2 run mobile_perception detect_apriltags.py"
-            ], start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            self.node.get_logger().info(f"AprilTag 进程已启动，pid={self.apriltag_proc.pid}")
+            ],
+                                                  start_new_session=True,
+                                                  stdout=subprocess.DEVNULL,
+                                                  stderr=subprocess.DEVNULL)
+            self.node.get_logger().info(
+                f"AprilTag 进程已启动，pid={self.apriltag_proc.pid}")
 
     def update(self):
         """执行精定位和后退"""
         ret = self.node.run_subprocess([
-            "ros2", "run", "mobile_perception",
-            "control_robot.py", "--goal_name", "charging_pose"
+            "ros2", "run", "mobile_perception", "control_robot.py",
+            "--goal_name", "charging_pose"
         ])
         if ret != 0:
             self.node.get_logger().error("control_robot.py 失败")
@@ -275,7 +286,7 @@ class AprilTagAndDock(py_trees.behaviour.Behaviour):
         """
         # 此方法不再清理进程，由 RetryWithUndocking 在树结束时统一清理
         pass
-    
+
     def cleanup_apriltag(self):
         """清理AprilTag检测进程：SIGTERM -> SIGKILL（不改对方脚本）"""
         if not hasattr(self, 'apriltag_proc') or self.apriltag_proc is None:
@@ -325,8 +336,10 @@ class AprilTagAndDock(py_trees.behaviour.Behaviour):
         finally:
             self.apriltag_proc = None
 
+
 class CheckCharging(py_trees.behaviour.Behaviour):
     """检查充电状态"""
+
     def __init__(self, node: NavThenPreciseNode, timeout=5.0):
         super().__init__('CheckCharging')
         self.node = node
@@ -342,21 +355,24 @@ class CheckCharging(py_trees.behaviour.Behaviour):
         """检查充电状态"""
         elapsed = (self.node.get_clock().now() - self.start).nanoseconds * 1e-9
 
-        self.node.get_logger().info(f"电源状态码：{self.node.is_charging}, 已等待{elapsed:.1f}s")
-        
+        self.node.get_logger().info(
+            f"电源状态码：{self.node.is_charging}, 已等待{elapsed:.1f}s")
+
         if self.node.is_charging:
             self.node.get_logger().info("✅ 检测到充电状态！")
             return common.Status.SUCCESS
-            
+
         if elapsed >= self.timeout:
             self.node.get_logger().warn(f"❌ 充电检测超时({self.timeout}s)，未检测到充电")
             return common.Status.FAILURE
-            
+
         # 继续检测
         return common.Status.RUNNING
 
+
 class Undocking(py_trees.behaviour.Behaviour):
     """undocking行为：向前运动"""
+
     def __init__(self, node: NavThenPreciseNode):
         super().__init__('Undocking')
         self.node = node
@@ -366,15 +382,18 @@ class Undocking(py_trees.behaviour.Behaviour):
         self.node.undocking()
         return common.Status.SUCCESS
 
+
 # ---------------- 自定义重试节点 ---------------- #
 class RetryWithUndocking(py_trees.behaviour.Behaviour):
     """带undocking的重试节点：最多尝试5次"""
-    def __init__(self, name: str, node: NavThenPreciseNode, dock_subtree: py_trees.behaviour.Behaviour):
+
+    def __init__(self, name: str, node: NavThenPreciseNode,
+                 dock_subtree: py_trees.behaviour.Behaviour):
         super().__init__(name)
         self.node = node
         self.counter = 0
         self.max_tries = 5
-        
+
         # 状态机成员
         self._dock = dock_subtree
         self._check = CheckCharging(node, timeout=10.0)
@@ -386,7 +405,7 @@ class RetryWithUndocking(py_trees.behaviour.Behaviour):
         self.counter = 0
         self._phase = 'DOCK'
         self._apriltag_started = False
-        
+
         # 启动AprilTag检测进程（仅启动一次，持续到树结束）
         if not self._apriltag_started:
             self._dock.initialise()
@@ -395,37 +414,37 @@ class RetryWithUndocking(py_trees.behaviour.Behaviour):
 
     def update(self):
         """状态机：DOCK -> CHECK -> (SUCCESS | UNDOCK -> DOCK)"""
-        
+
         if self._phase == 'DOCK':
             # 执行精定位
             dock_status = self._dock.update()
-            
+
             if dock_status == common.Status.SUCCESS:
                 self.node.get_logger().info("精定位完成，进入充电检测阶段")
                 self._check.initialise()  # ✅ 只在精定位成功后初始化一次
                 self._phase = 'CHECK'
                 return common.Status.RUNNING
-                
+
             elif dock_status == common.Status.FAILURE:
                 self.node.get_logger().warn("精定位失败，准备undocking重试")
                 self._phase = 'UNDOCK'
                 return common.Status.RUNNING
-                
+
             else:  # RUNNING
                 return common.Status.RUNNING
 
         elif self._phase == 'CHECK':
             # 检查充电状态（非阻塞）
             check_status = self._check.update()
-            
+
             if check_status == common.Status.SUCCESS:
                 return common.Status.SUCCESS  # 整个流程成功
-                
+
             elif check_status == common.Status.FAILURE:
                 self.node.get_logger().warn("充电检测失败，准备undocking重试")
                 self._phase = 'UNDOCK'
                 return common.Status.RUNNING
-                
+
             else:  # RUNNING
                 return common.Status.RUNNING
 
@@ -435,18 +454,20 @@ class RetryWithUndocking(py_trees.behaviour.Behaviour):
             if self.counter > self.max_tries:
                 self.node.get_logger().error(f"已达到最大重试次数{self.max_tries}")
                 return common.Status.FAILURE
-                
-            self.node.get_logger().info(f"第{self.counter}/{self.max_tries}次undocking...")
+
+            self.node.get_logger().info(
+                f"第{self.counter}/{self.max_tries}次undocking...")
             self.node.undocking()
-            
+
             # 重置状态，准备下一次尝试（不再调用initialise，保持AprilTag进程运行）
             self._phase = 'DOCK'
             return common.Status.RUNNING
-    
+
     def terminate(self, new_status):
         """树结束时清理AprilTag进程"""
         if self._apriltag_started:
-            self.node.get_logger().info(f"行为树结束（状态：{new_status}），清理AprilTag检测进程...")
+            self.node.get_logger().info(
+                f"行为树结束（状态：{new_status}），清理AprilTag检测进程...")
             self._dock.cleanup_apriltag()
             self._apriltag_started = False
 
@@ -456,17 +477,17 @@ def create_root(node: NavThenPreciseNode, pose: PoseStamped):
     """创建行为树根节点"""
     # 导航节点
     nav = NavigateToCharging(node, pose)
-    
+
     # 精定位节点
     dock = AprilTagAndDock(node)
-    
+
     # 重试节点（包含undocking）
     retry_root = RetryWithUndocking('RetryWithUndocking', node, dock)
-    
+
     # 根序列：导航 -> 重试精定位
     root = py_trees.composites.Sequence('Root', memory=True)
     root.add_children([nav, retry_root])
-    
+
     return root
 
 
@@ -478,7 +499,8 @@ def main():
 
     try:
         # 读取充电点位置
-        charging_pose_path = os.path.join(os.path.dirname(__file__), 'charging_pose.json')
+        charging_pose_path = os.path.join(os.path.dirname(__file__),
+                                          'charging_pose.json')
         goal_pose = read_charging_pose(charging_pose_path)
 
         # 创建行为树
@@ -489,7 +511,8 @@ def main():
         node.get_logger().info("开始执行一键回充行为树...")
 
         # 执行行为树
-        while rclpy.ok() and root.status not in (common.Status.SUCCESS, common.Status.FAILURE):
+        while rclpy.ok() and root.status not in (common.Status.SUCCESS,
+                                                 common.Status.FAILURE):
             tree.tick()
             rclpy.spin_once(node, timeout_sec=0.1)
             time.sleep(0.1)
@@ -523,6 +546,7 @@ def main():
         node._cmd_pub.publish(Twist())
         node.destroy_node()
         rclpy.shutdown()
+
 
 if __name__ == '__main__':
     sys.exit(main())

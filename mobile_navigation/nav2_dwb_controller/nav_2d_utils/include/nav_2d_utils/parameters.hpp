@@ -35,18 +35,17 @@
 #ifndef NAV_2D_UTILS__PARAMETERS_HPP_
 #define NAV_2D_UTILS__PARAMETERS_HPP_
 
-#include <string>
 #include <memory>
+#include <string>
 
-#include "rclcpp/rclcpp.hpp"
 #include "nav2_util/lifecycle_node.hpp"
 #include "nav2_util/node_utils.hpp"
+#include "rclcpp/rclcpp.hpp"
 
 // TODO(crdelsey): Remove when code is re-enabled
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
-namespace nav_2d_utils
-{
+namespace nav_2d_utils {
 
 /**
  * @brief Search for a parameter and load it, or use the default value
@@ -59,17 +58,14 @@ namespace nav_2d_utils
  * @param default_value Value to return if not found
  * @return Value of parameter if found, otherwise the default_value
  */
-template<class param_t>
-param_t searchAndGetParam(
-  const nav2_util::LifecycleNode::SharedPtr & nh, const std::string & param_name,
-  const param_t & default_value)
-{
-  param_t value;
-  nav2_util::declare_parameter_if_not_declared(
-    nh, param_name,
-    rclcpp::ParameterValue(default_value));
-  nh->get_parameter(param_name, value);
-  return value;
+template <class param_t>
+param_t searchAndGetParam(const nav2_util::LifecycleNode::SharedPtr& nh,
+                          const std::string& param_name,
+                          const param_t& default_value) {
+    param_t value;
+    nav2_util::declare_parameter_if_not_declared(nh, param_name, rclcpp::ParameterValue(default_value));
+    nh->get_parameter(param_name, value);
+    return value;
 }
 
 }  // namespace nav_2d_utils

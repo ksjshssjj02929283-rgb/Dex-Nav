@@ -35,22 +35,21 @@
 #ifndef DWB_CORE__TRAJECTORY_CRITIC_HPP_
 #define DWB_CORE__TRAJECTORY_CRITIC_HPP_
 
-#include <string>
-#include <vector>
 #include <memory>
+#include <string>
 #include <utility>
+#include <vector>
 
-#include "rclcpp/rclcpp.hpp"
-#include "nav2_costmap_2d/costmap_2d_ros.hpp"
-#include "geometry_msgs/msg/pose2_d.hpp"
-#include "nav_2d_msgs/msg/twist2_d.hpp"
-#include "nav_2d_msgs/msg/path2_d.hpp"
 #include "dwb_msgs/msg/trajectory2_d.hpp"
-#include "sensor_msgs/msg/point_cloud.hpp"
+#include "geometry_msgs/msg/pose2_d.hpp"
+#include "nav2_costmap_2d/costmap_2d_ros.hpp"
 #include "nav2_util/lifecycle_node.hpp"
+#include "nav_2d_msgs/msg/path2_d.hpp"
+#include "nav_2d_msgs/msg/twist2_d.hpp"
+#include "rclcpp/rclcpp.hpp"
+#include "sensor_msgs/msg/point_cloud.hpp"
 
-namespace dwb_core
-{
+namespace dwb_core {
 /**
  * @class TrajectoryCritic
  * @brief Evaluates a Trajectory2D to produce a score
@@ -75,114 +74,105 @@ namespace dwb_core
  *  the costmap, addCriticVisualization can provide that information to the dwb_core
  *  which will publish the grid scores as a PointCloud2.
  */
-class TrajectoryCritic
-{
+class TrajectoryCritic {
 public:
-  using Ptr = std::shared_ptr<dwb_core::TrajectoryCritic>;
+    using Ptr = std::shared_ptr<dwb_core::TrajectoryCritic>;
 
-  virtual ~TrajectoryCritic() {}
+    virtual ~TrajectoryCritic() {}
 
-  /**
-   * @brief Initialize the critic with appropriate pointers and parameters
-   *
-   * The name and costmap are stored as member variables.
-   * A NodeHandle is created using the combination of the parent namespace and the critic name
-   *
-   * @param name The name of this critic
-   * @param parent_namespace The namespace of the planner
-   * @param costmap_ros Pointer to the costmap
-   */
-  void initialize(
-    const nav2_util::LifecycleNode::SharedPtr & nh,
-    const std::string & name,
-    const std::string & ns,
-    std::shared_ptr<nav2_costmap_2d::Costmap2DROS> costmap_ros)
-  {
-    node_ = nh;
-    name_ = name;
-    costmap_ros_ = costmap_ros;
-    dwb_plugin_name_ = ns;
-    if (!nh->has_parameter(dwb_plugin_name_ + "." + name_ + ".scale")) {
-      nh->declare_parameter(
-        dwb_plugin_name_ + "." + name_ + ".scale",
-        rclcpp::ParameterValue(1.0));
+    /**
+     * @brief Initialize the critic with appropriate pointers and parameters
+     *
+     * The name and costmap are stored as member variables.
+     * A NodeHandle is created using the combination of the parent namespace and the critic name
+     *
+     * @param name The name of this critic
+     * @param parent_namespace The namespace of the planner
+     * @param costmap_ros Pointer to the costmap
+     */
+    void initialize(const nav2_util::LifecycleNode::SharedPtr &nh,
+                    const std::string &name,
+                    const std::string &ns,
+                    std::shared_ptr<nav2_costmap_2d::Costmap2DROS> costmap_ros) {
+        node_ = nh;
+        name_ = name;
+        costmap_ros_ = costmap_ros;
+        dwb_plugin_name_ = ns;
+        if (!nh->has_parameter(dwb_plugin_name_ + "." + name_ + ".scale")) {
+            nh->declare_parameter(dwb_plugin_name_ + "." + name_ + ".scale", rclcpp::ParameterValue(1.0));
+        }
+        nh->get_parameter(dwb_plugin_name_ + "." + name_ + ".scale", scale_);
+        onInit();
     }
-    nh->get_parameter(dwb_plugin_name_ + "." + name_ + ".scale", scale_);
-    onInit();
-  }
-  virtual void onInit() {}
+    virtual void onInit() {}
 
-  /**
-   * @brief Reset the state of the critic
-   *
-   * Reset is called when the planner receives a new global plan.
-   * This can be used to discard information specific to one plan.
-   */
-  virtual void reset() {}
+    /**
+     * @brief Reset the state of the critic
+     *
+     * Reset is called when the planner receives a new global plan.
+     * This can be used to discard information specific to one plan.
+     */
+    virtual void reset() {}
 
-  /**
-   * @brief Prior to evaluating any trajectories, look at contextual information constant across all trajectories
-   *
-   * Subclasses may overwrite. Return false in case there is any error.
-   *
-   * @param pose Current pose (costmap frame)
-   * @param vel Current velocity
-   * @param goal The final goal (costmap frame)
-   * @param global_plan Transformed global plan in costmap frame, possibly cropped to nearby points
-   */
-  virtual bool prepare(
-    const geometry_msgs::msg::Pose2D &, const nav_2d_msgs::msg::Twist2D &,
-    const geometry_msgs::msg::Pose2D &,
-    const nav_2d_msgs::msg::Path2D &)
-  {
-    return true;
-  }
+    /**
+     * @brief Prior to evaluating any trajectories, look at contextual information constant across all trajectories
+     *
+     * Subclasses may overwrite. Return false in case there is any error.
+     *
+     * @param pose Current pose (costmap frame)
+     * @param vel Current velocity
+     * @param goal The final goal (costmap frame)
+     * @param global_plan Transformed global plan in costmap frame, possibly cropped to nearby points
+     */
+    virtual bool prepare(const geometry_msgs::msg::Pose2D &,
+                         const nav_2d_msgs::msg::Twist2D &,
+                         const geometry_msgs::msg::Pose2D &,
+                         const nav_2d_msgs::msg::Path2D &) {
+        return true;
+    }
 
-  /**
-   * @brief Return a raw score for the given trajectory.
-   *
-   * scores < 0 are considered invalid/errors, such as collisions
-   * This is the raw score in that the scale should not be applied to it.
-   */
-  virtual double scoreTrajectory(const dwb_msgs::msg::Trajectory2D & traj) = 0;
+    /**
+     * @brief Return a raw score for the given trajectory.
+     *
+     * scores < 0 are considered invalid/errors, such as collisions
+     * This is the raw score in that the scale should not be applied to it.
+     */
+    virtual double scoreTrajectory(const dwb_msgs::msg::Trajectory2D &traj) = 0;
 
-  /**
-   * @brief debrief informs the critic what the chosen cmd_vel was (if it cares)
-   */
-  virtual void debrief(const nav_2d_msgs::msg::Twist2D &) {}
+    /**
+     * @brief debrief informs the critic what the chosen cmd_vel was (if it cares)
+     */
+    virtual void debrief(const nav_2d_msgs::msg::Twist2D &) {}
 
-  /**
-   * @brief Add information to the given pointcloud for debugging costmap-grid based scores
-   *
-   * addCriticVisualization is an optional debugging mechanism for providing rich information
-   * about the cost for certain trajectories. Some critics will have scoring mechanisms
-   * wherein there will be some score for each cell in the costmap. This could be as
-   * straightforward as the cost in the costmap, or it could be the number of cells away
-   * from the goal pose.
-   *
-   * Prior to calling this, dwb_core will load the PointCloud's header and the points
-   * in row-major order. The critic may then add a ChannelFloat to the channels member of the PC
-   * with the same number of values as the points array. This information may then be converted
-   * and published as a PointCloud2.
-   *
-   * @param pc PointCloud to add channels to
-   */
-  virtual void addCriticVisualization(std::vector<std::pair<std::string, std::vector<float>>> &) {}
+    /**
+     * @brief Add information to the given pointcloud for debugging costmap-grid based scores
+     *
+     * addCriticVisualization is an optional debugging mechanism for providing rich information
+     * about the cost for certain trajectories. Some critics will have scoring mechanisms
+     * wherein there will be some score for each cell in the costmap. This could be as
+     * straightforward as the cost in the costmap, or it could be the number of cells away
+     * from the goal pose.
+     *
+     * Prior to calling this, dwb_core will load the PointCloud's header and the points
+     * in row-major order. The critic may then add a ChannelFloat to the channels member of the PC
+     * with the same number of values as the points array. This information may then be converted
+     * and published as a PointCloud2.
+     *
+     * @param pc PointCloud to add channels to
+     */
+    virtual void addCriticVisualization(std::vector<std::pair<std::string, std::vector<float>>> &) {}
 
-  std::string getName()
-  {
-    return name_;
-  }
+    std::string getName() { return name_; }
 
-  virtual double getScale() const {return scale_;}
-  void setScale(const double scale) {scale_ = scale;}
+    virtual double getScale() const { return scale_; }
+    void setScale(const double scale) { scale_ = scale; }
 
 protected:
-  std::string name_;
-  std::string dwb_plugin_name_;
-  std::shared_ptr<nav2_costmap_2d::Costmap2DROS> costmap_ros_;
-  double scale_;
-  rclcpp_lifecycle::LifecycleNode::WeakPtr node_;
+    std::string name_;
+    std::string dwb_plugin_name_;
+    std::shared_ptr<nav2_costmap_2d::Costmap2DROS> costmap_ros_;
+    double scale_;
+    rclcpp_lifecycle::LifecycleNode::WeakPtr node_;
 };
 
 }  // namespace dwb_core

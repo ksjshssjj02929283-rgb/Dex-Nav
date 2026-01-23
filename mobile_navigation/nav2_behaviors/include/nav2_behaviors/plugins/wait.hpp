@@ -16,45 +16,43 @@
 #define NAV2_BEHAVIORS__PLUGINS__WAIT_HPP_
 
 #include <chrono>
-#include <string>
 #include <memory>
+#include <string>
 
 #include "nav2_behaviors/timed_behavior.hpp"
 #include "nav2_msgs/action/wait.hpp"
 
-namespace nav2_behaviors
-{
+namespace nav2_behaviors {
 using WaitAction = nav2_msgs::action::Wait;
 
 /**
  * @class nav2_behaviors::Wait
  * @brief An action server behavior for waiting a fixed duration
  */
-class Wait : public TimedBehavior<WaitAction>
-{
+class Wait : public TimedBehavior<WaitAction> {
 public:
-  /**
-   * @brief A constructor for nav2_behaviors::Wait
-   */
-  Wait();
-  ~Wait();
+    /**
+     * @brief A constructor for nav2_behaviors::Wait
+     */
+    Wait();
+    ~Wait();
 
-  /**
-   * @brief Initialization to run behavior
-   * @param command Goal to execute
-   * @return Status of behavior
-   */
-  Status onRun(const std::shared_ptr<const WaitAction::Goal> command) override;
+    /**
+     * @brief Initialization to run behavior
+     * @param command Goal to execute
+     * @return Status of behavior
+     */
+    Status onRun(const std::shared_ptr<const WaitAction::Goal> command) override;
 
-  /**
-   * @brief Loop function to run behavior
-   * @return Status of behavior
-   */
-  Status onCycleUpdate() override;
+    /**
+     * @brief Loop function to run behavior
+     * @return Status of behavior
+     */
+    Status onCycleUpdate() override;
 
 protected:
-  rclcpp::Time wait_end_;
-  WaitAction::Feedback::SharedPtr feedback_;
+    rclcpp::Time wait_end_;
+    WaitAction::Feedback::SharedPtr feedback_;
 };
 
 }  // namespace nav2_behaviors

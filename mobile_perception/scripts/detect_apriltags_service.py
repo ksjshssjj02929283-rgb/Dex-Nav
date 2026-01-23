@@ -44,13 +44,10 @@ class AprilTagDetectionNode(Node):
         self.tag_size = self.tag_config['tag_size']
 
         self.last_detect_time = 0.0
-        self.detect_period = 0.2 # 5 Hz
-
+        self.detect_period = 0.2  # 5 Hz
 
         # ---------------- apriltag ----------------
-        self.detector = Detector(
-            families=self.tag_config['tag_family']
-        )
+        self.detector = Detector(families=self.tag_config['tag_family'])
         self.bridge = CvBridge()
 
         # ---------------- TF listener ONLY ----------------
@@ -61,22 +58,15 @@ class AprilTagDetectionNode(Node):
         self.image_sub = None
         self.is_detecting = False
 
-        self.pose_pub = self.create_publisher(
-            PoseArray, 'apriltag_poses', 10
-        )
+        self.pose_pub = self.create_publisher(PoseArray, 'apriltag_poses', 10)
 
-        self.create_service(
-            StartDetection,
-            'start_apriltag_detection',
-            self.start_cb
-        )
-        self.create_service(
-            StopDetection,
-            'stop_apriltag_detection',
-            self.stop_cb
-        )
+        self.create_service(StartDetection, 'start_apriltag_detection',
+                            self.start_cb)
+        self.create_service(StopDetection, 'stop_apriltag_detection',
+                            self.stop_cb)
 
-        self.get_logger().info('AprilTag Detection Node (NO TF broadcast) ready.')
+        self.get_logger().info(
+            'AprilTag Detection Node (NO TF broadcast) ready.')
 
     # ==================================================
     # Services
@@ -89,13 +79,10 @@ class AprilTagDetectionNode(Node):
             return res
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
-        self.image_sub = self.create_subscription(
-            Image, self.image_topic, self.image_cb, 10
-        )
-        self.detector = Detector(
-            families=self.tag_config['tag_family'],
-            nthreads=1
-        )
+        self.image_sub = self.create_subscription(Image, self.image_topic,
+                                                  self.image_cb, 10)
+        self.detector = Detector(families=self.tag_config['tag_family'],
+                                 nthreads=1)
         self.is_detecting = True
         res.success = True
         res.message = f'Detection started: {self.image_topic}'
@@ -106,7 +93,7 @@ class AprilTagDetectionNode(Node):
         if self.image_sub:
             self.destroy_subscription(self.image_sub)
             self.image_sub = None
-        
+
         # if self.tf_listener:
         #     self.tf_listener = None
         #     self.tf_buffer = None
@@ -128,7 +115,7 @@ class AprilTagDetectionNode(Node):
     def image_cb(self, msg):
         if not self.is_detecting:
             return
-        
+
         now = self.get_clock().now().nanoseconds * 1e-9
         if now - self.last_detect_time < self.detect_period:
             return
@@ -140,13 +127,10 @@ class AprilTagDetectionNode(Node):
                 'base_link',
                 self.camera_link,
                 rclpy.time.Time(),
-                timeout=rclpy.duration.Duration(seconds=0.05)
-            )
+                timeout=rclpy.duration.Duration(seconds=0.05))
         except Exception as e:
-            self.get_logger().warn(
-                f'TF lookup failed: {e}',
-                throttle_duration_sec=2.0
-            )
+            self.get_logger().warn(f'TF lookup failed: {e}',
+                                   throttle_duration_sec=2.0)
             return
 
         # ---------- image ----------
@@ -164,20 +148,13 @@ class AprilTagDetectionNode(Node):
         cam = self.camera_config['cameras'][0]['settings']
         intr = cam['intrinsic_params']
 
-        K = np.array([
-            [intr['fx'], 0, intr['cx']],
-            [0, intr['fy'], intr['cy']],
-            [0, 0, 1]
-        ])
+        K = np.array([[intr['fx'], 0, intr['cx']], [0, intr['fy'], intr['cy']],
+                      [0, 0, 1]])
         dist = np.array(cam['dist_coeffs'])
 
         half = self.tag_size / 2.0
-        obj_pts = np.array([
-            [-half, -half, 0],
-            [ half, -half, 0],
-            [ half,  half, 0],
-            [-half,  half, 0]
-        ])
+        obj_pts = np.array([[-half, -half, 0], [half, -half, 0],
+                            [half, half, 0], [-half, half, 0]])
 
         # ---------- TF matrix ----------
         t = tf.transform.translation
@@ -187,8 +164,7 @@ class AprilTagDetectionNode(Node):
         R_bc = R.from_quat([q.x, q.y, q.z, q.w]).as_matrix()
 
         # camera -> base translation
-        t_bc = np.array([t.x, t.y, t.z])    
-
+        t_bc = np.array([t.x, t.y, t.z])
 
         pose_array = PoseArray()
         pose_array.header.stamp = msg.header.stamp

@@ -35,16 +35,15 @@
 #ifndef DWB_CRITICS__MAP_GRID_HPP_
 #define DWB_CRITICS__MAP_GRID_HPP_
 
-#include <vector>
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
-#include "dwb_core/trajectory_critic.hpp"
 #include "costmap_queue/costmap_queue.hpp"
+#include "dwb_core/trajectory_critic.hpp"
 
-namespace dwb_critics
-{
+namespace dwb_critics {
 /**
  * @class MapGridCritic
  * @brief breadth-first scoring of all the cells in the costmap
@@ -58,84 +57,79 @@ namespace dwb_critics
  * This approach was chosen for computational efficiency, such that each trajectory
  * need not be compared to the list of source points.
  */
-class MapGridCritic : public dwb_core::TrajectoryCritic
-{
+class MapGridCritic : public dwb_core::TrajectoryCritic {
 public:
-  // Standard TrajectoryCritic Interface
-  void onInit() override;
-  double scoreTrajectory(const dwb_msgs::msg::Trajectory2D & traj) override;
-  void addCriticVisualization(
-    std::vector<std::pair<std::string, std::vector<float>>> & cost_channels) override;
-  double getScale() const override {return costmap_->getResolution() * 0.5 * scale_;}
+    // Standard TrajectoryCritic Interface
+    void onInit() override;
+    double scoreTrajectory(const dwb_msgs::msg::Trajectory2D& traj) override;
+    void addCriticVisualization(std::vector<std::pair<std::string, std::vector<float>>>& cost_channels) override;
+    double getScale() const override { return costmap_->getResolution() * 0.5 * scale_; }
 
-  // Helper Functions
-  /**
-   * @brief Retrieve the score for a single pose
-   * @param pose The pose to score, assumed to be in the same frame as the costmap
-   * @return The score associated with the cell of the costmap where the pose lies
-   */
-  virtual double scorePose(const geometry_msgs::msg::Pose2D & pose);
+    // Helper Functions
+    /**
+     * @brief Retrieve the score for a single pose
+     * @param pose The pose to score, assumed to be in the same frame as the costmap
+     * @return The score associated with the cell of the costmap where the pose lies
+     */
+    virtual double scorePose(const geometry_msgs::msg::Pose2D& pose);
 
-  /**
-   * @brief Retrieve the score for a particular cell of the costmap
-   * @param x x-coordinate within the costmap
-   * @param y y-coordinate within the costmap
-   * @return the score associated with that cell.
-   */
-  inline double getScore(unsigned int x, unsigned int y)
-  {
-    return cell_values_[costmap_->getIndex(x, y)];
-  }
+    /**
+     * @brief Retrieve the score for a particular cell of the costmap
+     * @param x x-coordinate within the costmap
+     * @param y y-coordinate within the costmap
+     * @return the score associated with that cell.
+     */
+    inline double getScore(unsigned int x, unsigned int y) { return cell_values_[costmap_->getIndex(x, y)]; }
 
-  /**
-   * @brief Sets the score of a particular cell to the obstacle cost
-   * @param index Index of the cell to mark
-   */
-  void setAsObstacle(unsigned int index);
+    /**
+     * @brief Sets the score of a particular cell to the obstacle cost
+     * @param index Index of the cell to mark
+     */
+    void setAsObstacle(unsigned int index);
 
 protected:
-  /**
-   * @brief Separate modes for aggregating scores across the multiple poses in a trajectory.
-   *
-   * Last returns the score associated with the last pose in the trajectory
-   * Sum returns the sum of all the scores
-   * Product returns the product of all the (non-zero) scores
-   */
-  // cppcheck-suppress syntaxError
-  enum class ScoreAggregationType {Last, Sum, Product};
+    /**
+     * @brief Separate modes for aggregating scores across the multiple poses in a trajectory.
+     *
+     * Last returns the score associated with the last pose in the trajectory
+     * Sum returns the sum of all the scores
+     * Product returns the product of all the (non-zero) scores
+     */
+    // cppcheck-suppress syntaxError
+    enum class ScoreAggregationType { Last, Sum, Product };
 
-  /**
-   * @class MapGridQueue
-   * @brief Subclass of CostmapQueue that avoids Obstacles and Unknown Values
-   */
-  class MapGridQueue : public costmap_queue::CostmapQueue
-  {
-public:
-    MapGridQueue(nav2_costmap_2d::Costmap2D & costmap, MapGridCritic & parent)
-    : costmap_queue::CostmapQueue(costmap, true), parent_(parent) {}
-    virtual ~MapGridQueue() = default;
-    bool validCellToQueue(const costmap_queue::CellData & cell) override;
+    /**
+     * @class MapGridQueue
+     * @brief Subclass of CostmapQueue that avoids Obstacles and Unknown Values
+     */
+    class MapGridQueue : public costmap_queue::CostmapQueue {
+    public:
+        MapGridQueue(nav2_costmap_2d::Costmap2D& costmap, MapGridCritic& parent)
+            : costmap_queue::CostmapQueue(costmap, true), parent_(parent) {}
+        virtual ~MapGridQueue() = default;
+        bool validCellToQueue(const costmap_queue::CellData& cell) override;
 
-protected:
-    MapGridCritic & parent_;
-  };
+    protected:
+        MapGridCritic& parent_;
+    };
 
-  /**
-   * @brief Clear the queuDWB_CRITICS_MAP_GRID_He and set cell_values_ to the appropriate number of unreachableCellScore
-   */
-  void reset() override;
+    /**
+     * @brief Clear the queuDWB_CRITICS_MAP_GRID_He and set cell_values_ to the appropriate number of
+     * unreachableCellScore
+     */
+    void reset() override;
 
-  /**
-   * @brief Go through the queue and set the cells to the Manhattan distance from their parents
-   */
-  void propogateManhattanDistances();
+    /**
+     * @brief Go through the queue and set the cells to the Manhattan distance from their parents
+     */
+    void propogateManhattanDistances();
 
-  std::shared_ptr<MapGridQueue> queue_;
-  nav2_costmap_2d::Costmap2D * costmap_;
-  std::vector<double> cell_values_;
-  double obstacle_score_, unreachable_score_;  ///< Special cell_values
-  bool stop_on_failure_;
-  ScoreAggregationType aggregationType_;
+    std::shared_ptr<MapGridQueue> queue_;
+    nav2_costmap_2d::Costmap2D* costmap_;
+    std::vector<double> cell_values_;
+    double obstacle_score_, unreachable_score_;  ///< Special cell_values
+    bool stop_on_failure_;
+    ScoreAggregationType aggregationType_;
 };
 }  // namespace dwb_critics
 

@@ -13,61 +13,54 @@
 // limitations under the License.
 
 #include <gtest/gtest.h>
+
 #include <memory>
 #include <set>
 
+#include "../../test_behavior_tree_fixture.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
+#include "nav2_behavior_tree/plugins/condition/globally_updated_goal_condition.hpp"
 #include "nav2_util/robot_utils.hpp"
 
-#include "../../test_behavior_tree_fixture.hpp"
-#include "nav2_behavior_tree/plugins/condition/globally_updated_goal_condition.hpp"
-
-class GloballyUpdatedGoalConditionTestFixture : public nav2_behavior_tree::BehaviorTreeTestFixture
-{
+class GloballyUpdatedGoalConditionTestFixture : public nav2_behavior_tree::BehaviorTreeTestFixture {
 public:
-  void SetUp()
-  {
-    bt_node_ = std::make_shared<nav2_behavior_tree::GloballyUpdatedGoalCondition>(
-      "globally_updated_goal", *config_);
-  }
+    void SetUp() {
+        bt_node_ =
+            std::make_shared<nav2_behavior_tree::GloballyUpdatedGoalCondition>("globally_updated_goal", *config_);
+    }
 
-  void TearDown()
-  {
-    bt_node_.reset();
-  }
+    void TearDown() { bt_node_.reset(); }
 
 protected:
-  static std::shared_ptr<nav2_behavior_tree::GloballyUpdatedGoalCondition> bt_node_;
+    static std::shared_ptr<nav2_behavior_tree::GloballyUpdatedGoalCondition> bt_node_;
 };
 
-std::shared_ptr<nav2_behavior_tree::GloballyUpdatedGoalCondition>
-GloballyUpdatedGoalConditionTestFixture::bt_node_ = nullptr;
+std::shared_ptr<nav2_behavior_tree::GloballyUpdatedGoalCondition> GloballyUpdatedGoalConditionTestFixture::bt_node_ =
+    nullptr;
 
-TEST_F(GloballyUpdatedGoalConditionTestFixture, test_behavior)
-{
-  geometry_msgs::msg::PoseStamped goal;
-  config_->blackboard->set("goal", goal);
+TEST_F(GloballyUpdatedGoalConditionTestFixture, test_behavior) {
+    geometry_msgs::msg::PoseStamped goal;
+    config_->blackboard->set("goal", goal);
 
-  EXPECT_EQ(bt_node_->status(), BT::NodeStatus::IDLE);
-  EXPECT_EQ(bt_node_->executeTick(), BT::NodeStatus::SUCCESS);
+    EXPECT_EQ(bt_node_->status(), BT::NodeStatus::IDLE);
+    EXPECT_EQ(bt_node_->executeTick(), BT::NodeStatus::SUCCESS);
 
-  goal.pose.position.x = 1.0;
-  config_->blackboard->set("goal", goal);
-  EXPECT_EQ(bt_node_->executeTick(), BT::NodeStatus::SUCCESS);
-  EXPECT_EQ(bt_node_->executeTick(), BT::NodeStatus::FAILURE);
+    goal.pose.position.x = 1.0;
+    config_->blackboard->set("goal", goal);
+    EXPECT_EQ(bt_node_->executeTick(), BT::NodeStatus::SUCCESS);
+    EXPECT_EQ(bt_node_->executeTick(), BT::NodeStatus::FAILURE);
 }
 
-int main(int argc, char ** argv)
-{
-  ::testing::InitGoogleTest(&argc, argv);
+int main(int argc, char** argv) {
+    ::testing::InitGoogleTest(&argc, argv);
 
-  // initialize ROS
-  rclcpp::init(argc, argv);
+    // initialize ROS
+    rclcpp::init(argc, argv);
 
-  bool all_successful = RUN_ALL_TESTS();
+    bool all_successful = RUN_ALL_TESTS();
 
-  // shutdown ROS
-  rclcpp::shutdown();
+    // shutdown ROS
+    rclcpp::shutdown();
 
-  return all_successful;
+    return all_successful;
 }

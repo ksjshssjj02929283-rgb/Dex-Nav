@@ -19,8 +19,7 @@
 
 #include "nav2_collision_monitor/types.hpp"
 
-namespace nav2_collision_monitor
-{
+namespace nav2_collision_monitor {
 
 /**
  * @brief Do a transformation of points' coordinates from the frame coinciding with the (0,0)
@@ -28,7 +27,7 @@ namespace nav2_collision_monitor
  * @param pose Origin of the new frame
  * @param points Array of points whose coordinates will be transformed
  */
-void transformPoints(const Pose & pose, std::vector<Point> & points);
+void transformPoints(const Pose& pose, std::vector<Point>& points);
 
 /**
  * @brief Linearly projects pose towards to velocity direction on dt time interval.
@@ -39,7 +38,7 @@ void transformPoints(const Pose & pose, std::vector<Point> & points);
  * @param velocity Velocity at which the pose to be moved. It is also being rotated
  * on according twist angle.
  */
-void projectState(const double & dt, Pose & pose, Velocity & velocity);
+void projectState(const double& dt, Pose& pose, Velocity& velocity);
 
 }  // namespace nav2_collision_monitor
 

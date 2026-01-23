@@ -6,7 +6,9 @@ import math
 import sys
 import time
 
+
 class SingleCtrlPosePublisher(Node):
+
     def __init__(self, x, y, yaw):
         super().__init__('ctrl_pose_single_publisher')
 
@@ -29,8 +31,7 @@ class SingleCtrlPosePublisher(Node):
 
         self.pub.publish(msg)
         self.get_logger().info(
-            f"[Single Publish] x={x:.2f}, y={y:.2f}, yaw={yaw:.2f}"
-        )
+            f"[Single Publish] x={x:.2f}, y={y:.2f}, yaw={yaw:.2f}")
 
         # 给一点时间确保消息发出
         time.sleep(0.1)

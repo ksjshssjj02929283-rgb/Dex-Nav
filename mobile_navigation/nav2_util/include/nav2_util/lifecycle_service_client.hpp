@@ -21,42 +21,37 @@
 
 #include "lifecycle_msgs/srv/change_state.hpp"
 #include "lifecycle_msgs/srv/get_state.hpp"
-#include "nav2_util/service_client.hpp"
 #include "nav2_util/node_utils.hpp"
+#include "nav2_util/service_client.hpp"
 
-namespace nav2_util
-{
+namespace nav2_util {
 
 /// Helper functions to interact with a lifecycle node.
-class LifecycleServiceClient
-{
+class LifecycleServiceClient {
 public:
-  explicit LifecycleServiceClient(const std::string & lifecycle_node_name);
-  LifecycleServiceClient(
-    const std::string & lifecycle_node_name,
-    rclcpp::Node::SharedPtr parent_node);
+    explicit LifecycleServiceClient(const std::string& lifecycle_node_name);
+    LifecycleServiceClient(const std::string& lifecycle_node_name, rclcpp::Node::SharedPtr parent_node);
 
-  /// Trigger a state change
-  /**
-   * Throws std::runtime_error on failure
-   */
-  bool change_state(
-    const uint8_t transition,  // takes a lifecycle_msgs::msg::Transition id
-    const std::chrono::seconds timeout);
+    /// Trigger a state change
+    /**
+     * Throws std::runtime_error on failure
+     */
+    bool change_state(const uint8_t transition,  // takes a lifecycle_msgs::msg::Transition id
+                      const std::chrono::seconds timeout);
 
-  /// Trigger a state change, returning result
-  bool change_state(std::uint8_t transition);
+    /// Trigger a state change, returning result
+    bool change_state(std::uint8_t transition);
 
-  /// Get the current state as a lifecycle_msgs::msg::State id value
-  /**
-   * Throws std::runtime_error on failure
-   */
-  uint8_t get_state(const std::chrono::seconds timeout = std::chrono::seconds(2));
+    /// Get the current state as a lifecycle_msgs::msg::State id value
+    /**
+     * Throws std::runtime_error on failure
+     */
+    uint8_t get_state(const std::chrono::seconds timeout = std::chrono::seconds(2));
 
 protected:
-  rclcpp::Node::SharedPtr node_;
-  ServiceClient<lifecycle_msgs::srv::ChangeState> change_state_;
-  ServiceClient<lifecycle_msgs::srv::GetState> get_state_;
+    rclcpp::Node::SharedPtr node_;
+    ServiceClient<lifecycle_msgs::srv::ChangeState> change_state_;
+    ServiceClient<lifecycle_msgs::srv::GetState> get_state_;
 };
 
 }  // namespace nav2_util

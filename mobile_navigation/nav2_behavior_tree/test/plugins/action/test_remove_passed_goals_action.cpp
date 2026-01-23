@@ -14,147 +14,129 @@
 // limitations under the License.
 
 #include <gtest/gtest.h>
+
 #include <memory>
 #include <set>
 #include <string>
 #include <vector>
 
-#include "nav_msgs/msg/path.hpp"
-#include "geometry_msgs/msg/pose_stamped.hpp"
-#include "nav2_util/geometry_utils.hpp"
-
-#include "behaviortree_cpp_v3/bt_factory.h"
-
 #include "../../test_action_server.hpp"
-#include "nav2_behavior_tree/plugins/action/remove_passed_goals_action.hpp"
 #include "../../test_behavior_tree_fixture.hpp"
+#include "behaviortree_cpp_v3/bt_factory.h"
+#include "geometry_msgs/msg/pose_stamped.hpp"
+#include "nav2_behavior_tree/plugins/action/remove_passed_goals_action.hpp"
+#include "nav2_util/geometry_utils.hpp"
+#include "nav_msgs/msg/path.hpp"
 
-class RemovePassedGoalsTestFixture : public ::testing::Test
-{
+class RemovePassedGoalsTestFixture : public ::testing::Test {
 public:
-  static void SetUpTestCase()
-  {
-    node_ = std::make_shared<rclcpp::Node>("passed_goals_test_fixture");
-    factory_ = std::make_shared<BT::BehaviorTreeFactory>();
+    static void SetUpTestCase() {
+        node_ = std::make_shared<rclcpp::Node>("passed_goals_test_fixture");
+        factory_ = std::make_shared<BT::BehaviorTreeFactory>();
 
-    config_ = new BT::NodeConfiguration();
-    transform_handler_ = std::make_shared<nav2_behavior_tree::TransformHandler>(node_);
+        config_ = new BT::NodeConfiguration();
+        transform_handler_ = std::make_shared<nav2_behavior_tree::TransformHandler>(node_);
 
-    // Create the blackboard that will be shared by all of the nodes in the tree
-    config_->blackboard = BT::Blackboard::create();
-    // Put items on the blackboard
-    config_->blackboard->set<rclcpp::Node::SharedPtr>(
-      "node",
-      node_);
-    config_->blackboard->set<std::shared_ptr<tf2_ros::Buffer>>(
-      "tf_buffer",
-      transform_handler_->getBuffer());
+        // Create the blackboard that will be shared by all of the nodes in the tree
+        config_->blackboard = BT::Blackboard::create();
+        // Put items on the blackboard
+        config_->blackboard->set<rclcpp::Node::SharedPtr>("node", node_);
+        config_->blackboard->set<std::shared_ptr<tf2_ros::Buffer>>("tf_buffer", transform_handler_->getBuffer());
 
-    BT::NodeBuilder builder =
-      [](const std::string & name, const BT::NodeConfiguration & config)
-      {
-        return std::make_unique<nav2_behavior_tree::RemovePassedGoals>(
-          name, config);
-      };
+        BT::NodeBuilder builder = [](const std::string& name, const BT::NodeConfiguration& config) {
+            return std::make_unique<nav2_behavior_tree::RemovePassedGoals>(name, config);
+        };
 
-    factory_->registerBuilder<nav2_behavior_tree::RemovePassedGoals>(
-      "RemovePassedGoals", builder);
-  }
+        factory_->registerBuilder<nav2_behavior_tree::RemovePassedGoals>("RemovePassedGoals", builder);
+    }
 
-  static void TearDownTestCase()
-  {
-    transform_handler_->deactivate();
-    delete config_;
-    config_ = nullptr;
-    transform_handler_.reset();
-    node_.reset();
-    factory_.reset();
-  }
+    static void TearDownTestCase() {
+        transform_handler_->deactivate();
+        delete config_;
+        config_ = nullptr;
+        transform_handler_.reset();
+        node_.reset();
+        factory_.reset();
+    }
 
-  void TearDown() override
-  {
-    tree_.reset();
-  }
+    void TearDown() override { tree_.reset(); }
 
 protected:
-  static rclcpp::Node::SharedPtr node_;
-  static BT::NodeConfiguration * config_;
-  static std::shared_ptr<BT::BehaviorTreeFactory> factory_;
-  static std::shared_ptr<BT::Tree> tree_;
-  static std::shared_ptr<nav2_behavior_tree::TransformHandler> transform_handler_;
+    static rclcpp::Node::SharedPtr node_;
+    static BT::NodeConfiguration* config_;
+    static std::shared_ptr<BT::BehaviorTreeFactory> factory_;
+    static std::shared_ptr<BT::Tree> tree_;
+    static std::shared_ptr<nav2_behavior_tree::TransformHandler> transform_handler_;
 };
 
 rclcpp::Node::SharedPtr RemovePassedGoalsTestFixture::node_ = nullptr;
 
-BT::NodeConfiguration * RemovePassedGoalsTestFixture::config_ = nullptr;
+BT::NodeConfiguration* RemovePassedGoalsTestFixture::config_ = nullptr;
 std::shared_ptr<BT::BehaviorTreeFactory> RemovePassedGoalsTestFixture::factory_ = nullptr;
 std::shared_ptr<BT::Tree> RemovePassedGoalsTestFixture::tree_ = nullptr;
-std::shared_ptr<nav2_behavior_tree::TransformHandler>
-RemovePassedGoalsTestFixture::transform_handler_ = nullptr;
+std::shared_ptr<nav2_behavior_tree::TransformHandler> RemovePassedGoalsTestFixture::transform_handler_ = nullptr;
 
-TEST_F(RemovePassedGoalsTestFixture, test_tick)
-{
-  geometry_msgs::msg::Pose pose;
-  pose.position.x = 0.25;
-  pose.position.y = 0.0;
+TEST_F(RemovePassedGoalsTestFixture, test_tick) {
+    geometry_msgs::msg::Pose pose;
+    pose.position.x = 0.25;
+    pose.position.y = 0.0;
 
-  transform_handler_->activate();
-  transform_handler_->waitForTransform();
-  transform_handler_->updateRobotPose(pose);
+    transform_handler_->activate();
+    transform_handler_->waitForTransform();
+    transform_handler_->updateRobotPose(pose);
 
-  // create tree
-  std::string xml_txt =
-    R"(
+    // create tree
+    std::string xml_txt =
+        R"(
       <root main_tree_to_execute = "MainTree" >
         <BehaviorTree ID="MainTree">
           <RemovePassedGoals radius="0.5" input_goals="{goals}" output_goals="{goals}"/>
         </BehaviorTree>
       </root>)";
 
-  tree_ = std::make_shared<BT::Tree>(factory_->createTreeFromText(xml_txt, config_->blackboard));
+    tree_ = std::make_shared<BT::Tree>(factory_->createTreeFromText(xml_txt, config_->blackboard));
 
-  // create new goal and set it on blackboard
-  std::vector<geometry_msgs::msg::PoseStamped> poses;
-  poses.resize(4);
-  poses[0].pose.position.x = 0.0;
-  poses[0].pose.position.y = 0.0;
+    // create new goal and set it on blackboard
+    std::vector<geometry_msgs::msg::PoseStamped> poses;
+    poses.resize(4);
+    poses[0].pose.position.x = 0.0;
+    poses[0].pose.position.y = 0.0;
 
-  poses[1].pose.position.x = 0.5;
-  poses[1].pose.position.y = 0.0;
+    poses[1].pose.position.x = 0.5;
+    poses[1].pose.position.y = 0.0;
 
-  poses[2].pose.position.x = 1.0;
-  poses[2].pose.position.y = 0.0;
+    poses[2].pose.position.x = 1.0;
+    poses[2].pose.position.y = 0.0;
 
-  poses[3].pose.position.x = 2.0;
-  poses[3].pose.position.y = 0.0;
+    poses[3].pose.position.x = 2.0;
+    poses[3].pose.position.y = 0.0;
 
-  config_->blackboard->set("goals", poses);
+    config_->blackboard->set("goals", poses);
 
-  // tick until node succeeds
-  while (tree_->rootNode()->status() != BT::NodeStatus::SUCCESS) {
-    tree_->rootNode()->executeTick();
-  }
+    // tick until node succeeds
+    while (tree_->rootNode()->status() != BT::NodeStatus::SUCCESS) {
+        tree_->rootNode()->executeTick();
+    }
 
-  // check that it removed the point in range
-  std::vector<geometry_msgs::msg::PoseStamped> output_poses;
-  config_->blackboard->get("goals", output_poses);
+    // check that it removed the point in range
+    std::vector<geometry_msgs::msg::PoseStamped> output_poses;
+    config_->blackboard->get("goals", output_poses);
 
-  EXPECT_EQ(output_poses.size(), 2u);
-  EXPECT_EQ(output_poses[0], poses[2]);
-  EXPECT_EQ(output_poses[1], poses[3]);
+    EXPECT_EQ(output_poses.size(), 2u);
+    EXPECT_EQ(output_poses[0], poses[2]);
+    EXPECT_EQ(output_poses[1], poses[3]);
 }
 
-int main(int argc, char ** argv)
-{
-  ::testing::InitGoogleTest(&argc, argv);
+int main(int argc, char** argv) {
+    ::testing::InitGoogleTest(&argc, argv);
 
-  // initialize ROS
-  rclcpp::init(argc, argv);
+    // initialize ROS
+    rclcpp::init(argc, argv);
 
-  int all_successful = RUN_ALL_TESTS();
+    int all_successful = RUN_ALL_TESTS();
 
-  // shutdown ROS
-  rclcpp::shutdown();
+    // shutdown ROS
+    rclcpp::shutdown();
 
-  return all_successful;
+    return all_successful;
 }

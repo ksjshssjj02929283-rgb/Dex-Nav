@@ -28,11 +28,13 @@ class TestLatticeGenerator(unittest.TestCase):
     """Contains the unit tests for the TrajectoryGenerator."""
 
     def setUp(self) -> None:
-        config = {'motion_model': MOTION_MODEL,
-                  'turning_radius': TURNING_RADIUS,
-                  'grid_resolution': GRID_RESOLUTION,
-                  'stopping_threshold': STOPPING_THRESHOLD,
-                  'num_of_headings': NUM_OF_HEADINGS}
+        config = {
+            'motion_model': MOTION_MODEL,
+            'turning_radius': TURNING_RADIUS,
+            'grid_resolution': GRID_RESOLUTION,
+            'stopping_threshold': STOPPING_THRESHOLD,
+            'num_of_headings': NUM_OF_HEADINGS
+        }
 
         lattice_gen = LatticeGenerator(config)
 
@@ -45,8 +47,10 @@ class TestLatticeGenerator(unittest.TestCase):
             for trajectory in self.minimal_set[start_angle]:
 
                 self.assertGreaterEqual(trajectory.parameters.arc_length, 0)
-                self.assertGreaterEqual(trajectory.parameters.start_straight_length, 0)
-                self.assertGreaterEqual(trajectory.parameters.end_straight_length, 0)
+                self.assertGreaterEqual(
+                    trajectory.parameters.start_straight_length, 0)
+                self.assertGreaterEqual(
+                    trajectory.parameters.end_straight_length, 0)
                 self.assertGreaterEqual(trajectory.parameters.total_length, 0)
 
     def test_minimal_set_end_points_lie_on_grid(self):
@@ -72,7 +76,8 @@ class TestLatticeGenerator(unittest.TestCase):
 
                 end_point_angle = trajectory.path.yaws[-1]
 
-                self.assertEqual(end_point_angle, trajectory.parameters.end_angle)
+                self.assertEqual(end_point_angle,
+                                 trajectory.parameters.end_angle)
 
     def test_output_angles_in_correct_range(self):
         # Test that the outputted angles always lie within 0 to 2*pi
@@ -83,7 +88,7 @@ class TestLatticeGenerator(unittest.TestCase):
 
                 for x, y, angle in output:
                     self.assertGreaterEqual(angle, 0)
-                    self.assertLessEqual(angle, 2*np.pi)
+                    self.assertLessEqual(angle, 2 * np.pi)
 
 
 if __name__ == '__main__':

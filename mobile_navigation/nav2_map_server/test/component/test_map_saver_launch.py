@@ -26,7 +26,8 @@ from launch_testing.legacy import LaunchTestService
 
 
 def main(argv=sys.argv[1:]):
-    launchFile = os.path.join(os.getenv('TEST_LAUNCH_DIR'), 'map_saver_node.launch.py')
+    launchFile = os.path.join(os.getenv('TEST_LAUNCH_DIR'),
+                              'map_saver_node.launch.py')
     testExecutable = os.getenv('TEST_EXECUTABLE')
     ld = LaunchDescription([
         IncludeLaunchDescription(PythonLaunchDescriptionSource([launchFile])),

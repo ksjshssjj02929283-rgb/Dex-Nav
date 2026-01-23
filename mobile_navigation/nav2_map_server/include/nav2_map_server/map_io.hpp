@@ -25,27 +25,19 @@
 
 /* Map input part */
 
-namespace nav2_map_server
-{
+namespace nav2_map_server {
 
-struct LoadParameters
-{
-  std::string image_file_name;
-  double resolution{0};
-  std::vector<double> origin{0, 0, 0};
-  double free_thresh;
-  double occupied_thresh;
-  MapMode mode;
-  bool negate;
+struct LoadParameters {
+    std::string image_file_name;
+    double resolution{0};
+    std::vector<double> origin{0, 0, 0};
+    double free_thresh;
+    double occupied_thresh;
+    MapMode mode;
+    bool negate;
 };
 
-typedef enum
-{
-  LOAD_MAP_SUCCESS,
-  MAP_DOES_NOT_EXIST,
-  INVALID_MAP_METADATA,
-  INVALID_MAP_DATA
-} LOAD_MAP_STATUS;
+typedef enum { LOAD_MAP_SUCCESS, MAP_DOES_NOT_EXIST, INVALID_MAP_METADATA, INVALID_MAP_DATA } LOAD_MAP_STATUS;
 
 /**
  * @brief Load and parse the given YAML file
@@ -53,7 +45,7 @@ typedef enum
  * @return Map loading parameters obtained from YAML file
  * @throw YAML::Exception
  */
-LoadParameters loadMapYaml(const std::string & yaml_filename);
+LoadParameters loadMapYaml(const std::string& yaml_filename);
 
 /**
  * @brief Load the image from map file and generate an OccupancyGrid
@@ -61,9 +53,7 @@ LoadParameters loadMapYaml(const std::string & yaml_filename);
  * @param map Output loaded map
  * @throw std::exception
  */
-void loadMapFromFile(
-  const LoadParameters & load_parameters,
-  nav_msgs::msg::OccupancyGrid & map);
+void loadMapFromFile(const LoadParameters& load_parameters, nav_msgs::msg::OccupancyGrid& map);
 
 /**
  * @brief Load the map YAML, image from map file and
@@ -72,20 +62,16 @@ void loadMapFromFile(
  * @param map Output loaded map
  * @return status of map loaded
  */
-LOAD_MAP_STATUS loadMapFromYaml(
-  const std::string & yaml_file,
-  nav_msgs::msg::OccupancyGrid & map);
-
+LOAD_MAP_STATUS loadMapFromYaml(const std::string& yaml_file, nav_msgs::msg::OccupancyGrid& map);
 
 /* Map output part */
 
-struct SaveParameters
-{
-  std::string map_file_name{""};
-  std::string image_format{""};
-  double free_thresh{0.0};
-  double occupied_thresh{0.0};
-  MapMode mode{MapMode::Trinary};
+struct SaveParameters {
+    std::string map_file_name{""};
+    std::string image_format{""};
+    double free_thresh{0.0};
+    double occupied_thresh{0.0};
+    MapMode mode{MapMode::Trinary};
 };
 
 /**
@@ -94,9 +80,7 @@ struct SaveParameters
  * @param save_parameters Map saving parameters.
  * @return true or false
  */
-bool saveMapToFile(
-  const nav_msgs::msg::OccupancyGrid & map,
-  const SaveParameters & save_parameters);
+bool saveMapToFile(const nav_msgs::msg::OccupancyGrid& map, const SaveParameters& save_parameters);
 
 }  // namespace nav2_map_server
 

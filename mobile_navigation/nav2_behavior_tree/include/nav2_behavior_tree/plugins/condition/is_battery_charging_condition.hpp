@@ -15,65 +15,57 @@
 #ifndef NAV2_BEHAVIOR_TREE__PLUGINS__CONDITION__IS_BATTERY_CHARGING_CONDITION_HPP_
 #define NAV2_BEHAVIOR_TREE__PLUGINS__CONDITION__IS_BATTERY_CHARGING_CONDITION_HPP_
 
-#include <string>
 #include <memory>
 #include <mutex>
+#include <string>
 
+#include "behaviortree_cpp_v3/condition_node.h"
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/battery_state.hpp"
-#include "behaviortree_cpp_v3/condition_node.h"
 
-namespace nav2_behavior_tree
-{
+namespace nav2_behavior_tree {
 
 /**
  * @brief A BT::ConditionNode that listens to a battery topic and
  * returns SUCCESS when battery is charging and FAILURE otherwise
  */
-class IsBatteryChargingCondition : public BT::ConditionNode
-{
+class IsBatteryChargingCondition : public BT::ConditionNode {
 public:
-  /**
-   * @brief A constructor for nav2_behavior_tree::IsBatteryChargingCondition
-   * @param condition_name Name for the XML tag for this node
-   * @param conf BT node configuration
-   */
-  IsBatteryChargingCondition(
-    const std::string & condition_name,
-    const BT::NodeConfiguration & conf);
+    /**
+     * @brief A constructor for nav2_behavior_tree::IsBatteryChargingCondition
+     * @param condition_name Name for the XML tag for this node
+     * @param conf BT node configuration
+     */
+    IsBatteryChargingCondition(const std::string& condition_name, const BT::NodeConfiguration& conf);
 
-  IsBatteryChargingCondition() = delete;
+    IsBatteryChargingCondition() = delete;
 
-  /**
-   * @brief The main override required by a BT action
-   * @return BT::NodeStatus Status of tick execution
-   */
-  BT::NodeStatus tick() override;
+    /**
+     * @brief The main override required by a BT action
+     * @return BT::NodeStatus Status of tick execution
+     */
+    BT::NodeStatus tick() override;
 
-  /**
-   * @brief Creates list of BT ports
-   * @return BT::PortsList Containing node-specific ports
-   */
-  static BT::PortsList providedPorts()
-  {
-    return {
-      BT::InputPort<std::string>(
-        "battery_topic", std::string("/battery_status"), "Battery topic")
-    };
-  }
+    /**
+     * @brief Creates list of BT ports
+     * @return BT::PortsList Containing node-specific ports
+     */
+    static BT::PortsList providedPorts() {
+        return {BT::InputPort<std::string>("battery_topic", std::string("/battery_status"), "Battery topic")};
+    }
 
 private:
-  /**
-   * @brief Callback function for battery topic
-   * @param msg Shared pointer to sensor_msgs::msg::BatteryState message
-   */
-  void batteryCallback(sensor_msgs::msg::BatteryState::SharedPtr msg);
+    /**
+     * @brief Callback function for battery topic
+     * @param msg Shared pointer to sensor_msgs::msg::BatteryState message
+     */
+    void batteryCallback(sensor_msgs::msg::BatteryState::SharedPtr msg);
 
-  rclcpp::CallbackGroup::SharedPtr callback_group_;
-  rclcpp::executors::SingleThreadedExecutor callback_group_executor_;
-  rclcpp::Subscription<sensor_msgs::msg::BatteryState>::SharedPtr battery_sub_;
-  std::string battery_topic_;
-  bool is_battery_charging_;
+    rclcpp::CallbackGroup::SharedPtr callback_group_;
+    rclcpp::executors::SingleThreadedExecutor callback_group_executor_;
+    rclcpp::Subscription<sensor_msgs::msg::BatteryState>::SharedPtr battery_sub_;
+    std::string battery_topic_;
+    bool is_battery_charging_;
 };
 
 }  // namespace nav2_behavior_tree

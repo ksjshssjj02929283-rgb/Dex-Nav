@@ -17,28 +17,24 @@
 
 #include "nav2_costmap_2d/layer.hpp"
 
-namespace nav2_costmap_2d
-{
+namespace nav2_costmap_2d {
 
-class OrderLayer : public nav2_costmap_2d::Layer
-{
+class OrderLayer : public nav2_costmap_2d::Layer {
 public:
-  OrderLayer();
+    OrderLayer();
 
-  virtual void activate();
-  virtual void deactivate();
+    virtual void activate();
+    virtual void deactivate();
 
-  virtual void reset() {}
-  virtual bool isClearable() {return false;}
+    virtual void reset() {}
+    virtual bool isClearable() { return false; }
 
-  virtual void updateBounds(
-    double, double, double, double *, double *, double *, double *);
+    virtual void updateBounds(double, double, double, double *, double *, double *, double *);
 
-  virtual void updateCosts(
-    nav2_costmap_2d::Costmap2D &, int, int, int, int);
+    virtual void updateCosts(nav2_costmap_2d::Costmap2D &, int, int, int, int);
 
 private:
-  bool activated_;
+    bool activated_;
 };
 
 }  // namespace nav2_costmap_2d
