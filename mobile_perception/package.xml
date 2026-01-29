@@ -3,7 +3,7 @@
 <package format="3">
   <name>mobile_perception</name>
   <version>0.0.0</version>
-  <description>Buddi Perception Package</description>
+  <description>Fix control bug</description>
   <maintainer email="suzhenxzhong@gmail.com">root</maintainer>
   <license>TODO: License declaration</license>
 

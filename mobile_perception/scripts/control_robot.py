@@ -22,8 +22,6 @@ import ament_index_python.packages
 import os
 import argparse
 
-from custom_interfaces.msg import Status
-
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Control Node for Docking')
@@ -66,22 +64,12 @@ class ControlNode(Node):
             30
         )
         
-        self.status_sub = self.create_subscription(
-            Status,
-            'status',
-            self.status_callback,
-            40
-        )
-
 
         # Timer for control loop
         self.timer = self.create_timer(0.10, self.control_loop)
         
         # Variable to store the latest detected AprilTag pose
         self.fdb_pose = None  
-        
-        # Variable to store the latest status 
-        self.latest_status = None
         
         # Controller object, calculate velocity from current pose to goal pose
         self.controller = GoalController()
@@ -95,9 +83,6 @@ class ControlNode(Node):
             self.fdb_pose = msg.poses[0]  # Assuming only one tag is detected 
         else:
             self.fdb_pose = None
-            
-    def status_callback(self, msg):
-        self.latest_status = msg
 
     def get_result(self):
         return self.control_result 
@@ -139,20 +124,6 @@ class ControlNode(Node):
             self.timer.cancel()  # Stop the timer
             self.shutdown()
             return
-        
-        # if self.latest_status:
-        #     self.get_logger().info(f"subindex024: {self.latest_status.subindex024}")
-            
-        # Check the latest status message
-        # if self.latest_status and self.latest_status.subindex024 > 0.5:
-        #     self.get_logger().info('subindex024 is greater than 0.5, acting as goal reached')
-        #     self.reset_start_time()
-        #     self.control_result = 0  # Success
-        #     self.publish_twist(0.0, 0.0)
-        #     self.publish_result()
-        #     self.timer.cancel()  # Stop the timer
-        #     self.shutdown()
-        #     return
 
         if self.fdb_pose is None:
             self.get_logger().info('No tag detected yet')

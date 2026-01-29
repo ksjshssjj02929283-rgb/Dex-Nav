@@ -272,15 +272,26 @@ private:
         else
         {
             v = k_rho_ * rho * gain_scale;
-            w = (k_alpha_ * alpha + k_beta_ * beta) * gain_scale;
+            // w = (k_alpha_ * alpha + k_beta_ * beta) * gain_scale;
             
             if (v < 0.0) v = 0.0;
             
             double angle_factor = 1.0 - (std::abs(alpha) / max_forward_angle_error_);
             v *= angle_factor;
             
-            if (std::abs(w) < min_angular_vel_ && rho > dist_deadzone_) {
-                w = (w > 0 ? min_angular_vel_ : -min_angular_vel_);
+            // if (std::abs(w) < min_angular_vel_ && rho > dist_deadzone_) {
+            //     w = (w > 0 ? min_angular_vel_ : -min_angular_vel_);
+            // }
+             // ⭐ 关键修改点 ⭐
+            if (rho < near_target_dist_)
+            {
+                // 近距离：只修 alpha，不修 beta（解耦最终姿态）
+                w = k_alpha_ * alpha * gain_scale;
+            }
+            else
+            {
+                // 远距离：完整 rho–alpha–beta 控制
+                w = (k_alpha_ * alpha + k_beta_ * beta) * gain_scale;
             }
         }
 
@@ -341,8 +352,18 @@ private:
             double angle_factor = 1.0 - (std::abs(rear_alpha) / max_forward_angle_error_);
             v *= angle_factor;
             
-            if (std::abs(w) < min_angular_vel_ && rho > dist_deadzone_) {
-                w = (w > 0 ? min_angular_vel_ : -min_angular_vel_);
+            // if (std::abs(w) < min_angular_vel_ && rho > dist_deadzone_) {
+            //     w = (w > 0 ? min_angular_vel_ : -min_angular_vel_);
+            // }
+            if (rho < near_target_dist_)
+            {
+                // 近距离：只修 alpha，不修 beta（解耦最终姿态）
+                w = -(k_alpha_ * rear_alpha) * gain_scale;
+            }
+            else
+            {
+                // 远距离：完整 rho–alpha–beta 控制
+                w = -(k_alpha_ * rear_alpha + k_beta_ * beta) * gain_scale;
             }
         }
 
