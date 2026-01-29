@@ -22,7 +22,7 @@ class BaseLinkPosition(Node):
         self.error_log_interval = 50  # 每50次错误才记录一次日志
         
         # 发布频率控制（Hz）
-        self.publish_rate = 2.0  # 2Hz，可根据需要调整
+        self.publish_rate = 20.0  # 2Hz，可根据需要调整
         
         self.get_logger().info("Publish Chassis Position! ")
 
