@@ -25,6 +25,9 @@ find_package(tf2_ros REQUIRED)
 find_package(apriltag REQUIRED)
 find_package(sensor_msgs REQUIRED)  
 find_package(geometry_msgs REQUIRED)
+find_package(nav_msgs REQUIRED)
+find_package(std_msgs REQUIRED)
+find_package(visualization_msgs REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(ament_index_cpp REQUIRED)
@@ -74,6 +77,22 @@ add_executable(mobile_control_node src/mobile_control_node.cpp)
 ament_target_dependencies(mobile_control_node rclcpp tf2 tf2_ros tf2_geometry_msgs geometry_msgs nav_msgs std_srvs)
 install(TARGETS
   mobile_control_node
+  DESTINATION lib/${PROJECT_NAME})
+
+# obstacle_detector_node
+add_executable(obstacle_detector_node src/obstacle_detector_node.cpp)
+ament_target_dependencies(obstacle_detector_node 
+  rclcpp 
+  tf2 
+  tf2_ros 
+  tf2_geometry_msgs 
+  geometry_msgs 
+  nav_msgs
+  std_msgs
+  visualization_msgs
+)
+install(TARGETS
+  obstacle_detector_node
   DESTINATION lib/${PROJECT_NAME})
 
 # Install Python scripts
