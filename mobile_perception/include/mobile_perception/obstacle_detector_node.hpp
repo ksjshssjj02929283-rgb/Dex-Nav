@@ -45,6 +45,15 @@ private:
     void publishObstacleMarkers(
         const std::vector<geometry_msgs::msg::Point> & points,
         const rclcpp::Time & stamp);
+
+    // 发布检测框可视化标记
+    void publishDetectionBoxMarker(
+        double front_left_x, double front_left_y,
+        double front_right_x, double front_right_y,
+        double rear_left_x, double rear_left_y,
+        double rear_right_x, double rear_right_y,
+        const rclcpp::Time & stamp,
+        bool has_obstacle);
     
     // 将世界坐标转换为代价地图索引
     bool worldToMap(
@@ -64,6 +73,7 @@ private:
     rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr costmap_sub_;
     rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr obstacle_pub_;
     rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr obstacle_marker_pub_;
+    rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr detection_box_pub_;
     rclcpp::TimerBase::SharedPtr detection_timer_;
     std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
     std::shared_ptr<tf2_ros::TransformListener> tf_listener_;

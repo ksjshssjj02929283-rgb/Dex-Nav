@@ -40,6 +40,7 @@ ObstacleDetectorNode::ObstacleDetectorNode()
     // 发布障碍物检测结果
     obstacle_pub_ = this->create_publisher<std_msgs::msg::Bool>("obstacle_detector/has_obstacle", 10);
     obstacle_marker_pub_ = this->create_publisher<visualization_msgs::msg::Marker>("obstacle_detector/markers", 10);
+    detection_box_pub_ = this->create_publisher<visualization_msgs::msg::Marker>("obstacle_detector/detection_box", 10);
     
     // 创建定时器执行检测
     detection_timer_ = this->create_wall_timer(
@@ -171,43 +172,50 @@ bool ObstacleDetectorNode::checkObstacleInFrontRect()
     double rear_right_x = rear_right.first;
     double rear_right_y = rear_right.second;
     
-    // 获取代价地图信息
-    double origin_x = costmap.info.origin.position.x;
-    double origin_y = costmap.info.origin.position.y;
+    // 获取代价地图分辨率
     double resolution = costmap.info.resolution;
-    unsigned int width = costmap.info.width;
-    unsigned int height = costmap.info.height;
     
-    // 优化：遍历代价地图的所有cell，判断是否在ROI内
+    // 优化：只遍历矩形ROI内部区域，并且步长可以大于分辨率
     bool has_obstacle = false;
     int checked_cells = 0;
     int obstacle_cells = 0;
     std::vector<geometry_msgs::msg::Point> obstacle_points;
     
-    // 遍历代价地图的所有cell
-    for (unsigned int my = 0; my < height; ++my)
+    // 计算矩形ROI在世界坐标下的轴对齐包围框
+    double min_x = std::min(std::min(front_left_x, front_right_x), std::min(rear_left_x, rear_right_x));
+    double max_x = std::max(std::max(front_left_x, front_right_x), std::max(rear_left_x, rear_right_x));
+    double min_y = std::min(std::min(front_left_y, front_right_y), std::min(rear_left_y, rear_right_y));
+    double max_y = std::max(std::max(front_left_y, front_right_y), std::max(rear_left_y, rear_right_y));
+
+    // 采样步长：可以比分辨率大一些，减少计算量
+    const double step = resolution * 2.0;  // 如需更密集采样，可改为 1.0 * resolution
+
+    for (double wx = min_x; wx <= max_x; wx += step)
     {
-        for (unsigned int mx = 0; mx < width; ++mx)
+        for (double wy = min_y; wy <= max_y; wy += step)
         {
-            // 将cell索引转换为世界坐标
-            double wx = origin_x + (mx + 0.5) * resolution;
-            double wy = origin_y + (my + 0.5) * resolution;
-            
-            // 判断点是否在矩形ROI内
-            if (!pointInRect(wx, wy, 
-                            front_left_x, front_left_y,
-                            front_right_x, front_right_y,
-                            rear_left_x, rear_left_y,
-                            rear_right_x, rear_right_y))
+            // 判断点是否在矩形ROI内（考虑矩形的旋转）
+            if (!pointInRect(wx, wy,
+                             front_left_x, front_left_y,
+                             front_right_x, front_right_y,
+                             rear_left_x, rear_left_y,
+                             rear_right_x, rear_right_y))
             {
                 continue;
             }
-            
+
+            // 将世界坐标转换为地图索引
+            unsigned int mx, my;
+            if (!worldToMap(costmap, wx, wy, mx, my))
+            {
+                continue;
+            }
+
             checked_cells++;
-            
+
             // 获取代价值
             unsigned char cost = getCost(costmap, mx, my);
-            
+
             // 检查是否为障碍物
             if (cost != 255 && static_cast<int>(cost) >= obstacle_threshold_)
             {
@@ -219,8 +227,6 @@ bool ObstacleDetectorNode::checkObstacleInFrontRect()
                 p.y = wy;
                 p.z = 0.0;
                 obstacle_points.push_back(p);
-                // 找到障碍物后可以提前返回（如果需要）
-                // break;
             }
         }
     }
@@ -232,6 +238,15 @@ bool ObstacleDetectorNode::checkObstacleInFrontRect()
             checked_cells, obstacle_cells, 
             100.0 * obstacle_cells / checked_cells);
     }
+
+    // 发布检测框可视化标记
+    publishDetectionBoxMarker(
+        front_left_x, front_left_y,
+        front_right_x, front_right_y,
+        rear_left_x, rear_left_y,
+        rear_right_x, rear_right_y,
+        costmap.header.stamp,
+        has_obstacle);
 
     // 发布可视化标记
     publishObstacleMarkers(obstacle_points, costmap.header.stamp);
@@ -296,6 +311,62 @@ void ObstacleDetectorNode::publishObstacleMarkers(
     marker.points = points;
 
     obstacle_marker_pub_->publish(marker);
+}
+
+void ObstacleDetectorNode::publishDetectionBoxMarker(
+    double front_left_x, double front_left_y,
+    double front_right_x, double front_right_y,
+    double rear_left_x, double rear_left_y,
+    double rear_right_x, double rear_right_y,
+    const rclcpp::Time & stamp,
+    bool has_obstacle)
+{
+    if (!detection_box_pub_) return;
+
+    visualization_msgs::msg::Marker marker;
+    marker.header.frame_id = costmap_frame_;
+    marker.header.stamp = stamp;
+    marker.ns = "detection_box";
+    marker.id = 0;
+    marker.type = visualization_msgs::msg::Marker::LINE_STRIP;
+    marker.action = visualization_msgs::msg::Marker::ADD;
+
+    marker.scale.x = 0.03;
+
+    // 有障碍物时红色，无障碍物时绿色
+    if (has_obstacle) {
+        marker.color.r = 1.0f;
+        marker.color.g = 0.0f;
+    } else {
+        marker.color.r = 0.0f;
+        marker.color.g = 1.0f;
+    }
+    marker.color.b = 0.0f;
+    marker.color.a = 0.8f;
+
+    marker.lifetime = rclcpp::Duration::from_seconds(0.5);
+
+    // 矩形四个角点 + 闭合回到起点
+    geometry_msgs::msg::Point p;
+    p.z = 0.0;
+
+    p.x = rear_left_x;  p.y = rear_left_y;
+    marker.points.push_back(p);
+
+    p.x = front_left_x;  p.y = front_left_y;
+    marker.points.push_back(p);
+
+    p.x = front_right_x;  p.y = front_right_y;
+    marker.points.push_back(p);
+
+    p.x = rear_right_x;  p.y = rear_right_y;
+    marker.points.push_back(p);
+
+    // 闭合
+    p.x = rear_left_x;  p.y = rear_left_y;
+    marker.points.push_back(p);
+
+    detection_box_pub_->publish(marker);
 }
 
 bool ObstacleDetectorNode::worldToMap(
