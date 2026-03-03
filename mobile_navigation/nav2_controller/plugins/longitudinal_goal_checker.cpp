@@ -104,32 +104,46 @@ bool LongitudinalGoalChecker::isGoalReached(
   const geometry_msgs::msg::Pose & query_pose, const geometry_msgs::msg::Pose & goal_pose,
   const geometry_msgs::msg::Twist &)
 {
-  double lon_err = 0.0;
-  double lat_err = 0.0;
+  double lon_err = query_pose.position.x - goal_pose.position.x;
+  double lat_err = query_pose.position.y - goal_pose.position.y;
   double dyaw = angles::shortest_angular_distance(
     tf2::getYaw(query_pose.orientation),
     tf2::getYaw(goal_pose.orientation));
+  if(hypot(lon_err, lat_err) < 0.25)
+  {
+    RCLCPP_INFO(rclcpp::get_logger("LongitudinalGoalChecker"),"Near goal: lon_err: %.3f, lat_err: %.3f", lon_err, lat_err);
+  }
   if (check_xy_) {
-    lon_err = query_pose.position.x - goal_pose.position.x;
-    lat_err = query_pose.position.y - goal_pose.position.y;
     if(fabs(lon_err) > lon_goal_tolerance_ || 
        fabs(lat_err) > lat_goal_tolerance_) 
     {
       return false;
     }
+    RCLCPP_INFO(rclcpp::get_logger("LongitudinalGoalChecker"),"#####  goal reached error: lon_err: %.3f, lat_err: %.3f, yaw_err: %.3f", lon_err, lat_err, dyaw);
     // We are within the window
     // If we are stateful, change the state.
     if (stateful_) {
       check_xy_ = false;
     }
   }
-
   if(!(fabs(dyaw) < yaw_goal_tolerance_))
   {
     return false;
   }
+  RCLCPP_INFO(rclcpp::get_logger("LongitudinalGoalChecker"),"lon_goal_tolerance: %.3f, lat_goal_tolerance: %.3f, yaw_goal_tolerance: %.3f", lon_goal_tolerance_, lat_goal_tolerance_, yaw_goal_tolerance_);
   RCLCPP_INFO(rclcpp::get_logger("LongitudinalGoalChecker"),"LongitudinalGoalChecker: Goal reached!");
   RCLCPP_INFO(rclcpp::get_logger("LongitudinalGoalChecker"),"goal reached error: lon_err: %.3f, lat_err: %.3f, yaw_err: %.3f", lon_err, lat_err, dyaw);
+  
+
+  const double query_yaw = tf2::getYaw(query_pose.orientation);
+  const double goal_yaw = tf2::getYaw(goal_pose.orientation);
+
+  RCLCPP_INFO(
+    rclcpp::get_logger("LongitudinalGoalChecker"),
+    "query_pose: (x=%.3f, y=%.3f, yaw=%.3f)  goal_pose: (x=%.3f, y=%.3f, yaw=%.3f)",
+    query_pose.position.x, query_pose.position.y, query_yaw,
+    goal_pose.position.x, goal_pose.position.y, goal_yaw);
+
   return true;
 }
 
