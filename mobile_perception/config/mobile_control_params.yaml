@@ -18,8 +18,8 @@ mobile_control_node:
     # 平滑参数
     angle_deadzone: 0.05        # 2.86°死区
     dist_deadzone: 0.02         # 2cm死区
-    near_target_dist: 0.1       # 30cm内减速
+    near_target_dist: 0.4       # 30cm内减速
     cmd_vel_filter_alpha: 0.3   # 滤波强度
     min_angular_vel: 0.00       # 最小有效角速度
     xy_tolerance: 0.02          # 位置收敛判定阈值（米）
-    yaw_tolerance: 0.01         # 航向收敛判定阈值（弧度）
+    yaw_tolerance: 0.02         # 航向收敛判定阈值（弧度）
