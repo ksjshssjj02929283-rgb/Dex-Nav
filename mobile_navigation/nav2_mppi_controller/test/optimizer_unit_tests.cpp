@@ -506,6 +506,17 @@ TEST(OptimizerTests, applyControlSequenceConstraintsTests)
   EXPECT_EQ(sequence.vx, -1.0 * xt::ones<float>({50}));
   EXPECT_EQ(sequence.vy, -0.75 * xt::ones<float>({50}));
   EXPECT_EQ(sequence.wz, -2.0 * xt::ones<float>({50}));
+
+  // Test az_max angular acceleration limit is enforced step-to-step.
+  node->set_parameter(rclcpp::Parameter("mppic.az_max", 1.0));
+  optimizer_tester.reset();
+  sequence.wz = xt::zeros<float>({50});
+  xt::view(sequence.wz, xt::range(1, 50)) = 2.0;
+  optimizer_tester.applyControlSequenceConstraintsWrapper();
+  EXPECT_NEAR(sequence.wz(0), 0.0, 1e-6);
+  EXPECT_NEAR(sequence.wz(1), 0.05, 1e-6);
+  EXPECT_NEAR(sequence.wz(2), 0.10, 1e-6);
+  EXPECT_NEAR(sequence.wz(3), 0.15, 1e-6);
 }
 
 TEST(OptimizerTests, updateStateVelocitiesTests)

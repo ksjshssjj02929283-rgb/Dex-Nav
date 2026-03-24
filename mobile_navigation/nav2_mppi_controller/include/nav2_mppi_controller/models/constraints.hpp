@@ -28,6 +28,11 @@ struct ControlConstraints
   float vx_min;
   float vy;
   float wz;
+  float ax_max;  // 最大线加速度（前进方向）m/s²
+  float ax_min;  // 最大线减速度（负值）m/s²
+  float ay_min;  // 最大侧向减速度（负值，全向机）m/s²
+  float ay_max;  // 最大侧向加速度（全向机）m/s²
+  float az_max;  // 最大角加速度 rad/s²
 };
 
 /**
