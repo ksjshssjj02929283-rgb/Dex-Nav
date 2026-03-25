@@ -12,6 +12,8 @@
 
 ## 1. 构建命令
 
+> **重要：AI 代理禁止执行 `colcon build` 命令。** 本工作区包含多个同名包副本（`nav2_mppi_controller-main/`、`navigation2-humble_main/`），`colcon build` 会因重复包名报错且无法通过 `--allow-overriding` 解决。所有构建操作由用户手动完成。
+
 ### 完整构建
 ```bash
 # 确保先 source ROS 环境
@@ -293,3 +295,11 @@ ros2 launch mobile_perception mobile_control.launch.py
 4. **参数**: 使用 `declare_parameter()` 声明参数，提供默认值
 5. **生命周期**: 使用 LifecycleNode 实现更精细的节点生命周期管理
 6. **测试**: 新功能应编写对应的单元测试和集成测试
+7. ****
+
+## 10. 最近会话补充
+
+- 2026-03-25：已核对 `mobile_navigation/nav2_mppi_controller` 中 `VelocityDeadbandCritic` 与上游同步状态，确认当前实现逻辑正确。
+- 2026-03-25：已在 `mobile_navigation/nav2_mppi_controller/test/critics_tests.cpp` 中补充 `VelocityDeadbandCritic` 单测。
+- 2026-03-25：已在 `mobile_navigation/nav2_bringup/params/w1_nav2_params.yaml` 与 `mobile_navigation/nav2_bringup/params/w1_nav2_rgbd_params.yaml` 中接入 `VelocityDeadbandCritic` 控制参数。
+- 续接本轮工作时，优先查看工作区根目录 `Last_session.md`。

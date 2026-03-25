@@ -162,7 +162,6 @@ geometry_msgs::msg::TwistStamped Optimizer::evalControl(
     optimize();
   } while (fallback(critics_data_.fail_flag));
 
-  utils::savitskyGolayFilter(control_sequence_, control_history_, settings_);
   auto control = getControlFromSequenceAsTwist(plan.header.stamp);
 
   last_command_vel_ = control.twist;
@@ -445,6 +444,7 @@ void Optimizer::updateControlSequence()
     xt::noalias(control_sequence_.vy) = xt::sum(state_.cvy * softmaxes_extened, 0, immediate);
   }
 
+  utils::savitskyGolayFilter(control_sequence_, control_history_, settings_);
   applyControlSequenceConstraints();
 }
 
