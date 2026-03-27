@@ -503,18 +503,25 @@ void ControllerServer::computeAndPublishVelocity()
 {
   geometry_msgs::msg::PoseStamped pose;
 
+  auto t_pose_start = std::chrono::high_resolution_clock::now();
   if (!getRobotPose(pose)) {
     throw nav2_core::PlannerException("Failed to obtain robot pose");
   }
+  auto t_pose_end = std::chrono::high_resolution_clock::now();
+  auto pose_ms = std::chrono::duration<double, std::milli>(t_pose_end - t_pose_start).count();
 
+  auto t_progress_start = std::chrono::high_resolution_clock::now();
   if (!progress_checker_->check(pose)) {
     throw nav2_core::PlannerException("Failed to make progress");
   }
+  auto t_progress_end = std::chrono::high_resolution_clock::now();
+  auto progress_ms = std::chrono::duration<double, std::milli>(t_progress_end - t_progress_start).count();
 
   nav_2d_msgs::msg::Twist2D twist = getThresholdedTwist(odom_sub_->getTwist());
 
   geometry_msgs::msg::TwistStamped cmd_vel_2d;
 
+  auto t_compute_start = std::chrono::high_resolution_clock::now();
   try {
     cmd_vel_2d =
       controllers_[current_controller_]->computeVelocityCommands(
@@ -542,7 +549,10 @@ void ControllerServer::computeAndPublishVelocity()
       throw nav2_core::PlannerException(e.what());
     }
   }
+  auto t_compute_end = std::chrono::high_resolution_clock::now();
+  auto compute_ms = std::chrono::duration<double, std::milli>(t_compute_end - t_compute_start).count();
 
+  auto t_feedback_start = std::chrono::high_resolution_clock::now();
   std::shared_ptr<Action::Feedback> feedback = std::make_shared<Action::Feedback>();
   feedback->speed = std::hypot(cmd_vel_2d.twist.linear.x, cmd_vel_2d.twist.linear.y);
 
@@ -568,6 +578,11 @@ void ControllerServer::computeAndPublishVelocity()
   feedback->distance_to_goal =
     nav2_util::geometry_utils::calculate_path_length(current_path_, find_closest_pose_idx());
   action_server_->publish_feedback(feedback);
+  auto t_feedback_end = std::chrono::high_resolution_clock::now();
+  auto feedback_ms = std::chrono::duration<double, std::milli>(t_feedback_end - t_feedback_start).count();
+
+  RCLCPP_INFO(get_logger(), "ControllerServer timing (ms): getPose=%.3f progress=%.3f compute=%.3f feedback=%.3f",
+              pose_ms, progress_ms, compute_ms, feedback_ms);
 
   RCLCPP_DEBUG(get_logger(), "Publishing velocity at time %.2f", now().seconds());
   publishVelocity(cmd_vel_2d);
