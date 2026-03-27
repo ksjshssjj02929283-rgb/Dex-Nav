@@ -488,6 +488,8 @@ private:
         {
             double dt = 1.0 / control_frequency_;
             cmd_vel = computeRotateToHeadingCommand(yaw_error, pre_cmd_vel_, dt);
+            RCLCPP_INFO(this->get_logger(), "[Rotate Mode] yaw_error: %.4f rad (%.2f deg), cmd_vel: linear=%.3f, angular=%.3f",
+                        yaw_error, yaw_error * 180.0 / M_PI, cmd_vel.linear.x, cmd_vel.angular.z);
         }
         else
         {

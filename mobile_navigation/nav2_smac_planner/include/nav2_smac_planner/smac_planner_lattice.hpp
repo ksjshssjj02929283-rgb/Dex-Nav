@@ -84,6 +84,25 @@ public:
    * @return false 
    */
   bool isAreaFree(nav2_costmap_2d::Costmap2D* costmap, const geometry_msgs::msg::PoseStamped& goal);
+
+  /**
+  * @brief 在起点和目标点之间进行线性插值生成路径（兜底用）
+  *
+  * 当全局规划失败，但起点与目标距离较近且无碰撞时，
+  * 使用该方法生成一条直线路径
+  *
+  * @param start 起点位姿
+  * @param goal  目标位姿
+  * @param step  插值步长（米），默认 0.02m
+  * @return nav_msgs::msg::Path 插值生成的路径
+  */
+  nav_msgs::msg::Path interpolatePath(
+    const geometry_msgs::msg::PoseStamped & start,
+    const geometry_msgs::msg::PoseStamped & goal,
+    double step = 0.02);
+
+
+
   /**
    * @brief Creating a plan from start and goal poses
    * @param start Start pose
