@@ -5,7 +5,7 @@
 > 对比基准 1：`mobile_navigation/nav2_mppi_controller-main/`，来源为 navigation2 仓库 `main` 分支。
 > 对比基准 2：`navigation2-humble_main/nav2_mppi_controller/`，来源为 navigation2 仓库 `humble-main` 分支。
 > 文档生成时间：2026-03-20
-> 最后更新：2026-03-24（补充 humble-main 对比，修正 SG/open_loop/VelocityDeadbandCritic 状态，并补充 PathAlignLegacyCritic 与 main 新功能优势说明；修复 VelocityDeadbandCritic 和 critics_tests xtensor 适配问题）
+> 最后更新：2026-04-02（补充 `PathAngleCritic` 三方对比；确认当前实现相对 `main` / `humble-main` 仍为旧语义版本，并记录其对急弯/倒车场景的潜在影响）
 
 ---
 
@@ -57,6 +57,7 @@
 | 底层张量库 | xtensor | Eigen | 架构级差异仍然存在 |
 | 加速度约束 | `vx/vy/wz` 已接入，仍需验证边界行为 | `vx/vy/wz` 全部接入 | 当前总体已接近等价 |
 | VelocityDeadbandCritic | 有 | 有 | 已补齐 |
+| PathAngleCritic | 旧实现 | 新实现 | 当前仍存在功能差异，详见 §4.2 |
 | PathAlignLegacyCritic | 有 | 无 | 当前保留旧版 critic |
 | `ALGORITHM.md` | 有 | 无 | 当前私有文档 |
 | `path_handler.*` | 有 | 有 | 这不是差异点 |
@@ -257,6 +258,70 @@ state_.speed = settings_.open_loop ? last_command_vel_ : robot_speed;
 | `.pow(n)` | `xt::pow(..., n)` |
 
 同步时还需添加 `#include <xtensor/xmath.hpp>` 和 `using xt::evaluation_strategy::immediate;`。
+
+### 4.2 PathAngleCritic
+
+`main` 与 `humble-main` 的 `PathAngleCritic` 当前基本一致，而当前工程中的实现仍保留旧版语义，差异不只是 xtensor / Eigen 适配，而是实际行为已经发生变化。
+
+#### 4.2.1 `main` 与 `humble-main`
+
+两者核心行为基本一致：
+
+- 都支持 `mode` 参数：
+  - `FORWARD_PREFERENCE`
+  - `NO_DIRECTIONAL_PREFERENCE`
+  - `CONSIDER_FEASIBLE_PATH_ORIENTATIONS`
+- 都使用更严格的默认参数：
+  - `cost_weight = 2.2`
+  - `max_angle_to_furthest = 0.785398`（约 45 度）
+- 都按**轨迹末端姿态**计算角度代价，而不是对整条轨迹的所有时间步求平均
+- `humble-main` 额外读取 `enforce_path_inversion_`，并通过 `utils::getCriticGoal()` 决定近目标时的判定参考目标；`main` 当前则直接使用 `data.state.local_path_length < threshold_to_consider_` 作为早退条件
+
+换句话说，`humble-main` 与 `main` 在 `PathAngleCritic` 上属于同一代实现，只是在“接近目标时如何决定是否启用 critic”这一步上有少量细节差异。
+
+#### 4.2.2 当前工程的旧实现差异
+
+当前 `mobile_navigation/nav2_mppi_controller/src/critics/path_angle_critic.cpp` 相对上游主要差异如下：
+
+- **参数层更旧**
+  - 使用 `forward_preference_` 布尔参数
+  - 不支持 `mode`
+  - 不支持 `CONSIDER_FEASIBLE_PATH_ORIENTATIONS`
+  - 不支持 `enforce_path_inversion_`
+- **默认参数更宽松**
+  - `cost_weight = 2.0`
+  - `max_angle_to_furthest = 1.2`（约 68.8 度）
+- **启用/早退条件不同**
+  - 当前版本用 `withinPositionGoalTolerance(threshold_to_consider_, data.state.pose.pose, data.path)` 判断是否停止打分
+  - `humble-main` 用 `getCriticGoal(..., enforce_path_inversion_)`
+  - `main` 用 `data.state.local_path_length < threshold_to_consider_`
+- **打分方式不同**
+  - 当前版本对整条采样轨迹所有时间步都计算“轨迹朝向 vs 指向 offset 路径点方向”的角误差，并取均值
+  - 上游新实现只看**每条轨迹末端**的朝向误差
+- **反向行驶处理能力较弱**
+  - 当前版本只能用 `forward_preference_ = false` 近似表达“不强制前进偏好”
+  - 上游可明确区分“前进优先”“无方向偏好”“考虑路径可行朝向”三种模式
+
+#### 4.2.3 行为影响判断
+
+这项差异对实际控制行为是有感知的，尤其在急弯、U 型弯和需要倒车/掉头的路径段：
+
+- 当前版本因为对整条轨迹做平均角误差，更容易在弯前提前放大角度代价
+- 在 U 型弯入口，候选轨迹只要前半段尚未充分转头，就可能整条轨迹都被抬高代价
+- 上游新实现只看末端姿态，更强调“这条轨迹最终有没有把车头转到合理方向”，对需要先摆姿态再入弯的场景通常更友好
+- 当前版本缺少 `mode`，也限制了对倒车段、路径反转段和“按路径朝向执行”的细粒度控制
+
+#### 4.2.4 当前结论
+
+如果后续要继续向 `main` / `humble-main` 同步，`PathAngleCritic` 应视为**尚未完成同步**的功能点，而不是“仅参数略有不同”。
+
+更准确的状态描述应为：
+
+- 相对 `main`：⚠️ 旧实现，尚未同步到新语义版本
+- 相对 `humble-main`：⚠️ 旧实现，尚未同步到新语义版本
+- 同步难点不在业务逻辑本身，而在于：
+  - 需要把 Eigen 末端列操作改写为 xtensor 等价实现
+  - 需要补齐 `mode` / `enforce_path_inversion_` 相关参数与辅助函数调用链
 
 `critics_tests.cpp` 中的 `ParametersHandler` 构造函数也有类似问题：main 使用 `(WeakPtr, std::string&)` 双参数构造，当前代码只有 `(WeakPtr)` 单参数构造，需要移除多余的 `name` 参数。
 
