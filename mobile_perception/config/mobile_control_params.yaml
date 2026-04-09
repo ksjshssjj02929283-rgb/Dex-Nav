@@ -8,6 +8,8 @@ mobile_control_node:
     accel_x_max: 0.5
     rotate_to_heading_angular_vel: 0.4
     rotate_to_heading_max_angular_accel: 1.0
+    rotate_to_heading_kp: 1.2
+    rotate_stop_yaw_error: 0.02
     
     # 调小角速度增益（关键！）
     k_rho: 1.0
@@ -20,9 +22,9 @@ mobile_control_node:
     dist_deadzone: 0.02         # 2cm死区
     near_target_dist: 0.4       # 30cm内减速
     cmd_vel_filter_alpha: 0.3   # 滤波强度
-    min_angular_vel: 0.00       # 最小有效角速度
+    min_angular_vel: 0.01       # 最小有效角速度
     min_effective_linear_speed: 0.01      # 最小有效线速度，避免命令太小底盘不动
-    min_linear_speed_apply_dist: 0.05     # 距目标大于该距离时才强制最小线速度
+    min_linear_speed_apply_dist: 0.02     # 距目标大于该距离时才强制最小线速度
     xy_tolerance: 0.02          # 位置收敛判定阈值（米）
     yaw_tolerance: 0.02         # 航向收敛判定阈值（弧度）
     goal_mode_linear_yaw_threshold: 0.08  # 判定为直线模式的输入yaw阈值

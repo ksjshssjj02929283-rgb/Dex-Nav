@@ -39,7 +39,7 @@ public:
         this->declare_parameter("rotate_to_heading_angular_vel", 0.4);
         this->declare_parameter("rotate_to_heading_max_angular_accel", 1.0);
         this->declare_parameter("rotate_to_heading_kp", 1.2);
-        this->declare_parameter("rotate_stop_yaw_error", 0.04);
+        this->declare_parameter("rotate_stop_yaw_error", 0.02);
         
         this->declare_parameter("k_rho", 0.8);
         this->declare_parameter("k_alpha", 1.5);
@@ -50,7 +50,7 @@ public:
         this->declare_parameter("dist_deadzone", 0.02);
         this->declare_parameter("near_target_dist", 0.3);
         this->declare_parameter("cmd_vel_filter_alpha", 0.3);
-        this->declare_parameter("min_angular_vel", 0.05);
+        this->declare_parameter("min_angular_vel", 0.01);
         this->declare_parameter("min_effective_linear_speed", 0.01);
         this->declare_parameter("min_linear_speed_apply_dist", 0.05);
         this->declare_parameter("xy_tolerance", 0.02);
@@ -490,6 +490,11 @@ private:
         if (std::fabs(cmd_vel.angular.z) > max_vel_to_stop) {
             cmd_vel.angular.z = sign * max_vel_to_stop;
         }
+
+        // if (std::fabs(cmd_vel.angular.z) > 0.0 &&
+        //     std::fabs(cmd_vel.angular.z) < min_angular_vel_) {
+        //     cmd_vel.angular.z = sign * min_angular_vel_;
+        // }
         
         cmd_vel.linear.x = 0.0;
         return cmd_vel;
@@ -516,6 +521,10 @@ private:
         geometry_msgs::msg::Twist cmd_vel =
             computeRotateToHeadingCommand(yaw_error, current_velocity, dt);
         cmd_vel.linear.x = 0.0;
+        if (std::fabs(cmd_vel.angular.z) > 0.0 &&
+            std::fabs(cmd_vel.angular.z) < min_angular_vel_) {
+            cmd_vel.angular.z = sign * min_angular_vel_;
+        }
         cmd_vel.angular.z = std::clamp(cmd_vel.angular.z,
                                        -straight_terminal_rotate_max_w_,
                                        straight_terminal_rotate_max_w_);
@@ -613,8 +622,7 @@ private:
                                           (1.0 - filter_alpha_) * filtered_cmd_vel_.angular.z;
 
             terminal_align_count_++;
-            if (std::fabs(yaw_error) <= straight_terminal_rotate_stop_yaw_ ||
-                terminal_align_count_ >= straight_terminal_rotate_max_cycles_)
+            if (std::fabs(yaw_error) <= straight_terminal_rotate_stop_yaw_)
             {
                 is_goal_ = true;
                 terminal_state_ = TerminalState::NONE;
@@ -622,6 +630,12 @@ private:
             }
             else
             {
+                if (terminal_align_count_ >= straight_terminal_rotate_max_cycles_) {
+                    terminal_align_count_ = 0;
+                    RCLCPP_WARN(this->get_logger(),
+                                "Straight terminal yaw alignment still not converged: yaw_error=%.4f rad, continuing alignment",
+                                yaw_error);
+                }
                 cmd_vel_pub_->publish(filtered_cmd_vel_);
                 static int terminal_loop_count = 0;
                 if (terminal_loop_count++ % (int)(control_frequency_ / 2) == 0) {
