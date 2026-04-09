@@ -1,0 +1,12 @@
+/home/dex/tmp_fixworkspace/dexe_mobile_nav/build/mobile_perception/CMakeFiles/uninstall.dir
+/home/dex/tmp_fixworkspace/dexe_mobile_nav/build/mobile_perception/CMakeFiles/mobile_perception_uninstall.dir
+/home/dex/tmp_fixworkspace/dexe_mobile_nav/build/mobile_perception/CMakeFiles/charging_pose_service_node.dir
+/home/dex/tmp_fixworkspace/dexe_mobile_nav/build/mobile_perception/CMakeFiles/apriltag_detection_node.dir
+/home/dex/tmp_fixworkspace/dexe_mobile_nav/build/mobile_perception/CMakeFiles/mobile_control_node.dir
+/home/dex/tmp_fixworkspace/dexe_mobile_nav/build/mobile_perception/CMakeFiles/test.dir
+/home/dex/tmp_fixworkspace/dexe_mobile_nav/build/mobile_perception/CMakeFiles/edit_cache.dir
+/home/dex/tmp_fixworkspace/dexe_mobile_nav/build/mobile_perception/CMakeFiles/rebuild_cache.dir
+/home/dex/tmp_fixworkspace/dexe_mobile_nav/build/mobile_perception/CMakeFiles/list_install_components.dir
+/home/dex/tmp_fixworkspace/dexe_mobile_nav/build/mobile_perception/CMakeFiles/install.dir
+/home/dex/tmp_fixworkspace/dexe_mobile_nav/build/mobile_perception/CMakeFiles/install/local.dir
+/home/dex/tmp_fixworkspace/dexe_mobile_nav/build/mobile_perception/CMakeFiles/install/strip.dir

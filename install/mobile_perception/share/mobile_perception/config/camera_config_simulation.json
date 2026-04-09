@@ -1,0 +1,34 @@
+{ 
+  "cameras": [ 
+    {
+      "id": 0,
+      "name": "simulation",
+      "synchronize": true,
+      "topic_name": "/camera/image_raw", 
+      "base_link_name": "base_link",
+      "camera_link": "camera_rgb_optical_frame",
+      "desired_encoding": "'mono8'",
+      "settings": { 
+        "resolution": "640x480",
+        "frame_rate": 30.0,
+        "frame_width":640,
+        "frame_height":480,
+        "intrinsic_params": {
+          "fx": 530.4669406576809,
+          "fy": 530.4669406576809,
+          "cx": 320.5,
+          "cy": 240.5
+        },
+        "dist_coeffs": [
+          -0.0,
+          0.0,
+          0.0,
+          0.0,
+          -0.0,
+          -0.0,
+          0.0,
+          0.0 ]
+      }
+    }
+  ]
+}

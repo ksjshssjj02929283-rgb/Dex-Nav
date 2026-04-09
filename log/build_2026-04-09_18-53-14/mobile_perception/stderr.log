@@ -1,0 +1,46 @@
+CMake Deprecation Warning at CMakeLists.txt:1 (cmake_minimum_required):
+  Compatibility with CMake < 3.10 will be removed from a future version of
+  CMake.
+
+  Update the VERSION argument <min> value.  Or, use the <min>...<max> syntax
+  to tell CMake that the project requires at least <min> but has been updated
+  to work with policies introduced by <max> or earlier.
+
+
+/home/dex/tmp_fixworkspace/dexe_mobile_nav/mobile_perception/src/mobile_control_node.cpp: In member function ‘void MobileControlNode::getStatusCallback(std::shared_ptr<std_srvs::srv::Trigger_Request_<std::allocator<void> > >, std::shared_ptr<std_srvs::srv::Trigger_Response_<std::allocator<void> > >)’:
+/home/dex/tmp_fixworkspace/dexe_mobile_nav/mobile_perception/src/mobile_control_node.cpp:180:64: warning: unused parameter ‘request’ [-Wunused-parameter]
+  180 |         const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~
+/home/dex/tmp_fixworkspace/dexe_mobile_nav/mobile_perception/src/mobile_control_node.cpp: In member function ‘void MobileControlNode::cancelControlCallback(std::shared_ptr<std_srvs::srv::Trigger_Request_<std::allocator<void> > >, std::shared_ptr<std_srvs::srv::Trigger_Response_<std::allocator<void> > >)’:
+/home/dex/tmp_fixworkspace/dexe_mobile_nav/mobile_perception/src/mobile_control_node.cpp:217:64: warning: unused parameter ‘request’ [-Wunused-parameter]
+  217 |         const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~
+/home/dex/tmp_fixworkspace/dexe_mobile_nav/mobile_perception/src/mobile_control_node.cpp: In member function ‘void MobileControlNode::controlLoop()’:
+/home/dex/tmp_fixworkspace/dexe_mobile_nav/mobile_perception/src/mobile_control_node.cpp:558:20: warning: unused variable ‘decay_factor’ [-Wunused-variable]
+  558 |             double decay_factor = std::max(0.0, 1.0 - stop_count_ / 20.0);
+      |                    ^~~~~~~~~~~~
+/home/dex/tmp_fixworkspace/dexe_mobile_nav/mobile_perception/src/apriltag_detection_node.cpp: In member function ‘void AprilTagDetectionNode::image_cb(sensor_msgs::msg::Image_<std::allocator<void> >::SharedPtr)’:
+/home/dex/tmp_fixworkspace/dexe_mobile_nav/mobile_perception/src/apriltag_detection_node.cpp:192:8: warning: narrowing conversion of ‘- h’ from ‘double’ to ‘float’ [-Wnarrowing]
+  192 |       {-h, -h, 0},
+      |        ^~
+/home/dex/tmp_fixworkspace/dexe_mobile_nav/mobile_perception/src/apriltag_detection_node.cpp:192:12: warning: narrowing conversion of ‘- h’ from ‘double’ to ‘float’ [-Wnarrowing]
+  192 |       {-h, -h, 0},
+      |            ^~
+/home/dex/tmp_fixworkspace/dexe_mobile_nav/mobile_perception/src/apriltag_detection_node.cpp:193:9: warning: narrowing conversion of ‘h’ from ‘double’ to ‘float’ [-Wnarrowing]
+  193 |       { h, -h, 0},
+      |         ^
+/home/dex/tmp_fixworkspace/dexe_mobile_nav/mobile_perception/src/apriltag_detection_node.cpp:193:12: warning: narrowing conversion of ‘- h’ from ‘double’ to ‘float’ [-Wnarrowing]
+  193 |       { h, -h, 0},
+      |            ^~
+/home/dex/tmp_fixworkspace/dexe_mobile_nav/mobile_perception/src/apriltag_detection_node.cpp:194:9: warning: narrowing conversion of ‘h’ from ‘double’ to ‘float’ [-Wnarrowing]
+  194 |       { h,  h, 0},
+      |         ^
+/home/dex/tmp_fixworkspace/dexe_mobile_nav/mobile_perception/src/apriltag_detection_node.cpp:194:13: warning: narrowing conversion of ‘h’ from ‘double’ to ‘float’ [-Wnarrowing]
+  194 |       { h,  h, 0},
+      |             ^
+/home/dex/tmp_fixworkspace/dexe_mobile_nav/mobile_perception/src/apriltag_detection_node.cpp:195:8: warning: narrowing conversion of ‘- h’ from ‘double’ to ‘float’ [-Wnarrowing]
+  195 |       {-h,  h, 0}
+      |        ^~
+/home/dex/tmp_fixworkspace/dexe_mobile_nav/mobile_perception/src/apriltag_detection_node.cpp:195:13: warning: narrowing conversion of ‘h’ from ‘double’ to ‘float’ [-Wnarrowing]
+  195 |       {-h,  h, 0}
+      |             ^

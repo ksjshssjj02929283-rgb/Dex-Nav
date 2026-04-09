@@ -1,0 +1,792 @@
+[0.108s] DEBUG:colcon:Command line arguments: ['/usr/bin/colcon', 'build', '--packages-select', 'mobile_perception']
+[0.108s] DEBUG:colcon:Parsed command line arguments: Namespace(log_base=None, log_level=None, verb_name='build', build_base='build', install_base='install', merge_install=False, symlink_install=False, test_result_base=None, continue_on_error=False, executor='parallel', parallel_workers=16, event_handlers=None, ignore_user_meta=False, metas=['./colcon.meta'], base_paths=['.'], packages_ignore=None, packages_ignore_regex=None, paths=None, packages_up_to=None, packages_up_to_regex=None, packages_above=None, packages_above_and_dependencies=None, packages_above_depth=None, packages_select_by_dep=None, packages_skip_by_dep=None, packages_skip_up_to=None, packages_select_build_failed=False, packages_skip_build_finished=False, packages_select_test_failures=False, packages_skip_test_passed=False, packages_select=['mobile_perception'], packages_skip=None, packages_select_regex=None, packages_skip_regex=None, packages_start=None, packages_end=None, allow_overriding=[], cmake_args=None, cmake_target=None, cmake_target_skip_unavailable=False, cmake_clean_cache=False, cmake_clean_first=False, cmake_force_configure=False, ament_cmake_args=None, catkin_cmake_args=None, catkin_skip_building_tests=False, verb_parser=<colcon_defaults.argument_parser.defaults.DefaultArgumentsDecorator object at 0x7056331b9480>, verb_extension=<colcon_core.verb.build.BuildVerb object at 0x7056331b8f40>, main=<bound method BuildVerb.main of <colcon_core.verb.build.BuildVerb object at 0x7056331b8f40>>)
+[0.139s] Level 1:colcon.colcon_core.package_discovery:discover_packages(colcon_meta) check parameters
+[0.139s] Level 1:colcon.colcon_core.package_discovery:discover_packages(recursive) check parameters
+[0.139s] Level 1:colcon.colcon_core.package_discovery:discover_packages(ignore) check parameters
+[0.139s] Level 1:colcon.colcon_core.package_discovery:discover_packages(path) check parameters
+[0.139s] Level 1:colcon.colcon_core.package_discovery:discover_packages(colcon_meta) discover
+[0.139s] Level 1:colcon.colcon_core.package_discovery:discover_packages(recursive) discover
+[0.139s] INFO:colcon.colcon_core.package_discovery:Crawling recursively for packages in '/home/dex/tmp_fixworkspace/dexe_mobile_nav'
+[0.139s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extensions ['ignore', 'ignore_ament_install']
+[0.139s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extension 'ignore'
+[0.140s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extension 'ignore_ament_install'
+[0.140s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extensions ['colcon_pkg']
+[0.140s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extension 'colcon_pkg'
+[0.140s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extensions ['colcon_meta']
+[0.140s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extension 'colcon_meta'
+[0.140s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extensions ['ros']
+[0.140s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extension 'ros'
+[0.151s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extensions ['cmake', 'python']
+[0.151s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extension 'cmake'
+[0.151s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extension 'python'
+[0.151s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extensions ['python_setup_py']
+[0.151s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extension 'python_setup_py'
+[0.152s] Level 1:colcon.colcon_core.package_identification:_identify(build) by extensions ['ignore', 'ignore_ament_install']
+[0.152s] Level 1:colcon.colcon_core.package_identification:_identify(build) by extension 'ignore'
+[0.152s] Level 1:colcon.colcon_core.package_identification:_identify(build) ignored
+[0.152s] Level 1:colcon.colcon_core.package_identification:_identify(dexe_sensor_process) by extensions ['ignore', 'ignore_ament_install']
+[0.152s] Level 1:colcon.colcon_core.package_identification:_identify(dexe_sensor_process) by extension 'ignore'
+[0.152s] Level 1:colcon.colcon_core.package_identification:_identify(dexe_sensor_process) by extension 'ignore_ament_install'
+[0.152s] Level 1:colcon.colcon_core.package_identification:_identify(dexe_sensor_process) by extensions ['colcon_pkg']
+[0.152s] Level 1:colcon.colcon_core.package_identification:_identify(dexe_sensor_process) by extension 'colcon_pkg'
+[0.152s] Level 1:colcon.colcon_core.package_identification:_identify(dexe_sensor_process) by extensions ['colcon_meta']
+[0.152s] Level 1:colcon.colcon_core.package_identification:_identify(dexe_sensor_process) by extension 'colcon_meta'
+[0.152s] Level 1:colcon.colcon_core.package_identification:_identify(dexe_sensor_process) by extensions ['ros']
+[0.152s] Level 1:colcon.colcon_core.package_identification:_identify(dexe_sensor_process) by extension 'ros'
+[0.154s] DEBUG:colcon.colcon_core.package_identification:Package 'dexe_sensor_process' with type 'ros.ament_cmake' and name 'dexe_sensor_process'
+[0.154s] Level 1:colcon.colcon_core.package_identification:_identify(install) by extensions ['ignore', 'ignore_ament_install']
+[0.154s] Level 1:colcon.colcon_core.package_identification:_identify(install) by extension 'ignore'
+[0.154s] Level 1:colcon.colcon_core.package_identification:_identify(install) ignored
+[0.154s] Level 1:colcon.colcon_core.package_identification:_identify(log) by extensions ['ignore', 'ignore_ament_install']
+[0.154s] Level 1:colcon.colcon_core.package_identification:_identify(log) by extension 'ignore'
+[0.155s] Level 1:colcon.colcon_core.package_identification:_identify(log) ignored
+[0.155s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation) by extensions ['ignore', 'ignore_ament_install']
+[0.155s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation) by extension 'ignore'
+[0.155s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation) by extension 'ignore_ament_install'
+[0.155s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation) by extensions ['colcon_pkg']
+[0.155s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation) by extension 'colcon_pkg'
+[0.155s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation) by extensions ['colcon_meta']
+[0.155s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation) by extension 'colcon_meta'
+[0.155s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation) by extensions ['ros']
+[0.155s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation) by extension 'ros'
+[0.155s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation) by extensions ['cmake', 'python']
+[0.155s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation) by extension 'cmake'
+[0.155s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation) by extension 'python'
+[0.155s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation) by extensions ['python_setup_py']
+[0.155s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation) by extension 'python_setup_py'
+[0.155s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc) by extensions ['ignore', 'ignore_ament_install']
+[0.155s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc) by extension 'ignore'
+[0.155s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc) by extension 'ignore_ament_install'
+[0.155s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc) by extensions ['colcon_pkg']
+[0.155s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc) by extension 'colcon_pkg'
+[0.155s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc) by extensions ['colcon_meta']
+[0.155s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc) by extension 'colcon_meta'
+[0.155s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc) by extensions ['ros']
+[0.155s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc) by extension 'ros'
+[0.155s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc) by extensions ['cmake', 'python']
+[0.155s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc) by extension 'cmake'
+[0.155s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc) by extension 'python'
+[0.155s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc) by extensions ['python_setup_py']
+[0.155s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc) by extension 'python_setup_py'
+[0.155s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/architecture) by extensions ['ignore', 'ignore_ament_install']
+[0.155s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/architecture) by extension 'ignore'
+[0.155s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/architecture) by extension 'ignore_ament_install'
+[0.155s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/architecture) by extensions ['colcon_pkg']
+[0.155s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/architecture) by extension 'colcon_pkg'
+[0.155s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/architecture) by extensions ['colcon_meta']
+[0.155s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/architecture) by extension 'colcon_meta'
+[0.155s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/architecture) by extensions ['ros']
+[0.155s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/architecture) by extension 'ros'
+[0.155s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/architecture) by extensions ['cmake', 'python']
+[0.155s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/architecture) by extension 'cmake'
+[0.155s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/architecture) by extension 'python'
+[0.155s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/architecture) by extensions ['python_setup_py']
+[0.155s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/architecture) by extension 'python_setup_py'
+[0.156s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/design) by extensions ['ignore', 'ignore_ament_install']
+[0.156s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/design) by extension 'ignore'
+[0.156s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/design) by extension 'ignore_ament_install'
+[0.156s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/design) by extensions ['colcon_pkg']
+[0.156s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/design) by extension 'colcon_pkg'
+[0.156s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/design) by extensions ['colcon_meta']
+[0.156s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/design) by extension 'colcon_meta'
+[0.156s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/design) by extensions ['ros']
+[0.156s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/design) by extension 'ros'
+[0.156s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/design) by extensions ['cmake', 'python']
+[0.156s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/design) by extension 'cmake'
+[0.156s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/design) by extension 'python'
+[0.156s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/design) by extensions ['python_setup_py']
+[0.156s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/design) by extension 'python_setup_py'
+[0.156s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/development) by extensions ['ignore', 'ignore_ament_install']
+[0.156s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/development) by extension 'ignore'
+[0.156s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/development) by extension 'ignore_ament_install'
+[0.156s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/development) by extensions ['colcon_pkg']
+[0.156s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/development) by extension 'colcon_pkg'
+[0.156s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/development) by extensions ['colcon_meta']
+[0.156s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/development) by extension 'colcon_meta'
+[0.156s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/development) by extensions ['ros']
+[0.156s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/development) by extension 'ros'
+[0.156s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/development) by extensions ['cmake', 'python']
+[0.156s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/development) by extension 'cmake'
+[0.156s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/development) by extension 'python'
+[0.156s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/development) by extensions ['python_setup_py']
+[0.156s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/development) by extension 'python_setup_py'
+[0.156s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/process) by extensions ['ignore', 'ignore_ament_install']
+[0.156s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/process) by extension 'ignore'
+[0.156s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/process) by extension 'ignore_ament_install'
+[0.156s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/process) by extensions ['colcon_pkg']
+[0.156s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/process) by extension 'colcon_pkg'
+[0.156s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/process) by extensions ['colcon_meta']
+[0.156s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/process) by extension 'colcon_meta'
+[0.156s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/process) by extensions ['ros']
+[0.156s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/process) by extension 'ros'
+[0.156s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/process) by extensions ['cmake', 'python']
+[0.156s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/process) by extension 'cmake'
+[0.156s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/process) by extension 'python'
+[0.156s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/process) by extensions ['python_setup_py']
+[0.157s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/process) by extension 'python_setup_py'
+[0.157s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/requirements) by extensions ['ignore', 'ignore_ament_install']
+[0.157s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/requirements) by extension 'ignore'
+[0.157s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/requirements) by extension 'ignore_ament_install'
+[0.157s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/requirements) by extensions ['colcon_pkg']
+[0.157s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/requirements) by extension 'colcon_pkg'
+[0.157s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/requirements) by extensions ['colcon_meta']
+[0.157s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/requirements) by extension 'colcon_meta'
+[0.157s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/requirements) by extensions ['ros']
+[0.157s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/requirements) by extension 'ros'
+[0.157s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/requirements) by extensions ['cmake', 'python']
+[0.157s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/requirements) by extension 'cmake'
+[0.157s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/requirements) by extension 'python'
+[0.157s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/requirements) by extensions ['python_setup_py']
+[0.157s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/requirements) by extension 'python_setup_py'
+[0.157s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/requirements/images) by extensions ['ignore', 'ignore_ament_install']
+[0.157s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/requirements/images) by extension 'ignore'
+[0.157s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/requirements/images) by extension 'ignore_ament_install'
+[0.157s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/requirements/images) by extensions ['colcon_pkg']
+[0.157s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/requirements/images) by extension 'colcon_pkg'
+[0.157s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/requirements/images) by extensions ['colcon_meta']
+[0.157s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/requirements/images) by extension 'colcon_meta'
+[0.157s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/requirements/images) by extensions ['ros']
+[0.157s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/requirements/images) by extension 'ros'
+[0.157s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/requirements/images) by extensions ['cmake', 'python']
+[0.157s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/requirements/images) by extension 'cmake'
+[0.157s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/requirements/images) by extension 'python'
+[0.157s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/requirements/images) by extensions ['python_setup_py']
+[0.157s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/requirements/images) by extension 'python_setup_py'
+[0.157s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/use_cases) by extensions ['ignore', 'ignore_ament_install']
+[0.157s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/use_cases) by extension 'ignore'
+[0.157s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/use_cases) by extension 'ignore_ament_install'
+[0.157s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/use_cases) by extensions ['colcon_pkg']
+[0.157s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/use_cases) by extension 'colcon_pkg'
+[0.157s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/use_cases) by extensions ['colcon_meta']
+[0.157s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/use_cases) by extension 'colcon_meta'
+[0.157s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/use_cases) by extensions ['ros']
+[0.157s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/use_cases) by extension 'ros'
+[0.158s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/use_cases) by extensions ['cmake', 'python']
+[0.158s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/use_cases) by extension 'cmake'
+[0.158s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/use_cases) by extension 'python'
+[0.158s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/use_cases) by extensions ['python_setup_py']
+[0.158s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/doc/use_cases) by extension 'python_setup_py'
+[0.158s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_amcl) by extensions ['ignore', 'ignore_ament_install']
+[0.158s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_amcl) by extension 'ignore'
+[0.158s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_amcl) by extension 'ignore_ament_install'
+[0.158s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_amcl) by extensions ['colcon_pkg']
+[0.158s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_amcl) by extension 'colcon_pkg'
+[0.158s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_amcl) by extensions ['colcon_meta']
+[0.158s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_amcl) by extension 'colcon_meta'
+[0.158s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_amcl) by extensions ['ros']
+[0.158s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_amcl) by extension 'ros'
+[0.159s] DEBUG:colcon.colcon_core.package_identification:Package 'mobile_navigation/nav2_amcl' with type 'ros.ament_cmake' and name 'nav2_amcl'
+[0.159s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_behavior_tree) by extensions ['ignore', 'ignore_ament_install']
+[0.159s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_behavior_tree) by extension 'ignore'
+[0.159s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_behavior_tree) by extension 'ignore_ament_install'
+[0.159s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_behavior_tree) by extensions ['colcon_pkg']
+[0.159s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_behavior_tree) by extension 'colcon_pkg'
+[0.159s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_behavior_tree) by extensions ['colcon_meta']
+[0.159s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_behavior_tree) by extension 'colcon_meta'
+[0.159s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_behavior_tree) by extensions ['ros']
+[0.159s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_behavior_tree) by extension 'ros'
+[0.160s] DEBUG:colcon.colcon_core.package_identification:Package 'mobile_navigation/nav2_behavior_tree' with type 'ros.ament_cmake' and name 'nav2_behavior_tree'
+[0.160s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_behaviors) by extensions ['ignore', 'ignore_ament_install']
+[0.160s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_behaviors) by extension 'ignore'
+[0.160s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_behaviors) by extension 'ignore_ament_install'
+[0.160s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_behaviors) by extensions ['colcon_pkg']
+[0.160s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_behaviors) by extension 'colcon_pkg'
+[0.160s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_behaviors) by extensions ['colcon_meta']
+[0.160s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_behaviors) by extension 'colcon_meta'
+[0.160s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_behaviors) by extensions ['ros']
+[0.160s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_behaviors) by extension 'ros'
+[0.161s] DEBUG:colcon.colcon_core.package_identification:Package 'mobile_navigation/nav2_behaviors' with type 'ros.ament_cmake' and name 'nav2_behaviors'
+[0.161s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_bringup) by extensions ['ignore', 'ignore_ament_install']
+[0.161s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_bringup) by extension 'ignore'
+[0.161s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_bringup) by extension 'ignore_ament_install'
+[0.161s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_bringup) by extensions ['colcon_pkg']
+[0.161s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_bringup) by extension 'colcon_pkg'
+[0.161s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_bringup) by extensions ['colcon_meta']
+[0.161s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_bringup) by extension 'colcon_meta'
+[0.161s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_bringup) by extensions ['ros']
+[0.161s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_bringup) by extension 'ros'
+[0.161s] DEBUG:colcon.colcon_core.package_identification:Package 'mobile_navigation/nav2_bringup' with type 'ros.ament_cmake' and name 'nav2_bringup'
+[0.162s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_bt_navigator) by extensions ['ignore', 'ignore_ament_install']
+[0.162s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_bt_navigator) by extension 'ignore'
+[0.162s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_bt_navigator) by extension 'ignore_ament_install'
+[0.162s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_bt_navigator) by extensions ['colcon_pkg']
+[0.162s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_bt_navigator) by extension 'colcon_pkg'
+[0.162s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_bt_navigator) by extensions ['colcon_meta']
+[0.162s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_bt_navigator) by extension 'colcon_meta'
+[0.162s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_bt_navigator) by extensions ['ros']
+[0.162s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_bt_navigator) by extension 'ros'
+[0.163s] DEBUG:colcon.colcon_core.package_identification:Package 'mobile_navigation/nav2_bt_navigator' with type 'ros.ament_cmake' and name 'nav2_bt_navigator'
+[0.163s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_collision_monitor) by extensions ['ignore', 'ignore_ament_install']
+[0.163s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_collision_monitor) by extension 'ignore'
+[0.163s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_collision_monitor) by extension 'ignore_ament_install'
+[0.163s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_collision_monitor) by extensions ['colcon_pkg']
+[0.163s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_collision_monitor) by extension 'colcon_pkg'
+[0.163s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_collision_monitor) by extensions ['colcon_meta']
+[0.163s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_collision_monitor) by extension 'colcon_meta'
+[0.163s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_collision_monitor) by extensions ['ros']
+[0.163s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_collision_monitor) by extension 'ros'
+[0.165s] DEBUG:colcon.colcon_core.package_identification:Package 'mobile_navigation/nav2_collision_monitor' with type 'ros.ament_cmake' and name 'nav2_collision_monitor'
+[0.165s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_common) by extensions ['ignore', 'ignore_ament_install']
+[0.165s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_common) by extension 'ignore'
+[0.165s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_common) by extension 'ignore_ament_install'
+[0.165s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_common) by extensions ['colcon_pkg']
+[0.165s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_common) by extension 'colcon_pkg'
+[0.165s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_common) by extensions ['colcon_meta']
+[0.165s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_common) by extension 'colcon_meta'
+[0.165s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_common) by extensions ['ros']
+[0.165s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_common) by extension 'ros'
+[0.166s] DEBUG:colcon.colcon_core.package_identification:Package 'mobile_navigation/nav2_common' with type 'ros.ament_cmake' and name 'nav2_common'
+[0.166s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_constrained_smoother) by extensions ['ignore', 'ignore_ament_install']
+[0.166s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_constrained_smoother) by extension 'ignore'
+[0.166s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_constrained_smoother) by extension 'ignore_ament_install'
+[0.166s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_constrained_smoother) by extensions ['colcon_pkg']
+[0.166s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_constrained_smoother) by extension 'colcon_pkg'
+[0.166s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_constrained_smoother) by extensions ['colcon_meta']
+[0.166s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_constrained_smoother) by extension 'colcon_meta'
+[0.166s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_constrained_smoother) by extensions ['ros']
+[0.166s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_constrained_smoother) by extension 'ros'
+[0.171s] DEBUG:colcon.colcon_core.package_identification:Package 'mobile_navigation/nav2_constrained_smoother' with type 'ros.ament_cmake' and name 'nav2_constrained_smoother'
+[0.171s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_controller) by extensions ['ignore', 'ignore_ament_install']
+[0.171s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_controller) by extension 'ignore'
+[0.171s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_controller) by extension 'ignore_ament_install'
+[0.171s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_controller) by extensions ['colcon_pkg']
+[0.171s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_controller) by extension 'colcon_pkg'
+[0.171s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_controller) by extensions ['colcon_meta']
+[0.171s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_controller) by extension 'colcon_meta'
+[0.171s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_controller) by extensions ['ros']
+[0.171s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_controller) by extension 'ros'
+[0.172s] DEBUG:colcon.colcon_core.package_identification:Package 'mobile_navigation/nav2_controller' with type 'ros.ament_cmake' and name 'nav2_controller'
+[0.172s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_core) by extensions ['ignore', 'ignore_ament_install']
+[0.172s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_core) by extension 'ignore'
+[0.172s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_core) by extension 'ignore_ament_install'
+[0.172s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_core) by extensions ['colcon_pkg']
+[0.172s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_core) by extension 'colcon_pkg'
+[0.172s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_core) by extensions ['colcon_meta']
+[0.172s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_core) by extension 'colcon_meta'
+[0.172s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_core) by extensions ['ros']
+[0.172s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_core) by extension 'ros'
+[0.173s] DEBUG:colcon.colcon_core.package_identification:Package 'mobile_navigation/nav2_core' with type 'ros.ament_cmake' and name 'nav2_core'
+[0.173s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_costmap_2d) by extensions ['ignore', 'ignore_ament_install']
+[0.173s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_costmap_2d) by extension 'ignore'
+[0.173s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_costmap_2d) by extension 'ignore_ament_install'
+[0.173s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_costmap_2d) by extensions ['colcon_pkg']
+[0.173s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_costmap_2d) by extension 'colcon_pkg'
+[0.173s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_costmap_2d) by extensions ['colcon_meta']
+[0.173s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_costmap_2d) by extension 'colcon_meta'
+[0.173s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_costmap_2d) by extensions ['ros']
+[0.173s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_costmap_2d) by extension 'ros'
+[0.175s] DEBUG:colcon.colcon_core.package_identification:Package 'mobile_navigation/nav2_costmap_2d' with type 'ros.ament_cmake' and name 'nav2_costmap_2d'
+[0.175s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller) by extensions ['ignore', 'ignore_ament_install']
+[0.175s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller) by extension 'ignore'
+[0.175s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller) by extension 'ignore_ament_install'
+[0.175s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller) by extensions ['colcon_pkg']
+[0.175s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller) by extension 'colcon_pkg'
+[0.175s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller) by extensions ['colcon_meta']
+[0.175s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller) by extension 'colcon_meta'
+[0.175s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller) by extensions ['ros']
+[0.175s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller) by extension 'ros'
+[0.175s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller) by extensions ['cmake', 'python']
+[0.175s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller) by extension 'cmake'
+[0.175s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller) by extension 'python'
+[0.175s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller) by extensions ['python_setup_py']
+[0.175s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller) by extension 'python_setup_py'
+[0.175s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/costmap_queue) by extensions ['ignore', 'ignore_ament_install']
+[0.175s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/costmap_queue) by extension 'ignore'
+[0.175s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/costmap_queue) by extension 'ignore_ament_install'
+[0.175s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/costmap_queue) by extensions ['colcon_pkg']
+[0.175s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/costmap_queue) by extension 'colcon_pkg'
+[0.175s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/costmap_queue) by extensions ['colcon_meta']
+[0.175s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/costmap_queue) by extension 'colcon_meta'
+[0.175s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/costmap_queue) by extensions ['ros']
+[0.175s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/costmap_queue) by extension 'ros'
+[0.176s] DEBUG:colcon.colcon_core.package_identification:Package 'mobile_navigation/nav2_dwb_controller/costmap_queue' with type 'ros.ament_cmake' and name 'costmap_queue'
+[0.176s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/dwb_core) by extensions ['ignore', 'ignore_ament_install']
+[0.176s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/dwb_core) by extension 'ignore'
+[0.176s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/dwb_core) by extension 'ignore_ament_install'
+[0.176s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/dwb_core) by extensions ['colcon_pkg']
+[0.176s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/dwb_core) by extension 'colcon_pkg'
+[0.176s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/dwb_core) by extensions ['colcon_meta']
+[0.176s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/dwb_core) by extension 'colcon_meta'
+[0.176s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/dwb_core) by extensions ['ros']
+[0.176s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/dwb_core) by extension 'ros'
+[0.177s] DEBUG:colcon.colcon_core.package_identification:Package 'mobile_navigation/nav2_dwb_controller/dwb_core' with type 'ros.ament_cmake' and name 'dwb_core'
+[0.177s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/dwb_critics) by extensions ['ignore', 'ignore_ament_install']
+[0.177s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/dwb_critics) by extension 'ignore'
+[0.177s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/dwb_critics) by extension 'ignore_ament_install'
+[0.177s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/dwb_critics) by extensions ['colcon_pkg']
+[0.177s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/dwb_critics) by extension 'colcon_pkg'
+[0.177s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/dwb_critics) by extensions ['colcon_meta']
+[0.177s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/dwb_critics) by extension 'colcon_meta'
+[0.177s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/dwb_critics) by extensions ['ros']
+[0.177s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/dwb_critics) by extension 'ros'
+[0.178s] DEBUG:colcon.colcon_core.package_identification:Package 'mobile_navigation/nav2_dwb_controller/dwb_critics' with type 'ros.ament_cmake' and name 'dwb_critics'
+[0.178s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/dwb_msgs) by extensions ['ignore', 'ignore_ament_install']
+[0.178s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/dwb_msgs) by extension 'ignore'
+[0.178s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/dwb_msgs) by extension 'ignore_ament_install'
+[0.178s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/dwb_msgs) by extensions ['colcon_pkg']
+[0.178s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/dwb_msgs) by extension 'colcon_pkg'
+[0.178s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/dwb_msgs) by extensions ['colcon_meta']
+[0.178s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/dwb_msgs) by extension 'colcon_meta'
+[0.178s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/dwb_msgs) by extensions ['ros']
+[0.178s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/dwb_msgs) by extension 'ros'
+[0.179s] DEBUG:colcon.colcon_core.package_identification:Package 'mobile_navigation/nav2_dwb_controller/dwb_msgs' with type 'ros.ament_cmake' and name 'dwb_msgs'
+[0.179s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/dwb_plugins) by extensions ['ignore', 'ignore_ament_install']
+[0.179s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/dwb_plugins) by extension 'ignore'
+[0.179s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/dwb_plugins) by extension 'ignore_ament_install'
+[0.179s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/dwb_plugins) by extensions ['colcon_pkg']
+[0.179s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/dwb_plugins) by extension 'colcon_pkg'
+[0.179s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/dwb_plugins) by extensions ['colcon_meta']
+[0.179s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/dwb_plugins) by extension 'colcon_meta'
+[0.179s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/dwb_plugins) by extensions ['ros']
+[0.179s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/dwb_plugins) by extension 'ros'
+[0.179s] DEBUG:colcon.colcon_core.package_identification:Package 'mobile_navigation/nav2_dwb_controller/dwb_plugins' with type 'ros.ament_cmake' and name 'dwb_plugins'
+[0.179s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/images) by extensions ['ignore', 'ignore_ament_install']
+[0.179s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/images) by extension 'ignore'
+[0.180s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/images) by extension 'ignore_ament_install'
+[0.180s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/images) by extensions ['colcon_pkg']
+[0.180s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/images) by extension 'colcon_pkg'
+[0.180s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/images) by extensions ['colcon_meta']
+[0.180s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/images) by extension 'colcon_meta'
+[0.180s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/images) by extensions ['ros']
+[0.180s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/images) by extension 'ros'
+[0.180s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/images) by extensions ['cmake', 'python']
+[0.180s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/images) by extension 'cmake'
+[0.180s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/images) by extension 'python'
+[0.180s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/images) by extensions ['python_setup_py']
+[0.180s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/images) by extension 'python_setup_py'
+[0.180s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/nav2_dwb_controller) by extensions ['ignore', 'ignore_ament_install']
+[0.180s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/nav2_dwb_controller) by extension 'ignore'
+[0.180s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/nav2_dwb_controller) by extension 'ignore_ament_install'
+[0.180s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/nav2_dwb_controller) by extensions ['colcon_pkg']
+[0.180s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/nav2_dwb_controller) by extension 'colcon_pkg'
+[0.180s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/nav2_dwb_controller) by extensions ['colcon_meta']
+[0.180s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/nav2_dwb_controller) by extension 'colcon_meta'
+[0.180s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/nav2_dwb_controller) by extensions ['ros']
+[0.180s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/nav2_dwb_controller) by extension 'ros'
+[0.181s] DEBUG:colcon.colcon_core.package_identification:Package 'mobile_navigation/nav2_dwb_controller/nav2_dwb_controller' with type 'ros.ament_cmake' and name 'nav2_dwb_controller'
+[0.181s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/nav_2d_msgs) by extensions ['ignore', 'ignore_ament_install']
+[0.181s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/nav_2d_msgs) by extension 'ignore'
+[0.181s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/nav_2d_msgs) by extension 'ignore_ament_install'
+[0.181s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/nav_2d_msgs) by extensions ['colcon_pkg']
+[0.181s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/nav_2d_msgs) by extension 'colcon_pkg'
+[0.181s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/nav_2d_msgs) by extensions ['colcon_meta']
+[0.181s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/nav_2d_msgs) by extension 'colcon_meta'
+[0.181s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/nav_2d_msgs) by extensions ['ros']
+[0.181s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/nav_2d_msgs) by extension 'ros'
+[0.181s] DEBUG:colcon.colcon_core.package_identification:Package 'mobile_navigation/nav2_dwb_controller/nav_2d_msgs' with type 'ros.ament_cmake' and name 'nav_2d_msgs'
+[0.181s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/nav_2d_utils) by extensions ['ignore', 'ignore_ament_install']
+[0.181s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/nav_2d_utils) by extension 'ignore'
+[0.181s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/nav_2d_utils) by extension 'ignore_ament_install'
+[0.182s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/nav_2d_utils) by extensions ['colcon_pkg']
+[0.182s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/nav_2d_utils) by extension 'colcon_pkg'
+[0.182s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/nav_2d_utils) by extensions ['colcon_meta']
+[0.182s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/nav_2d_utils) by extension 'colcon_meta'
+[0.182s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/nav_2d_utils) by extensions ['ros']
+[0.182s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_dwb_controller/nav_2d_utils) by extension 'ros'
+[0.183s] DEBUG:colcon.colcon_core.package_identification:Package 'mobile_navigation/nav2_dwb_controller/nav_2d_utils' with type 'ros.ament_cmake' and name 'nav_2d_utils'
+[0.183s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_graceful_controller) by extensions ['ignore', 'ignore_ament_install']
+[0.183s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_graceful_controller) by extension 'ignore'
+[0.183s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_graceful_controller) by extension 'ignore_ament_install'
+[0.183s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_graceful_controller) by extensions ['colcon_pkg']
+[0.183s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_graceful_controller) by extension 'colcon_pkg'
+[0.183s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_graceful_controller) by extensions ['colcon_meta']
+[0.183s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_graceful_controller) by extension 'colcon_meta'
+[0.183s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_graceful_controller) by extensions ['ros']
+[0.183s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_graceful_controller) by extension 'ros'
+[0.184s] DEBUG:colcon.colcon_core.package_identification:Package 'mobile_navigation/nav2_graceful_controller' with type 'ros.ament_cmake' and name 'nav2_graceful_controller'
+[0.184s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_lifecycle_manager) by extensions ['ignore', 'ignore_ament_install']
+[0.184s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_lifecycle_manager) by extension 'ignore'
+[0.184s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_lifecycle_manager) by extension 'ignore_ament_install'
+[0.184s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_lifecycle_manager) by extensions ['colcon_pkg']
+[0.184s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_lifecycle_manager) by extension 'colcon_pkg'
+[0.184s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_lifecycle_manager) by extensions ['colcon_meta']
+[0.185s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_lifecycle_manager) by extension 'colcon_meta'
+[0.185s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_lifecycle_manager) by extensions ['ros']
+[0.185s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_lifecycle_manager) by extension 'ros'
+[0.186s] DEBUG:colcon.colcon_core.package_identification:Package 'mobile_navigation/nav2_lifecycle_manager' with type 'ros.ament_cmake' and name 'nav2_lifecycle_manager'
+[0.186s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_map_server) by extensions ['ignore', 'ignore_ament_install']
+[0.186s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_map_server) by extension 'ignore'
+[0.186s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_map_server) by extension 'ignore_ament_install'
+[0.186s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_map_server) by extensions ['colcon_pkg']
+[0.186s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_map_server) by extension 'colcon_pkg'
+[0.186s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_map_server) by extensions ['colcon_meta']
+[0.186s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_map_server) by extension 'colcon_meta'
+[0.186s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_map_server) by extensions ['ros']
+[0.186s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_map_server) by extension 'ros'
+[0.187s] DEBUG:colcon.colcon_core.package_identification:Package 'mobile_navigation/nav2_map_server' with type 'ros.ament_cmake' and name 'nav2_map_server'
+[0.187s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_mppi_controller) by extensions ['ignore', 'ignore_ament_install']
+[0.187s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_mppi_controller) by extension 'ignore'
+[0.187s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_mppi_controller) by extension 'ignore_ament_install'
+[0.187s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_mppi_controller) by extensions ['colcon_pkg']
+[0.187s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_mppi_controller) by extension 'colcon_pkg'
+[0.187s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_mppi_controller) by extensions ['colcon_meta']
+[0.187s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_mppi_controller) by extension 'colcon_meta'
+[0.187s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_mppi_controller) by extensions ['ros']
+[0.187s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_mppi_controller) by extension 'ros'
+[0.188s] DEBUG:colcon.colcon_core.package_identification:Package 'mobile_navigation/nav2_mppi_controller' with type 'ros.ament_cmake' and name 'nav2_mppi_controller'
+[0.188s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_msgs) by extensions ['ignore', 'ignore_ament_install']
+[0.188s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_msgs) by extension 'ignore'
+[0.188s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_msgs) by extension 'ignore_ament_install'
+[0.188s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_msgs) by extensions ['colcon_pkg']
+[0.189s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_msgs) by extension 'colcon_pkg'
+[0.189s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_msgs) by extensions ['colcon_meta']
+[0.189s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_msgs) by extension 'colcon_meta'
+[0.189s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_msgs) by extensions ['ros']
+[0.189s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_msgs) by extension 'ros'
+[0.189s] DEBUG:colcon.colcon_core.package_identification:Package 'mobile_navigation/nav2_msgs' with type 'ros.ament_cmake' and name 'nav2_msgs'
+[0.189s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_navfn_planner) by extensions ['ignore', 'ignore_ament_install']
+[0.189s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_navfn_planner) by extension 'ignore'
+[0.189s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_navfn_planner) by extension 'ignore_ament_install'
+[0.189s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_navfn_planner) by extensions ['colcon_pkg']
+[0.189s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_navfn_planner) by extension 'colcon_pkg'
+[0.190s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_navfn_planner) by extensions ['colcon_meta']
+[0.190s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_navfn_planner) by extension 'colcon_meta'
+[0.190s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_navfn_planner) by extensions ['ros']
+[0.190s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_navfn_planner) by extension 'ros'
+[0.191s] DEBUG:colcon.colcon_core.package_identification:Package 'mobile_navigation/nav2_navfn_planner' with type 'ros.ament_cmake' and name 'nav2_navfn_planner'
+[0.191s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_planner) by extensions ['ignore', 'ignore_ament_install']
+[0.191s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_planner) by extension 'ignore'
+[0.191s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_planner) by extension 'ignore_ament_install'
+[0.191s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_planner) by extensions ['colcon_pkg']
+[0.191s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_planner) by extension 'colcon_pkg'
+[0.191s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_planner) by extensions ['colcon_meta']
+[0.191s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_planner) by extension 'colcon_meta'
+[0.191s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_planner) by extensions ['ros']
+[0.191s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_planner) by extension 'ros'
+[0.192s] DEBUG:colcon.colcon_core.package_identification:Package 'mobile_navigation/nav2_planner' with type 'ros.ament_cmake' and name 'nav2_planner'
+[0.192s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_regulated_pure_pursuit_controller) by extensions ['ignore', 'ignore_ament_install']
+[0.192s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_regulated_pure_pursuit_controller) by extension 'ignore'
+[0.192s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_regulated_pure_pursuit_controller) by extension 'ignore_ament_install'
+[0.192s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_regulated_pure_pursuit_controller) by extensions ['colcon_pkg']
+[0.192s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_regulated_pure_pursuit_controller) by extension 'colcon_pkg'
+[0.192s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_regulated_pure_pursuit_controller) by extensions ['colcon_meta']
+[0.192s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_regulated_pure_pursuit_controller) by extension 'colcon_meta'
+[0.192s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_regulated_pure_pursuit_controller) by extensions ['ros']
+[0.192s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_regulated_pure_pursuit_controller) by extension 'ros'
+[0.193s] DEBUG:colcon.colcon_core.package_identification:Package 'mobile_navigation/nav2_regulated_pure_pursuit_controller' with type 'ros.ament_cmake' and name 'nav2_regulated_pure_pursuit_controller'
+[0.193s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_rotation_shim_controller) by extensions ['ignore', 'ignore_ament_install']
+[0.193s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_rotation_shim_controller) by extension 'ignore'
+[0.193s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_rotation_shim_controller) by extension 'ignore_ament_install'
+[0.193s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_rotation_shim_controller) by extensions ['colcon_pkg']
+[0.193s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_rotation_shim_controller) by extension 'colcon_pkg'
+[0.193s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_rotation_shim_controller) by extensions ['colcon_meta']
+[0.193s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_rotation_shim_controller) by extension 'colcon_meta'
+[0.193s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_rotation_shim_controller) by extensions ['ros']
+[0.193s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_rotation_shim_controller) by extension 'ros'
+[0.194s] DEBUG:colcon.colcon_core.package_identification:Package 'mobile_navigation/nav2_rotation_shim_controller' with type 'ros.ament_cmake' and name 'nav2_rotation_shim_controller'
+[0.194s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_rviz_plugins) by extensions ['ignore', 'ignore_ament_install']
+[0.194s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_rviz_plugins) by extension 'ignore'
+[0.194s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_rviz_plugins) by extension 'ignore_ament_install'
+[0.194s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_rviz_plugins) by extensions ['colcon_pkg']
+[0.194s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_rviz_plugins) by extension 'colcon_pkg'
+[0.194s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_rviz_plugins) by extensions ['colcon_meta']
+[0.194s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_rviz_plugins) by extension 'colcon_meta'
+[0.194s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_rviz_plugins) by extensions ['ros']
+[0.194s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_rviz_plugins) by extension 'ros'
+[0.195s] DEBUG:colcon.colcon_core.package_identification:Package 'mobile_navigation/nav2_rviz_plugins' with type 'ros.ament_cmake' and name 'nav2_rviz_plugins'
+[0.195s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_simple_commander) by extensions ['ignore', 'ignore_ament_install']
+[0.195s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_simple_commander) by extension 'ignore'
+[0.195s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_simple_commander) by extension 'ignore_ament_install'
+[0.195s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_simple_commander) by extensions ['colcon_pkg']
+[0.195s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_simple_commander) by extension 'colcon_pkg'
+[0.195s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_simple_commander) by extensions ['colcon_meta']
+[0.195s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_simple_commander) by extension 'colcon_meta'
+[0.195s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_simple_commander) by extensions ['ros']
+[0.195s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_simple_commander) by extension 'ros'
+[0.196s] DEBUG:colcon.colcon_core.package_identification:Package 'mobile_navigation/nav2_simple_commander' with type 'ros.ament_python' and name 'nav2_simple_commander'
+[0.196s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_smac_planner) by extensions ['ignore', 'ignore_ament_install']
+[0.196s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_smac_planner) by extension 'ignore'
+[0.196s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_smac_planner) by extension 'ignore_ament_install'
+[0.196s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_smac_planner) by extensions ['colcon_pkg']
+[0.196s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_smac_planner) by extension 'colcon_pkg'
+[0.196s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_smac_planner) by extensions ['colcon_meta']
+[0.196s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_smac_planner) by extension 'colcon_meta'
+[0.196s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_smac_planner) by extensions ['ros']
+[0.196s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_smac_planner) by extension 'ros'
+[0.197s] DEBUG:colcon.colcon_core.package_identification:Package 'mobile_navigation/nav2_smac_planner' with type 'ros.ament_cmake' and name 'nav2_smac_planner'
+[0.197s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_smoother) by extensions ['ignore', 'ignore_ament_install']
+[0.197s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_smoother) by extension 'ignore'
+[0.197s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_smoother) by extension 'ignore_ament_install'
+[0.197s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_smoother) by extensions ['colcon_pkg']
+[0.197s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_smoother) by extension 'colcon_pkg'
+[0.197s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_smoother) by extensions ['colcon_meta']
+[0.197s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_smoother) by extension 'colcon_meta'
+[0.197s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_smoother) by extensions ['ros']
+[0.197s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_smoother) by extension 'ros'
+[0.198s] DEBUG:colcon.colcon_core.package_identification:Package 'mobile_navigation/nav2_smoother' with type 'ros.ament_cmake' and name 'nav2_smoother'
+[0.198s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_theta_star_planner) by extensions ['ignore', 'ignore_ament_install']
+[0.199s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_theta_star_planner) by extension 'ignore'
+[0.199s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_theta_star_planner) by extension 'ignore_ament_install'
+[0.199s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_theta_star_planner) by extensions ['colcon_pkg']
+[0.199s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_theta_star_planner) by extension 'colcon_pkg'
+[0.199s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_theta_star_planner) by extensions ['colcon_meta']
+[0.199s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_theta_star_planner) by extension 'colcon_meta'
+[0.199s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_theta_star_planner) by extensions ['ros']
+[0.199s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_theta_star_planner) by extension 'ros'
+[0.200s] DEBUG:colcon.colcon_core.package_identification:Package 'mobile_navigation/nav2_theta_star_planner' with type 'ros.ament_cmake' and name 'nav2_theta_star_planner'
+[0.200s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_util) by extensions ['ignore', 'ignore_ament_install']
+[0.200s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_util) by extension 'ignore'
+[0.200s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_util) by extension 'ignore_ament_install'
+[0.200s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_util) by extensions ['colcon_pkg']
+[0.200s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_util) by extension 'colcon_pkg'
+[0.200s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_util) by extensions ['colcon_meta']
+[0.200s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_util) by extension 'colcon_meta'
+[0.200s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_util) by extensions ['ros']
+[0.200s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_util) by extension 'ros'
+[0.201s] DEBUG:colcon.colcon_core.package_identification:Package 'mobile_navigation/nav2_util' with type 'ros.ament_cmake' and name 'nav2_util'
+[0.201s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_velocity_smoother) by extensions ['ignore', 'ignore_ament_install']
+[0.201s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_velocity_smoother) by extension 'ignore'
+[0.201s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_velocity_smoother) by extension 'ignore_ament_install'
+[0.201s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_velocity_smoother) by extensions ['colcon_pkg']
+[0.201s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_velocity_smoother) by extension 'colcon_pkg'
+[0.201s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_velocity_smoother) by extensions ['colcon_meta']
+[0.201s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_velocity_smoother) by extension 'colcon_meta'
+[0.201s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_velocity_smoother) by extensions ['ros']
+[0.201s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_velocity_smoother) by extension 'ros'
+[0.202s] DEBUG:colcon.colcon_core.package_identification:Package 'mobile_navigation/nav2_velocity_smoother' with type 'ros.ament_cmake' and name 'nav2_velocity_smoother'
+[0.202s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_voxel_grid) by extensions ['ignore', 'ignore_ament_install']
+[0.202s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_voxel_grid) by extension 'ignore'
+[0.202s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_voxel_grid) by extension 'ignore_ament_install'
+[0.202s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_voxel_grid) by extensions ['colcon_pkg']
+[0.202s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_voxel_grid) by extension 'colcon_pkg'
+[0.202s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_voxel_grid) by extensions ['colcon_meta']
+[0.202s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_voxel_grid) by extension 'colcon_meta'
+[0.202s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_voxel_grid) by extensions ['ros']
+[0.202s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_voxel_grid) by extension 'ros'
+[0.203s] DEBUG:colcon.colcon_core.package_identification:Package 'mobile_navigation/nav2_voxel_grid' with type 'ros.ament_cmake' and name 'nav2_voxel_grid'
+[0.203s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_waypoint_follower) by extensions ['ignore', 'ignore_ament_install']
+[0.203s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_waypoint_follower) by extension 'ignore'
+[0.203s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_waypoint_follower) by extension 'ignore_ament_install'
+[0.203s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_waypoint_follower) by extensions ['colcon_pkg']
+[0.203s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_waypoint_follower) by extension 'colcon_pkg'
+[0.203s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_waypoint_follower) by extensions ['colcon_meta']
+[0.203s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_waypoint_follower) by extension 'colcon_meta'
+[0.203s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_waypoint_follower) by extensions ['ros']
+[0.203s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nav2_waypoint_follower) by extension 'ros'
+[0.204s] DEBUG:colcon.colcon_core.package_identification:Package 'mobile_navigation/nav2_waypoint_follower' with type 'ros.ament_cmake' and name 'nav2_waypoint_follower'
+[0.204s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/navigation2) by extensions ['ignore', 'ignore_ament_install']
+[0.204s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/navigation2) by extension 'ignore'
+[0.204s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/navigation2) by extension 'ignore_ament_install'
+[0.204s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/navigation2) by extensions ['colcon_pkg']
+[0.204s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/navigation2) by extension 'colcon_pkg'
+[0.204s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/navigation2) by extensions ['colcon_meta']
+[0.204s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/navigation2) by extension 'colcon_meta'
+[0.204s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/navigation2) by extensions ['ros']
+[0.204s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/navigation2) by extension 'ros'
+[0.205s] DEBUG:colcon.colcon_core.package_identification:Package 'mobile_navigation/navigation2' with type 'ros.ament_cmake' and name 'navigation2'
+[0.205s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nonpersistent_voxel_layer) by extensions ['ignore', 'ignore_ament_install']
+[0.205s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nonpersistent_voxel_layer) by extension 'ignore'
+[0.205s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nonpersistent_voxel_layer) by extension 'ignore_ament_install'
+[0.205s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nonpersistent_voxel_layer) by extensions ['colcon_pkg']
+[0.205s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nonpersistent_voxel_layer) by extension 'colcon_pkg'
+[0.205s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nonpersistent_voxel_layer) by extensions ['colcon_meta']
+[0.205s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nonpersistent_voxel_layer) by extension 'colcon_meta'
+[0.205s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nonpersistent_voxel_layer) by extensions ['ros']
+[0.205s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/nonpersistent_voxel_layer) by extension 'ros'
+[0.206s] DEBUG:colcon.colcon_core.package_identification:Package 'mobile_navigation/nonpersistent_voxel_layer' with type 'ros.ament_cmake' and name 'nonpersistent_voxel_layer'
+[0.206s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/tools) by extensions ['ignore', 'ignore_ament_install']
+[0.206s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/tools) by extension 'ignore'
+[0.206s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/tools) by extension 'ignore_ament_install'
+[0.206s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/tools) by extensions ['colcon_pkg']
+[0.206s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/tools) by extension 'colcon_pkg'
+[0.206s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/tools) by extensions ['colcon_meta']
+[0.206s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/tools) by extension 'colcon_meta'
+[0.206s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/tools) by extensions ['ros']
+[0.206s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/tools) by extension 'ros'
+[0.206s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/tools) by extensions ['cmake', 'python']
+[0.206s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/tools) by extension 'cmake'
+[0.206s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/tools) by extension 'python'
+[0.206s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/tools) by extensions ['python_setup_py']
+[0.206s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/tools) by extension 'python_setup_py'
+[0.206s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/tools/planner_benchmarking) by extensions ['ignore', 'ignore_ament_install']
+[0.206s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/tools/planner_benchmarking) by extension 'ignore'
+[0.206s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/tools/planner_benchmarking) by extension 'ignore_ament_install'
+[0.206s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/tools/planner_benchmarking) by extensions ['colcon_pkg']
+[0.206s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/tools/planner_benchmarking) by extension 'colcon_pkg'
+[0.206s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/tools/planner_benchmarking) by extensions ['colcon_meta']
+[0.206s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/tools/planner_benchmarking) by extension 'colcon_meta'
+[0.206s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/tools/planner_benchmarking) by extensions ['ros']
+[0.206s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/tools/planner_benchmarking) by extension 'ros'
+[0.206s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/tools/planner_benchmarking) by extensions ['cmake', 'python']
+[0.206s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/tools/planner_benchmarking) by extension 'cmake'
+[0.206s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/tools/planner_benchmarking) by extension 'python'
+[0.206s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/tools/planner_benchmarking) by extensions ['python_setup_py']
+[0.206s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/tools/planner_benchmarking) by extension 'python_setup_py'
+[0.206s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/tools/smoother_benchmarking) by extensions ['ignore', 'ignore_ament_install']
+[0.207s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/tools/smoother_benchmarking) by extension 'ignore'
+[0.207s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/tools/smoother_benchmarking) by extension 'ignore_ament_install'
+[0.207s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/tools/smoother_benchmarking) by extensions ['colcon_pkg']
+[0.207s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/tools/smoother_benchmarking) by extension 'colcon_pkg'
+[0.207s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/tools/smoother_benchmarking) by extensions ['colcon_meta']
+[0.207s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/tools/smoother_benchmarking) by extension 'colcon_meta'
+[0.207s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/tools/smoother_benchmarking) by extensions ['ros']
+[0.207s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/tools/smoother_benchmarking) by extension 'ros'
+[0.207s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/tools/smoother_benchmarking) by extensions ['cmake', 'python']
+[0.207s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/tools/smoother_benchmarking) by extension 'cmake'
+[0.207s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/tools/smoother_benchmarking) by extension 'python'
+[0.207s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/tools/smoother_benchmarking) by extensions ['python_setup_py']
+[0.207s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/tools/smoother_benchmarking) by extension 'python_setup_py'
+[0.207s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/tools/smoother_benchmarking/maps) by extensions ['ignore', 'ignore_ament_install']
+[0.207s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/tools/smoother_benchmarking/maps) by extension 'ignore'
+[0.207s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/tools/smoother_benchmarking/maps) by extension 'ignore_ament_install'
+[0.207s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/tools/smoother_benchmarking/maps) by extensions ['colcon_pkg']
+[0.207s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/tools/smoother_benchmarking/maps) by extension 'colcon_pkg'
+[0.207s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/tools/smoother_benchmarking/maps) by extensions ['colcon_meta']
+[0.207s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/tools/smoother_benchmarking/maps) by extension 'colcon_meta'
+[0.207s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/tools/smoother_benchmarking/maps) by extensions ['ros']
+[0.207s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/tools/smoother_benchmarking/maps) by extension 'ros'
+[0.207s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/tools/smoother_benchmarking/maps) by extensions ['cmake', 'python']
+[0.207s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/tools/smoother_benchmarking/maps) by extension 'cmake'
+[0.207s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/tools/smoother_benchmarking/maps) by extension 'python'
+[0.207s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/tools/smoother_benchmarking/maps) by extensions ['python_setup_py']
+[0.207s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_navigation/tools/smoother_benchmarking/maps) by extension 'python_setup_py'
+[0.207s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_perception) by extensions ['ignore', 'ignore_ament_install']
+[0.207s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_perception) by extension 'ignore'
+[0.207s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_perception) by extension 'ignore_ament_install'
+[0.207s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_perception) by extensions ['colcon_pkg']
+[0.207s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_perception) by extension 'colcon_pkg'
+[0.207s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_perception) by extensions ['colcon_meta']
+[0.207s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_perception) by extension 'colcon_meta'
+[0.207s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_perception) by extensions ['ros']
+[0.208s] Level 1:colcon.colcon_core.package_identification:_identify(mobile_perception) by extension 'ros'
+[0.208s] DEBUG:colcon.colcon_core.package_identification:Package 'mobile_perception' with type 'ros.ament_cmake' and name 'mobile_perception'
+[0.208s] Level 1:colcon.colcon_core.package_identification:_identify(utils) by extensions ['ignore', 'ignore_ament_install']
+[0.208s] Level 1:colcon.colcon_core.package_identification:_identify(utils) by extension 'ignore'
+[0.208s] Level 1:colcon.colcon_core.package_identification:_identify(utils) by extension 'ignore_ament_install'
+[0.208s] Level 1:colcon.colcon_core.package_identification:_identify(utils) by extensions ['colcon_pkg']
+[0.208s] Level 1:colcon.colcon_core.package_identification:_identify(utils) by extension 'colcon_pkg'
+[0.208s] Level 1:colcon.colcon_core.package_identification:_identify(utils) by extensions ['colcon_meta']
+[0.208s] Level 1:colcon.colcon_core.package_identification:_identify(utils) by extension 'colcon_meta'
+[0.208s] Level 1:colcon.colcon_core.package_identification:_identify(utils) by extensions ['ros']
+[0.208s] Level 1:colcon.colcon_core.package_identification:_identify(utils) by extension 'ros'
+[0.208s] Level 1:colcon.colcon_core.package_identification:_identify(utils) by extensions ['cmake', 'python']
+[0.208s] Level 1:colcon.colcon_core.package_identification:_identify(utils) by extension 'cmake'
+[0.208s] Level 1:colcon.colcon_core.package_identification:_identify(utils) by extension 'python'
+[0.209s] Level 1:colcon.colcon_core.package_identification:_identify(utils) by extensions ['python_setup_py']
+[0.209s] Level 1:colcon.colcon_core.package_identification:_identify(utils) by extension 'python_setup_py'
+[0.209s] Level 1:colcon.colcon_core.package_discovery:discover_packages(recursive) using defaults
+[0.209s] Level 1:colcon.colcon_core.package_discovery:discover_packages(ignore) discover
+[0.209s] Level 1:colcon.colcon_core.package_discovery:discover_packages(ignore) using defaults
+[0.209s] Level 1:colcon.colcon_core.package_discovery:discover_packages(path) discover
+[0.209s] Level 1:colcon.colcon_core.package_discovery:discover_packages(path) using defaults
+[0.259s] INFO:colcon.colcon_core.package_selection:Skipping not selected package 'dexe_sensor_process' in 'dexe_sensor_process'
+[0.259s] INFO:colcon.colcon_core.package_selection:Skipping not selected package 'nav2_common' in 'mobile_navigation/nav2_common'
+[0.259s] INFO:colcon.colcon_core.package_selection:Skipping not selected package 'nav_2d_msgs' in 'mobile_navigation/nav2_dwb_controller/nav_2d_msgs'
+[0.259s] INFO:colcon.colcon_core.package_selection:Skipping not selected package 'dwb_msgs' in 'mobile_navigation/nav2_dwb_controller/dwb_msgs'
+[0.259s] INFO:colcon.colcon_core.package_selection:Skipping not selected package 'nav2_msgs' in 'mobile_navigation/nav2_msgs'
+[0.259s] INFO:colcon.colcon_core.package_selection:Skipping not selected package 'nav2_voxel_grid' in 'mobile_navigation/nav2_voxel_grid'
+[0.259s] INFO:colcon.colcon_core.package_selection:Skipping not selected package 'nav2_simple_commander' in 'mobile_navigation/nav2_simple_commander'
+[0.259s] INFO:colcon.colcon_core.package_selection:Skipping not selected package 'nav2_util' in 'mobile_navigation/nav2_util'
+[0.259s] INFO:colcon.colcon_core.package_selection:Skipping not selected package 'nav2_amcl' in 'mobile_navigation/nav2_amcl'
+[0.259s] INFO:colcon.colcon_core.package_selection:Skipping not selected package 'nav2_behavior_tree' in 'mobile_navigation/nav2_behavior_tree'
+[0.259s] INFO:colcon.colcon_core.package_selection:Skipping not selected package 'nav2_lifecycle_manager' in 'mobile_navigation/nav2_lifecycle_manager'
+[0.259s] INFO:colcon.colcon_core.package_selection:Skipping not selected package 'nav2_map_server' in 'mobile_navigation/nav2_map_server'
+[0.259s] INFO:colcon.colcon_core.package_selection:Skipping not selected package 'nav2_velocity_smoother' in 'mobile_navigation/nav2_velocity_smoother'
+[0.259s] INFO:colcon.colcon_core.package_selection:Skipping not selected package 'nav_2d_utils' in 'mobile_navigation/nav2_dwb_controller/nav_2d_utils'
+[0.259s] INFO:colcon.colcon_core.package_selection:Skipping not selected package 'nav2_costmap_2d' in 'mobile_navigation/nav2_costmap_2d'
+[0.259s] INFO:colcon.colcon_core.package_selection:Skipping not selected package 'nav2_rviz_plugins' in 'mobile_navigation/nav2_rviz_plugins'
+[0.259s] INFO:colcon.colcon_core.package_selection:Skipping not selected package 'costmap_queue' in 'mobile_navigation/nav2_dwb_controller/costmap_queue'
+[0.259s] INFO:colcon.colcon_core.package_selection:Skipping not selected package 'nav2_collision_monitor' in 'mobile_navigation/nav2_collision_monitor'
+[0.259s] INFO:colcon.colcon_core.package_selection:Skipping not selected package 'nav2_core' in 'mobile_navigation/nav2_core'
+[0.259s] INFO:colcon.colcon_core.package_selection:Skipping not selected package 'nonpersistent_voxel_layer' in 'mobile_navigation/nonpersistent_voxel_layer'
+[0.259s] INFO:colcon.colcon_core.package_selection:Skipping not selected package 'dwb_core' in 'mobile_navigation/nav2_dwb_controller/dwb_core'
+[0.259s] INFO:colcon.colcon_core.package_selection:Skipping not selected package 'nav2_behaviors' in 'mobile_navigation/nav2_behaviors'
+[0.259s] INFO:colcon.colcon_core.package_selection:Skipping not selected package 'nav2_bt_navigator' in 'mobile_navigation/nav2_bt_navigator'
+[0.259s] INFO:colcon.colcon_core.package_selection:Skipping not selected package 'nav2_constrained_smoother' in 'mobile_navigation/nav2_constrained_smoother'
+[0.259s] INFO:colcon.colcon_core.package_selection:Skipping not selected package 'nav2_controller' in 'mobile_navigation/nav2_controller'
+[0.259s] INFO:colcon.colcon_core.package_selection:Skipping not selected package 'nav2_mppi_controller' in 'mobile_navigation/nav2_mppi_controller'
+[0.259s] INFO:colcon.colcon_core.package_selection:Skipping not selected package 'nav2_navfn_planner' in 'mobile_navigation/nav2_navfn_planner'
+[0.259s] INFO:colcon.colcon_core.package_selection:Skipping not selected package 'nav2_planner' in 'mobile_navigation/nav2_planner'
+[0.259s] INFO:colcon.colcon_core.package_selection:Skipping not selected package 'nav2_regulated_pure_pursuit_controller' in 'mobile_navigation/nav2_regulated_pure_pursuit_controller'
+[0.259s] INFO:colcon.colcon_core.package_selection:Skipping not selected package 'nav2_smac_planner' in 'mobile_navigation/nav2_smac_planner'
+[0.259s] INFO:colcon.colcon_core.package_selection:Skipping not selected package 'nav2_smoother' in 'mobile_navigation/nav2_smoother'
+[0.259s] INFO:colcon.colcon_core.package_selection:Skipping not selected package 'nav2_theta_star_planner' in 'mobile_navigation/nav2_theta_star_planner'
+[0.259s] INFO:colcon.colcon_core.package_selection:Skipping not selected package 'nav2_waypoint_follower' in 'mobile_navigation/nav2_waypoint_follower'
+[0.259s] INFO:colcon.colcon_core.package_selection:Skipping not selected package 'dwb_critics' in 'mobile_navigation/nav2_dwb_controller/dwb_critics'
+[0.259s] INFO:colcon.colcon_core.package_selection:Skipping not selected package 'dwb_plugins' in 'mobile_navigation/nav2_dwb_controller/dwb_plugins'
+[0.259s] INFO:colcon.colcon_core.package_selection:Skipping not selected package 'nav2_graceful_controller' in 'mobile_navigation/nav2_graceful_controller'
+[0.259s] INFO:colcon.colcon_core.package_selection:Skipping not selected package 'nav2_rotation_shim_controller' in 'mobile_navigation/nav2_rotation_shim_controller'
+[0.260s] INFO:colcon.colcon_core.package_selection:Skipping not selected package 'nav2_dwb_controller' in 'mobile_navigation/nav2_dwb_controller/nav2_dwb_controller'
+[0.260s] INFO:colcon.colcon_core.package_selection:Skipping not selected package 'navigation2' in 'mobile_navigation/navigation2'
+[0.260s] INFO:colcon.colcon_core.package_selection:Skipping not selected package 'nav2_bringup' in 'mobile_navigation/nav2_bringup'
+[0.260s] Level 1:colcon.colcon_core.package_discovery:discover_packages(prefix_path) check parameters
+[0.260s] Level 1:colcon.colcon_core.package_discovery:discover_packages(prefix_path) discover
+[0.261s] DEBUG:colcon.colcon_installed_package_information.package_discovery:Found 16 installed packages in /home/dex/workspace_pzc/install
+[0.262s] DEBUG:colcon.colcon_installed_package_information.package_discovery:Found 357 installed packages in /opt/ros/humble
+[0.263s] Level 1:colcon.colcon_core.package_discovery:discover_packages(prefix_path) using defaults
+[0.294s] Level 5:colcon.colcon_core.verb:set package 'mobile_perception' build argument 'cmake_args' from command line to 'None'
+[0.294s] Level 5:colcon.colcon_core.verb:set package 'mobile_perception' build argument 'cmake_target' from command line to 'None'
+[0.294s] Level 5:colcon.colcon_core.verb:set package 'mobile_perception' build argument 'cmake_target_skip_unavailable' from command line to 'False'
+[0.294s] Level 5:colcon.colcon_core.verb:set package 'mobile_perception' build argument 'cmake_clean_cache' from command line to 'False'
+[0.294s] Level 5:colcon.colcon_core.verb:set package 'mobile_perception' build argument 'cmake_clean_first' from command line to 'False'
+[0.294s] Level 5:colcon.colcon_core.verb:set package 'mobile_perception' build argument 'cmake_force_configure' from command line to 'False'
+[0.294s] Level 5:colcon.colcon_core.verb:set package 'mobile_perception' build argument 'ament_cmake_args' from command line to 'None'
+[0.294s] Level 5:colcon.colcon_core.verb:set package 'mobile_perception' build argument 'catkin_cmake_args' from command line to 'None'
+[0.294s] Level 5:colcon.colcon_core.verb:set package 'mobile_perception' build argument 'catkin_skip_building_tests' from command line to 'False'
+[0.294s] DEBUG:colcon.colcon_core.verb:Building package 'mobile_perception' with the following arguments: {'ament_cmake_args': None, 'build_base': '/home/dex/tmp_fixworkspace/dexe_mobile_nav/build/mobile_perception', 'catkin_cmake_args': None, 'catkin_skip_building_tests': False, 'cmake_args': None, 'cmake_clean_cache': False, 'cmake_clean_first': False, 'cmake_force_configure': False, 'cmake_target': None, 'cmake_target_skip_unavailable': False, 'install_base': '/home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception', 'merge_install': False, 'path': '/home/dex/tmp_fixworkspace/dexe_mobile_nav/mobile_perception', 'symlink_install': False, 'test_result_base': None}
+[0.294s] INFO:colcon.colcon_core.executor:Executing jobs using 'parallel' executor
+[0.295s] DEBUG:colcon.colcon_parallel_executor.executor.parallel:run_until_complete
+[0.295s] INFO:colcon.colcon_ros.task.ament_cmake.build:Building ROS package in '/home/dex/tmp_fixworkspace/dexe_mobile_nav/mobile_perception' with build type 'ament_cmake'
+[0.295s] INFO:colcon.colcon_cmake.task.cmake.build:Building CMake package in '/home/dex/tmp_fixworkspace/dexe_mobile_nav/mobile_perception'
+[0.297s] INFO:colcon.colcon_core.plugin_system:Skipping extension 'colcon_core.shell.bat': Not used on non-Windows systems
+[0.297s] INFO:colcon.colcon_core.shell:Skip shell extension 'powershell' for command environment: Not usable outside of PowerShell
+[0.297s] DEBUG:colcon.colcon_core.shell:Skip shell extension 'dsv' for command environment
+[0.307s] DEBUG:colcon.colcon_core.event_handler.log_command:Invoking command in '/home/dex/tmp_fixworkspace/dexe_mobile_nav/build/mobile_perception': CMAKE_PREFIX_PATH=/home/dex/workspace_pzc/install/dexe_mobile_msgs:/home/dex/workspace_pzc/install/dexe_mobile_srvs:/opt/ros/humble /home/dex/.local/bin/cmake --build /home/dex/tmp_fixworkspace/dexe_mobile_nav/build/mobile_perception -- -j16 -l16
+[30.315s] DEBUG:colcon.colcon_core.event_handler.log_command:Invoked command in '/home/dex/tmp_fixworkspace/dexe_mobile_nav/build/mobile_perception' returned '0': CMAKE_PREFIX_PATH=/home/dex/workspace_pzc/install/dexe_mobile_msgs:/home/dex/workspace_pzc/install/dexe_mobile_srvs:/opt/ros/humble /home/dex/.local/bin/cmake --build /home/dex/tmp_fixworkspace/dexe_mobile_nav/build/mobile_perception -- -j16 -l16
+[30.382s] DEBUG:colcon.colcon_core.event_handler.log_command:Invoking command in '/home/dex/tmp_fixworkspace/dexe_mobile_nav/build/mobile_perception': CMAKE_PREFIX_PATH=/home/dex/workspace_pzc/install/dexe_mobile_msgs:/home/dex/workspace_pzc/install/dexe_mobile_srvs:/opt/ros/humble /home/dex/.local/bin/cmake --install /home/dex/tmp_fixworkspace/dexe_mobile_nav/build/mobile_perception
+[30.453s] Level 1:colcon.colcon_core.environment:create_environment_scripts_only(mobile_perception)
+[30.458s] DEBUG:colcon.colcon_core.event_handler.log_command:Invoked command in '/home/dex/tmp_fixworkspace/dexe_mobile_nav/build/mobile_perception' returned '0': CMAKE_PREFIX_PATH=/home/dex/workspace_pzc/install/dexe_mobile_msgs:/home/dex/workspace_pzc/install/dexe_mobile_srvs:/opt/ros/humble /home/dex/.local/bin/cmake --install /home/dex/tmp_fixworkspace/dexe_mobile_nav/build/mobile_perception
+[30.460s] Level 1:colcon.colcon_core.environment:checking '/home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception' for CMake module files
+[30.462s] Level 1:colcon.colcon_core.environment:checking '/home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception' for CMake config files
+[30.462s] Level 1:colcon.colcon_core.shell:create_environment_hook('mobile_perception', 'cmake_prefix_path')
+[30.463s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/share/mobile_perception/hook/cmake_prefix_path.ps1'
+[30.464s] INFO:colcon.colcon_core.shell:Creating environment descriptor '/home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/share/mobile_perception/hook/cmake_prefix_path.dsv'
+[30.465s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/share/mobile_perception/hook/cmake_prefix_path.sh'
+[30.467s] Level 1:colcon.colcon_core.environment:checking '/home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/lib'
+[30.467s] Level 1:colcon.colcon_core.environment:checking '/home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/bin'
+[30.467s] Level 1:colcon.colcon_core.environment:checking '/home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/lib/pkgconfig/mobile_perception.pc'
+[30.467s] Level 1:colcon.colcon_core.environment:checking '/home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/lib/python3.10/site-packages'
+[30.467s] Level 1:colcon.colcon_core.environment:checking '/home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/bin'
+[30.468s] INFO:colcon.colcon_core.shell:Creating package script '/home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/share/mobile_perception/package.ps1'
+[30.469s] INFO:colcon.colcon_core.shell:Creating package descriptor '/home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/share/mobile_perception/package.dsv'
+[30.470s] INFO:colcon.colcon_core.shell:Creating package script '/home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/share/mobile_perception/package.sh'
+[30.471s] INFO:colcon.colcon_core.shell:Creating package script '/home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/share/mobile_perception/package.bash'
+[30.472s] INFO:colcon.colcon_core.shell:Creating package script '/home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/share/mobile_perception/package.zsh'
+[30.473s] Level 1:colcon.colcon_core.environment:create_file_with_runtime_dependencies(/home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/share/colcon-core/packages/mobile_perception)
+[30.474s] Level 1:colcon.colcon_core.environment:create_environment_scripts_only(mobile_perception)
+[30.475s] Level 1:colcon.colcon_core.environment:checking '/home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception' for CMake module files
+[30.476s] Level 1:colcon.colcon_core.environment:checking '/home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception' for CMake config files
+[30.476s] Level 1:colcon.colcon_core.shell:create_environment_hook('mobile_perception', 'cmake_prefix_path')
+[30.476s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/share/mobile_perception/hook/cmake_prefix_path.ps1'
+[30.477s] INFO:colcon.colcon_core.shell:Creating environment descriptor '/home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/share/mobile_perception/hook/cmake_prefix_path.dsv'
+[30.478s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/share/mobile_perception/hook/cmake_prefix_path.sh'
+[30.479s] Level 1:colcon.colcon_core.environment:checking '/home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/lib'
+[30.479s] Level 1:colcon.colcon_core.environment:checking '/home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/bin'
+[30.479s] Level 1:colcon.colcon_core.environment:checking '/home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/lib/pkgconfig/mobile_perception.pc'
+[30.480s] Level 1:colcon.colcon_core.environment:checking '/home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/lib/python3.10/site-packages'
+[30.480s] Level 1:colcon.colcon_core.environment:checking '/home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/bin'
+[30.480s] INFO:colcon.colcon_core.shell:Creating package script '/home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/share/mobile_perception/package.ps1'
+[30.481s] INFO:colcon.colcon_core.shell:Creating package descriptor '/home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/share/mobile_perception/package.dsv'
+[30.482s] INFO:colcon.colcon_core.shell:Creating package script '/home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/share/mobile_perception/package.sh'
+[30.482s] INFO:colcon.colcon_core.shell:Creating package script '/home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/share/mobile_perception/package.bash'
+[30.483s] INFO:colcon.colcon_core.shell:Creating package script '/home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/share/mobile_perception/package.zsh'
+[30.483s] Level 1:colcon.colcon_core.environment:create_file_with_runtime_dependencies(/home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/share/colcon-core/packages/mobile_perception)
+[30.484s] DEBUG:colcon.colcon_parallel_executor.executor.parallel:closing loop
+[30.484s] DEBUG:colcon.colcon_parallel_executor.executor.parallel:loop closed
+[30.484s] DEBUG:colcon.colcon_parallel_executor.executor.parallel:run_until_complete finished with '0'
+[30.484s] DEBUG:colcon.colcon_core.event_reactor:joining thread
+[30.495s] INFO:colcon.colcon_core.plugin_system:Skipping extension 'colcon_notification.desktop_notification.terminal_notifier': Not used on non-Darwin systems
+[30.495s] INFO:colcon.colcon_core.plugin_system:Skipping extension 'colcon_notification.desktop_notification.win32': Not used on non-Windows systems
+[30.496s] INFO:colcon.colcon_notification.desktop_notification:Sending desktop notification using 'notify2'
+[30.496s] DEBUG:colcon.colcon_notification.desktop_notification.notify2:Failed to initialize notify2: org.freedesktop.DBus.Error.AccessDenied: Failed to connect to socket /run/user/1000/bus: Operation not permitted
+[30.496s] DEBUG:colcon.colcon_core.event_reactor:joined thread
+[30.496s] INFO:colcon.colcon_core.shell:Creating prefix script '/home/dex/tmp_fixworkspace/dexe_mobile_nav/install/local_setup.ps1'
+[30.497s] INFO:colcon.colcon_core.shell:Creating prefix util module '/home/dex/tmp_fixworkspace/dexe_mobile_nav/install/_local_setup_util_ps1.py'
+[30.499s] INFO:colcon.colcon_core.shell:Creating prefix chain script '/home/dex/tmp_fixworkspace/dexe_mobile_nav/install/setup.ps1'
+[30.500s] INFO:colcon.colcon_core.shell:Creating prefix script '/home/dex/tmp_fixworkspace/dexe_mobile_nav/install/local_setup.sh'
+[30.501s] INFO:colcon.colcon_core.shell:Creating prefix util module '/home/dex/tmp_fixworkspace/dexe_mobile_nav/install/_local_setup_util_sh.py'
+[30.502s] INFO:colcon.colcon_core.shell:Creating prefix chain script '/home/dex/tmp_fixworkspace/dexe_mobile_nav/install/setup.sh'
+[30.503s] INFO:colcon.colcon_core.shell:Creating prefix script '/home/dex/tmp_fixworkspace/dexe_mobile_nav/install/local_setup.bash'
+[30.503s] INFO:colcon.colcon_core.shell:Creating prefix chain script '/home/dex/tmp_fixworkspace/dexe_mobile_nav/install/setup.bash'
+[30.505s] INFO:colcon.colcon_core.shell:Creating prefix script '/home/dex/tmp_fixworkspace/dexe_mobile_nav/install/local_setup.zsh'
+[30.505s] INFO:colcon.colcon_core.shell:Creating prefix chain script '/home/dex/tmp_fixworkspace/dexe_mobile_nav/install/setup.zsh'

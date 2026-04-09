@@ -1,0 +1,78 @@
+[0.011s] Invoking command in '/home/dex/tmp_fixworkspace/dexe_mobile_nav/build/mobile_perception': CMAKE_PREFIX_PATH=/home/dex/workspace_pzc/install/dexe_mobile_msgs:/home/dex/workspace_pzc/install/dexe_mobile_srvs:/opt/ros/humble /home/dex/.local/bin/cmake --build /home/dex/tmp_fixworkspace/dexe_mobile_nav/build/mobile_perception -- -j16 -l16
+[0.121s] [ 50%] Building CXX object CMakeFiles/mobile_control_node.dir/src/mobile_control_node.cpp.o
+[0.121s] [ 50%] Built target charging_pose_service_node
+[0.121s] [ 83%] Built target apriltag_detection_node
+[2.485s] /home/dex/tmp_fixworkspace/dexe_mobile_nav/mobile_perception/src/mobile_control_node.cpp: In member function ‘void MobileControlNode::getStatusCallback(std::shared_ptr<std_srvs::srv::Trigger_Request_<std::allocator<void> > >, std::shared_ptr<std_srvs::srv::Trigger_Response_<std::allocator<void> > >)’:
+[2.485s] /home/dex/tmp_fixworkspace/dexe_mobile_nav/mobile_perception/src/mobile_control_node.cpp:224:64: warning: unused parameter ‘request’ [-Wunused-parameter]
+[2.486s]   224 |         const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
+[2.486s]       |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~
+[2.486s] /home/dex/tmp_fixworkspace/dexe_mobile_nav/mobile_perception/src/mobile_control_node.cpp: In member function ‘void MobileControlNode::cancelControlCallback(std::shared_ptr<std_srvs::srv::Trigger_Request_<std::allocator<void> > >, std::shared_ptr<std_srvs::srv::Trigger_Response_<std::allocator<void> > >)’:
+[2.486s] /home/dex/tmp_fixworkspace/dexe_mobile_nav/mobile_perception/src/mobile_control_node.cpp:261:64: warning: unused parameter ‘request’ [-Wunused-parameter]
+[2.486s]   261 |         const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
+[2.486s]       |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~
+[2.490s] /home/dex/tmp_fixworkspace/dexe_mobile_nav/mobile_perception/src/mobile_control_node.cpp: In member function ‘void MobileControlNode::controlLoop()’:
+[2.490s] /home/dex/tmp_fixworkspace/dexe_mobile_nav/mobile_perception/src/mobile_control_node.cpp:616:20: warning: unused variable ‘decay_factor’ [-Wunused-variable]
+[2.490s]   616 |             double decay_factor = std::max(0.0, 1.0 - stop_count_ / 20.0);
+[2.491s]       |                    ^~~~~~~~~~~~
+[10.937s] [100%] Linking CXX executable mobile_control_node
+[11.519s] [100%] Built target mobile_control_node
+[30.018s] Invoked command in '/home/dex/tmp_fixworkspace/dexe_mobile_nav/build/mobile_perception' returned '0': CMAKE_PREFIX_PATH=/home/dex/workspace_pzc/install/dexe_mobile_msgs:/home/dex/workspace_pzc/install/dexe_mobile_srvs:/opt/ros/humble /home/dex/.local/bin/cmake --build /home/dex/tmp_fixworkspace/dexe_mobile_nav/build/mobile_perception -- -j16 -l16
+[30.086s] Invoking command in '/home/dex/tmp_fixworkspace/dexe_mobile_nav/build/mobile_perception': CMAKE_PREFIX_PATH=/home/dex/workspace_pzc/install/dexe_mobile_msgs:/home/dex/workspace_pzc/install/dexe_mobile_srvs:/opt/ros/humble /home/dex/.local/bin/cmake --install /home/dex/tmp_fixworkspace/dexe_mobile_nav/build/mobile_perception
+[30.146s] -- Install configuration: ""
+[30.146s] -- Up-to-date: /home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/lib/mobile_perception/charging_pose_service_node
+[30.146s] -- Up-to-date: /home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/lib/mobile_perception/apriltag_detection_node
+[30.147s] -- Installing: /home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/lib/mobile_perception/mobile_control_node
+[30.155s] -- Set non-toolchain portion of runtime path of "/home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/lib/mobile_perception/mobile_control_node" to ""
+[30.155s] -- Up-to-date: /home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/lib/mobile_perception/detect_apriltags.py
+[30.155s] -- Up-to-date: /home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/lib/mobile_perception/detect_apriltag_nostop.py
+[30.155s] -- Up-to-date: /home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/lib/mobile_perception/detect_apriltags_service.py
+[30.155s] -- Up-to-date: /home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/lib/mobile_perception/control_robot.py
+[30.155s] -- Up-to-date: /home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/lib/mobile_perception/nav_then_precise.py
+[30.155s] -- Up-to-date: /home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/lib/mobile_perception/nav_then_precise_bt.py
+[30.155s] -- Up-to-date: /home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/lib/mobile_perception/goal_controller.py
+[30.155s] -- Up-to-date: /home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/lib/mobile_perception/stop_robot.py
+[30.155s] -- Up-to-date: /home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/lib/mobile_perception/spin_robot.py
+[30.155s] -- Up-to-date: /home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/lib/mobile_perception/undocking.py
+[30.156s] -- Up-to-date: /home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/lib/mobile_perception/control_robot_simulation.py
+[30.156s] -- Up-to-date: /home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/lib/mobile_perception/goal_controller_simulation.py
+[30.156s] -- Up-to-date: /home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/lib/mobile_perception/nav_goal_publisher.py
+[30.156s] -- Up-to-date: /home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/lib/mobile_perception/nav_goal_publisher_loop.py
+[30.156s] -- Up-to-date: /home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/lib/mobile_perception/pub_current_position.py
+[30.156s] -- Up-to-date: /home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/lib/mobile_perception/pub_goal_loop_office.py
+[30.156s] -- Up-to-date: /home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/lib/mobile_perception/create_charging_pose.py
+[30.156s] -- Up-to-date: /home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/lib/mobile_perception/nav_then_precise_bt.py
+[30.157s] -- Up-to-date: /home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/lib/mobile_perception/nav_goal_server.py
+[30.157s] -- Up-to-date: /home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/share/mobile_perception/launch
+[30.157s] -- Up-to-date: /home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/share/mobile_perception/launch/mobile_control.launch.py
+[30.157s] -- Up-to-date: /home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/share/mobile_perception/config
+[30.157s] -- Up-to-date: /home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/share/mobile_perception/config/docking_config.json
+[30.158s] -- Up-to-date: /home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/share/mobile_perception/config/mobile_control_params.yaml
+[30.158s] -- Up-to-date: /home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/share/mobile_perception/config/docking.yaml
+[30.158s] -- Up-to-date: /home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/share/mobile_perception/config/camera_config.json
+[30.158s] -- Up-to-date: /home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/share/mobile_perception/config/camera_config_1280.json
+[30.158s] -- Up-to-date: /home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/share/mobile_perception/config/params.yaml
+[30.158s] -- Up-to-date: /home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/share/mobile_perception/config/camera_config_simulation.json
+[30.158s] -- Up-to-date: /home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/share/mobile_perception/config/docking_config_simulation.json
+[30.158s] -- Up-to-date: /home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/share/mobile_perception/config/tags_config.json
+[30.158s] -- Up-to-date: /home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/share/mobile_perception/config/camera_config_shenzhen.json
+[30.158s] -- Up-to-date: /home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/share/mobile_perception/images
+[30.159s] -- Up-to-date: /home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/share/mobile_perception/images/IntrinsicParameters.png
+[30.159s] -- Up-to-date: /home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/share/mobile_perception/images/sample_tag.jpg
+[30.159s] -- Up-to-date: /home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/share/ament_index/resource_index/package_run_dependencies/mobile_perception
+[30.159s] -- Up-to-date: /home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/share/ament_index/resource_index/parent_prefix_path/mobile_perception
+[30.159s] -- Up-to-date: /home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/share/mobile_perception/environment/ament_prefix_path.sh
+[30.159s] -- Up-to-date: /home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/share/mobile_perception/environment/ament_prefix_path.dsv
+[30.159s] -- Up-to-date: /home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/share/mobile_perception/environment/path.sh
+[30.159s] -- Up-to-date: /home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/share/mobile_perception/environment/path.dsv
+[30.160s] -- Up-to-date: /home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/share/mobile_perception/local_setup.bash
+[30.160s] -- Up-to-date: /home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/share/mobile_perception/local_setup.sh
+[30.160s] -- Up-to-date: /home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/share/mobile_perception/local_setup.zsh
+[30.160s] -- Up-to-date: /home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/share/mobile_perception/local_setup.dsv
+[30.160s] -- Installing: /home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/share/mobile_perception/package.dsv
+[30.161s] -- Up-to-date: /home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/share/ament_index/resource_index/packages/mobile_perception
+[30.161s] -- Up-to-date: /home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/share/mobile_perception/cmake/ament_cmake_export_include_directories-extras.cmake
+[30.161s] -- Up-to-date: /home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/share/mobile_perception/cmake/ament_cmake_export_dependencies-extras.cmake
+[30.161s] -- Up-to-date: /home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/share/mobile_perception/cmake/mobile_perceptionConfig.cmake
+[30.161s] -- Up-to-date: /home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/share/mobile_perception/cmake/mobile_perceptionConfig-version.cmake
+[30.162s] -- Up-to-date: /home/dex/tmp_fixworkspace/dexe_mobile_nav/install/mobile_perception/share/mobile_perception/package.xml
+[30.162s] Invoked command in '/home/dex/tmp_fixworkspace/dexe_mobile_nav/build/mobile_perception' returned '0': CMAKE_PREFIX_PATH=/home/dex/workspace_pzc/install/dexe_mobile_msgs:/home/dex/workspace_pzc/install/dexe_mobile_srvs:/opt/ros/humble /home/dex/.local/bin/cmake --install /home/dex/tmp_fixworkspace/dexe_mobile_nav/build/mobile_perception

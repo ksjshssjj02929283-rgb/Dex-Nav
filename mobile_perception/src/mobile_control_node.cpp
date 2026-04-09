@@ -15,6 +15,13 @@ using namespace std::chrono_literals;
 class MobileControlNode : public rclcpp::Node
 {
 public:
+    enum class GoalMode
+    {
+        POSE,
+        STRAIGHT,
+        ROTATE
+    };
+
     MobileControlNode() : Node("mobile_control_node")
     {
         // 参数声明（保持不变）
@@ -25,6 +32,8 @@ public:
         this->declare_parameter("accel_x_max", 0.5);
         this->declare_parameter("rotate_to_heading_angular_vel", 0.4);
         this->declare_parameter("rotate_to_heading_max_angular_accel", 1.0);
+        this->declare_parameter("rotate_to_heading_kp", 1.2);
+        this->declare_parameter("rotate_stop_yaw_error", 0.04);
         
         this->declare_parameter("k_rho", 0.8);
         this->declare_parameter("k_alpha", 1.5);
@@ -37,12 +46,18 @@ public:
         this->declare_parameter("cmd_vel_filter_alpha", 0.3);
         this->declare_parameter("min_angular_vel", 0.05);
         this->declare_parameter("xy_tolerance", 0.03);
-        this->declare_parameter("yaw_tolerance", 0.02);
+        this->declare_parameter("yaw_tolerance", 0.04);
+        this->declare_parameter("goal_mode_linear_yaw_threshold", 0.08);
+        this->declare_parameter("goal_mode_linear_lateral_threshold", 0.03);
+        this->declare_parameter("goal_mode_rotate_xy_threshold", 0.03);
+        this->declare_parameter("straight_near_goal_angular_max", 0.10);
 
         control_frequency_ = this->get_parameter("control_frequency").as_double();
         accel_x_max_ = this->get_parameter("accel_x_max").as_double();
         rotate_to_heading_angular_vel_ = this->get_parameter("rotate_to_heading_angular_vel").as_double();
         rotate_to_heading_max_angular_accel_ = this->get_parameter("rotate_to_heading_max_angular_accel").as_double();
+        rotate_to_heading_kp_ = this->get_parameter("rotate_to_heading_kp").as_double();
+        rotate_stop_yaw_error_ = this->get_parameter("rotate_stop_yaw_error").as_double();
         
         k_rho_ = this->get_parameter("k_rho").as_double();
         k_alpha_ = this->get_parameter("k_alpha").as_double();
@@ -56,6 +71,10 @@ public:
         min_angular_vel_ = this->get_parameter("min_angular_vel").as_double();
         xy_tolerance_ = this->get_parameter("xy_tolerance").as_double();
         yaw_tolerance_ = this->get_parameter("yaw_tolerance").as_double();
+        goal_mode_linear_yaw_threshold_ = this->get_parameter("goal_mode_linear_yaw_threshold").as_double();
+        goal_mode_linear_lateral_threshold_ = this->get_parameter("goal_mode_linear_lateral_threshold").as_double();
+        goal_mode_rotate_xy_threshold_ = this->get_parameter("goal_mode_rotate_xy_threshold").as_double();
+        straight_near_goal_angular_max_ = this->get_parameter("straight_near_goal_angular_max").as_double();
 
         // 2. 初始化 TF 和 通信
         tf_buffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
@@ -95,6 +114,7 @@ public:
         is_cancelling_ = false;
         succeed_returned_ = false;
         stop_count_ = 0;
+        goal_mode_ = GoalMode::POSE;
 
         // 滤波速度初始化
         filtered_cmd_vel_.linear.x = 0.0;
@@ -126,12 +146,15 @@ private:
     bool is_cancelling_;
     bool succeed_returned_;
     int stop_count_;
+    GoalMode goal_mode_;
     
     // 参数
     double control_frequency_;
     double accel_x_max_;
     double rotate_to_heading_angular_vel_;
     double rotate_to_heading_max_angular_accel_;
+    double rotate_to_heading_kp_;
+    double rotate_stop_yaw_error_;
     double k_rho_, k_alpha_, k_beta_;
     double max_forward_angle_error_;
     double angle_deadzone_;
@@ -141,6 +164,10 @@ private:
     double min_angular_vel_;
     double xy_tolerance_;
     double yaw_tolerance_;
+    double goal_mode_linear_yaw_threshold_;
+    double goal_mode_linear_lateral_threshold_;
+    double goal_mode_rotate_xy_threshold_;
+    double straight_near_goal_angular_max_;
 
     // ======= [新增] odom回调函数 =======
     void odomCallback(const nav_msgs::msg::Odometry::SharedPtr msg)
@@ -164,7 +191,30 @@ private:
             is_goal_ = false;
             succeed_returned_ = false;
             stop_count_ = 0;
-            RCLCPP_INFO(this->get_logger(), "New target received in map frame");
+            const double input_dx = msg->pose.position.x;
+            const double input_dy = msg->pose.position.y;
+            const double input_yaw = tf2::getYaw(msg->pose.orientation);
+            const double input_dist = std::hypot(input_dx, input_dy);
+
+            if (input_dist < goal_mode_rotate_xy_threshold_ &&
+                std::fabs(input_yaw) >= yaw_tolerance_)
+            {
+                goal_mode_ = GoalMode::ROTATE;
+            }
+            else if (std::fabs(input_dy) < goal_mode_linear_lateral_threshold_ &&
+                     std::fabs(input_yaw) < goal_mode_linear_yaw_threshold_)
+            {
+                goal_mode_ = GoalMode::STRAIGHT;
+            }
+            else
+            {
+                goal_mode_ = GoalMode::POSE;
+            }
+
+            RCLCPP_INFO(this->get_logger(),
+                        "New target received in map frame, mode=%s",
+                        goal_mode_ == GoalMode::STRAIGHT ? "STRAIGHT" :
+                        (goal_mode_ == GoalMode::ROTATE ? "ROTATE" : "POSE"));
         } catch (tf2::TransformException &ex) {
             RCLCPP_WARN(this->get_logger(), "Cannot transform goal to map: %s", ex.what());
         }
@@ -382,16 +432,27 @@ private:
         const double &dt)
     {
         geometry_msgs::msg::Twist cmd_vel;
+        const double abs_error = std::fabs(angular_distance_to_heading);
+
+        // Stop rotating inside a small yaw deadband to avoid overshoot and chatter near the goal.
+        if (abs_error < rotate_stop_yaw_error_) {
+            cmd_vel.linear.x = 0.0;
+            cmd_vel.angular.z = 0.0;
+            return cmd_vel;
+        }
+
         const double sign = angular_distance_to_heading > 0.0 ? 1.0 : -1.0;
-        
-        double angular_vel = sign * rotate_to_heading_angular_vel_;
+        double angular_vel = rotate_to_heading_kp_ * angular_distance_to_heading;
+        angular_vel = std::clamp(angular_vel,
+                                 -rotate_to_heading_angular_vel_,
+                                 rotate_to_heading_angular_vel_);
         
         const double min_feasible = current_velocity.angular.z - rotate_to_heading_max_angular_accel_ * dt;
         const double max_feasible = current_velocity.angular.z + rotate_to_heading_max_angular_accel_ * dt;
         
         cmd_vel.angular.z = std::clamp(angular_vel, min_feasible, max_feasible);
 
-        double max_vel_to_stop = std::sqrt(2 * rotate_to_heading_max_angular_accel_ * std::fabs(angular_distance_to_heading));
+        double max_vel_to_stop = std::sqrt(2 * rotate_to_heading_max_angular_accel_ * abs_error);
         
         if (std::fabs(cmd_vel.angular.z) > max_vel_to_stop) {
             cmd_vel.angular.z = sign * max_vel_to_stop;
@@ -484,7 +545,7 @@ private:
                             std::abs(target_pose_in_base.pose.position.y) < 0.5);
         
         // 状态机
-        if(std::fabs(dist) < xy_tolerance_)
+        if(goal_mode_ != GoalMode::STRAIGHT && std::fabs(dist) < xy_tolerance_)
         {
             double dt = 1.0 / control_frequency_;
             cmd_vel = computeRotateToHeadingCommand(yaw_error, pre_cmd_vel_, dt);
@@ -501,6 +562,13 @@ private:
             {
                 cmd_vel = calculateNoReverseGracefulVelocity(target_pose_in_base.pose);
                 // RCLCPP_INFO(this->get_logger(), "cmd_vel: %.3f, %.3f", cmd_vel.linear.x, cmd_vel.angular.z);
+            }
+
+            if (goal_mode_ == GoalMode::STRAIGHT && dist < near_target_dist_)
+            {
+                cmd_vel.angular.z = std::clamp(cmd_vel.angular.z,
+                                               -straight_near_goal_angular_max_,
+                                               straight_near_goal_angular_max_);
             }
 
             // 加速度平滑（基于实际速度 pre_cmd_vel_）
@@ -531,7 +599,14 @@ private:
         
 
         // 判断到达
-        if(std::fabs(dist) < xy_tolerance_ && std::fabs(yaw_error) < yaw_tolerance_)
+        if(goal_mode_ == GoalMode::STRAIGHT)
+        {
+            if(std::fabs(dist) < xy_tolerance_)
+            {
+                is_goal_ = true;
+            }
+        }
+        else if(std::fabs(dist) < xy_tolerance_ && std::fabs(yaw_error) < yaw_tolerance_)
         {
             is_goal_ = true;
         }
