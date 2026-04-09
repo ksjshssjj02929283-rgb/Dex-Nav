@@ -28,7 +28,7 @@ mobile_control_node:
     goal_mode_linear_yaw_threshold: 0.08  # 判定为直线模式的输入yaw阈值
     goal_mode_linear_lateral_threshold: 0.03  # 判定为直线模式的输入y阈值
     goal_mode_rotate_xy_threshold: 0.03   # 判定为纯旋转模式的xy阈值
-    straight_near_goal_angular_max: 0.10  # 直线模式近目标点时的最大角速度
+    straight_near_goal_angular_max: 0.05  # 直线模式近目标点时的最大角速度
     straight_terminal_yaw_align_enable: true    # 直线到位后允许受限角度补偿
     straight_terminal_yaw_trigger: 0.02   # 到位后角度误差超过该值时触发补偿
     straight_terminal_rotate_max_w: 0.10  # 末端角度补偿最大角速度
