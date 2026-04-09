@@ -189,7 +189,7 @@ controller_server:
         enabled: true
         cost_power: 1
         cost_weight: 10.0
-        deadband_velocities: [0.005, 0.08, 0.005]
+        deadband_velocities: [0.005, 0.08, 0.01]
 
 local_costmap:
   local_costmap:

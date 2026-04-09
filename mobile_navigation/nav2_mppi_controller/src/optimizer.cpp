@@ -14,6 +14,7 @@
 
 #include "nav2_mppi_controller/optimizer.hpp"
 
+#include <chrono>
 #include <limits>
 #include <memory>
 #include <stdexcept>
@@ -175,10 +176,40 @@ geometry_msgs::msg::TwistStamped Optimizer::evalControl(
 
 void Optimizer::optimize()
 {
+  constexpr double kSlowOptimizeWarnMs = 100.0;
+
   for (size_t i = 0; i < settings_.iteration_count; ++i) {
+    auto t_generate_start = std::chrono::high_resolution_clock::now();
     generateNoisedTrajectories();
+    auto t_generate_end = std::chrono::high_resolution_clock::now();
+
+    auto t_critic_start = std::chrono::high_resolution_clock::now();
     critic_manager_.evalTrajectoriesScores(critics_data_);
+    auto t_critic_end = std::chrono::high_resolution_clock::now();
+
+    auto t_update_start = std::chrono::high_resolution_clock::now();
     updateControlSequence();
+    auto t_update_end = std::chrono::high_resolution_clock::now();
+
+    const double generate_ms =
+      std::chrono::duration<double, std::milli>(t_generate_end - t_generate_start).count();
+    const double critic_ms =
+      std::chrono::duration<double, std::milli>(t_critic_end - t_critic_start).count();
+    const double update_ms =
+      std::chrono::duration<double, std::milli>(t_update_end - t_update_start).count();
+    const double total_ms = generate_ms + critic_ms + update_ms;
+
+    if (
+      total_ms >= kSlowOptimizeWarnMs || generate_ms >= kSlowOptimizeWarnMs ||
+      critic_ms >= kSlowOptimizeWarnMs || update_ms >= kSlowOptimizeWarnMs)
+    {
+      RCLCPP_WARN(
+        logger_,
+        "Optimizer iteration %zu timing (ms): generate=%.3f critics=%.3f update=%.3f total=%.3f "
+        "[batch=%u steps=%u fail=%d]",
+        i, generate_ms, critic_ms, update_ms, total_ms,
+        settings_.batch_size, settings_.time_steps, critics_data_.fail_flag);
+    }
   }
 }
 

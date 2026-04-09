@@ -501,6 +501,7 @@ void ControllerServer::setPlannerPath(const nav_msgs::msg::Path & path)
 
 void ControllerServer::computeAndPublishVelocity()
 {
+  constexpr double kSlowTimingWarnMs = 100.0;
   geometry_msgs::msg::PoseStamped pose;
 
   auto t_pose_start = std::chrono::high_resolution_clock::now();
@@ -581,8 +582,15 @@ void ControllerServer::computeAndPublishVelocity()
   auto t_feedback_end = std::chrono::high_resolution_clock::now();
   auto feedback_ms = std::chrono::duration<double, std::milli>(t_feedback_end - t_feedback_start).count();
 
-  RCLCPP_INFO(get_logger(), "ControllerServer timing (ms): getPose=%.3f progress=%.3f compute=%.3f feedback=%.3f",
-              pose_ms, progress_ms, compute_ms, feedback_ms);
+  if (
+    pose_ms >= kSlowTimingWarnMs || progress_ms >= kSlowTimingWarnMs ||
+    compute_ms >= kSlowTimingWarnMs || feedback_ms >= kSlowTimingWarnMs)
+  {
+    RCLCPP_WARN(
+      get_logger(),
+      "ControllerServer timing (ms): getPose=%.3f progress=%.3f compute=%.3f feedback=%.3f",
+      pose_ms, progress_ms, compute_ms, feedback_ms);
+  }
 
   RCLCPP_DEBUG(get_logger(), "Publishing velocity at time %.2f", now().seconds());
   publishVelocity(cmd_vel_2d);
