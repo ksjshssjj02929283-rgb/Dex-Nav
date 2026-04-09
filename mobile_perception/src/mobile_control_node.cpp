@@ -45,7 +45,7 @@ public:
         this->declare_parameter("near_target_dist", 0.3);
         this->declare_parameter("cmd_vel_filter_alpha", 0.3);
         this->declare_parameter("min_angular_vel", 0.05);
-        this->declare_parameter("xy_tolerance", 0.03);
+        this->declare_parameter("xy_tolerance", 0.02);
         this->declare_parameter("yaw_tolerance", 0.04);
         this->declare_parameter("goal_mode_linear_yaw_threshold", 0.08);
         this->declare_parameter("goal_mode_linear_lateral_threshold", 0.03);
@@ -621,6 +621,11 @@ private:
             
             if (stop_count_ <= 20) {
                 cmd_vel_pub_->publish(filtered_cmd_vel_);
+                if (stop_count_ == 1) {
+                    RCLCPP_INFO(this->get_logger(),
+                                "Goal reached with final error: dist=%.4f m, yaw=%.4f rad (%.2f deg), tolerance: dist<=%.3f m, yaw<=%.3f rad",
+                                dist, yaw_error, yaw_error * 180.0 / M_PI, xy_tolerance_, yaw_tolerance_);
+                }
                 if (stop_count_ % 10 == 0) {
                     RCLCPP_INFO(this->get_logger(), "Goal Reached. Smooth stopping... %d", stop_count_);
                 }
