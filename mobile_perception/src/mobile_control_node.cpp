@@ -22,6 +22,12 @@ public:
         ROTATE
     };
 
+    enum class TerminalState
+    {
+        NONE,
+        STRAIGHT_YAW_ALIGN
+    };
+
     MobileControlNode() : Node("mobile_control_node")
     {
         // 参数声明（保持不变）
@@ -45,12 +51,19 @@ public:
         this->declare_parameter("near_target_dist", 0.3);
         this->declare_parameter("cmd_vel_filter_alpha", 0.3);
         this->declare_parameter("min_angular_vel", 0.05);
+        this->declare_parameter("min_effective_linear_speed", 0.01);
+        this->declare_parameter("min_linear_speed_apply_dist", 0.05);
         this->declare_parameter("xy_tolerance", 0.02);
         this->declare_parameter("yaw_tolerance", 0.04);
         this->declare_parameter("goal_mode_linear_yaw_threshold", 0.08);
         this->declare_parameter("goal_mode_linear_lateral_threshold", 0.03);
         this->declare_parameter("goal_mode_rotate_xy_threshold", 0.03);
         this->declare_parameter("straight_near_goal_angular_max", 0.10);
+        this->declare_parameter("straight_terminal_yaw_align_enable", true);
+        this->declare_parameter("straight_terminal_yaw_trigger", 0.02);
+        this->declare_parameter("straight_terminal_rotate_max_w", 0.10);
+        this->declare_parameter("straight_terminal_rotate_stop_yaw", 0.02);
+        this->declare_parameter("straight_terminal_rotate_max_cycles", 60);
 
         control_frequency_ = this->get_parameter("control_frequency").as_double();
         accel_x_max_ = this->get_parameter("accel_x_max").as_double();
@@ -69,12 +82,19 @@ public:
         near_target_dist_ = this->get_parameter("near_target_dist").as_double();
         filter_alpha_ = this->get_parameter("cmd_vel_filter_alpha").as_double();
         min_angular_vel_ = this->get_parameter("min_angular_vel").as_double();
+        min_effective_linear_speed_ = this->get_parameter("min_effective_linear_speed").as_double();
+        min_linear_speed_apply_dist_ = this->get_parameter("min_linear_speed_apply_dist").as_double();
         xy_tolerance_ = this->get_parameter("xy_tolerance").as_double();
         yaw_tolerance_ = this->get_parameter("yaw_tolerance").as_double();
         goal_mode_linear_yaw_threshold_ = this->get_parameter("goal_mode_linear_yaw_threshold").as_double();
         goal_mode_linear_lateral_threshold_ = this->get_parameter("goal_mode_linear_lateral_threshold").as_double();
         goal_mode_rotate_xy_threshold_ = this->get_parameter("goal_mode_rotate_xy_threshold").as_double();
         straight_near_goal_angular_max_ = this->get_parameter("straight_near_goal_angular_max").as_double();
+        straight_terminal_yaw_align_enable_ = this->get_parameter("straight_terminal_yaw_align_enable").as_bool();
+        straight_terminal_yaw_trigger_ = this->get_parameter("straight_terminal_yaw_trigger").as_double();
+        straight_terminal_rotate_max_w_ = this->get_parameter("straight_terminal_rotate_max_w").as_double();
+        straight_terminal_rotate_stop_yaw_ = this->get_parameter("straight_terminal_rotate_stop_yaw").as_double();
+        straight_terminal_rotate_max_cycles_ = this->get_parameter("straight_terminal_rotate_max_cycles").as_int();
 
         // 2. 初始化 TF 和 通信
         tf_buffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
@@ -115,6 +135,8 @@ public:
         succeed_returned_ = false;
         stop_count_ = 0;
         goal_mode_ = GoalMode::POSE;
+        terminal_state_ = TerminalState::NONE;
+        terminal_align_count_ = 0;
 
         // 滤波速度初始化
         filtered_cmd_vel_.linear.x = 0.0;
@@ -147,6 +169,8 @@ private:
     bool succeed_returned_;
     int stop_count_;
     GoalMode goal_mode_;
+    TerminalState terminal_state_;
+    int terminal_align_count_;
     
     // 参数
     double control_frequency_;
@@ -162,12 +186,19 @@ private:
     double near_target_dist_;
     double filter_alpha_;
     double min_angular_vel_;
+    double min_effective_linear_speed_;
+    double min_linear_speed_apply_dist_;
     double xy_tolerance_;
     double yaw_tolerance_;
     double goal_mode_linear_yaw_threshold_;
     double goal_mode_linear_lateral_threshold_;
     double goal_mode_rotate_xy_threshold_;
     double straight_near_goal_angular_max_;
+    bool straight_terminal_yaw_align_enable_;
+    double straight_terminal_yaw_trigger_;
+    double straight_terminal_rotate_max_w_;
+    double straight_terminal_rotate_stop_yaw_;
+    int straight_terminal_rotate_max_cycles_;
 
     // ======= [新增] odom回调函数 =======
     void odomCallback(const nav_msgs::msg::Odometry::SharedPtr msg)
@@ -191,6 +222,8 @@ private:
             is_goal_ = false;
             succeed_returned_ = false;
             stop_count_ = 0;
+            terminal_state_ = TerminalState::NONE;
+            terminal_align_count_ = 0;
             const double input_dx = msg->pose.position.x;
             const double input_dy = msg->pose.position.y;
             const double input_yaw = tf2::getYaw(msg->pose.orientation);
@@ -429,7 +462,7 @@ private:
     geometry_msgs::msg::Twist computeRotateToHeadingCommand(
         const double &angular_distance_to_heading,
         const geometry_msgs::msg::Twist &current_velocity,
-        const double &dt)
+        const double &dt) const
     {
         geometry_msgs::msg::Twist cmd_vel;
         const double abs_error = std::fabs(angular_distance_to_heading);
@@ -459,6 +492,33 @@ private:
         }
         
         cmd_vel.linear.x = 0.0;
+        return cmd_vel;
+    }
+
+    void applyMinimumLinearSpeed(geometry_msgs::msg::Twist &cmd_vel, const double dist) const
+    {
+        if (dist <= std::max(xy_tolerance_, min_linear_speed_apply_dist_)) {
+            return;
+        }
+
+        if (std::fabs(cmd_vel.linear.x) > 0.0 &&
+            std::fabs(cmd_vel.linear.x) < min_effective_linear_speed_) {
+            cmd_vel.linear.x = cmd_vel.linear.x > 0.0 ? min_effective_linear_speed_
+                                                      : -min_effective_linear_speed_;
+        }
+    }
+
+    geometry_msgs::msg::Twist computeStraightTerminalRotateCommand(
+        const double yaw_error,
+        const geometry_msgs::msg::Twist &current_velocity,
+        const double dt) const
+    {
+        geometry_msgs::msg::Twist cmd_vel =
+            computeRotateToHeadingCommand(yaw_error, current_velocity, dt);
+        cmd_vel.linear.x = 0.0;
+        cmd_vel.angular.z = std::clamp(cmd_vel.angular.z,
+                                       -straight_terminal_rotate_max_w_,
+                                       straight_terminal_rotate_max_w_);
         return cmd_vel;
     }
 
@@ -540,14 +600,42 @@ private:
         double dist = std::hypot(target_pose_in_base.pose.position.x, 
                                 target_pose_in_base.pose.position.y);
         double yaw_error = tf2::getYaw(target_pose_in_base.pose.orientation);
+        double dt = 1.0 / control_frequency_;
 
         bool is_reverse_mode = (target_pose_in_base.pose.position.x < 0.0 && 
                             std::abs(target_pose_in_base.pose.position.y) < 0.5);
+
+        if (terminal_state_ == TerminalState::STRAIGHT_YAW_ALIGN)
+        {
+            cmd_vel = computeStraightTerminalRotateCommand(yaw_error, pre_cmd_vel_, dt);
+            filtered_cmd_vel_.linear.x = 0.0;
+            filtered_cmd_vel_.angular.z = filter_alpha_ * cmd_vel.angular.z +
+                                          (1.0 - filter_alpha_) * filtered_cmd_vel_.angular.z;
+
+            terminal_align_count_++;
+            if (std::fabs(yaw_error) <= straight_terminal_rotate_stop_yaw_ ||
+                terminal_align_count_ >= straight_terminal_rotate_max_cycles_)
+            {
+                is_goal_ = true;
+                terminal_state_ = TerminalState::NONE;
+                terminal_align_count_ = 0;
+            }
+            else
+            {
+                cmd_vel_pub_->publish(filtered_cmd_vel_);
+                static int terminal_loop_count = 0;
+                if (terminal_loop_count++ % (int)(control_frequency_ / 2) == 0) {
+                    RCLCPP_INFO(this->get_logger(),
+                                "[Straight Terminal Rotate] yaw_error: %.4f rad, angular=%.3f",
+                                yaw_error, filtered_cmd_vel_.angular.z);
+                }
+                return;
+            }
+        }
         
         // 状态机
         if(goal_mode_ != GoalMode::STRAIGHT && std::fabs(dist) < xy_tolerance_)
         {
-            double dt = 1.0 / control_frequency_;
             cmd_vel = computeRotateToHeadingCommand(yaw_error, pre_cmd_vel_, dt);
             RCLCPP_INFO(this->get_logger(), "[Rotate Mode] yaw_error: %.4f rad (%.2f deg), cmd_vel: linear=%.3f, angular=%.3f",
                         yaw_error, yaw_error * 180.0 / M_PI, cmd_vel.linear.x, cmd_vel.angular.z);
@@ -571,8 +659,9 @@ private:
                                                straight_near_goal_angular_max_);
             }
 
+            applyMinimumLinearSpeed(cmd_vel, dist);
+
             // 加速度平滑（基于实际速度 pre_cmd_vel_）
-            double dt = 1.0 / control_frequency_;
             if (cmd_vel.linear.x < pre_cmd_vel_.linear.x)
             {
                 cmd_vel.linear.x = std::max(cmd_vel.linear.x, pre_cmd_vel_.linear.x - accel_x_max_ * dt);
@@ -603,6 +692,18 @@ private:
         {
             if(std::fabs(dist) < xy_tolerance_)
             {
+                if (straight_terminal_yaw_align_enable_ &&
+                    std::fabs(yaw_error) > straight_terminal_yaw_trigger_)
+                {
+                    terminal_state_ = TerminalState::STRAIGHT_YAW_ALIGN;
+                    terminal_align_count_ = 0;
+                    filtered_cmd_vel_.linear.x = 0.0;
+                    filtered_cmd_vel_.angular.z = 0.0;
+                    RCLCPP_INFO(this->get_logger(),
+                                "Straight goal reached in position. Starting constrained yaw alignment: yaw_error=%.4f rad",
+                                yaw_error);
+                    return;
+                }
                 is_goal_ = true;
             }
         }
