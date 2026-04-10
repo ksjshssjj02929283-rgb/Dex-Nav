@@ -254,7 +254,7 @@ private:
     }
 
     void getStatusCallback(
-        const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
+        const std::shared_ptr<std_srvs::srv::Trigger::Request> /*request*/,
         std::shared_ptr<std_srvs::srv::Trigger::Response> response)
     {
         if (is_cancelling_)
@@ -291,7 +291,7 @@ private:
     }
 
     void cancelControlCallback(
-        const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
+        const std::shared_ptr<std_srvs::srv::Trigger::Request> /*request*/,
         std::shared_ptr<std_srvs::srv::Trigger::Response> response)
     {
         if (get_map_pose_ && !is_goal_)
@@ -518,6 +518,7 @@ private:
         const geometry_msgs::msg::Twist &current_velocity,
         const double dt) const
     {
+        const double sign = yaw_error >= 0.0 ? 1.0 : -1.0;
         geometry_msgs::msg::Twist cmd_vel =
             computeRotateToHeadingCommand(yaw_error, current_velocity, dt);
         cmd_vel.linear.x = 0.0;
@@ -728,7 +729,6 @@ private:
 
         if(is_goal_)
         {
-            double decay_factor = std::max(0.0, 1.0 - stop_count_ / 20.0);
             filtered_cmd_vel_.linear.x = 0.0;
             filtered_cmd_vel_.angular.z = 0.0;
             
