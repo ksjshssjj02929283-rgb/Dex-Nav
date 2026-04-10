@@ -522,10 +522,14 @@ private:
         geometry_msgs::msg::Twist cmd_vel =
             computeRotateToHeadingCommand(yaw_error, current_velocity, dt);
         cmd_vel.linear.x = 0.0;
+        RCLCPP_INFO(this->get_logger(), "output init vel is %0.4f" cmd_vel.angular.z);
         if (std::fabs(cmd_vel.angular.z) > 0.0 &&
             std::fabs(cmd_vel.angular.z) < min_angular_vel_) {
             cmd_vel.angular.z = sign * min_angular_vel_;
         }
+        RCLCPP_INFO(this->get_logger(),
+                                "Straight terminal yaw alignment still not converged: yaw_error=%.4f rad, continuing alignment, angular %0.4f",
+                                yaw_error, cmd_vel.angular.z);
         cmd_vel.angular.z = std::clamp(cmd_vel.angular.z,
                                        -straight_terminal_rotate_max_w_,
                                        straight_terminal_rotate_max_w_);
@@ -611,6 +615,26 @@ private:
                                 target_pose_in_base.pose.position.y);
         double yaw_error = tf2::getYaw(target_pose_in_base.pose.orientation);
         double dt = 1.0 / control_frequency_;
+
+        if (dist <= 0.05 && !is_goal_)
+        {
+            try {
+                const geometry_msgs::msg::TransformStamped base_in_map = tf_buffer_->lookupTransform(
+                    "map", "base_link", tf2::TimePointZero);
+                RCLCPP_INFO(
+                    this->get_logger(),
+                    "Within 5cm of target. target_in_map=(x=%.4f, y=%.4f), base_link_in_map=(x=%.4f, y=%.4f), dist=%.4f m",
+                    target_pose_odom_.pose.position.x,
+                    target_pose_odom_.pose.position.y,
+                    base_in_map.transform.translation.x,
+                    base_in_map.transform.translation.y,
+                    dist);
+            } catch (tf2::TransformException &ex) {
+                RCLCPP_WARN(this->get_logger(),
+                            "Within 5cm of target, but failed to query base_link pose in map: %s",
+                            ex.what());
+            }
+        }
 
         bool is_reverse_mode = (target_pose_in_base.pose.position.x < 0.0 && 
                             std::abs(target_pose_in_base.pose.position.y) < 0.5);
