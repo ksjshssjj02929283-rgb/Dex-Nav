@@ -82,6 +82,8 @@ void Optimizer::getParams()
   getParam(s.base_constraints.ay_max, "ay_max", 3.0f);
   getParam(s.base_constraints.ay_min, "ay_min", -3.0f);
   getParam(s.base_constraints.az_max, "az_max", 3.5f);
+  getParam(s.base_constraints.jx_max, "jx_max", 1000.0f);
+  getParam(s.base_constraints.jz_max, "jz_max", 1000.0f);
   getParam(s.sampling_std.vx, "vx_std", 0.2);
   getParam(s.sampling_std.vy, "vy_std", 0.2);
   getParam(s.sampling_std.wz, "wz_std", 0.4);
@@ -90,6 +92,9 @@ void Optimizer::getParams()
 
   // 确保加速度参数符号正确
   s.base_constraints.ax_max = fabs(s.base_constraints.ax_max);
+  s.base_constraints.az_max = fabs(s.base_constraints.az_max);
+  s.base_constraints.jx_max = fabs(s.base_constraints.jx_max);
+  s.base_constraints.jz_max = fabs(s.base_constraints.jz_max);
   if (s.base_constraints.ax_min > 0.0) {
     s.base_constraints.ax_min = -1.0 * s.base_constraints.ax_min;
     RCLCPP_WARN(logger_, "ax_min 符号错误，已自动转为负值");
@@ -287,11 +292,18 @@ void Optimizer::applyControlSequenceConstraints()
   const float max_delta_vx = s.model_dt * s.constraints.ax_max;
   const float min_delta_vx = s.model_dt * s.constraints.ax_min;
   const float max_delta_wz = s.model_dt * s.constraints.az_max;
+  const float max_delta_ax = s.model_dt * s.constraints.jx_max;
+  const float max_delta_wz_acc = s.model_dt * s.constraints.jz_max;
 
   float vx_last = std::clamp(control_sequence_.vx(0), s.constraints.vx_min, s.constraints.vx_max);
   float wz_last = std::clamp(control_sequence_.wz(0), -s.constraints.wz, s.constraints.wz);
   control_sequence_.vx(0) = vx_last;
   control_sequence_.wz(0) = wz_last;
+
+  float vx_acc_last = (vx_last - state_.speed.linear.x) / s.model_dt;
+  vx_acc_last = std::clamp(vx_acc_last, s.constraints.ax_min, s.constraints.ax_max);
+  float wz_acc_last = (wz_last - state_.speed.angular.z) / s.model_dt;
+  wz_acc_last = std::clamp(wz_acc_last, -s.constraints.az_max, s.constraints.az_max);
 
   float vy_last = 0.0f;
   if (isHolonomic()) {
@@ -307,13 +319,24 @@ void Optimizer::applyControlSequenceConstraints()
     } else {
       vx_curr = std::clamp(vx_curr, vx_last - max_delta_vx, vx_last - min_delta_vx);
     }
+
+    float vx_acc = (vx_curr - vx_last) / s.model_dt;
+    vx_acc = std::clamp(vx_acc, vx_acc_last - max_delta_ax, vx_acc_last + max_delta_ax);
+    vx_acc = std::clamp(vx_acc, s.constraints.ax_min, s.constraints.ax_max);
+    vx_curr = vx_last + vx_acc * s.model_dt;
     control_sequence_.vx(i) = vx_curr;
     vx_last = vx_curr;
+    vx_acc_last = vx_acc;
 
     float wz_curr = std::clamp(control_sequence_.wz(i), -s.constraints.wz, s.constraints.wz);
     wz_curr = std::clamp(wz_curr, wz_last - max_delta_wz, wz_last + max_delta_wz);
+    float wz_acc = (wz_curr - wz_last) / s.model_dt;
+    wz_acc = std::clamp(wz_acc, wz_acc_last - max_delta_wz_acc, wz_acc_last + max_delta_wz_acc);
+    wz_acc = std::clamp(wz_acc, -s.constraints.az_max, s.constraints.az_max);
+    wz_curr = wz_last + wz_acc * s.model_dt;
     control_sequence_.wz(i) = wz_curr;
     wz_last = wz_curr;
+    wz_acc_last = wz_acc;
 
     if (isHolonomic()) {
       const float max_delta_vy = s.model_dt * s.constraints.ay_max;

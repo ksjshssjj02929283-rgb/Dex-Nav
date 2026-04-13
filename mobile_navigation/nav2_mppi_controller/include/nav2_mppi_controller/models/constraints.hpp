@@ -33,6 +33,8 @@ struct ControlConstraints
   float ay_min;  // 最大侧向减速度（负值，全向机）m/s²
   float ay_max;  // 最大侧向加速度（全向机）m/s²
   float az_max;  // 最大角加速度 rad/s²
+  float jx_max;  // 最大线 jerk m/s³
+  float jz_max;  // 最大角 jerk rad/s³
 };
 
 /**

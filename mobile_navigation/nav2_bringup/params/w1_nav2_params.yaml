@@ -102,6 +102,8 @@ controller_server:
       ax_max: 0.5
       ax_min: -0.5
       az_max: 0.7
+      jx_max: 1.0
+      jz_max: 1.5
       iteration_count: 1
       prune_distance: 4.0 # 3.7 # 1.7 (must )
       transform_tolerance: 0.1
