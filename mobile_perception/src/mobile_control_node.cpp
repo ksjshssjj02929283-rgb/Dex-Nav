@@ -518,21 +518,41 @@ private:
         const geometry_msgs::msg::Twist &current_velocity,
         const double dt) const
     {
+        geometry_msgs::msg::Twist cmd_vel;
+        const double abs_error = std::fabs(yaw_error);
+
+        if (abs_error <= straight_terminal_rotate_stop_yaw_) {
+            cmd_vel.linear.x = 0.0;
+            cmd_vel.angular.z = 0.0;
+            return cmd_vel;
+        }
+
         const double sign = yaw_error >= 0.0 ? 1.0 : -1.0;
-        geometry_msgs::msg::Twist cmd_vel =
-            computeRotateToHeadingCommand(yaw_error, current_velocity, dt);
+        double angular_vel = rotate_to_heading_kp_ * yaw_error;
+        angular_vel = std::clamp(angular_vel,
+                                 -straight_terminal_rotate_max_w_,
+                                 straight_terminal_rotate_max_w_);
+
+        const double min_feasible =
+            current_velocity.angular.z - rotate_to_heading_max_angular_accel_ * dt;
+        const double max_feasible =
+            current_velocity.angular.z + rotate_to_heading_max_angular_accel_ * dt;
+        cmd_vel.angular.z = std::clamp(angular_vel, min_feasible, max_feasible);
+
+        const double max_vel_to_stop =
+            std::sqrt(2.0 * rotate_to_heading_max_angular_accel_ * abs_error);
+        if (std::fabs(cmd_vel.angular.z) > max_vel_to_stop) {
+            cmd_vel.angular.z = sign * max_vel_to_stop;
+        }
+
         cmd_vel.linear.x = 0.0;
-        RCLCPP_INFO(this->get_logger(), "output init vel is %0.4f" cmd_vel.angular.z);
         if (std::fabs(cmd_vel.angular.z) > 0.0 &&
             std::fabs(cmd_vel.angular.z) < min_angular_vel_) {
             cmd_vel.angular.z = sign * min_angular_vel_;
         }
         RCLCPP_INFO(this->get_logger(),
-                                "Straight terminal yaw alignment still not converged: yaw_error=%.4f rad, continuing alignment, angular %0.4f",
-                                yaw_error, cmd_vel.angular.z);
-        cmd_vel.angular.z = std::clamp(cmd_vel.angular.z,
-                                       -straight_terminal_rotate_max_w_,
-                                       straight_terminal_rotate_max_w_);
+                    "Straight terminal yaw alignment still not converged: yaw_error=%.4f rad, continuing alignment, angular=%.4f",
+                    yaw_error, cmd_vel.angular.z);
         return cmd_vel;
     }
 
