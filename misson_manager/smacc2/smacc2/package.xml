@@ -1,0 +1,33 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>smacc2</name>
+  <version>2.3.20</version>
+
+  <description>An Event-Driven, Asynchronous, Behavioral State Machine Library for ROS2 (Robotic Operating System) applications written in C++.</description>
+
+  <author email="pablo@ibrobotics.com">Pablo Inigo Blasco</author>
+  <author email="brett@robosoft.ai">Brett Aldrich</author>
+  <maintainer email="pablo@ibrobotics.com">Pablo Inigo Blasco</maintainer>
+  <maintainer email="denis@stoglrobotics.de">Denis Stogl</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <build_depend>libboost-thread-dev</build_depend>
+
+  <depend>liblttng-ust-dev</depend>
+  <depend>rcl</depend>
+  <depend>rclcpp</depend>
+  <depend>rclcpp_action</depend>
+  <depend>smacc2_msgs</depend>
+  <depend>tracetools</depend>
+  <depend>tracetools_trace</depend>
+  <depend>tracetools_launch</depend>
+
+  <exec_depend>libboost-thread</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

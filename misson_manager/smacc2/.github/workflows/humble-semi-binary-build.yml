@@ -1,0 +1,34 @@
+name: Humble Semi-Binary Build
+on:
+   pull_request:
+      branches:
+         - humble
+   push:
+      branches:
+         - humble
+   schedule: # Run every morning to detect flakiness and broken dependencies
+         - cron: '43 3 * * *'
+
+jobs:
+  ci:
+    name: humble semi-binary build
+    runs-on: ubuntu-22.04
+    container:
+        image: osrf/ros:humble-desktop
+
+    steps:
+        - uses: actions/checkout@v1
+
+        - name: dependencies and build
+          shell: bash
+          run: |
+                apt-get update
+                rm /etc/ros/rosdep/sources.list.d/20-default.list
+                rosdep init
+                rosdep update
+                vcs import < .github/SMACC2.humble.repos
+                rosdep install --from-paths . --ignore-src -r -y
+                source /opt/ros/humble/setup.bash
+
+                # Skip packages that require special dependencies or configurations:
+                colcon build --cmake-args -DCMAKE_BUILD_TYPE=Release --packages-skip sm_panda_moveit2z_cb_inventory sm_panda_cl_moveit2z_cb_inventory sm_pack_ml sm_atomic sm_atomic_lifecycle sm_atomic_mode_states sm_advanced_recovery_1 sm_branching sm_multi_stage_1 sm_three_some
