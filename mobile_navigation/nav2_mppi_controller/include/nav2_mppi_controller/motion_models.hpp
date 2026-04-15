@@ -75,10 +75,56 @@ public:
     const float max_delta_vx = model_dt_ * control_constraints_.ax_max;
     const float min_delta_vx = model_dt_ * control_constraints_.ax_min;
     const float max_delta_wz = model_dt_ * control_constraints_.az_max;
+    const float max_delta_ax = model_dt_ * control_constraints_.jx_max;
+    const float max_delta_wz_acc = model_dt_ * control_constraints_.jz_max;
 
     const unsigned int n_cols = static_cast<unsigned int>(state.vx.shape(1));
+    if (n_cols < 2) {
+      return;
+    }
 
-    for (unsigned int i = 1; i < n_cols; i++) {
+    const size_t batch_size = state.vx.shape(0);
+    auto vx_acc_prev = xt::xtensor<float, 1>::from_shape({batch_size});
+    auto wz_acc_prev = xt::xtensor<float, 1>::from_shape({batch_size});
+
+    // 第一个控制步只施加速度/加速度约束，作为后续 jerk 约束的起点
+    auto v_init = xt::view(state.vx, xt::all(), 0);
+    auto cv_init = xt::view(state.cvx, xt::all(), 0);
+    auto v_first = xt::view(state.vx, xt::all(), 1);
+    auto lower_vx_init = xt::where(v_init > 0.0f, v_init + min_delta_vx, v_init - max_delta_vx);
+    auto upper_vx_init = xt::where(v_init > 0.0f, v_init + max_delta_vx, v_init - min_delta_vx);
+    xt::noalias(cv_init) = xt::clip(cv_init, lower_vx_init, upper_vx_init);
+    xt::noalias(v_first) = cv_init;
+    xt::noalias(vx_acc_prev) = xt::clip((v_first - v_init) / model_dt_,
+      control_constraints_.ax_min, control_constraints_.ax_max);
+
+    auto w_init = xt::view(state.wz, xt::all(), 0);
+    auto cw_init = xt::view(state.cwz, xt::all(), 0);
+    auto w_first = xt::view(state.wz, xt::all(), 1);
+    xt::noalias(cw_init) = xt::clip(cw_init, w_init - max_delta_wz, w_init + max_delta_wz);
+    xt::noalias(w_first) = cw_init;
+    xt::noalias(wz_acc_prev) = xt::clip((w_first - w_init) / model_dt_,
+      -control_constraints_.az_max, control_constraints_.az_max);
+
+    xt::xtensor<float, 1> vy_acc_prev;
+    if (is_holo) {
+      const float max_delta_vy = model_dt_ * control_constraints_.ay_max;
+      const float min_delta_vy = model_dt_ * control_constraints_.ay_min;
+
+      vy_acc_prev = xt::xtensor<float, 1>::from_shape({batch_size});
+      auto vy_init = xt::view(state.vy, xt::all(), 0);
+      auto cvy_init = xt::view(state.cvy, xt::all(), 0);
+      auto vy_first = xt::view(state.vy, xt::all(), 1);
+
+      auto lower_vy_init = xt::where(vy_init > 0.0f, vy_init + min_delta_vy, vy_init - max_delta_vy);
+      auto upper_vy_init = xt::where(vy_init > 0.0f, vy_init + max_delta_vy, vy_init - min_delta_vy);
+      xt::noalias(cvy_init) = xt::clip(cvy_init, lower_vy_init, upper_vy_init);
+      xt::noalias(vy_first) = cvy_init;
+      xt::noalias(vy_acc_prev) = xt::clip((vy_first - vy_init) / model_dt_,
+        control_constraints_.ay_min, control_constraints_.ay_max);
+    }
+
+    for (unsigned int i = 2; i < n_cols; i++) {
       // 线加速度约束
       auto v_prev = xt::view(state.vx, xt::all(), i - 1);
       auto cv     = xt::view(state.cvx, xt::all(), i - 1);
@@ -87,13 +133,23 @@ public:
       auto lower_vx = xt::where(v_prev > 0.0f, v_prev + min_delta_vx, v_prev - max_delta_vx);
       auto upper_vx = xt::where(v_prev > 0.0f, v_prev + max_delta_vx, v_prev - min_delta_vx);
       xt::noalias(cv) = xt::clip(cv, lower_vx, upper_vx);
-      xt::noalias(v_next) = cv;
+      auto vx_acc = xt::eval(xt::clip((cv - v_prev) / model_dt_,
+        vx_acc_prev - max_delta_ax, vx_acc_prev + max_delta_ax));
+      vx_acc = xt::eval(xt::clip(vx_acc, control_constraints_.ax_min, control_constraints_.ax_max));
+      xt::noalias(v_next) = v_prev + vx_acc * model_dt_;
+      xt::noalias(cv) = v_next;
+      xt::noalias(vx_acc_prev) = vx_acc;
 
       auto w_prev = xt::view(state.wz, xt::all(), i - 1);
       auto cw     = xt::view(state.cwz, xt::all(), i - 1);
       auto w_next = xt::view(state.wz, xt::all(), i);
       xt::noalias(cw) = xt::clip(cw, w_prev - max_delta_wz, w_prev + max_delta_wz);
-      xt::noalias(w_next) = cw;
+      auto wz_acc = xt::eval(xt::clip((cw - w_prev) / model_dt_,
+        wz_acc_prev - max_delta_wz_acc, wz_acc_prev + max_delta_wz_acc));
+      wz_acc = xt::eval(xt::clip(wz_acc, -control_constraints_.az_max, control_constraints_.az_max));
+      xt::noalias(w_next) = w_prev + wz_acc * model_dt_;
+      xt::noalias(cw) = w_next;
+      xt::noalias(wz_acc_prev) = wz_acc;
 
       if (is_holo) {
         const float max_delta_vy = model_dt_ * control_constraints_.ay_max;
@@ -106,7 +162,12 @@ public:
         auto lower_vy = xt::where(vy_prev > 0.0f, vy_prev + min_delta_vy, vy_prev - max_delta_vy);
         auto upper_vy = xt::where(vy_prev > 0.0f, vy_prev + max_delta_vy, vy_prev - min_delta_vy);
         xt::noalias(cvy) = xt::clip(cvy, lower_vy, upper_vy);
-        xt::noalias(vy_next) = cvy;
+        auto vy_acc = xt::eval(xt::clip((cvy - vy_prev) / model_dt_,
+          vy_acc_prev - max_delta_ax, vy_acc_prev + max_delta_ax));
+        vy_acc = xt::eval(xt::clip(vy_acc, control_constraints_.ay_min, control_constraints_.ay_max));
+        xt::noalias(vy_next) = vy_prev + vy_acc * model_dt_;
+        xt::noalias(cvy) = vy_next;
+        xt::noalias(vy_acc_prev) = vy_acc;
       }
     }
   }
