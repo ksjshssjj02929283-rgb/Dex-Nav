@@ -22,7 +22,7 @@ class BaseLinkPosition(Node):
         self.error_log_interval = 50  # 每50次错误才记录一次日志
         
         # 发布频率控制（Hz）
-        self.publish_rate = 100.0
+        self.publish_rate = 50.0
         self.tf_lookup_timeout_sec = 0.01
         self.cache_timeout_sec = 0.2
         self.last_pose_msg = None
