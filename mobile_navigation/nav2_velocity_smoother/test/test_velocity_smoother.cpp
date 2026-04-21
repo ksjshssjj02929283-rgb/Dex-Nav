@@ -569,6 +569,41 @@ TEST(VelocitySmootherTest, testCommandCallback)
   EXPECT_EQ(smoother->lastCommandMsg()->linear.x, 100.0);
 }
 
+TEST(VelocitySmootherTest, testConfigurableVelocityTopics)
+{
+  auto smoother =
+    std::make_shared<VelSmootherShim>();
+  smoother->declare_parameter("input_topic", rclcpp::ParameterValue("test_cmd_vel_input"));
+  smoother->set_parameter(rclcpp::Parameter("input_topic", std::string("test_cmd_vel_input")));
+  smoother->declare_parameter("output_topic", rclcpp::ParameterValue("test_cmd_vel_output"));
+  smoother->set_parameter(rclcpp::Parameter("output_topic", std::string("test_cmd_vel_output")));
+  rclcpp_lifecycle::State state;
+  smoother->configure(state);
+  smoother->activate(state);
+
+  std::vector<double> linear_vels;
+  auto subscription = smoother->create_subscription<geometry_msgs::msg::Twist>(
+    "test_cmd_vel_output",
+    1,
+    [&](geometry_msgs::msg::Twist::SharedPtr msg) {
+      linear_vels.push_back(msg->linear.x);
+    });
+
+  auto pub = smoother->create_publisher<geometry_msgs::msg::Twist>("test_cmd_vel_input", 1);
+  pub->on_activate();
+  auto msg = std::make_unique<geometry_msgs::msg::Twist>();
+  msg->linear.x = 0.1;
+  pub->publish(std::move(msg));
+
+  auto start = smoother->now();
+  while ((smoother->now() - start < 0.5s) && linear_vels.empty()) {
+    rclcpp::spin_some(smoother->get_node_base_interface());
+  }
+
+  EXPECT_TRUE(smoother->hasCommandMsg());
+  EXPECT_FALSE(linear_vels.empty());
+}
+
 TEST(VelocitySmootherTest, testClosedLoopSub)
 {
   auto smoother =
