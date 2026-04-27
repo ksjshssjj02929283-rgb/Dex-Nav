@@ -25,7 +25,8 @@ This package was created to do the following:
 
 This is a lifecycle-component node, using the lifecycle manager for state management and composition for process management.
 It is designed to take in a command from Nav2's controller server and smooth it for use on robot hardware controllers.
-Thusly, it takes in a command via the `cmd_vel` topic and produces a smoothed output on `smoothed_cmd_vel`.
+Thusly, it takes in a command via the configured `input_topic` topic, `cmd_vel` by default,
+and produces a smoothed output on the configured `output_topic` topic, `cmd_vel_smoothed` by default.
 
 The node is designed on a regular timer running at a configurable rate.
 This is in contrast to simply computing a smoothed velocity command in the callback of each `cmd_vel` input from Nav2.
@@ -51,6 +52,8 @@ velocity_smoother:
   	smoothing_frequency: 20.0  # Rate to run smoother
   	scale_velocities: false  # scale velocities proportionally if any axis is outside of acceleration range to follow same vector, if possible
   	feedback: "OPEN_LOOP"  # Type of feedback for current speed. Open loop uses the last smoothed output. Closed loop uses robot odometry
+    input_topic: "cmd_vel"  # Topic to subscribe to for input velocities
+    output_topic: "cmd_vel_smoothed"  # Topic to publish smoothed velocities
   	max_velocity: [0.5, 0.0, 2.5]  # Maximum velocities, ordered [Vx, Vy, Vw]
    	min_velocity: [-0.5, 0.0, -2.5]  # Minimum velocities, ordered [Vx, Vy, Vw]
    	deadband_velocity: [0.0, 0.0, 0.0]  # A deadband of velocities below which they should be zero-ed out for sending to the robot base controller, ordered [Vx, Vy, Vw]
@@ -63,10 +66,10 @@ velocity_smoother:
 
 ## Topics
 
-| Topic            | Type                    | Use                           |
-|------------------|-------------------------|-------------------------------|
-| smoothed_cmd_vel | geometry_msgs/Twist     | Publish smoothed velocities   |
-| cmd_vel          | geometry_msgs/Twist     | Subscribe to input velocities |
+| Topic parameter | Default          | Type                    | Use                           |
+|-----------------|------------------|-------------------------|-------------------------------|
+| output_topic    | cmd_vel_smoothed | geometry_msgs/Twist     | Publish smoothed velocities   |
+| input_topic     | cmd_vel          | geometry_msgs/Twist     | Subscribe to input velocities |
 
 
 ## Install

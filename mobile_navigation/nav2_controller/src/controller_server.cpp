@@ -505,16 +505,22 @@ void ControllerServer::computeAndPublishVelocity()
   geometry_msgs::msg::PoseStamped pose;
 
   auto t_pose_start = std::chrono::high_resolution_clock::now();
+  auto t_pose_start = std::chrono::high_resolution_clock::now();
   if (!getRobotPose(pose)) {
     throw nav2_core::PlannerException("Failed to obtain robot pose");
   }
   auto t_pose_end = std::chrono::high_resolution_clock::now();
   auto pose_ms = std::chrono::duration<double, std::milli>(t_pose_end - t_pose_start).count();
+  auto t_pose_end = std::chrono::high_resolution_clock::now();
+  auto pose_ms = std::chrono::duration<double, std::milli>(t_pose_end - t_pose_start).count();
 
+  auto t_progress_start = std::chrono::high_resolution_clock::now();
   auto t_progress_start = std::chrono::high_resolution_clock::now();
   if (!progress_checker_->check(pose)) {
     throw nav2_core::PlannerException("Failed to make progress");
   }
+  auto t_progress_end = std::chrono::high_resolution_clock::now();
+  auto progress_ms = std::chrono::duration<double, std::milli>(t_progress_end - t_progress_start).count();
   auto t_progress_end = std::chrono::high_resolution_clock::now();
   auto progress_ms = std::chrono::duration<double, std::milli>(t_progress_end - t_progress_start).count();
 

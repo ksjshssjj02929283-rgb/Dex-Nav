@@ -682,6 +682,8 @@ velocity_smoother:
     smoothing_frequency: 20.0
     scale_velocities: False
     feedback: "OPEN_LOOP"
+    input_topic: "cmd_vel_nav"
+    output_topic: "control/cmd_vel_nav"
     # Test
     max_velocity: [0.5, 0.0, 0.7]
     min_velocity: [-0.5, 0.0, -0.7]  

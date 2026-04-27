@@ -81,8 +81,15 @@ controller_server:
       required_movement_radius: 0.1
       required_movement_angle: 0.01
       movement_time_allowance: 3.0
+      plugin: "nav2_controller::PoseProgressChecker"
+      required_movement_radius: 0.1
+      required_movement_angle: 0.01
+      movement_time_allowance: 3.0
     goal_checker:
       plugin: "nav2_controller::LongitudinalGoalChecker"
+      lon_goal_tolerance: 0.02
+      lat_goal_tolerance: 0.02
+      yaw_goal_tolerance: 0.02
       lon_goal_tolerance: 0.02
       lat_goal_tolerance: 0.02
       yaw_goal_tolerance: 0.02
@@ -135,10 +142,13 @@ controller_server:
         cost_power: 1
         cost_weight: 3.0 # 3.0
         threshold_to_consider: 0.1 # 0.5
+        cost_weight: 3.0 # 3.0
+        threshold_to_consider: 0.1 # 0.5
       PreferForwardCritic:
         enabled: true
         cost_power: 1
         cost_weight: 5.0
+        threshold_to_consider: 0.25
         threshold_to_consider: 0.25
       ObstaclesCritic:
         enabled: true
@@ -514,6 +524,8 @@ velocity_smoother:
     smoothing_frequency: 20.0
     scale_velocities: False
     feedback: "OPEN_LOOP"
+    input_topic: "control/cmd_vel"
+    output_topic: "control/cmd_vel_mux"
     # Test
     max_velocity: [0.5, 0.0, 0.7]
     min_velocity: [-0.5, 0.0, -0.7]  

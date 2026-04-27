@@ -494,11 +494,10 @@ nav_msgs::msg::Path SmacPlannerLattice::createPlan(
   //     _name.c_str(), error.c_str());
   //   return plan;
   // }
-  //- 有错误时也返回插值的路径
   if (!error.empty()) {
-    // double dx = goal.pose.position.x - start.pose.position.x;
-    // double dy = goal.pose.position.y - start.pose.position.y;
-    // double dist = std::hypot(dx, dy);
+    double dx = goal.pose.position.x - start.pose.position.x;
+    double dy = goal.pose.position.y - start.pose.position.y;
+    double dist = std::hypot(dx, dy);
   
     RCLCPP_WARN(
       _logger,
@@ -506,21 +505,21 @@ nav_msgs::msg::Path SmacPlannerLattice::createPlan(
       _name.c_str(), error.c_str(), dist);
   
     // 兜底条件：距离近 + 目标区域可达
-    // if (dist < 0.2 && isAreaFree(_costmap, goal)) {
-    //   RCLCPP_WARN(
-    //     _logger,
-    //     "Using interpolated path fallback (distance %.2f m).",
-    //     dist);
+    if (dist < 0.2 && isAreaFree(_costmap, goal)) {
+      RCLCPP_WARN(
+        _logger,
+        "Using interpolated path fallback (distance %.2f m).",
+        dist);
   
-    //   auto interp_path = interpolatePath(
-    //     start, goal, 0.02);
+      auto interp_path = interpolatePath(
+        start, goal, 0.02);
   
-    //   if (_raw_plan_publisher->get_subscription_count() > 0) {
-    //     _raw_plan_publisher->publish(interp_path);
-    //   }
+      if (_raw_plan_publisher->get_subscription_count() > 0) {
+        _raw_plan_publisher->publish(interp_path);
+      }
   
-    //   return interp_path;
-    // }
+      return interp_path;
+    }
 
     // 否则保持原行为
     return plan;
@@ -547,70 +546,70 @@ nav_msgs::msg::Path SmacPlannerLattice::createPlan(
   }
 
   // ---------- Near-goal position-only interpolation (Scheme A) ----------
-  // constexpr double NEAR_GOAL_DIST = 0.30;   // 30cm
-  // constexpr double INTERP_STEP    = 0.02;   // 2cm
+  constexpr double NEAR_GOAL_DIST = 0.30;   // 30cm
+  constexpr double INTERP_STEP    = 0.02;   // 2cm
 
-  // if (!plan.poses.empty()) {
+  if (!plan.poses.empty()) {
 
-  //   // 取 lattice 生成后的“真正尾点”
-  //   geometry_msgs::msg::PoseStamped tail_pose = plan.poses.back();
+    // 取 lattice 生成后的“真正尾点”
+    geometry_msgs::msg::PoseStamped tail_pose = plan.poses.back();
 
-  //   double dx = goal.pose.position.x - tail_pose.pose.position.x;
-  //   double dy = goal.pose.position.y - tail_pose.pose.position.y;
-  //   double dist = std::hypot(dx, dy);
+    double dx = goal.pose.position.x - tail_pose.pose.position.x;
+    double dy = goal.pose.position.y - tail_pose.pose.position.y;
+    double dist = std::hypot(dx, dy);
 
-  //   if (dist < NEAR_GOAL_DIST && isAreaFree(_costmap, goal)) {
+    if (dist < NEAR_GOAL_DIST && isAreaFree(_costmap, goal)) {
 
-  //     RCLCPP_INFO(
-  //       _logger,
-  //       "Near goal (%.2fm). Replacing tail with position-only interpolation.",
-  //       dist);
+      RCLCPP_INFO(
+        _logger,
+        "Near goal (%.2fm). Replacing tail with position-only interpolation.",
+        dist);
 
-  //     // 1. 找插值起点：向前找一个“还算稳定”的点
-  //     //    防止只用最后一个 lattice 点（可能带横向）
-  //     constexpr size_t MAX_BACKTRACK = 15;
-  //     const size_t n = plan.poses.size();
-  //     size_t interp_start_idx = n - 1; 
-  //     size_t steps = 0;
-  //     bool found = false;
-  //     // 向前最多回溯 MAX_BACKTRACK 个点
-  //     size_t back_limit = std::min(MAX_BACKTRACK, n - 1);
-  //     for (size_t k = 0; k < back_limit; ++k) {
-  //       size_t i = n - 1 - k;
+      // 1. 找插值起点：向前找一个“还算稳定”的点
+      //    防止只用最后一个 lattice 点（可能带横向）
+      constexpr size_t MAX_BACKTRACK = 15;
+      const size_t n = plan.poses.size();
+      size_t interp_start_idx = n - 1; 
+      size_t steps = 0;
+      bool found = false;
+      // 向前最多回溯 MAX_BACKTRACK 个点
+      size_t back_limit = std::min(MAX_BACKTRACK, n - 1);
+      for (size_t k = 0; k < back_limit; ++k) {
+        size_t i = n - 1 - k;
 
-  //       double dx_i = goal.pose.position.x - plan.poses[i].pose.position.x;
-  //       double dy_i = goal.pose.position.y - plan.poses[i].pose.position.y;
+        double dx_i = goal.pose.position.x - plan.poses[i].pose.position.x;
+        double dy_i = goal.pose.position.y - plan.poses[i].pose.position.y;
 
-  //       if (std::hypot(dx_i, dy_i) > NEAR_GOAL_DIST) {
-  //         interp_start_idx = i;
-  //         found = true;
-  //         break;
-  //       }
-  //     }
+        if (std::hypot(dx_i, dy_i) > NEAR_GOAL_DIST) {
+          interp_start_idx = i;
+          found = true;
+          break;
+        }
+      }
 
-  //     // 若没找到，使用倒数第 MAX_BACKTRACK 个点
-  //     if (!found) {
-  //       interp_start_idx = n - 1 - back_limit;
-  //     } 
+      // 若没找到，使用倒数第 MAX_BACKTRACK 个点
+      if (!found) {
+        interp_start_idx = n - 1 - back_limit;
+      } 
 
-  //     geometry_msgs::msg::PoseStamped interp_start =
-  //       plan.poses[interp_start_idx];
+      geometry_msgs::msg::PoseStamped interp_start =
+        plan.poses[interp_start_idx];
 
-  //     // 2. 截断 lattice 尾段
-  //     plan.poses.resize(interp_start_idx + 1);
+      // 2. 截断 lattice 尾段
+      plan.poses.resize(interp_start_idx + 1);
 
-  //     // 3. 生成 position-only 插值路径
-  //     auto interp_path = interpolatePath(
-  //       interp_start,
-  //       goal,
-  //       INTERP_STEP);
+      // 3. 生成 position-only 插值路径
+      auto interp_path = interpolatePath(
+        interp_start,
+        goal,
+        INTERP_STEP);
 
-  //     // 4. 拼接插值路径（跳过第一个点，避免重复）
-  //     for (size_t i = 1; i < interp_path.poses.size(); ++i) {
-  //       plan.poses.push_back(interp_path.poses[i]);
-  //     }
-  //   }
-  // }
+      // 4. 拼接插值路径（跳过第一个点，避免重复）
+      for (size_t i = 1; i < interp_path.poses.size(); ++i) {
+        plan.poses.push_back(interp_path.poses[i]);
+      }
+    }
+  }
   // ---------- End near-goal handling ----------
   if(isAreaFree(_costmap, goal))
   {
