@@ -574,9 +574,9 @@ TEST(VelocitySmootherTest, testConfigurableVelocityTopics)
   auto smoother =
     std::make_shared<VelSmootherShim>();
   smoother->declare_parameter("input_topic", rclcpp::ParameterValue("test_cmd_vel_input"));
-  smoother->set_parameter(rclcpp::Parameter("input_topic", std::string("test_cmd_vel_input")));
+  smoother->set_parameter(rclcpp::Parameter("input_topic", "test_cmd_vel_input"));
   smoother->declare_parameter("output_topic", rclcpp::ParameterValue("test_cmd_vel_output"));
-  smoother->set_parameter(rclcpp::Parameter("output_topic", std::string("test_cmd_vel_output")));
+  smoother->set_parameter(rclcpp::Parameter("output_topic", "test_cmd_vel_output"));
   rclcpp_lifecycle::State state;
   smoother->configure(state);
   smoother->activate(state);
