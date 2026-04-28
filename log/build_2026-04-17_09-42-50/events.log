@@ -1,0 +1,187 @@
+[0.000000] (-) TimerEvent: {}
+[0.000120] (-) JobUnselected: {'identifier': 'costmap_queue'}
+[0.000213] (-) JobUnselected: {'identifier': 'dexe_sensor_process'}
+[0.000269] (-) JobUnselected: {'identifier': 'dwb_core'}
+[0.000296] (-) JobUnselected: {'identifier': 'dwb_critics'}
+[0.000317] (-) JobUnselected: {'identifier': 'dwb_msgs'}
+[0.000337] (-) JobUnselected: {'identifier': 'dwb_plugins'}
+[0.000368] (-) JobUnselected: {'identifier': 'nav2_amcl'}
+[0.000386] (-) JobUnselected: {'identifier': 'nav2_behavior_tree'}
+[0.000402] (-) JobUnselected: {'identifier': 'nav2_behaviors'}
+[0.000420] (-) JobUnselected: {'identifier': 'nav2_bringup'}
+[0.000445] (-) JobUnselected: {'identifier': 'nav2_bt_navigator'}
+[0.000460] (-) JobUnselected: {'identifier': 'nav2_collision_monitor'}
+[0.000477] (-) JobUnselected: {'identifier': 'nav2_common'}
+[0.000494] (-) JobUnselected: {'identifier': 'nav2_constrained_smoother'}
+[0.000518] (-) JobUnselected: {'identifier': 'nav2_controller'}
+[0.000534] (-) JobUnselected: {'identifier': 'nav2_core'}
+[0.000549] (-) JobUnselected: {'identifier': 'nav2_costmap_2d'}
+[0.000564] (-) JobUnselected: {'identifier': 'nav2_dwb_controller'}
+[0.000586] (-) JobUnselected: {'identifier': 'nav2_graceful_controller'}
+[0.000601] (-) JobUnselected: {'identifier': 'nav2_lifecycle_manager'}
+[0.000621] (-) JobUnselected: {'identifier': 'nav2_map_server'}
+[0.000636] (-) JobUnselected: {'identifier': 'nav2_mppi_controller'}
+[0.000660] (-) JobUnselected: {'identifier': 'nav2_msgs'}
+[0.000686] (-) JobUnselected: {'identifier': 'nav2_navfn_planner'}
+[0.000701] (-) JobUnselected: {'identifier': 'nav2_planner'}
+[0.000716] (-) JobUnselected: {'identifier': 'nav2_regulated_pure_pursuit_controller'}
+[0.000737] (-) JobUnselected: {'identifier': 'nav2_rotation_shim_controller'}
+[0.000752] (-) JobUnselected: {'identifier': 'nav2_rviz_plugins'}
+[0.000772] (-) JobUnselected: {'identifier': 'nav2_simple_commander'}
+[0.000788] (-) JobUnselected: {'identifier': 'nav2_smac_planner'}
+[0.000811] (-) JobUnselected: {'identifier': 'nav2_smoother'}
+[0.000827] (-) JobUnselected: {'identifier': 'nav2_theta_star_planner'}
+[0.000843] (-) JobUnselected: {'identifier': 'nav2_util'}
+[0.000858] (-) JobUnselected: {'identifier': 'nav2_velocity_smoother'}
+[0.000878] (-) JobUnselected: {'identifier': 'nav2_voxel_grid'}
+[0.000894] (-) JobUnselected: {'identifier': 'nav2_waypoint_follower'}
+[0.000910] (-) JobUnselected: {'identifier': 'nav_2d_msgs'}
+[0.000926] (-) JobUnselected: {'identifier': 'nav_2d_utils'}
+[0.000949] (-) JobUnselected: {'identifier': 'navigation2'}
+[0.000966] (-) JobUnselected: {'identifier': 'nonpersistent_voxel_layer'}
+[0.000980] (-) JobUnselected: {'identifier': 'pure_rotation_controller'}
+[0.000996] (-) JobUnselected: {'identifier': 'straight_controller'}
+[0.001027] (mobile_perception) JobQueued: {'identifier': 'mobile_perception', 'dependencies': OrderedDict()}
+[0.001046] (mobile_perception) JobStarted: {'identifier': 'mobile_perception'}
+[0.038860] (mobile_perception) JobProgress: {'identifier': 'mobile_perception', 'progress': 'cmake'}
+[0.092697] (-) TimerEvent: {}
+[0.119319] (mobile_perception) Command: {'cmd': ['/usr/bin/cmake', '/home/lovebc/dexforce_ws/remote/dexe_mobile_nav/mobile_perception', '-DCMAKE_INSTALL_PREFIX=/home/lovebc/dexforce_ws/remote/dexe_mobile_nav/install/mobile_perception'], 'cwd': '/home/lovebc/dexforce_ws/remote/dexe_mobile_nav/build/mobile_perception', 'env': OrderedDict([('LESSOPEN', '| /usr/bin/lesspipe %s'), ('VSCODE_CWD', '/home/lovebc/dexforce_ws/remote/dexe_mobile_nav'), ('MEMORY_AUTH', 'Authorization: Bearer a83bb467587764530fbf585187b0b4d3afb92d1687b7c6f2936dd7ae9b4d6620'), ('VSCODE_ESM_ENTRYPOINT', 'vs/workbench/api/node/extensionHostProcess'), ('HTTPS_PROXY', 'http://127.0.0.1:7897/'), ('CODEX_CI', '1'), ('no_proxy', 'localhost,127.0.0.1,192.168.0.0/16,10.0.0.0/8,172.16.0.0/12,::1'), ('LANGUAGE', 'zh_CN:zh'), ('USER', 'lovebc'), ('CODEX_INTERNAL_ORIGINATOR_OVERRIDE', 'codex_vscode'), ('VSCODE_NLS_CONFIG', '{"userLocale":"zh-cn","osLocale":"zh-cn","resolvedLanguage":"zh-cn","defaultMessagesFile":"/usr/share/code/resources/app/out/nls.messages.json","languagePack":{"translationsConfigFile":"/home/lovebc/.config/Code/clp/9077cb58138b5debca36bba287b51ad9.zh-cn/tcf.json","messagesFile":"/home/lovebc/.config/Code/clp/9077cb58138b5debca36bba287b51ad9.zh-cn/b6a47e94e326b5c209d118cf0f994d6065585705/nls.messages.json","corruptMarkerFile":"/home/lovebc/.config/Code/clp/9077cb58138b5debca36bba287b51ad9.zh-cn/corrupted.info"},"locale":"zh-cn","availableLanguages":{"*":"zh-cn"},"_languagePackId":"9077cb58138b5debca36bba287b51ad9.zh-cn","_languagePackSupport":true,"_translationsConfigFile":"/home/lovebc/.config/Code/clp/9077cb58138b5debca36bba287b51ad9.zh-cn/tcf.json","_cacheRoot":"/home/lovebc/.config/Code/clp/9077cb58138b5debca36bba287b51ad9.zh-cn","_resolvedLanguagePackCoreLocation":"/home/lovebc/.config/Code/clp/9077cb58138b5debca36bba287b51ad9.zh-cn/b6a47e94e326b5c209d118cf0f994d6065585705","_corruptedFile":"/home/lovebc/.config/Code/clp/9077cb58138b5debca36bba287b51ad9.zh-cn/corrupted.info"}'), ('all_proxy', 'socks://127.0.0.1:7897/'), ('VSCODE_HANDLES_UNCAUGHT_ERRORS', 'true'), ('XDG_SESSION_TYPE', 'x11'), ('DEBUG', 'release'), ('SHLVL', '1'), ('LD_LIBRARY_PATH', '/opt/ros/humble/opt/rviz_ogre_vendor/lib:/opt/ros/humble/lib/x86_64-linux-gnu:/opt/ros/humble/lib'), ('HOME', '/home/lovebc'), ('CHROME_DESKTOP', 'code.desktop'), ('CONDA_SHLVL', '0'), ('OLDPWD', '/home/lovebc/dexforce_ws/remote'), ('DESKTOP_SESSION', 'ubuntu'), ('NO_PROXY', 'localhost,127.0.0.1,192.168.0.0/16,10.0.0.0/8,172.16.0.0/12,::1'), ('VSCODE_IPC_HOOK', '/run/user/1000/vscode-df462caa-1.10-main.sock'), ('ROS_PYTHON_VERSION', '3'), ('GNOME_SHELL_SESSION_MODE', 'ubuntu'), ('GTK_MODULES', 'gail:atk-bridge'), ('PAGER', 'cat'), ('LC_CTYPE', 'C.UTF-8'), ('SYSTEMD_EXEC_PID', '2975'), ('NO_COLOR', '1'), ('DBUS_SESSION_BUS_ADDRESS', 'unix:path=/run/user/1000/bus'), ('COLORTERM', ''), ('METABOT_AUTH', 'Authorization: Bearer a83bb467587764530fbf585187b0b4d3afb92d1687b7c6f2936dd7ae9b4d6620'), ('VSCODE_CRASH_REPORTER_PROCESS_TYPE', 'extensionHost'), ('https_proxy', 'http://127.0.0.1:7897/'), ('ROS_DISTRO', 'humble'), ('GTK_IM_MODULE', 'ibus'), ('LOGNAME', 'lovebc'), ('ALL_PROXY', 'socks://127.0.0.1:7897/'), ('MEMORY_URL', 'http://localhost:8100'), ('http_proxy', 'http://127.0.0.1:7897/'), ('_', '/usr/bin/colcon'), ('ROS_VERSION', '2'), ('XDG_SESSION_CLASS', 'user'), ('RUST_LOG', 'warn'), ('USERNAME', 'lovebc'), ('ANTHROPIC_BASE_URL', 'https://hone.vvvv.ee/'), ('TERM', 'dumb'), ('GAZEBO_MODEL_PATH', ':/home/lovebc/b1_simulation/src/b1_simulation'), ('GNOME_DESKTOP_SESSION_ID', 'this-is-deprecated'), ('FC_FONTATIONS', '1'), ('ROS_LOCALHOST_ONLY', '0'), ('WINDOWPATH', '2'), ('PATH', '/home/lovebc/.local/bin:/home/lovebc/.codex/tmp/arg0/codex-arg0fVgD5J:/home/lovebc/.opencode/bin:/home/lovebc/.local/bin:/home/lovebc/anaconda3/condabin:/opt/ros/humble/bin:/home/lovebc/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/snap/bin:/usr/bin:/home/lovebc/.vscode/extensions/openai.chatgpt-26.409.20454-linux-x64/bin/linux-x86_64'), ('SESSION_MANAGER', 'local/zbook:@/tmp/.ICE-unix/2947,unix/zbook:/tmp/.ICE-unix/2947'), ('XDG_MENU_PREFIX', 'gnome-'), ('GNOME_TERMINAL_SCREEN', '/org/gnome/Terminal/screen/5d4b5827_4184_4e55_a330_64583cc7c283'), ('XDG_RUNTIME_DIR', '/run/user/1000'), ('GDK_BACKEND', 'x11'), ('DISPLAY', ':1'), ('CODEX_SANDBOX_NETWORK_DISABLED', '1'), ('LANG', 'C.UTF-8'), ('XDG_CURRENT_DESKTOP', 'ubuntu:GNOME'), ('XMODIFIERS', '@im=ibus'), ('GH_PAGER', 'cat'), ('XDG_SESSION_DESKTOP', 'ubuntu'), ('XAUTHORITY', '/run/user/1000/gdm/Xauthority'), ('LS_COLORS', 'rs=0:di=01;34:ln=01;36:mh=00:pi=40;33:so=01;35:do=01;35:bd=40;33;01:cd=40;33;01:or=40;31;01:mi=00:su=37;41:sg=30;43:ca=30;41:tw=30;42:ow=34;42:st=37;44:ex=01;32:*.tar=01;31:*.tgz=01;31:*.arc=01;31:*.arj=01;31:*.taz=01;31:*.lha=01;31:*.lz4=01;31:*.lzh=01;31:*.lzma=01;31:*.tlz=01;31:*.txz=01;31:*.tzo=01;31:*.t7z=01;31:*.zip=01;31:*.z=01;31:*.dz=01;31:*.gz=01;31:*.lrz=01;31:*.lz=01;31:*.lzo=01;31:*.xz=01;31:*.zst=01;31:*.tzst=01;31:*.bz2=01;31:*.bz=01;31:*.tbz=01;31:*.tbz2=01;31:*.tz=01;31:*.deb=01;31:*.rpm=01;31:*.jar=01;31:*.war=01;31:*.ear=01;31:*.sar=01;31:*.rar=01;31:*.alz=01;31:*.ace=01;31:*.zoo=01;31:*.cpio=01;31:*.7z=01;31:*.rz=01;31:*.cab=01;31:*.wim=01;31:*.swm=01;31:*.dwm=01;31:*.esd=01;31:*.jpg=01;35:*.jpeg=01;35:*.mjpg=01;35:*.mjpeg=01;35:*.gif=01;35:*.bmp=01;35:*.pbm=01;35:*.pgm=01;35:*.ppm=01;35:*.tga=01;35:*.xbm=01;35:*.xpm=01;35:*.tif=01;35:*.tiff=01;35:*.png=01;35:*.svg=01;35:*.svgz=01;35:*.mng=01;35:*.pcx=01;35:*.mov=01;35:*.mpg=01;35:*.mpeg=01;35:*.m2v=01;35:*.mkv=01;35:*.webm=01;35:*.webp=01;35:*.ogm=01;35:*.mp4=01;35:*.m4v=01;35:*.mp4v=01;35:*.vob=01;35:*.qt=01;35:*.nuv=01;35:*.wmv=01;35:*.asf=01;35:*.rm=01;35:*.rmvb=01;35:*.flc=01;35:*.avi=01;35:*.fli=01;35:*.flv=01;35:*.gl=01;35:*.dl=01;35:*.xcf=01;35:*.xwd=01;35:*.yuv=01;35:*.cgm=01;35:*.emf=01;35:*.ogv=01;35:*.ogx=01;35:*.aac=00;36:*.au=00;36:*.flac=00;36:*.m4a=00;36:*.mid=00;36:*.midi=00;36:*.mka=00;36:*.mp3=00;36:*.mpc=00;36:*.ogg=00;36:*.ra=00;36:*.wav=00;36:*.oga=00;36:*.opus=00;36:*.spx=00;36:*.xspf=00;36:'), ('GNOME_TERMINAL_SERVICE', ':1.90'), ('SSH_AGENT_LAUNCHER', 'gnome-keyring'), ('SSH_AUTH_SOCK', '/run/user/1000/keyring/ssh'), ('AMENT_PREFIX_PATH', '/opt/ros/humble'), ('CONDA_PYTHON_EXE', '/home/lovebc/anaconda3/bin/python'), ('SHELL', '/bin/bash'), ('METABOT_URL', 'http://localhost:9100'), ('ANTHROPIC_AUTH_TOKEN', 'sk-Jj72PQIbKZIUGwbquo6XQT05sI6ybhLAOf0AT6ifTSiFRFTD'), ('QT_ACCESSIBILITY', '1'), ('ELECTRON_RUN_AS_NODE', '1'), ('GDMSESSION', 'ubuntu'), ('LESSCLOSE', '/usr/bin/lesspipe %s %s'), ('CODEX_THREAD_ID', '019d9914-f234-75f3-8cfd-34b71fee5f42'), ('GPG_AGENT_INFO', '/run/user/1000/gnupg/S.gpg-agent:0:1'), ('GIT_PAGER', 'cat'), ('QT_IM_MODULE', 'ibus'), ('PWD', '/home/lovebc/dexforce_ws/remote/dexe_mobile_nav/build/mobile_perception'), ('VSCODE_CLI', '1'), ('LC_ALL', 'C.UTF-8'), ('XDG_CONFIG_DIRS', '/etc/xdg/xdg-ubuntu:/etc/xdg'), ('CONDA_EXE', '/home/lovebc/anaconda3/bin/conda'), ('VSCODE_CODE_CACHE_PATH', '/home/lovebc/.config/Code/CachedData/b6a47e94e326b5c209d118cf0f994d6065585705'), ('GAZEBO_PLUGIN_PATH', ':/opt/ros/humble/lib'), ('XDG_DATA_DIRS', '/usr/share/ubuntu:/usr/share/gnome:/usr/local/share/:/usr/share/:/var/lib/snapd/desktop'), ('PYTHONPATH', '/opt/ros/humble/lib/python3.10/site-packages:/opt/ros/humble/local/lib/python3.10/dist-packages'), ('HTTP_PROXY', 'http://127.0.0.1:7897/'), ('COLCON', '1'), ('VTE_VERSION', '6800'), ('ELECTRON_NO_ATTACH_CONSOLE', '1'), ('VSCODE_PID', '1056238'), ('CMAKE_PREFIX_PATH', '/opt/ros/humble')]), 'shell': False}
+[0.205548] (-) TimerEvent: {}
+[0.305764] (-) TimerEvent: {}
+[0.406007] (-) TimerEvent: {}
+[0.506316] (-) TimerEvent: {}
+[0.606527] (-) TimerEvent: {}
+[0.706773] (-) TimerEvent: {}
+[0.807041] (-) TimerEvent: {}
+[0.907284] (-) TimerEvent: {}
+[1.007583] (-) TimerEvent: {}
+[1.107863] (-) TimerEvent: {}
+[1.208156] (-) TimerEvent: {}
+[1.308370] (-) TimerEvent: {}
+[1.407703] (mobile_perception) StdoutLine: {'line': b'-- The C compiler identification is GNU 11.4.0\n'}
+[1.408434] (-) TimerEvent: {}
+[1.508615] (-) TimerEvent: {}
+[1.608886] (-) TimerEvent: {}
+[1.709154] (-) TimerEvent: {}
+[1.809444] (-) TimerEvent: {}
+[1.909870] (-) TimerEvent: {}
+[2.010147] (-) TimerEvent: {}
+[2.110558] (-) TimerEvent: {}
+[2.210788] (-) TimerEvent: {}
+[2.311124] (-) TimerEvent: {}
+[2.411372] (-) TimerEvent: {}
+[2.491619] (mobile_perception) StdoutLine: {'line': b'-- The CXX compiler identification is GNU 11.4.0\n'}
+[2.511470] (-) TimerEvent: {}
+[2.611694] (-) TimerEvent: {}
+[2.711907] (-) TimerEvent: {}
+[2.714236] (mobile_perception) StdoutLine: {'line': b'-- Detecting C compiler ABI info\n'}
+[2.812031] (-) TimerEvent: {}
+[2.912353] (-) TimerEvent: {}
+[3.012773] (-) TimerEvent: {}
+[3.112964] (-) TimerEvent: {}
+[3.213204] (-) TimerEvent: {}
+[3.313438] (-) TimerEvent: {}
+[3.413732] (-) TimerEvent: {}
+[3.513951] (-) TimerEvent: {}
+[3.614236] (-) TimerEvent: {}
+[3.714454] (-) TimerEvent: {}
+[3.814733] (-) TimerEvent: {}
+[3.914945] (-) TimerEvent: {}
+[3.978578] (mobile_perception) StdoutLine: {'line': b'-- Detecting C compiler ABI info - done\n'}
+[4.014500] (mobile_perception) StdoutLine: {'line': b'-- Check for working C compiler: /usr/bin/cc - skipped\n'}
+[4.015004] (-) TimerEvent: {}
+[4.025001] (mobile_perception) StdoutLine: {'line': b'-- Detecting C compile features\n'}
+[4.025677] (mobile_perception) StdoutLine: {'line': b'-- Detecting C compile features - done\n'}
+[4.096295] (mobile_perception) StdoutLine: {'line': b'-- Detecting CXX compiler ABI info\n'}
+[4.115144] (-) TimerEvent: {}
+[4.215387] (-) TimerEvent: {}
+[4.315604] (-) TimerEvent: {}
+[4.415821] (-) TimerEvent: {}
+[4.516047] (-) TimerEvent: {}
+[4.616310] (-) TimerEvent: {}
+[4.716540] (-) TimerEvent: {}
+[4.816774] (-) TimerEvent: {}
+[4.916998] (-) TimerEvent: {}
+[5.017212] (-) TimerEvent: {}
+[5.087536] (mobile_perception) StdoutLine: {'line': b'-- Detecting CXX compiler ABI info - done\n'}
+[5.117348] (-) TimerEvent: {}
+[5.118392] (mobile_perception) StdoutLine: {'line': b'-- Check for working CXX compiler: /usr/bin/c++ - skipped\n'}
+[5.118728] (mobile_perception) StdoutLine: {'line': b'-- Detecting CXX compile features\n'}
+[5.118980] (mobile_perception) StdoutLine: {'line': b'-- Detecting CXX compile features - done\n'}
+[5.190748] (mobile_perception) StdoutLine: {'line': b'-- Found ament_cmake: 1.3.12 (/opt/ros/humble/share/ament_cmake/cmake)\n'}
+[5.217459] (-) TimerEvent: {}
+[5.317659] (-) TimerEvent: {}
+[5.323459] (mobile_perception) StdoutLine: {'line': b'-- Found Python3: /usr/bin/python3 (found version "3.10.12") found components: Interpreter \n'}
+[5.417714] (-) TimerEvent: {}
+[5.517952] (-) TimerEvent: {}
+[5.618194] (-) TimerEvent: {}
+[5.663526] (mobile_perception) StdoutLine: {'line': b'-- Found rclcpp: 16.0.15 (/opt/ros/humble/share/rclcpp/cmake)\n'}
+[5.700099] (mobile_perception) StdoutLine: {'line': b'-- Found rosidl_generator_c: 3.1.7 (/opt/ros/humble/share/rosidl_generator_c/cmake)\n'}
+[5.704284] (mobile_perception) StdoutLine: {'line': b'-- Found rosidl_adapter: 3.1.7 (/opt/ros/humble/share/rosidl_adapter/cmake)\n'}
+[5.711928] (mobile_perception) StdoutLine: {'line': b'-- Found rosidl_generator_cpp: 3.1.7 (/opt/ros/humble/share/rosidl_generator_cpp/cmake)\n'}
+[5.718287] (-) TimerEvent: {}
+[5.729386] (mobile_perception) StdoutLine: {'line': b'-- Using all available rosidl_typesupport_c: rosidl_typesupport_fastrtps_c;rosidl_typesupport_introspection_c\n'}
+[5.753861] (mobile_perception) StdoutLine: {'line': b'-- Using all available rosidl_typesupport_cpp: rosidl_typesupport_fastrtps_cpp;rosidl_typesupport_introspection_cpp\n'}
+[5.803434] (mobile_perception) StdoutLine: {'line': b'-- Found rmw_implementation_cmake: 6.1.2 (/opt/ros/humble/share/rmw_implementation_cmake/cmake)\n'}
+[5.810320] (mobile_perception) StdoutLine: {'line': b'-- Found rmw_fastrtps_cpp: 6.2.9 (/opt/ros/humble/share/rmw_fastrtps_cpp/cmake)\n'}
+[5.818388] (-) TimerEvent: {}
+[5.895202] (mobile_perception) StdoutLine: {'line': b'-- Found OpenSSL: /usr/lib/x86_64-linux-gnu/libcrypto.so (found version "3.0.2")  \n'}
+[5.918511] (-) TimerEvent: {}
+[5.961386] (mobile_perception) StdoutLine: {'line': b'-- Found FastRTPS: /opt/ros/humble/include  \n'}
+[6.018653] (-) TimerEvent: {}
+[6.037033] (mobile_perception) StdoutLine: {'line': b"-- Using RMW implementation 'rmw_fastrtps_cpp' as default\n"}
+[6.109773] (mobile_perception) StdoutLine: {'line': b'-- Looking for pthread.h\n'}
+[6.118709] (-) TimerEvent: {}
+[6.218926] (-) TimerEvent: {}
+[6.319165] (-) TimerEvent: {}
+[6.419372] (-) TimerEvent: {}
+[6.519595] (-) TimerEvent: {}
+[6.619865] (-) TimerEvent: {}
+[6.720069] (-) TimerEvent: {}
+[6.820312] (-) TimerEvent: {}
+[6.920636] (-) TimerEvent: {}
+[7.020867] (-) TimerEvent: {}
+[7.106623] (mobile_perception) StdoutLine: {'line': b'-- Looking for pthread.h - found\n'}
+[7.120972] (-) TimerEvent: {}
+[7.128013] (mobile_perception) StdoutLine: {'line': b'-- Performing Test CMAKE_HAVE_LIBC_PTHREAD\n'}
+[7.221110] (-) TimerEvent: {}
+[7.321399] (-) TimerEvent: {}
+[7.421607] (-) TimerEvent: {}
+[7.521820] (-) TimerEvent: {}
+[7.622061] (-) TimerEvent: {}
+[7.722284] (-) TimerEvent: {}
+[7.823735] (-) TimerEvent: {}
+[7.924039] (-) TimerEvent: {}
+[8.024212] (-) TimerEvent: {}
+[8.099537] (mobile_perception) StdoutLine: {'line': b'-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Success\n'}
+[8.108445] (mobile_perception) StdoutLine: {'line': b'-- Found Threads: TRUE  \n'}
+[8.124347] (-) TimerEvent: {}
+[8.162985] (mobile_perception) StdoutLine: {'line': b'-- Found rclpy: 3.3.17 (/opt/ros/humble/share/rclpy/cmake)\n'}
+[8.163695] (mobile_perception) StdoutLine: {'line': b'-- Found cv_bridge: 3.2.1 (/opt/ros/humble/share/cv_bridge/cmake)\n'}
+[8.202519] (mobile_perception) StdoutLine: {'line': b'-- Found OpenCV: /usr (found version "4.5.4") \n'}
+[8.211641] (mobile_perception) StderrLine: {'line': b'CMake Error at CMakeLists.txt:19 (find_package):\n'}
+[8.211916] (mobile_perception) StderrLine: {'line': b'  By not providing "Findapriltag_ros.cmake" in CMAKE_MODULE_PATH this project\n'}
+[8.212085] (mobile_perception) StderrLine: {'line': b'  has asked CMake to find a package configuration file provided by\n'}
+[8.212236] (mobile_perception) StderrLine: {'line': b'  "apriltag_ros", but CMake did not find one.\n'}
+[8.212436] (mobile_perception) StderrLine: {'line': b'\n'}
+[8.212626] (mobile_perception) StderrLine: {'line': b'  Could not find a package configuration file provided by "apriltag_ros" with\n'}
+[8.212818] (mobile_perception) StderrLine: {'line': b'  any of the following names:\n'}
+[8.213010] (mobile_perception) StderrLine: {'line': b'\n'}
+[8.213161] (mobile_perception) StderrLine: {'line': b'    apriltag_rosConfig.cmake\n'}
+[8.213302] (mobile_perception) StderrLine: {'line': b'    apriltag_ros-config.cmake\n'}
+[8.213440] (mobile_perception) StderrLine: {'line': b'\n'}
+[8.213581] (mobile_perception) StderrLine: {'line': b'  Add the installation prefix of "apriltag_ros" to CMAKE_PREFIX_PATH or set\n'}
+[8.213790] (mobile_perception) StderrLine: {'line': b'  "apriltag_ros_DIR" to a directory containing one of the above files.  If\n'}
+[8.213990] (mobile_perception) StderrLine: {'line': b'  "apriltag_ros" provides a separate development package or SDK, be sure it\n'}
+[8.214265] (mobile_perception) StderrLine: {'line': b'  has been installed.\n'}
+[8.214410] (mobile_perception) StderrLine: {'line': b'\n'}
+[8.214583] (mobile_perception) StderrLine: {'line': b'\n'}
+[8.218118] (mobile_perception) StdoutLine: {'line': b'-- Configuring incomplete, errors occurred!\n'}
+[8.218506] (mobile_perception) StdoutLine: {'line': b'See also "/home/lovebc/dexforce_ws/remote/dexe_mobile_nav/build/mobile_perception/CMakeFiles/CMakeOutput.log".\n'}
+[8.224447] (-) TimerEvent: {}
+[8.265494] (mobile_perception) CommandEnded: {'returncode': 1}
+[8.324532] (-) TimerEvent: {}
+[8.424742] (-) TimerEvent: {}
+[8.522800] (mobile_perception) JobEnded: {'identifier': 'mobile_perception', 'rc': 1}
+[8.533996] (-) TimerEvent: {}
+[8.534068] (-) EventReactorShutdown: {}

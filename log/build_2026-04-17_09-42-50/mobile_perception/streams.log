@@ -1,0 +1,54 @@
+[0.204s] Invoking command in '/home/lovebc/dexforce_ws/remote/dexe_mobile_nav/build/mobile_perception': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake /home/lovebc/dexforce_ws/remote/dexe_mobile_nav/mobile_perception -DCMAKE_INSTALL_PREFIX=/home/lovebc/dexforce_ws/remote/dexe_mobile_nav/install/mobile_perception
+[1.407s] -- The C compiler identification is GNU 11.4.0
+[2.491s] -- The CXX compiler identification is GNU 11.4.0
+[2.713s] -- Detecting C compiler ABI info
+[3.978s] -- Detecting C compiler ABI info - done
+[4.014s] -- Check for working C compiler: /usr/bin/cc - skipped
+[4.024s] -- Detecting C compile features
+[4.025s] -- Detecting C compile features - done
+[4.096s] -- Detecting CXX compiler ABI info
+[5.087s] -- Detecting CXX compiler ABI info - done
+[5.118s] -- Check for working CXX compiler: /usr/bin/c++ - skipped
+[5.118s] -- Detecting CXX compile features
+[5.118s] -- Detecting CXX compile features - done
+[5.190s] -- Found ament_cmake: 1.3.12 (/opt/ros/humble/share/ament_cmake/cmake)
+[5.323s] -- Found Python3: /usr/bin/python3 (found version "3.10.12") found components: Interpreter 
+[5.663s] -- Found rclcpp: 16.0.15 (/opt/ros/humble/share/rclcpp/cmake)
+[5.699s] -- Found rosidl_generator_c: 3.1.7 (/opt/ros/humble/share/rosidl_generator_c/cmake)
+[5.703s] -- Found rosidl_adapter: 3.1.7 (/opt/ros/humble/share/rosidl_adapter/cmake)
+[5.711s] -- Found rosidl_generator_cpp: 3.1.7 (/opt/ros/humble/share/rosidl_generator_cpp/cmake)
+[5.729s] -- Using all available rosidl_typesupport_c: rosidl_typesupport_fastrtps_c;rosidl_typesupport_introspection_c
+[5.753s] -- Using all available rosidl_typesupport_cpp: rosidl_typesupport_fastrtps_cpp;rosidl_typesupport_introspection_cpp
+[5.803s] -- Found rmw_implementation_cmake: 6.1.2 (/opt/ros/humble/share/rmw_implementation_cmake/cmake)
+[5.809s] -- Found rmw_fastrtps_cpp: 6.2.9 (/opt/ros/humble/share/rmw_fastrtps_cpp/cmake)
+[5.894s] -- Found OpenSSL: /usr/lib/x86_64-linux-gnu/libcrypto.so (found version "3.0.2")  
+[5.961s] -- Found FastRTPS: /opt/ros/humble/include  
+[6.036s] -- Using RMW implementation 'rmw_fastrtps_cpp' as default
+[6.109s] -- Looking for pthread.h
+[7.106s] -- Looking for pthread.h - found
+[7.127s] -- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+[8.099s] -- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Success
+[8.108s] -- Found Threads: TRUE  
+[8.162s] -- Found rclpy: 3.3.17 (/opt/ros/humble/share/rclpy/cmake)
+[8.163s] -- Found cv_bridge: 3.2.1 (/opt/ros/humble/share/cv_bridge/cmake)
+[8.202s] -- Found OpenCV: /usr (found version "4.5.4") 
+[8.211s] CMake Error at CMakeLists.txt:19 (find_package):
+[8.211s]   By not providing "Findapriltag_ros.cmake" in CMAKE_MODULE_PATH this project
+[8.211s]   has asked CMake to find a package configuration file provided by
+[8.211s]   "apriltag_ros", but CMake did not find one.
+[8.212s] 
+[8.212s]   Could not find a package configuration file provided by "apriltag_ros" with
+[8.212s]   any of the following names:
+[8.212s] 
+[8.212s]     apriltag_rosConfig.cmake
+[8.212s]     apriltag_ros-config.cmake
+[8.212s] 
+[8.213s]   Add the installation prefix of "apriltag_ros" to CMAKE_PREFIX_PATH or set
+[8.213s]   "apriltag_ros_DIR" to a directory containing one of the above files.  If
+[8.213s]   "apriltag_ros" provides a separate development package or SDK, be sure it
+[8.213s]   has been installed.
+[8.213s] 
+[8.214s] 
+[8.217s] -- Configuring incomplete, errors occurred!
+[8.218s] See also "/home/lovebc/dexforce_ws/remote/dexe_mobile_nav/build/mobile_perception/CMakeFiles/CMakeOutput.log".
+[8.265s] Invoked command in '/home/lovebc/dexforce_ws/remote/dexe_mobile_nav/build/mobile_perception' returned '1': CMAKE_PREFIX_PATH=/opt/ros/humble /usr/bin/cmake /home/lovebc/dexforce_ws/remote/dexe_mobile_nav/mobile_perception -DCMAKE_INSTALL_PREFIX=/home/lovebc/dexforce_ws/remote/dexe_mobile_nav/install/mobile_perception
