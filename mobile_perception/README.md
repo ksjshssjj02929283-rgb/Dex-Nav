@@ -94,8 +94,8 @@ mobile_perception/
 
 - 默认 `apriltag_poses_debug` (`geometry_msgs/msg/PoseArray`)。
 - 默认 TF 子坐标系 `apriltag_raw_<id>` 和 `apriltag_aligned_<id>`。
-- 默认 `apriltag_target_pose_odom` (`geometry_msgs/msg/PoseStamped`)：以 `apriltag_aligned_<id>` 为基准，沿其 X 轴前移 `target_forward_offset` 后转换到 `target_frame` 的目标位姿。
-- 默认 TF 子坐标系 `apriltag_target_<id>`：与 `apriltag_target_pose_odom` 使用同一个目标位姿，便于 RViz 可视化。
+- 默认 `apriltag_target_pose` (`geometry_msgs/msg/PoseStamped`)：以 `apriltag_aligned_<id>` 为基准，沿其 X 轴前移 `target_forward_offset` 后发布到 `target_frame`，默认绑定在 `base_link` 下。
+- 默认 TF 子坐标系 `apriltag_target_<id>`：与 `apriltag_target_pose` 使用同一个目标位姿，便于 RViz 可视化。
 
 常用参数：
 

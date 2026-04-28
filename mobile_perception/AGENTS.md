@@ -81,11 +81,11 @@
 - `apriltag_poses_debug`
 - `apriltag_raw_<id>`
 - `apriltag_aligned_<id>`
-- `apriltag_target_pose_odom`
+- `apriltag_target_pose`
 - `apriltag_target_<id>`
 
 修改 `camera_link`、图像话题或 tag 尺寸时，优先通过参数或配置文件完成。
-目标点发布逻辑以 `apriltag_aligned_<id>` 的姿态为基准，沿其 X 轴偏移 `target_forward_offset`，再转换到 `target_frame`，并可通过 `publish_target_tf` 发布目标 TF。修改这段逻辑时要保持参数可配置，不要写死 odom、frame 名或距离。
+目标点发布逻辑以 `apriltag_aligned_<id>` 的姿态为基准，沿其 X 轴偏移 `target_forward_offset`，默认发布在 `base_link` 下，并可通过 `publish_target_tf` 发布目标 TF。修改这段逻辑时要保持参数可配置，不要写死 frame 名或距离。
 
 ## 配置修改规则
 
