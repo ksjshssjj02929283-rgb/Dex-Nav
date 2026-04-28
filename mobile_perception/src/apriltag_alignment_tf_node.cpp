@@ -68,8 +68,8 @@ public:
     publish_target_pose_ = declare_parameter("publish_target_pose", true);
     publish_target_tf_ = declare_parameter("publish_target_tf", true);
     target_pose_topic_ = declare_parameter(
-      "target_pose_topic", std::string("apriltag_target_pose_odom"));
-    target_frame_ = declare_parameter("target_frame", std::string("odom"));
+      "target_pose_topic", std::string("apriltag_target_pose"));
+    target_frame_ = declare_parameter("target_frame", std::string("base_link"));
     target_frame_prefix_ = declare_parameter(
       "target_frame_prefix", std::string("apriltag_target_"));
     target_forward_offset_ = declare_parameter("target_forward_offset", 0.6);
@@ -327,38 +327,43 @@ private:
     target_base.pose.orientation.z = aligned_rotation.z();
     target_base.pose.orientation.w = aligned_rotation.w();
 
-    geometry_msgs::msg::TransformStamped base_to_target;
-    try {
-      base_to_target = tf_buffer_->lookupTransform(
-        target_frame_,
-        "base_link",
-        tf2::timeFromSec(
-          static_cast<double>(stamp.sec) +
-          static_cast<double>(stamp.nanosec) * 1e-9));
-    } catch (const tf2::TransformException & ex) {
-      RCLCPP_WARN_THROTTLE(
-        get_logger(), *get_clock(), 2000,
-        "Target pose transform at image stamp to %s failed, fallback to latest: %s",
-        target_frame_.c_str(), ex.what());
-
+    geometry_msgs::msg::PoseStamped target_pose;
+    if (target_frame_ == "base_link") {
+      target_pose = target_base;
+    } else {
+      geometry_msgs::msg::TransformStamped base_to_target;
       try {
         base_to_target = tf_buffer_->lookupTransform(
           target_frame_,
           "base_link",
-          tf2::TimePointZero);
-      } catch (const tf2::TransformException & latest_ex) {
+          tf2::timeFromSec(
+            static_cast<double>(stamp.sec) +
+            static_cast<double>(stamp.nanosec) * 1e-9));
+      } catch (const tf2::TransformException & ex) {
         RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 2000,
-          "Target pose transform to %s failed: %s",
-          target_frame_.c_str(), latest_ex.what());
-        return;
+          "Target pose transform at image stamp to %s failed, fallback to latest: %s",
+          target_frame_.c_str(), ex.what());
+
+        try {
+          base_to_target = tf_buffer_->lookupTransform(
+            target_frame_,
+            "base_link",
+            tf2::TimePointZero);
+        } catch (const tf2::TransformException & latest_ex) {
+          RCLCPP_WARN_THROTTLE(
+            get_logger(), *get_clock(), 2000,
+            "Target pose transform to %s failed: %s",
+            target_frame_.c_str(), latest_ex.what());
+          return;
+        }
       }
+
+      tf2::doTransform(target_base, target_pose, base_to_target);
+      target_pose.header.stamp = stamp;
+      target_pose.header.frame_id = target_frame_;
     }
 
-    geometry_msgs::msg::PoseStamped target_pose;
-    tf2::doTransform(target_base, target_pose, base_to_target);
-    target_pose.header.stamp = stamp;
-    target_pose.header.frame_id = target_frame_;
     target_pose_pub_->publish(target_pose);
 
     if (publish_target_tf_) {
