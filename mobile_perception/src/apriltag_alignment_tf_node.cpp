@@ -10,6 +10,7 @@
 #include <sensor_msgs/msg/image.hpp>
 #include <geometry_msgs/msg/pose.hpp>
 #include <geometry_msgs/msg/pose_array.hpp>
+#include <geometry_msgs/msg/pose_stamped.hpp>
 #include <geometry_msgs/msg/transform_stamped.hpp>
 
 #include <tf2/LinearMath/Matrix3x3.h>
@@ -64,9 +65,16 @@ public:
       "raw_frame_prefix", std::string("apriltag_raw_"));
     aligned_frame_prefix_ = declare_parameter(
       "aligned_frame_prefix", std::string("apriltag_aligned_"));
+    publish_target_pose_ = declare_parameter("publish_target_pose", true);
+    target_pose_topic_ = declare_parameter(
+      "target_pose_topic", std::string("apriltag_target_pose_odom"));
+    target_frame_ = declare_parameter("target_frame", std::string("odom"));
+    target_forward_offset_ = declare_parameter("target_forward_offset", 0.6);
 
     pose_pub_ =
       create_publisher<geometry_msgs::msg::PoseArray>(pose_topic_, 10);
+    target_pose_pub_ =
+      create_publisher<geometry_msgs::msg::PoseStamped>(target_pose_topic_, 10);
 
     tf_buffer_ = std::make_unique<tf2_ros::Buffer>(get_clock());
     tf_listener_ =
@@ -95,9 +103,10 @@ public:
 
     RCLCPP_INFO(
       get_logger(),
-      "AprilTag alignment TF node started. image_topic=%s pose_topic=%s raw_prefix=%s aligned_prefix=%s",
+      "AprilTag alignment TF node started. image_topic=%s pose_topic=%s raw_prefix=%s aligned_prefix=%s target_topic=%s target_frame=%s target_forward_offset=%.3f",
       image_topic_.c_str(), pose_topic_.c_str(), raw_frame_prefix_.c_str(),
-      aligned_frame_prefix_.c_str());
+      aligned_frame_prefix_.c_str(), target_pose_topic_.c_str(),
+      target_frame_.c_str(), target_forward_offset_);
   }
 
   ~AprilTagAlignmentTfNode()
@@ -252,6 +261,10 @@ private:
             t_bt, q_bt_aligned));
       }
 
+      if (publish_target_pose_) {
+        publish_target_pose(msg->header.stamp, t_bt, q_bt_aligned, det->id);
+      }
+
       RCLCPP_INFO_THROTTLE(
         get_logger(), *get_clock(), 2000,
         "tag=%d raw_q=[%.4f %.4f %.4f %.4f] aligned_q=[%.4f %.4f %.4f %.4f] raw_yaw=%.4f aligned_yaw=%.4f",
@@ -286,6 +299,57 @@ private:
     transform.transform.rotation.z = rotation.z();
     transform.transform.rotation.w = rotation.w();
     return transform;
+  }
+
+  void publish_target_pose(
+    const builtin_interfaces::msg::Time & stamp,
+    const tf2::Vector3 & aligned_translation,
+    const tf2::Quaternion & aligned_rotation,
+    int tag_id)
+  {
+    tf2::Matrix3x3 aligned_matrix(aligned_rotation);
+    tf2::Vector3 target_translation =
+      aligned_translation +
+      aligned_matrix * tf2::Vector3(target_forward_offset_, 0.0, 0.0);
+
+    geometry_msgs::msg::PoseStamped target_base;
+    target_base.header.stamp = stamp;
+    target_base.header.frame_id = "base_link";
+    target_base.pose.position.x = target_translation.x();
+    target_base.pose.position.y = target_translation.y();
+    target_base.pose.position.z = target_translation.z();
+    target_base.pose.orientation.x = aligned_rotation.x();
+    target_base.pose.orientation.y = aligned_rotation.y();
+    target_base.pose.orientation.z = aligned_rotation.z();
+    target_base.pose.orientation.w = aligned_rotation.w();
+
+    try {
+      geometry_msgs::msg::TransformStamped base_to_target =
+        tf_buffer_->lookupTransform(
+          target_frame_,
+          "base_link",
+          tf2::TimePointZero);
+
+      geometry_msgs::msg::PoseStamped target_pose;
+      tf2::doTransform(target_base, target_pose, base_to_target);
+      target_pose.header.stamp = stamp;
+      target_pose.header.frame_id = target_frame_;
+      target_pose_pub_->publish(target_pose);
+
+      RCLCPP_INFO_THROTTLE(
+        get_logger(), *get_clock(), 2000,
+        "tag=%d target_pose[%s]: x=%.3f y=%.3f z=%.3f offset=%.3f",
+        tag_id, target_frame_.c_str(),
+        target_pose.pose.position.x,
+        target_pose.pose.position.y,
+        target_pose.pose.position.z,
+        target_forward_offset_);
+    } catch (const tf2::TransformException & ex) {
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 2000,
+        "Target pose transform to %s failed: %s",
+        target_frame_.c_str(), ex.what());
+    }
   }
 
   tf2::Quaternion create_reference_tag_quaternion() const
@@ -333,11 +397,16 @@ private:
   std::string pose_topic_;
   std::string raw_frame_prefix_;
   std::string aligned_frame_prefix_;
+  std::string target_pose_topic_;
+  std::string target_frame_;
   double tag_size_{0.0};
+  double target_forward_offset_{0.6};
   bool publish_tag_tf_{true};
   bool publish_aligned_tf_{true};
+  bool publish_target_pose_{true};
 
   rclcpp::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr pose_pub_;
+  rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr target_pose_pub_;
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr image_sub_;
 
   std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
