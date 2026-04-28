@@ -61,8 +61,30 @@ target_link_libraries(apriltag_detection_node
   ${OpenCV_LIBS}
 )
 
+add_executable(apriltag_alignment_tf_node
+  src/apriltag_alignment_tf_node.cpp
+)
 
-install(TARGETS apriltag_detection_node
+ament_target_dependencies(apriltag_alignment_tf_node
+  rclcpp
+  sensor_msgs
+  geometry_msgs
+  tf2_ros
+  tf2_geometry_msgs
+  cv_bridge
+  OpenCV
+  ament_index_cpp
+  nlohmann_json
+)
+target_link_libraries(apriltag_alignment_tf_node
+  apriltag::apriltag
+  ${OpenCV_LIBS}
+)
+
+
+install(TARGETS
+  apriltag_detection_node
+  apriltag_alignment_tf_node
   DESTINATION lib/${PROJECT_NAME}
 )
 
