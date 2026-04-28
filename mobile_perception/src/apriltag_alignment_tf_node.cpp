@@ -16,6 +16,7 @@
 #include <tf2/LinearMath/Matrix3x3.h>
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+#include <tf2_ros/convert.h>
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_broadcaster.h>
 #include <tf2_ros/transform_listener.h>
@@ -327,38 +328,51 @@ private:
     target_base.pose.orientation.z = aligned_rotation.z();
     target_base.pose.orientation.w = aligned_rotation.w();
 
+    geometry_msgs::msg::TransformStamped base_to_target;
     try {
-      geometry_msgs::msg::TransformStamped base_to_target =
-        tf_buffer_->lookupTransform(
-          target_frame_,
-          "base_link",
-          tf2::TimePointZero);
-
-      geometry_msgs::msg::PoseStamped target_pose;
-      tf2::doTransform(target_base, target_pose, base_to_target);
-      target_pose.header.stamp = stamp;
-      target_pose.header.frame_id = target_frame_;
-      target_pose_pub_->publish(target_pose);
-
-      if (publish_target_tf_) {
-        tf_broadcaster_->sendTransform(
-          create_target_transform(target_pose, tag_id));
-      }
-
-      RCLCPP_INFO_THROTTLE(
-        get_logger(), *get_clock(), 2000,
-        "tag=%d target_pose[%s]: x=%.3f y=%.3f z=%.3f offset=%.3f",
-        tag_id, target_frame_.c_str(),
-        target_pose.pose.position.x,
-        target_pose.pose.position.y,
-        target_pose.pose.position.z,
-        target_forward_offset_);
+      base_to_target = tf_buffer_->lookupTransform(
+        target_frame_,
+        "base_link",
+        tf2_ros::fromMsg(stamp));
     } catch (const tf2::TransformException & ex) {
       RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 2000,
-        "Target pose transform to %s failed: %s",
+        "Target pose transform at image stamp to %s failed, fallback to latest: %s",
         target_frame_.c_str(), ex.what());
+
+      try {
+        base_to_target = tf_buffer_->lookupTransform(
+          target_frame_,
+          "base_link",
+          tf2::TimePointZero);
+      } catch (const tf2::TransformException & latest_ex) {
+        RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 2000,
+          "Target pose transform to %s failed: %s",
+          target_frame_.c_str(), latest_ex.what());
+        return;
+      }
     }
+
+    geometry_msgs::msg::PoseStamped target_pose;
+    tf2::doTransform(target_base, target_pose, base_to_target);
+    target_pose.header.stamp = stamp;
+    target_pose.header.frame_id = target_frame_;
+    target_pose_pub_->publish(target_pose);
+
+    if (publish_target_tf_) {
+      tf_broadcaster_->sendTransform(
+        create_target_transform(target_pose, tag_id));
+    }
+
+    RCLCPP_INFO_THROTTLE(
+      get_logger(), *get_clock(), 2000,
+      "tag=%d target_pose[%s]: x=%.3f y=%.3f z=%.3f offset=%.3f",
+      tag_id, target_frame_.c_str(),
+      target_pose.pose.position.x,
+      target_pose.pose.position.y,
+      target_pose.pose.position.z,
+      target_forward_offset_);
   }
 
   geometry_msgs::msg::TransformStamped create_target_transform(
