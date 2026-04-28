@@ -16,7 +16,6 @@
 #include <tf2/LinearMath/Matrix3x3.h>
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
-#include <tf2_ros/convert.h>
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_broadcaster.h>
 #include <tf2_ros/transform_listener.h>
@@ -333,7 +332,9 @@ private:
       base_to_target = tf_buffer_->lookupTransform(
         target_frame_,
         "base_link",
-        tf2_ros::fromMsg(stamp));
+        tf2::timeFromSec(
+          static_cast<double>(stamp.sec) +
+          static_cast<double>(stamp.nanosec) * 1e-9));
     } catch (const tf2::TransformException & ex) {
       RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 2000,
