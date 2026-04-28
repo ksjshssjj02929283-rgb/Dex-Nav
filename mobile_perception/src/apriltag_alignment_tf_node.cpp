@@ -66,9 +66,12 @@ public:
     aligned_frame_prefix_ = declare_parameter(
       "aligned_frame_prefix", std::string("apriltag_aligned_"));
     publish_target_pose_ = declare_parameter("publish_target_pose", true);
+    publish_target_tf_ = declare_parameter("publish_target_tf", true);
     target_pose_topic_ = declare_parameter(
       "target_pose_topic", std::string("apriltag_target_pose_odom"));
     target_frame_ = declare_parameter("target_frame", std::string("odom"));
+    target_frame_prefix_ = declare_parameter(
+      "target_frame_prefix", std::string("apriltag_target_"));
     target_forward_offset_ = declare_parameter("target_forward_offset", 0.6);
 
     pose_pub_ =
@@ -103,10 +106,11 @@ public:
 
     RCLCPP_INFO(
       get_logger(),
-      "AprilTag alignment TF node started. image_topic=%s pose_topic=%s raw_prefix=%s aligned_prefix=%s target_topic=%s target_frame=%s target_forward_offset=%.3f",
+      "AprilTag alignment TF node started. image_topic=%s pose_topic=%s raw_prefix=%s aligned_prefix=%s target_topic=%s target_frame=%s target_prefix=%s target_forward_offset=%.3f",
       image_topic_.c_str(), pose_topic_.c_str(), raw_frame_prefix_.c_str(),
       aligned_frame_prefix_.c_str(), target_pose_topic_.c_str(),
-      target_frame_.c_str(), target_forward_offset_);
+      target_frame_.c_str(), target_frame_prefix_.c_str(),
+      target_forward_offset_);
   }
 
   ~AprilTagAlignmentTfNode()
@@ -336,6 +340,11 @@ private:
       target_pose.header.frame_id = target_frame_;
       target_pose_pub_->publish(target_pose);
 
+      if (publish_target_tf_) {
+        tf_broadcaster_->sendTransform(
+          create_target_transform(target_pose, tag_id));
+      }
+
       RCLCPP_INFO_THROTTLE(
         get_logger(), *get_clock(), 2000,
         "tag=%d target_pose[%s]: x=%.3f y=%.3f z=%.3f offset=%.3f",
@@ -350,6 +359,20 @@ private:
         "Target pose transform to %s failed: %s",
         target_frame_.c_str(), ex.what());
     }
+  }
+
+  geometry_msgs::msg::TransformStamped create_target_transform(
+    const geometry_msgs::msg::PoseStamped & target_pose,
+    int tag_id) const
+  {
+    geometry_msgs::msg::TransformStamped transform;
+    transform.header = target_pose.header;
+    transform.child_frame_id = target_frame_prefix_ + std::to_string(tag_id);
+    transform.transform.translation.x = target_pose.pose.position.x;
+    transform.transform.translation.y = target_pose.pose.position.y;
+    transform.transform.translation.z = target_pose.pose.position.z;
+    transform.transform.rotation = target_pose.pose.orientation;
+    return transform;
   }
 
   tf2::Quaternion create_reference_tag_quaternion() const
@@ -399,11 +422,13 @@ private:
   std::string aligned_frame_prefix_;
   std::string target_pose_topic_;
   std::string target_frame_;
+  std::string target_frame_prefix_;
   double tag_size_{0.0};
   double target_forward_offset_{0.6};
   bool publish_tag_tf_{true};
   bool publish_aligned_tf_{true};
   bool publish_target_pose_{true};
+  bool publish_target_tf_{true};
 
   rclcpp::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr pose_pub_;
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr target_pose_pub_;
