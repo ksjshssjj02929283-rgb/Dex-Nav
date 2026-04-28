@@ -1,261 +1,139 @@
-# mobile_perception 工作总结
+# mobile_perception 维护说明
 
-本文档用于快速帮助后续开发者理解 `mobile_perception` 包当前职责、关键节点、`mobile_control_node.cpp` 的控制逻辑，以及最近一次关于“直线末端姿态对齐”的修改背景。
+本文档面向在 `dexe_mobile_nav/mobile_perception` 内工作的自动化编码代理和开发者。所有说明以当前包结构为准。
 
-## 目录概览
+## 默认沟通语言
 
-- `src/mobile_control_node.cpp`
-  低层精确控制节点。订阅目标位姿，结合 TF 与 odom 反馈输出 `control/cmd_vel`。
-- `src/apriltag_detection_node.cpp`
-  AprilTag 感知相关节点。
-- `src/charging_pose_service.cpp`
-  充电位姿相关服务。
-- `config/mobile_control_params.yaml`
-  `mobile_control_node` 的主要参数配置来源。
-- `launch/mobile_control.launch.py`
-  控制节点启动入口之一。
-- `scripts/`
-  包含若干测试、导航串联、控制辅助脚本。
+- 本目录内新增或更新面向维护者的说明文档时，默认使用中文。
+- 命令、路径、节点名、话题名、服务名、参数名和代码标识符可保留英文原文。
+- 除非用户明确要求英文，不要把本目录文档改写成英文。
 
-## mobile_control_node 整体职责
+## 包定位
 
-`mobile_control_node` 的主要作用是接收 `control/ctrl_pose` 目标，并在机器人底盘坐标系下输出平滑速度控制命令到 `control/cmd_vel`。
+- 这是 ROS 2 Humble 风格的 `ament_cmake` 包，包名为 `mobile_perception`。
+- 包内同时包含 C++ 节点和 Python 脚本。
+- 当前主线 C++ 节点位于 `src/`：
+  - `apriltag_detection_node.cpp`
+  - `apriltag_alignment_tf_node.cpp`
+  - `mobile_control_node.cpp`
+  - `charging_pose_service.cpp`
+- Python 脚本位于 `scripts/`，包含历史调试脚本、仿真脚本和 Nav2 编排脚本。修改前应确认脚本是否已被 `CMakeLists.txt` 安装。
 
-当前节点不是单一控制器，而是一个带模式切换的控制状态机：
+## 工作边界
 
-- `GoalMode::POSE`
-  普通位姿控制。既关心位置，也关心终态朝向。
-- `GoalMode::STRAIGHT`
-  直线靠近目标。主要用于横向偏差和角度偏差都较小的情况，尽量保持直行。
-- `GoalMode::ROTATE`
-  纯旋转模式。目标平移误差很小，仅做原地转向。
+- 修改本包时，优先保持已有 ROS 2 接口兼容，尤其是话题、服务、参数和 frame 名称。
+- 不要无关重命名节点、话题、服务或配置文件。
+- 不要把实机配置与仿真配置混在一起；相机、tag、docking 位姿相关改动必须说明适用场景。
+- 不要删除看似旧的 Python 脚本，除非用户明确要求清理；很多脚本可能仍用于现场调试。
+- 不要主动执行 `colcon build`、`catkin build`、`cmake --build`、`make` 或其他构建命令。需要构建验证时，先询问用户。
 
-此外还有一个末端子状态：
+## 重要文件
 
-- `TerminalState::STRAIGHT_YAW_ALIGN`
-  直线模式到点后，如果位置已满足但朝向还差一点，则进入受限的末端姿态对齐。
+- `CMakeLists.txt`：声明 C++ 可执行文件、Python 脚本安装列表、`launch/config/images` 安装目录。
+- `package.xml`：ROS 包元信息和部分依赖声明。新增依赖时要同时检查 `CMakeLists.txt`。
+- `launch/mobile_control.launch.py`：启动 `mobile_control_node`，默认加载 `config/mobile_control_params.yaml`。
+- `config/mobile_control_params.yaml`：精控节点控制参数。
+- `config/camera_config.json`：C++ AprilTag 节点默认读取的实机相机配置。
+- `config/tags_config.json`：AprilTag family 和 tag 尺寸。
+- `config/docking_config.json`：实机充电位姿配置。
+- `config/*simulation*`：仿真配置，不要误用于实机。
 
-## 当前控制主流程
+## 代码风格
 
-### 1. 输入与状态更新
+- C++ 代码继续使用 ROS 2 `rclcpp`、`tf2`、`cv_bridge`、OpenCV 和 `nlohmann_json` 的现有写法。
+- Python 节点继续使用 `rclpy`，脚本入口保持 `if __name__ == '__main__':`。
+- 配置优先走 YAML/JSON 或 ROS 参数；新增硬编码路径前必须有充分理由。
+- 对底盘速度、TF 转换、位姿保存等高风险逻辑，改动要尽量小，并保留清晰日志。
+- 注释可以使用中文，但应解释意图或风险，不写重复代码含义的空注释。
 
-- 目标由 `control/ctrl_pose` 输入。
-- 目标若不是 `map` 坐标系，会先被转换到 `map`。
-- odom 由 `feedback/odom` 输入。
-- `pre_cmd_vel_` 现在表示“底盘实际反馈速度”，不再表示上一拍发布命令。
+## 接口约束
 
-这一点很关键：当前的加速度约束、平滑停车、终态旋转约束，都是基于 odom 实际速度做的，而不是基于期望命令做的。
+### `mobile_control_node`
 
-### 2. 模式判定
+保持以下接口兼容：
 
-在 `targetCallback()` 中，收到目标后会按输入目标在局部坐标中的特征选择控制模式：
+- 订阅 `control/ctrl_pose` (`geometry_msgs/msg/PoseStamped`)
+- 订阅 `feedback/odom` (`nav_msgs/msg/Odometry`)
+- 发布 `control/cmd_vel` (`geometry_msgs/msg/Twist`)
+- 服务 `control/get_control_status` (`std_srvs/srv/Trigger`)
+- 服务 `control/cancel_chassis_control` (`std_srvs/srv/Trigger`)
 
-- 若平移距离很小但航向误差较大，进入 `ROTATE`
-- 若横向偏差小且角度偏差小，进入 `STRAIGHT`
-- 其他情况进入 `POSE`
+状态服务返回文本当前包括：
 
-对应参数：
+- `IDLE`
+- `CONTROL`
+- `SUCCEED`
+- `CANCEL CONTROL`
 
-- `goal_mode_linear_yaw_threshold`
-- `goal_mode_linear_lateral_threshold`
-- `goal_mode_rotate_xy_threshold`
+修改这些字符串前，需要确认上游调用方没有依赖精确文本。
 
-### 3. 正常控制分支
+### AprilTag 节点
 
-在 `controlLoop()` 中：
+`apriltag_detection_node` 需要保持：
 
-- 若处于取消控制状态，执行基于 odom 的平滑减速
-- 否则将 `map` 下目标变换到 `base_link`
-- 计算 `dist` 和 `yaw_error`
-- 根据是否倒车适合，选择前进或后退控制
+- 服务 `start_apriltag_detection`
+- 服务 `stop_apriltag_detection`
+- 发布 `apriltag_poses`
+- 使用 `base_link` 作为输出位姿 frame
 
-常规控制器包括：
+`apriltag_alignment_tf_node` 默认发布：
 
-- `calculateNoReverseGracefulVelocity()`
-  前向 rho-alpha-beta 变体控制
-- `calculateReverseGracefulVelocity()`
-  后向倒车控制
-- `computeRotateToHeadingCommand()`
-  纯旋转控制
+- `apriltag_poses_debug`
+- `apriltag_raw_<id>`
+- `apriltag_aligned_<id>`
+- `apriltag_target_pose_odom`
 
-然后统一再经过：
+修改 `camera_link`、图像话题或 tag 尺寸时，优先通过参数或配置文件完成。
+目标点发布逻辑以 `apriltag_aligned_<id>` 的姿态为基准，沿其 X 轴偏移 `target_forward_offset`，再转换到 `target_frame`。修改这段逻辑时要保持参数可配置，不要写死 odom 或距离。
 
-- 线速度最小有效值修正 `applyMinimumLinearSpeed()`
-- 基于 odom 的线角加速度约束
-- 输出低通滤波 `filtered_cmd_vel_`
+## 配置修改规则
 
-### 4. 到点判定
+- 改相机内参时，必须同时检查 `frame_width`、`frame_height`、`fx`、`fy`、`cx`、`cy` 和 `dist_coeffs`。
+- 改 tag 尺寸时，只改 `config/tags_config.json` 中的 `tag_size`，除非代码已明确支持其他来源。
+- 改控制参数时，优先修改 `config/mobile_control_params.yaml`，不要直接把实验值写死进 `mobile_control_node.cpp`。
+- 改 docking 位姿时，明确区分：
+  - `docking_config.json`：实机。
+  - `docking_config_simulation.json`：仿真。
+- 保存位姿相关代码当前存在硬编码路径，修改时优先改为 ROS 参数或包共享目录下可配置路径。
 
-- `STRAIGHT` 模式下，优先看 `xy_tolerance_`
-- 其他模式通常要求 `dist < xy_tolerance_` 且 `yaw_error < yaw_tolerance_`
-- 进入 `is_goal_` 后，会持续发布若干拍零速度，保证平稳结束
+## 验证建议
 
-## 直线模式的特殊处理
+不主动构建。若用户同意验证，可按风险从低到高选择：
 
-当前直线模式有两层特殊约束：
+```bash
+python3 -m py_compile dexe_mobile_nav/mobile_perception/scripts/*.py
+```
 
-### 1. 近目标角速度限制
+```bash
+colcon build --packages-select mobile_perception
+```
 
-在 `goal_mode_ == STRAIGHT && dist < near_target_dist_` 时，会额外限制：
+运行前检查：
 
-- `cmd_vel.angular.z` 被夹到 `[-straight_near_goal_angular_max_, straight_near_goal_angular_max_]`
+```bash
+ros2 topic list
+ros2 service list
+ros2 run tf2_tools view_frames
+```
 
-目的：
+实机控制前必须确认：
 
-- 防止接近目标时边走边转过猛
-- 让直线靠近行为更稳定，不在近端大幅摆头
+- 急停可用。
+- 底盘速度链路接收的是预期话题。
+- `control/cmd_vel` 与底盘实际订阅话题已正确桥接或 remap。
+- `map`、`base_link`、相机 frame 的 TF 连通。
+- 相机图像话题与 `camera_config.json` 一致。
 
-### 2. 到点后的末端姿态对齐
+## 常见风险
 
-若直线模式下：
+- `package.xml` 依赖声明不完整，新增构建依赖时容易只改 `CMakeLists.txt`。
+- 部分 Python 脚本引用旧包名或旧接口，例如自定义 `custom_interfaces`、`chassis_interfaces`。
+- 部分脚本发布 `cmd_vel`，部分发布 `control/cmd_vel` 或 `control/cmd_vel_nav`，使用前必须确认实际底盘订阅链路。
+- `charging_pose_service.cpp` 的保存路径是硬编码绝对路径，跨机器运行容易失败。
+- C++ AprilTag 节点默认读取 `camera_config.json`，不会自动切换到仿真配置。
 
-- 已满足 `dist < xy_tolerance_`
-- 且 `straight_terminal_yaw_align_enable_ == true`
-- 且 `fabs(yaw_error) > straight_terminal_yaw_trigger_`
+## 文档维护
 
-则不会立刻宣布完成，而是进入：
-
-- `TerminalState::STRAIGHT_YAW_ALIGN`
-
-进入该状态后：
-
-- 线速度强制为 0
-- 只做小角速度姿态修正
-- 姿态收敛后再置 `is_goal_ = true`
-
-## 最近一次修改总结：直线末端姿态对齐控制器已独立
-
-### 原始问题
-
-之前的 `computeStraightTerminalRotateCommand()` 复用了 `computeRotateToHeadingCommand()`。
-
-但 `computeRotateToHeadingCommand()` 内部自带停止条件：
-
-- `abs_error < rotate_stop_yaw_error_` 时直接输出 `angular.z = 0`
-
-而 `computeStraightTerminalRotateCommand()` 外层还试图加一层：
-
-- 若角速度非零且小于 `min_angular_vel_`，则强制给最小角速度
-
-这会导致一个逻辑冲突：
-
-- 一旦内层旋转控制器已经因为小误差输出了 0
-- 外层“最小角速度补偿”根本不会生效
-
-因此之前末端直线对齐里那层最小角速度逻辑，在大多数参数组合下是没有意义的。
-
-### 当前修改后的行为
-
-现在 `computeStraightTerminalRotateCommand()` 已改成独立控制器，不再调用通用的 `computeRotateToHeadingCommand()`。
-
-它当前只受以下参数约束：
-
-- `straight_terminal_rotate_stop_yaw`
-- `straight_terminal_rotate_max_w`
-- `rotate_to_heading_kp`
-- `rotate_to_heading_max_angular_accel`
-- `min_angular_vel`
-
-当前逻辑为：
-
-1. 若 `fabs(yaw_error) <= straight_terminal_rotate_stop_yaw_`，直接输出 0
-2. 否则做 `rotate_to_heading_kp_ * yaw_error` 的 P 控制
-3. 角速度限制到 `straight_terminal_rotate_max_w_`
-4. 再根据 `rotate_to_heading_max_angular_accel_` 做可实现角加速度约束
-5. 再根据制动距离 `sqrt(2*a*error)` 约束可停车最大角速度
-6. 若结果非零但过小，则提升到 `min_angular_vel_`
-
-这样修改后：
-
-- 末端姿态对齐有独立停止阈值
-- `min_angular_vel_` 在末端对齐场景下重新变得有效
-- 通用原地旋转控制与“直线到点后的轻柔补角”被解耦
-
-## 当前关键参数关系
-
-后续调参时，优先关注下面几组关系。
-
-### 1. 直线末端进入阈值与退出阈值
-
-- `straight_terminal_yaw_trigger`
-- `straight_terminal_rotate_stop_yaw`
-
-建议：
-
-- `straight_terminal_yaw_trigger > straight_terminal_rotate_stop_yaw`
-
-否则容易出现：
-
-- 刚进入末端姿态对齐就满足退出条件
-- 或者进入/退出边界过近，行为不明显
-
-### 2. 最小角速度与停止阈值
-
-- `min_angular_vel`
-- `straight_terminal_rotate_stop_yaw`
-- `rotate_to_heading_kp`
-
-如果：
-
-- `min_angular_vel` 过大
-- `straight_terminal_rotate_stop_yaw` 过小
-
-则末端可能在接近停止区间时来回轻微摆动。
-
-### 3. 末端最大角速度
-
-- `straight_terminal_rotate_max_w`
-
-这个值过大时：
-
-- 末端补角会显得突兀
-- 甚至影响“直线停稳后再微调”的观感
-
-这个值过小时：
-
-- 收敛时间会变长
-- 更容易频繁打出“still not converged”日志
-
-### 4. 近目标直行角速度限制
-
-- `straight_near_goal_angular_max`
-
-这个参数影响的是“接近目标时边走边转”的能力，不是停下后的末端姿态对齐能力。两者不要混为一谈。
-
-## 后续排查建议
-
-如果后续发现“直线到点后朝向不准”或“末端原地补角抖动”，建议按下面顺序排查：
-
-1. 看是否真的进入了 `STRAIGHT_YAW_ALIGN`
-2. 看进入时 `yaw_error` 是否明显大于 `straight_terminal_yaw_trigger`
-3. 看 `filtered_cmd_vel_.angular.z` 是否因为滤波过强而收敛太慢
-4. 看 `min_angular_vel` 是否过大，导致小误差区间抖动
-5. 看 odom 反馈的 `angular.z` 是否太噪，导致加速度约束判断失真
-6. 看 `straight_terminal_rotate_max_w` 是否过小，导致补角很慢
-
-## 已知实现特点与注意事项
-
-- `pre_cmd_vel_` 当前来自 odom，而不是上一拍控制输出
-- 控制链路里同时存在“基于实际速度的加速度约束”和“输出低通滤波”
-- 末端对齐状态中仍然对角速度做滤波，所以实际停转会比理论控制输出更柔和
-- `straight_terminal_rotate_max_cycles` 当前主要用于周期性打印未收敛告警，不会强制跳出末端对齐
-- `computeRotateToHeadingCommand()` 仍保留通用旋转模式使用，不应再拿它替代末端直线姿态对齐逻辑
-
-## 建议的续接入口
-
-如果后续继续优化本模块，优先从这些位置入手：
-
-- `src/mobile_control_node.cpp`
-  关注 `targetCallback()`、`computeRotateToHeadingCommand()`、`computeStraightTerminalRotateCommand()`、`controlLoop()`
-- `config/mobile_control_params.yaml`
-  把本文件中的阈值关系同步到实际运行参数
-- 实机或仿真日志
-  重点观测：
-  `yaw_error`、`filtered_cmd_vel_.angular.z`、`pre_cmd_vel_.angular.z`
-
-## 本次会话结论
-
-- 已确认：旧版 `computeStraightTerminalRotateCommand()` 中的最小角速度逻辑会被通用旋转控制器的内层停转阈值覆盖，实际意义很弱
-- 已修改：末端直线姿态对齐控制器改为独立实现
-- 已保留：通用原地旋转控制器 `computeRotateToHeadingCommand()` 继续服务于非直线终态场景
-- 已修复：该函数附近一处日志格式写法错误
+- README 面向使用者，说明怎么配置、运行和排查。
+- AGENTS 面向维护者和自动化代理，说明约束、风险和代码边界。
+- 更新运行入口、话题、服务、参数或配置文件时，应同步更新 `README.md` 和本文件。
