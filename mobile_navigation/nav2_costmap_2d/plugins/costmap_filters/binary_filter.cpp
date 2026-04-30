@@ -75,6 +75,7 @@ void BinaryFilter::initializeFilter(
   node->get_parameter(name_ + "." + "flip_threshold", flip_threshold_);
 
   filter_info_topic_ = filter_info_topic;
+  resetMaskWarningState();
   // Setting new costmap filter info subscriber
   RCLCPP_INFO(
     logger_,
@@ -163,6 +164,7 @@ void BinaryFilter::maskCallback(
 
   filter_mask_ = msg;
   mask_frame_ = msg->header.frame_id;
+  maskReceived();
 }
 
 void BinaryFilter::process(
@@ -173,10 +175,7 @@ void BinaryFilter::process(
   std::lock_guard<CostmapFilter::mutex_t> guard(*getMutex());
 
   if (!filter_mask_) {
-    // Show warning message every 2 seconds to not litter an output
-    RCLCPP_WARN_THROTTLE(
-      logger_, *(clock_), 2000,
-      "BinaryFilter: Filter mask was not received");
+    warnMaskNotReceivedOnce("BinaryFilter");
     return;
   }
 
@@ -234,6 +233,7 @@ void BinaryFilter::resetFilter()
     binary_state_pub_->on_deactivate();
     binary_state_pub_.reset();
   }
+  resetMaskWarningState();
 }
 
 bool BinaryFilter::isActive()

@@ -70,6 +70,7 @@ void SpeedFilter::initializeFilter(
   node->get_parameter(name_ + "." + "speed_limit_topic", speed_limit_topic);
 
   filter_info_topic_ = filter_info_topic;
+  resetMaskWarningState();
   // Setting new costmap filter info subscriber
   RCLCPP_INFO(
     logger_,
@@ -170,6 +171,7 @@ void SpeedFilter::maskCallback(
 
   filter_mask_ = msg;
   mask_frame_ = msg->header.frame_id;
+  maskReceived();
 }
 
 void SpeedFilter::process(
@@ -180,10 +182,7 @@ void SpeedFilter::process(
   std::lock_guard<CostmapFilter::mutex_t> guard(*getMutex());
 
   if (!filter_mask_) {
-    // Show warning message every 2 seconds to not litter an output
-    RCLCPP_WARN_THROTTLE(
-      logger_, *(clock_), 2000,
-      "SpeedFilter: Filter mask was not received");
+    warnMaskNotReceivedOnce("SpeedFilter");
     return;
   }
 
@@ -270,6 +269,7 @@ void SpeedFilter::resetFilter()
     speed_limit_pub_->on_deactivate();
     speed_limit_pub_.reset();
   }
+  resetMaskWarningState();
 }
 
 bool SpeedFilter::isActive()
