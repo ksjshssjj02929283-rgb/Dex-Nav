@@ -1,0 +1,8 @@
+<library path="lib/libstraight_controller">
+    <class name="straight_controller/StraightController" type="straight_controller::StraightController"
+        base_class_type="nav_core::BaseController">
+        <description>
+            A implementation of a local PID planner.
+        </description>
+    </class>
+</library>
