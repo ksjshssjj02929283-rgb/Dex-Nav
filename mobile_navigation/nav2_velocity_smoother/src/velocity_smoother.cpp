@@ -91,11 +91,16 @@ VelocitySmoother::on_configure(const rclcpp_lifecycle::State &)
 
   // Get feature parameters
   declare_parameter_if_not_declared(node, "odom_topic", rclcpp::ParameterValue("odom"));
+  declare_parameter_if_not_declared(node, "input_topic", rclcpp::ParameterValue("cmd_vel"));
+  declare_parameter_if_not_declared(
+    node, "output_topic", rclcpp::ParameterValue("cmd_vel_smoothed"));
   declare_parameter_if_not_declared(node, "odom_duration", rclcpp::ParameterValue(0.1));
   declare_parameter_if_not_declared(
     node, "deadband_velocity", rclcpp::ParameterValue(std::vector<double>{0.0, 0.0, 0.0}));
   declare_parameter_if_not_declared(node, "velocity_timeout", rclcpp::ParameterValue(1.0));
   node->get_parameter("odom_topic", odom_topic_);
+  node->get_parameter("input_topic", input_topic_);
+  node->get_parameter("output_topic", output_topic_);
   node->get_parameter("odom_duration", odom_duration_);
   node->get_parameter("deadband_velocity", deadband_velocities_);
   node->get_parameter("velocity_timeout", velocity_timeout_dbl);
@@ -120,9 +125,12 @@ VelocitySmoother::on_configure(const rclcpp_lifecycle::State &)
   }
 
   // Setup inputs / outputs
-  smoothed_cmd_pub_ = create_publisher<geometry_msgs::msg::Twist>("cmd_vel_smoothed", 1);
+  RCLCPP_INFO(
+    get_logger(), "Velocity smoother input topic: %s, output topic: %s",
+    input_topic_.c_str(), output_topic_.c_str());
+  smoothed_cmd_pub_ = create_publisher<geometry_msgs::msg::Twist>(output_topic_, 1);
   cmd_sub_ = create_subscription<geometry_msgs::msg::Twist>(
-    "cmd_vel", rclcpp::QoS(1),
+    input_topic_, rclcpp::QoS(1),
     std::bind(&VelocitySmoother::inputCommandCallback, this, std::placeholders::_1));
 
   return nav2_util::CallbackReturn::SUCCESS;

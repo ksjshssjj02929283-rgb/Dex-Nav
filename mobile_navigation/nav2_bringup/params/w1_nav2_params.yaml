@@ -75,8 +75,12 @@ controller_server:
     progress_checker_plugins: ["progress_checker"] # progress_checker_plugin: "progress_checker" For Humble and older
     goal_checker_plugins: ["goal_checker"] # goal_checker_plugin: "goal_checker" For Galactic and older
     controller_plugins: ["FollowPath"]
-
+    odom_topic: /feedback/odom
     progress_checker:
+      plugin: "nav2_controller::PoseProgressChecker"
+      required_movement_radius: 0.1
+      required_movement_angle: 0.01
+      movement_time_allowance: 3.0
       plugin: "nav2_controller::PoseProgressChecker"
       required_movement_radius: 0.1
       required_movement_angle: 0.01
@@ -86,26 +90,35 @@ controller_server:
       lon_goal_tolerance: 0.02
       lat_goal_tolerance: 0.02
       yaw_goal_tolerance: 0.02
+      lon_goal_tolerance: 0.02
+      lat_goal_tolerance: 0.02
+      yaw_goal_tolerance: 0.02
       stateful: True    
     FollowPath:
       plugin: "nav2_mppi_controller::MPPIController"
       time_steps: 40 # 56
       model_dt: 0.1 # 0.05
       batch_size: 2000
-      vx_std: 0.25 # 0.2
+      vx_std: 0.35 # 0.2
       vy_std: 0.2
-      wz_std: 0.3 # 0.35 # 0.25 # 0.4
-      vx_max: 0.5 # 0.5
-      vx_min: -0.5 # -1.05 # -0.35
+      wz_std: 0.8 # 0.35 # 0.25 # 0.4
+      vx_max: 0.75 # 0.5
+      vx_min: -0.3 # -1.05 # -0.35
       vy_max: 0.5
-      wz_max: 0.5
+      wz_max: 1.0
+      ax_max: 0.5
+      ax_min: -0.5
+      az_max: 0.7
+      jx_max: 1.0
+      jz_max: 1.5
       iteration_count: 1
       prune_distance: 4.0 # 3.7 # 1.7 (must )
       transform_tolerance: 0.1
-      temperature: 0.3
+      temperature: 0.5
       gamma: 0.015
       motion_model: "DiffDrive" #Ackermann, DiffDrive
-      visualize: false
+      open_loop: true
+      visualize: true
       reset_period: 1.0 # (only in Humble)
       regenerate_noises: false
       TrajectoryVisualizer:
@@ -113,7 +126,7 @@ controller_server:
         time_step: 3
       AckermannConstraints:
         min_turning_r: 0.5
-      critics: ["ConstraintCritic", "CostCritic", "ObstaclesCritic", "GoalCritic", "GoalAngleCritic", "PathAlignCritic", "PathFollowCritic", "PathAngleCritic", "PreferForwardCritic"]
+      critics: ["ConstraintCritic", "CostCritic", "ObstaclesCritic", "GoalCritic", "GoalAngleCritic", "PathAlignCritic", "PathFollowCritic", "PathAngleCritic", "PreferForwardCritic", "VelocityDeadbandCritic"]
       # critics: ["ConstraintCritic", "CostCritic", "GoalCritic", "GoalAngleCritic", "PathAlignCritic", "PathFollowCritic", "PathAngleCritic", "PreferForwardCritic"]
       ConstraintCritic:
         enabled: true
@@ -122,17 +135,20 @@ controller_server:
       GoalCritic:
         enabled: true
         cost_power: 1
-        cost_weight: 8.0
-        threshold_to_consider: 2.2 # 1.4
+        cost_weight: 10.0
+        threshold_to_consider: 1.4 # 1.4
       GoalAngleCritic:
         enabled: true
         cost_power: 1
+        cost_weight: 3.0 # 3.0
+        threshold_to_consider: 0.1 # 0.5
         cost_weight: 3.0 # 3.0
         threshold_to_consider: 0.1 # 0.5
       PreferForwardCritic:
         enabled: true
         cost_power: 1
         cost_weight: 5.0
+        threshold_to_consider: 0.25
         threshold_to_consider: 0.25
       ObstaclesCritic:
         enabled: true
@@ -157,30 +173,35 @@ controller_server:
       PathAlignCritic:
         enabled: true
         cost_power: 1
-        cost_weight: 14.0
+        cost_weight: 8.0
         max_path_occupancy_ratio: 0.05
         trajectory_point_step: 3
         threshold_to_consider: 0.5
-        offset_from_furthest: 15 # 20
+        offset_from_furthest: 12 # 20
         use_path_orientations: false
       PathFollowCritic:
         enabled: true
         cost_power: 1
         cost_weight: 5.0
-        offset_from_furthest: 5
-        threshold_to_consider: 2.2 # 1.4
+        offset_from_furthest: 3
+        threshold_to_consider: 1.4 # 1.4
       PathAngleCritic:
         enabled: true
         cost_power: 1
-        cost_weight: 2.0
+        cost_weight: 1.0
         offset_from_furthest: 4
         threshold_to_consider: 0.5
-        max_angle_to_furthest: 1.0
+        max_angle_to_furthest: 1.4
         mode: 0
       TwirlingCritic:
         enabled: true
         twirling_cost_power: 1
         twirling_cost_weight: 10.0
+      VelocityDeadbandCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 10.0
+        deadband_velocities: [0.005, 0.08, 0.01]
 
 local_costmap:
   local_costmap:
@@ -197,12 +218,13 @@ local_costmap:
       footprint: "[[0.35, 0.29], [0.35, -0.29], [-0.35, -0.29], [-0.35, 0.29]]" # Slightly increased for better planning efficiency and safety (real size: 0.95*0.55)
       # footprint: "[ [0.55, 0.35], [0.55, -0.35], [-0.55, -0.35], [-0.55, 0.35] ]" # Slightly increased for better planning efficiency and safety (real size: 0.95*0.55)
       # plugins: ["voxel_layer", "denoise_layer", "inflation_layer"]
-      plugins: ["obstacle_layer", "denoise_layer", "inflation_layer"]   
+      plugins: ["static_layer", "obstacle_layer", "denoise_layer", "inflation_layer"]   
+      # filters: ["keepout_filter", "speed_filter"]
       # plugins: ["obstacle_layer", "voxel_layer", "denoise_layer", "inflation_layer"]
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 10.0
-        inflation_radius: 0.40 # 0.75 # 0.55
+        inflation_radius: 0.4 # 0.75 # 0.55
       denoise_layer:
         plugin: "nav2_costmap_2d::DenoiseLayer"
         enabled: True
@@ -268,6 +290,15 @@ local_costmap:
       static_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
         map_subscribe_transient_local: True
+      # keepout_filter:
+      #   plugin: "nav2_costmap_2d::KeepoutFilter"
+      #   enabled: True
+      #   filter_info_topic: "/keepout_costmap_filter_info"
+      # speed_filter:
+      #   plugin: "nav2_costmap_2d::SpeedFilter"
+      #   enabled: True
+      #   filter_info_topic: "/speed_costmap_filter_info"
+      #   speed_limit_topic: "/speed_limit"
       always_send_full_costmap: True  
 
 global_costmap:
@@ -285,6 +316,7 @@ global_costmap:
       # plugins: ["static_layer", "obstacle_layer",  "denoise_layer", "inflation_layer"]
       # plugins: ["static_layer", "voxel_layer", "denoise_layer", "inflation_layer"]
       plugins: ["static_layer", "obstacle_layer", "denoise_layer", "inflation_layer"]
+      # filters: ["keepout_filter", "speed_filter"]
       denoise_layer:
         plugin: "nav2_costmap_2d::DenoiseLayer"
         enabled: True
@@ -354,7 +386,16 @@ global_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 10.0
-        inflation_radius: 0.40 # 0.75 # 0.55
+        inflation_radius: 0.4 # 0.75 # 0.55
+      # keepout_filter:
+      #   plugin: "nav2_costmap_2d::KeepoutFilter"
+      #   enabled: True
+      #   filter_info_topic: "/keepout_costmap_filter_info"
+      # speed_filter:
+      #   plugin: "nav2_costmap_2d::SpeedFilter"
+      #   enabled: True
+      #   filter_info_topic: "/speed_costmap_filter_info"
+      #   speed_limit_topic: "/speed_limit"
       always_send_full_costmap: True
 
 map_server:
@@ -483,6 +524,8 @@ velocity_smoother:
     smoothing_frequency: 20.0
     scale_velocities: False
     feedback: "OPEN_LOOP"
+    input_topic: "control/cmd_vel"
+    output_topic: "control/cmd_vel_mux"
     # Test
     max_velocity: [0.5, 0.0, 0.7]
     min_velocity: [-0.5, 0.0, -0.7]  

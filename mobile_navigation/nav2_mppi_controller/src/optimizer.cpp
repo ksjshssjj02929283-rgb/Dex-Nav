@@ -14,6 +14,7 @@
 
 #include "nav2_mppi_controller/optimizer.hpp"
 
+#include <chrono>
 #include <limits>
 #include <memory>
 #include <stdexcept>
@@ -76,10 +77,32 @@ void Optimizer::getParams()
   getParam(s.base_constraints.vx_min, "vx_min", -0.35);
   getParam(s.base_constraints.vy, "vy_max", 0.5);
   getParam(s.base_constraints.wz, "wz_max", 1.9);
+  getParam(s.base_constraints.ax_max, "ax_max", 3.0f);
+  getParam(s.base_constraints.ax_min, "ax_min", -3.0f);
+  getParam(s.base_constraints.ay_max, "ay_max", 3.0f);
+  getParam(s.base_constraints.ay_min, "ay_min", -3.0f);
+  getParam(s.base_constraints.az_max, "az_max", 3.5f);
+  getParam(s.base_constraints.jx_max, "jx_max", 1000.0f);
+  getParam(s.base_constraints.jz_max, "jz_max", 1000.0f);
   getParam(s.sampling_std.vx, "vx_std", 0.2);
   getParam(s.sampling_std.vy, "vy_std", 0.2);
   getParam(s.sampling_std.wz, "wz_std", 0.4);
   getParam(s.retry_attempt_limit, "retry_attempt_limit", 1);
+  getParam(s.open_loop, "open_loop", false);
+
+  // 确保加速度参数符号正确
+  s.base_constraints.ax_max = fabs(s.base_constraints.ax_max);
+  s.base_constraints.az_max = fabs(s.base_constraints.az_max);
+  s.base_constraints.jx_max = fabs(s.base_constraints.jx_max);
+  s.base_constraints.jz_max = fabs(s.base_constraints.jz_max);
+  if (s.base_constraints.ax_min > 0.0) {
+    s.base_constraints.ax_min = -1.0 * s.base_constraints.ax_min;
+    RCLCPP_WARN(logger_, "ax_min 符号错误，已自动转为负值");
+  }
+  if (s.base_constraints.ay_min > 0.0) {
+    s.base_constraints.ay_min = -1.0 * s.base_constraints.ay_min;
+    RCLCPP_WARN(logger_, "ay_min 符号错误，已自动转为负值");
+  }
 
   getParam(motion_model_name, "motion_model", std::string("DiffDrive"));
 
@@ -122,10 +145,15 @@ void Optimizer::reset()
   control_history_[2] = {0.0, 0.0, 0.0};
   control_history_[3] = {0.0, 0.0, 0.0};
 
+  if (settings_.open_loop) {
+    last_command_vel_ = geometry_msgs::msg::Twist();
+  }
+
   costs_ = xt::zeros<float>({settings_.batch_size});
   generated_trajectories_.reset(settings_.batch_size, settings_.time_steps);
 
   noise_generator_.reset(settings_, isHolonomic());
+  motion_model_->initialize(settings_.constraints, settings_.model_dt);
   RCLCPP_INFO(logger_, "Optimizer reset");
 }
 
@@ -140,8 +168,9 @@ geometry_msgs::msg::TwistStamped Optimizer::evalControl(
     optimize();
   } while (fallback(critics_data_.fail_flag));
 
-  utils::savitskyGolayFilter(control_sequence_, control_history_, settings_);
   auto control = getControlFromSequenceAsTwist(plan.header.stamp);
+
+  last_command_vel_ = control.twist;
 
   if (settings_.shift_control_sequence) {
     shiftControlSequence();
@@ -152,10 +181,40 @@ geometry_msgs::msg::TwistStamped Optimizer::evalControl(
 
 void Optimizer::optimize()
 {
+  constexpr double kSlowOptimizeWarnMs = 100.0;
+
   for (size_t i = 0; i < settings_.iteration_count; ++i) {
+    auto t_generate_start = std::chrono::high_resolution_clock::now();
     generateNoisedTrajectories();
+    auto t_generate_end = std::chrono::high_resolution_clock::now();
+
+    auto t_critic_start = std::chrono::high_resolution_clock::now();
     critic_manager_.evalTrajectoriesScores(critics_data_);
+    auto t_critic_end = std::chrono::high_resolution_clock::now();
+
+    auto t_update_start = std::chrono::high_resolution_clock::now();
     updateControlSequence();
+    auto t_update_end = std::chrono::high_resolution_clock::now();
+
+    const double generate_ms =
+      std::chrono::duration<double, std::milli>(t_generate_end - t_generate_start).count();
+    const double critic_ms =
+      std::chrono::duration<double, std::milli>(t_critic_end - t_critic_start).count();
+    const double update_ms =
+      std::chrono::duration<double, std::milli>(t_update_end - t_update_start).count();
+    const double total_ms = generate_ms + critic_ms + update_ms;
+
+    if (
+      total_ms >= kSlowOptimizeWarnMs || generate_ms >= kSlowOptimizeWarnMs ||
+      critic_ms >= kSlowOptimizeWarnMs || update_ms >= kSlowOptimizeWarnMs)
+    {
+      RCLCPP_WARN(
+        logger_,
+        "Optimizer iteration %zu timing (ms): generate=%.3f critics=%.3f update=%.3f total=%.3f "
+        "[batch=%u steps=%u fail=%d]",
+        i, generate_ms, critic_ms, update_ms, total_ms,
+        settings_.batch_size, settings_.time_steps, critics_data_.fail_flag);
+    }
   }
 }
 
@@ -184,7 +243,7 @@ void Optimizer::prepare(
   const nav_msgs::msg::Path & plan, nav2_core::GoalChecker * goal_checker)
 {
   state_.pose = robot_pose;
-  state_.speed = robot_speed;
+  state_.speed = settings_.open_loop ? last_command_vel_ : robot_speed;
   path_ = utils::toTensor(plan);
   costs_.fill(0);
 
@@ -230,12 +289,69 @@ void Optimizer::applyControlSequenceConstraints()
 {
   auto & s = settings_;
 
+  const float max_delta_vx = s.model_dt * s.constraints.ax_max;
+  const float min_delta_vx = s.model_dt * s.constraints.ax_min;
+  const float max_delta_wz = s.model_dt * s.constraints.az_max;
+  const float max_delta_ax = s.model_dt * s.constraints.jx_max;
+  const float max_delta_wz_acc = s.model_dt * s.constraints.jz_max;
+
+  float vx_last = std::clamp(control_sequence_.vx(0), s.constraints.vx_min, s.constraints.vx_max);
+  float wz_last = std::clamp(control_sequence_.wz(0), -s.constraints.wz, s.constraints.wz);
+  control_sequence_.vx(0) = vx_last;
+  control_sequence_.wz(0) = wz_last;
+
+  float vx_acc_last = (vx_last - state_.speed.linear.x) / s.model_dt;
+  vx_acc_last = std::clamp(vx_acc_last, s.constraints.ax_min, s.constraints.ax_max);
+  float wz_acc_last = (wz_last - state_.speed.angular.z) / s.model_dt;
+  wz_acc_last = std::clamp(wz_acc_last, -s.constraints.az_max, s.constraints.az_max);
+
+  float vy_last = 0.0f;
   if (isHolonomic()) {
-    control_sequence_.vy = xt::clip(control_sequence_.vy, -s.constraints.vy, s.constraints.vy);
+    vy_last = std::clamp(control_sequence_.vy(0), -s.constraints.vy, s.constraints.vy);
+    control_sequence_.vy(0) = vy_last;
   }
 
-  control_sequence_.vx = xt::clip(control_sequence_.vx, s.constraints.vx_min, s.constraints.vx_max);
-  control_sequence_.wz = xt::clip(control_sequence_.wz, -s.constraints.wz, s.constraints.wz);
+  for (unsigned int i = 1; i < control_sequence_.vx.size(); i++) {
+    // 线加速度约束
+    float vx_curr = std::clamp(control_sequence_.vx(i), s.constraints.vx_min, s.constraints.vx_max);
+    if (vx_last > 0.0f) {
+      vx_curr = std::clamp(vx_curr, vx_last + min_delta_vx, vx_last + max_delta_vx);
+    } else {
+      vx_curr = std::clamp(vx_curr, vx_last - max_delta_vx, vx_last - min_delta_vx);
+    }
+
+    float vx_acc = (vx_curr - vx_last) / s.model_dt;
+    vx_acc = std::clamp(vx_acc, vx_acc_last - max_delta_ax, vx_acc_last + max_delta_ax);
+    vx_acc = std::clamp(vx_acc, s.constraints.ax_min, s.constraints.ax_max);
+    vx_curr = vx_last + vx_acc * s.model_dt;
+    control_sequence_.vx(i) = vx_curr;
+    vx_last = vx_curr;
+    vx_acc_last = vx_acc;
+
+    float wz_curr = std::clamp(control_sequence_.wz(i), -s.constraints.wz, s.constraints.wz);
+    wz_curr = std::clamp(wz_curr, wz_last - max_delta_wz, wz_last + max_delta_wz);
+    float wz_acc = (wz_curr - wz_last) / s.model_dt;
+    wz_acc = std::clamp(wz_acc, wz_acc_last - max_delta_wz_acc, wz_acc_last + max_delta_wz_acc);
+    wz_acc = std::clamp(wz_acc, -s.constraints.az_max, s.constraints.az_max);
+    wz_curr = wz_last + wz_acc * s.model_dt;
+    control_sequence_.wz(i) = wz_curr;
+    wz_last = wz_curr;
+    wz_acc_last = wz_acc;
+
+    if (isHolonomic()) {
+      const float max_delta_vy = s.model_dt * s.constraints.ay_max;
+      const float min_delta_vy = s.model_dt * s.constraints.ay_min;
+
+      float vy_curr = std::clamp(control_sequence_.vy(i), -s.constraints.vy, s.constraints.vy);
+      if (vy_last > 0.0f) {
+        vy_curr = std::clamp(vy_curr, vy_last + min_delta_vy, vy_last + max_delta_vy);
+      } else {
+        vy_curr = std::clamp(vy_curr, vy_last - max_delta_vy, vy_last - min_delta_vy);
+      }
+      control_sequence_.vy(i) = vy_curr;
+      vy_last = vy_curr;
+    }
+  }
 
   motion_model_->applyConstraints(control_sequence_);
 }
@@ -382,6 +498,7 @@ void Optimizer::updateControlSequence()
     xt::noalias(control_sequence_.vy) = xt::sum(state_.cvy * softmaxes_extened, 0, immediate);
   }
 
+  utils::savitskyGolayFilter(control_sequence_, control_history_, settings_);
   applyControlSequenceConstraints();
 }
 

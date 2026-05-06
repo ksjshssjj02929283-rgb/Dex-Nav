@@ -22,9 +22,38 @@ class BaseLinkPosition(Node):
         self.error_log_interval = 50  # 每50次错误才记录一次日志
         
         # 发布频率控制（Hz）
-        self.publish_rate = 20.0  # 2Hz，可根据需要调整
+        self.publish_rate = 50.0
+        self.tf_lookup_timeout_sec = 0.01
+        self.cache_timeout_sec = 0.2
+        self.last_pose_msg = None
+        self.last_pose_time = 0.0
         
         self.get_logger().info("Publish Chassis Position! ")
+
+    def _build_pose_msg(self, translation, orientation):
+        pose_msg = PoseStamped()
+        pose_msg.header.frame_id = 'map'
+        pose_msg.header.stamp = self.get_clock().now().to_msg()
+
+        pose_msg.pose.position.x = translation.x
+        pose_msg.pose.position.y = translation.y
+        pose_msg.pose.position.z = 0.0
+        pose_msg.pose.orientation = orientation
+        return pose_msg
+
+    def _publish_cached_pose(self):
+        if self.last_pose_msg is None:
+            return False
+
+        if time.time() - self.last_pose_time > self.cache_timeout_sec:
+            return False
+
+        cached_pose = PoseStamped()
+        cached_pose.header.frame_id = self.last_pose_msg.header.frame_id
+        cached_pose.header.stamp = self.get_clock().now().to_msg()
+        cached_pose.pose = self.last_pose_msg.pose
+        self.publisher.publish(cached_pose)
+        return True
 
     def get_position(self):
         try:
@@ -33,22 +62,17 @@ class BaseLinkPosition(Node):
                 'map',
                 'base_link',
                 rclpy.time.Time(),
-                timeout=rclpy.duration.Duration(seconds=0.05)  # 进一步缩短timeout
+                timeout=rclpy.duration.Duration(
+                    seconds=self.tf_lookup_timeout_sec)
             )
             
             translation = transform.transform.translation
             orientation = transform.transform.rotation
 
-            pose_msg = PoseStamped()
-            pose_msg.header.frame_id = 'map'
-            pose_msg.header.stamp = self.get_clock().now().to_msg()
-
-            pose_msg.pose.position.x = translation.x
-            pose_msg.pose.position.y = translation.y
-            pose_msg.pose.position.z = 0.0
-
-            pose_msg.pose.orientation = orientation
+            pose_msg = self._build_pose_msg(translation, orientation)
             self.publisher.publish(pose_msg)
+            self.last_pose_msg = pose_msg
+            self.last_pose_time = time.time()
             
             # 成功时重置错误计数
             if self.error_count > 0:
@@ -56,6 +80,7 @@ class BaseLinkPosition(Node):
                 
         except Exception as e:
             self.error_count += 1
+            self._publish_cached_pose()
             # 减少错误日志频率，避免频繁输出
             if self.error_count % self.error_log_interval == 0:
                 self.get_logger().error(f'TF error after {self.error_count} attempts: {str(e)}')
@@ -72,7 +97,7 @@ def main(args=None):
         # 使用spin_once配合休眠，比spin更高效，避免持续轮询
         while rclpy.ok():
             # 非阻塞处理ROS2事件（如TF订阅），超时时间很短
-            rclpy.spin_once(node, timeout_sec=0.005)  # 5ms超时，足够处理一次事件
+            rclpy.spin_once(node, timeout_sec=0.001)
             
             # 执行位置查询和发布
             node.get_position()
@@ -88,4 +113,3 @@ def main(args=None):
 
 if __name__ == '__main__':
     main()
-

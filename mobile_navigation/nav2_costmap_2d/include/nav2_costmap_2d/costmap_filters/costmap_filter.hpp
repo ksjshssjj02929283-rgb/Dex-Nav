@@ -170,6 +170,23 @@ protected:
     std::shared_ptr<std_srvs::srv::SetBool::Response> response);
 
   /**
+   * @brief Warn once that the filter mask has not been received yet.
+   * The warning state is reset after a valid mask arrives.
+   * @param filter_name Human-readable filter name to be shown in logs
+   */
+  void warnMaskNotReceivedOnce(const char * filter_name);
+
+  /**
+   * @brief Mark that a valid filter mask has been received and re-arm the one-shot warning.
+   */
+  void maskReceived();
+
+  /**
+   * @brief Reset the one-shot warning state when filter subscriptions are recreated.
+   */
+  void resetMaskWarningState();
+
+  /**
    * @brief:  Transforms robot pose from current layer frame to mask frame
    * @param:  global_frame Costmap frame to transform from
    * @param:  global_pose Robot pose in costmap frame
@@ -241,6 +258,11 @@ private:
    * @brief: Mutex for locking filter's resources
    */
   mutex_t * access_;
+
+  /**
+   * @brief: Tracks whether the "mask was not received" warning has already been emitted.
+   */
+  bool mask_not_received_warned_;
 };
 
 }  // namespace nav2_costmap_2d

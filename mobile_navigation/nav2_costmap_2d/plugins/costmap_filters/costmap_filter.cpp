@@ -52,6 +52,7 @@ CostmapFilter::CostmapFilter()
 : filter_info_topic_(""), mask_topic_("")
 {
   access_ = new mutex_t();
+  mask_not_received_warned_ = false;
 }
 
 CostmapFilter::~CostmapFilter()
@@ -145,6 +146,26 @@ void CostmapFilter::enableCallback(
   } else {
     response->message = "Disabled";
   }
+}
+
+void CostmapFilter::warnMaskNotReceivedOnce(const char * filter_name)
+{
+  if (mask_not_received_warned_) {
+    return;
+  }
+
+  RCLCPP_WARN(logger_, "%s: Filter mask was not received", filter_name);
+  mask_not_received_warned_ = true;
+}
+
+void CostmapFilter::maskReceived()
+{
+  mask_not_received_warned_ = false;
+}
+
+void CostmapFilter::resetMaskWarningState()
+{
+  mask_not_received_warned_ = false;
 }
 
 bool CostmapFilter::transformPose(
