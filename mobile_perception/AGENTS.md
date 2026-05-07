@@ -74,6 +74,7 @@
 - 服务 `start_apriltag_detection`
 - 服务 `stop_apriltag_detection`
 - 发布 `apriltag_poses`
+- 发布调试 TF `base_link -> apriltag_detection_debug_<id>`，该 TF 与 `apriltag_poses` 中对应 pose 完全一致，只用于诊断 raw tag 视觉测量抖动，不应被控制逻辑依赖。
 - 使用 `base_link` 作为输出位姿 frame
 
 `apriltag_alignment_tf_node` 默认发布：
