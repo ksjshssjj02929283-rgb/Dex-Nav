@@ -72,7 +72,7 @@ public:
     target_frame_ = declare_parameter("target_frame", std::string("base_link"));
     target_frame_prefix_ = declare_parameter(
       "target_frame_prefix", std::string("apriltag_target_"));
-    target_forward_offset_ = declare_parameter("target_forward_offset", 0.6);
+    target_forward_offset_ = declare_parameter("target_forward_offset", 0.65);
 
     pose_pub_ =
       create_publisher<geometry_msgs::msg::PoseArray>(pose_topic_, 10);

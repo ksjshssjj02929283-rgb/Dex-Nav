@@ -79,6 +79,7 @@ mobile_perception/
 发布：
 
 - `apriltag_poses` (`geometry_msgs/msg/PoseArray`)：检测到的 tag 在 `base_link` 下的位姿。
+- 调试 TF `base_link -> apriltag_detection_debug_<id>`：与 `apriltag_poses` 中对应 pose 完全一致，用于在 RViz 中判断 raw tag 视觉测量是否抖动；不作为控制输入。
 
 依赖 TF：
 
