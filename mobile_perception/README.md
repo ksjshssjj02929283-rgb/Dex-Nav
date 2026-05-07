@@ -89,14 +89,21 @@ mobile_perception/
 
 订阅：
 
+- 调用 `start_apriltag_detection` 后订阅图像；调用 `stop_apriltag_detection` 后取消订阅。
 - 默认图像话题来自 `config/camera_config.json` 的 `cameras[0].topic_name`，可通过参数 `image_topic` 覆盖。
 
 发布：
 
+- 以下话题和 TF 仅在 `start_apriltag_detection` 启动检测后创建并发布，`stop_apriltag_detection` 后关闭发布。
 - 默认 `apriltag_poses_debug` (`geometry_msgs/msg/PoseArray`)。
 - 默认 TF 子坐标系 `apriltag_raw_<id>` 和 `apriltag_aligned_<id>`。
 - 默认 `apriltag_target_pose` (`geometry_msgs/msg/PoseStamped`)：以 `apriltag_aligned_<id>` 为基准，沿其 X 轴前移 `target_forward_offset` 后发布到 `target_frame`，默认绑定在 `base_link` 下。
 - 默认 TF 子坐标系 `apriltag_target_<id>`：与 `apriltag_target_pose` 使用同一个目标位姿，便于 RViz 可视化。
+
+服务：
+
+- `start_apriltag_detection` (`std_srvs/srv/Trigger`)：创建 detector、TF listener/broadcaster、图像订阅和发布器，开始检测。
+- `stop_apriltag_detection` (`std_srvs/srv/Trigger`)：释放 detector、TF、图像订阅和发布器，停止检测以降低 CPU 占用。
 
 常用参数：
 
@@ -228,6 +235,8 @@ ros2 service call /stop_apriltag_detection std_srvs/srv/Trigger {}
 
 ```bash
 ros2 run mobile_perception apriltag_alignment_tf_node
+ros2 service call /start_apriltag_detection std_srvs/srv/Trigger {}
+ros2 service call /stop_apriltag_detection std_srvs/srv/Trigger {}
 ```
 
 发布一个精控目标：

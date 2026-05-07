@@ -30,6 +30,8 @@
 #include <apriltag/apriltag.h>
 #include <apriltag/tag36h11.h>
 
+#include <std_srvs/srv/trigger.hpp>
+
 #include <cmath>
 #include <fstream>
 #include <memory>
@@ -74,6 +76,45 @@ public:
       "target_frame_prefix", std::string("apriltag_target_"));
     target_forward_offset_ = declare_parameter("target_forward_offset", 0.65);
 
+    start_srv_ = create_service<std_srvs::srv::Trigger>(
+      "start_apriltag_detection",
+      std::bind(&AprilTagAlignmentTfNode::start_cb, this,
+      std::placeholders::_1, std::placeholders::_2));
+
+    stop_srv_ = create_service<std_srvs::srv::Trigger>(
+      "stop_apriltag_detection",
+      std::bind(&AprilTagAlignmentTfNode::stop_cb, this,
+      std::placeholders::_1, std::placeholders::_2));
+
+    reference_tag_quaternion_ = create_reference_tag_quaternion();
+    alignment_quaternion_ = reference_tag_quaternion_.inverse();
+    alignment_quaternion_.normalize();
+
+    RCLCPP_INFO(
+      get_logger(),
+      "AprilTag alignment TF node ready. image_topic=%s pose_topic=%s raw_prefix=%s aligned_prefix=%s target_topic=%s target_frame=%s target_prefix=%s target_forward_offset=%.3f",
+      image_topic_.c_str(), pose_topic_.c_str(), raw_frame_prefix_.c_str(),
+      aligned_frame_prefix_.c_str(), target_pose_topic_.c_str(),
+      target_frame_.c_str(), target_frame_prefix_.c_str(),
+      target_forward_offset_);
+  }
+
+  ~AprilTagAlignmentTfNode()
+  {
+    destroy_detector();
+  }
+
+private:
+  void start_cb(
+    const std::shared_ptr<std_srvs::srv::Trigger::Request>,
+    std::shared_ptr<std_srvs::srv::Trigger::Response> res)
+  {
+    if (detector_) {
+      res->success = false;
+      res->message = "AprilTag alignment detection already running";
+      return;
+    }
+
     pose_pub_ =
       create_publisher<geometry_msgs::msg::PoseArray>(pose_topic_, 10);
     target_pose_pub_ =
@@ -100,28 +141,31 @@ public:
     detector_->refine_edges = 1;
     detector_->decode_sharpening = 0.25;
 
-    reference_tag_quaternion_ = create_reference_tag_quaternion();
-    alignment_quaternion_ = reference_tag_quaternion_.inverse();
-    alignment_quaternion_.normalize();
-
-    RCLCPP_INFO(
-      get_logger(),
-      "AprilTag alignment TF node started. image_topic=%s pose_topic=%s raw_prefix=%s aligned_prefix=%s target_topic=%s target_frame=%s target_prefix=%s target_forward_offset=%.3f",
-      image_topic_.c_str(), pose_topic_.c_str(), raw_frame_prefix_.c_str(),
-      aligned_frame_prefix_.c_str(), target_pose_topic_.c_str(),
-      target_frame_.c_str(), target_frame_prefix_.c_str(),
-      target_forward_offset_);
+    res->success = true;
+    res->message = "AprilTag alignment detection started";
+    RCLCPP_INFO(get_logger(), "%s", res->message.c_str());
   }
 
-  ~AprilTagAlignmentTfNode()
+  void stop_cb(
+    const std::shared_ptr<std_srvs::srv::Trigger::Request>,
+    std::shared_ptr<std_srvs::srv::Trigger::Response> res)
   {
+    image_sub_.reset();
+    tf_broadcaster_.reset();
+    tf_listener_.reset();
+    tf_buffer_.reset();
+    pose_pub_.reset();
+    target_pose_pub_.reset();
     destroy_detector();
+
+    res->success = true;
+    res->message = "AprilTag alignment detection stopped";
+    RCLCPP_INFO(get_logger(), "%s", res->message.c_str());
   }
 
-private:
   void image_cb(const sensor_msgs::msg::Image::SharedPtr msg)
   {
-    if (!detector_ || !tf_buffer_) {
+    if (!detector_ || !tf_buffer_ || !pose_pub_) {
       return;
     }
 
@@ -133,7 +177,7 @@ private:
         tf2::TimePointZero);
     } catch (const tf2::TransformException & ex) {
       RCLCPP_WARN_THROTTLE(
-        get_logger(), *get_clock(), 2000,
+        get_logger(), *get_clock(), 10000,
         "TF lookup failed: %s", ex.what());
       return;
     }
@@ -144,7 +188,7 @@ private:
       cv::cvtColor(cv_ptr->image, gray, cv::COLOR_BGR2GRAY);
     } catch (const std::exception & ex) {
       RCLCPP_WARN_THROTTLE(
-        get_logger(), *get_clock(), 2000,
+        get_logger(), *get_clock(), 10000,
         "Image conversion failed: %s", ex.what());
       return;
     }
@@ -270,7 +314,7 @@ private:
       }
 
       RCLCPP_INFO_THROTTLE(
-        get_logger(), *get_clock(), 2000,
+        get_logger(), *get_clock(), 10000,
         "tag=%d raw_q=[%.4f %.4f %.4f %.4f] aligned_q=[%.4f %.4f %.4f %.4f] raw_yaw=%.4f aligned_yaw=%.4f",
         det->id,
         q_bt.x(), q_bt.y(), q_bt.z(), q_bt.w(),
@@ -311,6 +355,10 @@ private:
     const tf2::Quaternion & aligned_rotation,
     int tag_id)
   {
+    if (!target_pose_pub_ || !tf_buffer_) {
+      return;
+    }
+
     tf2::Matrix3x3 aligned_matrix(aligned_rotation);
     tf2::Vector3 target_translation =
       aligned_translation +
@@ -341,7 +389,7 @@ private:
             static_cast<double>(stamp.nanosec) * 1e-9));
       } catch (const tf2::TransformException & ex) {
         RCLCPP_WARN_THROTTLE(
-          get_logger(), *get_clock(), 2000,
+          get_logger(), *get_clock(), 10000,
           "Target pose transform at image stamp to %s failed, fallback to latest: %s",
           target_frame_.c_str(), ex.what());
 
@@ -352,7 +400,7 @@ private:
             tf2::TimePointZero);
         } catch (const tf2::TransformException & latest_ex) {
           RCLCPP_WARN_THROTTLE(
-            get_logger(), *get_clock(), 2000,
+            get_logger(), *get_clock(), 10000,
             "Target pose transform to %s failed: %s",
             target_frame_.c_str(), latest_ex.what());
           return;
@@ -367,12 +415,15 @@ private:
     target_pose_pub_->publish(target_pose);
 
     if (publish_target_tf_) {
+      if (!tf_broadcaster_) {
+        return;
+      }
       tf_broadcaster_->sendTransform(
         create_target_transform(target_pose, tag_id));
     }
 
     RCLCPP_INFO_THROTTLE(
-      get_logger(), *get_clock(), 2000,
+      get_logger(), *get_clock(), 10000,
       "tag=%d target_pose[%s]: x=%.3f y=%.3f z=%.3f offset=%.3f",
       tag_id, target_frame_.c_str(),
       target_pose.pose.position.x,
@@ -453,6 +504,9 @@ private:
   rclcpp::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr pose_pub_;
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr target_pose_pub_;
   rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr image_sub_;
+
+  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr start_srv_;
+  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr stop_srv_;
 
   std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
   std::shared_ptr<tf2_ros::TransformListener> tf_listener_;

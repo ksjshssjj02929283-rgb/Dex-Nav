@@ -85,6 +85,11 @@
 - `apriltag_target_pose`
 - `apriltag_target_<id>`
 
+该节点与 `apriltag_detection_node` 使用一致的启停服务：
+
+- `start_apriltag_detection`：创建 detector、TF listener/broadcaster、图像订阅和发布器后开始检测与发布。
+- `stop_apriltag_detection`：释放 detector、TF、图像订阅和发布器，停止检测与发布以降低 CPU 占用。
+
 修改 `camera_link`、图像话题或 tag 尺寸时，优先通过参数或配置文件完成。
 目标点发布逻辑以 `apriltag_aligned_<id>` 的姿态为基准，沿其 X 轴偏移 `target_forward_offset`，默认发布在 `base_link` 下，并可通过 `publish_target_tf` 发布目标 TF。修改这段逻辑时要保持参数可配置，不要写死 frame 名或距离。
 
