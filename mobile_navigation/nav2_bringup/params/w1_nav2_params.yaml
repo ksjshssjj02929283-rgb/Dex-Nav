@@ -216,7 +216,7 @@ local_costmap:
       # footprint: "[ [0.55, 0.35], [0.55, -0.35], [-0.55, -0.35], [-0.55, 0.35] ]" # Slightly increased for better planning efficiency and safety (real size: 0.95*0.55)
       # plugins: ["voxel_layer", "denoise_layer", "inflation_layer"]
       plugins: ["static_layer", "obstacle_layer", "denoise_layer", "inflation_layer"]   
-      filters: ["keepout_filter", "speed_filter"]
+      filters: ["keepout_filter", "keepout_inflation_layer", "speed_filter"]
       # plugins: ["obstacle_layer", "voxel_layer", "denoise_layer", "inflation_layer"]
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
@@ -291,6 +291,10 @@ local_costmap:
         plugin: "nav2_costmap_2d::KeepoutFilter"
         enabled: True
         filter_info_topic: "/keepout_costmap_filter_info"
+      keepout_inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        enabled: True
+        inflation_radius: 0.4
       speed_filter:
         plugin: "nav2_costmap_2d::SpeedFilter"
         enabled: True
@@ -313,7 +317,7 @@ global_costmap:
       # plugins: ["static_layer", "obstacle_layer",  "denoise_layer", "inflation_layer"]
       # plugins: ["static_layer", "voxel_layer", "denoise_layer", "inflation_layer"]
       plugins: ["static_layer", "obstacle_layer", "denoise_layer", "inflation_layer"]
-      filters: ["keepout_filter", "speed_filter"]
+      filters: ["keepout_filter", "keepout_inflation_layer","speed_filter"]
       denoise_layer:
         plugin: "nav2_costmap_2d::DenoiseLayer"
         enabled: True
@@ -388,6 +392,10 @@ global_costmap:
         plugin: "nav2_costmap_2d::KeepoutFilter"
         enabled: True
         filter_info_topic: "/keepout_costmap_filter_info"
+      keepout_inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        enabled: True
+        inflation_radius: 0.4
       speed_filter:
         plugin: "nav2_costmap_2d::SpeedFilter"
         enabled: True
