@@ -81,15 +81,8 @@ controller_server:
       required_movement_radius: 0.1
       required_movement_angle: 0.01
       movement_time_allowance: 3.0
-      plugin: "nav2_controller::PoseProgressChecker"
-      required_movement_radius: 0.1
-      required_movement_angle: 0.01
-      movement_time_allowance: 3.0
     goal_checker:
       plugin: "nav2_controller::LongitudinalGoalChecker"
-      lon_goal_tolerance: 0.02
-      lat_goal_tolerance: 0.02
-      yaw_goal_tolerance: 0.02
       lon_goal_tolerance: 0.02
       lat_goal_tolerance: 0.02
       yaw_goal_tolerance: 0.02
