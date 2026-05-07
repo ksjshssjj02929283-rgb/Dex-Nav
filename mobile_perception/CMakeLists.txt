@@ -46,6 +46,7 @@ add_executable(apriltag_detection_node
 
 ament_target_dependencies(apriltag_detection_node
   rclcpp
+  std_srvs
   sensor_msgs
   geometry_msgs
   tf2_ros
@@ -54,7 +55,6 @@ ament_target_dependencies(apriltag_detection_node
   OpenCV
   ament_index_cpp
   nlohmann_json
-  std_srvs
 )
 target_link_libraries(apriltag_detection_node
   apriltag::apriltag
@@ -67,6 +67,7 @@ add_executable(apriltag_alignment_tf_node
 
 ament_target_dependencies(apriltag_alignment_tf_node
   rclcpp
+  std_srvs
   sensor_msgs
   geometry_msgs
   tf2_ros
