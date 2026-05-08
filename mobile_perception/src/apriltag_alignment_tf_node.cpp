@@ -74,7 +74,7 @@ public:
     target_frame_ = declare_parameter("target_frame", std::string("base_link"));
     target_frame_prefix_ = declare_parameter(
       "target_frame_prefix", std::string("apriltag_target_"));
-    target_forward_offset_ = declare_parameter("target_forward_offset", 0.65);
+    target_forward_offset_ = declare_parameter("target_forward_offset", 0.67);
 
     start_srv_ = create_service<std_srvs::srv::Trigger>(
       "start_apriltag_detection",
