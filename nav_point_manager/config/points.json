@@ -1,0 +1,44 @@
+{
+  "points": [
+    {
+      "name": "station_A",
+      "type": "STATION",
+      "tolerance": 0.03,
+      "pose": {
+        "x": 1.0,
+        "y": 1.0,
+        "yaw": 1.57
+      }
+    },
+    {
+      "name": "station_B",
+      "type": "STATION",
+      "tolerance": 0.02,
+      "pose": {
+        "x": 2.734,
+        "y": -0.753,
+        "yaw": 0.0
+      }
+    },
+    {
+      "name": "charging_point",
+      "type": "CHARGING",
+      "tolerance": 0.02,
+      "pose": {
+        "x": 0.0,
+        "y": 0.0,
+        "yaw": 0.0
+      }
+    },
+    {
+      "name": "pickup_zone",
+      "type": "PICKUP",
+      "tolerance": 0.02,
+      "pose": {
+        "x": 2.0,
+        "y": 2.0,
+        "yaw": 3.14
+      }
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "routes": [
+    {
+      "name": "route_A",
+      "points": [
+        "station_A",
+        "station_B"
+      ]
+    },
+    {
+      "name": "patrol_route",
+      "points": [
+        "station_A",
+        "pickup_zone",
+        "station_B",
+        "charging_point"
+      ]
+    }
+  ]
+}

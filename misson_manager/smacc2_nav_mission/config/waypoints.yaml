@@ -1,0 +1,10 @@
+# smacc2_nav_mission 任务配置
+# 坐标由 nav_point_manager 管理（points.json），此处只配置点位名称
+smacc2_nav_mission:
+  ros__parameters:
+    # 取货点名称（对应 nav_point_manager 的 points.json 中的 name 字段）
+    pickup_point_name: "pickup_zone"
+    # 放货点名称
+    dropoff_point_name: "station_B"
+    # nav_point_manager 节点的命名空间（通常不需要修改）
+    nav_point_manager_ns: "/nav_point_manager_node"
