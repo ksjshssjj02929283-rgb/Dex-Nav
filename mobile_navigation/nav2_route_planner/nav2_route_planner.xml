@@ -1,0 +1,12 @@
+<library path="nav2_route_planner">
+  <class name="nav2_route_planner/NavRouteGraphPlanner"
+         type="nav2_route_planner::NavRouteGraphPlanner"
+         base_class_type="nav2_core::GlobalPlanner">
+    <description>
+      Road-graph global planner. Loads NavPoints + Junctions + Edges from
+      map_asset_manager, projects start/goal onto the graph, runs A* with
+      cross-floor / regulatory-element cost, and interpolates a nav_msgs/Path.
+      Publishes parallel RoutePlan topic with per-segment semantics.
+    </description>
+  </class>
+</library>
