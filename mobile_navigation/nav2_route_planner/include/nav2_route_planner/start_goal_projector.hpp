@@ -17,7 +17,8 @@ namespace nav2_route_planner
 /// Projects a free-space pose onto the road graph.
 ///
 /// Algorithm (mirrors ROS1 `GetPointId` / `GetLineId` / `GetVerticalPoint`):
-///   1. Find nearest NavPoint within `node_threshold` → ON_NODE
+///   1. Find nearest graph node within `node_threshold` → ON_NODE
+///      (both NAV_POINT and JUNCTION are eligible)
 ///   2. Else find nearest edge sample within `edge_threshold` → ON_EDGE
 ///   3. Else INVALID
 class StartGoalProjector
@@ -51,9 +52,9 @@ public:
     const geometry_msgs::msg::PoseStamped & pose,
     const TopoGraph & graph) const;
 
-  /// Project requiring a NavPoint match (for goals).
-  /// Returns the NavPoint id, or nullopt if no NavPoint within node_threshold.
-  /// Caller must hold graph.lockShared().
+  /// Project requiring a node match (for goals).
+  /// Returns the nearest graph node id (NAV_POINT or JUNCTION) within
+  /// node_threshold, or nullopt otherwise. Caller must hold lockShared().
   std::optional<std::string> projectToNode(
     const geometry_msgs::msg::PoseStamped & pose,
     const TopoGraph & graph) const;

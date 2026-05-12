@@ -106,6 +106,44 @@ TEST(ProjectorTest, ProjectToNodeRequiresClose)
   EXPECT_FALSE(proj.projectToNode(pose(5.0, 0.0), *g).has_value());
 }
 
+// Junctions must be eligible as projection targets — both for `project`
+// (start) and `projectToNode` (goal). Regression for: "Goal pose does
+// not match any NavPoint within 0.50m" when a Junction was the nearest
+// node.
+TEST(ProjectorTest, JunctionEligibleAsStartAndGoal)
+{
+  auto g = std::make_unique<TopoGraph>();
+  std::vector<TopoNode> nodes;
+  // A NavPoint and a Junction, both within node_threshold of the query.
+  // The Junction is the closer one, so it must win.
+  TopoNode a; a.id = "A"; a.kind = NodeKind::NAV_POINT;
+  a.x = 0.0; a.y = 0.0;
+  nodes.push_back(a);
+  TopoNode j; j.id = "J"; j.kind = NodeKind::JUNCTION;
+  j.x = 4.64; j.y = -0.19;
+  nodes.push_back(j);
+  std::vector<TopoEdge> edges;
+  TopoEdge e; e.id = "e"; e.from_id = "A"; e.to_id = "J";
+  e.geometry = EdgeGeometry::LINE;
+  edges.push_back(e);
+  g->rebuildFrom(std::move(nodes), std::move(edges));
+
+  auto lock = g->lockShared();
+  StartGoalProjector::Params pr;
+  StartGoalProjector proj(pr);
+
+  // Goal at the junction's own location → projectToNode returns "J".
+  auto goal_id = proj.projectToNode(pose(4.64, -0.19), *g);
+  ASSERT_TRUE(goal_id.has_value());
+  EXPECT_EQ(*goal_id, "J");
+
+  // project() (start path) should also pick the junction, since it's
+  // the nearest node.
+  auto start = proj.project(pose(4.64, -0.19), *g);
+  EXPECT_EQ(start.type, StartGoalProjector::ResultType::ON_NODE);
+  EXPECT_EQ(start.id, "J");
+}
+
 int main(int argc, char ** argv)
 {
   ::testing::InitGoogleTest(&argc, argv);

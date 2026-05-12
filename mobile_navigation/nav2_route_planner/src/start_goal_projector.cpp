@@ -41,10 +41,12 @@ StartGoalProjector::Result StartGoalProjector::project(
   const double px = pose.pose.position.x;
   const double py = pose.pose.position.y;
 
-  // Step 1: nearest NavPoint within node_threshold.
+  // Step 1: nearest graph node within node_threshold.
+  // Both NAV_POINT and JUNCTION are eligible — A* and interpolator treat
+  // them uniformly (they're just topological nodes with (x,y,yaw)). A
+  // junction near the user's clicked goal is a perfectly valid destination.
   double best_d = p_.node_threshold_m;
   for (const auto & [id, n] : graph.nodes()) {
-    if (n.kind != NodeKind::NAV_POINT) {continue;}  // goal/start prefer NavPoints
     const double d = std::hypot(n.x - px, n.y - py);
     if (d < best_d) {
       best_d = d;
@@ -109,8 +111,10 @@ std::optional<std::string> StartGoalProjector::projectToNode(
   const double py = pose.pose.position.y;
   std::string best_id;
   double best_d = p_.node_threshold_m;
+  // Match against both NAV_POINT and JUNCTION — a junction is a valid
+  // goal node: it has well-defined (x,y,yaw) and participates in the
+  // topology, so the user can absolutely want to navigate to one.
   for (const auto & [id, n] : graph.nodes()) {
-    if (n.kind != NodeKind::NAV_POINT) {continue;}
     const double d = std::hypot(n.x - px, n.y - py);
     if (d < best_d) {
       best_d = d;

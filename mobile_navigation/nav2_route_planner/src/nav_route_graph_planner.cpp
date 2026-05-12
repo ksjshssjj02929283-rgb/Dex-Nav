@@ -208,11 +208,14 @@ nav_msgs::msg::Path NavRouteGraphPlanner::createPlan(
     return empty_path;
   }
 
-  // ── Step 2: project goal (must hit a NavPoint) ─────────────────────
+  // ── Step 2: project goal (must hit a graph node) ───────────────────
+  // Goal must land on a topology node — either a NavPoint or a Junction.
+  // Both are valid destinations; A* and the interpolator treat them
+  // uniformly.
   auto goal_id = projector_->projectToNode(goal, *graph_);
   if (!goal_id) {
     RCLCPP_ERROR(logger_,
-      "Goal pose (%.2f, %.2f) does not match any NavPoint within %.2fm",
+      "Goal pose (%.2f, %.2f) does not match any NavPoint or Junction within %.2fm",
       goal.pose.position.x, goal.pose.position.y,
       params_.projection_node_threshold_m);
     return empty_path;
