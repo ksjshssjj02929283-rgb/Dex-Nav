@@ -16,6 +16,7 @@
 
 #include "nav_msgs/msg/path.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
+#include "visualization_msgs/msg/marker_array.hpp"
 
 #include "nav2_route_planner/astar_searcher.hpp"
 #include "nav2_route_planner/cost_function.hpp"
@@ -89,6 +90,11 @@ private:
   std::shared_ptr<PathInterpolator> interpolator_;
   std::shared_ptr<RoutePlanPublisher> rp_publisher_;
   std::shared_ptr<CostmapAwareLayer> ca_layer_;
+
+  // Debug marker publisher: visualizes each detected obstacle's
+  // start_index / end_index on the planned path. Lifecycle-managed.
+  rclcpp_lifecycle::LifecyclePublisher<
+    visualization_msgs::msg::MarkerArray>::SharedPtr obstacle_markers_pub_;
 
   // Nav2 standard members
   rclcpp_lifecycle::LifecycleNode::WeakPtr parent_node_;

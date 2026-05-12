@@ -19,6 +19,7 @@ find_package(tf2_geometry_msgs REQUIRED)
 find_package(pluginlib REQUIRED)
 find_package(nav_interfaces REQUIRED)
 find_package(nav2_theta_star_planner REQUIRED)
+find_package(visualization_msgs REQUIRED)
 
 nav2_package()
 add_compile_options(-O3)
@@ -45,6 +46,7 @@ set(dependencies
   pluginlib
   nav_interfaces
   nav2_theta_star_planner
+  visualization_msgs
 )
 
 add_library(${library_name} SHARED

@@ -81,17 +81,24 @@ public:
   // ─── Layer 2 (in-graph obstacle detection) ──────────────────────────
   struct ObstacleSegment
   {
-    bool has_obstacle{false};
     std::size_t start_index{0};   // first pose index inside (or just before) obstacle
-    std::size_t end_index{0};     // first pose index past the obstacle
+    std::size_t end_index{0};     // last pose index inside obstacle (inclusive)
   };
 
-  /// Walk `plan` from index 1 onwards, find the first contiguous run of
-  /// cells with cost > `obstacle_cost_threshold`. Then expand outward by
-  /// `obstacle_margin_before_m` / `obstacle_margin_after_m` (clipped to
-  /// the plan ends). When no obstacle is found, `has_obstacle=false`.
-  /// Cuts off scanning past `bypass_max_replan_length_m` to bound work.
-  ObstacleSegment detectObstacle(
+  /// Detect ALL contiguous lethal-cost runs along `plan`. Each run is
+  /// expanded outward by `obstacle_margin_before_m` /
+  /// `obstacle_margin_after_m` (clipped to plan ends, and clipped so
+  /// adjacent runs do not overlap). Scanning stops past
+  /// `bypass_max_replan_length_m` cumulative travel.
+  ///
+  /// This is the single obstacle-detection entry point — it works for
+  /// 0/1/N obstacle runs, so callers that previously special-cased
+  /// "find the first obstacle" can simply use `result.empty()` for the
+  /// 0-obstacle case and `result[0]` for the first one.
+  ///
+  /// Returned segments are sorted by `start_index` ascending and are
+  /// guaranteed non-overlapping.
+  std::vector<ObstacleSegment> detectAllObstacles(
     const std::vector<geometry_msgs::msg::PoseStamped> & plan) const;
 
 private:

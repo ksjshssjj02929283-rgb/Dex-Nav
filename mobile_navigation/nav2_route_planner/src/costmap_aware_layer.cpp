@@ -100,12 +100,23 @@ CostmapAwareLayer::planWithThetaStar(
     return std::nullopt;
   }
 
-  // ThetaStar returns waypoints in goal->start order (per upstream
-  // convention). We expose them start->goal here.
-  std::reverse(raw.begin(), raw.end());
+  // ⚠️ DO NOT REVERSE `raw`.
+  //
+  // ThetaStar::backtrace (nav2_theta_star_planner/src/theta_star.cpp:153)
+  // already emits waypoints in src→goal order: it builds `path_rev` as
+  // [goal, ..., src] by following parent_id, then does a final reverse
+  // loop into `raw_points`. So `raw[0] == src == seg_start` and
+  // `raw.back() == goal == seg_end` — exactly what we need.
+  //
+  // A previous version of this file reversed `raw` again here, citing
+  // "upstream returns goal->start". That was wrong and caused the dense
+  // bypass to walk goal→src, which after splicing into the surrounding
+  // path produced a visible self-loop / fold-back (the user's reported
+  // "A→B→theta_star" symptom). Keep `raw` in src→goal order.
 
   // Sample at half costmap resolution between consecutive waypoints so the
-  // controller has a dense path to track.
+  // controller has a dense path to track. Output remains in src→goal
+  // order, terminating exactly at seg_end.
   const double res = std::max(0.5 * costmap_->getResolution(), 0.01);
   std::vector<geometry_msgs::msg::PoseStamped> out;
   out.reserve(raw.size() * 4);
@@ -126,7 +137,8 @@ CostmapAwareLayer::planWithThetaStar(
       out.push_back(p);
     }
   }
-  // Append the final waypoint (goal-side) so the path actually reaches seg_end
+  // Append the final waypoint (seg_end / goal side) so the path
+  // terminates exactly at the requested endpoint.
   geometry_msgs::msg::PoseStamped last = tmpl;
   last.pose.position = seg_end.pose.position;
   out.push_back(last);
@@ -144,84 +156,84 @@ unsigned char CostmapAwareLayer::getCostAt(double x, double y) const
   return costmap_->getCost(mx, my);
 }
 
-CostmapAwareLayer::ObstacleSegment
-CostmapAwareLayer::detectObstacle(
+std::vector<CostmapAwareLayer::ObstacleSegment>
+CostmapAwareLayer::detectAllObstacles(
   const std::vector<geometry_msgs::msg::PoseStamped> & plan) const
 {
-  ObstacleSegment seg;
-  if (!costmap_ || plan.size() < 2) {return seg;}
+  std::vector<ObstacleSegment> out;
+  if (!costmap_ || plan.size() < 2) {return out;}
 
   std::unique_lock<nav2_costmap_2d::Costmap2D::mutex_t> lock(*costmap_->getMutex());
 
-  // Forward scan for the first lethal run, with hard stop at
-  // `bypass_max_replan_length_m` of accumulated travel distance.
-  std::size_t first_in = 0;
-  std::size_t first_out = 0;
-  bool in_obstacle = false;
-  bool found = false;
-  double traversed = 0.0;
-
+  // Pre-compute cumulative arc-length so margin walks are O(1) lookups.
+  std::vector<double> cum_len(plan.size(), 0.0);
   for (std::size_t i = 1; i < plan.size(); ++i) {
-    const auto & prev = plan[i - 1].pose.position;
-    const auto & cur = plan[i].pose.position;
-    traversed += std::hypot(cur.x - prev.x, cur.y - prev.y);
-    if (traversed > p_.bypass_max_replan_length_m) {break;}
+    const auto & a = plan[i - 1].pose.position;
+    const auto & b = plan[i].pose.position;
+    cum_len[i] = cum_len[i - 1] + std::hypot(b.x - a.x, b.y - a.y);
+  }
+  const double scan_budget = p_.bypass_max_replan_length_m;
 
+  // Forward scan for ALL contiguous lethal runs.
+  std::vector<std::pair<std::size_t, std::size_t>> raw_runs;
+  bool in_obstacle = false;
+  std::size_t first_in = 0;
+  for (std::size_t i = 1; i < plan.size(); ++i) {
+    if (cum_len[i] > scan_budget) {break;}
+    const auto & cur = plan[i].pose.position;
     const auto cost = getCostAt(cur.x, cur.y);
     const bool lethal = cost >= p_.obstacle_cost_threshold;
     if (lethal && !in_obstacle) {
       first_in = i;
       in_obstacle = true;
-      found = true;
     } else if (!lethal && in_obstacle) {
-      first_out = i;
+      raw_runs.emplace_back(first_in, i - 1);
       in_obstacle = false;
-      break;  // first complete run handled
     }
   }
-
-  if (!found) {return seg;}
   if (in_obstacle) {
-    // Plan ends inside the obstacle — clip to last index
-    first_out = plan.size() - 1;
+    raw_runs.emplace_back(first_in, plan.size() - 1);
+  }
+  if (raw_runs.empty()) {return out;}
+
+  // Margin expansion using cum_len. walkBack stops when distance from
+  // first_in is ≥ margin OR we hit index 0; walkFwd similarly.
+  auto walkBack = [&cum_len](std::size_t i, double margin) -> std::size_t {
+      if (i == 0) {return 0;}
+      const double target = cum_len[i] - margin;
+      while (i > 0 && cum_len[i - 1] >= target) {--i;}
+      return i;
+    };
+  auto walkFwd = [&cum_len, n = plan.size()](std::size_t i, double margin)
+    -> std::size_t {
+      const double target = cum_len[i] + margin;
+      while (i + 1 < n && cum_len[i + 1] <= target) {++i;}
+      return i;
+    };
+
+  // Build expanded segments, then enforce non-overlap by clipping
+  // adjacent ranges to (mid-point) split.
+  out.reserve(raw_runs.size());
+  for (const auto & r : raw_runs) {
+    ObstacleSegment s;
+    s.start_index = walkBack(r.first, p_.obstacle_margin_before_m);
+    s.end_index = walkFwd(r.second, p_.obstacle_margin_after_m);
+    if (!out.empty() && s.start_index <= out.back().end_index) {
+      // Overlap with previous run — merge into one larger run.
+      out.back().end_index = std::max(out.back().end_index, s.end_index);
+      continue;
+    }
+    out.push_back(s);
   }
 
-  // Expand outward by margins. Walk backwards from first_in until
-  // cumulative distance ≥ margin_before, similarly forward from first_out.
-  auto walkBack = [&plan](std::size_t i, double margin) -> std::size_t {
-      if (i == 0) {return 0;}
-      double acc = 0.0;
-      while (i > 0) {
-        const auto & a = plan[i - 1].pose.position;
-        const auto & b = plan[i].pose.position;
-        acc += std::hypot(b.x - a.x, b.y - a.y);
-        if (acc >= margin) {return i - 1;}
-        --i;
-      }
-      return 0;
-    };
-  auto walkFwd = [&plan](std::size_t i, double margin) -> std::size_t {
-      if (i + 1 >= plan.size()) {return plan.size() - 1;}
-      double acc = 0.0;
-      while (i + 1 < plan.size()) {
-        const auto & a = plan[i].pose.position;
-        const auto & b = plan[i + 1].pose.position;
-        acc += std::hypot(b.x - a.x, b.y - a.y);
-        if (acc >= margin) {return i + 1;}
-        ++i;
-      }
-      return plan.size() - 1;
-    };
-
-  seg.start_index = walkBack(first_in, p_.obstacle_margin_before_m);
-  seg.end_index = walkFwd(first_out, p_.obstacle_margin_after_m);
-  seg.has_obstacle = true;
-
-  RCLCPP_DEBUG(
-    logger_,
-    "Layer 2: obstacle run [%zu..%zu] expanded to [%zu..%zu]",
-    first_in, first_out, seg.start_index, seg.end_index);
-  return seg;
+  for (std::size_t k = 0; k < out.size(); ++k) {
+    RCLCPP_DEBUG(
+      logger_,
+      "Layer 2: obstacle run %zu raw=[%zu..%zu] expanded=[%zu..%zu]",
+      k, raw_runs[k].first, raw_runs[k].second,
+      out[k].start_index, out[k].end_index);
+  }
+  return out;
 }
 
 
