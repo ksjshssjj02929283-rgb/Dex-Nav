@@ -1,5 +1,8 @@
 <class_libraries>
   <library path="layers">
+    <class type="nav2_costmap_2d::EsdfLayer"  base_class_type="nav2_costmap_2d::Layer">
+      <description>Builds a continuous Euclidean distance cost field from lethal cells in the master costmap.</description>
+    </class>
     <class type="nav2_costmap_2d::InflationLayer"  base_class_type="nav2_costmap_2d::Layer">
       <description>Inflates obstacles to speed collision checking and to make robot prefer to stay away from obstacles.</description>
     </class>
@@ -32,4 +35,3 @@
     </class>
   </library>
 </class_libraries>
-

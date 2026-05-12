@@ -89,6 +89,7 @@ ament_target_dependencies(nav2_costmap_2d_core
 target_link_libraries(nav2_costmap_2d_core Eigen3::Eigen)
 
 add_library(layers SHARED
+  plugins/esdf_layer.cpp
   plugins/inflation_layer.cpp
   plugins/static_layer.cpp
   plugins/obstacle_layer.cpp

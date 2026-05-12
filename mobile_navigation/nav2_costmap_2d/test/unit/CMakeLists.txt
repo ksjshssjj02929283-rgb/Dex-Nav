@@ -56,3 +56,9 @@ target_link_libraries(denoise_layer_test
   ${PROJECT_NAME}::nav2_costmap_2d_core
   ${PROJECT_NAME}::layers
 )
+
+ament_add_gtest(esdf_layer_test esdf_layer_test.cpp)
+target_link_libraries(esdf_layer_test
+  ${PROJECT_NAME}::nav2_costmap_2d_core
+  ${PROJECT_NAME}::layers
+)

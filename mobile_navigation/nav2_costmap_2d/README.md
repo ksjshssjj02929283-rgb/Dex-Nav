@@ -6,6 +6,36 @@ See its [Configuration Guide Page](https://navigation.ros.org/configuration/pack
 
 See the [Navigation Plugin list](https://navigation.ros.org/plugins/index.html) for a list of the currently known and available planner plugins. 
 
+## ESDF Cost Layer
+
+`nav2_costmap_2d::EsdfLayer` builds a continuous Euclidean-distance cost field from
+`LETHAL_OBSTACLE` cells already present in the master costmap. It is intended for the
+global costmap so planners such as Smac and Theta Star can prefer paths with larger
+obstacle clearance through their existing cost-aware traversal terms.
+
+Example global costmap plugin configuration:
+
+```yaml
+global_costmap:
+  global_costmap:
+    ros__parameters:
+      plugins: ["static_layer", "obstacle_layer", "esdf_layer"]
+      esdf_layer:
+        plugin: "nav2_costmap_2d::EsdfLayer"
+        enabled: true
+        influence_radius: 2.0
+        cost_scaling_factor: 3.0
+        use_exponential_decay: true
+        treat_unknown_as_obstacle: false
+        combination_method: 1
+```
+
+`combination_method` follows the existing costmap layer convention:
+`0=Overwrite`, `1=Max`, `2=Addition`. The recommended default is `Max` so the ESDF
+layer does not lower obstacle or static-map costs. The layer only uses lethal cells
+as ESDF source sites by default; intermediate inflation or ESDF costs are not treated
+as obstacles.
+
 ## To visualize the voxels in RVIZ:
 - Make sure `publish_voxel_map` in `voxel_layer` param's scope is set to `True`.
 - Open a new terminal and run:
