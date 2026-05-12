@@ -437,10 +437,25 @@ planner_server:
       data_load_timeout_sec: 5.0
       projection_node_threshold_m: 0.5
       projection_edge_threshold_m: 1.0
-      waypoints_per_meter: 100
+      waypoints_per_meter: 20
       bezier_samples_per_edge: 40
       publish_route_plan: true
       use_final_approach_orientation: false
+
+      # ── Costmap-aware 安全层 ─────────────
+      # 起点 → 路网 + 路网 → 终点：始终用 Theta* 规划（必做无开关）。
+      # Theta* 自带 unsafe-to-plan 检测：起/终点在 lethal 内或不可达时
+      # 直接返回失败 → 整个 plan 拒绝。
+      #
+      # 路网中间段 obstacle bypass：参数开关（默认关）。
+      # 热切换：ros2 param set /planner_server RouteGridPlanner.costmap_aware_mode true
+      costmap_aware_mode: true
+      obstacle_cost_threshold: 220.0
+      obstacle_margin_before_m: 1.0
+      obstacle_margin_after_m: 1.0
+      bypass_max_replan_length_m: 10.0
+      theta_star_max_corners: 8
+      theta_star_allow_unknown: true
 
     # ─── 规划器 2：自由路径（SmacPlannerLattice）──────────────────────
     SmacGridBased:

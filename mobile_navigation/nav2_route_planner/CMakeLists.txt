@@ -18,6 +18,7 @@ find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(pluginlib REQUIRED)
 find_package(nav_interfaces REQUIRED)
+find_package(nav2_theta_star_planner REQUIRED)
 
 nav2_package()
 add_compile_options(-O3)
@@ -43,6 +44,7 @@ set(dependencies
   tf2_geometry_msgs
   pluginlib
   nav_interfaces
+  nav2_theta_star_planner
 )
 
 add_library(${library_name} SHARED
@@ -53,6 +55,7 @@ add_library(${library_name} SHARED
   src/astar_searcher.cpp
   src/path_interpolator.cpp
   src/route_plan_publisher.cpp
+  src/costmap_aware_layer.cpp
   src/nav_route_graph_planner.cpp
 )
 

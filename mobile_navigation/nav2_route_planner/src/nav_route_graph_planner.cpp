@@ -67,6 +67,20 @@ void NavRouteGraphPlanner::configure(
     rclcpp::ParameterValue(params_.publish_route_plan));
   declare_parameter_if_not_declared(node, name_ + ".use_final_approach_orientation",
     rclcpp::ParameterValue(params_.use_final_approach_orientation));
+  declare_parameter_if_not_declared(node, name_ + ".costmap_aware_mode",
+    rclcpp::ParameterValue(params_.ca.costmap_aware_mode));
+  declare_parameter_if_not_declared(node, name_ + ".obstacle_cost_threshold",
+    rclcpp::ParameterValue(params_.ca.obstacle_cost_threshold));
+  declare_parameter_if_not_declared(node, name_ + ".obstacle_margin_before_m",
+    rclcpp::ParameterValue(params_.ca.obstacle_margin_before_m));
+  declare_parameter_if_not_declared(node, name_ + ".obstacle_margin_after_m",
+    rclcpp::ParameterValue(params_.ca.obstacle_margin_after_m));
+  declare_parameter_if_not_declared(node, name_ + ".bypass_max_replan_length_m",
+    rclcpp::ParameterValue(params_.ca.bypass_max_replan_length_m));
+  declare_parameter_if_not_declared(node, name_ + ".theta_star_max_corners",
+    rclcpp::ParameterValue(params_.ca.theta_star_max_corners));
+  declare_parameter_if_not_declared(node, name_ + ".theta_star_allow_unknown",
+    rclcpp::ParameterValue(params_.ca.theta_star_allow_unknown));
 
   node->get_parameter(name_ + ".asset_manager_node_name", params_.asset_manager_node_name);
   node->get_parameter(name_ + ".data_load_timeout_sec", params_.data_load_timeout_sec);
@@ -84,6 +98,13 @@ void NavRouteGraphPlanner::configure(
   node->get_parameter(name_ + ".bezier_samples_per_edge", params_.bezier_samples_per_edge);
   node->get_parameter(name_ + ".publish_route_plan", params_.publish_route_plan);
   node->get_parameter(name_ + ".use_final_approach_orientation", params_.use_final_approach_orientation);
+  node->get_parameter(name_ + ".costmap_aware_mode", params_.ca.costmap_aware_mode);
+  node->get_parameter(name_ + ".obstacle_cost_threshold", params_.ca.obstacle_cost_threshold);
+  node->get_parameter(name_ + ".obstacle_margin_before_m", params_.ca.obstacle_margin_before_m);
+  node->get_parameter(name_ + ".obstacle_margin_after_m", params_.ca.obstacle_margin_after_m);
+  node->get_parameter(name_ + ".bypass_max_replan_length_m", params_.ca.bypass_max_replan_length_m);
+  node->get_parameter(name_ + ".theta_star_max_corners", params_.ca.theta_star_max_corners);
+  node->get_parameter(name_ + ".theta_star_allow_unknown", params_.ca.theta_star_allow_unknown);
 
   // ── Construct components ───────────────────────────────────────────
   graph_ = std::make_shared<TopoGraph>();
@@ -103,16 +124,23 @@ void NavRouteGraphPlanner::configure(
   rp_publisher_ = std::make_shared<RoutePlanPublisher>(parent_node_,
       "~/" + name_ + "/route_plan");
 
+  ca_layer_ = std::make_shared<CostmapAwareLayer>(parent_node_, costmap_ros_);
+  ca_layer_->configure(params_.ca);
+
   RCLCPP_INFO(logger_,
     "nav2_route_planner '%s' configured. asset_node=%s "
-    "node_threshold=%.2fm edge_threshold=%.2fm",
+    "node_threshold=%.2fm edge_threshold=%.2fm "
+    "costmap_aware_mode=%s",
     name_.c_str(), params_.asset_manager_node_name.c_str(),
-    params_.projection_node_threshold_m, params_.projection_edge_threshold_m);
+    params_.projection_node_threshold_m, params_.projection_edge_threshold_m,
+    params_.ca.costmap_aware_mode ? "ON" : "OFF");
 }
 
 void NavRouteGraphPlanner::cleanup()
 {
   RCLCPP_INFO(logger_, "Cleaning up nav2_route_planner '%s'", name_.c_str());
+  if (ca_layer_) {ca_layer_->cleanup();}
+  ca_layer_.reset();
   rp_publisher_.reset();
   interpolator_.reset();
   searcher_.reset();
@@ -190,6 +218,13 @@ nav_msgs::msg::Path NavRouteGraphPlanner::createPlan(
     return empty_path;
   }
 
+  // Step 2.5 (start transition) and Step 5.5 (goal alignment) are handled
+  // after Step 4 below, using Theta* for both — see "Step 4.5" and
+  // "Step 4.6" below. The old static-line lethal check has been removed:
+  // Theta*'s own isUnsafeToPlan covers "start/goal in lethal" cases, and
+  // Theta* additionally finds an obstacle-avoiding curve when the
+  // straight line would have failed.
+
   // ── Step 3: A* search ──────────────────────────────────────────────
   AStarSearcher::Request req;
   req.start = start_proj;
@@ -220,22 +255,116 @@ nav_msgs::msg::Path NavRouteGraphPlanner::createPlan(
     result.node_ids.size(), result.edge_ids.size(),
     result.total_cost, result.expanded_nodes, static_cast<long>(dt));
 
-  // ── Step 4: interpolate ────────────────────────────────────────────
+  // ── Step 4: interpolate (路网内部分) ──────────────────────────────
   auto plan = interpolator_->interpolate(start, goal, start_proj, *goal_id,
       result, *graph_);
-
-  // ── Step 5: publish RoutePlan + return Path ───────────────────────
   auto stamp = clock_->now();
+
+  // ── Step 4.5: 起点过渡段用 Theta* 重新规划 ────────────────────────
+  // Plan 的第一段（"__start_transition__"）是 interpolator 用直线生成
+  // 的占位段。这里用 Theta* 替换，让起点 → 路网入口自动避障。
+  // Theta* 失败 = 起点在 lethal 内或起点到入口不可达 → 拒绝整个 plan。
+  if (ca_layer_ && !plan.segments.empty()) {
+    auto & first_seg = plan.segments.front();
+    if (first_seg.edge_id == "__start_transition__" &&
+        first_seg.samples.size() >= 2)
+    {
+      const auto & seg_start = first_seg.samples.front();
+      const auto & seg_end = first_seg.samples.back();
+      auto theta_path = ca_layer_->planWithThetaStar(seg_start, seg_end);
+      if (!theta_path) {
+        RCLCPP_ERROR(logger_,
+          "Theta* failed for start transition (%.2f, %.2f) -> (%.2f, %.2f) — "
+          "start unreachable (in obstacle / out of bounds / no path)",
+          seg_start.pose.position.x, seg_start.pose.position.y,
+          seg_end.pose.position.x, seg_end.pose.position.y);
+        return empty_path;
+      }
+      first_seg.samples = std::move(*theta_path);
+      first_seg.edge_id = "__start_transition_theta__";
+    }
+  }
+
+  // ── Step 4.6: 终点对齐段用 Theta* 重新规划 ────────────────────────
+  if (ca_layer_ && !plan.segments.empty()) {
+    auto & last_seg = plan.segments.back();
+    if (last_seg.edge_id == "__goal_alignment__" &&
+        last_seg.samples.size() >= 2)
+    {
+      const auto & seg_start = last_seg.samples.front();
+      const auto & seg_end = last_seg.samples.back();
+      auto theta_path = ca_layer_->planWithThetaStar(seg_start, seg_end);
+      if (!theta_path) {
+        RCLCPP_ERROR(logger_,
+          "Theta* failed for goal alignment (%.2f, %.2f) -> (%.2f, %.2f) — "
+          "goal unreachable (in obstacle / out of bounds / no path)",
+          seg_start.pose.position.x, seg_start.pose.position.y,
+          seg_end.pose.position.x, seg_end.pose.position.y);
+        return empty_path;
+      }
+      last_seg.samples = std::move(*theta_path);
+      last_seg.edge_id = "__goal_alignment_theta__";
+    }
+  }
+
+  // ── Step 5: convert to nav_msgs/Path + RoutePlan ──────────────────
+  auto nav_path = plan.toNavPath(global_frame_, stamp,
+      params_.use_final_approach_orientation);
+
+  // ── Step 5.5: Layer 2 — 路网内 Theta* 局部绕障（opt-in） ──────────
+  // 路网内的边段如果被运行时障碍打断，Theta* 在该区段做局部绕障。
+  // 起点过渡和终点对齐段在 4.5/4.6 已 Theta* 化，所以本步骤聚焦
+  // 中间路网边。RoutePlan 段语义不变。
+  if (ca_layer_ && ca_layer_->isLayer2Enabled() && nav_path.poses.size() > 2) {
+    auto obstacle = ca_layer_->detectObstacle(nav_path.poses);
+    if (obstacle.has_obstacle) {
+      const auto & seg_start = nav_path.poses[obstacle.start_index];
+      const auto & seg_end = nav_path.poses[obstacle.end_index];
+      RCLCPP_INFO(logger_,
+        "Layer 2: obstacle on path [%zu..%zu] of %zu; attempting bypass "
+        "from (%.2f,%.2f) to (%.2f,%.2f)",
+        obstacle.start_index, obstacle.end_index, nav_path.poses.size(),
+        seg_start.pose.position.x, seg_start.pose.position.y,
+        seg_end.pose.position.x, seg_end.pose.position.y);
+      auto bypass = ca_layer_->planWithThetaStar(seg_start, seg_end);
+      if (bypass && !bypass->empty()) {
+        std::vector<geometry_msgs::msg::PoseStamped> spliced;
+        spliced.reserve(nav_path.poses.size() + bypass->size());
+        spliced.insert(spliced.end(),
+          nav_path.poses.begin(),
+          nav_path.poses.begin() + obstacle.start_index);
+        for (auto & p : *bypass) {
+          p.header.frame_id = global_frame_;
+          p.header.stamp = stamp;
+          spliced.push_back(p);
+        }
+        spliced.insert(spliced.end(),
+          nav_path.poses.begin() + obstacle.end_index + 1,
+          nav_path.poses.end());
+        const auto old_size = nav_path.poses.size();
+        nav_path.poses = std::move(spliced);
+        RCLCPP_INFO(logger_,
+          "Layer 2: bypass spliced (path size %zu -> %zu, +%zu bypass samples)",
+          old_size, nav_path.poses.size(), bypass->size());
+      } else {
+        RCLCPP_WARN(logger_,
+          "Layer 2: bypass failed; returning original path (controller will handle)");
+      }
+    }
+  }
+
+  // ── Step 6: publish RoutePlan (graph-level semantics) + return Path ─
   if (params_.publish_route_plan && rp_publisher_) {
     rp_publisher_->publish(plan.toMsg(global_frame_, stamp));
   }
-  return plan.toNavPath(global_frame_, stamp, params_.use_final_approach_orientation);
+  return nav_path;
 }
 
 rcl_interfaces::msg::SetParametersResult
 NavRouteGraphPlanner::dynamicParametersCallback(std::vector<rclcpp::Parameter> parameters)
 {
   rcl_interfaces::msg::SetParametersResult result;
+  bool ca_dirty = false;
   for (const auto & p : parameters) {
     const auto & name = p.get_name();
     const auto type = p.get_type();
@@ -258,12 +387,27 @@ NavRouteGraphPlanner::dynamicParametersCallback(std::vector<rclcpp::Parameter> p
         params_.weights.w_user_pref_mult = p.as_double();
       } else if (name == name_ + ".data_load_timeout_sec") {
         params_.data_load_timeout_sec = p.as_double();
+      } else if (name == name_ + ".obstacle_cost_threshold") {
+        params_.ca.obstacle_cost_threshold = p.as_double();
+        ca_dirty = true;
+      } else if (name == name_ + ".obstacle_margin_before_m") {
+        params_.ca.obstacle_margin_before_m = p.as_double();
+        ca_dirty = true;
+      } else if (name == name_ + ".obstacle_margin_after_m") {
+        params_.ca.obstacle_margin_after_m = p.as_double();
+        ca_dirty = true;
+      } else if (name == name_ + ".bypass_max_replan_length_m") {
+        params_.ca.bypass_max_replan_length_m = p.as_double();
+        ca_dirty = true;
       }
     } else if (type == ParameterType::PARAMETER_INTEGER) {
       if (name == name_ + ".waypoints_per_meter") {
         params_.waypoints_per_meter = p.as_int();
       } else if (name == name_ + ".bezier_samples_per_edge") {
         params_.bezier_samples_per_edge = p.as_int();
+      } else if (name == name_ + ".theta_star_max_corners") {
+        params_.ca.theta_star_max_corners = p.as_int();
+        ca_dirty = true;
       }
     } else if (type == ParameterType::PARAMETER_BOOL) {
       if (name == name_ + ".prefer_no_stairs") {
@@ -274,8 +418,22 @@ NavRouteGraphPlanner::dynamicParametersCallback(std::vector<rclcpp::Parameter> p
         params_.publish_route_plan = p.as_bool();
       } else if (name == name_ + ".use_final_approach_orientation") {
         params_.use_final_approach_orientation = p.as_bool();
+      } else if (name == name_ + ".costmap_aware_mode") {
+        const bool old_v = params_.ca.costmap_aware_mode;
+        params_.ca.costmap_aware_mode = p.as_bool();
+        ca_dirty = true;
+        RCLCPP_INFO(logger_,
+          "costmap_aware_mode: %s -> %s",
+          old_v ? "true" : "false",
+          params_.ca.costmap_aware_mode ? "true" : "false");
+      } else if (name == name_ + ".theta_star_allow_unknown") {
+        params_.ca.theta_star_allow_unknown = p.as_bool();
+        ca_dirty = true;
       }
     }
+  }
+  if (ca_dirty && ca_layer_) {
+    ca_layer_->updateParams(params_.ca);
   }
   result.successful = true;
   return result;

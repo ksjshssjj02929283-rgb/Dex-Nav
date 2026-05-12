@@ -19,6 +19,7 @@
 
 #include "nav2_route_planner/astar_searcher.hpp"
 #include "nav2_route_planner/cost_function.hpp"
+#include "nav2_route_planner/costmap_aware_layer.hpp"
 #include "nav2_route_planner/path_interpolator.hpp"
 #include "nav2_route_planner/route_graph_loader.hpp"
 #include "nav2_route_planner/route_plan_publisher.hpp"
@@ -72,6 +73,9 @@ private:
     // Output
     bool publish_route_plan{true};
     bool use_final_approach_orientation{false};
+
+    // Costmap-aware safety (see [[7. nav2_route_planner 设计方案]] §4.8)
+    CostmapAwareLayer::Params ca;
   } params_;
 
   rcl_interfaces::msg::SetParametersResult dynamicParametersCallback(
@@ -84,6 +88,7 @@ private:
   std::shared_ptr<AStarSearcher> searcher_;
   std::shared_ptr<PathInterpolator> interpolator_;
   std::shared_ptr<RoutePlanPublisher> rp_publisher_;
+  std::shared_ptr<CostmapAwareLayer> ca_layer_;
 
   // Nav2 standard members
   rclcpp_lifecycle::LifecycleNode::WeakPtr parent_node_;
