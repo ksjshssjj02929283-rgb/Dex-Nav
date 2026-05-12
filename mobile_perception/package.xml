@@ -2,10 +2,10 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>mobile_perception</name>
-  <version>0.0.0</version>
+  <version>0.4.0</version>
   <description>Fix control bug</description>
-  <maintainer email="suzhenxzhong@gmail.com">root</maintainer>
-  <license>TODO: License declaration</license>
+  <maintainer email="dexforce@dexforce.com">dexforce</maintainer>
+  <license>Proprietary</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
