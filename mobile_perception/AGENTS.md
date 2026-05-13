@@ -16,7 +16,9 @@
   - `apriltag_detection_node.cpp`
   - `apriltag_alignment_tf_node.cpp`
   - `mobile_control_node.cpp`
+  - `obstacle_detector_node.cpp`
   - `charging_pose_service.cpp`
+- `include/mobile_perception/` 当前存放 `obstacle_detector_node.hpp`，新增 C++ 节点头文件时保持包名命名空间一致。
 - Python 脚本位于 `scripts/`，包含历史调试脚本、仿真脚本和 Nav2 编排脚本。修改前应确认脚本是否已被 `CMakeLists.txt` 安装。
 
 ## 工作边界
@@ -92,6 +94,17 @@
 
 修改 `camera_link`、图像话题或 tag 尺寸时，优先通过参数或配置文件完成。
 目标点发布逻辑以 `apriltag_aligned_<id>` 的姿态为基准，沿其 X 轴偏移 `target_forward_offset`，默认发布在 `base_link` 下，并可通过 `publish_target_tf` 发布目标 TF。修改这段逻辑时要保持参数可配置，不要写死 frame 名或距离。
+
+### `obstacle_detector_node`
+
+保持以下接口兼容：
+
+- 订阅 `local_costmap/costmap` (`nav_msgs/msg/OccupancyGrid`)，可通过参数 `costmap_topic` 覆盖。
+- 发布 `obstacle_detector/has_obstacle` (`std_msgs/msg/Bool`)。
+- 发布 `obstacle_detector/markers` (`visualization_msgs/msg/Marker`)。
+- 发布 `obstacle_detector/detection_box` (`visualization_msgs/msg/Marker`)。
+
+常用参数包括 `robot_base_frame`、`front_distance`、`left_width`、`right_width`、`obstacle_threshold` 和 `detection_frequency`。修改检测区域或采样策略时，优先保持参数可配置，并注意局部代价地图分辨率对 CPU 占用和漏检风险的影响。
 
 ## 配置修改规则
 
