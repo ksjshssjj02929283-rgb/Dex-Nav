@@ -416,17 +416,19 @@ planner_server:
     expected_planner_frequency: 0.2 # 0.5 # 20.0
     use_sim_time: True
 
-    # ─── PlannerServer 原生多 planner 热切换（DEC-017）─────────────────
+    # ─── PlannerServer 原生多 planner 热切换 ─────────────────
     # 关键机制：本工程已 fork nav2_planner 新增两个参数：
     #   - active_planner: 运行时选哪个 planner（必须 ∈ planner_plugins）
     #   - override_planner_id: 当 true 时忽略 BT 传的 planner_id，
     #     强制使用 active_planner → 实现 BT 不动的热切换
     # 切换命令（无需重启 planner_server）：
-    #   ros2 param set /planner_server active_planner SmacGridBased
-    #   ros2 param set /planner_server active_planner RouteGridPlanner
+    #   ros2 param set /planner_server active_planner RouteGridPlanner  # 路网规划
+    #   ros2 param set /planner_server active_planner SmacGridBased     # SmacPlannerLattice 自由路径
+    #   ros2 param set /planner_server active_planner ThetaStarBased    # Theta* 几何最短路径
     # 详见 [[10. 双规划器热切换方案——PlannerSwitcher 设计与实现]]
-    planner_plugins: ["RouteGridPlanner", "SmacGridBased"]
-    active_planner: "RouteGridPlanner"   # 当前活跃 planner（dynamic）
+    planner_plugins: ["RouteGridPlanner", "SmacGridBased", "ThetaStarBased"]
+    active_planner: "ThetaStarBased"   # 当前活跃 planner（dynamic）
+                                         # 可选值：RouteGridPlanner / SmacGridBased / ThetaStarBased
     override_planner_id: true            # true: 忽略 BT planner_id，强制 active；
                                          # false: nav2 标准 fallback 语义
 
@@ -451,16 +453,16 @@ planner_server:
       # 热切换：ros2 param set /planner_server RouteGridPlanner.costmap_aware_mode true
       costmap_aware_mode: true
       obstacle_cost_threshold: 220.0
-      obstacle_margin_before_m: 1.0
-      obstacle_margin_after_m: 1.0
+      obstacle_margin_before_m: 0.5
+      obstacle_margin_after_m: 0.5
       bypass_max_replan_length_m: 10.0
       theta_star_max_corners: 8
-      theta_star_allow_unknown: true
+      theta_star_allow_unknown: false
 
     # ─── 规划器 2：自由路径（SmacPlannerLattice）──────────────────────
     SmacGridBased:
       plugin: "nav2_smac_planner/SmacPlannerLattice"
-      allow_unknown: true
+      allow_unknown: false
       tolerance: 0.25
       max_iterations: 2000000
       max_on_approach_iterations: 2000
@@ -487,22 +489,28 @@ planner_server:
         tolerance: 1.0e-10
         do_refinement: true
         refinement_num: 2
+
+    # ─── 规划器 3：Theta* 自由路径（nav2_theta_star_planner）──────────
+    # 用途：与 RouteGridPlanner / SmacGridBased 并存，作为第三个可热切换
+    # 选项。Theta* 是 grid-based 几何最短路径搜索（允许对角线走线，路径
+    # 比 NavfnPlanner 更直），适合"无路网约束 + 大致直走"场景。
+    # 切换命令：
+    #   ros2 param set /planner_server active_planner ThetaStarBased
+    ThetaStarBased:
+      plugin: "nav2_theta_star_planner/ThetaStarPlanner"
+      how_many_corners: 8
+      w_euc_cost: 1.0
+      w_traversal_cost: 2.0
+      allow_unknown: false
+      use_final_approach_orientation: false
+      terminal_checking_interval: 5000
+
   # ros__parameters:
   #   use_sim_time: True
   #   save_map_timeout: 5.0
   #   free_thresh_default: 0.25
   #   occupied_thresh_default: 0.65
   #   map_subscribe_transient_local: True
-
-planner_server:
-  ros__parameters:
-    expected_planner_frequency: 20.0
-    planner_plugins: ["GridBased"]
-    GridBased:
-      plugin: "nav2_theta_star_planner/ThetaStarPlanner" # In Iron and older versions, "/" was used instead of "::"
-      how_many_corners: 8
-      w_euc_cost: 1.0
-      w_traversal_cost: 2.0
 
 smoother_server:
   ros__parameters:
