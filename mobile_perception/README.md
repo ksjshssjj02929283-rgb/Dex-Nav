@@ -27,7 +27,11 @@ mobile_perception/
 │   ├── apriltag_detection_node.cpp
 │   ├── apriltag_alignment_tf_node.cpp
 │   ├── mobile_control_node.cpp
+│   ├── obstacle_detector_node.cpp
 │   └── charging_pose_service.cpp
+├── include/
+│   └── mobile_perception/
+│       └── obstacle_detector_node.hpp
 ├── scripts/
 │   ├── detect_apriltags*.py
 │   ├── control_robot*.py
@@ -45,6 +49,7 @@ mobile_perception/
 | `apriltag_detection_node` | C++ | 按服务启动/停止 AprilTag 检测，发布 `apriltag_poses`。 |
 | `apriltag_alignment_tf_node` | C++ | 持续检测 AprilTag，发布调试姿态和原始/对齐后的 tag TF。 |
 | `mobile_control_node` | C++ | 订阅目标位姿并输出底盘速度，实现末端精确控制与平滑停止。 |
+| `obstacle_detector_node` | C++ | 订阅局部代价地图，检测车体前方矩形区域是否存在障碍物，并发布结果与 RViz Marker。 |
 | `charging_pose_service_node` | C++ | 通过服务采样 `map -> base_link`，保存充电位姿 JSON。 |
 | `detect_apriltags.py` / `detect_apriltags_service.py` | Python | Python 版 AprilTag 检测实现，依赖 `pupil_apriltags`。 |
 | `control_robot.py` / `control_robot_simulation.py` | Python | 基于 `apriltag_poses` 的早期精控脚本。 |
@@ -121,6 +126,31 @@ mobile_perception/
 - `target_frame`
 - `target_frame_prefix`
 - `target_forward_offset`
+
+### `obstacle_detector_node`
+
+订阅：
+
+- `local_costmap/costmap` (`nav_msgs/msg/OccupancyGrid`)：默认局部代价地图，可通过参数 `costmap_topic` 覆盖。
+
+发布：
+
+- `obstacle_detector/has_obstacle` (`std_msgs/msg/Bool`)：前方检测区域内是否存在代价值达到阈值的障碍物。
+- `obstacle_detector/markers` (`visualization_msgs/msg/Marker`)：检测到的障碍物采样点。
+- `obstacle_detector/detection_box` (`visualization_msgs/msg/Marker`)：当前检测矩形框，有障碍物时红色，无障碍物时绿色。
+
+依赖 TF：
+
+- `costmap.header.frame_id -> robot_base_frame`，默认 `robot_base_frame` 为 `base_link`。
+
+常用参数：
+
+- `costmap_topic`：默认 `local_costmap/costmap`。
+- `robot_base_frame`：默认 `base_link`。
+- `front_distance`：车体前方检测距离，默认 `1.0` 米。
+- `left_width` / `right_width`：检测矩形左右宽度，默认各 `0.5` 米。
+- `obstacle_threshold`：障碍物代价值阈值，默认 `50`。
+- `detection_frequency`：检测频率，默认 `10.0` Hz；小于等于 0 时回退到 10 Hz。
 
 ## 配置文件
 
@@ -237,6 +267,23 @@ ros2 service call /stop_apriltag_detection std_srvs/srv/Trigger {}
 ros2 run mobile_perception apriltag_alignment_tf_node
 ros2 service call /start_apriltag_detection std_srvs/srv/Trigger {}
 ros2 service call /stop_apriltag_detection std_srvs/srv/Trigger {}
+```
+
+启动前方障碍检测节点：
+
+```bash
+ros2 run mobile_perception obstacle_detector_node
+```
+
+示例覆盖检测范围和代价地图话题：
+
+```bash
+ros2 run mobile_perception obstacle_detector_node --ros-args \
+  -p costmap_topic:=/local_costmap/costmap \
+  -p front_distance:=1.0 \
+  -p left_width:=0.5 \
+  -p right_width:=0.5 \
+  -p obstacle_threshold:=50
 ```
 
 发布一个精控目标：
