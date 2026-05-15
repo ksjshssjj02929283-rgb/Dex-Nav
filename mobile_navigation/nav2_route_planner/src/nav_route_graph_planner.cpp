@@ -168,14 +168,11 @@ void NavRouteGraphPlanner::activate()
   if (rp_publisher_) {rp_publisher_->activate();}
   if (obstacle_markers_pub_) {obstacle_markers_pub_->on_activate();}
 
-  // Best-effort initial load. If it fails, createPlan will retry.
-  if (loader_) {
-    bool ok = loader_->loadSync(params_.data_load_timeout_sec);
-    if (!ok) {
-      RCLCPP_WARN(logger_,
-        "Initial RouteGraph load failed; will retry on first createPlan().");
-    }
-  }
+  // Non-blocking background load. Sync waits inside activate() would
+  // deadlock the SingleThreadedExecutor on the service response — see
+  // RouteGraphLoader docs. createPlan() will simply return an empty path
+  // if the load hasn't completed yet, and the caller can retry.
+  if (loader_) {loader_->startBackgroundLoad();}
 
   auto node = parent_node_.lock();
   if (node) {
@@ -188,6 +185,7 @@ void NavRouteGraphPlanner::activate()
 void NavRouteGraphPlanner::deactivate()
 {
   RCLCPP_INFO(logger_, "Deactivating nav2_route_planner '%s'", name_.c_str());
+  if (loader_) {loader_->stopBackgroundLoad();}
   if (rp_publisher_) {rp_publisher_->deactivate();}
   if (obstacle_markers_pub_) {obstacle_markers_pub_->on_deactivate();}
   dyn_params_handler_.reset();
@@ -201,14 +199,16 @@ nav_msgs::msg::Path NavRouteGraphPlanner::createPlan(
   empty_path.header.frame_id = global_frame_;
   empty_path.header.stamp = clock_->now();
 
-  // Lazy load if first activate didn't succeed.
+  // Background loader is fully async — a sync wait here would deadlock the
+  // SingleThreadedExecutor (the executor thread is the one running this
+  // callback AND the one that would deliver the service response). If the
+  // graph isn't ready yet, return an empty path; the BT/caller retries.
   if (!graph_->isReady()) {
-    RCLCPP_WARN(logger_, "TopoGraph not ready, attempting synchronous load");
-    if (!loader_->loadSync(params_.data_load_timeout_sec)) {
-      RCLCPP_ERROR(logger_, "Cannot load RouteGraph from %s",
-        params_.asset_manager_node_name.c_str());
-      return empty_path;
-    }
+    RCLCPP_WARN_THROTTLE(logger_, *clock_, 1000,
+      "RouteGraph not ready yet (background load from %s still pending). "
+      "Returning empty path; caller should retry.",
+      params_.asset_manager_node_name.c_str());
+    return empty_path;
   }
 
   auto lock = graph_->lockShared();

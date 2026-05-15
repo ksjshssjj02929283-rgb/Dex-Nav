@@ -451,7 +451,7 @@ planner_server:
       #
       # 路网中间段 obstacle bypass：参数开关（默认关）。
       # 热切换：ros2 param set /planner_server RouteGridPlanner.costmap_aware_mode true
-      costmap_aware_mode: true
+      costmap_aware_mode: false
       obstacle_cost_threshold: 220.0
       obstacle_margin_before_m: 0.5
       obstacle_margin_after_m: 0.5

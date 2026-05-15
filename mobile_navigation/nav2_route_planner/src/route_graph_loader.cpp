@@ -1,18 +1,17 @@
-// Copyright 2026 DEXE Robot Engineer
-// SPDX-License-Identifier: Apache-2.0
+// ----------------------------------------------------------------------------
+// Copyright (c) 2021-2025 DexForce Technology Co., Ltd.
+//
+// All rights reserved.
+// ----------------------------------------------------------------------------
 #include "nav2_route_planner/route_graph_loader.hpp"
 
 #include <chrono>
-#include <future>
+#include <memory>
 #include <utility>
 #include <vector>
 
 namespace nav2_route_planner
 {
-
-using std::chrono::duration;
-using std::chrono::duration_cast;
-using std::chrono::nanoseconds;
 
 RouteGraphLoader::RouteGraphLoader(
   rclcpp_lifecycle::LifecycleNode::WeakPtr parent,
@@ -23,84 +22,100 @@ RouteGraphLoader::RouteGraphLoader(
   graph_(std::move(graph))
 {
   auto node = parent_.lock();
-  if (!node) {
-    return;
-  }
-  // map_asset_manager exposes services under its node name with `~/` prefix,
-  // e.g. /map_asset_manager/get_route_graph.
+  if (!node) {return;}
+  // map_asset_manager exposes services under its node name, e.g.
+  // /map_asset_manager/get_route_graph. The response carries junctions,
+  // edges AND nav_points (see GetRouteGraph.srv) — single round-trip.
   route_graph_srv_name_ = "/" + asset_node_name_ + "/get_route_graph";
-  nav_points_srv_name_ = "/" + asset_node_name_ + "/get_all_nav_points";
   route_graph_client_ = node->create_client<GetRouteGraph>(route_graph_srv_name_);
-  nav_points_client_ = node->create_client<GetAllNavPoints>(nav_points_srv_name_);
 }
 
-bool RouteGraphLoader::loadSync(double timeout_sec)
+bool RouteGraphLoader::isLoaded() const
+{
+  return graph_ && graph_->isReady();
+}
+
+void RouteGraphLoader::startBackgroundLoad()
 {
   auto node = parent_.lock();
-  if (!node) {return false;}
+  if (!node) {return;}
+  if (isLoaded()) {return;}
+  if (poll_timer_) {return;}
+
+  RCLCPP_INFO(node->get_logger(),
+    "RouteGraphLoader: background load started (service: %s)",
+    route_graph_srv_name_.c_str());
+
+  // 0.5 Hz background poll. Timer fires on the executor's main thread; the
+  // service response callback fires on the same thread, so no shared-state
+  // locking is needed inside the loader.
+  poll_timer_ = node->create_wall_timer(
+    std::chrono::seconds(2),
+    [this]() {this->onTimer();});
+}
+
+void RouteGraphLoader::stopBackgroundLoad()
+{
+  if (poll_timer_) {
+    poll_timer_->cancel();
+    poll_timer_.reset();
+  }
+}
+
+void RouteGraphLoader::onTimer()
+{
+  auto node = parent_.lock();
+  if (!node) {return;}
   auto logger = node->get_logger();
 
-  auto deadline = std::chrono::steady_clock::now() +
-    duration_cast<nanoseconds>(duration<double>(timeout_sec));
-
-  // 1) Wait for both services.
-  auto waitFor = [&deadline, &logger](auto & client, const std::string & name) {
-    while (std::chrono::steady_clock::now() < deadline) {
-      if (client->wait_for_service(std::chrono::milliseconds(200))) {
-        return true;
-      }
-      RCLCPP_INFO_THROTTLE(logger, *rclcpp::Clock::make_shared(), 1000,
-        "Waiting for service %s", name.c_str());
-    }
-    return false;
-  };
-  if (!waitFor(route_graph_client_, route_graph_srv_name_)) {
-    RCLCPP_ERROR(logger, "Timed out waiting for %s", route_graph_srv_name_.c_str());
-    return false;
-  }
-  if (!waitFor(nav_points_client_, nav_points_srv_name_)) {
-    RCLCPP_ERROR(logger, "Timed out waiting for %s", nav_points_srv_name_.c_str());
-    return false;
+  if (isLoaded()) {
+    stopBackgroundLoad();
+    return;
   }
 
-  // 2) Async send both, then wait for both with the remaining budget.
-  auto graph_future = route_graph_client_->async_send_request(
-    std::make_shared<GetRouteGraph::Request>());
-  auto points_future = nav_points_client_->async_send_request(
-    std::make_shared<GetAllNavPoints::Request>());
+  if (request_in_flight_) {return;}
 
-  // Note: we rely on the planner_server's executor to be spinning.
-  // The future blocks until the response arrives or our deadline elapses.
-  auto wait_one = [&deadline](auto & fut) -> bool {
-      auto remaining = deadline - std::chrono::steady_clock::now();
-      if (remaining.count() <= 0) {return false;}
-      return fut.wait_for(remaining) == std::future_status::ready;
-    };
-
-  if (!wait_one(graph_future)) {
-    RCLCPP_ERROR(logger, "Timed out waiting for GetRouteGraph response");
-    return false;
-  }
-  if (!wait_one(points_future)) {
-    RCLCPP_ERROR(logger, "Timed out waiting for GetAllNavPoints response");
-    return false;
+  // Non-blocking readiness check — inspects the local discovery cache only.
+  if (!route_graph_client_->service_is_ready()) {
+    RCLCPP_INFO_THROTTLE(logger, *node->get_clock(), 5000,
+      "RouteGraphLoader: waiting for %s",
+      route_graph_srv_name_.c_str());
+    return;
   }
 
-  auto graph_resp = graph_future.get();
-  auto points_resp = points_future.get();
-  if (!graph_resp->success) {
-    RCLCPP_ERROR(logger, "GetRouteGraph reported failure");
-    return false;
-  }
-  if (!points_resp->success) {
-    RCLCPP_ERROR(logger, "GetAllNavPoints reported failure");
-    return false;
-  }
+  // Result-callback variant — executor delivers the response on its own
+  // thread; we never block.
+  request_in_flight_ = true;
+  auto req = std::make_shared<GetRouteGraph::Request>();
+  route_graph_client_->async_send_request(req,
+    [this](rclcpp::Client<GetRouteGraph>::SharedFuture future) {
+      this->onGraphResponse(future);
+    });
+}
 
-  // 3) Convert ROS messages → in-memory TopoGraph.
+void RouteGraphLoader::onGraphResponse(
+  rclcpp::Client<GetRouteGraph>::SharedFuture future)
+{
+  request_in_flight_ = false;
+
+  auto node = parent_.lock();
+  auto logger = node ? node->get_logger()
+    : rclcpp::get_logger("RouteGraphLoader");
+
+  auto resp = future.get();
+  if (!resp || !resp->success) {
+    RCLCPP_WARN(logger, "GetRouteGraph reported failure — will retry");
+    return;
+  }
+  rebuild(*resp);
+}
+
+void RouteGraphLoader::rebuild(const GetRouteGraph::Response & resp)
+{
   std::vector<TopoNode> nodes;
-  nodes.reserve(points_resp->points.size() + graph_resp->junctions.size());
-  for (const auto & np : points_resp->points) {
+  nodes.reserve(resp.nav_points.size() + resp.junctions.size());
+
+  for (const auto & np : resp.nav_points) {
     TopoNode n;
     n.id = np.name;
     n.kind = NodeKind::NAV_POINT;
@@ -110,7 +125,7 @@ bool RouteGraphLoader::loadSync(double timeout_sec)
     n.semantic_label = np.name;  // placeholder until SemanticLayer lands
     nodes.push_back(std::move(n));
   }
-  for (const auto & jn : graph_resp->junctions) {
+  for (const auto & jn : resp.junctions) {
     TopoNode n;
     n.id = jn.id;
     n.kind = NodeKind::JUNCTION;
@@ -121,8 +136,8 @@ bool RouteGraphLoader::loadSync(double timeout_sec)
   }
 
   std::vector<TopoEdge> edges;
-  edges.reserve(graph_resp->edges.size());
-  for (const auto & em : graph_resp->edges) {
+  edges.reserve(resp.edges.size());
+  for (const auto & em : resp.edges) {
     TopoEdge e;
     e.id = em.id;
     e.from_id = em.from_ep.id;
@@ -141,12 +156,13 @@ bool RouteGraphLoader::loadSync(double timeout_sec)
   }
 
   graph_->rebuildFrom(std::move(nodes), std::move(edges));
-  RCLCPP_INFO(logger,
-    "RouteGraph loaded: %zu nodes (%zu nav + %zu junctions), %zu edges",
-    graph_->nodeCount(),
-    points_resp->points.size(), graph_resp->junctions.size(),
-    graph_->edgeCount());
-  return true;
+
+  if (auto node = parent_.lock()) {
+    RCLCPP_INFO(node->get_logger(),
+      "RouteGraph loaded: %zu nodes (%zu nav + %zu junctions), %zu edges",
+      graph_->nodeCount(), resp.nav_points.size(), resp.junctions.size(),
+      graph_->edgeCount());
+  }
 }
 
 }  // namespace nav2_route_planner

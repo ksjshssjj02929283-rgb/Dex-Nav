@@ -1,10 +1,11 @@
-// Copyright 2026 DEXE Robot Engineer
-// SPDX-License-Identifier: Apache-2.0
+// ----------------------------------------------------------------------------
+// Copyright (c) 2021-2025 DexForce Technology Co., Ltd.
+//
+// All rights reserved.
+// ----------------------------------------------------------------------------
 #ifndef NAV2_ROUTE_PLANNER__ROUTE_GRAPH_LOADER_HPP_
 #define NAV2_ROUTE_PLANNER__ROUTE_GRAPH_LOADER_HPP_
 
-#include <atomic>
-#include <chrono>
 #include <memory>
 #include <string>
 
@@ -12,20 +13,29 @@
 #include "rclcpp_lifecycle/lifecycle_node.hpp"
 
 #include "nav_interfaces/srv/get_route_graph.hpp"
-#include "nav_interfaces/srv/get_all_nav_points.hpp"
 
 #include "nav2_route_planner/topo_graph.hpp"
 
 namespace nav2_route_planner
 {
 
-/// Pulls RouteGraph (junctions + edges) and NavPoints from `map_asset_manager`
-/// over standard ROS2 services and rebuilds the in-memory TopoGraph.
+/// Pulls RouteGraph (junctions + edges + nav_points) from `map_asset_manager`
+/// over a single ROS2 service (GetRouteGraph) and rebuilds the in-memory
+/// TopoGraph.
 ///
-/// One-shot synchronous load is provided for startup; an async load is
-/// provided for activate(). Refresh is currently triggered manually by the
-/// owning plugin (see `loadSync`); a topic-based incremental refresh is
-/// reserved for a follow-up commit (see project doc §4.3).
+/// IMPORTANT — fully asynchronous design:
+///   `planner_server` uses a SingleThreadedExecutor. Any synchronous wait on
+///   a service future from inside a lifecycle / action / timer callback
+///   deadlocks the executor: the same thread that would dispatch the
+///   response is the one blocked in wait_for(). Therefore loading runs
+///   entirely in callbacks driven by a 1 Hz background poll timer:
+///     1. timer ticks → if isLoaded(), cancel timer; else if service is
+///        ready and no request is in flight, fire async_send_request with
+///        a result callback.
+///     2. response callback → rebuildFrom() the TopoGraph (or retry on
+///        failure).
+///   No blocking, no shared-state locking (timer + response callbacks both
+///   run on the executor's main thread; the TopoGraph guards itself).
 class RouteGraphLoader
 {
 public:
@@ -34,28 +44,34 @@ public:
     std::string asset_node_name,
     std::shared_ptr<TopoGraph> graph);
 
-  /// Synchronously pull a fresh snapshot and call graph_->rebuildFrom().
-  /// Returns false on any failure (services unavailable, RPC failure,
-  /// timeout). Safe to call repeatedly.
-  bool loadSync(double timeout_sec);
+  /// Start the 1 Hz background load timer. Idempotent.
+  void startBackgroundLoad();
 
-  /// Service names actually used (for diagnostics / logs).
-  std::string getRouteGraphServiceName() const { return route_graph_srv_name_; }
-  std::string getNavPointsServiceName() const { return nav_points_srv_name_; }
+  /// Cancel and release the background load timer.
+  void stopBackgroundLoad();
+
+  /// True once the graph has been populated at least once.
+  bool isLoaded() const;
+
+  /// Service name actually used (for diagnostics / logs).
+  std::string getRouteGraphServiceName() const {return route_graph_srv_name_;}
 
 private:
   using GetRouteGraph = nav_interfaces::srv::GetRouteGraph;
-  using GetAllNavPoints = nav_interfaces::srv::GetAllNavPoints;
+
+  void onTimer();
+  void onGraphResponse(rclcpp::Client<GetRouteGraph>::SharedFuture future);
+  void rebuild(const GetRouteGraph::Response & resp);
 
   rclcpp_lifecycle::LifecycleNode::WeakPtr parent_;
   std::string asset_node_name_;
   std::shared_ptr<TopoGraph> graph_;
 
   std::string route_graph_srv_name_;
-  std::string nav_points_srv_name_;
-
   rclcpp::Client<GetRouteGraph>::SharedPtr route_graph_client_;
-  rclcpp::Client<GetAllNavPoints>::SharedPtr nav_points_client_;
+
+  rclcpp::TimerBase::SharedPtr poll_timer_;
+  bool request_in_flight_{false};
 };
 
 }  // namespace nav2_route_planner
