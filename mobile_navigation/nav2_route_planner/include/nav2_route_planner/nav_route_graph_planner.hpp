@@ -21,6 +21,7 @@
 #include "nav2_route_planner/astar_searcher.hpp"
 #include "nav2_route_planner/cost_function.hpp"
 #include "nav2_route_planner/costmap_aware_layer.hpp"
+#include "nav2_route_planner/intelligent_router.hpp"
 #include "nav2_route_planner/path_interpolator.hpp"
 #include "nav2_route_planner/route_graph_loader.hpp"
 #include "nav2_route_planner/route_plan_publisher.hpp"
@@ -62,6 +63,17 @@ private:
     // Projection
     double projection_node_threshold_m{0.5};
     double projection_edge_threshold_m{1.0};
+    /// When true, projector ignores the thresholds above and always
+    /// returns the globally nearest NODE / EDGE — the planner then
+    /// bridges `pose ↔ projected point` with Theta\*. This is the
+    /// "arbitrary start/goal" mode (project 19, 2026-05-15).
+    /// Default true matches the new user-facing contract; the
+    /// thresholds remain available as diagnostic-only fields (we log
+    /// when the pose is farther than the threshold but still plan).
+    bool projection_unlimited_mode{true};
+
+    // Intelligent routing (project 19, Phase 2)
+    IntelligentRouter::Params router;
 
     // Cost
     CostWeights weights;
@@ -90,6 +102,7 @@ private:
   std::shared_ptr<PathInterpolator> interpolator_;
   std::shared_ptr<RoutePlanPublisher> rp_publisher_;
   std::shared_ptr<CostmapAwareLayer> ca_layer_;
+  std::shared_ptr<IntelligentRouter> router_;
 
   // Debug marker publisher: visualizes each detected obstacle's
   // start_index / end_index on the planned path. Lifecycle-managed.

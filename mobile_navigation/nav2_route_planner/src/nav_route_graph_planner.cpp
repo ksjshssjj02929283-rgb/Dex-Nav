@@ -82,6 +82,15 @@ void NavRouteGraphPlanner::configure(
     rclcpp::ParameterValue(params_.ca.theta_star_max_corners));
   declare_parameter_if_not_declared(node, name_ + ".theta_star_allow_unknown",
     rclcpp::ParameterValue(params_.ca.theta_star_allow_unknown));
+  // Project 19, Phase 1 / Phase 2 params.
+  declare_parameter_if_not_declared(node, name_ + ".projection_unlimited_mode",
+    rclcpp::ParameterValue(params_.projection_unlimited_mode));
+  declare_parameter_if_not_declared(node, name_ + ".enable_intelligent_router",
+    rclcpp::ParameterValue(params_.router.enable));
+  declare_parameter_if_not_declared(node, name_ + ".router_graph_preference_ratio",
+    rclcpp::ParameterValue(params_.router.graph_preference_ratio));
+  declare_parameter_if_not_declared(node, name_ + ".router_min_graph_route_m",
+    rclcpp::ParameterValue(params_.router.min_graph_route_m));
 
   node->get_parameter(name_ + ".asset_manager_node_name", params_.asset_manager_node_name);
   node->get_parameter(name_ + ".data_load_timeout_sec", params_.data_load_timeout_sec);
@@ -106,6 +115,10 @@ void NavRouteGraphPlanner::configure(
   node->get_parameter(name_ + ".bypass_max_replan_length_m", params_.ca.bypass_max_replan_length_m);
   node->get_parameter(name_ + ".theta_star_max_corners", params_.ca.theta_star_max_corners);
   node->get_parameter(name_ + ".theta_star_allow_unknown", params_.ca.theta_star_allow_unknown);
+  node->get_parameter(name_ + ".projection_unlimited_mode", params_.projection_unlimited_mode);
+  node->get_parameter(name_ + ".enable_intelligent_router", params_.router.enable);
+  node->get_parameter(name_ + ".router_graph_preference_ratio", params_.router.graph_preference_ratio);
+  node->get_parameter(name_ + ".router_min_graph_route_m", params_.router.min_graph_route_m);
 
   // ── Construct components ───────────────────────────────────────────
   graph_ = std::make_shared<TopoGraph>();
@@ -127,6 +140,8 @@ void NavRouteGraphPlanner::configure(
 
   ca_layer_ = std::make_shared<CostmapAwareLayer>(parent_node_, costmap_ros_);
   ca_layer_->configure(params_.ca);
+
+  router_ = std::make_shared<IntelligentRouter>(params_.router);
 
   // Debug marker publisher — visualizes each detected obstacle's
   // start_id / end_id position so the user can verify detection
@@ -154,6 +169,7 @@ void NavRouteGraphPlanner::cleanup()
   RCLCPP_INFO(logger_, "Cleaning up nav2_route_planner '%s'", name_.c_str());
   if (ca_layer_) {ca_layer_->cleanup();}
   ca_layer_.reset();
+  router_.reset();
   rp_publisher_.reset();
   obstacle_markers_pub_.reset();
   interpolator_.reset();
@@ -215,26 +231,102 @@ nav_msgs::msg::Path NavRouteGraphPlanner::createPlan(
   auto lock = graph_->lockShared();
 
   // ── Step 1: project start ──────────────────────────────────────────
-  auto start_proj = projector_->project(start, *graph_);
-  if (start_proj.type == StartGoalProjector::ResultType::INVALID) {
-    RCLCPP_ERROR(logger_,
-      "Start pose (%.2f, %.2f) not within %.2fm of any node or %.2fm of any edge",
-      start.pose.position.x, start.pose.position.y,
-      params_.projection_node_threshold_m, params_.projection_edge_threshold_m);
-    return empty_path;
+  //
+  // Project 19 (2026-05-15): when `projection_unlimited_mode` is true
+  // (default), we accept ANY start pose — the projector reports the
+  // globally nearest NODE / EDGE projection, and the downstream
+  // `__start_transition__` segment + Theta\* (Step 4.5) bridges the
+  // free-space gap. The legacy bounded mode is kept as an escape hatch
+  // for callers that want hard "must be near the graph" semantics.
+  StartGoalProjector::Result start_proj;
+  if (params_.projection_unlimited_mode) {
+    start_proj = projector_->projectUnlimited(start, *graph_);
+    if (start_proj.type == StartGoalProjector::ResultType::INVALID) {
+      RCLCPP_ERROR(logger_,
+        "Start pose (%.2f, %.2f) — graph is empty, cannot plan",
+        start.pose.position.x, start.pose.position.y);
+      return empty_path;
+    }
+    if (start_proj.distance > params_.projection_node_threshold_m &&
+        start_proj.distance > params_.projection_edge_threshold_m)
+    {
+      RCLCPP_INFO(logger_,
+        "Start pose (%.2f, %.2f) is %.2fm from nearest graph element "
+        "(beyond node_threshold %.2fm / edge_threshold %.2fm) — "
+        "unlimited-mode is on; bridging with Theta*",
+        start.pose.position.x, start.pose.position.y, start_proj.distance,
+        params_.projection_node_threshold_m,
+        params_.projection_edge_threshold_m);
+    }
+  } else {
+    start_proj = projector_->project(start, *graph_);
+    if (start_proj.type == StartGoalProjector::ResultType::INVALID) {
+      RCLCPP_ERROR(logger_,
+        "Start pose (%.2f, %.2f) not within %.2fm of any node or %.2fm of any edge",
+        start.pose.position.x, start.pose.position.y,
+        params_.projection_node_threshold_m, params_.projection_edge_threshold_m);
+      return empty_path;
+    }
   }
 
-  // ── Step 2: project goal (must hit a graph node) ───────────────────
-  // Goal must land on a topology node — either a NavPoint or a Junction.
-  // Both are valid destinations; A* and the interpolator treat them
-  // uniformly.
-  auto goal_id = projector_->projectToNode(goal, *graph_);
-  if (!goal_id) {
-    RCLCPP_ERROR(logger_,
-      "Goal pose (%.2f, %.2f) does not match any NavPoint or Junction within %.2fm",
-      goal.pose.position.x, goal.pose.position.y,
-      params_.projection_node_threshold_m);
-    return empty_path;
+  // ── Step 2: project goal ───────────────────────────────────────────
+  //
+  // A\*'s `goal_node_id` must be a TopoNode. Cases:
+  //   • goal projects ON_NODE (or bounded mode + node match) → use that
+  //   • goal projects ON_EDGE under unlimited mode → use the nearer
+  //     endpoint of that edge (A\* will terminate as soon as it pops
+  //     either endpoint, and the goal alignment seg + Step 4.6 Theta\*
+  //     covers `endpoint → projected_xy → goal pose`).
+  StartGoalProjector::Result goal_proj;
+  std::optional<std::string> goal_id;
+  if (params_.projection_unlimited_mode) {
+    goal_proj = projector_->projectUnlimited(goal, *graph_);
+    if (goal_proj.type == StartGoalProjector::ResultType::INVALID) {
+      RCLCPP_ERROR(logger_,
+        "Goal pose (%.2f, %.2f) — graph is empty, cannot plan",
+        goal.pose.position.x, goal.pose.position.y);
+      return empty_path;
+    }
+    if (goal_proj.type == StartGoalProjector::ResultType::ON_NODE) {
+      goal_id = goal_proj.id;
+    } else {  // ON_EDGE
+      goal_id = StartGoalProjector::nearerEndpointOfEdge(
+        goal_proj, goal, *graph_);
+      if (!goal_id) {
+        RCLCPP_ERROR(logger_,
+          "Goal pose (%.2f, %.2f) projects onto edge '%s' but its "
+          "endpoints could not be resolved",
+          goal.pose.position.x, goal.pose.position.y,
+          goal_proj.id.c_str());
+        return empty_path;
+      }
+    }
+    if (goal_proj.distance > params_.projection_node_threshold_m &&
+        goal_proj.distance > params_.projection_edge_threshold_m)
+    {
+      RCLCPP_INFO(logger_,
+        "Goal pose (%.2f, %.2f) is %.2fm from nearest graph element "
+        "(beyond thresholds) — unlimited-mode bridge via Theta*",
+        goal.pose.position.x, goal.pose.position.y, goal_proj.distance);
+    }
+  } else {
+    goal_id = projector_->projectToNode(goal, *graph_);
+    if (!goal_id) {
+      RCLCPP_ERROR(logger_,
+        "Goal pose (%.2f, %.2f) does not match any NavPoint or Junction within %.2fm",
+        goal.pose.position.x, goal.pose.position.y,
+        params_.projection_node_threshold_m);
+      return empty_path;
+    }
+    // Synthesise a goal_proj for the router (ON_NODE at the matched id).
+    goal_proj.type = StartGoalProjector::ResultType::ON_NODE;
+    goal_proj.id = *goal_id;
+    auto gn_opt = graph_->getNode(*goal_id);
+    if (gn_opt) {
+      goal_proj.distance = std::hypot(
+        gn_opt->x - goal.pose.position.x,
+        gn_opt->y - goal.pose.position.y);
+    }
   }
 
   // Step 2.5 (start transition) and Step 5.5 (goal alignment) are handled
@@ -262,17 +354,79 @@ nav_msgs::msg::Path NavRouteGraphPlanner::createPlan(
   auto dt = std::chrono::duration_cast<std::chrono::microseconds>(
     std::chrono::steady_clock::now() - t0).count();
 
-  if (!result.success) {
-    RCLCPP_ERROR(logger_,
-      "A* failed: %s (start=%s goal=%s expanded=%zu)",
+  if (result.success) {
+    RCLCPP_INFO(logger_,
+      "A* found path: %zu nodes, %zu edges, cost=%.2f, expanded=%zu, %ldus",
+      result.node_ids.size(), result.edge_ids.size(),
+      result.total_cost, result.expanded_nodes, static_cast<long>(dt));
+  } else {
+    // Don't bail yet — the router below may still produce a direct
+    // Theta\* plan that bypasses the graph entirely.
+    RCLCPP_WARN(logger_,
+      "A* failed: %s (start=%s goal=%s expanded=%zu); deferring to router",
       result.failure_reason.c_str(),
       start_proj.id.c_str(), goal_id->c_str(), result.expanded_nodes);
+  }
+
+  // ── Step 3.5: Intelligent router — direct Theta* vs graph route ────
+  //
+  // Project 19 / DEC-002 (2026-05-15). Skipped when the router is
+  // disabled (default) — behaviour matches v1 (always graph) and the
+  // existing GTests don't need to know about this path.
+  if (router_ && router_->params().enable) {
+    auto decision = router_->decide(
+      start, goal, start_proj, goal_proj, result, *graph_, *ca_layer_);
+    RCLCPP_INFO(logger_, "Router: %s", decision.reason.c_str());
+
+    if (decision.strategy ==
+      IntelligentRouter::Strategy::DIRECT_THETA_STAR)
+    {
+      // Direct shortcut wins — return a nav_msgs/Path built from the
+      // cached Theta\* samples, skipping the graph entirely.
+      nav_msgs::msg::Path direct;
+      direct.header.frame_id = global_frame_;
+      direct.header.stamp = clock_->now();
+      direct.poses.reserve(decision.direct_path.size());
+      for (auto & p : decision.direct_path) {
+        p.header.frame_id = global_frame_;
+        p.header.stamp = direct.header.stamp;
+        direct.poses.push_back(std::move(p));
+      }
+      if (!direct.poses.empty()) {
+        if (params_.use_final_approach_orientation &&
+            direct.poses.size() >= 2)
+        {
+          const auto & p_last = direct.poses.back().pose.position;
+          const auto & p_prev =
+            direct.poses[direct.poses.size() - 2].pose.position;
+          const double yaw = std::atan2(p_last.y - p_prev.y,
+              p_last.x - p_prev.x);
+          auto & q = direct.poses.back().pose.orientation;
+          q.x = 0.0; q.y = 0.0;
+          q.z = std::sin(yaw * 0.5);
+          q.w = std::cos(yaw * 0.5);
+        } else {
+          direct.poses.back().pose.orientation = goal.pose.orientation;
+        }
+      }
+      RCLCPP_INFO(logger_,
+        "Direct Theta* plan: %zu poses, geom=%.2fm "
+        "(graph route would be %.2fm)",
+        direct.poses.size(),
+        decision.direct_distance, decision.route_distance);
+      return direct;
+    }
+  }
+
+  // Graph route wins (or router disabled) — A\* must have succeeded
+  // for us to keep going.
+  if (!result.success) {
+    RCLCPP_ERROR(logger_,
+      "A* failed and router did not pick DIRECT — no plan available "
+      "(start=%s goal=%s)",
+      start_proj.id.c_str(), goal_id->c_str());
     return empty_path;
   }
-  RCLCPP_INFO(logger_,
-    "A* found path: %zu nodes, %zu edges, cost=%.2f, expanded=%zu, %ldus",
-    result.node_ids.size(), result.edge_ids.size(),
-    result.total_cost, result.expanded_nodes, static_cast<long>(dt));
 
   // ── Step 4: interpolate (路网内部分) ──────────────────────────────
   auto plan = interpolator_->interpolate(start, goal, start_proj, *goal_id,
@@ -524,6 +678,7 @@ NavRouteGraphPlanner::dynamicParametersCallback(std::vector<rclcpp::Parameter> p
 {
   rcl_interfaces::msg::SetParametersResult result;
   bool ca_dirty = false;
+  bool router_dirty = false;
   for (const auto & p : parameters) {
     const auto & name = p.get_name();
     const auto type = p.get_type();
@@ -558,6 +713,12 @@ NavRouteGraphPlanner::dynamicParametersCallback(std::vector<rclcpp::Parameter> p
       } else if (name == name_ + ".bypass_max_replan_length_m") {
         params_.ca.bypass_max_replan_length_m = p.as_double();
         ca_dirty = true;
+      } else if (name == name_ + ".router_graph_preference_ratio") {
+        params_.router.graph_preference_ratio = p.as_double();
+        router_dirty = true;
+      } else if (name == name_ + ".router_min_graph_route_m") {
+        params_.router.min_graph_route_m = p.as_double();
+        router_dirty = true;
       }
     } else if (type == ParameterType::PARAMETER_INTEGER) {
       if (name == name_ + ".waypoints_per_meter") {
@@ -588,11 +749,25 @@ NavRouteGraphPlanner::dynamicParametersCallback(std::vector<rclcpp::Parameter> p
       } else if (name == name_ + ".theta_star_allow_unknown") {
         params_.ca.theta_star_allow_unknown = p.as_bool();
         ca_dirty = true;
+      } else if (name == name_ + ".projection_unlimited_mode") {
+        params_.projection_unlimited_mode = p.as_bool();
+        RCLCPP_INFO(logger_,
+          "projection_unlimited_mode -> %s",
+          params_.projection_unlimited_mode ? "true" : "false");
+      } else if (name == name_ + ".enable_intelligent_router") {
+        params_.router.enable = p.as_bool();
+        router_dirty = true;
+        RCLCPP_INFO(logger_,
+          "enable_intelligent_router -> %s",
+          params_.router.enable ? "true" : "false");
       }
     }
   }
   if (ca_dirty && ca_layer_) {
     ca_layer_->updateParams(params_.ca);
+  }
+  if (router_dirty && router_) {
+    router_->updateParams(params_.router);
   }
   result.successful = true;
   return result;

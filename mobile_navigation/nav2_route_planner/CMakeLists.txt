@@ -58,6 +58,7 @@ add_library(${library_name} SHARED
   src/path_interpolator.cpp
   src/route_plan_publisher.cpp
   src/costmap_aware_layer.cpp
+  src/intelligent_router.cpp
   src/nav_route_graph_planner.cpp
 )
 
@@ -102,6 +103,10 @@ if(BUILD_TESTING)
   ament_add_gtest(test_path_interpolator test/test_path_interpolator.cpp)
   ament_target_dependencies(test_path_interpolator ${dependencies})
   target_link_libraries(test_path_interpolator ${library_name})
+
+  ament_add_gtest(test_intelligent_router test/test_intelligent_router.cpp)
+  ament_target_dependencies(test_intelligent_router ${dependencies})
+  target_link_libraries(test_intelligent_router ${library_name})
 endif()
 
 ament_export_include_directories(include)

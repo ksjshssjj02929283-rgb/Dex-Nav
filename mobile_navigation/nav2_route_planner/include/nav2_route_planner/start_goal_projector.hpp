@@ -3,6 +3,7 @@
 #ifndef NAV2_ROUTE_PLANNER__START_GOAL_PROJECTOR_HPP_
 #define NAV2_ROUTE_PLANNER__START_GOAL_PROJECTOR_HPP_
 
+#include <limits>
 #include <optional>
 #include <string>
 #include <utility>
@@ -16,11 +17,21 @@ namespace nav2_route_planner
 
 /// Projects a free-space pose onto the road graph.
 ///
-/// Algorithm (mirrors ROS1 `GetPointId` / `GetLineId` / `GetVerticalPoint`):
-///   1. Find nearest graph node within `node_threshold` → ON_NODE
-///      (both NAV_POINT and JUNCTION are eligible)
-///   2. Else find nearest edge sample within `edge_threshold` → ON_EDGE
-///   3. Else INVALID
+/// Two operating modes:
+///   • Bounded (`project` / `projectToNode`): mirrors ROS1
+///     `GetPointId`/`GetLineId`, uses `node_threshold` and `edge_threshold`
+///     to reject far-away poses with INVALID/nullopt. Used by callers that
+///     want a hard "must be on the graph" contract.
+///   • Unlimited (`projectUnlimited` / `projectToNearestNode`): drops the
+///     threshold and always returns the globally nearest NODE or EDGE
+///     projection. Used by 2026-05 "arbitrary start/goal" extension —
+///     callers above use Theta\* to bridge `pose ↔ projected point`.
+///
+/// Both modes apply the SAME fair-competition rule (DEC-025 / DEC-019):
+///   • compute the nearest NODE distance (across NAV_POINT + JUNCTION)
+///   • compute the nearest EDGE-projection distance (across enabled edges)
+///   • smaller distance wins. On exact tie EDGE wins (it carries direction
+///     info so we won't U-turn at the start).
 class StartGoalProjector
 {
 public:
@@ -36,6 +47,12 @@ public:
     /// to know where on the edge we joined). 0 = at from_id end.
     std::size_t edge_sample_index{0};
     std::size_t edge_total_samples{0};
+    /// Diagnostic: best NODE / EDGE distances seen during the scan. Useful
+    /// for the IntelligentRouter to reason about "how far is pose from the
+    /// graph" without re-running the scan. Both are `+inf` if the graph
+    /// had no nodes / no enabled edges respectively.
+    double best_node_distance{std::numeric_limits<double>::infinity()};
+    double best_edge_distance{std::numeric_limits<double>::infinity()};
   };
 
   struct Params
@@ -47,17 +64,48 @@ public:
 
   explicit StartGoalProjector(Params p) : p_(p) {}
 
-  /// Project an arbitrary pose. Caller must hold graph.lockShared().
+  /// Bounded project. Caller must hold graph.lockShared(). Returns
+  /// type=INVALID when both thresholds miss — used by code paths that
+  /// REQUIRE the pose be on (or near) the graph.
   Result project(
     const geometry_msgs::msg::PoseStamped & pose,
     const TopoGraph & graph) const;
 
-  /// Project requiring a node match (for goals).
-  /// Returns the nearest graph node id (NAV_POINT or JUNCTION) within
-  /// node_threshold, or nullopt otherwise. Caller must hold lockShared().
+  /// Bounded project-to-node. Returns nullopt when no node within
+  /// `node_threshold`.
   std::optional<std::string> projectToNode(
     const geometry_msgs::msg::PoseStamped & pose,
     const TopoGraph & graph) const;
+
+  /// Unlimited project — always returns the globally nearest NODE or
+  /// EDGE projection, regardless of how far the pose is from the graph.
+  /// Only returns INVALID when the graph is empty (no nodes AND no
+  /// enabled edges). Caller must hold graph.lockShared().
+  ///
+  /// Tie-break: NODE/EDGE compete on plain distance; on exact tie, EDGE
+  /// wins (carries direction info). This matches the bounded `project`
+  /// behavior so unit tests written against bounded mode keep passing
+  /// when the thresholds are relaxed.
+  Result projectUnlimited(
+    const geometry_msgs::msg::PoseStamped & pose,
+    const TopoGraph & graph) const;
+
+  /// Unlimited project-to-node — always returns the globally nearest
+  /// node id (NAV_POINT or JUNCTION). Returns nullopt only when the
+  /// graph has zero nodes.
+  std::optional<std::string> projectToNearestNode(
+    const geometry_msgs::msg::PoseStamped & pose,
+    const TopoGraph & graph) const;
+
+  /// Helper: given a `Result` of type ON_EDGE, return whichever endpoint
+  /// of the edge is geometrically closer to `pose`. Used by callers that
+  /// need an A\* goal-node id when the goal projects onto an edge.
+  /// Returns nullopt if the edge or its endpoints are missing from the
+  /// graph. Caller must hold graph.lockShared().
+  static std::optional<std::string> nearerEndpointOfEdge(
+    const Result & edge_proj,
+    const geometry_msgs::msg::PoseStamped & pose,
+    const TopoGraph & graph);
 
   /// Vertical projection of (px,py) onto segment (x1,y1)-(x2,y2).
   /// `on_segment` is true when projection lies within the segment;
@@ -68,6 +116,15 @@ public:
     bool & on_segment);
 
 private:
+  /// Internal shared scan: walks every node and every enabled edge,
+  /// records the best NODE distance and best EDGE projection. `apply_*`
+  /// flags allow callers to skip one side. Caller must hold lockShared().
+  Result scanGraph(
+    const geometry_msgs::msg::PoseStamped & pose,
+    const TopoGraph & graph,
+    bool apply_node_threshold,
+    bool apply_edge_threshold) const;
+
   Params p_;
 };
 
