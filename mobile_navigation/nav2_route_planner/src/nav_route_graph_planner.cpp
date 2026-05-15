@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <memory>
 #include <string>
 #include <utility>
@@ -484,6 +485,30 @@ nav_msgs::msg::Path NavRouteGraphPlanner::createPlan(
       RCLCPP_INFO(logger_,
         "Layer 2: spliced %zu/%zu bypasses (final path size = %zu)",
         bypass_count, obstacles.size(), nav_path.poses.size());
+    }
+  }
+
+  // ── Step 5.7: 最终朝向兜底 ─────────────────────────────────────────
+  // Theta* 重写过的段（Step 4.6 / Step 5.5）输出的 sample orientation 都是
+  // identity quaternion (yaw=0)。Interpolator 在 Step 4 已把最后 sample
+  // 设为 goal.pose.orientation，但若该 sample 被后续 Theta* 段覆盖（典型
+  // 场景：goal 落在 NavPoint 的 projection_node_threshold_m 范围内，触发
+  // __goal_alignment__ → Theta* 重写），就会丢失用户指定的终点角度，
+  // 表现为"机器人到达后朝向 +X 轴而非给定方向"。
+  // 这里在所有路径变换完成后做最终修正：use_final_approach_orientation
+  // 关闭时强制写入用户给的 goal.orientation；开启时按路径切线方向计算。
+  if (!nav_path.poses.empty()) {
+    if (params_.use_final_approach_orientation && nav_path.poses.size() >= 2) {
+      const auto & p_last = nav_path.poses.back().pose.position;
+      const auto & p_prev = nav_path.poses[nav_path.poses.size() - 2].pose.position;
+      const double yaw = std::atan2(p_last.y - p_prev.y, p_last.x - p_prev.x);
+      auto & q = nav_path.poses.back().pose.orientation;
+      q.x = 0.0;
+      q.y = 0.0;
+      q.z = std::sin(yaw * 0.5);
+      q.w = std::cos(yaw * 0.5);
+    } else {
+      nav_path.poses.back().pose.orientation = goal.pose.orientation;
     }
   }
 

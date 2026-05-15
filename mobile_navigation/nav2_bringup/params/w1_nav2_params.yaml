@@ -442,6 +442,7 @@ planner_server:
       waypoints_per_meter: 20
       bezier_samples_per_edge: 40
       publish_route_plan: true
+      # false=最终朝向用 goal 给定值（默认/我们期望）；true=用路径切线方向
       use_final_approach_orientation: false
 
       # ── Costmap-aware 安全层 ─────────────
@@ -502,6 +503,7 @@ planner_server:
       w_euc_cost: 1.0
       w_traversal_cost: 2.0
       allow_unknown: false
+      # false=最终朝向用 goal 给定值（默认/我们期望）；true=用路径切线方向
       use_final_approach_orientation: false
       terminal_checking_interval: 5000
 
