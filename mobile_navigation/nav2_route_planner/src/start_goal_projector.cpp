@@ -11,6 +11,8 @@ namespace nav2_route_planner
 namespace
 {
 
+constexpr double kSnapEpsilon = 1e-6;
+
 struct EdgeProjection
 {
   std::string id;
@@ -19,6 +21,88 @@ struct EdgeProjection
   std::size_t sample_index{0};
   std::size_t sample_total{0};
 };
+
+/// Compute the best projection of (px, py) onto a single edge's sampled
+/// polyline. Returns distance, projected_xy, and `sample_index` in the
+/// FLOOR semantic: the index of the last sample BEFORE projected_xy
+/// along the from→to direction.
+///
+/// LINE 2-sample edges:
+///   • interior projection (on_seg=true) → idx = 0
+///   • snapped to from-end                → idx = 0
+///   • snapped to to-end                  → idx = 1
+///
+/// BEZIER N-sample edges (per-segment vertical scan):
+///   • projected_xy in segment [i, i+1]   → idx = i
+///   • snapped to samples[i+1] precisely  → idx = i + 1
+///
+/// This single helper replaced 4 near-identical scattered blocks in
+/// scanGraph (bounded/unlimited) and projectPreferEdge re-scan. Floor-
+/// index correctness is the foundation of `interpolator`'s walking
+/// loop — getting it wrong here was the root cause of DEC-005~014 (a
+/// 0.67 m straight-line approach turning into 8 m of U-turn).
+EdgeProjection bestProjectionOnEdge(
+  const std::vector<std::pair<double, double>> & samples,
+  EdgeGeometry geometry,
+  double px, double py)
+{
+  EdgeProjection r;
+  r.sample_total = samples.size();
+  if (samples.size() < 2) {return r;}
+
+  if (geometry == EdgeGeometry::LINE && samples.size() == 2) {
+    bool on_seg = false;
+    auto proj = StartGoalProjector::verticalProject(px, py,
+        samples[0].first, samples[0].second,
+        samples[1].first, samples[1].second,
+        on_seg);
+    r.distance = std::hypot(proj.first - px, proj.second - py);
+    r.xy = proj;
+    if (on_seg) {
+      r.sample_index = 0;
+    } else {
+      const double d_from = std::hypot(
+        proj.first - samples[0].first,
+        proj.second - samples[0].second);
+      r.sample_index = (d_from < kSnapEpsilon) ? 0u : 1u;
+    }
+    return r;
+  }
+
+  // BEZIER / multi-sample: scan every adjacent sample pair as a
+  // line segment, keep the globally closest projection.
+  for (std::size_t i = 0; i + 1 < samples.size(); ++i) {
+    bool on_seg = false;
+    auto proj = StartGoalProjector::verticalProject(px, py,
+        samples[i].first, samples[i].second,
+        samples[i + 1].first, samples[i + 1].second,
+        on_seg);
+    const double d = std::hypot(proj.first - px, proj.second - py);
+    if (d < r.distance) {
+      r.distance = d;
+      r.xy = proj;
+      if (on_seg) {
+        r.sample_index = i;
+      } else {
+        const double d_to_to = std::hypot(
+          proj.first - samples[i + 1].first,
+          proj.second - samples[i + 1].second);
+        r.sample_index = (d_to_to < kSnapEpsilon) ? (i + 1) : i;
+      }
+    }
+  }
+  return r;
+}
+
+/// Distance-only variant: just the closest-distance value, used by
+/// diagnostic scans that don't need the index / projected_xy.
+double bestProjectionDistance(
+  const std::vector<std::pair<double, double>> & samples,
+  EdgeGeometry geometry,
+  double px, double py)
+{
+  return bestProjectionOnEdge(samples, geometry, px, py).distance;
+}
 
 }  // namespace
 
@@ -57,22 +141,18 @@ StartGoalProjector::Result StartGoalProjector::scanGraph(
   const double px = pose.pose.position.x;
   const double py = pose.pose.position.y;
 
-  // Bounded mode (apply_node_threshold && apply_edge_threshold) keeps the
-  // legacy "NODE first" semantics for backward compatibility — both nav
-  // points and junctions get a chance to win within `node_threshold`,
+  // Bounded mode (apply_node_threshold && apply_edge_threshold) keeps
+  // the legacy "NODE first" semantics for backward compatibility — both
+  // nav points and junctions get a chance to win within `node_threshold`,
   // and only if NONE qualify do we fall through to the edge scan. This
-  // is the behaviour the v1 GTests pin (e.g.
-  // OnNodeWhenStartCloseToNavPoint) and what the v1 design doc §4.4
-  // describes.
+  // is the behaviour the v1 GTests pin (e.g. OnNodeWhenStartCloseToNavPoint).
   //
   // Unlimited mode (both flags false) drops the thresholds entirely and
   // does an honest distance race between the best NODE and the best
-  // EDGE — used by the 2026-05 "arbitrary start/goal" extension where
-  // the caller has no upper bound on how far the pose can be from the
-  // graph.
+  // EDGE — used by the 2026-05 "arbitrary start/goal" extension.
 
   if (apply_node_threshold && apply_edge_threshold) {
-    // ── Legacy path: NODE first within node_threshold ───────────────
+    // ── Legacy path: NODE first within node_threshold ────────────────
     double best_d = p_.node_threshold_m;
     for (const auto & [id, n] : graph.nodes()) {
       const double d = std::hypot(n.x - px, n.y - py);
@@ -91,23 +171,8 @@ StartGoalProjector::Result StartGoalProjector::scanGraph(
         if (!e.enabled) {continue;}
         auto samples = graph.sampleEdge(e, p_.bezier_samples_per_edge);
         if (samples.size() < 2) {continue;}
-        double seg_best = std::numeric_limits<double>::infinity();
-        if (e.geometry == EdgeGeometry::LINE && samples.size() == 2) {
-          bool on_seg = false;
-          auto proj = verticalProject(px, py,
-              samples[0].first, samples[0].second,
-              samples[1].first, samples[1].second,
-              on_seg);
-          seg_best = std::hypot(proj.first - px, proj.second - py);
-        } else {
-          for (const auto & s : samples) {
-            const double d = std::hypot(s.first - px, s.second - py);
-            if (d < seg_best) {seg_best = d;}
-          }
-        }
-        if (seg_best < r.best_edge_distance) {
-          r.best_edge_distance = seg_best;
-        }
+        const double d = bestProjectionDistance(samples, e.geometry, px, py);
+        if (d < r.best_edge_distance) {r.best_edge_distance = d;}
       }
       return r;
     }
@@ -118,66 +183,17 @@ StartGoalProjector::Result StartGoalProjector::scanGraph(
     for (const auto & [id, e] : graph.edges()) {
       if (!e.enabled) {continue;}
       auto samples = graph.sampleEdge(e, p_.bezier_samples_per_edge);
-      if (samples.size() < 2) {continue;}
-      double seg_best = std::numeric_limits<double>::infinity();
-      std::size_t best_idx = 0;
-      std::pair<double, double> best_xy{0, 0};
-      if (e.geometry == EdgeGeometry::LINE && samples.size() == 2) {
-        bool on_seg = false;
-        auto proj = verticalProject(px, py,
-            samples[0].first, samples[0].second,
-            samples[1].first, samples[1].second,
-            on_seg);
-        seg_best = std::hypot(proj.first - px, proj.second - py);
-        best_xy = proj;
-        // DEC-011 fix: `edge_sample_index` is the floor index — the
-        // last sample BEFORE projected_xy along the from→to direction.
-        // For LINE with 2 samples (indices 0 and 1):
-        //   • interior projection (on_seg=true): floor index = 0
-        //   • snapped to from-end: 0
-        //   • snapped to to-end:   1
-        // The legacy `on_seg ? 1u : 0u` returned 1 for interior
-        // projections, which the interpolator misread as "stand at the
-        // to-end" — producing the from→to→projected_xy U-turn.
-        if (on_seg) {
-          best_idx = 0;
-        } else {
-          const double d_from = std::hypot(
-            proj.first - samples[0].first,
-            proj.second - samples[0].second);
-          best_idx = (d_from < 1e-6) ? 0u : 1u;
-        }
-      } else {
-        // DEC-014: per-segment verticalProject + floor index (same as
-        // unlimited scanGraph BEZIER branch / DEC-013 fix).
-        for (std::size_t i = 0; i + 1 < samples.size(); ++i) {
-          bool on_seg = false;
-          auto proj = verticalProject(px, py,
-              samples[i].first, samples[i].second,
-              samples[i + 1].first, samples[i + 1].second,
-              on_seg);
-          const double d = std::hypot(proj.first - px, proj.second - py);
-          if (d < seg_best) {
-            seg_best = d;
-            best_xy = proj;
-            if (on_seg) {
-              best_idx = i;
-            } else {
-              const double d_to_to = std::hypot(
-                proj.first - samples[i + 1].first,
-                proj.second - samples[i + 1].second);
-              best_idx = (d_to_to < 1e-6) ? (i + 1) : i;
-            }
-          }
-        }
+      auto proj = bestProjectionOnEdge(samples, e.geometry, px, py);
+      if (proj.sample_total < 2) {continue;}
+      if (proj.distance < r.best_edge_distance) {
+        r.best_edge_distance = proj.distance;
       }
-      if (seg_best < r.best_edge_distance) {r.best_edge_distance = seg_best;}
-      if (seg_best < best.distance) {
-        best.distance = seg_best;
+      if (proj.distance < best.distance) {
+        best.distance = proj.distance;
         best.id = id;
-        best.xy = best_xy;
-        best.sample_index = best_idx;
-        best.sample_total = samples.size();
+        best.xy = proj.xy;
+        best.sample_index = proj.sample_index;
+        best.sample_total = proj.sample_total;
       }
     }
     if (!best.id.empty()) {
@@ -207,61 +223,14 @@ StartGoalProjector::Result StartGoalProjector::scanGraph(
   for (const auto & [id, e] : graph.edges()) {
     if (!e.enabled) {continue;}
     auto samples = graph.sampleEdge(e, p_.bezier_samples_per_edge);
-    if (samples.size() < 2) {continue;}
-    double seg_best = std::numeric_limits<double>::infinity();
-    std::size_t seg_idx = 0;
-    std::pair<double, double> seg_xy{0, 0};
-    if (e.geometry == EdgeGeometry::LINE && samples.size() == 2) {
-      bool on_seg = false;
-      auto proj = verticalProject(px, py,
-          samples[0].first, samples[0].second,
-          samples[1].first, samples[1].second,
-          on_seg);
-      seg_best = std::hypot(proj.first - px, proj.second - py);
-      seg_xy = proj;
-      // DEC-014: floor index — interior = 0, snapped-to-to = 1.
-      // Mirrors the bounded scanGraph LINE branch (DEC-011 fix). Without
-      // this, interior projections set idx=1, which the interpolator's
-      // forward-walk loop misreads as "walk all the way to to-end then
-      // back to projected_xy" → multi-meter U-turn on LINE edges.
-      if (on_seg) {
-        seg_idx = 0;
-      } else {
-        const double d_from = std::hypot(
-          proj.first - samples[0].first,
-          proj.second - samples[0].second);
-        seg_idx = (d_from < 1e-6) ? 0u : 1u;
-      }
-    } else {
-      // DEC-014: per-segment verticalProject (same as bounded scanGraph
-      // BEZIER branch — DEC-013 fix). Returns true floor index.
-      for (std::size_t i = 0; i + 1 < samples.size(); ++i) {
-        bool on_seg = false;
-        auto proj = verticalProject(px, py,
-            samples[i].first, samples[i].second,
-            samples[i + 1].first, samples[i + 1].second,
-            on_seg);
-        const double d = std::hypot(proj.first - px, proj.second - py);
-        if (d < seg_best) {
-          seg_best = d;
-          seg_xy = proj;
-          if (on_seg) {
-            seg_idx = i;
-          } else {
-            const double d_to_to = std::hypot(
-              proj.first - samples[i + 1].first,
-              proj.second - samples[i + 1].second);
-            seg_idx = (d_to_to < 1e-6) ? (i + 1) : i;
-          }
-        }
-      }
-    }
-    if (seg_best < best_edge.distance) {
-      best_edge.distance = seg_best;
+    auto proj = bestProjectionOnEdge(samples, e.geometry, px, py);
+    if (proj.sample_total < 2) {continue;}
+    if (proj.distance < best_edge.distance) {
+      best_edge.distance = proj.distance;
       best_edge.id = id;
-      best_edge.xy = seg_xy;
-      best_edge.sample_index = seg_idx;
-      best_edge.sample_total = samples.size();
+      best_edge.xy = proj.xy;
+      best_edge.sample_index = proj.sample_index;
+      best_edge.sample_total = proj.sample_total;
     }
   }
   r.best_edge_distance = best_edge.distance;
@@ -271,8 +240,8 @@ StartGoalProjector::Result StartGoalProjector::scanGraph(
   if (!node_avail && !edge_avail) {
     return r;  // empty graph
   }
-  // DEC-025 fairness: smaller distance wins; on exact tie EDGE wins
-  // (carries direction info, prevents start-side U-turn).
+  // Smaller distance wins. On exact tie EDGE wins (it carries direction
+  // info, prevents start-side U-turn).
   if (node_avail && (!edge_avail || best_node_d < best_edge.distance)) {
     r.type = ResultType::ON_NODE;
     r.id = best_node_id;
@@ -292,18 +261,14 @@ StartGoalProjector::Result StartGoalProjector::project(
   const geometry_msgs::msg::PoseStamped & pose,
   const TopoGraph & graph) const
 {
-  return scanGraph(pose, graph,
-    /*apply_node_threshold*/ true,
-    /*apply_edge_threshold*/ true);
+  return scanGraph(pose, graph, true, true);
 }
 
 StartGoalProjector::Result StartGoalProjector::projectUnlimited(
   const geometry_msgs::msg::PoseStamped & pose,
   const TopoGraph & graph) const
 {
-  return scanGraph(pose, graph,
-    /*apply_node_threshold*/ false,
-    /*apply_edge_threshold*/ false);
+  return scanGraph(pose, graph, false, false);
 }
 
 StartGoalProjector::Result StartGoalProjector::projectPreferEdge(
@@ -312,90 +277,40 @@ StartGoalProjector::Result StartGoalProjector::projectPreferEdge(
 {
   // Start from the unlimited scan (NODE + EDGE both populated). If the
   // graph has any enabled edge, force the result to ON_EDGE regardless
-  // of which side won the fair distance race — keeps the plan glued
-  // to the road geometry. Only fall back to ON_NODE when there is no
+  // of which side won the fair distance race — keeps the plan glued to
+  // the road geometry. Only fall back to ON_NODE when there is no
   // enabled edge at all (graph is just isolated nodes / junctions).
-  Result r = scanGraph(pose, graph,
-    /*apply_node_threshold*/ false,
-    /*apply_edge_threshold*/ false);
-  if (r.type != ResultType::ON_EDGE &&
-      std::isfinite(r.best_edge_distance))
+  Result r = scanGraph(pose, graph, false, false);
+  if (r.type == ResultType::ON_EDGE ||
+      !std::isfinite(r.best_edge_distance))
   {
-    // Some enabled edge exists but the NODE happened to win — re-scan
-    // for the best edge so we get its id / projected_xy / sample_index.
-    const double px = pose.pose.position.x;
-    const double py = pose.pose.position.y;
-    EdgeProjection best_edge;
-    for (const auto & [id, e] : graph.edges()) {
-      if (!e.enabled) {continue;}
-      auto samples = graph.sampleEdge(e, p_.bezier_samples_per_edge);
-      if (samples.size() < 2) {continue;}
-      double seg_best = std::numeric_limits<double>::infinity();
-      std::size_t seg_idx = 0;
-      std::pair<double, double> seg_xy{0, 0};
-      if (e.geometry == EdgeGeometry::LINE && samples.size() == 2) {
-        bool on_seg = false;
-        auto proj = verticalProject(px, py,
-            samples[0].first, samples[0].second,
-            samples[1].first, samples[1].second,
-            on_seg);
-        seg_best = std::hypot(proj.first - px, proj.second - py);
-        seg_xy = proj;
-        if (on_seg) {
-          seg_idx = 0;
-        } else {
-          const double d_from = std::hypot(
-            proj.first - samples[0].first,
-            proj.second - samples[0].second);
-          seg_idx = (d_from < 1e-6) ? 0u : 1u;
-        }
-      } else {
-        // DEC-013: per-segment vertical projection along the sampled
-        // polyline. The legacy "nearest sample" gave seg_idx = closest
-        // sample, which is NOT the "floor index" semantic the
-        // interpolator's walking loop requires — for curves it can sit
-        // one step PAST projected_xy and cause the walker to overshoot
-        // then double back. The per-segment vertical scan finds the
-        // exact projection and returns the floor index (segment's
-        // from-end).
-        for (std::size_t i = 0; i + 1 < samples.size(); ++i) {
-          bool on_seg = false;
-          auto proj = verticalProject(px, py,
-              samples[i].first, samples[i].second,
-              samples[i + 1].first, samples[i + 1].second,
-              on_seg);
-          const double d = std::hypot(proj.first - px, proj.second - py);
-          if (d < seg_best) {
-            seg_best = d;
-            seg_xy = proj;
-            if (on_seg) {
-              seg_idx = i;
-            } else {
-              // Snapped to one of the segment endpoints.
-              const double d_to_to = std::hypot(
-                proj.first - samples[i + 1].first,
-                proj.second - samples[i + 1].second);
-              seg_idx = (d_to_to < 1e-6) ? (i + 1) : i;
-            }
-          }
-        }
-      }
-      if (seg_best < best_edge.distance) {
-        best_edge.distance = seg_best;
-        best_edge.id = id;
-        best_edge.xy = seg_xy;
-        best_edge.sample_index = seg_idx;
-        best_edge.sample_total = samples.size();
-      }
+    return r;
+  }
+  // Some enabled edge exists but the NODE happened to win — re-scan
+  // for the best edge so we get its id / projected_xy / sample_index.
+  const double px = pose.pose.position.x;
+  const double py = pose.pose.position.y;
+  EdgeProjection best_edge;
+  for (const auto & [id, e] : graph.edges()) {
+    if (!e.enabled) {continue;}
+    auto samples = graph.sampleEdge(e, p_.bezier_samples_per_edge);
+    auto proj = bestProjectionOnEdge(samples, e.geometry, px, py);
+    if (proj.sample_total < 2) {continue;}
+    if (proj.distance < best_edge.distance) {
+      best_edge.distance = proj.distance;
+      best_edge.id = id;
+      best_edge.xy = proj.xy;
+      best_edge.sample_index = proj.sample_index;
+      best_edge.sample_total = proj.sample_total;
     }
-    if (!best_edge.id.empty()) {
-      r.type = ResultType::ON_EDGE;
-      r.id = best_edge.id;
-      r.distance = best_edge.distance;
-      r.projected_xy = best_edge.xy;
-      r.edge_sample_index = best_edge.sample_index;
-      r.edge_total_samples = best_edge.sample_total;
-    }
+  }
+  if (!best_edge.id.empty()) {
+    r.type = ResultType::ON_EDGE;
+    r.id = best_edge.id;
+    r.distance = best_edge.distance;
+    r.projected_xy = best_edge.xy;
+    r.edge_sample_index = best_edge.sample_index;
+    r.edge_total_samples = best_edge.sample_total;
   }
   return r;
 }

@@ -4,7 +4,9 @@
 #define NAV2_ROUTE_PLANNER__NAV_ROUTE_GRAPH_PLANNER_HPP_
 
 #include <memory>
+#include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "rclcpp/rclcpp.hpp"
@@ -52,31 +54,24 @@ public:
     const geometry_msgs::msg::PoseStamped & start,
     const geometry_msgs::msg::PoseStamped & goal) override;
 
-private:
+  /// Public so the table-driven param registry in the .cpp can address
+  /// fields through member-pointer lambdas (P0-3 refactor). Treat as
+  /// implementation detail — only `configure()` mutates it directly.
   struct Params
   {
     // Data source
     std::string asset_manager_node_name{"map_asset_manager"};
     double data_load_timeout_sec{5.0};
 
-    // Projection. With the project-19 simplification (DEC-004), the
-    // projector ALWAYS returns the globally nearest NODE or EDGE
-    // projection — the thresholds below are kept as diagnostic logging
-    // breakpoints only (we INFO-log when a start/goal pose is farther
-    // than these from the graph, since that's interesting to the
-    // operator). The planner then Theta*-bridges (pose ↔ projected_xy)
-    // free-space and traverses the graph's own geometry in between.
+    // Projection — diagnostic-only after DEC-004 (projector always
+    // returns globally-nearest NODE/EDGE); thresholds drive INFO logs
+    // only.
     double projection_node_threshold_m{0.5};
     double projection_edge_threshold_m{1.0};
 
-    // Project 19 / DEC-005 — "same-side shortcut". When the start and
-    // goal both project onto the graph within `shortcut_max_proj_distance_m`
-    // of EACH OTHER (i.e. the robot and the destination sit on the
-    // same side of the road network with essentially the same entry
-    // point), skip the graph routing entirely and Theta\* directly
-    // from start to goal. Avoids the "U-turn / drive past it" plans
-    // where graph routing forces a detour through a remote NavPoint.
-    // 0.0 disables the shortcut.
+    // DEC-005 "same-side shortcut": when start/goal projections sit
+    // within this distance, skip graph routing and Theta\* direct.
+    // 0.0 disables.
     double shortcut_max_proj_distance_m{0.5};
 
     // Cost
@@ -91,12 +86,75 @@ private:
     bool publish_route_plan{true};
     bool use_final_approach_orientation{false};
 
-    // Costmap-aware safety (see [[7. nav2_route_planner 设计方案]] §4.8)
+    // Costmap-aware Layer 2 (see [[7. nav2_route_planner 设计方案]] §4.8)
     CostmapAwareLayer::Params ca;
-  } params_;
+  };
+
+private:
+  Params params_;
 
   rcl_interfaces::msg::SetParametersResult dynamicParametersCallback(
     std::vector<rclcpp::Parameter> parameters);
+
+  /// P0-2 createPlan helpers: split the formerly 600-line method into
+  /// named, independently-testable stages.
+
+  /// Stage 1+2 — project start and goal onto the graph. Emits DEC-014
+  /// diagnostic logs. Returns nullopt when either projection is
+  /// INVALID (empty graph). Caller must hold graph_->lockShared().
+  std::optional<
+    std::pair<StartGoalProjector::Result, StartGoalProjector::Result>>
+  projectEndpoints(
+    const geometry_msgs::msg::PoseStamped & start,
+    const geometry_msgs::msg::PoseStamped & goal);
+
+  /// DEC-005 same-side shortcut: if start_proj and goal_proj are within
+  /// `shortcut_max_proj_distance_m` of each other, Theta*-direct from
+  /// start to goal and return that path. Returns nullopt to fall
+  /// through to graph routing (threshold disabled, distance too far,
+  /// or Theta* failed).
+  std::optional<nav_msgs::msg::Path> trySameSideShortcut(
+    const geometry_msgs::msg::PoseStamped & start,
+    const geometry_msgs::msg::PoseStamped & goal,
+    const StartGoalProjector::Result & start_proj,
+    const StartGoalProjector::Result & goal_proj);
+
+  /// Stage 3 — DEC-009 dual-endpoint blacklist A* with fallback.
+  /// Returns the A* result + chosen goal node + diagnostic dt.
+  /// nullopt when A* failed even after fallback.
+  struct AStarOutcome
+  {
+    AStarSearcher::Result result;
+    std::string goal_node_id;
+    long search_duration_us{0};
+  };
+  std::optional<AStarOutcome> runGraphSearch(
+    const StartGoalProjector::Result & start_proj,
+    const StartGoalProjector::Result & goal_proj,
+    const geometry_msgs::msg::PoseStamped & goal);
+
+  /// Theta*-rewrite a placeholder transition segment (start_transition
+  /// / goal_alignment). Replaces the segment's samples in-place and
+  /// retags its edge_id. Returns false if Theta* fails — caller should
+  /// abort and return an empty plan.
+  bool rewriteTransitionWithThetaStar(
+    InterpolatedSegment & seg, const std::string & expected_id);
+
+  /// Run Layer 2 obstacle detection on `nav_path`. Always publishes
+  /// the diagnostic markers. When `costmap_aware_mode` is on AND
+  /// obstacles are present, splices Theta*-bypass segments into the
+  /// path in-place (reverse-order so indices stay valid).
+  void applyObstacleBypass(
+    nav_msgs::msg::Path & nav_path, const rclcpp::Time & stamp);
+
+  /// Step 5.7 final-orientation fixup: Theta*-rewritten segments output
+  /// identity quaternions, which clobbers the goal heading the
+  /// interpolator placed on the last sample. Re-apply either the
+  /// goal pose orientation (default) or the path's terminal tangent
+  /// when `use_final_approach_orientation` is on.
+  void enforceGoalOrientation(
+    nav_msgs::msg::Path & nav_path,
+    const geometry_msgs::msg::PoseStamped & goal);
 
   // Components
   std::shared_ptr<TopoGraph> graph_;
