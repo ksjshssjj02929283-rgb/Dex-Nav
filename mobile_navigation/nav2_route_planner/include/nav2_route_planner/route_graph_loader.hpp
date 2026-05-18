@@ -6,10 +6,13 @@
 #ifndef NAV2_ROUTE_PLANNER__ROUTE_GRAPH_LOADER_HPP_
 #define NAV2_ROUTE_PLANNER__ROUTE_GRAPH_LOADER_HPP_
 
+#include <chrono>
 #include <memory>
 #include <string>
+#include <thread>
 
 #include "rclcpp/rclcpp.hpp"
+#include "rclcpp/executors/single_threaded_executor.hpp"
 #include "rclcpp_lifecycle/lifecycle_node.hpp"
 
 #include "nav_interfaces/srv/get_route_graph.hpp"
@@ -44,6 +47,8 @@ public:
     std::string asset_node_name,
     std::shared_ptr<TopoGraph> graph);
 
+  ~RouteGraphLoader();
+
   /// Start the 1 Hz background load timer. Idempotent.
   void startBackgroundLoad();
 
@@ -55,6 +60,28 @@ public:
 
   /// Service name actually used (for diagnostics / logs).
   std::string getRouteGraphServiceName() const {return route_graph_srv_name_;}
+
+  /// Synchronous reload — fetch the RouteGraph from map_asset_manager
+  /// and rebuild the in-memory TopoGraph, in one call. Safe to call
+  /// from `createPlan` despite that callback running on the planner's
+  /// SingleThreadedExecutor: the service client lives in its own
+  /// callback group spun by a dedicated thread, so wait_for() on the
+  /// future cannot deadlock the planner executor.
+  ///
+  /// Returns timing + count info; on failure / timeout the graph is
+  /// left unchanged (previous `rebuildFrom` is still valid).
+  struct LoadResult
+  {
+    bool success{false};
+    bool service_ready{false};
+    bool service_reported_failure{false};
+    bool timed_out{false};
+    std::chrono::milliseconds duration_total{0};   ///< full call latency
+    std::chrono::milliseconds duration_rebuild{0}; ///< rebuild step only
+    std::size_t node_count{0};
+    std::size_t edge_count{0};
+  };
+  LoadResult syncLoad(std::chrono::milliseconds timeout = std::chrono::seconds(2));
 
 private:
   using GetRouteGraph = nav_interfaces::srv::GetRouteGraph;
@@ -69,6 +96,13 @@ private:
 
   std::string route_graph_srv_name_;
   rclcpp::Client<GetRouteGraph>::SharedPtr route_graph_client_;
+
+  /// Dedicated callback group + executor + thread so syncLoad() can
+  /// wait on the service response without deadlocking the planner's
+  /// own (SingleThreaded) executor.
+  rclcpp::CallbackGroup::SharedPtr sync_cb_group_;
+  std::shared_ptr<rclcpp::executors::SingleThreadedExecutor> sync_executor_;
+  std::thread sync_spin_thread_;
 
   rclcpp::TimerBase::SharedPtr poll_timer_;
   bool request_in_flight_{false};

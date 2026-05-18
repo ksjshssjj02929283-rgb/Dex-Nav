@@ -308,11 +308,38 @@ nav_msgs::msg::Path NavRouteGraphPlanner::createPlan(
   empty_path.header.frame_id = global_frame_;
   empty_path.header.stamp = clock_->now();
 
-  // Async loader: empty path on cold start so the BT/caller can retry.
+  // Per-request synchronous reload: ensure each plan uses the latest
+  // RouteGraph from map_asset_manager. Timings logged for
+  // observability — total includes service round-trip; rebuild is
+  // the in-memory graph build alone. Failures fall through to the
+  // existing isReady() check; the previous graph (if any) is kept.
+  if (loader_) {
+    const auto lr = loader_->syncLoad(std::chrono::seconds(2));
+    if (lr.success) {
+      RCLCPP_INFO(logger_,
+        "RouteGraph syncLoad: total=%ldms rebuild=%ldms "
+        "(%zu nodes / %zu edges)",
+        static_cast<long>(lr.duration_total.count()),
+        static_cast<long>(lr.duration_rebuild.count()),
+        lr.node_count, lr.edge_count);
+    } else {
+      RCLCPP_WARN(logger_,
+        "RouteGraph syncLoad failed (service_ready=%d, timed_out=%d, "
+        "service_reported_failure=%d, total=%ldms) — falling back to "
+        "previously loaded graph if any",
+        lr.service_ready ? 1 : 0,
+        lr.timed_out ? 1 : 0,
+        lr.service_reported_failure ? 1 : 0,
+        static_cast<long>(lr.duration_total.count()));
+    }
+  }
+
+  // After syncLoad: the graph must be populated (either by this call
+  // or by an earlier background poll). Otherwise the BT/caller retries.
   if (!graph_->isReady()) {
     RCLCPP_WARN_THROTTLE(logger_, *clock_, 1000,
-      "RouteGraph not ready yet (background load from %s still pending). "
-      "Returning empty path; caller should retry.",
+      "RouteGraph not ready yet (syncLoad failed AND background load "
+      "from %s still pending). Returning empty path; caller should retry.",
       params_.asset_manager_node_name.c_str());
     return empty_path;
   }
@@ -646,7 +673,7 @@ NavRouteGraphPlanner::runGraphSearch(
         out.result = std::move(res_from);
         out.goal_node_id = e_opt->from_id;
         RCLCPP_INFO(logger_,
-          "DEC-009: chose 'from' endpoint='%s' (cost+residual=%.2f, "
+          "chose 'from' endpoint='%s' (cost+residual=%.2f, "
           "alt 'to'=%s %.2f) — A* path avoids goal edge '%s'",
           e_opt->from_id.c_str(), total_from,
           res_to.success ? "" : "(unreachable)", total_to,

@@ -27,7 +27,35 @@ RouteGraphLoader::RouteGraphLoader(
   // /map_asset_manager/get_route_graph. The response carries junctions,
   // edges AND nav_points (see GetRouteGraph.srv) — single round-trip.
   route_graph_srv_name_ = "/" + asset_node_name_ + "/get_route_graph";
-  route_graph_client_ = node->create_client<GetRouteGraph>(route_graph_srv_name_);
+
+  // Dedicated callback group for syncLoad() — `automatically_add_to_
+  // executor_with_node = false` keeps it OFF the planner's main
+  // SingleThreadedExecutor; we spin it in our own thread instead so a
+  // blocking wait_for() on the service future cannot deadlock the
+  // planner.
+  sync_cb_group_ = node->create_callback_group(
+    rclcpp::CallbackGroupType::MutuallyExclusive,
+    /*automatically_add_to_executor_with_node=*/false);
+  sync_executor_ = std::make_shared<rclcpp::executors::SingleThreadedExecutor>();
+  sync_executor_->add_callback_group(
+    sync_cb_group_, node->get_node_base_interface());
+  sync_spin_thread_ = std::thread([this]() {sync_executor_->spin();});
+
+  // Both the legacy background-poll path AND the new syncLoad() use
+  // the same client; binding it to `sync_cb_group_` means the timer
+  // (still on the main executor) fires `async_send_request` but the
+  // response future is serviced by our private thread, which is also
+  // safe.
+  route_graph_client_ = node->create_client<GetRouteGraph>(
+    route_graph_srv_name_,
+    rmw_qos_profile_services_default,
+    sync_cb_group_);
+}
+
+RouteGraphLoader::~RouteGraphLoader()
+{
+  if (sync_executor_) {sync_executor_->cancel();}
+  if (sync_spin_thread_.joinable()) {sync_spin_thread_.join();}
 }
 
 bool RouteGraphLoader::isLoaded() const
@@ -108,6 +136,67 @@ void RouteGraphLoader::onGraphResponse(
     return;
   }
   rebuild(*resp);
+}
+
+RouteGraphLoader::LoadResult RouteGraphLoader::syncLoad(
+  std::chrono::milliseconds timeout)
+{
+  LoadResult r;
+  auto node = parent_.lock();
+  if (!node) {return r;}
+  auto logger = node->get_logger();
+
+  const auto t0 = std::chrono::steady_clock::now();
+
+  // Non-blocking readiness check on the local discovery cache.
+  if (!route_graph_client_->service_is_ready()) {
+    r.duration_total = std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::steady_clock::now() - t0);
+    RCLCPP_WARN(logger,
+      "syncLoad: service '%s' not ready — graph not refreshed",
+      route_graph_srv_name_.c_str());
+    return r;
+  }
+  r.service_ready = true;
+
+  // Send request; future is serviced by `sync_executor_` on its
+  // own thread, so wait_for() here cannot deadlock.
+  auto req = std::make_shared<GetRouteGraph::Request>();
+  auto future = route_graph_client_->async_send_request(req);
+  const auto status = future.wait_for(timeout);
+
+  if (status != std::future_status::ready) {
+    r.timed_out = true;
+    r.duration_total = std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::steady_clock::now() - t0);
+    RCLCPP_WARN(logger,
+      "syncLoad: GetRouteGraph timed out after %ldms — graph not refreshed",
+      static_cast<long>(timeout.count()));
+    return r;
+  }
+
+  auto resp = future.get();
+  if (!resp || !resp->success) {
+    r.service_reported_failure = true;
+    r.duration_total = std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::steady_clock::now() - t0);
+    RCLCPP_WARN(logger,
+      "syncLoad: GetRouteGraph reported failure — graph not refreshed");
+    return r;
+  }
+
+  const auto t_rebuild_start = std::chrono::steady_clock::now();
+  rebuild(*resp);
+  const auto t1 = std::chrono::steady_clock::now();
+
+  r.success = true;
+  r.duration_total = std::chrono::duration_cast<std::chrono::milliseconds>(
+    t1 - t0);
+  r.duration_rebuild = std::chrono::duration_cast<std::chrono::milliseconds>(
+    t1 - t_rebuild_start);
+  r.node_count = graph_->nodeCount();
+  r.edge_count = graph_->edgeCount();
+  return r;
 }
 
 void RouteGraphLoader::rebuild(const GetRouteGraph::Response & resp)
