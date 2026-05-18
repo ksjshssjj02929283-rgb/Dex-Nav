@@ -438,7 +438,7 @@ planner_server:
       asset_manager_node_name: "map_asset_manager"
       data_load_timeout_sec: 5.0
       projection_node_threshold_m: 0.5
-      projection_edge_threshold_m: 1.0
+      projection_edge_threshold_m: 0.5
       waypoints_per_meter: 20
       bezier_samples_per_edge: 40
       publish_route_plan: true

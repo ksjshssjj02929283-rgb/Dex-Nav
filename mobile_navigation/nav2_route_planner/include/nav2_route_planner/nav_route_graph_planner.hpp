@@ -21,7 +21,6 @@
 #include "nav2_route_planner/astar_searcher.hpp"
 #include "nav2_route_planner/cost_function.hpp"
 #include "nav2_route_planner/costmap_aware_layer.hpp"
-#include "nav2_route_planner/intelligent_router.hpp"
 #include "nav2_route_planner/path_interpolator.hpp"
 #include "nav2_route_planner/route_graph_loader.hpp"
 #include "nav2_route_planner/route_plan_publisher.hpp"
@@ -60,20 +59,25 @@ private:
     std::string asset_manager_node_name{"map_asset_manager"};
     double data_load_timeout_sec{5.0};
 
-    // Projection
+    // Projection. With the project-19 simplification (DEC-004), the
+    // projector ALWAYS returns the globally nearest NODE or EDGE
+    // projection — the thresholds below are kept as diagnostic logging
+    // breakpoints only (we INFO-log when a start/goal pose is farther
+    // than these from the graph, since that's interesting to the
+    // operator). The planner then Theta*-bridges (pose ↔ projected_xy)
+    // free-space and traverses the graph's own geometry in between.
     double projection_node_threshold_m{0.5};
     double projection_edge_threshold_m{1.0};
-    /// When true, projector ignores the thresholds above and always
-    /// returns the globally nearest NODE / EDGE — the planner then
-    /// bridges `pose ↔ projected point` with Theta\*. This is the
-    /// "arbitrary start/goal" mode (project 19, 2026-05-15).
-    /// Default true matches the new user-facing contract; the
-    /// thresholds remain available as diagnostic-only fields (we log
-    /// when the pose is farther than the threshold but still plan).
-    bool projection_unlimited_mode{true};
 
-    // Intelligent routing (project 19, Phase 2)
-    IntelligentRouter::Params router;
+    // Project 19 / DEC-005 — "same-side shortcut". When the start and
+    // goal both project onto the graph within `shortcut_max_proj_distance_m`
+    // of EACH OTHER (i.e. the robot and the destination sit on the
+    // same side of the road network with essentially the same entry
+    // point), skip the graph routing entirely and Theta\* directly
+    // from start to goal. Avoids the "U-turn / drive past it" plans
+    // where graph routing forces a detour through a remote NavPoint.
+    // 0.0 disables the shortcut.
+    double shortcut_max_proj_distance_m{0.5};
 
     // Cost
     CostWeights weights;
@@ -102,7 +106,6 @@ private:
   std::shared_ptr<PathInterpolator> interpolator_;
   std::shared_ptr<RoutePlanPublisher> rp_publisher_;
   std::shared_ptr<CostmapAwareLayer> ca_layer_;
-  std::shared_ptr<IntelligentRouter> router_;
 
   // Debug marker publisher: visualizes each detected obstacle's
   // start_index / end_index on the planned path. Lifecycle-managed.

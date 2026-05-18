@@ -97,6 +97,24 @@ public:
     const geometry_msgs::msg::PoseStamped & pose,
     const TopoGraph & graph) const;
 
+  /// EDGE-first project — always returns ON_EDGE projection if the
+  /// graph has any enabled edge (the globally nearest edge projection,
+  /// even if some node is geometrically closer). Falls back to ON_NODE
+  /// only when the graph has zero enabled edges. INVALID only when
+  /// the graph is completely empty. Caller must hold graph.lockShared().
+  ///
+  /// Rationale (DEC-011, 2026-05-18 user feedback): the plan must stay
+  /// ON the road graph. Projecting to a NavPoint when the same pose
+  /// could project onto an adjacent edge produces plans where the
+  /// approach leg briefly leaves the network (a NavPoint sitting just
+  /// off an edge is visible in the user's screenshots). Forcing
+  /// ON_EDGE keeps the plan glued to graph geometry; the "near a
+  /// NavPoint" degenerate case naturally produces an ON_EDGE result
+  /// with `edge_sample_index` at the matching endpoint.
+  Result projectPreferEdge(
+    const geometry_msgs::msg::PoseStamped & pose,
+    const TopoGraph & graph) const;
+
   /// Helper: given a `Result` of type ON_EDGE, return whichever endpoint
   /// of the edge is geometrically closer to `pose`. Used by callers that
   /// need an A\* goal-node id when the goal projects onto an edge.

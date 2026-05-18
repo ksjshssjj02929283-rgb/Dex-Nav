@@ -22,6 +22,15 @@ geometry_msgs::msg::Quaternion yawToQuat(double yaw)
   return tf2::toMsg(q);
 }
 
+geometry_msgs::msg::PoseStamped makePose(double x, double y)
+{
+  geometry_msgs::msg::PoseStamped p;
+  p.pose.position.x = x;
+  p.pose.position.y = y;
+  p.pose.orientation.w = 1.0;
+  return p;
+}
+
 }  // namespace
 
 std::vector<std::pair<double, double>> PathInterpolator::sampleBezier(
@@ -94,7 +103,7 @@ InterpolatedRoutePlan PathInterpolator::interpolate(
   const geometry_msgs::msg::PoseStamped & start,
   const geometry_msgs::msg::PoseStamped & goal,
   const StartGoalProjector::Result & start_proj,
-  const std::string & goal_node_id,
+  const StartGoalProjector::Result & goal_proj,
   const AStarSearcher::Result & search_result,
   const TopoGraph & graph) const
 {
@@ -103,46 +112,107 @@ InterpolatedRoutePlan PathInterpolator::interpolate(
     return plan;
   }
 
-  // ── Step 1: start transition (start_pose → first node on path) ────────
-  // The first node in search_result.node_ids is the entry node
-  // (either an ON_NODE projection, or one of the two endpoints of
-  // an ON_EDGE projection — A* picked whichever had the cheaper
-  // overall cost).
-  const std::string first_node_id = search_result.node_ids.front();
-  auto first_node_opt = graph.getNode(first_node_id);
-  if (!first_node_opt) {return plan;}
+  // The A*-chosen entry / exit nodes for the graph leg.
+  const std::string entry_node_id = search_result.node_ids.front();
+  const std::string exit_node_id = search_result.node_ids.back();
+  auto entry_opt = graph.getNode(entry_node_id);
+  auto exit_opt = graph.getNode(exit_node_id);
+  if (!entry_opt || !exit_opt) {return plan;}
 
-  std::vector<geometry_msgs::msg::PoseStamped> transition_samples;
-  transition_samples.push_back(start);
-  if (start_proj.type == StartGoalProjector::ResultType::ON_EDGE) {
-    // First go to the projection point, then to the entry node.
-    emitLinear(transition_samples,
+  // ── Segment 1: __start_transition__ ─ free-space, start → projected_xy ─
+  //
+  // Project 19 simplification (DEC-004): this segment is ALWAYS just
+  // `start → projection point`. The caller is expected to Theta\*-
+  // rewrite it. We never put the entry node here — that's handled by
+  // the __start_edge_in__ segment below for ON_EDGE starts.
+  {
+    const double proj_x = (start_proj.type == StartGoalProjector::ResultType::ON_EDGE)
+      ? start_proj.projected_xy.first  : entry_opt->x;
+    const double proj_y = (start_proj.type == StartGoalProjector::ResultType::ON_EDGE)
+      ? start_proj.projected_xy.second : entry_opt->y;
+
+    InterpolatedSegment seg;
+    seg.edge_id = "__start_transition__";
+    seg.lane_subtype = "transition";
+    seg.floor = entry_opt->floor;
+    seg.samples.push_back(start);
+    emitLinear(seg.samples,
       start.pose.position.x, start.pose.position.y,
-      start_proj.projected_xy.first, start_proj.projected_xy.second);
-    emitLinear(transition_samples,
-      start_proj.projected_xy.first, start_proj.projected_xy.second,
-      first_node_opt->x, first_node_opt->y);
-  } else {
-    emitLinear(transition_samples,
-      start.pose.position.x, start.pose.position.y,
-      first_node_opt->x, first_node_opt->y);
+      proj_x, proj_y);
+    plan.segments.push_back(std::move(seg));
+    plan.floor_sequence.push_back(entry_opt->floor);
   }
 
-  InterpolatedSegment transition_seg;
-  transition_seg.edge_id = "__start_transition__";
-  transition_seg.lane_subtype = "transition";
-  transition_seg.floor = first_node_opt->floor;
-  transition_seg.samples = std::move(transition_samples);
-  plan.segments.push_back(std::move(transition_seg));
-  plan.floor_sequence.push_back(first_node_opt->floor);
+  // ── Segment 1.5: __start_edge_in__ ─ walk along edge geometry ──
+  //
+  // DEC-013: walk the sampled polyline from projected_xy back to the
+  // A*-chosen entry node. Uses the FLOOR semantic of
+  // `edge_sample_index` (projector returns the from-end of the
+  // segment containing projected_xy — see DEC-013 in projector). The
+  // walk goes:
+  //   • entry == from_id: reverse — projected_xy → edge_pts[idx] → ... → edge_pts[0]
+  //   • entry == to_id:   forward — projected_xy → edge_pts[idx+1] → ... → edge_pts[N-1]
+  // Now safe for BEZIER curves: `idx` is the last sample BEFORE the
+  // projection, so walking through it can never overshoot.
+  if (start_proj.type == StartGoalProjector::ResultType::ON_EDGE) {
+    auto e_opt = graph.getEdge(start_proj.id);
+    if (e_opt) {
+      auto edge_pts = graph.sampleEdge(*e_opt, p_.bezier_samples_per_edge);
+      if (edge_pts.size() >= 2) {
+        const bool entry_is_from = (e_opt->from_id == entry_node_id);
+        InterpolatedSegment seg;
+        seg.edge_id = "__start_edge_in__";
+        seg.lane_subtype = e_opt->lane_subtype;
+        seg.max_speed = e_opt->max_speed;
+        seg.floor = e_opt->floor;
+        seg.samples.push_back(
+          makePose(start_proj.projected_xy.first,
+              start_proj.projected_xy.second));
+        if (entry_is_from) {
+          // Reverse-walk: projected_xy → edge_pts[idx] → edge_pts[idx-1] → ... → edge_pts[0]
+          for (std::size_t i = start_proj.edge_sample_index + 1; i > 0; --i) {
+            const std::size_t j = i - 1;
+            emitLinear(seg.samples,
+              seg.samples.back().pose.position.x,
+              seg.samples.back().pose.position.y,
+              edge_pts[j].first, edge_pts[j].second);
+          }
+        } else {
+          // Forward-walk: projected_xy → edge_pts[idx+1] → ... → edge_pts[N-1]
+          for (std::size_t i = start_proj.edge_sample_index + 1;
+            i < edge_pts.size(); ++i)
+          {
+            emitLinear(seg.samples,
+              seg.samples.back().pose.position.x,
+              seg.samples.back().pose.position.y,
+              edge_pts[i].first, edge_pts[i].second);
+          }
+        }
+        plan.segments.push_back(std::move(seg));
+      }
+    }
+  }
 
-  // ── Step 2: per-edge sampling along A* result ─────────────────────────
+  // ── Segment 2: per-edge sampling along the A* result ────────────────
+  //
+  // DEC-009 fallback safety net: when A* could not find an alternative
+  // path around goal_proj.id and ended up walking that edge as its LAST
+  // edge, truncate it at projected_xy (don't walk past the projection
+  // into the unwalked half of the edge, which is the half most likely
+  // to contain obstacles). Skips __goal_edge_out__ below in that case.
+  const bool last_edge_is_goal_edge =
+    !search_result.edge_ids.empty() &&
+    goal_proj.type == StartGoalProjector::ResultType::ON_EDGE &&
+    search_result.edge_ids.back() == goal_proj.id;
+
   for (std::size_t i = 0; i < search_result.edge_ids.size(); ++i) {
     const std::string & eid = search_result.edge_ids[i];
     const std::string & from_id = search_result.node_ids[i];
     auto e_opt = graph.getEdge(eid);
     if (!e_opt) {continue;}
     const TopoEdge & e = *e_opt;
+    const bool is_last = (i + 1 == search_result.edge_ids.size());
+    const bool truncate_at_proj = is_last && last_edge_is_goal_edge;
 
     // Determine traversal direction.
     const bool reverse = (e.from_id != from_id);
@@ -153,19 +223,33 @@ InterpolatedRoutePlan PathInterpolator::interpolate(
       std::reverse(edge_pts.begin(), edge_pts.end());
     }
 
-    // Build the segment poses by linearly interpolating between
-    // consecutive sampled control points so we hit waypoints_per_meter
-    // density even on long LINE segments.
+    // Compute truncation index for the goal-edge fallback. The
+    // `edge_sample_index` is in the ORIGINAL from→to indexing; if we
+    // reversed it for traversal, flip the index too.
+    std::size_t truncate_idx = edge_pts.size() - 1;
+    if (truncate_at_proj) {
+      const std::size_t orig_max = edge_pts.size() - 1;
+      const std::size_t in_dir_idx = reverse
+        ? (orig_max - std::min(goal_proj.edge_sample_index, orig_max))
+        : std::min(goal_proj.edge_sample_index, orig_max);
+      truncate_idx = in_dir_idx;
+    }
+
     std::vector<geometry_msgs::msg::PoseStamped> seg_samples;
-    geometry_msgs::msg::PoseStamped p0;
-    p0.pose.position.x = edge_pts.front().first;
-    p0.pose.position.y = edge_pts.front().second;
-    p0.pose.orientation.w = 1.0;
-    seg_samples.push_back(std::move(p0));
-    for (std::size_t k = 1; k < edge_pts.size(); ++k) {
+    seg_samples.push_back(
+      makePose(edge_pts.front().first, edge_pts.front().second));
+    for (std::size_t k = 1; k <= truncate_idx; ++k) {
       emitLinear(seg_samples,
         edge_pts[k - 1].first, edge_pts[k - 1].second,
         edge_pts[k].first, edge_pts[k].second);
+    }
+    if (truncate_at_proj) {
+      // Snap exactly to projected_xy (truncate_idx is the rounded sample
+      // neighbouring the projection).
+      emitLinear(seg_samples,
+        seg_samples.back().pose.position.x,
+        seg_samples.back().pose.position.y,
+        goal_proj.projected_xy.first, goal_proj.projected_xy.second);
     }
 
     InterpolatedSegment seg;
@@ -177,42 +261,101 @@ InterpolatedRoutePlan PathInterpolator::interpolate(
     seg.samples = std::move(seg_samples);
     plan.segments.push_back(std::move(seg));
 
-    // Track floor changes.
     if (plan.floor_sequence.empty() || plan.floor_sequence.back() != e.floor) {
       plan.floor_sequence.push_back(e.floor);
       plan.floor_changes++;
     }
-    plan.total_distance += e.length;
-  }
-
-  // ── Step 3: goal alignment (last segment may end at goal node, but
-  // the caller asked for `goal` pose specifically). Add a short alignment
-  // segment if goal is offset from the goal node, and override final
-  // orientation. ─────────────────────────────────────────────────────────
-  auto goal_node_opt = graph.getNode(goal_node_id);
-  if (goal_node_opt) {
-    const double dx = goal.pose.position.x - goal_node_opt->x;
-    const double dy = goal.pose.position.y - goal_node_opt->y;
-    if (std::hypot(dx, dy) > 1e-3 || true) {
-      // Always emit a final alignment so the controller sees `goal` as
-      // the last waypoint, matching nav2_theta_star_planner behavior.
-      InterpolatedSegment goal_seg;
-      goal_seg.edge_id = "__goal_alignment__";
-      goal_seg.lane_subtype = "transition";
-      goal_seg.floor = goal_node_opt->floor;
-      std::vector<geometry_msgs::msg::PoseStamped> g_samples;
-      emitLinear(g_samples,
-        goal_node_opt->x, goal_node_opt->y,
-        goal.pose.position.x, goal.pose.position.y);
-      // Append the goal pose itself to terminate the path exactly.
-      geometry_msgs::msg::PoseStamped gp = goal;
-      g_samples.push_back(std::move(gp));
-      goal_seg.samples = std::move(g_samples);
-      plan.segments.push_back(std::move(goal_seg));
+    if (truncate_at_proj && edge_pts.size() > 1) {
+      const double frac = static_cast<double>(truncate_idx) /
+        static_cast<double>(edge_pts.size() - 1);
+      plan.total_distance += e.length * frac;
+    } else {
+      plan.total_distance += e.length;
     }
   }
 
-  // ── Step 4: orientations + plan_id ───────────────────────────────────
+  // ── Segment N-1: __goal_edge_out__ ─ straight from entry to projected_xy ─
+  //
+  // DEC-010: emit ONE direct linear segment from the entry endpoint to
+  // projected_xy. The previous implementation walked through intermediate
+  // edge samples up to `goal_proj.edge_sample_index`, but verticalProject
+  // sets `edge_sample_index = 1` for ANY interior projection on a 2-sample
+  // LINE edge — which the walking loop then misread as "to-end", producing
+  // `from-end → to-end → projected_xy` (a U-turn that walks the FULL edge,
+  // overshoots projected_xy, and swings back). The direct emitLinear
+  // approach is bug-free for LINE edges and is an acceptable chord
+  // approximation for BEZIER edges (this segment is Theta*-rewritable
+  // anyway, so geometric fidelity matters less than topological correctness).
+  // SKIPPED when A* already walked goal_proj.id (truncated above).
+  if (goal_proj.type == StartGoalProjector::ResultType::ON_EDGE &&
+      !last_edge_is_goal_edge)
+  {
+    // DEC-013: walk along edge geometry, mirror of __start_edge_in__.
+    // exit_node end → walk to projected_xy.
+    //   • exit == from_id: forward — from-end → edge_pts[1..idx] → projected_xy
+    //   • exit == to_id:   reverse — to-end   → edge_pts[N-2..idx+1] → projected_xy
+    auto e_opt = graph.getEdge(goal_proj.id);
+    if (e_opt) {
+      auto edge_pts = graph.sampleEdge(*e_opt, p_.bezier_samples_per_edge);
+      if (edge_pts.size() >= 2) {
+        const bool exit_is_from = (e_opt->from_id == exit_node_id);
+        InterpolatedSegment seg;
+        seg.edge_id = "__goal_edge_out__";
+        seg.lane_subtype = e_opt->lane_subtype;
+        seg.max_speed = e_opt->max_speed;
+        seg.floor = e_opt->floor;
+        seg.samples.push_back(makePose(exit_opt->x, exit_opt->y));
+        if (exit_is_from) {
+          for (std::size_t i = 1;
+            i <= goal_proj.edge_sample_index && i < edge_pts.size(); ++i)
+          {
+            emitLinear(seg.samples,
+              seg.samples.back().pose.position.x,
+              seg.samples.back().pose.position.y,
+              edge_pts[i].first, edge_pts[i].second);
+          }
+        } else {
+          const std::size_t N = edge_pts.size();
+          for (std::size_t i = N - 1; i > goal_proj.edge_sample_index + 1; ) {
+            --i;
+            emitLinear(seg.samples,
+              seg.samples.back().pose.position.x,
+              seg.samples.back().pose.position.y,
+              edge_pts[i].first, edge_pts[i].second);
+          }
+        }
+        // Snap to projected_xy exactly.
+        emitLinear(seg.samples,
+          seg.samples.back().pose.position.x,
+          seg.samples.back().pose.position.y,
+          goal_proj.projected_xy.first, goal_proj.projected_xy.second);
+        plan.segments.push_back(std::move(seg));
+      }
+    }
+  }
+
+  // ── Segment N: __goal_alignment__ ─ free-space, projected_xy → goal ─
+  //
+  // ALWAYS emitted. Caller is expected to Theta\*-rewrite this segment.
+  {
+    const double proj_x = (goal_proj.type == StartGoalProjector::ResultType::ON_EDGE)
+      ? goal_proj.projected_xy.first  : exit_opt->x;
+    const double proj_y = (goal_proj.type == StartGoalProjector::ResultType::ON_EDGE)
+      ? goal_proj.projected_xy.second : exit_opt->y;
+
+    InterpolatedSegment seg;
+    seg.edge_id = "__goal_alignment__";
+    seg.lane_subtype = "transition";
+    seg.floor = exit_opt->floor;
+    seg.samples.push_back(makePose(proj_x, proj_y));
+    emitLinear(seg.samples, proj_x, proj_y,
+      goal.pose.position.x, goal.pose.position.y);
+    // Append the goal pose itself to terminate the path exactly.
+    seg.samples.push_back(goal);
+    plan.segments.push_back(std::move(seg));
+  }
+
+  // ── Orientations + plan_id ─────────────────────────────────────────
   for (auto & seg : plan.segments) {
     computeOrientations(seg.samples);
   }
@@ -225,11 +368,11 @@ InterpolatedRoutePlan PathInterpolator::interpolate(
     }
   }
 
-  // Synthesize a plan id from start/goal coords (good enough for logs).
   std::ostringstream id;
   id << "plan_" << static_cast<int64_t>(start.pose.position.x * 1000) << "_"
      << static_cast<int64_t>(start.pose.position.y * 1000) << "_to_"
-     << goal_node_id;
+     << static_cast<int64_t>(goal.pose.position.x * 1000) << "_"
+     << static_cast<int64_t>(goal.pose.position.y * 1000);
   plan.plan_id = id.str();
   return plan;
 }

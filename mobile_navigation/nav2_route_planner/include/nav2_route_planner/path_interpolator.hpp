@@ -69,12 +69,31 @@ public:
   explicit PathInterpolator(Params p) : p_(p) {}
 
   /// Build a complete RoutePlan from the A* search result.
+  ///
+  /// The output is a sequence of `InterpolatedSegment`s with these
+  /// reserved synthetic edge_ids:
+  ///   • `__start_transition__` — free-space from `start` to the
+  ///     projection point on the graph. ALWAYS emitted. Caller is
+  ///     expected to Theta\*-rewrite this segment so the robot avoids
+  ///     obstacles between `start` and the projected entry point.
+  ///   • `__start_edge_in__`    — sampled along `start_proj.id` from
+  ///     `projected_xy` to the A\*-chosen entry node. Only emitted
+  ///     when `start_proj.type == ON_EDGE` (otherwise the projection
+  ///     point IS the entry node).
+  ///   • <per-edge segments>    — one per edge in `search_result.edge_ids`.
+  ///   • `__goal_edge_out__`    — sampled along `goal_proj.id` from the
+  ///     A\*-exit node to `goal_proj.projected_xy`. Only emitted when
+  ///     `goal_proj.type == ON_EDGE`.
+  ///   • `__goal_alignment__`   — free-space from the projection point
+  ///     to `goal` pose. ALWAYS emitted. Caller is expected to Theta\*-
+  ///     rewrite this segment.
+  ///
   /// Caller must hold graph.lockShared().
   InterpolatedRoutePlan interpolate(
     const geometry_msgs::msg::PoseStamped & start,
     const geometry_msgs::msg::PoseStamped & goal,
     const StartGoalProjector::Result & start_proj,
-    const std::string & goal_node_id,
+    const StartGoalProjector::Result & goal_proj,
     const AStarSearcher::Result & search_result,
     const TopoGraph & graph) const;
 

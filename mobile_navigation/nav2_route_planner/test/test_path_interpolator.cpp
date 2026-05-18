@@ -73,7 +73,11 @@ TEST(PathInterpolatorTest, EndToEndStraightLine)
   StartGoalProjector::Result start_proj;
   start_proj.type = StartGoalProjector::ResultType::ON_NODE;
   start_proj.id = "A";
-  auto plan = interp.interpolate(pose(0, 0), pose(10, 0), start_proj, "B", sr, g);
+  StartGoalProjector::Result goal_proj;
+  goal_proj.type = StartGoalProjector::ResultType::ON_NODE;
+  goal_proj.id = "B";
+  auto plan = interp.interpolate(pose(0, 0), pose(10, 0),
+      start_proj, goal_proj, sr, g);
 
   // Should have a transition seg + edge seg + goal alignment seg.
   EXPECT_GE(plan.segments.size(), 2u);
@@ -112,7 +116,10 @@ TEST(PathInterpolatorTest, ToMsgRoundtrip)
   StartGoalProjector::Result sp;
   sp.type = StartGoalProjector::ResultType::ON_NODE;
   sp.id = "A";
-  auto plan = interp.interpolate(pose(0, 0), pose(5, 0), sp, "B", sr, g);
+  StartGoalProjector::Result gp;
+  gp.type = StartGoalProjector::ResultType::ON_NODE;
+  gp.id = "B";
+  auto plan = interp.interpolate(pose(0, 0), pose(5, 0), sp, gp, sr, g);
   auto msg = plan.toMsg("map", rclcpp::Time(0, 0, RCL_ROS_TIME));
   EXPECT_EQ(msg.header.frame_id, "map");
   EXPECT_GE(msg.segments.size(), 2u);
