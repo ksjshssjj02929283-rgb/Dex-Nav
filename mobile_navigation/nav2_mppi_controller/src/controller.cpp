@@ -119,7 +119,7 @@ geometry_msgs::msg::TwistStamped MPPIController::computeVelocityCommands(
   const geometry_msgs::msg::Twist & robot_speed,
   nav2_core::GoalChecker * goal_checker)
 {
-  constexpr double kSlowTimingWarnMs = 100.0;
+  constexpr double kSlowTimingWarnMs = 0.0;
   auto t_total_start = std::chrono::high_resolution_clock::now();
 
   if (clock_->now() - last_time_called_ > rclcpp::Duration::from_seconds(reset_period_)) {
