@@ -329,7 +329,7 @@ private:
             response->success = true;
         } else if (cancel_completed_) {
             if (!canceled_returned_) {
-                response->message = "CANCELED";
+                response->message = "CANCELLED";
                 response->success = true;
                 canceled_returned_ = true;
             } else {
