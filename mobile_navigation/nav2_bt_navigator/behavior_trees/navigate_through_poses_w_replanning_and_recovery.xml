@@ -1,40 +1,67 @@
-
 <!--
   This Behavior Tree replans the global path periodically through an array of poses continuously
-   and it also has recovery actions specific to planning / control as well as general system issues.
+   while removing passed goals.
+  Planning failures clear the global costmap and retry once. If that still fails,
+  wait, clear the global costmap, and run up to 6 planning cycles total.
+  Control failures clear the local costmap and retry once. If that still fails,
+  spin, wait, clear the local costmap, and run up to 6 control cycles total.
 
   Note: RemovePassedGoals runs at 5Hz to quickly remove passed goals, while planning runs at 0.333Hz
 -->
 <root main_tree_to_execute="MainTree">
   <BehaviorTree ID="MainTree">
-    <RecoveryNode number_of_retries="6" name="NavigateRecovery">
-      <PipelineSequence name="NavigateWithReplanning">
-        <RateController hz="5.0">
-          <RemovePassedGoals input_goals="{goals}" output_goals="{goals}" radius="1.0"/>
-        </RateController>
-        <RateController hz="0.333">
-          <RecoveryNode number_of_retries="1" name="ComputeAndSmoothPathThroughPoses">
+
+    <!-- 主导航流程：边控制边周期性重规划 -->
+    <PipelineSequence name="NavigateWithReplanning">
+
+      <!-- 5Hz 检查并删除已经经过的目标点 -->
+      <RateController hz="5.0">
+        <RemovePassedGoals input_goals="{goals}" output_goals="{goals}" radius="0.5"/>
+      </RateController>
+
+      <!-- 0.333Hz 进行全局重规划，约每 3 秒规划一次 -->
+      <RateController hz="0.333">
+
+        <!-- 全局规划外层恢复：最多重复 6 轮 -->
+        <RecoveryNode number_of_retries="6" name="ComputePathThroughPosesWithRepeatedRetry">
+
+          <!-- 全局规划内层恢复：规划失败后先清全局代价地图，并立即重试 1 次 -->
+          <RecoveryNode number_of_retries="1" name="ComputePathThroughPosesWithImmediateRetry">
             <ComputePathThroughPoses goals="{goals}" path="{path}" planner_id="GridBased"/>
-            <ClearEntireCostmap name="ClearGlobalCostmap-Context" service_name="global_costmap/clear_entirely_global_costmap"/>
+            <ClearEntireCostmap name="ClearGlobalCostmap-Immediate"
+              service_name="global_costmap/clear_entirely_global_costmap"/>
           </RecoveryNode>
-        </RateController>
-        <RecoveryNode number_of_retries="1" name="FollowPath">
-          <FollowPath path="{path}" controller_id="FollowPath"/>
-          <ClearEntireCostmap name="ClearLocalCostmap-Context" service_name="local_costmap/clear_entirely_local_costmap"/>
-        </RecoveryNode>
-      </PipelineSequence>
-      <ReactiveFallback name="RecoveryFallback">
-        <GoalUpdated/>
-        <RoundRobin name="RecoveryActions">
-          <Sequence name="ClearingActions">
-            <ClearEntireCostmap name="ClearLocalCostmap-Subtree" service_name="local_costmap/clear_entirely_local_costmap"/>
-            <ClearEntireCostmap name="ClearGlobalCostmap-Subtree" service_name="global_costmap/clear_entirely_global_costmap"/>
+
+          <!-- 如果立即重试仍失败，则等待 2 秒，清全局代价地图，然后进入下一轮规划 -->
+          <Sequence name="WaitClearGlobalAndRetry">
+            <Wait wait_duration="2"/>
+            <ClearEntireCostmap name="ClearGlobalCostmap-Repeated"
+              service_name="global_costmap/clear_entirely_global_costmap"/>
           </Sequence>
+
+        </RecoveryNode>
+      </RateController>
+
+      <!-- 局部控制外层恢复：最多重复 6 轮 -->
+      <RecoveryNode number_of_retries="6" name="FollowPathWithRepeatedRetry">
+
+        <!-- 局部控制内层恢复：FollowPath 失败后先清局部代价地图，并立即重试 1 次 -->
+        <RecoveryNode number_of_retries="1" name="FollowPathWithImmediateRetry">
+          <FollowPath path="{path}" controller_id="FollowPath"/>
+          <ClearEntireCostmap name="ClearLocalCostmap-Immediate"
+            service_name="local_costmap/clear_entirely_local_costmap"/>
+        </RecoveryNode>
+
+        <!-- 如果立即重试仍失败，则原地旋转 90 度，等待 2 秒，清局部代价地图，然后进入下一轮控制 -->
+        <Sequence name="SpinWaitClearLocalAndRetry">
           <Spin spin_dist="1.57"/>
-          <Wait wait_duration="5"/>
-          <BackUp backup_dist="0.30" backup_speed="0.05"/>
-        </RoundRobin>
-      </ReactiveFallback>
-    </RecoveryNode>
+          <Wait wait_duration="2"/>
+          <ClearEntireCostmap name="ClearLocalCostmap-Repeated"
+            service_name="local_costmap/clear_entirely_local_costmap"/>
+        </Sequence>
+
+      </RecoveryNode>
+
+    </PipelineSequence>
   </BehaviorTree>
 </root>
