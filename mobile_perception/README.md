@@ -71,7 +71,7 @@ mobile_perception/
 
 服务：
 
-- `control/get_control_status` (`std_srvs/srv/Trigger`)：返回 `IDLE`、`CONTROL`、`SUCCEED` 或 `CANCEL CONTROL`。
+- `control/get_control_status` (`std_srvs/srv/Trigger`)：返回 `IDLE`、`CONTROL`、`SUCCEED`、`CANCEL CONTROL` 或 `CANCELED`。
 - `control/cancel_chassis_control` (`std_srvs/srv/Trigger`)：取消当前控制并按反馈速度平滑停车。
 
 ### `apriltag_detection_node`

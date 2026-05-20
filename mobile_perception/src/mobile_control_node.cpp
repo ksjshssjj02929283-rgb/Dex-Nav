@@ -145,7 +145,9 @@ public:
         get_map_pose_ = false;
         is_goal_ = false;
         is_cancelling_ = false;
+        cancel_completed_ = false;
         succeed_returned_ = false;
+        canceled_returned_ = false;
         stop_count_ = 0;
         goal_mode_ = GoalMode::STRAIGHT;
         filtered_cmd_vel_.linear.x = 0.0;
@@ -172,7 +174,9 @@ private:
     bool get_map_pose_;
     bool is_goal_;
     bool is_cancelling_;
+    bool cancel_completed_;
     bool succeed_returned_;
+    bool canceled_returned_;
     int stop_count_;
     GoalMode goal_mode_;
 
@@ -289,7 +293,10 @@ private:
             target_pose_odom_ = msg_transformed;
             get_map_pose_ = true;
             is_goal_ = false;
+            is_cancelling_ = false;
+            cancel_completed_ = false;
             succeed_returned_ = false;
+            canceled_returned_ = false;
             stop_count_ = 0;
             resetPidStates();
 
@@ -318,11 +325,20 @@ private:
         std::shared_ptr<std_srvs::srv::Trigger::Response> response)
     {
         if (is_cancelling_) {
-            response->message = "CANCEL CONTROL";
+            response->message = "CANCELLING";
             response->success = true;
+        } else if (cancel_completed_) {
+            if (!canceled_returned_) {
+                response->message = "CANCELED";
+                response->success = true;
+                canceled_returned_ = true;
+            } else {
+                response->message = "IDLE";
+                response->success = true;
+            }
         } else if (is_goal_ && stop_count_ > 20) {
             if (!succeed_returned_) {
-                response->message = "SUCCEED";
+                response->message = "SUCCEEDED";
                 response->success = true;
                 succeed_returned_ = true;
             } else {
@@ -346,9 +362,11 @@ private:
     {
         if (get_map_pose_ && !is_goal_) {
             is_cancelling_ = true;
+            cancel_completed_ = false;
             get_map_pose_ = false;
             is_goal_ = false;
             succeed_returned_ = false;
+            canceled_returned_ = false;
             stop_count_ = 0;
             resetPidStates();
             response->message = "开始取消控制，正在平滑停止";
@@ -494,7 +512,9 @@ private:
                 cmd_vel.linear.x = 0.0;
                 cmd_vel.angular.z = 0.0;
                 is_cancelling_ = false;
+                cancel_completed_ = true;
                 succeed_returned_ = false;
+                canceled_returned_ = false;
                 stop_count_ = 0;
                 RCLCPP_INFO(this->get_logger(), "Cancel control completed, robot stopped");
             }

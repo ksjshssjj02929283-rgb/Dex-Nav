@@ -13,4 +13,5 @@
 
 ## 当前补充记录
 
+- `mobile_control_node` 的取消状态区分 `CANCEL CONTROL`（取消中）和 `CANCELED`（取消完成反馈），修改状态字符串前需要确认上游调用方。
 - `obstacle_detector_node` 已从旧工作区迁移到当前 `mobile_perception` 包，负责基于局部代价地图检测车体前方矩形区域障碍物。

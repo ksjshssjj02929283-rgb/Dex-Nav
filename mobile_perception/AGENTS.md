@@ -66,6 +66,7 @@
 - `CONTROL`
 - `SUCCEED`
 - `CANCEL CONTROL`
+- `CANCELED`
 
 修改这些字符串前，需要确认上游调用方没有依赖精确文本。
 
