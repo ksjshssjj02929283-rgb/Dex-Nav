@@ -11,15 +11,7 @@
         <RateController hz="0.2">
           <!-- <RateController hz="1.0"> -->
           <RecoveryNode number_of_retries="1" name="ComputeAndSmoothPathToPose">
-            <Sequence>
-              <ComputePathToPose goal="{goal}" path="{path}" planner_id="GridBased"/>
-              <SmoothPath
-                unsmoothed_path="{path}"
-                smoothed_path="{smoothed_path}"
-                smoother_id="simple_smoother"
-                max_smoothing_duration="0.5"
-                check_for_collisions="true"/>
-            </Sequence>
+            <ComputePathToPose goal="{goal}" path="{path}" planner_id="GridBased"/>
             <ClearEntireCostmap name="ClearGlobalCostmap-Context" service_name="global_costmap/clear_entirely_global_costmap"/>
           </RecoveryNode>
         </RateController>

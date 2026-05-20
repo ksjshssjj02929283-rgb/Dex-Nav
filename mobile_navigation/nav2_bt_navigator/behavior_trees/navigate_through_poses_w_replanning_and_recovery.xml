@@ -14,20 +14,12 @@
         </RateController>
         <RateController hz="0.333">
           <RecoveryNode number_of_retries="1" name="ComputeAndSmoothPathThroughPoses">
-            <Sequence>
-              <ComputePathThroughPoses goals="{goals}" path="{path}" planner_id="GridBased"/>
-              <SmoothPath
-                unsmoothed_path="{path}"
-                smoothed_path="{smoothed_path}"
-                smoother_id="simple_smoother"
-                max_smoothing_duration="0.5"
-                check_for_collisions="true"/>
-            </Sequence>
+            <ComputePathThroughPoses goals="{goals}" path="{path}" planner_id="GridBased"/>
             <ClearEntireCostmap name="ClearGlobalCostmap-Context" service_name="global_costmap/clear_entirely_global_costmap"/>
           </RecoveryNode>
         </RateController>
         <RecoveryNode number_of_retries="1" name="FollowPath">
-          <FollowPath path="{smoothed_path}" controller_id="FollowPath"/>
+          <FollowPath path="{path}" controller_id="FollowPath"/>
           <ClearEntireCostmap name="ClearLocalCostmap-Context" service_name="local_costmap/clear_entirely_local_costmap"/>
         </RecoveryNode>
       </PipelineSequence>
