@@ -1,8 +1,20 @@
 <!--
   This Behavior Tree replans the global path periodically while following it.
-  Planning failures wait, clear the global costmap, and retry without robot motion.
-  Control failures clear the local costmap, wait, spin once, and retry.
+
+  Global planning recovery:
+  - If ComputePathToPose fails, try clearing the global costmap.
+  - ClearGlobalCostmap is treated as an auxiliary recovery action.
+  - Even if clearing fails, the tree still retries ComputePathToPose.
+  - If the inner retry still fails, wait 2 seconds, try clearing global costmap again,
+    and then enter the next planning retry loop.
+
+  Local control recovery:
+  - If FollowPath fails, try clearing the local costmap.
+  - Even if clearing fails, the tree still retries FollowPath immediately.
+  - If the inner retry still fails, perform Spin 90 degrees, Wait 2 seconds,
+    try clearing local costmap again, and then retry FollowPath.
 -->
+
 <root main_tree_to_execute="MainTree">
   <BehaviorTree ID="MainTree">
     <PipelineSequence name="NavigateWithReplanning">
@@ -11,18 +23,24 @@
       <RateController hz="0.333">
         <RecoveryNode number_of_retries="6" name="ComputePathToPoseOuterRetry">
 
-          <!-- 内层：规划失败后，先清 global，再立即重规划 1 次 -->
+          <!-- 内层：规划失败后，尝试清 global，然后立即重规划 1 次 -->
           <RecoveryNode number_of_retries="1" name="ComputePathToPoseInnerRetry">
             <ComputePathToPose goal="{goal}" path="{path}" planner_id="SmacGridBased"/>
-            <ClearEntireCostmap name="ClearGlobalCostmap-FirstRetry"
-              service_name="global_costmap/clear_entirely_global_costmap"/>
+
+            <ForceSuccess>
+              <ClearEntireCostmap name="ClearGlobalCostmap-FirstRetry"
+                service_name="global_costmap/clear_entirely_global_costmap"/>
+            </ForceSuccess>
           </RecoveryNode>
 
-          <!-- 外层：如果内层仍失败，等待 2 秒，清 global，然后进入下一轮 -->
+          <!-- 外层：如果内层仍失败，等待 2 秒，尝试清 global，然后进入下一轮 -->
           <Sequence name="WaitClearGlobalAndRetry">
             <Wait wait_duration="2"/>
-            <ClearEntireCostmap name="ClearGlobalCostmap-OuterRetry"
-              service_name="global_costmap/clear_entirely_global_costmap"/>
+
+            <ForceSuccess>
+              <ClearEntireCostmap name="ClearGlobalCostmap-OuterRetry"
+                service_name="global_costmap/clear_entirely_global_costmap"/>
+            </ForceSuccess>
           </Sequence>
 
         </RecoveryNode>
@@ -32,21 +50,25 @@
       <!-- 局部控制 -->
       <RecoveryNode number_of_retries="6" name="FollowPathOuterRetry">
 
-        <!-- 内层：FollowPath 失败后，先清 local，再立即 FollowPath 1 次 -->
+        <!-- 内层：FollowPath 失败后，尝试清 local，然后立即 FollowPath 1 次 -->
         <RecoveryNode number_of_retries="1" name="FollowPathInnerRetry">
           <FollowPath path="{path}" controller_id="FollowPath"/>
-          <ClearEntireCostmap name="ClearLocalCostmap-FirstRetry"
-            service_name="local_costmap/clear_entirely_local_costmap"/>
+
+          <ForceSuccess>
+            <ClearEntireCostmap name="ClearLocalCostmap-FirstRetry"
+              service_name="local_costmap/clear_entirely_local_costmap"/>
+          </ForceSuccess>
         </RecoveryNode>
 
-        <!-- 外层：如果内层仍失败，清 local，然后进入下一轮。Spin 90 度和等待 2 秒已禁用。 -->
+        <!-- 外层：如果内层仍失败，Spin 90 度，等待 2 秒，尝试清 local，然后进入下一轮 -->
         <Sequence name="SpinWaitClearLocalAndRetry">
-          <!--
-          <Spin spin_dist="1.57"/>
+          <!-- <Spin spin_dist="1.57"/> -->
           <Wait wait_duration="2"/>
-          -->
-          <ClearEntireCostmap name="ClearLocalCostmap-OuterRetry"
-            service_name="local_costmap/clear_entirely_local_costmap"/>
+
+          <ForceSuccess>
+            <ClearEntireCostmap name="ClearLocalCostmap-OuterRetry"
+              service_name="local_costmap/clear_entirely_local_costmap"/>
+          </ForceSuccess>
         </Sequence>
 
       </RecoveryNode>

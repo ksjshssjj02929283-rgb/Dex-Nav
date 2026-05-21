@@ -1,13 +1,26 @@
 <!--
   This Behavior Tree replans the global path periodically through an array of poses continuously
-   while removing passed goals.
-  Planning failures clear the global costmap and retry once. If that still fails,
-  wait, clear the global costmap, and run up to 6 planning cycles total.
-  Control failures clear the local costmap and retry once. If that still fails,
-  spin, wait, clear the local costmap, and run up to 6 control cycles total.
+  while removing passed goals.
 
-  Note: RemovePassedGoals runs at 5Hz to quickly remove passed goals, while planning runs at 0.333Hz
+  Planning recovery:
+  - Planning failures try to clear the global costmap and retry once immediately.
+  - If that still fails, wait 2 seconds, try to clear the global costmap again,
+    and enter the next planning retry cycle.
+  - ClearGlobalCostmap is treated as an auxiliary recovery action:
+    even if clearing fails, planning retry should continue.
+
+  Control recovery:
+  - Control failures try to clear the local costmap and retry once immediately.
+  - If that still fails, spin 90 degrees, wait 2 seconds, try to clear the local costmap,
+    and enter the next control retry cycle.
+  - ClearLocalCostmap is treated as an auxiliary recovery action:
+    even if clearing fails, control retry should continue.
+
+  Note:
+  - RemovePassedGoals runs at 5Hz to quickly remove passed goals.
+  - Global planning runs at 0.333Hz, about once every 3 seconds.
 -->
+
 <root main_tree_to_execute="MainTree">
   <BehaviorTree ID="MainTree">
 
@@ -25,18 +38,24 @@
         <!-- 全局规划外层恢复：最多重复 6 轮 -->
         <RecoveryNode number_of_retries="6" name="ComputePathThroughPosesWithRepeatedRetry">
 
-          <!-- 全局规划内层恢复：规划失败后先清全局代价地图，并立即重试 1 次 -->
+          <!-- 全局规划内层恢复：规划失败后尝试清全局代价地图，并立即重试 1 次 -->
           <RecoveryNode number_of_retries="1" name="ComputePathThroughPosesWithImmediateRetry">
             <ComputePathThroughPoses goals="{goals}" path="{path}" planner_id="SmacGridBased"/>
-            <ClearEntireCostmap name="ClearGlobalCostmap-Immediate"
-              service_name="global_costmap/clear_entirely_global_costmap"/>
+
+            <ForceSuccess>
+              <ClearEntireCostmap name="ClearGlobalCostmap-Immediate"
+                service_name="global_costmap/clear_entirely_global_costmap"/>
+            </ForceSuccess>
           </RecoveryNode>
 
-          <!-- 如果立即重试仍失败，则等待 2 秒，清全局代价地图，然后进入下一轮规划 -->
+          <!-- 如果立即重试仍失败，则等待 2 秒，尝试清全局代价地图，然后进入下一轮规划 -->
           <Sequence name="WaitClearGlobalAndRetry">
             <Wait wait_duration="2"/>
-            <ClearEntireCostmap name="ClearGlobalCostmap-Repeated"
-              service_name="global_costmap/clear_entirely_global_costmap"/>
+
+            <ForceSuccess>
+              <ClearEntireCostmap name="ClearGlobalCostmap-Repeated"
+                service_name="global_costmap/clear_entirely_global_costmap"/>
+            </ForceSuccess>
           </Sequence>
 
         </RecoveryNode>
@@ -45,19 +64,25 @@
       <!-- 局部控制外层恢复：最多重复 6 轮 -->
       <RecoveryNode number_of_retries="6" name="FollowPathWithRepeatedRetry">
 
-        <!-- 局部控制内层恢复：FollowPath 失败后先清局部代价地图，并立即重试 1 次 -->
+        <!-- 局部控制内层恢复：FollowPath 失败后尝试清局部代价地图，并立即重试 1 次 -->
         <RecoveryNode number_of_retries="1" name="FollowPathWithImmediateRetry">
           <FollowPath path="{path}" controller_id="FollowPath"/>
-          <ClearEntireCostmap name="ClearLocalCostmap-Immediate"
-            service_name="local_costmap/clear_entirely_local_costmap"/>
+
+          <ForceSuccess>
+            <ClearEntireCostmap name="ClearLocalCostmap-Immediate"
+              service_name="local_costmap/clear_entirely_local_costmap"/>
+          </ForceSuccess>
         </RecoveryNode>
 
-        <!-- 如果立即重试仍失败，则原地旋转 90 度，等待 2 秒，清局部代价地图，然后进入下一轮控制 -->
+        <!-- 如果立即重试仍失败，则原地旋转 90 度，等待 2 秒，尝试清局部代价地图，然后进入下一轮控制 -->
         <Sequence name="SpinWaitClearLocalAndRetry">
           <Spin spin_dist="1.57"/>
           <Wait wait_duration="2"/>
-          <ClearEntireCostmap name="ClearLocalCostmap-Repeated"
-            service_name="local_costmap/clear_entirely_local_costmap"/>
+
+          <ForceSuccess>
+            <ClearEntireCostmap name="ClearLocalCostmap-Repeated"
+              service_name="local_costmap/clear_entirely_local_costmap"/>
+          </ForceSuccess>
         </Sequence>
 
       </RecoveryNode>
