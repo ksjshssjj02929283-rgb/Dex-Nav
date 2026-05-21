@@ -27,6 +27,7 @@ mobile_perception/
 │   ├── apriltag_detection_node.cpp
 │   ├── apriltag_alignment_tf_node.cpp
 │   ├── mobile_control_node.cpp
+│   ├── mobile_control_action_node.cpp
 │   ├── obstacle_detector_node.cpp
 │   └── charging_pose_service.cpp
 ├── include/
@@ -49,6 +50,7 @@ mobile_perception/
 | `apriltag_detection_node` | C++ | 按服务启动/停止 AprilTag 检测，发布 `apriltag_poses`。 |
 | `apriltag_alignment_tf_node` | C++ | 持续检测 AprilTag，发布调试姿态和原始/对齐后的 tag TF。 |
 | `mobile_control_node` | C++ | 订阅目标位姿并输出底盘速度，实现末端精确控制与平滑停止。 |
+| `mobile_control_action_node` | C++ | 通过 `control/precise_control` action 接收精控目标，并直接输出底盘速度。 |
 | `obstacle_detector_node` | C++ | 订阅局部代价地图，检测车体前方矩形区域是否存在障碍物，并发布结果与 RViz Marker。 |
 | `charging_pose_service_node` | C++ | 通过服务采样 `map -> base_link`，保存充电位姿 JSON。 |
 | `detect_apriltags.py` / `detect_apriltags_service.py` | Python | Python 版 AprilTag 检测实现，依赖 `pupil_apriltags`。 |
@@ -73,6 +75,27 @@ mobile_perception/
 
 - `control/get_control_status` (`std_srvs/srv/Trigger`)：返回 `IDLE`、`CONTROL`、`SUCCEED`、`CANCEL CONTROL` 或 `CANCELED`。
 - `control/cancel_chassis_control` (`std_srvs/srv/Trigger`)：取消当前控制并按反馈速度平滑停车。
+
+### `mobile_control_action_node`
+
+Action：
+
+- `control/precise_control` (`nav_interfaces/action/PreciseControl`)：接收 `geometry_msgs/msg/PoseStamped` 目标位姿，节点内部完成 TF 转换、精控、反馈和取消。
+
+订阅：
+
+- `feedback/odom` (`nav_msgs/msg/Odometry`)：底盘实际速度反馈，用于限加速度和平滑停止。
+
+发布：
+
+- `control/cmd_vel` (`geometry_msgs/msg/Twist`)：底盘控制速度。
+
+运行约束：
+
+- `mobile_control_action_node` 不订阅 `control/ctrl_pose`，也不调用 `mobile_control_node` 的状态或取消服务。
+- 同一时间只接受一个 active goal；已有 goal 执行时会拒绝新 goal。
+- 客户端 cancel 会触发平滑停车，停车完成后 action 返回 `CANCELLED`。
+- 不要让 `mobile_control_node` 和 `mobile_control_action_node` 同时控制同一个 `control/cmd_vel` 链路，否则两个节点会竞争发布底盘速度。
 
 ### `apriltag_detection_node`
 
@@ -246,6 +269,20 @@ ros2 launch mobile_perception mobile_control.launch.py
 
 ```bash
 ros2 launch mobile_perception mobile_control.launch.py params_file:=/path/to/mobile_control_params.yaml
+```
+
+启动 Action 版底盘精控节点：
+
+```bash
+ros2 run mobile_perception mobile_control_action_node
+```
+
+发送 Action 精控目标：
+
+```bash
+ros2 action send_goal /control/precise_control nav_interfaces/action/PreciseControl \
+  "{target_pose: {header: {frame_id: map}, pose: {position: {x: 1.0, y: 0.0, z: 0.0}, orientation: {w: 1.0}}}}" \
+  --feedback
 ```
 
 启动 C++ AprilTag 检测节点，并通过服务开始检测：

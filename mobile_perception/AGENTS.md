@@ -16,6 +16,7 @@
   - `apriltag_detection_node.cpp`
   - `apriltag_alignment_tf_node.cpp`
   - `mobile_control_node.cpp`
+  - `mobile_control_action_node.cpp`
   - `obstacle_detector_node.cpp`
   - `charging_pose_service.cpp`
 - `include/mobile_perception/` 当前存放 `obstacle_detector_node.hpp`，新增 C++ 节点头文件时保持包名命名空间一致。
@@ -69,6 +70,18 @@
 - `CANCELED`
 
 修改这些字符串前，需要确认上游调用方没有依赖精确文本。
+
+### `mobile_control_action_node`
+
+保持以下接口语义：
+
+- Action `control/precise_control` (`nav_interfaces/action/PreciseControl`)
+- 订阅 `feedback/odom` (`nav_msgs/msg/Odometry`)
+- 发布 `control/cmd_vel` (`geometry_msgs/msg/Twist`)
+
+该节点是独立 Action 版精控入口，不订阅 `control/ctrl_pose`，不调用 `mobile_control_node` 的状态或取消服务。修改时应保持同一时间只允许一个 active goal，客户端取消应进入平滑停车并在停车完成后返回 `CANCELLED`。
+
+不要让 `mobile_control_node` 和 `mobile_control_action_node` 在同一底盘速度链路上同时运行；二者都会发布 `control/cmd_vel`。
 
 ### AprilTag 节点
 

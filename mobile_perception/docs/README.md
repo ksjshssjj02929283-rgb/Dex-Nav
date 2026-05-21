@@ -9,6 +9,28 @@
 - `CANCEL CONTROL`：已收到取消请求，节点正在按当前里程计反馈速度平滑停车。
 - `CANCELED`：取消停车已完成；该状态与 `SUCCEED` 一样用于完成态反馈，查询后可回到空闲状态。
 
+## mobile_control_action_node
+
+`mobile_control_action_node` 是 Action 版底盘末端精控节点，接口为
+`control/precise_control` (`nav_interfaces/action/PreciseControl`)。
+
+Action goal 中的 `target_pose` 使用 `geometry_msgs/msg/PoseStamped`。节点接收到 goal 后在内部执行
+`mobile_control_node` 同等的 TF 转换、PID 控制、速度滤波、到点判定和平滑取消逻辑，并直接发布
+`control/cmd_vel`。
+
+主要接口：
+
+- Action `control/precise_control` (`nav_interfaces/action/PreciseControl`)。
+- 订阅 `feedback/odom` (`nav_msgs/msg/Odometry`)。
+- 发布 `control/cmd_vel` (`geometry_msgs/msg/Twist`)。
+
+运行注意：
+
+- 不订阅 `control/ctrl_pose`。
+- 同一时间只接受一个 active goal。
+- 客户端 cancel 后会平滑停车，完成后返回 `CANCELLED`。
+- 不应与 `mobile_control_node` 同时控制同一个 `control/cmd_vel` 链路。
+
 ## obstacle_detector_node
 
 `obstacle_detector_node` 是 C++ 前方障碍检测节点，来自旧工作区
