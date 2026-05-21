@@ -27,7 +27,7 @@
 
           <!-- 全局规划内层恢复：规划失败后先清全局代价地图，并立即重试 1 次 -->
           <RecoveryNode number_of_retries="1" name="ComputePathThroughPosesWithImmediateRetry">
-            <ComputePathThroughPoses goals="{goals}" path="{path}" planner_id="GridBased"/>
+            <ComputePathThroughPoses goals="{goals}" path="{path}" planner_id="SmacGridBased"/>
             <ClearEntireCostmap name="ClearGlobalCostmap-Immediate"
               service_name="global_costmap/clear_entirely_global_costmap"/>
           </RecoveryNode>

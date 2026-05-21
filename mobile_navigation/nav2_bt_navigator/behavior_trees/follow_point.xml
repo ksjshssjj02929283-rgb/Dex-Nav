@@ -8,7 +8,7 @@
       <RateController hz="1.0">
         <Sequence>
           <GoalUpdater input_goal="{goal}" output_goal="{updated_goal}">
-            <ComputePathToPose goal="{updated_goal}" path="{path}" planner_id="GridBased"/>
+            <ComputePathToPose goal="{updated_goal}" path="{path}" planner_id="SmacGridBased"/>
           </GoalUpdater>
          <TruncatePath distance="1.0" input_path="{path}" output_path="{truncated_path}"/>
         </Sequence>

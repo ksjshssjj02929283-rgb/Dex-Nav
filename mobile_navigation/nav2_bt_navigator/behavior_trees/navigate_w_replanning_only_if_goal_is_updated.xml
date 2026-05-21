@@ -6,7 +6,7 @@
   <BehaviorTree ID="MainTree">
     <PipelineSequence name="NavigateWithReplanning">
       <GoalUpdatedController>
-        <ComputePathToPose goal="{goal}" path="{path}" planner_id="GridBased"/>
+        <ComputePathToPose goal="{goal}" path="{path}" planner_id="SmacGridBased"/>
       </GoalUpdatedController>
       <FollowPath path="{path}"  controller_id="FollowPath"/>
     </PipelineSequence>
