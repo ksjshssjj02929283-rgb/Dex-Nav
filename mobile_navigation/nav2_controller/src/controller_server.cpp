@@ -502,6 +502,7 @@ void ControllerServer::computeAndPublishVelocity()
 {
   constexpr double kSlowTimingWarnMs = 100.0;
   geometry_msgs::msg::PoseStamped pose;
+  auto t_total_start = std::chrono::high_resolution_clock::now();
 
   auto t_pose_start = std::chrono::high_resolution_clock::now();
   if (!getRobotPose(pose)) {
@@ -517,7 +518,10 @@ void ControllerServer::computeAndPublishVelocity()
   auto t_progress_end = std::chrono::high_resolution_clock::now();
   auto progress_ms = std::chrono::duration<double, std::milli>(t_progress_end - t_progress_start).count();
 
+  auto t_odom_start = std::chrono::high_resolution_clock::now();
   nav_2d_msgs::msg::Twist2D twist = getThresholdedTwist(odom_sub_->getTwist());
+  auto t_odom_end = std::chrono::high_resolution_clock::now();
+  auto odom_ms = std::chrono::duration<double, std::milli>(t_odom_end - t_odom_start).count();
 
   geometry_msgs::msg::TwistStamped cmd_vel_2d;
 
@@ -581,18 +585,25 @@ void ControllerServer::computeAndPublishVelocity()
   auto t_feedback_end = std::chrono::high_resolution_clock::now();
   auto feedback_ms = std::chrono::duration<double, std::milli>(t_feedback_end - t_feedback_start).count();
 
-  if (
-    pose_ms >= kSlowTimingWarnMs || progress_ms >= kSlowTimingWarnMs ||
-    compute_ms >= kSlowTimingWarnMs || feedback_ms >= kSlowTimingWarnMs)
-  {
+  RCLCPP_DEBUG(get_logger(), "Publishing velocity at time %.2f", now().seconds());
+  auto t_publish_start = std::chrono::high_resolution_clock::now();
+  publishVelocity(cmd_vel_2d);
+  auto t_publish_end = std::chrono::high_resolution_clock::now();
+  auto publish_ms = std::chrono::duration<double, std::milli>(t_publish_end - t_publish_start).count();
+
+  auto t_total_end = std::chrono::high_resolution_clock::now();
+  auto total_ms = std::chrono::duration<double, std::milli>(t_total_end - t_total_start).count();
+  auto measured_ms = pose_ms + progress_ms + odom_ms + compute_ms + feedback_ms + publish_ms;
+  auto unaccounted_ms = total_ms - measured_ms;
+
+  if (total_ms >= kSlowTimingWarnMs) {
     RCLCPP_WARN(
       get_logger(),
-      "ControllerServer timing (ms): getPose=%.3f progress=%.3f compute=%.3f feedback=%.3f",
-      pose_ms, progress_ms, compute_ms, feedback_ms);
+      "ControllerServer timing (ms): total=%.3f getPose=%.3f progress=%.3f odom=%.3f "
+      "compute=%.3f feedback=%.3f publish=%.3f unaccounted=%.3f",
+      total_ms, pose_ms, progress_ms, odom_ms, compute_ms, feedback_ms, publish_ms,
+      unaccounted_ms);
   }
-
-  RCLCPP_DEBUG(get_logger(), "Publishing velocity at time %.2f", now().seconds());
-  publishVelocity(cmd_vel_2d);
 }
 
 void ControllerServer::updateGlobalPath()
