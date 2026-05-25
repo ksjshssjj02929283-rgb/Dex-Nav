@@ -77,10 +77,16 @@ controller_server:
     controller_plugins: ["FollowPath"]
     odom_topic: /feedback/odom
     progress_checker:
-      plugin: "nav2_controller::PoseProgressChecker"
-      required_movement_radius: 0.1
-      required_movement_angle: 0.01
-      movement_time_allowance: 3.0
+      plugin: "nav2_controller::PoseProgressChecker" # 进展检查插件
+      required_movement_radius: 0.1 # 普通模式：判定有进展所需的移动距离，单位 m
+      required_movement_angle: 0.01 # 普通模式：判定有进展所需的旋转角度，单位 rad
+      movement_time_allowance: 3.0 # 普通模式：允许未达到足够进展的时间，单位 s
+    near_goal_progress:
+      enabled: True # 是否启用接近目标点时的宽松进展检查
+      distance: 0.10 # 距离目标点小于该值时进入近目标模式，单位 m
+      required_movement_radius: 0.01 # 近目标模式：判定有进展所需的移动距离，单位 m
+      required_movement_angle: 0.005 # 近目标模式：判定有进展所需的旋转角度，单位 rad
+      movement_time_allowance: 3.0 # 近目标模式：允许未达到足够进展的时间，单位 s
     goal_checker:
       plugin: "nav2_controller::LongitudinalGoalChecker"
       lon_goal_tolerance: 0.02
