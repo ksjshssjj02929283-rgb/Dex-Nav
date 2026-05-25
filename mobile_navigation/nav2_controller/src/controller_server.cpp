@@ -535,7 +535,6 @@ void ControllerServer::setPlannerPath(const nav_msgs::msg::Path & path)
     end_pose_.pose.position.x, end_pose_.pose.position.y);
 
   current_path_ = path;
-  resetNearGoalProgress();
 }
 
 void ControllerServer::resetNearGoalProgress()
