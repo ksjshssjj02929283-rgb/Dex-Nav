@@ -50,7 +50,7 @@
 
           <!-- 如果立即重试仍失败，则等待 2 秒，尝试清全局代价地图，然后进入下一轮规划 -->
           <Sequence name="WaitClearGlobalAndRetry">
-            <Wait wait_duration="2"/>
+            <Wait wait_duration="2" server_name="wait_global"/>
 
             <ForceSuccess>
               <ClearEntireCostmap name="ClearGlobalCostmap-Repeated"
@@ -77,7 +77,7 @@
         <!-- 如果立即重试仍失败，则原地旋转 90 度，等待 2 秒，尝试清局部代价地图，然后进入下一轮控制 -->
         <Sequence name="SpinWaitClearLocalAndRetry">
           <Spin spin_dist="1.57"/>
-          <Wait wait_duration="2"/>
+          <Wait wait_duration="2" server_name="wait_local"/>
 
           <ForceSuccess>
             <ClearEntireCostmap name="ClearLocalCostmap-Repeated"
