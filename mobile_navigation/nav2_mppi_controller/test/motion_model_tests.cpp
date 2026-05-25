@@ -45,31 +45,31 @@ TEST(MotionModelTests, DiffDriveTest)
     std::make_unique<DiffDriveMotionModel>();
 
   // Check that predict properly populates the trajectory velocities with the control velocities
-  state.cvx = 10 * xt::ones<float>({batches, timesteps});
-  state.cvy = 5 * xt::ones<float>({batches, timesteps});
-  state.cwz = 1 * xt::ones<float>({batches, timesteps});
+  state.cvx = 10 * models::Matrix::Ones(batches, timesteps);
+  state.cvy = 5 * models::Matrix::Ones(batches, timesteps);
+  state.cwz = models::Matrix::Ones(batches, timesteps);
 
   // Manually set state index 0 from initial conditions which would be the speed of the robot
-  xt::view(state.vx, xt::all(), 0) = 10;
-  xt::view(state.wz, xt::all(), 0) = 1;
+  state.vx.col(0).setConstant(10);
+  state.wz.col(0).setConstant(1);
 
   model->predict(state);
 
-  EXPECT_EQ(state.vx, state.cvx);
-  EXPECT_EQ(state.vy, xt::zeros<float>({batches, timesteps}));  // non-holonomic
-  EXPECT_EQ(state.wz, state.cwz);
+  EXPECT_TRUE(state.vx.isApprox(state.cvx));
+  EXPECT_TRUE(state.vy.isApprox(models::Matrix::Zero(batches, timesteps)));  // non-holonomic
+  EXPECT_TRUE(state.wz.isApprox(state.cwz));
 
   // Check that application of constraints are empty for Diff Drive
-  for (unsigned int i = 0; i != control_sequence.vx.shape(0); i++) {
+  for (Eigen::Index i = 0; i != control_sequence.vx.size(); i++) {
     control_sequence.vx(i) = i * i * i;
     control_sequence.wz(i) = i * i * i;
   }
 
   models::ControlSequence initial_control_sequence = control_sequence;
   model->applyConstraints(control_sequence);
-  EXPECT_EQ(initial_control_sequence.vx, control_sequence.vx);
-  EXPECT_EQ(initial_control_sequence.vy, control_sequence.vy);
-  EXPECT_EQ(initial_control_sequence.wz, control_sequence.wz);
+  EXPECT_TRUE(initial_control_sequence.vx.isApprox(control_sequence.vx));
+  EXPECT_TRUE(initial_control_sequence.vy.isApprox(control_sequence.vy));
+  EXPECT_TRUE(initial_control_sequence.wz.isApprox(control_sequence.wz));
 
   // Check that Diff Drive is properly non-holonomic
   EXPECT_EQ(model->isHolonomic(), false);
@@ -90,23 +90,23 @@ TEST(MotionModelTests, OmniTest)
     std::make_unique<OmniMotionModel>();
 
   // Check that predict properly populates the trajectory velocities with the control velocities
-  state.cvx = 10 * xt::ones<float>({batches, timesteps});
-  state.cvy = 5 * xt::ones<float>({batches, timesteps});
-  state.cwz = 1 * xt::ones<float>({batches, timesteps});
+  state.cvx = 10 * models::Matrix::Ones(batches, timesteps);
+  state.cvy = 5 * models::Matrix::Ones(batches, timesteps);
+  state.cwz = models::Matrix::Ones(batches, timesteps);
 
   // Manually set state index 0 from initial conditions which would be the speed of the robot
-  xt::view(state.vx, xt::all(), 0) = 10;
-  xt::view(state.vy, xt::all(), 0) = 5;
-  xt::view(state.wz, xt::all(), 0) = 1;
+  state.vx.col(0).setConstant(10);
+  state.vy.col(0).setConstant(5);
+  state.wz.col(0).setConstant(1);
 
   model->predict(state);
 
-  EXPECT_EQ(state.vx, state.cvx);
-  EXPECT_EQ(state.vy, state.cvy);  // holonomic
-  EXPECT_EQ(state.wz, state.cwz);
+  EXPECT_TRUE(state.vx.isApprox(state.cvx));
+  EXPECT_TRUE(state.vy.isApprox(state.cvy));  // holonomic
+  EXPECT_TRUE(state.wz.isApprox(state.cwz));
 
   // Check that application of constraints are empty for Omni Drive
-  for (unsigned int i = 0; i != control_sequence.vx.shape(0); i++) {
+  for (Eigen::Index i = 0; i != control_sequence.vx.size(); i++) {
     control_sequence.vx(i) = i * i * i;
     control_sequence.vy(i) = i * i * i;
     control_sequence.wz(i) = i * i * i;
@@ -114,9 +114,9 @@ TEST(MotionModelTests, OmniTest)
 
   models::ControlSequence initial_control_sequence = control_sequence;
   model->applyConstraints(control_sequence);
-  EXPECT_EQ(initial_control_sequence.vx, control_sequence.vx);
-  EXPECT_EQ(initial_control_sequence.vy, control_sequence.vy);
-  EXPECT_EQ(initial_control_sequence.wz, control_sequence.wz);
+  EXPECT_TRUE(initial_control_sequence.vx.isApprox(control_sequence.vx));
+  EXPECT_TRUE(initial_control_sequence.vy.isApprox(control_sequence.vy));
+  EXPECT_TRUE(initial_control_sequence.wz.isApprox(control_sequence.wz));
 
   // Check that Omni Drive is properly holonomic
   EXPECT_EQ(model->isHolonomic(), true);
@@ -139,22 +139,22 @@ TEST(MotionModelTests, AckermannTest)
     std::make_unique<AckermannMotionModel>(&param_handler);
 
   // Check that predict properly populates the trajectory velocities with the control velocities
-  state.cvx = 10 * xt::ones<float>({batches, timesteps});
-  state.cvy = 5 * xt::ones<float>({batches, timesteps});
-  state.cwz = 1 * xt::ones<float>({batches, timesteps});
+  state.cvx = 10 * models::Matrix::Ones(batches, timesteps);
+  state.cvy = 5 * models::Matrix::Ones(batches, timesteps);
+  state.cwz = models::Matrix::Ones(batches, timesteps);
 
   // Manually set state index 0 from initial conditions which would be the speed of the robot
-  xt::view(state.vx, xt::all(), 0) = 10;
-  xt::view(state.wz, xt::all(), 0) = 1;
+  state.vx.col(0).setConstant(10);
+  state.wz.col(0).setConstant(1);
 
   model->predict(state);
 
-  EXPECT_EQ(state.vx, state.cvx);
-  EXPECT_EQ(state.vy, xt::zeros<float>({batches, timesteps}));  // non-holonomic
-  EXPECT_EQ(state.wz, state.cwz);
+  EXPECT_TRUE(state.vx.isApprox(state.cvx));
+  EXPECT_TRUE(state.vy.isApprox(models::Matrix::Zero(batches, timesteps)));  // non-holonomic
+  EXPECT_TRUE(state.wz.isApprox(state.cwz));
 
   // Check that application of constraints are non-empty for Ackermann Drive
-  for (unsigned int i = 0; i != control_sequence.vx.shape(0); i++) {
+  for (Eigen::Index i = 0; i != control_sequence.vx.size(); i++) {
     control_sequence.vx(i) = i * i * i;
     control_sequence.wz(i) = i * i * i * i;
   }
@@ -162,12 +162,12 @@ TEST(MotionModelTests, AckermannTest)
   models::ControlSequence initial_control_sequence = control_sequence;
   model->applyConstraints(control_sequence);
   // VX equal since this doesn't change, the WZ is reduced if breaking the constraint
-  EXPECT_EQ(initial_control_sequence.vx, control_sequence.vx);
-  EXPECT_NE(initial_control_sequence.wz, control_sequence.wz);
+  EXPECT_TRUE(initial_control_sequence.vx.isApprox(control_sequence.vx));
+  EXPECT_FALSE(initial_control_sequence.wz.isApprox(control_sequence.wz));
 
   // Now, check the specifics of the minimum curvature constraint
   EXPECT_NEAR(model->getMinTurningRadius(), 0.2, 1e-6);
-  for (unsigned int i = 1; i != control_sequence.vx.shape(0); i++) {
+  for (Eigen::Index i = 1; i != control_sequence.vx.size(); i++) {
     EXPECT_TRUE(fabs(control_sequence.vx(i)) / fabs(control_sequence.wz(i)) >= 0.2);
   }
 

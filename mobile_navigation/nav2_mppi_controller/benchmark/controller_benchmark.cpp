@@ -24,9 +24,6 @@
 #include <nav2_costmap_2d/costmap_2d_ros.hpp>
 #include <nav2_core/goal_checker.hpp>
 
-#include <xtensor/xarray.hpp>
-#include <xtensor/xio.hpp>
-#include <xtensor/xview.hpp>
 
 #include "nav2_mppi_controller/motion_models.hpp"
 #include "nav2_mppi_controller/controller.hpp"
