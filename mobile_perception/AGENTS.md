@@ -35,7 +35,9 @@
 - `CMakeLists.txt`：声明 C++ 可执行文件、Python 脚本安装列表、`launch/config/images` 安装目录。
 - `package.xml`：ROS 包元信息和部分依赖声明。新增依赖时要同时检查 `CMakeLists.txt`。
 - `launch/mobile_control.launch.py`：启动 `mobile_control_node`，默认加载 `config/mobile_control_params.yaml`。
-- `config/mobile_control_params.yaml`：精控节点控制参数。
+- `launch/mobile_control_action.launch.py`：启动 `mobile_control_action_node`，默认加载 `config/mobile_control_action_params.yaml`。
+- `config/mobile_control_params.yaml`：topic/service 版精控节点控制参数。
+- `config/mobile_control_action_params.yaml`：Action 版精控节点控制参数。
 - `config/camera_config.json`：C++ AprilTag 节点默认读取的实机相机配置。
 - `config/tags_config.json`：AprilTag family 和 tag 尺寸。
 - `config/docking_config.json`：实机充电位姿配置。
@@ -82,6 +84,8 @@
 该节点是独立 Action 版精控入口，不订阅 `control/ctrl_pose`，不调用 `mobile_control_node` 的状态或取消服务。修改时应保持同一时间只允许一个 active goal，客户端取消应进入平滑停车并在停车完成后返回 `CANCELLED`。
 
 不要让 `mobile_control_node` 和 `mobile_control_action_node` 在同一底盘速度链路上同时运行；二者都会发布 `control/cmd_vel`。
+启动 Action 版节点时优先使用 `launch/mobile_control_action.launch.py`，参数默认从
+`config/mobile_control_action_params.yaml` 读取。
 
 ### AprilTag 节点
 
@@ -124,7 +128,8 @@
 
 - 改相机内参时，必须同时检查 `frame_width`、`frame_height`、`fx`、`fy`、`cx`、`cy` 和 `dist_coeffs`。
 - 改 tag 尺寸时，只改 `config/tags_config.json` 中的 `tag_size`，除非代码已明确支持其他来源。
-- 改控制参数时，优先修改 `config/mobile_control_params.yaml`，不要直接把实验值写死进 `mobile_control_node.cpp`。
+- 改 topic/service 版控制参数时，优先修改 `config/mobile_control_params.yaml`，不要直接把实验值写死进 `mobile_control_node.cpp`。
+- 改 Action 版控制参数时，优先修改 `config/mobile_control_action_params.yaml`，不要直接把实验值写死进 `mobile_control_action_node.cpp`。
 - 改 docking 位姿时，明确区分：
   - `docking_config.json`：实机。
   - `docking_config_simulation.json`：仿真。

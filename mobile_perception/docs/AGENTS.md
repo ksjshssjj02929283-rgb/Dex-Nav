@@ -15,4 +15,5 @@
 
 - `mobile_control_node` 的取消状态区分 `CANCEL CONTROL`（取消中）和 `CANCELED`（取消完成反馈），修改状态字符串前需要确认上游调用方。
 - `mobile_control_action_node` 提供 `control/precise_control` action，直接发布 `control/cmd_vel`，不经过 `control/ctrl_pose`。
+- `mobile_control_action_node` 默认通过 `mobile_control_action.launch.py` 启动，并加载 `mobile_control_action_params.yaml`。
 - `obstacle_detector_node` 已从旧工作区迁移到当前 `mobile_perception` 包，负责基于局部代价地图检测车体前方矩形区域障碍物。

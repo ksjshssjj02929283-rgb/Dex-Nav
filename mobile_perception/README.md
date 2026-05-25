@@ -11,7 +11,8 @@ mobile_perception/
 ├── CMakeLists.txt
 ├── package.xml
 ├── launch/
-│   └── mobile_control.launch.py
+│   ├── mobile_control.launch.py
+│   └── mobile_control_action.launch.py
 ├── config/
 │   ├── camera_config.json
 │   ├── camera_config_1280.json
@@ -21,6 +22,7 @@ mobile_perception/
 │   ├── docking_config.json
 │   ├── docking_config_simulation.json
 │   ├── mobile_control_params.yaml
+│   ├── mobile_control_action_params.yaml
 │   ├── docking.yaml
 │   └── params.yaml
 ├── src/
@@ -184,6 +186,7 @@ Action：
 | `config/camera_config_1280.json` / `camera_config_shenzhen.json` | 其他实机相机标定配置。 |
 | `config/tags_config.json` | AprilTag family、tag 尺寸和检测约束。 |
 | `config/mobile_control_params.yaml` | `mobile_control_node` 控制频率、速度限幅、增益、死区和收敛阈值。 |
+| `config/mobile_control_action_params.yaml` | `mobile_control_action_node` 控制频率、速度限幅、增益、死区和收敛阈值。 |
 | `config/docking_config.json` | 实机充电位姿和预充电位姿。 |
 | `config/docking_config_simulation.json` | 仿真充电位姿。 |
 | `config/params.yaml` | Nav2 目标发布脚本使用的示例目标。 |
@@ -274,7 +277,13 @@ ros2 launch mobile_perception mobile_control.launch.py params_file:=/path/to/mob
 启动 Action 版底盘精控节点：
 
 ```bash
-ros2 run mobile_perception mobile_control_action_node
+ros2 launch mobile_perception mobile_control_action.launch.py
+```
+
+使用自定义 Action 版参数文件：
+
+```bash
+ros2 launch mobile_perception mobile_control_action.launch.py params_file:=/path/to/mobile_control_action_params.yaml
 ```
 
 发送 Action 精控目标：

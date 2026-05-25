@@ -31,6 +31,16 @@ Action goal 中的 `target_pose` 使用 `geometry_msgs/msg/PoseStamped`。节点
 - 客户端 cancel 后会平滑停车，完成后返回 `CANCELLED`。
 - 不应与 `mobile_control_node` 同时控制同一个 `control/cmd_vel` 链路。
 
+默认启动入口：
+
+```bash
+ros2 launch mobile_perception mobile_control_action.launch.py
+```
+
+默认参数文件：
+
+- `config/mobile_control_action_params.yaml`
+
 ## obstacle_detector_node
 
 `obstacle_detector_node` 是 C++ 前方障碍检测节点，来自旧工作区
