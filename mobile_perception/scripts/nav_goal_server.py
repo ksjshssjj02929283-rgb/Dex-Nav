@@ -104,7 +104,9 @@ class NavGoalServer(Node):
             return
         
         self.is_canceling = True
-        self.get_logger().info("Sending cancel request...")
+        self.get_logger().warn(
+            "nav_goal_server is canceling its /navigate_to_pose goal because a new /control/nav2_pose goal arrived"
+        )
         
         self._cancel_future = self._goal_handle.cancel_goal_async()
         self._cancel_future.add_done_callback(self.cancel_done_callback)
@@ -269,4 +271,3 @@ def main(args=None):
 
 if __name__ == '__main__':
     main()
-

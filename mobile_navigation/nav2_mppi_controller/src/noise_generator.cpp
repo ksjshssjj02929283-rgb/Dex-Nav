@@ -16,9 +16,7 @@
 
 #include <memory>
 #include <mutex>
-#include <xtensor/xmath.hpp>
-#include <xtensor/xrandom.hpp>
-#include <xtensor/xnoalias.hpp>
+#include <random>
 
 namespace mppi
 {
@@ -68,9 +66,18 @@ void NoiseGenerator::setNoisedControls(
 {
   std::unique_lock<std::mutex> guard(noise_lock_);
 
-  xt::noalias(state.cvx) = control_sequence.vx + noises_vx_;
-  xt::noalias(state.cvy) = control_sequence.vy + noises_vy_;
-  xt::noalias(state.cwz) = control_sequence.wz + noises_wz_;
+  auto addControlSequence = [](models::Matrix & dst, const models::Matrix & noises,
+      const models::Vector & sequence)
+    {
+      dst = noises;
+      for (Eigen::Index i = 0; i < dst.rows(); ++i) {
+        dst.row(i) += sequence.transpose();
+      }
+    };
+
+  addControlSequence(state.cvx, noises_vx_, control_sequence.vx);
+  addControlSequence(state.cvy, noises_vy_, control_sequence.vy);
+  addControlSequence(state.cwz, noises_wz_, control_sequence.wz);
 }
 
 void NoiseGenerator::reset(mppi::models::OptimizerSettings & settings, bool is_holonomic)
@@ -81,9 +88,9 @@ void NoiseGenerator::reset(mppi::models::OptimizerSettings & settings, bool is_h
   // Recompute the noises on reset, initialization, and fallback
   {
     std::unique_lock<std::mutex> guard(noise_lock_);
-    xt::noalias(noises_vx_) = xt::zeros<float>({settings_.batch_size, settings_.time_steps});
-    xt::noalias(noises_vy_) = xt::zeros<float>({settings_.batch_size, settings_.time_steps});
-    xt::noalias(noises_wz_) = xt::zeros<float>({settings_.batch_size, settings_.time_steps});
+    noises_vx_ = models::Matrix::Zero(settings_.batch_size, settings_.time_steps);
+    noises_vy_ = models::Matrix::Zero(settings_.batch_size, settings_.time_steps);
+    noises_wz_ = models::Matrix::Zero(settings_.batch_size, settings_.time_steps);
     ready_ = true;
   }
 
@@ -108,16 +115,25 @@ void NoiseGenerator::generateNoisedControls()
 {
   auto & s = settings_;
 
-  xt::noalias(noises_vx_) = xt::random::randn<float>(
-    {s.batch_size, s.time_steps}, 0.0f,
-    s.sampling_std.vx);
-  xt::noalias(noises_wz_) = xt::random::randn<float>(
-    {s.batch_size, s.time_steps}, 0.0f,
-    s.sampling_std.wz);
+  static thread_local std::mt19937 generator{std::random_device{}()};
+  auto fillNormal = [&](models::Matrix & noises, float stddev) {
+      noises.resize(s.batch_size, s.time_steps);
+      if (stddev <= 0.0f) {
+        noises.setZero();
+        return;
+      }
+      std::normal_distribution<float> distribution(0.0f, stddev);
+      for (Eigen::Index r = 0; r < noises.rows(); ++r) {
+        for (Eigen::Index c = 0; c < noises.cols(); ++c) {
+          noises(r, c) = distribution(generator);
+        }
+      }
+    };
+
+  fillNormal(noises_vx_, s.sampling_std.vx);
+  fillNormal(noises_wz_, s.sampling_std.wz);
   if (is_holonomic_) {
-    xt::noalias(noises_vy_) = xt::random::randn<float>(
-      {s.batch_size, s.time_steps}, 0.0f,
-      s.sampling_std.vy);
+    fillNormal(noises_vy_, s.sampling_std.vy);
   }
 }
 

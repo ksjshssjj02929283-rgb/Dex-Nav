@@ -17,7 +17,6 @@
 
 #include <memory>
 #include <string>
-#include <xtensor/xtensor.hpp>
 
 #include "nav_msgs/msg/path.hpp"
 #include "rclcpp/rclcpp.hpp"
@@ -73,7 +72,7 @@ public:
     * @brief Add an optimal trajectory to visualize
     * @param trajectory Optimal trajectory
     */
-  void add(const xt::xtensor<float, 2> & trajectory, const std::string & marker_namespace);
+  void add(const models::Matrix & trajectory, const std::string & marker_namespace);
 
   /**
     * @brief Add candidate trajectories to visualize

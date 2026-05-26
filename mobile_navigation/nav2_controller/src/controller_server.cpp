@@ -18,7 +18,9 @@
 #include <string>
 #include <utility>
 #include <limits>
+#include <cmath>
 
+#include "angles/angles.h"
 #include "lifecycle_msgs/msg/state.hpp"
 #include "nav2_core/exceptions.hpp"
 #include "nav_2d_utils/conversions.hpp"
@@ -26,6 +28,11 @@
 #include "nav2_util/node_utils.hpp"
 #include "nav2_util/geometry_utils.hpp"
 #include "nav2_controller/controller_server.hpp"
+#include "tf2/exceptions.h"
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpedantic"
+#include "tf2/utils.h"
+#pragma GCC diagnostic pop
 
 using namespace std::chrono_literals;
 using rcl_interfaces::msg::ParameterType;
@@ -60,6 +67,14 @@ ControllerServer::ControllerServer(const rclcpp::NodeOptions & options)
   declare_parameter("speed_limit_topic", rclcpp::ParameterValue("speed_limit"));
 
   declare_parameter("failure_tolerance", rclcpp::ParameterValue(0.0));
+  declare_parameter("near_goal_progress.enabled", rclcpp::ParameterValue(true));
+  declare_parameter("near_goal_progress.distance", rclcpp::ParameterValue(0.25));
+  declare_parameter(
+    "near_goal_progress.required_movement_radius", rclcpp::ParameterValue(0.01));
+  declare_parameter(
+    "near_goal_progress.required_movement_angle", rclcpp::ParameterValue(0.005));
+  declare_parameter(
+    "near_goal_progress.movement_time_allowance", rclcpp::ParameterValue(8.0));
 
   // The costmap node is used in the implementation of the controller
   costmap_ros_ = std::make_shared<nav2_costmap_2d::Costmap2DROS>(
@@ -119,6 +134,29 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
   std::string speed_limit_topic;
   get_parameter("speed_limit_topic", speed_limit_topic);
   get_parameter("failure_tolerance", failure_tolerance_);
+  get_parameter("near_goal_progress.enabled", near_goal_progress_enabled_);
+  get_parameter("near_goal_progress.distance", near_goal_progress_distance_);
+  get_parameter(
+    "near_goal_progress.required_movement_radius",
+    near_goal_progress_required_movement_radius_);
+  get_parameter(
+    "near_goal_progress.required_movement_angle",
+    near_goal_progress_required_movement_angle_);
+  double near_goal_progress_movement_time_allowance;
+  get_parameter(
+    "near_goal_progress.movement_time_allowance",
+    near_goal_progress_movement_time_allowance);
+  near_goal_progress_time_allowance_ =
+    rclcpp::Duration::from_seconds(near_goal_progress_movement_time_allowance);
+  RCLCPP_INFO(
+    get_logger(),
+    "Near-goal progress: enabled=%s distance=%.3f m movement=%.3f m angle=%.3f rad "
+    "allowance=%.3f s",
+    near_goal_progress_enabled_ ? "true" : "false",
+    near_goal_progress_distance_,
+    near_goal_progress_required_movement_radius_,
+    near_goal_progress_required_movement_angle_,
+    near_goal_progress_time_allowance_.seconds());
 
   costmap_ros_->configure();
   // Launch a thread to run the costmap node
@@ -386,6 +424,7 @@ void ControllerServer::computeControl()
 
     setPlannerPath(action_server_->get_current_goal()->path);
     progress_checker_->reset();
+    resetNearGoalProgress();
 
     last_valid_cmd_time_ = now();
     rclcpp::WallRate loop_rate(controller_frequency_);
@@ -498,10 +537,93 @@ void ControllerServer::setPlannerPath(const nav_msgs::msg::Path & path)
   current_path_ = path;
 }
 
+void ControllerServer::resetNearGoalProgress()
+{
+  near_goal_baseline_pose_set_ = false;
+  in_near_goal_progress_mode_ = false;
+}
+
+bool ControllerServer::isNearGoal(const geometry_msgs::msg::PoseStamped & pose)
+{
+  geometry_msgs::msg::PoseStamped transformed_end_pose;
+  try {
+    rclcpp::Duration tolerance(
+      rclcpp::Duration::from_seconds(costmap_ros_->getTransformTolerance()));
+    if (!nav_2d_utils::transformPose(
+      costmap_ros_->getTfBuffer(), pose.header.frame_id,
+      end_pose_, transformed_end_pose, tolerance))
+    {
+      return false;
+    }
+  } catch (const tf2::TransformException & ex) {
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), *get_clock(), 5000,
+      "Unable to transform end pose for near-goal progress check: %s", ex.what());
+    return false;
+  }
+
+  const double dx = pose.pose.position.x - transformed_end_pose.pose.position.x;
+  const double dy = pose.pose.position.y - transformed_end_pose.pose.position.y;
+  return std::hypot(dx, dy) <= near_goal_progress_distance_;
+}
+
+bool ControllerServer::checkNearGoalProgress(const geometry_msgs::msg::PoseStamped & pose)
+{
+  if (!in_near_goal_progress_mode_) {
+    RCLCPP_INFO(
+      get_logger(),
+      "Entering near-goal progress mode: distance=%.3f m, required movement=%.3f m, "
+      "required angle=%.3f rad, allowance=%.3f s",
+      near_goal_progress_distance_,
+      near_goal_progress_required_movement_radius_,
+      near_goal_progress_required_movement_angle_,
+      near_goal_progress_time_allowance_.seconds());
+    in_near_goal_progress_mode_ = true;
+  }
+
+  if (!near_goal_baseline_pose_set_) {
+    near_goal_baseline_pose_ = pose;
+    near_goal_baseline_time_ = now();
+    near_goal_baseline_pose_set_ = true;
+    return true;
+  }
+
+  const double dx = pose.pose.position.x - near_goal_baseline_pose_.pose.position.x;
+  const double dy = pose.pose.position.y - near_goal_baseline_pose_.pose.position.y;
+  const double moved_distance = std::hypot(dx, dy);
+  const double moved_angle = std::abs(
+    angles::shortest_angular_distance(
+      tf2::getYaw(near_goal_baseline_pose_.pose.orientation),
+      tf2::getYaw(pose.pose.orientation)));
+
+  if (moved_distance > near_goal_progress_required_movement_radius_ ||
+    moved_angle > near_goal_progress_required_movement_angle_)
+  {
+    near_goal_baseline_pose_ = pose;
+    near_goal_baseline_time_ = now();
+    return true;
+  }
+
+  const auto elapsed = now() - near_goal_baseline_time_;
+  if (elapsed <= near_goal_progress_time_allowance_) {
+    return true;
+  }
+
+  RCLCPP_WARN(
+    get_logger(),
+    "Near-goal progress timeout: elapsed=%.3f s, moved=%.4f m, rotated=%.4f rad, "
+    "required movement=%.4f m or angle=%.4f rad",
+    elapsed.seconds(), moved_distance, moved_angle,
+    near_goal_progress_required_movement_radius_,
+    near_goal_progress_required_movement_angle_);
+  return false;
+}
+
 void ControllerServer::computeAndPublishVelocity()
 {
   constexpr double kSlowTimingWarnMs = 100.0;
   geometry_msgs::msg::PoseStamped pose;
+  auto t_total_start = std::chrono::high_resolution_clock::now();
 
   auto t_pose_start = std::chrono::high_resolution_clock::now();
   if (!getRobotPose(pose)) {
@@ -511,13 +633,27 @@ void ControllerServer::computeAndPublishVelocity()
   auto pose_ms = std::chrono::duration<double, std::milli>(t_pose_end - t_pose_start).count();
 
   auto t_progress_start = std::chrono::high_resolution_clock::now();
-  if (!progress_checker_->check(pose)) {
-    throw nav2_core::PlannerException("Failed to make progress");
+  if (near_goal_progress_enabled_ && isNearGoal(pose)) {
+    if (!checkNearGoalProgress(pose)) {
+      throw nav2_core::PlannerException("Failed to make near-goal progress");
+    }
+  } else {
+    if (in_near_goal_progress_mode_) {
+      RCLCPP_INFO(get_logger(), "Leaving near-goal progress mode.");
+      resetNearGoalProgress();
+      progress_checker_->reset();
+    }
+    if (!progress_checker_->check(pose)) {
+      throw nav2_core::PlannerException("Failed to make progress");
+    }
   }
   auto t_progress_end = std::chrono::high_resolution_clock::now();
   auto progress_ms = std::chrono::duration<double, std::milli>(t_progress_end - t_progress_start).count();
 
+  auto t_odom_start = std::chrono::high_resolution_clock::now();
   nav_2d_msgs::msg::Twist2D twist = getThresholdedTwist(odom_sub_->getTwist());
+  auto t_odom_end = std::chrono::high_resolution_clock::now();
+  auto odom_ms = std::chrono::duration<double, std::milli>(t_odom_end - t_odom_start).count();
 
   geometry_msgs::msg::TwistStamped cmd_vel_2d;
 
@@ -581,18 +717,25 @@ void ControllerServer::computeAndPublishVelocity()
   auto t_feedback_end = std::chrono::high_resolution_clock::now();
   auto feedback_ms = std::chrono::duration<double, std::milli>(t_feedback_end - t_feedback_start).count();
 
-  if (
-    pose_ms >= kSlowTimingWarnMs || progress_ms >= kSlowTimingWarnMs ||
-    compute_ms >= kSlowTimingWarnMs || feedback_ms >= kSlowTimingWarnMs)
-  {
+  RCLCPP_DEBUG(get_logger(), "Publishing velocity at time %.2f", now().seconds());
+  auto t_publish_start = std::chrono::high_resolution_clock::now();
+  publishVelocity(cmd_vel_2d);
+  auto t_publish_end = std::chrono::high_resolution_clock::now();
+  auto publish_ms = std::chrono::duration<double, std::milli>(t_publish_end - t_publish_start).count();
+
+  auto t_total_end = std::chrono::high_resolution_clock::now();
+  auto total_ms = std::chrono::duration<double, std::milli>(t_total_end - t_total_start).count();
+  auto measured_ms = pose_ms + progress_ms + odom_ms + compute_ms + feedback_ms + publish_ms;
+  auto unaccounted_ms = total_ms - measured_ms;
+
+  if (total_ms >= kSlowTimingWarnMs) {
     RCLCPP_WARN(
       get_logger(),
-      "ControllerServer timing (ms): getPose=%.3f progress=%.3f compute=%.3f feedback=%.3f",
-      pose_ms, progress_ms, compute_ms, feedback_ms);
+      "ControllerServer timing (ms): total=%.3f getPose=%.3f progress=%.3f odom=%.3f "
+      "compute=%.3f feedback=%.3f publish=%.3f unaccounted=%.3f",
+      total_ms, pose_ms, progress_ms, odom_ms, compute_ms, feedback_ms, publish_ms,
+      unaccounted_ms);
   }
-
-  RCLCPP_DEBUG(get_logger(), "Publishing velocity at time %.2f", now().seconds());
-  publishVelocity(cmd_vel_2d);
 }
 
 void ControllerServer::updateGlobalPath()
@@ -695,9 +838,10 @@ ControllerServer::dynamicParametersCallback(std::vector<rclcpp::Parameter> param
     const auto & type = parameter.get_type();
     const auto & name = parameter.get_name();
 
-    // If we are trying to change the parameter of a plugin we can just skip it at this point
-    // as they handle parameter changes themselves and don't need to lock the mutex
-    if (name.find('.') != std::string::npos) {
+    // Plugin parameters handle their own updates, but near_goal_progress belongs to this server.
+    if (name.find('.') != std::string::npos &&
+      name.rfind("near_goal_progress.", 0) != 0)
+    {
       continue;
     }
 
@@ -722,6 +866,20 @@ ControllerServer::dynamicParametersCallback(std::vector<rclcpp::Parameter> param
         min_theta_velocity_threshold_ = parameter.as_double();
       } else if (name == "failure_tolerance") {
         failure_tolerance_ = parameter.as_double();
+      } else if (name == "near_goal_progress.distance") {
+        near_goal_progress_distance_ = parameter.as_double();
+      } else if (name == "near_goal_progress.required_movement_radius") {
+        near_goal_progress_required_movement_radius_ = parameter.as_double();
+      } else if (name == "near_goal_progress.required_movement_angle") {
+        near_goal_progress_required_movement_angle_ = parameter.as_double();
+      } else if (name == "near_goal_progress.movement_time_allowance") {
+        near_goal_progress_time_allowance_ =
+          rclcpp::Duration::from_seconds(parameter.as_double());
+      }
+    } else if (type == ParameterType::PARAMETER_BOOL) {
+      if (name == "near_goal_progress.enabled") {
+        near_goal_progress_enabled_ = parameter.as_bool();
+        resetNearGoalProgress();
       }
     }
 

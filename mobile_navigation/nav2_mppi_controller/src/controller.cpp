@@ -100,7 +100,8 @@ void MPPIController::reset()
 //   geometry_msgs::msg::TwistStamped cmd =
 //     optimizer_.evalControl(robot_pose, robot_speed, transformed_plan, goal_checker);
 //   auto end_mppi = std::chrono::system_clock::now();
-//   auto duration_mppi = std::chrono::duration_cast<std::chrono::milliseconds>(end_mppi - start_mppi).count();
+//   auto duration_mppi =
+//     std::chrono::duration_cast<std::chrono::milliseconds>(end_mppi - start_mppi).count();
 //   RCLCPP_INFO(logger_, "Control evalControl time: %ld [ms]", duration_mppi);
 // #ifdef BENCHMARK_TESTING
 //   auto end = std::chrono::system_clock::now();
@@ -119,7 +120,7 @@ geometry_msgs::msg::TwistStamped MPPIController::computeVelocityCommands(
   const geometry_msgs::msg::Twist & robot_speed,
   nav2_core::GoalChecker * goal_checker)
 {
-  constexpr double kSlowTimingWarnMs = 100.0;
+  constexpr double kSlowTimingWarnMs = 100.0;  // 100.0
   auto t_total_start = std::chrono::high_resolution_clock::now();
 
   if (clock_->now() - last_time_called_ > rclcpp::Duration::from_seconds(reset_period_)) {

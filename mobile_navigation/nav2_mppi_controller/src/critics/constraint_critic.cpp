@@ -40,38 +40,31 @@ void ConstraintCritic::initialize()
 
 void ConstraintCritic::score(CriticData & data)
 {
-  using xt::evaluation_strategy::immediate;
-
   if (!enabled_) {
     return;
   }
 
-  auto sgn = xt::where(data.state.vx > 0.0, 1.0, -1.0);
-  auto vel_total = sgn * xt::sqrt(data.state.vx * data.state.vx + data.state.vy * data.state.vy);
-  auto out_of_max_bounds_motion = xt::maximum(vel_total - max_vel_, 0);
-  auto out_of_min_bounds_motion = xt::maximum(min_vel_ - vel_total, 0);
+  auto sgn = (data.state.vx > 0.0f).select(
+    models::Matrix::Constant(data.state.vx.rows(), data.state.vx.cols(), 1.0f),
+    models::Matrix::Constant(data.state.vx.rows(), data.state.vx.cols(), -1.0f));
+  auto vel_total = sgn * (data.state.vx.square() + data.state.vy.square()).sqrt();
+  auto out_of_max_bounds_motion = (vel_total - max_vel_).max(0.0f);
+  auto out_of_min_bounds_motion = (min_vel_ - vel_total).max(0.0f);
 
   auto acker = dynamic_cast<AckermannMotionModel *>(data.motion_model.get());
   if (acker != nullptr) {
     auto & vx = data.state.vx;
     auto & wz = data.state.wz;
-    auto out_of_turning_rad_motion = xt::maximum(
-      acker->getMinTurningRadius() - (xt::fabs(vx) / xt::fabs(wz)), 0.0);
+    auto out_of_turning_rad_motion =
+      (acker->getMinTurningRadius() - (vx.abs() / wz.abs())).max(0.0f);
 
-    data.costs += xt::pow(
-      xt::sum(
-        (std::move(out_of_max_bounds_motion) +
-        std::move(out_of_min_bounds_motion) +
-        std::move(out_of_turning_rad_motion)) *
-        data.model_dt, {1}, immediate) * weight_, power_);
+    data.costs += (((out_of_max_bounds_motion + out_of_min_bounds_motion +
+      out_of_turning_rad_motion) * data.model_dt).rowwise().sum() * weight_).pow(power_);
     return;
   }
 
-  data.costs += xt::pow(
-    xt::sum(
-      (std::move(out_of_max_bounds_motion) +
-      std::move(out_of_min_bounds_motion)) *
-      data.model_dt, {1}, immediate) * weight_, power_);
+  data.costs += (((out_of_max_bounds_motion + out_of_min_bounds_motion) *
+    data.model_dt).rowwise().sum() * weight_).pow(power_);
 }
 
 }  // namespace mppi::critics

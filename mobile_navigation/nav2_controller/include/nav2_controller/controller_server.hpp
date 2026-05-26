@@ -152,6 +152,22 @@ protected:
    */
   void computeAndPublishVelocity();
   /**
+   * @brief Reset the near-goal progress checker baseline
+   */
+  void resetNearGoalProgress();
+  /**
+   * @brief Check if the robot is close enough to use relaxed near-goal progress rules
+   * @param pose Current robot pose
+   * @return true if the robot is within the near-goal progress distance
+   */
+  bool isNearGoal(const geometry_msgs::msg::PoseStamped & pose);
+  /**
+   * @brief Check relaxed progress while close to the goal
+   * @param pose Current robot pose
+   * @return true if progress is acceptable
+   */
+  bool checkNearGoalProgress(const geometry_msgs::msg::PoseStamped & pose);
+  /**
    * @brief Calls setPlannerPath method with an updated path received from
    * action server
    */
@@ -254,6 +270,17 @@ protected:
   double min_theta_velocity_threshold_;
 
   double failure_tolerance_;
+
+  bool near_goal_progress_enabled_{true};
+  double near_goal_progress_distance_{0.25};
+  double near_goal_progress_required_movement_radius_{0.01};
+  double near_goal_progress_required_movement_angle_{0.005};
+  rclcpp::Duration near_goal_progress_time_allowance_{
+    rclcpp::Duration::from_seconds(8.0)};
+  bool near_goal_baseline_pose_set_{false};
+  bool in_near_goal_progress_mode_{false};
+  geometry_msgs::msg::PoseStamped near_goal_baseline_pose_;
+  rclcpp::Time near_goal_baseline_time_;
 
   // Whether we've published the single controller warning yet
   geometry_msgs::msg::PoseStamped end_pose_;

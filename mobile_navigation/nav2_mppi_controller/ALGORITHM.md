@@ -38,7 +38,7 @@
 |------|---------|------|
 | 约束处理 | 需要求解带约束的优化问题 | 通过代价函数软约束，无需凸优化 |
 | 障碍物避免 | 线性化/近似处理 | 可直接使用代价地图，支持复杂场景 |
-| 计算方式 | 串行迭代 | 可并行（批量矩阵运算，xtensor 加速） |
+| 计算方式 | 串行迭代 | 可并行（批量矩阵运算，Eigen Array 加速） |
 | 实时性 | 依赖 QP solver | 固定计算时间，更易保证实时性 |
 
 ---
@@ -55,7 +55,7 @@
 │   ├─ prepare()                      初始化状态
 │   │   ├─ state_.pose  ← robot_pose
 │   │   ├─ state_.speed ← robot_speed
-│   │   └─ path_ ← transformed_plan（转为 xtensor）
+│   │   └─ path_ ← transformed_plan（转为 Eigen-backed Path）
 │   │
 │   ├─ do { optimize() } while (fallback)
 │   │   │
@@ -131,16 +131,19 @@ S(τ_i) = Σ_t [ q(x_t^i) + (γ/σ²) u_t * ε_{i,t} ]
 
 ```cpp
 // 控制正则项（γ 项）
-costs_ += s.gamma / powf(s.sampling_std.vx, 2) *
-  xt::sum(xt::view(control_sequence_.vx, newaxis, all) * bounded_noises_vx, 1);
+for (Eigen::Index i = 0; i < costs_.size(); ++i) {
+  costs_(i) += s.gamma / powf(s.sampling_std.vx, 2) *
+    (control_sequence_.vx * bounded_noises_vx.row(i).transpose()).sum();
+}
 
 // 软max 权重
-auto costs_normalized = costs_ - xt::amin(costs_);  // 数值稳定
-auto exponents = xt::exp(-1 / settings_.temperature * costs_normalized);
-auto softmaxes = exponents / xt::sum(exponents);
+const auto costs_normalized = costs_ - costs_.minCoeff();  // 数值稳定
+const auto exponents = (-1.0f / settings_.temperature * costs_normalized).exp();
+const auto softmaxes = exponents / exponents.sum();
 
 // 加权平均
-control_sequence_.vx = xt::sum(state_.cvx * softmaxes_extended, 0);
+control_sequence_.vx =
+  (state_.cvx.colwise() * softmaxes).colwise().sum().transpose();
 ```
 
 ### 3.3 Savitzky-Golay 平滑滤波
@@ -372,9 +375,9 @@ noise_vy[i,t] ~ N(0, vy_std²)   （仅全向）
 [optimizer.cpp:229-241](src/optimizer.cpp#L229) — `applyControlSequenceConstraints()`：
 
 ```cpp
-// 仅裁剪速度范围，不约束相邻步间的速度差（即加速度）
-control_sequence_.vx = xt::clip(vx, vx_min, vx_max);
-control_sequence_.wz = xt::clip(wz, -wz_max, wz_max);
+// 裁剪速度范围，并交给运动模型处理平台特定约束
+control_sequence_.vx = vx.min(vx_max).max(vx_min);
+control_sequence_.wz = wz.min(wz_max).max(-wz_max);
 motion_model_->applyConstraints(control_sequence_);
 ```
 
@@ -465,14 +468,18 @@ MPPIController:
 
 ```cpp
 // 计算轨迹上每步的加速度
-auto accel_vx = xt::diff(state.cvx, 1, 1) / settings_.model_dt;  // [batch, time_steps-1]
-auto accel_wz = xt::diff(state.cwz, 1, 1) / settings_.model_dt;
+const auto accel_vx =
+  (state.cvx.rightCols(state.cvx.cols() - 1) -
+   state.cvx.leftCols(state.cvx.cols() - 1)) / settings_.model_dt;
+const auto accel_wz =
+  (state.cwz.rightCols(state.cwz.cols() - 1) -
+   state.cwz.leftCols(state.cwz.cols() - 1)) / settings_.model_dt;
 
 // 超出限制的部分作为代价
-auto excess_vx = xt::maximum(xt::fabs(accel_vx) - max_accel_vx_, 0.0f);
-auto excess_wz = xt::maximum(xt::fabs(accel_wz) - max_accel_wz_, 0.0f);
+const auto excess_vx = (accel_vx.abs() - max_accel_vx_).max(0.0f);
+const auto excess_wz = (accel_wz.abs() - max_accel_wz_).max(0.0f);
 
-data.costs += cost_weight_ * xt::sum(excess_vx + excess_wz, 1);
+data.costs += cost_weight_ * (excess_vx + excess_wz).rowwise().sum();
 ```
 
 **优点**：加速度约束融入 MPPI 采样过程，生成的轨迹计划本身即满足加速度约束
@@ -566,7 +573,7 @@ MPPI 计算 → 输出 v_mppi → JerkLimiter 截断 → 实际输出 v_actual �
 
 ```cpp
 // 错误：直接用时间步对齐
-auto && vx_diff = xt::eval(state_.cvx - ref_velocities);
+const auto vx_diff = state_.cvx.rowwise() - ref_velocities.transpose();
 // state_.cvx  : [batch_size × time_steps]  ← 每条轨迹在时间 t 的控制速度
 // ref_velocities : [time_steps]            ← 速度剖面用时间 t 索引
 ```
@@ -713,21 +720,19 @@ if (dist_to_goal < 0.3) {
 
 ```cpp
 void predict(models::State & state) {
-  using namespace xt::placeholders;
   // 原逻辑：state.vx[:,1:] = state.cvx[:,0:-1]
   // 修改：加入加速度限制，使 |vx[t+1] - vx[t]| / dt <= a_max
   //        以及 |(a[t+1] - a[t])| / dt <= j_max（可选）
 
-  auto cvx_prev = xt::view(state.cvx, xt::all(), xt::range(0, -1));
-  auto cvx_curr = xt::view(state.cvx, xt::all(), xt::range(1, _));
-  auto vx_prev  = xt::view(state.vx,  xt::all(), xt::range(0, -1));
+  const Eigen::Index cols = state.vx.cols();
+  for (Eigen::Index t = 1; t < cols; ++t) {
+    const auto vx_prev = state.vx.col(t - 1);
+    auto cvx_prev = state.cvx.col(t - 1);
+    auto vx_next = state.vx.col(t);
 
-  // 计算加速度并裁剪
-  auto delta_v = cvx_prev - vx_prev;
-  auto clamped = xt::clip(delta_v, a_min_ * dt_, a_max_ * dt_);
-
-  xt::noalias(xt::view(state.vx, xt::all(), xt::range(1, _))) =
-    vx_prev + clamped;
+    const auto delta_v = cvx_prev - vx_prev;
+    vx_next = vx_prev + delta_v.min(a_max_ * dt_).max(a_min_ * dt_);
+  }
 }
 ```
 
@@ -753,13 +758,12 @@ void SpeedProfileCritic::score(CriticData & data) {
   auto & traj = data.trajectories;  // [batch × time_steps × {x,y,yaw}]
 
   // Step 1: 计算每条轨迹每步的累积弧长 [batch × time_steps]
-  auto dx = xt::diff(traj.x, 1, 1);   // [batch × time_steps-1]
-  auto dy = xt::diff(traj.y, 1, 1);
-  auto ds = xt::sqrt(dx*dx + dy*dy);
-  auto s  = xt::hstack(
-    xt::zeros<float>({batch_size, 1}),
-    xt::cumsum(ds, 1)
-  );  // [batch × time_steps]
+  models::Matrix s = models::Matrix::Zero(traj.x.rows(), traj.x.cols());
+  for (Eigen::Index t = 1; t < traj.x.cols(); ++t) {
+    const auto dx = traj.x.col(t) - traj.x.col(t - 1);
+    const auto dy = traj.y.col(t) - traj.y.col(t - 1);
+    s.col(t) = s.col(t - 1) + (dx.square() + dy.square()).sqrt();
+  }
 
   // Step 2: 对每条轨迹每步，从 v(s) 剖面插值参考速度
   // profile_s_: [N] 弧长采样点
@@ -767,8 +771,8 @@ void SpeedProfileCritic::score(CriticData & data) {
   auto v_ref = interpolate2D(profile_s_, profile_v_, s);  // [batch × time_steps]
 
   // Step 3: 计算代价
-  auto diff = xt::eval(data.state.cvx - v_ref);
-  data.costs += cost_weight_ * xt::sum(xt::pow(diff, 2), 1);
+  const auto diff = data.state.cvx - v_ref;
+  data.costs += cost_weight_ * diff.square().rowwise().sum();
 }
 ```
 
@@ -856,11 +860,11 @@ MPPIController:
 
 #### 难点 1：弧长插值的计算效率
 
-**问题**：SpeedProfileCritic 需要对 `batch_size × time_steps` 个点做弧长插值，1000×56 = 56000 次插值在 xtensor 上可能成为瓶颈。
+**问题**：SpeedProfileCritic 需要对 `batch_size × time_steps` 个点做弧长插值，1000×56 = 56000 次插值在 Eigen Array 上可能成为瓶颈。
 
 **解决方案**：
 - `profile_s_` 均匀采样 → 查找可用整除代替二分查找 → O(1)
-- 用 xtensor 向量化实现，避免逐元素循环
+- 用 Eigen Array 批量计算，避免不必要的逐元素标量代码
 - 预估计算量：56000 次线性插值 < 0.5ms（现代 CPU）
 
 #### 难点 2：运动模型的 predict() 加速度约束引入隐式依赖

@@ -15,7 +15,7 @@
 #ifndef NAV2_MPPI_CONTROLLER__MODELS__CONTROL_SEQUENCE_HPP_
 #define NAV2_MPPI_CONTROLLER__MODELS__CONTROL_SEQUENCE_HPP_
 
-#include <xtensor/xtensor.hpp>
+#include "nav2_mppi_controller/tools/eigen_types.hpp"
 
 namespace mppi::models
 {
@@ -35,15 +35,15 @@ struct Control
  */
 struct ControlSequence
 {
-  xt::xtensor<float, 1> vx;
-  xt::xtensor<float, 1> vy;
-  xt::xtensor<float, 1> wz;
+  Vector vx;
+  Vector vy;
+  Vector wz;
 
   void reset(unsigned int time_steps)
   {
-    vx = xt::zeros<float>({time_steps});
-    vy = xt::zeros<float>({time_steps});
-    wz = xt::zeros<float>({time_steps});
+    vx = Vector::Zero(time_steps);
+    vy = Vector::Zero(time_steps);
+    wz = Vector::Zero(time_steps);
   }
 };
 

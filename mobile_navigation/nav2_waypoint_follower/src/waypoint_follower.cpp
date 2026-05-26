@@ -176,6 +176,9 @@ WaypointFollower::followWaypoints()
   while (rclcpp::ok()) {
     // Check if asked to stop processing action
     if (action_server_->is_cancel_requested()) {
+      RCLCPP_WARN(
+        get_logger(),
+        "Waypoint follower received a cancel request and is canceling all /navigate_to_pose goals.");
       auto cancel_future = nav_to_pose_client_->async_cancel_all_goals();
       callback_group_executor_.spin_until_future_complete(cancel_future);
       // for result callback processing

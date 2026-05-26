@@ -23,10 +23,10 @@
   <depend>tf2_eigen</depend>
   <depend>tf2_ros</depend>
   <depend>std_msgs</depend>
-  <depend>xtensor</depend>
+  <depend>eigen</depend>
+  <depend>eigen3_cmake_module</depend>
   <depend>libomp-dev</depend>
   <depend>benchmark</depend>
-  <depend>xsimd</depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>

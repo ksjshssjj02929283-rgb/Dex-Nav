@@ -5,7 +5,7 @@
 > 对比基准 1：`mobile_navigation/nav2_mppi_controller-main/`，来源为 navigation2 仓库 `main` 分支。
 > 对比基准 2：`navigation2-humble_main/nav2_mppi_controller/`，来源为 navigation2 仓库 `humble-main` 分支。
 > 文档生成时间：2026-03-20
-> 最后更新：2026-04-02（补充 `PathAngleCritic` 三方对比；确认当前实现相对 `main` / `humble-main` 仍为旧语义版本，并记录其对急弯/倒车场景的潜在影响）
+> 最后更新：2026-05-20（同步 Eigen 迁移后的状态，更新构建依赖、实现体系与后续回归关注点）
 
 ---
 
@@ -16,10 +16,10 @@
 | 加速度限制（ax/ay/az） | ⚠️ 部分移植 | ⚠️ 部分移植 | 已接入 `ax/ay/az` 约束链路，但需继续回归验证，详见 §2 |
 | SG 滤波调用位置 | ✅ 已移植 | ✅ 已领先 humble-main | 当前已移至 `updateControlSequence()`，与 main 一致 |
 | open_loop 模式 | ✅ 已移植 | ✅ 当前扩展项 | 仅 main 有，当前已同步 |
-| VelocityDeadbandCritic | ✅ 已移植 | ✅ 已移植 | humble-main 与 main 都已有，当前已同步（需 xtensor 适配） |
+| VelocityDeadbandCritic | ✅ 已移植 | ✅ 已移植 | humble-main 与 main 都已有，当前已同步到 Eigen 实现体系 |
 | kinematic_guard | ⏳ 未移植 | 不适用 | 仅 main 有 |
 | TrajectoryValidator | ❌ 未移植 | 不适用 | 仅 main 有 |
-| 底层库 xtensor → Eigen | ❌ 不移植 | ❌ 不移植 | 架构级差异，工作量过大 |
+| 底层库 Eigen | ✅ 已迁移 | ✅ 已对齐 | 当前已使用 `models::Vector` / `models::Matrix` 封装 Eigen Array |
 
 ---
 
@@ -31,7 +31,7 @@
 
 | 类别 | 当前代码 | main 分支 | 影响程度 |
 |------|---------|----------|---------|
-| 底层张量库 | **xtensor** | **Eigen** | ★★★★★ 架构级 |
+| 底层张量库 | **Eigen**（经 `models::Vector/Matrix` 封装） | **Eigen** | 已对齐 |
 | 加速度限制 | ⚠️ **部分移植**（已接入 `ax/ay/az`，仍需回归验证） | **有**（ax/ay/az） | ★★★★★ |
 | SG 滤波位置 | `updateControlSequence()` 内 | `updateControlSequence()` 内 | 已对齐 |
 | open_loop 模式 | **有** | **有** | 已对齐 |
@@ -39,7 +39,7 @@
 | VelocityDeadbandCritic | **有** | **有** | 已对齐 |
 | 动态限速保护 | 无 | **有**（`kinematic_guard`） | ★★ 安全改进 |
 | `evalControl()` 返回值 | `TwistStamped` | `tuple<Twist, 最优轨迹>` | ★★ 接口变化 |
-| 依赖库 | `nav2_util` / xtensor | `nav2_ros_common` / Eigen | ★★ 构建差异 |
+| 依赖库 | `nav2_util` / Eigen | `nav2_ros_common` / Eigen | ★★ 仍有框架依赖差异 |
 
 ### 1.2 相对 `humble-main`
 
@@ -54,7 +54,7 @@
 
 | 类别 | 当前代码 | humble-main | 结论 |
 |------|---------|-------------|------|
-| 底层张量库 | xtensor | Eigen | 架构级差异仍然存在 |
+| 底层张量库 | Eigen | Eigen | 已迁移，主要差异转为具体实现与回归验证 |
 | 加速度约束 | `vx/vy/wz` 已接入，仍需验证边界行为 | `vx/vy/wz` 全部接入 | 当前总体已接近等价 |
 | VelocityDeadbandCritic | 有 | 有 | 已补齐 |
 | PathAngleCritic | 旧实现 | 新实现 | 当前仍存在功能差异，详见 §4.2 |
@@ -66,7 +66,7 @@
 
 ## 2. 加速度限制差异详解
 
-> 截至 2026-03-24，当前代码已经补入参数、结构体、`vx/vy/wz` 方向的约束链路，与上游相比主要差异已收敛到 xtensor / Eigen 实现体系与后续回归验证，而不是功能缺失。
+> 截至 2026-05-20，当前代码已经补入参数、结构体、`vx/vy/wz` 方向的约束链路，并完成 Eigen 迁移。与上游相比主要差异已收敛到具体行为语义、局部实现细节与后续回归验证，而不是底层张量库差异或功能缺失。
 
 ### 2.1 结构体与参数层
 
@@ -156,7 +156,7 @@ motion_model_->initialize(settings_.constraints, settings_.model_dt);
 如果以 `main` 或 `humble-main` 为基线，当前“加速度约束”更准确的描述应为：
 
 - 已补齐：`ControlConstraints` 字段扩展、参数读取、`MotionModel::initialize()`、`vx` / `vy` / `wz` 的约束传播与输出裁剪
-- 当前主要差异：xtensor 与 Eigen 的实现细节不同，仍需通过回归测试确认边界参数下的行为一致性
+- 当前主要差异：底层容器已迁移到 Eigen，但仍需通过回归测试确认边界参数下的行为一致性
 - 因此当前不再属于“功能缺失”，更适合描述为“功能已接入，待持续验证”
 
 ---
@@ -246,22 +246,23 @@ state_.speed = settings_.open_loop ? last_command_vel_ : robot_speed;
 - 对有静摩擦、驱动死区、低速响应不线性的底盘，能直接改善低速抖动和原地微颤
 - 当前 `workspace_pzc` 版本已同步到与 `main` 一致的 critic 头文件和核心打分逻辑
 
-**xtensor 适配说明：**
+**Eigen 适配说明：**
 
-`main` 使用 Eigen，当前代码使用 xtensor。从 main 同步时需要将 Eigen 风格调用转换为 xtensor 等价写法：
+`main` 使用 Eigen，当前代码也已迁移到 Eigen，但通过项目内 `models::Vector` / `models::Matrix` 做了一层类型封装。从 main 同步时优先保持这层封装，不直接在业务接口里扩散裸 `Eigen::Array...` 类型：
 
-| main (Eigen) | 当前代码 (xtensor) |
+| main (Eigen) | 当前代码 |
 |---|---|
-| `.abs()` | `xt::abs()` |
-| `.max(0.0f)` | `xt::maximum(..., 0.0f)` |
-| `.rowwise().sum()` | `xt::sum(..., {1}, immediate)` |
-| `.pow(n)` | `xt::pow(..., n)` |
+| `Eigen::ArrayXf` | `models::Vector` |
+| `Eigen::ArrayXXf` / row-major matrix | `models::Matrix` |
+| `.abs()` / `.max(0.0f)` | 保持 Eigen Array API |
+| `.rowwise().sum()` | 保持 Eigen Array API |
+| `.pow(n)` / `.square()` | 保持 Eigen Array API |
 
-同步时还需添加 `#include <xtensor/xmath.hpp>` 和 `using xt::evaluation_strategy::immediate;`。
+同步时优先包含 `nav2_mppi_controller/tools/eigen_types.hpp` 或对应 `models/*` 头文件，避免重新引入旧版张量库依赖。
 
 ### 4.2 PathAngleCritic
 
-`main` 与 `humble-main` 的 `PathAngleCritic` 当前基本一致，而当前工程中的实现仍保留旧版语义，差异不只是 xtensor / Eigen 适配，而是实际行为已经发生变化。
+`main` 与 `humble-main` 的 `PathAngleCritic` 当前基本一致，而当前工程中的实现仍保留旧版语义，差异不只是容器 API 适配，而是实际行为已经发生变化。
 
 #### 4.2.1 `main` 与 `humble-main`
 
@@ -320,7 +321,7 @@ state_.speed = settings_.open_loop ? last_command_vel_ : robot_speed;
 - 相对 `main`：⚠️ 旧实现，尚未同步到新语义版本
 - 相对 `humble-main`：⚠️ 旧实现，尚未同步到新语义版本
 - 同步难点不在业务逻辑本身，而在于：
-  - 需要把 Eigen 末端列操作改写为 xtensor 等价实现
+  - 需要把上游 Eigen 末端列操作适配到当前 `models::Vector` / `models::Matrix` 类型封装
   - 需要补齐 `mode` / `enforce_path_inversion_` 相关参数与辅助函数调用链
 
 `critics_tests.cpp` 中的 `ParametersHandler` 构造函数也有类似问题：main 使用 `(WeakPtr, std::string&)` 双参数构造，当前代码只有 `(WeakPtr)` 单参数构造，需要移除多余的 `name` 参数。
@@ -360,7 +361,7 @@ main 新实现 `PathAlignCritic` 的优势：
 当前代码额外包含：
 
 - `ALGORITHM.md`
-- xtensor / xsimd 相关构建与实现
+- Eigen 类型封装与本项目私有迁移文档
 
 这些都不是 `humble-main` 的内容。
 
@@ -384,18 +385,18 @@ main 新实现 `PathAlignCritic` 的优势：
 |--------|------|-----------|------|
 | P2（中期） | kinematic_guard（§3.4） | 低（1 天） | 提升动态限速安全性 |
 | P3（长期） | TrajectoryValidator（§3.3） | 高（1-2 周） | 与 main 新框架耦合更深 |
-| P3（长期） | 底层库 xtensor → Eigen | 极高（2-3 周） | 架构级改动，建议单独立项 |
+| 已完成 | 底层库 Eigen 迁移 | 已完成，需回归 | 源码已切到 Eigen；完整测试仍需继续处理 Costmap2DROS 测试生命周期问题 |
 
 ---
 
 *文档生成时间：2026-03-20*
-*最后核对时间：2026-03-24*
+*最后核对时间：2026-05-20*
 *对应源码分支：`pzc/feature/speedplan`*
 
 
 ## 7. 2026-03-25 会话补充
 
-- 已核对 `mobile_navigation/nav2_mppi_controller/src/critics/velocity_deadband_critic.cpp` 与 `mobile_navigation/nav2_mppi_controller-main/src/critics/velocity_deadband_critic.cpp`，确认差异仅为 xtensor 适配与格式，行为逻辑一致。
+- 已核对 `mobile_navigation/nav2_mppi_controller/src/critics/velocity_deadband_critic.cpp` 与 `mobile_navigation/nav2_mppi_controller-main/src/critics/velocity_deadband_critic.cpp`，当前实现已迁移到 Eigen，行为逻辑应保持一致，仍需结合回归测试确认。
 - 已在 `mobile_navigation/nav2_mppi_controller/test/critics_tests.cpp` 中新增 `VelocityDeadbandCritic` 单测，覆盖“超出死区无代价”和“低于死区产生期望代价”两类场景。
 - 已在 `mobile_navigation/nav2_bringup/params/w1_nav2_params.yaml` 与 `mobile_navigation/nav2_bringup/params/w1_nav2_rgbd_params.yaml` 中将 `VelocityDeadbandCritic` 接入 MPPI `critics` 列表，并增加参数：`cost_power: 1`、`cost_weight: 35.0`、`deadband_velocities: [0.08, 0.08, 0.08]`。
 - 当前 `motion_model` 配置为 `DiffDrive` 时，该 critic 实际只对 `vx` / `wz` 生效；`vy` 参数保留用于接口一致性或后续全向底盘场景。

@@ -101,7 +101,6 @@ float CostCritic::findCircumscribedCost(
 
 void CostCritic::score(CriticData & data)
 {
-  using xt::evaluation_strategy::immediate;
   if (!enabled_) {
     return;
   }
@@ -117,12 +116,11 @@ void CostCritic::score(CriticData & data)
     near_goal = true;
   }
 
-  auto && repulsive_cost = xt::xtensor<float, 1>::from_shape({data.costs.shape(0)});
-  repulsive_cost.fill(0.0);
+  models::Vector repulsive_cost = models::Vector::Zero(data.costs.size());
 
-  const size_t traj_len = data.trajectories.x.shape(1);
+  const size_t traj_len = data.trajectories.x.cols();
   bool all_trajectories_collide = true;
-  for (size_t i = 0; i < data.trajectories.x.shape(0); ++i) {
+  for (Eigen::Index i = 0; i < data.trajectories.x.rows(); ++i) {
     bool trajectory_collide = false;
     const auto & traj = data.trajectories;
     float pose_cost;
@@ -144,20 +142,20 @@ void CostCritic::score(CriticData & data)
       // but score based on the center-point cost regardless
       using namespace nav2_costmap_2d; // NOLINT
       if (pose_cost >= INSCRIBED_INFLATED_OBSTACLE) {
-        repulsive_cost[i] += critical_cost_;
+        repulsive_cost(i) += critical_cost_;
       } else if (!near_goal) {  // Generally prefer trajectories further from obstacles
-        repulsive_cost[i] += pose_cost;
+        repulsive_cost(i) += pose_cost;
       }
     }
 
     if (!trajectory_collide) {
       all_trajectories_collide = false;
     } else {
-      repulsive_cost[i] = collision_cost_;
+      repulsive_cost(i) = collision_cost_;
     }
   }
 
-  data.costs += xt::pow((weight_ * repulsive_cost / traj_len), power_);
+  data.costs += (weight_ * repulsive_cost / traj_len).pow(power_);
   data.fail_flag = all_trajectories_collide;
 }
 

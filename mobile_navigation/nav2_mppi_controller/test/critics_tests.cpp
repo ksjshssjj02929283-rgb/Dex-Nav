@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include <chrono>
+#include <random>
 #include <thread>
 
 #include "gtest/gtest.h"
@@ -40,7 +41,6 @@
 using namespace mppi;  // NOLINT
 using namespace mppi::critics;  // NOLINT
 using namespace mppi::utils;  // NOLINT
-using xt::evaluation_strategy::immediate;
 
 TEST(CriticTests, ConstraintsCritic)
 {
@@ -56,7 +56,7 @@ TEST(CriticTests, ConstraintsCritic)
   models::ControlSequence control_sequence;
   models::Trajectories generated_trajectories;
   models::Path path;
-  xt::xtensor<float, 1> costs = xt::zeros<float>({1000});
+  models::Vector costs = models::Vector::Zero(1000);
   float model_dt = 0.1;
   CriticData data =
   {state, generated_trajectories, path, costs, model_dt, false, nullptr, nullptr, std::nullopt,
@@ -75,41 +75,41 @@ TEST(CriticTests, ConstraintsCritic)
   // Scoring testing
 
   // provide velocities in constraints, should not have any costs
-  state.vx = 0.40 * xt::ones<float>({1000, 30});
-  state.vy = xt::zeros<float>({1000, 30});
-  state.wz = xt::ones<float>({1000, 30});
+  state.vx = 0.40 * models::Matrix::Ones(1000, 30);
+  state.vy = models::Matrix::Zero(1000, 30);
+  state.wz = models::Matrix::Ones(1000, 30);
   critic.score(data);
-  EXPECT_NEAR(xt::sum(costs, immediate)(), 0, 1e-6);
+  EXPECT_NEAR(costs.sum(), 0, 1e-6);
 
   // provide out of maximum velocity constraint
-  auto last_batch_traj_in_full = xt::view(state.vx, -1, xt::all());
-  last_batch_traj_in_full = 0.60 * xt::ones<float>({30});
+  auto last_batch_traj_in_full = state.vx.row(state.vx.rows() - 1);
+  last_batch_traj_in_full = (0.60 * models::Vector::Ones(30)).transpose();
   critic.score(data);
-  EXPECT_GT(xt::sum(costs, immediate)(), 0);
+  EXPECT_GT(costs.sum(), 0);
   // 4.0 weight * 0.1 model_dt * 0.1 error introduced * 30 timesteps = 1.2
   EXPECT_NEAR(costs(999), 1.2, 0.01);
-  costs = xt::zeros<float>({1000});
+  costs = models::Vector::Zero(1000);
 
   // provide out of minimum velocity constraint
-  auto first_batch_traj_in_full = xt::view(state.vx, 1, xt::all());
-  first_batch_traj_in_full = -0.45 * xt::ones<float>({30});
+  auto first_batch_traj_in_full = state.vx.row(1);
+  first_batch_traj_in_full = (-0.45 * models::Vector::Ones(30)).transpose();
   critic.score(data);
-  EXPECT_GT(xt::sum(costs, immediate)(), 0);
+  EXPECT_GT(costs.sum(), 0);
   // 4.0 weight * 0.1 model_dt * 0.1 error introduced * 30 timesteps = 1.2
   EXPECT_NEAR(costs(1), 1.2, 0.01);
-  costs = xt::zeros<float>({1000});
+  costs = models::Vector::Zero(1000);
 
   // Now with ackermann, all in constraint so no costs to score
-  state.vx = 0.40 * xt::ones<float>({1000, 30});
-  state.wz = 1.5 * xt::ones<float>({1000, 30});
+  state.vx = 0.40 * models::Matrix::Ones(1000, 30);
+  state.wz = 1.5 * models::Matrix::Ones(1000, 30);
   data.motion_model = std::make_shared<AckermannMotionModel>(&param_handler);
   critic.score(data);
-  EXPECT_NEAR(xt::sum(costs, immediate)(), 0, 1e-6);
+  EXPECT_NEAR(costs.sum(), 0, 1e-6);
 
   // Now violating the ackermann constraints
-  state.wz = 2.5 * xt::ones<float>({1000, 30});
+  state.wz = 2.5 * models::Matrix::Ones(1000, 30);
   critic.score(data);
-  EXPECT_GT(xt::sum(costs, immediate)(), 0);
+  EXPECT_GT(costs.sum(), 0);
   // 4.0 weight * 0.1 model_dt * (0.2 - 0.4/2.5) * 30 timesteps = 0.48
   EXPECT_NEAR(costs(1), 0.48, 0.01);
 }
@@ -129,7 +129,7 @@ TEST(CriticTests, GoalAngleCritic)
   models::Trajectories generated_trajectories;
   generated_trajectories.reset(1000, 30);
   models::Path path;
-  xt::xtensor<float, 1> costs = xt::zeros<float>({1000});
+  models::Vector costs = models::Vector::Zero(1000);
   float model_dt = 0.1;
   CriticData data =
   {state, generated_trajectories, path, costs, model_dt, false, nullptr, nullptr, std::nullopt,
@@ -152,17 +152,17 @@ TEST(CriticTests, GoalAngleCritic)
   path.y(9) = 0.0;
   path.yaws(9) = 3.14;
   critic.score(data);
-  EXPECT_NEAR(xt::sum(costs, immediate)(), 0, 1e-6);
+  EXPECT_NEAR(costs.sum(), 0, 1e-6);
 
   // Lets move it even closer, just to be sure it still doesn't trigger
   state.pose.pose.position.x = 9.2;
   critic.score(data);
-  EXPECT_NEAR(xt::sum(costs, immediate)(), 0, 1e-6);
+  EXPECT_NEAR(costs.sum(), 0, 1e-6);
 
   // provide state pose and path below `threshold_to_consider` to consider
   state.pose.pose.position.x = 9.7;
   critic.score(data);
-  EXPECT_GT(xt::sum(costs, immediate)(), 0);
+  EXPECT_GT(costs.sum(), 0);
   EXPECT_NEAR(costs(0), 9.42, 0.02);  // (3.14 - 0.0) * 3.0 weight
 }
 
@@ -181,7 +181,7 @@ TEST(CriticTests, GoalCritic)
   models::Trajectories generated_trajectories;
   generated_trajectories.reset(1000, 30);
   models::Path path;
-  xt::xtensor<float, 1> costs = xt::zeros<float>({1000});
+  models::Vector costs = models::Vector::Zero(1000);
   float model_dt = 0.1;
   CriticData data =
   {state, generated_trajectories, path, costs, model_dt, false, nullptr, nullptr, std::nullopt,
@@ -204,15 +204,15 @@ TEST(CriticTests, GoalCritic)
   path.y(9) = 0.0;
   critic.score(data);
   EXPECT_NEAR(costs(2), 0.0, 1e-6);  // (0 * 5.0 weight
-  EXPECT_NEAR(xt::sum(costs, immediate)(), 0.0, 1e-6);  // Should all be 0 * 1000
-  costs = xt::zeros<float>({1000});
+  EXPECT_NEAR(costs.sum(), 0.0, 1e-6);  // Should all be 0 * 1000
+  costs = models::Vector::Zero(1000);
 
   // provide state pose and path close
   path.x(9) = 0.5;
   path.y(9) = 0.0;
   critic.score(data);
   EXPECT_NEAR(costs(2), 2.5, 1e-6);  // (sqrt(10.0 * 10.0) * 5.0 weight
-  EXPECT_NEAR(xt::sum(costs, immediate)(), 2500.0, 1e-6);  // should be 2.5 * 1000
+  EXPECT_NEAR(costs.sum(), 2500.0, 1e-6);  // should be 2.5 * 1000
 }
 
 TEST(CriticTests, PathAngleCritic)
@@ -231,7 +231,7 @@ TEST(CriticTests, PathAngleCritic)
   models::Trajectories generated_trajectories;
   generated_trajectories.reset(1000, 30);
   models::Path path;
-  xt::xtensor<float, 1> costs = xt::zeros<float>({1000});
+  models::Vector costs = models::Vector::Zero(1000);
   float model_dt = 0.1;
   CriticData data =
   {state, generated_trajectories, path, costs, model_dt, false, nullptr, nullptr, std::nullopt,
@@ -254,7 +254,7 @@ TEST(CriticTests, PathAngleCritic)
   path.reset(10);
   path.x(9) = 0.15;
   critic.score(data);
-  EXPECT_NEAR(xt::sum(costs, immediate)(), 0.0, 1e-6);
+  EXPECT_NEAR(costs.sum(), 0.0, 1e-6);
 
   // provide state pose and path close but outside of tol. with less than PI/2 angular diff.
   path.x(9) = 0.95;
@@ -262,13 +262,13 @@ TEST(CriticTests, PathAngleCritic)
   path.x(6) = 1.0;  // angle between path point and pose = 0 < max_angle_to_furthest_
   path.y(6) = 0.0;
   critic.score(data);
-  EXPECT_NEAR(xt::sum(costs, immediate)(), 0.0, 1e-6);
+  EXPECT_NEAR(costs.sum(), 0.0, 1e-6);
 
   // provide state pose and path close but outside of tol. with more than PI/2 angular diff.
   path.x(6) = -1.0;  // angle between path point and pose > max_angle_to_furthest_
   path.y(6) = 4.0;
   critic.score(data);
-  EXPECT_GT(xt::sum(costs, immediate)(), 0.0);
+  EXPECT_GT(costs.sum(), 0.0);
   EXPECT_NEAR(costs(0), 3.6315, 1e-2);  // atan2(4,-1) [1.81] * 2.0 weight
 }
 
@@ -288,7 +288,7 @@ TEST(CriticTests, PreferForwardCritic)
   models::Trajectories generated_trajectories;
   generated_trajectories.reset(1000, 30);
   models::Path path;
-  xt::xtensor<float, 1> costs = xt::zeros<float>({1000});
+  models::Vector costs = models::Vector::Zero(1000);
   float model_dt = 0.1;
   CriticData data =
   {state, generated_trajectories, path, costs, model_dt, false, nullptr, nullptr, std::nullopt,
@@ -310,18 +310,18 @@ TEST(CriticTests, PreferForwardCritic)
   path.reset(10);
   path.x(9) = 10.0;
   critic.score(data);
-  EXPECT_NEAR(xt::sum(costs, immediate)(), 0.0f, 1e-6f);
+  EXPECT_NEAR(costs.sum(), 0.0f, 1e-6f);
 
   // provide state pose and path close to trigger behavior but with all forward motion
   path.x(9) = 0.15;
-  state.vx = xt::ones<float>({1000, 30});
+  state.vx = models::Matrix::Ones(1000, 30);
   critic.score(data);
-  EXPECT_NEAR(xt::sum(costs, immediate)(), 0.0f, 1e-6f);
+  EXPECT_NEAR(costs.sum(), 0.0f, 1e-6f);
 
   // provide state pose and path close to trigger behavior but with all reverse motion
-  state.vx = -1.0 * xt::ones<float>({1000, 30});
+  state.vx = -1.0 * models::Matrix::Ones(1000, 30);
   critic.score(data);
-  EXPECT_GT(xt::sum(costs, immediate)(), 0.0f);
+  EXPECT_GT(costs.sum(), 0.0f);
   EXPECT_NEAR(costs(0), 15.0f, 1e-3f);  // 1.0 * 0.1 model_dt * 5.0 weight * 30 length
 }
 
@@ -341,7 +341,7 @@ TEST(CriticTests, TwirlingCritic)
   models::Trajectories generated_trajectories;
   generated_trajectories.reset(1000, 30);
   models::Path path;
-  xt::xtensor<float, 1> costs = xt::zeros<float>({1000});
+  models::Vector costs = models::Vector::Zero(1000);
   float model_dt = 0.1;
   CriticData data =
   {state, generated_trajectories, path, costs, model_dt, false, nullptr, nullptr, std::nullopt,
@@ -364,23 +364,29 @@ TEST(CriticTests, TwirlingCritic)
   path.reset(10);
   path.x(9) = 10.0;
   critic.score(data);
-  EXPECT_NEAR(xt::sum(costs, immediate)(), 0.0, 1e-6);
+  EXPECT_NEAR(costs.sum(), 0.0, 1e-6);
 
   // provide state pose and path close to trigger behavior but with no angular variation
   path.x(9) = 0.15;
-  state.wz = xt::zeros<float>({1000, 30});
+  state.wz = models::Matrix::Zero(1000, 30);
   critic.score(data);
-  EXPECT_NEAR(xt::sum(costs, immediate)(), 0.0, 1e-6);
+  EXPECT_NEAR(costs.sum(), 0.0, 1e-6);
 
   // Provide nearby with some motion
-  auto traj_view = xt::view(state.wz, 0, xt::all());
+  auto traj_view = state.wz.row(0);
   traj_view = 10.0;
   critic.score(data);
   EXPECT_NEAR(costs(0), 100.0, 1e-6);  // (mean(10.0) * 10.0 weight
-  costs = xt::zeros<float>({1000});
+  costs = models::Vector::Zero(1000);
 
   // Now try again with some wiggling noise
-  traj_view = xt::random::randn<float>({30}, 0.0, 0.5);
+  models::Vector noise(30);
+  std::mt19937 generator{0};
+  std::normal_distribution<float> distribution(0.0f, 0.5f);
+  for (Eigen::Index i = 0; i < noise.size(); ++i) {
+    noise(i) = distribution(generator);
+  }
+  traj_view = noise.transpose();
   critic.score(data);
   EXPECT_NEAR(costs(0), 3.3, 4e-1);  // (mean of noise with mu=0, sigma=0.5 * 10.0 weight
 }
@@ -401,7 +407,7 @@ TEST(CriticTests, PathFollowCritic)
   models::Trajectories generated_trajectories;
   generated_trajectories.reset(1000, 30);
   models::Path path;
-  xt::xtensor<float, 1> costs = xt::zeros<float>({1000});
+  models::Vector costs = models::Vector::Zero(1000);
   float model_dt = 0.1;
   CriticData data =
   {state, generated_trajectories, path, costs, model_dt, false, nullptr, nullptr, std::nullopt,
@@ -424,13 +430,13 @@ TEST(CriticTests, PathFollowCritic)
   path.reset(6);
   path.x(5) = 1.7;
   critic.score(data);
-  EXPECT_NEAR(xt::sum(costs, immediate)(), 0.0, 1e-6);
+  EXPECT_NEAR(costs.sum(), 0.0, 1e-6);
 
   // provide state pose and path far enough to enable
   // pose differential is (0, 0) and (0.15, 0)
   path.x(5) = 0.15;
   critic.score(data);
-  EXPECT_NEAR(xt::sum(costs, immediate)(), 750.0, 1e-2);  // 0.15 * 5 weight * 1000
+  EXPECT_NEAR(costs.sum(), 750.0, 1e-2);  // 0.15 * 5 weight * 1000
 }
 
 TEST(CriticTests, PathAlignCritic)
@@ -449,7 +455,7 @@ TEST(CriticTests, PathAlignCritic)
   models::Trajectories generated_trajectories;
   generated_trajectories.reset(1000, 30);
   models::Path path;
-  xt::xtensor<float, 1> costs = xt::zeros<float>({1000});
+  models::Vector costs = models::Vector::Zero(1000);
   float model_dt = 0.1;
   CriticData data =
   {state, generated_trajectories, path, costs, model_dt, false, nullptr, nullptr, std::nullopt,
@@ -472,20 +478,20 @@ TEST(CriticTests, PathAlignCritic)
   path.reset(10);
   path.x(9) = 0.85;
   critic.score(data);
-  EXPECT_NEAR(xt::sum(costs, immediate)(), 0.0, 1e-6);
+  EXPECT_NEAR(costs.sum(), 0.0, 1e-6);
 
   // provide state pose and path far enough to enable
   // but data furthest point reached is 0 and offset default is 20, so returns
   path.x(9) = 0.15;
   critic.score(data);
-  EXPECT_NEAR(xt::sum(costs, immediate)(), 0.0, 1e-6);
+  EXPECT_NEAR(costs.sum(), 0.0, 1e-6);
 
   // provide state pose and path far enough to enable, with data to pass condition
   // but with empty trajectories and paths, should still be zero
   *data.furthest_reached_path_point = 21;
   path.x(9) = 0.15;
   critic.score(data);
-  EXPECT_NEAR(xt::sum(costs, immediate)(), 0.0, 1e-6);
+  EXPECT_NEAR(costs.sum(), 0.0, 1e-6);
 
   // provide state pose and path far enough to enable, with data to pass condition
   // and with a valid path to pass invalid path condition
@@ -514,10 +520,10 @@ TEST(CriticTests, PathAlignCritic)
   path.x(19) = 0.9;
   path.x(20) = 0.9;
   path.x(21) = 0.9;
-  generated_trajectories.x = 0.66 * xt::ones<float>({1000, 30});
+  generated_trajectories.x = 0.66 * models::Matrix::Ones(1000, 30);
   critic.score(data);
   // 0.66 * 1000 * 10 weight * 6 num pts eval / 6 normalization term
-  EXPECT_NEAR(xt::sum(costs, immediate)(), 6600.0, 1e-2);
+  EXPECT_NEAR(costs.sum(), 6600.0, 1e-2);
 
   // provide state pose and path far enough to enable, with data to pass condition
   // but path is blocked in collision
@@ -530,11 +536,11 @@ TEST(CriticTests, PathAlignCritic)
   }
 
   data.path_pts_valid.reset();  // Recompute on new path
-  costs = xt::zeros<float>({1000});
-  path.x = 1.5 * xt::ones<float>({22});
-  path.y = 1.5 * xt::ones<float>({22});
+  costs = models::Vector::Zero(1000);
+  path.x = 1.5 * models::Vector::Ones(22);
+  path.y = 1.5 * models::Vector::Ones(22);
   critic.score(data);
-  EXPECT_NEAR(xt::sum(costs, immediate)(), 0.0, 1e-6);
+  EXPECT_NEAR(costs.sum(), 0.0, 1e-6);
 }
 
 TEST(CriticTests, PathAlignLegacyCritic)
@@ -553,7 +559,7 @@ TEST(CriticTests, PathAlignLegacyCritic)
   models::Trajectories generated_trajectories;
   generated_trajectories.reset(1000, 30);
   models::Path path;
-  xt::xtensor<float, 1> costs = xt::zeros<float>({1000});
+  models::Vector costs = models::Vector::Zero(1000);
   float model_dt = 0.1;
   CriticData data =
   {state, generated_trajectories, path, costs, model_dt, false, nullptr, nullptr, std::nullopt,
@@ -576,20 +582,20 @@ TEST(CriticTests, PathAlignLegacyCritic)
   path.reset(10);
   path.x(9) = 0.85;
   critic.score(data);
-  EXPECT_NEAR(xt::sum(costs, immediate)(), 0.0, 1e-6);
+  EXPECT_NEAR(costs.sum(), 0.0, 1e-6);
 
   // provide state pose and path far enough to enable
   // but data furthest point reached is 0 and offset default is 20, so returns
   path.x(9) = 0.15;
   critic.score(data);
-  EXPECT_NEAR(xt::sum(costs, immediate)(), 0.0, 1e-6);
+  EXPECT_NEAR(costs.sum(), 0.0, 1e-6);
 
   // provide state pose and path far enough to enable, with data to pass condition
   // but with empty trajectories and paths, should still be zero
   *data.furthest_reached_path_point = 21;
   path.x(9) = 0.15;
   critic.score(data);
-  EXPECT_NEAR(xt::sum(costs, immediate)(), 0.0, 1e-6);
+  EXPECT_NEAR(costs.sum(), 0.0, 1e-6);
 
   // provide state pose and path far enough to enable, with data to pass condition
   // and with a valid path to pass invalid path condition
@@ -618,10 +624,10 @@ TEST(CriticTests, PathAlignLegacyCritic)
   path.x(19) = 0.9;
   path.x(20) = 0.9;
   path.x(21) = 0.9;
-  generated_trajectories.x = 0.66 * xt::ones<float>({1000, 30});
+  generated_trajectories.x = 0.66 * models::Matrix::Ones(1000, 30);
   critic.score(data);
   // 0.04 * 1000 * 10 weight * 6 num pts eval / 6 normalization term
-  EXPECT_NEAR(xt::sum(costs, immediate)(), 400.0, 1e-2);
+  EXPECT_NEAR(costs.sum(), 400.0, 1e-2);
 
   // provide state pose and path far enough to enable, with data to pass condition
   // but path is blocked in collision
@@ -634,11 +640,11 @@ TEST(CriticTests, PathAlignLegacyCritic)
   }
 
   data.path_pts_valid.reset();  // Recompute on new path
-  costs = xt::zeros<float>({1000});
-  path.x = 1.5 * xt::ones<float>({22});
-  path.y = 1.5 * xt::ones<float>({22});
+  costs = models::Vector::Zero(1000);
+  path.x = 1.5 * models::Vector::Ones(22);
+  path.y = 1.5 * models::Vector::Ones(22);
   critic.score(data);
-  EXPECT_NEAR(xt::sum(costs, immediate)(), 0.0, 1e-6);
+  EXPECT_NEAR(costs.sum(), 0.0, 1e-6);
 }
 
 TEST(CriticTests, VelocityDeadbandCritic)
@@ -658,7 +664,7 @@ TEST(CriticTests, VelocityDeadbandCritic)
   models::ControlSequence control_sequence;
   models::Trajectories generated_trajectories;
   models::Path path;
-  xt::xtensor<float, 1> costs = xt::zeros<float>({1000});
+  models::Vector costs = models::Vector::Zero(1000);
   float model_dt = 0.1;
   CriticData data =
   {state, generated_trajectories, path, costs, model_dt, false, nullptr, nullptr, std::nullopt,
@@ -675,16 +681,16 @@ TEST(CriticTests, VelocityDeadbandCritic)
   // Scoring testing
 
   // provide velocities out of deadband bounds, should not have any costs
-  state.vx = 0.80 * xt::ones<float>({1000, 30});
-  state.vy = 0.60 * xt::ones<float>({1000, 30});
-  state.wz = 0.80 * xt::ones<float>({1000, 30});
+  state.vx = 0.80 * models::Matrix::Ones(1000, 30);
+  state.vy = 0.60 * models::Matrix::Ones(1000, 30);
+  state.wz = 0.80 * models::Matrix::Ones(1000, 30);
   critic.score(data);
-  EXPECT_NEAR(xt::sum(costs, immediate)(), 0, 1e-6);
+  EXPECT_NEAR(costs.sum(), 0, 1e-6);
 
   // Test cost value
-  state.vx = 0.01 * xt::ones<float>({1000, 30});
-  state.vy = 0.02 * xt::ones<float>({1000, 30});
-  state.wz = 0.021 * xt::ones<float>({1000, 30});
+  state.vx = 0.01 * models::Matrix::Ones(1000, 30);
+  state.vy = 0.02 * models::Matrix::Ones(1000, 30);
+  state.wz = 0.021 * models::Matrix::Ones(1000, 30);
   critic.score(data);
   // 35.0 weight * 0.1 model_dt * (0.07 + 0.06 + 0.059) * 30 timesteps = 19.845
   EXPECT_NEAR(costs(1), 19.845, 0.01);
