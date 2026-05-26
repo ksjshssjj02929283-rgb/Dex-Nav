@@ -134,6 +134,190 @@ TEST(PathInterpolatorTest, ToMsgRoundtrip)
   EXPECT_TRUE(found);
 }
 
+// ── Same-edge direct (start & goal project onto the SAME edge) ──────────
+//
+// Regression guard for the "loop / U-turn" bug: when start and goal both
+// project onto one edge, the route must walk DIRECTLY along that edge
+// between the two projection points — it must never detour out to an
+// endpoint NavPoint and back. These tests call interpolateSameEdge()
+// directly (no costmap needed) and assert the flattened path never
+// approaches an edge endpoint.
+
+namespace
+{
+// Distance from (x,y) to the nearest of the two edge endpoints.
+double distToEndpoints(
+  double x, double y,
+  double ax, double ay, double bx, double by)
+{
+  return std::min(std::hypot(x - ax, y - ay), std::hypot(x - bx, y - by));
+}
+}  // namespace
+
+TEST(PathInterpolatorTest, SameEdgeLineForwardNoDetour)
+{
+  TopoGraph g;
+  std::vector<TopoNode> ns;
+  TopoNode a; a.id = "A"; a.kind = NodeKind::NAV_POINT; a.x = 0; a.y = 0; ns.push_back(a);
+  TopoNode b; b.id = "B"; b.kind = NodeKind::NAV_POINT; b.x = 10; b.y = 0; ns.push_back(b);
+  std::vector<TopoEdge> es;
+  TopoEdge e; e.id = "e"; e.from_id = "A"; e.to_id = "B";
+  e.geometry = EdgeGeometry::LINE; e.bidirectional = true; e.lane_subtype = "corridor";
+  es.push_back(e);
+  g.rebuildFrom(std::move(ns), std::move(es));
+  auto lock = g.lockShared();
+
+  PathInterpolator::Params pp; pp.waypoints_per_meter = 10;
+  PathInterpolator interp(pp);
+
+  StartGoalProjector::Result sp;
+  sp.type = StartGoalProjector::ResultType::ON_EDGE;
+  sp.id = "e"; sp.projected_xy = {2.0, 0.0};
+  sp.edge_sample_index = 0; sp.edge_total_samples = 2;
+  StartGoalProjector::Result gp;
+  gp.type = StartGoalProjector::ResultType::ON_EDGE;
+  gp.id = "e"; gp.projected_xy = {8.0, 0.0};
+  gp.edge_sample_index = 0; gp.edge_total_samples = 2;
+
+  auto plan = interp.interpolateSameEdge(
+    pose(2, 0.5), pose(8, -0.5), sp, gp, g);
+  ASSERT_EQ(plan.segments.size(), 3u);
+  EXPECT_EQ(plan.segments[0].edge_id, "__start_transition__");
+  EXPECT_EQ(plan.segments[1].edge_id, "e");
+  EXPECT_EQ(plan.segments[2].edge_id, "__goal_alignment__");
+
+  auto path = plan.toNavPath("map", rclcpp::Time(0, 0, RCL_ROS_TIME), false);
+  ASSERT_FALSE(path.poses.empty());
+  EXPECT_NEAR(path.poses.front().pose.position.x, 2.0, 1e-2);
+  EXPECT_NEAR(path.poses.back().pose.position.x, 8.0, 1e-2);
+  // Never detours to node A (x≈0) or node B (x≈10): all x within [2, 8].
+  for (const auto & p : path.poses) {
+    EXPECT_GE(p.pose.position.x, 2.0 - 1e-2);
+    EXPECT_LE(p.pose.position.x, 8.0 + 1e-2);
+  }
+}
+
+TEST(PathInterpolatorTest, SameEdgeLineBackwardNoDetour)
+{
+  TopoGraph g;
+  std::vector<TopoNode> ns;
+  TopoNode a; a.id = "A"; a.kind = NodeKind::NAV_POINT; a.x = 0; a.y = 0; ns.push_back(a);
+  TopoNode b; b.id = "B"; b.kind = NodeKind::NAV_POINT; b.x = 10; b.y = 0; ns.push_back(b);
+  std::vector<TopoEdge> es;
+  TopoEdge e; e.id = "e"; e.from_id = "A"; e.to_id = "B";
+  e.geometry = EdgeGeometry::LINE; e.bidirectional = true;
+  es.push_back(e);
+  g.rebuildFrom(std::move(ns), std::move(es));
+  auto lock = g.lockShared();
+
+  PathInterpolator::Params pp; pp.waypoints_per_meter = 10;
+  PathInterpolator interp(pp);
+
+  // Start nearer B, goal nearer A — goal "behind" start along the edge.
+  StartGoalProjector::Result sp;
+  sp.type = StartGoalProjector::ResultType::ON_EDGE;
+  sp.id = "e"; sp.projected_xy = {8.0, 0.0};
+  sp.edge_sample_index = 0; sp.edge_total_samples = 2;
+  StartGoalProjector::Result gp;
+  gp.type = StartGoalProjector::ResultType::ON_EDGE;
+  gp.id = "e"; gp.projected_xy = {2.0, 0.0};
+  gp.edge_sample_index = 0; gp.edge_total_samples = 2;
+
+  auto plan = interp.interpolateSameEdge(
+    pose(8, 0.5), pose(2, -0.5), sp, gp, g);
+  auto path = plan.toNavPath("map", rclcpp::Time(0, 0, RCL_ROS_TIME), false);
+  ASSERT_FALSE(path.poses.empty());
+  EXPECT_NEAR(path.poses.front().pose.position.x, 8.0, 1e-2);
+  EXPECT_NEAR(path.poses.back().pose.position.x, 2.0, 1e-2);
+  for (const auto & p : path.poses) {
+    EXPECT_GE(p.pose.position.x, 2.0 - 1e-2);
+    EXPECT_LE(p.pose.position.x, 8.0 + 1e-2);
+  }
+}
+
+TEST(PathInterpolatorTest, SameEdgeBezierForwardFollowsCurve)
+{
+  const int kBezierSamples = 20;
+  TopoGraph g;
+  std::vector<TopoNode> ns;
+  TopoNode a; a.id = "A"; a.kind = NodeKind::NAV_POINT; a.x = 0; a.y = 0; ns.push_back(a);
+  TopoNode b; b.id = "B"; b.kind = NodeKind::NAV_POINT; b.x = 10; b.y = 0; ns.push_back(b);
+  std::vector<TopoEdge> es;
+  TopoEdge e; e.id = "e"; e.from_id = "A"; e.to_id = "B";
+  e.geometry = EdgeGeometry::BEZIER; e.bidirectional = true;
+  e.control_points = {{0, 0}, {5, 5}, {10, 0}};
+  es.push_back(e);
+  g.rebuildFrom(std::move(ns), std::move(es));
+  auto lock = g.lockShared();
+
+  StartGoalProjector::Params projp; projp.bezier_samples_per_edge = kBezierSamples;
+  StartGoalProjector projector(projp);
+  PathInterpolator::Params pp;
+  pp.waypoints_per_meter = 10; pp.bezier_samples_per_edge = kBezierSamples;
+  PathInterpolator interp(pp);
+
+  // Start near the t≈0.25 arc point, goal near t≈0.75 — forward (si < gi).
+  auto start = pose(2.5, 2.2);
+  auto goal = pose(7.5, 2.2);
+  auto sp = projector.projectPreferEdge(start, g);
+  auto gp = projector.projectPreferEdge(goal, g);
+  ASSERT_EQ(sp.type, StartGoalProjector::ResultType::ON_EDGE);
+  ASSERT_EQ(gp.type, StartGoalProjector::ResultType::ON_EDGE);
+  ASSERT_EQ(sp.id, gp.id);
+  ASSERT_LT(sp.edge_sample_index, gp.edge_sample_index);  // forward
+
+  auto plan = interp.interpolateSameEdge(start, goal, sp, gp, g);
+  ASSERT_EQ(plan.segments.size(), 3u);
+  auto path = plan.toNavPath("map", rclcpp::Time(0, 0, RCL_ROS_TIME), false);
+  ASSERT_GE(path.poses.size(), 2u);
+  // Path must never come close to either endpoint NavPoint (no U-turn).
+  for (const auto & p : path.poses) {
+    EXPECT_GT(distToEndpoints(
+        p.pose.position.x, p.pose.position.y, 0, 0, 10, 0), 0.8);
+  }
+}
+
+TEST(PathInterpolatorTest, SameEdgeBezierBackwardFollowsCurve)
+{
+  const int kBezierSamples = 20;
+  TopoGraph g;
+  std::vector<TopoNode> ns;
+  TopoNode a; a.id = "A"; a.kind = NodeKind::NAV_POINT; a.x = 0; a.y = 0; ns.push_back(a);
+  TopoNode b; b.id = "B"; b.kind = NodeKind::NAV_POINT; b.x = 10; b.y = 0; ns.push_back(b);
+  std::vector<TopoEdge> es;
+  TopoEdge e; e.id = "e"; e.from_id = "A"; e.to_id = "B";
+  e.geometry = EdgeGeometry::BEZIER; e.bidirectional = true;
+  e.control_points = {{0, 0}, {5, 5}, {10, 0}};
+  es.push_back(e);
+  g.rebuildFrom(std::move(ns), std::move(es));
+  auto lock = g.lockShared();
+
+  StartGoalProjector::Params projp; projp.bezier_samples_per_edge = kBezierSamples;
+  StartGoalProjector projector(projp);
+  PathInterpolator::Params pp;
+  pp.waypoints_per_meter = 10; pp.bezier_samples_per_edge = kBezierSamples;
+  PathInterpolator interp(pp);
+
+  // Start near t≈0.75, goal near t≈0.25 — backward (si > gi).
+  auto start = pose(7.5, 2.2);
+  auto goal = pose(2.5, 2.2);
+  auto sp = projector.projectPreferEdge(start, g);
+  auto gp = projector.projectPreferEdge(goal, g);
+  ASSERT_EQ(sp.type, StartGoalProjector::ResultType::ON_EDGE);
+  ASSERT_EQ(gp.type, StartGoalProjector::ResultType::ON_EDGE);
+  ASSERT_EQ(sp.id, gp.id);
+  ASSERT_GT(sp.edge_sample_index, gp.edge_sample_index);  // backward
+
+  auto plan = interp.interpolateSameEdge(start, goal, sp, gp, g);
+  ASSERT_EQ(plan.segments.size(), 3u);
+  auto path = plan.toNavPath("map", rclcpp::Time(0, 0, RCL_ROS_TIME), false);
+  ASSERT_GE(path.poses.size(), 2u);
+  for (const auto & p : path.poses) {
+    EXPECT_GT(distToEndpoints(
+        p.pose.position.x, p.pose.position.y, 0, 0, 10, 0), 0.8);
+  }
+}
+
 int main(int argc, char ** argv)
 {
   ::testing::InitGoogleTest(&argc, argv);

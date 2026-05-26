@@ -97,6 +97,33 @@ public:
     const AStarSearcher::Result & search_result,
     const TopoGraph & graph) const;
 
+  /// Build a plan when `start` and `goal` project onto the SAME edge.
+  ///
+  /// This is the dedicated path for the "both projections share an edge"
+  /// case, which the graph A\* cannot serve: A\* blacklists the goal edge
+  /// (DEC-009) to force an approach from a NavPoint endpoint, but here the
+  /// start is ON that same edge — blacklisting it forces a detour OUT to
+  /// an endpoint and BACK, i.e. a visible U-turn / loop. The fix is to walk
+  /// the edge geometry DIRECTLY between the two projection points.
+  ///
+  /// Emits the same three reserved segments the planner's Theta\*-rewrite
+  /// stage expects at the ends — `__start_transition__` (front) and
+  /// `__goal_alignment__` (back) — with the real edge segment in between
+  /// (kept as-is so the route stays glued to the road). The middle walk
+  /// uses `edge_sample_index`'s FLOOR semantic so the first sample never
+  /// overshoots the projection (the invariant behind DEC-005~014).
+  ///
+  /// Preconditions (caller guarantees): start_proj.type == goal_proj.type
+  /// == ON_EDGE and start_proj.id == goal_proj.id. Returns an empty plan
+  /// (no segments) if the edge is missing from the graph.
+  /// Caller must hold graph.lockShared().
+  InterpolatedRoutePlan interpolateSameEdge(
+    const geometry_msgs::msg::PoseStamped & start,
+    const geometry_msgs::msg::PoseStamped & goal,
+    const StartGoalProjector::Result & start_proj,
+    const StartGoalProjector::Result & goal_proj,
+    const TopoGraph & graph) const;
+
   /// Sample Bernstein-Bézier curve over control points.
   /// Returns `num_samples + 1` points (inclusive of endpoints).
   static std::vector<std::pair<double, double>> sampleBezier(

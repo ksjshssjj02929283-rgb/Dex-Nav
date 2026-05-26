@@ -351,18 +351,42 @@ nav_msgs::msg::Path NavRouteGraphPlanner::createPlan(
   if (!projs) {return empty_path;}
   auto & [start_proj, goal_proj] = *projs;
 
-  // Stage 3a — same-side shortcut.
-  if (auto shortcut = trySameSideShortcut(start, goal, start_proj, goal_proj)) {
-    return *shortcut;
+  // Same-edge case: start and goal project onto ONE shared edge. Graph A*
+  // blacklists the goal edge (DEC-009) to approach from a NavPoint endpoint,
+  // but here the start sits on that same edge — blacklisting it forces a
+  // detour OUT to an endpoint and BACK, the visible loop the user reported.
+  // Walk the edge geometry directly between the two projections instead.
+  // Takes priority over the same-side shortcut so a shared edge always
+  // follows the road.
+  const bool same_edge =
+    start_proj.type == StartGoalProjector::ResultType::ON_EDGE &&
+    goal_proj.type == StartGoalProjector::ResultType::ON_EDGE &&
+    start_proj.id == goal_proj.id;
+
+  // Stage 3a — same-side shortcut (skipped on a shared edge).
+  if (!same_edge) {
+    if (auto shortcut = trySameSideShortcut(start, goal, start_proj, goal_proj)) {
+      return *shortcut;
+    }
   }
 
-  // Stage 3b — graph A*.
-  auto a = runGraphSearch(start_proj, goal_proj, goal);
-  if (!a) {return empty_path;}
-
-  // Stage 4 — interpolate to 5 segments.
-  auto plan = interpolator_->interpolate(
-    start, goal, start_proj, goal_proj, a->result, *graph_);
+  // Stage 3b/4 — build the segmented plan.
+  InterpolatedRoutePlan plan;
+  if (same_edge) {
+    RCLCPP_INFO(logger_,
+      "Same-edge direct: start & goal both on edge '%s' "
+      "(start_idx=%zu goal_idx=%zu) — walking edge geometry, skipping graph A*",
+      start_proj.id.c_str(),
+      start_proj.edge_sample_index, goal_proj.edge_sample_index);
+    plan = interpolator_->interpolateSameEdge(
+      start, goal, start_proj, goal_proj, *graph_);
+  } else {
+    auto a = runGraphSearch(start_proj, goal_proj, goal);
+    if (!a) {return empty_path;}
+    plan = interpolator_->interpolate(
+      start, goal, start_proj, goal_proj, a->result, *graph_);
+  }
+  if (plan.segments.empty()) {return empty_path;}
   auto stamp = clock_->now();
 
   // Stage 5a — Theta*-rewrite the two transition placeholder segments.

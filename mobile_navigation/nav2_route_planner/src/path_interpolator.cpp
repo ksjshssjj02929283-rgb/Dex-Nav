@@ -377,6 +377,119 @@ InterpolatedRoutePlan PathInterpolator::interpolate(
   return plan;
 }
 
+InterpolatedRoutePlan PathInterpolator::interpolateSameEdge(
+  const geometry_msgs::msg::PoseStamped & start,
+  const geometry_msgs::msg::PoseStamped & goal,
+  const StartGoalProjector::Result & start_proj,
+  const StartGoalProjector::Result & goal_proj,
+  const TopoGraph & graph) const
+{
+  InterpolatedRoutePlan plan;
+
+  auto e_opt = graph.getEdge(start_proj.id);  // == goal_proj.id (precondition)
+  if (!e_opt) {return plan;}
+  auto edge_pts = graph.sampleEdge(*e_opt, p_.bezier_samples_per_edge);
+  if (edge_pts.size() < 2) {return plan;}
+
+  const std::size_t n_max = edge_pts.size() - 1;
+  const std::size_t si = std::min(start_proj.edge_sample_index, n_max);
+  const std::size_t gi = std::min(goal_proj.edge_sample_index, n_max);
+
+  // ── Segment 1: __start_transition__ — free-space start → proj(start).
+  // Straight chord here; the planner Theta\*-rewrites this front segment.
+  {
+    InterpolatedSegment seg;
+    seg.edge_id = "__start_transition__";
+    seg.lane_subtype = "transition";
+    seg.floor = e_opt->floor;
+    seg.samples.push_back(start);
+    emitLinear(seg.samples,
+      start.pose.position.x, start.pose.position.y,
+      start_proj.projected_xy.first, start_proj.projected_xy.second);
+    plan.segments.push_back(std::move(seg));
+  }
+
+  // ── Segment 2: walk the SAME edge from proj(start) → proj(goal). The
+  // FLOOR semantic of edge_sample_index (last sample BEFORE the
+  // projection along from→to) guarantees the first intermediate sample
+  // sits strictly between the two projections, so the walk never
+  // overshoots into the unwanted half of the edge.
+  //   • forward  (si <= gi): proj(start) → edge_pts[si+1 .. gi] → proj(goal)
+  //   • backward (si >  gi): proj(start) → edge_pts[si .. gi+1] → proj(goal)
+  {
+    InterpolatedSegment seg;
+    seg.edge_id = e_opt->id;
+    seg.lane_subtype = e_opt->lane_subtype;
+    seg.max_speed = e_opt->max_speed;
+    seg.regulatory_element_ids = e_opt->regulatory_element_ids;
+    seg.floor = e_opt->floor;
+    seg.samples.push_back(
+      makePose(start_proj.projected_xy.first, start_proj.projected_xy.second));
+    if (si <= gi) {
+      for (std::size_t k = si + 1; k <= gi; ++k) {
+        emitLinear(seg.samples,
+          seg.samples.back().pose.position.x,
+          seg.samples.back().pose.position.y,
+          edge_pts[k].first, edge_pts[k].second);
+      }
+    } else {
+      for (std::size_t k = si; k > gi; --k) {
+        emitLinear(seg.samples,
+          seg.samples.back().pose.position.x,
+          seg.samples.back().pose.position.y,
+          edge_pts[k].first, edge_pts[k].second);
+      }
+    }
+    emitLinear(seg.samples,
+      seg.samples.back().pose.position.x,
+      seg.samples.back().pose.position.y,
+      goal_proj.projected_xy.first, goal_proj.projected_xy.second);
+
+    // Actual walked length along the road portion (diagnostic).
+    for (std::size_t k = 1; k < seg.samples.size(); ++k) {
+      plan.total_distance += std::hypot(
+        seg.samples[k].pose.position.x - seg.samples[k - 1].pose.position.x,
+        seg.samples[k].pose.position.y - seg.samples[k - 1].pose.position.y);
+    }
+    plan.segments.push_back(std::move(seg));
+  }
+
+  // ── Segment 3: __goal_alignment__ — free-space proj(goal) → goal.
+  {
+    InterpolatedSegment seg;
+    seg.edge_id = "__goal_alignment__";
+    seg.lane_subtype = "transition";
+    seg.floor = e_opt->floor;
+    seg.samples.push_back(
+      makePose(goal_proj.projected_xy.first, goal_proj.projected_xy.second));
+    emitLinear(seg.samples,
+      goal_proj.projected_xy.first, goal_proj.projected_xy.second,
+      goal.pose.position.x, goal.pose.position.y);
+    seg.samples.push_back(goal);
+    plan.segments.push_back(std::move(seg));
+  }
+
+  plan.floor_sequence.push_back(e_opt->floor);
+
+  // Orientations per segment + final goal heading (mirrors interpolate()).
+  for (auto & seg : plan.segments) {
+    computeOrientations(seg.samples);
+  }
+  if (!plan.segments.empty() && !plan.segments.back().samples.empty()) {
+    if (!p_.use_final_approach_orientation) {
+      plan.segments.back().samples.back().pose.orientation = goal.pose.orientation;
+    }
+  }
+
+  std::ostringstream id;
+  id << "plan_" << static_cast<int64_t>(start.pose.position.x * 1000) << "_"
+     << static_cast<int64_t>(start.pose.position.y * 1000) << "_to_"
+     << static_cast<int64_t>(goal.pose.position.x * 1000) << "_"
+     << static_cast<int64_t>(goal.pose.position.y * 1000);
+  plan.plan_id = id.str();
+  return plan;
+}
+
 // ── Conversions ─────────────────────────────────────────────────────────
 
 nav_msgs::msg::Path InterpolatedRoutePlan::toNavPath(
