@@ -98,8 +98,8 @@ nav_msgs::msg::Path ThetaStarPlanner::createPlan(
   planner_->costmap_->worldToMap(start.pose.position.x, start.pose.position.y, mx_start, my_start);
   planner_->costmap_->worldToMap(goal.pose.position.x, goal.pose.position.y, mx_goal, my_goal);
   if (mx_start == mx_goal && my_start == my_goal) {
-    if (planner_->costmap_->getCost(mx_start, my_start) == nav2_costmap_2d::LETHAL_OBSTACLE) {
-      RCLCPP_WARN(logger_, "Failed to create a unique pose path because of obstacles");
+    if (!planner_->isSafe(mx_start, my_start)) {
+      RCLCPP_WARN(logger_, "Failed to create a unique pose path because the pose is not in free space");
       return global_path;
     }
     global_path.header.stamp = clock_->now();

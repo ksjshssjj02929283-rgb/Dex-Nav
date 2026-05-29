@@ -2,6 +2,12 @@
 
 本目录记录仓库级维护说明，当前补充内容聚焦 `package.xml` 元数据同步。
 
+## nav2_theta_star_planner 规划约束
+
+- `nav2_theta_star_planner` 的 `ThetaStar::isSafe()` 仅将原始 costmap 代价为 `0` 的栅格视为自由通行。
+- 当 `allow_unknown` 为 `true` 时，未知栅格仍可参与规划；膨胀层代价栅格不参与邻居扩展和 LOS 检查。
+- 本约束用于避免 Theta* 生成穿越膨胀层的全局路径。
+
 ## package.xml 元数据同步
 
 - 根目录 `package.xml` 作为仓库级元数据来源，当前版本号为 `0.4.0`。

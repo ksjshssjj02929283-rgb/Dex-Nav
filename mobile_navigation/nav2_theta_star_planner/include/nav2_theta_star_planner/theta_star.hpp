@@ -24,6 +24,7 @@
 #include "nav2_costmap_2d/costmap_2d_ros.hpp"
 
 const double INF_COST = DBL_MAX;
+const int FREE_COST = 0;
 const int UNKNOWN_COST = 255;
 const int OBS_COST = 254;
 const int LETHAL_COST = 252;
@@ -90,14 +91,13 @@ public:
   bool generatePath(std::vector<coordsW> & raw_path);
 
   /**
-   * @brief this function checks whether the cost of a point(cx, cy) on the costmap is less than the LETHAL_COST
+   * @brief this function checks whether a point(cx, cy) is free space on the costmap
    * @return the result of the check
    */
   inline bool isSafe(const int & cx, const int & cy) const
   {
-    return (costmap_->getCost(
-             cx,
-             cy) == UNKNOWN_COST && allow_unknown_) || costmap_->getCost(cx, cy) < LETHAL_COST;
+    const int cost = costmap_->getCost(cx, cy);
+    return (cost == UNKNOWN_COST && allow_unknown_) || cost == FREE_COST;
   }
 
   /**
@@ -190,16 +190,17 @@ protected:
    */
   bool isSafe(const int & cx, const int & cy, double & cost) const
   {
-    double curr_cost = getCost(cx, cy);
-    if ((costmap_->getCost(cx, cy) == UNKNOWN_COST && allow_unknown_) || curr_cost < LETHAL_COST) {
-      if (costmap_->getCost(cx, cy) == UNKNOWN_COST) {
-        curr_cost = OBS_COST - 1;
-      }
-      cost += w_traversal_cost_ * curr_cost * curr_cost / LETHAL_COST / LETHAL_COST;
-      return true;
-    } else {
+    const int map_cost = costmap_->getCost(cx, cy);
+    if (map_cost == UNKNOWN_COST && !allow_unknown_) {
       return false;
     }
+    if (map_cost != UNKNOWN_COST && map_cost != FREE_COST) {
+      return false;
+    }
+
+    double curr_cost = map_cost == UNKNOWN_COST ? OBS_COST - 1 : getCost(cx, cy);
+    cost += w_traversal_cost_ * curr_cost * curr_cost / LETHAL_COST / LETHAL_COST;
+    return true;
   }
 
   /*

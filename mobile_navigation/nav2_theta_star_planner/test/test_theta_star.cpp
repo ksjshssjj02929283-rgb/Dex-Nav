@@ -117,6 +117,8 @@ TEST(ThetaStarTest, test_theta_star) {
 
   /// Check if the isSafe functions work properly
   EXPECT_TRUE(planner_->isSafe(5, 5));         // cost at this point is 0
+  planner_->costmap_->setCost(1, 1, 100);
+  EXPECT_FALSE(planner_->isSafe(1, 1));        // inflated costmap cells are not considered safe
   EXPECT_FALSE(planner_->isSafe(10, 10));      // cost at this point is 253 (>LETHAL_COST)
 
   /// Check if the functions addIndex & getIndex work properly
@@ -164,6 +166,11 @@ TEST(ThetaStarPlanner, test_theta_star_planner) {
 
   nav_msgs::msg::Path path = planner_2d->createPlan(start, goal);
   EXPECT_GT(static_cast<int>(path.poses.size()), 0);
+
+  costmap_ros->getCostmap()->setCost(0, 0, 100);
+  path = planner_2d->createPlan(start, goal);
+  EXPECT_EQ(static_cast<int>(path.poses.size()), 0);
+  costmap_ros->getCostmap()->setCost(0, 0, 0);
 
   // test if the goal is unsafe
   for (int i = 7; i <= 14; i++) {
