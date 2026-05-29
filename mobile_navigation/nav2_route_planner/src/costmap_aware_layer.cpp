@@ -236,5 +236,114 @@ CostmapAwareLayer::detectAllObstacles(
   return out;
 }
 
+std::optional<StartGoalProjector::Result>
+CostmapAwareLayer::shiftProjectionPastObstacle(
+  const StartGoalProjector::Result & in,
+  const geometry_msgs::msg::PoseStamped & toward_pose,
+  const TopoGraph & graph,
+  int num_bezier_samples,
+  int waypoints_per_meter) const
+{
+  if (in.type != StartGoalProjector::ResultType::ON_EDGE) {return in;}
+  if (!costmap_) {return in;}
+  auto e = graph.getEdge(in.id);
+  if (!e) {return in;}
+  auto from_n = graph.getNode(e->from_id);
+  auto to_n = graph.getNode(e->to_id);
+  if (!from_n || !to_n) {return in;}
+
+  // Slide direction: whichever endpoint is closer to `toward_pose`.
+  //   start_proj: toward_pose=goal → slides toward the goal side
+  //   goal_proj : toward_pose=start → slides toward the start side
+  // i.e. both projections shift INTO the route's middle, on the side from
+  // which the other endpoint approaches, so the post-shift point is on the
+  // reachable half of the edge.
+  const double d_from = std::hypot(
+    from_n->x - toward_pose.pose.position.x,
+    from_n->y - toward_pose.pose.position.y);
+  const double d_to = std::hypot(
+    to_n->x - toward_pose.pose.position.x,
+    to_n->y - toward_pose.pose.position.y);
+  const bool slide_toward_to = (d_to < d_from);
+
+  // Build a dense pose path along the edge (from→to order).
+  const auto samples = graph.sampleEdge(*e, num_bezier_samples);
+  if (samples.size() < 2) {return in;}
+  std::vector<geometry_msgs::msg::PoseStamped> path;
+  for (std::size_t k = 0; k + 1 < samples.size(); ++k) {
+    const double sx = samples[k].first;
+    const double sy = samples[k].second;
+    const double ex = samples[k + 1].first;
+    const double ey = samples[k + 1].second;
+    const double dist = std::hypot(ex - sx, ey - sy);
+    const int n_steps =
+      std::max(1, static_cast<int>(dist * waypoints_per_meter));
+    for (int i = 0; i < n_steps; ++i) {
+      const double t = static_cast<double>(i) / n_steps;
+      geometry_msgs::msg::PoseStamped p;
+      p.pose.position.x = sx + t * (ex - sx);
+      p.pose.position.y = sy + t * (ey - sy);
+      p.pose.orientation.w = 1.0;
+      path.push_back(p);
+    }
+  }
+  geometry_msgs::msg::PoseStamped last;
+  last.pose.position.x = samples.back().first;
+  last.pose.position.y = samples.back().second;
+  last.pose.orientation.w = 1.0;
+  path.push_back(last);
+  if (path.size() < 2) {return in;}
+
+  // Find pose closest to the original projected_xy.
+  std::size_t proj_idx = 0;
+  double best_d2 = std::numeric_limits<double>::infinity();
+  for (std::size_t i = 0; i < path.size(); ++i) {
+    const double dx = path[i].pose.position.x - in.projected_xy.first;
+    const double dy = path[i].pose.position.y - in.projected_xy.second;
+    const double d2 = dx * dx + dy * dy;
+    if (d2 < best_d2) {best_d2 = d2; proj_idx = i;}
+  }
+
+  const auto obstacles = detectAllObstacles(path);
+  if (obstacles.empty()) {return in;}
+
+  auto containingObstacle =
+    [&](std::size_t idx) -> const ObstacleSegment * {
+      for (const auto & obs : obstacles) {
+        if (idx >= obs.start_index && idx <= obs.end_index) {return &obs;}
+      }
+      return nullptr;
+    };
+
+  // Iterate so back-to-back obstacles (touching margins) are all skipped.
+  std::size_t new_idx = proj_idx;
+  while (auto * obs = containingObstacle(new_idx)) {
+    if (slide_toward_to) {
+      if (obs->end_index + 1 >= path.size()) {return std::nullopt;}
+      new_idx = obs->end_index + 1;
+    } else {
+      if (obs->start_index == 0) {return std::nullopt;}
+      new_idx = obs->start_index - 1;
+    }
+  }
+  if (new_idx == proj_idx) {return in;}
+
+  // Update projected_xy and edge_sample_index. The latter uses chord
+  // fraction (FLOOR) for consistency with the planner's other partial-edge
+  // computations; exact for LINE, monotonic for BEZIER.
+  StartGoalProjector::Result out = in;
+  out.projected_xy.first = path[new_idx].pose.position.x;
+  out.projected_xy.second = path[new_idx].pose.position.y;
+  const double new_t = StartGoalProjector::fractionAlongChord(
+    out.projected_xy, from_n->x, from_n->y, to_n->x, to_n->y);
+  const double idx_f = new_t * static_cast<double>(samples.size() - 1);
+  out.edge_sample_index = static_cast<std::size_t>(std::floor(idx_f));
+  if (out.edge_sample_index + 1 >= samples.size()) {
+    out.edge_sample_index =
+      samples.size() >= 2 ? samples.size() - 2 : 0;
+  }
+  return out;
+}
+
 
 }  // namespace nav2_route_planner

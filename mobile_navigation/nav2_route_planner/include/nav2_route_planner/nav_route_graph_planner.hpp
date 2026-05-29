@@ -147,6 +147,15 @@ private:
   void applyObstacleBypass(
     nav_msgs::msg::Path & nav_path, const rclcpp::Time & stamp);
 
+  /// DEC-004: if `projected_xy` falls inside a costmap obstacle, slide
+  /// along the edge's sampled polyline toward `target` until the
+  /// first non-obstacle sample. Returns updated proj (xy); if the edge
+  /// is entirely blocked or the input is already free, returns the
+  /// original Result.
+  StartGoalProjector::Result shiftProjAwayFromObstacle(
+    StartGoalProjector::Result proj,
+    const geometry_msgs::msg::PoseStamped & target);
+
   /// Step 5.7 final-orientation fixup: Theta*-rewritten segments output
   /// identity quaternions, which clobbers the goal heading the
   /// interpolator placed on the last sample. Re-apply either the

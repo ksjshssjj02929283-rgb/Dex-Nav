@@ -133,6 +133,21 @@ public:
     double x1, double y1, double x2, double y2,
     bool & on_segment);
 
+  /// Fractional position of point `p` along the chord from (x1,y1) to
+  /// (x2,y2), clamped to [0,1]: 0 at the `from` end, 1 at the `to` end.
+  ///
+  /// This is the position measure callers should use when weighting the
+  /// partial-edge cost of a pose that projected ON_EDGE. It is exact for
+  /// LINE edges (where `p` already lies on the chord) and a monotonic,
+  /// bounded estimate for BEZIER edges. `edge_sample_index` must NOT be
+  /// used for this: a 2-sample LINE edge reports index 0 for ANY interior
+  /// projection, which collapses the cost and makes the planner treat the
+  /// robot as sitting at the `from` endpoint (the root cause of the
+  /// "loop back to the junction" bug).
+  static double fractionAlongChord(
+    const std::pair<double, double> & p,
+    double x1, double y1, double x2, double y2);
+
 private:
   /// Internal shared scan: walks every node and every enabled edge,
   /// records the best NODE distance and best EDGE projection. `apply_*`

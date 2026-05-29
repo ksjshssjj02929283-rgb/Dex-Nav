@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "nav2_route_planner/start_goal_projector.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <limits>
 
@@ -129,6 +130,18 @@ std::pair<double, double> StartGoalProjector::verticalProject(
   }
   on_segment = true;
   return {x1 + t * dx, y1 + t * dy};
+}
+
+double StartGoalProjector::fractionAlongChord(
+  const std::pair<double, double> & p,
+  double x1, double y1, double x2, double y2)
+{
+  const double dx = x2 - x1;
+  const double dy = y2 - y1;
+  const double d2 = dx * dx + dy * dy;
+  if (d2 < 1e-9) {return 0.0;}
+  const double t = ((p.first - x1) * dx + (p.second - y1) * dy) / d2;
+  return std::clamp(t, 0.0, 1.0);
 }
 
 StartGoalProjector::Result StartGoalProjector::scanGraph(

@@ -351,6 +351,55 @@ nav_msgs::msg::Path NavRouteGraphPlanner::createPlan(
   if (!projs) {return empty_path;}
   auto & [start_proj, goal_proj] = *projs;
 
+  // Stage 2.5 — obstacle-aware projection adjustment. If a projection
+  // lands inside a lethal-cost run on its edge, Stage 5a's Theta* rewrite
+  // would fail with "endpoint unreachable" and the whole plan would be
+  // rejected. Slide the projection along the edge past the obstacle +
+  // margin so the rewrite has a reachable, clear endpoint to plan to.
+  //   start_proj slides toward `goal`  — into the goal-side of the route
+  //   goal_proj  slides toward `start` — into the start-side of the route
+  // Both shift inward, on the reachable half of the obstacle.
+  if (ca_layer_) {
+    if (auto shifted = ca_layer_->shiftProjectionPastObstacle(
+        start_proj, goal, *graph_,
+        params_.bezier_samples_per_edge, params_.waypoints_per_meter))
+    {
+      if (shifted->projected_xy != start_proj.projected_xy) {
+        RCLCPP_INFO(logger_,
+          "start_proj shifted past obstacle on edge '%s' "
+          "(%.2f,%.2f) -> (%.2f,%.2f)",
+          start_proj.id.c_str(),
+          start_proj.projected_xy.first, start_proj.projected_xy.second,
+          shifted->projected_xy.first, shifted->projected_xy.second);
+      }
+      start_proj = *shifted;
+    } else {
+      RCLCPP_ERROR(logger_,
+        "start_proj on edge '%s' is inside an obstacle and the edge has "
+        "no clear point in the slide direction", start_proj.id.c_str());
+      return empty_path;
+    }
+    if (auto shifted = ca_layer_->shiftProjectionPastObstacle(
+        goal_proj, start, *graph_,
+        params_.bezier_samples_per_edge, params_.waypoints_per_meter))
+    {
+      if (shifted->projected_xy != goal_proj.projected_xy) {
+        RCLCPP_INFO(logger_,
+          "goal_proj shifted past obstacle on edge '%s' "
+          "(%.2f,%.2f) -> (%.2f,%.2f)",
+          goal_proj.id.c_str(),
+          goal_proj.projected_xy.first, goal_proj.projected_xy.second,
+          shifted->projected_xy.first, shifted->projected_xy.second);
+      }
+      goal_proj = *shifted;
+    } else {
+      RCLCPP_ERROR(logger_,
+        "goal_proj on edge '%s' is inside an obstacle and the edge has "
+        "no clear point in the slide direction", goal_proj.id.c_str());
+      return empty_path;
+    }
+  }
+
   // Same-edge case: start and goal project onto ONE shared edge. Graph A*
   // blacklists the goal edge (DEC-009) to approach from a NavPoint endpoint,
   // but here the start sits on that same edge — blacklisting it forces a
@@ -663,10 +712,17 @@ NavRouteGraphPlanner::runGraphSearch(
         goal_proj.id.c_str());
       return std::nullopt;
     }
-    const std::size_t orig_max = (goal_proj.edge_total_samples > 1)
-      ? (goal_proj.edge_total_samples - 1) : 1u;
-    const double frac_from = static_cast<double>(
-      goal_proj.edge_sample_index) / static_cast<double>(orig_max);
+    // Residual distance along the goal edge from each endpoint to the
+    // projection. Use the chord fraction of projected_xy, NOT
+    // edge_sample_index (degenerate for 2-sample LINE edges — would bias
+    // the endpoint choice and mirror the start-side loop on the goal side).
+    double frac_from = 0.0;
+    if (auto gf = graph_->getNode(e_opt->from_id)) {
+      if (auto gt = graph_->getNode(e_opt->to_id)) {
+        frac_from = StartGoalProjector::fractionAlongChord(
+          goal_proj.projected_xy, gf->x, gf->y, gt->x, gt->y);
+      }
+    }
     const double residual_from = e_opt->length * frac_from;
     const double residual_to = e_opt->length * (1.0 - frac_from);
 
@@ -716,7 +772,7 @@ NavRouteGraphPlanner::runGraphSearch(
       // Both blacklisted attempts failed — goal edge is the sole
       // approach. Drop blacklist, walk it; the interpolator's
       // truncation safety net trims it at projected_xy.
-      const bool proj_near_from = (goal_proj.edge_sample_index * 2) < orig_max;
+      const bool proj_near_from = frac_from < 0.5;
       out.goal_node_id = proj_near_from ? e_opt->to_id : e_opt->from_id;
       AStarSearcher::Request r2 = req;
       r2.blacklisted_edge_ids.clear();

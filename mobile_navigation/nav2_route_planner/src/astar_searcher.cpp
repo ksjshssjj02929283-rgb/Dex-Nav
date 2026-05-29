@@ -79,10 +79,15 @@ AStarSearcher::Result AStarSearcher::search(
       out.failure_reason = "Start projection edge has dangling endpoints";
       return out;
     }
-    // Approximate partial-edge cost as proportional to the projection
-    // index along the edge length.
-    const double total_n = std::max<std::size_t>(req.start.edge_total_samples, 2) - 1;
-    const double t_to_from = static_cast<double>(req.start.edge_sample_index) / total_n;
+    // Partial-edge cost proportional to the robot's TRUE position along
+    // the edge. We measure it from `projected_xy` via the chord fraction,
+    // NOT from `edge_sample_index`: a 2-sample LINE edge reports index 0
+    // for any interior projection, which would make t_to_from = 0 and
+    // anchor the robot at `from` (the "loop back to the junction" bug).
+    const double t_to_from = StartGoalProjector::fractionAlongChord(
+      req.start.projected_xy,
+      from_it->second.x, from_it->second.y,
+      to_it->second.x, to_it->second.y);
     const double t_to_to = 1.0 - t_to_from;
     double full = computeEdgeCost(e, from_it->second, to_it->second,
         req.weights, req.prefs);

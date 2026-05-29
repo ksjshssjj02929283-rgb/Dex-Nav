@@ -15,6 +15,9 @@
 #include "nav2_costmap_2d/costmap_2d_ros.hpp"
 #include "nav2_theta_star_planner/theta_star.hpp"
 
+#include "nav2_route_planner/start_goal_projector.hpp"
+#include "nav2_route_planner/topo_graph.hpp"
+
 namespace nav2_route_planner
 {
 
@@ -101,10 +104,30 @@ public:
   std::vector<ObstacleSegment> detectAllObstacles(
     const std::vector<geometry_msgs::msg::PoseStamped> & plan) const;
 
-private:
-  /// Internal helper: read `(x, y)` into a cost value. Returns 255
-  /// (lethal) if the point is outside the costmap.
+  /// DEC-004: read the cost at world coordinates `(x, y)`. Returns 255
+  /// (lethal) if the point is outside the costmap bounds.
   unsigned char getCostAt(double x, double y) const;
+
+  /// Shift an ON_EDGE projection past any lethal-cost run that contains
+  /// it, sliding along the edge toward whichever endpoint is closer to
+  /// `toward_pose`.
+  ///
+  /// Returns:
+  ///   • the original projection if it isn't inside any obstacle on the edge
+  ///   • a Result with updated projected_xy / edge_sample_index if it was
+  ///   • nullopt if no clear point exists on this edge in the slide
+  ///     direction (the edge is blocked all the way to the chosen endpoint)
+  ///
+  /// Reuses `detectAllObstacles` (margins already accounted for). Caller
+  /// must hold graph.lockShared().
+  std::optional<StartGoalProjector::Result> shiftProjectionPastObstacle(
+    const StartGoalProjector::Result & in,
+    const geometry_msgs::msg::PoseStamped & toward_pose,
+    const TopoGraph & graph,
+    int num_bezier_samples,
+    int waypoints_per_meter) const;
+
+private:
 
   rclcpp_lifecycle::LifecycleNode::WeakPtr parent_;
   rclcpp::Logger logger_{rclcpp::get_logger("CostmapAwareLayer")};
