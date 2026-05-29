@@ -104,8 +104,8 @@ public:
   std::vector<ObstacleSegment> detectAllObstacles(
     const std::vector<geometry_msgs::msg::PoseStamped> & plan) const;
 
-  /// DEC-004: read the cost at world coordinates `(x, y)`. Returns 255
-  /// (lethal) if the point is outside the costmap bounds.
+  /// Read the cost at world coordinates `(x, y)`. Returns 255 (lethal)
+  /// if the point is outside the costmap bounds.
   unsigned char getCostAt(double x, double y) const;
 
   /// Shift an ON_EDGE projection past any lethal-cost run that contains

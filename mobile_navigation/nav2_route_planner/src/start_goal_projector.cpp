@@ -37,11 +37,11 @@ struct EdgeProjection
 ///   • projected_xy in segment [i, i+1]   → idx = i
 ///   • snapped to samples[i+1] precisely  → idx = i + 1
 ///
-/// This single helper replaced 4 near-identical scattered blocks in
-/// scanGraph (bounded/unlimited) and projectPreferEdge re-scan. Floor-
-/// index correctness is the foundation of `interpolator`'s walking
-/// loop — getting it wrong here was the root cause of DEC-005~014 (a
-/// 0.67 m straight-line approach turning into 8 m of U-turn).
+/// This single helper replaces the near-identical scattered blocks in
+/// scanGraph (bounded/unlimited) and the projectPreferEdge re-scan.
+/// Floor-index correctness is the foundation of the interpolator's
+/// walking loop — getting it wrong turns a short straight-line approach
+/// into a long U-turn.
 EdgeProjection bestProjectionOnEdge(
   const std::vector<std::pair<double, double>> & samples,
   EdgeGeometry geometry,

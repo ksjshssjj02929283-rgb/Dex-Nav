@@ -91,12 +91,11 @@ AStarSearcher::Result AStarSearcher::search(
     const double t_to_to = 1.0 - t_to_from;
     double full = computeEdgeCost(e, from_it->second, to_it->second,
         req.weights, req.prefs);
+    // Seed both endpoints of the start edge. We always allow joining
+    // either endpoint regardless of edge directionality — direction
+    // enforcement happens on the subsequent edges A* expands.
     pushFrontier(e.from_id, full * t_to_from);
-    if (e.bidirectional || true) {
-      // We always allow joining either endpoint of the projected edge —
-      // direction enforcement happens on subsequent edges.
-      pushFrontier(e.to_id, full * t_to_to);
-    }
+    pushFrontier(e.to_id, full * t_to_to);
   } else {
     out.failure_reason = "Invalid start projection";
     return out;

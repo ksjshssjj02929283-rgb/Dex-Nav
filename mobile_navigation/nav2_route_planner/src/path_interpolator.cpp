@@ -99,6 +99,29 @@ void PathInterpolator::computeOrientations(std::vector<geometry_msgs::msg::PoseS
   poses.back().pose.orientation = poses[poses.size() - 2].pose.orientation;
 }
 
+void PathInterpolator::finalizePlan(
+  InterpolatedRoutePlan & plan,
+  const geometry_msgs::msg::PoseStamped & start,
+  const geometry_msgs::msg::PoseStamped & goal) const
+{
+  for (auto & seg : plan.segments) {
+    computeOrientations(seg.samples);
+  }
+  // Force the very last sample's orientation to the goal's heading
+  // (matches nav2_theta_star_planner's end-of-plan behavior).
+  if (!plan.segments.empty() && !plan.segments.back().samples.empty()) {
+    if (!p_.use_final_approach_orientation) {
+      plan.segments.back().samples.back().pose.orientation = goal.pose.orientation;
+    }
+  }
+  std::ostringstream id;
+  id << "plan_" << static_cast<int64_t>(start.pose.position.x * 1000) << "_"
+     << static_cast<int64_t>(start.pose.position.y * 1000) << "_to_"
+     << static_cast<int64_t>(goal.pose.position.x * 1000) << "_"
+     << static_cast<int64_t>(goal.pose.position.y * 1000);
+  plan.plan_id = id.str();
+}
+
 InterpolatedRoutePlan PathInterpolator::interpolate(
   const geometry_msgs::msg::PoseStamped & start,
   const geometry_msgs::msg::PoseStamped & goal,
@@ -121,10 +144,10 @@ InterpolatedRoutePlan PathInterpolator::interpolate(
 
   // ── Segment 1: __start_transition__ ─ free-space, start → projected_xy ─
   //
-  // Project 19 simplification (DEC-004): this segment is ALWAYS just
-  // `start → projection point`. The caller is expected to Theta\*-
-  // rewrite it. We never put the entry node here — that's handled by
-  // the __start_edge_in__ segment below for ON_EDGE starts.
+  // This segment is ALWAYS just `start → projection point`. The caller is
+  // expected to Theta\*-rewrite it. We never put the entry node here —
+  // that's handled by the __start_edge_in__ segment below for ON_EDGE
+  // starts.
   {
     const double proj_x = (start_proj.type == StartGoalProjector::ResultType::ON_EDGE)
       ? start_proj.projected_xy.first  : entry_opt->x;
@@ -145,11 +168,10 @@ InterpolatedRoutePlan PathInterpolator::interpolate(
 
   // ── Segment 1.5: __start_edge_in__ ─ walk along edge geometry ──
   //
-  // DEC-013: walk the sampled polyline from projected_xy back to the
-  // A*-chosen entry node. Uses the FLOOR semantic of
-  // `edge_sample_index` (projector returns the from-end of the
-  // segment containing projected_xy — see DEC-013 in projector). The
-  // walk goes:
+  // Walk the sampled polyline from projected_xy back to the A*-chosen
+  // entry node, using the FLOOR semantic of `edge_sample_index` (the
+  // projector returns the from-end of the segment containing
+  // projected_xy). The walk goes:
   //   • entry == from_id: reverse — projected_xy → edge_pts[idx] → ... → edge_pts[0]
   //   • entry == to_id:   forward — projected_xy → edge_pts[idx+1] → ... → edge_pts[N-1]
   // Now safe for BEZIER curves: `idx` is the last sample BEFORE the
@@ -195,7 +217,7 @@ InterpolatedRoutePlan PathInterpolator::interpolate(
 
   // ── Segment 2: per-edge sampling along the A* result ────────────────
   //
-  // DEC-009 fallback safety net: when A* could not find an alternative
+  // Goal-edge fallback safety net: when A* could not find an alternative
   // path around goal_proj.id and ended up walking that edge as its LAST
   // edge, truncate it at projected_xy (don't walk past the projection
   // into the unwalked half of the edge, which is the half most likely
@@ -276,21 +298,21 @@ InterpolatedRoutePlan PathInterpolator::interpolate(
 
   // ── Segment N-1: __goal_edge_out__ ─ straight from entry to projected_xy ─
   //
-  // DEC-010: emit ONE direct linear segment from the entry endpoint to
-  // projected_xy. The previous implementation walked through intermediate
-  // edge samples up to `goal_proj.edge_sample_index`, but verticalProject
-  // sets `edge_sample_index = 1` for ANY interior projection on a 2-sample
-  // LINE edge — which the walking loop then misread as "to-end", producing
+  // Emit ONE direct linear segment from the entry endpoint to
+  // projected_xy. Walking through intermediate edge samples up to
+  // `goal_proj.edge_sample_index` is unsafe: verticalProject reports
+  // edge_sample_index = 1 for ANY interior projection on a 2-sample LINE
+  // edge, which a walking loop misreads as "to-end" and produces
   // `from-end → to-end → projected_xy` (a U-turn that walks the FULL edge,
-  // overshoots projected_xy, and swings back). The direct emitLinear
-  // approach is bug-free for LINE edges and is an acceptable chord
-  // approximation for BEZIER edges (this segment is Theta*-rewritable
-  // anyway, so geometric fidelity matters less than topological correctness).
+  // overshoots, and swings back). The direct emitLinear is bug-free for
+  // LINE edges and an acceptable chord approximation for BEZIER edges
+  // (this segment is Theta*-rewritable anyway, so topological correctness
+  // matters more than geometric fidelity).
   // SKIPPED when A* already walked goal_proj.id (truncated above).
   if (goal_proj.type == StartGoalProjector::ResultType::ON_EDGE &&
       !last_edge_is_goal_edge)
   {
-    // DEC-013: walk along edge geometry, mirror of __start_edge_in__.
+    // Walk along edge geometry, mirror of __start_edge_in__.
     // exit_node end → walk to projected_xy.
     //   • exit == from_id: forward — from-end → edge_pts[1..idx] → projected_xy
     //   • exit == to_id:   reverse — to-end   → edge_pts[N-2..idx+1] → projected_xy
@@ -355,25 +377,7 @@ InterpolatedRoutePlan PathInterpolator::interpolate(
     plan.segments.push_back(std::move(seg));
   }
 
-  // ── Orientations + plan_id ─────────────────────────────────────────
-  for (auto & seg : plan.segments) {
-    computeOrientations(seg.samples);
-  }
-
-  // Force the very last sample's orientation to the goal's heading
-  // (matches nav2_theta_star_planner's end-of-plan behavior).
-  if (!plan.segments.empty() && !plan.segments.back().samples.empty()) {
-    if (!p_.use_final_approach_orientation) {
-      plan.segments.back().samples.back().pose.orientation = goal.pose.orientation;
-    }
-  }
-
-  std::ostringstream id;
-  id << "plan_" << static_cast<int64_t>(start.pose.position.x * 1000) << "_"
-     << static_cast<int64_t>(start.pose.position.y * 1000) << "_to_"
-     << static_cast<int64_t>(goal.pose.position.x * 1000) << "_"
-     << static_cast<int64_t>(goal.pose.position.y * 1000);
-  plan.plan_id = id.str();
+  finalizePlan(plan, start, goal);
   return plan;
 }
 
@@ -471,22 +475,7 @@ InterpolatedRoutePlan PathInterpolator::interpolateSameEdge(
 
   plan.floor_sequence.push_back(e_opt->floor);
 
-  // Orientations per segment + final goal heading (mirrors interpolate()).
-  for (auto & seg : plan.segments) {
-    computeOrientations(seg.samples);
-  }
-  if (!plan.segments.empty() && !plan.segments.back().samples.empty()) {
-    if (!p_.use_final_approach_orientation) {
-      plan.segments.back().samples.back().pose.orientation = goal.pose.orientation;
-    }
-  }
-
-  std::ostringstream id;
-  id << "plan_" << static_cast<int64_t>(start.pose.position.x * 1000) << "_"
-     << static_cast<int64_t>(start.pose.position.y * 1000) << "_to_"
-     << static_cast<int64_t>(goal.pose.position.x * 1000) << "_"
-     << static_cast<int64_t>(goal.pose.position.y * 1000);
-  plan.plan_id = id.str();
+  finalizePlan(plan, start, goal);
   return plan;
 }
 
@@ -494,8 +483,7 @@ InterpolatedRoutePlan PathInterpolator::interpolateSameEdge(
 
 nav_msgs::msg::Path InterpolatedRoutePlan::toNavPath(
   const std::string & frame_id,
-  const rclcpp::Time & stamp,
-  bool /*use_final_approach_orientation*/) const
+  const rclcpp::Time & stamp) const
 {
   nav_msgs::msg::Path path;
   path.header.frame_id = frame_id;

@@ -27,7 +27,7 @@ namespace nav2_route_planner
 ///     projection. Used by 2026-05 "arbitrary start/goal" extension —
 ///     callers above use Theta\* to bridge `pose ↔ projected point`.
 ///
-/// Both modes apply the SAME fair-competition rule (DEC-025 / DEC-019):
+/// Both modes apply the SAME fair-competition rule:
 ///   • compute the nearest NODE distance (across NAV_POINT + JUNCTION)
 ///   • compute the nearest EDGE-projection distance (across enabled edges)
 ///   • smaller distance wins. On exact tie EDGE wins (it carries direction
@@ -103,8 +103,8 @@ public:
   /// only when the graph has zero enabled edges. INVALID only when
   /// the graph is completely empty. Caller must hold graph.lockShared().
   ///
-  /// Rationale (DEC-011, 2026-05-18 user feedback): the plan must stay
-  /// ON the road graph. Projecting to a NavPoint when the same pose
+  /// Rationale: the plan must stay ON the road graph. Projecting to a
+  /// NavPoint when the same pose
   /// could project onto an adjacent edge produces plans where the
   /// approach leg briefly leaves the network (a NavPoint sitting just
   /// off an edge is visible in the user's screenshots). Forcing

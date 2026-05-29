@@ -55,22 +55,21 @@ public:
     const geometry_msgs::msg::PoseStamped & goal) override;
 
   /// Public so the table-driven param registry in the .cpp can address
-  /// fields through member-pointer lambdas (P0-3 refactor). Treat as
-  /// implementation detail — only `configure()` mutates it directly.
+  /// fields through member-pointer lambdas. Treat as implementation
+  /// detail — only `configure()` mutates it directly.
   struct Params
   {
     // Data source
     std::string asset_manager_node_name{"map_asset_manager"};
     double data_load_timeout_sec{5.0};
 
-    // Projection — diagnostic-only after DEC-004 (projector always
-    // returns globally-nearest NODE/EDGE); thresholds drive INFO logs
-    // only.
+    // Projection — diagnostic-only (the projector always returns the
+    // globally-nearest NODE/EDGE); these thresholds only drive INFO logs.
     double projection_node_threshold_m{0.5};
     double projection_edge_threshold_m{1.0};
 
-    // DEC-005 "same-side shortcut": when start/goal projections sit
-    // within this distance, skip graph routing and Theta\* direct.
+    // "Same-side shortcut": when start/goal projections sit within this
+    // distance, skip graph routing and Theta\* direct.
     // 0.0 disables.
     double shortcut_max_proj_distance_m{0.5};
 
@@ -96,10 +95,10 @@ private:
   rcl_interfaces::msg::SetParametersResult dynamicParametersCallback(
     std::vector<rclcpp::Parameter> parameters);
 
-  /// P0-2 createPlan helpers: split the formerly 600-line method into
-  /// named, independently-testable stages.
+  /// createPlan helpers: the plan pipeline split into named,
+  /// independently-testable stages.
 
-  /// Stage 1+2 — project start and goal onto the graph. Emits DEC-014
+  /// Project start and goal onto the graph. Emits the projection
   /// diagnostic logs. Returns nullopt when either projection is
   /// INVALID (empty graph). Caller must hold graph_->lockShared().
   std::optional<
@@ -108,7 +107,7 @@ private:
     const geometry_msgs::msg::PoseStamped & start,
     const geometry_msgs::msg::PoseStamped & goal);
 
-  /// DEC-005 same-side shortcut: if start_proj and goal_proj are within
+  /// Same-side shortcut: if start_proj and goal_proj are within
   /// `shortcut_max_proj_distance_m` of each other, Theta*-direct from
   /// start to goal and return that path. Returns nullopt to fall
   /// through to graph routing (threshold disabled, distance too far,
@@ -119,9 +118,9 @@ private:
     const StartGoalProjector::Result & start_proj,
     const StartGoalProjector::Result & goal_proj);
 
-  /// Stage 3 — DEC-009 dual-endpoint blacklist A* with fallback.
-  /// Returns the A* result + chosen goal node + diagnostic dt.
-  /// nullopt when A* failed even after fallback.
+  /// Graph A* with dual-endpoint approach for an edge-projected goal,
+  /// plus fallback. Returns the A* result + chosen goal node +
+  /// diagnostic dt. nullopt when A* failed even after fallback.
   struct AStarOutcome
   {
     AStarSearcher::Result result;
@@ -147,16 +146,7 @@ private:
   void applyObstacleBypass(
     nav_msgs::msg::Path & nav_path, const rclcpp::Time & stamp);
 
-  /// DEC-004: if `projected_xy` falls inside a costmap obstacle, slide
-  /// along the edge's sampled polyline toward `target` until the
-  /// first non-obstacle sample. Returns updated proj (xy); if the edge
-  /// is entirely blocked or the input is already free, returns the
-  /// original Result.
-  StartGoalProjector::Result shiftProjAwayFromObstacle(
-    StartGoalProjector::Result proj,
-    const geometry_msgs::msg::PoseStamped & target);
-
-  /// Step 5.7 final-orientation fixup: Theta*-rewritten segments output
+  /// Final-orientation fixup: Theta*-rewritten segments output
   /// identity quaternions, which clobbers the goal heading the
   /// interpolator placed on the last sample. Re-apply either the
   /// goal pose orientation (default) or the path's terminal tangent

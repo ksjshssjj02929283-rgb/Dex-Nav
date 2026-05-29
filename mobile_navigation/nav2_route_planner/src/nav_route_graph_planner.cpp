@@ -72,7 +72,7 @@ const std::vector<ParamHandler> & paramTable()
       [](P & p, const rclcpp::Parameter & v) {p.projection_edge_threshold_m = v.as_double();},
       false},
 
-    // ── Same-side shortcut (DEC-005) ────────────────────────────────
+    // ── Same-side shortcut ──────────────────────────────────────────
     {"shortcut_max_proj_distance_m",
       [](const P & p) {return rclcpp::ParameterValue(p.shortcut_max_proj_distance_m);},
       [](P & p, const rclcpp::Parameter & v) {p.shortcut_max_proj_distance_m = v.as_double();},
@@ -186,7 +186,7 @@ void NavRouteGraphPlanner::configure(
   costmap_ros_ = costmap_ros;
   global_frame_ = costmap_ros_ ? costmap_ros_->getGlobalFrameID() : std::string("map");
 
-  // ── Declare + load parameters via table-driven registry (P0-3) ─────
+  // ── Declare + load parameters via table-driven registry ───────────
   // All ~24 parameters defined in `paramTable()` at the top of this
   // file — one entry per parameter, declare/get/dynamic-update share
   // it. Add or remove a parameter: edit one table row.
@@ -289,20 +289,19 @@ nav_msgs::msg::Path NavRouteGraphPlanner::createPlan(
   const geometry_msgs::msg::PoseStamped & start,
   const geometry_msgs::msg::PoseStamped & goal)
 {
-  // ── 5-stage plan pipeline (DEC-004 design, P0-2 method split):
-  //   Stage 1+2 : project start and goal onto the road graph
-  //   Stage 3a  : DEC-005 same-side shortcut (skip graph if both
-  //               projections sit at the same spot)
-  //   Stage 3b  : DEC-009 dual-endpoint blacklist A* on the graph
-  //   Stage 4   : interpolate A* result → 5 segments
-  //   Stage 5a  : Theta*-rewrite the two free-space transitions
-  //   Stage 5b  : Layer 2 obstacle bypass + diagnostic markers
-  //   Stage 5c  : final-orientation enforcement
-  //   Stage 6   : publish RoutePlan, return nav_msgs/Path
-  //
-  // Each stage is a named helper below. createPlan stays a readable
-  // orchestrator — every line says which stage is running and how
-  // the abort paths thread through.
+  // Plan pipeline (each stage is a named helper below; createPlan stays
+  // a readable orchestrator):
+  //   1.  project start and goal onto the road graph
+  //   2.  obstacle-aware projection adjustment (slide a projection that
+  //       landed inside a lethal-cost run past the obstacle + margin)
+  //   3a. same-side shortcut (Theta* direct when both projections sit
+  //       within shortcut_max_proj_distance_m of each other)
+  //   3b. build the segmented plan: same-edge direct walk, or graph A*
+  //       (dual-endpoint approach for an edge-projected goal) + interpolate
+  //   4.  Theta*-rewrite the two free-space transition segments
+  //   5.  Layer 2 obstacle bypass + diagnostic markers
+  //   6.  final-orientation enforcement
+  //   7.  publish RoutePlan, return nav_msgs/Path
 
   nav_msgs::msg::Path empty_path;
   empty_path.header.frame_id = global_frame_;
@@ -346,15 +345,16 @@ nav_msgs::msg::Path NavRouteGraphPlanner::createPlan(
 
   auto lock = graph_->lockShared();
 
-  // Stage 1+2 — project start and goal (with diagnostic logs).
+  // Step 1 — project start and goal (with diagnostic logs).
   auto projs = projectEndpoints(start, goal);
   if (!projs) {return empty_path;}
   auto & [start_proj, goal_proj] = *projs;
 
-  // Stage 2.5 — obstacle-aware projection adjustment. If a projection
-  // lands inside a lethal-cost run on its edge, Stage 5a's Theta* rewrite
-  // would fail with "endpoint unreachable" and the whole plan would be
-  // rejected. Slide the projection along the edge past the obstacle +
+  // Step 2 — obstacle-aware projection adjustment. If a projection
+  // lands inside a lethal-cost run on its edge, the transition Theta*
+  // rewrite (step 4) would fail with "endpoint unreachable" and the whole
+  // plan would be rejected. Slide the projection along the edge past the
+  // obstacle +
   // margin so the rewrite has a reachable, clear endpoint to plan to.
   //   start_proj slides toward `goal`  — into the goal-side of the route
   //   goal_proj  slides toward `start` — into the start-side of the route
@@ -401,25 +401,24 @@ nav_msgs::msg::Path NavRouteGraphPlanner::createPlan(
   }
 
   // Same-edge case: start and goal project onto ONE shared edge. Graph A*
-  // blacklists the goal edge (DEC-009) to approach from a NavPoint endpoint,
-  // but here the start sits on that same edge — blacklisting it forces a
-  // detour OUT to an endpoint and BACK, the visible loop the user reported.
-  // Walk the edge geometry directly between the two projections instead.
-  // Takes priority over the same-side shortcut so a shared edge always
-  // follows the road.
+  // blacklists the goal edge to approach it from a NavPoint endpoint, but
+  // here the start sits on that same edge — blacklisting it would force a
+  // detour OUT to an endpoint and BACK (a visible loop). Walk the edge
+  // geometry directly between the two projections instead. Takes priority
+  // over the same-side shortcut so a shared edge always follows the road.
   const bool same_edge =
     start_proj.type == StartGoalProjector::ResultType::ON_EDGE &&
     goal_proj.type == StartGoalProjector::ResultType::ON_EDGE &&
     start_proj.id == goal_proj.id;
 
-  // Stage 3a — same-side shortcut (skipped on a shared edge).
+  // Step 3a — same-side shortcut (skipped on a shared edge).
   if (!same_edge) {
     if (auto shortcut = trySameSideShortcut(start, goal, start_proj, goal_proj)) {
       return *shortcut;
     }
   }
 
-  // Stage 3b/4 — build the segmented plan.
+  // Step 3b — build the segmented plan.
   InterpolatedRoutePlan plan;
   if (same_edge) {
     RCLCPP_INFO(logger_,
@@ -438,7 +437,7 @@ nav_msgs::msg::Path NavRouteGraphPlanner::createPlan(
   if (plan.segments.empty()) {return empty_path;}
   auto stamp = clock_->now();
 
-  // Stage 5a — Theta*-rewrite the two transition placeholder segments.
+  // Step 4 — Theta*-rewrite the two transition placeholder segments.
   if (ca_layer_ && !plan.segments.empty()) {
     if (!rewriteTransitionWithThetaStar(
         plan.segments.front(), "__start_transition__"))
@@ -452,16 +451,15 @@ nav_msgs::msg::Path NavRouteGraphPlanner::createPlan(
     }
   }
 
-  auto nav_path = plan.toNavPath(global_frame_, stamp,
-      params_.use_final_approach_orientation);
+  auto nav_path = plan.toNavPath(global_frame_, stamp);
 
-  // Stage 5b — Layer 2 obstacle detect + Theta* bypass + markers.
+  // Step 5 — Layer 2 obstacle detect + Theta* bypass + markers.
   applyObstacleBypass(nav_path, stamp);
 
-  // Stage 5c — final-orientation enforcement.
+  // Step 6 — final-orientation enforcement.
   enforceGoalOrientation(nav_path, goal);
 
-  // Stage 6 — publish RoutePlan + return.
+  // Step 7 — publish RoutePlan + return.
   if (params_.publish_route_plan && rp_publisher_) {
     rp_publisher_->publish(plan.toMsg(global_frame_, stamp));
   }
@@ -471,11 +469,10 @@ nav_msgs::msg::Path NavRouteGraphPlanner::createPlan(
 rcl_interfaces::msg::SetParametersResult
 NavRouteGraphPlanner::dynamicParametersCallback(std::vector<rclcpp::Parameter> parameters)
 {
-  // P0-3 table-driven: look each parameter up in `paramTable()`, apply
-  // its setter, OR-accumulate the `triggers_ca` flag. Replaces 60+
-  // lines of nested if/else where each parameter name appeared 3
-  // times (key string + type-check + branch) and was a copy-paste
-  // bug magnet.
+  // Table-driven: look each parameter up in `paramTable()`, apply its
+  // setter, OR-accumulate the `triggers_ca` flag. Keeps each parameter's
+  // name in exactly one place instead of repeating it across a key
+  // string + type-check + branch.
   const std::string prefix = name_ + ".";
   bool ca_dirty = false;
   for (const auto & p : parameters) {
@@ -502,12 +499,12 @@ NavRouteGraphPlanner::dynamicParametersCallback(std::vector<rclcpp::Parameter> p
   return result;
 }
 
-// ── P0-2 createPlan helpers ─────────────────────────────────────────
+// ── createPlan helpers ──────────────────────────────────────────────
 
 namespace
 {
 
-/// Helper for the DEC-014 projection diagnostic log.
+/// Helper for the projection diagnostic log.
 const char * resultTypeName(StartGoalProjector::ResultType t)
 {
   switch (t) {
@@ -577,8 +574,8 @@ NavRouteGraphPlanner::projectEndpoints(
   const geometry_msgs::msg::PoseStamped & start,
   const geometry_msgs::msg::PoseStamped & goal)
 {
-  // DEC-011: projectPreferEdge keeps the plan ON the road graph by
-  // forcing ON_EDGE whenever any enabled edge exists.
+  // projectPreferEdge keeps the plan ON the road graph by forcing
+  // ON_EDGE whenever any enabled edge exists.
   auto start_proj = projector_->projectPreferEdge(start, *graph_);
   if (start_proj.type == StartGoalProjector::ResultType::INVALID) {
     RCLCPP_ERROR(logger_,
@@ -702,7 +699,10 @@ NavRouteGraphPlanner::runGraphSearch(
       std::chrono::steady_clock::now() - t0).count();
     out.goal_node_id = goal_proj.id;
   } else {
-    // ON_EDGE: DEC-009 dual-endpoint blacklist try.
+    // ON_EDGE goal: try reaching BOTH endpoints of the goal edge with
+    // that edge blacklisted, then pick the cheaper (cost + residual along
+    // the goal edge). Blacklisting forces A* to approach via a NavPoint
+    // rather than walking the goal edge itself.
     auto e_opt = graph_->getEdge(goal_proj.id);
     if (!e_opt) {
       RCLCPP_ERROR(logger_,
@@ -762,7 +762,7 @@ NavRouteGraphPlanner::runGraphSearch(
         out.result = std::move(res_to);
         out.goal_node_id = e_opt->to_id;
         RCLCPP_INFO(logger_,
-          "DEC-009: chose 'to' endpoint='%s' (cost+residual=%.2f, "
+          "chose 'to' endpoint='%s' (cost+residual=%.2f, "
           "alt 'from'=%s %.2f) — A* path avoids goal edge '%s'",
           e_opt->to_id.c_str(), total_to,
           res_from.success ? "" : "(unreachable)", total_from,
@@ -783,7 +783,7 @@ NavRouteGraphPlanner::runGraphSearch(
         std::chrono::duration_cast<std::chrono::microseconds>(
           std::chrono::steady_clock::now() - t0).count();
       RCLCPP_WARN(logger_,
-        "DEC-009: both endpoints unreachable with goal edge '%s' "
+        "both endpoints unreachable with goal edge '%s' "
         "blacklisted; fell back to far endpoint='%s' WITHOUT "
         "blacklist — interpolator will truncate the goal edge",
         goal_proj.id.c_str(), out.goal_node_id.c_str());

@@ -82,7 +82,7 @@ TEST(PathInterpolatorTest, EndToEndStraightLine)
   // Should have a transition seg + edge seg + goal alignment seg.
   EXPECT_GE(plan.segments.size(), 2u);
   // The flattened path should run roughly from (0,0) to (10,0).
-  auto path = plan.toNavPath("map", rclcpp::Time(0, 0, RCL_ROS_TIME), false);
+  auto path = plan.toNavPath("map", rclcpp::Time(0, 0, RCL_ROS_TIME));
   ASSERT_FALSE(path.poses.empty());
   EXPECT_NEAR(path.poses.front().pose.position.x, 0.0, 1e-3);
   EXPECT_NEAR(path.poses.back().pose.position.x, 10.0, 1e-3);
@@ -186,7 +186,7 @@ TEST(PathInterpolatorTest, SameEdgeLineForwardNoDetour)
   EXPECT_EQ(plan.segments[1].edge_id, "e");
   EXPECT_EQ(plan.segments[2].edge_id, "__goal_alignment__");
 
-  auto path = plan.toNavPath("map", rclcpp::Time(0, 0, RCL_ROS_TIME), false);
+  auto path = plan.toNavPath("map", rclcpp::Time(0, 0, RCL_ROS_TIME));
   ASSERT_FALSE(path.poses.empty());
   EXPECT_NEAR(path.poses.front().pose.position.x, 2.0, 1e-2);
   EXPECT_NEAR(path.poses.back().pose.position.x, 8.0, 1e-2);
@@ -225,7 +225,7 @@ TEST(PathInterpolatorTest, SameEdgeLineBackwardNoDetour)
 
   auto plan = interp.interpolateSameEdge(
     pose(8, 0.5), pose(2, -0.5), sp, gp, g);
-  auto path = plan.toNavPath("map", rclcpp::Time(0, 0, RCL_ROS_TIME), false);
+  auto path = plan.toNavPath("map", rclcpp::Time(0, 0, RCL_ROS_TIME));
   ASSERT_FALSE(path.poses.empty());
   EXPECT_NEAR(path.poses.front().pose.position.x, 8.0, 1e-2);
   EXPECT_NEAR(path.poses.back().pose.position.x, 2.0, 1e-2);
@@ -268,7 +268,7 @@ TEST(PathInterpolatorTest, SameEdgeBezierForwardFollowsCurve)
 
   auto plan = interp.interpolateSameEdge(start, goal, sp, gp, g);
   ASSERT_EQ(plan.segments.size(), 3u);
-  auto path = plan.toNavPath("map", rclcpp::Time(0, 0, RCL_ROS_TIME), false);
+  auto path = plan.toNavPath("map", rclcpp::Time(0, 0, RCL_ROS_TIME));
   ASSERT_GE(path.poses.size(), 2u);
   // Path must never come close to either endpoint NavPoint (no U-turn).
   for (const auto & p : path.poses) {
@@ -310,7 +310,7 @@ TEST(PathInterpolatorTest, SameEdgeBezierBackwardFollowsCurve)
 
   auto plan = interp.interpolateSameEdge(start, goal, sp, gp, g);
   ASSERT_EQ(plan.segments.size(), 3u);
-  auto path = plan.toNavPath("map", rclcpp::Time(0, 0, RCL_ROS_TIME), false);
+  auto path = plan.toNavPath("map", rclcpp::Time(0, 0, RCL_ROS_TIME));
   ASSERT_GE(path.poses.size(), 2u);
   for (const auto & p : path.poses) {
     EXPECT_GT(distToEndpoints(

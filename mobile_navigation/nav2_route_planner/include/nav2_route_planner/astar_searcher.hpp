@@ -41,11 +41,6 @@ public:
     CostWeights weights;
     UserPrefs prefs;
     std::unordered_set<std::string> blacklisted_edge_ids;
-
-    /// New virtual-node interface (DEC-001). When `goal_proj.type` is
-    /// ON_EDGE, search terminates at a virtual node sitting on goal_proj.
-    /// Falls back to `goal_node_id` only when `goal_proj.type == INVALID`.
-    StartGoalProjector::Result goal_proj;
   };
 
   struct Result
