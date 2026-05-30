@@ -8,35 +8,23 @@
 #include <vector>
 
 #include "nav2_route_planner/cost_function.hpp"
-#include "nav2_route_planner/start_goal_projector.hpp"
 #include "nav2_route_planner/topo_graph.hpp"
 
 namespace nav2_route_planner
 {
 
-/// A walked sub-arc of one edge between two fractional positions
-/// (t_begin → t_end along from→to). For middle full edges t_begin=0,
-/// t_end=1 (or reversed). For first/last arcs t_begin or t_end may
-/// reflect the start/goal projection fraction.
-struct RouteArc
-{
-  std::string edge_id;
-  double t_begin{0.0};
-  double t_end{1.0};
-};
-
 /// Forward A* search on the road graph.
 ///
-/// Nodes are TopoNode ids; edges are TopoEdge instances. Start may be either
-/// at a node (ON_NODE) or partway along an edge (ON_EDGE) — in the latter
-/// case both endpoints of the edge are treated as virtual entry points with
-/// partial-edge cost on top of the regular A* graph.
+/// Plain node-to-node search: both start and goal are TopoNode ids. When a
+/// pose projects partway along an edge, the caller inserts a virtual node
+/// there (see graph_augmenter) and passes that node's id — A* itself never
+/// deals with partial-edge starts.
 class AStarSearcher
 {
 public:
   struct Request
   {
-    StartGoalProjector::Result start;
+    std::string start_node_id;
     std::string goal_node_id;
     CostWeights weights;
     UserPrefs prefs;
@@ -51,10 +39,6 @@ public:
     double total_cost{0.0};
     std::size_t expanded_nodes{0};       // for diagnostics
     std::string failure_reason;
-
-    /// Sequence of edge-arcs from start projection to goal projection.
-    /// Empty if search did not run the virtual-node path.
-    std::vector<RouteArc> arcs;
   };
 
   /// Search the graph. Caller must hold graph.lockShared() during the call.

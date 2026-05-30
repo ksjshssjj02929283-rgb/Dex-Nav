@@ -51,7 +51,7 @@ AStarSearcher::Result AStarSearcher::search(
   }
   const TopoNode & goal_node = *goal_opt;
 
-  // Build the initial frontier from the start projection.
+  // Seed the frontier from the start node.
   std::priority_queue<OpenEntry, std::vector<OpenEntry>, OpenCmp> open;
   std::unordered_map<std::string, double> g_score;
   std::unordered_map<std::string, CameFrom> came_from;
@@ -64,42 +64,11 @@ AStarSearcher::Result AStarSearcher::search(
       open.push({g + h, node_id});
     };
 
-  if (req.start.type == StartGoalProjector::ResultType::ON_NODE) {
-    pushFrontier(req.start.id, 0.0);
-  } else if (req.start.type == StartGoalProjector::ResultType::ON_EDGE) {
-    auto eit = graph.edges().find(req.start.id);
-    if (eit == graph.edges().end()) {
-      out.failure_reason = "Start projection edge not found: " + req.start.id;
-      return out;
-    }
-    const TopoEdge & e = eit->second;
-    auto from_it = graph.nodes().find(e.from_id);
-    auto to_it = graph.nodes().find(e.to_id);
-    if (from_it == graph.nodes().end() || to_it == graph.nodes().end()) {
-      out.failure_reason = "Start projection edge has dangling endpoints";
-      return out;
-    }
-    // Partial-edge cost proportional to the robot's TRUE position along
-    // the edge. We measure it from `projected_xy` via the chord fraction,
-    // NOT from `edge_sample_index`: a 2-sample LINE edge reports index 0
-    // for any interior projection, which would make t_to_from = 0 and
-    // anchor the robot at `from` (the "loop back to the junction" bug).
-    const double t_to_from = StartGoalProjector::fractionAlongChord(
-      req.start.projected_xy,
-      from_it->second.x, from_it->second.y,
-      to_it->second.x, to_it->second.y);
-    const double t_to_to = 1.0 - t_to_from;
-    double full = computeEdgeCost(e, from_it->second, to_it->second,
-        req.weights, req.prefs);
-    // Seed both endpoints of the start edge. We always allow joining
-    // either endpoint regardless of edge directionality — direction
-    // enforcement happens on the subsequent edges A* expands.
-    pushFrontier(e.from_id, full * t_to_from);
-    pushFrontier(e.to_id, full * t_to_to);
-  } else {
-    out.failure_reason = "Invalid start projection";
+  if (graph.nodes().find(req.start_node_id) == graph.nodes().end()) {
+    out.failure_reason = "Start node not found: " + req.start_node_id;
     return out;
   }
+  pushFrontier(req.start_node_id, 0.0);
 
   // Standard A* main loop.
   while (!open.empty()) {

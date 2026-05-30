@@ -13,7 +13,6 @@
 #include "nav_interfaces/msg/route_plan.hpp"
 
 #include "nav2_route_planner/astar_searcher.hpp"
-#include "nav2_route_planner/start_goal_projector.hpp"
 #include "nav2_route_planner/topo_graph.hpp"
 
 namespace nav2_route_planner
@@ -67,60 +66,26 @@ public:
 
   explicit PathInterpolator(Params p) : p_(p) {}
 
-  /// Build a complete RoutePlan from the A* search result.
+  /// Build a complete RoutePlan from the A* search result over a graph
+  /// already augmented with virtual nodes for the start/goal projections.
   ///
-  /// The output is a sequence of `InterpolatedSegment`s with these
-  /// reserved synthetic edge_ids:
-  ///   • `__start_transition__` — free-space from `start` to the
-  ///     projection point on the graph. ALWAYS emitted. Caller is
-  ///     expected to Theta\*-rewrite this segment so the robot avoids
-  ///     obstacles between `start` and the projected entry point.
-  ///   • `__start_edge_in__`    — sampled along `start_proj.id` from
-  ///     `projected_xy` to the A\*-chosen entry node. Only emitted
-  ///     when `start_proj.type == ON_EDGE` (otherwise the projection
-  ///     point IS the entry node).
-  ///   • <per-edge segments>    — one per edge in `search_result.edge_ids`.
-  ///   • `__goal_edge_out__`    — sampled along `goal_proj.id` from the
-  ///     A\*-exit node to `goal_proj.projected_xy`. Only emitted when
-  ///     `goal_proj.type == ON_EDGE`.
-  ///   • `__goal_alignment__`   — free-space from the projection point
-  ///     to `goal` pose. ALWAYS emitted. Caller is expected to Theta\*-
-  ///     rewrite this segment.
+  /// Because the entry/exit nodes ARE the projection points (virtual nodes
+  /// the augmenter inserted), interpolation is uniform — it just walks the
+  /// A* node/edge sequence. The output segments are:
+  ///   • `__start_transition__` — free-space from `start` to the A* entry
+  ///     node. ALWAYS emitted; the caller Theta\*-rewrites it so the robot
+  ///     reaches the road safely.
+  ///   • <per-edge segments>    — one per edge in `search_result.edge_ids`,
+  ///     sampled along the (sub-)edge geometry. Sub-edge ids carry the
+  ///     parent road edge_id (the synthetic `#n` suffix is stripped).
+  ///   • `__goal_alignment__`   — free-space from the A* exit node to the
+  ///     `goal` pose. ALWAYS emitted; the caller Theta\*-rewrites it.
   ///
   /// Caller must hold graph.lockShared().
   InterpolatedRoutePlan interpolate(
     const geometry_msgs::msg::PoseStamped & start,
     const geometry_msgs::msg::PoseStamped & goal,
-    const StartGoalProjector::Result & start_proj,
-    const StartGoalProjector::Result & goal_proj,
     const AStarSearcher::Result & search_result,
-    const TopoGraph & graph) const;
-
-  /// Build a plan when `start` and `goal` project onto the SAME edge.
-  ///
-  /// This is the dedicated path for the "both projections share an edge"
-  /// case, which the graph A\* cannot serve: A\* blacklists the goal edge
-  /// to force an approach from a NavPoint endpoint, but here the start is
-  /// ON that same edge — blacklisting it forces a detour OUT to an
-  /// endpoint and BACK, i.e. a visible U-turn / loop. The fix is to walk
-  /// the edge geometry DIRECTLY between the two projection points.
-  ///
-  /// Emits the same three reserved segments the planner's Theta\*-rewrite
-  /// stage expects at the ends — `__start_transition__` (front) and
-  /// `__goal_alignment__` (back) — with the real edge segment in between
-  /// (kept as-is so the route stays glued to the road). The middle walk
-  /// uses `edge_sample_index`'s FLOOR semantic so the first sample never
-  /// overshoots the projection.
-  ///
-  /// Preconditions (caller guarantees): start_proj.type == goal_proj.type
-  /// == ON_EDGE and start_proj.id == goal_proj.id. Returns an empty plan
-  /// (no segments) if the edge is missing from the graph.
-  /// Caller must hold graph.lockShared().
-  InterpolatedRoutePlan interpolateSameEdge(
-    const geometry_msgs::msg::PoseStamped & start,
-    const geometry_msgs::msg::PoseStamped & goal,
-    const StartGoalProjector::Result & start_proj,
-    const StartGoalProjector::Result & goal_proj,
     const TopoGraph & graph) const;
 
   /// Sample Bernstein-Bézier curve over control points.

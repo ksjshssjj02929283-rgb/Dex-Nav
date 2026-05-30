@@ -23,6 +23,7 @@
 #include "nav2_route_planner/astar_searcher.hpp"
 #include "nav2_route_planner/cost_function.hpp"
 #include "nav2_route_planner/costmap_aware_layer.hpp"
+#include "nav2_route_planner/graph_augmenter.hpp"
 #include "nav2_route_planner/path_interpolator.hpp"
 #include "nav2_route_planner/route_graph_loader.hpp"
 #include "nav2_route_planner/route_plan_publisher.hpp"
@@ -117,20 +118,6 @@ private:
     const geometry_msgs::msg::PoseStamped & goal,
     const StartGoalProjector::Result & start_proj,
     const StartGoalProjector::Result & goal_proj);
-
-  /// Graph A* with dual-endpoint approach for an edge-projected goal,
-  /// plus fallback. Returns the A* result + chosen goal node +
-  /// diagnostic dt. nullopt when A* failed even after fallback.
-  struct AStarOutcome
-  {
-    AStarSearcher::Result result;
-    std::string goal_node_id;
-    long search_duration_us{0};
-  };
-  std::optional<AStarOutcome> runGraphSearch(
-    const StartGoalProjector::Result & start_proj,
-    const StartGoalProjector::Result & goal_proj,
-    const geometry_msgs::msg::PoseStamped & goal);
 
   /// Theta*-rewrite a placeholder transition segment (start_transition
   /// / goal_alignment). Replaces the segment's samples in-place and

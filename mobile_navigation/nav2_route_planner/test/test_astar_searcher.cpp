@@ -54,13 +54,6 @@ std::unique_ptr<TopoGraph> buildDiamond()
   return g;
 }
 
-StartGoalProjector::Result onNode(const std::string & id)
-{
-  StartGoalProjector::Result r;
-  r.type = StartGoalProjector::ResultType::ON_NODE;
-  r.id = id;
-  return r;
-}
 }  // namespace
 
 TEST(AStarTest, FindsShortestPath)
@@ -69,7 +62,7 @@ TEST(AStarTest, FindsShortestPath)
   auto lock = g->lockShared();
   AStarSearcher s;
   AStarSearcher::Request req;
-  req.start = onNode("A");
+  req.start_node_id = "A";
   req.goal_node_id = "D";
   auto r = s.search(req, *g);
   ASSERT_TRUE(r.success) << r.failure_reason;
@@ -89,7 +82,7 @@ TEST(AStarTest, RespectsBlacklist)
   auto lock = g->lockShared();
   AStarSearcher s;
   AStarSearcher::Request req;
-  req.start = onNode("A");
+  req.start_node_id = "A";
   req.goal_node_id = "D";
   req.blacklisted_edge_ids.insert("e_ab");
   auto r = s.search(req, *g);
@@ -103,71 +96,28 @@ TEST(AStarTest, FailsWhenGoalUnknown)
   auto lock = g->lockShared();
   AStarSearcher s;
   AStarSearcher::Request req;
-  req.start = onNode("A");
+  req.start_node_id = "A";
   req.goal_node_id = "ZZZ";
   auto r = s.search(req, *g);
   EXPECT_FALSE(r.success);
 }
 
-TEST(AStarTest, StartOnEdgePicksClosestEntry)
+TEST(AStarTest, FailsWhenStartUnknown)
 {
   auto g = buildDiamond();
   auto lock = g->lockShared();
   AStarSearcher s;
   AStarSearcher::Request req;
-  // Start projected halfway on e_ab — should still reach D.
-  req.start.type = StartGoalProjector::ResultType::ON_EDGE;
-  req.start.id = "e_ab";
-  req.start.edge_sample_index = 1;
-  req.start.edge_total_samples = 2;
+  req.start_node_id = "ZZZ";
   req.goal_node_id = "D";
   auto r = s.search(req, *g);
-  ASSERT_TRUE(r.success);
-  EXPECT_EQ(r.node_ids.back(), "D");
+  EXPECT_FALSE(r.success);
 }
 
-// Regression for the "loop back to junction" bug: when the robot is ON an
-// edge, the partial-edge cost must reflect its TRUE position along the edge.
-// A 2-sample LINE edge always reports edge_sample_index == 0 (FLOOR
-// semantic), so the old cost `full * (index/(N-1))` collapsed to
-// from-cost = 0 / to-cost = full — i.e. A* treated the robot as sitting at
-// the `from` endpoint regardless of where it actually was. When `from` is a
-// junction, A* rooted the path there and the robot was sent back to the
-// junction before proceeding. The fix uses projected_xy's chord position.
-TEST(AStarTest, StartOnEdgeNoDetourToFarEndpoint)
-{
-  //  F ──E1──→ T       robot is on E1 near T
-  //  T ──Etg─→ G       short approach to the goal (len 1)
-  //  F ──Efg─→ G       long detour back through F (len ~10)
-  auto g = std::make_unique<TopoGraph>();
-  std::vector<TopoNode> ns;
-  TopoNode f; f.id = "F"; f.kind = NodeKind::JUNCTION; f.x = 0; f.y = 0; ns.push_back(f);
-  TopoNode t; t.id = "T"; t.kind = NodeKind::NAV_POINT; t.x = 10; t.y = 0; ns.push_back(t);
-  TopoNode gg; gg.id = "G"; gg.kind = NodeKind::NAV_POINT; gg.x = 10; gg.y = -1; ns.push_back(gg);
-  auto mk = [](const std::string & id, const std::string & a, const std::string & b) {
-      TopoEdge e; e.id = id; e.from_id = a; e.to_id = b;
-      e.geometry = EdgeGeometry::LINE; e.bidirectional = true; return e;
-    };
-  std::vector<TopoEdge> es{mk("E1", "F", "T"), mk("Etg", "T", "G"), mk("Efg", "F", "G")};
-  g->rebuildFrom(std::move(ns), std::move(es));
-  auto lock = g->lockShared();
-
-  AStarSearcher s;
-  AStarSearcher::Request req;
-  req.start.type = StartGoalProjector::ResultType::ON_EDGE;
-  req.start.id = "E1";
-  req.start.projected_xy = {9.0, 0.0};  // robot near the T endpoint
-  req.start.edge_sample_index = 0;       // degenerate for any 2-sample LINE
-  req.start.edge_total_samples = 2;
-  req.goal_node_id = "G";
-
-  auto r = s.search(req, *g);
-  ASSERT_TRUE(r.success) << r.failure_reason;
-  EXPECT_EQ(r.node_ids.front(), "T");    // enters the graph at the near endpoint
-  for (const auto & n : r.node_ids) {
-    EXPECT_NE(n, "F") << "path detoured back to the far junction (loop)";
-  }
-}
+// Note: the former StartOnEdge* tests moved to test_graph_augmenter.cpp —
+// edge-projected starts are now modelled as virtual nodes, so A* only ever
+// sees node-to-node requests. The "no detour back to the far junction"
+// regression lives there as StartOnEdgeNoDetourToFarJunction.
 
 int main(int argc, char ** argv)
 {

@@ -53,6 +53,7 @@ add_library(${library_name} SHARED
   src/topo_graph.cpp
   src/route_graph_loader.cpp
   src/start_goal_projector.cpp
+  src/graph_augmenter.cpp
   src/cost_function.cpp
   src/astar_searcher.cpp
   src/path_interpolator.cpp
@@ -98,6 +99,10 @@ if(BUILD_TESTING)
   ament_add_gtest(test_astar_searcher test/test_astar_searcher.cpp)
   ament_target_dependencies(test_astar_searcher ${dependencies})
   target_link_libraries(test_astar_searcher ${library_name})
+
+  ament_add_gtest(test_graph_augmenter test/test_graph_augmenter.cpp)
+  ament_target_dependencies(test_graph_augmenter ${dependencies})
+  target_link_libraries(test_graph_augmenter ${library_name})
 
   ament_add_gtest(test_path_interpolator test/test_path_interpolator.cpp)
   ament_target_dependencies(test_path_interpolator ${dependencies})
