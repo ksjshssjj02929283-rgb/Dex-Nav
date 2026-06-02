@@ -10,6 +10,7 @@ find_package(geometry_msgs REQUIRED)
 find_package(nav2_costmap_2d REQUIRED)
 find_package(pluginlib REQUIRED)
 find_package(nav_msgs REQUIRED)
+find_package(nav_interfaces REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(nav2_util REQUIRED)
 find_package(nav_msgs REQUIRED)
@@ -25,6 +26,7 @@ set(dependencies
   pluginlib
   visualization_msgs
   nav_msgs
+  nav_interfaces
   tf2_ros
 )
 
