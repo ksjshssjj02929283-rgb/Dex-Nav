@@ -369,7 +369,7 @@ nav_msgs::msg::Path NavRouteGraphPlanner::createPlan(
       if (shifted->projected_xy != start_proj.projected_xy) {
         RCLCPP_INFO(logger_,
           "start_proj shifted past obstacle on edge '%s' "
-          "(%.2f,%.2f) -> (%.2f,%.2f)",
+          "(%.2f,%.2f) -> (%.2f,%.2f). 起点投影 start_proj 落在障碍/高代价区域，已沿 edge 滑动到 clear point。",
           start_proj.id.c_str(),
           start_proj.projected_xy.first, start_proj.projected_xy.second,
           shifted->projected_xy.first, shifted->projected_xy.second);
@@ -378,7 +378,9 @@ nav_msgs::msg::Path NavRouteGraphPlanner::createPlan(
     } else {
       RCLCPP_ERROR(logger_,
         "start_proj on edge '%s' is inside an obstacle and the edge has "
-        "no clear point in the slide direction", start_proj.id.c_str());
+        "no clear point in the slide direction. 起点投影 start_proj 位于障碍/高代价区域，且沿当前滑动方向找不到 clear point，"
+        "本次全局规划将返回 empty path。",
+        start_proj.id.c_str());
       return empty_path;
     }
     if (auto shifted = ca_layer_->shiftProjectionPastObstacle(
@@ -388,7 +390,7 @@ nav_msgs::msg::Path NavRouteGraphPlanner::createPlan(
       if (shifted->projected_xy != goal_proj.projected_xy) {
         RCLCPP_INFO(logger_,
           "goal_proj shifted past obstacle on edge '%s' "
-          "(%.2f,%.2f) -> (%.2f,%.2f)",
+          "(%.2f,%.2f) -> (%.2f,%.2f). 目标投影 goal_proj 落在障碍/高代价区域，已沿 edge 滑动到 clear point。",
           goal_proj.id.c_str(),
           goal_proj.projected_xy.first, goal_proj.projected_xy.second,
           shifted->projected_xy.first, shifted->projected_xy.second);
@@ -397,7 +399,9 @@ nav_msgs::msg::Path NavRouteGraphPlanner::createPlan(
     } else {
       RCLCPP_ERROR(logger_,
         "goal_proj on edge '%s' is inside an obstacle and the edge has "
-        "no clear point in the slide direction", goal_proj.id.c_str());
+        "no clear point in the slide direction. 目标投影 goal_proj 位于障碍/高代价区域，且沿当前滑动方向找不到 clear point，"
+        "本次全局规划将返回 empty path。",
+        goal_proj.id.c_str());
       return empty_path;
     }
   }

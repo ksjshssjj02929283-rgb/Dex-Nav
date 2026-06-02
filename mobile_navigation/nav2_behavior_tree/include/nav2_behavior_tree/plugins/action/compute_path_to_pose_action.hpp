@@ -83,6 +83,10 @@ public:
           "Mapped name to the planner plugin type to use"),
       });
   }
+
+private:
+  bool have_last_goal_{false};
+  geometry_msgs::msg::PoseStamped last_goal_;
 };
 
 }  // namespace nav2_behavior_tree

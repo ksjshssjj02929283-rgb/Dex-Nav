@@ -225,7 +225,8 @@ bool Optimizer::fallback(bool fail)
 
   if (++counter > settings_.retry_attempt_limit) {
     counter = 0;
-    throw std::runtime_error("Optimizer fail to compute path");
+    throw std::runtime_error(
+            "Optimizer fail to compute path. MPPI 优化器连续失败，无法从当前 path/costmap/约束中求出有效控制。");
   }
 
   return true;

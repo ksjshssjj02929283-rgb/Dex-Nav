@@ -78,7 +78,10 @@ double CostmapTopicCollisionChecker::scorePose(
   unsigned int cell_x, cell_y;
   if (!collision_checker_.worldToMap(pose.x, pose.y, cell_x, cell_y)) {
     RCLCPP_DEBUG(rclcpp::get_logger(name_), "Map Cell: [%d, %d]", cell_x, cell_y);
-    throw IllegalPoseException(name_, "Pose Goes Off Grid.");
+    throw IllegalPoseException(
+            name_,
+            "Pose Goes Off Grid. 预测位姿超出 costmap 地图范围，"
+            "常见于后退/前进恢复时预测轨迹离开局部代价地图。");
   }
 
   return collision_checker_.footprintCost(getFootprint(pose, fetch_costmap_and_footprint));

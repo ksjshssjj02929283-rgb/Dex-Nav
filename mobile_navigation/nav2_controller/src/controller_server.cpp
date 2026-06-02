@@ -352,14 +352,15 @@ bool ControllerServer::findControllerId(
   if (controllers_.find(c_name) == controllers_.end()) {
     if (controllers_.size() == 1 && c_name.empty()) {
       RCLCPP_WARN_ONCE(
-        get_logger(), "No controller was specified in action call."
-        " Server will use only plugin loaded %s. "
-        "This warning will appear once.", controller_ids_concat_.c_str());
+        get_logger(), "No controller was specified in action call. "
+        "动作请求没有指定 controller，Server 将使用唯一已加载插件 %s。"
+        "This warning will appear once.",
+        controller_ids_concat_.c_str());
       current_controller = controllers_.begin()->first;
     } else {
       RCLCPP_ERROR(
         get_logger(), "FollowPath called with controller name %s, "
-        "which does not exist. Available controllers are: %s.",
+        "which does not exist. 请求的 controller_id 不存在。Available controllers are: %s.",
         c_name.c_str(), controller_ids_concat_.c_str());
       return false;
     }
@@ -379,13 +380,15 @@ bool ControllerServer::findGoalCheckerId(
     if (goal_checkers_.size() == 1 && c_name.empty()) {
       RCLCPP_WARN_ONCE(
         get_logger(), "No goal checker was specified in parameter 'current_goal_checker'."
-        " Server will use only plugin loaded %s. "
-        "This warning will appear once.", goal_checker_ids_concat_.c_str());
+        " 动作请求没有指定 goal_checker，Server 将使用唯一已加载插件 %s。"
+        "This warning will appear once.",
+        goal_checker_ids_concat_.c_str());
       current_goal_checker = goal_checkers_.begin()->first;
     } else {
       RCLCPP_ERROR(
         get_logger(), "FollowPath called with goal_checker name %s in parameter"
-        " 'current_goal_checker', which does not exist. Available goal checkers are: %s.",
+        " 'current_goal_checker', which does not exist. 请求的 goal_checker_id 不存在。"
+        "Available goal checkers are: %s.",
         c_name.c_str(), goal_checker_ids_concat_.c_str());
       return false;
     }
@@ -522,7 +525,8 @@ void ControllerServer::setPlannerPath(const nav_msgs::msg::Path & path)
     get_logger(),
     "Providing path to the controller %s", current_controller_.c_str());
   if (path.poses.empty()) {
-    throw nav2_core::PlannerException("Invalid path, Path is empty.");
+    throw nav2_core::PlannerException(
+            "Invalid path, Path is empty. 路径无效：path.poses 为空，通常表示 FollowPath 收到了空路径，无法进行局部控制。");
   }
   controllers_[current_controller_]->setPlan(path);
 
@@ -558,7 +562,9 @@ bool ControllerServer::isNearGoal(const geometry_msgs::msg::PoseStamped & pose)
   } catch (const tf2::TransformException & ex) {
     RCLCPP_WARN_THROTTLE(
       get_logger(), *get_clock(), 5000,
-      "Unable to transform end pose for near-goal progress check: %s", ex.what());
+      "Unable to transform end pose for near-goal progress check: %s. "
+      "近目标进度检查无法转换终点位姿，请检查 TF。",
+      ex.what());
     return false;
   }
 
@@ -612,7 +618,8 @@ bool ControllerServer::checkNearGoalProgress(const geometry_msgs::msg::PoseStamp
   RCLCPP_WARN(
     get_logger(),
     "Near-goal progress timeout: elapsed=%.3f s, moved=%.4f m, rotated=%.4f rad, "
-    "required movement=%.4f m or angle=%.4f rad",
+    "required movement=%.4f m or angle=%.4f rad. "
+    "近目标区域进度超时：机器人接近目标后没有满足最小位移或转角要求。",
     elapsed.seconds(), moved_distance, moved_angle,
     near_goal_progress_required_movement_radius_,
     near_goal_progress_required_movement_angle_);
@@ -627,7 +634,8 @@ void ControllerServer::computeAndPublishVelocity()
 
   auto t_pose_start = std::chrono::high_resolution_clock::now();
   if (!getRobotPose(pose)) {
-    throw nav2_core::PlannerException("Failed to obtain robot pose");
+    throw nav2_core::PlannerException(
+            "Failed to obtain robot pose. 获取机器人位姿失败，通常需要检查 TF、定位状态或 costmap frame。");
   }
   auto t_pose_end = std::chrono::high_resolution_clock::now();
   auto pose_ms = std::chrono::duration<double, std::milli>(t_pose_end - t_pose_start).count();
@@ -635,7 +643,8 @@ void ControllerServer::computeAndPublishVelocity()
   auto t_progress_start = std::chrono::high_resolution_clock::now();
   if (near_goal_progress_enabled_ && isNearGoal(pose)) {
     if (!checkNearGoalProgress(pose)) {
-      throw nav2_core::PlannerException("Failed to make near-goal progress");
+      throw nav2_core::PlannerException(
+              "Failed to make near-goal progress. 接近目标点后长时间没有足够位移/转角，可能卡住或被约束。");
     }
   } else {
     if (in_near_goal_progress_mode_) {
@@ -644,7 +653,8 @@ void ControllerServer::computeAndPublishVelocity()
       progress_checker_->reset();
     }
     if (!progress_checker_->check(pose)) {
-      throw nav2_core::PlannerException("Failed to make progress");
+      throw nav2_core::PlannerException(
+              "Failed to make progress. 进度检查失败，机器人在规定时间内没有有效前进，可能被障碍、空路径或控制失败卡住。");
     }
   }
   auto t_progress_end = std::chrono::high_resolution_clock::now();
@@ -679,7 +689,8 @@ void ControllerServer::computeAndPublishVelocity()
       if ((now() - last_valid_cmd_time_).seconds() > failure_tolerance_ &&
         failure_tolerance_ != -1.0)
       {
-        throw nav2_core::PlannerException("Controller patience exceeded");
+        throw nav2_core::PlannerException(
+                "Controller patience exceeded. 局部控制器在 failure_tolerance 时间内没有生成有效速度，控制耐心超时。");
       }
     } else {
       throw nav2_core::PlannerException(e.what());
@@ -748,7 +759,7 @@ void ControllerServer::updateGlobalPath()
       current_controller_ = current_controller;
     } else {
       RCLCPP_INFO(
-        get_logger(), "Terminating action, invalid controller %s requested.",
+        get_logger(), "Terminating action, invalid controller %s requested. 终止导航：请求的 controller_id 无效。",
         goal->controller_id.c_str());
       action_server_->terminate_current();
       return;
@@ -758,7 +769,7 @@ void ControllerServer::updateGlobalPath()
       current_goal_checker_ = current_goal_checker;
     } else {
       RCLCPP_INFO(
-        get_logger(), "Terminating action, invalid goal checker %s requested.",
+        get_logger(), "Terminating action, invalid goal checker %s requested. 终止导航：请求的 goal_checker_id 无效。",
         goal->goal_checker_id.c_str());
       action_server_->terminate_current();
       return;

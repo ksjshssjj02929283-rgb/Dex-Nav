@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <cmath>
 #include <memory>
 #include <string>
 
@@ -19,6 +20,26 @@
 
 namespace nav2_behavior_tree
 {
+
+namespace
+{
+
+bool isSameGoal(
+  const geometry_msgs::msg::PoseStamped & a,
+  const geometry_msgs::msg::PoseStamped & b)
+{
+  constexpr double kEpsilon = 1e-6;
+  return a.header.frame_id == b.header.frame_id &&
+         std::abs(a.pose.position.x - b.pose.position.x) < kEpsilon &&
+         std::abs(a.pose.position.y - b.pose.position.y) < kEpsilon &&
+         std::abs(a.pose.position.z - b.pose.position.z) < kEpsilon &&
+         std::abs(a.pose.orientation.x - b.pose.orientation.x) < kEpsilon &&
+         std::abs(a.pose.orientation.y - b.pose.orientation.y) < kEpsilon &&
+         std::abs(a.pose.orientation.z - b.pose.orientation.z) < kEpsilon &&
+         std::abs(a.pose.orientation.w - b.pose.orientation.w) < kEpsilon;
+}
+
+}  // namespace
 
 ComputePathToPoseAction::ComputePathToPoseAction(
   const std::string & xml_tag_name,
@@ -32,35 +53,73 @@ void ComputePathToPoseAction::on_tick()
 {
   getInput("goal", goal_.goal);
   getInput("planner_id", goal_.planner_id);
+  goal_.use_start = false;
   if (getInput("start", goal_.start)) {
     goal_.use_start = true;
   }
+
+  if (!have_last_goal_ || !isSameGoal(last_goal_, goal_.goal)) {
+    nav_msgs::msg::Path empty_path;
+    setOutput("path", empty_path);
+    RCLCPP_INFO(
+      node_->get_logger(),
+      "[BT][Action:ComputePathToPose] 检测到新 goal，清空旧 path，"
+      "避免新目标误跟踪上一目标路径；"
+      "frame_id='%s'，goal=(%.3f, %.3f)",
+      goal_.goal.header.frame_id.c_str(), goal_.goal.pose.position.x, goal_.goal.pose.position.y);
+    last_goal_ = goal_.goal;
+    have_last_goal_ = true;
+  }
+
+  RCLCPP_INFO(
+    node_->get_logger(),
+    "[BT][Action:ComputePathToPose] 开始请求全局规划，planner_id='%s'，goal=(%.3f, %.3f)，use_start=%s",
+    goal_.planner_id.c_str(), goal_.goal.pose.position.x, goal_.goal.pose.position.y,
+    goal_.use_start ? "true" : "false");
 }
 
 BT::NodeStatus ComputePathToPoseAction::on_success()
 {
+  if (result_.result->path.poses.empty()) {
+    RCLCPP_WARN(
+      node_->get_logger(),
+      "******************** [BT Action WARNING][ComputePathToPose] ******************** "
+      "全局规划 SUCCESS 但 path poses=0，本次不覆盖旧 path，返回 SUCCESS；"
+      "如果已有旧 path，FollowPath 将继续跟踪旧路径；"
+      "如果没有旧 path，FollowPath 将等待下一次重规划");
+    return BT::NodeStatus::SUCCESS;
+  }
+
   setOutput("path", result_.result->path);
+  RCLCPP_INFO(
+    node_->get_logger(),
+    "[BT][Action:ComputePathToPose] 全局规划 SUCCESS，planner_id='%s'，path poses=%zu",
+    goal_.planner_id.c_str(), result_.result->path.poses.size());
   return BT::NodeStatus::SUCCESS;
 }
 
 BT::NodeStatus ComputePathToPoseAction::on_aborted()
 {
-  nav_msgs::msg::Path empty_path;
-  setOutput("path", empty_path);
+  RCLCPP_WARN(
+    node_->get_logger(),
+    "******************** [BT Action ABORTED][ComputePathToPose] ******************** "
+    "全局规划 ABORTED，planner_id='%s'，不覆盖旧 path，返回 FAILURE；"
+    "后续是否继续重试由 RecoveryNode 的 retry 计数决定",
+    goal_.planner_id.c_str());
   return BT::NodeStatus::FAILURE;
 }
 
 BT::NodeStatus ComputePathToPoseAction::on_cancelled()
 {
-  nav_msgs::msg::Path empty_path;
-  setOutput("path", empty_path);
+  RCLCPP_INFO(
+    node_->get_logger(),
+    "[BT][Action:ComputePathToPose] 全局规划 CANCELED，planner_id='%s'，不覆盖旧 path，返回 SUCCESS",
+    goal_.planner_id.c_str());
   return BT::NodeStatus::SUCCESS;
 }
 
 void ComputePathToPoseAction::halt()
 {
-  nav_msgs::msg::Path empty_path;
-  setOutput("path", empty_path);
   BtActionNode::halt();
 }
 
