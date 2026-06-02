@@ -312,7 +312,7 @@ global_costmap:
       # footprint: "[ [0.55, 0.35], [0.55, -0.35], [-0.55, -0.35], [-0.55, 0.35] ]" # Slightly increased for better planning efficiency and safety (real size: 0.95*0.55)
       footprint: "[[0.35, 0.29], [0.35, -0.29], [-0.35, -0.29], [-0.35, 0.29]]" # Slightly increased for better planning efficiency and safety (real size: 0.95*0.55)
       resolution: 0.05
-      track_unknown_space: true   # 记录未知格为 255(NO_INFORMATION)，配合各 planner allow_unknown:false 实现"不穿未知"；false 时未知会被当空闲(0)，allow_unknown 无效
+      track_unknown_space: true   # 静态未知记录为 NO_INFORMATION(255)；配合 obstacle_layer combination_method:2 保住不被清除，规划器靠 allow_unknown:false 避开
       # plugins: ["static_layer", "obstacle_layer",  "denoise_layer", "inflation_layer"]
       # plugins: ["static_layer", "voxel_layer", "denoise_layer", "inflation_layer"]
       plugins: ["static_layer", "obstacle_layer", "denoise_layer", "inflation_layer"]
@@ -320,10 +320,11 @@ global_costmap:
       denoise_layer:
         plugin: "nav2_costmap_2d::DenoiseLayer"
         enabled: True
-     
+
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
         enabled: True
+        combination_method: 2   # MaxWithoutUnknownOverwrite（本仓 backport）：raytrace 清除不覆盖静态未知，保住 NO_INFORMATION
         observation_sources: scan_1 scan_2 orbbec_rear_marked orbbec_front_marked
         footprint_clearing_enabled: true
         max_obstacle_height: 2.0

@@ -129,6 +129,20 @@ protected:
     int max_j);
 
   /*
+   * Updates the master_grid within the specified bounding box using this
+   * layer's values, like updateWithMax — EXCEPT a master cell that is
+   * NO_INFORMATION is left untouched (the layer never overwrites unknown).
+   *
+   * Backported from upstream nav2 (combination_method 2). Lets a static
+   * map's unknown survive an obstacle layer whose raytrace clears cells to
+   * FREE: without this, updateWithMax overwrites the master's unknown with
+   * the layer's free, erasing unmapped areas from the global costmap.
+   */
+  void updateWithMaxWithoutUnknownOverwrite(
+    nav2_costmap_2d::Costmap2D & master_grid, int min_i, int min_j, int max_i,
+    int max_j);
+
+  /*
    * Updates the master_grid within the specified
    * bounding box using this layer's values.
    *

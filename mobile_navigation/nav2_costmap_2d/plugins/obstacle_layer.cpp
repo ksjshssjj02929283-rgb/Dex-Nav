@@ -619,6 +619,9 @@ ObstacleLayer::updateCosts(
     case 1:  // Maximum
       updateWithMax(master_grid, min_i, min_j, max_i, max_j);
       break;
+    case 2:  // Maximum，但不覆盖主栅格里的未知（保住静态地图的 NO_INFORMATION）
+      updateWithMaxWithoutUnknownOverwrite(master_grid, min_i, min_j, max_i, max_j);
+      break;
     default:  // Nothing
       break;
   }
