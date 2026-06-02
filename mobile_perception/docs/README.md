@@ -41,6 +41,118 @@ ros2 launch mobile_perception mobile_control_action.launch.py
 
 - `config/mobile_control_action_params.yaml`
 
+## 当前二维码检测与 Action 精控链路
+
+当前应用的二维码检测节点使用
+`mobile_perception/src/apriltag_alignment_tf_node.cpp`，控制节点使用
+`mobile_control_action_node` 的 Action 接口。推荐链路为：
+
+1. 启动 `apriltag_alignment_tf_node`。
+2. 调用 `start_apriltag_detection` 开始检测二维码。
+3. 节点检测到 AprilTag 后发布 `apriltag_target_pose`。
+4. 上游编排节点或客户端读取目标位姿，并作为 `target_pose` 发送到
+   `control/precise_control`。
+5. `mobile_control_action_node` 将目标转换到 `map`，再在控制循环中转换回
+   `base_link` 计算误差并发布 `control/cmd_vel`。
+
+### 二维码检测节点
+
+`apriltag_alignment_tf_node` 默认从 `config/camera_config.json` 读取第一路相机配置，
+从 `config/tags_config.json` 读取 tag 尺寸。节点启动后只创建启停服务；真正的图像订阅、
+detector、TF listener/broadcaster 和发布器会在调用 `start_apriltag_detection` 后创建。
+调用 `stop_apriltag_detection` 后会释放这些资源，以降低空闲时 CPU 占用。
+
+主要接口：
+
+- 服务 `start_apriltag_detection` (`std_srvs/srv/Trigger`)。
+- 服务 `stop_apriltag_detection` (`std_srvs/srv/Trigger`)。
+- 订阅图像话题：默认来自 `camera_config.json` 的 `cameras[0].topic_name`，可通过
+  `image_topic` 参数覆盖。
+- 发布 `apriltag_poses_debug` (`geometry_msgs/msg/PoseArray`)：检测到的 raw tag 位姿，
+  frame 为 `base_link`。
+- 发布 `apriltag_target_pose` (`geometry_msgs/msg/PoseStamped`)：用于后续精控的目标位姿。
+- 可选发布 TF：`apriltag_raw_<id>`、`apriltag_aligned_<id>`、`apriltag_target_<id>`。
+
+坐标和目标点逻辑：
+
+- 节点依赖 `base_link -> camera_link` TF，`camera_link` 默认来自相机配置，也可通过参数覆盖。
+- raw tag 位姿先由相机坐标转换到 `base_link`。
+- aligned tag 姿态会移除固定 tag-frame 姿态偏置，使居中的充电二维码与 `base_link` 姿态对齐。
+- `apriltag_target_pose` 以 `apriltag_aligned_<id>` 姿态为基准，沿其 X 轴偏移
+  `target_forward_offset`，默认值为 `0.67` 米。
+- `target_frame` 默认是 `base_link`；如果改成其他 frame，节点会通过 TF 将目标位姿转换到
+  指定 frame 后发布。
+
+常用参数：
+
+- `image_topic`
+- `camera_link`
+- `tag_size`
+- `pose_topic`
+- `publish_tag_tf`
+- `publish_aligned_tf`
+- `raw_frame_prefix`
+- `aligned_frame_prefix`
+- `publish_target_pose`
+- `publish_target_tf`
+- `target_pose_topic`
+- `target_frame`
+- `target_frame_prefix`
+- `target_forward_offset`
+
+运行示例：
+
+```bash
+ros2 run mobile_perception apriltag_alignment_tf_node
+ros2 service call /start_apriltag_detection std_srvs/srv/Trigger {}
+```
+
+停止检测：
+
+```bash
+ros2 service call /stop_apriltag_detection std_srvs/srv/Trigger {}
+```
+
+### Action 精控节点
+
+`mobile_control_action_node` 提供 `control/precise_control`
+(`nav_interfaces/action/PreciseControl`)。Action goal 的 `target_pose` 是
+`geometry_msgs/msg/PoseStamped`，可直接使用 `apriltag_target_pose` 中的位姿，前提是
+TF 树能把该目标从其 `header.frame_id` 转换到 `map`。
+
+控制行为：
+
+- 收到 goal 后先将目标转换到 `map`；转换失败会拒绝或 abort 该 goal。
+- 控制循环中持续查询 `base_link <- map` TF，把目标转回 `base_link` 计算位置和角度误差。
+- 默认根据目标输入判断 `STRAIGHT` 或 `ROTATE` 模式。
+- 发布 `control/cmd_vel`，并订阅 `feedback/odom` 用于限加速度和平滑停车。
+- feedback 的 `current_status` 包括 `IDLE`、`CONTROL`、`CANCELLING`、`SUCCEEDED`。
+- result 成功时 `success=true`、`message=SUCCEEDED`；取消完成时
+  `success=false`、`message=CANCELLED`。
+
+运行示例：
+
+```bash
+ros2 launch mobile_perception mobile_control_action.launch.py
+```
+
+发送示例 goal：
+
+```bash
+ros2 action send_goal /control/precise_control nav_interfaces/action/PreciseControl \
+  "{target_pose: {header: {frame_id: base_link}, pose: {position: {x: 0.67, y: 0.0, z: 0.0}, orientation: {w: 1.0}}}}" \
+  --feedback
+```
+
+实机注意：
+
+- 不要同时运行 `mobile_control_node` 和 `mobile_control_action_node` 控制同一个
+  `control/cmd_vel` 链路。
+- 使用二维码目标控制前，确认 `map`、`base_link`、`camera_link` TF 连通。
+- `apriltag_target_pose` 默认发布在 `base_link`，如果上游需要跨时间使用目标，建议客户端在接收后尽快发送 Action goal，或将 `target_frame` 配置为稳定的全局 frame。
+- 使用 Action cancel 时，节点不会立即断速度，而是按当前 `feedback/odom` 速度平滑停车后返回
+  `CANCELLED`。
+
 ## obstacle_detector_node
 
 `obstacle_detector_node` 是 C++ 前方障碍检测节点，来自旧工作区
