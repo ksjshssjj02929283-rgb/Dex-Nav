@@ -282,7 +282,9 @@ void KeepoutFilter::process(
         if (data == NO_INFORMATION) {
           continue;
         }
-        if (data > old_data || old_data == NO_INFORMATION) {
+        // 主栅格为未知(NO_INFORMATION)时，只有 mask 给出非 free 值（禁区/膨胀）才覆盖；
+        // mask 的 free(0) 不得把静态未知冲成 free，否则会抹掉 costmap 里的未知区。
+        if (data > old_data || (old_data == NO_INFORMATION && data != FREE_SPACE)) {
           master_array[index] = data;
         }
       }
