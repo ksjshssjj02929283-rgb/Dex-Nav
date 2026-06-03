@@ -7,11 +7,34 @@
 #include <limits>
 #include <memory>
 #include <mutex>
+#include <sstream>
 #include <utility>
 #include <vector>
 
 namespace nav2_route_planner
 {
+
+namespace
+{
+
+std::string costName(unsigned char cost)
+{
+  if (cost == nav2_costmap_2d::FREE_SPACE) {
+    return "FREE_SPACE/free";
+  }
+  if (cost == nav2_costmap_2d::NO_INFORMATION) {
+    return "NO_INFORMATION/unknown";
+  }
+  if (cost == nav2_costmap_2d::LETHAL_OBSTACLE) {
+    return "LETHAL_OBSTACLE/lethal";
+  }
+  if (cost == nav2_costmap_2d::INSCRIBED_INFLATED_OBSTACLE) {
+    return "INSCRIBED_INFLATED_OBSTACLE/inscribed";
+  }
+  return "INFLATED_OR_WEIGHTED_COST/inflated";
+}
+
+}  // namespace
 
 CostmapAwareLayer::CostmapAwareLayer(
   rclcpp_lifecycle::LifecycleNode::WeakPtr parent,
@@ -65,38 +88,137 @@ void CostmapAwareLayer::updateParams(const Params & p)
   }
 }
 
+std::string CostmapAwareLayer::describeLastThetaStarFailure() const
+{
+  if (!last_theta_star_failure_) {
+    return "没有最近一次 Theta* 失败诊断(no recent Theta* failure diagnostic)";
+  }
+
+  const auto & d = *last_theta_star_failure_;
+  std::ostringstream oss;
+  switch (d.reason) {
+    case ThetaStarFailureDiagnostic::Reason::UNAVAILABLE:
+      oss << "Theta* 或 costmap 不可用(theta_star/costmap unavailable)";
+      break;
+    case ThetaStarFailureDiagnostic::Reason::OUT_OF_BOUNDS:
+      oss << "端点超出代价地图范围(out of costmap bounds): "
+          << "start=" << (d.start_in_bounds ? "IN" : "OUT")
+          << ", goal=" << (d.goal_in_bounds ? "IN" : "OUT");
+      if (d.start_in_bounds) {
+        oss << ", start_cell=(" << d.start_mx << "," << d.start_my << ")";
+      }
+      if (d.goal_in_bounds) {
+        oss << ", goal_cell=(" << d.goal_mx << "," << d.goal_my << ")";
+      }
+      break;
+    case ThetaStarFailureDiagnostic::Reason::UNSAFE_ENDPOINT:
+      oss << "端点代价不安全(endpoint unsafe): "
+          << "start_cost=" << static_cast<int>(d.start_cost)
+          << "(" << costName(d.start_cost) << "), "
+          << "goal_cost=" << static_cast<int>(d.goal_cost)
+          << "(" << costName(d.goal_cost) << "), "
+          << "allow_unknown=" << (d.allow_unknown ? "true" : "false")
+          << "; Theta* 只允许 FREE_SPACE(0)"
+          << (d.allow_unknown ? " 或 NO_INFORMATION(255)" : "")
+          << " 作为安全端点";
+      break;
+    case ThetaStarFailureDiagnostic::Reason::NO_PATH:
+      oss << "端点在图内且安全，但 Theta* 搜索不到连通路径(no path found): "
+          << "start_cell=(" << d.start_mx << "," << d.start_my << ")"
+          << ", goal_cell=(" << d.goal_mx << "," << d.goal_my << ")"
+          << ", start_cost=" << static_cast<int>(d.start_cost)
+          << "(" << costName(d.start_cost) << ")"
+          << ", goal_cost=" << static_cast<int>(d.goal_cost)
+          << "(" << costName(d.goal_cost) << ")";
+      break;
+    case ThetaStarFailureDiagnostic::Reason::NONE:
+    default:
+      oss << "没有失败原因(no failure reason)";
+      break;
+  }
+  return oss.str();
+}
+
 std::optional<std::vector<geometry_msgs::msg::PoseStamped>>
 CostmapAwareLayer::planWithThetaStar(
   const geometry_msgs::msg::PoseStamped & seg_start,
   const geometry_msgs::msg::PoseStamped & seg_end)
 {
-  if (!theta_star_ || !costmap_) {return std::nullopt;}
+  last_theta_star_failure_.reset();
+  if (!theta_star_ || !costmap_) {
+    ThetaStarFailureDiagnostic d;
+    d.reason = ThetaStarFailureDiagnostic::Reason::UNAVAILABLE;
+    d.allow_unknown = p_.theta_star_allow_unknown;
+    last_theta_star_failure_ = d;
+    RCLCPP_WARN(logger_, "planWithThetaStar: %s", describeLastThetaStarFailure().c_str());
+    return std::nullopt;
+  }
 
   // Re-attach costmap pointer in case the wrapper was just reactivated.
   theta_star_->costmap_ = costmap_;
 
   // Both endpoints must be in-bounds.
-  unsigned int mxs, mys, mxg, myg;
+  unsigned int mxs{0}, mys{0}, mxg{0}, myg{0};
+  unsigned char start_cost = nav2_costmap_2d::NO_INFORMATION;
+  unsigned char goal_cost = nav2_costmap_2d::NO_INFORMATION;
   {
     std::unique_lock<nav2_costmap_2d::Costmap2D::mutex_t> lock(*costmap_->getMutex());
-    if (!costmap_->worldToMap(seg_start.pose.position.x, seg_start.pose.position.y, mxs, mys) ||
-      !costmap_->worldToMap(seg_end.pose.position.x, seg_end.pose.position.y, mxg, myg))
-    {
-      RCLCPP_WARN(logger_, "planWithThetaStar: endpoints out of costmap bounds");
+    const bool start_in_bounds =
+      costmap_->worldToMap(seg_start.pose.position.x, seg_start.pose.position.y, mxs, mys);
+    const bool goal_in_bounds =
+      costmap_->worldToMap(seg_end.pose.position.x, seg_end.pose.position.y, mxg, myg);
+    if (!start_in_bounds || !goal_in_bounds) {
+      ThetaStarFailureDiagnostic d;
+      d.reason = ThetaStarFailureDiagnostic::Reason::OUT_OF_BOUNDS;
+      d.start_in_bounds = start_in_bounds;
+      d.goal_in_bounds = goal_in_bounds;
+      d.start_mx = mxs;
+      d.start_my = mys;
+      d.goal_mx = mxg;
+      d.goal_my = myg;
+      d.allow_unknown = p_.theta_star_allow_unknown;
+      last_theta_star_failure_ = d;
+      RCLCPP_WARN(logger_, "planWithThetaStar: %s", describeLastThetaStarFailure().c_str());
       return std::nullopt;
     }
+
+    start_cost = costmap_->getCost(mxs, mys);
+    goal_cost = costmap_->getCost(mxg, myg);
   }
 
   theta_star_->setStartAndGoal(seg_start, seg_end);
   if (theta_star_->isUnsafeToPlan()) {
-    RCLCPP_WARN(logger_,
-      "planWithThetaStar: unsafe to plan (start or goal in lethal cost)");
+    ThetaStarFailureDiagnostic d;
+    d.reason = ThetaStarFailureDiagnostic::Reason::UNSAFE_ENDPOINT;
+    d.start_in_bounds = true;
+    d.goal_in_bounds = true;
+    d.start_mx = mxs;
+    d.start_my = mys;
+    d.goal_mx = mxg;
+    d.goal_my = myg;
+    d.start_cost = start_cost;
+    d.goal_cost = goal_cost;
+    d.allow_unknown = p_.theta_star_allow_unknown;
+    last_theta_star_failure_ = d;
+    RCLCPP_WARN(logger_, "planWithThetaStar: %s", describeLastThetaStarFailure().c_str());
     return std::nullopt;
   }
 
   std::vector<coordsW> raw;
   if (!theta_star_->generatePath(raw) || raw.empty()) {
-    RCLCPP_WARN(logger_, "planWithThetaStar: ThetaStar failed to generate path");
+    ThetaStarFailureDiagnostic d;
+    d.reason = ThetaStarFailureDiagnostic::Reason::NO_PATH;
+    d.start_in_bounds = true;
+    d.goal_in_bounds = true;
+    d.start_mx = mxs;
+    d.start_my = mys;
+    d.goal_mx = mxg;
+    d.goal_my = myg;
+    d.start_cost = start_cost;
+    d.goal_cost = goal_cost;
+    d.allow_unknown = p_.theta_star_allow_unknown;
+    last_theta_star_failure_ = d;
+    RCLCPP_WARN(logger_, "planWithThetaStar: %s", describeLastThetaStarFailure().c_str());
     return std::nullopt;
   }
 

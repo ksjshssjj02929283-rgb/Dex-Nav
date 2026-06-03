@@ -5,12 +5,14 @@
 
 #include <memory>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_lifecycle/lifecycle_node.hpp"
 
 #include "geometry_msgs/msg/pose_stamped.hpp"
+#include "nav2_costmap_2d/cost_values.hpp"
 #include "nav2_costmap_2d/costmap_2d.hpp"
 #include "nav2_costmap_2d/costmap_2d_ros.hpp"
 #include "nav2_theta_star_planner/theta_star.hpp"
@@ -66,6 +68,29 @@ public:
   void updateParams(const Params & p);  // safe to call at runtime
   bool isLayer2Enabled() const {return p_.costmap_aware_mode;}
 
+  struct ThetaStarFailureDiagnostic
+  {
+    enum class Reason
+    {
+      NONE,
+      UNAVAILABLE,
+      OUT_OF_BOUNDS,
+      UNSAFE_ENDPOINT,
+      NO_PATH,
+    };
+
+    Reason reason{Reason::NONE};
+    bool start_in_bounds{false};
+    bool goal_in_bounds{false};
+    unsigned int start_mx{0};
+    unsigned int start_my{0};
+    unsigned int goal_mx{0};
+    unsigned int goal_my{0};
+    unsigned char start_cost{nav2_costmap_2d::NO_INFORMATION};
+    unsigned char goal_cost{nav2_costmap_2d::NO_INFORMATION};
+    bool allow_unknown{false};
+  };
+
   /// General-purpose Theta* planner on the live costmap. Used by all
   /// three call sites:
   ///   (a) start → graph entry  (Layer 1, mandatory)
@@ -73,13 +98,16 @@ public:
   ///   (c) in-graph obstacle bypass (Layer 2, gated)
   ///
   /// Returns sampled poses (start->end order, dense at half costmap
-  /// resolution) or nullopt on failure (out of bounds / endpoint in
-  /// lethal / no path). Failure is the caller's signal that the
-  /// transition is unreachable.
+  /// resolution) or nullopt on failure. On failure,
+  /// describeLastThetaStarFailure() explains whether the cause was
+  /// out of bounds, unsafe endpoint cost, missing path connectivity, or
+  /// unavailable Theta*/costmap state.
   std::optional<std::vector<geometry_msgs::msg::PoseStamped>>
   planWithThetaStar(
     const geometry_msgs::msg::PoseStamped & seg_start,
     const geometry_msgs::msg::PoseStamped & seg_end);
+
+  std::string describeLastThetaStarFailure() const;
 
   // ─── Layer 2 (in-graph obstacle detection) ──────────────────────────
   struct ObstacleSegment
@@ -139,6 +167,7 @@ private:
   std::unique_ptr<theta_star::ThetaStar> theta_star_;
 
   Params p_;
+  std::optional<ThetaStarFailureDiagnostic> last_theta_star_failure_;
 };
 
 }  // namespace nav2_route_planner

@@ -7,15 +7,19 @@
   - Even if clearing fails, the tree still retries ComputePathToPose.
   - If the inner retry still fails, wait 2 seconds, try clearing global costmap again,
     and then enter the next planning retry loop.
+  - The outer retry count is intentionally large so temporary dynamic obstacles
+    do not make the whole navigation action fail before a later replan succeeds.
 
   Local control recovery:
   - If FollowPath fails, try clearing the local costmap.
   - Even if clearing fails, the tree still retries FollowPath immediately.
   - If the inner retry still fails, perform Spin 90 degrees, Wait 2 seconds,
     try clearing local costmap again, and then retry FollowPath.
-  - If the 6 outer FollowPath retries are exhausted, back up 0.30 m, clear
-    local costmap, and then give the local control retry loop another 6 tries.
-  - This back-up recovery can happen at most 3 times.
+  - If the 6 outer FollowPath retries are exhausted, try backing up 0.30 m,
+    then clear local costmap and retry local control again.
+  - BackUp is treated as an optional recovery action: if backing up is blocked
+    or out of the local costmap, navigation keeps waiting/retrying instead of
+    failing the whole goal.
 -->
 
 <root main_tree_to_execute="MainTree">
@@ -24,7 +28,7 @@
 
       <!-- 全局规划：每 3 秒重规划一次 -->
       <RateController hz="0.333">
-        <RecoveryNode number_of_retries="6" name="ComputePathToPoseOuterRetry">
+        <RecoveryNode number_of_retries="999999" name="ComputePathToPoseOuterRetry">
 
           <!-- 内层：规划失败后，尝试清 global，然后立即重规划 1 次 -->
           <RecoveryNode number_of_retries="1" name="ComputePathToPoseInnerRetry">
@@ -51,7 +55,7 @@
 
 
       <!-- 局部控制 -->
-      <RecoveryNode number_of_retries="3" name="FollowPathAfterBackUpRetry">
+      <RecoveryNode number_of_retries="999999" name="FollowPathAfterBackUpRetry">
 
         <!-- 常规局部恢复：最多执行 6 轮 wait_local + clear local -->
         <RecoveryNode number_of_retries="6" name="FollowPathOuterRetry">
@@ -79,10 +83,12 @@
 
         </RecoveryNode>
 
-        <!-- 兜底恢复：局部控制 6 轮恢复全部失败后，后退一小段距离 -->
-        <!-- 最多后退 3 次，每次后退后重新执行 6 轮局部恢复 -->
+        <!-- 兜底恢复：局部控制 6 轮恢复全部失败后，尝试后退一小段距离 -->
+        <!-- 后退失败不再终止导航，随后清理局部代价地图并继续等待/重试 -->
         <Sequence name="BackUpClearLocalAfterFollowPathExhausted">
-          <BackUp name="BackUpAfterLocalRetries" backup_dist="0.30" backup_speed="0.05" time_allowance="10"/>
+          <ForceSuccess>
+            <BackUp name="BackUpAfterLocalRetries" backup_dist="0.30" backup_speed="0.05" time_allowance="10"/>
+          </ForceSuccess>
           <ForceSuccess>
             <ClearEntireCostmap name="ClearLocalCostmap-AfterBackUp"
               service_name="local_costmap/clear_entirely_local_costmap"/>

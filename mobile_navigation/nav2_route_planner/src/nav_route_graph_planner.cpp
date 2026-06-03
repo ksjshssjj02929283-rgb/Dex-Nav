@@ -656,7 +656,8 @@ NavRouteGraphPlanner::trySameSideShortcut(
   if (!direct || direct->empty()) {
     RCLCPP_WARN(logger_,
       "Same-side shortcut: proj distance %.2fm < threshold but Theta* "
-      "direct failed; falling through to graph routing", proj_dist);
+      "direct failed; falling through to graph routing. 诊断(diagnostic): %s",
+      proj_dist, ca_layer_->describeLastThetaStarFailure().c_str());
     return std::nullopt;
   }
 
@@ -711,11 +712,12 @@ bool NavRouteGraphPlanner::rewriteTransitionWithThetaStar(
   auto theta_path = ca_layer_->planWithThetaStar(seg_start, seg_end);
   if (!theta_path) {
     RCLCPP_ERROR(logger_,
-      "Theta* failed for '%s' (%.2f, %.2f) -> (%.2f, %.2f) — "
-      "endpoint unreachable (in obstacle / out of bounds / no path)",
+      "Theta* 接入段规划失败(transition planning failed) for '%s': "
+      "(%.2f, %.2f) -> (%.2f, %.2f). 具体原因(diagnostic): %s",
       expected_id.c_str(),
       seg_start.pose.position.x, seg_start.pose.position.y,
-      seg_end.pose.position.x, seg_end.pose.position.y);
+      seg_end.pose.position.x, seg_end.pose.position.y,
+      ca_layer_->describeLastThetaStarFailure().c_str());
     return false;
   }
   seg.samples = std::move(*theta_path);
@@ -858,10 +860,12 @@ void NavRouteGraphPlanner::applyObstacleBypass(
     if (!bypass || bypass->empty()) {
       RCLCPP_WARN(logger_,
         "Layer 2: bypass failed for obstacle [%zu..%zu] "
-        "(%.2f,%.2f)->(%.2f,%.2f) — keeping original path here",
+        "(%.2f,%.2f)->(%.2f,%.2f) — keeping original path here. "
+        "诊断(diagnostic): %s",
         ob.start_index, ob.end_index,
         seg_start.pose.position.x, seg_start.pose.position.y,
-        seg_end.pose.position.x, seg_end.pose.position.y);
+        seg_end.pose.position.x, seg_end.pose.position.y,
+        ca_layer_->describeLastThetaStarFailure().c_str());
       continue;
     }
 
