@@ -308,6 +308,7 @@ nav_msgs::msg::Path NavRouteGraphPlanner::createPlan(
   nav_msgs::msg::Path empty_path;
   empty_path.header.frame_id = global_frame_;
   empty_path.header.stamp = clock_->now();
+  last_fallback_reason_ = FallbackReason::NONE;  // set below only on the no-graph bail-out
 
   // Per-request synchronous reload: ensure each plan uses the latest
   // RouteGraph from map_asset_manager. Timings logged for
@@ -338,6 +339,7 @@ nav_msgs::msg::Path NavRouteGraphPlanner::createPlan(
   // After syncLoad: the graph must be populated (either by this call
   // or by an earlier background poll). Otherwise the BT/caller retries.
   if (!graph_->isReady()) {
+    last_fallback_reason_ = FallbackReason::NO_ROUTE_GRAPH;  // ask PlannerServer to fall back
     RCLCPP_WARN_THROTTLE(logger_, *clock_, 1000,
       "RouteGraph not ready yet (syncLoad failed AND background load "
       "from %s still pending). Returning empty path; caller should retry.",

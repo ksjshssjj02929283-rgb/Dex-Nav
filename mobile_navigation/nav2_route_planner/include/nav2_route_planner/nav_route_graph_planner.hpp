@@ -25,6 +25,7 @@
 #include "nav2_route_planner/costmap_aware_layer.hpp"
 #include "nav2_route_planner/graph_augmenter.hpp"
 #include "nav2_route_planner/path_interpolator.hpp"
+#include "nav2_route_planner/planner_fallback.hpp"
 #include "nav2_route_planner/route_graph_loader.hpp"
 #include "nav2_route_planner/route_plan_publisher.hpp"
 #include "nav2_route_planner/start_goal_projector.hpp"
@@ -35,7 +36,8 @@ namespace nav2_route_planner
 
 /// Nav2 GlobalPlanner plugin that plans on the road-graph served by
 /// map_asset_manager. See project doc §4.1.
-class NavRouteGraphPlanner : public nav2_core::GlobalPlanner
+class NavRouteGraphPlanner : public nav2_core::GlobalPlanner,
+  public FallbackProvider
 {
 public:
   NavRouteGraphPlanner();
@@ -54,6 +56,11 @@ public:
   nav_msgs::msg::Path createPlan(
     const geometry_msgs::msg::PoseStamped & start,
     const geometry_msgs::msg::PoseStamped & goal) override;
+
+  /// FallbackProvider: NO_ROUTE_GRAPH iff the most recent createPlan() bailed
+  /// out because the map has no route graph; NONE otherwise (including genuine
+  /// on-graph routing failures, which do NOT trigger fallback).
+  FallbackReason lastFallbackReason() const override {return last_fallback_reason_;}
 
   /// Public so the table-driven param registry in the .cpp can address
   /// fields through member-pointer lambdas. Treat as implementation
@@ -150,6 +157,10 @@ private:
   std::shared_ptr<PathInterpolator> interpolator_;
   std::shared_ptr<RoutePlanPublisher> rp_publisher_;
   std::shared_ptr<CostmapAwareLayer> ca_layer_;
+
+  // Set by createPlan; read by PlannerServer (via FallbackProvider) to decide
+  // whether to dispatch the configured fallback planner.
+  FallbackReason last_fallback_reason_{FallbackReason::NONE};
 
   // Debug marker publisher: visualizes each detected obstacle's
   // start_index / end_index on the planned path. Lifecycle-managed.

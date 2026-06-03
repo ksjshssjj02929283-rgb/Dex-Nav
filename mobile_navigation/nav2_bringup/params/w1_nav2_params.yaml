@@ -434,10 +434,11 @@ planner_server:
     #   ros2 param set /planner_server active_planner ThetaStarBased    # Theta* 几何最短路径
     # 详见 [[10. 双规划器热切换方案——PlannerSwitcher 设计与实现]]
     planner_plugins: ["RouteGridPlanner", "SmacGridBased", "ThetaStarBased"]
-    active_planner: "SmacGridBased"   # 当前活跃 planner（dynamic）
+    active_planner: "RouteGridPlanner"   # 默认用路网规划器（dynamic）
                                          # 可选值：RouteGridPlanner / SmacGridBased / ThetaStarBased
     override_planner_id: true            # true: 忽略 BT planner_id，强制 active；
                                          # false: nav2 标准 fallback 语义
+    route_fallback_planner: "SmacGridBased"  # RouteGridPlanner 无路网数据(地图未建路网)时退化到此自由规划器
 
     # ─── 规划器 1：路网（NavRouteGraphPlanner）────────────────────────
     RouteGridPlanner:

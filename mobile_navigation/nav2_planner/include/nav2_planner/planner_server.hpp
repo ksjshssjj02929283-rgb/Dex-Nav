@@ -249,6 +249,10 @@ protected:
   // planner_id wins; active_planner_ only kicks in as a fallback.
   bool override_planner_id_{false};
 
+  // Free-space planner to retry with when the route planner reports no route
+  // graph (map has no road network). Empty = disabled. "route_fallback_planner".
+  std::string route_fallback_planner_;
+
   // Clock
   rclcpp::Clock steady_clock_{RCL_STEADY_TIME};
 

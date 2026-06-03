@@ -32,6 +32,9 @@
 #include "nav2_costmap_2d/cost_values.hpp"
 
 #include "nav2_planner/planner_server.hpp"
+// Generic planner-fallback interface: any planner implementing FallbackProvider
+// can ask the server to dispatch the configured fallback planner.
+#include "nav2_route_planner/planner_fallback.hpp"
 
 using namespace std::chrono_literals;
 using rcl_interfaces::msg::ParameterType;
@@ -61,6 +64,10 @@ PlannerServer::PlannerServer(const rclcpp::NodeOptions & options)
   // upstream BTs hard-code planner_id="GridBased". Switchable at runtime:
   //   ros2 param set /planner_server override_planner_id true|false
   declare_parameter("override_planner_id", false);
+  // route_fallback_planner: when the dispatched planner is the route planner
+  // and it returns no path SPECIFICALLY because the map has no route graph,
+  // retry with this free-space planner. Empty = no fallback.
+  declare_parameter("route_fallback_planner", std::string(""));
 
   get_parameter("planner_plugins", planner_ids_);
   if (planner_ids_ == default_ids_) {
@@ -157,6 +164,23 @@ PlannerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
     "override_planner_id = %s (when true, every getPlan() ignores caller's "
     "planner_id and uses active_planner='%s')",
     override_planner_id_ ? "true" : "false", active_planner_.c_str());
+
+  // Resolve route→free-space fallback planner
+  get_parameter("route_fallback_planner", route_fallback_planner_);
+  if (!route_fallback_planner_.empty()) {
+    if (planners_.count(route_fallback_planner_)) {
+      RCLCPP_INFO(
+        get_logger(),
+        "route_fallback_planner = '%s' (used when the route planner finds no "
+        "route graph)", route_fallback_planner_.c_str());
+    } else {
+      RCLCPP_WARN(
+        get_logger(),
+        "route_fallback_planner '%s' is not a registered planner; route "
+        "fallback disabled", route_fallback_planner_.c_str());
+      route_fallback_planner_.clear();
+    }
+  }
 
   double expected_planner_frequency;
   get_parameter("expected_planner_frequency", expected_planner_frequency);
@@ -604,7 +628,33 @@ PlannerServer::getPlan(
     }
   }
 
-  return planners_[effective_id]->createPlan(start, goal);
+  auto path = planners_[effective_id]->createPlan(start, goal);
+
+  // Generic planner fallback: if the dispatched planner produced no path AND
+  // it implements FallbackProvider AND reports a non-NONE fallback reason
+  // (e.g. NO_ROUTE_GRAPH), retry with the configured fallback planner. A
+  // genuine empty result with reason NONE is NOT degraded.
+  if (path.poses.empty() &&
+    !route_fallback_planner_.empty() &&
+    route_fallback_planner_ != effective_id &&
+    planners_.count(route_fallback_planner_))
+  {
+    auto * fb = dynamic_cast<nav2_route_planner::FallbackProvider *>(
+      planners_[effective_id].get());
+    const auto reason = fb ? fb->lastFallbackReason()
+      : nav2_route_planner::FallbackReason::NONE;
+    if (reason != nav2_route_planner::FallbackReason::NONE) {
+      RCLCPP_WARN(
+        get_logger(),
+        "Planner '%s' requests fallback (reason=%s); dispatching fallback "
+        "planner '%s'",
+        effective_id.c_str(), nav2_route_planner::toString(reason),
+        route_fallback_planner_.c_str());
+      path = planners_[route_fallback_planner_]->createPlan(start, goal);
+    }
+  }
+
+  return path;
 }
 
 void
