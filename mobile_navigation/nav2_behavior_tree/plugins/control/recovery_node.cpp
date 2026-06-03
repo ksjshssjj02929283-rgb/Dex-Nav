@@ -26,7 +26,9 @@ RecoveryNode::RecoveryNode(
 : BT::ControlNode::ControlNode(name, conf),
   current_child_idx_(0),
   number_of_retries_(1),
-  retry_count_(0)
+  retry_count_(0),
+  primary_running_logged_(false),
+  recovery_running_logged_(false)
 {
   getInput("number_of_retries", number_of_retries_);
 }
@@ -57,6 +59,8 @@ BT::NodeStatus RecoveryNode::tick()
                 name().c_str(), child_node->name().c_str(), retry_count_);
             }
             retry_count_ = 0;
+            primary_running_logged_ = false;
+            recovery_running_logged_ = false;
             halt();
             return BT::NodeStatus::SUCCESS;
           }
@@ -73,6 +77,8 @@ BT::NodeStatus RecoveryNode::tick()
                 number_of_retries_, children_nodes_[1]->name().c_str());
               ControlNode::haltChild(0);
               current_child_idx_++;
+              primary_running_logged_ = false;
+              recovery_running_logged_ = false;
               break;
             } else {
               // reset node and return failure when max retries has been exceeded
@@ -89,6 +95,16 @@ BT::NodeStatus RecoveryNode::tick()
 
         case BT::NodeStatus::RUNNING:
           {
+            if (!primary_running_logged_) {
+              RCLCPP_INFO(
+                rclcpp::get_logger("nav2_behavior_tree"),
+                "[BT][RecoveryNode:%s] 主任务 primary child '%s' 仍在 RUNNING，"
+                "不会执行恢复 child '%s'；只有主任务返回 FAILURE 后才会触发 recovery。"
+                "如果这里是 FollowPath，则 BackUp 尚未执行，不是 BackUp 失败",
+                name().c_str(), child_node->name().c_str(),
+                children_nodes_[1]->name().c_str());
+              primary_running_logged_ = true;
+            }
             return BT::NodeStatus::RUNNING;
           }
 
@@ -111,6 +127,8 @@ BT::NodeStatus RecoveryNode::tick()
             ControlNode::haltChild(1);
             retry_count_++;
             current_child_idx_--;
+            primary_running_logged_ = false;
+            recovery_running_logged_ = false;
           }
           break;
 
@@ -128,6 +146,15 @@ BT::NodeStatus RecoveryNode::tick()
 
         case BT::NodeStatus::RUNNING:
           {
+            if (!recovery_running_logged_) {
+              RCLCPP_INFO(
+                rclcpp::get_logger("nav2_behavior_tree"),
+                "[BT][RecoveryNode:%s] 恢复动作 recovery child '%s' 正在 RUNNING，"
+                "主任务 primary child '%s' 暂停，等待恢复动作完成",
+                name().c_str(), child_node->name().c_str(),
+                children_nodes_[0]->name().c_str());
+              recovery_running_logged_ = true;
+            }
             return BT::NodeStatus::RUNNING;
           }
 
@@ -149,6 +176,8 @@ void RecoveryNode::halt()
   ControlNode::halt();
   retry_count_ = 0;
   current_child_idx_ = 0;
+  primary_running_logged_ = false;
+  recovery_running_logged_ = false;
 }
 
 }  // namespace nav2_behavior_tree

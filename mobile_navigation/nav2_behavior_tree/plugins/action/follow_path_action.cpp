@@ -144,6 +144,17 @@ BT::NodeStatus FollowPathAction::on_aborted()
 
 BT::NodeStatus FollowPathAction::on_cancelled()
 {
+  nav_msgs::msg::Path path;
+  getInput("path", path);
+  if (path.poses.empty()) {
+    waiting_for_valid_path_ = true;
+    RCLCPP_INFO(
+      node_->get_logger(),
+      "[BT][Action:FollowPath] 局部控制 CANCELED，且当前 blackboard path 为空，"
+      "进入等待重规划状态，返回 RUNNING；收到新的非空 path 后再重新发送 FollowPath goal");
+    return BT::NodeStatus::RUNNING;
+  }
+
   RCLCPP_INFO(
     node_->get_logger(),
     "[BT][Action:FollowPath] 局部控制 CANCELED，controller_id='%s'，path poses=%zu，返回 SUCCESS",

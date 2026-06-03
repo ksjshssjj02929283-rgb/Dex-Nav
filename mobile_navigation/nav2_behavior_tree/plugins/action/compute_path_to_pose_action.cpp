@@ -100,11 +100,13 @@ BT::NodeStatus ComputePathToPoseAction::on_success()
 
 BT::NodeStatus ComputePathToPoseAction::on_aborted()
 {
+  nav_msgs::msg::Path empty_path;
+  setOutput("path", empty_path);
   RCLCPP_WARN(
     node_->get_logger(),
     "******************** [BT Action ABORTED][ComputePathToPose] ******************** "
-    "全局规划 ABORTED，planner_id='%s'，不覆盖旧 path，返回 FAILURE；"
-    "后续是否继续重试由 RecoveryNode 的 retry 计数决定",
+    "全局规划 ABORTED，planner_id='%s'，清空旧 path 并返回 FAILURE；"
+    "如果连续规划失败，CancelControl 会停止当前 FollowPath，机器人等待后续重规划生成新路径",
     goal_.planner_id.c_str());
   return BT::NodeStatus::FAILURE;
 }

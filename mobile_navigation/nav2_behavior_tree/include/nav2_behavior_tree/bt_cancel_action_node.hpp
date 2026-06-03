@@ -143,6 +143,11 @@ public:
 
     rclcpp::Time goal_expiry_time = node_->now() - std::chrono::milliseconds(10);
 
+    RCLCPP_INFO(
+      node_->get_logger(),
+      "[BT][Action:Cancel] 开始取消 action '%s'，用于停止正在运行的恢复/控制动作",
+      action_name_.c_str());
+
     auto future_cancel = action_client_->async_cancel_goals_before(goal_expiry_time);
 
     if (callback_group_executor_.spin_until_future_complete(future_cancel, server_timeout_) !=
@@ -150,9 +155,16 @@ public:
     {
       RCLCPP_ERROR(
         node_->get_logger(),
-        "Failed to cancel the action server for %s", action_name_.c_str());
+        "[BT][Action:Cancel] 取消 action '%s' 失败，action server 未在超时时间内响应",
+        action_name_.c_str());
       return BT::NodeStatus::FAILURE;
     }
+
+    RCLCPP_INFO(
+      node_->get_logger(),
+      "[BT][Action:Cancel] 已发送取消请求 action='%s'，返回 SUCCESS；"
+      "如果取消的是 follow_path，controller_server 应停止当前局部控制并发布零速度",
+      action_name_.c_str());
     return BT::NodeStatus::SUCCESS;
   }
 
