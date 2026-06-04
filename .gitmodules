@@ -1,0 +1,4 @@
+[submodule "dexe_interfaces"]
+	path = dexe_interfaces
+	url = http://192.168.3.16/dexembodied/dexe_interfaces.git
+  	branch = dev
