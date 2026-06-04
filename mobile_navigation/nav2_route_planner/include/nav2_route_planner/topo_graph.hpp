@@ -66,7 +66,14 @@ public:
     std::vector<TopoNode> nodes,
     std::vector<TopoEdge> edges);
 
-  /// True after first successful rebuildFrom().
+  /// True once a rebuildFrom() has completed, regardless of whether the graph
+  /// is empty. Use this to know "a load attempt finished" (e.g. to stop a
+  /// background poll). For "is there a usable road network?" use isReady().
+  bool isLoaded() const { return loaded_.load(std::memory_order_acquire); }
+
+  /// True when the graph is ready to plan on: a load completed AND the graph
+  /// is non-empty. An empty (0-node) graph is loaded but NOT ready — the map
+  /// has no road network.
   bool isReady() const { return ready_.load(std::memory_order_acquire); }
 
   /// Read accessors (callers should hold lockShared() across multiple calls
@@ -120,7 +127,8 @@ private:
   mutable std::shared_mutex mtx_;
   std::unordered_map<std::string, TopoNode> nodes_;
   std::unordered_map<std::string, TopoEdge> edges_;
-  std::atomic<bool> ready_{false};
+  std::atomic<bool> loaded_{false};  // a rebuildFrom() completed (maybe empty)
+  std::atomic<bool> ready_{false};   // loaded AND non-empty (usable road network)
 };
 
 }  // namespace nav2_route_planner

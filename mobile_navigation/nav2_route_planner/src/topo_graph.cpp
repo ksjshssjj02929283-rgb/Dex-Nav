@@ -48,7 +48,10 @@ void TopoGraph::rebuildFrom(
     edges_.emplace(e.id, std::move(e));
   }
 
-  ready_.store(true, std::memory_order_release);
+  // A load completed (loaded_), but the graph is only "ready to plan" when it
+  // actually has a road network. An empty result means the map has no routes.
+  loaded_.store(true, std::memory_order_release);
+  ready_.store(!nodes_.empty(), std::memory_order_release);
 }
 
 std::optional<TopoNode> TopoGraph::getNode(const std::string & id) const

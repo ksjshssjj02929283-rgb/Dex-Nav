@@ -336,14 +336,22 @@ nav_msgs::msg::Path NavRouteGraphPlanner::createPlan(
     }
   }
 
-  // After syncLoad: the graph must be populated (either by this call
-  // or by an earlier background poll). Otherwise the BT/caller retries.
+  // After syncLoad the graph must be ready to plan on, i.e. loaded AND
+  // non-empty. isReady() is false both when nothing loaded yet and when the
+  // map has no road network (0 nodes). Either way ask PlannerServer to fall
+  // back to a free-space planner (isLoaded() only distinguishes the log).
   if (!graph_->isReady()) {
-    last_fallback_reason_ = FallbackReason::NO_ROUTE_GRAPH;  // ask PlannerServer to fall back
-    RCLCPP_WARN_THROTTLE(logger_, *clock_, 1000,
-      "RouteGraph not ready yet (syncLoad failed AND background load "
-      "from %s still pending). Returning empty path; caller should retry.",
-      params_.asset_manager_node_name.c_str());
+    last_fallback_reason_ = FallbackReason::NO_ROUTE_GRAPH;
+    if (!graph_->isLoaded()) {
+      RCLCPP_WARN_THROTTLE(logger_, *clock_, 1000,
+        "RouteGraph not loaded yet (syncLoad failed AND background load from "
+        "%s still pending). Returning empty path for fallback / retry.",
+        params_.asset_manager_node_name.c_str());
+    } else {
+      RCLCPP_WARN_THROTTLE(logger_, *clock_, 1000,
+        "RouteGraph is empty (0 nodes) — map has no road network; returning "
+        "empty path (PlannerServer falls back to free-space planner if configured).");
+    }
     return empty_path;
   }
 

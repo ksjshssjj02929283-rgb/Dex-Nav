@@ -60,7 +60,10 @@ RouteGraphLoader::~RouteGraphLoader()
 
 bool RouteGraphLoader::isLoaded() const
 {
-  return graph_ && graph_->isReady();
+  // "A load completed" — true even for an empty graph, so the background poll
+  // stops on maps that legitimately have no route network (instead of spinning
+  // forever). Whether the graph is usable for planning is graph_->isReady().
+  return graph_ && graph_->isLoaded();
 }
 
 void RouteGraphLoader::startBackgroundLoad()
