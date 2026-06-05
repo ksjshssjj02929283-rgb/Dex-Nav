@@ -15,13 +15,15 @@
 - 源码：`dexe_sensor_process/src/rgbd_to_pointcloud.cpp`
 - 单相机启动：`dexe_sensor_process/launch/rgbd_to_pointcloud.launch.py`
 - 前后双相机启动：`dexe_sensor_process/launch/multi_camera.launch.py`
+- 自动模式前视点云启动：`dexe_sensor_process/launch/front_p2c.launch.py`
+- 自动模式后视点云启动：`dexe_sensor_process/launch/rear_p2c.launch.py`
 - 包配置：`dexe_sensor_process/package.xml`、`dexe_sensor_process/CMakeLists.txt`
 
 节点默认话题规则：
 
 - 输入深度图：`{input_topic}/depth`，未指定 `input_topic` 时为 `/orbbec/{camera_name}/depth`。
 - 输入相机内参：`{input_topic}/camera_info`。
-- 原始点云输出：`{input_topic}/pointcloud2_raw`。
+- 原始点云输出：`{input_topic}/pointcloud2_raw`。当前会随深度回调发布；如果后续需要降低带宽或 CPU 压力，可以增加参数控制是否发布 raw，或仅在有订阅者时发布。
 - 预处理点云输出：`{input_topic}/pointcloud2_filtered`。
 - LaserScan 输出参数名为 `output_topic_laserscan`，源码中保留了点云压缩为 `LaserScan` 的实现，但当前发布路径处于注释状态，实际主输出是 raw 与 filtered 点云。
 
@@ -30,7 +32,9 @@
 - 使用最近一次收到的 `CameraInfo` 中 `fx`、`fy`、`cx`、`cy` 反投影深度图。
 - 深度单位按毫米换算为米，当前截断距离为 3.0 m。
 - 为降低计算量，反投影时按固定步长采样像素。
-- filtered 点云先执行体素降采样，再按相机坐标系 `y <= ground_filter_threshold` 保留点，用于剔除地面或近地杂点。
+- filtered 点云先执行体素降采样，再复制一份转换到 `ground_filter_frame`，默认 `base_link`，按该坐标系下的 `z` 高度判断是否保留障碍点；最终发布的 filtered 点云仍保持原始相机 frame，便于 Nav2 costmap 按传感器来源处理。
+- `ground_filter_min_height` 以下的点认为接近地面并剔除；`ground_filter_max_height` 以上的点认为过高，不作为近地障碍输入。
+- 地面过滤不再使用相机坐标系 Y 轴阈值，避免前后 RGBD 相机存在俯仰安装角时，不同距离的地面点漏过滤。
 - `flag_voxel_filter` 当前实际生效；`flag_mls_filter`、`flag_sor_filter` 参数已声明并由 launch 传入，但源码当前未执行 MLS 和 SOR 过滤。
 
 常用参数：
@@ -38,13 +42,16 @@
 - `camera_name`：默认 `rear`，用于构造 `/orbbec/{camera_name}`。
 - `input_topic`、`output_topic_raw`、`output_topic_filtered`、`output_topic_laserscan`：显式覆盖输入输出话题。
 - `flag_voxel_filter`、`ds_leaf_size`：体素降采样开关与体素尺寸。
-- `ground_filter_threshold`：按相机坐标系 Y 轴剔除点云的阈值。
+- `ground_filter_frame`：地面过滤使用的坐标系，默认 `base_link`。
+- `ground_filter_min_height`：`ground_filter_frame` 下低于该高度的点认为是地面并剔除；调高会过滤更多低矮点，但可能漏掉低矮障碍物。
+- `ground_filter_max_height`：`ground_filter_frame` 下高于该高度的点不作为近地障碍输入；调低会减少高处点进入 costmap。
 - `flag_mls_filter`、`mls_polynomial_order`、`mls_search_radius`、`flag_sor_filter`、`sor_mean_k`、`sor_stddev_mul_thresh`：保留参数，当前代码未实际应用到 filtered 输出。
 
 与导航的关系：
 
 - `multi_camera.launch.py` 默认输出 `/orbbec/front/pointcloud2_raw`、`/orbbec/front/pointcloud2_filtered`、`/orbbec/rear/pointcloud2_raw`、`/orbbec/rear/pointcloud2_filtered`。
-- `mobile_navigation/nav2_bringup/params/w1_nav2_rgbd_params.yaml` 使用 Orbbec 前后点云作为 costmap 的 PointCloud2 observation source。
+- 自动模式脚本分别启动 `front_p2c.launch.py` 和 `rear_p2c.launch.py`，用于持续发布前后 RGBD filtered 点云；排查现场时应同时检查安装包 launch 和部署脚本。
+- `mobile_navigation/nav2_bringup/params/w1_nav2_rgbd_params.yaml` 使用 Orbbec 前后 filtered 点云作为 costmap 的 PointCloud2 observation source。
 - `mobile_navigation/nav2_bringup/params/w1_nav2_params.yaml` 也引用了前后 Orbbec filtered 点云作为障碍层输入之一。
 
 ### `mobile_perception`

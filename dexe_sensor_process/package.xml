@@ -11,6 +11,7 @@
 
   <depend>rclcpp</depend>
   <depend>sensor_msgs</depend>
+  <depend>std_msgs</depend>
   <depend>sensor_interfaces</depend>
   <depend>message_filters</depend>
 
@@ -21,4 +22,3 @@
     <build_type>ament_cmake</build_type>
   </export>
 </package>
-

@@ -30,6 +30,12 @@ def generate_launch_description():
         description='输出的预处理点云话题（为空时使用默认规则：{input_topic}/pointcloud2_filtered）'
     )
 
+    output_topic_laserscan_arg = DeclareLaunchArgument(
+        'output_topic_laserscan',
+        default_value='',
+        description='输出的 LaserScan 话题（为空时使用默认规则：{input_topic}/laser_scan）'
+    )
+
     # 预处理参数
     flag_voxel_filter_arg = DeclareLaunchArgument(
         'flag_voxel_filter',
@@ -39,14 +45,14 @@ def generate_launch_description():
     
     flag_mls_filter_arg = DeclareLaunchArgument(
         'flag_mls_filter',
-        default_value='true',
-        description='是否启用最小二乘曲面拟合'
+        default_value='false',
+        description='是否启用最小二乘曲面拟合（当前源码未实际执行）'
     )
     
     flag_sor_filter_arg = DeclareLaunchArgument(
         'flag_sor_filter',
-        default_value='true',
-        description='是否启用统计滤波'
+        default_value='false',
+        description='是否启用统计滤波（当前源码未实际执行）'
     )
     
     ds_leaf_size_arg = DeclareLaunchArgument(
@@ -79,6 +85,25 @@ def generate_launch_description():
         description='统计滤波标准差倍数阈值'
     )
 
+    # 地面过滤参数：内部临时转换到 ground_filter_frame 后，用高度范围判断是否保留点云
+    ground_filter_frame_arg = DeclareLaunchArgument(
+        'ground_filter_frame',
+        default_value='base_link',
+        description='地面过滤使用的临时判断坐标系'
+    )
+
+    ground_filter_min_height_arg = DeclareLaunchArgument(
+        'ground_filter_min_height',
+        default_value='0.05',
+        description='低于该高度的点会被认为是地面或近地噪声并剔除（米）'
+    )
+
+    ground_filter_max_height_arg = DeclareLaunchArgument(
+        'ground_filter_max_height',
+        default_value='1.5',
+        description='高于该高度的点不会作为近地障碍输入（米）'
+    )
+
     # 创建节点
     rgbd_to_pointcloud_node = Node(
         package='dexe_sensor_process',
@@ -89,6 +114,7 @@ def generate_launch_description():
             'input_topic': LaunchConfiguration('input_topic'),
             'output_topic_raw': LaunchConfiguration('output_topic_raw'),
             'output_topic_filtered': LaunchConfiguration('output_topic_filtered'),
+            'output_topic_laserscan': LaunchConfiguration('output_topic_laserscan'),
             'flag_voxel_filter': LaunchConfiguration('flag_voxel_filter'),
             'flag_mls_filter': LaunchConfiguration('flag_mls_filter'),
             'flag_sor_filter': LaunchConfiguration('flag_sor_filter'),
@@ -97,6 +123,9 @@ def generate_launch_description():
             'mls_search_radius': LaunchConfiguration('mls_search_radius'),
             'sor_mean_k': LaunchConfiguration('sor_mean_k'),
             'sor_stddev_mul_thresh': LaunchConfiguration('sor_stddev_mul_thresh'),
+            'ground_filter_frame': LaunchConfiguration('ground_filter_frame'),
+            'ground_filter_min_height': LaunchConfiguration('ground_filter_min_height'),
+            'ground_filter_max_height': LaunchConfiguration('ground_filter_max_height'),
         }],
         output='screen'
     )
@@ -106,6 +135,7 @@ def generate_launch_description():
         input_topic_arg,
         output_topic_raw_arg,
         output_topic_filtered_arg,
+        output_topic_laserscan_arg,
         flag_voxel_filter_arg,
         flag_mls_filter_arg,
         flag_sor_filter_arg,
@@ -114,6 +144,8 @@ def generate_launch_description():
         mls_search_radius_arg,
         sor_mean_k_arg,
         sor_stddev_mul_thresh_arg,
+        ground_filter_frame_arg,
+        ground_filter_min_height_arg,
+        ground_filter_max_height_arg,
         rgbd_to_pointcloud_node,
     ])
-

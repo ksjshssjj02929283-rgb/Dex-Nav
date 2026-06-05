@@ -1,5 +1,7 @@
-#include <vector>
+#include <cstring>
 #include <memory>
+#include <string>
+#include <vector>
 
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
@@ -15,6 +17,7 @@
 #include <sensor_msgs/msg/camera_info.hpp>
 #include <sensor_msgs/msg/laser_scan.hpp>
 #include <sensor_msgs/point_cloud2_iterator.hpp>
+#include <std_msgs/msg/header.hpp>
 #include <message_filters/subscriber.h>
 #include <message_filters/synchronizer.h>
 #include <message_filters/sync_policies/approximate_time.h>
@@ -41,14 +44,18 @@ public:
         
         // 预处理参数
         this->declare_parameter<bool>("flag_voxel_filter", true);
-        this->declare_parameter<bool>("flag_mls_filter", true);
-        this->declare_parameter<bool>("flag_sor_filter", true);
+        this->declare_parameter<bool>("flag_mls_filter", false);
+        this->declare_parameter<bool>("flag_sor_filter", false);
         this->declare_parameter<double>("ds_leaf_size", 0.05);
         this->declare_parameter<int>("mls_polynomial_order", 2);
         this->declare_parameter<double>("mls_search_radius", 0.2);
         this->declare_parameter<int>("sor_mean_k", 50);
         this->declare_parameter<double>("sor_stddev_mul_thresh", 1.0);
-        this->declare_parameter<double>("ground_filter_threshold", 0.12);
+        // 地面过滤在 ground_filter_frame 坐标系下按高度做判断，默认 base_link 的 z 轴为离地高度方向。
+        // min_height 以下认为接近地面并剔除；max_height 以上认为过高，不作为近地障碍输入。
+        this->declare_parameter<std::string>("ground_filter_frame", "base_link");
+        this->declare_parameter<double>("ground_filter_min_height", 0.05);
+        this->declare_parameter<double>("ground_filter_max_height", 1.5);
         
         // （虚拟点云相关参数已移除）
         
@@ -82,7 +89,9 @@ public:
         mls_search_radius_ = this->get_parameter("mls_search_radius").as_double();
         sor_mean_k_ = this->get_parameter("sor_mean_k").as_int();
         sor_stddev_mul_thresh_ = this->get_parameter("sor_stddev_mul_thresh").as_double();
-        ground_filter_threshold_ = this->get_parameter("ground_filter_threshold").as_double();
+        ground_filter_frame_ = this->get_parameter("ground_filter_frame").as_string();
+        ground_filter_min_height_ = this->get_parameter("ground_filter_min_height").as_double();
+        ground_filter_max_height_ = this->get_parameter("ground_filter_max_height").as_double();
         
 
         
@@ -117,15 +126,23 @@ public:
 
         tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
         
+        RCLCPP_INFO(get_logger(), "RGBD 点云转换节点启动，相机名称: %s", camera_name.c_str());
         RCLCPP_INFO(get_logger(), "订阅深度图话题: %s/depth", input_topic.c_str());
         RCLCPP_INFO(get_logger(), "订阅相机参数话题: %s/camera_info", input_topic.c_str());
         RCLCPP_INFO(get_logger(), "发布原始点云话题: %s", output_topic_raw.c_str());
-        RCLCPP_INFO(get_logger(), "发布预处理点云话题: %s", output_topic_filtered.c_str());
-        RCLCPP_INFO(get_logger(), "发布 LaserScan 话题: %s", output_topic_laserscan.c_str());
+        RCLCPP_INFO(get_logger(), "发布过滤点云话题: %s", output_topic_filtered.c_str());
+        RCLCPP_INFO(get_logger(), "LaserScan 话题已创建: %s（当前源码中 LaserScan 发布路径未启用）", output_topic_laserscan.c_str());
         RCLCPP_INFO(get_logger(), "预处理参数 - 降采样: %s, MLS: %s, 统计滤波: %s",
                    flag_voxel_filter_ ? "启用" : "禁用",
                    flag_mls_filter_ ? "启用" : "禁用",
                    flag_sor_filter_ ? "启用" : "禁用");
+        RCLCPP_INFO(
+            get_logger(), "地面过滤参数 - 判断坐标系: %s, 最低保留高度: %.3f m, 最高保留高度: %.3f m",
+            ground_filter_frame_.c_str(), ground_filter_min_height_, ground_filter_max_height_);
+        RCLCPP_INFO(
+            get_logger(),
+            "地面过滤流程: 点云会临时转换到 %s 按 z 高度过滤，最终发布仍保持深度图输入的相机坐标系，便于 Nav2 costmap 正确做 marking/clearing",
+            ground_filter_frame_.c_str());
     }
 
     ~RgbdToPointCloud() {}
@@ -135,6 +152,14 @@ private:
         const sensor_msgs::msg::CameraInfo::ConstSharedPtr& camera_info_msg) {
         // 相机内参基本不变，这里只保存最新一帧的 CameraInfo 供深度回调使用
         last_camera_info_ = camera_info_msg;
+        RCLCPP_INFO_ONCE(
+            get_logger(),
+            "已收到 CameraInfo，相机参数坐标系: %s, fx=%.3f, fy=%.3f, cx=%.3f, cy=%.3f",
+            camera_info_msg->header.frame_id.c_str(),
+            camera_info_msg->k[0],
+            camera_info_msg->k[4],
+            camera_info_msg->k[2],
+            camera_info_msg->k[5]);
     }
 
     void depthCallback(
@@ -151,19 +176,13 @@ private:
         int width = depth_msg->width;
         int height = depth_msg->height;
 
-        // 从 CameraInfo 中提取相机内参
-        auto fx = camera_info_msg->k[0];
-        auto fy = camera_info_msg->k[4];
-        auto cx = camera_info_msg->k[2];
-        auto cy = camera_info_msg->k[5];
-
         // 基本有效性检查
         if (width <= 0 || height <= 0) {
             RCLCPP_WARN(get_logger(), "收到的图像尺寸非法: %dx%d", width, height);
             return;
         }
         if (depth_msg->data.size() < static_cast<size_t>(width) * height * 2) {
-            RCLCPP_WARN(get_logger(), "Depth 数据长度不足: %zu < %zu", 
+            RCLCPP_WARN(get_logger(), "深度图数据长度不足: %zu < %zu",
                        depth_msg->data.size(), static_cast<size_t>(width) * height * 2);
             return;
         }
@@ -176,11 +195,20 @@ private:
             return;
         }
         
-        // 对 msg_filtered 进行滤波处理：体素滤波 + Y坐标阈值过滤
+        // 对 msg_filtered 进行滤波处理：体素滤波 + base_link 高度过滤
         msg_filtered = filterPointCloud(msg_raw);
         
         // 发布 raw（未剔除地面）与 filter（剔除地面）
         m_pointcloud_publisher_raw->publish(*msg_raw);
+
+        if (!msg_filtered) {
+            RCLCPP_WARN_THROTTLE(
+                get_logger(), *this->get_clock(), 5000,
+                "本帧 filtered 点云未发布：原始点云有 %u 点，但地面过滤所需 TF 或内部转换暂时不可用。为避免 costmap 被空点云反复清除，本帧只发布 raw 点云",
+                msg_raw->width);
+            return;
+        }
+
         // m_pointcloud_publisher_filtered->publish(*msg_filtered);
 
         // // 将过滤后的点云压缩为 LaserScan 并发布
@@ -192,6 +220,24 @@ private:
         // }
 
         m_pointcloud_publisher_filtered->publish(*msg_filtered);
+
+        RCLCPP_INFO_THROTTLE(
+            get_logger(), *this->get_clock(), 5000,
+            "点云发布状态 - 原始点云: %u 点, 坐标系=%s; 过滤点云: %u 点, 坐标系=%s; 地面过滤判断坐标系=%s, 保留高度范围=[%.3f, %.3f] m",
+            msg_raw->width,
+            msg_raw->header.frame_id.c_str(),
+            msg_filtered->width,
+            msg_filtered->header.frame_id.c_str(),
+            ground_filter_frame_.c_str(),
+            ground_filter_min_height_,
+            ground_filter_max_height_);
+
+        if (msg_raw->width > 0 && msg_filtered->width == 0) {
+            RCLCPP_WARN_THROTTLE(
+                get_logger(), *this->get_clock(), 5000,
+                "过滤后点云为空：raw 有 %u 点，但 filtered 为 0 点。可能原因：地面高度阈值过严，或当前视野内没有满足高度范围的障碍点",
+                msg_raw->width);
+        }
 
         // if (m_laserscan_publisher_) {
         //     auto scan_msg = pointCloudToLaserScanBaseLink(
@@ -303,7 +349,7 @@ private:
                 scan->header.frame_id,
                 tf2::durationFromSec(0.05));
             } catch (tf2::TransformException & ex) {
-            RCLCPP_WARN(logger, "TF transform failed: %s", ex.what());
+            RCLCPP_WARN(logger, "点云转换到 base_link 失败，无法生成 LaserScan: %s", ex.what());
             return nullptr;
             }
         } else {
@@ -354,52 +400,138 @@ private:
 
     
 
-    // 对点云进行滤波处理：体素滤波 + Y坐标阈值过滤
+    sensor_msgs::msg::PointCloud2::SharedPtr makeEmptyXYZPointCloud(
+        const std_msgs::msg::Header& header) {
+        auto msg = std::make_shared<sensor_msgs::msg::PointCloud2>();
+        msg->header = header;
+        msg->height = 1;
+        msg->width = 0;
+        msg->is_dense = false;
+        msg->is_bigendian = false;
+        msg->fields.resize(3);
+        msg->fields[0].name = "x";
+        msg->fields[0].offset = 0;
+        msg->fields[0].datatype = sensor_msgs::msg::PointField::FLOAT32;
+        msg->fields[0].count = 1;
+        msg->fields[1].name = "y";
+        msg->fields[1].offset = 4;
+        msg->fields[1].datatype = sensor_msgs::msg::PointField::FLOAT32;
+        msg->fields[1].count = 1;
+        msg->fields[2].name = "z";
+        msg->fields[2].offset = 8;
+        msg->fields[2].datatype = sensor_msgs::msg::PointField::FLOAT32;
+        msg->fields[2].count = 1;
+        msg->point_step = 12;
+        msg->row_step = 0;
+        return msg;
+    }
+
+    // 对点云进行滤波处理：体素滤波 + 机器人坐标系高度过滤。
+    // 后续调 RGBD 地面过滤时，优先调 ground_filter_min_height / max_height，而不是相机坐标轴。
     sensor_msgs::msg::PointCloud2::SharedPtr filterPointCloud(
         const sensor_msgs::msg::PointCloud2::SharedPtr& input_msg) {
         if (!input_msg || input_msg->width == 0) {
             return input_msg;
         }
 
-        // 转换为 PCL 格式
+        // 转换为 PCL 格式。这里保留原始相机坐标系点云，最终也发布这个坐标系下的 filtered 点。
         pcl::PCLPointCloud2::Ptr cloud_pcl(new pcl::PCLPointCloud2());
         pcl_conversions::toPCL(*input_msg, *cloud_pcl);
 
-        pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_xyz(new pcl::PointCloud<pcl::PointXYZ>);
-        pcl::fromPCLPointCloud2(*cloud_pcl, *cloud_xyz);
+        pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_sensor_xyz(new pcl::PointCloud<pcl::PointXYZ>);
+        pcl::fromPCLPointCloud2(*cloud_pcl, *cloud_sensor_xyz);
 
         // 步骤1：体素滤波
         if (flag_voxel_filter_) {
             pcl::VoxelGrid<pcl::PointXYZ> voxel_filter;
-            voxel_filter.setInputCloud(cloud_xyz);
+            voxel_filter.setInputCloud(cloud_sensor_xyz);
             voxel_filter.setLeafSize(ds_leaf_size_, ds_leaf_size_, ds_leaf_size_);
             pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_filtered(new pcl::PointCloud<pcl::PointXYZ>);
             voxel_filter.filter(*cloud_filtered);
-            cloud_xyz = cloud_filtered;
+            cloud_sensor_xyz = cloud_filtered;
         }
 
-        // 步骤2：在相机坐标系下，剔除 Y 坐标大于阈值的点
-        pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_y_filtered(new pcl::PointCloud<pcl::PointXYZ>);
-        cloud_y_filtered->header = cloud_xyz->header;
-        cloud_y_filtered->is_dense = cloud_xyz->is_dense;
+        // 先把体素后的点云复制一份转到 ground_filter_frame，只用于高度判断。
+        // 最终输出仍保持 input_msg 的相机 frame，避免改变 costmap 对传感器来源的理解。
+        pcl::PCLPointCloud2 sensor_pcl_after_voxel;
+        pcl::toPCLPointCloud2(*cloud_sensor_xyz, sensor_pcl_after_voxel);
+
+        sensor_msgs::msg::PointCloud2 sensor_msg_after_voxel;
+        pcl_conversions::fromPCL(sensor_pcl_after_voxel, sensor_msg_after_voxel);
+        sensor_msg_after_voxel.header = input_msg->header;
+
+        sensor_msgs::msg::PointCloud2 filter_frame_msg;
+        try {
+            if (sensor_msg_after_voxel.header.frame_id != ground_filter_frame_) {
+                tf_buffer_->transform(
+                    sensor_msg_after_voxel,
+                    filter_frame_msg,
+                    ground_filter_frame_,
+                    tf2::durationFromSec(0.05));
+            } else {
+                filter_frame_msg = sensor_msg_after_voxel;
+            }
+        } catch (const tf2::TransformException& ex) {
+            RCLCPP_WARN_THROTTLE(
+                get_logger(), *this->get_clock(), 2000,
+                "点云无法转换到 %s 做地面过滤，本帧不发布 filtered 点云: %s",
+                ground_filter_frame_.c_str(), ex.what());
+            return nullptr;
+        }
+
+        pcl::PCLPointCloud2::Ptr filter_frame_pcl(new pcl::PCLPointCloud2());
+        pcl_conversions::toPCL(filter_frame_msg, *filter_frame_pcl);
+
+        pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_filter_frame_xyz(new pcl::PointCloud<pcl::PointXYZ>);
+        pcl::fromPCLPointCloud2(*filter_frame_pcl, *cloud_filter_frame_xyz);
+
+        if (cloud_filter_frame_xyz->points.size() != cloud_sensor_xyz->points.size()) {
+            RCLCPP_WARN_THROTTLE(
+                get_logger(), *this->get_clock(), 2000,
+                "地面过滤前后点数不一致，跳过本帧 filtered 点云: sensor=%zu, %s=%zu",
+                cloud_sensor_xyz->points.size(),
+                ground_filter_frame_.c_str(),
+                cloud_filter_frame_xyz->points.size());
+            return nullptr;
+        }
+
+        // 步骤2：按 ground_filter_frame 下的 z 高度保留障碍点。
+        // z < min_height：通常是地面或地面噪声，调高 min_height 会过滤更多低矮点。
+        // z > max_height：通常是过高物体或高处噪声，调低 max_height 会减少高处点进入 costmap。
+        pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_height_filtered(new pcl::PointCloud<pcl::PointXYZ>);
+        cloud_height_filtered->header = cloud_sensor_xyz->header;
+        cloud_height_filtered->is_dense = cloud_sensor_xyz->is_dense;
         
-        for (const auto& point : cloud_xyz->points) {
-            // 只保留 Y 坐标小于等于阈值的点
-            if (point.y <= static_cast<float>(ground_filter_threshold_)) {
-                cloud_y_filtered->points.push_back(point);
+        for (size_t i = 0; i < cloud_filter_frame_xyz->points.size(); ++i) {
+            const auto& height_point = cloud_filter_frame_xyz->points[i];
+            const auto& sensor_point = cloud_sensor_xyz->points[i];
+            if (!std::isfinite(height_point.x) ||
+                !std::isfinite(height_point.y) ||
+                !std::isfinite(height_point.z) ||
+                !std::isfinite(sensor_point.x) ||
+                !std::isfinite(sensor_point.y) ||
+                !std::isfinite(sensor_point.z)) {
+                continue;
+            }
+            if (height_point.z >= static_cast<float>(ground_filter_min_height_) &&
+                height_point.z <= static_cast<float>(ground_filter_max_height_)) {
+                cloud_height_filtered->points.push_back(sensor_point);
             }
         }
-        cloud_y_filtered->width = cloud_y_filtered->points.size();
-        cloud_y_filtered->height = 1;
+        cloud_height_filtered->width = cloud_height_filtered->points.size();
+        cloud_height_filtered->height = 1;
+
+        if (cloud_height_filtered->points.empty()) {
+            return makeEmptyXYZPointCloud(input_msg->header);
+        }
 
         // 转换回 ROS2 消息格式
         pcl::PCLPointCloud2 output_pcl;
-        pcl::toPCLPointCloud2(*cloud_y_filtered, output_pcl);
+        pcl::toPCLPointCloud2(*cloud_height_filtered, output_pcl);
 
         auto output_msg = std::make_shared<sensor_msgs::msg::PointCloud2>();
         pcl_conversions::fromPCL(output_pcl, *output_msg);
         
-        // 保持原始消息头
         output_msg->header = input_msg->header;
         
         return output_msg;
@@ -437,9 +569,7 @@ private:
         }
 
         std::vector<float> buf_raw;              // 不过滤地面
-        std::vector<float> buf_filtered;         // 剔除地面
         buf_raw.reserve(pixel_count * 3 / 2);
-        buf_filtered.reserve(pixel_count * 3 / 2);
 
         for (int v = 0; v < height; v += 3) {
             for (int u = 0; u < width; u += 2) {
@@ -460,12 +590,6 @@ private:
                 buf_raw.push_back(y);
                 buf_raw.push_back(z);
 
-                // filtered：剔除地面
-                // if (y <= static_cast<float>(ground_filter_threshold_)) {
-                // buf_filtered.push_back(x);
-                // buf_filtered.push_back(y);
-                // buf_filtered.push_back(z);
-                // }
             }
         }
 
@@ -504,7 +628,6 @@ private:
         };
 
         out_raw = make_msg(buf_raw);
-        // out_filtered = make_msg(buf_filtered);
         return true;
     }
 
@@ -526,14 +649,16 @@ private:
 
     // 预处理参数
     bool flag_voxel_filter_ = true;
-    bool flag_mls_filter_ = true;
-    bool flag_sor_filter_ = true;
+    bool flag_mls_filter_ = false;
+    bool flag_sor_filter_ = false;
     double ds_leaf_size_ = 0.05;
     int mls_polynomial_order_ = 2;
     double mls_search_radius_ = 0.2;
     int sor_mean_k_ = 50;
     double sor_stddev_mul_thresh_ = 1.0;
-    double ground_filter_threshold_ = 0.12;
+    std::string ground_filter_frame_ = "base_link";
+    double ground_filter_min_height_ = 0.05;
+    double ground_filter_max_height_ = 1.5;
     
 
 };
@@ -544,4 +669,3 @@ int main(int argc, char const* argv[]) {
     rclcpp::shutdown();
     return 0;
 }
-
