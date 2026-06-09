@@ -1,9 +1,9 @@
 cmake_minimum_required(VERSION 3.5)
 project(mobile_perception)
 
-# Default to C++14
+# Default to C++17
 if(NOT CMAKE_CXX_STANDARD)
-  set(CMAKE_CXX_STANDARD 14)
+  set(CMAKE_CXX_STANDARD 17)
 endif()
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
@@ -13,6 +13,7 @@ endif()
 # Find dependencies
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(rclcpp_action REQUIRED)
 find_package(rclpy REQUIRED)
 find_package(cv_bridge REQUIRED)
 find_package(OpenCV REQUIRED)
@@ -25,11 +26,15 @@ find_package(tf2_ros REQUIRED)
 find_package(apriltag REQUIRED)
 find_package(sensor_msgs REQUIRED)  
 find_package(geometry_msgs REQUIRED)
+find_package(nav_msgs REQUIRED)
+find_package(std_msgs REQUIRED)
+find_package(visualization_msgs REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(ament_index_cpp REQUIRED)
 find_package(nlohmann_json REQUIRED)
 find_package(std_srvs REQUIRED)
+find_package(nav_interfaces REQUIRED)
 
 add_executable(charging_pose_service_node src/charging_pose_service.cpp)
 ament_target_dependencies(charging_pose_service_node
@@ -46,6 +51,7 @@ add_executable(apriltag_detection_node
 
 ament_target_dependencies(apriltag_detection_node
   rclcpp
+  std_srvs
   sensor_msgs
   geometry_msgs
   tf2_ros
@@ -54,15 +60,37 @@ ament_target_dependencies(apriltag_detection_node
   OpenCV
   ament_index_cpp
   nlohmann_json
-  std_srvs
 )
 target_link_libraries(apriltag_detection_node
   apriltag::apriltag
   ${OpenCV_LIBS}
 )
 
+add_executable(apriltag_alignment_tf_node
+  src/apriltag_alignment_tf_node.cpp
+)
 
-install(TARGETS apriltag_detection_node
+ament_target_dependencies(apriltag_alignment_tf_node
+  rclcpp
+  std_srvs
+  sensor_msgs
+  geometry_msgs
+  tf2_ros
+  tf2_geometry_msgs
+  cv_bridge
+  OpenCV
+  ament_index_cpp
+  nlohmann_json
+)
+target_link_libraries(apriltag_alignment_tf_node
+  apriltag::apriltag
+  ${OpenCV_LIBS}
+)
+
+
+install(TARGETS
+  apriltag_detection_node
+  apriltag_alignment_tf_node
   DESTINATION lib/${PROJECT_NAME}
 )
 
@@ -74,6 +102,39 @@ add_executable(mobile_control_node src/mobile_control_node.cpp)
 ament_target_dependencies(mobile_control_node rclcpp tf2 tf2_ros tf2_geometry_msgs geometry_msgs nav_msgs std_srvs)
 install(TARGETS
   mobile_control_node
+  DESTINATION lib/${PROJECT_NAME})
+
+# mobile_control_action_node
+add_executable(mobile_control_action_node src/mobile_control_action_node.cpp)
+ament_target_dependencies(
+  mobile_control_action_node
+  rclcpp
+  rclcpp_action
+  tf2
+  tf2_ros
+  tf2_geometry_msgs
+  geometry_msgs
+  nav_msgs
+  nav_interfaces
+)
+install(TARGETS
+  mobile_control_action_node
+  DESTINATION lib/${PROJECT_NAME})
+
+# obstacle_detector_node
+add_executable(obstacle_detector_node src/obstacle_detector_node.cpp)
+ament_target_dependencies(obstacle_detector_node
+  rclcpp
+  tf2
+  tf2_ros
+  tf2_geometry_msgs
+  geometry_msgs
+  nav_msgs
+  std_msgs
+  visualization_msgs
+)
+install(TARGETS
+  obstacle_detector_node
   DESTINATION lib/${PROJECT_NAME})
 
 # Install Python scripts
@@ -108,6 +169,6 @@ install(DIRECTORY
 
 # Setup include directories
 ament_export_include_directories(include)
-ament_export_dependencies(rclcpp rclpy cv_bridge apriltag_ros)
+ament_export_dependencies(rclcpp rclcpp_action rclpy cv_bridge apriltag_ros nav_interfaces)
 
 ament_package()

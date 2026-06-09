@@ -64,6 +64,7 @@ void KeepoutFilter::initializeFilter(
   }
 
   filter_info_topic_ = filter_info_topic;
+  resetMaskWarningState();
   // Setting new costmap filter info subscriber
   RCLCPP_INFO(
     logger_,
@@ -145,6 +146,7 @@ void KeepoutFilter::maskCallback(
   // Making a new mask_costmap_
   mask_costmap_ = std::make_unique<Costmap2D>(*msg);
   mask_frame_ = msg->header.frame_id;
+  maskReceived();
 }
 
 void KeepoutFilter::process(
@@ -155,10 +157,7 @@ void KeepoutFilter::process(
   std::lock_guard<CostmapFilter::mutex_t> guard(*getMutex());
 
   if (!mask_costmap_) {
-    // Show warning message every 2 seconds to not litter an output
-    RCLCPP_WARN_THROTTLE(
-      logger_, *(clock_), 2000,
-      "KeepoutFilter: Filter mask was not received");
+    warnMaskNotReceivedOnce("KeepoutFilter");
     return;
   }
 
@@ -283,7 +282,9 @@ void KeepoutFilter::process(
         if (data == NO_INFORMATION) {
           continue;
         }
-        if (data > old_data || old_data == NO_INFORMATION) {
+        // 主栅格为未知(NO_INFORMATION)时，只有 mask 给出非 free 值（禁区/膨胀）才覆盖；
+        // mask 的 free(0) 不得把静态未知冲成 free，否则会抹掉 costmap 里的未知区。
+        if (data > old_data || (old_data == NO_INFORMATION && data != FREE_SPACE)) {
           master_array[index] = data;
         }
       }
@@ -297,6 +298,7 @@ void KeepoutFilter::resetFilter()
 
   filter_info_sub_.reset();
   mask_sub_.reset();
+  resetMaskWarningState();
 }
 
 bool KeepoutFilter::isActive()

@@ -1,0 +1,66 @@
+mobile_control_action_node:
+  ros__parameters:
+    # 基础参数
+    control_frequency: 20.0
+    max_v: 0.35
+    min_v: 0.0
+    max_w: 1.0
+    accel_x_max: 0.5
+    straight_max_w_inc: 1.57
+    rotate_to_heading_max_angular_accel: 1.0
+    rotate_to_heading_kp: 1.2
+    rotate_stop_yaw_error: 0.02
+
+    k_rho: 1.0
+
+    near_target_dist: 0.4
+    cmd_vel_filter_alpha: 0.3
+    min_angular_vel: 0.01
+    xy_tolerance: 0.02
+    yaw_tolerance: 0.02
+    goal_mode_rotate_xy_threshold: 0.03
+
+    pure_rotation:
+      angular_pid:
+        integrator_enable: true
+        integrator_saturation_level: 0.5
+        kp: 0.6
+        ki: 0.01
+        kd: 0.10
+
+    straight:
+      station_pid:
+        integrator_enable: true
+        integrator_saturation_level: 0.3
+        kp: 1.0
+        ki: 0.01
+        kd: 0.10
+      high_speed_pid:
+        integrator_enable: true
+        integrator_saturation_level: 0.3
+        kp: 1.0
+        ki: 0.01
+        kd: 0.10
+      low_speed_pid:
+        integrator_enable: true
+        integrator_saturation_level: 0.3
+        kp: 1.0
+        ki: 0.01
+        kd: 0.10
+      reverse_station_pid:
+        integrator_enable: true
+        integrator_saturation_level: 0.5
+        kp: 1.0
+        ki: 0.01
+        kd: 0.10
+      reverse_speed_pid:
+        integrator_enable: true
+        integrator_saturation_level: 0.5
+        kp: 1.0
+        ki: 0.01
+        kd: 0.10
+      angular_pid:
+        kp: 1.0
+        ki: 0.01
+        kd: 0.10
+      switch_speed: 0.1

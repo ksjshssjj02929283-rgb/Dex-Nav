@@ -64,6 +64,8 @@ private:
   unsigned int current_child_idx_;
   unsigned int number_of_retries_;
   unsigned int retry_count_;
+  bool primary_running_logged_;
+  bool recovery_running_logged_;
 
   /**
    * @brief The main override required by a BT action

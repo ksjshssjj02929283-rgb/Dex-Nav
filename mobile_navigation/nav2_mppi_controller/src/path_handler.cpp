@@ -105,13 +105,14 @@ geometry_msgs::msg::PoseStamped PathHandler::transformToGlobalPlanFrame(
   const geometry_msgs::msg::PoseStamped & pose)
 {
   if (global_plan_up_to_inversion_.poses.empty()) {
-    throw std::runtime_error("Received plan with zero length");
+    throw std::runtime_error(
+            "Received plan with zero length. 收到的全局路径长度为 0，局部控制无法转换路径。");
   }
 
   geometry_msgs::msg::PoseStamped robot_pose;
   if (!transformPose(global_plan_up_to_inversion_.header.frame_id, pose, robot_pose)) {
     throw std::runtime_error(
-            "Unable to transform robot pose into global plan's frame");
+            "Unable to transform robot pose into global plan's frame. 无法把机器人位姿转换到全局路径坐标系，请检查 TF。");
   }
 
   return robot_pose;
@@ -136,7 +137,8 @@ nav_msgs::msg::Path PathHandler::transformPath(
   }
 
   if (transformed_plan.poses.empty()) {
-    throw std::runtime_error("Resulting plan has 0 poses in it.");
+    throw std::runtime_error(
+            "Resulting plan has 0 poses in it. 转换到局部代价地图后的路径为空，可能是全局路径为空、路径在 costmap 外或裁剪后无有效点。");
   }
 
   return transformed_plan;

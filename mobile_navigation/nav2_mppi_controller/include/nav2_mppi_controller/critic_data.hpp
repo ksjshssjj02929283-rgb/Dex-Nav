@@ -17,7 +17,6 @@
 
 #include <memory>
 #include <vector>
-#include <xtensor/xtensor.hpp>
 
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "nav2_core/goal_checker.hpp"
@@ -41,7 +40,7 @@ struct CriticData
   const models::Trajectories & trajectories;
   const models::Path & path;
 
-  xt::xtensor<float, 1> & costs;
+  models::Vector & costs;
   float & model_dt;
 
   bool fail_flag;

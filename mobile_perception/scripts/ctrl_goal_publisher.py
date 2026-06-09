@@ -40,7 +40,8 @@ def main(args=None):
     rclpy.init(args=args)
 
     # 默认值
-    x, y, yaw = -0.5, 0.0, 0.0
+    x, y, yaw = 0.5, 0.0, 0.0
+
 
     # 命令行参数控制
     if len(sys.argv) == 4:

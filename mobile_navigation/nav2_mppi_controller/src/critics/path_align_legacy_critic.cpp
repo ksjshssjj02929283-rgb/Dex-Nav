@@ -14,14 +14,8 @@
 
 #include "nav2_mppi_controller/critics/path_align_legacy_critic.hpp"
 
-#include <xtensor/xfixed.hpp>
-#include <xtensor/xmath.hpp>
-
 namespace mppi::critics
 {
-
-using namespace xt::placeholders;  // NOLINT
-using xt::evaluation_strategy::immediate;
 
 void PathAlignLegacyCritic::initialize()
 {
@@ -74,15 +68,15 @@ void PathAlignLegacyCritic::score(CriticData & data)
   const auto & T_y = data.trajectories.y;
   const auto & T_yaw = data.trajectories.yaws;
 
-  const auto P_x = xt::view(data.path.x, xt::range(_, -1));  // path points
-  const auto P_y = xt::view(data.path.y, xt::range(_, -1));  // path points
-  const auto P_yaw = xt::view(data.path.yaws, xt::range(_, -1));  // path points
+  const auto & P_x = data.path.x;  // path points
+  const auto & P_y = data.path.y;  // path points
+  const auto & P_yaw = data.path.yaws;  // path points
 
-  const size_t batch_size = T_x.shape(0);
-  const size_t time_steps = T_x.shape(1);
+  const size_t batch_size = T_x.rows();
+  const size_t time_steps = T_x.cols();
   const size_t traj_pts_eval = floor(time_steps / trajectory_point_step_);
-  const size_t path_segments_count = data.path.x.shape(0) - 1;
-  auto && cost = xt::xtensor<float, 1>::from_shape({data.costs.shape(0)});
+  const size_t path_segments_count = data.path.x.size() - 1;
+  models::Vector cost = models::Vector::Zero(data.costs.size());
 
   if (path_segments_count < 1) {
     return;
@@ -100,7 +94,6 @@ void PathAlignLegacyCritic::score(CriticData & data)
 
       // Find closest path segment to the trajectory point
       for (size_t s = 0; s < path_segments_count - 1; s++) {
-        xt::xtensor_fixed<float, xt::xshape<2>> P;
         dx = P_x(s) - T_x(t, p);
         dy = P_y(s) - T_y(t, p);
         if (use_path_orientations_) {
@@ -122,10 +115,10 @@ void PathAlignLegacyCritic::score(CriticData & data)
       }
     }
 
-    cost[t] = summed_dist / traj_pts_eval;
+    cost(t) = summed_dist / traj_pts_eval;
   }
 
-  data.costs += xt::pow(std::move(cost) * weight_, power_);
+  data.costs += (cost * weight_).pow(power_);
 }
 
 }  // namespace mppi::critics

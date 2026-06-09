@@ -13,9 +13,9 @@
 // limitations under the License.
 
 #include <chrono>
+#include <random>
 #include <thread>
 
-#include <xtensor/xrandom.hpp>
 #include "gtest/gtest.h"
 #include "rclcpp/rclcpp.hpp"
 #include "nav2_mppi_controller/tools/utils.hpp"
@@ -116,9 +116,9 @@ TEST(UtilsTests, ConversionTests)
   models::Path path_t = toTensor(path);
 
   // Check population is correct
-  EXPECT_EQ(path_t.x.shape(0), 5u);
-  EXPECT_EQ(path_t.y.shape(0), 5u);
-  EXPECT_EQ(path_t.yaws.shape(0), 5u);
+  EXPECT_EQ(path_t.x.size(), 5);
+  EXPECT_EQ(path_t.y.size(), 5);
+  EXPECT_EQ(path_t.yaws.size(), 5);
   EXPECT_EQ(path_t.x(2), 5);
   EXPECT_EQ(path_t.y(2), 50);
   EXPECT_NEAR(path_t.yaws(2), 0.0, 1e-6);
@@ -168,9 +168,9 @@ TEST(UtilsTests, WithTolTests)
 TEST(UtilsTests, AnglesTests)
 {
   // Test angle normalization by creating insane angles
-  xt::xtensor<float, 1> angles, zero_angles;
-  angles = xt::ones<float>({100});
-  for (unsigned int i = 0; i != angles.shape(0); i++) {
+  models::Vector angles, zero_angles;
+  angles = models::Vector::Ones(100);
+  for (Eigen::Index i = 0; i != angles.size(); i++) {
     angles(i) = i * i;
     if (i % 2 == 0) {
       angles(i) *= -1;
@@ -178,14 +178,14 @@ TEST(UtilsTests, AnglesTests)
   }
 
   auto norm_ang = normalize_angles(angles);
-  for (unsigned int i = 0; i != norm_ang.shape(0); i++) {
+  for (Eigen::Index i = 0; i != norm_ang.size(); i++) {
     EXPECT_TRUE((norm_ang(i) >= -M_PI) && (norm_ang(i) <= M_PI));
   }
 
   // Test shortest angular distance
-  zero_angles = xt::zeros<float>({100});
+  zero_angles = models::Vector::Zero(100);
   auto ang_dist = shortest_angular_distance(angles, zero_angles);
-  for (unsigned int i = 0; i != ang_dist.shape(0); i++) {
+  for (Eigen::Index i = 0; i != ang_dist.size(); i++) {
     EXPECT_TRUE((ang_dist(i) >= -M_PI) && (ang_dist(i) <= M_PI));
   }
 
@@ -210,7 +210,7 @@ TEST(UtilsTests, FurthestAndClosestReachedPoint)
   models::State state;
   models::Trajectories generated_trajectories;
   models::Path path;
-  xt::xtensor<float, 1> costs;
+  models::Vector costs;
   float model_dt = 0.1;
 
   CriticData data =
@@ -230,9 +230,9 @@ TEST(UtilsTests, FurthestAndClosestReachedPoint)
   EXPECT_EQ(data2.furthest_reached_path_point, 0);
 
   // Test the actual computation of the path point reached
-  generated_trajectories.x = xt::ones<float>({100, 2});
-  generated_trajectories.y = xt::zeros<float>({100, 2});
-  generated_trajectories.yaws = xt::zeros<float>({100, 2});
+  generated_trajectories.x = models::Matrix::Ones(100, 2);
+  generated_trajectories.y = models::Matrix::Zero(100, 2);
+  generated_trajectories.yaws = models::Matrix::Zero(100, 2);
 
   nav_msgs::msg::Path plan;
   plan.poses.resize(10);
@@ -254,7 +254,7 @@ TEST(UtilsTests, findPathCosts)
   models::State state;
   models::Trajectories generated_trajectories;
   models::Path path;
-  xt::xtensor<float, 1> costs;
+  models::Vector costs;
   float model_dt = 0.1;
 
   CriticData data =
@@ -302,7 +302,7 @@ TEST(UtilsTests, findPathCosts)
   // This should be evaluated and have real outputs now
   setPathCostsIfNotSet(data3, costmap_ros);
   EXPECT_TRUE(data3.path_pts_valid.has_value());
-  for (unsigned int i = 0; i != path.x.shape(0) - 1; i++) {
+  for (Eigen::Index i = 0; i != path.x.size() - 1; i++) {
     if (i == 1 || i == 10) {
       EXPECT_FALSE((*data3.path_pts_valid)[i]);
     } else {
@@ -314,12 +314,17 @@ TEST(UtilsTests, findPathCosts)
 TEST(UtilsTests, SmootherTest)
 {
   models::ControlSequence noisey_sequence, sequence_init;
-  noisey_sequence.vx = 0.2 * xt::ones<float>({30});
-  noisey_sequence.vy = 0.0 * xt::ones<float>({30});
-  noisey_sequence.wz = 0.3 * xt::ones<float>({30});
+  noisey_sequence.vx = 0.2 * models::Vector::Ones(30);
+  noisey_sequence.vy = 0.0 * models::Vector::Ones(30);
+  noisey_sequence.wz = 0.3 * models::Vector::Ones(30);
 
   // Make the sequence noisy
-  auto noises = xt::random::randn<float>({30}, 0.0, 0.2);
+  models::Vector noises(30);
+  std::mt19937 generator{0};
+  std::normal_distribution<float> distribution(0.0f, 0.2f);
+  for (Eigen::Index i = 0; i < noises.size(); ++i) {
+    noises(i) = distribution(generator);
+  }
   noisey_sequence.vx += noises;
   noisey_sequence.vy += noises;
   noisey_sequence.wz += noises;
@@ -357,7 +362,7 @@ TEST(UtilsTests, SmootherTest)
 
   // Check that path is smoother
   float smoothed_val{0}, original_val{0};
-  for (unsigned int i = 0; i != noisey_sequence.vx.shape(0); i++) {
+  for (Eigen::Index i = 0; i != noisey_sequence.vx.size(); i++) {
     smoothed_val += fabs(noisey_sequence.vx(i) - 0.2);
     smoothed_val += fabs(noisey_sequence.vy(i) - 0.0);
     smoothed_val += fabs(noisey_sequence.wz(i) - 0.3);

@@ -14,6 +14,8 @@
 
 #include "nav2_mppi_controller/critic_manager.hpp"
 
+#include <chrono>
+
 namespace mppi
 {
 
@@ -67,11 +69,24 @@ std::string CriticManager::getFullName(const std::string & name)
 void CriticManager::evalTrajectoriesScores(
   CriticData & data) const
 {
+  constexpr double kSlowCriticWarnMs = 100.0;
+
   for (size_t q = 0; q < critics_.size(); q++) {
     if (data.fail_flag) {
       break;
     }
+
+    auto t_start = std::chrono::high_resolution_clock::now();
     critics_[q]->score(data);
+    auto t_end = std::chrono::high_resolution_clock::now();
+    const double critic_ms =
+      std::chrono::duration<double, std::milli>(t_end - t_start).count();
+
+    if (critic_ms >= kSlowCriticWarnMs) {
+      RCLCPP_WARN(
+        logger_, "Critic timing (ms): name=%s cost=%.3f fail=%d",
+        critic_names_[q].c_str(), critic_ms, data.fail_flag);
+    }
   }
 }
 

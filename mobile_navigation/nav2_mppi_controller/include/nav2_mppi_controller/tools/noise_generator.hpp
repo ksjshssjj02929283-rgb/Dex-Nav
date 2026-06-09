@@ -21,9 +21,6 @@
 #include <mutex>
 #include <condition_variable>
 
-#include <xtensor/xtensor.hpp>
-#include <xtensor/xview.hpp>
-
 #include "nav2_mppi_controller/models/optimizer_settings.hpp"
 #include "nav2_mppi_controller/tools/parameters_handler.hpp"
 #include "nav2_mppi_controller/models/control_sequence.hpp"
@@ -94,9 +91,9 @@ protected:
    */
   void generateNoisedControls();
 
-  xt::xtensor<float, 2> noises_vx_;
-  xt::xtensor<float, 2> noises_vy_;
-  xt::xtensor<float, 2> noises_wz_;
+  models::Matrix noises_vx_;
+  models::Matrix noises_vy_;
+  models::Matrix noises_wz_;
 
   mppi::models::OptimizerSettings settings_;
   bool is_holonomic_;

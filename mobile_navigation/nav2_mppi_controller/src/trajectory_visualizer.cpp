@@ -57,9 +57,9 @@ void TrajectoryVisualizer::on_deactivate()
 }
 
 void TrajectoryVisualizer::add(
-  const xt::xtensor<float, 2> & trajectory, const std::string & marker_namespace)
+  const models::Matrix & trajectory, const std::string & marker_namespace)
 {
-  auto & size = trajectory.shape()[0];
+  const Eigen::Index size = trajectory.rows();
   if (!size) {
     return;
   }
@@ -78,7 +78,7 @@ void TrajectoryVisualizer::add(
       points_->markers.push_back(marker);
     };
 
-  for (size_t i = 0; i < size; i++) {
+  for (Eigen::Index i = 0; i < size; i++) {
     add_marker(i);
   }
 }
@@ -86,12 +86,13 @@ void TrajectoryVisualizer::add(
 void TrajectoryVisualizer::add(
   const models::Trajectories & trajectories, const std::string & marker_namespace)
 {
-  auto & shape = trajectories.x.shape();
-  const float shape_1 = static_cast<float>(shape[1]);
-  points_->markers.reserve(floor(shape[0] / trajectory_step_) * floor(shape[1] * time_step_));
+  const Eigen::Index rows = trajectories.x.rows();
+  const Eigen::Index cols = trajectories.x.cols();
+  const float shape_1 = static_cast<float>(cols);
+  points_->markers.reserve(floor(rows / trajectory_step_) * floor(cols * time_step_));
 
-  for (size_t i = 0; i < shape[0]; i += trajectory_step_) {
-    for (size_t j = 0; j < shape[1]; j += time_step_) {
+  for (Eigen::Index i = 0; i < rows; i += trajectory_step_) {
+    for (Eigen::Index j = 0; j < cols; j += time_step_) {
       const float j_flt = static_cast<float>(j);
       float blue_component = 1.0f - j_flt / shape_1;
       float green_component = j_flt / shape_1;

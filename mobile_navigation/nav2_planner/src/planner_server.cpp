@@ -32,6 +32,9 @@
 #include "nav2_costmap_2d/cost_values.hpp"
 
 #include "nav2_planner/planner_server.hpp"
+// Generic planner-fallback interface: any planner implementing FallbackProvider
+// can ask the server to dispatch the configured fallback planner.
+#include "nav2_route_planner/planner_fallback.hpp"
 
 using namespace std::chrono_literals;
 using rcl_interfaces::msg::ParameterType;
@@ -52,6 +55,19 @@ PlannerServer::PlannerServer(const rclcpp::NodeOptions & options)
   // Declare this node's parameters
   declare_parameter("planner_plugins", default_ids_);
   declare_parameter("expected_planner_frequency", 1.0);
+  // active_planner: which registered planner key to use when the action
+  // caller's planner_id is empty or does not match any registered plugin.
+  // Switchable at runtime: ros2 param set /planner_server active_planner <key>
+  declare_parameter("active_planner", std::string(""));
+  // override_planner_id: when true, ignore caller-supplied planner_id and
+  // always dispatch to active_planner_. Used for runtime hot-swapping when
+  // upstream BTs hard-code planner_id="GridBased". Switchable at runtime:
+  //   ros2 param set /planner_server override_planner_id true|false
+  declare_parameter("override_planner_id", false);
+  // route_fallback_planner: when the dispatched planner is the route planner
+  // and it returns no path SPECIFICALLY because the map has no route graph,
+  // retry with this free-space planner. Empty = no fallback.
+  declare_parameter("route_fallback_planner", std::string(""));
 
   get_parameter("planner_plugins", planner_ids_);
   if (planner_ids_ == default_ids_) {
@@ -122,6 +138,49 @@ PlannerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
   RCLCPP_INFO(
     get_logger(),
     "Planner Server has %s planners available.", planner_ids_concat_.c_str());
+
+  // Resolve active_planner_ from parameter (default = first registered planner)
+  {
+    std::string active_param;
+    get_parameter("active_planner", active_param);
+    if (!active_param.empty() && planners_.find(active_param) != planners_.end()) {
+      active_planner_ = active_param;
+    } else {
+      if (!active_param.empty()) {
+        RCLCPP_WARN(
+          get_logger(),
+          "active_planner '%s' is not a registered planner; defaulting to '%s'",
+          active_param.c_str(), planner_ids_.front().c_str());
+      }
+      active_planner_ = planner_ids_.empty() ? "" : planner_ids_.front();
+    }
+    RCLCPP_INFO(get_logger(), "Active planner set to '%s'", active_planner_.c_str());
+  }
+
+  // Resolve override flag
+  get_parameter("override_planner_id", override_planner_id_);
+  RCLCPP_INFO(
+    get_logger(),
+    "override_planner_id = %s (when true, every getPlan() ignores caller's "
+    "planner_id and uses active_planner='%s')",
+    override_planner_id_ ? "true" : "false", active_planner_.c_str());
+
+  // Resolve route→free-space fallback planner
+  get_parameter("route_fallback_planner", route_fallback_planner_);
+  if (!route_fallback_planner_.empty()) {
+    if (planners_.count(route_fallback_planner_)) {
+      RCLCPP_INFO(
+        get_logger(),
+        "route_fallback_planner = '%s' (used when the route planner finds no "
+        "route graph)", route_fallback_planner_.c_str());
+    } else {
+      RCLCPP_WARN(
+        get_logger(),
+        "route_fallback_planner '%s' is not a registered planner; route "
+        "fallback disabled", route_fallback_planner_.c_str());
+      route_fallback_planner_.clear();
+    }
+  }
 
   double expected_planner_frequency;
   get_parameter("expected_planner_frequency", expected_planner_frequency);
@@ -531,24 +590,71 @@ PlannerServer::getPlan(
     "(%.2f, %.2f).", start.pose.position.x, start.pose.position.y,
     goal.pose.position.x, goal.pose.position.y);
 
-  if (planners_.find(planner_id) != planners_.end()) {
-    return planners_[planner_id]->createPlan(start, goal);
-  } else {
-    if (planners_.size() == 1 && planner_id.empty()) {
-      RCLCPP_WARN_ONCE(
-        get_logger(), "No planners specified in action call. "
-        "Server will use only plugin %s in server."
-        " This warning will appear once.", planner_ids_concat_.c_str());
-      return planners_[planners_.begin()->first]->createPlan(start, goal);
+  // Resolve the effective planner. Two modes:
+  //   (1) override_planner_id_ == true: ignore caller's planner_id and
+  //       always use active_planner_ (hot-swap mode).
+  //   (2) override_planner_id_ == false (nav2 default): caller's
+  //       planner_id wins; active_planner_ is only used as fallback when
+  //       caller's planner_id is empty or not registered.
+  std::string effective_id = planner_id;
+
+  if (override_planner_id_ &&
+    !active_planner_.empty() && planners_.count(active_planner_))
+  {
+    // Mode (1): hot-swap override
+    if (!planner_id.empty() && planner_id != active_planner_) {
+      RCLCPP_DEBUG(
+        get_logger(),
+        "override_planner_id=true: caller requested '%s' but dispatching to active '%s'",
+        planner_id.c_str(), active_planner_.c_str());
+    }
+    effective_id = active_planner_;
+  } else if (planners_.find(effective_id) == planners_.end()) {
+    // Mode (2): fallback to active_planner_ on miss
+    if (!active_planner_.empty() && planners_.count(active_planner_)) {
+      if (!planner_id.empty()) {
+        RCLCPP_WARN(
+          get_logger(),
+          "Requested planner '%s' not found; falling back to active_planner '%s'",
+          planner_id.c_str(), active_planner_.c_str());
+      }
+      effective_id = active_planner_;
     } else {
       RCLCPP_ERROR(
-        get_logger(), "planner %s is not a valid planner. "
+        get_logger(), "planner '%s' is not a valid planner. "
         "Planner names are: %s", planner_id.c_str(),
         planner_ids_concat_.c_str());
+      return nav_msgs::msg::Path();
     }
   }
 
-  return nav_msgs::msg::Path();
+  auto path = planners_[effective_id]->createPlan(start, goal);
+
+  // Generic planner fallback: if the dispatched planner produced no path AND
+  // it implements FallbackProvider AND reports a non-NONE fallback reason
+  // (e.g. NO_ROUTE_GRAPH), retry with the configured fallback planner. A
+  // genuine empty result with reason NONE is NOT degraded.
+  if (path.poses.empty() &&
+    !route_fallback_planner_.empty() &&
+    route_fallback_planner_ != effective_id &&
+    planners_.count(route_fallback_planner_))
+  {
+    auto * fb = dynamic_cast<nav2_route_planner::FallbackProvider *>(
+      planners_[effective_id].get());
+    const auto reason = fb ? fb->lastFallbackReason()
+      : nav2_route_planner::FallbackReason::NONE;
+    if (reason != nav2_route_planner::FallbackReason::NONE) {
+      RCLCPP_WARN(
+        get_logger(),
+        "Planner '%s' requests fallback (reason=%s); dispatching fallback "
+        "planner '%s'",
+        effective_id.c_str(), nav2_route_planner::toString(reason),
+        route_fallback_planner_.c_str());
+      path = planners_[route_fallback_planner_]->createPlan(start, goal);
+    }
+  }
+
+  return path;
 }
 
 void
@@ -633,6 +739,34 @@ PlannerServer::dynamicParametersCallback(std::vector<rclcpp::Parameter> paramete
             " than 0.0 to turn on duration overrrun warning messages", parameter.as_double());
           max_planner_duration_ = 0.0;
         }
+      }
+    } else if (type == ParameterType::PARAMETER_STRING) {
+      if (name == "active_planner") {
+        const std::string requested = parameter.as_string();
+        if (planners_.find(requested) == planners_.end()) {
+          RCLCPP_WARN(
+            get_logger(),
+            "Rejecting active_planner='%s': not a registered planner. Available: %s",
+            requested.c_str(), planner_ids_concat_.c_str());
+          result.successful = false;
+          result.reason = "unknown planner key: " + requested;
+          return result;
+        }
+        RCLCPP_INFO(
+          get_logger(), "active_planner: '%s' -> '%s'",
+          active_planner_.c_str(), requested.c_str());
+        active_planner_ = requested;
+      }
+    } else if (type == ParameterType::PARAMETER_BOOL) {
+      if (name == "override_planner_id") {
+        const bool old_v = override_planner_id_;
+        override_planner_id_ = parameter.as_bool();
+        RCLCPP_INFO(
+          get_logger(),
+          "override_planner_id: %s -> %s (active_planner='%s')",
+          old_v ? "true" : "false",
+          override_planner_id_ ? "true" : "false",
+          active_planner_.c_str());
       }
     }
   }

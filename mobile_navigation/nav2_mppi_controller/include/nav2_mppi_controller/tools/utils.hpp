@@ -17,16 +17,13 @@
 #define NAV2_MPPI_CONTROLLER__TOOLS__UTILS_HPP_
 
 #include <algorithm>
+#include <array>
 #include <chrono>
+#include <cmath>
 #include <string>
 #include <limits>
 #include <memory>
 #include <vector>
-
-#include <xtensor/xarray.hpp>
-#include <xtensor/xnorm.hpp>
-#include <xtensor/xmath.hpp>
-#include <xtensor/xview.hpp>
 
 #include "angles/angles.h"
 
@@ -51,7 +48,6 @@
 
 namespace mppi::utils
 {
-using xt::evaluation_strategy::immediate;
 
 /**
  * @brief Convert data into pose
@@ -203,7 +199,7 @@ inline bool withinPositionGoalTolerance(
   const geometry_msgs::msg::Pose & robot,
   const models::Path & path)
 {
-  const auto goal_idx = path.x.shape(0) - 1;
+  const auto goal_idx = path.x.size() - 1;
   const auto goal_x = path.x(goal_idx);
   const auto goal_y = path.y(goal_idx);
 
@@ -239,7 +235,7 @@ inline bool withinPositionGoalTolerance(
   const geometry_msgs::msg::Pose & robot,
   const models::Path & path)
 {
-  const auto goal_idx = path.x.shape(0) - 1;
+  const auto goal_idx = path.x.size() - 1;
   const auto goal_x = path.x(goal_idx);
   const auto goal_y = path.y(goal_idx);
 
@@ -267,8 +263,13 @@ inline bool withinPositionGoalTolerance(
 template<typename T>
 auto normalize_angles(const T & angles)
 {
-  auto && theta = xt::eval(xt::fmod(angles + M_PI, 2.0 * M_PI));
-  return xt::eval(xt::where(theta <= 0.0, theta + M_PI, theta - M_PI));
+  return angles.unaryExpr(
+    [](float angle) {
+      const float theta =
+      std::fmod(angle + static_cast<float>(M_PI), 2.0f * static_cast<float>(M_PI));
+      return theta <= 0.0f ? theta + static_cast<float>(M_PI) :
+      theta - static_cast<float>(M_PI);
+    });
 }
 
 /**
@@ -300,26 +301,22 @@ auto shortest_angular_distance(
  */
 inline size_t findPathFurthestReachedPoint(const CriticData & data)
 {
-  const auto traj_x = xt::view(data.trajectories.x, xt::all(), -1, xt::newaxis());
-  const auto traj_y = xt::view(data.trajectories.y, xt::all(), -1, xt::newaxis());
-
-  const auto dx = data.path.x - traj_x;
-  const auto dy = data.path.y - traj_y;
-
-  const auto dists = dx * dx + dy * dy;
-
   size_t max_id_by_trajectories = 0, min_id_by_path = 0;
   float min_distance_by_path = std::numeric_limits<float>::max();
   float cur_dist = 0.0f;
 
-  for (size_t i = 0; i < dists.shape(0); i++) {
+  for (Eigen::Index i = 0; i < data.trajectories.x.rows(); i++) {
     min_id_by_path = 0;
     min_distance_by_path = std::numeric_limits<float>::max();
-    for (size_t j = 0; j < dists.shape(1); j++) {
-      cur_dist = dists(i, j);
+    const float traj_x = data.trajectories.x(i, data.trajectories.x.cols() - 1);
+    const float traj_y = data.trajectories.y(i, data.trajectories.y.cols() - 1);
+    for (Eigen::Index j = 0; j < data.path.x.size(); j++) {
+      const float dx = data.path.x(j) - traj_x;
+      const float dy = data.path.y(j) - traj_y;
+      cur_dist = dx * dx + dy * dy;
       if (cur_dist < min_distance_by_path) {
         min_distance_by_path = cur_dist;
-        min_id_by_path = j;
+        min_id_by_path = static_cast<size_t>(j);
       }
     }
     max_id_by_trajectories = std::max(max_id_by_trajectories, min_id_by_path);
@@ -336,16 +333,16 @@ inline size_t findPathFurthestReachedPoint(const CriticData & data)
 inline size_t findPathTrajectoryInitialPoint(const CriticData & data)
 {
   // First point should be the same for all trajectories from initial conditions
-  const auto dx = data.path.x - data.trajectories.x(0, 0);
-  const auto dy = data.path.y - data.trajectories.y(0, 0);
-  const auto dists = dx * dx + dy * dy;
+  const auto dists =
+    (data.path.x - data.trajectories.x(0, 0)).square() +
+    (data.path.y - data.trajectories.y(0, 0)).square();
 
   float min_distance_by_path = std::numeric_limits<float>::max();
   size_t min_id = 0;
-  for (size_t j = 0; j < dists.shape(0); j++) {
+  for (Eigen::Index j = 0; j < dists.size(); j++) {
     if (dists(j) < min_distance_by_path) {
       min_distance_by_path = dists(j);
-      min_id = j;
+      min_id = static_cast<size_t>(j);
     }
   }
 
@@ -373,7 +370,7 @@ inline void findPathCosts(
 {
   auto * costmap = costmap_ros->getCostmap();
   unsigned int map_x, map_y;
-  const size_t path_segments_count = data.path.x.shape(0) - 1;
+  const size_t path_segments_count = data.path.x.size() - 1;
   data.path_pts_valid = std::vector<bool>(path_segments_count, false);
   for (unsigned int idx = 0; idx < path_segments_count; idx++) {
     const auto path_x = data.path.x(idx);
@@ -454,22 +451,28 @@ inline void savitskyGolayFilter(
   const models::OptimizerSettings & settings)
 {
   // Savitzky-Golay Quadratic, 9-point Coefficients
-  xt::xarray<float> filter = {-21.0, 14.0, 39.0, 54.0, 59.0, 54.0, 39.0, 14.0, -21.0};
-  filter /= 231.0;
+  static constexpr std::array<float, 9> filter = {
+    -21.0f / 231.0f, 14.0f / 231.0f, 39.0f / 231.0f,
+    54.0f / 231.0f, 59.0f / 231.0f, 54.0f / 231.0f,
+    39.0f / 231.0f, 14.0f / 231.0f, -21.0f / 231.0f};
 
-  const unsigned int num_sequences = control_sequence.vx.shape(0) - 1;
+  const unsigned int num_sequences = control_sequence.vx.size() - 1;
 
   // Too short to smooth meaningfully
   if (num_sequences < 20) {
     return;
   }
 
-  auto applyFilter = [&](const xt::xarray<float> & data) -> float {
-      return xt::sum(data * filter, {0}, immediate)();
+  auto applyFilter = [&](const std::array<float, 9> & data) -> float {
+      float result = 0.0f;
+      for (size_t i = 0; i < filter.size(); ++i) {
+        result += data[i] * filter[i];
+      }
+      return result;
     };
 
   auto applyFilterOverAxis =
-    [&](xt::xtensor<float, 1> & sequence,
+    [&](models::Vector & sequence,
       const float hist_0, const float hist_1, const float hist_2, const float hist_3) -> void
     {
       unsigned int idx = 0;

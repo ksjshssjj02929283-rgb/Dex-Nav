@@ -12,7 +12,7 @@
             </Inverter>
             <IsPathValid path="{path}"/>
           </ReactiveSequence>
-          <ComputePathToPose goal="{goal}" path="{path}" planner_id="GridBased"/>
+          <ComputePathToPose goal="{goal}" path="{path}" planner_id="SmacGridBased"/>
         </Fallback>
       </RateController>
       <FollowPath path="{path}" controller_id="FollowPath"/>

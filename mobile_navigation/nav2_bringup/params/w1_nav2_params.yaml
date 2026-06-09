@@ -6,7 +6,7 @@ bt_navigator:
     robot_base_frame: base_link
     odom_topic: /feedback/odom
     bt_loop_duration: 10
-    default_server_timeout: 20
+    default_server_timeout: 200
     # 'default_nav_through_poses_bt_xml' and 'default_nav_to_pose_bt_xml' are use defaults:
     # nav2_bt_navigator/navigate_to_pose_w_replanning_and_recovery.xml
     # nav2_bt_navigator/navigate_through_poses_w_replanning_and_recovery.xml
@@ -75,12 +75,18 @@ controller_server:
     progress_checker_plugins: ["progress_checker"] # progress_checker_plugin: "progress_checker" For Humble and older
     goal_checker_plugins: ["goal_checker"] # goal_checker_plugin: "goal_checker" For Galactic and older
     controller_plugins: ["FollowPath"]
-
+    odom_topic: /feedback/odom
     progress_checker:
-      plugin: "nav2_controller::PoseProgressChecker"
-      required_movement_radius: 0.1
-      required_movement_angle: 0.01
-      movement_time_allowance: 3.0
+      plugin: "nav2_controller::PoseProgressChecker" # 进展检查插件
+      required_movement_radius: 0.1 # 普通模式：判定有进展所需的移动距离，单位 m
+      required_movement_angle: 0.01 # 普通模式：判定有进展所需的旋转角度，单位 rad
+      movement_time_allowance: 3.0 # 普通模式：允许未达到足够进展的时间，单位 s
+    near_goal_progress:
+      enabled: True # 是否启用接近目标点时的宽松进展检查
+      distance: 0.20 # 距离目标点小于该值时进入近目标模式，单位 m
+      required_movement_radius: 0.01 # 近目标模式：判定有进展所需的移动距离，单位 m
+      required_movement_angle: 0.01 # 近目标模式：判定有进展所需的旋转角度，单位 rad
+      movement_time_allowance: 5.0 # 近目标模式：允许未达到足够进展的时间，单位 s
     goal_checker:
       plugin: "nav2_controller::LongitudinalGoalChecker"
       lon_goal_tolerance: 0.02
@@ -95,16 +101,22 @@ controller_server:
       vx_std: 0.25 # 0.2
       vy_std: 0.2
       wz_std: 0.3 # 0.35 # 0.25 # 0.4
-      vx_max: 0.5 # 0.5
+      vx_max: 0.7 # 0.5
       vx_min: -0.5 # -1.05 # -0.35
       vy_max: 0.5
-      wz_max: 0.5
+      wz_max: 0.75
+      ax_max: 0.5
+      ax_min: -0.5
+      az_max: 0.7
+      jx_max: 1.0
+      jz_max: 1.5
       iteration_count: 1
-      prune_distance: 4.0 # 3.7 # 1.7 (must )
+      prune_distance: 2.5 # 3.7 # 1.7 (must )
       transform_tolerance: 0.1
       temperature: 0.3
       gamma: 0.015
       motion_model: "DiffDrive" #Ackermann, DiffDrive
+      open_loop: true
       visualize: false
       reset_period: 1.0 # (only in Humble)
       regenerate_noises: false
@@ -113,7 +125,7 @@ controller_server:
         time_step: 3
       AckermannConstraints:
         min_turning_r: 0.5
-      critics: ["ConstraintCritic", "CostCritic", "ObstaclesCritic", "GoalCritic", "GoalAngleCritic", "PathAlignCritic", "PathFollowCritic", "PathAngleCritic", "PreferForwardCritic"]
+      critics: ["ConstraintCritic", "CostCritic", "ObstaclesCritic", "GoalCritic", "GoalAngleCritic", "PathAlignCritic", "PathFollowCritic", "PathAngleCritic", "PreferForwardCritic", "VelocityDeadbandCritic"]
       # critics: ["ConstraintCritic", "CostCritic", "GoalCritic", "GoalAngleCritic", "PathAlignCritic", "PathFollowCritic", "PathAngleCritic", "PreferForwardCritic"]
       ConstraintCritic:
         enabled: true
@@ -141,9 +153,9 @@ controller_server:
         critical_weight: 20.0
         consider_footprint: true
         collision_cost: 100000.0
-        collision_margin_distance: 0.2 # 0.1
+        collision_margin_distance: 0.1 # 0.1
         near_goal_distance: 0.5
-        inflation_radius: 0.8 # 0.75 # 0.55 # 0.6 # (only in Humble)
+        inflation_radius: 0.4 # 0.75 # 0.55 # 0.6 # (only in Humble)
         cost_scaling_factor: 10.0 # (only in Humble)
       CostCritic:
         enabled: true
@@ -172,8 +184,8 @@ controller_server:
       PathAngleCritic:
         enabled: true
         cost_power: 1
-        cost_weight: 2.0
-        offset_from_furthest: 4
+        cost_weight: 4.0
+        offset_from_furthest: 2
         threshold_to_consider: 0.5
         max_angle_to_furthest: 1.0
         mode: 0
@@ -181,13 +193,18 @@ controller_server:
         enabled: true
         twirling_cost_power: 1
         twirling_cost_weight: 10.0
+      VelocityDeadbandCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 10.0
+        deadband_velocities: [0.005, 0.08, 0.01]
 
 local_costmap:
   local_costmap:
     ros__parameters:
       update_frequency: 14.0 # 5.0
       publish_frequency: 14.0 # 2.0
-      global_frame: map # odom
+      global_frame: odom # odom
       robot_base_frame: base_link
       use_sim_time: True
       rolling_window: true
@@ -197,12 +214,13 @@ local_costmap:
       footprint: "[[0.35, 0.29], [0.35, -0.29], [-0.35, -0.29], [-0.35, 0.29]]" # Slightly increased for better planning efficiency and safety (real size: 0.95*0.55)
       # footprint: "[ [0.55, 0.35], [0.55, -0.35], [-0.55, -0.35], [-0.55, 0.35] ]" # Slightly increased for better planning efficiency and safety (real size: 0.95*0.55)
       # plugins: ["voxel_layer", "denoise_layer", "inflation_layer"]
-      plugins: ["obstacle_layer", "denoise_layer", "inflation_layer"]   
+      plugins: ["static_layer", "obstacle_layer", "denoise_layer", "inflation_layer"]   
+      filters: ["keepout_filter", "keepout_inflation_layer", "speed_filter"]
       # plugins: ["obstacle_layer", "voxel_layer", "denoise_layer", "inflation_layer"]
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 10.0
-        inflation_radius: 0.40 # 0.75 # 0.55
+        inflation_radius: 0.4 # 0.75 # 0.55
       denoise_layer:
         plugin: "nav2_costmap_2d::DenoiseLayer"
         enabled: True
@@ -240,7 +258,7 @@ local_costmap:
           inf_is_valid: false
         orbbec_rear_marked:
           topic: /orbbec/rear/pointcloud2_filtered
-          observation_persistence: 2.0
+          observation_persistence: 0.7
           obstacle_max_range: 30.0
           obstacle_min_range: 0.0
           raytrace_max_range: 30.0
@@ -253,7 +271,7 @@ local_costmap:
           inf_is_valid: false
         orbbec_front_marked:
           topic: /orbbec/front/pointcloud2_filtered
-          observation_persistence: 2.0
+          observation_persistence: 0.7
           obstacle_max_range: 30.0
           obstacle_min_range: 0.0
           raytrace_max_range: 30.0
@@ -268,6 +286,19 @@ local_costmap:
       static_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
         map_subscribe_transient_local: True
+      keepout_filter:
+        plugin: "nav2_costmap_2d::KeepoutFilter"
+        enabled: True
+        filter_info_topic: "/keepout_costmap_filter_info"
+      keepout_inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        enabled: True
+        inflation_radius: 0.4
+      speed_filter:
+        plugin: "nav2_costmap_2d::SpeedFilter"
+        enabled: True
+        filter_info_topic: "/speed_costmap_filter_info"
+        speed_limit_topic: "/speed_limit"
       always_send_full_costmap: True  
 
 global_costmap:
@@ -281,17 +312,19 @@ global_costmap:
       # footprint: "[ [0.55, 0.35], [0.55, -0.35], [-0.55, -0.35], [-0.55, 0.35] ]" # Slightly increased for better planning efficiency and safety (real size: 0.95*0.55)
       footprint: "[[0.35, 0.29], [0.35, -0.29], [-0.35, -0.29], [-0.35, 0.29]]" # Slightly increased for better planning efficiency and safety (real size: 0.95*0.55)
       resolution: 0.05
-      track_unknown_space: false # True
+      track_unknown_space: true   # 静态未知记录为 NO_INFORMATION(255)；配合 obstacle_layer combination_method:2 保住不被清除，规划器靠 allow_unknown:false 避开
       # plugins: ["static_layer", "obstacle_layer",  "denoise_layer", "inflation_layer"]
       # plugins: ["static_layer", "voxel_layer", "denoise_layer", "inflation_layer"]
       plugins: ["static_layer", "obstacle_layer", "denoise_layer", "inflation_layer"]
+      filters: ["keepout_filter", "keepout_inflation_layer","speed_filter"]
       denoise_layer:
         plugin: "nav2_costmap_2d::DenoiseLayer"
         enabled: True
-     
+
       obstacle_layer:
         plugin: "nav2_costmap_2d::ObstacleLayer"
         enabled: True
+        combination_method: 2   # MaxWithoutUnknownOverwrite（本仓 backport）：raytrace 清除不覆盖静态未知，保住 NO_INFORMATION
         observation_sources: scan_1 scan_2 orbbec_rear_marked orbbec_front_marked
         footprint_clearing_enabled: true
         max_obstacle_height: 2.0
@@ -354,7 +387,20 @@ global_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 10.0
-        inflation_radius: 0.40 # 0.75 # 0.55
+        inflation_radius: 0.4 # 0.75 # 0.55
+      keepout_filter:
+        plugin: "nav2_costmap_2d::KeepoutFilter"
+        enabled: True
+        filter_info_topic: "/keepout_costmap_filter_info"
+      keepout_inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        enabled: True
+        inflation_radius: 0.4
+      speed_filter:
+        plugin: "nav2_costmap_2d::SpeedFilter"
+        enabled: True
+        filter_info_topic: "/speed_costmap_filter_info"
+        speed_limit_topic: "/speed_limit"
       always_send_full_costmap: True
 
 map_server:
@@ -376,40 +422,100 @@ planner_server:
   ros__parameters:
     expected_planner_frequency: 0.2 # 0.5 # 20.0
     use_sim_time: True
-    planner_plugins: ["GridBased"]
-    GridBased:
-      # plugin: "nav2_navfn_planner/NavfnPlanner"
-      # tolerance: 0.5
-      # use_astar: false
-      # allow_unknown: true
-      plugin: "nav2_smac_planner/SmacPlannerLattice" # In Iron and older versions, "/" was used instead of "::"
-      allow_unknown: true                 # Allow traveling in unknown space
-      tolerance: 0.25                     # dist-to-goal heuristic cost (distance) for valid tolerance endpoints if exact goal cannot be found.
-      max_iterations: 2000000 # 1000000             # Maximum total iterations to search for before failing (in case unreachable), set to -1 to disable
-      max_on_approach_iterations: 2000 # 1000    # Maximum number of iterations after within tolerances to continue to try to find exact solution
-      max_planning_time: 5.0              # Max time in s for planner to plan, smooth
-      analytic_expansion_ratio: 3.5       # The ratio to attempt analytic expansions during search for final approach.
-      analytic_expansion_max_length: 3.0  # For Hybrid/Lattice nodes The maximum length of the analytic expansion to be considered valid to prevent unsafe shortcutting
-      analytic_expansion_max_cost: 200.0  # The maximum single cost for any part of an analytic expansion to contain and be valid, except when necessary on approach to goal
-      analytic_expansion_max_cost_override: false  #  Whether or not to override the maximum cost setting if within critical distance to goal (ie probably required)
-      reverse_penalty: 2.0                # Penalty to apply if motion is reversing, must be => 1 (recommend: 1.3~5.0)
-      change_penalty: 0.05                # Penalty to apply if motion is changing directions (L to R), must be >= 0 (recommend: 0.0~0.3)
-      non_straight_penalty: 1.0 # 1.05          # Penalty to apply if motion is non-straight, must be => 1 (recommend: 1.0~1.3)
-      cost_penalty: 2.0                   # Penalty to apply to higher cost areas when adding into the obstacle map dynamic programming distance expansion heuristic. This drives the robot more towards the center of passages. A value between 1.3 - 3.5 is reasonable.
-      rotation_penalty: 5.0               # Penalty to apply to in-place rotations, if minimum control set contains them
+
+    # ─── PlannerServer 原生多 planner 热切换 ─────────────────
+    # 关键机制：本工程已 fork nav2_planner 新增两个参数：
+    #   - active_planner: 运行时选哪个 planner（必须 ∈ planner_plugins）
+    #   - override_planner_id: 当 true 时忽略 BT 传的 planner_id，
+    #     强制使用 active_planner → 实现 BT 不动的热切换
+    # 切换命令（无需重启 planner_server）：
+    #   ros2 param set /planner_server active_planner RouteGridPlanner  # 路网规划
+    #   ros2 param set /planner_server active_planner SmacGridBased     # SmacPlannerLattice 自由路径
+    #   ros2 param set /planner_server active_planner ThetaStarBased    # Theta* 几何最短路径
+    # 详见 [[10. 双规划器热切换方案——PlannerSwitcher 设计与实现]]
+    planner_plugins: ["RouteGridPlanner", "SmacGridBased", "ThetaStarBased"]
+    active_planner: "RouteGridPlanner"   # 默认用路网规划器（dynamic）
+                                         # 可选值：RouteGridPlanner / SmacGridBased / ThetaStarBased
+    override_planner_id: true            # true: 忽略 BT planner_id，强制 active；
+                                         # false: nav2 标准 fallback 语义
+    route_fallback_planner: "SmacGridBased"  # RouteGridPlanner 无路网数据(地图未建路网)时退化到此自由规划器
+
+    # ─── 规划器 1：路网（NavRouteGraphPlanner）────────────────────────
+    RouteGridPlanner:
+      plugin: "nav2_route_planner/NavRouteGraphPlanner"
+      asset_manager_node_name: "map_asset_manager"
+      data_load_timeout_sec: 5.0
+      projection_node_threshold_m: 0.5
+      projection_edge_threshold_m: 0.5
+      waypoints_per_meter: 20
+      bezier_samples_per_edge: 40
+      publish_route_plan: true
+      # false=最终朝向用 goal 给定值（默认/我们期望）；true=用路径切线方向
+      use_final_approach_orientation: false
+
+      # ── Costmap-aware 安全层 ─────────────
+      # 起点 → 路网 + 路网 → 终点：始终用 Theta* 规划（必做无开关）。
+      # Theta* 自带 unsafe-to-plan 检测：起/终点在 lethal 内或不可达时
+      # 直接返回失败 → 整个 plan 拒绝。
+      #
+      # 路网中间段 obstacle bypass：参数开关（默认关）。
+      # 热切换：ros2 param set /planner_server RouteGridPlanner.costmap_aware_mode true
+      costmap_aware_mode: false
+      obstacle_cost_threshold: 220.0
+      obstacle_margin_before_m: 0.5
+      obstacle_margin_after_m: 0.5
+      bypass_max_replan_length_m: 10.0
+      theta_star_max_corners: 8
+      theta_star_allow_unknown: false
+
+    # ─── 规划器 2：自由路径（SmacPlannerLattice）──────────────────────
+    SmacGridBased:
+      plugin: "nav2_smac_planner/SmacPlannerLattice"
+      allow_unknown: false
+      tolerance: 0.25
+      max_iterations: 2000000
+      max_on_approach_iterations: 2000
+      max_planning_time: 5.0
+      analytic_expansion_ratio: 3.5
+      analytic_expansion_max_length: 3.0
+      analytic_expansion_max_cost: 200.0
+      analytic_expansion_max_cost_override: false
+      reverse_penalty: 2.0
+      change_penalty: 0.05
+      non_straight_penalty: 1.0
+      cost_penalty: 2.0
+      rotation_penalty: 5.0
       retrospective_penalty: 0.015
-      lattice_filepath: "default" # rewrite in launch                # The filepath to the state lattice graph
-      lookup_table_size: 20.0             # Size of the dubin/reeds-sheep distance window to cache, in meters.
-      cache_obstacle_heuristic: false     # Cache the obstacle map dynamic programming distance expansion heuristic between subsiquent replannings of the same goal location. Dramatically speeds up replanning performance (40x) if costmap is largely static.
-      allow_reverse_expansion: false      # If true, allows the robot to use the primitives to expand in the mirrored opposite direction of the current robot's orientation (to reverse).
-      smooth_path: True                   # If true, does a simple and quick smoothing post-processing to the path
+      # lattice_filepath: "$(find-pkg-share nav2_smac_planner)/sample_primitives/5cm_resolution/0.5m_turning_radius/diff/output.json"
+      lattice_filepath: "$(find-pkg-share nav2_smac_planner)/sample_primitives/5cm_resolution/output.json"
+      lookup_table_size: 20.0
+      cache_obstacle_heuristic: false
+      allow_reverse_expansion: false
+      smooth_path: True
       smoother:
         max_iterations: 1000
         w_smooth: 0.3
         w_data: 0.2
         tolerance: 1.0e-10
         do_refinement: true
-        refinement_num: 2      
+        refinement_num: 2
+
+    # ─── 规划器 3：Theta* 自由路径（nav2_theta_star_planner）──────────
+    # 用途：与 RouteGridPlanner / SmacGridBased 并存，作为第三个可热切换
+    # 选项。Theta* 是 grid-based 几何最短路径搜索（允许对角线走线，路径
+    # 比 NavfnPlanner 更直），适合"无路网约束 + 大致直走"场景。
+    # 切换命令：
+    #   ros2 param set /planner_server active_planner ThetaStarBased
+    ThetaStarBased:
+      plugin: "nav2_theta_star_planner/ThetaStarPlanner"
+      how_many_corners: 8
+      w_euc_cost: 1.0
+      w_traversal_cost: 2.0
+      allow_unknown: false
+      # false=最终朝向用 goal 给定值（默认/我们期望）；true=用路径切线方向
+      use_final_approach_orientation: false
+      terminal_checking_interval: 5000
+
   # ros__parameters:
   #   use_sim_time: True
   #   save_map_timeout: 5.0
@@ -417,32 +523,22 @@ planner_server:
   #   occupied_thresh_default: 0.65
   #   map_subscribe_transient_local: True
 
-
-# smoother_server:
-#   ros__parameters:
-#     use_sim_time: True
-#     # costmap_topic: global_costmap/costmap_raw
-#     # footprint_topic: global_costmap/published_footprint
-#     # robot_base_frame: base_link
-#     # transform_timeout: 0.1
-#     # smoother_plugins: ["savitzky_golay_smoother"]
-#     # savitzky_golay_smoother:
-#     #   plugin: "nav2_smoother::SavitzkyGolaySmoother"
-#     #   do_refinement: True
-#     #   refinement_num: 2
-#     smoother_plugins: ["simple_smoother"]
-#     simple_smoother:
-#       plugin: "nav2_smoother::SimpleSmoother"
-#       tolerance: 1.0e-10
-#       max_its: 1000
-#       do_refinement: True    
+smoother_server:
+  ros__parameters:
+    use_sim_time: True
+    smoother_plugins: ["simple_smoother"]
+    simple_smoother:
+      plugin: "nav2_smoother::SimpleSmoother"
+      tolerance: 1.0e-10
+      max_its: 1000
+      do_refinement: True
 
 behavior_server:
   ros__parameters:
     costmap_topic: local_costmap/costmap_raw
     footprint_topic: local_costmap/published_footprint
     cycle_frequency: 10.0
-    behavior_plugins: ["spin", "backup", "drive_on_heading", "assisted_teleop", "wait"]
+    behavior_plugins: ["spin", "backup", "drive_on_heading", "assisted_teleop", "wait", "wait_global", "wait_local"]
     spin:
       plugin: "nav2_behaviors/Spin"
     backup:
@@ -451,16 +547,20 @@ behavior_server:
       plugin: "nav2_behaviors/DriveOnHeading"
     wait:
       plugin: "nav2_behaviors/Wait"
+    wait_global:
+      plugin: "nav2_behaviors/Wait"
+    wait_local:
+      plugin: "nav2_behaviors/Wait"
     assisted_teleop:
       plugin: "nav2_behaviors/AssistedTeleop"
-    global_frame: map
+    global_frame: odom
     robot_base_frame: base_link
     transform_tolerance: 0.1
     use_sim_time: true
     simulate_ahead_time: 2.0
-    max_rotational_vel: 1.0
-    min_rotational_vel: 0.4
-    rotational_acc_lim: 3.2
+    max_rotational_vel: 0.7
+    min_rotational_vel: 0.3
+    rotational_acc_lim: 0.7
 
 robot_state_publisher:
   ros__parameters:
@@ -483,9 +583,11 @@ velocity_smoother:
     smoothing_frequency: 20.0
     scale_velocities: False
     feedback: "OPEN_LOOP"
+    input_topic: "cmd_vel_nav"
+    output_topic: "control/cmd_vel_nav"
     # Test
-    max_velocity: [0.5, 0.0, 0.7]
-    min_velocity: [-0.5, 0.0, -0.7]  
+    max_velocity: [0.7, 0.0, 0.75]
+    min_velocity: [-0.5, 0.0, -0.75]  
     max_accel: [0.5, 0.0, 0.7]
     max_decel: [-0.5, 0.0, -0.7]    
     # Original

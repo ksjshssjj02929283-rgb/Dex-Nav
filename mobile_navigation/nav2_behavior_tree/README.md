@@ -64,3 +64,13 @@ The BehaviorTree engine has a run method that accepts an XML description of a BT
 See the code in the [BT Navigator](../nav2_bt_navigator/src/bt_navigator.cpp) for an example usage of the BehaviorTreeEngine.
 
 For more information about the behavior tree nodes that are available in the default BehaviorTreeCPP library, see documentation here: https://www.behaviortree.dev/docs/3.8/learn-the-basics/BT_basics
+
+## 本工程导航相关节点补充
+
+`nav2_behavior_tree` 在导航主链路中主要提供 ROS2 action / service 的 BT 包装节点，不直接执行全局规划算法或局部控制算法。
+
+- `ComputePathToPoseAction` 注册 XML 节点名 `ComputePathToPose`，内部 action server 名称为 `compute_path_to_pose`。tick 时从 blackboard 读取 `goal`、`planner_id` 和可选 `start`，成功后将 `planner_server` 返回的 `nav_msgs/msg/Path` 写入输出端口 `path`。
+- `FollowPathAction` 注册 XML 节点名 `FollowPath`，内部 action server 名称为 `follow_path`。tick 时从 blackboard 读取 `path`、`controller_id` 和可选 `goal_checker_id`，并发送给 `controller_server`。
+- `FollowPathAction::on_wait_for_result()` 会在 action 运行期间持续读取新的 `path`、`controller_id`、`goal_checker_id`；任一输入变化都会设置 `goal_updated_`，由 `BtActionNode` 重新发送 action goal，使控制器接收重规划后的新路径。
+- `BtActionNode` 统一处理 action client 创建、goal 发送、反馈回调、结果状态转换和 halt/cancel；具体节点只负责把 BT 端口映射到 action goal/result。
+- `PipelineSequence` 与 `RateController` 配合时，可以在 `FollowPath` 仍处于 RUNNING 时周期性 tick 前置的 `ComputePathToPose` 分支，从而支持边走边重规划。

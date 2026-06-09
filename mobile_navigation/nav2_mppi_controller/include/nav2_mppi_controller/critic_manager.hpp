@@ -19,8 +19,6 @@
 #include <string>
 #include <vector>
 #include <pluginlib/class_loader.hpp>
-#include <xtensor/xtensor.hpp>
-
 #include "geometry_msgs/msg/twist.hpp"
 #include "geometry_msgs/msg/twist_stamped.hpp"
 
@@ -46,12 +44,12 @@ public:
     * @brief Constructor for mppi::CriticManager
     */
   CriticManager() = default;
-  
+
   /**
     * @brief Virtual Destructor for mppi::CriticManager
     */
   virtual ~CriticManager() = default;
-  
+
   /**
     * @brief Configure critic manager on bringup and load plugins
     * @param parent WeakPtr to node

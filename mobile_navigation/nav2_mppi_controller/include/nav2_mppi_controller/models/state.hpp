@@ -15,10 +15,10 @@
 #ifndef NAV2_MPPI_CONTROLLER__MODELS__STATE_HPP_
 #define NAV2_MPPI_CONTROLLER__MODELS__STATE_HPP_
 
-#include <xtensor/xtensor.hpp>
-
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <geometry_msgs/msg/twist.hpp>
+
+#include "nav2_mppi_controller/tools/eigen_types.hpp"
 
 namespace mppi::models
 {
@@ -29,13 +29,13 @@ namespace mppi::models
  */
 struct State
 {
-  xt::xtensor<float, 2> vx;
-  xt::xtensor<float, 2> vy;
-  xt::xtensor<float, 2> wz;
+  Matrix vx;
+  Matrix vy;
+  Matrix wz;
 
-  xt::xtensor<float, 2> cvx;
-  xt::xtensor<float, 2> cvy;
-  xt::xtensor<float, 2> cwz;
+  Matrix cvx;
+  Matrix cvy;
+  Matrix cwz;
 
   geometry_msgs::msg::PoseStamped pose;
   geometry_msgs::msg::Twist speed;
@@ -45,13 +45,13 @@ struct State
     */
   void reset(unsigned int batch_size, unsigned int time_steps)
   {
-    vx = xt::zeros<float>({batch_size, time_steps});
-    vy = xt::zeros<float>({batch_size, time_steps});
-    wz = xt::zeros<float>({batch_size, time_steps});
+    vx = Matrix::Zero(batch_size, time_steps);
+    vy = Matrix::Zero(batch_size, time_steps);
+    wz = Matrix::Zero(batch_size, time_steps);
 
-    cvx = xt::zeros<float>({batch_size, time_steps});
-    cvy = xt::zeros<float>({batch_size, time_steps});
-    cwz = xt::zeros<float>({batch_size, time_steps});
+    cvx = Matrix::Zero(batch_size, time_steps);
+    cvy = Matrix::Zero(batch_size, time_steps);
+    cwz = Matrix::Zero(batch_size, time_steps);
   }
 };
 }  // namespace mppi::models

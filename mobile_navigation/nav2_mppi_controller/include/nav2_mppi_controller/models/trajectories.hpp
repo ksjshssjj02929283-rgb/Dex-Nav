@@ -15,8 +15,7 @@
 #ifndef NAV2_MPPI_CONTROLLER__MODELS__TRAJECTORIES_HPP_
 #define NAV2_MPPI_CONTROLLER__MODELS__TRAJECTORIES_HPP_
 
-#include <xtensor/xtensor.hpp>
-#include <xtensor/xview.hpp>
+#include "nav2_mppi_controller/tools/eigen_types.hpp"
 
 namespace mppi::models
 {
@@ -27,18 +26,18 @@ namespace mppi::models
  */
 struct Trajectories
 {
-  xt::xtensor<float, 2> x;
-  xt::xtensor<float, 2> y;
-  xt::xtensor<float, 2> yaws;
+  Matrix x;
+  Matrix y;
+  Matrix yaws;
 
   /**
     * @brief Reset state data
     */
   void reset(unsigned int batch_size, unsigned int time_steps)
   {
-    x = xt::zeros<float>({batch_size, time_steps});
-    y = xt::zeros<float>({batch_size, time_steps});
-    yaws = xt::zeros<float>({batch_size, time_steps});
+    x = Matrix::Zero(batch_size, time_steps);
+    y = Matrix::Zero(batch_size, time_steps);
+    yaws = Matrix::Zero(batch_size, time_steps);
   }
 };
 

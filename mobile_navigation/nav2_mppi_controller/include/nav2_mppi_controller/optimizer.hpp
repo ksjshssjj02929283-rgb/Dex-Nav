@@ -18,9 +18,6 @@
 #include <string>
 #include <memory>
 
-#include <xtensor/xtensor.hpp>
-#include <xtensor/xview.hpp>
-
 #include "rclcpp_lifecycle/lifecycle_node.hpp"
 
 #include "nav2_costmap_2d/costmap_2d_ros.hpp"
@@ -102,7 +99,7 @@ public:
    * @brief Get the optimal trajectory for a cycle for visualization
    * @return Optimal trajectory
    */
-  xt::xtensor<float, 2> getOptimizedTrajectory();
+  models::Matrix getOptimizedTrajectory();
 
   /**
    * @brief Set the maximum speed based on the speed limits callback
@@ -196,8 +193,8 @@ protected:
    * @param state fill state
    */
   void integrateStateVelocities(
-    xt::xtensor<float, 2> & trajectories,
-    const xt::xtensor<float, 2> & state) const;
+    models::Matrix & trajectories,
+    const models::Matrix & state) const;
 
   /**
    * @brief Update control sequence with state controls weighted by costs
@@ -248,9 +245,10 @@ protected:
   models::State state_;
   models::ControlSequence control_sequence_;
   std::array<mppi::models::Control, 4> control_history_;
+  geometry_msgs::msg::Twist last_command_vel_;
   models::Trajectories generated_trajectories_;
   models::Path path_;
-  xt::xtensor<float, 1> costs_;
+  models::Vector costs_;
 
   CriticData critics_data_ =
   {state_, generated_trajectories_, path_, costs_, settings_.model_dt, false, nullptr, nullptr,

@@ -13,6 +13,7 @@ endif()
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
+find_package(std_msgs REQUIRED)
 find_package(message_filters REQUIRED)
 find_package(PCL REQUIRED)
 find_package(pcl_conversions REQUIRED)
@@ -29,6 +30,7 @@ add_executable(rgbd_to_pointcloud
 ament_target_dependencies(rgbd_to_pointcloud
   rclcpp
   sensor_msgs
+  std_msgs
   message_filters
   PCL
   pcl_conversions
@@ -62,4 +64,3 @@ install(DIRECTORY
 )
 
 ament_package()
-

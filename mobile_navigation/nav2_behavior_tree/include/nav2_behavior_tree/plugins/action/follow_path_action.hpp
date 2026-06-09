@@ -47,12 +47,32 @@ public:
   void on_tick() override;
 
   /**
+   * @brief The main override required by a BT action
+   */
+  BT::NodeStatus tick() override;
+
+  /**
    * @brief Function to perform some user-defined operation after a timeout
    * waiting for a result that hasn't been received yet
    * @param feedback shared_ptr to latest feedback message
    */
   void on_wait_for_result(
     std::shared_ptr<const nav2_msgs::action::FollowPath::Feedback> feedback) override;
+
+  /**
+   * @brief Function to perform some user-defined operation upon successful completion of the action
+   */
+  BT::NodeStatus on_success() override;
+
+  /**
+   * @brief Function to perform some user-defined operation upon abortion of the action
+   */
+  BT::NodeStatus on_aborted() override;
+
+  /**
+   * @brief Function to perform some user-defined operation upon cancelation of the action
+   */
+  BT::NodeStatus on_cancelled() override;
 
   /**
    * @brief Creates list of BT ports
@@ -67,6 +87,9 @@ public:
         BT::InputPort<std::string>("goal_checker_id", ""),
       });
   }
+
+private:
+  bool waiting_for_valid_path_{false};
 };
 
 }  // namespace nav2_behavior_tree

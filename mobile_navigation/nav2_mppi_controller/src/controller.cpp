@@ -77,14 +77,51 @@ void MPPIController::reset()
   optimizer_.reset();
 }
 
+// geometry_msgs::msg::TwistStamped MPPIController::computeVelocityCommands(
+//   const geometry_msgs::msg::PoseStamped & robot_pose,
+//   const geometry_msgs::msg::Twist & robot_speed,
+//   nav2_core::GoalChecker * goal_checker)
+// {
+// #ifdef BENCHMARK_TESTING
+//   auto start = std::chrono::system_clock::now();
+// #endif
+
+//   if (clock_->now() - last_time_called_ > rclcpp::Duration::from_seconds(reset_period_)) {
+//     reset();
+//   }
+//   last_time_called_ = clock_->now();
+
+//   std::lock_guard<std::mutex> param_lock(*parameters_handler_->getLock());
+//   nav_msgs::msg::Path transformed_plan = path_handler_.transformPath(robot_pose);
+
+//   nav2_costmap_2d::Costmap2D * costmap = costmap_ros_->getCostmap();
+//   std::unique_lock<nav2_costmap_2d::Costmap2D::mutex_t> costmap_lock(*(costmap->getMutex()));
+//   auto start_mppi = std::chrono::system_clock::now();
+//   geometry_msgs::msg::TwistStamped cmd =
+//     optimizer_.evalControl(robot_pose, robot_speed, transformed_plan, goal_checker);
+//   auto end_mppi = std::chrono::system_clock::now();
+//   auto duration_mppi =
+//     std::chrono::duration_cast<std::chrono::milliseconds>(end_mppi - start_mppi).count();
+//   RCLCPP_INFO(logger_, "Control evalControl time: %ld [ms]", duration_mppi);
+// #ifdef BENCHMARK_TESTING
+//   auto end = std::chrono::system_clock::now();
+//   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+//   RCLCPP_INFO(logger_, "Control loop execution time: %ld [ms]", duration);
+// #endif
+
+//   if (visualize_) {
+//     visualize(std::move(transformed_plan));
+//   }
+
+//   return cmd;
+// }
 geometry_msgs::msg::TwistStamped MPPIController::computeVelocityCommands(
   const geometry_msgs::msg::PoseStamped & robot_pose,
   const geometry_msgs::msg::Twist & robot_speed,
   nav2_core::GoalChecker * goal_checker)
 {
-#ifdef BENCHMARK_TESTING
-  auto start = std::chrono::system_clock::now();
-#endif
+  constexpr double kSlowTimingWarnMs = 100.0;  // 100.0
+  auto t_total_start = std::chrono::high_resolution_clock::now();
 
   if (clock_->now() - last_time_called_ > rclcpp::Duration::from_seconds(reset_period_)) {
     reset();
@@ -92,26 +129,56 @@ geometry_msgs::msg::TwistStamped MPPIController::computeVelocityCommands(
   last_time_called_ = clock_->now();
 
   std::lock_guard<std::mutex> param_lock(*parameters_handler_->getLock());
+
+  auto t_transform_start = std::chrono::high_resolution_clock::now();
   nav_msgs::msg::Path transformed_plan = path_handler_.transformPath(robot_pose);
+  auto t_transform_end = std::chrono::high_resolution_clock::now();
+  double transform_ms =
+    std::chrono::duration<double, std::milli>(t_transform_end - t_transform_start).count();
 
   nav2_costmap_2d::Costmap2D * costmap = costmap_ros_->getCostmap();
-  std::unique_lock<nav2_costmap_2d::Costmap2D::mutex_t> costmap_lock(*(costmap->getMutex()));
 
+  auto t_lock_start = std::chrono::high_resolution_clock::now();
+  std::unique_lock<nav2_costmap_2d::Costmap2D::mutex_t> costmap_lock(*(costmap->getMutex()));
+  auto t_lock_end = std::chrono::high_resolution_clock::now();
+  double wait_lock_ms =
+    std::chrono::duration<double, std::milli>(t_lock_end - t_lock_start).count();
+
+  auto t_optimize_start = std::chrono::high_resolution_clock::now();
   geometry_msgs::msg::TwistStamped cmd =
     optimizer_.evalControl(robot_pose, robot_speed, transformed_plan, goal_checker);
+  auto t_optimize_end = std::chrono::high_resolution_clock::now();
+  double optimize_ms =
+    std::chrono::duration<double, std::milli>(t_optimize_end - t_optimize_start).count();
 
-#ifdef BENCHMARK_TESTING
-  auto end = std::chrono::system_clock::now();
-  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
-  RCLCPP_INFO(logger_, "Control loop execution time: %ld [ms]", duration);
-#endif
-
+  double visualize_ms = 0.0;
   if (visualize_) {
+    auto t_visualize_start = std::chrono::high_resolution_clock::now();
     visualize(std::move(transformed_plan));
+    auto t_visualize_end = std::chrono::high_resolution_clock::now();
+    visualize_ms =
+      std::chrono::duration<double, std::milli>(t_visualize_end - t_visualize_start).count();
+  }
+
+  auto t_total_end = std::chrono::high_resolution_clock::now();
+  double total_ms =
+    std::chrono::duration<double, std::milli>(t_total_end - t_total_start).count();
+
+  if (
+    total_ms >= kSlowTimingWarnMs || transform_ms >= kSlowTimingWarnMs ||
+    wait_lock_ms >= kSlowTimingWarnMs || optimize_ms >= kSlowTimingWarnMs ||
+    visualize_ms >= kSlowTimingWarnMs)
+  {
+    RCLCPP_WARN(
+      logger_,
+      "MPPI timing (ms): transform=%.3f wait_costmap_lock=%.3f optimize=%.3f visualize=%.3f "
+      "total=%.3f",
+      transform_ms, wait_lock_ms, optimize_ms, visualize_ms, total_ms);
   }
 
   return cmd;
 }
+
 
 void MPPIController::visualize(nav_msgs::msg::Path transformed_plan)
 {

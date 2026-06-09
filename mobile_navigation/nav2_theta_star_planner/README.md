@@ -7,6 +7,7 @@ See its [Configuration Guide Page](https://navigation.ros.org/configuration/pack
 - The planner uses A\* search along with line of sight (LOS) checks to form any-angle paths thus avoiding zig-zag paths that may be present in the usual implementation of A\*
 - As it also considers the costmap traversal cost during execution it tends to smoothen the paths automatically, thus mitigating the need to smoothen the path (The presence of sharp turns depends on the resolution of the map, and it decreases as the map resolution increases)
 - Uses the costs from the costmap to penalise high cost regions
+- Rejects inflated costmap cells during graph expansion and line-of-sight checks, so planned paths stay out of the inflation layer by default
 - Allows to control the path behavior to either be any angle directed or to be in the middle of the spaces
 - Is well suited for smaller robots of the omni-directional and differential drive kind
 - The algorithmic part of the planner has been segregated from the plugin part to allow for reusability

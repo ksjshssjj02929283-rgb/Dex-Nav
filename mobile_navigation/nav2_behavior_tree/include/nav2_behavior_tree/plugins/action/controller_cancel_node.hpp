@@ -42,6 +42,8 @@ public:
     const std::string & action_name,
     const BT::NodeConfiguration & conf);
 
+  BT::NodeStatus tick() override;
+
   /**
    * @brief Creates list of BT ports
    * @return BT::PortsList Containing basic ports along with node-specific ports

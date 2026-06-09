@@ -46,7 +46,7 @@ bt_navigator:
     robot_base_frame: base_link
     odom_topic: /feedback/odom
     bt_loop_duration: 10
-    default_server_timeout: 20
+    default_server_timeout: 200
     # 'default_nav_through_poses_bt_xml' and 'default_nav_to_pose_bt_xml' are use defaults:
     # nav2_bt_navigator/navigate_to_pose_w_replanning_and_recovery.xml
     # nav2_bt_navigator/navigate_through_poses_w_replanning_and_recovery.xml
@@ -149,6 +149,7 @@ controller_server:
       temperature: 0.3
       gamma: 0.015
       motion_model: "DiffDrive" #Ackermann, DiffDrive
+      open_loop: true
       visualize: false
       reset_period: 1.0 # (only in Humble)
       regenerate_noises: false
@@ -157,7 +158,7 @@ controller_server:
         time_step: 3
       AckermannConstraints:
         min_turning_r: 0.5
-      critics: ["ConstraintCritic", "CostCritic", "ObstaclesCritic", "GoalCritic", "GoalAngleCritic", "PathAlignCritic", "PathFollowCritic", "PathAngleCritic", "PreferForwardCritic"]
+      critics: ["ConstraintCritic", "CostCritic", "ObstaclesCritic", "GoalCritic", "GoalAngleCritic", "PathAlignCritic", "PathFollowCritic", "PathAngleCritic", "PreferForwardCritic", "VelocityDeadbandCritic"]
       # critics: ["ConstraintCritic", "CostCritic", "GoalCritic", "GoalAngleCritic", "PathAlignCritic", "PathFollowCritic", "PathAngleCritic", "PreferForwardCritic"]
       ConstraintCritic:
         enabled: true
@@ -225,6 +226,11 @@ controller_server:
         enabled: true
         twirling_cost_power: 1
         twirling_cost_weight: 10.0
+      VelocityDeadbandCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 35.0
+        deadband_velocities: [0.08, 0.08, 0.08]
 
 local_costmap:
   local_costmap:
@@ -242,6 +248,7 @@ local_costmap:
       # footprint: "[ [0.55, 0.35], [0.55, -0.35], [-0.55, -0.35], [-0.55, 0.35] ]" # Slightly increased for better planning efficiency and safety (real size: 0.95*0.55)
       # plugins: ["voxel_layer", "denoise_layer", "inflation_layer"]
       plugins: ["obstacle_layer", "voxel_layer", "denoise_layer", "inflation_layer"]   
+      filters: ["keepout_filter", "speed_filter"]
       # plugins: ["obstacle_layer", "voxel_layer", "denoise_layer", "inflation_layer"]
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
@@ -376,6 +383,15 @@ local_costmap:
       static_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
         map_subscribe_transient_local: True
+      keepout_filter:
+        plugin: "nav2_costmap_2d::KeepoutFilter"
+        enabled: True
+        filter_info_topic: "/keepout_costmap_filter_info"
+      speed_filter:
+        plugin: "nav2_costmap_2d::SpeedFilter"
+        enabled: True
+        filter_info_topic: "/speed_costmap_filter_info"
+        speed_limit_topic: "/speed_limit"
       always_send_full_costmap: True  
 
 global_costmap:
@@ -393,6 +409,7 @@ global_costmap:
       # plugins: ["static_layer", "obstacle_layer",  "denoise_layer", "inflation_layer"]
       # plugins: ["static_layer", "voxel_layer", "denoise_layer", "inflation_layer"]
       plugins: ["static_layer", "obstacle_layer", "voxel_layer", "denoise_layer", "inflation_layer"]
+      filters: ["keepout_filter", "speed_filter"]
       denoise_layer:
         plugin: "nav2_costmap_2d::DenoiseLayer"
         enabled: True
@@ -528,6 +545,15 @@ global_costmap:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 10.0
         inflation_radius: 0.55 # 0.75 # 0.55
+      keepout_filter:
+        plugin: "nav2_costmap_2d::KeepoutFilter"
+        enabled: True
+        filter_info_topic: "/keepout_costmap_filter_info"
+      speed_filter:
+        plugin: "nav2_costmap_2d::SpeedFilter"
+        enabled: True
+        filter_info_topic: "/speed_costmap_filter_info"
+        speed_limit_topic: "/speed_limit"
       always_send_full_costmap: True
 
 map_server:
@@ -590,25 +616,15 @@ planner_server:
   #   occupied_thresh_default: 0.65
   #   map_subscribe_transient_local: True
 
-
-# smoother_server:
-#   ros__parameters:
-#     use_sim_time: True
-#     # costmap_topic: global_costmap/costmap_raw
-#     # footprint_topic: global_costmap/published_footprint
-#     # robot_base_frame: base_link
-#     # transform_timeout: 0.1
-#     # smoother_plugins: ["savitzky_golay_smoother"]
-#     # savitzky_golay_smoother:
-#     #   plugin: "nav2_smoother::SavitzkyGolaySmoother"
-#     #   do_refinement: True
-#     #   refinement_num: 2
-#     smoother_plugins: ["simple_smoother"]
-#     simple_smoother:
-#       plugin: "nav2_smoother::SimpleSmoother"
-#       tolerance: 1.0e-10
-#       max_its: 1000
-#       do_refinement: True    
+smoother_server:
+  ros__parameters:
+    use_sim_time: True
+    smoother_plugins: ["simple_smoother"]
+    simple_smoother:
+      plugin: "nav2_smoother::SimpleSmoother"
+      tolerance: 1.0e-10
+      max_its: 1000
+      do_refinement: True
 
 behavior_server:
   ros__parameters:
@@ -656,6 +672,8 @@ velocity_smoother:
     smoothing_frequency: 20.0
     scale_velocities: False
     feedback: "OPEN_LOOP"
+    input_topic: "cmd_vel_nav"
+    output_topic: "control/cmd_vel_nav"
     # Test
     max_velocity: [0.5, 0.0, 0.7]
     min_velocity: [-0.5, 0.0, -0.7]  

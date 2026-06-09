@@ -1,8 +1,0 @@
-<?xml version="1.0"?>
-<package format="3">
-  <name>dexe_mobile_nav</name>
-  <version>0.4.0</version>
-  <description>dexe_mobile_nav repository (CI 用以读取版本号)</description>
-  <maintainer email="dexforce@dexforce.com">Dexforce</maintainer>
-  <license>Proprietary</license>
-</package>

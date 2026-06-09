@@ -1,10 +1,12 @@
 #include <rclcpp/rclcpp.hpp>
 
+#include <builtin_interfaces/msg/time.hpp>
 #include <sensor_msgs/msg/image.hpp>
 #include <geometry_msgs/msg/pose.hpp>
 #include <geometry_msgs/msg/pose_array.hpp>
 
 #include <tf2_ros/transform_listener.h>
+#include <tf2_ros/transform_broadcaster.h>
 #include <tf2_ros/buffer.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
@@ -23,6 +25,7 @@
 
 #include <fstream>
 #include <memory>
+#include <string>
 
 using json = nlohmann::json;
 
@@ -86,6 +89,8 @@ private:
     tf_buffer_ = std::make_unique<tf2_ros::Buffer>(get_clock());
     tf_listener_ =
       std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
+    tf_broadcaster_ =
+      std::make_unique<tf2_ros::TransformBroadcaster>(*this);
 
     // Image subscription
     image_sub_ = create_subscription<sensor_msgs::msg::Image>(
@@ -118,6 +123,7 @@ private:
       image_sub_.reset();
     }
 
+    tf_broadcaster_.reset();
     tf_listener_.reset();
     tf_buffer_.reset();
 
@@ -255,6 +261,8 @@ private:
       pose.orientation.w = q_bt.w();
 
       pose_array.poses.push_back(pose);
+
+      publish_debug_tf(msg->header.stamp, det->id, pose);
     }
 
     apriltag_detections_destroy(detections);
@@ -262,6 +270,29 @@ private:
     if (!pose_array.poses.empty()) {
       pose_pub_->publish(pose_array);
     }
+  }
+
+  // ==================================================
+
+  void publish_debug_tf(
+    const builtin_interfaces::msg::Time & stamp,
+    int tag_id,
+    const geometry_msgs::msg::Pose & pose)
+  {
+    if (!tf_broadcaster_) {
+      return;
+    }
+
+    geometry_msgs::msg::TransformStamped transform;
+    transform.header.stamp = stamp;
+    transform.header.frame_id = "base_link";
+    transform.child_frame_id =
+      "apriltag_detection_debug_" + std::to_string(tag_id);
+    transform.transform.translation.x = pose.position.x;
+    transform.transform.translation.y = pose.position.y;
+    transform.transform.translation.z = pose.position.z;
+    transform.transform.rotation = pose.orientation;
+    tf_broadcaster_->sendTransform(transform);
   }
 
   // ==================================================
@@ -300,6 +331,7 @@ private:
 
   std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
   std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
+  std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
 
   apriltag_detector_t * detector_{nullptr};
   apriltag_family_t * tag_family_{nullptr};

@@ -28,10 +28,11 @@ chown -R dexforce:dexforce /home/dexforce/w1
 EOF
 chmod 0755 "$DEBIAN_DIR/postinst"
 
-# --- 自动生成 control:固定版本号 ---
+# --- 自动生成 control:版本号从 dexe_mobile_nav_meta/package.xml 读取 ---
+VERSION=$(grep -m1 '<version>' "${CURDIR}/dexe_mobile_nav_meta/package.xml" | sed 's/.*<version>\(.*\)<\/version>.*/\1/')
 cat > "$DEBIAN_DIR/control" <<EOF
 Package: $PACKAGE_NAME
-Version: 0.4.0
+Version: ${VERSION}
 Architecture: arm64
 Maintainer: Dexforce <dexforce@dexforce.com>
 Description: $PACKAGE_NAME

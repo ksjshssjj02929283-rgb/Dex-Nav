@@ -30,8 +30,14 @@ def generate_launch_description():
     sor_stddev_mul_thresh_arg = DeclareLaunchArgument(
         'sor_stddev_mul_thresh', default_value='1.0', description='统计滤波标准差倍数阈值'
     )
-    ground_filter_threshold_arg = DeclareLaunchArgument(
-        'ground_filter_threshold', default_value='0.12', description='Y坐标阈值（米），相机坐标系下Y坐标大于该值的点将被剔除'
+    ground_filter_frame_arg = DeclareLaunchArgument(
+        'ground_filter_frame', default_value='base_link', description='地面过滤使用的坐标系'
+    )
+    ground_filter_min_height_arg = DeclareLaunchArgument(
+        'ground_filter_min_height', default_value='0.05', description='base_link下低于该高度的点认为是地面并剔除；调高会过滤更多低矮点，单位米'
+    )
+    ground_filter_max_height_arg = DeclareLaunchArgument(
+        'ground_filter_max_height', default_value='1.5', description='base_link下高于该高度的点不作为近地障碍输入；调低会减少高处点进入costmap，单位米'
     )
 
 
@@ -57,7 +63,9 @@ def generate_launch_description():
             'mls_search_radius': LaunchConfiguration('mls_search_radius'),
             'sor_mean_k': LaunchConfiguration('sor_mean_k'),
             'sor_stddev_mul_thresh': LaunchConfiguration('sor_stddev_mul_thresh'),
-            'ground_filter_threshold': LaunchConfiguration('ground_filter_threshold'),
+            'ground_filter_frame': LaunchConfiguration('ground_filter_frame'),
+            'ground_filter_min_height': LaunchConfiguration('ground_filter_min_height'),
+            'ground_filter_max_height': LaunchConfiguration('ground_filter_max_height'),
             
         }],
         output='screen',
@@ -87,7 +95,9 @@ def generate_launch_description():
             'mls_search_radius': LaunchConfiguration('mls_search_radius'),
             'sor_mean_k': LaunchConfiguration('sor_mean_k'),
             'sor_stddev_mul_thresh': LaunchConfiguration('sor_stddev_mul_thresh'),
-            'ground_filter_threshold': LaunchConfiguration('ground_filter_threshold'),
+            'ground_filter_frame': LaunchConfiguration('ground_filter_frame'),
+            'ground_filter_min_height': LaunchConfiguration('ground_filter_min_height'),
+            'ground_filter_max_height': LaunchConfiguration('ground_filter_max_height'),
             
         }],
         output='screen',
@@ -105,7 +115,9 @@ def generate_launch_description():
         mls_search_radius_arg,
         sor_mean_k_arg,
         sor_stddev_mul_thresh_arg,
-        ground_filter_threshold_arg,
+        ground_filter_frame_arg,
+        ground_filter_min_height_arg,
+        ground_filter_max_height_arg,
         # 两个节点
         front_rgbd_node,
         rear_rgbd_node,
