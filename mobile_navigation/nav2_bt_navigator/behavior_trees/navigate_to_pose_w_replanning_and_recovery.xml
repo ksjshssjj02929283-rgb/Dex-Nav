@@ -18,7 +18,7 @@
   - Even if clearing fails, the tree still retries FollowPath immediately.
   - If the inner retry still fails, perform Spin 90 degrees, Wait 2 seconds,
     try clearing local costmap again, and then retry FollowPath.
-  - If the 6 outer FollowPath retries are exhausted, try backing up 0.30 m,
+  - If the 2 outer FollowPath retries are exhausted, try backing up 0.30 m,
     then clear local costmap and retry local control again.
   - BackUp is treated as an optional recovery action: if backing up is blocked
     or out of the local costmap, navigation keeps waiting/retrying instead of
@@ -64,8 +64,8 @@
       <!-- 局部控制 -->
       <RecoveryNode number_of_retries="999999" name="FollowPathAfterBackUpRetry">
 
-        <!-- 常规局部恢复：最多执行 6 轮 wait_local + clear local -->
-        <RecoveryNode number_of_retries="6" name="FollowPathOuterRetry">
+        <!-- 常规局部恢复：最多执行 2 轮 wait_local + clear local -->
+        <RecoveryNode number_of_retries="2" name="FollowPathOuterRetry">
 
           <!-- 内层：FollowPath 失败后，尝试清 local，然后立即 FollowPath 1 次 -->
           <RecoveryNode number_of_retries="1" name="FollowPathInnerRetry">
@@ -90,7 +90,7 @@
 
         </RecoveryNode>
 
-        <!-- 兜底恢复：局部控制 6 轮恢复全部失败后，尝试后退一小段距离 -->
+        <!-- 兜底恢复：局部控制 2 轮恢复全部失败后，尝试后退一小段距离 -->
         <!-- 后退失败不再终止导航，随后清理局部代价地图并继续等待/重试 -->
         <Sequence name="BackUpClearLocalAfterFollowPathExhausted">
           <ForceSuccess>
