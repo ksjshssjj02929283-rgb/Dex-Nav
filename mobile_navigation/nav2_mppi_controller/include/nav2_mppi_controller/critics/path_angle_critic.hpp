@@ -43,6 +43,14 @@ public:
    */
   void score(CriticData & data) override;
 
+  /**
+   * @brief Apply runtime path angle critic settings
+   * @param settings Runtime path angle critic settings
+   */
+  void applyPathAngleCriticSettings(const PathAngleCriticSettings & settings);
+
+  void applyProfileSettings(const CriticProfileSettings & settings) override;
+
 protected:
   float max_angle_to_furthest_{0};
   float threshold_to_consider_{0};

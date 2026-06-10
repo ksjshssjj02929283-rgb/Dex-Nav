@@ -15,8 +15,10 @@
 #ifndef NAV2_MPPI_CONTROLLER__CONTROLLER_HPP_
 #define NAV2_MPPI_CONTROLLER__CONTROLLER_HPP_
 
-#include <string>
+#include <array>
+#include <cstddef>
 #include <memory>
+#include <string>
 
 #include "nav2_mppi_controller/tools/path_handler.hpp"
 #include "nav2_mppi_controller/optimizer.hpp"
@@ -108,6 +110,14 @@ protected:
     */
   void visualize(nav_msgs::msg::Path transformed_plan);
 
+  void configureProfiles();
+
+  void applyProfileForPathState(double path_progress, double goal_distance);
+
+  size_t selectProfile(double path_progress, double goal_distance) const;
+
+  std::string getProfileReason(size_t profile) const;
+
   std::string name_;
   rclcpp_lifecycle::LifecycleNode::WeakPtr parent_;
   rclcpp::Clock::SharedPtr clock_;
@@ -121,6 +131,11 @@ protected:
   TrajectoryVisualizer trajectory_visualizer_;
 
   bool visualize_;
+  bool profile_enabled_{true};
+  std::array<MppiProfileSettings, 3> profiles_;
+  double profile_start_distance_{0.8};
+  double profile_goal_distance_{1.0};
+  size_t active_profile_{0};
 
   double reset_period_;
   // Last time computeVelocityCommands was called

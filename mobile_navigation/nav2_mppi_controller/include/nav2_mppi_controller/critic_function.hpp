@@ -27,6 +27,59 @@
 namespace mppi::critics
 {
 
+struct GoalCriticSettings
+{
+  float weight{0.0f};
+  float threshold_to_consider{0.0f};
+};
+
+struct GoalAngleCriticSettings
+{
+  float weight{0.0f};
+  float threshold_to_consider{0.0f};
+};
+
+struct PathAngleCriticSettings
+{
+  float weight{0.0f};
+  float threshold_to_consider{0.0f};
+  int offset_from_furthest{0};
+  float max_angle_to_furthest{0.0f};
+  bool forward_preference{true};
+};
+
+struct PathFollowCriticSettings
+{
+  float weight{0.0f};
+  float threshold_to_consider{0.0f};
+  int offset_from_furthest{0};
+};
+
+struct PathAlignCriticSettings
+{
+  float weight{0.0f};
+  float threshold_to_consider{0.0f};
+  int offset_from_furthest{0};
+  int trajectory_point_step{0};
+  float max_path_occupancy_ratio{0.0f};
+};
+
+struct PreferForwardCriticSettings
+{
+  float weight{0.0f};
+  float threshold_to_consider{0.0f};
+};
+
+struct CriticProfileSettings
+{
+  GoalCriticSettings goal;
+  GoalAngleCriticSettings goal_angle;
+  PathAngleCriticSettings path_angle;
+  PathFollowCriticSettings path_follow;
+  PathAlignCriticSettings path_align;
+  PreferForwardCriticSettings prefer_forward;
+};
+
 /**
  * @class mppi::critics::CollisionCost
  * @brief Utility for storing cost information
@@ -93,6 +146,12 @@ public:
     * @brief Initialize critic
     */
   virtual void initialize() = 0;
+
+  /**
+    * @brief Apply runtime profile settings, if supported by the critic
+    * @param settings Runtime critic profile settings
+    */
+  virtual void applyProfileSettings(const CriticProfileSettings & /* settings */) {}
 
   /**
     * @brief Get name of critic

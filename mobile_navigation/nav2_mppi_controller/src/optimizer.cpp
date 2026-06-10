@@ -205,7 +205,8 @@ void Optimizer::optimize()
       RCLCPP_WARN(
         logger_,
         "Optimizer iteration %zu timing (ms): generate=%.3f critics=%.3f update=%.3f total=%.3f "
-        "[batch=%u steps=%u fail=%d]",
+        "[batch=%u steps=%u fail=%d]. "
+        "MPPI 单次优化耗时过长，可根据 generate/critics/update 判断是采样预测、critic 打分还是控制序列更新慢。",
         i, generate_ms, critic_ms, update_ms, total_ms,
         settings_.batch_size, settings_.time_steps, critics_data_.fail_flag);
     }
@@ -522,29 +523,120 @@ void Optimizer::setMotionModel(const std::string & model)
 
 void Optimizer::setSpeedLimit(double speed_limit, bool percentage)
 {
+  speed_limit_active_ = speed_limit != nav2_costmap_2d::NO_SPEED_LIMIT;
+  speed_limit_ = speed_limit;
+  speed_limit_is_percentage_ = percentage;
+
+  RCLCPP_INFO(
+    logger_,
+    "MPPI speed limit updated: active=%d value=%.3f percentage=%d. "
+    "收到速度限制更新，后续会与当前三阶段 profile 的速度约束叠加。",
+    speed_limit_active_, speed_limit_, speed_limit_is_percentage_);
+
+  applySpeedLimit();
+  syncMotionModelConstraints();
+  clampControlSequence();
+  logActiveConstraints();
+}
+
+void Optimizer::applyProfile(const MppiProfileSettings & profile)
+{
   auto & s = settings_;
-  if (speed_limit == nav2_costmap_2d::NO_SPEED_LIMIT) {
-    s.constraints.vx_max = s.base_constraints.vx_max;
-    s.constraints.vx_min = s.base_constraints.vx_min;
-    s.constraints.vy = s.base_constraints.vy;
-    s.constraints.wz = s.base_constraints.wz;
-  } else {
-    if (percentage) {
-      // Speed limit is expressed in % from maximum speed of robot
-      double ratio = speed_limit / 100.0;
-      s.constraints.vx_max = s.base_constraints.vx_max * ratio;
-      s.constraints.vx_min = s.base_constraints.vx_min * ratio;
-      s.constraints.vy = s.base_constraints.vy * ratio;
-      s.constraints.wz = s.base_constraints.wz * ratio;
-    } else {
-      // Speed limit is expressed in absolute value
-      double ratio = speed_limit / s.base_constraints.vx_max;
-      s.constraints.vx_max = s.base_constraints.vx_max * ratio;
-      s.constraints.vx_min = s.base_constraints.vx_min * ratio;
-      s.constraints.vy = s.base_constraints.vy * ratio;
-      s.constraints.wz = s.base_constraints.wz * ratio;
-    }
+  RCLCPP_INFO(
+    logger_,
+    "MPPI apply profile: base velocity before vx=[%.3f, %.3f] vy=%.3f wz=%.3f, "
+    "new vx=[%.3f, %.3f] vy=%.3f wz=%.3f. "
+    "三阶段 profile 正在覆盖 MPPI 基础速度约束。",
+    s.base_constraints.vx_min, s.base_constraints.vx_max,
+    s.base_constraints.vy, s.base_constraints.wz,
+    profile.velocity.vx_min, profile.velocity.vx_max,
+    profile.velocity.vy_max, profile.velocity.wz_max);
+
+  s.base_constraints.vx_max = profile.velocity.vx_max;
+  s.base_constraints.vx_min = profile.velocity.vx_min;
+  s.base_constraints.vy = profile.velocity.vy_max;
+  s.base_constraints.wz = profile.velocity.wz_max;
+
+  applySpeedLimit();
+  syncMotionModelConstraints();
+  clampControlSequence();
+  critic_manager_.applyCriticProfileSettings(profile.critics);
+  logActiveConstraints();
+}
+
+void Optimizer::applySpeedLimit()
+{
+  auto & s = settings_;
+  s.constraints = s.base_constraints;
+
+  if (!speed_limit_active_) {
+    return;
   }
+
+  if (speed_limit_is_percentage_) {
+    const double ratio = speed_limit_ / 100.0;
+    s.constraints.vx_max = s.base_constraints.vx_max * ratio;
+    s.constraints.vx_min = s.base_constraints.vx_min * ratio;
+    s.constraints.vy = s.base_constraints.vy * ratio;
+    s.constraints.wz = s.base_constraints.wz * ratio;
+  } else {
+    if (std::fabs(s.base_constraints.vx_max) < 1e-6) {
+      RCLCPP_WARN(
+        logger_,
+        "MPPI absolute speed limit ignored because base vx_max is near zero. "
+        "当前 profile 的 vx_max 接近 0，无法按绝对限速计算比例。");
+      return;
+    }
+
+    const double ratio = speed_limit_ / s.base_constraints.vx_max;
+    s.constraints.vx_max = s.base_constraints.vx_max * ratio;
+    s.constraints.vx_min = s.base_constraints.vx_min * ratio;
+    s.constraints.vy = s.base_constraints.vy * ratio;
+    s.constraints.wz = s.base_constraints.wz * ratio;
+  }
+}
+
+void Optimizer::clampControlSequence()
+{
+  auto & s = settings_;
+
+  if (control_sequence_.vx.size() == 0) {
+    return;
+  }
+
+  control_sequence_.vx =
+    control_sequence_.vx.min(s.constraints.vx_max).max(s.constraints.vx_min);
+  control_sequence_.wz =
+    control_sequence_.wz.min(s.constraints.wz).max(-s.constraints.wz);
+
+  if (isHolonomic() && control_sequence_.vy.size() > 0) {
+    control_sequence_.vy =
+      control_sequence_.vy.min(s.constraints.vy).max(-s.constraints.vy);
+  }
+}
+
+void Optimizer::syncMotionModelConstraints()
+{
+  if (motion_model_) {
+    motion_model_->initialize(settings_.constraints, settings_.model_dt);
+  }
+}
+
+void Optimizer::logActiveConstraints() const
+{
+  const auto & s = settings_;
+  RCLCPP_INFO(
+    logger_,
+    "MPPI active constraints: vx=[%.3f, %.3f] vy=%.3f wz=%.3f "
+    "ax=[%.3f, %.3f] ay=[%.3f, %.3f] az=%.3f jx=%.3f jz=%.3f "
+    "speed_limit_active=%d speed_limit=%.3f percentage=%d. "
+    "这是当前真正参与采样、预测和输出限幅的运行约束。",
+    s.constraints.vx_min, s.constraints.vx_max,
+    s.constraints.vy, s.constraints.wz,
+    s.constraints.ax_min, s.constraints.ax_max,
+    s.constraints.ay_min, s.constraints.ay_max,
+    s.constraints.az_max, s.constraints.jx_max, s.constraints.jz_max,
+    speed_limit_active_, speed_limit_, speed_limit_is_percentage_);
 }
 
 models::Trajectories & Optimizer::getGeneratedTrajectories()

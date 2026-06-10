@@ -14,6 +14,7 @@
 
 #include <stdint.h>
 #include <chrono>
+#include <cmath>
 #include "nav2_mppi_controller/controller.hpp"
 #include "nav2_mppi_controller/tools/utils.hpp"
 
@@ -40,9 +41,19 @@ void MPPIController::configure(
   auto getParam = parameters_handler_->getParamGetter(name_);
   getParam(visualize_, "visualize", false);
   getParam(reset_period_, "reset_period", 1.0);
+  configureProfiles();
 
   // Configure composed objects
   optimizer_.initialize(parent_, name_, costmap_ros_, parameters_handler_.get());
+  if (profile_enabled_) {
+    optimizer_.applyProfile(profiles_[active_profile_]);
+  }
+  parameters_handler_->addPostCallback(
+    [this]() {
+      if (profile_enabled_) {
+        optimizer_.applyProfile(profiles_[active_profile_]);
+      }
+    });
   path_handler_.initialize(parent_, name_, costmap_ros_, tf_buffer_, parameters_handler_.get());
   trajectory_visualizer_.on_configure(
     parent_, name_,
@@ -132,6 +143,9 @@ geometry_msgs::msg::TwistStamped MPPIController::computeVelocityCommands(
 
   auto t_transform_start = std::chrono::high_resolution_clock::now();
   nav_msgs::msg::Path transformed_plan = path_handler_.transformPath(robot_pose);
+  const double goal_distance = path_handler_.getLastGoalDistance();
+  const double path_progress = path_handler_.getLastPathProgress();
+  applyProfileForPathState(path_progress, goal_distance);
   auto t_transform_end = std::chrono::high_resolution_clock::now();
   double transform_ms =
     std::chrono::duration<double, std::milli>(t_transform_end - t_transform_start).count();
@@ -172,13 +186,349 @@ geometry_msgs::msg::TwistStamped MPPIController::computeVelocityCommands(
     RCLCPP_WARN(
       logger_,
       "MPPI timing (ms): transform=%.3f wait_costmap_lock=%.3f optimize=%.3f visualize=%.3f "
-      "total=%.3f",
+      "total=%.3f. 控制周期耗时过长，可根据 transform/锁等待/优化/可视化字段定位卡顿环节。",
       transform_ms, wait_lock_ms, optimize_ms, visualize_ms, total_ms);
   }
 
   return cmd;
 }
 
+
+void MPPIController::configureProfiles()
+{
+  auto getParam = parameters_handler_->getParamGetter(name_);
+
+  double vx_max = 0.5;
+  double vx_min = -0.35;
+  double vy_max = 0.5;
+  double wz_max = 1.9;
+  getParam(vx_max, "vx_max", 0.5, ParameterType::Static);
+  getParam(vx_min, "vx_min", -0.35, ParameterType::Static);
+  getParam(vy_max, "vy_max", 0.5, ParameterType::Static);
+  getParam(wz_max, "wz_max", 1.9, ParameterType::Static);
+
+  MppiProfileSettings default_profile;
+  default_profile.velocity = {
+    static_cast<float>(vx_max),
+    static_cast<float>(vx_min),
+    static_cast<float>(vy_max),
+    static_cast<float>(wz_max)};
+
+  auto & critics = default_profile.critics;
+  getParam(critics.goal.weight, "GoalCritic.cost_weight", 5.0, ParameterType::Static);
+  getParam(
+    critics.goal.threshold_to_consider, "GoalCritic.threshold_to_consider", 1.4,
+    ParameterType::Static);
+  getParam(
+    critics.goal_angle.weight, "GoalAngleCritic.cost_weight", 3.0, ParameterType::Static);
+  getParam(
+    critics.goal_angle.threshold_to_consider, "GoalAngleCritic.threshold_to_consider", 0.5,
+    ParameterType::Static);
+  getParam(
+    critics.path_angle.weight, "PathAngleCritic.cost_weight", 2.0, ParameterType::Static);
+  getParam(
+    critics.path_angle.threshold_to_consider, "PathAngleCritic.threshold_to_consider", 0.5,
+    ParameterType::Static);
+  getParam(
+    critics.path_angle.offset_from_furthest, "PathAngleCritic.offset_from_furthest", 4,
+    ParameterType::Static);
+  getParam(
+    critics.path_angle.max_angle_to_furthest, "PathAngleCritic.max_angle_to_furthest", 1.2,
+    ParameterType::Static);
+  getParam(
+    critics.path_angle.forward_preference, "PathAngleCritic.forward_preference", true,
+    ParameterType::Static);
+  getParam(
+    critics.path_follow.weight, "PathFollowCritic.cost_weight", 5.0, ParameterType::Static);
+  getParam(
+    critics.path_follow.threshold_to_consider, "PathFollowCritic.threshold_to_consider", 1.4,
+    ParameterType::Static);
+  getParam(
+    critics.path_follow.offset_from_furthest, "PathFollowCritic.offset_from_furthest", 6,
+    ParameterType::Static);
+  getParam(
+    critics.path_align.weight, "PathAlignCritic.cost_weight", 10.0, ParameterType::Static);
+  getParam(
+    critics.path_align.threshold_to_consider, "PathAlignCritic.threshold_to_consider", 0.5,
+    ParameterType::Static);
+  getParam(
+    critics.path_align.offset_from_furthest, "PathAlignCritic.offset_from_furthest", 20,
+    ParameterType::Static);
+  getParam(
+    critics.path_align.trajectory_point_step, "PathAlignCritic.trajectory_point_step", 4,
+    ParameterType::Static);
+  getParam(
+    critics.path_align.max_path_occupancy_ratio, "PathAlignCritic.max_path_occupancy_ratio", 0.07,
+    ParameterType::Static);
+  getParam(
+    critics.prefer_forward.weight, "PreferForwardCritic.cost_weight", 5.0,
+    ParameterType::Static);
+  getParam(
+    critics.prefer_forward.threshold_to_consider,
+    "PreferForwardCritic.threshold_to_consider", 0.5, ParameterType::Static);
+
+  profiles_.fill(default_profile);
+
+  getParam(profile_enabled_, "profile_enabled", true, ParameterType::Static);
+  getParam(profile_start_distance_, "profile_start_distance", 0.8, ParameterType::Static);
+  getParam(profile_goal_distance_, "profile_goal_distance", 1.0, ParameterType::Static);
+
+  for (size_t i = 0; i < profiles_.size(); ++i) {
+    auto & profile = profiles_[i];
+    auto & profile_critics = profile.critics;
+    const std::string prefix = "profile_" + std::to_string(i + 1) + ".";
+
+    getParam(
+      profile.velocity.vx_max, prefix + "vx_max",
+      default_profile.velocity.vx_max, ParameterType::Static);
+    getParam(
+      profile.velocity.vx_min, prefix + "vx_min",
+      default_profile.velocity.vx_min, ParameterType::Static);
+    getParam(
+      profile.velocity.vy_max, prefix + "vy_max",
+      default_profile.velocity.vy_max, ParameterType::Static);
+    getParam(
+      profile.velocity.wz_max, prefix + "wz_max",
+      default_profile.velocity.wz_max, ParameterType::Static);
+
+    getParam(
+      profile_critics.goal.weight, prefix + "GoalCritic.cost_weight",
+      default_profile.critics.goal.weight, ParameterType::Static);
+    getParam(
+      profile_critics.goal.threshold_to_consider,
+      prefix + "GoalCritic.threshold_to_consider",
+      default_profile.critics.goal.threshold_to_consider, ParameterType::Static);
+    getParam(
+      profile_critics.goal_angle.weight, prefix + "GoalAngleCritic.cost_weight",
+      default_profile.critics.goal_angle.weight, ParameterType::Static);
+    getParam(
+      profile_critics.goal_angle.threshold_to_consider,
+      prefix + "GoalAngleCritic.threshold_to_consider",
+      default_profile.critics.goal_angle.threshold_to_consider, ParameterType::Static);
+    getParam(
+      profile_critics.path_angle.weight, prefix + "PathAngleCritic.cost_weight",
+      default_profile.critics.path_angle.weight, ParameterType::Static);
+    getParam(
+      profile_critics.path_angle.threshold_to_consider,
+      prefix + "PathAngleCritic.threshold_to_consider",
+      default_profile.critics.path_angle.threshold_to_consider, ParameterType::Static);
+    getParam(
+      profile_critics.path_angle.offset_from_furthest,
+      prefix + "PathAngleCritic.offset_from_furthest",
+      default_profile.critics.path_angle.offset_from_furthest, ParameterType::Static);
+    getParam(
+      profile_critics.path_angle.max_angle_to_furthest,
+      prefix + "PathAngleCritic.max_angle_to_furthest",
+      default_profile.critics.path_angle.max_angle_to_furthest, ParameterType::Static);
+    getParam(
+      profile_critics.path_angle.forward_preference,
+      prefix + "PathAngleCritic.forward_preference",
+      default_profile.critics.path_angle.forward_preference, ParameterType::Static);
+    getParam(
+      profile_critics.path_follow.weight, prefix + "PathFollowCritic.cost_weight",
+      default_profile.critics.path_follow.weight, ParameterType::Static);
+    getParam(
+      profile_critics.path_follow.threshold_to_consider,
+      prefix + "PathFollowCritic.threshold_to_consider",
+      default_profile.critics.path_follow.threshold_to_consider, ParameterType::Static);
+    getParam(
+      profile_critics.path_follow.offset_from_furthest,
+      prefix + "PathFollowCritic.offset_from_furthest",
+      default_profile.critics.path_follow.offset_from_furthest, ParameterType::Static);
+    getParam(
+      profile_critics.path_align.weight, prefix + "PathAlignCritic.cost_weight",
+      default_profile.critics.path_align.weight, ParameterType::Static);
+    getParam(
+      profile_critics.path_align.threshold_to_consider,
+      prefix + "PathAlignCritic.threshold_to_consider",
+      default_profile.critics.path_align.threshold_to_consider, ParameterType::Static);
+    getParam(
+      profile_critics.path_align.offset_from_furthest,
+      prefix + "PathAlignCritic.offset_from_furthest",
+      default_profile.critics.path_align.offset_from_furthest, ParameterType::Static);
+    getParam(
+      profile_critics.path_align.trajectory_point_step,
+      prefix + "PathAlignCritic.trajectory_point_step",
+      default_profile.critics.path_align.trajectory_point_step, ParameterType::Static);
+    getParam(
+      profile_critics.path_align.max_path_occupancy_ratio,
+      prefix + "PathAlignCritic.max_path_occupancy_ratio",
+      default_profile.critics.path_align.max_path_occupancy_ratio, ParameterType::Static);
+    getParam(
+      profile_critics.prefer_forward.weight, prefix + "PreferForwardCritic.cost_weight",
+      default_profile.critics.prefer_forward.weight, ParameterType::Static);
+    getParam(
+      profile_critics.prefer_forward.threshold_to_consider,
+      prefix + "PreferForwardCritic.threshold_to_consider",
+      default_profile.critics.prefer_forward.threshold_to_consider, ParameterType::Static);
+  }
+
+  const auto sameFloat = [](float lhs, float rhs) {
+      constexpr float kEps = 1e-5f;
+      return std::abs(lhs - rhs) < kEps;
+    };
+  const auto profileMatchesDefault = [&](const MppiProfileSettings & profile) {
+      return
+        sameFloat(profile.velocity.vx_max, default_profile.velocity.vx_max) &&
+        sameFloat(profile.velocity.vx_min, default_profile.velocity.vx_min) &&
+        sameFloat(profile.velocity.vy_max, default_profile.velocity.vy_max) &&
+        sameFloat(profile.velocity.wz_max, default_profile.velocity.wz_max) &&
+        sameFloat(profile.critics.goal.weight, default_profile.critics.goal.weight) &&
+        sameFloat(
+          profile.critics.goal.threshold_to_consider,
+          default_profile.critics.goal.threshold_to_consider) &&
+        sameFloat(profile.critics.goal_angle.weight, default_profile.critics.goal_angle.weight) &&
+        sameFloat(
+          profile.critics.goal_angle.threshold_to_consider,
+          default_profile.critics.goal_angle.threshold_to_consider) &&
+        sameFloat(profile.critics.path_angle.weight, default_profile.critics.path_angle.weight) &&
+        sameFloat(
+          profile.critics.path_angle.threshold_to_consider,
+          default_profile.critics.path_angle.threshold_to_consider) &&
+        profile.critics.path_angle.offset_from_furthest ==
+        default_profile.critics.path_angle.offset_from_furthest &&
+        sameFloat(
+          profile.critics.path_angle.max_angle_to_furthest,
+          default_profile.critics.path_angle.max_angle_to_furthest) &&
+        profile.critics.path_angle.forward_preference ==
+        default_profile.critics.path_angle.forward_preference &&
+        sameFloat(profile.critics.path_follow.weight, default_profile.critics.path_follow.weight) &&
+        sameFloat(
+          profile.critics.path_follow.threshold_to_consider,
+          default_profile.critics.path_follow.threshold_to_consider) &&
+        profile.critics.path_follow.offset_from_furthest ==
+        default_profile.critics.path_follow.offset_from_furthest &&
+        sameFloat(profile.critics.path_align.weight, default_profile.critics.path_align.weight) &&
+        sameFloat(
+          profile.critics.path_align.threshold_to_consider,
+          default_profile.critics.path_align.threshold_to_consider) &&
+        profile.critics.path_align.offset_from_furthest ==
+        default_profile.critics.path_align.offset_from_furthest &&
+        profile.critics.path_align.trajectory_point_step ==
+        default_profile.critics.path_align.trajectory_point_step &&
+        sameFloat(
+          profile.critics.path_align.max_path_occupancy_ratio,
+          default_profile.critics.path_align.max_path_occupancy_ratio) &&
+        sameFloat(
+          profile.critics.prefer_forward.weight,
+          default_profile.critics.prefer_forward.weight) &&
+        sameFloat(
+          profile.critics.prefer_forward.threshold_to_consider,
+          default_profile.critics.prefer_forward.threshold_to_consider);
+    };
+  const bool all_profiles_match_default =
+    profileMatchesDefault(profiles_[0]) &&
+    profileMatchesDefault(profiles_[1]) &&
+    profileMatchesDefault(profiles_[2]);
+
+  RCLCPP_INFO(
+    logger_,
+    "MPPI profiles: enabled=%d start_distance=%.3f goal_distance=%.3f. "
+    "enabled=1 时启用三阶段切换；当前默认开启。path_progress 小于 start_distance 为起步段，"
+    "goal_distance 小于等于 profile_goal_distance 为末段。",
+    profile_enabled_, profile_start_distance_, profile_goal_distance_);
+
+  if (profile_enabled_) {
+    for (size_t i = 0; i < profiles_.size(); ++i) {
+      const auto & profile = profiles_[i];
+      RCLCPP_INFO(
+        logger_,
+        "MPPI profile_%zu velocity: vx=[%.3f, %.3f] vy=%.3f wz=%.3f. "
+        "Goal(w=%.3f th=%.3f) GoalAngle(w=%.3f th=%.3f) "
+        "PathAngle(w=%.3f th=%.3f off=%d max_angle=%.3f forward=%d) "
+        "PathAlign(w=%.3f th=%.3f off=%d step=%d occ=%.3f) "
+        "PathFollow(w=%.3f th=%.3f off=%d) PreferForward(w=%.3f th=%.3f). "
+        "这是该阶段会覆盖到 MPPI 的速度约束和关键 critic 参数。",
+        i + 1, profile.velocity.vx_min, profile.velocity.vx_max,
+        profile.velocity.vy_max, profile.velocity.wz_max,
+        profile.critics.goal.weight, profile.critics.goal.threshold_to_consider,
+        profile.critics.goal_angle.weight, profile.critics.goal_angle.threshold_to_consider,
+        profile.critics.path_angle.weight, profile.critics.path_angle.threshold_to_consider,
+        profile.critics.path_angle.offset_from_furthest,
+        profile.critics.path_angle.max_angle_to_furthest,
+        profile.critics.path_angle.forward_preference,
+        profile.critics.path_align.weight, profile.critics.path_align.threshold_to_consider,
+        profile.critics.path_align.offset_from_furthest,
+        profile.critics.path_align.trajectory_point_step,
+        profile.critics.path_align.max_path_occupancy_ratio,
+        profile.critics.path_follow.weight, profile.critics.path_follow.threshold_to_consider,
+        profile.critics.path_follow.offset_from_furthest,
+        profile.critics.prefer_forward.weight,
+        profile.critics.prefer_forward.threshold_to_consider);
+    }
+
+    if (all_profiles_match_default) {
+      RCLCPP_WARN(
+        logger_,
+        "MPPI three-stage profile is enabled, but profile_1/profile_2/profile_3 are all equal to "
+        "the global FollowPath parameters. 当前会打印阶段切换日志，但三个阶段的控制行为相同；"
+        "如需测试差异化三段式效果，需要在 YAML 中补充 profile_1/profile_2/profile_3 覆盖参数。");
+    }
+  }
+}
+
+void MPPIController::applyProfileForPathState(double path_progress, double goal_distance)
+{
+  if (!profile_enabled_) {
+    return;
+  }
+
+  const size_t selected_profile = selectProfile(path_progress, goal_distance);
+  const auto & selected = profiles_[selected_profile];
+  RCLCPP_DEBUG(
+    logger_,
+    "MPPI profile state: active=%zu selected=%zu path_progress=%.3f goal_distance=%.3f. "
+    "selected_reason=%s selected_vx=[%.3f, %.3f] selected_wz=%.3f. "
+    "三阶段判断输入，若 active 与 selected 不同则即将切换。",
+    active_profile_ + 1, selected_profile + 1, path_progress, goal_distance,
+    getProfileReason(selected_profile).c_str(),
+    selected.velocity.vx_min, selected.velocity.vx_max, selected.velocity.wz_max);
+
+  if (selected_profile == active_profile_) {
+    return;
+  }
+
+  const size_t previous_profile = active_profile_;
+  active_profile_ = selected_profile;
+  optimizer_.applyProfile(profiles_[active_profile_]);
+
+  const auto & profile = profiles_[active_profile_];
+  RCLCPP_INFO(
+    logger_,
+    "MPPI profile switched: %zu -> %zu, reason=%s, path_progress=%.3f, "
+    "goal_distance=%.3f, velocity vx=[%.3f, %.3f] vy=%.3f wz=%.3f. "
+    "三阶段发生切换，新的速度约束和 critic 参数已经应用到 Optimizer。",
+    previous_profile + 1, active_profile_ + 1, getProfileReason(active_profile_).c_str(),
+    path_progress, goal_distance, profile.velocity.vx_min, profile.velocity.vx_max,
+    profile.velocity.vy_max, profile.velocity.wz_max);
+}
+
+size_t MPPIController::selectProfile(double path_progress, double goal_distance) const
+{
+  if (goal_distance <= profile_goal_distance_) {
+    return 2;
+  }
+
+  if (path_progress < profile_start_distance_) {
+    return 0;
+  }
+
+  return 1;
+}
+
+std::string MPPIController::getProfileReason(size_t profile) const
+{
+  switch (profile) {
+    case 0:
+      return "start_segment/起步段";
+    case 1:
+      return "middle_segment/中间段";
+    case 2:
+      return "goal_segment/末段";
+    default:
+      return "unknown";
+  }
+}
 
 void MPPIController::visualize(nav_msgs::msg::Path transformed_plan)
 {

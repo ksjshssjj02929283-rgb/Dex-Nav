@@ -44,6 +44,14 @@ public:
    */
   void score(CriticData & data) override;
 
+  /**
+   * @brief Apply runtime path align critic settings
+   * @param settings Runtime path align critic settings
+   */
+  void applyPathAlignCriticSettings(const PathAlignCriticSettings & settings);
+
+  void applyProfileSettings(const CriticProfileSettings & settings) override;
+
 protected:
   size_t offset_from_furthest_{0};
   int trajectory_point_step_{0};

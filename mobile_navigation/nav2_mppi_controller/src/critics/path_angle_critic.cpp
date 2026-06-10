@@ -15,6 +15,7 @@
 
 #include "nav2_mppi_controller/critics/path_angle_critic.hpp"
 
+#include <algorithm>
 #include <math.h>
 
 namespace mppi::critics
@@ -99,6 +100,20 @@ void PathAngleCritic::score(CriticData & data)
   } else {
     data.costs += (yaws.rowwise().mean() * weight_).pow(power_);
   }
+}
+
+void PathAngleCritic::applyPathAngleCriticSettings(const PathAngleCriticSettings & settings)
+{
+  weight_ = settings.weight;
+  threshold_to_consider_ = settings.threshold_to_consider;
+  offset_from_furthest_ = static_cast<size_t>(std::max(0, settings.offset_from_furthest));
+  max_angle_to_furthest_ = settings.max_angle_to_furthest;
+  forward_preference_ = reversing_allowed_ ? settings.forward_preference : true;
+}
+
+void PathAngleCritic::applyProfileSettings(const CriticProfileSettings & settings)
+{
+  applyPathAngleCriticSettings(settings.path_angle);
 }
 
 }  // namespace mppi::critics

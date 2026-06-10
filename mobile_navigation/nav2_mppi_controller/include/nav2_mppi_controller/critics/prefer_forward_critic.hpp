@@ -41,6 +41,14 @@ public:
    */
   void score(CriticData & data) override;
 
+  /**
+   * @brief Apply runtime prefer forward critic settings
+   * @param settings Runtime prefer forward critic settings
+   */
+  void applyPreferForwardCriticSettings(const PreferForwardCriticSettings & settings);
+
+  void applyProfileSettings(const CriticProfileSettings & settings) override;
+
 protected:
   unsigned int power_{0};
   float weight_{0};

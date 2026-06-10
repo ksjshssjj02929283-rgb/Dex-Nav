@@ -14,6 +14,8 @@
 
 #include "nav2_mppi_controller/critics/path_follow_critic.hpp"
 
+#include <algorithm>
+
 namespace mppi::critics
 {
 
@@ -63,6 +65,18 @@ void PathFollowCritic::score(CriticData & data)
   auto dists = ((last_x - path_x).square() + (last_y - path_y).square()).sqrt();
 
   data.costs += (weight_ * dists).pow(power_);
+}
+
+void PathFollowCritic::applyPathFollowCriticSettings(const PathFollowCriticSettings & settings)
+{
+  weight_ = settings.weight;
+  threshold_to_consider_ = settings.threshold_to_consider;
+  offset_from_furthest_ = static_cast<size_t>(std::max(0, settings.offset_from_furthest));
+}
+
+void PathFollowCritic::applyProfileSettings(const CriticProfileSettings & settings)
+{
+  applyPathFollowCriticSettings(settings.path_follow);
 }
 
 }  // namespace mppi::critics

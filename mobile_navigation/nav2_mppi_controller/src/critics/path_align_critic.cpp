@@ -14,6 +14,8 @@
 
 #include "nav2_mppi_controller/critics/path_align_critic.hpp"
 
+#include <algorithm>
+
 namespace mppi::critics
 {
 
@@ -123,6 +125,20 @@ void PathAlignCritic::score(CriticData & data)
   }
 
   data.costs += (cost * weight_).pow(power_);
+}
+
+void PathAlignCritic::applyPathAlignCriticSettings(const PathAlignCriticSettings & settings)
+{
+  weight_ = settings.weight;
+  threshold_to_consider_ = settings.threshold_to_consider;
+  offset_from_furthest_ = static_cast<size_t>(std::max(0, settings.offset_from_furthest));
+  trajectory_point_step_ = static_cast<size_t>(std::max(1, settings.trajectory_point_step));
+  max_path_occupancy_ratio_ = settings.max_path_occupancy_ratio;
+}
+
+void PathAlignCritic::applyProfileSettings(const CriticProfileSettings & settings)
+{
+  applyPathAlignCriticSettings(settings.path_align);
 }
 
 }  // namespace mppi::critics

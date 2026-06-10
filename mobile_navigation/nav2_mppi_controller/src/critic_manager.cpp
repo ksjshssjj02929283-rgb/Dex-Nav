@@ -90,4 +90,19 @@ void CriticManager::evalTrajectoriesScores(
   }
 }
 
+void CriticManager::applyCriticProfileSettings(const critics::CriticProfileSettings & settings)
+{
+  for (auto & critic : critics_) {
+    critic->applyProfileSettings(settings);
+  }
+
+  RCLCPP_DEBUG(
+    logger_,
+    "MPPI critic profile applied: Goal(weight=%.3f threshold=%.3f), "
+    "PathAlign(weight=%.3f threshold=%.3f offset=%d step=%d)",
+    settings.goal.weight, settings.goal.threshold_to_consider,
+    settings.path_align.weight, settings.path_align.threshold_to_consider,
+    settings.path_align.offset_from_furthest, settings.path_align.trajectory_point_step);
+}
+
 }  // namespace mppi

@@ -49,6 +49,17 @@ void GoalAngleCritic::score(CriticData & data)
     weight_).pow(power_);
 }
 
+void GoalAngleCritic::applyGoalAngleCriticSettings(const GoalAngleCriticSettings & settings)
+{
+  weight_ = settings.weight;
+  threshold_to_consider_ = settings.threshold_to_consider;
+}
+
+void GoalAngleCritic::applyProfileSettings(const CriticProfileSettings & settings)
+{
+  applyGoalAngleCriticSettings(settings.goal_angle);
+}
+
 }  // namespace mppi::critics
 
 #include <pluginlib/class_list_macros.hpp>

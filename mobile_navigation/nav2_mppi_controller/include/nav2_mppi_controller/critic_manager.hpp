@@ -67,6 +67,12 @@ public:
     */
   void evalTrajectoriesScores(CriticData & data) const;
 
+  /**
+   * @brief Apply runtime profile critic settings to loaded critics
+   * @param settings Runtime critic profile settings
+   */
+  void applyCriticProfileSettings(const critics::CriticProfileSettings & settings);
+
 protected:
   /**
     * @brief Get parameters (critics to load)

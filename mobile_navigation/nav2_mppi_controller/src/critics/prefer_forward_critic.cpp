@@ -42,6 +42,18 @@ void PreferForwardCritic::score(CriticData & data)
   data.costs += ((backward_motion * data.model_dt).rowwise().sum() * weight_).pow(power_);
 }
 
+void PreferForwardCritic::applyPreferForwardCriticSettings(
+  const PreferForwardCriticSettings & settings)
+{
+  weight_ = settings.weight;
+  threshold_to_consider_ = settings.threshold_to_consider;
+}
+
+void PreferForwardCritic::applyProfileSettings(const CriticProfileSettings & settings)
+{
+  applyPreferForwardCriticSettings(settings.prefer_forward);
+}
+
 }  // namespace mppi::critics
 
 #include <pluginlib/class_list_macros.hpp>

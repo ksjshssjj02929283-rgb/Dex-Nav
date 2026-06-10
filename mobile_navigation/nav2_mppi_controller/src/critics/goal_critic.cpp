@@ -50,6 +50,17 @@ void GoalCritic::score(CriticData & data)
   data.costs += (dists.rowwise().mean() * weight_).pow(power_);
 }
 
+void GoalCritic::applyGoalCriticSettings(const GoalCriticSettings & settings)
+{
+  weight_ = settings.weight;
+  threshold_to_consider_ = settings.threshold_to_consider;
+}
+
+void GoalCritic::applyProfileSettings(const CriticProfileSettings & settings)
+{
+  applyGoalCriticSettings(settings.goal);
+}
+
 }  // namespace mppi::critics
 
 #include <pluginlib/class_list_macros.hpp>

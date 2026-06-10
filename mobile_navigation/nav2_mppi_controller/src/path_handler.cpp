@@ -18,6 +18,9 @@
 #include "nav2_mppi_controller/tools/utils.hpp"
 #include "nav2_costmap_2d/costmap_2d_ros.hpp"
 
+#include <cmath>
+#include <stdexcept>
+
 namespace mppi
 {
 
@@ -124,7 +127,19 @@ nav_msgs::msg::Path PathHandler::transformPath(
   // Find relevent bounds of path to use
   geometry_msgs::msg::PoseStamped global_pose =
     transformToGlobalPlanFrame(robot_pose);
+  updateGoalDistance(global_pose);
   auto [transformed_plan, lower_bound] = getGlobalPlanConsideringBoundsInCostmapFrame(global_pose);
+  const double pruned_distance =
+    getIntegratedDistance(global_plan_up_to_inversion_.poses.begin(), lower_bound);
+  last_path_progress_ = path_progress_offset_ + pruned_distance;
+  path_progress_offset_ += pruned_distance;
+  RCLCPP_DEBUG(
+    logger_,
+    "MPPI path state: path_progress=%.3f goal_distance=%.3f pruned_distance=%.3f "
+    "remaining_global_plan=%zu transformed_plan=%zu. "
+    "这些值用于判断当前处于起步段、中间段还是末段。",
+    last_path_progress_, last_goal_distance_, pruned_distance,
+    global_plan_up_to_inversion_.poses.size(), transformed_plan.poses.size());
 
   prunePlan(global_plan_up_to_inversion_, lower_bound);
 
@@ -133,6 +148,12 @@ nav_msgs::msg::Path PathHandler::transformPath(
       prunePlan(global_plan_, global_plan_.poses.begin() + inversion_locale_);
       global_plan_up_to_inversion_ = global_plan_;
       inversion_locale_ = utils::removePosesAfterFirstInversion(global_plan_up_to_inversion_);
+      path_progress_offset_ = 0.0;
+      last_path_progress_ = 0.0;
+      RCLCPP_INFO(
+        logger_,
+        "MPPI path inversion reached, reset path progress. "
+        "路径反向点已通过，三阶段进度重新从当前子路径开始累计。");
     }
   }
 
@@ -160,7 +181,10 @@ bool PathHandler::transformPose(
     out_pose.header.frame_id = frame;
     return true;
   } catch (tf2::TransformException & ex) {
-    RCLCPP_ERROR(logger_, "Exception in transformPose: %s", ex.what());
+    RCLCPP_ERROR(
+      logger_,
+      "Exception in transformPose: %s. TF 转换失败，MPPI 无法把机器人位姿或路径转换到目标坐标系。",
+      ex.what());
   }
   return false;
 }
@@ -176,12 +200,61 @@ void PathHandler::setPath(const nav_msgs::msg::Path & plan)
 {
   global_plan_ = plan;
   global_plan_up_to_inversion_ = global_plan_;
+  path_progress_offset_ = 0.0;
+  last_path_progress_ = 0.0;
+  last_goal_distance_ = 0.0;
+  RCLCPP_INFO(
+    logger_,
+    "MPPI new global plan received: poses=%zu. "
+    "已重置三阶段 path_progress 和 goal_distance 统计。",
+    global_plan_.poses.size());
   if (enforce_path_inversion_) {
     inversion_locale_ = utils::removePosesAfterFirstInversion(global_plan_up_to_inversion_);
   }
 }
 
 nav_msgs::msg::Path & PathHandler::getPath() {return global_plan_;}
+
+double PathHandler::getLastGoalDistance() const
+{
+  return last_goal_distance_;
+}
+
+double PathHandler::getLastPathProgress() const
+{
+  return last_path_progress_;
+}
+
+void PathHandler::updateGoalDistance(const geometry_msgs::msg::PoseStamped & global_pose)
+{
+  if (global_plan_.poses.empty()) {
+    throw std::runtime_error(
+            "Received plan with zero length. 收到的全局路径长度为 0，无法计算机器人到目标点距离。");
+  }
+
+  const auto & goal_pose = global_plan_.poses.back();
+  last_goal_distance_ = std::hypot(
+    global_pose.pose.position.x - goal_pose.pose.position.x,
+    global_pose.pose.position.y - goal_pose.pose.position.y);
+}
+
+double PathHandler::getIntegratedDistance(PathIterator begin, PathIterator end) const
+{
+  double distance = 0.0;
+  if (begin == end) {
+    return distance;
+  }
+
+  auto previous = begin;
+  for (auto current = begin + 1; current <= end; ++current) {
+    distance += std::hypot(
+      current->pose.position.x - previous->pose.position.x,
+      current->pose.position.y - previous->pose.position.y);
+    previous = current;
+  }
+
+  return distance;
+}
 
 void PathHandler::prunePlan(nav_msgs::msg::Path & plan, const PathIterator end)
 {
