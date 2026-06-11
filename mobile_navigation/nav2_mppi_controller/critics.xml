@@ -13,6 +13,10 @@
       <description>mppi critic for driving towards the goal</description>
     </class>
 
+    <class type="mppi::critics::GoalLateralCritic" base_class_type="mppi::critics::CriticFunction">
+      <description>mppi critic for reducing goal-frame lateral error near the goal</description>
+    </class>
+
     <class type="mppi::critics::GoalAngleCritic" base_class_type="mppi::critics::CriticFunction">
       <description>mppi critic for achieving the goal heading angle</description>
     </class>

@@ -11,7 +11,7 @@
 
 ## 1. 当前状态
 
-当前代码已经支持三段式 Profile，并且 `profile_enabled` 代码默认值已经改为 `true`。当前 `w1_nav2_params.yaml` 的 `FollowPath` 下暂时不配置三段式参数：
+当前代码已经支持三段式 Profile，并且 `profile_enabled` 代码默认值已经改为 `true`。当前 `w1_nav2_params.yaml` 的 `FollowPath` 下已经配置三段式参数：
 
 ```yaml
 profile_enabled
@@ -22,15 +22,15 @@ profile_2
 profile_3
 ```
 
-因此如果不补充这些参数，运行时会使用代码默认值：
+当前显式配置的阶段阈值为：
 
-| 参数 | 默认值 | 影响 |
+| 参数 | 当前值 | 影响 |
 |---|---:|---|
 | `profile_enabled` | `true` | 三段式默认开启 |
 | `profile_start_distance` | `0.8` | 路径累计前进小于 0.8 m 时使用起步段 |
-| `profile_goal_distance` | `1.0` | 距离终点小于等于 1.0 m 时使用末段 |
+| `profile_goal_distance` | `0.7` | 距离终点小于等于 0.7 m 时使用末段 |
 
-也就是说：**即使 YAML 不配置 `profile_enabled`，当前代码也会默认按三阶段进行切换。** 但如果 YAML 不配置 `profile_1/2/3`，三个阶段会继承 `FollowPath` 下的全局速度约束和 critic 参数，此时会有阶段切换日志，但三个阶段的实际控制参数相同。
+也就是说：**当前 YAML 已经会按三阶段进行切换，但 `profile_1/2/3` 只覆盖速度和角速度约束。** 各阶段的 Goal、PathAlign、PathFollow、PathAngle、PreferForward 等 critic 参数都继承 `FollowPath` 下的全局配置。
 
 ## 2. 三阶段切换规则
 
@@ -136,16 +136,16 @@ profile_3
 | `motion_model` | `DiffDrive` | 差速模型 |
 | `open_loop` | `true` | 使用上一周期输出作为速度状态 |
 
-## 6. 建议三阶段参数
+## 6. 当前三阶段参数
 
-下面这组参数适合放在 `FollowPath` 下，和 `vx_max/vx_min/vy_max/wz_max` 同级。
+下面这组参数已经放在 `FollowPath` 下，和 `vx_max/vx_min/vy_max/wz_max` 同级。当前策略是：**每个阶段都显式写出可覆盖的 critic 参数，数值先和全局配置保持一致；速度和角速度保留阶段差异**。
 
 ### 6.1 阶段总开关
 
 ```yaml
 profile_enabled: true
 profile_start_distance: 0.8
-profile_goal_distance: 1.0
+profile_goal_distance: 0.7
 ```
 
 含义：
@@ -154,7 +154,7 @@ profile_goal_distance: 1.0
 |---|---:|---|
 | `profile_enabled` | `true` | 开启三段式 |
 | `profile_start_distance` | `0.8` | 路径累计前进小于 0.8 m 时使用起步段 |
-| `profile_goal_distance` | `1.0` | 距离终点小于等于 1.0 m 时使用末段 |
+| `profile_goal_distance` | `0.7` | 距离终点小于等于 0.7 m 时使用末段 |
 
 ### 6.2 profile_1：起步段
 
@@ -164,14 +164,20 @@ profile_1:
   vx_min: -0.5
   vy_max: 0.5
   wz_max: 0.75
-  PathAngleCritic:
+  GoalCritic:
     cost_weight: 8.0
-    offset_from_furthest: 6
+    threshold_to_consider: 2.2
+  GoalAngleCritic:
+    cost_weight: 3.0
+    threshold_to_consider: 0.1
+  PathAngleCritic:
+    cost_weight: 4.0
+    offset_from_furthest: 2
     threshold_to_consider: 0.5
-    max_angle_to_furthest: 0.4
+    max_angle_to_furthest: 1.0
     forward_preference: true
   PathAlignCritic:
-    cost_weight: 8.0
+    cost_weight: 14.0
     offset_from_furthest: 15
     trajectory_point_step: 3
     threshold_to_consider: 0.5
@@ -181,7 +187,7 @@ profile_1:
     offset_from_furthest: 5
     threshold_to_consider: 2.2
   PreferForwardCritic:
-    cost_weight: 8.0
+    cost_weight: 5.0
     threshold_to_consider: 0.25
 ```
 
@@ -189,10 +195,8 @@ profile_1:
 
 | 参数变化 | 作用 |
 |---|---|
-| `PathAngleCritic.cost_weight=8.0` | 起步时更强调朝向路径方向，减少刚起步时横着切路径 |
-| `PathAngleCritic.max_angle_to_furthest=0.4` | 起步阶段对朝向偏差更严格 |
-| `PreferForwardCritic.cost_weight=8.0` | 起步时更偏好前进，减少不必要倒车 |
-| 速度上限保持 `0.7/0.75` | 起步段不主动降速，主要靠 critic 调整行为 |
+| 速度上限保持 `0.7/0.75` | 起步段不主动降速，critic 行为和全局配置一致 |
+| critic 显式配置为全局值 | 当前行为等价于全局 critic，后续可以逐段单独调整 |
 
 ### 6.3 profile_2：中间段
 
@@ -202,6 +206,12 @@ profile_2:
   vx_min: -0.5
   vy_max: 0.5
   wz_max: 0.75
+  GoalCritic:
+    cost_weight: 8.0
+    threshold_to_consider: 2.2
+  GoalAngleCritic:
+    cost_weight: 3.0
+    threshold_to_consider: 0.1
   PathAngleCritic:
     cost_weight: 4.0
     offset_from_furthest: 2
@@ -209,13 +219,13 @@ profile_2:
     max_angle_to_furthest: 1.0
     forward_preference: true
   PathAlignCritic:
-    cost_weight: 18.0
+    cost_weight: 14.0
     offset_from_furthest: 15
     trajectory_point_step: 3
     threshold_to_consider: 0.5
     max_path_occupancy_ratio: 0.05
   PathFollowCritic:
-    cost_weight: 8.0
+    cost_weight: 5.0
     offset_from_furthest: 5
     threshold_to_consider: 2.2
   PreferForwardCritic:
@@ -227,10 +237,8 @@ profile_2:
 
 | 参数变化 | 作用 |
 |---|---|
-| `PathAlignCritic.cost_weight=18.0` | 中间段更强调贴合参考路径 |
-| `PathFollowCritic.cost_weight=8.0` | 提高沿路径向前推进的倾向 |
-| `PathAngleCritic.cost_weight=4.0` | 朝向约束保留，但弱于起步段 |
 | 速度上限保持 `0.7/0.75` | 中间段保持正常通行效率 |
+| critic 显式配置为全局值 | 当前行为等价于全局 critic，后续可以逐段单独调整 |
 
 ### 6.4 profile_3：末段
 
@@ -239,67 +247,21 @@ profile_3:
   vx_max: 0.35
   vx_min: -0.20
   vy_max: 0.5
-  wz_max: 0.35
-  PathAngleCritic:
+  wz_max: 0.50
+  GoalCritic:
+    cost_weight: 8.0
+    threshold_to_consider: 2.2
+  GoalAngleCritic:
     cost_weight: 3.0
+    threshold_to_consider: 0.1
+  PathAngleCritic:
+    cost_weight: 4.0
     offset_from_furthest: 2
     threshold_to_consider: 0.5
     max_angle_to_furthest: 1.0
     forward_preference: true
   PathAlignCritic:
-    cost_weight: 8.0
-    offset_from_furthest: 15
-    trajectory_point_step: 3
-    threshold_to_consider: 0.5
-    max_path_occupancy_ratio: 0.05
-  PathFollowCritic:
-    cost_weight: 4.0
-    offset_from_furthest: 5
-    threshold_to_consider: 1.2
-  PreferForwardCritic:
-    cost_weight: 5.0
-    threshold_to_consider: 0.25
-  GoalCritic:
-    cost_weight: 16.0
-    threshold_to_consider: 1.2
-  GoalAngleCritic:
-    cost_weight: 6.0
-    threshold_to_consider: 1.0
-```
-
-末段设计意图：
-
-| 参数变化 | 作用 |
-|---|---|
-| `vx_max=0.35` | 接近目标时降低最大前进速度，减少超调 |
-| `vx_min=-0.20` | 限制倒车速度，避免终点附近大幅反复调整 |
-| `wz_max=0.35` | 限制末段旋转速度，减少终点角度抖动 |
-| `GoalCritic.cost_weight=16.0` | 更强调收敛到目标位置 |
-| `GoalAngleCritic.cost_weight=6.0` | 更强调收敛到目标朝向 |
-| `PathFollowCritic.threshold_to_consider=1.2` | 末段减少对远处路径点的追逐，更多交给目标 critic |
-
-## 7. 完整 YAML 片段
-
-可以将下面片段放到 `controller_server.ros__parameters.FollowPath` 下：
-
-```yaml
-profile_enabled: true
-profile_start_distance: 0.8
-profile_goal_distance: 1.0
-
-profile_1:
-  vx_max: 0.7
-  vx_min: -0.5
-  vy_max: 0.5
-  wz_max: 0.75
-  PathAngleCritic:
-    cost_weight: 8.0
-    offset_from_furthest: 6
-    threshold_to_consider: 0.5
-    max_angle_to_furthest: 0.4
-    forward_preference: true
-  PathAlignCritic:
-    cost_weight: 8.0
+    cost_weight: 14.0
     offset_from_furthest: 15
     trajectory_point_step: 3
     threshold_to_consider: 0.5
@@ -309,14 +271,39 @@ profile_1:
     offset_from_furthest: 5
     threshold_to_consider: 2.2
   PreferForwardCritic:
-    cost_weight: 8.0
+    cost_weight: 5.0
     threshold_to_consider: 0.25
+```
 
-profile_2:
+末段设计意图：
+
+| 参数变化 | 作用 |
+|---|---|
+| `vx_max=0.35` | 接近目标时降低最大前进速度，减少超调 |
+| `vx_min=-0.20` | 限制倒车速度，避免终点附近大幅反复调整 |
+| `wz_max=0.50` | 末段角速度低于全局值，但保留一定横向纠偏能力 |
+| critic 显式配置为全局值 | 当前行为等价于全局 critic，后续可以逐段单独调整 |
+
+## 7. 完整 YAML 片段
+
+可以将下面片段放到 `controller_server.ros__parameters.FollowPath` 下：
+
+```yaml
+profile_enabled: true
+profile_start_distance: 0.8
+profile_goal_distance: 0.7
+
+profile_1:
   vx_max: 0.7
   vx_min: -0.5
   vy_max: 0.5
   wz_max: 0.75
+  GoalCritic:
+    cost_weight: 8.0
+    threshold_to_consider: 2.2
+  GoalAngleCritic:
+    cost_weight: 3.0
+    threshold_to_consider: 0.1
   PathAngleCritic:
     cost_weight: 4.0
     offset_from_furthest: 2
@@ -324,13 +311,44 @@ profile_2:
     max_angle_to_furthest: 1.0
     forward_preference: true
   PathAlignCritic:
-    cost_weight: 18.0
+    cost_weight: 14.0
     offset_from_furthest: 15
     trajectory_point_step: 3
     threshold_to_consider: 0.5
     max_path_occupancy_ratio: 0.05
   PathFollowCritic:
+    cost_weight: 5.0
+    offset_from_furthest: 5
+    threshold_to_consider: 2.2
+  PreferForwardCritic:
+    cost_weight: 5.0
+    threshold_to_consider: 0.25
+
+profile_2:
+  vx_max: 0.7
+  vx_min: -0.5
+  vy_max: 0.5
+  wz_max: 0.75
+  GoalCritic:
     cost_weight: 8.0
+    threshold_to_consider: 2.2
+  GoalAngleCritic:
+    cost_weight: 3.0
+    threshold_to_consider: 0.1
+  PathAngleCritic:
+    cost_weight: 4.0
+    offset_from_furthest: 2
+    threshold_to_consider: 0.5
+    max_angle_to_furthest: 1.0
+    forward_preference: true
+  PathAlignCritic:
+    cost_weight: 14.0
+    offset_from_furthest: 15
+    trajectory_point_step: 3
+    threshold_to_consider: 0.5
+    max_path_occupancy_ratio: 0.05
+  PathFollowCritic:
+    cost_weight: 5.0
     offset_from_furthest: 5
     threshold_to_consider: 2.2
   PreferForwardCritic:
@@ -341,32 +359,32 @@ profile_3:
   vx_max: 0.35
   vx_min: -0.20
   vy_max: 0.5
-  wz_max: 0.35
-  PathAngleCritic:
+  wz_max: 0.50
+  GoalCritic:
+    cost_weight: 8.0
+    threshold_to_consider: 2.2
+  GoalAngleCritic:
     cost_weight: 3.0
+    threshold_to_consider: 0.1
+  PathAngleCritic:
+    cost_weight: 4.0
     offset_from_furthest: 2
     threshold_to_consider: 0.5
     max_angle_to_furthest: 1.0
     forward_preference: true
   PathAlignCritic:
-    cost_weight: 8.0
+    cost_weight: 14.0
     offset_from_furthest: 15
     trajectory_point_step: 3
     threshold_to_consider: 0.5
     max_path_occupancy_ratio: 0.05
   PathFollowCritic:
-    cost_weight: 4.0
+    cost_weight: 5.0
     offset_from_furthest: 5
-    threshold_to_consider: 1.2
+    threshold_to_consider: 2.2
   PreferForwardCritic:
     cost_weight: 5.0
     threshold_to_consider: 0.25
-  GoalCritic:
-    cost_weight: 16.0
-    threshold_to_consider: 1.2
-  GoalAngleCritic:
-    cost_weight: 6.0
-    threshold_to_consider: 1.0
 ```
 
 ## 8. 调试日志怎么看
@@ -374,7 +392,7 @@ profile_3:
 三段式启用后，日志中重点看这些字段：
 
 ```text
-MPPI profiles: enabled=1 start_distance=0.800 goal_distance=1.000
+MPPI profiles: enabled=1 start_distance=0.800 goal_distance=0.700
 MPPI path state: path_progress=... goal_distance=...
 MPPI profile state: active=... selected=...
 MPPI profile switched: 1 -> 2, reason=middle_segment/中间段
@@ -396,7 +414,6 @@ MPPI active constraints: vx=[..., ...] vy=... wz=...
 ## 9. 风险和注意事项
 
 - 三段式切换只改变速度约束和部分 critic 参数，不会重置 optimizer，也不会重建 critic 插件。
+- 当前三段式已经显式写出每段可覆盖的 critic 参数，但数值先和全局保持一致；如果后续要调横向偏差，可以优先在 `profile_3` 中调整 `PathAlignCritic`、`PathFollowCritic`、`PathAngleCritic`。
 - `profile_3` 的 `vx_max/wz_max` 降低后，终点附近更稳，但到位时间可能变长。
-- `PathAlignCritic.cost_weight` 过大时，机器人可能更执着于贴线；动态障碍较多时要观察是否绕障变差。
-- `GoalCritic` 和 `GoalAngleCritic` 权重过大时，末段可能更积极地冲目标；如果出现终点附近抖动，需要结合 `vx_max/wz_max`、加速度和 goal checker 容差一起调。
 - 如果使用速度限制层，最终运行速度约束是：**当前 profile 速度约束 × speed limit 比例**，或按绝对限速换算后的约束。

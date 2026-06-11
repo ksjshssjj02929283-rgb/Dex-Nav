@@ -36,6 +36,7 @@
 #include <string>
 #include <limits>
 #include <vector>
+#include <cmath>
 #include "nav2_controller/plugins/longitudinal_goal_checker.hpp"
 #include "pluginlib/class_list_macros.hpp"
 #include "angles/angles.h"
@@ -104,11 +105,15 @@ bool LongitudinalGoalChecker::isGoalReached(
   const geometry_msgs::msg::Pose & query_pose, const geometry_msgs::msg::Pose & goal_pose,
   const geometry_msgs::msg::Twist &)
 {
-  double lon_err = query_pose.position.x - goal_pose.position.x;
-  double lat_err = query_pose.position.y - goal_pose.position.y;
+  const double goal_yaw = tf2::getYaw(goal_pose.orientation);
+  const double dx = query_pose.position.x - goal_pose.position.x;
+  const double dy = query_pose.position.y - goal_pose.position.y;
+  // 在当前公共坐标系内，按目标朝向投影为真正纵向/横向误差
+  const double lon_err = std::cos(goal_yaw) * dx + std::sin(goal_yaw) * dy;
+  const double lat_err = -std::sin(goal_yaw) * dx + std::cos(goal_yaw) * dy;
   double dyaw = angles::shortest_angular_distance(
     tf2::getYaw(query_pose.orientation),
-    tf2::getYaw(goal_pose.orientation));
+    goal_yaw);
   if(hypot(lon_err, lat_err) < 0.25)
   {
     RCLCPP_INFO(rclcpp::get_logger("LongitudinalGoalChecker"),"Near goal: lon_err: %.3f, lat_err: %.3f", lon_err, lat_err);
@@ -136,8 +141,6 @@ bool LongitudinalGoalChecker::isGoalReached(
   
 
   const double query_yaw = tf2::getYaw(query_pose.orientation);
-  const double goal_yaw = tf2::getYaw(goal_pose.orientation);
-
   RCLCPP_INFO(
     rclcpp::get_logger("LongitudinalGoalChecker"),
     "query_pose: (x=%.3f, y=%.3f, yaw=%.3f)  goal_pose: (x=%.3f, y=%.3f, yaw=%.3f)",
