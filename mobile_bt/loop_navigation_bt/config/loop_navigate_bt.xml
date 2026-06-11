@@ -1,0 +1,42 @@
+<root BTCPP_format="4" main_tree_to_execute="MainTree">
+  <BehaviorTree ID="MainTree">
+
+    <!-- 这是全局的大循环；ReactiveSequence 每 tick 从头执行，
+         但不会导致 ActionNode 重发 goal（前提是 ActionNode 正确实现）
+    -->
+    <ReactiveSequence name="MainLoop">
+
+      <!-- ① 导航四个点位（循环） -->
+      <!--   Loop 节点内部应该按 tick 驱动，不重复发 goal -->
+      <LoopNavigateFourPoints points="{navigation_points}"/>
+      <!-- ② 电量检查与充电流程 -->
+      <Fallback name="BatteryCheck">
+        
+        <!-- ②-1 只要电量 ≥ 35%，BatteryCheck SUCCESS，继续导航循环 -->
+        <CheckBatteryAboveThreshold threshold="0"/>
+
+        <!-- ②-2 电量 < 35 → 进入充电流程 -->
+        <Sequence name="ChargingSequence">
+
+          <!-- (a) 首先 cancel 当前导航，避免与充电导航冲突 -->
+          <CancelNavigation/>
+
+          <!-- (b) 导航到充电桩 + 插电（CallCharging） -->
+          <!--     注意：这是一个 ActionNode，不会被重复启动 -->
+          <CallCharging/>
+          
+          <!-- (c) 充电期间持续检测电量，直到 ≥ 90% -->
+          <RetryUntilSuccessful num_attempts="-1">
+              <CheckBatteryAboveThreshold threshold="80"/>
+              
+          </RetryUntilSuccessful>
+
+          <!-- (d) 电量充足后，退出充电桩 -->
+          <Undocking duration="4.0"/>
+
+        </Sequence>
+      </Fallback>
+
+    </ReactiveSequence>
+  </BehaviorTree>
+</root>

@@ -1,0 +1,15 @@
+/**:
+  ros__parameters:
+    mission_manager:
+      # 自动充电阈值 (百分比)
+      # 当电量低于此值时，在空闲状态下自动触发充电任务
+      auto_charge_threshold: 30.0
+      
+      # 强制充电阈值 (百分比)
+      # 当电量低于此值时，无论当前状态如何都会强制执行充电任务
+      force_charge_threshold: 20.0
+      
+      # 任务重启开关
+      # 当任务失败时是否自动重启任务
+      respawn_task: false
+

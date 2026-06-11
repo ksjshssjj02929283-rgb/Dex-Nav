@@ -1,0 +1,83 @@
+joy_node:
+  ros__parameters:
+    joy_dev: "/dev/input/js0"  # 默认设备路径
+
+mobile_joy_control:
+  ros__parameters:
+    # Logitech手柄参数（默认）
+    logitech:
+      # 遥控器按键配置
+      button_enable_remote: 5   # 长按使能按键 7
+      button_medium_speed: 4    # 中速模式按键 6
+
+      # 摇杆配置
+      axis_left_right: 2        # 左右转向轴
+      axis_forward_backward: 1   # 前后移动轴
+      axis_fixed_speed: 5        # 固定速度摇杆 7
+      axis_fixed_angular: 4      # 固定角速度摇杆 6
+
+      # 脚本控制按键（需要在未使能状态下才能执行，使能状态下机器人运动时不能执行脚本）
+      script_path: "/home/dexforce/w1/dexe_mobile_application/script/slowly_move_to.py"  # 共用脚本路径（绝对路径）
+      button_run_param_0: 3     # 按键0运行standby.json Y 4
+      button_run_param_1: 1     # 按键1运行rest.json A 0
+      script_param_0: "/home/dexforce/w1/dexe_mobile_application/script/records/standby.json"  # 按键0的参数文件
+      script_param_1: "/home/dexforce/w1/dexe_mobile_application/script/records/rest.json"  # 按键1的参数文件
+
+      script_path_action: "/home/dexforce/w1/dexe_mobile_application/script/joy_shuffle_replay_in_folder.py"  # 共用脚本路径（绝对路径）
+      button_run_action_0: 0     # 按键0运行bulls动作 X 3
+      button_run_action_1: 2     # 按键1运行guns动作 B 1
+      script_action_0: "/home/dexforce/w1/dexe_mobile_application/script/records/ACTIONS/bulls/"  # 按键0的动作
+      script_action_1: "/home/dexforce/w1/dexe_mobile_application/script/records/ACTIONS/guns/"  # 按键1的动作
+
+      # 控制参数
+      omni_mode: false              # 是否为全向模式
+      axis_linear_y: 0           # [全向模式] Y轴平移
+      axis_angular_z: 2          # [全向模式] Z轴旋转
+
+      joystick_deadzone: 0.1     # 摇杆死区
+      max_linear_velocity: 0.4   # 默认线速度 (m/s)
+      max_angular_velocity: 0.75 # 默认角速度 (rad/s)
+      medium_linear_velocity: 0.6 # 中速线速度 (m/s)
+      medium_angular_velocity: 1.0 # 中速角速度 (rad/s)
+      acc_filter_param: 0.45     # 加速度滤波参数
+      dec_filter_param: 0.05     # 减速度滤波参数
+      inactive_timeout: 30.0      # 不活跃超时时间（秒）
+
+    # BEITONG手柄参数
+    beitong:
+      # 遥控器按键配置
+      button_enable_remote: 7   # 长按使能按键（可根据BEITONG手柄调整）
+      button_medium_speed: 6    # 中速模式按键（可根据BEITONG手柄调整）
+
+      # 摇杆配置
+      axis_left_right: 2        # 左右转向轴（可根据BEITONG手柄调整）
+      axis_forward_backward: 1   # 前后移动轴（可根据BEITONG手柄调整）
+      axis_fixed_speed: 7        # 固定速度摇杆（可根据BEITONG手柄调整）
+      axis_fixed_angular: 6      # 固定角速度摇杆（可根据BEITONG手柄调整）
+
+      # 脚本控制按键（需要在未使能状态下才能执行，使能状态下机器人运动时不能执行脚本）
+      script_path: "/home/dexforce/w1/dexe_mobile_application/script/slowly_move_to.py"  # 共用脚本路径（绝对路径）
+      button_run_param_0: 4     # 按键0运行standby.json（可根据BEITONG手柄调整）
+      button_run_param_1: 0     # 按键1运行rest.json（可根据BEITONG手柄调整）
+      script_param_0: "/home/dexforce/w1/dexe_mobile_application/script/records/standby.json"  # 按键0的参数文件
+      script_param_1: "/home/dexforce/w1/dexe_mobile_application/script/records/rest.json"  # 按键1的参数文件
+
+      script_path_action: "/home/dexforce/w1/dexe_mobile_application/script/joy_shuffle_replay_in_folder.py"  # 共用脚本路径（绝对路径）
+      button_run_action_0: 3     # 按键0运行bulls动作（可根据BEITONG手柄调整）
+      button_run_action_1: 1     # 按键1运行guns动作（可根据BEITONG手柄调整）
+      script_action_0: "/home/dexforce/w1/dexe_mobile_application/script/records/ACTIONS/bulls/"  # 按键0的动作
+      script_action_1: "/home/dexforce/w1/dexe_mobile_application/script/records/ACTIONS/guns/"  # 按键1的动作
+
+      # 控制参数
+      omni_mode: false              # 是否为全向模式
+      axis_linear_y: 0           # [全向模式] Y轴平移（可根据BEITONG手柄调整）
+      axis_angular_z: 2          # [全向模式] Z轴旋转（可根据BEITONG手柄调整）
+
+      joystick_deadzone: 0.05    # 摇杆死区（BEITONG手柄可能需要不同的死区值）
+      max_linear_velocity: 0.4   # 默认线速度 (m/s)
+      max_angular_velocity: 0.75 # 默认角速度 (rad/s)
+      medium_linear_velocity: 0.6 # 中速线速度 (m/s)
+      medium_angular_velocity: 1.0 # 中速角速度 (rad/s)
+      acc_filter_param: 0.45     # 加速度滤波参数
+      dec_filter_param: 0.05     # 减速度滤波参数
+      inactive_timeout: 30.0      # 不活跃超时时间（秒）
