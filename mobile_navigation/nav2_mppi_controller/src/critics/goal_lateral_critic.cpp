@@ -65,7 +65,7 @@ void GoalLateralCritic::score(CriticData & data)
     const auto dy = data.trajectories.y.col(p).array() - goal_y;
     // 在 MPPI 公共 frame 内，按目标朝向投影出横向误差
     const auto lat_err = (-sin_yaw * dx + cos_yaw * dy).abs();
-    cost += lat_err.matrix();
+    cost += lat_err;
   }
 
   cost /= static_cast<float>(sample_count);
