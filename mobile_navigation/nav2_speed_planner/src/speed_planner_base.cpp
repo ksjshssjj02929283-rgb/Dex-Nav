@@ -1,9 +1,12 @@
 // Copyright 2026 DEXE Robot Engineer
 // SPDX-License-Identifier: Apache-2.0
 //
-// T 型曲线速度规划器实现，移植自 dcm tcurve_speed_planner（ROS1 → ROS2 Nav2 插件）。
-// 三段式：加速段 / 匀速段 / 减速段（停止距离 + 曲率前减速 + 障碍前减速）+ 曲率约束。
-#include "nav2_tcurve_speed_planner/tcurve_speed_planner.hpp"
+// 速度规划器抽象基类实现。
+// computeSpeedPlan 为模板方法（path→work→assignVelocityProfile→RobotTrajectory）；
+// assignConstantAccelProfile 是恒加速度参考内核（移植自 dcm tcurve，逻辑一行不改，
+// 三段式：加速段 / 匀速段 / 减速段（停止距离 + 曲率前减速 + 障碍前减速）+ 曲率约束，
+// 含已修复的 std::clamp）。
+#include "nav2_speed_planner/speed_planner_base.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -15,14 +18,13 @@
 
 #include "nav2_costmap_2d/cost_values.hpp"
 #include "nav2_util/node_utils.hpp"
-#include "pluginlib/class_list_macros.hpp"
 
-namespace nav2_tcurve_speed_planner
+namespace nav2_speed_planner
 {
 
 // ============================ 生命周期 ============================
 
-void TCurveSpeedPlanner::configure(
+void SpeedPlannerBase::configure(
   const rclcpp_lifecycle::LifecycleNode::WeakPtr & parent,
   std::string name, std::shared_ptr<tf2_ros::Buffer> tf,
   std::shared_ptr<nav2_costmap_2d::Costmap2DROS> costmap_ros)
@@ -97,40 +99,40 @@ void TCurveSpeedPlanner::configure(
     RCLCPP_WARN(logger_, "[%s] decel (%.3f) should be < 0.", plugin_name_.c_str(), decel_);
   }
 
-  RCLCPP_INFO(logger_, "Configured TCurveSpeedPlanner plugin: %s", plugin_name_.c_str());
+  RCLCPP_INFO(logger_, "Configured SpeedPlanner plugin: %s", plugin_name_.c_str());
 }
 
-void TCurveSpeedPlanner::cleanup()
+void SpeedPlannerBase::cleanup()
 {
-  RCLCPP_INFO(logger_, "Cleaning up TCurveSpeedPlanner plugin: %s", plugin_name_.c_str());
+  RCLCPP_INFO(logger_, "Cleaning up SpeedPlanner plugin: %s", plugin_name_.c_str());
   tf_.reset();
   costmap_ros_.reset();
 }
 
-void TCurveSpeedPlanner::activate()
+void SpeedPlannerBase::activate()
 {
-  RCLCPP_INFO(logger_, "Activating TCurveSpeedPlanner plugin: %s", plugin_name_.c_str());
+  RCLCPP_INFO(logger_, "Activating SpeedPlanner plugin: %s", plugin_name_.c_str());
 }
 
-void TCurveSpeedPlanner::deactivate()
+void SpeedPlannerBase::deactivate()
 {
-  RCLCPP_INFO(logger_, "Deactivating TCurveSpeedPlanner plugin: %s", plugin_name_.c_str());
+  RCLCPP_INFO(logger_, "Deactivating SpeedPlanner plugin: %s", plugin_name_.c_str());
 }
 
-void TCurveSpeedPlanner::setPlan(const nav_msgs::msg::Path & path)
+void SpeedPlannerBase::setPlan(const nav_msgs::msg::Path & path)
 {
   current_plan_ = path;
 }
 
-void TCurveSpeedPlanner::setSpeedLimit(const double & speed_limit, const bool & percentage)
+void SpeedPlannerBase::setSpeedLimit(const double & speed_limit, const bool & percentage)
 {
   speed_limit_ = speed_limit;
   speed_limit_is_percentage_ = percentage;
 }
 
-// ============================ 核心入口 ============================
+// ============================ 模板方法入口 ============================
 
-nav_interfaces::msg::RobotTrajectory TCurveSpeedPlanner::computeSpeedPlan(
+nav_interfaces::msg::RobotTrajectory SpeedPlannerBase::computeSpeedPlan(
   const nav_msgs::msg::Path & path,
   const geometry_msgs::msg::Twist & current_velocity)
 {
@@ -185,19 +187,20 @@ nav_interfaces::msg::RobotTrajectory TCurveSpeedPlanner::computeSpeedPlan(
   points_interval_ = curr_path_length_ / static_cast<double>(work.size() - 1);
 
   const double curr_vel = current_velocity.linear.x;
-  const double speed_limit = getSpeedLimit(work, curr_vel);
-  setPlanSpeedLimit(work, speed_limit);
 
-  computeAccelPlan(work, curr_vel, speed_limit);
-  computeDecelPlan(work, curr_vel, speed_limit);
+  // —— Template Method hook：派生类填速度剖面（T 型 = 恒加速度内核；S 型 = jerk 限制）——
+  assignVelocityProfile(work, curr_vel);
 
   // 回填到 RobotTrajectory：speed_limit→longitudinal_velocity，curvature→path_kappa，pose 透传。
+  // accel / rel_time 若派生类填了则一并写，否则默认 0（恒加速度内核不填）。
   traj.points.reserve(work.size());
   for (const auto & p : work) {
     nav_interfaces::msg::TrajectoryPoint tp;
     tp.pose = p.pose;
     tp.longitudinal_velocity = p.speed_limit;
     tp.path_kappa = p.curvature;
+    tp.acceleration = p.accel;
+    tp.relative_time = rclcpp::Duration::from_seconds(p.rel_time);
     // 段语义透传（当前 nav_msgs/Path 无字段，置默认）。
     tp.speed_hint = p.speed_hint;
     tp.region_type = p.region_type;
@@ -208,9 +211,23 @@ nav_interfaces::msg::RobotTrajectory TCurveSpeedPlanner::computeSpeedPlan(
   return traj;
 }
 
+// ============================ 恒加速度参考内核 ============================
+// 以下为移植自 dcm tcurve 的三段式恒加速度算法，逻辑一行不改（仅方法归属改到 base，
+// 命名空间 nav2_speed_planner，成员访问保持 protected）。T 型直接调用、S 型回退兜底。
+
+void SpeedPlannerBase::assignConstantAccelProfile(
+  std::vector<TrajPointWork> & work, double curr_vel)
+{
+  const double speed_limit = getSpeedLimit(work, curr_vel);
+  setPlanSpeedLimit(work, speed_limit);
+
+  computeAccelPlan(work, curr_vel, speed_limit);
+  computeDecelPlan(work, curr_vel, speed_limit);
+}
+
 // ============================ 限速求解 ============================
 
-void TCurveSpeedPlanner::setPlanSpeedLimit(
+void SpeedPlannerBase::setPlanSpeedLimit(
   std::vector<TrajPointWork> & path, const double speed_limit)
 {
   // 修正 dcm 原版 clamp bug：原实现第二行 (... ? min_speed_ : speed_limit) 用 speed_limit
@@ -226,7 +243,7 @@ void TCurveSpeedPlanner::setPlanSpeedLimit(
   }
 }
 
-double TCurveSpeedPlanner::getSpeedLimit(
+double SpeedPlannerBase::getSpeedLimit(
   std::vector<TrajPointWork> & path, const double curr_vel)
 {
   // max_speed_ 是路径点中 speed_limit 的最小值。
@@ -288,7 +305,7 @@ double TCurveSpeedPlanner::getSpeedLimit(
   return speed_limit;
 }
 
-double TCurveSpeedPlanner::computeValidSpeedPathLength(const std::vector<TrajPointWork> & path)
+double SpeedPlannerBase::computeValidSpeedPathLength(const std::vector<TrajPointWork> & path)
 {
   double length = 0.0;
   for (int i = 1; i < static_cast<int>(path.size()); ++i) {
@@ -306,7 +323,7 @@ double TCurveSpeedPlanner::computeValidSpeedPathLength(const std::vector<TrajPoi
 
 // ============================ 加速段 ============================
 
-void TCurveSpeedPlanner::computeAccelPlan(
+void SpeedPlannerBase::computeAccelPlan(
   std::vector<TrajPointWork> & path, const double curr_vel, const double speed_limit)
 {
   const double accel_path_length = computeAccelLength(curr_vel, speed_limit);
@@ -332,7 +349,7 @@ void TCurveSpeedPlanner::computeAccelPlan(
 
 // ============================ 曲率约束 ============================
 
-void TCurveSpeedPlanner::applyCurvatureConstraint(
+void SpeedPlannerBase::applyCurvatureConstraint(
   std::vector<TrajPointWork> & path, const double ex_speed_limit)
 {
   if (path.size() < 3) {
@@ -422,7 +439,7 @@ void TCurveSpeedPlanner::applyCurvatureConstraint(
 
 // ============================ 减速段 ============================
 
-void TCurveSpeedPlanner::computeDecelPlan(
+void SpeedPlannerBase::computeDecelPlan(
   std::vector<TrajPointWork> & path, const double curr_vel, const double speed_limit)
 {
   // 减速路径计算从后往前。
@@ -552,7 +569,7 @@ void TCurveSpeedPlanner::computeDecelPlan(
 
 // ============================ 加减速距离 ============================
 
-double TCurveSpeedPlanner::computeAccelLength(const double curr_vel, const double speed_limit) const
+double SpeedPlannerBase::computeAccelLength(const double curr_vel, const double speed_limit) const
 {
   if (curr_vel >= speed_limit) {  // 不需要加速
     return 0.0;
@@ -562,7 +579,7 @@ double TCurveSpeedPlanner::computeAccelLength(const double curr_vel, const doubl
   return s;
 }
 
-double TCurveSpeedPlanner::computeDecelLength(const double curr_vel, const double min_speed) const
+double SpeedPlannerBase::computeDecelLength(const double curr_vel, const double min_speed) const
 {
   if (curr_vel <= min_speed) {  // 不需要减速
     return 0.0;
@@ -572,9 +589,9 @@ double TCurveSpeedPlanner::computeDecelLength(const double curr_vel, const doubl
   return s;
 }
 
-// ============================ 路径工具（移植自 dcm nav_util）============================
+// ============================ 共享工具（移植自 dcm nav_util）============================
 
-double TCurveSpeedPlanner::computePathLength(const std::vector<TrajPointWork> & path)
+double SpeedPlannerBase::computePathLength(const std::vector<TrajPointWork> & path)
 {
   double length = 0.0;
   for (int i = 1; i < static_cast<int>(path.size()); ++i) {
@@ -585,7 +602,7 @@ double TCurveSpeedPlanner::computePathLength(const std::vector<TrajPointWork> & 
   return length;
 }
 
-std::vector<double> TCurveSpeedPlanner::calcTrajectoryCurvatureFrom3Points(
+std::vector<double> SpeedPlannerBase::calcTrajectoryCurvatureFrom3Points(
   const std::vector<TrajPointWork> & path, size_t idx_dist)
 {
   if (path.size() < 3) {
@@ -626,7 +643,7 @@ std::vector<double> TCurveSpeedPlanner::calcTrajectoryCurvatureFrom3Points(
   return k_arr;
 }
 
-double TCurveSpeedPlanner::calcCurvature(
+double SpeedPlannerBase::calcCurvature(
   const geometry_msgs::msg::Pose & p1,
   const geometry_msgs::msg::Pose & p2,
   const geometry_msgs::msg::Pose & p3)
@@ -646,7 +663,17 @@ double TCurveSpeedPlanner::calcCurvature(
          (p2.position.y - p1.position.y) * (p3.position.x - p1.position.x)) / denominator;
 }
 
-}  // namespace nav2_tcurve_speed_planner
+bool SpeedPlannerBase::isObstacleAt(double x, double y) const
+{
+  nav2_costmap_2d::Costmap2D * costmap = costmap_ros_ ? costmap_ros_->getCostmap() : nullptr;
+  if (costmap == nullptr) {
+    return false;
+  }
+  unsigned int mx, my;
+  if (!costmap->worldToMap(x, y, mx, my)) {
+    return false;
+  }
+  return costmap->getCost(mx, my) > nav2_costmap_2d::FREE_SPACE;
+}
 
-PLUGINLIB_EXPORT_CLASS(
-  nav2_tcurve_speed_planner::TCurveSpeedPlanner, nav2_core::SpeedPlanner)
+}  // namespace nav2_speed_planner
