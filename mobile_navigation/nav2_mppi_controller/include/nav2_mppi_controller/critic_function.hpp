@@ -15,7 +15,6 @@
 #ifndef NAV2_MPPI_CONTROLLER__CRITIC_FUNCTION_HPP_
 #define NAV2_MPPI_CONTROLLER__CRITIC_FUNCTION_HPP_
 
-#include <cstddef>
 #include <string>
 #include <memory>
 
@@ -38,7 +37,7 @@ struct GoalLateralCriticSettings
 {
   float weight{0.0f};
   float threshold_to_consider{0.0f};
-  size_t last_n_points{0};
+  int last_n_points{0};
 };
 
 struct GoalAngleCriticSettings

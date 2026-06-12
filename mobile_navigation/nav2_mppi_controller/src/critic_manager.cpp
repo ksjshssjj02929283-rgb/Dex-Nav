@@ -99,7 +99,7 @@ void CriticManager::applyCriticProfileSettings(const critics::CriticProfileSetti
   RCLCPP_DEBUG(
     logger_,
     "MPPI critic profile applied: Goal(weight=%.3f threshold=%.3f), "
-    "GoalLateral(weight=%.3f threshold=%.3f points=%zu), "
+    "GoalLateral(weight=%.3f threshold=%.3f points=%d), "
     "PathAlign(weight=%.3f threshold=%.3f offset=%d step=%d)",
     settings.goal.weight, settings.goal.threshold_to_consider,
     settings.goal_lateral.weight, settings.goal_lateral.threshold_to_consider,

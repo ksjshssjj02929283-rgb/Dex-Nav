@@ -462,7 +462,7 @@ void MPPIController::configureProfiles()
       RCLCPP_INFO(
         logger_,
         "MPPI profile_%zu velocity: vx=[%.3f, %.3f] vy=%.3f wz=%.3f. "
-        "Goal(w=%.3f th=%.3f) GoalLateral(w=%.3f th=%.3f points=%zu) "
+        "Goal(w=%.3f th=%.3f) GoalLateral(w=%.3f th=%.3f points=%d) "
         "GoalAngle(w=%.3f th=%.3f) "
         "PathAngle(w=%.3f th=%.3f off=%d max_angle=%.3f forward=%d) "
         "PathAlign(w=%.3f th=%.3f off=%d step=%d occ=%.3f) "

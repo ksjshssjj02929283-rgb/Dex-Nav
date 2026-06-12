@@ -77,7 +77,7 @@ void GoalLateralCritic::applyProfileSettings(const CriticProfileSettings & setti
   // 三阶段 profile 覆盖横向误差代价参数
   weight_ = settings.goal_lateral.weight;
   threshold_to_consider_ = settings.goal_lateral.threshold_to_consider;
-  last_n_points_ = settings.goal_lateral.last_n_points;
+  last_n_points_ = static_cast<size_t>(std::max(1, settings.goal_lateral.last_n_points));
 }
 
 }  // namespace mppi::critics
