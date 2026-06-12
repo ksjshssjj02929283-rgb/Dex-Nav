@@ -106,13 +106,13 @@ controller_server:
       vy_max: 0.5
       wz_max: 0.75
       profile_enabled: true # 是否开启三段式 MPPI
-      profile_start_distance: 1.0 # 起步段阈值，小于该距离时使用 profile_1
+      profile_start_distance: 1.5 # 起步段阈值，小于该距离时使用 profile_1
       profile_goal_distance: 1.5 # 末段阈值，距离目标点小于等于该距离时优先使用 profile_3
       profile_1: # 起步段
-        vx_max: 0.5 # 最大前进速度
+        vx_max: 0.4 # 最大前进速度
         vx_min: -0.2 # 最小后退速度
         vy_max: 0.5 # 侧向速度上限，DiffDrive 下通常不生效
-        wz_max: 0.60 # 最大角速度
+        wz_max: 0.90 # 最大角速度
         GoalCritic: # 目标位置约束
           cost_weight: 8.0 # 目标位置权重
           threshold_to_consider: 2.2 # 距离目标小于该值时启用目标位置约束
@@ -171,7 +171,7 @@ controller_server:
           cost_weight: 8.0 # 目标位置权重
           threshold_to_consider: 2.2 # 距离目标小于该值时启用目标位置约束
         GoalLateralCritic: # 目标横向误差约束
-          cost_weight: 5.0 # 只在末段启用横向误差代价
+          cost_weight: 20.0 # 只在末段启用横向误差代价15
           threshold_to_consider: 1.5 # 距离目标 1.5m 内按目标朝向约束横向误差
           last_n_points: 8 # 每条 MPPI 候选轨迹只取最后 8 个时间点来计算横向误差代价
         GoalAngleCritic: # 目标朝向约束
