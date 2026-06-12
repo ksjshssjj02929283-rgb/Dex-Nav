@@ -569,7 +569,7 @@ planner_server:
     SmacGridBased:
       plugin: "nav2_smac_planner/SmacPlannerLattice"
       allow_unknown: false
-      tolerance: 0.25
+      tolerance: 1.0e-10 # 禁止目标附近容忍点替代目标点，失败后由 BT 停止等待并重规划
       max_iterations: 2000000
       max_on_approach_iterations: 2000
       max_planning_time: 5.0
