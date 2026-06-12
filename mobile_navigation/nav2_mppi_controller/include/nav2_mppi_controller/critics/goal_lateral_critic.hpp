@@ -34,6 +34,8 @@ public:
 
   void score(CriticData & data) override;
 
+  void applyProfileSettings(const CriticProfileSettings & settings) override;
+
 protected:
   unsigned int power_{0};
   float weight_{0};

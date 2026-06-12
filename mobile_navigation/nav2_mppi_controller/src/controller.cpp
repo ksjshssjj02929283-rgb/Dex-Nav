@@ -220,6 +220,15 @@ void MPPIController::configureProfiles()
     critics.goal.threshold_to_consider, "GoalCritic.threshold_to_consider", 1.4,
     ParameterType::Static);
   getParam(
+    critics.goal_lateral.weight, "GoalLateralCritic.cost_weight", 0.0,
+    ParameterType::Static);
+  getParam(
+    critics.goal_lateral.threshold_to_consider, "GoalLateralCritic.threshold_to_consider", 1.5,
+    ParameterType::Static);
+  getParam(
+    critics.goal_lateral.last_n_points, "GoalLateralCritic.last_n_points", 8,
+    ParameterType::Static);
+  getParam(
     critics.goal_angle.weight, "GoalAngleCritic.cost_weight", 3.0, ParameterType::Static);
   getParam(
     critics.goal_angle.threshold_to_consider, "GoalAngleCritic.threshold_to_consider", 0.5,
@@ -299,6 +308,17 @@ void MPPIController::configureProfiles()
       prefix + "GoalCritic.threshold_to_consider",
       default_profile.critics.goal.threshold_to_consider, ParameterType::Static);
     getParam(
+      profile_critics.goal_lateral.weight, prefix + "GoalLateralCritic.cost_weight",
+      default_profile.critics.goal_lateral.weight, ParameterType::Static);
+    getParam(
+      profile_critics.goal_lateral.threshold_to_consider,
+      prefix + "GoalLateralCritic.threshold_to_consider",
+      default_profile.critics.goal_lateral.threshold_to_consider, ParameterType::Static);
+    getParam(
+      profile_critics.goal_lateral.last_n_points,
+      prefix + "GoalLateralCritic.last_n_points",
+      default_profile.critics.goal_lateral.last_n_points, ParameterType::Static);
+    getParam(
       profile_critics.goal_angle.weight, prefix + "GoalAngleCritic.cost_weight",
       default_profile.critics.goal_angle.weight, ParameterType::Static);
     getParam(
@@ -377,6 +397,14 @@ void MPPIController::configureProfiles()
         sameFloat(
           profile.critics.goal.threshold_to_consider,
           default_profile.critics.goal.threshold_to_consider) &&
+        sameFloat(
+          profile.critics.goal_lateral.weight,
+          default_profile.critics.goal_lateral.weight) &&
+        sameFloat(
+          profile.critics.goal_lateral.threshold_to_consider,
+          default_profile.critics.goal_lateral.threshold_to_consider) &&
+        profile.critics.goal_lateral.last_n_points ==
+        default_profile.critics.goal_lateral.last_n_points &&
         sameFloat(profile.critics.goal_angle.weight, default_profile.critics.goal_angle.weight) &&
         sameFloat(
           profile.critics.goal_angle.threshold_to_consider,
@@ -434,7 +462,8 @@ void MPPIController::configureProfiles()
       RCLCPP_INFO(
         logger_,
         "MPPI profile_%zu velocity: vx=[%.3f, %.3f] vy=%.3f wz=%.3f. "
-        "Goal(w=%.3f th=%.3f) GoalAngle(w=%.3f th=%.3f) "
+        "Goal(w=%.3f th=%.3f) GoalLateral(w=%.3f th=%.3f points=%zu) "
+        "GoalAngle(w=%.3f th=%.3f) "
         "PathAngle(w=%.3f th=%.3f off=%d max_angle=%.3f forward=%d) "
         "PathAlign(w=%.3f th=%.3f off=%d step=%d occ=%.3f) "
         "PathFollow(w=%.3f th=%.3f off=%d) PreferForward(w=%.3f th=%.3f). "
@@ -442,6 +471,9 @@ void MPPIController::configureProfiles()
         i + 1, profile.velocity.vx_min, profile.velocity.vx_max,
         profile.velocity.vy_max, profile.velocity.wz_max,
         profile.critics.goal.weight, profile.critics.goal.threshold_to_consider,
+        profile.critics.goal_lateral.weight,
+        profile.critics.goal_lateral.threshold_to_consider,
+        profile.critics.goal_lateral.last_n_points,
         profile.critics.goal_angle.weight, profile.critics.goal_angle.threshold_to_consider,
         profile.critics.path_angle.weight, profile.critics.path_angle.threshold_to_consider,
         profile.critics.path_angle.offset_from_furthest,

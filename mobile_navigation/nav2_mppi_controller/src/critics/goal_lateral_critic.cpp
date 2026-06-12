@@ -72,6 +72,14 @@ void GoalLateralCritic::score(CriticData & data)
   data.costs += (cost * weight_).pow(power_);
 }
 
+void GoalLateralCritic::applyProfileSettings(const CriticProfileSettings & settings)
+{
+  // 三阶段 profile 覆盖横向误差代价参数
+  weight_ = settings.goal_lateral.weight;
+  threshold_to_consider_ = settings.goal_lateral.threshold_to_consider;
+  last_n_points_ = settings.goal_lateral.last_n_points;
+}
+
 }  // namespace mppi::critics
 
 #include <pluginlib/class_list_macros.hpp>
