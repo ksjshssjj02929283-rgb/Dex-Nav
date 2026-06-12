@@ -173,7 +173,7 @@ controller_server:
         GoalLateralCritic: # 目标横向误差约束
           cost_weight: 5.0 # 只在末段启用横向误差代价
           threshold_to_consider: 1.5 # 距离目标 1.5m 内按目标朝向约束横向误差
-          last_n_points: 8 # 只评估候选轨迹末段
+          last_n_points: 8 # 每条 MPPI 候选轨迹只取最后 8 个时间点来计算横向误差代价
         GoalAngleCritic: # 目标朝向约束
           cost_weight: 3.0 # 目标朝向权重
           threshold_to_consider: 0.1 # 距离目标小于该值时启用目标朝向约束

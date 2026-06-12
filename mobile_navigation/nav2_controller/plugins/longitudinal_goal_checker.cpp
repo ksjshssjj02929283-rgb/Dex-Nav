@@ -116,7 +116,7 @@ bool LongitudinalGoalChecker::isGoalReached(
     goal_yaw);
   if(hypot(lon_err, lat_err) < 0.25)
   {
-    RCLCPP_INFO(rclcpp::get_logger("LongitudinalGoalChecker"),"Near goal: lon_err: %.3f, lat_err: %.3f", lon_err, lat_err);
+    RCLCPP_INFO(rclcpp::get_logger("LongitudinalGoalChecker"),"Near goal: lon_err: %.4f, lat_err: %.4f", lon_err, lat_err);
   }
   if (check_xy_) {
     if(fabs(lon_err) > lon_goal_tolerance_ || 
@@ -124,7 +124,7 @@ bool LongitudinalGoalChecker::isGoalReached(
     {
       return false;
     }
-    RCLCPP_INFO(rclcpp::get_logger("LongitudinalGoalChecker"),"#####  goal reached error: lon_err: %.3f, lat_err: %.3f, yaw_err: %.3f", lon_err, lat_err, dyaw);
+    RCLCPP_INFO(rclcpp::get_logger("LongitudinalGoalChecker"),"#####  goal reached error: lon_err: %.4f, lat_err: %.4f, yaw_err: %.4f", lon_err, lat_err, dyaw);
     // We are within the window
     // If we are stateful, change the state.
     if (stateful_) {
@@ -137,13 +137,13 @@ bool LongitudinalGoalChecker::isGoalReached(
   }
   RCLCPP_INFO(rclcpp::get_logger("LongitudinalGoalChecker"),"lon_goal_tolerance: %.3f, lat_goal_tolerance: %.3f, yaw_goal_tolerance: %.3f", lon_goal_tolerance_, lat_goal_tolerance_, yaw_goal_tolerance_);
   RCLCPP_INFO(rclcpp::get_logger("LongitudinalGoalChecker"),"LongitudinalGoalChecker: Goal reached!");
-  RCLCPP_INFO(rclcpp::get_logger("LongitudinalGoalChecker"),"goal reached error: lon_err: %.3f, lat_err: %.3f, yaw_err: %.3f", lon_err, lat_err, dyaw);
+  RCLCPP_INFO(rclcpp::get_logger("LongitudinalGoalChecker"),"goal reached error: lon_err: %.4f, lat_err: %.4f, yaw_err: %.4f", lon_err, lat_err, dyaw);
   
 
   const double query_yaw = tf2::getYaw(query_pose.orientation);
   RCLCPP_INFO(
     rclcpp::get_logger("LongitudinalGoalChecker"),
-    "query_pose: (x=%.3f, y=%.3f, yaw=%.3f)  goal_pose: (x=%.3f, y=%.3f, yaw=%.3f)",
+    "query_pose: (x=%.4f, y=%.4f, yaw=%.4f)  goal_pose: (x=%.4f, y=%.4f, yaw=%.4f)",
     query_pose.position.x, query_pose.position.y, query_yaw,
     goal_pose.position.x, goal_pose.position.y, goal_yaw);
 
