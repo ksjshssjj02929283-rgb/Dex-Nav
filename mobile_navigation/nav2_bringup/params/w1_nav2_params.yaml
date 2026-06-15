@@ -604,3 +604,35 @@ velocity_smoother:
     odom_duration: 0.1
     deadband_velocity: [0.0, 0.0, 0.0]
     velocity_timeout: 1.0
+
+collision_monitor:
+  ros__parameters:
+    use_sim_time: True
+    base_frame_id: "base_link"
+    odom_frame_id: "odom"
+    cmd_vel_in_topic: "control/cmd_vel_nav"        # 激活后：所有 nav 源汇入点
+    cmd_vel_out_topic: "control/cmd_vel_nav_safe"  # 激活后：mux navigation_stack 改读此
+    transform_tolerance: 0.2
+    source_timeout: 0.5            # 比包默认 5.0 小，实时场景及时丢弃过期帧
+    base_shift_correction: True
+    stop_pub_timeout: 1.0
+    polygons: ["PolygonStop"]
+    PolygonStop:
+      type: "polygon"
+      # 略大于车体 footprint（实际 0.95×0.55；规划 footprint x:[-0.35,0.35] y:[-0.29,0.29]）+ ~0.1m 余量
+      points: [0.45, 0.39, 0.45, -0.39, -0.45, -0.39, -0.45, 0.39]
+      action_type: "stop"
+      max_points: 3
+      enabled: True
+      visualize: True
+      polygon_pub_topic: "collision_monitor/polygon_stop"
+    # 后续可加 PolygonSlowdown（减速区）/ FootprintApproach（预测性减速）；先跑通 stop
+    observation_sources: ["scan_front", "scan_rear"]
+    scan_front:
+      type: "scan"
+      topic: "/laser_scan/front"
+      enabled: True
+    scan_rear:
+      type: "scan"
+      topic: "/laser_scan/rear"
+      enabled: True

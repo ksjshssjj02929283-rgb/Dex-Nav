@@ -1,3 +1,6 @@
+# nav2_collision_monitor 独立示例参数（包自带 launch: collision_monitor_node.launch.py 使用）
+# 升级到 1.1.20 后新增 per-polygon / per-source 的 enabled 开关（默认 true，可运行时动态启停）。
+# 注意：本文件是独立测试用示例；W1 部署的实际参数在 nav2_bringup/params/w1_nav2_params.yaml 的 collision_monitor 段。
 collision_monitor:
   ros__parameters:
     use_sim_time: True
@@ -20,6 +23,7 @@ collision_monitor:
       points: [0.3, 0.3, 0.3, -0.3, 0.0, -0.3, 0.0, 0.3]
       action_type: "stop"
       max_points: 3
+      enabled: True            # 1.1.20 新增：运行时可动态启停本区
       visualize: True
       polygon_pub_topic: "polygon_stop"
     PolygonSlow:
@@ -28,6 +32,7 @@ collision_monitor:
       action_type: "slowdown"
       max_points: 3
       slowdown_ratio: 0.3
+      enabled: True            # 1.1.20 新增
       visualize: True
       polygon_pub_topic: "polygon_slowdown"
     FootprintApproach:
@@ -37,13 +42,16 @@ collision_monitor:
       time_before_collision: 2.0
       simulation_time_step: 0.1
       max_points: 5
+      enabled: True            # 1.1.20 新增
       visualize: False
     observation_sources: ["scan"]
     scan:
       type: "scan"
       topic: "/scan"
+      enabled: True            # 1.1.20 新增：运行时可动态启停本数据源
     pointcloud:
       type: "pointcloud"
       topic: "/intel_realsense_r200_depth/points"
       min_height: 0.1
       max_height: 0.5
+      enabled: True            # 1.1.20 新增

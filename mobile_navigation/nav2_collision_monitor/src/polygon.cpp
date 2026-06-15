@@ -14,7 +14,9 @@
 
 #include "nav2_collision_monitor/polygon.hpp"
 
+#include <algorithm>
 #include <exception>
+#include <limits>
 #include <utility>
 
 #include "geometry_msgs/msg/point.hpp"
@@ -35,7 +37,11 @@ Polygon::Polygon(
   const tf2::Duration & transform_tolerance)
 : node_(node), polygon_name_(polygon_name), action_type_(DO_NOTHING),
   slowdown_ratio_(0.0), footprint_sub_(nullptr), tf_buffer_(tf_buffer),
-  base_frame_id_(base_frame_id), transform_tolerance_(transform_tolerance)
+  base_frame_id_(base_frame_id), transform_tolerance_(transform_tolerance),
+  bbox_min_x_(std::numeric_limits<double>::max()),
+  bbox_min_y_(std::numeric_limits<double>::max()),
+  bbox_max_x_(std::numeric_limits<double>::lowest()),
+  bbox_max_y_(std::numeric_limits<double>::lowest())
 {
   RCLCPP_INFO(logger_, "[%s]: Creating Polygon", polygon_name_.c_str());
 }
@@ -44,6 +50,7 @@ Polygon::~Polygon()
 {
   RCLCPP_INFO(logger_, "[%s]: Destroying Polygon", polygon_name_.c_str());
   poly_.clear();
+  dyn_params_handler_.reset();
 }
 
 bool Polygon::configure()
@@ -82,6 +89,10 @@ bool Polygon::configure()
       polygon_pub_topic, polygon_qos);
   }
 
+  // Add callback for dynamic parameters
+  dyn_params_handler_ = node->add_on_set_parameters_callback(
+    std::bind(&Polygon::dynamicParametersCallback, this, std::placeholders::_1));
+
   return true;
 }
 
@@ -107,6 +118,11 @@ std::string Polygon::getName() const
 ActionType Polygon::getActionType() const
 {
   return action_type_;
+}
+
+bool Polygon::getEnabled() const
+{
+  return enabled_;
 }
 
 int Polygon::getMaxPoints() const
@@ -148,6 +164,28 @@ void Polygon::updatePolygon()
       p_s.y = footprint_vec[i].y;
       polygon_.points[i] = p_s;
     }
+
+    // keep AABB in sync with the freshly fetched footprint
+    updateBoundingBox();
+  }
+}
+
+void Polygon::updateBoundingBox()
+{
+  if (poly_.empty()) {
+    // Empty polygon: set an inverted box so isPointInside() rejects every point
+    bbox_min_x_ = bbox_min_y_ = std::numeric_limits<double>::max();
+    bbox_max_x_ = bbox_max_y_ = std::numeric_limits<double>::lowest();
+    return;
+  }
+
+  bbox_min_x_ = bbox_max_x_ = poly_[0].x;
+  bbox_min_y_ = bbox_max_y_ = poly_[0].y;
+  for (const Point & p : poly_) {
+    bbox_min_x_ = std::min(bbox_min_x_, p.x);
+    bbox_max_x_ = std::max(bbox_max_x_, p.x);
+    bbox_min_y_ = std::min(bbox_min_y_, p.y);
+    bbox_max_y_ = std::max(bbox_max_y_, p.y);
   }
 }
 
@@ -171,7 +209,12 @@ double Polygon::getCollisionTime(
   Velocity vel = velocity;
 
   // Array of points transformed to the frame concerned with pose on each simulation step
-  std::vector<Point> points_transformed;
+  std::vector<Point> points_transformed = collision_points;
+
+  // Check static polygon
+  if (getPointsInside(points_transformed) >= max_points_) {
+    return 0.0;
+  }
 
   // Robot movement simulation
   for (double time = 0.0; time <= time_before_collision_; time += simulation_time_step_) {
@@ -238,6 +281,10 @@ bool Polygon::getCommonParameters(std::string & polygon_pub_topic)
       RCLCPP_ERROR(logger_, "[%s]: Unknown action type: %s", polygon_name_.c_str(), at_str.c_str());
       return false;
     }
+
+    nav2_util::declare_parameter_if_not_declared(
+      node, polygon_name_ + ".enabled", rclcpp::ParameterValue(true));
+    enabled_ = node->get_parameter(polygon_name_ + ".enabled").as_bool();
 
     nav2_util::declare_parameter_if_not_declared(
       node, polygon_name_ + ".max_points", rclcpp::ParameterValue(3));
@@ -334,6 +381,9 @@ bool Polygon::getParameters(std::string & polygon_pub_topic, std::string & footp
       }
       first = !first;
     }
+
+    // P0① compute AABB once for the static polygon
+    updateBoundingBox();
   } catch (const std::exception & ex) {
     RCLCPP_ERROR(
       logger_,
@@ -345,8 +395,37 @@ bool Polygon::getParameters(std::string & polygon_pub_topic, std::string & footp
   return true;
 }
 
+rcl_interfaces::msg::SetParametersResult
+Polygon::dynamicParametersCallback(
+  std::vector<rclcpp::Parameter> parameters)
+{
+  rcl_interfaces::msg::SetParametersResult result;
+
+  for (auto parameter : parameters) {
+    const auto & param_type = parameter.get_type();
+    const auto & param_name = parameter.get_name();
+
+    if (param_type == rcl_interfaces::msg::ParameterType::PARAMETER_BOOL) {
+      if (param_name == polygon_name_ + "." + "enabled") {
+        enabled_ = parameter.as_bool();
+      }
+    }
+  }
+  result.successful = true;
+  return result;
+}
+
 inline bool Polygon::isPointInside(const Point & point) const
 {
+  // P0① AABB pre-filter: reject points outside the polygon bounding box in O(1)
+  // before running the O(N_vertices) ray-crossing test. Lossless: a point outside
+  // the AABB is guaranteed outside the polygon.
+  if (point.x < bbox_min_x_ || point.x > bbox_max_x_ ||
+    point.y < bbox_min_y_ || point.y > bbox_max_y_)
+  {
+    return false;
+  }
+
   // Adaptation of Shimrat, Moshe. "Algorithm 112: position of point relative to polygon."
   // Communications of the ACM 5.8 (1962): 434.
   // Implementation of ray crossings algorithm for point in polygon task solving.
