@@ -113,9 +113,6 @@ controller_server:
         vx_min: -0.2 # 最小后退速度
         vy_max: 0.5 # 侧向速度上限，DiffDrive 下通常不生效
         wz_max: 0.90 # 最大角速度
-        GoalCritic: # 目标位置约束
-          cost_weight: 8.0 # 目标位置权重
-          threshold_to_consider: 2.2 # 距离目标小于该值时启用目标位置约束
         PathAngleCritic: # 路径朝向约束
           cost_weight: 4.0 # 路径朝向权重
           offset_from_furthest: 2 # 使用 furthest point 前方第 2 个路径点计算朝向
@@ -140,9 +137,6 @@ controller_server:
         vx_min: -0.5 # 中间段最小速度，允许必要倒车
         vy_max: 0.5 # 中间段侧向速度上限，DiffDrive 下通常不生效
         wz_max: 0.75 # 中间段最大角速度
-        GoalCritic: # 目标位置约束
-          cost_weight: 8.0 # 目标位置权重
-          threshold_to_consider: 2.2 # 距离目标小于该值时启用目标位置约束
         PathAngleCritic: # 路径朝向约束
           cost_weight: 4.0 # 路径朝向权重
           offset_from_furthest: 2 # 使用 furthest point 前方第 2 个路径点计算朝向
@@ -171,8 +165,8 @@ controller_server:
           cost_weight: 8.0 # 目标位置权重
           threshold_to_consider: 2.2 # 距离目标小于该值时启用目标位置约束
         GoalLateralCritic: # 目标横向误差约束
-          cost_weight: 20.0 # 只在末段启用横向误差代价15
-          threshold_to_consider: 1.5 # 距离目标 1.5m 内按目标朝向约束横向误差
+          cost_weight: 30.0 # 只在末段启用横向误差代价20
+          threshold_to_consider: 1.0 # 距离目标 1.5m 内按目标朝向约束横向误差
           last_n_points: 8 # 每条 MPPI 候选轨迹只取最后 8 个时间点来计算横向误差代价
         GoalAngleCritic: # 目标朝向约束
           cost_weight: 3.0 # 目标朝向权重
