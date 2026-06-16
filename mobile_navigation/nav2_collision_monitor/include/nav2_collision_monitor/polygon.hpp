@@ -103,6 +103,16 @@ public:
    */
   double getSlowdownRatio() const;
   /**
+   * @brief Obtains the linear velocity limit for current polygon. Applicable for LIMIT model.
+   * @return Linear velocity limit (m/s)
+   */
+  double getLinearLimit() const;
+  /**
+   * @brief Obtains the angular velocity limit for current polygon. Applicable for LIMIT model.
+   * @return Angular velocity limit (rad/s)
+   */
+  double getAngularLimit() const;
+  /**
    * @brief Obtains required time before collision for current polygon.
    * Applicable for APPROACH model.
    * @return Time before collision in seconds
@@ -201,6 +211,10 @@ protected:
   int max_points_;
   /// @brief Robot slowdown (share of its actual speed)
   double slowdown_ratio_;
+  /// @brief Robot linear velocity limit (m/s). Applicable for LIMIT action type.
+  double linear_limit_;
+  /// @brief Robot angular velocity limit (rad/s). Applicable for LIMIT action type.
+  double angular_limit_;
   /// @brief Time before collision in seconds
   double time_before_collision_;
   /// @brief Time step for robot movement simulation

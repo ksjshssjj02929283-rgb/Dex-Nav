@@ -14,6 +14,8 @@
 
 #include "nav2_collision_monitor/collision_monitor_node.hpp"
 
+#include <algorithm>
+#include <cmath>
 #include <exception>
 #include <utility>
 #include <functional>
@@ -369,26 +371,25 @@ void CollisionMonitor::process(const Velocity & cmd_vel_in)
   // Polygon causing robot action (if any)
   std::shared_ptr<Polygon> action_polygon;
 
+  // 仲裁：首个命中即生效（与 ROS1 生产版对齐）。
+  // 前提不变量：polygons 按优先级"严格在前"排序，且优先级越低区域越大（嵌套）。
+  // 因此遍历到的第一个命中区，就是该障碍点所处区域里最严格的动作 → break。
   for (std::shared_ptr<Polygon> polygon : polygons_) {
     if (!polygon->getEnabled()) {
       continue;
     }
-    if (robot_action.action_type == STOP) {
-      // If robot already should stop, do nothing
-      break;
-    }
 
     const ActionType at = polygon->getActionType();
-    if (at == STOP || at == SLOWDOWN) {
-      // Process STOP/SLOWDOWN for the selected polygon
-      if (processStopSlowdown(polygon, collision_points, cmd_vel_in, robot_action)) {
-        action_polygon = polygon;
-      }
+    bool triggered = false;
+    if (at == STOP || at == SLOWDOWN || at == LIMIT) {
+      triggered = processStopSlowdownLimit(polygon, collision_points, cmd_vel_in, robot_action);
     } else if (at == APPROACH) {
-      // Process APPROACH for the selected polygon
-      if (processApproach(polygon, collision_points, cmd_vel_in, robot_action)) {
-        action_polygon = polygon;
-      }
+      triggered = processApproach(polygon, collision_points, cmd_vel_in, robot_action);
+    }
+
+    if (triggered) {
+      action_polygon = polygon;
+      break;  // first-match wins
     }
   }
 
@@ -406,33 +407,44 @@ void CollisionMonitor::process(const Velocity & cmd_vel_in)
   robot_action_prev_ = robot_action;
 }
 
-bool CollisionMonitor::processStopSlowdown(
+bool CollisionMonitor::processStopSlowdownLimit(
   const std::shared_ptr<Polygon> polygon,
   const std::vector<Point> & collision_points,
   const Velocity & velocity,
   Action & robot_action) const
 {
-  if (polygon->getPointsInside(collision_points) > polygon->getMaxPoints()) {
-    if (polygon->getActionType() == STOP) {
-      // Setting up zero velocity for STOP model
-      robot_action.action_type = STOP;
-      robot_action.req_vel.x = 0.0;
-      robot_action.req_vel.y = 0.0;
-      robot_action.req_vel.tw = 0.0;
-      return true;
-    } else {  // SLOWDOWN
-      const Velocity safe_vel = velocity * polygon->getSlowdownRatio();
-      // Check that currently calculated velocity is safer than
-      // chosen for previous shapes one
-      if (safe_vel < robot_action.req_vel) {
-        robot_action.action_type = SLOWDOWN;
-        robot_action.req_vel = safe_vel;
-        return true;
-      }
-    }
+  // Not triggered unless enough points inside the polygon
+  if (polygon->getPointsInside(collision_points) <= polygon->getMaxPoints()) {
+    return false;
   }
 
-  return false;
+  // First-match semantics (aligned with ROS1): the triggered polygon decides the action.
+  const ActionType at = polygon->getActionType();
+  if (at == STOP) {
+    robot_action.action_type = STOP;
+    robot_action.req_vel.x = 0.0;
+    robot_action.req_vel.y = 0.0;
+    robot_action.req_vel.tw = 0.0;
+  } else if (at == SLOWDOWN) {
+    // Scale the speed by a fixed ratio
+    robot_action.action_type = SLOWDOWN;
+    robot_action.req_vel = velocity * polygon->getSlowdownRatio();
+  } else {  // LIMIT (backport from ROS1): cap absolute linear / angular velocity
+    const double linear_vel = std::hypot(velocity.x, velocity.y);
+    double ratio = 1.0;
+    if (linear_vel != 0.0) {
+      ratio = std::clamp(polygon->getLinearLimit() / linear_vel, 0.0, 1.0);
+    }
+    Velocity safe_vel;
+    safe_vel.x = velocity.x * ratio;
+    safe_vel.y = velocity.y * ratio;
+    safe_vel.tw = std::clamp(
+      velocity.tw, -polygon->getAngularLimit(), polygon->getAngularLimit());
+    robot_action.action_type = LIMIT;
+    robot_action.req_vel = safe_vel;
+  }
+
+  return true;
 }
 
 bool CollisionMonitor::processApproach(
@@ -446,16 +458,12 @@ bool CollisionMonitor::processApproach(
   // Obtain time before a collision
   const double collision_time = polygon->getCollisionTime(collision_points, velocity);
   if (collision_time >= 0.0) {
-    // If collision will occurr, reduce robot speed
+    // First-match semantics (aligned with ROS1): a predicted collision triggers APPROACH,
+    // velocity is scaled to keep a constant time-before-collision margin.
     const double change_ratio = collision_time / polygon->getTimeBeforeCollision();
-    const Velocity safe_vel = velocity * change_ratio;
-    // Check that currently calculated velocity is safer than
-    // chosen for previous shapes one
-    if (safe_vel < robot_action.req_vel) {
-      robot_action.action_type = APPROACH;
-      robot_action.req_vel = safe_vel;
-      return true;
-    }
+    robot_action.action_type = APPROACH;
+    robot_action.req_vel = velocity * change_ratio;
+    return true;
   }
 
   return false;
@@ -474,6 +482,11 @@ void CollisionMonitor::printAction(
       get_logger(),
       "Robot to slowdown for %f percents due to %s polygon",
       action_polygon->getSlowdownRatio() * 100,
+      action_polygon->getName().c_str());
+  } else if (robot_action.action_type == LIMIT) {
+    RCLCPP_INFO(
+      get_logger(),
+      "Robot to limit speed due to %s polygon",
       action_polygon->getName().c_str());
   } else if (robot_action.action_type == APPROACH) {
     RCLCPP_INFO(

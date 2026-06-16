@@ -146,14 +146,15 @@ protected:
   void process(const Velocity & cmd_vel_in);
 
   /**
-   * @brief Processes the polygon of STOP and SLOWDOWN action type
+   * @brief Processes the polygon of STOP, SLOWDOWN and LIMIT action type
+   * (LIMIT backported from ROS1 production version)
    * @param polygon Polygon to process
    * @param collision_points Array of 2D obstacle points
    * @param velocity Desired robot velocity
    * @param robot_action Output processed robot action
-   * @return True if returned action is caused by current polygon, otherwise false
+   * @return True if the polygon is triggered (points inside over threshold), otherwise false
    */
-  bool processStopSlowdown(
+  bool processStopSlowdownLimit(
     const std::shared_ptr<Polygon> polygon,
     const std::vector<Point> & collision_points,
     const Velocity & velocity,
