@@ -79,20 +79,27 @@ controller_server:
     progress_checker:
       plugin: "nav2_controller::PoseProgressChecker" # 进展检查插件
       required_movement_radius: 0.1 # 普通模式：判定有进展所需的移动距离，单位 m
-      required_movement_angle: 0.01 # 普通模式：判定有进展所需的旋转角度，单位 rad
+      required_movement_angle: 0.1 # 普通模式：判定有进展所需的旋转角度，单位 rad
       movement_time_allowance: 3.0 # 普通模式：允许未达到足够进展的时间，单位 s
     near_goal_progress:
-      enabled: True # 是否启用接近目标点时的严格进展检查，避免末段小幅调整导致长时间停滞
+      enabled: True # 是否启用接近目标点时的宽松的进展检查
       distance: 0.20 # 距离目标点小于该值时进入近目标模式，单位 m
       required_movement_radius: 0.01 # 近目标模式：移动超过 1cm 才算有进展，避免小幅抖动刷新计时
-      required_movement_angle: 0.05 # 近目标模式：旋转超过约 2.86 度才算有进展，避免原地轻微摆动刷新计时
-      movement_time_allowance: 2.0 # 近目标模式：2 秒内没有足够进展就让 FollowPath 失败并进入恢复
+      required_movement_angle: 0.01 # 近目标模式：旋转超过约 0.57 度才算有进展，避免原地轻微摆动刷新计时
+      movement_time_allowance: 4.0 # 近目标模式：4 秒内没有足够进展就让 FollowPath 失败并进入恢复
     goal_checker:
-      plugin: "nav2_controller::LongitudinalGoalChecker"
-      lon_goal_tolerance: 0.02
-      lat_goal_tolerance: 0.02
+      plugin: "nav2_controller::PrecisionLongitudinalGoalChecker"
+      desired_lon_goal_tolerance: 0.01 # 优先追求的纵向精度，当前配置为 1cm
+      desired_lat_goal_tolerance: 0.01 # 优先追求的横向精度，当前配置为 1cm
+      accept_lon_goal_tolerance: 0.02 # 精调后允许接受的纵向精度，当前配置为 2cm
+      accept_lat_goal_tolerance: 0.02 # 精调后允许接受的横向精度，当前配置为 2cm
       yaw_goal_tolerance: 0.02
-      stateful: True    
+      refine_cycles: 30 # controller_frequency=10Hz，对应进入 2cm 后继续精调约 3s
+      longitudinal_extra_refine_cycles: 30 # 横向和角度已稳定满足 1cm/角度要求但纵向未满足 1cm 时，额外纵向精调约 1s
+      stable_window_size: 10 # controller_frequency=10Hz，对应最近约 1s 的高精度稳定窗口
+      check_stopped: false # 是否要求到点时底盘速度也足够小；false 表示只按位置和航向判断成功
+      trans_stopped_velocity: 0.01 # check_stopped=true 时生效，线速度小于该值才认为已停稳，单位 m/s
+      rot_stopped_velocity: 0.02 # check_stopped=true 时生效，角速度小于该值才认为已停稳，单位 rad/s
     FollowPath:
       plugin: "nav2_mppi_controller::MPPIController"
       time_steps: 40 # 56
