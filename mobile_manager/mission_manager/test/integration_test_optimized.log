@@ -1,0 +1,91 @@
+=========================================
+Mission Manager 快速集成测试
+=========================================
+
+📦 检查包编译状态...
+[0;32m✅ map_manager_ros2[0m
+[0;32m✅ nav2_point_manager[0m
+[0;32m✅ mission_manager[0m
+
+=========================================
+第1步: 启动所有节点
+=========================================
+
+🚀 启动 map_manager_ros2 (map_folder: /home/dex/workspace_pzc/dexe_mobile_nav/test_maps)...
+[0;32m✅ map_manager_ros2 启动 (PID: 33582)[0m
+🚀 启动 nav2_point_manager (map_folder: /home/dex/workspace_pzc/dexe_mobile_nav/test_maps)...
+[0;32m✅ nav2_point_manager 启动 (PID: 33628)[0m
+🚀 启动 mission_manager...
+[0;32m✅ mission_manager 启动 (PID: 33655)[0m
+
+=========================================
+第2步: 检查节点状态
+=========================================
+
+📊 检查ROS2节点...
+[0;32m✅ map_manager 节点运行中[0m
+[0;32m✅ nav_point_manager 节点运行中[0m
+[0;32m✅ mission_manager 节点运行中[0m
+
+=========================================
+第3步: 运行集成测试
+=========================================
+
+⏳ 等待服务就绪...
+🧪 运行集成测试脚本...
+
+[INFO] [1761127398.748825652] [integration_tester]: 集成测试节点初始化完成
+[INFO] [1761127398.749328610] [integration_tester]: 
+[INFO] [1761127398.749556565] [integration_tester]: 🚀 开始集成测试...
+[INFO] [1761127398.749761908] [integration_tester]: 
+[INFO] [1761127398.749983400] [integration_tester]: 等待服务: /map_manager/load_map
+[INFO] [1761127398.750733168] [integration_tester]: 等待服务: /nav_point_manager_node/set_map_changed
+[INFO] [1761127398.751089082] [integration_tester]: 等待服务: /mission_manager_node/set_map_changed
+[INFO] [1761127398.751434736] [integration_tester]: 所有必需服务已就绪
+[INFO] [1761127399.752832287] [integration_tester]: ==================================================
+[INFO] [1761127399.753256157] [integration_tester]: 测试1: 地图管理器
+[INFO] [1761127399.753505942] [integration_tester]: ==================================================
+[INFO] [1761127399.753752312] [integration_tester]: 1.1 加载地图: test_map
+[INFO] [1761127408.270603766] [integration_tester]: ✅ 地图加载结果: success=True
+[INFO] [1761127408.271238169] [integration_tester]: 1.2 获取当前地图名称
+[INFO] [1761127408.272511863] [integration_tester]: ✅ 当前地图: test_map
+[INFO] [1761127408.273101502] [integration_tester]: 
+[INFO] [1761127408.273736485] [integration_tester]: ==================================================
+[INFO] [1761127408.274334670] [integration_tester]: 测试2: 导航点管理器
+[INFO] [1761127408.274904022] [integration_tester]: ==================================================
+[INFO] [1761127408.275485606] [integration_tester]: 2.1 通知nav_point_manager地图已变更
+[INFO] [1761127408.277755446] [integration_tester]: ✅ 设置地图变更: success=True
+[INFO] [1761127408.278432128] [integration_tester]:    消息: Map activated: test_map
+[INFO] [1761127408.279355930] [integration_tester]: 2.2 获取所有导航点
+[INFO] [1761127408.284384312] [integration_tester]: ✅ 获取导航点: success=True
+[INFO] [1761127408.285295190] [integration_tester]:    导航点数量: 6
+[INFO] [1761127408.286250200] [integration_tester]:    点位1: charging_station (3.00, -1.00, 3.14)
+[INFO] [1761127408.286902977] [integration_tester]:    点位2: point_corner_1 (-3.00, -2.50, -1.57)
+[INFO] [1761127408.287514477] [integration_tester]:    点位3: point_corner_2 (3.50, 3.00, 2.35)
+[INFO] [1761127408.288091111] [integration_tester]:    点位4: point_home (0.00, 0.00, 0.00)
+[INFO] [1761127408.288635075] [integration_tester]:    点位5: point_station_1 (2.00, 1.50, 0.00)
+[INFO] [1761127408.289187174] [integration_tester]: 2.3 添加测试导航点
+[INFO] [1761127408.290905748] [integration_tester]: ✅ 添加导航点: success=False
+[INFO] [1761127408.291563263] [integration_tester]: 
+[INFO] [1761127408.292118849] [integration_tester]: ==================================================
+[INFO] [1761127408.292669986] [integration_tester]: 测试3: 任务管理器
+[INFO] [1761127408.293223037] [integration_tester]: ==================================================
+[INFO] [1761127408.293769756] [integration_tester]: 3.1 通知mission_manager地图已变更
+[ERROR] [1761127423.295567087] [integration_tester]: 服务调用失败: Timeout
+[ERROR] [1761127423.296254388] [integration_tester]: ❌ 设置地图变更失败（超时）
+[INFO] [1761127423.296688657] [integration_tester]:    这通常是因为nav_point_manager未响应
+[INFO] [1761127423.296999376] [integration_tester]: 
+[INFO] [1761127423.297275521] [integration_tester]: ==================================================
+[INFO] [1761127423.297516219] [integration_tester]: 测试总结
+[INFO] [1761127423.297721342] [integration_tester]: ==================================================
+[INFO] [1761127423.297930872] [integration_tester]: Map Manager: ✅ 通过
+[INFO] [1761127423.298159659] [integration_tester]: Nav Point Manager: ✅ 通过
+[INFO] [1761127423.298368127] [integration_tester]: Mission Manager: ❌ 失败
+[INFO] [1761127423.298578850] [integration_tester]: 
+[ERROR] [1761127423.298871816] [integration_tester]: ❌ 集成测试失败
+
+[1;33m正在清理...[0m
+停止 map_manager (PID: 33582)
+停止 nav_point_manager (PID: 33628)
+停止 mission_manager (PID: 33655)
+[0;32m✅ 清理完成[0m

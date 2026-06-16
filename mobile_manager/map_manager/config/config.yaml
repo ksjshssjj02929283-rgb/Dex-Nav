@@ -1,0 +1,20 @@
+# Map Manager Configuration File
+
+# Map folder path (root directory containing all map subdirectories)
+# Use ~ to represent the current user's home directory
+map_folder: "~/.dexe/data/maps"
+
+# Default map name to load on startup
+default_map_name: "offline_map"
+
+# Whether to save current map name back to config after loading successfully
+# - true: Enables map memory (saves loaded map name to this config file)
+# - false: Uses fixed default_map_name on every startup (default)
+use_default_map: true
+
+# Service names for notifying other nodes when map changes
+services:
+  nav_point_manager: "/nav_point_manager_node/set_map_changed"
+  mission_manager: "/mission_manager/set_map_changed"
+  move_base: "/move_base/set_map_changed"
+  localization: "/localization_node/set_map_changed"
