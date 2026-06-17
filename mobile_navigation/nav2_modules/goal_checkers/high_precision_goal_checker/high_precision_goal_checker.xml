@@ -1,0 +1,11 @@
+<class_libraries>
+    <library path="high_precision_goal_checker">
+        <class type="high_precision_goal_checker::HighPrecisionGoalChecker" base_class_type="nav2_core::GoalChecker">
+            <description>
+                High-precision goal checker. Transforms the goal into the robot base frame to
+                separate longitudinal/lateral errors, smooths longitudinal and yaw errors over a
+                sliding window, and requires the robot to be stopped before declaring the goal reached.
+            </description>
+        </class>
+    </library>
+</class_libraries>
