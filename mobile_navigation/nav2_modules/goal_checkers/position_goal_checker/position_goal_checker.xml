@@ -1,0 +1,9 @@
+<class_libraries>
+    <library path="position_goal_checker">
+        <class type="position_goal_checker::PositionGoalChecker" base_class_type="nav2_core::GoalChecker">
+            <description>
+                Checks whether the robot has reached the goal position using the XY position tolerance only (orientation is ignored).
+            </description>
+        </class>
+    </library>
+</class_libraries>
