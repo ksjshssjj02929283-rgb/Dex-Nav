@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include <stdint.h>
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include "nav2_mppi_controller/controller.hpp"
@@ -46,12 +47,13 @@ void MPPIController::configure(
   // Configure composed objects
   optimizer_.initialize(parent_, name_, costmap_ros_, parameters_handler_.get());
   if (profile_enabled_) {
-    optimizer_.applyProfile(profiles_[active_profile_]);
+    applied_profile_ = profiles_[active_profile_];
+    optimizer_.applyProfile(applied_profile_);
   }
   parameters_handler_->addPostCallback(
     [this]() {
       if (profile_enabled_) {
-        optimizer_.applyProfile(profiles_[active_profile_]);
+        optimizer_.applyProfile(applied_profile_);
       }
     });
   path_handler_.initialize(parent_, name_, costmap_ros_, tf_buffer_, parameters_handler_.get());
@@ -281,6 +283,7 @@ void MPPIController::configureProfiles()
   getParam(profile_enabled_, "profile_enabled", true, ParameterType::Static);
   getParam(profile_start_distance_, "profile_start_distance", 0.8, ParameterType::Static);
   getParam(profile_goal_distance_, "profile_goal_distance", 1.0, ParameterType::Static);
+  getParam(profile_transition_duration_, "profile_transition_duration", 0.0, ParameterType::Static);
 
   for (size_t i = 0; i < profiles_.size(); ++i) {
     auto & profile = profiles_[i];
@@ -452,9 +455,11 @@ void MPPIController::configureProfiles()
   RCLCPP_INFO(
     logger_,
     "MPPI profiles: enabled=%d start_distance=%.3f goal_distance=%.3f. "
+    "transition_duration=%.3f. "
     "enabled=1 时启用三阶段切换；当前默认开启。path_progress 小于 start_distance 为起步段，"
     "goal_distance 小于等于 profile_goal_distance 为末段。",
-    profile_enabled_, profile_start_distance_, profile_goal_distance_);
+    profile_enabled_, profile_start_distance_, profile_goal_distance_,
+    profile_transition_duration_);
 
   if (profile_enabled_) {
     for (size_t i = 0; i < profiles_.size(); ++i) {
@@ -497,6 +502,10 @@ void MPPIController::configureProfiles()
         "如需测试差异化三段式效果，需要在 YAML 中补充 profile_1/profile_2/profile_3 覆盖参数。");
     }
   }
+
+  applied_profile_ = profiles_[active_profile_];
+  transition_start_profile_ = applied_profile_;
+  transition_target_profile_ = applied_profile_;
 }
 
 void MPPIController::applyProfileForPathState(double path_progress, double goal_distance)
@@ -517,22 +526,33 @@ void MPPIController::applyProfileForPathState(double path_progress, double goal_
     selected.velocity.vx_min, selected.velocity.vx_max, selected.velocity.wz_max);
 
   if (selected_profile == active_profile_) {
+    updateProfileTransition();
     return;
   }
 
   const size_t previous_profile = active_profile_;
   active_profile_ = selected_profile;
-  optimizer_.applyProfile(profiles_[active_profile_]);
+  if (profile_transition_duration_ > 0.0) {
+    transition_start_profile_ = applied_profile_;
+    transition_target_profile_ = profiles_[active_profile_];
+    profile_transition_start_time_ = clock_->now();
+    profile_transition_active_ = true;
+    updateProfileTransition();
+  } else {
+    applied_profile_ = profiles_[active_profile_];
+    optimizer_.applyProfile(applied_profile_);
+  }
 
   const auto & profile = profiles_[active_profile_];
   RCLCPP_INFO(
     logger_,
     "MPPI profile switched: %zu -> %zu, reason=%s, path_progress=%.3f, "
     "goal_distance=%.3f, velocity vx=[%.3f, %.3f] vy=%.3f wz=%.3f. "
-    "三阶段发生切换，新的速度约束和 critic 参数已经应用到 Optimizer。",
+    "transition_duration=%.3f. "
+    "三阶段发生切换，新的速度约束和 critic 参数会按过渡时间应用到 Optimizer。",
     previous_profile + 1, active_profile_ + 1, getProfileReason(active_profile_).c_str(),
     path_progress, goal_distance, profile.velocity.vx_min, profile.velocity.vx_max,
-    profile.velocity.vy_max, profile.velocity.wz_max);
+    profile.velocity.vy_max, profile.velocity.wz_max, profile_transition_duration_);
 }
 
 size_t MPPIController::selectProfile(double path_progress, double goal_distance) const
@@ -560,6 +580,121 @@ std::string MPPIController::getProfileReason(size_t profile) const
     default:
       return "unknown";
   }
+}
+
+MppiProfileSettings MPPIController::interpolateProfiles(
+  const MppiProfileSettings & from,
+  const MppiProfileSettings & to,
+  double ratio) const
+{
+  ratio = std::max(0.0, std::min(1.0, ratio));
+
+  const auto lerpFloat = [ratio](float lhs, float rhs) {
+      return static_cast<float>(lhs + (rhs - lhs) * ratio);
+    };
+  const auto lerpInt = [ratio](int lhs, int rhs) {
+      return static_cast<int>(std::lround(lhs + (rhs - lhs) * ratio));
+    };
+
+  MppiProfileSettings result = to;
+  result.velocity.vx_max = lerpFloat(from.velocity.vx_max, to.velocity.vx_max);
+  result.velocity.vx_min = lerpFloat(from.velocity.vx_min, to.velocity.vx_min);
+  result.velocity.vy_max = lerpFloat(from.velocity.vy_max, to.velocity.vy_max);
+  result.velocity.wz_max = lerpFloat(from.velocity.wz_max, to.velocity.wz_max);
+
+  result.critics.goal.weight =
+    lerpFloat(from.critics.goal.weight, to.critics.goal.weight);
+  result.critics.goal.threshold_to_consider =
+    lerpFloat(from.critics.goal.threshold_to_consider, to.critics.goal.threshold_to_consider);
+
+  result.critics.goal_lateral.weight =
+    lerpFloat(from.critics.goal_lateral.weight, to.critics.goal_lateral.weight);
+  result.critics.goal_lateral.threshold_to_consider = lerpFloat(
+    from.critics.goal_lateral.threshold_to_consider,
+    to.critics.goal_lateral.threshold_to_consider);
+  result.critics.goal_lateral.last_n_points = std::max(
+    1, lerpInt(
+      from.critics.goal_lateral.last_n_points,
+      to.critics.goal_lateral.last_n_points));
+
+  result.critics.goal_angle.weight =
+    lerpFloat(from.critics.goal_angle.weight, to.critics.goal_angle.weight);
+  result.critics.goal_angle.threshold_to_consider = lerpFloat(
+    from.critics.goal_angle.threshold_to_consider,
+    to.critics.goal_angle.threshold_to_consider);
+
+  result.critics.path_angle.weight =
+    lerpFloat(from.critics.path_angle.weight, to.critics.path_angle.weight);
+  result.critics.path_angle.threshold_to_consider = lerpFloat(
+    from.critics.path_angle.threshold_to_consider,
+    to.critics.path_angle.threshold_to_consider);
+  result.critics.path_angle.offset_from_furthest = std::max(
+    0, lerpInt(
+      from.critics.path_angle.offset_from_furthest,
+      to.critics.path_angle.offset_from_furthest));
+  result.critics.path_angle.max_angle_to_furthest = lerpFloat(
+    from.critics.path_angle.max_angle_to_furthest,
+    to.critics.path_angle.max_angle_to_furthest);
+  result.critics.path_angle.forward_preference =
+    ratio < 0.5 ? from.critics.path_angle.forward_preference :
+    to.critics.path_angle.forward_preference;
+
+  result.critics.path_follow.weight =
+    lerpFloat(from.critics.path_follow.weight, to.critics.path_follow.weight);
+  result.critics.path_follow.threshold_to_consider = lerpFloat(
+    from.critics.path_follow.threshold_to_consider,
+    to.critics.path_follow.threshold_to_consider);
+  result.critics.path_follow.offset_from_furthest = std::max(
+    0, lerpInt(
+      from.critics.path_follow.offset_from_furthest,
+      to.critics.path_follow.offset_from_furthest));
+
+  result.critics.path_align.weight =
+    lerpFloat(from.critics.path_align.weight, to.critics.path_align.weight);
+  result.critics.path_align.threshold_to_consider = lerpFloat(
+    from.critics.path_align.threshold_to_consider,
+    to.critics.path_align.threshold_to_consider);
+  result.critics.path_align.offset_from_furthest = std::max(
+    0, lerpInt(
+      from.critics.path_align.offset_from_furthest,
+      to.critics.path_align.offset_from_furthest));
+  result.critics.path_align.trajectory_point_step = std::max(
+    1, lerpInt(
+      from.critics.path_align.trajectory_point_step,
+      to.critics.path_align.trajectory_point_step));
+  result.critics.path_align.max_path_occupancy_ratio = lerpFloat(
+    from.critics.path_align.max_path_occupancy_ratio,
+    to.critics.path_align.max_path_occupancy_ratio);
+
+  result.critics.prefer_forward.weight =
+    lerpFloat(from.critics.prefer_forward.weight, to.critics.prefer_forward.weight);
+  result.critics.prefer_forward.threshold_to_consider = lerpFloat(
+    from.critics.prefer_forward.threshold_to_consider,
+    to.critics.prefer_forward.threshold_to_consider);
+
+  return result;
+}
+
+void MPPIController::updateProfileTransition()
+{
+  if (!profile_transition_active_) {
+    return;
+  }
+
+  const double elapsed =
+    (clock_->now() - profile_transition_start_time_).seconds();
+  const double ratio = profile_transition_duration_ <= 0.0 ?
+    1.0 : elapsed / profile_transition_duration_;
+
+  if (ratio >= 1.0) {
+    applied_profile_ = transition_target_profile_;
+    profile_transition_active_ = false;
+  } else {
+    applied_profile_ = interpolateProfiles(
+      transition_start_profile_, transition_target_profile_, ratio);
+  }
+
+  optimizer_.applyProfile(applied_profile_);
 }
 
 void MPPIController::visualize(nav_msgs::msg::Path transformed_plan)

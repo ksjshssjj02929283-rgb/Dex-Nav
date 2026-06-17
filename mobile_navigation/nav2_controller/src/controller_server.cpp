@@ -502,7 +502,6 @@ void ControllerServer::computeControl()
         // end
         // added by hz
         std::cout << "------------------------------------------------------------" << std::endl;
-        std::cout << "------------------------------------------------------------" << std::endl;
       }
     }
   } catch (nav2_core::PlannerException & e) {

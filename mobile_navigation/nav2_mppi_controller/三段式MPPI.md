@@ -17,6 +17,7 @@
 profile_enabled
 profile_start_distance
 profile_goal_distance
+profile_transition_duration
 profile_1
 profile_2
 profile_3
@@ -27,10 +28,11 @@ profile_3
 | 参数 | 当前值 | 影响 |
 |---|---:|---|
 | `profile_enabled` | `true` | 三段式默认开启 |
-| `profile_start_distance` | `0.8` | 路径累计前进小于 0.8 m 时使用起步段 |
-| `profile_goal_distance` | `0.7` | 距离终点小于等于 0.7 m 时使用末段 |
+| `profile_start_distance` | `1.5` | 路径累计前进小于 1.5 m 时使用起步段 |
+| `profile_goal_distance` | `1.5` | 距离终点小于等于 1.5 m 时使用末段 |
+| `profile_transition_duration` | `0.6` | 阶段切换时用 0.6 s 插值过渡速度约束和支持的 critic 参数 |
 
-也就是说：**当前 YAML 已经会按三阶段进行切换，但 `profile_1/2/3` 只覆盖速度和角速度约束。** 各阶段的 Goal、PathAlign、PathFollow、PathAngle、PreferForward 等 critic 参数都继承 `FollowPath` 下的全局配置。
+也就是说：**当前 YAML 已经会按三阶段进行切换，并且会用 `profile_transition_duration` 避免阶段边界一拍硬切。** `profile_1/2/3` 会覆盖速度约束和已支持的 Goal、GoalLateral、GoalAngle、PathAlign、PathFollow、PathAngle、PreferForward 等 critic 参数；未在某个阶段显式配置的字段会继承 `FollowPath` 下的全局配置。
 
 ## 2. 三阶段切换规则
 
@@ -144,8 +146,9 @@ profile_3
 
 ```yaml
 profile_enabled: true
-profile_start_distance: 0.8
-profile_goal_distance: 0.7
+profile_start_distance: 1.5
+profile_goal_distance: 1.5
+profile_transition_duration: 0.6
 ```
 
 含义：
@@ -153,8 +156,9 @@ profile_goal_distance: 0.7
 | 参数 | 建议值 | 含义 |
 |---|---:|---|
 | `profile_enabled` | `true` | 开启三段式 |
-| `profile_start_distance` | `0.8` | 路径累计前进小于 0.8 m 时使用起步段 |
-| `profile_goal_distance` | `0.7` | 距离终点小于等于 0.7 m 时使用末段 |
+| `profile_start_distance` | `1.5` | 路径累计前进小于 1.5 m 时使用起步段 |
+| `profile_goal_distance` | `1.5` | 距离终点小于等于 1.5 m 时使用末段 |
+| `profile_transition_duration` | `0.6` | 阶段切换时用 0.6 s 插值过渡 |
 
 ### 6.2 profile_1：起步段
 
@@ -392,7 +396,7 @@ profile_3:
 三段式启用后，日志中重点看这些字段：
 
 ```text
-MPPI profiles: enabled=1 start_distance=0.800 goal_distance=0.700
+MPPI profiles: enabled=1 start_distance=1.500 goal_distance=1.500 transition_duration=0.600
 MPPI path state: path_progress=... goal_distance=...
 MPPI profile state: active=... selected=...
 MPPI profile switched: 1 -> 2, reason=middle_segment/中间段

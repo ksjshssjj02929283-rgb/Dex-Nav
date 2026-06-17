@@ -85,7 +85,6 @@ protected:
   void resetRefineState();
   void recordErrors(double lon_err, double lat_err, double yaw_err);
   bool desiredWindowStable() const;
-  bool lateralYawWindowStable() const;
   double meanAbs(const std::deque<double> & data) const;
   void publishGoalError(
     const geometry_msgs::msg::Pose & query_pose,
@@ -107,8 +106,8 @@ protected:
   double desired_lon_goal_tolerance_, desired_lat_goal_tolerance_;
   double accept_lon_goal_tolerance_, accept_lat_goal_tolerance_;
   double yaw_goal_tolerance_;
-  int refine_cycles_, stable_window_size_, longitudinal_extra_refine_cycles_;
-  int refine_count_, longitudinal_extra_refine_count_;
+  int refine_cycles_, stable_window_size_;
+  int refine_count_;
   bool entered_accept_window_, accept_refine_restart_used_, desired_refine_restart_used_;
   bool check_stopped_;
   PrecisionStatus last_status_{PrecisionStatus::OutsideAccept};

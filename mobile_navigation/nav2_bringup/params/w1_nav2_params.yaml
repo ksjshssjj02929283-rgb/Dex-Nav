@@ -71,7 +71,7 @@ bt_navigator_navigate_to_pose_rclcpp_node:
 controller_server:
   ros__parameters:
     use_sim_time: True
-    controller_frequency: 10.0 # 20.0 # Related params: model_dt >= controller period; prediction horizon = time_steps * model_dt
+    controller_frequency: 10.0 # 控制器控制周期 # Related params: model_dt >= controller period; prediction horizon = time_steps * model_dt
     progress_checker_plugins: ["progress_checker"] # progress_checker_plugin: "progress_checker" For Humble and older
     goal_checker_plugins: ["goal_checker"] # goal_checker_plugin: "goal_checker" For Galactic and older
     controller_plugins: ["FollowPath"]
@@ -86,7 +86,7 @@ controller_server:
       distance: 0.10 # 距离目标点小于该值时进入近目标模式，单位 m
       required_movement_radius: 0.05 # 近目标模式：移动超过 1cm 才算有进展，避免小幅抖动刷新计时
       required_movement_angle: 0.05 # 近目标模式：旋转超过约 0.57 度才算有进展，避免原地轻微摆动刷新计时
-      movement_time_allowance: 5.0 # 近目标模式：5 秒内没有足够进展就让 FollowPath 失败并进入恢复
+      movement_time_allowance: 4.0 # 近目标模式：4 秒内没有足够进展就让 FollowPath 失败并进入恢复
     goal_checker:
       plugin: "nav2_controller::PrecisionLongitudinalGoalChecker"
       desired_lon_goal_tolerance: 0.01 # 优先追求的纵向精度，当前配置为 1cm
@@ -95,8 +95,7 @@ controller_server:
       accept_lat_goal_tolerance: 0.02 # 精调后允许接受的横向精度，当前配置为 2cm
       yaw_goal_tolerance: 0.02
       refine_cycles: 40 # controller_frequency=10Hz，对应进入 2cm 后继续精调约 4s
-      longitudinal_extra_refine_cycles: 30 # 横向和角度已稳定满足 1cm/角度要求但纵向未满足 1cm 时，额外纵向精调约 3s
-      stable_window_size: 10 # controller_frequency=10Hz，对应最近约 1s 的高精度稳定窗口
+      stable_window_size: 5 # controller_frequency=10Hz，对应最近约 0.5s 的高精度稳定窗口
       check_stopped: false # 是否要求到点时底盘速度也足够小；false 表示只按位置和航向判断成功
       trans_stopped_velocity: 0.01 # check_stopped=true 时生效，线速度小于该值才认为已停稳，单位 m/s
       rot_stopped_velocity: 0.02 # check_stopped=true 时生效，角速度小于该值才认为已停稳，单位 rad/s
@@ -104,7 +103,7 @@ controller_server:
       plugin: "nav2_mppi_controller::MPPIController"
       time_steps: 40 # 56
       model_dt: 0.1 # 0.05
-      batch_size: 2000
+      batch_size: 1500
       vx_std: 0.25 # 0.2
       vy_std: 0.2
       wz_std: 0.3 # 0.35 # 0.25 # 0.4
@@ -113,8 +112,9 @@ controller_server:
       vy_max: 0.5
       wz_max: 0.75
       profile_enabled: true # 是否开启三段式 MPPI
-      profile_start_distance: 1.5 # 起步段阈值，小于该距离时使用 profile_1
-      profile_goal_distance: 1.5 # 末段阈值，距离目标点小于等于该距离时优先使用 profile_3
+      profile_start_distance: 1.0 # 起步段阈值，小于该距离时使用 profile_1
+      profile_goal_distance: 1.0 # 末段阈值，距离目标点小于等于该距离时优先使用 profile_3
+      profile_transition_duration: 1.0 # 三段式切换过渡时间，避免速度约束和 critic 权重一拍硬切，单位 s
       profile_1: # 起步段
         vx_max: 0.4 # 最大前进速度
         vx_min: -0.2 # 最小后退速度
@@ -164,17 +164,17 @@ controller_server:
           cost_weight: 5.0 # 前进偏好权重
           threshold_to_consider: 0.25 # 接近目标 0.25m 内不再强制前进偏好
       profile_3: # 末段
-        vx_max: 0.5 # 末段降低最大前进速度，减少终点超调
+        vx_max: 0.4 # 末段降低最大前进速度，减少终点超调
         vx_min: -0.20 # 末段限制倒车速度，减少终点附近反复调整
         vy_max: 0.5 # 末段侧向速度上限
-        wz_max: 0.30 # 末段降低最大角速度，但保留一定横向纠偏能力
+        wz_max: 0.50 # 末段降低最大角速度，但保留一定横向纠偏能力
         GoalLateralCritic: # 目标横向误差约束
-          cost_weight: 30.0 # 只在末段启用横向误差代价20
-          threshold_to_consider: 1.0 # 距离目标 1.5m 内按目标朝向约束横向误差
-          last_n_points: 8 # 每条 MPPI 候选轨迹只取最后 8 个时间点来计算横向误差代价
+          cost_weight: 30.0 # 只在末段启用横向误差代价
+          threshold_to_consider: 1.0 # 距离目标 1.0m 内按目标朝向约束横向误差
+          last_n_points: 10 # 每条 MPPI 候选轨迹只取最后 10 个时间点来计算横向误差代价
         GoalAngleCritic: # 目标朝向约束
-          cost_weight: 8.0 # 目标朝向权重3
-          threshold_to_consider: 0.2 # 距离目标小于该值时启用目标朝向约束0.1
+          cost_weight: 8.0 # 目标朝向权重
+          threshold_to_consider: 0.2 # 距离目标小于该值时启用目标朝向约束
         PathAngleCritic: # 路径朝向约束
           cost_weight: 4.0 # 路径朝向权重
           offset_from_furthest: 2 # 使用 furthest point 前方第 2 个路径点计算朝向

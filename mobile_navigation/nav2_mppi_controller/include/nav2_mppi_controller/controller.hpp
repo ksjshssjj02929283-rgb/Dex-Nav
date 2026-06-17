@@ -118,6 +118,13 @@ protected:
 
   std::string getProfileReason(size_t profile) const;
 
+  MppiProfileSettings interpolateProfiles(
+    const MppiProfileSettings & from,
+    const MppiProfileSettings & to,
+    double ratio) const;
+
+  void updateProfileTransition();
+
   std::string name_;
   rclcpp_lifecycle::LifecycleNode::WeakPtr parent_;
   rclcpp::Clock::SharedPtr clock_;
@@ -133,9 +140,15 @@ protected:
   bool visualize_;
   bool profile_enabled_{true};
   std::array<MppiProfileSettings, 3> profiles_;
+  MppiProfileSettings applied_profile_;
+  MppiProfileSettings transition_start_profile_;
+  MppiProfileSettings transition_target_profile_;
+  rclcpp::Time profile_transition_start_time_;
   double profile_start_distance_{0.8};
   double profile_goal_distance_{1.0};
+  double profile_transition_duration_{0.0};
   size_t active_profile_{0};
+  bool profile_transition_active_{false};
 
   double reset_period_;
   // Last time computeVelocityCommands was called

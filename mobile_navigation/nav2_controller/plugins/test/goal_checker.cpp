@@ -317,42 +317,6 @@ TEST(PrecisionLongitudinalGoalChecker, accept_window_falls_back_after_refine_cyc
       stoppedTwist()));
 }
 
-TEST(PrecisionLongitudinalGoalChecker, longitudinal_extra_refine_extends_lon_only_error)
-{
-  auto x = std::make_shared<TestLifecycleNode>("precision_goal_checker_lon_extra_refine");
-  PrecisionLongitudinalGoalChecker gc;
-  auto costmap = std::make_shared<nav2_costmap_2d::Costmap2DROS>("precision_costmap_lon_extra_refine");
-
-  gc.initialize(x, "precision", costmap);
-  const int extra_refine_cycles = 3;
-  x->set_parameter(
-    rclcpp::Parameter("precision.longitudinal_extra_refine_cycles", extra_refine_cycles));
-
-  const auto refine_cycles = x->get_parameter("precision.refine_cycles").as_int();
-  const auto desired_lon_tolerance =
-    x->get_parameter("precision.desired_lon_goal_tolerance").as_double();
-  const auto accept_lon_tolerance =
-    x->get_parameter("precision.accept_lon_goal_tolerance").as_double();
-  const auto desired_lat_tolerance =
-    x->get_parameter("precision.desired_lat_goal_tolerance").as_double();
-  const auto fallback_lon_error = (desired_lon_tolerance + accept_lon_tolerance) * 0.5;
-  const auto desired_lat_error = desired_lat_tolerance * 0.5;
-
-  for (int i = 0; i != refine_cycles + extra_refine_cycles; ++i) {
-    EXPECT_FALSE(
-      gc.isGoalReached(
-        poseFrom2D(fallback_lon_error, desired_lat_error, 0.0),
-        poseFrom2D(0.0, 0.0, 0.0),
-        stoppedTwist()));
-  }
-
-  EXPECT_TRUE(
-    gc.isGoalReached(
-      poseFrom2D(fallback_lon_error, desired_lat_error, 0.0),
-      poseFrom2D(0.0, 0.0, 0.0),
-      stoppedTwist()));
-}
-
 TEST(PrecisionLongitudinalGoalChecker, reset_clears_refine_state)
 {
   auto x = std::make_shared<TestLifecycleNode>("precision_goal_checker_reset");
