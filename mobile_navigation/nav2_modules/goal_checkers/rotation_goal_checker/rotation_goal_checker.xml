@@ -1,0 +1,10 @@
+<class_libraries>
+    <library path="rotation_goal_checker">
+        <class type="rotation_goal_checker::RotationGoalChecker" base_class_type="nav2_core::GoalChecker">
+            <description>
+                Checks whether the robot has reached the goal orientation using a yaw
+                tolerance only, ignoring the XY position.
+            </description>
+        </class>
+    </library>
+</class_libraries>
