@@ -109,7 +109,8 @@ protected:
   double yaw_goal_tolerance_;
   int refine_cycles_, stable_window_size_, longitudinal_extra_refine_cycles_;
   int refine_count_, longitudinal_extra_refine_count_;
-  bool entered_accept_window_, check_stopped_;
+  bool entered_accept_window_, accept_refine_restart_used_, desired_refine_restart_used_;
+  bool check_stopped_;
   PrecisionStatus last_status_{PrecisionStatus::OutsideAccept};
   double trans_stopped_velocity_, rot_stopped_velocity_;
 

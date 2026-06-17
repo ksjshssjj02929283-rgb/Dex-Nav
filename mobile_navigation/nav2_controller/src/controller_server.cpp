@@ -818,8 +818,10 @@ bool ControllerServer::isSamePathGoal(const nav_msgs::msg::Path & path)
     return false;
   }
 
-  constexpr double kSameGoalPositionTolerance = 1e-3;
-  constexpr double kSameGoalYawTolerance = 1e-3;
+  // 近目标重规划会做 position-only interpolation，path 终点可能有厘米级以内的微小差异。
+  // 这里判断的是“业务目标是否相同”，不是要求两个 path 终点数学上完全重合。
+  constexpr double kSameGoalPositionTolerance = 0.02;
+  constexpr double kSameGoalYawTolerance = 0.05;
   const double goal_delta = nav2_util::geometry_utils::euclidean_distance(
     transformed_new_end_pose, end_pose_);
   const double yaw_delta = std::abs(
@@ -827,7 +829,16 @@ bool ControllerServer::isSamePathGoal(const nav_msgs::msg::Path & path)
       tf2::getYaw(transformed_new_end_pose.pose.orientation),
       tf2::getYaw(end_pose_.pose.orientation)));
 
-  return goal_delta <= kSameGoalPositionTolerance && yaw_delta <= kSameGoalYawTolerance;
+  const bool same_goal =
+    goal_delta <= kSameGoalPositionTolerance && yaw_delta <= kSameGoalYawTolerance;
+  if (!same_goal) {
+    RCLCPP_INFO(
+      get_logger(),
+      "近目标 path 更新未被视为同一目标：goal_delta=%.4f/%.4f m, "
+      "yaw_delta=%.4f/%.4f rad，将正常更新 path。",
+      goal_delta, kSameGoalPositionTolerance, yaw_delta, kSameGoalYawTolerance);
+  }
+  return same_goal;
 }
 
 void ControllerServer::computeAndPublishVelocity()
@@ -845,8 +856,9 @@ void ControllerServer::computeAndPublishVelocity()
   auto pose_ms = std::chrono::duration<double, std::milli>(t_pose_end - t_pose_start).count();
 
   auto t_progress_start = std::chrono::high_resolution_clock::now();
-  if (near_goal_progress_enabled_ && isNearGoal(pose)) {
-    if (!isWithinGoalCheckerTolerance(pose, false, false) && !checkNearGoalProgress(pose)) {
+  const bool in_goal_accept_position = isWithinGoalCheckerTolerance(pose, false, false);
+  if (!in_goal_accept_position && near_goal_progress_enabled_ && isNearGoal(pose)) {
+    if (!checkNearGoalProgress(pose)) {
       if (isWithinGoalCheckerTolerance(pose, true)) {
         publishZeroVelocity();
         return;
@@ -854,7 +866,7 @@ void ControllerServer::computeAndPublishVelocity()
       throw nav2_core::PlannerException(
               "Failed to make near-goal progress. 接近目标点后长时间没有足够位移/转角，可能卡住或被约束。");
     }
-  } else {
+  } else if (!in_goal_accept_position) {
     if (in_near_goal_progress_mode_) {
       RCLCPP_INFO(get_logger(), "Leaving near-goal progress mode.");
       resetNearGoalProgress();
@@ -982,8 +994,11 @@ void ControllerServer::updateGlobalPath()
     geometry_msgs::msg::PoseStamped pose;
     const bool same_controller = requested_controller == current_controller_;
     const bool same_goal_checker = requested_goal_checker == current_goal_checker_;
-    if (same_controller && same_goal_checker && isSamePathGoal(goal->path) && getRobotPose(pose) &&
-      isWithinGoalCheckerTolerance(pose, false, false))
+    const bool same_goal = isSamePathGoal(goal->path);
+    const bool got_pose = getRobotPose(pose);
+    const bool in_accept_position =
+      got_pose && isWithinGoalCheckerTolerance(pose, false, false);
+    if (same_controller && same_goal_checker && same_goal && in_accept_position)
     {
       RCLCPP_INFO(
         get_logger(),
@@ -991,6 +1006,26 @@ void ControllerServer::updateGlobalPath()
         "继续使用当前末端路径完成精调，避免重置 goal_checker 和 MPPI 末端状态。pending path poses=%zu",
         goal->path.poses.size());
       return;
+    }
+
+    if (same_goal && !in_accept_position) {
+      if (got_pose) {
+        RCLCPP_INFO(
+          get_logger(),
+          "近目标 path 更新未忽略：目标点不变，但当前位置尚未进入 goal_checker 2cm 接受窗口。");
+      } else {
+        RCLCPP_INFO(
+          get_logger(),
+          "近目标 path 更新未忽略：目标点不变，但当前无法获取机器人位姿，无法确认是否进入 "
+          "goal_checker 2cm 接受窗口。");
+      }
+    } else if (same_goal && (!same_controller || !same_goal_checker)) {
+      RCLCPP_INFO(
+        get_logger(),
+        "近目标 path 更新未忽略：目标点不变，但 controller 或 goal_checker 已变化，"
+        "same_controller=%s, same_goal_checker=%s。",
+        same_controller ? "true" : "false",
+        same_goal_checker ? "true" : "false");
     }
 
     current_controller_ = requested_controller;

@@ -81,6 +81,8 @@ PrecisionLongitudinalGoalChecker::PrecisionLongitudinalGoalChecker()
   refine_count_(0),
   longitudinal_extra_refine_count_(0),
   entered_accept_window_(false),
+  accept_refine_restart_used_(false),
+  desired_refine_restart_used_(false),
   check_stopped_(kDefaultCheckStopped),
   trans_stopped_velocity_(kDefaultTransStoppedVelocity),
   rot_stopped_velocity_(kDefaultRotStoppedVelocity)
@@ -155,6 +157,8 @@ void PrecisionLongitudinalGoalChecker::initialize(
 void PrecisionLongitudinalGoalChecker::reset()
 {
   resetRefineState();
+  accept_refine_restart_used_ = false;
+  desired_refine_restart_used_ = false;
 }
 
 bool PrecisionLongitudinalGoalChecker::isGoalReached(
@@ -175,8 +179,17 @@ bool PrecisionLongitudinalGoalChecker::isGoalReached(
   const bool in_accept_window =
     std::fabs(lon_err) <= accept_lon_goal_tolerance_ &&
     std::fabs(lat_err) <= accept_lat_goal_tolerance_;
+  const double distance_err = std::hypot(lon_err, lat_err);
 
   if (!in_accept_window) {
+    if (distance_err <= 0.1) {
+      RCLCPP_INFO(
+        rclcpp::get_logger("PrecisionLongitudinalGoalChecker"),
+        "lon_err=%.4f, lat_err=%.4f, "
+        "yaw_err=%.4f，尚未进入接受窗口 accept=(%.4f, %.4f)",
+        lon_err, lat_err, dyaw,
+        accept_lon_goal_tolerance_, accept_lat_goal_tolerance_);
+    }
     resetRefineState();
     return false;
   }
@@ -191,18 +204,17 @@ bool PrecisionLongitudinalGoalChecker::isGoalReached(
     std::fabs(lon_err) <= desired_lon_goal_tolerance_ &&
     std::fabs(lat_err) <= desired_lat_goal_tolerance_;
   const bool stable_desired = desiredWindowStable();
+  const int stable_window_count = static_cast<int>(lon_errors_.size());
+  const double avg_lon_err = lon_errors_.empty() ? 0.0 : meanAbs(lon_errors_);
+  const double avg_lat_err = lat_errors_.empty() ? 0.0 : meanAbs(lat_errors_);
+  const double avg_yaw_err = yaw_errors_.empty() ? 0.0 : meanAbs(yaw_errors_);
+  const int displayed_refine_count = std::min(refine_count_ + 1, refine_cycles_);
 
   const bool yaw_ok = std::fabs(dyaw) <= yaw_goal_tolerance_;
   if (!yaw_ok) {
     const auto status = in_desired_window ? PrecisionStatus::YawUnstable :
       PrecisionStatus::AcceptOnly;
     logStatusTransition(status, lon_err, lat_err, dyaw, stable_desired);
-    RCLCPP_INFO(
-      rclcpp::get_logger("PrecisionLongitudinalGoalChecker"),
-      "lon_err=%.4f, lat_err=%.4f, yaw_err=%.4f, refine_count=%d/%d, stable=%s",
-      lon_err, lat_err, dyaw, refine_count_, refine_cycles_,
-      stable_desired ? "true" : "false");
-    return false;
   }
 
   if (check_stopped_) {
@@ -214,34 +226,89 @@ bool PrecisionLongitudinalGoalChecker::isGoalReached(
         PrecisionStatus::StoppedUnstable, lon_err, lat_err, dyaw, stable_desired);
       RCLCPP_INFO(
         rclcpp::get_logger("PrecisionLongitudinalGoalChecker"),
-        "lon_err=%.4f, lat_err=%.4f, yaw_err=%.4f, refine_count=%d/%d, stable=%s",
-        lon_err, lat_err, dyaw, refine_count_, refine_cycles_,
-        stable_desired ? "true" : "false");
+        "lon_err=%.4f, lat_err=%.4f, yaw_err=%.4f, refine_count=%d/%d, "
+        "extra_refine=%d/%d, current_desired=%s, yaw_ok=%s, avg_stable=%s, "
+        "avg_abs=(%.4f, %.4f, %.4f), window=%d/%d",
+        lon_err, lat_err, dyaw, displayed_refine_count, refine_cycles_,
+        longitudinal_extra_refine_count_, longitudinal_extra_refine_cycles_,
+        in_desired_window ? "true" : "false",
+        yaw_ok ? "true" : "false",
+        stable_desired ? "true" : "false",
+        avg_lon_err, avg_lat_err, avg_yaw_err,
+        stable_window_count, stable_window_size_);
       return false;
     }
   }
 
-  logStatusTransition(
-    in_desired_window ?
-    (stable_desired ? PrecisionStatus::DesiredStable : PrecisionStatus::DesiredUnstable) :
-    PrecisionStatus::AcceptOnly,
-    lon_err, lat_err, dyaw, stable_desired);
+  if (yaw_ok) {
+    logStatusTransition(
+      in_desired_window ?
+      (stable_desired ? PrecisionStatus::DesiredStable : PrecisionStatus::DesiredUnstable) :
+      PrecisionStatus::AcceptOnly,
+      lon_err, lat_err, dyaw, stable_desired);
+  }
 
   RCLCPP_INFO(
     rclcpp::get_logger("PrecisionLongitudinalGoalChecker"),
-    "lon_err=%.4f, lat_err=%.4f, yaw_err=%.4f, refine_count=%d/%d, stable=%s",
-    lon_err, lat_err, dyaw, refine_count_, refine_cycles_,
-    stable_desired ? "true" : "false");
+    "lon_err=%.4f, lat_err=%.4f, yaw_err=%.4f, refine_count=%d/%d, "
+    "extra_refine=%d/%d, current_desired=%s, yaw_ok=%s, avg_stable=%s, "
+    "avg_abs=(%.4f, %.4f, %.4f), window=%d/%d",
+    lon_err, lat_err, dyaw, displayed_refine_count, refine_cycles_,
+    longitudinal_extra_refine_count_, longitudinal_extra_refine_cycles_,
+    in_desired_window ? "true" : "false",
+    yaw_ok ? "true" : "false",
+    stable_desired ? "true" : "false",
+    avg_lon_err, avg_lat_err, avg_yaw_err,
+    stable_window_count, stable_window_size_);
 
-  if (in_desired_window && stable_desired) {
+  if (yaw_ok && !accept_refine_restart_used_ && refine_count_ > 0)
+  {
+    accept_refine_restart_used_ = true;
+    refine_count_ = 0;
+    longitudinal_extra_refine_count_ = 0;
+    lon_errors_.clear();
+    lat_errors_.clear();
+    yaw_errors_.clear();
+    last_status_ = PrecisionStatus::OutsideAccept;
+    RCLCPP_INFO(
+      rclcpp::get_logger("PrecisionLongitudinalGoalChecker"),
+      "位置误差和角度误差均已满足接受精度，重新从 0/%d 开始最终稳定计数；"
+      "同时清空近 %d 次平均误差窗口，该重置每次目标只允许触发一次。"
+      "lon_err=%.4f, lat_err=%.4f, yaw_err=%.4f",
+      refine_cycles_, stable_window_size_, lon_err, lat_err, dyaw);
+    return false;
+  }
+
+  if (in_desired_window && yaw_ok && !desired_refine_restart_used_ && refine_count_ > 0)
+  {
+    desired_refine_restart_used_ = true;
+    refine_count_ = 0;
+    longitudinal_extra_refine_count_ = 0;
+    lon_errors_.clear();
+    lat_errors_.clear();
+    yaw_errors_.clear();
+    last_status_ = PrecisionStatus::OutsideAccept;
+    RCLCPP_INFO(
+      rclcpp::get_logger("PrecisionLongitudinalGoalChecker"),
+      "位置误差首次进入期望精度且角度满足要求，重新从 0/%d 开始高精度稳定计数；"
+      "同时清空近 %d 次平均误差窗口，该 1cm 重置每次目标只允许触发一次。"
+      "lon_err=%.4f, lat_err=%.4f, yaw_err=%.4f",
+      refine_cycles_, stable_window_size_, lon_err, lat_err, dyaw);
+    return false;
+  }
+
+  if (in_desired_window && yaw_ok && stable_desired) {
     publishGoalError(
       query_pose, goal_pose, lon_err, lat_err, dyaw,
       in_desired_window, in_accept_window, stable_desired, "desired_stable");
     RCLCPP_INFO(
       rclcpp::get_logger("PrecisionLongitudinalGoalChecker"),
       "高精度到位成功：本次误差和近 %d 次平均误差均满足期望精度，lon_err=%.4f, "
-      "lat_err=%.4f, yaw_err=%.4f, refine_count=%d",
-      stable_window_size_, lon_err, lat_err, dyaw, refine_count_);
+      "lat_err=%.4f, yaw_err=%.4f, avg_abs=(%.4f, %.4f, %.4f), "
+      "window=%d/%d, refine_count=%d",
+      stable_window_size_, lon_err, lat_err, dyaw,
+      avg_lon_err, avg_lat_err, avg_yaw_err,
+      stable_window_count, stable_window_size_, displayed_refine_count);
     return true;
   }
 
@@ -249,9 +316,21 @@ bool PrecisionLongitudinalGoalChecker::isGoalReached(
   ++refine_count_;
 
   if (refine_count_ >= refine_cycles_) {
+    if (!yaw_ok) {
+      RCLCPP_INFO(
+        rclcpp::get_logger("PrecisionLongitudinalGoalChecker"),
+        "位置误差已在接受区内并已精调 %d/%d 个周期，但角度误差尚未满足 %.4f rad，"
+        "继续等待角度收敛：lon_err=%.4f, lat_err=%.4f, yaw_err=%.4f",
+        refine_count_, refine_cycles_, yaw_goal_tolerance_, lon_err, lat_err, dyaw);
+      return false;
+    }
+
+    const bool longitudinal_desired_unstable =
+      std::fabs(lon_err) > desired_lon_goal_tolerance_ ||
+      avg_lon_err > desired_lon_goal_tolerance_;
     const bool longitudinal_extra_refine_needed =
       longitudinal_extra_refine_cycles_ > 0 &&
-      std::fabs(lon_err) > desired_lon_goal_tolerance_ &&
+      longitudinal_desired_unstable &&
       std::fabs(lat_err) <= desired_lat_goal_tolerance_ &&
       lateralYawWindowStable();
     const bool longitudinal_extra_refine_active =
@@ -265,9 +344,11 @@ bool PrecisionLongitudinalGoalChecker::isGoalReached(
       RCLCPP_INFO(
         rclcpp::get_logger("PrecisionLongitudinalGoalChecker"),
         "纵向专项精调：横向和角度已稳定满足期望精度，继续争取纵向 1cm 稳定，"
-        "继续精调 %d/%d 个额外周期，lon_err=%.4f, lat_err=%.4f, yaw_err=%.4f",
+        "继续精调 %d/%d 个额外周期，lon_err=%.4f, lat_err=%.4f, yaw_err=%.4f, "
+        "avg_abs=(%.4f, %.4f, %.4f)",
         longitudinal_extra_refine_count_, longitudinal_extra_refine_cycles_,
-        lon_err, lat_err, dyaw);
+        lon_err, lat_err, dyaw,
+        avg_lon_err, avg_lat_err, avg_yaw_err);
       return false;
     }
 
@@ -286,9 +367,17 @@ bool PrecisionLongitudinalGoalChecker::isGoalReached(
       longitudinal_extra_refine_count_ > 0 ? "longitudinal_extra_accept" : "accept_fallback");
     RCLCPP_INFO(
       rclcpp::get_logger("PrecisionLongitudinalGoalChecker"),
-      "退让接受成功：已精调 %d/%d 个控制周期，当前误差仍在接受区内，lon_err=%.4f, "
-      "lat_err=%.4f, yaw_err=%.4f, accept=(%.4f, %.4f)",
-      refine_count_, refine_cycles_, lon_err, lat_err, dyaw,
+      "退让接受成功：基础精调 %d/%d 个周期，纵向额外精调 %d/%d 个周期，"
+      "当前误差仍在接受区内，lon_err=%.4f, lat_err=%.4f, yaw_err=%.4f, "
+      "current_desired=%s, avg_stable=%s, avg_abs=(%.4f, %.4f, %.4f), "
+      "window=%d/%d, accept=(%.4f, %.4f)",
+      std::min(refine_count_, refine_cycles_), refine_cycles_,
+      longitudinal_extra_refine_count_, longitudinal_extra_refine_cycles_,
+      lon_err, lat_err, dyaw,
+      in_desired_window ? "true" : "false",
+      stable_desired ? "true" : "false",
+      avg_lon_err, avg_lat_err, avg_yaw_err,
+      stable_window_count, stable_window_size_,
       accept_lon_goal_tolerance_, accept_lat_goal_tolerance_);
     return true;
   }
@@ -458,21 +547,31 @@ void PrecisionLongitudinalGoalChecker::logStatusTransition(
 
   last_status_ = status;
   const auto logger = rclcpp::get_logger("PrecisionLongitudinalGoalChecker");
+  const int stable_window_count = static_cast<int>(lon_errors_.size());
+  const double avg_lon_err = lon_errors_.empty() ? 0.0 : meanAbs(lon_errors_);
+  const double avg_lat_err = lat_errors_.empty() ? 0.0 : meanAbs(lat_errors_);
+  const double avg_yaw_err = yaw_errors_.empty() ? 0.0 : meanAbs(yaw_errors_);
 
   switch (status) {
     case PrecisionStatus::AcceptOnly:
       RCLCPP_INFO(
         logger,
         "当前已满足接受精度，但尚未满足期望精度或角度要求，继续精调："
-        "lon_err=%.4f, lat_err=%.4f, yaw_err=%.4f",
-        lon_err, lat_err, yaw_err);
+        "lon_err=%.4f, lat_err=%.4f, yaw_err=%.4f, "
+        "avg_abs=(%.4f, %.4f, %.4f), window=%d/%d",
+        lon_err, lat_err, yaw_err,
+        avg_lon_err, avg_lat_err, avg_yaw_err,
+        stable_window_count, stable_window_size_);
       break;
     case PrecisionStatus::DesiredUnstable:
       RCLCPP_INFO(
         logger,
         "本次误差已满足期望精度，等待近 %d 次平均误差稳定："
-        "lon_err=%.4f, lat_err=%.4f, yaw_err=%.4f, stable=%s",
-        stable_window_size_, lon_err, lat_err, yaw_err, stable_desired ? "true" : "false");
+        "lon_err=%.4f, lat_err=%.4f, yaw_err=%.4f, "
+        "avg_abs=(%.4f, %.4f, %.4f), window=%d/%d, stable=%s",
+        stable_window_size_, lon_err, lat_err, yaw_err,
+        avg_lon_err, avg_lat_err, avg_yaw_err,
+        stable_window_count, stable_window_size_, stable_desired ? "true" : "false");
       break;
     case PrecisionStatus::DesiredStable:
       break;
@@ -480,8 +579,11 @@ void PrecisionLongitudinalGoalChecker::logStatusTransition(
       RCLCPP_INFO(
         logger,
         "位置误差已进入期望范围，但角度误差尚未满足要求，继续调整朝向："
-        "lon_err=%.4f, lat_err=%.4f, yaw_err=%.4f",
-        lon_err, lat_err, yaw_err);
+        "lon_err=%.4f, lat_err=%.4f, yaw_err=%.4f, "
+        "avg_abs=(%.4f, %.4f, %.4f), window=%d/%d",
+        lon_err, lat_err, yaw_err,
+        avg_lon_err, avg_lat_err, avg_yaw_err,
+        stable_window_count, stable_window_size_);
       break;
     case PrecisionStatus::StoppedUnstable:
       RCLCPP_INFO(
