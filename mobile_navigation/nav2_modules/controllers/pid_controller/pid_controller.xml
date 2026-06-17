@@ -1,0 +1,11 @@
+<class_libraries>
+    <library path="pid_controller">
+        <class type="pid_controller::PIDController" base_class_type="nav2_core::Controller">
+            <description>
+                A PID local controller with linear (high/low speed switched) and
+                angular PID, a three-stage state machine (APPROACHING ->
+                ROTATING_TO_GOAL), reverse support, and trajectory consumption.
+            </description>
+        </class>
+    </library>
+</class_libraries>
