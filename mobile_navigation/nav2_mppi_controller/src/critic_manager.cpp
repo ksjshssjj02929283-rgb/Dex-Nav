@@ -100,10 +100,13 @@ void CriticManager::applyCriticProfileSettings(const critics::CriticProfileSetti
     logger_,
     "MPPI critic profile applied: Goal(weight=%.3f threshold=%.3f), "
     "GoalLateral(weight=%.3f threshold=%.3f points=%d), "
+    "GoalLongitudinal(weight=%.3f threshold=%.3f points=%d), "
     "PathAlign(weight=%.3f threshold=%.3f offset=%d step=%d)",
     settings.goal.weight, settings.goal.threshold_to_consider,
     settings.goal_lateral.weight, settings.goal_lateral.threshold_to_consider,
     settings.goal_lateral.last_n_points,
+    settings.goal_longitudinal.weight, settings.goal_longitudinal.threshold_to_consider,
+    settings.goal_longitudinal.last_n_points,
     settings.path_align.weight, settings.path_align.threshold_to_consider,
     settings.path_align.offset_from_furthest, settings.path_align.trajectory_point_step);
 }

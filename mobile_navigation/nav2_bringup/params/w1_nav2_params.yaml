@@ -172,6 +172,10 @@ controller_server:
           cost_weight: 40.0 # 只在末段启用横向误差代价
           threshold_to_consider: 1.0 # 距离目标 1.0m 内按目标朝向约束横向误差
           last_n_points: 10 # 每条 MPPI 候选轨迹只取最后 10 个时间点来计算横向误差代价
+        GoalLongitudinalCritic: # 目标纵向误差约束
+          cost_weight: 25.0 # 只在末段启用纵向误差代价，权重低于横向，避免过度抢控制量
+          threshold_to_consider: 0.5 # 距离目标 1.0m 内按目标朝向约束纵向误差
+          last_n_points: 10 # 每条 MPPI 候选轨迹只取最后 10 个时间点来计算纵向误差代价
         GoalAngleCritic: # 目标朝向约束
           cost_weight: 8.0 # 目标朝向权重
           threshold_to_consider: 0.2 # 距离目标小于该值时启用目标朝向约束
@@ -214,7 +218,7 @@ controller_server:
         time_step: 3
       AckermannConstraints:
         min_turning_r: 0.5
-      critics: ["ConstraintCritic", "CostCritic", "ObstaclesCritic", "GoalCritic", "GoalLateralCritic", "GoalAngleCritic", "PathAlignCritic", "PathFollowCritic", "PathAngleCritic", "PreferForwardCritic", "VelocityDeadbandCritic"]
+      critics: ["ConstraintCritic", "CostCritic", "ObstaclesCritic", "GoalCritic", "GoalLateralCritic", "GoalLongitudinalCritic", "GoalAngleCritic", "PathAlignCritic", "PathFollowCritic", "PathAngleCritic", "PreferForwardCritic", "VelocityDeadbandCritic"]
       # critics: ["ConstraintCritic", "CostCritic", "GoalCritic", "GoalLateralCritic", "GoalAngleCritic", "PathAlignCritic", "PathFollowCritic", "PathAngleCritic", "PreferForwardCritic"]
       ConstraintCritic:
         enabled: true
@@ -226,6 +230,12 @@ controller_server:
         cost_weight: 8.0
         threshold_to_consider: 2.2 # 1.4
       GoalLateralCritic:
+        enabled: true
+        cost_power: 2
+        cost_weight: 0.0 # 全局默认关闭，profile_3 中再启用
+        threshold_to_consider: 1.5 # 由三阶段 profile 覆盖
+        last_n_points: 8 # 由三阶段 profile 覆盖
+      GoalLongitudinalCritic:
         enabled: true
         cost_power: 2
         cost_weight: 0.0 # 全局默认关闭，profile_3 中再启用

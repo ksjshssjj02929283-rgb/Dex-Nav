@@ -17,6 +17,10 @@
       <description>mppi critic for reducing goal-frame lateral error near the goal</description>
     </class>
 
+    <class type="mppi::critics::GoalLongitudinalCritic" base_class_type="mppi::critics::CriticFunction">
+      <description>mppi critic for reducing goal-frame longitudinal error near the goal</description>
+    </class>
+
     <class type="mppi::critics::GoalAngleCritic" base_class_type="mppi::critics::CriticFunction">
       <description>mppi critic for achieving the goal heading angle</description>
     </class>

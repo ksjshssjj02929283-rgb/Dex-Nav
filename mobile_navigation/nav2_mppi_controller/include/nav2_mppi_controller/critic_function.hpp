@@ -40,6 +40,13 @@ struct GoalLateralCriticSettings
   int last_n_points{0};
 };
 
+struct GoalLongitudinalCriticSettings
+{
+  float weight{0.0f};
+  float threshold_to_consider{0.0f};
+  int last_n_points{0};
+};
+
 struct GoalAngleCriticSettings
 {
   float weight{0.0f};
@@ -81,6 +88,7 @@ struct CriticProfileSettings
 {
   GoalCriticSettings goal;
   GoalLateralCriticSettings goal_lateral;
+  GoalLongitudinalCriticSettings goal_longitudinal;
   GoalAngleCriticSettings goal_angle;
   PathAngleCriticSettings path_angle;
   PathFollowCriticSettings path_follow;
