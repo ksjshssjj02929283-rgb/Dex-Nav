@@ -17,6 +17,7 @@
 #include "nav2_mppi_controller/tools/path_handler.hpp"
 #include "nav2_mppi_controller/tools/utils.hpp"
 #include "nav2_costmap_2d/costmap_2d_ros.hpp"
+#include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"  // tf2::doTransform(PoseStamped) 特化
 
 #include <cmath>
 #include <stdexcept>
@@ -77,18 +78,43 @@ PathHandler::getGlobalPlanConsideringBoundsInCostmapFrame(
     nav2_util::geometry_utils::first_after_integrated_distance(
     closest_point, global_plan_up_to_inversion_.poses.end(), prune_distance_);
 
+  // ⭐ 性能优化：循环外一次性查 plan_frame→costmap_frame 的 TF，循环内用 doTransform 纯矩阵
+  // 批量变换，避免对窗口内每个路径点都走 tf_buffer_->transform 查询（原逐点查询 ~10ms）
+  const std::string costmap_frame = costmap_->getGlobalFrameID();
+  const std::string plan_frame = global_plan_.header.frame_id;
+  const bool same_frame = (plan_frame == costmap_frame);
+  geometry_msgs::msg::TransformStamped plan_to_costmap_tf;
+  if (!same_frame) {
+    try {
+      plan_to_costmap_tf = tf_buffer_->lookupTransform(
+        costmap_frame, plan_frame, global_pose.header.stamp,
+        tf2::durationFromSec(transform_tolerance_));
+    } catch (tf2::TransformException & ex) {
+      RCLCPP_ERROR(
+        logger_,
+        "Exception in lookupTransform: %s. TF 查询失败，无法把全局路径转换到 costmap 坐标系。",
+        ex.what());
+      return {transformed_plan, closest_point};
+    }
+  }
+
   unsigned int mx, my;
   // Find the furthest relevent pose on the path to consider within costmap
-  // bounds
-  // Transforming it to the costmap frame in the same loop
+  // bounds, transforming each into the costmap frame in the same loop.
   for (auto global_plan_pose = closest_point; global_plan_pose != pruned_plan_end;
     ++global_plan_pose)
   {
-    // Transform from global plan frame to costmap frame
     geometry_msgs::msg::PoseStamped costmap_plan_pose;
-    global_plan_pose->header.stamp = global_pose.header.stamp;
-    global_plan_pose->header.frame_id = global_plan_.header.frame_id;
-    transformPose(costmap_->getGlobalFrameID(), *global_plan_pose, costmap_plan_pose);
+    if (same_frame) {
+      costmap_plan_pose = *global_plan_pose;
+    } else {
+      geometry_msgs::msg::PoseStamped in_pose = *global_plan_pose;
+      in_pose.header.frame_id = plan_frame;
+      in_pose.header.stamp = global_pose.header.stamp;
+      tf2::doTransform(in_pose, costmap_plan_pose, plan_to_costmap_tf);  // 纯矩阵，不查 buffer
+    }
+    costmap_plan_pose.header.frame_id = costmap_frame;
+    costmap_plan_pose.header.stamp = global_pose.header.stamp;
 
     // Check if pose is inside the costmap
     if (!costmap_->getCostmap()->worldToMap(
