@@ -172,7 +172,7 @@ protected:
    * @brief 按当前 goal_checker 的接受容差判断近目标误差
    * @param pose 当前机器人位姿
    * @param mark_goal_reached_on_success 满足时是否标记为兜底到位成功
-   * @param check_yaw 是否同时检查角度容差；跳过 near_goal_progress 时只看位置
+   * @param check_yaw 是否同时检查角度容差；预检查位置窗口时可只看位置
    * @return true 表示当前误差已满足接受容差
    */
   bool isWithinGoalCheckerTolerance(
@@ -300,7 +300,6 @@ protected:
   bool near_goal_baseline_pose_set_{false};
   bool in_near_goal_progress_mode_{false};
   bool near_goal_progress_acceptance_reached_{false};
-  bool near_goal_progress_skipped_by_acceptance_{false};
   geometry_msgs::msg::PoseStamped near_goal_baseline_pose_;
   rclcpp::Time near_goal_baseline_time_;
 

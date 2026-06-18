@@ -84,8 +84,8 @@ controller_server:
     near_goal_progress:
       enabled: True # 是否启用接近目标点时的宽松的进展检查
       distance: 0.10 # 距离目标点小于该值时进入近目标模式，单位 m
-      required_movement_radius: 0.05 # 近目标模式：移动超过 1cm 才算有进展，避免小幅抖动刷新计时
-      required_movement_angle: 0.05 # 近目标模式：旋转超过约 0.57 度才算有进展，避免原地轻微摆动刷新计时
+      required_movement_radius: 0.02 # 近目标模式：移动超过 1cm 才算有进展，避免小幅抖动刷新计时
+      required_movement_angle: 0.02 # 近目标模式：旋转超过约 0.57 度才算有进展，避免原地轻微摆动刷新计时
       movement_time_allowance: 4.0 # 近目标模式：4 秒内没有足够进展就让 FollowPath 失败并进入恢复
     goal_checker:
       plugin: "nav2_controller::PrecisionLongitudinalGoalChecker"
@@ -169,7 +169,7 @@ controller_server:
         vy_max: 0.5 # 末段侧向速度上限
         wz_max: 0.50 # 末段降低最大角速度，但保留一定横向纠偏能力
         GoalLateralCritic: # 目标横向误差约束
-          cost_weight: 30.0 # 只在末段启用横向误差代价
+          cost_weight: 40.0 # 只在末段启用横向误差代价
           threshold_to_consider: 1.0 # 距离目标 1.0m 内按目标朝向约束横向误差
           last_n_points: 10 # 每条 MPPI 候选轨迹只取最后 10 个时间点来计算横向误差代价
         GoalAngleCritic: # 目标朝向约束
@@ -193,7 +193,7 @@ controller_server:
           threshold_to_consider: 2.2 # 接近目标后不再使用路径推进约束
         PreferForwardCritic: # 前进偏好约束
           cost_weight: 5.0 # 前进偏好权重
-          threshold_to_consider: 0.25 # 接近目标 0.25m 内不再强制前进偏好
+          threshold_to_consider: 0.5 # 接近目标 0.5m 内不再强制前进偏好
       ax_max: 0.5
       ax_min: -0.5
       az_max: 0.7

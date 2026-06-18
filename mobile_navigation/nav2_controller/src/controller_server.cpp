@@ -539,7 +539,6 @@ void ControllerServer::setPlannerPath(const nav_msgs::msg::Path & path)
   end_pose_.header.frame_id = path.header.frame_id;
   goal_checkers_[current_goal_checker_]->reset();
   near_goal_progress_acceptance_reached_ = false;
-  near_goal_progress_skipped_by_acceptance_ = false;
 
   RCLCPP_DEBUG(
     get_logger(), "Path end point is (%.2f, %.2f)",
@@ -760,23 +759,11 @@ bool ControllerServer::isWithinGoalCheckerTolerance(
         goal_error_publisher_->publish(msg);
       }
       near_goal_progress_acceptance_reached_ = true;
-    } else if (!near_goal_progress_skipped_by_acceptance_) {
-      RCLCPP_INFO(
-        get_logger(),
-        "当前位置已进入 goal_checker 2cm 接受窗口，暂停 near_goal_progress 检查，交由 goal_checker "
-        "继续处理角度、稳定窗口和降级成功：lon_err=%.4f/%.4f, lat_err=%.4f/%.4f, "
-        "yaw_err=%.4f/%.4f",
-        lon_err, std::fabs(goal_tolerance.position.x),
-        lat_err, std::fabs(goal_tolerance.position.y),
-        yaw_err, std::fabs(yaw_tolerance));
-      resetNearGoalProgress();
-      near_goal_progress_skipped_by_acceptance_ = true;
     }
     return true;
   }
 
   if (!mark_goal_reached_on_success) {
-    near_goal_progress_skipped_by_acceptance_ = false;
     return false;
   }
 
@@ -856,7 +843,7 @@ void ControllerServer::computeAndPublishVelocity()
 
   auto t_progress_start = std::chrono::high_resolution_clock::now();
   const bool in_goal_accept_position = isWithinGoalCheckerTolerance(pose, false, false);
-  if (!in_goal_accept_position && near_goal_progress_enabled_ && isNearGoal(pose)) {
+  if (near_goal_progress_enabled_ && isNearGoal(pose)) {
     if (!checkNearGoalProgress(pose)) {
       if (isWithinGoalCheckerTolerance(pose, true)) {
         publishZeroVelocity();
