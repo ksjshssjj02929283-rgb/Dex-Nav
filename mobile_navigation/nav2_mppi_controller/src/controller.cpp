@@ -196,7 +196,7 @@ geometry_msgs::msg::TwistStamped MPPIController::computeVelocityCommands(
   if (
     total_ms >= kSlowTimingWarnMs || transform_ms >= kSlowTimingWarnMs ||
     wait_lock_ms >= kSlowTimingWarnMs || optimize_ms >= kSlowTimingWarnMs ||
-    visualize_ms >= kSlowTimingWarnMs)
+    visualize_ms >= kSlowTimingWarnMs || 1)
   {
     RCLCPP_WARN(
       logger_,
