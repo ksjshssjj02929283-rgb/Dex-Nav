@@ -308,7 +308,7 @@ local_costmap:
   local_costmap:
     ros__parameters:
       update_frequency: 14.0 # 5.0
-      publish_frequency: 14.0 # 2.0
+      publish_frequency: 2.0 # 14.0 -> 2.0：publish 仅供可视化/外部订阅，降频减更新线程负担
       global_frame: odom # odom
       robot_base_frame: base_link
       use_sim_time: True
@@ -364,9 +364,9 @@ local_costmap:
         orbbec_rear_marked:
           topic: /orbbec/rear/pointcloud2_filtered
           observation_persistence: 0.7
-          obstacle_max_range: 30.0
+          obstacle_max_range: 5.0
           obstacle_min_range: 0.0
-          raytrace_max_range: 30.0
+          raytrace_max_range: 5.0
           raytrace_min_range: 0.0
           max_obstacle_height: 2.0
           min_obstacle_height: -0.1
@@ -377,9 +377,9 @@ local_costmap:
         orbbec_front_marked:
           topic: /orbbec/front/pointcloud2_filtered
           observation_persistence: 0.7
-          obstacle_max_range: 30.0
+          obstacle_max_range: 5.0
           obstacle_min_range: 0.0
-          raytrace_max_range: 30.0
+          raytrace_max_range: 5.0
           raytrace_min_range: 0.0
           max_obstacle_height: 2.0
           min_obstacle_height: -0.1
@@ -404,7 +404,7 @@ local_costmap:
         enabled: True
         filter_info_topic: "/speed_costmap_filter_info"
         speed_limit_topic: "/speed_limit"
-      always_send_full_costmap: True  
+      always_send_full_costmap: False # True -> False：只发增量更新，减 publish 序列化开销（rolling 下收益有限但无害）
 
 global_costmap:
   global_costmap:

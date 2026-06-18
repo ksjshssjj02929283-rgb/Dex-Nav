@@ -152,13 +152,26 @@ geometry_msgs::msg::TwistStamped MPPIController::computeVelocityCommands(
   double transform_ms =
     std::chrono::duration<double, std::milli>(t_transform_end - t_transform_start).count();
 
-  nav2_costmap_2d::Costmap2D * costmap = costmap_ros_->getCostmap();
+  nav2_costmap_2d::Costmap2D * live_costmap = costmap_ros_->getCostmap();
 
+  // ⭐ costmap 异步解耦：try_lock 拷快照，拿不到锁就复用上一帧快照，控制线程永不阻塞等更新
   auto t_lock_start = std::chrono::high_resolution_clock::now();
-  std::unique_lock<nav2_costmap_2d::Costmap2D::mutex_t> costmap_lock(*(costmap->getMutex()));
+  auto * costmap_mutex = live_costmap->getMutex();
+  if (!costmap_snapshot_initialized_) {
+    // 首帧必须有有效快照：阻塞拷一次
+    std::lock_guard<nav2_costmap_2d::Costmap2D::mutex_t> lk(*costmap_mutex);
+    costmap_snapshot_ = *live_costmap;
+    costmap_snapshot_initialized_ = true;
+  } else if (costmap_mutex->try_lock()) {
+    costmap_snapshot_ = *live_costmap;   // 拿到锁就刷新快照（亚毫秒深拷）
+    costmap_mutex->unlock();
+  }  // 拿不到锁（costmap 更新进行中）：复用上一帧快照，不阻塞
   auto t_lock_end = std::chrono::high_resolution_clock::now();
   double wait_lock_ms =
     std::chrono::duration<double, std::milli>(t_lock_end - t_lock_start).count();
+
+  // critic 评分指向快照，evalControl 全程不持 live costmap 锁
+  optimizer_.setCostmapSnapshot(&costmap_snapshot_);
 
   auto t_optimize_start = std::chrono::high_resolution_clock::now();
   geometry_msgs::msg::TwistStamped cmd =

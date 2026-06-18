@@ -48,6 +48,15 @@ public:
    */
   void score(CriticData & data) override;
 
+  /**
+    * @brief Point critic + collision checker to a costmap snapshot
+    */
+  void setCostmapSnapshot(nav2_costmap_2d::Costmap2D * costmap) override
+  {
+    costmap_ = costmap;
+    collision_checker_.setCostmap(costmap_);
+  }
+
 protected:
   /**
     * @brief Checks if cost represents a collision

@@ -130,6 +130,16 @@ public:
   void applyProfile(const MppiProfileSettings & profile);
 
   /**
+   * @brief Point optimizer + all critics to a costmap snapshot (async/decoupled access)
+   * @param costmap Snapshot costmap to read during scoring
+   */
+  void setCostmapSnapshot(nav2_costmap_2d::Costmap2D * costmap)
+  {
+    costmap_ = costmap;
+    critic_manager_.setCostmapSnapshot(costmap);
+  }
+
+  /**
    * @brief Reset the optimization problem to initial conditions
    */
   void reset();

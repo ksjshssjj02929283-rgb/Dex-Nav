@@ -153,6 +153,10 @@ protected:
   double reset_period_;
   // Last time computeVelocityCommands was called
   rclcpp::Time last_time_called_;
+
+  // ⭐ costmap 异步解耦：控制线程读快照副本，try_lock 刷新，永不阻塞等 costmap 更新锁
+  nav2_costmap_2d::Costmap2D costmap_snapshot_;
+  bool costmap_snapshot_initialized_{false};
 };
 
 }  // namespace nav2_mppi_controller

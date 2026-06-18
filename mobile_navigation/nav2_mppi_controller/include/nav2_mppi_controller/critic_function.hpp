@@ -170,6 +170,16 @@ public:
   virtual void applyProfileSettings(const CriticProfileSettings & /* settings */) {}
 
   /**
+    * @brief Point critic to a costmap snapshot (async/decoupled costmap access)
+    * @param costmap Snapshot costmap to read during scoring
+    * 默认只切换裸指针；持有 collision_checker 的 critic（Cost/Obstacles）需 override 同步更新。
+    */
+  virtual void setCostmapSnapshot(nav2_costmap_2d::Costmap2D * costmap)
+  {
+    costmap_ = costmap;
+  }
+
+  /**
     * @brief Get name of critic
     */
   std::string getName()
