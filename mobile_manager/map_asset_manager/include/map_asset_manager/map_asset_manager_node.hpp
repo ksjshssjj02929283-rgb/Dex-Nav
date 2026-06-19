@@ -5,6 +5,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/string.hpp>
 #include <nav_interfaces/srv/transform_assets.hpp>
+#include <nav_interfaces/srv/save_assets.hpp>
 #include <std_srvs/srv/trigger.hpp>
 #include <string>
 
@@ -46,8 +47,9 @@ private:
     // 全局通用服务回调
     void reloadDataCallback(const std::shared_ptr<std_srvs::srv::Trigger::Request> req,
                             std::shared_ptr<std_srvs::srv::Trigger::Response> res);
-    void saveAssetsCallback(const std::shared_ptr<std_srvs::srv::Trigger::Request> req,
-                            std::shared_ptr<std_srvs::srv::Trigger::Response> res);
+    void saveAssetsCallback(const std::shared_ptr<nav_interfaces::srv::SaveAssets::Request> req,
+                            std::shared_ptr<nav_interfaces::srv::SaveAssets::Response> res);
+    // 注（DEC-009）：资产回退不在引擎侧提供——回退唯一入口在 command_board（直接从 assets/backups/ 恢复 + 重下发）。
     void transformAssetsCallback(
         const std::shared_ptr<nav_interfaces::srv::TransformAssets::Request> req,
         std::shared_ptr<nav_interfaces::srv::TransformAssets::Response> res);
@@ -85,7 +87,7 @@ private:
 
     // ── ROS 接口 ─────────────────────────────────────────────────
     rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr reload_data_srv_;
-    rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr save_assets_srv_;
+    rclcpp::Service<nav_interfaces::srv::SaveAssets>::SharedPtr save_assets_srv_;
     rclcpp::Service<nav_interfaces::srv::TransformAssets>::SharedPtr transform_assets_srv_;
     rclcpp::Publisher<std_msgs::msg::String>::SharedPtr status_pub_;
     rclcpp::Subscription<std_msgs::msg::String>::SharedPtr map_name_sub_;

@@ -1,15 +1,60 @@
 #include "map_asset_manager/map_asset_manager_node.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
+#include <ctime>
 #include <filesystem>
+#include <vector>
 
 namespace fs = std::filesystem;
 
 namespace map_asset_manager {
 
+namespace {
+// 资产 ring 版本备份（DEC-006/007 Model C）：把当前资产文件复制成带时间戳的版本，
+// 轮换保留最近 keep 个。返回版本时间戳（失败返回空）。
+// 供 command_board 统一版本 manifest 引用 / 完整回滚（B 阶段消费）。
+// 仅显式 save_assets（手动 / command_board 触发）调用；auto_save（编辑触发）不产版本，避免 churn。
+std::string MakeAssetRingBackup(const std::string& src_file,
+                                const rclcpp::Logger& logger, int keep = 50) {
+  std::error_code ec;
+  if (!fs::exists(src_file, ec)) return "";
+  const fs::path backups_dir = fs::path(src_file).parent_path() / "backups";
+  fs::create_directories(backups_dir, ec);
+
+  std::time_t t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+  std::tm tm_buf;
+  localtime_r(&t, &tm_buf);
+  char ts[32];
+  std::strftime(ts, sizeof(ts), "%Y%m%d-%H%M%S", &tm_buf);
+
+  const fs::path dst = backups_dir / (std::string("map_assets.") + ts + ".json");
+  fs::copy_file(src_file, dst, fs::copy_options::overwrite_existing, ec);
+  if (ec) {
+    RCLCPP_WARN(logger, "asset ring backup failed: %s", ec.message().c_str());
+    return "";
+  }
+
+  // 轮换：文件名含时间戳，字典序即时间序，保留最近 keep 个
+  std::vector<fs::path> versions;
+  for (const auto& e : fs::directory_iterator(backups_dir, ec)) {
+    const std::string name = e.path().filename().string();
+    if (name.rfind("map_assets.", 0) == 0 && e.path().extension() == ".json")
+      versions.push_back(e.path());
+  }
+  std::sort(versions.begin(), versions.end());
+  for (size_t i = 0; i + static_cast<size_t>(keep) < versions.size(); ++i)
+    fs::remove(versions[i], ec);
+
+  return ts;
+}
+}  // namespace
+
 MapAssetManagerNode::MapAssetManagerNode()
-    : rclcpp::Node("map_asset_manager_node") {
+    // 节点名 = map_asset_manager（与 launch name= 及所有消费方 /map_asset_manager/ 一致；
+    // 裸 ros2 run 也能对上服务名，避免 /map_asset_manager_node/ 与消费方 mismatch）
+    : rclcpp::Node("map_asset_manager") {
     declare_parameter("auto_save", true);
     auto_save_ = get_parameter("auto_save").as_bool();
 
@@ -82,7 +127,7 @@ void MapAssetManagerNode::initialize() {
         std::bind(&MapAssetManagerNode::reloadDataCallback, this,
                   std::placeholders::_1, std::placeholders::_2));
 
-    save_assets_srv_ = create_service<std_srvs::srv::Trigger>(
+    save_assets_srv_ = create_service<nav_interfaces::srv::SaveAssets>(
         "~/save_assets",
         std::bind(&MapAssetManagerNode::saveAssetsCallback, this,
                   std::placeholders::_1, std::placeholders::_2));
@@ -156,7 +201,8 @@ void MapAssetManagerNode::onMapNameChanged(const std_msgs::msg::String::SharedPt
 // ──────────────────────────────────────────────────────────────────────
 
 void MapAssetManagerNode::switchToMap(const std::string& map_name) {
-    assets_file_ = map_base_folder_ + "/" + map_name + "/map_assets.json";
+    // 分层布局（DEC-007）：资产在 <map>/assets/ 子目录（与底图 <map>/slam/ 物理隔离）
+    assets_file_ = map_base_folder_ + "/" + map_name + "/assets/map_assets.json";
 
     point_store_->clear();
     route_store_->clear();
@@ -334,8 +380,9 @@ void MapAssetManagerNode::publishStatus() {
 }
 
 void MapAssetManagerNode::saveAssetsCallback(
-    const std::shared_ptr<std_srvs::srv::Trigger::Request>,
-    std::shared_ptr<std_srvs::srv::Trigger::Response> res) {
+    const std::shared_ptr<nav_interfaces::srv::SaveAssets::Request>,
+    std::shared_ptr<nav_interfaces::srv::SaveAssets::Response> res) {
+    // 注：map_name 入参当前忽略——只对已加载地图（current_map_name_）操作；指定他图保存留待后续
     try {
         if (assets_file_.empty()) {
             res->success = false;
@@ -343,9 +390,15 @@ void MapAssetManagerNode::saveAssetsCallback(
             return;
         }
         saveAllAssets();
+        // 显式 save_assets → 产一份资产 ring 版本（DEC-006/007），供 command_board 统一版本引用/回滚
+        const std::string backup_ts = MakeAssetRingBackup(assets_file_, get_logger());
         res->success = true;
-        res->message = "Assets saved to " + assets_file_;
-        RCLCPP_INFO(get_logger(), "Assets saved via service to %s", assets_file_.c_str());
+        res->assets_path = assets_file_;
+        res->backup_ts = backup_ts;
+        res->message = "Assets saved" +
+                       (backup_ts.empty() ? std::string("") : (" (version " + backup_ts + ")"));
+        RCLCPP_INFO(get_logger(), "Assets saved via service to %s%s", assets_file_.c_str(),
+                    backup_ts.empty() ? "" : (" [version " + backup_ts + "]").c_str());
     } catch (const std::exception& ex) {
         res->success = false;
         res->message = std::string("Save failed: ") + ex.what();
@@ -481,7 +534,7 @@ void MapAssetManagerNode::transformAssetsCallback(
             // ── 非当前地图：从文件加载 → 变换 → 写回 ─────────────────
 
             const std::string file_path =
-                map_base_folder_ + "/" + req->map_name + "/map_assets.json";
+                map_base_folder_ + "/" + req->map_name + "/assets/map_assets.json";
 
             std::unordered_map<std::string, NavPoint> points;
             std::unordered_map<std::string, Route>    routes;
