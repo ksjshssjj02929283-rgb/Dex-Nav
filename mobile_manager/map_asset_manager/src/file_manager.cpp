@@ -539,12 +539,6 @@ bool FileManager::saveAllAssetsToFile(const std::string& file_path,
             j["areas"].push_back(item);
         }
 
-        std::ofstream file(file_path);
-        if (!file.is_open()) {
-            RCLCPP_ERROR(logger_, "Failed to open for writing: %s", file_path.c_str());
-            return false;
-        }
-
         // ── route_graph ──────────────────────────────────────────
         json rg;
         rg["junctions"] = json::array();
@@ -648,7 +642,30 @@ bool FileManager::saveAllAssetsToFile(const std::string& file_path,
         j["schema_version"]          = "2.0";
         j["schema_compatible_with"]  = "spark_dsg/1.2";
 
-        file << j.dump(2);
+        // 原子写（DEC-004 资产引擎原子安全）：先写 <file>.tmp，再同卷 rename 覆盖（POSIX 原子），
+        // 避免崩溃中途留下半写/损坏的 map_assets.json。
+        const std::string tmp_path = file_path + ".tmp";
+        {
+            std::ofstream file(tmp_path, std::ios::trunc);
+            if (!file.is_open()) {
+                RCLCPP_ERROR(logger_, "Failed to open for writing: %s", tmp_path.c_str());
+                return false;
+            }
+            file << j.dump(2);
+            file.flush();
+            if (!file.good()) {
+                RCLCPP_ERROR(logger_, "Failed to write assets to %s", tmp_path.c_str());
+                return false;
+            }
+        }  // ofstream 析构 → 关闭
+        std::error_code ec;
+        std::filesystem::rename(tmp_path, file_path, ec);
+        if (ec) {
+            RCLCPP_ERROR(logger_, "Failed to atomically rename %s -> %s: %s",
+                         tmp_path.c_str(), file_path.c_str(), ec.message().c_str());
+            std::filesystem::remove(tmp_path, ec);
+            return false;
+        }
         RCLCPP_INFO(logger_,
                     "Saved assets to %s: %zu points, %zu routes, %zu areas, %zu junctions, %zu edges, %zu rooms",
                     file_path.c_str(), points.size(), routes.size(), areas.size(),
