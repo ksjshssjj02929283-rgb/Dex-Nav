@@ -11,7 +11,7 @@ namespace map_asset_manager {
 
 enum class AssetEventType {
     POINT_ADDED,
-    POINT_UPDATED,  // 含重命名：old_name 非空时为重命名事件
+    POINT_UPDATED,   // 含重命名：old_name 非空时为重命名事件
     POINT_REMOVED,
     ROUTE_ADDED,
     ROUTE_UPDATED,
@@ -19,7 +19,13 @@ enum class AssetEventType {
     AREA_ADDED,
     AREA_UPDATED,
     AREA_REMOVED,
-    DATA_RELOADED,  // 整体热重载
+    ROOM_ADDED,
+    ROOM_UPDATED,
+    ROOM_REMOVED,
+    JUNCTION_ADDED,    // RouteJunction（路网节点）
+    JUNCTION_UPDATED,
+    JUNCTION_REMOVED,
+    DATA_RELOADED,   // 整体热重载
 };
 
 struct AssetEvent {

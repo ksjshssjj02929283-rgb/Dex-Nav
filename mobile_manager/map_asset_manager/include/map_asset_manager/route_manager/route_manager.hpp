@@ -8,17 +8,18 @@
 #include <string>
 #include <visualization_msgs/msg/marker_array.hpp>
 
+#include "nav_interfaces/action/navigate_route.hpp"
+#include "nav_interfaces/srv/add_route.hpp"
+#include "nav_interfaces/msg/route.hpp"
+#include "nav_interfaces/srv/get_all_routes.hpp"
+#include "nav_interfaces/srv/get_route.hpp"
+#include "nav_interfaces/srv/remove_route.hpp"
+
 #include "map_asset_manager/data_event_bus.hpp"
 #include "map_asset_manager/navigation_executor.hpp"
 #include "map_asset_manager/point_manager/point_store.hpp"
 #include "map_asset_manager/route_manager/route_store.hpp"
 #include "map_asset_manager/types.hpp"
-#include "nav_interfaces/action/navigate_route.hpp"
-#include "nav_interfaces/msg/route.hpp"
-#include "nav_interfaces/srv/add_route.hpp"
-#include "nav_interfaces/srv/get_all_routes.hpp"
-#include "nav_interfaces/srv/get_route.hpp"
-#include "nav_interfaces/srv/remove_route.hpp"
 
 namespace map_asset_manager {
 
@@ -31,12 +32,13 @@ public:
 
     // save_fn 由 MapAssetManagerNode 提供，保存全局统一资产文件
     RouteManager(rclcpp::Node* node,
-                 std::shared_ptr<RouteStore> route_store,
-                 std::shared_ptr<PointStore> point_store,
-                 std::shared_ptr<DataEventBus> event_bus,
-                 std::function<void()> save_fn);
+                    std::shared_ptr<RouteStore> route_store,
+                    std::shared_ptr<PointStore> point_store,
+                    std::shared_ptr<DataEventBus> event_bus,
+                    std::function<void()> save_fn);
 
-    void initializeActionServers(rclcpp::Node::SharedPtr node, std::shared_ptr<NavigationExecutor> nav_executor);
+    void initializeActionServers(rclcpp::Node::SharedPtr node,
+                                 std::shared_ptr<NavigationExecutor> nav_executor);
 
     // 供主节点访问：发布路径可视化（在执行路径导航时调用）
     void publishRoutePath(const std::vector<NavPoint>& route_points);
@@ -57,7 +59,7 @@ private:
     void getRouteCallback(const std::shared_ptr<nav_interfaces::srv::GetRoute::Request> req,
                           std::shared_ptr<nav_interfaces::srv::GetRoute::Response> res);
     void getAllRoutesCallback(const std::shared_ptr<nav_interfaces::srv::GetAllRoutes::Request> req,
-                              std::shared_ptr<nav_interfaces::srv::GetAllRoutes::Response> res);
+                             std::shared_ptr<nav_interfaces::srv::GetAllRoutes::Response> res);
 
     // Action 回调
     rclcpp_action::GoalResponse handleGoal(const rclcpp_action::GoalUUID& uuid,
@@ -71,7 +73,7 @@ private:
 
     rclcpp::Node* node_;
     std::shared_ptr<RouteStore> route_store_;
-    std::shared_ptr<PointStore> point_store_;  // 仅在执行导航时查坐标
+    std::shared_ptr<PointStore> point_store_;     // 仅在执行导航时查坐标
     std::shared_ptr<DataEventBus> event_bus_;
     std::shared_ptr<NavigationExecutor> nav_executor_;
     std::function<void()> save_fn_;

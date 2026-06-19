@@ -1,13 +1,14 @@
 #pragma once
 
+#include <memory>
+#include <string>
+#include <vector>
+
 #include <OgreManualObject.h>
 #include <OgreSceneNode.h>
 
-#include <memory>
 #include <rclcpp/rclcpp.hpp>
 #include <rviz_common/tool.hpp>
-#include <string>
-#include <vector>
 
 #include "map_asset_rviz_plugin/route_graph_tools_common.hpp"
 
@@ -34,20 +35,22 @@ public:
 private:
     void updatePreview(double mx, double my);
     void clearPreview();
-    void submitEdge(const EndpointInfo& from, const EndpointInfo& to, const EdgeConfig& cfg);
+    void submitEdge(const EndpointInfo& from, const EndpointInfo& to,
+                    const EdgeConfig& cfg);
 
-    rclcpp::Node::SharedPtr node_;
-    std::string service_prefix_{"/map_asset_manager"};
-    std::vector<EndpointInfo> endpoints_;
-    bool loading_{false};  ///< 正在异步加载端点列表
-    double last_mx_{0.0};  ///< 最后鼠标位置，加载完成后刷新预览用
-    double last_my_{0.0};
+    rclcpp::Node::SharedPtr      node_;
+    std::string                  service_prefix_{"/map_asset_manager"};
+    std::vector<EndpointInfo>    endpoints_;
+    bool                         loading_{false};  ///< 正在异步加载端点列表
+    double                       last_mx_{0.0};    ///< 最后鼠标位置，加载完成后刷新预览用
+    double                       last_my_{0.0};
 
-    bool selecting_{false};
+    bool         selecting_{false};
     EndpointInfo from_ep_;
 
     Ogre::ManualObject* preview_obj_{nullptr};
-    Ogre::SceneNode* preview_node_{nullptr};
+    Ogre::SceneNode*    preview_node_{nullptr};
 };
 
 }  // namespace map_asset_rviz_plugin
+

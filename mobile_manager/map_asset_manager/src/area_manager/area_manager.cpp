@@ -13,28 +13,45 @@ AreaManager::AreaManager(rclcpp::Node* node,
                          std::shared_ptr<AreaStore> area_store,
                          std::shared_ptr<DataEventBus> event_bus,
                          std::function<void()> save_fn)
-    : node_(node), area_store_(area_store), event_bus_(event_bus), save_fn_(std::move(save_fn)) {
+    : node_(node),
+      area_store_(area_store),
+      event_bus_(event_bus),
+      save_fn_(std::move(save_fn)) {
+
     // Publishers
-    marker_pub_ = node_->create_publisher<visualization_msgs::msg::MarkerArray>("~/area_markers",
-                                                                                rclcpp::QoS(10).transient_local());
-    areas_pub_ =
-        node_->create_publisher<nav_interfaces::msg::AreaInfoArray>("~/areas", rclcpp::QoS(10).transient_local());
+    marker_pub_ = node_->create_publisher<visualization_msgs::msg::MarkerArray>(
+        "~/area_markers", rclcpp::QoS(10).transient_local());
+    areas_pub_ = node_->create_publisher<nav_interfaces::msg::AreaInfoArray>(
+        "~/areas", rclcpp::QoS(10).transient_local());
 
     // Services
     add_area_srv_ = node_->create_service<nav_interfaces::srv::AddAreaInfo>(
         "~/add_area",
         [this](const std::shared_ptr<nav_interfaces::srv::AddAreaInfo::Request> req,
-               std::shared_ptr<nav_interfaces::srv::AddAreaInfo::Response> res) { addAreaCallback(req, res); });
+               std::shared_ptr<nav_interfaces::srv::AddAreaInfo::Response> res) {
+            addAreaCallback(req, res);
+        });
 
     remove_area_srv_ = node_->create_service<nav_interfaces::srv::RemoveAreaInfo>(
         "~/remove_area",
         [this](const std::shared_ptr<nav_interfaces::srv::RemoveAreaInfo::Request> req,
-               std::shared_ptr<nav_interfaces::srv::RemoveAreaInfo::Response> res) { removeAreaCallback(req, res); });
+               std::shared_ptr<nav_interfaces::srv::RemoveAreaInfo::Response> res) {
+            removeAreaCallback(req, res);
+        });
+
+    update_area_srv_ = node_->create_service<nav_interfaces::srv::UpdateAreaInfo>(
+        "~/update_area",
+        [this](const std::shared_ptr<nav_interfaces::srv::UpdateAreaInfo::Request> req,
+               std::shared_ptr<nav_interfaces::srv::UpdateAreaInfo::Response> res) {
+            updateAreaCallback(req, res);
+        });
 
     get_all_areas_srv_ = node_->create_service<nav_interfaces::srv::GetAllAreas>(
         "~/get_all_areas",
         [this](const std::shared_ptr<nav_interfaces::srv::GetAllAreas::Request> req,
-               std::shared_ptr<nav_interfaces::srv::GetAllAreas::Response> res) { getAllAreasCallback(req, res); });
+               std::shared_ptr<nav_interfaces::srv::GetAllAreas::Response> res) {
+            getAllAreasCallback(req, res);
+        });
 
     RCLCPP_INFO(node_->get_logger(), "AreaManager: initialized (add/remove/list services, areas topic)");
 }
@@ -43,8 +60,10 @@ AreaManager::AreaManager(rclcpp::Node* node,
 // Service 回调
 // ──────────────────────────────────────────────────────────────────────
 
-void AreaManager::addAreaCallback(const std::shared_ptr<nav_interfaces::srv::AddAreaInfo::Request> req,
-                                  std::shared_ptr<nav_interfaces::srv::AddAreaInfo::Response> res) {
+void AreaManager::addAreaCallback(
+    const std::shared_ptr<nav_interfaces::srv::AddAreaInfo::Request> req,
+    std::shared_ptr<nav_interfaces::srv::AddAreaInfo::Response> res) {
+
     const auto& msg = req->area_info;
     if (msg.name.empty()) {
         RCLCPP_WARN(node_->get_logger(), "add_area: empty name rejected");
@@ -56,18 +75,32 @@ void AreaManager::addAreaCallback(const std::shared_ptr<nav_interfaces::srv::Add
     }
 
     Area area = fromMsg(msg);
-    area_store_->addArea(area);
+    const bool already_exists = area_store_->hasArea(area.name);
+    if (already_exists) {
+        area_store_->updateArea(area);
+    } else {
+        area_store_->addArea(area);
+    }
     save_fn_();
     publishMarkers();
     publishAreas();
 
-    RCLCPP_INFO(node_->get_logger(), "add_area: added '%s' type=%u vertices=%zu", area.name.c_str(), area.type,
-                area.polygon.size());
+    if (event_bus_) {
+        event_bus_->publish({already_exists ? AssetEventType::AREA_UPDATED
+                                            : AssetEventType::AREA_ADDED,
+                             area.name, ""});
+    }
+
+    RCLCPP_INFO(node_->get_logger(), "add_area: %s '%s' type=%u vertices=%zu",
+                already_exists ? "updated" : "added",
+                area.name.c_str(), area.type, area.polygon.size());
     res->success = true;
 }
 
-void AreaManager::removeAreaCallback(const std::shared_ptr<nav_interfaces::srv::RemoveAreaInfo::Request> req,
-                                     std::shared_ptr<nav_interfaces::srv::RemoveAreaInfo::Response> res) {
+void AreaManager::removeAreaCallback(
+    const std::shared_ptr<nav_interfaces::srv::RemoveAreaInfo::Request> req,
+    std::shared_ptr<nav_interfaces::srv::RemoveAreaInfo::Response> res) {
+
     if (!area_store_->hasArea(req->name)) {
         res->success = false;
         res->message = "area not found: " + req->name;
@@ -80,13 +113,53 @@ void AreaManager::removeAreaCallback(const std::shared_ptr<nav_interfaces::srv::
     publishMarkers();
     publishAreas();
 
+    if (event_bus_) {
+        event_bus_->publish({AssetEventType::AREA_REMOVED, req->name, ""});
+    }
+
     RCLCPP_INFO(node_->get_logger(), "remove_area: removed '%s'", req->name.c_str());
     res->success = true;
     res->message = "ok";
 }
 
-void AreaManager::getAllAreasCallback(const std::shared_ptr<nav_interfaces::srv::GetAllAreas::Request> /*req*/,
-                                      std::shared_ptr<nav_interfaces::srv::GetAllAreas::Response> res) {
+void AreaManager::updateAreaCallback(
+    const std::shared_ptr<nav_interfaces::srv::UpdateAreaInfo::Request> req,
+    std::shared_ptr<nav_interfaces::srv::UpdateAreaInfo::Response> res) {
+
+    const auto& msg = req->area_info;
+    if (msg.name.empty()) {
+        RCLCPP_WARN(node_->get_logger(), "update_area: empty name rejected");
+        res->success = false;
+        res->message = "name is empty";
+        return;
+    }
+    if (!area_store_->hasArea(msg.name)) {
+        RCLCPP_WARN(node_->get_logger(), "update_area: '%s' not found", msg.name.c_str());
+        res->success = false;
+        res->message = "area not found: " + msg.name;
+        return;
+    }
+
+    Area area = fromMsg(msg);
+    area_store_->updateArea(area);
+    save_fn_();
+    publishMarkers();
+    publishAreas();
+
+    if (event_bus_) {
+        event_bus_->publish({AssetEventType::AREA_UPDATED, area.name, ""});
+    }
+
+    RCLCPP_INFO(node_->get_logger(), "update_area: '%s' type=%u vertices=%zu",
+                area.name.c_str(), area.type, area.polygon.size());
+    res->success = true;
+    res->message = "updated";
+}
+
+void AreaManager::getAllAreasCallback(
+    const std::shared_ptr<nav_interfaces::srv::GetAllAreas::Request> /*req*/,
+    std::shared_ptr<nav_interfaces::srv::GetAllAreas::Response> res) {
+
     auto all_areas = area_store_->getAllAreas();
     res->area_info_list.reserve(all_areas.size());
     for (const auto& area : all_areas) {
@@ -204,14 +277,17 @@ void AreaManager::publishMarkers() {
 
 Area AreaManager::fromMsg(const nav_interfaces::msg::AreaInfo& msg) {
     Area a;
-    a.name = msg.name;
-    a.type = msg.type;
-    a.max_speed = msg.max_speed;
-    a.stop_distance = msg.stop_distance;
-    a.linked_point_name = msg.linked_point_name;
-    a.charger_type = msg.charger_type;
-    a.depth_min_height = msg.depth_min_height;
-    a.attribute = msg.attribute;
+    a.name              = msg.name;
+    a.type              = msg.type;
+    a.max_speed         = msg.max_speed;
+    a.stop_distance     = msg.stop_distance;
+    a.charger_type      = msg.charger_type;
+    a.depth_min_height     = msg.depth_min_height;
+    a.attribute         = msg.attribute;
+
+    // 关联点（复数，支持多个）
+    a.manual_linked_point_names.assign(msg.manual_linked_point_names.begin(),
+                                msg.manual_linked_point_names.end());
 
     a.polygon.reserve(msg.polygon.size());
     for (const auto& pose : msg.polygon) {
@@ -221,28 +297,42 @@ Area AreaManager::fromMsg(const nav_interfaces::msg::AreaInfo& msg) {
         p.z = 0.0;
         a.polygon.push_back(p);
     }
+
+    // 自动归属字段：从 msg 来的视为初始值，SpatialIndexer 会覆盖
+    a.related_nav_point_names.assign(msg.related_nav_point_names.begin(),
+                                  msg.related_nav_point_names.end());
+    a.related_junction_ids.assign(msg.related_junction_ids.begin(),
+                               msg.related_junction_ids.end());
     return a;
 }
 
 nav_interfaces::msg::AreaInfo AreaManager::toMsg(const Area& area) {
     nav_interfaces::msg::AreaInfo msg;
-    msg.name = area.name;
-    msg.type = area.type;
-    msg.max_speed = area.max_speed;
-    msg.stop_distance = area.stop_distance;
-    msg.linked_point_name = area.linked_point_name;
-    msg.charger_type = area.charger_type;
-    msg.depth_min_height = area.depth_min_height;
-    msg.attribute = area.attribute;
+    msg.name              = area.name;
+    msg.type              = area.type;
+    msg.max_speed         = area.max_speed;
+    msg.stop_distance     = area.stop_distance;
+    msg.charger_type      = area.charger_type;
+    msg.depth_min_height     = area.depth_min_height;
+    msg.attribute         = area.attribute;
+
+    msg.manual_linked_point_names.assign(area.manual_linked_point_names.begin(),
+                                  area.manual_linked_point_names.end());
 
     msg.polygon.reserve(area.polygon.size());
     for (const auto& pt : area.polygon) {
         geometry_msgs::msg::Pose2D pose;
-        pose.x = pt.x;
-        pose.y = pt.y;
+        pose.x     = pt.x;
+        pose.y     = pt.y;
         pose.theta = 0.0;
         msg.polygon.push_back(pose);
     }
+
+    // 自动归属（只读字段，SpatialIndexer 维护）
+    msg.related_nav_point_names.assign(area.related_nav_point_names.begin(),
+                                    area.related_nav_point_names.end());
+    msg.related_junction_ids.assign(area.related_junction_ids.begin(),
+                                 area.related_junction_ids.end());
     return msg;
 }
 
@@ -252,26 +342,16 @@ nav_interfaces::msg::AreaInfo AreaManager::toMsg(const Area& area) {
 
 AreaManager::Color AreaManager::typeColor(uint32_t type) {
     switch (type) {
-        case AreaType::VIRTUAL_WALL:
-            return {0.5f, 0.5f, 0.5f};  // 灰黑
-        case AreaType::RESTRICTED_AREA:
-            return {1.0f, 0.0f, 0.0f};  // 红
-        case AreaType::SPEED_LIMIT_AREA:
-            return {1.0f, 0.8f, 0.0f};  // 黄
-        case AreaType::DETOUR_AREA:
-            return {0.0f, 0.9f, 0.9f};  // 青
-        case AreaType::STOP_OBSTACLE_AREA:
-            return {1.0f, 0.5f, 0.0f};  // 橙
-        case AreaType::PARKING_AREA:
-            return {0.0f, 0.8f, 0.0f};  // 绿
-        case AreaType::CHARGING_AREA:
-            return {0.2f, 0.5f, 1.0f};  // 蓝
-        case AreaType::ELEVATOR_AREA:
-            return {0.7f, 0.3f, 1.0f};  // 紫
-        case AreaType::BUMPY_AREA:
-            return {0.9f, 0.5f, 0.1f};  // 深橙
-        default:
-            return {0.6f, 0.6f, 0.6f};  // 灰
+        case AreaType::VIRTUAL_WALL:       return {0.5f, 0.5f, 0.5f};  // 灰黑
+        case AreaType::RESTRICTED_AREA:    return {1.0f, 0.0f, 0.0f};  // 红
+        case AreaType::SPEED_LIMIT_AREA:   return {1.0f, 0.8f, 0.0f};  // 黄
+        case AreaType::DETOUR_AREA:        return {0.0f, 0.9f, 0.9f};  // 青
+        case AreaType::STOP_OBSTACLE_AREA: return {1.0f, 0.5f, 0.0f};  // 橙
+        case AreaType::PARKING_AREA:       return {0.0f, 0.8f, 0.0f};  // 绿
+        case AreaType::CHARGING_AREA:      return {0.2f, 0.5f, 1.0f};  // 蓝
+        case AreaType::ELEVATOR_AREA:      return {0.7f, 0.3f, 1.0f};  // 紫
+        case AreaType::BUMPY_AREA:         return {0.9f, 0.5f, 0.1f};  // 深橙
+        default:                           return {0.6f, 0.6f, 0.6f};  // 灰
     }
 }
 

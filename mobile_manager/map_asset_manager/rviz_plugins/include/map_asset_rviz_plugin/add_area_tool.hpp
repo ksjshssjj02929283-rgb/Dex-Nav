@@ -1,16 +1,17 @@
 #ifndef MAP_ASSET_RVIZ_PLUGIN__ADD_AREA_TOOL_HPP_
 #define MAP_ASSET_RVIZ_PLUGIN__ADD_AREA_TOOL_HPP_
 
+#include <memory>
+#include <string>
+#include <vector>
+
 #include <OgreManualObject.h>
 #include <OgreSceneNode.h>
 
 #include <geometry_msgs/msg/pose2_d.hpp>
-#include <memory>
 #include <nav_interfaces/srv/add_area_info.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <rviz_common/tool.hpp>
-#include <string>
-#include <vector>
 
 namespace map_asset_rviz_plugin {
 
@@ -35,12 +36,10 @@ public:
     void save(rviz_common::Config config) const override;
 
 private:
-    struct Color {
-        float r, g, b;
-    };
+    struct Color { float r, g, b; };
 
-    bool showPreDialog();  // 激活时弹窗，返回 false 表示用户取消
-    void finishPolygon();  // 右键触发，调用服务
+    bool showPreDialog();          // 激活时弹窗，返回 false 表示用户取消
+    void finishPolygon();          // 右键触发，调用服务
     void resetPolygon();
     void updatePreviewLine();
     static Color typeColor(uint32_t type);
@@ -51,12 +50,12 @@ private:
 
     // 当前区域的预设属性（来自预弹窗）
     std::string area_name_;
-    uint32_t area_type_{1};
-    float area_max_speed_{0.5f};
-    float area_stop_distance_{0.5f};
+    uint32_t    area_type_{1};
+    float       area_max_speed_{0.5f};
+    float       area_stop_distance_{0.5f};
     std::string area_linked_point_;
     std::string area_charger_type_;
-    float area_depth_min_height_{0.1f};
+    float       area_depth_min_height_{0.1f};
 
     Color preview_color_{1.0f, 0.0f, 0.0f};
 
@@ -64,7 +63,7 @@ private:
 
     // Ogre 预览线
     Ogre::ManualObject* preview_line_{nullptr};
-    Ogre::SceneNode* preview_node_{nullptr};
+    Ogre::SceneNode*    preview_node_{nullptr};
 
     bool cancelled_{false};
 };
