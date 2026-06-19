@@ -6,14 +6,16 @@
 #include <QListWidget>
 #include <QPushButton>
 #include <QWidget>
+
 #include <memory>
+#include <string>
+
 #include <nav_interfaces/srv/add_route.hpp>
 #include <nav_interfaces/srv/get_all_nav_points.hpp>
 #include <nav_interfaces/srv/get_all_routes.hpp>
 #include <nav_interfaces/srv/get_route.hpp>
 #include <nav_interfaces/srv/remove_route.hpp>
 #include <rclcpp/rclcpp.hpp>
-#include <string>
 
 namespace map_asset_rviz_plugin {
 
@@ -51,25 +53,25 @@ private:
     QListWidget* route_list_;     // 已有路线
     QListWidget* point_list_;     // 可选点位（多选）
     QListWidget* selected_list_;  // 已选点顺序
-    QLineEdit* name_edit_;
-    QPushButton* add_point_btn_;     // >> 添加到已选
-    QPushButton* remove_point_btn_;  // << 从已选移除
-    QPushButton* up_btn_;            // 上移
-    QPushButton* down_btn_;          // 下移
+    QLineEdit*   name_edit_;
+    QPushButton* add_point_btn_;  // >> 添加到已选
+    QPushButton* remove_point_btn_;// << 从已选移除
+    QPushButton* up_btn_;         // 上移
+    QPushButton* down_btn_;       // 下移
     QPushButton* refresh_routes_btn_;
     QPushButton* refresh_points_btn_;
     QPushButton* create_btn_;
     QPushButton* remove_route_btn_;
-    QLabel* status_label_;
-    QLabel* route_detail_label_;
+    QLabel*      status_label_;
+    QLabel*      route_detail_label_;
 
     rclcpp::Node::SharedPtr node_;
     std::string prefix_{"/map_asset_manager"};
 
-    rclcpp::Client<nav_interfaces::srv::AddRoute>::SharedPtr add_client_;
-    rclcpp::Client<nav_interfaces::srv::RemoveRoute>::SharedPtr remove_client_;
-    rclcpp::Client<nav_interfaces::srv::GetRoute>::SharedPtr get_client_;
-    rclcpp::Client<nav_interfaces::srv::GetAllRoutes>::SharedPtr get_all_routes_client_;
+    rclcpp::Client<nav_interfaces::srv::AddRoute>::SharedPtr        add_client_;
+    rclcpp::Client<nav_interfaces::srv::RemoveRoute>::SharedPtr     remove_client_;
+    rclcpp::Client<nav_interfaces::srv::GetRoute>::SharedPtr        get_client_;
+    rclcpp::Client<nav_interfaces::srv::GetAllRoutes>::SharedPtr    get_all_routes_client_;
     rclcpp::Client<nav_interfaces::srv::GetAllNavPoints>::SharedPtr get_points_client_;
 };
 

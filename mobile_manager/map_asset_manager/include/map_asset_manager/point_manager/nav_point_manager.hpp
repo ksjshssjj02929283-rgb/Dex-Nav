@@ -1,21 +1,16 @@
 #ifndef MAP_ASSET_MANAGER__NAV_POINT_MANAGER_HPP_
 #define MAP_ASSET_MANAGER__NAV_POINT_MANAGER_HPP_
 
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
-
 #include <functional>
 #include <memory>
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp_action/rclcpp_action.hpp>
 #include <std_msgs/msg/string.hpp>
 #include <string>
+#include <tf2_ros/buffer.h>
+#include <tf2_ros/transform_listener.h>
 #include <visualization_msgs/msg/marker_array.hpp>
 
-#include "map_asset_manager/data_event_bus.hpp"
-#include "map_asset_manager/navigation_executor.hpp"
-#include "map_asset_manager/point_manager/point_store.hpp"
-#include "map_asset_manager/types.hpp"
 #include "nav_interfaces/action/navigate_to_point.hpp"
 #include "nav_interfaces/srv/add_nav_point.hpp"
 #include "nav_interfaces/srv/get_all_nav_points.hpp"
@@ -24,6 +19,11 @@
 #include "nav_interfaces/srv/remove_nav_point.hpp"
 #include "nav_interfaces/srv/sample_nav_point.hpp"
 #include "nav_interfaces/srv/update_nav_point.hpp"
+
+#include "map_asset_manager/data_event_bus.hpp"
+#include "map_asset_manager/navigation_executor.hpp"
+#include "map_asset_manager/point_manager/point_store.hpp"
+#include "map_asset_manager/types.hpp"
 
 namespace map_asset_manager {
 
@@ -35,12 +35,13 @@ public:
 
     // save_fn 由 MapAssetManagerNode 提供，保存全局统一资产文件
     NavPointManager(rclcpp::Node* node,
-                    std::shared_ptr<PointStore> point_store,
-                    std::shared_ptr<DataEventBus> event_bus,
-                    std::function<void()> save_fn);
+                       std::shared_ptr<PointStore> point_store,
+                       std::shared_ptr<DataEventBus> event_bus,
+                       std::function<void()> save_fn);
 
     // 必须在节点构造完成后、调用方拿到 shared_ptr 时再调用
-    void initializeActionServers(rclcpp::Node::SharedPtr node, std::shared_ptr<NavigationExecutor> nav_executor);
+    void initializeActionServers(rclcpp::Node::SharedPtr node,
+                                 std::shared_ptr<NavigationExecutor> nav_executor);
 
     // 供主节点访问：发布点位可视化 Marker
     void publishMarkers();

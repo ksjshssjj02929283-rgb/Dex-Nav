@@ -1,13 +1,14 @@
 #ifndef MAP_ASSET_RVIZ_PLUGIN__ADD_NAV_POINT_TOOL_HPP_
 #define MAP_ASSET_RVIZ_PLUGIN__ADD_NAV_POINT_TOOL_HPP_
 
+#include <memory>
+#include <string>
+
 #include <OgreManualObject.h>
 #include <OgreSceneNode.h>
 
-#include <memory>
 #include <rclcpp/rclcpp.hpp>
 #include <rviz_common/tool.hpp>
-#include <string>
 
 namespace map_asset_rviz_plugin {
 
@@ -38,13 +39,13 @@ private:
     std::string service_name_{"/map_asset_manager/add_point"};
 
     // 拖拽状态
-    bool dragging_{false};
+    bool   dragging_{false};
     double start_x_{0.0};
     double start_y_{0.0};
 
     // Ogre 箭头预览
     Ogre::ManualObject* arrow_obj_{nullptr};
-    Ogre::SceneNode* arrow_node_{nullptr};
+    Ogre::SceneNode*    arrow_node_{nullptr};
 };
 
 }  // namespace map_asset_rviz_plugin

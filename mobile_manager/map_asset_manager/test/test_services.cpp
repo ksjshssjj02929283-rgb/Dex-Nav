@@ -12,7 +12,6 @@
  */
 
 #include <gtest/gtest.h>
-
 #include <rclcpp/rclcpp.hpp>
 
 #include "map_asset_manager/data_event_bus.hpp"
@@ -35,8 +34,10 @@ using namespace std::chrono_literals;
 // 辅助函数
 // ═══════════════════════════════════════════════════════════════════════
 
-static nav_interfaces::msg::NavPoint makeMsg(
-    const std::string& name, const std::string& type = "STATION", float x = 1.0f, float y = 2.0f, float theta = 0.0f) {
+static nav_interfaces::msg::NavPoint makeMsg(const std::string& name,
+                                             const std::string& type = "STATION",
+                                             float x = 1.0f, float y = 2.0f,
+                                             float theta = 0.0f) {
     nav_interfaces::msg::NavPoint pt;
     pt.name = name;
     pt.type = type;
@@ -48,11 +49,13 @@ static nav_interfaces::msg::NavPoint makeMsg(
 
 // 同步调用服务（阻塞直到收到响应或超时）
 template <typename SrvT>
-typename SrvT::Response::SharedPtr callService(rclcpp::Node::SharedPtr client_node,
-                                               const std::string& service_name,
-                                               typename SrvT::Request::SharedPtr request,
-                                               rclcpp::executors::SingleThreadedExecutor& exec,
-                                               std::chrono::milliseconds timeout = 2000ms) {
+typename SrvT::Response::SharedPtr callService(
+    rclcpp::Node::SharedPtr client_node,
+    const std::string& service_name,
+    typename SrvT::Request::SharedPtr request,
+    rclcpp::executors::SingleThreadedExecutor& exec,
+    std::chrono::milliseconds timeout = 2000ms) {
+
     auto client = client_node->create_client<SrvT>(service_name);
     EXPECT_TRUE(client->wait_for_service(timeout)) << "Service not available: " << service_name;
 
@@ -80,14 +83,15 @@ protected:
         executor_->add_node(host_node_);
         executor_->add_node(client_node_);
 
-        point_store_ = std::make_shared<map_asset_manager::PointStore>(host_node_->get_logger());
+        point_store_ = std::make_shared<map_asset_manager::PointStore>(
+            host_node_->get_logger());
         event_bus_ = std::make_shared<map_asset_manager::DataEventBus>();
 
         save_called_ = 0;
         auto save_fn = [this]() { ++save_called_; };
 
-        point_mgr_ =
-            std::make_shared<map_asset_manager::NavPointManager>(host_node_.get(), point_store_, event_bus_, save_fn);
+        point_mgr_ = std::make_shared<map_asset_manager::NavPointManager>(
+            host_node_.get(), point_store_, event_bus_, save_fn);
 
         // 服务名（~/xxx → /test_host_nav/xxx）
         prefix_ = "/test_host_nav";
@@ -101,7 +105,8 @@ protected:
     }
 
     template <typename SrvT>
-    typename SrvT::Response::SharedPtr call(const std::string& srv_name, typename SrvT::Request::SharedPtr req) {
+    typename SrvT::Response::SharedPtr call(const std::string& srv_name,
+                                            typename SrvT::Request::SharedPtr req) {
         return callService<SrvT>(client_node_, prefix_ + srv_name, req, *executor_);
     }
 
@@ -241,17 +246,21 @@ TEST_F(NavPointManagerServiceTest, RemovePoint_TriggersCascadeViaEventBus) {
     }
 
     // 构造 RouteStore，加入一条 r1 路线
-    auto route_store = std::make_shared<map_asset_manager::RouteStore>(host_node_->get_logger());
+    auto route_store = std::make_shared<map_asset_manager::RouteStore>(
+        host_node_->get_logger());
     route_store->addRoute({"r1", {"p1", "p2", "p3"}});
 
     // 构造 RouteManager（注册服务）
     auto rm_save = 0;
-    auto route_mgr = std::make_shared<map_asset_manager::RouteManager>(host_node_.get(), route_store, point_store_,
-                                                                       event_bus_, [&rm_save]() { ++rm_save; });
+    auto route_mgr = std::make_shared<map_asset_manager::RouteManager>(
+        host_node_.get(), route_store, point_store_, event_bus_,
+        [&rm_save]() { ++rm_save; });
 
     // 手动注册级联：导航点删除 → 路线清理（模拟 MapAssetManagerNode::registerEventHandlers）
     event_bus_->subscribe(map_asset_manager::AssetEventType::POINT_REMOVED,
-                          [&route_mgr](const map_asset_manager::AssetEvent& e) { route_mgr->onPointRemoved(e.name); });
+        [&route_mgr](const map_asset_manager::AssetEvent& e) {
+            route_mgr->onPointRemoved(e.name);
+        });
 
     // 删除 p2 → EventBus 通知 RouteManager → r1 的 p2 被移除
     auto rm_req = std::make_shared<nav_interfaces::srv::RemoveNavPoint::Request>();
@@ -282,13 +291,16 @@ protected:
         executor_->add_node(host_node_);
         executor_->add_node(client_node_);
 
-        point_store_ = std::make_shared<map_asset_manager::PointStore>(host_node_->get_logger());
-        route_store_ = std::make_shared<map_asset_manager::RouteStore>(host_node_->get_logger());
+        point_store_ = std::make_shared<map_asset_manager::PointStore>(
+            host_node_->get_logger());
+        route_store_ = std::make_shared<map_asset_manager::RouteStore>(
+            host_node_->get_logger());
         event_bus_ = std::make_shared<map_asset_manager::DataEventBus>();
 
         save_called_ = 0;
-        route_mgr_ = std::make_shared<map_asset_manager::RouteManager>(host_node_.get(), route_store_, point_store_,
-                                                                       event_bus_, [this]() { ++save_called_; });
+        route_mgr_ = std::make_shared<map_asset_manager::RouteManager>(
+            host_node_.get(), route_store_, point_store_, event_bus_,
+            [this]() { ++save_called_; });
 
         prefix_ = "/test_host_route";
 
@@ -306,7 +318,8 @@ protected:
     }
 
     template <typename SrvT>
-    typename SrvT::Response::SharedPtr call(const std::string& srv_name, typename SrvT::Request::SharedPtr req) {
+    typename SrvT::Response::SharedPtr call(const std::string& srv_name,
+                                            typename SrvT::Request::SharedPtr req) {
         return callService<SrvT>(client_node_, prefix_ + srv_name, req, *executor_);
     }
 

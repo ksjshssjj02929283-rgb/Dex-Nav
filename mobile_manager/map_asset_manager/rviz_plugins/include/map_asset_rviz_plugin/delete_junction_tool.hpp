@@ -1,13 +1,14 @@
 #pragma once
 
+#include <memory>
+#include <string>
+#include <vector>
+
 #include <OgreManualObject.h>
 #include <OgreSceneNode.h>
 
-#include <memory>
 #include <rclcpp/rclcpp.hpp>
 #include <rviz_common/tool.hpp>
-#include <string>
-#include <vector>
 
 #include "map_asset_rviz_plugin/route_graph_tools_common.hpp"
 
@@ -35,10 +36,10 @@ private:
     std::string service_prefix_{"/map_asset_manager"};
 
     std::vector<EndpointInfo> junctions_;   ///< 当前已加载的 Junction 列表
-    const EndpointInfo* hovered_{nullptr};  ///< 当前高亮的 Junction
+    const EndpointInfo*       hovered_{nullptr};  ///< 当前高亮的 Junction
 
     Ogre::ManualObject* preview_obj_{nullptr};
-    Ogre::SceneNode* preview_node_{nullptr};
+    Ogre::SceneNode*    preview_node_{nullptr};
 
     void reloadJunctions();
     void updateHighlight(double mx, double my);

@@ -26,6 +26,16 @@
     </description>
   </class>
 
+  <class name="map_asset_rviz_plugin/AddRoomTool"
+         type="map_asset_rviz_plugin::AddRoomTool"
+         base_class_type="rviz_common::Tool">
+    <description>
+      DSG ROOMS 层节点绘制工具（默认多边形）：先填写名称/类型/语义标签/关联 NavPoint，
+      再在地图左键添加顶点，右键完成（调用 map_asset_manager/add_room 服务）。
+      快捷键 M。
+    </description>
+  </class>
+
   <class name="map_asset_rviz_plugin/AddJunctionTool"
          type="map_asset_rviz_plugin::AddJunctionTool"
          base_class_type="rviz_common::Tool">

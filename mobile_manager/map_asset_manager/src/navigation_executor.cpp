@@ -2,15 +2,17 @@
 
 namespace map_asset_manager {
 
-NavigationExecutor::NavigationExecutor(rclcpp::Node::SharedPtr node) : node_(node), current_state_(NavState::IDLE) {
+NavigationExecutor::NavigationExecutor(rclcpp::Node::SharedPtr node)
+    : node_(node), current_state_(NavState::IDLE) {
     node_->declare_parameter<std::string>("controller_server_name", "/controller_server");
     node_->declare_parameter<double>("default_tolerance", 0.05);
 
     controller_server_name_ = node_->get_parameter("controller_server_name").as_string();
-    default_tolerance_ = node_->get_parameter("default_tolerance").as_double();
+    default_tolerance_       = node_->get_parameter("default_tolerance").as_double();
 
     nav2_client_ = rclcpp_action::create_client<NavigateToPose>(node_, "/navigate_to_pose");
-    nav2_through_poses_client_ = rclcpp_action::create_client<NavigateThroughPoses>(node_, "/navigate_through_poses");
+    nav2_through_poses_client_ =
+        rclcpp_action::create_client<NavigateThroughPoses>(node_, "/navigate_through_poses");
     set_param_client_ =
         node_->create_client<rcl_interfaces::srv::SetParameters>(controller_server_name_ + "/set_parameters");
 
@@ -33,11 +35,12 @@ bool NavigationExecutor::navigateToPose(const std::string& label,
         return false;
     }
 
-    auto goal_msg = NavigateToPose::Goal();
-    goal_msg.pose = pose;
+    auto goal_msg        = NavigateToPose::Goal();
+    goal_msg.pose        = pose;
 
     auto opts = rclcpp_action::Client<NavigateToPose>::SendGoalOptions();
-    opts.goal_response_callback = std::bind(&NavigationExecutor::goalResponseCallback, this, std::placeholders::_1);
+    opts.goal_response_callback =
+        std::bind(&NavigationExecutor::goalResponseCallback, this, std::placeholders::_1);
     opts.feedback_callback =
         std::bind(&NavigationExecutor::feedbackCallback, this, std::placeholders::_1, std::placeholders::_2);
     opts.result_callback = std::bind(&NavigationExecutor::resultCallback, this, std::placeholders::_1);
@@ -56,7 +59,7 @@ bool NavigationExecutor::navigateToPose(const std::string& label,
 
     {
         std::lock_guard<std::mutex> lock(state_mutex_);
-        current_state_ = NavState::NAVIGATING;
+        current_state_  = NavState::NAVIGATING;
         current_target_ = label;
     }
 
@@ -76,15 +79,16 @@ bool NavigationExecutor::navigateThroughPoses(const std::string& label,
         return false;
     }
 
-    auto goal_msg = NavigateThroughPoses::Goal();
+    auto goal_msg  = NavigateThroughPoses::Goal();
     goal_msg.poses = poses;
 
     auto opts = rclcpp_action::Client<NavigateThroughPoses>::SendGoalOptions();
     opts.goal_response_callback =
         std::bind(&NavigationExecutor::goalResponseCallbackThroughPoses, this, std::placeholders::_1);
-    opts.feedback_callback = std::bind(&NavigationExecutor::feedbackCallbackThroughPoses, this, std::placeholders::_1,
-                                       std::placeholders::_2);
-    opts.result_callback = std::bind(&NavigationExecutor::resultCallbackThroughPoses, this, std::placeholders::_1);
+    opts.feedback_callback = std::bind(&NavigationExecutor::feedbackCallbackThroughPoses,
+                                       this, std::placeholders::_1, std::placeholders::_2);
+    opts.result_callback =
+        std::bind(&NavigationExecutor::resultCallbackThroughPoses, this, std::placeholders::_1);
 
     auto future = nav2_through_poses_client_->async_send_goal(goal_msg, opts);
     if (future.wait_for(std::chrono::milliseconds(500)) != std::future_status::ready) {
@@ -100,11 +104,12 @@ bool NavigationExecutor::navigateThroughPoses(const std::string& label,
 
     {
         std::lock_guard<std::mutex> lock(state_mutex_);
-        current_state_ = NavState::NAVIGATING;
+        current_state_  = NavState::NAVIGATING;
         current_target_ = label;
     }
 
-    RCLCPP_INFO(node_->get_logger(), "Navigating route '%s' with %zu poses", label.c_str(), poses.size());
+    RCLCPP_INFO(node_->get_logger(), "Navigating route '%s' with %zu poses",
+                label.c_str(), poses.size());
     return true;
 }
 
@@ -140,7 +145,7 @@ std::string NavigationExecutor::getCurrentTarget() const {
 geometry_msgs::msg::PoseStamped NavigationExecutor::createPoseStamped(double x, double y, double yaw) {
     geometry_msgs::msg::PoseStamped pose;
     pose.header.frame_id = "map";
-    pose.header.stamp = node_->now();
+    pose.header.stamp    = node_->now();
     pose.pose.position.x = x;
     pose.pose.position.y = y;
     pose.pose.position.z = 0.0;
@@ -194,9 +199,11 @@ void NavigationExecutor::goalResponseCallbackThroughPoses(const GoalHandleNaviga
     }
 }
 
-void NavigationExecutor::feedbackCallbackThroughPoses(GoalHandleNavigateThroughPoses::SharedPtr,
-                                                      const std::shared_ptr<const NavigateThroughPoses::Feedback> fb) {
-    RCLCPP_DEBUG(node_->get_logger(), "Route navigation: %d poses remaining", fb->number_of_poses_remaining);
+void NavigationExecutor::feedbackCallbackThroughPoses(
+    GoalHandleNavigateThroughPoses::SharedPtr,
+    const std::shared_ptr<const NavigateThroughPoses::Feedback> fb) {
+    RCLCPP_DEBUG(node_->get_logger(), "Route navigation: %d poses remaining",
+                 fb->number_of_poses_remaining);
 }
 
 void NavigationExecutor::resultCallbackThroughPoses(const GoalHandleNavigateThroughPoses::WrappedResult& result) {
@@ -223,9 +230,9 @@ bool NavigationExecutor::setNav2GoalTolerance(double tolerance) {
     auto req = std::make_shared<rcl_interfaces::srv::SetParameters::Request>();
     for (const auto& param_name : {"goal_checker.lon_goal_tolerance", "goal_checker.lat_goal_tolerance"}) {
         rcl_interfaces::msg::Parameter p;
-        p.name = param_name;
-        p.value.type = rcl_interfaces::msg::ParameterType::PARAMETER_DOUBLE;
-        p.value.double_value = tolerance;
+        p.name                = param_name;
+        p.value.type          = rcl_interfaces::msg::ParameterType::PARAMETER_DOUBLE;
+        p.value.double_value  = tolerance;
         req->parameters.push_back(p);
     }
 
