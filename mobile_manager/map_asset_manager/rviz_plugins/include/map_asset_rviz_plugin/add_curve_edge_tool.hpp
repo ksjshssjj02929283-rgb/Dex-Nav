@@ -1,14 +1,15 @@
 #pragma once
 
-#include <OgreManualObject.h>
-#include <OgreSceneNode.h>
-
 #include <memory>
-#include <rclcpp/rclcpp.hpp>
-#include <rviz_common/tool.hpp>
 #include <string>
 #include <utility>
 #include <vector>
+
+#include <OgreManualObject.h>
+#include <OgreSceneNode.h>
+
+#include <rclcpp/rclcpp.hpp>
+#include <rviz_common/tool.hpp>
 
 #include "map_asset_rviz_plugin/route_graph_tools_common.hpp"
 
@@ -38,20 +39,20 @@ private:
     void clearPreview();
     void submitEdge(const EdgeConfig& cfg);
 
-    rclcpp::Node::SharedPtr node_;
-    std::string service_prefix_{"/map_asset_manager"};
-    std::vector<EndpointInfo> endpoints_;
-    bool loading_{false};  ///< 正在异步加载端点列表
-    double last_mx_{0.0};
-    double last_my_{0.0};
+    rclcpp::Node::SharedPtr              node_;
+    std::string                          service_prefix_{"/map_asset_manager"};
+    std::vector<EndpointInfo>            endpoints_;
+    bool                                 loading_{false};  ///< 正在异步加载端点列表
+    double                               last_mx_{0.0};
+    double                               last_my_{0.0};
 
-    bool selecting_{false};
+    bool         selecting_{false};
     EndpointInfo from_ep_;
-    EndpointInfo to_ep_;                             ///< snap 到的终点（右键完成时确定）
+    EndpointInfo to_ep_;   ///< snap 到的终点（右键完成时确定）
     std::vector<std::pair<float, float>> ctrl_pts_;  ///< 中间自由控制点
 
     Ogre::ManualObject* preview_obj_{nullptr};
-    Ogre::SceneNode* preview_node_{nullptr};
+    Ogre::SceneNode*    preview_node_{nullptr};
 };
 
 }  // namespace map_asset_rviz_plugin

@@ -8,9 +8,9 @@
 #include <mutex>
 #include <nav2_msgs/action/navigate_through_poses.hpp>
 #include <nav2_msgs/action/navigate_to_pose.hpp>
-#include <rcl_interfaces/srv/set_parameters.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp_action/rclcpp_action.hpp>
+#include <rcl_interfaces/srv/set_parameters.hpp>
 #include <string>
 #include <vector>
 
@@ -31,10 +31,13 @@ public:
 
     // 导航到单个姿态
     // label: 用于日志和状态上报的目标名称
-    bool navigateToPose(const std::string& label, const geometry_msgs::msg::PoseStamped& pose, double tolerance);
+    bool navigateToPose(const std::string& label,
+                        const geometry_msgs::msg::PoseStamped& pose,
+                        double tolerance);
 
     // 路径导航：调用方已将所有路径点解析为 PoseStamped 列表
-    bool navigateThroughPoses(const std::string& label, const std::vector<geometry_msgs::msg::PoseStamped>& poses);
+    bool navigateThroughPoses(const std::string& label,
+                              const std::vector<geometry_msgs::msg::PoseStamped>& poses);
 
     bool cancelNavigation();
 

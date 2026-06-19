@@ -7,6 +7,8 @@ NavPointDraftBridge* NavPointDraftBridge::instance() {
     return &inst;
 }
 
-void NavPointDraftBridge::notifyDraft(double x, double y, double yaw_rad) { Q_EMIT draftReady(x, y, yaw_rad); }
+void NavPointDraftBridge::notifyDraft(double x, double y, double yaw_rad) {
+    Q_EMIT draftReady(x, y, yaw_rad);
+}
 
 }  // namespace map_asset_rviz_plugin

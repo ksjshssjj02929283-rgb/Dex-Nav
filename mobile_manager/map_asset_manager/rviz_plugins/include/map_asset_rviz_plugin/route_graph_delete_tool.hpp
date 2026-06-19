@@ -1,14 +1,15 @@
 #pragma once
 
+#include <memory>
+#include <mutex>
+#include <string>
+#include <vector>
+
 #include <OgreManualObject.h>
 #include <OgreSceneNode.h>
 
-#include <memory>
-#include <mutex>
 #include <rclcpp/rclcpp.hpp>
 #include <rviz_common/tool.hpp>
-#include <string>
-#include <vector>
 
 #include "map_asset_rviz_plugin/route_graph_tools_common.hpp"
 
@@ -51,26 +52,27 @@ private:
     void updateHighlight(double mx, double my);
     void clearPreview();
     void doDelete();
-    float distToSegment(float px, float py, float x0, float y0, float x1, float y1) const;
+    float distToSegment(float px, float py,
+                        float x0, float y0, float x1, float y1) const;
 
-    rclcpp::Node::SharedPtr node_;
-    std::string service_prefix_{"/map_asset_manager"};
+    rclcpp::Node::SharedPtr      node_;
+    std::string                  service_prefix_{"/map_asset_manager"};
 
-    std::mutex data_mutex_;  ///< 保护 junctions_/edges_ 的多线程访问
-    std::vector<EndpointInfo> junctions_;
-    std::vector<EdgeInfo> edges_;
+    std::mutex                   data_mutex_;  ///< 保护 junctions_/edges_ 的多线程访问
+    std::vector<EndpointInfo>    junctions_;
+    std::vector<EdgeInfo>        edges_;
     // 端点位置映射（id → x,y）用于边 snap
-    std::vector<EndpointInfo> all_eps_;
+    std::vector<EndpointInfo>    all_eps_;
 
-    SelType sel_type_{SelType::NONE};
-    std::string sel_id_;  ///< 当前选中项 ID
-    float sel_x_{0.0f};
-    float sel_y_{0.0f};
-    double last_mx_{0.0};  ///< 最后一次鼠标 3D 坐标（用于 reload 后刷新预览）
-    double last_my_{0.0};
+    SelType      sel_type_{SelType::NONE};
+    std::string  sel_id_;        ///< 当前选中项 ID
+    float        sel_x_{0.0f};
+    float        sel_y_{0.0f};
+    double       last_mx_{0.0};  ///< 最后一次鼠标 3D 坐标（用于 reload 后刷新预览）
+    double       last_my_{0.0};
 
     Ogre::ManualObject* preview_obj_{nullptr};
-    Ogre::SceneNode* preview_node_{nullptr};
+    Ogre::SceneNode*    preview_node_{nullptr};
 };
 
 }  // namespace map_asset_rviz_plugin

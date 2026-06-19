@@ -2,24 +2,31 @@
 
 #include <QInputDialog>
 #include <QMessageBox>
-#include <pluginlib/class_list_macros.hpp>
+
 #include <rviz_common/display_context.hpp>
 #include <rviz_common/interaction/view_picker_iface.hpp>
 #include <rviz_common/ros_integration/ros_node_abstraction_iface.hpp>
 #include <rviz_common/viewport_mouse_event.hpp>
 
+#include <pluginlib/class_list_macros.hpp>
+
 namespace map_asset_rviz_plugin {
 
-DeleteEdgeTool::DeleteEdgeTool() { shortcut_key_ = 'x'; }
+DeleteEdgeTool::DeleteEdgeTool() {
+    shortcut_key_ = 'x';
+}
 
 void DeleteEdgeTool::onInitialize() {
     node_ = context_->getRosNodeAbstraction().lock()->get_raw_node();
-    get_graph_client_ = node_->create_client<nav_interfaces::srv::GetRouteGraph>(service_prefix_ + "/get_route_graph");
-    remove_edge_client_ =
-        node_->create_client<nav_interfaces::srv::RemoveRouteEdge>(service_prefix_ + "/remove_route_edge");
+    get_graph_client_   = node_->create_client<nav_interfaces::srv::GetRouteGraph>(
+        service_prefix_ + "/get_route_graph");
+    remove_edge_client_ = node_->create_client<nav_interfaces::srv::RemoveRouteEdge>(
+        service_prefix_ + "/remove_route_edge");
 }
 
-void DeleteEdgeTool::activate() { setStatus("左键点击弹出边列表选择删除，右键退出"); }
+void DeleteEdgeTool::activate() {
+    setStatus("左键点击弹出边列表选择删除，右键退出");
+}
 
 void DeleteEdgeTool::deactivate() {}
 
@@ -45,31 +52,34 @@ int DeleteEdgeTool::processMouseEvent(rviz_common::ViewportMouseEvent& event) {
         QStringList edge_list;
         for (const auto& e : resp->edges) {
             edge_list << QString("%1  (%2:%3 → %4:%5)")
-                             .arg(QString::fromStdString(e.id))
-                             .arg(QString::fromStdString(e.from_ep.type))
-                             .arg(QString::fromStdString(e.from_ep.id))
-                             .arg(QString::fromStdString(e.to_ep.type))
-                             .arg(QString::fromStdString(e.to_ep.id));
+                .arg(QString::fromStdString(e.id))
+                .arg(QString::fromStdString(e.from_ep.type))
+                .arg(QString::fromStdString(e.from_ep.id))
+                .arg(QString::fromStdString(e.to_ep.type))
+                .arg(QString::fromStdString(e.to_ep.id));
         }
 
         bool ok = false;
-        const QString sel = QInputDialog::getItem(nullptr, "删除路网边", "选择要删除的边:", edge_list, 0, false, &ok);
+        const QString sel = QInputDialog::getItem(
+            nullptr, "删除路网边", "选择要删除的边:", edge_list, 0, false, &ok);
         if (!ok || sel.isEmpty()) return 0;
 
         const QString edge_id = sel.left(sel.indexOf("  ("));
-        if (QMessageBox::question(nullptr, "确认删除", QString("确定删除边 \"%1\"？").arg(edge_id),
-                                  QMessageBox::Yes | QMessageBox::No) != QMessageBox::Yes) {
+        if (QMessageBox::question(nullptr, "确认删除",
+                QString("确定删除边 \"%1\"？").arg(edge_id),
+                QMessageBox::Yes | QMessageBox::No) != QMessageBox::Yes) {
             return 0;
         }
 
         auto del_req = std::make_shared<nav_interfaces::srv::RemoveRouteEdge::Request>();
         del_req->id = edge_id.toStdString();
-        remove_edge_client_->async_send_request(
-            del_req, [this, edge_id](rclcpp::Client<nav_interfaces::srv::RemoveRouteEdge>::SharedFuture f) {
+        remove_edge_client_->async_send_request(del_req,
+            [this, edge_id](rclcpp::Client<nav_interfaces::srv::RemoveRouteEdge>::SharedFuture f) {
                 try {
                     auto r = f.get();
-                    setStatus(r->success ? QString("边 '%1' 删除成功").arg(edge_id)
-                                         : QString("删除失败: %1").arg(QString::fromStdString(r->message)));
+                    setStatus(r->success
+                        ? QString("边 '%1' 删除成功").arg(edge_id)
+                        : QString("删除失败: %1").arg(QString::fromStdString(r->message)));
                 } catch (const std::exception& ex) {
                     setStatus(QString("删除异常: %1").arg(ex.what()));
                 }
