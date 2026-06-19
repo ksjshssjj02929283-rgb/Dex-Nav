@@ -7,6 +7,7 @@
 #include "map_asset_rviz_plugin/route_graph_tools_common.hpp"  // s_route_graph_editing
 
 #include <std_srvs/srv/trigger.hpp>
+#include <nav_interfaces/srv/save_assets.hpp>
 #include <rviz_common/ros_integration/ros_node_abstraction_iface.hpp>
 #include <rviz_common/display_context.hpp>
 
@@ -78,15 +79,15 @@ void RouteGraphSaveTool::activate() {
     s_route_graph_editing = false;
     setStatus("正在保存路网到文件…");
 
-    auto cli = node_->create_client<std_srvs::srv::Trigger>(
+    auto cli = node_->create_client<nav_interfaces::srv::SaveAssets>(
         service_prefix_ + "/save_assets");
     if (!cli->wait_for_service(std::chrono::milliseconds(1000))) {
         setStatus("save_assets 服务不可用（map_asset_manager 是否在运行？）");
         return;
     }
-    auto req = std::make_shared<std_srvs::srv::Trigger::Request>();
+    auto req = std::make_shared<nav_interfaces::srv::SaveAssets::Request>();
     cli->async_send_request(req,
-        [this](rclcpp::Client<std_srvs::srv::Trigger>::SharedFuture fut) {
+        [this](rclcpp::Client<nav_interfaces::srv::SaveAssets>::SharedFuture fut) {
             try {
                 auto resp = fut.get();
                 setStatus(resp->success
