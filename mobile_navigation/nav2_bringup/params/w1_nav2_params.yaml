@@ -78,8 +78,8 @@ controller_server:
     odom_topic: /feedback/odom
     progress_checker:
       plugin: "nav2_controller::PoseProgressChecker" # 进展检查插件
-      required_movement_radius: 0.1 # 普通模式：判定有进展所需的移动距离，单位 m
-      required_movement_angle: 0.1 # 普通模式：判定有进展所需的旋转角度，单位 rad
+      required_movement_radius: 0.05 # 普通模式：判定有进展所需的移动距离，单位 m
+      required_movement_angle: 0.05 # 普通模式：判定有进展所需的旋转角度，单位 rad
       movement_time_allowance: 3.0 # 普通模式：允许未达到足够进展的时间，单位 s
     near_goal_progress:
       enabled: True # 是否启用接近目标点时的宽松的进展检查
@@ -143,7 +143,7 @@ controller_server:
       # ============================================================
       profile_1: # 起步段
         vx_max: 0.4 # 最大前进速度
-        vx_min: -0.2 # 最小后退速度
+        vx_min: -0.3 # 最小后退速度
         vy_max: 0.5 # 侧向速度上限，DiffDrive 下通常不生效
         wz_max: 0.90 # 最大角速度
         GoalCritic: # 起步段不直接吸向终点，避免短路径任务过早抢控制量
@@ -245,23 +245,23 @@ controller_server:
           cost_weight: 15.0 # 目标朝向权重
           threshold_to_consider: 0.2 # 距离目标小于该值时启用目标朝向约束
         PathAngleCritic: # 路径朝向约束
-          cost_weight: 0.0 # 末段关闭路径朝向，避免和目标朝向精调冲突
+          cost_weight: 1.0 # 末段保留弱路径朝向，避免切换后突然失去路径牵引
           offset_from_furthest: 2 # 使用 furthest point 前方第 2 个路径点计算朝向
           threshold_to_consider: 0.5 # 接近目标后不再使用路径朝向约束
           max_angle_to_furthest: 1.0 # 允许的路径朝向角度阈值
           forward_preference: true # 偏好按前进方向对齐路径
         PathAlignCritic: # 路径贴合约束
-          cost_weight: 0.0 # 末段关闭路径贴合，让目标横向/纵向误差主导到点
+          cost_weight: 2.0 # 末段保留弱路径贴合，目标横向/纵向误差仍然主导到点
           offset_from_furthest: 15 # 参考 furthest point 前方第 15 个路径点
           trajectory_point_step: 3 # 轨迹评估采样间隔
           threshold_to_consider: 0.5 # 接近目标后不再使用路径贴合约束
           max_path_occupancy_ratio: 0.05 # 路径被障碍占据超过该比例时减弱路径贴合
         PathFollowCritic: # 路径推进约束
-          cost_weight: 0.0 # 末段关闭路径推进，避免继续追路径前方点导致越过目标
+          cost_weight: 1.0 # 末段保留弱路径推进，减少二三阶段切换时的停顿感
           offset_from_furthest: 5 # 跟踪 furthest point 前方第 5 个路径点
-          threshold_to_consider: 2.2 # 接近目标后不再使用路径推进约束
+          threshold_to_consider: 0.5 # 0.5m 外提供弱推进，0.5m 内交给目标精调
         PreferForwardCritic: # 前进偏好约束
-          cost_weight: 0.0 # 末段关闭前进偏好，允许必要的小幅倒退修正
+          cost_weight: 1.0 # 末段保留弱前进偏好，仍允许目标精调主导必要修正
           threshold_to_consider: 1.0
 
       # ============================================================

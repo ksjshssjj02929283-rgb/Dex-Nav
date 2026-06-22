@@ -236,10 +236,10 @@ void MPPIController::configureProfiles()
   profiles_[2].critics.goal_lateral = {40.0f, 1.0f, 10};
   profiles_[2].critics.goal_longitudinal = {25.0f, 0.8f, 10};
   profiles_[2].critics.goal_angle = {8.0f, 0.2f};
-  profiles_[2].critics.path_angle = {0.0f, 0.5f, 2, 1.0f, true};
-  profiles_[2].critics.path_align = {0.0f, 0.5f, 15, 3, 0.05f};
-  profiles_[2].critics.path_follow = {0.0f, 2.2f, 5};
-  profiles_[2].critics.prefer_forward = {0.0f, 1.0f};
+  profiles_[2].critics.path_angle = {1.0f, 0.5f, 2, 1.0f, true};
+  profiles_[2].critics.path_align = {2.0f, 0.5f, 15, 3, 0.05f};
+  profiles_[2].critics.path_follow = {1.0f, 0.5f, 5};
+  profiles_[2].critics.prefer_forward = {1.0f, 1.0f};
 
   getParam(profile_start_distance_, "profile_start_distance", 0.8, ParameterType::Static);
   getParam(profile_goal_distance_, "profile_goal_distance", 1.0, ParameterType::Static);
@@ -505,8 +505,9 @@ MppiProfileSettings MPPIController::interpolateProfiles(
   const bool entering_goal_profile =
     to.critics.goal_lateral.weight > from.critics.goal_lateral.weight &&
     to.critics.path_align.weight < from.critics.path_align.weight;
-  const double velocity_ratio = entering_goal_profile ? ratio * ratio : ratio;
-  const double goal_ratio = entering_goal_profile ? std::sqrt(ratio) : ratio;
+  const double velocity_ratio = ratio;
+  // 进入末段时 goal 慢启动、path 慢退场，避免切换初期突然丢失路径牵引。
+  const double goal_ratio = entering_goal_profile ? ratio * ratio : ratio;
   const double path_ratio = entering_goal_profile ? ratio * ratio : ratio;
 
   const auto lerpFloatWithRatio = [](float lhs, float rhs, double blend_ratio) {
@@ -516,7 +517,7 @@ MppiProfileSettings MPPIController::interpolateProfiles(
       return lerpFloatWithRatio(lhs, rhs, ratio);
     };
   const auto keepGoalGateOpen = [](float lhs, float rhs) {
-      // 目标类 critic: 距离小于 threshold 时启用，取较大值可让目标约束更早接管。
+      // 目标类 critic: threshold 是启用范围，先打开门；实际牵引强度由 goal_ratio 慢启动。
       return std::max(lhs, rhs);
     };
   const auto keepPathGateOpen = [](float lhs, float rhs) {
@@ -525,10 +526,10 @@ MppiProfileSettings MPPIController::interpolateProfiles(
     };
   const auto lerpInt = [ratio](int lhs, int rhs) {
       return static_cast<int>(std::lround(lhs + (rhs - lhs) * ratio));
-    };
+  };
 
   MppiProfileSettings result = to;
-  // 进入末段时速度上限延后下降，避免二三阶段边界先急减速再重新加速。
+  // 速度约束线性过渡，目标类 critic 在进入末段时更晚接管。
   result.velocity.vx_max =
     lerpFloatWithRatio(from.velocity.vx_max, to.velocity.vx_max, velocity_ratio);
   result.velocity.vx_min =
