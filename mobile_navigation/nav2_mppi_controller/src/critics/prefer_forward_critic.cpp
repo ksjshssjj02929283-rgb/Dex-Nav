@@ -32,7 +32,8 @@ void PreferForwardCritic::initialize()
 
 void PreferForwardCritic::score(CriticData & data)
 {
-  if (!enabled_ ||
+  // 三阶段 MPPI 中 cost_weight <= 0 表示该阶段关闭前进偏好，允许末段小幅倒退修正。
+  if (!enabled_ || weight_ <= 0.0f ||
     utils::withinPositionGoalTolerance(threshold_to_consider_, data.state.pose.pose, data.path))
   {
     return;

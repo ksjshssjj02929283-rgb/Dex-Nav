@@ -945,7 +945,7 @@ void ControllerServer::computeAndPublishVelocity()
   auto measured_ms = pose_ms + progress_ms + odom_ms + compute_ms + feedback_ms + publish_ms;
   auto unaccounted_ms = total_ms - measured_ms;
 
-  if (total_ms >= kSlowTimingWarnMs || 1) {
+  if (total_ms >= kSlowTimingWarnMs) {
     RCLCPP_WARN(
       get_logger(),
       "ControllerServer timing (ms): total=%.3f getPose=%.3f progress=%.3f odom=%.3f "

@@ -49,7 +49,6 @@ This process is then repeated a number of times and returns a converged solution
  | vy_max                     | double | Default 0.5. Max VY in either direction, if holonomic. (m/s)                                             |
  | vx_min                     | double | Default -0.35. Min VX (m/s)                                                                              |
  | wz_max                     | double | Default 1.9. Max WZ (rad/s)                                                                              |
- | profile_enabled            | bool   | Default true. Enable three-segment behavior profiles selected by path progress and distance to final goal. |
  | profile_start_distance     | double | Default 0.8. Path progress below this distance uses `profile_1` unless the goal profile is active.        |
  | profile_goal_distance      | double | Default 1.0. Distance to final goal at or below this value uses `profile_3`.                              |
  | profile_N.vx_max           | double | Optional max VX override for profile N, where N is 1, 2, or 3.                                            |
@@ -67,15 +66,15 @@ This process is then repeated a number of times and returns a converged solution
 
 #### 三段行为 Profile
 
-`profile_enabled` 默认启用；控制器会按路径进度和目标距离选择三段参数：
+三阶段 Profile 固定启用；控制器会按路径进度和目标距离选择三段参数：
 
 - `profile_1`：起步段，`path_progress < profile_start_distance` 且未进入末段时启用。
 - `profile_2`：中间段，起步段结束且未进入末段时启用。
 - `profile_3`：末段，`goal_distance <= profile_goal_distance` 时启用；末段优先级高于起步段。
 
-profile 可覆盖速度约束和已加载 critic 的运行时参数。支持的 critic 包括 `GoalCritic`、`GoalAngleCritic`、`PathAngleCritic`、`PathFollowCritic`、`PathAlignCritic`、`PreferForwardCritic`。切换时不会调用 optimizer `reset()`，不会重置噪声、采样状态或重建 critic 插件；控制器只更新运行约束、限幅当前控制序列，并把相关权重应用到已加载的 critic 实例。
+profile 可覆盖速度约束和已加载 critic 的运行时参数。支持的行为类 critic 包括 `GoalCritic`、`GoalLateralCritic`、`GoalLongitudinalCritic`、`GoalAngleCritic`、`PathAngleCritic`、`PathFollowCritic`、`PathAlignCritic`、`PreferForwardCritic`。切换时不会调用 optimizer `reset()`，不会重置噪声、采样状态或重建 critic 插件；控制器只更新运行约束、限幅当前控制序列，并把相关权重应用到已加载的 critic 实例。
 
-若 YAML 中没有配置 `profile_1`、`profile_2`、`profile_3`，三个阶段会继承 `FollowPath` 下的全局速度约束和 critic 参数。此时仍会产生阶段切换日志，但三个阶段的实际控制参数相同。
+单阶段 MPPI 兼容逻辑已删除；`profile_1`、`profile_2`、`profile_3` 应完整声明各自的行为类 critic 参数。全局 critic 配置只保留安全、可行性和插件加载职责，不再作为行为策略默认值。
 
 #### Trajectory Visualizer
  | Parameter             | Type   | Definition                                                                                                  |

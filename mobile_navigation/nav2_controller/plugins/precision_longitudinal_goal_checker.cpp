@@ -77,7 +77,6 @@ PrecisionLongitudinalGoalChecker::PrecisionLongitudinalGoalChecker()
   refine_cycles_(kDefaultRefineCycles),
   stable_window_size_(kDefaultStableWindowSize),
   refine_count_(0),
-  entered_accept_window_(false),
   accept_refine_restart_used_(false),
   desired_refine_restart_used_(false),
   check_stopped_(kDefaultCheckStopped),
@@ -157,21 +156,25 @@ bool PrecisionLongitudinalGoalChecker::isGoalReached(
   const geometry_msgs::msg::Twist & velocity)
 {
   const double goal_yaw = tf2::getYaw(goal_pose.orientation);
+  const double current_yaw = tf2::getYaw(query_pose.orientation);
   const double dx = query_pose.position.x - goal_pose.position.x;
   const double dy = query_pose.position.y - goal_pose.position.y;
 
-  // 按目标点坐标系计算纵向/横向误差，避免机器人当前朝向影响停车精度判断。
+  // 按目标点坐标系计算 current-goal 的纵向/横向误差，避免机器人当前朝向影响停车精度判断。
   const double lon_err = std::cos(goal_yaw) * dx + std::sin(goal_yaw) * dy;
   const double lat_err = -std::sin(goal_yaw) * dx + std::cos(goal_yaw) * dy;
-  const double dyaw = angles::shortest_angular_distance(
-    tf2::getYaw(query_pose.orientation), goal_yaw);
+  // yaw_err 与位置误差保持同一符号语义：current-goal。
+  const double dyaw = angles::shortest_angular_distance(goal_yaw, current_yaw);
+  const double abs_lon_err = std::fabs(lon_err);
+  const double abs_lat_err = std::fabs(lat_err);
+  const double abs_yaw_err = std::fabs(dyaw);
 
   const bool in_accept_window =
-    std::fabs(lon_err) <= accept_lon_goal_tolerance_ &&
-    std::fabs(lat_err) <= accept_lat_goal_tolerance_;
-  const double distance_err = std::hypot(lon_err, lat_err);
+    abs_lon_err <= accept_lon_goal_tolerance_ &&
+    abs_lat_err <= accept_lat_goal_tolerance_;
 
   if (!in_accept_window) {
+    const double distance_err = std::hypot(lon_err, lat_err);
     if (distance_err <= 0.1) {
       RCLCPP_INFO(
         rclcpp::get_logger("PrecisionLongitudinalGoalChecker"),
@@ -184,38 +187,49 @@ bool PrecisionLongitudinalGoalChecker::isGoalReached(
     return false;
   }
 
-  if (!entered_accept_window_) {
-    entered_accept_window_ = true;
-  }
-
-  recordErrors(lon_err, lat_err, dyaw);
+  recordAbsErrors(abs_lon_err, abs_lat_err, abs_yaw_err);
 
   const bool in_desired_window =
-    std::fabs(lon_err) <= desired_lon_goal_tolerance_ &&
-    std::fabs(lat_err) <= desired_lat_goal_tolerance_;
-  const bool stable_desired = desiredWindowStable();
+    abs_lon_err <= desired_lon_goal_tolerance_ &&
+    abs_lat_err <= desired_lat_goal_tolerance_;
   const int stable_window_count = static_cast<int>(lon_errors_.size());
   const double avg_lon_err = lon_errors_.empty() ? 0.0 : meanAbs(lon_errors_);
   const double avg_lat_err = lat_errors_.empty() ? 0.0 : meanAbs(lat_errors_);
   const double avg_yaw_err = yaw_errors_.empty() ? 0.0 : meanAbs(yaw_errors_);
+  const bool stable_window_ready =
+    stable_window_count >= stable_window_size_ &&
+    static_cast<int>(lat_errors_.size()) >= stable_window_size_ &&
+    static_cast<int>(yaw_errors_.size()) >= stable_window_size_;
+  const bool stable_desired =
+    stable_window_ready &&
+    avg_lon_err <= desired_lon_goal_tolerance_ &&
+    avg_lat_err <= desired_lat_goal_tolerance_ &&
+    avg_yaw_err <= yaw_goal_tolerance_;
   const int displayed_refine_count = std::min(refine_count_ + 1, refine_cycles_);
 
-  const bool yaw_ok = std::fabs(dyaw) <= yaw_goal_tolerance_;
+  const bool yaw_ok = abs_yaw_err <= yaw_goal_tolerance_;
   if (!yaw_ok) {
     const auto status = in_desired_window ? PrecisionStatus::YawUnstable :
       PrecisionStatus::AcceptOnly;
-    logStatusTransition(status, lon_err, lat_err, dyaw, stable_desired);
+    logStatusTransition(
+      status, lon_err, lat_err, dyaw, stable_desired,
+      stable_window_count, avg_lon_err, avg_lat_err, avg_yaw_err);
   }
 
+  bool stopped = true;
   if (check_stopped_) {
-    const bool stopped =
+    stopped =
       std::hypot(velocity.linear.x, velocity.linear.y) <= trans_stopped_velocity_ &&
       std::fabs(velocity.angular.z) <= rot_stopped_velocity_;
-    if (!stopped) {
+  }
+
+  auto log_stopped_unstable = [&]() {
       logStatusTransition(
-        PrecisionStatus::StoppedUnstable, lon_err, lat_err, dyaw, stable_desired);
+        PrecisionStatus::StoppedUnstable, lon_err, lat_err, dyaw, stable_desired,
+        stable_window_count, avg_lon_err, avg_lat_err, avg_yaw_err);
       RCLCPP_INFO(
         rclcpp::get_logger("PrecisionLongitudinalGoalChecker"),
+        "位置和角度已满足成功条件，但速度尚未满足停止判定："
         "lon_err=%.4f, lat_err=%.4f, yaw_err=%.4f, refine_count=%d/%d, "
         "current_desired=%s, yaw_ok=%s, avg_stable=%s, "
         "avg_abs=(%.4f, %.4f, %.4f), window=%d/%d, restart_used=(accept=%s, desired=%s)",
@@ -227,16 +241,15 @@ bool PrecisionLongitudinalGoalChecker::isGoalReached(
         stable_window_count, stable_window_size_,
         accept_refine_restart_used_ ? "true" : "false",
         desired_refine_restart_used_ ? "true" : "false");
-      return false;
-    }
-  }
+    };
 
   if (yaw_ok) {
     logStatusTransition(
       in_desired_window ?
       (stable_desired ? PrecisionStatus::DesiredStable : PrecisionStatus::DesiredUnstable) :
       PrecisionStatus::AcceptOnly,
-      lon_err, lat_err, dyaw, stable_desired);
+      lon_err, lat_err, dyaw, stable_desired,
+      stable_window_count, avg_lon_err, avg_lat_err, avg_yaw_err);
   }
 
   RCLCPP_INFO(
@@ -288,8 +301,13 @@ bool PrecisionLongitudinalGoalChecker::isGoalReached(
   }
 
   if (in_desired_window && yaw_ok && stable_desired) {
+    if (!stopped) {
+      log_stopped_unstable();
+      return false;
+    }
     publishGoalError(
-      query_pose, goal_pose, lon_err, lat_err, dyaw,
+      query_pose, goal_pose, goal_yaw, current_yaw, lon_err, lat_err, dyaw,
+      std::hypot(lon_err, lat_err), yaw_ok,
       in_desired_window, in_accept_window, stable_desired, "desired_stable");
     RCLCPP_INFO(
       rclcpp::get_logger("PrecisionLongitudinalGoalChecker"),
@@ -319,8 +337,14 @@ bool PrecisionLongitudinalGoalChecker::isGoalReached(
       return false;
     }
 
+    if (!stopped) {
+      log_stopped_unstable();
+      return false;
+    }
+
     publishGoalError(
-      query_pose, goal_pose, lon_err, lat_err, dyaw,
+      query_pose, goal_pose, goal_yaw, current_yaw, lon_err, lat_err, dyaw,
+      std::hypot(lon_err, lat_err), yaw_ok,
       in_desired_window, in_accept_window, stable_desired, "accept_fallback");
     RCLCPP_INFO(
       rclcpp::get_logger("PrecisionLongitudinalGoalChecker"),
@@ -366,7 +390,6 @@ bool PrecisionLongitudinalGoalChecker::getTolerances(
 
 void PrecisionLongitudinalGoalChecker::resetRefineState()
 {
-  entered_accept_window_ = false;
   last_status_ = PrecisionStatus::OutsideAccept;
   refine_count_ = 0;
   lon_errors_.clear();
@@ -374,12 +397,12 @@ void PrecisionLongitudinalGoalChecker::resetRefineState()
   yaw_errors_.clear();
 }
 
-void PrecisionLongitudinalGoalChecker::recordErrors(
-  double lon_err, double lat_err, double yaw_err)
+void PrecisionLongitudinalGoalChecker::recordAbsErrors(
+  double abs_lon_err, double abs_lat_err, double abs_yaw_err)
 {
-  lon_errors_.push_back(std::fabs(lon_err));
-  lat_errors_.push_back(std::fabs(lat_err));
-  yaw_errors_.push_back(std::fabs(yaw_err));
+  lon_errors_.push_back(abs_lon_err);
+  lat_errors_.push_back(abs_lat_err);
+  yaw_errors_.push_back(abs_yaw_err);
 
   while (static_cast<int>(lon_errors_.size()) > stable_window_size_) {
     lon_errors_.pop_front();
@@ -390,20 +413,6 @@ void PrecisionLongitudinalGoalChecker::recordErrors(
   while (static_cast<int>(yaw_errors_.size()) > stable_window_size_) {
     yaw_errors_.pop_front();
   }
-}
-
-bool PrecisionLongitudinalGoalChecker::desiredWindowStable() const
-{
-  if (static_cast<int>(lon_errors_.size()) < stable_window_size_ ||
-    static_cast<int>(lat_errors_.size()) < stable_window_size_ ||
-    static_cast<int>(yaw_errors_.size()) < stable_window_size_)
-  {
-    return false;
-  }
-
-  return meanAbs(lon_errors_) <= desired_lon_goal_tolerance_ &&
-         meanAbs(lat_errors_) <= desired_lat_goal_tolerance_ &&
-         meanAbs(yaw_errors_) <= yaw_goal_tolerance_;
 }
 
 double PrecisionLongitudinalGoalChecker::meanAbs(const std::deque<double> & data) const
@@ -418,9 +427,13 @@ double PrecisionLongitudinalGoalChecker::meanAbs(const std::deque<double> & data
 void PrecisionLongitudinalGoalChecker::publishGoalError(
   const geometry_msgs::msg::Pose & query_pose,
   const geometry_msgs::msg::Pose & goal_pose,
+  double goal_yaw,
+  double current_yaw,
   double lon_err,
   double lat_err,
   double yaw_err,
+  double distance_err,
+  bool yaw_within_tolerance,
   bool in_desired_window,
   bool in_accept_window,
   bool stable_desired,
@@ -456,21 +469,21 @@ void PrecisionLongitudinalGoalChecker::publishGoalError(
   add_value("result_type", result_type);
   add_double("goal_x", goal_pose.position.x);
   add_double("goal_y", goal_pose.position.y);
-  add_double("goal_yaw", tf2::getYaw(goal_pose.orientation));
+  add_double("goal_yaw", goal_yaw);
   add_double("current_x", query_pose.position.x);
   add_double("current_y", query_pose.position.y);
-  add_double("current_yaw", tf2::getYaw(query_pose.orientation));
+  add_double("current_yaw", current_yaw);
   add_double("longitudinal_error", lon_err);
   add_double("lateral_error", lat_err);
-  add_double("distance_error", std::hypot(lon_err, lat_err));
+  add_double("distance_error", distance_err);
   add_double("yaw_error", yaw_err);
   add_double("desired_longitudinal_tolerance", desired_lon_goal_tolerance_);
   add_double("desired_lateral_tolerance", desired_lat_goal_tolerance_);
   add_double("accept_longitudinal_tolerance", accept_lon_goal_tolerance_);
   add_double("accept_lateral_tolerance", accept_lat_goal_tolerance_);
   add_double("yaw_tolerance", yaw_goal_tolerance_);
-  add_bool("within_desired_tolerance", in_desired_window && std::fabs(yaw_err) <= yaw_goal_tolerance_);
-  add_bool("within_accept_tolerance", in_accept_window && std::fabs(yaw_err) <= yaw_goal_tolerance_);
+  add_bool("within_desired_tolerance", in_desired_window && yaw_within_tolerance);
+  add_bool("within_accept_tolerance", in_accept_window && yaw_within_tolerance);
   add_bool("desired_window_stable", stable_desired);
 
   msg.status.push_back(status);
@@ -482,7 +495,11 @@ void PrecisionLongitudinalGoalChecker::logStatusTransition(
   double lon_err,
   double lat_err,
   double yaw_err,
-  bool stable_desired)
+  bool stable_desired,
+  int stable_window_count,
+  double avg_lon_err,
+  double avg_lat_err,
+  double avg_yaw_err)
 {
   if (status == last_status_) {
     return;
@@ -490,10 +507,6 @@ void PrecisionLongitudinalGoalChecker::logStatusTransition(
 
   last_status_ = status;
   const auto logger = rclcpp::get_logger("PrecisionLongitudinalGoalChecker");
-  const int stable_window_count = static_cast<int>(lon_errors_.size());
-  const double avg_lon_err = lon_errors_.empty() ? 0.0 : meanAbs(lon_errors_);
-  const double avg_lat_err = lat_errors_.empty() ? 0.0 : meanAbs(lat_errors_);
-  const double avg_yaw_err = yaw_errors_.empty() ? 0.0 : meanAbs(yaw_errors_);
 
   switch (status) {
     case PrecisionStatus::AcceptOnly:

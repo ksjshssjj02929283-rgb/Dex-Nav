@@ -33,7 +33,8 @@ void GoalCritic::initialize()
 
 void GoalCritic::score(CriticData & data)
 {
-  if (!enabled_ || !utils::withinPositionGoalTolerance(
+  // 三阶段 MPPI 中 cost_weight <= 0 表示该阶段关闭此目标距离代价。
+  if (!enabled_ || weight_ <= 0.0f || !utils::withinPositionGoalTolerance(
       threshold_to_consider_, data.state.pose.pose, data.path))
   {
     return;

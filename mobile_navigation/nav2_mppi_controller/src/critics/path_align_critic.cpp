@@ -42,7 +42,8 @@ void PathAlignCritic::initialize()
 void PathAlignCritic::score(CriticData & data)
 {
   // Don't apply close to goal, let the goal critics take over
-  if (!enabled_ ||
+  // 三阶段 MPPI 中 cost_weight <= 0 表示该阶段关闭路径贴合代价，直接跳过较重的路径匹配循环。
+  if (!enabled_ || weight_ <= 0.0f ||
     utils::withinPositionGoalTolerance(threshold_to_consider_, data.state.pose.pose, data.path))
   {
     return;

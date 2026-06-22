@@ -11,10 +11,9 @@
 
 ## 1. 当前状态
 
-当前代码已经支持三段式 Profile，并且 `profile_enabled` 代码默认值已经改为 `true`。当前 `w1_nav2_params.yaml` 的 `FollowPath` 下已经配置三段式参数：
+当前代码已经固定使用三段式 Profile，单阶段 MPPI 兼容逻辑已经删除。当前 `w1_nav2_params.yaml` 的 `FollowPath` 下已经配置三段式参数：
 
 ```yaml
-profile_enabled
 profile_start_distance
 profile_goal_distance
 profile_transition_duration
@@ -27,12 +26,11 @@ profile_3
 
 | 参数 | 当前值 | 影响 |
 |---|---:|---|
-| `profile_enabled` | `true` | 三段式默认开启 |
 | `profile_start_distance` | `1.5` | 路径累计前进小于 1.5 m 时使用起步段 |
 | `profile_goal_distance` | `1.5` | 距离终点小于等于 1.5 m 时使用末段 |
 | `profile_transition_duration` | `0.6` | 阶段切换时用 0.6 s 插值过渡速度约束和支持的 critic 参数 |
 
-也就是说：**当前 YAML 已经会按三阶段进行切换，并且会用 `profile_transition_duration` 避免阶段边界一拍硬切。** `profile_1/2/3` 会覆盖速度约束和已支持的 Goal、GoalLateral、GoalAngle、PathAlign、PathFollow、PathAngle、PreferForward 等 critic 参数；未在某个阶段显式配置的字段会继承 `FollowPath` 下的全局配置。
+也就是说：**当前 YAML 已经会按三阶段进行切换，并且会用 `profile_transition_duration` 避免阶段边界一拍硬切。** `profile_1/2/3` 会完整管理速度约束和已支持的 Goal、GoalLateral、GoalLongitudinal、GoalAngle、PathAlign、PathFollow、PathAngle、PreferForward 等行为类 critic 参数；全局配置不再作为行为策略默认值。
 
 ## 2. 三阶段切换规则
 
@@ -140,12 +138,11 @@ profile_3
 
 ## 6. 当前三阶段参数
 
-下面这组参数已经放在 `FollowPath` 下，和 `vx_max/vx_min/vy_max/wz_max` 同级。当前策略是：**每个阶段都显式写出可覆盖的 critic 参数，数值先和全局配置保持一致；速度和角速度保留阶段差异**。
+下面这组参数已经放在 `FollowPath` 下，和 `vx_max/vx_min/vy_max/wz_max` 同级。当前策略是：**每个阶段都显式写出行为类 critic 参数；全局配置不再承担单阶段行为策略默认值。**
 
-### 6.1 阶段总开关
+### 6.1 阶段切换参数
 
 ```yaml
-profile_enabled: true
 profile_start_distance: 1.5
 profile_goal_distance: 1.5
 profile_transition_duration: 0.6
@@ -155,7 +152,6 @@ profile_transition_duration: 0.6
 
 | 参数 | 建议值 | 含义 |
 |---|---:|---|
-| `profile_enabled` | `true` | 开启三段式 |
 | `profile_start_distance` | `1.5` | 路径累计前进小于 1.5 m 时使用起步段 |
 | `profile_goal_distance` | `1.5` | 距离终点小于等于 1.5 m 时使用末段 |
 | `profile_transition_duration` | `0.6` | 阶段切换时用 0.6 s 插值过渡 |
@@ -293,7 +289,6 @@ profile_3:
 可以将下面片段放到 `controller_server.ros__parameters.FollowPath` 下：
 
 ```yaml
-profile_enabled: true
 profile_start_distance: 0.8
 profile_goal_distance: 0.7
 
@@ -413,7 +408,7 @@ MPPI active constraints: vx=[..., ...] vy=... wz=...
 | `profile switched` | 确认阶段确实发生切换 |
 | `active constraints` | 确认 profile 速度约束是否真正应用到 optimizer |
 
-如果 `profile_enabled=0`，说明 YAML 显式关闭了三段式，或者参数加载结果覆盖了代码默认值。
+当前版本不再支持关闭三段式；若阶段没有按预期切换，应优先检查 `profile_start_distance`、`profile_goal_distance`、`path_progress` 和 `goal_distance`。
 
 ## 9. 风险和注意事项
 

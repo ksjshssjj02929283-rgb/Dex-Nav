@@ -83,15 +83,18 @@ protected:
   };
 
   void resetRefineState();
-  void recordErrors(double lon_err, double lat_err, double yaw_err);
-  bool desiredWindowStable() const;
+  void recordAbsErrors(double abs_lon_err, double abs_lat_err, double abs_yaw_err);
   double meanAbs(const std::deque<double> & data) const;
   void publishGoalError(
     const geometry_msgs::msg::Pose & query_pose,
     const geometry_msgs::msg::Pose & goal_pose,
+    double goal_yaw,
+    double current_yaw,
     double lon_err,
     double lat_err,
     double yaw_err,
+    double distance_err,
+    bool yaw_within_tolerance,
     bool in_desired_window,
     bool in_accept_window,
     bool stable_desired,
@@ -101,14 +104,18 @@ protected:
     double lon_err,
     double lat_err,
     double yaw_err,
-    bool stable_desired);
+    bool stable_desired,
+    int stable_window_count,
+    double avg_lon_err,
+    double avg_lat_err,
+    double avg_yaw_err);
 
   double desired_lon_goal_tolerance_, desired_lat_goal_tolerance_;
   double accept_lon_goal_tolerance_, accept_lat_goal_tolerance_;
   double yaw_goal_tolerance_;
   int refine_cycles_, stable_window_size_;
   int refine_count_;
-  bool entered_accept_window_, accept_refine_restart_used_, desired_refine_restart_used_;
+  bool accept_refine_restart_used_, desired_refine_restart_used_;
   bool check_stopped_;
   PrecisionStatus last_status_{PrecisionStatus::OutsideAccept};
   double trans_stopped_velocity_, rot_stopped_velocity_;

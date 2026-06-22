@@ -112,6 +112,7 @@ protected:
 
   void configureProfiles();
 
+  // 根据路径进度和到目标距离选择三阶段 profile，并把速度/行为代价平滑应用到 optimizer。
   void applyProfileForPathState(double path_progress, double goal_distance);
 
   size_t selectProfile(double path_progress, double goal_distance) const;
@@ -138,7 +139,6 @@ protected:
   TrajectoryVisualizer trajectory_visualizer_;
 
   bool visualize_;
-  bool profile_enabled_{true};
   std::array<MppiProfileSettings, 3> profiles_;
   MppiProfileSettings applied_profile_;
   MppiProfileSettings transition_start_profile_;
@@ -147,6 +147,7 @@ protected:
   double profile_start_distance_{0.8};
   double profile_goal_distance_{1.0};
   double profile_transition_duration_{0.0};
+  double profile_switch_hysteresis_{0.05};
   size_t active_profile_{0};
   bool profile_transition_active_{false};
 
