@@ -31,7 +31,7 @@ bool MapManager::UpdateMapList() {
 
 bool MapManager::LoadMap(const std::string& map_name) {
     LOG(WARNING) << "Loading map: " << map_name;
-    std::string map_yaml_path = map_folder_ + "/" + map_name + "/map.yaml";
+    std::string map_yaml_path = map_folder_ + "/" + map_name + "/slam/map.yaml";  // 底图在 slam/（DEC-007）
 
     if (map_folder_.empty()) {
         LOG(ERROR) << "Invalid map folder.";
