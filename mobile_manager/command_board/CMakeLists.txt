@@ -11,6 +11,7 @@ find_package(std_msgs REQUIRED)
 find_package(diagnostic_msgs REQUIRED)
 find_package(nav_interfaces REQUIRED)
 find_package(geometry_msgs REQUIRED)
+find_package(nav_msgs REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
@@ -18,6 +19,7 @@ find_package(yaml-cpp REQUIRED)
 find_package(Boost REQUIRED COMPONENTS filesystem)
 find_package(PkgConfig REQUIRED)
 find_package(glog REQUIRED)
+find_package(nlohmann_json REQUIRED)
 
 include_directories(
   include
@@ -45,6 +47,9 @@ target_link_libraries(command_board_core
 add_executable(command_board_node
   apps/command_board_node.cpp
   apps/command_board_ros.cpp
+  src/map_version_manager.cpp
+  src/status_monitor.cpp
+  src/auto_map_saver.cpp
 )
 
 ament_target_dependencies(command_board_node
@@ -60,10 +65,12 @@ ament_target_dependencies(command_board_node
   tf2
   tf2_geometry_msgs
   geometry_msgs
+  nav_msgs
 )
 
 target_link_libraries(command_board_node
   command_board_core
+  nlohmann_json::nlohmann_json
 )
 
 install(TARGETS

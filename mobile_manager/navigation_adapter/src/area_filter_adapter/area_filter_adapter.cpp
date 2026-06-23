@@ -609,7 +609,10 @@ size_t AreaFilterAdapter::buildRenderHash() const {
         hashQuantized(&seed, static_cast<double>(area->max_speed), kHashSpeedResolution);
         hashQuantized(&seed, static_cast<double>(area->stop_distance), kHashPositionResolution);
         hashQuantized(&seed, static_cast<double>(area->depth_min_height), kHashPositionResolution);
-        hashCombine(&seed, area->linked_point_name);
+        hashCombine(&seed, area->manual_linked_point_names.size());
+        for (const auto& linked_point_name : area->manual_linked_point_names) {
+            hashCombine(&seed, linked_point_name);
+        }
         hashCombine(&seed, area->charger_type);
         hashCombine(&seed, area->attribute);
         hashCombine(&seed, area->polygon.size());
