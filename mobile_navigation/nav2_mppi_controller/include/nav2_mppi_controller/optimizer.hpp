@@ -130,6 +130,30 @@ public:
   void applyProfile(const MppiProfileSettings & profile);
 
   /**
+   * @brief Get active constraints after profile and speed limit are applied
+   * @return Active optimizer constraints used for sampling and output clipping
+   */
+  const models::ControlConstraints & getActiveConstraints() const {return settings_.constraints;}
+
+  /**
+   * @brief Whether a speed limit from costmap filter is currently active
+   * @return True if speed limit is active
+   */
+  bool isSpeedLimitActive() const {return speed_limit_active_;}
+
+  /**
+   * @brief Get current speed limit value
+   * @return Speed limit value, absolute m/s or percentage depending on flag
+   */
+  double getSpeedLimit() const {return speed_limit_;}
+
+  /**
+   * @brief Whether current speed limit value is percentage
+   * @return True if speed limit is percentage
+   */
+  bool isSpeedLimitPercentage() const {return speed_limit_is_percentage_;}
+
+  /**
    * @brief Point optimizer + all critics to a costmap snapshot (async/decoupled access)
    * @param costmap Snapshot costmap to read during scoring
    */

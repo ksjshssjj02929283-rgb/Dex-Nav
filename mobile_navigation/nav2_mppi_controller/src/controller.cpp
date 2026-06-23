@@ -56,6 +56,8 @@ void MPPIController::configure(
   trajectory_visualizer_.on_configure(
     parent_, name_,
     costmap_ros_->getGlobalFrameID(), parameters_handler_.get());
+  profile_debug_publisher_ =
+    node->create_publisher<std_msgs::msg::Float64MultiArray>("/mppi/profile_debug", 10);
 
   RCLCPP_INFO(logger_, "Configured MPPI Controller: %s", name_.c_str());
 }
@@ -64,6 +66,7 @@ void MPPIController::cleanup()
 {
   optimizer_.shutdown();
   trajectory_visualizer_.on_cleanup();
+  profile_debug_publisher_.reset();
   parameters_handler_.reset();
   RCLCPP_INFO(logger_, "Cleaned up MPPI Controller: %s", name_.c_str());
 }
@@ -71,12 +74,18 @@ void MPPIController::cleanup()
 void MPPIController::activate()
 {
   trajectory_visualizer_.on_activate();
+  if (profile_debug_publisher_) {
+    profile_debug_publisher_->on_activate();
+  }
   parameters_handler_->start();
   RCLCPP_INFO(logger_, "Activated MPPI Controller: %s", name_.c_str());
 }
 
 void MPPIController::deactivate()
 {
+  if (profile_debug_publisher_) {
+    profile_debug_publisher_->on_deactivate();
+  }
   trajectory_visualizer_.on_deactivate();
   RCLCPP_INFO(logger_, "Deactivated MPPI Controller: %s", name_.c_str());
 }
@@ -172,6 +181,7 @@ geometry_msgs::msg::TwistStamped MPPIController::computeVelocityCommands(
   auto t_optimize_start = std::chrono::high_resolution_clock::now();
   geometry_msgs::msg::TwistStamped cmd =
     optimizer_.evalControl(robot_pose, robot_speed, transformed_plan, goal_checker);
+  publishProfileDebug(path_progress, goal_distance);
   auto t_optimize_end = std::chrono::high_resolution_clock::now();
   double optimize_ms =
     std::chrono::duration<double, std::milli>(t_optimize_end - t_optimize_start).count();
@@ -204,6 +214,38 @@ geometry_msgs::msg::TwistStamped MPPIController::computeVelocityCommands(
   return cmd;
 }
 
+void MPPIController::publishProfileDebug(double path_progress, double goal_distance)
+{
+  if (!profile_debug_publisher_ || !profile_debug_publisher_->is_activated()) {
+    return;
+  }
+
+  const auto & applied_velocity = applied_profile_.velocity;
+  const auto & active_constraints = optimizer_.getActiveConstraints();
+  auto msg = std::make_unique<std_msgs::msg::Float64MultiArray>();
+  msg->data = {
+    static_cast<double>(active_profile_ + 1),
+    path_progress,
+    goal_distance,
+    profile_transition_active_ ? 1.0 : 0.0,
+    static_cast<double>(applied_velocity.vx_min),
+    static_cast<double>(applied_velocity.vx_max),
+    static_cast<double>(applied_velocity.vy_max),
+    static_cast<double>(applied_velocity.wz_max),
+    static_cast<double>(active_constraints.vx_min),
+    static_cast<double>(active_constraints.vx_max),
+    static_cast<double>(active_constraints.vy),
+    static_cast<double>(active_constraints.wz),
+    optimizer_.isSpeedLimitActive() ? 1.0 : 0.0,
+    optimizer_.getSpeedLimit(),
+    optimizer_.isSpeedLimitPercentage() ? 1.0 : 0.0,
+    profile_start_distance_,
+    profile_goal_distance_,
+    profile_transition_duration_,
+    profile_switch_hysteresis_,
+  };
+  profile_debug_publisher_->publish(std::move(msg));
+}
 
 void MPPIController::configureProfiles()
 {

@@ -29,6 +29,8 @@
 #include "nav2_core/controller.hpp"
 #include "nav2_core/goal_checker.hpp"
 #include "rclcpp/rclcpp.hpp"
+#include "rclcpp_lifecycle/lifecycle_publisher.hpp"
+#include "std_msgs/msg/float64_multi_array.hpp"
 
 namespace nav2_mppi_controller
 {
@@ -126,6 +128,8 @@ protected:
 
   void updateProfileTransition();
 
+  void publishProfileDebug(double path_progress, double goal_distance);
+
   std::string name_;
   rclcpp_lifecycle::LifecycleNode::WeakPtr parent_;
   rclcpp::Clock::SharedPtr clock_;
@@ -137,6 +141,8 @@ protected:
   Optimizer optimizer_;
   PathHandler path_handler_;
   TrajectoryVisualizer trajectory_visualizer_;
+  std::shared_ptr<rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::Float64MultiArray>>
+  profile_debug_publisher_;
 
   bool visualize_;
   std::array<MppiProfileSettings, 3> profiles_;
