@@ -38,7 +38,7 @@ CommandBoardManagerROS::CommandBoardManagerROS() : rclcpp::Node("command_board_m
     sub_opt.callback_group = callback_group_;
 
     localization_state_sub_ = this->create_subscription<nav_interfaces::msg::LocalizationState>(
-        "/localization_state", qos,
+        "/localization_node/state", qos,
         std::bind(&CommandBoardManagerROS::OnLocalizationState, this, std::placeholders::_1), sub_opt);
 
     diagnostics_agg_sub_ = this->create_subscription<diagnostic_msgs::msg::DiagnosticArray>(
@@ -78,9 +78,17 @@ CommandBoardManagerROS::CommandBoardManagerROS() : rclcpp::Node("command_board_m
                   std::placeholders::_2),
         rmw_qos_profile_services_default, callback_group_);
 
+    // 地图统一版本备份 + 回退单入口（Model C / DEC-009）：~/backup_unified、~/rollback_map
+    map_version_manager_ = std::make_unique<MapVersionManager>(this);
+
+    // 状态聚合 + 条件自动保存（StatusMonitor 提供快照，AutoMapSaver 日级触发 + ~/save_map 手动）
+    status_monitor_ = std::make_unique<StatusMonitor>(this);
+    auto_map_saver_ = std::make_unique<AutoMapSaver>(this, status_monitor_.get());
+
     RCLCPP_INFO(get_logger(),
                 "CommandBoardManagerROS initialized. "
-                "Services: ~/reset_map_origin_by_xyyaw, ~/reset_map_origin_by_robot_pose");
+                "Services: ~/reset_map_origin_by_xyyaw, ~/reset_map_origin_by_robot_pose, "
+                "~/backup_unified, ~/rollback_map");
 }
 
 // ──────────────────────────────────────────────────────────────────────

@@ -30,6 +30,9 @@
 #include "nav_interfaces/srv/load_map.hpp"
 #include "nav_interfaces/srv/reset_map_origin_by_xy_yaw.hpp"
 #include "nav_interfaces/srv/transform_assets.hpp"
+#include "map_version_manager.hpp"
+#include "status_monitor.hpp"
+#include "auto_map_saver.hpp"
 
 namespace command_board {
 
@@ -93,6 +96,13 @@ private:
     rclcpp::Subscription<std_msgs::msg::String>::SharedPtr map_name_sub_;
 
     std::unique_ptr<Localization_SM> localization_sm_;
+
+    // 地图统一版本备份 + 回退单入口（Model C / DEC-009，移植自 nav2_command_board）
+    std::unique_ptr<MapVersionManager> map_version_manager_;
+
+    // 状态聚合 + 条件自动保存地图（移植自 nav2_command_board）
+    std::unique_ptr<StatusMonitor> status_monitor_;
+    std::unique_ptr<AutoMapSaver>  auto_map_saver_;
 };
 
 }  // namespace command_board

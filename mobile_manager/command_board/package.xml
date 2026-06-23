@@ -22,6 +22,7 @@
   <depend>yaml-cpp</depend>
   <depend>glog</depend>
   <depend>boost</depend>
+  <depend>nlohmann-json-dev</depend>
 
   <export>
     <build_type>ament_cmake</build_type>
