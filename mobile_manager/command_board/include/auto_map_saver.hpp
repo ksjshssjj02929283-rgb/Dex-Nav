@@ -58,11 +58,14 @@ private:
     rclcpp::Node*  node_;
     StatusMonitor* status_monitor_;  // non-owning
 
-    // Parameters (DEC-006: switched from hourly to daily trigger).
+    // Parameters (DEC-016: daily time-point → time window + persistence).
     bool        enable_ = true;
-    int         daily_save_hour_ = 20;          // 0-23, local time
-    int         daily_save_minute_ = 0;         // 0-59, local time
-    double      check_poll_interval_sec_ = 60.0;  // how often to check the wall clock
+    int         save_window_start_hour_ = 20;   // 0-23, local time
+    int         save_window_start_minute_ = 0;  // 0-59
+    int         save_window_end_hour_ = 21;     // 0-23
+    int         save_window_end_minute_ = 0;    // 0-59
+    double      check_poll_interval_sec_ = 60.0;  // window poll cadence
+    std::string state_file_path_ = "~/.ros/command_board_auto_map_saver.state";  // persists last_saved_ymd_
     std::string save_service_ = "/localization_node/save_map";
     double      save_service_timeout_sec_ = 30.0;
     double      pose_change_threshold_m_ = 0.10;
@@ -72,9 +75,12 @@ private:
     int         battery_soc_skip_below_ = 10;
     bool        skip_when_task_not_idle_ = true;
 
-    // Compact YYYYMMDD form (e.g. 20260522); -1 = never fired yet.
+    // Compact YYYYMMDD form (e.g. 20260522); -1 = never saved yet.
     static int CurrentLocalYmd();
-    static bool LocalTimeReached(int target_hour, int target_minute);
+    bool InSaveWindow() const;                 // now within [start, end] local-time window
+    int  LoadPersistedState() const;           // read last_saved_ymd_ from state file; -1 if none/invalid
+    void PersistState(int ymd) const;          // write last_saved_ymd_ to state file
+    static std::string ExpandUser(const std::string& path);  // expand leading ~ to $HOME
 
     // State.
     geometry_msgs::msg::Pose2D last_saved_pose_{};
@@ -82,7 +88,7 @@ private:
     rclcpp::Time               last_saved_time_;
     SkipReason                 last_skip_reason_ = SkipReason::kNone;
     bool                       any_attempt_made_ = false;
-    int                        last_fired_ymd_ = -1;  // last calendar day a save was attempted
+    int                        last_saved_ymd_ = -1;  // last calendar day a save SUCCEEDED (persisted)
 
     rclcpp::TimerBase::SharedPtr timer_;
     rclcpp::TimerBase::SharedPtr status_timer_;

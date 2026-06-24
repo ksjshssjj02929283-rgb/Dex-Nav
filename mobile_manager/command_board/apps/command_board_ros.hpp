@@ -70,6 +70,14 @@ private:
     // 内部：调用子进程 reset_map_origin_tool
     bool RunResetMapOriginTool(const std::string& map_name, double x, double y, double yaw, std::string& out_log);
 
+    // Tunable parameters (declared in ctor; see params/command_board_params.yaml).
+    int    reset_origin_sample_frames_{11};
+    double reset_origin_sample_timeout_sec_{5.0};
+    double service_call_timeout_sec_{15.0};
+    double service_wait_timeout_sec_{3.0};
+    bool   react_to_estop_{true};
+    bool   react_to_bumper_{true};
+
     rclcpp::CallbackGroup::SharedPtr callback_group_;
 
     rclcpp::Subscription<nav_interfaces::msg::LocalizationState>::SharedPtr localization_state_sub_;
