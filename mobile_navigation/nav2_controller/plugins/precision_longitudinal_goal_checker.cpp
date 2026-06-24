@@ -63,6 +63,7 @@ constexpr double kDefaultAcceptLatGoalTolerance = 0.02;
 constexpr double kDefaultYawGoalTolerance = 0.02;
 constexpr int kDefaultRefineCycles = 20;
 constexpr int kDefaultStableWindowSize = 10;
+constexpr bool kDefaultEnableHighPrecision = true;
 constexpr bool kDefaultCheckStopped = false;
 constexpr double kDefaultTransStoppedVelocity = 0.01;
 constexpr double kDefaultRotStoppedVelocity = 0.02;
@@ -79,6 +80,7 @@ PrecisionLongitudinalGoalChecker::PrecisionLongitudinalGoalChecker()
   refine_count_(0),
   accept_refine_restart_used_(false),
   desired_refine_restart_used_(false),
+  enable_high_precision_(kDefaultEnableHighPrecision),
   check_stopped_(kDefaultCheckStopped),
   trans_stopped_velocity_(kDefaultTransStoppedVelocity),
   rot_stopped_velocity_(kDefaultRotStoppedVelocity)
@@ -117,6 +119,9 @@ void PrecisionLongitudinalGoalChecker::initialize(
   nav2_util::declare_parameter_if_not_declared(
     node, plugin_name + ".stable_window_size", rclcpp::ParameterValue(kDefaultStableWindowSize));
   nav2_util::declare_parameter_if_not_declared(
+    node, plugin_name + ".enable_high_precision",
+    rclcpp::ParameterValue(kDefaultEnableHighPrecision));
+  nav2_util::declare_parameter_if_not_declared(
     node, plugin_name + ".check_stopped", rclcpp::ParameterValue(kDefaultCheckStopped));
   nav2_util::declare_parameter_if_not_declared(
     node, plugin_name + ".trans_stopped_velocity",
@@ -132,6 +137,7 @@ void PrecisionLongitudinalGoalChecker::initialize(
   node->get_parameter(plugin_name + ".yaw_goal_tolerance", yaw_goal_tolerance_);
   node->get_parameter(plugin_name + ".refine_cycles", refine_cycles_);
   node->get_parameter(plugin_name + ".stable_window_size", stable_window_size_);
+  node->get_parameter(plugin_name + ".enable_high_precision", enable_high_precision_);
   node->get_parameter(plugin_name + ".check_stopped", check_stopped_);
   node->get_parameter(plugin_name + ".trans_stopped_velocity", trans_stopped_velocity_);
   node->get_parameter(plugin_name + ".rot_stopped_velocity", rot_stopped_velocity_);
@@ -252,6 +258,24 @@ bool PrecisionLongitudinalGoalChecker::isGoalReached(
       stable_window_count, avg_lon_err, avg_lat_err, avg_yaw_err);
   }
 
+  if (!enable_high_precision_ && yaw_ok) {
+    if (!stopped) {
+      log_stopped_unstable();
+      return false;
+    }
+    publishGoalError(
+      query_pose, goal_pose, goal_yaw, current_yaw, lon_err, lat_err, dyaw,
+      std::hypot(lon_err, lat_err), yaw_ok,
+      in_desired_window, in_accept_window, stable_desired, "accept_direct");
+    RCLCPP_INFO(
+      rclcpp::get_logger("PrecisionLongitudinalGoalChecker"),
+      "接受精度到位成功：高精度模式已关闭，当前误差满足接受精度，"
+      "lon_err=%.4f, lat_err=%.4f, yaw_err=%.4f, accept=(%.4f, %.4f)",
+      lon_err, lat_err, dyaw,
+      accept_lon_goal_tolerance_, accept_lat_goal_tolerance_);
+    return true;
+  }
+
   RCLCPP_INFO(
     rclcpp::get_logger("PrecisionLongitudinalGoalChecker"),
     "lon_err=%.4f, lat_err=%.4f, yaw_err=%.4f, refine_count=%d/%d, "
@@ -266,8 +290,7 @@ bool PrecisionLongitudinalGoalChecker::isGoalReached(
     accept_refine_restart_used_ ? "true" : "false",
     desired_refine_restart_used_ ? "true" : "false");
 
-  if (yaw_ok && !accept_refine_restart_used_ && refine_count_ > 0)
-  {
+  if (yaw_ok && !accept_refine_restart_used_ && refine_count_ > 0) {
     accept_refine_restart_used_ = true;
     refine_count_ = 0;
     lon_errors_.clear();
@@ -283,8 +306,7 @@ bool PrecisionLongitudinalGoalChecker::isGoalReached(
     return false;
   }
 
-  if (in_desired_window && yaw_ok && !desired_refine_restart_used_ && refine_count_ > 0)
-  {
+  if (in_desired_window && yaw_ok && !desired_refine_restart_used_ && refine_count_ > 0) {
     desired_refine_restart_used_ = true;
     refine_count_ = 0;
     lon_errors_.clear();
@@ -482,6 +504,7 @@ void PrecisionLongitudinalGoalChecker::publishGoalError(
   add_double("accept_longitudinal_tolerance", accept_lon_goal_tolerance_);
   add_double("accept_lateral_tolerance", accept_lat_goal_tolerance_);
   add_double("yaw_tolerance", yaw_goal_tolerance_);
+  add_bool("high_precision_enabled", enable_high_precision_);
   add_bool("within_desired_tolerance", in_desired_window && yaw_within_tolerance);
   add_bool("within_accept_tolerance", in_accept_window && yaw_within_tolerance);
   add_bool("desired_window_stable", stable_desired);
@@ -593,7 +616,10 @@ PrecisionLongitudinalGoalChecker::dynamicParametersCallback(
         resetRefineState();
       }
     } else if (type == ParameterType::PARAMETER_BOOL) {
-      if (name == plugin_name_ + ".check_stopped") {
+      if (name == plugin_name_ + ".enable_high_precision") {
+        enable_high_precision_ = parameter.as_bool();
+        resetRefineState();
+      } else if (name == plugin_name_ + ".check_stopped") {
         check_stopped_ = parameter.as_bool();
       }
     }

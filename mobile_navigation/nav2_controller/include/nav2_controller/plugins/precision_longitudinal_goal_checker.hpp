@@ -116,6 +116,7 @@ protected:
   int refine_cycles_, stable_window_size_;
   int refine_count_;
   bool accept_refine_restart_used_, desired_refine_restart_used_;
+  bool enable_high_precision_;
   bool check_stopped_;
   PrecisionStatus last_status_{PrecisionStatus::OutsideAccept};
   double trans_stopped_velocity_, rot_stopped_velocity_;

@@ -189,6 +189,7 @@ goal_checker:
   accept_lon_goal_tolerance: 0.02
   accept_lat_goal_tolerance: 0.02
   yaw_goal_tolerance: 0.02
+  enable_high_precision: true
   refine_cycles: 20
   stable_window_size: 10
   check_stopped: false
@@ -246,6 +247,9 @@ PrecisionLongitudinalGoalChecker
 │   ├── refine_count 累加
 │   └── 返回 false，继续让 controller 精调
 │
+├── enable_high_precision=false，且位置和角度满足接受精度
+│   └── 直接返回 true，不再追求 1cm
+│
 ├── 本次误差和近 10 次平均误差都进入 1cm 目标区
 │   └── 返回 true
 │
@@ -264,6 +268,11 @@ accept_lon_goal_tolerance / accept_lat_goal_tolerance
 
 yaw_goal_tolerance
   目标航向角容差。当前是 0.02rad，约 1.15 度。
+
+enable_high_precision
+  是否启用高精度到点判定。
+  true 表示先追求 desired_* 的 1cm 精度，再按 refine_cycles 退让到 accept_*。
+  false 表示只要进入 accept_* 的 2cm 接受精度且 yaw 满足，就直接判定成功。
 
 refine_cycles
   进入 2cm 后继续尝试精调的控制周期数。

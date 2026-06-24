@@ -317,6 +317,27 @@ TEST(PrecisionLongitudinalGoalChecker, accept_window_falls_back_after_refine_cyc
       stoppedTwist()));
 }
 
+TEST(PrecisionLongitudinalGoalChecker, disabled_high_precision_accepts_accept_window_directly)
+{
+  auto x = std::make_shared<TestLifecycleNode>("precision_goal_checker_accept_only");
+  PrecisionLongitudinalGoalChecker gc;
+  auto costmap = std::make_shared<nav2_costmap_2d::Costmap2DROS>("precision_costmap_accept_only");
+
+  x->declare_parameter("precision.enable_high_precision", false);
+  gc.initialize(x, "precision", costmap);
+  const auto desired_lon_tolerance =
+    x->get_parameter("precision.desired_lon_goal_tolerance").as_double();
+  const auto accept_lon_tolerance =
+    x->get_parameter("precision.accept_lon_goal_tolerance").as_double();
+  const auto accept_only_lon_error = (desired_lon_tolerance + accept_lon_tolerance) * 0.5;
+
+  EXPECT_TRUE(
+    gc.isGoalReached(
+      poseFrom2D(accept_only_lon_error, 0.0, 0.0),
+      poseFrom2D(0.0, 0.0, 0.0),
+      stoppedTwist()));
+}
+
 TEST(PrecisionLongitudinalGoalChecker, reset_clears_refine_state)
 {
   auto x = std::make_shared<TestLifecycleNode>("precision_goal_checker_reset");

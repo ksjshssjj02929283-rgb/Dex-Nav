@@ -94,6 +94,7 @@ controller_server:
       accept_lon_goal_tolerance: 0.02 # 精调后允许接受的纵向精度，当前配置为 2cm
       accept_lat_goal_tolerance: 0.02 # 精调后允许接受的横向精度，当前配置为 2cm
       yaw_goal_tolerance: 0.02
+      enable_high_precision: false # true：先追求 1cm 高精度；false：只要求 2cm 接受精度
       refine_cycles: 40 # controller_frequency=10Hz，对应进入 2cm 后继续精调约 4s
       stable_window_size: 5 # controller_frequency=10Hz，对应最近约 0.5s 的高精度稳定窗口
       check_stopped: false # 是否要求到点时底盘速度也足够小；false 表示只按位置和航向判断成功
@@ -167,8 +168,8 @@ controller_server:
           max_angle_to_furthest: 0.7 # 更早触发路径朝向纠偏
           forward_preference: true # 偏好按前进方向对齐路径
         PathAlignCritic: # 路径贴合约束
-          cost_weight: 8.0 # 起步段适度贴线，避免刚起步过度贴线导致转向僵硬
-          offset_from_furthest: 8 # 更早参与贴线
+          cost_weight: 15.0 # 起步段适度贴线，避免刚起步过度贴线导致转向僵硬
+          offset_from_furthest: 3 # 更早参与贴线
           trajectory_point_step: 3 # 轨迹评估采样间隔
           threshold_to_consider: 0.3 # 接近末段后交给目标类代价
           max_path_occupancy_ratio: 0.08 # 起步段略放宽路径占据判断，给转向留空间
@@ -177,7 +178,7 @@ controller_server:
           offset_from_furthest: 7 # 跟踪 furthest point 前方第 7 个路径点
           threshold_to_consider: 1.2 # 中近距离后逐步让位给目标段
         PreferForwardCritic: # 前进偏好约束
-          cost_weight: 6.0 # 起步段略加强前进偏好，减少 180 度场景直接倒车
+          cost_weight: 3.0 # 起步段略加强前进偏好，减少 180 度场景直接倒车
           threshold_to_consider: 0.25 # 接近目标 0.25m 内不再强制前进偏好
 
       # ============================================================
