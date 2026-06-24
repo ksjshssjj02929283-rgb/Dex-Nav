@@ -89,7 +89,7 @@ CommandBoardManagerROS::CommandBoardManagerROS() : rclcpp::Node("command_board_m
                   std::placeholders::_2),
         rmw_qos_profile_services_default, callback_group_);
 
-    // 地图统一版本备份 + 回退单入口（Model C / DEC-009）：~/backup_unified、~/rollback_map
+    // 地图版本备份 + 回退单入口：~/backup_unified、~/rollback_map
     map_version_manager_ = std::make_unique<MapVersionManager>(this);
 
     // 状态聚合 + 条件自动保存（StatusMonitor 提供快照，AutoMapSaver 日级触发 + ~/save_map 手动）

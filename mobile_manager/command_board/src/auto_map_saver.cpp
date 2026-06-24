@@ -65,8 +65,7 @@ AutoMapSaver::AutoMapSaver(rclcpp::Node* node, StatusMonitor* status_monitor)
     status_pub_ = node_->create_publisher<std_msgs::msg::String>(
         "~/auto_map_saver_status", rclcpp::QoS(1).transient_local());
 
-    // Track current map path (map_manager/* are latched) to locate the backup
-    // ring for today's-save idempotency (DEC-017).
+    // Track current map path (map_manager/* latched) to locate the backup ring.
     auto map_qos = rclcpp::QoS(1).transient_local();
     rclcpp::SubscriptionOptions map_sub_opt;
     map_sub_opt.callback_group = callback_group_;
@@ -112,7 +111,7 @@ bool AutoMapSaver::InSaveWindow() const {
     const int now_min   = tm.tm_hour * 60 + tm.tm_min;
     const int start_min = save_window_start_hour_ * 60 + save_window_start_minute_;
     const int end_min   = save_window_end_hour_   * 60 + save_window_end_minute_;
-    // One-day window only (start <= end); cross-midnight not supported (see 方案 §11.6).
+    // One-day window only (start <= end); cross-midnight not supported.
     return now_min >= start_min && now_min <= end_min;
 }
 
@@ -122,9 +121,8 @@ std::string AutoMapSaver::CurrentLocalYmdStr() {
     return std::string(buf);
 }
 
-// DEC-017: the on-disk backup ring is the single source of truth for
-// "已保存今天" — scanning it means a manually-deleted backup is detected and
-// re-created, and no separate flag can drift from reality.
+// Today's-save state = the on-disk backup ring (single source of truth):
+// a manually-deleted backup is detected here and re-created.
 bool AutoMapSaver::HasBackupForToday() const {
     if (map_folder_.empty() || map_name_.empty()) return false;  // path unknown
     namespace fs = std::filesystem;
@@ -140,12 +138,8 @@ bool AutoMapSaver::HasBackupForToday() const {
 }
 
 void AutoMapSaver::OnTimer() {
-    // DEC-016 window + DEC-017 backup-dir idempotency.
-    //   ① skip if outside [start, end] window
-    //   ② skip if map path unknown (map_manager topics not yet received)
-    //   ③ skip if today's backup already exists on disk (single source of truth;
-    //      a manually-deleted backup is detected here and re-created)
-    //   ④ on skip/failure nothing is marked → retry on next poll within window
+    // Time-window + backup-dir idempotency: skip if outside window / path unknown
+    // / today's backup exists; nothing marked on skip/failure → retry next poll.
     const int today_ymd = CurrentLocalYmd();
     if (!InSaveWindow()) {
         RCLCPP_INFO(node_->get_logger(),
@@ -218,8 +212,7 @@ void AutoMapSaver::OnSaveMap(
     res->map_path  = map_path;
     res->backup_ts = backup_ts;
     if (res->success) {
-        // Manual save produces a backup.<today> on disk too, so HasBackupForToday()
-        // naturally sees it next poll — no separate state to update (DEC-017).
+        // Manual save also produces backup.<today>, so HasBackupForToday() sees it.
         auto snap = status_monitor_->GetSnapshot();
         if (snap.pose_valid) {
             last_saved_pose_ = snap.pose;

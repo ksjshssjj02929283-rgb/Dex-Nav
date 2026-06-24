@@ -58,7 +58,7 @@ private:
     rclcpp::Node*  node_;
     StatusMonitor* status_monitor_;  // non-owning
 
-    // Parameters (DEC-016 time window; DEC-017 backup-dir idempotency).
+    // Parameters (time window + backup-dir idempotency).
     bool        enable_ = true;
     int         save_window_start_hour_ = 20;   // 0-23, local time
     int         save_window_start_minute_ = 0;  // 0-59
@@ -77,8 +77,7 @@ private:
     static int CurrentLocalYmd();              // compact YYYYMMDD int (e.g. 20260522)
     static std::string CurrentLocalYmdStr();   // "YYYYMMDD", for backup.<ts> prefix match
     bool InSaveWindow() const;                 // now within [start, end] local-time window
-    // DEC-017: today's save state IS the on-disk backup ring (single source of truth).
-    // True iff <map_folder>/<map_name>/slam/backups/ has a backup.<today>* entry.
+    // True iff <map>/slam/backups/ has a backup.<today>* entry (single source of truth).
     bool HasBackupForToday() const;
 
     // State.
@@ -87,7 +86,7 @@ private:
     rclcpp::Time               last_saved_time_;
     SkipReason                 last_skip_reason_ = SkipReason::kNone;
     bool                       any_attempt_made_ = false;
-    // Map path from map_manager/* topics (DEC-017: locate the backup ring).
+    // Map path from map_manager/* topics (locates the backup ring).
     std::string map_folder_;
     std::string map_name_;
 

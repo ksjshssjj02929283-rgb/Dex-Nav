@@ -70,7 +70,7 @@ private:
     // 内部：调用子进程 reset_map_origin_tool
     bool RunResetMapOriginTool(const std::string& map_name, double x, double y, double yaw, std::string& out_log);
 
-    // Tunable parameters (declared in ctor; see params/command_board_params.yaml).
+    // Tunable parameters (declared in ctor).
     int    reset_origin_sample_frames_{11};
     double reset_origin_sample_timeout_sec_{5.0};
     double service_call_timeout_sec_{15.0};
@@ -105,7 +105,7 @@ private:
 
     std::unique_ptr<Localization_SM> localization_sm_;
 
-    // 地图统一版本备份 + 回退单入口（Model C / DEC-009，移植自 nav2_command_board）
+    // 地图版本备份 + 回退单入口（移植自 nav2_command_board）
     std::unique_ptr<MapVersionManager> map_version_manager_;
 
     // 状态聚合 + 条件自动保存地图（移植自 nav2_command_board）
