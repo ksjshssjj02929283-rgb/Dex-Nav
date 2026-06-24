@@ -2,7 +2,9 @@
 
 #include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <ctime>
+#include <filesystem>
 #include <sstream>
 
 #include "status_monitor.hpp"
@@ -27,8 +29,10 @@ AutoMapSaver::AutoMapSaver(rclcpp::Node* node, StatusMonitor* status_monitor)
         var = node_->declare_parameter(name, var);
     };
     declare("auto_map_saver.enable",                          enable_);
-    declare("auto_map_saver.daily_save_hour",                 daily_save_hour_);
-    declare("auto_map_saver.daily_save_minute",               daily_save_minute_);
+    declare("auto_map_saver.save_window_start_hour",          save_window_start_hour_);
+    declare("auto_map_saver.save_window_start_minute",        save_window_start_minute_);
+    declare("auto_map_saver.save_window_end_hour",            save_window_end_hour_);
+    declare("auto_map_saver.save_window_end_minute",          save_window_end_minute_);
     declare("auto_map_saver.check_poll_interval_sec",         check_poll_interval_sec_);
     declare("auto_map_saver.save_service",                    save_service_);
     declare("auto_map_saver.save_service_timeout_sec",        save_service_timeout_sec_);
@@ -39,19 +43,13 @@ AutoMapSaver::AutoMapSaver(rclcpp::Node* node, StatusMonitor* status_monitor)
     declare("auto_map_saver.battery_soc_skip_below",          battery_soc_skip_below_);
     declare("auto_map_saver.skip_when_task_not_idle",         skip_when_task_not_idle_);
 
-    // Sanity-clamp daily target.
-    if (daily_save_hour_   < 0 || daily_save_hour_   > 23) daily_save_hour_   = 20;
-    if (daily_save_minute_ < 0 || daily_save_minute_ > 59) daily_save_minute_ = 0;
-
-    // If we start up after today's target time, treat today as already fired so
-    // we don't fire immediately on launch.
-    if (LocalTimeReached(daily_save_hour_, daily_save_minute_)) {
-        last_fired_ymd_ = CurrentLocalYmd();
-        RCLCPP_INFO(node_->get_logger(),
-                    "[AutoMapSaver] Startup past today's target %02d:%02d — "
-                    "next trigger tomorrow.",
-                    daily_save_hour_, daily_save_minute_);
-    }
+    // Sanity-clamp window endpoints.
+    auto clamp_hm = [](int& h, int& m) {
+        if (h < 0 || h > 23) h = 0;
+        if (m < 0 || m > 59) m = 0;
+    };
+    clamp_hm(save_window_start_hour_, save_window_start_minute_);
+    clamp_hm(save_window_end_hour_,   save_window_end_minute_);
 
     callback_group_ = node_->create_callback_group(
         rclcpp::CallbackGroupType::MutuallyExclusive);
@@ -67,6 +65,20 @@ AutoMapSaver::AutoMapSaver(rclcpp::Node* node, StatusMonitor* status_monitor)
     status_pub_ = node_->create_publisher<std_msgs::msg::String>(
         "~/auto_map_saver_status", rclcpp::QoS(1).transient_local());
 
+    // Track current map path (map_manager/* are latched) to locate the backup
+    // ring for today's-save idempotency (DEC-017).
+    auto map_qos = rclcpp::QoS(1).transient_local();
+    rclcpp::SubscriptionOptions map_sub_opt;
+    map_sub_opt.callback_group = callback_group_;
+    map_folder_sub_ = node_->create_subscription<std_msgs::msg::String>(
+        "map_manager/map_folder", map_qos,
+        [this](const std_msgs::msg::String::SharedPtr msg) { map_folder_ = msg->data; },
+        map_sub_opt);
+    map_name_sub_ = node_->create_subscription<std_msgs::msg::String>(
+        "map_manager/map_name", map_qos,
+        [this](const std_msgs::msg::String::SharedPtr msg) { map_name_ = msg->data; },
+        map_sub_opt);
+
     if (enable_) {
         const auto period = std::chrono::duration<double>(check_poll_interval_sec_);
         timer_ = node_->create_wall_timer(
@@ -75,12 +87,14 @@ AutoMapSaver::AutoMapSaver(rclcpp::Node* node, StatusMonitor* status_monitor)
     }
 
     status_timer_ = node_->create_wall_timer(
-        1s, std::bind(&AutoMapSaver::OnStatusTimer, this));
+        1s, std::bind(&AutoMapSaver::OnStatusTimer, this), callback_group_);
 
     RCLCPP_INFO(node_->get_logger(),
-                "AutoMapSaver ready. enable=%d daily_target=%02d:%02d "
-                "poll_interval=%.1fs save_service=%s. Service: ~/save_map.",
-                enable_, daily_save_hour_, daily_save_minute_,
+                "AutoMapSaver ready. enable=%d window=%02d:%02d~%02d:%02d "
+                "poll=%.1fs save_service=%s. Idempotency=on-disk backup ring "
+                "(<map>/slam/backups/backup.<today>). Service: ~/save_map.",
+                enable_, save_window_start_hour_, save_window_start_minute_,
+                save_window_end_hour_, save_window_end_minute_,
                 check_poll_interval_sec_, save_service_.c_str());
 }
 
@@ -91,43 +105,88 @@ int AutoMapSaver::CurrentLocalYmd() {
     return (tm.tm_year + 1900) * 10000 + (tm.tm_mon + 1) * 100 + tm.tm_mday;
 }
 
-bool AutoMapSaver::LocalTimeReached(int target_hour, int target_minute) {
+bool AutoMapSaver::InSaveWindow() const {
     const auto t  = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
     std::tm tm{};
     localtime_r(&t, &tm);
-    if (tm.tm_hour > target_hour) return true;
-    if (tm.tm_hour < target_hour) return false;
-    return tm.tm_min >= target_minute;
+    const int now_min   = tm.tm_hour * 60 + tm.tm_min;
+    const int start_min = save_window_start_hour_ * 60 + save_window_start_minute_;
+    const int end_min   = save_window_end_hour_   * 60 + save_window_end_minute_;
+    // One-day window only (start <= end); cross-midnight not supported (see 方案 §11.6).
+    return now_min >= start_min && now_min <= end_min;
+}
+
+std::string AutoMapSaver::CurrentLocalYmdStr() {
+    char buf[16];
+    std::snprintf(buf, sizeof(buf), "%08d", CurrentLocalYmd());
+    return std::string(buf);
+}
+
+// DEC-017: the on-disk backup ring is the single source of truth for
+// "已保存今天" — scanning it means a manually-deleted backup is detected and
+// re-created, and no separate flag can drift from reality.
+bool AutoMapSaver::HasBackupForToday() const {
+    if (map_folder_.empty() || map_name_.empty()) return false;  // path unknown
+    namespace fs = std::filesystem;
+    const fs::path backups_dir = fs::path(map_folder_) / map_name_ / "slam" / "backups";
+    const std::string prefix = "backup." + CurrentLocalYmdStr();  // e.g. backup.20260623
+    std::error_code ec;
+    if (!fs::exists(backups_dir, ec) || ec) return false;
+    for (const auto& entry : fs::directory_iterator(backups_dir, ec)) {
+        if (ec) break;
+        if (entry.path().filename().string().rfind(prefix, 0) == 0) return true;
+    }
+    return false;
 }
 
 void AutoMapSaver::OnTimer() {
-    // Daily gate: fire only when wall clock crosses today's target AND we
-    // haven't fired today yet. Polling cadence is check_poll_interval_sec.
+    // DEC-016 window + DEC-017 backup-dir idempotency.
+    //   ① skip if outside [start, end] window
+    //   ② skip if map path unknown (map_manager topics not yet received)
+    //   ③ skip if today's backup already exists on disk (single source of truth;
+    //      a manually-deleted backup is detected here and re-created)
+    //   ④ on skip/failure nothing is marked → retry on next poll within window
     const int today_ymd = CurrentLocalYmd();
-    if (today_ymd == last_fired_ymd_) return;  // already attempted today
-    if (!LocalTimeReached(daily_save_hour_, daily_save_minute_)) return;
+    if (!InSaveWindow()) {
+        RCLCPP_INFO(node_->get_logger(),
+                     "[AutoMapSaver] Not in save window (%02d:%02d~%02d:%02d on %d), skip this poll.",
+                     save_window_start_hour_, save_window_start_minute_,
+                     save_window_end_hour_, save_window_end_minute_, today_ymd);
+        return;               // not in the save window yet
+    }
 
-    last_fired_ymd_   = today_ymd;  // mark attempted (even if skipped by conditions)
+    if (map_folder_.empty() || map_name_.empty()) {
+        RCLCPP_WARN_THROTTLE(node_->get_logger(), *node_->get_clock(), 30000,
+                    "[AutoMapSaver] map path unknown (waiting map_manager/*), skip this poll.");
+        return;
+    }
+    if (HasBackupForToday()) {
+        RCLCPP_INFO(node_->get_logger(),
+                    "[AutoMapSaver] Today's backup already exists, skip this poll.");
+        return;           // today's backup exists → idempotent skip
+    }
+
     any_attempt_made_ = true;
 
     const auto reason = CheckPreconditions();
     last_skip_reason_ = reason;
-
     if (reason != SkipReason::kNone) {
         RCLCPP_INFO(node_->get_logger(),
-                    "[AutoMapSaver] Skipped (daily %02d:%02d on %d): reason=%s",
-                    daily_save_hour_, daily_save_minute_, today_ymd,
+                    "[AutoMapSaver] Skipped in window (%02d:%02d~%02d:%02d on %d), will retry: reason=%s",
+                    save_window_start_hour_, save_window_start_minute_,
+                    save_window_end_hour_, save_window_end_minute_, today_ymd,
                     SkipReasonToString(reason));
-        return;
+        return;  // not marked → retried next poll
     }
 
     std::string srv_msg, map_path, backup_ts;
     if (!CallSaveMapService("", srv_msg, map_path, backup_ts)) {
         last_skip_reason_ = SkipReason::kSaveFailed;
         RCLCPP_ERROR(node_->get_logger(),
-                     "[AutoMapSaver] save_map call failed: %s", srv_msg.c_str());
-        return;
+                     "[AutoMapSaver] save_map failed in window, will retry: %s", srv_msg.c_str());
+        return;  // not marked → retried next poll
     }
+
     auto snap = status_monitor_->GetSnapshot();
     if (snap.pose_valid) {
         last_saved_pose_ = snap.pose;
@@ -135,8 +194,8 @@ void AutoMapSaver::OnTimer() {
     }
     last_saved_time_ = node_->now();
     RCLCPP_INFO(node_->get_logger(),
-                "[AutoMapSaver] Saved (daily %02d:%02d on %d): %s; pose=(%.3f, %.3f, %.4f)",
-                daily_save_hour_, daily_save_minute_, today_ymd, srv_msg.c_str(),
+                "[AutoMapSaver] Saved (window on %d): %s (backup_ts=%s); pose=(%.3f, %.3f, %.4f)",
+                today_ymd, srv_msg.c_str(), backup_ts.c_str(),
                 last_saved_pose_.x, last_saved_pose_.y, last_saved_pose_.theta);
 }
 
@@ -159,6 +218,8 @@ void AutoMapSaver::OnSaveMap(
     res->map_path  = map_path;
     res->backup_ts = backup_ts;
     if (res->success) {
+        // Manual save produces a backup.<today> on disk too, so HasBackupForToday()
+        // naturally sees it next poll — no separate state to update (DEC-017).
         auto snap = status_monitor_->GetSnapshot();
         if (snap.pose_valid) {
             last_saved_pose_ = snap.pose;
@@ -184,8 +245,8 @@ AutoMapSaver::SkipReason AutoMapSaver::CheckPreconditions() {
     // ① estop — hard safety gate.
     if (snap.is_estop_active) return SkipReason::kEstop;
 
-    // ② low battery.
-    if (snap.battery_valid &&
+    // ② low battery (battery_soc_skip_below_ < 0 disables this check).
+    if (battery_soc_skip_below_ >= 0 && snap.battery_valid &&
         snap.battery_soc < static_cast<uint16_t>(battery_soc_skip_below_)) {
         return SkipReason::kLowBattery;
     }
@@ -250,9 +311,13 @@ void AutoMapSaver::OnStatusTimer() {
     std_msgs::msg::String msg;
     std::ostringstream oss;
     oss << "enable=" << (enable_ ? "true" : "false")
-        << " daily_target=" << daily_save_hour_ << ":"
-        << (daily_save_minute_ < 10 ? "0" : "") << daily_save_minute_
-        << " last_fired_ymd=" << last_fired_ymd_
+        << " window=" << save_window_start_hour_ << ":"
+        << (save_window_start_minute_ < 10 ? "0" : "") << save_window_start_minute_
+        << "~" << save_window_end_hour_ << ":"
+        << (save_window_end_minute_ < 10 ? "0" : "") << save_window_end_minute_
+        << " in_window=" << (InSaveWindow() ? "true" : "false")
+        << " map=" << (map_name_.empty() ? "?" : map_name_)
+        << " backup_today=" << (HasBackupForToday() ? "true" : "false")
         << " any_attempt=" << (any_attempt_made_ ? "true" : "false")
         << " last_skip=" << SkipReasonToString(last_skip_reason_);
     if (last_saved_pose_valid_) {

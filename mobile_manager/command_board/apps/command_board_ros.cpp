@@ -29,6 +29,17 @@ CommandBoardManagerROS::CommandBoardManagerROS() : rclcpp::Node("command_board_m
     localization_sm_ = std::make_unique<Localization_SM>([this]() { this->HandleLocalizationSuccess(); },
                                                          [this]() { this->HandleLocalizationFailed(); });
 
+    reset_origin_sample_frames_ =
+        this->declare_parameter("reset_origin_sample_frames", reset_origin_sample_frames_);
+    reset_origin_sample_timeout_sec_ =
+        this->declare_parameter("reset_origin_sample_timeout_sec", reset_origin_sample_timeout_sec_);
+    service_call_timeout_sec_ =
+        this->declare_parameter("service_call_timeout_sec", service_call_timeout_sec_);
+    service_wait_timeout_sec_ =
+        this->declare_parameter("service_wait_timeout_sec", service_wait_timeout_sec_);
+    react_to_estop_  = this->declare_parameter("react_to_estop", react_to_estop_);
+    react_to_bumper_ = this->declare_parameter("react_to_bumper", react_to_bumper_);
+
     auto qos = rclcpp::SystemDefaultsQoS();
     auto qos_reliable = rclcpp::QoS(rclcpp::KeepLast(1)).reliable();
 
@@ -128,7 +139,7 @@ void CommandBoardManagerROS::ResetMapOriginByXYYawCallback(
     bool assets_ok = false;
     std::string assets_msg;
     std::thread t([&]() {
-        if (!transform_assets_cli_->wait_for_service(3s)) {
+        if (!transform_assets_cli_->wait_for_service(std::chrono::duration<double>(service_wait_timeout_sec_))) {
             assets_msg = "transform_assets service not available";
             return;
         }
@@ -138,7 +149,7 @@ void CommandBoardManagerROS::ResetMapOriginByXYYawCallback(
         ta_req->y = req->y;
         ta_req->yaw = req->yaw;
         auto fut = transform_assets_cli_->async_send_request(ta_req);
-        if (fut.wait_for(15s) != std::future_status::ready) {
+        if (fut.wait_for(std::chrono::duration<double>(service_call_timeout_sec_)) != std::future_status::ready) {
             assets_msg = "Timeout waiting for transform_assets";
             return;
         }
@@ -166,13 +177,14 @@ void CommandBoardManagerROS::ResetMapOriginByRobotPoseCallback(const std::shared
                                                                std::shared_ptr<std_srvs::srv::Trigger::Response> res) {
     RCLCPP_INFO(get_logger(), "[RobotPose] sampling TF map→base_link ...");
     double x, y, yaw;
-    if (!SampleRobotPose(11, 5.0, x, y, yaw)) {
+    if (!SampleRobotPose(reset_origin_sample_frames_, reset_origin_sample_timeout_sec_, x, y, yaw)) {
         res->success = false;
         res->message = "Failed to sample robot pose from TF (map→base_link)";
         RCLCPP_ERROR(get_logger(), "%s", res->message.c_str());
         return;
     }
-    RCLCPP_INFO(get_logger(), "[RobotPose] sampled (11-frame mean): x=%.3f y=%.3f yaw=%.4f", x, y, yaw);
+    RCLCPP_INFO(get_logger(), "[RobotPose] sampled (%d-frame mean): x=%.3f y=%.3f yaw=%.4f",
+                reset_origin_sample_frames_, x, y, yaw);
     std::string msg;
     res->success = DoResetCurrentMapOrigin(x, y, yaw, msg);
     res->message = msg;
@@ -200,7 +212,7 @@ bool CommandBoardManagerROS::DoResetCurrentMapOrigin(double x, double y, double 
     if (stop_localization_cli_->service_is_ready()) {
         auto req = std::make_shared<std_srvs::srv::Trigger::Request>();
         auto fut = stop_localization_cli_->async_send_request(req);
-        if (fut.wait_for(5s) != std::future_status::ready) {
+        if (fut.wait_for(std::chrono::duration<double>(service_call_timeout_sec_)) != std::future_status::ready) {
             out_msg = "Timeout waiting for stop_localization";
             RCLCPP_ERROR(get_logger(), "%s", out_msg.c_str());
             return false;
@@ -229,7 +241,7 @@ bool CommandBoardManagerROS::DoResetCurrentMapOrigin(double x, double y, double 
     std::thread assets_thread([&]() {
         if (!transform_assets_cli_->service_is_ready()) {
             // 等最多 3s
-            if (!transform_assets_cli_->wait_for_service(3s)) {
+            if (!transform_assets_cli_->wait_for_service(std::chrono::duration<double>(service_wait_timeout_sec_))) {
                 assets_msg = "transform_assets service not available";
                 assets_ok = false;
                 return;
@@ -241,7 +253,7 @@ bool CommandBoardManagerROS::DoResetCurrentMapOrigin(double x, double y, double 
         req->y = y;
         req->yaw = yaw;
         auto fut = transform_assets_cli_->async_send_request(req);
-        if (fut.wait_for(15s) != std::future_status::ready) {
+        if (fut.wait_for(std::chrono::duration<double>(service_call_timeout_sec_)) != std::future_status::ready) {
             assets_msg = "Timeout waiting for transform_assets";
             assets_ok = false;
             return;
@@ -275,7 +287,7 @@ bool CommandBoardManagerROS::DoResetCurrentMapOrigin(double x, double y, double 
         auto req = std::make_shared<nav_interfaces::srv::LoadMap::Request>();
         req->map_name = current_map_name_;
         auto fut = load_map_cli_->async_send_request(req);
-        if (fut.wait_for(10s) != std::future_status::ready) {
+        if (fut.wait_for(std::chrono::duration<double>(service_call_timeout_sec_)) != std::future_status::ready) {
             RCLCPP_WARN(get_logger(), "[Reset] Timeout waiting for load_map, continuing");
         } else if (!fut.get()->success) {
             RCLCPP_WARN(get_logger(), "[Reset] load_map returned false");
@@ -291,7 +303,7 @@ bool CommandBoardManagerROS::DoResetCurrentMapOrigin(double x, double y, double 
     if (start_localization_cli_->service_is_ready()) {
         auto req = std::make_shared<std_srvs::srv::Trigger::Request>();
         auto fut = start_localization_cli_->async_send_request(req);
-        if (fut.wait_for(5s) != std::future_status::ready) {
+        if (fut.wait_for(std::chrono::duration<double>(service_call_timeout_sec_)) != std::future_status::ready) {
             RCLCPP_WARN(get_logger(), "[Reset] Timeout waiting for start_localization");
         } else if (!fut.get()->success) {
             RCLCPP_WARN(get_logger(), "[Reset] start_localization returned false");
@@ -411,7 +423,7 @@ void CommandBoardManagerROS::OnDiagnosticsAgg(const diagnostic_msgs::msg::Diagno
                                        [](unsigned char c) { return std::tolower(c); });
                         bool parsed = (val_lower == "true");
 
-                        if (parsed) {
+                        if (parsed && react_to_estop_) {
                             localization_sm_->LocalizationFailed();
                             RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 5000,
                                                  "Emergency stop activated!");
@@ -430,7 +442,7 @@ void CommandBoardManagerROS::OnDiagnosticsAgg(const diagnostic_msgs::msg::Diagno
                                        [](unsigned char c) { return std::tolower(c); });
                         bool parsed = (val_lower == "true");
 
-                        if (parsed) {
+                        if (parsed && react_to_bumper_) {
                             localization_sm_->LocalizationFailed();
                             RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 5000,
                                                  "bumper_strip_front_state stop activated!");
@@ -448,7 +460,7 @@ void CommandBoardManagerROS::OnDiagnosticsAgg(const diagnostic_msgs::msg::Diagno
                                        [](unsigned char c) { return std::tolower(c); });
                         bool parsed = (val_lower == "true");
 
-                        if (parsed) {
+                        if (parsed && react_to_bumper_) {
                             localization_sm_->LocalizationFailed();
                             RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 5000,
                                                  "bumper_strip_rear_state stop activated!");
