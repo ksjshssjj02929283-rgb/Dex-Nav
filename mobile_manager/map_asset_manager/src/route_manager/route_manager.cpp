@@ -289,6 +289,7 @@ void RouteManager::publishAllRouteMarkers() {
         del_all.header.frame_id = "map";
         del_all.header.stamp    = now;
         del_all.ns              = "route_static";
+        del_all.id              = -1;
         del_all.action          = visualization_msgs::msg::Marker::DELETEALL;
         arr.markers.push_back(del_all);
     }
