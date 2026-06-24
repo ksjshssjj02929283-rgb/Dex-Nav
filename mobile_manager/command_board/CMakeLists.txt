@@ -83,7 +83,7 @@ install(DIRECTORY include/
   DESTINATION include
 )
 
-install(DIRECTORY launch
+install(DIRECTORY launch params
   DESTINATION share/${PROJECT_NAME}
 )
 

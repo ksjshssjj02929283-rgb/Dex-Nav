@@ -58,11 +58,13 @@ private:
     rclcpp::Node*  node_;
     StatusMonitor* status_monitor_;  // non-owning
 
-    // Parameters (DEC-006: switched from hourly to daily trigger).
+    // Parameters (DEC-016 time window; DEC-017 backup-dir idempotency).
     bool        enable_ = true;
-    int         daily_save_hour_ = 20;          // 0-23, local time
-    int         daily_save_minute_ = 0;         // 0-59, local time
-    double      check_poll_interval_sec_ = 60.0;  // how often to check the wall clock
+    int         save_window_start_hour_ = 20;   // 0-23, local time
+    int         save_window_start_minute_ = 0;  // 0-59
+    int         save_window_end_hour_ = 21;     // 0-23
+    int         save_window_end_minute_ = 0;    // 0-59
+    double      check_poll_interval_sec_ = 60.0;  // window poll cadence
     std::string save_service_ = "/localization_node/save_map";
     double      save_service_timeout_sec_ = 30.0;
     double      pose_change_threshold_m_ = 0.10;
@@ -72,9 +74,12 @@ private:
     int         battery_soc_skip_below_ = 10;
     bool        skip_when_task_not_idle_ = true;
 
-    // Compact YYYYMMDD form (e.g. 20260522); -1 = never fired yet.
-    static int CurrentLocalYmd();
-    static bool LocalTimeReached(int target_hour, int target_minute);
+    static int CurrentLocalYmd();              // compact YYYYMMDD int (e.g. 20260522)
+    static std::string CurrentLocalYmdStr();   // "YYYYMMDD", for backup.<ts> prefix match
+    bool InSaveWindow() const;                 // now within [start, end] local-time window
+    // DEC-017: today's save state IS the on-disk backup ring (single source of truth).
+    // True iff <map_folder>/<map_name>/slam/backups/ has a backup.<today>* entry.
+    bool HasBackupForToday() const;
 
     // State.
     geometry_msgs::msg::Pose2D last_saved_pose_{};
@@ -82,13 +87,17 @@ private:
     rclcpp::Time               last_saved_time_;
     SkipReason                 last_skip_reason_ = SkipReason::kNone;
     bool                       any_attempt_made_ = false;
-    int                        last_fired_ymd_ = -1;  // last calendar day a save was attempted
+    // Map path from map_manager/* topics (DEC-017: locate the backup ring).
+    std::string map_folder_;
+    std::string map_name_;
 
     rclcpp::TimerBase::SharedPtr timer_;
     rclcpp::TimerBase::SharedPtr status_timer_;
     rclcpp::Client<nav_interfaces::srv::SaveMap>::SharedPtr save_map_cli_;
     rclcpp::Service<nav_interfaces::srv::SaveMap>::SharedPtr save_srv_;
     rclcpp::Publisher<std_msgs::msg::String>::SharedPtr status_pub_;
+    rclcpp::Subscription<std_msgs::msg::String>::SharedPtr map_folder_sub_;
+    rclcpp::Subscription<std_msgs::msg::String>::SharedPtr map_name_sub_;
     rclcpp::CallbackGroup::SharedPtr callback_group_;
 };
 
