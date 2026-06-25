@@ -40,21 +40,9 @@ CommandBoardManagerROS::CommandBoardManagerROS() : rclcpp::Node("command_board_m
     react_to_estop_  = this->declare_parameter("react_to_estop", react_to_estop_);
     react_to_bumper_ = this->declare_parameter("react_to_bumper", react_to_bumper_);
 
-    auto qos = rclcpp::SystemDefaultsQoS();
-    auto qos_reliable = rclcpp::QoS(rclcpp::KeepLast(1)).reliable();
-
+    // 单一状态源：/diagnostics_agg、/localization_node/state 由 StatusMonitor 唯一订阅聚合，
+    // 本节点不再重复订阅，改在 OnRecoverTimer 轮询 GetSnapshot 读取。
     callback_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-
-    auto sub_opt = rclcpp::SubscriptionOptions();
-    sub_opt.callback_group = callback_group_;
-
-    localization_state_sub_ = this->create_subscription<nav_interfaces::msg::LocalizationState>(
-        "/localization_node/state", qos,
-        std::bind(&CommandBoardManagerROS::OnLocalizationState, this, std::placeholders::_1), sub_opt);
-
-    diagnostics_agg_sub_ = this->create_subscription<diagnostic_msgs::msg::DiagnosticArray>(
-        "/diagnostics_agg", qos_reliable,
-        std::bind(&CommandBoardManagerROS::OnDiagnosticsAgg, this, std::placeholders::_1), sub_opt);
 
     navigation_action_client_ =
         rclcpp_action::create_client<nav2_msgs::action::NavigateToPose>(this, "/navigate_to_pose");
@@ -95,6 +83,27 @@ CommandBoardManagerROS::CommandBoardManagerROS() : rclcpp::Node("command_board_m
     // 状态聚合 + 条件自动保存（StatusMonitor 提供快照，AutoMapSaver 日级触发 + ~/save_map 手动）
     status_monitor_ = std::make_unique<StatusMonitor>(this);
     auto_map_saver_ = std::make_unique<AutoMapSaver>(this, status_monitor_.get());
+
+    // ── 急停丢位恢复初始化 ────────────────────────────────────────
+    enable_loss_recovery_ = this->declare_parameter("enable_loss_recovery", enable_loss_recovery_);
+    recover_settle_sec_   = this->declare_parameter("recover_settle_sec", recover_settle_sec_);
+    reloc_wait_sec_       = this->declare_parameter("reloc_wait_sec", reloc_wait_sec_);
+    score_good_           = this->declare_parameter("reloc_score_good", score_good_);
+    score_bad_            = this->declare_parameter("reloc_score_bad", score_bad_);
+    pose_cache_min_score_ = this->declare_parameter("pose_cache_min_score", pose_cache_min_score_);
+    velocity_still_threshold_ =
+        this->declare_parameter("still_velocity_threshold", velocity_still_threshold_);
+    relocalization_cli_ = this->create_client<nav_interfaces::srv::SetPose>(
+        "/localization_node/relocalization");
+    global_reloc_cli_   = this->create_client<std_srvs::srv::Trigger>(
+        "/localization_node/trigger_global_relocalization");
+    alarm_pub_ = this->create_publisher<std_msgs::msg::String>(
+        "~/safety_alarm", rclcpp::QoS(1).transient_local());
+    // OnRecoverTimer 始终运行（驱动定位状态机 + 急停响应 + 丢位恢复）；enable_loss_recovery_
+    // 仅控制其中的停定位 + 重定位部分。
+    recover_timer_ = this->create_wall_timer(
+        std::chrono::milliseconds(200),
+        std::bind(&CommandBoardManagerROS::OnRecoverTimer, this), callback_group_);
 
     RCLCPP_INFO(get_logger(),
                 "CommandBoardManagerROS initialized. "
@@ -400,80 +409,201 @@ bool CommandBoardManagerROS::RunResetMapOriginTool(
 // 原有事件处理
 // ──────────────────────────────────────────────────────────────────────
 
-void CommandBoardManagerROS::OnLocalizationState(const nav_interfaces::msg::LocalizationState::SharedPtr msg) {
-    RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 5000, "Received localization state: %d", msg->status);
-    if (msg->status == nav_interfaces::msg::LocalizationState::LOC_SUCCESS) {
-        RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 5000, "Localization successful.");
-        localization_sm_->LocalizationSuccess();
-    } else {
-        RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000, "Localization not successful.");
+// 单一状态源：所有上游由 StatusMonitor 订阅聚合，本节点 200ms 轮询 GetSnapshot
+// 驱动定位状态机 + 急停响应 + 丢位恢复（不再重复订阅 /diagnostics_agg、/localization_node/state）。
+void CommandBoardManagerROS::OnRecoverTimer() {
+    if (!status_monitor_) return;
+    const auto snap = status_monitor_->GetSnapshot();
+    const auto now = this->now();
+
+    // 1. 更新定位 score + 缓存高 score 位姿。
+    if (snap.localization_valid) {
+        latest_score_ = snap.localization.score;
+        SnapshotGoodPose();
+    }
+
+    // 2. 驱动定位状态机（localization.status 变化时）。
+    if (snap.localization_valid && snap.localization.status != last_localization_status_) {
+        last_localization_status_ = snap.localization.status;
+        if (snap.localization.status == nav_interfaces::msg::LocalizationState::LOC_SUCCESS) {
+            localization_sm_->LocalizationSuccess();
+        } else {
+            localization_sm_->LocalizationFailed();
+        }
+    }
+
+    // 3. 急停/碰撞翻转检测（从 StatusMonitor 聚合的安全状态读）。
+    const bool active = (react_to_estop_ && snap.is_estop_active) ||
+                        (react_to_bumper_ && (snap.bumper_front_active || snap.bumper_rear_active));
+    if (active && !safety_active_) {
+        navigation_action_client_->async_cancel_all_goals();
         localization_sm_->LocalizationFailed();
+        RCLCPP_WARN(this->get_logger(),
+                    "Safety active (estop=%d bumper=%d) — cancel navigation%s",
+                    snap.is_estop_active,
+                    (snap.bumper_front_active || snap.bumper_rear_active),
+                    enable_loss_recovery_ ? " + stop localization (recovery armed)" : "");
+        if (enable_loss_recovery_) {
+            StopLocalization();
+            recover_state_ = RecoverState::kSafeStop;
+        }
+    } else if (!active && safety_active_) {
+        RCLCPP_INFO(this->get_logger(), "Safety released — awaiting settle for relocalization.");
+        settle_start_ = now;
+    }
+    safety_active_ = active;
+
+    // 4. 丢位恢复状态机。
+    if (!enable_loss_recovery_) { PushRecoverStatus(); return; }
+    switch (recover_state_) {
+        case RecoverState::kNormal:
+            break;
+        case RecoverState::kSafeStop:
+            if (safety_active_) break;
+            if (!RobotIsStill()) { settle_start_ = now; break; }
+            if ((now - settle_start_).seconds() < recover_settle_sec_) break;
+            StartLocalization();
+            if (last_known_pose_valid_) {
+                Relocalize(last_known_pose_);
+                recover_state_ = RecoverState::kRelocating;
+            } else {
+                RCLCPP_WARN(this->get_logger(),
+                            "No cached pose — escalating to global relocalization.");
+                GlobalRelocalize();
+                recover_state_ = RecoverState::kGlobalReloc;
+            }
+            reloc_start_ = now;
+            break;
+        case RecoverState::kRelocating:
+            if ((now - reloc_start_).seconds() < reloc_wait_sec_) break;
+            if (latest_score_ >= score_good_) {
+                RCLCPP_INFO(this->get_logger(),
+                            "Relocalized OK from last pose (score=%.2f).", latest_score_);
+                recover_state_ = RecoverState::kNormal;
+            } else if (latest_score_ < score_bad_) {
+                RCLCPP_WARN(this->get_logger(),
+                            "Local relocalization weak (score=%.2f) — global fallback.",
+                            latest_score_);
+                GlobalRelocalize();
+                reloc_start_ = now;
+                recover_state_ = RecoverState::kGlobalReloc;
+            } else {
+                reloc_start_ = now;  // 中间档，再等一轮
+            }
+            break;
+        case RecoverState::kGlobalReloc:
+            if ((now - reloc_start_).seconds() < reloc_wait_sec_ * 2.0) break;
+            if (latest_score_ >= score_good_) {
+                RCLCPP_INFO(this->get_logger(),
+                            "Global relocalization OK (score=%.2f).", latest_score_);
+                recover_state_ = RecoverState::kNormal;
+            } else {
+                RaiseAlarm("Global relocalization failed — manual RViz 2D Pose Estimate needed");
+                recover_state_ = RecoverState::kAlarm;
+            }
+            break;
+        case RecoverState::kAlarm:
+            if (latest_score_ >= score_good_) {
+                RCLCPP_INFO(this->get_logger(),
+                            "Recovered from alarm (manual relocalization, score=%.2f).",
+                            latest_score_);
+                recover_state_ = RecoverState::kNormal;
+            }
+            break;
+    }
+    PushRecoverStatus();
+}
+
+void CommandBoardManagerROS::SnapshotGoodPose() {
+    if (recover_state_ != RecoverState::kNormal) return;
+    if (!status_monitor_) return;
+    if (latest_score_ < pose_cache_min_score_) return;
+    const auto snap = status_monitor_->GetSnapshot();
+    if (snap.pose_valid) {
+        last_known_pose_ = snap.pose;
+        last_known_pose_valid_ = true;
     }
 }
 
-void CommandBoardManagerROS::OnDiagnosticsAgg(const diagnostic_msgs::msg::DiagnosticArray::SharedPtr msg) {
-    for (const auto& status : msg->status) {
-        if (status.name == "/Devices/System/PowerBoard/collector_node: PowerBoard Safety") {
-            for (const auto& kv : status.values) {
-                if (kv.key == "estop_state") {
-                    try {
-                        std::string val_lower = kv.value;
+bool CommandBoardManagerROS::RobotIsStill() const {
+    if (!status_monitor_) return true;
+    const auto snap = status_monitor_->GetSnapshot();
+    if (!snap.velocity_valid) return true;
+    const double v = std::hypot(snap.velocity.linear.x, snap.velocity.linear.y);
+    const double w = std::abs(snap.velocity.angular.z);
+    return v < velocity_still_threshold_ && w < velocity_still_threshold_;
+}
 
-                        std::transform(val_lower.begin(), val_lower.end(), val_lower.begin(),
-                                       [](unsigned char c) { return std::tolower(c); });
-                        bool parsed = (val_lower == "true");
-
-                        if (parsed && react_to_estop_) {
-                            localization_sm_->LocalizationFailed();
-                            RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 5000,
-                                                 "Emergency stop activated!");
-                        }
-                    } catch (...) {
-                        RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 5000,
-                                             "Failed to parse estop_state value.");
-                    }
-                }
-
-                if (kv.key == "bumper_strip_front_state") {
-                    try {
-                        std::string val_lower = kv.value;
-
-                        std::transform(val_lower.begin(), val_lower.end(), val_lower.begin(),
-                                       [](unsigned char c) { return std::tolower(c); });
-                        bool parsed = (val_lower == "true");
-
-                        if (parsed && react_to_bumper_) {
-                            localization_sm_->LocalizationFailed();
-                            RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 5000,
-                                                 "bumper_strip_front_state stop activated!");
-                        }
-                    } catch (...) {
-                        RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 5000,
-                                             "Failed to parse bumper_strip_front_state value.");
-                    }
-                }
-
-                if (kv.key == "bumper_strip_rear_state") {
-                    try {
-                        std::string val_lower = kv.value;
-                        std::transform(val_lower.begin(), val_lower.end(), val_lower.begin(),
-                                       [](unsigned char c) { return std::tolower(c); });
-                        bool parsed = (val_lower == "true");
-
-                        if (parsed && react_to_bumper_) {
-                            localization_sm_->LocalizationFailed();
-                            RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 5000,
-                                                 "bumper_strip_rear_state stop activated!");
-                        }
-                    } catch (...) {
-                        RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 5000,
-                                             "Failed to parse bumper_strip_rear_state value.");
-                    }
-                }
-            }
-            break;
-        }
+void CommandBoardManagerROS::StopLocalization() {
+    if (stop_localization_cli_->service_is_ready()) {
+        stop_localization_cli_->async_send_request(
+            std::make_shared<std_srvs::srv::Trigger::Request>());
     }
+}
+
+void CommandBoardManagerROS::StartLocalization() {
+    if (start_localization_cli_->service_is_ready()) {
+        start_localization_cli_->async_send_request(
+            std::make_shared<std_srvs::srv::Trigger::Request>());
+    }
+}
+
+void CommandBoardManagerROS::Relocalize(const geometry_msgs::msg::Pose2D& pose) {
+    if (!relocalization_cli_->service_is_ready()) {
+        RCLCPP_WARN(this->get_logger(), "relocalization service not ready.");
+        return;
+    }
+    auto req = std::make_shared<nav_interfaces::srv::SetPose::Request>();
+    req->pose.header.frame_id = "map";
+    req->pose.header.stamp = this->now();
+    req->pose.pose.pose.position.x = pose.x;
+    req->pose.pose.pose.position.y = pose.y;
+    tf2::Quaternion q;
+    q.setRPY(0.0, 0.0, pose.theta);
+    req->pose.pose.pose.orientation = tf2::toMsg(q);
+    req->pose.pose.covariance[0]  = 0.25;
+    req->pose.pose.covariance[7]  = 0.25;
+    req->pose.pose.covariance[35] = 0.07;
+    relocalization_cli_->async_send_request(req);
+    RCLCPP_INFO(this->get_logger(),
+                "Local relocalize from last pose (%.2f, %.2f, %.3f).",
+                pose.x, pose.y, pose.theta);
+}
+
+void CommandBoardManagerROS::GlobalRelocalize() {
+    if (global_reloc_cli_->service_is_ready()) {
+        global_reloc_cli_->async_send_request(
+            std::make_shared<std_srvs::srv::Trigger::Request>());
+        RCLCPP_INFO(this->get_logger(), "Triggered global relocalization.");
+    } else {
+        RCLCPP_WARN(this->get_logger(), "global relocalization service not ready.");
+    }
+}
+
+void CommandBoardManagerROS::RaiseAlarm(const std::string& reason) {
+    last_alarm_ = reason;
+    std_msgs::msg::String m;
+    m.data = reason;
+    if (alarm_pub_) alarm_pub_->publish(m);
+    RCLCPP_ERROR(this->get_logger(), "[SafetyReactor ALARM] %s", reason.c_str());
+}
+
+const char* CommandBoardManagerROS::RecoverStateToString(RecoverState s) {
+    switch (s) {
+        case RecoverState::kNormal:      return "NORMAL";
+        case RecoverState::kSafeStop:    return "SAFE_STOP";
+        case RecoverState::kRelocating:  return "RELOCATING";
+        case RecoverState::kGlobalReloc: return "GLOBAL_RELOC";
+        case RecoverState::kAlarm:       return "ALARM";
+    }
+    return "NORMAL";
+}
+
+void CommandBoardManagerROS::PushRecoverStatus() {
+    if (!status_monitor_) return;
+    status_monitor_->SetRecoverStatus(
+        RecoverStateToString(recover_state_),
+        recover_state_ == RecoverState::kAlarm ? last_alarm_ : std::string());
 }
 
 // 实现接口方法
