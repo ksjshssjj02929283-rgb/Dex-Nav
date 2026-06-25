@@ -76,6 +76,12 @@ StatusMonitor::Snapshot StatusMonitor::GetSnapshot() const {
     return copy;
 }
 
+void StatusMonitor::SetRecoverStatus(const std::string& state, const std::string& alarm) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    snapshot_.recover_state = state;
+    snapshot_.safety_alarm  = alarm;
+}
+
 void StatusMonitor::UpdatePoseFromTF() {
     geometry_msgs::msg::TransformStamped tf;
     try {
@@ -185,6 +191,9 @@ void StatusMonitor::PublishNavStatus() {
     msg.velocity = snap.velocity;
 
     msg.task_status = snap.task_status;
+
+    msg.recover_state = snap.recover_state;
+    msg.safety_alarm  = snap.safety_alarm;
 
     nav_status_pub_->publish(msg);
 }

@@ -52,6 +52,8 @@ public:
         bool                      velocity_valid = false;
         bool                      odom_pose_valid = false;
         bool                      task_status_valid = false;
+        std::string               recover_state = "NORMAL";  // SafetyReactor 急停丢位恢复状态机
+        std::string               safety_alarm;              // SafetyReactor 告警（ALARM 时非空）
     };
 
     explicit StatusMonitor(rclcpp::Node* node);
@@ -62,6 +64,10 @@ public:
 
     // Thread-safe accessor — returns a copy of the latest aggregated snapshot.
     Snapshot GetSnapshot() const;
+
+    // Thread-safe setter — SafetyReactor pushes its recovery state / alarm into
+    // the aggregated NavSystemStatus.
+    void SetRecoverStatus(const std::string& state, const std::string& alarm);
 
 private:
     void OnOdom(nav_msgs::msg::Odometry::SharedPtr msg);
