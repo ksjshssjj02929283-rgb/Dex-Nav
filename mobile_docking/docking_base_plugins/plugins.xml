@@ -1,0 +1,25 @@
+<class_libraries>
+  <library path="apriltag_perception">
+    <class type="docking_base_plugins::AprilTagPerception" base_class_type="docking_base_core::PerceptionInterface">
+      <description>
+        AprilTag 对接感知：封装 start/stop_apriltag_detection 服务 + apriltag_target_pose 订阅，
+        提供 start/stop/getDockPose（DEC-011 Part1，感知与对接逻辑解耦）。
+      </description>
+    </class>
+  </library>
+  <library path="docking_charging">
+    <class type="docking_base_plugins::DockingCharging" base_class_type="docking_base_core::DockingInterface">
+      <description>充电对接任务：7 阶段状态机（感知→到旋转点→旋转→倒车贴桩→充电判定）（DEC-011 Part2）。</description>
+    </class>
+  </library>
+  <library path="docking_exit">
+    <class type="docking_base_plugins::DockingExit" base_class_type="docking_base_core::DockingInterface">
+      <description>出桩对接任务：前进离桩单段（DEC-011 Part2）。</description>
+    </class>
+  </library>
+  <library path="straight_line_planner">
+    <class type="docking_base_plugins::StraightLinePlanner" base_class_type="docking_base_core::DockingPlanner">
+      <description>直线对接局部规划：段路径重采样（线性插值+slerp）+ 梯形纵向速度剖面（倒车取负），出 RobotTrajectory，不避障。</description>
+    </class>
+  </library>
+</class_libraries>

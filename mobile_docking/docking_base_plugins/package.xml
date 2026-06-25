@@ -1,0 +1,45 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>docking_base_plugins</name>
+  <version>0.0.1</version>
+  <description>DEXE W1 docking 插件（基于 docking_base 二开）：W1ChargingDock 等 ChargingDock 插件 + dock 数据库 + 任务 BT</description>
+  <maintainer email="linfeng.guo@dexforce.com">linfeng.guo</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>rclcpp_lifecycle</depend>
+  <depend>pluginlib</depend>
+  <depend>geometry_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>std_srvs</depend>
+  <depend>tf2</depend>
+  <depend>tf2_ros</depend>
+  <depend>tf2_geometry_msgs</depend>
+  <depend>nav_msgs</depend>
+  <depend>nav_interfaces</depend>
+  <depend>rclcpp_action</depend>
+  <depend>nav2_util</depend>
+  <depend>nav2_core</depend>
+  <depend>nav2_costmap_2d</depend>
+  <depend>docking_base_core</depend>
+  <depend>docking_base_msgs</depend>
+
+  <!-- 运行时 pluginlib 加载的 controller / goal_checker 插件包 -->
+  <exec_depend>straight_controller</exec_depend>
+  <exec_depend>pure_rotation_controller</exec_depend>
+  <exec_depend>lat_lon_controller</exec_depend>
+  <exec_depend>pid_controller</exec_depend>
+  <exec_depend>simple_goal_checker</exec_depend>
+  <exec_depend>stopped_goal_checker</exec_depend>
+  <exec_depend>rotation_goal_checker</exec_depend>
+  <exec_depend>longitudinal_goal_checker</exec_depend>
+  <exec_depend>position_goal_checker</exec_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+    <docking_base_core plugin="${prefix}/plugins.xml" />
+  </export>
+</package>

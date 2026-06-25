@@ -1,0 +1,23 @@
+<!--
+  回桩充电任务 BT（对接任务类型：充电）
+  执行本树 = 调用 dock_robot action。dock_type 决定 docking server 按 dock_type 选
+  DockingCharging 任务子类（任务从外部传入）。上层 MissionManager BtExecutor 通过
+  blackboard 传入 dock_id（充电桩在数据库中已知）或 dock_pose+dock_type。
+
+  按位姿对接的写法（不查数据库）：
+    <DockRobot use_dock_id="false" dock_pose="{dock_pose}" dock_type="{dock_type}" .../>
+-->
+<root main_tree_to_execute="DockCharging">
+  <BehaviorTree ID="DockCharging">
+    <Sequence name="DockChargingSeq">
+      <DockRobot
+        use_dock_id="true"
+        dock_id="{dock_id}"
+        dock_type="{dock_type}"
+        navigate_to_staging_pose="true"
+        success="{dock_success}"
+        error_code="{dock_error_code}"
+        num_retries="{dock_num_retries}"/>
+    </Sequence>
+  </BehaviorTree>
+</root>

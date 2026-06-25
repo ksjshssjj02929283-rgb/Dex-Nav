@@ -1,0 +1,17 @@
+<!--
+  出桩任务 BT（对接任务类型：出桩）
+  执行本树 = 调用 undock_robot action。dock_type 决定 docking server 选 DockingExit
+  任务子类（前进离桩单段）。上层 MissionManager BtExecutor 通过 blackboard 传入 dock_type
+  （或留空，server 用上次对接记录的 curr_dock_type_）。
+-->
+<root main_tree_to_execute="UndockExit">
+  <BehaviorTree ID="UndockExit">
+    <Sequence name="UndockExitSeq">
+      <UndockRobot
+        dock_type="{dock_type}"
+        max_undocking_time="30.0"
+        success="{undock_success}"
+        error_code="{undock_error_code}"/>
+    </Sequence>
+  </BehaviorTree>
+</root>

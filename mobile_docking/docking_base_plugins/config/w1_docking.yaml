@@ -1,0 +1,95 @@
+# docking_server 配置（W1 充电桩对接，ROS1 范式：planner/controller/goal_checker 三类执行 +
+# DockingInterface 任务驱动 + 双线程）。
+# 任务从 action goal 的 dock_type 选 DockingInterface 子类；dock 数据库(type→插件)给 staging 位姿。
+docking_server:
+  ros__parameters:
+    controller_frequency: 50.0
+    plan_frequency: 20.0
+    docking_task_timeout: 120.0
+    initial_perception_timeout: 5.0
+    base_frame: "base_link"
+    fixed_frame: "odom"
+
+    # ---- 三类执行插件 id（同节点共享参数空间，id 跨三类须唯一）----
+    planner_plugins: ["straight_line"]
+    controller_plugins: ["straight", "pure_rotation", "lat_lon", "pid"]
+    goal_checker_plugins: ["simple", "stopped", "rotation", "longitudinal", "position"]
+
+    # ---- 任务/感知插件 map（预加载；与三类执行 map 对称）----
+    task_plugins: ["charging", "exit"]
+    perception_plugins: ["apriltag"]
+    # dock_type→task 映射（缺省 charging/exit/apriltag，按需覆盖）
+    w1_charger.dock_task: "charging"
+    w1_charger.undock_task: "exit"
+    w1_charger.perception: "apriltag"
+
+    # planner（id=straight_line：重采样 + 梯形速度剖面，出 RobotTrajectory）
+    straight_line:
+      plugin: "docking_base_plugins::StraightLinePlanner"
+      path_resolution: 0.05
+      max_accel: 0.2
+
+    # controllers（nav2_modules）
+    straight:
+      plugin: "straight_controller::StraightController"
+      max_v: 0.1
+      max_v_inc: 0.02
+      max_w: 0.5
+    pure_rotation:
+      plugin: "pure_rotation_controller::PureRotationController"
+    lat_lon:
+      plugin: "lat_lon_controller::LatLonController"
+    pid:
+      plugin: "pid_controller::PIDController"
+
+    # goal_checkers
+    simple:
+      plugin: "simple_goal_checker::SimpleGoalChecker"
+    stopped:
+      plugin: "stopped_goal_checker::StoppedGoalChecker"
+    rotation:
+      plugin: "rotation_goal_checker::RotationGoalChecker"
+    longitudinal:
+      plugin: "longitudinal_goal_checker::LongitudinalGoalChecker"
+      lon_goal_tolerance: 0.05
+      lat_goal_tolerance: 0.10
+      yaw_goal_tolerance: 0.15
+      stateful: true   # 跟踪型控制器必需：经过容差窗口即锁存 xy
+    position:
+      plugin: "position_goal_checker::PositionGoalChecker"
+
+    # 任务实例参数（实例名=task id）
+    charging:
+      plugin: "docking_base_plugins::DockingCharging"
+      charging_threshold: 0.5
+      wait_perception_time: 3.0
+      drawback_timeout: 10.0
+    exit:
+      plugin: "docking_base_plugins::DockingExit"
+      exit_distance: 0.4
+      exit_velocity: 0.05
+    # 感知实例参数（实例名=perception id）
+    apriltag:
+      plugin: "docking_base_plugins::AprilTagPerception"
+      detected_dock_topic: "apriltag_target_pose"
+      external_detection_timeout: 1.0
+
+    # ---- staging 偏移（DEC-014：替代 ChargingDock::getStagingPose；staging=dock_pose⊕offset）----
+    staging_x_offset: -0.7
+    staging_yaw_offset: 0.0
+
+# 最小空 costmap（仅供 controller/goal_checker 取 frame；不做避障）。
+# 注意双层嵌套：子节点 FQN = /docking_costmap/docking_costmap（同 nav2 local_costmap）。
+docking_costmap:
+  docking_costmap:
+    ros__parameters:
+      use_sim_time: false
+      global_frame: odom
+      robot_base_frame: base_link
+      rolling_window: true
+      width: 3
+      height: 3
+      resolution: 0.05
+      robot_radius: 0.25
+      obstacle_layer:
+        observation_sources: ""
