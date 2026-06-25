@@ -15,6 +15,7 @@
 #ifndef NAV2_MPPI_CONTROLLER__CRITICS__OBSTACLES_CRITIC_HPP_
 #define NAV2_MPPI_CONTROLLER__CRITICS__OBSTACLES_CRITIC_HPP_
 
+#include <cstddef>
 #include <memory>
 #include "nav2_costmap_2d/footprint_collision_checker.hpp"
 #include "nav2_costmap_2d/inflation_layer.hpp"
@@ -72,14 +73,25 @@ protected:
     * @param theta theta of pose
     * @return Collision information at pose
     */
-  inline CollisionCost costAtPose(float x, float y, float theta);
+  inline CollisionCost costAtPose(
+    float x, float y, float theta, bool near_goal_relaxation,
+    size_t & filtered_soft_cost_count);
+
+  /**
+    * @brief Filter local costmap soft inflation cost for near-goal MPPI scoring
+    * @param cost Collision cost sampled from costmap
+    * @param near_goal_relaxation Whether near-goal relaxation is active
+    * @param filtered_soft_cost_count Number of soft inflated costs filtered in this cycle
+    */
+  inline void relaxCostAtPose(
+    CollisionCost & cost, bool near_goal_relaxation, size_t & filtered_soft_cost_count) const;
 
   /**
     * @brief Distance to obstacle from cost
     * @param cost Costmap cost
     * @return float Distance to the obstacle represented by cost
     */
-  inline float distanceToObstacle(const CollisionCost & cost);
+  inline float distanceToObstacle(const CollisionCost & cost) const;
 
   /**
     * @brief Find the min cost of the inflation decay function for which the robot MAY be
@@ -101,6 +113,9 @@ protected:
   float possibly_inscribed_cost_;
   float collision_margin_distance_;
   float near_goal_distance_;
+  float near_goal_cost_relaxation_distance_{0};
+  float near_goal_effective_inflation_radius_{0};
+  bool near_goal_relaxation_logged_{false};
   float circumscribed_cost_{0}, circumscribed_radius_{0};
 
   unsigned int power_{0};
