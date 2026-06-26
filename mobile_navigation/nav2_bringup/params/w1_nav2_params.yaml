@@ -145,8 +145,8 @@ controller_server:
       # 3. profile_1 起步段：低线速度、高角速度，优先转向并快速跟进路径
       # ============================================================
       profile_1: # 起步段
-        vx_max: 0.4 # 最大前进速度
-        vx_min: -0.3 # 最小后退速度
+        vx_max: 0.7 # 最大前进速度
+        vx_min: -0.5 # 最小后退速度
         vy_max: 0.5 # 侧向速度上限，DiffDrive 下通常不生效
         wz_max: 0.75 # 最大角速度
         GoalCritic: # 起步段不直接吸向终点，避免短路径任务过早抢控制量
@@ -164,23 +164,23 @@ controller_server:
           cost_weight: 0.0
           threshold_to_consider: 0.0
         PathAngleCritic: # 路径朝向约束
-          cost_weight: 7.0 # 起步段主代价，强化 180 度转向时对路径朝向的响应
-          offset_from_furthest: 3 # 使用 furthest point 前方第 3 个路径点计算朝向
+          cost_weight: 15.0 # 起步段主代价，强化 180 度转向时对路径朝向的响应
+          offset_from_furthest: 5 # 使用 furthest point 前方第 5 个路径点计算朝向
           threshold_to_consider: 0.3 # 接近末段后交给目标类代价
           max_angle_to_furthest: 0.7 # 更早触发路径朝向纠偏
           forward_preference: true # 偏好按前进方向对齐路径
         PathAlignCritic: # 路径贴合约束
-          cost_weight: 15.0 # 起步段适度贴线，避免刚起步过度贴线导致转向僵硬
+          cost_weight: 20.0 # 起步段适度贴线，避免刚起步过度贴线导致转向僵硬
           offset_from_furthest: 3 # 更早参与贴线
           trajectory_point_step: 3 # 轨迹评估采样间隔
           threshold_to_consider: 0.3 # 接近末段后交给目标类代价
           max_path_occupancy_ratio: 0.08 # 起步段略放宽路径占据判断，给转向留空间
         PathFollowCritic: # 路径推进约束
-          cost_weight: 7.0 # 起步后快速跟进路径前方点
-          offset_from_furthest: 7 # 跟踪 furthest point 前方第 7 个路径点
+          cost_weight: 5.0 # 起步后快速跟进路径前方点
+          offset_from_furthest: 5 # 跟踪 furthest point 前方第 5 个路径点
           threshold_to_consider: 1.2 # 中近距离后逐步让位给目标段
         PreferForwardCritic: # 前进偏好约束
-          cost_weight: 3.0 # 起步段略加强前进偏好，减少 180 度场景直接倒车
+          cost_weight: 1.0 # 起步段略加强前进偏好，减少 180 度场景直接倒车
           threshold_to_consider: 0.25 # 接近目标 0.25m 内不再强制前进偏好
 
       # ============================================================
@@ -191,17 +191,17 @@ controller_server:
         vx_min: -0.5 # 中间段最小速度，允许必要倒车
         vy_max: 0.5 # 中间段侧向速度上限，DiffDrive 下通常不生效
         wz_max: 0.75 # 中间段最大角速度
-        GoalCritic: # 中段关闭终点吸引，避免为了接近终点而切弯
-          cost_weight: 0.0
-          threshold_to_consider: 0.0
-        GoalLateralCritic: # 中段关闭目标横向误差
-          cost_weight: 0.0
-          threshold_to_consider: 0.0
-          last_n_points: 8
-        GoalLongitudinalCritic: # 中段关闭目标纵向误差
-          cost_weight: 0.0
-          threshold_to_consider: 0.0
-          last_n_points: 8
+        GoalCritic: # 中段终点吸引，避免为了接近终点而切弯
+          cost_weight: 3.0
+          threshold_to_consider: 5.0
+        GoalLateralCritic: # 中段目标横向误差
+          cost_weight: 1.0
+          threshold_to_consider: 2.0
+          last_n_points: 10
+        GoalLongitudinalCritic: # 中段目标纵向误差
+          cost_weight: 1.0
+          threshold_to_consider: 2.0
+          last_n_points: 10
         GoalAngleCritic: # 中段关闭最终朝向约束
           cost_weight: 0.0
           threshold_to_consider: 0.0
@@ -218,11 +218,11 @@ controller_server:
           threshold_to_consider: 0.5 # 接近目标后不再使用路径贴合约束
           max_path_occupancy_ratio: 0.05 # 路径被障碍占据超过该比例时减弱路径贴合
         PathFollowCritic: # 路径推进约束
-          cost_weight: 4.0 # 保留路径推进，但弱于 PathAlign，减少切弯倾向
-          offset_from_furthest: 5 # 跟踪 furthest point 前方第 5 个路径点
+          cost_weight: 10.0 # 保留路径推进，但弱于 PathAlign，减少切弯倾向
+          offset_from_furthest: 10 # 跟踪 furthest point 前方第 10 个路径点
           threshold_to_consider: 0.5 # 保持推进牵引到 0.5m 内，避免二三阶段边界先减速再加速
         PreferForwardCritic: # 前进偏好约束
-          cost_weight: 5.0 # 前进偏好权重
+          cost_weight: 10.0 # 前进偏好权重
           threshold_to_consider: 0.25 # 接近目标 0.25m 内不再强制前进偏好
 
       # ============================================================
@@ -230,25 +230,25 @@ controller_server:
       # ============================================================
       profile_3: # 末段
         vx_max: 0.7 # 末段保持硬上限 0.7，减速交给 DesiredVelocityCritic 软约束（消除二三阶段硬降速）
-        vx_min: 0.0 # 末段禁倒车，消除到点前后磨蹭
+        vx_min: -0.05 # 末段禁倒车，消除到点前后磨蹭
         vy_max: 0.5 # 末段侧向速度上限
-        wz_max: 0.30 # 末段降低最大角速度，但保留一定横向纠偏能力
+        wz_max: 0.75 # 末段降低最大角速度，但保留一定横向纠偏能力
         GoalCritic: # 末段弱距离收敛辅助，主精度仍由横向/纵向/角度代价负责
-          cost_weight: 4.0
+          cost_weight: 10.0
           threshold_to_consider: 1.0
         GoalLateralCritic: # 目标横向误差约束
           cost_weight: 35.0 # 保留当前已调好的末段横向误差权重
           threshold_to_consider: 1.0 # 距离目标 1.0m 内按目标朝向约束横向误差
-          last_n_points: 10 # 每条 MPPI 候选轨迹只取最后 10 个时间点来计算横向误差代价
+          last_n_points: 20 # 每条 MPPI 候选轨迹只取最后 10 个时间点来计算横向误差代价
         GoalLongitudinalCritic: # 目标纵向误差约束
-          cost_weight: 25.0 # 保留当前已调好的末段纵向误差权重
-          threshold_to_consider: 0.8 # 启用纵向牵引距离
-          last_n_points: 10 # 每条 MPPI 候选轨迹只取最后 10 个时间点来计算纵向误差代价
+          cost_weight: 30.0 # 保留当前已调好的末段纵向误差权重
+          threshold_to_consider: 1.0 # 启用纵向牵引距离
+          last_n_points: 20 # 每条 MPPI 候选轨迹只取最后 10 个时间点来计算纵向误差代价
         GoalAngleCritic: # 目标朝向约束
           cost_weight: 15.0 # 目标朝向权重
           threshold_to_consider: 0.2 # 距离目标小于该值时启用目标朝向约束
         PathAngleCritic: # 路径朝向约束
-          cost_weight: 1.0 # 末段保留弱路径朝向，避免切换后突然失去路径牵引
+          cost_weight: 2.0 # 末段保留弱路径朝向，避免切换后突然失去路径牵引
           offset_from_furthest: 2 # 使用 furthest point 前方第 2 个路径点计算朝向
           threshold_to_consider: 0.5 # 接近目标后不再使用路径朝向约束
           max_angle_to_furthest: 1.0 # 允许的路径朝向角度阈值
@@ -260,7 +260,7 @@ controller_server:
           threshold_to_consider: 0.5 # 接近目标后不再使用路径贴合约束
           max_path_occupancy_ratio: 0.05 # 路径被障碍占据超过该比例时减弱路径贴合
         PathFollowCritic: # 路径推进约束
-          cost_weight: 1.0 # 末段保留弱路径推进，减少二三阶段切换时的停顿感
+          cost_weight: 5.0 # 末段保留弱路径推进，减少二三阶段切换时的停顿感
           offset_from_furthest: 5 # 跟踪 furthest point 前方第 5 个路径点
           threshold_to_consider: 0.5 # 0.5m 外提供弱推进，0.5m 内交给目标精调
         PreferForwardCritic: # 前进偏好约束
