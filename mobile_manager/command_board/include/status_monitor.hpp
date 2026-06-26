@@ -20,6 +20,7 @@
 #include <geometry_msgs/msg/twist.hpp>
 #include <diagnostic_msgs/msg/diagnostic_array.hpp>
 #include <nav_msgs/msg/odometry.hpp>
+#include <nav_interfaces/msg/map_state.hpp>
 #include <std_msgs/msg/string.hpp>
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
@@ -54,7 +55,7 @@ public:
         bool                      task_status_valid = false;
         std::string               recover_state = "NORMAL";  // SafetyReactor 急停丢位恢复状态机
         std::string               safety_alarm;              // SafetyReactor 告警（ALARM 时非空）
-        std::string               current_map_name;          // from map_manager/map_name
+        std::string               current_map_name;          // from map_manager/map_state
     };
 
     explicit StatusMonitor(rclcpp::Node* node);
@@ -75,7 +76,7 @@ private:
     void OnTaskStatus(std_msgs::msg::String::SharedPtr msg);
     void OnDiagnosticsAgg(diagnostic_msgs::msg::DiagnosticArray::SharedPtr msg);
     void OnLocalizationState(nav_interfaces::msg::LocalizationState::SharedPtr msg);
-    void OnMapName(std_msgs::msg::String::SharedPtr msg);
+    void OnMapState(nav_interfaces::msg::MapState::SharedPtr msg);
     void UpdatePoseFromTF();   // called whenever GetSnapshot() reads; cheap lookup
     void PublishNavStatus();   // 1 Hz timer
 
@@ -90,7 +91,7 @@ private:
     rclcpp::Subscription<std_msgs::msg::String>::SharedPtr task_status_sub_;
     rclcpp::Subscription<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr diagnostics_sub_;
     rclcpp::Subscription<nav_interfaces::msg::LocalizationState>::SharedPtr localization_sub_;
-    rclcpp::Subscription<std_msgs::msg::String>::SharedPtr map_name_sub_;
+    rclcpp::Subscription<nav_interfaces::msg::MapState>::SharedPtr map_state_sub_;
 
     rclcpp::Publisher<nav_interfaces::msg::BatteryInfo>::SharedPtr battery_pub_;
     rclcpp::Publisher<nav_interfaces::msg::NavSystemStatus>::SharedPtr nav_status_pub_;

@@ -69,13 +69,12 @@ AutoMapSaver::AutoMapSaver(rclcpp::Node* node, StatusMonitor* status_monitor)
     auto map_qos = rclcpp::QoS(1).transient_local();
     rclcpp::SubscriptionOptions map_sub_opt;
     map_sub_opt.callback_group = callback_group_;
-    map_folder_sub_ = node_->create_subscription<std_msgs::msg::String>(
-        "map_manager/map_folder", map_qos,
-        [this](const std_msgs::msg::String::SharedPtr msg) { map_folder_ = msg->data; },
-        map_sub_opt);
-    map_name_sub_ = node_->create_subscription<std_msgs::msg::String>(
-        "map_manager/map_name", map_qos,
-        [this](const std_msgs::msg::String::SharedPtr msg) { map_name_ = msg->data; },
+    map_state_sub_ = node_->create_subscription<nav_interfaces::msg::MapState>(
+        "map_manager/map_state", map_qos,
+        [this](const nav_interfaces::msg::MapState::SharedPtr msg) {
+            map_folder_ = msg->map_folder;
+            map_name_ = msg->map_name;
+        },
         map_sub_opt);
 
     if (enable_) {

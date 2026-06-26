@@ -52,9 +52,9 @@ StatusMonitor::StatusMonitor(rclcpp::Node* node) : node_(node) {
         "/localization_node/state", qos_reliable,
         std::bind(&StatusMonitor::OnLocalizationState, this, std::placeholders::_1));
 
-    map_name_sub_ = node_->create_subscription<std_msgs::msg::String>(
-        "/map_manager/map_name", rclcpp::QoS(rclcpp::KeepLast(1)).transient_local().reliable(),
-        std::bind(&StatusMonitor::OnMapName, this, std::placeholders::_1));
+    map_state_sub_ = node_->create_subscription<nav_interfaces::msg::MapState>(
+        "map_manager/map_state", rclcpp::QoS(rclcpp::KeepLast(1)).transient_local().reliable(),
+        std::bind(&StatusMonitor::OnMapState, this, std::placeholders::_1));
 
     battery_pub_ = node_->create_publisher<nav_interfaces::msg::BatteryInfo>(
         "/battery_info", qos_reliable);
@@ -86,10 +86,10 @@ void StatusMonitor::SetRecoverStatus(const std::string& state, const std::string
     snapshot_.safety_alarm  = alarm;
 }
 
-void StatusMonitor::OnMapName(std_msgs::msg::String::SharedPtr msg) {
+void StatusMonitor::OnMapState(nav_interfaces::msg::MapState::SharedPtr msg) {
     std::lock_guard<std::mutex> lock(mutex_);
-    snapshot_.current_map_name = msg->data;
-    RCLCPP_INFO(node_->get_logger(), "StatusMonitor: map_name = '%s'", msg->data.c_str());
+    snapshot_.current_map_name = msg->map_name;
+    RCLCPP_INFO(node_->get_logger(), "StatusMonitor: map_name = '%s'", msg->map_name.c_str());
 }
 
 void StatusMonitor::UpdatePoseFromTF() {

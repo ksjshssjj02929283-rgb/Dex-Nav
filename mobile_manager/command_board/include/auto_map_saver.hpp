@@ -16,6 +16,7 @@
 
 #include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/string.hpp>
+#include <nav_interfaces/msg/map_state.hpp>
 #include <nav_interfaces/srv/save_map.hpp>
 #include <geometry_msgs/msg/pose2_d.hpp>
 
@@ -95,8 +96,7 @@ private:
     rclcpp::Client<nav_interfaces::srv::SaveMap>::SharedPtr save_map_cli_;
     rclcpp::Service<nav_interfaces::srv::SaveMap>::SharedPtr save_srv_;
     rclcpp::Publisher<std_msgs::msg::String>::SharedPtr status_pub_;
-    rclcpp::Subscription<std_msgs::msg::String>::SharedPtr map_folder_sub_;
-    rclcpp::Subscription<std_msgs::msg::String>::SharedPtr map_name_sub_;
+    rclcpp::Subscription<nav_interfaces::msg::MapState>::SharedPtr map_state_sub_;
     rclcpp::CallbackGroup::SharedPtr callback_group_;
 };
 
