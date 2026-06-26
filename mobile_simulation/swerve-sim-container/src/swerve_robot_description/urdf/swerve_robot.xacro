@@ -1,0 +1,43 @@
+<?xml version="1.0"?>
+<!-- Top-level file for generating the platform -->
+
+<robot name="swerve_robot" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+    <xacro:arg name="sim" default="false" />
+    <xacro:property name="sim" value="$(arg sim)" />
+
+    <!-- Steering limit (how far each wheel can turn left/right), in degrees.
+         Override with: xacro ... steering_limit_deg:=45 (or via the
+         description.launch.py "steering_limit_deg" launch argument). -->
+    <xacro:arg name="steering_limit_deg" default="90.0" />
+    <xacro:property name="steering_limit_deg" value="$(arg steering_limit_deg)" />
+    <xacro:property name="steering_limit" value="${steering_limit_deg * pi / 180.0}" />
+
+    <!-- Import swerve robot (without any payload) -->
+    <xacro:include filename="$(find swerve_robot_description)/urdf/include/swerve_robot_base.xacro" />
+    <xacro:swerve_robot_base />
+
+    <xacro:if value="${sim}">
+        <!-- Import gazebo ros2 control plugin -->
+        <xacro:include filename="$(find swerve_robot_description)/urdf/include/swerve_ros2_control.xacro" />
+        <xacro:swerve_gazebo_ros2_control />
+    </xacro:if>
+
+    <!-- DexForce chassis sensor suite (lidars, RGB + depth cameras, IMU). -->
+    <xacro:include filename="$(find swerve_robot_description)/urdf/include/dexforce_sensors.xacro" />
+    <!-- Frames always exist so navigation/perception have valid TF. -->
+    <xacro:dexforce_sensor_frames parent="base_link" />
+    <xacro:if value="${sim}">
+        <!-- Gazebo plugins only in simulation so the sensors emit data. -->
+        <xacro:dexforce_sensor_gazebo />
+    </xacro:if>
+
+    <!-- DexForce upper body (torso + head + arms + hands), appearance +
+         collision only, rigidly attached to the chassis body. -->
+    <xacro:arg name="upper_body" default="true" />
+    <xacro:if value="$(arg upper_body)">
+        <xacro:include filename="$(find swerve_robot_description)/urdf/include/dexforce_upper_body.xacro" />
+        <xacro:dexforce_upper_body parent="chassis_link" />
+    </xacro:if>
+
+</robot>

@@ -1,0 +1,4 @@
+[console_scripts]
+wheel_cmd_publisher = swerve_controller.swerve_commander:main
+wheel_odometry = swerve_controller.swerve_odometer:main
+

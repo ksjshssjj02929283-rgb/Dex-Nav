@@ -41,6 +41,7 @@ set(dependencies ament_cmake
 add_library(${library_name} SHARED
   src/theta_star.cpp
   src/theta_star_planner.cpp
+  src/swerve_steering_model.cpp
 )
 
 ament_target_dependencies(${library_name} ${dependencies})

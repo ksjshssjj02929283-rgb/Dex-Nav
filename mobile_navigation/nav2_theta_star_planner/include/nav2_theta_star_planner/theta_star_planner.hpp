@@ -32,12 +32,23 @@
 #include "nav2_costmap_2d/cost_values.hpp"
 #include "nav2_util/node_utils.hpp"
 #include "nav2_theta_star_planner/theta_star.hpp"
+#include "nav2_theta_star_planner/swerve_steering_model.hpp"
 #include "nav2_util/geometry_utils.hpp"
 
 using rcl_interfaces::msg::ParameterType;
 
 namespace nav2_theta_star_planner
 {
+
+/// 路径点 yaw 赋值策略（assign_path_orientations=true 时生效）
+enum class PathOrientationMode
+{
+  NONE = 0,     ///< 不赋中间点朝向（与上游 Theta* 一致，仅终点由 createPlan 处理）
+  AUTO,         ///< 推荐：起终点同 yaw→全程平移；不同→沿路径弧长从 start 插值到 goal
+  START,        ///< 强制全程用起点 yaw（忽略起终点是否相同）
+  GOAL,         ///< 强制全程用 goal yaw
+  TANGENT       ///< 每点用指向下一段的路径切线（差速/阿克曼风格）
+};
 
 class ThetaStarPlanner : public nav2_core::GlobalPlanner
 {
@@ -63,6 +74,18 @@ protected:
   rclcpp::Logger logger_{rclcpp::get_logger("ThetaStarPlanner")};
   std::string global_frame_, name_;
   bool use_final_approach_orientation_;
+  /// 是否为路径各点写入 orientation（默认 true，解决中间点 yaw=0 导致 MPPI 乱转）
+  bool assign_path_orientations_{true};
+  PathOrientationMode path_orientation_mode_{PathOrientationMode::AUTO};
+  /// |start_yaw - goal_yaw| 小于该值(rad) 时视为“同朝向”，全程不做 yaw 插值
+  double path_orientation_same_threshold_rad_{0.02};
+
+  /**
+   * @brief B 层：沿路径仿真舵轮 IK，限制舵角跳变（对齐 mobile_cmd_omni_region.cpp）
+   * @see enforceSteeringContinuityOnPath()
+   */
+  bool enforce_steering_continuity_{true};
+  SwerveSteeringConfig swerve_steering_config_;
 
   // parent node weak ptr
   rclcpp_lifecycle::LifecycleNode::WeakPtr parent_node_;
@@ -88,6 +111,32 @@ protected:
   static nav_msgs::msg::Path linearInterpolation(
     const std::vector<coordsW> & raw_path,
     const double & dist_bw_points);
+
+  /**
+   * @brief 解析 path_orientation_mode 字符串参数
+   * @param mode "auto" | "none" | "start" | "goal" | "tangent"（大小写不敏感）
+   */
+  static PathOrientationMode parsePathOrientationMode(const std::string & mode);
+
+  /**
+   * @brief 为 /plan 各点写入 orientation，供 MPPI PathAlign(use_path_orientations) 使用
+   * @param path 已插值的几何路径
+   * @param start 规划起点（mode=start 时取其 yaw）
+   * @param goal 规划终点（mode=goal 或末点 override 时取其 yaw）
+   */
+  void assignPathOrientations(
+    nav_msgs::msg::Path & path,
+    const geometry_msgs::msg::PoseStamped & start,
+    const geometry_msgs::msg::PoseStamped & goal) const;
+
+  /**
+   * @brief 在 assignPathOrientations 之后调用：调整路径 yaw 使舵轮目标角连续
+   * @param path 几何路径（仅修改 orientation）
+   * @param goal_yaw 终点目标 yaw（rad）
+   */
+  void applySteeringContinuityConstraint(
+    nav_msgs::msg::Path & path,
+    double goal_yaw) const;
 
   /**
    * @brief Callback executed when a paramter change is detected

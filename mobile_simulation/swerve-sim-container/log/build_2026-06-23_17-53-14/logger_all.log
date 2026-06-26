@@ -1,0 +1,189 @@
+[0.068s] DEBUG:colcon:Command line arguments: ['/usr/bin/colcon', 'build', '--packages-select', 'swerve_controller', '--symlink-install']
+[0.068s] DEBUG:colcon:Parsed command line arguments: Namespace(log_base=None, log_level=None, verb_name='build', build_base='build', install_base='install', merge_install=False, symlink_install=True, test_result_base=None, continue_on_error=False, executor='parallel', parallel_workers=16, event_handlers=None, ignore_user_meta=False, metas=['./colcon.meta'], base_paths=['.'], packages_ignore=None, packages_ignore_regex=None, paths=None, packages_up_to=None, packages_up_to_regex=None, packages_above=None, packages_above_and_dependencies=None, packages_above_depth=None, packages_select_by_dep=None, packages_skip_by_dep=None, packages_skip_up_to=None, packages_select_build_failed=False, packages_skip_build_finished=False, packages_select_test_failures=False, packages_skip_test_passed=False, packages_select=['swerve_controller'], packages_skip=None, packages_select_regex=None, packages_skip_regex=None, packages_start=None, packages_end=None, allow_overriding=[], cmake_args=None, cmake_target=None, cmake_target_skip_unavailable=False, cmake_clean_cache=False, cmake_clean_first=False, cmake_force_configure=False, ament_cmake_args=None, catkin_cmake_args=None, catkin_skip_building_tests=False, verb_parser=<colcon_defaults.argument_parser.defaults.DefaultArgumentsDecorator object at 0x737429159930>, verb_extension=<colcon_core.verb.build.BuildVerb object at 0x7374291593f0>, main=<bound method BuildVerb.main of <colcon_core.verb.build.BuildVerb object at 0x7374291593f0>>)
+[0.169s] Level 1:colcon.colcon_core.package_discovery:discover_packages(colcon_meta) check parameters
+[0.169s] Level 1:colcon.colcon_core.package_discovery:discover_packages(recursive) check parameters
+[0.169s] Level 1:colcon.colcon_core.package_discovery:discover_packages(ignore) check parameters
+[0.169s] Level 1:colcon.colcon_core.package_discovery:discover_packages(path) check parameters
+[0.169s] Level 1:colcon.colcon_core.package_discovery:discover_packages(colcon_meta) discover
+[0.169s] Level 1:colcon.colcon_core.package_discovery:discover_packages(recursive) discover
+[0.169s] INFO:colcon.colcon_core.package_discovery:Crawling recursively for packages in '/home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container'
+[0.169s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extensions ['ignore', 'ignore_ament_install']
+[0.169s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extension 'ignore'
+[0.169s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extension 'ignore_ament_install'
+[0.169s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extensions ['colcon_pkg']
+[0.169s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extension 'colcon_pkg'
+[0.169s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extensions ['colcon_meta']
+[0.169s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extension 'colcon_meta'
+[0.169s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extensions ['ros']
+[0.169s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extension 'ros'
+[0.176s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extensions ['cmake', 'python']
+[0.176s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extension 'cmake'
+[0.176s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extension 'python'
+[0.176s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extensions ['python_setup_py']
+[0.176s] Level 1:colcon.colcon_core.package_identification:_identify(.) by extension 'python_setup_py'
+[0.177s] Level 1:colcon.colcon_core.package_identification:_identify(build) by extensions ['ignore', 'ignore_ament_install']
+[0.177s] Level 1:colcon.colcon_core.package_identification:_identify(build) by extension 'ignore'
+[0.177s] Level 1:colcon.colcon_core.package_identification:_identify(build) ignored
+[0.177s] Level 1:colcon.colcon_core.package_identification:_identify(config) by extensions ['ignore', 'ignore_ament_install']
+[0.177s] Level 1:colcon.colcon_core.package_identification:_identify(config) by extension 'ignore'
+[0.177s] Level 1:colcon.colcon_core.package_identification:_identify(config) by extension 'ignore_ament_install'
+[0.177s] Level 1:colcon.colcon_core.package_identification:_identify(config) by extensions ['colcon_pkg']
+[0.177s] Level 1:colcon.colcon_core.package_identification:_identify(config) by extension 'colcon_pkg'
+[0.177s] Level 1:colcon.colcon_core.package_identification:_identify(config) by extensions ['colcon_meta']
+[0.177s] Level 1:colcon.colcon_core.package_identification:_identify(config) by extension 'colcon_meta'
+[0.177s] Level 1:colcon.colcon_core.package_identification:_identify(config) by extensions ['ros']
+[0.177s] Level 1:colcon.colcon_core.package_identification:_identify(config) by extension 'ros'
+[0.177s] Level 1:colcon.colcon_core.package_identification:_identify(config) by extensions ['cmake', 'python']
+[0.177s] Level 1:colcon.colcon_core.package_identification:_identify(config) by extension 'cmake'
+[0.177s] Level 1:colcon.colcon_core.package_identification:_identify(config) by extension 'python'
+[0.177s] Level 1:colcon.colcon_core.package_identification:_identify(config) by extensions ['python_setup_py']
+[0.177s] Level 1:colcon.colcon_core.package_identification:_identify(config) by extension 'python_setup_py'
+[0.177s] Level 1:colcon.colcon_core.package_identification:_identify(install) by extensions ['ignore', 'ignore_ament_install']
+[0.177s] Level 1:colcon.colcon_core.package_identification:_identify(install) by extension 'ignore'
+[0.177s] Level 1:colcon.colcon_core.package_identification:_identify(install) ignored
+[0.177s] Level 1:colcon.colcon_core.package_identification:_identify(log) by extensions ['ignore', 'ignore_ament_install']
+[0.177s] Level 1:colcon.colcon_core.package_identification:_identify(log) by extension 'ignore'
+[0.177s] Level 1:colcon.colcon_core.package_identification:_identify(log) ignored
+[0.177s] Level 1:colcon.colcon_core.package_identification:_identify(src) by extensions ['ignore', 'ignore_ament_install']
+[0.177s] Level 1:colcon.colcon_core.package_identification:_identify(src) by extension 'ignore'
+[0.178s] Level 1:colcon.colcon_core.package_identification:_identify(src) by extension 'ignore_ament_install'
+[0.178s] Level 1:colcon.colcon_core.package_identification:_identify(src) by extensions ['colcon_pkg']
+[0.178s] Level 1:colcon.colcon_core.package_identification:_identify(src) by extension 'colcon_pkg'
+[0.178s] Level 1:colcon.colcon_core.package_identification:_identify(src) by extensions ['colcon_meta']
+[0.178s] Level 1:colcon.colcon_core.package_identification:_identify(src) by extension 'colcon_meta'
+[0.178s] Level 1:colcon.colcon_core.package_identification:_identify(src) by extensions ['ros']
+[0.178s] Level 1:colcon.colcon_core.package_identification:_identify(src) by extension 'ros'
+[0.178s] Level 1:colcon.colcon_core.package_identification:_identify(src) by extensions ['cmake', 'python']
+[0.178s] Level 1:colcon.colcon_core.package_identification:_identify(src) by extension 'cmake'
+[0.178s] Level 1:colcon.colcon_core.package_identification:_identify(src) by extension 'python'
+[0.178s] Level 1:colcon.colcon_core.package_identification:_identify(src) by extensions ['python_setup_py']
+[0.178s] Level 1:colcon.colcon_core.package_identification:_identify(src) by extension 'python_setup_py'
+[0.178s] Level 1:colcon.colcon_core.package_identification:_identify(src/aws-robomaker-small-warehouse-world) by extensions ['ignore', 'ignore_ament_install']
+[0.178s] Level 1:colcon.colcon_core.package_identification:_identify(src/aws-robomaker-small-warehouse-world) by extension 'ignore'
+[0.178s] Level 1:colcon.colcon_core.package_identification:_identify(src/aws-robomaker-small-warehouse-world) by extension 'ignore_ament_install'
+[0.178s] Level 1:colcon.colcon_core.package_identification:_identify(src/aws-robomaker-small-warehouse-world) by extensions ['colcon_pkg']
+[0.178s] Level 1:colcon.colcon_core.package_identification:_identify(src/aws-robomaker-small-warehouse-world) by extension 'colcon_pkg'
+[0.178s] Level 1:colcon.colcon_core.package_identification:_identify(src/aws-robomaker-small-warehouse-world) by extensions ['colcon_meta']
+[0.178s] Level 1:colcon.colcon_core.package_identification:_identify(src/aws-robomaker-small-warehouse-world) by extension 'colcon_meta'
+[0.178s] Level 1:colcon.colcon_core.package_identification:_identify(src/aws-robomaker-small-warehouse-world) by extensions ['ros']
+[0.178s] Level 1:colcon.colcon_core.package_identification:_identify(src/aws-robomaker-small-warehouse-world) by extension 'ros'
+[0.180s] DEBUG:colcon.colcon_core.package_identification:Package 'src/aws-robomaker-small-warehouse-world' with type 'ros.ament_cmake' and name 'aws_robomaker_small_warehouse_world'
+[0.180s] Level 1:colcon.colcon_core.package_identification:_identify(src/swerve_controller) by extensions ['ignore', 'ignore_ament_install']
+[0.180s] Level 1:colcon.colcon_core.package_identification:_identify(src/swerve_controller) by extension 'ignore'
+[0.180s] Level 1:colcon.colcon_core.package_identification:_identify(src/swerve_controller) by extension 'ignore_ament_install'
+[0.180s] Level 1:colcon.colcon_core.package_identification:_identify(src/swerve_controller) by extensions ['colcon_pkg']
+[0.180s] Level 1:colcon.colcon_core.package_identification:_identify(src/swerve_controller) by extension 'colcon_pkg'
+[0.180s] Level 1:colcon.colcon_core.package_identification:_identify(src/swerve_controller) by extensions ['colcon_meta']
+[0.180s] Level 1:colcon.colcon_core.package_identification:_identify(src/swerve_controller) by extension 'colcon_meta'
+[0.180s] Level 1:colcon.colcon_core.package_identification:_identify(src/swerve_controller) by extensions ['ros']
+[0.180s] Level 1:colcon.colcon_core.package_identification:_identify(src/swerve_controller) by extension 'ros'
+[0.181s] DEBUG:colcon.colcon_core.package_identification:Package 'src/swerve_controller' with type 'ros.ament_python' and name 'swerve_controller'
+[0.181s] Level 1:colcon.colcon_core.package_identification:_identify(src/swerve_robot_description) by extensions ['ignore', 'ignore_ament_install']
+[0.181s] Level 1:colcon.colcon_core.package_identification:_identify(src/swerve_robot_description) by extension 'ignore'
+[0.181s] Level 1:colcon.colcon_core.package_identification:_identify(src/swerve_robot_description) by extension 'ignore_ament_install'
+[0.181s] Level 1:colcon.colcon_core.package_identification:_identify(src/swerve_robot_description) by extensions ['colcon_pkg']
+[0.181s] Level 1:colcon.colcon_core.package_identification:_identify(src/swerve_robot_description) by extension 'colcon_pkg'
+[0.181s] Level 1:colcon.colcon_core.package_identification:_identify(src/swerve_robot_description) by extensions ['colcon_meta']
+[0.181s] Level 1:colcon.colcon_core.package_identification:_identify(src/swerve_robot_description) by extension 'colcon_meta'
+[0.181s] Level 1:colcon.colcon_core.package_identification:_identify(src/swerve_robot_description) by extensions ['ros']
+[0.181s] Level 1:colcon.colcon_core.package_identification:_identify(src/swerve_robot_description) by extension 'ros'
+[0.182s] DEBUG:colcon.colcon_core.package_identification:Package 'src/swerve_robot_description' with type 'ros.ament_cmake' and name 'swerve_robot_description'
+[0.182s] Level 1:colcon.colcon_core.package_identification:_identify(src/swerve_robot_gazebo) by extensions ['ignore', 'ignore_ament_install']
+[0.182s] Level 1:colcon.colcon_core.package_identification:_identify(src/swerve_robot_gazebo) by extension 'ignore'
+[0.182s] Level 1:colcon.colcon_core.package_identification:_identify(src/swerve_robot_gazebo) by extension 'ignore_ament_install'
+[0.182s] Level 1:colcon.colcon_core.package_identification:_identify(src/swerve_robot_gazebo) by extensions ['colcon_pkg']
+[0.182s] Level 1:colcon.colcon_core.package_identification:_identify(src/swerve_robot_gazebo) by extension 'colcon_pkg'
+[0.182s] Level 1:colcon.colcon_core.package_identification:_identify(src/swerve_robot_gazebo) by extensions ['colcon_meta']
+[0.182s] Level 1:colcon.colcon_core.package_identification:_identify(src/swerve_robot_gazebo) by extension 'colcon_meta'
+[0.182s] Level 1:colcon.colcon_core.package_identification:_identify(src/swerve_robot_gazebo) by extensions ['ros']
+[0.182s] Level 1:colcon.colcon_core.package_identification:_identify(src/swerve_robot_gazebo) by extension 'ros'
+[0.183s] DEBUG:colcon.colcon_core.package_identification:Package 'src/swerve_robot_gazebo' with type 'ros.ament_python' and name 'swerve_robot_gazebo'
+[0.183s] Level 1:colcon.colcon_core.package_discovery:discover_packages(recursive) using defaults
+[0.183s] Level 1:colcon.colcon_core.package_discovery:discover_packages(ignore) discover
+[0.183s] Level 1:colcon.colcon_core.package_discovery:discover_packages(ignore) using defaults
+[0.183s] Level 1:colcon.colcon_core.package_discovery:discover_packages(path) discover
+[0.183s] Level 1:colcon.colcon_core.package_discovery:discover_packages(path) using defaults
+[0.207s] INFO:colcon.colcon_core.package_selection:Skipping not selected package 'aws_robomaker_small_warehouse_world' in 'src/aws-robomaker-small-warehouse-world'
+[0.207s] INFO:colcon.colcon_core.package_selection:Skipping not selected package 'swerve_robot_description' in 'src/swerve_robot_description'
+[0.207s] INFO:colcon.colcon_core.package_selection:Skipping not selected package 'swerve_robot_gazebo' in 'src/swerve_robot_gazebo'
+[0.208s] Level 1:colcon.colcon_core.package_discovery:discover_packages(prefix_path) check parameters
+[0.208s] Level 1:colcon.colcon_core.package_discovery:discover_packages(prefix_path) discover
+[0.209s] DEBUG:colcon.colcon_installed_package_information.package_discovery:Found 9 installed packages in /home/dex/dexe_mobile_nav/install
+[0.210s] DEBUG:colcon.colcon_installed_package_information.package_discovery:Found 4 installed packages in /home/dex/swerve-sim-container/install
+[0.211s] DEBUG:colcon.colcon_installed_package_information.package_discovery:Found 382 installed packages in /opt/ros/humble
+[0.212s] Level 1:colcon.colcon_core.package_discovery:discover_packages(prefix_path) using defaults
+[0.243s] WARNING:colcon.colcon_core.package_selection:Some selected packages are already built in one or more underlay workspaces:
+	'swerve_controller' is in: /home/dex/dexe_mobile_nav/install/swerve_controller, /home/dex/swerve-sim-container/install/swerve_controller
+If a package in a merged underlay workspace is overridden and it installs headers, then all packages in the overlay must sort their include directories by workspace order. Failure to do so may result in build failures or undefined behavior at run time.
+If the overridden package is used by another package in any underlay, then the overriding package in the overlay must be API and ABI compatible or undefined behavior at run time may occur.
+
+If you understand the risks and want to override a package anyways, add the following to the command line:
+	--allow-overriding swerve_controller
+
+This may be promoted to an error in a future release of colcon-override-check.
+[0.243s] Level 5:colcon.colcon_core.verb:set package 'swerve_controller' build argument 'cmake_args' from command line to 'None'
+[0.243s] Level 5:colcon.colcon_core.verb:set package 'swerve_controller' build argument 'cmake_target' from command line to 'None'
+[0.243s] Level 5:colcon.colcon_core.verb:set package 'swerve_controller' build argument 'cmake_target_skip_unavailable' from command line to 'False'
+[0.243s] Level 5:colcon.colcon_core.verb:set package 'swerve_controller' build argument 'cmake_clean_cache' from command line to 'False'
+[0.244s] Level 5:colcon.colcon_core.verb:set package 'swerve_controller' build argument 'cmake_clean_first' from command line to 'False'
+[0.244s] Level 5:colcon.colcon_core.verb:set package 'swerve_controller' build argument 'cmake_force_configure' from command line to 'False'
+[0.244s] Level 5:colcon.colcon_core.verb:set package 'swerve_controller' build argument 'ament_cmake_args' from command line to 'None'
+[0.244s] Level 5:colcon.colcon_core.verb:set package 'swerve_controller' build argument 'catkin_cmake_args' from command line to 'None'
+[0.244s] Level 5:colcon.colcon_core.verb:set package 'swerve_controller' build argument 'catkin_skip_building_tests' from command line to 'False'
+[0.244s] DEBUG:colcon.colcon_core.verb:Building package 'swerve_controller' with the following arguments: {'ament_cmake_args': None, 'build_base': '/home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/build/swerve_controller', 'catkin_cmake_args': None, 'catkin_skip_building_tests': False, 'cmake_args': None, 'cmake_clean_cache': False, 'cmake_clean_first': False, 'cmake_force_configure': False, 'cmake_target': None, 'cmake_target_skip_unavailable': False, 'install_base': '/home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/install/swerve_controller', 'merge_install': False, 'path': '/home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/src/swerve_controller', 'symlink_install': True, 'test_result_base': None}
+[0.244s] INFO:colcon.colcon_core.executor:Executing jobs using 'parallel' executor
+[0.245s] DEBUG:colcon.colcon_parallel_executor.executor.parallel:run_until_complete
+[0.245s] INFO:colcon.colcon_ros.task.ament_python.build:Building ROS package in '/home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/src/swerve_controller' with build type 'ament_python'
+[0.245s] Level 1:colcon.colcon_core.shell:create_environment_hook('swerve_controller', 'ament_prefix_path')
+[0.247s] INFO:colcon.colcon_core.plugin_system:Skipping extension 'colcon_core.shell.bat': Not used on non-Windows systems
+[0.247s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/install/swerve_controller/share/swerve_controller/hook/ament_prefix_path.ps1'
+[0.247s] INFO:colcon.colcon_core.shell:Creating environment descriptor '/home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/install/swerve_controller/share/swerve_controller/hook/ament_prefix_path.dsv'
+[0.248s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/install/swerve_controller/share/swerve_controller/hook/ament_prefix_path.sh'
+[0.248s] INFO:colcon.colcon_core.shell:Skip shell extension 'powershell' for command environment: Not usable outside of PowerShell
+[0.248s] DEBUG:colcon.colcon_core.shell:Skip shell extension 'dsv' for command environment
+[0.428s] INFO:colcon.colcon_core.task.python.build:Building Python package in '/home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/src/swerve_controller'
+[0.428s] INFO:colcon.colcon_core.shell:Skip shell extension 'powershell' for command environment: Not usable outside of PowerShell
+[0.428s] DEBUG:colcon.colcon_core.shell:Skip shell extension 'dsv' for command environment
+[0.756s] DEBUG:colcon.colcon_core.event_handler.log_command:Invoking command in '/home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/build/swerve_controller': PYTHONPATH=/home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/build/swerve_controller/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/install/swerve_controller/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --editable --build-directory /home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/build/swerve_controller/build --no-deps symlink_data
+[1.056s] Level 1:colcon.colcon_core.shell:create_environment_hook('swerve_controller', 'pythonpath_develop')
+[1.057s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/build/swerve_controller/share/swerve_controller/hook/pythonpath_develop.ps1'
+[1.058s] DEBUG:colcon.colcon_core.event_handler.log_command:Invoked command in '/home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/build/swerve_controller' returned '0': PYTHONPATH=/home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/build/swerve_controller/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/install/swerve_controller/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --editable --build-directory /home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/build/swerve_controller/build --no-deps symlink_data
+[1.058s] INFO:colcon.colcon_core.shell:Creating environment descriptor '/home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/build/swerve_controller/share/swerve_controller/hook/pythonpath_develop.dsv'
+[1.058s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/build/swerve_controller/share/swerve_controller/hook/pythonpath_develop.sh'
+[1.060s] Level 1:colcon.colcon_core.environment:checking '/home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/install/swerve_controller' for CMake module files
+[1.060s] Level 1:colcon.colcon_core.environment:checking '/home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/install/swerve_controller' for CMake config files
+[1.061s] Level 1:colcon.colcon_core.environment:checking '/home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/install/swerve_controller/lib'
+[1.061s] Level 1:colcon.colcon_core.environment:checking '/home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/install/swerve_controller/bin'
+[1.061s] Level 1:colcon.colcon_core.environment:checking '/home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/install/swerve_controller/lib/pkgconfig/swerve_controller.pc'
+[1.061s] Level 1:colcon.colcon_core.environment:checking '/home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/install/swerve_controller/lib/python3.10/site-packages'
+[1.061s] Level 1:colcon.colcon_core.shell:create_environment_hook('swerve_controller', 'pythonpath')
+[1.061s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/install/swerve_controller/share/swerve_controller/hook/pythonpath.ps1'
+[1.062s] INFO:colcon.colcon_core.shell:Creating environment descriptor '/home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/install/swerve_controller/share/swerve_controller/hook/pythonpath.dsv'
+[1.062s] INFO:colcon.colcon_core.shell:Creating environment hook '/home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/install/swerve_controller/share/swerve_controller/hook/pythonpath.sh'
+[1.062s] Level 1:colcon.colcon_core.environment:checking '/home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/install/swerve_controller/bin'
+[1.062s] Level 1:colcon.colcon_core.environment:create_environment_scripts_only(swerve_controller)
+[1.062s] INFO:colcon.colcon_core.shell:Creating package script '/home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/install/swerve_controller/share/swerve_controller/package.ps1'
+[1.063s] INFO:colcon.colcon_core.shell:Creating package descriptor '/home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/install/swerve_controller/share/swerve_controller/package.dsv'
+[1.064s] INFO:colcon.colcon_core.shell:Creating package script '/home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/install/swerve_controller/share/swerve_controller/package.sh'
+[1.064s] INFO:colcon.colcon_core.shell:Creating package script '/home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/install/swerve_controller/share/swerve_controller/package.bash'
+[1.065s] INFO:colcon.colcon_core.shell:Creating package script '/home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/install/swerve_controller/share/swerve_controller/package.zsh'
+[1.065s] Level 1:colcon.colcon_core.environment:create_file_with_runtime_dependencies(/home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/install/swerve_controller/share/colcon-core/packages/swerve_controller)
+[1.065s] DEBUG:colcon.colcon_parallel_executor.executor.parallel:closing loop
+[1.065s] DEBUG:colcon.colcon_parallel_executor.executor.parallel:loop closed
+[1.065s] DEBUG:colcon.colcon_parallel_executor.executor.parallel:run_until_complete finished with '0'
+[1.065s] DEBUG:colcon.colcon_core.event_reactor:joining thread
+[1.069s] INFO:colcon.colcon_core.plugin_system:Skipping extension 'colcon_notification.desktop_notification.terminal_notifier': Not used on non-Darwin systems
+[1.069s] INFO:colcon.colcon_core.plugin_system:Skipping extension 'colcon_notification.desktop_notification.win32': Not used on non-Windows systems
+[1.069s] INFO:colcon.colcon_notification.desktop_notification:Sending desktop notification using 'notify2'
+[1.070s] DEBUG:colcon.colcon_notification.desktop_notification.notify2:Failed to initialize notify2: org.freedesktop.DBus.Error.FileNotFound: Failed to connect to socket /run/user/1000/bus: No such file or directory
+[1.070s] DEBUG:colcon.colcon_core.event_reactor:joined thread
+[1.070s] INFO:colcon.colcon_core.shell:Creating prefix script '/home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/install/local_setup.ps1'
+[1.071s] INFO:colcon.colcon_core.shell:Creating prefix util module '/home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/install/_local_setup_util_ps1.py'
+[1.071s] INFO:colcon.colcon_core.shell:Creating prefix chain script '/home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/install/setup.ps1'
+[1.072s] INFO:colcon.colcon_core.shell:Creating prefix script '/home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/install/local_setup.sh'
+[1.073s] INFO:colcon.colcon_core.shell:Creating prefix util module '/home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/install/_local_setup_util_sh.py'
+[1.073s] INFO:colcon.colcon_core.shell:Creating prefix chain script '/home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/install/setup.sh'
+[1.075s] INFO:colcon.colcon_core.shell:Creating prefix script '/home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/install/local_setup.bash'
+[1.075s] INFO:colcon.colcon_core.shell:Creating prefix chain script '/home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/install/setup.bash'
+[1.076s] INFO:colcon.colcon_core.shell:Creating prefix script '/home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/install/local_setup.zsh'
+[1.077s] INFO:colcon.colcon_core.shell:Creating prefix chain script '/home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/install/setup.zsh'

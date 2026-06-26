@@ -1,0 +1,30 @@
+[0.510s] Invoking command in '/home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/build/swerve_controller': PYTHONPATH=/home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/build/swerve_controller/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/install/swerve_controller/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --editable --build-directory /home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/build/swerve_controller/build --no-deps symlink_data
+[0.683s] running develop
+[0.778s] running egg_info
+[0.779s] creating swerve_controller.egg-info
+[0.779s] writing swerve_controller.egg-info/PKG-INFO
+[0.779s] writing dependency_links to swerve_controller.egg-info/dependency_links.txt
+[0.779s] writing entry points to swerve_controller.egg-info/entry_points.txt
+[0.779s] writing requirements to swerve_controller.egg-info/requires.txt
+[0.779s] writing top-level names to swerve_controller.egg-info/top_level.txt
+[0.779s] writing manifest file 'swerve_controller.egg-info/SOURCES.txt'
+[0.780s] reading manifest file 'swerve_controller.egg-info/SOURCES.txt'
+[0.781s] writing manifest file 'swerve_controller.egg-info/SOURCES.txt'
+[0.782s] running build_ext
+[0.782s] Creating /home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/install/swerve_controller/lib/python3.10/site-packages/swerve-controller.egg-link (link to .)
+[0.782s] Installing wheel_cmd_publisher script to /home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/install/swerve_controller/lib/swerve_controller
+[0.782s] Installing wheel_odometry script to /home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/install/swerve_controller/lib/swerve_controller
+[0.782s] 
+[0.783s] Installed /home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/build/swerve_controller
+[0.783s] running symlink_data
+[0.783s] creating /home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/install/swerve_controller/share/ament_index
+[0.783s] creating /home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/install/swerve_controller/share/ament_index/resource_index
+[0.783s] creating /home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/install/swerve_controller/share/ament_index/resource_index/packages
+[0.783s] symbolically linking /home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/build/swerve_controller/resource/swerve_controller -> /home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/install/swerve_controller/share/ament_index/resource_index/packages
+[0.783s] symbolically linking /home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/build/swerve_controller/package.xml -> /home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/install/swerve_controller/share/swerve_controller
+[0.783s] creating /home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/install/swerve_controller/share/swerve_controller/launch
+[0.783s] symbolically linking /home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/build/swerve_controller/launch/swerve_control_odom.launch.py -> /home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/install/swerve_controller/share/swerve_controller/launch
+[0.783s] creating /home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/install/swerve_controller/share/swerve_controller/config
+[0.783s] symbolically linking /home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/build/swerve_controller/config/robot_geometry.yaml -> /home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/install/swerve_controller/share/swerve_controller/config
+[0.783s] symbolically linking /home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/build/swerve_controller/config/controller.yaml -> /home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/install/swerve_controller/share/swerve_controller/config
+[0.811s] Invoked command in '/home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/build/swerve_controller' returned '0': PYTHONPATH=/home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/build/swerve_controller/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/install/swerve_controller/lib/python3.10/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py develop --editable --build-directory /home/dex/dexe_mobile_nav/mobile_simulation/swerve-sim-container/build/swerve_controller/build --no-deps symlink_data
