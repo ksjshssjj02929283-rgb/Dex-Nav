@@ -87,4 +87,55 @@ install(DIRECTORY launch params
   DESTINATION share/${PROJECT_NAME}
 )
 
+# ── RViz2 状态显示面板（command_board_rviz_plugins）──────────────────
+# 订阅 ~/nav_system_status + ~/auto_map_saver_status，分区卡片可视化。
+# 无 RViz 环境时 QUIET 跳过，不阻塞 command_board_node 构建。
+find_package(rviz_common QUIET)
+find_package(rviz_rendering QUIET)
+find_package(pluginlib QUIET)
+find_package(Qt5 QUIET COMPONENTS Widgets Core)
+
+if(rviz_common_FOUND AND Qt5_FOUND AND pluginlib_FOUND)
+  set(CMAKE_AUTOMOC ON)
+
+  add_library(command_board_rviz_plugins SHARED
+    rviz_plugins/src/command_board_status_panel.cpp
+    rviz_plugins/src/command_board_control_panel.cpp
+    # 含 Q_OBJECT 的头文件须显式列出，否则 AUTOMOC 不扫描独立 include 目录
+    rviz_plugins/include/command_board_rviz_plugins/command_board_status_panel.hpp
+    rviz_plugins/include/command_board_rviz_plugins/command_board_control_panel.hpp)
+
+  target_include_directories(command_board_rviz_plugins PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/rviz_plugins/include>
+    $<INSTALL_INTERFACE:include>)
+
+  ament_target_dependencies(command_board_rviz_plugins
+    rclcpp
+    nav_interfaces
+    geometry_msgs
+    std_msgs
+    std_srvs
+    rviz_common
+    rviz_rendering
+    pluginlib)
+
+  target_link_libraries(command_board_rviz_plugins
+    Qt5::Widgets
+    Qt5::Core)
+
+  pluginlib_export_plugin_description_file(rviz_common rviz_plugins/plugin_description.xml)
+
+  install(TARGETS command_board_rviz_plugins
+    EXPORT export_command_board_rviz_plugins
+    ARCHIVE DESTINATION lib
+    LIBRARY DESTINATION lib
+    RUNTIME DESTINATION bin)
+
+  install(DIRECTORY rviz_plugins/include/
+    DESTINATION include)
+
+  ament_export_targets(export_command_board_rviz_plugins HAS_LIBRARY_TARGET)
+  ament_export_dependencies(rviz_common rviz_rendering pluginlib)
+endif()
+
 ament_package()
