@@ -27,6 +27,7 @@ void GoalLateralCritic::initialize()
   getParam(power_, "cost_power", 2);
   getParam(weight_, "cost_weight", 5.0);
   getParam(threshold_to_consider_, "threshold_to_consider", 1.5);
+  getParam(deadband_, "deadband", 0.0);
   getParam(last_n_points_, "last_n_points", 8);
 
   RCLCPP_INFO(
@@ -65,7 +66,8 @@ void GoalLateralCritic::score(CriticData & data)
     const auto dx = data.trajectories.x.col(p).array() - goal_x;
     const auto dy = data.trajectories.y.col(p).array() - goal_y;
     // 在 MPPI 公共 frame 内，按目标朝向投影出横向误差
-    const auto lat_err = (-sin_yaw * dx + cos_yaw * dy).abs();
+    // 死区：误差小于 deadband 不计代价，避免到点处追 sub-cm 造成磨蹭
+    const auto lat_err = ((-sin_yaw * dx + cos_yaw * dy).abs() - deadband_).max(0.0f);
     cost += lat_err;
   }
 

@@ -229,8 +229,8 @@ controller_server:
       # 5. profile_3 末段：低速精调目标点，保留已调好的横向/纵向误差代价
       # ============================================================
       profile_3: # 末段
-        vx_max: 0.2 # 末段降低最大前进速度，减少终点超调
-        vx_min: -0.10 # 末段限制倒车速度，减少终点附近反复调整
+        vx_max: 0.7 # 末段保持硬上限 0.7，减速交给 DesiredVelocityCritic 软约束（消除二三阶段硬降速）
+        vx_min: 0.0 # 末段禁倒车，消除到点前后磨蹭
         vy_max: 0.5 # 末段侧向速度上限
         wz_max: 0.30 # 末段降低最大角速度，但保留一定横向纠偏能力
         GoalCritic: # 末段弱距离收敛辅助，主精度仍由横向/纵向/角度代价负责
@@ -277,7 +277,7 @@ controller_server:
       AckermannConstraints:
         min_turning_r: 0.5
       # critics 是插件加载列表，不再代表单阶段行为策略；阶段行为由上方 profile_N 覆盖。
-      critics: ["ConstraintCritic", "CostCritic", "ObstaclesCritic", "GoalCritic", "GoalLateralCritic", "GoalLongitudinalCritic", "GoalAngleCritic", "PathAlignCritic", "PathFollowCritic", "PathAngleCritic", "PreferForwardCritic", "VelocityDeadbandCritic"]
+      critics: ["ConstraintCritic", "CostCritic", "ObstaclesCritic", "GoalCritic", "GoalLateralCritic", "GoalLongitudinalCritic", "GoalAngleCritic", "PathAlignCritic", "PathFollowCritic", "PathAngleCritic", "PreferForwardCritic", "DesiredVelocityCritic", "VelocityDeadbandCritic"]
       ConstraintCritic:
         enabled: true
         cost_power: 1
@@ -302,6 +302,15 @@ controller_server:
         collision_cost: 1000000.0
         near_goal_distance: 0.5
         trajectory_point_step: 2
+      GoalLateralCritic: # 全局：仅提供末段死区；weight/threshold/last_n 由 profile_3 覆盖
+        deadband: 0.01 # 横向误差 < 1cm(=accept 容差) 不再施加代价，避免到点磨蹭（仅末段 weight>0 时生效）
+      GoalLongitudinalCritic: # 全局：仅提供末段死区；weight/threshold/last_n 由 profile_3 覆盖
+        deadband: 0.01 # 纵向误差 < 1cm 不再施加代价，避免到点磨蹭
+      DesiredVelocityCritic: # 速度软约束：按剩余距离算期望速度(下降式软速度上限)，消除二三阶段硬降速
+        enabled: true
+        cost_power: 2
+        cost_weight: 8.0 # 初值，bag 调；与 goal critic 量级相当（过冲→加，减速太早→减）
+        a_decel: 0.3 # 期望减速度 m/s²，恒减速 0.3 ≤ ax_max 0.5；速度上限取 FollowPath 全局 vx_max(0.7)
       VelocityDeadbandCritic:
         enabled: true
         cost_power: 1

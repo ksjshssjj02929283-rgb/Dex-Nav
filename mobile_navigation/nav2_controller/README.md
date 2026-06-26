@@ -189,9 +189,9 @@ goal_checker:
   accept_lon_goal_tolerance: 0.02
   accept_lat_goal_tolerance: 0.02
   yaw_goal_tolerance: 0.02
-  enable_high_precision: true
-  refine_cycles: 20
-  stable_window_size: 10
+  enable_high_precision: false
+  refine_cycles: 40
+  stable_window_size: 5
   check_stopped: false
   trans_stopped_velocity: 0.01
   rot_stopped_velocity: 0.02
@@ -276,11 +276,11 @@ enable_high_precision
 
 refine_cycles
   进入 2cm 后继续尝试精调的控制周期数。
-  当前 controller_frequency=10Hz，refine_cycles=20 约等于 2s。
+  当前 controller_frequency=10Hz，refine_cycles=40 约等于 4s。
 
 stable_window_size
   滑动误差窗口大小。
-  当前 controller_frequency=10Hz，stable_window_size=10 约等于最近 1s。
+  当前 controller_frequency=10Hz，stable_window_size=5 约等于最近 0.5s。
 
 check_stopped
   是否要求速度也足够小才算成功。

@@ -273,7 +273,7 @@ void MPPIController::configureProfiles()
   profiles_[1].critics.path_follow = {4.0f, 0.5f, 5};
   profiles_[1].critics.prefer_forward = {5.0f, 0.25f};
 
-  profiles_[2].velocity = {0.4f, -0.2f, 0.5f, 0.5f};
+  profiles_[2].velocity = {0.7f, 0.0f, 0.5f, 0.30f};  // 末段速度交给 DesiredVelocityCritic 软约束；硬上限保持 0.7、禁倒车
   profiles_[2].critics.goal = {4.0f, 1.0f};
   profiles_[2].critics.goal_lateral = {40.0f, 1.0f, 10};
   profiles_[2].critics.goal_longitudinal = {25.0f, 0.8f, 10};

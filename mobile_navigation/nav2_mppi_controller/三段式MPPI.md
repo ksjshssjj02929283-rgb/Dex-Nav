@@ -1,81 +1,75 @@
 # 三段式 MPPI 参数说明
 
-本文档整理当前 `nav2_mppi_controller` 中三段式 MPPI Profile 的切换规则、各阶段可覆盖参数，以及建议放入 `w1_nav2_params.yaml` 的配置模板。
+本文档整理当前 `nav2_mppi_controller` 中三段式 MPPI Profile 的切换规则、各阶段可覆盖参数，以及 `w1_nav2_params.yaml` 的配置现状。
+
+> 📌 本文以当前代码/yaml 实际值为准（已与 `controller.cpp` / `w1_nav2_params.yaml` 对齐）。参数的**单一真相源是 `w1_nav2_params.yaml`**，本文表格用于解释设计意图，调参请改 yaml。
 
 代码位置：
 
-- 控制器三阶段读取与切换：`src/controller.cpp`
+- 控制器三阶段读取与切换：`src/controller.cpp`（`selectProfile` / `configureProfiles` / `interpolateProfiles`）
 - Profile 应用到速度约束：`src/optimizer.cpp`
 - 路径进度和目标距离计算：`src/path_handler.cpp`
 - 当前主要参数文件：`../nav2_bringup/params/w1_nav2_params.yaml`
 
 ## 1. 当前状态
 
-当前代码已经固定使用三段式 Profile，单阶段 MPPI 兼容逻辑已经删除。当前 `w1_nav2_params.yaml` 的 `FollowPath` 下已经配置三段式参数：
+三段式 Profile 已**固定启用，单阶段 MPPI 兼容逻辑已删除**（不再有 `profile_enabled` 开关）。profile 由 `controller.cpp::configureProfiles()` 给出代码默认，再由 `w1_nav2_params.yaml` 的 `profile_1/2/3` 覆盖。
 
-```yaml
-profile_start_distance
-profile_goal_distance
-profile_transition_duration
-profile_1
-profile_2
-profile_3
-```
-
-当前显式配置的阶段阈值为：
+当前阶段阈值（yaml 实际值）：
 
 | 参数 | 当前值 | 影响 |
 |---|---:|---|
-| `profile_start_distance` | `1.5` | 路径累计前进小于 1.5 m 时使用起步段 |
+| `profile_start_distance` | `0.5` | 路径累计前进小于 0.5 m 时使用起步段 |
 | `profile_goal_distance` | `1.5` | 距离终点小于等于 1.5 m 时使用末段 |
-| `profile_transition_duration` | `0.6` | 阶段切换时用 0.6 s 插值过渡速度约束和支持的 critic 参数 |
+| `profile_transition_duration` | `1.0` | 阶段切换时用 1.0 s 插值过渡速度约束和 critic 参数 |
+| `profile_switch_hysteresis` | `0.05` | 阶段切换迟滞带，避免边界附近来回切换（见 §2）|
 
-也就是说：**当前 YAML 已经会按三阶段进行切换，并且会用 `profile_transition_duration` 避免阶段边界一拍硬切。** `profile_1/2/3` 会完整管理速度约束和已支持的 Goal、GoalLateral、GoalLongitudinal、GoalAngle、PathAlign、PathFollow、PathAngle、PreferForward 等行为类 critic 参数；全局配置不再作为行为策略默认值。
+`profile_1/2/3` 完整管理速度约束 + 行为类 critic（Goal、GoalLateral、GoalLongitudinal、GoalAngle、PathAlign、PathFollow、PathAngle、PreferForward）；**全局配置不再作为单阶段行为策略默认值**，三段已差异化（不再"等于全局"）。
 
 ## 2. 三阶段切换规则
 
-每次 `computeVelocityCommands()` 时，控制器会先转换局部路径，然后从 `PathHandler` 获取两个量：
+每次 `computeVelocityCommands()` 先转换局部路径，再从 `PathHandler` 获取两个量：
 
 | 变量 | 含义 |
 |---|---|
 | `path_progress` | 沿全局路径累计前进距离 |
 | `goal_distance` | 当前机器人到最终目标点的直线距离 |
 
-切换逻辑如下：
+`selectProfile()` 逻辑（含迟滞带）：
 
 ```text
+# 迟滞：已在某段时，退出该段的阈值放宽 profile_switch_hysteresis
+如果 当前在末段 且 goal_distance <= profile_goal_distance + hysteresis
+    保持 profile_3
 如果 goal_distance <= profile_goal_distance
     使用 profile_3：末段
-
-否则如果 path_progress < profile_start_distance
+如果 当前在起步段 且 path_progress < profile_start_distance + hysteresis
+    保持 profile_1
+如果 path_progress < profile_start_distance
     使用 profile_1：起步段
-
 否则
     使用 profile_2：中间段
 ```
 
-注意：**末段优先级最高**。即使机器人刚开始走，只要 `goal_distance <= profile_goal_distance`，也会进入 `profile_3`。
+注意：
+- **末段优先级最高**。即使刚起步，只要 `goal_distance <= profile_goal_distance` 也直接进 `profile_3`（短距离任务可能一上来就是末段）。
+- **迟滞带**：在边界 ±hysteresis 内不来回切，避免 `path_progress`/`goal_distance` 抖动导致 profile 频繁切换、速度约束反复插值。
 
 ## 3. 三个阶段的定位
 
 ```text
 三段式 MPPI
-├── profile_1：起步段
-│   ├── 触发条件：path_progress < profile_start_distance
-│   └── 目标：起步更稳，减少刚开始时方向/路径贴合突变
+├── profile_1：起步段（path_progress < profile_start_distance）
+│   └── 目标：快速对齐路径方向、跟上轨迹；关闭目标类 critic，路径朝向/贴合主导
 │
-├── profile_2：中间段
-│   ├── 触发条件：不在起步段，也不在末段
-│   └── 目标：正常路径跟踪，强调贴线和前向推进
+├── profile_2：中间段（不在起步段，也不在末段）
+│   └── 目标：较快速度下严格贴线跟踪；PathAlign 主代价
 │
-└── profile_3：末段
-    ├── 触发条件：goal_distance <= profile_goal_distance
-    └── 目标：降速、收敛到目标点和目标角度，减少终点超调
+└── profile_3：末段（goal_distance <= profile_goal_distance）
+    └── 目标：降速精调到目标位姿；四目标 critic（距离/横向/纵向/朝向）主导，路径类降为弱牵引
 ```
 
 ## 4. Profile 可以覆盖哪些参数
-
-每个 `profile_N` 当前支持覆盖两类参数。
 
 ### 4.1 速度约束
 
@@ -86,333 +80,157 @@ profile_3
 | `vy_max` | 最大侧向速度 | DiffDrive 下通常不实际使用 |
 | `wz_max` | 最大角速度 | 限制旋转速度上限 |
 
-这些参数会覆盖 `Optimizer` 内部的 `base_constraints`，然后再叠加速度限制层的 `speed_limit`。
+这些参数覆盖 `Optimizer` 的 `base_constraints`，再叠加速度限制层的 `speed_limit`。
 
-### 4.2 Critic 参数
-
-当前支持按阶段覆盖的 critic 有：
+### 4.2 Critic 参数（按阶段覆盖）
 
 | Critic | 可覆盖参数 |
 |---|---|
 | `GoalCritic` | `cost_weight`, `threshold_to_consider` |
+| `GoalLateralCritic` | `cost_weight`, `threshold_to_consider`, `last_n_points` |
+| `GoalLongitudinalCritic` | `cost_weight`, `threshold_to_consider`, `last_n_points` |
 | `GoalAngleCritic` | `cost_weight`, `threshold_to_consider` |
 | `PathAngleCritic` | `cost_weight`, `threshold_to_consider`, `offset_from_furthest`, `max_angle_to_furthest`, `forward_preference` |
 | `PathFollowCritic` | `cost_weight`, `threshold_to_consider`, `offset_from_furthest` |
 | `PathAlignCritic` | `cost_weight`, `threshold_to_consider`, `offset_from_furthest`, `trajectory_point_step`, `max_path_occupancy_ratio` |
 | `PreferForwardCritic` | `cost_weight`, `threshold_to_consider` |
 
-当前不支持按阶段覆盖的主要参数包括：
+> `GoalLateralCritic` / `GoalLongitudinalCritic` 分别惩罚候选轨迹末 `last_n_points` 个点在**目标朝向坐标系**下的横向 / 纵向误差，仅末段启用，是厘米级停靠的核心。另有全局 `deadband` 参数（误差 < 该值不计代价，防到点磨蹭）。
+
+**不支持按阶段覆盖**（仍用 `FollowPath` 全局配置）：
 
 | 类型 | 说明 |
 |---|---|
 | 采样参数 | `vx_std`, `vy_std`, `wz_std`, `batch_size`, `time_steps`, `model_dt` |
 | 约束参数 | `ax_max`, `ax_min`, `az_max`, `jx_max`, `jz_max` |
-| 障碍物相关 critic | `ObstaclesCritic`, `CostCritic` 等 |
+| 障碍物 critic | `ObstaclesCritic`, `CostCritic`（含近目标膨胀过滤，见 §5）|
 | 死区 critic | `VelocityDeadbandCritic` |
 
-这些参数仍然使用 `FollowPath` 下的全局配置。
+### 4.3 `threshold_to_consider` 的双重语义（重要，易踩坑）
+
+每个 critic 都有一个 `threshold_to_consider`，它**不是评分项开关，而是该 critic 的「作用距离带」**（离目标多远时才有意义）。它配合 `withinPositionGoalTolerance(threshold)` 用，但 **Goal 类与 Path 类极性相反**：
+
+| critic 类型 | score() 早退条件 | 效果 |
+|---|---|---|
+| **Goal 类**（GoalCritic / GoalAngle / GoalLateral / GoalLongitudinal）| `if (!within(thr)) return;` | **进 threshold 内才启用**（近目标才吸向终点 / 收朝向）|
+| **Path 类**（PathAlign / PathFollow / PathAngle / PreferForward）| `if (within(thr)) return;` | **进 threshold 内就关闭**（近目标停止贴线，交棒给 Goal 类）|
+
+记法：Goal 类"近了才上场"、Path 类"近了就下场"。一正一反，构成"远处跟线 → 近处吸向终点"的平滑交棒。各 critic 的 threshold 不同（如 GoalAngle 0.2m 才收最终朝向、PathAlign 0.5m 外才贴线），是必要的精细分工，不可合并成一个全局值。
+
+**与三段式 profile 的分工（避免重复调度）**：profile 切换会连 `threshold_to_consider` 一起覆盖。两者都按到目标距离调 critic，职责应分层——
+
+| 机制 | 只负责 |
+|---|---|
+| profile（weight 0/非0）| **段间调度**：哪个阶段启用哪些 critic |
+| `threshold_to_consider` | **段内精细调度**：某阶段内部的距离 sub-band（如末段里 GoalAngle 0.2m 收朝向、GoalCritic 1.0m 起吸）|
+
+实用结论：调"某 critic 在哪段开/关"改 profile 的 weight；调"某 critic 在该段内多近才起作用"改 threshold。前段里 weight=0 的 critic，其 threshold 设什么都无所谓。
 
 ## 5. 当前全局 MPPI 参数基线
 
-当前 `w1_nav2_params.yaml` 里的 `FollowPath` 全局基线如下：
+`w1_nav2_params.yaml` 的 `FollowPath` 全局基线（profile 不覆盖的项以此为准）：
 
 | 参数 | 当前值 | 说明 |
 |---|---:|---|
 | `time_steps` | `40` | 预测步数 |
-| `model_dt` | `0.1` | 每步时间，预测时域约 4.0 s |
-| `batch_size` | `2000` | 采样轨迹数量 |
-| `vx_std` | `0.25` | 线速度采样标准差 |
-| `vy_std` | `0.2` | 侧向速度采样标准差 |
-| `wz_std` | `0.3` | 角速度采样标准差 |
-| `vx_max` | `0.7` | 全局最大前进速度 |
-| `vx_min` | `-0.5` | 全局最小速度，允许倒车 |
-| `vy_max` | `0.5` | 全局侧向速度上限 |
-| `wz_max` | `0.75` | 全局角速度上限 |
-| `ax_max` | `0.5` | 最大线加速度 |
-| `ax_min` | `-0.5` | 最大线减速度 |
-| `az_max` | `0.7` | 最大角加速度 |
-| `jx_max` | `1.0` | 最大线 jerk |
-| `jz_max` | `1.5` | 最大角 jerk |
+| `model_dt` | `0.1` | 每步时间，预测时域约 4.0 s（= time_steps × model_dt）|
+| `batch_size` | `1500` | 采样轨迹数量 |
+| `vx_std` / `vy_std` / `wz_std` | `0.25` / `0.2` / `0.3` | 采样标准差 |
+| `vx_max` / `vx_min` | `0.7` / `-0.5` | 全局速度（运行时被 profile 覆盖）|
+| `vy_max` / `wz_max` | `0.5` / `0.75` | 全局侧向/角速度上限 |
+| `ax_max` / `ax_min` / `az_max` | `0.5` / `-0.5` / `0.7` | 加速度约束 |
+| `jx_max` / `jz_max` | `1.0` / `1.5` | jerk 约束 |
 | `motion_model` | `DiffDrive` | 差速模型 |
-| `open_loop` | `true` | 使用上一周期输出作为速度状态 |
+| `open_loop` | `true` | 用上一周期输出作为速度状态 |
 
-## 6. 当前三阶段参数
+### 5.1 近目标膨胀过滤（贴障到点）
 
-下面这组参数已经放在 `FollowPath` 下，和 `vx_max/vx_min/vy_max/wz_max` 同级。当前策略是：**每个阶段都显式写出行为类 critic 参数；全局配置不再承担单阶段行为策略默认值。**
+属 controller 本体参数（不属单个 critic），让末段贴近障碍的目标点也能稳定到达：
 
-### 6.1 阶段切换参数
-
-```yaml
-profile_start_distance: 1.5
-profile_goal_distance: 1.5
-profile_transition_duration: 0.6
-```
-
-含义：
-
-| 参数 | 建议值 | 含义 |
+| 参数 | 当前值 | 说明 |
 |---|---:|---|
-| `profile_start_distance` | `1.5` | 路径累计前进小于 1.5 m 时使用起步段 |
-| `profile_goal_distance` | `1.5` | 距离终点小于等于 1.5 m 时使用末段 |
-| `profile_transition_duration` | `0.6` | 阶段切换时用 0.6 s 插值过渡 |
+| `near_goal_cost_relaxation_distance` | `0.5` | 距目标小于此值时，MPPI 障碍/代价 critic 启用近目标软膨胀过滤 |
+| `near_goal_effective_inflation_radius` | `0.2` | MPPI 内部等效膨胀半径（**不修改** local costmap 真实 0.4m inflation）|
 
-### 6.2 profile_1：起步段
+机制：近目标时把非致命的软膨胀 cost（`INSCRIBED_INFLATED` 及等效半径内）在 MPPI 评分里置为 FREE，**致命/未知障碍仍保留**，相当于末段把 MPPI 眼里的膨胀半径缩到 0.2m，让车敢贴障到点。
 
-```yaml
-profile_1:
-  vx_max: 0.7
-  vx_min: -0.5
-  vy_max: 0.5
-  wz_max: 0.75
-  GoalCritic:
-    cost_weight: 8.0
-    threshold_to_consider: 2.2
-  GoalAngleCritic:
-    cost_weight: 3.0
-    threshold_to_consider: 0.1
-  PathAngleCritic:
-    cost_weight: 4.0
-    offset_from_furthest: 2
-    threshold_to_consider: 0.5
-    max_angle_to_furthest: 1.0
-    forward_preference: true
-  PathAlignCritic:
-    cost_weight: 14.0
-    offset_from_furthest: 15
-    trajectory_point_step: 3
-    threshold_to_consider: 0.5
-    max_path_occupancy_ratio: 0.05
-  PathFollowCritic:
-    cost_weight: 5.0
-    offset_from_furthest: 5
-    threshold_to_consider: 2.2
-  PreferForwardCritic:
-    cost_weight: 5.0
-    threshold_to_consider: 0.25
-```
+### 5.2 速度软约束 DesiredVelocityCritic（平滑减速，消除阶段硬降速）
 
-起步段设计意图：
+全局 critic（不分阶段覆盖），按每个预测点到目标剩余距离算期望速度做**下降式软速度上限**：
 
-| 参数变化 | 作用 |
+| 参数 | 当前值 | 说明 |
+|---|---:|---|
+| `cost_weight` | `8.0` | 软约束权重（bag 调）|
+| `a_decel` | `0.3` | 期望减速度 m/s²，`v_desired=min(vx_max, sqrt(2·a·d))`；速度上限取全局 vx_max(0.7)|
+| `cost_power` | `2` | |
+
+机制：单边惩罚"速度超过 v_desired"——远离目标 v_desired=vx_max 不干扰；接近目标 v_desired 平滑降到 0，MPPI 在时域内自行规划匀减速。配合 profile_3 vx_max 改回 0.7（删硬降）+ GoalLateral/GoalLongitudinal 的 `deadband: 0.02`(2cm 死区) + 末段禁倒车，解决"二三阶段硬降速顿挫"与"到点前后磨蹭"。
+
+## 6. 当前三阶段参数（实际值对照）
+
+> 三段已差异化，下表为 yaml 实际值。`—` 表示该 critic 在该段权重为 0（关闭）。
+
+| 项 | profile_1 起步 | profile_2 中间 | profile_3 末段 |
+|---|:---:|:---:|:---:|
+| `vx_max` / `vx_min` | 0.4 / −0.3 | 0.7 / −0.5 | 0.7 / 0 |
+| `wz_max` | 0.75 | 0.75 | 0.30 |
+| `GoalCritic` (weight, thr) | — | — | 4.0, 1.0 |
+| `GoalLateralCritic` (weight, thr, n) | — | — | 35.0, 1.0, 10 |
+| `GoalLongitudinalCritic` (weight, thr, n) | — | — | 25.0, 0.8, 10 |
+| `GoalAngleCritic` (weight, thr) | — | — | 15.0, 0.2 |
+| `PathAngleCritic` (weight, off, thr, maxang) | 7.0, 3, 0.3, 0.7 | 5.0, 3, 0.5, 0.9 | 1.0, 2, 0.5, 1.0 |
+| `PathAlignCritic` (weight, off, step, thr) | 15.0, 3, 3, 0.3 | 20.0, 15, 2, 0.5 | 2.0, 15, 3, 0.5 |
+| `PathFollowCritic` (weight, off, thr) | 7.0, 7, 1.2 | 4.0, 5, 0.5 | 1.0, 5, 0.5 |
+| `PreferForwardCritic` (weight, thr) | 3.0, 0.25 | 5.0, 0.25 | 1.0, 1.0 |
+
+设计意图：
+
+| 阶段 | 意图 |
 |---|---|
-| 速度上限保持 `0.7/0.75` | 起步段不主动降速，critic 行为和全局配置一致 |
-| critic 显式配置为全局值 | 当前行为等价于全局 critic，后续可以逐段单独调整 |
+| **起步段** | 降 vx(0.4) 保 wz(0.75)；**PathAngle 7.0 + 早触发(max0.7) 主导快速对齐路径方向**，PathAlign 15 适度贴线；关闭全部目标类 critic（精调交给末段）|
+| **中间段** | 全速(0.7)；**PathAlign 20 为主代价**严格贴线，PathFollow 4 弱推进减少切弯；关闭目标类 critic |
+| **末段** | **vx 硬上限保持 0.7**（减速交给 DesiredVelocityCritic 软约束按距离平滑降速，消除二三阶段硬降速）、wz0.30、禁倒车(vx_min0)；**四目标 critic 主导**（横向 35 / 纵向 25 / 朝向 15 / 弱距离 4，横纵向带 2cm 死区防磨蹭），路径类弱牵引(1~2) |
 
-### 6.3 profile_2：中间段
+> ⚠️ 末段路径类 critic 是**弱值(1~2) 而非 0**：进入末段时若路径类直接归零会丢失路径牵引、导致二三阶段边界先减速再加速的顿挫。过渡插值上，速度上限线性过渡、目标类 critic 慢启动（详见 `interpolateProfiles`）。
 
-```yaml
-profile_2:
-  vx_max: 0.7
-  vx_min: -0.5
-  vy_max: 0.5
-  wz_max: 0.75
-  GoalCritic:
-    cost_weight: 8.0
-    threshold_to_consider: 2.2
-  GoalAngleCritic:
-    cost_weight: 3.0
-    threshold_to_consider: 0.1
-  PathAngleCritic:
-    cost_weight: 4.0
-    offset_from_furthest: 2
-    threshold_to_consider: 0.5
-    max_angle_to_furthest: 1.0
-    forward_preference: true
-  PathAlignCritic:
-    cost_weight: 14.0
-    offset_from_furthest: 15
-    trajectory_point_step: 3
-    threshold_to_consider: 0.5
-    max_path_occupancy_ratio: 0.05
-  PathFollowCritic:
-    cost_weight: 5.0
-    offset_from_furthest: 5
-    threshold_to_consider: 2.2
-  PreferForwardCritic:
-    cost_weight: 5.0
-    threshold_to_consider: 0.25
-```
+## 7. 配置位置
 
-中间段设计意图：
-
-| 参数变化 | 作用 |
-|---|---|
-| 速度上限保持 `0.7/0.75` | 中间段保持正常通行效率 |
-| critic 显式配置为全局值 | 当前行为等价于全局 critic，后续可以逐段单独调整 |
-
-### 6.4 profile_3：末段
+三段式全部参数位于 `controller_server.ros__parameters.FollowPath` 下，与 `vx_max/vx_min/vy_max/wz_max` 同级。**完整最新配置以 `w1_nav2_params.yaml` 为准**（本文不再重复全量片段，避免两处漂移）。切换参数片段：
 
 ```yaml
-profile_3:
-  vx_max: 0.35
-  vx_min: -0.20
-  vy_max: 0.5
-  wz_max: 0.50
-  GoalCritic:
-    cost_weight: 8.0
-    threshold_to_consider: 2.2
-  GoalAngleCritic:
-    cost_weight: 3.0
-    threshold_to_consider: 0.1
-  PathAngleCritic:
-    cost_weight: 4.0
-    offset_from_furthest: 2
-    threshold_to_consider: 0.5
-    max_angle_to_furthest: 1.0
-    forward_preference: true
-  PathAlignCritic:
-    cost_weight: 14.0
-    offset_from_furthest: 15
-    trajectory_point_step: 3
-    threshold_to_consider: 0.5
-    max_path_occupancy_ratio: 0.05
-  PathFollowCritic:
-    cost_weight: 5.0
-    offset_from_furthest: 5
-    threshold_to_consider: 2.2
-  PreferForwardCritic:
-    cost_weight: 5.0
-    threshold_to_consider: 0.25
-```
-
-末段设计意图：
-
-| 参数变化 | 作用 |
-|---|---|
-| `vx_max=0.35` | 接近目标时降低最大前进速度，减少超调 |
-| `vx_min=-0.20` | 限制倒车速度，避免终点附近大幅反复调整 |
-| `wz_max=0.50` | 末段角速度低于全局值，但保留一定横向纠偏能力 |
-| critic 显式配置为全局值 | 当前行为等价于全局 critic，后续可以逐段单独调整 |
-
-## 7. 完整 YAML 片段
-
-可以将下面片段放到 `controller_server.ros__parameters.FollowPath` 下：
-
-```yaml
-profile_start_distance: 0.8
-profile_goal_distance: 0.7
-
-profile_1:
-  vx_max: 0.7
-  vx_min: -0.5
-  vy_max: 0.5
-  wz_max: 0.75
-  GoalCritic:
-    cost_weight: 8.0
-    threshold_to_consider: 2.2
-  GoalAngleCritic:
-    cost_weight: 3.0
-    threshold_to_consider: 0.1
-  PathAngleCritic:
-    cost_weight: 4.0
-    offset_from_furthest: 2
-    threshold_to_consider: 0.5
-    max_angle_to_furthest: 1.0
-    forward_preference: true
-  PathAlignCritic:
-    cost_weight: 14.0
-    offset_from_furthest: 15
-    trajectory_point_step: 3
-    threshold_to_consider: 0.5
-    max_path_occupancy_ratio: 0.05
-  PathFollowCritic:
-    cost_weight: 5.0
-    offset_from_furthest: 5
-    threshold_to_consider: 2.2
-  PreferForwardCritic:
-    cost_weight: 5.0
-    threshold_to_consider: 0.25
-
-profile_2:
-  vx_max: 0.7
-  vx_min: -0.5
-  vy_max: 0.5
-  wz_max: 0.75
-  GoalCritic:
-    cost_weight: 8.0
-    threshold_to_consider: 2.2
-  GoalAngleCritic:
-    cost_weight: 3.0
-    threshold_to_consider: 0.1
-  PathAngleCritic:
-    cost_weight: 4.0
-    offset_from_furthest: 2
-    threshold_to_consider: 0.5
-    max_angle_to_furthest: 1.0
-    forward_preference: true
-  PathAlignCritic:
-    cost_weight: 14.0
-    offset_from_furthest: 15
-    trajectory_point_step: 3
-    threshold_to_consider: 0.5
-    max_path_occupancy_ratio: 0.05
-  PathFollowCritic:
-    cost_weight: 5.0
-    offset_from_furthest: 5
-    threshold_to_consider: 2.2
-  PreferForwardCritic:
-    cost_weight: 5.0
-    threshold_to_consider: 0.25
-
-profile_3:
-  vx_max: 0.35
-  vx_min: -0.20
-  vy_max: 0.5
-  wz_max: 0.50
-  GoalCritic:
-    cost_weight: 8.0
-    threshold_to_consider: 2.2
-  GoalAngleCritic:
-    cost_weight: 3.0
-    threshold_to_consider: 0.1
-  PathAngleCritic:
-    cost_weight: 4.0
-    offset_from_furthest: 2
-    threshold_to_consider: 0.5
-    max_angle_to_furthest: 1.0
-    forward_preference: true
-  PathAlignCritic:
-    cost_weight: 14.0
-    offset_from_furthest: 15
-    trajectory_point_step: 3
-    threshold_to_consider: 0.5
-    max_path_occupancy_ratio: 0.05
-  PathFollowCritic:
-    cost_weight: 5.0
-    offset_from_furthest: 5
-    threshold_to_consider: 2.2
-  PreferForwardCritic:
-    cost_weight: 5.0
-    threshold_to_consider: 0.25
+profile_start_distance: 0.5
+profile_goal_distance: 1.5
+profile_transition_duration: 1.0
+profile_switch_hysteresis: 0.05
+# profile_1 / profile_2 / profile_3 各段参数见 yaml（值见 §6 对照表）
 ```
 
 ## 8. 调试日志怎么看
 
-三段式启用后，日志中重点看这些字段：
+三段式相关日志重点字段：
 
 ```text
-MPPI profiles: enabled=1 start_distance=1.500 goal_distance=1.500 transition_duration=0.600
-MPPI path state: path_progress=... goal_distance=...
-MPPI profile state: active=... selected=...
-MPPI profile switched: 1 -> 2, reason=middle_segment/中间段
+MPPI profiles: start_distance=0.500 goal_distance=1.500 transition_duration=1.000 switch_hysteresis=0.050
+MPPI profile_0/1/2 velocity: vx=[..., ...] vy=... wz=...
+MPPI profile state: active=... selected=... path_progress=... goal_distance=...
+MPPI profile switched: 1 -> 2, reason=middle_segment/中间段, path_progress=...
 MPPI active constraints: vx=[..., ...] vy=... wz=...
 ```
 
-判断方法：
-
 | 日志字段 | 用途 |
 |---|---|
-| `path_progress` | 判断是否应该离开起步段 |
-| `goal_distance` | 判断是否应该进入末段 |
-| `active/selected` | 判断当前阶段和即将选择的阶段是否一致 |
-| `profile switched` | 确认阶段确实发生切换 |
-| `active constraints` | 确认 profile 速度约束是否真正应用到 optimizer |
+| `path_progress` | 判断是否应离开起步段 |
+| `goal_distance` | 判断是否应进入末段 |
+| `active/selected` | 当前阶段与即将选择阶段是否一致 |
+| `profile switched` | 确认阶段确实切换 + 原因 |
+| `active constraints` | 确认 profile 速度约束已应用到 optimizer |
 
-当前版本不再支持关闭三段式；若阶段没有按预期切换，应优先检查 `profile_start_distance`、`profile_goal_distance`、`path_progress` 和 `goal_distance`。
+不再有 `enabled` 字段（三段式已固定）。若阶段未按预期切换，优先检查 `profile_start_distance`、`profile_goal_distance`、`profile_switch_hysteresis` 与实时 `path_progress`/`goal_distance`。
 
 ## 9. 风险和注意事项
 
-- 三段式切换只改变速度约束和部分 critic 参数，不会重置 optimizer，也不会重建 critic 插件。
-- 当前三段式已经显式写出每段可覆盖的 critic 参数，但数值先和全局保持一致；如果后续要调横向偏差，可以优先在 `profile_3` 中调整 `PathAlignCritic`、`PathFollowCritic`、`PathAngleCritic`。
-- `profile_3` 的 `vx_max/wz_max` 降低后，终点附近更稳，但到位时间可能变长。
-- 如果使用速度限制层，最终运行速度约束是：**当前 profile 速度约束 × speed limit 比例**，或按绝对限速换算后的约束。
+- 三段式切换只改变速度约束和部分 critic 参数，**不重置 optimizer，也不重建 critic 插件**。
+- 三段已差异化，调参时注意三段是一个整体：改末端停靠能力须同时考虑 MPPI 末段 critic + 速度限制 + `goal_checker`（单改 goal_checker 只延长精调时间，不改优化代价）。
+- `profile_3` 的 `vx_max/wz_max` 已降到 0.2/0.30，终点更稳但到位时间可能变长；配合 `goal_checker.enable_high_precision` 开关平衡精度与到点速度。
+- 近目标膨胀过滤只影响 MPPI 评分，不改真实 costmap；动态/致命障碍安全由 costmap 致命层 + `collision_monitor` 独立兜底。
+- 若使用速度限制层，最终运行速度约束 = 当前 profile 速度约束 × speed limit 比例（或按绝对限速换算）。
