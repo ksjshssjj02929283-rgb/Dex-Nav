@@ -45,6 +45,7 @@ bool MapManager::LoadMap(const std::string& map_name) {
         LOG(INFO) << "Current map is already loaded: " << current_map_name_;
         LOG(WARNING) << "Reloading current map.";
         has_map_changed_ = true;
+        ++map_epoch_;  // 同名重载/回退也递增 epoch，消费方据此重载（根治同名漏检）
         return true;
     }
 
@@ -55,6 +56,7 @@ bool MapManager::LoadMap(const std::string& map_name) {
     }
     current_map_name_ = map_name;
     has_map_changed_ = true;
+    ++map_epoch_;  // 切换到不同地图，epoch 递增
 
     LOG(INFO) << "Load Map success. Current map: " << current_map_name_;
     return true;
@@ -127,6 +129,8 @@ bool MapManager::RenameMap(const std::string& old_name, const std::string& new_n
 
     if (current_map_name_ == old_name) {
         current_map_name_ = new_name;
+        has_map_changed_ = true;
+        ++map_epoch_;  // 当前图改名 → epoch+1（消费方据新名/路径重载）
         LOG(INFO) << "Current map renamed: " << old_name << " -> " << new_name;
     }
 

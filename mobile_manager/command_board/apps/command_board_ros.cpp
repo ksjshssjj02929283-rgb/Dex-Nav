@@ -58,11 +58,11 @@ CommandBoardManagerROS::CommandBoardManagerROS() : rclcpp::Node("command_board_m
     transform_assets_cli_ =
         this->create_client<nav_interfaces::srv::TransformAssets>("/map_asset_manager/transform_assets");
 
-    // ── 订阅当前地图名称 ──────────────────────────────────────────
-    auto map_name_qos = rclcpp::QoS(1).transient_local().reliable();
-    map_name_sub_ = this->create_subscription<std_msgs::msg::String>(
-        "map_manager/map_name", map_name_qos,
-        [this](const std_msgs::msg::String::SharedPtr msg) { current_map_name_ = msg->data; });
+    // ── 订阅当前地图状态（map_state，folder+name+epoch 原子下发）──────────
+    auto map_state_qos = rclcpp::QoS(1).transient_local().reliable();
+    map_state_sub_ = this->create_subscription<nav_interfaces::msg::MapState>(
+        "map_manager/map_state", map_state_qos,
+        [this](const nav_interfaces::msg::MapState::SharedPtr msg) { current_map_name_ = msg->map_name; });
 
     // ── 对外服务 ──────────────────────────────────────────────────
     reset_origin_xyyaw_srv_ = this->create_service<nav_interfaces::srv::ResetMapOriginByXYYaw>(

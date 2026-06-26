@@ -19,6 +19,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/string.hpp>
 #include <std_srvs/srv/trigger.hpp>
+#include <nav_interfaces/msg/map_state.hpp>
 #include <nav_interfaces/srv/save_map.hpp>
 #include <nav_interfaces/srv/save_assets.hpp>
 #include <nav_interfaces/srv/load_map.hpp>
@@ -31,8 +32,7 @@ public:
     explicit MapVersionManager(rclcpp::Node* node);
 
 private:
-    void OnMapFolder(const std_msgs::msg::String::SharedPtr msg);
-    void OnMapName(const std_msgs::msg::String::SharedPtr msg);
+    void OnMapState(const nav_interfaces::msg::MapState::SharedPtr msg);
     std::string MapDir() const;  // <map_folder>/<map_name>；任一为空返回 ""
 
     void OnBackupUnified(const std::shared_ptr<std_srvs::srv::Trigger::Request> req,
@@ -50,8 +50,7 @@ private:
     std::string map_name_;
 
     rclcpp::CallbackGroup::SharedPtr cbg_;
-    rclcpp::Subscription<std_msgs::msg::String>::SharedPtr map_folder_sub_;
-    rclcpp::Subscription<std_msgs::msg::String>::SharedPtr map_name_sub_;
+    rclcpp::Subscription<nav_interfaces::msg::MapState>::SharedPtr map_state_sub_;
     rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr backup_unified_srv_;
     rclcpp::Service<nav_interfaces::srv::RollbackMap>::SharedPtr rollback_map_srv_;
 

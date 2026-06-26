@@ -2,7 +2,7 @@ navigation_adapter_node:
   ros__parameters:
     map_topic: "/map"
     areas_topic: "/map_asset_manager/areas"
-    map_name_topic: "map_manager/map_name"
+    map_state_topic: "map_manager/map_state"
     keepout_mask_topic: "/keepout_filter_mask"
     speed_mask_topic: "/speed_filter_mask"
     keepout_filter_info_topic: "/keepout_costmap_filter_info"

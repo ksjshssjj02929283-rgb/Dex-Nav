@@ -51,7 +51,7 @@ void hashPose2D(size_t* seed, const geometry_msgs::msg::Pose2D& pose) {
 AreaFilterAdapter::AreaFilterAdapter(rclcpp::Node* node) : node_(node) {
     node_->declare_parameter<std::string>("map_topic", "/map");
     node_->declare_parameter<std::string>("areas_topic", "/map_asset_manager/areas");
-    node_->declare_parameter<std::string>("map_name_topic", "map_manager/map_name");
+    node_->declare_parameter<std::string>("map_state_topic", "map_manager/map_state");
     node_->declare_parameter<std::string>("keepout_mask_topic", "/keepout_filter_mask");
     node_->declare_parameter<std::string>("speed_mask_topic", "/speed_filter_mask");
     node_->declare_parameter<std::string>("keepout_filter_info_topic", "/keepout_costmap_filter_info");
@@ -63,7 +63,7 @@ AreaFilterAdapter::AreaFilterAdapter(rclcpp::Node* node) : node_(node) {
 
     map_topic_ = node_->get_parameter("map_topic").as_string();
     areas_topic_ = node_->get_parameter("areas_topic").as_string();
-    map_name_topic_ = node_->get_parameter("map_name_topic").as_string();
+    map_state_topic_ = node_->get_parameter("map_state_topic").as_string();
     keepout_mask_topic_ = node_->get_parameter("keepout_mask_topic").as_string();
     speed_mask_topic_ = node_->get_parameter("speed_mask_topic").as_string();
     keepout_filter_info_topic_ = node_->get_parameter("keepout_filter_info_topic").as_string();
@@ -79,8 +79,8 @@ AreaFilterAdapter::AreaFilterAdapter(rclcpp::Node* node) : node_(node) {
         map_topic_, latched_qos, std::bind(&AreaFilterAdapter::onMap, this, std::placeholders::_1));
     areas_sub_ = node_->create_subscription<nav_interfaces::msg::AreaInfoArray>(
         areas_topic_, latched_qos, std::bind(&AreaFilterAdapter::onAreas, this, std::placeholders::_1));
-    map_name_sub_ = node_->create_subscription<std_msgs::msg::String>(
-        map_name_topic_, latched_qos, std::bind(&AreaFilterAdapter::onMapName, this, std::placeholders::_1));
+    map_state_sub_ = node_->create_subscription<nav_interfaces::msg::MapState>(
+        map_state_topic_, latched_qos, std::bind(&AreaFilterAdapter::onMapState, this, std::placeholders::_1));
 
     keepout_mask_pub_ = node_->create_publisher<nav_msgs::msg::OccupancyGrid>(keepout_mask_topic_, latched_qos);
     speed_mask_pub_ = node_->create_publisher<nav_msgs::msg::OccupancyGrid>(speed_mask_topic_, latched_qos);
@@ -97,7 +97,7 @@ AreaFilterAdapter::AreaFilterAdapter(rclcpp::Node* node) : node_(node) {
     RCLCPP_INFO(node_->get_logger(), "AreaFilterAdapter started");
     RCLCPP_INFO(node_->get_logger(), "  map_topic: %s", map_topic_.c_str());
     RCLCPP_INFO(node_->get_logger(), "  areas_topic: %s", areas_topic_.c_str());
-    RCLCPP_INFO(node_->get_logger(), "  map_name_topic: %s", map_name_topic_.c_str());
+    RCLCPP_INFO(node_->get_logger(), "  map_state_topic: %s", map_state_topic_.c_str());
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -128,25 +128,28 @@ void AreaFilterAdapter::onAreas(const nav_interfaces::msg::AreaInfoArray::Shared
     renderAndPublish();
 }
 
-void AreaFilterAdapter::onMapName(const std_msgs::msg::String::SharedPtr msg) {
-    const std::string& new_name = msg->data;
-    if (new_name.empty()) {
+void AreaFilterAdapter::onMapState(const nav_interfaces::msg::MapState::SharedPtr msg) {
+    if (msg->map_name.empty()) {
+        return;
+    }
+    // 按 epoch 比对（不依赖名字）：epoch 变即地图变更，含同名重载/回退，根治同名漏检
+    if (msg->epoch == last_epoch_) {
         return;
     }
 
-    if (current_map_name_.empty()) {
-        current_map_name_ = new_name;
+    const bool first = (last_epoch_ == 0);
+    last_epoch_ = msg->epoch;
+    current_map_name_ = msg->map_name;
+
+    if (first) {
+        // 首次：仅记录并在就绪时渲染
         if (readyToRender()) {
             renderAndPublish();
         }
         return;
     }
 
-    if (new_name == current_map_name_) {
-        return;
-    }
-
-    current_map_name_ = new_name;
+    // epoch 变（含同名）→ 标记 STALE 并清旧 mask，等待新 map/areas 重渲染
     state_ = LifecycleState::STALE;
     const bool had_map = has_map_;
 

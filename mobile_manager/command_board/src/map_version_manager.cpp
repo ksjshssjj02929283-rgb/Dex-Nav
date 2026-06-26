@@ -72,12 +72,9 @@ MapVersionManager::MapVersionManager(rclcpp::Node* node) : node_(node) {
     cbg_ = node_->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
 
     auto qos = rclcpp::QoS(1).transient_local().reliable();
-    map_folder_sub_ = node_->create_subscription<std_msgs::msg::String>(
-        "map_manager/map_folder", qos,
-        std::bind(&MapVersionManager::OnMapFolder, this, std::placeholders::_1));
-    map_name_sub_ = node_->create_subscription<std_msgs::msg::String>(
-        "map_manager/map_name", qos,
-        std::bind(&MapVersionManager::OnMapName, this, std::placeholders::_1));
+    map_state_sub_ = node_->create_subscription<nav_interfaces::msg::MapState>(
+        "map_manager/map_state", qos,
+        std::bind(&MapVersionManager::OnMapState, this, std::placeholders::_1));
 
     backup_unified_srv_ = node_->create_service<std_srvs::srv::Trigger>(
         "~/backup_unified",
@@ -95,12 +92,10 @@ MapVersionManager::MapVersionManager(rclcpp::Node* node) : node_(node) {
                 "回退唯一入口；引擎不提供 rollback。");
 }
 
-void MapVersionManager::OnMapFolder(const std_msgs::msg::String::SharedPtr msg) {
-    if (!msg->data.empty()) map_folder_ = msg->data;
-}
-
-void MapVersionManager::OnMapName(const std_msgs::msg::String::SharedPtr msg) {
-    if (!msg->data.empty()) map_name_ = msg->data;
+void MapVersionManager::OnMapState(const nav_interfaces::msg::MapState::SharedPtr msg) {
+    // folder+name 经 map_state 原子到达；本管理器只需当前路径（MapDir）
+    if (!msg->map_folder.empty()) map_folder_ = msg->map_folder;
+    if (!msg->map_name.empty()) map_name_ = msg->map_name;
 }
 
 std::string MapVersionManager::MapDir() const {

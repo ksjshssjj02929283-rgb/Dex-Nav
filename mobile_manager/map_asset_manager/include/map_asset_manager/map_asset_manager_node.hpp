@@ -1,9 +1,11 @@
 #ifndef MAP_ASSET_MANAGER__MAP_ASSET_MANAGER_NODE_HPP_
 #define MAP_ASSET_MANAGER__MAP_ASSET_MANAGER_NODE_HPP_
 
+#include <cstdint>
 #include <memory>
 #include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/string.hpp>
+#include <nav_interfaces/msg/map_state.hpp>
 #include <nav_interfaces/srv/transform_assets.hpp>
 #include <nav_interfaces/srv/save_assets.hpp>
 #include <std_srvs/srv/trigger.hpp>
@@ -54,9 +56,8 @@ private:
         const std::shared_ptr<nav_interfaces::srv::TransformAssets::Request> req,
         std::shared_ptr<nav_interfaces::srv::TransformAssets::Response> res);
 
-    // map_manager/map_name 和 map_manager/map_folder 话题回调
-    void onMapNameChanged(const std_msgs::msg::String::SharedPtr msg);
-    void onMapFolderChanged(const std_msgs::msg::String::SharedPtr msg);
+    // map_manager/map_state 回调：按 epoch 比对触发重载（不依赖名字，根治同名漏检）
+    void onMapState(const nav_interfaces::msg::MapState::SharedPtr msg);
 
     // folder 和 name 都就绪后执行地图切换
     void switchToMap(const std::string& map_name);
@@ -90,13 +91,13 @@ private:
     rclcpp::Service<nav_interfaces::srv::SaveAssets>::SharedPtr save_assets_srv_;
     rclcpp::Service<nav_interfaces::srv::TransformAssets>::SharedPtr transform_assets_srv_;
     rclcpp::Publisher<std_msgs::msg::String>::SharedPtr status_pub_;
-    rclcpp::Subscription<std_msgs::msg::String>::SharedPtr map_name_sub_;
-    rclcpp::Subscription<std_msgs::msg::String>::SharedPtr map_folder_sub_;
+    rclcpp::Subscription<nav_interfaces::msg::MapState>::SharedPtr map_state_sub_;
 
     // ── 状态 ─────────────────────────────────────────────
-    std::string map_base_folder_;     // 地图根目录（来自 map_manager/map_folder）
-    std::string current_map_name_;    // 当前地图名称（来自 map_manager/map_name）
+    std::string map_base_folder_;     // 地图根目录（来自 map_manager/map_state）
+    std::string current_map_name_;    // 当前地图名称（来自 map_manager/map_state）
     std::string assets_file_;         // 当前 map_assets.json 完整路径
+    uint64_t last_epoch_{0};          // 上次处理的 map_state epoch；比对它判断是否重载
     bool auto_save_{true};
 };
 

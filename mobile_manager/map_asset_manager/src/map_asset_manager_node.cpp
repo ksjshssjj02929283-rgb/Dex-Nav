@@ -60,7 +60,7 @@ MapAssetManagerNode::MapAssetManagerNode()
 
     initialize();
 
-    RCLCPP_INFO(get_logger(), "MapAssetManagerNode constructed, waiting for map_manager/map_folder and map_name...");
+    RCLCPP_INFO(get_logger(), "MapAssetManagerNode constructed, waiting for map_manager/map_state...");
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -144,56 +144,42 @@ void MapAssetManagerNode::initialize() {
     // 注：markers 与 status 均改为事件驱动（数据变化时由 saveAllAssets / loadData 触发），
     // 不再周期重发；配合各 publisher 的 transient_local QoS，rviz 重启也能收到最新。
 
-    // ── 订阅 map_manager/map_folder 和 map_name（transient_local）──
+    // ── 订阅 map_manager/map_state（latched，原子 folder+name+epoch）──
     auto qos = rclcpp::QoS(1).transient_local().reliable();
 
-    map_folder_sub_ = create_subscription<std_msgs::msg::String>(
-        "map_manager/map_folder", qos,
-        std::bind(&MapAssetManagerNode::onMapFolderChanged, this, std::placeholders::_1));
-
-    map_name_sub_ = create_subscription<std_msgs::msg::String>(
-        "map_manager/map_name", qos,
-        std::bind(&MapAssetManagerNode::onMapNameChanged, this, std::placeholders::_1));
+    map_state_sub_ = create_subscription<nav_interfaces::msg::MapState>(
+        "map_manager/map_state", qos,
+        std::bind(&MapAssetManagerNode::onMapState, this, std::placeholders::_1));
 
     // ── EventBus 订阅 ──────────────────────────────────────────────
     registerEventHandlers();
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// onMapFolderChanged / onMapNameChanged
+// onMapState — 按 epoch 比对触发重载（不依赖名字）
+//   epoch 变即重载：切换地图 / 同名重载 / 回退 都被确定性感知，根治同名漏检。
+//   folder+name 随消息原子到达，消除旧 folder/name 两 topic 的时序竞争。
 // ──────────────────────────────────────────────────────────────────────
 
-void MapAssetManagerNode::onMapFolderChanged(const std_msgs::msg::String::SharedPtr msg) {
-    const std::string& new_folder = msg->data;
-    if (new_folder.empty() || new_folder == map_base_folder_) return;
-
-    map_base_folder_ = new_folder;
-    RCLCPP_INFO(get_logger(), "map_base_folder: '%s'", map_base_folder_.c_str());
-
-    // 若 map_name 已经到达，立即加载
-    if (!current_map_name_.empty()) {
-        switchToMap(current_map_name_);
-    }
-}
-
-void MapAssetManagerNode::onMapNameChanged(const std_msgs::msg::String::SharedPtr msg) {
-    const std::string& new_name = msg->data;
-    if (new_name.empty()) {
-        RCLCPP_WARN(get_logger(), "Received empty map_name, ignoring");
+void MapAssetManagerNode::onMapState(const nav_interfaces::msg::MapState::SharedPtr msg) {
+    if (msg->map_folder.empty() || msg->map_name.empty()) {
+        RCLCPP_WARN(get_logger(), "Received MapState with empty folder/name, ignoring");
         return;
     }
-    if (new_name == current_map_name_) return;
+    // epoch 未变 → 无需重载（首条 epoch>=1，与初始 last_epoch_=0 不同即触发首次加载）
+    if (msg->epoch == last_epoch_) return;
 
-    RCLCPP_INFO(get_logger(), "Map name changed: '%s' -> '%s'",
-                current_map_name_.c_str(), new_name.c_str());
-    current_map_name_ = new_name;
+    RCLCPP_INFO(get_logger(),
+                "MapState: epoch %lu -> %lu, map '%s' -> '%s' (folder '%s'), reloading assets",
+                static_cast<unsigned long>(last_epoch_),
+                static_cast<unsigned long>(msg->epoch),
+                current_map_name_.c_str(), msg->map_name.c_str(), msg->map_folder.c_str());
 
-    if (map_base_folder_.empty()) {
-        RCLCPP_WARN(get_logger(), "map_folder not yet received, will load when it arrives");
-        return;
-    }
+    last_epoch_ = msg->epoch;
+    map_base_folder_ = msg->map_folder;
+    current_map_name_ = msg->map_name;
 
-    switchToMap(new_name);
+    switchToMap(current_map_name_);
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -340,7 +326,7 @@ void MapAssetManagerNode::reloadDataCallback(
     try {
         if (assets_file_.empty()) {
             res->success = false;
-            res->message = "No map loaded yet (waiting for map_manager/map_name)";
+            res->message = "No map loaded yet (waiting for map_manager/map_state)";
             return;
         }
 
@@ -386,7 +372,7 @@ void MapAssetManagerNode::saveAssetsCallback(
     try {
         if (assets_file_.empty()) {
             res->success = false;
-            res->message = "No map loaded yet (waiting for map_manager/map_name)";
+            res->message = "No map loaded yet (waiting for map_manager/map_state)";
             return;
         }
         saveAllAssets();
@@ -423,7 +409,7 @@ void MapAssetManagerNode::transformAssetsCallback(
 
     if (is_current && assets_file_.empty()) {
         res->success = false;
-        res->message = "No map loaded (waiting for map_manager/map_name)";
+        res->message = "No map loaded (waiting for map_manager/map_state)";
         return;
     }
     if (!is_current && map_base_folder_.empty()) {

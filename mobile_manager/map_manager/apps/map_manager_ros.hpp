@@ -7,6 +7,7 @@
 #include <nav_interfaces/srv/get_map_info.hpp>
 #include <nav_interfaces/srv/get_map_list.hpp>
 #include <nav_interfaces/srv/get_string.hpp>
+#include <nav_interfaces/msg/map_state.hpp>
 #include <nav_interfaces/srv/load_map.hpp>
 #include <nav_interfaces/srv/rename_map.hpp>
 #include <nav_msgs/msg/map_meta_data.hpp>
@@ -29,13 +30,9 @@ public:
     ~MapManagerROS() = default;
 
 private:
-    bool ActivateCurrentMap();
-
     void LoadDefaultMap();
 
     void PublishMapAndNotify();
-
-    bool SetActivateSignalToNode(const std::string& node_name, const std::string& service_name);
 
     void GetMapListCallback(const std::shared_ptr<nav_interfaces::srv::GetMapList::Request> req,
                             std::shared_ptr<nav_interfaces::srv::GetMapList::Response> res);
@@ -64,8 +61,8 @@ private:
 private:
     rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr map_pub_;
     rclcpp::Publisher<nav_msgs::msg::MapMetaData>::SharedPtr map_metadata_pub_;
-    rclcpp::Publisher<std_msgs::msg::String>::SharedPtr map_folder_pub_;
-    rclcpp::Publisher<std_msgs::msg::String>::SharedPtr map_name_pub_;
+    // 地图状态：folder+name+epoch 原子下发，消费方按 epoch 比对重载
+    rclcpp::Publisher<nav_interfaces::msg::MapState>::SharedPtr map_state_pub_;
 
     rclcpp::Service<nav_msgs::srv::GetMap>::SharedPtr get_map_data_srv_;
     rclcpp::Service<nav_interfaces::srv::GetMapInfo>::SharedPtr get_map_info_srv_;

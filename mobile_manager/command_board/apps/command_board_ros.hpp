@@ -27,6 +27,7 @@
 
 #include "localization_sm.h"
 #include "nav_interfaces/msg/localization_state.hpp"
+#include "nav_interfaces/msg/map_state.hpp"
 #include "nav_interfaces/srv/load_map.hpp"
 #include "nav_interfaces/srv/set_pose.hpp"
 #include "nav_interfaces/srv/reset_map_origin_by_xy_yaw.hpp"
@@ -93,9 +94,9 @@ private:
     std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
     std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
 
-    // 当前地图名称（从 map_manager/map_name 话题获取）
+    // 当前地图名称（从 map_manager/map_state 话题获取）
     std::string current_map_name_;
-    rclcpp::Subscription<std_msgs::msg::String>::SharedPtr map_name_sub_;
+    rclcpp::Subscription<nav_interfaces::msg::MapState>::SharedPtr map_state_sub_;
 
     std::unique_ptr<Localization_SM> localization_sm_;
 
