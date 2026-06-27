@@ -152,7 +152,7 @@ controller_server:
         PathFollowCritic: [1.0, 10.0, 5.0]
         PreferForwardCritic: [1.0, 10.0, 1.0]
         DesiredVelocityCritic: [0.0, 8.0, 8.0]
-        AngularSmoothnessCritic: [5.0, 10.0, 15.0]   # 角速度平滑(罚角加速度)；起步低/停靠高；bag 调
+        AngularSmoothnessCritic: [0.0, 10.0, 0.0]    # 角速度+角平滑双项(罚|wz|与|Δwz|同权重)；全段开。⚠️|wz|项抑转动：align 段或拖慢对齐转向、approach 段或拖慢末端朝向(problem2)；bag 若见转向迟钝把 align/approach 降到 0(即[0,10,0])
         ObstaclesCritic: [1.1, 1.1, 0.0]   # 软斥力(repulsion)分段；致命 critical 全局常开
         CostCritic: [3.81, 3.81, 0.0]      # 软代价分段；致命由 ObstaclesCritic 兜底
 
@@ -213,10 +213,8 @@ controller_server:
         collision_cost: 1000000.0
         near_goal_distance: 0.5
         trajectory_point_step: 2
-      GoalLateralCritic: # 全局：仅提供末段死区；weight/threshold/last_n 由 profile_3 覆盖
-        deadband: 0.01 # 横向误差 < 1cm(=accept 容差) 不再施加代价，避免到点磨蹭（仅末段 weight>0 时生效）
-      GoalLongitudinalCritic: # 全局：仅提供末段死区；weight/threshold/last_n 由 profile_3 覆盖
-        deadband: 0.01 # 纵向误差 < 1cm 不再施加代价，避免到点磨蹭
+      # GoalLateralCritic / GoalLongitudinalCritic：无全局子参数（deadband 已废弃、threshold 距离门已移除）；
+      # 权重由 stage_weights 矩阵管，cost_power/last_n_points 用 C++ 默认。
       DesiredVelocityCritic: # 速度软约束：按剩余距离算期望速度(下降式软速度上限)，消除二三阶段硬降速
         enabled: true
         cost_power: 2
@@ -611,7 +609,7 @@ velocity_smoother:
     use_sim_time: True
     smoothing_frequency: 20.0
     scale_velocities: False
-    feedback: "OPEN_LOOP"
+    feedback: "CLOSED_LOOP"
     input_topic: "cmd_vel_nav"
     output_topic: "control/cmd_vel_nav"
     # Test
@@ -630,6 +628,6 @@ velocity_smoother:
     # max_accel: [1.0, 0.0, 0.5]
     # max_decel: [-1.0, 0.0, -0.5]    
     odom_topic: "feedback/odom"
-    odom_duration: 0.1
+    odom_duration: 0.01
     deadband_velocity: [0.0, 0.0, 0.0]
     velocity_timeout: 1.0

@@ -38,9 +38,9 @@ void GoalLateralCritic::initialize()
 void GoalLateralCritic::score(CriticData & data)
 {
   // 三阶段 MPPI 中 cost_weight <= 0 表示该阶段关闭横向误差代价。
-  if (!enabled_ || weight_ <= 0.0f || data.path.x.size() < 1 ||
-    !utils::withinPositionGoalTolerance(threshold_to_consider_, data.state.pose.pose, data.path))
-  {
+  // 不再用 threshold_to_consider 做距离硬门控（曾在 threshold 距离处突然上线 → 速度阶跃，见 doc9 1.5m 抖动）。
+  // 开关交给阶段权重：track 段 weight=0 自动关闭，approach 段 weight>0 开启（带过渡插值平滑）。
+  if (!enabled_ || weight_ <= 0.0f || data.path.x.size() < 1) {
     return;
   }
 

@@ -37,15 +37,21 @@ void AngularSmoothnessCritic::score(CriticData & data)
   }
 
   const Eigen::Index time_steps = data.state.wz.cols();
-  if (time_steps < 2) {
+  if (time_steps < 1) {
     return;
   }
 
-  // 角加速度软成本：相邻时刻角速度差 |wz_t - wz_{t-1}| 的均值。
-  // 越平滑该值越小；power=2 放大不平滑的轨迹的代价。
-  const auto dwz =
-    (data.state.wz.rightCols(time_steps - 1) - data.state.wz.leftCols(time_steps - 1)).abs();
-  data.costs += (dwz.rowwise().mean() * weight_).pow(power_);
+  // 角速度项：罚角速度幅值 |wz| 的均值（期望 wz→0，偏好更小/更稳的转动）。
+  // 镜像线速度软约束(DesiredVelocityCritic)"跟踪 + 平滑"双项同权重的结构：
+  // 此处"速度项"= |wz| 幅值（角速度无独立期望曲线，期望取 0）。
+  data.costs += (data.state.wz.abs().rowwise().mean() * weight_).pow(power_);
+
+  // 角加速度项（平滑）：罚相邻时刻 |Δwz| 的均值，与角速度项同权重(weight_)。
+  if (time_steps >= 2) {
+    const auto dwz =
+      (data.state.wz.rightCols(time_steps - 1) - data.state.wz.leftCols(time_steps - 1)).abs();
+    data.costs += (dwz.rowwise().mean() * weight_).pow(power_);
+  }
 }
 
 void AngularSmoothnessCritic::applyProfileSettings(const CriticProfileSettings & settings)

@@ -23,10 +23,12 @@ namespace mppi::critics
 
 /**
  * @class mppi::critics::AngularSmoothnessCritic
- * @brief 角速度平滑软约束：惩罚候选轨迹中相邻时刻角速度的变化 |wz_t - wz_{t-1}|
- *        （正比于角加速度），使 MPPI 偏好角速度变化平缓的轨迹 → 旋转更平顺。
- *        与 az_max/jz_max 硬约束（限变化率上限）互补：硬约束设上限，本 critic 软偏好平滑。
- *        只罚"变化"不罚"幅值"，故不阻止必要的快速转向，只让转向过程顺滑。
+ * @brief 角速度软约束（双项，同权重）：① 角速度项 罚 |wz| 幅值（偏好更小/更稳转动）；
+ *        ② 角加速度项 罚 |wz_t - wz_{t-1}|（平滑，正比于角加速度）。
+ *        镜像线速度软约束(DesiredVelocityCritic)"跟踪 + 平滑"双项同权重的结构，
+ *        使 MPPI 同时偏好"角速度小"且"角速度变化缓"的轨迹。
+ *        与 az_max/jz_max 硬约束互补（硬约束设变化率上限，本 critic 软偏好）。
+ *        注：含 |wz| 幅值项后会抑制转动，需转向自由的阶段(align/approach)应把该段权重设 0。
  */
 class AngularSmoothnessCritic : public CriticFunction
 {
