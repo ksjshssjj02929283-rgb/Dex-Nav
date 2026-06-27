@@ -27,6 +27,7 @@ namespace mppi::critics
  *        v_desired = min(vx_max, sqrt(2 * a_decel * dist))，
  *        双边惩罚“当前(候选)速度与期望速度的差值”|vx - v_desired|（速度跟踪），
  *        让实际速度趋近期望速度，在时域内平滑匀减速、消除阶段边界硬降速。
+ *        并附加线加速度平滑项(罚 |Δvx|，同 weight)使前进速度变化平缓。
  */
 class DesiredVelocityCritic : public CriticFunction
 {

@@ -156,11 +156,27 @@ controller_server:
         ObstaclesCritic: [1.1, 1.1, 0.0]   # 软斥力(repulsion)分段；致命 critical 全局常开
         CostCritic: [3.81, 3.81, 0.0]      # 软代价分段；致命由 ObstaclesCritic 兜底
 
+      # ── 三段速度策略（per-stage 覆盖全局；只放速度，critic 子参数/权重不在此）──
+      stage_align:    # 对齐段：低 vx 专注转向、高 wz 快速对齐、允许小幅倒车机动
+        vx_max: 0.4
+        vx_min: -0.5
+        vy_max: 0.5
+        wz_max: 0.75
+      stage_track:    # 跟踪段：全速通行
+        vx_max: 0.7
+        vx_min: -0.5
+        vy_max: 0.5
+        wz_max: 0.75
+      stage_approach: # 趋近段：vx 上限 0.7(减速交 DesiredVelocity)、禁倒车、低 wz 平稳停靠
+        vx_max: 0.5
+        vx_min: -0.1
+        vy_max: 0.5
+        wz_max: 0.75
+
       # ============================================================
       # 三阶段 align/track/approach：权重统一由上方 stage_weights 矩阵调；
-      # 速度/子参数(offset/threshold/last_n 等)用 C++ configureStages 默认；
+      # 速度见上方 stage_align/track/approach 块；子参数(offset/threshold/last_n)用 C++ 默认；
       # 切换由 align_enter_angle/align_exit_angle/approach_distance。
-      # 按需再对单阶段加 stage_align/track/approach 块覆盖默认。
       # ============================================================
       # ============================================================
       # 6. 可视化、车辆约束与全局安全/可行性代价

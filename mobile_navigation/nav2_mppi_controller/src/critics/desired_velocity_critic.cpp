@@ -68,6 +68,14 @@ void DesiredVelocityCritic::score(CriticData & data)
 
   cost /= static_cast<float>(time_steps);
   data.costs += (cost * weight_).pow(power_);
+
+  // 线加速度软约束（速度平滑）：罚相邻时刻 |Δvx|，与速度跟踪同权重(weight_)，
+  // 使前进速度变化平缓、更平滑（与跟踪项合用同一 weight，符合"两者权重一样大"）。
+  if (time_steps >= 2) {
+    const auto dvx =
+      (data.state.vx.rightCols(time_steps - 1) - data.state.vx.leftCols(time_steps - 1)).abs();
+    data.costs += (dvx.rowwise().mean() * weight_).pow(power_);
+  }
 }
 
 void DesiredVelocityCritic::applyProfileSettings(const CriticProfileSettings & settings)
