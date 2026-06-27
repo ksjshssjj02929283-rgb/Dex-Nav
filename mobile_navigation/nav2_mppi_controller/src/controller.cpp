@@ -252,9 +252,19 @@ void MPPIController::configureStages()
 {
   auto getParam = parameters_handler_->getParamGetter(name_);
 
+  // 三段速度先统一用全局默认（不再 per-stage 配置）；需差异化时在 yaml 加
+  // stage_align/track/approach 的 vx_max/vx_min/vy_max/wz_max 覆盖即可。
+  float g_vx_max = 0.7f, g_vx_min = -0.5f, g_vy_max = 0.5f, g_wz_max = 0.75f;
+  getParam(g_vx_max, "vx_max", 0.7, ParameterType::Static);
+  getParam(g_vx_min, "vx_min", -0.5, ParameterType::Static);
+  getParam(g_vy_max, "vy_max", 0.5, ParameterType::Static);
+  getParam(g_wz_max, "wz_max", 0.75, ParameterType::Static);
+  for (auto & stage : stages_) {
+    stage.velocity = {g_vx_max, g_vx_min, g_vy_max, g_wz_max};
+  }
+
   // 单阶段 MPPI 已删除：行为类 Goal/Path/PreferForward 代价只允许由 profile_1/2/3 管理。
   // 这里的默认值只作为缺省兜底，不再从 FollowPath 全局行为 critic 中继承。
-  stages_[0].velocity = {0.4f, -0.2f, 0.5f, 0.9f};
   stages_[0].critics.goal = {0.0f, 0.0f};
   stages_[0].critics.goal_lateral = {0.0f, 0.0f, 8};
   stages_[0].critics.goal_longitudinal = {0.0f, 0.0f, 8};
@@ -266,8 +276,8 @@ void MPPIController::configureStages()
   stages_[0].critics.desired_velocity = {0.0f};   // 对齐段关闭速度软约束（不惩罚后退机动）
   stages_[0].critics.obstacles = {1.1f};
   stages_[0].critics.cost = {3.81f};
+  stages_[0].critics.angular_smoothness = {5.0f};
 
-  stages_[1].velocity = {0.7f, -0.5f, 0.5f, 0.75f};
   stages_[1].critics.goal = {0.0f, 0.0f};
   stages_[1].critics.goal_lateral = {0.0f, 0.0f, 8};
   stages_[1].critics.goal_longitudinal = {0.0f, 0.0f, 8};
@@ -279,8 +289,8 @@ void MPPIController::configureStages()
   stages_[1].critics.desired_velocity = {8.0f};
   stages_[1].critics.obstacles = {1.1f};
   stages_[1].critics.cost = {3.81f};
+  stages_[1].critics.angular_smoothness = {10.0f};
 
-  stages_[2].velocity = {0.7f, 0.0f, 0.5f, 0.30f};  // 末段速度交给 DesiredVelocityCritic 软约束；硬上限保持 0.7、禁倒车
   stages_[2].critics.goal = {4.0f, 1.0f};
   stages_[2].critics.goal_lateral = {40.0f, 1.0f, 10};
   stages_[2].critics.goal_longitudinal = {25.0f, 0.8f, 10};
@@ -292,6 +302,7 @@ void MPPIController::configureStages()
   stages_[2].critics.desired_velocity = {8.0f};
   stages_[2].critics.obstacles = {0.0f};   // 趋近段软斥力关（保致命）
   stages_[2].critics.cost = {0.0f};
+  stages_[2].critics.angular_smoothness = {15.0f};
 
   // profile_start_distance 已废弃（对齐段改按角度切，不再按距起点距离）；成员保留仅供 debug 兼容
   getParam(approach_distance_, "approach_distance", 1.0, ParameterType::Static);
@@ -468,6 +479,9 @@ void MPPIController::configureStages()
   loadWeightRow(
     "CostCritic", stages_[0].critics.cost.weight,
     stages_[1].critics.cost.weight, stages_[2].critics.cost.weight);
+  loadWeightRow(
+    "AngularSmoothnessCritic", stages_[0].critics.angular_smoothness.weight,
+    stages_[1].critics.angular_smoothness.weight, stages_[2].critics.angular_smoothness.weight);
 
   RCLCPP_INFO(
     logger_,

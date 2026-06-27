@@ -152,6 +152,7 @@ controller_server:
         PathFollowCritic: [1.0, 10.0, 5.0]
         PreferForwardCritic: [1.0, 10.0, 1.0]
         DesiredVelocityCritic: [0.0, 8.0, 8.0]
+        AngularSmoothnessCritic: [5.0, 10.0, 15.0]   # 角速度平滑(罚角加速度)；起步低/停靠高；bag 调
         ObstaclesCritic: [1.1, 1.1, 0.0]   # 软斥力(repulsion)分段；致命 critical 全局常开
         CostCritic: [3.81, 3.81, 0.0]      # 软代价分段；致命由 ObstaclesCritic 兜底
 
@@ -171,7 +172,7 @@ controller_server:
       AckermannConstraints:
         min_turning_r: 0.5
       # critics 是插件加载列表；阶段权重由上方 stage_weights 矩阵覆盖。
-      critics: ["ConstraintCritic", "CostCritic", "ObstaclesCritic", "GoalCritic", "GoalLateralCritic", "GoalLongitudinalCritic", "GoalAngleCritic", "PathAlignCritic", "PathFollowCritic", "PathAngleCritic", "PreferForwardCritic", "DesiredVelocityCritic", "VelocityDeadbandCritic"]
+      critics: ["ConstraintCritic", "CostCritic", "ObstaclesCritic", "GoalCritic", "GoalLateralCritic", "GoalLongitudinalCritic", "GoalAngleCritic", "PathAlignCritic", "PathFollowCritic", "PathAngleCritic", "PreferForwardCritic", "DesiredVelocityCritic", "AngularSmoothnessCritic", "VelocityDeadbandCritic"]
       ConstraintCritic:
         enabled: true
         cost_power: 1

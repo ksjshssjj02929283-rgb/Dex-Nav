@@ -89,6 +89,11 @@ struct DesiredVelocityCriticSettings
   float weight{0.0f};
 };
 
+struct AngularSmoothnessCriticSettings
+{
+  float weight{0.0f};  // 角速度平滑(罚角加速度)
+};
+
 struct ObstaclesCriticSettings
 {
   float repulsion_weight{0.0f};  // 软斥力(可分段)；致命 critical_weight 保持全局
@@ -110,6 +115,7 @@ struct CriticProfileSettings
   PathAlignCriticSettings path_align;
   PreferForwardCriticSettings prefer_forward;
   DesiredVelocityCriticSettings desired_velocity;
+  AngularSmoothnessCriticSettings angular_smoothness;
   ObstaclesCriticSettings obstacles;
   CostCriticSettings cost;
 };
