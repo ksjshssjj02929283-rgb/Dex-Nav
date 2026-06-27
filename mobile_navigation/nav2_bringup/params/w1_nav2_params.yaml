@@ -140,6 +140,8 @@ controller_server:
       profile_start_distance: 0.5 # 起步段阈值，小于该距离时使用 profile_1
       profile_goal_distance: 1.5 # 末段阈值，距离目标点小于等于该距离时优先使用 profile_3
       profile_transition_duration: 1.0 # 三段式切换过渡时间，避免速度约束和 critic 权重一拍硬切，单位 s
+      align_enter_angle: 0.52 # 对齐段进入：车头-路径夹角(rad,~30°)超此进 align 段
+      align_exit_angle: 0.31 # 对齐段退出：夹角降至此退出(rad,~18°,迟滞防抖)
 
       # ============================================================
       # 3. profile_1 起步段：低线速度、高角速度，优先转向并快速跟进路径
@@ -148,7 +150,7 @@ controller_server:
         vx_max: 0.7 # 最大前进速度
         vx_min: -0.5 # 最小后退速度
         vy_max: 0.5 # 侧向速度上限，DiffDrive 下通常不生效
-        wz_max: 0.75 # 最大角速度
+        wz_max: 0.9 # 对齐段放高角速度，快速转向对齐路径
         GoalCritic: # 起步段不直接吸向终点，避免短路径任务过早抢控制量
           cost_weight: 0.0
           threshold_to_consider: 0.0
@@ -164,19 +166,19 @@ controller_server:
           cost_weight: 0.0
           threshold_to_consider: 0.0
         PathAngleCritic: # 路径朝向约束
-          cost_weight: 15.0 # 起步段主代价，强化 180 度转向时对路径朝向的响应
+          cost_weight: 18.0 # 对齐段主代价(req-1 提高)：强力转向对齐路径方向
           offset_from_furthest: 5 # 使用 furthest point 前方第 5 个路径点计算朝向
           threshold_to_consider: 0.3 # 接近末段后交给目标类代价
-          max_angle_to_furthest: 0.7 # 更早触发路径朝向纠偏
+          max_angle_to_furthest: 0.3 # 对齐段降低，确保进 align(夹角>0.52) 时 PathAngle 始终生效
           forward_preference: true # 偏好按前进方向对齐路径
         PathAlignCritic: # 路径贴合约束
-          cost_weight: 20.0 # 起步段适度贴线，避免刚起步过度贴线导致转向僵硬
+          cost_weight: 5.0 # 对齐段降低(req-1)：对齐优先于贴线，但不归零防切弯
           offset_from_furthest: 3 # 更早参与贴线
           trajectory_point_step: 3 # 轨迹评估采样间隔
           threshold_to_consider: 0.3 # 接近末段后交给目标类代价
           max_path_occupancy_ratio: 0.08 # 起步段略放宽路径占据判断，给转向留空间
         PathFollowCritic: # 路径推进约束
-          cost_weight: 5.0 # 起步后快速跟进路径前方点
+          cost_weight: 1.0 # 对齐段降低(req-1)：对齐时不强求推进
           offset_from_furthest: 5 # 跟踪 furthest point 前方第 5 个路径点
           threshold_to_consider: 1.2 # 中近距离后逐步让位给目标段
         PreferForwardCritic: # 前进偏好约束

@@ -101,6 +101,11 @@ public:
    */
   double getLastPathProgress() const;
 
+  /**
+   * @brief Get last |robot heading - path tangent| angle (rad) at closest point
+   */
+  double getLastHeadingPathAngle() const;
+
 protected:
   /**
     * @brief Transform a pose to another frame
@@ -152,6 +157,9 @@ protected:
 
   void updateGoalDistance(const geometry_msgs::msg::PoseStamped & global_pose);
 
+  void updateHeadingPathAngle(
+    const geometry_msgs::msg::PoseStamped & global_pose, const PathIterator & closest);
+
   double getIntegratedDistance(PathIterator begin, PathIterator end) const;
 
   std::string name_;
@@ -168,6 +176,7 @@ protected:
   double transform_tolerance_{0};
   double last_goal_distance_{0};
   double last_path_progress_{0};
+  double last_heading_path_angle_{0};
   double path_progress_offset_{0};
   float inversion_xy_tolerance_{0.2};
   float inversion_yaw_tolerance{0.4};

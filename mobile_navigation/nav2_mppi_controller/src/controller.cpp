@@ -152,7 +152,8 @@ geometry_msgs::msg::TwistStamped MPPIController::computeVelocityCommands(
   nav_msgs::msg::Path transformed_plan = path_handler_.transformPath(robot_pose);
   const double goal_distance = path_handler_.getLastGoalDistance();
   const double path_progress = path_handler_.getLastPathProgress();
-  applyProfileForPathState(path_progress, goal_distance);
+  const double heading_path_angle = path_handler_.getLastHeadingPathAngle();
+  applyProfileForPathState(path_progress, goal_distance, heading_path_angle);
   auto t_transform_end = std::chrono::high_resolution_clock::now();
   double transform_ms =
     std::chrono::duration<double, std::milli>(t_transform_end - t_transform_start).count();
@@ -262,6 +263,7 @@ void MPPIController::configureProfiles()
   profiles_[0].critics.path_align = {8.0f, 0.3f, 8, 3, 0.08f};
   profiles_[0].critics.path_follow = {7.0f, 1.2f, 7};
   profiles_[0].critics.prefer_forward = {6.0f, 0.25f};
+  profiles_[0].critics.desired_velocity = {0.0f};   // 对齐段关闭速度软约束（不惩罚后退机动）
 
   profiles_[1].velocity = {0.7f, -0.5f, 0.5f, 0.75f};
   profiles_[1].critics.goal = {0.0f, 0.0f};
@@ -272,6 +274,7 @@ void MPPIController::configureProfiles()
   profiles_[1].critics.path_align = {20.0f, 0.5f, 15, 2, 0.05f};
   profiles_[1].critics.path_follow = {4.0f, 0.5f, 5};
   profiles_[1].critics.prefer_forward = {5.0f, 0.25f};
+  profiles_[1].critics.desired_velocity = {8.0f};
 
   profiles_[2].velocity = {0.7f, 0.0f, 0.5f, 0.30f};  // 末段速度交给 DesiredVelocityCritic 软约束；硬上限保持 0.7、禁倒车
   profiles_[2].critics.goal = {4.0f, 1.0f};
@@ -282,12 +285,16 @@ void MPPIController::configureProfiles()
   profiles_[2].critics.path_align = {2.0f, 0.5f, 15, 3, 0.05f};
   profiles_[2].critics.path_follow = {1.0f, 0.5f, 5};
   profiles_[2].critics.prefer_forward = {1.0f, 1.0f};
+  profiles_[2].critics.desired_velocity = {8.0f};
 
   getParam(profile_start_distance_, "profile_start_distance", 0.8, ParameterType::Static);
   getParam(profile_goal_distance_, "profile_goal_distance", 1.0, ParameterType::Static);
   getParam(profile_transition_duration_, "profile_transition_duration", 1.0, ParameterType::Static);
   getParam(profile_switch_hysteresis_, "profile_switch_hysteresis", 0.05, ParameterType::Static);
   profile_switch_hysteresis_ = std::max(0.0, profile_switch_hysteresis_);
+  getParam(align_enter_angle_, "align_enter_angle", 0.52, ParameterType::Static);  // ~30°
+  getParam(align_exit_angle_, "align_exit_angle", 0.31, ParameterType::Static);    // ~18° 迟滞
+  align_exit_angle_ = std::min(align_exit_angle_, align_enter_angle_);
 
   for (size_t i = 0; i < profiles_.size(); ++i) {
     auto & profile = profiles_[i];
@@ -400,6 +407,10 @@ void MPPIController::configureProfiles()
       profile_critics.prefer_forward.threshold_to_consider,
       prefix + "PreferForwardCritic.threshold_to_consider",
       profile_critics.prefer_forward.threshold_to_consider, ParameterType::Static);
+    getParam(
+      profile_critics.desired_velocity.weight,
+      prefix + "DesiredVelocityCritic.cost_weight",
+      profile_critics.desired_velocity.weight, ParameterType::Static);
   }
 
   RCLCPP_INFO(
@@ -453,16 +464,17 @@ void MPPIController::configureProfiles()
   transition_target_profile_ = applied_profile_;
 }
 
-void MPPIController::applyProfileForPathState(double path_progress, double goal_distance)
+void MPPIController::applyProfileForPathState(
+  double path_progress, double goal_distance, double heading_path_angle)
 {
-  const size_t selected_profile = selectProfile(path_progress, goal_distance);
+  const size_t selected_profile = selectProfile(path_progress, goal_distance, heading_path_angle);
   const auto & selected = profiles_[selected_profile];
   RCLCPP_DEBUG(
     logger_,
-    "MPPI profile state: active=%zu selected=%zu path_progress=%.3f goal_distance=%.3f. "
+    "MPPI profile state: active=%zu selected=%zu path_progress=%.3f goal_distance=%.3f heading_angle=%.3f. "
     "selected_reason=%s selected_vx=[%.3f, %.3f] selected_wz=%.3f. "
     "三阶段判断输入，若 active 与 selected 不同则即将切换。",
-    active_profile_ + 1, selected_profile + 1, path_progress, goal_distance,
+    active_profile_ + 1, selected_profile + 1, path_progress, goal_distance, heading_path_angle,
     getProfileReason(selected_profile).c_str(),
     selected.velocity.vx_min, selected.velocity.vx_max, selected.velocity.wz_max);
 
@@ -496,30 +508,32 @@ void MPPIController::applyProfileForPathState(double path_progress, double goal_
     profile.velocity.vy_max, profile.velocity.wz_max, profile_transition_duration_);
 }
 
-size_t MPPIController::selectProfile(double path_progress, double goal_distance) const
+size_t MPPIController::selectProfile(
+  double path_progress, double goal_distance, double heading_path_angle) const
 {
-  // 阶段选择使用迟滞带：进入阈值保持原配置，退出当前阶段时放宽 hysteresis，
-  // 避免 goal_distance/path_progress 在边界附近小幅抖动导致 profile 来回切换。
+  // 按语义切换，优先级：approach(趋近,距离) > align(对齐,角度) > track(跟踪,默认)。
+  // 各阶段用迟滞带防边界抖动。profile 索引：0=align, 1=track, 2=approach。
+  (void)path_progress;  // 起步段不再按距起点距离判定（改为车头-路径夹角），保留入参便于调试
+
+  // 趋近段：距目标 <= 阈值（迟滞：已在趋近段则放宽 hysteresis）
   if (active_profile_ == 2 &&
     goal_distance <= profile_goal_distance_ + profile_switch_hysteresis_)
   {
     return 2;
   }
-
   if (goal_distance <= profile_goal_distance_) {
     return 2;
   }
 
-  if (active_profile_ == 0 &&
-    path_progress < profile_start_distance_ + profile_switch_hysteresis_)
-  {
+  // 对齐段：车头-路径夹角 > 进入阈值（迟滞：已在对齐段用更小的退出阈值 align_exit_angle_）
+  if (active_profile_ == 0 && heading_path_angle > align_exit_angle_) {
+    return 0;
+  }
+  if (heading_path_angle > align_enter_angle_) {
     return 0;
   }
 
-  if (path_progress < profile_start_distance_) {
-    return 0;
-  }
-
+  // 默认跟踪段
   return 1;
 }
 
@@ -527,11 +541,11 @@ std::string MPPIController::getProfileReason(size_t profile) const
 {
   switch (profile) {
     case 0:
-      return "start_segment/起步段";
+      return "align/对齐段";
     case 1:
-      return "middle_segment/中间段";
+      return "track/跟踪段";
     case 2:
-      return "goal_segment/末段";
+      return "approach/趋近段";
     default:
       return "unknown";
   }

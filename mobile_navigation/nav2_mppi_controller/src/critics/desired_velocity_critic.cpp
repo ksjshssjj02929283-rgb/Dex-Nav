@@ -70,6 +70,13 @@ void DesiredVelocityCritic::score(CriticData & data)
   data.costs += (cost * weight_).pow(power_);
 }
 
+void DesiredVelocityCritic::applyProfileSettings(const CriticProfileSettings & settings)
+{
+  // 三阶段 profile 覆盖速度软约束权重：align(对齐)段设 0 关闭，
+  // 避免速度软约束惩罚对齐时的后退避障机动（详见 7. 三阶段重定义方案 §6）。
+  weight_ = settings.desired_velocity.weight;
+}
+
 }  // namespace mppi::critics
 
 #include <pluginlib/class_list_macros.hpp>

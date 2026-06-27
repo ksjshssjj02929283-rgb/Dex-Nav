@@ -19,54 +19,54 @@
 
 | 参数 | 当前值 | 影响 |
 |---|---:|---|
-| `profile_start_distance` | `0.5` | 路径累计前进小于 0.5 m 时使用起步段 |
-| `profile_goal_distance` | `1.5` | 距离终点小于等于 1.5 m 时使用末段 |
-| `profile_transition_duration` | `1.0` | 阶段切换时用 1.0 s 插值过渡速度约束和 critic 参数 |
-| `profile_switch_hysteresis` | `0.05` | 阶段切换迟滞带，避免边界附近来回切换（见 §2）|
+| `align_enter_angle` | `0.52` (~30°) | **车头-路径夹角超此进对齐段 align**（按角度切，非距离）|
+| `align_exit_angle` | `0.31` (~18°) | 夹角降至此退出对齐段（迟滞防抖）|
+| `profile_goal_distance` | `1.5` | 距终点 ≤ 此进趋近段 approach（优先级最高）|
+| `profile_transition_duration` | `1.0` | 阶段切换插值过渡时间(s) |
+| `profile_switch_hysteresis` | `0.05` | 趋近段距离迟滞带 |
+| `profile_start_distance` | `0.5` | ⚠️ **已废弃**：对齐段改按角度触发，此参数不再参与切换 |
 
 `profile_1/2/3` 完整管理速度约束 + 行为类 critic（Goal、GoalLateral、GoalLongitudinal、GoalAngle、PathAlign、PathFollow、PathAngle、PreferForward）；**全局配置不再作为单阶段行为策略默认值**，三段已差异化（不再"等于全局"）。
 
-## 2. 三阶段切换规则
+## 2. 三阶段切换规则（按语义切：approach > align > track）
 
-每次 `computeVelocityCommands()` 先转换局部路径，再从 `PathHandler` 获取两个量：
+每周期从 `PathHandler` 获取：
 
 | 变量 | 含义 |
 |---|---|
-| `path_progress` | 沿全局路径累计前进距离 |
-| `goal_distance` | 当前机器人到最终目标点的直线距离 |
+| `goal_distance` | 机器人到最终目标点直线距离 |
+| `heading_path_angle` | 车头朝向与**最近点路径切线**的夹角(rad) |
 
-`selectProfile()` 逻辑（含迟滞带）：
+`selectProfile()` 优先级 **approach(趋近) > align(对齐) > track(跟踪)**（各带迟滞）：
 
 ```text
-# 迟滞：已在某段时，退出该段的阈值放宽 profile_switch_hysteresis
-如果 当前在末段 且 goal_distance <= profile_goal_distance + hysteresis
-    保持 profile_3
-如果 goal_distance <= profile_goal_distance
-    使用 profile_3：末段
-如果 当前在起步段 且 path_progress < profile_start_distance + hysteresis
-    保持 profile_1
-如果 path_progress < profile_start_distance
-    使用 profile_1：起步段
-否则
-    使用 profile_2：中间段
+# 趋近段优先（距离）
+if 当前在 approach 且 goal_distance <= profile_goal_distance + hysteresis: approach
+if goal_distance <= profile_goal_distance: approach
+# 对齐段（角度迟滞：进 align_enter_angle / 出 align_exit_angle）
+if 当前在 align 且 heading_path_angle > align_exit_angle: align
+if heading_path_angle > align_enter_angle: align
+# 默认跟踪段
+track
 ```
 
 注意：
-- **末段优先级最高**。即使刚起步，只要 `goal_distance <= profile_goal_distance` 也直接进 `profile_3`（短距离任务可能一上来就是末段）。
-- **迟滞带**：在边界 ±hysteresis 内不来回切，避免 `path_progress`/`goal_distance` 抖动导致 profile 频繁切换、速度约束反复插值。
+- **趋近段优先级最高**：近目标即使车头没对准路径也进 approach（对齐 GOAL 而非路径，GoalAngle 接管）。
+- **对齐段按角度**：车头偏离路径 >align_enter(~30°) 即进 align（起点 OR 中途失准都触发），对齐后(<align_exit~18°)回 track。
+- profile 数组索引：**0=align, 1=track, 2=approach**（沿用 profile_1/2/3 yaml 段名）。
 
 ## 3. 三个阶段的定位
 
 ```text
-三段式 MPPI
-├── profile_1：起步段（path_progress < profile_start_distance）
-│   └── 目标：快速对齐路径方向、跟上轨迹；关闭目标类 critic，路径朝向/贴合主导
+三段式 MPPI（profile 索引 0/1/2 = align/track/approach）
+├── align 对齐段（heading_path_angle > align_enter_angle）
+│   └── 快速转向对齐路径方向；PathAngle 主导、PathAlign/Follow 降低；保留后退机动避障（DesiredVelocity 关）
 │
-├── profile_2：中间段（不在起步段，也不在末段）
-│   └── 目标：较快速度下严格贴线跟踪；PathAlign 主代价
+├── track 跟踪段（已对齐且未近目标，默认）
+│   └── 较快速度严格贴线跟踪；PathAlign 主代价；避障/速度软约束全程在场
 │
-└── profile_3：末段（goal_distance <= profile_goal_distance）
-    └── 目标：降速精调到目标位姿；四目标 critic（距离/横向/纵向/朝向）主导，路径类降为弱牵引
+└── approach 趋近段（goal_distance <= profile_goal_distance，优先级最高）
+    └── 降速精调到目标位姿；四目标 critic 主导；DesiredVelocity 软减速
 ```
 
 ## 4. Profile 可以覆盖哪些参数
@@ -168,6 +168,8 @@
 
 ## 6. 当前三阶段参数（实际值对照）
 
+> ⚠️ 2026-06 起阶段按语义切（align/track/approach，见 §2），且团队在 yaml 持续调参 —— **本表数值仅示意，权威以 `w1_nav2_params.yaml` 为准**。对齐段(profile_1)已按 req-1 调为 PathAngle 18 / PathAlign 5 / PathFollow 1 / wz 0.9 / max_angle 0.3。
+
 > 三段已差异化，下表为 yaml 实际值。`—` 表示该 critic 在该段权重为 0（关闭）。
 
 | 项 | profile_1 起步 | profile_2 中间 | profile_3 末段 |
@@ -213,7 +215,7 @@ profile_switch_hysteresis: 0.05
 MPPI profiles: start_distance=0.500 goal_distance=1.500 transition_duration=1.000 switch_hysteresis=0.050
 MPPI profile_0/1/2 velocity: vx=[..., ...] vy=... wz=...
 MPPI profile state: active=... selected=... path_progress=... goal_distance=...
-MPPI profile switched: 1 -> 2, reason=middle_segment/中间段, path_progress=...
+MPPI profile switched: 0 -> 1, reason=track/跟踪段, ... heading_angle=...
 MPPI active constraints: vx=[..., ...] vy=... wz=...
 ```
 

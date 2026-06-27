@@ -115,9 +115,9 @@ protected:
   void configureProfiles();
 
   // 根据路径进度和到目标距离选择三阶段 profile，并把速度/行为代价平滑应用到 optimizer。
-  void applyProfileForPathState(double path_progress, double goal_distance);
+  void applyProfileForPathState(double path_progress, double goal_distance, double heading_path_angle);
 
-  size_t selectProfile(double path_progress, double goal_distance) const;
+  size_t selectProfile(double path_progress, double goal_distance, double heading_path_angle) const;
 
   std::string getProfileReason(size_t profile) const;
 
@@ -154,6 +154,8 @@ protected:
   double profile_goal_distance_{1.0};
   double profile_transition_duration_{0.0};
   double profile_switch_hysteresis_{0.05};
+  double align_enter_angle_{0.52};   // 对齐段进入阈值(rad,~30°)
+  double align_exit_angle_{0.31};    // 对齐段退出阈值(rad,~18°,迟滞)
   size_t active_profile_{0};
   bool profile_transition_active_{false};
 

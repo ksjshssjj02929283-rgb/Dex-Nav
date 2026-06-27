@@ -84,6 +84,11 @@ struct PreferForwardCriticSettings
   float threshold_to_consider{0.0f};
 };
 
+struct DesiredVelocityCriticSettings
+{
+  float weight{0.0f};
+};
+
 struct CriticProfileSettings
 {
   GoalCriticSettings goal;
@@ -94,6 +99,7 @@ struct CriticProfileSettings
   PathFollowCriticSettings path_follow;
   PathAlignCriticSettings path_align;
   PreferForwardCriticSettings prefer_forward;
+  DesiredVelocityCriticSettings desired_velocity;
 };
 
 /**
