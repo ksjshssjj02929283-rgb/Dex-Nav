@@ -89,6 +89,16 @@ struct DesiredVelocityCriticSettings
   float weight{0.0f};
 };
 
+struct ObstaclesCriticSettings
+{
+  float repulsion_weight{0.0f};  // 软斥力(可分段)；致命 critical_weight 保持全局
+};
+
+struct CostCriticSettings
+{
+  float weight{0.0f};  // 软代价(可分段)；致命由 ObstaclesCritic critical 全局兜底
+};
+
 struct CriticProfileSettings
 {
   GoalCriticSettings goal;
@@ -100,6 +110,8 @@ struct CriticProfileSettings
   PathAlignCriticSettings path_align;
   PreferForwardCriticSettings prefer_forward;
   DesiredVelocityCriticSettings desired_velocity;
+  ObstaclesCriticSettings obstacles;
+  CostCriticSettings cost;
 };
 
 /**

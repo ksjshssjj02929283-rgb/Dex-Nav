@@ -195,6 +195,14 @@ track
 
 > ⚠️ 末段路径类 critic 是**弱值(1~2) 而非 0**：进入末段时若路径类直接归零会丢失路径牵引、导致二三阶段边界先减速再加速的顿挫。过渡插值上，速度上限线性过渡、目标类 critic 慢启动（详见 `interpolateProfiles`）。
 
+## 6.5 ⭐ yaml 结构（2026-06 重构）
+
+阶段配置已重构为更清晰的结构（DEC-009）：
+- **块名语义化**：`profile_1/2/3` → `stage_align` / `stage_track` / `stage_approach`。
+- **权重矩阵**：各 critic 三段权重集中在 `stage_weights:`（`CriticName: [align, track, approach]`），一行看全三段、调参最直观；非权重 sub-param(offset/threshold/last_n 等)留在 `stage_*` 块。
+- **切换参数**：`approach_distance`(原 profile_goal_distance)、`align_enter_angle`/`align_exit_angle`；`profile_start_distance` 已删（对齐段改按角度切）。
+- 代码侧：`enum Stage{STAGE_ALIGN/TRACK/APPROACH}` 消 magic index，`selectStage`/`stageName`/`configureStages`/`stages_`/`active_stage_` 语义命名。
+
 ## 7. 配置位置
 
 三段式全部参数位于 `controller_server.ros__parameters.FollowPath` 下，与 `vx_max/vx_min/vy_max/wz_max` 同级。**完整最新配置以 `w1_nav2_params.yaml` 为准**（本文不再重复全量片段，避免两处漂移）。切换参数片段：

@@ -305,6 +305,12 @@ float CostCritic::costAtPose(float x, float y)
   return collision_checker_.pointCost(x_i, y_i);
 }
 
+void CostCritic::applyProfileSettings(const CriticProfileSettings & settings)
+{
+  // 三阶段覆盖软代价权重；致命碰撞由 ObstaclesCritic critical 全局兜底
+  weight_ = settings.cost.weight;
+}
+
 }  // namespace mppi::critics
 
 #include <pluginlib/class_list_macros.hpp>

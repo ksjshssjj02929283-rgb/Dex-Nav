@@ -34,8 +34,8 @@ void PathFollowCritic::initialize()
 void PathFollowCritic::score(CriticData & data)
 {
   // 三阶段 MPPI 中 cost_weight <= 0 表示该阶段关闭路径推进代价。
-  if (!enabled_ || weight_ <= 0.0f || data.path.x.size() < 2 ||
-    utils::withinPositionGoalTolerance(threshold_to_consider_, data.state.pose.pose, data.path))
+  // threshold 距离门已删（同 path_align）。
+  if (!enabled_ || weight_ <= 0.0f || data.path.x.size() < 2)
   {
     return;
   }

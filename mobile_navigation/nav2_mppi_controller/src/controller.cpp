@@ -42,11 +42,11 @@ void MPPIController::configure(
   auto getParam = parameters_handler_->getParamGetter(name_);
   getParam(visualize_, "visualize", false);
   getParam(reset_period_, "reset_period", 1.0);
-  configureProfiles();
+  configureStages();
 
   // Configure composed objects
   optimizer_.initialize(parent_, name_, costmap_ros_, parameters_handler_.get());
-  applied_profile_ = profiles_[active_profile_];
+  applied_profile_ = stages_[active_stage_];
   optimizer_.applyProfile(applied_profile_);
   parameters_handler_->addPostCallback(
     [this]() {
@@ -225,7 +225,7 @@ void MPPIController::publishProfileDebug(double path_progress, double goal_dista
   const auto & active_constraints = optimizer_.getActiveConstraints();
   auto msg = std::make_unique<std_msgs::msg::Float64MultiArray>();
   msg->data = {
-    static_cast<double>(active_profile_ + 1),
+    static_cast<double>(active_stage_ + 1),
     path_progress,
     goal_distance,
     profile_transition_active_ ? 1.0 : 0.0,
@@ -241,65 +241,72 @@ void MPPIController::publishProfileDebug(double path_progress, double goal_dista
     optimizer_.getSpeedLimit(),
     optimizer_.isSpeedLimitPercentage() ? 1.0 : 0.0,
     profile_start_distance_,
-    profile_goal_distance_,
+    approach_distance_,
     profile_transition_duration_,
-    profile_switch_hysteresis_,
+    approach_hysteresis_,
   };
   profile_debug_publisher_->publish(std::move(msg));
 }
 
-void MPPIController::configureProfiles()
+void MPPIController::configureStages()
 {
   auto getParam = parameters_handler_->getParamGetter(name_);
 
   // 单阶段 MPPI 已删除：行为类 Goal/Path/PreferForward 代价只允许由 profile_1/2/3 管理。
   // 这里的默认值只作为缺省兜底，不再从 FollowPath 全局行为 critic 中继承。
-  profiles_[0].velocity = {0.4f, -0.2f, 0.5f, 0.9f};
-  profiles_[0].critics.goal = {0.0f, 0.0f};
-  profiles_[0].critics.goal_lateral = {0.0f, 0.0f, 8};
-  profiles_[0].critics.goal_longitudinal = {0.0f, 0.0f, 8};
-  profiles_[0].critics.goal_angle = {0.0f, 0.0f};
-  profiles_[0].critics.path_angle = {7.0f, 0.3f, 3, 0.7f, true};
-  profiles_[0].critics.path_align = {8.0f, 0.3f, 8, 3, 0.08f};
-  profiles_[0].critics.path_follow = {7.0f, 1.2f, 7};
-  profiles_[0].critics.prefer_forward = {6.0f, 0.25f};
-  profiles_[0].critics.desired_velocity = {0.0f};   // 对齐段关闭速度软约束（不惩罚后退机动）
+  stages_[0].velocity = {0.4f, -0.2f, 0.5f, 0.9f};
+  stages_[0].critics.goal = {0.0f, 0.0f};
+  stages_[0].critics.goal_lateral = {0.0f, 0.0f, 8};
+  stages_[0].critics.goal_longitudinal = {0.0f, 0.0f, 8};
+  stages_[0].critics.goal_angle = {0.0f, 0.0f};
+  stages_[0].critics.path_angle = {7.0f, 0.3f, 3, 0.7f, true};
+  stages_[0].critics.path_align = {8.0f, 0.3f, 8, 3, 0.08f};
+  stages_[0].critics.path_follow = {7.0f, 1.2f, 7};
+  stages_[0].critics.prefer_forward = {6.0f, 0.25f};
+  stages_[0].critics.desired_velocity = {0.0f};   // 对齐段关闭速度软约束（不惩罚后退机动）
+  stages_[0].critics.obstacles = {1.1f};
+  stages_[0].critics.cost = {3.81f};
 
-  profiles_[1].velocity = {0.7f, -0.5f, 0.5f, 0.75f};
-  profiles_[1].critics.goal = {0.0f, 0.0f};
-  profiles_[1].critics.goal_lateral = {0.0f, 0.0f, 8};
-  profiles_[1].critics.goal_longitudinal = {0.0f, 0.0f, 8};
-  profiles_[1].critics.goal_angle = {0.0f, 0.0f};
-  profiles_[1].critics.path_angle = {5.0f, 0.5f, 3, 0.9f, true};
-  profiles_[1].critics.path_align = {20.0f, 0.5f, 15, 2, 0.05f};
-  profiles_[1].critics.path_follow = {4.0f, 0.5f, 5};
-  profiles_[1].critics.prefer_forward = {5.0f, 0.25f};
-  profiles_[1].critics.desired_velocity = {8.0f};
+  stages_[1].velocity = {0.7f, -0.5f, 0.5f, 0.75f};
+  stages_[1].critics.goal = {0.0f, 0.0f};
+  stages_[1].critics.goal_lateral = {0.0f, 0.0f, 8};
+  stages_[1].critics.goal_longitudinal = {0.0f, 0.0f, 8};
+  stages_[1].critics.goal_angle = {0.0f, 0.0f};
+  stages_[1].critics.path_angle = {5.0f, 0.5f, 3, 0.9f, true};
+  stages_[1].critics.path_align = {20.0f, 0.5f, 15, 2, 0.05f};
+  stages_[1].critics.path_follow = {4.0f, 0.5f, 5};
+  stages_[1].critics.prefer_forward = {5.0f, 0.25f};
+  stages_[1].critics.desired_velocity = {8.0f};
+  stages_[1].critics.obstacles = {1.1f};
+  stages_[1].critics.cost = {3.81f};
 
-  profiles_[2].velocity = {0.7f, 0.0f, 0.5f, 0.30f};  // 末段速度交给 DesiredVelocityCritic 软约束；硬上限保持 0.7、禁倒车
-  profiles_[2].critics.goal = {4.0f, 1.0f};
-  profiles_[2].critics.goal_lateral = {40.0f, 1.0f, 10};
-  profiles_[2].critics.goal_longitudinal = {25.0f, 0.8f, 10};
-  profiles_[2].critics.goal_angle = {8.0f, 0.2f};
-  profiles_[2].critics.path_angle = {1.0f, 0.5f, 2, 1.0f, true};
-  profiles_[2].critics.path_align = {2.0f, 0.5f, 15, 3, 0.05f};
-  profiles_[2].critics.path_follow = {1.0f, 0.5f, 5};
-  profiles_[2].critics.prefer_forward = {1.0f, 1.0f};
-  profiles_[2].critics.desired_velocity = {8.0f};
+  stages_[2].velocity = {0.7f, 0.0f, 0.5f, 0.30f};  // 末段速度交给 DesiredVelocityCritic 软约束；硬上限保持 0.7、禁倒车
+  stages_[2].critics.goal = {4.0f, 1.0f};
+  stages_[2].critics.goal_lateral = {40.0f, 1.0f, 10};
+  stages_[2].critics.goal_longitudinal = {25.0f, 0.8f, 10};
+  stages_[2].critics.goal_angle = {8.0f, 0.2f};
+  stages_[2].critics.path_angle = {1.0f, 0.5f, 2, 1.0f, true};
+  stages_[2].critics.path_align = {2.0f, 0.5f, 15, 3, 0.05f};
+  stages_[2].critics.path_follow = {1.0f, 0.5f, 5};
+  stages_[2].critics.prefer_forward = {1.0f, 1.0f};
+  stages_[2].critics.desired_velocity = {8.0f};
+  stages_[2].critics.obstacles = {0.0f};   // 趋近段软斥力关（保致命）
+  stages_[2].critics.cost = {0.0f};
 
-  getParam(profile_start_distance_, "profile_start_distance", 0.8, ParameterType::Static);
-  getParam(profile_goal_distance_, "profile_goal_distance", 1.0, ParameterType::Static);
+  // profile_start_distance 已废弃（对齐段改按角度切，不再按距起点距离）；成员保留仅供 debug 兼容
+  getParam(approach_distance_, "approach_distance", 1.0, ParameterType::Static);
   getParam(profile_transition_duration_, "profile_transition_duration", 1.0, ParameterType::Static);
-  getParam(profile_switch_hysteresis_, "profile_switch_hysteresis", 0.05, ParameterType::Static);
-  profile_switch_hysteresis_ = std::max(0.0, profile_switch_hysteresis_);
+  getParam(approach_hysteresis_, "approach_hysteresis", 0.05, ParameterType::Static);
+  approach_hysteresis_ = std::max(0.0, approach_hysteresis_);
   getParam(align_enter_angle_, "align_enter_angle", 0.52, ParameterType::Static);  // ~30°
   getParam(align_exit_angle_, "align_exit_angle", 0.31, ParameterType::Static);    // ~18° 迟滞
   align_exit_angle_ = std::min(align_exit_angle_, align_enter_angle_);
 
-  for (size_t i = 0; i < profiles_.size(); ++i) {
-    auto & profile = profiles_[i];
+  for (size_t i = 0; i < stages_.size(); ++i) {
+    auto & profile = stages_[i];
     auto & profile_critics = profile.critics;
-    const std::string prefix = "profile_" + std::to_string(i + 1) + ".";
+    static const char * kStageKeys[3] = {"stage_align", "stage_track", "stage_approach"};
+    const std::string prefix = std::string(kStageKeys[i]) + ".";
 
     getParam(
       profile.velocity.vx_max, prefix + "vx_max",
@@ -413,6 +420,55 @@ void MPPIController::configureProfiles()
       profile_critics.desired_velocity.weight, ParameterType::Static);
   }
 
+  // ── 权重矩阵：stage_weights.<Critic> = [align, track, approach]，各 critic 权重统一调参入口 ──
+  // 覆盖各段该 critic 权重；缺省=当前值（矩阵缺失则不变，安全）。非权重 sub-param 仍由 stage_* 块管。
+  auto loadWeightRow = [&](const std::string & critic, float & wa, float & wt, float & wp) {
+      std::vector<double> def = {wa, wt, wp};
+      std::vector<double> row = def;
+      getParam(row, "stage_weights." + critic, def, ParameterType::Static);
+      if (row.size() == 3) {
+        wa = static_cast<float>(row[0]);
+        wt = static_cast<float>(row[1]);
+        wp = static_cast<float>(row[2]);
+      } else {
+        RCLCPP_WARN(
+          logger_, "stage_weights.%s 需 3 个值[align,track,approach]，已忽略", critic.c_str());
+      }
+    };
+  loadWeightRow(
+    "GoalCritic", stages_[0].critics.goal.weight, stages_[1].critics.goal.weight,
+    stages_[2].critics.goal.weight);
+  loadWeightRow(
+    "GoalLateralCritic", stages_[0].critics.goal_lateral.weight,
+    stages_[1].critics.goal_lateral.weight, stages_[2].critics.goal_lateral.weight);
+  loadWeightRow(
+    "GoalLongitudinalCritic", stages_[0].critics.goal_longitudinal.weight,
+    stages_[1].critics.goal_longitudinal.weight, stages_[2].critics.goal_longitudinal.weight);
+  loadWeightRow(
+    "GoalAngleCritic", stages_[0].critics.goal_angle.weight,
+    stages_[1].critics.goal_angle.weight, stages_[2].critics.goal_angle.weight);
+  loadWeightRow(
+    "PathAngleCritic", stages_[0].critics.path_angle.weight,
+    stages_[1].critics.path_angle.weight, stages_[2].critics.path_angle.weight);
+  loadWeightRow(
+    "PathAlignCritic", stages_[0].critics.path_align.weight,
+    stages_[1].critics.path_align.weight, stages_[2].critics.path_align.weight);
+  loadWeightRow(
+    "PathFollowCritic", stages_[0].critics.path_follow.weight,
+    stages_[1].critics.path_follow.weight, stages_[2].critics.path_follow.weight);
+  loadWeightRow(
+    "PreferForwardCritic", stages_[0].critics.prefer_forward.weight,
+    stages_[1].critics.prefer_forward.weight, stages_[2].critics.prefer_forward.weight);
+  loadWeightRow(
+    "DesiredVelocityCritic", stages_[0].critics.desired_velocity.weight,
+    stages_[1].critics.desired_velocity.weight, stages_[2].critics.desired_velocity.weight);
+  loadWeightRow(
+    "ObstaclesCritic", stages_[0].critics.obstacles.repulsion_weight,
+    stages_[1].critics.obstacles.repulsion_weight, stages_[2].critics.obstacles.repulsion_weight);
+  loadWeightRow(
+    "CostCritic", stages_[0].critics.cost.weight,
+    stages_[1].critics.cost.weight, stages_[2].critics.cost.weight);
+
   RCLCPP_INFO(
     logger_,
     "MPPI three-stage profiles: start_distance=%.3f goal_distance=%.3f. "
@@ -420,11 +476,11 @@ void MPPIController::configureProfiles()
     "单阶段 MPPI 已删除：profile_1/2/3 分别完整管理行为代价。"
     "path_progress 小于 start_distance 为起步段，goal_distance 小于等于 "
     "profile_goal_distance 为末段；迟滞带用于避免边界附近反复切换。",
-    profile_start_distance_, profile_goal_distance_,
-    profile_transition_duration_, profile_switch_hysteresis_);
+    profile_start_distance_, approach_distance_,
+    profile_transition_duration_, approach_hysteresis_);
 
-  for (size_t i = 0; i < profiles_.size(); ++i) {
-    const auto & profile = profiles_[i];
+  for (size_t i = 0; i < stages_.size(); ++i) {
+    const auto & profile = stages_[i];
     RCLCPP_INFO(
       logger_,
       "MPPI profile_%zu velocity: vx=[%.3f, %.3f] vy=%.3f wz=%.3f. "
@@ -459,7 +515,7 @@ void MPPIController::configureProfiles()
       profile.critics.prefer_forward.threshold_to_consider);
   }
 
-  applied_profile_ = profiles_[active_profile_];
+  applied_profile_ = stages_[active_stage_];
   transition_start_profile_ = applied_profile_;
   transition_target_profile_ = applied_profile_;
 }
@@ -467,77 +523,68 @@ void MPPIController::configureProfiles()
 void MPPIController::applyProfileForPathState(
   double path_progress, double goal_distance, double heading_path_angle)
 {
-  const size_t selected_profile = selectProfile(path_progress, goal_distance, heading_path_angle);
-  const auto & selected = profiles_[selected_profile];
+  const size_t selected_profile = selectStage(goal_distance, heading_path_angle);
+  const auto & selected = stages_[selected_profile];
   RCLCPP_DEBUG(
     logger_,
     "MPPI profile state: active=%zu selected=%zu path_progress=%.3f goal_distance=%.3f heading_angle=%.3f. "
     "selected_reason=%s selected_vx=[%.3f, %.3f] selected_wz=%.3f. "
     "三阶段判断输入，若 active 与 selected 不同则即将切换。",
-    active_profile_ + 1, selected_profile + 1, path_progress, goal_distance, heading_path_angle,
-    getProfileReason(selected_profile).c_str(),
+    active_stage_ + 1, selected_profile + 1, path_progress, goal_distance, heading_path_angle,
+    stageName(selected_profile).c_str(),
     selected.velocity.vx_min, selected.velocity.vx_max, selected.velocity.wz_max);
 
-  if (selected_profile == active_profile_) {
+  if (selected_profile == active_stage_) {
     updateProfileTransition();
     return;
   }
 
-  const size_t previous_profile = active_profile_;
-  active_profile_ = selected_profile;
+  const size_t previous_profile = active_stage_;
+  active_stage_ = selected_profile;
   if (profile_transition_duration_ > 0.0) {
     transition_start_profile_ = applied_profile_;
-    transition_target_profile_ = profiles_[active_profile_];
+    transition_target_profile_ = stages_[active_stage_];
     profile_transition_start_time_ = clock_->now();
     profile_transition_active_ = true;
     updateProfileTransition();
   } else {
-    applied_profile_ = profiles_[active_profile_];
+    applied_profile_ = stages_[active_stage_];
     optimizer_.applyProfile(applied_profile_);
   }
 
-  const auto & profile = profiles_[active_profile_];
+  const auto & profile = stages_[active_stage_];
   RCLCPP_INFO(
     logger_,
     "MPPI profile switched: %zu -> %zu, reason=%s, path_progress=%.3f, "
     "goal_distance=%.3f, velocity vx=[%.3f, %.3f] vy=%.3f wz=%.3f. "
     "transition_duration=%.3f. "
     "三阶段发生切换，新的速度约束和 critic 参数会按过渡时间应用到 Optimizer。",
-    previous_profile + 1, active_profile_ + 1, getProfileReason(active_profile_).c_str(),
+    previous_profile + 1, active_stage_ + 1, stageName(active_stage_).c_str(),
     path_progress, goal_distance, profile.velocity.vx_min, profile.velocity.vx_max,
     profile.velocity.vy_max, profile.velocity.wz_max, profile_transition_duration_);
 }
 
-size_t MPPIController::selectProfile(
-  double path_progress, double goal_distance, double heading_path_angle) const
+size_t MPPIController::selectStage(double goal_distance, double heading_path_angle) const
 {
-  // 按语义切换，优先级：approach(趋近,距离) > align(对齐,角度) > track(跟踪,默认)。
-  // 各阶段用迟滞带防边界抖动。profile 索引：0=align, 1=track, 2=approach。
-  (void)path_progress;  // 起步段不再按距起点距离判定（改为车头-路径夹角），保留入参便于调试
-
-  // 趋近段：距目标 <= 阈值（迟滞：已在趋近段则放宽 hysteresis）
-  if (active_profile_ == 2 &&
-    goal_distance <= profile_goal_distance_ + profile_switch_hysteresis_)
+  // 按语义切换，优先级：approach(趋近,距离) > align(对齐,角度) > track(跟踪,默认)，各带迟滞。
+  if (active_stage_ == STAGE_APPROACH &&
+    goal_distance <= approach_distance_ + approach_hysteresis_)
   {
-    return 2;
+    return STAGE_APPROACH;  // 趋近段距离迟滞
   }
-  if (goal_distance <= profile_goal_distance_) {
-    return 2;
+  if (goal_distance <= approach_distance_) {
+    return STAGE_APPROACH;
   }
-
-  // 对齐段：车头-路径夹角 > 进入阈值（迟滞：已在对齐段用更小的退出阈值 align_exit_angle_）
-  if (active_profile_ == 0 && heading_path_angle > align_exit_angle_) {
-    return 0;
+  if (active_stage_ == STAGE_ALIGN && heading_path_angle > align_exit_angle_) {
+    return STAGE_ALIGN;     // 对齐段角度迟滞（退出用更小阈值）
   }
   if (heading_path_angle > align_enter_angle_) {
-    return 0;
+    return STAGE_ALIGN;
   }
-
-  // 默认跟踪段
-  return 1;
+  return STAGE_TRACK;
 }
 
-std::string MPPIController::getProfileReason(size_t profile) const
+std::string MPPIController::stageName(size_t profile) const
 {
   switch (profile) {
     case 0:

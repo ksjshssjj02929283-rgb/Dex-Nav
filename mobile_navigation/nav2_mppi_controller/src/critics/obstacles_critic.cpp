@@ -319,6 +319,12 @@ CollisionCost ObstaclesCritic::costAtPose(
   return collision_cost;
 }
 
+void ObstaclesCritic::applyProfileSettings(const CriticProfileSettings & settings)
+{
+  // 三阶段覆盖软斥力权重；致命 critical_weight_ 保持全局常开（安全）
+  repulsion_weight_ = settings.obstacles.repulsion_weight;
+}
+
 }  // namespace mppi::critics
 
 #include <pluginlib/class_list_macros.hpp>

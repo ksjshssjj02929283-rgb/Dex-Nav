@@ -48,6 +48,8 @@ public:
    */
   void score(CriticData & data) override;
 
+  void applyProfileSettings(const CriticProfileSettings & settings) override;
+
   /**
     * @brief Point critic + collision checker to a costmap snapshot
     */

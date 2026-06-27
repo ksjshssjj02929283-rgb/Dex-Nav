@@ -137,148 +137,40 @@ controller_server:
       # ============================================================
       # 2. 三阶段切换参数
       # ============================================================
-      profile_start_distance: 0.5 # 起步段阈值，小于该距离时使用 profile_1
-      profile_goal_distance: 1.5 # 末段阈值，距离目标点小于等于该距离时优先使用 profile_3
+      approach_distance: 0.5 # 距目标≤此进趋近段 approach（缩小：track 强 PathAlign 跟到 0.5m，approach 做最终精对）
       profile_transition_duration: 1.0 # 三段式切换过渡时间，避免速度约束和 critic 权重一拍硬切，单位 s
       align_enter_angle: 0.52 # 对齐段进入：车头-路径夹角(rad,~30°)超此进 align 段
       align_exit_angle: 0.31 # 对齐段退出：夹角降至此退出(rad,~18°,迟滞防抖)
+      # ── 权重矩阵：各 critic 三段权重统一调参入口 [align, track, approach] ──
+      stage_weights:
+        GoalCritic: [0.0, 0.0, 10.0]
+        GoalLateralCritic: [0.0, 0.0, 35.0]
+        GoalLongitudinalCritic: [0.0, 0.0, 30.0]
+        GoalAngleCritic: [0.0, 0.0, 15.0]
+        PathAngleCritic: [18.0, 5.0, 2.0]
+        PathAlignCritic: [5.0, 30.0, 2.0]
+        PathFollowCritic: [1.0, 10.0, 5.0]
+        PreferForwardCritic: [1.0, 10.0, 1.0]
+        DesiredVelocityCritic: [0.0, 8.0, 8.0]
+        ObstaclesCritic: [1.1, 1.1, 0.0]   # 软斥力(repulsion)分段；致命 critical 全局常开
+        CostCritic: [3.81, 3.81, 0.0]      # 软代价分段；致命由 ObstaclesCritic 兜底
 
       # ============================================================
-      # 3. profile_1 起步段：低线速度、高角速度，优先转向并快速跟进路径
+      # 三阶段 align/track/approach：权重统一由上方 stage_weights 矩阵调；
+      # 速度/子参数(offset/threshold/last_n 等)用 C++ configureStages 默认；
+      # 切换由 align_enter_angle/align_exit_angle/approach_distance。
+      # 按需再对单阶段加 stage_align/track/approach 块覆盖默认。
       # ============================================================
-      profile_1: # 起步段
-        vx_max: 0.7 # 最大前进速度
-        vx_min: -0.5 # 最小后退速度
-        vy_max: 0.5 # 侧向速度上限，DiffDrive 下通常不生效
-        wz_max: 0.9 # 对齐段放高角速度，快速转向对齐路径
-        GoalCritic: # 起步段不直接吸向终点，避免短路径任务过早抢控制量
-          cost_weight: 0.0
-          threshold_to_consider: 0.0
-        GoalLateralCritic: # 起步段关闭目标横向误差，横向精调交给末段
-          cost_weight: 0.0
-          threshold_to_consider: 0.0
-          last_n_points: 8
-        GoalLongitudinalCritic: # 起步段关闭目标纵向误差，纵向精调交给末段
-          cost_weight: 0.0
-          threshold_to_consider: 0.0
-          last_n_points: 8
-        GoalAngleCritic: # 起步段不追最终朝向，先按路径朝向调整车身
-          cost_weight: 0.0
-          threshold_to_consider: 0.0
-        PathAngleCritic: # 路径朝向约束
-          cost_weight: 18.0 # 对齐段主代价(req-1 提高)：强力转向对齐路径方向
-          offset_from_furthest: 5 # 使用 furthest point 前方第 5 个路径点计算朝向
-          threshold_to_consider: 0.3 # 接近末段后交给目标类代价
-          max_angle_to_furthest: 0.3 # 对齐段降低，确保进 align(夹角>0.52) 时 PathAngle 始终生效
-          forward_preference: true # 偏好按前进方向对齐路径
-        PathAlignCritic: # 路径贴合约束
-          cost_weight: 5.0 # 对齐段降低(req-1)：对齐优先于贴线，但不归零防切弯
-          offset_from_furthest: 3 # 更早参与贴线
-          trajectory_point_step: 3 # 轨迹评估采样间隔
-          threshold_to_consider: 0.3 # 接近末段后交给目标类代价
-          max_path_occupancy_ratio: 0.08 # 起步段略放宽路径占据判断，给转向留空间
-        PathFollowCritic: # 路径推进约束
-          cost_weight: 1.0 # 对齐段降低(req-1)：对齐时不强求推进
-          offset_from_furthest: 5 # 跟踪 furthest point 前方第 5 个路径点
-          threshold_to_consider: 1.2 # 中近距离后逐步让位给目标段
-        PreferForwardCritic: # 前进偏好约束
-          cost_weight: 1.0 # 起步段略加强前进偏好，减少 180 度场景直接倒车
-          threshold_to_consider: 0.25 # 接近目标 0.25m 内不再强制前进偏好
-
-      # ============================================================
-      # 4. profile_2 中间段：较快速度下严格贴线，目标点误差暂不抢控制量
-      # ============================================================
-      profile_2: # 中间段
-        vx_max: 0.7 # 中间段最大前进速度，保持通行效率
-        vx_min: -0.5 # 中间段最小速度，允许必要倒车
-        vy_max: 0.5 # 中间段侧向速度上限，DiffDrive 下通常不生效
-        wz_max: 0.75 # 中间段最大角速度
-        GoalCritic: # 中段终点吸引，避免为了接近终点而切弯
-          cost_weight: 3.0
-          threshold_to_consider: 5.0
-        GoalLateralCritic: # 中段目标横向误差
-          cost_weight: 1.0
-          threshold_to_consider: 2.0
-          last_n_points: 10
-        GoalLongitudinalCritic: # 中段目标纵向误差
-          cost_weight: 1.0
-          threshold_to_consider: 2.0
-          last_n_points: 10
-        GoalAngleCritic: # 中段关闭最终朝向约束
-          cost_weight: 0.0
-          threshold_to_consider: 0.0
-        PathAngleCritic: # 路径朝向约束
-          cost_weight: 5.0 # 中段保持路径方向一致
-          offset_from_furthest: 3 # 使用 furthest point 前方第 3 个路径点计算朝向
-          threshold_to_consider: 0.5 # 接近目标后不再使用路径朝向约束
-          max_angle_to_furthest: 0.9 # 允许的路径朝向角度阈值
-          forward_preference: true # 偏好按前进方向对齐路径
-        PathAlignCritic: # 路径贴合约束
-          cost_weight: 20.0 # 中段主代价，强调严格轨迹跟踪
-          offset_from_furthest: 15 # 参考 furthest point 前方第 15 个路径点
-          trajectory_point_step: 2 # 中段更密集评估贴线误差，计算量略有增加
-          threshold_to_consider: 0.5 # 接近目标后不再使用路径贴合约束
-          max_path_occupancy_ratio: 0.05 # 路径被障碍占据超过该比例时减弱路径贴合
-        PathFollowCritic: # 路径推进约束
-          cost_weight: 10.0 # 保留路径推进，但弱于 PathAlign，减少切弯倾向
-          offset_from_furthest: 10 # 跟踪 furthest point 前方第 10 个路径点
-          threshold_to_consider: 0.5 # 保持推进牵引到 0.5m 内，避免二三阶段边界先减速再加速
-        PreferForwardCritic: # 前进偏好约束
-          cost_weight: 10.0 # 前进偏好权重
-          threshold_to_consider: 0.25 # 接近目标 0.25m 内不再强制前进偏好
-
-      # ============================================================
-      # 5. profile_3 末段：低速精调目标点，保留已调好的横向/纵向误差代价
-      # ============================================================
-      profile_3: # 末段
-        vx_max: 0.7 # 末段保持硬上限 0.7，减速交给 DesiredVelocityCritic 软约束（消除二三阶段硬降速）
-        vx_min: -0.1 # 末段禁倒车，消除到点前后磨蹭
-        vy_max: 0.5 # 末段侧向速度上限
-        wz_max: 0.75 # 末段降低最大角速度，但保留一定横向纠偏能力
-        GoalCritic: # 末段弱距离收敛辅助，主精度仍由横向/纵向/角度代价负责
-          cost_weight: 10.0
-          threshold_to_consider: 1.0
-        GoalLateralCritic: # 目标横向误差约束
-          cost_weight: 35.0 # 保留当前已调好的末段横向误差权重
-          threshold_to_consider: 1.0 # 距离目标 1.0m 内按目标朝向约束横向误差
-          last_n_points: 20 # 每条 MPPI 候选轨迹只取最后 10 个时间点来计算横向误差代价
-        GoalLongitudinalCritic: # 目标纵向误差约束
-          cost_weight: 30.0 # 保留当前已调好的末段纵向误差权重
-          threshold_to_consider: 1.0 # 启用纵向牵引距离
-          last_n_points: 20 # 每条 MPPI 候选轨迹只取最后 10 个时间点来计算纵向误差代价
-        GoalAngleCritic: # 目标朝向约束
-          cost_weight: 15.0 # 目标朝向权重
-          threshold_to_consider: 0.2 # 距离目标小于该值时启用目标朝向约束
-        PathAngleCritic: # 路径朝向约束
-          cost_weight: 2.0 # 末段保留弱路径朝向，避免切换后突然失去路径牵引
-          offset_from_furthest: 2 # 使用 furthest point 前方第 2 个路径点计算朝向
-          threshold_to_consider: 0.5 # 接近目标后不再使用路径朝向约束
-          max_angle_to_furthest: 1.0 # 允许的路径朝向角度阈值
-          forward_preference: true # 偏好按前进方向对齐路径
-        PathAlignCritic: # 路径贴合约束
-          cost_weight: 2.0 # 末段保留弱路径贴合，目标横向/纵向误差仍然主导到点
-          offset_from_furthest: 15 # 参考 furthest point 前方第 15 个路径点
-          trajectory_point_step: 3 # 轨迹评估采样间隔
-          threshold_to_consider: 0.5 # 接近目标后不再使用路径贴合约束
-          max_path_occupancy_ratio: 0.05 # 路径被障碍占据超过该比例时减弱路径贴合
-        PathFollowCritic: # 路径推进约束
-          cost_weight: 5.0 # 末段保留弱路径推进，减少二三阶段切换时的停顿感
-          offset_from_furthest: 5 # 跟踪 furthest point 前方第 5 个路径点
-          threshold_to_consider: 0.5 # 0.5m 外提供弱推进，0.5m 内交给目标精调
-        PreferForwardCritic: # 前进偏好约束
-          cost_weight: 1.0 # 末段保留弱前进偏好，仍允许目标精调主导必要修正
-          threshold_to_consider: 1.0
-
       # ============================================================
       # 6. 可视化、车辆约束与全局安全/可行性代价
-      #    行为类 Goal/Path/PreferForward 已由 profile_1/2/3 管理。
+      #    行为类权重已由 stage_weights 矩阵管理。
       # ============================================================
       TrajectoryVisualizer:
         trajectory_step: 5
         time_step: 3
       AckermannConstraints:
         min_turning_r: 0.5
-      # critics 是插件加载列表，不再代表单阶段行为策略；阶段行为由上方 profile_N 覆盖。
+      # critics 是插件加载列表；阶段权重由上方 stage_weights 矩阵覆盖。
       critics: ["ConstraintCritic", "CostCritic", "ObstaclesCritic", "GoalCritic", "GoalLateralCritic", "GoalLongitudinalCritic", "GoalAngleCritic", "PathAlignCritic", "PathFollowCritic", "PathAngleCritic", "PreferForwardCritic", "DesiredVelocityCritic", "VelocityDeadbandCritic"]
       ConstraintCritic:
         enabled: true
