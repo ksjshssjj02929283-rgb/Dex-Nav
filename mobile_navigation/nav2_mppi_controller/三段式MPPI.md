@@ -95,7 +95,7 @@
 | `PathAlignCritic` | `cost_weight`, `threshold_to_consider`, `offset_from_furthest`, `trajectory_point_step`, `max_path_occupancy_ratio` |
 | `PreferForwardCritic` | `cost_weight`, `threshold_to_consider` |
 
-> `GoalLateralCritic` / `GoalLongitudinalCritic` 分别惩罚候选轨迹末 `last_n_points` 个点在**目标朝向坐标系**下的横向 / 纵向误差，仅末段启用，是厘米级停靠的核心。另有全局 `deadband` 参数（误差 < 该值不计代价，防到点磨蹭）。
+> `GoalLateralCritic` / `GoalLongitudinalCritic` 分别惩罚候选轨迹末 `last_n_points` 个点上，目标点在**该候选点 base_link 坐标系**下的横向 / 纵向投影误差，仅末段启用，是厘米级停靠的核心。
 
 **不支持按阶段覆盖**（仍用 `FollowPath` 全局配置）：
 
@@ -164,7 +164,7 @@
 | `a_decel` | `0.3` | 期望减速度 m/s²，`v_desired=min(vx_max, sqrt(2·a·d))`；速度上限取全局 vx_max(0.7)|
 | `cost_power` | `2` | |
 
-机制：单边惩罚"速度超过 v_desired"——远离目标 v_desired=vx_max 不干扰；接近目标 v_desired 平滑降到 0，MPPI 在时域内自行规划匀减速。配合 profile_3 vx_max 改回 0.7（删硬降）+ GoalLateral/GoalLongitudinal 的 `deadband: 0.02`(2cm 死区) + 末段禁倒车，解决"二三阶段硬降速顿挫"与"到点前后磨蹭"。
+机制：双边惩罚"当前(候选)速度与 v_desired 的差值"|vx − v_desired|（速度跟踪），使实际速度趋近期望速度——远离目标 v_desired=vx_max，接近目标平滑降到 0，MPPI 在时域内自行规划匀减速。配合 profile_3 vx_max 改回 0.7（删硬降）+ 末段禁倒车(vx_min0) + v_desired→0 速度阻尼，解决"二三阶段硬降速顿挫"与"到点前后磨蹭"。
 
 ## 6. 当前三阶段参数（实际值对照）
 
@@ -189,7 +189,7 @@
 |---|---|
 | **起步段** | 降 vx(0.4) 保 wz(0.75)；**PathAngle 7.0 + 早触发(max0.7) 主导快速对齐路径方向**，PathAlign 15 适度贴线；关闭全部目标类 critic（精调交给末段）|
 | **中间段** | 全速(0.7)；**PathAlign 20 为主代价**严格贴线，PathFollow 4 弱推进减少切弯；关闭目标类 critic |
-| **末段** | **vx 硬上限保持 0.7**（减速交给 DesiredVelocityCritic 软约束按距离平滑降速，消除二三阶段硬降速）、wz0.30、禁倒车(vx_min0)；**四目标 critic 主导**（横向 35 / 纵向 25 / 朝向 15 / 弱距离 4，横纵向带 2cm 死区防磨蹭），路径类弱牵引(1~2) |
+| **末段** | **vx 硬上限保持 0.7**（减速交给 DesiredVelocityCritic 软约束按距离平滑降速，消除二三阶段硬降速）、wz0.30、禁倒车(vx_min0)；**四目标 critic 主导**（横向 35 / 纵向 25 / 朝向 15 / 弱距离 4），路径类弱牵引(1~2) |
 
 > ⚠️ 末段路径类 critic 是**弱值(1~2) 而非 0**：进入末段时若路径类直接归零会丢失路径牵引、导致二三阶段边界先减速再加速的顿挫。过渡插值上，速度上限线性过渡、目标类 critic 慢启动（详见 `interpolateProfiles`）。
 

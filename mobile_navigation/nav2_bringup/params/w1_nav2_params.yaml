@@ -230,7 +230,7 @@ controller_server:
       # ============================================================
       profile_3: # 末段
         vx_max: 0.7 # 末段保持硬上限 0.7，减速交给 DesiredVelocityCritic 软约束（消除二三阶段硬降速）
-        vx_min: -0.05 # 末段禁倒车，消除到点前后磨蹭
+        vx_min: -0.1 # 末段禁倒车，消除到点前后磨蹭
         vy_max: 0.5 # 末段侧向速度上限
         wz_max: 0.75 # 末段降低最大角速度，但保留一定横向纠偏能力
         GoalCritic: # 末段弱距离收敛辅助，主精度仍由横向/纵向/角度代价负责
@@ -310,7 +310,7 @@ controller_server:
         enabled: true
         cost_power: 2
         cost_weight: 8.0 # 初值，bag 调；与 goal critic 量级相当（过冲→加，减速太早→减）
-        a_decel: 0.3 # 期望减速度 m/s²，恒减速 0.3 ≤ ax_max 0.5；速度上限取 FollowPath 全局 vx_max(0.7)
+        a_decel: 0.5 # 期望减速度 m/s²，恒减速 0.3 ≤ ax_max 0.5；速度上限取 FollowPath 全局 vx_max(0.7)
       VelocityDeadbandCritic:
         enabled: true
         cost_power: 1

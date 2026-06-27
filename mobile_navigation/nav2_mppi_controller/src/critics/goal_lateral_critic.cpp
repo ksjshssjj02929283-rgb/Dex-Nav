@@ -27,7 +27,6 @@ void GoalLateralCritic::initialize()
   getParam(power_, "cost_power", 2);
   getParam(weight_, "cost_weight", 5.0);
   getParam(threshold_to_consider_, "threshold_to_consider", 1.5);
-  getParam(deadband_, "deadband", 0.0);
   getParam(last_n_points_, "last_n_points", 8);
 
   RCLCPP_INFO(
@@ -48,9 +47,6 @@ void GoalLateralCritic::score(CriticData & data)
   const auto goal_idx = data.path.x.size() - 1;
   const float goal_x = data.path.x(goal_idx);
   const float goal_y = data.path.y(goal_idx);
-  const float goal_yaw = data.path.yaws(goal_idx);
-  const float cos_yaw = std::cos(goal_yaw);
-  const float sin_yaw = std::sin(goal_yaw);
 
   const Eigen::Index time_steps = data.trajectories.x.cols();
   if (time_steps < 1) {
@@ -63,11 +59,11 @@ void GoalLateralCritic::score(CriticData & data)
 
   models::Vector cost = models::Vector::Zero(data.costs.size());
   for (Eigen::Index p = start_idx; p < time_steps; ++p) {
-    const auto dx = data.trajectories.x.col(p).array() - goal_x;
-    const auto dy = data.trajectories.y.col(p).array() - goal_y;
-    // 在 MPPI 公共 frame 内，按目标朝向投影出横向误差
-    // 死区：误差小于 deadband 不计代价，避免到点处追 sub-cm 造成磨蹭
-    const auto lat_err = ((-sin_yaw * dx + cos_yaw * dy).abs() - deadband_).max(0.0f);
+    // 目标点在每个候选轨迹点(base_link)坐标系下的横向(左向)投影误差
+    const auto gx = goal_x - data.trajectories.x.col(p).array();
+    const auto gy = goal_y - data.trajectories.y.col(p).array();
+    const models::Vector yaw = data.trajectories.yaws.col(p);
+    const auto lat_err = (-yaw.sin() * gx + yaw.cos() * gy).abs();
     cost += lat_err;
   }
 

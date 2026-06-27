@@ -61,10 +61,9 @@ void DesiredVelocityCritic::score(CriticData & data)
     // 按剩余距离算期望速度：v_desired = min(vx_max, sqrt(2 * a_decel * dist))
     // dist 大时 = vx_max（不降速），接近目标时平滑降到 0
     const auto v_desired = (2.0f * a_decel_ * dist).sqrt().min(vx_max_);
-    // 单边惩罚：只在“速度超过期望速度”时计代价，等效为平滑下降的软速度上限
-    // （远离目标 v_desired=vx_max，速度受硬约束 ≤ vx_max → 代价为 0，不干扰起步/中间段）
-    const auto over = (data.state.vx.col(p).array() - v_desired).max(0.0f);
-    cost += over;
+    // 双边速度跟踪误差：当前(候选)速度与期望速度的差值，使实际速度趋近期望速度
+    const auto v_err = (data.state.vx.col(p).array() - v_desired).abs();
+    cost += v_err;
   }
 
   cost /= static_cast<float>(time_steps);

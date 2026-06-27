@@ -25,8 +25,8 @@ namespace mppi::critics
  * @class mppi::critics::DesiredVelocityCritic
  * @brief 速度软约束：按每个预测点到目标的剩余距离算期望速度
  *        v_desired = min(vx_max, sqrt(2 * a_decel * dist))，
- *        单边惩罚“超过期望速度”，等效为平滑下降的软速度上限，
- *        让 MPPI 在时域内自行规划匀减速、消除阶段边界硬降速。
+ *        双边惩罚“当前(候选)速度与期望速度的差值”|vx - v_desired|（速度跟踪），
+ *        让实际速度趋近期望速度，在时域内平滑匀减速、消除阶段边界硬降速。
  */
 class DesiredVelocityCritic : public CriticFunction
 {
