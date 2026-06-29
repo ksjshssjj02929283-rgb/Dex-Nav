@@ -131,8 +131,6 @@ controller_server:
       visualize: false
       reset_period: 1.0 # (only in Humble)
       regenerate_noises: false
-      near_goal_cost_relaxation_distance: 0.5 # 距离目标小于该值时，仅 MPPI 障碍 critic 启用近目标软膨胀过滤
-      near_goal_effective_inflation_radius: 0.2 # MPPI 内部近目标等效膨胀半径；不修改 local costmap 真实 0.4m inflation_radius
 
       # ============================================================
       # 2. 三阶段切换参数

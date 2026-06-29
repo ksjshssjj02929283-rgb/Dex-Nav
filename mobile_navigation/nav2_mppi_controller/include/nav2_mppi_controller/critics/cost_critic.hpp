@@ -79,16 +79,6 @@ protected:
   float costAtPose(float x, float y);
 
   /**
-    * @brief Filter local costmap soft inflation cost for near-goal MPPI scoring
-    * @param cost Costmap cost at pose center
-    * @param near_goal_relaxation Whether near-goal relaxation is active
-    * @param filtered_soft_cost_count Number of soft inflated costs filtered in this cycle
-    * @return Cost used by MPPI obstacle scoring
-    */
-  float relaxedCostAtPose(
-    float cost, bool near_goal_relaxation, size_t & filtered_soft_cost_count) const;
-
-  /**
     * @brief Estimate obstacle clearance from an inflated costmap cost
     * @param cost Costmap cost at pose center
     * @return Estimated distance from robot footprint to the obstacle
@@ -117,10 +107,7 @@ protected:
   float weight_{0};
 
   float near_goal_distance_;
-  float near_goal_cost_relaxation_distance_{0};
-  float near_goal_effective_inflation_radius_{0};
   float inflation_scale_factor_{0};
-  bool near_goal_relaxation_logged_{false};
   std::string inflation_layer_name_;
 
   unsigned int power_{0};
