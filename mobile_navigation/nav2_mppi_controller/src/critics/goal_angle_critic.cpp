@@ -24,21 +24,17 @@ void GoalAngleCritic::initialize()
   getParam(power_, "cost_power", 1);
   getParam(weight_, "cost_weight", 3.0);
 
-  getParam(threshold_to_consider_, "threshold_to_consider", 0.5);
 
   RCLCPP_INFO(
     logger_,
-    "GoalAngleCritic instantiated with %d power, %f weight, and %f "
-    "angular threshold.",
-    power_, weight_, threshold_to_consider_);
+    "GoalAngleCritic instantiated with %d power, %f weight.",
+    power_, weight_);
 }
 
 void GoalAngleCritic::score(CriticData & data)
 {
   // 三阶段 MPPI 中 cost_weight <= 0 表示该阶段关闭目标朝向代价。
-  if (!enabled_ || weight_ <= 0.0f || !utils::withinPositionGoalTolerance(
-      threshold_to_consider_, data.state.pose.pose, data.path))
-  {
+  if (!enabled_ || weight_ <= 0.0f) {
     return;
   }
 
@@ -53,7 +49,6 @@ void GoalAngleCritic::score(CriticData & data)
 void GoalAngleCritic::applyGoalAngleCriticSettings(const GoalAngleCriticSettings & settings)
 {
   weight_ = settings.weight;
-  threshold_to_consider_ = settings.threshold_to_consider;
 }
 
 void GoalAngleCritic::applyProfileSettings(const CriticProfileSettings & settings)

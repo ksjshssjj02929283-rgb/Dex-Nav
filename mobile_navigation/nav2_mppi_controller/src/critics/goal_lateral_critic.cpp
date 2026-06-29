@@ -26,20 +26,18 @@ void GoalLateralCritic::initialize()
 
   getParam(power_, "cost_power", 2);
   getParam(weight_, "cost_weight", 5.0);
-  getParam(threshold_to_consider_, "threshold_to_consider", 1.5);
   getParam(last_n_points_, "last_n_points", 8);
 
   RCLCPP_INFO(
     logger_,
-    "GoalLateralCritic instantiated with %d power, %.3f weight, %.3f threshold, %zu points",
-    power_, weight_, threshold_to_consider_, last_n_points_);
+    "GoalLateralCritic instantiated with %d power, %.3f weight, %zu points",
+    power_, weight_, last_n_points_);
 }
 
 void GoalLateralCritic::score(CriticData & data)
 {
   // 三阶段 MPPI 中 cost_weight <= 0 表示该阶段关闭横向误差代价。
-  // 不再用 threshold_to_consider 做距离硬门控（曾在 threshold 距离处突然上线 → 速度阶跃，见 doc9 1.5m 抖动）。
-  // 开关交给阶段权重：track 段 weight=0 自动关闭，approach 段 weight>0 开启（带过渡插值平滑）。
+  // 开关交给阶段权重（无距离门控）。
   if (!enabled_ || weight_ <= 0.0f || data.path.x.size() < 1) {
     return;
   }
@@ -75,7 +73,6 @@ void GoalLateralCritic::applyProfileSettings(const CriticProfileSettings & setti
 {
   // 三阶段 profile 覆盖横向误差代价参数
   weight_ = settings.goal_lateral.weight;
-  threshold_to_consider_ = settings.goal_lateral.threshold_to_consider;
   last_n_points_ = static_cast<size_t>(std::max(1, settings.goal_lateral.last_n_points));
 }
 

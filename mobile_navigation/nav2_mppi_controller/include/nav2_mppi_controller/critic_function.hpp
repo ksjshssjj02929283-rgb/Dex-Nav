@@ -30,33 +30,28 @@ namespace mppi::critics
 struct GoalCriticSettings
 {
   float weight{0.0f};
-  float threshold_to_consider{0.0f};
 };
 
 struct GoalLateralCriticSettings
 {
   float weight{0.0f};
-  float threshold_to_consider{0.0f};
   int last_n_points{0};
 };
 
 struct GoalLongitudinalCriticSettings
 {
   float weight{0.0f};
-  float threshold_to_consider{0.0f};
   int last_n_points{0};
 };
 
 struct GoalAngleCriticSettings
 {
   float weight{0.0f};
-  float threshold_to_consider{0.0f};
 };
 
 struct PathAngleCriticSettings
 {
   float weight{0.0f};
-  float threshold_to_consider{0.0f};
   int offset_from_furthest{0};
   float max_angle_to_furthest{0.0f};
   bool forward_preference{true};
@@ -65,14 +60,12 @@ struct PathAngleCriticSettings
 struct PathFollowCriticSettings
 {
   float weight{0.0f};
-  float threshold_to_consider{0.0f};
   int offset_from_furthest{0};
 };
 
 struct PathAlignCriticSettings
 {
   float weight{0.0f};
-  float threshold_to_consider{0.0f};
   int offset_from_furthest{0};
   int trajectory_point_step{0};
   float max_path_occupancy_ratio{0.0f};
@@ -81,7 +74,6 @@ struct PathAlignCriticSettings
 struct PreferForwardCriticSettings
 {
   float weight{0.0f};
-  float threshold_to_consider{0.0f};
 };
 
 struct LinearVelocityCriticSettings

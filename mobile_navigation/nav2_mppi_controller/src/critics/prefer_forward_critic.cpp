@@ -22,9 +22,6 @@ void PreferForwardCritic::initialize()
   auto getParam = parameters_handler_->getParamGetter(name_);
   getParam(power_, "cost_power", 1);
   getParam(weight_, "cost_weight", 5.0);
-  getParam(
-    threshold_to_consider_,
-    "threshold_to_consider", 0.5);
 
   RCLCPP_INFO(
     logger_, "PreferForwardCritic instantiated with %d power and %f weight.", power_, weight_);
@@ -47,7 +44,6 @@ void PreferForwardCritic::applyPreferForwardCriticSettings(
   const PreferForwardCriticSettings & settings)
 {
   weight_ = settings.weight;
-  threshold_to_consider_ = settings.threshold_to_consider;
 }
 
 void PreferForwardCritic::applyProfileSettings(const CriticProfileSettings & settings)

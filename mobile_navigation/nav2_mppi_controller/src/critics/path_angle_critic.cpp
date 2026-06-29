@@ -37,9 +37,6 @@ void PathAngleCritic::initialize()
   getParam(power_, "cost_power", 1);
   getParam(weight_, "cost_weight", 2.0);
   getParam(
-    threshold_to_consider_,
-    "threshold_to_consider", 0.5);
-  getParam(
     max_angle_to_furthest_,
     "max_angle_to_furthest", 1.2);
   getParam(
@@ -104,7 +101,6 @@ void PathAngleCritic::score(CriticData & data)
 void PathAngleCritic::applyPathAngleCriticSettings(const PathAngleCriticSettings & settings)
 {
   weight_ = settings.weight;
-  threshold_to_consider_ = settings.threshold_to_consider;
   offset_from_furthest_ = static_cast<size_t>(std::max(0, settings.offset_from_furthest));
   max_angle_to_furthest_ = settings.max_angle_to_furthest;
   forward_preference_ = reversing_allowed_ ? settings.forward_preference : true;

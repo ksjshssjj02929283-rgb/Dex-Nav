@@ -28,9 +28,6 @@ void PathAlignCritic::initialize()
   getParam(max_path_occupancy_ratio_, "max_path_occupancy_ratio", 0.07);
   getParam(offset_from_furthest_, "offset_from_furthest", 20);
   getParam(trajectory_point_step_, "trajectory_point_step", 4);
-  getParam(
-    threshold_to_consider_,
-    "threshold_to_consider", 0.5);
   getParam(use_path_orientations_, "use_path_orientations", false);
 
   RCLCPP_INFO(
@@ -131,7 +128,6 @@ void PathAlignCritic::score(CriticData & data)
 void PathAlignCritic::applyPathAlignCriticSettings(const PathAlignCriticSettings & settings)
 {
   weight_ = settings.weight;
-  threshold_to_consider_ = settings.threshold_to_consider;
   offset_from_furthest_ = static_cast<size_t>(std::max(0, settings.offset_from_furthest));
   trajectory_point_step_ = static_cast<size_t>(std::max(1, settings.trajectory_point_step));
   max_path_occupancy_ratio_ = settings.max_path_occupancy_ratio;

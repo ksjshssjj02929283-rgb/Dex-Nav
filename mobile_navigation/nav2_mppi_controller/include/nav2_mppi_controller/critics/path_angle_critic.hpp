@@ -53,7 +53,6 @@ public:
 
 protected:
   float max_angle_to_furthest_{0};
-  float threshold_to_consider_{0};
 
   size_t offset_from_furthest_{0};
   bool reversing_allowed_{true};

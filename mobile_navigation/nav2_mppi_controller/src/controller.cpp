@@ -265,40 +265,40 @@ void MPPIController::configureStages()
 
   // 单阶段 MPPI 已删除：行为类 Goal/Path/PreferForward 代价只允许由 profile_1/2/3 管理。
   // 这里的默认值只作为缺省兜底，不再从 FollowPath 全局行为 critic 中继承。
-  stages_[0].critics.goal = {0.0f, 0.0f};
-  stages_[0].critics.goal_lateral = {0.0f, 0.0f, 8};
-  stages_[0].critics.goal_longitudinal = {0.0f, 0.0f, 8};
-  stages_[0].critics.goal_angle = {0.0f, 0.0f};
-  stages_[0].critics.path_angle = {7.0f, 0.3f, 3, 0.7f, true};
-  stages_[0].critics.path_align = {8.0f, 0.3f, 8, 3, 0.08f};
-  stages_[0].critics.path_follow = {7.0f, 1.2f, 7};
-  stages_[0].critics.prefer_forward = {6.0f, 0.25f};
+  stages_[0].critics.goal = {0.0f};
+  stages_[0].critics.goal_lateral = {0.0f, 8};
+  stages_[0].critics.goal_longitudinal = {0.0f, 8};
+  stages_[0].critics.goal_angle = {0.0f};
+  stages_[0].critics.path_angle = {7.0f, 3, 0.7f, true};
+  stages_[0].critics.path_align = {8.0f, 8, 3, 0.08f};
+  stages_[0].critics.path_follow = {7.0f, 7};
+  stages_[0].critics.prefer_forward = {6.0f};
   stages_[0].critics.linear_velocity = {0.0f};   // 对齐段关闭速度软约束（不惩罚后退机动）
   stages_[0].critics.obstacles = {1.1f};
   stages_[0].critics.cost = {3.81f};
   stages_[0].critics.angular_velocity = {0.0f};
 
-  stages_[1].critics.goal = {0.0f, 0.0f};
-  stages_[1].critics.goal_lateral = {0.0f, 0.0f, 8};
-  stages_[1].critics.goal_longitudinal = {0.0f, 0.0f, 8};
-  stages_[1].critics.goal_angle = {0.0f, 0.0f};
-  stages_[1].critics.path_angle = {5.0f, 0.5f, 3, 0.9f, true};
-  stages_[1].critics.path_align = {20.0f, 0.5f, 15, 2, 0.05f};
-  stages_[1].critics.path_follow = {4.0f, 0.5f, 5};
-  stages_[1].critics.prefer_forward = {5.0f, 0.25f};
+  stages_[1].critics.goal = {0.0f};
+  stages_[1].critics.goal_lateral = {0.0f, 8};
+  stages_[1].critics.goal_longitudinal = {0.0f, 8};
+  stages_[1].critics.goal_angle = {0.0f};
+  stages_[1].critics.path_angle = {5.0f, 3, 0.9f, true};
+  stages_[1].critics.path_align = {20.0f, 15, 2, 0.05f};
+  stages_[1].critics.path_follow = {4.0f, 5};
+  stages_[1].critics.prefer_forward = {5.0f};
   stages_[1].critics.linear_velocity = {8.0f};
   stages_[1].critics.obstacles = {1.1f};
   stages_[1].critics.cost = {3.81f};
   stages_[1].critics.angular_velocity = {0.0f};
 
-  stages_[2].critics.goal = {4.0f, 1.0f};
-  stages_[2].critics.goal_lateral = {40.0f, 1.0f, 10};
-  stages_[2].critics.goal_longitudinal = {25.0f, 0.8f, 10};
-  stages_[2].critics.goal_angle = {8.0f, 0.2f};
-  stages_[2].critics.path_angle = {1.0f, 0.5f, 2, 1.0f, true};
-  stages_[2].critics.path_align = {2.0f, 0.5f, 15, 3, 0.05f};
-  stages_[2].critics.path_follow = {1.0f, 0.5f, 5};
-  stages_[2].critics.prefer_forward = {1.0f, 1.0f};
+  stages_[2].critics.goal = {4.0f};
+  stages_[2].critics.goal_lateral = {40.0f, 10};
+  stages_[2].critics.goal_longitudinal = {25.0f, 10};
+  stages_[2].critics.goal_angle = {8.0f};
+  stages_[2].critics.path_angle = {1.0f, 2, 1.0f, true};
+  stages_[2].critics.path_align = {2.0f, 15, 3, 0.05f};
+  stages_[2].critics.path_follow = {1.0f, 5};
+  stages_[2].critics.prefer_forward = {1.0f};
   stages_[2].critics.linear_velocity = {8.0f};
   stages_[2].critics.obstacles = {0.0f};   // 趋近段软斥力关（保致命）
   stages_[2].critics.cost = {0.0f};
@@ -336,16 +336,8 @@ void MPPIController::configureStages()
       profile_critics.goal.weight, prefix + "GoalCritic.cost_weight",
       profile_critics.goal.weight, ParameterType::Static);
     getParam(
-      profile_critics.goal.threshold_to_consider,
-      prefix + "GoalCritic.threshold_to_consider",
-      profile_critics.goal.threshold_to_consider, ParameterType::Static);
-    getParam(
       profile_critics.goal_lateral.weight, prefix + "GoalLateralCritic.cost_weight",
       profile_critics.goal_lateral.weight, ParameterType::Static);
-    getParam(
-      profile_critics.goal_lateral.threshold_to_consider,
-      prefix + "GoalLateralCritic.threshold_to_consider",
-      profile_critics.goal_lateral.threshold_to_consider, ParameterType::Static);
     getParam(
       profile_critics.goal_lateral.last_n_points,
       prefix + "GoalLateralCritic.last_n_points",
@@ -355,10 +347,6 @@ void MPPIController::configureStages()
       prefix + "GoalLongitudinalCritic.cost_weight",
       profile_critics.goal_longitudinal.weight, ParameterType::Static);
     getParam(
-      profile_critics.goal_longitudinal.threshold_to_consider,
-      prefix + "GoalLongitudinalCritic.threshold_to_consider",
-      profile_critics.goal_longitudinal.threshold_to_consider, ParameterType::Static);
-    getParam(
       profile_critics.goal_longitudinal.last_n_points,
       prefix + "GoalLongitudinalCritic.last_n_points",
       profile_critics.goal_longitudinal.last_n_points, ParameterType::Static);
@@ -366,16 +354,8 @@ void MPPIController::configureStages()
       profile_critics.goal_angle.weight, prefix + "GoalAngleCritic.cost_weight",
       profile_critics.goal_angle.weight, ParameterType::Static);
     getParam(
-      profile_critics.goal_angle.threshold_to_consider,
-      prefix + "GoalAngleCritic.threshold_to_consider",
-      profile_critics.goal_angle.threshold_to_consider, ParameterType::Static);
-    getParam(
       profile_critics.path_angle.weight, prefix + "PathAngleCritic.cost_weight",
       profile_critics.path_angle.weight, ParameterType::Static);
-    getParam(
-      profile_critics.path_angle.threshold_to_consider,
-      prefix + "PathAngleCritic.threshold_to_consider",
-      profile_critics.path_angle.threshold_to_consider, ParameterType::Static);
     getParam(
       profile_critics.path_angle.offset_from_furthest,
       prefix + "PathAngleCritic.offset_from_furthest",
@@ -392,20 +372,12 @@ void MPPIController::configureStages()
       profile_critics.path_follow.weight, prefix + "PathFollowCritic.cost_weight",
       profile_critics.path_follow.weight, ParameterType::Static);
     getParam(
-      profile_critics.path_follow.threshold_to_consider,
-      prefix + "PathFollowCritic.threshold_to_consider",
-      profile_critics.path_follow.threshold_to_consider, ParameterType::Static);
-    getParam(
       profile_critics.path_follow.offset_from_furthest,
       prefix + "PathFollowCritic.offset_from_furthest",
       profile_critics.path_follow.offset_from_furthest, ParameterType::Static);
     getParam(
       profile_critics.path_align.weight, prefix + "PathAlignCritic.cost_weight",
       profile_critics.path_align.weight, ParameterType::Static);
-    getParam(
-      profile_critics.path_align.threshold_to_consider,
-      prefix + "PathAlignCritic.threshold_to_consider",
-      profile_critics.path_align.threshold_to_consider, ParameterType::Static);
     getParam(
       profile_critics.path_align.offset_from_furthest,
       prefix + "PathAlignCritic.offset_from_furthest",
@@ -421,10 +393,6 @@ void MPPIController::configureStages()
     getParam(
       profile_critics.prefer_forward.weight, prefix + "PreferForwardCritic.cost_weight",
       profile_critics.prefer_forward.weight, ParameterType::Static);
-    getParam(
-      profile_critics.prefer_forward.threshold_to_consider,
-      prefix + "PreferForwardCritic.threshold_to_consider",
-      profile_critics.prefer_forward.threshold_to_consider, ParameterType::Static);
     getParam(
       profile_critics.linear_velocity.weight,
       prefix + "LinearVelocityCritic.cost_weight",
@@ -498,35 +466,22 @@ void MPPIController::configureStages()
     RCLCPP_INFO(
       logger_,
       "MPPI profile_%zu velocity: vx=[%.3f, %.3f] vy=%.3f wz=%.3f. "
-      "Goal(w=%.3f th=%.3f) GoalLateral(w=%.3f th=%.3f points=%d) "
-      "GoalLongitudinal(w=%.3f th=%.3f points=%d) "
-      "GoalAngle(w=%.3f th=%.3f) "
-      "PathAngle(w=%.3f th=%.3f off=%d max_angle=%.3f forward=%d) "
-      "PathAlign(w=%.3f th=%.3f off=%d step=%d occ=%.3f) "
-      "PathFollow(w=%.3f th=%.3f off=%d) PreferForward(w=%.3f th=%.3f). "
-      "这是该阶段完整接管的速度约束和行为类 critic 参数；weight=0 表示本阶段关闭该代价。",
+      "Goal(w=%.3f) GoalLateral(w=%.3f points=%d) GoalLongitudinal(w=%.3f points=%d) "
+      "GoalAngle(w=%.3f) PathAngle(w=%.3f off=%d max_angle=%.3f forward=%d) "
+      "PathAlign(w=%.3f off=%d step=%d occ=%.3f) PathFollow(w=%.3f off=%d) "
+      "PreferForward(w=%.3f). weight=0 表示本阶段关闭该代价。",
       i + 1, profile.velocity.vx_min, profile.velocity.vx_max,
       profile.velocity.vy_max, profile.velocity.wz_max,
-      profile.critics.goal.weight, profile.critics.goal.threshold_to_consider,
-      profile.critics.goal_lateral.weight,
-      profile.critics.goal_lateral.threshold_to_consider,
-      profile.critics.goal_lateral.last_n_points,
-      profile.critics.goal_longitudinal.weight,
-      profile.critics.goal_longitudinal.threshold_to_consider,
-      profile.critics.goal_longitudinal.last_n_points,
-      profile.critics.goal_angle.weight, profile.critics.goal_angle.threshold_to_consider,
-      profile.critics.path_angle.weight, profile.critics.path_angle.threshold_to_consider,
-      profile.critics.path_angle.offset_from_furthest,
-      profile.critics.path_angle.max_angle_to_furthest,
-      profile.critics.path_angle.forward_preference,
-      profile.critics.path_align.weight, profile.critics.path_align.threshold_to_consider,
-      profile.critics.path_align.offset_from_furthest,
-      profile.critics.path_align.trajectory_point_step,
-      profile.critics.path_align.max_path_occupancy_ratio,
-      profile.critics.path_follow.weight, profile.critics.path_follow.threshold_to_consider,
-      profile.critics.path_follow.offset_from_furthest,
-      profile.critics.prefer_forward.weight,
-      profile.critics.prefer_forward.threshold_to_consider);
+      profile.critics.goal.weight,
+      profile.critics.goal_lateral.weight, profile.critics.goal_lateral.last_n_points,
+      profile.critics.goal_longitudinal.weight, profile.critics.goal_longitudinal.last_n_points,
+      profile.critics.goal_angle.weight,
+      profile.critics.path_angle.weight, profile.critics.path_angle.offset_from_furthest,
+      profile.critics.path_angle.max_angle_to_furthest, profile.critics.path_angle.forward_preference,
+      profile.critics.path_align.weight, profile.critics.path_align.offset_from_furthest,
+      profile.critics.path_align.trajectory_point_step, profile.critics.path_align.max_path_occupancy_ratio,
+      profile.critics.path_follow.weight, profile.critics.path_follow.offset_from_furthest,
+      profile.critics.prefer_forward.weight);
   }
 
   applied_profile_ = stages_[active_stage_];
@@ -633,14 +588,6 @@ MppiProfileSettings MPPIController::interpolateProfiles(
   const auto lerpFloat = [ratio, &lerpFloatWithRatio](float lhs, float rhs) {
       return lerpFloatWithRatio(lhs, rhs, ratio);
     };
-  const auto keepGoalGateOpen = [](float lhs, float rhs) {
-      // 目标类 critic: threshold 是启用范围，先打开门；实际牵引强度由 goal_ratio 慢启动。
-      return std::max(lhs, rhs);
-    };
-  const auto keepPathGateOpen = [](float lhs, float rhs) {
-      // 路径类/前进偏好 critic: 距离小于 threshold 时关闭，取较小值可避免切换边界过早退出。
-      return std::min(lhs, rhs);
-    };
   const auto lerpInt = [ratio](int lhs, int rhs) {
       return static_cast<int>(std::lround(lhs + (rhs - lhs) * ratio));
   };
@@ -658,15 +605,10 @@ MppiProfileSettings MPPIController::interpolateProfiles(
 
   result.critics.goal.weight =
     lerpFloatWithRatio(from.critics.goal.weight, to.critics.goal.weight, goal_ratio);
-  result.critics.goal.threshold_to_consider =
-    keepGoalGateOpen(from.critics.goal.threshold_to_consider, to.critics.goal.threshold_to_consider);
 
   result.critics.goal_lateral.weight =
     lerpFloatWithRatio(
     from.critics.goal_lateral.weight, to.critics.goal_lateral.weight, goal_ratio);
-  result.critics.goal_lateral.threshold_to_consider = keepGoalGateOpen(
-    from.critics.goal_lateral.threshold_to_consider,
-    to.critics.goal_lateral.threshold_to_consider);
   result.critics.goal_lateral.last_n_points = std::max(
     1, lerpInt(
       from.critics.goal_lateral.last_n_points,
@@ -675,9 +617,6 @@ MppiProfileSettings MPPIController::interpolateProfiles(
   result.critics.goal_longitudinal.weight =
     lerpFloatWithRatio(
     from.critics.goal_longitudinal.weight, to.critics.goal_longitudinal.weight, goal_ratio);
-  result.critics.goal_longitudinal.threshold_to_consider = keepGoalGateOpen(
-    from.critics.goal_longitudinal.threshold_to_consider,
-    to.critics.goal_longitudinal.threshold_to_consider);
   result.critics.goal_longitudinal.last_n_points = std::max(
     1, lerpInt(
       from.critics.goal_longitudinal.last_n_points,
@@ -686,16 +625,10 @@ MppiProfileSettings MPPIController::interpolateProfiles(
   result.critics.goal_angle.weight =
     lerpFloatWithRatio(
     from.critics.goal_angle.weight, to.critics.goal_angle.weight, goal_ratio);
-  result.critics.goal_angle.threshold_to_consider = keepGoalGateOpen(
-    from.critics.goal_angle.threshold_to_consider,
-    to.critics.goal_angle.threshold_to_consider);
 
   result.critics.path_angle.weight =
     lerpFloatWithRatio(
     from.critics.path_angle.weight, to.critics.path_angle.weight, path_ratio);
-  result.critics.path_angle.threshold_to_consider = keepPathGateOpen(
-    from.critics.path_angle.threshold_to_consider,
-    to.critics.path_angle.threshold_to_consider);
   result.critics.path_angle.offset_from_furthest = std::max(
     0, lerpInt(
       from.critics.path_angle.offset_from_furthest,
@@ -710,9 +643,6 @@ MppiProfileSettings MPPIController::interpolateProfiles(
   result.critics.path_follow.weight =
     lerpFloatWithRatio(
     from.critics.path_follow.weight, to.critics.path_follow.weight, path_ratio);
-  result.critics.path_follow.threshold_to_consider = keepPathGateOpen(
-    from.critics.path_follow.threshold_to_consider,
-    to.critics.path_follow.threshold_to_consider);
   result.critics.path_follow.offset_from_furthest = std::max(
     0, lerpInt(
       from.critics.path_follow.offset_from_furthest,
@@ -721,9 +651,6 @@ MppiProfileSettings MPPIController::interpolateProfiles(
   result.critics.path_align.weight =
     lerpFloatWithRatio(
     from.critics.path_align.weight, to.critics.path_align.weight, path_ratio);
-  result.critics.path_align.threshold_to_consider = keepPathGateOpen(
-    from.critics.path_align.threshold_to_consider,
-    to.critics.path_align.threshold_to_consider);
   result.critics.path_align.offset_from_furthest = std::max(
     0, lerpInt(
       from.critics.path_align.offset_from_furthest,
@@ -739,9 +666,6 @@ MppiProfileSettings MPPIController::interpolateProfiles(
   result.critics.prefer_forward.weight =
     lerpFloatWithRatio(
     from.critics.prefer_forward.weight, to.critics.prefer_forward.weight, path_ratio);
-  result.critics.prefer_forward.threshold_to_consider = keepPathGateOpen(
-    from.critics.prefer_forward.threshold_to_consider,
-    to.critics.prefer_forward.threshold_to_consider);
 
   return result;
 }

@@ -56,7 +56,6 @@ public:
   void applyProfileSettings(const CriticProfileSettings & settings) override;
 
 protected:
-  float threshold_to_consider_{0};
   size_t offset_from_furthest_{0};
 
   unsigned int power_{0};
