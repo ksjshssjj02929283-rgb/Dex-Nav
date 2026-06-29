@@ -112,7 +112,7 @@ controller_server:
       vx_std: 0.25 # 0.2
       vy_std: 0.2
       wz_std: 0.3 # 0.35 # 0.25 # 0.4
-      vx_max: 0.7 # 基础速度约束；运行时会被三阶段 profile 覆盖
+      vx_max: 1.0 # 基础速度约束；运行时会被三阶段 profile 覆盖
       vx_min: -0.5 # 基础倒车约束；运行时会被三阶段 profile 覆盖
       vy_max: 0.5 # DiffDrive 下通常不生效
       wz_max: 0.75 # 基础角速度约束；运行时会被三阶段 profile 覆盖
@@ -161,7 +161,7 @@ controller_server:
         vy_max: 0.5
         wz_max: 0.75
       stage_track:    # 跟踪段：全速通行
-        vx_max: 0.7
+        vx_max: 1.0
         vx_min: -0.5
         vy_max: 0.5
         wz_max: 0.75
@@ -242,11 +242,6 @@ local_costmap:
       footprint: "[[0.35, 0.29], [0.35, -0.29], [-0.35, -0.29], [-0.35, 0.29]]" # Slightly increased for better planning efficiency and safety (real size: 0.95*0.55)
       # footprint: "[ [0.55, 0.35], [0.55, -0.35], [-0.55, -0.35], [-0.55, 0.35] ]" # Slightly increased for better planning efficiency and safety (real size: 0.95*0.55)
       # plugins: ["voxel_layer", "denoise_layer", "inflation_layer"]  output_topic: "control/cmd_vel_nav"
-      # Test（注：max_velocity/accel/decel 非 local_costmap 标准参数，会被忽略；如需限速请放控制器/平滑器）
-      max_velocity: [0.7, 0.0, 0.75]
-      min_velocity: [-0.5, 0.0, -0.75]
-      max_accel: [0.6, 0.0, 0.7]
-      max_decel: [-0.6, 0.0, -0.7]
       plugins: ["static_layer", "obstacle_layer", "denoise_layer", "inflation_layer"]   
       filters: ["keepout_filter", "keepout_inflation_layer", "speed_filter"]
       # plugins: ["obstacle_layer", "voxel_layer", "denoise_layer", "inflation_layer"]
@@ -619,7 +614,7 @@ velocity_smoother:
     input_topic: "cmd_vel_nav"
     output_topic: "control/cmd_vel_nav"
     # Test
-    max_velocity: [0.7, 0.0, 0.75]
+    max_velocity: [1.0, 0.0, 0.75]
     min_velocity: [-0.5, 0.0, -0.75]
     max_accel: [0.6, 0.0, 0.7]
     max_decel: [-0.6, 0.0, -0.7]
