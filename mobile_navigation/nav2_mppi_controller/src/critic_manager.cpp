@@ -99,12 +99,12 @@ void CriticManager::applyCriticProfileSettings(const critics::CriticProfileSetti
   RCLCPP_DEBUG(
     logger_,
     "MPPI critic profile applied: Goal(weight=%.3f), "
-    "GoalLateral(weight=%.3f points=%d), "
-    "GoalLongitudinal(weight=%.3f points=%d), "
+    "GoalLateral(weight=%.3f), "
+    "GoalLongitudinal(weight=%.3f), "
     "PathAlign(weight=%.3f offset=%d step=%d)",
     settings.goal.weight,
-    settings.goal_lateral.weight, settings.goal_lateral.last_n_points,
-    settings.goal_longitudinal.weight, settings.goal_longitudinal.last_n_points,
+    settings.goal_lateral.weight,
+    settings.goal_longitudinal.weight,
     settings.path_align.weight, settings.path_align.offset_from_furthest,
     settings.path_align.trajectory_point_step);
 }

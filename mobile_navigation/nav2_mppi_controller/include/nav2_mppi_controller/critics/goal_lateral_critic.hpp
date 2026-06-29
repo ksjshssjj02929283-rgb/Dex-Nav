@@ -39,7 +39,6 @@ public:
 protected:
   unsigned int power_{0};
   float weight_{0};
-  size_t last_n_points_{0};
 };
 
 }  // namespace mppi::critics

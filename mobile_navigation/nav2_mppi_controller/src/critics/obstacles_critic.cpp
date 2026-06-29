@@ -152,11 +152,16 @@ void ObstaclesCritic::score(CriticData & data)
 
       const float dist_to_obj = distanceToObstacle(pose_cost);
 
-      // Let near-collision trajectory points be punished severely
-      if (dist_to_obj < collision_margin_distance_) {
-        traj_cost += (collision_margin_distance_ - dist_to_obj);
-      } else if (!near_goal) {  // Generally prefer trajectories further from obstacles
-        repulsive_cost(i) += (inflation_radius_ - dist_to_obj);
+      // 软避障（含 0.1m 近碰撞缓冲）统一受 repulsion_weight 控制：
+      // approach 段 repulsion_weight=0 时连近碰撞缓冲一并关闭，机器人可贴近障碍到达近障目标；
+      // 真实碰撞仍由上方 inCollision()→collision_cost_×critical_weight 兜底（安全不变）。
+      if (repulsion_weight_ > 0.0f) {
+        // Let near-collision trajectory points be punished severely
+        if (dist_to_obj < collision_margin_distance_) {
+          traj_cost += (collision_margin_distance_ - dist_to_obj);
+        } else if (!near_goal) {  // Generally prefer trajectories further from obstacles
+          repulsive_cost(i) += (inflation_radius_ - dist_to_obj);
+        }
       }
     }
 

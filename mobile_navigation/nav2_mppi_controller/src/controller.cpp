@@ -266,8 +266,8 @@ void MPPIController::configureStages()
   // 单阶段 MPPI 已删除：行为类 Goal/Path/PreferForward 代价只允许由 profile_1/2/3 管理。
   // 这里的默认值只作为缺省兜底，不再从 FollowPath 全局行为 critic 中继承。
   stages_[0].critics.goal = {0.0f};
-  stages_[0].critics.goal_lateral = {0.0f, 8};
-  stages_[0].critics.goal_longitudinal = {0.0f, 8};
+  stages_[0].critics.goal_lateral = {0.0f};
+  stages_[0].critics.goal_longitudinal = {0.0f};
   stages_[0].critics.goal_angle = {0.0f};
   stages_[0].critics.path_angle = {7.0f, 3, 0.7f, true};
   stages_[0].critics.path_align = {8.0f, 8, 3, 0.08f};
@@ -279,8 +279,8 @@ void MPPIController::configureStages()
   stages_[0].critics.angular_velocity = {0.0f};
 
   stages_[1].critics.goal = {0.0f};
-  stages_[1].critics.goal_lateral = {0.0f, 8};
-  stages_[1].critics.goal_longitudinal = {0.0f, 8};
+  stages_[1].critics.goal_lateral = {0.0f};
+  stages_[1].critics.goal_longitudinal = {0.0f};
   stages_[1].critics.goal_angle = {0.0f};
   stages_[1].critics.path_angle = {5.0f, 3, 0.9f, true};
   stages_[1].critics.path_align = {20.0f, 15, 2, 0.05f};
@@ -292,8 +292,8 @@ void MPPIController::configureStages()
   stages_[1].critics.angular_velocity = {0.0f};
 
   stages_[2].critics.goal = {4.0f};
-  stages_[2].critics.goal_lateral = {40.0f, 10};
-  stages_[2].critics.goal_longitudinal = {25.0f, 10};
+  stages_[2].critics.goal_lateral = {40.0f};
+  stages_[2].critics.goal_longitudinal = {25.0f};
   stages_[2].critics.goal_angle = {8.0f};
   stages_[2].critics.path_angle = {1.0f, 2, 1.0f, true};
   stages_[2].critics.path_align = {2.0f, 15, 3, 0.05f};
@@ -339,17 +339,9 @@ void MPPIController::configureStages()
       profile_critics.goal_lateral.weight, prefix + "GoalLateralCritic.cost_weight",
       profile_critics.goal_lateral.weight, ParameterType::Static);
     getParam(
-      profile_critics.goal_lateral.last_n_points,
-      prefix + "GoalLateralCritic.last_n_points",
-      profile_critics.goal_lateral.last_n_points, ParameterType::Static);
-    getParam(
       profile_critics.goal_longitudinal.weight,
       prefix + "GoalLongitudinalCritic.cost_weight",
       profile_critics.goal_longitudinal.weight, ParameterType::Static);
-    getParam(
-      profile_critics.goal_longitudinal.last_n_points,
-      prefix + "GoalLongitudinalCritic.last_n_points",
-      profile_critics.goal_longitudinal.last_n_points, ParameterType::Static);
     getParam(
       profile_critics.goal_angle.weight, prefix + "GoalAngleCritic.cost_weight",
       profile_critics.goal_angle.weight, ParameterType::Static);
@@ -466,15 +458,15 @@ void MPPIController::configureStages()
     RCLCPP_INFO(
       logger_,
       "MPPI profile_%zu velocity: vx=[%.3f, %.3f] vy=%.3f wz=%.3f. "
-      "Goal(w=%.3f) GoalLateral(w=%.3f points=%d) GoalLongitudinal(w=%.3f points=%d) "
+      "Goal(w=%.3f) GoalLateral(w=%.3f) GoalLongitudinal(w=%.3f) "
       "GoalAngle(w=%.3f) PathAngle(w=%.3f off=%d max_angle=%.3f forward=%d) "
       "PathAlign(w=%.3f off=%d step=%d occ=%.3f) PathFollow(w=%.3f off=%d) "
       "PreferForward(w=%.3f). weight=0 表示本阶段关闭该代价。",
       i + 1, profile.velocity.vx_min, profile.velocity.vx_max,
       profile.velocity.vy_max, profile.velocity.wz_max,
       profile.critics.goal.weight,
-      profile.critics.goal_lateral.weight, profile.critics.goal_lateral.last_n_points,
-      profile.critics.goal_longitudinal.weight, profile.critics.goal_longitudinal.last_n_points,
+      profile.critics.goal_lateral.weight,
+      profile.critics.goal_longitudinal.weight,
       profile.critics.goal_angle.weight,
       profile.critics.path_angle.weight, profile.critics.path_angle.offset_from_furthest,
       profile.critics.path_angle.max_angle_to_furthest, profile.critics.path_angle.forward_preference,
@@ -609,18 +601,10 @@ MppiProfileSettings MPPIController::interpolateProfiles(
   result.critics.goal_lateral.weight =
     lerpFloatWithRatio(
     from.critics.goal_lateral.weight, to.critics.goal_lateral.weight, goal_ratio);
-  result.critics.goal_lateral.last_n_points = std::max(
-    1, lerpInt(
-      from.critics.goal_lateral.last_n_points,
-      to.critics.goal_lateral.last_n_points));
 
   result.critics.goal_longitudinal.weight =
     lerpFloatWithRatio(
     from.critics.goal_longitudinal.weight, to.critics.goal_longitudinal.weight, goal_ratio);
-  result.critics.goal_longitudinal.last_n_points = std::max(
-    1, lerpInt(
-      from.critics.goal_longitudinal.last_n_points,
-      to.critics.goal_longitudinal.last_n_points));
 
   result.critics.goal_angle.weight =
     lerpFloatWithRatio(

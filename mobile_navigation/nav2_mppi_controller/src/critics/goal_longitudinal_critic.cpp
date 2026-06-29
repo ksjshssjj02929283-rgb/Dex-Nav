@@ -26,13 +26,11 @@ void GoalLongitudinalCritic::initialize()
 
   getParam(power_, "cost_power", 2);
   getParam(weight_, "cost_weight", 5.0);
-  getParam(last_n_points_, "last_n_points", 8);
 
   RCLCPP_INFO(
     logger_,
-    "GoalLongitudinalCritic instantiated with %d power, %.3f weight, "
-    "%zu points",
-    power_, weight_, last_n_points_);
+    "GoalLongitudinalCritic instantiated with %d power, %.3f weight",
+    power_, weight_);
 }
 
 void GoalLongitudinalCritic::score(CriticData & data)
@@ -52,12 +50,8 @@ void GoalLongitudinalCritic::score(CriticData & data)
     return;
   }
 
-  const Eigen::Index sample_count = std::max<Eigen::Index>(
-    1, std::min<Eigen::Index>(static_cast<Eigen::Index>(last_n_points_), time_steps));
-  const Eigen::Index start_idx = time_steps - sample_count;
-
   models::Vector cost = models::Vector::Zero(data.costs.size());
-  for (Eigen::Index p = start_idx; p < time_steps; ++p) {
+  for (Eigen::Index p = 0; p < time_steps; ++p) {
     // 目标点在每个候选轨迹点(base_link)坐标系下的纵向(前向)投影误差
     const auto gx = goal_x - data.trajectories.x.col(p).array();
     const auto gy = goal_y - data.trajectories.y.col(p).array();
@@ -66,7 +60,7 @@ void GoalLongitudinalCritic::score(CriticData & data)
     cost += lon_err;
   }
 
-  cost /= static_cast<float>(sample_count);
+  cost /= static_cast<float>(time_steps);
   data.costs += (cost * weight_).pow(power_);
 }
 
@@ -74,8 +68,6 @@ void GoalLongitudinalCritic::applyProfileSettings(const CriticProfileSettings & 
 {
   // 三阶段 profile 覆盖纵向误差代价参数
   weight_ = settings.goal_longitudinal.weight;
-  last_n_points_ = static_cast<size_t>(
-    std::max(1, settings.goal_longitudinal.last_n_points));
 }
 
 }  // namespace mppi::critics

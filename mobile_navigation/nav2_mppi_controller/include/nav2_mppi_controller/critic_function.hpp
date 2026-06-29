@@ -35,13 +35,11 @@ struct GoalCriticSettings
 struct GoalLateralCriticSettings
 {
   float weight{0.0f};
-  int last_n_points{0};
 };
 
 struct GoalLongitudinalCriticSettings
 {
   float weight{0.0f};
-  int last_n_points{0};
 };
 
 struct GoalAngleCriticSettings
