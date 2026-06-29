@@ -101,8 +101,13 @@ class SwerveOdometer(Node):
         for i, (end, side) in enumerate(joint_positions()):
             kx = 1.0 if side is JointSide.RIGHT else -1.0
             ky = 1.0 if end is JointEnd.FRONT else -1.0
-            self.mat_a[2 * i] = [1, 0, kx * self.wheelbase / 2]
-            self.mat_a[2 * i + 1] = [0, 1, ky * self.wheel_track / 2]
+            # Forward kinematics v_wheel = v_body + wz x r. A wheel at
+            # (px = +/-wheelbase/2, py = +/-track/2) gives:
+            #   vx_wheel = vx - wz*py = vx + kx*(track/2)*wz   (x uses track)
+            #   vy_wheel = vy + wz*px = vy + ky*(wheelbase/2)*wz (y uses wheelbase)
+            # This matches swerve_commander and the real omni controller.
+            self.mat_a[2 * i] = [1, 0, kx * self.wheel_track / 2]
+            self.mat_a[2 * i + 1] = [0, 1, ky * self.wheelbase / 2]
 
         # setup queue to hold pending reported joint states (filled by joint
         # state handler) and variable to hold last published joint state

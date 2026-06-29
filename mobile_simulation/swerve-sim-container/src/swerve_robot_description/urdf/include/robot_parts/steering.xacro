@@ -8,18 +8,9 @@
         <mass value="0.030421" />
         <inertia ixx="0.00022406" ixy="-5.3036E-09" ixz="-1.2289E-08" iyy="0.00021285" iyz="-2.5969E-08" izz="0.00027948" />
       </inertial>
-      <visual>
-        <origin xyz="0 0 0" rpy="0 0 0" />
-        <geometry>
-          <mesh filename="file://$(find swerve_robot_description)/meshes/${locationprefix}_steering_link.dae" />
-        </geometry>
-      </visual>
-      <collision>
-        <origin xyz="0 0 0" rpy="0 0 0" />
-        <geometry>
-          <mesh filename="file://$(find swerve_robot_description)/meshes/${locationprefix}_steering_link.dae" />
-        </geometry>
-      </collision>
+      <!-- Visual and collision intentionally omitted: only the DexForce chassis
+           mesh is shown, and the steering strut needs no contact geometry (only
+           the wheels touch the ground). Inertia is kept for the joint dynamics. -->
     </link>
 
     <gazebo reference="${locationprefix}_steering_link">

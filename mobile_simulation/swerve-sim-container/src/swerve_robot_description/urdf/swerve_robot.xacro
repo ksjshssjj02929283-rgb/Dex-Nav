@@ -23,6 +23,21 @@
         <xacro:swerve_gazebo_ros2_control />
     </xacro:if>
 
-    <!-- Import sensor payload xacro file here-->
+    <!-- DexForce chassis sensor suite (lidars, RGB + depth cameras, IMU). -->
+    <xacro:include filename="$(find swerve_robot_description)/urdf/include/dexforce_sensors.xacro" />
+    <!-- Frames always exist so navigation/perception have valid TF. -->
+    <xacro:dexforce_sensor_frames parent="base_link" />
+    <xacro:if value="${sim}">
+        <!-- Gazebo plugins only in simulation so the sensors emit data. -->
+        <xacro:dexforce_sensor_gazebo />
+    </xacro:if>
+
+    <!-- DexForce upper body (torso + head + arms + hands), appearance +
+         collision only, rigidly attached to the chassis body. -->
+    <xacro:arg name="upper_body" default="true" />
+    <xacro:if value="$(arg upper_body)">
+        <xacro:include filename="$(find swerve_robot_description)/urdf/include/dexforce_upper_body.xacro" />
+        <xacro:dexforce_upper_body parent="chassis_link" />
+    </xacro:if>
 
 </robot>

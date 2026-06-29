@@ -1,10 +1,12 @@
 import os
+import re
 from typing import Final, List
 
+import xacro
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
-from launch.substitutions import Command, LaunchConfiguration
+from launch.actions import DeclareLaunchArgument, OpaqueFunction
+from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 # Packages
@@ -34,34 +36,39 @@ ARGUMENTS: Final[List[DeclareLaunchArgument]] = [
         default_value="90.0",
         description="Max steering angle of each wheel (left/right), in degrees",
     ),
+    DeclareLaunchArgument(
+        name="upper_body",
+        default_value="true",
+        choices=["true", "false"],
+        description="Attach the DexForce upper body (visual + collision)",
+    ),
 ]
 
 
-def generate_launch_description() -> LaunchDescription:
+def _build_robot_description(context) -> str:
+    """Process the xacro into a URDF string and strip XML comments.
+
+    The XML comments must be removed because gazebo_ros2_control (0.4.10) forwards
+    the whole robot_description to the controller_manager as a CLI argument
+    `--param robot_description:=<urdf>`, which rcl parses as YAML. Sequences inside
+    XML comments break that YAML parse, so rcl_parse_arguments fails and the plugin
+    returns *before* creating the controller_manager -> no controllers, no
+    /joint_states, no odometry. Comments are non-functional, so dropping them keeps
+    the model identical while letting the controller_manager start.
     """
-    1. Parse robot xacro file
-    2. Launch robot state publisher for /robot_description and /tf
-
-    Launch Args:
-    sim: false(default)
-        - Loads gazebo control and sensor plugins
-    """
-
-    sim_flag = LaunchConfiguration("sim")
-    steering_limit_deg = LaunchConfiguration("steering_limit_deg")
-
-    robot_description = {
-        "robot_description": Command(
-            [
-                "xacro --verbosity 0 ",
-                description_path,
-                " sim:=",
-                sim_flag,
-                " steering_limit_deg:=",
-                steering_limit_deg,
-            ]
-        )
+    mappings = {
+        "sim": LaunchConfiguration("sim").perform(context),
+        "steering_limit_deg": LaunchConfiguration("steering_limit_deg").perform(context),
+        "upper_body": LaunchConfiguration("upper_body").perform(context),
     }
+    doc = xacro.process_file(description_path, mappings=mappings)
+    urdf = doc.toxml()
+    urdf = re.sub(r"<!--.*?-->", "", urdf, flags=re.DOTALL)
+    return urdf
+
+
+def launch_setup(context, *args, **kwargs) -> List[Node]:
+    robot_description = {"robot_description": _build_robot_description(context)}
 
     robot_state_publisher_node = Node(
         package="robot_state_publisher",
@@ -70,7 +77,16 @@ def generate_launch_description() -> LaunchDescription:
         parameters=[robot_description],
     )
 
-    ld = LaunchDescription(ARGUMENTS)
-    ld.add_action(robot_state_publisher_node)
+    return [robot_state_publisher_node]
 
-    return ld
+
+def generate_launch_description() -> LaunchDescription:
+    """
+    1. Parse robot xacro file (comments stripped for controller_manager safety)
+    2. Launch robot state publisher for /robot_description and /tf
+
+    Launch Args:
+    sim: false(default)
+        - Loads gazebo control and sensor plugins
+    """
+    return LaunchDescription(ARGUMENTS + [OpaqueFunction(function=launch_setup)])

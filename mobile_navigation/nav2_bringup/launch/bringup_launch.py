@@ -124,11 +124,25 @@ def generate_launch_description():
         'log_level', default_value='info',
         description='log level')
 
+    # Simulation without AMCL: publish map->odom immediately on /tf_static.
+    # Do NOT set use_sim_time here — static TF must be visible even before
+    # /clock is available; Nav2 components still use use_sim_time from params.
+    map_to_odom_tf = Node(
+        condition=IfCondition(use_sim_time),
+        package='tf2_ros',
+        executable='static_transform_publisher',
+        name='map_to_odom_static_tf',
+        arguments=['0', '0', '0', '0', '0', '0', 'map', 'odom'],
+        output='screen',
+    )
+
     # Specify the actions
     bringup_cmd_group = GroupAction([
         PushRosNamespace(
             condition=IfCondition(use_namespace),
             namespace=namespace),
+
+        map_to_odom_tf,
 
         Node(
             condition=IfCondition(use_composition),

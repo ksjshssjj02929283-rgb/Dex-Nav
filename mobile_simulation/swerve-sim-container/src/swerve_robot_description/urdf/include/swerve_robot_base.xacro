@@ -21,11 +21,15 @@
     <xacro:base name="base_link" />
     <xacro:chassis name="chassis_link" parent="base_link" />
 
-    <!-- Steering Links + Joints -->
-    <xacro:steering locationprefix="front_right" locx="0.18" locy="-0.18" />
-    <xacro:steering locationprefix="front_left" locx="0.18" locy="0.18" />
-    <xacro:steering locationprefix="rear_left" locx="-0.18" locy="0.18" />
-    <xacro:steering locationprefix="rear_right" locx="-0.18" locy="-0.18" />
+    <!-- Steering Links + Joints.
+         Positions match the real DexForce omni base:
+           wheelbase (front<->rear, X) = 0.46 m  -> locx = +/-0.23
+           wheel_track (left<->right, Y) = 0.345 m -> locy = +/-0.1725
+         Keep these in sync with swerve_controller/config/robot_geometry.yaml. -->
+    <xacro:steering locationprefix="front_right" locx="0.23" locy="-0.1725" />
+    <xacro:steering locationprefix="front_left" locx="0.23" locy="0.1725" />
+    <xacro:steering locationprefix="rear_left" locx="-0.23" locy="0.1725" />
+    <xacro:steering locationprefix="rear_right" locx="-0.23" locy="-0.1725" />
 
     <!-- Wheel Links + Joints -->
     <xacro:wheel locationprefix="front_right" />

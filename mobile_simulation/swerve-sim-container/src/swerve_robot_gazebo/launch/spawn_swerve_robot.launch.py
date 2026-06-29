@@ -5,7 +5,6 @@ from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import (
     DeclareLaunchArgument,
-    ExecuteProcess,
     IncludeLaunchDescription,
     RegisterEventHandler,
 )
@@ -72,177 +71,49 @@ def generate_launch_description() -> LaunchDescription:
         output="screen",
     )
 
-    # Joint State Controller
-    load_joint_state_controller = ExecuteProcess(
-        cmd=[
-            "ros2",
-            "control",
-            "load_controller",
-            "--set-state",
-            "active",
+    # Load + activate every controller with a SINGLE controller_manager
+    # spawner.
+    #
+    # Why not the previous chain of `ros2 control load_controller` processes:
+    # each of those has a hard-coded 10 s service timeout with 3 retries, and on
+    # timeout the process *dies* and the next one starts. With this heavy model
+    # the gazebo-embedded controller_manager needs well over 10 s to answer, so
+    # every controller would time out, die and respawn (x3 retries x9
+    # controllers). Each of those short-lived CLI nodes is a fresh DDS
+    # participant, so the constant join/leave churn floods gzserver's discovery
+    # and progressively starves the (single-threaded) gazebo update loop -- the
+    # controller loads then get slower and slower until /controller_manager
+    # becomes unreachable and the sensor bridge plugins stop publishing.
+    #
+    # The spawner is ONE long-lived node (one DDS participant, no churn) that
+    # waits patiently for the controller_manager (--controller-manager-timeout)
+    # and loads/activates all controllers sequentially. joint_state_broadcaster
+    # is listed first so joint feedback is up before the motion controllers.
+    load_controllers = Node(
+        package="controller_manager",
+        executable="spawner",
+        arguments=[
             "joint_state_broadcaster",
-        ],
-        output="screen",
-    )
-
-    # Wheel Rotation Controllers
-    load_fr_wheel_controller = ExecuteProcess(
-        cmd=[
-            "ros2",
-            "control",
-            "load_controller",
-            "--set-state",
-            "active",
-            "wheel_front_right",
-        ],
-        output="screen",
-    )
-
-    load_fl_wheel_controller = ExecuteProcess(
-        cmd=[
-            "ros2",
-            "control",
-            "load_controller",
-            "--set-state",
-            "active",
-            "wheel_front_left",
-        ],
-        output="screen",
-    )
-
-    load_rl_wheel_controller = ExecuteProcess(
-        cmd=[
-            "ros2",
-            "control",
-            "load_controller",
-            "--set-state",
-            "active",
-            "wheel_rear_left",
-        ],
-        output="screen",
-    )
-
-    load_rr_wheel_controller = ExecuteProcess(
-        cmd=[
-            "ros2",
-            "control",
-            "load_controller",
-            "--set-state",
-            "active",
-            "wheel_rear_right",
-        ],
-        output="screen",
-    )
-
-    # Wheel Steering Controllers
-    load_fr_steering_controller = ExecuteProcess(
-        cmd=[
-            "ros2",
-            "control",
-            "load_controller",
-            "--set-state",
-            "active",
             "steering_front_right",
-        ],
-        output="screen",
-    )
-
-    load_fl_steering_controller = ExecuteProcess(
-        cmd=[
-            "ros2",
-            "control",
-            "load_controller",
-            "--set-state",
-            "active",
             "steering_front_left",
-        ],
-        output="screen",
-    )
-
-    load_rl_steering_controller = ExecuteProcess(
-        cmd=[
-            "ros2",
-            "control",
-            "load_controller",
-            "--set-state",
-            "active",
             "steering_rear_left",
-        ],
-        output="screen",
-    )
-
-    load_rr_steering_controller = ExecuteProcess(
-        cmd=[
-            "ros2",
-            "control",
-            "load_controller",
-            "--set-state",
-            "active",
             "steering_rear_right",
+            "wheel_front_right",
+            "wheel_front_left",
+            "wheel_rear_left",
+            "wheel_rear_right",
+            "--controller-manager",
+            "/controller_manager",
+            "--controller-manager-timeout",
+            "120",
         ],
         output="screen",
     )
 
-    eh_joint_state_ctrl = RegisterEventHandler(
+    eh_load_controllers = RegisterEventHandler(
         event_handler=OnProcessExit(
             target_action=spawn_entity,
-            on_exit=[load_joint_state_controller],
-        )
-    )
-
-    eh_fr_steer_ctrl = RegisterEventHandler(
-        event_handler=OnProcessExit(
-            target_action=load_joint_state_controller,
-            on_exit=[load_fr_steering_controller],
-        )
-    )
-
-    eh_fl_steer_ctrl = RegisterEventHandler(
-        event_handler=OnProcessExit(
-            target_action=load_fr_steering_controller,
-            on_exit=[load_fl_steering_controller],
-        )
-    )
-
-    eh_rl_steer_ctrl = RegisterEventHandler(
-        event_handler=OnProcessExit(
-            target_action=load_fl_steering_controller,
-            on_exit=[load_rl_steering_controller],
-        )
-    )
-
-    eh_rr_steer_ctrl = RegisterEventHandler(
-        event_handler=OnProcessExit(
-            target_action=load_rl_steering_controller,
-            on_exit=[load_rr_steering_controller],
-        )
-    )
-
-    eh_fr_wheel_ctrl = RegisterEventHandler(
-        event_handler=OnProcessExit(
-            target_action=load_rr_steering_controller,
-            on_exit=[load_fr_wheel_controller],
-        )
-    )
-
-    eh_fl_wheel_ctrl = RegisterEventHandler(
-        event_handler=OnProcessExit(
-            target_action=load_fr_wheel_controller,
-            on_exit=[load_fl_wheel_controller],
-        )
-    )
-
-    eh_rl_wheel_ctrl = RegisterEventHandler(
-        event_handler=OnProcessExit(
-            target_action=load_fl_wheel_controller,
-            on_exit=[load_rl_wheel_controller],
-        )
-    )
-
-    eh_rr_wheel_ctrl = RegisterEventHandler(
-        event_handler=OnProcessExit(
-            target_action=load_rl_wheel_controller,
-            on_exit=[load_rr_wheel_controller],
+            on_exit=[load_controllers],
         )
     )
 
@@ -253,15 +124,7 @@ def generate_launch_description() -> LaunchDescription:
     ld = LaunchDescription(ARGUMENTS)
     ld.add_action(description_launch)
     ld.add_action(spawn_entity)
-    ld.add_action(eh_joint_state_ctrl)
-    ld.add_action(eh_fr_steer_ctrl)
-    ld.add_action(eh_fl_steer_ctrl)
-    ld.add_action(eh_rl_steer_ctrl)
-    ld.add_action(eh_rr_steer_ctrl)
-    ld.add_action(eh_fr_wheel_ctrl)
-    ld.add_action(eh_fl_wheel_ctrl)
-    ld.add_action(eh_rl_wheel_ctrl)
-    ld.add_action(eh_rr_wheel_ctrl)
+    ld.add_action(eh_load_controllers)
     ld.add_action(swerve_control_odom_launch)
 
     return ld

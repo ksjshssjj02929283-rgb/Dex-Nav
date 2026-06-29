@@ -12,6 +12,13 @@
   <!-- Robot Body-->
   <xacro:macro name="chassis" params="name parent">
 
+    <!-- Body uses the DexForce chassis appearance. The DexForce chassis mesh is
+         modelled in the robot's base_link frame (BASE_LINK_TO_CHASSIS_CONNECTOR
+         is identity), so mounting it on chassis_link (which is identity to
+         base_link via body_joint) keeps it ground-referenced and aligned with
+         the DexForce sensor frames. The 4 functional swerve wheels remain the
+         physical drive/contact and are kept at the original swerve geometry so
+         the holonomic controller and odometry are unchanged. -->
     <link name="${name}">
       <inertial>
         <origin xyz="0 5.21904025701792E-05 0.108402855968814" rpy="0 0 0" />
@@ -21,13 +28,30 @@
       <visual>
         <origin xyz="0 0 0" rpy="0 0 0" />
         <geometry>
-          <mesh filename="file://$(find swerve_robot_description)/meshes/base_link.dae" />
+          <mesh filename="file://$(find dexforce_description)/meshes/Visual/chassis/base_link.dae" />
         </geometry>
       </visual>
+      <!-- Collision is a raised box, NOT the chassis mesh. The DexForce chassis
+           collision mesh bottom sits at ~z=0 (the same height as the wheel ground
+           contact), so its flat belly drags on the floor and pins the robot while
+           the wheels spin. A box whose bottom is well above the wheel contact
+           (z>=0.06) gives the base a real collision volume for bumping into the
+           world, while leaving the 4 swerve wheels as the only ground contact so
+           the robot can actually drive.
+
+           IMPORTANT - the box TOP must stay BELOW the 2D lidar scan plane. The
+           lidars are CPU "ray" sensors (see dexforce_sensors.xacro) that scan
+           against COLLISION geometry, and they are mounted at z=0.2336. If this
+           box enclosed that height the beams would hit the box wall in every
+           direction and the scan would collapse to a ring around the base. The
+           top is therefore capped at z=0.22 so the scan plane skims just above
+           the box and sees the environment. (The centred upper-body torso box
+           still clips the inward sector of each lidar, which is realistic and
+           covered by the opposite-corner lidar.) -->
       <collision>
-        <origin xyz="0 0 0" rpy="0 0 0" />
+        <origin xyz="0 0 0.14" rpy="0 0 0" />
         <geometry>
-          <mesh filename="file://$(find swerve_robot_description)/meshes/base_link.dae" />
+          <box size="0.65 0.55 0.16" />
         </geometry>
       </collision>
     </link>
@@ -36,10 +60,6 @@
       <parent link="${parent}" />
       <child link="${name}" />
     </joint>
-
-    <gazebo reference="${name}">
-      <material>Gazebo/White</material>
-    </gazebo>
 
   </xacro:macro>
 

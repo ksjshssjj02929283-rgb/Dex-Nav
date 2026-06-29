@@ -28,6 +28,19 @@ def generate_launch_description():
         parameters=[config],
     )
 
+    # Root the whole TF tree at the global "map" frame. The odometer publishes
+    # odom -> base_link, and base_link -> (all links) comes from
+    # robot_state_publisher, so a static map -> odom makes every frame resolve
+    # under map. (In a real setup a localizer like AMCL would own map -> odom;
+    # here we use a static identity so the sim has a single global frame.)
+    node_map_to_odom = Node(
+        package="tf2_ros",
+        executable="static_transform_publisher",
+        name="map_to_odom_static_tf",
+        arguments=["0", "0", "0", "0", "0", "0", "map", "odom"],
+    )
+
     ld.add_action(node_swerve_commander)
     ld.add_action(node_swerve_odom)
+    ld.add_action(node_map_to_odom)
     return ld

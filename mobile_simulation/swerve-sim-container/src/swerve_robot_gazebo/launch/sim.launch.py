@@ -101,6 +101,23 @@ def generate_launch_description() -> LaunchDescription:
         LaunchDescription: Description of the launch-able ROS system
 
     """
+    # Pin all ROS 2 / DDS traffic to the loopback interface.
+    #
+    # With the default (ROS_LOCALHOST_ONLY=0) FastDDS runs multicast discovery
+    # over EVERY network interface. This sim brings up ~24 nodes (the gazebo_ros
+    # bridge, the 9 ros2_control controllers, the controller_manager, the state
+    # publishers, odom/commander, ...) and that discovery chatter saturates the
+    # DDS layer and collapses gzserver's single-threaded ROS interface:
+    #   * gazebo_ros2_control init goes from ~0.02 s to 7-12 s,
+    #   * each controller takes ~6 s to load (and progressively worse), so the
+    #     /controller_manager services eventually become unreachable, and
+    #   * the sensor-bridge plugins drop from full rate to ~0 Hz even though the
+    #     native Gazebo sensors keep producing data at 100/10 Hz.
+    # Restricting to loopback removes the storm: controllers then load in <1 s
+    # and IMU/lidar/camera all publish at full rate. Run any auxiliary tools
+    # (rviz2, teleop, `ros2 topic echo`) with `export ROS_LOCALHOST_ONLY=1` too.
+    localhost_only = SetEnvironmentVariable("ROS_LOCALHOST_ONLY", "1")
+
     # Disable Gazebo's online model database lookup. The warehouse world
     # references models that are not bundled locally (e.g. Apriltag36_11_00000);
     # without this, Gazebo blocks for a long time trying to reach the defunct
@@ -170,6 +187,7 @@ def generate_launch_description() -> LaunchDescription:
     )
 
     ld = LaunchDescription(ARGUMENTS)
+    ld.add_action(localhost_only)
     ld.add_action(disable_model_db)
     ld.add_action(set_resource_path)
     ld.add_action(nvidia_offload)

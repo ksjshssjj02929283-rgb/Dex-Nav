@@ -94,7 +94,8 @@ pull: ## pulls the docker image from cloud package repo
 	docker pull $(CONTAINER)
 
 .PHONY: build
-build: ## builds the docker image
+build: ## builds the docker image (includes DexForce model from repo root context)
 	docker build \
 		--tag $(CONTAINER) \
-		.
+		-f Dockerfile \
+		../..

@@ -37,9 +37,10 @@ RUN echo "source /opt/ros/${ROS_DISTRO}/setup.bash" >> ${HOME_DIR}/.bashrc \
 RUN mkdir -p ${WORKSPACE}
 WORKDIR ${WORKSPACE}
 
-# copy code into workspace
-COPY ./src ${WORKSPACE}/src
-COPY ./config ${CONFIG_DIR}
+# copy code into workspace (build context = dexe_mobile_nav repo root)
+COPY mobile_simulation/swerve-sim-container/src ${WORKSPACE}/src
+COPY mobile_simulation/swerve-sim-container/config ${CONFIG_DIR}
+COPY visualization/dexforce_description ${WORKSPACE}/src/dexforce_description
 
 # install deps and build as non-root user
 RUN /bin/bash -c "source /opt/ros/${ROS_DISTRO}/setup.bash \
