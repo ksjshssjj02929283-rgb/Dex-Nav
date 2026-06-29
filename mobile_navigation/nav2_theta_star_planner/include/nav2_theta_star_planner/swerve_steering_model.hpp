@@ -46,8 +46,13 @@ struct SwerveSteeringConfig
   double max_wheel_angle_step{1.0};
   /// 沿路径仿真用的标称线速度（m/s），用于把路径点间距换算成 Δt
   double nominal_path_speed{0.5};
-  /// 迭代平滑最大轮次
-  int max_smoothing_passes{12};
+  /**
+   * 路径上 body yaw 变化率上限（rad/s），用于把起终点转角均匀摊到路程上。
+   * 应 ≥ MPPI 实际 wz_max；过小会导致“旋转迟钝、末段堆角”。
+   */
+  double max_body_yaw_rate{1.2};
+  /// 舵轮 IK 微调最大迭代轮次（仅修正仍超限的段，宜小不宜大）
+  int max_smoothing_passes{3};
 };
 
 /**

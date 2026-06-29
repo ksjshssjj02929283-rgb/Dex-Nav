@@ -15,6 +15,7 @@
 #include "nav2_theta_star_planner/swerve_steering_model.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 
 #include "nav2_util/geometry_utils.hpp"
@@ -64,6 +65,23 @@ double getPathYaw(const nav_msgs::msg::Path & path, size_t index)
   return tf2::getYaw(path.poses[index].pose.orientation);
 }
 
+double segmentLength(const nav_msgs::msg::Path & path, size_t i)
+{
+  const auto & p0 = path.poses[i].pose.position;
+  const auto & p1 = path.poses[i + 1].pose.position;
+  return std::hypot(p1.x - p0.x, p1.y - p0.y);
+}
+
+/** 按路径点间距与标称速度，计算该段允许的最大 |Δyaw| */
+double maxYawStepForSegment(double ds, const SwerveSteeringConfig & config)
+{
+  if (ds < 1e-6) {
+    return 0.0;
+  }
+  const double dt = ds / std::max(config.nominal_path_speed, 1e-3);
+  return config.max_body_yaw_rate * dt;
+}
+
 }  // namespace
 
 double computeSwerveWheelTargets(
@@ -89,7 +107,6 @@ double computeSwerveWheelTargets(
     const float vx_i = static_cast<float>(vx) + kx * W * static_cast<float>(vw) * 0.5f;
     const float vy_i = static_cast<float>(vy) + ky * L * static_cast<float>(vw) * 0.5f;
 
-    const float wheel_speed = std::hypot(vx_i, vy_i);
     const float ang = std::atan2(vy_i, vx_i);
 
     // π 等价两解：与 mobile_cmd_omni_region.cpp Phase 0 相同
@@ -108,8 +125,6 @@ double computeSwerveWheelTargets(
 
     const float chosen = (costA <= costB) ? angA : angB;
     out_wheel_angle[i] = chosen;
-
-    (void)wheel_speed;  // 与控制器一致保留 speed 变量，规划侧仅检查舵角跳变
 
     max_jump = std::max(max_jump, static_cast<double>(std::abs(angleDiff(chosen, prev_wheel_angle[i]))));
   }
@@ -132,12 +147,10 @@ BodyTwistSample bodyTwistFromPathSegment(
     return twist;
   }
 
-  // 路径切线方向（世界系）与标称速度
   const double phi = std::atan2(dy, dx);
   const double v_nominal = config.nominal_path_speed;
   const double dt = ds / std::max(v_nominal, 1e-3);
 
-  // 世界系速度投影到机体坐标系
   twist.vx = v_nominal * std::cos(phi - yaw0);
   twist.vy = v_nominal * std::sin(phi - yaw0);
   twist.wz = shortestAngularDistance(yaw0, yaw1) / dt;
@@ -159,7 +172,6 @@ bool isPathSegmentSteeringFeasible(
     twist.vx, twist.vy, twist.wz,
     config, in_out_state.prev_wheel_angle, target);
 
-  // 仿真向前推进：假定该段结束时舵角已到位（规划侧保守估计）
   in_out_state.prev_wheel_angle = target;
 
   return max_jump <= config.max_wheel_angle_step + 1e-6;
@@ -175,7 +187,6 @@ size_t enforceSteeringContinuityOnPath(
     return 0;
   }
 
-  // 可编辑 yaw 副本，避免反复读写 quaternion
   std::vector<double> yaws(n);
   for (size_t i = 0; i < n; ++i) {
     yaws[i] = getPathYaw(path, i);
@@ -186,7 +197,6 @@ size_t enforceSteeringContinuityOnPath(
   auto segment_max_jump = [&](size_t i, const std::vector<double> & profile) -> double {
       SwerveSteeringState state;
       state.reset();
-      // 从路径起点重新仿真到 segment i，评估 i→i+1
       for (size_t k = 0; k <= i; ++k) {
         if (k + 1 >= n) {
           break;
@@ -209,8 +219,35 @@ size_t enforceSteeringContinuityOnPath(
       return 0.0;
     };
 
-  // ── 阶段 1：正向迭代 ───────────────────────────────────────────────────
-  // 若某段舵角跳变过大，将 profile[i+1] 向 profile[i] 拉近（减小该段 Δyaw）
+  // ── 阶段 1：按 max_body_yaw_rate 做 yaw 变化率限幅（正向）────────────────
+  // 目的：把起终点转角摊到全程，而不是堆在末段；比反复“压扁”profile 更平滑。
+  yaws[0] = desired_yaws[0];
+  for (size_t i = 0; i + 1 < n; ++i) {
+    const double ds = segmentLength(path, i);
+    const double max_step = maxYawStepForSegment(ds, config);
+    const double target_delta = shortestAngularDistance(yaws[i], desired_yaws[i + 1]);
+    if (std::abs(target_delta) <= max_step) {
+      yaws[i + 1] = desired_yaws[i + 1];
+    } else {
+      yaws[i + 1] = yaws[i] + std::copysign(max_step, target_delta);
+    }
+  }
+
+  // ── 阶段 2：锚定终点 yaw，自后向前按变化率上限回填 ─────────────────────
+  yaws[n - 1] = goal_yaw;
+  for (int i = static_cast<int>(n) - 2; i >= 0; --i) {
+    const size_t idx = static_cast<size_t>(i);
+    const double ds = segmentLength(path, idx);
+    const double max_step = maxYawStepForSegment(ds, config);
+    const double needed = shortestAngularDistance(yaws[idx], yaws[idx + 1]);
+    if (std::abs(needed) <= max_step) {
+      continue;
+    }
+    yaws[idx] = yaws[idx + 1] - std::copysign(max_step, needed);
+  }
+
+  // ── 阶段 3：舵轮 IK 轻量微调（仅对仍超限的段，少量迭代）────────────────
+  // 不再把 profile 整体压向起点 yaw，避免“旋转迟钝 + 路径拐角仍卡舵”。
   for (int pass = 0; pass < config.max_smoothing_passes; ++pass) {
     bool changed = false;
 
@@ -225,75 +262,15 @@ size_t enforceSteeringContinuityOnPath(
         continue;
       }
 
-      // 按超出比例缩小该段 yaw 变化；0.85 为保守系数，避免反复震荡
-      const double scale = (config.max_wheel_angle_step / jump) * 0.85;
-      yaws[i + 1] = yaws[i] + dyaw * scale;
-      changed = true;
-    }
-
-    if (!changed) {
-      break;
-    }
-  }
-
-  // ── 阶段 2：锚定终点 yaw，自后向前修正 ─────────────────────────────────
-  // 保证最终仍到达 goal_yaw，同时尽量满足舵角连续性
-  yaws[n - 1] = goal_yaw;
-
-  for (int pass = 0; pass < config.max_smoothing_passes; ++pass) {
-    bool changed = false;
-
-    for (int i = static_cast<int>(n) - 2; i >= 0; --i) {
-      const size_t idx = static_cast<size_t>(i);
-      const double jump = segment_max_jump(idx, yaws);
-      if (jump <= config.max_wheel_angle_step) {
-        continue;
-      }
-
-      // 向后修正：把当前点 yaw 向“下一点”靠拢，使末段能转到位且舵角连续
-      const double dyaw = shortestAngularDistance(yaws[idx], yaws[idx + 1]);
-      if (std::abs(dyaw) < 1e-6) {
-        continue;
-      }
-
-      yaws[idx] += dyaw * 0.25;
-      changed = true;
-    }
-
-    if (!changed) {
-      break;
-    }
-  }
-
-  // ── 阶段 3：在可行解附近拉回 desired 曲线（可选软约束）────────────────
-  // 避免偏离 assignPathOrientations 过远，同时不破坏已满足的可行性
-  for (size_t i = 0; i < n; ++i) {
-    const double blend = 0.15;
-    yaws[i] = yaws[i] * (1.0 - blend) + desired_yaws[i] * blend;
-  }
-  yaws[n - 1] = goal_yaw;
-
-  // 最后一轮正向修复
-  for (int pass = 0; pass < 3; ++pass) {
-    bool changed = false;
-    for (size_t i = 0; i + 1 < n; ++i) {
-      const double jump = segment_max_jump(i, yaws);
-      if (jump <= config.max_wheel_angle_step) {
-        continue;
-      }
-      const double dyaw = shortestAngularDistance(yaws[i], yaws[i + 1]);
-      if (std::abs(dyaw) < 1e-6) {
-        continue;
-      }
-      const double scale = (config.max_wheel_angle_step / jump) * 0.85;
+      const double scale = std::min(1.0, (config.max_wheel_angle_step / jump) * 0.95);
       if (i + 1 == n - 1) {
-        // 末点 yaw 已锚定 goal，只调整倒数第二点
         yaws[i] = yaws[i + 1] - dyaw * scale;
       } else {
         yaws[i + 1] = yaws[i] + dyaw * scale;
       }
       changed = true;
     }
+
     if (!changed) {
       break;
     }

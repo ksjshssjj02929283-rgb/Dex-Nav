@@ -251,7 +251,12 @@ void ThetaStarPlanner::configure(
     name + ".steering_nominal_path_speed", swerve_steering_config_.nominal_path_speed);
 
   nav2_util::declare_parameter_if_not_declared(
-    node, name + ".steering_max_smoothing_passes", rclcpp::ParameterValue(12));
+    node, name + ".steering_max_body_yaw_rate", rclcpp::ParameterValue(1.2));
+  node->get_parameter(
+    name + ".steering_max_body_yaw_rate", swerve_steering_config_.max_body_yaw_rate);
+
+  nav2_util::declare_parameter_if_not_declared(
+    node, name + ".steering_max_smoothing_passes", rclcpp::ParameterValue(3));
   node->get_parameter(
     name + ".steering_max_smoothing_passes", swerve_steering_config_.max_smoothing_passes);
 
@@ -266,12 +271,13 @@ void ThetaStarPlanner::configure(
   RCLCPP_INFO(
     logger_,
     "Theta* steering continuity (B): enforce=%s wheelbase=%.3f track=%.3f "
-    "max_wheel_step=%.2f rad nominal_v=%.2f",
+    "max_wheel_step=%.2f rad nominal_v=%.2f max_yaw_rate=%.2f",
     enforce_steering_continuity_ ? "true" : "false",
     swerve_steering_config_.wheelbase,
     swerve_steering_config_.track,
     swerve_steering_config_.max_wheel_angle_step,
-    swerve_steering_config_.nominal_path_speed);
+    swerve_steering_config_.nominal_path_speed,
+    swerve_steering_config_.max_body_yaw_rate);
 }
 
 void ThetaStarPlanner::applySteeringContinuityConstraint(
@@ -470,6 +476,8 @@ ThetaStarPlanner::dynamicParametersCallback(std::vector<rclcpp::Parameter> param
         swerve_steering_config_.max_wheel_angle_step = parameter.as_double();
       } else if (name == name_ + ".steering_nominal_path_speed") {
         swerve_steering_config_.nominal_path_speed = parameter.as_double();
+      } else if (name == name_ + ".steering_max_body_yaw_rate") {
+        swerve_steering_config_.max_body_yaw_rate = parameter.as_double();
       }
     } else if (type == ParameterType::PARAMETER_BOOL) {
       if (name == name_ + ".use_final_approach_orientation") {
