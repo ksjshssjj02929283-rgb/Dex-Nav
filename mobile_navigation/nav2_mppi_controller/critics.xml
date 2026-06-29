@@ -53,12 +53,12 @@
       <description>mppi critic for incentivizing moving within kinematic and dynamic bounds</description>
     </class>
 
-    <class type="mppi::critics::AngularSmoothnessCritic" base_class_type="mppi::critics::CriticFunction">
-      <description>mppi critic for smoothing angular velocity (penalize angular acceleration)</description>
+    <class type="mppi::critics::AngularVelocityCritic" base_class_type="mppi::critics::CriticFunction">
+      <description>mppi critic tracking heading-based desired angular velocity + smoothing (params from FollowPath)</description>
     </class>
 
-    <class type="mppi::critics::DesiredVelocityCritic" base_class_type="mppi::critics::CriticFunction">
-      <description>mppi critic for tracking a distance-based desired speed (soft deceleration near goal)</description>
+    <class type="mppi::critics::LinearVelocityCritic" base_class_type="mppi::critics::CriticFunction">
+      <description>mppi critic tracking distance-based desired linear velocity + smoothing (params from FollowPath)</description>
     </class>
 
     <class type="mppi::critics::VelocityDeadbandCritic" base_class_type="mppi::critics::CriticFunction">

@@ -84,14 +84,14 @@ struct PreferForwardCriticSettings
   float threshold_to_consider{0.0f};
 };
 
-struct DesiredVelocityCriticSettings
+struct LinearVelocityCriticSettings
 {
   float weight{0.0f};
 };
 
-struct AngularSmoothnessCriticSettings
+struct AngularVelocityCriticSettings
 {
-  float weight{0.0f};  // 角速度平滑(罚角加速度)
+  float weight{0.0f};  // 角速度软约束(跟踪期望角速度 + 罚角加速度)
 };
 
 struct ObstaclesCriticSettings
@@ -114,8 +114,8 @@ struct CriticProfileSettings
   PathFollowCriticSettings path_follow;
   PathAlignCriticSettings path_align;
   PreferForwardCriticSettings prefer_forward;
-  DesiredVelocityCriticSettings desired_velocity;
-  AngularSmoothnessCriticSettings angular_smoothness;
+  LinearVelocityCriticSettings linear_velocity;
+  AngularVelocityCriticSettings angular_velocity;
   ObstaclesCriticSettings obstacles;
   CostCriticSettings cost;
 };

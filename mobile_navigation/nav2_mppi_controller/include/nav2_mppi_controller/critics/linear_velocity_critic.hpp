@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef NAV2_MPPI_CONTROLLER__CRITICS__DESIRED_VELOCITY_CRITIC_HPP_
-#define NAV2_MPPI_CONTROLLER__CRITICS__DESIRED_VELOCITY_CRITIC_HPP_
+#ifndef NAV2_MPPI_CONTROLLER__CRITICS__LINEAR_VELOCITY_CRITIC_HPP_
+#define NAV2_MPPI_CONTROLLER__CRITICS__LINEAR_VELOCITY_CRITIC_HPP_
 
 #include "nav2_mppi_controller/critic_function.hpp"
 #include "nav2_mppi_controller/tools/utils.hpp"
@@ -22,14 +22,14 @@ namespace mppi::critics
 {
 
 /**
- * @class mppi::critics::DesiredVelocityCritic
- * @brief 速度软约束：按每个预测点到目标的剩余距离算期望速度
- *        v_desired = min(vx_max, sqrt(2 * a_decel * dist))，
- *        双边惩罚“当前(候选)速度与期望速度的差值”|vx - v_desired|（速度跟踪），
- *        让实际速度趋近期望速度，在时域内平滑匀减速、消除阶段边界硬降速。
- *        并附加线加速度平滑项(罚 |Δvx|，同 weight)使前进速度变化平缓。
+ * @class mppi::critics::LinearVelocityCritic
+ * @brief 线速度软约束（双项，同权重）：
+ *        ① 速度项 跟踪按剩余距离算的期望速度 v_desired = min(vx_max, sqrt(2*ax_max*d))
+ *           （远处=vx_max 不降速，接近目标平滑降到 0）；罚 |vx - v_desired|。
+ *        ② 加速度项 罚相邻 |Δvx|（线加速度，平滑）。
+ *        vx_max / ax_max 从 FollowPath 全局参数读取（critic 内不自定义速度/加速度参数）。
  */
-class DesiredVelocityCritic : public CriticFunction
+class LinearVelocityCritic : public CriticFunction
 {
 public:
   void initialize() override;
@@ -41,10 +41,10 @@ public:
 protected:
   unsigned int power_{0};
   float weight_{0};
-  float a_decel_{0};   // 期望减速度，决定减速曲线陡缓
-  float vx_max_{0};    // 期望速度上限（取自 FollowPath 全局 vx_max）
+  float vx_max_{0.7f};   // 从 FollowPath 全局参数读
+  float ax_max_{0.5f};   // 从 FollowPath 全局参数读（作减速度）
 };
 
 }  // namespace mppi::critics
 
-#endif  // NAV2_MPPI_CONTROLLER__CRITICS__DESIRED_VELOCITY_CRITIC_HPP_
+#endif  // NAV2_MPPI_CONTROLLER__CRITICS__LINEAR_VELOCITY_CRITIC_HPP_

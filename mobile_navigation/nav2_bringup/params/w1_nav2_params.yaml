@@ -151,10 +151,10 @@ controller_server:
         PathAlignCritic: [5.0, 30.0, 2.0]
         PathFollowCritic: [1.0, 10.0, 5.0]
         PreferForwardCritic: [1.0, 10.0, 1.0]
-        DesiredVelocityCritic: [0.0, 8.0, 8.0]
-        AngularSmoothnessCritic: [0.0, 10.0, 0.0]    # 角速度+角平滑双项(罚|wz|与|Δwz|同权重)；全段开。⚠️|wz|项抑转动：align 段或拖慢对齐转向、approach 段或拖慢末端朝向(problem2)；bag 若见转向迟钝把 align/approach 降到 0(即[0,10,0])
+        LinearVelocityCritic: [0.0, 8.0, 8.0]
+        AngularVelocityCritic: [0.0, 0.0, 10.0]      # 镜像线速度(朝向减速)：approach 专用；⚠️track/align 必须 0(否则朝向误差大→逼 wz 最大旋转)；wz_max/az_max 从全局参数读；bag 调
         ObstaclesCritic: [1.1, 1.1, 0.0]   # 软斥力(repulsion)分段；致命 critical 全局常开
-        CostCritic: [3.81, 3.81, 0.0]      # 软代价分段；致命由 ObstaclesCritic 兜底
+        CostCritic: [3.81, 5.0, 0.0]      # 软代价分段；致命由 ObstaclesCritic 兜底
 
       # ── 三段速度策略（per-stage 覆盖全局；只放速度，critic 子参数/权重不在此）──
       stage_align:    # 对齐段：低 vx 专注转向、高 wz 快速对齐、允许小幅倒车机动
@@ -167,7 +167,7 @@ controller_server:
         vx_min: -0.5
         vy_max: 0.5
         wz_max: 0.75
-      stage_approach: # 趋近段：vx 上限 0.7(减速交 DesiredVelocity)、禁倒车、低 wz 平稳停靠
+      stage_approach: # 趋近段：vx 上限 0.7(减速交 LinearVelocity)、禁倒车、低 wz 平稳停靠
         vx_max: 0.5
         vx_min: -0.1
         vy_max: 0.5
@@ -188,7 +188,7 @@ controller_server:
       AckermannConstraints:
         min_turning_r: 0.5
       # critics 是插件加载列表；阶段权重由上方 stage_weights 矩阵覆盖。
-      critics: ["ConstraintCritic", "CostCritic", "ObstaclesCritic", "GoalCritic", "GoalLateralCritic", "GoalLongitudinalCritic", "GoalAngleCritic", "PathAlignCritic", "PathFollowCritic", "PathAngleCritic", "PreferForwardCritic", "DesiredVelocityCritic", "AngularSmoothnessCritic", "VelocityDeadbandCritic"]
+      critics: ["ConstraintCritic", "CostCritic", "ObstaclesCritic", "GoalCritic", "GoalLateralCritic", "GoalLongitudinalCritic", "GoalAngleCritic", "PathAlignCritic", "PathFollowCritic", "PathAngleCritic", "PreferForwardCritic", "LinearVelocityCritic", "AngularVelocityCritic", "VelocityDeadbandCritic"]
       ConstraintCritic:
         enabled: true
         cost_power: 1
@@ -215,11 +215,14 @@ controller_server:
         trajectory_point_step: 2
       # GoalLateralCritic / GoalLongitudinalCritic：无全局子参数（deadband 已废弃、threshold 距离门已移除）；
       # 权重由 stage_weights 矩阵管，cost_power/last_n_points 用 C++ 默认。
-      DesiredVelocityCritic: # 速度软约束：按剩余距离算期望速度(下降式软速度上限)，消除二三阶段硬降速
+      LinearVelocityCritic: # 线速度软约束：v_desired=min(vx_max,√(2·ax_max·d))跟踪 + |Δvx|平滑；vx_max/ax_max 从全局参数读
         enabled: true
         cost_power: 2
-        cost_weight: 8.0 # 初值，bag 调；与 goal critic 量级相当（过冲→加，减速太早→减）
-        a_decel: 0.5 # 期望减速度 m/s²，恒减速 0.3 ≤ ax_max 0.5；速度上限取 FollowPath 全局 vx_max(0.7)
+        cost_weight: 8.0 # 初值，bag 调；与 goal critic 量级相当
+      AngularVelocityCritic: # 角速度软约束(镜像线速度)：wz_desired=min(wz_max,√(2·az_max·朝向误差))跟踪 + |Δwz|平滑；wz_max/az_max 从全局参数读；approach 专用(track/align 矩阵设0)
+        enabled: true
+        cost_power: 2
+        cost_weight: 10.0 # 初值，bag 调
       VelocityDeadbandCritic:
         enabled: true
         cost_power: 1
@@ -240,7 +243,12 @@ local_costmap:
       resolution: 0.05
       footprint: "[[0.35, 0.29], [0.35, -0.29], [-0.35, -0.29], [-0.35, 0.29]]" # Slightly increased for better planning efficiency and safety (real size: 0.95*0.55)
       # footprint: "[ [0.55, 0.35], [0.55, -0.35], [-0.55, -0.35], [-0.55, 0.35] ]" # Slightly increased for better planning efficiency and safety (real size: 0.95*0.55)
-      # plugins: ["voxel_layer", "denoise_layer", "inflation_layer"]
+      # plugins: ["voxel_layer", "denoise_layer", "inflation_layer"]  output_topic: "control/cmd_vel_nav"
+      # Test（注：max_velocity/accel/decel 非 local_costmap 标准参数，会被忽略；如需限速请放控制器/平滑器）
+      max_velocity: [0.7, 0.0, 0.75]
+      min_velocity: [-0.5, 0.0, -0.75]
+      max_accel: [0.6, 0.0, 0.7]
+      max_decel: [-0.6, 0.0, -0.7]
       plugins: ["static_layer", "obstacle_layer", "denoise_layer", "inflation_layer"]   
       filters: ["keepout_filter", "keepout_inflation_layer", "speed_filter"]
       # plugins: ["obstacle_layer", "voxel_layer", "denoise_layer", "inflation_layer"]
@@ -614,9 +622,9 @@ velocity_smoother:
     output_topic: "control/cmd_vel_nav"
     # Test
     max_velocity: [0.7, 0.0, 0.75]
-    min_velocity: [-0.5, 0.0, -0.75]  
-    max_accel: [0.5, 0.0, 0.7]
-    max_decel: [-0.5, 0.0, -0.7]    
+    min_velocity: [-0.5, 0.0, -0.75]
+    max_accel: [0.6, 0.0, 0.7]
+    max_decel: [-0.6, 0.0, -0.7]
     # Original
     # max_velocity: [0.26, 0.0, 1.0]
     # min_velocity: [-0.26, 0.0, -1.0]  
@@ -626,8 +634,8 @@ velocity_smoother:
     # max_velocity: [1.0, 0.0, 2.0]
     # min_velocity: [-0.5, 0.0, -2.0]
     # max_accel: [1.0, 0.0, 0.5]
-    # max_decel: [-1.0, 0.0, -0.5]    
+    # max_decel: [-1.0, 0.0, -0.5]
     odom_topic: "feedback/odom"
     odom_duration: 0.01
-    deadband_velocity: [0.0, 0.0, 0.0]
+    deadband_velocity: [0.005, 0.005, 0.008]
     velocity_timeout: 1.0

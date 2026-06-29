@@ -273,10 +273,10 @@ void MPPIController::configureStages()
   stages_[0].critics.path_align = {8.0f, 0.3f, 8, 3, 0.08f};
   stages_[0].critics.path_follow = {7.0f, 1.2f, 7};
   stages_[0].critics.prefer_forward = {6.0f, 0.25f};
-  stages_[0].critics.desired_velocity = {0.0f};   // 对齐段关闭速度软约束（不惩罚后退机动）
+  stages_[0].critics.linear_velocity = {0.0f};   // 对齐段关闭速度软约束（不惩罚后退机动）
   stages_[0].critics.obstacles = {1.1f};
   stages_[0].critics.cost = {3.81f};
-  stages_[0].critics.angular_smoothness = {5.0f};
+  stages_[0].critics.angular_velocity = {0.0f};
 
   stages_[1].critics.goal = {0.0f, 0.0f};
   stages_[1].critics.goal_lateral = {0.0f, 0.0f, 8};
@@ -286,10 +286,10 @@ void MPPIController::configureStages()
   stages_[1].critics.path_align = {20.0f, 0.5f, 15, 2, 0.05f};
   stages_[1].critics.path_follow = {4.0f, 0.5f, 5};
   stages_[1].critics.prefer_forward = {5.0f, 0.25f};
-  stages_[1].critics.desired_velocity = {8.0f};
+  stages_[1].critics.linear_velocity = {8.0f};
   stages_[1].critics.obstacles = {1.1f};
   stages_[1].critics.cost = {3.81f};
-  stages_[1].critics.angular_smoothness = {10.0f};
+  stages_[1].critics.angular_velocity = {0.0f};
 
   stages_[2].critics.goal = {4.0f, 1.0f};
   stages_[2].critics.goal_lateral = {40.0f, 1.0f, 10};
@@ -299,10 +299,10 @@ void MPPIController::configureStages()
   stages_[2].critics.path_align = {2.0f, 0.5f, 15, 3, 0.05f};
   stages_[2].critics.path_follow = {1.0f, 0.5f, 5};
   stages_[2].critics.prefer_forward = {1.0f, 1.0f};
-  stages_[2].critics.desired_velocity = {8.0f};
+  stages_[2].critics.linear_velocity = {8.0f};
   stages_[2].critics.obstacles = {0.0f};   // 趋近段软斥力关（保致命）
   stages_[2].critics.cost = {0.0f};
-  stages_[2].critics.angular_smoothness = {15.0f};
+  stages_[2].critics.angular_velocity = {15.0f};
 
   // profile_start_distance 已废弃（对齐段改按角度切，不再按距起点距离）；成员保留仅供 debug 兼容
   getParam(approach_distance_, "approach_distance", 1.0, ParameterType::Static);
@@ -426,9 +426,9 @@ void MPPIController::configureStages()
       prefix + "PreferForwardCritic.threshold_to_consider",
       profile_critics.prefer_forward.threshold_to_consider, ParameterType::Static);
     getParam(
-      profile_critics.desired_velocity.weight,
-      prefix + "DesiredVelocityCritic.cost_weight",
-      profile_critics.desired_velocity.weight, ParameterType::Static);
+      profile_critics.linear_velocity.weight,
+      prefix + "LinearVelocityCritic.cost_weight",
+      profile_critics.linear_velocity.weight, ParameterType::Static);
   }
 
   // ── 权重矩阵：stage_weights.<Critic> = [align, track, approach]，各 critic 权重统一调参入口 ──
@@ -471,8 +471,8 @@ void MPPIController::configureStages()
     "PreferForwardCritic", stages_[0].critics.prefer_forward.weight,
     stages_[1].critics.prefer_forward.weight, stages_[2].critics.prefer_forward.weight);
   loadWeightRow(
-    "DesiredVelocityCritic", stages_[0].critics.desired_velocity.weight,
-    stages_[1].critics.desired_velocity.weight, stages_[2].critics.desired_velocity.weight);
+    "LinearVelocityCritic", stages_[0].critics.linear_velocity.weight,
+    stages_[1].critics.linear_velocity.weight, stages_[2].critics.linear_velocity.weight);
   loadWeightRow(
     "ObstaclesCritic", stages_[0].critics.obstacles.repulsion_weight,
     stages_[1].critics.obstacles.repulsion_weight, stages_[2].critics.obstacles.repulsion_weight);
@@ -480,8 +480,8 @@ void MPPIController::configureStages()
     "CostCritic", stages_[0].critics.cost.weight,
     stages_[1].critics.cost.weight, stages_[2].critics.cost.weight);
   loadWeightRow(
-    "AngularSmoothnessCritic", stages_[0].critics.angular_smoothness.weight,
-    stages_[1].critics.angular_smoothness.weight, stages_[2].critics.angular_smoothness.weight);
+    "AngularVelocityCritic", stages_[0].critics.angular_velocity.weight,
+    stages_[1].critics.angular_velocity.weight, stages_[2].critics.angular_velocity.weight);
 
   RCLCPP_INFO(
     logger_,

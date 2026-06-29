@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "nav2_mppi_controller/critics/desired_velocity_critic.hpp"
+#include "nav2_mppi_controller/critics/linear_velocity_critic.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -20,25 +20,24 @@
 namespace mppi::critics
 {
 
-void DesiredVelocityCritic::initialize()
+void LinearVelocityCritic::initialize()
 {
   auto getParam = parameters_handler_->getParamGetter(name_);
   auto getParentParam = parameters_handler_->getParamGetter(parent_name_);
 
   getParam(power_, "cost_power", 2);
   getParam(weight_, "cost_weight", 5.0);
-  getParam(a_decel_, "a_decel", 0.3);
-  // 期望速度上限取 FollowPath 全局 vx_max；远离目标时 v_desired 即为该上限（不施加额外约束）
+  // 速度上限与减速度从 FollowPath 全局参数读取（不在 critic 内自定义）
   getParentParam(vx_max_, "vx_max", 0.7);
+  getParentParam(ax_max_, "ax_max", 0.5);
 
   RCLCPP_INFO(
     logger_,
-    "DesiredVelocityCritic instantiated with %d power, %.3f weight, "
-    "a_decel=%.3f, vx_max=%.3f",
-    power_, weight_, a_decel_, vx_max_);
+    "LinearVelocityCritic instantiated with %d power, %.3f weight, vx_max=%.3f, ax_max=%.3f",
+    power_, weight_, vx_max_, ax_max_);
 }
 
-void DesiredVelocityCritic::score(CriticData & data)
+void LinearVelocityCritic::score(CriticData & data)
 {
   if (!enabled_ || weight_ <= 0.0f || data.path.x.size() < 1) {
     return;
@@ -53,24 +52,19 @@ void DesiredVelocityCritic::score(CriticData & data)
     return;
   }
 
+  // 速度项：按剩余距离算期望速度 v_desired = min(vx_max, sqrt(2*ax_max*d))，罚 |vx - v_desired|
   models::Vector cost = models::Vector::Zero(data.costs.size());
   for (Eigen::Index p = 0; p < time_steps; ++p) {
     const auto dx = data.trajectories.x.col(p).array() - goal_x;
     const auto dy = data.trajectories.y.col(p).array() - goal_y;
     const auto dist = (dx * dx + dy * dy).sqrt();
-    // 按剩余距离算期望速度：v_desired = min(vx_max, sqrt(2 * a_decel * dist))
-    // dist 大时 = vx_max（不降速），接近目标时平滑降到 0
-    const auto v_desired = (2.0f * a_decel_ * dist).sqrt().min(vx_max_);
-    // 双边速度跟踪误差：当前(候选)速度与期望速度的差值，使实际速度趋近期望速度
-    const auto v_err = (data.state.vx.col(p).array() - v_desired).abs();
-    cost += v_err;
+    const auto v_desired = (2.0f * ax_max_ * dist).sqrt().min(vx_max_);
+    cost += (data.state.vx.col(p).array() - v_desired).abs();
   }
-
   cost /= static_cast<float>(time_steps);
   data.costs += (cost * weight_).pow(power_);
 
-  // 线加速度软约束（速度平滑）：罚相邻时刻 |Δvx|，与速度跟踪同权重(weight_)，
-  // 使前进速度变化平缓、更平滑（与跟踪项合用同一 weight，符合"两者权重一样大"）。
+  // 加速度项：罚相邻 |Δvx|（线加速度，平滑），与速度项同权重(weight_)
   if (time_steps >= 2) {
     const auto dvx =
       (data.state.vx.rightCols(time_steps - 1) - data.state.vx.leftCols(time_steps - 1)).abs();
@@ -78,15 +72,13 @@ void DesiredVelocityCritic::score(CriticData & data)
   }
 }
 
-void DesiredVelocityCritic::applyProfileSettings(const CriticProfileSettings & settings)
+void LinearVelocityCritic::applyProfileSettings(const CriticProfileSettings & settings)
 {
-  // 三阶段 profile 覆盖速度软约束权重：align(对齐)段设 0 关闭，
-  // 避免速度软约束惩罚对齐时的后退避障机动（详见 7. 三阶段重定义方案 §6）。
-  weight_ = settings.desired_velocity.weight;
+  weight_ = settings.linear_velocity.weight;
 }
 
 }  // namespace mppi::critics
 
 #include <pluginlib/class_list_macros.hpp>
 
-PLUGINLIB_EXPORT_CLASS(mppi::critics::DesiredVelocityCritic, mppi::critics::CriticFunction)
+PLUGINLIB_EXPORT_CLASS(mppi::critics::LinearVelocityCritic, mppi::critics::CriticFunction)
