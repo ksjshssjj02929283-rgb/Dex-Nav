@@ -1,0 +1,6 @@
+image: distance_map.pgm
+resolution: 0.10000000149011612
+origin: [2, 3, 0]
+max_distance_m: 2
+width: 10
+height: 10

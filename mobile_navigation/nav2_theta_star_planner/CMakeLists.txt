@@ -12,7 +12,7 @@ find_package(pluginlib REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_action REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
-find_package(tf2_ros REQUIRED)
+find_package(nav2_map_server REQUIRED)
 
 nav2_package() #Calls the nav2_package.cmake file
 add_compile_options(-O3)
@@ -35,11 +35,14 @@ set(dependencies ament_cmake
   rclcpp_action
   rclcpp_lifecycle
   tf2_ros
+  nav2_map_server
 )
 
 
 add_library(${library_name} SHARED
   src/theta_star.cpp
+  src/node_theta_star.cpp
+  src/multi_layer_planner.cpp
   src/theta_star_planner.cpp
   src/swerve_steering_model.cpp
 )

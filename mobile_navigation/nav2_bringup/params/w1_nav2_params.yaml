@@ -532,7 +532,13 @@ planner_server:
       steering_max_wheel_angle_step: 1.0 # ANGLE_EPS，超过则 Two-Phase 停轮
       steering_nominal_path_speed: 0.5   # 沿路径仿真标称速度 m/s
       steering_max_body_yaw_rate: 1.2    # body yaw 变化率上限 rad/s，宜 ≥ MPPI wz_max
-      steering_max_smoothing_passes: 3   # 舵轮 IK 微调轮次，过大易把路径 yaw 压扁
+      steering_max_smoothing_passes: 3
+      # 3-layer node map (map_preprocess): L1 global → L2 local → L3 raw
+      use_node_map: false
+      node_map_yaml: ""       # .../preprocessed/nodemap_global.yaml
+      local_map_yaml: ""      # default: same dir nodemap_local.yaml
+      raw_map_yaml: ""        # default: same dir nodemap_raw.yaml
+      distance_map_yaml: ""
 
   # ros__parameters:
   #   use_sim_time: True

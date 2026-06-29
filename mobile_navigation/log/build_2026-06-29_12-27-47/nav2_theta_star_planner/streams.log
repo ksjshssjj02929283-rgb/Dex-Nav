@@ -1,0 +1,80 @@
+[0.010s] Invoking command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner': CMAKE_PREFIX_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner:/home/dex/dexe_mobile_application/install/dexforce_description:/home/dex/dexe_mobile_nav/install/w1_nav2:/home/dex/dexe_mobile_nav/install/swerve_robot_description:/home/dex/dexe_mobile_nav/install/nav2_smac_planner:/home/dex/dexe_mobile_nav/install/nav2_controller:/home/dex/dexe_mobile_nav/install/nav2_bringup:/home/dex/dexe_mobile_nav/install/dexforce_description:/home/dex/dexe_mobile_nav/install/aws_robomaker_small_warehouse_world:/home/dex/dexe_mobile_nav/install/swerve_robot_gazebo:/home/dex/dexe_mobile_nav/install/swerve_controller:/opt/ros/humble LD_LIBRARY_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/lib:/home/dex/dexe_mobile_nav/install/nav2_smac_planner/lib:/home/dex/dexe_mobile_nav/install/nav2_controller/lib:/usr/lib/x86_64-linux-gnu/gazebo-11/plugins:/opt/ros/humble/opt/rviz_ogre_vendor/lib:/opt/ros/humble/lib/x86_64-linux-gnu:/opt/ros/humble/lib /usr/bin/cmake --build /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner -- -j16 -l16
+[0.034s] -- Found ament_cmake: 1.3.14 (/opt/ros/humble/share/ament_cmake/cmake)
+[0.123s] -- Found builtin_interfaces: 1.2.2 (/opt/ros/humble/share/builtin_interfaces/cmake)
+[0.139s] -- Found rosidl_generator_c: 3.1.8 (/opt/ros/humble/share/rosidl_generator_c/cmake)
+[0.140s] -- Found rosidl_adapter: 3.1.8 (/opt/ros/humble/share/rosidl_adapter/cmake)
+[0.144s] -- Found rosidl_generator_cpp: 3.1.8 (/opt/ros/humble/share/rosidl_generator_cpp/cmake)
+[0.150s] -- Using all available rosidl_typesupport_c: rosidl_typesupport_fastrtps_c;rosidl_typesupport_introspection_c
+[0.157s] -- Using all available rosidl_typesupport_cpp: rosidl_typesupport_fastrtps_cpp;rosidl_typesupport_introspection_cpp
+[0.164s] -- Found nav2_common: 1.1.20 (/opt/ros/humble/share/nav2_common/cmake)
+[0.164s] -- Found nav2_core: 1.1.20 (/opt/ros/humble/share/nav2_core/cmake)
+[0.181s] -- Found rmw_implementation_cmake: 6.1.2 (/opt/ros/humble/share/rmw_implementation_cmake/cmake)
+[0.181s] -- Found rmw_fastrtps_cpp: 6.2.10 (/opt/ros/humble/share/rmw_fastrtps_cpp/cmake)
+[0.268s] -- Using RMW implementation 'rmw_fastrtps_cpp' as default
+[0.419s] -- Ensuring Eigen3 include directory is part of orocos-kdl CMake target
+[0.479s] -- Found nav2_map_server: 0.4.3 (/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/cmake)
+[0.856s] -- Found ament_lint_auto: 0.12.15 (/opt/ros/humble/share/ament_lint_auto/cmake)
+[0.905s] -- Found gtest sources under '/opt/ros/humble/src/gtest_vendor': C++ tests using 'Google Test' will be built
+[1.138s] -- Added test 'copyright' to check source files copyright and LICENSE
+[1.139s] -- Added test 'cppcheck' to perform static code analysis on C / C++ code
+[1.140s] -- Configured cppcheck include dirs: /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include
+[1.140s] -- Configured cppcheck exclude dirs and/or files: 
+[1.141s] -- Added test 'cpplint' to check C / C++ code against the Google style
+[1.141s] -- Configured cpplint exclude dirs and/or files: 
+[1.141s] -- Added test 'lint_cmake' to check CMake code style
+[1.143s] -- Added test 'uncrustify' to check C / C++ code style
+[1.143s] -- Configured uncrustify additional arguments: 
+[1.143s] -- Added test 'xmllint' to check XML markup files
+[1.144s] -- Configuring done
+[1.247s] -- Generating done
+[1.256s] -- Build files have been written to: /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner
+[1.289s] Consolidate compiler generated dependencies of target gtest_main
+[1.289s] Consolidate compiler generated dependencies of target gtest
+[1.301s] Consolidate compiler generated dependencies of target nav2_theta_star_planner
+[1.301s] [ 33%] Built target gtest_main
+[1.301s] [ 33%] Built target gtest
+[1.317s] [ 58%] Building CXX object CMakeFiles/nav2_theta_star_planner.dir/src/theta_star_planner.cpp.o
+[1.317s] [ 58%] Building CXX object CMakeFiles/nav2_theta_star_planner.dir/src/multi_layer_planner.cpp.o
+[1.317s] [ 58%] Building CXX object CMakeFiles/nav2_theta_star_planner.dir/src/node_theta_star.cpp.o
+[6.555s] [ 66%] Linking CXX shared library libnav2_theta_star_planner.so
+[6.744s] [ 83%] Built target nav2_theta_star_planner
+[6.761s] Consolidate compiler generated dependencies of target test_theta_star
+[6.780s] [ 91%] Building CXX object CMakeFiles/test_theta_star.dir/test/test_theta_star.cpp.o
+[11.894s] [100%] Linking CXX executable test_theta_star
+[12.192s] [100%] Built target test_theta_star
+[12.206s] Invoked command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner' returned '0': CMAKE_PREFIX_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner:/home/dex/dexe_mobile_application/install/dexforce_description:/home/dex/dexe_mobile_nav/install/w1_nav2:/home/dex/dexe_mobile_nav/install/swerve_robot_description:/home/dex/dexe_mobile_nav/install/nav2_smac_planner:/home/dex/dexe_mobile_nav/install/nav2_controller:/home/dex/dexe_mobile_nav/install/nav2_bringup:/home/dex/dexe_mobile_nav/install/dexforce_description:/home/dex/dexe_mobile_nav/install/aws_robomaker_small_warehouse_world:/home/dex/dexe_mobile_nav/install/swerve_robot_gazebo:/home/dex/dexe_mobile_nav/install/swerve_controller:/opt/ros/humble LD_LIBRARY_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/lib:/home/dex/dexe_mobile_nav/install/nav2_smac_planner/lib:/home/dex/dexe_mobile_nav/install/nav2_controller/lib:/usr/lib/x86_64-linux-gnu/gazebo-11/plugins:/opt/ros/humble/opt/rviz_ogre_vendor/lib:/opt/ros/humble/lib/x86_64-linux-gnu:/opt/ros/humble/lib /usr/bin/cmake --build /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner -- -j16 -l16
+[12.208s] Invoking command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner': CMAKE_PREFIX_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner:/home/dex/dexe_mobile_application/install/dexforce_description:/home/dex/dexe_mobile_nav/install/w1_nav2:/home/dex/dexe_mobile_nav/install/swerve_robot_description:/home/dex/dexe_mobile_nav/install/nav2_smac_planner:/home/dex/dexe_mobile_nav/install/nav2_controller:/home/dex/dexe_mobile_nav/install/nav2_bringup:/home/dex/dexe_mobile_nav/install/dexforce_description:/home/dex/dexe_mobile_nav/install/aws_robomaker_small_warehouse_world:/home/dex/dexe_mobile_nav/install/swerve_robot_gazebo:/home/dex/dexe_mobile_nav/install/swerve_controller:/opt/ros/humble LD_LIBRARY_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/lib:/home/dex/dexe_mobile_nav/install/nav2_smac_planner/lib:/home/dex/dexe_mobile_nav/install/nav2_controller/lib:/usr/lib/x86_64-linux-gnu/gazebo-11/plugins:/opt/ros/humble/opt/rviz_ogre_vendor/lib:/opt/ros/humble/lib/x86_64-linux-gnu:/opt/ros/humble/lib /usr/bin/cmake --install /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner
+[12.216s] -- Install configuration: "Release"
+[12.216s] -- Up-to-date: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/nav2_theta_star_planner/theta_star_planner.xml
+[12.216s] -- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/lib/libnav2_theta_star_planner.so
+[12.216s] -- Set runtime path of "/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/lib/libnav2_theta_star_planner.so" to ""
+[12.216s] -- Up-to-date: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/include/
+[12.216s] -- Up-to-date: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/include//nav2_theta_star_planner
+[12.216s] -- Up-to-date: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/include//nav2_theta_star_planner/swerve_steering_model.hpp
+[12.216s] -- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/include//nav2_theta_star_planner/multi_layer_planner.hpp
+[12.216s] -- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/include//nav2_theta_star_planner/node_theta_star.hpp
+[12.217s] -- Up-to-date: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/include//nav2_theta_star_planner/theta_star.hpp
+[12.217s] -- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/include//nav2_theta_star_planner/theta_star_planner.hpp
+[12.217s] -- Up-to-date: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/nav2_theta_star_planner/theta_star_planner.xml
+[12.217s] -- Up-to-date: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/nav2_theta_star_planner/environment/library_path.sh
+[12.217s] -- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/nav2_theta_star_planner/environment/library_path.dsv
+[12.217s] -- Up-to-date: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/ament_index/resource_index/package_run_dependencies/nav2_theta_star_planner
+[12.217s] -- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/ament_index/resource_index/parent_prefix_path/nav2_theta_star_planner
+[12.217s] -- Up-to-date: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/nav2_theta_star_planner/environment/ament_prefix_path.sh
+[12.217s] -- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/nav2_theta_star_planner/environment/ament_prefix_path.dsv
+[12.217s] -- Up-to-date: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/nav2_theta_star_planner/environment/path.sh
+[12.218s] -- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/nav2_theta_star_planner/environment/path.dsv
+[12.218s] -- Up-to-date: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/nav2_theta_star_planner/local_setup.bash
+[12.218s] -- Up-to-date: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/nav2_theta_star_planner/local_setup.sh
+[12.218s] -- Up-to-date: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/nav2_theta_star_planner/local_setup.zsh
+[12.218s] -- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/nav2_theta_star_planner/local_setup.dsv
+[12.218s] -- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/nav2_theta_star_planner/package.dsv
+[12.218s] -- Up-to-date: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/ament_index/resource_index/packages/nav2_theta_star_planner
+[12.218s] -- Up-to-date: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/ament_index/resource_index/nav2_core__pluginlib__plugin/nav2_theta_star_planner
+[12.218s] -- Up-to-date: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/nav2_theta_star_planner/cmake/ament_cmake_export_include_directories-extras.cmake
+[12.218s] -- Up-to-date: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/nav2_theta_star_planner/cmake/ament_cmake_export_libraries-extras.cmake
+[12.218s] -- Up-to-date: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/nav2_theta_star_planner/cmake/ament_cmake_export_dependencies-extras.cmake
+[12.218s] -- Up-to-date: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/nav2_theta_star_planner/cmake/nav2_theta_star_plannerConfig.cmake
+[12.218s] -- Up-to-date: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/nav2_theta_star_planner/cmake/nav2_theta_star_plannerConfig-version.cmake
+[12.218s] -- Up-to-date: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/nav2_theta_star_planner/package.xml
+[12.221s] Invoked command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner' returned '0': CMAKE_PREFIX_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner:/home/dex/dexe_mobile_application/install/dexforce_description:/home/dex/dexe_mobile_nav/install/w1_nav2:/home/dex/dexe_mobile_nav/install/swerve_robot_description:/home/dex/dexe_mobile_nav/install/nav2_smac_planner:/home/dex/dexe_mobile_nav/install/nav2_controller:/home/dex/dexe_mobile_nav/install/nav2_bringup:/home/dex/dexe_mobile_nav/install/dexforce_description:/home/dex/dexe_mobile_nav/install/aws_robomaker_small_warehouse_world:/home/dex/dexe_mobile_nav/install/swerve_robot_gazebo:/home/dex/dexe_mobile_nav/install/swerve_controller:/opt/ros/humble LD_LIBRARY_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/lib:/home/dex/dexe_mobile_nav/install/nav2_smac_planner/lib:/home/dex/dexe_mobile_nav/install/nav2_controller/lib:/usr/lib/x86_64-linux-gnu/gazebo-11/plugins:/opt/ros/humble/opt/rviz_ogre_vendor/lib:/opt/ros/humble/lib/x86_64-linux-gnu:/opt/ros/humble/lib /usr/bin/cmake --install /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner

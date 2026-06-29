@@ -1,0 +1,698 @@
+[0.000000] (-) TimerEvent: {}
+[0.000354] (-) JobUnselected: {'identifier': 'cmd_vel_mux'}
+[0.000397] (-) JobUnselected: {'identifier': 'costmap_queue'}
+[0.000464] (-) JobUnselected: {'identifier': 'dwb_core'}
+[0.000487] (-) JobUnselected: {'identifier': 'dwb_critics'}
+[0.000567] (-) JobUnselected: {'identifier': 'dwb_msgs'}
+[0.000577] (-) JobUnselected: {'identifier': 'dwb_plugins'}
+[0.000585] (-) JobUnselected: {'identifier': 'nav2_amcl'}
+[0.000593] (-) JobUnselected: {'identifier': 'nav2_behavior_tree'}
+[0.000601] (-) JobUnselected: {'identifier': 'nav2_behaviors'}
+[0.000609] (-) JobUnselected: {'identifier': 'nav2_bringup'}
+[0.000616] (-) JobUnselected: {'identifier': 'nav2_bt_navigator'}
+[0.000624] (-) JobUnselected: {'identifier': 'nav2_collision_monitor'}
+[0.000631] (-) JobUnselected: {'identifier': 'nav2_common'}
+[0.000639] (-) JobUnselected: {'identifier': 'nav2_constrained_smoother'}
+[0.000646] (-) JobUnselected: {'identifier': 'nav2_controller'}
+[0.000654] (-) JobUnselected: {'identifier': 'nav2_core'}
+[0.000661] (-) JobUnselected: {'identifier': 'nav2_costmap_2d'}
+[0.000669] (-) JobUnselected: {'identifier': 'nav2_dwb_controller'}
+[0.000677] (-) JobUnselected: {'identifier': 'nav2_graceful_controller'}
+[0.000684] (-) JobUnselected: {'identifier': 'nav2_lifecycle_manager'}
+[0.000692] (-) JobUnselected: {'identifier': 'nav2_mppi_controller'}
+[0.000699] (-) JobUnselected: {'identifier': 'nav2_msgs'}
+[0.000707] (-) JobUnselected: {'identifier': 'nav2_navfn_planner'}
+[0.000714] (-) JobUnselected: {'identifier': 'nav2_planner'}
+[0.000722] (-) JobUnselected: {'identifier': 'nav2_regulated_pure_pursuit_controller'}
+[0.000729] (-) JobUnselected: {'identifier': 'nav2_rotation_shim_controller'}
+[0.000737] (-) JobUnselected: {'identifier': 'nav2_route_planner'}
+[0.000744] (-) JobUnselected: {'identifier': 'nav2_rviz_plugins'}
+[0.000751] (-) JobUnselected: {'identifier': 'nav2_simple_commander'}
+[0.000759] (-) JobUnselected: {'identifier': 'nav2_smac_planner'}
+[0.000766] (-) JobUnselected: {'identifier': 'nav2_smoother'}
+[0.000774] (-) JobUnselected: {'identifier': 'nav2_util'}
+[0.000804] (-) JobUnselected: {'identifier': 'nav2_velocity_smoother'}
+[0.000818] (-) JobUnselected: {'identifier': 'nav2_voxel_grid'}
+[0.000835] (-) JobUnselected: {'identifier': 'nav2_waypoint_follower'}
+[0.000843] (-) JobUnselected: {'identifier': 'nav_2d_msgs'}
+[0.000851] (-) JobUnselected: {'identifier': 'nav_2d_utils'}
+[0.000862] (-) JobUnselected: {'identifier': 'navigation2'}
+[0.000870] (-) JobUnselected: {'identifier': 'nonpersistent_voxel_layer'}
+[0.000879] (nav2_map_server) JobQueued: {'identifier': 'nav2_map_server', 'dependencies': OrderedDict([('nav2_common', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_common'), ('nav2_msgs', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_msgs'), ('nav2_util', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_util')])}
+[0.000892] (nav2_theta_star_planner) JobQueued: {'identifier': 'nav2_theta_star_planner', 'dependencies': OrderedDict([('nav2_common', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_common'), ('nav2_msgs', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_msgs'), ('nav2_voxel_grid', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_voxel_grid'), ('nav2_util', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_util'), ('nav2_lifecycle_manager', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_lifecycle_manager'), ('nav2_map_server', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server'), ('nav2_costmap_2d', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_costmap_2d'), ('nav2_core', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_core')])}
+[0.000911] (nav2_map_server) JobStarted: {'identifier': 'nav2_map_server'}
+[0.008510] (nav2_map_server) JobProgress: {'identifier': 'nav2_map_server', 'progress': 'cmake'}
+[0.009029] (nav2_map_server) Command: {'cmd': ['/usr/bin/cmake', '/home/dex/dexe_mobile_nav/mobile_navigation/nav2_map_server', '-DCMAKE_INSTALL_PREFIX=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server'], 'cwd': '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_map_server', 'env': OrderedDict([('GJS_DEBUG_TOPICS', 'JS ERROR;JS LOG'), ('npm_config_devdir', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/node-gyp'), ('LESSOPEN', '| /usr/bin/lesspipe %s'), ('VSCODE_CWD', '/home/dex'), ('CURSOR_EXTENSION_HOST_ROLE', 'agent-exec'), ('VSCODE_ESM_ENTRYPOINT', 'vs/workbench/api/node/extensionHostProcess'), ('PUPPETEER_CACHE_DIR', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/puppeteer'), ('LANGUAGE', 'zh_CN:zh'), ('USER', 'dex'), ('VSCODE_NLS_CONFIG', '{"userLocale":"zh-cn","osLocale":"zh-cn","resolvedLanguage":"en","defaultMessagesFile":"/usr/share/cursor/resources/app/out/nls.messages.json","locale":"zh-cn","availableLanguages":{}}'), ('CARGO_TARGET_DIR', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/cargo-target'), ('CCACHE_DIR', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/ccache'), ('VSCODE_HANDLES_UNCAUGHT_ERRORS', 'true'), ('XDG_SESSION_TYPE', 'x11'), ('CURSOR_RIPGREP_PATH', '/usr/share/cursor/resources/app/node_modules/@vscode/ripgrep/bin/rg'), ('PIP_CACHE_DIR', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/pip'), ('NUGET_PACKAGES', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/nuget'), ('HOMEBREW_CACHE', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/homebrew'), ('SHLVL', '1'), ('LD_LIBRARY_PATH', '/home/dex/dexe_mobile_nav/install/nav2_smac_planner/lib:/home/dex/dexe_mobile_nav/install/nav2_controller/lib:/usr/lib/x86_64-linux-gnu/gazebo-11/plugins:/opt/ros/humble/opt/rviz_ogre_vendor/lib:/opt/ros/humble/lib/x86_64-linux-gnu:/opt/ros/humble/lib'), ('HOME', '/home/dex'), ('CHROME_DESKTOP', 'cursor.desktop'), ('OLDPWD', '/home/dex/dexe_mobile_nav/mobile_navigation'), ('DESKTOP_SESSION', 'ubuntu'), ('VSCODE_IPC_HOOK', '/run/user/1000/vscode-54babca4-3.8.-main.sock'), ('GIO_LAUNCHED_DESKTOP_FILE', '/usr/share/applications/cursor.desktop'), ('ROS_PYTHON_VERSION', '3'), ('GNOME_SHELL_SESSION_MODE', 'ubuntu'), ('GTK_MODULES', 'gail:atk-bridge'), ('CURSOR_ORIG_UID', '1000'), ('CURSOR_WORKSPACE_LABEL', 'dexe_mobile_nav'), ('MANAGERPID', '1988'), ('SYSTEMD_EXEC_PID', '2313'), ('NO_COLOR', '1'), ('CONDA_PKGS_DIRS', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/conda'), ('DBUS_SESSION_BUS_ADDRESS', 'unix:path=/run/user/1000/bus'), ('GIO_LAUNCHED_DESKTOP_FILE_PID', '8691'), ('VSCODE_CRASH_REPORTER_PROCESS_TYPE', 'extensionHost'), ('COMPOSER_HOME', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/composer'), ('COLCON_PREFIX_PATH', '/home/dex/dexe_mobile_nav/install:/home/dex/dexe_mobile_application/install'), ('ROS_DISTRO', 'humble'), ('GTK_IM_MODULE', 'ibus'), ('LOGNAME', 'dex'), ('FORCE_COLOR', '0'), ('JOURNAL_STREAM', '8:21965'), ('BUN_INSTALL_CACHE_DIR', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/bun'), ('_', '/usr/bin/colcon'), ('ROS_VERSION', '2'), ('CURSOR_LAYOUT', 'unifiedAgent'), ('GOMODCACHE', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/go-mod'), ('XDG_SESSION_CLASS', 'user'), ('USERNAME', 'dex'), ('CP_HOME_DIR', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/cocoapods'), ('TERM', 'dumb'), ('GAZEBO_MODEL_PATH', '/home/dex/dexe_mobile_nav/install/aws_robomaker_small_warehouse_world/share/aws_robomaker_small_warehouse_world/worlds:/home/dex/dexe_mobile_nav/install/aws_robomaker_small_warehouse_world/share/aws_robomaker_small_warehouse_world/models'), ('GNOME_DESKTOP_SESSION_ID', 'this-is-deprecated'), ('FC_FONTATIONS', '1'), ('ROS_LOCALHOST_ONLY', '1'), ('WINDOWPATH', '2'), ('POETRY_CACHE_DIR', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/poetry'), ('PATH', '/usr/share/cursor/resources/app/node_modules/@vscode/ripgrep/bin:/opt/ros/humble/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/snap/bin'), ('SESSION_MANAGER', 'local/dex-TX-Gaming-FA608UH-FA608UH:@/tmp/.ICE-unix/2285,unix/dex-TX-Gaming-FA608UH-FA608UH:/tmp/.ICE-unix/2285'), ('YARN_CACHE_FOLDER', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/yarn'), ('INVOCATION_ID', '213fe830081a40d3b32a029290757c98'), ('UV_CACHE_DIR', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/uv'), ('XDG_MENU_PREFIX', 'gnome-'), ('VSCODE_PROCESS_TITLE', 'extension-host (agent-exec) dexe_mobile_nav [1-4]'), ('PLAYWRIGHT_BROWSERS_PATH', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/playwright'), ('XDG_RUNTIME_DIR', '/run/user/1000'), ('BUNDLE_PATH', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/bundle'), ('GDK_BACKEND', 'x11'), ('AGENT_TRANSCRIPTS', '/home/dex/.cursor/projects/home-dex-dexe-mobile-nav/agent-transcripts'), ('CURSOR_AGENT', '1'), ('DISPLAY', ':1'), ('LANG', 'zh_CN.UTF-8'), ('XDG_CURRENT_DESKTOP', 'ubuntu:GNOME'), ('NX_CACHE_DIRECTORY', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/nx'), ('XMODIFIERS', '@im=ibus'), ('XDG_SESSION_DESKTOP', 'ubuntu'), ('XAUTHORITY', '/run/user/1000/gdm/Xauthority'), ('LS_COLORS', ''), ('CYPRESS_CACHE_FOLDER', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/cypress'), ('SSH_AGENT_LAUNCHER', 'gnome-keyring'), ('SSH_AUTH_SOCK', '/run/user/1000/keyring/ssh'), ('PNPM_STORE_PATH', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/pnpm-store'), ('AMENT_PREFIX_PATH', '/home/dex/dexe_mobile_application/install/dexforce_description:/home/dex/dexe_mobile_nav/install/w1_nav2:/home/dex/dexe_mobile_nav/install/swerve_robot_gazebo:/home/dex/dexe_mobile_nav/install/swerve_robot_description:/home/dex/dexe_mobile_nav/install/swerve_controller:/home/dex/dexe_mobile_nav/install/nav2_smac_planner:/home/dex/dexe_mobile_nav/install/nav2_controller:/home/dex/dexe_mobile_nav/install/nav2_bringup:/home/dex/dexe_mobile_nav/install/dexforce_description:/home/dex/dexe_mobile_nav/install/aws_robomaker_small_warehouse_world:/opt/ros/humble'), ('SHELL', '/bin/bash'), ('GOCACHE', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/go-build'), ('QT_ACCESSIBILITY', '1'), ('ELECTRON_RUN_AS_NODE', '1'), ('GDMSESSION', 'ubuntu'), ('LESSCLOSE', '/usr/bin/lesspipe %s %s'), ('GPG_AGENT_INFO', '/run/user/1000/gnupg/S.gpg-agent:0:1'), ('GJS_DEBUG_OUTPUT', 'stderr'), ('QT_IM_MODULE', 'ibus'), ('NPM_CONFIG_CACHE', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/npm'), ('PWD', '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_map_server'), ('GRADLE_USER_HOME', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/gradle'), ('XDG_CONFIG_DIRS', '/etc/xdg/xdg-ubuntu:/etc/xdg'), ('VSCODE_CODE_CACHE_PATH', '/home/dex/.config/Cursor/CachedData/e56ad3440df06d22ca7501e65fd518e905486ef0'), ('CURSOR_ORIG_GID', '1000'), ('XDG_DATA_DIRS', '/usr/share/ubuntu:/usr/share/gnome:/usr/local/share/:/usr/share/:/var/lib/snapd/desktop'), ('CURSOR_CONVERSATION_ID', 'f0d11738-708b-4cec-940c-6f1e84bba399'), ('PYTHONPATH', '/home/dex/dexe_mobile_nav/install/swerve_robot_gazebo/lib/python3.10/site-packages:/home/dex/dexe_mobile_nav/install/swerve_controller/lib/python3.10/site-packages:/opt/ros/humble/lib/python3.10/site-packages:/opt/ros/humble/local/lib/python3.10/dist-packages'), ('TURBO_CACHE_DIR', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/turbo'), ('COLCON', '1'), ('_ZO_DOCTOR', '0'), ('GEM_SPEC_CACHE', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/gem-specs'), ('CMAKE_PREFIX_PATH', '/home/dex/dexe_mobile_application/install/dexforce_description:/home/dex/dexe_mobile_nav/install/w1_nav2:/home/dex/dexe_mobile_nav/install/swerve_robot_description:/home/dex/dexe_mobile_nav/install/nav2_smac_planner:/home/dex/dexe_mobile_nav/install/nav2_controller:/home/dex/dexe_mobile_nav/install/nav2_bringup:/home/dex/dexe_mobile_nav/install/dexforce_description:/home/dex/dexe_mobile_nav/install/aws_robomaker_small_warehouse_world:/home/dex/dexe_mobile_nav/install/swerve_robot_gazebo:/home/dex/dexe_mobile_nav/install/swerve_controller:/opt/ros/humble'), ('VSCODE_PID', '8691')]), 'shell': False}
+[0.021505] (nav2_map_server) StdoutLine: {'line': b'-- Found ament_cmake: 1.3.14 (/opt/ros/humble/share/ament_cmake/cmake)\n'}
+[0.099699] (-) TimerEvent: {}
+[0.116794] (nav2_map_server) StdoutLine: {'line': b'-- Found nav2_common: 1.1.20 (/opt/ros/humble/share/nav2_common/cmake)\n'}
+[0.117050] (nav2_map_server) StdoutLine: {'line': b'-- Found rclcpp: 16.0.19 (/opt/ros/humble/share/rclcpp/cmake)\n'}
+[0.137401] (nav2_map_server) StdoutLine: {'line': b'-- Found rosidl_generator_c: 3.1.8 (/opt/ros/humble/share/rosidl_generator_c/cmake)\n'}
+[0.138729] (nav2_map_server) StdoutLine: {'line': b'-- Found rosidl_adapter: 3.1.8 (/opt/ros/humble/share/rosidl_adapter/cmake)\n'}
+[0.142188] (nav2_map_server) StdoutLine: {'line': b'-- Found rosidl_generator_cpp: 3.1.8 (/opt/ros/humble/share/rosidl_generator_cpp/cmake)\n'}
+[0.148001] (nav2_map_server) StdoutLine: {'line': b'-- Using all available rosidl_typesupport_c: rosidl_typesupport_fastrtps_c;rosidl_typesupport_introspection_c\n'}
+[0.156600] (nav2_map_server) StdoutLine: {'line': b'-- Using all available rosidl_typesupport_cpp: rosidl_typesupport_fastrtps_cpp;rosidl_typesupport_introspection_cpp\n'}
+[0.175506] (nav2_map_server) StdoutLine: {'line': b'-- Found rmw_implementation_cmake: 6.1.2 (/opt/ros/humble/share/rmw_implementation_cmake/cmake)\n'}
+[0.176324] (nav2_map_server) StdoutLine: {'line': b'-- Found rmw_fastrtps_cpp: 6.2.10 (/opt/ros/humble/share/rmw_fastrtps_cpp/cmake)\n'}
+[0.199808] (-) TimerEvent: {}
+[0.262619] (nav2_map_server) StdoutLine: {'line': b"-- Using RMW implementation 'rmw_fastrtps_cpp' as default\n"}
+[0.292273] (nav2_map_server) StdoutLine: {'line': b'-- Found rclcpp_lifecycle: 16.0.19 (/opt/ros/humble/share/rclcpp_lifecycle/cmake)\n'}
+[0.299894] (-) TimerEvent: {}
+[0.301841] (nav2_map_server) StdoutLine: {'line': b'-- Found rclcpp_components: 16.0.19 (/opt/ros/humble/share/rclcpp_components/cmake)\n'}
+[0.312873] (nav2_map_server) StdoutLine: {'line': b'-- Found nav_msgs: 4.9.1 (/opt/ros/humble/share/nav_msgs/cmake)\n'}
+[0.329828] (nav2_map_server) StdoutLine: {'line': b'-- Found nav2_msgs: 1.1.20 (/opt/ros/humble/share/nav2_msgs/cmake)\n'}
+[0.356265] (nav2_map_server) StdoutLine: {'line': b'-- Found yaml_cpp_vendor: 8.0.2 (/opt/ros/humble/share/yaml_cpp_vendor/cmake)\n'}
+[0.356954] (nav2_map_server) StdoutLine: {'line': b'-- Found tf2: 0.25.20 (/opt/ros/humble/share/tf2/cmake)\n'}
+[0.359003] (nav2_map_server) StdoutLine: {'line': b'-- Found nav2_util: 1.1.20 (/opt/ros/humble/share/nav2_util/cmake)\n'}
+[0.385661] (nav2_map_server) StdoutLine: {'line': b'-- Found eigen3_cmake_module: 0.1.1 (/opt/ros/humble/share/eigen3_cmake_module/cmake)\n'}
+[0.386612] (nav2_map_server) StdoutLine: {'line': b'-- Ensuring Eigen3 include directory is part of orocos-kdl CMake target\n'}
+[0.399982] (-) TimerEvent: {}
+[0.496622] (nav2_map_server) StdoutLine: {'line': b'-- Found ament_lint_auto: 0.12.15 (/opt/ros/humble/share/ament_lint_auto/cmake)\n'}
+[0.500110] (-) TimerEvent: {}
+[0.566130] (nav2_map_server) StdoutLine: {'line': b"-- Found gtest sources under '/opt/ros/humble/src/gtest_vendor': C++ tests using 'Google Test' will be built\n"}
+[0.570756] (nav2_map_server) StdoutLine: {'line': b"-- Found gtest sources under '/opt/ros/humble/src/gtest_vendor': C++ tests using 'Google Test' will be built\n"}
+[0.574835] (nav2_map_server) StdoutLine: {'line': b"-- Found gtest sources under '/opt/ros/humble/src/gtest_vendor': C++ tests using 'Google Test' will be built\n"}
+[0.581301] (nav2_map_server) StdoutLine: {'line': b"-- Added test 'cppcheck' to perform static code analysis on C / C++ code\n"}
+[0.581972] (nav2_map_server) StdoutLine: {'line': b'-- Configured cppcheck include dirs: /home/dex/dexe_mobile_nav/mobile_navigation/nav2_map_server/include\n'}
+[0.582062] (nav2_map_server) StdoutLine: {'line': b'-- Configured cppcheck exclude dirs and/or files: \n'}
+[0.584654] (nav2_map_server) StdoutLine: {'line': b"-- Added test 'cpplint' to check C / C++ code against the Google style\n"}
+[0.584769] (nav2_map_server) StdoutLine: {'line': b'-- Configured cpplint exclude dirs and/or files: \n'}
+[0.585265] (nav2_map_server) StdoutLine: {'line': b"-- Added test 'flake8' to check Python code syntax and style conventions\n"}
+[0.586100] (nav2_map_server) StdoutLine: {'line': b"-- Added test 'lint_cmake' to check CMake code style\n"}
+[0.586551] (nav2_map_server) StdoutLine: {'line': b"-- Added test 'pep257' to check Python code against some of the docstring style conventions in PEP 257\n"}
+[0.589216] (nav2_map_server) StdoutLine: {'line': b"-- Added test 'uncrustify' to check C / C++ code style\n"}
+[0.589301] (nav2_map_server) StdoutLine: {'line': b'-- Configured uncrustify additional arguments: \n'}
+[0.589700] (nav2_map_server) StdoutLine: {'line': b"-- Added test 'xmllint' to check XML markup files\n"}
+[0.591636] (nav2_map_server) StdoutLine: {'line': b'-- Configuring done\n'}
+[0.600174] (-) TimerEvent: {}
+[0.700442] (-) TimerEvent: {}
+[0.800680] (-) TimerEvent: {}
+[0.900972] (-) TimerEvent: {}
+[0.939040] (nav2_map_server) StdoutLine: {'line': b'-- Generating done\n'}
+[0.968955] (nav2_map_server) StdoutLine: {'line': b'-- Build files have been written to: /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_map_server\n'}
+[0.980340] (nav2_map_server) CommandEnded: {'returncode': 0}
+[0.981250] (nav2_map_server) JobProgress: {'identifier': 'nav2_map_server', 'progress': 'build'}
+[0.981701] (nav2_map_server) Command: {'cmd': ['/usr/bin/cmake', '--build', '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_map_server', '--', '-j16', '-l16'], 'cwd': '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_map_server', 'env': OrderedDict([('GJS_DEBUG_TOPICS', 'JS ERROR;JS LOG'), ('npm_config_devdir', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/node-gyp'), ('LESSOPEN', '| /usr/bin/lesspipe %s'), ('VSCODE_CWD', '/home/dex'), ('CURSOR_EXTENSION_HOST_ROLE', 'agent-exec'), ('VSCODE_ESM_ENTRYPOINT', 'vs/workbench/api/node/extensionHostProcess'), ('PUPPETEER_CACHE_DIR', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/puppeteer'), ('LANGUAGE', 'zh_CN:zh'), ('USER', 'dex'), ('VSCODE_NLS_CONFIG', '{"userLocale":"zh-cn","osLocale":"zh-cn","resolvedLanguage":"en","defaultMessagesFile":"/usr/share/cursor/resources/app/out/nls.messages.json","locale":"zh-cn","availableLanguages":{}}'), ('CARGO_TARGET_DIR', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/cargo-target'), ('CCACHE_DIR', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/ccache'), ('VSCODE_HANDLES_UNCAUGHT_ERRORS', 'true'), ('XDG_SESSION_TYPE', 'x11'), ('CURSOR_RIPGREP_PATH', '/usr/share/cursor/resources/app/node_modules/@vscode/ripgrep/bin/rg'), ('PIP_CACHE_DIR', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/pip'), ('NUGET_PACKAGES', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/nuget'), ('HOMEBREW_CACHE', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/homebrew'), ('SHLVL', '1'), ('LD_LIBRARY_PATH', '/home/dex/dexe_mobile_nav/install/nav2_smac_planner/lib:/home/dex/dexe_mobile_nav/install/nav2_controller/lib:/usr/lib/x86_64-linux-gnu/gazebo-11/plugins:/opt/ros/humble/opt/rviz_ogre_vendor/lib:/opt/ros/humble/lib/x86_64-linux-gnu:/opt/ros/humble/lib'), ('HOME', '/home/dex'), ('CHROME_DESKTOP', 'cursor.desktop'), ('OLDPWD', '/home/dex/dexe_mobile_nav/mobile_navigation'), ('DESKTOP_SESSION', 'ubuntu'), ('VSCODE_IPC_HOOK', '/run/user/1000/vscode-54babca4-3.8.-main.sock'), ('GIO_LAUNCHED_DESKTOP_FILE', '/usr/share/applications/cursor.desktop'), ('ROS_PYTHON_VERSION', '3'), ('GNOME_SHELL_SESSION_MODE', 'ubuntu'), ('GTK_MODULES', 'gail:atk-bridge'), ('CURSOR_ORIG_UID', '1000'), ('CURSOR_WORKSPACE_LABEL', 'dexe_mobile_nav'), ('MANAGERPID', '1988'), ('SYSTEMD_EXEC_PID', '2313'), ('NO_COLOR', '1'), ('CONDA_PKGS_DIRS', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/conda'), ('DBUS_SESSION_BUS_ADDRESS', 'unix:path=/run/user/1000/bus'), ('GIO_LAUNCHED_DESKTOP_FILE_PID', '8691'), ('VSCODE_CRASH_REPORTER_PROCESS_TYPE', 'extensionHost'), ('COMPOSER_HOME', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/composer'), ('COLCON_PREFIX_PATH', '/home/dex/dexe_mobile_nav/install:/home/dex/dexe_mobile_application/install'), ('ROS_DISTRO', 'humble'), ('GTK_IM_MODULE', 'ibus'), ('LOGNAME', 'dex'), ('FORCE_COLOR', '0'), ('JOURNAL_STREAM', '8:21965'), ('BUN_INSTALL_CACHE_DIR', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/bun'), ('_', '/usr/bin/colcon'), ('ROS_VERSION', '2'), ('CURSOR_LAYOUT', 'unifiedAgent'), ('GOMODCACHE', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/go-mod'), ('XDG_SESSION_CLASS', 'user'), ('USERNAME', 'dex'), ('CP_HOME_DIR', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/cocoapods'), ('TERM', 'dumb'), ('GAZEBO_MODEL_PATH', '/home/dex/dexe_mobile_nav/install/aws_robomaker_small_warehouse_world/share/aws_robomaker_small_warehouse_world/worlds:/home/dex/dexe_mobile_nav/install/aws_robomaker_small_warehouse_world/share/aws_robomaker_small_warehouse_world/models'), ('GNOME_DESKTOP_SESSION_ID', 'this-is-deprecated'), ('FC_FONTATIONS', '1'), ('ROS_LOCALHOST_ONLY', '1'), ('WINDOWPATH', '2'), ('POETRY_CACHE_DIR', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/poetry'), ('PATH', '/usr/share/cursor/resources/app/node_modules/@vscode/ripgrep/bin:/opt/ros/humble/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/snap/bin'), ('SESSION_MANAGER', 'local/dex-TX-Gaming-FA608UH-FA608UH:@/tmp/.ICE-unix/2285,unix/dex-TX-Gaming-FA608UH-FA608UH:/tmp/.ICE-unix/2285'), ('YARN_CACHE_FOLDER', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/yarn'), ('INVOCATION_ID', '213fe830081a40d3b32a029290757c98'), ('UV_CACHE_DIR', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/uv'), ('XDG_MENU_PREFIX', 'gnome-'), ('VSCODE_PROCESS_TITLE', 'extension-host (agent-exec) dexe_mobile_nav [1-4]'), ('PLAYWRIGHT_BROWSERS_PATH', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/playwright'), ('XDG_RUNTIME_DIR', '/run/user/1000'), ('BUNDLE_PATH', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/bundle'), ('GDK_BACKEND', 'x11'), ('AGENT_TRANSCRIPTS', '/home/dex/.cursor/projects/home-dex-dexe-mobile-nav/agent-transcripts'), ('CURSOR_AGENT', '1'), ('DISPLAY', ':1'), ('LANG', 'zh_CN.UTF-8'), ('XDG_CURRENT_DESKTOP', 'ubuntu:GNOME'), ('NX_CACHE_DIRECTORY', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/nx'), ('XMODIFIERS', '@im=ibus'), ('XDG_SESSION_DESKTOP', 'ubuntu'), ('XAUTHORITY', '/run/user/1000/gdm/Xauthority'), ('LS_COLORS', ''), ('CYPRESS_CACHE_FOLDER', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/cypress'), ('SSH_AGENT_LAUNCHER', 'gnome-keyring'), ('SSH_AUTH_SOCK', '/run/user/1000/keyring/ssh'), ('PNPM_STORE_PATH', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/pnpm-store'), ('AMENT_PREFIX_PATH', '/home/dex/dexe_mobile_application/install/dexforce_description:/home/dex/dexe_mobile_nav/install/w1_nav2:/home/dex/dexe_mobile_nav/install/swerve_robot_gazebo:/home/dex/dexe_mobile_nav/install/swerve_robot_description:/home/dex/dexe_mobile_nav/install/swerve_controller:/home/dex/dexe_mobile_nav/install/nav2_smac_planner:/home/dex/dexe_mobile_nav/install/nav2_controller:/home/dex/dexe_mobile_nav/install/nav2_bringup:/home/dex/dexe_mobile_nav/install/dexforce_description:/home/dex/dexe_mobile_nav/install/aws_robomaker_small_warehouse_world:/opt/ros/humble'), ('SHELL', '/bin/bash'), ('GOCACHE', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/go-build'), ('QT_ACCESSIBILITY', '1'), ('ELECTRON_RUN_AS_NODE', '1'), ('GDMSESSION', 'ubuntu'), ('LESSCLOSE', '/usr/bin/lesspipe %s %s'), ('GPG_AGENT_INFO', '/run/user/1000/gnupg/S.gpg-agent:0:1'), ('GJS_DEBUG_OUTPUT', 'stderr'), ('QT_IM_MODULE', 'ibus'), ('NPM_CONFIG_CACHE', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/npm'), ('PWD', '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_map_server'), ('GRADLE_USER_HOME', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/gradle'), ('XDG_CONFIG_DIRS', '/etc/xdg/xdg-ubuntu:/etc/xdg'), ('VSCODE_CODE_CACHE_PATH', '/home/dex/.config/Cursor/CachedData/e56ad3440df06d22ca7501e65fd518e905486ef0'), ('CURSOR_ORIG_GID', '1000'), ('XDG_DATA_DIRS', '/usr/share/ubuntu:/usr/share/gnome:/usr/local/share/:/usr/share/:/var/lib/snapd/desktop'), ('CURSOR_CONVERSATION_ID', 'f0d11738-708b-4cec-940c-6f1e84bba399'), ('PYTHONPATH', '/home/dex/dexe_mobile_nav/install/swerve_robot_gazebo/lib/python3.10/site-packages:/home/dex/dexe_mobile_nav/install/swerve_controller/lib/python3.10/site-packages:/opt/ros/humble/lib/python3.10/site-packages:/opt/ros/humble/local/lib/python3.10/dist-packages'), ('TURBO_CACHE_DIR', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/turbo'), ('COLCON', '1'), ('_ZO_DOCTOR', '0'), ('GEM_SPEC_CACHE', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/gem-specs'), ('CMAKE_PREFIX_PATH', '/home/dex/dexe_mobile_application/install/dexforce_description:/home/dex/dexe_mobile_nav/install/w1_nav2:/home/dex/dexe_mobile_nav/install/swerve_robot_description:/home/dex/dexe_mobile_nav/install/nav2_smac_planner:/home/dex/dexe_mobile_nav/install/nav2_controller:/home/dex/dexe_mobile_nav/install/nav2_bringup:/home/dex/dexe_mobile_nav/install/dexforce_description:/home/dex/dexe_mobile_nav/install/aws_robomaker_small_warehouse_world:/home/dex/dexe_mobile_nav/install/swerve_robot_gazebo:/home/dex/dexe_mobile_nav/install/swerve_controller:/opt/ros/humble'), ('VSCODE_PID', '8691')]), 'shell': False}
+[1.001030] (-) TimerEvent: {}
+[1.038170] (nav2_map_server) StdoutLine: {'line': b'[  7%] Building CXX object gtest/CMakeFiles/gtest_main.dir/src/gtest_main.cc.o\n'}
+[1.038322] (nav2_map_server) StdoutLine: {'line': b'[  7%] Building CXX object CMakeFiles/map_io.dir/src/map_io.cpp.o\n'}
+[1.038374] (nav2_map_server) StdoutLine: {'line': b'[  9%] Building CXX object gtest/CMakeFiles/gtest.dir/src/gtest-all.cc.o\n'}
+[1.038415] (nav2_map_server) StdoutLine: {'line': b'[  9%] Building CXX object CMakeFiles/map_io.dir/src/map_mode.cpp.o\n'}
+[1.101330] (-) TimerEvent: {}
+[1.201671] (-) TimerEvent: {}
+[1.301839] (-) TimerEvent: {}
+[1.402054] (-) TimerEvent: {}
+[1.502247] (-) TimerEvent: {}
+[1.602437] (-) TimerEvent: {}
+[1.702642] (-) TimerEvent: {}
+[1.733228] (nav2_map_server) StdoutLine: {'line': b'[ 12%] Linking CXX static library libgtest_main.a\n'}
+[1.802952] (-) TimerEvent: {}
+[1.865796] (nav2_map_server) StdoutLine: {'line': b'[ 12%] Built target gtest_main\n'}
+[1.903106] (-) TimerEvent: {}
+[2.003308] (-) TimerEvent: {}
+[2.103512] (-) TimerEvent: {}
+[2.203767] (-) TimerEvent: {}
+[2.303986] (-) TimerEvent: {}
+[2.404171] (-) TimerEvent: {}
+[2.504356] (-) TimerEvent: {}
+[2.604593] (-) TimerEvent: {}
+[2.704788] (-) TimerEvent: {}
+[2.804977] (-) TimerEvent: {}
+[2.905169] (-) TimerEvent: {}
+[3.005363] (-) TimerEvent: {}
+[3.105545] (-) TimerEvent: {}
+[3.205751] (-) TimerEvent: {}
+[3.306035] (-) TimerEvent: {}
+[3.406252] (-) TimerEvent: {}
+[3.506561] (-) TimerEvent: {}
+[3.606788] (-) TimerEvent: {}
+[3.706982] (-) TimerEvent: {}
+[3.807168] (-) TimerEvent: {}
+[3.907370] (-) TimerEvent: {}
+[4.007552] (-) TimerEvent: {}
+[4.107748] (-) TimerEvent: {}
+[4.207977] (-) TimerEvent: {}
+[4.308143] (-) TimerEvent: {}
+[4.408462] (-) TimerEvent: {}
+[4.508763] (-) TimerEvent: {}
+[4.609072] (-) TimerEvent: {}
+[4.709376] (-) TimerEvent: {}
+[4.809674] (-) TimerEvent: {}
+[4.909982] (-) TimerEvent: {}
+[5.010182] (-) TimerEvent: {}
+[5.110389] (-) TimerEvent: {}
+[5.210610] (-) TimerEvent: {}
+[5.220305] (nav2_map_server) StdoutLine: {'line': b'[ 14%] Linking CXX shared library libmap_io.so\n'}
+[5.310729] (-) TimerEvent: {}
+[5.403323] (nav2_map_server) StdoutLine: {'line': b'[ 14%] Built target map_io\n'}
+[5.410848] (-) TimerEvent: {}
+[5.425200] (nav2_map_server) StdoutLine: {'line': b'[ 29%] Building CXX object test/component/CMakeFiles/test_map_saver_publisher.dir/test_map_saver_publisher.cpp.o\n'}
+[5.425505] (nav2_map_server) StdoutLine: {'line': b'[ 29%] Building CXX object CMakeFiles/map_server_core.dir/src/costmap_filter_info/costmap_filter_info_server.cpp.o\n'}
+[5.425631] (nav2_map_server) StdoutLine: {'line': b'[ 29%] Building CXX object CMakeFiles/map_server_core.dir/src/map_saver/map_saver.cpp.o\n'}
+[5.425746] (nav2_map_server) StdoutLine: {'line': b'[ 29%] Building CXX object test/component/CMakeFiles/test_map_saver_publisher.dir/__/test_constants.cpp.o\n'}
+[5.425884] (nav2_map_server) StdoutLine: {'line': b'[ 29%] Building CXX object CMakeFiles/map_preprocess_core.dir/src/map_preprocess/node_map_io.cpp.o\n'}
+[5.426003] (nav2_map_server) StdoutLine: {'line': b'[ 29%] Building CXX object CMakeFiles/map_preprocess_core.dir/src/map_preprocess/map_preprocess.cpp.o\n'}
+[5.426098] (nav2_map_server) StdoutLine: {'line': b'[ 31%] Building CXX object CMakeFiles/map_server_core.dir/src/map_server/map_server.cpp.o\n'}
+[5.511004] (-) TimerEvent: {}
+[5.611249] (-) TimerEvent: {}
+[5.711458] (-) TimerEvent: {}
+[5.811671] (-) TimerEvent: {}
+[5.911975] (-) TimerEvent: {}
+[6.012351] (-) TimerEvent: {}
+[6.112660] (-) TimerEvent: {}
+[6.212994] (-) TimerEvent: {}
+[6.313234] (-) TimerEvent: {}
+[6.413554] (-) TimerEvent: {}
+[6.513801] (-) TimerEvent: {}
+[6.614982] (-) TimerEvent: {}
+[6.664823] (nav2_map_server) StdoutLine: {'line': b'[ 34%] Linking CXX static library libgtest.a\n'}
+[6.715064] (-) TimerEvent: {}
+[6.775316] (nav2_map_server) StdoutLine: {'line': b'[ 34%] Built target gtest\n'}
+[6.801622] (nav2_map_server) StdoutLine: {'line': b'[ 41%] Building CXX object test/unit/CMakeFiles/test_map_io.dir/__/test_constants.cpp.o\n'}
+[6.801838] (nav2_map_server) StdoutLine: {'line': b'[ 41%] Building CXX object test/map_saver_cli/CMakeFiles/test_map_saver_cli.dir/test_map_saver_cli.cpp.o\n'}
+[6.801903] (nav2_map_server) StdoutLine: {'line': b'[ 41%] Building CXX object test/map_saver_cli/CMakeFiles/test_map_saver_cli.dir/__/test_constants.cpp.o\n'}
+[6.801953] (nav2_map_server) StdoutLine: {'line': b'[ 43%] Building CXX object test/unit/CMakeFiles/test_map_io.dir/test_map_io.cpp.o\n'}
+[6.815290] (-) TimerEvent: {}
+[6.915618] (-) TimerEvent: {}
+[7.015970] (-) TimerEvent: {}
+[7.116266] (-) TimerEvent: {}
+[7.216455] (-) TimerEvent: {}
+[7.316656] (-) TimerEvent: {}
+[7.416852] (-) TimerEvent: {}
+[7.517045] (-) TimerEvent: {}
+[7.617256] (-) TimerEvent: {}
+[7.717494] (-) TimerEvent: {}
+[7.817815] (-) TimerEvent: {}
+[7.918209] (-) TimerEvent: {}
+[8.018528] (-) TimerEvent: {}
+[8.118750] (-) TimerEvent: {}
+[8.219129] (-) TimerEvent: {}
+[8.250016] (nav2_map_server) StdoutLine: {'line': b'[ 46%] Linking CXX shared library libmap_preprocess_core.so\n'}
+[8.319257] (-) TimerEvent: {}
+[8.419521] (-) TimerEvent: {}
+[8.495375] (nav2_map_server) StdoutLine: {'line': b'[ 46%] Built target map_preprocess_core\n'}
+[8.519732] (-) TimerEvent: {}
+[8.520564] (nav2_map_server) StdoutLine: {'line': b'[ 48%] Building CXX object CMakeFiles/map_preprocess.dir/src/map_preprocess/main.cpp.o\n'}
+[8.619861] (-) TimerEvent: {}
+[8.720188] (-) TimerEvent: {}
+[8.820409] (-) TimerEvent: {}
+[8.920639] (-) TimerEvent: {}
+[9.020941] (-) TimerEvent: {}
+[9.121430] (-) TimerEvent: {}
+[9.221948] (-) TimerEvent: {}
+[9.322244] (-) TimerEvent: {}
+[9.325889] (nav2_map_server) StdoutLine: {'line': b'[ 51%] Linking CXX executable map_preprocess\n'}
+[9.422472] (-) TimerEvent: {}
+[9.522850] (-) TimerEvent: {}
+[9.623208] (-) TimerEvent: {}
+[9.647181] (nav2_map_server) StdoutLine: {'line': b'[ 51%] Built target map_preprocess\n'}
+[9.723425] (-) TimerEvent: {}
+[9.823793] (-) TimerEvent: {}
+[9.924049] (-) TimerEvent: {}
+[10.024267] (-) TimerEvent: {}
+[10.124617] (-) TimerEvent: {}
+[10.224874] (-) TimerEvent: {}
+[10.325114] (-) TimerEvent: {}
+[10.425335] (-) TimerEvent: {}
+[10.525554] (-) TimerEvent: {}
+[10.565431] (nav2_map_server) StdoutLine: {'line': b'[ 53%] Linking CXX executable test_map_saver_publisher\n'}
+[10.625668] (-) TimerEvent: {}
+[10.725851] (-) TimerEvent: {}
+[10.766629] (nav2_map_server) StdoutLine: {'line': b'[ 53%] Built target test_map_saver_publisher\n'}
+[10.825969] (-) TimerEvent: {}
+[10.926187] (-) TimerEvent: {}
+[11.026419] (-) TimerEvent: {}
+[11.126636] (-) TimerEvent: {}
+[11.226844] (-) TimerEvent: {}
+[11.327030] (-) TimerEvent: {}
+[11.427230] (-) TimerEvent: {}
+[11.527451] (-) TimerEvent: {}
+[11.627662] (-) TimerEvent: {}
+[11.727855] (-) TimerEvent: {}
+[11.828051] (-) TimerEvent: {}
+[11.928250] (-) TimerEvent: {}
+[12.028450] (-) TimerEvent: {}
+[12.128653] (-) TimerEvent: {}
+[12.209959] (nav2_map_server) StdoutLine: {'line': b'[ 56%] Linking CXX executable test_map_io\n'}
+[12.228756] (-) TimerEvent: {}
+[12.328961] (-) TimerEvent: {}
+[12.429181] (-) TimerEvent: {}
+[12.459269] (nav2_map_server) StdoutLine: {'line': b'[ 56%] Built target test_map_io\n'}
+[12.529292] (-) TimerEvent: {}
+[12.629479] (-) TimerEvent: {}
+[12.729726] (-) TimerEvent: {}
+[12.829938] (-) TimerEvent: {}
+[12.930145] (-) TimerEvent: {}
+[13.001749] (nav2_map_server) StdoutLine: {'line': b'[ 58%] Linking CXX executable test_map_saver_cli\n'}
+[13.030240] (-) TimerEvent: {}
+[13.113531] (nav2_map_server) StdoutLine: {'line': b'[ 58%] Built target test_map_saver_cli\n'}
+[13.130343] (-) TimerEvent: {}
+[13.230544] (-) TimerEvent: {}
+[13.330762] (-) TimerEvent: {}
+[13.431087] (-) TimerEvent: {}
+[13.531408] (-) TimerEvent: {}
+[13.631646] (-) TimerEvent: {}
+[13.731840] (-) TimerEvent: {}
+[13.832067] (-) TimerEvent: {}
+[13.932341] (-) TimerEvent: {}
+[14.032702] (-) TimerEvent: {}
+[14.132994] (-) TimerEvent: {}
+[14.233271] (-) TimerEvent: {}
+[14.333530] (-) TimerEvent: {}
+[14.433752] (-) TimerEvent: {}
+[14.534007] (-) TimerEvent: {}
+[14.634318] (-) TimerEvent: {}
+[14.734505] (-) TimerEvent: {}
+[14.834732] (-) TimerEvent: {}
+[14.935001] (-) TimerEvent: {}
+[15.035216] (-) TimerEvent: {}
+[15.135465] (-) TimerEvent: {}
+[15.208402] (nav2_map_server) StdoutLine: {'line': b'[ 60%] Linking CXX shared library libmap_server_core.so\n'}
+[15.235592] (-) TimerEvent: {}
+[15.335805] (-) TimerEvent: {}
+[15.436067] (-) TimerEvent: {}
+[15.459487] (nav2_map_server) StdoutLine: {'line': b'[ 60%] Built target map_server_core\n'}
+[15.483231] (nav2_map_server) StdoutLine: {'line': b'[ 82%] Building CXX object CMakeFiles/costmap_filter_info_server.dir/src/costmap_filter_info/main.cpp.o\n'}
+[15.483448] (nav2_map_server) StdoutLine: {'line': b'[ 82%] Building CXX object CMakeFiles/map_server.dir/src/map_server/main.cpp.o\n'}
+[15.483496] (nav2_map_server) StdoutLine: {'line': b'[ 82%] Building CXX object test/component/CMakeFiles/test_map_server_node.dir/__/test_constants.cpp.o\n'}
+[15.483535] (nav2_map_server) StdoutLine: {'line': b'[ 82%] Building CXX object test/component/CMakeFiles/test_map_saver_node.dir/test_map_saver_node.cpp.o\n'}
+[15.483572] (nav2_map_server) StdoutLine: {'line': b'[ 82%] Building CXX object CMakeFiles/map_saver_server.dir/src/map_saver/main_server.cpp.o\n'}
+[15.483609] (nav2_map_server) StdoutLine: {'line': b'[ 82%] Building CXX object test/unit/CMakeFiles/test_costmap_filter_info_server.dir/test_costmap_filter_info_server.cpp.o\n'}
+[15.483644] (nav2_map_server) StdoutLine: {'line': b'[ 82%] Building CXX object test/component/CMakeFiles/test_map_saver_node.dir/__/test_constants.cpp.o\n'}
+[15.483688] (nav2_map_server) StdoutLine: {'line': b'[ 82%] Building CXX object test/component/CMakeFiles/test_map_server_node.dir/test_map_server_node.cpp.o\n'}
+[15.483726] (nav2_map_server) StdoutLine: {'line': b'[ 82%] Building CXX object CMakeFiles/map_saver_cli.dir/src/map_saver/main_cli.cpp.o\n'}
+[15.536176] (-) TimerEvent: {}
+[15.637847] (-) TimerEvent: {}
+[15.738060] (-) TimerEvent: {}
+[15.838280] (-) TimerEvent: {}
+[15.938505] (-) TimerEvent: {}
+[16.038733] (-) TimerEvent: {}
+[16.138967] (-) TimerEvent: {}
+[16.239221] (-) TimerEvent: {}
+[16.339592] (-) TimerEvent: {}
+[16.439979] (-) TimerEvent: {}
+[16.540287] (-) TimerEvent: {}
+[16.640540] (-) TimerEvent: {}
+[16.740808] (-) TimerEvent: {}
+[16.841090] (-) TimerEvent: {}
+[16.941321] (-) TimerEvent: {}
+[17.041557] (-) TimerEvent: {}
+[17.141770] (-) TimerEvent: {}
+[17.242143] (-) TimerEvent: {}
+[17.342538] (-) TimerEvent: {}
+[17.442969] (-) TimerEvent: {}
+[17.543208] (-) TimerEvent: {}
+[17.643470] (-) TimerEvent: {}
+[17.743820] (-) TimerEvent: {}
+[17.844162] (-) TimerEvent: {}
+[17.944584] (-) TimerEvent: {}
+[18.044980] (-) TimerEvent: {}
+[18.145447] (-) TimerEvent: {}
+[18.245689] (-) TimerEvent: {}
+[18.345989] (-) TimerEvent: {}
+[18.446213] (-) TimerEvent: {}
+[18.546544] (-) TimerEvent: {}
+[18.570976] (nav2_map_server) StdoutLine: {'line': b'[ 85%] Linking CXX executable costmap_filter_info_server\n'}
+[18.589984] (nav2_map_server) StdoutLine: {'line': b'[ 90%] Linking CXX executable map_server\n'}
+[18.590213] (nav2_map_server) StdoutLine: {'line': b'[ 90%] Linking CXX executable map_saver_server\n'}
+[18.646630] (-) TimerEvent: {}
+[18.739932] (nav2_map_server) StdoutLine: {'line': b'[ 92%] Linking CXX executable map_saver_cli\n'}
+[18.746874] (-) TimerEvent: {}
+[18.847293] (-) TimerEvent: {}
+[18.947534] (-) TimerEvent: {}
+[18.991497] (nav2_map_server) StdoutLine: {'line': b'[ 92%] Built target map_saver_server\n'}
+[18.996578] (nav2_map_server) StdoutLine: {'line': b'[ 92%] Built target costmap_filter_info_server\n'}
+[19.005362] (nav2_map_server) StdoutLine: {'line': b'[ 92%] Built target map_server\n'}
+[19.047641] (-) TimerEvent: {}
+[19.147839] (-) TimerEvent: {}
+[19.157373] (nav2_map_server) StdoutLine: {'line': b'[ 92%] Built target map_saver_cli\n'}
+[19.247979] (-) TimerEvent: {}
+[19.348181] (-) TimerEvent: {}
+[19.448369] (-) TimerEvent: {}
+[19.548571] (-) TimerEvent: {}
+[19.648798] (-) TimerEvent: {}
+[19.749001] (-) TimerEvent: {}
+[19.849195] (-) TimerEvent: {}
+[19.949427] (-) TimerEvent: {}
+[20.049749] (-) TimerEvent: {}
+[20.150068] (-) TimerEvent: {}
+[20.250367] (-) TimerEvent: {}
+[20.350566] (-) TimerEvent: {}
+[20.450762] (-) TimerEvent: {}
+[20.550971] (-) TimerEvent: {}
+[20.651158] (-) TimerEvent: {}
+[20.751348] (-) TimerEvent: {}
+[20.851570] (-) TimerEvent: {}
+[20.951757] (-) TimerEvent: {}
+[21.052107] (-) TimerEvent: {}
+[21.152347] (-) TimerEvent: {}
+[21.252637] (-) TimerEvent: {}
+[21.331403] (nav2_map_server) StdoutLine: {'line': b'[ 95%] Linking CXX executable test_map_saver_node\n'}
+[21.352740] (-) TimerEvent: {}
+[21.452939] (-) TimerEvent: {}
+[21.553143] (-) TimerEvent: {}
+[21.575520] (nav2_map_server) StdoutLine: {'line': b'[ 95%] Built target test_map_saver_node\n'}
+[21.653253] (-) TimerEvent: {}
+[21.753443] (-) TimerEvent: {}
+[21.853632] (-) TimerEvent: {}
+[21.913657] (nav2_map_server) StdoutLine: {'line': b'[ 97%] Linking CXX executable test_map_server_node\n'}
+[21.953746] (-) TimerEvent: {}
+[22.053962] (-) TimerEvent: {}
+[22.108841] (nav2_map_server) StdoutLine: {'line': b'[ 97%] Built target test_map_server_node\n'}
+[22.154065] (-) TimerEvent: {}
+[22.254329] (-) TimerEvent: {}
+[22.354547] (-) TimerEvent: {}
+[22.454885] (-) TimerEvent: {}
+[22.555197] (-) TimerEvent: {}
+[22.655461] (-) TimerEvent: {}
+[22.755725] (-) TimerEvent: {}
+[22.856012] (-) TimerEvent: {}
+[22.956228] (-) TimerEvent: {}
+[23.059226] (-) TimerEvent: {}
+[23.159414] (-) TimerEvent: {}
+[23.259620] (-) TimerEvent: {}
+[23.359838] (-) TimerEvent: {}
+[23.460045] (-) TimerEvent: {}
+[23.560248] (-) TimerEvent: {}
+[23.660442] (-) TimerEvent: {}
+[23.760630] (-) TimerEvent: {}
+[23.860948] (-) TimerEvent: {}
+[23.961173] (-) TimerEvent: {}
+[24.061423] (-) TimerEvent: {}
+[24.161603] (-) TimerEvent: {}
+[24.261791] (-) TimerEvent: {}
+[24.361967] (-) TimerEvent: {}
+[24.462157] (-) TimerEvent: {}
+[24.562380] (-) TimerEvent: {}
+[24.662585] (-) TimerEvent: {}
+[24.762807] (-) TimerEvent: {}
+[24.863220] (-) TimerEvent: {}
+[24.963632] (-) TimerEvent: {}
+[25.027742] (nav2_map_server) StdoutLine: {'line': b'[100%] Linking CXX executable test_costmap_filter_info_server\n'}
+[25.063753] (-) TimerEvent: {}
+[25.163979] (-) TimerEvent: {}
+[25.264205] (-) TimerEvent: {}
+[25.296844] (nav2_map_server) StdoutLine: {'line': b'[100%] Built target test_costmap_filter_info_server\n'}
+[25.309971] (nav2_map_server) CommandEnded: {'returncode': 0}
+[25.311503] (nav2_map_server) JobProgress: {'identifier': 'nav2_map_server', 'progress': 'install'}
+[25.320966] (nav2_map_server) Command: {'cmd': ['/usr/bin/cmake', '--install', '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_map_server'], 'cwd': '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_map_server', 'env': OrderedDict([('GJS_DEBUG_TOPICS', 'JS ERROR;JS LOG'), ('npm_config_devdir', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/node-gyp'), ('LESSOPEN', '| /usr/bin/lesspipe %s'), ('VSCODE_CWD', '/home/dex'), ('CURSOR_EXTENSION_HOST_ROLE', 'agent-exec'), ('VSCODE_ESM_ENTRYPOINT', 'vs/workbench/api/node/extensionHostProcess'), ('PUPPETEER_CACHE_DIR', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/puppeteer'), ('LANGUAGE', 'zh_CN:zh'), ('USER', 'dex'), ('VSCODE_NLS_CONFIG', '{"userLocale":"zh-cn","osLocale":"zh-cn","resolvedLanguage":"en","defaultMessagesFile":"/usr/share/cursor/resources/app/out/nls.messages.json","locale":"zh-cn","availableLanguages":{}}'), ('CARGO_TARGET_DIR', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/cargo-target'), ('CCACHE_DIR', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/ccache'), ('VSCODE_HANDLES_UNCAUGHT_ERRORS', 'true'), ('XDG_SESSION_TYPE', 'x11'), ('CURSOR_RIPGREP_PATH', '/usr/share/cursor/resources/app/node_modules/@vscode/ripgrep/bin/rg'), ('PIP_CACHE_DIR', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/pip'), ('NUGET_PACKAGES', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/nuget'), ('HOMEBREW_CACHE', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/homebrew'), ('SHLVL', '1'), ('LD_LIBRARY_PATH', '/home/dex/dexe_mobile_nav/install/nav2_smac_planner/lib:/home/dex/dexe_mobile_nav/install/nav2_controller/lib:/usr/lib/x86_64-linux-gnu/gazebo-11/plugins:/opt/ros/humble/opt/rviz_ogre_vendor/lib:/opt/ros/humble/lib/x86_64-linux-gnu:/opt/ros/humble/lib'), ('HOME', '/home/dex'), ('CHROME_DESKTOP', 'cursor.desktop'), ('OLDPWD', '/home/dex/dexe_mobile_nav/mobile_navigation'), ('DESKTOP_SESSION', 'ubuntu'), ('VSCODE_IPC_HOOK', '/run/user/1000/vscode-54babca4-3.8.-main.sock'), ('GIO_LAUNCHED_DESKTOP_FILE', '/usr/share/applications/cursor.desktop'), ('ROS_PYTHON_VERSION', '3'), ('GNOME_SHELL_SESSION_MODE', 'ubuntu'), ('GTK_MODULES', 'gail:atk-bridge'), ('CURSOR_ORIG_UID', '1000'), ('CURSOR_WORKSPACE_LABEL', 'dexe_mobile_nav'), ('MANAGERPID', '1988'), ('SYSTEMD_EXEC_PID', '2313'), ('NO_COLOR', '1'), ('CONDA_PKGS_DIRS', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/conda'), ('DBUS_SESSION_BUS_ADDRESS', 'unix:path=/run/user/1000/bus'), ('GIO_LAUNCHED_DESKTOP_FILE_PID', '8691'), ('VSCODE_CRASH_REPORTER_PROCESS_TYPE', 'extensionHost'), ('COMPOSER_HOME', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/composer'), ('COLCON_PREFIX_PATH', '/home/dex/dexe_mobile_nav/install:/home/dex/dexe_mobile_application/install'), ('ROS_DISTRO', 'humble'), ('GTK_IM_MODULE', 'ibus'), ('LOGNAME', 'dex'), ('FORCE_COLOR', '0'), ('JOURNAL_STREAM', '8:21965'), ('BUN_INSTALL_CACHE_DIR', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/bun'), ('_', '/usr/bin/colcon'), ('ROS_VERSION', '2'), ('CURSOR_LAYOUT', 'unifiedAgent'), ('GOMODCACHE', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/go-mod'), ('XDG_SESSION_CLASS', 'user'), ('USERNAME', 'dex'), ('CP_HOME_DIR', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/cocoapods'), ('TERM', 'dumb'), ('GAZEBO_MODEL_PATH', '/home/dex/dexe_mobile_nav/install/aws_robomaker_small_warehouse_world/share/aws_robomaker_small_warehouse_world/worlds:/home/dex/dexe_mobile_nav/install/aws_robomaker_small_warehouse_world/share/aws_robomaker_small_warehouse_world/models'), ('GNOME_DESKTOP_SESSION_ID', 'this-is-deprecated'), ('FC_FONTATIONS', '1'), ('ROS_LOCALHOST_ONLY', '1'), ('WINDOWPATH', '2'), ('POETRY_CACHE_DIR', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/poetry'), ('PATH', '/usr/share/cursor/resources/app/node_modules/@vscode/ripgrep/bin:/opt/ros/humble/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/snap/bin'), ('SESSION_MANAGER', 'local/dex-TX-Gaming-FA608UH-FA608UH:@/tmp/.ICE-unix/2285,unix/dex-TX-Gaming-FA608UH-FA608UH:/tmp/.ICE-unix/2285'), ('YARN_CACHE_FOLDER', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/yarn'), ('INVOCATION_ID', '213fe830081a40d3b32a029290757c98'), ('UV_CACHE_DIR', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/uv'), ('XDG_MENU_PREFIX', 'gnome-'), ('VSCODE_PROCESS_TITLE', 'extension-host (agent-exec) dexe_mobile_nav [1-4]'), ('PLAYWRIGHT_BROWSERS_PATH', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/playwright'), ('XDG_RUNTIME_DIR', '/run/user/1000'), ('BUNDLE_PATH', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/bundle'), ('GDK_BACKEND', 'x11'), ('AGENT_TRANSCRIPTS', '/home/dex/.cursor/projects/home-dex-dexe-mobile-nav/agent-transcripts'), ('CURSOR_AGENT', '1'), ('DISPLAY', ':1'), ('LANG', 'zh_CN.UTF-8'), ('XDG_CURRENT_DESKTOP', 'ubuntu:GNOME'), ('NX_CACHE_DIRECTORY', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/nx'), ('XMODIFIERS', '@im=ibus'), ('XDG_SESSION_DESKTOP', 'ubuntu'), ('XAUTHORITY', '/run/user/1000/gdm/Xauthority'), ('LS_COLORS', ''), ('CYPRESS_CACHE_FOLDER', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/cypress'), ('SSH_AGENT_LAUNCHER', 'gnome-keyring'), ('SSH_AUTH_SOCK', '/run/user/1000/keyring/ssh'), ('PNPM_STORE_PATH', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/pnpm-store'), ('AMENT_PREFIX_PATH', '/home/dex/dexe_mobile_application/install/dexforce_description:/home/dex/dexe_mobile_nav/install/w1_nav2:/home/dex/dexe_mobile_nav/install/swerve_robot_gazebo:/home/dex/dexe_mobile_nav/install/swerve_robot_description:/home/dex/dexe_mobile_nav/install/swerve_controller:/home/dex/dexe_mobile_nav/install/nav2_smac_planner:/home/dex/dexe_mobile_nav/install/nav2_controller:/home/dex/dexe_mobile_nav/install/nav2_bringup:/home/dex/dexe_mobile_nav/install/dexforce_description:/home/dex/dexe_mobile_nav/install/aws_robomaker_small_warehouse_world:/opt/ros/humble'), ('SHELL', '/bin/bash'), ('GOCACHE', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/go-build'), ('QT_ACCESSIBILITY', '1'), ('ELECTRON_RUN_AS_NODE', '1'), ('GDMSESSION', 'ubuntu'), ('LESSCLOSE', '/usr/bin/lesspipe %s %s'), ('GPG_AGENT_INFO', '/run/user/1000/gnupg/S.gpg-agent:0:1'), ('GJS_DEBUG_OUTPUT', 'stderr'), ('QT_IM_MODULE', 'ibus'), ('NPM_CONFIG_CACHE', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/npm'), ('PWD', '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_map_server'), ('GRADLE_USER_HOME', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/gradle'), ('XDG_CONFIG_DIRS', '/etc/xdg/xdg-ubuntu:/etc/xdg'), ('VSCODE_CODE_CACHE_PATH', '/home/dex/.config/Cursor/CachedData/e56ad3440df06d22ca7501e65fd518e905486ef0'), ('CURSOR_ORIG_GID', '1000'), ('XDG_DATA_DIRS', '/usr/share/ubuntu:/usr/share/gnome:/usr/local/share/:/usr/share/:/var/lib/snapd/desktop'), ('CURSOR_CONVERSATION_ID', 'f0d11738-708b-4cec-940c-6f1e84bba399'), ('PYTHONPATH', '/home/dex/dexe_mobile_nav/install/swerve_robot_gazebo/lib/python3.10/site-packages:/home/dex/dexe_mobile_nav/install/swerve_controller/lib/python3.10/site-packages:/opt/ros/humble/lib/python3.10/site-packages:/opt/ros/humble/local/lib/python3.10/dist-packages'), ('TURBO_CACHE_DIR', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/turbo'), ('COLCON', '1'), ('_ZO_DOCTOR', '0'), ('GEM_SPEC_CACHE', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/gem-specs'), ('CMAKE_PREFIX_PATH', '/home/dex/dexe_mobile_application/install/dexforce_description:/home/dex/dexe_mobile_nav/install/w1_nav2:/home/dex/dexe_mobile_nav/install/swerve_robot_description:/home/dex/dexe_mobile_nav/install/nav2_smac_planner:/home/dex/dexe_mobile_nav/install/nav2_controller:/home/dex/dexe_mobile_nav/install/nav2_bringup:/home/dex/dexe_mobile_nav/install/dexforce_description:/home/dex/dexe_mobile_nav/install/aws_robomaker_small_warehouse_world:/home/dex/dexe_mobile_nav/install/swerve_robot_gazebo:/home/dex/dexe_mobile_nav/install/swerve_controller:/opt/ros/humble'), ('VSCODE_PID', '8691')]), 'shell': False}
+[25.330816] (nav2_map_server) StdoutLine: {'line': b'-- Install configuration: "Release"\n'}
+[25.331008] (nav2_map_server) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib/libmap_server_core.so\n'}
+[25.333799] (nav2_map_server) StdoutLine: {'line': b'-- Set runtime path of "/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib/libmap_server_core.so" to ""\n'}
+[25.333920] (nav2_map_server) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib/libmap_io.so\n'}
+[25.334200] (nav2_map_server) StdoutLine: {'line': b'-- Set runtime path of "/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib/libmap_io.so" to ""\n'}
+[25.334273] (nav2_map_server) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib/nav2_map_server/map_server\n'}
+[25.334594] (nav2_map_server) StdoutLine: {'line': b'-- Set runtime path of "/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib/nav2_map_server/map_server" to ""\n'}
+[25.334650] (nav2_map_server) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib/nav2_map_server/map_saver_cli\n'}
+[25.334978] (nav2_map_server) StdoutLine: {'line': b'-- Set runtime path of "/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib/nav2_map_server/map_saver_cli" to ""\n'}
+[25.335033] (nav2_map_server) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib/nav2_map_server/map_saver_server\n'}
+[25.335334] (nav2_map_server) StdoutLine: {'line': b'-- Set runtime path of "/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib/nav2_map_server/map_saver_server" to ""\n'}
+[25.335386] (nav2_map_server) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib/nav2_map_server/costmap_filter_info_server\n'}
+[25.335700] (nav2_map_server) StdoutLine: {'line': b'-- Set runtime path of "/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib/nav2_map_server/costmap_filter_info_server" to ""\n'}
+[25.335770] (nav2_map_server) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/include/\n'}
+[25.335811] (nav2_map_server) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/include//nav2_map_server\n'}
+[25.335867] (nav2_map_server) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/include//nav2_map_server/map_mode.hpp\n'}
+[25.335934] (nav2_map_server) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/include//nav2_map_server/map_preprocess.hpp\n'}
+[25.336013] (nav2_map_server) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/include//nav2_map_server/node_map_io.hpp\n'}
+[25.336093] (nav2_map_server) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/include//nav2_map_server/costmap_filter_info_server.hpp\n'}
+[25.336173] (nav2_map_server) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/include//nav2_map_server/map_io.hpp\n'}
+[25.336254] (nav2_map_server) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/include//nav2_map_server/map_saver.hpp\n'}
+[25.336336] (nav2_map_server) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/include//nav2_map_server/node_map_types.hpp\n'}
+[25.336416] (nav2_map_server) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/include//nav2_map_server/map_server.hpp\n'}
+[25.336527] (nav2_map_server) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib/libmap_preprocess_core.so\n'}
+[25.337001] (nav2_map_server) StdoutLine: {'line': b'-- Set runtime path of "/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib/libmap_preprocess_core.so" to ""\n'}
+[25.337156] (nav2_map_server) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib/nav2_map_server/map_preprocess\n'}
+[25.337321] (nav2_map_server) StdoutLine: {'line': b'-- Set runtime path of "/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib/nav2_map_server/map_preprocess" to ""\n'}
+[25.337466] (nav2_map_server) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/map_preprocess\n'}
+[25.337591] (nav2_map_server) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/map_preprocess/README.md\n'}
+[25.337730] (nav2_map_server) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/environment/library_path.sh\n'}
+[25.337852] (nav2_map_server) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/environment/library_path.dsv\n'}
+[25.337989] (nav2_map_server) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/ament_index/resource_index/package_run_dependencies/nav2_map_server\n'}
+[25.338152] (nav2_map_server) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/ament_index/resource_index/parent_prefix_path/nav2_map_server\n'}
+[25.338317] (nav2_map_server) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/environment/ament_prefix_path.sh\n'}
+[25.338424] (nav2_map_server) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/environment/ament_prefix_path.dsv\n'}
+[25.338576] (nav2_map_server) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/environment/path.sh\n'}
+[25.338667] (nav2_map_server) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/environment/path.dsv\n'}
+[25.338853] (nav2_map_server) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/local_setup.bash\n'}
+[25.339134] (nav2_map_server) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/local_setup.sh\n'}
+[25.339300] (nav2_map_server) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/local_setup.zsh\n'}
+[25.339487] (nav2_map_server) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/local_setup.dsv\n'}
+[25.339672] (nav2_map_server) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/package.dsv\n'}
+[25.340011] (nav2_map_server) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/ament_index/resource_index/packages/nav2_map_server\n'}
+[25.340181] (nav2_map_server) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/ament_index/resource_index/rclcpp_components/nav2_map_server\n'}
+[25.340410] (nav2_map_server) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/cmake/ament_cmake_export_include_directories-extras.cmake\n'}
+[25.340506] (nav2_map_server) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/cmake/ament_cmake_export_libraries-extras.cmake\n'}
+[25.340659] (nav2_map_server) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/cmake/ament_cmake_export_dependencies-extras.cmake\n'}
+[25.340760] (nav2_map_server) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/cmake/nav2_map_serverConfig.cmake\n'}
+[25.340899] (nav2_map_server) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/cmake/nav2_map_serverConfig-version.cmake\n'}
+[25.341042] (nav2_map_server) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/package.xml\n'}
+[25.343185] (nav2_map_server) CommandEnded: {'returncode': 0}
+[25.357217] (nav2_map_server) JobEnded: {'identifier': 'nav2_map_server', 'rc': 0}
+[25.357917] (nav2_theta_star_planner) JobStarted: {'identifier': 'nav2_theta_star_planner'}
+[25.364292] (-) TimerEvent: {}
+[25.366275] (nav2_theta_star_planner) JobProgress: {'identifier': 'nav2_theta_star_planner', 'progress': 'cmake'}
+[25.366540] (nav2_theta_star_planner) Command: {'cmd': ['/usr/bin/cmake', '/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner', '-DCMAKE_INSTALL_PREFIX=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner'], 'cwd': '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner', 'env': OrderedDict([('GJS_DEBUG_TOPICS', 'JS ERROR;JS LOG'), ('npm_config_devdir', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/node-gyp'), ('LESSOPEN', '| /usr/bin/lesspipe %s'), ('VSCODE_CWD', '/home/dex'), ('CURSOR_EXTENSION_HOST_ROLE', 'agent-exec'), ('VSCODE_ESM_ENTRYPOINT', 'vs/workbench/api/node/extensionHostProcess'), ('PUPPETEER_CACHE_DIR', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/puppeteer'), ('LANGUAGE', 'zh_CN:zh'), ('USER', 'dex'), ('VSCODE_NLS_CONFIG', '{"userLocale":"zh-cn","osLocale":"zh-cn","resolvedLanguage":"en","defaultMessagesFile":"/usr/share/cursor/resources/app/out/nls.messages.json","locale":"zh-cn","availableLanguages":{}}'), ('CARGO_TARGET_DIR', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/cargo-target'), ('CCACHE_DIR', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/ccache'), ('VSCODE_HANDLES_UNCAUGHT_ERRORS', 'true'), ('XDG_SESSION_TYPE', 'x11'), ('CURSOR_RIPGREP_PATH', '/usr/share/cursor/resources/app/node_modules/@vscode/ripgrep/bin/rg'), ('PIP_CACHE_DIR', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/pip'), ('NUGET_PACKAGES', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/nuget'), ('HOMEBREW_CACHE', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/homebrew'), ('SHLVL', '1'), ('LD_LIBRARY_PATH', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib:/home/dex/dexe_mobile_nav/install/nav2_smac_planner/lib:/home/dex/dexe_mobile_nav/install/nav2_controller/lib:/usr/lib/x86_64-linux-gnu/gazebo-11/plugins:/opt/ros/humble/opt/rviz_ogre_vendor/lib:/opt/ros/humble/lib/x86_64-linux-gnu:/opt/ros/humble/lib'), ('HOME', '/home/dex'), ('CHROME_DESKTOP', 'cursor.desktop'), ('OLDPWD', '/home/dex/dexe_mobile_nav/mobile_navigation'), ('DESKTOP_SESSION', 'ubuntu'), ('VSCODE_IPC_HOOK', '/run/user/1000/vscode-54babca4-3.8.-main.sock'), ('GIO_LAUNCHED_DESKTOP_FILE', '/usr/share/applications/cursor.desktop'), ('ROS_PYTHON_VERSION', '3'), ('GNOME_SHELL_SESSION_MODE', 'ubuntu'), ('GTK_MODULES', 'gail:atk-bridge'), ('CURSOR_ORIG_UID', '1000'), ('CURSOR_WORKSPACE_LABEL', 'dexe_mobile_nav'), ('MANAGERPID', '1988'), ('SYSTEMD_EXEC_PID', '2313'), ('NO_COLOR', '1'), ('CONDA_PKGS_DIRS', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/conda'), ('DBUS_SESSION_BUS_ADDRESS', 'unix:path=/run/user/1000/bus'), ('GIO_LAUNCHED_DESKTOP_FILE_PID', '8691'), ('VSCODE_CRASH_REPORTER_PROCESS_TYPE', 'extensionHost'), ('COMPOSER_HOME', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/composer'), ('COLCON_PREFIX_PATH', '/home/dex/dexe_mobile_nav/install:/home/dex/dexe_mobile_application/install'), ('ROS_DISTRO', 'humble'), ('GTK_IM_MODULE', 'ibus'), ('LOGNAME', 'dex'), ('FORCE_COLOR', '0'), ('JOURNAL_STREAM', '8:21965'), ('BUN_INSTALL_CACHE_DIR', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/bun'), ('_', '/usr/bin/colcon'), ('ROS_VERSION', '2'), ('CURSOR_LAYOUT', 'unifiedAgent'), ('GOMODCACHE', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/go-mod'), ('XDG_SESSION_CLASS', 'user'), ('USERNAME', 'dex'), ('CP_HOME_DIR', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/cocoapods'), ('TERM', 'dumb'), ('GAZEBO_MODEL_PATH', '/home/dex/dexe_mobile_nav/install/aws_robomaker_small_warehouse_world/share/aws_robomaker_small_warehouse_world/worlds:/home/dex/dexe_mobile_nav/install/aws_robomaker_small_warehouse_world/share/aws_robomaker_small_warehouse_world/models'), ('GNOME_DESKTOP_SESSION_ID', 'this-is-deprecated'), ('FC_FONTATIONS', '1'), ('ROS_LOCALHOST_ONLY', '1'), ('WINDOWPATH', '2'), ('POETRY_CACHE_DIR', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/poetry'), ('PATH', '/usr/share/cursor/resources/app/node_modules/@vscode/ripgrep/bin:/opt/ros/humble/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/snap/bin'), ('SESSION_MANAGER', 'local/dex-TX-Gaming-FA608UH-FA608UH:@/tmp/.ICE-unix/2285,unix/dex-TX-Gaming-FA608UH-FA608UH:/tmp/.ICE-unix/2285'), ('YARN_CACHE_FOLDER', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/yarn'), ('INVOCATION_ID', '213fe830081a40d3b32a029290757c98'), ('UV_CACHE_DIR', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/uv'), ('XDG_MENU_PREFIX', 'gnome-'), ('VSCODE_PROCESS_TITLE', 'extension-host (agent-exec) dexe_mobile_nav [1-4]'), ('PLAYWRIGHT_BROWSERS_PATH', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/playwright'), ('XDG_RUNTIME_DIR', '/run/user/1000'), ('BUNDLE_PATH', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/bundle'), ('GDK_BACKEND', 'x11'), ('AGENT_TRANSCRIPTS', '/home/dex/.cursor/projects/home-dex-dexe-mobile-nav/agent-transcripts'), ('CURSOR_AGENT', '1'), ('DISPLAY', ':1'), ('LANG', 'zh_CN.UTF-8'), ('XDG_CURRENT_DESKTOP', 'ubuntu:GNOME'), ('NX_CACHE_DIRECTORY', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/nx'), ('XMODIFIERS', '@im=ibus'), ('XDG_SESSION_DESKTOP', 'ubuntu'), ('XAUTHORITY', '/run/user/1000/gdm/Xauthority'), ('LS_COLORS', ''), ('CYPRESS_CACHE_FOLDER', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/cypress'), ('SSH_AGENT_LAUNCHER', 'gnome-keyring'), ('SSH_AUTH_SOCK', '/run/user/1000/keyring/ssh'), ('PNPM_STORE_PATH', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/pnpm-store'), ('AMENT_PREFIX_PATH', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:/home/dex/dexe_mobile_application/install/dexforce_description:/home/dex/dexe_mobile_nav/install/w1_nav2:/home/dex/dexe_mobile_nav/install/swerve_robot_gazebo:/home/dex/dexe_mobile_nav/install/swerve_robot_description:/home/dex/dexe_mobile_nav/install/swerve_controller:/home/dex/dexe_mobile_nav/install/nav2_smac_planner:/home/dex/dexe_mobile_nav/install/nav2_controller:/home/dex/dexe_mobile_nav/install/nav2_bringup:/home/dex/dexe_mobile_nav/install/dexforce_description:/home/dex/dexe_mobile_nav/install/aws_robomaker_small_warehouse_world:/opt/ros/humble'), ('SHELL', '/bin/bash'), ('GOCACHE', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/go-build'), ('QT_ACCESSIBILITY', '1'), ('ELECTRON_RUN_AS_NODE', '1'), ('GDMSESSION', 'ubuntu'), ('LESSCLOSE', '/usr/bin/lesspipe %s %s'), ('GPG_AGENT_INFO', '/run/user/1000/gnupg/S.gpg-agent:0:1'), ('GJS_DEBUG_OUTPUT', 'stderr'), ('QT_IM_MODULE', 'ibus'), ('NPM_CONFIG_CACHE', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/npm'), ('PWD', '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner'), ('GRADLE_USER_HOME', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/gradle'), ('XDG_CONFIG_DIRS', '/etc/xdg/xdg-ubuntu:/etc/xdg'), ('VSCODE_CODE_CACHE_PATH', '/home/dex/.config/Cursor/CachedData/e56ad3440df06d22ca7501e65fd518e905486ef0'), ('CURSOR_ORIG_GID', '1000'), ('XDG_DATA_DIRS', '/usr/share/ubuntu:/usr/share/gnome:/usr/local/share/:/usr/share/:/var/lib/snapd/desktop'), ('CURSOR_CONVERSATION_ID', 'f0d11738-708b-4cec-940c-6f1e84bba399'), ('PYTHONPATH', '/home/dex/dexe_mobile_nav/install/swerve_robot_gazebo/lib/python3.10/site-packages:/home/dex/dexe_mobile_nav/install/swerve_controller/lib/python3.10/site-packages:/opt/ros/humble/lib/python3.10/site-packages:/opt/ros/humble/local/lib/python3.10/dist-packages'), ('TURBO_CACHE_DIR', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/turbo'), ('COLCON', '1'), ('_ZO_DOCTOR', '0'), ('GEM_SPEC_CACHE', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/gem-specs'), ('CMAKE_PREFIX_PATH', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:/home/dex/dexe_mobile_application/install/dexforce_description:/home/dex/dexe_mobile_nav/install/w1_nav2:/home/dex/dexe_mobile_nav/install/swerve_robot_description:/home/dex/dexe_mobile_nav/install/nav2_smac_planner:/home/dex/dexe_mobile_nav/install/nav2_controller:/home/dex/dexe_mobile_nav/install/nav2_bringup:/home/dex/dexe_mobile_nav/install/dexforce_description:/home/dex/dexe_mobile_nav/install/aws_robomaker_small_warehouse_world:/home/dex/dexe_mobile_nav/install/swerve_robot_gazebo:/home/dex/dexe_mobile_nav/install/swerve_controller:/opt/ros/humble'), ('VSCODE_PID', '8691')]), 'shell': False}
+[25.420643] (nav2_theta_star_planner) StdoutLine: {'line': b'-- The C compiler identification is GNU 11.4.0\n'}
+[25.464401] (-) TimerEvent: {}
+[25.467104] (nav2_theta_star_planner) StdoutLine: {'line': b'-- The CXX compiler identification is GNU 11.4.0\n'}
+[25.474371] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Detecting C compiler ABI info\n'}
+[25.539905] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Detecting C compiler ABI info - done\n'}
+[25.544509] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Check for working C compiler: /usr/bin/cc - skipped\n'}
+[25.544716] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Detecting C compile features\n'}
+[25.544844] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Detecting C compile features - done\n'}
+[25.547963] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Detecting CXX compiler ABI info\n'}
+[25.564672] (-) TimerEvent: {}
+[25.623138] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Detecting CXX compiler ABI info - done\n'}
+[25.627245] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Check for working CXX compiler: /usr/bin/c++ - skipped\n'}
+[25.627504] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Detecting CXX compile features\n'}
+[25.627667] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Detecting CXX compile features - done\n'}
+[25.630506] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Found ament_cmake: 1.3.14 (/opt/ros/humble/share/ament_cmake/cmake)\n'}
+[25.664840] (-) TimerEvent: {}
+[25.746762] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Found Python3: /usr/bin/python3 (found version "3.10.12") found components: Interpreter \n'}
+[25.764957] (-) TimerEvent: {}
+[25.827634] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Found builtin_interfaces: 1.2.2 (/opt/ros/humble/share/builtin_interfaces/cmake)\n'}
+[25.859609] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Found rosidl_generator_c: 3.1.8 (/opt/ros/humble/share/rosidl_generator_c/cmake)\n'}
+[25.864612] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Found rosidl_adapter: 3.1.8 (/opt/ros/humble/share/rosidl_adapter/cmake)\n'}
+[25.864997] (-) TimerEvent: {}
+[25.872568] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Found rosidl_generator_cpp: 3.1.8 (/opt/ros/humble/share/rosidl_generator_cpp/cmake)\n'}
+[25.882347] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Using all available rosidl_typesupport_c: rosidl_typesupport_fastrtps_c;rosidl_typesupport_introspection_c\n'}
+[25.895261] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Using all available rosidl_typesupport_cpp: rosidl_typesupport_fastrtps_cpp;rosidl_typesupport_introspection_cpp\n'}
+[25.907411] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Found nav2_common: 1.1.20 (/opt/ros/humble/share/nav2_common/cmake)\n'}
+[25.910628] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Found nav2_core: 1.1.20 (/opt/ros/humble/share/nav2_core/cmake)\n'}
+[25.945951] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Found rmw_implementation_cmake: 6.1.2 (/opt/ros/humble/share/rmw_implementation_cmake/cmake)\n'}
+[25.948596] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Found rmw_fastrtps_cpp: 6.2.10 (/opt/ros/humble/share/rmw_fastrtps_cpp/cmake)\n'}
+[25.965167] (-) TimerEvent: {}
+[26.035195] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Found OpenSSL: /usr/lib/x86_64-linux-gnu/libcrypto.so (found version "3.0.2")  \n'}
+[26.061100] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Found FastRTPS: /opt/ros/humble/include  \n'}
+[26.065215] (-) TimerEvent: {}
+[26.099444] (nav2_theta_star_planner) StdoutLine: {'line': b"-- Using RMW implementation 'rmw_fastrtps_cpp' as default\n"}
+[26.108997] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Looking for pthread.h\n'}
+[26.165360] (-) TimerEvent: {}
+[26.180707] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Looking for pthread.h - found\n'}
+[26.180915] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Performing Test CMAKE_HAVE_LIBC_PTHREAD\n'}
+[26.250460] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Success\n'}
+[26.251140] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Found Threads: TRUE  \n'}
+[26.265473] (-) TimerEvent: {}
+[26.365669] (-) TimerEvent: {}
+[26.465849] (-) TimerEvent: {}
+[26.513035] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Found Eigen3: TRUE (found version "3.4.0") \n'}
+[26.513229] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Ensuring Eigen3 include directory is part of orocos-kdl CMake target\n'}
+[26.565954] (-) TimerEvent: {}
+[26.608735] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Found nav2_map_server: 0.4.3 (/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/cmake)\n'}
+[26.624483] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Setting build type to Release as none was specified.\n'}
+[26.666089] (-) TimerEvent: {}
+[26.766348] (-) TimerEvent: {}
+[26.866587] (-) TimerEvent: {}
+[26.966956] (-) TimerEvent: {}
+[27.012285] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Found ament_lint_auto: 0.12.15 (/opt/ros/humble/share/ament_lint_auto/cmake)\n'}
+[27.067115] (-) TimerEvent: {}
+[27.081947] (nav2_theta_star_planner) StdoutLine: {'line': b"-- Found gtest sources under '/opt/ros/humble/src/gtest_vendor': C++ tests using 'Google Test' will be built\n"}
+[27.167225] (-) TimerEvent: {}
+[27.173287] (nav2_theta_star_planner) StdoutLine: {'line': b"-- Added test 'copyright' to check source files copyright and LICENSE\n"}
+[27.174620] (nav2_theta_star_planner) StdoutLine: {'line': b"-- Added test 'cppcheck' to perform static code analysis on C / C++ code\n"}
+[27.175169] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Configured cppcheck include dirs: /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include\n'}
+[27.175314] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Configured cppcheck exclude dirs and/or files: \n'}
+[27.176538] (nav2_theta_star_planner) StdoutLine: {'line': b"-- Added test 'cpplint' to check C / C++ code against the Google style\n"}
+[27.176589] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Configured cpplint exclude dirs and/or files: \n'}
+[27.177218] (nav2_theta_star_planner) StdoutLine: {'line': b"-- Added test 'lint_cmake' to check CMake code style\n"}
+[27.178514] (nav2_theta_star_planner) StdoutLine: {'line': b"-- Added test 'uncrustify' to check C / C++ code style\n"}
+[27.178600] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Configured uncrustify additional arguments: \n'}
+[27.178950] (nav2_theta_star_planner) StdoutLine: {'line': b"-- Added test 'xmllint' to check XML markup files\n"}
+[27.181653] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Configuring done\n'}
+[27.267391] (-) TimerEvent: {}
+[27.298929] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Generating done\n'}
+[27.308667] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Build files have been written to: /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner\n'}
+[27.322605] (nav2_theta_star_planner) CommandEnded: {'returncode': 0}
+[27.323204] (nav2_theta_star_planner) JobProgress: {'identifier': 'nav2_theta_star_planner', 'progress': 'build'}
+[27.323388] (nav2_theta_star_planner) Command: {'cmd': ['/usr/bin/cmake', '--build', '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner', '--', '-j16', '-l16'], 'cwd': '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner', 'env': OrderedDict([('GJS_DEBUG_TOPICS', 'JS ERROR;JS LOG'), ('npm_config_devdir', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/node-gyp'), ('LESSOPEN', '| /usr/bin/lesspipe %s'), ('VSCODE_CWD', '/home/dex'), ('CURSOR_EXTENSION_HOST_ROLE', 'agent-exec'), ('VSCODE_ESM_ENTRYPOINT', 'vs/workbench/api/node/extensionHostProcess'), ('PUPPETEER_CACHE_DIR', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/puppeteer'), ('LANGUAGE', 'zh_CN:zh'), ('USER', 'dex'), ('VSCODE_NLS_CONFIG', '{"userLocale":"zh-cn","osLocale":"zh-cn","resolvedLanguage":"en","defaultMessagesFile":"/usr/share/cursor/resources/app/out/nls.messages.json","locale":"zh-cn","availableLanguages":{}}'), ('CARGO_TARGET_DIR', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/cargo-target'), ('CCACHE_DIR', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/ccache'), ('VSCODE_HANDLES_UNCAUGHT_ERRORS', 'true'), ('XDG_SESSION_TYPE', 'x11'), ('CURSOR_RIPGREP_PATH', '/usr/share/cursor/resources/app/node_modules/@vscode/ripgrep/bin/rg'), ('PIP_CACHE_DIR', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/pip'), ('NUGET_PACKAGES', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/nuget'), ('HOMEBREW_CACHE', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/homebrew'), ('SHLVL', '1'), ('LD_LIBRARY_PATH', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib:/home/dex/dexe_mobile_nav/install/nav2_smac_planner/lib:/home/dex/dexe_mobile_nav/install/nav2_controller/lib:/usr/lib/x86_64-linux-gnu/gazebo-11/plugins:/opt/ros/humble/opt/rviz_ogre_vendor/lib:/opt/ros/humble/lib/x86_64-linux-gnu:/opt/ros/humble/lib'), ('HOME', '/home/dex'), ('CHROME_DESKTOP', 'cursor.desktop'), ('OLDPWD', '/home/dex/dexe_mobile_nav/mobile_navigation'), ('DESKTOP_SESSION', 'ubuntu'), ('VSCODE_IPC_HOOK', '/run/user/1000/vscode-54babca4-3.8.-main.sock'), ('GIO_LAUNCHED_DESKTOP_FILE', '/usr/share/applications/cursor.desktop'), ('ROS_PYTHON_VERSION', '3'), ('GNOME_SHELL_SESSION_MODE', 'ubuntu'), ('GTK_MODULES', 'gail:atk-bridge'), ('CURSOR_ORIG_UID', '1000'), ('CURSOR_WORKSPACE_LABEL', 'dexe_mobile_nav'), ('MANAGERPID', '1988'), ('SYSTEMD_EXEC_PID', '2313'), ('NO_COLOR', '1'), ('CONDA_PKGS_DIRS', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/conda'), ('DBUS_SESSION_BUS_ADDRESS', 'unix:path=/run/user/1000/bus'), ('GIO_LAUNCHED_DESKTOP_FILE_PID', '8691'), ('VSCODE_CRASH_REPORTER_PROCESS_TYPE', 'extensionHost'), ('COMPOSER_HOME', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/composer'), ('COLCON_PREFIX_PATH', '/home/dex/dexe_mobile_nav/install:/home/dex/dexe_mobile_application/install'), ('ROS_DISTRO', 'humble'), ('GTK_IM_MODULE', 'ibus'), ('LOGNAME', 'dex'), ('FORCE_COLOR', '0'), ('JOURNAL_STREAM', '8:21965'), ('BUN_INSTALL_CACHE_DIR', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/bun'), ('_', '/usr/bin/colcon'), ('ROS_VERSION', '2'), ('CURSOR_LAYOUT', 'unifiedAgent'), ('GOMODCACHE', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/go-mod'), ('XDG_SESSION_CLASS', 'user'), ('USERNAME', 'dex'), ('CP_HOME_DIR', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/cocoapods'), ('TERM', 'dumb'), ('GAZEBO_MODEL_PATH', '/home/dex/dexe_mobile_nav/install/aws_robomaker_small_warehouse_world/share/aws_robomaker_small_warehouse_world/worlds:/home/dex/dexe_mobile_nav/install/aws_robomaker_small_warehouse_world/share/aws_robomaker_small_warehouse_world/models'), ('GNOME_DESKTOP_SESSION_ID', 'this-is-deprecated'), ('FC_FONTATIONS', '1'), ('ROS_LOCALHOST_ONLY', '1'), ('WINDOWPATH', '2'), ('POETRY_CACHE_DIR', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/poetry'), ('PATH', '/usr/share/cursor/resources/app/node_modules/@vscode/ripgrep/bin:/opt/ros/humble/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/snap/bin'), ('SESSION_MANAGER', 'local/dex-TX-Gaming-FA608UH-FA608UH:@/tmp/.ICE-unix/2285,unix/dex-TX-Gaming-FA608UH-FA608UH:/tmp/.ICE-unix/2285'), ('YARN_CACHE_FOLDER', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/yarn'), ('INVOCATION_ID', '213fe830081a40d3b32a029290757c98'), ('UV_CACHE_DIR', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/uv'), ('XDG_MENU_PREFIX', 'gnome-'), ('VSCODE_PROCESS_TITLE', 'extension-host (agent-exec) dexe_mobile_nav [1-4]'), ('PLAYWRIGHT_BROWSERS_PATH', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/playwright'), ('XDG_RUNTIME_DIR', '/run/user/1000'), ('BUNDLE_PATH', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/bundle'), ('GDK_BACKEND', 'x11'), ('AGENT_TRANSCRIPTS', '/home/dex/.cursor/projects/home-dex-dexe-mobile-nav/agent-transcripts'), ('CURSOR_AGENT', '1'), ('DISPLAY', ':1'), ('LANG', 'zh_CN.UTF-8'), ('XDG_CURRENT_DESKTOP', 'ubuntu:GNOME'), ('NX_CACHE_DIRECTORY', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/nx'), ('XMODIFIERS', '@im=ibus'), ('XDG_SESSION_DESKTOP', 'ubuntu'), ('XAUTHORITY', '/run/user/1000/gdm/Xauthority'), ('LS_COLORS', ''), ('CYPRESS_CACHE_FOLDER', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/cypress'), ('SSH_AGENT_LAUNCHER', 'gnome-keyring'), ('SSH_AUTH_SOCK', '/run/user/1000/keyring/ssh'), ('PNPM_STORE_PATH', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/pnpm-store'), ('AMENT_PREFIX_PATH', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:/home/dex/dexe_mobile_application/install/dexforce_description:/home/dex/dexe_mobile_nav/install/w1_nav2:/home/dex/dexe_mobile_nav/install/swerve_robot_gazebo:/home/dex/dexe_mobile_nav/install/swerve_robot_description:/home/dex/dexe_mobile_nav/install/swerve_controller:/home/dex/dexe_mobile_nav/install/nav2_smac_planner:/home/dex/dexe_mobile_nav/install/nav2_controller:/home/dex/dexe_mobile_nav/install/nav2_bringup:/home/dex/dexe_mobile_nav/install/dexforce_description:/home/dex/dexe_mobile_nav/install/aws_robomaker_small_warehouse_world:/opt/ros/humble'), ('SHELL', '/bin/bash'), ('GOCACHE', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/go-build'), ('QT_ACCESSIBILITY', '1'), ('ELECTRON_RUN_AS_NODE', '1'), ('GDMSESSION', 'ubuntu'), ('LESSCLOSE', '/usr/bin/lesspipe %s %s'), ('GPG_AGENT_INFO', '/run/user/1000/gnupg/S.gpg-agent:0:1'), ('GJS_DEBUG_OUTPUT', 'stderr'), ('QT_IM_MODULE', 'ibus'), ('NPM_CONFIG_CACHE', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/npm'), ('PWD', '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner'), ('GRADLE_USER_HOME', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/gradle'), ('XDG_CONFIG_DIRS', '/etc/xdg/xdg-ubuntu:/etc/xdg'), ('VSCODE_CODE_CACHE_PATH', '/home/dex/.config/Cursor/CachedData/e56ad3440df06d22ca7501e65fd518e905486ef0'), ('CURSOR_ORIG_GID', '1000'), ('XDG_DATA_DIRS', '/usr/share/ubuntu:/usr/share/gnome:/usr/local/share/:/usr/share/:/var/lib/snapd/desktop'), ('CURSOR_CONVERSATION_ID', 'f0d11738-708b-4cec-940c-6f1e84bba399'), ('PYTHONPATH', '/home/dex/dexe_mobile_nav/install/swerve_robot_gazebo/lib/python3.10/site-packages:/home/dex/dexe_mobile_nav/install/swerve_controller/lib/python3.10/site-packages:/opt/ros/humble/lib/python3.10/site-packages:/opt/ros/humble/local/lib/python3.10/dist-packages'), ('TURBO_CACHE_DIR', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/turbo'), ('COLCON', '1'), ('_ZO_DOCTOR', '0'), ('GEM_SPEC_CACHE', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/gem-specs'), ('CMAKE_PREFIX_PATH', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:/home/dex/dexe_mobile_application/install/dexforce_description:/home/dex/dexe_mobile_nav/install/w1_nav2:/home/dex/dexe_mobile_nav/install/swerve_robot_description:/home/dex/dexe_mobile_nav/install/nav2_smac_planner:/home/dex/dexe_mobile_nav/install/nav2_controller:/home/dex/dexe_mobile_nav/install/nav2_bringup:/home/dex/dexe_mobile_nav/install/dexforce_description:/home/dex/dexe_mobile_nav/install/aws_robomaker_small_warehouse_world:/home/dex/dexe_mobile_nav/install/swerve_robot_gazebo:/home/dex/dexe_mobile_nav/install/swerve_controller:/opt/ros/humble'), ('VSCODE_PID', '8691')]), 'shell': False}
+[27.367500] (-) TimerEvent: {}
+[27.376841] (nav2_theta_star_planner) StdoutLine: {'line': b'[ 54%] Building CXX object gtest/CMakeFiles/gtest_main.dir/src/gtest_main.cc.o\n'}
+[27.376991] (nav2_theta_star_planner) StdoutLine: {'line': b'[ 54%] Building CXX object CMakeFiles/nav2_theta_star_planner.dir/src/swerve_steering_model.cpp.o\n'}
+[27.377042] (nav2_theta_star_planner) StdoutLine: {'line': b'[ 54%] Building CXX object CMakeFiles/nav2_theta_star_planner.dir/src/theta_star.cpp.o\n'}
+[27.377084] (nav2_theta_star_planner) StdoutLine: {'line': b'[ 54%] Building CXX object CMakeFiles/nav2_theta_star_planner.dir/src/theta_star_planner.cpp.o\n'}
+[27.377125] (nav2_theta_star_planner) StdoutLine: {'line': b'[ 54%] Building CXX object CMakeFiles/nav2_theta_star_planner.dir/src/node_theta_star.cpp.o\n'}
+[27.377163] (nav2_theta_star_planner) StdoutLine: {'line': b'[ 54%] Building CXX object gtest/CMakeFiles/gtest.dir/src/gtest-all.cc.o\n'}
+[27.467770] (-) TimerEvent: {}
+[27.567991] (-) TimerEvent: {}
+[27.668202] (-) TimerEvent: {}
+[27.768414] (-) TimerEvent: {}
+[27.868651] (-) TimerEvent: {}
+[27.969063] (-) TimerEvent: {}
+[28.069437] (-) TimerEvent: {}
+[28.161276] (nav2_theta_star_planner) StdoutLine: {'line': b'[ 63%] Linking CXX static library libgtest_main.a\n'}
+[28.169573] (-) TimerEvent: {}
+[28.239166] (nav2_theta_star_planner) StdoutLine: {'line': b'[ 63%] Built target gtest_main\n'}
+[28.269822] (-) TimerEvent: {}
+[28.370184] (-) TimerEvent: {}
+[28.470488] (-) TimerEvent: {}
+[28.570830] (-) TimerEvent: {}
+[28.671133] (-) TimerEvent: {}
+[28.771331] (-) TimerEvent: {}
+[28.871544] (-) TimerEvent: {}
+[28.971770] (-) TimerEvent: {}
+[29.072098] (-) TimerEvent: {}
+[29.172398] (-) TimerEvent: {}
+[29.272733] (-) TimerEvent: {}
+[29.373022] (-) TimerEvent: {}
+[29.473219] (-) TimerEvent: {}
+[29.573425] (-) TimerEvent: {}
+[29.673634] (-) TimerEvent: {}
+[29.773867] (-) TimerEvent: {}
+[29.874105] (-) TimerEvent: {}
+[29.974322] (-) TimerEvent: {}
+[30.074547] (-) TimerEvent: {}
+[30.174749] (-) TimerEvent: {}
+[30.274959] (-) TimerEvent: {}
+[30.375287] (-) TimerEvent: {}
+[30.475594] (-) TimerEvent: {}
+[30.575790] (-) TimerEvent: {}
+[30.675979] (-) TimerEvent: {}
+[30.776188] (-) TimerEvent: {}
+[30.876391] (-) TimerEvent: {}
+[30.976605] (-) TimerEvent: {}
+[31.076801] (-) TimerEvent: {}
+[31.176992] (-) TimerEvent: {}
+[31.277177] (-) TimerEvent: {}
+[31.377369] (-) TimerEvent: {}
+[31.477623] (-) TimerEvent: {}
+[31.577838] (-) TimerEvent: {}
+[31.678035] (-) TimerEvent: {}
+[31.778240] (-) TimerEvent: {}
+[31.878565] (-) TimerEvent: {}
+[31.978841] (-) TimerEvent: {}
+[32.079031] (-) TimerEvent: {}
+[32.179227] (-) TimerEvent: {}
+[32.279421] (-) TimerEvent: {}
+[32.379617] (-) TimerEvent: {}
+[32.479826] (-) TimerEvent: {}
+[32.580105] (-) TimerEvent: {}
+[32.680419] (-) TimerEvent: {}
+[32.780657] (-) TimerEvent: {}
+[32.880855] (-) TimerEvent: {}
+[32.981114] (-) TimerEvent: {}
+[33.081388] (-) TimerEvent: {}
+[33.181617] (-) TimerEvent: {}
+[33.281841] (-) TimerEvent: {}
+[33.322553] (nav2_theta_star_planner) StdoutLine: {'line': b'[ 72%] Linking CXX static library libgtest.a\n'}
+[33.347532] (nav2_theta_star_planner) StdoutLine: {'line': b'[ 81%] Linking CXX shared library libnav2_theta_star_planner.so\n'}
+[33.381929] (-) TimerEvent: {}
+[33.399862] (nav2_theta_star_planner) StdoutLine: {'line': b'[ 81%] Built target gtest\n'}
+[33.482050] (-) TimerEvent: {}
+[33.572468] (nav2_theta_star_planner) StdoutLine: {'line': b'[ 81%] Built target nav2_theta_star_planner\n'}
+[33.582134] (-) TimerEvent: {}
+[33.595748] (nav2_theta_star_planner) StdoutLine: {'line': b'[ 90%] Building CXX object CMakeFiles/test_theta_star.dir/test/test_theta_star.cpp.o\n'}
+[33.682274] (-) TimerEvent: {}
+[33.782476] (-) TimerEvent: {}
+[33.882680] (-) TimerEvent: {}
+[33.982901] (-) TimerEvent: {}
+[34.083182] (-) TimerEvent: {}
+[34.183527] (-) TimerEvent: {}
+[34.283855] (-) TimerEvent: {}
+[34.384161] (-) TimerEvent: {}
+[34.484370] (-) TimerEvent: {}
+[34.584558] (-) TimerEvent: {}
+[34.684794] (-) TimerEvent: {}
+[34.785031] (-) TimerEvent: {}
+[34.885228] (-) TimerEvent: {}
+[34.985414] (-) TimerEvent: {}
+[35.085627] (-) TimerEvent: {}
+[35.185911] (-) TimerEvent: {}
+[35.286199] (-) TimerEvent: {}
+[35.386494] (-) TimerEvent: {}
+[35.486871] (-) TimerEvent: {}
+[35.587338] (-) TimerEvent: {}
+[35.687683] (-) TimerEvent: {}
+[35.787952] (-) TimerEvent: {}
+[35.888192] (-) TimerEvent: {}
+[35.988399] (-) TimerEvent: {}
+[36.088597] (-) TimerEvent: {}
+[36.188809] (-) TimerEvent: {}
+[36.289076] (-) TimerEvent: {}
+[36.389391] (-) TimerEvent: {}
+[36.489733] (-) TimerEvent: {}
+[36.590094] (-) TimerEvent: {}
+[36.690364] (-) TimerEvent: {}
+[36.790722] (-) TimerEvent: {}
+[36.890975] (-) TimerEvent: {}
+[36.991211] (-) TimerEvent: {}
+[37.091441] (-) TimerEvent: {}
+[37.191677] (-) TimerEvent: {}
+[37.291848] (-) TimerEvent: {}
+[37.392132] (-) TimerEvent: {}
+[37.492449] (-) TimerEvent: {}
+[37.592721] (-) TimerEvent: {}
+[37.693041] (-) TimerEvent: {}
+[37.793248] (-) TimerEvent: {}
+[37.893452] (-) TimerEvent: {}
+[37.993643] (-) TimerEvent: {}
+[38.093855] (-) TimerEvent: {}
+[38.194064] (-) TimerEvent: {}
+[38.294282] (-) TimerEvent: {}
+[38.394524] (-) TimerEvent: {}
+[38.494736] (-) TimerEvent: {}
+[38.594982] (-) TimerEvent: {}
+[38.695258] (-) TimerEvent: {}
+[38.795595] (-) TimerEvent: {}
+[38.816922] (nav2_theta_star_planner) StdoutLine: {'line': b'[100%] Linking CXX executable test_theta_star\n'}
+[38.895771] (-) TimerEvent: {}
+[38.996076] (-) TimerEvent: {}
+[39.096274] (-) TimerEvent: {}
+[39.113525] (nav2_theta_star_planner) StdoutLine: {'line': b'[100%] Built target test_theta_star\n'}
+[39.125020] (nav2_theta_star_planner) CommandEnded: {'returncode': 0}
+[39.125921] (nav2_theta_star_planner) JobProgress: {'identifier': 'nav2_theta_star_planner', 'progress': 'install'}
+[39.126104] (nav2_theta_star_planner) Command: {'cmd': ['/usr/bin/cmake', '--install', '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner'], 'cwd': '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner', 'env': OrderedDict([('GJS_DEBUG_TOPICS', 'JS ERROR;JS LOG'), ('npm_config_devdir', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/node-gyp'), ('LESSOPEN', '| /usr/bin/lesspipe %s'), ('VSCODE_CWD', '/home/dex'), ('CURSOR_EXTENSION_HOST_ROLE', 'agent-exec'), ('VSCODE_ESM_ENTRYPOINT', 'vs/workbench/api/node/extensionHostProcess'), ('PUPPETEER_CACHE_DIR', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/puppeteer'), ('LANGUAGE', 'zh_CN:zh'), ('USER', 'dex'), ('VSCODE_NLS_CONFIG', '{"userLocale":"zh-cn","osLocale":"zh-cn","resolvedLanguage":"en","defaultMessagesFile":"/usr/share/cursor/resources/app/out/nls.messages.json","locale":"zh-cn","availableLanguages":{}}'), ('CARGO_TARGET_DIR', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/cargo-target'), ('CCACHE_DIR', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/ccache'), ('VSCODE_HANDLES_UNCAUGHT_ERRORS', 'true'), ('XDG_SESSION_TYPE', 'x11'), ('CURSOR_RIPGREP_PATH', '/usr/share/cursor/resources/app/node_modules/@vscode/ripgrep/bin/rg'), ('PIP_CACHE_DIR', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/pip'), ('NUGET_PACKAGES', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/nuget'), ('HOMEBREW_CACHE', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/homebrew'), ('SHLVL', '1'), ('LD_LIBRARY_PATH', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib:/home/dex/dexe_mobile_nav/install/nav2_smac_planner/lib:/home/dex/dexe_mobile_nav/install/nav2_controller/lib:/usr/lib/x86_64-linux-gnu/gazebo-11/plugins:/opt/ros/humble/opt/rviz_ogre_vendor/lib:/opt/ros/humble/lib/x86_64-linux-gnu:/opt/ros/humble/lib'), ('HOME', '/home/dex'), ('CHROME_DESKTOP', 'cursor.desktop'), ('OLDPWD', '/home/dex/dexe_mobile_nav/mobile_navigation'), ('DESKTOP_SESSION', 'ubuntu'), ('VSCODE_IPC_HOOK', '/run/user/1000/vscode-54babca4-3.8.-main.sock'), ('GIO_LAUNCHED_DESKTOP_FILE', '/usr/share/applications/cursor.desktop'), ('ROS_PYTHON_VERSION', '3'), ('GNOME_SHELL_SESSION_MODE', 'ubuntu'), ('GTK_MODULES', 'gail:atk-bridge'), ('CURSOR_ORIG_UID', '1000'), ('CURSOR_WORKSPACE_LABEL', 'dexe_mobile_nav'), ('MANAGERPID', '1988'), ('SYSTEMD_EXEC_PID', '2313'), ('NO_COLOR', '1'), ('CONDA_PKGS_DIRS', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/conda'), ('DBUS_SESSION_BUS_ADDRESS', 'unix:path=/run/user/1000/bus'), ('GIO_LAUNCHED_DESKTOP_FILE_PID', '8691'), ('VSCODE_CRASH_REPORTER_PROCESS_TYPE', 'extensionHost'), ('COMPOSER_HOME', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/composer'), ('COLCON_PREFIX_PATH', '/home/dex/dexe_mobile_nav/install:/home/dex/dexe_mobile_application/install'), ('ROS_DISTRO', 'humble'), ('GTK_IM_MODULE', 'ibus'), ('LOGNAME', 'dex'), ('FORCE_COLOR', '0'), ('JOURNAL_STREAM', '8:21965'), ('BUN_INSTALL_CACHE_DIR', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/bun'), ('_', '/usr/bin/colcon'), ('ROS_VERSION', '2'), ('CURSOR_LAYOUT', 'unifiedAgent'), ('GOMODCACHE', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/go-mod'), ('XDG_SESSION_CLASS', 'user'), ('USERNAME', 'dex'), ('CP_HOME_DIR', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/cocoapods'), ('TERM', 'dumb'), ('GAZEBO_MODEL_PATH', '/home/dex/dexe_mobile_nav/install/aws_robomaker_small_warehouse_world/share/aws_robomaker_small_warehouse_world/worlds:/home/dex/dexe_mobile_nav/install/aws_robomaker_small_warehouse_world/share/aws_robomaker_small_warehouse_world/models'), ('GNOME_DESKTOP_SESSION_ID', 'this-is-deprecated'), ('FC_FONTATIONS', '1'), ('ROS_LOCALHOST_ONLY', '1'), ('WINDOWPATH', '2'), ('POETRY_CACHE_DIR', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/poetry'), ('PATH', '/usr/share/cursor/resources/app/node_modules/@vscode/ripgrep/bin:/opt/ros/humble/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/snap/bin'), ('SESSION_MANAGER', 'local/dex-TX-Gaming-FA608UH-FA608UH:@/tmp/.ICE-unix/2285,unix/dex-TX-Gaming-FA608UH-FA608UH:/tmp/.ICE-unix/2285'), ('YARN_CACHE_FOLDER', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/yarn'), ('INVOCATION_ID', '213fe830081a40d3b32a029290757c98'), ('UV_CACHE_DIR', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/uv'), ('XDG_MENU_PREFIX', 'gnome-'), ('VSCODE_PROCESS_TITLE', 'extension-host (agent-exec) dexe_mobile_nav [1-4]'), ('PLAYWRIGHT_BROWSERS_PATH', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/playwright'), ('XDG_RUNTIME_DIR', '/run/user/1000'), ('BUNDLE_PATH', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/bundle'), ('GDK_BACKEND', 'x11'), ('AGENT_TRANSCRIPTS', '/home/dex/.cursor/projects/home-dex-dexe-mobile-nav/agent-transcripts'), ('CURSOR_AGENT', '1'), ('DISPLAY', ':1'), ('LANG', 'zh_CN.UTF-8'), ('XDG_CURRENT_DESKTOP', 'ubuntu:GNOME'), ('NX_CACHE_DIRECTORY', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/nx'), ('XMODIFIERS', '@im=ibus'), ('XDG_SESSION_DESKTOP', 'ubuntu'), ('XAUTHORITY', '/run/user/1000/gdm/Xauthority'), ('LS_COLORS', ''), ('CYPRESS_CACHE_FOLDER', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/cypress'), ('SSH_AGENT_LAUNCHER', 'gnome-keyring'), ('SSH_AUTH_SOCK', '/run/user/1000/keyring/ssh'), ('PNPM_STORE_PATH', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/pnpm-store'), ('AMENT_PREFIX_PATH', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:/home/dex/dexe_mobile_application/install/dexforce_description:/home/dex/dexe_mobile_nav/install/w1_nav2:/home/dex/dexe_mobile_nav/install/swerve_robot_gazebo:/home/dex/dexe_mobile_nav/install/swerve_robot_description:/home/dex/dexe_mobile_nav/install/swerve_controller:/home/dex/dexe_mobile_nav/install/nav2_smac_planner:/home/dex/dexe_mobile_nav/install/nav2_controller:/home/dex/dexe_mobile_nav/install/nav2_bringup:/home/dex/dexe_mobile_nav/install/dexforce_description:/home/dex/dexe_mobile_nav/install/aws_robomaker_small_warehouse_world:/opt/ros/humble'), ('SHELL', '/bin/bash'), ('GOCACHE', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/go-build'), ('QT_ACCESSIBILITY', '1'), ('ELECTRON_RUN_AS_NODE', '1'), ('GDMSESSION', 'ubuntu'), ('LESSCLOSE', '/usr/bin/lesspipe %s %s'), ('GPG_AGENT_INFO', '/run/user/1000/gnupg/S.gpg-agent:0:1'), ('GJS_DEBUG_OUTPUT', 'stderr'), ('QT_IM_MODULE', 'ibus'), ('NPM_CONFIG_CACHE', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/npm'), ('PWD', '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner'), ('GRADLE_USER_HOME', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/gradle'), ('XDG_CONFIG_DIRS', '/etc/xdg/xdg-ubuntu:/etc/xdg'), ('VSCODE_CODE_CACHE_PATH', '/home/dex/.config/Cursor/CachedData/e56ad3440df06d22ca7501e65fd518e905486ef0'), ('CURSOR_ORIG_GID', '1000'), ('XDG_DATA_DIRS', '/usr/share/ubuntu:/usr/share/gnome:/usr/local/share/:/usr/share/:/var/lib/snapd/desktop'), ('CURSOR_CONVERSATION_ID', 'f0d11738-708b-4cec-940c-6f1e84bba399'), ('PYTHONPATH', '/home/dex/dexe_mobile_nav/install/swerve_robot_gazebo/lib/python3.10/site-packages:/home/dex/dexe_mobile_nav/install/swerve_controller/lib/python3.10/site-packages:/opt/ros/humble/lib/python3.10/site-packages:/opt/ros/humble/local/lib/python3.10/dist-packages'), ('TURBO_CACHE_DIR', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/turbo'), ('COLCON', '1'), ('_ZO_DOCTOR', '0'), ('GEM_SPEC_CACHE', '/tmp/cursor-sandbox-cache/5583ac6b4810c915d210cb2e87706825/gem-specs'), ('CMAKE_PREFIX_PATH', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:/home/dex/dexe_mobile_application/install/dexforce_description:/home/dex/dexe_mobile_nav/install/w1_nav2:/home/dex/dexe_mobile_nav/install/swerve_robot_description:/home/dex/dexe_mobile_nav/install/nav2_smac_planner:/home/dex/dexe_mobile_nav/install/nav2_controller:/home/dex/dexe_mobile_nav/install/nav2_bringup:/home/dex/dexe_mobile_nav/install/dexforce_description:/home/dex/dexe_mobile_nav/install/aws_robomaker_small_warehouse_world:/home/dex/dexe_mobile_nav/install/swerve_robot_gazebo:/home/dex/dexe_mobile_nav/install/swerve_controller:/opt/ros/humble'), ('VSCODE_PID', '8691')]), 'shell': False}
+[39.135695] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Install configuration: "Release"\n'}
+[39.135965] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/nav2_theta_star_planner/theta_star_planner.xml\n'}
+[39.136079] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/lib/libnav2_theta_star_planner.so\n'}
+[39.136485] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Set runtime path of "/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/lib/libnav2_theta_star_planner.so" to ""\n'}
+[39.136606] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/include/\n'}
+[39.136803] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/include//nav2_theta_star_planner\n'}
+[39.136907] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/include//nav2_theta_star_planner/swerve_steering_model.hpp\n'}
+[39.136948] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/include//nav2_theta_star_planner/node_theta_star.hpp\n'}
+[39.137014] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/include//nav2_theta_star_planner/theta_star.hpp\n'}
+[39.137081] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/include//nav2_theta_star_planner/theta_star_planner.hpp\n'}
+[39.137156] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Up-to-date: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/nav2_theta_star_planner/theta_star_planner.xml\n'}
+[39.137195] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/nav2_theta_star_planner/environment/library_path.sh\n'}
+[39.137233] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/nav2_theta_star_planner/environment/library_path.dsv\n'}
+[39.137367] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/ament_index/resource_index/package_run_dependencies/nav2_theta_star_planner\n'}
+[39.137509] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/ament_index/resource_index/parent_prefix_path/nav2_theta_star_planner\n'}
+[39.137624] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/nav2_theta_star_planner/environment/ament_prefix_path.sh\n'}
+[39.137723] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/nav2_theta_star_planner/environment/ament_prefix_path.dsv\n'}
+[39.137823] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/nav2_theta_star_planner/environment/path.sh\n'}
+[39.137928] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/nav2_theta_star_planner/environment/path.dsv\n'}
+[39.138022] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/nav2_theta_star_planner/local_setup.bash\n'}
+[39.138129] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/nav2_theta_star_planner/local_setup.sh\n'}
+[39.138236] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/nav2_theta_star_planner/local_setup.zsh\n'}
+[39.138326] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/nav2_theta_star_planner/local_setup.dsv\n'}
+[39.138420] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/nav2_theta_star_planner/package.dsv\n'}
+[39.138564] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/ament_index/resource_index/packages/nav2_theta_star_planner\n'}
+[39.138693] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/ament_index/resource_index/nav2_core__pluginlib__plugin/nav2_theta_star_planner\n'}
+[39.138820] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/nav2_theta_star_planner/cmake/ament_cmake_export_include_directories-extras.cmake\n'}
+[39.138921] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/nav2_theta_star_planner/cmake/ament_cmake_export_libraries-extras.cmake\n'}
+[39.139023] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/nav2_theta_star_planner/cmake/ament_cmake_export_dependencies-extras.cmake\n'}
+[39.139121] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/nav2_theta_star_planner/cmake/nav2_theta_star_plannerConfig.cmake\n'}
+[39.139205] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/nav2_theta_star_planner/cmake/nav2_theta_star_plannerConfig-version.cmake\n'}
+[39.139309] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/nav2_theta_star_planner/package.xml\n'}
+[39.141083] (nav2_theta_star_planner) CommandEnded: {'returncode': 0}
+[39.150210] (nav2_theta_star_planner) JobEnded: {'identifier': 'nav2_theta_star_planner', 'rc': 0}
+[39.150537] (-) EventReactorShutdown: {}

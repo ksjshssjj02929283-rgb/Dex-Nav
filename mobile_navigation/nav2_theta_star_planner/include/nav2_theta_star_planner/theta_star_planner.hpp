@@ -32,6 +32,7 @@
 #include "nav2_costmap_2d/cost_values.hpp"
 #include "nav2_util/node_utils.hpp"
 #include "nav2_theta_star_planner/theta_star.hpp"
+#include "nav2_theta_star_planner/multi_layer_planner.hpp"
 #include "nav2_theta_star_planner/swerve_steering_model.hpp"
 #include "nav2_util/geometry_utils.hpp"
 
@@ -91,6 +92,16 @@ protected:
   rclcpp_lifecycle::LifecycleNode::WeakPtr parent_node_;
 
   std::unique_ptr<theta_star::ThetaStar> planner_;
+  std::unique_ptr<theta_star::MultiLayerNodePlanner> multi_layer_planner_;
+
+  bool use_node_map_{false};
+  std::string node_map_yaml_;
+  std::string local_map_yaml_;
+  std::string raw_map_yaml_;
+  std::string distance_map_yaml_;
+  bool node_map_loaded_{false};
+
+  bool loadNodeMapResources();
 
   // Dynamic parameters handler
   rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr dyn_params_handler_;
@@ -100,7 +111,10 @@ protected:
    * @brief the function responsible for calling the algorithm and retrieving a path from it
    * @return global_path is the planned path to be taken
    */
-  void getPlan(nav_msgs::msg::Path & global_path);
+  void getPlan(
+    nav_msgs::msg::Path & global_path,
+    const geometry_msgs::msg::PoseStamped & start,
+    const geometry_msgs::msg::PoseStamped & goal);
 
   /**
    * @brief interpolates points between the consecutive waypoints of the path

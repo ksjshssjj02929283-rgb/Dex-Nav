@@ -1,0 +1,82 @@
+Consolidate compiler generated dependencies of target gtest
+Consolidate compiler generated dependencies of target gtest_main
+Consolidate compiler generated dependencies of target map_io
+[  9%] Built target gtest_main
+[  9%] Built target gtest
+[ 17%] Built target map_io
+Consolidate compiler generated dependencies of target test_map_saver_cli
+Consolidate compiler generated dependencies of target map_preprocess_core
+Consolidate compiler generated dependencies of target test_map_saver_publisher
+Consolidate compiler generated dependencies of target test_map_io
+Consolidate compiler generated dependencies of target map_server_core
+[ 24%] Built target test_map_saver_cli
+[ 29%] Building CXX object CMakeFiles/map_preprocess_core.dir/src/map_preprocess/node_map_io.cpp.o
+[ 29%] Building CXX object CMakeFiles/map_preprocess_core.dir/src/map_preprocess/map_preprocess.cpp.o
+[ 36%] Built target test_map_saver_publisher
+[ 43%] Built target test_map_io
+[ 53%] Built target map_server_core
+Consolidate compiler generated dependencies of target costmap_filter_info_server
+Consolidate compiler generated dependencies of target map_saver_server
+Consolidate compiler generated dependencies of target test_costmap_filter_info_server
+Consolidate compiler generated dependencies of target map_server
+Consolidate compiler generated dependencies of target test_map_saver_node
+Consolidate compiler generated dependencies of target map_saver_cli
+Consolidate compiler generated dependencies of target test_map_server_node
+[ 68%] Built target costmap_filter_info_server
+[ 70%] Built target test_map_saver_node
+[ 68%] Built target map_server
+[ 75%] Built target map_saver_server
+[ 80%] Built target test_costmap_filter_info_server
+[ 85%] Built target map_saver_cli
+[ 92%] Built target test_map_server_node
+[ 95%] Linking CXX shared library libmap_preprocess_core.so
+[ 95%] Built target map_preprocess_core
+Consolidate compiler generated dependencies of target map_preprocess
+[ 97%] Building CXX object CMakeFiles/map_preprocess.dir/src/map_preprocess/main.cpp.o
+[100%] Linking CXX executable map_preprocess
+[100%] Built target map_preprocess
+-- Install configuration: "Release"
+-- Up-to-date: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib/libmap_server_core.so
+-- Up-to-date: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib/libmap_io.so
+-- Up-to-date: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib/nav2_map_server/map_server
+-- Up-to-date: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib/nav2_map_server/map_saver_cli
+-- Up-to-date: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib/nav2_map_server/map_saver_server
+-- Up-to-date: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib/nav2_map_server/costmap_filter_info_server
+-- Up-to-date: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/include/
+-- Up-to-date: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/include//nav2_map_server
+-- Up-to-date: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/include//nav2_map_server/map_mode.hpp
+-- Up-to-date: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/include//nav2_map_server/map_preprocess.hpp
+-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/include//nav2_map_server/node_map_io.hpp
+-- Up-to-date: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/include//nav2_map_server/costmap_filter_info_server.hpp
+-- Up-to-date: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/include//nav2_map_server/map_io.hpp
+-- Up-to-date: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/include//nav2_map_server/map_saver.hpp
+-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/include//nav2_map_server/node_map_types.hpp
+-- Up-to-date: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/include//nav2_map_server/map_server.hpp
+-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib/libmap_preprocess_core.so
+-- Set runtime path of "/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib/libmap_preprocess_core.so" to ""
+-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib/nav2_map_server/map_preprocess
+-- Set runtime path of "/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib/nav2_map_server/map_preprocess" to ""
+-- Up-to-date: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/map_preprocess
+-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/map_preprocess/visualize_preprocessed_map.py
+-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/map_preprocess/README.md
+-- Up-to-date: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/environment/library_path.sh
+-- Up-to-date: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/environment/library_path.dsv
+-- Up-to-date: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/ament_index/resource_index/package_run_dependencies/nav2_map_server
+-- Up-to-date: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/ament_index/resource_index/parent_prefix_path/nav2_map_server
+-- Up-to-date: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/environment/ament_prefix_path.sh
+-- Up-to-date: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/environment/ament_prefix_path.dsv
+-- Up-to-date: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/environment/path.sh
+-- Up-to-date: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/environment/path.dsv
+-- Up-to-date: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/local_setup.bash
+-- Up-to-date: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/local_setup.sh
+-- Up-to-date: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/local_setup.zsh
+-- Up-to-date: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/local_setup.dsv
+-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/package.dsv
+-- Up-to-date: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/ament_index/resource_index/packages/nav2_map_server
+-- Up-to-date: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/ament_index/resource_index/rclcpp_components/nav2_map_server
+-- Up-to-date: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/cmake/ament_cmake_export_include_directories-extras.cmake
+-- Up-to-date: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/cmake/ament_cmake_export_libraries-extras.cmake
+-- Up-to-date: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/cmake/ament_cmake_export_dependencies-extras.cmake
+-- Up-to-date: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/cmake/nav2_map_serverConfig.cmake
+-- Up-to-date: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/cmake/nav2_map_serverConfig-version.cmake
+-- Up-to-date: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/package.xml

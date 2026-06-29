@@ -1,0 +1,145 @@
+-- Found ament_cmake: 1.3.14 (/opt/ros/humble/share/ament_cmake/cmake)
+-- Found nav2_common: 1.1.20 (/opt/ros/humble/share/nav2_common/cmake)
+-- Found rclcpp: 16.0.19 (/opt/ros/humble/share/rclcpp/cmake)
+-- Found rosidl_generator_c: 3.1.8 (/opt/ros/humble/share/rosidl_generator_c/cmake)
+-- Found rosidl_adapter: 3.1.8 (/opt/ros/humble/share/rosidl_adapter/cmake)
+-- Found rosidl_generator_cpp: 3.1.8 (/opt/ros/humble/share/rosidl_generator_cpp/cmake)
+-- Using all available rosidl_typesupport_c: rosidl_typesupport_fastrtps_c;rosidl_typesupport_introspection_c
+-- Using all available rosidl_typesupport_cpp: rosidl_typesupport_fastrtps_cpp;rosidl_typesupport_introspection_cpp
+-- Found rmw_implementation_cmake: 6.1.2 (/opt/ros/humble/share/rmw_implementation_cmake/cmake)
+-- Found rmw_fastrtps_cpp: 6.2.10 (/opt/ros/humble/share/rmw_fastrtps_cpp/cmake)
+-- Using RMW implementation 'rmw_fastrtps_cpp' as default
+-- Found rclcpp_lifecycle: 16.0.19 (/opt/ros/humble/share/rclcpp_lifecycle/cmake)
+-- Found rclcpp_components: 16.0.19 (/opt/ros/humble/share/rclcpp_components/cmake)
+-- Found nav_msgs: 4.9.1 (/opt/ros/humble/share/nav_msgs/cmake)
+-- Found nav2_msgs: 1.1.20 (/opt/ros/humble/share/nav2_msgs/cmake)
+-- Found yaml_cpp_vendor: 8.0.2 (/opt/ros/humble/share/yaml_cpp_vendor/cmake)
+-- Found tf2: 0.25.20 (/opt/ros/humble/share/tf2/cmake)
+-- Found nav2_util: 1.1.20 (/opt/ros/humble/share/nav2_util/cmake)
+-- Found eigen3_cmake_module: 0.1.1 (/opt/ros/humble/share/eigen3_cmake_module/cmake)
+-- Ensuring Eigen3 include directory is part of orocos-kdl CMake target
+-- Found ament_lint_auto: 0.12.15 (/opt/ros/humble/share/ament_lint_auto/cmake)
+-- Found gtest sources under '/opt/ros/humble/src/gtest_vendor': C++ tests using 'Google Test' will be built
+-- Found gtest sources under '/opt/ros/humble/src/gtest_vendor': C++ tests using 'Google Test' will be built
+-- Found gtest sources under '/opt/ros/humble/src/gtest_vendor': C++ tests using 'Google Test' will be built
+-- Added test 'cppcheck' to perform static code analysis on C / C++ code
+-- Configured cppcheck include dirs: /home/dex/dexe_mobile_nav/mobile_navigation/nav2_map_server/include
+-- Configured cppcheck exclude dirs and/or files: 
+-- Added test 'cpplint' to check C / C++ code against the Google style
+-- Configured cpplint exclude dirs and/or files: 
+-- Added test 'flake8' to check Python code syntax and style conventions
+-- Added test 'lint_cmake' to check CMake code style
+-- Added test 'pep257' to check Python code against some of the docstring style conventions in PEP 257
+-- Added test 'uncrustify' to check C / C++ code style
+-- Configured uncrustify additional arguments: 
+-- Added test 'xmllint' to check XML markup files
+-- Configuring done
+-- Generating done
+-- Build files have been written to: /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_map_server
+[  7%] Building CXX object gtest/CMakeFiles/gtest_main.dir/src/gtest_main.cc.o
+[  7%] Building CXX object CMakeFiles/map_io.dir/src/map_io.cpp.o
+[  9%] Building CXX object gtest/CMakeFiles/gtest.dir/src/gtest-all.cc.o
+[  9%] Building CXX object CMakeFiles/map_io.dir/src/map_mode.cpp.o
+[ 12%] Linking CXX static library libgtest_main.a
+[ 12%] Built target gtest_main
+[ 14%] Linking CXX shared library libmap_io.so
+[ 14%] Built target map_io
+[ 29%] Building CXX object test/component/CMakeFiles/test_map_saver_publisher.dir/test_map_saver_publisher.cpp.o
+[ 29%] Building CXX object CMakeFiles/map_server_core.dir/src/costmap_filter_info/costmap_filter_info_server.cpp.o
+[ 29%] Building CXX object CMakeFiles/map_server_core.dir/src/map_saver/map_saver.cpp.o
+[ 29%] Building CXX object test/component/CMakeFiles/test_map_saver_publisher.dir/__/test_constants.cpp.o
+[ 29%] Building CXX object CMakeFiles/map_preprocess_core.dir/src/map_preprocess/node_map_io.cpp.o
+[ 29%] Building CXX object CMakeFiles/map_preprocess_core.dir/src/map_preprocess/map_preprocess.cpp.o
+[ 31%] Building CXX object CMakeFiles/map_server_core.dir/src/map_server/map_server.cpp.o
+[ 34%] Linking CXX static library libgtest.a
+[ 34%] Built target gtest
+[ 41%] Building CXX object test/unit/CMakeFiles/test_map_io.dir/__/test_constants.cpp.o
+[ 41%] Building CXX object test/map_saver_cli/CMakeFiles/test_map_saver_cli.dir/test_map_saver_cli.cpp.o
+[ 41%] Building CXX object test/map_saver_cli/CMakeFiles/test_map_saver_cli.dir/__/test_constants.cpp.o
+[ 43%] Building CXX object test/unit/CMakeFiles/test_map_io.dir/test_map_io.cpp.o
+[ 46%] Linking CXX shared library libmap_preprocess_core.so
+[ 46%] Built target map_preprocess_core
+[ 48%] Building CXX object CMakeFiles/map_preprocess.dir/src/map_preprocess/main.cpp.o
+[ 51%] Linking CXX executable map_preprocess
+[ 51%] Built target map_preprocess
+[ 53%] Linking CXX executable test_map_saver_publisher
+[ 53%] Built target test_map_saver_publisher
+[ 56%] Linking CXX executable test_map_io
+[ 56%] Built target test_map_io
+[ 58%] Linking CXX executable test_map_saver_cli
+[ 58%] Built target test_map_saver_cli
+[ 60%] Linking CXX shared library libmap_server_core.so
+[ 60%] Built target map_server_core
+[ 82%] Building CXX object CMakeFiles/costmap_filter_info_server.dir/src/costmap_filter_info/main.cpp.o
+[ 82%] Building CXX object CMakeFiles/map_server.dir/src/map_server/main.cpp.o
+[ 82%] Building CXX object test/component/CMakeFiles/test_map_server_node.dir/__/test_constants.cpp.o
+[ 82%] Building CXX object test/component/CMakeFiles/test_map_saver_node.dir/test_map_saver_node.cpp.o
+[ 82%] Building CXX object CMakeFiles/map_saver_server.dir/src/map_saver/main_server.cpp.o
+[ 82%] Building CXX object test/unit/CMakeFiles/test_costmap_filter_info_server.dir/test_costmap_filter_info_server.cpp.o
+[ 82%] Building CXX object test/component/CMakeFiles/test_map_saver_node.dir/__/test_constants.cpp.o
+[ 82%] Building CXX object test/component/CMakeFiles/test_map_server_node.dir/test_map_server_node.cpp.o
+[ 82%] Building CXX object CMakeFiles/map_saver_cli.dir/src/map_saver/main_cli.cpp.o
+[ 85%] Linking CXX executable costmap_filter_info_server
+[ 90%] Linking CXX executable map_server
+[ 90%] Linking CXX executable map_saver_server
+[ 92%] Linking CXX executable map_saver_cli
+[ 92%] Built target map_saver_server
+[ 92%] Built target costmap_filter_info_server
+[ 92%] Built target map_server
+[ 92%] Built target map_saver_cli
+[ 95%] Linking CXX executable test_map_saver_node
+[ 95%] Built target test_map_saver_node
+[ 97%] Linking CXX executable test_map_server_node
+[ 97%] Built target test_map_server_node
+[100%] Linking CXX executable test_costmap_filter_info_server
+[100%] Built target test_costmap_filter_info_server
+-- Install configuration: "Release"
+-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib/libmap_server_core.so
+-- Set runtime path of "/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib/libmap_server_core.so" to ""
+-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib/libmap_io.so
+-- Set runtime path of "/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib/libmap_io.so" to ""
+-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib/nav2_map_server/map_server
+-- Set runtime path of "/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib/nav2_map_server/map_server" to ""
+-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib/nav2_map_server/map_saver_cli
+-- Set runtime path of "/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib/nav2_map_server/map_saver_cli" to ""
+-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib/nav2_map_server/map_saver_server
+-- Set runtime path of "/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib/nav2_map_server/map_saver_server" to ""
+-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib/nav2_map_server/costmap_filter_info_server
+-- Set runtime path of "/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib/nav2_map_server/costmap_filter_info_server" to ""
+-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/include/
+-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/include//nav2_map_server
+-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/include//nav2_map_server/map_mode.hpp
+-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/include//nav2_map_server/map_preprocess.hpp
+-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/include//nav2_map_server/node_map_io.hpp
+-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/include//nav2_map_server/costmap_filter_info_server.hpp
+-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/include//nav2_map_server/map_io.hpp
+-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/include//nav2_map_server/map_saver.hpp
+-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/include//nav2_map_server/node_map_types.hpp
+-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/include//nav2_map_server/map_server.hpp
+-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib/libmap_preprocess_core.so
+-- Set runtime path of "/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib/libmap_preprocess_core.so" to ""
+-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib/nav2_map_server/map_preprocess
+-- Set runtime path of "/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib/nav2_map_server/map_preprocess" to ""
+-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/map_preprocess
+-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/map_preprocess/README.md
+-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/environment/library_path.sh
+-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/environment/library_path.dsv
+-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/ament_index/resource_index/package_run_dependencies/nav2_map_server
+-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/ament_index/resource_index/parent_prefix_path/nav2_map_server
+-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/environment/ament_prefix_path.sh
+-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/environment/ament_prefix_path.dsv
+-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/environment/path.sh
+-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/environment/path.dsv
+-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/local_setup.bash
+-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/local_setup.sh
+-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/local_setup.zsh
+-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/local_setup.dsv
+-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/package.dsv
+-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/ament_index/resource_index/packages/nav2_map_server
+-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/ament_index/resource_index/rclcpp_components/nav2_map_server
+-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/cmake/ament_cmake_export_include_directories-extras.cmake
+-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/cmake/ament_cmake_export_libraries-extras.cmake
+-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/cmake/ament_cmake_export_dependencies-extras.cmake
+-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/cmake/nav2_map_serverConfig.cmake
+-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/cmake/nav2_map_serverConfig-version.cmake
+-- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/package.xml

@@ -1,0 +1,151 @@
+[0.009s] Invoking command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_map_server': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/dex/dexe_mobile_nav/install/swerve_robot_gazebo:/home/dex/dexe_mobile_nav/install/swerve_controller:/opt/ros/humble /usr/bin/cmake /home/dex/dexe_mobile_nav/mobile_navigation/nav2_map_server -DCMAKE_INSTALL_PREFIX=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server
+[0.021s] -- Found ament_cmake: 1.3.14 (/opt/ros/humble/share/ament_cmake/cmake)
+[0.116s] -- Found nav2_common: 1.1.20 (/opt/ros/humble/share/nav2_common/cmake)
+[0.116s] -- Found rclcpp: 16.0.19 (/opt/ros/humble/share/rclcpp/cmake)
+[0.137s] -- Found rosidl_generator_c: 3.1.8 (/opt/ros/humble/share/rosidl_generator_c/cmake)
+[0.138s] -- Found rosidl_adapter: 3.1.8 (/opt/ros/humble/share/rosidl_adapter/cmake)
+[0.141s] -- Found rosidl_generator_cpp: 3.1.8 (/opt/ros/humble/share/rosidl_generator_cpp/cmake)
+[0.147s] -- Using all available rosidl_typesupport_c: rosidl_typesupport_fastrtps_c;rosidl_typesupport_introspection_c
+[0.156s] -- Using all available rosidl_typesupport_cpp: rosidl_typesupport_fastrtps_cpp;rosidl_typesupport_introspection_cpp
+[0.175s] -- Found rmw_implementation_cmake: 6.1.2 (/opt/ros/humble/share/rmw_implementation_cmake/cmake)
+[0.175s] -- Found rmw_fastrtps_cpp: 6.2.10 (/opt/ros/humble/share/rmw_fastrtps_cpp/cmake)
+[0.262s] -- Using RMW implementation 'rmw_fastrtps_cpp' as default
+[0.292s] -- Found rclcpp_lifecycle: 16.0.19 (/opt/ros/humble/share/rclcpp_lifecycle/cmake)
+[0.301s] -- Found rclcpp_components: 16.0.19 (/opt/ros/humble/share/rclcpp_components/cmake)
+[0.312s] -- Found nav_msgs: 4.9.1 (/opt/ros/humble/share/nav_msgs/cmake)
+[0.329s] -- Found nav2_msgs: 1.1.20 (/opt/ros/humble/share/nav2_msgs/cmake)
+[0.355s] -- Found yaml_cpp_vendor: 8.0.2 (/opt/ros/humble/share/yaml_cpp_vendor/cmake)
+[0.356s] -- Found tf2: 0.25.20 (/opt/ros/humble/share/tf2/cmake)
+[0.358s] -- Found nav2_util: 1.1.20 (/opt/ros/humble/share/nav2_util/cmake)
+[0.385s] -- Found eigen3_cmake_module: 0.1.1 (/opt/ros/humble/share/eigen3_cmake_module/cmake)
+[0.386s] -- Ensuring Eigen3 include directory is part of orocos-kdl CMake target
+[0.496s] -- Found ament_lint_auto: 0.12.15 (/opt/ros/humble/share/ament_lint_auto/cmake)
+[0.565s] -- Found gtest sources under '/opt/ros/humble/src/gtest_vendor': C++ tests using 'Google Test' will be built
+[0.570s] -- Found gtest sources under '/opt/ros/humble/src/gtest_vendor': C++ tests using 'Google Test' will be built
+[0.574s] -- Found gtest sources under '/opt/ros/humble/src/gtest_vendor': C++ tests using 'Google Test' will be built
+[0.580s] -- Added test 'cppcheck' to perform static code analysis on C / C++ code
+[0.581s] -- Configured cppcheck include dirs: /home/dex/dexe_mobile_nav/mobile_navigation/nav2_map_server/include
+[0.581s] -- Configured cppcheck exclude dirs and/or files: 
+[0.584s] -- Added test 'cpplint' to check C / C++ code against the Google style
+[0.584s] -- Configured cpplint exclude dirs and/or files: 
+[0.584s] -- Added test 'flake8' to check Python code syntax and style conventions
+[0.585s] -- Added test 'lint_cmake' to check CMake code style
+[0.586s] -- Added test 'pep257' to check Python code against some of the docstring style conventions in PEP 257
+[0.588s] -- Added test 'uncrustify' to check C / C++ code style
+[0.588s] -- Configured uncrustify additional arguments: 
+[0.589s] -- Added test 'xmllint' to check XML markup files
+[0.591s] -- Configuring done
+[0.938s] -- Generating done
+[0.968s] -- Build files have been written to: /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_map_server
+[0.980s] Invoked command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_map_server' returned '0': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/dex/dexe_mobile_nav/install/swerve_robot_gazebo:/home/dex/dexe_mobile_nav/install/swerve_controller:/opt/ros/humble /usr/bin/cmake /home/dex/dexe_mobile_nav/mobile_navigation/nav2_map_server -DCMAKE_INSTALL_PREFIX=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server
+[0.981s] Invoking command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_map_server': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/dex/dexe_mobile_nav/install/swerve_robot_gazebo:/home/dex/dexe_mobile_nav/install/swerve_controller:/opt/ros/humble /usr/bin/cmake --build /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_map_server -- -j16 -l16
+[1.037s] [  7%] Building CXX object gtest/CMakeFiles/gtest_main.dir/src/gtest_main.cc.o
+[1.037s] [  7%] Building CXX object CMakeFiles/map_io.dir/src/map_io.cpp.o
+[1.037s] [  9%] Building CXX object gtest/CMakeFiles/gtest.dir/src/gtest-all.cc.o
+[1.038s] [  9%] Building CXX object CMakeFiles/map_io.dir/src/map_mode.cpp.o
+[1.732s] [ 12%] Linking CXX static library libgtest_main.a
+[1.865s] [ 12%] Built target gtest_main
+[5.220s] [ 14%] Linking CXX shared library libmap_io.so
+[5.403s] [ 14%] Built target map_io
+[5.425s] [ 29%] Building CXX object test/component/CMakeFiles/test_map_saver_publisher.dir/test_map_saver_publisher.cpp.o
+[5.425s] [ 29%] Building CXX object CMakeFiles/map_server_core.dir/src/costmap_filter_info/costmap_filter_info_server.cpp.o
+[5.425s] [ 29%] Building CXX object CMakeFiles/map_server_core.dir/src/map_saver/map_saver.cpp.o
+[5.425s] [ 29%] Building CXX object test/component/CMakeFiles/test_map_saver_publisher.dir/__/test_constants.cpp.o
+[5.425s] [ 29%] Building CXX object CMakeFiles/map_preprocess_core.dir/src/map_preprocess/node_map_io.cpp.o
+[5.425s] [ 29%] Building CXX object CMakeFiles/map_preprocess_core.dir/src/map_preprocess/map_preprocess.cpp.o
+[5.425s] [ 31%] Building CXX object CMakeFiles/map_server_core.dir/src/map_server/map_server.cpp.o
+[6.664s] [ 34%] Linking CXX static library libgtest.a
+[6.775s] [ 34%] Built target gtest
+[6.801s] [ 41%] Building CXX object test/unit/CMakeFiles/test_map_io.dir/__/test_constants.cpp.o
+[6.801s] [ 41%] Building CXX object test/map_saver_cli/CMakeFiles/test_map_saver_cli.dir/test_map_saver_cli.cpp.o
+[6.801s] [ 41%] Building CXX object test/map_saver_cli/CMakeFiles/test_map_saver_cli.dir/__/test_constants.cpp.o
+[6.801s] [ 43%] Building CXX object test/unit/CMakeFiles/test_map_io.dir/test_map_io.cpp.o
+[8.249s] [ 46%] Linking CXX shared library libmap_preprocess_core.so
+[8.495s] [ 46%] Built target map_preprocess_core
+[8.520s] [ 48%] Building CXX object CMakeFiles/map_preprocess.dir/src/map_preprocess/main.cpp.o
+[9.325s] [ 51%] Linking CXX executable map_preprocess
+[9.646s] [ 51%] Built target map_preprocess
+[10.565s] [ 53%] Linking CXX executable test_map_saver_publisher
+[10.766s] [ 53%] Built target test_map_saver_publisher
+[12.209s] [ 56%] Linking CXX executable test_map_io
+[12.458s] [ 56%] Built target test_map_io
+[13.001s] [ 58%] Linking CXX executable test_map_saver_cli
+[13.113s] [ 58%] Built target test_map_saver_cli
+[15.208s] [ 60%] Linking CXX shared library libmap_server_core.so
+[15.459s] [ 60%] Built target map_server_core
+[15.482s] [ 82%] Building CXX object CMakeFiles/costmap_filter_info_server.dir/src/costmap_filter_info/main.cpp.o
+[15.483s] [ 82%] Building CXX object CMakeFiles/map_server.dir/src/map_server/main.cpp.o
+[15.483s] [ 82%] Building CXX object test/component/CMakeFiles/test_map_server_node.dir/__/test_constants.cpp.o
+[15.483s] [ 82%] Building CXX object test/component/CMakeFiles/test_map_saver_node.dir/test_map_saver_node.cpp.o
+[15.483s] [ 82%] Building CXX object CMakeFiles/map_saver_server.dir/src/map_saver/main_server.cpp.o
+[15.483s] [ 82%] Building CXX object test/unit/CMakeFiles/test_costmap_filter_info_server.dir/test_costmap_filter_info_server.cpp.o
+[15.483s] [ 82%] Building CXX object test/component/CMakeFiles/test_map_saver_node.dir/__/test_constants.cpp.o
+[15.483s] [ 82%] Building CXX object test/component/CMakeFiles/test_map_server_node.dir/test_map_server_node.cpp.o
+[15.483s] [ 82%] Building CXX object CMakeFiles/map_saver_cli.dir/src/map_saver/main_cli.cpp.o
+[18.570s] [ 85%] Linking CXX executable costmap_filter_info_server
+[18.589s] [ 90%] Linking CXX executable map_server
+[18.589s] [ 90%] Linking CXX executable map_saver_server
+[18.739s] [ 92%] Linking CXX executable map_saver_cli
+[18.991s] [ 92%] Built target map_saver_server
+[18.996s] [ 92%] Built target costmap_filter_info_server
+[19.005s] [ 92%] Built target map_server
+[19.157s] [ 92%] Built target map_saver_cli
+[21.331s] [ 95%] Linking CXX executable test_map_saver_node
+[21.575s] [ 95%] Built target test_map_saver_node
+[21.913s] [ 97%] Linking CXX executable test_map_server_node
+[22.108s] [ 97%] Built target test_map_server_node
+[25.027s] [100%] Linking CXX executable test_costmap_filter_info_server
+[25.296s] [100%] Built target test_costmap_filter_info_server
+[25.310s] Invoked command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_map_server' returned '0': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/dex/dexe_mobile_nav/install/swerve_robot_gazebo:/home/dex/dexe_mobile_nav/install/swerve_controller:/opt/ros/humble /usr/bin/cmake --build /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_map_server -- -j16 -l16
+[25.321s] Invoking command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_map_server': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/dex/dexe_mobile_nav/install/swerve_robot_gazebo:/home/dex/dexe_mobile_nav/install/swerve_controller:/opt/ros/humble /usr/bin/cmake --install /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_map_server
+[25.330s] -- Install configuration: "Release"
+[25.330s] -- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib/libmap_server_core.so
+[25.333s] -- Set runtime path of "/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib/libmap_server_core.so" to ""
+[25.333s] -- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib/libmap_io.so
+[25.333s] -- Set runtime path of "/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib/libmap_io.so" to ""
+[25.333s] -- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib/nav2_map_server/map_server
+[25.334s] -- Set runtime path of "/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib/nav2_map_server/map_server" to ""
+[25.334s] -- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib/nav2_map_server/map_saver_cli
+[25.334s] -- Set runtime path of "/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib/nav2_map_server/map_saver_cli" to ""
+[25.334s] -- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib/nav2_map_server/map_saver_server
+[25.334s] -- Set runtime path of "/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib/nav2_map_server/map_saver_server" to ""
+[25.334s] -- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib/nav2_map_server/costmap_filter_info_server
+[25.335s] -- Set runtime path of "/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib/nav2_map_server/costmap_filter_info_server" to ""
+[25.335s] -- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/include/
+[25.335s] -- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/include//nav2_map_server
+[25.335s] -- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/include//nav2_map_server/map_mode.hpp
+[25.335s] -- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/include//nav2_map_server/map_preprocess.hpp
+[25.335s] -- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/include//nav2_map_server/node_map_io.hpp
+[25.335s] -- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/include//nav2_map_server/costmap_filter_info_server.hpp
+[25.335s] -- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/include//nav2_map_server/map_io.hpp
+[25.335s] -- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/include//nav2_map_server/map_saver.hpp
+[25.335s] -- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/include//nav2_map_server/node_map_types.hpp
+[25.336s] -- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/include//nav2_map_server/map_server.hpp
+[25.336s] -- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib/libmap_preprocess_core.so
+[25.336s] -- Set runtime path of "/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib/libmap_preprocess_core.so" to ""
+[25.336s] -- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib/nav2_map_server/map_preprocess
+[25.337s] -- Set runtime path of "/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib/nav2_map_server/map_preprocess" to ""
+[25.337s] -- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/map_preprocess
+[25.337s] -- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/map_preprocess/README.md
+[25.337s] -- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/environment/library_path.sh
+[25.337s] -- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/environment/library_path.dsv
+[25.337s] -- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/ament_index/resource_index/package_run_dependencies/nav2_map_server
+[25.337s] -- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/ament_index/resource_index/parent_prefix_path/nav2_map_server
+[25.337s] -- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/environment/ament_prefix_path.sh
+[25.338s] -- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/environment/ament_prefix_path.dsv
+[25.338s] -- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/environment/path.sh
+[25.338s] -- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/environment/path.dsv
+[25.338s] -- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/local_setup.bash
+[25.338s] -- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/local_setup.sh
+[25.338s] -- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/local_setup.zsh
+[25.339s] -- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/local_setup.dsv
+[25.339s] -- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/package.dsv
+[25.339s] -- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/ament_index/resource_index/packages/nav2_map_server
+[25.339s] -- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/ament_index/resource_index/rclcpp_components/nav2_map_server
+[25.340s] -- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/cmake/ament_cmake_export_include_directories-extras.cmake
+[25.340s] -- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/cmake/ament_cmake_export_libraries-extras.cmake
+[25.340s] -- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/cmake/ament_cmake_export_dependencies-extras.cmake
+[25.340s] -- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/cmake/nav2_map_serverConfig.cmake
+[25.340s] -- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/cmake/nav2_map_serverConfig-version.cmake
+[25.340s] -- Installing: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/share/nav2_map_server/package.xml
+[25.343s] Invoked command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_map_server' returned '0': CMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}:/home/dex/dexe_mobile_nav/install/swerve_robot_gazebo:/home/dex/dexe_mobile_nav/install/swerve_controller:/opt/ros/humble /usr/bin/cmake --install /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_map_server

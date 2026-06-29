@@ -143,6 +143,37 @@ install(TARGETS
 install(DIRECTORY include/
   DESTINATION include/)
 
+set(map_preprocess_lib map_preprocess_core)
+
+add_library(${map_preprocess_lib} SHARED
+  src/map_preprocess/map_preprocess.cpp
+  src/map_preprocess/node_map_io.cpp)
+
+ament_target_dependencies(${map_preprocess_lib}
+  ${map_io_dependencies})
+
+target_link_libraries(${map_preprocess_lib}
+  ${map_io_library_name})
+
+add_executable(map_preprocess
+  src/map_preprocess/main.cpp)
+
+ament_target_dependencies(map_preprocess
+  ${map_io_dependencies})
+
+target_link_libraries(map_preprocess
+  ${map_preprocess_lib}
+  ${map_io_library_name})
+
+install(TARGETS ${map_preprocess_lib} map_preprocess
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION lib/${PROJECT_NAME})
+
+install(DIRECTORY map_preprocess/
+  DESTINATION share/${PROJECT_NAME}/map_preprocess
+  OPTIONAL)
+
 install(DIRECTORY launch DESTINATION share/${PROJECT_NAME})
 
 if(BUILD_TESTING)
@@ -159,6 +190,7 @@ ament_export_include_directories(include)
 ament_export_libraries(
   ${library_name}
   ${map_io_library_name}
+  ${map_preprocess_lib}
 )
 ament_export_dependencies(${map_io_dependencies} ${map_server_dependencies})
 ament_package()

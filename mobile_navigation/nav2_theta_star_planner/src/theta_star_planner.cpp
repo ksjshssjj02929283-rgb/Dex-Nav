@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <filesystem>
 #include <vector>
 #include <memory>
 #include <string>
@@ -20,6 +21,7 @@
 #include <cmath>
 #include "nav2_theta_star_planner/theta_star_planner.hpp"
 #include "nav2_theta_star_planner/theta_star.hpp"
+#include "nav2_map_server/node_map_io.hpp"
 #include "tf2/utils.h"
 
 namespace nav2_theta_star_planner
@@ -163,6 +165,7 @@ void ThetaStarPlanner::configure(
   std::shared_ptr<nav2_costmap_2d::Costmap2DROS> costmap_ros)
 {
   planner_ = std::make_unique<theta_star::ThetaStar>();
+  multi_layer_planner_ = std::make_unique<theta_star::MultiLayerNodePlanner>();
   parent_node_ = parent;
   auto node = parent_node_.lock();
   logger_ = node->get_logger();
@@ -260,6 +263,37 @@ void ThetaStarPlanner::configure(
   node->get_parameter(
     name + ".steering_max_smoothing_passes", swerve_steering_config_.max_smoothing_passes);
 
+  multi_layer_planner_->costmap_ = costmap_ros->getCostmap();
+
+  nav2_util::declare_parameter_if_not_declared(
+    node, name_ + ".use_node_map", rclcpp::ParameterValue(false));
+  node->get_parameter(name_ + ".use_node_map", use_node_map_);
+
+  nav2_util::declare_parameter_if_not_declared(
+    node, name_ + ".node_map_yaml", rclcpp::ParameterValue(std::string("")));
+  node->get_parameter(name_ + ".node_map_yaml", node_map_yaml_);
+
+  nav2_util::declare_parameter_if_not_declared(
+    node, name_ + ".local_map_yaml", rclcpp::ParameterValue(std::string("")));
+  node->get_parameter(name_ + ".local_map_yaml", local_map_yaml_);
+
+  nav2_util::declare_parameter_if_not_declared(
+    node, name_ + ".raw_map_yaml", rclcpp::ParameterValue(std::string("")));
+  node->get_parameter(name_ + ".raw_map_yaml", raw_map_yaml_);
+
+  nav2_util::declare_parameter_if_not_declared(
+    node, name_ + ".distance_map_yaml", rclcpp::ParameterValue(std::string("")));
+  node->get_parameter(name_ + ".distance_map_yaml", distance_map_yaml_);
+
+  node_map_yaml_ = nav2_map_server::expandUserPath(node_map_yaml_);
+  local_map_yaml_ = nav2_map_server::expandUserPath(local_map_yaml_);
+  raw_map_yaml_ = nav2_map_server::expandUserPath(raw_map_yaml_);
+  distance_map_yaml_ = nav2_map_server::expandUserPath(distance_map_yaml_);
+
+  if (use_node_map_) {
+    node_map_loaded_ = loadNodeMapResources();
+  }
+
   RCLCPP_INFO(
     logger_,
     "Theta* path orientation: assign=%s mode=%s same_threshold=%.3f rad. "
@@ -278,6 +312,67 @@ void ThetaStarPlanner::configure(
     swerve_steering_config_.max_wheel_angle_step,
     swerve_steering_config_.nominal_path_speed,
     swerve_steering_config_.max_body_yaw_rate);
+}
+
+bool ThetaStarPlanner::loadNodeMapResources()
+{
+  if (node_map_yaml_.empty()) {
+    RCLCPP_ERROR(logger_, "use_node_map=true but node_map_yaml is empty");
+    return false;
+  }
+
+  const auto preprocessed_dir = std::filesystem::path(node_map_yaml_).parent_path();
+
+  if (local_map_yaml_.empty()) {
+    local_map_yaml_ = (preprocessed_dir / "nodemap_local.yaml").string();
+  }
+  if (raw_map_yaml_.empty()) {
+    raw_map_yaml_ = (preprocessed_dir / "nodemap_raw.yaml").string();
+  }
+
+  nav2_map_server::NodeMap global_map;
+  nav2_map_server::NodeMap local_map;
+  nav2_map_server::NodeMap raw_map;
+
+  if (!nav2_map_server::loadNodeMap(node_map_yaml_, global_map)) {
+    RCLCPP_ERROR(logger_, "Failed to load global node map: %s", node_map_yaml_.c_str());
+    return false;
+  }
+  if (!nav2_map_server::loadNodeMap(local_map_yaml_, local_map)) {
+    RCLCPP_WARN(logger_, "Local node map missing: %s", local_map_yaml_.c_str());
+  }
+  if (!nav2_map_server::loadNodeMap(raw_map_yaml_, raw_map)) {
+    RCLCPP_WARN(logger_, "Raw node map missing: %s", raw_map_yaml_.c_str());
+  }
+
+  std::string dist_yaml = distance_map_yaml_;
+  if (dist_yaml.empty()) {
+    dist_yaml = (preprocessed_dir / "distance_map.yaml").string();
+  }
+
+  nav2_map_server::DistanceMap distance_map;
+  if (!nav2_map_server::loadDistanceMap(dist_yaml, distance_map)) {
+    RCLCPP_ERROR(logger_, "Failed to load distance map: %s", dist_yaml.c_str());
+    return false;
+  }
+
+  multi_layer_planner_->global_map_ = std::move(global_map);
+  multi_layer_planner_->local_map_ = std::move(local_map);
+  multi_layer_planner_->raw_map_ = std::move(raw_map);
+  multi_layer_planner_->distance_map_ = std::move(distance_map);
+  multi_layer_planner_->costmap_ = planner_->costmap_;
+  multi_layer_planner_->w_euc_cost_ = planner_->w_euc_cost_;
+  multi_layer_planner_->w_traversal_cost_ = planner_->w_traversal_cost_;
+  multi_layer_planner_->w_heuristic_cost_ = planner_->w_heuristic_cost_;
+  multi_layer_planner_->allow_unknown_ = planner_->allow_unknown_;
+
+  RCLCPP_INFO(
+    logger_,
+    "3-layer node Theta*: global=%zu local=%zu raw=%zu nodes",
+    multi_layer_planner_->global_map_.nodes.size(),
+    multi_layer_planner_->local_map_.nodes.size(),
+    multi_layer_planner_->raw_map_.nodes.size());
+  return true;
 }
 
 void ThetaStarPlanner::applySteeringContinuityConstraint(
@@ -301,6 +396,7 @@ void ThetaStarPlanner::cleanup()
 {
   RCLCPP_INFO(logger_, "CleaningUp plugin %s of type nav2_theta_star_planner", name_.c_str());
   planner_.reset();
+  multi_layer_planner_.reset();
 }
 
 void ThetaStarPlanner::activate()
@@ -353,10 +449,7 @@ nav_msgs::msg::Path ThetaStarPlanner::createPlan(
   }
 
   planner_->setStartAndGoal(start, goal);
-  RCLCPP_DEBUG(
-    logger_, "Got the src and dst... (%i, %i) && (%i, %i)",
-    planner_->src_.x, planner_->src_.y, planner_->dst_.x, planner_->dst_.y);
-  getPlan(global_path);
+  getPlan(global_path, start, goal);
 
   const size_t plan_size = global_path.poses.size();
   if (plan_size > 0) {
@@ -401,18 +494,48 @@ nav_msgs::msg::Path ThetaStarPlanner::createPlan(
   return global_path;
 }
 
-void ThetaStarPlanner::getPlan(nav_msgs::msg::Path & global_path)
+void ThetaStarPlanner::getPlan(
+  nav_msgs::msg::Path & global_path,
+  const geometry_msgs::msg::PoseStamped & start,
+  const geometry_msgs::msg::PoseStamped & goal)
 {
   std::vector<coordsW> path;
-  if (planner_->isUnsafeToPlan()) {
-    RCLCPP_ERROR(logger_, "Either of the start or goal pose are an obstacle! ");
-    global_path.poses.clear();
-  } else if (planner_->generatePath(path)) {
-    global_path = linearInterpolation(path, planner_->costmap_->getResolution());
+  bool goal_unreachable = false;
+
+  const bool use_nodes = use_node_map_ && node_map_loaded_ && multi_layer_planner_->hasMaps();
+  if (use_nodes) {
+    multi_layer_planner_->w_euc_cost_ = planner_->w_euc_cost_;
+    multi_layer_planner_->w_traversal_cost_ = planner_->w_traversal_cost_;
+    multi_layer_planner_->w_heuristic_cost_ = planner_->w_heuristic_cost_;
+    multi_layer_planner_->allow_unknown_ = planner_->allow_unknown_;
+
+    if (!multi_layer_planner_->generatePath(start, goal, path, goal_unreachable)) {
+      RCLCPP_ERROR(logger_, "3-layer node Theta* could not find a path");
+      global_path.poses.clear();
+      return;
+    }
+    if (goal_unreachable) {
+      RCLCPP_WARN(
+        logger_,
+        "Goal lies in obstacle on raw layer; path ends at L1 sparse node");
+    }
   } else {
-    RCLCPP_ERROR(logger_, "Could not generate path between the given poses");
-    global_path.poses.clear();
+    if (use_node_map_ && !node_map_loaded_) {
+      RCLCPP_WARN_ONCE(logger_, "Falling back to grid Theta* (node map not loaded)");
+    }
+    if (planner_->isUnsafeToPlan()) {
+      RCLCPP_ERROR(logger_, "Either of the start or goal pose are an obstacle! ");
+      global_path.poses.clear();
+      return;
+    }
+    if (!planner_->generatePath(path)) {
+      RCLCPP_ERROR(logger_, "Could not generate path between the given poses");
+      global_path.poses.clear();
+      return;
+    }
   }
+
+  global_path = linearInterpolation(path, planner_->costmap_->getResolution());
   global_path.header.stamp = clock_->now();
   global_path.header.frame_id = global_frame_;
 }
@@ -479,6 +602,23 @@ ThetaStarPlanner::dynamicParametersCallback(std::vector<rclcpp::Parameter> param
       } else if (name == name_ + ".steering_max_body_yaw_rate") {
         swerve_steering_config_.max_body_yaw_rate = parameter.as_double();
       }
+    } else if (type == ParameterType::PARAMETER_STRING) {
+      if (name == name_ + ".path_orientation_mode") {
+        path_orientation_mode_ = parsePathOrientationMode(parameter.as_string());
+        if (!assign_path_orientations_) {
+          path_orientation_mode_ = PathOrientationMode::NONE;
+        }
+      } else if (name == name_ + ".node_map_yaml") {
+        node_map_yaml_ = nav2_map_server::expandUserPath(parameter.as_string());
+        if (use_node_map_) {
+          node_map_loaded_ = loadNodeMapResources();
+        }
+      } else if (name == name_ + ".distance_map_yaml") {
+        distance_map_yaml_ = nav2_map_server::expandUserPath(parameter.as_string());
+        if (use_node_map_) {
+          node_map_loaded_ = loadNodeMapResources();
+        }
+      }
     } else if (type == ParameterType::PARAMETER_BOOL) {
       if (name == name_ + ".use_final_approach_orientation") {
         use_final_approach_orientation_ = parameter.as_bool();
@@ -491,12 +631,10 @@ ThetaStarPlanner::dynamicParametersCallback(std::vector<rclcpp::Parameter> param
         }
       } else if (name == name_ + ".enforce_steering_continuity") {
         enforce_steering_continuity_ = parameter.as_bool();
-      }
-    } else if (type == ParameterType::PARAMETER_STRING) {
-      if (name == name_ + ".path_orientation_mode") {
-        path_orientation_mode_ = parsePathOrientationMode(parameter.as_string());
-        if (!assign_path_orientations_) {
-          path_orientation_mode_ = PathOrientationMode::NONE;
+      } else if (name == name_ + ".use_node_map") {
+        use_node_map_ = parameter.as_bool();
+        if (use_node_map_) {
+          node_map_loaded_ = loadNodeMapResources();
         }
       }
     }

@@ -1,0 +1,16 @@
+version: 2
+layer: global
+source_map: ../map.yaml
+distance_map: distance_map.yaml
+adjacency_mode: explicit
+min_clearance_m: 0.45000000000000001
+node_spacing_m: 0.80000000000000004
+connection_radius_m: 1.2
+resolution: 0.10000000149011612
+origin: [2, 3, 0]
+width: 10
+height: 10
+nodes:
+  []
+adjacency:
+  []

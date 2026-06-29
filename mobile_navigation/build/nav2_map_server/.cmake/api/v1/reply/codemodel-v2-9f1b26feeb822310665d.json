@@ -1,0 +1,314 @@
+{
+	"configurations" : 
+	[
+		{
+			"directories" : 
+			[
+				{
+					"build" : ".",
+					"childIndexes" : 
+					[
+						1
+					],
+					"hasInstallRule" : true,
+					"jsonFile" : "directory-.-Release-802c9f34a53c1c58ff25.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.12"
+					},
+					"projectIndex" : 0,
+					"source" : ".",
+					"targetIndexes" : 
+					[
+						0,
+						3,
+						4,
+						5,
+						6,
+						7,
+						8,
+						9,
+						10,
+						17
+					]
+				},
+				{
+					"build" : "test",
+					"childIndexes" : 
+					[
+						2,
+						4,
+						5
+					],
+					"jsonFile" : "directory-test-Release-451c0598f41488bb20b9.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.12"
+					},
+					"parentIndex" : 0,
+					"projectIndex" : 0,
+					"source" : "test"
+				},
+				{
+					"build" : "test/unit",
+					"childIndexes" : 
+					[
+						3
+					],
+					"jsonFile" : "directory-test.unit-Release-95f19909738940399904.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.12"
+					},
+					"parentIndex" : 1,
+					"projectIndex" : 0,
+					"source" : "test/unit",
+					"targetIndexes" : 
+					[
+						11,
+						12
+					]
+				},
+				{
+					"build" : "gtest",
+					"jsonFile" : "directory-gtest-Release-a2408fe1a73b92c5e636.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.8"
+					},
+					"parentIndex" : 2,
+					"projectIndex" : 1,
+					"source" : "/opt/ros/humble/src/gtest_vendor",
+					"targetIndexes" : 
+					[
+						1,
+						2
+					]
+				},
+				{
+					"build" : "test/component",
+					"jsonFile" : "directory-test.component-Release-c22c1a5a0343d9cd40a3.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.12"
+					},
+					"parentIndex" : 1,
+					"projectIndex" : 0,
+					"source" : "test/component",
+					"targetIndexes" : 
+					[
+						14,
+						15,
+						16
+					]
+				},
+				{
+					"build" : "test/map_saver_cli",
+					"jsonFile" : "directory-test.map_saver_cli-Release-dfb7ec1602815e14b5f0.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.12"
+					},
+					"parentIndex" : 1,
+					"projectIndex" : 0,
+					"source" : "test/map_saver_cli",
+					"targetIndexes" : 
+					[
+						13
+					]
+				}
+			],
+			"name" : "Release",
+			"projects" : 
+			[
+				{
+					"childIndexes" : 
+					[
+						1
+					],
+					"directoryIndexes" : 
+					[
+						0,
+						1,
+						2,
+						4,
+						5
+					],
+					"name" : "nav2_map_server",
+					"targetIndexes" : 
+					[
+						0,
+						3,
+						4,
+						5,
+						6,
+						7,
+						8,
+						9,
+						10,
+						11,
+						12,
+						13,
+						14,
+						15,
+						16,
+						17
+					]
+				},
+				{
+					"directoryIndexes" : 
+					[
+						3
+					],
+					"name" : "gtest",
+					"parentIndex" : 0,
+					"targetIndexes" : 
+					[
+						1,
+						2
+					]
+				}
+			],
+			"targets" : 
+			[
+				{
+					"directoryIndex" : 0,
+					"id" : "costmap_filter_info_server::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-costmap_filter_info_server-Release-98aa9fb8d8ac11573f54.json",
+					"name" : "costmap_filter_info_server",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 3,
+					"id" : "gtest::@0af4add9fe94340e763e",
+					"jsonFile" : "target-gtest-Release-8db336e5efab66e4962d.json",
+					"name" : "gtest",
+					"projectIndex" : 1
+				},
+				{
+					"directoryIndex" : 3,
+					"id" : "gtest_main::@0af4add9fe94340e763e",
+					"jsonFile" : "target-gtest_main-Release-8f1bf1f3b5c4f03a18cb.json",
+					"name" : "gtest_main",
+					"projectIndex" : 1
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "map_io::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-map_io-Release-ddea53d7958baa94b357.json",
+					"name" : "map_io",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "map_preprocess::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-map_preprocess-Release-bde129ae7d57bbc1cafa.json",
+					"name" : "map_preprocess",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "map_preprocess_core::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-map_preprocess_core-Release-517fafed15b64f8e16f4.json",
+					"name" : "map_preprocess_core",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "map_saver_cli::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-map_saver_cli-Release-992b12a14fd579a6170c.json",
+					"name" : "map_saver_cli",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "map_saver_server::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-map_saver_server-Release-3bdea3a6441fca7b56ec.json",
+					"name" : "map_saver_server",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "map_server::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-map_server-Release-482f55d32d021194fc1b.json",
+					"name" : "map_server",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "map_server_core::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-map_server_core-Release-b0dd7f5bded8500f4aa7.json",
+					"name" : "map_server_core",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "nav2_map_server_uninstall::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-nav2_map_server_uninstall-Release-2fe782325de44a1861c0.json",
+					"name" : "nav2_map_server_uninstall",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 2,
+					"id" : "test_costmap_filter_info_server::@eef10db73b2f22524f92",
+					"jsonFile" : "target-test_costmap_filter_info_server-Release-247d10d32915f3057026.json",
+					"name" : "test_costmap_filter_info_server",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 2,
+					"id" : "test_map_io::@eef10db73b2f22524f92",
+					"jsonFile" : "target-test_map_io-Release-5a39e97d8bbc4a51d41e.json",
+					"name" : "test_map_io",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 5,
+					"id" : "test_map_saver_cli::@3a480c0dfaa8f09c333f",
+					"jsonFile" : "target-test_map_saver_cli-Release-490588f3a2f8d131e295.json",
+					"name" : "test_map_saver_cli",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 4,
+					"id" : "test_map_saver_node::@f2300501851289dddd1e",
+					"jsonFile" : "target-test_map_saver_node-Release-df1a8ae7c1a807a38c57.json",
+					"name" : "test_map_saver_node",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 4,
+					"id" : "test_map_saver_publisher::@f2300501851289dddd1e",
+					"jsonFile" : "target-test_map_saver_publisher-Release-44ea95332610d6c3d57c.json",
+					"name" : "test_map_saver_publisher",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 4,
+					"id" : "test_map_server_node::@f2300501851289dddd1e",
+					"jsonFile" : "target-test_map_server_node-Release-57d0e12a66eb759a1ad7.json",
+					"name" : "test_map_server_node",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "uninstall::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-uninstall-Release-b4bff974d6155d2a9d3f.json",
+					"name" : "uninstall",
+					"projectIndex" : 0
+				}
+			]
+		}
+	],
+	"kind" : "codemodel",
+	"paths" : 
+	{
+		"build" : "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_map_server",
+		"source" : "/home/dex/dexe_mobile_nav/mobile_navigation/nav2_map_server"
+	},
+	"version" : 
+	{
+		"major" : 2,
+		"minor" : 3
+	}
+}

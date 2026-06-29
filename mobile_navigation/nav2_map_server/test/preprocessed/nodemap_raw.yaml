@@ -1,0 +1,14 @@
+version: 2
+layer: raw
+source_map: ../map.yaml
+distance_map: distance_map.yaml
+adjacency_mode: grid8
+node_mask_image: nodemap_raw_mask.pgm
+node_count: 71
+min_clearance_m: 0
+node_spacing_m: 0.10000000149011612
+connection_radius_m: 0.14142135834465194
+resolution: 0.10000000149011612
+origin: [2, 3, 0]
+width: 10
+height: 10
