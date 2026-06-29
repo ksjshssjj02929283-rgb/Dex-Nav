@@ -37,10 +37,14 @@ RUN echo "source /opt/ros/${ROS_DISTRO}/setup.bash" >> ${HOME_DIR}/.bashrc \
 RUN mkdir -p ${WORKSPACE}
 WORKDIR ${WORKSPACE}
 
-# copy code into workspace (build context = dexe_mobile_nav repo root)
-COPY mobile_simulation/swerve-sim-container/src ${WORKSPACE}/src
-COPY mobile_simulation/swerve-sim-container/config ${CONFIG_DIR}
-COPY visualization/dexforce_description ${WORKSPACE}/src/dexforce_description
+# copy code into workspace
+# Build context must be the parent directory that contains BOTH repos, e.g.:
+#   /home/dex/
+#     dexe_mobile_nav/mobile_simulation/swerve-sim-container/  (this Dockerfile)
+#     dexe_mobile_application/visualization/dexforce_description
+COPY dexe_mobile_nav/mobile_simulation/swerve-sim-container/src ${WORKSPACE}/src
+COPY dexe_mobile_nav/mobile_simulation/swerve-sim-container/config ${CONFIG_DIR}
+COPY dexe_mobile_application/visualization/dexforce_description ${WORKSPACE}/src/dexforce_description
 
 # install deps and build as non-root user
 RUN /bin/bash -c "source /opt/ros/${ROS_DISTRO}/setup.bash \

@@ -1,5 +1,21 @@
 # Swerve Robot Description
 
+## Dependencies
+
+- `dexforce_description` lives in the sibling repo
+  `dexe_mobile_application/visualization/dexforce_description` (not in this repo).
+  Build and source that workspace before building this package:
+
+  ```bash
+  cd ~/dexe_mobile_application/visualization
+  colcon build --packages-select dexforce_description
+  source ~/dexe_mobile_application/visualization/install/setup.bash
+
+  cd ~/dexe_mobile_nav
+  colcon build --packages-select swerve_robot_description swerve_robot_gazebo swerve_controller
+  source install/setup.bash
+  ```
+
 ## Overview
 
 - This package contains the robot urdf/xacro files, meshes and gazebo controller config for a swerve drive robot.
