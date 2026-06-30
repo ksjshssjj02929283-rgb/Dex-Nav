@@ -142,17 +142,17 @@ controller_server:
       # ── 权重矩阵：各 critic 三段权重统一调参入口 [align, track, approach] ──
       stage_weights:
         GoalCritic: [0.0, 0.0, 10.0]
-        GoalLateralCritic: [0.0, 30.0, 100.0]
+        GoalLateralCritic: [0.0, 10.0, 100.0]
         GoalLongitudinalCritic: [0.0, 0.0, 50.0]
         GoalAngleCritic: [0.0, 0.0, 75.0]
         PathAngleCritic: [18.0, 5.0, 2.0]
         PathAlignCritic: [5.0, 30.0, 10.0]
         PathFollowCritic: [0.0, 10.0, 5.0]
         PreferForwardCritic: [10.0, 10.0, 5.0]
-        LinearVelocityCritic: [0.0, 8.0, 10.0]
+        LinearVelocityCritic: [0.0, 10.0, 10.0]
         AngularVelocityCritic: [0.0, 0.0, 5.0]      # 镜像线速度(朝向减速)：approach 专用；⚠️track/align 必须 0(否则朝向误差大→逼 wz 最大旋转)；wz_max/az_max 从全局参数读；bag 调
-        ObstaclesCritic: [5.0, 5.0, 15.0]   # 软斥力(repulsion)分段；致命 critical 全局常开
-        CostCritic: [5.0, 5.0, 15.0]      # 软代价分段；致命由 ObstaclesCritic 兜底
+        ObstaclesCritic: [5.0, 50.0, 15.0]   # 软斥力(repulsion)分段；致命 critical 全局常开
+        CostCritic: [5.0, 50.0, 15.0]      # 软代价分段；致命由 ObstaclesCritic 兜底
 
       # ── 三段速度策略（per-stage 覆盖全局；只放速度，critic 子参数/权重不在此）──
       stage_align:    # 对齐段：低 vx 专注转向、高 wz 快速对齐、允许小幅倒车机动

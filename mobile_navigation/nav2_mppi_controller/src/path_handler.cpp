@@ -95,7 +95,7 @@ PathHandler::getGlobalPlanConsideringBoundsInCostmapFrame(
     } catch (tf2::TransformException & ex) {
       RCLCPP_ERROR(
         logger_,
-        "Exception in lookupTransform: %s. TF 查询失败，无法把全局路径转换到 costmap 坐标系。",
+        "Exception in lookupTransform: %s. TF lookup failed; cannot transform global path into costmap frame.",
         ex.what());
       return {transformed_plan, closest_point};
     }
@@ -138,13 +138,13 @@ geometry_msgs::msg::PoseStamped PathHandler::transformToGlobalPlanFrame(
 {
   if (global_plan_up_to_inversion_.poses.empty()) {
     throw std::runtime_error(
-            "Received plan with zero length. 收到的全局路径长度为 0，局部控制无法转换路径。");
+            "Received plan with zero length. Cannot transform an empty global path for local control.");
   }
 
   geometry_msgs::msg::PoseStamped robot_pose;
   if (!transformPose(global_plan_up_to_inversion_.header.frame_id, pose, robot_pose)) {
     throw std::runtime_error(
-            "Unable to transform robot pose into global plan's frame. 无法把机器人位姿转换到全局路径坐标系，请检查 TF。");
+            "Unable to transform robot pose into global plan's frame. Check TF.");
   }
 
   return robot_pose;
@@ -167,7 +167,7 @@ nav_msgs::msg::Path PathHandler::transformPath(
     logger_,
     "MPPI path state: path_progress=%.3f goal_distance=%.3f pruned_distance=%.3f "
     "remaining_global_plan=%zu transformed_plan=%zu. "
-    "这些值用于判断当前处于起步段、中间段还是末段。",
+    "These values decide whether currently in the start, middle, or final stage.",
     last_path_progress_, last_goal_distance_, pruned_distance,
     global_plan_up_to_inversion_.poses.size(), transformed_plan.poses.size());
 
@@ -183,13 +183,13 @@ nav_msgs::msg::Path PathHandler::transformPath(
       RCLCPP_INFO(
         logger_,
         "MPPI path inversion reached, reset path progress. "
-        "路径反向点已通过，三阶段进度重新从当前子路径开始累计。");
+        "Path reversing point passed; three-stage progress restarts from the current sub-path.");
     }
   }
 
   if (transformed_plan.poses.empty()) {
     throw std::runtime_error(
-            "Resulting plan has 0 poses in it. 转换到局部代价地图后的路径为空，可能是全局路径为空、路径在 costmap 外或裁剪后无有效点。");
+            "Resulting plan has 0 poses in it. Path empty after transform to local costmap; global path may be empty, outside costmap, or pruned to no valid points.");
   }
 
   return transformed_plan;
@@ -213,7 +213,7 @@ bool PathHandler::transformPose(
   } catch (tf2::TransformException & ex) {
     RCLCPP_ERROR(
       logger_,
-      "Exception in transformPose: %s. TF 转换失败，MPPI 无法把机器人位姿或路径转换到目标坐标系。",
+      "Exception in transformPose: %s. TF transform failed; MPPI cannot transform robot pose or path to target frame.",
       ex.what());
   }
   return false;
@@ -237,7 +237,7 @@ void PathHandler::setPath(const nav_msgs::msg::Path & plan)
   RCLCPP_INFO(
     logger_,
     "MPPI new global plan received: poses=%zu. "
-    "已重置三阶段 path_progress 和 goal_distance 统计。",
+    "Reset three-stage path_progress and goal_distance stats.",
     global_plan_.poses.size());
   if (enforce_path_inversion_) {
     inversion_locale_ = utils::removePosesAfterFirstInversion(global_plan_up_to_inversion_);
@@ -288,7 +288,7 @@ void PathHandler::updateGoalDistance(const geometry_msgs::msg::PoseStamped & glo
 {
   if (global_plan_.poses.empty()) {
     throw std::runtime_error(
-            "Received plan with zero length. 收到的全局路径长度为 0，无法计算机器人到目标点距离。");
+            "Received plan with zero length. Cannot compute robot-to-goal distance from an empty path.");
   }
 
   const auto & goal_pose = global_plan_.poses.back();

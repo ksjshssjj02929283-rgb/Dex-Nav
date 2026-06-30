@@ -18,6 +18,7 @@
 #include <cmath>
 #include "nav2_mppi_controller/controller.hpp"
 #include "nav2_mppi_controller/tools/utils.hpp"
+#include "tf2/utils.h"  // tf2::getYaw（到点精度 log）
 
 // #define BENCHMARK_TESTING
 
@@ -154,6 +155,16 @@ geometry_msgs::msg::TwistStamped MPPIController::computeVelocityCommands(
   const double path_progress = path_handler_.getLastPathProgress();
   const double heading_path_angle = path_handler_.getLastHeadingPathAngle();
   applyProfileForPathState(path_progress, goal_distance, heading_path_angle);
+
+  // 提前捕获目标位姿（用于到点精度 log；transformed_plan 后续可能被 visualize move 走）
+  double key_goal_x = 0.0, key_goal_y = 0.0, key_goal_yaw = 0.0;
+  const bool key_has_goal = !transformed_plan.poses.empty();
+  if (key_has_goal) {
+    const auto & gp = transformed_plan.poses.back().pose;
+    key_goal_x = gp.position.x;
+    key_goal_y = gp.position.y;
+    key_goal_yaw = tf2::getYaw(gp.orientation);
+  }
   auto t_transform_end = std::chrono::high_resolution_clock::now();
   double transform_ms =
     std::chrono::duration<double, std::milli>(t_transform_end - t_transform_start).count();
@@ -208,9 +219,29 @@ geometry_msgs::msg::TwistStamped MPPIController::computeVelocityCommands(
     RCLCPP_WARN(
       logger_,
       "MPPI timing (ms): transform=%.3f wait_costmap_lock=%.3f optimize=%.3f visualize=%.3f "
-      "total=%.3f. 控制周期耗时过长，可根据 transform/锁等待/优化/可视化字段定位卡顿环节。",
+      "total=%.3f. Control cycle too long; use the transform/lock-wait/optimize/visualize fields to locate the bottleneck.",
       transform_ms, wait_lock_ms, optimize_ms, visualize_ms, total_ms);
   }
+
+  // ── 关键运行 log（节流 1Hz）：阶段 / 到目标距离 / 到点精度(lon/lat/yaw,机器人系) / 本周期耗时 / 命令 vs 实际 ──
+  double key_lon = 0.0, key_lat = 0.0, key_yaw = 0.0;
+  if (key_has_goal) {
+    const double dx = key_goal_x - robot_pose.pose.position.x;
+    const double dy = key_goal_y - robot_pose.pose.position.y;
+    const double ryaw = tf2::getYaw(robot_pose.pose.orientation);
+    key_lon = std::cos(ryaw) * dx + std::sin(ryaw) * dy;    // longitudinal (forward) error
+    key_lat = -std::sin(ryaw) * dx + std::cos(ryaw) * dy;   // lateral (left) error
+    const double dyaw = key_goal_yaw - ryaw;
+    key_yaw = std::atan2(std::sin(dyaw), std::cos(dyaw));    // heading error (normalized)
+  }
+  RCLCPP_INFO_THROTTLE(
+    logger_, *clock_, 1000,
+    "[MPPI] stage=%s goal_dist=%.3fm err[lon=%.3f lat=%.3f yaw=%.3f] "
+    "cycle=%.1fms(opt=%.1f) cmd[vx=%.2f wz=%.2f] act[vx=%.2f wz=%.2f]",
+    stageName(active_stage_).c_str(), goal_distance,
+    key_lon, key_lat, key_yaw, total_ms, optimize_ms,
+    cmd.twist.linear.x, cmd.twist.angular.z,
+    robot_speed.linear.x, robot_speed.angular.z);
 
   return cmd;
 }
@@ -403,7 +434,7 @@ void MPPIController::configureStages()
         wp = static_cast<float>(row[2]);
       } else {
         RCLCPP_WARN(
-          logger_, "stage_weights.%s 需 3 个值[align,track,approach]，已忽略", critic.c_str());
+          logger_, "stage_weights.%s needs 3 values [align,track,approach]; ignored", critic.c_str());
       }
     };
   loadWeightRow(
@@ -443,16 +474,6 @@ void MPPIController::configureStages()
     "AngularVelocityCritic", stages_[0].critics.angular_velocity.weight,
     stages_[1].critics.angular_velocity.weight, stages_[2].critics.angular_velocity.weight);
 
-  RCLCPP_INFO(
-    logger_,
-    "MPPI three-stage profiles: start_distance=%.3f goal_distance=%.3f. "
-    "transition_duration=%.3f switch_hysteresis=%.3f. "
-    "单阶段 MPPI 已删除：profile_1/2/3 分别完整管理行为代价。"
-    "path_progress 小于 start_distance 为起步段，goal_distance 小于等于 "
-    "profile_goal_distance 为末段；迟滞带用于避免边界附近反复切换。",
-    profile_start_distance_, approach_distance_,
-    profile_transition_duration_, approach_hysteresis_);
-
   for (size_t i = 0; i < stages_.size(); ++i) {
     const auto & profile = stages_[i];
     RCLCPP_INFO(
@@ -461,7 +482,7 @@ void MPPIController::configureStages()
       "Goal(w=%.3f) GoalLateral(w=%.3f) GoalLongitudinal(w=%.3f) "
       "GoalAngle(w=%.3f) PathAngle(w=%.3f off=%d max_angle=%.3f forward=%d) "
       "PathAlign(w=%.3f off=%d step=%d occ=%.3f) PathFollow(w=%.3f off=%d) "
-      "PreferForward(w=%.3f). weight=0 表示本阶段关闭该代价。",
+      "PreferForward(w=%.3f). weight=0 disables this cost for the stage.",
       i + 1, profile.velocity.vx_min, profile.velocity.vx_max,
       profile.velocity.vy_max, profile.velocity.wz_max,
       profile.critics.goal.weight,
@@ -485,16 +506,6 @@ void MPPIController::applyProfileForPathState(
   double path_progress, double goal_distance, double heading_path_angle)
 {
   const size_t selected_profile = selectStage(goal_distance, heading_path_angle);
-  const auto & selected = stages_[selected_profile];
-  RCLCPP_DEBUG(
-    logger_,
-    "MPPI profile state: active=%zu selected=%zu path_progress=%.3f goal_distance=%.3f heading_angle=%.3f. "
-    "selected_reason=%s selected_vx=[%.3f, %.3f] selected_wz=%.3f. "
-    "三阶段判断输入，若 active 与 selected 不同则即将切换。",
-    active_stage_ + 1, selected_profile + 1, path_progress, goal_distance, heading_path_angle,
-    stageName(selected_profile).c_str(),
-    selected.velocity.vx_min, selected.velocity.vx_max, selected.velocity.wz_max);
-
   if (selected_profile == active_stage_) {
     updateProfileTransition();
     return;
@@ -519,7 +530,7 @@ void MPPIController::applyProfileForPathState(
     "MPPI profile switched: %zu -> %zu, reason=%s, path_progress=%.3f, "
     "goal_distance=%.3f, velocity vx=[%.3f, %.3f] vy=%.3f wz=%.3f. "
     "transition_duration=%.3f. "
-    "三阶段发生切换，新的速度约束和 critic 参数会按过渡时间应用到 Optimizer。",
+    "Stage switched; new velocity constraints and critic params apply to the Optimizer over the transition duration.",
     previous_profile + 1, active_stage_ + 1, stageName(active_stage_).c_str(),
     path_progress, goal_distance, profile.velocity.vx_min, profile.velocity.vx_max,
     profile.velocity.vy_max, profile.velocity.wz_max, profile_transition_duration_);
@@ -549,11 +560,11 @@ std::string MPPIController::stageName(size_t profile) const
 {
   switch (profile) {
     case 0:
-      return "align/对齐段";
+      return "align";
     case 1:
-      return "track/跟踪段";
+      return "track";
     case 2:
-      return "approach/趋近段";
+      return "approach";
     default:
       return "unknown";
   }

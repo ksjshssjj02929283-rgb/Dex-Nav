@@ -91,11 +91,11 @@ void Optimizer::getParams()
   s.base_constraints.jz_max = fabs(s.base_constraints.jz_max);
   if (s.base_constraints.ax_min > 0.0) {
     s.base_constraints.ax_min = -1.0 * s.base_constraints.ax_min;
-    RCLCPP_WARN(logger_, "ax_min 符号错误，已自动转为负值");
+    RCLCPP_WARN(logger_, "ax_min has wrong sign; auto-converted to negative");
   }
   if (s.base_constraints.ay_min > 0.0) {
     s.base_constraints.ay_min = -1.0 * s.base_constraints.ay_min;
-    RCLCPP_WARN(logger_, "ay_min 符号错误，已自动转为负值");
+    RCLCPP_WARN(logger_, "ay_min has wrong sign; auto-converted to negative");
   }
 
   getParam(motion_model_name, "motion_model", std::string("DiffDrive"));
@@ -206,7 +206,7 @@ void Optimizer::optimize()
         logger_,
         "Optimizer iteration %zu timing (ms): generate=%.3f critics=%.3f update=%.3f total=%.3f "
         "[batch=%u steps=%u fail=%d]. "
-        "MPPI 单次优化耗时过长，可根据 generate/critics/update 判断是采样预测、critic 打分还是控制序列更新慢。",
+        "MPPI single optimization too long; use generate/critics/update to tell if sampling/prediction, critic scoring, or control-sequence update is slow.",
         i, generate_ms, critic_ms, update_ms, total_ms,
         settings_.batch_size, settings_.time_steps, critics_data_.fail_flag);
     }
@@ -227,7 +227,7 @@ bool Optimizer::fallback(bool fail)
   if (++counter > settings_.retry_attempt_limit) {
     counter = 0;
     throw std::runtime_error(
-            "Optimizer fail to compute path. MPPI 优化器连续失败，无法从当前 path/costmap/约束中求出有效控制。");
+            "Optimizer fail to compute path. MPPI optimizer failed repeatedly; no valid control from current path/costmap/constraints.");
   }
 
   return true;
@@ -530,7 +530,7 @@ void Optimizer::setSpeedLimit(double speed_limit, bool percentage)
   RCLCPP_INFO(
     logger_,
     "MPPI speed limit updated: active=%d value=%.3f percentage=%d. "
-    "收到速度限制更新，后续会与当前三阶段 profile 的速度约束叠加。",
+    "Received speed limit update; will combine with the current three-stage profile velocity constraints.",
     speed_limit_active_, speed_limit_, speed_limit_is_percentage_);
 
   applySpeedLimit();
@@ -542,11 +542,11 @@ void Optimizer::setSpeedLimit(double speed_limit, bool percentage)
 void Optimizer::applyProfile(const MppiProfileSettings & profile)
 {
   auto & s = settings_;
-  RCLCPP_INFO(
+  RCLCPP_DEBUG(
     logger_,
     "MPPI apply profile: base velocity before vx=[%.3f, %.3f] vy=%.3f wz=%.3f, "
     "new vx=[%.3f, %.3f] vy=%.3f wz=%.3f. "
-    "三阶段 profile 正在覆盖 MPPI 基础速度约束。",
+    "Three-stage profile is overriding the MPPI base velocity constraints.",
     s.base_constraints.vx_min, s.base_constraints.vx_max,
     s.base_constraints.vy, s.base_constraints.wz,
     profile.velocity.vx_min, profile.velocity.vx_max,
@@ -584,7 +584,7 @@ void Optimizer::applySpeedLimit()
       RCLCPP_WARN(
         logger_,
         "MPPI absolute speed limit ignored because base vx_max is near zero. "
-        "当前 profile 的 vx_max 接近 0，无法按绝对限速计算比例。");
+        "Current profile vx_max near 0; cannot compute ratio for absolute speed limit.");
       return;
     }
 
@@ -625,12 +625,12 @@ void Optimizer::syncMotionModelConstraints()
 void Optimizer::logActiveConstraints() const
 {
   const auto & s = settings_;
-  RCLCPP_INFO(
+  RCLCPP_DEBUG(
     logger_,
     "MPPI active constraints: vx=[%.3f, %.3f] vy=%.3f wz=%.3f "
     "ax=[%.3f, %.3f] ay=[%.3f, %.3f] az=%.3f jx=%.3f jz=%.3f "
     "speed_limit_active=%d speed_limit=%.3f percentage=%d. "
-    "这是当前真正参与采样、预测和输出限幅的运行约束。",
+    "These are the runtime constraints actually used for sampling, prediction, and output clamping.",
     s.constraints.vx_min, s.constraints.vx_max,
     s.constraints.vy, s.constraints.wz,
     s.constraints.ax_min, s.constraints.ax_max,
