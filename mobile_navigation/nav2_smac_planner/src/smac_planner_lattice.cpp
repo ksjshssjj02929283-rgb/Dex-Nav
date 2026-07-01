@@ -18,11 +18,7 @@
 #include <algorithm>
 #include <limits>
 
-// added by hz
-#include <queue>
-#include <tuple>
 #include <chrono>
-// end
 
 #include "Eigen/Core"
 #include "nav2_smac_planner/smac_planner_lattice.hpp"
@@ -357,86 +353,11 @@ nav_msgs::msg::Path SmacPlannerLattice::createPlan(
   // Set goal point, in A* bin search coordinates
   _costmap->worldToMap(goal.pose.position.x, goal.pose.position.y, mx, my);
 
- 
-  // added by hz
-  // version 2
-  // TODO:会出现一个问题，如果定位出现问题，它依然会寻找一个可达点，可能会乱跑
-  // goal checker
-  // 定义方向数组，用于遍历八领域的相邻网格
-  geometry_msgs::msg::PoseStamped goal_new = goal;
-
-  const int directions[8][2] = {
-    {1, 0}, {-1, 0}, {0, 1}, {0, -1}, 
-    {1, 1}, {1, -1}, {-1, 1}, {-1, -1}
-  };
-
+  // 目标点被障碍占用时不再改到附近自由点，直接让规划失败并交给 BT 等待重规划
   if (!isAreaFree(_costmap, goal)) {
-    RCLCPP_WARN(
-      _logger,
-      "Goal is in collision, searching for nearest free space.");
-
-    // 使用队列进行广度优先搜索
-    std::queue<std::tuple<unsigned int, unsigned int>> q;
-    q.push(std::make_tuple(mx, my));
-
-    // 使用 unordered_set 标记已访问的节点
-    std::unordered_set<unsigned int> visited;
-    visited.insert(mx * _costmap->getSizeInCellsY() + my);
-
-    bool found = false;
-    unsigned int new_mx = mx, new_my = my;
-
-    while (!q.empty() && !found) {
-        auto [current_mx, current_my] = q.front();
-        q.pop();
-
-        // 遍历相邻的网格
-        for (const auto& direction : directions) {
-            int next_mx = static_cast<int>(current_mx) + direction[0];
-            int next_my = static_cast<int>(current_my) + direction[1];
-
-            // 检查边界条件
-            if (next_mx >= 0 && next_mx < static_cast<int>(_costmap->getSizeInCellsX()) &&
-                next_my >= 0 && next_my < static_cast<int>(_costmap->getSizeInCellsY())) {
-                unsigned int next_index = next_mx * _costmap->getSizeInCellsY() + next_my;
-                if (visited.find(next_index) == visited.end()) {
-                    visited.insert(next_index);
-                    auto next_value = _costmap->getCost(next_mx, next_my);
-
-                    // 如果找到自由空间
-                    if (next_value <= nav2_costmap_2d::MAX_NON_OBSTACLE) {
-                        bool area_free = true;
-                        
-                        _costmap->mapToWorld(next_mx, next_my, goal_new.pose.position.x, goal_new.pose.position.y);
-                        area_free = isAreaFree(_costmap, goal_new);
-
-                        if (area_free) {
-                            new_mx = next_mx;
-                            new_my = next_my;
-                            found = true;
-                            break;
-                        }
-                    }
-
-                    // 将相邻的网格加入队列
-                    q.push(std::make_tuple(next_mx, next_my));
-                }
-            }
-        }
-    }
-    if (found) {
-      RCLCPP_INFO(
-        _logger,
-        "Found nearest free space at (%u, %u).", new_mx, new_my);
-      mx = new_mx;
-      my = new_my;
-    } else {
-      RCLCPP_ERROR(
-        _logger,
-        "No free space found near the goal.");
-    }
+    RCLCPP_WARN(_logger, "Goal is in collision, keep original goal and wait for replanning.");
+    throw std::runtime_error("Goal is in collision. Waiting for replanning instead of replacing goal.");
   }
-  // end
 
   _a_star->setGoal(
     mx, my,

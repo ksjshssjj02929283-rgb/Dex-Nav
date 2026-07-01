@@ -22,9 +22,6 @@ void PreferForwardCritic::initialize()
   auto getParam = parameters_handler_->getParamGetter(name_);
   getParam(power_, "cost_power", 1);
   getParam(weight_, "cost_weight", 5.0);
-  getParam(
-    threshold_to_consider_,
-    "threshold_to_consider", 0.5);
 
   RCLCPP_INFO(
     logger_, "PreferForwardCritic instantiated with %d power and %f weight.", power_, weight_);
@@ -32,14 +29,26 @@ void PreferForwardCritic::initialize()
 
 void PreferForwardCritic::score(CriticData & data)
 {
-  if (!enabled_ ||
-    utils::withinPositionGoalTolerance(threshold_to_consider_, data.state.pose.pose, data.path))
+  // 三阶段 MPPI 中 cost_weight <= 0 表示该阶段关闭前进偏好，允许末段小幅倒退修正。
+  // threshold 距离门已删（同 path_align）。
+  if (!enabled_ || weight_ <= 0.0f)
   {
     return;
   }
 
   auto backward_motion = (-data.state.vx).max(0.0f);
   data.costs += ((backward_motion * data.model_dt).rowwise().sum() * weight_).pow(power_);
+}
+
+void PreferForwardCritic::applyPreferForwardCriticSettings(
+  const PreferForwardCriticSettings & settings)
+{
+  weight_ = settings.weight;
+}
+
+void PreferForwardCritic::applyProfileSettings(const CriticProfileSettings & settings)
+{
+  applyPreferForwardCriticSettings(settings.prefer_forward);
 }
 
 }  // namespace mppi::critics

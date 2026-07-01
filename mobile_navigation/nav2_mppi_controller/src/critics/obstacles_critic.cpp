@@ -96,7 +96,7 @@ float ObstaclesCritic::findCircumscribedCost(
   return circumscribed_cost_;
 }
 
-float ObstaclesCritic::distanceToObstacle(const CollisionCost & cost)
+float ObstaclesCritic::distanceToObstacle(const CollisionCost & cost) const
 {
   const float scale_factor = inflation_scale_factor_;
   const float min_radius = costmap_ros_->getLayeredCostmap()->getInscribedRadius();
@@ -122,11 +122,8 @@ void ObstaclesCritic::score(CriticData & data)
     possibly_inscribed_cost_ = findCircumscribedCost(costmap_ros_);
   }
 
-  // If near the goal, don't apply the preferential term since the goal is near obstacles
-  bool near_goal = false;
-  if (utils::withinPositionGoalTolerance(near_goal_distance_, data.state.pose.pose, data.path)) {
-    near_goal = true;
-  }
+  const bool near_goal = utils::withinPositionGoalTolerance(
+    near_goal_distance_, data.state.pose.pose, data.path);
 
   models::Vector raw_cost = models::Vector::Zero(data.costs.size());
   models::Vector repulsive_cost = models::Vector::Zero(data.costs.size());
@@ -155,11 +152,16 @@ void ObstaclesCritic::score(CriticData & data)
 
       const float dist_to_obj = distanceToObstacle(pose_cost);
 
-      // Let near-collision trajectory points be punished severely
-      if (dist_to_obj < collision_margin_distance_) {
-        traj_cost += (collision_margin_distance_ - dist_to_obj);
-      } else if (!near_goal) {  // Generally prefer trajectories further from obstacles
-        repulsive_cost(i) += (inflation_radius_ - dist_to_obj);
+      // 软避障（含 0.1m 近碰撞缓冲）统一受 repulsion_weight 控制：
+      // approach 段 repulsion_weight=0 时连近碰撞缓冲一并关闭，机器人可贴近障碍到达近障目标；
+      // 真实碰撞仍由上方 inCollision()→collision_cost_×critical_weight 兜底（安全不变）。
+      if (repulsion_weight_ > 0.0f) {
+        // Let near-collision trajectory points be punished severely
+        if (dist_to_obj < collision_margin_distance_) {
+          traj_cost += (collision_margin_distance_ - dist_to_obj);
+        } else if (!near_goal) {  // Generally prefer trajectories further from obstacles
+          repulsive_cost(i) += (inflation_radius_ - dist_to_obj);
+        }
       }
     }
 
@@ -207,6 +209,9 @@ CollisionCost ObstaclesCritic::costAtPose(float x, float y, float theta)
     return collision_cost;
   }
   cost = collision_checker_.pointCost(x_i, y_i);
+  if (cost < 1.0f) {
+    return collision_cost;
+  }
 
   if (consider_footprint_ &&
     (cost >= possibly_inscribed_cost_ || possibly_inscribed_cost_ < 1.0f))
@@ -217,6 +222,12 @@ CollisionCost ObstaclesCritic::costAtPose(float x, float y, float theta)
   }
 
   return collision_cost;
+}
+
+void ObstaclesCritic::applyProfileSettings(const CriticProfileSettings & settings)
+{
+  // 三阶段覆盖软斥力权重；致命 critical_weight_ 保持全局常开（安全）
+  repulsion_weight_ = settings.obstacles.repulsion_weight;
 }
 
 }  // namespace mppi::critics

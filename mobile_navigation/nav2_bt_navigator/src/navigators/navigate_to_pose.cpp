@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <cmath>
 #include <vector>
 #include <string>
 #include <set>
@@ -21,6 +22,24 @@
 
 namespace nav2_bt_navigator
 {
+
+namespace
+{
+
+double getYaw(const geometry_msgs::msg::Quaternion & q)
+{
+  return std::atan2(
+    2.0 * (q.w * q.z + q.x * q.y),
+    1.0 - 2.0 * (q.y * q.y + q.z * q.z));
+}
+
+double radToDeg(double rad)
+{
+  constexpr double kRadToDeg = 180.0 / 3.14159265358979323846;
+  return rad * kRadToDeg;
+}
+
+}  // namespace
 
 bool
 NavigateToPoseNavigator::configure(
@@ -210,10 +229,17 @@ NavigateToPoseNavigator::initializeGoalPose(ActionT::Goal::ConstSharedPtr goal)
     feedback_utils_.global_frame, feedback_utils_.robot_frame,
     feedback_utils_.transform_tolerance);
 
+  const double current_yaw = getYaw(current_pose.pose.orientation);
+  const double goal_yaw = getYaw(goal->pose.pose.orientation);
+
   RCLCPP_INFO(
-    logger_, "Begin navigating from current location (%.2f, %.2f) to (%.2f, %.2f)",
+    logger_,
+    "Begin navigating from current location (%.2f, %.2f, yaw=%.4f rad/%.2f deg) "
+    "to (%.2f, %.2f, yaw=%.4f rad/%.2f deg)",
     current_pose.pose.position.x, current_pose.pose.position.y,
-    goal->pose.pose.position.x, goal->pose.pose.position.y);
+    current_yaw, radToDeg(current_yaw),
+    goal->pose.pose.position.x, goal->pose.pose.position.y,
+    goal_yaw, radToDeg(goal_yaw));
 
   // Reset state for new action feedback
   start_time_ = clock_->now();

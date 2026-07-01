@@ -15,8 +15,9 @@
 #ifndef NAV2_MPPI_CONTROLLER__OPTIMIZER_HPP_
 #define NAV2_MPPI_CONTROLLER__OPTIMIZER_HPP_
 
-#include <string>
+#include <array>
 #include <memory>
+#include <string>
 
 #include "rclcpp_lifecycle/lifecycle_node.hpp"
 
@@ -40,6 +41,20 @@
 
 namespace mppi
 {
+
+struct VelocityProfile
+{
+  float vx_max{0.0f};
+  float vx_min{0.0f};
+  float vy_max{0.0f};
+  float wz_max{0.0f};
+};
+
+struct MppiProfileSettings
+{
+  VelocityProfile velocity;
+  critics::CriticProfileSettings critics;
+};
 
 /**
  * @class mppi::Optimizer
@@ -107,6 +122,46 @@ public:
    * @param percentage Whether the speed limit is absolute or relative
    */
   void setSpeedLimit(double speed_limit, bool percentage);
+
+  /**
+   * @brief Apply profile settings without resetting optimizer state
+   * @param profile Runtime profile settings
+   */
+  void applyProfile(const MppiProfileSettings & profile);
+
+  /**
+   * @brief Get active constraints after profile and speed limit are applied
+   * @return Active optimizer constraints used for sampling and output clipping
+   */
+  const models::ControlConstraints & getActiveConstraints() const {return settings_.constraints;}
+
+  /**
+   * @brief Whether a speed limit from costmap filter is currently active
+   * @return True if speed limit is active
+   */
+  bool isSpeedLimitActive() const {return speed_limit_active_;}
+
+  /**
+   * @brief Get current speed limit value
+   * @return Speed limit value, absolute m/s or percentage depending on flag
+   */
+  double getSpeedLimit() const {return speed_limit_;}
+
+  /**
+   * @brief Whether current speed limit value is percentage
+   * @return True if speed limit is percentage
+   */
+  bool isSpeedLimitPercentage() const {return speed_limit_is_percentage_;}
+
+  /**
+   * @brief Point optimizer + all critics to a costmap snapshot (async/decoupled access)
+   * @param costmap Snapshot costmap to read during scoring
+   */
+  void setCostmapSnapshot(nav2_costmap_2d::Costmap2D * costmap)
+  {
+    costmap_ = costmap;
+    critic_manager_.setCostmapSnapshot(costmap);
+  }
 
   /**
    * @brief Reset the optimization problem to initial conditions
@@ -228,6 +283,26 @@ protected:
    */
   bool fallback(bool fail);
 
+  /**
+   * @brief Recompute active constraints from base constraints and speed limit
+   */
+  void applySpeedLimit();
+
+  /**
+   * @brief Clamp current optimal control sequence to active velocity constraints
+   */
+  void clampControlSequence();
+
+  /**
+   * @brief Sync motion model cached constraints to active optimizer constraints
+   */
+  void syncMotionModelConstraints();
+
+  /**
+   * @brief Log active velocity and acceleration constraints
+   */
+  void logActiveConstraints() const;
+
 protected:
   rclcpp_lifecycle::LifecycleNode::WeakPtr parent_;
   std::shared_ptr<nav2_costmap_2d::Costmap2DROS> costmap_ros_;
@@ -241,6 +316,9 @@ protected:
   NoiseGenerator noise_generator_;
 
   models::OptimizerSettings settings_;
+  bool speed_limit_active_{false};
+  bool speed_limit_is_percentage_{false};
+  double speed_limit_{0.0};
 
   models::State state_;
   models::ControlSequence control_sequence_;

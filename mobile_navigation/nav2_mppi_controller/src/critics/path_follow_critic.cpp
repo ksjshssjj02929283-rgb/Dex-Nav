@@ -14,6 +14,8 @@
 
 #include "nav2_mppi_controller/critics/path_follow_critic.hpp"
 
+#include <algorithm>
+
 namespace mppi::critics
 {
 
@@ -21,9 +23,6 @@ void PathFollowCritic::initialize()
 {
   auto getParam = parameters_handler_->getParamGetter(name_);
 
-  getParam(
-    threshold_to_consider_,
-    "threshold_to_consider", 1.4);
   getParam(offset_from_furthest_, "offset_from_furthest", 6);
   getParam(power_, "cost_power", 1);
   getParam(weight_, "cost_weight", 5.0);
@@ -31,8 +30,9 @@ void PathFollowCritic::initialize()
 
 void PathFollowCritic::score(CriticData & data)
 {
-  if (!enabled_ || data.path.x.size() < 2 ||
-    utils::withinPositionGoalTolerance(threshold_to_consider_, data.state.pose.pose, data.path))
+  // 三阶段 MPPI 中 cost_weight <= 0 表示该阶段关闭路径推进代价。
+  // threshold 距离门已删（同 path_align）。
+  if (!enabled_ || weight_ <= 0.0f || data.path.x.size() < 2)
   {
     return;
   }
@@ -63,6 +63,17 @@ void PathFollowCritic::score(CriticData & data)
   auto dists = ((last_x - path_x).square() + (last_y - path_y).square()).sqrt();
 
   data.costs += (weight_ * dists).pow(power_);
+}
+
+void PathFollowCritic::applyPathFollowCriticSettings(const PathFollowCriticSettings & settings)
+{
+  weight_ = settings.weight;
+  offset_from_furthest_ = static_cast<size_t>(std::max(0, settings.offset_from_furthest));
+}
+
+void PathFollowCritic::applyProfileSettings(const CriticProfileSettings & settings)
+{
+  applyPathFollowCriticSettings(settings.path_follow);
 }
 
 }  // namespace mppi::critics

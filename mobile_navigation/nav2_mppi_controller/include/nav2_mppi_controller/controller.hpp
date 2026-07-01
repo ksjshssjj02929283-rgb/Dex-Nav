@@ -15,8 +15,10 @@
 #ifndef NAV2_MPPI_CONTROLLER__CONTROLLER_HPP_
 #define NAV2_MPPI_CONTROLLER__CONTROLLER_HPP_
 
-#include <string>
+#include <array>
+#include <cstddef>
 #include <memory>
+#include <string>
 
 #include "nav2_mppi_controller/tools/path_handler.hpp"
 #include "nav2_mppi_controller/optimizer.hpp"
@@ -27,6 +29,8 @@
 #include "nav2_core/controller.hpp"
 #include "nav2_core/goal_checker.hpp"
 #include "rclcpp/rclcpp.hpp"
+#include "rclcpp_lifecycle/lifecycle_publisher.hpp"
+#include "std_msgs/msg/float64_multi_array.hpp"
 
 namespace nav2_mppi_controller
 {
@@ -37,6 +41,9 @@ using namespace mppi;  // NOLINT
  * @class mppi::MPPIController
  * @brief Main plugin controller for MPPI Controller
  */
+// 三阶段枚举（消灭 magic index 0/1/2）：数组顺序 = 枚举值
+enum Stage : size_t { STAGE_ALIGN = 0, STAGE_TRACK = 1, STAGE_APPROACH = 2 };
+
 class MPPIController : public nav2_core::Controller
 {
 public:
@@ -108,6 +115,24 @@ protected:
     */
   void visualize(nav_msgs::msg::Path transformed_plan);
 
+  void configureStages();
+
+  // 根据路径进度和到目标距离选择三阶段 profile，并把速度/行为代价平滑应用到 optimizer。
+  void applyProfileForPathState(double path_progress, double goal_distance, double heading_path_angle);
+
+  size_t selectStage(double goal_distance, double heading_path_angle) const;
+
+  std::string stageName(size_t profile) const;
+
+  MppiProfileSettings interpolateProfiles(
+    const MppiProfileSettings & from,
+    const MppiProfileSettings & to,
+    double ratio) const;
+
+  void updateProfileTransition();
+
+  void publishProfileDebug(double path_progress, double goal_distance);
+
   std::string name_;
   rclcpp_lifecycle::LifecycleNode::WeakPtr parent_;
   rclcpp::Clock::SharedPtr clock_;
@@ -119,12 +144,31 @@ protected:
   Optimizer optimizer_;
   PathHandler path_handler_;
   TrajectoryVisualizer trajectory_visualizer_;
+  std::shared_ptr<rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::Float64MultiArray>>
+  profile_debug_publisher_;
 
   bool visualize_;
+  std::array<MppiProfileSettings, 3> stages_;
+  MppiProfileSettings applied_profile_;
+  MppiProfileSettings transition_start_profile_;
+  MppiProfileSettings transition_target_profile_;
+  rclcpp::Time profile_transition_start_time_;
+  double profile_start_distance_{0.8};
+  double approach_distance_{1.0};
+  double profile_transition_duration_{0.0};
+  double approach_hysteresis_{0.05};
+  double align_enter_angle_{0.52};   // 对齐段进入阈值(rad,~30°)
+  double align_exit_angle_{0.31};    // 对齐段退出阈值(rad,~18°,迟滞)
+  size_t active_stage_{0};
+  bool profile_transition_active_{false};
 
   double reset_period_;
   // Last time computeVelocityCommands was called
   rclcpp::Time last_time_called_;
+
+  // ⭐ costmap 异步解耦：控制线程读快照副本，try_lock 刷新，永不阻塞等 costmap 更新锁
+  nav2_costmap_2d::Costmap2D costmap_snapshot_;
+  bool costmap_snapshot_initialized_{false};
 };
 
 }  // namespace nav2_mppi_controller

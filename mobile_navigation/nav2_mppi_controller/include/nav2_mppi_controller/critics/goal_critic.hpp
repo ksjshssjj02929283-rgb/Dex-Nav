@@ -42,10 +42,17 @@ public:
    */
   void score(CriticData & data) override;
 
+  /**
+   * @brief Apply runtime goal critic settings
+   * @param settings Runtime goal critic settings
+   */
+  void applyGoalCriticSettings(const GoalCriticSettings & settings);
+
+  void applyProfileSettings(const CriticProfileSettings & settings) override;
+
 protected:
   unsigned int power_{0};
   float weight_{0};
-  float threshold_to_consider_{0};
 };
 
 }  // namespace mppi::critics
