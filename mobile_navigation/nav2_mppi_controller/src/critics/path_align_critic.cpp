@@ -14,6 +14,8 @@
 
 #include "nav2_mppi_controller/critics/path_align_critic.hpp"
 
+#include <algorithm>
+
 namespace mppi::critics
 {
 
@@ -26,9 +28,6 @@ void PathAlignCritic::initialize()
   getParam(max_path_occupancy_ratio_, "max_path_occupancy_ratio", 0.07);
   getParam(offset_from_furthest_, "offset_from_furthest", 20);
   getParam(trajectory_point_step_, "trajectory_point_step", 4);
-  getParam(
-    threshold_to_consider_,
-    "threshold_to_consider", 0.5);
   getParam(use_path_orientations_, "use_path_orientations", false);
 
   RCLCPP_INFO(
@@ -40,8 +39,9 @@ void PathAlignCritic::initialize()
 void PathAlignCritic::score(CriticData & data)
 {
   // Don't apply close to goal, let the goal critics take over
-  if (!enabled_ ||
-    utils::withinPositionGoalTolerance(threshold_to_consider_, data.state.pose.pose, data.path))
+  // 三阶段 MPPI 中 cost_weight <= 0 表示该阶段关闭路径贴合代价，直接跳过较重的路径匹配循环。
+  // threshold 距离门已删（阶段系统管"近目标让位"；避免 approach_distance < threshold 时死区）。
+  if (!enabled_ || weight_ <= 0.0f)
   {
     return;
   }
@@ -123,6 +123,19 @@ void PathAlignCritic::score(CriticData & data)
   }
 
   data.costs += (cost * weight_).pow(power_);
+}
+
+void PathAlignCritic::applyPathAlignCriticSettings(const PathAlignCriticSettings & settings)
+{
+  weight_ = settings.weight;
+  offset_from_furthest_ = static_cast<size_t>(std::max(0, settings.offset_from_furthest));
+  trajectory_point_step_ = static_cast<size_t>(std::max(1, settings.trajectory_point_step));
+  max_path_occupancy_ratio_ = settings.max_path_occupancy_ratio;
+}
+
+void PathAlignCritic::applyProfileSettings(const CriticProfileSettings & settings)
+{
+  applyPathAlignCriticSettings(settings.path_align);
 }
 
 }  // namespace mppi::critics

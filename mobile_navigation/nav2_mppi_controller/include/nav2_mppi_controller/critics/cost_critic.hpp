@@ -15,6 +15,7 @@
 #ifndef NAV2_MPPI_CONTROLLER__CRITICS__COST_CRITIC_HPP_
 #define NAV2_MPPI_CONTROLLER__CRITICS__COST_CRITIC_HPP_
 
+#include <cstddef>
 #include <memory>
 #include <string>
 
@@ -47,6 +48,17 @@ public:
    */
   void score(CriticData & data) override;
 
+  void applyProfileSettings(const CriticProfileSettings & settings) override;
+
+  /**
+    * @brief Point critic + collision checker to a costmap snapshot
+    */
+  void setCostmapSnapshot(nav2_costmap_2d::Costmap2D * costmap) override
+  {
+    costmap_ = costmap;
+    collision_checker_.setCostmap(costmap_);
+  }
+
 protected:
   /**
     * @brief Checks if cost represents a collision
@@ -65,6 +77,13 @@ protected:
     * @return Collision information at pose
     */
   float costAtPose(float x, float y);
+
+  /**
+    * @brief Estimate obstacle clearance from an inflated costmap cost
+    * @param cost Costmap cost at pose center
+    * @return Estimated distance from robot footprint to the obstacle
+    */
+  float distanceToObstacle(float cost) const;
 
   /**
     * @brief Find the min cost of the inflation decay function for which the robot MAY be
@@ -88,6 +107,7 @@ protected:
   float weight_{0};
 
   float near_goal_distance_;
+  float inflation_scale_factor_{0};
   std::string inflation_layer_name_;
 
   unsigned int power_{0};

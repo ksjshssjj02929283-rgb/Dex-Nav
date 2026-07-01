@@ -28,6 +28,7 @@ void CostCritic::initialize()
   getParam(critical_cost_, "critical_cost", 300.0);
   getParam(collision_cost_, "collision_cost", 1000000.0);
   getParam(near_goal_distance_, "near_goal_distance", 0.5);
+  getParam(inflation_scale_factor_, "cost_scaling_factor", 10.0);
   getParam(inflation_layer_name_, "inflation_layer_name", std::string(""));
 
   // Normalized by cost value to put in same regime as other weights
@@ -99,6 +100,17 @@ float CostCritic::findCircumscribedCost(
   return circumscribed_cost_;
 }
 
+float CostCritic::distanceToObstacle(float cost) const
+{
+  if (inflation_scale_factor_ <= 0.0f || cost <= 0.0f) {
+    return 0.0f;
+  }
+
+  const float min_radius = costmap_ros_->getLayeredCostmap()->getInscribedRadius();
+  return (inflation_scale_factor_ * min_radius - log(cost) + log(253.0f)) /
+         inflation_scale_factor_ - min_radius;
+}
+
 void CostCritic::score(CriticData & data)
 {
   if (!enabled_) {
@@ -110,11 +122,8 @@ void CostCritic::score(CriticData & data)
     possibly_inscribed_cost_ = findCircumscribedCost(costmap_ros_);
   }
 
-  // If near the goal, don't apply the preferential term since the goal is near obstacles
-  bool near_goal = false;
-  if (utils::withinPositionGoalTolerance(near_goal_distance_, data.state.pose.pose, data.path)) {
-    near_goal = true;
-  }
+  const bool near_goal = utils::withinPositionGoalTolerance(
+    near_goal_distance_, data.state.pose.pose, data.path);
 
   models::Vector repulsive_cost = models::Vector::Zero(data.costs.size());
 
@@ -199,6 +208,12 @@ float CostCritic::costAtPose(float x, float y)
   }
 
   return collision_checker_.pointCost(x_i, y_i);
+}
+
+void CostCritic::applyProfileSettings(const CriticProfileSettings & settings)
+{
+  // 三阶段覆盖软代价权重；致命碰撞由 ObstaclesCritic critical 全局兜底
+  weight_ = settings.cost.weight;
 }
 
 }  // namespace mppi::critics
