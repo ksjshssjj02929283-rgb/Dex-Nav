@@ -95,7 +95,7 @@ track
 | `PathAlignCritic` | `cost_weight`, `threshold_to_consider`, `offset_from_furthest`, `trajectory_point_step`, `max_path_occupancy_ratio` |
 | `PreferForwardCritic` | `cost_weight`, `threshold_to_consider` |
 
-> `GoalLateralCritic` / `GoalLongitudinalCritic` 分别惩罚候选轨迹末 `last_n_points` 个点上，目标点在**该候选点 base_link 坐标系**下的横向 / 纵向投影误差，仅末段启用，是厘米级停靠的核心。
+> `GoalLateralCritic` / `GoalLongitudinalCritic` 分别惩罚候选轨迹点在**目标点坐标系**下的横向 / 纵向投影误差，坐标轴由目标终点朝向固定，不随候选轨迹自身朝向变化，是末段厘米级停靠的核心。
 
 **不支持按阶段覆盖**（仍用 `FollowPath` 全局配置）：
 

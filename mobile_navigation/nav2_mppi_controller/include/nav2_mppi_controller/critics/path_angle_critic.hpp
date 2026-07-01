@@ -53,6 +53,8 @@ public:
 
 protected:
   float max_angle_to_furthest_{0};
+  float wrong_way_cost_ratio_{0};
+  float direction_deadband_{0};
 
   size_t offset_from_furthest_{0};
   bool reversing_allowed_{true};

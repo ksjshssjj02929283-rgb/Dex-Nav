@@ -223,15 +223,15 @@ geometry_msgs::msg::TwistStamped MPPIController::computeVelocityCommands(
       transform_ms, wait_lock_ms, optimize_ms, visualize_ms, total_ms);
   }
 
-  // ── 关键运行 log（节流 1Hz）：阶段 / 到目标距离 / 到点精度(lon/lat/yaw,机器人系) / 本周期耗时 / 命令 vs 实际 ──
+  // ── 关键运行 log（节流 1Hz）：阶段 / 到目标距离 / 到点精度(lon/lat/yaw,目标系) / 本周期耗时 / 命令 vs 实际 ──
   double key_lon = 0.0, key_lat = 0.0, key_yaw = 0.0;
   if (key_has_goal) {
-    const double dx = key_goal_x - robot_pose.pose.position.x;
-    const double dy = key_goal_y - robot_pose.pose.position.y;
+    const double dx = robot_pose.pose.position.x - key_goal_x;
+    const double dy = robot_pose.pose.position.y - key_goal_y;
     const double ryaw = tf2::getYaw(robot_pose.pose.orientation);
-    key_lon = std::cos(ryaw) * dx + std::sin(ryaw) * dy;    // longitudinal (forward) error
-    key_lat = -std::sin(ryaw) * dx + std::cos(ryaw) * dy;   // lateral (left) error
-    const double dyaw = key_goal_yaw - ryaw;
+    key_lon = std::cos(key_goal_yaw) * dx + std::sin(key_goal_yaw) * dy;
+    key_lat = -std::sin(key_goal_yaw) * dx + std::cos(key_goal_yaw) * dy;
+    const double dyaw = ryaw - key_goal_yaw;
     key_yaw = std::atan2(std::sin(dyaw), std::cos(dyaw));    // heading error (normalized)
   }
   RCLCPP_INFO_THROTTLE(
