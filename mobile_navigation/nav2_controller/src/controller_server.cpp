@@ -232,6 +232,9 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
 
   odom_sub_ = std::make_unique<nav_2d_utils::OdomSubscriber>(node);
   vel_publisher_ = create_publisher<geometry_msgs::msg::Twist>("cmd_vel", 1);
+  goal_error_publisher_ = create_publisher<diagnostic_msgs::msg::DiagnosticArray>(
+    "/navigation_goal_error",
+    rclcpp::QoS(rclcpp::KeepLast(10)).reliable().transient_local());
 
   // Create the action server that we implement with our followPath method
   action_server_ = std::make_unique<ActionServer>(
@@ -261,6 +264,7 @@ ControllerServer::on_activate(const rclcpp_lifecycle::State & /*state*/)
     it->second->activate();
   }
   vel_publisher_->on_activate();
+  goal_error_publisher_->on_activate();
   action_server_->activate();
 
   auto node = shared_from_this();
@@ -299,6 +303,7 @@ ControllerServer::on_deactivate(const rclcpp_lifecycle::State & /*state*/)
   }
 
   publishZeroVelocity();
+  goal_error_publisher_->on_deactivate();
   vel_publisher_->on_deactivate();
   dyn_params_handler_.reset();
 
@@ -333,6 +338,7 @@ ControllerServer::on_cleanup(const rclcpp_lifecycle::State & /*state*/)
   odom_sub_.reset();
   costmap_thread_.reset();
   vel_publisher_.reset();
+  goal_error_publisher_.reset();
   speed_limit_sub_.reset();
 
   return nav2_util::CallbackReturn::SUCCESS;
@@ -496,7 +502,6 @@ void ControllerServer::computeControl()
         // end
         // added by hz
         std::cout << "------------------------------------------------------------" << std::endl;
-        std::cout << "------------------------------------------------------------" << std::endl;
       }
     }
   } catch (nav2_core::PlannerException & e) {
@@ -533,6 +538,7 @@ void ControllerServer::setPlannerPath(const nav_msgs::msg::Path & path)
   end_pose_ = path.poses.back();
   end_pose_.header.frame_id = path.header.frame_id;
   goal_checkers_[current_goal_checker_]->reset();
+  near_goal_progress_acceptance_reached_ = false;
 
   RCLCPP_DEBUG(
     get_logger(), "Path end point is (%.2f, %.2f)",
@@ -626,6 +632,201 @@ bool ControllerServer::checkNearGoalProgress(const geometry_msgs::msg::PoseStamp
   return false;
 }
 
+bool ControllerServer::isWithinGoalCheckerTolerance(
+  const geometry_msgs::msg::PoseStamped & pose,
+  bool mark_goal_reached_on_success,
+  bool check_yaw)
+{
+  geometry_msgs::msg::Pose goal_tolerance;
+  geometry_msgs::msg::Twist vel_tolerance;
+  if (!goal_checkers_[current_goal_checker_]->getTolerances(goal_tolerance, vel_tolerance)) {
+    return false;
+  }
+
+  geometry_msgs::msg::PoseStamped transformed_end_pose;
+  try {
+    rclcpp::Duration tolerance(
+      rclcpp::Duration::from_seconds(costmap_ros_->getTransformTolerance()));
+    if (!nav_2d_utils::transformPose(
+      costmap_ros_->getTfBuffer(), pose.header.frame_id,
+      end_pose_, transformed_end_pose, tolerance))
+    {
+      return false;
+    }
+  } catch (const tf2::TransformException & ex) {
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), *get_clock(), 5000,
+      "Unable to transform end pose for near-goal tolerance check: %s. "
+      "近目标兜底误差检查无法转换终点位姿，请检查 TF。",
+      ex.what());
+    return false;
+  }
+
+  const double goal_yaw = tf2::getYaw(transformed_end_pose.pose.orientation);
+  const double dx = pose.pose.position.x - transformed_end_pose.pose.position.x;
+  const double dy = pose.pose.position.y - transformed_end_pose.pose.position.y;
+  // 使用目标点坐标系投影，和纵向/横向 goal_checker 的误差定义保持一致。
+  const double lon_err = std::cos(goal_yaw) * dx + std::sin(goal_yaw) * dy;
+  const double lat_err = -std::sin(goal_yaw) * dx + std::cos(goal_yaw) * dy;
+  const double yaw_err = angles::shortest_angular_distance(
+    tf2::getYaw(pose.pose.orientation), goal_yaw);
+
+  const double invalid_field = std::numeric_limits<double>::lowest();
+  auto is_valid_tolerance = [invalid_field](double tolerance) {
+      return tolerance > invalid_field / 2.0;
+    };
+
+  const bool lon_ok =
+    !is_valid_tolerance(goal_tolerance.position.x) ||
+    std::fabs(lon_err) <= std::fabs(goal_tolerance.position.x);
+  const bool lat_ok =
+    !is_valid_tolerance(goal_tolerance.position.y) ||
+    std::fabs(lat_err) <= std::fabs(goal_tolerance.position.y);
+  const double yaw_tolerance = tf2::getYaw(goal_tolerance.orientation);
+  const bool yaw_ok =
+    !is_valid_tolerance(yaw_tolerance) ||
+    std::fabs(yaw_err) <= std::fabs(yaw_tolerance);
+
+  nav_2d_msgs::msg::Twist2D twist = getThresholdedTwist(odom_sub_->getTwist());
+  geometry_msgs::msg::Twist velocity = nav_2d_utils::twist2Dto3D(twist);
+  const bool trans_stopped_ok =
+    !is_valid_tolerance(vel_tolerance.linear.x) ||
+    std::hypot(velocity.linear.x, velocity.linear.y) <= std::fabs(vel_tolerance.linear.x);
+  const bool rot_stopped_ok =
+    !is_valid_tolerance(vel_tolerance.angular.z) ||
+    std::fabs(velocity.angular.z) <= std::fabs(vel_tolerance.angular.z);
+
+  const bool yaw_accept = !check_yaw || yaw_ok;
+  const bool stopped_accept = !mark_goal_reached_on_success ||
+    (trans_stopped_ok && rot_stopped_ok);
+
+  if (lon_ok && lat_ok && yaw_accept && stopped_accept) {
+    if (mark_goal_reached_on_success) {
+      RCLCPP_WARN(
+        get_logger(),
+        "近目标进度检查超时，但当前误差已满足 goal_checker 接受容差，按到位成功处理："
+        "lon_err=%.4f/%.4f, lat_err=%.4f/%.4f, yaw_err=%.4f/%.4f, "
+        "linear_vel=%.4f, angular_vel=%.4f",
+        lon_err, std::fabs(goal_tolerance.position.x),
+        lat_err, std::fabs(goal_tolerance.position.y),
+        yaw_err, std::fabs(yaw_tolerance),
+        std::hypot(velocity.linear.x, velocity.linear.y),
+        std::fabs(velocity.angular.z));
+      if (goal_error_publisher_ && goal_error_publisher_->is_activated()) {
+        diagnostic_msgs::msg::DiagnosticArray msg;
+        msg.header.stamp = now();
+        msg.header.frame_id = pose.header.frame_id;
+        diagnostic_msgs::msg::DiagnosticStatus status;
+        status.level = diagnostic_msgs::msg::DiagnosticStatus::OK;
+        status.name = "navigation_goal_error";
+        status.message = "near_goal_progress_acceptance";
+        status.hardware_id = "nav2_controller";
+
+        auto add_value = [&status](const std::string & key, const std::string & value) {
+            diagnostic_msgs::msg::KeyValue item;
+            item.key = key;
+            item.value = value;
+            status.values.push_back(item);
+          };
+        auto add_double = [&add_value](const std::string & key, double value) {
+            add_value(key, std::to_string(value));
+          };
+        auto add_bool = [&add_value](const std::string & key, bool value) {
+            add_value(key, value ? "true" : "false");
+          };
+
+        add_value("result_type", "near_goal_progress_acceptance");
+        add_double("goal_x", transformed_end_pose.pose.position.x);
+        add_double("goal_y", transformed_end_pose.pose.position.y);
+        add_double("goal_yaw", tf2::getYaw(transformed_end_pose.pose.orientation));
+        add_double("current_x", pose.pose.position.x);
+        add_double("current_y", pose.pose.position.y);
+        add_double("current_yaw", tf2::getYaw(pose.pose.orientation));
+        add_double("longitudinal_error", lon_err);
+        add_double("lateral_error", lat_err);
+        add_double("distance_error", std::hypot(lon_err, lat_err));
+        add_double("yaw_error", yaw_err);
+        add_double("desired_longitudinal_tolerance", std::fabs(goal_tolerance.position.x));
+        add_double("desired_lateral_tolerance", std::fabs(goal_tolerance.position.y));
+        add_double("accept_longitudinal_tolerance", std::fabs(goal_tolerance.position.x));
+        add_double("accept_lateral_tolerance", std::fabs(goal_tolerance.position.y));
+        add_double("yaw_tolerance", std::fabs(yaw_tolerance));
+        add_bool("within_desired_tolerance", false);
+        add_bool("within_accept_tolerance", true);
+        add_bool("desired_window_stable", false);
+
+        msg.status.push_back(status);
+        goal_error_publisher_->publish(msg);
+      }
+      near_goal_progress_acceptance_reached_ = true;
+    }
+    return true;
+  }
+
+  if (!mark_goal_reached_on_success) {
+    return false;
+  }
+
+  RCLCPP_WARN(
+    get_logger(),
+    "近目标进度检查超时，且当前误差仍未满足 goal_checker 接受容差："
+    "lon_err=%.4f/%.4f, lat_err=%.4f/%.4f, yaw_err=%.4f/%.4f",
+    lon_err, std::fabs(goal_tolerance.position.x),
+    lat_err, std::fabs(goal_tolerance.position.y),
+    yaw_err, std::fabs(yaw_tolerance));
+  return false;
+}
+
+bool ControllerServer::isSamePathGoal(const nav_msgs::msg::Path & path)
+{
+  if (path.poses.empty() || current_path_.poses.empty()) {
+    return false;
+  }
+
+  geometry_msgs::msg::PoseStamped new_end_pose = path.poses.back();
+  new_end_pose.header.frame_id = path.header.frame_id;
+  geometry_msgs::msg::PoseStamped transformed_new_end_pose;
+  try {
+    rclcpp::Duration tolerance(
+      rclcpp::Duration::from_seconds(costmap_ros_->getTransformTolerance()));
+    if (!nav_2d_utils::transformPose(
+      costmap_ros_->getTfBuffer(), end_pose_.header.frame_id,
+      new_end_pose, transformed_new_end_pose, tolerance))
+    {
+      return false;
+    }
+  } catch (const tf2::TransformException & ex) {
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), *get_clock(), 5000,
+      "Unable to transform pending path end pose for same-goal check: %s. "
+      "无法转换待更新 path 的终点，按新路径处理。",
+      ex.what());
+    return false;
+  }
+
+  // 近目标重规划会做 position-only interpolation，path 终点可能有厘米级以内的微小差异。
+  // 这里判断的是“业务目标是否相同”，不是要求两个 path 终点数学上完全重合。
+  constexpr double kSameGoalPositionTolerance = 0.02;
+  constexpr double kSameGoalYawTolerance = 0.05;
+  const double goal_delta = nav2_util::geometry_utils::euclidean_distance(
+    transformed_new_end_pose, end_pose_);
+  const double yaw_delta = std::abs(
+    angles::shortest_angular_distance(
+      tf2::getYaw(transformed_new_end_pose.pose.orientation),
+      tf2::getYaw(end_pose_.pose.orientation)));
+
+  const bool same_goal =
+    goal_delta <= kSameGoalPositionTolerance && yaw_delta <= kSameGoalYawTolerance;
+  if (!same_goal) {
+    RCLCPP_INFO(
+      get_logger(),
+      "近目标 path 更新未被视为同一目标：goal_delta=%.4f/%.4f m, "
+      "yaw_delta=%.4f/%.4f rad，将正常更新 path。",
+      goal_delta, kSameGoalPositionTolerance, yaw_delta, kSameGoalYawTolerance);
+  }
+  return same_goal;
+}
+
 void ControllerServer::computeAndPublishVelocity()
 {
   constexpr double kSlowTimingWarnMs = 100.0;
@@ -641,12 +842,17 @@ void ControllerServer::computeAndPublishVelocity()
   auto pose_ms = std::chrono::duration<double, std::milli>(t_pose_end - t_pose_start).count();
 
   auto t_progress_start = std::chrono::high_resolution_clock::now();
+  const bool in_goal_accept_position = isWithinGoalCheckerTolerance(pose, false, false);
   if (near_goal_progress_enabled_ && isNearGoal(pose)) {
     if (!checkNearGoalProgress(pose)) {
+      if (isWithinGoalCheckerTolerance(pose, true)) {
+        publishZeroVelocity();
+        return;
+      }
       throw nav2_core::PlannerException(
               "Failed to make near-goal progress. 接近目标点后长时间没有足够位移/转角，可能卡住或被约束。");
     }
-  } else {
+  } else if (!in_goal_accept_position) {
     if (in_near_goal_progress_mode_) {
       RCLCPP_INFO(get_logger(), "Leaving near-goal progress mode.");
       resetNearGoalProgress();
@@ -752,28 +958,65 @@ void ControllerServer::computeAndPublishVelocity()
 void ControllerServer::updateGlobalPath()
 {
   if (action_server_->is_preempt_requested()) {
-    RCLCPP_INFO(get_logger(), "Passing new path to controller.");
     auto goal = action_server_->accept_pending_goal();
-    std::string current_controller;
-    if (findControllerId(goal->controller_id, current_controller)) {
-      current_controller_ = current_controller;
-    } else {
+    std::string requested_controller;
+    if (!findControllerId(goal->controller_id, requested_controller)) {
       RCLCPP_INFO(
         get_logger(), "Terminating action, invalid controller %s requested. 终止导航：请求的 controller_id 无效。",
         goal->controller_id.c_str());
       action_server_->terminate_current();
       return;
     }
-    std::string current_goal_checker;
-    if (findGoalCheckerId(goal->goal_checker_id, current_goal_checker)) {
-      current_goal_checker_ = current_goal_checker;
-    } else {
+
+    std::string requested_goal_checker;
+    if (!findGoalCheckerId(goal->goal_checker_id, requested_goal_checker)) {
       RCLCPP_INFO(
         get_logger(), "Terminating action, invalid goal checker %s requested. 终止导航：请求的 goal_checker_id 无效。",
         goal->goal_checker_id.c_str());
       action_server_->terminate_current();
       return;
     }
+
+    geometry_msgs::msg::PoseStamped pose;
+    const bool same_controller = requested_controller == current_controller_;
+    const bool same_goal_checker = requested_goal_checker == current_goal_checker_;
+    const bool same_goal = isSamePathGoal(goal->path);
+    const bool got_pose = getRobotPose(pose);
+    const bool in_accept_position =
+      got_pose && isWithinGoalCheckerTolerance(pose, false, false);
+    if (same_controller && same_goal_checker && same_goal && in_accept_position)
+    {
+      RCLCPP_INFO(
+        get_logger(),
+        "忽略近目标 path 更新：目标点不变且当前位置已进入 goal_checker 2cm 接受窗口，"
+        "继续使用当前末端路径完成精调，避免重置 goal_checker 和 MPPI 末端状态。pending path poses=%zu",
+        goal->path.poses.size());
+      return;
+    }
+
+    if (same_goal && !in_accept_position) {
+      if (got_pose) {
+        RCLCPP_INFO(
+          get_logger(),
+          "近目标 path 更新未忽略：目标点不变，但当前位置尚未进入 goal_checker 2cm 接受窗口。");
+      } else {
+        RCLCPP_INFO(
+          get_logger(),
+          "近目标 path 更新未忽略：目标点不变，但当前无法获取机器人位姿，无法确认是否进入 "
+          "goal_checker 2cm 接受窗口。");
+      }
+    } else if (same_goal && (!same_controller || !same_goal_checker)) {
+      RCLCPP_INFO(
+        get_logger(),
+        "近目标 path 更新未忽略：目标点不变，但 controller 或 goal_checker 已变化，"
+        "same_controller=%s, same_goal_checker=%s。",
+        same_controller ? "true" : "false",
+        same_goal_checker ? "true" : "false");
+    }
+
+    current_controller_ = requested_controller;
+    current_goal_checker_ = requested_goal_checker;
+    RCLCPP_INFO(get_logger(), "Passing new path to controller.");
     setPlannerPath(goal->path);
   }
 }
@@ -802,6 +1045,14 @@ void ControllerServer::publishZeroVelocity()
 
 bool ControllerServer::isGoalReached()
 {
+  if (near_goal_progress_acceptance_reached_) {
+    RCLCPP_INFO(
+      get_logger(),
+      "Reached the goal by near-goal acceptance fallback. "
+      "近目标进度检查已确认误差满足接受容差，返回到位成功。");
+    return true;
+  }
+
   geometry_msgs::msg::PoseStamped pose;
 
   if (!getRobotPose(pose)) {

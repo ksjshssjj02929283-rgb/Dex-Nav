@@ -19,9 +19,14 @@
         <description>Checks linear and angular velocity after stopping</description>
     </class>
   </library>
-    <library path="longitudinal_goal_checker">
+  <library path="longitudinal_goal_checker">
     <class type="nav2_controller::LongitudinalGoalChecker" base_class_type="nav2_core::GoalChecker">
         <description>Checks linear and angular velocity after stopping</description>
+    </class>
+  </library>
+  <library path="precision_longitudinal_goal_checker">
+    <class type="nav2_controller::PrecisionLongitudinalGoalChecker" base_class_type="nav2_core::GoalChecker">
+        <description>Checks target-frame longitudinal and lateral goal errors with desired and fallback tolerances</description>
     </class>
   </library>
 </class_libraries>
