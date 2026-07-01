@@ -411,6 +411,15 @@ void ControllerServer::computeControl()
   std::lock_guard<std::mutex> lock(dynamic_params_lock_);
 
   RCLCPP_INFO(get_logger(), "Received a goal, begin computing control effort.");
+  if (odom_sub_) {
+    const auto start_twist = getThresholdedTwist(odom_sub_->getTwist());
+    RCLCPP_INFO(
+      get_logger(),
+      "[ControllerStopDebug] FollowPath started: actual odom velocity vx=%.3f m/s, "
+      "vy=%.3f m/s, wz=%.3f rad/s. If these values are not near zero immediately after a "
+      "previous stop request, BT recovery restarted control before the robot fully stopped.",
+      start_twist.x, start_twist.y, start_twist.theta);
+  }
 
   try {
     std::string c_name = action_server_->get_current_goal()->controller_id;
@@ -1040,6 +1049,18 @@ void ControllerServer::publishZeroVelocity()
   velocity.twist.linear.z = 0;
   velocity.header.frame_id = costmap_ros_->getBaseFrameID();
   velocity.header.stamp = now();
+
+  if (odom_sub_) {
+    const auto actual_twist = getThresholdedTwist(odom_sub_->getTwist());
+    const size_t subscriber_count = vel_publisher_ ?
+      vel_publisher_->get_subscription_count() : 0;
+    RCLCPP_WARN(
+      get_logger(),
+      "[ControllerStopDebug] Publishing zero velocity: actual odom velocity vx=%.3f m/s, "
+      "vy=%.3f m/s, wz=%.3f rad/s, cmd_vel subscribers=%zu. This is a stop request; "
+      "the velocity smoother and chassis still need time to decelerate.",
+      actual_twist.x, actual_twist.y, actual_twist.theta, subscriber_count);
+  }
   publishVelocity(velocity);
 }
 

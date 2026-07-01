@@ -87,11 +87,11 @@ void PathAlignCritic::score(CriticData & data)
   float summed_path_dist = 0.0f, dyaw = 0.0f;
   float num_samples = 0.0f;
   float Tx = 0.0f, Ty = 0.0f;
-  size_t path_pt = 0;
   for (size_t t = 0; t < batch_size; ++t) {
     traj_integrated_distance = 0.0f;
     summed_path_dist = 0.0f;
     num_samples = 0.0f;
+    size_t path_pt = 0;
     for (size_t p = trajectory_point_step_; p < time_steps; p += trajectory_point_step_) {
       Tx = data.trajectories.x(t, p);
       Ty = data.trajectories.y(t, p);

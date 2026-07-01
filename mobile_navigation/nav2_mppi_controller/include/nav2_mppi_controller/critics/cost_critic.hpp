@@ -66,17 +66,22 @@ protected:
     * @param x X of pose
     * @param y Y of pose
     * @param theta theta of pose
+    * @param evaluated_cost Final center or footprint cost used for the decision
+    * @param used_footprint Whether footprint collision checking was performed
     * @return bool if in collision
     */
-  bool inCollision(float cost, float x, float y, float theta);
+  bool inCollision(
+    float cost, float x, float y, float theta,
+    float * evaluated_cost = nullptr, bool * used_footprint = nullptr);
 
   /**
     * @brief cost at a robot pose
     * @param x X of pose
     * @param y Y of pose
-    * @return Collision information at pose
+    * @param out_of_bounds Whether the pose center is outside the costmap
+    * @return Costmap cost at pose center
     */
-  float costAtPose(float x, float y);
+  float costAtPose(float x, float y, bool * out_of_bounds = nullptr);
 
   /**
     * @brief Estimate obstacle clearance from an inflated costmap cost

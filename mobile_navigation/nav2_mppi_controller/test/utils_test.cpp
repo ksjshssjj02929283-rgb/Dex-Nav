@@ -249,6 +249,22 @@ TEST(UtilsTests, FurthestAndClosestReachedPoint)
   EXPECT_EQ(findPathTrajectoryInitialPoint(data3), 5u);
 }
 
+TEST(UtilsTests, FindClosestPathPointBoundaries)
+{
+  const std::vector<float> path_distances{0.0f, 0.1f, 0.2f, 0.3f};
+
+  // 从非零索引开始时，不得错误跳回路径起点。
+  EXPECT_EQ(findClosestPathPt(path_distances, 0.2f, 2), 2u);
+  EXPECT_EQ(findClosestPathPt(path_distances, 0.21f, 2), 2u);
+
+  // 轨迹累计距离超过局部路径长度时，应稳定夹到末点而不是解引用 end()。
+  EXPECT_EQ(findClosestPathPt(path_distances, 1.0f), 3u);
+  EXPECT_EQ(findClosestPathPt(path_distances, 1.0f, 99), 3u);
+
+  const std::vector<float> empty_path;
+  EXPECT_EQ(findClosestPathPt(empty_path, 0.1f), 0u);
+}
+
 TEST(UtilsTests, findPathCosts)
 {
   models::State state;

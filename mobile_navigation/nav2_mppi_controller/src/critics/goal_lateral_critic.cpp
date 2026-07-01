@@ -37,13 +37,19 @@ void GoalLateralCritic::score(CriticData & data)
 {
   // 三阶段 MPPI 中 cost_weight <= 0 表示该阶段关闭横向误差代价。
   // 开关交给阶段权重（无距离门控）。
-  if (!enabled_ || weight_ <= 0.0f || data.path.x.size() < 1) {
+  if (
+    !enabled_ || weight_ <= 0.0f || data.path.x.size() < 1 ||
+    data.path.y.size() != data.path.x.size() || data.path.yaws.size() != data.path.x.size())
+  {
     return;
   }
 
   const auto goal_idx = data.path.x.size() - 1;
   const float goal_x = data.path.x(goal_idx);
   const float goal_y = data.path.y(goal_idx);
+  const float goal_yaw = data.path.yaws(goal_idx);
+  const float goal_sin = std::sin(goal_yaw);
+  const float goal_cos = std::cos(goal_yaw);
 
   const Eigen::Index time_steps = data.trajectories.x.cols();
   if (time_steps < 1) {
@@ -52,11 +58,11 @@ void GoalLateralCritic::score(CriticData & data)
 
   models::Vector cost = models::Vector::Zero(data.costs.size());
   for (Eigen::Index p = 0; p < time_steps; ++p) {
-    // 目标点在每个候选轨迹点(base_link)坐标系下的横向(左向)投影误差
-    const auto gx = goal_x - data.trajectories.x.col(p).array();
-    const auto gy = goal_y - data.trajectories.y.col(p).array();
-    const models::Vector yaw = data.trajectories.yaws.col(p);
-    const auto lat_err = (-yaw.sin() * gx + yaw.cos() * gy).abs();
+    // 将候选轨迹点与目标点的位置差投影到固定的目标位姿坐标系。
+    // 横向轴为目标朝向的左侧，不随候选轨迹自身 yaw 变化。
+    const auto dx = data.trajectories.x.col(p).array() - goal_x;
+    const auto dy = data.trajectories.y.col(p).array() - goal_y;
+    const auto lat_err = (-goal_sin * dx + goal_cos * dy).abs();
     cost += lat_err;
   }
 
