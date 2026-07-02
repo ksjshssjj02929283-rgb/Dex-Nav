@@ -47,11 +47,41 @@ ControllerServer::ControllerServer(const rclcpp::NodeOptions & options)
   default_progress_checker_id_{"progress_checker"},
   default_progress_checker_type_{"nav2_controller::SimpleProgressChecker"},
   goal_checker_loader_("nav2_core", "nav2_core::GoalChecker"),
-  default_goal_checker_ids_{"goal_checker"},
-  default_goal_checker_types_{"nav2_controller::SimpleGoalChecker"},
+  default_goal_checker_ids_{
+    "simple_goal_checker",
+    "stopped_goal_checker",
+    "position_goal_checker",
+    "rotation_goal_checker",
+    "longitudinal_goal_checker",
+    "high_precision_goal_checker"},
+  default_goal_checker_types_{
+    "simple_goal_checker::SimpleGoalChecker",
+    "stopped_goal_checker::StoppedGoalChecker",
+    "position_goal_checker::PositionGoalChecker",
+    "rotation_goal_checker::RotationGoalChecker",
+    "longitudinal_goal_checker::LongitudinalGoalChecker",
+    "high_precision_goal_checker::HighPrecisionGoalChecker"},
   lp_loader_("nav2_core", "nav2_core::Controller"),
-  default_ids_{"FollowPath"},
-  default_types_{"dwb_core::DWBLocalPlanner"}
+  default_ids_{
+    "MPPIController",
+    "DWBController",
+    "RPPController",
+    "GracefulController",
+    "RotationShimController",
+    "PIDController",
+    "LatLonController",
+    "PureRotationController",
+    "StraightController"},
+  default_types_{
+    "nav2_mppi_controller::MPPIController",
+    "dwb_core::DWBLocalPlanner",
+    "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController",
+    "nav2_graceful_controller::GracefulController",
+    "nav2_rotation_shim_controller::RotationShimController",
+    "pid_controller::PIDController",
+    "lat_lon_controller::LatLonController",
+    "pure_rotation_controller::PureRotationController",
+    "straight_controller::StraightController"}
 {
   RCLCPP_INFO(get_logger(), "Creating controller server");
 
@@ -60,6 +90,8 @@ ControllerServer::ControllerServer(const rclcpp::NodeOptions & options)
   declare_parameter("progress_checker_plugin", default_progress_checker_id_);
   declare_parameter("goal_checker_plugins", default_goal_checker_ids_);
   declare_parameter("controller_plugins", default_ids_);
+  declare_parameter("current_goal_checker", default_goal_checker_ids_.front());
+  declare_parameter("current_controller", default_ids_.front());
   declare_parameter("min_x_velocity_threshold", rclcpp::ParameterValue(0.0001));
   declare_parameter("min_y_velocity_threshold", rclcpp::ParameterValue(0.0001));
   declare_parameter("min_theta_velocity_threshold", rclcpp::ParameterValue(0.0001));
@@ -120,6 +152,24 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
         node, default_ids_[i] + ".plugin",
         rclcpp::ParameterValue(default_types_[i]));
     }
+    nav2_util::declare_parameter_if_not_declared(
+      node, std::string("DWB.critics"),
+      rclcpp::ParameterValue(
+        std::vector<std::string>{
+          "RotateToGoal", "Oscillation", "BaseObstacle", "GoalAlign",
+          "PathAlign", "PathDist", "GoalDist"}));
+    nav2_util::declare_parameter_if_not_declared(
+      node, std::string("MPPI.critics"),
+      rclcpp::ParameterValue(
+        std::vector<std::string>{
+          "ConstraintCritic", "CostCritic", "ObstaclesCritic", "GoalCritic",
+          "GoalAngleCritic", "PathAlignCritic", "PathFollowCritic", "PathAngleCritic",
+          "PreferForwardCritic", "VelocityDeadbandCritic"}));
+    nav2_util::declare_parameter_if_not_declared(
+      node, std::string("RotationShim.primary_controller"),
+      rclcpp::ParameterValue(
+        std::string(
+          "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController")));
   }
 
   controller_types_.resize(controller_ids_.size());
@@ -194,6 +244,7 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
     }
   }
 
+  goal_checker_ids_concat_.clear();
   for (size_t i = 0; i != goal_checker_ids_.size(); i++) {
     goal_checker_ids_concat_ += goal_checker_ids_[i] + std::string(" ");
   }
@@ -201,6 +252,15 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
   RCLCPP_INFO(
     get_logger(),
     "Controller Server has %s goal checkers available.", goal_checker_ids_concat_.c_str());
+
+  get_parameter("current_goal_checker", default_goal_checker_);
+  if (goal_checkers_.find(default_goal_checker_) == goal_checkers_.end()) {
+    RCLCPP_FATAL(
+      get_logger(),
+      "Configured current_goal_checker '%s' does not exist. Available goal checkers are: %s.",
+      default_goal_checker_.c_str(), goal_checker_ids_concat_.c_str());
+    return nav2_util::CallbackReturn::FAILURE;
+  }
 
   for (size_t i = 0; i != controller_ids_.size(); i++) {
     try {
@@ -222,6 +282,7 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
     }
   }
 
+  controller_ids_concat_.clear();
   for (size_t i = 0; i != controller_ids_.size(); i++) {
     controller_ids_concat_ += controller_ids_[i] + std::string(" ");
   }
@@ -229,6 +290,15 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
   RCLCPP_INFO(
     get_logger(),
     "Controller Server has %s controllers available.", controller_ids_concat_.c_str());
+
+  get_parameter("current_controller", default_controller_);
+  if (controllers_.find(default_controller_) == controllers_.end()) {
+    RCLCPP_FATAL(
+      get_logger(),
+      "Configured current_controller '%s' does not exist. Available controllers are: %s.",
+      default_controller_.c_str(), controller_ids_concat_.c_str());
+    return nav2_util::CallbackReturn::FAILURE;
+  }
 
   odom_sub_ = std::make_unique<nav_2d_utils::OdomSubscriber>(node);
   vel_publisher_ = create_publisher<geometry_msgs::msg::Twist>("cmd_vel", 1);
@@ -355,6 +425,18 @@ bool ControllerServer::findControllerId(
   const std::string & c_name,
   std::string & current_controller)
 {
+  if (c_name.empty()) {
+    if (controllers_.find(default_controller_) != controllers_.end()) {
+      RCLCPP_WARN_ONCE(
+        get_logger(), "No controller was specified in action call. "
+        "动作请求没有指定 controller，Server 将使用 current_controller 插件 %s。"
+        "This warning will appear once.",
+        default_controller_.c_str());
+      current_controller = default_controller_;
+      return true;
+    }
+  }
+
   if (controllers_.find(c_name) == controllers_.end()) {
     if (controllers_.size() == 1 && c_name.empty()) {
       RCLCPP_WARN_ONCE(
@@ -382,6 +464,18 @@ bool ControllerServer::findGoalCheckerId(
   const std::string & c_name,
   std::string & current_goal_checker)
 {
+  if (c_name.empty()) {
+    if (goal_checkers_.find(default_goal_checker_) != goal_checkers_.end()) {
+      RCLCPP_WARN_ONCE(
+        get_logger(), "No goal checker was specified in parameter 'current_goal_checker'."
+        " 动作请求没有指定 goal_checker，Server 将使用 current_goal_checker 插件 %s。"
+        "This warning will appear once.",
+        default_goal_checker_.c_str());
+      current_goal_checker = default_goal_checker_;
+      return true;
+    }
+  }
+
   if (goal_checkers_.find(c_name) == goal_checkers_.end()) {
     if (goal_checkers_.size() == 1 && c_name.empty()) {
       RCLCPP_WARN_ONCE(
@@ -1137,6 +1231,34 @@ ControllerServer::dynamicParametersCallback(std::vector<rclcpp::Parameter> param
       } else if (name == "near_goal_progress.movement_time_allowance") {
         near_goal_progress_time_allowance_ =
           rclcpp::Duration::from_seconds(parameter.as_double());
+      }
+    } else if (type == ParameterType::PARAMETER_STRING) {
+      if (name == "current_controller") {
+        const auto requested_controller = parameter.as_string();
+        if (controllers_.find(requested_controller) == controllers_.end()) {
+          RCLCPP_WARN(
+            get_logger(),
+            "Rejected current_controller '%s'. Available controllers are: %s.",
+            requested_controller.c_str(), controller_ids_concat_.c_str());
+          dynamic_params_lock_.unlock();
+          result.successful = false;
+          result.reason = "Requested current_controller does not exist";
+          return result;
+        }
+        default_controller_ = requested_controller;
+      } else if (name == "current_goal_checker") {
+        const auto requested_goal_checker = parameter.as_string();
+        if (goal_checkers_.find(requested_goal_checker) == goal_checkers_.end()) {
+          RCLCPP_WARN(
+            get_logger(),
+            "Rejected current_goal_checker '%s'. Available goal checkers are: %s.",
+            requested_goal_checker.c_str(), goal_checker_ids_concat_.c_str());
+          dynamic_params_lock_.unlock();
+          result.successful = false;
+          result.reason = "Requested current_goal_checker does not exist";
+          return result;
+        }
+        default_goal_checker_ = requested_goal_checker;
       }
     } else if (type == ParameterType::PARAMETER_BOOL) {
       if (name == "near_goal_progress.enabled") {

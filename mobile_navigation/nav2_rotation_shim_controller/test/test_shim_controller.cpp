@@ -22,7 +22,7 @@
 #include "rclcpp/rclcpp.hpp"
 #include "nav2_costmap_2d/costmap_2d.hpp"
 #include "nav2_util/lifecycle_node.hpp"
-#include "nav2_controller/plugins/simple_goal_checker.hpp"
+#include "simple_goal_checker/simple_goal_checker.hpp"
 #include "nav2_rotation_shim_controller/nav2_rotation_shim_controller.hpp"
 #include "tf2_ros/transform_broadcaster.h"
 
@@ -262,7 +262,7 @@ TEST(RotationShimControllerTest, computeVelocityTests)
   geometry_msgs::msg::PoseStamped pose;
   pose.header.frame_id = "base_link";
   geometry_msgs::msg::Twist velocity;
-  nav2_controller::SimpleGoalChecker checker;
+  simple_goal_checker::SimpleGoalChecker checker;
   checker.initialize(node, "checker", costmap);
 
   // send without setting a path - should go to RPP immediately

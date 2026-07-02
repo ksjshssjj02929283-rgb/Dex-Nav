@@ -1,4 +1,6 @@
 ament_add_gtest(pctest progress_checker.cpp)
 target_link_libraries(pctest simple_progress_checker pose_progress_checker)
+find_package(simple_goal_checker REQUIRED)
+find_package(stopped_goal_checker REQUIRED)
 ament_add_gtest(gctest goal_checker.cpp)
-target_link_libraries(gctest simple_goal_checker stopped_goal_checker precision_longitudinal_goal_checker)
+ament_target_dependencies(gctest ${dependencies} simple_goal_checker stopped_goal_checker)

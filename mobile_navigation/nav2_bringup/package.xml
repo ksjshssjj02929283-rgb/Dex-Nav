@@ -16,6 +16,21 @@
   <exec_depend>navigation2</exec_depend>
   <exec_depend>nav2_common</exec_depend>
   <exec_depend>slam_toolbox</exec_depend>
+  <exec_depend>dwb_core</exec_depend>
+  <exec_depend>nav2_mppi_controller</exec_depend>
+  <exec_depend>nav2_regulated_pure_pursuit_controller</exec_depend>
+  <exec_depend>nav2_graceful_controller</exec_depend>
+  <exec_depend>nav2_rotation_shim_controller</exec_depend>
+  <exec_depend>pid_controller</exec_depend>
+  <exec_depend>lat_lon_controller</exec_depend>
+  <exec_depend>pure_rotation_controller</exec_depend>
+  <exec_depend>straight_controller</exec_depend>
+  <exec_depend>simple_goal_checker</exec_depend>
+  <exec_depend>stopped_goal_checker</exec_depend>
+  <exec_depend>position_goal_checker</exec_depend>
+  <exec_depend>rotation_goal_checker</exec_depend>
+  <exec_depend>longitudinal_goal_checker</exec_depend>
+  <exec_depend>high_precision_goal_checker</exec_depend>
 
   <test_depend>ament_lint_common</test_depend>
   <test_depend>ament_lint_auto</test_depend>

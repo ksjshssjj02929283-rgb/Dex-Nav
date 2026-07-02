@@ -17,7 +17,9 @@
 
 #include <memory>
 #include <string>
+#include <vector>
 
+#include "rcl_interfaces/msg/set_parameters_result.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_lifecycle/lifecycle_node.hpp"
 #include "geometry_msgs/msg/pose.hpp"
@@ -64,8 +66,12 @@ protected:
   // Cached squared xy goal tolerance to avoid a sqrt on every check
   double xy_goal_tolerance_sq_;
   std::string plugin_name_;
+  rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr dyn_params_handler_;
 
   rclcpp::Logger logger_{rclcpp::get_logger("SimpleGoalChecker")};
+
+  rcl_interfaces::msg::SetParametersResult
+  dynamicParametersCallback(std::vector<rclcpp::Parameter> parameters);
 };
 
 }  // namespace simple_goal_checker

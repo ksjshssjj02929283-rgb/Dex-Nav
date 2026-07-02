@@ -73,8 +73,10 @@ controller_server:
     use_sim_time: True
     controller_frequency: 10.0 # 控制器控制周期 # Related params: model_dt >= controller period; prediction horizon = time_steps * model_dt
     progress_checker_plugins: ["progress_checker"] # progress_checker_plugin: "progress_checker" For Humble and older
-    goal_checker_plugins: ["goal_checker"] # goal_checker_plugin: "goal_checker" For Galactic and older
-    controller_plugins: ["FollowPath"]
+    goal_checker_plugins: ["simple_goal_checker", "stopped_goal_checker", "position_goal_checker", "rotation_goal_checker", "longitudinal_goal_checker", "high_precision_goal_checker"] # goal_checker_plugin: "goal_checker" For Galactic and older
+    controller_plugins: ["MPPIController", "DWBController", "RPPController", "GracefulController", "RotationShimController", "PIDController", "LatLonController", "PureRotationController", "StraightController"]
+    current_goal_checker: "simple_goal_checker"
+    current_controller: "MPPIController"
     odom_topic: /feedback/odom
     progress_checker:
       plugin: "nav2_controller::PoseProgressChecker" # 进展检查插件
@@ -87,20 +89,44 @@ controller_server:
       required_movement_radius: 0.01 # 近目标模式：移动超过 1cm 才算有进展，避免小幅抖动刷新计时
       required_movement_angle: 0.02 # 近目标模式：旋转超过约1.15 度才算有进展，避免原地轻微摆动刷新计时
       movement_time_allowance: 4.0 # 近目标模式：4 秒内没有足够进展就让 FollowPath 失败并进入恢复
-    goal_checker:
-      plugin: "nav2_controller::PrecisionLongitudinalGoalChecker"
-      desired_lon_goal_tolerance: 0.01 # 优先追求的纵向精度，当前配置为 1cm
-      desired_lat_goal_tolerance: 0.01 # 优先追求的横向精度，当前配置为 1cm
-      accept_lon_goal_tolerance: 0.02 # 精调后允许接受的纵向精度，当前配置为 2cm
-      accept_lat_goal_tolerance: 0.02 # 精调后允许接受的横向精度，当前配置为 2cm
+    simple_goal_checker:
+      plugin: "simple_goal_checker::SimpleGoalChecker"
+      xy_goal_tolerance: 0.02
       yaw_goal_tolerance: 0.02
-      enable_high_precision: false # true：先追求 1cm 高精度；false：只要求 2cm 接受精度
-      refine_cycles: 40 # controller_frequency=10Hz，对应进入 2cm 后继续精调约 4s
-      stable_window_size: 5 # controller_frequency=10Hz，对应最近约 0.5s 的高精度稳定窗口
-      check_stopped: false # 是否要求到点时底盘速度也足够小；false 表示只按位置和航向判断成功
-      trans_stopped_velocity: 0.01 # check_stopped=true 时生效，线速度小于该值才认为已停稳，单位 m/s
-      rot_stopped_velocity: 0.02 # check_stopped=true 时生效，角速度小于该值才认为已停稳，单位 rad/s
-    FollowPath:
+      stateful: True
+    stopped_goal_checker:
+      stateful: True
+      plugin: "stopped_goal_checker::StoppedGoalChecker"
+      xy_goal_tolerance: 0.02
+      yaw_goal_tolerance: 0.02
+      trans_stopped_velocity: 0.05
+      rot_stopped_velocity: 0.05
+    position_goal_checker:
+      plugin: "position_goal_checker::PositionGoalChecker"
+      xy_goal_tolerance: 0.02
+      trans_stopped_velocity: 0.01
+      rot_stopped_velocity: 0.05
+    rotation_goal_checker:
+      plugin: "rotation_goal_checker::RotationGoalChecker"
+      yaw_goal_tolerance: 0.02
+      rot_stopped_velocity: 0.05
+    longitudinal_goal_checker:
+      plugin: "longitudinal_goal_checker::LongitudinalGoalChecker"
+      lon_goal_tolerance: 0.02
+      lat_goal_tolerance: 0.02
+      yaw_goal_tolerance: 0.02
+      trans_stopped_velocity: 0.01
+      rot_stopped_velocity: 0.01
+      stateful: True
+    high_precision_goal_checker:
+      plugin: "high_precision_goal_checker::HighPrecisionGoalChecker"
+      lon_goal_tolerance: 0.02
+      lat_goal_tolerance: 0.02
+      yaw_goal_tolerance: 0.02
+      trans_stopped_velocity: 0.01
+      rot_stopped_velocity: 0.01
+      stateful: True
+    MPPIController:
       plugin: "nav2_mppi_controller::MPPIController"
 
       # ============================================================
@@ -123,14 +149,10 @@ controller_server:
       jz_max: 1.5
       iteration_count: 1
       prune_distance: 2.5 # 3.7 # 1.7 (must )
-      transform_tolerance: 0.1
       temperature: 0.3
       gamma: 0.015
       motion_model: "DiffDrive" #Ackermann, DiffDrive
       open_loop: true
-      visualize: false
-      reset_period: 1.0 # (only in Humble)
-      regenerate_noises: false
 
       # ============================================================
       # 2. 三阶段切换参数
@@ -180,9 +202,6 @@ controller_server:
       # 6. 可视化、车辆约束与全局安全/可行性代价
       #    行为类权重已由 stage_weights 矩阵管理。
       # ============================================================
-      TrajectoryVisualizer:
-        trajectory_step: 5
-        time_step: 3
       AckermannConstraints:
         min_turning_r: 0.5
       # critics 是插件加载列表；阶段权重由上方 stage_weights 矩阵覆盖。
@@ -226,6 +245,311 @@ controller_server:
         cost_power: 1
         cost_weight: 10.0
         deadband_velocities: [0.005, 0.08, 0.01]
+    DWBController:
+      plugin: "dwb_core::DWBLocalPlanner"
+      min_vel_x: 0.0
+      min_vel_y: 0.0
+      max_vel_x: 0.26
+      max_vel_y: 0.0
+      max_vel_theta: 1.0
+      min_speed_xy: 0.0
+      max_speed_xy: 0.26
+      min_speed_theta: 0.0
+      acc_lim_x: 2.5
+      acc_lim_y: 0.0
+      acc_lim_theta: 3.2
+      decel_lim_x: -2.5
+      decel_lim_y: 0.0
+      decel_lim_theta: -3.2
+      vx_samples: 20
+      vy_samples: 5
+      vtheta_samples: 20
+      sim_time: 1.7
+      discretize_by_time: False
+      time_granularity: 0.5
+      linear_granularity: 0.05
+      angular_granularity: 0.025
+      include_last_point: True
+      prune_plan: True
+      prune_distance: 2.0
+      forward_prune_distance: 2.0
+      shorten_transformed_plan: True
+      trajectory_generator_name: "dwb_plugins::StandardTrajectoryGenerator"
+      short_circuit_trajectory_evaluation: True
+      critics: ["RotateToGoal", "Oscillation", "BaseObstacle", "GoalAlign", "PathAlign", "PathDist", "GoalDist"]
+      BaseObstacle.scale: 0.02
+      PathAlign.scale: 32.0
+      PathAlign.forward_point_distance: 0.1
+      GoalAlign.scale: 24.0
+      GoalAlign.forward_point_distance: 0.1
+      PathDist.scale: 32.0
+      GoalDist.scale: 24.0
+      RotateToGoal.scale: 32.0
+      RotateToGoal.slowing_factor: 5.0
+      RotateToGoal.lookahead_time: -1.0
+    RPPController:
+      plugin: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
+      desired_linear_vel: 0.5
+      lookahead_dist: 0.6
+      min_lookahead_dist: 0.3
+      max_lookahead_dist: 0.9
+      lookahead_time: 1.5
+      rotate_to_heading_angular_vel: 1.8
+      use_velocity_scaled_lookahead_dist: False
+      min_approach_linear_velocity: 0.05
+      approach_velocity_scaling_dist: 0.6
+      max_allowed_time_to_collision_up_to_carrot: 1.0
+      use_collision_detection: True
+      use_regulated_linear_velocity_scaling: True
+      use_cost_regulated_linear_velocity_scaling: True
+      cost_scaling_dist: 0.6
+      cost_scaling_gain: 1.0
+      inflation_cost_scaling_factor: 3.0
+      regulated_linear_scaling_min_radius: 0.9
+      regulated_linear_scaling_min_speed: 0.25
+      use_rotate_to_heading: True
+      rotate_to_heading_min_angle: 0.785
+      max_angular_accel: 3.2
+      allow_reversing: False
+      use_interpolation: True
+    GracefulController:
+      plugin: "nav2_graceful_controller::GracefulController"
+      motion_target_dist: 0.6
+      k_phi: 3.0
+      k_delta: 2.0
+      beta: 0.2
+      lambda: 2.0
+      v_linear_min: 0.1
+      v_linear_max: 0.5
+      v_angular_max: 1.0
+      slowdown_radius: 1.5
+      initial_rotation: True
+      initial_rotation_min_angle: 0.75
+      final_rotation: True
+      rotation_scaling_factor: 0.5
+      allow_backward: False
+    RotationShimController:
+      plugin: "nav2_rotation_shim_controller::RotationShimController"
+      primary_controller: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
+      angular_dist_threshold: 0.785
+      forward_sampling_distance: 0.5
+      rotate_to_heading_angular_vel: 1.8
+      max_angular_accel: 3.2
+      simulate_ahead_time: 1.0
+    PIDController:
+      plugin: "pid_controller::PIDController"
+      long_precision: 0.02
+      lat_precision: 0.04
+      o_precision: 0.5
+      max_v: 0.5
+      min_v: 0.0
+      max_v_inc: 0.5
+      max_w: 1.57
+      min_w: 0.0
+      max_w_inc: 1.57
+      k_theta: 0.5
+      switch_speed: 0.1
+      high_speed_station_pid_conf:
+        integrator_enable: True
+        integrator_saturation_level: 0.3
+        kp: 1.0
+        ki: 0.01
+        kd: 0.1
+        kaw: 0.0
+      low_speed_station_pid_conf:
+        integrator_enable: True
+        integrator_saturation_level: 0.3
+        kp: 1.0
+        ki: 0.01
+        kd: 0.1
+        kaw: 0.0
+      high_speed_pid_conf:
+        integrator_enable: True
+        integrator_saturation_level: 0.3
+        kp: 1.0
+        ki: 0.01
+        kd: 0.1
+        kaw: 0.0
+      low_speed_pid_conf:
+        integrator_enable: True
+        integrator_saturation_level: 0.3
+        kp: 1.0
+        ki: 0.01
+        kd: 0.1
+        kaw: 0.0
+      reverse_station_pid_conf:
+        integrator_enable: True
+        integrator_saturation_level: 0.5
+        kp: 1.0
+        ki: 0.01
+        kd: 0.1
+        kaw: 0.0
+      reverse_speed_pid_conf:
+        integrator_enable: True
+        integrator_saturation_level: 0.5
+        kp: 1.0
+        ki: 0.01
+        kd: 0.1
+        kaw: 0.0
+      angular_station_pid_conf:
+        integrator_enable: True
+        integrator_saturation_level: 0.5
+        kp: 1.0
+        ki: 0.01
+        kd: 0.1
+        kaw: 0.0
+    LatLonController:
+      plugin: "lat_lon_controller::LatLonController"
+      p_window: 0.5
+      long_precision: 0.02
+      lat_precision: 0.04
+      o_precision: 0.5
+      max_v: 0.5
+      min_v: 0.0
+      max_v_inc: 0.5
+      max_w: 1.57
+      min_w: 0.0
+      max_w_inc: 1.57
+      k_theta: 0.5
+      switch_speed: 0.1
+      high_speed_station_pid_conf:
+        integrator_enable: True
+        integrator_saturation_level: 0.3
+        kp: 1.0
+        ki: 0.01
+        kd: 0.1
+        kaw: 0.0
+        saturation: 0.0
+      low_speed_station_pid_conf:
+        integrator_enable: True
+        integrator_saturation_level: 0.3
+        kp: 1.0
+        ki: 0.01
+        kd: 0.1
+        kaw: 0.0
+        saturation: 0.0
+      high_speed_pid_conf:
+        integrator_enable: True
+        integrator_saturation_level: 0.3
+        kp: 1.0
+        ki: 0.01
+        kd: 0.1
+        kaw: 0.0
+        saturation: 0.0
+      low_speed_pid_conf:
+        integrator_enable: True
+        integrator_saturation_level: 0.3
+        kp: 1.0
+        ki: 0.01
+        kd: 0.1
+        kaw: 0.0
+        saturation: 0.0
+      reverse_station_pid_conf:
+        integrator_enable: True
+        integrator_saturation_level: 0.5
+        kp: 1.0
+        ki: 0.01
+        kd: 0.1
+        kaw: 0.0
+        saturation: 0.0
+      reverse_speed_pid_conf:
+        integrator_enable: True
+        integrator_saturation_level: 0.5
+        kp: 1.0
+        ki: 0.01
+        kd: 0.1
+        kaw: 0.0
+        saturation: 0.0
+      angular_station_pid_conf:
+        integrator_enable: True
+        integrator_saturation_level: 0.5
+        kp: 1.0
+        ki: 0.01
+        kd: 0.1
+        kaw: 0.0
+        saturation: 0.0
+    PureRotationController:
+      plugin: "pure_rotation_controller::PureRotationController"
+      long_precision: 0.02
+      lat_precision: 0.04
+      o_precision: 0.02
+      max_v: 0.5
+      min_v: 0.0
+      max_v_inc: 0.5
+      max_w: 1.57
+      min_w: 0.0
+      max_w_inc: 1.57
+      enable_lon_adjust: False
+      station_pid_conf:
+        integrator_enable: True
+        integrator_saturation_level: 0.3
+        kp: 1.0
+        ki: 0.01
+        kd: 0.1
+        kaw: 0.0
+        saturation: 0.0
+      speed_pid_conf:
+        integrator_enable: True
+        integrator_saturation_level: 0.3
+        kp: 1.0
+        ki: 0.01
+        kd: 0.1
+        kaw: 0.0
+        saturation: 0.0
+      angular_pid_conf:
+        integrator_enable: True
+        integrator_saturation_level: 0.5
+        kp: 1.0
+        ki: 0.01
+        kd: 0.1
+        kaw: 0.0
+        saturation: 0.0
+    StraightController:
+      plugin: "straight_controller::StraightController"
+      long_precision: 0.02
+      lat_precision: 0.04
+      o_precision: 0.5
+      max_v: 0.5
+      min_v: 0.0
+      max_v_inc: 0.5
+      max_w: 1.57
+      min_w: 0.0
+      max_w_inc: 1.57
+      max_path_length: 0.5
+      k_w_p: 1.0
+      k_w_i: 0.01
+      k_w_d: 0.1
+      switch_speed: 0.1
+      station_pid_conf:
+        integrator_enable: True
+        integrator_saturation_level: 0.3
+        kp: 1.0
+        ki: 0.01
+        kd: 0.1
+      high_speed_pid_conf:
+        integrator_enable: True
+        integrator_saturation_level: 0.3
+        kp: 1.0
+        ki: 0.01
+        kd: 0.1
+      low_speed_pid_conf:
+        integrator_enable: True
+        integrator_saturation_level: 0.3
+        kp: 1.0
+        ki: 0.01
+        kd: 0.1
+      reverse_station_pid_conf:
+        integrator_enable: True
+        integrator_saturation_level: 0.5
+        kp: 1.0
+        ki: 0.01
+        kd: 0.1
+      reverse_speed_pid_conf:
+        integrator_enable: True
+        integrator_saturation_level: 0.5
+        kp: 1.0
+        ki: 0.01
+        kd: 0.1
 
 local_costmap:
   local_costmap:

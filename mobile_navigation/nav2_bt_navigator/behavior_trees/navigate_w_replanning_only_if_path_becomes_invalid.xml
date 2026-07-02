@@ -15,7 +15,7 @@
           <ComputePathToPose goal="{goal}" path="{path}" planner_id="SmacGridBased"/>
         </Fallback>
       </RateController>
-      <FollowPath path="{path}" controller_id="FollowPath"/>
+      <FollowPath path="{path}" controller_id="MPPIController"/>
     </PipelineSequence>
   </BehaviorTree>
 </root>

@@ -273,7 +273,7 @@ protected:
   std::vector<std::string> default_goal_checker_types_;
   std::vector<std::string> goal_checker_ids_;
   std::vector<std::string> goal_checker_types_;
-  std::string goal_checker_ids_concat_, current_goal_checker_;
+  std::string goal_checker_ids_concat_, default_goal_checker_, current_goal_checker_;
 
   // Controller Plugins
   pluginlib::ClassLoader<nav2_core::Controller> lp_loader_;
@@ -282,7 +282,7 @@ protected:
   std::vector<std::string> default_types_;
   std::vector<std::string> controller_ids_;
   std::vector<std::string> controller_types_;
-  std::string controller_ids_concat_, current_controller_;
+  std::string controller_ids_concat_, default_controller_, current_controller_;
 
   double controller_frequency_;
   double min_x_velocity_threshold_;

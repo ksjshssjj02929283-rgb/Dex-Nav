@@ -13,9 +13,11 @@
 // limitations under the License.
 
 #include <cmath>
+#include <functional>
 #include <memory>
 #include <string>
 #include <limits>
+#include <vector>
 
 #include "longitudinal_goal_checker/longitudinal_goal_checker.hpp"
 
@@ -29,6 +31,9 @@
 
 namespace longitudinal_goal_checker
 {
+
+using rcl_interfaces::msg::ParameterType;
+using std::placeholders::_1;
 
 LongitudinalGoalChecker::LongitudinalGoalChecker()
 : lat_goal_tolerance_(0.25),
@@ -76,6 +81,9 @@ void LongitudinalGoalChecker::initialize(
   node->get_parameter(plugin_name + ".rot_stopped_velocity", rot_stopped_velocity_);
   node->get_parameter(plugin_name + ".trans_stopped_velocity", trans_stopped_velocity_);
   node->get_parameter(plugin_name + ".stateful", stateful_);
+
+  dyn_params_handler_ = node->add_on_set_parameters_callback(
+    std::bind(&LongitudinalGoalChecker::dynamicParametersCallback, this, _1));
 }
 
 void LongitudinalGoalChecker::reset()
@@ -150,6 +158,36 @@ bool LongitudinalGoalChecker::getTolerances(
   vel_tolerance.angular.z = rot_stopped_velocity_;
 
   return true;
+}
+
+rcl_interfaces::msg::SetParametersResult
+LongitudinalGoalChecker::dynamicParametersCallback(std::vector<rclcpp::Parameter> parameters)
+{
+  rcl_interfaces::msg::SetParametersResult result;
+  for (auto & parameter : parameters) {
+    const auto & type = parameter.get_type();
+    const auto & name = parameter.get_name();
+
+    if (type == ParameterType::PARAMETER_DOUBLE) {
+      if (name == plugin_name_ + ".lon_goal_tolerance") {
+        lon_goal_tolerance_ = parameter.as_double();
+      } else if (name == plugin_name_ + ".lat_goal_tolerance") {
+        lat_goal_tolerance_ = parameter.as_double();
+      } else if (name == plugin_name_ + ".yaw_goal_tolerance") {
+        yaw_goal_tolerance_ = parameter.as_double();
+      } else if (name == plugin_name_ + ".rot_stopped_velocity") {
+        rot_stopped_velocity_ = parameter.as_double();
+      } else if (name == plugin_name_ + ".trans_stopped_velocity") {
+        trans_stopped_velocity_ = parameter.as_double();
+      }
+    } else if (type == ParameterType::PARAMETER_BOOL) {
+      if (name == plugin_name_ + ".stateful") {
+        stateful_ = parameter.as_bool();
+      }
+    }
+  }
+  result.successful = true;
+  return result;
 }
 
 }  // namespace longitudinal_goal_checker

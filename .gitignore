@@ -1,7 +1,9 @@
-/build
-/install
-/log
+build
+install
+log
 .gitnexus
 .vscode
 AGENTS.md
 .codex
+CLAUDE.md
+.claude
