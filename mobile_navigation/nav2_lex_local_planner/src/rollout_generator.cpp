@@ -143,6 +143,8 @@ void RolloutGenerator::calculateRollInTrajectories(const nav2_lex_local_planner:
   const double & SmoothTolerance,
   std::vector<nav2_lex_local_planner::WayPoint> & sampledPoints)
 {
+  static_cast<void>(sampledPoints);
+
   nav2_lex_local_planner::WayPoint p;
 
   // Step: 1. 数据准备
