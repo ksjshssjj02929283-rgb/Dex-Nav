@@ -77,6 +77,22 @@ controller_server:
     controller_plugins: ["MPPIController", "DWBController", "RPPController", "GracefulController", "RotationShimController", "PIDController", "LatLonController", "PureRotationController", "StraightController"]
     current_goal_checker: "simple_goal_checker"
     current_controller: "MPPIController"
+    staged_control:
+      enabled: True
+      track_controller: "MPPIController"
+      approach_controller: "PIDController"
+      approach_distance: 0.3
+      align_heading_tolerance: 0.5236  # 30 deg
+      align_angular_kp: 1.5
+      align_max_angular_velocity: 0.5
+      align_min_angular_velocity: 0.08
+      prepare:
+        enabled: True
+        obstacle_check_distance: 0.55
+        obstacle_check_half_width: 0.39
+        obstacle_cost_threshold: 253
+        backup_speed: -0.1
+        backup_duration: 2.0
     odom_topic: /feedback/odom
     progress_checker:
       plugin: "nav2_controller::PoseProgressChecker" # 进展检查插件

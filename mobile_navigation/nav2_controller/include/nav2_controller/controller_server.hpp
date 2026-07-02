@@ -51,6 +51,7 @@ class ControllerServer : public nav2_util::LifecycleNode
 public:
   using ControllerMap = std::unordered_map<std::string, nav2_core::Controller::Ptr>;
   using GoalCheckerMap = std::unordered_map<std::string, nav2_core::GoalChecker::Ptr>;
+  enum class ControllerPhase { PREPARE, ALIGN, TRACK, APPROACH };
 
   /**
    * @brief Constructor for nav2_controller::ControllerServer
@@ -152,6 +153,59 @@ protected:
    * @brief Calculates velocity and publishes to "cmd_vel" topic
    */
   void computeAndPublishVelocity();
+  /**
+   * @brief Select and execute the current four-stage controller phase
+   * @param pose Current robot pose
+   * @param twist Current robot twist after velocity thresholding
+   * @return Velocity command for the selected phase
+   */
+  geometry_msgs::msg::TwistStamped computeStagedVelocity(
+    const geometry_msgs::msg::PoseStamped & pose,
+    const nav_2d_msgs::msg::Twist2D & twist);
+  /**
+   * @brief Compute velocity from a loaded controller plugin
+   * @param controller_id Controller plugin ID
+   * @param pose Current robot pose
+   * @param twist Current robot twist after velocity thresholding
+   * @return Velocity command from the selected plugin
+   */
+  geometry_msgs::msg::TwistStamped computeControllerVelocity(
+    const std::string & controller_id,
+    const geometry_msgs::msg::PoseStamped & pose,
+    const nav_2d_msgs::msg::Twist2D & twist);
+  /**
+   * @brief Publish direct reverse command when prepare phase detects front obstacle
+   * @return true when a reverse command should be used
+   */
+  bool shouldRunPrepareBackup();
+  /**
+   * @brief Check local costmap cells in a front rectangle of the robot
+   * @return true when obstacle cost exceeds configured prepare threshold
+   */
+  bool isFrontObstacleDetected();
+  /**
+   * @brief Compute yaw error between robot heading and local path tangent
+   * @param pose Current robot pose
+   * @param yaw_error Output yaw error in radians
+   * @return true when path tangent could be calculated
+   */
+  bool getPathHeadingError(const geometry_msgs::msg::PoseStamped & pose, double & yaw_error);
+  /**
+   * @brief Compute Euclidean distance from robot pose to current goal
+   * @param pose Current robot pose
+   * @return Distance to goal in meters, or infinity on transform failure
+   */
+  double getDistanceToGoal(const geometry_msgs::msg::PoseStamped & pose);
+  /**
+   * @brief Update current phase and emit transition logs
+   * @param phase New phase
+   * @param reason Transition reason for logs
+   */
+  void setControllerPhase(ControllerPhase phase, const std::string & reason);
+  /**
+   * @brief Human-readable phase name
+   */
+  const char * controllerPhaseName(ControllerPhase phase) const;
   /**
    * @brief Reset the near-goal progress checker baseline
    */
@@ -337,6 +391,24 @@ protected:
   bool near_goal_progress_acceptance_reached_{false};
   geometry_msgs::msg::PoseStamped near_goal_baseline_pose_;
   rclcpp::Time near_goal_baseline_time_;
+
+  bool staged_control_enabled_{true};
+  ControllerPhase controller_phase_{ControllerPhase::TRACK};
+  std::string track_controller_{"MPPIController"};
+  std::string approach_controller_{"PIDController"};
+  double approach_distance_{0.3};
+  double align_heading_tolerance_{0.5235987756};
+  double align_angular_kp_{1.5};
+  double align_max_angular_velocity_{0.5};
+  double align_min_angular_velocity_{0.08};
+  bool prepare_enabled_{true};
+  double prepare_obstacle_check_distance_{0.35};
+  double prepare_obstacle_check_half_width_{0.25};
+  int prepare_obstacle_cost_threshold_{253};
+  double prepare_backup_speed_{-0.08};
+  double prepare_backup_duration_{0.6};
+  bool prepare_backup_active_{false};
+  rclcpp::Time prepare_backup_start_time_;
 
   // Whether we've published the single controller warning yet
   geometry_msgs::msg::PoseStamped end_pose_;
