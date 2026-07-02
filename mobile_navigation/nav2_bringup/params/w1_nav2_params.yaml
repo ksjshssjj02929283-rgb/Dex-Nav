@@ -97,7 +97,7 @@ controller_server:
       enable_high_precision: false # true：先追求 1cm 高精度；false：只要求 2cm 接受精度
       refine_cycles: 40 # controller_frequency=10Hz，对应进入 2cm 后继续精调约 4s
       stable_window_size: 5 # controller_frequency=10Hz，对应最近约 0.5s 的高精度稳定窗口
-      check_stopped: false # 是否要求到点时底盘速度也足够小；false 表示只按位置和航向判断成功
+      check_stopped: true # 最终转向后必须停稳再报成功，避免带角速度越过目标姿态并放大位置误差
       trans_stopped_velocity: 0.01 # check_stopped=true 时生效，线速度小于该值才认为已停稳，单位 m/s
       rot_stopped_velocity: 0.02 # check_stopped=true 时生效，角速度小于该值才认为已停稳，单位 rad/s
     FollowPath:
@@ -139,6 +139,14 @@ controller_server:
       profile_transition_duration: 1.0 # 三段式切换过渡时间，避免速度约束和 critic 权重一拍硬切，单位 s
       align_enter_angle: 0.52 # 对齐段进入：车头-路径夹角(rad,~30°)超此进 align 段
       align_exit_angle: 0.31 # 对齐段退出：夹角降至此退出(rad,~18°,迟滞防抖)
+      # approach 内部先调位置、后调最终航向；误差均在目标点坐标系计算
+      approach_final_yaw_enter_lon_tolerance: 0.015 # |纵向误差|≤1.5cm 才允许进入最终转向
+      approach_final_yaw_enter_lat_tolerance: 0.015 # |横向误差|≤1.5cm 才允许进入最终转向
+      approach_final_yaw_exit_lon_tolerance: 0.02 # 最终转向中纵向漂移>2cm，退回位置调整
+      approach_final_yaw_exit_lat_tolerance: 0.02 # 最终转向中横向漂移>2cm，退回位置调整
+      approach_positioning_goal_angle_weight: 10.0 # 位置调整时保留弱朝向约束，防止方向已接近却被带着绕圈
+      approach_final_yaw_vx_max: 0.01 # 最终转向线速度限制为±1cm/s，允许 MPPI 小幅纠偏
+      approach_final_yaw_wz_max: 0.75 # 最终转向最大角速度，降低180°转向时的位置漂移
       # ── 权重矩阵：各 critic 三段权重统一调参入口 [align, track, approach] ──
       stage_weights:
         GoalCritic: [0.0, 0.0, 10.0] # 目标位置距离：趋近段推动轨迹收敛到目标点
@@ -191,6 +199,9 @@ controller_server:
         enabled: true
         cost_power: 1
         cost_weight: 4.0
+      GoalAngleCritic:
+        wrong_way_cost_ratio: 2.0 # 按当前真实最短角误差方向惩罚反向旋转，final_yaw 中仍然生效
+        direction_deadband: 0.05 # 接近目标朝向时关闭方向惩罚，允许小幅制动和回调，单位 rad
       PathAngleCritic:
         wrong_way_cost_ratio: 2.0 # 惩罚角速度与最短路径角误差异号，防止反向绕转 270°
         direction_deadband: 0.05 # 接近对齐时关闭方向惩罚，避免 wz 正负号抖动，单位 rad

@@ -53,6 +53,8 @@ public:
 protected:
   unsigned int power_{0};
   float weight_{0};
+  float wrong_way_cost_ratio_{0.0f};
+  float direction_deadband_{0.0f};
 };
 
 }  // namespace mppi::critics
