@@ -94,6 +94,9 @@ void MPPIController::deactivate()
 void MPPIController::reset()
 {
   optimizer_.reset();
+  approach_substage_ = APPROACH_POSITIONING;
+  approach_mode_ = APPROACH_NORMAL;
+  approach_mode_locked_ = false;
 }
 
 // geometry_msgs::msg::TwistStamped MPPIController::computeVelocityCommands(
@@ -173,7 +176,7 @@ geometry_msgs::msg::TwistStamped MPPIController::computeVelocityCommands(
     key_yaw = std::atan2(std::sin(yaw_error), std::cos(yaw_error));
   }
   applyProfileForPathState(
-    path_progress, goal_distance, heading_path_angle, key_lon, key_lat);
+    path_progress, goal_distance, heading_path_angle, key_lon, key_lat, key_yaw);
   auto t_transform_end = std::chrono::high_resolution_clock::now();
   double transform_ms =
     std::chrono::duration<double, std::milli>(t_transform_end - t_transform_start).count();
@@ -235,9 +238,11 @@ geometry_msgs::msg::TwistStamped MPPIController::computeVelocityCommands(
   // ── 关键运行 log（节流 1Hz）：阶段 / 到目标距离 / 到点精度(lon/lat/yaw,目标系) / 本周期耗时 / 命令 vs 实际 ──
   RCLCPP_INFO_THROTTLE(
     logger_, *clock_, 1000,
-    "[MPPI] stage=%s substage=%s goal_dist=%.3fm err[lon=%.3f lat=%.3f yaw=%.3f] "
+    "[MPPI] stage=%s mode=%s substage=%s goal_dist=%.3fm "
+    "err[lon=%.3f lat=%.3f yaw=%.3f] "
     "cycle=%.1fms(opt=%.1f) cmd[vx=%.2f wz=%.2f] act[vx=%.2f wz=%.2f]",
-    stageName(active_stage_).c_str(), approachSubstageName().c_str(), goal_distance,
+    stageName(active_stage_).c_str(), approachModeName().c_str(),
+    approachSubstageName().c_str(), goal_distance,
     key_lon, key_lat, key_yaw, total_ms, optimize_ms,
     cmd.twist.linear.x, cmd.twist.angular.z,
     robot_speed.linear.x, robot_speed.angular.z);
@@ -279,6 +284,8 @@ void MPPIController::publishProfileDebug(double path_progress, double goal_dista
     final_yaw_enter_lat_tolerance_,
     final_yaw_exit_lon_tolerance_,
     final_yaw_exit_lat_tolerance_,
+    position_first_yaw_threshold_,
+    active_stage_ == STAGE_APPROACH ? static_cast<double>(approach_mode_ + 1) : 0.0,
   };
   profile_debug_publisher_->publish(std::move(msg));
 }
@@ -360,6 +367,9 @@ void MPPIController::configureStages()
     final_yaw_exit_lat_tolerance_, "approach_final_yaw_exit_lat_tolerance",
     0.02, ParameterType::Static);
   getParam(
+    position_first_yaw_threshold_, "approach_position_first_yaw_threshold",
+    2.094, ParameterType::Static);
+  getParam(
     positioning_goal_angle_weight_, "approach_positioning_goal_angle_weight",
     10.0, ParameterType::Static);
   getParam(
@@ -372,6 +382,7 @@ void MPPIController::configureStages()
     final_yaw_enter_lon_tolerance_, final_yaw_exit_lon_tolerance_);
   final_yaw_exit_lat_tolerance_ = std::max(
     final_yaw_enter_lat_tolerance_, final_yaw_exit_lat_tolerance_);
+  position_first_yaw_threshold_ = std::clamp(position_first_yaw_threshold_, 0.0, M_PI);
   positioning_goal_angle_weight_ = std::max(0.0f, positioning_goal_angle_weight_);
   final_yaw_vx_max_ = std::max(0.0f, final_yaw_vx_max_);
   final_yaw_wz_max_ = std::max(0.0f, final_yaw_wz_max_);
@@ -536,9 +547,18 @@ void MPPIController::configureStages()
 
 void MPPIController::applyProfileForPathState(
   double path_progress, double goal_distance, double heading_path_angle,
-  double goal_longitudinal_error, double goal_lateral_error)
+  double goal_longitudinal_error, double goal_lateral_error, double goal_yaw_error)
 {
   const size_t selected_profile = selectStage(goal_distance, heading_path_angle);
+  if (selected_profile == STAGE_APPROACH &&
+    (active_stage_ != STAGE_APPROACH || !approach_mode_locked_))
+  {
+    updateApproachMode(active_stage_, selected_profile, goal_yaw_error);
+  } else if (selected_profile != STAGE_APPROACH) {
+    approach_mode_ = APPROACH_NORMAL;
+    approach_mode_locked_ = false;
+  }
+
   if (selected_profile != active_stage_) {
     const size_t previous_profile = active_stage_;
     active_stage_ = selected_profile;
@@ -570,6 +590,32 @@ void MPPIController::applyProfileForPathState(
   updateApproachSubstage(goal_longitudinal_error, goal_lateral_error);
   applyApproachSubstageProfile();
   optimizer_.applyProfile(applied_profile_);
+}
+
+void MPPIController::updateApproachMode(
+  size_t previous_stage, size_t selected_stage, double goal_yaw_error)
+{
+  if (selected_stage != STAGE_APPROACH) {
+    approach_mode_ = APPROACH_NORMAL;
+    approach_mode_locked_ = false;
+    return;
+  }
+  if (previous_stage == STAGE_APPROACH && approach_mode_locked_) {
+    return;
+  }
+
+  approach_substage_ = APPROACH_POSITIONING;
+  approach_mode_ =
+    std::abs(goal_yaw_error) >= position_first_yaw_threshold_ ?
+    APPROACH_POSITION_FIRST : APPROACH_NORMAL;
+  approach_mode_locked_ = true;
+  const char * mode_name =
+    approach_mode_ == APPROACH_POSITION_FIRST ? "position_first" : "normal";
+  RCLCPP_INFO(
+    logger_,
+    "MPPI approach mode locked: %s, entry |yaw_error|=%.3f rad, threshold=%.3f rad. "
+    "The mode remains locked until leaving approach.",
+    mode_name, std::abs(goal_yaw_error), position_first_yaw_threshold_);
 }
 
 void MPPIController::updateApproachSubstage(
@@ -611,10 +657,21 @@ void MPPIController::applyApproachSubstageProfile()
   }
 
   if (approach_substage_ == APPROACH_POSITIONING) {
-    // 保留较弱的最终朝向约束：允许差速底盘走小弧线纠偏，同时防止已接近目标朝向时转走。
-    applied_profile_.critics.goal_angle.weight = std::min(
-      applied_profile_.critics.goal_angle.weight, positioning_goal_angle_weight_);
-    applied_profile_.critics.angular_velocity.weight = 0.0f;
+    if (approach_mode_ == APPROACH_POSITION_FIRST) {
+      // 大角度到点场景先修位置：暂时减弱最终朝向和角速度跟踪，给差速底盘留出平移纠偏能力。
+      applied_profile_.critics.goal_angle.weight = std::min(
+        applied_profile_.critics.goal_angle.weight, positioning_goal_angle_weight_);
+      applied_profile_.critics.angular_velocity.weight = 0.0f;
+    } else {
+      // 小角度进入时不让 1 s 的阶段过渡延迟朝向接管，否则高速转动可能在权重升起前
+      // 已越过目标方向。这里只立即启用朝向相关 critic，其余位置/路径权重仍平滑过渡。
+      applied_profile_.critics.goal_angle.weight =
+        stages_[STAGE_APPROACH].critics.goal_angle.weight;
+      applied_profile_.critics.angular_velocity.weight =
+        stages_[STAGE_APPROACH].critics.angular_velocity.weight;
+      // GoalAngle 的最短方向惩罚会在越过目标方向后立即要求反向修正，避免位置/路径
+      // 代价把机器人继续带成一整圈。
+    }
     return;
   }
 
@@ -670,6 +727,14 @@ std::string MPPIController::approachSubstageName() const
     return "inactive";
   }
   return approach_substage_ == APPROACH_FINAL_YAW ? "final_yaw" : "positioning";
+}
+
+std::string MPPIController::approachModeName() const
+{
+  if (active_stage_ != STAGE_APPROACH) {
+    return "inactive";
+  }
+  return approach_mode_ == APPROACH_POSITION_FIRST ? "position_first" : "normal";
 }
 
 MppiProfileSettings MPPIController::interpolateProfiles(

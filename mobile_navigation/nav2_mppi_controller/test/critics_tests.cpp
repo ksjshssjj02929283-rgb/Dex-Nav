@@ -20,6 +20,7 @@
 #include "rclcpp/rclcpp.hpp"
 #include "nav2_mppi_controller/tools/utils.hpp"
 #include "nav2_mppi_controller/motion_models.hpp"
+#include "nav2_mppi_controller/critics/angular_velocity_critic.hpp"
 #include "nav2_mppi_controller/critics/constraint_critic.hpp"
 #include "nav2_mppi_controller/critics/goal_angle_critic.hpp"
 #include "nav2_mppi_controller/critics/goal_critic.hpp"
@@ -771,4 +772,44 @@ TEST(CriticTests, VelocityDeadbandCritic)
   critic.score(data);
   // 35.0 weight * 0.1 model_dt * (0.07 + 0.06 + 0.059) * 30 timesteps = 19.845
   EXPECT_NEAR(costs(1), 19.845, 0.01);
+}
+
+TEST(CriticTests, AngularVelocityCriticStopsInsideYawTolerance)
+{
+  auto node = std::make_shared<rclcpp_lifecycle::LifecycleNode>("angular_velocity_critic_test");
+  auto costmap_ros = std::make_shared<nav2_costmap_2d::Costmap2DROS>(
+    "dummy_costmap", "", "dummy_costmap");
+  node->declare_parameter("critic.cost_power", 2);
+  node->declare_parameter("critic.cost_weight", 1.0);
+  node->declare_parameter("critic.stop_yaw_tolerance", 0.02);
+  node->declare_parameter("mppi.wz_max", 0.75);
+  node->declare_parameter("mppi.az_max", 0.7);
+  ParametersHandler param_handler(node);
+  rclcpp_lifecycle::State lstate;
+  costmap_ros->on_configure(lstate);
+
+  models::State state;
+  state.reset(2, 4);
+  models::Trajectories trajectories;
+  trajectories.reset(2, 4);
+  models::Path path;
+  path.reset(1);
+  path.yaws(0) = 0.0f;
+  models::Vector costs = models::Vector::Zero(2);
+  float model_dt = 0.1f;
+  CriticData data =
+  {state, trajectories, path, costs, model_dt, false, nullptr, nullptr, std::nullopt,
+    std::nullopt};
+  data.motion_model = std::make_shared<DiffDriveMotionModel>();
+
+  AngularVelocityCritic critic;
+  critic.on_configure(node, "mppi", "critic", costmap_ros, &param_handler);
+
+  // 两条预测轨迹都已进入 0.02 rad 停车区；零角速度候选应优于继续旋转候选。
+  trajectories.yaws.setConstant(0.01f);
+  state.wz.row(0).setZero();
+  state.wz.row(1).setConstant(-0.1f);
+  critic.score(data);
+  EXPECT_NEAR(costs(0), 0.0, 1e-6);
+  EXPECT_GT(costs(1), costs(0));
 }

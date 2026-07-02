@@ -346,6 +346,9 @@ void Optimizer::applyControlSequenceConstraints()
     }
   }
 
+  // 加速度/加加速度回推可能把重新计算出的速度带出 profile 上限。
+  // 在车辆运动学约束前再次硬限幅，保证最终发布的 offset 控制量也满足阶段速度约束。
+  clampControlSequence();
   motion_model_->applyConstraints(control_sequence_);
 }
 

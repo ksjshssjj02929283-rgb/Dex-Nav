@@ -86,7 +86,7 @@ controller_server:
       distance: 0.10 # 距离目标点小于该值时进入近目标模式，单位 m
       required_movement_radius: 0.01 # 近目标模式：移动超过 1cm 才算有进展，避免小幅抖动刷新计时
       required_movement_angle: 0.02 # 近目标模式：旋转超过约1.15 度才算有进展，避免原地轻微摆动刷新计时
-      movement_time_allowance: 4.0 # 近目标模式：4 秒内没有足够进展就让 FollowPath 失败并进入恢复
+      movement_time_allowance: 3.0 # 近目标模式：3 秒内没有足够进展就让 FollowPath 失败并进入恢复
     goal_checker:
       plugin: "nav2_controller::PrecisionLongitudinalGoalChecker"
       desired_lon_goal_tolerance: 0.01 # 优先追求的纵向精度，当前配置为 1cm
@@ -127,7 +127,7 @@ controller_server:
       temperature: 0.3
       gamma: 0.015
       motion_model: "DiffDrive" #Ackermann, DiffDrive
-      open_loop: true
+      open_loop: false
       visualize: false
       reset_period: 1.0 # (only in Humble)
       regenerate_noises: false
@@ -144,17 +144,18 @@ controller_server:
       approach_final_yaw_enter_lat_tolerance: 0.015 # |横向误差|≤1.5cm 才允许进入最终转向
       approach_final_yaw_exit_lon_tolerance: 0.02 # 最终转向中纵向漂移>2cm，退回位置调整
       approach_final_yaw_exit_lat_tolerance: 0.02 # 最终转向中横向漂移>2cm，退回位置调整
-      approach_positioning_goal_angle_weight: 10.0 # 位置调整时保留弱朝向约束，防止方向已接近却被带着绕圈
+      approach_position_first_yaw_threshold: 2.094 # 进入 approach 时|航向误差|≥120°才锁定 position-first；否则保留完整朝向控制，防止绕圈
+      approach_positioning_goal_angle_weight: 10.0 # 仅 position-first 模式生效：位置调整时暂时减弱最终朝向约束
       approach_final_yaw_vx_max: 0.01 # 最终转向线速度限制为±1cm/s，允许 MPPI 小幅纠偏
       approach_final_yaw_wz_max: 0.75 # 最终转向最大角速度，降低180°转向时的位置漂移
       # ── 权重矩阵：各 critic 三段权重统一调参入口 [align, track, approach] ──
       stage_weights:
         GoalCritic: [0.0, 0.0, 10.0] # 目标位置距离：趋近段推动轨迹收敛到目标点
-        GoalLateralCritic: [0.0, 10.0, 100.0] # 目标横向误差：减小目标相对车身的左右偏差
+        GoalLateralCritic: [0.0, 10.0, 150.0] # 目标横向误差：减小目标相对车身的左右偏差
         GoalLongitudinalCritic: [0.0, 0.0, 50.0] # 目标纵向误差：减小目标相对车身的前后偏差
-        GoalAngleCritic: [0.0, 0.0, 75.0] # 目标朝向误差：趋近段对齐最终目标姿态
+        GoalAngleCritic: [0.0, 0.0, 100.0] # 目标朝向误差：趋近段对齐最终目标姿态
         PathAngleCritic: [18.0, 5.0, 2.0] # 路径朝向误差：使车头朝向前方路径点
-        PathAlignCritic: [5.0, 30.0, 10.0] # 路径贴合误差：使候选轨迹尽量贴合全局路径
+        PathAlignCritic: [5.0, 40.0, 10.0] # 路径贴合误差：使候选轨迹尽量贴合全局路径
         PathFollowCritic: [0.0, 10.0, 5.0] # 路径推进误差：推动轨迹末端沿全局路径前进
         PreferForwardCritic: [10.0, 10.0, 5.0] # 前进偏好：惩罚倒车运动，鼓励向前行驶
         LinearVelocityCritic: [0.0, 10.0, 10.0]  # 线速度软约束：跟踪按剩余距离计算的期望速度，并抑制相邻时刻速度突变
@@ -169,7 +170,7 @@ controller_server:
         vy_max: 0.5
         wz_max: 0.75
       stage_track:    # 跟踪段：全速通行
-        vx_max: 1.0
+        vx_max: 0.8
         vx_min: -0.5
         vy_max: 0.5
         wz_max: 0.75
@@ -200,8 +201,8 @@ controller_server:
         cost_power: 1
         cost_weight: 4.0
       GoalAngleCritic:
-        wrong_way_cost_ratio: 2.0 # 按当前真实最短角误差方向惩罚反向旋转，final_yaw 中仍然生效
-        direction_deadband: 0.05 # 接近目标朝向时关闭方向惩罚，允许小幅制动和回调，单位 rad
+        wrong_way_cost_ratio: 5.0 # 按当前真实最短角误差方向惩罚反向旋转，final_yaw 中仍然生效
+        direction_deadband: 0.01 # 小于GoalChecker的0.02rad容差，避免“未到点但方向惩罚已关闭”的空档
       PathAngleCritic:
         wrong_way_cost_ratio: 2.0 # 惩罚角速度与最短路径角误差异号，防止反向绕转 270°
         direction_deadband: 0.05 # 接近对齐时关闭方向惩罚，避免 wz 正负号抖动，单位 rad
@@ -235,6 +236,7 @@ controller_server:
         enabled: true
         cost_power: 2
         cost_weight: 10.0 # 初值，bag 调
+        stop_yaw_tolerance: 0.02 # 与GoalChecker航向容差一致：进入此范围后期望角速度为0，等待停稳成功
       VelocityDeadbandCritic:
         enabled: true
         cost_power: 1
@@ -628,7 +630,7 @@ velocity_smoother:
     input_topic: "cmd_vel_nav"
     output_topic: "control/cmd_vel_nav"
     # Test
-    max_velocity: [1.0, 0.0, 0.75]
+    max_velocity: [0.8, 0.0, 0.75]
     min_velocity: [-0.5, 0.0, -0.75]
     max_accel: [0.6, 0.0, 0.7]
     max_decel: [-0.6, 0.0, -0.7]

@@ -54,6 +54,28 @@ public:
     updateApproachSubstage(lon, lat);
   }
 
+  void setApproachMode(size_t mode)
+  {
+    approach_mode_ = mode;
+    approach_mode_locked_ = true;
+  }
+
+  void setPositionFirstYawThreshold(double threshold)
+  {
+    position_first_yaw_threshold_ = threshold;
+  }
+
+  void enterApproachFrom(size_t previous_stage, double yaw_error)
+  {
+    active_stage_ = nav2_mppi_controller::STAGE_APPROACH;
+    updateApproachMode(previous_stage, nav2_mppi_controller::STAGE_APPROACH, yaw_error);
+  }
+
+  size_t approachMode() const
+  {
+    return approach_mode_;
+  }
+
   size_t approachSubstage() const
   {
     return approach_substage_;
@@ -66,6 +88,7 @@ public:
     active_stage_ = nav2_mppi_controller::STAGE_APPROACH;
     approach_substage_ = substage;
     applied_profile_ = profile;
+    stages_[nav2_mppi_controller::STAGE_APPROACH] = profile;
     final_yaw_vx_max_ = final_vx_max;
     final_yaw_wz_max_ = final_wz_max;
     applyApproachSubstageProfile();
@@ -104,6 +127,7 @@ TEST(ControllerStateTransitionTest, ApproachSubstageAppliesSeparateProfiles)
   profile.critics.angular_velocity.weight = 5.0f;
 
   TestableMPPIController controller;
+  controller.setApproachMode(nav2_mppi_controller::APPROACH_POSITION_FIRST);
   controller.applySubstageProfile(profile, nav2_mppi_controller::APPROACH_POSITIONING);
   EXPECT_FLOAT_EQ(controller.appliedProfile().critics.goal_angle.weight, 10.0f);
   EXPECT_FLOAT_EQ(controller.appliedProfile().critics.angular_velocity.weight, 0.0f);
@@ -117,6 +141,36 @@ TEST(ControllerStateTransitionTest, ApproachSubstageAppliesSeparateProfiles)
   EXPECT_FLOAT_EQ(controller.appliedProfile().critics.path_angle.weight, 0.0f);
   EXPECT_FLOAT_EQ(controller.appliedProfile().critics.prefer_forward.weight, 0.0f);
   EXPECT_FLOAT_EQ(controller.appliedProfile().critics.linear_velocity.weight, 0.0f);
+  EXPECT_FLOAT_EQ(controller.appliedProfile().critics.angular_velocity.weight, 5.0f);
+}
+
+TEST(ControllerStateTransitionTest, ApproachModeLocksFromEntryYawError)
+{
+  TestableMPPIController controller;
+  controller.setPositionFirstYawThreshold(2.094);
+
+  controller.enterApproachFrom(nav2_mppi_controller::STAGE_TRACK, 0.5);
+  EXPECT_EQ(controller.approachMode(), nav2_mppi_controller::APPROACH_NORMAL);
+
+  controller.enterApproachFrom(nav2_mppi_controller::STAGE_TRACK, 1.8);
+  EXPECT_EQ(controller.approachMode(), nav2_mppi_controller::APPROACH_NORMAL);
+
+  controller.enterApproachFrom(nav2_mppi_controller::STAGE_TRACK, -2.8);
+  EXPECT_EQ(controller.approachMode(), nav2_mppi_controller::APPROACH_POSITION_FIRST);
+}
+
+TEST(ControllerStateTransitionTest, NormalApproachKeepsFullYawControlWhilePositioning)
+{
+  mppi::MppiProfileSettings profile;
+  profile.velocity = {0.5f, -0.1f, 0.0f, 0.75f};
+  profile.critics.goal_angle.weight = 75.0f;
+  profile.critics.angular_velocity.weight = 5.0f;
+
+  TestableMPPIController controller;
+  controller.setApproachMode(nav2_mppi_controller::APPROACH_NORMAL);
+  controller.applySubstageProfile(profile, nav2_mppi_controller::APPROACH_POSITIONING);
+
+  EXPECT_FLOAT_EQ(controller.appliedProfile().critics.goal_angle.weight, 75.0f);
   EXPECT_FLOAT_EQ(controller.appliedProfile().critics.angular_velocity.weight, 5.0f);
 }
 
