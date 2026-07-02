@@ -308,7 +308,9 @@ void AddAreaTool::finishPolygon() {
     req->area_info.type = area_type_;
     req->area_info.max_speed = area_max_speed_;
     req->area_info.stop_distance = area_stop_distance_;
-    req->area_info.linked_point_name = area_linked_point_;
+    if (!area_linked_point_.empty()) {
+        req->area_info.manual_linked_point_names.push_back(area_linked_point_);
+    }
     req->area_info.charger_type = area_charger_type_;
     req->area_info.depth_min_height = area_depth_min_height_;
     req->area_info.polygon = verts;
