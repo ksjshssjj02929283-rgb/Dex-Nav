@@ -4,7 +4,7 @@ This package hosts the abstract interface (virtual base classes) for plugins to 
 - global planner (e.g., `nav2_navfn_planner`)
 - controller (e.g., path execution controller, e.g `nav2_dwb_controller`)
 - smoother (e.g., `nav2_ceres_costaware_smoother`)
-- goal checker (e.g. `simple_goal_checker`)
+- goal checker (e.g. `nav2_simple_goal_checker`)
 - behaviors (e.g. `drive_on_heading`)
 - progress checker (e.g. `simple_progress_checker`)
 - waypoint task executor (e.g. `take_pictures`)

@@ -1,0 +1,9 @@
+<class_libraries>
+    <library path="nav2_simple_goal_checker">
+        <class type="nav2_simple_goal_checker::SimpleGoalChecker" base_class_type="nav2_core::GoalChecker">
+            <description>
+                Checks whether the robot has reached the goal pose using XY position and yaw tolerances.
+            </description>
+        </class>
+    </library>
+</class_libraries>
