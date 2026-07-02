@@ -44,6 +44,12 @@ using namespace mppi;  // NOLINT
 // 三阶段枚举（消灭 magic index 0/1/2）：数组顺序 = 枚举值
 enum Stage : size_t { STAGE_ALIGN = 0, STAGE_TRACK = 1, STAGE_APPROACH = 2 };
 
+// approach 内部子阶段：先修正目标坐标系位置误差，再完成最终朝向。
+enum ApproachSubstage : size_t {
+  APPROACH_POSITIONING = 0,
+  APPROACH_FINAL_YAW = 1
+};
+
 class MPPIController : public nav2_core::Controller
 {
 public:
@@ -118,11 +124,19 @@ protected:
   void configureStages();
 
   // 根据路径进度和到目标距离选择三阶段 profile，并把速度/行为代价平滑应用到 optimizer。
-  void applyProfileForPathState(double path_progress, double goal_distance, double heading_path_angle);
+  void applyProfileForPathState(
+    double path_progress, double goal_distance, double heading_path_angle,
+    double goal_longitudinal_error, double goal_lateral_error);
+
+  void updateApproachSubstage(double goal_longitudinal_error, double goal_lateral_error);
+
+  void applyApproachSubstageProfile();
 
   size_t selectStage(double goal_distance, double heading_path_angle) const;
 
   std::string stageName(size_t profile) const;
+
+  std::string approachSubstageName() const;
 
   MppiProfileSettings interpolateProfiles(
     const MppiProfileSettings & from,
@@ -159,7 +173,15 @@ protected:
   double approach_hysteresis_{0.05};
   double align_enter_angle_{0.52};   // 对齐段进入阈值(rad,~30°)
   double align_exit_angle_{0.31};    // 对齐段退出阈值(rad,~18°,迟滞)
+  double final_yaw_enter_lon_tolerance_{0.015};
+  double final_yaw_enter_lat_tolerance_{0.015};
+  double final_yaw_exit_lon_tolerance_{0.02};
+  double final_yaw_exit_lat_tolerance_{0.02};
+  float positioning_goal_angle_weight_{10.0f};
+  float final_yaw_vx_max_{0.03f};
+  float final_yaw_wz_max_{0.4f};
   size_t active_stage_{0};
+  size_t approach_substage_{APPROACH_POSITIONING};
   bool profile_transition_active_{false};
 
   double reset_period_;

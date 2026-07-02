@@ -32,6 +32,94 @@ public:
 };
 RosLockGuard g_rclcpp;
 
+class TestableMPPIController : public nav2_mppi_controller::MPPIController
+{
+public:
+  void setApproachState(size_t substage)
+  {
+    active_stage_ = nav2_mppi_controller::STAGE_APPROACH;
+    approach_substage_ = substage;
+  }
+
+  void setApproachTolerances(double enter, double exit)
+  {
+    final_yaw_enter_lon_tolerance_ = enter;
+    final_yaw_enter_lat_tolerance_ = enter;
+    final_yaw_exit_lon_tolerance_ = exit;
+    final_yaw_exit_lat_tolerance_ = exit;
+  }
+
+  void updateApproach(double lon, double lat)
+  {
+    updateApproachSubstage(lon, lat);
+  }
+
+  size_t approachSubstage() const
+  {
+    return approach_substage_;
+  }
+
+  void applySubstageProfile(
+    const mppi::MppiProfileSettings & profile, size_t substage,
+    float final_vx_max = 0.03f, float final_wz_max = 0.4f)
+  {
+    active_stage_ = nav2_mppi_controller::STAGE_APPROACH;
+    approach_substage_ = substage;
+    applied_profile_ = profile;
+    final_yaw_vx_max_ = final_vx_max;
+    final_yaw_wz_max_ = final_wz_max;
+    applyApproachSubstageProfile();
+  }
+
+  const mppi::MppiProfileSettings & appliedProfile() const
+  {
+    return applied_profile_;
+  }
+};
+
+TEST(ControllerStateTransitionTest, ApproachSubstageUsesPositionHysteresis)
+{
+  TestableMPPIController controller;
+  controller.setApproachTolerances(0.015, 0.02);
+  controller.setApproachState(nav2_mppi_controller::APPROACH_POSITIONING);
+
+  controller.updateApproach(0.014, -0.015);
+  EXPECT_EQ(controller.approachSubstage(), nav2_mppi_controller::APPROACH_FINAL_YAW);
+
+  controller.updateApproach(0.019, -0.019);
+  EXPECT_EQ(controller.approachSubstage(), nav2_mppi_controller::APPROACH_FINAL_YAW);
+
+  controller.updateApproach(0.021, 0.0);
+  EXPECT_EQ(controller.approachSubstage(), nav2_mppi_controller::APPROACH_POSITIONING);
+}
+
+TEST(ControllerStateTransitionTest, ApproachSubstageAppliesSeparateProfiles)
+{
+  mppi::MppiProfileSettings profile;
+  profile.velocity = {0.5f, -0.1f, 0.0f, 0.75f};
+  profile.critics.goal_angle.weight = 75.0f;
+  profile.critics.path_angle.weight = 2.0f;
+  profile.critics.prefer_forward.weight = 5.0f;
+  profile.critics.linear_velocity.weight = 10.0f;
+  profile.critics.angular_velocity.weight = 5.0f;
+
+  TestableMPPIController controller;
+  controller.applySubstageProfile(profile, nav2_mppi_controller::APPROACH_POSITIONING);
+  EXPECT_FLOAT_EQ(controller.appliedProfile().critics.goal_angle.weight, 10.0f);
+  EXPECT_FLOAT_EQ(controller.appliedProfile().critics.angular_velocity.weight, 0.0f);
+  EXPECT_FLOAT_EQ(controller.appliedProfile().critics.path_angle.weight, 2.0f);
+
+  controller.applySubstageProfile(profile, nav2_mppi_controller::APPROACH_FINAL_YAW);
+  EXPECT_FLOAT_EQ(controller.appliedProfile().velocity.vx_max, 0.03f);
+  EXPECT_FLOAT_EQ(controller.appliedProfile().velocity.vx_min, -0.03f);
+  EXPECT_FLOAT_EQ(controller.appliedProfile().velocity.wz_max, 0.4f);
+  EXPECT_FLOAT_EQ(controller.appliedProfile().critics.goal_angle.weight, 75.0f);
+  EXPECT_FLOAT_EQ(controller.appliedProfile().critics.path_angle.weight, 0.0f);
+  EXPECT_FLOAT_EQ(controller.appliedProfile().critics.prefer_forward.weight, 0.0f);
+  EXPECT_FLOAT_EQ(controller.appliedProfile().critics.linear_velocity.weight, 0.0f);
+  EXPECT_FLOAT_EQ(controller.appliedProfile().critics.angular_velocity.weight, 5.0f);
+}
+
 // Tests basic transition from configure->active->process->deactive->cleanup
 
 TEST(ControllerStateTransitionTest, ControllerNotFail)

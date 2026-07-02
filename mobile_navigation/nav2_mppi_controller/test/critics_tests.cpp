@@ -197,25 +197,33 @@ TEST(CriticTests, GoalAngleCritic)
 
   // Scoring testing
 
-  // provide state poses and path too far from `threshold_to_consider` to consider
-  state.pose.pose.position.x = 1.0;
+  // GoalAngleCritic 由阶段权重控制启停，不再使用到目标距离阈值。
   path.reset(10);
   path.x(9) = 10.0;
   path.y(9) = 0.0;
   path.yaws(9) = 3.14;
   critic.score(data);
-  EXPECT_NEAR(costs.sum(), 0, 1e-6);
-
-  // Lets move it even closer, just to be sure it still doesn't trigger
-  state.pose.pose.position.x = 9.2;
-  critic.score(data);
-  EXPECT_NEAR(costs.sum(), 0, 1e-6);
-
-  // provide state pose and path below `threshold_to_consider` to consider
-  state.pose.pose.position.x = 9.7;
-  critic.score(data);
   EXPECT_GT(costs.sum(), 0);
   EXPECT_NEAR(costs(0), 9.42, 0.02);  // (3.14 - 0.0) * 3.0 weight
+
+  // 当前 goal-current 为正：正 wz 是最短方向，负 wz 应额外受到错误方向惩罚。
+  costs.setZero();
+  path.yaws(9) = 1.0f;
+  state.pose.pose.orientation.w = 1.0;
+  state.wz = 0.2f * models::Matrix::Ones(1000, 30);
+  state.wz.row(1).setConstant(-0.2f);
+  critic.score(data);
+  EXPECT_NEAR(costs(0), 3.0, 0.01);
+  EXPECT_NEAR(costs(1), 4.2, 0.01);  // 基础3.0 + 0.2*weight3*ratio2
+
+  // 当前 goal-current 为负时规则应镜像：负 wz 正确，正 wz 受到惩罚。
+  costs.setZero();
+  path.yaws(9) = -1.0f;
+  state.wz.setConstant(-0.2f);
+  state.wz.row(1).setConstant(0.2f);
+  critic.score(data);
+  EXPECT_NEAR(costs(0), 3.0, 0.01);
+  EXPECT_NEAR(costs(1), 4.2, 0.01);
 }
 
 TEST(CriticTests, GoalCritic)
