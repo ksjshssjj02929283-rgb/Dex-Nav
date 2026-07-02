@@ -50,6 +50,12 @@ enum ApproachSubstage : size_t {
   APPROACH_FINAL_YAW = 1
 };
 
+// 进入 approach 时按当时的最终航向误差锁定位置调整策略，避免过程中来回切换。
+enum ApproachMode : size_t {
+  APPROACH_NORMAL = 0,
+  APPROACH_POSITION_FIRST = 1
+};
+
 class MPPIController : public nav2_core::Controller
 {
 public:
@@ -126,7 +132,9 @@ protected:
   // 根据路径进度和到目标距离选择三阶段 profile，并把速度/行为代价平滑应用到 optimizer。
   void applyProfileForPathState(
     double path_progress, double goal_distance, double heading_path_angle,
-    double goal_longitudinal_error, double goal_lateral_error);
+    double goal_longitudinal_error, double goal_lateral_error, double goal_yaw_error);
+
+  void updateApproachMode(size_t previous_stage, size_t selected_stage, double goal_yaw_error);
 
   void updateApproachSubstage(double goal_longitudinal_error, double goal_lateral_error);
 
@@ -137,6 +145,8 @@ protected:
   std::string stageName(size_t profile) const;
 
   std::string approachSubstageName() const;
+
+  std::string approachModeName() const;
 
   MppiProfileSettings interpolateProfiles(
     const MppiProfileSettings & from,
@@ -177,11 +187,14 @@ protected:
   double final_yaw_enter_lat_tolerance_{0.015};
   double final_yaw_exit_lon_tolerance_{0.02};
   double final_yaw_exit_lat_tolerance_{0.02};
+  double position_first_yaw_threshold_{2.094};
   float positioning_goal_angle_weight_{10.0f};
   float final_yaw_vx_max_{0.03f};
   float final_yaw_wz_max_{0.4f};
   size_t active_stage_{0};
   size_t approach_substage_{APPROACH_POSITIONING};
+  size_t approach_mode_{APPROACH_NORMAL};
+  bool approach_mode_locked_{false};
   bool profile_transition_active_{false};
 
   double reset_period_;

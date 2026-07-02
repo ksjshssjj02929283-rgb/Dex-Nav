@@ -30,11 +30,14 @@ void AngularVelocityCritic::initialize()
   // 角速度上限与角减速度从 FollowPath 全局参数读取（不在 critic 内自定义）
   getParentParam(wz_max_, "wz_max", 0.75);
   getParentParam(az_max_, "az_max", 0.7);
+  getParam(stop_yaw_tolerance_, "stop_yaw_tolerance", 0.02);
+  stop_yaw_tolerance_ = std::max(0.0f, stop_yaw_tolerance_);
 
   RCLCPP_INFO(
     logger_,
-    "AngularVelocityCritic instantiated with %d power, %.3f weight, wz_max=%.3f, az_max=%.3f",
-    power_, weight_, wz_max_, az_max_);
+    "AngularVelocityCritic instantiated with %d power, %.3f weight, wz_max=%.3f, "
+    "az_max=%.3f, stop_yaw_tolerance=%.3f rad",
+    power_, weight_, wz_max_, az_max_, stop_yaw_tolerance_);
 }
 
 void AngularVelocityCritic::score(CriticData & data)
@@ -58,7 +61,10 @@ void AngularVelocityCritic::score(CriticData & data)
     const auto dyaw = goal_yaw - data.trajectories.yaws.col(p).array();
     const models::Vector err = dyaw.sin().binaryExpr(
       dyaw.cos(), [](float s, float c) {return std::atan2(s, c);});
-    const auto wz_desired = (2.0f * az_max_ * err.abs()).sqrt().min(wz_max_) * err.sign();
+    const models::Vector braking_wz =
+      (2.0f * az_max_ * err.abs()).sqrt().min(wz_max_) * err.sign();
+    const models::Vector wz_desired =
+      (err.abs() > stop_yaw_tolerance_).select(braking_wz, 0.0f);
     cost += (data.state.wz.col(p).array() - wz_desired).abs();
   }
   cost /= static_cast<float>(time_steps);
