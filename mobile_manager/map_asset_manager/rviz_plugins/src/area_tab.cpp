@@ -133,8 +133,15 @@ void AreaTab::onRefresh() {
                         if (area.type == 3) details << QString("最大速度: %1 m/s").arg(area.max_speed);
                         if (area.type == 5) details << QString("停止距离: %1 m").arg(area.stop_distance);
                         if (area.type == 6 || area.type == 7) {
-                            if (!area.linked_point_name.empty())
-                                details << QString("关联点: %1").arg(QString::fromStdString(area.linked_point_name));
+                            QStringList linked_points;
+                            for (const auto& linked_point_name : area.manual_linked_point_names) {
+                                if (!linked_point_name.empty()) {
+                                    linked_points << QString::fromStdString(linked_point_name);
+                                }
+                            }
+                            if (!linked_points.isEmpty()) {
+                                details << QString("关联点: %1").arg(linked_points.join(", "));
+                            }
                         }
                         if (area.type == 7) {
                             details << QString("充电方式: %1").arg(QString::fromStdString(area.charger_type));

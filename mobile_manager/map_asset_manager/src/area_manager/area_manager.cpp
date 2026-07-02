@@ -208,7 +208,9 @@ Area AreaManager::fromMsg(const nav_interfaces::msg::AreaInfo& msg) {
     a.type = msg.type;
     a.max_speed = msg.max_speed;
     a.stop_distance = msg.stop_distance;
-    a.linked_point_name = msg.linked_point_name;
+    if (!msg.manual_linked_point_names.empty()) {
+        a.linked_point_name = msg.manual_linked_point_names.front();
+    }
     a.charger_type = msg.charger_type;
     a.depth_min_height = msg.depth_min_height;
     a.attribute = msg.attribute;
@@ -230,7 +232,9 @@ nav_interfaces::msg::AreaInfo AreaManager::toMsg(const Area& area) {
     msg.type = area.type;
     msg.max_speed = area.max_speed;
     msg.stop_distance = area.stop_distance;
-    msg.linked_point_name = area.linked_point_name;
+    if (!area.linked_point_name.empty()) {
+        msg.manual_linked_point_names.push_back(area.linked_point_name);
+    }
     msg.charger_type = area.charger_type;
     msg.depth_min_height = area.depth_min_height;
     msg.attribute = area.attribute;
