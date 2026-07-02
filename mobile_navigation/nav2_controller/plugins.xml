@@ -9,24 +9,4 @@
       <description>Checks if distance and angle between current and previous pose is above a threshold</description>
     </class>
   </library>
-  <library path="simple_goal_checker">
-    <class type="nav2_controller::SimpleGoalChecker" base_class_type="nav2_core::GoalChecker">
-      <description>Checks if current pose is within goal window for x,y and yaw</description>
-    </class>
-  </library>
-  <library path="stopped_goal_checker">
-    <class type="nav2_controller::StoppedGoalChecker" base_class_type="nav2_core::GoalChecker">
-        <description>Checks linear and angular velocity after stopping</description>
-    </class>
-  </library>
-  <library path="longitudinal_goal_checker">
-    <class type="nav2_controller::LongitudinalGoalChecker" base_class_type="nav2_core::GoalChecker">
-        <description>Checks linear and angular velocity after stopping</description>
-    </class>
-  </library>
-  <library path="precision_longitudinal_goal_checker">
-    <class type="nav2_controller::PrecisionLongitudinalGoalChecker" base_class_type="nav2_core::GoalChecker">
-        <description>Checks target-frame longitudinal and lateral goal errors with desired and fallback tolerances</description>
-    </class>
-  </library>
 </class_libraries>

@@ -76,7 +76,7 @@
 
         <!-- 内层：FollowPath 失败后，尝试清 local，然后立即 FollowPath 1 次 -->
         <RecoveryNode number_of_retries="1" name="FollowPathInnerRetry">
-          <FollowPath path="{path}" controller_id="FollowPath"/>
+          <FollowPath path="{path}" controller_id="MPPIController"/>
 
           <ForceSuccess>
             <ClearEntireCostmap name="ClearLocalCostmap-FirstRetry"

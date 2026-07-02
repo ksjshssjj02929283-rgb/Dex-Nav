@@ -8,6 +8,7 @@ find_package(nav2_costmap_2d REQUIRED)
 find_package(nav2_util REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
+find_package(rcl_interfaces REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(pluginlib REQUIRED)
 find_package(tf2 REQUIRED)
@@ -24,6 +25,7 @@ include_directories(
 set(dependencies
   rclcpp
   rclcpp_lifecycle
+  rcl_interfaces
   geometry_msgs
   nav2_costmap_2d
   pluginlib
