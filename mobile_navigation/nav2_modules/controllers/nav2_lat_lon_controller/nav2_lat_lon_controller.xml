@@ -1,0 +1,11 @@
+<class_libraries>
+    <library path="nav2_lat_lon_controller">
+        <class type="nav2_lat_lon_controller::LatLonController" base_class_type="nav2_core::Controller">
+            <description>
+                纵横解耦 PID 跟踪 controller：横向 PID 纠偏 + 纵向 PID 前进，
+                五阶段状态机，p_window 前视。消费 nav_msgs/Path（几何）或
+                nav_interfaces/RobotTrajectory（带速度）。
+            </description>
+        </class>
+    </library>
+</class_libraries>

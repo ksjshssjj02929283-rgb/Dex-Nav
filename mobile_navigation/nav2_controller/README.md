@@ -35,20 +35,20 @@ nav2_controller/
 ├── plugins/
 │   ├── simple_progress_checker.cpp
 │   ├── pose_progress_checker.cpp
-│   ├── simple_goal_checker.cpp
-│   ├── stopped_goal_checker.cpp
-│   ├── longitudinal_goal_checker.cpp
-│   └── precision_longitudinal_goal_checker.cpp
+│   ├── nav2_simple_goal_checker.cpp
+│   ├── nav2_stopped_goal_checker.cpp
+│   ├── nav2_longitudinal_goal_checker.cpp
+│   └── precision_nav2_longitudinal_goal_checker.cpp
 │
 ├── include/nav2_controller/
 │   ├── controller_server.hpp
 │   └── plugins/
 │       ├── simple_progress_checker.hpp
 │       ├── pose_progress_checker.hpp
-│       ├── simple_goal_checker.hpp
-│       ├── stopped_goal_checker.hpp
-│       ├── longitudinal_goal_checker.hpp
-│       └── precision_longitudinal_goal_checker.hpp
+│       ├── nav2_simple_goal_checker.hpp
+│       ├── nav2_stopped_goal_checker.hpp
+│       ├── nav2_longitudinal_goal_checker.hpp
+│       └── precision_nav2_longitudinal_goal_checker.hpp
 │
 ├── plugins.xml
 ├── CMakeLists.txt
@@ -149,12 +149,12 @@ movement_time_allowance:
 `nav2_modules/goal_checkers/`，运行配置应使用这些插件类型：
 
 ```text
-simple_goal_checker::SimpleGoalChecker
-stopped_goal_checker::StoppedGoalChecker
-position_goal_checker::PositionGoalChecker
-rotation_goal_checker::RotationGoalChecker
-longitudinal_goal_checker::LongitudinalGoalChecker
-high_precision_goal_checker::HighPrecisionGoalChecker
+nav2_simple_goal_checker::SimpleGoalChecker
+nav2_stopped_goal_checker::StoppedGoalChecker
+nav2_position_goal_checker::PositionGoalChecker
+nav2_rotation_goal_checker::RotationGoalChecker
+nav2_longitudinal_goal_checker::LongitudinalGoalChecker
+nav2_high_precision_goal_checker::HighPrecisionGoalChecker
 ```
 
 `nav2_controller` 只保留 progress checker 和 ControllerServer。

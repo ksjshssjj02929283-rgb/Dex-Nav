@@ -1,0 +1,10 @@
+<class_libraries>
+    <library path="nav2_longitudinal_goal_checker">
+        <class type="nav2_longitudinal_goal_checker::LongitudinalGoalChecker" base_class_type="nav2_core::GoalChecker">
+            <description>
+                Checks whether the robot has reached the goal pose using longitudinal (along heading) and
+                lateral position tolerances, a yaw tolerance, and stopped-velocity thresholds.
+            </description>
+        </class>
+    </library>
+</class_libraries>

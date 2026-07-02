@@ -1,0 +1,10 @@
+<class_libraries>
+    <library path="nav2_pure_rotation_controller">
+        <class type="nav2_pure_rotation_controller::PureRotationController" base_class_type="nav2_core::Controller">
+            <description>
+                原地旋转控制器：纵向 station/speed PID + 独立角速度 PID 并行。
+                enable_lon_adjust 控制是否纯旋转（false = 只转）。
+            </description>
+        </class>
+    </library>
+</class_libraries>

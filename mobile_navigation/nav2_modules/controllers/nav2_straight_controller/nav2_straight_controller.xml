@@ -1,0 +1,10 @@
+<class_libraries>
+    <library path="nav2_straight_controller">
+        <class type="nav2_straight_controller::StraightController" base_class_type="nav2_core::Controller">
+            <description>
+                Straight-line tracking PID controller (longitudinal speed PID + manual
+                heading PID). Consumes RobotTrajectory per-point velocity/curvature.
+            </description>
+        </class>
+    </library>
+</class_libraries>

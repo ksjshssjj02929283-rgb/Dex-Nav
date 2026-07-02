@@ -57,12 +57,12 @@ ControllerServer::ControllerServer(const rclcpp::NodeOptions & options)
     "longitudinal_goal_checker",
     "high_precision_goal_checker"},
   default_goal_checker_types_{
-    "simple_goal_checker::SimpleGoalChecker",
-    "stopped_goal_checker::StoppedGoalChecker",
-    "position_goal_checker::PositionGoalChecker",
-    "rotation_goal_checker::RotationGoalChecker",
-    "longitudinal_goal_checker::LongitudinalGoalChecker",
-    "high_precision_goal_checker::HighPrecisionGoalChecker"},
+    "nav2_simple_goal_checker::SimpleGoalChecker",
+    "nav2_stopped_goal_checker::StoppedGoalChecker",
+    "nav2_position_goal_checker::PositionGoalChecker",
+    "nav2_rotation_goal_checker::RotationGoalChecker",
+    "nav2_longitudinal_goal_checker::LongitudinalGoalChecker",
+    "nav2_high_precision_goal_checker::HighPrecisionGoalChecker"},
   lp_loader_("nav2_core", "nav2_core::Controller"),
   default_ids_{
     "MPPIController",
@@ -80,10 +80,10 @@ ControllerServer::ControllerServer(const rclcpp::NodeOptions & options)
     "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController",
     "nav2_graceful_controller::GracefulController",
     "nav2_rotation_shim_controller::RotationShimController",
-    "pid_controller::PIDController",
-    "lat_lon_controller::LatLonController",
-    "pure_rotation_controller::PureRotationController",
-    "straight_controller::StraightController"}
+    "nav2_pid_controller::PIDController",
+    "nav2_lat_lon_controller::LatLonController",
+    "nav2_pure_rotation_controller::PureRotationController",
+    "nav2_straight_controller::StraightController"}
 {
   RCLCPP_INFO(get_logger(), "Creating controller server");
 
