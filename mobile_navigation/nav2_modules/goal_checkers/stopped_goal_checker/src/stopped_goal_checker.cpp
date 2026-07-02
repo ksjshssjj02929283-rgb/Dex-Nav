@@ -14,9 +14,11 @@
 // limitations under the License.
 
 #include <cmath>
+#include <functional>
 #include <memory>
 #include <string>
 #include <limits>
+#include <vector>
 
 #include "stopped_goal_checker/stopped_goal_checker.hpp"
 
@@ -25,6 +27,9 @@
 
 namespace stopped_goal_checker
 {
+
+using rcl_interfaces::msg::ParameterType;
+using std::placeholders::_1;
 
 StoppedGoalChecker::StoppedGoalChecker()
 : SimpleGoalChecker(),
@@ -38,6 +43,7 @@ void StoppedGoalChecker::initialize(
   const std::string & plugin_name,
   const std::shared_ptr<nav2_costmap_2d::Costmap2DROS> costmap_ros)
 {
+  plugin_name_ = plugin_name;
   simple_goal_checker::SimpleGoalChecker::initialize(parent, plugin_name, costmap_ros);
 
   auto node = parent.lock();
@@ -51,6 +57,9 @@ void StoppedGoalChecker::initialize(
 
   node->get_parameter(plugin_name + ".rot_stopped_velocity", rot_stopped_velocity_);
   node->get_parameter(plugin_name + ".trans_stopped_velocity", trans_stopped_velocity_);
+
+  dyn_params_handler_ = node->add_on_set_parameters_callback(
+    std::bind(&StoppedGoalChecker::dynamicParametersCallback, this, _1));
 }
 
 bool StoppedGoalChecker::isGoalReached(
@@ -92,6 +101,26 @@ bool StoppedGoalChecker::getTolerances(
   vel_tolerance.angular.z = rot_stopped_velocity_;
 
   return true && rtn;
+}
+
+rcl_interfaces::msg::SetParametersResult
+StoppedGoalChecker::dynamicParametersCallback(std::vector<rclcpp::Parameter> parameters)
+{
+  rcl_interfaces::msg::SetParametersResult result;
+  for (auto & parameter : parameters) {
+    const auto & type = parameter.get_type();
+    const auto & name = parameter.get_name();
+
+    if (type == ParameterType::PARAMETER_DOUBLE) {
+      if (name == plugin_name_ + ".rot_stopped_velocity") {
+        rot_stopped_velocity_ = parameter.as_double();
+      } else if (name == plugin_name_ + ".trans_stopped_velocity") {
+        trans_stopped_velocity_ = parameter.as_double();
+      }
+    }
+  }
+  result.successful = true;
+  return result;
 }
 
 }  // namespace stopped_goal_checker

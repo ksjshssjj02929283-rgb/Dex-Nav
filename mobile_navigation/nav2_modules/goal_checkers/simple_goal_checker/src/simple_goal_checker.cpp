@@ -13,9 +13,11 @@
 // limitations under the License.
 
 #include <cmath>
+#include <functional>
 #include <memory>
 #include <string>
 #include <limits>
+#include <vector>
 
 #include "simple_goal_checker/simple_goal_checker.hpp"
 
@@ -27,6 +29,9 @@
 
 namespace simple_goal_checker
 {
+
+using rcl_interfaces::msg::ParameterType;
+using std::placeholders::_1;
 
 SimpleGoalChecker::SimpleGoalChecker()
 : xy_goal_tolerance_(0.25),
@@ -62,6 +67,9 @@ void SimpleGoalChecker::initialize(
   node->get_parameter(plugin_name + ".stateful", stateful_);
 
   xy_goal_tolerance_sq_ = xy_goal_tolerance_ * xy_goal_tolerance_;
+
+  dyn_params_handler_ = node->add_on_set_parameters_callback(
+    std::bind(&SimpleGoalChecker::dynamicParametersCallback, this, _1));
 }
 
 void SimpleGoalChecker::reset()
@@ -129,6 +137,31 @@ bool SimpleGoalChecker::getTolerances(
   vel_tolerance.angular.z = invalid_field;
 
   return true;
+}
+
+rcl_interfaces::msg::SetParametersResult
+SimpleGoalChecker::dynamicParametersCallback(std::vector<rclcpp::Parameter> parameters)
+{
+  rcl_interfaces::msg::SetParametersResult result;
+  for (auto & parameter : parameters) {
+    const auto & type = parameter.get_type();
+    const auto & name = parameter.get_name();
+
+    if (type == ParameterType::PARAMETER_DOUBLE) {
+      if (name == plugin_name_ + ".xy_goal_tolerance") {
+        xy_goal_tolerance_ = parameter.as_double();
+        xy_goal_tolerance_sq_ = xy_goal_tolerance_ * xy_goal_tolerance_;
+      } else if (name == plugin_name_ + ".yaw_goal_tolerance") {
+        yaw_goal_tolerance_ = parameter.as_double();
+      }
+    } else if (type == ParameterType::PARAMETER_BOOL) {
+      if (name == plugin_name_ + ".stateful") {
+        stateful_ = parameter.as_bool();
+      }
+    }
+  }
+  result.successful = true;
+  return result;
 }
 
 }  // namespace simple_goal_checker
