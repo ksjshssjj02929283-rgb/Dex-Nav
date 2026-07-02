@@ -36,13 +36,13 @@
 #include <string>
 
 #include "gtest/gtest.h"
-#include "simple_goal_checker/simple_goal_checker.hpp"
-#include "stopped_goal_checker/stopped_goal_checker.hpp"
+#include "nav2_simple_goal_checker/simple_goal_checker.hpp"
+#include "nav2_stopped_goal_checker/stopped_goal_checker.hpp"
 #include "nav_2d_utils/conversions.hpp"
 #include "nav2_util/lifecycle_node.hpp"
 
-using simple_goal_checker::SimpleGoalChecker;
-using stopped_goal_checker::StoppedGoalChecker;
+using nav2_simple_goal_checker::SimpleGoalChecker;
+using nav2_stopped_goal_checker::StoppedGoalChecker;
 
 void checkMacro(
   nav2_core::GoalChecker & gc,
@@ -164,9 +164,9 @@ TEST(VelocityIterator, goal_checker_reset)
   EXPECT_TRUE(true);
 }
 
-TEST(VelocityIterator, stopped_goal_checker_reset)
+TEST(VelocityIterator, nav2_stopped_goal_checker_reset)
 {
-  auto x = std::make_shared<TestLifecycleNode>("stopped_goal_checker");
+  auto x = std::make_shared<TestLifecycleNode>("nav2_stopped_goal_checker");
 
   nav2_core::GoalChecker * sgc = new StoppedGoalChecker;
   sgc->reset();

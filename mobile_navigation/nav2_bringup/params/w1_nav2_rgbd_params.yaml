@@ -137,7 +137,7 @@ controller_server:
     # Goal checker parameters
     # general_goal_checker:
     #   stateful: True
-    #   plugin: "simple_goal_checker::SimpleGoalChecker"
+    #   plugin: "nav2_simple_goal_checker::SimpleGoalChecker"
     #   xy_goal_tolerance: 0.1
     #   yaw_goal_tolerance: 0.05
     progress_checker:
@@ -145,28 +145,28 @@ controller_server:
       required_movement_radius: 0.5
       movement_time_allowance: 10.0
     simple_goal_checker:
-      plugin: "simple_goal_checker::SimpleGoalChecker"
+      plugin: "nav2_simple_goal_checker::SimpleGoalChecker"
       xy_goal_tolerance: 0.05
       yaw_goal_tolerance: 0.05
       stateful: True
     stopped_goal_checker:
       stateful: True
-      plugin: "stopped_goal_checker::StoppedGoalChecker"
+      plugin: "nav2_stopped_goal_checker::StoppedGoalChecker"
       xy_goal_tolerance: 0.05
       yaw_goal_tolerance: 0.05
       trans_stopped_velocity: 0.05
       rot_stopped_velocity: 0.05
     position_goal_checker:
-      plugin: "position_goal_checker::PositionGoalChecker"
+      plugin: "nav2_position_goal_checker::PositionGoalChecker"
       xy_goal_tolerance: 0.05
       trans_stopped_velocity: 0.01
       rot_stopped_velocity: 0.05
     rotation_goal_checker:
-      plugin: "rotation_goal_checker::RotationGoalChecker"
+      plugin: "nav2_rotation_goal_checker::RotationGoalChecker"
       yaw_goal_tolerance: 0.05
       rot_stopped_velocity: 0.05
     longitudinal_goal_checker:
-      plugin: "longitudinal_goal_checker::LongitudinalGoalChecker"
+      plugin: "nav2_longitudinal_goal_checker::LongitudinalGoalChecker"
       lon_goal_tolerance: 0.05
       lat_goal_tolerance: 0.05
       yaw_goal_tolerance: 0.05
@@ -174,7 +174,7 @@ controller_server:
       rot_stopped_velocity: 0.01
       stateful: True
     high_precision_goal_checker:
-      plugin: "high_precision_goal_checker::HighPrecisionGoalChecker"
+      plugin: "nav2_high_precision_goal_checker::HighPrecisionGoalChecker"
       lon_goal_tolerance: 0.02
       lat_goal_tolerance: 0.04
       yaw_goal_tolerance: 0.02
@@ -362,7 +362,7 @@ controller_server:
       max_angular_accel: 3.2
       simulate_ahead_time: 1.0
     PIDController:
-      plugin: "pid_controller::PIDController"
+      plugin: "nav2_pid_controller::PIDController"
       long_precision: 0.02
       lat_precision: 0.04
       o_precision: 0.5
@@ -424,7 +424,7 @@ controller_server:
         kd: 0.1
         kaw: 0.0
     LatLonController:
-      plugin: "lat_lon_controller::LatLonController"
+      plugin: "nav2_lat_lon_controller::LatLonController"
       p_window: 0.5
       long_precision: 0.02
       lat_precision: 0.04
@@ -494,7 +494,7 @@ controller_server:
         kaw: 0.0
         saturation: 0.0
     PureRotationController:
-      plugin: "pure_rotation_controller::PureRotationController"
+      plugin: "nav2_pure_rotation_controller::PureRotationController"
       long_precision: 0.02
       lat_precision: 0.04
       o_precision: 0.02
@@ -530,7 +530,7 @@ controller_server:
         kaw: 0.0
         saturation: 0.0
     StraightController:
-      plugin: "straight_controller::StraightController"
+      plugin: "nav2_straight_controller::StraightController"
       long_precision: 0.02
       lat_precision: 0.04
       o_precision: 0.5
