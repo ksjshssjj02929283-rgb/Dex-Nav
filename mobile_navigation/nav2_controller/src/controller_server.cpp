@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include <chrono>
+#include <algorithm>
 #include <vector>
 #include <memory>
 #include <string>
@@ -107,6 +108,24 @@ ControllerServer::ControllerServer(const rclcpp::NodeOptions & options)
     "near_goal_progress.required_movement_angle", rclcpp::ParameterValue(0.005));
   declare_parameter(
     "near_goal_progress.movement_time_allowance", rclcpp::ParameterValue(8.0));
+  declare_parameter("staged_control.enabled", rclcpp::ParameterValue(true));
+  declare_parameter("staged_control.track_controller", rclcpp::ParameterValue("MPPIController"));
+  declare_parameter("staged_control.approach_controller", rclcpp::ParameterValue("PIDController"));
+  declare_parameter("staged_control.approach_distance", rclcpp::ParameterValue(0.3));
+  declare_parameter(
+    "staged_control.align_heading_tolerance", rclcpp::ParameterValue(0.5235987756));
+  declare_parameter("staged_control.align_angular_kp", rclcpp::ParameterValue(1.5));
+  declare_parameter("staged_control.align_max_angular_velocity", rclcpp::ParameterValue(0.5));
+  declare_parameter("staged_control.align_min_angular_velocity", rclcpp::ParameterValue(0.08));
+  declare_parameter("staged_control.prepare.enabled", rclcpp::ParameterValue(true));
+  declare_parameter(
+    "staged_control.prepare.obstacle_check_distance", rclcpp::ParameterValue(0.35));
+  declare_parameter(
+    "staged_control.prepare.obstacle_check_half_width", rclcpp::ParameterValue(0.25));
+  declare_parameter(
+    "staged_control.prepare.obstacle_cost_threshold", rclcpp::ParameterValue(253));
+  declare_parameter("staged_control.prepare.backup_speed", rclcpp::ParameterValue(-0.08));
+  declare_parameter("staged_control.prepare.backup_duration", rclcpp::ParameterValue(0.6));
 
   // The costmap node is used in the implementation of the controller
   costmap_ros_ = std::make_shared<nav2_costmap_2d::Costmap2DROS>(
@@ -198,6 +217,20 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
     near_goal_progress_movement_time_allowance);
   near_goal_progress_time_allowance_ =
     rclcpp::Duration::from_seconds(near_goal_progress_movement_time_allowance);
+  get_parameter("staged_control.enabled", staged_control_enabled_);
+  get_parameter("staged_control.track_controller", track_controller_);
+  get_parameter("staged_control.approach_controller", approach_controller_);
+  get_parameter("staged_control.approach_distance", approach_distance_);
+  get_parameter("staged_control.align_heading_tolerance", align_heading_tolerance_);
+  get_parameter("staged_control.align_angular_kp", align_angular_kp_);
+  get_parameter("staged_control.align_max_angular_velocity", align_max_angular_velocity_);
+  get_parameter("staged_control.align_min_angular_velocity", align_min_angular_velocity_);
+  get_parameter("staged_control.prepare.enabled", prepare_enabled_);
+  get_parameter("staged_control.prepare.obstacle_check_distance", prepare_obstacle_check_distance_);
+  get_parameter("staged_control.prepare.obstacle_check_half_width", prepare_obstacle_check_half_width_);
+  get_parameter("staged_control.prepare.obstacle_cost_threshold", prepare_obstacle_cost_threshold_);
+  get_parameter("staged_control.prepare.backup_speed", prepare_backup_speed_);
+  get_parameter("staged_control.prepare.backup_duration", prepare_backup_duration_);
   RCLCPP_INFO(
     get_logger(),
     "Near-goal progress: enabled=%s distance=%.3f m movement=%.3f m angle=%.3f rad "
@@ -298,6 +331,34 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
       "Configured current_controller '%s' does not exist. Available controllers are: %s.",
       default_controller_.c_str(), controller_ids_concat_.c_str());
     return nav2_util::CallbackReturn::FAILURE;
+  }
+
+  if (staged_control_enabled_) {
+    if (controllers_.find(track_controller_) == controllers_.end()) {
+      RCLCPP_FATAL(
+        get_logger(),
+        "Configured staged_control.track_controller '%s' does not exist. "
+        "Available controllers are: %s.",
+        track_controller_.c_str(), controller_ids_concat_.c_str());
+      return nav2_util::CallbackReturn::FAILURE;
+    }
+    if (controllers_.find(approach_controller_) == controllers_.end()) {
+      RCLCPP_FATAL(
+        get_logger(),
+        "Configured staged_control.approach_controller '%s' does not exist. "
+        "Available controllers are: %s.",
+        approach_controller_.c_str(), controller_ids_concat_.c_str());
+      return nav2_util::CallbackReturn::FAILURE;
+    }
+    RCLCPP_INFO(
+      get_logger(),
+      "Staged control enabled: prepare=%s align_tolerance=%.3f rad track=%s "
+      "approach=%s approach_distance=%.3f m",
+      prepare_enabled_ ? "true" : "false",
+      align_heading_tolerance_,
+      track_controller_.c_str(),
+      approach_controller_.c_str(),
+      approach_distance_);
   }
 
   odom_sub_ = std::make_unique<nav_2d_utils::OdomSubscriber>(node);
@@ -628,6 +689,14 @@ void ControllerServer::setPlannerPath(const nav_msgs::msg::Path & path)
             "Invalid path, Path is empty. 路径无效：path.poses 为空，通常表示 FollowPath 收到了空路径，无法进行局部控制。");
   }
   controllers_[current_controller_]->setPlan(path);
+  if (staged_control_enabled_) {
+    if (track_controller_ != current_controller_) {
+      controllers_[track_controller_]->setPlan(path);
+    }
+    if (approach_controller_ != current_controller_ && approach_controller_ != track_controller_) {
+      controllers_[approach_controller_]->setPlan(path);
+    }
+  }
 
   end_pose_ = path.poses.back();
   end_pose_.header.frame_id = path.header.frame_id;
@@ -639,6 +708,8 @@ void ControllerServer::setPlannerPath(const nav_msgs::msg::Path & path)
     end_pose_.pose.position.x, end_pose_.pose.position.y);
 
   current_path_ = path;
+  controller_phase_ = ControllerPhase::TRACK;
+  prepare_backup_active_ = false;
 }
 
 void ControllerServer::resetNearGoalProgress()
@@ -921,6 +992,250 @@ bool ControllerServer::isSamePathGoal(const nav_msgs::msg::Path & path)
   return same_goal;
 }
 
+const char * ControllerServer::controllerPhaseName(ControllerPhase phase) const
+{
+  switch (phase) {
+    case ControllerPhase::PREPARE:
+      return "prepare";
+    case ControllerPhase::ALIGN:
+      return "align";
+    case ControllerPhase::TRACK:
+      return "track";
+    case ControllerPhase::APPROACH:
+      return "approach";
+  }
+  return "unknown";
+}
+
+void ControllerServer::setControllerPhase(ControllerPhase phase, const std::string & reason)
+{
+  if (controller_phase_ == phase) {
+    return;
+  }
+  RCLCPP_INFO(
+    get_logger(),
+    "Controller phase transition: %s -> %s (%s)",
+    controllerPhaseName(controller_phase_),
+    controllerPhaseName(phase),
+    reason.c_str());
+  controller_phase_ = phase;
+}
+
+double ControllerServer::getDistanceToGoal(const geometry_msgs::msg::PoseStamped & pose)
+{
+  geometry_msgs::msg::PoseStamped transformed_end_pose;
+  try {
+    rclcpp::Duration tolerance(
+      rclcpp::Duration::from_seconds(costmap_ros_->getTransformTolerance()));
+    if (!nav_2d_utils::transformPose(
+      costmap_ros_->getTfBuffer(), pose.header.frame_id,
+      end_pose_, transformed_end_pose, tolerance))
+    {
+      return std::numeric_limits<double>::infinity();
+    }
+  } catch (const tf2::TransformException & ex) {
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), *get_clock(), 5000,
+      "Unable to transform end pose for staged control: %s. "
+      "四阶段控制无法转换目标位姿，请检查 TF。",
+      ex.what());
+    return std::numeric_limits<double>::infinity();
+  }
+
+  const double dx = pose.pose.position.x - transformed_end_pose.pose.position.x;
+  const double dy = pose.pose.position.y - transformed_end_pose.pose.position.y;
+  return std::hypot(dx, dy);
+}
+
+bool ControllerServer::getPathHeadingError(
+  const geometry_msgs::msg::PoseStamped & pose,
+  double & yaw_error)
+{
+  if (current_path_.poses.size() < 2) {
+    return false;
+  }
+
+  geometry_msgs::msg::PoseStamped path_frame_pose;
+  try {
+    rclcpp::Duration tolerance(
+      rclcpp::Duration::from_seconds(costmap_ros_->getTransformTolerance()));
+    if (!nav_2d_utils::transformPose(
+      costmap_ros_->getTfBuffer(), current_path_.header.frame_id,
+      pose, path_frame_pose, tolerance))
+    {
+      return false;
+    }
+  } catch (const tf2::TransformException & ex) {
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), *get_clock(), 5000,
+      "Unable to transform robot pose for path heading alignment: %s. "
+      "四阶段 align 无法转换机器人位姿，请检查 TF。",
+      ex.what());
+    return false;
+  }
+
+  size_t closest_idx = 0;
+  double closest_dist = std::numeric_limits<double>::max();
+  for (size_t i = 0; i < current_path_.poses.size(); ++i) {
+    const double dx = path_frame_pose.pose.position.x - current_path_.poses[i].pose.position.x;
+    const double dy = path_frame_pose.pose.position.y - current_path_.poses[i].pose.position.y;
+    const double dist = std::hypot(dx, dy);
+    if (dist < closest_dist) {
+      closest_dist = dist;
+      closest_idx = i;
+    }
+  }
+
+  size_t from_idx = closest_idx;
+  size_t to_idx = std::min(closest_idx + 3, current_path_.poses.size() - 1);
+  if (to_idx == from_idx && from_idx > 0) {
+    --from_idx;
+  }
+  if (to_idx == from_idx) {
+    return false;
+  }
+
+  const auto & from = current_path_.poses[from_idx].pose.position;
+  const auto & to = current_path_.poses[to_idx].pose.position;
+  const double path_yaw = std::atan2(to.y - from.y, to.x - from.x);
+  const double robot_yaw = tf2::getYaw(path_frame_pose.pose.orientation);
+  yaw_error = angles::shortest_angular_distance(robot_yaw, path_yaw);
+  return true;
+}
+
+bool ControllerServer::isFrontObstacleDetected()
+{
+  auto costmap = costmap_ros_->getCostmap();
+  if (costmap == nullptr) {
+    return false;
+  }
+
+  const double resolution = std::max(costmap->getResolution(), 0.02);
+  const unsigned char cost_threshold = static_cast<unsigned char>(
+    std::clamp(prepare_obstacle_cost_threshold_, 0, 255));
+
+  for (double x = resolution; x <= prepare_obstacle_check_distance_; x += resolution) {
+    for (double y = -prepare_obstacle_check_half_width_;
+      y <= prepare_obstacle_check_half_width_;
+      y += resolution)
+    {
+      geometry_msgs::msg::PoseStamped base_sample;
+      base_sample.header.frame_id = costmap_ros_->getBaseFrameID();
+      base_sample.header.stamp = now();
+      base_sample.pose.position.x = x;
+      base_sample.pose.position.y = y;
+      base_sample.pose.orientation.w = 1.0;
+
+      geometry_msgs::msg::PoseStamped global_sample;
+      try {
+        rclcpp::Duration tolerance(
+          rclcpp::Duration::from_seconds(costmap_ros_->getTransformTolerance()));
+        if (!nav_2d_utils::transformPose(
+          costmap_ros_->getTfBuffer(), costmap_ros_->getGlobalFrameID(),
+          base_sample, global_sample, tolerance))
+        {
+          continue;
+        }
+      } catch (const tf2::TransformException &) {
+        continue;
+      }
+
+      unsigned int mx = 0;
+      unsigned int my = 0;
+      if (!costmap->worldToMap(
+          global_sample.pose.position.x, global_sample.pose.position.y, mx, my))
+      {
+        continue;
+      }
+      if (costmap->getCost(mx, my) >= cost_threshold) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+bool ControllerServer::shouldRunPrepareBackup()
+{
+  if (!staged_control_enabled_ || !prepare_enabled_) {
+    prepare_backup_active_ = false;
+    return false;
+  }
+
+  if (prepare_backup_active_) {
+    if ((now() - prepare_backup_start_time_).seconds() < prepare_backup_duration_) {
+      return true;
+    }
+    prepare_backup_active_ = false;
+  }
+
+  if (!isFrontObstacleDetected()) {
+    return false;
+  }
+
+  prepare_backup_active_ = true;
+  prepare_backup_start_time_ = now();
+  RCLCPP_WARN(
+    get_logger(),
+    "Prepare phase detected front obstacle, backing up: speed=%.3f m/s duration=%.3f s",
+    prepare_backup_speed_,
+    prepare_backup_duration_);
+  return true;
+}
+
+geometry_msgs::msg::TwistStamped ControllerServer::computeControllerVelocity(
+  const std::string & controller_id,
+  const geometry_msgs::msg::PoseStamped & pose,
+  const nav_2d_msgs::msg::Twist2D & twist)
+{
+  return controllers_[controller_id]->computeVelocityCommands(
+    pose,
+    nav_2d_utils::twist2Dto3D(twist),
+    goal_checkers_[current_goal_checker_].get());
+}
+
+geometry_msgs::msg::TwistStamped ControllerServer::computeStagedVelocity(
+  const geometry_msgs::msg::PoseStamped & pose,
+  const nav_2d_msgs::msg::Twist2D & twist)
+{
+  geometry_msgs::msg::TwistStamped cmd_vel;
+  cmd_vel.header.frame_id = costmap_ros_->getBaseFrameID();
+  cmd_vel.header.stamp = now();
+
+  if (!staged_control_enabled_) {
+    setControllerPhase(ControllerPhase::TRACK, "staged_control disabled");
+    return computeControllerVelocity(current_controller_, pose, twist);
+  }
+
+  if (shouldRunPrepareBackup()) {
+    setControllerPhase(ControllerPhase::PREPARE, "front obstacle backup");
+    cmd_vel.twist.linear.x = prepare_backup_speed_;
+    return cmd_vel;
+  }
+
+  const double distance_to_goal = getDistanceToGoal(pose);
+  if (distance_to_goal <= approach_distance_) {
+    setControllerPhase(ControllerPhase::APPROACH, "within approach distance");
+    return computeControllerVelocity(approach_controller_, pose, twist);
+  }
+
+  double heading_error = 0.0;
+  if (getPathHeadingError(pose, heading_error) &&
+    std::fabs(heading_error) > align_heading_tolerance_)
+  {
+    setControllerPhase(ControllerPhase::ALIGN, "path heading error exceeds tolerance");
+    const double abs_cmd = std::clamp(
+      std::fabs(heading_error) * align_angular_kp_,
+      align_min_angular_velocity_,
+      align_max_angular_velocity_);
+    cmd_vel.twist.angular.z = std::copysign(abs_cmd, heading_error);
+    return cmd_vel;
+  }
+
+  setControllerPhase(ControllerPhase::TRACK, "path heading aligned");
+  return computeControllerVelocity(track_controller_, pose, twist);
+}
+
 void ControllerServer::computeAndPublishVelocity()
 {
   constexpr double kSlowTimingWarnMs = 100.0;
@@ -969,11 +1284,7 @@ void ControllerServer::computeAndPublishVelocity()
 
   auto t_compute_start = std::chrono::high_resolution_clock::now();
   try {
-    cmd_vel_2d =
-      controllers_[current_controller_]->computeVelocityCommands(
-      pose,
-      nav_2d_utils::twist2Dto3D(twist),
-      goal_checkers_[current_goal_checker_].get());
+    cmd_vel_2d = computeStagedVelocity(pose, twist);
     last_valid_cmd_time_ = now();
   } catch (nav2_core::PlannerException & e) {
     if (failure_tolerance_ > 0 || failure_tolerance_ == -1.0) {
@@ -1194,9 +1505,10 @@ ControllerServer::dynamicParametersCallback(std::vector<rclcpp::Parameter> param
     const auto & type = parameter.get_type();
     const auto & name = parameter.get_name();
 
-    // Plugin parameters handle their own updates, but near_goal_progress belongs to this server.
+    // Plugin parameters handle their own updates, but these namespaces belong to this server.
     if (name.find('.') != std::string::npos &&
-      name.rfind("near_goal_progress.", 0) != 0)
+      name.rfind("near_goal_progress.", 0) != 0 &&
+      name.rfind("staged_control.", 0) != 0)
     {
       continue;
     }
@@ -1231,6 +1543,24 @@ ControllerServer::dynamicParametersCallback(std::vector<rclcpp::Parameter> param
       } else if (name == "near_goal_progress.movement_time_allowance") {
         near_goal_progress_time_allowance_ =
           rclcpp::Duration::from_seconds(parameter.as_double());
+      } else if (name == "staged_control.approach_distance") {
+        approach_distance_ = parameter.as_double();
+      } else if (name == "staged_control.align_heading_tolerance") {
+        align_heading_tolerance_ = parameter.as_double();
+      } else if (name == "staged_control.align_angular_kp") {
+        align_angular_kp_ = parameter.as_double();
+      } else if (name == "staged_control.align_max_angular_velocity") {
+        align_max_angular_velocity_ = parameter.as_double();
+      } else if (name == "staged_control.align_min_angular_velocity") {
+        align_min_angular_velocity_ = parameter.as_double();
+      } else if (name == "staged_control.prepare.obstacle_check_distance") {
+        prepare_obstacle_check_distance_ = parameter.as_double();
+      } else if (name == "staged_control.prepare.obstacle_check_half_width") {
+        prepare_obstacle_check_half_width_ = parameter.as_double();
+      } else if (name == "staged_control.prepare.backup_speed") {
+        prepare_backup_speed_ = parameter.as_double();
+      } else if (name == "staged_control.prepare.backup_duration") {
+        prepare_backup_duration_ = parameter.as_double();
       }
     } else if (type == ParameterType::PARAMETER_STRING) {
       if (name == "current_controller") {
@@ -1259,11 +1589,47 @@ ControllerServer::dynamicParametersCallback(std::vector<rclcpp::Parameter> param
           return result;
         }
         default_goal_checker_ = requested_goal_checker;
+      } else if (name == "staged_control.track_controller") {
+        const auto requested_controller = parameter.as_string();
+        if (controllers_.find(requested_controller) == controllers_.end()) {
+          RCLCPP_WARN(
+            get_logger(),
+            "Rejected staged_control.track_controller '%s'. Available controllers are: %s.",
+            requested_controller.c_str(), controller_ids_concat_.c_str());
+          dynamic_params_lock_.unlock();
+          result.successful = false;
+          result.reason = "Requested staged_control.track_controller does not exist";
+          return result;
+        }
+        track_controller_ = requested_controller;
+      } else if (name == "staged_control.approach_controller") {
+        const auto requested_controller = parameter.as_string();
+        if (controllers_.find(requested_controller) == controllers_.end()) {
+          RCLCPP_WARN(
+            get_logger(),
+            "Rejected staged_control.approach_controller '%s'. Available controllers are: %s.",
+            requested_controller.c_str(), controller_ids_concat_.c_str());
+          dynamic_params_lock_.unlock();
+          result.successful = false;
+          result.reason = "Requested staged_control.approach_controller does not exist";
+          return result;
+        }
+        approach_controller_ = requested_controller;
+      }
+    } else if (type == ParameterType::PARAMETER_INTEGER) {
+      if (name == "staged_control.prepare.obstacle_cost_threshold") {
+        prepare_obstacle_cost_threshold_ = static_cast<int>(parameter.as_int());
       }
     } else if (type == ParameterType::PARAMETER_BOOL) {
       if (name == "near_goal_progress.enabled") {
         near_goal_progress_enabled_ = parameter.as_bool();
         resetNearGoalProgress();
+      } else if (name == "staged_control.enabled") {
+        staged_control_enabled_ = parameter.as_bool();
+        prepare_backup_active_ = false;
+      } else if (name == "staged_control.prepare.enabled") {
+        prepare_enabled_ = parameter.as_bool();
+        prepare_backup_active_ = false;
       }
     }
 
