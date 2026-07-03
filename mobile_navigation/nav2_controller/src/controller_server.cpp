@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <algorithm>
 #include <chrono>
 #include <vector>
 #include <memory>
@@ -75,6 +76,18 @@ ControllerServer::ControllerServer(const rclcpp::NodeOptions & options)
     "near_goal_progress.required_movement_angle", rclcpp::ParameterValue(0.005));
   declare_parameter(
     "near_goal_progress.movement_time_allowance", rclcpp::ParameterValue(8.0));
+  declare_parameter(
+    "near_goal_progress.lateral_stall_enabled", rclcpp::ParameterValue(false));
+  declare_parameter(
+    "near_goal_progress.lateral_stall_lon_tolerance", rclcpp::ParameterValue(0.02));
+  declare_parameter(
+    "near_goal_progress.lateral_stall_yaw_tolerance", rclcpp::ParameterValue(0.05));
+  declare_parameter(
+    "near_goal_progress.lateral_stall_lat_tolerance", rclcpp::ParameterValue(0.02));
+  declare_parameter(
+    "near_goal_progress.lateral_stall_min_improvement", rclcpp::ParameterValue(0.005));
+  declare_parameter(
+    "near_goal_progress.lateral_stall_time_allowance", rclcpp::ParameterValue(3.0));
 
   // The costmap node is used in the implementation of the controller
   costmap_ros_ = std::make_shared<nav2_costmap_2d::Costmap2DROS>(
@@ -148,6 +161,26 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
     near_goal_progress_movement_time_allowance);
   near_goal_progress_time_allowance_ =
     rclcpp::Duration::from_seconds(near_goal_progress_movement_time_allowance);
+  get_parameter(
+    "near_goal_progress.lateral_stall_enabled", near_goal_lateral_stall_enabled_);
+  get_parameter(
+    "near_goal_progress.lateral_stall_lon_tolerance",
+    near_goal_lateral_stall_lon_tolerance_);
+  get_parameter(
+    "near_goal_progress.lateral_stall_yaw_tolerance",
+    near_goal_lateral_stall_yaw_tolerance_);
+  get_parameter(
+    "near_goal_progress.lateral_stall_lat_tolerance",
+    near_goal_lateral_stall_lat_tolerance_);
+  get_parameter(
+    "near_goal_progress.lateral_stall_min_improvement",
+    near_goal_lateral_stall_min_improvement_);
+  double near_goal_lateral_stall_time_allowance;
+  get_parameter(
+    "near_goal_progress.lateral_stall_time_allowance",
+    near_goal_lateral_stall_time_allowance);
+  near_goal_lateral_stall_time_allowance_ =
+    rclcpp::Duration::from_seconds(near_goal_lateral_stall_time_allowance);
   RCLCPP_INFO(
     get_logger(),
     "Near-goal progress: enabled=%s distance=%.3f m movement=%.3f m angle=%.3f rad "
@@ -157,6 +190,16 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
     near_goal_progress_required_movement_radius_,
     near_goal_progress_required_movement_angle_,
     near_goal_progress_time_allowance_.seconds());
+  RCLCPP_INFO(
+    get_logger(),
+    "Near-goal lateral stall: enabled=%s lon=%.3f m yaw=%.3f rad lat=%.3f m "
+    "min_improvement=%.3f m allowance=%.3f s",
+    near_goal_lateral_stall_enabled_ ? "true" : "false",
+    near_goal_lateral_stall_lon_tolerance_,
+    near_goal_lateral_stall_yaw_tolerance_,
+    near_goal_lateral_stall_lat_tolerance_,
+    near_goal_lateral_stall_min_improvement_,
+    near_goal_lateral_stall_time_allowance_.seconds());
 
   costmap_ros_->configure();
   // Launch a thread to run the costmap node
@@ -560,6 +603,15 @@ void ControllerServer::resetNearGoalProgress()
 {
   near_goal_baseline_pose_set_ = false;
   in_near_goal_progress_mode_ = false;
+  resetNearGoalLateralStall();
+}
+
+void ControllerServer::resetNearGoalLateralStall()
+{
+  near_goal_lateral_stall_entry_count_ = 0;
+  near_goal_lateral_stall_monitoring_ = false;
+  near_goal_lateral_stall_baseline_error_ = 0.0;
+  near_goal_lateral_stall_best_error_ = 0.0;
 }
 
 bool ControllerServer::isNearGoal(const geometry_msgs::msg::PoseStamped & pose)
@@ -590,6 +642,8 @@ bool ControllerServer::isNearGoal(const geometry_msgs::msg::PoseStamped & pose)
 
 bool ControllerServer::checkNearGoalProgress(const geometry_msgs::msg::PoseStamped & pose)
 {
+  constexpr int kLateralStallEntryCycles = 5;
+
   if (!in_near_goal_progress_mode_) {
     RCLCPP_INFO(
       get_logger(),
@@ -600,6 +654,109 @@ bool ControllerServer::checkNearGoalProgress(const geometry_msgs::msg::PoseStamp
       near_goal_progress_required_movement_angle_,
       near_goal_progress_time_allowance_.seconds());
     in_near_goal_progress_mode_ = true;
+  }
+
+  if (near_goal_lateral_stall_enabled_) {
+    geometry_msgs::msg::PoseStamped transformed_end_pose;
+    try {
+      rclcpp::Duration tolerance(
+        rclcpp::Duration::from_seconds(costmap_ros_->getTransformTolerance()));
+      if (!nav_2d_utils::transformPose(
+        costmap_ros_->getTfBuffer(), pose.header.frame_id,
+        end_pose_, transformed_end_pose, tolerance))
+      {
+        resetNearGoalLateralStall();
+      } else {
+        const double goal_yaw = tf2::getYaw(transformed_end_pose.pose.orientation);
+        const double current_yaw = tf2::getYaw(pose.pose.orientation);
+        const double dx = pose.pose.position.x - transformed_end_pose.pose.position.x;
+        const double dy = pose.pose.position.y - transformed_end_pose.pose.position.y;
+        const double abs_lon_err = std::abs(std::cos(goal_yaw) * dx + std::sin(goal_yaw) * dy);
+        const double abs_lat_err = std::abs(-std::sin(goal_yaw) * dx + std::cos(goal_yaw) * dy);
+        const double abs_yaw_err = std::abs(
+          angles::shortest_angular_distance(goal_yaw, current_yaw));
+
+        const bool lat_outside_tolerance =
+          abs_lat_err > near_goal_lateral_stall_lat_tolerance_;
+        const bool entry_condition =
+          abs_lon_err <= near_goal_lateral_stall_lon_tolerance_ &&
+          abs_yaw_err <= near_goal_lateral_stall_yaw_tolerance_ &&
+          lat_outside_tolerance;
+        const bool left_monitoring_region =
+          abs_lon_err > 2.0 * near_goal_lateral_stall_lon_tolerance_ ||
+          abs_yaw_err > 2.0 * near_goal_lateral_stall_yaw_tolerance_;
+
+        if (near_goal_lateral_stall_monitoring_) {
+          if (!lat_outside_tolerance || left_monitoring_region) {
+            RCLCPP_INFO(
+              get_logger(),
+              "Leaving near-goal lateral-stall monitoring: lon=%.4f m lat=%.4f m "
+              "yaw=%.4f rad.",
+              abs_lon_err, abs_lat_err, abs_yaw_err);
+            resetNearGoalLateralStall();
+          } else {
+            near_goal_lateral_stall_best_error_ =
+              std::min(near_goal_lateral_stall_best_error_, abs_lat_err);
+            const double improvement =
+              near_goal_lateral_stall_baseline_error_ -
+              near_goal_lateral_stall_best_error_;
+
+            if (improvement >= near_goal_lateral_stall_min_improvement_) {
+              RCLCPP_INFO(
+                get_logger(),
+                "Near-goal lateral error improved: baseline=%.4f m best=%.4f m "
+                "improvement=%.4f/%.4f m, restarting stagnation timer.",
+                near_goal_lateral_stall_baseline_error_,
+                near_goal_lateral_stall_best_error_, improvement,
+                near_goal_lateral_stall_min_improvement_);
+              near_goal_lateral_stall_baseline_error_ =
+                near_goal_lateral_stall_best_error_;
+              near_goal_lateral_stall_start_time_ = now();
+            } else {
+              const auto elapsed = now() - near_goal_lateral_stall_start_time_;
+              if (elapsed > near_goal_lateral_stall_time_allowance_) {
+                RCLCPP_WARN(
+                  get_logger(),
+                  "Near-goal lateral progress stalled: elapsed=%.3f s, lon=%.4f m, "
+                  "lat=%.4f m, yaw=%.4f rad, baseline_lat=%.4f m, best_lat=%.4f m, "
+                  "improvement=%.4f/%.4f m. FollowPath will fail so the behavior "
+                  "tree can run local recovery.",
+                  elapsed.seconds(), abs_lon_err, abs_lat_err, abs_yaw_err,
+                  near_goal_lateral_stall_baseline_error_,
+                  near_goal_lateral_stall_best_error_, improvement,
+                  near_goal_lateral_stall_min_improvement_);
+                return false;
+              }
+            }
+          }
+        } else if (entry_condition) {
+          ++near_goal_lateral_stall_entry_count_;
+          if (near_goal_lateral_stall_entry_count_ >= kLateralStallEntryCycles) {
+            near_goal_lateral_stall_monitoring_ = true;
+            near_goal_lateral_stall_baseline_error_ = abs_lat_err;
+            near_goal_lateral_stall_best_error_ = abs_lat_err;
+            near_goal_lateral_stall_start_time_ = now();
+            RCLCPP_INFO(
+              get_logger(),
+              "Entering near-goal lateral-stall monitoring after %d cycles: "
+              "lon=%.4f m lat=%.4f m yaw=%.4f rad, required improvement=%.4f m "
+              "within %.3f s.",
+              kLateralStallEntryCycles, abs_lon_err, abs_lat_err, abs_yaw_err,
+              near_goal_lateral_stall_min_improvement_,
+              near_goal_lateral_stall_time_allowance_.seconds());
+          }
+        } else {
+          near_goal_lateral_stall_entry_count_ = 0;
+        }
+      }
+    } catch (const tf2::TransformException & ex) {
+      resetNearGoalLateralStall();
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 5000,
+        "Unable to transform end pose for lateral-stall check: %s. "
+        "横向误差停滞检查无法转换终点位姿，请检查 TF。",
+        ex.what());
+    }
   }
 
   if (!near_goal_baseline_pose_set_) {
@@ -1158,11 +1315,30 @@ ControllerServer::dynamicParametersCallback(std::vector<rclcpp::Parameter> param
       } else if (name == "near_goal_progress.movement_time_allowance") {
         near_goal_progress_time_allowance_ =
           rclcpp::Duration::from_seconds(parameter.as_double());
+      } else if (name == "near_goal_progress.lateral_stall_lon_tolerance") {
+        near_goal_lateral_stall_lon_tolerance_ = parameter.as_double();
+        resetNearGoalLateralStall();
+      } else if (name == "near_goal_progress.lateral_stall_yaw_tolerance") {
+        near_goal_lateral_stall_yaw_tolerance_ = parameter.as_double();
+        resetNearGoalLateralStall();
+      } else if (name == "near_goal_progress.lateral_stall_lat_tolerance") {
+        near_goal_lateral_stall_lat_tolerance_ = parameter.as_double();
+        resetNearGoalLateralStall();
+      } else if (name == "near_goal_progress.lateral_stall_min_improvement") {
+        near_goal_lateral_stall_min_improvement_ = parameter.as_double();
+        resetNearGoalLateralStall();
+      } else if (name == "near_goal_progress.lateral_stall_time_allowance") {
+        near_goal_lateral_stall_time_allowance_ =
+          rclcpp::Duration::from_seconds(parameter.as_double());
+        resetNearGoalLateralStall();
       }
     } else if (type == ParameterType::PARAMETER_BOOL) {
       if (name == "near_goal_progress.enabled") {
         near_goal_progress_enabled_ = parameter.as_bool();
         resetNearGoalProgress();
+      } else if (name == "near_goal_progress.lateral_stall_enabled") {
+        near_goal_lateral_stall_enabled_ = parameter.as_bool();
+        resetNearGoalLateralStall();
       }
     }
 

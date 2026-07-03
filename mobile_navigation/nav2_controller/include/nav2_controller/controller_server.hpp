@@ -169,6 +169,10 @@ protected:
    */
   bool checkNearGoalProgress(const geometry_msgs::msg::PoseStamped & pose);
   /**
+   * @brief Reset the near-goal lateral-error stagnation checker
+   */
+  void resetNearGoalLateralStall();
+  /**
    * @brief 按当前 goal_checker 的接受容差判断近目标误差
    * @param pose 当前机器人位姿
    * @param mark_goal_reached_on_success 满足时是否标记为兜底到位成功
@@ -297,6 +301,18 @@ protected:
   double near_goal_progress_required_movement_angle_{0.005};
   rclcpp::Duration near_goal_progress_time_allowance_{
     rclcpp::Duration::from_seconds(8.0)};
+  bool near_goal_lateral_stall_enabled_{false};
+  double near_goal_lateral_stall_lon_tolerance_{0.02};
+  double near_goal_lateral_stall_yaw_tolerance_{0.05};
+  double near_goal_lateral_stall_lat_tolerance_{0.02};
+  double near_goal_lateral_stall_min_improvement_{0.005};
+  rclcpp::Duration near_goal_lateral_stall_time_allowance_{
+    rclcpp::Duration::from_seconds(3.0)};
+  int near_goal_lateral_stall_entry_count_{0};
+  bool near_goal_lateral_stall_monitoring_{false};
+  double near_goal_lateral_stall_baseline_error_{0.0};
+  double near_goal_lateral_stall_best_error_{0.0};
+  rclcpp::Time near_goal_lateral_stall_start_time_;
   bool near_goal_baseline_pose_set_{false};
   bool in_near_goal_progress_mode_{false};
   bool near_goal_progress_acceptance_reached_{false};
