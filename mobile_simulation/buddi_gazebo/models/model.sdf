@@ -1,0 +1,47 @@
+<sdf version='1.7'>
+  <model name='buddi'>
+    <link name="base_footprint"/>
+    
+    <link name='base_link'>
+      <inertial>
+        <pose>0.005275 -0.007914 0.592065 0 -0 0</pose>
+        <mass>37.6369</mass>
+        <inertia>
+          <ixx>4.37485</ixx>
+          <ixy>0.0111653</ixy>
+          <ixz>0.0926495</ixz>
+          <iyy>6.29411</iyy>
+          <iyz>0.0981576</iyz>
+          <izz>4.50749</izz>
+        </inertia>
+      </inertial> 
+
+      <collision name='base_link_collision'>
+        <pose>0 0 0.01 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>/home/susan/buddi_ws/src/buddi_gazebo/meshes/base_link.dae</uri>
+          </mesh>
+        </geometry>
+      </collision>
+        
+      <visual name='base_link_visual'>
+        <pose>0 0 0.01 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>/home/susan/buddi_ws/src/buddi_gazebo/meshes/base_link.dae</uri>
+          </mesh>
+        </geometry>
+      </visual> 
+    </link> 
+    
+    <joint name="base_joint" type="fixed">
+      <parent>base_footprint</parent>
+      <child>base_link</child>
+      <pose>0.0 0.0 0.010 0 0 0</pose>
+    </joint>
+
+  </model>
+</sdf>

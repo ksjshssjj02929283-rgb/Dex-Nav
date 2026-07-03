@@ -1,0 +1,448 @@
+<?xml version="1.0" ?>
+<sdf version="1.5">
+  <model name='buddi'>
+  <pose>0.0 0.0 0.0 0.0 0.0 0.0</pose>
+
+    <link name='base_footprint'/>
+
+    <link name="base_link"> 
+      <inertial>
+        <pose> 0.000 -0.0138 0.7501 0 0 0 </pose> 
+        <inertia>
+          <ixx>1.187</ixx>
+          <ixy>-3.2E-05</ixy>
+          <ixz>0.00</ixz>
+          <iyy>2.5</iyy>
+          <iyz>6.09E-05</iyz>
+          <izz>3.020</izz>
+        </inertial>
+        <mass>26.593</mass>
+      </inertial>
+
+      <collision name='base_collision'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>/home/susan/buddi_ws/src/buddi_gazebo/meshes/base_link.dae</uri>
+          </mesh>
+        </geometry>
+      </collision> 
+
+      <visual name="base_visual">
+        <pose>0 0 0 0 0 0</pose>
+        <geometry>
+          <mesh>
+            <uri>/home/susan/buddi_ws/src/buddi_gazebo/meshes/base_link.dae</uri>
+            <scale>0.001 0.001 0.001</scale>
+          </mesh>
+        </geometry> 
+      </visual> 
+    </link>
+
+    <link name="imu_link">
+      <sensor name="buddi_imu" type="imu">
+        <always_on>true</always_on>
+        <update_rate>200</update_rate>
+        <imu>
+          <angular_velocity>
+            <x>
+              <noise type="gaussian">
+                <mean>0.0</mean>
+                <stddev>2e-4</stddev>
+              </noise>
+            </x>
+            <y>
+              <noise type="gaussian">
+                <mean>0.0</mean>
+                <stddev>2e-4</stddev>
+              </noise>
+            </y>
+            <z>
+              <noise type="gaussian">
+                <mean>0.0</mean>
+                <stddev>2e-4</stddev>
+              </noise>
+            </z>
+          </angular_velocity>
+          <linear_acceleration>
+            <x>
+              <noise type="gaussian">
+                <mean>0.0</mean>
+                <stddev>1.7e-2</stddev>
+              </noise>
+            </x>
+            <y>
+              <noise type="gaussian">
+                <mean>0.0</mean>
+                <stddev>1.7e-2</stddev>
+              </noise>
+            </y>
+            <z>
+              <noise type="gaussian">
+                <mean>0.0</mean>
+                <stddev>1.7e-2</stddev>
+              </noise>
+            </z>
+          </linear_acceleration>
+        </imu>
+        <plugin name="buddi_imu" filename="libgazebo_ros_imu_sensor.so">
+          <ros>
+            <!-- <namespace>/buddi</namespace> -->
+            <remapping>~/out:=imu</remapping>
+          </ros>
+        </plugin>
+      </sensor>
+    </link>
+
+    <link name="lidar_forward_link">
+      <inertial>
+        <pose>-0.0016 -3.81E-05 -0.010 0 0 0</pose> 
+        <inertia>
+          <ixx>9.26E-06</ixx>
+          <ixy>-8.15E-09</ixy>
+          <ixz>1.1192E-08</ixz>
+          <iyy>9.248E-06</iyy>
+          <iyz>7.68E-10</iyz>
+          <izz>1.540E-05</izz>
+        </inertia>
+        <mass>0.02708</mass> 
+      </inertial>
+
+      <collision name="lidar_forward_collision">
+        <pose>-0.0016 -3.81E-05 -0.010 0 0 0</pose>
+        <geometry>
+          <cylinder>
+            <radius>0.0508</radius>
+            <length>0.055</length>
+          </cylinder>
+        </geometry>
+      </collision>
+
+      <visual name="lidar_forward_visual">
+        <pose>-0.0016 -3.81E-05 -0.010 0 0 0</pose>
+        <geometry>
+          <mesh>
+            <uri>/home/susan/buddi_ws/src/buddi_gazebo/meshes/lidar_forward_link.dae</uri>
+            <scale>0.001 0.001 0.001</scale>
+          </mesh>
+        </geometry>
+      </visual>
+
+      <sensor name="hls_lfcd_lds" type="ray">
+        <always_on>true</always_on>
+        <visualize>true</visualize>
+        <pose>-0.0016 -3.81E-05 -0.010 0 0 0</pose>
+        <update_rate>5</update_rate>
+        <ray>
+          <scan>
+            <horizontal>
+              <samples>360</samples>
+              <resolution>1.000000</resolution>
+              <min_angle>0.000000</min_angle>
+              <max_angle>6.280000</max_angle>
+            </horizontal>
+          </scan>
+          <range>
+            <min>0.120000</min>
+            <max>3.5</max>
+            <resolution>0.015000</resolution>
+          </range>
+          <noise>
+            <type>gaussian</type>
+            <mean>0.0</mean>
+            <stddev>0.01</stddev>
+          </noise>
+        </ray>
+        <plugin name="buddi_lidar_forward_scan" filename="libgazebo_ros_ray_sensor.so">
+          <ros>
+            <!-- <namespace>/buddi</namespace> -->
+            <remapping>~/out:=scan</remapping>
+          </ros>
+          <output_type>sensor_msgs/LaserScan</output_type>
+          <frame_name>lidar_forward_link</frame_name>
+        </plugin>
+      </sensor>
+    </link>
+
+    <link name='wheel_left_link'>
+      <inertial>
+        <pose>3e-06 0.047089 -0 0 -0 0</pose>
+        <inertia>
+          <ixx>0.00458783</ixx>
+          <ixy>7.81355e-09</ixy>
+          <ixz>1.17235e-08</ixz>
+          <iyy>0.00846141</iyy>
+          <iyz>-9.49365e-09</iyz>
+          <izz>0.00458783</izz>
+        </inertia>
+        <mass>1.81841</mass>
+      </inertial>
+
+      <collision name='wheel_left_link_collision'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>/home/susan/buddi_ws/src/buddi_gazebo/meshes/wheel_left_link.dae</uri>
+          </mesh>
+        </geometry>
+      </collision>
+
+      <visual name='wheel_left_link_visual'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>/home/susan/buddi_ws/src/buddi_gazebo/meshes/wheel_left_link.dae</uri>
+          </mesh>
+        </geometry>
+      </visual>
+    </link>
+
+    <link name='wheel_right_link'>
+      <inertial>
+        <pose>2e-06 -0.047089 1e-06 0 -0 0</pose>
+        <mass>1.81841</mass>
+        <inertia>
+          <ixx>0.00458783</ixx>
+          <ixy>-6.64954e-09</ixy>
+          <ixz>-1.0932e-08</ixz>
+          <iyy>0.00846141</iyy>
+          <iyz>-1.03424e-08</iyz>
+          <izz>0.00458782</izz>
+        </inertia>
+      </inertial>
+
+      <collision name='wheel_right_link_collision'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>/home/susan/buddi_ws/src/buddi_gazebo/meshes/wheel_right_link.dae</uri>
+          </mesh>
+        </geometry>
+      </collision>
+
+      <visual name='wheel_right_link_visual'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>/home/susan/buddi_ws/src/buddi_gazebo/meshes/wheel_right_link.dae</uri>
+          </mesh>
+        </geometry>
+      </visual>
+    </link>
+
+  <link name="caster_forward_right_link">
+    <pose>-0.073 0.027 0.0640 0 0 0 </pose>
+    <inertial>
+      <mass>1.345294741809</mass> 
+      <inertia>
+          <ixx>0.0017</ixx>
+          <ixy>0.0002</ixy>
+          <ixz>-0.0016</ixz>
+          <iyy>0.0061</iyy>
+          <iyz>0.00012</iyz>
+          <izz>0.00506</izz>
+      </inertia>  
+    </inertial>
+
+    <collision name='collision'>
+      <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>/home/susan/buddi_ws/src/buddi_gazebo/meshes/caster_forward_right_link.dae</uri>
+          </mesh>
+        </geometry> 
+    </collision> 
+  </link>
+
+  <link name="caster_back_left_link">
+    <pose>0.174 -0.0132 0.083 0 0 0</pose>
+    <inertial>
+      <mass>1.1964</mass>
+      <inertia>
+        <ixx>0.00218</ixx>
+        <ixy>0.00328</ixy>
+        <ixz>-0.00096</ixz>
+        <iyy>0.01547</iyy>
+        <iyz>0.00013</iyz>
+        <izz>0.01640</izz>
+      </inertia>
+    </inertial> 
+
+    <collision name='collision'>
+      <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>/home/susan/buddi_ws/src/buddi_gazebo/meshes/caster_back_left_link.dae</uri>
+          </mesh>
+        </geometry> 
+    </collision> 
+  </link>
+
+  <link name="camera_link"/>
+
+  <link name="rgbd_forward_down_link">
+    <inertial>
+      <pose>-0.0171 -0.01389 -0.00354528 0 0 0</pose>
+      <inertia>
+        <ixx>0.001</ixx>
+        <ixy>0.000</ixy>
+        <ixz>0.000</ixz>
+        <iyy>0.001</iyy>
+        <iyz>0.000</iyz>
+        <izz>0.001</izz>
+      </inertia> 
+      <mass>0.01893</mass>
+    </inertial>
+
+    <pose>-0.0171 -0.01389 -0.00354528 0 0 0</pose>
+    <sensor name="camera" type="camera">
+      <always_on>true</always_on>
+      <visualize>true</visualize>
+      <update_rate>30</update_rate>
+      <camera name="picam">
+        <horizontal_fov>1.085595</horizontal_fov>
+        <image>
+          <width>640</width>
+          <height>480</height>
+          <format>R8G8B8</format>
+        </image>
+        <clip>
+          <near>0.03</near>
+          <far>100</far>
+        </clip>
+        <noise>
+          <type>gaussian</type>
+          <!-- Noise is sampled independently per pixel on each frame.
+                That pixel's noise value is added to each of its color
+                channels, which at that point lie in the range [0,1]. -->
+          <mean>0.0</mean>
+          <stddev>0.007</stddev>
+        </noise>
+      </camera>
+
+      <plugin name="camera_driver" filename="libgazebo_ros_camera.so">
+        <ros>
+          <namespace>/buddi/rgbd_forward_down</namespace> 
+          <remapping>image_raw:=image_demo</remapping> 
+          <remapping>camera_info:=camera_info_demo</remapping>
+        </ros>
+        <!-- camera_name>omit so it defaults to sensor name</camera_name-->
+        <!-- frame_name>omit so it defaults to link name</frameName-->
+        <!-- <hack_baseline>0.07</hack_baseline> -->
+      </plugin>
+    </sensor>
+  </link>
+
+  <joint name="base_joint" type="fixed">
+    <parent>base_footprint</parent>
+    <child>base_link</child>
+    <pose>0.0 0.0 0.010 0 0 0</pose>
+  </joint>
+
+  <joint name='wheel_left_joint' type='revolute'>
+    <pose>0.000425 0.214 0.076871 0 -0 0</pose>
+    <parent>base_link</parent>
+    <child>wheel_left_link</child>
+    <axis>
+      <xyz>0 1 0</xyz> 
+    </axis>
+  </joint>
+
+  <joint name='wheel_right_joint' type='revolute'>
+    <pose>0.000425 -0.214 0.076871 0 -0 0</pose>
+    <parent>base_link</parent>
+    <child>wheel_right_link</child>
+    <axis>
+      <xyz>0 -1 0</xyz> 
+    </axis>
+  </joint>
+
+  <joint name='caster_forward_right_joint' type='ball'>
+    <parent>base_link</parent>
+    <child>caster_forward_right_link</child>
+  </joint>
+
+  <joint name='caster_back_left_joint' type='ball'>
+    <parent>base_link</parent>
+    <child>caster_back_left_link</child>
+  </joint>
+
+  <joint name="imu_joint" type="fixed">
+    <parent>base_link</parent>
+    <child>imu_link</child>
+    <pose>-0.0007 0 0.2375 0 0 0</pose>
+    <axis>
+      <xyz>0 0 1</xyz>
+    </axis>
+  </joint>   
+
+  <joint name="lidar_forward_joint" type="fixed">
+    <parent>base_link</parent>
+    <child>lidar_forward_link</child>
+    <pose>-0.0016 -3.81E-05 -0.010 0 0 0</pose>
+    <axis>
+      <xyz>0 0 1</xyz>
+    </axis>
+  </joint>
+
+  <joint name="rgbd_forward_down_joint" type="fixed">
+    <parent>base_link</parent>
+    <child>camera_link</child>
+    <pose>-0.0171 -0.01389 -0.00354528 0 0 0</pose>
+    <axis>
+      <xyz>0 0 1</xyz>
+    </axis>
+  </joint>
+
+  <plugin name="buddi_diff_drive" filename="libgazebo_ros_diff_drive.so">
+
+    <ros>
+      <!-- <namespace>/buddi</namespace> -->
+    </ros>
+
+    <update_rate>30</update_rate>
+
+    <!-- wheels -->
+    <left_joint>wheel_left_joint</left_joint>
+    <right_joint>wheel_right_joint</right_joint>
+
+    <!-- kinematics -->
+    <wheel_separation>0.4</wheel_separation>
+    <wheel_diameter>0.08</wheel_diameter>
+
+    <!-- limits -->
+    <max_wheel_torque>20</max_wheel_torque>
+    <max_wheel_acceleration>10.0</max_wheel_acceleration>
+
+    <command_topic>cmd_vel</command_topic>
+
+    <!-- output -->
+    <publish_odom>true</publish_odom>
+    <publish_odom_tf>true</publish_odom_tf>
+    <publish_wheel_tf>true</publish_wheel_tf>
+
+    <odometry_topic>odom</odometry_topic>
+    <odometry_frame>odom</odometry_frame>
+    <robot_base_frame>base_footprint</robot_base_frame>
+
+  </plugin>
+
+  <plugin name="buddi_joint_state" filename="libgazebo_ros_joint_state_publisher.so">
+    <ros>
+      <!-- <namespace>/buddi</namespace> -->
+      <remapping>~/out:=joint_states</remapping>
+    </ros>
+    <update_rate>30</update_rate>
+    <joint_name>wheel_left_joint</joint_name>
+    <joint_name>wheel_right_joint</joint_name>
+  </plugin>  
+
+  </model>
+</sdf>

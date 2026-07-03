@@ -1,0 +1,318 @@
+<sdf version='1.7'>
+  <model name='buddi_v1_1_urdf002_feb25'>
+    <link name='base_link'>
+      <inertial>
+        <pose>-0.000254 0.000398 0.491286 0 -0 0</pose>
+        <mass>9.6597</mass>
+        <inertia>
+          <ixx>0.877304</ixx>
+          <ixy>-0.00137432</ixy>
+          <ixz>-0.0226006</ixz>
+          <iyy>1.03043</iyy>
+          <iyz>-0.000140976</iyz>
+          <izz>0.454974</izz>
+        </inertia>
+      </inertial>
+      <collision name='base_link_collision'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <!-- 如果想要用 model:// 来替代绝对路径，需要在.bashrc中添加环境变量 export GAZEBO_MODEL_PATH=${GAZEBO_MODEL_PATH}:/path/to/your/models -->
+            <uri>model://buddi_gazebo/meshes/v1.1/base_link.STL</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <collision name='base_link_fixed_joint_lump__caster_bl_link_collision_1'>
+        <pose>-0.3775 0.170508 0.0377 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://buddi_gazebo/meshes/v1.1/caster_bl_link.STL</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <collision name='base_link_fixed_joint_lump__caster_br_link_collision_2'>
+        <pose>-0.3775 -0.17051 0.0377 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://buddi_gazebo/meshes/v1.1/caster_br_link.STL</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <collision name='base_link_fixed_joint_lump__caster_fl_link_collision_3'>
+        <pose>0.2825 0.172 0.0377 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://buddi_gazebo/meshes/v1.1/caster_fl_link.STL</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <collision name='base_link_fixed_joint_lump__caster_fr_link_collision_4'>
+        <pose>0.2825 -0.172 0.0377 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://buddi_gazebo/meshes/v1.1/caster_fr_link.STL</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <collision name='base_link_fixed_joint_lump__lidar_b_link_collision_5'>
+        <pose>-0.35921 -0.214 0.2554 3.14159 0 -2.3562</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://buddi_gazebo/meshes/v1.1/lidar_b_link.STL</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <collision name='base_link_fixed_joint_lump__lidar_for_link_collision_6'>
+        <pose>0.359205 0.214 0.255399 3.14159 -0 0.785398</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://buddi_gazebo/meshes/v1.1/lidar_for_link.STL</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <collision name='base_link_fixed_joint_lump__rgbd_bd_link_collision_7'>
+        <pose>-0.44026 0 0.202 1.5708 0.6545 -0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://buddi_gazebo/meshes/v1.1/rgbd_bd_link.STL</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <collision name='base_link_fixed_joint_lump__rgbd_bu_link_collision_8'>
+        <pose>-0.46587 0 0.98471 0 0.98611 -3.14159</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://buddi_gazebo/meshes/v1.1/rgbd_bu_link.STL</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <collision name='base_link_fixed_joint_lump__rgbd_fd_link_collision_9'>
+        <pose>0.44027 0 0.202 -0 0.65456 3.14159</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://buddi_gazebo/meshes/v1.1/rgbd_fd_link.STL</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <collision name='base_link_fixed_joint_lump__rgbd_fu_link_collision_10'>
+        <pose>0.46587 0 0.98471 0 0.98611 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://buddi_gazebo/meshes/v1.1/rgbd_fu_link.STL</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <visual name='base_link_visual'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://buddi_gazebo/meshes/v1.1/base_link.STL</uri>
+          </mesh>
+        </geometry>
+      </visual>
+      <visual name='base_link_fixed_joint_lump__caster_bl_link_visual_1'>
+        <pose>-0.3775 0.170508 0.0377 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://buddi_gazebo/meshes/v1.1/caster_bl_link.STL</uri>
+          </mesh>
+        </geometry>
+      </visual>
+      <visual name='base_link_fixed_joint_lump__caster_br_link_visual_2'>
+        <pose>-0.3775 -0.17051 0.0377 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://buddi_gazebo/meshes/v1.1/caster_br_link.STL</uri>
+          </mesh>
+        </geometry>
+      </visual>
+      <visual name='base_link_fixed_joint_lump__caster_fl_link_visual_3'>
+        <pose>0.2825 0.172 0.0377 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://buddi_gazebo/meshes/v1.1/caster_fl_link.STL</uri>
+          </mesh>
+        </geometry>
+      </visual>
+      <visual name='base_link_fixed_joint_lump__caster_fr_link_visual_4'>
+        <pose>0.2825 -0.172 0.0377 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://buddi_gazebo/meshes/v1.1/caster_fr_link.STL</uri>
+          </mesh>
+        </geometry>
+      </visual>
+      <visual name='base_link_fixed_joint_lump__lidar_b_link_visual_5'>
+        <pose>-0.35921 -0.214 0.2554 3.14159 0 -2.3562</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://buddi_gazebo/meshes/v1.1/lidar_b_link.STL</uri>
+          </mesh>
+        </geometry>
+      </visual>
+      <visual name='base_link_fixed_joint_lump__lidar_for_link_visual_6'>
+        <pose>0.359205 0.214 0.255399 3.14159 -0 0.785398</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://buddi_gazebo/meshes/v1.1/lidar_for_link.STL</uri>
+          </mesh>
+        </geometry>
+      </visual>
+      <visual name='base_link_fixed_joint_lump__rgbd_bd_link_visual_7'>
+        <pose>-0.44026 0 0.202 1.5708 0.6545 -0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://buddi_gazebo/meshes/v1.1/rgbd_bd_link.STL</uri>
+          </mesh>
+        </geometry>
+      </visual>
+      <visual name='base_link_fixed_joint_lump__rgbd_bu_link_visual_8'>
+        <pose>-0.46587 0 0.98471 0 0.98611 -3.14159</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://buddi_gazebo/meshes/v1.1/rgbd_bu_link.STL</uri>
+          </mesh>
+        </geometry>
+      </visual>
+      <visual name='base_link_fixed_joint_lump__rgbd_fd_link_visual_9'>
+        <pose>0.44027 0 0.202 -0 0.65456 3.14159</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://buddi_gazebo/meshes/v1.1/rgbd_fd_link.STL</uri>
+          </mesh>
+        </geometry>
+      </visual>
+      <visual name='base_link_fixed_joint_lump__rgbd_fu_link_visual_10'>
+        <pose>0.46587 0 0.98471 0 0.98611 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://buddi_gazebo/meshes/v1.1/rgbd_fu_link.STL</uri>
+          </mesh>
+        </geometry>
+      </visual>
+    </link>
+    <joint name='left_joint' type='revolute'>
+      <pose relative_to='base_link'>0 0.264 0.1002 0 -0 0</pose>
+      <parent>base_link</parent>
+      <child>left_link</child>
+      <axis>
+        <xyz>0 1 0</xyz>
+        <limit>
+          <lower>0</lower>
+          <upper>0</upper>
+          <effort>0</effort>
+          <velocity>0</velocity>
+        </limit>
+        <dynamics>
+          <spring_reference>0</spring_reference>
+          <spring_stiffness>0</spring_stiffness>
+        </dynamics>
+      </axis>
+    </joint>
+    <link name='left_link'>
+      <pose relative_to='left_joint'>0 0 0 0 -0 0</pose>
+      <inertial>
+        <pose>-0 -0.049465 -5e-06 0 -0 0</pose>
+        <mass>1.8922</mass>
+        <inertia>
+          <ixx>0.00469771</ixx>
+          <ixy>-6.22834e-10</ixy>
+          <ixz>4.786e-11</ixz>
+          <iyy>0.00846995</iyy>
+          <iyz>-8.29368e-07</iyz>
+          <izz>0.00469732</izz>
+        </inertia>
+      </inertial>
+      <collision name='left_link_collision'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://buddi_gazebo/meshes/v1.1/left_link.STL</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <visual name='left_link_visual'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://buddi_gazebo/meshes/v1.1/left_link.STL</uri>
+          </mesh>
+        </geometry>
+      </visual>
+    </link>
+    <joint name='right_wheel' type='revolute'>
+      <pose relative_to='base_link'>0 -0.264 0.1002 0 -0 0</pose>
+      <parent>base_link</parent>
+      <child>right_link</child>
+      <axis>
+        <xyz>0 -1 0</xyz>
+        <limit>
+          <lower>0</lower>
+          <upper>0</upper>
+          <effort>0</effort>
+          <velocity>0</velocity>
+        </limit>
+        <dynamics>
+          <spring_reference>0</spring_reference>
+          <spring_stiffness>0</spring_stiffness>
+        </dynamics>
+      </axis>
+    </joint>
+    <link name='right_link'>
+      <pose relative_to='right_wheel'>0 0 0 0 -0 0</pose>
+      <inertial>
+        <pose>-0 0.050093 7e-06 0 -0 0</pose>
+        <mass>1.90583</mass>
+        <inertia>
+          <ixx>0.00470036</ixx>
+          <ixy>1.03557e-08</ixy>
+          <ixz>-4.786e-11</ixz>
+          <iyy>0.0084729</iyy>
+          <iyz>-8.29368e-07</iyz>
+          <izz>0.00469998</izz>
+        </inertia>
+      </inertial>
+      <collision name='right_link_collision'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://buddi_gazebo/meshes/v1.1/right_link.STL</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <visual name='right_link_visual'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://buddi_gazebo/meshes/v1.1/right_link.STL</uri>
+          </mesh>
+        </geometry>
+      </visual>
+    </link>
+  </model>

@@ -1,0 +1,780 @@
+<?xml version="1.0" ?>
+<!-- This URDF was automatically created by SolidWorks to URDF Exporter! Originally created by Stephen Brawner (brawner@gmail.com) 
+     Commit Version: 1.6.0-4-g7f85cfe  Build Version: 1.6.7995.38578
+     For more information, please see http://wiki.ros.org/sw_urdf_exporter -->
+<robot name="buddi"
+  xmlns:xacro="http://ros.org/wiki/xacro">
+
+<link name="base_footprint"/>
+
+<joint name="base_joint" type="fixed">
+  <parent link="base_footprint"/>
+  <child link="base_link"/>
+  <origin xyz="0.0 0.0 0.010" rpy="0 0 0"/>
+</joint>
+
+<link name="base_link">
+  <inertial>
+    <origin
+      xyz="0.000273215834448535 -0.0138313366044119 0.750121504088742"
+      rpy="0 0 0" />
+    <mass
+      value="26.5937846452426" />
+    <inertia
+      ixx="1.18768672660392"
+      ixy="-3.29974207346398E-05"
+      ixz="0.000703606715644226"
+      iyy="2.56293123236473"
+      iyz="6.09566209693619E-05"
+      izz="3.02018061105942" />
+  </inertial>
+  <visual>
+    <origin
+      xyz="0 0 0"
+      rpy="0 0 0" />
+    <geometry>
+      <mesh filename="/home/susan/buddi_ws/src/buddi_gazebo/meshes/base_link.dae" />
+    </geometry>
+    <material
+      name="">
+      <color
+        rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+    </material>
+  </visual>
+  <collision>
+    <origin
+      xyz="0 0 0"
+      rpy="0 0 0" />
+    <geometry>
+      <mesh
+        filename="/home/susan/buddi_ws/src/buddi_gazebo/meshes/base_link.dae" />
+    </geometry>
+  </collision>
+  <gazebo reference="base_link">
+    <material>Gazebo/Black</material>
+  </gazebo>
+  <gazebo>
+    <plugin name="differential_drive_controller" filename="libgazebo_ros_diff_drive.so">
+      <ros>
+        <namespace>/my_robot</namespace>
+      </ros>
+      <update_rate>100</update_rate>
+      <left_joint>wheel_left_joint</left_joint>
+      <right_joint>wheel_right_joint</right_joint>
+      <wheel_separation>0.429</wheel_separation>
+      <wheel_radius>0.066</wheel_radius>
+      <robotBaseFrame>base_link</robotBaseFrame>
+      <odometrySource>world</odometrySource>
+      <publishWheelTF>true</publishWheelTF>
+      <publishWheelJointState>true</publishWheelJointState>
+      <odometryFrame>odom</odometryFrame>
+      <robotFrame>base_footprint</robotFrame>
+      <publishTf>true</publishTf>
+      <publishWheelJointState>true</publishWheelJointState>
+      <legacyMode>false</legacyMode>
+    </plugin>
+  </gazebo>
+</link>
+
+<link name="wheel_left_link">
+  <inertial>
+    <origin
+      xyz="2.5574247926514E-06 0.0470886476067963 -4.99570949344386E-07"
+      rpy="0 0 0" />
+    <mass
+      value="1.81840640717781" />
+    <inertia
+      ixx="0.00458783052306418"
+      ixy="7.81355023564347E-09"
+      ixz="1.17234864169078E-08"
+      iyy="0.00846141266831067"
+      iyz="-9.49365105391082E-09"
+      izz="0.0045878264704413" />
+  </inertial>
+  <visual>
+    <origin
+      xyz="0 0 0"
+      rpy="0 0 0" />
+    <geometry>
+      <mesh
+        filename="/home/susan/buddi_ws/src/buddi_gazebo/meshes/wheel_left_link.dae" />
+    </geometry>
+    <material
+      name="">
+      <color
+        rgba="1 1 1 1" />
+    </material>
+  </visual>
+  <collision>
+    <origin
+      xyz="0 0 0"
+      rpy="0 0 0" />
+    <geometry>
+      <mesh
+        filename="/home/susan/buddi_ws/src/buddi_gazebo/meshes/wheel_left_link.dae" />
+    </geometry>
+  </collision>
+
+</link>
+
+<joint name="wheel_left_joint"
+  type="revolute">
+  <origin
+    xyz="0.00042468 0.214 0.066871"
+    rpy="0 0 0" />
+  <parent
+    link="base_link" />
+  <child
+    link="wheel_left_link" />
+  <axis
+    xyz="0 1 0" />
+  <limit
+    lower="0"
+    upper="0"
+    effort="0"
+    velocity="0" />
+</joint>
+
+<link name="wheel_right_link">
+  <inertial>
+    <origin
+      xyz="2.48144169820398E-06 -0.047088647606796 7.95261167405026E-07"
+      rpy="0 0 0" />
+    <mass
+      value="1.81840640717779" />
+    <inertia
+      ixx="0.0045878331911865"
+      ixy="-6.64953573879678E-09"
+      ixz="-1.09319903695401E-08"
+      iyy="0.00846141266830768"
+      iyz="-1.03423720112034E-08"
+      izz="0.00458782380231598" />
+  </inertial>
+  <visual>
+    <origin
+      xyz="0 0 0"
+      rpy="0 0 0" />
+    <geometry>
+      <mesh
+        filename="/home/susan/buddi_ws/src/buddi_gazebo/meshes/wheel_right_link.dae" />
+    </geometry>
+    <material
+      name="">
+      <color
+        rgba="1 1 1 1" />
+    </material>
+  </visual>
+  <collision>
+    <origin
+      xyz="0 0 0"
+      rpy="0 0 0" />
+    <geometry>
+      <mesh
+        filename="/home/susan/buddi_ws/src/buddi_gazebo/meshes/wheel_right_link.dae" />
+    </geometry>
+  </collision>
+</link>
+
+<joint name="wheel_right_joint"
+  type="revolute">
+  <origin
+    xyz="0.00042468 -0.214 0.066871"
+    rpy="0 0 0" />
+  <parent
+    link="base_link" />
+  <child
+    link="wheel_right_link" />
+  <axis
+    xyz="0 -1 0" />
+  <limit
+    lower="0"
+    upper="0"
+    effort="0"
+    velocity="0" />
+</joint>
+
+<link name="caster_forward_right_link">
+  <inertial>
+    <origin
+      xyz="-0.0730532696409216 0.0273490169426328 0.0640979333617653"
+      rpy="0 0 0" />
+    <mass
+      value="1.34529474180908" />
+    <inertia
+      ixx="0.0017002985904682"
+      ixy="0.000228696816881372"
+      ixz="-0.00161529764542341"
+      iyy="0.00610915743089986"
+      iyz="0.0001235876753365"
+      izz="0.005066267899162" />
+  </inertial>
+  <visual>
+    <origin
+      xyz="0 0 0"
+      rpy="0 0 0" />
+    <geometry>
+      <mesh
+        filename="/home/susan/buddi_ws/src/buddi_gazebo/meshes/caster_forward_right_link.dae" />
+    </geometry>
+    <material
+      name="">
+      <color
+        rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
+    </material>
+  </visual>
+  <collision>
+    <origin
+      xyz="0 0 0"
+      rpy="0 0 0" />
+    <geometry>
+      <mesh
+        filename="/home/susan/buddi_ws/src/buddi_gazebo/meshes/caster_forward_right_link.dae" />
+    </geometry>
+  </collision>
+</link>
+
+<joint name="caster_forward_right_joint"
+  type="fixed">
+  <origin
+    xyz="0.34079 -0.2405 0.0051374"
+    rpy="0 0 0" />
+  <parent
+    link="base_link" />
+  <child
+    link="caster_forward_right_link" />
+  <axis
+    xyz="0 0 0" />
+</joint>
+
+<link name="caster_forward_left_link">
+  <inertial>
+    <origin
+      xyz="-0.0732172556707584 -0.0276261893843091 0.0639119306007457"
+      rpy="0 0 0" />
+    <mass
+      value="1.35522612162933" />
+    <inertia
+      ixx="0.00172343740040049"
+      ixy="-0.000248611340193825"
+      ixz="-0.00164757009146571"
+      iyy="0.00621592765184535"
+      iyz="-0.000131657784647167"
+      izz="0.00516336249302219" />
+  </inertial>
+  <visual>
+    <origin
+      xyz="0 0 0"
+      rpy="0 0 0" />
+    <geometry>
+      <mesh
+        filename="/home/susan/buddi_ws/src/buddi_gazebo/meshes/caster_forward_left_link.dae" />
+    </geometry>
+    <material
+      name="">
+      <color
+        rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
+    </material>
+  </visual>
+  <collision>
+    <origin
+      xyz="0 0 0"
+      rpy="0 0 0" />
+    <geometry>
+      <mesh
+        filename="/home/susan/buddi_ws/src/buddi_gazebo/meshes/caster_forward_left_link.dae" />
+    </geometry>
+  </collision>
+</link>
+
+<joint name="caster_forward_left_joint"
+  type="fixed">
+  <origin
+    xyz="0.34079 0.2405 0.0051374"
+    rpy="0 0 0" />
+  <parent
+    link="base_link" />
+  <child
+    link="caster_forward_left_link" />
+  <axis
+    xyz="0 0 0" />
+</joint>
+
+<link name="caster_back_right_link">
+  <inertial>
+    <origin
+      xyz="0.159219371610942 0.0157433026532527 0.092933289356703"
+      rpy="0 0 0" />
+    <mass
+      value="0.903467331267806" />
+    <inertia
+      ixx="0.00176042661145857"
+      ixy="-0.00327898890183501"
+      ixz="-0.000960412293346115"
+      iyy="0.0150779257718514"
+      iyz="-0.00013371662595552"
+      izz="0.0162600819381686" />
+  </inertial>
+  <visual>
+    <origin
+      xyz="0 0 0"
+      rpy="0 0 0" />
+    <geometry>
+      <mesh
+        filename="/home/susan/buddi_ws/src/buddi_gazebo/meshes/caster_back_right_link.dae" />
+    </geometry>
+    <material
+      name="">
+      <color
+        rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
+    </material>
+  </visual>
+  <collision>
+    <origin
+      xyz="0 0 0"
+      rpy="0 0 0" />
+    <geometry>
+      <mesh
+        filename="/home/susan/buddi_ws/src/buddi_gazebo/meshes/caster_back_right_link.dae" />
+    </geometry>
+  </collision>
+</link>
+
+<joint name="caster_back_right_joint"
+  type="fixed">
+  <origin
+    xyz="-0.46576 -0.23823 0.0075"
+    rpy="0 0 0" />
+  <parent
+    link="base_link" />
+  <child
+    link="caster_back_right_link" />
+  <axis
+    xyz="0 0 0" />
+</joint>
+
+<link name="caster_back_left_link">
+  <inertial>
+    <origin
+      xyz="0.174962929533466 -0.0132485422087199 0.0837474206984913"
+      rpy="0 0 0" />
+    <mass
+      value="1.19649108809485" />
+    <inertia
+      ixx="0.00218073632251844"
+      ixy="0.00328074773899256"
+      ixz="-0.000963629397964189"
+      iyy="0.0154771045063667"
+      iyz="0.000134387867098884"
+      izz="0.0164096979756094" />
+  </inertial>
+  <visual>
+    <origin
+      xyz="0 0 0"
+      rpy="0 0 0" />
+    <geometry>
+      <mesh
+        filename="/home/susan/buddi_ws/src/buddi_gazebo/meshes/caster_back_left_link.dae" />
+    </geometry>
+    <material
+      name="">
+      <color
+        rgba="0.501960784313725 0 0 1" />
+    </material>
+  </visual>
+  <collision>
+    <origin
+      xyz="0 0 0"
+      rpy="0 0 0" />
+    <geometry>
+      <mesh
+        filename="/home/susan/buddi_ws/src/buddi_gazebo/meshes/caster_back_left_link.dae" />
+    </geometry>
+  </collision>
+</link>
+
+<joint name="caster_back_left_joint"
+  type="fixed">
+  <origin
+    xyz="-0.46576 0.23823 0.0075"
+    rpy="0 0 0" />
+  <parent
+    link="base_link" />
+  <child
+    link="caster_back_left_link" />
+  <axis
+    xyz="0 0 0" />
+</joint>
+
+<link name="lidar_forward_link">
+  <inertial>
+    <origin
+      xyz="-0.00163226605178779 -3.81046922211525E-05 -0.0109858757086851"
+      rpy="0 0 0" />
+    <mass
+      value="0.0270845630745659" />
+    <inertia
+      ixx="9.26761139629486E-06"
+      ixy="-8.15186724546099E-09"
+      ixz="1.11929715299346E-08"
+      iyy="9.24891699462467E-06"
+      iyz="7.68768412175614E-10"
+      izz="1.54092066975936E-05" />
+  </inertial>
+  <visual>
+    <origin
+      xyz="0 0 0"
+      rpy="0 0 0" />
+    <geometry>
+      <mesh
+        filename="/home/susan/buddi_ws/src/buddi_gazebo/meshes/lidar_forward_link.dae" />
+    </geometry>
+    <material
+      name="">
+      <color
+        rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+    </material>
+  </visual>
+  <collision>
+    <origin
+      xyz="0 0 0"
+      rpy="0 0 0" />
+    <geometry>
+      <mesh
+        filename="/home/susan/buddi_ws/src/buddi_gazebo/meshes/lidar_forward_link.dae" />
+    </geometry>
+  </collision>
+   
+</link>
+
+<joint name="lidar_forward_joint"
+  type="fixed">
+  <origin
+    xyz="0.47503 0.27579 0.2097"
+    rpy="-3.1416 0 0.7854" />
+  <parent
+    link="base_link" />
+  <child
+    link="lidar_forward_link" />
+  <axis
+    xyz="0 0 0" />
+</joint>
+
+<link name="lidar_back_link">
+  <inertial>
+    <origin
+      xyz="-0.00163226515919279 -3.81039738022448E-05 -0.0109858756959254"
+      rpy="0 0 0" />
+    <mass
+      value="0.0270845630487793" />
+    <inertia
+      ixx="9.26761147077806E-06"
+      ixy="-8.15116807715507E-09"
+      ixz="1.11931999807769E-08"
+      iyy="9.24891703100811E-06"
+      iyz="7.6892758075562E-10"
+      izz="1.5409206785005E-05" />
+  </inertial>
+  <visual>
+    <origin
+      xyz="0 0 0"
+      rpy="0 0 0" />
+    <geometry>
+      <mesh
+        filename="/home/susan/buddi_ws/src/buddi_gazebo/meshes/lidar_back_link.dae" />
+    </geometry>
+    <material
+      name="">
+      <color
+        rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+    </material>
+  </visual>
+  <collision>
+    <origin
+      xyz="0 0 0"
+      rpy="0 0 0" />
+    <geometry>
+      <mesh
+        filename="/home/susan/buddi_ws/src/buddi_gazebo/meshes/lidar_back_link.dae" />
+    </geometry>
+  </collision>
+</link>
+
+<joint name="lidar_back_joint"
+  type="fixed">
+  <origin
+    xyz="-0.47656 -0.27579 0.2097"
+    rpy="3.1416 0 -2.3562" />
+  <parent
+    link="base_link" />
+  <child
+    link="lidar_back_link" />
+  <axis
+    xyz="0 0 0" />
+</joint>
+
+<link name="rgbd_forward_down_link">
+  <inertial>
+    <origin
+      xyz="-0.0171663297467924 -0.0138994132808862 -0.00354528629580309"
+      rpy="0 0 0" />
+    <mass
+      value="0.0189322948813499" />
+    <inertia
+      ixx="9.59179491471695E-06"
+      ixy="-3.03900672507749E-07"
+      ixz="-6.09653201545536E-07"
+      iyy="2.81028120874794E-06"
+      iyz="-1.75494732937299E-07"
+      izz="9.1378393107256E-06" />
+  </inertial>
+  <visual>
+    <origin
+      xyz="0 0 0"
+      rpy="0 0 0" />
+    <geometry>
+      <mesh
+        filename="/home/susan/buddi_ws/src/buddi_gazebo/meshes/rgbd_forward_down_link.dae" />
+    </geometry>
+    <material
+      name="">
+      <color
+        rgba="0.298039215686275 0.298039215686275 0.298039215686275 1" />
+    </material>
+  </visual>
+  <collision>
+    <origin
+      xyz="0 0 0"
+      rpy="0 0 0" />
+    <geometry>
+      <mesh
+        filename="/home/susan/buddi_ws/src/buddi_gazebo/meshes/rgbd_forward_down_link.dae" />
+    </geometry>
+  </collision>
+</link>
+
+<joint name="rgbd_forward_down_joint"
+  type="fixed">
+  <origin
+    xyz="0.5132 0.016 0.048721"
+    rpy="0 -0.6544 0" />
+  <parent
+    link="base_link" />
+  <child
+    link="rgbd_forward_down_link" />
+  <axis
+    xyz="0 0 0" />
+</joint>
+
+<link name="rgbd_forward_up_link">
+  <inertial>
+    <origin
+      xyz="-0.0351487953543104 -0.0079316427896897 -0.00784527509861621"
+      rpy="0 0 0" />
+    <mass
+      value="0.0677767154944172" />
+    <inertia
+      ixx="4.03170642900842E-05"
+      ixy="2.31181046412232E-07"
+      ixz="-5.43015486660055E-07"
+      iyy="6.35465898541856E-06"
+      iyz="-1.53876818113949E-08"
+      izz="3.90070208944265E-05" />
+  </inertial>
+  <visual>
+    <origin
+      xyz="0 0 0"
+      rpy="0 0 0" />
+    <geometry>
+      <mesh
+        filename="/home/susan/buddi_ws/src/buddi_gazebo/meshes/rgbd_forward_up_link.dae" />
+    </geometry>
+    <material
+      name="">
+      <color
+        rgba="0.427450980392157 0.458823529411765 0.494117647058824 1" />
+    </material>
+  </visual>
+  <collision>
+    <origin
+      xyz="0 0 0"
+      rpy="0 0 0" />
+    <geometry>
+      <mesh
+        filename="/home/susan/buddi_ws/src/buddi_gazebo/meshes/rgbd_forward_up_link.dae" />
+    </geometry>
+  </collision>
+</link>
+
+<joint name="rgbd_forward_up_joint"
+  type="fixed">
+  <origin
+    xyz="0.56882 0.00787 0.93755"
+    rpy="0 1.0123 0" />
+  <parent
+    link="base_link" />
+  <child
+    link="rgbd_forward_up_link" />
+  <axis
+    xyz="0 0 0" />
+</joint>
+
+<link name="rgbd_back_down_link">
+  <inertial>
+    <origin
+      xyz="-0.0172044245938995 -0.0168550671498923 -0.00285144528794978"
+      rpy="0 0 0" />
+    <mass
+      value="0.0231651699045684" />
+    <inertia
+      ixx="1.19399838752721E-05"
+      ixy="2.48158456393023E-07"
+      ixz="-6.10761864347235E-07"
+      iyy="3.23550620228793E-06"
+      iyz="2.31692880013253E-07"
+      izz="1.10650612247287E-05" />
+  </inertial>
+  <visual>
+    <origin
+      xyz="0 0 0"
+      rpy="0 0 0" />
+    <geometry>
+      <mesh
+        filename="/home/susan/buddi_ws/src/buddi_gazebo/meshes/rgbd_back_down_link.dae" />
+    </geometry>
+    <material
+      name="">
+      <color
+        rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+    </material>
+  </visual>
+  <collision>
+    <origin
+      xyz="0 0 0"
+      rpy="0 0 0" />
+    <geometry>
+      <mesh
+        filename="/home/susan/buddi_ws/src/buddi_gazebo/meshes/rgbd_back_down_link.dae" />
+    </geometry>
+  </collision>
+</link>
+
+<joint name="rgbd_back_down_joint"
+  type="fixed">
+  <origin
+    xyz="-0.51473 -0.016 0.048721"
+    rpy="0 -0.6544 3.1416" />
+  <parent
+    link="base_link" />
+  <child
+    link="rgbd_back_down_link" />
+  <axis
+    xyz="0 0 0" />
+</joint>
+
+<link name="rgbd_back_up_link">
+  <inertial>
+    <origin
+      xyz="-0.0355380255846536 -0.00793513922145912 -0.00792711621635545"
+      rpy="0 0 0" />
+    <mass
+      value="0.0670770301533824" />
+    <inertia
+      ixx="3.99373100383913E-05"
+      ixy="2.31178391901498E-07"
+      ixz="-5.43015326617191E-07"
+      iyy="6.33811149620758E-06"
+      iyz="-1.53900940349086E-08"
+      izz="3.86437802749912E-05" />
+  </inertial>
+  <visual>
+    <origin
+      xyz="0 0 0"
+      rpy="0 0 0" />
+    <geometry>
+      <mesh
+        filename="/home/susan/buddi_ws/src/buddi_gazebo/meshes/rgbd_back_up_link.dae" />
+    </geometry>
+    <material
+      name="">
+      <color
+        rgba="0.427450980392157 0.458823529411765 0.494117647058824 1" />
+    </material>
+  </visual>
+  <collision>
+    <origin
+      xyz="0 0 0"
+      rpy="0 0 0" />
+    <geometry>
+      <mesh
+        filename="/home/susan/buddi_ws/src/buddi_gazebo/meshes/rgbd_back_up_link.dae" />
+    </geometry>
+  </collision>
+</link>
+
+<joint name="rgbd_back_up_joint"
+  type="fixed">
+  <origin
+    xyz="-0.57035 -0.00787 0.93755"
+    rpy="0 1.0123 -3.1416" />
+  <parent
+    link="base_link" />
+  <child
+    link="rgbd_back_up_link" />
+  <axis
+    xyz="0 0 0" />
+</joint>
+
+<link name="imu_link">
+  <inertial>
+    <origin
+      xyz="0.0166053419934598 2.66345563128984E-16 0.000132913998989181"
+      rpy="0 0 0" />
+    <mass
+      value="6.01147073755572" />
+    <inertia
+      ixx="0.233264134445836"
+      ixy="0.00351086390156572"
+      ixz="0.000257700401473968"
+      iyy="0.533719570203863"
+      iyz="3.59862063061443E-18"
+      izz="0.766885293928605" />
+  </inertial>
+  <visual>
+    <origin
+      xyz="0 0 0"
+      rpy="0 0 0" />
+    <geometry>
+      <mesh
+        filename="/home/susan/buddi_ws/src/buddi_gazebo/meshes/imu_link.dae" />
+    </geometry>
+    <material
+      name="">
+      <color
+        rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+    </material>
+  </visual>
+  <collision>
+    <origin
+      xyz="0 0 0"
+      rpy="0 0 0" />
+    <geometry>
+      <mesh
+        filename="/home/susan/buddi_ws/src/buddi_gazebo/meshes/imu_link.dae" />
+    </geometry>
+  </collision>
+</link>
+
+<joint name="imu_joint"
+  type="fixed">
+  <origin
+    xyz="-0.000764597834388196 0 0.2375"
+    rpy="0 0 0" />
+  <parent
+    link="base_link" />
+  <child
+    link="imu_link" />
+  <axis
+    xyz="0 0 0" />
+</joint>
+
+</robot>

@@ -1,0 +1,1029 @@
+<?xml version="1.0"?>
+<sdf version='1.7'>
+  <model name='buddi'>
+    <pose>0.0 0.0 0.0 0.0 0.0 0.0</pose>
+    <link name="base_footprint"/>
+
+    <link name='base_link'>
+      <inertial>
+        <pose>0.005275 -0.007914 0.582065 0 -0 0</pose>
+        <mass>37.6369</mass>
+        <inertia>
+          <ixx>4.37485</ixx>
+          <ixy>0.0111653</ixy>
+          <ixz>0.0926495</ixz>
+          <iyy>6.29411</iyy>
+          <iyz>0.0981576</iyz>
+          <izz>4.50749</izz>
+        </inertia>
+      </inertial>
+      <collision name='base_link_collision'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>/home/hz/hz/Work/Grabotics/b1_simulation/b1-simulation_v2/src/b1_simulation_v2/buddi_gazebo/meshes/base_link.dae</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <collision name='base_link_fixed_joint_lump__caster_back_left_link_collision_1'>
+        <pose>-0.46576 0.23823 0.0075 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>/home/hz/hz/Work/Grabotics/b1_simulation/b1-simulation_v2/src/b1_simulation_v2/buddi_gazebo/meshes/caster_back_left_link.dae</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <collision name='base_link_fixed_joint_lump__caster_back_right_link_collision_2'>
+        <pose>-0.46576 -0.23823 0.0075 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>/home/hz/hz/Work/Grabotics/b1_simulation/b1-simulation_v2/src/b1_simulation_v2/buddi_gazebo/meshes/caster_back_right_link.dae</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <collision name='base_link_fixed_joint_lump__caster_forward_left_link_collision_3'>
+        <pose>0.34079 0.2405 0.005137 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>/home/hz/hz/Work/Grabotics/b1_simulation/b1-simulation_v2/src/b1_simulation_v2/buddi_gazebo/meshes/caster_forward_left_link.dae</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <collision name='base_link_fixed_joint_lump__caster_forward_right_link_collision_4'>
+        <pose>0.34079 -0.2405 0.005137 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>/home/hz/hz/Work/Grabotics/b1_simulation/b1-simulation_v2/src/b1_simulation_v2/buddi_gazebo/meshes/caster_forward_right_link.dae</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <!-- <collision name='base_link_fixed_joint_lump__imu_link_collision_5'>
+        <pose>-0.000765 0 0.2375 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>/home/hz/hz/Work/Grabotics/b1_simulation/b1-simulation_v2/src/b1_simulation_v2/buddi_gazebo/meshes/imu_link.dae</uri>
+          </mesh>
+        </geometry>
+      </collision> -->
+      <!-- <collision name='base_link_fixed_joint_lump__lidar_back_link_collision_6'>
+        <pose>-0.47656 -0.27579 0.2097 -3.14159 -0 -2.3562</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>/home/hz/hz/Work/Grabotics/b1_simulation/b1-simulation_v2/src/b1_simulation_v2/buddi_gazebo/meshes/lidar_back_link.dae</uri>
+          </mesh>
+        </geometry>
+      </collision> -->
+      <!-- <collision name='base_link_fixed_joint_lump__lidar_forward_link_collision_7'>
+        <pose>0.47503 0.27579 0.2097 3.14159 0 0.7854</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>/home/hz/hz/Work/Grabotics/b1_simulation/b1-simulation_v2/src/b1_simulation_v2/buddi_gazebo/meshes/lidar_forward_link.dae</uri>
+          </mesh>
+        </geometry>
+      </collision> -->
+      <!-- <collision name='base_link_fixed_joint_lump__rgbd_back_down_link_collision_8'>
+        <pose>-0.51473 -0.016 0.048721 0 -0.6544 -3.14159</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>/home/hz/hz/Work/Grabotics/b1_simulation/b1-simulation_v2/src/b1_simulation_v2/buddi_gazebo/meshes/rgbd_back_down_link.dae</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <collision name='base_link_fixed_joint_lump__rgbd_back_up_link_collision_9'>
+        <pose>-0.57035 -0.00787 0.93755 -0 1.0123 3.14159</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>/home/hz/hz/Work/Grabotics/b1_simulation/b1-simulation_v2/src/b1_simulation_v2/buddi_gazebo/meshes/rgbd_back_up_link.dae</uri>
+          </mesh>
+        </geometry>
+      </collision> -->
+      <!-- <collision name='base_link_fixed_joint_lump__rgbd_forward_down_link_collision_10'>
+        <pose>0.5132 0.016 0.048721 0 -0.6544 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>/home/hz/hz/Work/Grabotics/b1_simulation/b1-simulation_v2/src/b1_simulation_v2/buddi_gazebo/meshes/rgbd_forward_down_link.dae</uri>
+          </mesh>
+        </geometry>
+      </collision> -->
+      <!-- <collision name='base_link_fixed_joint_lump__rgbd_forward_up_link_collision_11'>
+        <pose>0.56882 0.00787 0.93755 0 1.0123 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>/home/hz/hz/Work/Grabotics/b1_simulation/b1-simulation_v2/src/b1_simulation_v2/buddi_gazebo/meshes/rgbd_forward_up_link.dae</uri>
+          </mesh>
+        </geometry>
+      </collision> -->
+      <visual name='base_link_visual'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>/home/hz/hz/Work/Grabotics/b1_simulation/b1-simulation_v2/src/b1_simulation_v2/buddi_gazebo/meshes/base_link.dae</uri>
+          </mesh>
+        </geometry>
+      </visual>
+      <visual name='base_link_fixed_joint_lump__caster_back_left_link_visual_1'>
+        <pose>-0.46576 0.23823 0.0075 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>/home/hz/hz/Work/Grabotics/b1_simulation/b1-simulation_v2/src/b1_simulation_v2/buddi_gazebo/meshes/caster_back_left_link.dae</uri>
+          </mesh>
+        </geometry>
+      </visual>
+      <visual name='base_link_fixed_joint_lump__caster_back_right_link_visual_2'>
+        <pose>-0.46576 -0.23823 0.0075 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>/home/hz/hz/Work/Grabotics/b1_simulation/b1-simulation_v2/src/b1_simulation_v2/buddi_gazebo/meshes/caster_back_right_link.dae</uri>
+          </mesh>
+        </geometry>
+      </visual>
+      <visual name='base_link_fixed_joint_lump__caster_forward_left_link_visual_3'>
+        <pose>0.34079 0.2405 0.005137 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>/home/hz/hz/Work/Grabotics/b1_simulation/b1-simulation_v2/src/b1_simulation_v2/buddi_gazebo/meshes/caster_forward_left_link.dae</uri>
+          </mesh>
+        </geometry>
+      </visual>
+      <visual name='base_link_fixed_joint_lump__caster_forward_right_link_visual_4'>
+        <pose>0.34079 -0.2405 0.005137 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>/home/hz/hz/Work/Grabotics/b1_simulation/b1-simulation_v2/src/b1_simulation_v2/buddi_gazebo/meshes/caster_forward_right_link.dae</uri>
+          </mesh>
+        </geometry>
+      </visual>
+      <!-- <visual name='base_link_fixed_joint_lump__imu_link_visual_5'>
+        <pose>-0.000765 0 0.2375 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>/home/hz/hz/Work/Grabotics/b1_simulation/b1-simulation_v2/src/b1_simulation_v2/buddi_gazebo/meshes/imu_link.dae</uri>
+          </mesh>
+        </geometry>
+      </visual> -->
+      <!-- <visual name='base_link_fixed_joint_lump__lidar_back_link_visual_6'>
+        <pose>-0.47656 -0.27579 0.2097 -3.14159 -0 -2.3562</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>/home/hz/hz/Work/Grabotics/b1_simulation/b1-simulation_v2/src/b1_simulation_v2/buddi_gazebo/meshes/lidar_back_link.dae</uri>
+          </mesh>
+        </geometry>
+      </visual> -->
+      <!-- <visual name='base_link_fixed_joint_lump__lidar_forward_link_visual_7'>
+        <pose>0.47503 0.27579 0.2097 3.14159 0 0.7854</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>/home/hz/hz/Work/Grabotics/b1_simulation/b1-simulation_v2/src/b1_simulation_v2/buddi_gazebo/meshes/lidar_forward_link.dae</uri>
+          </mesh>
+        </geometry>
+      </visual> -->
+      <!-- <visual name='base_link_fixed_joint_lump__rgbd_back_down_link_visual_8'>
+        <pose>-0.51473 -0.016 0.048721 0 -0.6544 -3.14159</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>/home/hz/hz/Work/Grabotics/b1_simulation/b1-simulation_v2/src/b1_simulation_v2/buddi_gazebo/meshes/rgbd_back_down_link.dae</uri>
+          </mesh>
+        </geometry>
+      </visual>
+      <visual name='base_link_fixed_joint_lump__rgbd_back_up_link_visual_9'>
+        <pose>-0.57035 -0.00787 0.93755 -0 1.0123 3.14159</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>/home/hz/hz/Work/Grabotics/b1_simulation/b1-simulation_v2/src/b1_simulation_v2/buddi_gazebo/meshes/rgbd_back_up_link.dae</uri>
+          </mesh>
+        </geometry>
+      </visual> -->
+      <!-- <visual name='base_link_fixed_joint_lump__rgbd_forward_down_link_visual_10'>
+        <pose>0.5132 0.016 0.048721 0 -0.6544 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>/home/hz/hz/Work/Grabotics/b1_simulation/b1-simulation_v2/src/b1_simulation_v2/buddi_gazebo/meshes/rgbd_forward_down_link.dae</uri>
+          </mesh>
+        </geometry>
+      </visual> -->
+      <!-- <visual name='base_link_fixed_joint_lump__rgbd_forward_up_link_visual_11'>
+        <pose>0.56882 0.00787 0.93755 0 1.0123 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>/home/hz/hz/Work/Grabotics/b1_simulation/b1-simulation_v2/src/b1_simulation_v2/buddi_gazebo/meshes/rgbd_forward_up_link.dae</uri>
+          </mesh>
+        </geometry>
+      </visual> -->
+
+      <!-- <plugin name="buddi_diff_drive" filename="libgazebo_ros_diff_drive.so">
+        <ros>
+        </ros>
+
+        <update_rate>500</update_rate>
+
+        <left_joint>wheel_left_joint</left_joint>
+        <right_joint>wheel_right_joint</right_joint>
+
+        <wheel_separation>0.429</wheel_separation>
+        <wheel_diameter>0.066</wheel_diameter>
+
+        <max_wheel_torque>20</max_wheel_torque>
+        <max_wheel_acceleration>1.0</max_wheel_acceleration>
+
+        <command_topic>cmd_vel</command_topic>
+
+        <publish_odom>true</publish_odom>
+        <publish_odom_tf>true</publish_odom_tf>
+        <publish_wheel_tf>false</publish_wheel_tf>
+
+        <odometry_topic>odom</odometry_topic>
+        <odometry_frame>odom</odometry_frame>
+        <robot_base_frame>base_footprint</robot_base_frame>
+      </plugin> -->
+    </link>
+
+
+    <joint name='wheel_left_joint' type='revolute'>
+      <pose relative_to='base_link'>0.000425 0.214 0.066871 0 -0 0</pose>
+      <parent>base_link</parent>
+      <child>wheel_left_link</child>
+      <axis>
+        <xyz>0 1 0</xyz>
+        <limit>
+          <lower>0</lower>
+          <upper>0</upper>
+          <effort>0</effort>
+          <velocity>0</velocity>
+        </limit>
+        <dynamics>
+          <spring_reference>0</spring_reference>
+          <spring_stiffness>0</spring_stiffness>
+        </dynamics>
+      </axis>
+    </joint>
+    <link name='wheel_left_link'>
+      <pose relative_to='wheel_left_joint'>0 0 0 0 -0 0</pose>
+      <inertial>
+        <pose>3e-06 0.047089 -0 0 -0 0</pose>
+        <mass>1.81841</mass>
+        <inertia>
+          <ixx>0.00458783</ixx>
+          <ixy>7.81355e-09</ixy>
+          <ixz>1.17235e-08</ixz>
+          <iyy>0.00846141</iyy>
+          <iyz>-9.49365e-09</iyz>
+          <izz>0.00458783</izz>
+        </inertia>
+      </inertial>
+      <collision name='wheel_left_link_collision'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>/home/hz/hz/Work/Grabotics/b1_simulation/b1-simulation_v2/src/b1_simulation_v2/buddi_gazebo/meshes/wheel_left_link.dae</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <visual name='wheel_left_link_visual'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>/home/hz/hz/Work/Grabotics/b1_simulation/b1-simulation_v2/src/b1_simulation_v2/buddi_gazebo/meshes/wheel_left_link.dae</uri>
+          </mesh>
+        </geometry>
+      </visual>
+    </link>
+
+
+    <joint name='wheel_right_joint' type='revolute'>
+      <pose relative_to='base_link'>0.000425 -0.214 0.066871 0 -0 0</pose>
+      <parent>base_link</parent>
+      <child>wheel_right_link</child>
+      <axis>
+        <xyz>0 -1 0</xyz>
+        <limit>
+          <lower>0</lower>
+          <upper>0</upper>
+          <effort>0</effort>
+          <velocity>0</velocity>
+        </limit>
+        <dynamics>
+          <spring_reference>0</spring_reference>
+          <spring_stiffness>0</spring_stiffness>
+        </dynamics>
+      </axis>
+    </joint>
+    <link name='wheel_right_link'>
+      <pose relative_to='wheel_right_joint'>0 0 0 0 -0 0</pose>
+      <inertial>
+        <pose>2e-06 -0.047089 1e-06 0 -0 0</pose>
+        <mass>1.81841</mass>
+        <inertia>
+          <ixx>0.00458783</ixx>
+          <ixy>-6.64954e-09</ixy>
+          <ixz>-1.0932e-08</ixz>
+          <iyy>0.00846141</iyy>
+          <iyz>-1.03424e-08</iyz>
+          <izz>0.00458782</izz>
+        </inertia>
+      </inertial>
+      <collision name='wheel_right_link_collision'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>/home/hz/hz/Work/Grabotics/b1_simulation/b1-simulation_v2/src/b1_simulation_v2/buddi_gazebo/meshes/wheel_right_link.dae</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <visual name='wheel_right_link_visual'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>/home/hz/hz/Work/Grabotics/b1_simulation/b1-simulation_v2/src/b1_simulation_v2/buddi_gazebo/meshes/wheel_right_link.dae</uri>
+          </mesh>
+        </geometry>
+      </visual>
+    </link>
+
+    <!-- joint: 如果传感器的link单独定义，一定要定义joint，不然传感器和车体的相对位姿会有问题 -->
+    <joint name="base_joint" type="fixed">
+      <pose relative_to='base_footprint'>0.0 0.0 0.010 0 0 0</pose>
+      <parent>base_footprint</parent>
+      <child>base_link</child>
+    </joint>
+
+    <!-- <joint name="caster_forward_right_joint" type="fixed">
+      <pose relative_to='base_link'>0.34079 -0.2405 0.0051374 0 0 0</pose>
+      <parent>base_link</parent>
+      <child>caster_forward_right_link</child>
+      <axis>
+        <xyz>0 0 0</xyz>
+      </axis>
+    </joint>
+
+    <joint name="caster_forward_left_joint" type="fixed">
+      <pose relative_to='base_link'>0.34079 0.2405 0.0051374 0 0 0</pose>
+      <parent>base_link</parent>
+      <child>caster_forward_left_link</child>
+      <axis>
+        <xyz>0 0 0</xyz>
+      </axis>
+    </joint>
+
+    <joint name="caster_back_right_joint" type="fixed">
+      <pose relative_to='base_link'>-0.46576 -0.23823 0.0075 0 0 0</pose>
+      <parent>base_link</parent>
+      <child>caster_back_right_link</child>
+      <axis>
+        <xyz>0 0 0</xyz>
+      </axis>
+    </joint>
+
+    <joint name="caster_back_left_joint" type="fixed">
+      <pose relative_to='base_link'>-0.46576 0.23823 0.0075 0 0 0</pose>
+      <parent>base_link</parent>
+      <child>caster_back_left_link</child>
+      <axis>
+        <xyz>0 0 0</xyz>
+      </axis>
+    </joint> -->
+
+    <joint name="rgbd_forward_down_joint" type="fixed">
+      <pose relative_to='base_link'>0.5132 0.016 0.048721 0 -0.6544 0</pose>
+      <parent>base_link</parent>
+      <child>rgbd_forward_down_link</child>
+      <axis>
+        <xyz>0 0 0</xyz>
+      </axis>
+    </joint>
+
+    <joint name="rgbd_forward_up_joint" type="fixed">
+      <pose relative_to='base_link'>0.56882 0.00787 0.93755 0 1.0123 0</pose>
+      <parent>base_link</parent>
+      <child>rgbd_forward_up_link</child>
+      <axis>
+        <xyz>0 0 0</xyz>
+      </axis>
+    </joint>
+
+    <joint name="rgbd_back_down_joint" type="fixed">
+      <pose relative_to='base_link'>-0.51473 -0.016 0.048721 0 -0.6544 3.1416</pose>
+      <parent>base_link</parent>
+      <child>rgbd_back_down_link</child>
+      <axis>
+        <xyz>0 0 0</xyz>
+      </axis>
+    </joint>
+
+    <joint name="rgbd_back_up_joint" type="fixed">
+      <pose relative_to='base_link'>-0.57035 -0.00787 0.93755 -0 1.0123 3.14159</pose>
+      <parent>base_link</parent>
+      <child>rgbd_back_up_link</child>
+      <axis>
+        <xyz>0 0 0</xyz>
+      </axis>
+    </joint>
+
+    <joint name="lidar_forward_joint" type="fixed">
+      <pose relative_to='base_link'>0.47503 0.27579 0.2097 3.14159 0 0.7854</pose>
+      <parent>base_link</parent>
+      <child>lidar_forward_link</child>
+      <axis>
+        <xyz>0 0 0</xyz>
+      </axis>
+    </joint>
+
+    <joint name="lidar_back_joint" type="fixed">
+      <pose relative_to='base_link'>-0.47656 -0.27579 0.2097 -3.14159 -0 -2.3562</pose>
+      <parent>base_link</parent>
+      <child>lidar_back_link</child>
+      <axis>
+        <xyz>0 0 0</xyz>
+      </axis>
+    </joint>
+
+    <joint name="imu_joint" type="fixed">
+      <pose relative_to='base_link'>-0.000764597834388196 0 0.2375 0 0 0</pose>
+      <parent>base_link</parent>
+      <child>imu_link</child>
+      <axis>
+        <xyz>0 0 0</xyz>
+      </axis>
+    </joint>
+
+    <!-- 前装雷达 -->
+    <link name="lidar_forward_link">
+      <pose relative_to='lidar_forward_joint'>0 0 0 0 0 0</pose>    
+      <inertial>
+        <pose>-0.00163226605178779 -3.81046922211525E-05 -0.0109858757086851 0 0 0</pose>
+        <inertia>
+          <ixx>9.26761139629486E-06</ixx>
+          <ixy>-8.15186724546099E-09</ixy>
+          <ixz>1.11929715299346E-08</ixz>
+          <iyy>9.24891699462467E-06</iyy>
+          <iyz>7.68768412175614E-10</iyz>
+          <izz>1.54092066975936E-05</izz>
+        </inertia>
+        <mass>0.0270845630745659</mass>
+      </inertial>
+      <collision name="lidar_forward_sensor_collision">
+        <pose>0 0 0 0 0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>/home/hz/hz/Work/Grabotics/b1_simulation/b1-simulation_v2/src/b1_simulation_v2/buddi_gazebo/meshes/lidar_forward_link.dae</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <visual name="lidar_forward_sensor_visual">
+        <pose>0 0 0 0 0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>/home/hz/hz/Work/Grabotics/b1_simulation/b1-simulation_v2/src/b1_simulation_v2/buddi_gazebo/meshes/lidar_forward_link.dae</uri>
+          </mesh>
+        </geometry>
+      </visual>
+      <sensor name="forward_lds" type="ray">
+        <always_on>true</always_on>
+        <visualize>true</visualize>
+        <update_rate>15</update_rate>
+        <ray>
+          <scan>
+            <horizontal>
+              <samples>360</samples>
+              <resolution>1.000000</resolution>
+              <min_angle>0.000000</min_angle>
+              <max_angle>6.280000</max_angle>
+            </horizontal>
+          </scan>
+          <range>
+            <min>0.120000</min>
+            <max>40</max>
+            <resolution>0.015000</resolution>
+          </range>
+          <noise>
+            <type>gaussian</type>
+            <mean>0.0</mean>
+            <stddev>0.01</stddev>
+          </noise>
+        </ray>
+        <plugin name="buddi_forward_laserscan" filename="libgazebo_ros_ray_sensor.so">
+          <ros>
+            <!-- <namespace>/tb3</namespace> -->
+            <remapping>~/out:=forward_scan</remapping>
+          </ros>
+          <output_type>sensor_msgs/LaserScan</output_type>
+          <frame_name>lidar_forward_link</frame_name>
+        </plugin>
+      </sensor>
+    </link>
+
+    <!-- 后装雷达 -->
+    <link name="lidar_back_link">  
+      <pose relative_to='lidar_back_joint'>0 0 0 0 0 0</pose>  
+      <inertial>
+        <pose>-0.00163226515919279 -3.81039738022448E-05 -0.0109858756959254 0 0 0</pose>
+        <inertia>
+          <ixx>9.26761139629486E-06</ixx>
+          <ixy>-8.15186724546099E-09</ixy>
+          <ixz>1.11929715299346E-08</ixz>
+          <iyy>9.24891699462467E-06</iyy>
+          <iyz>7.68768412175614E-10</iyz>
+          <izz>1.54092066975936E-05</izz>
+        </inertia>
+        <mass>0.0270845630745659</mass>
+      </inertial>
+      <collision name="lidar_back_sensor_collision">
+        <pose>0 0 0 0 0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>/home/hz/hz/Work/Grabotics/b1_simulation/b1-simulation_v2/src/b1_simulation_v2/buddi_gazebo/meshes/lidar_back_link.dae</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <visual name="lidar_back_sensor_visual">
+        <pose>0 0 0 0 0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>/home/hz/hz/Work/Grabotics/b1_simulation/b1-simulation_v2/src/b1_simulation_v2/buddi_gazebo/meshes/lidar_back_link.dae</uri>
+          </mesh>
+        </geometry>
+      </visual>
+      <sensor name="back_lds" type="ray">
+        <always_on>true</always_on>
+        <visualize>true</visualize>
+        <update_rate>15</update_rate>
+        <ray>
+          <scan>
+            <horizontal>
+              <samples>360</samples>
+              <resolution>1.000000</resolution>
+              <min_angle>0.000000</min_angle>
+              <max_angle>6.280000</max_angle>
+            </horizontal>
+          </scan>
+          <range>
+            <min>0.120000</min>
+            <max>40</max>
+            <resolution>0.015000</resolution>
+          </range>
+          <noise>
+            <type>gaussian</type>
+            <mean>0.0</mean>
+            <stddev>0.01</stddev>
+          </noise>
+        </ray>
+        <plugin name="buddi_back_laserscan" filename="libgazebo_ros_ray_sensor.so">
+          <ros>
+            <!-- <namespace>/tb3</namespace> -->
+            <remapping>~/out:=back_scan</remapping>
+          </ros>
+          <output_type>sensor_msgs/LaserScan</output_type>
+          <frame_name>lidar_back_link</frame_name>
+        </plugin>
+      </sensor>
+    </link>
+
+    <!-- 下前视rgbd -->
+    <link name="rgbd_forward_down_link">
+      <pose relative_to='rgbd_forward_down_joint'>0 0 0 0 0 0</pose>
+      <inertial>
+        <pose>0.5132 0.016 0.048721 0 -0.6544 0</pose>
+        <inertia>
+          <ixx>9.59179491471695E-06</ixx>
+          <ixy>-3.03900672507749E-07</ixy>
+          <ixz>-6.09653201545536E-07</ixz>
+          <iyy>2.81028120874794E-06</iyy>
+          <iyz>-1.75494732937299E-07</iyz>
+          <izz>9.1378393107256E-06</izz>
+        </inertia>
+        <mass>0.0189322948813499</mass>
+      </inertial>
+
+      <visual name="rgbd_forward_down_visual">
+        <pose>0 0 0 0 0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>/home/hz/hz/Work/Grabotics/b1_simulation/b1-simulation_v2/src/b1_simulation_v2/buddi_gazebo/meshes/rgbd_forward_down_link.dae</uri>
+          </mesh>
+        </geometry>
+        <!-- <material name="">
+          <color>0.298039215686275 0.298039215686275 0.298039215686275 1</color>
+        </material> -->
+      </visual>
+      <collision name="rgbd_forward_down_collision">
+        <pose>0 0 0 0 0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>/home/hz/hz/Work/Grabotics/b1_simulation/b1-simulation_v2/src/b1_simulation_v2/buddi_gazebo/meshes/rgbd_forward_down_link.dae</uri>
+          </mesh>
+        </geometry>
+      </collision>
+
+      <sensor name="forward_down_rgbd" type="camera">
+        <always_on>true</always_on>
+        <visualize>true</visualize>
+        <update_rate>30</update_rate>
+        <camera name="forward_down_rgb">
+          <horizontal_fov>1.085595</horizontal_fov>
+          <image>
+              <width>640</width>
+              <height>480</height>
+              <format>R8G8B8</format>
+          </image>
+          <clip>
+              <near>0.03</near>
+              <far>100</far>
+          </clip>
+          <noise>
+            <type>gaussian</type>
+            <!-- Noise is sampled independently per pixel on each frame.
+                  That pixel's noise value is added to each of its color
+                  channels, which at that point lie in the range [0,1]. -->
+            <mean>0.0</mean>
+            <stddev>0.007</stddev>
+          </noise>
+        </camera>
+          <plugin name="forward_down_rgbd_driver" filename="libgazebo_ros_camera.so">
+            <ros>
+              <!-- <namespace>test_cam</namespace> -->
+              <!-- <remapping>image_raw:=image_demo</remapping> -->
+              <!-- <remapping>camera_info:=camera_info_demo</remapping> -->
+            </ros>
+            <!-- camera_name>omit so it defaults to sensor name</camera_name-->
+            <!-- frame_name>omit so it defaults to link name</frameName-->
+            <!-- <hack_baseline>0.07</hack_baseline> -->
+          </plugin>
+      </sensor>
+    </link>    
+
+    <!-- 上前视rgbd -->
+    <link name="rgbd_forward_up_link">
+      <pose relative_to='rgbd_forward_up_joint'>0 0 0 0 0 0</pose>
+      <inertial>
+        <pose>0.56882 0.00787 0.93755 0 1.0123 0</pose>
+        <inertia>
+          <ixx>4.03170642900842E-05</ixx>
+          <ixy>2.31181046412232E-07</ixy>
+          <ixz>-5.43015486660055E-07</ixz>
+          <iyy>6.35465898541856E-06</iyy>
+          <iyz>-1.53876818113949E-08</iyz>
+          <izz>3.90070208944265E-05</izz>
+        </inertia>
+        <mass>0.0677767154944172</mass>
+      </inertial>
+
+      <visual name="rgbd_forward_up_vision">
+        <pose>0.56882 0.00787 0.93755 0 1.0123 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>/home/hz/hz/Work/Grabotics/b1_simulation/b1-simulation_v2/src/b1_simulation_v2/buddi_gazebo/meshes/rgbd_forward_up_link.dae</uri>
+          </mesh>
+        </geometry>
+        <!-- <material name="">
+          <color>0.298039215686275 0.298039215686275 0.298039215686275 1</color>
+        </material> -->
+      </visual>
+      <collision name="rgbd_forward_up_collision">
+        <pose>0.56882 0.00787 0.93755 0 1.0123 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>/home/hz/hz/Work/Grabotics/b1_simulation/b1-simulation_v2/src/b1_simulation_v2/buddi_gazebo/meshes/rgbd_forward_up_link.dae</uri>
+          </mesh>
+        </geometry>
+      </collision>
+
+      <sensor name="forward_up_rgbd" type="camera">
+        <always_on>true</always_on>
+        <visualize>true</visualize>
+        <update_rate>30</update_rate>
+        <camera name="forward_up_rgb">
+          <horizontal_fov>1.085595</horizontal_fov>
+          <image>
+              <width>640</width>
+              <height>480</height>
+              <format>R8G8B8</format>
+          </image>
+          <clip>
+              <near>0.03</near>
+              <far>100</far>
+          </clip>
+          <noise>
+            <type>gaussian</type>
+            <!-- Noise is sampled independently per pixel on each frame.
+                  That pixel's noise value is added to each of its color
+                  channels, which at that point lie in the range [0,1]. -->
+            <mean>0.0</mean>
+            <stddev>0.007</stddev>
+          </noise>
+        </camera>
+          <plugin name="forward_up_rgbd_driver" filename="libgazebo_ros_camera.so">
+            <ros>
+              <!-- <namespace>test_cam</namespace> -->
+              <!-- <remapping>image_raw:=image_demo</remapping> -->
+              <!-- <remapping>camera_info:=camera_info_demo</remapping> -->
+            </ros>
+            <!-- camera_name>omit so it defaults to sensor name</camera_name-->
+            <!-- frame_name>omit so it defaults to link name</frameName-->
+            <!-- <hack_baseline>0.07</hack_baseline> -->
+          </plugin>
+      </sensor>
+    </link>    
+
+    <!-- 下后视rgbd -->
+    <link name="rgbd_back_down_link">
+      <pose relative_to='rgbd_back_down_joint'>0 0 0 0 0 0</pose>
+      <inertial>
+        <pose>-0.0172044245938995 -0.0168550671498923 -0.00285144528794978 0 0 0</pose>
+        <inertia>
+          <ixx>1.19399838752721E-05</ixx>
+          <ixy>2.48158456393023E-07</ixy>
+          <ixz>-6.10761864347235E-07</ixz>
+          <iyy>3.23550620228793E-06</iyy>
+          <iyz>2.31692880013253E-07</iyz>
+          <izz>1.10650612247287E-05</izz>
+        </inertia>
+        <mass>0.0231651699045684</mass>
+      </inertial>
+
+      <visual name="rgbd_back_down_visual">
+        <pose>0 0 0 0 0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>/home/hz/hz/Work/Grabotics/b1_simulation/b1-simulation_v2/src/b1_simulation_v2/buddi_gazebo/meshes/rgbd_back_down_link.dae</uri>
+          </mesh>
+        </geometry>
+      </visual>
+      <collision name="rgbd_back_down_collision">
+        <pose>0 0 0 0 0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>/home/hz/hz/Work/Grabotics/b1_simulation/b1-simulation_v2/src/b1_simulation_v2/buddi_gazebo/meshes/rgbd_back_down_link.dae</uri>
+          </mesh>
+        </geometry>
+      </collision>
+
+      <sensor name="back_down_rgbd" type="camera">
+        <always_on>true</always_on>
+        <visualize>true</visualize>
+        <update_rate>30</update_rate>
+        <camera name="back_down_rgb">
+          <horizontal_fov>1.085595</horizontal_fov>
+          <image>
+              <width>640</width>
+              <height>480</height>
+              <format>R8G8B8</format>
+          </image>
+          <clip>
+              <near>0.03</near>
+              <far>100</far>
+          </clip>
+          <noise>
+            <type>gaussian</type>
+            <mean>0.0</mean>
+            <stddev>0.007</stddev>
+          </noise>
+        </camera>
+          <plugin name="back_down_rgbd_driver" filename="libgazebo_ros_camera.so">
+            <ros>
+              <!-- <namespace>test_cam</namespace> -->
+              <!-- <remapping>image_raw:=image_demo</remapping>
+              <remapping>camera_info:=camera_info_demo</remapping> -->
+            </ros>
+            <output_type>sensor_msgs/Image</output_type>
+            <frame_name>rgbd_back_down_link</frame_name>
+          </plugin>
+      </sensor>
+    </link>    
+
+    <!-- 上后视rgbd -->
+    <link name="rgbd_back_up_link">
+      <pose relative_to='rgbd_back_up_joint'>0 0 0 0 0 0</pose>
+      <inertial>
+        <pose>-0.0355380255846536 -0.00793513922145912 -0.00792711621635545 0 0 0</pose>
+        <inertia>
+          <ixx>3.99373100383913E-05</ixx>
+          <ixy>2.31178391901498E-07</ixy>
+          <ixz>-5.43015326617191E-07</ixz>
+          <iyy>6.33811149620758E-06</iyy>
+          <iyz>-1.53900940349086E-08</iyz>
+          <izz>3.86437802749912E-05</izz>
+        </inertia>
+        <mass>0.0670770301533824</mass>
+      </inertial>
+
+      <visual name="rgbd_back_up_visual">
+        <pose>-0.57035 -0.00787 0.93755 -0 1.0123 3.14159</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>/home/hz/hz/Work/Grabotics/b1_simulation/b1-simulation_v2/src/b1_simulation_v2/buddi_gazebo/meshes/rgbd_back_up_link.dae</uri>
+          </mesh>
+        </geometry>
+        <!-- <material name="">
+          <color>0.298039215686275 0.298039215686275 0.298039215686275 1</color>
+        </material> -->
+      </visual>
+      <collision name="rgbd_back_up_collision">
+        <pose>-0.57035 -0.00787 0.93755 -0 1.0123 3.14159</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>/home/hz/hz/Work/Grabotics/b1_simulation/b1-simulation_v2/src/b1_simulation_v2/buddi_gazebo/meshes/rgbd_back_up_link.dae</uri>
+          </mesh>
+        </geometry>
+      </collision>
+
+      <sensor name="back_up_rgbd" type="camera">
+        <always_on>true</always_on>
+        <visualize>true</visualize>
+        <update_rate>30</update_rate>
+        <camera name="back_up_rgb">
+          <horizontal_fov>1.085595</horizontal_fov>
+          <image>
+              <width>640</width>
+              <height>480</height>
+              <format>R8G8B8</format>
+          </image>
+          <clip>
+              <near>0.03</near>
+              <far>100</far>
+          </clip>
+          <noise>
+            <type>gaussian</type>
+            <!-- Noise is sampled independently per pixel on each frame.
+                  That pixel's noise value is added to each of its color
+                  channels, which at that point lie in the range [0,1]. -->
+            <mean>0.0</mean>
+            <stddev>0.007</stddev>
+          </noise>
+        </camera>
+          <plugin name="back_up_rgbd_driver" filename="libgazebo_ros_camera.so">
+            <ros>
+              <!-- <namespace>test_cam</namespace> -->
+              <!-- <remapping>image_raw:=image_demo</remapping> -->
+              <!-- <remapping>camera_info:=camera_info_demo</remapping> -->
+            </ros>
+            <!-- camera_name>omit so it defaults to sensor name</camera_name-->
+            <!-- frame_name>omit so it defaults to link name</frameName-->
+            <!-- <hack_baseline>0.07</hack_baseline> -->
+          </plugin>
+      </sensor>
+    </link>    
+
+    <link name="imu_link">
+      <pose relative_to='imu_joint'>0 0 0 0 0 0</pose>
+      <inertial>
+        <pose>0.0166053419934598 2.66345563128984E-16 0.000132913998989181 0 0 0</pose>
+        <inertia>
+          <ixx>0.233264134445836</ixx>
+          <ixy>0.00351086390156572</ixy>
+          <ixz>0.000257700401473968</ixz>
+          <iyy>0.533719570203863</iyy>
+          <iyz>3.59862063061443E-18</iyz>
+          <izz>0.766885293928605</izz>
+        </inertia>
+        <mass>6.01147073755572</mass>
+      </inertial>
+      <visual name='imu_link_visual'>
+        <pose>0 0 0 0 0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>/home/hz/hz/Work/Grabotics/b1_simulation/b1-simulation_v2/src/b1_simulation_v2/buddi_gazebo/meshes/imu_link.dae</uri>
+          </mesh>
+        </geometry>
+      </visual>
+
+      <collision name='imu_link_collision'>
+        <pose>0 0 0 0 0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>/home/hz/hz/Work/Grabotics/b1_simulation/b1-simulation_v2/src/b1_simulation_v2/buddi_gazebo/meshes/imu_link.dae</uri>
+          </mesh>
+        </geometry>
+      </collision>
+
+      <sensor name="buddi_imu" type="imu">
+        <always_on>true</always_on>
+        <update_rate>200</update_rate>
+        <imu>
+          <angular_velocity>
+            <x>
+              <noise type="gaussian">
+                <mean>0.0</mean>
+                <stddev>2e-4</stddev>
+              </noise>
+            </x>
+            <y>
+              <noise type="gaussian">
+                <mean>0.0</mean>
+                <stddev>2e-4</stddev>
+              </noise>
+            </y>
+            <z>
+              <noise type="gaussian">
+                <mean>0.0</mean>
+                <stddev>2e-4</stddev>
+              </noise>
+            </z>
+          </angular_velocity>
+          <linear_acceleration>
+            <x>
+              <noise type="gaussian">
+                <mean>0.0</mean>
+                <stddev>1.7e-2</stddev>
+              </noise>
+            </x>
+            <y>
+              <noise type="gaussian">
+                <mean>0.0</mean>
+                <stddev>1.7e-2</stddev>
+              </noise>
+            </y>
+            <z>
+              <noise type="gaussian">
+                <mean>0.0</mean>
+                <stddev>1.7e-2</stddev>
+              </noise>
+            </z>
+          </linear_acceleration>
+        </imu>
+        <plugin name="buddi_imu" filename="libgazebo_ros_imu_sensor.so">
+          <ros>
+            <!-- <namespace>/tb3</namespace> -->
+            <remapping>~/out:=imu</remapping>
+          </ros>
+        </plugin>
+      </sensor>
+    </link>
+    
+    <!-- <plugin name="buddi_diff_drive" filename="libgazebo_ros_diff_drive.so">
+      <ros>
+      </ros>
+
+      <update_rate>500</update_rate>
+
+      <left_joint>wheel_left_joint</left_joint>
+      <right_joint>wheel_right_joint</right_joint>
+
+      <wheel_separation>0.429</wheel_separation>
+      <wheel_diameter>0.066</wheel_diameter>
+
+      <max_wheel_torque>20</max_wheel_torque>
+      <max_wheel_acceleration>1.0</max_wheel_acceleration>
+
+      <command_topic>b1_cmd_vel</command_topic>
+
+      <publish_odom>true</publish_odom>
+      <publish_odom_tf>true</publish_odom_tf>
+      <publish_wheel_tf>false</publish_wheel_tf>
+
+      <odometry_topic>odom</odometry_topic>
+      <odometry_frame>odom</odometry_frame>
+      <robot_base_frame>base_footprint</robot_base_frame>
+    </plugin> -->
+
+    <!-- <plugin name="buddi_joint_state" filename="libgazebo_ros_joint_state_publisher.so">
+      <ros>
+        <remapping>~/out:=joint_states</remapping>
+      </ros>
+      <update_rate>30</update_rate>
+      <joint_name>wheel_left_joint</joint_name>
+      <joint_name>wheel_right_joint</joint_name>
+    </plugin>     -->
+
+  </model>
+</sdf>

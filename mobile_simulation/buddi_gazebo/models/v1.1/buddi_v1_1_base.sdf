@@ -1,0 +1,36 @@
+<sdf version='1.7'>
+  <model name='buddi_v1_1-urdf'>
+    <link name='base_link'>
+      <inertial>
+        <pose>0.000278 0.380165 0.003282 0 -0 0</pose>
+        <mass>14.092</mass>
+        <inertia>
+          <ixx>0.708985</ixx>
+          <ixy>-6.07929e-05</ixy>
+          <ixz>6.68228e-06</ixz>
+          <iyy>0.314489</iyy>
+          <iyz>-3.05376e-05</iyz>
+          <izz>0.647007</izz>
+        </inertia>
+      </inertial>
+      <collision name='base_link_collision'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://buddi_v1_1-urdf/meshes/base_link.STL</uri>
+          </mesh>
+        </geometry>
+      </collision>
+      <visual name='base_link_visual'>
+        <pose>0 0 0 0 -0 0</pose>
+        <geometry>
+          <mesh>
+            <scale>1 1 1</scale>
+            <uri>model://buddi_v1_1-urdf/meshes/base_link.STL</uri>
+          </mesh>
+        </geometry>
+      </visual>
+    </link>
+  </model>
+</sdf>

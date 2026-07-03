@@ -1,0 +1,693 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- This URDF was automatically created by SolidWorks to URDF Exporter! Originally created by Stephen Brawner (brawner@gmail.com) 
+     Commit Version: 1.6.0-4-g7f85cfe  Build Version: 1.6.7995.38578
+     For more information, please see http://wiki.ros.org/sw_urdf_exporter -->
+<robot
+  name="buddi_v1_1_urdf002_feb25">
+  <link
+    name="base_link">
+    <inertial>
+      <origin
+        xyz="0.00599665382886891 0.000469252034125613 0.534169826921973"
+        rpy="0 0 0" />
+      <mass
+        value="8.54667041681296" />
+      <inertia
+        ixx="0.635392750794211"
+        ixy="1.83594725495443E-05"
+        ixz="-1.01161325219629E-05"
+        iyy="0.688388901351783"
+        iyz="-5.34420617120795E-05"
+        izz="0.302798660676738" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://buddi_gazebo/meshes/v1.1/base_link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.796078431372549 0.823529411764706 0.937254901960784 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://buddi_gazebo/meshes/v1.1/base_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <link
+    name="right_link">
+    <inertial>
+      <origin
+        xyz="-1.25713803005449E-07 0.050092534003201 6.98756006506374E-06"
+        rpy="0 0 0" />
+      <mass
+        value="1.90582648149752" />
+      <inertia
+        ixx="0.00470035831126743"
+        ixy="1.03557004271693E-08"
+        ixz="-4.7859950288531E-11"
+        iyy="0.00847290142967573"
+        iyz="-8.29367991815255E-07"
+        izz="0.00469997521028495" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://buddi_gazebo/meshes/v1.1/right_link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="1 1 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://buddi_gazebo/meshes/v1.1/right_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="right_wheel"
+    type="revolute">
+    <origin
+      xyz="0 -0.264 0.1002"
+      rpy="0 0 0" />
+    <parent
+      link="base_link" />
+    <child
+      link="right_link" />
+    <axis
+      xyz="0 -1 0" />
+    <limit
+      lower="0"
+      upper="0"
+      effort="0"
+      velocity="0" />
+  </joint>
+  <link
+    name="left_link">
+    <inertial>
+      <origin
+        xyz="-5.16403987471405E-09 -0.0494652482865064 -4.76340613389525E-06"
+        rpy="0 0 0" />
+      <mass
+        value="1.8921998817572" />
+      <inertia
+        ixx="0.00469770769377073"
+        ixy="-6.2283353893799E-10"
+        ixz="4.78599560998444E-11"
+        iyy="0.00846995017161347"
+        iyz="-8.29367991778965E-07"
+        izz="0.00469732441759474" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://buddi_gazebo/meshes/v1.1/left_link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="1 1 1 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://buddi_gazebo/meshes/v1.1/left_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="left_joint"
+    type="revolute">
+    <origin
+      xyz="0 0.264 0.1002"
+      rpy="0 0 0" />
+    <parent
+      link="base_link" />
+    <child
+      link="left_link" />
+    <axis
+      xyz="0 1 0" />
+    <limit
+      lower="0"
+      upper="0"
+      effort="0"
+      velocity="0" />
+  </joint>
+  <link
+    name="caster_fl_link">
+    <inertial>
+      <origin
+        xyz="0.00967137427256998 1.11022302462516E-16 0.017467017982218"
+        rpy="0 0 0" />
+      <mass
+        value="0.210295532086898" />
+      <inertia
+        ixx="9.40460454958532E-05"
+        ixy="3.70178701434447E-20"
+        ixz="-6.47409383365322E-06"
+        iyy="0.000143356854559627"
+        iyz="5.73825265970791E-19"
+        izz="0.000109893916312989" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://buddi_gazebo/meshes/v1.1/caster_fl_link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.501960784313725 0 0 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://buddi_gazebo/meshes/v1.1/caster_fl_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="caster_fl_joint"
+    type="fixed">
+    <origin
+      xyz="0.2825 0.172 0.0377"
+      rpy="0 0 0" />
+    <parent
+      link="base_link" />
+    <child
+      link="caster_fl_link" />
+    <axis
+      xyz="0 0 0" />
+  </joint>
+  <link
+    name="caster_fr_link">
+    <inertial>
+      <origin
+        xyz="0.00967139886766821 -8.32667268468867E-17 0.0174670323629414"
+        rpy="0 0 0" />
+      <mass
+        value="0.210295705709257" />
+      <inertia
+        ixx="9.40461308141003E-05"
+        ixy="-5.19779545546498E-20"
+        ixz="-6.47407055748393E-06"
+        iyy="0.00014335693808301"
+        iyz="-3.96446963493578E-19"
+        izz="0.000109894004250019" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://buddi_gazebo/meshes/v1.1/caster_fr_link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.501960784313725 0 0 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://buddi_gazebo/meshes/v1.1/caster_fr_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="caster_fr_joint"
+    type="fixed">
+    <origin
+      xyz="0.2825 -0.172 0.0377"
+      rpy="0 0 0" />
+    <parent
+      link="base_link" />
+    <child
+      link="caster_fr_link" />
+    <axis
+      xyz="0 0 0" />
+  </joint>
+  <link
+    name="caster_bl_link">
+    <inertial>
+      <origin
+        xyz="0.00967137427256998 8.32667268468867E-17 0.017467017982218"
+        rpy="0 0 0" />
+      <mass
+        value="0.210295532086898" />
+      <inertia
+        ixx="9.40460454958532E-05"
+        ixy="3.72991451940804E-20"
+        ixz="-6.47409383365321E-06"
+        iyy="0.000143356854559627"
+        iyz="5.82283263786648E-19"
+        izz="0.000109893916312989" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://buddi_gazebo/meshes/v1.1/caster_bl_link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.501960784313725 0 0 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://buddi_gazebo/meshes/v1.1/caster_bl_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="caster_bl_joint"
+    type="fixed">
+    <origin
+      xyz="-0.377500000000035 0.170508005847294 0.0376999999999967"
+      rpy="0 0 0" />
+    <parent
+      link="base_link" />
+    <child
+      link="caster_bl_link" />
+    <axis
+      xyz="0 0 0" />
+  </joint>
+  <link
+    name="caster_br_link">
+    <inertial>
+      <origin
+        xyz="0.00967139886766816 -5.55111512312578E-17 0.0174670323629413"
+        rpy="0 0 0" />
+      <mass
+        value="0.210295705709256" />
+      <inertia
+        ixx="9.40461308141003E-05"
+        ixy="-8.20738357175857E-20"
+        ixz="-6.47407055748393E-06"
+        iyy="0.00014335693808301"
+        iyz="-3.72067602154101E-19"
+        izz="0.000109894004250019" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://buddi_gazebo/meshes/v1.1/caster_br_link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.501960784313725 0 0 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://buddi_gazebo/meshes/v1.1/caster_br_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="caster_br_joint"
+    type="fixed">
+    <origin
+      xyz="-0.3775 -0.17051 0.0377"
+      rpy="0 0 0" />
+    <parent
+      link="base_link" />
+    <child
+      link="caster_br_link" />
+    <axis
+      xyz="0 0 0" />
+  </joint>
+  <link
+    name="lidar_for_link">
+    <inertial>
+      <origin
+        xyz="1.0953530577007E-07 -2.9531777856473E-09 0.00648420690654422"
+        rpy="0 0 0" />
+      <mass
+        value="0.00889251291577236" />
+      <inertia
+        ixx="3.5677905495559E-06"
+        ixy="1.05263088117619E-11"
+        ixz="1.0986148660476E-11"
+        iyy="3.56779069928039E-06"
+        iyz="-3.09089859321299E-13"
+        izz="4.52194207995464E-06" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://buddi_gazebo/meshes/v1.1/lidar_for_link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.792156862745098 0.819607843137255 0.929411764705882 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://buddi_gazebo/meshes/v1.1/lidar_for_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="lidar_for_joint"
+    type="fixed">
+    <origin
+      xyz="0.3592052397081 0.2139999894461 0.2553987783911"
+      rpy="3.14159265358979 0 0.78539816339766" />
+    <parent
+      link="base_link" />
+    <child
+      link="lidar_for_link" />
+    <axis
+      xyz="0 0 0" />
+  </joint>
+  <link
+    name="lidar_b_link">
+    <inertial>
+      <origin
+        xyz="1.09625971467242E-07 -2.59167651228687E-09 0.00648420695813953"
+        rpy="0 0 0" />
+      <mass
+        value="0.00889251287474018" />
+      <inertia
+        ixx="3.56779052934972E-06"
+        ixy="1.05384626511999E-11"
+        ixz="1.09957815361059E-11"
+        iyy="3.56779068374264E-06"
+        iyz="-2.70682177792509E-13"
+        izz="4.52194205519388E-06" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://buddi_gazebo/meshes/v1.1/lidar_b_link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.792156862745098 0.819607843137255 0.929411764705882 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://buddi_gazebo/meshes/v1.1/lidar_b_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="lidar_b_joint"
+    type="fixed">
+    <origin
+      xyz="-0.35921 -0.214 0.2554"
+      rpy="-3.1416 0 -2.3562" />
+    <parent
+      link="base_link" />
+    <child
+      link="lidar_b_link" />
+    <axis
+      xyz="0 0 0" />
+  </joint>
+  <link
+    name="rgbd_bd_link">
+    <inertial>
+      <origin
+        xyz="0.0162264261175118 0.00393099014201237 1.3869699680211E-05"
+        rpy="0 0 0" />
+      <mass
+        value="0.0514895248416269" />
+      <inertia
+        ixx="0.000141516741983693"
+        ixy="-7.57354809363005E-06"
+        ixz="-6.98779094749386E-08"
+        iyy="0.000123294094850715"
+        iyz="1.17821536534292E-07"
+        izz="2.74019094074866E-05" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://buddi_gazebo/meshes/v1.1/rgbd_bd_link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.796078431372549 0.823529411764706 0.937254901960784 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://buddi_gazebo/meshes/v1.1/rgbd_bd_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="rgbd_bd_joint"
+    type="fixed">
+    <origin
+      xyz="-0.44026 0 0.202"
+      rpy="1.5708 0.6545 0" />
+    <parent
+      link="base_link" />
+    <child
+      link="rgbd_bd_link" />
+    <axis
+      xyz="0 0 0" />
+  </joint>
+  <link
+    name="rgbd_bu_link">
+    <inertial>
+      <origin
+        xyz="-0.0121749689613142 0.00166764283741136 3.33066907387547E-16"
+        rpy="0 0 0" />
+      <mass
+        value="0.0499436424701567" />
+      <inertia
+        ixx="3.03099978294818E-05"
+        ixy="6.18417155628908E-07"
+        ixz="1.6940658945086E-21"
+        iyy="5.03370369341803E-06"
+        iyz="-1.16322778687462E-20"
+        izz="3.03689752725919E-05" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://buddi_gazebo/meshes/v1.1/rgbd_bu_link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="1 1 0.945098039215686 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://buddi_gazebo/meshes/v1.1/rgbd_bu_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="rgbd_bu_joint"
+    type="fixed">
+    <origin
+      xyz="-0.46587 0 0.98471"
+      rpy="0 0.98611 3.1416" />
+    <parent
+      link="base_link" />
+    <child
+      link="rgbd_bu_link" />
+    <axis
+      xyz="0 0 0" />
+  </joint>
+  <link
+    name="rgbd_fd_link">
+    <inertial>
+      <origin
+        xyz="0.353400151588005 1.63186252329502E-07 0.26266590818846"
+        rpy="0 0 0" />
+      <mass
+        value="0.102688722687071" />
+      <inertia
+        ixx="0.000262243563965049"
+        ixy="-2.59737049261011E-08"
+        ixz="-9.57828128555277E-06"
+        iyy="5.4802544259148E-05"
+        iyz="-1.78947433087215E-08"
+        izz="0.000267375275843269" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://buddi_gazebo/meshes/v1.1/rgbd_fd_link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.749019607843137 0.67843137254902 0.352941176470588 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://buddi_gazebo/meshes/v1.1/rgbd_fd_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="rgbd_fd_joint"
+    type="fixed">
+    <origin
+      xyz="0.44027 0 0.202"
+      rpy="0 0.65456 -3.1416" />
+    <parent
+      link="base_link" />
+    <child
+      link="rgbd_fd_link" />
+    <axis
+      xyz="0 0 0" />
+  </joint>
+  <link
+    name="rgbd_fu_link">
+    <inertial>
+      <origin
+        xyz="-0.0121749689613144 -0.00166764283741135 1.11022302462516E-16"
+        rpy="0 0 0" />
+      <mass
+        value="0.049943642470157" />
+      <inertia
+        ixx="3.03099978294819E-05"
+        ixy="-6.18417155628911E-07"
+        ixz="-5.0821976835258E-21"
+        iyy="5.03370369341809E-06"
+        iyz="-3.59872889703051E-21"
+        izz="3.0368975272592E-05" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://buddi_gazebo/meshes/v1.1/rgbd_fu_link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="1 1 0.945098039215686 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://buddi_gazebo/meshes/v1.1/rgbd_fu_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="rgbd_fu_joint"
+    type="fixed">
+    <origin
+      xyz="0.46587 0 0.98471"
+      rpy="0 0.98611 0" />
+    <parent
+      link="base_link" />
+    <child
+      link="rgbd_fu_link" />
+    <axis
+      xyz="0 0 0" />
+  </joint>
+</robot>
