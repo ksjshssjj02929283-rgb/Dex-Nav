@@ -580,7 +580,7 @@ private:
             return;
         }
 
-        if (is_goal_ && stop_count_ > 20) {
+        if (is_goal_ && stop_count_ >= 5) {
             publishFeedback("SUCCEEDED");
             finishSucceeded();
             return;
@@ -638,14 +638,12 @@ private:
             filtered_cmd_vel_.angular.z = 0.0;
             stop_count_++;
 
-            if (stop_count_ <= 20) {
-                cmd_vel_pub_->publish(filtered_cmd_vel_);
-                if (stop_count_ == 1) {
-                    RCLCPP_INFO(
-                        this->get_logger(),
-                        "Precise control goal reached with final error: x_error=%.4f m, dist=%.4f m, yaw=%.4f rad",
-                        x_error, dist, yaw_error);
-                }
+            cmd_vel_pub_->publish(filtered_cmd_vel_);
+            if (stop_count_ == 1) {
+                RCLCPP_INFO(
+                    this->get_logger(),
+                    "Precise control goal reached with final error: x_error=%.4f m, dist=%.4f m, yaw=%.4f rad",
+                    x_error, dist, yaw_error);
             }
         } else {
             stop_count_ = 0;

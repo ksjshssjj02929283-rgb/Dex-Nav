@@ -11,10 +11,10 @@ mobile_control_node:
     rotate_to_heading_kp: 1.2
     rotate_stop_yaw_error: 0.02
     
-    k_rho: 1.0
+    k_rho: 1.5
     
-    near_target_dist: 0.4
-    cmd_vel_filter_alpha: 0.3
+    near_target_dist: 0.15
+    cmd_vel_filter_alpha: 0.5
     min_angular_vel: 0.01
     xy_tolerance: 0.02
     yaw_tolerance: 0.02

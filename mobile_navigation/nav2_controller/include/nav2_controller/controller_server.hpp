@@ -184,6 +184,11 @@ protected:
     bool mark_goal_reached_on_success,
     bool check_yaw = true);
   /**
+   * @brief Check the current odometry against the active goal checker's stop tolerances
+   * @return true if translational and rotational velocities are both stopped
+   */
+  bool isRobotStoppedForGoalChecker();
+  /**
    * @brief 判断新 path 是否仍指向当前目标点
    * @param path 待更新的全局路径
    * @return true 表示新 path 终点与当前目标点基本一致
@@ -296,6 +301,8 @@ protected:
   double failure_tolerance_;
 
   bool near_goal_progress_enabled_{true};
+  bool near_goal_hold_position_when_pose_reached_{false};
+  bool near_goal_pose_hold_active_{false};
   double near_goal_progress_distance_{0.25};
   double near_goal_progress_required_movement_radius_{0.01};
   double near_goal_progress_required_movement_angle_{0.005};

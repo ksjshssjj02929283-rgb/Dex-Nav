@@ -24,10 +24,11 @@ namespace mppi::critics
 /**
  * @class mppi::critics::LinearVelocityCritic
  * @brief 线速度软约束（双项，同权重）：
- *        ① 速度项 跟踪按剩余距离算的期望速度 v_desired = min(vx_max, sqrt(2*ax_max*d))
- *           （远处=vx_max 不降速，接近目标平滑降到 0）；罚 |vx - v_desired|。
+ *        ① 速度项 跟踪按剩余距离算的期望速度大小
+ *           speed_desired = min(stage_speed_max, sqrt(2*ax_max*d))；
+ *           罚 ||vx| - speed_desired|，不在此 critic 中偏置前进/倒车方向。
  *        ② 加速度项 罚相邻 |Δvx|（线加速度，平滑）。
- *        vx_max / ax_max 从 FollowPath 全局参数读取（critic 内不自定义速度/加速度参数）。
+ *        stage_speed_max 由三阶段 profile 动态提供，ax_max 从 FollowPath 全局参数读取。
  */
 class LinearVelocityCritic : public CriticFunction
 {
@@ -41,7 +42,7 @@ public:
 protected:
   unsigned int power_{0};
   float weight_{0};
-  float vx_max_{0.7f};   // 从 FollowPath 全局参数读
+  float speed_max_{0.7f};  // 当前三阶段 profile 的最大线速度绝对值
   float ax_max_{0.5f};   // 从 FollowPath 全局参数读（作减速度）
 };
 

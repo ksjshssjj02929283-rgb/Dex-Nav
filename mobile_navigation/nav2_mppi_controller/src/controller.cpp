@@ -370,6 +370,12 @@ void MPPIController::configureStages()
     position_first_yaw_threshold_, "approach_position_first_yaw_threshold",
     2.094, ParameterType::Static);
   getParam(
+    position_first_lateral_error_threshold_,
+    "approach_position_first_lateral_error_threshold", 0.05, ParameterType::Static);
+  getParam(
+    position_first_lateral_ratio_,
+    "approach_position_first_lateral_ratio", 1.0, ParameterType::Static);
+  getParam(
     positioning_goal_angle_weight_, "approach_positioning_goal_angle_weight",
     10.0, ParameterType::Static);
   getParam(
@@ -383,6 +389,9 @@ void MPPIController::configureStages()
   final_yaw_exit_lat_tolerance_ = std::max(
     final_yaw_enter_lat_tolerance_, final_yaw_exit_lat_tolerance_);
   position_first_yaw_threshold_ = std::clamp(position_first_yaw_threshold_, 0.0, M_PI);
+  position_first_lateral_error_threshold_ =
+    std::max(0.0, position_first_lateral_error_threshold_);
+  position_first_lateral_ratio_ = std::max(0.0, position_first_lateral_ratio_);
   positioning_goal_angle_weight_ = std::max(0.0f, positioning_goal_angle_weight_);
   final_yaw_vx_max_ = std::max(0.0f, final_yaw_vx_max_);
   final_yaw_wz_max_ = std::max(0.0f, final_yaw_wz_max_);
@@ -553,7 +562,9 @@ void MPPIController::applyProfileForPathState(
   if (selected_profile == STAGE_APPROACH &&
     (active_stage_ != STAGE_APPROACH || !approach_mode_locked_))
   {
-    updateApproachMode(active_stage_, selected_profile, goal_yaw_error);
+    updateApproachMode(
+      active_stage_, selected_profile, goal_longitudinal_error,
+      goal_lateral_error, goal_yaw_error);
   } else if (selected_profile != STAGE_APPROACH) {
     approach_mode_ = APPROACH_NORMAL;
     approach_mode_locked_ = false;
@@ -587,13 +598,25 @@ void MPPIController::applyProfileForPathState(
   }
 
   updateProfileTransition();
+  if (active_stage_ == STAGE_APPROACH) {
+    // 进入最后 25 cm 时速度上限必须立即收紧。critic 权重仍可平滑过渡，但若速度约束也
+    // 用 1 s 插值，短距离场景可能在限速完全生效前已经越过目标。
+    applied_profile_.velocity.vx_max = std::min(
+      applied_profile_.velocity.vx_max, stages_[STAGE_APPROACH].velocity.vx_max);
+    applied_profile_.velocity.vx_min = std::max(
+      applied_profile_.velocity.vx_min, stages_[STAGE_APPROACH].velocity.vx_min);
+  }
   updateApproachSubstage(goal_longitudinal_error, goal_lateral_error);
   applyApproachSubstageProfile();
+  applied_profile_.critics.linear_velocity.speed_max = std::max(
+    std::abs(applied_profile_.velocity.vx_min),
+    std::abs(applied_profile_.velocity.vx_max));
   optimizer_.applyProfile(applied_profile_);
 }
 
 void MPPIController::updateApproachMode(
-  size_t previous_stage, size_t selected_stage, double goal_yaw_error)
+  size_t previous_stage, size_t selected_stage, double goal_longitudinal_error,
+  double goal_lateral_error, double goal_yaw_error)
 {
   if (selected_stage != STAGE_APPROACH) {
     approach_mode_ = APPROACH_NORMAL;
@@ -605,17 +628,27 @@ void MPPIController::updateApproachMode(
   }
 
   approach_substage_ = APPROACH_POSITIONING;
-  approach_mode_ =
-    std::abs(goal_yaw_error) >= position_first_yaw_threshold_ ?
+  const double abs_lon = std::abs(goal_longitudinal_error);
+  const double abs_lat = std::abs(goal_lateral_error);
+  const bool large_yaw_change =
+    std::abs(goal_yaw_error) >= position_first_yaw_threshold_;
+  const bool lateral_dominant_goal =
+    abs_lat >= position_first_lateral_error_threshold_ &&
+    abs_lat >= position_first_lateral_ratio_ * std::max(abs_lon, 1e-6);
+  approach_mode_ = large_yaw_change || lateral_dominant_goal ?
     APPROACH_POSITION_FIRST : APPROACH_NORMAL;
   approach_mode_locked_ = true;
   const char * mode_name =
     approach_mode_ == APPROACH_POSITION_FIRST ? "position_first" : "normal";
   RCLCPP_INFO(
     logger_,
-    "MPPI approach mode locked: %s, entry |yaw_error|=%.3f rad, threshold=%.3f rad. "
-    "The mode remains locked until leaving approach.",
-    mode_name, std::abs(goal_yaw_error), position_first_yaw_threshold_);
+    "MPPI approach mode locked: %s, entry |lon|=%.3f m |lat|=%.3f m "
+    "|yaw_error|=%.3f rad, yaw_threshold=%.3f rad, lateral_threshold=%.3f m, "
+    "lateral_ratio=%.3f, reason=%s. The mode remains locked until leaving approach.",
+    mode_name, abs_lon, abs_lat, std::abs(goal_yaw_error), position_first_yaw_threshold_,
+    position_first_lateral_error_threshold_, position_first_lateral_ratio_,
+    large_yaw_change ? "large_yaw" :
+    (lateral_dominant_goal ? "lateral_dominant" : "normal_geometry"));
 }
 
 void MPPIController::updateApproachSubstage(

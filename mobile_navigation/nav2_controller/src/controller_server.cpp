@@ -69,6 +69,8 @@ ControllerServer::ControllerServer(const rclcpp::NodeOptions & options)
 
   declare_parameter("failure_tolerance", rclcpp::ParameterValue(0.0));
   declare_parameter("near_goal_progress.enabled", rclcpp::ParameterValue(true));
+  declare_parameter(
+    "near_goal_progress.hold_position_when_goal_pose_reached", rclcpp::ParameterValue(false));
   declare_parameter("near_goal_progress.distance", rclcpp::ParameterValue(0.25));
   declare_parameter(
     "near_goal_progress.required_movement_radius", rclcpp::ParameterValue(0.01));
@@ -148,6 +150,9 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
   get_parameter("speed_limit_topic", speed_limit_topic);
   get_parameter("failure_tolerance", failure_tolerance_);
   get_parameter("near_goal_progress.enabled", near_goal_progress_enabled_);
+  get_parameter(
+    "near_goal_progress.hold_position_when_goal_pose_reached",
+    near_goal_hold_position_when_pose_reached_);
   get_parameter("near_goal_progress.distance", near_goal_progress_distance_);
   get_parameter(
     "near_goal_progress.required_movement_radius",
@@ -183,9 +188,10 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
     rclcpp::Duration::from_seconds(near_goal_lateral_stall_time_allowance);
   RCLCPP_INFO(
     get_logger(),
-    "Near-goal progress: enabled=%s distance=%.3f m movement=%.3f m angle=%.3f rad "
-    "allowance=%.3f s",
+    "Near-goal progress: enabled=%s hold_pose=%s distance=%.3f m movement=%.3f m "
+    "angle=%.3f rad allowance=%.3f s",
     near_goal_progress_enabled_ ? "true" : "false",
+    near_goal_hold_position_when_pose_reached_ ? "true" : "false",
     near_goal_progress_distance_,
     near_goal_progress_required_movement_radius_,
     near_goal_progress_required_movement_angle_,
@@ -591,6 +597,7 @@ void ControllerServer::setPlannerPath(const nav_msgs::msg::Path & path)
   end_pose_.header.frame_id = path.header.frame_id;
   goal_checkers_[current_goal_checker_]->reset();
   near_goal_progress_acceptance_reached_ = false;
+  near_goal_pose_hold_active_ = false;
 
   RCLCPP_DEBUG(
     get_logger(), "Path end point is (%.2f, %.2f)",
@@ -943,6 +950,28 @@ bool ControllerServer::isWithinGoalCheckerTolerance(
   return false;
 }
 
+bool ControllerServer::isRobotStoppedForGoalChecker()
+{
+  geometry_msgs::msg::Pose goal_tolerance;
+  geometry_msgs::msg::Twist vel_tolerance;
+  if (!goal_checkers_[current_goal_checker_]->getTolerances(goal_tolerance, vel_tolerance)) {
+    return false;
+  }
+
+  const double invalid_field = std::numeric_limits<double>::lowest();
+  const auto is_valid_tolerance = [invalid_field](double tolerance) {
+      return tolerance > invalid_field / 2.0;
+    };
+  const auto velocity = getThresholdedTwist(odom_sub_->getTwist());
+  const bool trans_stopped =
+    !is_valid_tolerance(vel_tolerance.linear.x) ||
+    std::hypot(velocity.x, velocity.y) <= std::fabs(vel_tolerance.linear.x);
+  const bool rot_stopped =
+    !is_valid_tolerance(vel_tolerance.angular.z) ||
+    std::fabs(velocity.theta) <= std::fabs(vel_tolerance.angular.z);
+  return trans_stopped && rot_stopped;
+}
+
 bool ControllerServer::isSamePathGoal(const nav_msgs::msg::Path & path)
 {
   if (path.poses.empty() || current_path_.poses.empty()) {
@@ -1006,6 +1035,31 @@ void ControllerServer::computeAndPublishVelocity()
   }
   auto t_pose_end = std::chrono::high_resolution_clock::now();
   auto pose_ms = std::chrono::duration<double, std::milli>(t_pose_end - t_pose_start).count();
+
+  if (near_goal_pose_hold_active_) {
+    publishZeroVelocity();
+    if (isRobotStoppedForGoalChecker()) {
+      near_goal_pose_hold_active_ = false;
+      RCLCPP_INFO(
+        get_logger(),
+        "Near-goal pose hold: chassis is stopped. GoalChecker will now confirm whether "
+        "the final pose is still inside the acceptance tolerances.");
+    }
+    return;
+  }
+
+  if (near_goal_hold_position_when_pose_reached_ &&
+    isWithinGoalCheckerTolerance(pose, false, true))
+  {
+    near_goal_pose_hold_active_ = true;
+    RCLCPP_INFO(
+      get_logger(),
+      "Near-goal pose reached before chassis stopped: holding zero velocity until odometry "
+      "meets the active GoalChecker stop tolerances, preventing MPPI from driving back out "
+      "of the acceptance window.");
+    publishZeroVelocity();
+    return;
+  }
 
   auto t_progress_start = std::chrono::high_resolution_clock::now();
   const bool in_goal_accept_position = isWithinGoalCheckerTolerance(pose, false, false);
@@ -1336,6 +1390,9 @@ ControllerServer::dynamicParametersCallback(std::vector<rclcpp::Parameter> param
       if (name == "near_goal_progress.enabled") {
         near_goal_progress_enabled_ = parameter.as_bool();
         resetNearGoalProgress();
+      } else if (name == "near_goal_progress.hold_position_when_goal_pose_reached") {
+        near_goal_hold_position_when_pose_reached_ = parameter.as_bool();
+        near_goal_pose_hold_active_ = false;
       } else if (name == "near_goal_progress.lateral_stall_enabled") {
         near_goal_lateral_stall_enabled_ = parameter.as_bool();
         resetNearGoalLateralStall();
