@@ -83,6 +83,7 @@ controller_server:
       movement_time_allowance: 3.0 # 普通模式：允许未达到足够进展的时间，单位 s
     near_goal_progress:
       enabled: True # 是否启用接近目标点时的宽松的进展检查
+      hold_position_when_goal_pose_reached: true # 位置和角度进入接受区后持续发零速度，停稳后再报成功，防止MPPI重新带出2cm
       distance: 0.10 # 距离目标点小于该值时进入近目标模式，单位 m
       required_movement_radius: 0.01 # 近目标模式：移动超过 1cm 才算有进展，避免小幅抖动刷新计时
       required_movement_angle: 0.02 # 近目标模式：旋转超过约1.15 度才算有进展，避免原地轻微摆动刷新计时
@@ -92,8 +93,8 @@ controller_server:
       lateral_stall_lon_tolerance: 0.02 # 连续 5 个控制周期 |纵向误差|≤2cm 才开始监测
       lateral_stall_yaw_tolerance: 0.05 # 连续 5 个控制周期 |航向误差|≤约2.86°才开始监测
       lateral_stall_lat_tolerance: 0.02 # |横向误差|>2cm 才监测；进入2cm后立即结束停滞监测
-      lateral_stall_min_improvement: 0.01 # 监测窗口内横向误差至少净改善5mm才重置计时
-      lateral_stall_time_allowance: 1.0 # 2秒内未净改善5mm则 FollowPath 失败
+      lateral_stall_min_improvement: 0.005 # 监测窗口内横向误差至少净改善5mm才重置计时
+      lateral_stall_time_allowance: 2.0 # 2秒内未净改善5mm则 FollowPath 失败
     goal_checker:
       plugin: "nav2_controller::PrecisionLongitudinalGoalChecker"
       desired_lon_goal_tolerance: 0.01 # 优先追求的纵向精度，当前配置为 1cm
@@ -142,7 +143,7 @@ controller_server:
       # ============================================================
       # 2. 三阶段切换参数
       # ============================================================
-      approach_distance: 0.5 # 距目标≤此进趋近段 approach（缩小：track 强 PathAlign 跟到 0.5m，approach 做最终精对）
+      approach_distance: 0.25 # 短距离任务先保留路径跟踪空间，最后25cm再进入精确趋近
       profile_transition_duration: 1.0 # 三段式切换过渡时间，避免速度约束和 critic 权重一拍硬切，单位 s
       align_enter_angle: 0.52 # 对齐段进入：车头-路径夹角(rad,~30°)超此进 align 段
       align_exit_angle: 0.31 # 对齐段退出：夹角降至此退出(rad,~18°,迟滞防抖)
@@ -152,20 +153,22 @@ controller_server:
       approach_final_yaw_exit_lon_tolerance: 0.02 # 最终转向中纵向漂移>2cm，退回位置调整
       approach_final_yaw_exit_lat_tolerance: 0.02 # 最终转向中横向漂移>2cm，退回位置调整
       approach_position_first_yaw_threshold: 2.094 # 进入 approach 时|航向误差|≥120°才锁定 position-first；否则保留完整朝向控制，防止绕圈
+      approach_position_first_lateral_error_threshold: 0.05 # 入场横向误差至少5cm才允许按横向主导判定 position-first
+      approach_position_first_lateral_ratio: 1.0 # |横向误差|≥|纵向误差|时视为横向主导，允许先修位置再对最终航向
       approach_positioning_goal_angle_weight: 10.0 # 仅 position-first 模式生效：位置调整时暂时减弱最终朝向约束
       approach_final_yaw_vx_max: 0.01 # 最终转向线速度限制为±1cm/s，允许 MPPI 小幅纠偏
       approach_final_yaw_wz_max: 0.75 # 最终转向最大角速度，降低180°转向时的位置漂移
       # ── 权重矩阵：各 critic 三段权重统一调参入口 [align, track, approach] ──
       stage_weights:
         GoalCritic: [0.0, 0.0, 10.0] # 目标位置距离：趋近段推动轨迹收敛到目标点
-        GoalLateralCritic: [0.0, 10.0, 150.0] # 目标横向误差：减小目标相对车身的左右偏差
+        GoalLateralCritic: [0.0, 10.0, 200.0] # 目标横向误差：减小目标相对车身的左右偏差
         GoalLongitudinalCritic: [0.0, 0.0, 50.0] # 目标纵向误差：减小目标相对车身的前后偏差
-        GoalAngleCritic: [0.0, 0.0, 110.0] # 目标朝向误差：趋近段对齐最终目标姿态
+        GoalAngleCritic: [0.0, 0.0, 100.0] # 目标朝向误差：趋近段对齐最终目标姿态
         PathAngleCritic: [18.0, 5.0, 2.0] # 路径朝向误差：使车头朝向前方路径点
         PathAlignCritic: [5.0, 40.0, 10.0] # 路径贴合误差：使候选轨迹尽量贴合全局路径
         PathFollowCritic: [0.0, 5.0, 2.0] # 路径推进：推动轨迹末端沿全局路径前进
         PreferForwardCritic: [5.0, 10.0, 5.0] # 前进偏好：惩罚倒车运动，鼓励向前行驶
-        LinearVelocityCritic: [0.0, 10.0, 10.0]  # 线速度软约束：跟踪按剩余距离计算的期望速度，并抑制相邻时刻速度突变
+        LinearVelocityCritic: [0.0, 10.0, 10.0]  # 线速度大小软约束：不偏置正/负方向，按当前阶段上限随剩余距离减速
         AngularVelocityCritic: [0.0, 0.0, 5.0]      # 镜像线速度(朝向减速)：approach 专用；⚠️track/align 必须 0(否则朝向误差大→逼 wz 最大旋转)；wz_max/az_max 从全局参数读；bag 调
         ObstaclesCritic: [5.0, 50.0, 0.0]   # 软斥力(repulsion)分段；致命 critical 全局常开
         CostCritic: [5.0, 50.0, 0.0]      # 软代价分段；致命由 ObstaclesCritic 兜底
@@ -181,9 +184,9 @@ controller_server:
         vx_min: -0.5
         vy_max: 0.5
         wz_max: 0.75
-      stage_approach: # 趋近段：vx 上限 0.7(减速交 LinearVelocity)、禁倒车、低 wz 平稳停靠
-        vx_max: 0.5
-        vx_min: -0.1
+      stage_approach: # 趋近段：限制前后速度，减少厘米级停车时的越界和反复换向
+        vx_max: 0.15
+        vx_min: -0.15
         vy_max: 0.5
         wz_max: 0.75
 
@@ -222,7 +225,7 @@ controller_server:
         collision_cost: 100000.0
         collision_margin_distance: 0.05 # 0.1
         near_goal_distance: 0.5
-        inflation_radius: 0.35 # 0.75 # 0.55 # 0.6 # (only in Humble)
+        inflation_radius: 0.3 # 0.75 # 0.55 # 0.6 # (only in Humble)
         cost_scaling_factor: 10.0 # (only in Humble)
       CostCritic:
         enabled: true
@@ -235,7 +238,7 @@ controller_server:
         trajectory_point_step: 2
       # GoalLateralCritic / GoalLongitudinalCritic：无全局子参数（deadband 已废弃、threshold 距离门已移除）；
       # 权重由 stage_weights 矩阵管，cost_power/last_n_points 用 C++ 默认。
-      LinearVelocityCritic: # 线速度软约束：v_desired=min(vx_max,√(2·ax_max·d))跟踪 + |Δvx|平滑；vx_max/ax_max 从全局参数读
+      LinearVelocityCritic: # 线速度大小软约束：speed_desired=min(当前阶段速度上限,√(2·ax_max·d))，不强制前进方向
         enabled: true
         cost_power: 2
         cost_weight: 8.0 # 初值，bag 调；与 goal critic 量级相当
@@ -271,7 +274,7 @@ local_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 10.0
-        inflation_radius: 0.35 # 0.75 # 0.55
+        inflation_radius: 0.3 # 0.75 # 0.55
       denoise_layer:
         plugin: "nav2_costmap_2d::DenoiseLayer"
         enabled: True
@@ -344,7 +347,7 @@ local_costmap:
       keepout_inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         enabled: True
-        inflation_radius: 0.35
+        inflation_radius: 0.3
       speed_filter:
         plugin: "nav2_costmap_2d::SpeedFilter"
         enabled: True
@@ -438,7 +441,7 @@ global_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 10.0
-        inflation_radius: 0.35 # 0.75 # 0.55
+        inflation_radius: 0.3 # 0.75 # 0.55
       keepout_filter:
         plugin: "nav2_costmap_2d::KeepoutFilter"
         enabled: True
@@ -446,7 +449,7 @@ global_costmap:
       keepout_inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         enabled: True
-        inflation_radius: 0.35
+        inflation_radius: 0.3
       speed_filter:
         plugin: "nav2_costmap_2d::SpeedFilter"
         enabled: True

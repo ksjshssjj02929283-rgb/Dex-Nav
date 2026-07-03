@@ -134,7 +134,9 @@ protected:
     double path_progress, double goal_distance, double heading_path_angle,
     double goal_longitudinal_error, double goal_lateral_error, double goal_yaw_error);
 
-  void updateApproachMode(size_t previous_stage, size_t selected_stage, double goal_yaw_error);
+  void updateApproachMode(
+    size_t previous_stage, size_t selected_stage, double goal_longitudinal_error,
+    double goal_lateral_error, double goal_yaw_error);
 
   void updateApproachSubstage(double goal_longitudinal_error, double goal_lateral_error);
 
@@ -188,6 +190,8 @@ protected:
   double final_yaw_exit_lon_tolerance_{0.02};
   double final_yaw_exit_lat_tolerance_{0.02};
   double position_first_yaw_threshold_{2.094};
+  double position_first_lateral_error_threshold_{0.05};
+  double position_first_lateral_ratio_{1.0};
   float positioning_goal_angle_weight_{10.0f};
   float final_yaw_vx_max_{0.03f};
   float final_yaw_wz_max_{0.4f};

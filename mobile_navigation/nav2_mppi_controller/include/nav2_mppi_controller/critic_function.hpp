@@ -77,6 +77,7 @@ struct PreferForwardCriticSettings
 struct LinearVelocityCriticSettings
 {
   float weight{0.0f};
+  float speed_max{0.0f};
 };
 
 struct AngularVelocityCriticSettings

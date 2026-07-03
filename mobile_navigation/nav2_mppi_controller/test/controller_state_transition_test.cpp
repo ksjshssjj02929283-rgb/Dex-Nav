@@ -65,10 +65,19 @@ public:
     position_first_yaw_threshold_ = threshold;
   }
 
-  void enterApproachFrom(size_t previous_stage, double yaw_error)
+  void setPositionFirstLateralGeometry(double threshold, double ratio)
+  {
+    position_first_lateral_error_threshold_ = threshold;
+    position_first_lateral_ratio_ = ratio;
+  }
+
+  void enterApproachFrom(
+    size_t previous_stage, double lon_error, double lat_error, double yaw_error)
   {
     active_stage_ = nav2_mppi_controller::STAGE_APPROACH;
-    updateApproachMode(previous_stage, nav2_mppi_controller::STAGE_APPROACH, yaw_error);
+    updateApproachMode(
+      previous_stage, nav2_mppi_controller::STAGE_APPROACH,
+      lon_error, lat_error, yaw_error);
   }
 
   size_t approachMode() const
@@ -148,15 +157,29 @@ TEST(ControllerStateTransitionTest, ApproachModeLocksFromEntryYawError)
 {
   TestableMPPIController controller;
   controller.setPositionFirstYawThreshold(2.094);
+  controller.setPositionFirstLateralGeometry(0.05, 1.0);
 
-  controller.enterApproachFrom(nav2_mppi_controller::STAGE_TRACK, 0.5);
+  controller.enterApproachFrom(nav2_mppi_controller::STAGE_TRACK, 0.4, 0.02, 0.5);
   EXPECT_EQ(controller.approachMode(), nav2_mppi_controller::APPROACH_NORMAL);
 
-  controller.enterApproachFrom(nav2_mppi_controller::STAGE_TRACK, 1.8);
+  controller.enterApproachFrom(nav2_mppi_controller::STAGE_TRACK, 0.4, 0.02, 1.8);
   EXPECT_EQ(controller.approachMode(), nav2_mppi_controller::APPROACH_NORMAL);
 
-  controller.enterApproachFrom(nav2_mppi_controller::STAGE_TRACK, -2.8);
+  controller.enterApproachFrom(nav2_mppi_controller::STAGE_TRACK, 0.4, 0.02, -2.8);
   EXPECT_EQ(controller.approachMode(), nav2_mppi_controller::APPROACH_POSITION_FIRST);
+}
+
+TEST(ControllerStateTransitionTest, ApproachModeUsesPositionFirstForLateralDominantGoal)
+{
+  TestableMPPIController controller;
+  controller.setPositionFirstYawThreshold(2.094);
+  controller.setPositionFirstLateralGeometry(0.05, 1.0);
+
+  controller.enterApproachFrom(nav2_mppi_controller::STAGE_TRACK, 0.02, -0.45, 1.5);
+  EXPECT_EQ(controller.approachMode(), nav2_mppi_controller::APPROACH_POSITION_FIRST);
+
+  controller.enterApproachFrom(nav2_mppi_controller::STAGE_TRACK, 0.30, 0.04, 1.5);
+  EXPECT_EQ(controller.approachMode(), nav2_mppi_controller::APPROACH_NORMAL);
 }
 
 TEST(ControllerStateTransitionTest, NormalApproachKeepsFullYawControlWhilePositioning)

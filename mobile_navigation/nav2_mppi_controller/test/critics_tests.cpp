@@ -26,6 +26,7 @@
 #include "nav2_mppi_controller/critics/goal_critic.hpp"
 #include "nav2_mppi_controller/critics/goal_lateral_critic.hpp"
 #include "nav2_mppi_controller/critics/goal_longitudinal_critic.hpp"
+#include "nav2_mppi_controller/critics/linear_velocity_critic.hpp"
 #include "nav2_mppi_controller/critics/obstacles_critic.hpp"
 #include "nav2_mppi_controller/critics/cost_critic.hpp"
 #include "nav2_mppi_controller/critics/path_align_critic.hpp"
@@ -93,6 +94,43 @@ TEST(CriticTests, GoalFrameLateralAndLongitudinalErrors)
   longitudinal_critic.score(data);
   EXPECT_NEAR(costs(0), 0.0f, 1e-5f);
   EXPECT_NEAR(costs(1), 1.0f, 1e-5f);
+}
+
+TEST(CriticTests, LinearVelocityCriticDoesNotBiasForwardDirection)
+{
+  auto node = std::make_shared<rclcpp_lifecycle::LifecycleNode>("linear_velocity_critic_test");
+  auto costmap_ros = std::make_shared<nav2_costmap_2d::Costmap2DROS>(
+    "dummy_costmap", "", "dummy_costmap");
+  ParametersHandler param_handler(node);
+  rclcpp_lifecycle::State lstate;
+  costmap_ros->on_configure(lstate);
+
+  models::State state;
+  state.reset(2, 1);
+  state.vx(0, 0) = 0.25f;
+  state.vx(1, 0) = -0.25f;
+  models::Trajectories trajectories;
+  trajectories.reset(2, 1);
+  models::Path path;
+  path.reset(1);
+  path.x(0) = 1.0f;
+  models::Vector costs = models::Vector::Zero(2);
+  float model_dt = 0.1f;
+  CriticData data =
+  {state, trajectories, path, costs, model_dt, false, nullptr, nullptr, std::nullopt,
+    std::nullopt};
+
+  CriticProfileSettings settings;
+  settings.linear_velocity.weight = 1.0f;
+  settings.linear_velocity.speed_max = 0.25f;
+
+  LinearVelocityCritic critic;
+  critic.on_configure(node, "mppi", "linear_velocity", costmap_ros, &param_handler);
+  critic.applyProfileSettings(settings);
+  critic.score(data);
+
+  EXPECT_NEAR(costs(0), costs(1), 1e-6f);
+  EXPECT_NEAR(costs(0), 0.0f, 1e-6f);
 }
 
 TEST(CriticTests, ConstraintsCritic)

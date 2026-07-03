@@ -50,6 +50,10 @@ public:
     return result;
   }
 
+  bool holdPositionWhenPoseReached() const
+  {
+    return near_goal_hold_position_when_pose_reached_;
+  }
   bool lateralStallEnabled() const {return near_goal_lateral_stall_enabled_;}
   double lateralStallLonTolerance() const
   {
@@ -120,7 +124,8 @@ TEST(WPTest, test_near_goal_lateral_stall_dynamic_parameters)
     controller->get_node_services_interface());
 
   auto results = rec_param->set_parameters_atomically(
-    {rclcpp::Parameter("near_goal_progress.lateral_stall_enabled", true),
+    {rclcpp::Parameter("near_goal_progress.hold_position_when_goal_pose_reached", true),
+      rclcpp::Parameter("near_goal_progress.lateral_stall_enabled", true),
       rclcpp::Parameter("near_goal_progress.lateral_stall_lon_tolerance", 0.02),
       rclcpp::Parameter("near_goal_progress.lateral_stall_yaw_tolerance", 0.05),
       rclcpp::Parameter("near_goal_progress.lateral_stall_lat_tolerance", 0.02),
@@ -130,6 +135,7 @@ TEST(WPTest, test_near_goal_lateral_stall_dynamic_parameters)
   rclcpp::spin_until_future_complete(
     controller->get_node_base_interface(), results);
 
+  EXPECT_TRUE(controller->holdPositionWhenPoseReached());
   EXPECT_TRUE(controller->lateralStallEnabled());
   EXPECT_DOUBLE_EQ(controller->lateralStallLonTolerance(), 0.02);
   EXPECT_DOUBLE_EQ(controller->lateralStallYawTolerance(), 0.05);
