@@ -87,6 +87,13 @@ controller_server:
       required_movement_radius: 0.01 # 近目标模式：移动超过 1cm 才算有进展，避免小幅抖动刷新计时
       required_movement_angle: 0.02 # 近目标模式：旋转超过约1.15 度才算有进展，避免原地轻微摆动刷新计时
       movement_time_allowance: 3.0 # 近目标模式：3 秒内没有足够进展就让 FollowPath 失败并进入恢复
+      # 横向误差停滞：纵向和航向基本到位后，横向误差长期不改善则让 FollowPath 失败并交给行为树恢复
+      lateral_stall_enabled: true
+      lateral_stall_lon_tolerance: 0.02 # 连续 5 个控制周期 |纵向误差|≤2cm 才开始监测
+      lateral_stall_yaw_tolerance: 0.05 # 连续 5 个控制周期 |航向误差|≤约2.86°才开始监测
+      lateral_stall_lat_tolerance: 0.02 # |横向误差|>2cm 才监测；进入2cm后立即结束停滞监测
+      lateral_stall_min_improvement: 0.01 # 监测窗口内横向误差至少净改善5mm才重置计时
+      lateral_stall_time_allowance: 1.0 # 2秒内未净改善5mm则 FollowPath 失败
     goal_checker:
       plugin: "nav2_controller::PrecisionLongitudinalGoalChecker"
       desired_lon_goal_tolerance: 0.01 # 优先追求的纵向精度，当前配置为 1cm
@@ -153,15 +160,15 @@ controller_server:
         GoalCritic: [0.0, 0.0, 10.0] # 目标位置距离：趋近段推动轨迹收敛到目标点
         GoalLateralCritic: [0.0, 10.0, 150.0] # 目标横向误差：减小目标相对车身的左右偏差
         GoalLongitudinalCritic: [0.0, 0.0, 50.0] # 目标纵向误差：减小目标相对车身的前后偏差
-        GoalAngleCritic: [0.0, 0.0, 100.0] # 目标朝向误差：趋近段对齐最终目标姿态
+        GoalAngleCritic: [0.0, 0.0, 110.0] # 目标朝向误差：趋近段对齐最终目标姿态
         PathAngleCritic: [18.0, 5.0, 2.0] # 路径朝向误差：使车头朝向前方路径点
         PathAlignCritic: [5.0, 40.0, 10.0] # 路径贴合误差：使候选轨迹尽量贴合全局路径
-        PathFollowCritic: [0.0, 10.0, 5.0] # 路径推进误差：推动轨迹末端沿全局路径前进
-        PreferForwardCritic: [10.0, 10.0, 5.0] # 前进偏好：惩罚倒车运动，鼓励向前行驶
+        PathFollowCritic: [0.0, 5.0, 2.0] # 路径推进：推动轨迹末端沿全局路径前进
+        PreferForwardCritic: [5.0, 10.0, 5.0] # 前进偏好：惩罚倒车运动，鼓励向前行驶
         LinearVelocityCritic: [0.0, 10.0, 10.0]  # 线速度软约束：跟踪按剩余距离计算的期望速度，并抑制相邻时刻速度突变
         AngularVelocityCritic: [0.0, 0.0, 5.0]      # 镜像线速度(朝向减速)：approach 专用；⚠️track/align 必须 0(否则朝向误差大→逼 wz 最大旋转)；wz_max/az_max 从全局参数读；bag 调
-        ObstaclesCritic: [5.0, 50.0, 5.0]   # 软斥力(repulsion)分段；致命 critical 全局常开
-        CostCritic: [5.0, 50.0, 5.0]      # 软代价分段；致命由 ObstaclesCritic 兜底
+        ObstaclesCritic: [5.0, 50.0, 0.0]   # 软斥力(repulsion)分段；致命 critical 全局常开
+        CostCritic: [5.0, 50.0, 0.0]      # 软代价分段；致命由 ObstaclesCritic 兜底
 
       # ── 三段速度策略（per-stage 覆盖全局；只放速度，critic 子参数/权重不在此）──
       stage_align:    # 对齐段：低 vx 专注转向、高 wz 快速对齐、允许小幅倒车机动
