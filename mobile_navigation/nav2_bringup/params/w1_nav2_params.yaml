@@ -75,8 +75,48 @@ controller_server:
     progress_checker_plugins: ["progress_checker"] # progress_checker_plugin: "progress_checker" For Humble and older
     goal_checker_plugins: ["simple_goal_checker", "stopped_goal_checker", "position_goal_checker", "rotation_goal_checker", "longitudinal_goal_checker", "high_precision_goal_checker"] # goal_checker_plugin: "goal_checker" For Galactic and older
     controller_plugins: ["MPPIController", "DWBController", "RPPController", "GracefulController", "RotationShimController", "PIDController", "LatLonController", "PureRotationController", "StraightController"]
+    speed_planner_plugins: ["TrapezoidalSpeedPlanner", "SCurveSpeedPlanner"]
     current_goal_checker: "simple_goal_checker"
     current_controller: "MPPIController"
+    # ④ 速度规划（规划级：path 更新事件驱动生成 RobotTrajectory；current_speed_planner 置空 "" 即禁用/灰度回退）
+    # 运动学上限与下游链路对齐：对齐 MPPI(vx_max/ax_max/ax_min) 与 velocity_smoother(max_velocity/max_accel)
+    current_speed_planner: "SCurveSpeedPlanner"
+    TrapezoidalSpeedPlanner:
+      plugin: "nav2_speed_planner::TrapezoidalSpeedPlanner"
+      max_speed: 0.8
+      min_speed: 0.03
+      accel: 0.6
+      decel: -0.6
+      end_speed: 0.03
+      stop_distance: 0.2
+      collision_stop_distance: 0.2
+      obstacle_cost_threshold: 253
+      curve_compute_dist: 0.1
+      decel_distance_before_curve: 0.5
+      decel_distance_after_curve: 0.5
+      regulated_linear_scaling_min_radius: 1.2
+      min_curvature_speed: 0.1
+      constant_velocity_dist_threshold: 0.1
+      enable_constant_velocity_while_turning: False
+    SCurveSpeedPlanner:
+      plugin: "nav2_speed_planner::SCurveSpeedPlanner"
+      max_speed: 0.8
+      min_speed: 0.03
+      accel: 0.6
+      decel: -0.6
+      end_speed: 0.03
+      stop_distance: 0.2
+      collision_stop_distance: 0.2
+      obstacle_cost_threshold: 253
+      curve_compute_dist: 0.1
+      decel_distance_before_curve: 0.5
+      decel_distance_after_curve: 0.5
+      regulated_linear_scaling_min_radius: 1.2
+      min_curvature_speed: 0.1
+      constant_velocity_dist_threshold: 0.1
+      enable_constant_velocity_while_turning: False
+      max_jerk: 0.5
+      control_dt: 0.05
     staged_control:
       enabled: True
       track_controller: "MPPIController"
@@ -183,7 +223,7 @@ controller_server:
       vx_std: 0.25 # 0.2
       vy_std: 0.2
       wz_std: 0.3 # 0.35 # 0.25 # 0.4
-      vx_max: 1.0 # 基础速度约束；运行时会被三阶段 profile 覆盖
+      vx_max: 0.8 # 基础速度约束；运行时会被三阶段 profile 覆盖
       vx_min: -0.5 # 基础倒车约束；运行时会被三阶段 profile 覆盖
       vy_max: 0.5 # DiffDrive 下通常不生效
       wz_max: 0.75 # 基础角速度约束；运行时会被三阶段 profile 覆盖

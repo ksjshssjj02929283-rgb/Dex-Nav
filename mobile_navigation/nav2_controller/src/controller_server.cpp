@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <chrono>
 #include <algorithm>
+#include <cstdio>
 #include <vector>
 #include <memory>
 #include <string>
@@ -83,7 +84,8 @@ ControllerServer::ControllerServer(const rclcpp::NodeOptions & options)
     "nav2_pid_controller::PIDController",
     "nav2_lat_lon_controller::LatLonController",
     "nav2_pure_rotation_controller::PureRotationController",
-    "nav2_straight_controller::StraightController"}
+    "nav2_straight_controller::StraightController"},
+  speed_planner_loader_("nav2_core", "nav2_core::SpeedPlanner")
 {
   RCLCPP_INFO(get_logger(), "Creating controller server");
 
@@ -94,6 +96,9 @@ ControllerServer::ControllerServer(const rclcpp::NodeOptions & options)
   declare_parameter("controller_plugins", default_ids_);
   declare_parameter("current_goal_checker", default_goal_checker_ids_.front());
   declare_parameter("current_controller", default_ids_.front());
+  // ④ 速度规划：默认不启用（空列表 + 空选择器），YAML 显式配置后生效
+  declare_parameter("speed_planner_plugins", std::vector<std::string>());
+  declare_parameter("current_speed_planner", std::string(""));
   declare_parameter("min_x_velocity_threshold", rclcpp::ParameterValue(0.0001));
   declare_parameter("min_y_velocity_threshold", rclcpp::ParameterValue(0.0001));
   declare_parameter("min_theta_velocity_threshold", rclcpp::ParameterValue(0.0001));
@@ -404,6 +409,52 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
     return nav2_util::CallbackReturn::FAILURE;
   }
 
+  get_parameter("speed_planner_plugins", speed_planner_ids_);
+  speed_planner_types_.resize(speed_planner_ids_.size());
+  for (size_t i = 0; i != speed_planner_ids_.size(); i++) {
+    try {
+      speed_planner_types_[i] = nav2_util::get_plugin_type_param(node, speed_planner_ids_[i]);
+      nav2_core::SpeedPlanner::Ptr speed_planner =
+        speed_planner_loader_.createUniqueInstance(speed_planner_types_[i]);
+      RCLCPP_INFO(
+        get_logger(), "Created speed planner : %s of type %s",
+        speed_planner_ids_[i].c_str(), speed_planner_types_[i].c_str());
+      speed_planner->configure(
+        node, speed_planner_ids_[i],
+        costmap_ros_->getTfBuffer(), costmap_ros_);
+      speed_planners_.insert({speed_planner_ids_[i], speed_planner});
+    } catch (const pluginlib::PluginlibException & ex) {
+      RCLCPP_FATAL(
+        get_logger(),
+        "Failed to create speed planner. Exception: %s", ex.what());
+      return nav2_util::CallbackReturn::FAILURE;
+    }
+  }
+
+  speed_planner_ids_concat_.clear();
+  for (size_t i = 0; i != speed_planner_ids_.size(); i++) {
+    speed_planner_ids_concat_ += speed_planner_ids_[i] + std::string(" ");
+  }
+
+  get_parameter("current_speed_planner", current_speed_planner_);
+  if (current_speed_planner_.empty()) {
+    RCLCPP_INFO(
+      get_logger(),
+      "Speed planning disabled (current_speed_planner is empty); "
+      "controllers consume geometric paths only. 速度规划未启用，控制器仅消费几何路径。");
+  } else if (speed_planners_.find(current_speed_planner_) == speed_planners_.end()) {
+    RCLCPP_FATAL(
+      get_logger(),
+      "Configured current_speed_planner '%s' does not exist. Available speed planners are: %s.",
+      current_speed_planner_.c_str(), speed_planner_ids_concat_.c_str());
+    return nav2_util::CallbackReturn::FAILURE;
+  } else {
+    RCLCPP_INFO(
+      get_logger(),
+      "Controller Server has %s speed planners available, current: %s.",
+      speed_planner_ids_concat_.c_str(), current_speed_planner_.c_str());
+  }
+
   if (staged_control_enabled_) {
     if (controllers_.find(track_controller_) == controllers_.end()) {
       RCLCPP_FATAL(
@@ -437,6 +488,10 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
   goal_error_publisher_ = create_publisher<diagnostic_msgs::msg::DiagnosticArray>(
     "/navigation_goal_error",
     rclcpp::QoS(rclcpp::KeepLast(10)).reliable().transient_local());
+  // 速度规划可视化：transient_local 让 RViz 晚订阅也能收到最新一帧
+  speed_plan_publisher_ = create_publisher<visualization_msgs::msg::MarkerArray>(
+    "/navigation/speed_plan",
+    rclcpp::QoS(rclcpp::KeepLast(1)).reliable().transient_local());
 
   // Create the action server that we implement with our followPath method
   action_server_ = std::make_unique<ActionServer>(
@@ -465,8 +520,12 @@ ControllerServer::on_activate(const rclcpp_lifecycle::State & /*state*/)
   for (it = controllers_.begin(); it != controllers_.end(); ++it) {
     it->second->activate();
   }
+  for (auto & sp : speed_planners_) {
+    sp.second->activate();
+  }
   vel_publisher_->on_activate();
   goal_error_publisher_->on_activate();
+  speed_plan_publisher_->on_activate();
   action_server_->activate();
 
   auto node = shared_from_this();
@@ -490,6 +549,9 @@ ControllerServer::on_deactivate(const rclcpp_lifecycle::State & /*state*/)
   for (it = controllers_.begin(); it != controllers_.end(); ++it) {
     it->second->deactivate();
   }
+  for (auto & sp : speed_planners_) {
+    sp.second->deactivate();
+  }
 
   /*
    * The costmap is also a lifecycle node, so it may have already fired on_deactivate
@@ -506,6 +568,7 @@ ControllerServer::on_deactivate(const rclcpp_lifecycle::State & /*state*/)
 
   publishZeroVelocity();
   goal_error_publisher_->on_deactivate();
+  speed_plan_publisher_->on_deactivate();
   vel_publisher_->on_deactivate();
   dyn_params_handler_.reset();
 
@@ -527,6 +590,11 @@ ControllerServer::on_cleanup(const rclcpp_lifecycle::State & /*state*/)
   }
   controllers_.clear();
 
+  for (auto & sp : speed_planners_) {
+    sp.second->cleanup();
+  }
+  speed_planners_.clear();
+
   goal_checkers_.clear();
 
   if (costmap_ros_->get_current_state().id() ==
@@ -541,6 +609,7 @@ ControllerServer::on_cleanup(const rclcpp_lifecycle::State & /*state*/)
   costmap_thread_.reset();
   vel_publisher_.reset();
   goal_error_publisher_.reset();
+  speed_plan_publisher_.reset();
   speed_limit_sub_.reset();
 
   return nav2_util::CallbackReturn::SUCCESS;
@@ -780,6 +849,9 @@ void ControllerServer::setPlannerPath(const nav_msgs::msg::Path & path)
     }
   }
 
+  // ④ 规划级：path 更新事件驱动生成带速度轨迹并分发（未配置时为空操作）。
+  runPlanningPipeline(path);
+
   end_pose_ = path.poses.back();
   end_pose_.header.frame_id = path.header.frame_id;
   goal_checkers_[current_goal_checker_]->reset();
@@ -793,6 +865,144 @@ void ControllerServer::setPlannerPath(const nav_msgs::msg::Path & path)
 
   current_path_ = path;
   controller_phase_ = ControllerPhase::TRACK;
+}
+
+void ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
+{
+  // 规划级（③④）：③ LocalPlanner 暂缺 = 直通（global path 即输入）；
+  // ④ SpeedPlanner 从 odom 当前速度出发生成 RobotTrajectory。
+  // 分发契约：setTrajectory 仅在轨迹更新时调用一次，控制循环内不重算速度曲线。
+  current_trajectory_ = nav_interfaces::msg::RobotTrajectory();
+  if (current_speed_planner_.empty()) {
+    return;  // 未配置：灰度回退，controller 走 setPlan 几何路径
+  }
+  auto sp = speed_planners_.find(current_speed_planner_);
+  if (sp == speed_planners_.end()) {
+    return;
+  }
+
+  const nav_2d_msgs::msg::Twist2D odom_twist = getThresholdedTwist(odom_sub_->getTwist());
+  geometry_msgs::msg::Twist current_velocity;
+  current_velocity.linear.x = odom_twist.x;
+  current_velocity.linear.y = odom_twist.y;
+  current_velocity.angular.z = odom_twist.theta;
+
+  sp->second->setPlan(path);
+  current_trajectory_ = sp->second->computeSpeedPlan(path, current_velocity);
+  if (current_trajectory_.points.empty()) {
+    RCLCPP_WARN(
+      get_logger(),
+      "Speed planner '%s' returned empty trajectory; controllers keep geometric path. "
+      "速度规划返回空轨迹，控制器继续使用几何路径。",
+      current_speed_planner_.c_str());
+    publishSpeedPlan(current_trajectory_);  // 清除 RViz 旧 marker
+    return;
+  }
+
+  controllers_[current_controller_]->setTrajectory(current_trajectory_);
+  if (staged_control_enabled_) {
+    if (track_controller_ != current_controller_) {
+      controllers_[track_controller_]->setTrajectory(current_trajectory_);
+    }
+    if (approach_controller_ != current_controller_ && approach_controller_ != track_controller_) {
+      controllers_[approach_controller_]->setTrajectory(current_trajectory_);
+    }
+  }
+
+  publishSpeedPlan(current_trajectory_);
+
+  RCLCPP_INFO(
+    get_logger(),
+    "Speed plan dispatched: planner=%s points=%zu v_start=%.3f",
+    current_speed_planner_.c_str(), current_trajectory_.points.size(),
+    current_velocity.linear.x);
+}
+
+void ControllerServer::publishSpeedPlan(const nav_interfaces::msg::RobotTrajectory & trajectory)
+{
+  if (!speed_plan_publisher_ || !speed_plan_publisher_->is_activated()) {
+    return;
+  }
+
+  visualization_msgs::msg::MarkerArray marker_array;
+
+  // 先清除上一帧全部 marker（避免旧轨迹残留）。
+  visualization_msgs::msg::Marker clear_marker;
+  clear_marker.action = visualization_msgs::msg::Marker::DELETEALL;
+  marker_array.markers.push_back(clear_marker);
+
+  if (trajectory.points.empty()) {
+    speed_plan_publisher_->publish(marker_array);
+    return;
+  }
+
+  std_msgs::msg::Header header = trajectory.header;
+  if (header.frame_id.empty()) {
+    header.frame_id = trajectory.points.front().pose.header.frame_id;
+  }
+  header.stamp = now();
+
+  double v_peak = 1e-3;
+  for (const auto & pt : trajectory.points) {
+    v_peak = std::max(v_peak, std::fabs(pt.longitudinal_velocity));
+  }
+
+  // 速度着色轨迹线：红=0 → 绿=峰值 逐点渐变。
+  visualization_msgs::msg::Marker line;
+  line.header = header;
+  line.ns = "speed_plan";
+  line.id = 0;
+  line.type = visualization_msgs::msg::Marker::LINE_STRIP;
+  line.action = visualization_msgs::msg::Marker::ADD;
+  line.pose.orientation.w = 1.0;
+  line.scale.x = 0.03;
+  line.points.reserve(trajectory.points.size());
+  line.colors.reserve(trajectory.points.size());
+  for (const auto & pt : trajectory.points) {
+    geometry_msgs::msg::Point p = pt.pose.pose.position;
+    p.z += 0.05;
+    line.points.push_back(p);
+    const double ratio =
+      std::clamp(std::fabs(pt.longitudinal_velocity) / v_peak, 0.0, 1.0);
+    std_msgs::msg::ColorRGBA c;
+    c.r = static_cast<float>(1.0 - ratio);
+    c.g = static_cast<float>(ratio);
+    c.b = 0.1f;
+    c.a = 1.0f;
+    line.colors.push_back(c);
+  }
+  marker_array.markers.push_back(line);
+
+  // 抽样速度数值文本（全程约 20 个标签 + 末点必标）。
+  const size_t n = trajectory.points.size();
+  const size_t stride = std::max<size_t>(1, n / 20);
+  int text_id = 1;
+  for (size_t i = 0; i < n; i += stride) {
+    const size_t idx = (i + stride >= n) ? n - 1 : i;  // 末段直接标末点
+    const auto & pt = trajectory.points[idx];
+    visualization_msgs::msg::Marker text;
+    text.header = header;
+    text.ns = "speed_plan_text";
+    text.id = text_id++;
+    text.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
+    text.action = visualization_msgs::msg::Marker::ADD;
+    text.pose = pt.pose.pose;
+    text.pose.position.z += 0.25;
+    text.scale.z = 0.12;
+    text.color.r = 1.0f;
+    text.color.g = 1.0f;
+    text.color.b = 1.0f;
+    text.color.a = 0.9f;
+    char buf[16];
+    std::snprintf(buf, sizeof(buf), "%.2f", pt.longitudinal_velocity);
+    text.text = buf;
+    marker_array.markers.push_back(text);
+    if (idx == n - 1) {
+      break;
+    }
+  }
+
+  speed_plan_publisher_->publish(marker_array);
 }
 
 void ControllerServer::resetNearGoalProgress()
@@ -1966,6 +2176,10 @@ void ControllerServer::speedLimitCallback(const nav2_msgs::msg::SpeedLimit::Shar
   ControllerMap::iterator it;
   for (it = controllers_.begin(); it != controllers_.end(); ++it) {
     it->second->setSpeedLimit(msg->speed_limit, msg->percentage);
+  }
+  // 外部限速同步进速度规划包络（下次 computeSpeedPlan 生效）。
+  for (auto & sp : speed_planners_) {
+    sp.second->setSpeedLimit(msg->speed_limit, msg->percentage);
   }
 }
 
