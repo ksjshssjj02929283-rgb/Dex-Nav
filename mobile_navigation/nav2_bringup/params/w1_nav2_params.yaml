@@ -87,7 +87,7 @@ controller_server:
       align_max_angular_velocity: 0.5
       align_min_angular_velocity: 0.08
       prepare:
-        enabled: True
+        enabled: False
         obstacle_check_distance: 0.55
         obstacle_check_half_width: 0.39
         obstacle_cost_threshold: 253
@@ -199,12 +199,12 @@ controller_server:
         vy_max: 0.5
         wz_max: 0.75
       stage_track:    # 跟踪段：全速通行
-        vx_max: 1.0
+        vx_max: 0.8
         vx_min: -0.5
         vy_max: 0.5
         wz_max: 0.75
       stage_approach: # 趋近段：vx 上限 0.7(减速交 LinearVelocity)、禁倒车、低 wz 平稳停靠
-        vx_max: 0.4
+        vx_max: 0.2
         vx_min: -0.1
         vy_max: 0.5
         wz_max: 0.75
@@ -357,14 +357,18 @@ controller_server:
       long_precision: 0.02
       lat_precision: 0.04
       o_precision: 0.5
+      angular_error_deadband: 0.008
       max_v: 0.5
       min_v: 0.0
       max_v_inc: 0.5
       max_w: 1.57
-      min_w: 0.0
+      min_w: 0.02
       max_w_inc: 1.57
-      k_theta: 0.5
+      k_theta: 0.0
       switch_speed: 0.1
+      default_desired_linear_vel: 0.15
+      final_rotation_max_v: 0.05
+      final_rotation_linear_deadband: 0.005
       high_speed_station_pid_conf:
         integrator_enable: True
         integrator_saturation_level: 0.3
@@ -426,7 +430,7 @@ controller_server:
       max_w: 1.57
       min_w: 0.0
       max_w_inc: 1.57
-      k_theta: 0.5
+      k_theta: 0.0
       switch_speed: 0.1
       high_speed_station_pid_conf:
         integrator_enable: True

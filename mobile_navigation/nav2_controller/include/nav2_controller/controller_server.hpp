@@ -207,6 +207,10 @@ protected:
    */
   const char * controllerPhaseName(ControllerPhase phase) const;
   /**
+   * @brief Return configured plugin type for a goal checker id
+   */
+  std::string getGoalCheckerType(const std::string & goal_checker_id) const;
+  /**
    * @brief Reset the near-goal progress checker baseline
    */
   void resetNearGoalProgress();
@@ -373,7 +377,9 @@ protected:
   double prepare_backup_speed_{-0.08};
   double prepare_backup_duration_{0.6};
   bool prepare_backup_active_{false};
+  bool prepare_check_pending_{true};
   rclcpp::Time prepare_backup_start_time_;
+  std::string active_controller_for_log_{"unset"};
 
   // Whether we've published the single controller warning yet
   geometry_msgs::msg::PoseStamped end_pose_;

@@ -291,14 +291,18 @@ controller_server:
       long_precision: 0.02
       lat_precision: 0.04
       o_precision: 0.5
+      angular_error_deadband: 0.008
       max_v: 0.5
       min_v: 0.0
       max_v_inc: 0.5
       max_w: 1.57
-      min_w: 0.0
+      min_w: 0.02
       max_w_inc: 1.57
       k_theta: 0.5
       switch_speed: 0.1
+      default_desired_linear_vel: 0.15
+      final_rotation_max_v: 0.05
+      final_rotation_linear_deadband: 0.005
       high_speed_station_pid_conf:
         integrator_enable: True
         integrator_saturation_level: 0.3
