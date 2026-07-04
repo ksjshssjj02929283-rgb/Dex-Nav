@@ -50,14 +50,17 @@ namespace nav2_pid_controller
  * @class nav2_pid_controller::PIDController
  * @brief A nav2_core::Controller plugin implementing a PID local controller.
  *
- * Linear velocity is controlled by generating a signed target speed from
- * longitudinal position error, then tracking it with a speed PID. A
- * high/low-speed gain set is switched at switch_speed_, plus a dedicated reverse
- * gain set. Angular velocity is controlled by a single station PID. A
- * three-stage state machine (APPROACHING -> ROTATING_TO_GOAL) governs the
- * behavior. Trajectories (with per-point longitudinal_velocity / path_kappa)
- * are consumed through the nav2_core setTrajectory() extension; plain geometric
- * paths are accepted through setPlan() with a default (zero) desired speed.
+ * Linear velocity: in APPROACHING the speed loop tracks the planned speed of
+ * the closest trajectory point (sign from the longitudinal error) — decel
+ * tails / curvature slowdowns / obstacle zeros are encoded per-point by the
+ * speed planner; in the final-rotation stage a small signed compensation speed
+ * is generated from the position error. A high/low-speed gain set is switched
+ * at switch_speed_, plus a dedicated reverse gain set. Angular velocity is
+ * controlled by a single station PID. A three-stage state machine
+ * (APPROACHING -> ROTATING_TO_GOAL) governs the behavior. Trajectories (with
+ * per-point longitudinal_velocity / path_kappa) are consumed through the
+ * nav2_core setTrajectory() extension; plain geometric paths are accepted
+ * through setPlan() with a default desired speed.
  */
 class PIDController : public nav2_core::Controller
 {

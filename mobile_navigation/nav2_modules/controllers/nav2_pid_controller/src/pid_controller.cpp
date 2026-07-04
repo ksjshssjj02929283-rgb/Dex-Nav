@@ -649,8 +649,14 @@ geometry_msgs::msg::TwistStamped PIDController::computeVelocityCommands(
           break;
         }
       case APPROACHING: {
-          active_branch = "approaching_pid";
-          cmd_vel.twist.linear.x = LinearSpeedControl(velocity, err_x);
+          active_branch = "approaching_traj_speed";
+          // 期望速度 = 最近轨迹点的规划速度（速度环跟踪目标，方向由纵向误差决定）：
+          // 减速尾段/曲率限速/障碍零速已由速度规划层逐点编码，跟踪即可；
+          // desired_v=0（障碍置零点）时 LinearSpeedControl 直接输出 0。
+          // 末端停车精度由 ROTATING_TO_GOAL 入口的 final goal 容差门控接管。
+          const double desired_v = std::fabs(desired_linear_vel_);
+          cmd_vel.twist.linear.x = LinearSpeedControl(
+            velocity, err_x, desired_v, desired_v, 0.0);
           cmd_vel.twist.angular.z = AngularSpeedControl(velocity, err_theta);
           break;
         }

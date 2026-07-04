@@ -569,31 +569,45 @@ void Optimizer::applySpeedLimit()
   auto & s = settings_;
   s.constraints = s.base_constraints;
 
-  if (!speed_limit_active_) {
-    return;
-  }
-
-  if (speed_limit_is_percentage_) {
-    const double ratio = speed_limit_ / 100.0;
-    s.constraints.vx_max = s.base_constraints.vx_max * ratio;
-    s.constraints.vx_min = s.base_constraints.vx_min * ratio;
-    s.constraints.vy = s.base_constraints.vy * ratio;
-    s.constraints.wz = s.base_constraints.wz * ratio;
-  } else {
-    if (std::fabs(s.base_constraints.vx_max) < 1e-6) {
+  if (speed_limit_active_) {
+    if (speed_limit_is_percentage_) {
+      const double ratio = speed_limit_ / 100.0;
+      s.constraints.vx_max = s.base_constraints.vx_max * ratio;
+      s.constraints.vx_min = s.base_constraints.vx_min * ratio;
+      s.constraints.vy = s.base_constraints.vy * ratio;
+      s.constraints.wz = s.base_constraints.wz * ratio;
+    } else if (std::fabs(s.base_constraints.vx_max) < 1e-6) {
       RCLCPP_WARN(
         logger_,
         "MPPI absolute speed limit ignored because base vx_max is near zero. "
         "Current profile vx_max near 0; cannot compute ratio for absolute speed limit.");
-      return;
+    } else {
+      const double ratio = speed_limit_ / s.base_constraints.vx_max;
+      s.constraints.vx_max = s.base_constraints.vx_max * ratio;
+      s.constraints.vx_min = s.base_constraints.vx_min * ratio;
+      s.constraints.vy = s.base_constraints.vy * ratio;
+      s.constraints.wz = s.base_constraints.wz * ratio;
     }
-
-    const double ratio = speed_limit_ / s.base_constraints.vx_max;
-    s.constraints.vx_max = s.base_constraints.vx_max * ratio;
-    s.constraints.vx_min = s.base_constraints.vx_min * ratio;
-    s.constraints.vy = s.base_constraints.vy * ratio;
-    s.constraints.wz = s.base_constraints.wz * ratio;
   }
+
+  // 轨迹参考速度帽（④ 速度规划最近点速度）：只压前向 vx_max——
+  // 减速尾段/曲率限速/障碍零速由剖面逐点编码；倒车与角速度能力保留
+  // （prepare 倒退、align 原地旋转不受影响）。
+  if (traj_speed_cap_ >= 0.0 && s.constraints.vx_max > traj_speed_cap_) {
+    s.constraints.vx_max = traj_speed_cap_;
+  }
+}
+
+void Optimizer::setTrajectorySpeedCap(double cap_mps)
+{
+  const double new_cap = cap_mps < 0.0 ? -1.0 : cap_mps;
+  if (std::fabs(new_cap - traj_speed_cap_) < 1e-3) {
+    return;  // 变化不显著：避免每周期重派生约束与截断控制序列
+  }
+  traj_speed_cap_ = new_cap;
+  applySpeedLimit();
+  syncMotionModelConstraints();
+  clampControlSequence();
 }
 
 void Optimizer::clampControlSequence()

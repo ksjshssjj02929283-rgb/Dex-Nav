@@ -102,6 +102,13 @@ public:
   void setPlan(const nav_msgs::msg::Path & path) override;
 
   /**
+    * @brief 消费速度规划轨迹（④ 产出）：每个控制周期取最近轨迹点的规划速度，
+    *        作为采样器的前向 vx 上限（叠加在三阶段 profile 约束之上）。
+    * @param trajectory 带逐点速度的时空轨迹
+    */
+  void setTrajectory(const nav_interfaces::msg::RobotTrajectory & trajectory) override;
+
+  /**
     * @brief Set new speed limit from callback
     * @param speed_limit Speed limit to use
     * @param percentage Bool if the speed limit is absolute or relative
@@ -132,6 +139,9 @@ protected:
   void updateProfileTransition();
 
   void publishProfileDebug(double path_progress, double goal_distance);
+
+  /// 最近轨迹点的规划速度（机器人位姿先转到轨迹坐标系）；无轨迹/TF 失败返回 -1（不设帽）。
+  double nearestTrajectorySpeed(const geometry_msgs::msg::PoseStamped & robot_pose) const;
 
   std::string name_;
   rclcpp_lifecycle::LifecycleNode::WeakPtr parent_;
@@ -169,6 +179,9 @@ protected:
   // ⭐ costmap 异步解耦：控制线程读快照副本，try_lock 刷新，永不阻塞等 costmap 更新锁
   nav2_costmap_2d::Costmap2D costmap_snapshot_;
   bool costmap_snapshot_initialized_{false};
+
+  // 速度规划轨迹缓存（④ 每控制周期分发；最近点速度 → vx 采样上限）
+  nav_interfaces::msg::RobotTrajectory reference_trajectory_;
 };
 
 }  // namespace nav2_mppi_controller

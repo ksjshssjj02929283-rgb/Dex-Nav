@@ -124,6 +124,13 @@ public:
   void setSpeedLimit(double speed_limit, bool percentage);
 
   /**
+   * @brief 轨迹参考速度帽（④ 速度规划最近点速度）：只压前向 vx_max，
+   *        倒车/角速度能力保留；每控制周期更新，变化显著时才重派生约束。
+   * @param cap_mps 前向速度上限（m/s）；< 0 表示取消（回退 profile/限速约束）
+   */
+  void setTrajectorySpeedCap(double cap_mps);
+
+  /**
    * @brief Apply profile settings without resetting optimizer state
    * @param profile Runtime profile settings
    */
@@ -319,6 +326,8 @@ protected:
   bool speed_limit_active_{false};
   bool speed_limit_is_percentage_{false};
   double speed_limit_{0.0};
+  // 轨迹参考速度帽（< 0 = 无效）；由 setTrajectorySpeedCap 每控制周期更新
+  double traj_speed_cap_{-1.0};
 
   models::State state_;
   models::ControlSequence control_sequence_;
