@@ -9,8 +9,7 @@
 // 步进得 (s,v,a)，再按路径点弧长重采样。jerk/加速度由 Ruckig 保证不超限；非对称
 // 加减速用 min_acceleration=-d_max 实现。顺带填 acceleration/relative_time。
 //
-// 背景：简单距离域两遍 min 法无法严格限 jerk（巡航入口需前瞻），已证伪改用 Ruckig，
-// 详见项目 doc 8 §十一。数值验证：5 个对抗场景 jerk=0.500/accel=0.350/decel=-0.150 严格达标。
+// 背景：简单距离域两遍 min 法无法严格限 jerk（巡航入口需前瞻），故采用 Ruckig 在线生成。
 #ifndef NAV2_SPEED_PLANNER__SCURVE_SPEED_PLANNER_HPP_
 #define NAV2_SPEED_PLANNER__SCURVE_SPEED_PLANNER_HPP_
 
@@ -54,6 +53,8 @@ public:
    * @param v_out   输出逐点速度
    * @param a_out   输出逐点加速度（Ruckig 输出，连续、有界）
    * @param t_out   输出逐点相对时间（单调增）
+   * @param v_end   路径终点目标速度：仅当停止点为路径终点时生效；
+   *                停止点为障碍（零包络点）时内部强制 0
    */
   static void generateRuckigProfile(
     const std::vector<double> & v_env,
@@ -63,7 +64,8 @@ public:
     double max_jerk, double ctrl_dt,
     std::vector<double> & v_out,
     std::vector<double> & a_out,
-    std::vector<double> & t_out);
+    std::vector<double> & t_out,
+    double v_end = 0.0);
 
 protected:
   /// S 型剖面：复用基类包络 → Ruckig 生成 → 回填 work（速度/加速度/时间）。

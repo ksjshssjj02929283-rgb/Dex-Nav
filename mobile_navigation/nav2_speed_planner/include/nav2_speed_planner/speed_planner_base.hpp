@@ -9,10 +9,15 @@
 //       初始限速取严、组装 RobotTrajectory；中间留 protected 纯虚 hook
 //       assignVelocityProfile() 让派生类填速度剖面（使 base 仍为抽象类）。
 //
-// 复用：assignConstantAccelProfile() 是从 dcm tcurve 移植的「恒加速度参考内核」
-//       （getSpeedLimit/setPlanSpeedLimit/computeAccelPlan/computeDecelPlan/
-//       applyCurvatureConstraint 全套，逻辑一行不改，含已修复的 std::clamp），
-//       供 T 型直接调用、S 型 scaffold 安全回退。
+// 复用：assignConstantAccelProfile() 是「恒加速度参考内核」（源自 dcm tcurve），
+//       供 T 型直接调用；S 型复用其 Phase A 约束函数后交给 Ruckig。
+//       内核 pipeline 为两阶段：
+//         Phase A 约束包络（逐点 min 叠加，安全置零绝对优先）：
+//           A1 applyObstacleConstraint（障碍+缓冲带置零）→ A2 getSpeedLimit+setPlanSpeedLimit
+//           （理想巡航求解+回填）→ A3 applyCurvatureConstraint（曲率限速）
+//         Phase B 运动学可行化：B1 computeAccelPlan（加速段）→ B2 computeDecelPlan（减速段）
+//       减速距离/减速段基于**当前速度**是刻意语义（receding-horizon）：内核假设
+//       高频重规划（周期 ≪ 减速时间），减速区随速度增长逐周期外扩。
 #ifndef NAV2_SPEED_PLANNER__SPEED_PLANNER_BASE_HPP_
 #define NAV2_SPEED_PLANNER__SPEED_PLANNER_BASE_HPP_
 
@@ -109,17 +114,25 @@ protected:
 
   // —— 恒加速度内核子步骤（移植自 dcm，对工作结构 std::vector<TrajPointWork> 操作）——
 
-  /// 计算全局限速（含障碍检测置零 + 无法达到最大速度时回退求解）。
-  double getSpeedLimit(std::vector<TrajPointWork> & path, const double curr_vel);
+  /// A1 障碍约束（安全置零绝对优先，任何后续约束不得抬升）：首个障碍点及其后全部置零，
+  /// 并把障碍前 collision_stop_distance_ 缓冲带置零（index 0 为机器人当前位置，不动）。
+  /// T/S 两插件共用。
+  /// @return 是否检测到障碍
+  bool applyObstacleConstraint(std::vector<TrajPointWork> & path);
 
-  /// 将限速 clamp 到 [min_speed_, max_speed_] 后回填到所有非零速点。
+  /// A2 理想巡航上界求解（纯查询，无副作用）：回答"能否到最大限速 /
+  /// 能到达的最大限速是多少"；短路径时回退求解当前状态可达峰值。
+  /// 前置：applyObstacleConstraint 已先行（本函数只读零速点判定有效长度）。
+  double getSpeedLimit(const std::vector<TrajPointWork> & path, const double curr_vel);
+
+  /// A2 回填：将限速 clamp 到 [min_speed_, max_speed_] 后回填到所有非零速点。
   void setPlanSpeedLimit(std::vector<TrajPointWork> & path, const double speed_limit);
 
-  /// 加速段：按当前速度 + 加速度推进速度直至达到 speed_limit。
+  /// B1 加速段：按当前速度 + 加速度推进（写入只降不升；起点安全零不抬升）。
   void computeAccelPlan(
     std::vector<TrajPointWork> & path, const double curr_vel, const double speed_limit);
 
-  /// 减速段：停止距离减速 + 曲率前减速 + 障碍前减速。
+  /// B2 减速段：末端 end_speed 减速 + 曲率前减速 + 零速点前减速过渡（写入只降不升）。
   void computeDecelPlan(
     std::vector<TrajPointWork> & path, const double curr_vel, const double speed_limit);
 
@@ -139,6 +152,10 @@ protected:
 
   /// 路径几何总长。
   static double computePathLength(const std::vector<TrajPointWork> & path);
+
+  /// 累计弧长序列（arc_s[0]=0）。内核距离一律用弧长——到端点弦长在弯曲路径上
+  /// 偏短且可能非单调。
+  static std::vector<double> computeCumulativeArcLengths(const std::vector<TrajPointWork> & path);
 
   /// 三点圆拟合曲率序列（Menger 曲率）。
   std::vector<double> calcTrajectoryCurvatureFrom3Points(
@@ -175,9 +192,14 @@ protected:
   double min_curvature_speed_{0.1};
   double constant_velocity_dist_threshold_{0.1};
   bool enable_constant_velocity_while_turning_{false};
-  double stop_speed_{0.03};
+  // 路径终点目标速度。>=1e-3：末端 stop_distance_ 内蠕行该速度；
+  // <1e-3：无蠕行区，减速曲线在终点收敛到 0。T/S 两插件共用。
+  double end_speed_{0.03};
   double stop_distance_{0.2};
   double collision_stop_distance_{0.2};
+  // 障碍判定 cost 阈值（cost >= 即视为障碍）。默认 253=INSCRIBED_INFLATED_OBSTACLE：
+  // 仅把内切致命及以上当障碍，膨胀渐变区不触发置零。
+  int obstacle_cost_threshold_{253};
 
   // 外部限速（setSpeedLimit 保存；computeSpeedPlan 与 path speed_hint 取严）。
   // NO_SPEED_LIMIT 含义同 nav2：未设外部限速。
