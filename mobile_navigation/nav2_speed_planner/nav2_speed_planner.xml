@@ -10,7 +10,7 @@
             <description>
                 S 型（jerk 限制速度曲线）规划器：基于 Ruckig 在线生成，复用基类速度包络，
                 前瞻 vmax 使接近弯/障碍提前减速；jerk/加速度严格不超限、非对称加减速，
-                填充 acceleration/relative_time（项目 doc 8 §十一）。参数 max_jerk / control_dt。
+                填充 acceleration/relative_time。参数 max_jerk / control_dt。
             </description>
         </class>
     </library>
