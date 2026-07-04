@@ -176,6 +176,20 @@ void SCurveSpeedPlanner::assignVelocityProfile(
     v_env[i] = std::max(0.0, work[i].speed_limit);
   }
 
+  // 2.5) 末端蠕行区（与 T 型停止段语义一致）：距终点 stop_distance_ 内包络压到
+  //      end_speed_——减速在蠕行区边界前完成（Ruckig 前瞻 vmax 提前刹），区内保持
+  //      低速到点，保证到点精度；不是"匀减速一路减到终点"。
+  //      障碍零速点由 min 保留；end_speed_<1e-3（硬停配置）时无蠕行区，维持减速到终点。
+  const double v_creep = std::max(end_speed_, 0.0);
+  if (stop_distance_ > 0.0 && v_creep >= 1e-3) {
+    for (size_t i = n; i-- > 0;) {
+      if (arc_s[n - 1] - arc_s[i] > stop_distance_) {
+        break;
+      }
+      v_env[i] = std::min(v_env[i], v_creep);
+    }
+  }
+
   // 3) Ruckig 生成 jerk 限制剖面（非对称 a_max / d_max=|decel_|）。包络零点已含障碍缓冲带。
   //    终点目标速度 = end_speed_（与 T 型统一；障碍停止时函数内部强制 0）。
   std::vector<double> v_out, a_out, t_out;
