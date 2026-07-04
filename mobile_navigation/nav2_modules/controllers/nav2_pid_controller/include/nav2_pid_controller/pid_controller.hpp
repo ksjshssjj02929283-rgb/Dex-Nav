@@ -50,8 +50,9 @@ namespace nav2_pid_controller
  * @class nav2_pid_controller::PIDController
  * @brief A nav2_core::Controller plugin implementing a PID local controller.
  *
- * Linear velocity is controlled by two cascaded PIDs (station + speed) with a
- * high/low-speed gain set switched at switch_speed_, plus a dedicated reverse
+ * Linear velocity is controlled by generating a signed target speed from
+ * longitudinal position error, then tracking it with a speed PID. A
+ * high/low-speed gain set is switched at switch_speed_, plus a dedicated reverse
  * gain set. Angular velocity is controlled by a single station PID. A
  * three-stage state machine (APPROACHING -> ROTATING_TO_GOAL) governs the
  * behavior. Trajectories (with per-point longitudinal_velocity / path_kappa)
@@ -186,12 +187,18 @@ protected:
     const geometry_msgs::msg::Twist & curr_vel);
 
   /**
-   * @brief Linear PID control (cascaded station + speed PIDs).
+   * @brief Linear control: position error generates a signed target speed,
+   *        then the speed PID tracks that target.
    * @param velocity current robot velocity (base frame)
    * @param e_dist longitudinal position error in base frame
    * @return linear velocity command
    */
-  double LinearSpeedControl(const geometry_msgs::msg::Twist & velocity, double e_dist);
+  double LinearSpeedControl(
+    const geometry_msgs::msg::Twist & velocity,
+    double e_dist,
+    double max_linear_speed = std::numeric_limits<double>::quiet_NaN(),
+    double min_target_speed = 0.0,
+    double position_deadband = 0.0);
 
   /**
    * @brief Angular PID control.
@@ -199,13 +206,21 @@ protected:
    * @param e_theta heading error
    * @return angular velocity command
    */
-  double AngularSpeedControl(const geometry_msgs::msg::Twist & velocity, double e_theta);
+  double AngularSpeedControl(
+    const geometry_msgs::msg::Twist & velocity,
+    double e_theta,
+    bool final_rotation = false);
+
+  /**
+   * @brief Human-readable name for controller stage logging.
+   */
+  const char * controllerStageName(ControllerStage stage) const;
 
   /**
    * @brief Build the cached trajectory from a geometric path (speed = 0),
    *        transforming each pose into the costmap global frame.
    */
-  void cachePathAsTrajectory(const nav_msgs::msg::Path & path);
+  bool cachePathAsTrajectory(const nav_msgs::msg::Path & path);
 
   // ---- ROS2 plumbing ----
   rclcpp_lifecycle::LifecycleNode::WeakPtr node_;
@@ -228,6 +243,7 @@ protected:
 
   // ---- tolerances / limits ----
   double long_precision_ = 0.02, lat_precision_ = 0.04, o_precision_ = 0.5;
+  double angular_error_deadband_ = 0.008;
   double d_t_ = 0.05;  // control time step (1 / controller_frequency)
 
   double max_v_ = 0.5, min_v_ = 0.0, max_v_inc_ = 0.5;  // linear velocity
@@ -235,7 +251,10 @@ protected:
 
   double k_theta_ = 0.5;            // heading-weighting factor
   double switch_speed_ = 0.1;       // high/low speed switch threshold
+  double default_desired_linear_vel_ = 0.15; // fallback speed for geometric paths
   double desired_linear_vel_ = 0.0; // per-point desired velocity
+  double final_rotation_max_v_ = 0.05;
+  double final_rotation_linear_deadband_ = 0.005;
   double acc_max_ = 0.5;
 
   // upper speed bound from setSpeedLimit (taken min with trajectory speed)
@@ -249,6 +268,15 @@ protected:
 
   std::deque<double> theta_errors_;
   std::deque<double> longitude_errors_;
+
+  double last_linear_position_cmd_ = 0.0;
+  double last_linear_target_v_ = 0.0;
+  double last_linear_speed_error_ = 0.0;
+  double last_linear_accel_cmd_ = 0.0;
+  double last_linear_accel_limited_ = 0.0;
+  double last_linear_limit_ = 0.0;
+  double last_linear_min_target_v_ = 0.0;
+  double last_linear_deadband_ = 0.0;
 
   // ---- linear PID controllers ----
   nav2_controller_common::PIDController station_nav2_pid_controller_;
