@@ -223,6 +223,8 @@ controller_server:
       stateful: True
     MPPIController:
       plugin: "nav2_mppi_controller::MPPIController"
+      # ④ 轨迹速度帽前瞻窗（m）：帽允许领先计划加速坡的距离；减速段不受影响；需 >= 2 倍路径点距
+      trajectory_speed_cap_lookahead: 0.1
       time_steps: 40 # 56
       model_dt: 0.1 # 0.05
       batch_size: 2000

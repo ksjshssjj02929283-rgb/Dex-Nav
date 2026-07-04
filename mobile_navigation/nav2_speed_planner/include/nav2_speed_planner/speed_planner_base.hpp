@@ -176,6 +176,7 @@ protected:
   std::shared_ptr<tf2_ros::Buffer> tf_;
   std::shared_ptr<nav2_costmap_2d::Costmap2DROS> costmap_ros_;
   rclcpp::Logger logger_{rclcpp::get_logger("SpeedPlannerBase")};
+  rclcpp::Clock::SharedPtr clock_;
 
   // 缓存路径（来自 setPlan）。
   nav_msgs::msg::Path current_plan_;

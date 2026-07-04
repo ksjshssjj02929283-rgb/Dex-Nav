@@ -180,8 +180,10 @@ protected:
   nav2_costmap_2d::Costmap2D costmap_snapshot_;
   bool costmap_snapshot_initialized_{false};
 
-  // 速度规划轨迹缓存（④ 每控制周期分发；最近点速度 → vx 采样上限）
+  // 速度规划轨迹缓存（④ 每控制周期分发；前瞻窗内最大规划速度 → vx 采样上限）
   nav_interfaces::msg::RobotTrajectory reference_trajectory_;
+  // 前瞻窗长度（m）：帽允许领先计划加速坡的距离；窗内至少含最近点的下一点（防死锁）
+  double traj_speed_cap_lookahead_{0.2};
 };
 
 }  // namespace nav2_mppi_controller
