@@ -723,6 +723,8 @@ void ControllerServer::computeControl()
 
       if (isGoalReached()) {
         RCLCPP_INFO(get_logger(), "Reached the goal!");
+        prepare_backup_active_ = false;
+        prepare_check_pending_ = true;
         break;
       }
 
@@ -791,7 +793,6 @@ void ControllerServer::setPlannerPath(const nav_msgs::msg::Path & path)
 
   current_path_ = path;
   controller_phase_ = ControllerPhase::TRACK;
-  prepare_backup_active_ = false;
 }
 
 void ControllerServer::resetNearGoalProgress()
@@ -1060,8 +1061,44 @@ bool ControllerServer::isWithinGoalCheckerTolerance(
   const bool yaw_accept = !check_yaw || yaw_ok;
   const bool stopped_accept = !mark_goal_reached_on_success ||
     (trans_stopped_ok && rot_stopped_ok);
+  const bool tolerance_accept = lon_ok && lat_ok && yaw_accept && stopped_accept;
 
-  if (lon_ok && lat_ok && yaw_accept && stopped_accept) {
+  RCLCPP_INFO_THROTTLE(
+    get_logger(), *get_clock(), 500,
+    "GoalChecker tolerance: id=%s type=%s check_yaw=%s mark_reached=%s result=%s "
+    "goal=(frame=%s x=%.3f y=%.3f yaw=%.3f) "
+    "robot=(frame=%s x=%.3f y=%.3f yaw=%.3f) "
+    "errors=(lon=%.4f lat=%.4f yaw=%.4f dist=%.4f) "
+    "tolerances=(lon=%.4f lat=%.4f yaw=%.4f trans_vel=%.4f rot_vel=%.4f) "
+    "velocity=(linear=%.4f angular=%.4f) "
+    "checks=(lon=%s lat=%s yaw=%s trans_stopped=%s rot_stopped=%s)",
+    current_goal_checker_.c_str(), getGoalCheckerType(current_goal_checker_).c_str(),
+    check_yaw ? "true" : "false",
+    mark_goal_reached_on_success ? "true" : "false",
+    tolerance_accept ? "true" : "false",
+    transformed_end_pose.header.frame_id.c_str(),
+    transformed_end_pose.pose.position.x,
+    transformed_end_pose.pose.position.y,
+    goal_yaw,
+    pose.header.frame_id.c_str(),
+    pose.pose.position.x,
+    pose.pose.position.y,
+    tf2::getYaw(pose.pose.orientation),
+    lon_err, lat_err, yaw_err, std::hypot(lon_err, lat_err),
+    std::fabs(goal_tolerance.position.x),
+    std::fabs(goal_tolerance.position.y),
+    std::fabs(yaw_tolerance),
+    std::fabs(vel_tolerance.linear.x),
+    std::fabs(vel_tolerance.angular.z),
+    std::hypot(velocity.linear.x, velocity.linear.y),
+    std::fabs(velocity.angular.z),
+    lon_ok ? "true" : "false",
+    lat_ok ? "true" : "false",
+    yaw_accept ? "true" : "false",
+    trans_stopped_ok ? "true" : "false",
+    rot_stopped_ok ? "true" : "false");
+
+  if (tolerance_accept) {
     if (mark_goal_reached_on_success) {
       RCLCPP_WARN(
         get_logger(),
@@ -1225,6 +1262,16 @@ const char * ControllerServer::controllerPhaseName(ControllerPhase phase) const
   return "unknown";
 }
 
+std::string ControllerServer::getGoalCheckerType(const std::string & goal_checker_id) const
+{
+  for (size_t i = 0; i < goal_checker_ids_.size() && i < goal_checker_types_.size(); ++i) {
+    if (goal_checker_ids_[i] == goal_checker_id) {
+      return goal_checker_types_[i];
+    }
+  }
+  return "unknown";
+}
+
 void ControllerServer::setControllerPhase(ControllerPhase phase, const std::string & reason)
 {
   if (controller_phase_ == phase) {
@@ -1377,6 +1424,7 @@ bool ControllerServer::shouldRunPrepareBackup()
 {
   if (!staged_control_enabled_ || !prepare_enabled_) {
     prepare_backup_active_ = false;
+    prepare_check_pending_ = false;
     return false;
   }
 
@@ -1387,7 +1435,13 @@ bool ControllerServer::shouldRunPrepareBackup()
     prepare_backup_active_ = false;
   }
 
+  if (!prepare_check_pending_) {
+    return false;
+  }
+
+  prepare_check_pending_ = false;
   if (!isFrontObstacleDetected()) {
+    RCLCPP_INFO(get_logger(), "Prepare phase checked once at navigation start: no front obstacle.");
     return false;
   }
 
@@ -1406,6 +1460,7 @@ geometry_msgs::msg::TwistStamped ControllerServer::computeControllerVelocity(
   const geometry_msgs::msg::PoseStamped & pose,
   const nav_2d_msgs::msg::Twist2D & twist)
 {
+  active_controller_for_log_ = controller_id;
   return controllers_[controller_id]->computeVelocityCommands(
     pose,
     nav_2d_utils::twist2Dto3D(twist),
@@ -1422,26 +1477,45 @@ geometry_msgs::msg::TwistStamped ControllerServer::computeStagedVelocity(
 
   if (!staged_control_enabled_) {
     setControllerPhase(ControllerPhase::TRACK, "staged_control disabled");
+    active_controller_for_log_ = current_controller_;
     return computeControllerVelocity(current_controller_, pose, twist);
   }
 
   if (shouldRunPrepareBackup()) {
     setControllerPhase(ControllerPhase::PREPARE, "front obstacle backup");
+    active_controller_for_log_ = "direct_prepare_backup";
     cmd_vel.twist.linear.x = prepare_backup_speed_;
     return cmd_vel;
   }
 
   const double distance_to_goal = getDistanceToGoal(pose);
-  if (distance_to_goal <= approach_distance_) {
+  const bool in_approach = distance_to_goal <= approach_distance_;
+  if (in_approach) {
+    RCLCPP_INFO_THROTTLE(
+      get_logger(), *get_clock(), 500,
+      "Staged control decision: approach has priority, distance_to_goal=%.3f <= "
+      "approach_distance=%.3f; using controller=%s",
+      distance_to_goal, approach_distance_, approach_controller_.c_str());
     setControllerPhase(ControllerPhase::APPROACH, "within approach distance");
+    active_controller_for_log_ = approach_controller_;
     return computeControllerVelocity(approach_controller_, pose, twist);
   }
 
   double heading_error = 0.0;
-  if (getPathHeadingError(pose, heading_error) &&
-    std::fabs(heading_error) > align_heading_tolerance_)
-  {
+  const bool has_path_heading = getPathHeadingError(pose, heading_error);
+  RCLCPP_INFO_THROTTLE(
+    get_logger(), *get_clock(), 500,
+    "Staged control decision: outside approach, distance_to_goal=%.3f > "
+    "approach_distance=%.3f; path_heading_available=%s heading_error=%.3f "
+    "align_tolerance=%.3f",
+    distance_to_goal,
+    approach_distance_,
+    has_path_heading ? "true" : "false",
+    has_path_heading ? heading_error : 0.0,
+    align_heading_tolerance_);
+  if (has_path_heading && std::fabs(heading_error) > align_heading_tolerance_) {
     setControllerPhase(ControllerPhase::ALIGN, "path heading error exceeds tolerance");
+    active_controller_for_log_ = "direct_align";
     const double abs_cmd = std::clamp(
       std::fabs(heading_error) * align_angular_kp_,
       align_min_angular_velocity_,
@@ -1451,6 +1525,7 @@ geometry_msgs::msg::TwistStamped ControllerServer::computeStagedVelocity(
   }
 
   setControllerPhase(ControllerPhase::TRACK, "path heading aligned");
+  active_controller_for_log_ = track_controller_;
   return computeControllerVelocity(track_controller_, pose, twist);
 }
 
@@ -1613,6 +1688,7 @@ void ControllerServer::computeAndPublishVelocity()
       cmd_vel_2d.twist.linear.z = 0;
       cmd_vel_2d.header.frame_id = costmap_ros_->getBaseFrameID();
       cmd_vel_2d.header.stamp = now();
+      active_controller_for_log_ = "failure_tolerance_zero_cmd";
       if ((now() - last_valid_cmd_time_).seconds() > failure_tolerance_ &&
         failure_tolerance_ != -1.0)
       {
@@ -1654,6 +1730,20 @@ void ControllerServer::computeAndPublishVelocity()
   action_server_->publish_feedback(feedback);
   auto t_feedback_end = std::chrono::high_resolution_clock::now();
   auto feedback_ms = std::chrono::duration<double, std::milli>(t_feedback_end - t_feedback_start).count();
+
+  RCLCPP_INFO_THROTTLE(
+    get_logger(), *get_clock(), 500,
+    "ControllerServer command: phase=%s controller=%s goal_checker=%s "
+    "cmd_vel.linear=(x=%.3f y=%.3f z=%.3f) cmd_vel.angular=(x=%.3f y=%.3f z=%.3f)",
+    controllerPhaseName(controller_phase_),
+    active_controller_for_log_.c_str(),
+    current_goal_checker_.c_str(),
+    cmd_vel_2d.twist.linear.x,
+    cmd_vel_2d.twist.linear.y,
+    cmd_vel_2d.twist.linear.z,
+    cmd_vel_2d.twist.angular.x,
+    cmd_vel_2d.twist.angular.y,
+    cmd_vel_2d.twist.angular.z);
 
   RCLCPP_DEBUG(get_logger(), "Publishing velocity at time %.2f", now().seconds());
   auto t_publish_start = std::chrono::high_resolution_clock::now();
@@ -1797,13 +1887,68 @@ bool ControllerServer::isGoalReached()
 
   geometry_msgs::msg::PoseStamped transformed_end_pose;
   rclcpp::Duration tolerance(rclcpp::Duration::from_seconds(costmap_ros_->getTransformTolerance()));
-  nav_2d_utils::transformPose(
-    costmap_ros_->getTfBuffer(), costmap_ros_->getGlobalFrameID(),
-    end_pose_, transformed_end_pose, tolerance);
+  if (!nav_2d_utils::transformPose(
+      costmap_ros_->getTfBuffer(), costmap_ros_->getGlobalFrameID(),
+      end_pose_, transformed_end_pose, tolerance))
+  {
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), *get_clock(), 5000,
+      "Unable to transform end pose for goal checker plugin result logging.");
+    return false;
+  }
 
-  return goal_checkers_[current_goal_checker_]->isGoalReached(
+  const bool goal_reached = goal_checkers_[current_goal_checker_]->isGoalReached(
     pose.pose, transformed_end_pose.pose,
     velocity);
+
+  geometry_msgs::msg::Pose goal_tolerance;
+  geometry_msgs::msg::Twist vel_tolerance;
+  const bool has_tolerances =
+    goal_checkers_[current_goal_checker_]->getTolerances(goal_tolerance, vel_tolerance);
+
+  const double goal_yaw = tf2::getYaw(transformed_end_pose.pose.orientation);
+  const double robot_yaw = tf2::getYaw(pose.pose.orientation);
+  const double dx = pose.pose.position.x - transformed_end_pose.pose.position.x;
+  const double dy = pose.pose.position.y - transformed_end_pose.pose.position.y;
+  const double lon_err = std::cos(goal_yaw) * dx + std::sin(goal_yaw) * dy;
+  const double lat_err = -std::sin(goal_yaw) * dx + std::cos(goal_yaw) * dy;
+  const double yaw_err = angles::shortest_angular_distance(robot_yaw, goal_yaw);
+  const double yaw_tolerance = has_tolerances ? tf2::getYaw(goal_tolerance.orientation) :
+    std::numeric_limits<double>::quiet_NaN();
+
+  RCLCPP_INFO_THROTTLE(
+    get_logger(), *get_clock(), 500,
+    "GoalChecker plugin result: id=%s type=%s result=%s "
+    "goal=(frame=%s x=%.3f y=%.3f yaw=%.3f) "
+    "robot=(frame=%s x=%.3f y=%.3f yaw=%.3f) "
+    "errors=(lon=%.4f lat=%.4f yaw=%.4f dist=%.4f) "
+    "tolerances_available=%s tolerances=(lon=%.4f lat=%.4f yaw=%.4f "
+    "trans_vel=%.4f rot_vel=%.4f) velocity=(linear=%.4f angular=%.4f)",
+    current_goal_checker_.c_str(), getGoalCheckerType(current_goal_checker_).c_str(),
+    goal_reached ? "true" : "false",
+    transformed_end_pose.header.frame_id.c_str(),
+    transformed_end_pose.pose.position.x,
+    transformed_end_pose.pose.position.y,
+    goal_yaw,
+    pose.header.frame_id.c_str(),
+    pose.pose.position.x,
+    pose.pose.position.y,
+    robot_yaw,
+    lon_err, lat_err, yaw_err, std::hypot(lon_err, lat_err),
+    has_tolerances ? "true" : "false",
+    has_tolerances ? std::fabs(goal_tolerance.position.x) :
+    std::numeric_limits<double>::quiet_NaN(),
+    has_tolerances ? std::fabs(goal_tolerance.position.y) :
+    std::numeric_limits<double>::quiet_NaN(),
+    has_tolerances ? std::fabs(yaw_tolerance) : std::numeric_limits<double>::quiet_NaN(),
+    has_tolerances ? std::fabs(vel_tolerance.linear.x) :
+    std::numeric_limits<double>::quiet_NaN(),
+    has_tolerances ? std::fabs(vel_tolerance.angular.z) :
+    std::numeric_limits<double>::quiet_NaN(),
+    std::hypot(velocity.linear.x, velocity.linear.y),
+    std::fabs(velocity.angular.z));
+
+  return goal_reached;
 }
 
 bool ControllerServer::getRobotPose(geometry_msgs::msg::PoseStamped & pose)

@@ -53,6 +53,8 @@ void PIDController::configure(
   declare_parameter_if_not_declared(node, p + ".long_precision", rclcpp::ParameterValue(0.02));
   declare_parameter_if_not_declared(node, p + ".lat_precision", rclcpp::ParameterValue(0.04));
   declare_parameter_if_not_declared(node, p + ".o_precision", rclcpp::ParameterValue(0.5));
+  declare_parameter_if_not_declared(
+    node, p + ".angular_error_deadband", rclcpp::ParameterValue(0.008));
 
   declare_parameter_if_not_declared(node, p + ".max_v", rclcpp::ParameterValue(0.5));
   declare_parameter_if_not_declared(node, p + ".min_v", rclcpp::ParameterValue(0.0));
@@ -64,10 +66,18 @@ void PIDController::configure(
 
   declare_parameter_if_not_declared(node, p + ".k_theta", rclcpp::ParameterValue(0.5));
   declare_parameter_if_not_declared(node, p + ".switch_speed", rclcpp::ParameterValue(0.1));
+  declare_parameter_if_not_declared(
+    node, p + ".default_desired_linear_vel", rclcpp::ParameterValue(0.15));
+  declare_parameter_if_not_declared(
+    node, p + ".final_rotation_max_v", rclcpp::ParameterValue(0.05));
+  declare_parameter_if_not_declared(
+    node, p + ".final_rotation_linear_deadband", rclcpp::ParameterValue(0.005));
 
   node->get_parameter(p + ".long_precision", long_precision_);
   node->get_parameter(p + ".lat_precision", lat_precision_);
   node->get_parameter(p + ".o_precision", o_precision_);
+  node->get_parameter(p + ".angular_error_deadband", angular_error_deadband_);
+  angular_error_deadband_ = std::fabs(angular_error_deadband_);
 
   node->get_parameter(p + ".max_v", max_v_);
   node->get_parameter(p + ".min_v", min_v_);
@@ -79,6 +89,11 @@ void PIDController::configure(
 
   node->get_parameter(p + ".k_theta", k_theta_);
   node->get_parameter(p + ".switch_speed", switch_speed_);
+  node->get_parameter(p + ".default_desired_linear_vel", default_desired_linear_vel_);
+  node->get_parameter(p + ".final_rotation_max_v", final_rotation_max_v_);
+  node->get_parameter(p + ".final_rotation_linear_deadband", final_rotation_linear_deadband_);
+  final_rotation_max_v_ = std::fabs(final_rotation_max_v_);
+  final_rotation_linear_deadband_ = std::fabs(final_rotation_linear_deadband_);
 
   // ---- nested PID configs: name + ".<pid>.<field>" ----
   auto declare_pid = [&](const std::string & pid, nav2_controller_common::PidConf & conf,
@@ -141,32 +156,65 @@ void PIDController::cleanup()
   controller_traj_.clear();
 }
 
-void PIDController::cachePathAsTrajectory(const nav_msgs::msg::Path & path)
+bool PIDController::cachePathAsTrajectory(const nav_msgs::msg::Path & path)
 {
-  controller_traj_.clear();
-  controller_traj_.reserve(path.poses.size());
+  std::vector<TrajPoint> transformed_traj;
+  transformed_traj.reserve(path.poses.size());
 
-  for (const auto & ps_in : path.poses) {
+  for (size_t i = 0; i < path.poses.size(); ++i) {
+    const auto & ps_in = path.poses[i];
     TrajPoint tp;
     tp.pose = ps_in;
+    if (tp.pose.header.frame_id.empty()) {
+      tp.pose.header = path.header;
+    }
     // transform geometry into the costmap global frame
     if (!tp.pose.header.frame_id.empty() && tp.pose.header.frame_id != global_frame_) {
       try {
         geometry_msgs::msg::PoseStamped ps_out;
-        tf_->transform(tp.pose, ps_out, global_frame_, tf2::durationFromSec(0.1));
+        auto pose_query = tp.pose;
+        pose_query.header.stamp = rclcpp::Time(0);
+        tf_->transform(pose_query, ps_out, global_frame_, tf2::durationFromSec(0.1));
         tp.pose = ps_out;
       } catch (const tf2::TransformException & ex) {
-        RCLCPP_WARN(logger_, "setPlan: TF transform to %s failed: %s",
-          global_frame_.c_str(), ex.what());
-        tp.pose.header.frame_id = global_frame_;
+        RCLCPP_WARN(
+          logger_,
+          "setPlan: TF transform pose[%zu] from frame '%s' to '%s' failed: %s. "
+          "Rejecting this path update and keeping the previous valid trajectory.",
+          i, tp.pose.header.frame_id.c_str(), global_frame_.c_str(), ex.what());
+        return false;
       }
     } else {
       tp.pose.header.frame_id = global_frame_;
     }
-    tp.speed_limit = 0.0;  // geometric path: no speed info
+    tp.speed_limit = default_desired_linear_vel_;  // geometric path: fallback speed
     tp.curvature = 0.0;
-    controller_traj_.push_back(std::move(tp));
+    transformed_traj.push_back(std::move(tp));
   }
+
+  if (transformed_traj.empty()) {
+    RCLCPP_WARN(logger_, "setPlan: transformed trajectory is empty");
+    return false;
+  }
+
+  const auto & input_goal = path.poses.back();
+  const auto & cached_start = transformed_traj.front().pose.pose;
+  const auto & cached_goal = transformed_traj.back().pose.pose;
+  RCLCPP_INFO(
+    logger_,
+    "PIDController setPlan cached trajectory: plugin=%s poses=%zu source_frame=%s "
+    "global_frame=%s input_goal=(x=%.3f y=%.3f yaw=%.3f) "
+    "cached_start=(x=%.3f y=%.3f yaw=%.3f) cached_goal=(x=%.3f y=%.3f yaw=%.3f)",
+    plugin_name_.c_str(), transformed_traj.size(),
+    input_goal.header.frame_id.empty() ? path.header.frame_id.c_str() : input_goal.header.frame_id.c_str(),
+    global_frame_.c_str(),
+    input_goal.pose.position.x, input_goal.pose.position.y,
+    tf2::getYaw(input_goal.pose.orientation),
+    cached_start.position.x, cached_start.position.y, tf2::getYaw(cached_start.orientation),
+    cached_goal.position.x, cached_goal.position.y, tf2::getYaw(cached_goal.orientation));
+
+  controller_traj_ = std::move(transformed_traj);
+  return true;
 }
 
 void PIDController::setPlan(const nav_msgs::msg::Path & path)
@@ -177,7 +225,9 @@ void PIDController::setPlan(const nav_msgs::msg::Path & path)
   }
 
   std::unique_lock<std::mutex> lock(plan_mutex_);
-  cachePathAsTrajectory(path);
+  if (!cachePathAsTrajectory(path)) {
+    return;
+  }
 
   plan_index_ = std::min(1, static_cast<int>(controller_traj_.size()) - 1);
 
@@ -195,10 +245,11 @@ void PIDController::setTrajectory(const nav_interfaces::msg::RobotTrajectory & t
   }
 
   std::unique_lock<std::mutex> lock(plan_mutex_);
-  controller_traj_.clear();
-  controller_traj_.reserve(trajectory.points.size());
+  std::vector<TrajPoint> transformed_traj;
+  transformed_traj.reserve(trajectory.points.size());
 
-  for (const auto & pt : trajectory.points) {
+  for (size_t i = 0; i < trajectory.points.size(); ++i) {
+    const auto & pt = trajectory.points[i];
     TrajPoint tp;
     tp.pose = pt.pose;
     if (tp.pose.header.frame_id.empty()) {
@@ -208,12 +259,17 @@ void PIDController::setTrajectory(const nav_interfaces::msg::RobotTrajectory & t
     if (!tp.pose.header.frame_id.empty() && tp.pose.header.frame_id != global_frame_) {
       try {
         geometry_msgs::msg::PoseStamped ps_out;
-        tf_->transform(tp.pose, ps_out, global_frame_, tf2::durationFromSec(0.1));
+        auto pose_query = tp.pose;
+        pose_query.header.stamp = rclcpp::Time(0);
+        tf_->transform(pose_query, ps_out, global_frame_, tf2::durationFromSec(0.1));
         tp.pose = ps_out;
       } catch (const tf2::TransformException & ex) {
-        RCLCPP_WARN(logger_, "setTrajectory: TF transform to %s failed: %s",
-          global_frame_.c_str(), ex.what());
-        tp.pose.header.frame_id = global_frame_;
+        RCLCPP_WARN(
+          logger_,
+          "setTrajectory: TF transform point[%zu] from frame '%s' to '%s' failed: %s. "
+          "Rejecting this trajectory update and keeping the previous valid trajectory.",
+          i, tp.pose.header.frame_id.c_str(), global_frame_.c_str(), ex.what());
+        return;
       }
     } else {
       tp.pose.header.frame_id = global_frame_;
@@ -221,8 +277,31 @@ void PIDController::setTrajectory(const nav_interfaces::msg::RobotTrajectory & t
     // per-point desired velocity and curvature from SpeedPlanner
     tp.speed_limit = pt.longitudinal_velocity;
     tp.curvature = pt.path_kappa;
-    controller_traj_.push_back(std::move(tp));
+    transformed_traj.push_back(std::move(tp));
   }
+
+  if (transformed_traj.empty()) {
+    RCLCPP_WARN(logger_, "setTrajectory: transformed trajectory is empty");
+    return;
+  }
+
+  const auto & input_goal = trajectory.points.back().pose;
+  const auto & cached_start = transformed_traj.front().pose.pose;
+  const auto & cached_goal = transformed_traj.back().pose.pose;
+  RCLCPP_INFO(
+    logger_,
+    "PIDController setTrajectory cached trajectory: plugin=%s poses=%zu source_frame=%s "
+    "global_frame=%s input_goal=(x=%.3f y=%.3f yaw=%.3f) "
+    "cached_start=(x=%.3f y=%.3f yaw=%.3f) cached_goal=(x=%.3f y=%.3f yaw=%.3f)",
+    plugin_name_.c_str(), transformed_traj.size(),
+    input_goal.header.frame_id.empty() ? trajectory.header.frame_id.c_str() : input_goal.header.frame_id.c_str(),
+    global_frame_.c_str(),
+    input_goal.pose.position.x, input_goal.pose.position.y,
+    tf2::getYaw(input_goal.pose.orientation),
+    cached_start.position.x, cached_start.position.y, tf2::getYaw(cached_start.orientation),
+    cached_goal.position.x, cached_goal.position.y, tf2::getYaw(cached_goal.orientation));
+
+  controller_traj_ = std::move(transformed_traj);
 
   plan_index_ = std::min(1, static_cast<int>(controller_traj_.size()) - 1);
 
@@ -251,10 +330,24 @@ bool PIDController::isGoalReached()
   return false;
 }
 
+const char * PIDController::controllerStageName(ControllerStage stage) const
+{
+  switch (stage) {
+    case FINISH:
+      return "FINISH";
+    case APPROACHING:
+      return "APPROACHING";
+    case ROTATING_TO_GOAL:
+      return "ROTATING_TO_GOAL";
+    default:
+      return "UNKNOWN";
+  }
+}
+
 geometry_msgs::msg::TwistStamped PIDController::computeVelocityCommands(
   const geometry_msgs::msg::PoseStamped & pose,
   const geometry_msgs::msg::Twist & velocity,
-  nav2_core::GoalChecker * /*goal_checker*/)
+  nav2_core::GoalChecker * goal_checker)
 {
   geometry_msgs::msg::TwistStamped cmd_vel;
   cmd_vel.header.frame_id = base_frame_;
@@ -266,8 +359,17 @@ geometry_msgs::msg::TwistStamped PIDController::computeVelocityCommands(
 
   if (controller_traj_.empty()) {
     RCLCPP_WARN_THROTTLE(logger_, *clock_, 2000, "computeVelocityCommands: no plan set");
+    RCLCPP_INFO_THROTTLE(
+      logger_, *clock_, 100,
+      "PIDController command: plugin=%s stage=%s branch=no_plan plan_index=%d/%zu "
+      "desired_v=%.3f cmd_vel=(vx=%.3f wz=%.3f)",
+      plugin_name_.c_str(), controllerStageName(curr_controller_stage_),
+      plan_index_, controller_traj_.size(), desired_linear_vel_,
+      cmd_vel.twist.linear.x, cmd_vel.twist.angular.z);
     return cmd_vel;
   }
+
+  const double input_pose_yaw = tf2::getYaw(pose.pose.orientation);
 
   // current pose is provided by nav2 in the global frame
   current_ps_ = pose;
@@ -289,6 +391,13 @@ geometry_msgs::msg::TwistStamped PIDController::computeVelocityCommands(
   plan_index_ = getClosestWaypointID(controller_traj_, current_ps_, 0.1, true);
   if (plan_index_ < 0) {
     RCLCPP_WARN(logger_, "computeVelocityCommands: failed to get closest waypoint");
+    RCLCPP_INFO_THROTTLE(
+      logger_, *clock_, 100,
+      "PIDController command: plugin=%s stage=%s branch=closest_waypoint_failed "
+      "plan_index=%d/%zu desired_v=%.3f cmd_vel=(vx=%.3f wz=%.3f)",
+      plugin_name_.c_str(), controllerStageName(curr_controller_stage_),
+      plan_index_, controller_traj_.size(), desired_linear_vel_,
+      cmd_vel.twist.linear.x, cmd_vel.twist.angular.z);
     return cmd_vel;
   }
 
@@ -344,30 +453,136 @@ geometry_msgs::msg::TwistStamped PIDController::computeVelocityCommands(
   } catch (const tf2::TransformException & ex) {
     RCLCPP_WARN(logger_, "computeVelocityCommands: TF transform to %s failed: %s",
       base_frame_.c_str(), ex.what());
+    RCLCPP_INFO_THROTTLE(
+      logger_, *clock_, 100,
+      "PIDController command: plugin=%s stage=%s branch=tf_failed plan_index=%d/%zu "
+      "desired_v=%.3f odom=(vx=%.3f wz=%.3f) cmd_vel=(vx=%.3f wz=%.3f)",
+      plugin_name_.c_str(), controllerStageName(curr_controller_stage_),
+      plan_index_, controller_traj_.size(), desired_linear_vel_,
+      velocity.linear.x, velocity.angular.z,
+      cmd_vel.twist.linear.x, cmd_vel.twist.angular.z);
     return cmd_vel;
   }
   // for reverse, target_in_base.x is negative, so the computed speed is negative too
   err_x = target_in_base.pose.position.x;
   err_y = target_in_base.pose.position.y;
 
+  const auto & cached_goal_ps = controller_traj_.back().pose;
+  const double goal_dx_global = cached_goal_ps.pose.position.x - pose.pose.position.x;
+  const double goal_dy_global = cached_goal_ps.pose.position.y - pose.pose.position.y;
+  const double goal_dist_global = std::hypot(goal_dx_global, goal_dy_global);
+  double goal_yaw_error_global = goal_yaw_ - input_pose_yaw;
+  regularizeAngle(goal_yaw_error_global);
+
+  double goal_x_base = std::numeric_limits<double>::quiet_NaN();
+  double goal_y_base = std::numeric_limits<double>::quiet_NaN();
+  try {
+    geometry_msgs::msg::PoseStamped goal_in_base;
+    geometry_msgs::msg::PoseStamped goal_query = cached_goal_ps;
+    goal_query.header.stamp = rclcpp::Time(0);
+    tf_->transform(goal_query, goal_in_base, base_frame_, tf2::durationFromSec(0.1));
+    goal_x_base = goal_in_base.pose.position.x;
+    goal_y_base = goal_in_base.pose.position.y;
+  } catch (const tf2::TransformException & ex) {
+    RCLCPP_WARN_THROTTLE(
+      logger_, *clock_, 1000,
+      "computeVelocityCommands: cached goal TF transform from %s to %s failed: %s",
+      cached_goal_ps.header.frame_id.c_str(), base_frame_.c_str(), ex.what());
+  }
+
+  double goal_checker_long_precision = std::numeric_limits<double>::quiet_NaN();
+  double goal_checker_lat_precision = std::numeric_limits<double>::quiet_NaN();
+  bool goal_checker_tolerance_valid = false;
+  if (goal_checker != nullptr) {
+    geometry_msgs::msg::Pose pose_tolerance;
+    geometry_msgs::msg::Twist velocity_tolerance;
+    goal_checker_tolerance_valid = goal_checker->getTolerances(pose_tolerance, velocity_tolerance);
+    if (goal_checker_tolerance_valid) {
+      goal_checker_long_precision = pose_tolerance.position.x;
+      goal_checker_lat_precision = pose_tolerance.position.y;
+    }
+  }
+
+  auto strict_positive_min = [](double configured, double checker) {
+      if (std::isfinite(checker) && checker > 0.0) {
+        return std::min(std::fabs(configured), checker);
+      }
+      return std::fabs(configured);
+    };
+
+  const double final_goal_long_precision =
+    strict_positive_min(long_precision_, goal_checker_long_precision);
+  const double final_goal_lat_precision =
+    strict_positive_min(lat_precision_, goal_checker_lat_precision);
+  const double final_goal_dist_precision =
+    std::max(final_goal_long_precision, final_goal_lat_precision);
+  constexpr double kFinalRotationEntryMinDistance = 0.03;
+  const double final_rotation_entry_long_precision =
+    std::max(final_goal_long_precision, kFinalRotationEntryMinDistance);
+  const double final_rotation_entry_lat_precision =
+    std::max(final_goal_lat_precision, kFinalRotationEntryMinDistance);
+  const double final_rotation_entry_dist_precision =
+    std::max(final_goal_dist_precision, kFinalRotationEntryMinDistance);
+
+  const bool target_position_tolerance =
+    std::fabs(err_x) < final_goal_long_precision &&
+    std::fabs(err_y) < final_goal_lat_precision;
+  const bool final_goal_error_valid =
+    std::isfinite(goal_x_base) && std::isfinite(goal_y_base);
+  const bool final_goal_position_tolerance =
+    final_goal_error_valid &&
+    std::fabs(goal_x_base) < final_goal_long_precision &&
+    std::fabs(goal_y_base) < final_goal_lat_precision &&
+    goal_dist_global < final_goal_dist_precision;
+  const bool final_rotation_entry_position_tolerance =
+    final_goal_error_valid &&
+    std::fabs(goal_x_base) < final_rotation_entry_long_precision &&
+    std::fabs(goal_y_base) < final_rotation_entry_lat_precision &&
+    goal_dist_global < final_rotation_entry_dist_precision;
+  const double final_rotation_linear_error =
+    final_goal_error_valid ? goal_x_base : err_x;
+  const char * final_rotation_linear_source =
+    final_goal_error_valid ? "goal_base_x" : "target_wp_base_x";
+
+  double dist_to_target = std::hypot(
+    target_ps_.pose.position.x - current_ps_.pose.position.x,
+    target_ps_.pose.position.y - current_ps_.pose.position.y);
+
+  // Step: switch mode
+  if (goal_dist_global > 0.2 || curr_controller_stage_ == FINISH ||
+    (curr_controller_stage_ == ROTATING_TO_GOAL && !final_rotation_entry_position_tolerance))
+  {
+    curr_controller_stage_ = APPROACHING;
+    theta_errors_.clear();
+    longitude_errors_.clear();
+  }
+
+  if (final_rotation_entry_position_tolerance) {
+    curr_controller_stage_ = ROTATING_TO_GOAL;
+  }
+
   // current heading
   double theta_rob = tf2::getYaw(current_ps_.pose.orientation);  // [-pi, pi]
+  double target_yaw_for_log = theta_dir;
 
-  if (curr_controller_stage_ == ROTATING_TO_GOAL ||
-    (std::fabs(err_x) < long_precision_ && std::fabs(err_y) < lat_precision_))
-  {
+  if (curr_controller_stage_ == ROTATING_TO_GOAL) {
     if (reverse_enabled_) {
       theta_rob -= M_PI;
       regularizeAngle(theta_rob);
     }
+    target_yaw_for_log = goal_yaw_;
     err_theta = std::fmod(goal_yaw_ - theta_rob + M_PI, 2 * M_PI) - M_PI;
   } else {
+    target_yaw_for_log = theta_dir;
     err_theta = std::fmod(theta_dir - theta_rob + M_PI, 2 * M_PI) - M_PI;
   }
+  regularizeAngle(target_yaw_for_log);
   regularizeAngle(err_theta);
 
   // longitudinal error statistics (sliding window of 20)
-  longitude_errors_.push_back(std::fabs(err_x));
+  const double longitude_error_for_stats =
+    final_goal_error_valid ? std::fabs(goal_x_base) : std::fabs(err_x);
+  longitude_errors_.push_back(longitude_error_for_stats);
   while (longitude_errors_.size() > 20) {
     longitude_errors_.pop_front();
   }
@@ -388,26 +603,10 @@ geometry_msgs::msg::TwistStamped PIDController::computeVelocityCommands(
     (void)CalculateVariance(theta_errors_, theta_mean);
   }
 
-  double dist_to_goal = std::hypot(
-    target_ps_.pose.position.x - current_ps_.pose.position.x,
-    target_ps_.pose.position.y - current_ps_.pose.position.y);
-
-  // Step: switch mode
-  if (dist_to_goal > 0.2 || curr_controller_stage_ == FINISH ||
-    (dist_to_goal > 0.05 && curr_controller_stage_ == ROTATING_TO_GOAL))
-  {
-    curr_controller_stage_ = APPROACHING;
-    theta_errors_.clear();
-    longitude_errors_.clear();
-  }
-
-  if (longitude_mean < long_precision_ &&
-    std::fabs(err_x) < long_precision_ && std::fabs(err_y) < lat_precision_)
-  {
-    curr_controller_stage_ = ROTATING_TO_GOAL;
-  }
-
   if (curr_controller_stage_ != prev_controller_stage_) {
+    if (curr_controller_stage_ == ROTATING_TO_GOAL) {
+      angular_station_nav2_pid_controller_.Reset();
+    }
     switch (curr_controller_stage_) {
       case FINISH:
         RCLCPP_WARN(logger_, "controller stage: FINISH");
@@ -424,48 +623,124 @@ geometry_msgs::msg::TwistStamped PIDController::computeVelocityCommands(
   }
   prev_controller_stage_ = curr_controller_stage_;
 
-  double angle_to_heading;
+  double angle_to_heading = 0.0;
+  const char * active_branch = "unset";
+  const bool final_rotation_control = curr_controller_stage_ == ControllerStage::ROTATING_TO_GOAL;
+  last_linear_position_cmd_ = 0.0;
+  last_linear_target_v_ = 0.0;
+  last_linear_speed_error_ = 0.0;
+  last_linear_accel_cmd_ = 0.0;
+  last_linear_accel_limited_ = 0.0;
+  last_linear_limit_ = 0.0;
+  last_linear_min_target_v_ = 0.0;
+  last_linear_deadband_ = 0.0;
   if (!reverse_enabled_ &&
-    curr_controller_stage_ != ControllerStage::ROTATING_TO_GOAL &&
-    shouldRotateToPath(target_in_base, angle_to_heading))
+    !final_rotation_control &&
+    false)
   {
+    active_branch = "rotate_to_path";
     rotateToHeading(cmd_vel.twist.linear.x, cmd_vel.twist.angular.z, angle_to_heading, velocity);
   } else {
     switch (curr_controller_stage_) {
       case FINISH: {
+          active_branch = "finish_zero";
           cmd_vel.twist.linear.x = 0.0;
           cmd_vel.twist.angular.z = 0.0;
           break;
         }
       case APPROACHING: {
+          active_branch = "approaching_pid";
           cmd_vel.twist.linear.x = LinearSpeedControl(velocity, err_x);
           cmd_vel.twist.angular.z = AngularSpeedControl(velocity, err_theta);
           break;
         }
       case ROTATING_TO_GOAL: {
-          cmd_vel.twist.linear.x = LinearSpeedControl(velocity, err_x) * 0.25;
-          cmd_vel.twist.angular.z = AngularSpeedControl(velocity, err_theta);
+          active_branch = "rotating_to_goal_signed_speed_pid";
+          cmd_vel.twist.linear.x = LinearSpeedControl(
+            velocity, final_rotation_linear_error, final_rotation_max_v_,
+            final_rotation_max_v_, final_rotation_linear_deadband_);
+          cmd_vel.twist.angular.z = AngularSpeedControl(velocity, err_theta, true);
           break;
         }
       default:
+        active_branch = "unknown_zero";
         cmd_vel.twist.linear.x = 0.0;
         cmd_vel.twist.angular.z = 0.0;
         break;
     }
   }
 
+  RCLCPP_INFO_THROTTLE(
+    logger_, *clock_, 100,
+    "PIDController command: plugin=%s stage=%s branch=%s plan_index=%d/%zu "
+    "desired_v=%.3f "
+    "robot_pose=(frame=%s x=%.3f y=%.3f yaw=%.3f control_yaw=%.3f reverse=%s) "
+    "cached_goal=(frame=%s x=%.3f y=%.3f yaw=%.3f) "
+    "goal_error=(global_dx=%.3f global_dy=%.3f dist=%.3f yaw=%.3f "
+    "base_x=%.3f base_y=%.3f) "
+    "target_wp=(frame=%s index=%d x=%.3f y=%.3f yaw=%.3f base_x=%.3f base_y=%.3f) "
+    "stage_gate=(target_in_tol=%s final_in_tol=%s final_valid=%s "
+    "pid_tol=(long=%.3f lat=%.3f) goal_checker_tol=(valid=%s long=%.3f lat=%.3f) "
+    "effective_tol=(long=%.3f lat=%.3f dist=%.3f) "
+    "rotation_entry=%s rotation_entry_tol=(long=%.3f lat=%.3f dist=%.3f) "
+    "final_linear_source=%s final_linear_error=%.3f) "
+    "errors=(x=%.3f y=%.3f theta=%.3f dist_target=%.3f "
+    "long_mean=%.3f theta_mean=%.3f) "
+    "angle=(current_yaw=%.3f target_yaw=%.3f error=%.3f cmd_wz=%.3f) "
+    "linear_ctrl=(pos_cmd=%.3f target_v=%.3f speed_error=%.3f accel=%.3f accel_limited=%.3f "
+    "limit=%.3f min_target=%.3f deadband=%.3f max_v_inc=%.3f final_rotation=%s) "
+    "angular_cfg=(deadband=%.3f min_w=%.3f max_w=%.3f kp=%.3f final_rotation=%s) "
+    "heading=(theta_dir=%.3f angle_to_path=%.3f) odom=(vx=%.3f wz=%.3f) "
+    "cmd_vel=(vx=%.3f wz=%.3f)",
+    plugin_name_.c_str(), controllerStageName(curr_controller_stage_), active_branch,
+    plan_index_, controller_traj_.size(), desired_linear_vel_,
+    pose.header.frame_id.c_str(), pose.pose.position.x, pose.pose.position.y,
+    input_pose_yaw, theta_rob, reverse_enabled_ ? "true" : "false",
+    cached_goal_ps.header.frame_id.c_str(), cached_goal_ps.pose.position.x,
+    cached_goal_ps.pose.position.y, goal_yaw_,
+    goal_dx_global, goal_dy_global, goal_dist_global, goal_yaw_error_global,
+    goal_x_base, goal_y_base,
+    target_ps_.header.frame_id.c_str(), plan_index_, target_ps_.pose.position.x,
+    target_ps_.pose.position.y, tf2::getYaw(target_ps_.pose.orientation), err_x, err_y,
+    target_position_tolerance ? "true" : "false",
+    final_goal_position_tolerance ? "true" : "false",
+    final_goal_error_valid ? "true" : "false",
+    long_precision_, lat_precision_,
+    goal_checker_tolerance_valid ? "true" : "false",
+    goal_checker_long_precision, goal_checker_lat_precision,
+    final_goal_long_precision, final_goal_lat_precision, final_goal_dist_precision,
+    final_rotation_entry_position_tolerance ? "true" : "false",
+    final_rotation_entry_long_precision, final_rotation_entry_lat_precision,
+    final_rotation_entry_dist_precision,
+    final_rotation_linear_source, final_rotation_linear_error,
+    err_x, err_y, err_theta, dist_to_target, longitude_mean, theta_mean,
+    theta_rob, target_yaw_for_log, err_theta, cmd_vel.twist.angular.z,
+    last_linear_position_cmd_, last_linear_target_v_, last_linear_speed_error_,
+    last_linear_accel_cmd_, last_linear_accel_limited_, last_linear_limit_,
+    last_linear_min_target_v_, last_linear_deadband_, max_v_inc_,
+    final_rotation_control ? "true" : "false",
+    angular_error_deadband_, min_w_, max_w_, angular_station_pid_conf_.kp,
+    final_rotation_control ? "true" : "false",
+    theta_dir, angle_to_heading,
+    velocity.linear.x, velocity.angular.z,
+    cmd_vel.twist.linear.x, cmd_vel.twist.angular.z);
+
   return cmd_vel;
 }
 
 double PIDController::LinearSpeedControl(
-  const geometry_msgs::msg::Twist & velocity, double e_dist)
+  const geometry_msgs::msg::Twist & velocity,
+  double e_dist,
+  double max_linear_speed,
+  double min_target_speed,
+  double position_deadband)
 {
   double curr_vel = velocity.linear.x;
   if (reverse_enabled_) {
     station_nav2_pid_controller_.SetPID(reverse_station_pid_conf_);
     speed_nav2_pid_controller_.SetPID(reverse_speed_pid_conf_);
   } else {
-    if (curr_vel < switch_speed_) {
+    if (std::fabs(curr_vel) < switch_speed_) {
       station_nav2_pid_controller_.SetPID(low_speed_station_pid_conf_);
       speed_nav2_pid_controller_.SetPID(low_speed_pid_conf_);
     } else {
@@ -474,40 +749,129 @@ double PIDController::LinearSpeedControl(
     }
   }
 
-  double speed_error = desired_linear_vel_ - curr_vel;
+  last_linear_position_cmd_ = 0.0;
+  last_linear_target_v_ = 0.0;
+  last_linear_speed_error_ = 0.0;
+  last_linear_accel_cmd_ = 0.0;
+  last_linear_accel_limited_ = 0.0;
+  last_linear_limit_ = 0.0;
+  last_linear_min_target_v_ = std::fabs(min_target_speed);
+  last_linear_deadband_ = std::fabs(position_deadband);
 
-  double speed_offset = station_nav2_pid_controller_.Control(e_dist, d_t_);
-  double speed_controller_input = speed_offset + speed_error;
-
-  double acceleration_cmd_closeloop =
-    speed_nav2_pid_controller_.Control(speed_controller_input, d_t_);
-  double acceleration_cmd_closeloop_limited =
-    std::clamp(acceleration_cmd_closeloop, -max_v_inc_, max_v_inc_);
-  double v_output = curr_vel + acceleration_cmd_closeloop_limited * d_t_;
-
-  if (!std::isfinite(v_output)) {
-    v_output = 0.0;
+  if (std::fabs(e_dist) <= std::fabs(position_deadband)) {
+    station_nav2_pid_controller_.Reset();
+    speed_nav2_pid_controller_.Reset();
+    return 0.0;
   }
-  if (!reverse_enabled_) {
-    v_output = std::clamp(v_output, min_v_, desired_linear_vel_ * 1.5);
-  } else {
-    v_output = std::clamp(v_output, desired_linear_vel_ * 1.5, -min_v_);
+
+  double linear_limit = std::fabs(max_linear_speed);
+  if (!std::isfinite(linear_limit) || linear_limit <= 0.0) {
+    linear_limit = std::fabs(desired_linear_vel_) * 1.5;
   }
+  if (!std::isfinite(linear_limit) || linear_limit <= 0.0) {
+    linear_limit = std::fabs(default_desired_linear_vel_);
+  }
+  if (std::isfinite(speed_limit_)) {
+    linear_limit = std::min(linear_limit, std::fabs(speed_limit_));
+  }
+  linear_limit = std::min(linear_limit, std::fabs(max_v_));
+  last_linear_limit_ = linear_limit;
+  if (!std::isfinite(linear_limit) || linear_limit <= 0.0) {
+    return 0.0;
+  }
+
+  double position_cmd = station_nav2_pid_controller_.Control(e_dist, d_t_);
+  if (!std::isfinite(position_cmd)) {
+    position_cmd = 0.0;
+  }
+  position_cmd = std::clamp(position_cmd, -linear_limit, linear_limit);
+  if (position_cmd * e_dist < 0.0) {
+    position_cmd = 0.0;
+  }
+
+  const double min_target_abs = std::min(std::fabs(min_target_speed), linear_limit);
+  double target_vel = position_cmd;
+  if (min_target_abs > 0.0 && std::fabs(target_vel) < min_target_abs) {
+    target_vel = std::copysign(min_target_abs, e_dist);
+  }
+  target_vel = std::clamp(target_vel, -linear_limit, linear_limit);
+
+  const double speed_error = target_vel - curr_vel;
+  double acceleration_cmd = speed_nav2_pid_controller_.Control(speed_error, d_t_);
+  if (!std::isfinite(acceleration_cmd)) {
+    acceleration_cmd = 0.0;
+  }
+  double acceleration_cmd_limited =
+    std::clamp(acceleration_cmd, -std::fabs(max_v_inc_), std::fabs(max_v_inc_));
+  if (acceleration_cmd_limited * speed_error < 0.0) {
+    RCLCPP_WARN_THROTTLE(
+      logger_, *clock_, 1000,
+      "Linear speed PID output reversed: target_v=%.4f curr_v=%.4f error=%.4f accel=%.4f",
+      target_vel, curr_vel, speed_error, acceleration_cmd_limited);
+    acceleration_cmd_limited =
+      std::copysign(
+      std::min(std::fabs(max_v_inc_), std::fabs(speed_error) / d_t_), speed_error);
+  }
+
+  double v_output = curr_vel + acceleration_cmd_limited * d_t_;
+  if (target_vel > curr_vel) {
+    v_output = std::min(v_output, target_vel);
+  } else if (target_vel < curr_vel) {
+    v_output = std::max(v_output, target_vel);
+  }
+
+  if (min_v_ > 0.0 && std::fabs(v_output) > 0.0 && std::fabs(v_output) < min_v_) {
+    v_output = std::copysign(min_v_, v_output);
+  }
+  v_output = std::clamp(v_output, -linear_limit, linear_limit);
+
+  last_linear_position_cmd_ = position_cmd;
+  last_linear_target_v_ = target_vel;
+  last_linear_speed_error_ = speed_error;
+  last_linear_accel_cmd_ = acceleration_cmd;
+  last_linear_accel_limited_ = acceleration_cmd_limited;
+  last_linear_limit_ = linear_limit;
+
   return v_output;
 }
 
 double PIDController::AngularSpeedControl(
-  const geometry_msgs::msg::Twist & /*velocity*/, double err_theta)
+  const geometry_msgs::msg::Twist & /*velocity*/, double err_theta, bool final_rotation)
 {
   regularizeAngle(err_theta);
+  if (std::fabs(err_theta) <= angular_error_deadband_) {
+    angular_station_nav2_pid_controller_.Reset();
+    return 0.0;
+  }
 
-  double vel_angular_output = angular_station_nav2_pid_controller_.Control(err_theta, d_t_);
+  double vel_angular_output = 0.0;
+  if (final_rotation) {
+    vel_angular_output = angular_station_pid_conf_.kp * err_theta;
+  } else {
+    vel_angular_output = angular_station_nav2_pid_controller_.Control(err_theta, d_t_);
+  }
 
   if (!std::isfinite(vel_angular_output)) {
     vel_angular_output = 0.0;
   }
 
-  vel_angular_output = std::clamp(vel_angular_output, min_w_, max_w_);
+  if (vel_angular_output * err_theta < 0.0) {
+    RCLCPP_WARN_THROTTLE(
+      logger_, *clock_, 1000,
+      "Angular PID output reversed: error=%.4f raw_wz=%.4f, forcing error direction",
+      err_theta, vel_angular_output);
+    vel_angular_output = std::copysign(min_w_, err_theta);
+  }
+
+  const double angular_sign = std::copysign(1.0, err_theta);
+  double angular_abs = std::fabs(vel_angular_output);
+  if (min_w_ > 0.0 && angular_abs < min_w_) {
+    angular_abs = min_w_;
+  }
+  if (angular_abs > 0.0) {
+    angular_abs = std::clamp(angular_abs, min_w_, max_w_);
+  }
+  vel_angular_output = angular_sign * angular_abs;
 
   return vel_angular_output;
 }
@@ -624,11 +988,8 @@ void PIDController::rotateToHeading(
 {
   linear_vel = 0.0;
 
-  const double & dt = d_t_;
-  const double min_feasible_angular_speed = curr_vel.angular.z - 2.0 * dt;
-  const double max_feasible_angular_speed = curr_vel.angular.z + 2.0 * dt;
+  (void)curr_vel;
   angular_vel = AngularSpeedControl(curr_vel, angle_to_path);
-  angular_vel = std::clamp(angular_vel, min_feasible_angular_speed, max_feasible_angular_speed);
 }
 
 }  // namespace nav2_pid_controller
