@@ -46,6 +46,7 @@ void MPPIController::configure(
   auto getParam = parameters_handler_->getParamGetter(name_);
   getParam(visualize_, "visualize", false);
   getParam(reset_period_, "reset_period", 1.0);
+  getParam(traj_speed_cap_lookahead_, "trajectory_speed_cap_lookahead", 0.2);
   configureStages();
   active_stage_enter_time_ = clock_->now();
 
@@ -139,18 +140,37 @@ double MPPIController::nearestTrajectorySpeed(
       return -1.0;  // TF 失败：本周期不设帽，回退 profile 约束
     }
   }
+  size_t nearest_i = 0;
   double best_d2 = std::numeric_limits<double>::max();
-  double best_v = -1.0;
-  for (const auto & pt : reference_trajectory_.points) {
-    const double dx = pt.pose.pose.position.x - pose_in_traj.pose.position.x;
-    const double dy = pt.pose.pose.position.y - pose_in_traj.pose.position.y;
+  const auto & pts = reference_trajectory_.points;
+  for (size_t i = 0; i < pts.size(); ++i) {
+    const double dx = pts[i].pose.pose.position.x - pose_in_traj.pose.position.x;
+    const double dy = pts[i].pose.pose.position.y - pose_in_traj.pose.position.y;
     const double d2 = dx * dx + dy * dy;
     if (d2 < best_d2) {
       best_d2 = d2;
-      best_v = std::fabs(pt.longitudinal_velocity);
+      nearest_i = i;
     }
   }
-  return best_v;
+
+  // 帽 = 前瞻窗 [最近点, +trajectory_speed_cap_lookahead] 内的最大规划速度，
+  // 不能取最近点本身——剖面每周期从当前实际速度重规划（receding-horizon），
+  // "当前位置的计划速度"恒等于当前速度，静止时会形成"帽=0 → 动不了 → 速度恒 0"
+  // 的自引用死锁。窗的含义：允许 MPPI 领先计划加速坡多远——窗越小越贴近计划的
+  // 加速形状，但必须至少包含最近点的下一个点（点距稀疏时防死锁复发）；
+  // 减速段剖面递减，窗内最大值=当前位置计划速度，不受窗大小影响（不提前刹）。
+  double cap = std::fabs(pts[nearest_i].longitudinal_velocity);
+  double s = 0.0;
+  for (size_t j = nearest_i + 1; j < pts.size(); ++j) {
+    const double dx = pts[j].pose.pose.position.x - pts[j - 1].pose.pose.position.x;
+    const double dy = pts[j].pose.pose.position.y - pts[j - 1].pose.pose.position.y;
+    s += std::hypot(dx, dy);
+    cap = std::max(cap, std::fabs(pts[j].longitudinal_velocity));
+    if (s >= traj_speed_cap_lookahead_ && j > nearest_i + 1) {
+      break;
+    }
+  }
+  return cap;
 }
 
 // geometry_msgs::msg::TwistStamped MPPIController::computeVelocityCommands(
