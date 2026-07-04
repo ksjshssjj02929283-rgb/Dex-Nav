@@ -155,9 +155,10 @@ protected:
   void setPlannerPath(const nav_msgs::msg::Path & path);
   /**
    * @brief 规划级 pipeline（③④）：LocalPlanner（暂缺=直通）→ SpeedPlanner 生成
-   *        RobotTrajectory，缓存并分发给 controller（setTrajectory 仅在轨迹更新时调用，
-   *        控制循环内不重算速度曲线）。当前为 path 更新事件驱动；LocalPlanner 引入后
-   *        本函数改挂独立低频定时循环，④ 调用点与分发结构不变。
+   *        RobotTrajectory，缓存并分发给 controller。
+   *        在控制循环内每周期执行一次（控制计算之前）：全局重规划频率低，速度剖面
+   *        必须从最新 odom 速度与最新 costmap 逐周期重算（receding-horizon 前提）。
+   *        控制级升频后若需降低规划频率，可在调用处加分频。
    *        未配置 current_speed_planner（空）时直接返回——controller 走 setPlan 路径，
    *        全链行为与未集成前一致（灰度回退）。
    * @param path 规划级输入路径（现为 global path）
@@ -371,9 +372,11 @@ protected:
   std::vector<std::string> speed_planner_ids_;
   std::vector<std::string> speed_planner_types_;
   std::string speed_planner_ids_concat_, current_speed_planner_;
-  // 轨迹缓存：规划级产出、控制级消费；当前单线程（action 线程内事件驱动），
-  // 改挂独立定时循环时需加最小临界区保护
+  // 轨迹缓存：规划级产出、控制级消费；规划与控制同在 action 线程逐周期串行执行，
+  // 无并发；将来拆独立规划线程时需加最小临界区保护
   nav_interfaces::msg::RobotTrajectory current_trajectory_;
+  // RViz 可视化节流（速度剖面每周期重算，但只以 ~2Hz 重画）
+  rclcpp::Time last_speed_plan_viz_time_{0, 0, RCL_ROS_TIME};
 
   double controller_frequency_;
   double min_x_velocity_threshold_;

@@ -697,6 +697,18 @@ void ControllerServer::computeControl()
       }
       // end
 
+      // ④ 规划级：每个控制周期在控制计算之前重算速度剖面（receding-horizon：
+      // 从最新 odom 速度与最新 costmap 出发；全局重规划频率低，不能依赖 path 事件）。
+      start = std::chrono::high_resolution_clock::now();
+      runPlanningPipeline(current_path_);
+      end = std::chrono::high_resolution_clock::now();
+      elapsed = end - start;
+      if (elapsed.count() >= 50) {
+        RCLCPP_WARN(
+          get_logger(), "Speed planning cost: %.6f ms",
+          elapsed.count());
+      }
+
       // added by hz
       start = std::chrono::high_resolution_clock::now();
       computeAndPublishVelocity();
@@ -769,8 +781,8 @@ void ControllerServer::setPlannerPath(const nav_msgs::msg::Path & path)
     }
   }
 
-  // ④ 规划级：path 更新事件驱动生成带速度轨迹并分发（未配置时为空操作）。
-  runPlanningPipeline(path);
+  // ④ 规划级不在此触发：速度剖面在控制循环内每周期重算（见 computeControl），
+  // 保证低频全局重规划下 receding-horizon 语义依然成立。
 
   end_pose_ = path.poses.back();
   end_pose_.header.frame_id = path.header.frame_id;
@@ -787,12 +799,15 @@ void ControllerServer::setPlannerPath(const nav_msgs::msg::Path & path)
 
 void ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
 {
-  // 规划级（③④）：③ LocalPlanner 暂缺 = 直通（global path 即输入）；
-  // ④ SpeedPlanner 从 odom 当前速度出发生成 RobotTrajectory。
-  // 分发契约：setTrajectory 仅在轨迹更新时调用一次，控制循环内不重算速度曲线。
+  // 规划级（③④），控制循环内每周期执行一次：③ LocalPlanner 暂缺 = 直通（global path
+  // 即输入）；④ SpeedPlanner 从最新 odom 速度 + 最新 costmap 重算速度剖面
+  // （receding-horizon：减速区随实际速度逐周期外扩，障碍约束随 costmap 滚动更新）。
   current_trajectory_ = nav_interfaces::msg::RobotTrajectory();
   if (current_speed_planner_.empty()) {
     return;  // 未配置：灰度回退，controller 走 setPlan 几何路径
+  }
+  if (path.poses.empty()) {
+    return;
   }
   auto sp = speed_planners_.find(current_speed_planner_);
   if (sp == speed_planners_.end()) {
@@ -808,8 +823,8 @@ void ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
   sp->second->setPlan(path);
   current_trajectory_ = sp->second->computeSpeedPlan(path, current_velocity);
   if (current_trajectory_.points.empty()) {
-    RCLCPP_WARN(
-      get_logger(),
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), *get_clock(), 1000,
       "Speed planner '%s' returned empty trajectory; controllers keep geometric path. "
       "速度规划返回空轨迹，控制器继续使用几何路径。",
       current_speed_planner_.c_str());
@@ -827,10 +842,17 @@ void ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
     }
   }
 
-  publishSpeedPlan(current_trajectory_);
+  // RViz 可视化节流（每周期重算但无需每周期重画）。
+  const rclcpp::Time viz_now = now();
+  if (last_speed_plan_viz_time_.nanoseconds() == 0 ||
+    (viz_now - last_speed_plan_viz_time_).seconds() >= 0.5)
+  {
+    publishSpeedPlan(current_trajectory_);
+    last_speed_plan_viz_time_ = viz_now;
+  }
 
-  RCLCPP_INFO(
-    get_logger(),
+  RCLCPP_INFO_THROTTLE(
+    get_logger(), *get_clock(), 1000,
     "Speed plan dispatched: planner=%s points=%zu v_start=%.3f",
     current_speed_planner_.c_str(), current_trajectory_.points.size(),
     current_velocity.linear.x);
