@@ -16,9 +16,12 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <limits>
+#include <string>
 #include "nav2_mppi_controller/controller.hpp"
 #include "nav2_mppi_controller/tools/utils.hpp"
 #include "tf2/utils.h"  // tf2::getYaw（到点精度 log）
+#include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
 
 // #define BENCHMARK_TESTING
 
@@ -107,6 +110,47 @@ void MPPIController::reset()
   final_yaw_envelope_braking_active_ = false;
   final_yaw_control_state_ = FINAL_YAW_TRACKING;
   final_yaw_exit_violation_count_ = 0;
+  reference_trajectory_.points.clear();
+  optimizer_.setTrajectorySpeedCap(-1.0);
+}
+
+void MPPIController::setTrajectory(const nav_interfaces::msg::RobotTrajectory & trajectory)
+{
+  reference_trajectory_ = trajectory;
+}
+
+double MPPIController::nearestTrajectorySpeed(
+  const geometry_msgs::msg::PoseStamped & robot_pose) const
+{
+  if (reference_trajectory_.points.empty()) {
+    return -1.0;
+  }
+  std::string traj_frame = reference_trajectory_.header.frame_id;
+  if (traj_frame.empty()) {
+    traj_frame = reference_trajectory_.points.front().pose.header.frame_id;
+  }
+  geometry_msgs::msg::PoseStamped pose_in_traj = robot_pose;
+  if (!traj_frame.empty() && robot_pose.header.frame_id != traj_frame) {
+    try {
+      geometry_msgs::msg::PoseStamped query = robot_pose;
+      query.header.stamp = rclcpp::Time(0);
+      tf_buffer_->transform(query, pose_in_traj, traj_frame, tf2::durationFromSec(0.1));
+    } catch (const tf2::TransformException &) {
+      return -1.0;  // TF 失败：本周期不设帽，回退 profile 约束
+    }
+  }
+  double best_d2 = std::numeric_limits<double>::max();
+  double best_v = -1.0;
+  for (const auto & pt : reference_trajectory_.points) {
+    const double dx = pt.pose.pose.position.x - pose_in_traj.pose.position.x;
+    const double dy = pt.pose.pose.position.y - pose_in_traj.pose.position.y;
+    const double d2 = dx * dx + dy * dy;
+    if (d2 < best_d2) {
+      best_d2 = d2;
+      best_v = std::fabs(pt.longitudinal_velocity);
+    }
+  }
+  return best_v;
 }
 
 // geometry_msgs::msg::TwistStamped MPPIController::computeVelocityCommands(
@@ -169,6 +213,11 @@ geometry_msgs::msg::TwistStamped MPPIController::computeVelocityCommands(
   const double heading_path_angle = path_handler_.getLastHeadingPathAngle();
 
   // 提前捕获目标位姿（用于 approach 子阶段和到点精度 log；plan 后续可能被 move 走）
+  // ④ 轨迹参考速度：最近轨迹点的规划速度作为本周期 vx 采样上限（叠加在 profile 之上）。
+  // 减速尾段/曲率限速/障碍零速由速度规划剖面逐点编码；无轨迹/TF 失败时不设帽。
+  optimizer_.setTrajectorySpeedCap(nearestTrajectorySpeed(robot_pose));
+
+  // 提前捕获目标位姿（用于到点精度 log；transformed_plan 后续可能被 visualize move 走）
   double key_goal_x = 0.0, key_goal_y = 0.0, key_goal_yaw = 0.0;
   double key_lon = 0.0, key_lat = 0.0, key_yaw = 0.0;
   const bool key_has_goal = !transformed_plan.poses.empty();
