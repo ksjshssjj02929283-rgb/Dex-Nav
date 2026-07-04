@@ -36,6 +36,7 @@ void SpeedPlannerBase::configure(
 
   auto node = parent.lock();
   logger_ = node->get_logger();
+  clock_ = node->get_clock();
 
   // 参数声明（默认值同 dcm initialize）。
   nav2_util::declare_parameter_if_not_declared(
@@ -154,6 +155,17 @@ nav_interfaces::msg::RobotTrajectory SpeedPlannerBase::computeSpeedPlan(
     p.speed_hint = 0.0f;
     p.region_type = "";
     p.segment_id = "";
+    // 相邻重复点去重（<0.1mm）：重复点破坏曲率三点拟合并使点距统计失真；
+    // 姿态取后到者（保住终点朝向）。
+    if (!work.empty()) {
+      const auto & prev = work.back().pose.pose.position;
+      const double dx = ps.pose.position.x - prev.x;
+      const double dy = ps.pose.position.y - prev.y;
+      if (dx * dx + dy * dy < 1e-8) {
+        work.back().pose = p.pose;
+        continue;
+      }
+    }
     work.push_back(std::move(p));
   }
 
@@ -643,7 +655,9 @@ std::vector<double> SpeedPlannerBase::calcTrajectoryCurvatureFrom3Points(
     try {
       curvature = calcCurvature(p0, p1, p2);
     } catch (std::exception const & e) {
-      RCLCPP_WARN(logger_, "%s", e.what());
+      if (clock_) {
+        RCLCPP_WARN_THROTTLE(logger_, *clock_, 5000, "%s", e.what());
+      }
       if (i > 1) {
         curvature = k_arr.at(i - 1);  // 沿用前一点曲率
       } else {

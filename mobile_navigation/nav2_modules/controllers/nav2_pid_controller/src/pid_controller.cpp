@@ -158,32 +158,39 @@ void PIDController::cleanup()
 
 bool PIDController::cachePathAsTrajectory(const nav_msgs::msg::Path & path)
 {
+  // 单次 lookup + 逐点 doTransform：逐点 tf_->transform 在 TF 瞬时滞后时每点可阻塞到
+  // 超时上限，规划级每控制周期分发的情况下会拖垮控制循环节拍。
+  std::string source_frame = path.header.frame_id;
+  if (!path.poses.empty() && !path.poses.front().header.frame_id.empty()) {
+    source_frame = path.poses.front().header.frame_id;
+  }
+  geometry_msgs::msg::TransformStamped tf_to_global;
+  bool need_transform = false;
+  if (!source_frame.empty() && source_frame != global_frame_) {
+    try {
+      tf_to_global = tf_->lookupTransform(
+        global_frame_, source_frame, rclcpp::Time(0), tf2::durationFromSec(0.05));
+      need_transform = true;
+    } catch (const tf2::TransformException & ex) {
+      RCLCPP_WARN(
+        logger_,
+        "setPlan: TF transform from frame '%s' to '%s' failed: %s. "
+        "Rejecting this path update and keeping the previous valid trajectory.",
+        source_frame.c_str(), global_frame_.c_str(), ex.what());
+      return false;
+    }
+  }
+
   std::vector<TrajPoint> transformed_traj;
   transformed_traj.reserve(path.poses.size());
-
   for (size_t i = 0; i < path.poses.size(); ++i) {
-    const auto & ps_in = path.poses[i];
     TrajPoint tp;
-    tp.pose = ps_in;
+    tp.pose = path.poses[i];
     if (tp.pose.header.frame_id.empty()) {
       tp.pose.header = path.header;
     }
-    // transform geometry into the costmap global frame
-    if (!tp.pose.header.frame_id.empty() && tp.pose.header.frame_id != global_frame_) {
-      try {
-        geometry_msgs::msg::PoseStamped ps_out;
-        auto pose_query = tp.pose;
-        pose_query.header.stamp = rclcpp::Time(0);
-        tf_->transform(pose_query, ps_out, global_frame_, tf2::durationFromSec(0.1));
-        tp.pose = ps_out;
-      } catch (const tf2::TransformException & ex) {
-        RCLCPP_WARN(
-          logger_,
-          "setPlan: TF transform pose[%zu] from frame '%s' to '%s' failed: %s. "
-          "Rejecting this path update and keeping the previous valid trajectory.",
-          i, tp.pose.header.frame_id.c_str(), global_frame_.c_str(), ex.what());
-        return false;
-      }
+    if (need_transform) {
+      tf2::doTransform(tp.pose, tp.pose, tf_to_global);
     } else {
       tp.pose.header.frame_id = global_frame_;
     }
@@ -200,7 +207,7 @@ bool PIDController::cachePathAsTrajectory(const nav_msgs::msg::Path & path)
   const auto & input_goal = path.poses.back();
   const auto & cached_start = transformed_traj.front().pose.pose;
   const auto & cached_goal = transformed_traj.back().pose.pose;
-  RCLCPP_INFO(
+  RCLCPP_DEBUG(
     logger_,
     "PIDController setPlan cached trajectory: plugin=%s poses=%zu source_frame=%s "
     "global_frame=%s input_goal=(x=%.3f y=%.3f yaw=%.3f) "
@@ -245,9 +252,31 @@ void PIDController::setTrajectory(const nav_interfaces::msg::RobotTrajectory & t
   }
 
   std::unique_lock<std::mutex> lock(plan_mutex_);
+
+  // 单次 lookup + 逐点 doTransform（同 cachePathAsTrajectory，避免逐点 TF 阻塞）。
+  std::string source_frame = trajectory.header.frame_id;
+  if (!trajectory.points.empty() && !trajectory.points.front().pose.header.frame_id.empty()) {
+    source_frame = trajectory.points.front().pose.header.frame_id;
+  }
+  geometry_msgs::msg::TransformStamped tf_to_global;
+  bool need_transform = false;
+  if (!source_frame.empty() && source_frame != global_frame_) {
+    try {
+      tf_to_global = tf_->lookupTransform(
+        global_frame_, source_frame, rclcpp::Time(0), tf2::durationFromSec(0.05));
+      need_transform = true;
+    } catch (const tf2::TransformException & ex) {
+      RCLCPP_WARN(
+        logger_,
+        "setTrajectory: TF transform from frame '%s' to '%s' failed: %s. "
+        "Rejecting this trajectory update and keeping the previous valid trajectory.",
+        source_frame.c_str(), global_frame_.c_str(), ex.what());
+      return;
+    }
+  }
+
   std::vector<TrajPoint> transformed_traj;
   transformed_traj.reserve(trajectory.points.size());
-
   for (size_t i = 0; i < trajectory.points.size(); ++i) {
     const auto & pt = trajectory.points[i];
     TrajPoint tp;
@@ -255,22 +284,8 @@ void PIDController::setTrajectory(const nav_interfaces::msg::RobotTrajectory & t
     if (tp.pose.header.frame_id.empty()) {
       tp.pose.header = trajectory.header;
     }
-    // transform geometry into the costmap global frame
-    if (!tp.pose.header.frame_id.empty() && tp.pose.header.frame_id != global_frame_) {
-      try {
-        geometry_msgs::msg::PoseStamped ps_out;
-        auto pose_query = tp.pose;
-        pose_query.header.stamp = rclcpp::Time(0);
-        tf_->transform(pose_query, ps_out, global_frame_, tf2::durationFromSec(0.1));
-        tp.pose = ps_out;
-      } catch (const tf2::TransformException & ex) {
-        RCLCPP_WARN(
-          logger_,
-          "setTrajectory: TF transform point[%zu] from frame '%s' to '%s' failed: %s. "
-          "Rejecting this trajectory update and keeping the previous valid trajectory.",
-          i, tp.pose.header.frame_id.c_str(), global_frame_.c_str(), ex.what());
-        return;
-      }
+    if (need_transform) {
+      tf2::doTransform(tp.pose, tp.pose, tf_to_global);
     } else {
       tp.pose.header.frame_id = global_frame_;
     }
@@ -288,7 +303,7 @@ void PIDController::setTrajectory(const nav_interfaces::msg::RobotTrajectory & t
   const auto & input_goal = trajectory.points.back().pose;
   const auto & cached_start = transformed_traj.front().pose.pose;
   const auto & cached_goal = transformed_traj.back().pose.pose;
-  RCLCPP_INFO(
+  RCLCPP_DEBUG(
     logger_,
     "PIDController setTrajectory cached trajectory: plugin=%s poses=%zu source_frame=%s "
     "global_frame=%s input_goal=(x=%.3f y=%.3f yaw=%.3f) "
