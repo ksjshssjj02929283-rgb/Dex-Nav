@@ -1,7 +1,7 @@
 // Copyright 2026 DEXE Robot Engineer
 // SPDX-License-Identifier: Apache-2.0
 //
-// S 型（jerk 限制速度曲线）规划器实现 —— 基于 Ruckig（项目 doc 8 §十一）。
+// S 型（jerk 限制速度曲线）规划器实现 —— 基于 Ruckig。
 #include "nav2_speed_planner/scurve_speed_planner.hpp"
 
 #include <algorithm>
@@ -64,7 +64,8 @@ void SCurveSpeedPlanner::generateRuckigProfile(
   double max_jerk, double ctrl_dt,
   std::vector<double> & v_out,
   std::vector<double> & a_out,
-  std::vector<double> & t_out)
+  std::vector<double> & t_out,
+  double v_end)
 {
   const size_t n = v_env.size();
   v_out.assign(n, 0.0);
@@ -80,11 +81,13 @@ void SCurveSpeedPlanner::generateRuckigProfile(
     return;
   }
 
-  // 停止点：首个零包络点（障碍）否则终点。
+  // 停止点：首个零包络点（障碍）否则终点。障碍停止时终点速度强制 0。
   size_t stop_i = n - 1;
+  bool stop_at_env_zero = false;
   for (size_t i = 0; i < n; ++i) {
-    if (v_env[i] < 1e-3) {stop_i = i; break;}
+    if (v_env[i] < 1e-3) {stop_i = i; stop_at_env_zero = true; break;}
   }
+  v_end = stop_at_env_zero ? 0.0 : std::max(0.0, v_end);
   const double target = arc_s[stop_i];
 
   ruckig::Ruckig<1> otg(ctrl_dt);
@@ -94,7 +97,7 @@ void SCurveSpeedPlanner::generateRuckigProfile(
   in.current_velocity = {std::clamp(v_start, 0.0, std::max(0.0, v_env[0]))};
   in.current_acceleration = {0.0};
   in.target_position = {target};
-  in.target_velocity = {0.0};
+  in.target_velocity = {v_end};
   in.target_acceleration = {0.0};
   in.max_acceleration = {a_max};
   in.max_jerk = {max_jerk};
@@ -118,14 +121,15 @@ void SCurveSpeedPlanner::generateRuckigProfile(
     rt.push_back(tnow);
     out.pass_to_input(in);
     if (res == ruckig::Result::Finished) {break;}
-    if (out.new_position[0] >= target - 1e-3 && out.new_velocity[0] < 1e-3) {break;}
+    if (out.new_position[0] >= target - 1e-3 && out.new_velocity[0] <= v_end + 1e-3) {break;}
   }
 
-  // 重采样到路径点弧长；停止点之后置 0；最终对包络限幅消除重采样残差。
+  // 重采样到路径点弧长；停止点之后置终点速度（障碍停止时 v_end 已强制 0）；
+  // 最终对包络限幅消除重采样残差。
   size_t k = 0;
   for (size_t i = 0; i < n; ++i) {
     if (arc_s[i] >= target - 1e-9) {
-      v_out[i] = 0.0; a_out[i] = 0.0; t_out[i] = rt.back();
+      v_out[i] = v_end; a_out[i] = 0.0; t_out[i] = rt.back();
       continue;
     }
     while (k + 1 < rs.size() && rs[k + 1] < arc_s[i]) {++k;}
@@ -155,7 +159,9 @@ void SCurveSpeedPlanner::assignVelocityProfile(
     return;
   }
 
-  // 1) 复用基类构建逐点速度包络（cruise + 障碍置零 + 曲率限速；base 已设 points_interval_）。
+  // 1) Phase A 约束包络（与 T 型共享同一套约束函数）：
+  //    A1 障碍 + 缓冲带置零 → A2 巡航求解+回填 → A3 曲率。
+  applyObstacleConstraint(work);
   const double cruise = getSpeedLimit(work, curr_vel);
   setPlanSpeedLimit(work, cruise);
   applyCurvatureConstraint(work, cruise);
@@ -170,13 +176,14 @@ void SCurveSpeedPlanner::assignVelocityProfile(
     v_env[i] = std::max(0.0, work[i].speed_limit);
   }
 
-  // 3) Ruckig 生成 jerk 限制剖面（非对称 a_max / d_max=|decel_|）。
+  // 3) Ruckig 生成 jerk 限制剖面（非对称 a_max / d_max=|decel_|）。包络零点已含障碍缓冲带。
+  //    终点目标速度 = end_speed_（与 T 型统一；障碍停止时函数内部强制 0）。
   std::vector<double> v_out, a_out, t_out;
   generateRuckigProfile(
     v_env, arc_s, curr_vel,
     accel_, std::fabs(decel_),
     max_jerk_, control_dt_,
-    v_out, a_out, t_out);
+    v_out, a_out, t_out, end_speed_);
 
   // 4) 回填 work（曲率已由 applyCurvatureConstraint 填好）。
   for (size_t i = 0; i < n; ++i) {
