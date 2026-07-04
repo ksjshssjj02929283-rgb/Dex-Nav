@@ -25,11 +25,14 @@
 #include "nav2_core/controller.hpp"
 #include "nav2_core/progress_checker.hpp"
 #include "nav2_core/goal_checker.hpp"
+#include "nav2_core/speed_planner.hpp"
 #include "nav2_costmap_2d/costmap_2d_ros.hpp"
+#include "nav_interfaces/msg/robot_trajectory.hpp"
 #include "tf2_ros/transform_listener.h"
 #include "nav2_msgs/action/follow_path.hpp"
 #include "nav2_msgs/msg/speed_limit.hpp"
 #include "diagnostic_msgs/msg/diagnostic_array.hpp"
+#include "visualization_msgs/msg/marker_array.hpp"
 #include "nav_2d_utils/odom_subscriber.hpp"
 #include "nav2_util/lifecycle_node.hpp"
 #include "nav2_util/simple_action_server.hpp"
@@ -51,6 +54,7 @@ class ControllerServer : public nav2_util::LifecycleNode
 public:
   using ControllerMap = std::unordered_map<std::string, nav2_core::Controller::Ptr>;
   using GoalCheckerMap = std::unordered_map<std::string, nav2_core::GoalChecker::Ptr>;
+  using SpeedPlannerMap = std::unordered_map<std::string, nav2_core::SpeedPlanner::Ptr>;
   enum class ControllerPhase { PREPARE, ALIGN, TRACK, APPROACH };
 
   /**
@@ -149,6 +153,23 @@ protected:
    * @param path Path received from action server
    */
   void setPlannerPath(const nav_msgs::msg::Path & path);
+  /**
+   * @brief 规划级 pipeline（③④）：LocalPlanner（暂缺=直通）→ SpeedPlanner 生成
+   *        RobotTrajectory，缓存并分发给 controller（setTrajectory 仅在轨迹更新时调用，
+   *        控制循环内不重算速度曲线）。当前为 path 更新事件驱动；LocalPlanner 引入后
+   *        本函数改挂独立低频定时循环，④ 调用点与分发结构不变。
+   *        未配置 current_speed_planner（空）时直接返回——controller 走 setPlan 路径，
+   *        全链行为与未集成前一致（灰度回退）。
+   * @param path 规划级输入路径（现为 global path）
+   */
+  void runPlanningPipeline(const nav_msgs::msg::Path & path);
+  /**
+   * @brief 把带速度轨迹以 MarkerArray 发布到 /navigation/speed_plan 供 RViz 观察：
+   *        速度着色 LINE_STRIP（红=0 → 绿=峰值渐变）+ 抽样速度数值文本。
+   *        轨迹为空时发布 DELETEALL 清除旧 marker。
+   * @param trajectory 速度规划输出轨迹
+   */
+  void publishSpeedPlan(const nav_interfaces::msg::RobotTrajectory & trajectory);
   /**
    * @brief Calculates velocity and publishes to "cmd_vel" topic
    */
@@ -323,6 +344,8 @@ protected:
   rclcpp_lifecycle::LifecyclePublisher<geometry_msgs::msg::Twist>::SharedPtr vel_publisher_;
   rclcpp_lifecycle::LifecyclePublisher<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr
     goal_error_publisher_;
+  rclcpp_lifecycle::LifecyclePublisher<visualization_msgs::msg::MarkerArray>::SharedPtr
+    speed_plan_publisher_;
   rclcpp::Subscription<nav2_msgs::msg::SpeedLimit>::SharedPtr speed_limit_sub_;
 
   // Progress Checker Plugin
@@ -350,6 +373,16 @@ protected:
   std::vector<std::string> controller_ids_;
   std::vector<std::string> controller_types_;
   std::string controller_ids_concat_, default_controller_, current_controller_;
+
+  // Speed Planner Plugins（④ 规划级；current_speed_planner 为空 = 禁用/灰度回退）
+  pluginlib::ClassLoader<nav2_core::SpeedPlanner> speed_planner_loader_;
+  SpeedPlannerMap speed_planners_;
+  std::vector<std::string> speed_planner_ids_;
+  std::vector<std::string> speed_planner_types_;
+  std::string speed_planner_ids_concat_, current_speed_planner_;
+  // 轨迹缓存：规划级产出、控制级消费；当前单线程（action 线程内事件驱动），
+  // 改挂独立定时循环时需加最小临界区保护
+  nav_interfaces::msg::RobotTrajectory current_trajectory_;
 
   double controller_frequency_;
   double min_x_velocity_threshold_;
