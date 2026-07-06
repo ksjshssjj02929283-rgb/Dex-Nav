@@ -70,6 +70,11 @@ if(BUILD_TESTING)
   ament_add_gtest(test_scurve_profile test/test_scurve_profile.cpp)
   target_link_libraries(test_scurve_profile ${library_name} ruckig::ruckig)
   ament_target_dependencies(test_scurve_profile ${dependencies})
+
+  # T/S 端到端剖面测试（0.3/0.5/0.75/1.0m 直线，静止起步；导出 CSV 供画图）。
+  ament_add_gtest(test_speed_profiles test/test_speed_profiles.cpp)
+  target_link_libraries(test_speed_profiles ${library_name} ruckig::ruckig)
+  ament_target_dependencies(test_speed_profiles ${dependencies})
 endif()
 
 ament_export_include_directories(include)
