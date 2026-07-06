@@ -68,9 +68,10 @@ public:
     double v_end = 0.0);
 
 protected:
-  /// S 型剖面：复用基类包络 → Ruckig 生成 → 回填 work（速度/加速度/时间）。
+  /// Phase B：基类 Phase A 包络（含末端蠕行区）→ Ruckig jerk 限制剖面 → 回填
+  /// work（速度/加速度/相对时间）。
   void assignVelocityProfile(
-    std::vector<TrajPointWork> & work, double curr_vel) override;
+    std::vector<TrajPointWork> & work, double curr_vel, double cruise_limit) override;
 
   // —— 参数 ——
   double max_jerk_{0.5};    ///< jerk 上限 (m/s^3)
