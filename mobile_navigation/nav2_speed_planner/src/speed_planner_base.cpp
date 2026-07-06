@@ -61,7 +61,9 @@ void SpeedPlannerBase::configure(
   nav2_util::declare_parameter_if_not_declared(
     node, plugin_name_ + ".collision_stop_distance", rclcpp::ParameterValue(0.2));
   nav2_util::declare_parameter_if_not_declared(
-    node, plugin_name_ + ".obstacle_cost_threshold", rclcpp::ParameterValue(253));
+    node, plugin_name_ + ".obstacle_cost_threshold", rclcpp::ParameterValue(254));
+  nav2_util::declare_parameter_if_not_declared(
+    node, plugin_name_ + ".obstacle_start_exempt_distance", rclcpp::ParameterValue(0.25));
 
   node->get_parameter(plugin_name_ + ".max_speed", max_speed_);
   node->get_parameter(plugin_name_ + ".min_speed", min_speed_);
@@ -82,6 +84,9 @@ void SpeedPlannerBase::configure(
   node->get_parameter(plugin_name_ + ".collision_stop_distance", collision_stop_distance_);
   node->get_parameter(plugin_name_ + ".obstacle_cost_threshold", obstacle_cost_threshold_);
   obstacle_cost_threshold_ = std::clamp(obstacle_cost_threshold_, 1, 254);
+  node->get_parameter(
+    plugin_name_ + ".obstacle_start_exempt_distance", obstacle_start_exempt_distance_);
+  obstacle_start_exempt_distance_ = std::max(obstacle_start_exempt_distance_, 0.0);
 
   // 参数非法只告警不 abort（避免拖垮整个 nav 栈）。
   if (max_speed_ <= min_speed_) {
@@ -244,11 +249,24 @@ bool SpeedPlannerBase::applyObstacleConstraint(std::vector<TrajPointWork> & path
   if (path.empty()) {
     return false;
   }
+  const std::vector<double> arc_s = computeCumulativeArcLengths(path);
+  // 全路径扫描并用 region_type 标记障碍语义（透传到 RobotTrajectory，供消费方与
+  // 剖面日志评判使用；M11 真语义接入后此处改为叠加标记而非独占）：
+  //   obstacle        — path 点真正落在障碍格内（触发停障）
+  //   obstacle_exempt — 起点豁免区内的障碍命中（仅标记不置零：贴墙停放防起步死锁）
+  //   obstacle_buffer — 首个障碍前的缓冲带（置零）
   size_t first_obstacle_index = path.size();
   for (size_t i = 0; i < path.size(); ++i) {
-    if (isObstacleAt(path[i].pose.pose.position.x, path[i].pose.pose.position.y)) {
+    if (!isObstacleAt(path[i].pose.pose.position.x, path[i].pose.pose.position.y)) {
+      continue;
+    }
+    if (arc_s[i] <= obstacle_start_exempt_distance_) {
+      path[i].region_type = "obstacle_exempt";
+      continue;
+    }
+    path[i].region_type = "obstacle";
+    if (first_obstacle_index == path.size()) {
       first_obstacle_index = i;
-      break;
     }
   }
   if (first_obstacle_index == path.size()) {
@@ -257,13 +275,15 @@ bool SpeedPlannerBase::applyObstacleConstraint(std::vector<TrajPointWork> & path
   for (size_t i = first_obstacle_index; i < path.size(); ++i) {
     path[i].speed_limit = 0.0;
   }
-  const std::vector<double> arc_s = computeCumulativeArcLengths(path);
   const double buffer_start = arc_s[first_obstacle_index] - collision_stop_distance_;
   for (size_t j = first_obstacle_index; j-- > 1;) {
     if (arc_s[j] <= buffer_start) {
       break;
     }
     path[j].speed_limit = 0.0;
+    if (path[j].region_type.empty()) {
+      path[j].region_type = "obstacle_buffer";
+    }
   }
   return true;
 }
@@ -334,6 +354,9 @@ void SpeedPlannerBase::applyCurvatureConstraint(
     if (output.at(i).speed_limit > v_curvature_max) {
       output.at(i).speed_limit = v_curvature_max;
       filtered_points.push_back(static_cast<int>(i));
+      if (output.at(i).region_type.empty()) {
+        output.at(i).region_type = "curve";  // 语义标注：曲率限速段（锚点可视化/日志）
+      }
     }
   }
 
@@ -404,6 +427,9 @@ void SpeedPlannerBase::applyEndSpeedConstraint(std::vector<TrajPointWork> & path
       break;
     }
     path[i].speed_limit = std::min(path[i].speed_limit, v_creep);
+    if (path[i].region_type.empty()) {
+      path[i].region_type = "stop_zone";  // 语义标注：末端蠕行区（锚点可视化/日志）
+    }
   }
 }
 
@@ -505,7 +531,11 @@ bool SpeedPlannerBase::isObstacleAt(double x, double y) const
   if (!costmap->worldToMap(x, y, mx, my)) {
     return false;
   }
-  return costmap->getCost(mx, my) >= static_cast<unsigned char>(obstacle_cost_threshold_);
+  const unsigned char cost = costmap->getCost(mx, my);
+  if (cost == nav2_costmap_2d::NO_INFORMATION) {
+    return false;  // 未知区域不当障碍（阈值 254 时 255 会被 >= 误伤）
+  }
+  return cost >= static_cast<unsigned char>(obstacle_cost_threshold_);
 }
 
 }  // namespace nav2_speed_planner

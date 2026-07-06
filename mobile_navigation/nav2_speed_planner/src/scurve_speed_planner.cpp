@@ -21,24 +21,37 @@ namespace nav2_speed_planner
 
 namespace
 {
-// 前瞻 vmax：当前到刹车距离前瞻窗内的 v_env 最小值（让 Ruckig 接近弯/障碍/蠕行区提前减速）。
-double lookaheadVmax(
-  const std::vector<double> & env, const std::vector<double> & s,
-  double s_now, double v_now, double d_max, double max_jerk)
+// 包络"下降沿谷底"目标点：每个下降的谷底 (index, v) 作为一次 Ruckig 硬目标——
+// target_position/target_velocity 语义保证"恰好在谷底处降到谷速"（提前减速由
+// 时间最优规划自然产生）。不能用 max_velocity 做提前减速：Ruckig 对已超限的
+// 当前速度没有强制减速语义（只温和收加速度，不刹车）。
+struct SpeedTarget
 {
-  // jerk 限制刹车距离 = 恒减速项 v²/(2a) + 建立减速度的 jerk 段附加项 v·a/(2j)，
-  // 再乘 1.2 系数 + 0.1m 固定余量。估短的后果：减速在低速区边界前刹不完，
-  // 剖面被区内包络钳位截出速度台阶（无法平滑递减到区界目标速度）。
-  const double a = std::max(1e-3, d_max);
-  const double j = std::max(1e-3, max_jerk);
-  const double brake = (v_now * v_now / (2.0 * a) + v_now * a / (2.0 * j)) * 1.2 + 0.1;
-  const double s_end = std::min(s_now + brake, s.back());
-  double vmin = std::numeric_limits<double>::infinity();
-  for (size_t i = 0; i < s.size(); ++i) {
-    if (s[i] >= s_now - 1e-6 && s[i] <= s_end + 1e-6) {vmin = std::min(vmin, env[i]);}
+  size_t index;
+  double velocity;
+};
+
+std::vector<SpeedTarget> extractDescentTargets(
+  const std::vector<double> & env, size_t stop_i)
+{
+  constexpr double kTol = 1e-3;
+  std::vector<SpeedTarget> targets;
+  size_t i = 1;
+  while (i < stop_i) {
+    if (env[i] < env[i - 1] - kTol) {
+      size_t bottom = i;
+      while (bottom + 1 <= stop_i && env[bottom + 1] < env[bottom] - 1e-9) {
+        ++bottom;
+      }
+      if (bottom < stop_i) {
+        targets.push_back({bottom, std::max(env[bottom], 0.0)});
+      }
+      i = bottom + 1;
+    } else {
+      ++i;
+    }
   }
-  if (!std::isfinite(vmin)) {vmin = env.back();}
-  return vmin;
+  return targets;
 }
 }  // namespace
 
@@ -94,38 +107,63 @@ void SCurveSpeedPlanner::generateRuckigProfile(
   v_end = stop_at_env_zero ? 0.0 : std::max(0.0, v_end);
   const double target = arc_s[stop_i];
 
+  // 目标序列 = 包络下降沿谷底（蠕行区界/弯心/缓冲带起点）+ 最终停止点。
+  // 逐目标分段规划："在谷底恰好降到谷速"由 target 硬保证；段内 max_velocity 取
+  // 区间包络最大值（渐变段轻微越界由重采样钳位收尾），并抬到 ≥ 当前/目标速度
+  // 保证输入合法。
+  std::vector<SpeedTarget> targets = extractDescentTargets(v_env, stop_i);
+  targets.push_back({stop_i, v_end});
+
   ruckig::Ruckig<1> otg(ctrl_dt);
   ruckig::InputParameter<1> in;
   ruckig::OutputParameter<1> out;
   in.current_position = {0.0};
   in.current_velocity = {std::clamp(v_start, 0.0, std::max(0.0, v_env[0]))};
   in.current_acceleration = {0.0};
-  in.target_position = {target};
-  in.target_velocity = {v_end};
-  in.target_acceleration = {0.0};
   in.max_acceleration = {a_max};
   in.max_jerk = {max_jerk};
   in.min_acceleration = std::array<double, 1>{-d_max};   // 非对称：减速幅值 ≤ d_max
 
-  // 在线循环步进，记录 (s,v,a,t)。
   std::vector<double> rs{0.0}, rv{in.current_velocity[0]}, ra{0.0}, rt{0.0};
   double tnow = 0.0;
-  const int cap = 200000;
-  for (int step = 0; step < cap; ++step) {
-    const double s_now = in.current_position[0];
-    const double v_now = in.current_velocity[0];
-    const double vmax = std::max(lookaheadVmax(v_env, arc_s, s_now, v_now, d_max, max_jerk), 1e-3);
-    in.max_velocity = {vmax};
-    const ruckig::Result res = otg.update(in, out);
-    if (res == ruckig::Result::Error || res == ruckig::Result::ErrorInvalidInput) {break;}
-    tnow += ctrl_dt;
-    rs.push_back(out.new_position[0]);
-    rv.push_back(out.new_velocity[0]);
-    ra.push_back(out.new_acceleration[0]);
-    rt.push_back(tnow);
-    out.pass_to_input(in);
-    if (res == ruckig::Result::Finished) {break;}
-    if (out.new_position[0] >= target - 1e-3 && out.new_velocity[0] <= v_end + 1e-3) {break;}
+  int steps_left = 200000;
+  bool failed = false;
+  for (const auto & tgt : targets) {
+    const double s_t = arc_s[tgt.index];
+    if (s_t <= in.current_position[0] + 1e-9) {
+      continue;
+    }
+    double seg_vmax = 1e-3;
+    for (size_t i = 0; i < n; ++i) {
+      if (arc_s[i] >= in.current_position[0] - 1e-9 && arc_s[i] <= s_t + 1e-9) {
+        seg_vmax = std::max(seg_vmax, v_env[i]);
+      }
+    }
+    seg_vmax = std::max({seg_vmax, in.current_velocity[0], tgt.velocity, 1e-3});
+    in.max_velocity = {seg_vmax};
+    in.target_position = {s_t};
+    in.target_velocity = {std::max(tgt.velocity, 0.0)};
+    in.target_acceleration = {0.0};
+
+    while (steps_left-- > 0) {
+      const ruckig::Result res = otg.update(in, out);
+      if (res == ruckig::Result::Error || res == ruckig::Result::ErrorInvalidInput) {
+        failed = true;
+        break;
+      }
+      tnow += ctrl_dt;
+      rs.push_back(out.new_position[0]);
+      rv.push_back(out.new_velocity[0]);
+      ra.push_back(out.new_acceleration[0]);
+      rt.push_back(tnow);
+      out.pass_to_input(in);
+      if (res == ruckig::Result::Finished) {
+        break;
+      }
+    }
+    if (failed || steps_left <= 0) {
+      break;
+    }
   }
 
   // 重采样到路径点弧长；停止点之后置终点速度（障碍停止时 v_end 已强制 0）；

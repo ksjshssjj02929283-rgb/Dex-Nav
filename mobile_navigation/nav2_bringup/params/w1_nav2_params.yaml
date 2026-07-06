@@ -81,6 +81,8 @@ controller_server:
     # ④ 速度规划（规划级：path 更新事件驱动生成 RobotTrajectory；current_speed_planner 置空 "" 即禁用/灰度回退）
     # 运动学上限与下游链路对齐：对齐 MPPI(vx_max/ax_max/ax_min) 与 velocity_smoother(max_velocity/max_accel)
     current_speed_planner: "TrapezoidalSpeedPlanner"  # 先验证 T 型；S 型待复测后切回
+    # 剖面调试日志目录（空 "" = 关闭；文件按启动时间戳命名，列含曲率/障碍标记）
+    speed_plan_log_dir: "~/.dexe/navigation/speed_planner"
     TrapezoidalSpeedPlanner:
       plugin: "nav2_speed_planner::TrapezoidalSpeedPlanner"
       max_speed: 0.8
@@ -90,7 +92,8 @@ controller_server:
       end_speed: 0.03
       stop_distance: 0.1
       collision_stop_distance: 0.2
-      obstacle_cost_threshold: 253
+      obstacle_cost_threshold: 254   # 254=LETHAL：path 点在障碍格内才停障（253 内切区会误伤贴障碍路径）
+      obstacle_start_exempt_distance: 0.25  # 起点豁免：贴墙停放时自身在内切区，无豁免整条剖面被置零
       curve_compute_dist: 0.1
       regulated_linear_scaling_min_radius: 1.2
       min_curvature_speed: 0.1
@@ -105,7 +108,8 @@ controller_server:
       end_speed: 0.03
       stop_distance: 0.1
       collision_stop_distance: 0.2
-      obstacle_cost_threshold: 253
+      obstacle_cost_threshold: 254   # 254=LETHAL：path 点在障碍格内才停障（253 内切区会误伤贴障碍路径）
+      obstacle_start_exempt_distance: 0.25  # 起点豁免：贴墙停放时自身在内切区，无豁免整条剖面被置零
       curve_compute_dist: 0.1
       regulated_linear_scaling_min_radius: 1.2
       min_curvature_speed: 0.1
@@ -872,6 +876,7 @@ planner_server:
       # 热切换：ros2 param set /planner_server RouteGridPlanner.costmap_aware_mode true
       costmap_aware_mode: false
       obstacle_cost_threshold: 220.0
+      obstacle_start_exempt_distance: 0.25  # 起点豁免：贴墙停放时自身在内切区，无豁免整条剖面被置零
       obstacle_margin_before_m: 0.5
       obstacle_margin_after_m: 0.5
       bypass_max_replan_length_m: 10.0

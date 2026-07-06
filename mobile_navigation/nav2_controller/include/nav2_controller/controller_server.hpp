@@ -15,6 +15,7 @@
 #ifndef NAV2_CONTROLLER__CONTROLLER_SERVER_HPP_
 #define NAV2_CONTROLLER__CONTROLLER_SERVER_HPP_
 
+#include <fstream>
 #include <memory>
 #include <string>
 #include <thread>
@@ -377,6 +378,11 @@ protected:
   nav_interfaces::msg::RobotTrajectory current_trajectory_;
   // RViz 可视化节流（速度剖面每周期重算，但只以 ~2Hz 重画）
   rclcpp::Time last_speed_plan_viz_time_{0, 0, RCL_ROS_TIME};
+  // 剖面调试日志：speed_plan_log_dir 非空时，每轮规划的逐点剖面写入该目录下
+  // 按启动时间戳命名的 CSV（列：stamp,seq,i,s,v,accel,kappa,obstacle）；默认关闭
+  std::ofstream speed_plan_log_;
+  std::string speed_plan_log_dir_;
+  uint64_t speed_plan_seq_{0};
 
   double controller_frequency_;
   double min_x_velocity_threshold_;
