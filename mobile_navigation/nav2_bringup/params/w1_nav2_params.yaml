@@ -906,6 +906,9 @@ map_saver:
 planner_server:
   ros__parameters:
     expected_planner_frequency: 0.2 # 0.5 # 20.0
+    goal_line_interp_enable: true        # 开关
+    goal_line_interp_tail_distance: 0.3  # goal 附近直线接管范围：成功路径截尾段换直线；失败(空路径)且 start 在此范围内时直线兜底
+    goal_line_interp_step: 0.05          # 插值点距 (m)
     use_sim_time: True
 
     # ─── PlannerServer 原生多 planner 热切换 ─────────────────
