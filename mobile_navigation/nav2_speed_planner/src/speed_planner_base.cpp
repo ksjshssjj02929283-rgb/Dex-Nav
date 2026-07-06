@@ -1,11 +1,9 @@
 // Copyright 2026 DEXE Robot Engineer
 // SPDX-License-Identifier: Apache-2.0
 //
-// 速度规划器抽象基类实现。
-// computeSpeedPlan 为模板方法（path→work→assignVelocityProfile→RobotTrajectory）；
-// assignConstantAccelProfile 是恒加速度参考内核（源自 dcm tcurve）：
-// Phase A 约束包络（障碍 → 巡航 → 曲率，逐点 min 叠加，安全置零绝对优先）
-// + Phase B 运动学可行化（加速段 → 减速段，从当前实际速度出发）。
+// 速度规划器抽象基类实现：Phase A 约束包络（障碍 → 巡航 → 曲率 → 末端蠕行，
+// 逐点 min 叠加，安全置零绝对优先）+ Phase B 纯虚 hook。
+// base 不含任何具体速度剖面算法（恒加速度剖面在 Trapezoidal，jerk 限制剖面在 SCurve）。
 #include "nav2_speed_planner/speed_planner_base.hpp"
 
 #include <algorithm>
@@ -38,7 +36,6 @@ void SpeedPlannerBase::configure(
   logger_ = node->get_logger();
   clock_ = node->get_clock();
 
-  // 参数声明（默认值同 dcm initialize）。
   nav2_util::declare_parameter_if_not_declared(
     node, plugin_name_ + ".max_speed", rclcpp::ParameterValue(0.6));
   nav2_util::declare_parameter_if_not_declared(
@@ -49,10 +46,6 @@ void SpeedPlannerBase::configure(
     node, plugin_name_ + ".decel", rclcpp::ParameterValue(-0.15));
   nav2_util::declare_parameter_if_not_declared(
     node, plugin_name_ + ".curve_compute_dist", rclcpp::ParameterValue(0.1));
-  nav2_util::declare_parameter_if_not_declared(
-    node, plugin_name_ + ".decel_distance_before_curve", rclcpp::ParameterValue(0.5));
-  nav2_util::declare_parameter_if_not_declared(
-    node, plugin_name_ + ".decel_distance_after_curve", rclcpp::ParameterValue(0.5));
   nav2_util::declare_parameter_if_not_declared(
     node, plugin_name_ + ".regulated_linear_scaling_min_radius", rclcpp::ParameterValue(1.2));
   nav2_util::declare_parameter_if_not_declared(
@@ -75,8 +68,6 @@ void SpeedPlannerBase::configure(
   node->get_parameter(plugin_name_ + ".accel", accel_);
   node->get_parameter(plugin_name_ + ".decel", decel_);
   node->get_parameter(plugin_name_ + ".curve_compute_dist", curve_compute_dist_);
-  node->get_parameter(plugin_name_ + ".decel_distance_before_curve", decel_distance_before_curve_);
-  node->get_parameter(plugin_name_ + ".decel_distance_after_curve", decel_distance_after_curve_);
   node->get_parameter(
     plugin_name_ + ".regulated_linear_scaling_min_radius", regulated_linear_scaling_min_radius_);
   node->get_parameter(plugin_name_ + ".min_curvature_speed", min_curvature_speed_);
@@ -145,7 +136,7 @@ nav_interfaces::msg::RobotTrajectory SpeedPlannerBase::computeSpeedPlan(
   nav_interfaces::msg::RobotTrajectory traj;
   traj.header = path.header;
 
-  // 构建内部工作结构（对齐 dcm dcm_msgs::Path.path_poses）。
+  // 构建内部工作结构。
   std::vector<TrajPointWork> work;
   work.reserve(path.poses.size());
   for (const auto & ps : path.poses) {
@@ -170,7 +161,7 @@ nav_interfaces::msg::RobotTrajectory SpeedPlannerBase::computeSpeedPlan(
   }
 
   if (work.size() < 2) {
-    // 点数不足，原样返回空速轨迹（对齐 dcm return false 行为）。
+    // 点数不足：原样返回零速轨迹。
     for (const auto & p : work) {
       nav_interfaces::msg::TrajectoryPoint tp;
       tp.pose = p.pose;
@@ -184,8 +175,7 @@ nav_interfaces::msg::RobotTrajectory SpeedPlannerBase::computeSpeedPlan(
     return traj;
   }
 
-  // 把外部限速 + path speed_hint 取严，作为各点初始 speed_limit。
-  // 外部限速解析：百分比→max_speed_ 比例；绝对值直接用。speed_limit_<=0 视为不限速。
+  // 初始限速取严：max_speed / path speed_hint / 外部限速。
   double external_limit = std::numeric_limits<double>::max();
   if (speed_limit_ > 0.0) {
     external_limit = speed_limit_is_percentage_ ?
@@ -205,11 +195,29 @@ nav_interfaces::msg::RobotTrajectory SpeedPlannerBase::computeSpeedPlan(
 
   const double curr_vel = current_velocity.linear.x;
 
-  // —— Template Method hook：派生类填速度剖面（T 型 = 恒加速度内核；S 型 = jerk 限制）——
-  assignVelocityProfile(work, curr_vel);
+  // ====== Phase A 约束包络（逐点 min 叠加，安全置零绝对优先）======
+  const bool has_obstacle = applyObstacleConstraint(work);   // A1 障碍 + 缓冲带置零
+  const double cruise = computeCruiseLimit(work);            // A2 理想巡航求解（纯查询）
+  setPlanSpeedLimit(work, cruise);                           //    巡航回填
+  applyCurvatureConstraint(work, cruise);                    // A3 曲率约束
+  applyEndSpeedConstraint(work);                             // A4 末端蠕行区
 
-  // 回填到 RobotTrajectory：speed_limit→longitudinal_velocity，curvature→path_kappa，pose 透传。
-  // accel / rel_time 若派生类填了则一并写，否则默认 0（恒加速度内核不填）。
+  // ====== Phase B hook：派生类生成运动学可行剖面 ======
+  assignVelocityProfile(work, curr_vel, cruise);
+
+  // 可观测：巡航上界 vs 实际峰值（"能否到最大限速"直接看日志）。
+  double peak = 0.0;
+  for (const auto & p : work) {
+    peak = std::max(peak, p.speed_limit);
+  }
+  RCLCPP_DEBUG(
+    logger_,
+    "[%s] speed profile: cruise_limit=%.3f peak=%.3f reached=%s obstacle=%s points=%zu",
+    plugin_name_.c_str(), cruise, peak,
+    peak + 1e-6 >= cruise ? "true" : "false",
+    has_obstacle ? "true" : "false", work.size());
+
+  // 回填 RobotTrajectory。
   traj.points.reserve(work.size());
   for (const auto & p : work) {
     nav_interfaces::msg::TrajectoryPoint tp;
@@ -218,7 +226,6 @@ nav_interfaces::msg::RobotTrajectory SpeedPlannerBase::computeSpeedPlan(
     tp.path_kappa = p.curvature;
     tp.acceleration = p.accel;
     tp.relative_time = rclcpp::Duration::from_seconds(p.rel_time);
-    // 段语义透传（当前 nav_msgs/Path 无字段，置默认）。
     tp.speed_hint = p.speed_hint;
     tp.region_type = p.region_type;
     tp.segment_id = p.segment_id;
@@ -228,53 +235,7 @@ nav_interfaces::msg::RobotTrajectory SpeedPlannerBase::computeSpeedPlan(
   return traj;
 }
 
-// ============================ 恒加速度参考内核 ============================
-// 两阶段：Phase A 约束包络（障碍/巡航/曲率，逐点 min 叠加，安全置零绝对优先）；
-// Phase B 运动学可行化（加速段/减速段，从当前实际速度出发）。
-// T 型直接调用全流程；S 型复用 Phase A 后交给 Ruckig。
-
-void SpeedPlannerBase::assignConstantAccelProfile(
-  std::vector<TrajPointWork> & work, double curr_vel)
-{
-  // ====== T 型 pipeline（两阶段：约束包络 → 运动学可行化）======
-  // Phase A 约束包络（逐点 min 叠加，安全置零绝对优先）
-  const bool has_obstacle = applyObstacleConstraint(work);   // A1 障碍 + 缓冲带置零
-  const double speed_limit = getSpeedLimit(work, curr_vel);  // A2 理想巡航求解（纯查询）
-  setPlanSpeedLimit(work, speed_limit);                      //    巡航回填
-  applyCurvatureConstraint(work, speed_limit);               // A3 曲率约束
-
-  // Phase B 运动学可行化（receding-horizon：从当前实际速度出发）
-  computeAccelPlan(work, curr_vel, speed_limit);             // B1 加速段
-  computeDecelPlan(work, curr_vel, speed_limit);             // B2 减速段
-
-  // 可观测：巡航上界 vs 实际峰值（"能否到最大限速"直接看日志）。
-  double peak = 0.0;
-  for (const auto & p : work) {
-    peak = std::max(peak, p.speed_limit);
-  }
-  RCLCPP_INFO(
-    logger_,
-    "[%s] speed profile: cruise_limit=%.3f peak=%.3f reached=%s obstacle=%s points=%zu",
-    plugin_name_.c_str(), speed_limit, peak,
-    peak + 1e-6 >= speed_limit ? "true" : "false",
-    has_obstacle ? "true" : "false", work.size());
-}
-
-// ============================ 限速求解 ============================
-
-void SpeedPlannerBase::setPlanSpeedLimit(
-  std::vector<TrajPointWork> & path, const double speed_limit)
-{
-  // 双边钳制到 [min_speed_, max_speed_]；零速点（安全置零）跳过，不回填巡航速度。
-  const double valid_speed_limit = std::clamp(speed_limit, min_speed_, max_speed_);
-
-  for (size_t i = 0; i < path.size(); i++) {
-    if (path[i].speed_limit < 1e-3) {
-      continue;
-    }
-    path[i].speed_limit = valid_speed_limit;
-  }
-}
+// ============================ Phase A 约束包络 ============================
 
 bool SpeedPlannerBase::applyObstacleConstraint(std::vector<TrajPointWork> & path)
 {
@@ -307,16 +268,12 @@ bool SpeedPlannerBase::applyObstacleConstraint(std::vector<TrajPointWork> & path
   return true;
 }
 
-double SpeedPlannerBase::getSpeedLimit(
-  const std::vector<TrajPointWork> & path, const double curr_vel)
+double SpeedPlannerBase::computeCruiseLimit(const std::vector<TrajPointWork> & path) const
 {
-  // A2 理想巡航上界（纯查询，无副作用）：回答"理想状态下当前路径能到达的最大速度"。
-  // 障碍置零已由 applyObstacleConstraint（A1）先行，安全零速点不参与上界求解。
+  // A2 理想巡航上界（纯查询）：非零速点限速的最小值；安全零速点不参与求解。
   double speed_limit = std::numeric_limits<double>::max();
-  bool has_zero = false;
   for (size_t i = 0; i < path.size(); i++) {
     if (path[i].speed_limit < 1e-3) {
-      has_zero = true;
       continue;
     }
     if (speed_limit > path[i].speed_limit) {
@@ -327,72 +284,22 @@ double SpeedPlannerBase::getSpeedLimit(
     // 全部点被安全置零（起点即阻塞）。
     return 0.0;
   }
-  speed_limit = std::clamp(speed_limit, min_speed_, max_speed_);
-
-  const double curr_min_speed = has_zero ? 0.0 : min_speed_;
-
-  // 加减速所需距离 vs 有效路径长度（receding-horizon：基于当前速度）。
-  const double accel_path_length = computeAccelLength(curr_vel, speed_limit);
-  const double decel_path_length = computeDecelLength(curr_vel, curr_min_speed);
-
-  const double path_length = computeValidSpeedPathLength(path);
-  const double no_stop_length = std::max(path_length - stop_distance_, 0.0);
-  if (accel_path_length + decel_path_length > no_stop_length) {
-    // 不能到达最大速度，回退求解可达峰值。
-    speed_limit = std::sqrt(
-      (2 * accel_ * decel_ * no_stop_length + decel_ * curr_vel * curr_vel -
-      accel_ * curr_min_speed * curr_min_speed) / (decel_ - accel_));
-    return speed_limit;
-  }
-  // 可以到达最大速度。
-  return speed_limit;
+  return std::clamp(speed_limit, min_speed_, max_speed_);
 }
 
-double SpeedPlannerBase::computeValidSpeedPathLength(const std::vector<TrajPointWork> & path)
+void SpeedPlannerBase::setPlanSpeedLimit(
+  std::vector<TrajPointWork> & path, const double speed_limit)
 {
-  double length = 0.0;
-  for (int i = 1; i < static_cast<int>(path.size()); ++i) {
-    double dx = path.at(i).pose.pose.position.x - path.at(i - 1).pose.pose.position.x;
-    double dy = path.at(i).pose.pose.position.y - path.at(i - 1).pose.pose.position.y;
-    length += std::sqrt(dx * dx + dy * dy);
+  // 双边钳制到 [min_speed_, max_speed_]；零速点（安全置零）跳过，不回填巡航速度。
+  const double valid_speed_limit = std::clamp(speed_limit, min_speed_, max_speed_);
 
-    // 第一个零速点也包含在路径长度中。
-    if (path.at(i).speed_limit == 0.0) {
-      break;
+  for (size_t i = 0; i < path.size(); i++) {
+    if (path[i].speed_limit < 1e-3) {
+      continue;
     }
-  }
-  return length;
-}
-
-// ============================ 加速段 ============================
-
-void SpeedPlannerBase::computeAccelPlan(
-  std::vector<TrajPointWork> & path, const double curr_vel, const double speed_limit)
-{
-  const double accel_path_length = computeAccelLength(curr_vel, speed_limit);
-  // 安全置零绝对优先：起点被置零（阻塞）时不得抬升。
-  if (path[0].speed_limit >= 1e-3) {
-    path[0].speed_limit = curr_vel;
-  }
-  const std::vector<double> arc_s = computeCumulativeArcLengths(path);
-  for (size_t i = 1; i < path.size(); i++) {
-    // 当前路径点距离起点的沿路弧长。
-    const double s_t = arc_s[i];
-    if (s_t > accel_path_length) {
-      break;
-    }
-    // 按当前速度 + 加速度，到达该点所需时间，再求速度。
-    double t = (-curr_vel + std::sqrt(curr_vel * curr_vel + 2 * accel_ * s_t)) / accel_;
-    double v = curr_vel + accel_ * t;
-    if (v > speed_limit) {
-      v = speed_limit;
-    }
-    // 只降不升：保留曲率/障碍等已有更严约束。
-    path[i].speed_limit = std::min(path[i].speed_limit, v);
+    path[i].speed_limit = valid_speed_limit;
   }
 }
-
-// ============================ 曲率约束 ============================
 
 void SpeedPlannerBase::applyCurvatureConstraint(
   std::vector<TrajPointWork> & path, const double ex_speed_limit)
@@ -483,129 +390,24 @@ void SpeedPlannerBase::applyCurvatureConstraint(
   }
 }
 
-// ============================ 减速段 ============================
-
-void SpeedPlannerBase::computeDecelPlan(
-  std::vector<TrajPointWork> & path, const double curr_vel, const double speed_limit)
+void SpeedPlannerBase::applyEndSpeedConstraint(std::vector<TrajPointWork> & path)
 {
-  // 减速路径计算从后往前。
-
+  // A4 末端蠕行区：距终点 stop_distance_ 内包络压到 end_speed_——低速到点保证精度。
+  // min 保留障碍零速；end_speed_ < 1e-3（硬停配置）时无蠕行区（终点收敛交给 Phase B）。
+  const double v_creep = std::max(end_speed_, 0.0);
+  if (path.size() < 2 || stop_distance_ <= 0.0 || v_creep < 1e-3) {
+    return;
+  }
   const std::vector<double> arc_s = computeCumulativeArcLengths(path);
-
-  // 末端速度：end_speed_ >= 1e-3 时末端 stop_distance_ 内保持 end_speed_ 蠕行；
-  // end_speed_ < 1e-3 时无蠕行区，减速曲线在终点收敛到 0。写入只降不升。
-  const double v_end = std::max(end_speed_, 0.0);
-  if (stop_distance_ > 0 || v_end < 1e-3) {
-    size_t first_no_stop_index = path.size() - 1;
-    if (v_end >= 1e-3 && stop_distance_ > 0) {
-      for (size_t i = path.size() - 1; i > 0; i--) {
-        const double s_t = arc_s.back() - arc_s[i];
-        if (s_t > stop_distance_) {
-          first_no_stop_index = std::min(i + 1, path.size() - 1);
-          break;
-        }
-        path[i].speed_limit = std::min(path[i].speed_limit, v_end);
-      }
-    } else {
-      path[first_no_stop_index].speed_limit =
-        std::min(path[first_no_stop_index].speed_limit, v_end);
-    }
-    double stop_decel_path_length = computeDecelLength(curr_vel, v_end);
-    // index 0 是机器人当前速度，不参与设置。
-    for (size_t i = first_no_stop_index; i > 0; i--) {
-      const double s_t = arc_s[first_no_stop_index] - arc_s[i];
-      double v = std::sqrt(v_end * v_end - 2 * decel_ * s_t);
-      if (v > speed_limit) {
-        v = speed_limit;
-      }
-      path[i].speed_limit = std::min(path[i].speed_limit, v);
-      if (s_t > stop_decel_path_length) {
-        break;
-      }
-    }
-  }
-
-  // 曲线前减速：以第一个小半径点作为目标速度点，向前减速（曲率已由 Phase A3 写入）。
-  if ((curr_path_length_ - stop_distance_) > 0) {
-    size_t first_curve_decel_index = path.size() - 1;
-    bool has_curve_decel = false;
-    for (size_t i = 0; i < path.size(); i++) {
-      const double radius = std::fabs(1.0 / path[i].curvature);
-      const double & min_rad = regulated_linear_scaling_min_radius_;
-      if (radius > min_rad) {
-        continue;
-      }
-      has_curve_decel = true;
-      first_curve_decel_index = i;
+  for (size_t i = path.size(); i-- > 0;) {
+    if (arc_s.back() - arc_s[i] > stop_distance_) {
       break;
     }
-    if (has_curve_decel) {
-      double curr_min_speed = min_curvature_speed_;
-      double curve_decel_path_length = computeDecelLength(curr_vel, curr_min_speed);
-      for (int i = static_cast<int>(first_curve_decel_index); i > 0; i--) {
-        const double s_t = arc_s[first_curve_decel_index] - arc_s[i];
-        double v = std::sqrt(curr_min_speed * curr_min_speed - 2 * decel_ * s_t);
-        if (v > speed_limit) {
-          v = speed_limit;
-        }
-        path[i].speed_limit = std::min(path[i].speed_limit, v);  // 只降不升
-        if (s_t > curve_decel_path_length) {
-          break;
-        }
-      }
-    }
-  }
-
-  // 零速点前减速过渡：障碍与缓冲带已由 A1 置零，此处只做从首个零速点向前的减速曲线；
-  // 末端硬停的零点复用同一原语（min 语义下与停止段结果一致）。
-  size_t first_zero_index = path.size();
-  for (size_t i = 1; i < path.size(); ++i) {
-    if (path[i].speed_limit < 1e-3) {
-      first_zero_index = i;
-      break;
-    }
-  }
-  if (first_zero_index < path.size()) {
-    double curr_min_speed = 0.0;
-    double collision_decel_path_length = computeDecelLength(curr_vel, curr_min_speed);
-
-    for (size_t i = first_zero_index; i > 0; i--) {
-      const double s_t = arc_s[first_zero_index] - arc_s[i];
-      double v = std::sqrt(curr_min_speed * curr_min_speed - 2 * decel_ * s_t);
-      if (v > speed_limit) {
-        v = speed_limit;
-      }
-      path[i].speed_limit = std::min(path[i].speed_limit, v);  // 只降不升
-      if (s_t > collision_decel_path_length) {
-        break;
-      }
-    }
+    path[i].speed_limit = std::min(path[i].speed_limit, v_creep);
   }
 }
 
-// ============================ 加减速距离 ============================
-
-double SpeedPlannerBase::computeAccelLength(const double curr_vel, const double speed_limit) const
-{
-  if (curr_vel >= speed_limit) {  // 不需要加速
-    return 0.0;
-  }
-  double t = (speed_limit - curr_vel) / accel_;
-  double s = curr_vel * t + 0.5 * accel_ * t * t;
-  return s;
-}
-
-double SpeedPlannerBase::computeDecelLength(const double curr_vel, const double min_speed) const
-{
-  if (curr_vel <= min_speed) {  // 不需要减速
-    return 0.0;
-  }
-  double t = (min_speed - curr_vel) / decel_;
-  double s = curr_vel * t + 0.5 * decel_ * t * t;
-  return s;
-}
-
-// ============================ 共享工具（移植自 dcm nav_util）============================
+// ============================ 共享工具 ============================
 
 double SpeedPlannerBase::computePathLength(const std::vector<TrajPointWork> & path)
 {
