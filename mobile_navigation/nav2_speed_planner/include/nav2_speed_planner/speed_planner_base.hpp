@@ -147,8 +147,8 @@ protected:
     const geometry_msgs::msg::Pose & p2,
     const geometry_msgs::msg::Pose & p3);
 
-  /// 障碍判定：costmap 上 (x,y) 处 cost >= obstacle_cost_threshold_。
-  bool isObstacleAt(double x, double y) const;
+  /// 障碍判定：costmap 上 (x,y) 处 cost >= obstacle_cost_threshold_（virtual 供测试注入）。
+  virtual bool isObstacleAt(double x, double y) const;
 
   // —— 成员（protected：派生类可访问）——
   std::string plugin_name_;
@@ -176,9 +176,14 @@ protected:
   double end_speed_{0.03};
   double stop_distance_{0.2};
   double collision_stop_distance_{0.2};
-  // 障碍判定 cost 阈值（cost >= 即视为障碍）。默认 253=INSCRIBED_INFLATED_OBSTACLE：
-  // 仅把内切致命及以上当障碍，膨胀渐变区不触发置零。
-  int obstacle_cost_threshold_{253};
+  // 障碍判定 cost 阈值（cost >= 即视为障碍；NO_INFORMATION 恒不算）。
+  // 默认 254=LETHAL：只有 path 点真正落在障碍格内才触发停障——
+  // 253 内切区是"机器人中心到此会碰撞"的膨胀带，会把贴障碍的合法路径误判停障。
+  int obstacle_cost_threshold_{254};
+  // 起点豁免距离：距起点该弧长内的障碍点不触发置零——机器人贴墙停放时自身位置
+  // 在障碍内切区（cost>=253），无豁免会把整条剖面置零形成起步死锁；
+  // 近身避障由 prepare/控制器障碍代价负责，速度规划只管起步不被自己锁死。
+  double obstacle_start_exempt_distance_{0.25};
 
   // 外部限速（setSpeedLimit 保存；computeSpeedPlan 与 path speed_hint 取严）。
   double speed_limit_{0.0};

@@ -16,6 +16,10 @@
 #include <chrono>
 #include <algorithm>
 #include <cstdio>
+#include <cstdlib>
+#include <ctime>
+#include <filesystem>
+#include <iomanip>
 #include <vector>
 #include <memory>
 #include <string>
@@ -99,6 +103,8 @@ ControllerServer::ControllerServer(const rclcpp::NodeOptions & options)
   // ④ 速度规划：默认不启用（空列表 + 空选择器），YAML 显式配置后生效
   declare_parameter("speed_planner_plugins", std::vector<std::string>());
   declare_parameter("current_speed_planner", std::string(""));
+  // 剖面调试日志目录（空=关闭；~ 展开为 HOME；文件按启动时间戳命名）
+  declare_parameter("speed_plan_log_dir", std::string(""));
   declare_parameter("min_x_velocity_threshold", rclcpp::ParameterValue(0.0001));
   declare_parameter("min_y_velocity_threshold", rclcpp::ParameterValue(0.0001));
   declare_parameter("min_theta_velocity_threshold", rclcpp::ParameterValue(0.0001));
@@ -493,6 +499,33 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
     "/navigation/speed_plan",
     rclcpp::QoS(rclcpp::KeepLast(1)).reliable().transient_local());
 
+  get_parameter("speed_plan_log_dir", speed_plan_log_dir_);
+  if (!speed_plan_log_dir_.empty()) {
+    std::string dir = speed_plan_log_dir_;
+    if (dir.front() == '~') {
+      const char * home = std::getenv("HOME");
+      if (home != nullptr) {
+        dir = std::string(home) + dir.substr(1);
+      }
+    }
+    std::error_code ec;
+    std::filesystem::create_directories(dir, ec);
+    char ts[32];
+    const std::time_t now_t = std::time(nullptr);
+    std::strftime(ts, sizeof(ts), "%Y%m%d_%H%M%S", std::localtime(&now_t));
+    const std::string file = dir + "/speed_plan_" + ts + ".csv";
+    speed_plan_log_.open(file, std::ios::out);
+    if (speed_plan_log_.is_open()) {
+      // 行式格式：每轮规划若干行、同一 id（轮次）多行共用，每行 = 一个属性的全路径序列。
+      speed_plan_log_ <<
+        "# format: id,attr,v0,v1,...  attr in {stamp,x,y,s,v,a,jerk,kappa,obstacle}; "
+        "obstacle: 0=free 1=obstacle 2=buffer 3=exempt\n";
+      RCLCPP_INFO(get_logger(), "Speed plan debug log: %s", file.c_str());
+    } else {
+      RCLCPP_WARN(get_logger(), "Failed to open speed plan log in: %s", dir.c_str());
+    }
+  }
+
   // Create the action server that we implement with our followPath method
   action_server_ = std::make_unique<ActionServer>(
     shared_from_this(),
@@ -610,6 +643,9 @@ ControllerServer::on_cleanup(const rclcpp_lifecycle::State & /*state*/)
   vel_publisher_.reset();
   goal_error_publisher_.reset();
   speed_plan_publisher_.reset();
+  if (speed_plan_log_.is_open()) {
+    speed_plan_log_.close();
+  }
   speed_limit_sub_.reset();
 
   return nav2_util::CallbackReturn::SUCCESS;
@@ -924,6 +960,50 @@ void ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
     }
   }
 
+  // 剖面调试日志（行式）：每轮规划一组行，同 id 多行共用，每行一个属性的全路径序列。
+  if (speed_plan_log_.is_open()) {
+    ++speed_plan_seq_;
+    const auto & pts = current_trajectory_.points;
+    const size_t np = pts.size();
+    std::vector<double> s_arr(np, 0.0), t_arr(np, 0.0);
+    for (size_t i = 1; i < np; ++i) {
+      const auto & a = pts[i - 1].pose.pose.position;
+      const auto & b = pts[i].pose.pose.position;
+      s_arr[i] = s_arr[i - 1] + std::hypot(b.x - a.x, b.y - a.y);
+      t_arr[i] = pts[i].relative_time.sec + pts[i].relative_time.nanosec * 1e-9;
+    }
+    speed_plan_log_ << speed_plan_seq_ << ",stamp," << std::fixed
+                    << std::setprecision(3) << now().seconds() << '\n';
+    auto row = [&](const char * attr, int prec, auto getter) {
+        speed_plan_log_ << speed_plan_seq_ << ',' << attr << std::setprecision(prec);
+        for (size_t i = 0; i < np; ++i) {
+          speed_plan_log_ << ',' << getter(i);
+        }
+        speed_plan_log_ << '\n';
+      };
+    row("x", 4, [&](size_t i) {return pts[i].pose.pose.position.x;});
+    row("y", 4, [&](size_t i) {return pts[i].pose.pose.position.y;});
+    row("s", 4, [&](size_t i) {return s_arr[i];});
+    row("v", 5, [&](size_t i) {return pts[i].longitudinal_velocity;});
+    row("a", 5, [&](size_t i) {return pts[i].acceleration;});
+    // jerk = Δa/Δt（T 型 relative_time 全 0 → 0）
+    row("jerk", 5, [&](size_t i) -> double {
+        if (i + 1 >= np) {return 0.0;}
+        const double dt = t_arr[i + 1] - t_arr[i];
+        if (dt < 1e-6) {return 0.0;}
+        return (pts[i + 1].acceleration - pts[i].acceleration) / dt;
+      });
+    row("kappa", 5, [&](size_t i) {return pts[i].path_kappa;});
+    row("obstacle", 0, [&](size_t i) -> int {
+        const auto & rt = pts[i].region_type;
+        if (rt == "obstacle") {return 1;}
+        if (rt == "obstacle_buffer") {return 2;}
+        if (rt == "obstacle_exempt") {return 3;}
+        return 0;
+      });
+    speed_plan_log_.flush();
+  }
+
   // RViz 可视化节流（每周期重算但无需每周期重画）。
   const rclcpp::Time viz_now = now();
   if (last_speed_plan_viz_time_.nanoseconds() == 0 ||
@@ -1021,6 +1101,81 @@ void ControllerServer::publishSpeedPlan(const nav_interfaces::msg::RobotTrajecto
     marker_array.markers.push_back(text);
     if (idx == n - 1) {
       break;
+    }
+  }
+
+  // 关键锚点标注（语义来自 Phase A 的 region_type 透传）：
+  // 避障停止点/障碍区起终点、曲率减速段起终点、蠕行区起点。
+  {
+    struct Anchor {size_t idx; const char * label; float r, g, b;};
+    std::vector<Anchor> anchors;
+    long first_obs = -1, last_obs = -1, first_buf = -1;
+    long first_curve = -1, last_curve = -1, first_creep = -1;
+    for (size_t i = 0; i < trajectory.points.size(); ++i) {
+      const auto & rt = trajectory.points[i].region_type;
+      if (rt == "obstacle") {
+        if (first_obs < 0) {first_obs = static_cast<long>(i);}
+        last_obs = static_cast<long>(i);
+      } else if (rt == "obstacle_buffer") {
+        if (first_buf < 0) {first_buf = static_cast<long>(i);}
+      } else if (rt == "curve") {
+        if (first_curve < 0) {first_curve = static_cast<long>(i);}
+        last_curve = static_cast<long>(i);
+      } else if (rt == "stop_zone") {
+        if (first_creep < 0) {first_creep = static_cast<long>(i);}
+      }
+    }
+    if (first_buf >= 0) {
+      anchors.push_back({static_cast<size_t>(first_buf), "obs_stop", 1.0f, 0.5f, 0.0f});
+    }
+    if (first_obs >= 0) {
+      anchors.push_back({static_cast<size_t>(first_obs), "obs_start", 1.0f, 0.0f, 0.0f});
+    }
+    if (last_obs > first_obs) {
+      anchors.push_back({static_cast<size_t>(last_obs), "obs_end", 1.0f, 0.0f, 0.0f});
+    }
+    if (first_curve >= 0) {
+      anchors.push_back({static_cast<size_t>(first_curve), "curve_start", 0.6f, 0.2f, 0.9f});
+    }
+    if (last_curve > first_curve) {
+      anchors.push_back({static_cast<size_t>(last_curve), "curve_end", 0.6f, 0.2f, 0.9f});
+    }
+    if (first_creep >= 0) {
+      anchors.push_back({static_cast<size_t>(first_creep), "creep_start", 0.2f, 0.4f, 1.0f});
+    }
+    int anchor_id = 0;
+    for (const auto & a : anchors) {
+      const auto & pose = trajectory.points[a.idx].pose.pose;
+      visualization_msgs::msg::Marker sphere;
+      sphere.header = header;
+      sphere.ns = "speed_plan_anchor";
+      sphere.id = anchor_id;
+      sphere.type = visualization_msgs::msg::Marker::SPHERE;
+      sphere.action = visualization_msgs::msg::Marker::ADD;
+      sphere.pose = pose;
+      sphere.pose.position.z += 0.05;
+      sphere.scale.x = sphere.scale.y = sphere.scale.z = 0.07;
+      sphere.color.r = a.r;
+      sphere.color.g = a.g;
+      sphere.color.b = a.b;
+      sphere.color.a = 0.95f;
+      marker_array.markers.push_back(sphere);
+
+      visualization_msgs::msg::Marker label;
+      label.header = header;
+      label.ns = "speed_plan_anchor_text";
+      label.id = anchor_id++;
+      label.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
+      label.action = visualization_msgs::msg::Marker::ADD;
+      label.pose = pose;
+      label.pose.position.z += 0.45;
+      label.scale.z = 0.11;
+      label.color.r = a.r;
+      label.color.g = a.g;
+      label.color.b = a.b;
+      label.color.a = 1.0f;
+      label.text = a.label;
+      marker_array.markers.push_back(label);
     }
   }
 
