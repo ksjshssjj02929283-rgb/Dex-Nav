@@ -104,6 +104,8 @@ ControllerServer::ControllerServer(const rclcpp::NodeOptions & options)
   declare_parameter("current_speed_planner", std::string(""));
   // 剖面调试日志目录（空=关闭；~ 展开为 HOME；文件按启动时间戳命名）
   declare_parameter("speed_plan_log_dir", std::string(""));
+  declare_parameter("speed_plan_log_enable", false);
+  declare_parameter("speed_tracking_log_enable", false);
   declare_parameter("min_x_velocity_threshold", rclcpp::ParameterValue(0.0001));
   declare_parameter("min_y_velocity_threshold", rclcpp::ParameterValue(0.0001));
   declare_parameter("min_theta_velocity_threshold", rclcpp::ParameterValue(0.0001));
@@ -429,7 +431,13 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
     rclcpp::QoS(rclcpp::KeepLast(1)).reliable().transient_local());
 
   get_parameter("speed_plan_log_dir", speed_plan_log_dir_);
-  if (!speed_plan_log_dir_.empty()) {
+  bool speed_plan_log_enable = false;
+  bool speed_tracking_log_enable = false;
+  get_parameter("speed_plan_log_enable", speed_plan_log_enable);
+  get_parameter("speed_tracking_log_enable", speed_tracking_log_enable);
+  if (!speed_plan_log_dir_.empty() &&
+    (speed_plan_log_enable || speed_tracking_log_enable))
+  {
     std::string dir = speed_plan_log_dir_;
     if (dir.front() == '~') {
       const char * home = std::getenv("HOME");
@@ -443,15 +451,29 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
     const std::time_t now_t = std::time(nullptr);
     std::strftime(ts, sizeof(ts), "%Y%m%d_%H%M%S", std::localtime(&now_t));
     const std::string file = dir + "/speed_plan_" + ts + ".csv";
-    speed_plan_log_.open(file, std::ios::out);
+    if (speed_plan_log_enable) {
+      speed_plan_log_.open(file, std::ios::out);
+    }
     if (speed_plan_log_.is_open()) {
       // 行式格式：每轮规划若干行、同一 id（轮次）多行共用，每行 = 一个属性的全路径序列。
       speed_plan_log_ <<
         "# format: id,attr,v0,v1,...  attr in {stamp,x,y,s,v,a,jerk,kappa,obstacle}; "
         "obstacle: 0=free 1=obstacle 2=buffer 3=exempt\n";
       RCLCPP_INFO(get_logger(), "Speed plan debug log: %s", file.c_str());
-    } else {
+    } else if (speed_plan_log_enable) {
       RCLCPP_WARN(get_logger(), "Failed to open speed plan log in: %s", dir.c_str());
+    }
+    const std::string tracking_file = dir + "/speed_tracking_" + ts + ".csv";
+    if (speed_tracking_log_enable) {
+      speed_tracking_log_.open(tracking_file, std::ios::out);
+    }
+    if (speed_tracking_log_.is_open()) {
+      speed_tracking_log_ <<
+        "# 每控制周期一行：desired_v=当前位置最近轨迹点规划速度，cmd=下发指令，actual=odom 实测\n"
+        "t,stage,desired_v,cmd_v,actual_v,cmd_wz,actual_wz\n";
+      RCLCPP_INFO(get_logger(), "Speed tracking log: %s", tracking_file.c_str());
+    } else if (speed_tracking_log_enable) {
+      RCLCPP_WARN(get_logger(), "Failed to open speed tracking log in: %s", dir.c_str());
     }
   }
 
@@ -574,6 +596,9 @@ ControllerServer::on_cleanup(const rclcpp_lifecycle::State & /*state*/)
   speed_plan_publisher_.reset();
   if (speed_plan_log_.is_open()) {
     speed_plan_log_.close();
+  }
+  if (speed_tracking_log_.is_open()) {
+    speed_tracking_log_.close();
   }
   speed_limit_sub_.reset();
 
@@ -1698,6 +1723,42 @@ geometry_msgs::msg::TwistStamped ControllerServer::computeStagedVelocity(
   return computeControllerVelocity(track_controller_, pose, twist);
 }
 
+bool ControllerServer::nearestPlannedSpeed(
+  const geometry_msgs::msg::PoseStamped & pose, double & desired_v)
+{
+  const auto & pts = current_trajectory_.points;
+  if (pts.empty()) {
+    return false;
+  }
+  std::string traj_frame = current_trajectory_.header.frame_id;
+  if (traj_frame.empty() && !pts.front().pose.header.frame_id.empty()) {
+    traj_frame = pts.front().pose.header.frame_id;
+  }
+  geometry_msgs::msg::PoseStamped query = pose;
+  if (!traj_frame.empty() && pose.header.frame_id != traj_frame) {
+    rclcpp::Duration tolerance(
+      rclcpp::Duration::from_seconds(costmap_ros_->getTransformTolerance()));
+    if (!nav_2d_utils::transformPose(
+        costmap_ros_->getTfBuffer(), traj_frame, pose, query, tolerance))
+    {
+      return false;
+    }
+  }
+  double best_d2 = std::numeric_limits<double>::max();
+  size_t best_i = 0;
+  for (size_t i = 0; i < pts.size(); ++i) {
+    const double dx = pts[i].pose.pose.position.x - query.pose.position.x;
+    const double dy = pts[i].pose.pose.position.y - query.pose.position.y;
+    const double d2 = dx * dx + dy * dy;
+    if (d2 < best_d2) {
+      best_d2 = d2;
+      best_i = i;
+    }
+  }
+  desired_v = pts[best_i].longitudinal_velocity;
+  return true;
+}
+
 void ControllerServer::computeAndPublishVelocity()
 {
   constexpr double kSlowTimingWarnMs = 100.0;
@@ -1772,6 +1833,24 @@ void ControllerServer::computeAndPublishVelocity()
   }
   auto t_compute_end = std::chrono::high_resolution_clock::now();
   auto compute_ms = std::chrono::duration<double, std::milli>(t_compute_end - t_compute_start).count();
+
+  if (speed_tracking_log_.is_open()) {
+    double desired_v = 0.0;
+    nearestPlannedSpeed(pose, desired_v);
+    // stage 列 = 阶段:控制器（画图脚本按阶段名着色，控制器名留排查用）。
+    const char * phase_name =
+      controller_phase_ == ControllerPhase::PREPARE ? "prepare" :
+      controller_phase_ == ControllerPhase::ALIGN ? "align" :
+      controller_phase_ == ControllerPhase::TRACK ? "track" : "approach";
+    speed_tracking_log_ << std::fixed << std::setprecision(3) << now().seconds() <<
+      ',' << phase_name << ':' << active_controller_for_log_ << std::setprecision(4) <<
+      ',' << desired_v <<
+      ',' << cmd_vel_2d.twist.linear.x <<
+      ',' << twist.x <<
+      ',' << cmd_vel_2d.twist.angular.z <<
+      ',' << twist.theta << '\n';
+    speed_tracking_log_.flush();
+  }
 
   auto t_feedback_start = std::chrono::high_resolution_clock::now();
   std::shared_ptr<Action::Feedback> feedback = std::make_shared<Action::Feedback>();
