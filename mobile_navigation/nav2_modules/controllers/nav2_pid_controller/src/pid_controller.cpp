@@ -669,9 +669,14 @@ geometry_msgs::msg::TwistStamped PIDController::computeVelocityCommands(
           // 减速尾段/曲率限速/障碍零速已由速度规划层逐点编码，跟踪即可；
           // desired_v=0（障碍置零点）时 LinearSpeedControl 直接输出 0。
           // 末端停车精度由 ROTATING_TO_GOAL 入口的 final goal 容差门控接管。
+          // err_x < 0（参考点在机器人身后 = 越过目标）允许负速度倒回——
+          // 距离收敛优先于"只前进"；倒回上限不被末端蠕行速度钳死，
+          // 放宽到 final_rotation_max_v（与最终旋转段线性纠偏权限一致）。
           const double desired_v = std::fabs(desired_linear_vel_);
+          const double max_cmd_v = (err_x < 0.0) ?
+            std::max(desired_v, final_rotation_max_v_) : desired_v;
           cmd_vel.twist.linear.x = LinearSpeedControl(
-            velocity, err_x, desired_v, desired_v, 0.0);
+            velocity, err_x, max_cmd_v, desired_v, 0.0);
           cmd_vel.twist.angular.z = AngularSpeedControl(velocity, err_theta);
           break;
         }
