@@ -192,6 +192,9 @@ protected:
   // 运行时缓存。
   double curr_path_length_{0.0};
   double points_interval_{0.1};
+  // 当前路径坐标系（computeSpeedPlan 捕获；A1 查询 costmap 前用于对齐到
+  // costmap 系——两者通常分别为 map 与 odom，直接查询会差一个定位修正量）。
+  std::string path_frame_;
 };
 
 }  // namespace nav2_speed_planner
