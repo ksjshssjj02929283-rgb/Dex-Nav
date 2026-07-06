@@ -32,6 +32,9 @@
 #include "nav2_costmap_2d/cost_values.hpp"
 
 #include "nav2_planner/planner_server.hpp"
+#include "nav2_costmap_2d/footprint_collision_checker.hpp"
+#include "nav2_costmap_2d/cost_values.hpp"
+#include "tf2/utils.h"
 // Generic planner-fallback interface: any planner implementing FallbackProvider
 // can ask the server to dispatch the configured fallback planner.
 #include "nav2_route_planner/planner_fallback.hpp"
@@ -68,6 +71,11 @@ PlannerServer::PlannerServer(const rclcpp::NodeOptions & options)
   // and it returns no path SPECIFICALLY because the map has no route graph,
   // retry with this free-space planner. Empty = no fallback.
   declare_parameter("route_fallback_planner", std::string(""));
+
+  // 末端直线插值统一后处理（原 smac fork 定制上收）：开关 + 参数
+  declare_parameter("goal_line_interp_enable", false);
+  declare_parameter("goal_line_interp_tail_distance", 0.3);
+  declare_parameter("goal_line_interp_step", 0.02);
 
   get_parameter("planner_plugins", planner_ids_);
   if (planner_ids_ == default_ids_) {
@@ -164,6 +172,16 @@ PlannerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
     "override_planner_id = %s (when true, every getPlan() ignores caller's "
     "planner_id and uses active_planner='%s')",
     override_planner_id_ ? "true" : "false", active_planner_.c_str());
+
+  get_parameter("goal_line_interp_enable", goal_line_interp_enable_);
+  get_parameter("goal_line_interp_tail_distance", goal_line_interp_tail_distance_);
+  get_parameter("goal_line_interp_step", goal_line_interp_step_);
+  if (goal_line_interp_enable_) {
+    RCLCPP_INFO(
+      get_logger(),
+      "goal_line_interp enabled: tail_distance=%.2f step=%.2f",
+      goal_line_interp_tail_distance_, goal_line_interp_step_);
+  }
 
   // Resolve route→free-space fallback planner
   get_parameter("route_fallback_planner", route_fallback_planner_);
@@ -654,7 +672,102 @@ PlannerServer::getPlan(
     }
   }
 
+  // 末端直线插值统一后处理（所有 planner 的输出都经过这里）。
+  if (goal_line_interp_enable_) {
+    applyGoalLineInterpolation(path, start, goal);
+  }
+
   return path;
+}
+
+bool PlannerServer::isGoalFootprintFree(const geometry_msgs::msg::PoseStamped & goal)
+{
+  nav2_costmap_2d::FootprintCollisionChecker<nav2_costmap_2d::Costmap2D *>
+  checker(costmap_);
+  const double cost = checker.footprintCostAtPose(
+    goal.pose.position.x, goal.pose.position.y,
+    tf2::getYaw(goal.pose.orientation), costmap_ros_->getRobotFootprint());
+  return cost < static_cast<double>(nav2_costmap_2d::LETHAL_OBSTACLE);
+}
+
+void PlannerServer::appendGoalLine(
+  nav_msgs::msg::Path & path,
+  const geometry_msgs::msg::PoseStamped & from,
+  const geometry_msgs::msg::PoseStamped & goal)
+{
+  const double dx = goal.pose.position.x - from.pose.position.x;
+  const double dy = goal.pose.position.y - from.pose.position.y;
+  const double dist = std::hypot(dx, dy);
+  const double step = std::max(goal_line_interp_step_, 1e-3);
+  const int steps = std::max(1, static_cast<int>(dist / step));
+  const double yaw_from = tf2::getYaw(from.pose.orientation);
+  double yaw_diff = tf2::getYaw(goal.pose.orientation) - yaw_from;
+  while (yaw_diff > M_PI) {yaw_diff -= 2.0 * M_PI;}
+  while (yaw_diff < -M_PI) {yaw_diff += 2.0 * M_PI;}
+
+  for (int i = 1; i <= steps; ++i) {
+    const double f = static_cast<double>(i) / steps;
+    geometry_msgs::msg::PoseStamped pose;
+    pose.header = path.header;
+    pose.pose.position.x = from.pose.position.x + f * dx;
+    pose.pose.position.y = from.pose.position.y + f * dy;
+    tf2::Quaternion q;
+    q.setRPY(0.0, 0.0, yaw_from + f * yaw_diff);
+    pose.pose.orientation = tf2::toMsg(q);
+    path.poses.push_back(pose);
+  }
+}
+
+void PlannerServer::applyGoalLineInterpolation(
+  nav_msgs::msg::Path & path,
+  const geometry_msgs::msg::PoseStamped & start,
+  const geometry_msgs::msg::PoseStamped & goal)
+{
+  const auto dist_to_goal = [&goal](const geometry_msgs::msg::Pose & p) {
+      return std::hypot(
+        p.position.x - goal.pose.position.x, p.position.y - goal.pose.position.y);
+    };
+
+  if (path.poses.empty()) {
+    // 失败兜底：仅在已贴近 goal 且 goal footprint 无碰撞时直线补线——
+    // 远距离失败仍交给 BT 等待重规划，不掩盖规划失败。判定半径与尾段
+    // 替换窗口共用 tail_distance（同一语义：goal 附近直线接管范围）。
+    const double dist = dist_to_goal(start.pose);
+    if (dist > goal_line_interp_tail_distance_ || !isGoalFootprintFree(goal)) {
+      return;
+    }
+    RCLCPP_WARN(
+      get_logger(),
+      "goal_line_interp: planner returned empty path near goal (%.2fm) — "
+      "using straight-line interpolation start→goal.", dist);
+    path.header.frame_id = costmap_ros_->getGlobalFrameID();
+    path.header.stamp = now();
+    geometry_msgs::msg::PoseStamped start_pose = start;
+    start_pose.header = path.header;
+    path.poses.push_back(start_pose);
+    appendGoalLine(path, start_pose, goal);
+    return;
+  }
+
+  // 成功路径：尾点已进入替换窗口 → 截断窗口内尾段（末端机动，如朝向对齐
+  // 弯钩），直线插值补到 goal。窗口外路径原样保留。
+  if (dist_to_goal(path.poses.back().pose) > goal_line_interp_tail_distance_ ||
+    !isGoalFootprintFree(goal))
+  {
+    return;
+  }
+  size_t keep = path.poses.size();
+  while (keep > 1 && dist_to_goal(path.poses[keep - 1].pose) <=
+    goal_line_interp_tail_distance_)
+  {
+    --keep;
+  }
+  path.poses.resize(keep);
+  RCLCPP_DEBUG(
+    get_logger(),
+    "goal_line_interp: replaced path tail within %.2fm of goal with straight "
+    "interpolation (%zu poses kept).", goal_line_interp_tail_distance_, keep);
+  appendGoalLine(path, path.poses.back(), goal);
 }
 
 void

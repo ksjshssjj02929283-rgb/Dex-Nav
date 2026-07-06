@@ -259,6 +259,35 @@ protected:
   // TF buffer
   std::shared_ptr<tf2_ros::Buffer> tf_;
 
+  /**
+   * @brief 末端直线插值统一后处理（原 smac fork 定制逻辑上收，对所有 planner 生效）：
+   *   - 成功路径：尾点距 goal ≤ tail_distance 时，截断该窗口内尾段（如朝向对齐
+   *     弯钩等末端机动），直线插值补到 goal——朝向对齐交给控制器末端旋转
+   *   - 失败兜底：规划为空且 start 距 goal ≤ tail_distance 时，直线插值 start→goal
+   *     （近距目标首次规划的保护：短距机动超出运动学 planner 求解能力时必然失败）
+   *   两分支均要求 goal 处 footprint 无碰撞；位置线性插值 + yaw 线性混合。
+   */
+  void applyGoalLineInterpolation(
+    nav_msgs::msg::Path & path,
+    const geometry_msgs::msg::PoseStamped & start,
+    const geometry_msgs::msg::PoseStamped & goal);
+
+  /// goal 处机器人 footprint 无碰撞检查（全局 costmap，LETHAL 阈值）。
+  bool isGoalFootprintFree(const geometry_msgs::msg::PoseStamped & goal);
+
+  /// 从 from 直线插值到 goal 并追加到 path（跳过 from 本身，防重复点）。
+  void appendGoalLine(
+    nav_msgs::msg::Path & path,
+    const geometry_msgs::msg::PoseStamped & from,
+    const geometry_msgs::msg::PoseStamped & goal);
+
+  // 末端直线插值参数（开关与参数暴露到 YAML）。
+  // tail_distance 同时用于两个分支：成功路径的尾段替换窗口 + 失败兜底的
+  // 判定半径——两者语义相同（goal 附近多大范围内允许直线接管），单参数管理。
+  bool goal_line_interp_enable_{false};
+  double goal_line_interp_tail_distance_{0.3};
+  double goal_line_interp_step_{0.02};
+
   // Global Costmap
   std::shared_ptr<nav2_costmap_2d::Costmap2DROS> costmap_ros_;
   std::unique_ptr<nav2_util::NodeThread> costmap_thread_;
