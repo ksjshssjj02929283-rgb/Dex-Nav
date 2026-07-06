@@ -124,7 +124,7 @@ controller_server:
     # ④ 速度规划（规划级：path 更新事件驱动生成 RobotTrajectory；current_speed_planner 置空 "" 即禁用/灰度回退）
     # 运动学上限与下游链路对齐：对齐 DWB(max_vel_x/acc_lim_x) 与 velocity_smoother(max_velocity/max_accel)
     speed_planner_plugins: ["TrapezoidalSpeedPlanner", "SCurveSpeedPlanner"]
-    current_speed_planner: "SCurveSpeedPlanner"
+    current_speed_planner: "TrapezoidalSpeedPlanner"  # 先验证 T 型；S 型待复测后切回
     TrapezoidalSpeedPlanner:
       plugin: "nav2_speed_planner::TrapezoidalSpeedPlanner"
       max_speed: 0.26
@@ -136,8 +136,6 @@ controller_server:
       collision_stop_distance: 0.2
       obstacle_cost_threshold: 253
       curve_compute_dist: 0.1
-      decel_distance_before_curve: 0.5
-      decel_distance_after_curve: 0.5
       regulated_linear_scaling_min_radius: 1.2
       min_curvature_speed: 0.1
       constant_velocity_dist_threshold: 0.1
@@ -153,8 +151,6 @@ controller_server:
       collision_stop_distance: 0.2
       obstacle_cost_threshold: 253
       curve_compute_dist: 0.1
-      decel_distance_before_curve: 0.5
-      decel_distance_after_curve: 0.5
       regulated_linear_scaling_min_radius: 1.2
       min_curvature_speed: 0.1
       constant_velocity_dist_threshold: 0.1

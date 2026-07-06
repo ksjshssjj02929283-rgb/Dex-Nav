@@ -21,13 +21,17 @@ namespace nav2_speed_planner
 
 namespace
 {
-// 前瞻 vmax：当前到刹车距离前瞻窗内的 v_env 最小值（让 Ruckig 接近弯/障碍时提前减速）。
+// 前瞻 vmax：当前到刹车距离前瞻窗内的 v_env 最小值（让 Ruckig 接近弯/障碍/蠕行区提前减速）。
 double lookaheadVmax(
   const std::vector<double> & env, const std::vector<double> & s,
-  double s_now, double v_now, double d_max)
+  double s_now, double v_now, double d_max, double max_jerk)
 {
-  // 刹车距离（恒减速估计）+ jerk 余量系数 1.5 + 固定余量 0.1 m。
-  const double brake = v_now * v_now / (2.0 * std::max(1e-3, d_max)) * 1.5 + 0.1;
+  // jerk 限制刹车距离 = 恒减速项 v²/(2a) + 建立减速度的 jerk 段附加项 v·a/(2j)，
+  // 再乘 1.2 系数 + 0.1m 固定余量。估短的后果：减速在低速区边界前刹不完，
+  // 剖面被区内包络钳位截出速度台阶（无法平滑递减到区界目标速度）。
+  const double a = std::max(1e-3, d_max);
+  const double j = std::max(1e-3, max_jerk);
+  const double brake = (v_now * v_now / (2.0 * a) + v_now * a / (2.0 * j)) * 1.2 + 0.1;
   const double s_end = std::min(s_now + brake, s.back());
   double vmin = std::numeric_limits<double>::infinity();
   for (size_t i = 0; i < s.size(); ++i) {
@@ -110,7 +114,7 @@ void SCurveSpeedPlanner::generateRuckigProfile(
   for (int step = 0; step < cap; ++step) {
     const double s_now = in.current_position[0];
     const double v_now = in.current_velocity[0];
-    const double vmax = std::max(lookaheadVmax(v_env, arc_s, s_now, v_now, d_max), 1e-3);
+    const double vmax = std::max(lookaheadVmax(v_env, arc_s, s_now, v_now, d_max, max_jerk), 1e-3);
     in.max_velocity = {vmax};
     const ruckig::Result res = otg.update(in, out);
     if (res == ruckig::Result::Error || res == ruckig::Result::ErrorInvalidInput) {break;}
@@ -146,27 +150,17 @@ void SCurveSpeedPlanner::generateRuckigProfile(
   }
 }
 
-// ===================== 插件 hook：复用包络 + Ruckig + 回填 =====================
+// ===================== 插件 hook：Phase B（Ruckig jerk 限制剖面）=====================
 void SCurveSpeedPlanner::assignVelocityProfile(
-  std::vector<TrajPointWork> & work, double curr_vel)
+  std::vector<TrajPointWork> & work, double curr_vel, double /*cruise_limit*/)
 {
   const size_t n = work.size();
-  if (n == 0) {return;}
-  if (n == 1) {
-    work[0].speed_limit = std::clamp(curr_vel, 0.0, max_speed_);
-    work[0].accel = 0.0;
-    work[0].rel_time = 0.0;
+  if (n < 2) {
     return;
   }
 
-  // 1) Phase A 约束包络（与 T 型共享同一套约束函数）：
-  //    A1 障碍 + 缓冲带置零 → A2 巡航求解+回填 → A3 曲率。
-  applyObstacleConstraint(work);
-  const double cruise = getSpeedLimit(work, curr_vel);
-  setPlanSpeedLimit(work, cruise);
-  applyCurvatureConstraint(work, cruise);
-
-  // 2) 累计弧长 + 包络。
+  // 1) 累计弧长 + 包络（Phase A 已由基类完成：障碍/巡航/曲率/末端蠕行区，
+  //    包络零点含障碍缓冲带，蠕行区已压到 end_speed）。
   std::vector<double> v_env(n, 0.0), arc_s(n, 0.0);
   v_env[0] = std::max(0.0, work[0].speed_limit);
   for (size_t i = 1; i < n; ++i) {
@@ -176,22 +170,8 @@ void SCurveSpeedPlanner::assignVelocityProfile(
     v_env[i] = std::max(0.0, work[i].speed_limit);
   }
 
-  // 2.5) 末端蠕行区（与 T 型停止段语义一致）：距终点 stop_distance_ 内包络压到
-  //      end_speed_——减速在蠕行区边界前完成（Ruckig 前瞻 vmax 提前刹），区内保持
-  //      低速到点，保证到点精度；不是"匀减速一路减到终点"。
-  //      障碍零速点由 min 保留；end_speed_<1e-3（硬停配置）时无蠕行区，维持减速到终点。
-  const double v_creep = std::max(end_speed_, 0.0);
-  if (stop_distance_ > 0.0 && v_creep >= 1e-3) {
-    for (size_t i = n; i-- > 0;) {
-      if (arc_s[n - 1] - arc_s[i] > stop_distance_) {
-        break;
-      }
-      v_env[i] = std::min(v_env[i], v_creep);
-    }
-  }
-
-  // 3) Ruckig 生成 jerk 限制剖面（非对称 a_max / d_max=|decel_|）。包络零点已含障碍缓冲带。
-  //    终点目标速度 = end_speed_（与 T 型统一；障碍停止时函数内部强制 0）。
+  // 2) Ruckig 生成 jerk 限制剖面（非对称 a_max / d_max=|decel_|）。
+  //    终点目标速度 = end_speed_（障碍停止时函数内部强制 0）。
   std::vector<double> v_out, a_out, t_out;
   generateRuckigProfile(
     v_env, arc_s, curr_vel,
@@ -199,7 +179,7 @@ void SCurveSpeedPlanner::assignVelocityProfile(
     max_jerk_, control_dt_,
     v_out, a_out, t_out, end_speed_);
 
-  // 4) 回填 work（曲率已由 applyCurvatureConstraint 填好）。
+  // 3) 回填 work（曲率已由 Phase A3 填好）。
   for (size_t i = 0; i < n; ++i) {
     work[i].speed_limit = v_out[i];
     work[i].accel = a_out[i];
