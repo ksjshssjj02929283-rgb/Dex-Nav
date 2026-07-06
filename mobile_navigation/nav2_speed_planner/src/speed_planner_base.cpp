@@ -16,6 +16,7 @@
 
 #include "nav2_costmap_2d/cost_values.hpp"
 #include "nav2_util/node_utils.hpp"
+#include "tf2/utils.h"
 
 namespace nav2_speed_planner
 {
@@ -140,6 +141,7 @@ nav_interfaces::msg::RobotTrajectory SpeedPlannerBase::computeSpeedPlan(
 {
   nav_interfaces::msg::RobotTrajectory traj;
   traj.header = path.header;
+  path_frame_ = path.header.frame_id;
 
   // 构建内部工作结构。
   std::vector<TrajPointWork> work;
@@ -249,6 +251,38 @@ bool SpeedPlannerBase::applyObstacleConstraint(std::vector<TrajPointWork> & path
   if (path.empty()) {
     return false;
   }
+
+  // 路径与 costmap 坐标系对齐：FollowPath 路径通常在 map 系，而宿主的 local
+  // costmap 在 odom 系——直接用路径坐标查询会相差 map→odom 修正量，把自由区
+  // 路径按偏移量"平移"进墙带造成误停障。查询前统一变换到 costmap 系
+  //（2D 刚体变换，每周期取一次 TF，逐点仅乘加）。
+  double tx = 0.0, ty = 0.0, cos_t = 1.0, sin_t = 0.0;
+  bool need_transform = false;
+  if (costmap_ros_ && tf_) {
+    const std::string costmap_frame = costmap_ros_->getGlobalFrameID();
+    if (!path_frame_.empty() && !costmap_frame.empty() && path_frame_ != costmap_frame) {
+      geometry_msgs::msg::TransformStamped to_costmap;
+      try {
+        to_costmap = tf_->lookupTransform(costmap_frame, path_frame_, tf2::TimePointZero);
+      } catch (const tf2::TransformException & ex) {
+        // 变换不可用（如启动期 map 尚未发布）：本周期跳过障碍约束，
+        // 好过用错误坐标误停障；下一周期重试（receding-horizon）。
+        RCLCPP_WARN_THROTTLE(
+          logger_, *clock_, 1000,
+          "[%s] cannot transform path (%s) into costmap frame (%s), "
+          "skipping obstacle constraint this cycle: %s",
+          plugin_name_.c_str(), path_frame_.c_str(), costmap_frame.c_str(), ex.what());
+        return false;
+      }
+      const double yaw = tf2::getYaw(to_costmap.transform.rotation);
+      cos_t = std::cos(yaw);
+      sin_t = std::sin(yaw);
+      tx = to_costmap.transform.translation.x;
+      ty = to_costmap.transform.translation.y;
+      need_transform = true;
+    }
+  }
+
   const std::vector<double> arc_s = computeCumulativeArcLengths(path);
   // 全路径扫描并用 region_type 标记障碍语义（透传到 RobotTrajectory，供消费方与
   // 剖面日志评判使用；M11 真语义接入后此处改为叠加标记而非独占）：
@@ -257,7 +291,15 @@ bool SpeedPlannerBase::applyObstacleConstraint(std::vector<TrajPointWork> & path
   //   obstacle_buffer — 首个障碍前的缓冲带（置零）
   size_t first_obstacle_index = path.size();
   for (size_t i = 0; i < path.size(); ++i) {
-    if (!isObstacleAt(path[i].pose.pose.position.x, path[i].pose.pose.position.y)) {
+    double wx = path[i].pose.pose.position.x;
+    double wy = path[i].pose.pose.position.y;
+    if (need_transform) {
+      const double px = wx;
+      const double py = wy;
+      wx = cos_t * px - sin_t * py + tx;
+      wy = sin_t * px + cos_t * py + ty;
+    }
+    if (!isObstacleAt(wx, wy)) {
       continue;
     }
     if (arc_s[i] <= obstacle_start_exempt_distance_) {
