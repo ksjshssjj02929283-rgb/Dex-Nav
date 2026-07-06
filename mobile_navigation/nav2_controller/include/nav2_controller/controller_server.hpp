@@ -172,6 +172,13 @@ protected:
    * @param trajectory 速度规划输出轨迹
    */
   void publishSpeedPlan(const nav_interfaces::msg::RobotTrajectory & trajectory);
+
+  /**
+   * @brief 查询当前轨迹上距机器人最近点的规划速度（期望速度）。
+   *        位姿与轨迹坐标系不同时按当周期 TF 对齐后再查询。
+   * @return 轨迹为空或 TF 不可用时 false。
+   */
+  bool nearestPlannedSpeed(const geometry_msgs::msg::PoseStamped & pose, double & desired_v);
   /**
    * @brief Calculates velocity and publishes to "cmd_vel" topic
    */
@@ -391,6 +398,9 @@ protected:
   // 按启动时间戳命名的 CSV（列：stamp,seq,i,s,v,accel,kappa,obstacle）；默认关闭
   std::ofstream speed_plan_log_;
   std::string speed_plan_log_dir_;
+  // 速度跟踪日志：每个控制周期一行（期望/指令/实际三速 + 阶段），与剖面日志
+  // 同目录同会话时间戳，供 plot_speed_tracking.py 生成 v-t 调参证据图。
+  std::ofstream speed_tracking_log_;
   uint64_t speed_plan_seq_{0};
 
   double controller_frequency_;

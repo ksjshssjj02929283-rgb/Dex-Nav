@@ -126,6 +126,8 @@ controller_server:
     speed_planner_plugins: ["TrapezoidalSpeedPlanner", "SCurveSpeedPlanner"]
     current_speed_planner: "TrapezoidalSpeedPlanner"  # 先验证 T 型；S 型待复测后切回
     # 剖面调试日志目录（空 "" = 关闭；文件按启动时间戳命名，列含曲率/障碍标记）
+    speed_plan_log_enable: true    # 剖面日志开关（每轮全路径剖面，文件较大，仅调试期开）
+    speed_tracking_log_enable: true    # 跟踪日志开关（每控制周期一行三速，调 PID/accel/jerk 证据）
     speed_plan_log_dir: "~/.dexe/navigation/speed_planner"
     TrapezoidalSpeedPlanner:
       plugin: "nav2_speed_planner::TrapezoidalSpeedPlanner"
