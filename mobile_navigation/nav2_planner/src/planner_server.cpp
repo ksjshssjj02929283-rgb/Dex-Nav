@@ -58,12 +58,12 @@ PlannerServer::PlannerServer(const rclcpp::NodeOptions & options)
   // Declare this node's parameters
   declare_parameter("planner_plugins", default_ids_);
   declare_parameter("expected_planner_frequency", 1.0);
-  // active_planner: which registered planner key to use when the action
+  // current_planner: which registered planner key to use when the action
   // caller's planner_id is empty or does not match any registered plugin.
-  // Switchable at runtime: ros2 param set /planner_server active_planner <key>
-  declare_parameter("active_planner", std::string(""));
+  // Switchable at runtime: ros2 param set /planner_server current_planner <key>
+  declare_parameter("current_planner", std::string(""));
   // override_planner_id: when true, ignore caller-supplied planner_id and
-  // always dispatch to active_planner_. Used for runtime hot-swapping when
+  // always dispatch to current_planner_. Used for runtime hot-swapping when
   // upstream BTs hard-code planner_id="GridBased". Switchable at runtime:
   //   ros2 param set /planner_server override_planner_id true|false
   declare_parameter("override_planner_id", false);
@@ -147,22 +147,22 @@ PlannerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
     get_logger(),
     "Planner Server has %s planners available.", planner_ids_concat_.c_str());
 
-  // Resolve active_planner_ from parameter (default = first registered planner)
+  // Resolve current_planner_ from parameter (default = first registered planner)
   {
     std::string active_param;
-    get_parameter("active_planner", active_param);
+    get_parameter("current_planner", active_param);
     if (!active_param.empty() && planners_.find(active_param) != planners_.end()) {
-      active_planner_ = active_param;
+      current_planner_ = active_param;
     } else {
       if (!active_param.empty()) {
         RCLCPP_WARN(
           get_logger(),
-          "active_planner '%s' is not a registered planner; defaulting to '%s'",
+          "current_planner '%s' is not a registered planner; defaulting to '%s'",
           active_param.c_str(), planner_ids_.front().c_str());
       }
-      active_planner_ = planner_ids_.empty() ? "" : planner_ids_.front();
+      current_planner_ = planner_ids_.empty() ? "" : planner_ids_.front();
     }
-    RCLCPP_INFO(get_logger(), "Active planner set to '%s'", active_planner_.c_str());
+    RCLCPP_INFO(get_logger(), "Active planner set to '%s'", current_planner_.c_str());
   }
 
   // Resolve override flag
@@ -170,8 +170,8 @@ PlannerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
   RCLCPP_INFO(
     get_logger(),
     "override_planner_id = %s (when true, every getPlan() ignores caller's "
-    "planner_id and uses active_planner='%s')",
-    override_planner_id_ ? "true" : "false", active_planner_.c_str());
+    "planner_id and uses current_planner='%s')",
+    override_planner_id_ ? "true" : "false", current_planner_.c_str());
 
   get_parameter("goal_line_interp_enable", goal_line_interp_enable_);
   get_parameter("goal_line_interp_tail_distance", goal_line_interp_tail_distance_);
@@ -610,33 +610,33 @@ PlannerServer::getPlan(
 
   // Resolve the effective planner. Two modes:
   //   (1) override_planner_id_ == true: ignore caller's planner_id and
-  //       always use active_planner_ (hot-swap mode).
+  //       always use current_planner_ (hot-swap mode).
   //   (2) override_planner_id_ == false (nav2 default): caller's
-  //       planner_id wins; active_planner_ is only used as fallback when
+  //       planner_id wins; current_planner_ is only used as fallback when
   //       caller's planner_id is empty or not registered.
   std::string effective_id = planner_id;
 
   if (override_planner_id_ &&
-    !active_planner_.empty() && planners_.count(active_planner_))
+    !current_planner_.empty() && planners_.count(current_planner_))
   {
     // Mode (1): hot-swap override
-    if (!planner_id.empty() && planner_id != active_planner_) {
+    if (!planner_id.empty() && planner_id != current_planner_) {
       RCLCPP_DEBUG(
         get_logger(),
         "override_planner_id=true: caller requested '%s' but dispatching to active '%s'",
-        planner_id.c_str(), active_planner_.c_str());
+        planner_id.c_str(), current_planner_.c_str());
     }
-    effective_id = active_planner_;
+    effective_id = current_planner_;
   } else if (planners_.find(effective_id) == planners_.end()) {
-    // Mode (2): fallback to active_planner_ on miss
-    if (!active_planner_.empty() && planners_.count(active_planner_)) {
+    // Mode (2): fallback to current_planner_ on miss
+    if (!current_planner_.empty() && planners_.count(current_planner_)) {
       if (!planner_id.empty()) {
         RCLCPP_WARN(
           get_logger(),
-          "Requested planner '%s' not found; falling back to active_planner '%s'",
-          planner_id.c_str(), active_planner_.c_str());
+          "Requested planner '%s' not found; falling back to current_planner '%s'",
+          planner_id.c_str(), current_planner_.c_str());
       }
-      effective_id = active_planner_;
+      effective_id = current_planner_;
     } else {
       RCLCPP_ERROR(
         get_logger(), "planner '%s' is not a valid planner. "
@@ -854,21 +854,21 @@ PlannerServer::dynamicParametersCallback(std::vector<rclcpp::Parameter> paramete
         }
       }
     } else if (type == ParameterType::PARAMETER_STRING) {
-      if (name == "active_planner") {
+      if (name == "current_planner") {
         const std::string requested = parameter.as_string();
         if (planners_.find(requested) == planners_.end()) {
           RCLCPP_WARN(
             get_logger(),
-            "Rejecting active_planner='%s': not a registered planner. Available: %s",
+            "Rejecting current_planner='%s': not a registered planner. Available: %s",
             requested.c_str(), planner_ids_concat_.c_str());
           result.successful = false;
           result.reason = "unknown planner key: " + requested;
           return result;
         }
         RCLCPP_INFO(
-          get_logger(), "active_planner: '%s' -> '%s'",
-          active_planner_.c_str(), requested.c_str());
-        active_planner_ = requested;
+          get_logger(), "current_planner: '%s' -> '%s'",
+          current_planner_.c_str(), requested.c_str());
+        current_planner_ = requested;
       }
     } else if (type == ParameterType::PARAMETER_BOOL) {
       if (name == "override_planner_id") {
@@ -876,10 +876,10 @@ PlannerServer::dynamicParametersCallback(std::vector<rclcpp::Parameter> paramete
         override_planner_id_ = parameter.as_bool();
         RCLCPP_INFO(
           get_logger(),
-          "override_planner_id: %s -> %s (active_planner='%s')",
+          "override_planner_id: %s -> %s (current_planner='%s')",
           old_v ? "true" : "false",
           override_planner_id_ ? "true" : "false",
-          active_planner_.c_str());
+          current_planner_.c_str());
       }
     }
   }

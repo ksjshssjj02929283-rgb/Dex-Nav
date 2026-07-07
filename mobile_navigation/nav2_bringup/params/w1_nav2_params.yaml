@@ -844,20 +844,20 @@ planner_server:
 
     # ─── PlannerServer 原生多 planner 热切换 ─────────────────
     # 关键机制：本工程已 fork nav2_planner 新增两个参数：
-    #   - active_planner: 运行时选哪个 planner（必须 ∈ planner_plugins）
+    #   - current_planner: 运行时选哪个 planner（必须 ∈ planner_plugins；DEC-015 current_* 口径）
     #   - override_planner_id: 当 true 时忽略 BT 传的 planner_id，
-    #     强制使用 active_planner → 实现 BT 不动的热切换
+    #     强制使用 current_planner → 实现 BT 不动的热切换
     # 切换命令（无需重启 planner_server）：
-    #   ros2 param set /planner_server active_planner RouteGridPlanner  # 路网规划
-    #   ros2 param set /planner_server active_planner SmacGridBased     # SmacPlannerLattice 自由路径
-    #   ros2 param set /planner_server active_planner ThetaStarBased    # Theta* 几何最短路径
+    #   ros2 param set /planner_server current_planner RouteGridPlanner  # 路网规划
+    #   ros2 param set /planner_server current_planner SmacGridBased     # SmacPlannerLattice 自由路径
+    #   ros2 param set /planner_server current_planner ThetaStarBased    # Theta* 几何最短路径
     # 详见 [[10. 双规划器热切换方案——PlannerSwitcher 设计与实现]]
     planner_plugins: ["RouteGridPlanner", "SmacGridBased", "ThetaStarBased"]
-    active_planner: "RouteGridPlanner"   # 默认用路网规划器（dynamic）
+    current_planner: "RouteGridPlanner"   # 默认用路网规划器（dynamic）
                                          # 可选值：RouteGridPlanner / SmacGridBased / ThetaStarBased
     override_planner_id: true            # true: 忽略 BT planner_id，强制 active；
                                          # false: nav2 标准 fallback 语义
-    route_fallback_planner: "SmacGridBased"  # RouteGridPlanner 无路网数据(地图未建路网)时退化到此自由规划器
+    route_fallback_planner: "ThetaStarBased"  # RouteGridPlanner 无路网数据(地图未建路网)时退化到此自由规划器（2026-07-07 由 SmacGridBased 切换：Theta* 轻量直线族更适合无路网自由空间，末端处置已由 goal_line_interp 统一）
 
     # ─── 规划器 1：路网（NavRouteGraphPlanner）────────────────────────
     RouteGridPlanner:
@@ -925,7 +925,7 @@ planner_server:
     # 选项。Theta* 是 grid-based 几何最短路径搜索（允许对角线走线，路径
     # 比 NavfnPlanner 更直），适合"无路网约束 + 大致直走"场景。
     # 切换命令：
-    #   ros2 param set /planner_server active_planner ThetaStarBased
+    #   ros2 param set /planner_server current_planner ThetaStarBased
     ThetaStarBased:
       plugin: "nav2_theta_star_planner/ThetaStarPlanner"
       how_many_corners: 8
