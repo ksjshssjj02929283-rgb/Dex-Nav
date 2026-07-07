@@ -286,6 +286,14 @@ protected:
   /// 速度环：PID 输出加速度 → 限幅 → 积分 → 不越过目标。
   double trackLinearVelocity(double target_vel, double measured_vel);
 
+  /// 机器人到最近路径段的垂距（cross-track error，机器人系）。
+  double computeCrossTrackError(const nav_msgs::msg::Path & transformed_plan) const;
+
+  /// ⑤ 反馈约束（只降不升）：横向误差减速 + 角速度饱和联动降速。
+  void applyTrackingFeedbackConstraints(
+    const nav_msgs::msg::Path & transformed_plan, double curvature,
+    double & linear_vel, double & cross_track_error);
+
   struct TrajSpeedPoint
   {
     double x;
@@ -297,6 +305,10 @@ protected:
   double max_linear_accel_{0.5};
   double traj_speed_lookahead_{0.1};
   double angular_gain_{1.0};
+  double max_angular_vel_{1.5};
+  double lateral_error_threshold_{0.15};
+  double lateral_error_max_dist_{0.5};
+  double min_lateral_speed_scale_{0.3};
   nav2_controller_common::PIDController speed_pid_;
   rclcpp::Time last_speed_track_time_{0, 0, RCL_ROS_TIME};
 
