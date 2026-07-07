@@ -237,16 +237,16 @@ protected:
   double max_planner_duration_;
   std::string planner_ids_concat_;
   // The currently active planner key used as fallback when planner_id is
-  // empty or not found. Switchable at runtime via the "active_planner" param.
-  std::string active_planner_;
+  // empty or not found. Switchable at runtime via the "current_planner" param.
+  std::string current_planner_;
 
   // When true, the planner_id sent by callers (e.g. BT's hard-coded
-  // "GridBased") is IGNORED and getPlan always dispatches to active_planner_.
+  // "GridBased") is IGNORED and getPlan always dispatches to current_planner_.
   // This is the "hot-swap" mode: register all candidate planners under their
   // real names (RouteGridPlanner, SmacGridBased, ...), set
-  // override_planner_id=true, and flip active_planner at runtime.
+  // override_planner_id=true, and flip current_planner at runtime.
   // When false (default): nav2 standard behavior — caller-supplied
-  // planner_id wins; active_planner_ only kicks in as a fallback.
+  // planner_id wins; current_planner_ only kicks in as a fallback.
   bool override_planner_id_{false};
 
   // Free-space planner to retry with when the route planner reports no route
