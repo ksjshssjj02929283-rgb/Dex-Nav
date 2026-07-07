@@ -24,6 +24,8 @@
 
 #include "nav2_costmap_2d/footprint_collision_checker.hpp"
 #include "nav2_core/controller.hpp"
+#include "nav2_controller_common/pid_controller.h"
+#include "nav_interfaces/msg/robot_trajectory.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "pluginlib/class_loader.hpp"
 #include "pluginlib/class_list_macros.hpp"
@@ -273,6 +275,30 @@ protected:
   dynamicParametersCallback(std::vector<rclcpp::Parameter> parameters);
 
   rclcpp_lifecycle::LifecycleNode::WeakPtr node_;
+  /// 缓存速度规划轨迹（变换到 costmap 系；每控制周期重新下发，陈旧窗 ≤1 周期）。
+  void setTrajectory(const nav_interfaces::msg::RobotTrajectory & trajectory) override;
+
+  /// 最近点起前瞻窗内的最大规划速度（起点状态戳为当前速度，静止时
+  /// 精确最近点恒 0 会自引用死锁——前瞻破环）。
+  bool nearestTrajectorySpeed(
+    const geometry_msgs::msg::PoseStamped & pose, double & traj_speed);
+
+  /// 速度环：PID 输出加速度 → 限幅 → 积分 → 不越过目标。
+  double trackLinearVelocity(double target_vel, double measured_vel);
+
+  struct TrajSpeedPoint
+  {
+    double x;
+    double y;
+    double speed;
+  };
+  std::vector<TrajSpeedPoint> traj_speed_points_;
+  std::mutex traj_mutex_;
+  double max_linear_accel_{0.5};
+  double traj_speed_lookahead_{0.1};
+  nav2_controller_common::PIDController speed_pid_;
+  rclcpp::Time last_speed_track_time_{0, 0, RCL_ROS_TIME};
+
   std::shared_ptr<tf2_ros::Buffer> tf_;
   std::string plugin_name_;
   std::shared_ptr<nav2_costmap_2d::Costmap2DROS> costmap_ros_;
