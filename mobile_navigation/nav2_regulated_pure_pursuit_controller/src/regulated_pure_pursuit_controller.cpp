@@ -21,6 +21,7 @@
 #include <utility>
 
 #include "nav2_regulated_pure_pursuit_controller/regulated_pure_pursuit_controller.hpp"
+#include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
 #include "nav2_core/exceptions.hpp"
 #include "nav2_util/node_utils.hpp"
 #include "nav2_util/geometry_utils.hpp"
@@ -120,6 +121,25 @@ void RegulatedPurePursuitController::configure(
 
   node->get_parameter(plugin_name_ + ".desired_linear_vel", desired_linear_vel_);
   base_desired_linear_vel_ = desired_linear_vel_;
+
+  nav2_util::declare_parameter_if_not_declared(
+    node, plugin_name_ + ".max_linear_accel", rclcpp::ParameterValue(0.5));
+  nav2_util::declare_parameter_if_not_declared(
+    node, plugin_name_ + ".traj_speed_lookahead", rclcpp::ParameterValue(0.1));
+  nav2_util::declare_parameter_if_not_declared(
+    node, plugin_name_ + ".speed_loop_kp", rclcpp::ParameterValue(2.0));
+  nav2_util::declare_parameter_if_not_declared(
+    node, plugin_name_ + ".speed_loop_ki", rclcpp::ParameterValue(0.2));
+  nav2_util::declare_parameter_if_not_declared(
+    node, plugin_name_ + ".speed_loop_kd", rclcpp::ParameterValue(0.0));
+  node->get_parameter(plugin_name_ + ".max_linear_accel", max_linear_accel_);
+  node->get_parameter(plugin_name_ + ".traj_speed_lookahead", traj_speed_lookahead_);
+  nav2_controller_common::PidConf conf;
+  node->get_parameter(plugin_name_ + ".speed_loop_kp", conf.kp);
+  node->get_parameter(plugin_name_ + ".speed_loop_ki", conf.ki);
+  node->get_parameter(plugin_name_ + ".speed_loop_kd", conf.kd);
+  conf.integrator_enable = true;
+  speed_pid_.Init(conf);
   node->get_parameter(plugin_name_ + ".lookahead_dist", lookahead_dist_);
   node->get_parameter(plugin_name_ + ".min_lookahead_dist", min_lookahead_dist_);
   node->get_parameter(plugin_name_ + ".max_lookahead_dist", max_lookahead_dist_);
@@ -334,7 +354,10 @@ geometry_msgs::msg::TwistStamped RegulatedPurePursuitController::computeVelocity
     sign = carrot_pose.pose.position.x >= 0.0 ? 1.0 : -1.0;
   }
 
-  linear_vel = desired_linear_vel_;
+  // 期望速度 = 最近轨迹点规划速度（减速尾段/曲率/障碍/蠕行已逐点编码，
+  // 控制器纯跟踪）；无轨迹（速度规划禁用的灰度模式）回退 desired_linear_vel。
+  double traj_v = 0.0;
+  linear_vel = nearestTrajectorySpeed(pose, traj_v) ? traj_v : desired_linear_vel_;
 
   // Make sure we're in compliance with basic constraints
   double angle_to_heading;
@@ -348,6 +371,8 @@ geometry_msgs::msg::TwistStamped RegulatedPurePursuitController::computeVelocity
       curvature, speed,
       costAtPose(pose.pose.position.x, pose.pose.position.y), transformed_plan,
       linear_vel, sign);
+
+    linear_vel = trackLinearVelocity(linear_vel, speed.linear.x);
 
     // Apply curvature to angular velocity after constraining linear velocity
     angular_vel = linear_vel * curvature;
@@ -631,6 +656,8 @@ void RegulatedPurePursuitController::applyConstraints(
   const double & curvature, const geometry_msgs::msg::Twist & /*curr_speed*/,
   const double & pose_cost, const nav_msgs::msg::Path & path, double & linear_vel, double & sign)
 {
+  // 入口 linear_vel 即目标速度（轨迹规划值）：本函数只降不升。
+  const double target_vel = linear_vel;
   double curvature_vel = linear_vel;
   double cost_vel = linear_vel;
 
@@ -657,18 +684,116 @@ void RegulatedPurePursuitController::applyConstraints(
 
   // Use the lowest of the 2 constraint heuristics, but above the minimum translational speed
   linear_vel = std::min(cost_vel, curvature_vel);
-  linear_vel = std::max(linear_vel, regulated_linear_scaling_min_speed_);
+  // 调节下限不得高于目标本身（末端蠕行等低速目标不可被抬升）。
+  linear_vel = std::max(linear_vel, std::min(target_vel, regulated_linear_scaling_min_speed_));
 
   applyApproachVelocityScaling(path, linear_vel);
 
   // Limit linear velocities to be valid
-  linear_vel = std::clamp(fabs(linear_vel), 0.0, desired_linear_vel_);
+  linear_vel = std::clamp(fabs(linear_vel), 0.0, fabs(target_vel));
   linear_vel = sign * linear_vel;
 }
 
 void RegulatedPurePursuitController::setPlan(const nav_msgs::msg::Path & path)
 {
   global_plan_ = path;
+}
+
+void RegulatedPurePursuitController::setTrajectory(
+  const nav_interfaces::msg::RobotTrajectory & trajectory)
+{
+  if (trajectory.points.empty()) {
+    return;
+  }
+  std::string source_frame = trajectory.header.frame_id;
+  if (source_frame.empty() && !trajectory.points.front().pose.header.frame_id.empty()) {
+    source_frame = trajectory.points.front().pose.header.frame_id;
+  }
+  const std::string target_frame = costmap_ros_->getGlobalFrameID();
+  geometry_msgs::msg::TransformStamped to_costmap;
+  bool need_transform = false;
+  if (!source_frame.empty() && source_frame != target_frame) {
+    try {
+      to_costmap = tf_->lookupTransform(
+        target_frame, source_frame, tf2::TimePointZero);
+      need_transform = true;
+    } catch (const tf2::TransformException & ex) {
+      RCLCPP_WARN(
+        logger_, "setTrajectory: TF %s->%s failed (%s), keeping previous trajectory",
+        source_frame.c_str(), target_frame.c_str(), ex.what());
+      return;
+    }
+  }
+  std::vector<TrajSpeedPoint> pts;
+  pts.reserve(trajectory.points.size());
+  for (const auto & tp : trajectory.points) {
+    geometry_msgs::msg::PoseStamped ps = tp.pose;
+    if (need_transform) {
+      tf2::doTransform(ps, ps, to_costmap);
+    }
+    pts.push_back({ps.pose.position.x, ps.pose.position.y,
+        std::fabs(static_cast<double>(tp.longitudinal_velocity))});
+  }
+  std::lock_guard<std::mutex> lock(traj_mutex_);
+  traj_speed_points_ = std::move(pts);
+}
+
+bool RegulatedPurePursuitController::nearestTrajectorySpeed(
+  const geometry_msgs::msg::PoseStamped & pose, double & traj_speed)
+{
+  std::lock_guard<std::mutex> lock(traj_mutex_);
+  if (traj_speed_points_.empty()) {
+    return false;
+  }
+  double best_d2 = std::numeric_limits<double>::max();
+  size_t best_i = 0;
+  for (size_t i = 0; i < traj_speed_points_.size(); ++i) {
+    const double dx = traj_speed_points_[i].x - pose.pose.position.x;
+    const double dy = traj_speed_points_[i].y - pose.pose.position.y;
+    const double d2 = dx * dx + dy * dy;
+    if (d2 < best_d2) {
+      best_d2 = d2;
+      best_i = i;
+    }
+  }
+  // 前瞻窗取 max：剖面首点被钉在当前实际速度（receding-horizon 状态戳），
+  // 静止时精确最近点恒为 0 会形成自引用死锁——起点必须用前瞻破环；
+  // 窗内至少包含最近点的下一个点。
+  traj_speed = traj_speed_points_[best_i].speed;
+  double dist = 0.0;
+  for (size_t i = best_i + 1; i < traj_speed_points_.size(); ++i) {
+    const double dx = traj_speed_points_[i].x - traj_speed_points_[i - 1].x;
+    const double dy = traj_speed_points_[i].y - traj_speed_points_[i - 1].y;
+    dist += std::hypot(dx, dy);
+    traj_speed = std::max(traj_speed, traj_speed_points_[i].speed);
+    if (dist > traj_speed_lookahead_) {
+      break;
+    }
+  }
+  return true;
+}
+
+double RegulatedPurePursuitController::trackLinearVelocity(
+  double target_vel, double measured_vel)
+{
+  const auto now = clock_->now();
+  double dt = 0.05;
+  if (last_speed_track_time_.nanoseconds() > 0) {
+    dt = (now - last_speed_track_time_).seconds();
+  }
+  last_speed_track_time_ = now;
+  if (dt <= 1e-4 || dt > 0.5) {
+    dt = 0.05;  // 首帧/长停顿防积分爆冲
+  }
+
+  double accel_cmd = speed_pid_.Control(target_vel - measured_vel, dt);
+  accel_cmd = std::clamp(accel_cmd, -max_linear_accel_, max_linear_accel_);
+  double v_out = measured_vel + accel_cmd * dt;
+  // 不越过目标，防在目标处振荡。
+  if (target_vel > measured_vel) {
+    return std::min(v_out, target_vel);
+  }
+  return std::max(v_out, target_vel);
 }
 
 void RegulatedPurePursuitController::setSpeedLimit(
