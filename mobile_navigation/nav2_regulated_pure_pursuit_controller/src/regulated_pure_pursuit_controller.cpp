@@ -127,6 +127,8 @@ void RegulatedPurePursuitController::configure(
   nav2_util::declare_parameter_if_not_declared(
     node, plugin_name_ + ".traj_speed_lookahead", rclcpp::ParameterValue(0.1));
   nav2_util::declare_parameter_if_not_declared(
+    node, plugin_name_ + ".angular_gain", rclcpp::ParameterValue(1.0));
+  nav2_util::declare_parameter_if_not_declared(
     node, plugin_name_ + ".speed_loop_kp", rclcpp::ParameterValue(2.0));
   nav2_util::declare_parameter_if_not_declared(
     node, plugin_name_ + ".speed_loop_ki", rclcpp::ParameterValue(0.2));
@@ -134,6 +136,7 @@ void RegulatedPurePursuitController::configure(
     node, plugin_name_ + ".speed_loop_kd", rclcpp::ParameterValue(0.0));
   node->get_parameter(plugin_name_ + ".max_linear_accel", max_linear_accel_);
   node->get_parameter(plugin_name_ + ".traj_speed_lookahead", traj_speed_lookahead_);
+  node->get_parameter(plugin_name_ + ".angular_gain", angular_gain_);
   nav2_controller_common::PidConf conf;
   node->get_parameter(plugin_name_ + ".speed_loop_kp", conf.kp);
   node->get_parameter(plugin_name_ + ".speed_loop_ki", conf.ki);
@@ -375,7 +378,8 @@ geometry_msgs::msg::TwistStamped RegulatedPurePursuitController::computeVelocity
     linear_vel = trackLinearVelocity(linear_vel, speed.linear.x);
 
     // Apply curvature to angular velocity after constraining linear velocity
-    angular_vel = linear_vel * curvature;
+    // angular_gain > 1 收紧转向，补偿曲线跟踪滞后（横向误差大时上调）。
+    angular_vel = angular_gain_ * linear_vel * curvature;
   }
 
   // Collision checking on this velocity heading
@@ -383,6 +387,15 @@ geometry_msgs::msg::TwistStamped RegulatedPurePursuitController::computeVelocity
   if (use_collision_detection_ && isCollisionImminent(pose, linear_vel, angular_vel, carrot_dist)) {
     throw nav2_core::PlannerException("RegulatedPurePursuitController detected collision ahead!");
   }
+
+  RCLCPP_INFO_THROTTLE(
+    logger_, *clock_, 200,
+    "RPP: lookahead_dist=%.3f carrot=(%.3f, %.3f) carrot_dist=%.3f lateral_err=%.3f "
+    "curvature=%.3f radius=%.2f | traj_v=%.3f v_out=%.3f wz=%.3f | measured_v=%.3f",
+    lookahead_dist, carrot_pose.pose.position.x, carrot_pose.pose.position.y,
+    carrot_dist, carrot_pose.pose.position.y,
+    curvature, curvature != 0.0 ? std::fabs(1.0 / curvature) : 999.0,
+    traj_v, linear_vel, angular_vel, speed.linear.x);
 
   // populate and return message
   geometry_msgs::msg::TwistStamped cmd_vel;
