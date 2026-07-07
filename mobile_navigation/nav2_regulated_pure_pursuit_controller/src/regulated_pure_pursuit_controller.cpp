@@ -129,6 +129,14 @@ void RegulatedPurePursuitController::configure(
   nav2_util::declare_parameter_if_not_declared(
     node, plugin_name_ + ".angular_gain", rclcpp::ParameterValue(1.0));
   nav2_util::declare_parameter_if_not_declared(
+    node, plugin_name_ + ".max_angular_vel", rclcpp::ParameterValue(1.5));
+  nav2_util::declare_parameter_if_not_declared(
+    node, plugin_name_ + ".lateral_error_threshold", rclcpp::ParameterValue(0.15));
+  nav2_util::declare_parameter_if_not_declared(
+    node, plugin_name_ + ".lateral_error_max_dist", rclcpp::ParameterValue(0.5));
+  nav2_util::declare_parameter_if_not_declared(
+    node, plugin_name_ + ".min_lateral_speed_scale", rclcpp::ParameterValue(0.3));
+  nav2_util::declare_parameter_if_not_declared(
     node, plugin_name_ + ".speed_loop_kp", rclcpp::ParameterValue(2.0));
   nav2_util::declare_parameter_if_not_declared(
     node, plugin_name_ + ".speed_loop_ki", rclcpp::ParameterValue(0.2));
@@ -137,6 +145,10 @@ void RegulatedPurePursuitController::configure(
   node->get_parameter(plugin_name_ + ".max_linear_accel", max_linear_accel_);
   node->get_parameter(plugin_name_ + ".traj_speed_lookahead", traj_speed_lookahead_);
   node->get_parameter(plugin_name_ + ".angular_gain", angular_gain_);
+  node->get_parameter(plugin_name_ + ".max_angular_vel", max_angular_vel_);
+  node->get_parameter(plugin_name_ + ".lateral_error_threshold", lateral_error_threshold_);
+  node->get_parameter(plugin_name_ + ".lateral_error_max_dist", lateral_error_max_dist_);
+  node->get_parameter(plugin_name_ + ".min_lateral_speed_scale", min_lateral_speed_scale_);
   nav2_controller_common::PidConf conf;
   node->get_parameter(plugin_name_ + ".speed_loop_kp", conf.kp);
   node->get_parameter(plugin_name_ + ".speed_loop_ki", conf.ki);
@@ -338,6 +350,7 @@ geometry_msgs::msg::TwistStamped RegulatedPurePursuitController::computeVelocity
   carrot_pub_->publish(createCarrotMsg(carrot_pose));
 
   double linear_vel, angular_vel;
+  double cross_track_error = 0.0;
 
   // Find distance^2 to look ahead point (carrot) in robot base frame
   // This is the chord length of the circle
@@ -375,11 +388,16 @@ geometry_msgs::msg::TwistStamped RegulatedPurePursuitController::computeVelocity
       costAtPose(pose.pose.position.x, pose.pose.position.y), transformed_plan,
       linear_vel, sign);
 
+    // 反馈约束（只降不升）：横向误差减速 + 角速度饱和联动降速。
+    applyTrackingFeedbackConstraints(
+      transformed_plan, curvature, linear_vel, cross_track_error);
+
     linear_vel = trackLinearVelocity(linear_vel, speed.linear.x);
 
-    // Apply curvature to angular velocity after constraining linear velocity
-    // angular_gain > 1 收紧转向，补偿曲线跟踪滞后（横向误差大时上调）。
+    // angular_gain > 1 收紧转向补偿曲线滞后；饱和 clamp 兜底（联动降速后
+    // 一般已 ≤ 上限，此处防浮点/直线段边界）。
     angular_vel = angular_gain_ * linear_vel * curvature;
+    angular_vel = std::clamp(angular_vel, -max_angular_vel_, max_angular_vel_);
   }
 
   // Collision checking on this velocity heading
@@ -390,10 +408,10 @@ geometry_msgs::msg::TwistStamped RegulatedPurePursuitController::computeVelocity
 
   RCLCPP_INFO_THROTTLE(
     logger_, *clock_, 200,
-    "RPP: lookahead_dist=%.3f carrot=(%.3f, %.3f) carrot_dist=%.3f lateral_err=%.3f "
+    "RPP: lookahead_dist=%.3f carrot=(%.3f, %.3f) carrot_dist=%.3f xte=%.3f "
     "curvature=%.3f radius=%.2f | traj_v=%.3f v_out=%.3f wz=%.3f | measured_v=%.3f",
     lookahead_dist, carrot_pose.pose.position.x, carrot_pose.pose.position.y,
-    carrot_dist, carrot_pose.pose.position.y,
+    carrot_dist, cross_track_error,
     curvature, curvature != 0.0 ? std::fabs(1.0 / curvature) : 999.0,
     traj_v, linear_vel, angular_vel, speed.linear.x);
 
@@ -710,6 +728,63 @@ void RegulatedPurePursuitController::applyConstraints(
 void RegulatedPurePursuitController::setPlan(const nav_msgs::msg::Path & path)
 {
   global_plan_ = path;
+}
+
+double RegulatedPurePursuitController::computeCrossTrackError(
+  const nav_msgs::msg::Path & transformed_plan) const
+{
+  // transformed_plan 为机器人系（原点=机器人）：XTE = 原点到最近路径线段的垂距。
+  const auto & poses = transformed_plan.poses;
+  if (poses.size() < 2) {
+    return 0.0;
+  }
+  size_t nearest = 0;
+  double best = std::numeric_limits<double>::max();
+  for (size_t i = 0; i < poses.size(); ++i) {
+    const double d = std::hypot(poses[i].pose.position.x, poses[i].pose.position.y);
+    if (d < best) {
+      best = d;
+      nearest = i;
+    }
+  }
+  const size_t a = (nearest == 0) ? 0 : nearest - 1;
+  const size_t b = (nearest == 0) ? 1 : nearest;
+  const double ax = poses[a].pose.position.x, ay = poses[a].pose.position.y;
+  const double bx = poses[b].pose.position.x, by = poses[b].pose.position.y;
+  const double dx = bx - ax, dy = by - ay;
+  const double len2 = dx * dx + dy * dy;
+  if (len2 < 1e-9) {
+    return best;
+  }
+  // 原点在线段 AB 上的投影参数，钳到 [0,1] 取点到线段最短距离。
+  double s = -(ax * dx + ay * dy) / len2;
+  s = std::clamp(s, 0.0, 1.0);
+  return std::hypot(ax + s * dx, ay + s * dy);
+}
+
+void RegulatedPurePursuitController::applyTrackingFeedbackConstraints(
+  const nav_msgs::msg::Path & transformed_plan, double curvature,
+  double & linear_vel, double & cross_track_error)
+{
+  // ① 横向误差减速：偏离路径越远越慢，给转向留收敛时间（阈值内不动，
+  //    阈值到 max_dist 线性衰减到 min_scale）。
+  cross_track_error = computeCrossTrackError(transformed_plan);
+  if (cross_track_error > lateral_error_threshold_) {
+    const double span = std::max(lateral_error_max_dist_ - lateral_error_threshold_, 1e-3);
+    const double f = (cross_track_error - lateral_error_threshold_) / span;
+    const double scale = std::max(min_lateral_speed_scale_, 1.0 - (1.0 - min_lateral_speed_scale_) * f);
+    linear_vel *= scale;
+  }
+
+  // ② 角速度饱和联动降速：wz = gain·v·κ 超上限时，降 v 保持转弯半径 R=1/(gain·κ)
+  //    正确（仅 clamp wz 会使 R 变大→切弯）。直线段 κ≈0 不触发。
+  const double abs_k = std::fabs(curvature);
+  if (abs_k > 1e-3) {
+    const double wz_demand = angular_gain_ * linear_vel * abs_k;
+    if (wz_demand > max_angular_vel_) {
+      linear_vel = max_angular_vel_ / (angular_gain_ * abs_k);
+    }
+  }
 }
 
 void RegulatedPurePursuitController::setTrajectory(
