@@ -49,6 +49,7 @@ namespace nav2_planner
 PlannerServer::PlannerServer(const rclcpp::NodeOptions & options)
 : nav2_util::LifecycleNode("planner_server", "", options),
   gp_loader_("nav2_core", "nav2_core::GlobalPlanner"),
+  smoother_loader_("nav2_core", "nav2_core::Smoother"),
   default_ids_{"GridBased"},
   default_types_{"nav2_navfn_planner/NavfnPlanner"},
   costmap_(nullptr)
@@ -76,6 +77,13 @@ PlannerServer::PlannerServer(const rclcpp::NodeOptions & options)
   declare_parameter("goal_line_interp_enable", false);
   declare_parameter("goal_line_interp_tail_distance", 0.3);
   declare_parameter("goal_line_interp_step", 0.02);
+
+  // 路径平滑统一后处理（getPlan 出口，goal_line_interp 之后）：开关 + 插件表 +
+  // current_* 选择 + 单次平滑时间预算。
+  declare_parameter("smoother_enable", false);
+  declare_parameter("smoother_plugins", std::vector<std::string>{});
+  declare_parameter("current_smoother", std::string(""));
+  declare_parameter("smoother_max_time", 0.1);
 
   get_parameter("planner_plugins", planner_ids_);
   if (planner_ids_ == default_ids_) {
@@ -183,6 +191,55 @@ PlannerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
       goal_line_interp_tail_distance_, goal_line_interp_step_);
   }
 
+  // ── 路径平滑统一后处理：加载 smoother 插件 ──
+  get_parameter("smoother_enable", smoother_enable_);
+  get_parameter("smoother_plugins", smoother_ids_);
+  get_parameter("current_smoother", current_smoother_);
+  get_parameter("smoother_max_time", smoother_max_time_);
+  if (smoother_enable_ && !smoother_ids_.empty()) {
+    // nav2_core::Smoother 接口要求 CostmapSubscriber/FootprintSubscriber：
+    // 订阅自家 global costmap 的 raw/footprint 话题（与 smoother_server 同法）。
+    smoother_costmap_sub_ = std::make_shared<nav2_costmap_2d::CostmapSubscriber>(
+      shared_from_this(), "global_costmap/costmap_raw");
+    smoother_footprint_sub_ = std::make_shared<nav2_costmap_2d::FootprintSubscriber>(
+      shared_from_this(), "global_costmap/published_footprint", *tf_);
+    smoother_types_.resize(smoother_ids_.size());
+    for (size_t i = 0; i != smoother_ids_.size(); i++) {
+      try {
+        smoother_types_[i] = nav2_util::get_plugin_type_param(node, smoother_ids_[i]);
+        nav2_core::Smoother::Ptr smoother =
+          smoother_loader_.createUniqueInstance(smoother_types_[i]);
+        RCLCPP_INFO(
+          get_logger(), "Created path smoother plugin %s of type %s",
+          smoother_ids_[i].c_str(), smoother_types_[i].c_str());
+        smoother->configure(
+          shared_from_this(), smoother_ids_[i], tf_,
+          smoother_costmap_sub_, smoother_footprint_sub_);
+        smoothers_.insert({smoother_ids_[i], smoother});
+      } catch (const pluginlib::PluginlibException & ex) {
+        RCLCPP_FATAL(
+          get_logger(), "Failed to create path smoother. Exception: %s", ex.what());
+        return nav2_util::CallbackReturn::FAILURE;
+      }
+    }
+    smoother_ids_concat_.clear();
+    for (const auto & id : smoother_ids_) {
+      smoother_ids_concat_ += id + std::string(" ");
+    }
+    if (current_smoother_.empty() || !smoothers_.count(current_smoother_)) {
+      if (!current_smoother_.empty()) {
+        RCLCPP_WARN(
+          get_logger(), "current_smoother '%s' is not registered; defaulting to '%s'",
+          current_smoother_.c_str(), smoother_ids_.front().c_str());
+      }
+      current_smoother_ = smoother_ids_.front();
+    }
+    RCLCPP_INFO(
+      get_logger(), "Path smoothing enabled: current_smoother='%s' (available: %s) "
+      "max_time=%.2fs", current_smoother_.c_str(), smoother_ids_concat_.c_str(),
+      smoother_max_time_);
+  }
+
   // Resolve route→free-space fallback planner
   get_parameter("route_fallback_planner", route_fallback_planner_);
   if (!route_fallback_planner_.empty()) {
@@ -249,6 +306,9 @@ PlannerServer::on_activate(const rclcpp_lifecycle::State & /*state*/)
   for (it = planners_.begin(); it != planners_.end(); ++it) {
     it->second->activate();
   }
+  for (auto & sm : smoothers_) {
+    sm.second->activate();
+  }
 
   auto node = shared_from_this();
 
@@ -294,6 +354,9 @@ PlannerServer::on_deactivate(const rclcpp_lifecycle::State & /*state*/)
   for (it = planners_.begin(); it != planners_.end(); ++it) {
     it->second->deactivate();
   }
+  for (auto & sm : smoothers_) {
+    sm.second->deactivate();
+  }
 
   dyn_params_handler_.reset();
 
@@ -327,6 +390,12 @@ PlannerServer::on_cleanup(const rclcpp_lifecycle::State & /*state*/)
   for (it = planners_.begin(); it != planners_.end(); ++it) {
     it->second->cleanup();
   }
+  for (auto & sm : smoothers_) {
+    sm.second->cleanup();
+  }
+  smoothers_.clear();
+  smoother_costmap_sub_.reset();
+  smoother_footprint_sub_.reset();
 
   planners_.clear();
   costmap_thread_.reset();
@@ -677,7 +746,35 @@ PlannerServer::getPlan(
     applyGoalLineInterpolation(path, start, goal);
   }
 
+  // 路径平滑统一后处理（在直线接管之后：接缝拐角一并磨圆）。
+  if (smoother_enable_) {
+    applyPathSmoothing(path);
+  }
+
   return path;
+}
+
+void PlannerServer::applyPathSmoothing(nav_msgs::msg::Path & path)
+{
+  if (path.poses.size() < 3 || !smoothers_.count(current_smoother_)) {
+    return;
+  }
+  const nav_msgs::msg::Path original = path;
+  try {
+    if (!smoothers_[current_smoother_]->smooth(
+        path, rclcpp::Duration::from_seconds(smoother_max_time_)))
+    {
+      RCLCPP_DEBUG(
+        get_logger(), "smoother '%s' hit time budget (%.2fs), result kept as-is",
+        current_smoother_.c_str(), smoother_max_time_);
+    }
+  } catch (const std::exception & e) {
+    // 平滑是锦上添花：任何异常回退未平滑路径，不影响规划可用性。
+    RCLCPP_WARN(
+      get_logger(), "smoother '%s' failed (%s) — using unsmoothed path",
+      current_smoother_.c_str(), e.what());
+    path = original;
+  }
 }
 
 bool PlannerServer::isGoalFootprintFree(const geometry_msgs::msg::PoseStamped & goal)
@@ -854,7 +951,20 @@ PlannerServer::dynamicParametersCallback(std::vector<rclcpp::Parameter> paramete
         }
       }
     } else if (type == ParameterType::PARAMETER_STRING) {
-      if (name == "current_planner") {
+      if (name == "current_smoother") {
+        const std::string requested = parameter.as_string();
+        if (smoothers_.find(requested) == smoothers_.end()) {
+          RCLCPP_WARN(
+            get_logger(),
+            "Rejecting current_smoother='%s': not a registered smoother. Available: %s",
+            requested.c_str(), smoother_ids_concat_.c_str());
+          result.successful = false;
+          result.reason = "unknown smoother key: " + requested;
+        } else {
+          current_smoother_ = requested;
+          RCLCPP_INFO(get_logger(), "current_smoother switched to '%s'", requested.c_str());
+        }
+      } else if (name == "current_planner") {
         const std::string requested = parameter.as_string();
         if (planners_.find(requested) == planners_.end()) {
           RCLCPP_WARN(

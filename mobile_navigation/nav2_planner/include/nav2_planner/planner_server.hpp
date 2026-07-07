@@ -35,6 +35,9 @@
 #include "tf2_ros/transform_listener.h"
 #include "tf2_ros/create_timer_ros.h"
 #include "nav2_costmap_2d/costmap_2d_ros.hpp"
+#include "nav2_costmap_2d/costmap_subscriber.hpp"
+#include "nav2_costmap_2d/footprint_subscriber.hpp"
+#include "nav2_core/smoother.hpp"
 #include "pluginlib/class_loader.hpp"
 #include "pluginlib/class_list_macros.hpp"
 #include "nav2_core/global_planner.hpp"
@@ -61,6 +64,7 @@ public:
   ~PlannerServer();
 
   using PlannerMap = std::unordered_map<std::string, nav2_core::GlobalPlanner::Ptr>;
+  using SmootherMap = std::unordered_map<std::string, nav2_core::Smoother::Ptr>;
 
   /**
    * @brief Method to get plan from the desired plugin
@@ -230,6 +234,24 @@ protected:
   // Planner
   PlannerMap planners_;
   pluginlib::ClassLoader<nav2_core::GlobalPlanner> gp_loader_;
+
+  // ── 路径平滑统一后处理（getPlan 出口，goal_line_interp 之后；current_* 口径）──
+  // 平滑责任归"生产折线的那一层"：global 侧折线源 = Theta* 拐点 / 直线接管接缝；
+  // ③ local planner（优化型）输出天然平滑，不做二次平滑（doc 17）。
+  SmootherMap smoothers_;
+  pluginlib::ClassLoader<nav2_core::Smoother> smoother_loader_;
+  std::vector<std::string> smoother_ids_;
+  std::vector<std::string> smoother_types_;
+  std::string smoother_ids_concat_;
+  std::string current_smoother_;
+  bool smoother_enable_{false};
+  double smoother_max_time_{0.1};
+  std::shared_ptr<nav2_costmap_2d::CostmapSubscriber> smoother_costmap_sub_;
+  std::shared_ptr<nav2_costmap_2d::FootprintSubscriber> smoother_footprint_sub_;
+
+  /// 平滑统一后处理：current_smoother 对 path 执行 smooth()，异常/碰撞由插件
+  /// 内部防护，此处兜底捕获并保留未平滑路径。
+  void applyPathSmoothing(nav_msgs::msg::Path & path);
   std::vector<std::string> default_ids_;
   std::vector<std::string> default_types_;
   std::vector<std::string> planner_ids_;
