@@ -90,7 +90,7 @@ controller_server:
       max_speed: 0.8
       min_speed: 0.05
       accel: 0.5
-      decel: -0.5
+      decel: -0.35
       end_speed: 0.05
       stop_distance: 0.15
       collision_stop_distance: 0.2
@@ -106,7 +106,7 @@ controller_server:
       max_speed: 0.8
       min_speed: 0.05
       accel: 0.5
-      decel: -0.5
+      decel: -0.35
       end_speed: 0.05
       stop_distance: 0.15
       collision_stop_distance: 0.2
@@ -355,12 +355,13 @@ controller_server:
       speed_loop_kp: 2.0
       speed_loop_ki: 0.2
       speed_loop_kd: 0.0
+      angular_gain: 1.2    # 角速度增益：>1 收紧转向补偿曲线跟踪滞后（横向误差大→上调，振荡→下调）
       lookahead_dist: 0.6
       min_lookahead_dist: 0.3
       max_lookahead_dist: 0.9
       lookahead_time: 1.5
       rotate_to_heading_angular_vel: 1.8
-      use_velocity_scaled_lookahead_dist: False
+      use_velocity_scaled_lookahead_dist: True    # 低速时缩短前瞻（lookahead=v×lookahead_time，钳 [min,max]）——弯道跟踪更紧
       min_approach_linear_velocity: 0.05
       approach_velocity_scaling_dist: 0.6
       max_allowed_time_to_collision_up_to_carrot: 1.0
@@ -370,7 +371,7 @@ controller_server:
       cost_scaling_dist: 0.6
       cost_scaling_gain: 1.0
       inflation_cost_scaling_factor: 3.0
-      regulated_linear_scaling_min_radius: 0.9
+      regulated_linear_scaling_min_radius: 1.2    # RPP 层曲率减速阈值（carrot 弦曲率）；④A3 层阈值见 speed planner 块（半径大于两者则两层都不减速）
       regulated_linear_scaling_min_speed: 0.25
       use_rotate_to_heading: True
       rotate_to_heading_min_angle: 0.785
@@ -1030,8 +1031,8 @@ velocity_smoother:
     # Test
     max_velocity: [1.0, 0.0, 0.75]
     min_velocity: [-0.5, 0.0, -0.75]
-    max_accel: [0.6, 0.0, 0.7]
-    max_decel: [-0.6, 0.0, -0.7]
+    max_accel: [1.2, 0.0, 1.0]
+    max_decel: [-1.2, 0.0, -1.0]
     # Original
     # max_velocity: [0.26, 0.0, 1.0]
     # min_velocity: [-0.26, 0.0, -1.0]  
@@ -1046,3 +1047,4 @@ velocity_smoother:
     odom_duration: 0.01
     deadband_velocity: [0.005, 0.005, 0.008]
     velocity_timeout: 1.0
+accel

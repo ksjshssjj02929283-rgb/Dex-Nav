@@ -296,6 +296,7 @@ protected:
   std::mutex traj_mutex_;
   double max_linear_accel_{0.5};
   double traj_speed_lookahead_{0.1};
+  double angular_gain_{1.0};
   nav2_controller_common::PIDController speed_pid_;
   rclcpp::Time last_speed_track_time_{0, 0, RCL_ROS_TIME};
 
