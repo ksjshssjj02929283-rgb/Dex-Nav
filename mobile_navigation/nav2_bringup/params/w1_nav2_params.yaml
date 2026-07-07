@@ -356,6 +356,11 @@ controller_server:
       speed_loop_ki: 0.2
       speed_loop_kd: 0.0
       angular_gain: 1.2    # 角速度增益：>1 收紧转向补偿曲线跟踪滞后（横向误差大→上调，振荡→下调）
+      # ── ⑤ 反馈约束（横向/角速度反馈减速）──
+      max_angular_vel: 1.5              # 角速度上限 (rad/s)：饱和时联动降 v 保持转弯半径
+      lateral_error_threshold: 0.1     # 横向误差减速起始阈值 (m)
+      lateral_error_max_dist: 0.3      # 横向误差达此值降到 min_scale (m)
+      min_lateral_speed_scale: 0.5      # 横向误差减速下限比例
       lookahead_dist: 0.6
       min_lookahead_dist: 0.3
       max_lookahead_dist: 0.9
@@ -1047,4 +1052,3 @@ velocity_smoother:
     odom_duration: 0.01
     deadband_velocity: [0.005, 0.005, 0.008]
     velocity_timeout: 1.0
-accel
