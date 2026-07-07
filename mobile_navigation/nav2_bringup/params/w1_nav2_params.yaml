@@ -99,9 +99,9 @@ controller_server:
       plugin: "nav2_controller::PrecisionLongitudinalGoalChecker"
       desired_lon_goal_tolerance: 0.01 # 优先追求的纵向精度，当前配置为 1cm
       desired_lat_goal_tolerance: 0.01 # 优先追求的横向精度，当前配置为 1cm
-      accept_lon_goal_tolerance: 0.02 # 精调后允许接受的纵向精度，当前配置为 2cm
-      accept_lat_goal_tolerance: 0.02 # 精调后允许接受的横向精度，当前配置为 2cm
-      yaw_goal_tolerance: 0.02
+      accept_lon_goal_tolerance: 0.03 # 精调后允许接受的纵向精度，当前配置为 3cm
+      accept_lat_goal_tolerance: 0.03 # 精调后允许接受的横向精度，当前配置为 3cm
+      yaw_goal_tolerance: 0.03
       enable_high_precision: false # true：先追求 1cm 高精度；false：只要求 2cm 接受精度
       refine_cycles: 40 # controller_frequency=10Hz，对应进入 2cm 后继续精调约 4s
       stable_window_size: 5 # controller_frequency=10Hz，对应最近约 0.5s 的高精度稳定窗口
@@ -143,49 +143,55 @@ controller_server:
       # ============================================================
       # 2. 三阶段切换参数
       # ============================================================
-      approach_distance: 0.25 # 短距离任务先保留路径跟踪空间，最后25cm再进入精确趋近
+      approach_distance: 0.35 # 提前到35cm进入精确趋近，让最终朝向更早接管，减少转弯过头后再慢慢纠正
       profile_transition_duration: 1.0 # 三段式切换过渡时间，避免速度约束和 critic 权重一拍硬切，单位 s
-      align_enter_angle: 0.52 # 对齐段进入：车头-路径夹角(rad,~30°)超此进 align 段
+      align_enter_angle: 0.65 # 对齐段进入：车头-路径夹角(rad,~37°)超此进 align 段
       align_exit_angle: 0.31 # 对齐段退出：夹角降至此退出(rad,~18°,迟滞防抖)
+      track_stage_min_duration: 1.2 # 进入 track 后至少保持 1.2s，避免 1-2-1 快速切换导致线速度和权重反复跳变
+      align_force_enter_angle: 1.2 # track 保持期内若夹角超过约69°仍强制回 align，保留大偏航兜底
       # approach 内部先调位置、后调最终航向；误差均在目标点坐标系计算
-      approach_final_yaw_enter_lon_tolerance: 0.015 # |纵向误差|≤1.5cm 才允许进入最终转向
-      approach_final_yaw_enter_lat_tolerance: 0.015 # |横向误差|≤1.5cm 才允许进入最终转向
-      approach_final_yaw_exit_lon_tolerance: 0.02 # 最终转向中纵向漂移>2cm，退回位置调整
-      approach_final_yaw_exit_lat_tolerance: 0.02 # 最终转向中横向漂移>2cm，退回位置调整
+      approach_final_yaw_enter_lon_tolerance: 0.025 # |纵向误差|≤1.5cm 才允许进入最终转向
+      approach_final_yaw_enter_lat_tolerance: 0.025 # |横向误差|≤1.5cm 才允许进入最终转向
+      approach_final_yaw_exit_lon_tolerance: 0.04 # 最终转向中纵向漂移>4cm才退回位置调整，避免3cm边界附近反复切子阶段
+      approach_final_yaw_exit_lat_tolerance: 0.04 # 最终转向中横向漂移>4cm才退回位置调整，避免3cm边界附近反复切子阶段
       approach_position_first_yaw_threshold: 2.094 # 进入 approach 时|航向误差|≥120°才锁定 position-first；否则保留完整朝向控制，防止绕圈
       approach_position_first_lateral_error_threshold: 0.05 # 入场横向误差至少5cm才允许按横向主导判定 position-first
       approach_position_first_lateral_ratio: 1.0 # |横向误差|≥|纵向误差|时视为横向主导，允许先修位置再对最终航向
       approach_positioning_goal_angle_weight: 10.0 # 仅 position-first 模式生效：位置调整时暂时减弱最终朝向约束
-      approach_final_yaw_vx_max: 0.01 # 最终转向线速度限制为±1cm/s，允许 MPPI 小幅纠偏
-      approach_final_yaw_wz_max: 0.75 # 最终转向最大角速度，降低180°转向时的位置漂移
+      approach_final_yaw_vx_max: 0.01 # 最终转向线速度限制为±1cm/s，只允许厘米级小幅纠偏，减少退出final_yaw后的前后窜动
+      approach_final_yaw_wz_max: 0.75 # 最终转向最大角速度保持较高上限；平滑交给下方 cmd_wz 变化率限幅
+      approach_final_yaw_cmd_wz_slew_rate: 1.0 # final_yaw 输出角速度每秒最多变化1.0rad/s，降低起转过快导致的过冲
+      approach_final_yaw_cmd_brake_accel: 0.4 # final_yaw 按剩余角度提前减速；值越小越早刹车，减少冲过目标角度后反复修正
+      approach_final_yaw_cmd_stop_yaw_tolerance: 0.03 # 与 yaw_goal_tolerance 一致：进入航向容差后，final_yaw输出角速度主动收敛到0等待停稳
+      approach_final_yaw_cmd_direction_deadband: 0.08 # |yaw误差|>0.08rad时锁定方向并按刹车曲线转向；接近后交给MPPI细修
       # ── 权重矩阵：各 critic 三段权重统一调参入口 [align, track, approach] ──
       stage_weights:
         GoalCritic: [0.0, 0.0, 10.0] # 目标位置距离：趋近段推动轨迹收敛到目标点
         GoalLateralCritic: [0.0, 10.0, 200.0] # 目标横向误差：减小目标相对车身的左右偏差
         GoalLongitudinalCritic: [0.0, 0.0, 50.0] # 目标纵向误差：减小目标相对车身的前后偏差
-        GoalAngleCritic: [0.0, 0.0, 100.0] # 目标朝向误差：趋近段对齐最终目标姿态
+        GoalAngleCritic: [0.0, 0.0, 100.0] # 目标朝向误差：降低一点抢角度倾向，减少final_yaw过冲抖动
         PathAngleCritic: [18.0, 5.0, 2.0] # 路径朝向误差：使车头朝向前方路径点
         PathAlignCritic: [5.0, 40.0, 10.0] # 路径贴合误差：使候选轨迹尽量贴合全局路径
         PathFollowCritic: [0.0, 5.0, 2.0] # 路径推进：推动轨迹末端沿全局路径前进
         PreferForwardCritic: [5.0, 10.0, 5.0] # 前进偏好：惩罚倒车运动，鼓励向前行驶
         LinearVelocityCritic: [0.0, 10.0, 10.0]  # 线速度大小软约束：不偏置正/负方向，按当前阶段上限随剩余距离减速
-        AngularVelocityCritic: [0.0, 0.0, 5.0]      # 镜像线速度(朝向减速)：approach 专用；⚠️track/align 必须 0(否则朝向误差大→逼 wz 最大旋转)；wz_max/az_max 从全局参数读；bag 调
+        AngularVelocityCritic: [0.0, 0.0, 12.0]      # 镜像线速度(朝向减速)+角速度平滑：approach 专用；提高第三阶段权重，让wz更跟随期望且更平滑
         ObstaclesCritic: [5.0, 50.0, 0.0]   # 软斥力(repulsion)分段；致命 critical 全局常开
         CostCritic: [5.0, 50.0, 0.0]      # 软代价分段；致命由 ObstaclesCritic 兜底
 
       # ── 三段速度策略（per-stage 覆盖全局；只放速度，critic 子参数/权重不在此）──
       stage_align:    # 对齐段：低 vx 专注转向、高 wz 快速对齐、允许小幅倒车机动
-        vx_max: 0.4
-        vx_min: -0.5
+        vx_max: 0.5
+        vx_min: -0.2
         vy_max: 0.5
         wz_max: 0.75
       stage_track:    # 跟踪段：全速通行
-        vx_max: 0.8
+        vx_max: 0.5
         vx_min: -0.5
         vy_max: 0.5
         wz_max: 0.75
       stage_approach: # 趋近段：限制前后速度，减少厘米级停车时的越界和反复换向
-        vx_max: 0.15
+        vx_max: 0.2
         vx_min: -0.15
         vy_max: 0.5
         wz_max: 0.75
@@ -246,7 +252,7 @@ controller_server:
         enabled: true
         cost_power: 2
         cost_weight: 10.0 # 初值，bag 调
-        stop_yaw_tolerance: 0.02 # 与GoalChecker航向容差一致：进入此范围后期望角速度为0，等待停稳成功
+        stop_yaw_tolerance: 0.03 # 与GoalChecker航向容差一致：进入此范围后期望角速度为0，等待停稳成功
       VelocityDeadbandCritic:
         enabled: true
         cost_power: 1
@@ -487,8 +493,10 @@ planner_server:
     #   ros2 param set /planner_server active_planner SmacGridBased     # SmacPlannerLattice 自由路径
     #   ros2 param set /planner_server active_planner ThetaStarBased    # Theta* 几何最短路径
     # 详见 [[10. 双规划器热切换方案——PlannerSwitcher 设计与实现]]
-    planner_plugins: ["RouteGridPlanner", "SmacGridBased", "ThetaStarBased"]
-    active_planner: "RouteGridPlanner"   # 默认用路网规划器（dynamic）
+    #planner_plugins: ["RouteGridPlanner", "SmacGridBased", "ThetaStarBased"]
+    planner_plugins: ["SmacGridBased", "ThetaStarBased"]
+    active_planner: ""
+    #active_planner: "RouteGridPlanner"   # 默认用路网规划器（dynamic）
                                          # 可选值：RouteGridPlanner / SmacGridBased / ThetaStarBased
     override_planner_id: true            # true: 忽略 BT planner_id，强制 active；
                                          # false: nav2 标准 fallback 语义

@@ -18,6 +18,8 @@
 #include <algorithm>
 #include <math.h>
 
+#include "tf2/utils.h"
+
 namespace mppi::critics
 {
 
@@ -102,13 +104,40 @@ void PathAngleCritic::score(CriticData & data)
     utils::shortest_angular_distance(data.trajectories.yaws, target_yaws);
   data.costs += (signed_yaw_errors.abs().rowwise().mean() * weight_).pow(power_);
 
-  // signed_yaw_errors 与 wz 异号时，候选轨迹正在向远离路径方向的一侧旋转。
+  // 用本控制周期的真实姿态固定最短旋转方向，避免预测轨迹跨过 ±pi 后方向符号翻转，
+  // 导致候选轨迹沿 270° 长弧反向绕转仍然得不到稳定惩罚。
   // 只惩罚错误旋转，不惩罚 wz=0，因此仍允许机器人先停车或后退腾出空间。
   if (wrong_way_cost_ratio_ > 0.0f) {
+    const auto & current_pose = data.state.pose.pose;
+    const float current_yaw = tf2::getYaw(current_pose.orientation);
+    const float current_target_yaw = std::atan2(
+      goal_y - current_pose.position.y,
+      goal_x - current_pose.position.x);
+    float current_effective_target_yaw = current_target_yaw;
+    if (reversing_allowed_ && !forward_preference_) {
+      const float forward_error = std::abs(
+        std::atan2(
+          std::sin(current_target_yaw - current_yaw),
+          std::cos(current_target_yaw - current_yaw)));
+      const float reverse_target_yaw = current_target_yaw + static_cast<float>(M_PI);
+      const float reverse_error = std::abs(
+        std::atan2(
+          std::sin(reverse_target_yaw - current_yaw),
+          std::cos(reverse_target_yaw - current_yaw)));
+      if (reverse_error < forward_error) {
+        current_effective_target_yaw = reverse_target_yaw;
+      }
+    }
+
+    const float current_error = std::atan2(
+      std::sin(current_effective_target_yaw - current_yaw),
+      std::cos(current_effective_target_yaw - current_yaw));
+    if (std::abs(current_error) <= direction_deadband_) {
+      return;
+    }
+    const float desired_direction = current_error > 0.0f ? 1.0f : -1.0f;
     models::Matrix wrong_way_rotation =
-      (-signed_yaw_errors.sign() * data.state.wz).max(0.0f);
-    wrong_way_rotation =
-      (signed_yaw_errors.abs() > direction_deadband_).select(wrong_way_rotation, 0.0f);
+      (-desired_direction * data.state.wz).max(0.0f);
     data.costs +=
       (wrong_way_rotation.rowwise().mean() * weight_ * wrong_way_cost_ratio_).pow(power_);
   }

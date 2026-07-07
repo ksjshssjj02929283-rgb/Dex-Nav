@@ -142,6 +142,11 @@ protected:
 
   void applyApproachSubstageProfile();
 
+  void smoothFinalYawCommand(
+    geometry_msgs::msg::TwistStamped & cmd,
+    double goal_yaw_error,
+    const geometry_msgs::msg::Twist & robot_speed);
+
   size_t selectStage(double goal_distance, double heading_path_angle) const;
 
   std::string stageName(size_t profile) const;
@@ -185,6 +190,8 @@ protected:
   double approach_hysteresis_{0.05};
   double align_enter_angle_{0.52};   // 对齐段进入阈值(rad,~30°)
   double align_exit_angle_{0.31};    // 对齐段退出阈值(rad,~18°,迟滞)
+  double track_stage_min_duration_{1.2};
+  double align_force_enter_angle_{1.2};
   double final_yaw_enter_lon_tolerance_{0.015};
   double final_yaw_enter_lat_tolerance_{0.015};
   double final_yaw_exit_lon_tolerance_{0.02};
@@ -195,11 +202,21 @@ protected:
   float positioning_goal_angle_weight_{10.0f};
   float final_yaw_vx_max_{0.03f};
   float final_yaw_wz_max_{0.4f};
+  float final_yaw_cmd_wz_slew_rate_{1.2f};
+  float final_yaw_cmd_brake_accel_{0.7f};
+  float final_yaw_cmd_stop_yaw_tolerance_{0.0f};
+  float final_yaw_cmd_direction_deadband_{0.05f};
   size_t active_stage_{0};
   size_t approach_substage_{APPROACH_POSITIONING};
   size_t approach_mode_{APPROACH_NORMAL};
   bool approach_mode_locked_{false};
   bool profile_transition_active_{false};
+  rclcpp::Time active_stage_enter_time_;
+  bool final_yaw_cmd_filter_active_{false};
+  bool final_yaw_direction_lock_active_{false};
+  float final_yaw_locked_direction_{0.0f};
+  float last_final_yaw_cmd_wz_{0.0f};
+  rclcpp::Time last_final_yaw_cmd_time_;
 
   double reset_period_;
   // Last time computeVelocityCommands was called
