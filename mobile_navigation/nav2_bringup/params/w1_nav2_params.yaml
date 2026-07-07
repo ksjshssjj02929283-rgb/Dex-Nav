@@ -909,6 +909,33 @@ planner_server:
     goal_line_interp_enable: true        # 开关
     goal_line_interp_tail_distance: 0.3  # goal 附近直线接管范围：成功路径截尾段换直线；失败(空路径)且 start 在此范围内时直线兜底
     goal_line_interp_step: 0.05          # 插值点距 (m)
+    # ── 路径平滑统一后处理（getPlan 出口，goal_line_interp 之后；DEC-027）──
+    smoother_enable: true
+    smoother_max_time: 0.1          # 单次平滑时间预算 (s)
+    smoother_plugins: ["SimpleSmoother", "SavitzkyGolaySmoother", "PolynomialSmoother", "ElasticBandSmoother"]
+    current_smoother: "SimpleSmoother"   # 热切换：ros2 param set /planner_server current_smoother <key>
+    SavitzkyGolaySmoother:
+      plugin: "nav2_path_smoothers::SavitzkyGolaySmoother"
+      do_refinement: True
+      refinement_num: 2
+    SimpleSmoother:
+      plugin: "nav2_path_smoothers::SimpleSmoother"
+      tolerance: 1.0e-10
+      max_its: 1000
+      do_refinement: True
+    PolynomialSmoother:
+      plugin: "nav2_path_smoothers::PolynomialSmoother"
+      poly_order: 5          # 拟合阶数（2~5）
+      window_size: 15        # 滑窗点数（奇数；越大越平滑，转角处收缩越多）
+      reject_on_collision: true
+    ElasticBandSmoother:
+      plugin: "nav2_path_smoothers::ElasticBandSmoother"
+      max_iterations: 100
+      w_smooth: 0.5          # 内张力权重（拉直/平滑）
+      w_obstacle: 0.3        # 障碍斥力权重（代价感知推离）
+      step_size: 0.3
+      obstacle_cost_threshold: 128
+      reject_on_collision: true
     use_sim_time: True
 
     # ─── PlannerServer 原生多 planner 热切换 ─────────────────
@@ -1011,16 +1038,6 @@ planner_server:
   #   free_thresh_default: 0.25
   #   occupied_thresh_default: 0.65
   #   map_subscribe_transient_local: True
-
-smoother_server:
-  ros__parameters:
-    use_sim_time: True
-    smoother_plugins: ["simple_smoother"]
-    simple_smoother:
-      plugin: "nav2_smoother::SimpleSmoother"
-      tolerance: 1.0e-10
-      max_its: 1000
-      do_refinement: True
 
 behavior_server:
   ros__parameters:
