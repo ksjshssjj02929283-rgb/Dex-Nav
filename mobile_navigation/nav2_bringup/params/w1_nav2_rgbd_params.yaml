@@ -116,7 +116,7 @@ controller_server:
     goal_checker_plugins: ["simple_goal_checker", "stopped_goal_checker", "position_goal_checker", "rotation_goal_checker", "longitudinal_goal_checker", "high_precision_goal_checker"] # goal_checker_plugin: "goal_checker" For Galactic and older
     controller_plugins: ["MPPIController", "DWBController", "RPPController", "GracefulController", "RotationShimController", "PIDController", "LatLonController", "PureRotationController", "StraightController"]
     current_goal_checker: "simple_goal_checker"
-    current_controller: "MPPIController"
+    current_controller: "RPPController"    # 2026-07-07 切 RPP（④ 轨迹速度跟踪版，DEC-028）
     # ④ 速度规划（规划级：path 更新事件驱动生成 RobotTrajectory；current_speed_planner 置空 "" 即禁用/灰度回退）
     # 运动学上限与下游链路对齐：对齐 velocity_smoother（链路绑定值；MPPI vx_max=1.5 超出 smoother 0.5，由 smoother 截幅）
     speed_planner_plugins: ["TrapezoidalSpeedPlanner", "SCurveSpeedPlanner"]
@@ -161,7 +161,7 @@ controller_server:
       control_dt: 0.05
     staged_control:
       enabled: True
-      track_controller: "MPPIController"
+      track_controller: "RPPController"    # 2026-07-07 track 段切 RPP
       approach_controller: "PIDController"
       approach_distance: 0.3
       align_heading_tolerance: 0.5236  # 30 deg
@@ -358,7 +358,12 @@ controller_server:
       RotateToGoal.lookahead_time: -1.0
     RPPController:
       plugin: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
-      desired_linear_vel: 0.5
+      desired_linear_vel: 0.5    # 仅无轨迹（速度规划禁用）时的回退速度；轨迹可用时不参与
+      max_linear_accel: 0.5    # 速度环加速度限幅 (m/s²)；调大≈目标直发
+      traj_speed_lookahead: 0.1    # 轨迹速度前瞻窗 (m)：起点状态戳=当前速度，静止时须前瞻破自引用死锁
+      speed_loop_kp: 2.0
+      speed_loop_ki: 0.2
+      speed_loop_kd: 0.0
       lookahead_dist: 0.6
       min_lookahead_dist: 0.3
       max_lookahead_dist: 0.9
@@ -968,7 +973,7 @@ planner_server:
     expected_planner_frequency: 0.2 # 0.5 # 20.0
     goal_line_interp_enable: true        # 开关
     goal_line_interp_tail_distance: 0.3  # goal 附近直线接管范围：成功路径截尾段换直线；失败(空路径)且 start 在此范围内时直线兜底
-    goal_line_interp_step: 0.05          # 插值点距 (m)
+    goal_line_interp_step: 0.02          # 插值点距 (m)。2026-07-07 R20：0.05→0.02——末端 0.1x 速度带仅占坡道底 8~33mm，5cm 点距采不到（decel=0.3 时 0.02 点距可出 0.11/0.16 中间值）
     # ── 路径平滑统一后处理（getPlan 出口，goal_line_interp 之后；DEC-027）──
     smoother_enable: true
     smoother_max_time: 0.1          # 单次平滑时间预算 (s)
