@@ -158,13 +158,16 @@ ControllerServer::ControllerServer(const rclcpp::NodeOptions & options)
   declare_parameter("staged_control.align_min_angular_velocity", rclcpp::ParameterValue(0.08));
   declare_parameter("staged_control.prepare.enabled", rclcpp::ParameterValue(true));
   declare_parameter(
-    "staged_control.prepare.obstacle_check_distance", rclcpp::ParameterValue(0.35));
+    "staged_control.prepare.obstacle_check_distance", rclcpp::ParameterValue(0.2));
   declare_parameter(
-    "staged_control.prepare.obstacle_check_half_width", rclcpp::ParameterValue(0.25));
+    "staged_control.prepare.side_check_distance", rclcpp::ParameterValue(0.15));
   declare_parameter(
     "staged_control.prepare.obstacle_cost_threshold", rclcpp::ParameterValue(253));
   declare_parameter("staged_control.prepare.backup_speed", rclcpp::ParameterValue(-0.08));
   declare_parameter("staged_control.prepare.backup_duration", rclcpp::ParameterValue(0.6));
+  declare_parameter(
+    "staged_control.prepare.backup_use_distance", rclcpp::ParameterValue(false));
+  declare_parameter("staged_control.prepare.backup_distance", rclcpp::ParameterValue(0.3));
 
   // The costmap node is used in the implementation of the controller
   costmap_ros_ = std::make_shared<nav2_costmap_2d::Costmap2DROS>(
@@ -300,10 +303,12 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
   get_parameter("staged_control.align_min_angular_velocity", align_min_angular_velocity_);
   get_parameter("staged_control.prepare.enabled", prepare_enabled_);
   get_parameter("staged_control.prepare.obstacle_check_distance", prepare_obstacle_check_distance_);
-  get_parameter("staged_control.prepare.obstacle_check_half_width", prepare_obstacle_check_half_width_);
+  get_parameter("staged_control.prepare.side_check_distance", prepare_side_check_distance_);
   get_parameter("staged_control.prepare.obstacle_cost_threshold", prepare_obstacle_cost_threshold_);
   get_parameter("staged_control.prepare.backup_speed", prepare_backup_speed_);
   get_parameter("staged_control.prepare.backup_duration", prepare_backup_duration_);
+  get_parameter("staged_control.prepare.backup_use_distance", prepare_backup_use_distance_);
+  get_parameter("staged_control.prepare.backup_distance", prepare_backup_distance_);
   RCLCPP_INFO(
     get_logger(),
     "Near-goal progress: enabled=%s hold_pose=%s distance=%.3f m movement=%.3f m "
@@ -799,6 +804,11 @@ void ControllerServer::computeControl()
     setPlannerPath(action_server_->get_current_goal()->path);
     progress_checker_->reset();
     resetNearGoalProgress();
+    // 阶段状态只以“到达目标”为重置基准（isGoalReached 分支），不在此处重置：
+    // computeControl() 会在同一次导航内因 BT 恢复重试（前方受阻→异常→
+    // RecoveryNode 重发 FollowPath）被多次重新进入，入口重置会导致阶段一
+    // 反复重新武装、无限重试后退。“一次导航只走一次阶段一”只能靠到达信号
+    // 判定——没有可靠信号能区分“恢复重试”与“真正开始新导航”。
 
     last_valid_cmd_time_ = now();
     rclcpp::WallRate loop_rate(controller_frequency_);
@@ -865,8 +875,7 @@ void ControllerServer::computeControl()
 
       if (isGoalReached()) {
         RCLCPP_INFO(get_logger(), "Reached the goal!");
-        prepare_backup_active_ = false;
-        prepare_check_pending_ = true;
+        resetStagedControlState();
         break;
       }
 
@@ -1780,51 +1789,115 @@ bool ControllerServer::getPathHeadingError(
   return true;
 }
 
-bool ControllerServer::isFrontObstacleDetected()
+bool ControllerServer::isCostmapCellBlocked(
+  nav2_costmap_2d::Costmap2D * costmap, unsigned char cost_threshold, double x, double y)
+{
+  geometry_msgs::msg::PoseStamped base_sample;
+  base_sample.header.frame_id = costmap_ros_->getBaseFrameID();
+  base_sample.header.stamp = now();
+  base_sample.pose.position.x = x;
+  base_sample.pose.position.y = y;
+  base_sample.pose.orientation.w = 1.0;
+
+  geometry_msgs::msg::PoseStamped global_sample;
+  try {
+    rclcpp::Duration tolerance(
+      rclcpp::Duration::from_seconds(costmap_ros_->getTransformTolerance()));
+    if (!nav_2d_utils::transformPose(
+      costmap_ros_->getTfBuffer(), costmap_ros_->getGlobalFrameID(),
+      base_sample, global_sample, tolerance))
+    {
+      return false;
+    }
+  } catch (const tf2::TransformException &) {
+    return false;
+  }
+
+  unsigned int mx = 0;
+  unsigned int my = 0;
+  if (!costmap->worldToMap(global_sample.pose.position.x, global_sample.pose.position.y, mx, my)) {
+    return false;
+  }
+  return costmap->getCost(mx, my) >= cost_threshold;
+}
+
+bool ControllerServer::isObstacleNearFootprint()
 {
   auto costmap = costmap_ros_->getCostmap();
   if (costmap == nullptr) {
     return false;
   }
 
+  // 检查区域边界取机器人真实 footprint（前沿/后沿/半宽），而非人工设定值——
+  // 机型/footprint 配置变化时自动跟随。
+  const auto & footprint = costmap_ros_->getRobotFootprint();
+  double front_x = 0.0;
+  double rear_x = 0.0;
+  double half_width = 0.0;
+  for (const auto & pt : footprint) {
+    front_x = std::max(front_x, pt.x);
+    rear_x = std::min(rear_x, pt.x);
+    half_width = std::max(half_width, std::fabs(pt.y));
+  }
+
   const double resolution = std::max(costmap->getResolution(), 0.02);
   const unsigned char cost_threshold = static_cast<unsigned char>(
     std::clamp(prepare_obstacle_cost_threshold_, 0, 255));
 
-  for (double x = resolution; x <= prepare_obstacle_check_distance_; x += resolution) {
-    for (double y = -prepare_obstacle_check_half_width_;
-      y <= prepare_obstacle_check_half_width_;
-      y += resolution)
-    {
-      geometry_msgs::msg::PoseStamped base_sample;
-      base_sample.header.frame_id = costmap_ros_->getBaseFrameID();
-      base_sample.header.stamp = now();
-      base_sample.pose.position.x = x;
-      base_sample.pose.position.y = y;
-      base_sample.pose.orientation.w = 1.0;
+  // 前向：footprint 前沿 ~ 前沿 + obstacle_check_distance。
+  for (double x = front_x + resolution; x <= front_x + prepare_obstacle_check_distance_;
+    x += resolution)
+  {
+    for (double y = -half_width; y <= half_width; y += resolution) {
+      if (isCostmapCellBlocked(costmap, cost_threshold, x, y)) {
+        return true;
+      }
+    }
+  }
 
-      geometry_msgs::msg::PoseStamped global_sample;
-      try {
-        rclcpp::Duration tolerance(
-          rclcpp::Duration::from_seconds(costmap_ros_->getTransformTolerance()));
-        if (!nav_2d_utils::transformPose(
-          costmap_ros_->getTfBuffer(), costmap_ros_->getGlobalFrameID(),
-          base_sample, global_sample, tolerance))
+  // 左右：footprint 全长（后沿~前沿）× 半宽~半宽+side_check_distance，两侧
+  // 对称、单参数控制；<=0 关闭（默认开，不需要时显式调 0）。
+  if (prepare_side_check_distance_ > 1e-6) {
+    for (double x = rear_x; x <= front_x; x += resolution) {
+      for (double dy = resolution; dy <= prepare_side_check_distance_; dy += resolution) {
+        if (isCostmapCellBlocked(costmap, cost_threshold, x, half_width + dy) ||
+          isCostmapCellBlocked(costmap, cost_threshold, x, -half_width - dy))
         {
-          continue;
+          return true;
         }
-      } catch (const tf2::TransformException &) {
-        continue;
       }
+    }
+  }
 
-      unsigned int mx = 0;
-      unsigned int my = 0;
-      if (!costmap->worldToMap(
-          global_sample.pose.position.x, global_sample.pose.position.y, mx, my))
-      {
-        continue;
-      }
-      if (costmap->getCost(mx, my) >= cost_threshold) {
+  return false;
+}
+
+bool ControllerServer::isRearObstacleDetected()
+{
+  auto costmap = costmap_ros_->getCostmap();
+  if (costmap == nullptr) {
+    return false;
+  }
+
+  const auto & footprint = costmap_ros_->getRobotFootprint();
+  double rear_x = 0.0;
+  double half_width = 0.0;
+  for (const auto & pt : footprint) {
+    rear_x = std::min(rear_x, pt.x);
+    half_width = std::max(half_width, std::fabs(pt.y));
+  }
+
+  const double resolution = std::max(costmap->getResolution(), 0.02);
+  const unsigned char cost_threshold = static_cast<unsigned char>(
+    std::clamp(prepare_obstacle_cost_threshold_, 0, 255));
+
+  // 后向：footprint 后沿 ~ 后沿 - obstacle_check_distance（复用前向同一检测
+  // 距离参数——"从 footprint 边缘看多远"是同一语义，不因方向另设参数）。
+  for (double x = rear_x - resolution; x >= rear_x - prepare_obstacle_check_distance_;
+    x -= resolution)
+  {
+    for (double y = -half_width; y <= half_width; y += resolution) {
+      if (isCostmapCellBlocked(costmap, cost_threshold, x, y)) {
         return true;
       }
     }
@@ -1841,7 +1914,28 @@ bool ControllerServer::shouldRunPrepareBackup()
   }
 
   if (prepare_backup_active_) {
-    if ((now() - prepare_backup_start_time_).seconds() < prepare_backup_duration_) {
+    // 每周期先查后方（参考 nav2_behaviors::DriveOnHeading 的运行时 costmap
+    // 校验）：身后一旦出现障碍（他人/动态物体移动进来，或距离/半宽估计有
+    // 误差），立即中止后退，不等定时/定距条件用完才停。
+    if (isRearObstacleDetected()) {
+      prepare_backup_active_ = false;
+      RCLCPP_WARN(
+        get_logger(), "Prepare backup aborted: obstacle detected behind the robot.");
+      return false;
+    }
+    const double elapsed = (now() - prepare_backup_start_time_).seconds();
+    if (prepare_backup_use_distance_) {
+      geometry_msgs::msg::PoseStamped pose;
+      const bool have_pose = getRobotPose(pose);
+      const double traveled = have_pose ?
+        std::hypot(
+        pose.pose.position.x - prepare_backup_start_pose_.pose.position.x,
+        pose.pose.position.y - prepare_backup_start_pose_.pose.position.y) : 0.0;
+      // duration 作为定位失效/打滑时的安全兜底，防止距离条件永不满足。
+      if (traveled < prepare_backup_distance_ && elapsed < prepare_backup_duration_) {
+        return true;
+      }
+    } else if (elapsed < prepare_backup_duration_) {
       return true;
     }
     prepare_backup_active_ = false;
@@ -1852,19 +1946,38 @@ bool ControllerServer::shouldRunPrepareBackup()
   }
 
   prepare_check_pending_ = false;
-  if (!isFrontObstacleDetected()) {
-    RCLCPP_INFO(get_logger(), "Prepare phase checked once at navigation start: no front obstacle.");
+  if (!isObstacleNearFootprint()) {
+    RCLCPP_INFO(
+      get_logger(), "Prepare phase checked once at navigation start: no obstacle near footprint.");
+    return false;
+  }
+
+  // 启动前也查一次后方：前方受阻但后方同样无路可退时，不盲目后退，交给
+  // 后续 align/track 与全局避障处理（不是 prepare 的职责）。
+  if (isRearObstacleDetected()) {
+    RCLCPP_WARN(
+      get_logger(),
+      "Prepare: front obstacle detected but rear is also blocked; skipping backup.");
     return false;
   }
 
   prepare_backup_active_ = true;
   prepare_backup_start_time_ = now();
+  getRobotPose(prepare_backup_start_pose_);
   RCLCPP_WARN(
     get_logger(),
-    "Prepare phase detected front obstacle, backing up: speed=%.3f m/s duration=%.3f s",
+    "Prepare phase detected obstacle near footprint (front/side), backing up: speed=%.3f m/s %s",
     prepare_backup_speed_,
-    prepare_backup_duration_);
+    prepare_backup_use_distance_ ?
+    ("distance=" + std::to_string(prepare_backup_distance_) + "m").c_str() :
+    ("duration=" + std::to_string(prepare_backup_duration_) + "s").c_str());
   return true;
+}
+
+void ControllerServer::resetStagedControlState()
+{
+  prepare_backup_active_ = false;
+  prepare_check_pending_ = true;
 }
 
 geometry_msgs::msg::TwistStamped ControllerServer::computeControllerVelocity(
@@ -2524,12 +2637,14 @@ ControllerServer::dynamicParametersCallback(std::vector<rclcpp::Parameter> param
         align_min_angular_velocity_ = parameter.as_double();
       } else if (name == "staged_control.prepare.obstacle_check_distance") {
         prepare_obstacle_check_distance_ = parameter.as_double();
-      } else if (name == "staged_control.prepare.obstacle_check_half_width") {
-        prepare_obstacle_check_half_width_ = parameter.as_double();
+      } else if (name == "staged_control.prepare.side_check_distance") {
+        prepare_side_check_distance_ = parameter.as_double();
       } else if (name == "staged_control.prepare.backup_speed") {
         prepare_backup_speed_ = parameter.as_double();
       } else if (name == "staged_control.prepare.backup_duration") {
         prepare_backup_duration_ = parameter.as_double();
+      } else if (name == "staged_control.prepare.backup_distance") {
+        prepare_backup_distance_ = parameter.as_double();
       }
     } else if (type == ParameterType::PARAMETER_STRING) {
       if (name == "current_controller") {
@@ -2606,6 +2721,8 @@ ControllerServer::dynamicParametersCallback(std::vector<rclcpp::Parameter> param
       } else if (name == "staged_control.prepare.enabled") {
         prepare_enabled_ = parameter.as_bool();
         prepare_backup_active_ = false;
+      } else if (name == "staged_control.prepare.backup_use_distance") {
+        prepare_backup_use_distance_ = parameter.as_bool();
       }
     }
 

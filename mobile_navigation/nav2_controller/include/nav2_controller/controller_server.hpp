@@ -212,7 +212,17 @@ protected:
    * @brief Check local costmap cells in a front rectangle of the robot
    * @return true when obstacle cost exceeds configured prepare threshold
    */
-  bool isFrontObstacleDetected();
+  bool isObstacleNearFootprint();
+
+  /// 后退方向安全检查（参考 nav2_behaviors::DriveOnHeading 的逐周期 costmap
+  /// 校验，复用 prepare_obstacle_check_distance_ 作为检测距离）：后退启动前
+  /// 与后退过程中每周期都查，避免盲目后退撞上身后障碍。
+  bool isRearObstacleDetected();
+
+  /// 前/左/右/后共用：查询单点是否落在障碍代价内（TF 变换 + costmap 采样）。
+  bool isCostmapCellBlocked(
+    nav2_costmap_2d::Costmap2D * costmap, unsigned char cost_threshold,
+    double x, double y);
   /**
    * @brief Compute yaw error between robot heading and local path tangent
    * @param pose Current robot pose
@@ -458,14 +468,27 @@ protected:
   double align_max_angular_velocity_{0.5};
   double align_min_angular_velocity_{0.08};
   bool prepare_enabled_{true};
-  double prepare_obstacle_check_distance_{0.35};
-  double prepare_obstacle_check_half_width_{0.25};
+  // 检查区域 = 机器人真实 footprint 前沿 ~ 前沿+该距离，宽度取 footprint 实际半宽
+  // （非人工设定值，随机型 footprint 配置自动生效）。
+  double prepare_obstacle_check_distance_{0.2};
+  // 左右检测：footprint 全长（后沿~前沿）两侧各外扩该距离；<=0 关闭。
+  // 单参数同时控制左右（对称）。
+  double prepare_side_check_distance_{0.15};
   int prepare_obstacle_cost_threshold_{253};
   double prepare_backup_speed_{-0.08};
   double prepare_backup_duration_{0.6};
+  // true：按 prepare_backup_distance_ 走完固定后退距离（用起点位移估计，
+  // duration 兜底防跑飞）；false（默认）：按 duration 定时后退。
+  bool prepare_backup_use_distance_{false};
+  double prepare_backup_distance_{0.3};
   bool prepare_backup_active_{false};
   bool prepare_check_pending_{true};
   rclcpp::Time prepare_backup_start_time_;
+  geometry_msgs::msg::PoseStamped prepare_backup_start_pose_;
+
+  /// 每次新导航开始（computeControl 入口）与到达目标时调用：阶段状态
+  /// 无条件回到阶段一，不依赖上次导航是到达/取消/异常哪种方式结束。
+  void resetStagedControlState();
   std::string active_controller_for_log_{"unset"};
 
   // Whether we've published the single controller warning yet
