@@ -170,11 +170,13 @@ controller_server:
       align_min_angular_velocity: 0.08
       prepare:
         enabled: True
-        obstacle_check_distance: 0.35
-        obstacle_check_half_width: 0.25
+        obstacle_check_distance: 0.2    # footprint 前沿 + 该距离内检测（宽度取 footprint 实际半宽）
+        side_check_distance: 0.15    # 左右检测：footprint 全长两侧各外扩该距离（对称，<=0 关闭）
         obstacle_cost_threshold: 253
         backup_speed: -0.08
-        backup_duration: 0.6
+        backup_duration: 0.6    # 定时模式时长；距离模式下作为安全兜底上限
+        backup_use_distance: false    # true=按 backup_distance 走固定距离；false=按 backup_duration 定时
+        backup_distance: 0.3
     # goal_checker_plugins: ["general_goal_checker"]
     # Goal checker parameters
     # general_goal_checker:
