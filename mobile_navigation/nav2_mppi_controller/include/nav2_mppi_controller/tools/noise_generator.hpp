@@ -76,6 +76,15 @@ public:
    */
   void reset(mppi::models::OptimizerSettings & settings, bool is_holonomic);
 
+  /**
+   * @brief 二期条件层专用：只更新采样噪声标准差，不触发 noises_* 矩阵重分配。
+   * 仅在 regenerate_noises=true（后台线程持续重采样）时才会被下一轮 generateNoisedControls()
+   * 捡到；regenerate_noises=false 时噪声矩阵只在 initialize()/reset() 生成一次，本 setter
+   * 更新的值要等到下次 reset() 才会体现在实际采样里。
+   * @param sampling_std 新的 vx/vy/wz 采样标准差
+   */
+  void updateSamplingStd(const mppi::models::SamplingStd & sampling_std);
+
 protected:
   /**
    * @brief Thread to execute noise generation process

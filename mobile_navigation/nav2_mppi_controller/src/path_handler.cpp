@@ -159,6 +159,7 @@ nav_msgs::msg::Path PathHandler::transformPath(
   updateGoalDistance(global_pose);
   auto [transformed_plan, lower_bound] = getGlobalPlanConsideringBoundsInCostmapFrame(global_pose);
   updateHeadingPathAngle(global_pose, lower_bound);
+  updateLateralError(global_pose, lower_bound);
   const double pruned_distance =
     getIntegratedDistance(global_plan_up_to_inversion_.poses.begin(), lower_bound);
   last_path_progress_ = path_progress_offset_ + pruned_distance;
@@ -234,6 +235,7 @@ void PathHandler::setPath(const nav_msgs::msg::Path & plan)
   last_path_progress_ = 0.0;
   last_goal_distance_ = 0.0;
   last_heading_path_angle_ = 0.0;
+  last_lateral_error_ = 0.0;
   RCLCPP_INFO(
     logger_,
     "MPPI new global plan received: poses=%zu. "
@@ -261,6 +263,11 @@ double PathHandler::getLastHeadingPathAngle() const
   return last_heading_path_angle_;
 }
 
+double PathHandler::getLastLateralError() const
+{
+  return last_lateral_error_;
+}
+
 void PathHandler::updateHeadingPathAngle(
   const geometry_msgs::msg::PoseStamped & global_pose, const PathIterator & closest)
 {
@@ -282,6 +289,42 @@ void PathHandler::updateHeadingPathAngle(
   }
   const double robot_yaw = tf2::getYaw(global_pose.pose.orientation);
   last_heading_path_angle_ = std::fabs(angles::shortest_angular_distance(robot_yaw, path_yaw));
+}
+
+void PathHandler::updateLateralError(
+  const geometry_msgs::msg::PoseStamped & global_pose, const PathIterator & closest)
+{
+  // 二期条件层（S1/S2）信号：当前姿态到路径切线的横向偏离，物理量与 PathAlignCritic 的
+  // cross-track 残差一致，这里只算"当前姿态"单点版，不遍历候选轨迹。
+  auto & poses = global_plan_up_to_inversion_.poses;
+  if (poses.empty() || closest == poses.end()) {
+    last_lateral_error_ = 0.0;
+    return;
+  }
+  // 路径切线方向：最近点到前方第 3 个点（与 updateHeadingPathAngle 一致，更稳，避免单点噪声）
+  const std::ptrdiff_t remaining = std::distance(closest, poses.end());
+  const PathIterator ahead = closest + (remaining > 3 ? 3 : (remaining - 1));
+  double tangent_x, tangent_y;
+  if (ahead != closest) {
+    tangent_x = ahead->pose.position.x - closest->pose.position.x;
+    tangent_y = ahead->pose.position.y - closest->pose.position.y;
+  } else {
+    const double yaw = tf2::getYaw(closest->pose.orientation);
+    tangent_x = std::cos(yaw);
+    tangent_y = std::sin(yaw);
+  }
+  const double tangent_norm = std::hypot(tangent_x, tangent_y);
+  if (tangent_norm < 1e-6) {
+    last_lateral_error_ = 0.0;
+    return;
+  }
+  tangent_x /= tangent_norm;
+  tangent_y /= tangent_norm;
+
+  // 机器人相对最近路径点的向量，与切线叉积得到横向分量：正=路径左侧，负=右侧
+  const double dx = global_pose.pose.position.x - closest->pose.position.x;
+  const double dy = global_pose.pose.position.y - closest->pose.position.y;
+  last_lateral_error_ = tangent_x * dy - tangent_y * dx;
 }
 
 void PathHandler::updateGoalDistance(const geometry_msgs::msg::PoseStamped & global_pose)

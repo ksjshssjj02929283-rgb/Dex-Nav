@@ -28,6 +28,7 @@
 
 #include "nav2_core/controller.hpp"
 #include "nav2_core/goal_checker.hpp"
+#include "nav_interfaces/msg/robot_trajectory.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_lifecycle/lifecycle_publisher.hpp"
 #include "std_msgs/msg/float64_multi_array.hpp"
@@ -124,6 +125,15 @@ protected:
 
   void configureStages();
 
+  // 二期条件层（S1-S4）参数加载，见 controller.cpp configureConditionLayer() 注释。
+  void configureConditionLayer();
+
+  // 二期条件层：在 stage_weights（Layer0）+ 迟滞插值（Layer1）之上做第二次修正（Layer2），
+  // 每个控制周期都调用，覆盖 optimizer 里的 profile/sampling_std。
+  // S1 track 横向误差→PathAlign 权重+限速；S2 approach 横向误差→限速；
+  // S3 approach 距离终点越近→采样标准差越小；S4 终点微调子区→线速度硬限制。
+  void updateConditionLayer(double goal_distance, double e_lat, double key_lon, double key_lat);
+
   // 根据路径进度和到目标距离选择三阶段 profile，并把速度/行为代价平滑应用到 optimizer。
   void applyProfileForPathState(double path_progress, double goal_distance, double heading_path_angle);
 
@@ -184,6 +194,33 @@ protected:
   nav_interfaces::msg::RobotTrajectory reference_trajectory_;
   // 前瞻窗长度（m）：帽允许领先计划加速坡的距离；窗内至少含最近点的下一点（防死锁）
   double traj_speed_cap_lookahead_{0.2};
+
+  // ── 二期条件层（S1-S4）：默认关闭，需 yaml condition_layer.enabled=true 显式开启 ──
+  bool condition_layer_enabled_{false};
+
+  // S1 track 阶段：横向误差→PathAlign 权重↑ + vx_max 收紧（约束层限速，DEC-003 Q5）
+  double s1_enter_{0.05};          // 进入阈值(m)，约 5cm
+  double s1_exit_{0.03};           // 退出阈值(m)，需 < enter，防抖
+  double s1_weight_gain_{1.5};     // 横向误差达到 enter 时 PathAlign 权重放大倍数
+  double s1_vx_scale_min_{0.5};    // 横向误差达到 enter 时 vx_max 收紧到的比例下限
+  bool s1_active_{false};
+
+  // S2 approach 阶段：横向误差→vx_max 收紧（复用 e_lat 与相同的迟滞/增益模式，独立阈值）
+  double s2_enter_{0.05};
+  double s2_exit_{0.03};
+  double s2_vx_scale_min_{0.5};
+  bool s2_active_{false};
+
+  // S3 approach 阶段：距离终点越近→采样标准差越小（连续增益，无需迟滞）
+  double s3_std_scale_min_{0.3};             // 到终点时缩到 yaml 基线的比例下限
+  mppi::models::SamplingStd s3_base_sampling_std_{0.0f, 0.0f, 0.0f};  // configure() 时缓存的 yaml 基线
+
+  // S4 终点微调子区：|key_lon|/|key_lat| 都小于 enter 时硬限制线速度（不是比例缩放）
+  double s4_enter_{0.02};          // 进入阈值(m)，2cm
+  double s4_exit_{0.03};           // 恢复阈值(m)，需 > enter，防止边界反复横跳
+  double s4_vx_clamp_min_{0.02};
+  double s4_vx_clamp_max_{0.05};
+  bool s4_active_{false};
 };
 
 }  // namespace nav2_mppi_controller

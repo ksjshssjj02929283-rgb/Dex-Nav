@@ -256,6 +256,28 @@ controller_server:
         wz_max: 0.75
 
       # ============================================================
+      # 2.5 二期条件层（S1-S4）：stage_weights/stage_* 之上的第二层修正，默认全关。
+      #     enabled=false 时与上线前行为完全一致（本次改动零风险合入）。
+      #     调参/开启前必读：项目 52. MPPI优化第二期方案文档 § 四。
+      # ============================================================
+      condition_layer:
+        enabled: false                     # 总开关；关闭时下方全部参数不生效
+        s1_lateral_enter: 0.05             # S1(track)：横向误差(m)进入阈值
+        s1_lateral_exit: 0.03              # S1 退出阈值，须 < enter，防抖
+        s1_path_align_weight_gain: 1.5     # 进入 S1 时 PathAlignCritic 权重放大倍数上限
+        s1_vx_scale_min: 0.5               # 进入 S1 时 vx_max 收紧到的比例下限
+        s2_lateral_enter: 0.05             # S2(approach)：横向误差(m)进入阈值（复用 S1 同一信号）
+        s2_lateral_exit: 0.03
+        s2_vx_scale_min: 0.5
+        s3_sampling_std_scale_min: 0.3     # S3(approach)：距终点最近处 sampling_std 缩到基线的比例
+                                            # ⚠️ S3 要连续生效必须 regenerate_noises=true（见上方 §1），
+                                            # 否则 sampling_std 只在下次 reset() 才会被拾取，S3 基本不起作用
+        s4_goal_error_enter: 0.02          # S4：到点纵/横误差(m)都小于此值→硬限速
+        s4_goal_error_exit: 0.03           # 恢复阈值，须 > enter，防止 0.02m 边界反复横跳
+        s4_vx_clamp_min: 0.02
+        s4_vx_clamp_max: 0.05
+
+      # ============================================================
       # 三阶段 align/track/approach：权重统一由上方 stage_weights 矩阵调；
       # 速度见上方 stage_align/track/approach 块；子参数(offset/threshold/last_n)用 C++ 默认；
       # 切换由 align_enter_angle/align_exit_angle/approach_distance。

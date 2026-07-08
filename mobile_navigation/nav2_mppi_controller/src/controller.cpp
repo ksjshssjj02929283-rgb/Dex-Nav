@@ -48,9 +48,13 @@ void MPPIController::configure(
   getParam(reset_period_, "reset_period", 1.0);
   getParam(traj_speed_cap_lookahead_, "trajectory_speed_cap_lookahead", 0.2);
   configureStages();
+  configureConditionLayer();
 
   // Configure composed objects
   optimizer_.initialize(parent_, name_, costmap_ros_, parameters_handler_.get());
+  // S3 用：缓存 yaml 加载出的采样标准差基线，后续条件层按比例缩放永远相对这个基线算，
+  // 不能相对 optimizer_ 当前值算（否则条件层自己的历史修正会被反复复合，越缩越小）。
+  s3_base_sampling_std_ = optimizer_.getSamplingStd();
   applied_profile_ = stages_[active_stage_];
   optimizer_.applyProfile(applied_profile_);
   parameters_handler_->addPostCallback(
@@ -218,21 +222,36 @@ geometry_msgs::msg::TwistStamped MPPIController::computeVelocityCommands(
   const double goal_distance = path_handler_.getLastGoalDistance();
   const double path_progress = path_handler_.getLastPathProgress();
   const double heading_path_angle = path_handler_.getLastHeadingPathAngle();
+  const double e_lat = path_handler_.getLastLateralError();
   applyProfileForPathState(path_progress, goal_distance, heading_path_angle);
 
   // ④ 轨迹参考速度：最近轨迹点的规划速度作为本周期 vx 采样上限（叠加在 profile 之上）。
   // 减速尾段/曲率限速/障碍零速由速度规划剖面逐点编码；无轨迹/TF 失败时不设帽。
   optimizer_.setTrajectorySpeedCap(nearestTrajectorySpeed(robot_pose));
 
-  // 提前捕获目标位姿（用于到点精度 log；transformed_plan 后续可能被 visualize move 走）
+  // 提前捕获目标位姿 + 到点精度(lon/lat/yaw,机器人系)：S4 条件层要在 evalControl 前就
+  // 用到 key_lon/key_lat，因此把原本"仅供 1Hz log"的计算提前到这里，log 段直接复用。
   double key_goal_x = 0.0, key_goal_y = 0.0, key_goal_yaw = 0.0;
+  double key_lon = 0.0, key_lat = 0.0, key_yaw = 0.0;
   const bool key_has_goal = !transformed_plan.poses.empty();
   if (key_has_goal) {
     const auto & gp = transformed_plan.poses.back().pose;
     key_goal_x = gp.position.x;
     key_goal_y = gp.position.y;
     key_goal_yaw = tf2::getYaw(gp.orientation);
+    const double dx = key_goal_x - robot_pose.pose.position.x;
+    const double dy = key_goal_y - robot_pose.pose.position.y;
+    const double ryaw = tf2::getYaw(robot_pose.pose.orientation);
+    key_lon = std::cos(ryaw) * dx + std::sin(ryaw) * dy;    // longitudinal (forward) error
+    key_lat = -std::sin(ryaw) * dx + std::cos(ryaw) * dy;   // lateral (left) error
+    const double dyaw = key_goal_yaw - ryaw;
+    key_yaw = std::atan2(std::sin(dyaw), std::cos(dyaw));    // heading error (normalized)
   }
+
+  // 二期条件层（Layer2）：在 Layer0(stage_weights)+Layer1(迟滞插值) 之后、evalControl 之前，
+  // 用本周期已算好的 goal_distance/e_lat/key_lon/key_lat 做二次修正（S1-S4，默认关闭）。
+  updateConditionLayer(goal_distance, e_lat, key_lon, key_lat);
+
   auto t_transform_end = std::chrono::high_resolution_clock::now();
   double transform_ms =
     std::chrono::duration<double, std::milli>(t_transform_end - t_transform_start).count();
@@ -292,16 +311,7 @@ geometry_msgs::msg::TwistStamped MPPIController::computeVelocityCommands(
   }
 
   // ── 关键运行 log（节流 1Hz）：阶段 / 到目标距离 / 到点精度(lon/lat/yaw,机器人系) / 本周期耗时 / 命令 vs 实际 ──
-  double key_lon = 0.0, key_lat = 0.0, key_yaw = 0.0;
-  if (key_has_goal) {
-    const double dx = key_goal_x - robot_pose.pose.position.x;
-    const double dy = key_goal_y - robot_pose.pose.position.y;
-    const double ryaw = tf2::getYaw(robot_pose.pose.orientation);
-    key_lon = std::cos(ryaw) * dx + std::sin(ryaw) * dy;    // longitudinal (forward) error
-    key_lat = -std::sin(ryaw) * dx + std::cos(ryaw) * dy;   // lateral (left) error
-    const double dyaw = key_goal_yaw - ryaw;
-    key_yaw = std::atan2(std::sin(dyaw), std::cos(dyaw));    // heading error (normalized)
-  }
+  // key_lon/key_lat/key_yaw 已在 evalControl 前算好（供条件层 S4 用），这里直接复用，不重复计算。
   RCLCPP_INFO_THROTTLE(
     logger_, *clock_, 1000,
     "[MPPI] stage=%s goal_dist=%.3fm err[lon=%.3f lat=%.3f yaw=%.3f] "
@@ -568,6 +578,127 @@ void MPPIController::configureStages()
   applied_profile_ = stages_[active_stage_];
   transition_start_profile_ = applied_profile_;
   transition_target_profile_ = applied_profile_;
+}
+
+void MPPIController::configureConditionLayer()
+{
+  // 二期条件层（S1-S4，见项目 52. MPPI优化第二期方案文档 § 四）：
+  // 默认全部关闭（condition_layer.enabled=false），需 yaml 显式打开才会影响实际控制输出，
+  // 保证本次改动合入后在未调参前对现有 release_0.5.x 行为零影响。
+  auto getParam = parameters_handler_->getParamGetter(name_);
+
+  getParam(condition_layer_enabled_, "condition_layer.enabled", false, ParameterType::Static);
+
+  getParam(s1_enter_, "condition_layer.s1_lateral_enter", 0.05, ParameterType::Static);
+  getParam(s1_exit_, "condition_layer.s1_lateral_exit", 0.03, ParameterType::Static);
+  getParam(s1_weight_gain_, "condition_layer.s1_path_align_weight_gain", 1.5, ParameterType::Static);
+  getParam(s1_vx_scale_min_, "condition_layer.s1_vx_scale_min", 0.5, ParameterType::Static);
+  s1_exit_ = std::min(s1_exit_, s1_enter_);
+
+  getParam(s2_enter_, "condition_layer.s2_lateral_enter", 0.05, ParameterType::Static);
+  getParam(s2_exit_, "condition_layer.s2_lateral_exit", 0.03, ParameterType::Static);
+  getParam(s2_vx_scale_min_, "condition_layer.s2_vx_scale_min", 0.5, ParameterType::Static);
+  s2_exit_ = std::min(s2_exit_, s2_enter_);
+
+  getParam(s3_std_scale_min_, "condition_layer.s3_sampling_std_scale_min", 0.3, ParameterType::Static);
+
+  getParam(s4_enter_, "condition_layer.s4_goal_error_enter", 0.02, ParameterType::Static);
+  getParam(s4_exit_, "condition_layer.s4_goal_error_exit", 0.03, ParameterType::Static);
+  getParam(s4_vx_clamp_min_, "condition_layer.s4_vx_clamp_min", 0.02, ParameterType::Static);
+  getParam(s4_vx_clamp_max_, "condition_layer.s4_vx_clamp_max", 0.05, ParameterType::Static);
+  s4_exit_ = std::max(s4_exit_, s4_enter_);
+
+  if (condition_layer_enabled_) {
+    RCLCPP_INFO(
+      logger_,
+      "MPPI condition layer ENABLED: S1[track lateral %.3f/%.3f->PathAlign x%.2f,vx x%.2f] "
+      "S2[approach lateral %.3f/%.3f->vx x%.2f] S3[approach sampling_std->x%.2f near goal] "
+      "S4[goal error %.3f/%.3f->vx clamp %.3f~%.3f]. "
+      "S3 only takes effect continuously if regenerate_noises=true (see NoiseGenerator::updateSamplingStd).",
+      s1_enter_, s1_exit_, s1_weight_gain_, s1_vx_scale_min_,
+      s2_enter_, s2_exit_, s2_vx_scale_min_,
+      s3_std_scale_min_,
+      s4_enter_, s4_exit_, s4_vx_clamp_min_, s4_vx_clamp_max_);
+  }
+}
+
+void MPPIController::updateConditionLayer(
+  double goal_distance, double e_lat, double key_lon, double key_lat)
+{
+  if (!condition_layer_enabled_) {
+    return;
+  }
+
+  MppiProfileSettings profile = applied_profile_;  // Layer0(stage_weights)+Layer1(迟滞插值)后的基线
+  const double abs_e_lat = std::fabs(e_lat);
+
+  // S1：track 阶段，横向误差大→按比例提高 PathAlignCritic 权重 + 收紧 vx_max（约束层限速）
+  if (active_stage_ == STAGE_TRACK) {
+    if (abs_e_lat > s1_enter_) {
+      s1_active_ = true;
+    } else if (abs_e_lat < s1_exit_) {
+      s1_active_ = false;
+    }
+    if (s1_active_) {
+      const double span = std::max(s1_enter_ - s1_exit_, 1e-6);
+      const double scale = std::clamp((abs_e_lat - s1_exit_) / span, 0.0, 1.0);
+      profile.critics.path_align.weight = static_cast<float>(
+        profile.critics.path_align.weight * (1.0 + scale * (s1_weight_gain_ - 1.0)));
+      const double vx_scale = 1.0 - scale * (1.0 - s1_vx_scale_min_);
+      profile.velocity.vx_max = static_cast<float>(profile.velocity.vx_max * vx_scale);
+    }
+  } else {
+    s1_active_ = false;
+  }
+
+  // S2：approach 阶段，横向误差大→收紧 vx_max（复用 S1 的横向误差信号，独立阈值）
+  if (active_stage_ == STAGE_APPROACH) {
+    if (abs_e_lat > s2_enter_) {
+      s2_active_ = true;
+    } else if (abs_e_lat < s2_exit_) {
+      s2_active_ = false;
+    }
+    if (s2_active_) {
+      const double span = std::max(s2_enter_ - s2_exit_, 1e-6);
+      const double scale = std::clamp((abs_e_lat - s2_exit_) / span, 0.0, 1.0);
+      const double vx_scale = 1.0 - scale * (1.0 - s2_vx_scale_min_);
+      profile.velocity.vx_max = static_cast<float>(profile.velocity.vx_max * vx_scale);
+    }
+  } else {
+    s2_active_ = false;
+  }
+
+  // S4：approach 阶段终点微调子区，到点误差都小于 enter 时硬限制线速度（不是比例缩放）
+  if (active_stage_ == STAGE_APPROACH) {
+    const double goal_err = std::max(std::fabs(key_lon), std::fabs(key_lat));
+    if (goal_err < s4_enter_) {
+      s4_active_ = true;
+    } else if (goal_err > s4_exit_) {
+      s4_active_ = false;
+    }
+    if (s4_active_) {
+      profile.velocity.vx_max = static_cast<float>(
+        std::clamp(
+          static_cast<double>(profile.velocity.vx_max), s4_vx_clamp_min_, s4_vx_clamp_max_));
+    }
+  } else {
+    s4_active_ = false;
+  }
+
+  optimizer_.applyProfile(profile);
+
+  // S3：approach 阶段，距离终点越近→采样标准差越小（连续增益，无需迟滞，独立于 S1/S2/S4 生效）
+  if (active_stage_ == STAGE_APPROACH && approach_distance_ > 1e-6) {
+    const double ratio = std::clamp(goal_distance / approach_distance_, 0.0, 1.0);
+    const double std_scale = s3_std_scale_min_ + ratio * (1.0 - s3_std_scale_min_);
+    const models::SamplingStd target_std{
+      static_cast<float>(s3_base_sampling_std_.vx * std_scale),
+      static_cast<float>(s3_base_sampling_std_.vy * std_scale),
+      static_cast<float>(s3_base_sampling_std_.wz * std_scale)};
+    optimizer_.updateSamplingStd(target_std);
+  } else {
+    optimizer_.updateSamplingStd(s3_base_sampling_std_);
+  }
 }
 
 void MPPIController::applyProfileForPathState(

@@ -137,10 +137,23 @@ public:
   void applyProfile(const MppiProfileSettings & profile);
 
   /**
+   * @brief 二期条件层专用：运行时更新速度采样标准差（不重置 Optimizer/NoiseGenerator 状态）。
+   * 仅在 noise_generator 的 regenerate_noises=true 时才会持续生效，见 NoiseGenerator::updateSamplingStd 注释。
+   * @param sampling_std 新的 vx/vy/wz 采样标准差
+   */
+  void updateSamplingStd(const models::SamplingStd & sampling_std);
+
+  /**
    * @brief Get active constraints after profile and speed limit are applied
    * @return Active optimizer constraints used for sampling and output clipping
    */
   const models::ControlConstraints & getActiveConstraints() const {return settings_.constraints;}
+
+  /**
+   * @brief 二期条件层专用：读取当前采样标准差（S3 在 configure() 时缓存 yaml 基线用）
+   * @return 当前 vx/vy/wz 采样标准差
+   */
+  const models::SamplingStd & getSamplingStd() const {return settings_.sampling_std;}
 
   /**
    * @brief Whether a speed limit from costmap filter is currently active

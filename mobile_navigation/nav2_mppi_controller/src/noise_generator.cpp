@@ -101,6 +101,12 @@ void NoiseGenerator::reset(mppi::models::OptimizerSettings & settings, bool is_h
   }
 }
 
+void NoiseGenerator::updateSamplingStd(const mppi::models::SamplingStd & sampling_std)
+{
+  std::unique_lock<std::mutex> guard(noise_lock_);
+  settings_.sampling_std = sampling_std;
+}
+
 void NoiseGenerator::noiseThread()
 {
   do {

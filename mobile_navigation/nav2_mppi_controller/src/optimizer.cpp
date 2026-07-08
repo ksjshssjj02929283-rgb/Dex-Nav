@@ -539,6 +539,12 @@ void Optimizer::setSpeedLimit(double speed_limit, bool percentage)
   logActiveConstraints();
 }
 
+void Optimizer::updateSamplingStd(const models::SamplingStd & sampling_std)
+{
+  settings_.sampling_std = sampling_std;
+  noise_generator_.updateSamplingStd(sampling_std);
+}
+
 void Optimizer::applyProfile(const MppiProfileSettings & profile)
 {
   auto & s = settings_;

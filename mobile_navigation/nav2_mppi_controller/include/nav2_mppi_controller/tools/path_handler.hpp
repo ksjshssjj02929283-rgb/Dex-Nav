@@ -106,6 +106,14 @@ public:
    */
   double getLastHeadingPathAngle() const;
 
+  /**
+   * @brief 二期条件层专用（S1/S2）：当前机器人姿态到路径最近点切线的横向（垂直）误差，
+   * 带符号：路径切线左侧为正、右侧为负（与 nav2 惯例一致，右手系 z 朝上时叉积正=左偏）。
+   * 与 PathAlignCritic 内部按候选轨迹计算的 cross-track 残差同一物理量，这里是"当前姿态"单点版。
+   * @return 有符号横向误差 (m)
+   */
+  double getLastLateralError() const;
+
 protected:
   /**
     * @brief Transform a pose to another frame
@@ -160,6 +168,9 @@ protected:
   void updateHeadingPathAngle(
     const geometry_msgs::msg::PoseStamped & global_pose, const PathIterator & closest);
 
+  void updateLateralError(
+    const geometry_msgs::msg::PoseStamped & global_pose, const PathIterator & closest);
+
   double getIntegratedDistance(PathIterator begin, PathIterator end) const;
 
   std::string name_;
@@ -177,6 +188,7 @@ protected:
   double last_goal_distance_{0};
   double last_path_progress_{0};
   double last_heading_path_angle_{0};
+  double last_lateral_error_{0};
   double path_progress_offset_{0};
   float inversion_xy_tolerance_{0.2};
   float inversion_yaw_tolerance{0.4};

@@ -22,6 +22,7 @@ set(dependencies_pkgs
   tf2_geometry_msgs
   tf2_eigen
   tf2_ros
+  nav_interfaces
 )
 
 foreach(pkg IN LISTS dependencies_pkgs)
