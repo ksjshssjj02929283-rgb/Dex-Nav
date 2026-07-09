@@ -130,6 +130,7 @@ ControllerServer::ControllerServer(const rclcpp::NodeOptions & options)
   declare_parameter("staged_control.align_angular_kp", rclcpp::ParameterValue(1.5));
   declare_parameter("staged_control.align_max_angular_velocity", rclcpp::ParameterValue(0.5));
   declare_parameter("staged_control.align_min_angular_velocity", rclcpp::ParameterValue(0.08));
+  declare_parameter("staged_control.align_target_distance", rclcpp::ParameterValue(0.3));
   declare_parameter("staged_control.prepare.enabled", rclcpp::ParameterValue(true));
   declare_parameter(
     "staged_control.prepare.obstacle_check_distance", rclcpp::ParameterValue(0.2));
@@ -241,6 +242,7 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
   get_parameter("staged_control.align_angular_kp", align_angular_kp_);
   get_parameter("staged_control.align_max_angular_velocity", align_max_angular_velocity_);
   get_parameter("staged_control.align_min_angular_velocity", align_min_angular_velocity_);
+  get_parameter("staged_control.align_target_distance", align_target_distance_);
   get_parameter("staged_control.prepare.enabled", prepare_enabled_);
   get_parameter("staged_control.prepare.obstacle_check_distance", prepare_obstacle_check_distance_);
   get_parameter("staged_control.prepare.side_check_distance", prepare_side_check_distance_);
@@ -1515,11 +1517,11 @@ double ControllerServer::getDistanceToGoal(const geometry_msgs::msg::PoseStamped
   return std::hypot(dx, dy);
 }
 
-bool ControllerServer::getPathHeadingError(
+bool ControllerServer::getTargetPointHeadingError(
   const geometry_msgs::msg::PoseStamped & pose,
   double & yaw_error)
 {
-  if (current_path_.poses.size() < 2) {
+  if (current_path_.poses.empty()) {
     return false;
   }
 
@@ -1542,32 +1544,43 @@ bool ControllerServer::getPathHeadingError(
     return false;
   }
 
-  size_t closest_idx = 0;
-  double closest_dist = std::numeric_limits<double>::max();
+  // 最近点：目标点搜索的起点（同 RPP carrot 选取，只往路径前方找）。
+  size_t nearest_idx = 0;
+  double nearest_dist = std::numeric_limits<double>::max();
   for (size_t i = 0; i < current_path_.poses.size(); ++i) {
     const double dx = path_frame_pose.pose.position.x - current_path_.poses[i].pose.position.x;
     const double dy = path_frame_pose.pose.position.y - current_path_.poses[i].pose.position.y;
     const double dist = std::hypot(dx, dy);
-    if (dist < closest_dist) {
-      closest_dist = dist;
-      closest_idx = i;
+    if (dist < nearest_dist) {
+      nearest_dist = dist;
+      nearest_idx = i;
     }
   }
 
-  size_t from_idx = closest_idx;
-  size_t to_idx = std::min(closest_idx + 3, current_path_.poses.size() - 1);
-  if (to_idx == from_idx && from_idx > 0) {
-    --from_idx;
-  }
-  if (to_idx == from_idx) {
-    return false;
+  // 沿路径累计弧长找到第一个距机器人 >= align_target_distance_ 的目标点
+  // （不够长则取终点）——align 朝向盯的是"目标点方位角"而非局部路径切向，
+  // 与 RPP carrot 点取向原理一致。
+  size_t target_idx = current_path_.poses.size() - 1;
+  double accum = 0.0;
+  for (size_t i = nearest_idx + 1; i < current_path_.poses.size(); ++i) {
+    const auto & a = current_path_.poses[i - 1].pose.position;
+    const auto & b = current_path_.poses[i].pose.position;
+    accum += std::hypot(b.x - a.x, b.y - a.y);
+    if (accum >= align_target_distance_) {
+      target_idx = i;
+      break;
+    }
   }
 
-  const auto & from = current_path_.poses[from_idx].pose.position;
-  const auto & to = current_path_.poses[to_idx].pose.position;
-  const double path_yaw = std::atan2(to.y - from.y, to.x - from.x);
+  const auto & target = current_path_.poses[target_idx].pose.position;
+  const double dx = target.x - path_frame_pose.pose.position.x;
+  const double dy = target.y - path_frame_pose.pose.position.y;
+  if (std::hypot(dx, dy) < 1e-3) {
+    return false;  // 目标点与机器人重合（已在终点附近），无法定向
+  }
+  const double bearing_to_target = std::atan2(dy, dx);
   const double robot_yaw = tf2::getYaw(path_frame_pose.pose.orientation);
-  yaw_error = angles::shortest_angular_distance(robot_yaw, path_yaw);
+  yaw_error = angles::shortest_angular_distance(robot_yaw, bearing_to_target);
   return true;
 }
 
@@ -1760,6 +1773,7 @@ void ControllerServer::resetStagedControlState()
 {
   prepare_backup_active_ = false;
   prepare_check_pending_ = true;
+  align_done_ = false;
 }
 
 geometry_msgs::msg::TwistStamped ControllerServer::computeControllerVelocity(
@@ -1808,30 +1822,38 @@ geometry_msgs::msg::TwistStamped ControllerServer::computeStagedVelocity(
     return computeControllerVelocity(approach_controller_, pose, twist);
   }
 
-  double heading_error = 0.0;
-  const bool has_path_heading = getPathHeadingError(pose, heading_error);
-  RCLCPP_INFO_THROTTLE(
-    get_logger(), *get_clock(), 500,
-    "Staged control decision: outside approach, distance_to_goal=%.3f > "
-    "approach_distance=%.3f; path_heading_available=%s heading_error=%.3f "
-    "align_tolerance=%.3f",
-    distance_to_goal,
-    approach_distance_,
-    has_path_heading ? "true" : "false",
-    has_path_heading ? heading_error : 0.0,
-    align_heading_tolerance_);
-  if (has_path_heading && std::fabs(heading_error) > align_heading_tolerance_) {
-    setControllerPhase(ControllerPhase::ALIGN, "path heading error exceeds tolerance");
-    active_controller_for_log_ = "direct_align";
-    const double abs_cmd = std::clamp(
-      std::fabs(heading_error) * align_angular_kp_,
-      align_min_angular_velocity_,
-      align_max_angular_velocity_);
-    cmd_vel.twist.angular.z = std::copysign(abs_cmd, heading_error);
-    return cmd_vel;
+  // align 只在本次导航"未完成过"时评估——一旦收敛转入 track，中途朝向
+  // 误差再变大也不回退进 align，交给 track 控制器自身的朝向纠偏（RPP/MPPI
+  // 均有内建机制）；align 是"出发前对齐一次"，不是持续兜底。
+  if (!align_done_) {
+    double heading_error = 0.0;
+    const bool has_target_heading = getTargetPointHeadingError(pose, heading_error);
+    RCLCPP_INFO_THROTTLE(
+      get_logger(), *get_clock(), 500,
+      "Staged control decision: outside approach, distance_to_goal=%.3f > "
+      "approach_distance=%.3f; target_heading_available=%s heading_error=%.3f "
+      "align_tolerance=%.3f align_target_distance=%.3f",
+      distance_to_goal,
+      approach_distance_,
+      has_target_heading ? "true" : "false",
+      has_target_heading ? heading_error : 0.0,
+      align_heading_tolerance_,
+      align_target_distance_);
+    if (has_target_heading && std::fabs(heading_error) > align_heading_tolerance_) {
+      setControllerPhase(ControllerPhase::ALIGN, "target point heading error exceeds tolerance");
+      active_controller_for_log_ = "direct_align";
+      const double abs_cmd = std::clamp(
+        std::fabs(heading_error) * align_angular_kp_,
+        align_min_angular_velocity_,
+        align_max_angular_velocity_);
+      cmd_vel.twist.angular.z = std::copysign(abs_cmd, heading_error);
+      return cmd_vel;
+    }
+    // 收敛，或无法计算朝向（如路径过短）：本次导航不再进入 align。
+    align_done_ = true;
   }
 
-  setControllerPhase(ControllerPhase::TRACK, "path heading aligned");
+  setControllerPhase(ControllerPhase::TRACK, "align phase done, tracking");
   active_controller_for_log_ = track_controller_;
   return computeControllerVelocity(track_controller_, pose, twist);
 }

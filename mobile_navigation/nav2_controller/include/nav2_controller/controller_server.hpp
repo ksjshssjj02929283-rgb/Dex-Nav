@@ -229,7 +229,10 @@ protected:
    * @param yaw_error Output yaw error in radians
    * @return true when path tangent could be calculated
    */
-  bool getPathHeadingError(const geometry_msgs::msg::PoseStamped & pose, double & yaw_error);
+  /// align 朝向误差 = 机器人当前朝向 与 "机器人→路径前方 align_target_distance_
+  /// 处目标点" 方位角 之差（同 RPP carrot 点取向原理，非局部路径切向）。
+  bool getTargetPointHeadingError(
+    const geometry_msgs::msg::PoseStamped & pose, double & yaw_error);
   /**
    * @brief Compute Euclidean distance from robot pose to current goal
    * @param pose Current robot pose
@@ -430,6 +433,7 @@ protected:
   double approach_distance_{0.3};
   double align_heading_tolerance_{0.5235987756};
   double align_angular_kp_{1.5};
+  double align_target_distance_{0.3};
   double align_max_angular_velocity_{0.5};
   double align_min_angular_velocity_{0.08};
   bool prepare_enabled_{true};
@@ -448,6 +452,12 @@ protected:
   double prepare_backup_distance_{0.3};
   bool prepare_backup_active_{false};
   bool prepare_check_pending_{true};
+  // align 阶段状态机：本次导航是否已完成过 align（含"收敛"与"无法计算朝向,
+  // 视为跳过"两种终止方式）。仅到达目标时重置（同 prepare，理由见 DEC-030：
+  // computeControl() 会因 BT 恢复重试被多次重新进入，不能在入口重置）。
+  // 一旦置真，本次导航剩余时间不再回退进 align——中途朝向误差变大交给
+  // track 阶段的控制器自身处理（RPP/MPPI 均有各自的朝向纠偏机制）。
+  bool align_done_{false};
   rclcpp::Time prepare_backup_start_time_;
   geometry_msgs::msg::PoseStamped prepare_backup_start_pose_;
 
