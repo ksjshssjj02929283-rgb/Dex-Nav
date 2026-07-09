@@ -375,13 +375,6 @@ geometry_msgs::msg::TwistStamped PIDController::computeVelocityCommands(
 
   if (controller_traj_.empty()) {
     RCLCPP_WARN_THROTTLE(logger_, *clock_, 2000, "computeVelocityCommands: no plan set");
-    RCLCPP_INFO_THROTTLE(
-      logger_, *clock_, 100,
-      "PIDController command: plugin=%s stage=%s branch=no_plan plan_index=%d/%zu "
-      "desired_v=%.3f cmd_vel=(vx=%.3f wz=%.3f)",
-      plugin_name_.c_str(), controllerStageName(curr_controller_stage_),
-      plan_index_, controller_traj_.size(), desired_linear_vel_,
-      cmd_vel.twist.linear.x, cmd_vel.twist.angular.z);
     return cmd_vel;
   }
 
@@ -407,13 +400,6 @@ geometry_msgs::msg::TwistStamped PIDController::computeVelocityCommands(
   plan_index_ = getClosestWaypointID(controller_traj_, current_ps_, 0.1, true);
   if (plan_index_ < 0) {
     RCLCPP_WARN(logger_, "computeVelocityCommands: failed to get closest waypoint");
-    RCLCPP_INFO_THROTTLE(
-      logger_, *clock_, 100,
-      "PIDController command: plugin=%s stage=%s branch=closest_waypoint_failed "
-      "plan_index=%d/%zu desired_v=%.3f cmd_vel=(vx=%.3f wz=%.3f)",
-      plugin_name_.c_str(), controllerStageName(curr_controller_stage_),
-      plan_index_, controller_traj_.size(), desired_linear_vel_,
-      cmd_vel.twist.linear.x, cmd_vel.twist.angular.z);
     return cmd_vel;
   }
 
@@ -469,14 +455,6 @@ geometry_msgs::msg::TwistStamped PIDController::computeVelocityCommands(
   } catch (const tf2::TransformException & ex) {
     RCLCPP_WARN(logger_, "computeVelocityCommands: TF transform to %s failed: %s",
       base_frame_.c_str(), ex.what());
-    RCLCPP_INFO_THROTTLE(
-      logger_, *clock_, 100,
-      "PIDController command: plugin=%s stage=%s branch=tf_failed plan_index=%d/%zu "
-      "desired_v=%.3f odom=(vx=%.3f wz=%.3f) cmd_vel=(vx=%.3f wz=%.3f)",
-      plugin_name_.c_str(), controllerStageName(curr_controller_stage_),
-      plan_index_, controller_traj_.size(), desired_linear_vel_,
-      velocity.linear.x, velocity.angular.z,
-      cmd_vel.twist.linear.x, cmd_vel.twist.angular.z);
     return cmd_vel;
   }
   // for reverse, target_in_base.x is negative, so the computed speed is negative too
@@ -613,7 +591,7 @@ geometry_msgs::msg::TwistStamped PIDController::computeVelocityCommands(
   while (theta_errors_.size() > 50) {
     theta_errors_.pop_front();
   }
-  double theta_mean = std::numeric_limits<double>::max();
+  double theta_mean = std::numeric_limits<double>::infinity();
   if (theta_errors_.size() >= 50) {
     theta_mean = CalculateMean(theta_errors_);
     (void)CalculateVariance(theta_errors_, theta_mean);
@@ -625,13 +603,13 @@ geometry_msgs::msg::TwistStamped PIDController::computeVelocityCommands(
     }
     switch (curr_controller_stage_) {
       case FINISH:
-        RCLCPP_WARN(logger_, "controller stage: FINISH");
+        RCLCPP_INFO(logger_, "controller stage: FINISH");
         break;
       case APPROACHING:
-        RCLCPP_WARN(logger_, "controller stage: APPROACHING");
+        RCLCPP_INFO(logger_, "controller stage: APPROACHING");
         break;
       case ROTATING_TO_GOAL:
-        RCLCPP_WARN(logger_, "controller stage: ROTATING_TO_GOAL");
+        RCLCPP_INFO(logger_, "controller stage: ROTATING_TO_GOAL");
         break;
       default:
         break;
@@ -700,7 +678,7 @@ geometry_msgs::msg::TwistStamped PIDController::computeVelocityCommands(
     }
   }
 
-  RCLCPP_INFO_THROTTLE(
+  RCLCPP_DEBUG_THROTTLE(
     logger_, *clock_, 100,
     "PIDController command: plugin=%s stage=%s branch=%s plan_index=%d/%zu "
     "desired_v=%.3f "
