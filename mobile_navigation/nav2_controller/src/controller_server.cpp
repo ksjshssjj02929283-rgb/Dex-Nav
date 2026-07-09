@@ -837,18 +837,15 @@ void ControllerServer::computeControl()
       while (!costmap_ros_->isCurrent()) {
         r.sleep();
       }
-      // added by hz
       start = std::chrono::high_resolution_clock::now();
       updateGlobalPath();
       end = std::chrono::high_resolution_clock::now();
       elapsed = end - start;
-      if(elapsed.count() >= 100)
-      {
+      if (elapsed.count() >= 100) {
         RCLCPP_WARN(
           get_logger(), "Global path update cost: %.6f ms",
           elapsed.count());
       }
-      // end
 
       // ④ 规划级：每个控制周期在控制计算之前重算速度剖面（receding-horizon：
       // 从最新 odom 速度与最新 costmap 出发；全局重规划频率低，不能依赖 path 事件）。
@@ -862,18 +859,15 @@ void ControllerServer::computeControl()
           elapsed.count());
       }
 
-      // added by hz
       start = std::chrono::high_resolution_clock::now();
       computeAndPublishVelocity();
       end = std::chrono::high_resolution_clock::now();
       elapsed = end - start;
-      if(elapsed.count() >= 100)
-      {
+      if (elapsed.count() >= 100) {
         RCLCPP_WARN(
           get_logger(), "Local path update cost: %.6f ms",
           elapsed.count());
       }
-      // end
 
       if (isGoalReached()) {
         RCLCPP_INFO(get_logger(), "Reached the goal!");
@@ -885,13 +879,9 @@ void ControllerServer::computeControl()
       elapsed = end - start;
 
       if (!loop_rate.sleep()) {
-        // commented by hz
         RCLCPP_WARN(
           get_logger(), "Control loop missed its desired rate of %.4fHz, the cost time is %.6f ms",
           controller_frequency_, elapsed.count());
-        // end
-        // added by hz
-        std::cout << "------------------------------------------------------------" << std::endl;
       }
     }
   } catch (nav2_core::PlannerException & e) {
@@ -1049,7 +1039,7 @@ void ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
     last_speed_plan_viz_time_ = viz_now;
   }
 
-  RCLCPP_INFO_THROTTLE(
+  RCLCPP_DEBUG_THROTTLE(
     get_logger(), *get_clock(), 1000,
     "Speed plan dispatched: planner=%s points=%zu v_start=%.3f",
     current_speed_planner_.c_str(), current_trajectory_.points.size(),
@@ -1486,7 +1476,7 @@ bool ControllerServer::isWithinGoalCheckerTolerance(
     (trans_stopped_ok && rot_stopped_ok);
   const bool tolerance_accept = lon_ok && lat_ok && yaw_accept && stopped_accept;
 
-  RCLCPP_INFO_THROTTLE(
+  RCLCPP_DEBUG_THROTTLE(
     get_logger(), *get_clock(), 500,
     "GoalChecker tolerance: id=%s type=%s check_yaw=%s mark_reached=%s result=%s "
     "goal=(frame=%s x=%.3f y=%.3f yaw=%.3f) "
@@ -2030,7 +2020,7 @@ geometry_msgs::msg::TwistStamped ControllerServer::computeStagedVelocity(
   const double distance_to_goal = getDistanceToGoal(pose);
   const bool in_approach = distance_to_goal <= approach_distance_;
   if (in_approach) {
-    RCLCPP_INFO_THROTTLE(
+    RCLCPP_DEBUG_THROTTLE(
       get_logger(), *get_clock(), 500,
       "Staged control decision: approach has priority, distance_to_goal=%.3f <= "
       "approach_distance=%.3f; using controller=%s",
@@ -2046,7 +2036,7 @@ geometry_msgs::msg::TwistStamped ControllerServer::computeStagedVelocity(
   if (!align_done_) {
     double heading_error = 0.0;
     const bool has_target_heading = getTargetPointHeadingError(pose, heading_error);
-    RCLCPP_INFO_THROTTLE(
+    RCLCPP_DEBUG_THROTTLE(
       get_logger(), *get_clock(), 500,
       "Staged control decision: outside approach, distance_to_goal=%.3f > "
       "approach_distance=%.3f; target_heading_available=%s heading_error=%.3f "
@@ -2332,7 +2322,7 @@ void ControllerServer::computeAndPublishVelocity()
   auto t_feedback_end = std::chrono::high_resolution_clock::now();
   auto feedback_ms = std::chrono::duration<double, std::milli>(t_feedback_end - t_feedback_start).count();
 
-  RCLCPP_INFO_THROTTLE(
+  RCLCPP_DEBUG_THROTTLE(
     get_logger(), *get_clock(), 500,
     "ControllerServer command: phase=%s controller=%s goal_checker=%s "
     "cmd_vel.linear=(x=%.3f y=%.3f z=%.3f) cmd_vel.angular=(x=%.3f y=%.3f z=%.3f)",
@@ -2517,7 +2507,7 @@ bool ControllerServer::isGoalReached()
   const double yaw_tolerance = has_tolerances ? tf2::getYaw(goal_tolerance.orientation) :
     std::numeric_limits<double>::quiet_NaN();
 
-  RCLCPP_INFO_THROTTLE(
+  RCLCPP_DEBUG_THROTTLE(
     get_logger(), *get_clock(), 500,
     "GoalChecker plugin result: id=%s type=%s result=%s "
     "goal=(frame=%s x=%.3f y=%.3f yaw=%.3f) "

@@ -81,8 +81,8 @@ void FollowPathAction::on_wait_for_result(
   // Check if it is not same with the current one
   if (goal_.path != new_path) {
     if (new_path.poses.empty()) {
-      RCLCPP_WARN(
-        node_->get_logger(),
+      RCLCPP_WARN_THROTTLE(
+        node_->get_logger(), *node_->get_clock(), 2000,
         "[BT][Action:FollowPath] 检测到 empty path 更新，old poses=%zu，new poses=0，"
         "忽略本次更新，继续跟踪上一条有效路径",
         goal_.path.poses.size());
