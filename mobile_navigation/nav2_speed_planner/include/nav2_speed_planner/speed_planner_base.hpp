@@ -170,6 +170,11 @@ protected:
   double regulated_linear_scaling_min_radius_{1.2};
   double min_curvature_speed_{0.1};
   double constant_velocity_dist_threshold_{0.1};
+  // 曲率约束提前量（O-6）：进弯前该弧长距离即压到该弯的限速（而非物理刚好
+  // 够减速的最晚时刻才开始）；出弯后延续该弧长距离才允许恢复。给可能的
+  // 跟踪滞后（R22）留安全边际，也让转弯前减速更从容。<=0 关闭对应方向。
+  double curve_lead_in_distance_{0.3};
+  double curve_lead_out_distance_{0.15};
   bool enable_constant_velocity_while_turning_{false};
   // 路径终点目标速度。>=1e-3：末端 stop_distance_ 内蠕行该速度；
   // <1e-3：无蠕行区，剖面在终点收敛到 0。

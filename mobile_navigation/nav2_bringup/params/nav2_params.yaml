@@ -143,6 +143,8 @@ controller_server:
       curve_compute_dist: 0.1
       regulated_linear_scaling_min_radius: 1.2
       min_curvature_speed: 0.1
+      curve_lead_in_distance: 0.3    # O-6：进弯前该距离即压到弯道限速（给跟踪滞后留边际）
+      curve_lead_out_distance: 0.15   # O-6：出弯后延续该距离才恢复
       constant_velocity_dist_threshold: 0.1
       enable_constant_velocity_while_turning: False
     SCurveSpeedPlanner:
@@ -159,6 +161,8 @@ controller_server:
       curve_compute_dist: 0.1
       regulated_linear_scaling_min_radius: 1.2
       min_curvature_speed: 0.1
+      curve_lead_in_distance: 0.3    # O-6：进弯前该距离即压到弯道限速（给跟踪滞后留边际）
+      curve_lead_out_distance: 0.15   # O-6：出弯后延续该距离才恢复
       constant_velocity_dist_threshold: 0.1
       enable_constant_velocity_while_turning: False
       max_jerk: 0.5
@@ -172,6 +176,7 @@ controller_server:
       align_angular_kp: 1.5
       align_max_angular_velocity: 0.5
       align_min_angular_velocity: 0.08
+      align_target_distance: 0.3    # align 朝向对齐的目标点距离——盯路径前方该距离的目标点方位角（同 RPP carrot 取向），而非局部路径切向
       prepare:
         enabled: True
         obstacle_check_distance: 0.2    # footprint 前沿 + 该距离内检测（宽度取 footprint 实际半宽）
