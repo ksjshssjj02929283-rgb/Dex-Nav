@@ -426,6 +426,7 @@ controller_server:
       speed_loop_kp: 2.0
       speed_loop_ki: 0.2
       speed_loop_kd: 0.0
+      speed_loop_integrator_saturation: 0.3    # 积分项限幅（此前遗漏导致积分恒钳 0、ki 完全失效）
       angular_gain: 1.2    # 角速度增益：>1 收紧转向补偿曲线跟踪滞后（横向误差大→上调，振荡→下调）
       # ── ⑤ 反馈约束（横向/角速度反馈减速）──
       max_angular_vel: 1.5              # 角速度上限 (rad/s)：饱和时联动降 v 保持转弯半径

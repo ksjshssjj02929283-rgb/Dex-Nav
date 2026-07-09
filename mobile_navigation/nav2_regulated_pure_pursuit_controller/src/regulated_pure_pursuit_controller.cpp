@@ -142,6 +142,8 @@ void RegulatedPurePursuitController::configure(
     node, plugin_name_ + ".speed_loop_ki", rclcpp::ParameterValue(0.2));
   nav2_util::declare_parameter_if_not_declared(
     node, plugin_name_ + ".speed_loop_kd", rclcpp::ParameterValue(0.0));
+  nav2_util::declare_parameter_if_not_declared(
+    node, plugin_name_ + ".speed_loop_integrator_saturation", rclcpp::ParameterValue(0.3));
   node->get_parameter(plugin_name_ + ".max_linear_accel", max_linear_accel_);
   node->get_parameter(plugin_name_ + ".traj_speed_lookahead", traj_speed_lookahead_);
   node->get_parameter(plugin_name_ + ".angular_gain", angular_gain_);
@@ -153,6 +155,8 @@ void RegulatedPurePursuitController::configure(
   node->get_parameter(plugin_name_ + ".speed_loop_kp", conf.kp);
   node->get_parameter(plugin_name_ + ".speed_loop_ki", conf.ki);
   node->get_parameter(plugin_name_ + ".speed_loop_kd", conf.kd);
+  node->get_parameter(
+    plugin_name_ + ".speed_loop_integrator_saturation", conf.integrator_saturation_level);
   conf.integrator_enable = true;
   speed_pid_.Init(conf);
   node->get_parameter(plugin_name_ + ".lookahead_dist", lookahead_dist_);
@@ -373,7 +377,9 @@ geometry_msgs::msg::TwistStamped RegulatedPurePursuitController::computeVelocity
   // 期望速度 = 最近轨迹点规划速度（减速尾段/曲率/障碍/蠕行已逐点编码，
   // 控制器纯跟踪）；无轨迹（速度规划禁用的灰度模式）回退 desired_linear_vel。
   double traj_v = 0.0;
-  linear_vel = nearestTrajectorySpeed(pose, traj_v) ? traj_v : desired_linear_vel_;
+  double traj_accel = 0.0;
+  const bool have_traj = nearestTrajectorySpeed(pose, traj_v, traj_accel);
+  linear_vel = have_traj ? traj_v : desired_linear_vel_;
 
   // Make sure we're in compliance with basic constraints
   double angle_to_heading;
@@ -392,7 +398,7 @@ geometry_msgs::msg::TwistStamped RegulatedPurePursuitController::computeVelocity
     applyTrackingFeedbackConstraints(
       transformed_plan, curvature, linear_vel, cross_track_error);
 
-    linear_vel = trackLinearVelocity(linear_vel, speed.linear.x);
+    linear_vel = trackLinearVelocity(linear_vel, speed.linear.x, have_traj ? traj_accel : 0.0);
 
     // angular_gain > 1 收紧转向补偿曲线滞后；饱和 clamp 兜底（联动降速后
     // 一般已 ≤ 上限，此处防浮点/直线段边界）。
@@ -820,14 +826,15 @@ void RegulatedPurePursuitController::setTrajectory(
       tf2::doTransform(ps, ps, to_costmap);
     }
     pts.push_back({ps.pose.position.x, ps.pose.position.y,
-        std::fabs(static_cast<double>(tp.longitudinal_velocity))});
+        std::fabs(static_cast<double>(tp.longitudinal_velocity)),
+        static_cast<double>(tp.acceleration)});
   }
   std::lock_guard<std::mutex> lock(traj_mutex_);
   traj_speed_points_ = std::move(pts);
 }
 
 bool RegulatedPurePursuitController::nearestTrajectorySpeed(
-  const geometry_msgs::msg::PoseStamped & pose, double & traj_speed)
+  const geometry_msgs::msg::PoseStamped & pose, double & traj_speed, double & traj_accel)
 {
   std::lock_guard<std::mutex> lock(traj_mutex_);
   if (traj_speed_points_.empty()) {
@@ -846,8 +853,11 @@ bool RegulatedPurePursuitController::nearestTrajectorySpeed(
   }
   // 前瞻窗取 max：剖面首点被钉在当前实际速度（receding-horizon 状态戳），
   // 静止时精确最近点恒为 0 会形成自引用死锁——起点必须用前瞻破环；
-  // 窗内至少包含最近点的下一个点。
+  // 窗内至少包含最近点的下一个点。accel 跟随返回速度所在的同一点，供速度
+  // 环前馈——取自最近点而非最终窗口选中点：前馈要反映"当前位置该有的
+  // 加速度"，不是窗口内被选中拿来抬高速度上限的那个远处点。
   traj_speed = traj_speed_points_[best_i].speed;
+  traj_accel = traj_speed_points_[best_i].accel;
   double dist = 0.0;
   for (size_t i = best_i + 1; i < traj_speed_points_.size(); ++i) {
     const double dx = traj_speed_points_[i].x - traj_speed_points_[i - 1].x;
@@ -862,7 +872,7 @@ bool RegulatedPurePursuitController::nearestTrajectorySpeed(
 }
 
 double RegulatedPurePursuitController::trackLinearVelocity(
-  double target_vel, double measured_vel)
+  double target_vel, double measured_vel, double feedforward_accel)
 {
   const auto now = clock_->now();
   double dt = 0.05;
@@ -874,7 +884,9 @@ double RegulatedPurePursuitController::trackLinearVelocity(
     dt = 0.05;  // 首帧/长停顿防积分爆冲
   }
 
-  double accel_cmd = speed_pid_.Control(target_vel - measured_vel, dt);
+  // 前馈 + 反馈：反馈单独跟踪一个持续变化的斜坡目标存在稳态滞后（≈斜率/kp），
+  // 前馈把"此刻规划期望的加速度"直接喂给控制器，反馈只需修正前馈之外的残差。
+  double accel_cmd = feedforward_accel + speed_pid_.Control(target_vel - measured_vel, dt);
   accel_cmd = std::clamp(accel_cmd, -max_linear_accel_, max_linear_accel_);
   double v_out = measured_vel + accel_cmd * dt;
   // 不越过目标，防在目标处振荡。
