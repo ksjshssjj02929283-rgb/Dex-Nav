@@ -292,6 +292,7 @@ void PIDController::setTrajectory(const nav_interfaces::msg::RobotTrajectory & t
     // per-point desired velocity and curvature from SpeedPlanner
     tp.speed_limit = pt.longitudinal_velocity;
     tp.curvature = pt.path_kappa;
+    tp.accel = pt.acceleration;
     transformed_traj.push_back(std::move(tp));
   }
 
@@ -675,8 +676,11 @@ geometry_msgs::msg::TwistStamped PIDController::computeVelocityCommands(
           const double desired_v = std::fabs(desired_linear_vel_);
           const double max_cmd_v = (err_x < 0.0) ?
             std::max(desired_v, final_rotation_max_v_) : desired_v;
+          const double ff_accel = (plan_index_ >= 0 &&
+            static_cast<size_t>(plan_index_) < controller_traj_.size()) ?
+            controller_traj_[plan_index_].accel : 0.0;
           cmd_vel.twist.linear.x = LinearSpeedControl(
-            velocity, err_x, max_cmd_v, desired_v, 0.0);
+            velocity, err_x, max_cmd_v, desired_v, 0.0, ff_accel);
           cmd_vel.twist.angular.z = AngularSpeedControl(velocity, err_theta);
           break;
         }
@@ -759,7 +763,8 @@ double PIDController::LinearSpeedControl(
   double e_dist,
   double max_linear_speed,
   double min_target_speed,
-  double position_deadband)
+  double position_deadband,
+  double feedforward_accel)
 {
   double curr_vel = velocity.linear.x;
   if (reverse_enabled_) {
@@ -823,7 +828,9 @@ double PIDController::LinearSpeedControl(
   target_vel = std::clamp(target_vel, -linear_limit, linear_limit);
 
   const double speed_error = target_vel - curr_vel;
-  double acceleration_cmd = speed_nav2_pid_controller_.Control(speed_error, d_t_);
+  // 前馈 + 反馈：纯反馈跟踪持续下降的斜坡目标存在稳态滞后（≈斜率/kp），
+  // 前馈把规划层已知的"此刻期望加速度"直接喂给控制器，反馈只需修正残差。
+  double acceleration_cmd = feedforward_accel + speed_nav2_pid_controller_.Control(speed_error, d_t_);
   if (!std::isfinite(acceleration_cmd)) {
     acceleration_cmd = 0.0;
   }

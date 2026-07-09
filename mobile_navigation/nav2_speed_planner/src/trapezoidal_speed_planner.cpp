@@ -38,6 +38,22 @@ void TrapezoidalSpeedPlanner::assignVelocityProfile(
   computeDecelPlan(work, arc_s);        // 后向：一切低速点的进入坡道
   stampStartVelocity(work, curr_vel);   // 起点状态戳（receding-horizon）
   computeAccelPlan(work, arc_s);        // 前向：起步 + 一切低速区出口的再加速坡道
+
+  // 逐点填充 accel 字段（局部段加速度 (v[i+1]²−v[i]²)/(2·Δs)）：恒加速度剖面
+  // 内部虽是分段常数，但此前一直留空 0——消费侧（⑤ 控制器速度环）想用它做
+  // 前馈抵消纯反馈的斜坡跟踪滞后时，T 型（当前默认）读到的全是 0，前馈失效。
+  // 末点沿用倒数第二段的值（无下一点可差分）。
+  for (size_t i = 0; i + 1 < work.size(); ++i) {
+    const double ds = arc_s[i + 1] - arc_s[i];
+    if (ds > 1e-6) {
+      const double v0 = work[i].speed_limit;
+      const double v1 = work[i + 1].speed_limit;
+      work[i].accel = (v1 * v1 - v0 * v0) / (2.0 * ds);
+    }
+  }
+  if (work.size() >= 2) {
+    work.back().accel = work[work.size() - 2].accel;
+  }
 }
 
 // ============================ 减速规划（后向 pass）============================

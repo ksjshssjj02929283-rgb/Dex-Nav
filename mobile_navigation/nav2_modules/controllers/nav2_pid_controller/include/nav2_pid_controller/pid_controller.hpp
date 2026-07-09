@@ -145,6 +145,7 @@ protected:
     geometry_msgs::msg::PoseStamped pose;
     double speed_limit = 0.0;  // desired longitudinal velocity (m/s)
     double curvature = 0.0;    // path_kappa
+    double accel = 0.0;        // 规划加速度，供速度环前馈（几何路径回退时恒 0）
   };
 
   enum ControllerStage
@@ -201,7 +202,8 @@ protected:
     double e_dist,
     double max_linear_speed = std::numeric_limits<double>::quiet_NaN(),
     double min_target_speed = 0.0,
-    double position_deadband = 0.0);
+    double position_deadband = 0.0,
+    double feedforward_accel = 0.0);
 
   /**
    * @brief Angular PID control.
