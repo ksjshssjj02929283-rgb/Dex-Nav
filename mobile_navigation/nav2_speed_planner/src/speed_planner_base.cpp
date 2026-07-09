@@ -54,6 +54,10 @@ void SpeedPlannerBase::configure(
   nav2_util::declare_parameter_if_not_declared(
     node, plugin_name_ + ".constant_velocity_dist_threshold", rclcpp::ParameterValue(0.1));
   nav2_util::declare_parameter_if_not_declared(
+    node, plugin_name_ + ".curve_lead_in_distance", rclcpp::ParameterValue(0.3));
+  nav2_util::declare_parameter_if_not_declared(
+    node, plugin_name_ + ".curve_lead_out_distance", rclcpp::ParameterValue(0.15));
+  nav2_util::declare_parameter_if_not_declared(
     node, plugin_name_ + ".enable_constant_velocity_while_turning", rclcpp::ParameterValue(false));
   nav2_util::declare_parameter_if_not_declared(
     node, plugin_name_ + ".end_speed", rclcpp::ParameterValue(0.03));
@@ -76,6 +80,8 @@ void SpeedPlannerBase::configure(
   node->get_parameter(plugin_name_ + ".min_curvature_speed", min_curvature_speed_);
   node->get_parameter(
     plugin_name_ + ".constant_velocity_dist_threshold", constant_velocity_dist_threshold_);
+  node->get_parameter(plugin_name_ + ".curve_lead_in_distance", curve_lead_in_distance_);
+  node->get_parameter(plugin_name_ + ".curve_lead_out_distance", curve_lead_out_distance_);
   node->get_parameter(
     plugin_name_ + ".enable_constant_velocity_while_turning",
     enable_constant_velocity_while_turning_);
@@ -450,6 +456,50 @@ void SpeedPlannerBase::applyCurvatureConstraint(
         // 只降不升：区间内安全置零点/更严约束不得被抬升到 min_v。
         output.at(i).speed_limit = std::min(output.at(i).speed_limit, min_v);
         break;
+      }
+    }
+  }
+
+  // O-6 曲率约束前后延伸（独立于 enable_constant_velocity_while_turning_）：
+  // 弯道本身的进入坡道已由 Phase B 的 backward pass 生成，但那是"物理上刚好
+  // 够减速"的最晚时刻——零安全边际。这里让弯前 curve_lead_in_distance_、
+  // 弯后 curve_lead_out_distance_ 弧长内也直接钳到该弯的限速，提前量成为
+  // Phase B 减速坡道的显式起点，给跟踪滞后（R22）留边际，也让转弯前的
+  // 减速更从容。沿用与主循环相同的 region_type="curve" 标注，RViz 锚点
+  // （curve_start/curve_end）与日志自动反映延伸后的真实范围，无需改动。
+  if ((curve_lead_in_distance_ > 1e-6 || curve_lead_out_distance_ > 1e-6) &&
+    !latacc_filtered_ranges.empty())
+  {
+    const std::vector<double> arc_s = computeCumulativeArcLengths(path);
+    for (const auto & range : latacc_filtered_ranges) {
+      const size_t s_idx = std::get<0>(range);
+      const size_t e_idx = std::get<1>(range);
+      const double min_v = std::get<2>(range);
+
+      if (curve_lead_in_distance_ > 1e-6) {
+        const double lead_in_start_s = arc_s[s_idx] - curve_lead_in_distance_;
+        size_t i = s_idx;
+        while (i-- > 1) {  // index 0 为状态戳，不参与（同 O-2 backward pass 约定）
+          if (arc_s[i] < lead_in_start_s) {
+            break;
+          }
+          output.at(i).speed_limit = std::min(output.at(i).speed_limit, min_v);
+          if (output.at(i).region_type.empty()) {
+            output.at(i).region_type = "curve";
+          }
+        }
+      }
+      if (curve_lead_out_distance_ > 1e-6) {
+        const double lead_out_end_s = arc_s[e_idx] + curve_lead_out_distance_;
+        for (size_t i = e_idx + 1; i < output.size(); ++i) {
+          if (arc_s[i] > lead_out_end_s) {
+            break;
+          }
+          output.at(i).speed_limit = std::min(output.at(i).speed_limit, min_v);
+          if (output.at(i).region_type.empty()) {
+            output.at(i).region_type = "curve";
+          }
+        }
       }
     }
   }
