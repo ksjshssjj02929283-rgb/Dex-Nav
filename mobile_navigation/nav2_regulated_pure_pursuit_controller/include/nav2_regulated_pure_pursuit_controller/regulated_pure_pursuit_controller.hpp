@@ -279,12 +279,15 @@ protected:
   void setTrajectory(const nav_interfaces::msg::RobotTrajectory & trajectory) override;
 
   /// 最近点起前瞻窗内的最大规划速度（起点状态戳为当前速度，静止时
-  /// 精确最近点恒 0 会自引用死锁——前瞻破环）。
+  /// 精确最近点恒 0 会自引用死锁——前瞻破环）；traj_accel 输出与返回速度
+  /// 同一轨迹点的规划加速度，供速度环前馈使用。
   bool nearestTrajectorySpeed(
-    const geometry_msgs::msg::PoseStamped & pose, double & traj_speed);
+    const geometry_msgs::msg::PoseStamped & pose, double & traj_speed, double & traj_accel);
 
-  /// 速度环：PID 输出加速度 → 限幅 → 积分 → 不越过目标。
-  double trackLinearVelocity(double target_vel, double measured_vel);
+  /// 速度环：反馈（PID）+ 前馈（规划加速度）→ 限幅 → 积分 → 不越过目标。
+  /// 纯反馈跟踪一个持续下降的斜坡目标时存在稳态滞后（≈斜率/kp）；前馈项
+  /// 直接告诉控制器"此刻规划期望的加速度"，把滞后压到反馈只需修正的残差。
+  double trackLinearVelocity(double target_vel, double measured_vel, double feedforward_accel);
 
   /// 机器人到最近路径段的垂距（cross-track error，机器人系）。
   double computeCrossTrackError(const nav_msgs::msg::Path & transformed_plan) const;
@@ -299,6 +302,7 @@ protected:
     double x;
     double y;
     double speed;
+    double accel;
   };
   std::vector<TrajSpeedPoint> traj_speed_points_;
   std::mutex traj_mutex_;
