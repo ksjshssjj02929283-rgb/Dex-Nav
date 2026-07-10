@@ -2,6 +2,8 @@ mobile_control_node:
   ros__parameters:
     # 基础参数
     control_frequency: 20.0
+    # 进入目标容差后持续发送零速度的确认时间，防止刚到达就提前报成功
+    stop_confirm_duration: 0.2
     max_v: 0.35
     min_v: 0.0
     max_w: 1.0

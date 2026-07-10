@@ -42,6 +42,7 @@ public:
     MobileControlNode() : Node("mobile_control_node")
     {
         this->declare_parameter("control_frequency", 20.0);
+        this->declare_parameter("stop_confirm_duration", 0.2);
         this->declare_parameter("max_v", 0.35);
         this->declare_parameter("min_v", 0.0);
         this->declare_parameter("max_w", 1.0);
@@ -92,6 +93,10 @@ public:
         this->declare_parameter("straight.switch_speed", 0.1);
 
         control_frequency_ = this->get_parameter("control_frequency").as_double();
+        stop_confirm_duration_ =
+            std::max(0.0, this->get_parameter("stop_confirm_duration").as_double());
+        stop_confirm_cycles_ = std::max(
+            1, static_cast<int>(std::ceil(stop_confirm_duration_ * control_frequency_)));
         max_v_ = this->get_parameter("max_v").as_double();
         min_v_ = this->get_parameter("min_v").as_double();
         max_w_ = this->get_parameter("max_w").as_double();
@@ -141,6 +146,10 @@ public:
         timer_ = this->create_wall_timer(
             std::chrono::milliseconds(static_cast<int>(1000.0 / control_frequency_)),
             std::bind(&MobileControlNode::controlLoop, this));
+        RCLCPP_INFO(
+            this->get_logger(),
+            "Stop confirmation configured: duration=%.3fs cycles=%d frequency=%.1fHz",
+            stop_confirm_duration_, stop_confirm_cycles_, control_frequency_);
 
         get_map_pose_ = false;
         is_goal_ = false;
@@ -178,9 +187,11 @@ private:
     bool succeed_returned_;
     bool canceled_returned_;
     int stop_count_;
+    int stop_confirm_cycles_;
     GoalMode goal_mode_;
 
     double control_frequency_;
+    double stop_confirm_duration_;
     double max_v_;
     double min_v_;
     double max_w_;
@@ -336,7 +347,7 @@ private:
                 response->message = "IDLE";
                 response->success = true;
             }
-        } else if (is_goal_ && stop_count_ > 20) {
+        } else if (is_goal_ && stop_count_ > stop_confirm_cycles_) {
             if (!succeed_returned_) {
                 response->message = "SUCCEEDED";
                 response->success = true;
@@ -345,7 +356,8 @@ private:
                 response->message = "IDLE";
                 response->success = true;
             }
-        } else if ((get_map_pose_ && !is_goal_) || (is_goal_ && stop_count_ <= 20)) {
+        } else if ((get_map_pose_ && !is_goal_) ||
+                   (is_goal_ && stop_count_ <= stop_confirm_cycles_)) {
             response->message = "CONTROL";
             response->success = true;
         } else {
@@ -353,7 +365,8 @@ private:
             response->success = true;
         }
 
-        RCLCPP_INFO(this->get_logger(), "Status query: %s", response->message.c_str());
+        // 客户端会记录状态变化；服务端每次查询只保留 DEBUG，避免高频轮询刷屏。
+        RCLCPP_DEBUG(this->get_logger(), "Status query: %s", response->message.c_str());
     }
 
     void cancelControlCallback(
@@ -523,7 +536,7 @@ private:
             return;
         }
 
-        if (stop_count_ > 40 || !get_map_pose_) {
+        if ((is_goal_ && stop_count_ > stop_confirm_cycles_) || !get_map_pose_) {
             return;
         }
 
@@ -572,7 +585,7 @@ private:
             filtered_cmd_vel_.angular.z = 0.0;
             stop_count_++;
 
-            if (stop_count_ <= 20) {
+            if (stop_count_ <= stop_confirm_cycles_) {
                 cmd_vel_pub_->publish(filtered_cmd_vel_);
                 if (stop_count_ == 1) {
                     RCLCPP_INFO(
