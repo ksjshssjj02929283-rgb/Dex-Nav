@@ -34,6 +34,7 @@
 #include "nav2_msgs/msg/speed_limit.hpp"
 #include "diagnostic_msgs/msg/diagnostic_array.hpp"
 #include "visualization_msgs/msg/marker_array.hpp"
+#include "std_msgs/msg/string.hpp"
 #include "nav_2d_utils/odom_subscriber.hpp"
 #include "nav2_util/lifecycle_node.hpp"
 #include "nav2_util/simple_action_server.hpp"
@@ -370,6 +371,17 @@ protected:
     speed_plan_publisher_;
   rclcpp::Subscription<nav2_msgs::msg::SpeedLimit>::SharedPtr speed_limit_sub_;
 
+  // nav_monitor 任务回显：setPlannerPath() 里每次真正生效的 global path 复述一份，
+  // 供 nav2_nav_monitor 记录 planned_path_length/replanning_count；setControllerPhase()
+  // 切换时复述阶段名，供 nav_monitor 记录 phase_transitions（track/approach 段时间分析）。
+  // 默认关闭零开销
+  bool enable_nav_monitor_echo_{false};
+  rclcpp_lifecycle::LifecyclePublisher<nav_msgs::msg::Path>::SharedPtr global_path_echo_pub_;
+  rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::String>::SharedPtr phase_echo_pub_;
+  // 期望速度回显：每控制周期发布当前位置最近轨迹点的规划速度
+  rclcpp_lifecycle::LifecyclePublisher<geometry_msgs::msg::Twist>::SharedPtr
+    desired_vel_echo_pub_;
+
   // Progress Checker Plugin
   pluginlib::ClassLoader<nav2_core::ProgressChecker> progress_checker_loader_;
   nav2_core::ProgressChecker::Ptr progress_checker_;
@@ -488,7 +500,7 @@ protected:
   bool prepare_backup_active_{false};
   bool prepare_check_pending_{true};
   // align 阶段状态机：本次导航是否已完成过 align（含"收敛"与"无法计算朝向,
-  // 视为跳过"两种终止方式）。仅到达目标时重置（同 prepare，理由见 DEC-030：
+  // 视为跳过"两种终止方式）。仅到达目标时重置（同 prepare——
   // computeControl() 会因 BT 恢复重试被多次重新进入，不能在入口重置）。
   // 一旦置真，本次导航剩余时间不再回退进 align——中途朝向误差变大交给
   // track 阶段的控制器自身处理（RPP/MPPI 均有各自的朝向纠偏机制）。

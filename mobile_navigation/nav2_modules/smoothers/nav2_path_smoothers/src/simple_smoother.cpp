@@ -1,4 +1,4 @@
-// Copied from nav2_smoother (upstream) into nav2_modules per DEC-027 修订：
+// Copied from nav2_smoother (upstream) into nav2_modules:
 // 平滑器插件统一归口 nav2_modules/smoothers/；命名空间改为 nav2_path_smoothers
 // 以避免与暂保留的 nav2_smoother 包发生 pluginlib 注册冲突。
 // Copyright (c) 2022, Samsung Research America
