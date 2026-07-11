@@ -48,11 +48,105 @@ def integrate_time(s, v):
     return t
 
 
+def load_csv_full(path):
+    """全列读取（新 CSV 含 accel/jerk/rel_time/region，旧 CSV 自动缺省）。"""
+    cols = {"s": [], "v": [], "accel": [], "jerk": [], "t": [], "region": []}
+    with open(path) as f:
+        for row in csv.DictReader(f):
+            cols["s"].append(float(row["s"]))
+            cols["v"].append(float(row["v"]))
+            cols["accel"].append(float(row.get("accel", 0) or 0))
+            cols["jerk"].append(float(row.get("jerk", 0) or 0))
+            cols["t"].append(float(row.get("rel_time", 0) or 0))
+            cols["region"].append(row.get("region", "") or "")
+    return cols
+
+
+REGION_COLORS = {
+    "obstacle": "#ef9a9a", "obstacle_buffer": "#ffcc80",
+    "obstacle_exempt": "#c5e1a5", "curve": "#b39ddb", "stop_zone": "#90caf9",
+}
+
+
+def render_detail(csv_path, out_dir, accel=0.6, decel=-0.6):
+    """单场景四联详图：v-s(区域底色) / a-s(限值线) / jerk-s / v-t。"""
+    d = load_csv_full(csv_path)
+    name = os.path.splitext(os.path.basename(csv_path))[0]
+    fig, axes = plt.subplots(4, 1, figsize=(10, 11), sharex=False)
+    ax_v, ax_a, ax_j, ax_t = axes
+
+    # region 底色（v-s 面板）
+    seen = {}
+    i = 0
+    n = len(d["s"])
+    while i < n:
+        r = d["region"][i]
+        j = i
+        while j + 1 < n and d["region"][j + 1] == r:
+            j += 1
+        if r in REGION_COLORS:
+            ax_v.axvspan(d["s"][i], d["s"][j], color=REGION_COLORS[r],
+                         alpha=0.35, lw=0)
+            seen[r] = True
+        i = j + 1
+    ax_v.plot(d["s"], d["v"], "-o", ms=2, lw=1.2, color="#1565c0")
+    ax_v.set_title(f"{name}  图1: v-s（底色=region 标记）")
+    ax_v.set_ylabel("v (m/s)")
+    from matplotlib.patches import Patch
+    if seen:
+        ax_v.legend(handles=[Patch(color=REGION_COLORS[r], alpha=0.5, label=r)
+                             for r in seen], fontsize=8)
+
+    ax_a.plot(d["s"], d["accel"], "-o", ms=2, lw=1.0, color="#e65100")
+    ax_a.axhline(accel, color="k", ls="--", lw=0.8)
+    ax_a.axhline(decel, color="k", ls="--", lw=0.8)
+    ax_a.set_title("图2: accel-s（虚线=accel/decel 配置限值）")
+    ax_a.set_ylabel("a (m/s²)")
+
+    # 隐含 jerk：da/dt 数值差分（不依赖 jerk 字段——S 型未回填该字段，
+    # 且弧长域 da/ds=jerk/v 会随速度改变斜率，时间域差分才是合规判据）
+    ts = d["t"] if any(x > 0 for x in d["t"]) else integrate_time(d["s"], d["v"])
+    js, jv = [], []
+    for i in range(1, len(ts)):
+        dt = ts[i] - ts[i - 1]
+        if dt > 1e-6:
+            js.append((d["s"][i] + d["s"][i - 1]) / 2)
+            jv.append((d["accel"][i] - d["accel"][i - 1]) / dt)
+    ax_j.plot(js, jv, "-o", ms=2, lw=1.0, color="#6a1b9a")
+    ax_j.set_title("图3: 隐含 jerk-s（da/dt 数值差分；T 型为脉冲、S 型应 ≤ max_jerk）")
+    ax_j.set_ylabel("jerk (m/s³)")
+
+    ax_t.plot(ts, d["v"], "-o", ms=2, lw=1.2, color="#2e7d32", label="v")
+    ax_t2 = ax_t.twinx()
+    ax_t2.plot(ts, d["accel"], "-s", ms=2, lw=1.0, color="#e65100", label="a")
+    ax_t2.set_ylabel("a (m/s²)")
+    ax_t.set_title("图4: v-t 与 a-t（时间域：恒 jerk 的 a 应为对称线性斜坡）")
+    ax_t.set_xlabel("t (s)")
+    ax_t.set_ylabel("v (m/s)")
+    h1, l1 = ax_t.get_legend_handles_labels()
+    h2, l2 = ax_t2.get_legend_handles_labels()
+    ax_t.legend(h1 + h2, l1 + l2, fontsize=8)
+
+    for ax in axes[:3]:
+        ax.set_xlabel("s (m)")
+    for ax in axes:
+        ax.grid(True, alpha=0.3)
+    fig.tight_layout()
+    out = os.path.join(out_dir, name + ".png")
+    fig.savefig(out, dpi=120)
+    plt.close(fig)
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--dir", default="/tmp/speed_plan_test")
-    ap.add_argument("--out", default="/tmp/speed_plan_test/speed_profiles.png")
+    default_root = os.path.expanduser("~/.dexe/navigation/speed_planner")
+    ap.add_argument("--dir", default=os.path.join(default_root, "csv"))
+    ap.add_argument("--out", default=os.path.join(default_root, "speed_profiles.png"))
+    ap.add_argument("--no-detail", action="store_true", help="跳过每场景四联详图")
     args = ap.parse_args()
+    args.dir = os.path.expanduser(args.dir)
+    args.out = os.path.expanduser(args.out)
 
     dist_files = {}      # {length: {planner: path}}
     obstacle_files = {}  # {tag: path}
@@ -163,6 +257,13 @@ def main():
     fig.tight_layout(rect=[0, 0, 1, 0.95])
     fig.savefig(args.out, dpi=105)
     print(f"saved: {args.out}")
+
+    if not args.no_detail:
+        detail_dir = os.path.join(os.path.dirname(args.out), "detail")
+        os.makedirs(detail_dir, exist_ok=True)
+        outs = [render_detail(p, detail_dir)
+                for p in sorted(glob.glob(os.path.join(args.dir, "*.csv")))]
+        print(f"每场景详图 {len(outs)} 张 → {detail_dir}/")
 
 
 if __name__ == "__main__":
