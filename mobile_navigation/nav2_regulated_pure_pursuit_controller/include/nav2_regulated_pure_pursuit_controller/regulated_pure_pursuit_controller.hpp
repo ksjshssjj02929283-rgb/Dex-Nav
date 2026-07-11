@@ -315,6 +315,12 @@ protected:
   double min_lateral_speed_scale_{0.3};
   nav2_controller_common::PIDController speed_pid_;
   rclcpp::Time last_speed_track_time_{0, 0, RCL_ROS_TIME};
+  // 速度环指令积分器：锚定上一周期指令而非实测——实测只进误差项，
+  // 锚定实测会让指令每周期被拉回 plant 的滞后响应（减速互锁、超速泄放
+  // 被钳制）。与实测偏差超过 reseed 阈值（外力/急停/打滑）时重新对齐。
+  bool last_speed_cmd_valid_{false};
+  double last_speed_cmd_{0.0};
+  double speed_cmd_reseed_error_{0.3};
 
   std::shared_ptr<tf2_ros::Buffer> tf_;
   std::string plugin_name_;

@@ -144,6 +144,8 @@ void RegulatedPurePursuitController::configure(
     node, plugin_name_ + ".speed_loop_kd", rclcpp::ParameterValue(0.0));
   nav2_util::declare_parameter_if_not_declared(
     node, plugin_name_ + ".speed_loop_integrator_saturation", rclcpp::ParameterValue(0.3));
+  declare_parameter_if_not_declared(
+    node, plugin_name_ + ".speed_loop_cmd_reseed_error", rclcpp::ParameterValue(0.3));
   node->get_parameter(plugin_name_ + ".max_linear_accel", max_linear_accel_);
   node->get_parameter(plugin_name_ + ".traj_speed_lookahead", traj_speed_lookahead_);
   node->get_parameter(plugin_name_ + ".angular_gain", angular_gain_);
@@ -157,6 +159,8 @@ void RegulatedPurePursuitController::configure(
   node->get_parameter(plugin_name_ + ".speed_loop_kd", conf.kd);
   node->get_parameter(
     plugin_name_ + ".speed_loop_integrator_saturation", conf.integrator_saturation_level);
+  node->get_parameter(
+    plugin_name_ + ".speed_loop_cmd_reseed_error", speed_cmd_reseed_error_);
   conf.integrator_enable = true;
   speed_pid_.Init(conf);
   node->get_parameter(plugin_name_ + ".lookahead_dist", lookahead_dist_);
@@ -268,6 +272,7 @@ void RegulatedPurePursuitController::activate()
   global_path_pub_->on_activate();
   carrot_pub_->on_activate();
   carrot_arc_pub_->on_activate();
+  last_speed_cmd_valid_ = false;  // 新一轮运行以实测重新播种指令积分器
   // Add callback for dynamic parameters
   auto node = node_.lock();
   dyn_params_handler_ = node->add_on_set_parameters_callback(
@@ -851,13 +856,21 @@ bool RegulatedPurePursuitController::nearestTrajectorySpeed(
       best_i = i;
     }
   }
-  // 前瞻窗取 max：剖面首点被钉在当前实际速度（receding-horizon 状态戳），
-  // 静止时精确最近点恒为 0 会形成自引用死锁——起点必须用前瞻破环；
-  // 窗内至少包含最近点的下一个点。accel 跟随返回速度所在的同一点，供速度
-  // 环前馈——取自最近点而非最终窗口选中点：前馈要反映"当前位置该有的
-  // 加速度"，不是窗口内被选中拿来抬高速度上限的那个远处点。
-  traj_speed = traj_speed_points_[best_i].speed;
-  traj_accel = traj_speed_points_[best_i].accel;
+  // 速度目标 = 前方 lookahead 窗内的 max，且「排除最近点自身」：最近点几乎
+  // 恒为 receding-horizon 剖面的状态戳首点（=当前实际速度，是测量不是指令），
+  // 纳入 max 会让目标自我背书——超速被固化为新目标（反馈失去回拉误差）、
+  // 减速坡道上目标死锁在当前速度（直到换控制器才断崖）。静止起步时最近点
+  // 速度恒 0 的自引用死锁同样由前方坡道点破环。
+  // accel 与速度窗同基准取首个前方点：最近点是状态戳，其 accel 由实测
+  // 反推（实测滞后越多越负），与 PID 误差项双重携带同一份滞后会双倍下压；
+  // 前方点的 accel 才是"规划要求的加速度"。
+  if (best_i + 1 >= traj_speed_points_.size()) {
+    traj_speed = traj_speed_points_[best_i].speed;  // 已在末点，无前方点可用
+    traj_accel = traj_speed_points_[best_i].accel;
+    return true;
+  }
+  traj_accel = traj_speed_points_[best_i + 1].accel;
+  traj_speed = 0.0;
   double dist = 0.0;
   for (size_t i = best_i + 1; i < traj_speed_points_.size(); ++i) {
     const double dx = traj_speed_points_[i].x - traj_speed_points_[i - 1].x;
@@ -884,16 +897,31 @@ double RegulatedPurePursuitController::trackLinearVelocity(
     dt = 0.05;  // 首帧/长停顿防积分爆冲
   }
 
+  // 指令积分器：锚定上一周期指令。锚定实测会让指令与实测的差恒被限制在
+  // 一个加速度步长内——减速时"指令等实测、实测等指令"互锁（滞后一个 plant
+  // 时间常数），超速时只能以 kp·e·dt 的速率泄放；实测只进误差项。
+  // 与实测偏差过大（外力/急停/打滑导致指令与现实脱节）时重新对齐。
+  if (!last_speed_cmd_valid_ ||
+    std::fabs(last_speed_cmd_ - measured_vel) > speed_cmd_reseed_error_)
+  {
+    last_speed_cmd_ = measured_vel;
+    last_speed_cmd_valid_ = true;
+  }
+
   // 前馈 + 反馈：反馈单独跟踪一个持续变化的斜坡目标存在稳态滞后（≈斜率/kp），
   // 前馈把"此刻规划期望的加速度"直接喂给控制器，反馈只需修正前馈之外的残差。
   double accel_cmd = feedforward_accel + speed_pid_.Control(target_vel - measured_vel, dt);
   accel_cmd = std::clamp(accel_cmd, -max_linear_accel_, max_linear_accel_);
-  double v_out = measured_vel + accel_cmd * dt;
-  // 不越过目标，防在目标处振荡。
-  if (target_vel > measured_vel) {
-    return std::min(v_out, target_vel);
-  }
-  return std::max(v_out, target_vel);
+  double v_out = last_speed_cmd_ + accel_cmd * dt;
+  // 输出界（符号感知）：上限=规划速度——逐点速度既是跟踪参考也是速度限幅
+  //（曲率/障碍/蠕行 cap 编码在内，指令超过即违反规划约束）；下界 0——前向
+  // 减速允许下探到 0 主动制动（保留制动权），但不得穿零倒转；倒车段对称。
+  // desired_linear_vel 作绝对兜底（无轨迹灰度模式/剖面异常时）。
+  const double hi = std::min(std::max(0.0, target_vel), desired_linear_vel_);
+  const double lo = std::max(std::min(0.0, target_vel), -desired_linear_vel_);
+  v_out = std::clamp(v_out, lo, hi);
+  last_speed_cmd_ = v_out;
+  return v_out;
 }
 
 void RegulatedPurePursuitController::setSpeedLimit(
