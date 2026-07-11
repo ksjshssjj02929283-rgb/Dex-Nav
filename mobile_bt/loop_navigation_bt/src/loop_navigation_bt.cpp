@@ -1,22 +1,55 @@
 #include "loop_navigation_bt/loop_navigation_bt.hpp"
 
-#include <tf2_geometry_msgs/tf2_geometry_msgs.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
+#include <tf2/utils.h>
 
-#include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <csignal>
 #include <fstream>
-#include <future>
-#include <limits>
+#include <iomanip>
+#include <numeric>
+#include <sstream>
 
 #include "nlohmann/json.hpp"
 
 namespace loop_navigation_bt {
 
+// Helper function to normalize angle to [-PI, PI]
+double normalize_angle(double a) {
+    while (a > M_PI) {
+        a -= 2.0 * M_PI;
+    }
+    while (a < -M_PI) {
+        a += 2.0 * M_PI;
+    }
+    return a;
+}
+
+double circularMean(const std::vector<double>& angles) {
+    if (angles.empty()) {
+        return 0.0;
+    }
+
+    double sin_sum = 0.0;
+    double cos_sum = 0.0;
+    for (const double angle : angles) {
+        sin_sum += std::sin(angle);
+        cos_sum += std::cos(angle);
+    }
+    if (std::hypot(sin_sum, cos_sum) < 1e-9) {
+        return angles.back();
+    }
+    return std::atan2(sin_sum, cos_sum);
+}
+
 // Helper function to parse JSON file for navigation points
-std::vector<geometry_msgs::msg::PoseStamped> parseNavPoints(const std::string& json_path, rclcpp::Logger logger) {
+std::vector<geometry_msgs::msg::PoseStamped> parseNavPoints(const std::string& json_path,
+                                                            rclcpp::Logger logger,
+                                                            std::vector<std::string>& goal_ids,
+                                                            int& total_rounds) {
     std::vector<geometry_msgs::msg::PoseStamped> points;
     std::ifstream file(json_path);
     if (!file.is_open()) {
@@ -26,6 +59,8 @@ std::vector<geometry_msgs::msg::PoseStamped> parseNavPoints(const std::string& j
     nlohmann::json j;
     file >> j;
     std::string frame = j.value("frame_id", std::string("map"));
+    total_rounds = j.value("rounds", 0);
+    goal_ids.clear();
     for (const auto& item : j["points"]) {
         geometry_msgs::msg::PoseStamped pose;
         pose.header.frame_id = frame;
@@ -37,10 +72,17 @@ std::vector<geometry_msgs::msg::PoseStamped> parseNavPoints(const std::string& j
         pose.pose.orientation.y = item["orientation"].value("y", 0.0);
         pose.pose.orientation.z = item["orientation"].value("z", 0.0);
         pose.pose.orientation.w = item["orientation"].value("w", 1.0);
+        goal_ids.push_back(item.value("id", "goal_" + std::to_string(points.size())));
         points.push_back(pose);
     }
-    RCLCPP_INFO(logger, "Successfully parsed %zu navigation points.", points.size());
+    RCLCPP_INFO(logger, "Successfully parsed %zu navigation points, rounds=%d.", points.size(), total_rounds);
     return points;
+}
+
+std::vector<geometry_msgs::msg::PoseStamped> parseNavPoints(const std::string& json_path, rclcpp::Logger logger) {
+    std::vector<std::string> unused_goal_ids;
+    int unused_total_rounds = 0;
+    return parseNavPoints(json_path, logger, unused_goal_ids, unused_total_rounds);
 }
 
 //--- Implementation for LoopNavigateFourPoints ---
@@ -48,21 +90,101 @@ LoopNavigateFourPoints::LoopNavigateFourPoints(const std::string& name,
                                                const BT::NodeConfiguration& config,
                                                rclcpp::Node::SharedPtr node_ptr)
     : BtActionNode(name, config, node_ptr) {
-    route_client_ = rclcpp_action::create_client<NavigateThroughPoses>(node_, "/navigate_through_poses");
-    point_client_ = rclcpp_action::create_client<NavigateToPose>(node_, "/navigate_to_pose");
+    action_client_ = rclcpp_action::create_client<NavigateToPose>(node_, "/navigate_to_pose");
 
     // Initialize TF2 buffer and listener
     tf_buffer_ = std::make_shared<tf2_ros::Buffer>(node_->get_clock());
     tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
+
+    if (!node_->has_parameter("goal_error_stats.desired_position_tolerance")) {
+        node_->declare_parameter("goal_error_stats.desired_position_tolerance", desired_position_tolerance_);
+    }
+    if (!node_->has_parameter("goal_error_stats.accept_position_tolerance")) {
+        node_->declare_parameter("goal_error_stats.accept_position_tolerance", accept_position_tolerance_);
+    }
+    if (!node_->has_parameter("goal_error_stats.sample_count")) {
+        node_->declare_parameter("goal_error_stats.sample_count", static_cast<int>(pose_sample_count_));
+    }
+    if (!node_->has_parameter("goal_error_stats.sample_interval_sec")) {
+        node_->declare_parameter("goal_error_stats.sample_interval_sec", pose_sample_interval_sec_);
+    }
+    if (!node_->has_parameter("goal_error_stats.use_goal_checker_error")) {
+        node_->declare_parameter("goal_error_stats.use_goal_checker_error", use_goal_checker_error_);
+    }
+    node_->get_parameter("goal_error_stats.desired_position_tolerance", desired_position_tolerance_);
+    node_->get_parameter("goal_error_stats.accept_position_tolerance", accept_position_tolerance_);
+    int pose_sample_count = static_cast<int>(pose_sample_count_);
+    node_->get_parameter("goal_error_stats.sample_count", pose_sample_count);
+    node_->get_parameter("goal_error_stats.sample_interval_sec", pose_sample_interval_sec_);
+    node_->get_parameter("goal_error_stats.use_goal_checker_error", use_goal_checker_error_);
+    if (pose_sample_count > 0) {
+        pose_sample_count_ = static_cast<std::size_t>(pose_sample_count);
+    } else {
+        RCLCPP_WARN(node_->get_logger(), "goal_error_stats.sample_count 必须为正数，保持默认值 %zu。",
+                    pose_sample_count_);
+    }
+    if (pose_sample_interval_sec_ < 0.0) {
+        RCLCPP_WARN(node_->get_logger(), "goal_error_stats.sample_interval_sec 不能为负数，重置为 0.1。");
+        pose_sample_interval_sec_ = 0.1;
+    }
+    RCLCPP_INFO(node_->get_logger(), "goal_checker 最终误差读取开关: %s。%s",
+                use_goal_checker_error_ ? "true" : "false",
+                use_goal_checker_error_ ? "优先读取 /navigation_goal_error，读取不到则回退 TF 采样。"
+                                        : "禁用 /navigation_goal_error，直接使用 TF 窗口采样。");
+    if (use_goal_checker_error_) {
+        goal_error_sub_ = node_->create_subscription<diagnostic_msgs::msg::DiagnosticArray>(
+            "/navigation_goal_error", rclcpp::QoS(rclcpp::KeepLast(10)).reliable().transient_local(),
+            [this](const diagnostic_msgs::msg::DiagnosticArray::SharedPtr msg) {
+                std::lock_guard<std::mutex> lock(latest_goal_error_mutex_);
+                latest_goal_error_ = *msg;
+                has_latest_goal_error_ = true;
+            });
+    }
+
+    // Open log file
+    log_file_.open("nav_error_log.txt", std::ios::out | std::ios::trunc);
+    if (log_file_.is_open()) {
+        log_file_ << "# 结果 耗时_s 点序号 点ID 目标x 目标y 目标yaw 当前x 当前y 当前yaw "
+                     "纵向误差 横向误差 误差yaw 距离误差 期望阈值内 接受阈值内"
+                  << std::endl;
+        log_file_ << "# 误差定义: 纵向/横向误差均按目标点坐标系投影，和 goal_checker 保持一致" << std::endl;
+        log_file_ << "# 采样方式: 导航结束后 sleep 2 s，再连续采样 " << pose_sample_count_
+                  << " 次，每次间隔 " << pose_sample_interval_sec_ << " s，对误差窗口求平均" << std::endl;
+        log_file_ << "# 统计阈值: 期望阈值=" << desired_position_tolerance_
+                  << " m, 接受阈值=" << accept_position_tolerance_ << " m" << std::endl;
+    }
+
+    // ⭐ 关键：注册 shutdown 回调
+    rclcpp::on_shutdown([this]() {
+        if (!stats_logged_ && log_file_.is_open()) {
+            RCLCPP_INFO(node_->get_logger(), "ROS shutdown detected, calculating navigation statistics...");
+            calculateAndLogStats();
+            log_file_.close();
+            stats_logged_ = true;
+        }
+    });
 }
 
-LoopNavigateFourPoints::~LoopNavigateFourPoints() = default;
+LoopNavigateFourPoints::~LoopNavigateFourPoints() {
+    if (log_file_.is_open()) {
+        calculateAndLogStats();
+        log_file_.close();
+    }
+}
 
 BT::PortsList LoopNavigateFourPoints::providedPorts() {
     return {BT::InputPort<std::string>("points", "Path to the JSON file with navigation points")};
 }
 
 BT::NodeStatus LoopNavigateFourPoints::onStart() {
+    if (navigation_complete_) {
+        try {
+            config().blackboard->set("nav_loop_complete", true);
+        } catch (...) {
+        }
+        return BT::NodeStatus::SUCCESS;
+    }
+
     // If navigation is paused (e.g. during undocking/charging), don't dispatch a new goal
     try {
         bool paused = config().blackboard->get<bool>("nav_paused");
@@ -90,59 +212,55 @@ BT::NodeStatus LoopNavigateFourPoints::onStart() {
             RCLCPP_ERROR(node_->get_logger(), "'points' port is missing.");
             return BT::NodeStatus::FAILURE;
         }
-        goals_ = parseNavPoints(json_path.value(), node_->get_logger());
+        goals_ = parseNavPoints(json_path.value(), node_->get_logger(), goal_ids_, total_rounds_);
         if (goals_.empty()) {
             return BT::NodeStatus::FAILURE;
         }
+        per_goal_stats_.resize(goals_.size());
+        for (std::size_t i = 0; i < per_goal_stats_.size(); ++i) {
+            per_goal_stats_[i].id = goal_ids_[i];
+        }
     }
 
-    if (!route_client_->wait_for_action_server(std::chrono::seconds(2))) {
-        RCLCPP_ERROR(node_->get_logger(), "Action server /navigate_through_poses not available.");
-        return BT::NodeStatus::FAILURE;
-    }
-    if (!point_client_->wait_for_action_server(std::chrono::seconds(2))) {
+    if (!action_client_->wait_for_action_server(std::chrono::seconds(2))) {
         RCLCPP_ERROR(node_->get_logger(), "Action server /navigate_to_pose not available.");
         return BT::NodeStatus::FAILURE;
     }
 
-    if (!initial_alignment_done_ || recovery_after_failure_) {
-        Pose current_pose{};
-        if (!getCurrentPose(current_pose)) {
-            RCLCPP_WARN(node_->get_logger(),
-                        "Failed to get current pose within timeout. Will retry nearest-point alignment on next tick.");
-            return BT::NodeStatus::FAILURE;
+    // Reset state for this goal
+    result_ready_ = false;
+    result_code_ = rclcpp_action::ResultCode::UNKNOWN;
+    goal_handle_.reset();
+
+    auto goal_msg = NavigateToPose::Goal();
+    goal_msg.pose = goals_[current_goal_index_];
+    goal_ros_start_time_ = node_->now();
+    goal_msg.pose.header.stamp = goal_ros_start_time_;
+    goal_start_time_ = std::chrono::steady_clock::now();
+    {
+        std::lock_guard<std::mutex> lock(latest_goal_error_mutex_);
+        has_latest_goal_error_ = false;
+    }
+
+    RCLCPP_INFO(node_->get_logger(), "Sending goal #%d: (%.2f, %.2f)", current_goal_index_ + 1,
+                goal_msg.pose.pose.position.x, goal_msg.pose.pose.position.y);
+
+    auto send_goal_options = rclcpp_action::Client<NavigateToPose>::SendGoalOptions();
+    send_goal_options.goal_response_callback = [this](GoalHandleNavigateToPose::SharedPtr gh) {
+        if (!gh) {
+            RCLCPP_ERROR(node_->get_logger(), "Goal rejected by server");
+        } else {
+            goal_handle_ = gh;
         }
-        partial_start_index_ = findNearestGoalIndex(current_pose);
-        active_point_from_recovery_ = recovery_after_failure_;
-        partial_forward_ = recovery_after_failure_ ? recovery_forward_ : chooseInitialForward(partial_start_index_);
-        pending_partial_route_ = true;
-        recovery_after_failure_ = false;
+    };
+    //-- 使用callback
+    send_goal_options.result_callback = [this](const GoalHandleNavigateToPose::WrappedResult& result) {
+        result_code_ = result.code;
+        result_ready_ = true;
+    };
 
-        RCLCPP_INFO(node_->get_logger(), "%s nearest route point[%zu] (%.2f, %.2f), partial direction: %s",
-                    initial_alignment_done_ ? "Recovering from failed route at" : "Starting route from",
-                    partial_start_index_, goals_[partial_start_index_].pose.position.x,
-                    goals_[partial_start_index_].pose.position.y, partial_forward_ ? "FORWARD" : "REVERSE");
-        return sendNavigateToPoint(partial_start_index_);
-    }
-
-    if (pending_partial_route_) {
-        const auto partial_route = buildRouteFromIndex(partial_start_index_, partial_forward_);
-        if (partial_route.empty()) {
-            RCLCPP_INFO(node_->get_logger(),
-                        "Nearest point is already at the %s end of the route. Skipping empty partial route.",
-                        partial_forward_ ? "forward" : "reverse");
-            pending_partial_route_ = false;
-            forward_ = !partial_forward_;
-            return BT::NodeStatus::SUCCESS;
-        }
-        return sendRoute(partial_route, partial_forward_, true);
-    }
-
-    auto whole_route = goals_;
-    if (!forward_) {
-        std::reverse(whole_route.begin(), whole_route.end());
-    }
-    return sendRoute(whole_route, forward_, false);
+    future_goal_handle_ = action_client_->async_send_goal(goal_msg, send_goal_options);
+    return BT::NodeStatus::RUNNING;
 }
 
 BT::NodeStatus LoopNavigateFourPoints::onRunning() {
@@ -150,299 +268,652 @@ BT::NodeStatus LoopNavigateFourPoints::onRunning() {
     try {
         bool paused = config().blackboard->get<bool>("nav_paused");
         if (paused) {
-            if (route_goal_handle_) {
+            if (goal_handle_) {
                 RCLCPP_INFO(node_->get_logger(), "Navigation paused: cancel current goal");
-                route_client_->async_cancel_goal(route_goal_handle_);
+                action_client_->async_cancel_goal(goal_handle_);
             }
-            if (point_goal_handle_) {
-                RCLCPP_INFO(node_->get_logger(), "Navigation paused: cancel current point goal");
-                point_client_->async_cancel_goal(point_goal_handle_);
-            }
-            route_goal_handle_.reset();
-            point_goal_handle_.reset();
-            route_result_ready_ = false;
-            point_result_ready_ = false;
-            running_action_ = RunningAction::NONE;
+            goal_handle_.reset();
+            result_ready_ = false;
             return BT::NodeStatus::SUCCESS;
         }
     } catch (...) {
     }
 
-    if (running_action_ == RunningAction::NAVIGATE_TO_POINT) {
-        if (!point_goal_handle_) {
-            if (point_future_goal_handle_.valid() &&
-                point_future_goal_handle_.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
-                auto tmp = point_future_goal_handle_.get();
-                if (!tmp) {
-                    RCLCPP_ERROR(node_->get_logger(), "Nearest point goal rejected by server.");
-                    running_action_ = RunningAction::NONE;
-                    return BT::NodeStatus::FAILURE;
-                }
-            }
-            return BT::NodeStatus::RUNNING;
-        }
-
-        if (!point_result_ready_) {
-            return BT::NodeStatus::RUNNING;
-        }
-
-        if (point_result_code_ == rclcpp_action::ResultCode::SUCCEEDED) {
-            RCLCPP_INFO(node_->get_logger(), "Reached nearest route point[%zu].", active_point_index_);
-            initial_alignment_done_ = true;
-        } else if (point_result_code_ == rclcpp_action::ResultCode::ABORTED) {
-            RCLCPP_WARN(node_->get_logger(), "Navigation to nearest route point[%zu] aborted. Retrying alignment.",
-                        active_point_index_);
-            if (active_point_from_recovery_) {
-                recovery_after_failure_ = true;
-                recovery_forward_ = partial_forward_;
-            } else {
-                initial_alignment_done_ = false;
-            }
-            pending_partial_route_ = false;
-        } else if (point_result_code_ == rclcpp_action::ResultCode::CANCELED) {
-            RCLCPP_WARN(node_->get_logger(), "Navigation to nearest route point[%zu] canceled. Return FAILURE.",
-                        active_point_index_);
-            point_goal_handle_.reset();
-            point_result_ready_ = false;
-            running_action_ = RunningAction::NONE;
-            return BT::NodeStatus::FAILURE;
-        }
-
-        point_goal_handle_.reset();
-        point_result_ready_ = false;
-        running_action_ = RunningAction::NONE;
-        return BT::NodeStatus::SUCCESS;
-    }
-
-    if (running_action_ != RunningAction::NAVIGATE_ROUTE) {
-        return BT::NodeStatus::RUNNING;
-    }
-
-    // Wait until route goal is accepted
-    if (!route_goal_handle_) {
-        if (route_future_goal_handle_.valid() &&
-            route_future_goal_handle_.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
-            auto tmp = route_future_goal_handle_.get();
+    // Wait until goal is accepted
+    if (!goal_handle_) {
+        if (future_goal_handle_.valid() &&
+            future_goal_handle_.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+            auto tmp = future_goal_handle_.get();
             if (!tmp) {
-                RCLCPP_ERROR(node_->get_logger(), "Route rejected by server.");
-                running_action_ = RunningAction::NONE;
+                RCLCPP_ERROR(node_->get_logger(), "Goal was rejected by server.");
                 return BT::NodeStatus::FAILURE;
             }
+            // goal_handle_ will have been set in goal_response_callback
         }
         return BT::NodeStatus::RUNNING;
     }
 
-    // Wait for route result
-    if (!route_result_ready_) {
+    // Wait for result
+    if (!result_ready_) {
         return BT::NodeStatus::RUNNING;
     }
 
-    // Handle route result
-    if (route_result_code_ == rclcpp_action::ResultCode::SUCCEEDED) {
-        RCLCPP_INFO(node_->get_logger(), "%s %s route completed successfully.",
-                    active_route_forward_ ? "FORWARD" : "REVERSE", active_route_partial_ ? "partial" : "whole");
+    // Handle result
+    if (result_code_ == rclcpp_action::ResultCode::SUCCEEDED) {
+        RCLCPP_INFO(node_->get_logger(), "Goal #%d reached successfully.", current_goal_index_ + 1);
+        succeeded_nav_++;
 
         // Let TF stabilize
         rclcpp::sleep_for(std::chrono::seconds(2));
 
-        if (active_route_partial_) {
-            pending_partial_route_ = false;
-            forward_ = !active_route_forward_;
-        } else {
-            forward_ = !forward_;
+        // Log error
+        const auto& goal_pose_msg = goals_[current_goal_index_].pose;
+        tf2::Quaternion q_goal;
+        tf2::fromMsg(goal_pose_msg.orientation, q_goal);
+        double roll, pitch, yaw_goal;
+        tf2::Matrix3x3(q_goal).getRPY(roll, pitch, yaw_goal);
+        Pose goal_pose = {goal_pose_msg.position.x, goal_pose_msg.position.y, yaw_goal};
+
+        const double elapsed_sec =
+            std::chrono::duration<double>(std::chrono::steady_clock::now() - goal_start_time_).count();
+        const auto error_sample = getNavigationErrorSample(goal_pose);
+        const bool completes_round = ((current_goal_index_ + 1) % goals_.size()) == 0;
+        if (completes_round) {
+            // 先更新轮数，避免本次误差统计写出旧轮数
+            completed_rounds_++;
         }
-        route_goal_handle_.reset();
-        route_result_ready_ = false;
-        running_action_ = RunningAction::NONE;
+        logNavigationError(goal_pose, error_sample, elapsed_sec, true, current_goal_index_);
+
+        current_goal_index_ = (current_goal_index_ + 1) % goals_.size();
+        if (current_goal_index_ == 0) {
+            if (total_rounds_ > 0) {
+                RCLCPP_INFO(
+                    node_->get_logger(), "Completed navigation round %d/%d.", completed_rounds_, total_rounds_);
+            } else {
+                RCLCPP_INFO(node_->get_logger(), "Completed navigation round %d.", completed_rounds_);
+            }
+            if (total_rounds_ > 0 && completed_rounds_ >= total_rounds_) {
+                navigation_complete_ = true;
+                try {
+                    config().blackboard->set("nav_loop_complete", true);
+                } catch (...) {
+                }
+            }
+            if (last_stats_logged_sample_count_ != dist_errors_.size()) {
+                calculateAndLogStats(true);
+            }
+        }
+        goal_handle_.reset();
+        result_ready_ = false;
         return BT::NodeStatus::SUCCESS;
-    } else if (route_result_code_ == rclcpp_action::ResultCode::ABORTED) {
-        RCLCPP_WARN(node_->get_logger(),
-                    "%s %s route aborted. Re-entering from nearest point and keeping failed direction.",
-                    active_route_forward_ ? "FORWARD" : "REVERSE", active_route_partial_ ? "partial" : "whole");
-        recovery_after_failure_ = true;
-        recovery_forward_ = active_route_forward_;
-        pending_partial_route_ = false;
-        route_goal_handle_.reset();
-        route_result_ready_ = false;
-        running_action_ = RunningAction::NONE;
+    } else if (result_code_ == rclcpp_action::ResultCode::ABORTED) {
+        // If navigation to a point fails, continue with the next point
+        RCLCPP_WARN(node_->get_logger(), "Goal #%d aborted (failed). Continue to next goal.", current_goal_index_ + 1);
+        failed_nav_++;
+
+        // Let TF stabilize, then log where the robot stopped when navigation failed
+        rclcpp::sleep_for(std::chrono::seconds(2));
+
+        const auto& goal_pose_msg = goals_[current_goal_index_].pose;
+        tf2::Quaternion q_goal;
+        tf2::fromMsg(goal_pose_msg.orientation, q_goal);
+        double roll, pitch, yaw_goal;
+        tf2::Matrix3x3(q_goal).getRPY(roll, pitch, yaw_goal);
+        Pose goal_pose = {goal_pose_msg.position.x, goal_pose_msg.position.y, yaw_goal};
+
+        const double elapsed_sec =
+            std::chrono::duration<double>(std::chrono::steady_clock::now() - goal_start_time_).count();
+        const auto error_sample = getNavigationErrorSample(goal_pose);
+        const bool completes_round = ((current_goal_index_ + 1) % goals_.size()) == 0;
+        if (completes_round) {
+            // 先更新轮数，避免本次误差统计写出旧轮数
+            completed_rounds_++;
+        }
+        logNavigationError(goal_pose, error_sample, elapsed_sec, false, current_goal_index_);
+
+        current_goal_index_ = (current_goal_index_ + 1) % goals_.size();
+        if (current_goal_index_ == 0) {
+            if (total_rounds_ > 0) {
+                RCLCPP_INFO(
+                    node_->get_logger(), "Completed navigation round %d/%d.", completed_rounds_, total_rounds_);
+            } else {
+                RCLCPP_INFO(node_->get_logger(), "Completed navigation round %d.", completed_rounds_);
+            }
+            if (total_rounds_ > 0 && completed_rounds_ >= total_rounds_) {
+                navigation_complete_ = true;
+                try {
+                    config().blackboard->set("nav_loop_complete", true);
+                } catch (...) {
+                }
+            }
+            if (last_stats_logged_sample_count_ != dist_errors_.size()) {
+                calculateAndLogStats(true);
+            }
+        }
+        goal_handle_.reset();
+        result_ready_ = false;
         return BT::NodeStatus::SUCCESS;
-    } else if (route_result_code_ == rclcpp_action::ResultCode::CANCELED) {
-        RCLCPP_WARN(node_->get_logger(), "%s route canceled. Return FAILURE.",
-                    active_route_forward_ ? "FORWARD" : "REVERSE");
-        route_goal_handle_.reset();
-        route_result_ready_ = false;
-        running_action_ = RunningAction::NONE;
+    } else if (result_code_ == rclcpp_action::ResultCode::CANCELED) {
+        // If navigation was canceled, propagate failure to BT
+        RCLCPP_WARN(node_->get_logger(), "Goal #%d canceled. Return FAILURE.", current_goal_index_ + 1);
+        goal_handle_.reset();
+        result_ready_ = false;
         return BT::NodeStatus::FAILURE;
     }
 
     return BT::NodeStatus::RUNNING;
 }
 
-size_t LoopNavigateFourPoints::findNearestGoalIndex(const Pose& current) const {
-    size_t nearest_index = 0;
-    double nearest_dist = std::numeric_limits<double>::max();
-
-    for (size_t i = 0; i < goals_.size(); ++i) {
-        const auto& position = goals_[i].pose.position;
-        const double dist = std::hypot(current.x - position.x, current.y - position.y);
-        if (dist < nearest_dist) {
-            nearest_dist = dist;
-            nearest_index = i;
-        }
+void LoopNavigateFourPoints::spinNodeForDuration(double duration_sec) {
+    const auto end_time = std::chrono::steady_clock::now() + std::chrono::duration<double>(duration_sec);
+    while (std::chrono::steady_clock::now() < end_time && rclcpp::ok()) {
+        rclcpp::spin_some(node_);
+        rclcpp::sleep_for(std::chrono::milliseconds(100));
     }
-
-    return nearest_index;
 }
 
-bool LoopNavigateFourPoints::chooseInitialForward(size_t start_index) const {
-    const size_t forward_remaining = goals_.empty() ? 0 : goals_.size() - 1 - start_index;
-    const size_t reverse_remaining = start_index;
-    return forward_remaining < reverse_remaining;
-}
-
-std::vector<geometry_msgs::msg::PoseStamped> LoopNavigateFourPoints::buildRouteFromIndex(size_t start_index,
-                                                                                         bool forward) const {
-    std::vector<geometry_msgs::msg::PoseStamped> route;
-    if (goals_.empty() || start_index >= goals_.size()) {
-        return route;
+LoopNavigateFourPoints::NavigationErrorSample LoopNavigateFourPoints::getNavigationErrorSample(const Pose& goal) {
+    NavigationErrorSample sample;
+    rclcpp::spin_some(node_);
+    if (use_goal_checker_error_ && getLatestGoalCheckerErrorSample(goal, sample)) {
+        RCLCPP_INFO(node_->get_logger(),
+                    "使用 goal_checker 发布的最终误差写入导航统计：lon=%.4f, lat=%.4f, yaw=%.4f, dist=%.4f",
+                    sample.lon_error, sample.lat_error, sample.yaw_error, sample.dist_error);
+        return sample;
     }
 
-    if (forward) {
-        for (size_t i = start_index + 1; i < goals_.size(); ++i) {
-            route.push_back(goals_[i]);
-        }
-    } else {
-        for (size_t i = start_index; i > 0; --i) {
-            route.push_back(goals_[i - 1]);
-        }
-    }
+    std::vector<double> xs;
+    std::vector<double> ys;
+    std::vector<double> yaws;
+    std::vector<double> lon_errors;
+    std::vector<double> lat_errors;
+    std::vector<double> yaw_errors;
+    std::vector<double> dist_errors;
+    xs.reserve(pose_sample_count_);
+    ys.reserve(pose_sample_count_);
+    yaws.reserve(pose_sample_count_);
+    lon_errors.reserve(pose_sample_count_);
+    lat_errors.reserve(pose_sample_count_);
+    yaw_errors.reserve(pose_sample_count_);
+    dist_errors.reserve(pose_sample_count_);
 
-    return route;
-}
+    const double cos_yaw = std::cos(goal.yaw);
+    const double sin_yaw = std::sin(goal.yaw);
 
-BT::NodeStatus LoopNavigateFourPoints::sendNavigateToPoint(size_t goal_index) {
-    if (goal_index >= goals_.size()) {
-        RCLCPP_ERROR(node_->get_logger(), "Invalid nearest point index: %zu", goal_index);
-        return BT::NodeStatus::FAILURE;
-    }
-
-    point_result_ready_ = false;
-    point_result_code_ = rclcpp_action::ResultCode::UNKNOWN;
-    point_goal_handle_.reset();
-    active_point_index_ = goal_index;
-    running_action_ = RunningAction::NAVIGATE_TO_POINT;
-
-    auto goal_msg = NavigateToPose::Goal();
-    goal_msg.pose = goals_[goal_index];
-
-    RCLCPP_INFO(node_->get_logger(), "Sending nearest point[%zu] goal via navigate_to_pose: (%.2f, %.2f)", goal_index,
-                goal_msg.pose.pose.position.x, goal_msg.pose.pose.position.y);
-
-    auto send_goal_options = rclcpp_action::Client<NavigateToPose>::SendGoalOptions();
-    send_goal_options.goal_response_callback = [this](GoalHandleNavigateToPose::SharedPtr gh) {
-        if (!gh) {
-            RCLCPP_ERROR(node_->get_logger(), "Nearest point goal rejected by server");
-        } else {
-            point_goal_handle_ = gh;
-        }
-    };
-    send_goal_options.result_callback = [this](const GoalHandleNavigateToPose::WrappedResult& result) {
-        point_result_code_ = result.code;
-        point_result_ready_ = true;
-    };
-
-    point_future_goal_handle_ = point_client_->async_send_goal(goal_msg, send_goal_options);
-    return BT::NodeStatus::RUNNING;
-}
-
-BT::NodeStatus LoopNavigateFourPoints::sendRoute(const std::vector<geometry_msgs::msg::PoseStamped>& route,
-                                                 bool forward,
-                                                 bool partial) {
-    if (route.empty()) {
-        RCLCPP_WARN(node_->get_logger(), "Refusing to send an empty route.");
-        return BT::NodeStatus::FAILURE;
-    }
-
-    route_result_ready_ = false;
-    route_result_code_ = rclcpp_action::ResultCode::UNKNOWN;
-    route_goal_handle_.reset();
-    active_route_partial_ = partial;
-    active_route_forward_ = forward;
-    active_route_target_index_ = forward ? goals_.size() - 1 : 0;
-    running_action_ = RunningAction::NAVIGATE_ROUTE;
-
-    auto goal_msg = NavigateThroughPoses::Goal();
-    goal_msg.poses = route;
-
-    RCLCPP_INFO(node_->get_logger(), "Sending %s %s route with %zu poses via navigate_through_poses",
-                forward ? "FORWARD" : "REVERSE", partial ? "partial" : "whole", route.size());
-
-    auto send_goal_options = rclcpp_action::Client<NavigateThroughPoses>::SendGoalOptions();
-    send_goal_options.goal_response_callback = [this](GoalHandleNavigateThroughPoses::SharedPtr gh) {
-        if (!gh) {
-            RCLCPP_ERROR(node_->get_logger(), "Route goal rejected by server");
-        } else {
-            route_goal_handle_ = gh;
-        }
-    };
-    send_goal_options.result_callback = [this](const GoalHandleNavigateThroughPoses::WrappedResult& result) {
-        route_result_code_ = result.code;
-        route_result_ready_ = true;
-    };
-
-    route_future_goal_handle_ = route_client_->async_send_goal(goal_msg, send_goal_options);
-    return BT::NodeStatus::RUNNING;
-}
-
-bool LoopNavigateFourPoints::getCurrentPose(Pose& current_pose,
-                                            std::chrono::milliseconds timeout,
-                                            std::chrono::milliseconds retry_interval) {
-    const auto deadline = std::chrono::steady_clock::now() + timeout;
-    bool warned_once = false;
-
-    while (rclcpp::ok() && std::chrono::steady_clock::now() < deadline) {
+    for (std::size_t i = 0; i < pose_sample_count_; ++i) {
         try {
+            rclcpp::spin_some(node_);
             const auto transform = tf_buffer_->lookupTransform("map", "base_link", tf2::TimePointZero);
 
-            current_pose.x = transform.transform.translation.x;
-            current_pose.y = transform.transform.translation.y;
+            const auto& tr = transform.transform.translation;
+            const auto& rot = transform.transform.rotation;
 
             tf2::Quaternion q;
-            tf2::fromMsg(transform.transform.rotation, q);
+            tf2::fromMsg(rot, q);
             tf2::Matrix3x3 m(q);
             double roll, pitch, yaw;
             m.getRPY(roll, pitch, yaw);
-            current_pose.yaw = yaw;
-            return true;
+
+            const double dx = tr.x - goal.x;
+            const double dy = tr.y - goal.y;
+            xs.push_back(tr.x);
+            ys.push_back(tr.y);
+            yaws.push_back(yaw);
+            lon_errors.push_back(cos_yaw * dx + sin_yaw * dy);
+            lat_errors.push_back(-sin_yaw * dx + cos_yaw * dy);
+            yaw_errors.push_back(normalize_angle(yaw - goal.yaw));
+            dist_errors.push_back(std::hypot(dx, dy));
         } catch (const tf2::TransformException& ex) {
-            if (!warned_once) {
-                RCLCPP_WARN(node_->get_logger(), "Could not get robot pose immediately: %s. Retrying for %.1f seconds.",
-                            ex.what(), timeout.count() / 1000.0);
-                warned_once = true;
-            }
+            RCLCPP_WARN(node_->get_logger(), "误差统计获取机器人 TF 失败: %s，继续重试。", ex.what());
+            spinNodeForDuration(0.5);
+            continue;
         }
 
-        rclcpp::sleep_for(retry_interval);
+        if (i + 1 < pose_sample_count_) {
+            spinNodeForDuration(pose_sample_interval_sec_);
+        }
     }
 
-    RCLCPP_WARN(node_->get_logger(), "Could not get robot pose within %.1f seconds.", timeout.count() / 1000.0);
-    return false;
+    if (xs.empty()) {
+        return sample;
+    }
+
+    sample.current.x = std::accumulate(xs.begin(), xs.end(), 0.0) / xs.size();
+    sample.current.y = std::accumulate(ys.begin(), ys.end(), 0.0) / ys.size();
+    sample.current.yaw = circularMean(yaws);
+    sample.lon_error = std::accumulate(lon_errors.begin(), lon_errors.end(), 0.0) / lon_errors.size();
+    sample.lat_error = std::accumulate(lat_errors.begin(), lat_errors.end(), 0.0) / lat_errors.size();
+    sample.yaw_error = circularMean(yaw_errors);
+    sample.dist_error = std::accumulate(dist_errors.begin(), dist_errors.end(), 0.0) / dist_errors.size();
+    sample.within_desired_tolerance =
+        isWithinPositionTolerance(sample.lon_error, sample.lat_error, desired_position_tolerance_);
+    sample.within_accept_tolerance =
+        isWithinPositionTolerance(sample.lon_error, sample.lat_error, accept_position_tolerance_);
+    sample.valid = true;
+
+    std::ostringstream xs_stream;
+    std::ostringstream ys_stream;
+    std::ostringstream yaws_stream;
+    std::ostringstream lon_stream;
+    std::ostringstream lat_stream;
+    std::ostringstream yaw_err_stream;
+    for (std::size_t i = 0; i < xs.size(); ++i) {
+        if (i > 0) {
+            xs_stream << ", ";
+            ys_stream << ", ";
+            yaws_stream << ", ";
+            lon_stream << ", ";
+            lat_stream << ", ";
+            yaw_err_stream << ", ";
+        }
+        xs_stream << std::fixed << std::setprecision(4) << xs[i];
+        ys_stream << std::fixed << std::setprecision(4) << ys[i];
+        yaws_stream << std::fixed << std::setprecision(4) << yaws[i];
+        lon_stream << std::fixed << std::setprecision(4) << lon_errors[i];
+        lat_stream << std::fixed << std::setprecision(4) << lat_errors[i];
+        yaw_err_stream << std::fixed << std::setprecision(4) << yaw_errors[i];
+    }
+
+    RCLCPP_INFO(node_->get_logger(),
+                "误差统计TF采样: x=[%s], y=[%s], yaw=[%s]; TF平均值: x=%.4f, y=%.4f, yaw=%.4f",
+                xs_stream.str().c_str(), ys_stream.str().c_str(), yaws_stream.str().c_str(), sample.current.x,
+                sample.current.y, sample.current.yaw);
+    RCLCPP_INFO(node_->get_logger(),
+                "误差统计窗口: lon=[%s], lat=[%s], yaw=[%s]; 平均误差: lon=%.4f, lat=%.4f, yaw=%.4f, dist=%.4f",
+                lon_stream.str().c_str(), lat_stream.str().c_str(), yaw_err_stream.str().c_str(), sample.lon_error,
+                sample.lat_error, sample.yaw_error, sample.dist_error);
+    return sample;
+}
+
+bool LoopNavigateFourPoints::getLatestGoalCheckerErrorSample(const Pose& goal, NavigationErrorSample& sample) {
+    std::lock_guard<std::mutex> lock(latest_goal_error_mutex_);
+    if (!has_latest_goal_error_) {
+        return false;
+    }
+
+    const auto& msg = latest_goal_error_;
+    if (msg.status.empty()) {
+        return false;
+    }
+
+    const auto& status = msg.status.front();
+    if (status.name != "navigation_goal_error") {
+        RCLCPP_WARN(node_->get_logger(), "收到的 /navigation_goal_error 诊断消息 name 不匹配，改用 TF 窗口统计。");
+        return false;
+    }
+
+    auto get_value = [&status](const std::string& key, std::string& value) {
+        for (const auto& item : status.values) {
+            if (item.key == key) {
+                value = item.value;
+                return true;
+            }
+        }
+        return false;
+    };
+    auto get_double = [&get_value](const std::string& key, double& value) {
+        std::string text;
+        if (!get_value(key, text)) {
+            return false;
+        }
+        try {
+            value = std::stod(text);
+        } catch (const std::exception&) {
+            return false;
+        }
+        return true;
+    };
+    auto get_bool = [&get_value](const std::string& key, bool& value) {
+        std::string text;
+        if (!get_value(key, text)) {
+            return false;
+        }
+        value = text == "true" || text == "1";
+        return true;
+    };
+
+    const rclcpp::Time msg_time(msg.header.stamp);
+    if (msg_time < goal_ros_start_time_) {
+        RCLCPP_WARN(node_->get_logger(), "goal_checker 误差消息属于旧目标，改用 TF 窗口统计。");
+        return false;
+    }
+
+    if ((node_->now() - msg_time).seconds() > 10.0) {
+        RCLCPP_WARN(node_->get_logger(), "goal_checker 误差消息超过 10s，改用 TF 窗口统计。");
+        return false;
+    }
+
+    double msg_goal_x = 0.0;
+    double msg_goal_y = 0.0;
+    double msg_goal_yaw = 0.0;
+    if (!get_double("goal_x", msg_goal_x) ||
+        !get_double("goal_y", msg_goal_y) ||
+        !get_double("goal_yaw", msg_goal_yaw)) {
+        RCLCPP_WARN(node_->get_logger(), "goal_checker 误差消息缺少目标位姿字段，改用 TF 窗口统计。");
+        return false;
+    }
+
+    const double goal_dx = msg_goal_x - goal.x;
+    const double goal_dy = msg_goal_y - goal.y;
+    const double goal_dyaw = normalize_angle(msg_goal_yaw - goal.yaw);
+    if (std::hypot(goal_dx, goal_dy) > accept_position_tolerance_ || std::abs(goal_dyaw) > 0.05) {
+        RCLCPP_WARN(node_->get_logger(),
+                    "goal_checker 误差消息的 path 终点与原始目标点略有差异，仍采用 controller 最终误差："
+                    "goal_delta=%.4f m, yaw_delta=%.4f rad",
+                    std::hypot(goal_dx, goal_dy), goal_dyaw);
+    }
+
+    std::string result_type = status.message;
+    std::string result_type_value;
+    if (get_value("result_type", result_type_value)) {
+        result_type = result_type_value;
+    }
+
+    if (!get_double("current_x", sample.current.x) ||
+        !get_double("current_y", sample.current.y) ||
+        !get_double("current_yaw", sample.current.yaw) ||
+        !get_double("longitudinal_error", sample.lon_error) ||
+        !get_double("lateral_error", sample.lat_error) ||
+        !get_double("yaw_error", sample.yaw_error) ||
+        !get_double("distance_error", sample.dist_error) ||
+        !get_bool("within_desired_tolerance", sample.within_desired_tolerance) ||
+        !get_bool("within_accept_tolerance", sample.within_accept_tolerance)) {
+        RCLCPP_WARN(node_->get_logger(), "goal_checker 误差消息字段不完整，改用 TF 窗口统计。");
+        return false;
+    }
+
+    sample.from_goal_checker = true;
+    sample.valid = true;
+    RCLCPP_INFO(node_->get_logger(),
+                "采用 goal_checker 最终误差消息：result_type=%s, lon=%.4f, lat=%.4f, yaw=%.4f, dist=%.4f",
+                result_type.c_str(), sample.lon_error, sample.lat_error, sample.yaw_error, sample.dist_error);
+    return true;
+}
+
+void LoopNavigateFourPoints::logNavigationError(const Pose& goal,
+                                                const NavigationErrorSample& error_sample,
+                                                double elapsed_sec,
+                                                bool succeeded,
+                                                std::size_t goal_index) {
+    if (!node_) {
+        return;
+    }
+
+    const Pose& current = error_sample.current;
+    const double err_lon = error_sample.lon_error;
+    const double err_lat = error_sample.lat_error;
+    const double err_yaw = error_sample.yaw_error;
+    const double err_dist = error_sample.dist_error;
+    if (!error_sample.valid) {
+        RCLCPP_WARN(node_->get_logger(), "误差统计未获取到有效 TF 样本，本次写入零误差样本。");
+    }
+    const bool within_1cm = error_sample.from_goal_checker ?
+        error_sample.within_desired_tolerance :
+        isWithinPositionTolerance(err_lon, err_lat, desired_position_tolerance_);
+    const bool within_2cm = error_sample.from_goal_checker ?
+        error_sample.within_accept_tolerance :
+        isWithinPositionTolerance(err_lon, err_lat, accept_position_tolerance_);
+
+    lon_errors_.push_back(err_lon);
+    lat_errors_.push_back(err_lat);
+    yaw_errors_.push_back(std::abs(err_yaw));
+    dist_errors_.push_back(err_dist);
+    if (within_1cm) {
+        within_1cm_count_++;
+    }
+    if (within_2cm) {
+        within_2cm_count_++;
+    }
+
+    if (succeeded) {
+        success_lon_errors_.push_back(err_lon);
+        success_lat_errors_.push_back(err_lat);
+        success_yaw_errors_.push_back(std::abs(err_yaw));
+        success_dist_errors_.push_back(err_dist);
+        if (within_1cm) {
+            success_within_1cm_count_++;
+        }
+        if (within_2cm) {
+            success_within_2cm_count_++;
+        }
+    } else {
+        failed_lon_errors_.push_back(err_lon);
+        failed_lat_errors_.push_back(err_lat);
+        failed_yaw_errors_.push_back(std::abs(err_yaw));
+        failed_dist_errors_.push_back(err_dist);
+        if (within_1cm) {
+            failed_within_1cm_count_++;
+        }
+        if (within_2cm) {
+            failed_within_2cm_count_++;
+        }
+    }
+
+    if (goal_index < per_goal_stats_.size()) {
+        auto& goal_stats = per_goal_stats_[goal_index];
+        goal_stats.elapsed_times.push_back(elapsed_sec);
+        if (succeeded) {
+            goal_stats.succeeded++;
+            goal_stats.success_elapsed_times.push_back(elapsed_sec);
+            goal_stats.success_lon_errors.push_back(err_lon);
+            goal_stats.success_lat_errors.push_back(err_lat);
+            goal_stats.success_yaw_errors.push_back(std::abs(err_yaw));
+            goal_stats.success_dist_errors.push_back(err_dist);
+            if (within_1cm) {
+                goal_stats.success_within_1cm++;
+            }
+            if (within_2cm) {
+                goal_stats.success_within_2cm++;
+            }
+        } else {
+            goal_stats.failed++;
+            goal_stats.failed_elapsed_times.push_back(elapsed_sec);
+            goal_stats.failed_lon_errors.push_back(err_lon);
+            goal_stats.failed_lat_errors.push_back(err_lat);
+            goal_stats.failed_yaw_errors.push_back(std::abs(err_yaw));
+            goal_stats.failed_dist_errors.push_back(err_dist);
+            if (within_1cm) {
+                goal_stats.failed_within_1cm++;
+            }
+            if (within_2cm) {
+                goal_stats.failed_within_2cm++;
+            }
+        }
+    }
+
+    if (log_file_.is_open()) {
+        const std::string goal_id =
+            goal_index < goal_ids_.size() ? goal_ids_[goal_index] : "goal_" + std::to_string(goal_index);
+        log_file_ << (succeeded ? "成功" : "失败") << " " << std::fixed << std::setprecision(4) << elapsed_sec
+                  << " " << goal_index << " " << goal_id << " " << goal.x << " " << goal.y << " " << goal.yaw << " "
+                  << current.x << " " << current.y << " " << current.yaw << " " << err_lon << " " << err_lat << " "
+                  << err_yaw << " " << err_dist << " " << (within_1cm ? 1 : 0) << " " << (within_2cm ? 1 : 0)
+                  << std::endl;
+    }
+
+    if (dist_errors_.size() % stats_log_interval_ == 0) {
+        calculateAndLogStats();
+    }
+}
+
+bool LoopNavigateFourPoints::isWithinPositionTolerance(double lon_error, double lat_error, double tolerance) const {
+    return std::abs(lon_error) <= tolerance && std::abs(lat_error) <= tolerance;
+}
+
+LoopNavigateFourPoints::MetricStats LoopNavigateFourPoints::calculateMetricStats(const std::vector<double>& data) const {
+    MetricStats stats;
+    if (data.empty()) {
+        return stats;
+    }
+
+    const double sum = std::accumulate(
+        data.begin(), data.end(), 0.0, [](double acc, double value) { return acc + std::abs(value); });
+    stats.mean = sum / data.size();
+
+    double sum_sq_diff = 0.0;
+    for (double value : data) {
+        const double abs_value = std::abs(value);
+        sum_sq_diff += (abs_value - stats.mean) * (abs_value - stats.mean);
+    }
+    stats.std_dev = std::sqrt(sum_sq_diff / data.size());
+
+    if (stats.std_dev == 0.0) {
+        stats.sigma3_probability = 100.0;
+        return stats;
+    }
+
+    int in_3sigma = 0;
+    for (double value : data) {
+        if (std::abs(std::abs(value) - stats.mean) <= 3.0 * stats.std_dev) {
+            ++in_3sigma;
+        }
+    }
+    stats.sigma3_probability = static_cast<double>(in_3sigma) * 100.0 / data.size();
+    return stats;
+}
+
+void LoopNavigateFourPoints::calculateAndLogStats(bool force) {
+    if (dist_errors_.empty()) {
+        return;
+    }
+
+    if (!force && dist_errors_.size() == last_stats_logged_sample_count_) {
+        return;
+    }
+
+    const int total_nav = succeeded_nav_ + failed_nav_;
+    const double success_rate = total_nav > 0 ? static_cast<double>(succeeded_nav_) * 100.0 / total_nav : 0.0;
+    auto percentage = [](int count, std::size_t total) {
+        return total > 0 ? static_cast<double>(count) * 100.0 / static_cast<double>(total) : 0.0;
+    };
+
+    auto write_metric_block = [this](const std::string& label,
+                                     const std::vector<double>& lon_errors,
+                                     const std::vector<double>& lat_errors,
+                                     const std::vector<double>& dist_errors,
+                                     const std::vector<double>& yaw_errors,
+                                     int within_1cm_count,
+                                     int within_2cm_count,
+                                     const auto& percentage_fn) {
+        log_file_ << "- " << label << "\n";
+        log_file_ << "  样本数: " << dist_errors.size() << "\n";
+        if (dist_errors.empty()) {
+            log_file_ << "  误差: 无样本\n";
+            return;
+        }
+
+        const MetricStats lon_stats = calculateMetricStats(lon_errors);
+        const MetricStats lat_stats = calculateMetricStats(lat_errors);
+        const MetricStats dist_stats = calculateMetricStats(dist_errors);
+        const MetricStats yaw_stats = calculateMetricStats(yaw_errors);
+
+        log_file_ << std::fixed << std::setprecision(4);
+        log_file_ << "  纵向误差: MAE " << lon_stats.mean << " m, 标准差 " << lon_stats.std_dev << " m\n";
+        log_file_ << "  横向误差: MAE " << lat_stats.mean << " m, 标准差 " << lat_stats.std_dev << " m\n";
+        log_file_ << "  距离误差: MAE " << dist_stats.mean << " m, 标准差 " << dist_stats.std_dev << " m\n";
+        log_file_ << std::fixed << std::setprecision(2);
+        log_file_ << "  角度误差: MAE " << yaw_stats.mean * 180.0 / M_PI << " deg, 标准差 "
+                  << yaw_stats.std_dev * 180.0 / M_PI << " deg\n";
+        log_file_ << "  位置误差满足期望阈值(" << desired_position_tolerance_ << " m): " << within_1cm_count
+                  << " 次, 占比 " << percentage_fn(within_1cm_count, dist_errors.size()) << "%\n";
+        log_file_ << "  位置误差满足接受阈值(" << accept_position_tolerance_ << " m): " << within_2cm_count
+                  << " 次, 占比 " << percentage_fn(within_2cm_count, dist_errors.size()) << "%\n";
+    };
+
+    auto calculate_average_elapsed = [](const std::vector<double>& elapsed_times) {
+        if (elapsed_times.empty()) {
+            return 0.0;
+        }
+        return std::accumulate(elapsed_times.begin(), elapsed_times.end(), 0.0) / elapsed_times.size();
+    };
+
+    auto write_average_elapsed = [&calculate_average_elapsed](const std::string& label,
+                                                              const std::vector<double>& elapsed_times,
+                                                              std::ostream& os) {
+        os << label;
+        if (elapsed_times.empty()) {
+            os << "无样本";
+            return;
+        }
+        os << std::fixed << std::setprecision(4) << calculate_average_elapsed(elapsed_times) << " s";
+    };
+
+    if (log_file_.is_open()) {
+        log_file_ << "\n\n================ 导航统计汇总（截至当前轮） ================\n";
+        log_file_ << "轮数: " << completed_rounds_ << "/";
+        if (total_rounds_ > 0) {
+            log_file_ << total_rounds_;
+        } else {
+            log_file_ << "无限";
+        }
+        log_file_ << " | 样本数: " << dist_errors_.size() << " | 成功: " << succeeded_nav_
+                  << " | 失败: " << failed_nav_ << " | 成功率: " << std::fixed << std::setprecision(2)
+                  << success_rate << "%\n\n";
+
+        log_file_ << "[总体误差]\n";
+        write_metric_block("全部样本", lon_errors_, lat_errors_, dist_errors_, yaw_errors_, within_1cm_count_,
+                           within_2cm_count_, percentage);
+        write_metric_block("成功样本", success_lon_errors_, success_lat_errors_, success_dist_errors_,
+                           success_yaw_errors_, success_within_1cm_count_, success_within_2cm_count_, percentage);
+        write_metric_block("失败样本", failed_lon_errors_, failed_lat_errors_, failed_dist_errors_, failed_yaw_errors_,
+                           failed_within_1cm_count_, failed_within_2cm_count_, percentage);
+
+        log_file_ << "\n[各点成功率与平均耗时]\n";
+        for (std::size_t i = 0; i < per_goal_stats_.size(); ++i) {
+            const auto& goal_stats = per_goal_stats_[i];
+            const int goal_total = goal_stats.succeeded + goal_stats.failed;
+            const double goal_success_rate =
+                goal_total > 0 ? static_cast<double>(goal_stats.succeeded) * 100.0 / goal_total : 0.0;
+            const std::string goal_id = goal_stats.id.empty() ? "goal_" + std::to_string(i) : goal_stats.id;
+
+            log_file_ << "- 点 " << i << " (" << goal_id << "): 总数 " << goal_total << ", 成功 "
+                      << goal_stats.succeeded << ", 失败 " << goal_stats.failed << ", 成功率 " << std::fixed
+                      << std::setprecision(2) << goal_success_rate << "%, ";
+            log_file_ << "期望阈值内 " << (goal_stats.success_within_1cm + goal_stats.failed_within_1cm)
+                      << " 次, 接受阈值内 " << (goal_stats.success_within_2cm + goal_stats.failed_within_2cm)
+                      << " 次, ";
+            write_average_elapsed("总平均耗时 ", goal_stats.elapsed_times, log_file_);
+            log_file_ << ", ";
+            write_average_elapsed("成功平均耗时 ", goal_stats.success_elapsed_times, log_file_);
+            log_file_ << ", ";
+            write_average_elapsed("失败平均耗时 ", goal_stats.failed_elapsed_times, log_file_);
+            log_file_ << "\n";
+        }
+
+        log_file_ << "\n[各点误差]\n";
+        for (std::size_t i = 0; i < per_goal_stats_.size(); ++i) {
+            const auto& goal_stats = per_goal_stats_[i];
+            const std::string goal_id = goal_stats.id.empty() ? "goal_" + std::to_string(i) : goal_stats.id;
+            log_file_ << "点 " << i << " (" << goal_id << ")\n";
+            write_metric_block("成功误差", goal_stats.success_lon_errors, goal_stats.success_lat_errors,
+                               goal_stats.success_dist_errors, goal_stats.success_yaw_errors,
+                               goal_stats.success_within_1cm, goal_stats.success_within_2cm, percentage);
+            write_metric_block("失败误差", goal_stats.failed_lon_errors, goal_stats.failed_lat_errors,
+                               goal_stats.failed_dist_errors, goal_stats.failed_yaw_errors,
+                               goal_stats.failed_within_1cm, goal_stats.failed_within_2cm, percentage);
+        }
+
+        log_file_ << "============================================================\n";
+        log_file_.flush();
+    }
+
+    const MetricStats dist_stats = calculateMetricStats(dist_errors_);
+    const MetricStats yaw_stats = calculateMetricStats(yaw_errors_);
+    RCLCPP_INFO(node_->get_logger(),
+                "Navigation stats (%zu samples): dist mean=%.4f m, dist 3sigma=%.2f%%, yaw mean=%.2f deg, "
+                "yaw 3sigma=%.2f%%",
+                dist_errors_.size(), dist_stats.mean, dist_stats.sigma3_probability, yaw_stats.mean * 180.0 / M_PI,
+                yaw_stats.sigma3_probability);
+
+    last_stats_logged_sample_count_ = dist_errors_.size();
 }
 
 void LoopNavigateFourPoints::onHalted() {
-    if (route_goal_handle_) {
-        RCLCPP_WARN(node_->get_logger(), "LoopNavigateFourPoints halted, canceling route.");
-        route_client_->async_cancel_goal(route_goal_handle_);
-        route_goal_handle_.reset();
+    if (goal_handle_) {
+        RCLCPP_WARN(node_->get_logger(), "LoopNavigateFourPoints halted, canceling goal.");
+        action_client_->async_cancel_goal(goal_handle_);
+        goal_handle_.reset();
     }
-    if (point_goal_handle_) {
-        RCLCPP_WARN(node_->get_logger(), "LoopNavigateFourPoints halted, canceling point goal.");
-        point_client_->async_cancel_goal(point_goal_handle_);
-        point_goal_handle_.reset();
-    }
-    route_result_ready_ = false;
-    point_result_ready_ = false;
-    running_action_ = RunningAction::NONE;
 }
 
 //--- Implementation for CheckBatteryAboveThreshold ---
@@ -456,18 +927,24 @@ CheckBatteryAboveThreshold::CheckBatteryAboveThreshold(const std::string& name,
 }
 
 BT::PortsList CheckBatteryAboveThreshold::providedPorts() {
-    return {BT::InputPort<double>("threshold", "Minimum battery percentage (0.0 to 100.0)")};
+    return {
+        BT::InputPort<double>("threshold", "Minimum battery percentage (0.0 to 100.0)"),
+        BT::InputPort<bool>("enabled", true, "Whether battery monitoring is enabled"),
+    };
 }
 
 void CheckBatteryAboveThreshold::battery_callback(const diagnostic_msgs::msg::DiagnosticArray::SharedPtr msg) {
     // Default to invalid until we find the field
     float parsed = -1.0f;
+    bool has_valid_battery_percentage = false;
     for (const auto& status : msg->status) {
         if (status.name == "/Devices/System/PowerBoard/collector_node: PowerBoard") {
             for (const auto& kv : status.values) {
                 if (kv.key == "battery_percentage") {
                     try {
                         parsed = static_cast<float>(std::stod(kv.value));
+                        has_valid_battery_percentage =
+                            std::isfinite(parsed) && parsed >= 0.0f && parsed <= 100.0f;
                     } catch (...) {
                         parsed = -1.0f;
                     }
@@ -477,11 +954,25 @@ void CheckBatteryAboveThreshold::battery_callback(const diagnostic_msgs::msg::Di
             break;
         }
     }
-    RCLCPP_INFO(node_->get_logger(), "BATTERY: %0.3f", parsed);
-    latest_battery_percentage_ = parsed;
+
+    latest_battery_percentage_ = has_valid_battery_percentage ? parsed : -1.0f;
+    if (has_valid_battery_percentage) {
+        RCLCPP_INFO(node_->get_logger(), "BATTERY: %.3f", parsed);
+    }
 }
 
 BT::NodeStatus CheckBatteryAboveThreshold::tick() {
+    auto enabled = getInput<bool>("enabled");
+    if (!enabled) {
+        RCLCPP_ERROR(node_->get_logger(), "'enabled' port is missing or invalid.");
+        return BT::NodeStatus::FAILURE;
+    }
+
+    if (!enabled.value()) {
+        RCLCPP_INFO_ONCE(node_->get_logger(), "Battery monitoring disabled; skipping battery check.");
+        return BT::NodeStatus::SUCCESS;
+    }
+
     auto threshold = getInput<double>("threshold");
     if (!threshold) {
         RCLCPP_ERROR(node_->get_logger(), "'threshold' port is missing.");
@@ -491,10 +982,10 @@ BT::NodeStatus CheckBatteryAboveThreshold::tick() {
     // Process pending diagnostics callbacks to refresh latest_battery_percentage_
     rclcpp::spin_some(node_);
 
-    // If charging process is active, force FAILURE only for low-threshold checks (e.g. 0.35 at top-level)
+    // If charging process is active, force FAILURE only for low-threshold checks (e.g. 30 at top-level)
     try {
         bool charging = config().blackboard->get<bool>("charging_active");
-        if (charging && threshold.value() < 66) {
+        if (charging && threshold.value() < 30.0) {
             RCLCPP_DEBUG(node_->get_logger(), "Charging active -> low-threshold battery check forced to FAILURE");
             return BT::NodeStatus::FAILURE;
         }
@@ -507,8 +998,8 @@ BT::NodeStatus CheckBatteryAboveThreshold::tick() {
     }
 
     RCLCPP_INFO_THROTTLE(node_->get_logger(), *node_->get_clock(), 2000,
-                         "Checking battery: %.2f%% against threshold > %.2f%%", latest_battery_percentage_ * 100,
-                         threshold.value() * 100);
+                         "Checking battery: %.2f%% against threshold >= %.2f%%", latest_battery_percentage_,
+                         threshold.value());
 
     bool battery_ok = latest_battery_percentage_ >= threshold.value();
 
@@ -516,7 +1007,7 @@ BT::NodeStatus CheckBatteryAboveThreshold::tick() {
     if (!battery_ok) {
         try {
             config().blackboard->set("should_stop_navigation", true);
-            RCLCPP_WARN(node_->get_logger(), "Battery low! Setting stop flag.");
+            // RCLCPP_WARN(node_->get_logger(), "Battery low! Setting stop flag.");
         } catch (...) {
         }
     }
@@ -577,6 +1068,8 @@ BT::NodeStatus Undocking::onStart() {
         // Clear pause flag immediately
         try {
             config().blackboard->set("nav_paused", false);
+            config().blackboard->set("charging_active", false);
+            config().blackboard->set("should_stop_navigation", false);
         } catch (...) {
         }
         return BT::NodeStatus::SUCCESS;
@@ -596,6 +1089,7 @@ BT::NodeStatus Undocking::onRunning() {
         try {
             config().blackboard->set("nav_paused", false);
             config().blackboard->set("charging_active", false);
+            config().blackboard->set("should_stop_navigation", false);
         } catch (...) {
         }
         RCLCPP_INFO(node_->get_logger(), "Undocking finished (ran %.2f / %.2f s)", elapsed, duration_sec_);
@@ -648,6 +1142,7 @@ BT::NodeStatus NavigateToFirstPointAndStop::onStart() {
 
     auto goal_msg = NavigateToPose::Goal();
     goal_msg.pose = goals_[0];  // Always navigate to the first point
+    goal_msg.pose.header.stamp = node_->now();
 
     RCLCPP_WARN(node_->get_logger(), "[LowBattery] Battery low! Navigating to first point (%.2f, %.2f) then stopping.",
                 goal_msg.pose.pose.position.x, goal_msg.pose.pose.position.y);

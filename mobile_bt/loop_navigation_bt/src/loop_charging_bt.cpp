@@ -52,8 +52,7 @@ BT::NodeStatus CallAutoChargingAction::onStart() {
         switch (result.code) {
             case rclcpp_action::ResultCode::SUCCEEDED:
                 action_succeeded_ = result.result ? result.result->success : false;
-                result_message_ =
-                    result.result ? result.result->message : "auto charging action succeeded with empty result";
+                result_message_ = result.result ? result.result->message : "auto charging action succeeded with empty result";
                 break;
             case rclcpp_action::ResultCode::ABORTED:
                 action_succeeded_ = false;

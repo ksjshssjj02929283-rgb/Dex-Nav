@@ -6,13 +6,14 @@
 
 回充流程由 `config/charging_bt.xml` 描述：
 
-1. 通过 Nav2 `NavigateToPose` 导航到充电位。
-2. 调用 `start_apriltag_detection` 启动 AprilTag 检测。
-3. 最多重试 3 次对接流程。
-4. `Dock` 订阅 `apriltag_target_pose`，用 `ReverseDockingController` 两阶段锁定目标并发布速度到 `control/cmd_vel_nav`。
-5. 倒车对接到位后执行低速后退，直到检测到稳定连接或达到距离/时间限制。
-6. `CheckCharging` 从 `/diagnostics_agg` 判断 `battery_charging` 是否连续稳定为 true。
-7. 失败时执行 `Undocking` 并重新导航；成功后停止 AprilTag 检测。
+1. 入口先连续采样 `/diagnostics_agg`，确认当前是“已充电”“已连接未充电”还是“未连接未充电”。
+2. 已经处于充电状态时直接返回成功，不再导航或对接。
+3. 已连接但未充电时先执行 `Undocking` 退桩，再进入正常回充流程。
+4. 未连接未充电时先通过 Nav2 `NavigateToPose` 导航到充电位，导航最多重试 3 次。
+5. 导航成功后，对接流程最多重试 3 次；每次尝试先调用 `start_apriltag_detection`。
+6. `Dock` 订阅 `apriltag_target_pose`，用 `ReverseDockingController` 三阶段锁定目标并发布速度到 `control/cmd_vel_nav`。
+7. 倒车对接到位后执行低速后退，检测到充电器连接或 `battery_charging=true` 任一条件满足就立即停止；否则达到距离/时间限制后停止。
+8. `CheckCharging` 从 `/diagnostics_agg` 判断 `battery_charging` 是否连续稳定为 true；确认成功后默认以 `0.01 m/s` 向前发布 `0.5 s`，减小机器人继续顶住充电桩的机械压力，随后发布零速度；确认失败时停止检测、退桩并触发下一次对接重试。
 
 ## 目录结构
 
@@ -33,6 +34,7 @@ auto_charging_bt/
 │   ├── auto_charging_action_server_node.cpp
 │   └── service_node.cpp
 ├── config/
+│   ├── auto_charging_bt_params.yaml
 │   ├── charging_bt.xml
 │   └── charging_pose.json
 ├── launch/
@@ -59,9 +61,7 @@ auto_charging_bt/
 - 通过 feedback 返回当前行为树状态和重试次数。
 - 成功、失败或取消时会尝试停止 AprilTag 检测并发布零速度。
 - 行为树 XML 从包安装后的 `share/auto_charging_bt/config/charging_bt.xml` 加载。
-- 收到 Action cancel 后会设置内部取消标志，halt 行为树，停止 AprilTag 检测，取消内部 Nav2 `navigate_to_pose` 目标，并停止 `Dock` 使用的 `ReverseDockingBtController`。
-- 内部 Nav2 目标在等待 server、发送 goal、goal 已接受和等待 result 阶段都会检查取消标志；如果还没有拿到具体 goal handle，会调用 `async_cancel_all_goals()` 兜底。
-- `backward()`、`Undocking`、`Dock`、`CheckCharging` 和 `StartDetection` 都会检查取消标志，避免 Action 已取消后继续导航、对接、后退或检测。
+- `auto_charging_action.launch.py` 会加载 `share/auto_charging_bt/config/auto_charging_bt_params.yaml` 中的入口状态确认、末端后退、退桩、充电确认和 `Dock` 倒车对接参数。
 
 启动示例：
 
@@ -79,7 +79,7 @@ ros2 launch auto_charging_bt auto_charging_action.launch.py
 ros2 launch auto_charging_bt auto_charging_service.launch.py
 ```
 
-注意：当前 `service_node.cpp` 中存在硬编码路径，并且 blackboard 初始化与行为树节点要求不完全一致，使用前建议先复核。
+注意：`service_node.cpp` 已使用包安装路径加载行为树 XML，并设置行为树所需的 `charging_node` blackboard；`auto_charging_service.launch.py` 会加载同一份 `auto_charging_bt_params.yaml`，并启动发布 `apriltag_target_pose` 的 `apriltag_alignment_tf_node`。导航目标 JSON 仍使用现场硬编码路径，使用前需要确认该文件存在。
 
 ### `test_docking_controller`
 
@@ -133,7 +133,7 @@ ros2 run auto_charging_bt test_odom_docking_controller --ros-args -p kP:=0.20 -p
 
 ### `test_reverse_docking_controller`
 
-倒车回充控制器独立测试节点。该节点订阅 `base_link` 下的目标位姿 `geometry_msgs/msg/PoseStamped`，采用两阶段控制：启动后先保持零速度，采样 `target_lock_duration` 秒内收到的目标位姿并计算平均值，然后将该平均目标从 `base_link` 转到固定坐标系 `fixed_frame`（默认 `odom`）锁定；第一阶段控制到位置和角度都满足阈值后，停止运动并重新采样 `refinement_lock_duration` 秒近距离目标，再锁定第二阶段目标并低速精调。锁定后不实时追随视觉目标，但控制循环会用最新 TF 把固定目标转回当前 `base_link` 计算误差，因此误差会随机器人运动变化。
+倒车回充控制器独立测试节点。该节点订阅 `base_link` 下的目标位姿 `geometry_msgs/msg/PoseStamped`，采用三阶段控制：启动后先保持零速度，采样 `initial_sampling_duration` 秒内收到的目标位姿并计算去极值平均值，然后将该平均目标从 `base_link` 转到固定坐标系 `fixed_frame`（默认 `odom`）锁定；第一阶段粗靠近后停车，按 `second_sampling_duration` 重新采样近距离目标；第二阶段到位后再次停车，按 `final_sampling_duration` 采样最终目标并进入最终精对准。锁定后不实时追随视觉目标，但控制循环会用最新 TF 把固定目标转回当前 `base_link` 计算误差，因此误差会随机器人运动变化。
 
 `ReverseDockingController` 与原 `DockingController` 分离，面向“Nav2 已到充电前置点，机器人姿态基本满足直接后退充电”的场景。控制器默认连续低速倒车，同时根据角度误差修正方向；只有角度误差超过较大阈值时才临时抑制线速度，优先修正姿态。
 
@@ -148,10 +148,12 @@ ros2 run auto_charging_bt test_odom_docking_controller --ros-args -p kP:=0.20 -p
 测试节点外层阶段：
 
 - `INITIAL_SAMPLING`：起步前采样目标，期间发布零速度。
-- `FIRST_APPROACH`：使用初始平均目标倒车，到位判断同时检查 `linear_tolerance`、`lateral_tolerance` 和 `final_yaw_tolerance`。
-- `REFINEMENT_SAMPLING`：第一阶段到位后停止运动，近距离重新采样目标。
-- `SECOND_APPROACH`：使用二次平均目标低速精调，线速度和角速度会额外缩放和限幅。
-- `FINISHED`：第二阶段位置和角度都到位后持续发布零速度。
+- `FIRST_APPROACH`：使用初始平均目标倒车，按第一阶段较宽松阈值粗接近。
+- `SECOND_SAMPLING`：第一阶段到位后停止运动，近距离重新采样目标。
+- `SECOND_APPROACH`：使用二次平均目标继续接近，按第二阶段阈值和限速参数控制。
+- `FINAL_SAMPLING`：第二阶段到位后再次停止运动，重新采样最终目标；如果最终采样比第二阶段到位误差明显变差，会按参数重采样。
+- `FINAL_APPROACH`：使用最终平均目标低速精调，线速度和角速度会额外缩放和限幅。
+- `FINISHED`：最终阶段位置和角度都到位后持续发布零速度。
 
 默认接口：
 
@@ -159,7 +161,7 @@ ros2 run auto_charging_bt test_odom_docking_controller --ros-args -p kP:=0.20 -p
 - 发布：`control/cmd_vel_nav` (`geometry_msgs/msg/Twist`)。
 - TF：持续发布当前控制目标 `base_link -> reverse_docking_target`，表示锁定目标转换回当前 `base_link` 后的相对误差。
 - 静态目标 TF：锁定后持续发布 `fixed_frame -> reverse_docking_static_target`，表示最终锁定目标在固定坐标系下的位置，默认 parent 为 `odom`。
-- 日志：锁定平均目标和每阶段到位时打印目标误差；控制过程中节流打印测试阶段、控制器阶段、原始速度、限速后速度、`local_x`、`local_y`、距离、倒车方向误差和最终姿态误差。
+- 日志：锁定平均目标和每阶段到位时打印目标误差；控制过程中节流打印测试阶段、控制器阶段、原始速度、限速后速度、`local_x`、`local_y`、距离、倒车方向误差和最终姿态误差。进入外层阶段时会打印 `-------------------------` 横幅；低频关键事件保留英文并追加中文说明；高频节流日志保留英文，便于 `analyze_auto_charging_log.py` 继续按英文关键字统计。
 
 启动示例：
 
@@ -177,23 +179,29 @@ ros2 run auto_charging_bt test_reverse_docking_controller --ros-args -p max_line
 
 | 参数 | 默认值 | 说明 |
 | --- | --- | --- |
-| `target_lock_duration` | `2.0` | 起步前目标采样时长，采样期间发布零速度，结束后使用平均目标点进入第一阶段控制 |
-| `refinement_lock_duration` | `1.0` | 第一阶段到位后的近距离二次采样时长，采样期间发布零速度 |
+| `initial_sampling_duration` | `1.0` | 起步前目标采样时长，采样期间发布零速度，结束后使用平均目标点进入第一阶段控制 |
+| `second_sampling_duration` | `2.0` | 第一阶段到位后的近距离二次采样时长，采样期间发布零速度 |
+| `final_sampling_duration` | `1.0` | 第二阶段到位后的最终采样时长 |
+| `final_resampling_duration` | `2.0` | 最终采样跳变被拒绝后的重采样时长 |
 | `fixed_frame` | `odom` | 锁定最终目标点使用的固定坐标系，控制时每周期转换回当前 `base_link` |
 | `static_target_frame` | `reverse_docking_static_target` | 固定坐标系下最终锁定目标的 TF 子坐标系，仅用于 RViz 可视化 |
-| `linear_gain` | `0.35` | 纵向位置误差到倒车速度的比例 |
+| `linear_gain` | `0.40` | 纵向位置误差到倒车速度的比例 |
 | `heading_gain` | `1.20` | 倒车方向误差到角速度的比例 |
 | `final_yaw_gain` | `0.90` | 最终姿态 PID 的 P 增益 |
 | `final_yaw_i_gain` | `0.0` | 最终姿态 PID 的 I 增益，默认关闭积分 |
 | `final_yaw_d_gain` | `0.05` | 最终姿态 PID 的 D 增益，用于降低末端旋转过冲 |
 | `final_yaw_i_limit` | `0.30` | 最终姿态 PID 积分限幅 |
 | `final_yaw_offset` | `0.0` | 最终姿态误差偏置。当前 `apriltag_target_pose` 已经表示机器人最终背对充电桩的姿态，默认不额外加减 180 度；只有现场目标姿态定义需要修正时才调整该值 |
-| `final_max_angular_speed` | `0.15` | `ROTATING_TO_GOAL` 最终姿态修正阶段的角速度上限 |
+| `final_max_angular_speed` | `0.20` | `ROTATING_TO_GOAL` 最终姿态修正阶段的角速度上限 |
 | `final_min_angular_speed` | `0.0` | `ROTATING_TO_GOAL` 最终姿态修正阶段的角速度下限，默认不强制最小角速度 |
-| `second_stage_linear_scale` | `0.5` | 第二阶段对控制器线速度输出的比例缩放 |
-| `second_stage_angular_scale` | `0.5` | 第二阶段对控制器角速度输出的比例缩放 |
-| `second_stage_max_linear_speed` | `0.08` | 第二阶段线速度绝对值上限 |
-| `second_stage_max_angular_speed` | `0.20` | 第二阶段角速度绝对值上限 |
+| `second_stage_linear_scale` | `0.9` | 第二阶段对控制器线速度输出的比例缩放 |
+| `second_stage_angular_scale` | `0.9` | 第二阶段对控制器角速度输出的比例缩放 |
+| `second_stage_max_linear_speed` | `0.10` | 第二阶段线速度绝对值上限 |
+| `second_stage_max_angular_speed` | `0.30` | 第二阶段角速度绝对值上限 |
+| `final_stage_linear_scale` | `0.5` | 最终阶段对控制器线速度输出的比例缩放 |
+| `final_stage_angular_scale` | `0.7` | 最终阶段对控制器角速度输出的比例缩放 |
+| `final_stage_max_linear_speed` | `0.08` | 最终阶段线速度绝对值上限 |
+| `final_stage_max_angular_speed` | `0.20` | 最终阶段角速度绝对值上限 |
 | `approach_distance` | `0.25` | 小于该距离后进入末端调整阶段 |
 | `large_heading_threshold` | `0.35` | 倒车方向误差超过该值时暂停线速度，优先修正姿态 |
 | `linear_tolerance` | `0.020` | 纵向到位阈值 |
@@ -202,7 +210,7 @@ ros2 run auto_charging_bt test_reverse_docking_controller --ros-args -p max_line
 
 ### 行为树 `Dock`
 
-`Dock` 已接入 `ReverseDockingController`，运行时不再读取本包 `config/charging_pose.json` 作为近距离对接目标。它订阅 perception 节点发布的 `apriltag_target_pose`，默认要求目标位姿在 `base_link` 下；起步先采样并平均目标，锁定到 `fixed_frame`（默认 `odom`）后开始第一阶段倒车。第一阶段到位后停车并重新采样近距离目标，再进入第二阶段低速精调。第二阶段到位后，`Dock` 会继续执行 `backward()` 做末端插入和连接稳定等待，然后返回成功给行为树。
+`Dock` 已接入 `ReverseDockingController`，运行时不再读取本包 `config/charging_pose.json` 作为近距离对接目标。它订阅 perception 节点发布的 `apriltag_target_pose`，默认要求目标位姿在 `base_link` 下；起步先采样并平均目标，锁定到 `fixed_frame`（默认 `odom`）后开始第一阶段倒车。第一阶段到位后停车并重新采样近距离目标进入第二阶段，第二阶段到位后再采样最终目标进入最终精对准。最终阶段到位后，`Dock` 会继续执行 `backward()` 做末端插入；一旦检测到充电器连接或 `battery_charging=true` 就停止后退，然后返回成功给行为树。
 
 默认接口：
 
@@ -249,12 +257,26 @@ ros2 run auto_charging_bt test_reverse_docking_controller --ros-args -p max_line
 
 行为树主流程文件。当前主流程为：
 
-- `NavigateToCharging`
-- `StartDetection`
-- `RetryUntilSuccessful num_attempts="3"`
-- 每次尝试执行 `Dock` 和 `CheckCharging`
-- 失败时执行 `Undocking` 后重新导航
-- `StopDetection`
+- `Fallback AutoChargingRoot`
+- `IsCharging`：入口稳定采样确认已充电时直接成功
+- `IsConnectedToCharger`：入口稳定采样确认已连接未充电时先 `Undocking`，再进入正常流程
+- `ChargingFlow`：导航最多重试 3 次，Dock/CheckCharging 最多重试 3 次
+- 每次 Dock 尝试启动 AprilTag 检测；失败恢复时执行 `StopDetection` 和 `Undocking`
+- 成功或整体失败后由 Action/Service 入口兜底调用 `stopDetection()`
+
+### `config/auto_charging_bt_params.yaml`
+
+Action 和 Service launch 共同加载的参数文件，当前包含入口状态确认、末端后退、充电确认后的顶桩压力释放、退桩和 `dock.reverse.*` 倒车对接参数。该文件使用 `/**` 通配节点名，因为参数由进程内的 `AutoChargingNode` 读取，而不是 Action server 外层节点读取。
+
+| 参数 | 默认值 | 说明 |
+| --- | --- | --- |
+| `entry_state.max_duration` | `0.5` | 入口状态确认最长采样时长 |
+| `entry_state.sample_interval` | `0.1` | 入口状态采样间隔 |
+| `entry_state.required_stable_count` | `3` | 入口状态连续一致次数要求 |
+| `check_charging.required_stable_count` | `5` | `CheckCharging` 连续检测到充电的次数要求 |
+| `pressure_relief.speed` | `0.01` | 充电确认成功后的前进速度，单位 m/s |
+| `pressure_relief.duration` | `0.5` | 充电确认成功后固定发送前进速度的时长，单位 s |
+| `pressure_relief.control_rate` | `50.0` | 顶桩压力释放速度的发布频率，单位 Hz |
 
 ### `config/charging_pose.json`
 
@@ -288,19 +310,26 @@ ros2 run auto_charging_bt test_reverse_docking_controller --ros-args -p max_line
 
 ## 参数
 
-Action launch 中配置了以下参数：
+`config/auto_charging_bt_params.yaml` 中配置了以下通用行为参数：
 
 | 参数 | 默认示例 | 说明 |
 | --- | --- | --- |
-| `backward.initial_speed` | `-0.01` | 初始后退速度 |
-| `backward.connected_speed` | `-0.005` | 检测到连接后的慢速后退速度 |
-| `backward.max_distance` | `0.08` | 后退最大距离 |
-| `backward.stable_duration` | `1.0` | 连接稳定持续时间 |
-| `backward.max_duration` | `8.0` | 后退最大时长 |
+| `backward.initial_speed` | `-0.02` | 初始后退速度 |
+| `backward.connected_speed` | `-0.005` | 兼容旧参数；当前检测到连接或正在充电会立即停止后退，不再切换慢速等待 |
+| `backward.max_distance` | `0.13` | 后退最大距离 |
+| `backward.stable_duration` | `1.0` | 兼容旧参数；当前不再等待连接稳定时长 |
+| `backward.max_duration` | `7.0` | 后退最大时长 |
 | `backward.control_rate` | `50.0` | 后退控制频率 |
 | `backward.max_dt` | `0.1` | 后退距离积分最大时间步长 |
 | `undocking.speed` | `0.10` | 脱离充电桩速度 |
 | `undocking.duration` | `2.0` | 脱离充电桩时长 |
+| `entry_state.max_duration` | `0.5` | 入口状态确认最长采样时长 |
+| `entry_state.sample_interval` | `0.1` | 入口状态采样间隔 |
+| `entry_state.required_stable_count` | `3` | 入口状态连续一致次数要求 |
+| `check_charging.required_stable_count` | `5` | 充电确认连续稳定次数 |
+| `pressure_relief.speed` | `0.01` | 充电确认成功后的前进速度，单位 m/s |
+| `pressure_relief.duration` | `0.5` | 固定发送前进速度的时长，单位 s |
+| `pressure_relief.control_rate` | `50.0` | 前进速度发布频率，单位 Hz |
 
 `Dock` 反向对接参数使用 `dock.reverse.*` 命名空间：
 
@@ -309,9 +338,11 @@ Action launch 中配置了以下参数：
 | `dock.reverse.target_topic` | `apriltag_target_pose` | 倒车对接目标位姿 topic |
 | `dock.reverse.base_frame` | `base_link` | 控制器计算误差使用的机器人基坐标系 |
 | `dock.reverse.fixed_frame` | `odom` | 锁定平均目标点使用的固定坐标系 |
-| `dock.reverse.target_lock_duration` | `2.0` | 起步前目标采样时长 |
-| `dock.reverse.refinement_lock_duration` | `1.0` | 第一阶段到位后的二次采样时长 |
-| `dock.reverse.linear_gain` | `0.35` | 纵向误差到倒车速度的比例 |
+| `dock.reverse.initial_sampling_duration` | `1.0` | 起步前目标采样时长 |
+| `dock.reverse.second_sampling_duration` | `2.0` | 第一阶段到位后的二次采样时长 |
+| `dock.reverse.final_sampling_duration` | `1.0` | 第二阶段到位后的最终采样时长 |
+| `dock.reverse.max_sample_age` | `1.5` | 允许使用的 AprilTag 目标消息最大年龄 |
+| `dock.reverse.linear_gain` | `0.40` | 纵向误差到倒车速度的比例 |
 | `dock.reverse.heading_gain` | `1.20` | 倒车方向误差到角速度的比例 |
 | `dock.reverse.final_yaw_gain` | `0.90` | 末端姿态 PID 的 P 增益 |
 | `dock.reverse.final_yaw_i_gain` | `0.0` | 末端姿态 PID 的 I 增益 |
@@ -319,11 +350,15 @@ Action launch 中配置了以下参数：
 | `dock.reverse.final_yaw_offset` | `0.0` | 最终姿态误差偏置，默认不额外加减 180 度 |
 | `dock.reverse.max_linear_speed` | `0.18` | 第一阶段线速度上限 |
 | `dock.reverse.max_angular_speed` | `0.45` | 第一阶段角速度上限 |
-| `dock.reverse.final_max_angular_speed` | `0.15` | 末端姿态修正角速度上限 |
-| `dock.reverse.second_stage_linear_scale` | `0.5` | 第二阶段线速度缩放 |
-| `dock.reverse.second_stage_angular_scale` | `0.5` | 第二阶段角速度缩放 |
-| `dock.reverse.second_stage_max_linear_speed` | `0.08` | 第二阶段线速度上限 |
-| `dock.reverse.second_stage_max_angular_speed` | `0.20` | 第二阶段角速度上限 |
+| `dock.reverse.final_max_angular_speed` | `0.20` | 末端姿态修正角速度上限 |
+| `dock.reverse.second_stage_linear_scale` | `0.9` | 第二阶段线速度缩放 |
+| `dock.reverse.second_stage_angular_scale` | `0.9` | 第二阶段角速度缩放 |
+| `dock.reverse.second_stage_max_linear_speed` | `0.10` | 第二阶段线速度上限 |
+| `dock.reverse.second_stage_max_angular_speed` | `0.30` | 第二阶段角速度上限 |
+| `dock.reverse.final_stage_linear_scale` | `0.5` | 最终阶段线速度缩放 |
+| `dock.reverse.final_stage_angular_scale` | `0.7` | 最终阶段角速度缩放 |
+| `dock.reverse.final_stage_max_linear_speed` | `0.08` | 最终阶段线速度上限 |
+| `dock.reverse.final_stage_max_angular_speed` | `0.20` | 最终阶段角速度上限 |
 
 ## 依赖
 
@@ -357,8 +392,7 @@ python3 test/auto_charging_test.py --count 5
 ## 已知注意事项
 
 - `launch/auto_charging_bt.launch.py` 引用的 `auto_charging_bt_node` 当前没有在 `CMakeLists.txt` 中构建。
-- `service_node.cpp` 日志中写的是 `/auto_charing`，实际创建的服务名是 `/auto_charging`。
 - Action 入口的行为树 XML 已通过 `ament_index_cpp` 从包内加载；导航目标 JSON 仍使用硬编码路径。
-- Service 入口仍对导航目标 JSON 和行为树 XML 使用硬编码路径，使用前建议改为包路径或参数。
+- Service 入口的行为树 XML 已通过 `ament_index_cpp` 从包内加载；导航目标 JSON 仍使用硬编码路径。
 - 行为树 `Dock` 已不再使用 `DockingController`；该控制器仍保留给 `test_docking_controller` 等旧测试节点使用。
-- `package.xml` 的依赖声明和 `CMakeLists.txt` 中实际使用的依赖不完全一致，维护构建配置时需要一起更新。
+- 维护接口、TF、Action 或感知依赖时，需要同步复核 `package.xml` 和 `CMakeLists.txt`。

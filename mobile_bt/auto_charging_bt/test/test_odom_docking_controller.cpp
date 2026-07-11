@@ -1,14 +1,14 @@
-#include <tf2_ros/transform_broadcaster.h>
-
-#include <chrono>
-#include <functional>
 #include <geometry_msgs/msg/pose.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <geometry_msgs/msg/transform_stamped.hpp>
 #include <geometry_msgs/msg/twist.hpp>
+#include <rclcpp/rclcpp.hpp>
+#include <tf2_ros/transform_broadcaster.h>
+
+#include <chrono>
+#include <functional>
 #include <memory>
 #include <optional>
-#include <rclcpp/rclcpp.hpp>
 #include <string>
 
 #include "docking_controller.h"
@@ -86,7 +86,8 @@ private:
         cmd.angular.z = w;
         cmd_pub_->publish(cmd);
 
-        RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 500, "base control: target_base=(%.3f, %.3f), v=%.4f, w=%.4f",
+        RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 500,
+                             "base control: target_base=(%.3f, %.3f), v=%.4f, w=%.4f",
                              target_pose_->position.x, target_pose_->position.y, v, w);
     }
 

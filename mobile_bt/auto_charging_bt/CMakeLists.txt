@@ -61,6 +61,7 @@ ament_target_dependencies(auto_charging_service_node
   rclcpp
   rclcpp_action
   behaviortree_cpp_v3
+  ament_index_cpp
   std_srvs
 )
 target_link_libraries(auto_charging_service_node

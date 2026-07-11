@@ -2,9 +2,10 @@
 #define REVERSE_DOCKING_CONTROLLER_H
 
 #include <chrono>
-#include <geometry_msgs/msg/pose.hpp>
 #include <string>
 #include <utility>
+
+#include <geometry_msgs/msg/pose.hpp>
 
 class ReverseDockingController {
 public:

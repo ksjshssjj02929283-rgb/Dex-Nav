@@ -1,30 +1,49 @@
 <root main_tree_to_execute="MainTree">
   <BehaviorTree ID="MainTree">
-    <Sequence name="Root">
-      <NavigateToCharging goal="{charging_pose}" />
-      <StartDetection />
-      
-      <!-- 统一3次尝试的控制循环 -->
-      <RetryUntilSuccessful num_attempts="3">
-        <Sequence name="DockAttemptCycle">
-          <!-- 使用Fallback确保Dock失败时也能执行回退逻辑 -->
-          <Fallback name="DockAndVerify">
-            <!-- 尝试Dock并验证充电 -->
-            <Sequence name="DockThenCheck">
-              <Dock timeout="60.0"/>
-              <CheckCharging timeout="20.0" />
-            </Sequence>
+    <Fallback name="AutoChargingRoot">
+      <!-- 已经处于充电状态：本次回充直接成功，不再导航/对接 -->
+      <IsCharging />
 
-            <!-- Dock失败或CheckCharging失败时，执行回退并重新导航 -->
-            <Sequence name="RecoverAndRetry">
-              <Undocking duration="2.0"/>
-              <NavigateToCharging goal="{charging_pose}" />
-              <AlwaysFailure /> <!-- 强制返回FAILURE触发重试 -->
-            </Sequence>
-          </Fallback>
-        </Sequence>
-      </RetryUntilSuccessful>
-      <StopDetection />
-    </Sequence>
+      <!-- 已插入/连接但未充电：先退桩，然后继续走下面统一的回充流程 -->
+      <Sequence name="UndockIfPlugged">
+        <IsConnectedToCharger />
+        <Undocking duration="2.0" />
+        <AlwaysFailure />
+      </Sequence>
+
+      <!-- 未插入且未充电：正常执行完整回充流程 -->
+      <Sequence name="ChargingFlow">
+        <!-- 导航到回充点单独最多尝试3次 -->
+        <RetryUntilSuccessful num_attempts="3">
+          <Sequence name="NavigateAttempt">
+            <AttemptLogger label="导航" counter_key="nav_attempt_count" total="3" />
+            <NavigateToCharging goal="{charging_pose}" />
+          </Sequence>
+        </RetryUntilSuccessful>
+
+        <!-- 导航成功后，回充对接单独最多尝试3次 -->
+        <RetryUntilSuccessful num_attempts="3">
+          <Sequence name="DockAttempt">
+            <AttemptLogger label="回充对接" counter_key="dock_attempt_count" total="3" />
+            <StartDetection />
+
+            <Fallback name="DockAndVerify">
+              <Sequence name="DockThenCheck">
+                <Dock timeout="60.0" />
+                <CheckCharging timeout="20.0" />
+              </Sequence>
+
+              <Sequence name="RecoverAndRetry">
+                <StopDetection />
+                <Undocking duration="2.0" />
+                <AlwaysFailure />
+              </Sequence>
+            </Fallback>
+          </Sequence>
+        </RetryUntilSuccessful>
+
+        <StopDetection />
+      </Sequence>
+    </Fallback>
   </BehaviorTree>
 </root>

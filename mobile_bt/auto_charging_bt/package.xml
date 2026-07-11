@@ -18,11 +18,11 @@
   <build_depend>nav2_msgs</build_depend>
   <build_depend>behaviortree_cpp_v3</build_depend>
   <build_depend>nlohmann_json</build_depend>
-  <build_depend>ament_index_cpp</build_depend>
   <build_depend>std_srvs</build_depend>
-  <build_depend>tf2_geometry_msgs</build_depend>
-  <build_depend>tf2_ros</build_depend>
+  <build_depend>ament_index_cpp</build_depend>
   <build_depend>tf2</build_depend>
+  <build_depend>tf2_ros</build_depend>
+  <build_depend>tf2_geometry_msgs</build_depend>
   <build_depend>chassis_interfaces</build_depend>
 
   <!-- Exec dependencies -->
@@ -34,12 +34,14 @@
   <exec_depend>nav2_msgs</exec_depend>
   <exec_depend>behaviortree_cpp_v3</exec_depend>
   <exec_depend>nlohmann_json</exec_depend>
-  <exec_depend>ament_index_cpp</exec_depend>
   <exec_depend>std_srvs</exec_depend>
-  <exec_depend>tf2_geometry_msgs</exec_depend>
-  <exec_depend>tf2_ros</exec_depend>
+  <exec_depend>ament_index_cpp</exec_depend>
+  <exec_depend>ament_index_python</exec_depend>
   <exec_depend>tf2</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
+  <exec_depend>tf2_geometry_msgs</exec_depend>
   <exec_depend>chassis_interfaces</exec_depend>
+  <exec_depend>mobile_perception</exec_depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>

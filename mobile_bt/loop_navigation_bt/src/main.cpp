@@ -33,7 +33,8 @@ int main(int argc, char** argv) {
     factory.registerBuilder<loop_navigation_bt::CancelNavigation>(
         "CancelNavigation", create_builder<loop_navigation_bt::CancelNavigation>(node));
     factory.registerBuilder<loop_charging_bt::CallAutoChargingAction>(
-        "CallCharging", create_builder<loop_charging_bt::CallAutoChargingAction>(node));
+        "CallCharging",
+        create_builder<loop_charging_bt::CallAutoChargingAction>(node));  // Registering as "CallCharging"
     factory.registerBuilder<loop_navigation_bt::Undocking>("Undocking",
                                                            create_builder<loop_navigation_bt::Undocking>(node));
 

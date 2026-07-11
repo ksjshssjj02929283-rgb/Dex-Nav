@@ -4,9 +4,9 @@
 
 `loop_navigation_bt` 是一个自主移动机器人的循环导航行为树模块，实现了以下功能：
 
-1. **电量检测**：通过订阅 `/feedback/battery` 话题实时获取机器人电量
-2. **循环导航**：在电量充足（>35%）时循环导航四个预设点
-3. **自动回充**：当电量低于35%时自动触发回充服务
+1. **电量检测**：通过订阅 `/diagnostics_agg` 话题读取 `battery_percentage`
+2. **循环导航**：在电量充足（≥30%）时循环导航预设点
+3. **自动回充**：当电量低于30%时自动触发回充流程
 4. **持续监控**：回充完成后继续检测电量，电量充足则继续导航
 
 ## 项目结构
@@ -33,7 +33,7 @@ loop_navigation_bt/
 
 ```
 MainTree (WhileDoElse)
-├── Condition: CheckBatteryAboveThreshold (threshold=35%)
+├── Condition: CheckBatteryAboveThreshold (threshold=30%)
 ├── Do: LoopNavigateFourPoints (循环导航)
 └── Else: CallAutoChargeService (调用回充服务)
 ```
@@ -41,8 +41,8 @@ MainTree (WhileDoElse)
 ### 执行流程
 
 1. **检查电量** (`CheckBatteryAboveThreshold`)
-   - 订阅 `/feedback/battery` 话题
-   - 检查电量是否 > 35%
+   - 订阅 `/diagnostics_agg` 话题
+   - 检查电量是否 ≥ 30%
    - SUCCESS: 电量充足，执行导航
    - FAILURE: 电量不足，执行回充
 
@@ -50,7 +50,7 @@ MainTree (WhileDoElse)
    - 循环导航四个预设点
    - 每完成一个点后移动到下一个点
    - 在导航过程中持续检查电量
-   - 若电量 ≤ 35%，停止导航并返回 FAILURE
+   - 若电量 < 30%，停止导航并返回 FAILURE
 
 3. **自动回充** (`CallAutoChargeService`)
    - 调用 `/auto_charge` 服务
@@ -62,7 +62,7 @@ MainTree (WhileDoElse)
 ### 1. CheckBatteryAboveThreshold
 - **类型**: SyncActionNode
 - **功能**: 检查当前电量是否大于阈值
-- **输入端口**: `threshold` (double, 默认35.0)
+- **输入端口**: `threshold` (double，XML 当前配置为30.0)
 - **返回值**: SUCCESS (电量充足) / FAILURE (电量不足)
 
 ### 2. NavigateToPoint
@@ -79,7 +79,7 @@ MainTree (WhileDoElse)
 - **特性**:
   - 自动循环遍历所有点
   - 在导航过程中持续检查电量
-  - 电量低于35%时停止并返回FAILURE
+  - 电量低于30%时停止并返回FAILURE
 
 ### 4. CallAutoChargeService
 - **类型**: SyncActionNode
@@ -126,6 +126,12 @@ source install/setup.bash
 # 方式1: 使用启动文件
 ros2 launch loop_navigation_bt loop_navigation_bt.launch.py
 
+# 无充电循环导航：默认关闭电量检查，适用于没有电量信息的底盘
+ros2 launch loop_navigation_bt loop_nocharging.launch.py
+
+# 有电量信息时，开启低电量返回第一个点并停止的流程
+ros2 launch loop_navigation_bt loop_nocharging.launch.py check_battery:=true
+
 # 方式2: 直接运行节点
 ros2 run loop_navigation_bt loop_navigation_bt_node
 ```
@@ -144,9 +150,9 @@ ros2 run loop_navigation_bt loop_navigation_bt_node
 ## 话题和服务
 
 ### 订阅话题
-- `/feedback/battery` (sensor_msgs::msg::BatteryState)
-  - 获取机器人电量信息
-  - 字段: `percentage` (0-100)
+- `/diagnostics_agg` (`diagnostic_msgs/msg/DiagnosticArray`)
+  - 从 PowerBoard 诊断项获取机器人电量信息
+  - 字段：`battery_percentage`（0～100）
 
 ### 调用服务
 - `/auto_charge` (std_srvs::srv::Trigger)
@@ -182,16 +188,18 @@ ros2 run loop_navigation_bt loop_navigation_bt_node
 - 确保 `/auto_charge` 服务已注册
 - 检查服务节点是否运行
 
-### 4. 电量信息为 0
-- 检查 `/feedback/battery` 话题是否发布
-- 确保电池驱动程序正常工作
+### 4. 底盘没有电量信息
+
+`loop_nocharging.launch.py` 默认使用 `check_battery:=false`，不会把“没有收到电量”误判成低电量。若底盘提供 `/diagnostics_agg` 电量信息，可显式使用 `check_battery:=true`。
+
+关闭电量检查后，循环导航不会执行低电量返回和停止流程，应确认底盘自身具备低电量保护。
 
 ## 扩展功能
 
 ### 修改电量阈值
 在 `loop_navigation_bt.xml` 中修改：
 ```xml
-<CheckBatteryAboveThreshold threshold="35.0" />
+<CheckBatteryAboveThreshold threshold="30.0" />
 ```
 
 ### 修改导航点
@@ -210,5 +218,4 @@ Apache License 2.0
 ## 作者
 
 DexForce Team
-
 

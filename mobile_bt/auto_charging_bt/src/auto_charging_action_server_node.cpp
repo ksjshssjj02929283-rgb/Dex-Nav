@@ -4,6 +4,8 @@
 #include <mutex>
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp_action/rclcpp_action.hpp>
+#include <string>
+#include <thread>
 
 #include "auto_charging_bt/auto_charging_bt.hpp"
 #include "chassis_interfaces/action/auto_charging.hpp"
@@ -44,7 +46,6 @@ private:
     // ============================
     rclcpp_action::CancelResponse handle_cancel(const std::shared_ptr<GoalHandleAutoCharging>) {
         RCLCPP_WARN(get_logger(), "Auto charging canceled by client");
-        charging_node_->requestCancel();
         return rclcpp_action::CancelResponse::ACCEPT;
     }
 
@@ -68,7 +69,6 @@ private:
         }
 
         RCLCPP_INFO(get_logger(), "🔒 获取执行锁，开始执行回充任务");
-        charging_node_->clearCancel();
 
         auto feedback = std::make_shared<AutoCharging::Feedback>();
         auto result = std::make_shared<AutoCharging::Result>();
@@ -79,9 +79,12 @@ private:
         factory.registerNodeType<Dock>("Dock");
         factory.registerNodeType<CheckCharging>("CheckCharging");
         factory.registerNodeType<CheckBatteryAboveThreshold>("CheckBatteryAboveThreshold");
+        factory.registerNodeType<IsCharging>("IsCharging");
+        factory.registerNodeType<IsConnectedToCharger>("IsConnectedToCharger");
         factory.registerNodeType<Undocking>("Undocking");
         factory.registerNodeType<CounterCheck>("CounterCheck");
         factory.registerNodeType<IncrementCounter>("IncrementCounter");
+        factory.registerNodeType<AttemptLogger>("AttemptLogger");
         factory.registerNodeType<StartDetection>("StartDetection");
         factory.registerNodeType<StopDetection>("StopDetection");
 
@@ -113,17 +116,21 @@ private:
             RCLCPP_ERROR(charging_node_->get_logger(), "%s", message.c_str());
             charging_node_->stopDetection();  // 确保停止检测服务
             result->success = false;
-            result->message = e.what();
+            result->message = message;
+            goal_handle->abort(result);
+            return;
         }
 
         rclcpp::Rate rate(10);
+        RCLCPP_INFO(charging_node_->get_logger(), "开始执行回充行为树（action 调用）...");
+        std::string last_status_str;
+        auto last_status_log_time = get_clock()->now();
+        bool status_log_initialized = false;
 
         // ========= Main loop =========
         while (rclcpp::ok()) {
-            if (goal_handle->is_canceling() || charging_node_->isCancelRequested()) {
-                tree.haltTree();
+            if (goal_handle->is_canceling()) {
                 charging_node_->stopDetection();
-                charging_node_->cancelActiveNavigation();
                 for (int i = 0; i < 5; i++) charging_node_->publishTwist(0.0, 0.0);
 
                 result->success = false;
@@ -134,15 +141,22 @@ private:
             }
 
             BT::NodeStatus status = tree.tickRoot();
-            RCLCPP_INFO(charging_node_->get_logger(), "开始执行回充行为树（action 调用）...");
+            const std::string status_str = std::string(BT::toStr(status));
+            const bool terminal_status =
+                status == BT::NodeStatus::SUCCESS || status == BT::NodeStatus::FAILURE;
+            const double status_log_elapsed = (get_clock()->now() - last_status_log_time).seconds();
+            if (!status_log_initialized || status_str != last_status_str || terminal_status ||
+                status_log_elapsed >= 2.0) {
+                RCLCPP_INFO(charging_node_->get_logger(), "行为树运行状态: %s", status_str.c_str());
+                last_status_str = status_str;
+                last_status_log_time = get_clock()->now();
+                status_log_initialized = true;
+            }
+
             feedback->retry_count = blackboard->get<int>("retry_count");
-            feedback->current_state = std::string(BT::toStr(status));
+            feedback->current_state = status_str;
 
             goal_handle->publish_feedback(feedback);
-
-            if (goal_handle->is_canceling() || charging_node_->isCancelRequested()) {
-                continue;
-            }
 
             if (status == BT::NodeStatus::SUCCESS) {
                 charging_node_->stopDetection();

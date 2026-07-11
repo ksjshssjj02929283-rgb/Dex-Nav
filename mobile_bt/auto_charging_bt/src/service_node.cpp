@@ -1,18 +1,19 @@
 #include <behaviortree_cpp_v3/bt_factory.h>
 #include <behaviortree_cpp_v3/loggers/bt_cout_logger.h>
 
+#include <ament_index_cpp/get_package_share_directory.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <std_srvs/srv/trigger.hpp>
-#
+
 #include "auto_charging_bt/auto_charging_bt.hpp"
-#
+
 #include <memory>
-#
+
 // 全局节点指针定义（与库中的声明匹配）
 std::shared_ptr<AutoChargingNode> charging_node;
-#
+
 namespace {
-#
+
 // 执行一次完整的回充流程，返回 true 表示成功，false 表示失败
 bool run_charging_flow(std::string& message) {
     // 注册行为树节点工厂
@@ -21,9 +22,12 @@ bool run_charging_flow(std::string& message) {
     factory.registerNodeType<Dock>("Dock");
     factory.registerNodeType<CheckCharging>("CheckCharging");
     factory.registerNodeType<CheckBatteryAboveThreshold>("CheckBatteryAboveThreshold");
+    factory.registerNodeType<IsCharging>("IsCharging");
+    factory.registerNodeType<IsConnectedToCharger>("IsConnectedToCharger");
     factory.registerNodeType<Undocking>("Undocking");
     factory.registerNodeType<CounterCheck>("CounterCheck");
     factory.registerNodeType<IncrementCounter>("IncrementCounter");
+    factory.registerNodeType<AttemptLogger>("AttemptLogger");
     factory.registerNodeType<StartDetection>("StartDetection");
     factory.registerNodeType<StopDetection>("StopDetection");
 
@@ -34,7 +38,7 @@ bool run_charging_flow(std::string& message) {
     //     RCLCPP_ERROR(charging_node->get_logger(), "%s", message.c_str());
     //     return false;
     // }
-#
+
     // 读取充电点配置
     std::string json_path = "/home/dexforce/w1/install/mobile_perception/lib/mobile_perception/charging_pose.json";
     geometry_msgs::msg::PoseStamped goal_pose;
@@ -47,15 +51,15 @@ bool run_charging_flow(std::string& message) {
         charging_node->stopDetection();  // 确保停止检测服务
         return false;
     }
-#
+
     // 初始化Blackboard
     auto blackboard = BT::Blackboard::create();
+    blackboard->set("charging_node", charging_node);
     blackboard->set("retry_count", 0);
     blackboard->set("charging_pose", goal_pose);
-#
+
     // 从XML文件加载行为树
-    std::string xml_path =
-        "/home/dexforce/w1/dexe_mobile_application/mobile_bt/auto_charging_bt/config/charging_bt.xml";
+    std::string xml_path = ament_index_cpp::get_package_share_directory("auto_charging_bt") + "/config/charging_bt.xml";
     BT::Tree tree;
     try {
         tree = factory.createTreeFromFile(xml_path, blackboard);
@@ -65,11 +69,11 @@ bool run_charging_flow(std::string& message) {
         charging_node->stopDetection();  // 确保停止检测服务
         return false;
     }
-#
+
     // 控制台日志记录器（可选）
     // BT::StdCoutLogger logger_cout(tree);
     RCLCPP_INFO(charging_node->get_logger(), "开始执行一键回充行为树（service 调用）...");
-#
+
     // 主执行循环
     rclcpp::Rate rate(10);
     bool success = false;
@@ -89,7 +93,7 @@ bool run_charging_flow(std::string& message) {
         rclcpp::spin_some(charging_node);
         rate.sleep();
     }
-#
+
     // 确保停止
     // charging_node->backward(0.0, 0.01);
     for (int i = 0; i < 5; i++) charging_node->publishTwist(0.0, 0.0);
@@ -99,16 +103,16 @@ bool run_charging_flow(std::string& message) {
 
     return success;
 }
-#
+
 }  // namespace
-#
+
 int main(int argc, char** argv) {
     rclcpp::init(argc, argv);
-#
+
     // 创建全局功能节点
     charging_node = std::make_shared<AutoChargingNode>();
-#
-    // 创建 service：/auto_charing 使用 Trigger
+
+    // 创建 service：/auto_charging 使用 Trigger
     auto node = std::make_shared<rclcpp::Node>("auto_charging_service_node");
     auto service = node->create_service<std_srvs::srv::Trigger>(
         "/auto_charging", [](const std::shared_ptr<std_srvs::srv::Trigger::Request> /*request*/,
@@ -118,8 +122,8 @@ int main(int argc, char** argv) {
             response->success = ok;
             response->message = message;
         });
-#
-    RCLCPP_INFO(node->get_logger(), "auto_charging service ready on /auto_charing");
+
+    RCLCPP_INFO(node->get_logger(), "auto_charging service ready on /auto_charging");
     rclcpp::spin(node);
     rclcpp::shutdown();
     return 0;

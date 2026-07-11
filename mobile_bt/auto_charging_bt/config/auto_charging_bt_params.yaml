@@ -1,0 +1,118 @@
+/**:
+  ros__parameters:
+    # 回充入口状态去抖：避免单帧诊断误判。
+    entry_state:
+      max_duration: 0.5          # 最长采样时间，单位 s。
+      sample_interval: 0.1       # 采样间隔，单位 s。
+      required_stable_count: 3   # 连续一致次数。
+
+    # 回充成功确认：battery_charging 连续为 true 才算成功。
+    check_charging:
+      required_stable_count: 5  # 连续充电次数。
+
+    # 充电确认成功后短时向前移动，减小机器人继续顶住充电桩的机械压力。
+    pressure_relief:
+      speed: 0.01               # 前进速度，单位 m/s；正值表示离开充电桩方向。
+      duration: 1.0             # 固定发送速度的时长，单位 s。
+      control_rate: 50.0        # 速度发布频率，单位 Hz。
+
+    # 视觉到位后的末端后退；检测到连接或正在充电会立即停止。
+    backward:
+      initial_speed: -0.02       # 后退速度，单位 m/s；负值表示后退。
+      connected_speed: -0.005    # 兼容旧参数；当前检测到连接/充电会直接停。
+      max_distance: 0.16         # 最大后退距离，单位 m；防止长时间顶桩。
+      stable_duration: 1.0       # 兼容旧参数；当前不再等待连接稳定。
+      max_duration: 8.0          # 最大后退时间，单位 s。
+      control_rate: 50.0         # 后退控制频率，单位 Hz。
+      max_dt: 0.1                # 距离积分最大时间步长，单位 s。
+
+    # 失败恢复/已连接未充电时退桩。
+    undocking:
+      speed: 0.10                # 退桩速度，单位 m/s。
+      duration: 2.0              # 退桩时间，单位 s。
+
+    dock:
+      reverse:
+        # 坐标系与 AprilTag 目标话题。
+        base_frame: base_link
+        target_base_frame: reverse_docking_target
+        static_target_frame: reverse_docking_static_target
+        target_topic: apriltag_target_pose
+        fixed_frame: odom        # 目标锁定坐标系。
+
+        # 三次停车采样时间，单位 s。
+        initial_sampling_duration: 1.0
+        second_sampling_duration: 2.0
+        final_sampling_duration: 1.0
+        final_resampling_duration: 2.0
+
+        # 采样过滤与去抖。
+        max_sample_age: 1.5                  # 最大样本年龄，单位 s；<=0 表示不检查。
+        initial_sampling_max_distance: 0.0   # 初始采样最大距离，单位 m；0 表示不限制。
+        second_sampling_max_distance: 0.20   # 二次采样最大距离，单位 m。
+        final_sampling_max_distance: 0.08    # 最终采样最大距离，单位 m。
+        min_valid_sample_count: 5            # 兼容旧参数，最小有效样本数兜底值。
+        initial_min_valid_sample_count: 5
+        second_min_valid_sample_count: 10
+        final_min_valid_sample_count: 5
+        final_resample_min_valid_sample_count: 10
+        sample_trim_ratio: 0.20              # 去掉两端异常样本比例。
+        final_resample_max_attempts: 3
+        final_resample_linear_margin: 0.020
+        final_resample_lateral_margin: 0.015
+        final_resample_yaw_margin: 0.035
+
+        # 第一阶段：粗靠近阈值，位置单位 m，角度单位 rad。
+        first_stage_linear_tolerance: 0.10
+        first_stage_lateral_tolerance: 0.08
+        first_stage_final_yaw_tolerance: 0.05
+
+        # 第二阶段：近距离精靠近阈值。
+        second_stage_linear_tolerance: 0.040
+        second_stage_lateral_tolerance: 0.020
+        second_stage_final_yaw_tolerance: 0.020
+
+        # 第三阶段：末端后退前的最终到位阈值。
+        final_stage_linear_tolerance: 0.020
+        final_stage_lateral_tolerance: 0.020
+        final_stage_final_yaw_tolerance: 0.020
+
+        # 第二阶段速度缩放和限幅。
+        second_stage_linear_scale: 0.9       # 线速度缩放。
+        second_stage_angular_scale: 0.9      # 角速度缩放。
+        second_stage_max_linear_speed: 0.10  # 最大线速度，单位 m/s。
+        second_stage_max_angular_speed: 0.30 # 最大角速度，单位 rad/s。
+
+        # 第三阶段速度缩放和限幅；建议比第二阶段保守。
+        final_stage_linear_scale: 0.5
+        final_stage_angular_scale: 0.7
+        final_stage_max_linear_speed: 0.08
+        final_stage_max_angular_speed: 0.20
+
+        # 控制周期和控制增益。
+        control_rate: 20.0
+        linear_gain: 0.40       # 纵向误差增益。
+        heading_gain: 1.20
+        final_yaw_gain: 0.90
+        final_yaw_i_gain: 0.0
+        final_yaw_d_gain: 0.05
+        final_yaw_i_limit: 0.30
+        final_yaw_offset: 0.0
+
+        # 控制器内部通用阈值；三阶段到位主要使用上面的分阶段阈值。
+        linear_tolerance: 0.020
+        lateral_tolerance: 0.020
+        heading_tolerance: 0.06
+        final_yaw_tolerance: 0.020
+        approach_distance: 0.25
+        large_heading_threshold: 0.35
+
+        # 底层控制器速度和加速度限制。
+        max_linear_speed: 0.18
+        min_linear_speed: 0.020
+        max_angular_speed: 0.45
+        min_angular_speed: 0.015
+        final_max_angular_speed: 0.20
+        final_min_angular_speed: 0.0
+        max_linear_accel: 0.20
+        max_angular_accel: 0.80
