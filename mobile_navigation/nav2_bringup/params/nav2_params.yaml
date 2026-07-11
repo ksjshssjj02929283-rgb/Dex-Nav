@@ -294,13 +294,14 @@ controller_server:
       critics: ["ConstraintCritic", "CostCritic", "ObstaclesCritic", "GoalCritic", "GoalAngleCritic", "PathAlignCritic", "PathFollowCritic", "PathAngleCritic", "PreferForwardCritic", "VelocityDeadbandCritic"]
     RPPController:
       plugin: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
-      desired_linear_vel: 0.3    # 仅无轨迹（速度规划禁用）时的回退速度；轨迹可用时不参与
+      desired_linear_vel: 0.3    # 三重角色：无轨迹时的回退目标 / 速度环输出界绝对兜底 / 区域限速(speedLimit)入口——必须 ≥ speed planner max_speed 并留余量，否则会钳低规划巡航速度
       max_linear_accel: 0.5    # 速度环加速度限幅 (m/s²)；调大≈目标直发
-      traj_speed_lookahead: 0.1    # 轨迹速度前瞻窗 (m)：起点状态戳=当前速度，静止时须前瞻破自引用死锁
+      traj_speed_lookahead: 0.1    # 轨迹速度目标=最近点之后前方窗内 max（不含状态戳）；静止起步靠前方坡道点破自引用环
       speed_loop_kp: 2.0
       speed_loop_ki: 0.2
       speed_loop_kd: 0.0
-      speed_loop_integrator_saturation: 0.3    # 积分项限幅（此前遗漏导致积分恒钳 0、ki 完全失效）
+      speed_loop_integrator_saturation: 0.3    # 积分项限幅 (m/s²)，须 >0（0=积分被恒钳零、ki 失效）
+      speed_loop_cmd_reseed_error: 0.3    # 指令积分器与实测偏差超此值时重新对齐（外力/急停兜底）
       angular_gain: 1.2    # 角速度增益：>1 收紧转向补偿曲线跟踪滞后（横向误差大→上调，振荡→下调）
       # ── ⑤ 反馈约束（横向/角速度反馈减速）──
       max_angular_vel: 1.5              # 角速度上限 (rad/s)：饱和时联动降 v 保持转弯半径

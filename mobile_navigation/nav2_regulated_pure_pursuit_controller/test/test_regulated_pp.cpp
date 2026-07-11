@@ -92,6 +92,24 @@ public:
     return rotateToHeading(linear_vel, angular_vel, angle_to_path, curr_speed);
   }
 
+  void setTrajSpeedPointsForTest(
+    const std::vector<TrajSpeedPoint> & pts, double lookahead)
+  {
+    traj_speed_points_ = pts;
+    traj_speed_lookahead_ = lookahead;
+  }
+
+  bool nearestTrajectorySpeedWrapper(
+    const geometry_msgs::msg::PoseStamped & pose, double & v, double & a)
+  {
+    return nearestTrajectorySpeed(pose, v, a);
+  }
+
+  double trackLinearVelocityWrapper(double target, double measured, double ff)
+  {
+    return trackLinearVelocity(target, measured, ff);
+  }
+
   void applyConstraintsWrapper(
     const double & curvature, const geometry_msgs::msg::Twist & curr_speed,
     const double & pose_cost, const nav_msgs::msg::Path & path, double & linear_vel, double & sign)
@@ -466,6 +484,129 @@ TEST(RegulatedPurePursuitTest, rotateTests)
   curr_speed.angular.z = 1.0;
   ctrl->rotateToHeadingWrapper(lin_v, ang_v, angle_to_path, curr_speed);
   EXPECT_NEAR(ang_v, 0.84, 0.01);
+}
+
+TEST(RegulatedPurePursuitTest, nearestTrajectorySpeedExcludesStateStamp)
+{
+  auto ctrl = std::make_shared<BasicAPIRPP>();
+  geometry_msgs::msg::PoseStamped pose;  // 机器人在轨迹首点（状态戳）处
+  pose.pose.position.x = 0.0;
+  pose.pose.position.y = 0.0;
+  double v = 0.0, a = 0.0;
+
+  // 场景 1：巡航超速——状态戳 0.65 高于前方剖面 0.6，目标必须取前方 0.6
+  //（若把状态戳纳入 max，目标=自身速度，超速被固化）
+  ctrl->setTrajSpeedPointsForTest(
+    {{0.0, 0.0, 0.65, 0.0}, {0.05, 0.0, 0.6, 0.0}, {0.10, 0.0, 0.6, 0.0},
+      {0.15, 0.0, 0.6, 0.0}},
+    0.1);
+  EXPECT_TRUE(ctrl->nearestTrajectorySpeedWrapper(pose, v, a));
+  EXPECT_NEAR(v, 0.6, 1e-6);
+
+  // 场景 2：减速坡道——状态戳 0.65（其 accel=-0.9 由实测反推，不得用作前馈），
+  // 前方 0.45/0.30/0.15 递减（规划 accel=-0.4）。目标沿坡道取 0.45，
+  // 前馈取首个前方点的 -0.4（与速度窗同基准，切断实测耦合）
+  ctrl->setTrajSpeedPointsForTest(
+    {{0.0, 0.0, 0.65, -0.9}, {0.05, 0.0, 0.45, -0.4}, {0.10, 0.0, 0.30, -0.4},
+      {0.15, 0.0, 0.15, -0.4}},
+    0.1);
+  EXPECT_TRUE(ctrl->nearestTrajectorySpeedWrapper(pose, v, a));
+  EXPECT_NEAR(v, 0.45, 1e-6);
+  EXPECT_NEAR(a, -0.4, 1e-6);  // 前馈取首个前方点，不取状态戳
+
+  // 场景 3：静止起步——状态戳 0，前方加速坡道 0.1/0.2，目标 >0（破自引用环）
+  ctrl->setTrajSpeedPointsForTest(
+    {{0.0, 0.0, 0.0, 0.3}, {0.05, 0.0, 0.1, 0.3}, {0.10, 0.0, 0.2, 0.3}},
+    0.1);
+  EXPECT_TRUE(ctrl->nearestTrajectorySpeedWrapper(pose, v, a));
+  EXPECT_GT(v, 0.0);
+
+  // 场景 4：已在末点——无前方点，回退用最近点自身
+  ctrl->setTrajSpeedPointsForTest({{0.0, 0.0, 0.075, 0.0}}, 0.1);
+  EXPECT_TRUE(ctrl->nearestTrajectorySpeedWrapper(pose, v, a));
+  EXPECT_NEAR(v, 0.075, 1e-6);
+}
+
+TEST(RegulatedPurePursuitTest, trackLinearVelocityCommandIntegrator)
+{
+  auto ctrl = std::make_shared<BasicAPIRPP>();
+  auto node = std::make_shared<rclcpp_lifecycle::LifecycleNode>("testRPPSpeedLoop");
+  std::string name = "PathFollower";
+  auto tf = std::make_shared<tf2_ros::Buffer>(node->get_clock());
+  auto costmap = std::make_shared<nav2_costmap_2d::Costmap2DROS>("fake_costmap_speed");
+  rclcpp_lifecycle::State state;
+  costmap->on_configure(state);
+  nav2_util::declare_parameter_if_not_declared(
+    node, name + ".desired_linear_vel", rclcpp::ParameterValue(1.0));
+  ctrl->configure(node, name, tf, costmap);
+
+  // T1 超速泄放：实测恒 0.65 高于目标 0.6——指令必须能累积下降并越过目标
+  //（旧结构锚定实测：指令恒 ≈ 实测-一步，永远下不去）
+  double v = 0.65;
+  bool crossed_below_target = false;
+  for (int i = 0; i < 500 && !crossed_below_target; ++i) {
+    v = ctrl->trackLinearVelocityWrapper(0.6, 0.65, 0.0);
+    if (v < 0.6) {crossed_below_target = true;}
+  }
+  EXPECT_TRUE(crossed_below_target);
+
+  // T2 滞后 plant 主动制动：目标 0.1，plant 一阶滞后跟随指令——
+  // 指令必须能显著低于实测（主动刹车），且最终把 plant 带到目标附近
+  auto ctrl2 = std::make_shared<BasicAPIRPP>();
+  ctrl2->configure(node, name, tf, costmap);
+  double measured = 0.6;
+  double min_cmd_minus_measured = 1.0;
+  double cmd = measured;
+  for (int i = 0; i < 500; ++i) {
+    cmd = ctrl2->trackLinearVelocityWrapper(0.1, measured, -0.4);
+    min_cmd_minus_measured = std::min(min_cmd_minus_measured, cmd - measured);
+    measured = 0.8 * measured + 0.2 * cmd;  // plant 滞后跟随
+    if (measured < 0.12) {break;}
+  }
+  EXPECT_LT(min_cmd_minus_measured, -0.05);  // 指令下越实测=主动制动权
+  EXPECT_LT(measured, 0.15);
+
+  // T3 reseed：指令与实测脱节超过阈值（0.3）时重新对齐实测
+  double v3 = ctrl2->trackLinearVelocityWrapper(1.0, 1.0, 0.0);
+  EXPECT_NEAR(v3, 1.0, 0.05);
+
+  // T4 绝对界：目标越限时指令被 desired_linear_vel(1.0) 封顶
+  auto ctrl3 = std::make_shared<BasicAPIRPP>();
+  ctrl3->configure(node, name, tf, costmap);
+  double m4 = 0.9;
+  double v4 = m4;
+  for (int i = 0; i < 500; ++i) {
+    v4 = ctrl3->trackLinearVelocityWrapper(5.0, m4, 0.5);
+    m4 = 0.8 * m4 + 0.2 * v4;
+  }
+  EXPECT_LE(v4, 1.0 + 1e-9);
+  EXPECT_GT(v4, 0.95);
+
+  // T5 下界：前向减速强前馈下压时指令不得穿零变负（滞后 plant，目标 0.05）
+  auto ctrl5 = std::make_shared<BasicAPIRPP>();
+  ctrl5->configure(node, name, tf, costmap);
+  double m5 = 0.4;
+  double min_cmd = 1.0;
+  for (int i = 0; i < 300; ++i) {
+    double c = ctrl5->trackLinearVelocityWrapper(0.05, m5, -0.5);
+    min_cmd = std::min(min_cmd, c);
+    m5 = 0.8 * m5 + 0.2 * c;
+  }
+  EXPECT_GE(min_cmd, 0.0);   // 不穿零
+  EXPECT_LT(m5, 0.10);       // 仍能把 plant 带到目标附近
+
+  // T6 上限：指令不得超过瞬时规划速度（巡航目标 0.6，plant 完美跟随）
+  auto ctrl6 = std::make_shared<BasicAPIRPP>();
+  ctrl6->configure(node, name, tf, costmap);
+  double m6 = 0.0;
+  double max_cmd = 0.0;
+  for (int i = 0; i < 300; ++i) {
+    double c = ctrl6->trackLinearVelocityWrapper(0.6, m6, 0.0);
+    max_cmd = std::max(max_cmd, c);
+    m6 = c;  // 完美 plant
+  }
+  EXPECT_LE(max_cmd, 0.6 + 1e-9);
+  EXPECT_GT(m6, 0.55);
 }
 
 TEST(RegulatedPurePursuitTest, applyConstraints)
