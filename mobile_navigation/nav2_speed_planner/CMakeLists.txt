@@ -49,6 +49,22 @@ ament_target_dependencies(${library_name}
 
 target_link_libraries(${library_name} ruckig::ruckig)
 
+add_executable(speed_profile_gen src/tools/speed_profile_gen.cpp)
+target_link_libraries(speed_profile_gen ${library_name} ruckig::ruckig)
+ament_target_dependencies(speed_profile_gen ${dependencies})
+
+install(TARGETS speed_profile_gen
+  RUNTIME DESTINATION lib/${PROJECT_NAME}
+)
+
+install(PROGRAMS
+  scripts/plot_speed_profiles.py
+  scripts/plot_speed_plan_log.py
+  scripts/plot_speed_tracking.py
+  scripts/gen_speed_plan_charts.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 install(TARGETS ${library_name}
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
