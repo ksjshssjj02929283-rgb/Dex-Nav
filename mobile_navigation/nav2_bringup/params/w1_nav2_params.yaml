@@ -152,8 +152,8 @@ controller_server:
       # approach 内部先调位置、后调最终航向；误差均在目标点坐标系计算
       approach_final_yaw_enter_lon_tolerance: 0.025 # |纵向误差|≤1.5cm 才允许进入最终转向
       approach_final_yaw_enter_lat_tolerance: 0.025 # |横向误差|≤1.5cm 才允许进入最终转向
-      approach_final_yaw_exit_lon_tolerance: 0.04 # 最终转向中纵向漂移>4cm才退回位置调整，避免3cm边界附近反复切子阶段
-      approach_final_yaw_exit_lat_tolerance: 0.04 # 最终转向中横向漂移>4cm才退回位置调整，避免3cm边界附近反复切子阶段
+      approach_final_yaw_exit_lon_tolerance: 0.03 # 最终转向中纵向漂移>4cm才退回位置调整，避免3cm边界附近反复切子阶段
+      approach_final_yaw_exit_lat_tolerance: 0.03 # 最终转向中横向漂移>4cm才退回位置调整，避免3cm边界附近反复切子阶段
       approach_position_first_yaw_threshold: 2.094 # 进入 approach 时|航向误差|≥120°才锁定 position-first；否则保留完整朝向控制，防止绕圈
       approach_position_first_lateral_error_threshold: 0.05 # 入场横向误差至少5cm才允许按横向主导判定 position-first
       approach_position_first_lateral_ratio: 1.0 # |横向误差|≥|纵向误差|时视为横向主导，允许先修位置再对最终航向
@@ -257,7 +257,7 @@ controller_server:
         enabled: true
         cost_power: 1
         cost_weight: 10.0
-        deadband_velocities: [0.005, 0.08, 0.01]
+        deadband_velocities: [0.00, 0.08, 0.00] # 0.005, 0.08, 0.01
 
 local_costmap:
   local_costmap:
@@ -275,7 +275,7 @@ local_costmap:
       # footprint: "[ [0.55, 0.35], [0.55, -0.35], [-0.55, -0.35], [-0.55, 0.35] ]" # Slightly increased for better planning efficiency and safety (real size: 0.95*0.55)
       # plugins: ["voxel_layer", "denoise_layer", "inflation_layer"]  output_topic: "control/cmd_vel_nav"
       plugins: ["static_layer", "obstacle_layer", "denoise_layer", "inflation_layer"]   
-      filters: ["keepout_filter", "keepout_inflation_layer", "speed_filter"]
+      # filters: ["keepout_filter", "keepout_inflation_layer", "speed_filter"]
       # plugins: ["obstacle_layer", "voxel_layer", "denoise_layer", "inflation_layer"]
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
@@ -376,7 +376,7 @@ global_costmap:
       # plugins: ["static_layer", "obstacle_layer",  "denoise_layer", "inflation_layer"]
       # plugins: ["static_layer", "voxel_layer", "denoise_layer", "inflation_layer"]
       plugins: ["static_layer", "obstacle_layer", "denoise_layer", "inflation_layer"]
-      filters: ["keepout_filter", "keepout_inflation_layer","speed_filter"]
+      # filters: ["keepout_filter", "keepout_inflation_layer","speed_filter"]
       denoise_layer:
         plugin: "nav2_costmap_2d::DenoiseLayer"
         enabled: True

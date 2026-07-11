@@ -52,6 +52,7 @@ public:
         this->declare_parameter("rotate_stop_yaw_error", 0.02);
         this->declare_parameter("k_rho", 0.8);
         this->declare_parameter("near_target_dist", 0.3);
+        this->declare_parameter("near_target_min_speed_scale", 0.5);
         this->declare_parameter("cmd_vel_filter_alpha", 0.3);
         this->declare_parameter("min_angular_vel", 0.01);
         this->declare_parameter("xy_tolerance", 0.02);
@@ -107,6 +108,8 @@ public:
         rotate_stop_yaw_error_ = this->get_parameter("rotate_stop_yaw_error").as_double();
         k_rho_ = this->get_parameter("k_rho").as_double();
         near_target_dist_ = this->get_parameter("near_target_dist").as_double();
+        near_target_min_speed_scale_ = std::clamp(
+            this->get_parameter("near_target_min_speed_scale").as_double(), 0.0, 1.0);
         filter_alpha_ = this->get_parameter("cmd_vel_filter_alpha").as_double();
         min_angular_vel_ = this->get_parameter("min_angular_vel").as_double();
         xy_tolerance_ = this->get_parameter("xy_tolerance").as_double();
@@ -148,8 +151,10 @@ public:
             std::bind(&MobileControlNode::controlLoop, this));
         RCLCPP_INFO(
             this->get_logger(),
-            "Stop confirmation configured: duration=%.3fs cycles=%d frequency=%.1fHz",
-            stop_confirm_duration_, stop_confirm_cycles_, control_frequency_);
+            "控制参数：停稳确认=%.3fs（%d周期），控制频率=%.1fHz，"
+            "近目标减速距离=%.3fm，近目标最低速度比例=%.2f",
+            stop_confirm_duration_, stop_confirm_cycles_, control_frequency_,
+            near_target_dist_, near_target_min_speed_scale_);
 
         get_map_pose_ = false;
         is_goal_ = false;
@@ -201,6 +206,7 @@ private:
     double rotate_stop_yaw_error_;
     double k_rho_;
     double near_target_dist_;
+    double near_target_min_speed_scale_;
     double filter_alpha_;
     double min_angular_vel_;
     double xy_tolerance_;
@@ -430,7 +436,15 @@ private:
         const double dist = std::fabs(err_x);
         double desired_linear_vel = std::min(max_v_, k_rho_ * dist);
         if (dist < near_target_dist_ && near_target_dist_ > 0.0) {
-            desired_linear_vel *= std::max(0.2, dist / near_target_dist_);
+            // k_rho * dist 已经会随距离线性减速。旧逻辑再次直接乘
+            // dist / near_target_dist，会让速度近似按距离平方下降，导致最后几厘米
+            // 长时间低速爬行。这里使用带下限的线性比例，仍保持平滑减速，同时
+            // 避免额外衰减过强。
+            const double distance_ratio = std::clamp(
+                dist / near_target_dist_, 0.0, 1.0);
+            const double speed_scale = near_target_min_speed_scale_ +
+                (1.0 - near_target_min_speed_scale_) * distance_ratio;
+            desired_linear_vel *= speed_scale;
         }
         desired_linear_vel = std::clamp(desired_linear_vel, min_v_, max_v_);
         if (reverse_mode) {
