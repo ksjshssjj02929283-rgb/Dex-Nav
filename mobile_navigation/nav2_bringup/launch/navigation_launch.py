@@ -179,6 +179,18 @@ def generate_launch_description():
                 parameters=[{'use_sim_time': use_sim_time},
                             {'autostart': autostart},
                             {'node_names': lifecycle_nodes}]),
+            # nav_monitor：普通 Node，非 lifecycle 管理——纯被动观察者，
+            # 不参与既有激活链；enable 参数默认 false，不启用时零开销
+            Node(
+                package='nav2_nav_monitor',
+                executable='nav_monitor',
+                name='nav2_nav_monitor',
+                output='screen',
+                respawn=use_respawn,
+                respawn_delay=2.0,
+                parameters=[configured_params],
+                arguments=['--ros-args', '--log-level', log_level],
+                remappings=remappings),
         ]
     )
 

@@ -27,6 +27,7 @@
 #include "nav2_util/robot_utils.hpp"
 #include "nav_msgs/msg/path.hpp"
 #include "nav2_util/odometry_utils.hpp"
+#include "std_msgs/msg/string.hpp"
 
 namespace nav2_bt_navigator
 {
@@ -60,6 +61,16 @@ public:
    * @brief A cleanup state transition to remove memory allocated
    */
   bool cleanup() override;
+
+  /**
+   * @brief Activation hook: activates the lifecycle echo publishers
+   */
+  bool activate() override;
+
+  /**
+   * @brief Deactivation hook: deactivates the lifecycle echo publishers
+   */
+  bool deactivate() override;
 
   /**
    * @brief A subscription and callback to handle the topic-based goal published
@@ -129,6 +140,13 @@ protected:
 
   // Odometry smoother object
   std::shared_ptr<nav2_util::OdomSmoother> odom_smoother_;
+
+  // nav_monitor 任务回显：Humble 被动订阅拿不到别的 client 发的 goal 内容，
+  // 只能在这里主动复述一次，供 nav2_nav_monitor 感知"一次新导航开始"
+  bool enable_nav_monitor_echo_{false};
+  rclcpp_lifecycle::LifecyclePublisher<geometry_msgs::msg::PoseStamped>::SharedPtr
+    goal_pose_echo_pub_;
+  rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::String>::SharedPtr goal_bt_echo_pub_;
 };
 
 }  // namespace nav2_bt_navigator

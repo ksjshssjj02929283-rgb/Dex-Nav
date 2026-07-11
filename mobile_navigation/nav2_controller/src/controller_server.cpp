@@ -107,6 +107,8 @@ ControllerServer::ControllerServer(const rclcpp::NodeOptions & options)
   declare_parameter("speed_plan_log_dir", std::string(""));
   declare_parameter("speed_plan_log_enable", false);
   declare_parameter("speed_tracking_log_enable", false);
+  // nav_monitor 任务回显：默认关闭，零开销
+  declare_parameter("enable_nav_monitor_echo", false);
   declare_parameter("min_x_velocity_threshold", rclcpp::ParameterValue(0.0001));
   declare_parameter("min_y_velocity_threshold", rclcpp::ParameterValue(0.0001));
   declare_parameter("min_theta_velocity_threshold", rclcpp::ParameterValue(0.0001));
@@ -508,6 +510,16 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
     "/navigation/speed_plan",
     rclcpp::QoS(rclcpp::KeepLast(1)).reliable().transient_local());
 
+  get_parameter("enable_nav_monitor_echo", enable_nav_monitor_echo_);
+  if (enable_nav_monitor_echo_) {
+    global_path_echo_pub_ = create_publisher<nav_msgs::msg::Path>(
+      "nav_monitor/current_global_path", rclcpp::SystemDefaultsQoS());
+    phase_echo_pub_ = create_publisher<std_msgs::msg::String>(
+      "nav_monitor/controller_phase", rclcpp::SystemDefaultsQoS());
+    desired_vel_echo_pub_ = create_publisher<geometry_msgs::msg::Twist>(
+      "nav_monitor/desired_velocity", rclcpp::SystemDefaultsQoS());
+  }
+
   get_parameter("speed_plan_log_dir", speed_plan_log_dir_);
   bool speed_plan_log_enable = false;
   bool speed_tracking_log_enable = false;
@@ -588,6 +600,15 @@ ControllerServer::on_activate(const rclcpp_lifecycle::State & /*state*/)
   vel_publisher_->on_activate();
   goal_error_publisher_->on_activate();
   speed_plan_publisher_->on_activate();
+  if (global_path_echo_pub_) {
+    global_path_echo_pub_->on_activate();
+  }
+  if (phase_echo_pub_) {
+    phase_echo_pub_->on_activate();
+  }
+  if (desired_vel_echo_pub_) {
+    desired_vel_echo_pub_->on_activate();
+  }
   action_server_->activate();
 
   auto node = shared_from_this();
@@ -631,6 +652,15 @@ ControllerServer::on_deactivate(const rclcpp_lifecycle::State & /*state*/)
   publishZeroVelocity();
   goal_error_publisher_->on_deactivate();
   speed_plan_publisher_->on_deactivate();
+  if (global_path_echo_pub_) {
+    global_path_echo_pub_->on_deactivate();
+  }
+  if (phase_echo_pub_) {
+    phase_echo_pub_->on_deactivate();
+  }
+  if (desired_vel_echo_pub_) {
+    desired_vel_echo_pub_->on_deactivate();
+  }
   vel_publisher_->on_deactivate();
   dyn_params_handler_.reset();
 
@@ -672,6 +702,9 @@ ControllerServer::on_cleanup(const rclcpp_lifecycle::State & /*state*/)
   vel_publisher_.reset();
   goal_error_publisher_.reset();
   speed_plan_publisher_.reset();
+  global_path_echo_pub_.reset();
+  phase_echo_pub_.reset();
+  desired_vel_echo_pub_.reset();
   if (speed_plan_log_.is_open()) {
     speed_plan_log_.close();
   }
@@ -939,6 +972,13 @@ void ControllerServer::setPlannerPath(const nav_msgs::msg::Path & path)
 
   current_path_ = path;
   controller_phase_ = ControllerPhase::TRACK;
+
+  // nav_monitor 任务回显：这里是"一条 path 真正生效"语义上唯一的落点
+  // （setPlannerPath 是首条路径与后续每次重规划的共同收敛点），复述一份供
+  // nav2_nav_monitor 累计 planned_path_length/replanning_count
+  if (enable_nav_monitor_echo_ && global_path_echo_pub_->is_activated()) {
+    global_path_echo_pub_->publish(path);
+  }
 }
 
 void ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
@@ -1697,6 +1737,13 @@ void ControllerServer::setControllerPhase(ControllerPhase phase, const std::stri
     controllerPhaseName(phase),
     reason.c_str());
   controller_phase_ = phase;
+
+  // nav_monitor 阶段回显：本函数已是阶段切换的一次性收敛点，直接复述
+  if (enable_nav_monitor_echo_ && phase_echo_pub_ && phase_echo_pub_->is_activated()) {
+    std_msgs::msg::String msg;
+    msg.data = controllerPhaseName(phase);
+    phase_echo_pub_->publish(msg);
+  }
 }
 
 double ControllerServer::getDistanceToGoal(const geometry_msgs::msg::PoseStamped & pose)
@@ -2274,6 +2321,17 @@ void ControllerServer::computeAndPublishVelocity()
   }
   auto t_compute_end = std::chrono::high_resolution_clock::now();
   auto compute_ms = std::chrono::duration<double, std::milli>(t_compute_end - t_compute_start).count();
+
+  // nav_monitor 期望速度回显：当前位置最近轨迹点的规划速度
+  if (enable_nav_monitor_echo_ && desired_vel_echo_pub_ &&
+    desired_vel_echo_pub_->is_activated())
+  {
+    double echo_desired_v = 0.0;
+    nearestPlannedSpeed(pose, echo_desired_v);
+    geometry_msgs::msg::Twist desired_msg;
+    desired_msg.linear.x = echo_desired_v;
+    desired_vel_echo_pub_->publish(desired_msg);
+  }
 
   if (speed_tracking_log_.is_open()) {
     double desired_v = 0.0;
