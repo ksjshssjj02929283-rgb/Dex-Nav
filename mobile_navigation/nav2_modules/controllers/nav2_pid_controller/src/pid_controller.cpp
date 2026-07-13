@@ -72,6 +72,8 @@ void PIDController::configure(
     node, p + ".final_rotation_max_v", rclcpp::ParameterValue(0.05));
   declare_parameter_if_not_declared(
     node, p + ".final_rotation_linear_deadband", rclcpp::ParameterValue(0.005));
+  declare_parameter_if_not_declared(
+    node, p + ".speed_loop_cmd_reseed_error", rclcpp::ParameterValue(0.3));
 
   node->get_parameter(p + ".long_precision", long_precision_);
   node->get_parameter(p + ".lat_precision", lat_precision_);
@@ -94,6 +96,8 @@ void PIDController::configure(
   node->get_parameter(p + ".final_rotation_linear_deadband", final_rotation_linear_deadband_);
   final_rotation_max_v_ = std::fabs(final_rotation_max_v_);
   final_rotation_linear_deadband_ = std::fabs(final_rotation_linear_deadband_);
+  node->get_parameter(p + ".speed_loop_cmd_reseed_error", speed_cmd_reseed_error_);
+  speed_cmd_reseed_error_ = std::fabs(speed_cmd_reseed_error_);
 
   // ---- nested PID configs: name + ".<pid>.<field>" ----
   auto declare_pid = [&](const std::string & pid, nav2_controller_common::PidConf & conf,
@@ -142,6 +146,7 @@ void PIDController::configure(
 void PIDController::activate()
 {
   RCLCPP_INFO(logger_, "Activating PID controller \"%s\".", plugin_name_.c_str());
+  last_speed_cmd_valid_ = false;
 }
 
 void PIDController::deactivate()
@@ -601,6 +606,15 @@ geometry_msgs::msg::TwistStamped PIDController::computeVelocityCommands(
     if (curr_controller_stage_ == ROTATING_TO_GOAL) {
       angular_station_nav2_pid_controller_.Reset();
     }
+    if (curr_controller_stage_ == APPROACHING ||
+      curr_controller_stage_ == ROTATING_TO_GOAL)
+    {
+      // 阶段切换是控制权边界：上一段累积的积分与指令基准对新阶段是陈旧状态。
+      // approach 分支 position_deadband=0，不能依赖 deadband 路径里的 Reset。
+      station_nav2_pid_controller_.Reset();
+      speed_nav2_pid_controller_.Reset();
+      last_speed_cmd_valid_ = false;
+    }
     switch (curr_controller_stage_) {
       case FINISH:
         RCLCPP_INFO(logger_, "controller stage: FINISH");
@@ -770,6 +784,8 @@ double PIDController::LinearSpeedControl(
   if (std::fabs(e_dist) <= std::fabs(position_deadband)) {
     station_nav2_pid_controller_.Reset();
     speed_nav2_pid_controller_.Reset();
+    last_speed_cmd_ = 0.0;
+    last_speed_cmd_valid_ = true;
     return 0.0;
   }
 
@@ -786,6 +802,12 @@ double PIDController::LinearSpeedControl(
   linear_limit = std::min(linear_limit, std::fabs(max_v_));
   last_linear_limit_ = linear_limit;
   if (!std::isfinite(linear_limit) || linear_limit <= 0.0) {
+    // 满停（障碍零速/无有效限幅）：清两级积分并归零指令基准，
+    // 避免停车期间的陈旧积分在恢复行驶时注入瞬态。
+    station_nav2_pid_controller_.Reset();
+    speed_nav2_pid_controller_.Reset();
+    last_speed_cmd_ = 0.0;
+    last_speed_cmd_valid_ = true;
     return 0.0;
   }
 
@@ -808,33 +830,36 @@ double PIDController::LinearSpeedControl(
   const double speed_error = target_vel - curr_vel;
   // 前馈 + 反馈：纯反馈跟踪持续下降的斜坡目标存在稳态滞后（≈斜率/kp），
   // 前馈把规划层已知的"此刻期望加速度"直接喂给控制器，反馈只需修正残差。
+  // 减速坡道起点等场景下前馈会合法地与瞬时速度误差反号（目标尚高于实测、
+  // 但坡道已要求减速），因此不做"加速度必须与误差同向"的方向守卫，
+  // 方向与幅值安全由下方符号感知输出界承担。
   double acceleration_cmd = feedforward_accel + speed_nav2_pid_controller_.Control(speed_error, d_t_);
   if (!std::isfinite(acceleration_cmd)) {
     acceleration_cmd = 0.0;
   }
-  double acceleration_cmd_limited =
+  const double acceleration_cmd_limited =
     std::clamp(acceleration_cmd, -std::fabs(max_v_inc_), std::fabs(max_v_inc_));
-  if (acceleration_cmd_limited * speed_error < 0.0) {
-    RCLCPP_WARN_THROTTLE(
-      logger_, *clock_, 1000,
-      "Linear speed PID output reversed: target_v=%.4f curr_v=%.4f error=%.4f accel=%.4f",
-      target_vel, curr_vel, speed_error, acceleration_cmd_limited);
-    acceleration_cmd_limited =
-      std::copysign(
-      std::min(std::fabs(max_v_inc_), std::fabs(speed_error) / d_t_), speed_error);
-  }
 
-  double v_output = curr_vel + acceleration_cmd_limited * d_t_;
-  if (target_vel > curr_vel) {
-    v_output = std::min(v_output, target_vel);
-  } else if (target_vel < curr_vel) {
-    v_output = std::max(v_output, target_vel);
+  // 指令积分器：输出锚定上一周期指令，实测只进误差项。
+  if (!last_speed_cmd_valid_ ||
+    std::fabs(last_speed_cmd_ - curr_vel) > speed_cmd_reseed_error_)
+  {
+    last_speed_cmd_ = curr_vel;
+    last_speed_cmd_valid_ = true;
   }
+  double v_output = last_speed_cmd_ + acceleration_cmd_limited * d_t_;
+
+  // 符号感知输出界：目标速度既是跟踪参考也是上限（前向不越目标、不下穿零倒转，
+  // 倒退目标对称）；制动权保留（可低于目标直至 0）。
+  const double bound_hi = std::min(std::max(0.0, target_vel), linear_limit);
+  const double bound_lo = std::max(std::min(0.0, target_vel), -linear_limit);
+  v_output = std::clamp(v_output, bound_lo, bound_hi);
 
   if (min_v_ > 0.0 && std::fabs(v_output) > 0.0 && std::fabs(v_output) < min_v_) {
     v_output = std::copysign(min_v_, v_output);
   }
   v_output = std::clamp(v_output, -linear_limit, linear_limit);
+  last_speed_cmd_ = v_output;
 
   last_linear_position_cmd_ = position_cmd;
   last_linear_target_v_ = target_vel;
