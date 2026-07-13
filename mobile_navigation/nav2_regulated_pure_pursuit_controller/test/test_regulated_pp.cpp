@@ -119,6 +119,15 @@ public:
       linear_vel, sign);
   }
 
+  void applyTrackingFeedbackConstraintsWrapper(
+    const nav_msgs::msg::Path & transformed_plan, double curvature, double near_curvature,
+    double angle_to_heading, double & linear_vel, double & cross_track_error)
+  {
+    return applyTrackingFeedbackConstraints(
+      transformed_plan, curvature, near_curvature, angle_to_heading,
+      linear_vel, cross_track_error);
+  }
+
   double findVelocitySignChangeWrapper(
     const nav_msgs::msg::Path & transformed_plan)
   {
@@ -486,6 +495,45 @@ TEST(RegulatedPurePursuitTest, rotateTests)
   EXPECT_NEAR(ang_v, 0.84, 0.01);
 }
 
+// rotateToHeading 线速度连续减速：巡航速度进入 rotate 分支时不再瞬间
+// 置零，按 max_linear_accel_ 逐周期衰减；多周期迭代（模拟测量跟随指令衰减）
+// 应单调收敛到 0，且任意单周期降幅不超过 max_linear_accel_*dt。
+TEST(RegulatedPurePursuitTest, rotateToHeadingLinearDecelRamp)
+{
+  auto ctrl = std::make_shared<BasicAPIRPP>();
+  auto node = std::make_shared<rclcpp_lifecycle::LifecycleNode>("testRPP");
+  std::string name = "PathFollower";
+  auto tf = std::make_shared<tf2_ros::Buffer>(node->get_clock());
+  auto costmap = std::make_shared<nav2_costmap_2d::Costmap2DROS>("fake_costmap");
+  rclcpp_lifecycle::State state;
+  costmap->on_configure(state);
+  ctrl->configure(node, name, tf, costmap);
+
+  // 单周期：默认 max_linear_accel=0.5、control_frequency=20 -> decel_step=0.025
+  double lin_v = 0.0, ang_v = 0.0;
+  geometry_msgs::msg::Twist curr_speed;
+  curr_speed.linear.x = 0.6;
+  ctrl->rotateToHeadingWrapper(lin_v, ang_v, 0.4, curr_speed);
+  EXPECT_GT(lin_v, 0.0);  // 不再瞬间置零
+  EXPECT_NEAR(lin_v, 0.575, 1e-6);
+
+  // 多周期：measured 跟随上一周期指令（完美 plant），应单调收敛到 0，
+  // 且每一步的降幅不超过 decel_step（不出现比理论限幅更陡的阶跃）。
+  double measured = 0.6;
+  double prev = measured;
+  for (int i = 0; i < 40; ++i) {
+    lin_v = 0.0;
+    ang_v = 0.0;
+    curr_speed.linear.x = measured;
+    ctrl->rotateToHeadingWrapper(lin_v, ang_v, 0.4, curr_speed);
+    EXPECT_LE(prev - lin_v, 0.025 + 1e-9);
+    EXPECT_GE(lin_v, 0.0);
+    prev = lin_v;
+    measured = lin_v;
+  }
+  EXPECT_EQ(lin_v, 0.0);
+}
+
 TEST(RegulatedPurePursuitTest, nearestTrajectorySpeedExcludesStateStamp)
 {
   auto ctrl = std::make_shared<BasicAPIRPP>();
@@ -709,6 +757,113 @@ TEST(RegulatedPurePursuitTest, applyConstraints)
   // ctrl->applyConstraintsWrapper(
   //   dist_error, lookahead_dist, curvature, curr_speed, pose_cost, linear_vel);
   // EXPECT_NEAR(linear_vel, 0.5, 0.01);
+}
+
+TEST(RegulatedPurePursuitTest, applyTrackingFeedbackConstraints)
+{
+  auto ctrl = std::make_shared<BasicAPIRPP>();
+  auto node = std::make_shared<rclcpp_lifecycle::LifecycleNode>("testRPP");
+  std::string name = "PathFollower";
+  auto tf = std::make_shared<tf2_ros::Buffer>(node->get_clock());
+  auto costmap = std::make_shared<nav2_costmap_2d::Costmap2DROS>("fake_costmap");
+  rclcpp_lifecycle::State state;
+  costmap->on_configure(state);
+  ctrl->configure(node, name, tf, costmap);
+
+  // 机器人在路径上（原点在直线路径首点），cross_track_error=0，用来隔离①。
+  auto on_path = path_utils::generate_path(
+    geometry_msgs::msg::PoseStamped(), 0.1, {
+    std::make_unique<path_utils::Straight>(2.0)
+  });
+
+  // ②朝向误差减速隔离（curvature=0 关闭③，路径贴合关闭①）：
+  // 默认 heading_error_scaling_min_angle=0.35，rotate_to_heading_min_angle=0.785，
+  // min_heading_speed_scale=0.3。
+  double linear_vel = 1.0, xte = 0.0;
+  ctrl->applyTrackingFeedbackConstraintsWrapper(on_path, 0.0, 0.0, 0.2, linear_vel, xte);
+  EXPECT_DOUBLE_EQ(linear_vel, 1.0);  // 阈值内不动
+
+  linear_vel = 1.0;
+  ctrl->applyTrackingFeedbackConstraintsWrapper(on_path, 0.0, 0.0, 0.5675, linear_vel, xte);
+  EXPECT_NEAR(linear_vel, 0.65, 0.01);  // 区间中点，scale=1-(1-0.3)*0.5=0.65
+
+  linear_vel = 1.0;
+  ctrl->applyTrackingFeedbackConstraintsWrapper(on_path, 0.0, 0.0, 0.785, linear_vel, xte);
+  EXPECT_NEAR(linear_vel, 0.3, 0.01);  // 达 rotate 阈值，触底 min_scale
+
+  linear_vel = 1.0;
+  ctrl->applyTrackingFeedbackConstraintsWrapper(on_path, 0.0, 0.0, 1.2, linear_vel, xte);
+  EXPECT_NEAR(linear_vel, 0.3, 0.01);  // 超出区间仍钳在 min_scale，不反弹回升
+
+  // ③角速度饱和联动降速隔离（angle=0 关闭②，near_curvature=0 只看远端 curvature）：
+  // 默认 angular_gain=1.0, max_angular_vel=1.5。
+  linear_vel = 1.0;
+  ctrl->applyTrackingFeedbackConstraintsWrapper(on_path, 3.0, 0.0, 0.0, linear_vel, xte);
+  EXPECT_NEAR(linear_vel, 0.5, 0.01);  // wz_demand=1*1*3=3>1.5 -> v=1.5/3=0.5
+
+  linear_vel = 1.0;
+  ctrl->applyTrackingFeedbackConstraintsWrapper(on_path, 0.5, 0.0, 0.0, linear_vel, xte);
+  EXPECT_DOUBLE_EQ(linear_vel, 1.0);  // wz_demand=1*1*0.5=0.5<1.5 -> 不触发
+
+  // 组合：②先降速，③在②的结果之上继续按当前 curvature 校正（不是简单相乘，
+  // ③直接算出满足 wz 上限的绝对值）。
+  linear_vel = 1.0;
+  ctrl->applyTrackingFeedbackConstraintsWrapper(on_path, 10.0, 0.0, 0.785, linear_vel, xte);
+  EXPECT_NEAR(linear_vel, 0.15, 0.01);  // ②先降到0.3，wz=1*0.3*10=3>1.5 -> ③再降到1.5/10=0.15
+
+  // 近远双点：near_curvature 比远端 curvature 更尖锐时，③改用 near_curvature。
+  linear_vel = 1.0;
+  ctrl->applyTrackingFeedbackConstraintsWrapper(on_path, 0.5, 3.0, 0.0, linear_vel, xte);
+  EXPECT_NEAR(linear_vel, 0.5, 0.01);  // far=0.5 本不触发，near=3.0 触发 -> v=1.5/3=0.5
+
+  // 反向：远端 curvature 比 near_curvature 更尖锐时，③仍取远端（对称验证 max 逻辑）。
+  linear_vel = 1.0;
+  ctrl->applyTrackingFeedbackConstraintsWrapper(on_path, 3.0, 0.5, 0.0, linear_vel, xte);
+  EXPECT_NEAR(linear_vel, 0.5, 0.01);  // far=3.0 触发 -> v=1.5/3=0.5，near 更小不影响结果
+
+  // 两点都在阈值内（光滑路径的常见情况）：不触发，行为与只有远端曲率时一致。
+  linear_vel = 1.0;
+  ctrl->applyTrackingFeedbackConstraintsWrapper(on_path, 0.4, 0.45, 0.0, linear_vel, xte);
+  EXPECT_DOUBLE_EQ(linear_vel, 1.0);
+}
+
+// shouldRotateToPath 滞回：进入转向用 rotate_to_heading_min_angle（0.785），
+// 已在转向时退出用更小的 heading_error_scaling_min_angle（0.35）——角度落在
+// [0.35, 0.785] 区间时，是否仍判定“应转向”取决于上一周期的状态，不是单一阈值。
+TEST(RegulatedPurePursuitTest, shouldRotateToPathHysteresis)
+{
+  auto ctrl = std::make_shared<BasicAPIRPP>();
+  auto node = std::make_shared<rclcpp_lifecycle::LifecycleNode>("testRPP");
+  std::string name = "PathFollower";
+  auto tf = std::make_shared<tf2_ros::Buffer>(node->get_clock());
+  auto costmap = std::make_shared<nav2_costmap_2d::Costmap2DROS>("fake_costmap");
+  rclcpp_lifecycle::State state;
+  costmap->on_configure(state);
+  ctrl->configure(node, name, tf, costmap);
+
+  auto carrotAt = [](double angle) {
+      geometry_msgs::msg::PoseStamped p;
+      p.pose.position.x = std::cos(angle);
+      p.pose.position.y = std::sin(angle);
+      return p;
+    };
+  double angle_rtn;
+
+  // 区间内（0.5 rad），未在转向 -> 用进入阈值 0.785，不触发
+  EXPECT_FALSE(ctrl->shouldRotateToPathWrapper(carrotAt(0.5), angle_rtn));
+
+  // 超过进入阈值 -> 触发，状态切到"正在转向"
+  EXPECT_TRUE(ctrl->shouldRotateToPathWrapper(carrotAt(0.9), angle_rtn));
+
+  // 回落到区间内（0.5 rad）：若仍用进入阈值 0.785 会立刻判定"不转向"，
+  // 滞回下应改用退出阈值 0.35，0.5>0.35 仍判定"转向"，不发生抖动。
+  EXPECT_TRUE(ctrl->shouldRotateToPathWrapper(carrotAt(0.5), angle_rtn));
+
+  // 真正降到退出阈值以下 -> 才退出转向状态
+  EXPECT_FALSE(ctrl->shouldRotateToPathWrapper(carrotAt(0.2), angle_rtn));
+
+  // 退出后状态复位，再次落在区间内 -> 又需要用进入阈值判定，不触发
+  EXPECT_FALSE(ctrl->shouldRotateToPathWrapper(carrotAt(0.5), angle_rtn));
 }
 
 TEST(RegulatedPurePursuitTest, testDynamicParameter)

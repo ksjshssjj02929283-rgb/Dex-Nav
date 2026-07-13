@@ -383,6 +383,9 @@ controller_server:
       lateral_error_threshold: 0.15     # 横向误差减速起始阈值 (m)
       lateral_error_max_dist: 0.5       # 横向误差达此值降到 min_scale (m)
       min_lateral_speed_scale: 0.3      # 横向误差减速下限比例
+      heading_error_scaling_min_angle: 0.35   # 朝向误差减速起始阈值 (rad≈20°)；曲率随前瞻距离衰减，此项不受前瞻长度稀释
+      min_heading_speed_scale: 0.3            # 朝向误差达 rotate_to_heading_min_angle 时降到的下限比例
+      near_curvature_check_dist: 0.3          # 近场固定距离曲率采样点（不随速度缩放）；③角速度饱和联动降速取远端/近场两点曲率中更尖锐者，避免前瞻越远曲率越被稀释而漏看近场路径突变
       lookahead_dist: 0.6
       min_lookahead_dist: 0.3
       max_lookahead_dist: 0.9

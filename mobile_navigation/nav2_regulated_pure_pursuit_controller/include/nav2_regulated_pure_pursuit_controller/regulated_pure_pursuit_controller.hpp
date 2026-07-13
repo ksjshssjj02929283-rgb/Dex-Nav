@@ -151,7 +151,10 @@ protected:
     const geometry_msgs::msg::PoseStamped & carrot_pose);
 
   /**
-   * @brief Whether robot should rotate to rough path heading
+   * @brief Whether robot should rotate to rough path heading. Hysteresis: enters
+   *        rotation at rotate_to_heading_min_angle_, only exits once the angle
+   *        drops below the smaller heading_error_scaling_min_angle_ -- prevents
+   *        mode-flapping when the angle hovers near the entry threshold.
    * @param carrot_pose current lookahead point
    * @param angle_to_path Angle of robot output relatie to carrot marker
    * @return Whether should rotate to path heading
@@ -292,10 +295,12 @@ protected:
   /// 机器人到最近路径段的垂距（cross-track error，机器人系）。
   double computeCrossTrackError(const nav_msgs::msg::Path & transformed_plan) const;
 
-  /// ⑤ 反馈约束（只降不升）：横向误差减速 + 角速度饱和联动降速。
+  /// ⑤ 反馈约束（只降不升）：横向误差减速 + 朝向误差减速 + 角速度饱和联动降速
+  /// （角速度饱和检查取远端/近场双点曲率中更尖锐的一个，避免远端曲率被前瞻
+  /// 距离稀释而漏看近场路径突变）。
   void applyTrackingFeedbackConstraints(
-    const nav_msgs::msg::Path & transformed_plan, double curvature,
-    double & linear_vel, double & cross_track_error);
+    const nav_msgs::msg::Path & transformed_plan, double curvature, double near_curvature,
+    double angle_to_heading, double & linear_vel, double & cross_track_error);
 
   struct TrajSpeedPoint
   {
@@ -313,6 +318,10 @@ protected:
   double lateral_error_threshold_{0.15};
   double lateral_error_max_dist_{0.5};
   double min_lateral_speed_scale_{0.3};
+  double heading_error_scaling_min_angle_{0.35};
+  double min_heading_speed_scale_{0.3};
+  bool was_rotating_to_path_{false};
+  double near_curvature_check_dist_{0.3};
   nav2_controller_common::PIDController speed_pid_;
   rclcpp::Time last_speed_track_time_{0, 0, RCL_ROS_TIME};
   // 速度环指令积分器：锚定上一周期指令而非实测——实测只进误差项，
