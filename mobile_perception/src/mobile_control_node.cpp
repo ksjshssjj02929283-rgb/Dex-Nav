@@ -42,6 +42,7 @@ public:
     MobileControlNode() : Node("mobile_control_node")
     {
         this->declare_parameter("control_frequency", 20.0);
+        this->declare_parameter("stop_confirm_duration", 0.2);
         this->declare_parameter("max_v", 0.35);
         this->declare_parameter("min_v", 0.0);
         this->declare_parameter("max_w", 1.0);
@@ -51,6 +52,7 @@ public:
         this->declare_parameter("rotate_stop_yaw_error", 0.02);
         this->declare_parameter("k_rho", 0.8);
         this->declare_parameter("near_target_dist", 0.3);
+        this->declare_parameter("near_target_min_speed_scale", 0.5);
         this->declare_parameter("cmd_vel_filter_alpha", 0.3);
         this->declare_parameter("min_angular_vel", 0.01);
         this->declare_parameter("xy_tolerance", 0.02);
@@ -92,6 +94,10 @@ public:
         this->declare_parameter("straight.switch_speed", 0.1);
 
         control_frequency_ = this->get_parameter("control_frequency").as_double();
+        stop_confirm_duration_ =
+            std::max(0.0, this->get_parameter("stop_confirm_duration").as_double());
+        stop_confirm_cycles_ = std::max(
+            1, static_cast<int>(std::ceil(stop_confirm_duration_ * control_frequency_)));
         max_v_ = this->get_parameter("max_v").as_double();
         min_v_ = this->get_parameter("min_v").as_double();
         max_w_ = this->get_parameter("max_w").as_double();
@@ -102,6 +108,8 @@ public:
         rotate_stop_yaw_error_ = this->get_parameter("rotate_stop_yaw_error").as_double();
         k_rho_ = this->get_parameter("k_rho").as_double();
         near_target_dist_ = this->get_parameter("near_target_dist").as_double();
+        near_target_min_speed_scale_ = std::clamp(
+            this->get_parameter("near_target_min_speed_scale").as_double(), 0.0, 1.0);
         filter_alpha_ = this->get_parameter("cmd_vel_filter_alpha").as_double();
         min_angular_vel_ = this->get_parameter("min_angular_vel").as_double();
         xy_tolerance_ = this->get_parameter("xy_tolerance").as_double();
@@ -141,6 +149,12 @@ public:
         timer_ = this->create_wall_timer(
             std::chrono::milliseconds(static_cast<int>(1000.0 / control_frequency_)),
             std::bind(&MobileControlNode::controlLoop, this));
+        RCLCPP_INFO(
+            this->get_logger(),
+            "控制参数：停稳确认=%.3fs（%d周期），控制频率=%.1fHz，"
+            "近目标减速距离=%.3fm，近目标最低速度比例=%.2f",
+            stop_confirm_duration_, stop_confirm_cycles_, control_frequency_,
+            near_target_dist_, near_target_min_speed_scale_);
 
         get_map_pose_ = false;
         is_goal_ = false;
@@ -178,9 +192,11 @@ private:
     bool succeed_returned_;
     bool canceled_returned_;
     int stop_count_;
+    int stop_confirm_cycles_;
     GoalMode goal_mode_;
 
     double control_frequency_;
+    double stop_confirm_duration_;
     double max_v_;
     double min_v_;
     double max_w_;
@@ -190,6 +206,7 @@ private:
     double rotate_stop_yaw_error_;
     double k_rho_;
     double near_target_dist_;
+    double near_target_min_speed_scale_;
     double filter_alpha_;
     double min_angular_vel_;
     double xy_tolerance_;
@@ -336,7 +353,7 @@ private:
                 response->message = "IDLE";
                 response->success = true;
             }
-        } else if (is_goal_ && stop_count_ > 20) {
+        } else if (is_goal_ && stop_count_ > stop_confirm_cycles_) {
             if (!succeed_returned_) {
                 response->message = "SUCCEEDED";
                 response->success = true;
@@ -345,7 +362,8 @@ private:
                 response->message = "IDLE";
                 response->success = true;
             }
-        } else if ((get_map_pose_ && !is_goal_) || (is_goal_ && stop_count_ <= 20)) {
+        } else if ((get_map_pose_ && !is_goal_) ||
+                   (is_goal_ && stop_count_ <= stop_confirm_cycles_)) {
             response->message = "CONTROL";
             response->success = true;
         } else {
@@ -353,7 +371,8 @@ private:
             response->success = true;
         }
 
-        RCLCPP_INFO(this->get_logger(), "Status query: %s", response->message.c_str());
+        // 客户端会记录状态变化；服务端每次查询只保留 DEBUG，避免高频轮询刷屏。
+        RCLCPP_DEBUG(this->get_logger(), "Status query: %s", response->message.c_str());
     }
 
     void cancelControlCallback(
@@ -417,7 +436,15 @@ private:
         const double dist = std::fabs(err_x);
         double desired_linear_vel = std::min(max_v_, k_rho_ * dist);
         if (dist < near_target_dist_ && near_target_dist_ > 0.0) {
-            desired_linear_vel *= std::max(0.2, dist / near_target_dist_);
+            // k_rho * dist 已经会随距离线性减速。旧逻辑再次直接乘
+            // dist / near_target_dist，会让速度近似按距离平方下降，导致最后几厘米
+            // 长时间低速爬行。这里使用带下限的线性比例，仍保持平滑减速，同时
+            // 避免额外衰减过强。
+            const double distance_ratio = std::clamp(
+                dist / near_target_dist_, 0.0, 1.0);
+            const double speed_scale = near_target_min_speed_scale_ +
+                (1.0 - near_target_min_speed_scale_) * distance_ratio;
+            desired_linear_vel *= speed_scale;
         }
         desired_linear_vel = std::clamp(desired_linear_vel, min_v_, max_v_);
         if (reverse_mode) {
@@ -523,7 +550,7 @@ private:
             return;
         }
 
-        if (stop_count_ > 40 || !get_map_pose_) {
+        if ((is_goal_ && stop_count_ > stop_confirm_cycles_) || !get_map_pose_) {
             return;
         }
 
@@ -572,7 +599,7 @@ private:
             filtered_cmd_vel_.angular.z = 0.0;
             stop_count_++;
 
-            if (stop_count_ <= 20) {
+            if (stop_count_ <= stop_confirm_cycles_) {
                 cmd_vel_pub_->publish(filtered_cmd_vel_);
                 if (stop_count_ == 1) {
                     RCLCPP_INFO(

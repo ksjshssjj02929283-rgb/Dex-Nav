@@ -18,6 +18,8 @@
 #include <algorithm>
 #include <math.h>
 
+#include "tf2/utils.h"
+
 namespace mppi::critics
 {
 
@@ -42,6 +44,10 @@ void PathAngleCritic::initialize()
   getParam(
     forward_preference_,
     "forward_preference", true);
+  getParam(wrong_way_cost_ratio_, "wrong_way_cost_ratio", 2.0);
+  getParam(direction_deadband_, "direction_deadband", 0.05);
+  wrong_way_cost_ratio_ = std::max(0.0f, wrong_way_cost_ratio_);
+  direction_deadband_ = std::max(0.0f, direction_deadband_);
 
   if (!reversing_allowed_) {
     forward_preference_ = true;
@@ -49,8 +55,10 @@ void PathAngleCritic::initialize()
 
   RCLCPP_INFO(
     logger_,
-    "PathAngleCritic instantiated with %d power and %f weight. Reversing %s",
-    power_, weight_, reversing_allowed_ ? "allowed." : "not allowed.");
+    "PathAngleCritic instantiated with %d power, %.3f weight, %.3f wrong-way ratio and "
+    "%.3f rad direction deadband. Reversing %s",
+    power_, weight_, wrong_way_cost_ratio_, direction_deadband_,
+    reversing_allowed_ ? "allowed." : "not allowed.");
 }
 
 void PathAngleCritic::score(CriticData & data)
@@ -82,19 +90,56 @@ void PathAngleCritic::score(CriticData & data)
     goal_x - data.trajectories.x,
     [](float y, float x) {return std::atan2(y, x);});
 
-  auto yaws =
-    utils::shortest_angular_distance(data.trajectories.yaws, yaws_between_points).abs();
-
+  models::Matrix target_yaws = yaws_between_points;
   if (reversing_allowed_ && !forward_preference_) {
-    const models::Matrix yaws_between_points_corrected =
-      (yaws < M_PI_2).select(
+    const models::Matrix forward_yaw_errors =
+      utils::shortest_angular_distance(data.trajectories.yaws, yaws_between_points).abs();
+    target_yaws =
+      (forward_yaw_errors < M_PI_2).select(
       yaws_between_points,
       utils::normalize_angles(yaws_between_points + static_cast<float>(M_PI)));
-    const auto corrected_yaws =
-      utils::shortest_angular_distance(data.trajectories.yaws, yaws_between_points_corrected).abs();
-    data.costs += (corrected_yaws.rowwise().mean() * weight_).pow(power_);
-  } else {
-    data.costs += (yaws.rowwise().mean() * weight_).pow(power_);
+  }
+
+  const models::Matrix signed_yaw_errors =
+    utils::shortest_angular_distance(data.trajectories.yaws, target_yaws);
+  data.costs += (signed_yaw_errors.abs().rowwise().mean() * weight_).pow(power_);
+
+  // 用本控制周期的真实姿态固定最短旋转方向，避免预测轨迹跨过 ±pi 后方向符号翻转，
+  // 导致候选轨迹沿 270° 长弧反向绕转仍然得不到稳定惩罚。
+  // 只惩罚错误旋转，不惩罚 wz=0，因此仍允许机器人先停车或后退腾出空间。
+  if (wrong_way_cost_ratio_ > 0.0f) {
+    const auto & current_pose = data.state.pose.pose;
+    const float current_yaw = tf2::getYaw(current_pose.orientation);
+    const float current_target_yaw = std::atan2(
+      goal_y - current_pose.position.y,
+      goal_x - current_pose.position.x);
+    float current_effective_target_yaw = current_target_yaw;
+    if (reversing_allowed_ && !forward_preference_) {
+      const float forward_error = std::abs(
+        std::atan2(
+          std::sin(current_target_yaw - current_yaw),
+          std::cos(current_target_yaw - current_yaw)));
+      const float reverse_target_yaw = current_target_yaw + static_cast<float>(M_PI);
+      const float reverse_error = std::abs(
+        std::atan2(
+          std::sin(reverse_target_yaw - current_yaw),
+          std::cos(reverse_target_yaw - current_yaw)));
+      if (reverse_error < forward_error) {
+        current_effective_target_yaw = reverse_target_yaw;
+      }
+    }
+
+    const float current_error = std::atan2(
+      std::sin(current_effective_target_yaw - current_yaw),
+      std::cos(current_effective_target_yaw - current_yaw));
+    if (std::abs(current_error) <= direction_deadband_) {
+      return;
+    }
+    const float desired_direction = current_error > 0.0f ? 1.0f : -1.0f;
+    models::Matrix wrong_way_rotation =
+      (-desired_direction * data.state.wz).max(0.0f);
+    data.costs +=
+      (wrong_way_rotation.rowwise().mean() * weight_ * wrong_way_cost_ratio_).pow(power_);
   }
 }
 

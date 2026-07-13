@@ -44,6 +44,18 @@ using namespace mppi;  // NOLINT
 // 三阶段枚举（消灭 magic index 0/1/2）：数组顺序 = 枚举值
 enum Stage : size_t { STAGE_ALIGN = 0, STAGE_TRACK = 1, STAGE_APPROACH = 2 };
 
+// approach 内部子阶段：先修正目标坐标系位置误差，再完成最终朝向。
+enum ApproachSubstage : size_t {
+  APPROACH_POSITIONING = 0,
+  APPROACH_FINAL_YAW = 1
+};
+
+// 进入 approach 时按当时的最终航向误差锁定位置调整策略，避免过程中来回切换。
+enum ApproachMode : size_t {
+  APPROACH_NORMAL = 0,
+  APPROACH_POSITION_FIRST = 1
+};
+
 class MPPIController : public nav2_core::Controller
 {
 public:
@@ -118,11 +130,30 @@ protected:
   void configureStages();
 
   // 根据路径进度和到目标距离选择三阶段 profile，并把速度/行为代价平滑应用到 optimizer。
-  void applyProfileForPathState(double path_progress, double goal_distance, double heading_path_angle);
+  void applyProfileForPathState(
+    double path_progress, double goal_distance, double heading_path_angle,
+    double goal_longitudinal_error, double goal_lateral_error, double goal_yaw_error);
+
+  void updateApproachMode(
+    size_t previous_stage, size_t selected_stage, double goal_longitudinal_error,
+    double goal_lateral_error, double goal_yaw_error);
+
+  void updateApproachSubstage(double goal_longitudinal_error, double goal_lateral_error);
+
+  void applyApproachSubstageProfile();
+
+  void smoothFinalYawCommand(
+    geometry_msgs::msg::TwistStamped & cmd,
+    double goal_yaw_error,
+    const geometry_msgs::msg::Twist & robot_speed);
 
   size_t selectStage(double goal_distance, double heading_path_angle) const;
 
   std::string stageName(size_t profile) const;
+
+  std::string approachSubstageName() const;
+
+  std::string approachModeName() const;
 
   MppiProfileSettings interpolateProfiles(
     const MppiProfileSettings & from,
@@ -159,8 +190,33 @@ protected:
   double approach_hysteresis_{0.05};
   double align_enter_angle_{0.52};   // 对齐段进入阈值(rad,~30°)
   double align_exit_angle_{0.31};    // 对齐段退出阈值(rad,~18°,迟滞)
+  double track_stage_min_duration_{1.2};
+  double align_force_enter_angle_{1.2};
+  double final_yaw_enter_lon_tolerance_{0.015};
+  double final_yaw_enter_lat_tolerance_{0.015};
+  double final_yaw_exit_lon_tolerance_{0.02};
+  double final_yaw_exit_lat_tolerance_{0.02};
+  double position_first_yaw_threshold_{2.094};
+  double position_first_lateral_error_threshold_{0.05};
+  double position_first_lateral_ratio_{1.0};
+  float positioning_goal_angle_weight_{10.0f};
+  float final_yaw_vx_max_{0.03f};
+  float final_yaw_wz_max_{0.4f};
+  float final_yaw_cmd_wz_slew_rate_{1.2f};
+  float final_yaw_cmd_brake_accel_{0.7f};
+  float final_yaw_cmd_stop_yaw_tolerance_{0.0f};
+  float final_yaw_cmd_direction_deadband_{0.05f};
   size_t active_stage_{0};
+  size_t approach_substage_{APPROACH_POSITIONING};
+  size_t approach_mode_{APPROACH_NORMAL};
+  bool approach_mode_locked_{false};
   bool profile_transition_active_{false};
+  rclcpp::Time active_stage_enter_time_;
+  bool final_yaw_cmd_filter_active_{false};
+  bool final_yaw_direction_lock_active_{false};
+  float final_yaw_locked_direction_{0.0f};
+  float last_final_yaw_cmd_wz_{0.0f};
+  rclcpp::Time last_final_yaw_cmd_time_;
 
   double reset_period_;
   // Last time computeVelocityCommands was called

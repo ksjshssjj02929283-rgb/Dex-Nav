@@ -20,9 +20,13 @@
 #include "rclcpp/rclcpp.hpp"
 #include "nav2_mppi_controller/tools/utils.hpp"
 #include "nav2_mppi_controller/motion_models.hpp"
+#include "nav2_mppi_controller/critics/angular_velocity_critic.hpp"
 #include "nav2_mppi_controller/critics/constraint_critic.hpp"
 #include "nav2_mppi_controller/critics/goal_angle_critic.hpp"
 #include "nav2_mppi_controller/critics/goal_critic.hpp"
+#include "nav2_mppi_controller/critics/goal_lateral_critic.hpp"
+#include "nav2_mppi_controller/critics/goal_longitudinal_critic.hpp"
+#include "nav2_mppi_controller/critics/linear_velocity_critic.hpp"
 #include "nav2_mppi_controller/critics/obstacles_critic.hpp"
 #include "nav2_mppi_controller/critics/cost_critic.hpp"
 #include "nav2_mppi_controller/critics/path_align_critic.hpp"
@@ -41,6 +45,93 @@
 using namespace mppi;  // NOLINT
 using namespace mppi::critics;  // NOLINT
 using namespace mppi::utils;  // NOLINT
+
+TEST(CriticTests, GoalFrameLateralAndLongitudinalErrors)
+{
+  auto node = std::make_shared<rclcpp_lifecycle::LifecycleNode>("goal_frame_critic_test");
+  auto costmap_ros = std::make_shared<nav2_costmap_2d::Costmap2DROS>(
+    "dummy_costmap", "", "dummy_costmap");
+  node->declare_parameter("lateral.cost_power", 1);
+  node->declare_parameter("longitudinal.cost_power", 1);
+  ParametersHandler param_handler(node);
+  rclcpp_lifecycle::State lstate;
+  costmap_ros->on_configure(lstate);
+
+  models::State state;
+  models::Trajectories trajectories;
+  trajectories.reset(2, 1);
+  models::Path path;
+  path.reset(1);
+  models::Vector costs = models::Vector::Zero(2);
+  float model_dt = 0.1f;
+  CriticData data =
+  {state, trajectories, path, costs, model_dt, false, nullptr, nullptr, std::nullopt,
+    std::nullopt};
+
+  // 目标朝向为 +Y：目标系纵向是 +Y，横向是 -X。
+  path.yaws(0) = 1.57079632679f;
+  trajectories.x(0, 0) = 1.0f;
+  trajectories.y(1, 0) = 1.0f;
+  // 候选轨迹 yaw 故意与目标 yaw 不同，验证误差轴不会随候选轨迹旋转。
+  trajectories.yaws.setZero();
+
+  CriticProfileSettings settings;
+  settings.goal_lateral.weight = 1.0f;
+  settings.goal_longitudinal.weight = 1.0f;
+
+  GoalLateralCritic lateral_critic;
+  lateral_critic.on_configure(node, "mppi", "lateral", costmap_ros, &param_handler);
+  lateral_critic.applyProfileSettings(settings);
+  lateral_critic.score(data);
+  EXPECT_NEAR(costs(0), 1.0f, 1e-5f);
+  EXPECT_NEAR(costs(1), 0.0f, 1e-5f);
+
+  costs.setZero();
+  GoalLongitudinalCritic longitudinal_critic;
+  longitudinal_critic.on_configure(
+    node, "mppi", "longitudinal", costmap_ros, &param_handler);
+  longitudinal_critic.applyProfileSettings(settings);
+  longitudinal_critic.score(data);
+  EXPECT_NEAR(costs(0), 0.0f, 1e-5f);
+  EXPECT_NEAR(costs(1), 1.0f, 1e-5f);
+}
+
+TEST(CriticTests, LinearVelocityCriticDoesNotBiasForwardDirection)
+{
+  auto node = std::make_shared<rclcpp_lifecycle::LifecycleNode>("linear_velocity_critic_test");
+  auto costmap_ros = std::make_shared<nav2_costmap_2d::Costmap2DROS>(
+    "dummy_costmap", "", "dummy_costmap");
+  ParametersHandler param_handler(node);
+  rclcpp_lifecycle::State lstate;
+  costmap_ros->on_configure(lstate);
+
+  models::State state;
+  state.reset(2, 1);
+  state.vx(0, 0) = 0.25f;
+  state.vx(1, 0) = -0.25f;
+  models::Trajectories trajectories;
+  trajectories.reset(2, 1);
+  models::Path path;
+  path.reset(1);
+  path.x(0) = 1.0f;
+  models::Vector costs = models::Vector::Zero(2);
+  float model_dt = 0.1f;
+  CriticData data =
+  {state, trajectories, path, costs, model_dt, false, nullptr, nullptr, std::nullopt,
+    std::nullopt};
+
+  CriticProfileSettings settings;
+  settings.linear_velocity.weight = 1.0f;
+  settings.linear_velocity.speed_max = 0.25f;
+
+  LinearVelocityCritic critic;
+  critic.on_configure(node, "mppi", "linear_velocity", costmap_ros, &param_handler);
+  critic.applyProfileSettings(settings);
+  critic.score(data);
+
+  EXPECT_NEAR(costs(0), costs(1), 1e-6f);
+  EXPECT_NEAR(costs(0), 0.0f, 1e-6f);
+}
 
 TEST(CriticTests, ConstraintsCritic)
 {
@@ -145,25 +236,33 @@ TEST(CriticTests, GoalAngleCritic)
 
   // Scoring testing
 
-  // provide state poses and path too far from `threshold_to_consider` to consider
-  state.pose.pose.position.x = 1.0;
+  // GoalAngleCritic 由阶段权重控制启停，不再使用到目标距离阈值。
   path.reset(10);
   path.x(9) = 10.0;
   path.y(9) = 0.0;
   path.yaws(9) = 3.14;
   critic.score(data);
-  EXPECT_NEAR(costs.sum(), 0, 1e-6);
-
-  // Lets move it even closer, just to be sure it still doesn't trigger
-  state.pose.pose.position.x = 9.2;
-  critic.score(data);
-  EXPECT_NEAR(costs.sum(), 0, 1e-6);
-
-  // provide state pose and path below `threshold_to_consider` to consider
-  state.pose.pose.position.x = 9.7;
-  critic.score(data);
   EXPECT_GT(costs.sum(), 0);
   EXPECT_NEAR(costs(0), 9.42, 0.02);  // (3.14 - 0.0) * 3.0 weight
+
+  // 当前 goal-current 为正：正 wz 是最短方向，负 wz 应额外受到错误方向惩罚。
+  costs.setZero();
+  path.yaws(9) = 1.0f;
+  state.pose.pose.orientation.w = 1.0;
+  state.wz = 0.2f * models::Matrix::Ones(1000, 30);
+  state.wz.row(1).setConstant(-0.2f);
+  critic.score(data);
+  EXPECT_NEAR(costs(0), 3.0, 0.01);
+  EXPECT_NEAR(costs(1), 4.2, 0.01);  // 基础3.0 + 0.2*weight3*ratio2
+
+  // 当前 goal-current 为负时规则应镜像：负 wz 正确，正 wz 受到惩罚。
+  costs.setZero();
+  path.yaws(9) = -1.0f;
+  state.wz.setConstant(-0.2f);
+  state.wz.row(1).setConstant(0.2f);
+  critic.score(data);
+  EXPECT_NEAR(costs(0), 3.0, 0.01);
+  EXPECT_NEAR(costs(1), 4.2, 0.01);
 }
 
 TEST(CriticTests, GoalCritic)
@@ -270,6 +369,23 @@ TEST(CriticTests, PathAngleCritic)
   critic.score(data);
   EXPECT_GT(costs.sum(), 0.0);
   EXPECT_NEAR(costs(0), 3.6315, 1e-2);  // atan2(4,-1) [1.81] * 2.0 weight
+
+  // 目标路径方向在左侧（正角误差）：正 wz 为最短方向，负 wz 应受到额外惩罚。
+  costs.setZero();
+  state.wz.setConstant(0.5f);
+  state.wz.row(1).setConstant(-0.5f);
+  critic.score(data);
+  EXPECT_GT(costs(1), costs(0));
+  EXPECT_NEAR(costs(1) - costs(0), 2.0f, 1e-2f);
+
+  // 目标路径方向在右侧（负角误差）：负 wz 为最短方向，正 wz 应受到额外惩罚。
+  costs.setZero();
+  path.y(6) = -4.0;
+  state.wz.setConstant(-0.5f);
+  state.wz.row(1).setConstant(0.5f);
+  critic.score(data);
+  EXPECT_GT(costs(1), costs(0));
+  EXPECT_NEAR(costs(1) - costs(0), 2.0f, 1e-2f);
 }
 
 TEST(CriticTests, PreferForwardCritic)
@@ -694,4 +810,44 @@ TEST(CriticTests, VelocityDeadbandCritic)
   critic.score(data);
   // 35.0 weight * 0.1 model_dt * (0.07 + 0.06 + 0.059) * 30 timesteps = 19.845
   EXPECT_NEAR(costs(1), 19.845, 0.01);
+}
+
+TEST(CriticTests, AngularVelocityCriticStopsInsideYawTolerance)
+{
+  auto node = std::make_shared<rclcpp_lifecycle::LifecycleNode>("angular_velocity_critic_test");
+  auto costmap_ros = std::make_shared<nav2_costmap_2d::Costmap2DROS>(
+    "dummy_costmap", "", "dummy_costmap");
+  node->declare_parameter("critic.cost_power", 2);
+  node->declare_parameter("critic.cost_weight", 1.0);
+  node->declare_parameter("critic.stop_yaw_tolerance", 0.02);
+  node->declare_parameter("mppi.wz_max", 0.75);
+  node->declare_parameter("mppi.az_max", 0.7);
+  ParametersHandler param_handler(node);
+  rclcpp_lifecycle::State lstate;
+  costmap_ros->on_configure(lstate);
+
+  models::State state;
+  state.reset(2, 4);
+  models::Trajectories trajectories;
+  trajectories.reset(2, 4);
+  models::Path path;
+  path.reset(1);
+  path.yaws(0) = 0.0f;
+  models::Vector costs = models::Vector::Zero(2);
+  float model_dt = 0.1f;
+  CriticData data =
+  {state, trajectories, path, costs, model_dt, false, nullptr, nullptr, std::nullopt,
+    std::nullopt};
+  data.motion_model = std::make_shared<DiffDriveMotionModel>();
+
+  AngularVelocityCritic critic;
+  critic.on_configure(node, "mppi", "critic", costmap_ros, &param_handler);
+
+  // 两条预测轨迹都已进入 0.02 rad 停车区；零角速度候选应优于继续旋转候选。
+  trajectories.yaws.setConstant(0.01f);
+  state.wz.row(0).setZero();
+  state.wz.row(1).setConstant(-0.1f);
+  critic.score(data);
+  EXPECT_NEAR(costs(0), 0.0, 1e-6);
+  EXPECT_GT(costs(1), costs(0));
 }

@@ -27,6 +27,8 @@ namespace mppi::critics
  *        ① 速度项 跟踪按朝向误差算的期望角速度
  *           wz_desired = min(wz_max, sqrt(2*az_max*|θ_err|)) * sign(θ_err)，
  *           θ_err = 归一化(goal_yaw - traj_yaw)（远离目标朝向=wz_max，接近时平滑降到 0，防朝向过冲）；
+ *           当 |θ_err| <= stop_yaw_tolerance 时 wz_desired=0，使控制目标与 GoalChecker 的
+ *           航向容差和停稳条件一致；
  *           罚 |wz - wz_desired|。
  *        ② 加速度项 罚相邻 |Δwz|（角加速度，平滑）。
  *        wz_max / az_max 从 FollowPath 全局参数读取。
@@ -47,6 +49,7 @@ protected:
   float weight_{0};
   float wz_max_{0.75f};  // 从 FollowPath 全局参数读
   float az_max_{0.7f};   // 从 FollowPath 全局参数读（角减速度）
+  float stop_yaw_tolerance_{0.02f};  // 进入最终航向容差后，期望角速度直接降为 0
 };
 
 }  // namespace mppi::critics

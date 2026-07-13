@@ -169,6 +169,10 @@ protected:
    */
   bool checkNearGoalProgress(const geometry_msgs::msg::PoseStamped & pose);
   /**
+   * @brief Reset the near-goal lateral-error stagnation checker
+   */
+  void resetNearGoalLateralStall();
+  /**
    * @brief 按当前 goal_checker 的接受容差判断近目标误差
    * @param pose 当前机器人位姿
    * @param mark_goal_reached_on_success 满足时是否标记为兜底到位成功
@@ -179,6 +183,11 @@ protected:
     const geometry_msgs::msg::PoseStamped & pose,
     bool mark_goal_reached_on_success,
     bool check_yaw = true);
+  /**
+   * @brief Check the current odometry against the active goal checker's stop tolerances
+   * @return true if translational and rotational velocities are both stopped
+   */
+  bool isRobotStoppedForGoalChecker();
   /**
    * @brief 判断新 path 是否仍指向当前目标点
    * @param path 待更新的全局路径
@@ -292,11 +301,25 @@ protected:
   double failure_tolerance_;
 
   bool near_goal_progress_enabled_{true};
+  bool near_goal_hold_position_when_pose_reached_{false};
+  bool near_goal_pose_hold_active_{false};
   double near_goal_progress_distance_{0.25};
   double near_goal_progress_required_movement_radius_{0.01};
   double near_goal_progress_required_movement_angle_{0.005};
   rclcpp::Duration near_goal_progress_time_allowance_{
     rclcpp::Duration::from_seconds(8.0)};
+  bool near_goal_lateral_stall_enabled_{false};
+  double near_goal_lateral_stall_lon_tolerance_{0.02};
+  double near_goal_lateral_stall_yaw_tolerance_{0.05};
+  double near_goal_lateral_stall_lat_tolerance_{0.02};
+  double near_goal_lateral_stall_min_improvement_{0.005};
+  rclcpp::Duration near_goal_lateral_stall_time_allowance_{
+    rclcpp::Duration::from_seconds(3.0)};
+  int near_goal_lateral_stall_entry_count_{0};
+  bool near_goal_lateral_stall_monitoring_{false};
+  double near_goal_lateral_stall_baseline_error_{0.0};
+  double near_goal_lateral_stall_best_error_{0.0};
+  rclcpp::Time near_goal_lateral_stall_start_time_;
   bool near_goal_baseline_pose_set_{false};
   bool in_near_goal_progress_mode_{false};
   bool near_goal_progress_acceptance_reached_{false};

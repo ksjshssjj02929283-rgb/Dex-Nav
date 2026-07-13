@@ -27,14 +27,15 @@ void LinearVelocityCritic::initialize()
 
   getParam(power_, "cost_power", 2);
   getParam(weight_, "cost_weight", 5.0);
-  // 速度上限与减速度从 FollowPath 全局参数读取（不在 critic 内自定义）
-  getParentParam(vx_max_, "vx_max", 0.7);
+  // 初始速度上限从 FollowPath 读取；运行后由三阶段 profile 持续覆盖。
+  getParentParam(speed_max_, "vx_max", 0.7);
   getParentParam(ax_max_, "ax_max", 0.5);
 
   RCLCPP_INFO(
     logger_,
-    "LinearVelocityCritic instantiated with %d power, %.3f weight, vx_max=%.3f, ax_max=%.3f",
-    power_, weight_, vx_max_, ax_max_);
+    "LinearVelocityCritic instantiated with %d power, %.3f weight, speed_max=%.3f, "
+    "ax_max=%.3f",
+    power_, weight_, speed_max_, ax_max_);
 }
 
 void LinearVelocityCritic::score(CriticData & data)
@@ -52,14 +53,14 @@ void LinearVelocityCritic::score(CriticData & data)
     return;
   }
 
-  // 速度项：按剩余距离算期望速度 v_desired = min(vx_max, sqrt(2*ax_max*d))，罚 |vx - v_desired|
+  // 只约束速度大小，不在这里选择前进/倒车方向；方向交给路径、目标和前进偏好 critic。
   models::Vector cost = models::Vector::Zero(data.costs.size());
   for (Eigen::Index p = 0; p < time_steps; ++p) {
     const auto dx = data.trajectories.x.col(p).array() - goal_x;
     const auto dy = data.trajectories.y.col(p).array() - goal_y;
     const auto dist = (dx * dx + dy * dy).sqrt();
-    const auto v_desired = (2.0f * ax_max_ * dist).sqrt().min(vx_max_);
-    cost += (data.state.vx.col(p).array() - v_desired).abs();
+    const auto speed_desired = (2.0f * ax_max_ * dist).sqrt().min(speed_max_);
+    cost += (data.state.vx.col(p).array().abs() - speed_desired).abs();
   }
   cost /= static_cast<float>(time_steps);
   data.costs += (cost * weight_).pow(power_);
@@ -75,6 +76,9 @@ void LinearVelocityCritic::score(CriticData & data)
 void LinearVelocityCritic::applyProfileSettings(const CriticProfileSettings & settings)
 {
   weight_ = settings.linear_velocity.weight;
+  if (settings.linear_velocity.speed_max > 0.0f) {
+    speed_max_ = settings.linear_velocity.speed_max;
+  }
 }
 
 }  // namespace mppi::critics
