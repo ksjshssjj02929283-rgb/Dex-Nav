@@ -137,6 +137,12 @@ void RegulatedPurePursuitController::configure(
   nav2_util::declare_parameter_if_not_declared(
     node, plugin_name_ + ".min_lateral_speed_scale", rclcpp::ParameterValue(0.3));
   nav2_util::declare_parameter_if_not_declared(
+    node, plugin_name_ + ".heading_error_scaling_min_angle", rclcpp::ParameterValue(0.35));
+  nav2_util::declare_parameter_if_not_declared(
+    node, plugin_name_ + ".min_heading_speed_scale", rclcpp::ParameterValue(0.3));
+  nav2_util::declare_parameter_if_not_declared(
+    node, plugin_name_ + ".near_curvature_check_dist", rclcpp::ParameterValue(0.3));
+  nav2_util::declare_parameter_if_not_declared(
     node, plugin_name_ + ".speed_loop_kp", rclcpp::ParameterValue(2.0));
   nav2_util::declare_parameter_if_not_declared(
     node, plugin_name_ + ".speed_loop_ki", rclcpp::ParameterValue(0.2));
@@ -153,6 +159,9 @@ void RegulatedPurePursuitController::configure(
   node->get_parameter(plugin_name_ + ".lateral_error_threshold", lateral_error_threshold_);
   node->get_parameter(plugin_name_ + ".lateral_error_max_dist", lateral_error_max_dist_);
   node->get_parameter(plugin_name_ + ".min_lateral_speed_scale", min_lateral_speed_scale_);
+  node->get_parameter(plugin_name_ + ".heading_error_scaling_min_angle", heading_error_scaling_min_angle_);
+  node->get_parameter(plugin_name_ + ".min_heading_speed_scale", min_heading_speed_scale_);
+  node->get_parameter(plugin_name_ + ".near_curvature_check_dist", near_curvature_check_dist_);
   nav2_controller_common::PidConf conf;
   node->get_parameter(plugin_name_ + ".speed_loop_kp", conf.kp);
   node->get_parameter(plugin_name_ + ".speed_loop_ki", conf.ki);
@@ -273,6 +282,7 @@ void RegulatedPurePursuitController::activate()
   carrot_pub_->on_activate();
   carrot_arc_pub_->on_activate();
   last_speed_cmd_valid_ = false;  // 新一轮运行以实测重新播种指令积分器
+  was_rotating_to_path_ = false;  // 新一轮运行不带上一次的转向滞回状态
   // Add callback for dynamic parameters
   auto node = node_.lock();
   dyn_params_handler_ = node->add_on_set_parameters_callback(
@@ -373,6 +383,19 @@ geometry_msgs::msg::TwistStamped RegulatedPurePursuitController::computeVelocity
     curvature = 2.0 * carrot_pose.pose.position.y / carrot_dist2;
   }
 
+  // 近场固定距离曲率：不随速度缩放（不同于上面的 lookahead_dist），专门捕捉
+  // 紧邻机器人的路径方向突变。曲率 κ=2y/d² 对同一角度误差随 d 成反比衰减
+  // （κ≈2sin(β)/d），远端 carrot 在高速长前瞻下会系统性低估近场急弯/路径突变；
+  // 固定距离采样点不受这个稀释影响。
+  const auto near_carrot_pose = getLookAheadPoint(near_curvature_check_dist_, transformed_plan);
+  const double near_carrot_dist2 =
+    (near_carrot_pose.pose.position.x * near_carrot_pose.pose.position.x) +
+    (near_carrot_pose.pose.position.y * near_carrot_pose.pose.position.y);
+  double near_curvature = 0.0;
+  if (near_carrot_dist2 > 0.001) {
+    near_curvature = 2.0 * near_carrot_pose.pose.position.y / near_carrot_dist2;
+  }
+
   // Setting the velocity direction
   double sign = 1.0;
   if (allow_reversing_) {
@@ -399,9 +422,10 @@ geometry_msgs::msg::TwistStamped RegulatedPurePursuitController::computeVelocity
       costAtPose(pose.pose.position.x, pose.pose.position.y), transformed_plan,
       linear_vel, sign);
 
-    // 反馈约束（只降不升）：横向误差减速 + 角速度饱和联动降速。
+    // 反馈约束（只降不升）：横向误差减速 + 朝向误差减速 + 角速度饱和联动降速。
     applyTrackingFeedbackConstraints(
-      transformed_plan, curvature, linear_vel, cross_track_error);
+      transformed_plan, curvature, near_curvature, angle_to_heading,
+      linear_vel, cross_track_error);
 
     linear_vel = trackLinearVelocity(linear_vel, speed.linear.x, have_traj ? traj_accel : 0.0);
 
@@ -439,7 +463,16 @@ bool RegulatedPurePursuitController::shouldRotateToPath(
 {
   // Whether we should rotate robot to rough path heading
   angle_to_path = atan2(carrot_pose.pose.position.y, carrot_pose.pose.position.x);
-  return use_rotate_to_heading_ && fabs(angle_to_path) > rotate_to_heading_min_angle_;
+
+  // 滞回：已在转向模式时用更小的退出阈值判定，未在转向模式时仍用原进入阈值。
+  // 角度若刚好在进入阈值附近来回波动，单一阈值会让 track/rotate 两种控制
+  // 哲学反复突变；退出阈值钳到不超过进入阈值，防止参数误配置导致滞回反转。
+  const double exit_angle = std::min(
+    heading_error_scaling_min_angle_, rotate_to_heading_min_angle_);
+  const double threshold = was_rotating_to_path_ ? exit_angle : rotate_to_heading_min_angle_;
+  const bool rotating = use_rotate_to_heading_ && fabs(angle_to_path) > threshold;
+  was_rotating_to_path_ = rotating;
+  return rotating;
 }
 
 bool RegulatedPurePursuitController::shouldRotateToGoalHeading(
@@ -454,12 +487,18 @@ void RegulatedPurePursuitController::rotateToHeading(
   double & linear_vel, double & angular_vel,
   const double & angle_to_path, const geometry_msgs::msg::Twist & curr_speed)
 {
+  const double & dt = control_duration_;
+
+  // 线速度按 max_linear_accel_ 逐周期减速到 0，不瞬间置零：track 段巡航时线速度
+  // 可观，若在这里直接归零，会在跟踪速度环的加速度限幅之外单独制造一次阶跃指令。
+  const double decel_step = max_linear_accel_ * dt;
+  linear_vel = std::copysign(
+    std::max(0.0, std::fabs(curr_speed.linear.x) - decel_step), curr_speed.linear.x);
+
   // Rotate in place using max angular velocity / acceleration possible
-  linear_vel = 0.0;
   const double sign = angle_to_path > 0.0 ? 1.0 : -1.0;
   angular_vel = sign * rotate_to_heading_angular_vel_;
 
-  const double & dt = control_duration_;
   const double min_feasible_angular_speed = curr_speed.angular.z - max_angular_accel_ * dt;
   const double max_feasible_angular_speed = curr_speed.angular.z + max_angular_accel_ * dt;
   angular_vel = std::clamp(angular_vel, min_feasible_angular_speed, max_feasible_angular_speed);
@@ -774,8 +813,8 @@ double RegulatedPurePursuitController::computeCrossTrackError(
 }
 
 void RegulatedPurePursuitController::applyTrackingFeedbackConstraints(
-  const nav_msgs::msg::Path & transformed_plan, double curvature,
-  double & linear_vel, double & cross_track_error)
+  const nav_msgs::msg::Path & transformed_plan, double curvature, double near_curvature,
+  double angle_to_heading, double & linear_vel, double & cross_track_error)
 {
   // ① 横向误差减速：偏离路径越远越慢，给转向留收敛时间（阈值内不动，
   //    阈值到 max_dist 线性衰减到 min_scale）。
@@ -783,13 +822,32 @@ void RegulatedPurePursuitController::applyTrackingFeedbackConstraints(
   if (cross_track_error > lateral_error_threshold_) {
     const double span = std::max(lateral_error_max_dist_ - lateral_error_threshold_, 1e-3);
     const double f = (cross_track_error - lateral_error_threshold_) / span;
-    const double scale = std::max(min_lateral_speed_scale_, 1.0 - (1.0 - min_lateral_speed_scale_) * f);
+    const double scale = std::max(
+      min_lateral_speed_scale_, 1.0 - (1.0 - min_lateral_speed_scale_) * f);
     linear_vel *= scale;
   }
 
-  // ② 角速度饱和联动降速：wz = gain·v·κ 超上限时，降 v 保持转弯半径 R=1/(gain·κ)
-  //    正确（仅 clamp wz 会使 R 变大→切弯）。直线段 κ≈0 不触发。
-  const double abs_k = std::fabs(curvature);
+  // ② 朝向误差减速：carrot 点角度误差越大越慢（阈值内不动，阈值到
+  //    rotate_to_heading_min_angle_ 线性衰减到 min_scale）。角度是距离无关量，
+  //    不受前瞻长度稀释——③已用近远双点曲率兜住了稀释问题的主体，这一层作为
+  //    独立冗余保留（不同的量、同一个失效模式），不是唯一防线。
+  const double abs_angle = std::fabs(angle_to_heading);
+  if (abs_angle > heading_error_scaling_min_angle_) {
+    const double span = std::max(
+      rotate_to_heading_min_angle_ - heading_error_scaling_min_angle_, 1e-3);
+    const double f = (abs_angle - heading_error_scaling_min_angle_) / span;
+    const double scale = std::max(
+      min_heading_speed_scale_, 1.0 - (1.0 - min_heading_speed_scale_) * f);
+    linear_vel *= scale;
+  }
+
+  // ③ 角速度饱和联动降速：wz = gain·v·κ 超上限时，降 v 保持转弯半径 R=1/(gain·κ)
+  //    正确（仅 clamp wz 会使 R 变大→切弯）。取远端 carrot 曲率与近场固定距离
+  //    曲率中更尖锐（绝对值更大）的一个——远端曲率 κ=2y/d² 按前瞻距离 d 的平方
+  //    衰减，同一角度误差前瞻越远算出的 κ 越小，会漏看紧邻机器人的路径突变；
+  //    近场采样点距离固定、不受前瞻缩放影响，能补住这个盲区。直线段两者都
+  //    ≈0，不触发。
+  const double abs_k = std::max(std::fabs(curvature), std::fabs(near_curvature));
   if (abs_k > 1e-3) {
     const double wz_demand = angular_gain_ * linear_vel * abs_k;
     if (wz_demand > max_angular_vel_) {
