@@ -74,6 +74,10 @@ void PIDController::configure(
     node, p + ".final_rotation_linear_deadband", rclcpp::ParameterValue(0.005));
   declare_parameter_if_not_declared(
     node, p + ".speed_loop_cmd_reseed_error", rclcpp::ParameterValue(0.3));
+  declare_parameter_if_not_declared(
+    node, p + ".final_target_lock_distance", rclcpp::ParameterValue(0.3));
+  declare_parameter_if_not_declared(
+    node, p + ".approach_rotation_budget_deg", rclcpp::ParameterValue(200.0));
 
   node->get_parameter(p + ".long_precision", long_precision_);
   node->get_parameter(p + ".lat_precision", lat_precision_);
@@ -98,6 +102,11 @@ void PIDController::configure(
   final_rotation_linear_deadband_ = std::fabs(final_rotation_linear_deadband_);
   node->get_parameter(p + ".speed_loop_cmd_reseed_error", speed_cmd_reseed_error_);
   speed_cmd_reseed_error_ = std::fabs(speed_cmd_reseed_error_);
+  node->get_parameter(p + ".final_target_lock_distance", final_target_lock_distance_);
+  final_target_lock_distance_ = std::fabs(final_target_lock_distance_);
+  double approach_rotation_budget_deg = 200.0;
+  node->get_parameter(p + ".approach_rotation_budget_deg", approach_rotation_budget_deg);
+  approach_rotation_budget_ = std::fabs(approach_rotation_budget_deg) * M_PI / 180.0;
 
   // ---- nested PID configs: name + ".<pid>.<field>" ----
   auto declare_pid = [&](const std::string & pid, nav2_controller_common::PidConf & conf,
@@ -402,7 +411,11 @@ geometry_msgs::msg::TwistStamped PIDController::computeVelocityCommands(
 
   pruneGlobalPlan(current_ps_, controller_traj_, 2.0);
 
-  plan_index_ = getClosestWaypointID(controller_traj_, current_ps_, 0.1, true);
+  // 距终点小于 final_target_lock_distance_ 时直接锁定终点索引（不再最近点搜索）：
+  // 机器人微小位移会让"最近点"在相邻但方位角相差很大的候选点间跳变，
+  // 锁定终点后瞄准基准不再随机器人位置漂移。
+  plan_index_ = getClosestWaypointID(
+    controller_traj_, current_ps_, final_target_lock_distance_, true);
   if (plan_index_ < 0) {
     RCLCPP_WARN(logger_, "computeVelocityCommands: failed to get closest waypoint");
     return cmd_vel;
@@ -614,6 +627,7 @@ geometry_msgs::msg::TwistStamped PIDController::computeVelocityCommands(
       station_nav2_pid_controller_.Reset();
       speed_nav2_pid_controller_.Reset();
       last_speed_cmd_valid_ = false;
+      resetRotationWatchdog(theta_rob);
     }
     switch (curr_controller_stage_) {
       case FINISH:
@@ -630,6 +644,20 @@ geometry_msgs::msg::TwistStamped PIDController::computeVelocityCommands(
     }
   }
   prev_controller_stage_ = curr_controller_stage_;
+
+  // 旋转量安全网：对机器人实际朝向变化（非误差）逐周期积分，超预算强制停止。
+  // 下方速度上限按朝向误差连续缩放只是阻尼，不能证明净旋转严格有界，
+  // 这里独立兜底定位跳变/TF 抖动等未预见场景。
+  bool rotation_budget_exceeded = false;
+  if (curr_controller_stage_ == APPROACHING || curr_controller_stage_ == ROTATING_TO_GOAL) {
+    rotation_budget_exceeded = updateRotationWatchdog(theta_rob);
+    if (rotation_budget_exceeded) {
+      RCLCPP_WARN_THROTTLE(
+        logger_, *clock_, 1000,
+        "approach/rotating stage exceeded rotation budget (%.1f deg > %.1f deg), forcing stop",
+        accumulated_rotation_ * 180.0 / M_PI, approach_rotation_budget_ * 180.0 / M_PI);
+    }
+  }
 
   double angle_to_heading = 0.0;
   const char * active_branch = "unset";
@@ -666,8 +694,16 @@ geometry_msgs::msg::TwistStamped PIDController::computeVelocityCommands(
           // 距离收敛优先于"只前进"；倒回上限不被末端蠕行速度钳死，
           // 放宽到 final_rotation_max_v（与最终旋转段线性纠偏权限一致）。
           const double desired_v = std::fabs(desired_linear_vel_);
-          const double max_cmd_v = (err_x < 0.0) ?
+          const double raw_max_cmd_v = (err_x < 0.0) ?
             std::max(desired_v, final_rotation_max_v_) : desired_v;
+          // 朝向-速度平滑耦合：速度上限连续按 cos(err_theta) 衰减（非离散置零，
+          // 无速度跳变）。err_theta=0 时不缩放；|err_theta|>=90° 时缩为 0。
+          // 机器人平移时瞄准点方位角会以 v·sin(Δθ)/d 的速率扫动（Δθ=朝向误差、
+          // d=到瞄准点距离），朝向误差越大越接近该点扫动越剧烈，形成"越转越追不上"
+          // 的正反馈——按 cos(Δθ) 缩放 v 后峰值扫动速率减半且从 90° 挪到 45°，
+          // 配合上方瞄准点已锁定终点（不再随机器人平移漂移）共同压住这个反馈。
+          const double heading_scale = headingSpeedScale(err_theta);
+          const double max_cmd_v = raw_max_cmd_v * heading_scale;
           const double ff_accel = (plan_index_ >= 0 &&
             static_cast<size_t>(plan_index_) < controller_traj_.size()) ?
             controller_traj_[plan_index_].accel : 0.0;
@@ -690,6 +726,12 @@ geometry_msgs::msg::TwistStamped PIDController::computeVelocityCommands(
         cmd_vel.twist.angular.z = 0.0;
         break;
     }
+  }
+
+  if (rotation_budget_exceeded) {
+    cmd_vel.twist.linear.x = 0.0;
+    cmd_vel.twist.angular.z = 0.0;
+    active_branch = "rotation_budget_exceeded_stop";
   }
 
   RCLCPP_DEBUG_THROTTLE(
