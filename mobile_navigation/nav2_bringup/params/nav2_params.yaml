@@ -369,6 +369,7 @@ controller_server:
       k_theta: 0.5
       switch_speed: 0.1
       default_desired_linear_vel: 0.15
+      speed_loop_cmd_reseed_error: 0.3   # 指令积分器与实测偏差超此值时重新对齐（外力/急停兜底）
       final_rotation_max_v: 0.05
       final_rotation_linear_deadband: 0.005
       high_speed_station_pid_conf:

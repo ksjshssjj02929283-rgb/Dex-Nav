@@ -67,6 +67,11 @@ if(BUILD_TESTING)
   # the following line skips the linter which checks for copyrights
   set(ament_cmake_copyright_FOUND TRUE)
   ament_lint_auto_find_test_dependencies()
+
+  find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(test_pid_speed_loop test/test_pid_speed_loop.cpp)
+  target_link_libraries(test_pid_speed_loop ${library_name})
+  ament_target_dependencies(test_pid_speed_loop ${dependencies})
 endif()
 
 ament_export_include_directories(include)

@@ -638,15 +638,16 @@ TEST(RegulatedPurePursuitTest, applyConstraints)
   double linear_vel = 0.0;
   double sign = 1.0;
 
-  // test curvature regulation (default)
+  // 入口 linear_vel 是轨迹规划目标且约束链只降不升：目标为 0
+  // （障碍零速/蠕行零点）时不得被调节下限抬升
   curr_speed.linear.x = 0.25;
   ctrl->applyConstraintsWrapper(
     curvature, curr_speed, pose_cost, no_approach_path,
     linear_vel, sign);
-  EXPECT_EQ(linear_vel, 0.25);  // min set speed
+  EXPECT_EQ(linear_vel, 0.0);
 
   linear_vel = 1.0;
-  curvature = 0.7407;
+  curvature = 2.2222;  // radius 0.45 = regulated_linear_scaling_min_radius / 2
   curr_speed.linear.x = 0.5;
   ctrl->applyConstraintsWrapper(
     curvature, curr_speed, pose_cost, no_approach_path,

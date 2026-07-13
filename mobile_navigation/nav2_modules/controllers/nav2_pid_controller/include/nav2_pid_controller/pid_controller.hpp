@@ -283,6 +283,14 @@ protected:
   double last_linear_min_target_v_ = 0.0;
   double last_linear_deadband_ = 0.0;
 
+  // ---- speed-loop command integrator ----
+  // 速度环输出锚定上一周期指令而非实测（实测只进误差项；锚定实测会让指令
+  // 只能贴着执行值走、失去主动制动权）；指令与实测脱节超过 reseed 阈值时
+  // 对齐实测（外力/打滑/急停兜底）。
+  bool last_speed_cmd_valid_ = false;
+  double last_speed_cmd_ = 0.0;
+  double speed_cmd_reseed_error_ = 0.3;
+
   // ---- linear PID controllers ----
   nav2_controller_common::PIDController station_nav2_pid_controller_;
   nav2_controller_common::PIDController speed_nav2_pid_controller_;
