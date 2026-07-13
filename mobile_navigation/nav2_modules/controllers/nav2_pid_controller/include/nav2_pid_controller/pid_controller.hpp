@@ -16,6 +16,7 @@
 #ifndef PID_CONTROLLER__PID_CONTROLLER_HPP_
 #define PID_CONTROLLER__PID_CONTROLLER_HPP_
 
+#include <algorithm>
 #include <cmath>
 #include <deque>
 #include <limits>
@@ -290,6 +291,58 @@ protected:
   bool last_speed_cmd_valid_ = false;
   double last_speed_cmd_ = 0.0;
   double speed_cmd_reseed_error_ = 0.3;
+
+  // ---- approach-stage target lock ----
+  // getClosestWaypointID 的 ignore_dist：机器人与轨迹终点距离小于此值时直接
+  // 锁定终点索引，跳过最近点搜索。默认与 staged_control.approach_distance
+  // 对齐（该控制器只在此距离内被调用），使 approach 全程瞄准固定终点，
+  // 不再随机器人平移在候选点间跳变。
+  double final_target_lock_distance_ = 0.3;
+
+  // ---- approach-stage rotation budget watchdog ----
+  // 对机器人实际朝向变化量（非误差）逐周期积分；超预算强制停止。
+  // 速度上限按朝向误差连续缩放只是阻尼，不能证明净旋转严格有界，
+  // 这里独立兜底定位跳变等未预见场景。
+  double approach_rotation_budget_ = 3.490659;  // 200 deg in rad
+  double accumulated_rotation_ = 0.0;
+  double last_theta_rob_for_accum_ = 0.0;
+
+  /**
+   * @brief Continuous heading-based speed scale for the approach stage:
+   *        1.0 at err_theta=0, 0.0 at |err_theta|>=90 deg. Replaces a hard
+   *        on/off velocity gate so there is no command discontinuity while
+   *        still damping the LOS bearing-rate blowup (dbeta/dt=v*sin(dtheta)/d)
+   *        that drives unbounded orbiting when heading error is large.
+   */
+  static double headingSpeedScale(double err_theta)
+  {
+    return std::max(0.0, std::cos(err_theta));
+  }
+
+  /**
+   * @brief Reset the rotation-budget watchdog at stage entry.
+   */
+  void resetRotationWatchdog(double theta_rob)
+  {
+    accumulated_rotation_ = 0.0;
+    last_theta_rob_for_accum_ = theta_rob;
+  }
+
+  /**
+   * @brief Integrate actual heading change (not error) since the last call;
+   *        returns true once the accumulated magnitude exceeds
+   *        approach_rotation_budget_. Independent of the smooth speed
+   *        coupling above -- defends against scenarios it does not cover
+   *        (localization jumps, TF glitches, unforeseen target flips).
+   */
+  bool updateRotationWatchdog(double theta_rob)
+  {
+    double dtheta = theta_rob - last_theta_rob_for_accum_;
+    regularizeAngle(dtheta);
+    accumulated_rotation_ += dtheta;
+    last_theta_rob_for_accum_ = theta_rob;
+    return std::fabs(accumulated_rotation_) > approach_rotation_budget_;
+  }
 
   // ---- linear PID controllers ----
   nav2_controller_common::PIDController station_nav2_pid_controller_;

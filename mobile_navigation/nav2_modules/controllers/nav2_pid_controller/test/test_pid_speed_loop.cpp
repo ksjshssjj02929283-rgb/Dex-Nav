@@ -164,6 +164,121 @@ TEST(PidSpeedLoop, reseedOnDivergence)
   EXPECT_LT(after_jump, 0.15);
 }
 
+// approach 阶段单测：目标锁定 / 朝向-速度平滑耦合 / 旋转量安全网。
+// 不依赖 TF/costmap——getClosestWaypointID 直接吃 TrajPoint 向量，
+// headingSpeedScale/updateRotationWatchdog 是纯状态方法。
+class ApproachStagePID : public nav2_pid_controller::PIDController
+{
+public:
+  static std::vector<TrajPoint> makeStraightTraj(double length, double step = 0.02)
+  {
+    std::vector<TrajPoint> traj;
+    const int n = static_cast<int>(length / step) + 1;
+    for (int i = 0; i < n; ++i) {
+      TrajPoint p;
+      p.pose.pose.position.x = i * step;
+      p.pose.pose.position.y = 0.0;
+      p.pose.pose.orientation.w = 1.0;
+      traj.push_back(p);
+    }
+    return traj;
+  }
+  int closestWaypointWrapper(
+    const std::vector<TrajPoint> & traj,
+    const geometry_msgs::msg::PoseStamped & pose,
+    double ignore_dist, bool ignore_first)
+  {
+    return getClosestWaypointID(traj, pose, ignore_dist, ignore_first);
+  }
+  static double headingScale(double err_theta) {return headingSpeedScale(err_theta);}
+  void resetWatchdog(double theta_rob) {resetRotationWatchdog(theta_rob);}
+  bool tickWatchdog(double theta_rob) {return updateRotationWatchdog(theta_rob);}
+  void setRotationBudget(double rad) {approach_rotation_budget_ = rad;}
+};
+
+namespace
+{
+geometry_msgs::msg::PoseStamped makePose(double x, double y)
+{
+  geometry_msgs::msg::PoseStamped ps;
+  ps.pose.position.x = x;
+  ps.pose.position.y = y;
+  ps.pose.orientation.w = 1.0;
+  return ps;
+}
+
+double wrapAngle(double a) {return std::atan2(std::sin(a), std::cos(a));}
+}  // namespace
+
+// 目标锁定：距终点 < final_target_lock_distance_ 时直接锁定终点索引，
+// 不再随横向误差在候选点间跳变。
+TEST(ApproachStage, targetLockPinsToGoalWithinLockDistance)
+{
+  ApproachStagePID pid;
+  const auto traj = ApproachStagePID::makeStraightTraj(1.0);
+  const auto pose = makePose(0.85, 0.15);  // 距终点(1,0) hypot(0.15,0.15)=0.212m
+
+  const int locked = pid.closestWaypointWrapper(traj, pose, 0.3, true);
+  EXPECT_EQ(locked, static_cast<int>(traj.size()) - 1);
+
+  const int unlocked = pid.closestWaypointWrapper(traj, pose, 0.1, true);
+  EXPECT_NE(unlocked, static_cast<int>(traj.size()) - 1);
+}
+
+// 朝向-速度平滑耦合：连续、无跳变，err_theta=0 时不缩放，
+// |err_theta|>=90° 时缩为 0。
+TEST(ApproachStage, headingSpeedScaleIsSmoothAndBounded)
+{
+  EXPECT_DOUBLE_EQ(ApproachStagePID::headingScale(0.0), 1.0);
+  EXPECT_NEAR(ApproachStagePID::headingScale(M_PI / 4.0), 0.70710678, 1e-6);
+  EXPECT_NEAR(ApproachStagePID::headingScale(M_PI / 2.0), 0.0, 1e-9);
+  EXPECT_EQ(ApproachStagePID::headingScale(M_PI), 0.0);
+  // 偶函数：正负误差同幅度缩放一致（不引入方向偏置）
+  EXPECT_DOUBLE_EQ(ApproachStagePID::headingScale(1.0), ApproachStagePID::headingScale(-1.0));
+  // 连续性：相邻小角度增量下缩放变化平滑，无阶跃
+  double prev = ApproachStagePID::headingScale(0.0);
+  for (int i = 1; i <= 90; ++i) {
+    const double cur = ApproachStagePID::headingScale(i * M_PI / 180.0);
+    EXPECT_LT(std::fabs(cur - prev), 0.02);  // 每度变化 < 0.02，无跳变
+    prev = cur;
+  }
+}
+
+// 旋转量安全网：持续单向旋转累计超预算后触发；未超时不触发。
+TEST(ApproachStage, rotationWatchdogTripsOnSustainedSpin)
+{
+  ApproachStagePID pid;
+  pid.setRotationBudget(200.0 * M_PI / 180.0);
+  pid.resetWatchdog(wrapAngle(0.0));
+
+  bool tripped = false;
+  int trip_step = -1;
+  for (int i = 1; i <= 60; ++i) {
+    tripped = pid.tickWatchdog(wrapAngle(i * 0.1));  // 持续 +0.1rad/步，跨越 ±pi 卷绕
+    if (tripped) {trip_step = i; break;}
+  }
+  ASSERT_TRUE(tripped);
+  // 200deg/0.1rad ≈ 35 步触发，允许小范围浮动
+  EXPECT_GE(trip_step, 33);
+  EXPECT_LE(trip_step, 37);
+}
+
+// 旋转量安全网：未持续单向旋转（收敛后停止）不应误触发。
+TEST(ApproachStage, rotationWatchdogNotTrippedOnConvergence)
+{
+  ApproachStagePID pid;
+  pid.setRotationBudget(200.0 * M_PI / 180.0);
+  pid.resetWatchdog(wrapAngle(1.5));  // 初始误差 ~86°
+
+  // 单调收敛到 0，总旋转量 = 初始误差 < 180° < 200° 预算
+  bool tripped = false;
+  for (int i = 0; i <= 30; ++i) {
+    const double theta = 1.5 * (1.0 - static_cast<double>(i) / 30.0);
+    tripped = pid.tickWatchdog(wrapAngle(theta)) || tripped;
+  }
+  EXPECT_FALSE(tripped);
+}
+
 int main(int argc, char ** argv)
 {
   ::testing::InitGoogleTest(&argc, argv);
