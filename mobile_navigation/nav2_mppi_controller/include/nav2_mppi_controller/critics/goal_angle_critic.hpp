@@ -42,10 +42,19 @@ public:
    */
   void score(CriticData & data) override;
 
+  /**
+   * @brief Apply runtime goal angle critic settings
+   * @param settings Runtime goal angle critic settings
+   */
+  void applyGoalAngleCriticSettings(const GoalAngleCriticSettings & settings);
+
+  void applyProfileSettings(const CriticProfileSettings & settings) override;
+
 protected:
-  float threshold_to_consider_{0};
   unsigned int power_{0};
   float weight_{0};
+  float wrong_way_cost_ratio_{0.0f};
+  float direction_deadband_{0.0f};
 };
 
 }  // namespace mppi::critics

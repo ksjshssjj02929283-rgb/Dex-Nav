@@ -49,12 +49,16 @@ int main(int argc, char** argv) {
 
     std::string xml_file = pkg_share_dir + "/config/loop_nocharging_bt.xml";
     std::string points_file = pkg_share_dir + "/config/navigation_points.json";
+    const bool check_battery = node->declare_parameter<bool>("check_battery", false);
 
     auto blackboard = BT::Blackboard::create();
     blackboard->set("navigation_points", points_file);
     blackboard->set("low_battery_shutdown", false);
+    blackboard->set("nav_loop_complete", false);
+    blackboard->set("check_battery", check_battery);
 
     RCLCPP_INFO(node->get_logger(), "Loading behavior tree from: %s", xml_file.c_str());
+    RCLCPP_INFO(node->get_logger(), "Battery check is %s.", check_battery ? "enabled" : "disabled");
 
     BT::Tree tree;
     try {
@@ -77,6 +81,15 @@ int main(int argc, char** argv) {
             bool stop = blackboard->get<bool>("low_battery_shutdown");
             if (stop) {
                 RCLCPP_INFO(node->get_logger(), "Low battery: robot returned to first point. Shutting down program.");
+                break;
+            }
+        } catch (...) {
+        }
+
+        try {
+            bool complete = blackboard->get<bool>("nav_loop_complete");
+            if (complete) {
+                RCLCPP_INFO(node->get_logger(), "Navigation loop completed. Shutting down program.");
                 break;
             }
         } catch (...) {

@@ -29,6 +29,7 @@
 #include "tf2_ros/transform_listener.h"
 #include "nav2_msgs/action/follow_path.hpp"
 #include "nav2_msgs/msg/speed_limit.hpp"
+#include "diagnostic_msgs/msg/diagnostic_array.hpp"
 #include "nav_2d_utils/odom_subscriber.hpp"
 #include "nav2_util/lifecycle_node.hpp"
 #include "nav2_util/simple_action_server.hpp"
@@ -168,6 +169,32 @@ protected:
    */
   bool checkNearGoalProgress(const geometry_msgs::msg::PoseStamped & pose);
   /**
+   * @brief Reset the near-goal lateral-error stagnation checker
+   */
+  void resetNearGoalLateralStall();
+  /**
+   * @brief 按当前 goal_checker 的接受容差判断近目标误差
+   * @param pose 当前机器人位姿
+   * @param mark_goal_reached_on_success 满足时是否标记为兜底到位成功
+   * @param check_yaw 是否同时检查角度容差；预检查位置窗口时可只看位置
+   * @return true 表示当前误差已满足接受容差
+   */
+  bool isWithinGoalCheckerTolerance(
+    const geometry_msgs::msg::PoseStamped & pose,
+    bool mark_goal_reached_on_success,
+    bool check_yaw = true);
+  /**
+   * @brief Check the current odometry against the active goal checker's stop tolerances
+   * @return true if translational and rotational velocities are both stopped
+   */
+  bool isRobotStoppedForGoalChecker();
+  /**
+   * @brief 判断新 path 是否仍指向当前目标点
+   * @param path 待更新的全局路径
+   * @return true 表示新 path 终点与当前目标点基本一致
+   */
+  bool isSamePathGoal(const nav_msgs::msg::Path & path);
+  /**
    * @brief Calls setPlannerPath method with an updated path received from
    * action server
    */
@@ -236,6 +263,8 @@ protected:
   // Publishers and subscribers
   std::unique_ptr<nav_2d_utils::OdomSubscriber> odom_sub_;
   rclcpp_lifecycle::LifecyclePublisher<geometry_msgs::msg::Twist>::SharedPtr vel_publisher_;
+  rclcpp_lifecycle::LifecyclePublisher<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr
+    goal_error_publisher_;
   rclcpp::Subscription<nav2_msgs::msg::SpeedLimit>::SharedPtr speed_limit_sub_;
 
   // Progress Checker Plugin
@@ -272,13 +301,28 @@ protected:
   double failure_tolerance_;
 
   bool near_goal_progress_enabled_{true};
+  bool near_goal_hold_position_when_pose_reached_{false};
+  bool near_goal_pose_hold_active_{false};
   double near_goal_progress_distance_{0.25};
   double near_goal_progress_required_movement_radius_{0.01};
   double near_goal_progress_required_movement_angle_{0.005};
   rclcpp::Duration near_goal_progress_time_allowance_{
     rclcpp::Duration::from_seconds(8.0)};
+  bool near_goal_lateral_stall_enabled_{false};
+  double near_goal_lateral_stall_lon_tolerance_{0.02};
+  double near_goal_lateral_stall_yaw_tolerance_{0.05};
+  double near_goal_lateral_stall_lat_tolerance_{0.02};
+  double near_goal_lateral_stall_min_improvement_{0.005};
+  rclcpp::Duration near_goal_lateral_stall_time_allowance_{
+    rclcpp::Duration::from_seconds(3.0)};
+  int near_goal_lateral_stall_entry_count_{0};
+  bool near_goal_lateral_stall_monitoring_{false};
+  double near_goal_lateral_stall_baseline_error_{0.0};
+  double near_goal_lateral_stall_best_error_{0.0};
+  rclcpp::Time near_goal_lateral_stall_start_time_;
   bool near_goal_baseline_pose_set_{false};
   bool in_near_goal_progress_mode_{false};
+  bool near_goal_progress_acceptance_reached_{false};
   geometry_msgs::msg::PoseStamped near_goal_baseline_pose_;
   rclcpp::Time near_goal_baseline_time_;
 

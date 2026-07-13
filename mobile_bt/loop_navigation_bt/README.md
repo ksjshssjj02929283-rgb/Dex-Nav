@@ -1,214 +1,201 @@
-# Loop Navigation Behavior Tree (循环导航行为树)
+# loop_navigation_bt
 
-## 概述
+`loop_navigation_bt` 是循环导航与回充联调包。它读取 JSON 点位，使用 Nav2 `/navigate_to_pose` 顺序导航，并把每次到点误差写入 `nav_error_log.txt`。
 
-`loop_navigation_bt` 是一个自主移动机器人的循环导航行为树模块，实现了以下功能：
+## 当前提供的运行模式
 
-1. **电量检测**：通过订阅 `/feedback/battery` 话题实时获取机器人电量
-2. **循环导航**：在电量充足（>35%）时循环导航四个预设点
-3. **自动回充**：当电量低于35%时自动触发回充服务
-4. **持续监控**：回充完成后继续检测电量，电量充足则继续导航
+### 无回充循环导航
 
-## 项目结构
+推荐用于导航精度和稳定性测试：
 
+```bash
+ros2 launch loop_navigation_bt loop_nocharging.launch.py
 ```
-loop_navigation_bt/
-├── CMakeLists.txt                    # CMake 构建配置
-├── package.xml                       # ROS2 包配置
-├── README.md                         # 本文件
-├── include/
-│   └── loop_navigation_bt/
-│       └── loop_navigation_bt.hpp    # 头文件，定义所有行为树节点
-├── src/
-│   ├── loop_navigation_bt.cpp        # 行为树节点实现
-│   └── main.cpp                      # 主程序入口
-├── config/
-│   ├── loop_navigation_bt.xml        # 行为树结构定义
-│   └── navigation_points.json        # 导航点配置
-└── launch/
-    └── loop_navigation_bt.launch.py  # ROS2 启动文件
+
+默认 `check_battery:=false`，不依赖底盘电量信息，完成 `navigation_points.json` 中 `rounds` 指定的轮数后退出。
+
+启用低电量检查：
+
+```bash
+ros2 launch loop_navigation_bt loop_nocharging.launch.py check_battery:=true
 ```
+
+启用后，电量低于 `30%` 时会取消当前导航，导航到 JSON 中第一个点，然后退出；该模式不会触发回充。
+
+### 循环导航与自动回充
+
+```bash
+ros2 launch loop_navigation_bt loop_navigation_bt.launch.py
+```
+
+该入口加载 `loop_navigate_bt.xml`：正常时循环导航；电量低于 `30%` 时取消当前目标并调用 `/auto_charging` Action；电量恢复到 XML 当前配置的 `80%` 后执行退桩并继续导航。
+
+使用前必须先启动 `auto_charging_bt` 的 Action server：
+
+```bash
+ros2 launch auto_charging_bt auto_charging_action.launch.py
+```
+
+注意：源码中的 XML 注释写有“直到 ≥90%”，但实际节点参数是 `threshold="80"`，运行行为以 `80%` 为准。
+
+### 连续回充测试入口
+
+包内还包含 `loop_charging_bt.xml` 和 `loop_charging_bt_node`，用于重复调用 `/auto_charging` Action。它会实际驱动机器人，不应用作普通导航测试。
 
 ## 行为树结构
 
-```
-MainTree (WhileDoElse)
-├── Condition: CheckBatteryAboveThreshold (threshold=35%)
-├── Do: LoopNavigateFourPoints (循环导航)
-└── Else: CallAutoChargeService (调用回充服务)
-```
+无回充模式：
 
-### 执行流程
-
-1. **检查电量** (`CheckBatteryAboveThreshold`)
-   - 订阅 `/feedback/battery` 话题
-   - 检查电量是否 > 35%
-   - SUCCESS: 电量充足，执行导航
-   - FAILURE: 电量不足，执行回充
-
-2. **循环导航** (`LoopNavigateFourPoints`)
-   - 循环导航四个预设点
-   - 每完成一个点后移动到下一个点
-   - 在导航过程中持续检查电量
-   - 若电量 ≤ 35%，停止导航并返回 FAILURE
-
-3. **自动回充** (`CallAutoChargeService`)
-   - 调用 `/auto_charge` 服务
-   - 执行 `ros2 service call /auto_charge Trigger "{}"`
-   - 回充完成后继续循环
-
-## 关键节点说明
-
-### 1. CheckBatteryAboveThreshold
-- **类型**: SyncActionNode
-- **功能**: 检查当前电量是否大于阈值
-- **输入端口**: `threshold` (double, 默认35.0)
-- **返回值**: SUCCESS (电量充足) / FAILURE (电量不足)
-
-### 2. NavigateToPoint
-- **类型**: SyncActionNode
-- **功能**: 导航到指定的单个点
-- **输入端口**: `goal` (geometry_msgs::msg::PoseStamped)
-- **返回值**: SUCCESS / FAILURE
-
-### 3. LoopNavigateFourPoints
-- **类型**: StatefulActionNode
-- **功能**: 循环导航四个预设点
-- **输入端口**: `points` (std::vector<geometry_msgs::msg::PoseStamped>)
-- **返回值**: RUNNING (继续循环) / FAILURE (电量不足或导航失败)
-- **特性**:
-  - 自动循环遍历所有点
-  - 在导航过程中持续检查电量
-  - 电量低于35%时停止并返回FAILURE
-
-### 4. CallAutoChargeService
-- **类型**: SyncActionNode
-- **功能**: 调用回充服务
-- **服务**: `/auto_charge` (std_srvs::srv::Trigger)
-- **返回值**: SUCCESS (回充成功) / FAILURE (回充失败)
-
-## 配置文件
-
-### navigation_points.json
-定义循环导航的四个点坐标：
-
-```json
-{
-  "frame_id": "map",
-  "points": [
-    {"position": {"x": 0.0, "y": 0.0, "z": 0.0}, ...},
-    {"position": {"x": 5.0, "y": 0.0, "z": 0.0}, ...},
-    {"position": {"x": 5.0, "y": 5.0, "z": 0.0}, ...},
-    {"position": {"x": 0.0, "y": 5.0, "z": 0.0}, ...}
-  ]
-}
+```text
+主循环 ReactiveSequence
+├── LoopNavigateFourPoints：按点位和轮数导航
+└── BatteryCheck
+    ├── 电量检查关闭或电量 ≥30%：继续
+    └── 电量 <30%
+        ├── CancelNavigation：取消当前导航
+        └── NavigateToFirstPointAndStop：返回第一个点并退出
 ```
 
-**修改方式**:
-1. 编辑 `config/navigation_points.json`
-2. 修改每个点的 `position` 和 `orientation`
-3. 重新编译或直接修改安装目录中的文件
+带回充模式：
 
-### loop_navigation_bt.xml
-定义行为树的结构和逻辑，使用 BehaviorTree.CPP v3 的 XML 格式。
+```text
+主循环 ReactiveSequence
+├── LoopNavigateFourPoints：循环导航
+└── BatteryCheck
+    ├── 电量 ≥30%：继续
+    └── 电量 <30%
+        ├── CancelNavigation：取消当前导航
+        ├── CallCharging：调用 /auto_charging Action
+        ├── 等待电量 ≥80%
+        └── Undocking：退桩后继续循环
+```
 
-## 编译和运行
+## 导航点配置
 
-### 编译
+配置文件：
+
+```text
+config/navigation_points.json
+```
+
+当前字段：
+
+- `frame_id`：目标坐标系，当前为 `map`。
+- `rounds`：完整遍历全部点位的轮数，当前为 `100`。
+- `points`：点位数组；当前是 3 个点，不是固定“四个点”。
+- `id`：日志中使用的点位名称。
+- `position`、`orientation`：目标位置和四元数姿态。
+
+节点通过 `ament_index_cpp::get_package_share_directory()` 读取安装目录中的配置：
+
+```text
+install/loop_navigation_bt/share/loop_navigation_bt/config/navigation_points.json
+```
+
+非 `--symlink-install` 时，修改源码 JSON 后需要由用户重新构建并重新 source，不能假设运行节点会自动读取源码文件。
+
+也可以使用脚本辅助记录点位：
+
 ```bash
-cd ~/w1
-colcon build --packages-select loop_navigation_bt
-source install/setup.bash
+ros2 run loop_navigation_bt set_navigation_points.py
 ```
 
-### 运行
+执行前应先查看脚本提示并确保定位正常。
+
+## 导航误差日志
+
+`LoopNavigateFourPoints` 启动时以截断方式创建：
+
+```text
+nav_error_log.txt
+```
+
+文件记录：
+
+- 导航结果和耗时；
+- 点序号、点 ID；
+- 目标位姿与实际位姿；
+- 目标坐标系下的纵向、横向和 yaw（航向角）误差；
+- 距离误差；
+- 是否进入期望阈值和接受阈值；
+- 程序结束时的总体和分点统计。
+
+日志使用相对路径，因此实际位置取决于进程工作目录。每次启动都会覆盖旧文件，需要保留历史结果时应提前复制或重命名。
+
+默认优先从 `/navigation_goal_error` 获取 goal checker（到点判断器）最终误差；没有有效消息时回退到 TF 窗口采样。可以关闭该优先路径：
+
 ```bash
-# 方式1: 使用启动文件
-ros2 launch loop_navigation_bt loop_navigation_bt.launch.py
-
-# 方式2: 直接运行节点
-ros2 run loop_navigation_bt loop_navigation_bt_node
+ros2 launch loop_navigation_bt loop_nocharging.launch.py use_goal_checker_error:=false
 ```
 
-## 依赖项
+## ROS 接口
 
-- `rclcpp`: ROS2 C++ 客户端库
-- `rclcpp_action`: ROS2 Action 客户端
-- `sensor_msgs`: 传感器消息定义
-- `geometry_msgs`: 几何消息定义
-- `nav2_msgs`: Nav2 消息定义
-- `behaviortree_cpp_v3`: 行为树库
-- `nlohmann_json`: JSON 解析库
-- `std_srvs`: 标准服务定义
+### Action 客户端
 
-## 话题和服务
+- `/navigate_to_pose`，类型 `nav2_msgs/action/NavigateToPose`。
+- `/auto_charging`，类型 `chassis_interfaces/action/AutoCharging`，仅带回充模式使用。
 
-### 订阅话题
-- `/feedback/battery` (sensor_msgs::msg::BatteryState)
-  - 获取机器人电量信息
-  - 字段: `percentage` (0-100)
+### 订阅
 
-### 调用服务
-- `/auto_charge` (std_srvs::srv::Trigger)
-  - 触发自动回充
-  - 请求: 空
-  - 响应: `success` (bool), `message` (string)
+- `/diagnostics_agg`：从 PowerBoard 诊断项读取 `battery_percentage`。
+- `/navigation_goal_error`：读取导航结束时 goal checker 的误差诊断。
 
-### 调用 Action
-- `navigate_to_pose` (nav2_msgs::action::NavigateToPose)
-  - 导航到指定位置
+### TF
 
-## 日志输出
+误差统计回退路径需要 `map` 到机器人基坐标系的 TF 可用。
 
-程序会输出详细的日志信息，包括：
-- 🔋 电量检查信息
-- 🎯 导航目标信息
-- ✅ 成功操作
-- ❌ 失败操作
-- ⚠️  警告信息
-- 🔄 循环状态
+## 目录结构
 
-## 故障排除
-
-### 1. 无法连接到 nav2 服务器
-- 确保 nav2 已启动
-- 检查 `navigate_to_pose` action 是否可用
-
-### 2. 无法读取导航点配置
-- 检查 `navigation_points.json` 文件路径
-- 确保 JSON 格式正确
-
-### 3. 无法调用回充服务
-- 确保 `/auto_charge` 服务已注册
-- 检查服务节点是否运行
-
-### 4. 电量信息为 0
-- 检查 `/feedback/battery` 话题是否发布
-- 确保电池驱动程序正常工作
-
-## 扩展功能
-
-### 修改电量阈值
-在 `loop_navigation_bt.xml` 中修改：
-```xml
-<CheckBatteryAboveThreshold threshold="35.0" />
+```text
+loop_navigation_bt/
+├── config/
+│   ├── loop_navigate_bt.xml
+│   ├── loop_nocharging_bt.xml
+│   ├── loop_charging_bt.xml
+│   └── navigation_points.json
+├── include/loop_navigation_bt/
+├── launch/
+│   ├── loop_navigation_bt.launch.py
+│   └── loop_nocharging.launch.py
+├── scripts/set_navigation_points.py
+└── src/
 ```
 
-### 修改导航点
-编辑 `config/navigation_points.json` 文件，添加或修改点的坐标。
+## 常见问题
 
-### 添加新的行为树节点
-1. 在 `loop_navigation_bt.hpp` 中定义新类
-2. 在 `loop_navigation_bt.cpp` 中实现
-3. 在 `main.cpp` 中注册到工厂
-4. 在 XML 中使用新节点
+### `/navigate_to_pose` 不可用
 
-## 许可证
+确认 Nav2 已启动：
 
-Apache License 2.0
+```bash
+ros2 action list | grep navigate_to_pose
+```
 
-## 作者
+### 带回充模式提示 `/auto_charging` 不可用
 
-DexForce Team
+确认启动的是 Action server，不是同名 Trigger service：
 
+```bash
+ros2 action list | grep auto_charging
+ros2 action info /auto_charging
+```
 
+### 没有电量数据
+
+使用默认的无回充模式 `check_battery:=false`。关闭检查后程序不会因低电量自动返回，底盘应具备独立低电量保护。
+
+### 找不到 `nav_error_log.txt`
+
+从启动命令所在目录开始查找，或使用：
+
+```bash
+find . -name nav_error_log.txt
+```
+
+### 修改 XML/JSON 后行为没有变化
+
+检查当前 source 的工作空间和安装目录文件。非软链接安装下，源码改动必须重新构建后才会复制到 `install/.../share`。
+
+## 安全说明
+
+本包会发送 Nav2 目标，带回充模式还会触发倒车对接和退桩。真实机器人测试时应清空运动区域、保持急停可用，并安排人员观察。

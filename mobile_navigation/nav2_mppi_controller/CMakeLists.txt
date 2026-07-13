@@ -70,6 +70,8 @@ add_library(mppi_critics SHARED
   src/critics/obstacles_critic.cpp
   src/critics/cost_critic.cpp
   src/critics/goal_critic.cpp
+  src/critics/goal_lateral_critic.cpp
+  src/critics/goal_longitudinal_critic.cpp
   src/critics/goal_angle_critic.cpp
   src/critics/path_align_critic.cpp
   src/critics/path_align_legacy_critic.cpp
@@ -79,6 +81,8 @@ add_library(mppi_critics SHARED
   src/critics/twirling_critic.cpp
   src/critics/constraint_critic.cpp
   src/critics/velocity_deadband_critic.cpp
+  src/critics/linear_velocity_critic.cpp
+  src/critics/angular_velocity_critic.cpp
 )
 
 set(libraries mppi_controller mppi_critics)

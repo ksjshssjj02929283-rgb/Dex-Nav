@@ -5,19 +5,19 @@ mobile_control_action_node:
     max_v: 0.35
     min_v: 0.0
     max_w: 1.0
-    accel_x_max: 0.5
+    accel_x_max: 0.8
     straight_max_w_inc: 1.57
     rotate_to_heading_max_angular_accel: 1.0
     rotate_to_heading_kp: 1.2
     rotate_stop_yaw_error: 0.02
 
-    k_rho: 1.0
+    k_rho: 1.5
 
-    near_target_dist: 0.4
-    cmd_vel_filter_alpha: 0.3
+    near_target_dist: 0.10
+    cmd_vel_filter_alpha: 0.6
     min_angular_vel: 0.01
-    xy_tolerance: 0.02
-    yaw_tolerance: 0.02
+    xy_tolerance: 0.03
+    yaw_tolerance: 0.03
     goal_mode_rotate_xy_threshold: 0.03
 
     pure_rotation:

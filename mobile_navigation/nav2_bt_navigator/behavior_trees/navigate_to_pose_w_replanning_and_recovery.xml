@@ -2,10 +2,10 @@
   This Behavior Tree replans the global path periodically while following it.
 
   Global planning recovery:
-  - If ComputePathToPose fails, try clearing the global costmap.
-  - ClearGlobalCostmap is treated as an auxiliary recovery action.
-  - Even if clearing fails, the tree still retries ComputePathToPose.
-  - If the inner retry still fails, wait 2 seconds, try clearing global costmap again,
+  - If ComputePathToPose fails, try clearing both the global and local costmaps.
+  - Both costmap clearing actions are treated as auxiliary recovery actions.
+  - Even if either clearing action fails, the tree still retries ComputePathToPose.
+  - If the inner retry still fails, wait, try clearing both costmaps again,
     and then enter the next planning retry loop.
   - Before waiting on a repeated global planning failure, cancel the active
     FollowPath goal so the robot stops instead of continuing to push along an
@@ -16,10 +16,8 @@
   Local control recovery:
   - If FollowPath fails, try clearing the local costmap.
   - Even if clearing fails, the tree still retries FollowPath immediately.
-  - If the inner retry still fails, perform Spin 90 degrees, Wait 2 seconds,
-    try clearing local costmap again, and then retry FollowPath.
-  - If the 2 outer FollowPath retries are exhausted, try backing up 0.30 m,
-    then clear local costmap and retry local control again.
+  - If the inner retry still fails, wait 1 second, clear the local costmap,
+    back up 0.30 m, and then retry local control.
   - BackUp is treated as an optional recovery action: if backing up is blocked
     or out of the local costmap, navigation keeps waiting/retrying instead of
     failing the whole goal.
@@ -30,30 +28,42 @@
     <PipelineSequence name="NavigateWithReplanning">
 
       <!-- 全局规划：每 3 秒重规划一次 -->
-      <RateController hz="0.333">
-        <RecoveryNode number_of_retries="999999" name="ComputePathToPoseOuterRetry">
+      <RateController hz="0.02">
+        <RecoveryNode number_of_retries="9999" name="ComputePathToPoseOuterRetry">
 
-          <!-- 内层：规划失败后，尝试清 global，然后立即重规划 1 次 -->
+          <!-- 内层：规划失败后，依次尝试清 global 和 local，然后立即重规划 1 次 -->
           <RecoveryNode number_of_retries="1" name="ComputePathToPoseInnerRetry">
             <ComputePathToPose goal="{goal}" path="{path}" planner_id="SmacGridBased"/>
 
-            <ForceSuccess>
-              <ClearEntireCostmap name="ClearGlobalCostmap-FirstRetry"
-                service_name="global_costmap/clear_entirely_global_costmap"/>
-            </ForceSuccess>
+            <Sequence name="ClearBothCostmaps-FirstRetry">
+              <ForceSuccess>
+                <ClearEntireCostmap name="ClearGlobalCostmap-FirstRetry"
+                  service_name="global_costmap/clear_entirely_global_costmap"/>
+              </ForceSuccess>
+
+              <ForceSuccess>
+                <ClearEntireCostmap name="ClearLocalCostmap-FirstPlanningRetry"
+                  service_name="local_costmap/clear_entirely_local_costmap"/>
+              </ForceSuccess>
+            </Sequence>
           </RecoveryNode>
 
-          <!-- 外层：如果内层仍失败，等待 2 秒，尝试清 global，然后进入下一轮 -->
-          <Sequence name="WaitClearGlobalAndRetry">
+          <!-- 外层：如果内层仍失败，等待后依次尝试清 global 和 local，然后进入下一轮 -->
+          <Sequence name="WaitClearBothCostmapsAndRetry">
             <ForceSuccess>
               <CancelControl name="CancelFollowPathOnRepeatedGlobalPlanFailure"/>
             </ForceSuccess>
 
-            <Wait wait_duration="2" server_name="wait_global"/>
+            <Wait wait_duration="1" server_name="wait_global"/>
 
             <ForceSuccess>
               <ClearEntireCostmap name="ClearGlobalCostmap-OuterRetry"
                 service_name="global_costmap/clear_entirely_global_costmap"/>
+            </ForceSuccess>
+
+            <ForceSuccess>
+              <ClearEntireCostmap name="ClearLocalCostmap-OuterPlanningRetry"
+                service_name="local_costmap/clear_entirely_local_costmap"/>
             </ForceSuccess>
           </Sequence>
 
@@ -62,43 +72,29 @@
 
 
       <!-- 局部控制 -->
-      <RecoveryNode number_of_retries="999999" name="FollowPathAfterBackUpRetry">
+      <RecoveryNode number_of_retries="9999" name="FollowPathAfterBackUpRetry">
 
-        <!-- 常规局部恢复：最多执行 2 轮 wait_local + clear local -->
-        <RecoveryNode number_of_retries="2" name="FollowPathOuterRetry">
+        <!-- 内层：FollowPath 失败后，尝试清 local，然后立即 FollowPath 1 次 -->
+        <RecoveryNode number_of_retries="1" name="FollowPathInnerRetry">
+          <FollowPath path="{path}" controller_id="FollowPath"/>
 
-          <!-- 内层：FollowPath 失败后，尝试清 local，然后立即 FollowPath 1 次 -->
-          <RecoveryNode number_of_retries="1" name="FollowPathInnerRetry">
-            <FollowPath path="{path}" controller_id="FollowPath"/>
-
-            <ForceSuccess>
-              <ClearEntireCostmap name="ClearLocalCostmap-FirstRetry"
-                service_name="local_costmap/clear_entirely_local_costmap"/>
-            </ForceSuccess>
-          </RecoveryNode>
-
-          <!-- 外层：如果内层仍失败，Spin 90 度，等待 2 秒，尝试清 local，然后进入下一轮 -->
-          <Sequence name="SpinWaitClearLocalAndRetry">
-            <!-- <Spin spin_dist="1.57"/> -->
-            <Wait wait_duration="2" server_name="wait_local"/>
-
-            <ForceSuccess>
-              <ClearEntireCostmap name="ClearLocalCostmap-OuterRetry"
-                service_name="local_costmap/clear_entirely_local_costmap"/>
-            </ForceSuccess>
-          </Sequence>
-
+          <ForceSuccess>
+            <ClearEntireCostmap name="ClearLocalCostmap-FirstRetry"
+              service_name="local_costmap/clear_entirely_local_costmap"/>
+          </ForceSuccess>
         </RecoveryNode>
 
-        <!-- 兜底恢复：局部控制 2 轮恢复全部失败后，尝试后退一小段距离 -->
-        <!-- 后退失败不再终止导航，随后清理局部代价地图并继续等待/重试 -->
-        <Sequence name="BackUpClearLocalAfterFollowPathExhausted">
+        <!-- 如果立即重试仍失败，则等待 1 秒、清 local、后退，然后继续重试局部控制 -->
+        <Sequence name="WaitClearBackUpAfterFollowPathFailed">
+          <Wait wait_duration="1" server_name="wait_local"/>
+
           <ForceSuccess>
-            <BackUp name="BackUpAfterLocalRetries" backup_dist="0.30" backup_speed="0.05" time_allowance="10"/>
+            <ClearEntireCostmap name="ClearLocalCostmap-BeforeBackUp"
+              service_name="local_costmap/clear_entirely_local_costmap"/>
           </ForceSuccess>
           <ForceSuccess>
-            <ClearEntireCostmap name="ClearLocalCostmap-AfterBackUp"
-              service_name="local_costmap/clear_entirely_local_costmap"/>
+            <!-- <Wait wait_duration="1" server_name="wait_local"/> -->
+            <BackUp name="BackUpAfterLocalRetries" backup_dist="0.30" backup_speed="0.08" time_allowance="5"/>
           </ForceSuccess>
         </Sequence>
 

@@ -2,10 +2,10 @@
 
 #include <tf2/LinearMath/Matrix3x3.h>
 #include <tf2/LinearMath/Quaternion.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
 #include <algorithm>
 #include <cmath>
-#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
 ReverseDockingController::ReverseDockingController()
     : linear_gain_(0.35),
@@ -86,7 +86,9 @@ void ReverseDockingController::setHeadingTolerance(double tolerance) { heading_t
 
 void ReverseDockingController::setFinalYawTolerance(double tolerance) { final_yaw_tolerance_ = std::abs(tolerance); }
 
-void ReverseDockingController::setAlignHeadingThreshold(double tolerance) { setLargeHeadingThreshold(tolerance); }
+void ReverseDockingController::setAlignHeadingThreshold(double tolerance) {
+    setLargeHeadingThreshold(tolerance);
+}
 
 void ReverseDockingController::setApproachDistance(double distance) { approach_distance_ = std::abs(distance); }
 
@@ -95,7 +97,7 @@ void ReverseDockingController::setLargeHeadingThreshold(double tolerance) {
 }
 
 std::pair<double, double> ReverseDockingController::getVelocity(const geometry_msgs::msg::Pose& current_pose,
-                                                                const geometry_msgs::msg::Pose& goal_pose) {
+                                                               const geometry_msgs::msg::Pose& goal_pose) {
     const PoseError error = computeError(current_pose, goal_pose);
     const Stage previous_stage = stage_;
 
@@ -116,16 +118,19 @@ std::pair<double, double> ReverseDockingController::getVelocity(const geometry_m
         stage_ = Stage::ADJUST_HEADING;
     }
 
-    if (stage_ == Stage::ADJUST_HEADING && std::abs(error.reverse_heading_error) <= heading_tolerance_) {
+    if (stage_ == Stage::ADJUST_HEADING &&
+        std::abs(error.reverse_heading_error) <= heading_tolerance_) {
         stage_ = Stage::ADJUST_DISTANCE;
     }
 
-    if (stage_ == Stage::ADJUST_DISTANCE && std::abs(error.local_x) <= linear_tolerance_ &&
+    if (stage_ == Stage::ADJUST_DISTANCE &&
+        std::abs(error.local_x) <= linear_tolerance_ &&
         std::abs(error.local_y) > lateral_tolerance_) {
         stage_ = Stage::ADJUST_HEADING;
     }
 
-    if (std::abs(error.local_x) <= linear_tolerance_ * 0.5 && std::abs(error.local_y) <= lateral_tolerance_ * 0.75) {
+    if (std::abs(error.local_x) <= linear_tolerance_ * 0.5 &&
+        std::abs(error.local_y) <= lateral_tolerance_ * 0.75) {
         stage_ = Stage::ROTATING_TO_GOAL;
     }
 
@@ -172,7 +177,8 @@ std::pair<double, double> ReverseDockingController::getVelocity(const geometry_m
 bool ReverseDockingController::atGoal(const geometry_msgs::msg::Pose& current_pose,
                                       const geometry_msgs::msg::Pose& goal_pose) const {
     const PoseError error = computeError(current_pose, goal_pose);
-    return std::abs(error.local_x) <= linear_tolerance_ && std::abs(error.local_y) <= lateral_tolerance_ &&
+    return std::abs(error.local_x) <= linear_tolerance_ &&
+           std::abs(error.local_y) <= lateral_tolerance_ &&
            std::abs(error.final_yaw_error) <= final_yaw_tolerance_;
 }
 
@@ -193,7 +199,8 @@ std::string ReverseDockingController::stageName() const {
 }
 
 ReverseDockingController::PoseError ReverseDockingController::computeError(
-    const geometry_msgs::msg::Pose& current_pose, const geometry_msgs::msg::Pose& goal_pose) const {
+    const geometry_msgs::msg::Pose& current_pose,
+    const geometry_msgs::msg::Pose& goal_pose) const {
     const double current_yaw = getPoseYaw(current_pose);
     const double goal_yaw = getPoseYaw(goal_pose);
     const double dx = goal_pose.position.x - current_pose.position.x;
@@ -225,18 +232,18 @@ double ReverseDockingController::computeFinalYawVelocity(double final_yaw_error)
     }
 
     final_yaw_integral_ += final_yaw_error * dt;
-    final_yaw_integral_ =
-        std::max(-final_yaw_integral_limit_, std::min(final_yaw_integral_limit_, final_yaw_integral_));
+    final_yaw_integral_ = std::max(-final_yaw_integral_limit_,
+                                   std::min(final_yaw_integral_limit_, final_yaw_integral_));
     const double derivative = normalizePi(final_yaw_error - prev_final_yaw_error_) / dt;
 
     prev_final_yaw_error_ = final_yaw_error;
     final_yaw_pid_time_ = now;
-    return final_yaw_gain_ * final_yaw_error + final_yaw_integral_gain_ * final_yaw_integral_ +
+    return final_yaw_gain_ * final_yaw_error +
+           final_yaw_integral_gain_ * final_yaw_integral_ +
            final_yaw_derivative_gain_ * derivative;
 }
 
-std::pair<double, double> ReverseDockingController::limitVelocity(double linear_x,
-                                                                  double angular_z,
+std::pair<double, double> ReverseDockingController::limitVelocity(double linear_x, double angular_z,
                                                                   bool final_rotation) {
     linear_x = std::max(-max_linear_speed_, std::min(max_linear_speed_, linear_x));
     const double angular_max = final_rotation ? final_max_angular_speed_ : max_angular_speed_;
@@ -259,9 +266,10 @@ std::pair<double, double> ReverseDockingController::limitVelocity(double linear_
     if (dt > 0.0 && dt <= 1.0) {
         const double max_linear_delta = max_linear_accel_ * dt;
         const double max_angular_delta = max_angular_accel_ * dt;
-        linear_x = std::max(prev_linear_x_ - max_linear_delta, std::min(prev_linear_x_ + max_linear_delta, linear_x));
-        angular_z =
-            std::max(prev_angular_z_ - max_angular_delta, std::min(prev_angular_z_ + max_angular_delta, angular_z));
+        linear_x = std::max(prev_linear_x_ - max_linear_delta,
+                            std::min(prev_linear_x_ + max_linear_delta, linear_x));
+        angular_z = std::max(prev_angular_z_ - max_angular_delta,
+                             std::min(prev_angular_z_ + max_angular_delta, angular_z));
     }
 
     linear_x = std::max(-max_linear_speed_, std::min(max_linear_speed_, linear_x));

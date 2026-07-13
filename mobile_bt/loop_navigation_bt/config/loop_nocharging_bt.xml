@@ -13,10 +13,10 @@
       <!-- ② 电量检查与停止流程 -->
       <Fallback name="BatteryCheck">
 
-        <!-- ②-1 只要电量 ≥ 96%，BatteryCheck SUCCESS，继续导航循环 -->
-        <CheckBatteryAboveThreshold threshold="96"/>
+        <!-- ②-1 只要电量 ≥ 30%，BatteryCheck SUCCESS，继续导航循环 -->
+        <CheckBatteryAboveThreshold threshold="30" enabled="{check_battery}"/>
 
-        <!-- ②-2 电量 < 96% → 进入停止流程 -->
+        <!-- ②-2 电量 < 30% → 进入停止流程 -->
         <Sequence name="StopSequence">
 
           <!-- (a) 首先 cancel 当前导航 -->

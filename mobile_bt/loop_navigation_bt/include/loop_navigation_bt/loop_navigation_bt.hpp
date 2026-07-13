@@ -6,7 +6,8 @@
 
 #include <atomic>
 #include <chrono>
-#include <cstddef>
+#include <fstream>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -15,7 +16,6 @@
 #include "diagnostic_msgs/msg/diagnostic_array.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "geometry_msgs/msg/twist.hpp"
-#include "nav2_msgs/action/navigate_through_poses.hpp"
 #include "nav2_msgs/action/navigate_to_pose.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_action/rclcpp_action.hpp"
@@ -47,62 +47,119 @@ public:
     void onHalted() override;
 
 private:
-    enum class RunningAction {
-        NONE,
-        NAVIGATE_TO_POINT,
-        NAVIGATE_ROUTE,
-    };
-
     struct Pose {
         double x, y, yaw;
     };
 
-    bool getCurrentPose(Pose& current_pose,
-                        std::chrono::milliseconds timeout = std::chrono::milliseconds(3000),
-                        std::chrono::milliseconds retry_interval = std::chrono::milliseconds(200));
-    size_t findNearestGoalIndex(const Pose& current) const;
-    bool chooseInitialForward(size_t start_index) const;
-    std::vector<geometry_msgs::msg::PoseStamped> buildRouteFromIndex(size_t start_index, bool forward) const;
-    BT::NodeStatus sendNavigateToPoint(size_t goal_index);
-    BT::NodeStatus sendRoute(const std::vector<geometry_msgs::msg::PoseStamped>& route, bool forward, bool partial);
+    struct MetricStats {
+        double mean = 0.0;
+        double std_dev = 0.0;
+        double sigma3_probability = 0.0;
+    };
+
+    struct NavigationErrorSample {
+        Pose current = {0.0, 0.0, 0.0};
+        double lon_error = 0.0;
+        double lat_error = 0.0;
+        double yaw_error = 0.0;
+        double dist_error = 0.0;
+        bool within_desired_tolerance = false;
+        bool within_accept_tolerance = false;
+        bool from_goal_checker = false;
+        bool valid = false;
+    };
+
+    struct GoalErrorStats {
+        std::string id;
+        int succeeded = 0;
+        int failed = 0;
+        std::vector<double> elapsed_times;
+        std::vector<double> success_elapsed_times;
+        std::vector<double> failed_elapsed_times;
+        std::vector<double> success_dist_errors;
+        std::vector<double> success_lon_errors;
+        std::vector<double> success_lat_errors;
+        std::vector<double> success_yaw_errors;
+        std::vector<double> failed_dist_errors;
+        std::vector<double> failed_lon_errors;
+        std::vector<double> failed_lat_errors;
+        std::vector<double> failed_yaw_errors;
+        int success_within_1cm = 0;
+        int success_within_2cm = 0;
+        int failed_within_1cm = 0;
+        int failed_within_2cm = 0;
+    };
+
+    NavigationErrorSample getNavigationErrorSample(const Pose& goal);
+    bool getLatestGoalCheckerErrorSample(const Pose& goal, NavigationErrorSample& sample);
+    void spinNodeForDuration(double duration_sec);
+    void logNavigationError(const Pose& goal,
+                            const NavigationErrorSample& error_sample,
+                            double elapsed_sec,
+                            bool succeeded,
+                            std::size_t goal_index);
+    bool isWithinPositionTolerance(double lon_error, double lat_error, double tolerance) const;
+    MetricStats calculateMetricStats(const std::vector<double>& data) const;
+    void calculateAndLogStats(bool force = false);
 
     // TF
     std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
     std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
+    rclcpp::Subscription<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr goal_error_sub_;
+    diagnostic_msgs::msg::DiagnosticArray latest_goal_error_;
+    std::mutex latest_goal_error_mutex_;
+    bool has_latest_goal_error_ = false;
+    bool use_goal_checker_error_ = true;
 
-    using NavigateThroughPoses = nav2_msgs::action::NavigateThroughPoses;
-    using GoalHandleNavigateThroughPoses = rclcpp_action::ClientGoalHandle<NavigateThroughPoses>;
+    // Logging and stats
+    std::ofstream log_file_;
+    int succeeded_nav_ = 0;
+    int failed_nav_ = 0;
+    bool stats_logged_ = false;
+    std::vector<double> dist_errors_;
+    std::vector<double> lon_errors_;
+    std::vector<double> lat_errors_;
+    std::vector<double> yaw_errors_;
+    std::vector<double> success_dist_errors_;
+    std::vector<double> success_lon_errors_;
+    std::vector<double> success_lat_errors_;
+    std::vector<double> success_yaw_errors_;
+    std::vector<double> failed_dist_errors_;
+    std::vector<double> failed_lon_errors_;
+    std::vector<double> failed_lat_errors_;
+    std::vector<double> failed_yaw_errors_;
+    int within_1cm_count_ = 0;
+    int within_2cm_count_ = 0;
+    int success_within_1cm_count_ = 0;
+    int success_within_2cm_count_ = 0;
+    int failed_within_1cm_count_ = 0;
+    int failed_within_2cm_count_ = 0;
+    std::vector<GoalErrorStats> per_goal_stats_;
+    std::size_t stats_log_interval_ = 20;
+    std::size_t last_stats_logged_sample_count_ = 0;
+    // 位置误差统计阈值：默认对应 goal_checker 的期望精度和最终接受精度。
+    double desired_position_tolerance_ = 0.01;
+    double accept_position_tolerance_ = 0.02;
+
     using NavigateToPose = nav2_msgs::action::NavigateToPose;
     using GoalHandleNavigateToPose = rclcpp_action::ClientGoalHandle<NavigateToPose>;
 
-    rclcpp_action::Client<NavigateThroughPoses>::SharedPtr route_client_;
-    rclcpp_action::Client<NavigateToPose>::SharedPtr point_client_;
+    rclcpp_action::Client<NavigateToPose>::SharedPtr action_client_;
     std::vector<geometry_msgs::msg::PoseStamped> goals_;
-
-    bool initial_alignment_done_ = false;
-    bool pending_partial_route_ = false;
-    bool recovery_after_failure_ = false;
-    bool forward_ = true;  // Direction for the next whole-route navigation.
-    bool partial_forward_ = true;
-    bool recovery_forward_ = true;
-    size_t partial_start_index_ = 0;
-
-    RunningAction running_action_ = RunningAction::NONE;
-    bool active_route_partial_ = false;
-    bool active_route_forward_ = true;
-    bool active_point_from_recovery_ = false;
-    size_t active_route_target_index_ = 0;
-    size_t active_point_index_ = 0;
-
-    std::shared_future<GoalHandleNavigateThroughPoses::SharedPtr> route_future_goal_handle_;
-    GoalHandleNavigateThroughPoses::SharedPtr route_goal_handle_;
-    std::atomic<bool> route_result_ready_ = false;
-    rclcpp_action::ResultCode route_result_code_ = rclcpp_action::ResultCode::UNKNOWN;
-
-    std::shared_future<GoalHandleNavigateToPose::SharedPtr> point_future_goal_handle_;
-    GoalHandleNavigateToPose::SharedPtr point_goal_handle_;
-    std::atomic<bool> point_result_ready_ = false;
-    rclcpp_action::ResultCode point_result_code_ = rclcpp_action::ResultCode::UNKNOWN;
+    std::vector<std::string> goal_ids_;
+    unsigned int current_goal_index_ = 0;
+    int total_rounds_ = 0;
+    int completed_rounds_ = 0;
+    bool navigation_complete_ = false;
+    rclcpp::Time goal_ros_start_time_;
+    std::chrono::time_point<std::chrono::steady_clock> goal_start_time_;
+    std::shared_future<GoalHandleNavigateToPose::SharedPtr> future_goal_handle_;
+    GoalHandleNavigateToPose::SharedPtr goal_handle_;
+    std::atomic<bool> result_ready_ = false;
+    rclcpp_action::ResultCode result_code_ = rclcpp_action::ResultCode::UNKNOWN;
+    // 误差日志采样窗口：默认按 10Hz 连续采 10 次，对误差本身求平均。
+    std::size_t pose_sample_count_ = 10;
+    double pose_sample_interval_sec_ = 0.1;
 };
 
 // 2. CheckBatteryAboveThreshold: Checks if battery level is above a certain threshold.

@@ -83,32 +83,11 @@ target_link_libraries(loop_nocharging_bt_node
   loop_navigation_nodes
 )
 
-add_executable(loop_charging_bt_node src/main_loop_charging.cpp)
-ament_target_dependencies(loop_charging_bt_node
-  rclcpp
-  rclcpp_action
-  sensor_msgs
-  geometry_msgs
-  nav2_msgs
-  behaviortree_cpp_v3
-  nlohmann_json
-  std_srvs
-  chassis_interfaces
-  ament_index_cpp
-  tf2_ros
-  tf2_geometry_msgs
-)
-
-target_link_libraries(loop_charging_bt_node
-  loop_navigation_nodes
-)
-
 # 安装
 install(TARGETS
   loop_navigation_nodes
   loop_navigation_bt_node
   loop_nocharging_bt_node
-  loop_charging_bt_node
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION lib/${PROJECT_NAME}

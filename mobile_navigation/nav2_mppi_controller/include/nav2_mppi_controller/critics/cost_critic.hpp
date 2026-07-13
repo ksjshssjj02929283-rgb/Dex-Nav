@@ -15,6 +15,7 @@
 #ifndef NAV2_MPPI_CONTROLLER__CRITICS__COST_CRITIC_HPP_
 #define NAV2_MPPI_CONTROLLER__CRITICS__COST_CRITIC_HPP_
 
+#include <cstddef>
 #include <memory>
 #include <string>
 
@@ -47,6 +48,17 @@ public:
    */
   void score(CriticData & data) override;
 
+  void applyProfileSettings(const CriticProfileSettings & settings) override;
+
+  /**
+    * @brief Point critic + collision checker to a costmap snapshot
+    */
+  void setCostmapSnapshot(nav2_costmap_2d::Costmap2D * costmap) override
+  {
+    costmap_ = costmap;
+    collision_checker_.setCostmap(costmap_);
+  }
+
 protected:
   /**
     * @brief Checks if cost represents a collision
@@ -54,17 +66,29 @@ protected:
     * @param x X of pose
     * @param y Y of pose
     * @param theta theta of pose
+    * @param evaluated_cost Final center or footprint cost used for the decision
+    * @param used_footprint Whether footprint collision checking was performed
     * @return bool if in collision
     */
-  bool inCollision(float cost, float x, float y, float theta);
+  bool inCollision(
+    float cost, float x, float y, float theta,
+    float * evaluated_cost = nullptr, bool * used_footprint = nullptr);
 
   /**
     * @brief cost at a robot pose
     * @param x X of pose
     * @param y Y of pose
-    * @return Collision information at pose
+    * @param out_of_bounds Whether the pose center is outside the costmap
+    * @return Costmap cost at pose center
     */
-  float costAtPose(float x, float y);
+  float costAtPose(float x, float y, bool * out_of_bounds = nullptr);
+
+  /**
+    * @brief Estimate obstacle clearance from an inflated costmap cost
+    * @param cost Costmap cost at pose center
+    * @return Estimated distance from robot footprint to the obstacle
+    */
+  float distanceToObstacle(float cost) const;
 
   /**
     * @brief Find the min cost of the inflation decay function for which the robot MAY be
@@ -88,6 +112,7 @@ protected:
   float weight_{0};
 
   float near_goal_distance_;
+  float inflation_scale_factor_{0};
   std::string inflation_layer_name_;
 
   unsigned int power_{0};

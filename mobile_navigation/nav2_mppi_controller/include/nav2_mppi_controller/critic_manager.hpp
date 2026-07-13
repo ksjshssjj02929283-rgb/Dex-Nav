@@ -67,6 +67,23 @@ public:
     */
   void evalTrajectoriesScores(CriticData & data) const;
 
+  /**
+   * @brief Apply runtime profile critic settings to loaded critics
+   * @param settings Runtime critic profile settings
+   */
+  void applyCriticProfileSettings(const critics::CriticProfileSettings & settings);
+
+  /**
+   * @brief Point all loaded critics to a costmap snapshot (async/decoupled access)
+   * @param costmap Snapshot costmap to read during scoring
+   */
+  void setCostmapSnapshot(nav2_costmap_2d::Costmap2D * costmap)
+  {
+    for (auto & critic : critics_) {
+      critic->setCostmapSnapshot(costmap);
+    }
+  }
+
 protected:
   /**
     * @brief Get parameters (critics to load)

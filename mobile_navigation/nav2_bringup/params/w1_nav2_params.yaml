@@ -71,42 +71,61 @@ bt_navigator_navigate_to_pose_rclcpp_node:
 controller_server:
   ros__parameters:
     use_sim_time: True
-    controller_frequency: 10.0 # 20.0 # Related params: model_dt >= controller period; prediction horizon = time_steps * model_dt
+    controller_frequency: 10.0 # 控制器控制周期 # Related params: model_dt >= controller period; prediction horizon = time_steps * model_dt
     progress_checker_plugins: ["progress_checker"] # progress_checker_plugin: "progress_checker" For Humble and older
     goal_checker_plugins: ["goal_checker"] # goal_checker_plugin: "goal_checker" For Galactic and older
     controller_plugins: ["FollowPath"]
     odom_topic: /feedback/odom
     progress_checker:
       plugin: "nav2_controller::PoseProgressChecker" # 进展检查插件
-      required_movement_radius: 0.1 # 普通模式：判定有进展所需的移动距离，单位 m
-      required_movement_angle: 0.01 # 普通模式：判定有进展所需的旋转角度，单位 rad
+      required_movement_radius: 0.05 # 普通模式：判定有进展所需的移动距离，单位 m
+      required_movement_angle: 0.05 # 普通模式：判定有进展所需的旋转角度，单位 rad
       movement_time_allowance: 3.0 # 普通模式：允许未达到足够进展的时间，单位 s
     near_goal_progress:
-      enabled: True # 是否启用接近目标点时的宽松进展检查
-      distance: 0.20 # 距离目标点小于该值时进入近目标模式，单位 m
-      required_movement_radius: 0.01 # 近目标模式：判定有进展所需的移动距离，单位 m
-      required_movement_angle: 0.01 # 近目标模式：判定有进展所需的旋转角度，单位 rad
-      movement_time_allowance: 5.0 # 近目标模式：允许未达到足够进展的时间，单位 s
+      enabled: True # 是否启用接近目标点时的宽松的进展检查
+      hold_position_when_goal_pose_reached: true # 位置和角度进入接受区后持续发零速度，停稳后再报成功，防止MPPI重新带出2cm
+      distance: 0.10 # 距离目标点小于该值时进入近目标模式，单位 m
+      required_movement_radius: 0.01 # 近目标模式：移动超过 1cm 才算有进展，避免小幅抖动刷新计时
+      required_movement_angle: 0.02 # 近目标模式：旋转超过约1.15 度才算有进展，避免原地轻微摆动刷新计时
+      movement_time_allowance: 3.0 # 近目标模式：3 秒内没有足够进展就让 FollowPath 失败并进入恢复
+      # 横向误差停滞：纵向和航向基本到位后，横向误差长期不改善则让 FollowPath 失败并交给行为树恢复
+      lateral_stall_enabled: true
+      lateral_stall_lon_tolerance: 0.02 # 连续 5 个控制周期 |纵向误差|≤2cm 才开始监测
+      lateral_stall_yaw_tolerance: 0.05 # 连续 5 个控制周期 |航向误差|≤约2.86°才开始监测
+      lateral_stall_lat_tolerance: 0.02 # |横向误差|>2cm 才监测；进入2cm后立即结束停滞监测
+      lateral_stall_min_improvement: 0.005 # 监测窗口内横向误差至少净改善5mm才重置计时
+      lateral_stall_time_allowance: 2.0 # 2秒内未净改善5mm则 FollowPath 失败
     goal_checker:
-      plugin: "nav2_controller::LongitudinalGoalChecker"
-      lon_goal_tolerance: 0.02
-      lat_goal_tolerance: 0.02
-      yaw_goal_tolerance: 0.02
-      stateful: True    
+      plugin: "nav2_controller::PrecisionLongitudinalGoalChecker"
+      desired_lon_goal_tolerance: 0.01 # 优先追求的纵向精度，当前配置为 1cm
+      desired_lat_goal_tolerance: 0.01 # 优先追求的横向精度，当前配置为 1cm
+      accept_lon_goal_tolerance: 0.03 # 精调后允许接受的纵向精度，当前配置为 3cm
+      accept_lat_goal_tolerance: 0.03 # 精调后允许接受的横向精度，当前配置为 3cm
+      yaw_goal_tolerance: 0.03
+      enable_high_precision: false # true：先追求 1cm 高精度；false：只要求 2cm 接受精度
+      refine_cycles: 40 # controller_frequency=10Hz，对应进入 2cm 后继续精调约 4s
+      stable_window_size: 5 # controller_frequency=10Hz，对应最近约 0.5s 的高精度稳定窗口
+      check_stopped: true # 最终转向后必须停稳再报成功，避免带角速度越过目标姿态并放大位置误差
+      trans_stopped_velocity: 0.01 # check_stopped=true 时生效，线速度小于该值才认为已停稳，单位 m/s
+      rot_stopped_velocity: 0.02 # check_stopped=true 时生效，角速度小于该值才认为已停稳，单位 rad/s
     FollowPath:
       plugin: "nav2_mppi_controller::MPPIController"
+
+      # ============================================================
+      # 1. MPPI 采样与运动学参数
+      # ============================================================
       time_steps: 40 # 56
       model_dt: 0.1 # 0.05
-      batch_size: 2000
+      batch_size: 1500
       vx_std: 0.25 # 0.2
       vy_std: 0.2
       wz_std: 0.3 # 0.35 # 0.25 # 0.4
-      vx_max: 0.7 # 0.5
-      vx_min: -0.5 # -1.05 # -0.35
-      vy_max: 0.5
-      wz_max: 0.75
-      ax_max: 0.5
-      ax_min: -0.5
+      vx_max: 1.0 # 基础速度约束；运行时会被三阶段 profile 覆盖
+      vx_min: -0.5 # 基础倒车约束；运行时会被三阶段 profile 覆盖
+      vy_max: 0.5 # DiffDrive 下通常不生效
+      wz_max: 0.75 # 基础角速度约束；运行时会被三阶段 profile 覆盖
+      ax_max: 0.6
+      ax_min: -0.6
       az_max: 0.7
       jx_max: 1.0
       jz_max: 1.5
@@ -116,36 +135,93 @@ controller_server:
       temperature: 0.3
       gamma: 0.015
       motion_model: "DiffDrive" #Ackermann, DiffDrive
-      open_loop: true
+      open_loop: false
       visualize: false
       reset_period: 1.0 # (only in Humble)
       regenerate_noises: false
+
+      # ============================================================
+      # 2. 三阶段切换参数
+      # ============================================================
+      approach_distance: 0.35 # 提前到35cm进入精确趋近，让最终朝向更早接管，减少转弯过头后再慢慢纠正
+      profile_transition_duration: 1.0 # 三段式切换过渡时间，避免速度约束和 critic 权重一拍硬切，单位 s
+      align_enter_angle: 0.65 # 对齐段进入：车头-路径夹角(rad,~37°)超此进 align 段
+      align_exit_angle: 0.31 # 对齐段退出：夹角降至此退出(rad,~18°,迟滞防抖)
+      track_stage_min_duration: 1.2 # 进入 track 后至少保持 1.2s，避免 1-2-1 快速切换导致线速度和权重反复跳变
+      align_force_enter_angle: 1.2 # track 保持期内若夹角超过约69°仍强制回 align，保留大偏航兜底
+      # approach 内部先调位置、后调最终航向；误差均在目标点坐标系计算
+      approach_final_yaw_enter_lon_tolerance: 0.025 # |纵向误差|≤1.5cm 才允许进入最终转向
+      approach_final_yaw_enter_lat_tolerance: 0.025 # |横向误差|≤1.5cm 才允许进入最终转向
+      approach_final_yaw_exit_lon_tolerance: 0.03 # 最终转向中纵向漂移>4cm才退回位置调整，避免3cm边界附近反复切子阶段
+      approach_final_yaw_exit_lat_tolerance: 0.03 # 最终转向中横向漂移>4cm才退回位置调整，避免3cm边界附近反复切子阶段
+      approach_position_first_yaw_threshold: 2.094 # 进入 approach 时|航向误差|≥120°才锁定 position-first；否则保留完整朝向控制，防止绕圈
+      approach_position_first_lateral_error_threshold: 0.05 # 入场横向误差至少5cm才允许按横向主导判定 position-first
+      approach_position_first_lateral_ratio: 1.0 # |横向误差|≥|纵向误差|时视为横向主导，允许先修位置再对最终航向
+      approach_positioning_goal_angle_weight: 10.0 # 仅 position-first 模式生效：位置调整时暂时减弱最终朝向约束
+      approach_final_yaw_vx_max: 0.01 # 最终转向线速度限制为±1cm/s，只允许厘米级小幅纠偏，减少退出final_yaw后的前后窜动
+      approach_final_yaw_wz_max: 0.75 # 最终转向最大角速度保持较高上限；平滑交给下方 cmd_wz 变化率限幅
+      approach_final_yaw_cmd_wz_slew_rate: 1.0 # final_yaw 输出角速度每秒最多变化1.0rad/s，降低起转过快导致的过冲
+      approach_final_yaw_cmd_brake_accel: 0.4 # final_yaw 按剩余角度提前减速；值越小越早刹车，减少冲过目标角度后反复修正
+      approach_final_yaw_cmd_stop_yaw_tolerance: 0.03 # 与 yaw_goal_tolerance 一致：进入航向容差后，final_yaw输出角速度主动收敛到0等待停稳
+      approach_final_yaw_cmd_direction_deadband: 0.08 # |yaw误差|>0.08rad时锁定方向并按刹车曲线转向；接近后交给MPPI细修
+      # ── 权重矩阵：各 critic 三段权重统一调参入口 [align, track, approach] ──
+      stage_weights:
+        GoalCritic: [0.0, 0.0, 10.0] # 目标位置距离：趋近段推动轨迹收敛到目标点
+        GoalLateralCritic: [0.0, 10.0, 200.0] # 目标横向误差：减小目标相对车身的左右偏差
+        GoalLongitudinalCritic: [0.0, 0.0, 50.0] # 目标纵向误差：减小目标相对车身的前后偏差
+        GoalAngleCritic: [0.0, 0.0, 100.0] # 目标朝向误差：降低一点抢角度倾向，减少final_yaw过冲抖动
+        PathAngleCritic: [18.0, 5.0, 2.0] # 路径朝向误差：使车头朝向前方路径点
+        PathAlignCritic: [5.0, 40.0, 10.0] # 路径贴合误差：使候选轨迹尽量贴合全局路径
+        PathFollowCritic: [0.0, 5.0, 2.0] # 路径推进：推动轨迹末端沿全局路径前进
+        PreferForwardCritic: [5.0, 10.0, 5.0] # 前进偏好：惩罚倒车运动，鼓励向前行驶
+        LinearVelocityCritic: [0.0, 10.0, 10.0]  # 线速度大小软约束：不偏置正/负方向，按当前阶段上限随剩余距离减速
+        AngularVelocityCritic: [0.0, 0.0, 12.0]      # 镜像线速度(朝向减速)+角速度平滑：approach 专用；提高第三阶段权重，让wz更跟随期望且更平滑
+        ObstaclesCritic: [5.0, 50.0, 0.0]   # 软斥力(repulsion)分段；致命 critical 全局常开
+        CostCritic: [5.0, 50.0, 0.0]      # 软代价分段；致命由 ObstaclesCritic 兜底
+
+      # ── 三段速度策略（per-stage 覆盖全局；只放速度，critic 子参数/权重不在此）──
+      stage_align:    # 对齐段：低 vx 专注转向、高 wz 快速对齐、允许小幅倒车机动
+        vx_max: 0.5
+        vx_min: -0.2
+        vy_max: 0.5
+        wz_max: 0.75
+      stage_track:    # 跟踪段：全速通行
+        vx_max: 0.5
+        vx_min: -0.5
+        vy_max: 0.5
+        wz_max: 0.75
+      stage_approach: # 趋近段：限制前后速度，减少厘米级停车时的越界和反复换向
+        vx_max: 0.2
+        vx_min: -0.15
+        vy_max: 0.5
+        wz_max: 0.75
+
+      # ============================================================
+      # 三阶段 align/track/approach：权重统一由上方 stage_weights 矩阵调；
+      # 速度见上方 stage_align/track/approach 块；子参数(offset/threshold/last_n)用 C++ 默认；
+      # 切换由 align_enter_angle/align_exit_angle/approach_distance。
+      # ============================================================
+      # ============================================================
+      # 6. 可视化、车辆约束与全局安全/可行性代价
+      #    行为类权重已由 stage_weights 矩阵管理。
+      # ============================================================
       TrajectoryVisualizer:
         trajectory_step: 5
         time_step: 3
       AckermannConstraints:
         min_turning_r: 0.5
-      critics: ["ConstraintCritic", "CostCritic", "ObstaclesCritic", "GoalCritic", "GoalAngleCritic", "PathAlignCritic", "PathFollowCritic", "PathAngleCritic", "PreferForwardCritic", "VelocityDeadbandCritic"]
-      # critics: ["ConstraintCritic", "CostCritic", "GoalCritic", "GoalAngleCritic", "PathAlignCritic", "PathFollowCritic", "PathAngleCritic", "PreferForwardCritic"]
+      # critics 是插件加载列表；阶段权重由上方 stage_weights 矩阵覆盖。
+      critics: ["ConstraintCritic", "CostCritic", "ObstaclesCritic", "GoalCritic", "GoalLateralCritic", "GoalLongitudinalCritic", "GoalAngleCritic", "PathAlignCritic", "PathFollowCritic", "PathAngleCritic", "PreferForwardCritic", "LinearVelocityCritic", "AngularVelocityCritic", "VelocityDeadbandCritic"]
       ConstraintCritic:
         enabled: true
         cost_power: 1
         cost_weight: 4.0
-      GoalCritic:
-        enabled: true
-        cost_power: 1
-        cost_weight: 8.0
-        threshold_to_consider: 2.2 # 1.4
       GoalAngleCritic:
-        enabled: true
-        cost_power: 1
-        cost_weight: 3.0 # 3.0
-        threshold_to_consider: 0.1 # 0.5
-      PreferForwardCritic:
-        enabled: true
-        cost_power: 1
-        cost_weight: 5.0
-        threshold_to_consider: 0.25
+        wrong_way_cost_ratio: 5.0 # 按当前真实最短角误差方向惩罚反向旋转，final_yaw 中仍然生效
+        direction_deadband: 0.01 # 小于GoalChecker的0.02rad容差，避免“未到点但方向惩罚已关闭”的空档
+      PathAngleCritic:
+        wrong_way_cost_ratio: 2.0 # 惩罚角速度与最短路径角误差异号，防止反向绕转 270°
+        direction_deadband: 0.05 # 接近对齐时关闭方向惩罚，避免 wz 正负号抖动，单位 rad
       ObstaclesCritic:
         enabled: true
         cost_power: 1
@@ -153,9 +229,9 @@ controller_server:
         critical_weight: 20.0
         consider_footprint: true
         collision_cost: 100000.0
-        collision_margin_distance: 0.1 # 0.1
+        collision_margin_distance: 0.05 # 0.1
         near_goal_distance: 0.5
-        inflation_radius: 0.4 # 0.75 # 0.55 # 0.6 # (only in Humble)
+        inflation_radius: 0.3 # 0.75 # 0.55 # 0.6 # (only in Humble)
         cost_scaling_factor: 10.0 # (only in Humble)
       CostCritic:
         enabled: true
@@ -166,44 +242,28 @@ controller_server:
         collision_cost: 1000000.0
         near_goal_distance: 0.5
         trajectory_point_step: 2
-      PathAlignCritic:
+      # GoalLateralCritic / GoalLongitudinalCritic：无全局子参数（deadband 已废弃、threshold 距离门已移除）；
+      # 权重由 stage_weights 矩阵管，cost_power/last_n_points 用 C++ 默认。
+      LinearVelocityCritic: # 线速度大小软约束：speed_desired=min(当前阶段速度上限,√(2·ax_max·d))，不强制前进方向
         enabled: true
-        cost_power: 1
-        cost_weight: 14.0
-        max_path_occupancy_ratio: 0.05
-        trajectory_point_step: 3
-        threshold_to_consider: 0.5
-        offset_from_furthest: 15 # 20
-        use_path_orientations: false
-      PathFollowCritic:
+        cost_power: 2
+        cost_weight: 8.0 # 初值，bag 调；与 goal critic 量级相当
+      AngularVelocityCritic: # 角速度软约束(镜像线速度)：wz_desired=min(wz_max,√(2·az_max·朝向误差))跟踪 + |Δwz|平滑；wz_max/az_max 从全局参数读；approach 专用(track/align 矩阵设0)
         enabled: true
-        cost_power: 1
-        cost_weight: 5.0
-        offset_from_furthest: 5
-        threshold_to_consider: 2.2 # 1.4
-      PathAngleCritic:
-        enabled: true
-        cost_power: 1
-        cost_weight: 4.0
-        offset_from_furthest: 2
-        threshold_to_consider: 0.5
-        max_angle_to_furthest: 1.0
-        mode: 0
-      TwirlingCritic:
-        enabled: true
-        twirling_cost_power: 1
-        twirling_cost_weight: 10.0
+        cost_power: 2
+        cost_weight: 10.0 # 初值，bag 调
+        stop_yaw_tolerance: 0.03 # 与GoalChecker航向容差一致：进入此范围后期望角速度为0，等待停稳成功
       VelocityDeadbandCritic:
         enabled: true
         cost_power: 1
         cost_weight: 10.0
-        deadband_velocities: [0.005, 0.08, 0.01]
+        deadband_velocities: [0.00, 0.08, 0.00] # 0.005, 0.08, 0.01
 
 local_costmap:
   local_costmap:
     ros__parameters:
       update_frequency: 14.0 # 5.0
-      publish_frequency: 14.0 # 2.0
+      publish_frequency: 2.0 # 14.0 -> 2.0：publish 仅供可视化/外部订阅，降频减更新线程负担
       global_frame: odom # odom
       robot_base_frame: base_link
       use_sim_time: True
@@ -213,14 +273,14 @@ local_costmap:
       resolution: 0.05
       footprint: "[[0.35, 0.29], [0.35, -0.29], [-0.35, -0.29], [-0.35, 0.29]]" # Slightly increased for better planning efficiency and safety (real size: 0.95*0.55)
       # footprint: "[ [0.55, 0.35], [0.55, -0.35], [-0.55, -0.35], [-0.55, 0.35] ]" # Slightly increased for better planning efficiency and safety (real size: 0.95*0.55)
-      # plugins: ["voxel_layer", "denoise_layer", "inflation_layer"]
+      # plugins: ["voxel_layer", "denoise_layer", "inflation_layer"]  output_topic: "control/cmd_vel_nav"
       plugins: ["static_layer", "obstacle_layer", "denoise_layer", "inflation_layer"]   
-      filters: ["keepout_filter", "keepout_inflation_layer", "speed_filter"]
+      # filters: ["keepout_filter", "keepout_inflation_layer", "speed_filter"]
       # plugins: ["obstacle_layer", "voxel_layer", "denoise_layer", "inflation_layer"]
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 10.0
-        inflation_radius: 0.4 # 0.75 # 0.55
+        inflation_radius: 0.3 # 0.75 # 0.55
       denoise_layer:
         plugin: "nav2_costmap_2d::DenoiseLayer"
         enabled: True
@@ -259,9 +319,9 @@ local_costmap:
         orbbec_rear_marked:
           topic: /orbbec/rear/pointcloud2_filtered
           observation_persistence: 0.7
-          obstacle_max_range: 30.0
+          obstacle_max_range: 5.0
           obstacle_min_range: 0.0
-          raytrace_max_range: 30.0
+          raytrace_max_range: 5.0
           raytrace_min_range: 0.0
           max_obstacle_height: 2.0
           min_obstacle_height: -0.1
@@ -272,9 +332,9 @@ local_costmap:
         orbbec_front_marked:
           topic: /orbbec/front/pointcloud2_filtered
           observation_persistence: 0.7
-          obstacle_max_range: 30.0
+          obstacle_max_range: 5.0
           obstacle_min_range: 0.0
-          raytrace_max_range: 30.0
+          raytrace_max_range: 5.0
           raytrace_min_range: 0.0
           max_obstacle_height: 2.0
           min_obstacle_height: -0.1
@@ -293,13 +353,13 @@ local_costmap:
       keepout_inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         enabled: True
-        inflation_radius: 0.4
+        inflation_radius: 0.3
       speed_filter:
         plugin: "nav2_costmap_2d::SpeedFilter"
         enabled: True
         filter_info_topic: "/speed_costmap_filter_info"
         speed_limit_topic: "/speed_limit"
-      always_send_full_costmap: True  
+      always_send_full_costmap: False # True -> False：只发增量更新，减 publish 序列化开销（rolling 下收益有限但无害）
 
 global_costmap:
   global_costmap:
@@ -316,7 +376,7 @@ global_costmap:
       # plugins: ["static_layer", "obstacle_layer",  "denoise_layer", "inflation_layer"]
       # plugins: ["static_layer", "voxel_layer", "denoise_layer", "inflation_layer"]
       plugins: ["static_layer", "obstacle_layer", "denoise_layer", "inflation_layer"]
-      filters: ["keepout_filter", "keepout_inflation_layer","speed_filter"]
+      # filters: ["keepout_filter", "keepout_inflation_layer","speed_filter"]
       denoise_layer:
         plugin: "nav2_costmap_2d::DenoiseLayer"
         enabled: True
@@ -387,7 +447,7 @@ global_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 10.0
-        inflation_radius: 0.4 # 0.75 # 0.55
+        inflation_radius: 0.3 # 0.75 # 0.55
       keepout_filter:
         plugin: "nav2_costmap_2d::KeepoutFilter"
         enabled: True
@@ -395,7 +455,7 @@ global_costmap:
       keepout_inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         enabled: True
-        inflation_radius: 0.4
+        inflation_radius: 0.3
       speed_filter:
         plugin: "nav2_costmap_2d::SpeedFilter"
         enabled: True
@@ -433,8 +493,10 @@ planner_server:
     #   ros2 param set /planner_server active_planner SmacGridBased     # SmacPlannerLattice 自由路径
     #   ros2 param set /planner_server active_planner ThetaStarBased    # Theta* 几何最短路径
     # 详见 [[10. 双规划器热切换方案——PlannerSwitcher 设计与实现]]
-    planner_plugins: ["RouteGridPlanner", "SmacGridBased", "ThetaStarBased"]
-    active_planner: "RouteGridPlanner"   # 默认用路网规划器（dynamic）
+    #planner_plugins: ["RouteGridPlanner", "SmacGridBased", "ThetaStarBased"]
+    planner_plugins: ["SmacGridBased", "ThetaStarBased"]
+    active_planner: ""
+    #active_planner: "RouteGridPlanner"   # 默认用路网规划器（dynamic）
                                          # 可选值：RouteGridPlanner / SmacGridBased / ThetaStarBased
     override_planner_id: true            # true: 忽略 BT planner_id，强制 active；
                                          # false: nav2 标准 fallback 语义
@@ -472,7 +534,7 @@ planner_server:
     SmacGridBased:
       plugin: "nav2_smac_planner/SmacPlannerLattice"
       allow_unknown: false
-      tolerance: 0.25
+      tolerance: 1.0e-10 # 禁止目标附近容忍点替代目标点，失败后由 BT 停止等待并重规划
       max_iterations: 2000000
       max_on_approach_iterations: 2000
       max_planning_time: 5.0
@@ -582,14 +644,14 @@ velocity_smoother:
     use_sim_time: True
     smoothing_frequency: 20.0
     scale_velocities: False
-    feedback: "OPEN_LOOP"
+    feedback: "CLOSED_LOOP"
     input_topic: "cmd_vel_nav"
     output_topic: "control/cmd_vel_nav"
     # Test
-    max_velocity: [0.7, 0.0, 0.75]
-    min_velocity: [-0.5, 0.0, -0.75]  
-    max_accel: [0.5, 0.0, 0.7]
-    max_decel: [-0.5, 0.0, -0.7]    
+    max_velocity: [0.8, 0.0, 0.75]
+    min_velocity: [-0.5, 0.0, -0.75]
+    max_accel: [0.6, 0.0, 0.7]
+    max_decel: [-0.6, 0.0, -0.7]
     # Original
     # max_velocity: [0.26, 0.0, 1.0]
     # min_velocity: [-0.26, 0.0, -1.0]  
@@ -599,8 +661,8 @@ velocity_smoother:
     # max_velocity: [1.0, 0.0, 2.0]
     # min_velocity: [-0.5, 0.0, -2.0]
     # max_accel: [1.0, 0.0, 0.5]
-    # max_decel: [-1.0, 0.0, -0.5]    
+    # max_decel: [-1.0, 0.0, -0.5]
     odom_topic: "feedback/odom"
-    odom_duration: 0.1
-    deadband_velocity: [0.0, 0.0, 0.0]
+    odom_duration: 0.01
+    deadband_velocity: [0.005, 0.005, 0.008]
     velocity_timeout: 1.0

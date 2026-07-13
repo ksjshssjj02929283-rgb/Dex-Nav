@@ -153,6 +153,19 @@ public:
     return applyControlSequenceConstraints();
   }
 
+  void setActiveVelocityConstraints(float vx_min, float vx_max, float wz_max)
+  {
+    settings_.constraints.vx_min = vx_min;
+    settings_.constraints.vx_max = vx_max;
+    settings_.constraints.wz = wz_max;
+  }
+
+  void setCurrentVelocity(float vx, float wz)
+  {
+    state_.speed.linear.x = vx;
+    state_.speed.angular.z = wz;
+  }
+
   models::ControlSequence & grabControlSequence()
   {
     return control_sequence_;
@@ -516,6 +529,17 @@ TEST(OptimizerTests, applyControlSequenceConstraintsTests)
   EXPECT_NEAR(sequence.wz(1), 0.05, 1e-6);
   EXPECT_NEAR(sequence.wz(2), 0.10, 1e-6);
   EXPECT_NEAR(sequence.wz(3), 0.15, 1e-6);
+
+  // 窄 profile 下，加速度/加加速度回推后仍必须严格满足最终速度上限。
+  optimizer_tester.setActiveVelocityConstraints(-0.01f, 0.01f, 0.1f);
+  optimizer_tester.setCurrentVelocity(0.05f, 0.2f);
+  sequence.vx.setLinSpaced(50, -1.0f, 1.0f);
+  sequence.wz.setLinSpaced(50, -2.0f, 2.0f);
+  optimizer_tester.applyControlSequenceConstraintsWrapper();
+  EXPECT_TRUE((sequence.vx >= -0.01f).all());
+  EXPECT_TRUE((sequence.vx <= 0.01f).all());
+  EXPECT_TRUE((sequence.wz >= -0.1f).all());
+  EXPECT_TRUE((sequence.wz <= 0.1f).all());
 }
 
 TEST(OptimizerTests, updateStateVelocitiesTests)

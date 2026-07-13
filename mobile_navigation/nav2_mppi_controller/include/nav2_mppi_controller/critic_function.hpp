@@ -27,6 +27,90 @@
 namespace mppi::critics
 {
 
+struct GoalCriticSettings
+{
+  float weight{0.0f};
+};
+
+struct GoalLateralCriticSettings
+{
+  float weight{0.0f};
+};
+
+struct GoalLongitudinalCriticSettings
+{
+  float weight{0.0f};
+};
+
+struct GoalAngleCriticSettings
+{
+  float weight{0.0f};
+};
+
+struct PathAngleCriticSettings
+{
+  float weight{0.0f};
+  int offset_from_furthest{0};
+  float max_angle_to_furthest{0.0f};
+  bool forward_preference{true};
+};
+
+struct PathFollowCriticSettings
+{
+  float weight{0.0f};
+  int offset_from_furthest{0};
+};
+
+struct PathAlignCriticSettings
+{
+  float weight{0.0f};
+  int offset_from_furthest{0};
+  int trajectory_point_step{0};
+  float max_path_occupancy_ratio{0.0f};
+};
+
+struct PreferForwardCriticSettings
+{
+  float weight{0.0f};
+};
+
+struct LinearVelocityCriticSettings
+{
+  float weight{0.0f};
+  float speed_max{0.0f};
+};
+
+struct AngularVelocityCriticSettings
+{
+  float weight{0.0f};  // 角速度软约束(跟踪期望角速度 + 罚角加速度)
+};
+
+struct ObstaclesCriticSettings
+{
+  float repulsion_weight{0.0f};  // 软斥力(可分段)；致命 critical_weight 保持全局
+};
+
+struct CostCriticSettings
+{
+  float weight{0.0f};  // 软代价(可分段)；致命由 ObstaclesCritic critical 全局兜底
+};
+
+struct CriticProfileSettings
+{
+  GoalCriticSettings goal;
+  GoalLateralCriticSettings goal_lateral;
+  GoalLongitudinalCriticSettings goal_longitudinal;
+  GoalAngleCriticSettings goal_angle;
+  PathAngleCriticSettings path_angle;
+  PathFollowCriticSettings path_follow;
+  PathAlignCriticSettings path_align;
+  PreferForwardCriticSettings prefer_forward;
+  LinearVelocityCriticSettings linear_velocity;
+  AngularVelocityCriticSettings angular_velocity;
+  ObstaclesCriticSettings obstacles;
+  CostCriticSettings cost;
+};
+
 /**
  * @class mppi::critics::CollisionCost
  * @brief Utility for storing cost information
@@ -93,6 +177,22 @@ public:
     * @brief Initialize critic
     */
   virtual void initialize() = 0;
+
+  /**
+    * @brief Apply runtime profile settings, if supported by the critic
+    * @param settings Runtime critic profile settings
+    */
+  virtual void applyProfileSettings(const CriticProfileSettings & /* settings */) {}
+
+  /**
+    * @brief Point critic to a costmap snapshot (async/decoupled costmap access)
+    * @param costmap Snapshot costmap to read during scoring
+    * 默认只切换裸指针；持有 collision_checker 的 critic（Cost/Obstacles）需 override 同步更新。
+    */
+  virtual void setCostmapSnapshot(nav2_costmap_2d::Costmap2D * costmap)
+  {
+    costmap_ = costmap;
+  }
 
   /**
     * @brief Get name of critic

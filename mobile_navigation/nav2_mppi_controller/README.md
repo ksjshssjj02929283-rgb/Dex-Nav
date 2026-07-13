@@ -49,12 +49,32 @@ This process is then repeated a number of times and returns a converged solution
  | vy_max                     | double | Default 0.5. Max VY in either direction, if holonomic. (m/s)                                             |
  | vx_min                     | double | Default -0.35. Min VX (m/s)                                                                              |
  | wz_max                     | double | Default 1.9. Max WZ (rad/s)                                                                              |
+ | profile_start_distance     | double | Default 0.8. Path progress below this distance uses `profile_1` unless the goal profile is active.        |
+ | profile_goal_distance      | double | Default 1.0. Distance to final goal at or below this value uses `profile_3`.                              |
+ | profile_N.vx_max           | double | Optional max VX override for profile N, where N is 1, 2, or 3.                                            |
+ | profile_N.vx_min           | double | Optional min VX override for profile N.                                                                  |
+ | profile_N.vy_max           | double | Optional max VY override for profile N.                                                                  |
+ | profile_N.wz_max           | double | Optional max WZ override for profile N.                                                                  |
+ | profile_N.<Critic>.cost_weight | double | Optional critic weight override for supported critics in profile N.                                |
+ | profile_N.<Critic>.threshold_to_consider | double | Optional critic threshold override for supported critics in profile N.              |
  | temperature                | double | Default: 0.3. Selectiveness of trajectories by their costs (The closer this value to 0, the "more" we take in consideration controls with less cost), 0 mean use control with best cost, huge value will lead to just taking mean of all trajectories without cost consideration                                                   |
  | gamma                      | double | Default: 0.015. A trade-off between smoothness (high) and low energy (low). This is a complex parameter that likely won't need to be changed from the default of `0.1` which works well for a broad range of cases. See Section 3D-2 in "Information Theoretic Model Predictive Control: Theory and Applications to Autonomous Driving" for detailed information.       |
  | visualize                  | bool   | Default: false. Publish visualization of trajectories, which can slow down the controller significantly. Use only for debugging.                                                                                                                                       |
  | retry_attempt_limit        | int    | Default 1. Number of attempts to find feasible trajectory on failure for soft-resets before reporting failure.                                                                                                                                                                                                       |
 | reset_period            | double    | Default 1.0. required time of inactivity to reset optimizer  (only in Humble due to backport ABI policies)            |
  | regenerate_noises          | bool   | Default false. Whether to regenerate noises each iteration or use single noise distribution computed on initialization and reset. Practically, this is found to work fine since the trajectories are being sampled stochastically from a normal distribution and reduces compute jittering at run-time due to thread wake-ups to resample normal distribution. |
+
+#### 三段行为 Profile
+
+三阶段 Profile 固定启用；控制器会按路径进度和目标距离选择三段参数：
+
+- `profile_1`：起步段，`path_progress < profile_start_distance` 且未进入末段时启用。
+- `profile_2`：中间段，起步段结束且未进入末段时启用。
+- `profile_3`：末段，`goal_distance <= profile_goal_distance` 时启用；末段优先级高于起步段。
+
+profile 可覆盖速度约束和已加载 critic 的运行时参数。支持的行为类 critic 包括 `GoalCritic`、`GoalLateralCritic`、`GoalLongitudinalCritic`、`GoalAngleCritic`、`PathAngleCritic`、`PathFollowCritic`、`PathAlignCritic`、`PreferForwardCritic`。切换时不会调用 optimizer `reset()`，不会重置噪声、采样状态或重建 critic 插件；控制器只更新运行约束、限幅当前控制序列，并把相关权重应用到已加载的 critic 实例。
+
+单阶段 MPPI 兼容逻辑已删除；`profile_1`、`profile_2`、`profile_3` 应完整声明各自的行为类 critic 参数。全局 critic 配置只保留安全、可行性和插件加载职责，不再作为行为策略默认值。
 
 #### Trajectory Visualizer
  | Parameter             | Type   | Definition                                                                                                  |
