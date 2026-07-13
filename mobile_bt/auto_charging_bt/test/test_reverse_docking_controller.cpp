@@ -1,5 +1,11 @@
+#include <geometry_msgs/msg/pose.hpp>
+#include <geometry_msgs/msg/pose_stamped.hpp>
+#include <geometry_msgs/msg/transform_stamped.hpp>
+#include <geometry_msgs/msg/twist.hpp>
+#include <rclcpp/rclcpp.hpp>
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2/utils.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_broadcaster.h>
 #include <tf2_ros/transform_listener.h>
@@ -8,15 +14,9 @@
 #include <chrono>
 #include <cmath>
 #include <functional>
-#include <geometry_msgs/msg/pose.hpp>
-#include <geometry_msgs/msg/pose_stamped.hpp>
-#include <geometry_msgs/msg/transform_stamped.hpp>
-#include <geometry_msgs/msg/twist.hpp>
 #include <memory>
 #include <optional>
-#include <rclcpp/rclcpp.hpp>
 #include <string>
-#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <utility>
 #include <vector>
 
@@ -81,7 +81,8 @@ public:
 
         cmd_pub_ = create_publisher<geometry_msgs::msg::Twist>(cmd_vel_topic_, 10);
         target_sub_ = create_subscription<geometry_msgs::msg::PoseStamped>(
-            target_topic_, 10, std::bind(&ReverseDockingControllerTester::targetCallback, this, std::placeholders::_1));
+            target_topic_, 10,
+            std::bind(&ReverseDockingControllerTester::targetCallback, this, std::placeholders::_1));
 
         const auto period = std::chrono::duration<double>(1.0 / control_rate);
         timer_ = create_wall_timer(std::chrono::duration_cast<std::chrono::nanoseconds>(period),
@@ -109,7 +110,8 @@ private:
         }
 
         if (!isSamplingStage()) {
-            RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 2000, "Ignore live target update in %s", testStageName());
+            RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 2000,
+                                 "Ignore live target update in %s", testStageName());
             return;
         }
 
@@ -119,8 +121,8 @@ private:
 
         target_samples_.push_back(msg->pose);
         RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 500,
-                             "Sampling reverse target: test_stage=%s count=%zu latest=(%.3f, %.3f)", testStageName(),
-                             target_samples_.size(), msg->pose.position.x, msg->pose.position.y);
+                             "Sampling reverse target: test_stage=%s count=%zu latest=(%.3f, %.3f)",
+                             testStageName(), target_samples_.size(), msg->pose.position.x, msg->pose.position.y);
     }
 
     void controlLoop() {
@@ -175,8 +177,7 @@ private:
         cmd_pub_->publish(cmd);
 
         RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 500,
-                             "reverse control: test_stage=%s controller_stage=%s target_base=(%.3f, %.3f), raw_v=%.4f "
-                             "raw_w=%.4f v=%.4f w=%.4f",
+                             "reverse control: test_stage=%s controller_stage=%s target_base=(%.3f, %.3f), raw_v=%.4f raw_w=%.4f v=%.4f w=%.4f",
                              testStageName(), controller_.stageName().c_str(), target_pose_base->position.x,
                              target_pose_base->position.y, raw_v, raw_w, v, w);
         logTargetErrorThrottled(target_pose_base.value());
@@ -184,15 +185,16 @@ private:
 
     void handleSamplingStage() {
         if (!sampling_started_) {
-            RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 2000, "Waiting for target on %s in %s",
-                                 target_topic_.c_str(), testStageName());
+            RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 2000,
+                                 "Waiting for target on %s in %s", target_topic_.c_str(), testStageName());
             return;
         }
 
         const double duration = currentSamplingDuration();
         const double elapsed = (now() - sample_start_time_).seconds();
         if (elapsed < duration) {
-            RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 500, "Sampling target in %s: %.2f / %.2f s, count=%zu",
+            RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 500,
+                                 "Sampling target in %s: %.2f / %.2f s, count=%zu",
                                  testStageName(), elapsed, duration, target_samples_.size());
             return;
         }
@@ -218,20 +220,20 @@ private:
         controller_.reset();
         const TestStage next_stage =
             test_stage_ == TestStage::INITIAL_SAMPLING ? TestStage::FIRST_APPROACH : TestStage::SECOND_APPROACH;
-        RCLCPP_INFO(
-            get_logger(),
-            "Locked %s reverse target from %zu samples into %s: base=(%.3f, %.3f, %.3f), fixed=(%.3f, %.3f, %.3f)",
-            testStageName(), sample_count, fixed_frame_.c_str(), averaged_target_base.position.x,
-            averaged_target_base.position.y, averaged_target_base.position.z, locked_target_fixed_->pose.position.x,
-            locked_target_fixed_->pose.position.y, locked_target_fixed_->pose.position.z);
-        logTargetError(averaged_target_base,
-                       test_stage_ == TestStage::INITIAL_SAMPLING ? "first_locked_base" : "second_locked_base");
+        RCLCPP_INFO(get_logger(),
+                    "Locked %s reverse target from %zu samples into %s: base=(%.3f, %.3f, %.3f), fixed=(%.3f, %.3f, %.3f)",
+                    testStageName(), sample_count, fixed_frame_.c_str(), averaged_target_base.position.x,
+                    averaged_target_base.position.y, averaged_target_base.position.z,
+                    locked_target_fixed_->pose.position.x, locked_target_fixed_->pose.position.y,
+                    locked_target_fixed_->pose.position.z);
+        logTargetError(averaged_target_base, test_stage_ == TestStage::INITIAL_SAMPLING ? "first_locked_base"
+                                                                                       : "second_locked_base");
         test_stage_ = next_stage;
     }
 
     void handleReachedTarget(const geometry_msgs::msg::Pose& target_pose_base) {
-        logTargetError(target_pose_base,
-                       test_stage_ == TestStage::FIRST_APPROACH ? "first_reached_base" : "second_reached_base");
+        logTargetError(target_pose_base, test_stage_ == TestStage::FIRST_APPROACH ? "first_reached_base"
+                                                                                  : "second_reached_base");
         if (test_stage_ == TestStage::FIRST_APPROACH) {
             RCLCPP_INFO(get_logger(), "First reverse docking target reached; stop and start refinement sampling");
             locked_target_fixed_.reset();
@@ -300,6 +302,7 @@ private:
         return "UNKNOWN";
     }
 
+
     std::optional<geometry_msgs::msg::PoseStamped> lockTargetInFixedFrame(
         const geometry_msgs::msg::Pose& target_pose_base) {
         geometry_msgs::msg::PoseStamped target_base;
@@ -315,7 +318,8 @@ private:
             target_fixed.header.frame_id = fixed_frame_;
             return target_fixed;
         } catch (const tf2::TransformException& ex) {
-            RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000, "Failed to lock target into fixed frame '%s': %s",
+            RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
+                                 "Failed to lock target into fixed frame '%s': %s",
                                  fixed_frame_.c_str(), ex.what());
             return std::nullopt;
         }
@@ -333,8 +337,8 @@ private:
             return target_base.pose;
         } catch (const tf2::TransformException& ex) {
             RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
-                                 "Failed to transform locked target from '%s' to '%s': %s", fixed_frame_.c_str(),
-                                 base_frame_.c_str(), ex.what());
+                                 "Failed to transform locked target from '%s' to '%s': %s",
+                                 fixed_frame_.c_str(), base_frame_.c_str(), ex.what());
             return std::nullopt;
         }
     }
@@ -356,10 +360,9 @@ private:
         const double distance = std::hypot(local_x, local_y);
         const double reverse_heading_error = normalizePi(std::atan2(local_y, local_x) + M_PI);
         const double final_yaw_error = normalizePi(tf2::getYaw(target_pose_base.orientation) - final_yaw_offset_);
-        RCLCPP_INFO_THROTTLE(
-            get_logger(), *get_clock(), 500,
-            "target error: local_x=%.4f local_y=%.4f dist=%.4f reverse_heading=%.4f rad final_yaw=%.4f rad", local_x,
-            local_y, distance, reverse_heading_error, final_yaw_error);
+        RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 500,
+                             "target error: local_x=%.4f local_y=%.4f dist=%.4f reverse_heading=%.4f rad final_yaw=%.4f rad",
+                             local_x, local_y, distance, reverse_heading_error, final_yaw_error);
     }
 
     double normalizePi(double value) const {
@@ -409,6 +412,7 @@ private:
         geometry_msgs::msg::Twist zero;
         cmd_pub_->publish(zero);
     }
+
 
     void publishStaticTargetTf() {
         if (!locked_target_fixed_) {
