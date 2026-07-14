@@ -182,6 +182,15 @@ protected:
     std::vector<TrajPoint> & traj,
     double dist_behind_robot);
 
+  /**
+   * @brief Speed reference decoupled from the steering target index：genuine
+   *        nearest-point search over controller_traj_（不受 final_target_lock_
+   *        distance_ 的"距终点内直接锁定终点索引"影响），forward-window max
+   *        excluding the nearest point itself（同 RPP，避免状态戳自引用）。
+   */
+  bool nearestTrajectorySpeed(
+    const geometry_msgs::msg::PoseStamped & pose, double & traj_speed, double & traj_accel);
+
   bool shouldRotateToPath(
     const geometry_msgs::msg::PoseStamped & carrot_pose,
     double & angle_to_path);
@@ -292,12 +301,22 @@ protected:
   double last_speed_cmd_ = 0.0;
   double speed_cmd_reseed_error_ = 0.3;
 
+  // ---- angular-loop command integrator（同上速度环模式）----
+  bool last_angular_cmd_valid_ = false;
+  double last_angular_cmd_ = 0.0;
+  double angular_cmd_reseed_error_ = 0.3;
+
   // ---- approach-stage target lock ----
   // getClosestWaypointID 的 ignore_dist：机器人与轨迹终点距离小于此值时直接
   // 锁定终点索引，跳过最近点搜索。默认与 staged_control.approach_distance
   // 对齐（该控制器只在此距离内被调用），使 approach 全程瞄准固定终点，
   // 不再随机器人平移在候选点间跳变。
   double final_target_lock_distance_ = 0.3;
+
+  // ---- speed reference lookahead（与上方 target lock 解耦）----
+  // nearestTrajectorySpeed 的前方窗长度：最近点之后前方窗内取 max（不含
+  // 最近点自身）。同 RPP 参数语义。
+  double traj_speed_lookahead_ = 0.1;
 
   // ---- approach-stage rotation budget watchdog ----
   // 对机器人实际朝向变化量（非误差）逐周期积分；超预算强制停止。

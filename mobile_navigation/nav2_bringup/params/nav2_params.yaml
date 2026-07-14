@@ -373,7 +373,9 @@ controller_server:
       switch_speed: 0.1
       default_desired_linear_vel: 0.15
       speed_loop_cmd_reseed_error: 0.3   # 指令积分器与实测偏差超此值时重新对齐（外力/急停兜底）
+      angular_cmd_reseed_error: 0.3    # 同上，角速度指令积分器版本
       final_target_lock_distance: 0.3    # 距终点小于此值直接锁定终点索引（消除末段最近点跳变）；须 ≥ staged_control.approach_distance
+      traj_speed_lookahead: 0.1    # 速度参考与瞄准目标解耦：最近点之后前方窗内 max（不含最近点自身，避免状态戳自引用）
       approach_rotation_budget_deg: 200.0    # 单次 approach/rotating 累计旋转量安全网，超此值强制停止（度）
       final_rotation_max_v: 0.05
       final_rotation_linear_deadband: 0.005

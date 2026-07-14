@@ -229,10 +229,12 @@ protected:
    * @param curvature curvature of path
    * @param speed Speed of robot
    * @param pose_cost cost at this pose
+   * @param have_traj 是否有轨迹规划速度可用——为真时终点收尾减速已由轨迹逐点
+   *   编码，跳过 applyApproachVelocityScaling 避免与轨迹自带的收尾曲线复利叠加
    */
   void applyConstraints(
     const double & curvature, const geometry_msgs::msg::Twist & speed,
-    const double & pose_cost, const nav_msgs::msg::Path & path,
+    const double & pose_cost, const nav_msgs::msg::Path & path, bool have_traj,
     double & linear_vel, double & sign);
 
   /**

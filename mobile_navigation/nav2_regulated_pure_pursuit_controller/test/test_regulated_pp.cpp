@@ -112,10 +112,11 @@ public:
 
   void applyConstraintsWrapper(
     const double & curvature, const geometry_msgs::msg::Twist & curr_speed,
-    const double & pose_cost, const nav_msgs::msg::Path & path, double & linear_vel, double & sign)
+    const double & pose_cost, const nav_msgs::msg::Path & path, bool have_traj,
+    double & linear_vel, double & sign)
   {
     return applyConstraints(
-      curvature, curr_speed, pose_cost, path,
+      curvature, curr_speed, pose_cost, path, have_traj,
       linear_vel, sign);
   }
 
@@ -690,7 +691,7 @@ TEST(RegulatedPurePursuitTest, applyConstraints)
   // （障碍零速/蠕行零点）时不得被调节下限抬升
   curr_speed.linear.x = 0.25;
   ctrl->applyConstraintsWrapper(
-    curvature, curr_speed, pose_cost, no_approach_path,
+    curvature, curr_speed, pose_cost, no_approach_path, false,
     linear_vel, sign);
   EXPECT_EQ(linear_vel, 0.0);
 
@@ -698,7 +699,7 @@ TEST(RegulatedPurePursuitTest, applyConstraints)
   curvature = 2.2222;  // radius 0.45 = regulated_linear_scaling_min_radius / 2
   curr_speed.linear.x = 0.5;
   ctrl->applyConstraintsWrapper(
-    curvature, curr_speed, pose_cost, no_approach_path,
+    curvature, curr_speed, pose_cost, no_approach_path, false,
     linear_vel, sign);
   EXPECT_NEAR(linear_vel, 0.5, 0.01);  // lower by curvature
 
@@ -706,7 +707,7 @@ TEST(RegulatedPurePursuitTest, applyConstraints)
   curvature = 1000.0;
   curr_speed.linear.x = 0.25;
   ctrl->applyConstraintsWrapper(
-    curvature, curr_speed, pose_cost, no_approach_path,
+    curvature, curr_speed, pose_cost, no_approach_path, false,
     linear_vel, sign);
   EXPECT_NEAR(linear_vel, 0.25, 0.01);  // min out by curvature
 
@@ -720,9 +721,19 @@ TEST(RegulatedPurePursuitTest, applyConstraints)
   curvature = 0.0;
   curr_speed.linear.x = 0.25;
   ctrl->applyConstraintsWrapper(
-    curvature, curr_speed, pose_cost, approach_path,
+    curvature, curr_speed, pose_cost, approach_path, false,
     linear_vel, sign);
   EXPECT_NEAR(linear_vel, 0.05, 0.01);  // min out on min approach velocity
+
+  // have_traj=true：终点收尾减速已由轨迹规划速度逐点编码，approach scaling
+  // 应被跳过——同样零剩余距离的路径，不应再被压到 min_approach_linear_velocity
+  linear_vel = 1.0;
+  curvature = 0.0;
+  curr_speed.linear.x = 0.25;
+  ctrl->applyConstraintsWrapper(
+    curvature, curr_speed, pose_cost, approach_path, true,
+    linear_vel, sign);
+  EXPECT_NEAR(linear_vel, 1.0, 0.01);  // approach scaling skipped, unaffected
 
   // now try with cost regulation (turn off velocity and only cost)
   // ctrl->setCostRegulationScaling();

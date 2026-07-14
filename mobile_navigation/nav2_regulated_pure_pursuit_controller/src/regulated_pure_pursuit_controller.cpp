@@ -419,7 +419,7 @@ geometry_msgs::msg::TwistStamped RegulatedPurePursuitController::computeVelocity
   } else {
     applyConstraints(
       curvature, speed,
-      costAtPose(pose.pose.position.x, pose.pose.position.y), transformed_plan,
+      costAtPose(pose.pose.position.x, pose.pose.position.y), transformed_plan, have_traj,
       linear_vel, sign);
 
     // 反馈约束（只降不升）：横向误差减速 + 朝向误差减速 + 角速度饱和联动降速。
@@ -735,7 +735,8 @@ void RegulatedPurePursuitController::applyApproachVelocityScaling(
 
 void RegulatedPurePursuitController::applyConstraints(
   const double & curvature, const geometry_msgs::msg::Twist & /*curr_speed*/,
-  const double & pose_cost, const nav_msgs::msg::Path & path, double & linear_vel, double & sign)
+  const double & pose_cost, const nav_msgs::msg::Path & path, bool have_traj,
+  double & linear_vel, double & sign)
 {
   // 入口 linear_vel 即目标速度（轨迹规划值）：本函数只降不升。
   const double target_vel = linear_vel;
@@ -768,7 +769,11 @@ void RegulatedPurePursuitController::applyConstraints(
   // 调节下限不得高于目标本身（末端蠕行等低速目标不可被抬升）。
   linear_vel = std::max(linear_vel, std::min(target_vel, regulated_linear_scaling_min_speed_));
 
-  applyApproachVelocityScaling(path, linear_vel);
+  // 有轨迹规划速度时终点收尾减速已逐点编码在 target_vel 里（物理停车曲线），
+  // 这里再按剩余距离线性比例重新压一遍会和轨迹自带的曲线复利叠加、提前探底。
+  if (!have_traj) {
+    applyApproachVelocityScaling(path, linear_vel);
+  }
 
   // Limit linear velocities to be valid
   linear_vel = std::clamp(fabs(linear_vel), 0.0, fabs(target_vel));

@@ -75,7 +75,11 @@ void PIDController::configure(
   declare_parameter_if_not_declared(
     node, p + ".speed_loop_cmd_reseed_error", rclcpp::ParameterValue(0.3));
   declare_parameter_if_not_declared(
+    node, p + ".angular_cmd_reseed_error", rclcpp::ParameterValue(0.3));
+  declare_parameter_if_not_declared(
     node, p + ".final_target_lock_distance", rclcpp::ParameterValue(0.3));
+  declare_parameter_if_not_declared(
+    node, p + ".traj_speed_lookahead", rclcpp::ParameterValue(0.1));
   declare_parameter_if_not_declared(
     node, p + ".approach_rotation_budget_deg", rclcpp::ParameterValue(200.0));
 
@@ -102,8 +106,12 @@ void PIDController::configure(
   final_rotation_linear_deadband_ = std::fabs(final_rotation_linear_deadband_);
   node->get_parameter(p + ".speed_loop_cmd_reseed_error", speed_cmd_reseed_error_);
   speed_cmd_reseed_error_ = std::fabs(speed_cmd_reseed_error_);
+  node->get_parameter(p + ".angular_cmd_reseed_error", angular_cmd_reseed_error_);
+  angular_cmd_reseed_error_ = std::fabs(angular_cmd_reseed_error_);
   node->get_parameter(p + ".final_target_lock_distance", final_target_lock_distance_);
   final_target_lock_distance_ = std::fabs(final_target_lock_distance_);
+  node->get_parameter(p + ".traj_speed_lookahead", traj_speed_lookahead_);
+  traj_speed_lookahead_ = std::fabs(traj_speed_lookahead_);
   double approach_rotation_budget_deg = 200.0;
   node->get_parameter(p + ".approach_rotation_budget_deg", approach_rotation_budget_deg);
   approach_rotation_budget_ = std::fabs(approach_rotation_budget_deg) * M_PI / 180.0;
@@ -156,6 +164,7 @@ void PIDController::activate()
 {
   RCLCPP_INFO(logger_, "Activating PID controller \"%s\".", plugin_name_.c_str());
   last_speed_cmd_valid_ = false;
+  last_angular_cmd_valid_ = false;
 }
 
 void PIDController::deactivate()
@@ -421,7 +430,13 @@ geometry_msgs::msg::TwistStamped PIDController::computeVelocityCommands(
     return cmd_vel;
   }
 
-  desired_linear_vel_ = controller_traj_[plan_index_].speed_limit;
+  // 速度参考与瞄准目标解耦：plan_index_ 距终点内会锁定到终点索引（瞄准需要），
+  // 但终点的 speed_limit 是收尾蠕行值——直接拿它当 desired_v 会在锁定的瞬间
+  // 跳变到蠕行速度，而不是沿轨迹连续下降。这里单独做最近点搜索取速度。
+  double traj_v = 0.0;
+  double traj_ff_accel = 0.0;
+  const bool have_traj_speed = nearestTrajectorySpeed(current_ps_, traj_v, traj_ff_accel);
+  desired_linear_vel_ = have_traj_speed ? traj_v : controller_traj_[plan_index_].speed_limit;
   // clamp the per-point desired speed by the externally-imposed speed limit
   if (std::isfinite(speed_limit_)) {
     desired_linear_vel_ = std::min(std::fabs(desired_linear_vel_), speed_limit_) *
@@ -627,6 +642,7 @@ geometry_msgs::msg::TwistStamped PIDController::computeVelocityCommands(
       station_nav2_pid_controller_.Reset();
       speed_nav2_pid_controller_.Reset();
       last_speed_cmd_valid_ = false;
+      last_angular_cmd_valid_ = false;
       resetRotationWatchdog(theta_rob);
     }
     switch (curr_controller_stage_) {
@@ -704,11 +720,8 @@ geometry_msgs::msg::TwistStamped PIDController::computeVelocityCommands(
           // 配合上方瞄准点已锁定终点（不再随机器人平移漂移）共同压住这个反馈。
           const double heading_scale = headingSpeedScale(err_theta);
           const double max_cmd_v = raw_max_cmd_v * heading_scale;
-          const double ff_accel = (plan_index_ >= 0 &&
-            static_cast<size_t>(plan_index_) < controller_traj_.size()) ?
-            controller_traj_[plan_index_].accel : 0.0;
           cmd_vel.twist.linear.x = LinearSpeedControl(
-            velocity, err_x, max_cmd_v, desired_v, 0.0, ff_accel);
+            velocity, err_x, max_cmd_v, desired_v, 0.0, traj_ff_accel);
           cmd_vel.twist.angular.z = AngularSpeedControl(velocity, err_theta);
           break;
         }
@@ -914,44 +927,67 @@ double PIDController::LinearSpeedControl(
 }
 
 double PIDController::AngularSpeedControl(
-  const geometry_msgs::msg::Twist & /*velocity*/, double err_theta, bool final_rotation)
+  const geometry_msgs::msg::Twist & velocity, double err_theta, bool final_rotation)
 {
   regularizeAngle(err_theta);
   if (std::fabs(err_theta) <= angular_error_deadband_) {
     angular_station_nav2_pid_controller_.Reset();
+    last_angular_cmd_ = 0.0;
+    last_angular_cmd_valid_ = true;
     return 0.0;
   }
 
-  double vel_angular_output = 0.0;
+  double target_w = 0.0;
   if (final_rotation) {
-    vel_angular_output = angular_station_pid_conf_.kp * err_theta;
+    target_w = angular_station_pid_conf_.kp * err_theta;
   } else {
-    vel_angular_output = angular_station_nav2_pid_controller_.Control(err_theta, d_t_);
+    target_w = angular_station_nav2_pid_controller_.Control(err_theta, d_t_);
   }
 
-  if (!std::isfinite(vel_angular_output)) {
-    vel_angular_output = 0.0;
+  if (!std::isfinite(target_w)) {
+    target_w = 0.0;
   }
 
-  if (vel_angular_output * err_theta < 0.0) {
+  if (target_w * err_theta < 0.0) {
     RCLCPP_WARN_THROTTLE(
       logger_, *clock_, 1000,
       "Angular PID output reversed: error=%.4f raw_wz=%.4f, forcing error direction",
-      err_theta, vel_angular_output);
-    vel_angular_output = std::copysign(min_w_, err_theta);
+      err_theta, target_w);
+    target_w = std::copysign(min_w_, err_theta);
   }
 
   const double angular_sign = std::copysign(1.0, err_theta);
-  double angular_abs = std::fabs(vel_angular_output);
-  if (min_w_ > 0.0 && angular_abs < min_w_) {
-    angular_abs = min_w_;
+  double target_abs = std::fabs(target_w);
+  if (min_w_ > 0.0 && target_abs < min_w_) {
+    target_abs = min_w_;
   }
-  if (angular_abs > 0.0) {
-    angular_abs = std::clamp(angular_abs, min_w_, max_w_);
+  if (target_abs > 0.0) {
+    target_abs = std::clamp(target_abs, min_w_, max_w_);
   }
-  vel_angular_output = angular_sign * angular_abs;
+  target_w = angular_sign * target_abs;
 
-  return vel_angular_output;
+  // 变化率限幅：镜像线速度通道的加速度积分器（指令锚定上一周期、实测只在
+  // 重新播种时参与）——朝向误差突变（如切入 ROTATING_TO_GOAL）时角速度
+  // 不再单周期直接砸到 target_w，而是按 max_w_inc_ 逐周期爬升/制动。
+  double curr_w = velocity.angular.z;
+  if (!last_angular_cmd_valid_ ||
+    std::fabs(last_angular_cmd_ - curr_w) > angular_cmd_reseed_error_)
+  {
+    last_angular_cmd_ = curr_w;
+    last_angular_cmd_valid_ = true;
+  }
+  const double angular_accel_cmd = std::clamp(
+    (target_w - last_angular_cmd_) / d_t_, -std::fabs(max_w_inc_), std::fabs(max_w_inc_));
+  double w_output = last_angular_cmd_ + angular_accel_cmd * d_t_;
+
+  // 符号感知输出界：target_w 既是跟踪参考也是上限，不越过目标；制动权保留
+  // （可低于目标直至 0，同线速度通道 bound_hi/bound_lo 模式）。
+  const double bound_hi = std::max(0.0, target_w);
+  const double bound_lo = std::min(0.0, target_w);
+  w_output = std::clamp(w_output, bound_lo, bound_hi);
+
+  last_angular_cmd_ = w_output;
+  return w_output;
 }
 
 double PIDController::CalculateMean(const std::deque<double> & data)
@@ -1049,6 +1085,48 @@ bool PIDController::pruneGlobalPlan(
   }
   if (erase_end != traj.begin()) {
     traj.erase(traj.begin(), erase_end);
+  }
+  return true;
+}
+
+bool PIDController::nearestTrajectorySpeed(
+  const geometry_msgs::msg::PoseStamped & pose, double & traj_speed, double & traj_accel)
+{
+  if (controller_traj_.empty()) {
+    return false;
+  }
+  double best_d2 = std::numeric_limits<double>::max();
+  size_t best_i = 0;
+  for (size_t i = 0; i < controller_traj_.size(); ++i) {
+    const double dx = controller_traj_[i].pose.pose.position.x - pose.pose.position.x;
+    const double dy = controller_traj_[i].pose.pose.position.y - pose.pose.position.y;
+    const double d2 = dx * dx + dy * dy;
+    if (d2 < best_d2) {
+      best_d2 = d2;
+      best_i = i;
+    }
+  }
+  // 速度目标 = 最近点之后前方窗内的 max，且排除最近点自身：最近点几乎恒为
+  // 规划层 receding-horizon 剖面的状态戳首点（=当前实测速度），纳入 max 会
+  // 让目标自我背书。accel 与速度窗同基准取首个前方点的值。
+  if (best_i + 1 >= controller_traj_.size()) {
+    traj_speed = controller_traj_[best_i].speed_limit;  // 已在末点，无前方点可用
+    traj_accel = controller_traj_[best_i].accel;
+    return true;
+  }
+  traj_accel = controller_traj_[best_i + 1].accel;
+  traj_speed = 0.0;
+  double dist = 0.0;
+  for (size_t i = best_i + 1; i < controller_traj_.size(); ++i) {
+    const double dx = controller_traj_[i].pose.pose.position.x -
+      controller_traj_[i - 1].pose.pose.position.x;
+    const double dy = controller_traj_[i].pose.pose.position.y -
+      controller_traj_[i - 1].pose.pose.position.y;
+    dist += std::hypot(dx, dy);
+    traj_speed = std::max(traj_speed, controller_traj_[i].speed_limit);
+    if (dist > traj_speed_lookahead_) {
+      break;
+    }
   }
   return true;
 }
