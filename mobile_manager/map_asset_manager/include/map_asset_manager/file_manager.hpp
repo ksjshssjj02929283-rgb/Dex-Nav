@@ -28,20 +28,23 @@ public:
     bool loadAreasFromFile(const std::string& file_path, std::unordered_map<std::string, Area>& out);
     bool saveAreasToFile(const std::string& file_path, const std::unordered_map<std::string, Area>& in);
 
-    // ── 统一资产文件（map_assets.json）──────────────────────────────
-    // 一个文件包含 points / routes / areas / route_graph 四个部分
+    // ── 统一资产文件（map_assets.json，v2.0 含 DSG dsg.layers.ROOMS 段）─────
+    // 一个文件包含 points / routes / areas / route_graph / dsg.layers.ROOMS 五个部分
+    // 旧版（v1.x）文件中 rooms 段缺失时视为空，向后兼容
     bool loadAllAssetsFromFile(const std::string& file_path,
                                std::unordered_map<std::string, NavPoint>& points,
                                std::unordered_map<std::string, Route>& routes,
                                std::unordered_map<std::string, Area>& areas,
                                std::vector<RouteJunction>& junctions,
-                               std::vector<RouteEdge>& edges);
+                               std::vector<RouteEdge>& edges,
+                               std::unordered_map<std::string, Room>& rooms);
     bool saveAllAssetsToFile(const std::string& file_path,
                              const std::unordered_map<std::string, NavPoint>& points,
                              const std::unordered_map<std::string, Route>& routes,
                              const std::unordered_map<std::string, Area>& areas,
                              const std::vector<RouteJunction>& junctions,
-                             const std::vector<RouteEdge>& edges);
+                             const std::vector<RouteEdge>& edges,
+                             const std::unordered_map<std::string, Room>& rooms);
 
     // ── 地图文件夹加载（旧接口，保留兼容）──────────────────────────
     bool loadMapFolder(const std::string& base_path,

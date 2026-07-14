@@ -56,7 +56,9 @@ void JunctionStore::set(const std::vector<RouteJunction>& junctions) {
     }
 }
 
-std::vector<RouteJunction> JunctionStore::getList() const { return getAll(); }
+std::vector<RouteJunction> JunctionStore::getList() const {
+    return getAll();
+}
 
 void JunctionStore::clear() {
     std::lock_guard<std::mutex> lock(mutex_);

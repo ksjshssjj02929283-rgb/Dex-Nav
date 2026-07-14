@@ -3,16 +3,18 @@
 
 #include "map_asset_rviz_plugin/delete_junction_tool.hpp"
 
+#include <QMessageBox>
+
 #include <OgreManualObject.h>
 #include <OgreSceneManager.h>
 
-#include <QMessageBox>
 #include <nav_interfaces/srv/remove_route_junction.hpp>
-#include <pluginlib/class_list_macros.hpp>
 #include <rviz_common/display_context.hpp>
 #include <rviz_common/interaction/view_picker_iface.hpp>
 #include <rviz_common/ros_integration/ros_node_abstraction_iface.hpp>
 #include <rviz_common/viewport_mouse_event.hpp>
+
+#include <pluginlib/class_list_macros.hpp>
 
 namespace map_asset_rviz_plugin {
 
@@ -23,14 +25,8 @@ DeleteJunctionTool::DeleteJunctionTool() {
 DeleteJunctionTool::~DeleteJunctionTool() {
     if (context_) {
         auto* scene = context_->getSceneManager();
-        if (preview_node_) {
-            scene->destroySceneNode(preview_node_);
-            preview_node_ = nullptr;
-        }
-        if (preview_obj_) {
-            scene->destroyManualObject(preview_obj_);
-            preview_obj_ = nullptr;
-        }
+        if (preview_node_) { scene->destroySceneNode(preview_node_); preview_node_ = nullptr; }
+        if (preview_obj_)  { scene->destroyManualObject(preview_obj_); preview_obj_ = nullptr; }
     }
 }
 
@@ -38,7 +34,8 @@ void DeleteJunctionTool::onInitialize() {
     node_ = context_->getRosNodeAbstraction().lock()->get_raw_node();
     auto* scene = context_->getSceneManager();
 
-    const std::string name = "map_asset_deljct_preview_" + std::to_string(reinterpret_cast<uintptr_t>(this));
+    const std::string name =
+        "map_asset_deljct_preview_" + std::to_string(reinterpret_cast<uintptr_t>(this));
     preview_obj_ = scene->createManualObject(name);
     preview_obj_->setDynamic(true);
     preview_node_ = scene->getRootSceneNode()->createChildSceneNode();
@@ -49,7 +46,9 @@ void DeleteJunctionTool::onInitialize() {
 void DeleteJunctionTool::activate() {
     reloadJunctions();
     hovered_ = nullptr;
-    setStatus(junctions_.empty() ? "当前没有 Junction（请先添加）" : "悬停到 Junction 上，左键删除；右键退出");
+    setStatus(junctions_.empty()
+        ? "当前没有 Junction（请先添加）"
+        : "悬停到 Junction 上，左键删除；右键退出");
 }
 
 void DeleteJunctionTool::deactivate() {
@@ -82,13 +81,13 @@ int DeleteJunctionTool::processMouseEvent(rviz_common::ViewportMouseEvent& event
         }
 
         // 二次确认
-        const auto ans =
-            QMessageBox::question(nullptr, "确认删除",
-                                  QString("删除 Junction '%1' (%.3f, %.3f)？\n（关联的路网边也将一并删除）")
-                                      .arg(QString::fromStdString(hovered_->id))
-                                      .arg(hovered_->x)
-                                      .arg(hovered_->y),
-                                  QMessageBox::Yes | QMessageBox::No);
+        const auto ans = QMessageBox::question(
+            nullptr, "确认删除",
+            QString("删除 Junction '%1' (%.3f, %.3f)？\n（关联的路网边也将一并删除）")
+                .arg(QString::fromStdString(hovered_->id))
+                .arg(hovered_->x)
+                .arg(hovered_->y),
+            QMessageBox::Yes | QMessageBox::No);
         if (ans != QMessageBox::Yes) {
             setStatus("取消删除");
             return Render;
@@ -114,7 +113,9 @@ int DeleteJunctionTool::processMouseEvent(rviz_common::ViewportMouseEvent& event
 
 // ---------------------------------------------------------------------------
 
-void DeleteJunctionTool::reloadJunctions() { junctions_ = loadJunctions(node_, service_prefix_); }
+void DeleteJunctionTool::reloadJunctions() {
+    junctions_ = loadJunctions(node_, service_prefix_);
+}
 
 void DeleteJunctionTool::updateHighlight(double mx, double my) {
     hovered_ = findNearest(mx, my, junctions_, kSnapRadius);
@@ -128,31 +129,37 @@ void DeleteJunctionTool::updateHighlight(double mx, double my) {
 
     preview_node_->setVisible(true);
     // 外圈（红色高亮）
-    drawRing(preview_obj_, hovered_->x, hovered_->y, kPreviewZ, 0.22f, 1.0f, 0.2f, 0.2f);
+    drawRing(preview_obj_, hovered_->x, hovered_->y, kPreviewZ, 0.22f,
+             1.0f, 0.2f, 0.2f);
     // 内圈
-    drawRing(preview_obj_, hovered_->x, hovered_->y, kPreviewZ, 0.08f, 1.0f, 0.5f, 0.5f);
+    drawRing(preview_obj_, hovered_->x, hovered_->y, kPreviewZ, 0.08f,
+             1.0f, 0.5f, 0.5f);
 
-    setStatus(QString("找到 Junction: %1，左键删除").arg(QString::fromStdString(hovered_->id)));
+    setStatus(QString("找到 Junction: %1，左键删除")
+                  .arg(QString::fromStdString(hovered_->id)));
 }
 
 void DeleteJunctionTool::clearPreview() {
-    if (preview_obj_) preview_obj_->clear();
+    if (preview_obj_)  preview_obj_->clear();
     if (preview_node_) preview_node_->setVisible(false);
 }
 
 void DeleteJunctionTool::doDelete(const EndpointInfo& ep) {
-    auto client =
-        node_->create_client<nav_interfaces::srv::RemoveRouteJunction>(service_prefix_ + "/remove_route_junction");
-    auto req = std::make_shared<nav_interfaces::srv::RemoveRouteJunction::Request>();
+    auto client = node_->create_client<nav_interfaces::srv::RemoveRouteJunction>(
+        service_prefix_ + "/remove_route_junction");
+    auto req     = std::make_shared<nav_interfaces::srv::RemoveRouteJunction::Request>();
     req->id = ep.id;
 
     const QString display_id = QString::fromStdString(ep.id);
-    client->async_send_request(
-        req, [this, display_id](rclcpp::Client<nav_interfaces::srv::RemoveRouteJunction>::SharedFuture fut) {
+    client->async_send_request(req,
+        [this, display_id](
+            rclcpp::Client<nav_interfaces::srv::RemoveRouteJunction>::SharedFuture fut) {
             try {
                 auto resp = fut.get();
-                setStatus(resp->success ? QString("Junction '%1' 已删除").arg(display_id)
-                                        : QString("删除失败: %1").arg(QString::fromStdString(resp->message)));
+                setStatus(resp->success
+                    ? QString("Junction '%1' 已删除").arg(display_id)
+                    : QString("删除失败: %1").arg(
+                          QString::fromStdString(resp->message)));
             } catch (const std::exception& ex) {
                 setStatus(QString("异常: %1").arg(ex.what()));
             }
@@ -160,7 +167,7 @@ void DeleteJunctionTool::doDelete(const EndpointInfo& ep) {
 }
 
 void DeleteJunctionTool::load(const rviz_common::Config& config) { Tool::load(config); }
-void DeleteJunctionTool::save(rviz_common::Config config) const { Tool::save(config); }
+void DeleteJunctionTool::save(rviz_common::Config config) const  { Tool::save(config); }
 
 }  // namespace map_asset_rviz_plugin
 

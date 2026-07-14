@@ -1,9 +1,5 @@
 #include "map_asset_rviz_plugin/add_area_tool.hpp"
 
-#include <OgreManualObject.h>
-#include <OgreSceneManager.h>
-#include <OgreVector3.h>
-
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDialog>
@@ -15,6 +11,11 @@
 #include <QLineEdit>
 #include <QTimer>
 #include <QVBoxLayout>
+
+#include <OgreManualObject.h>
+#include <OgreSceneManager.h>
+#include <OgreVector3.h>
+
 #include <rviz_common/display_context.hpp>
 #include <rviz_common/interaction/view_picker_iface.hpp>
 #include <rviz_common/ros_integration/ros_node_abstraction_iface.hpp>
@@ -29,20 +30,28 @@ namespace map_asset_rviz_plugin {
 // ──────────────────────────────────────────────────────────────────────
 
 struct AreaTypeDef {
-    uint32_t value;
+    uint32_t    value;
     const char* label;
 };
 
 static const AreaTypeDef kAreaTypes[] = {
-    {1, "虚拟墙 (VIRTUAL_WALL)"},  {2, "禁行区 (RESTRICTED_AREA)"},    {3, "减速区 (SPEED_LIMIT_AREA)"},
-    {4, "绕障区 (DETOUR_AREA)"},   {5, "停障区 (STOP_OBSTACLE_AREA)"}, {6, "停车区 (PARKING_AREA)"},
-    {7, "充电区 (CHARGING_AREA)"}, {8, "电梯区 (ELEVATOR_AREA)"},      {9, "颠簸区 (BUMPY_AREA)"},
+    {1, "虚拟墙 (VIRTUAL_WALL)"},
+    {2, "禁行区 (RESTRICTED_AREA)"},
+    {3, "减速区 (SPEED_LIMIT_AREA)"},
+    {4, "绕障区 (DETOUR_AREA)"},
+    {5, "停障区 (STOP_OBSTACLE_AREA)"},
+    {6, "停车区 (PARKING_AREA)"},
+    {7, "充电区 (CHARGING_AREA)"},
+    {8, "电梯区 (ELEVATOR_AREA)"},
+    {9, "颠簸区 (BUMPY_AREA)"},
 };
 static constexpr int kAreaTypeCount = static_cast<int>(sizeof(kAreaTypes) / sizeof(kAreaTypes[0]));
 
 // ──────────────────────────────────────────────────────────────────────
 
-AddAreaTool::AddAreaTool() { shortcut_key_ = 'a'; }
+AddAreaTool::AddAreaTool() {
+    shortcut_key_ = 'a';
+}
 
 AddAreaTool::~AddAreaTool() {
     if (preview_node_ && context_) {
@@ -52,7 +61,7 @@ AddAreaTool::~AddAreaTool() {
 }
 
 void AddAreaTool::onInitialize() {
-    node_ = context_->getRosNodeAbstraction().lock()->get_raw_node();
+    node_   = context_->getRosNodeAbstraction().lock()->get_raw_node();
     client_ = node_->create_client<nav_interfaces::srv::AddAreaInfo>(service_name_);
 
     auto* scene = context_->getSceneManager();
@@ -69,24 +78,15 @@ void AddAreaTool::onInitialize() {
 
 AddAreaTool::Color AddAreaTool::typeColor(uint32_t type) {
     switch (type) {
-        case 1:
-            return {0.9f, 0.9f, 0.9f};  // 虚拟墙 - 白灰
-        case 2:
-            return {1.0f, 0.0f, 0.0f};  // 禁行 - 红
-        case 3:
-            return {1.0f, 0.8f, 0.0f};  // 减速 - 黄
-        case 4:
-            return {0.0f, 0.9f, 0.9f};  // 绕障 - 青
-        case 5:
-            return {1.0f, 0.5f, 0.0f};  // 停障 - 橙
-        case 6:
-            return {0.0f, 0.8f, 0.0f};  // 停车 - 绿
-        case 7:
-            return {0.2f, 0.5f, 1.0f};  // 充电 - 蓝
-        case 8:
-            return {0.7f, 0.3f, 1.0f};  // 电梯 - 紫
-        default:
-            return {0.6f, 0.6f, 0.6f};
+        case 1:  return {0.9f, 0.9f, 0.9f};  // 虚拟墙 - 白灰
+        case 2:  return {1.0f, 0.0f, 0.0f};  // 禁行 - 红
+        case 3:  return {1.0f, 0.8f, 0.0f};  // 减速 - 黄
+        case 4:  return {0.0f, 0.9f, 0.9f};  // 绕障 - 青
+        case 5:  return {1.0f, 0.5f, 0.0f};  // 停障 - 橙
+        case 6:  return {0.0f, 0.8f, 0.0f};  // 停车 - 绿
+        case 7:  return {0.2f, 0.5f, 1.0f};  // 充电 - 蓝
+        case 8:  return {0.7f, 0.3f, 1.0f};  // 电梯 - 紫
+        default: return {0.6f, 0.6f, 0.6f};
     }
 }
 
@@ -100,10 +100,11 @@ bool AddAreaTool::showPreDialog() {
     dlg.setMinimumWidth(360);
 
     // ── 基础字段 ──────────────────────────────────────────────────
-    auto* name_edit = new QLineEdit();
+    auto* name_edit  = new QLineEdit();
     auto* type_combo = new QComboBox();
     for (int i = 0; i < kAreaTypeCount; ++i) {
-        type_combo->addItem(kAreaTypes[i].label, static_cast<unsigned int>(kAreaTypes[i].value));
+        type_combo->addItem(kAreaTypes[i].label,
+                            static_cast<unsigned int>(kAreaTypes[i].value));
     }
 
     // ── 类型专属字段 ──────────────────────────────────────────────
@@ -155,8 +156,7 @@ bool AddAreaTool::showPreDialog() {
     depth_min_height_spin->setValue(0.1);
     depth_min_height_spin->setSingleStep(0.05);
     depth_min_height_spin->setSuffix(" m");
-    depth_min_height_spin->setToolTip(
-        "深度相机最小有效检测高度，高于此值的物体才触发避障，\n用于忽略地面颠簸产生的噪点");
+    depth_min_height_spin->setToolTip("深度相机最小有效检测高度，高于此值的物体才触发避障，\n用于忽略地面颠簸产生的噪点");
     {
         auto* fl = new QFormLayout(bumpy_box);
         fl->addRow("限速:", bumpy_speed_spin);
@@ -200,12 +200,12 @@ bool AddAreaTool::showPreDialog() {
     area_name_ = name_edit->text().trimmed().toStdString();
     if (area_name_.empty()) return false;
 
-    area_type_ = type_combo->currentData().toUInt();
-    area_max_speed_ = static_cast<float>(speed_spin->value());
+    area_type_          = type_combo->currentData().toUInt();
+    area_max_speed_     = static_cast<float>(speed_spin->value());
     area_stop_distance_ = static_cast<float>(stop_spin->value());
-    area_linked_point_ = linked_edit->text().toStdString();
-    area_charger_type_ = (charger_type_combo->currentIndex() == 0) ? "WIRELESS" : "CONTACT";
-    area_max_speed_ = static_cast<float>(bumpy_speed_spin->value());
+    area_linked_point_  = linked_edit->text().toStdString();
+    area_charger_type_  = (charger_type_combo->currentIndex() == 0) ? "WIRELESS" : "CONTACT";
+    area_max_speed_        = static_cast<float>(bumpy_speed_spin->value());
     area_depth_min_height_ = static_cast<float>(depth_min_height_spin->value());
 
     preview_color_ = typeColor(area_type_);
@@ -226,7 +226,8 @@ void AddAreaTool::activate() {
         // 延迟切回默认工具，避免在 activate() 执行中途切换
         QTimer::singleShot(0, [this]() {
             if (context_ && context_->getToolManager()) {
-                context_->getToolManager()->setCurrentTool(context_->getToolManager()->getDefaultTool());
+                context_->getToolManager()->setCurrentTool(
+                    context_->getToolManager()->getDefaultTool());
             }
         });
         return;
@@ -234,10 +235,11 @@ void AddAreaTool::activate() {
 
     if (preview_node_) preview_node_->setVisible(true);
     if (area_type_ == 1) {
-        setStatus(
-            QString("【虚拟墙 %1】左键添加顶点，右键完成（需 ≥2 个顶点）").arg(QString::fromStdString(area_name_)));
+        setStatus(QString("【虚拟墙 %1】左键添加顶点，右键完成（需 ≥2 个顶点）")
+                      .arg(QString::fromStdString(area_name_)));
     } else {
-        setStatus(QString("【%1】左键添加顶点，右键完成（需 ≥3 个顶点）").arg(QString::fromStdString(area_name_)));
+        setStatus(QString("【%1】左键添加顶点，右键完成（需 ≥3 个顶点）")
+                      .arg(QString::fromStdString(area_name_)));
     }
 }
 
@@ -267,8 +269,8 @@ int AddAreaTool::processMouseEvent(rviz_common::ViewportMouseEvent& event) {
         }
 
         geometry_msgs::msg::Pose2D v;
-        v.x = static_cast<double>(pos.x);
-        v.y = static_cast<double>(pos.y);
+        v.x     = static_cast<double>(pos.x);
+        v.y     = static_cast<double>(pos.y);
         v.theta = 0.0;
         vertices_.push_back(v);
         updatePreviewLine();
@@ -290,7 +292,8 @@ int AddAreaTool::processMouseEvent(rviz_common::ViewportMouseEvent& event) {
 void AddAreaTool::finishPolygon() {
     const size_t min_verts = (area_type_ == 1) ? 2u : 3u;
     if (vertices_.size() < min_verts) {
-        setStatus(QString("顶点不足（当前 %1 个，需 ≥%2）").arg(vertices_.size()).arg(min_verts));
+        setStatus(QString("顶点不足（当前 %1 个，需 ≥%2）")
+                      .arg(vertices_.size()).arg(min_verts));
         resetPolygon();
         return;
     }
@@ -304,28 +307,31 @@ void AddAreaTool::finishPolygon() {
     }
 
     auto req = std::make_shared<nav_interfaces::srv::AddAreaInfo::Request>();
-    req->area_info.name = area_name_;
-    req->area_info.type = area_type_;
-    req->area_info.max_speed = area_max_speed_;
-    req->area_info.stop_distance = area_stop_distance_;
+    req->area_info.name              = area_name_;
+    req->area_info.type              = area_type_;
+    req->area_info.max_speed         = area_max_speed_;
+    req->area_info.stop_distance     = area_stop_distance_;
     if (!area_linked_point_.empty()) {
         req->area_info.manual_linked_point_names.push_back(area_linked_point_);
     }
-    req->area_info.charger_type = area_charger_type_;
-    req->area_info.depth_min_height = area_depth_min_height_;
-    req->area_info.polygon = verts;
+    req->area_info.charger_type      = area_charger_type_;
+    req->area_info.depth_min_height  = area_depth_min_height_;
+    req->area_info.polygon           = verts;
 
     setStatus(QString("正在添加区域 【%1】...").arg(QString::fromStdString(area_name_)));
 
-    client_->async_send_request(req, [this](rclcpp::Client<nav_interfaces::srv::AddAreaInfo>::SharedFuture fut) {
-        try {
-            auto resp = fut.get();
-            setStatus(resp->success ? QString("区域 【%1】 添加成功").arg(QString::fromStdString(area_name_))
-                                    : QString("区域 【%1】 添加失败").arg(QString::fromStdString(area_name_)));
-        } catch (const std::exception& ex) {
-            setStatus(QString("添加异常: %1").arg(ex.what()));
-        }
-    });
+    client_->async_send_request(
+        req,
+        [this](rclcpp::Client<nav_interfaces::srv::AddAreaInfo>::SharedFuture fut) {
+            try {
+                auto resp = fut.get();
+                setStatus(resp->success
+                              ? QString("区域 【%1】 添加成功").arg(QString::fromStdString(area_name_))
+                              : QString("区域 【%1】 添加失败").arg(QString::fromStdString(area_name_)));
+            } catch (const std::exception& ex) {
+                setStatus(QString("添加异常: %1").arg(ex.what()));
+            }
+        });
 }
 
 void AddAreaTool::resetPolygon() {
@@ -342,13 +348,18 @@ void AddAreaTool::updatePreviewLine() {
     const auto& col = preview_color_;
     for (const auto& v : vertices_) {
         preview_line_->colour(col.r, col.g, col.b, 1.0f);
-        preview_line_->position(static_cast<float>(v.x), static_cast<float>(v.y), 0.05f);
+        preview_line_->position(
+            static_cast<float>(v.x),
+            static_cast<float>(v.y),
+            0.05f);
     }
     // 多边形闭合回第一个顶点（虚拟墙 type=1 不闭合）
     if (area_type_ != 1 && vertices_.size() >= 2) {
         preview_line_->colour(col.r, col.g, col.b, 0.5f);
-        preview_line_->position(static_cast<float>(vertices_.front().x), static_cast<float>(vertices_.front().y),
-                                0.05f);
+        preview_line_->position(
+            static_cast<float>(vertices_.front().x),
+            static_cast<float>(vertices_.front().y),
+            0.05f);
     }
 
     preview_line_->end();
@@ -358,9 +369,13 @@ void AddAreaTool::updatePreviewLine() {
 // 配置持久化
 // ──────────────────────────────────────────────────────────────────────
 
-void AddAreaTool::load(const rviz_common::Config& config) { Tool::load(config); }
+void AddAreaTool::load(const rviz_common::Config& config) {
+    Tool::load(config);
+}
 
-void AddAreaTool::save(rviz_common::Config config) const { Tool::save(config); }
+void AddAreaTool::save(rviz_common::Config config) const {
+    Tool::save(config);
+}
 
 }  // namespace map_asset_rviz_plugin
 

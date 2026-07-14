@@ -8,32 +8,32 @@ namespace map_asset_manager {
 
 static nav_interfaces::msg::RouteEndpoint toMsg(const RouteEndpoint& ep) {
     nav_interfaces::msg::RouteEndpoint msg;
-    msg.id = ep.id;
+    msg.id   = ep.id;
     msg.type = ep.type;
     return msg;
 }
 
 static nav_interfaces::msg::RouteJunction toMsg(const RouteJunction& jct) {
     nav_interfaces::msg::RouteJunction msg;
-    msg.id = jct.id;
-    msg.x = jct.x;
-    msg.y = jct.y;
+    msg.id  = jct.id;
+    msg.x   = jct.x;
+    msg.y   = jct.y;
     msg.yaw = jct.yaw;
     return msg;
 }
 
 static nav_interfaces::msg::RouteEdge toMsg(const RouteEdge& e) {
     nav_interfaces::msg::RouteEdge msg;
-    msg.id = e.id;
-    msg.from_ep = toMsg(e.from);
-    msg.to_ep = toMsg(e.to);
-    msg.edge_type = e.edge_type;
+    msg.id            = e.id;
+    msg.from_ep       = toMsg(e.from);
+    msg.to_ep         = toMsg(e.to);
+    msg.edge_type     = e.edge_type;
     msg.bidirectional = e.bidirectional;
-    msg.max_speed = e.max_speed;
-    msg.xy_tolerance = e.xy_tolerance;
-    msg.th_tolerance = e.th_tolerance;
-    msg.lane_width = e.lane_width;
-    msg.obs_policy = e.obs_policy;
+    msg.max_speed     = e.max_speed;
+    msg.xy_tolerance  = e.xy_tolerance;
+    msg.th_tolerance  = e.th_tolerance;
+    msg.lane_width    = e.lane_width;
+    msg.obs_policy    = e.obs_policy;
     for (const auto& cp : e.control_points) {
         geometry_msgs::msg::Point p;
         p.x = cp.first;
@@ -44,31 +44,34 @@ static nav_interfaces::msg::RouteEdge toMsg(const RouteEdge& e) {
     return msg;
 }
 
-static RouteEndpoint fromMsg(const nav_interfaces::msg::RouteEndpoint& msg) { return {msg.id, msg.type}; }
+static RouteEndpoint fromMsg(const nav_interfaces::msg::RouteEndpoint& msg) {
+    return {msg.id, msg.type};
+}
 
 static RouteJunction fromMsg(const nav_interfaces::msg::RouteJunction& msg) {
     RouteJunction jct;
-    jct.id = msg.id;
-    jct.x = msg.x;
-    jct.y = msg.y;
+    jct.id  = msg.id;
+    jct.x   = msg.x;
+    jct.y   = msg.y;
     jct.yaw = msg.yaw;
     return jct;
 }
 
 static RouteEdge fromMsg(const nav_interfaces::msg::RouteEdge& msg) {
     RouteEdge e;
-    e.id = msg.id;
-    e.from = fromMsg(msg.from_ep);
-    e.to = fromMsg(msg.to_ep);
-    e.edge_type = msg.edge_type;
-    e.bidirectional = msg.bidirectional;
-    e.max_speed = msg.max_speed;
+    e.id           = msg.id;
+    e.from         = fromMsg(msg.from_ep);
+    e.to           = fromMsg(msg.to_ep);
+    e.edge_type    = msg.edge_type;
+    e.bidirectional= msg.bidirectional;
+    e.max_speed    = msg.max_speed;
     e.xy_tolerance = msg.xy_tolerance;
     e.th_tolerance = msg.th_tolerance;
-    e.lane_width = msg.lane_width;
-    e.obs_policy = msg.obs_policy;
+    e.lane_width   = msg.lane_width;
+    e.obs_policy   = msg.obs_policy;
     for (const auto& cp : msg.control_points) {
-        e.control_points.emplace_back(static_cast<float>(cp.x), static_cast<float>(cp.y));
+        e.control_points.emplace_back(static_cast<float>(cp.x),
+                                      static_cast<float>(cp.y));
     }
     return e;
 }
@@ -77,42 +80,53 @@ static RouteEdge fromMsg(const nav_interfaces::msg::RouteEdge& msg) {
 // Constructor
 // ──────────────────────────────────────────────────────────────────────
 
-RouteGraphManager::RouteGraphManager(rclcpp::Node* node,
-                                     std::shared_ptr<JunctionStore> junction_store,
-                                     std::shared_ptr<RouteEdgeStore> edge_store,
-                                     std::shared_ptr<PointStore> point_store,
-                                     std::function<void()> save_fn)
+RouteGraphManager::RouteGraphManager(
+    rclcpp::Node*                    node,
+    std::shared_ptr<JunctionStore>   junction_store,
+    std::shared_ptr<RouteEdgeStore>  edge_store,
+    std::shared_ptr<PointStore>      point_store,
+    std::shared_ptr<DataEventBus>    event_bus,
+    std::function<void()>            save_fn)
     : node_(node),
       junction_store_(junction_store),
       edge_store_(edge_store),
       point_store_(point_store),
-      save_fn_(save_fn) {
+      event_bus_(event_bus),
+      save_fn_(save_fn)
+{
     add_junction_srv_ = node->create_service<nav_interfaces::srv::AddRouteJunction>(
         "~/add_route_junction",
-        std::bind(&RouteGraphManager::addJunctionCallback, this, std::placeholders::_1, std::placeholders::_2));
+        std::bind(&RouteGraphManager::addJunctionCallback, this,
+                  std::placeholders::_1, std::placeholders::_2));
 
     remove_junction_srv_ = node->create_service<nav_interfaces::srv::RemoveRouteJunction>(
         "~/remove_route_junction",
-        std::bind(&RouteGraphManager::removeJunctionCallback, this, std::placeholders::_1, std::placeholders::_2));
+        std::bind(&RouteGraphManager::removeJunctionCallback, this,
+                  std::placeholders::_1, std::placeholders::_2));
 
     add_edge_srv_ = node->create_service<nav_interfaces::srv::AddRouteEdge>(
         "~/add_route_edge",
-        std::bind(&RouteGraphManager::addEdgeCallback, this, std::placeholders::_1, std::placeholders::_2));
+        std::bind(&RouteGraphManager::addEdgeCallback, this,
+                  std::placeholders::_1, std::placeholders::_2));
 
     remove_edge_srv_ = node->create_service<nav_interfaces::srv::RemoveRouteEdge>(
         "~/remove_route_edge",
-        std::bind(&RouteGraphManager::removeEdgeCallback, this, std::placeholders::_1, std::placeholders::_2));
+        std::bind(&RouteGraphManager::removeEdgeCallback, this,
+                  std::placeholders::_1, std::placeholders::_2));
 
     update_edge_srv_ = node->create_service<nav_interfaces::srv::UpdateRouteEdge>(
         "~/update_route_edge",
-        std::bind(&RouteGraphManager::updateEdgeCallback, this, std::placeholders::_1, std::placeholders::_2));
+        std::bind(&RouteGraphManager::updateEdgeCallback, this,
+                  std::placeholders::_1, std::placeholders::_2));
 
     get_graph_srv_ = node->create_service<nav_interfaces::srv::GetRouteGraph>(
         "~/get_route_graph",
-        std::bind(&RouteGraphManager::getRouteGraphCallback, this, std::placeholders::_1, std::placeholders::_2));
+        std::bind(&RouteGraphManager::getRouteGraphCallback, this,
+                  std::placeholders::_1, std::placeholders::_2));
 
     auto qos = rclcpp::QoS(1).transient_local().reliable();
-    marker_pub_ = node->create_publisher<visualization_msgs::msg::MarkerArray>("~/route_graph_markers", qos);
+    marker_pub_ = node->create_publisher<visualization_msgs::msg::MarkerArray>(
+        "~/route_graph_markers", qos);
 
     RCLCPP_INFO(node->get_logger(), "RouteGraphManager initialized");
 }
@@ -121,8 +135,10 @@ RouteGraphManager::RouteGraphManager(rclcpp::Node* node,
 // Junction CRUD
 // ──────────────────────────────────────────────────────────────────────
 
-void RouteGraphManager::addJunctionCallback(const std::shared_ptr<nav_interfaces::srv::AddRouteJunction::Request> req,
-                                            std::shared_ptr<nav_interfaces::srv::AddRouteJunction::Response> res) {
+void RouteGraphManager::addJunctionCallback(
+    const std::shared_ptr<nav_interfaces::srv::AddRouteJunction::Request> req,
+    std::shared_ptr<nav_interfaces::srv::AddRouteJunction::Response> res)
+{
     if (req->junction.id.empty()) {
         res->success = false;
         res->message = "Junction id must not be empty";
@@ -136,6 +152,11 @@ void RouteGraphManager::addJunctionCallback(const std::shared_ptr<nav_interfaces
     }
     save_fn_();
     publishMarkers();
+
+    if (event_bus_) {
+        event_bus_->publish({AssetEventType::JUNCTION_ADDED, jct.id, ""});
+    }
+
     res->success = true;
     res->message = "Added junction '" + jct.id + "'";
     RCLCPP_INFO(node_->get_logger(), "RouteGraph: added junction '%s'", jct.id.c_str());
@@ -143,7 +164,8 @@ void RouteGraphManager::addJunctionCallback(const std::shared_ptr<nav_interfaces
 
 void RouteGraphManager::removeJunctionCallback(
     const std::shared_ptr<nav_interfaces::srv::RemoveRouteJunction::Request> req,
-    std::shared_ptr<nav_interfaces::srv::RemoveRouteJunction::Response> res) {
+    std::shared_ptr<nav_interfaces::srv::RemoveRouteJunction::Response> res)
+{
     if (!junction_store_->has(req->id)) {
         res->success = false;
         res->message = "Junction '" + req->id + "' not found";
@@ -153,18 +175,26 @@ void RouteGraphManager::removeJunctionCallback(
     junction_store_->remove(req->id);
     save_fn_();
     publishMarkers();
+
+    if (event_bus_) {
+        event_bus_->publish({AssetEventType::JUNCTION_REMOVED, req->id, ""});
+    }
+
     res->success = true;
-    res->message = "Removed junction '" + req->id + "' and " + std::to_string(removed_edges.size()) + " edges";
-    RCLCPP_INFO(node_->get_logger(), "RouteGraph: removed junction '%s' + %zu edges", req->id.c_str(),
-                removed_edges.size());
+    res->message = "Removed junction '" + req->id + "' and " +
+                   std::to_string(removed_edges.size()) + " edges";
+    RCLCPP_INFO(node_->get_logger(), "RouteGraph: removed junction '%s' + %zu edges",
+                req->id.c_str(), removed_edges.size());
 }
 
 // ──────────────────────────────────────────────────────────────────────
 // Edge CRUD
 // ──────────────────────────────────────────────────────────────────────
 
-void RouteGraphManager::addEdgeCallback(const std::shared_ptr<nav_interfaces::srv::AddRouteEdge::Request> req,
-                                        std::shared_ptr<nav_interfaces::srv::AddRouteEdge::Response> res) {
+void RouteGraphManager::addEdgeCallback(
+    const std::shared_ptr<nav_interfaces::srv::AddRouteEdge::Request> req,
+    std::shared_ptr<nav_interfaces::srv::AddRouteEdge::Response> res)
+{
     auto edge = fromMsg(req->edge);
     if (edge.id.empty()) {
         res->success = false;
@@ -193,8 +223,10 @@ void RouteGraphManager::addEdgeCallback(const std::shared_ptr<nav_interfaces::sr
     RCLCPP_INFO(node_->get_logger(), "RouteGraph: added edge '%s'", edge.id.c_str());
 }
 
-void RouteGraphManager::removeEdgeCallback(const std::shared_ptr<nav_interfaces::srv::RemoveRouteEdge::Request> req,
-                                           std::shared_ptr<nav_interfaces::srv::RemoveRouteEdge::Response> res) {
+void RouteGraphManager::removeEdgeCallback(
+    const std::shared_ptr<nav_interfaces::srv::RemoveRouteEdge::Request> req,
+    std::shared_ptr<nav_interfaces::srv::RemoveRouteEdge::Response> res)
+{
     if (!edge_store_->remove(req->id)) {
         res->success = false;
         res->message = "Edge '" + req->id + "' not found";
@@ -206,8 +238,10 @@ void RouteGraphManager::removeEdgeCallback(const std::shared_ptr<nav_interfaces:
     res->message = "Removed edge '" + req->id + "'";
 }
 
-void RouteGraphManager::updateEdgeCallback(const std::shared_ptr<nav_interfaces::srv::UpdateRouteEdge::Request> req,
-                                           std::shared_ptr<nav_interfaces::srv::UpdateRouteEdge::Response> res) {
+void RouteGraphManager::updateEdgeCallback(
+    const std::shared_ptr<nav_interfaces::srv::UpdateRouteEdge::Request> req,
+    std::shared_ptr<nav_interfaces::srv::UpdateRouteEdge::Response> res)
+{
     auto edge = fromMsg(req->edge);
     if (!endpointExists(edge.from)) {
         res->success = false;
@@ -232,7 +266,8 @@ void RouteGraphManager::updateEdgeCallback(const std::shared_ptr<nav_interfaces:
 
 void RouteGraphManager::getRouteGraphCallback(
     const std::shared_ptr<nav_interfaces::srv::GetRouteGraph::Request> /*req*/,
-    std::shared_ptr<nav_interfaces::srv::GetRouteGraph::Response> res) {
+    std::shared_ptr<nav_interfaces::srv::GetRouteGraph::Response> res)
+{
     for (const auto& jct : junction_store_->getAll()) {
         res->junctions.push_back(toMsg(jct));
     }
@@ -245,7 +280,7 @@ void RouteGraphManager::getRouteGraphCallback(
     for (const auto& e : all_edges) {
         res->edges.push_back(toMsg(e));
         if (e.from.type == "nav") referenced_nav_names.insert(e.from.id);
-        if (e.to.type == "nav") referenced_nav_names.insert(e.to.id);
+        if (e.to.type   == "nav") referenced_nav_names.insert(e.to.id);
     }
 
     // ── D034: 从 PointStore 查坐标，按 nav_interfaces/NavPoint 组装 nav_points ──
@@ -254,16 +289,17 @@ void RouteGraphManager::getRouteGraphCallback(
         if (!pt_opt.has_value()) {
             // 被边引用但 NavPoint 已不存在：理论上 EventBus POINT_REMOVED 级联会清掉，
             // 此处仅作防御；不阻塞响应，但日志记录便于排查脏数据
-            RCLCPP_WARN(node_->get_logger(), "GetRouteGraph: edge references missing NavPoint '%s' (skipped)",
+            RCLCPP_WARN(node_->get_logger(),
+                        "GetRouteGraph: edge references missing NavPoint '%s' (skipped)",
                         name.c_str());
             continue;
         }
         nav_interfaces::msg::NavPoint np;
-        np.name = pt_opt->name;
-        np.type = pt_opt->type;
-        np.x = pt_opt->x;
-        np.y = pt_opt->y;
-        np.theta = pt_opt->yaw;
+        np.name      = pt_opt->name;
+        np.type      = pt_opt->type;
+        np.x         = pt_opt->x;
+        np.y         = pt_opt->y;
+        np.theta     = pt_opt->yaw;
         np.tolerance = pt_opt->tolerance;
         // np.id 在 PointStore 中无对应字段；msg.id 为可选展示用字段，保持默认 0
         res->nav_points.push_back(np);
@@ -281,8 +317,9 @@ void RouteGraphManager::onNavPointRemoved(const std::string& nav_name) {
     if (!removed.empty()) {
         save_fn_();
         publishMarkers();
-        RCLCPP_INFO(node_->get_logger(), "RouteGraph: cascaded removed %zu edges referencing nav '%s'", removed.size(),
-                    nav_name.c_str());
+        RCLCPP_INFO(node_->get_logger(),
+                    "RouteGraph: cascaded removed %zu edges referencing nav '%s'",
+                    removed.size(), nav_name.c_str());
     }
 }
 
@@ -298,7 +335,7 @@ void RouteGraphManager::publishMarkers() {
     // "route_graph_junctions" / "route_graph_edges"，导致旧 marker 无法清除
     visualization_msgs::msg::Marker del_all;
     del_all.action = visualization_msgs::msg::Marker::DELETEALL;
-    del_all.ns = "";  // 空字符串 = 删除所有 namespace
+    del_all.ns     = "";  // 空字符串 = 删除所有 namespace
     arr.markers.push_back(del_all);
 
     int id = 0;
@@ -309,11 +346,11 @@ void RouteGraphManager::publishMarkers() {
         {
             visualization_msgs::msg::Marker m;
             m.header.frame_id = "map";
-            m.header.stamp = node_->get_clock()->now();
-            m.ns = "route_graph_junctions";
-            m.id = id++;
-            m.type = visualization_msgs::msg::Marker::SPHERE;
-            m.action = visualization_msgs::msg::Marker::ADD;
+            m.header.stamp    = node_->get_clock()->now();
+            m.ns              = "route_graph_junctions";
+            m.id              = id++;
+            m.type            = visualization_msgs::msg::Marker::SPHERE;
+            m.action          = visualization_msgs::msg::Marker::ADD;
             m.pose.position.x = jct.x;
             m.pose.position.y = jct.y;
             m.pose.position.z = 0.125;
@@ -331,11 +368,11 @@ void RouteGraphManager::publishMarkers() {
         {
             visualization_msgs::msg::Marker m;
             m.header.frame_id = "map";
-            m.header.stamp = node_->get_clock()->now();
-            m.ns = "route_graph_junctions";
-            m.id = id++;
-            m.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
-            m.action = visualization_msgs::msg::Marker::ADD;
+            m.header.stamp    = node_->get_clock()->now();
+            m.ns              = "route_graph_junctions";
+            m.id              = id++;
+            m.type            = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
+            m.action          = visualization_msgs::msg::Marker::ADD;
             m.pose.position.x = jct.x;
             m.pose.position.y = jct.y;
             m.pose.position.z = 0.35;
@@ -356,11 +393,11 @@ void RouteGraphManager::publishMarkers() {
         {
             visualization_msgs::msg::Marker m;
             m.header.frame_id = "map";
-            m.header.stamp = node_->get_clock()->now();
-            m.ns = "route_graph_nav_points";
-            m.id = id++;
-            m.type = visualization_msgs::msg::Marker::SPHERE;
-            m.action = visualization_msgs::msg::Marker::ADD;
+            m.header.stamp    = node_->get_clock()->now();
+            m.ns              = "route_graph_nav_points";
+            m.id              = id++;
+            m.type            = visualization_msgs::msg::Marker::SPHERE;
+            m.action          = visualization_msgs::msg::Marker::ADD;
             m.pose.position.x = pt.x;
             m.pose.position.y = pt.y;
             m.pose.position.z = 0.10;
@@ -378,11 +415,11 @@ void RouteGraphManager::publishMarkers() {
         {
             visualization_msgs::msg::Marker m;
             m.header.frame_id = "map";
-            m.header.stamp = node_->get_clock()->now();
-            m.ns = "route_graph_nav_points";
-            m.id = id++;
-            m.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
-            m.action = visualization_msgs::msg::Marker::ADD;
+            m.header.stamp    = node_->get_clock()->now();
+            m.ns              = "route_graph_nav_points";
+            m.id              = id++;
+            m.type            = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
+            m.action          = visualization_msgs::msg::Marker::ADD;
             m.pose.position.x = pt.x;
             m.pose.position.y = pt.y;
             m.pose.position.z = 0.35;
@@ -408,48 +445,32 @@ void RouteGraphManager::publishMarkers() {
 
         if (e.from.type == "nav") {
             auto pt = point_store_->getPoint(e.from.id);
-            if (pt) {
-                fx = static_cast<float>(pt->x);
-                fy = static_cast<float>(pt->y);
-                found_from = true;
-            }
+            if (pt) { fx = static_cast<float>(pt->x); fy = static_cast<float>(pt->y); found_from = true; }
         } else {
             auto jct = junction_store_->get(e.from.id);
-            if (jct) {
-                fx = jct->x;
-                fy = jct->y;
-                found_from = true;
-            }
+            if (jct) { fx = jct->x; fy = jct->y; found_from = true; }
         }
 
         if (e.to.type == "nav") {
             auto pt = point_store_->getPoint(e.to.id);
-            if (pt) {
-                tx = static_cast<float>(pt->x);
-                ty = static_cast<float>(pt->y);
-                found_to = true;
-            }
+            if (pt) { tx = static_cast<float>(pt->x); ty = static_cast<float>(pt->y); found_to = true; }
         } else {
             auto jct = junction_store_->get(e.to.id);
-            if (jct) {
-                tx = jct->x;
-                ty = jct->y;
-                found_to = true;
-            }
+            if (jct) { tx = jct->x; ty = jct->y; found_to = true; }
         }
 
         if (!found_from || !found_to) continue;
 
-        const float z_line = 0.06f;
+        const float z_line  = 0.06f;
         const float z_arrow = 0.08f;
 
         // ── 构建路径点序列（直线或贝塞尔采样） ──────────────────────
-        std::vector<std::pair<float, float>> path;
+        std::vector<std::pair<float,float>> path;
         if (e.edge_type == "BEZIER" && e.control_points.size() >= 2) {
             // Bernstein 贝塞尔采样（40 段）
             const auto& cp = e.control_points;
-            const int n = static_cast<int>(cp.size()) - 1;
-            const int segs = 40;
+            const int   n  = static_cast<int>(cp.size()) - 1;
+            const int   segs = 40;
             auto binom = [](int nn, int k) -> float {
                 if (k == 0 || k == nn) return 1.0f;
                 float v = 1.0f;
@@ -479,42 +500,39 @@ void RouteGraphManager::publishMarkers() {
         {
             visualization_msgs::msg::Marker m;
             m.header.frame_id = "map";
-            m.header.stamp = node_->get_clock()->now();
-            m.ns = "route_graph_edges";
-            m.id = id++;
-            m.type = visualization_msgs::msg::Marker::LINE_STRIP;
-            m.action = visualization_msgs::msg::Marker::ADD;
+            m.header.stamp    = node_->get_clock()->now();
+            m.ns              = "route_graph_edges";
+            m.id              = id++;
+            m.type            = visualization_msgs::msg::Marker::LINE_STRIP;
+            m.action          = visualization_msgs::msg::Marker::ADD;
             m.pose.orientation.w = 1.0;
             m.scale.x = line_width;
-            m.color.r = cr;
-            m.color.g = cg;
-            m.color.b = cb;
-            m.color.a = 0.9f;
+            m.color.r = cr; m.color.g = cg; m.color.b = cb; m.color.a = 0.9f;
             for (const auto& [px, py] : path) {
                 geometry_msgs::msg::Point p;
-                p.x = px;
-                p.y = py;
-                p.z = z_line;
+                p.x = px; p.y = py; p.z = z_line;
                 m.points.push_back(p);
             }
             arr.markers.push_back(m);
         }
 
         // ── 计算路径几何中点和切线方向（箭头+文字共用） ─────────────
-        std::pair<float, float> mid_pt;
+        std::pair<float,float> mid_pt;
         float tangent_yaw;
         {
             const int last = static_cast<int>(path.size()) - 1;
             if (path.size() <= 2) {
                 // 直线：精确几何中点
-                mid_pt = {(path[0].first + path[last].first) / 2.0f, (path[0].second + path[last].second) / 2.0f};
-                tangent_yaw = std::atan2(path[last].second - path[0].second, path[last].first - path[0].first);
+                mid_pt = {(path[0].first  + path[last].first)  / 2.0f,
+                          (path[0].second + path[last].second) / 2.0f};
+                tangent_yaw = std::atan2(path[last].second - path[0].second,
+                                         path[last].first  - path[0].first);
             } else {
                 // 曲线：数组中点
                 const int mi = static_cast<int>(path.size()) / 2;
                 mid_pt = path[mi];
-                tangent_yaw =
-                    std::atan2(path[mi + 1].second - path[mi - 1].second, path[mi + 1].first - path[mi - 1].first);
+                tangent_yaw = std::atan2(path[mi + 1].second - path[mi - 1].second,
+                                         path[mi + 1].first  - path[mi - 1].first);
             }
         }
 
@@ -524,11 +542,11 @@ void RouteGraphManager::publishMarkers() {
             const float sy = std::sin(yaw * 0.5f);
             visualization_msgs::msg::Marker m;
             m.header.frame_id = "map";
-            m.header.stamp = node_->get_clock()->now();
-            m.ns = "route_graph_edges";
-            m.id = id++;
-            m.type = visualization_msgs::msg::Marker::ARROW;
-            m.action = visualization_msgs::msg::Marker::ADD;
+            m.header.stamp    = node_->get_clock()->now();
+            m.ns              = "route_graph_edges";
+            m.id              = id++;
+            m.type            = visualization_msgs::msg::Marker::ARROW;
+            m.action          = visualization_msgs::msg::Marker::ADD;
             m.pose.position.x = px;
             m.pose.position.y = py;
             m.pose.position.z = z_arrow;
@@ -539,10 +557,7 @@ void RouteGraphManager::publishMarkers() {
             m.scale.x = e.bidirectional ? 0.12f : 0.12f;  // 箭头总长度
             m.scale.y = e.bidirectional ? 0.04f : 0.03f;  // 箭头轴径
             m.scale.z = e.bidirectional ? 0.04f : 0.02f;  // 箭头头长
-            m.color.r = cr;
-            m.color.g = cg;
-            m.color.b = cb;
-            m.color.a = 0.95f;
+            m.color.r = cr; m.color.g = cg; m.color.b = cb; m.color.a = 0.95f;
             arr.markers.push_back(m);
         };
 
@@ -558,11 +573,11 @@ void RouteGraphManager::publishMarkers() {
         {
             visualization_msgs::msg::Marker m;
             m.header.frame_id = "map";
-            m.header.stamp = node_->get_clock()->now();
-            m.ns = "route_graph_edges";
-            m.id = id++;
-            m.type = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
-            m.action = visualization_msgs::msg::Marker::ADD;
+            m.header.stamp    = node_->get_clock()->now();
+            m.ns              = "route_graph_edges";
+            m.id              = id++;
+            m.type            = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
+            m.action          = visualization_msgs::msg::Marker::ADD;
             m.pose.position.x = mid_pt.first;
             m.pose.position.y = mid_pt.second;
             m.pose.position.z = z_line + 0.25;

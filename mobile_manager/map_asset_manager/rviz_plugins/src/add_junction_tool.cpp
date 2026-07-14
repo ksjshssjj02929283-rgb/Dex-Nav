@@ -2,34 +2,30 @@
 // 左键立即放置（无对话框，自动命名 jct_N），鼠标移动实时预览圆，右键退出
 
 #include "map_asset_rviz_plugin/add_junction_tool.hpp"
+#include "map_asset_rviz_plugin/route_graph_tools_common.hpp"
 
 #include <OgreManualObject.h>
 #include <OgreSceneManager.h>
 
 #include <nav_interfaces/srv/add_route_junction.hpp>
-#include <pluginlib/class_list_macros.hpp>
 #include <rviz_common/display_context.hpp>
 #include <rviz_common/interaction/view_picker_iface.hpp>
 #include <rviz_common/ros_integration/ros_node_abstraction_iface.hpp>
 #include <rviz_common/viewport_mouse_event.hpp>
 
-#include "map_asset_rviz_plugin/route_graph_tools_common.hpp"
+#include <pluginlib/class_list_macros.hpp>
 
 namespace map_asset_rviz_plugin {
 
-AddJunctionTool::AddJunctionTool() { shortcut_key_ = 'j'; }
+AddJunctionTool::AddJunctionTool() {
+    shortcut_key_ = 'j';
+}
 
 AddJunctionTool::~AddJunctionTool() {
     if (context_) {
         auto* scene = context_->getSceneManager();
-        if (preview_node_) {
-            scene->destroySceneNode(preview_node_);
-            preview_node_ = nullptr;
-        }
-        if (preview_obj_) {
-            scene->destroyManualObject(preview_obj_);
-            preview_obj_ = nullptr;
-        }
+        if (preview_node_) { scene->destroySceneNode(preview_node_); preview_node_ = nullptr; }
+        if (preview_obj_)  { scene->destroyManualObject(preview_obj_); preview_obj_ = nullptr; }
     }
 }
 
@@ -37,7 +33,8 @@ void AddJunctionTool::onInitialize() {
     node_ = context_->getRosNodeAbstraction().lock()->get_raw_node();
     auto* scene = context_->getSceneManager();
 
-    const std::string name = "map_asset_jct_preview_" + std::to_string(reinterpret_cast<uintptr_t>(this));
+    const std::string name =
+        "map_asset_jct_preview_" + std::to_string(reinterpret_cast<uintptr_t>(this));
     preview_obj_ = scene->createManualObject(name);
     preview_obj_->setDynamic(true);
     preview_node_ = scene->getRootSceneNode()->createChildSceneNode();
@@ -53,7 +50,9 @@ void AddJunctionTool::activate() {
     setStatus("左键放置 Junction（自动命名），右键退出");
 }
 
-void AddJunctionTool::deactivate() { clearPreview(); }
+void AddJunctionTool::deactivate() {
+    clearPreview();
+}
 
 int AddJunctionTool::processMouseEvent(rviz_common::ViewportMouseEvent& event) {
     if (!s_route_graph_editing) return Render;
@@ -78,21 +77,22 @@ int AddJunctionTool::processMouseEvent(rviz_common::ViewportMouseEvent& event) {
         const float py = pos.y;
         const std::string auto_id = "jct_" + std::to_string(junction_counter_++);
 
-        auto client =
-            node_->create_client<nav_interfaces::srv::AddRouteJunction>(service_prefix_ + "/add_route_junction");
-        auto req = std::make_shared<nav_interfaces::srv::AddRouteJunction::Request>();
-        req->junction.id = auto_id;
-        req->junction.x = px;
-        req->junction.y = py;
+        auto client = node_->create_client<nav_interfaces::srv::AddRouteJunction>(
+            service_prefix_ + "/add_route_junction");
+        auto req          = std::make_shared<nav_interfaces::srv::AddRouteJunction::Request>();
+        req->junction.id  = auto_id;
+        req->junction.x   = px;
+        req->junction.y   = py;
         req->junction.yaw = 0.0f;
 
         const QString qid = QString::fromStdString(auto_id);
-        client->async_send_request(
-            req, [this, qid](rclcpp::Client<nav_interfaces::srv::AddRouteJunction>::SharedFuture fut) {
+        client->async_send_request(req,
+            [this, qid](rclcpp::Client<nav_interfaces::srv::AddRouteJunction>::SharedFuture fut) {
                 try {
                     auto resp = fut.get();
-                    setStatus(resp->success ? QString("Junction '%1' 已添加，继续点击放置").arg(qid)
-                                            : QString("添加失败: %1").arg(QString::fromStdString(resp->message)));
+                    setStatus(resp->success
+                        ? QString("Junction '%1' 已添加，继续点击放置").arg(qid)
+                        : QString("添加失败: %1").arg(QString::fromStdString(resp->message)));
                 } catch (const std::exception& ex) {
                     setStatus(QString("异常: %1").arg(ex.what()));
                 }
@@ -115,17 +115,21 @@ void AddJunctionTool::updatePreview(double x, double y) {
     if (!preview_obj_) return;
     preview_node_->setVisible(true);
     preview_obj_->clear();
-    drawRing(preview_obj_, static_cast<float>(x), static_cast<float>(y), kPreviewZ, 0.18f, 0.7f, 0.7f, 0.7f);
-    drawRing(preview_obj_, static_cast<float>(x), static_cast<float>(y), kPreviewZ, 0.06f, 0.5f, 0.5f, 0.5f);
+    drawRing(preview_obj_,
+             static_cast<float>(x), static_cast<float>(y), kPreviewZ,
+             0.18f, 0.7f, 0.7f, 0.7f);
+    drawRing(preview_obj_,
+             static_cast<float>(x), static_cast<float>(y), kPreviewZ,
+             0.06f, 0.5f, 0.5f, 0.5f);
 }
 
 void AddJunctionTool::clearPreview() {
-    if (preview_obj_) preview_obj_->clear();
+    if (preview_obj_)  preview_obj_->clear();
     if (preview_node_) preview_node_->setVisible(false);
 }
 
 void AddJunctionTool::load(const rviz_common::Config& config) { Tool::load(config); }
-void AddJunctionTool::save(rviz_common::Config config) const { Tool::save(config); }
+void AddJunctionTool::save(rviz_common::Config config) const  { Tool::save(config); }
 
 }  // namespace map_asset_rviz_plugin
 
