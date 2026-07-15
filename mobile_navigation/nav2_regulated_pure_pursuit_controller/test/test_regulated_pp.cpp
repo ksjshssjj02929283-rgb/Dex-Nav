@@ -87,9 +87,11 @@ public:
 
   void rotateToHeadingWrapper(
     double & linear_vel, double & angular_vel,
-    const double & angle_to_path, const geometry_msgs::msg::Twist & curr_speed)
+    const double & angle_to_path, const geometry_msgs::msg::Twist & curr_speed,
+    double angular_vel_max, double angular_kp)
   {
-    return rotateToHeading(linear_vel, angular_vel, angle_to_path, curr_speed);
+    return rotateToHeading(
+      linear_vel, angular_vel, angle_to_path, curr_speed, angular_vel_max, angular_kp);
   }
 
   void setTrajSpeedPointsForTest(
@@ -469,31 +471,34 @@ TEST(RegulatedPurePursuitTest, rotateTests)
   geometry_msgs::msg::Twist curr_speed;
   curr_speed.angular.z = 1.75;
 
-  // basic full speed at a speed
-  ctrl->rotateToHeadingWrapper(lin_v, ang_v, angle_to_path, curr_speed);
+  // 角速度是 angle_to_path 的纯 P 控制（kp·angle，饱和于 angular_vel_max），
+  // 不再是恒定最大值：这里传入 kp=1.0（rotate_to_path_angular_kp 默认值），
+  // angle_to_path=0.4 时目标=0.4，再经运动学限幅（curr_speed±max_angular_accel_*dt
+  // =curr±0.16）钳制。
+  ctrl->rotateToHeadingWrapper(lin_v, ang_v, angle_to_path, curr_speed, 1.8, 1.0);
   EXPECT_EQ(lin_v, 0.0);
-  EXPECT_EQ(ang_v, 1.8);
+  EXPECT_NEAR(ang_v, 1.59, 0.01);  // 目标 0.4 低于可行下限(1.75-0.16)，钳到下限
 
   // negative direction
   angle_to_path = -0.4;
   curr_speed.angular.z = -1.75;
-  ctrl->rotateToHeadingWrapper(lin_v, ang_v, angle_to_path, curr_speed);
-  EXPECT_EQ(ang_v, -1.8);
+  ctrl->rotateToHeadingWrapper(lin_v, ang_v, angle_to_path, curr_speed, 1.8, 1.0);
+  EXPECT_NEAR(ang_v, -1.59, 0.01);
 
   // kinematic clamping, no speed, some speed accelerating, some speed decelerating
   angle_to_path = 0.4;
   curr_speed.angular.z = 0.0;
-  ctrl->rotateToHeadingWrapper(lin_v, ang_v, angle_to_path, curr_speed);
-  EXPECT_NEAR(ang_v, 0.16, 0.01);
+  ctrl->rotateToHeadingWrapper(lin_v, ang_v, angle_to_path, curr_speed, 1.8, 1.0);
+  EXPECT_NEAR(ang_v, 0.16, 0.01);  // 目标 0.4 仍超可行上限(0.16)，钳到上限
 
   curr_speed.angular.z = 1.0;
-  ctrl->rotateToHeadingWrapper(lin_v, ang_v, angle_to_path, curr_speed);
-  EXPECT_NEAR(ang_v, 1.16, 0.01);
+  ctrl->rotateToHeadingWrapper(lin_v, ang_v, angle_to_path, curr_speed, 1.8, 1.0);
+  EXPECT_NEAR(ang_v, 0.84, 0.01);  // 目标 0.4 低于可行下限(1.0-0.16=0.84)，钳到下限
 
   angle_to_path = -0.4;
   curr_speed.angular.z = 1.0;
-  ctrl->rotateToHeadingWrapper(lin_v, ang_v, angle_to_path, curr_speed);
-  EXPECT_NEAR(ang_v, 0.84, 0.01);
+  ctrl->rotateToHeadingWrapper(lin_v, ang_v, angle_to_path, curr_speed, 1.8, 1.0);
+  EXPECT_NEAR(ang_v, 0.84, 0.01);  // 目标 -0.4 更低于可行下限(0.84)，同样钳到下限
 }
 
 // rotateToHeading 线速度连续减速：巡航速度进入 rotate 分支时不再瞬间
@@ -514,7 +519,7 @@ TEST(RegulatedPurePursuitTest, rotateToHeadingLinearDecelRamp)
   double lin_v = 0.0, ang_v = 0.0;
   geometry_msgs::msg::Twist curr_speed;
   curr_speed.linear.x = 0.6;
-  ctrl->rotateToHeadingWrapper(lin_v, ang_v, 0.4, curr_speed);
+  ctrl->rotateToHeadingWrapper(lin_v, ang_v, 0.4, curr_speed, 1.8, 1.0);
   EXPECT_GT(lin_v, 0.0);  // 不再瞬间置零
   EXPECT_NEAR(lin_v, 0.575, 1e-6);
 
@@ -526,13 +531,87 @@ TEST(RegulatedPurePursuitTest, rotateToHeadingLinearDecelRamp)
     lin_v = 0.0;
     ang_v = 0.0;
     curr_speed.linear.x = measured;
-    ctrl->rotateToHeadingWrapper(lin_v, ang_v, 0.4, curr_speed);
+    ctrl->rotateToHeadingWrapper(lin_v, ang_v, 0.4, curr_speed, 1.8, 1.0);
     EXPECT_LE(prev - lin_v, 0.025 + 1e-9);
     EXPECT_GE(lin_v, 0.0);
     prev = lin_v;
     measured = lin_v;
   }
   EXPECT_EQ(lin_v, 0.0);
+}
+
+// rotateToHeading 角速度是 angle_to_path 的纯 P 控制（angular_kp·angle，
+// 饱和于 angular_vel_max）：未饱和时精确正比于角度（验证线性关系），大角度
+// 时饱和封顶。用完美 plant 多周期迭代到稳态（accel 限幅下会精确收敛到目标
+// 值，非近似）。
+TEST(RegulatedPurePursuitTest, rotateToHeadingAngularProportional)
+{
+  auto ctrl = std::make_shared<BasicAPIRPP>();
+  auto node = std::make_shared<rclcpp_lifecycle::LifecycleNode>("testRPP");
+  std::string name = "PathFollower";
+  auto tf = std::make_shared<tf2_ros::Buffer>(node->get_clock());
+  auto costmap = std::make_shared<nav2_costmap_2d::Costmap2DROS>("fake_costmap");
+  rclcpp_lifecycle::State state;
+  costmap->on_configure(state);
+  ctrl->configure(node, name, tf, costmap);
+
+  auto steadyStateAngularVel = [&](double angle) {
+      double lin_v = 0.0;
+      double ang_v = 0.0;
+      geometry_msgs::msg::Twist curr_speed;
+      for (int i = 0; i < 200; ++i) {
+        ctrl->rotateToHeadingWrapper(lin_v, ang_v, angle, curr_speed, 1.8, 1.0);
+        curr_speed.angular.z = ang_v;
+      }
+      return ang_v;
+    };
+
+  // angular_vel_max=1.8, angular_kp=1.0：未饱和区间输出应精确等于 kp·angle。
+  const double v_small = steadyStateAngularVel(0.1);    // 目标 0.1，远低于饱和上限
+  const double v_double = steadyStateAngularVel(0.2);   // 目标 0.2，仍未饱和
+  const double v_large = steadyStateAngularVel(3.0);    // 目标 3.0 > 1.8，饱和
+
+  EXPECT_NEAR(v_small, 0.1, 0.01);
+  EXPECT_NEAR(v_double, 0.2, 0.01);
+  EXPECT_NEAR(v_double, 2.0 * v_small, 0.02);  // 双倍角度 -> 双倍角速度，验证线性比例
+  EXPECT_NEAR(v_large, 1.8, 0.01);             // 饱和封顶于 angular_vel_max
+}
+
+// rotate_to_path 与 rotate_to_goal 的角速度/角度参数完全独立：同一个
+// angle_to_path，喂给两套不同的 (angular_vel_max, angular_kp) 得到不同的
+// 稳态角速度——证明两条调用路径不再共用同一份参数，调一个不会牵连另一个。
+TEST(RegulatedPurePursuitTest, rotateToPathAndRotateToGoalAreDecoupled)
+{
+  auto ctrl = std::make_shared<BasicAPIRPP>();
+  auto node = std::make_shared<rclcpp_lifecycle::LifecycleNode>("testRPP");
+  std::string name = "PathFollower";
+  auto tf = std::make_shared<tf2_ros::Buffer>(node->get_clock());
+  auto costmap = std::make_shared<nav2_costmap_2d::Costmap2DROS>("fake_costmap");
+  rclcpp_lifecycle::State state;
+  costmap->on_configure(state);
+  ctrl->configure(node, name, tf, costmap);
+
+  auto steadyStateAngularVel = [&](double angle, double angular_vel_max, double angular_kp) {
+      double lin_v = 0.0;
+      double ang_v = 0.0;
+      geometry_msgs::msg::Twist curr_speed;
+      for (int i = 0; i < 200; ++i) {
+        ctrl->rotateToHeadingWrapper(
+          lin_v, ang_v, angle, curr_speed, angular_vel_max, angular_kp);
+        curr_speed.angular.z = ang_v;
+      }
+      return ang_v;
+    };
+
+  const double angle = 0.3;
+  // rotate_to_path 与 rotate_to_goal 用不同的 kp——同一个 angle 下两者的
+  // 稳态输出应各自贴自己那套参数（都未饱和），互不干扰。
+  const double v_path = steadyStateAngularVel(angle, /*angular_vel_max=*/ 0.5, /*kp=*/ 1.0);
+  const double v_goal = steadyStateAngularVel(angle, /*angular_vel_max=*/ 1.8, /*kp=*/ 2.0);
+
+  EXPECT_NEAR(v_path, 0.3, 0.02);  // kp=1.0：目标=0.3，未饱和
+  EXPECT_NEAR(v_goal, 0.6, 0.02);  // kp=2.0：目标=0.6，未饱和
+  EXPECT_NE(v_path, v_goal);
 }
 
 TEST(RegulatedPurePursuitTest, nearestTrajectorySpeedExcludesStateStamp)
@@ -544,7 +623,7 @@ TEST(RegulatedPurePursuitTest, nearestTrajectorySpeedExcludesStateStamp)
   double v = 0.0, a = 0.0;
 
   // 场景 1：巡航超速——状态戳 0.65 高于前方剖面 0.6，目标必须取前方 0.6
-  //（若把状态戳纳入 max，目标=自身速度，超速被固化）
+  // （若把状态戳纳入 max，目标=自身速度，超速被固化）
   ctrl->setTrajSpeedPointsForTest(
     {{0.0, 0.0, 0.65, 0.0}, {0.05, 0.0, 0.6, 0.0}, {0.10, 0.0, 0.6, 0.0},
       {0.15, 0.0, 0.6, 0.0}},
@@ -590,7 +669,7 @@ TEST(RegulatedPurePursuitTest, trackLinearVelocityCommandIntegrator)
   ctrl->configure(node, name, tf, costmap);
 
   // T1 超速泄放：实测恒 0.65 高于目标 0.6——指令必须能累积下降并越过目标
-  //（旧结构锚定实测：指令恒 ≈ 实测-一步，永远下不去）
+  // （旧结构锚定实测：指令恒 ≈ 实测-一步，永远下不去）
   double v = 0.65;
   bool crossed_below_target = false;
   for (int i = 0; i < 500 && !crossed_below_target; ++i) {
@@ -788,7 +867,7 @@ TEST(RegulatedPurePursuitTest, applyTrackingFeedbackConstraints)
   });
 
   // ②朝向误差减速隔离（curvature=0 关闭③，路径贴合关闭①）：
-  // 默认 heading_error_scaling_min_angle=0.35，rotate_to_heading_min_angle=0.785，
+  // 默认 heading_error_scaling_min_angle=0.35，heading_error_scaling_max_angle=0.785，
   // min_heading_speed_scale=0.3。
   double linear_vel = 1.0, xte = 0.0;
   ctrl->applyTrackingFeedbackConstraintsWrapper(on_path, 0.0, 0.0, 0.2, linear_vel, xte);
@@ -838,8 +917,8 @@ TEST(RegulatedPurePursuitTest, applyTrackingFeedbackConstraints)
   EXPECT_DOUBLE_EQ(linear_vel, 1.0);
 }
 
-// shouldRotateToPath 滞回：进入转向用 rotate_to_heading_min_angle（0.785），
-// 已在转向时退出用更小的 heading_error_scaling_min_angle（0.35）——角度落在
+// shouldRotateToPath 滞回：进入转向用 rotate_to_path_entry_angle（0.785），
+// 已在转向时退出用独立的更小阈值 rotate_to_path_exit_angle（0.35）——角度落在
 // [0.35, 0.785] 区间时，是否仍判定“应转向”取决于上一周期的状态，不是单一阈值。
 TEST(RegulatedPurePursuitTest, shouldRotateToPathHysteresis)
 {
@@ -899,7 +978,7 @@ TEST(RegulatedPurePursuitTest, testDynamicParameter)
       rclcpp::Parameter("test.max_lookahead_dist", 7.0),
       rclcpp::Parameter("test.min_lookahead_dist", 6.0),
       rclcpp::Parameter("test.lookahead_time", 1.8),
-      rclcpp::Parameter("test.rotate_to_heading_angular_vel", 18.0),
+      rclcpp::Parameter("test.rotate_to_path_angular_vel", 18.0),
       rclcpp::Parameter("test.min_approach_linear_velocity", 1.0),
       rclcpp::Parameter("test.max_allowed_time_to_collision_up_to_carrot", 2.0),
       rclcpp::Parameter("test.cost_scaling_dist", 2.0),
@@ -907,7 +986,7 @@ TEST(RegulatedPurePursuitTest, testDynamicParameter)
       rclcpp::Parameter("test.regulated_linear_scaling_min_radius", 10.0),
       rclcpp::Parameter("test.transform_tolerance", 30.0),
       rclcpp::Parameter("test.max_angular_accel", 3.0),
-      rclcpp::Parameter("test.rotate_to_heading_min_angle", 0.7),
+      rclcpp::Parameter("test.rotate_to_path_entry_angle", 0.7),
       rclcpp::Parameter("test.regulated_linear_scaling_min_speed", 4.0),
       rclcpp::Parameter("test.use_velocity_scaled_lookahead_dist", false),
       rclcpp::Parameter("test.use_regulated_linear_velocity_scaling", false),
@@ -924,7 +1003,7 @@ TEST(RegulatedPurePursuitTest, testDynamicParameter)
   EXPECT_EQ(node->get_parameter("test.max_lookahead_dist").as_double(), 7.0);
   EXPECT_EQ(node->get_parameter("test.min_lookahead_dist").as_double(), 6.0);
   EXPECT_EQ(node->get_parameter("test.lookahead_time").as_double(), 1.8);
-  EXPECT_EQ(node->get_parameter("test.rotate_to_heading_angular_vel").as_double(), 18.0);
+  EXPECT_EQ(node->get_parameter("test.rotate_to_path_angular_vel").as_double(), 18.0);
   EXPECT_EQ(node->get_parameter("test.min_approach_linear_velocity").as_double(), 1.0);
   EXPECT_EQ(
     node->get_parameter(
@@ -934,7 +1013,7 @@ TEST(RegulatedPurePursuitTest, testDynamicParameter)
   EXPECT_EQ(node->get_parameter("test.regulated_linear_scaling_min_radius").as_double(), 10.0);
   EXPECT_EQ(node->get_parameter("test.transform_tolerance").as_double(), 30.0);
   EXPECT_EQ(node->get_parameter("test.max_angular_accel").as_double(), 3.0);
-  EXPECT_EQ(node->get_parameter("test.rotate_to_heading_min_angle").as_double(), 0.7);
+  EXPECT_EQ(node->get_parameter("test.rotate_to_path_entry_angle").as_double(), 0.7);
   EXPECT_EQ(node->get_parameter("test.regulated_linear_scaling_min_speed").as_double(), 4.0);
   EXPECT_EQ(node->get_parameter("test.use_velocity_scaled_lookahead_dist").as_bool(), false);
   EXPECT_EQ(node->get_parameter("test.use_regulated_linear_velocity_scaling").as_bool(), false);
