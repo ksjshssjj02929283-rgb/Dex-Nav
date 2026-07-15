@@ -369,45 +369,55 @@ controller_server:
       RotateToGoal.lookahead_time: -1.0
     RPPController:
       plugin: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
+      # ── 前瞻与轨迹对接：carrot 点怎么找、期望速度从哪来 ──
+      lookahead_dist: 0.6
+      min_lookahead_dist: 0.3
+      max_lookahead_dist: 0.9
+      lookahead_time: 1.5
+      use_velocity_scaled_lookahead_dist: True    # 低速时缩短前瞻（lookahead=v×lookahead_time，钳 [min,max]）——弯道跟踪更紧
+      use_interpolation: True
+      angular_gain: 1.2    # 角速度增益：>1 收紧转向补偿曲线跟踪滞后（横向误差大→上调，振荡→下调）
+      near_curvature_check_dist: 0.3          # 近场固定距离曲率采样点（不随速度缩放）；③角速度饱和联动降速取远端/近场两点曲率中更尖锐者，避免前瞻越远曲率越被稀释而漏看近场路径突变
+      traj_speed_lookahead: 0.1    # 轨迹速度目标=最近点之后前方窗内 max（不含状态戳）；静止起步靠前方坡道点破自引用环
+      # ── RPP 先验约束（applyConstraints，只降不升，基于静态几何/代价）──
+      use_regulated_linear_velocity_scaling: True
+      regulated_linear_scaling_min_radius: 1.2    # RPP 层曲率减速阈值（carrot 弦曲率）；④A3 层阈值见 speed planner 块（半径大于两者则两层都不减速）
+      regulated_linear_scaling_min_speed: 0.25
+      use_cost_regulated_linear_velocity_scaling: True
+      cost_scaling_dist: 0.6
+      cost_scaling_gain: 1.0
+      inflation_cost_scaling_factor: 3.0
+      min_approach_linear_velocity: 0.05
+      approach_velocity_scaling_dist: 0.6
+      # ── RPP 反馈约束 ①②③（applyTrackingFeedbackConstraints，基于运行时实际状态）──
+      lateral_error_threshold: 0.15     # 横向误差减速起始阈值 (m)
+      lateral_error_max_dist: 0.5       # 横向误差达此值降到 min_scale (m)
+      min_lateral_speed_scale: 0.3      # 横向误差减速下限比例
+      heading_error_scaling_min_angle: 0.35   # 朝向误差减速起始阈值 (rad≈20°)；曲率随前瞻距离衰减，此项不受前瞻长度稀释
+      heading_error_scaling_max_angle: 0.785  # 朝向误差减速降到 min_heading_speed_scale 时的角度上界（独立于 rotate_to_path_entry_angle，避免两处调参互相牵连）
+      min_heading_speed_scale: 0.3            # 朝向误差达 heading_error_scaling_max_angle 时降到的下限比例
+      max_angular_vel: 1.5              # 角速度上限 (rad/s)：饱和时联动降 v 保持转弯半径
+      # ── 速度环（trackLinearVelocity，恒生效）──
       desired_linear_vel: 0.65    # 三重角色：无轨迹时的回退目标 / 速度环输出界绝对兜底 / 区域限速(speedLimit)入口——必须 ≥ speed planner max_speed 并留余量，否则会钳低规划巡航速度
       max_linear_accel: 0.5    # 速度环加速度限幅 (m/s²)；调大≈目标直发
-      traj_speed_lookahead: 0.1    # 轨迹速度目标=最近点之后前方窗内 max（不含状态戳）；静止起步靠前方坡道点破自引用环
       speed_loop_kp: 2.0
       speed_loop_ki: 0.2
       speed_loop_kd: 0.0
       speed_loop_integrator_saturation: 0.3    # 积分项限幅 (m/s²)，须 >0（0=积分被恒钳零、ki 失效）
       speed_loop_cmd_reseed_error: 0.3    # 指令积分器与实测偏差超此值时重新对齐（外力/急停兜底）
-      angular_gain: 1.2    # 角速度增益：>1 收紧转向补偿曲线跟踪滞后（横向误差大→上调，振荡→下调）
-      # ── ⑤ 反馈约束（横向/角速度反馈减速）──
-      max_angular_vel: 1.5              # 角速度上限 (rad/s)：饱和时联动降 v 保持转弯半径
-      lateral_error_threshold: 0.15     # 横向误差减速起始阈值 (m)
-      lateral_error_max_dist: 0.5       # 横向误差达此值降到 min_scale (m)
-      min_lateral_speed_scale: 0.3      # 横向误差减速下限比例
-      heading_error_scaling_min_angle: 0.35   # 朝向误差减速起始阈值 (rad≈20°)；曲率随前瞻距离衰减，此项不受前瞻长度稀释
-      min_heading_speed_scale: 0.3            # 朝向误差达 rotate_to_heading_min_angle 时降到的下限比例
-      near_curvature_check_dist: 0.3          # 近场固定距离曲率采样点（不随速度缩放）；③角速度饱和联动降速取远端/近场两点曲率中更尖锐者，避免前瞻越远曲率越被稀释而漏看近场路径突变
-      lookahead_dist: 0.6
-      min_lookahead_dist: 0.3
-      max_lookahead_dist: 0.9
-      lookahead_time: 1.5
-      rotate_to_heading_angular_vel: 1.8
-      use_velocity_scaled_lookahead_dist: True    # 低速时缩短前瞻（lookahead=v×lookahead_time，钳 [min,max]）——弯道跟踪更紧
-      min_approach_linear_velocity: 0.05
-      approach_velocity_scaling_dist: 0.6
-      max_allowed_time_to_collision_up_to_carrot: 1.0
-      use_collision_detection: True
-      use_regulated_linear_velocity_scaling: True
-      use_cost_regulated_linear_velocity_scaling: True
-      cost_scaling_dist: 0.6
-      cost_scaling_gain: 1.0
-      inflation_cost_scaling_factor: 3.0
-      regulated_linear_scaling_min_radius: 1.2    # RPP 层曲率减速阈值（carrot 弦曲率）；④A3 层阈值见 speed planner 块（半径大于两者则两层都不减速）
-      regulated_linear_scaling_min_speed: 0.25
+      # ── 离散转向模式：rotate_to_path（中途朝向修正）与 rotate_to_goal（终点原地转对齐）参数各自独立 ──
       use_rotate_to_heading: True
-      rotate_to_heading_min_angle: 0.785
-      max_angular_accel: 3.2
+      max_angular_accel: 3.2    # 两者共用：机器人角加速度物理上限，非行为调参
+      rotate_to_path_entry_angle: 0.785   # shouldRotateToPath 进入阈值
+      rotate_to_path_exit_angle: 0.35     # 滞回退出阈值，须 < 进入阈值
+      rotate_to_path_angular_vel: 1.8     # 角速度饱和上限
+      rotate_to_path_angular_kp: 1.0      # 角速度 = kp·angle_to_path，饱和于上面的 angular_vel
+      rotate_to_goal_angular_vel: 1.8     # 终点原地转对齐目标朝向：角速度饱和上限，与 rotate_to_path 独立
+      rotate_to_goal_angular_kp: 1.0      # 终点原地转对齐目标朝向：P 控制增益，与 rotate_to_path 独立
       allow_reversing: False
-      use_interpolation: True
+      # ── 碰撞检测 ──
+      use_collision_detection: True
+      max_allowed_time_to_collision_up_to_carrot: 1.0
     GracefulController:
       plugin: "nav2_graceful_controller::GracefulController"
       motion_target_dist: 0.6

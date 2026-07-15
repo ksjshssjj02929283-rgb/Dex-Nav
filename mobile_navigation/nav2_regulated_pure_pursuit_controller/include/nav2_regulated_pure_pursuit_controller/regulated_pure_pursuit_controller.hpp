@@ -152,8 +152,8 @@ protected:
 
   /**
    * @brief Whether robot should rotate to rough path heading. Hysteresis: enters
-   *        rotation at rotate_to_heading_min_angle_, only exits once the angle
-   *        drops below the smaller heading_error_scaling_min_angle_ -- prevents
+   *        rotation at rotate_to_path_entry_angle_, only exits once the angle
+   *        drops below the smaller rotate_to_path_exit_angle_ -- prevents
    *        mode-flapping when the angle hovers near the entry threshold.
    * @param carrot_pose current lookahead point
    * @param angle_to_path Angle of robot output relatie to carrot marker
@@ -170,15 +170,22 @@ protected:
   bool shouldRotateToGoalHeading(const geometry_msgs::msg::PoseStamped & carrot_pose);
 
   /**
-   * @brief Create a smooth and kinematically smoothed rotation command
+   * @brief Create a smooth and kinematically smoothed rotation command. Shared by
+   *        both rotate_to_path and rotate_to_goal call sites -- each passes its own
+   *        angular_vel_max/angular_kp so the two modes stay independently tunable.
+   *        Angular command is a plain P controller on the angle error, clamped to
+   *        angular_vel_max, then further clamped by kinematic feasibility.
    * @param linear_vel linear velocity
    * @param angular_vel angular velocity
    * @param angle_to_path Angle of robot output relatie to carrot marker
    * @param curr_speed the current robot speed
+   * @param angular_vel_max saturation ceiling for this call site
+   * @param angular_kp proportional gain on angle_to_path for this call site
    */
   void rotateToHeading(
     double & linear_vel, double & angular_vel,
-    const double & angle_to_path, const geometry_msgs::msg::Twist & curr_speed);
+    const double & angle_to_path, const geometry_msgs::msg::Twist & curr_speed,
+    double angular_vel_max, double angular_kp);
 
   /**
    * @brief Whether collision is imminent
@@ -304,6 +311,35 @@ protected:
     const nav_msgs::msg::Path & transformed_plan, double curvature, double near_curvature,
     double angle_to_heading, double & linear_vel, double & cross_track_error);
 
+  // ---- 管线基础设施 ----
+  std::shared_ptr<tf2_ros::Buffer> tf_;
+  std::string plugin_name_;
+  std::shared_ptr<nav2_costmap_2d::Costmap2DROS> costmap_ros_;
+  nav2_costmap_2d::Costmap2D * costmap_;
+  rclcpp::Logger logger_ {rclcpp::get_logger("RegulatedPurePursuitController")};
+  rclcpp::Clock::SharedPtr clock_;
+  double control_duration_;
+  nav_msgs::msg::Path global_plan_;
+  std::shared_ptr<rclcpp_lifecycle::LifecyclePublisher<nav_msgs::msg::Path>> global_path_pub_;
+  std::shared_ptr<rclcpp_lifecycle::LifecyclePublisher<geometry_msgs::msg::PointStamped>>
+  carrot_pub_;
+  std::shared_ptr<rclcpp_lifecycle::LifecyclePublisher<nav_msgs::msg::Path>> carrot_arc_pub_;
+  std::unique_ptr<nav2_costmap_2d::FootprintCollisionChecker<nav2_costmap_2d::Costmap2D *>>
+  collision_checker_;
+  std::mutex mutex_;
+  rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr dyn_params_handler_;
+
+  // ---- 前瞻与轨迹对接：carrot 点怎么找、期望速度从哪来 ----
+  double lookahead_dist_;
+  double min_lookahead_dist_;
+  double max_lookahead_dist_;
+  double lookahead_time_;
+  bool use_velocity_scaled_lookahead_dist_;
+  bool use_interpolation_;
+  double max_robot_pose_search_dist_;
+  tf2::Duration transform_tolerance_;
+  double angular_gain_{1.0};
+  double near_curvature_check_dist_{0.3};
   struct TrajSpeedPoint
   {
     double x;
@@ -313,17 +349,33 @@ protected:
   };
   std::vector<TrajSpeedPoint> traj_speed_points_;
   std::mutex traj_mutex_;
-  double max_linear_accel_{0.5};
   double traj_speed_lookahead_{0.1};
-  double angular_gain_{1.0};
-  double max_angular_vel_{1.5};
+
+  // ---- RPP 先验约束（applyConstraints，只降不升，基于静态几何/代价）----
+  bool use_regulated_linear_velocity_scaling_;
+  double regulated_linear_scaling_min_radius_;
+  double regulated_linear_scaling_min_speed_;
+  bool use_cost_regulated_linear_velocity_scaling_;
+  double cost_scaling_dist_;
+  double cost_scaling_gain_;
+  double inflation_cost_scaling_factor_;
+  double min_approach_linear_velocity_;
+  double approach_velocity_scaling_dist_;
+
+  // ---- RPP 反馈约束 ①②③（applyTrackingFeedbackConstraints，基于运行时实际状态）----
   double lateral_error_threshold_{0.15};
   double lateral_error_max_dist_{0.5};
   double min_lateral_speed_scale_{0.3};
   double heading_error_scaling_min_angle_{0.35};
+  // ②号 taper 区间上界：独立于 rotate_to_path_entry_angle_——两者语义不同
+  // （前者是"减速衰减到头"的角度，后者是"进入原地转模式"的角度），复用
+  // 同一个值会让调其中一个时意外改变另一个的生效范围。
+  double heading_error_scaling_max_angle_{0.785};
   double min_heading_speed_scale_{0.3};
-  bool was_rotating_to_path_{false};
-  double near_curvature_check_dist_{0.3};
+  double max_angular_vel_{1.5};
+
+  // ---- 速度环（trackLinearVelocity，恒生效）----
+  double max_linear_accel_{0.5};
   nav2_controller_common::PIDController speed_pid_;
   rclcpp::Time last_speed_track_time_{0, 0, RCL_ROS_TIME};
   // 速度环指令积分器：锚定上一周期指令而非实测——实测只进误差项，
@@ -332,53 +384,35 @@ protected:
   bool last_speed_cmd_valid_{false};
   double last_speed_cmd_{0.0};
   double speed_cmd_reseed_error_{0.3};
-
-  std::shared_ptr<tf2_ros::Buffer> tf_;
-  std::string plugin_name_;
-  std::shared_ptr<nav2_costmap_2d::Costmap2DROS> costmap_ros_;
-  nav2_costmap_2d::Costmap2D * costmap_;
-  rclcpp::Logger logger_ {rclcpp::get_logger("RegulatedPurePursuitController")};
-  rclcpp::Clock::SharedPtr clock_;
-
   double desired_linear_vel_, base_desired_linear_vel_;
-  double lookahead_dist_;
-  double rotate_to_heading_angular_vel_;
-  double max_lookahead_dist_;
-  double min_lookahead_dist_;
-  double lookahead_time_;
-  bool use_velocity_scaled_lookahead_dist_;
-  tf2::Duration transform_tolerance_;
-  double min_approach_linear_velocity_;
-  double approach_velocity_scaling_dist_;
-  double control_duration_;
-  double max_allowed_time_to_collision_up_to_carrot_;
-  bool use_collision_detection_;
-  bool use_regulated_linear_velocity_scaling_;
-  bool use_cost_regulated_linear_velocity_scaling_;
-  double cost_scaling_dist_;
-  double cost_scaling_gain_;
-  double inflation_cost_scaling_factor_;
-  double regulated_linear_scaling_min_radius_;
-  double regulated_linear_scaling_min_speed_;
+
+  // ---- 离散转向模式 ----
+  // rotate_to_path（shouldRotateToPath 触发，中途朝向修正）与 rotate_to_goal
+  // （shouldRotateToGoalHeading 触发，终点原地转对齐目标朝向）参数完全独立：
+  // 两者物理场景不同（前者是行进中的小角度修正，后者可能是到达终点后的
+  // 大角度掉头），共用同一套角速度/角度参数会导致调一个连带影响另一个。
+  // 角速度命令是纯 P 控制（kp·angle_to_path，饱和于 angular_vel_max）——
+  // entry_angle 只管 shouldRotateToPath 的进入/退出判定，不再兼作 P 控制
+  // 的参考角，两件事彻底分开。
   bool use_rotate_to_heading_;
-  double max_angular_accel_;
-  double rotate_to_heading_min_angle_;
-  double goal_dist_tol_;
+  double max_angular_accel_;  // 两者共用：机器人角加速度物理上限，非行为调参
+  double goal_dist_tol_;      // 不是声明参数，每周期从 goal_checker 容差读取
+  // rotate_to_path 专用：
+  double rotate_to_path_entry_angle_;   // shouldRotateToPath 进入阈值
+  double rotate_to_path_exit_angle_{0.35};  // 滞回退出阈值（须 < 进入阈值）
+  double rotate_to_path_angular_vel_;   // 角速度饱和上限
+  double rotate_to_path_angular_kp_{1.0};   // P 控制增益
+  bool was_rotating_to_path_{false};
+  // rotate_to_goal 专用（终点原地转对齐目标朝向）：
+  double rotate_to_goal_angular_vel_{1.8};  // 角速度饱和上限，与 rotate_to_path 独立
+  double rotate_to_goal_angular_kp_{1.0};   // P 控制增益，与 rotate_to_path 独立
+
+  // ---- 碰撞检测 ----
+  bool use_collision_detection_;
+  double max_allowed_time_to_collision_up_to_carrot_;
+
+  // ---- 其他 ----
   bool allow_reversing_;
-  double max_robot_pose_search_dist_;
-  bool use_interpolation_;
-
-  nav_msgs::msg::Path global_plan_;
-  std::shared_ptr<rclcpp_lifecycle::LifecyclePublisher<nav_msgs::msg::Path>> global_path_pub_;
-  std::shared_ptr<rclcpp_lifecycle::LifecyclePublisher<geometry_msgs::msg::PointStamped>>
-  carrot_pub_;
-  std::shared_ptr<rclcpp_lifecycle::LifecyclePublisher<nav_msgs::msg::Path>> carrot_arc_pub_;
-  std::unique_ptr<nav2_costmap_2d::FootprintCollisionChecker<nav2_costmap_2d::Costmap2D *>>
-  collision_checker_;
-
-  // Dynamic parameters handler
-  std::mutex mutex_;
-  rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr dyn_params_handler_;
 };
 
 }  // namespace nav2_regulated_pure_pursuit_controller
