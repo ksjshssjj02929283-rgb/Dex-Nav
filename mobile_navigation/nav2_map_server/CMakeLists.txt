@@ -12,6 +12,8 @@ find_package(nav_msgs REQUIRED)
 find_package(nav2_msgs REQUIRED)
 find_package(yaml_cpp_vendor REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(visualization_msgs REQUIRED)
+find_package(geometry_msgs REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(nav2_util REQUIRED)
 find_package(GRAPHICSMAGICKCPP REQUIRED)
@@ -165,7 +167,19 @@ target_link_libraries(map_preprocess
   ${map_preprocess_lib}
   ${map_io_library_name})
 
-install(TARGETS ${map_preprocess_lib} map_preprocess
+add_executable(nodemap_visualizer
+  src/map_preprocess/nodemap_visualizer.cpp)
+
+ament_target_dependencies(nodemap_visualizer
+  rclcpp
+  visualization_msgs
+  geometry_msgs)
+
+target_link_libraries(nodemap_visualizer
+  ${map_preprocess_lib}
+  ${map_io_library_name})
+
+install(TARGETS ${map_preprocess_lib} map_preprocess nodemap_visualizer
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION lib/${PROJECT_NAME})

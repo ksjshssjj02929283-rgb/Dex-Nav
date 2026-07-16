@@ -3,6 +3,11 @@ geometry_msgs/PoseStamped goal
 geometry_msgs/PoseStamped start
 string planner_id
 bool use_start # If false, use current robot pose as path start, if true, use start above instead
+# Optional task-level orientation reference. This is deliberately separate from
+# `start`: periodic replanning must keep using the robot's current x/y while a
+# planner such as Theta* may keep the yaw captured when navigation began.
+geometry_msgs/PoseStamped orientation_reference
+bool use_orientation_reference
 ---
 #result definition
 nav_msgs/Path path

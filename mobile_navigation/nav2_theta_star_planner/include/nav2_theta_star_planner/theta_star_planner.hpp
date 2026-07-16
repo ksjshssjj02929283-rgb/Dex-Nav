@@ -33,6 +33,9 @@
 #include "nav2_util/node_utils.hpp"
 #include "nav2_theta_star_planner/theta_star.hpp"
 #include "nav2_theta_star_planner/multi_layer_planner.hpp"
+#include "nav2_theta_star_planner/omni_path_smoother.hpp"
+#include "nav2_theta_star_planner/curve_path_smoother.hpp"
+#include "nav2_theta_star_planner/l1_spline_path.hpp"
 #include "nav2_theta_star_planner/swerve_steering_model.hpp"
 #include "nav2_util/geometry_utils.hpp"
 
@@ -49,6 +52,13 @@ enum class PathOrientationMode
   START,        ///< 强制全程用起点 yaw（忽略起终点是否相同）
   GOAL,         ///< 强制全程用 goal yaw
   TANGENT       ///< 每点用指向下一段的路径切线（差速/阿克曼风格）
+};
+
+/// Path post-process mode (rollback: set smooth_path_mode:=legacy in yaml).
+enum class SmoothPathMode
+{
+  LEGACY = 0,
+  L1_SPLINE = 1
 };
 
 class ThetaStarPlanner : public nav2_core::GlobalPlanner
@@ -80,6 +90,8 @@ protected:
   PathOrientationMode path_orientation_mode_{PathOrientationMode::AUTO};
   /// |start_yaw - goal_yaw| 小于该值(rad) 时视为“同朝向”，全程不做 yaw 插值
   double path_orientation_same_threshold_rad_{0.02};
+  /// TANGENT 模式是否在路径首尾插入零位移旋转标记，供 MPPI 三阶段控制识别。
+  bool tangent_in_place_rotation_markers_{false};
 
   /**
    * @brief B 层：沿路径仿真舵轮 IK，限制舵角跳变（对齐 mobile_cmd_omni_region.cpp）
@@ -87,6 +99,20 @@ protected:
    */
   bool enforce_steering_continuity_{true};
   SwerveSteeringConfig swerve_steering_config_;
+
+  /// Geometry-only post-smoothing for omnidirectional bases (no turning-radius limits).
+  bool smooth_path_{true};
+  bool smooth_do_string_pull_{true};
+  bool smooth_do_gradient_{true};
+  bool smooth_do_curve_fit_{false};
+  bool smooth_log_timing_{false};
+  SmoothPathMode smooth_path_mode_{SmoothPathMode::LEGACY};
+  double smooth_l1_clearance_radius_factor_{0.85};
+  double smooth_l1_corner_angle_rad_{0.25};
+  double smooth_l1_simplify_angle_rad_{0.10};
+  bool smooth_l1_do_gradient_{true};
+  OmniPathSmootherConfig path_smooth_config_;
+  CurvePathSmootherConfig curve_path_config_;
 
   // parent node weak ptr
   rclcpp_lifecycle::LifecycleNode::WeakPtr parent_node_;
@@ -125,6 +151,23 @@ protected:
   static nav_msgs::msg::Path linearInterpolation(
     const std::vector<coordsW> & raw_path,
     const double & dist_bw_points);
+
+  /**
+   * @brief Interpolate sparse waypoints and optionally apply omni path smoothing.
+   */
+  void buildGeometricPath(
+    nav_msgs::msg::Path & global_path,
+    const std::vector<coordsW> & raw_path);
+
+  void buildGeometricPathLegacy(
+    nav_msgs::msg::Path & global_path,
+    const std::vector<coordsW> & raw_path);
+
+  void buildGeometricPathL1Spline(
+    nav_msgs::msg::Path & global_path,
+    const std::vector<coordsW> & raw_path);
+
+  static SmoothPathMode parseSmoothPathMode(const std::string & mode);
 
   /**
    * @brief 解析 path_orientation_mode 字符串参数

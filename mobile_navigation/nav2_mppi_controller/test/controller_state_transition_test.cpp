@@ -24,6 +24,41 @@
 
 #include "utils/utils.hpp"
 
+class TestableMPPIController : public nav2_mppi_controller::MPPIController
+{
+public:
+  using nav2_mppi_controller::MPPIController::computeTangentPhaseCommand;
+  using nav2_mppi_controller::MPPIController::configureTangentPlan;
+
+  void initializeTangentTestState()
+  {
+    tangent_phase_control_enabled_ = false;
+    tangent_command_frame_ = "base_link";
+    clock_ = std::make_shared<rclcpp::Clock>(RCL_SYSTEM_TIME);
+  }
+
+  void setStartYawPhaseForTest()
+  {
+    tangent_phase_ = TangentPhase::START_YAW_ALIGN;
+  }
+
+  void setGoalYawPhaseForTest()
+  {
+    tangent_phase_ = TangentPhase::GOAL_YAW_ALIGN;
+  }
+
+  void setTangentTargetsForTest(double start_yaw, double tangent_yaw, double goal_yaw)
+  {
+    tangent_start_pose_.orientation.z = std::sin(start_yaw * 0.5);
+    tangent_start_pose_.orientation.w = std::cos(start_yaw * 0.5);
+    tangent_cruise_start_pose_.orientation.z = std::sin(tangent_yaw * 0.5);
+    tangent_cruise_start_pose_.orientation.w = std::cos(tangent_yaw * 0.5);
+    tangent_goal_pose_.orientation.z = std::sin(goal_yaw * 0.5);
+    tangent_goal_pose_.orientation.w = std::cos(goal_yaw * 0.5);
+    tangent_goal_pose_.position.x = 1.0;
+  }
+};
+
 class RosLockGuard
 {
 public:
@@ -235,4 +270,61 @@ TEST(ControllerStateTransitionTest, ControllerNotFail)
   controller->setSpeedLimit(1.0, true);
   controller->deactivate();
   controller->cleanup();
+}
+
+TEST(ControllerStateTransitionTest, TangentMarkerContract)
+{
+  TestableMPPIController controller;
+  controller.initializeTangentTestState();
+
+  nav_msgs::msg::Path marked_path;
+  marked_path.poses.resize(5);
+  marked_path.poses[0].pose.position.x = 0.0;
+  marked_path.poses[1].pose.position.x = 0.0;
+  marked_path.poses[2].pose.position.x = 0.5;
+  marked_path.poses[3].pose.position.x = 1.0;
+  marked_path.poses[4].pose.position.x = 1.0;
+  marked_path.poses[4].pose.orientation.z = std::sin(0.5);
+  marked_path.poses[4].pose.orientation.w = std::cos(0.5);
+
+  nav_msgs::msg::Path cruise_path;
+  ASSERT_TRUE(controller.configureTangentPlan(marked_path, cruise_path));
+  ASSERT_EQ(cruise_path.poses.size(), 3u);
+  EXPECT_DOUBLE_EQ(cruise_path.poses.front().pose.position.x, 0.0);
+  EXPECT_DOUBLE_EQ(cruise_path.poses.back().pose.position.x, 1.0);
+  EXPECT_DOUBLE_EQ(
+    cruise_path.poses.back().pose.orientation.z,
+    marked_path.poses.back().pose.orientation.z);
+  EXPECT_DOUBLE_EQ(
+    cruise_path.poses.back().pose.orientation.w,
+    marked_path.poses.back().pose.orientation.w);
+
+  nav_msgs::msg::Path ordinary_path = marked_path;
+  ordinary_path.poses.front().pose.position.x = -0.1;
+  EXPECT_FALSE(controller.configureTangentPlan(ordinary_path, cruise_path));
+}
+
+TEST(ControllerStateTransitionTest, TangentAlignmentCommandsNeverTranslate)
+{
+  TestableMPPIController controller;
+  controller.initializeTangentTestState();
+  controller.setTangentTargetsForTest(1.0, 0.5, -1.0);
+
+  geometry_msgs::msg::PoseStamped robot_pose;
+  robot_pose.pose.orientation.w = 1.0;
+  geometry_msgs::msg::Twist robot_speed;
+
+  controller.setStartYawPhaseForTest();
+  auto command = controller.computeTangentPhaseCommand(robot_pose, robot_speed);
+  ASSERT_TRUE(command.has_value());
+  EXPECT_DOUBLE_EQ(command->twist.linear.x, 0.0);
+  EXPECT_DOUBLE_EQ(command->twist.linear.y, 0.0);
+  EXPECT_GT(command->twist.angular.z, 0.0);
+
+  controller.setGoalYawPhaseForTest();
+  command = controller.computeTangentPhaseCommand(robot_pose, robot_speed);
+  ASSERT_TRUE(command.has_value());
+  EXPECT_DOUBLE_EQ(command->twist.linear.x, 0.0);
+  EXPECT_DOUBLE_EQ(command->twist.linear.y, 0.0);
+  EXPECT_LT(command->twist.angular.z, 0.0);
 }

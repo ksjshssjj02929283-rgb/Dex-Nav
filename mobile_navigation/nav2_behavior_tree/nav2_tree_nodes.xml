@@ -73,6 +73,7 @@
     <Action ID="ComputePathToPose">
       <input_port name="goal">Destination to plan to</input_port>
       <input_port name="start">Start pose of the path if overriding current robot pose</input_port>
+      <input_port name="orientation_reference">Optional task-level orientation reference without overriding the current start position</input_port>
       <input_port name="planner_id">Mapped name to the planner plugin type to use</input_port>
       <input_port name="server_name">Server name</input_port>
       <input_port name="server_timeout">Server timeout</input_port>
@@ -189,6 +190,15 @@
 
     <Action ID="Wait">
       <input_port name="wait_duration">Wait time</input_port>
+      <input_port name="server_name">Server name</input_port>
+      <input_port name="server_timeout">Server timeout</input_port>
+    </Action>
+
+    <!-- [ParkWheels] 四轮朝里驻车；Server=/park_wheels（mobile_cmd_omni） -->
+    <Action ID="ParkWheels">
+      <input_port name="steer_angle_rad" default="0.785">Inward steer magnitude (rad)</input_port>
+      <input_port name="timeout_sec" default="3.0">Max settle time (s)</input_port>
+      <input_port name="settle_tolerance_rad" default="0.08">Max |error| to succeed (rad)</input_port>
       <input_port name="server_name">Server name</input_port>
       <input_port name="server_timeout">Server timeout</input_port>
     </Action>

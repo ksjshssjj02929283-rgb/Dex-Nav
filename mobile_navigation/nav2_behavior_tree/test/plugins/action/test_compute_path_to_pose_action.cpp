@@ -72,6 +72,9 @@ public:
       "server_timeout",
       std::chrono::milliseconds(20));
     config_->blackboard->set<std::chrono::milliseconds>(
+      "wait_for_service_timeout",
+      std::chrono::milliseconds(1000));
+    config_->blackboard->set<std::chrono::milliseconds>(
       "bt_loop_duration",
       std::chrono::milliseconds(10));
     config_->blackboard->set<bool>("initial_pose_received", false);
@@ -146,6 +149,7 @@ TEST_F(ComputePathToPoseActionTestFixture, test_tick)
   EXPECT_EQ(tree_->rootNode()->getInput<std::string>("planner_id"), std::string("GridBased"));
   EXPECT_EQ(action_server_->getCurrentGoal()->goal.pose.position.x, 1.0);
   EXPECT_FALSE(action_server_->getCurrentGoal()->use_start);
+  EXPECT_FALSE(action_server_->getCurrentGoal()->use_orientation_reference);
   EXPECT_EQ(action_server_->getCurrentGoal()->planner_id, std::string("GridBased"));
 
   // check if returned path is correct
@@ -174,6 +178,51 @@ TEST_F(ComputePathToPoseActionTestFixture, test_tick)
   EXPECT_EQ(path.poses.size(), 2u);
   EXPECT_EQ(path.poses[0].pose.position.x, 0.0);
   EXPECT_EQ(path.poses[1].pose.position.x, -2.5);
+}
+
+TEST_F(ComputePathToPoseActionTestFixture, test_tick_use_orientation_reference)
+{
+  std::string xml_txt =
+    R"(
+      <root main_tree_to_execute = "MainTree" >
+        <BehaviorTree ID="MainTree">
+            <ComputePathToPose goal="{goal}" orientation_reference="{orientation_reference}"
+              path="{path}" planner_id="GridBased"/>
+        </BehaviorTree>
+      </root>)";
+
+  tree_ = std::make_shared<BT::Tree>(factory_->createTreeFromText(xml_txt, config_->blackboard));
+
+  geometry_msgs::msg::PoseStamped goal;
+  goal.header.stamp = node_->now();
+  goal.header.frame_id = "map";
+  goal.pose.position.x = 1.0;
+  goal.pose.orientation.w = 1.0;
+  config_->blackboard->set("goal", goal);
+
+  geometry_msgs::msg::PoseStamped orientation_reference;
+  orientation_reference.header.stamp = node_->now();
+  orientation_reference.header.frame_id = "map";
+  orientation_reference.pose.position.x = 99.0;  // Must never become geometric start x.
+  orientation_reference.pose.orientation.z = 0.5;
+  orientation_reference.pose.orientation.w = std::sqrt(0.75);
+  config_->blackboard->set("orientation_reference", orientation_reference);
+
+  const auto port_reference =
+    tree_->rootNode()->getInput<geometry_msgs::msg::PoseStamped>("orientation_reference");
+  ASSERT_TRUE(port_reference);
+  ASSERT_EQ(port_reference.value().header.frame_id, "map");
+
+  while (tree_->rootNode()->status() != BT::NodeStatus::SUCCESS) {
+    tree_->rootNode()->executeTick();
+  }
+
+  const auto received = action_server_->getCurrentGoal();
+  EXPECT_TRUE(received->use_orientation_reference);
+  EXPECT_EQ(received->orientation_reference.header.frame_id, "map");
+  EXPECT_DOUBLE_EQ(received->orientation_reference.pose.position.x, 99.0);
+  EXPECT_DOUBLE_EQ(received->orientation_reference.pose.orientation.z, 0.5);
+  EXPECT_FALSE(received->use_start);
 }
 
 TEST_F(ComputePathToPoseActionTestFixture, test_tick_use_start)

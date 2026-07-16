@@ -24,6 +24,14 @@ namespace nav2_behavior_tree
 namespace
 {
 
+bool hasValidOrientationReference(const geometry_msgs::msg::PoseStamped & pose)
+{
+  const auto & q = pose.pose.orientation;
+  const double norm_sq = q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w;
+  return !pose.header.frame_id.empty() &&
+         std::isfinite(norm_sq) && norm_sq > 1e-12;
+}
+
 bool isSameGoal(
   const geometry_msgs::msg::PoseStamped & a,
   const geometry_msgs::msg::PoseStamped & b)
@@ -57,6 +65,18 @@ void ComputePathToPoseAction::on_tick()
   if (getInput("start", goal_.start)) {
     goal_.use_start = true;
   }
+  // Keep this opt-in and independent from `start`. Replanning still starts at
+  // the current robot position; only explicitly enabled planners may consume
+  // this task-level yaw reference in PlannerServer.
+  goal_.use_orientation_reference = false;
+  if (getInput("orientation_reference", goal_.orientation_reference)) {
+    goal_.use_orientation_reference = hasValidOrientationReference(goal_.orientation_reference);
+    if (!goal_.use_orientation_reference) {
+      RCLCPP_WARN(
+        node_->get_logger(),
+        "Ignoring invalid orientation_reference (empty frame or invalid quaternion)");
+    }
+  }
 
   if (!have_last_goal_ || !isSameGoal(last_goal_, goal_.goal)) {
     nav_msgs::msg::Path empty_path;
@@ -73,9 +93,11 @@ void ComputePathToPoseAction::on_tick()
 
   RCLCPP_INFO(
     node_->get_logger(),
-    "[BT][Action:ComputePathToPose] 开始请求全局规划，planner_id='%s'，goal=(%.3f, %.3f)，use_start=%s",
+    "[BT][Action:ComputePathToPose] 开始请求全局规划，planner_id='%s'，goal=(%.3f, %.3f)，"
+    "use_start=%s，use_orientation_reference=%s",
     goal_.planner_id.c_str(), goal_.goal.pose.position.x, goal_.goal.pose.position.y,
-    goal_.use_start ? "true" : "false");
+    goal_.use_start ? "true" : "false",
+    goal_.use_orientation_reference ? "true" : "false");
 }
 
 BT::NodeStatus ComputePathToPoseAction::on_success()

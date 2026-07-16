@@ -28,9 +28,25 @@ namespace nav2_theta_star_planner
 {
 namespace
 {
+constexpr size_t kMaxInterpolatedPoses = 50000;
+
+nav_msgs::msg::Path coordsToPath(const std::vector<coordsW> & pts)
+{
+  nav_msgs::msg::Path pa;
+  pa.poses.reserve(pts.size());
+  for (const auto & pt : pts) {
+    geometry_msgs::msg::PoseStamped ps;
+    ps.pose.position.x = pt.x;
+    ps.pose.position.y = pt.y;
+    pa.poses.push_back(ps);
+  }
+  return pa;
+}
+
 std::string toLowerCopy(std::string value)
 {
-  std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
+  std::transform(
+    value.begin(), value.end(), value.begin(), [](unsigned char c) {
       return static_cast<char>(std::tolower(c));
     });
   return value;
@@ -78,6 +94,15 @@ PathOrientationMode ThetaStarPlanner::parsePathOrientationMode(const std::string
   }
   // 默认 auto：起终点同 yaw 平移；不同则沿路径弧长插值
   return PathOrientationMode::AUTO;
+}
+
+SmoothPathMode ThetaStarPlanner::parseSmoothPathMode(const std::string & mode)
+{
+  const std::string normalized = toLowerCopy(mode);
+  if (normalized == "l1_spline" || normalized == "l1" || normalized == "spline") {
+    return SmoothPathMode::L1_SPLINE;
+  }
+  return SmoothPathMode::LEGACY;
 }
 
 void ThetaStarPlanner::assignPathOrientations(
@@ -222,6 +247,11 @@ void ThetaStarPlanner::configure(
   node->get_parameter(
     name + ".path_orientation_same_threshold_rad", path_orientation_same_threshold_rad_);
 
+  nav2_util::declare_parameter_if_not_declared(
+    node, name + ".tangent_in_place_rotation_markers", rclcpp::ParameterValue(false));
+  node->get_parameter(
+    name + ".tangent_in_place_rotation_markers", tangent_in_place_rotation_markers_);
+
   if (!assign_path_orientations_) {
     path_orientation_mode_ = PathOrientationMode::NONE;
   }
@@ -263,6 +293,92 @@ void ThetaStarPlanner::configure(
   node->get_parameter(
     name + ".steering_max_smoothing_passes", swerve_steering_config_.max_smoothing_passes);
 
+  // ── 全向底盘几何路径平滑（无最小转弯半径约束）────────────────────────────
+  nav2_util::declare_parameter_if_not_declared(
+    node, name + ".smooth_path", rclcpp::ParameterValue(true));
+  node->get_parameter(name + ".smooth_path", smooth_path_);
+
+  nav2_util::declare_parameter_if_not_declared(
+    node, name + ".smooth_do_string_pull", rclcpp::ParameterValue(true));
+  node->get_parameter(name + ".smooth_do_string_pull", smooth_do_string_pull_);
+
+  nav2_util::declare_parameter_if_not_declared(
+    node, name + ".smooth_do_gradient", rclcpp::ParameterValue(true));
+  node->get_parameter(name + ".smooth_do_gradient", smooth_do_gradient_);
+
+  nav2_util::declare_parameter_if_not_declared(
+    node, name + ".smooth_max_iterations", rclcpp::ParameterValue(1000));
+  node->get_parameter(name + ".smooth_max_iterations", path_smooth_config_.max_iterations);
+
+  nav2_util::declare_parameter_if_not_declared(
+    node, name + ".smooth_w_data", rclcpp::ParameterValue(0.2));
+  node->get_parameter(name + ".smooth_w_data", path_smooth_config_.w_data);
+
+  nav2_util::declare_parameter_if_not_declared(
+    node, name + ".smooth_w_smooth", rclcpp::ParameterValue(0.3));
+  node->get_parameter(name + ".smooth_w_smooth", path_smooth_config_.w_smooth);
+
+  nav2_util::declare_parameter_if_not_declared(
+    node, name + ".smooth_tolerance", rclcpp::ParameterValue(1e-10));
+  node->get_parameter(name + ".smooth_tolerance", path_smooth_config_.tolerance);
+
+  nav2_util::declare_parameter_if_not_declared(
+    node, name + ".smooth_do_refinement", rclcpp::ParameterValue(true));
+  node->get_parameter(name + ".smooth_do_refinement", path_smooth_config_.do_refinement);
+
+  nav2_util::declare_parameter_if_not_declared(
+    node, name + ".smooth_refinement_num", rclcpp::ParameterValue(2));
+  node->get_parameter(name + ".smooth_refinement_num", path_smooth_config_.refinement_num);
+
+  nav2_util::declare_parameter_if_not_declared(
+    node, name + ".smooth_string_pull_corner_angle_rad", rclcpp::ParameterValue(0.17));
+  node->get_parameter(
+    name + ".smooth_string_pull_corner_angle_rad",
+    path_smooth_config_.string_pull_corner_angle_rad);
+
+  nav2_util::declare_parameter_if_not_declared(
+    node, name + ".smooth_do_curve_fit", rclcpp::ParameterValue(false));
+  node->get_parameter(name + ".smooth_do_curve_fit", smooth_do_curve_fit_);
+
+  nav2_util::declare_parameter_if_not_declared(
+    node, name + ".smooth_log_timing", rclcpp::ParameterValue(false));
+  node->get_parameter(name + ".smooth_log_timing", smooth_log_timing_);
+
+  nav2_util::declare_parameter_if_not_declared(
+    node, name + ".smooth_curve_sample_step_m", rclcpp::ParameterValue(0.05));
+  node->get_parameter(name + ".smooth_curve_sample_step_m", curve_path_config_.sample_step_m);
+
+  nav2_util::declare_parameter_if_not_declared(
+    node, name + ".smooth_curve_fillet_max_leg_fraction", rclcpp::ParameterValue(0.35));
+  node->get_parameter(
+    name + ".smooth_curve_fillet_max_leg_fraction",
+    curve_path_config_.fillet_max_leg_fraction);
+
+  nav2_util::declare_parameter_if_not_declared(
+    node, name + ".smooth_path_mode", rclcpp::ParameterValue(std::string("legacy")));
+  std::string smooth_path_mode_param;
+  node->get_parameter(name + ".smooth_path_mode", smooth_path_mode_param);
+  smooth_path_mode_ = parseSmoothPathMode(smooth_path_mode_param);
+
+  nav2_util::declare_parameter_if_not_declared(
+    node, name + ".smooth_l1_clearance_radius_factor", rclcpp::ParameterValue(0.85));
+  node->get_parameter(
+    name + ".smooth_l1_clearance_radius_factor", smooth_l1_clearance_radius_factor_);
+
+  nav2_util::declare_parameter_if_not_declared(
+    node, name + ".smooth_l1_corner_angle_rad", rclcpp::ParameterValue(0.25));
+  node->get_parameter(name + ".smooth_l1_corner_angle_rad", smooth_l1_corner_angle_rad_);
+
+  nav2_util::declare_parameter_if_not_declared(
+    node, name + ".smooth_l1_simplify_angle_rad", rclcpp::ParameterValue(0.10));
+  node->get_parameter(name + ".smooth_l1_simplify_angle_rad", smooth_l1_simplify_angle_rad_);
+
+  nav2_util::declare_parameter_if_not_declared(
+    node, name + ".smooth_l1_do_gradient", rclcpp::ParameterValue(true));
+  node->get_parameter(name + ".smooth_l1_do_gradient", smooth_l1_do_gradient_);
+
+  curve_path_config_.corner_angle_rad = path_smooth_config_.string_pull_corner_angle_rad;
+
   multi_layer_planner_->costmap_ = costmap_ros->getCostmap();
 
   nav2_util::declare_parameter_if_not_declared(
@@ -272,6 +388,12 @@ void ThetaStarPlanner::configure(
   nav2_util::declare_parameter_if_not_declared(
     node, name_ + ".node_map_yaml", rclcpp::ParameterValue(std::string("")));
   node->get_parameter(name_ + ".node_map_yaml", node_map_yaml_);
+
+  nav2_util::declare_parameter_if_not_declared(
+    node, name_ + ".node_map_source_yaml", rclcpp::ParameterValue(std::string("")));
+  std::string node_map_source_yaml;
+  node->get_parameter(name_ + ".node_map_source_yaml", node_map_source_yaml);
+  node_map_source_yaml = nav2_map_server::expandUserPath(node_map_source_yaml);
 
   nav2_util::declare_parameter_if_not_declared(
     node, name_ + ".local_map_yaml", rclcpp::ParameterValue(std::string("")));
@@ -290,17 +412,32 @@ void ThetaStarPlanner::configure(
   raw_map_yaml_ = nav2_map_server::expandUserPath(raw_map_yaml_);
   distance_map_yaml_ = nav2_map_server::expandUserPath(distance_map_yaml_);
 
+  if (node_map_yaml_.empty() && !node_map_source_yaml.empty()) {
+    node_map_yaml_ = nav2_map_server::defaultGlobalNodeMapPath(node_map_source_yaml);
+    RCLCPP_INFO(
+      logger_, "node_map_yaml derived from map: %s", node_map_yaml_.c_str());
+  }
+
   if (use_node_map_) {
     node_map_loaded_ = loadNodeMapResources();
+    if (node_map_loaded_) {
+      RCLCPP_INFO(logger_, "Node map planning ENABLED: %s", node_map_yaml_.c_str());
+    } else {
+      RCLCPP_ERROR(
+        logger_,
+        "Node map planning requested but load failed — will fall back to grid Theta*");
+    }
   }
 
   RCLCPP_INFO(
     logger_,
-    "Theta* path orientation: assign=%s mode=%s same_threshold=%.3f rad. "
+    "Theta* path orientation: assign=%s mode=%s same_threshold=%.3f rad "
+    "tangent_in_place_markers=%s. "
     "Omni: PathAngleCritic off + PathAlign use_path_orientations=true",
     assign_path_orientations_ ? "true" : "false",
     path_orientation_mode_param.c_str(),
-    path_orientation_same_threshold_rad_);
+    path_orientation_same_threshold_rad_,
+    tangent_in_place_rotation_markers_ ? "true" : "false");
 
   RCLCPP_INFO(
     logger_,
@@ -321,58 +458,63 @@ bool ThetaStarPlanner::loadNodeMapResources()
     return false;
   }
 
-  const auto preprocessed_dir = std::filesystem::path(node_map_yaml_).parent_path();
+  try {
+    const auto preprocessed_dir = std::filesystem::path(node_map_yaml_).parent_path();
 
-  if (local_map_yaml_.empty()) {
-    local_map_yaml_ = (preprocessed_dir / "nodemap_local.yaml").string();
-  }
-  if (raw_map_yaml_.empty()) {
-    raw_map_yaml_ = (preprocessed_dir / "nodemap_raw.yaml").string();
-  }
+    if (local_map_yaml_.empty()) {
+      local_map_yaml_ = (preprocessed_dir / "nodemap_local.yaml").string();
+    }
+    if (raw_map_yaml_.empty()) {
+      raw_map_yaml_ = (preprocessed_dir / "nodemap_raw.yaml").string();
+    }
 
-  nav2_map_server::NodeMap global_map;
-  nav2_map_server::NodeMap local_map;
-  nav2_map_server::NodeMap raw_map;
+    nav2_map_server::NodeMap global_map;
+    nav2_map_server::NodeMap local_map;
+    nav2_map_server::NodeMap raw_map;
 
-  if (!nav2_map_server::loadNodeMap(node_map_yaml_, global_map)) {
-    RCLCPP_ERROR(logger_, "Failed to load global node map: %s", node_map_yaml_.c_str());
+    if (!nav2_map_server::loadNodeMap(node_map_yaml_, global_map)) {
+      RCLCPP_ERROR(logger_, "Failed to load global node map: %s", node_map_yaml_.c_str());
+      return false;
+    }
+    if (!nav2_map_server::loadNodeMap(local_map_yaml_, local_map)) {
+      RCLCPP_WARN(logger_, "Local node map missing: %s", local_map_yaml_.c_str());
+    }
+
+    std::string dist_yaml = distance_map_yaml_;
+    if (dist_yaml.empty()) {
+      dist_yaml = (preprocessed_dir / "distance_map.yaml").string();
+    }
+
+    nav2_map_server::DistanceMap distance_map;
+    if (!nav2_map_server::loadDistanceMap(dist_yaml, distance_map)) {
+      RCLCPP_WARN(
+        logger_,
+        "Distance map missing (%s); node LOS clearance checks disabled",
+        dist_yaml.c_str());
+      distance_map = nav2_map_server::DistanceMap{};
+    }
+
+    multi_layer_planner_->global_map_ = std::move(global_map);
+    multi_layer_planner_->local_map_ = std::move(local_map);
+    multi_layer_planner_->raw_map_ = std::move(raw_map);
+    multi_layer_planner_->distance_map_ = std::move(distance_map);
+    multi_layer_planner_->costmap_ = planner_->costmap_;
+    multi_layer_planner_->w_euc_cost_ = planner_->w_euc_cost_;
+    multi_layer_planner_->w_traversal_cost_ = planner_->w_traversal_cost_;
+    multi_layer_planner_->w_heuristic_cost_ = planner_->w_heuristic_cost_;
+    multi_layer_planner_->allow_unknown_ = planner_->allow_unknown_;
+
+    RCLCPP_INFO(
+      logger_,
+      "Node map planner: L1 global=%zu nodes (L2 disabled); final leg <= %.1fm is direct line",
+      multi_layer_planner_->global_map_.nodes.size(),
+      theta_star::MultiLayerNodePlanner::kDirectFinalLegMaxDistM);
+    return true;
+  } catch (const std::exception & ex) {
+    RCLCPP_ERROR(
+      logger_, "Exception loading node map resources: %s", ex.what());
     return false;
   }
-  if (!nav2_map_server::loadNodeMap(local_map_yaml_, local_map)) {
-    RCLCPP_WARN(logger_, "Local node map missing: %s", local_map_yaml_.c_str());
-  }
-  if (!nav2_map_server::loadNodeMap(raw_map_yaml_, raw_map)) {
-    RCLCPP_WARN(logger_, "Raw node map missing: %s", raw_map_yaml_.c_str());
-  }
-
-  std::string dist_yaml = distance_map_yaml_;
-  if (dist_yaml.empty()) {
-    dist_yaml = (preprocessed_dir / "distance_map.yaml").string();
-  }
-
-  nav2_map_server::DistanceMap distance_map;
-  if (!nav2_map_server::loadDistanceMap(dist_yaml, distance_map)) {
-    RCLCPP_ERROR(logger_, "Failed to load distance map: %s", dist_yaml.c_str());
-    return false;
-  }
-
-  multi_layer_planner_->global_map_ = std::move(global_map);
-  multi_layer_planner_->local_map_ = std::move(local_map);
-  multi_layer_planner_->raw_map_ = std::move(raw_map);
-  multi_layer_planner_->distance_map_ = std::move(distance_map);
-  multi_layer_planner_->costmap_ = planner_->costmap_;
-  multi_layer_planner_->w_euc_cost_ = planner_->w_euc_cost_;
-  multi_layer_planner_->w_traversal_cost_ = planner_->w_traversal_cost_;
-  multi_layer_planner_->w_heuristic_cost_ = planner_->w_heuristic_cost_;
-  multi_layer_planner_->allow_unknown_ = planner_->allow_unknown_;
-
-  RCLCPP_INFO(
-    logger_,
-    "3-layer node Theta*: global=%zu local=%zu raw=%zu nodes",
-    multi_layer_planner_->global_map_.nodes.size(),
-    multi_layer_planner_->local_map_.nodes.size(),
-    multi_layer_planner_->raw_map_.nodes.size());
-  return true;
 }
 
 void ThetaStarPlanner::applySteeringContinuityConstraint(
@@ -402,6 +544,22 @@ void ThetaStarPlanner::cleanup()
 void ThetaStarPlanner::activate()
 {
   RCLCPP_INFO(logger_, "Activating plugin %s of type nav2_theta_star_planner", name_.c_str());
+  RCLCPP_INFO(
+    logger_,
+    "Path post-process: smooth_path=%s mode=%s string_pull=%s gradient=%s fillet_geom=%s "
+    "log_timing=%s [build=l1_spline_v3]",
+    smooth_path_ ? "true" : "false",
+    smooth_path_mode_ == SmoothPathMode::L1_SPLINE ? "l1_spline" : "legacy",
+    smooth_do_string_pull_ ? "true" : "false",
+    smooth_do_gradient_ ? "true" : "false",
+    smooth_do_curve_fit_ ? "true" : "false",
+    smooth_log_timing_ ? "true" : "false");
+  if (use_node_map_ && !node_map_loaded_) {
+    node_map_loaded_ = loadNodeMapResources();
+    if (node_map_loaded_) {
+      RCLCPP_INFO(logger_, "Node map loaded on activate: %s", node_map_yaml_.c_str());
+    }
+  }
   // Add callback for dynamic parameters
   auto node = parent_node_.lock();
   dyn_params_handler_ = node->add_on_set_parameters_callback(
@@ -428,7 +586,9 @@ nav_msgs::msg::Path ThetaStarPlanner::createPlan(
   planner_->costmap_->worldToMap(goal.pose.position.x, goal.pose.position.y, mx_goal, my_goal);
   if (mx_start == mx_goal && my_start == my_goal) {
     if (!planner_->isSafe(mx_start, my_start)) {
-      RCLCPP_WARN(logger_, "Failed to create a unique pose path because the pose is not in free space");
+      RCLCPP_WARN(
+        logger_,
+        "Failed to create a unique pose path because the pose is not in free space");
       return global_path;
     }
     global_path.header.stamp = clock_->now();
@@ -438,13 +598,25 @@ nav_msgs::msg::Path ThetaStarPlanner::createPlan(
     pose.pose.position.z = 0.0;
 
     pose.pose = start.pose;
-    // if we have a different start and goal orientation, set the unique path pose to the goal
-    // orientation, unless use_final_approach_orientation=true where we need it to be the start
-    // orientation to avoid movement from the local planner
-    if (start.pose.orientation != goal.pose.orientation && !use_final_approach_orientation_) {
+    if (path_orientation_mode_ == PathOrientationMode::TANGENT &&
+      tangent_in_place_rotation_markers_)
+    {
+      // Keep the same marker contract as a normal tangent path. There is no
+      // cruise distance in this case, so the MPPI tangent phase controller
+      // will perform start alignment and then final goal alignment in place.
+      geometry_msgs::msg::PoseStamped start_marker = pose;
+      start_marker.pose.orientation = start.pose.orientation;
+      geometry_msgs::msg::PoseStamped cruise_start = start_marker;
+      geometry_msgs::msg::PoseStamped cruise_goal = start_marker;
+      geometry_msgs::msg::PoseStamped goal_marker = start_marker;
+      goal_marker.pose.orientation = goal.pose.orientation;
+      global_path.poses = {start_marker, cruise_start, cruise_goal, goal_marker};
+    } else {
+      // Every ordinary mode has the same terminal contract: reaching the
+      // geometric goal also means reaching the requested goal yaw.
       pose.pose.orientation = goal.pose.orientation;
+      global_path.poses.push_back(pose);
     }
-    global_path.poses.push_back(pose);
     return global_path;
   }
 
@@ -460,37 +632,60 @@ nav_msgs::msg::Path ThetaStarPlanner::createPlan(
       assignPathOrientations(global_path, start, goal);
     }
 
-    // 2) 确定路径末点目标 yaw
-    double final_goal_yaw = tf2::getYaw(goal.pose.orientation);
-    if (use_final_approach_orientation_) {
-      if (plan_size == 1) {
-        final_goal_yaw = tf2::getYaw(start.pose.orientation);
-      } else {
-        const auto & last_pose = global_path.poses.back().pose.position;
-        const auto & approach_pose = global_path.poses[plan_size - 2].pose.position;
-        final_goal_yaw = std::atan2(
-          last_pose.y - approach_pose.y,
-          last_pose.x - approach_pose.x);
-      }
-    }
+    // 2) All ordinary modes share a strict terminal contract. TANGENT with
+    // marker support keeps its cruise endpoint on the path tangent and adds a
+    // duplicate goal pose carrying goal yaw. The controller consumes the
+    // duplicate endpoints as explicit rotate-in-place phase boundaries.
+    const double final_path_yaw = tf2::getYaw(goal.pose.orientation);
 
     // 3) B 层：沿路径仿真舵轮 IK，平滑 yaw 曲线，避免底盘 Two-Phase 停车转舵
+    // TANGENT phase boundaries are intentional yaw discontinuities, so they
+    // must not be spread back into the translating part of the path.
     if (enforce_steering_continuity_ &&
       assign_path_orientations_ &&
-      path_orientation_mode_ != PathOrientationMode::NONE)
+      path_orientation_mode_ != PathOrientationMode::NONE &&
+      path_orientation_mode_ != PathOrientationMode::TANGENT)
     {
-      applySteeringContinuityConstraint(global_path, final_goal_yaw);
+      applySteeringContinuityConstraint(global_path, final_path_yaw);
     }
 
-    // 4) 末点 orientation 与 final_goal_yaw 对齐
-    global_path.poses.back().pose.orientation =
-      nav2_util::geometry_utils::orientationAroundZAxis(final_goal_yaw);
+    if (path_orientation_mode_ == PathOrientationMode::TANGENT &&
+      tangent_in_place_rotation_markers_ && plan_size >= 2)
+    {
+      geometry_msgs::msg::PoseStamped start_marker = global_path.poses.front();
+      start_marker.pose.orientation = start.pose.orientation;
+      global_path.poses.insert(global_path.poses.begin(), start_marker);
+
+      geometry_msgs::msg::PoseStamped goal_marker = global_path.poses.back();
+      goal_marker.pose.orientation =
+        nav2_util::geometry_utils::orientationAroundZAxis(final_path_yaw);
+      global_path.poses.push_back(goal_marker);
+    } else {
+      // 4) Non-marker modes keep the existing strict final goal-yaw contract.
+      global_path.poses.back().pose.orientation =
+        nav2_util::geometry_utils::orientationAroundZAxis(final_path_yaw);
+    }
   }
 
   auto stop_time = std::chrono::steady_clock::now();
   auto dur = std::chrono::duration_cast<std::chrono::microseconds>(stop_time - start_time);
+  const double total_ms = dur.count() / 1000.0;
   RCLCPP_DEBUG(logger_, "the time taken is : %i", static_cast<int>(dur.count()));
   RCLCPP_DEBUG(logger_, "the nodes_opened are:  %i", planner_->nodes_opened);
+  if (smooth_log_timing_ && plan_size > 0) {
+    RCLCPP_INFO(
+      logger_,
+      "createPlan total=%.2f ms (includes search + post-process; "
+      "see post-process timing for baseline vs curve breakdown)",
+      total_ms);
+  }
+  if (global_path.poses.empty()) {
+    RCLCPP_ERROR(
+      logger_,
+      "createPlan returned empty path (start=%.2f,%.2f goal=%.2f,%.2f)",
+      start.pose.position.x, start.pose.position.y,
+      goal.pose.position.x, goal.pose.position.y);
+  }
   return global_path;
 }
 
@@ -502,6 +697,11 @@ void ThetaStarPlanner::getPlan(
   std::vector<coordsW> path;
   bool goal_unreachable = false;
 
+  multi_layer_planner_->costmap_ = planner_->costmap_;
+  if (use_node_map_ && !node_map_loaded_) {
+    node_map_loaded_ = loadNodeMapResources();
+  }
+
   const bool use_nodes = use_node_map_ && node_map_loaded_ && multi_layer_planner_->hasMaps();
   if (use_nodes) {
     multi_layer_planner_->w_euc_cost_ = planner_->w_euc_cost_;
@@ -509,33 +709,189 @@ void ThetaStarPlanner::getPlan(
     multi_layer_planner_->w_heuristic_cost_ = planner_->w_heuristic_cost_;
     multi_layer_planner_->allow_unknown_ = planner_->allow_unknown_;
 
-    if (!multi_layer_planner_->generatePath(start, goal, path, goal_unreachable)) {
-      RCLCPP_ERROR(logger_, "3-layer node Theta* could not find a path");
-      global_path.poses.clear();
-      return;
+    try {
+      if (multi_layer_planner_->generatePath(start, goal, path, goal_unreachable)) {
+        if (goal_unreachable) {
+          RCLCPP_WARN(
+            logger_,
+            "Goal lies in obstacle on raw layer; path ends at L1 sparse node");
+        }
+        RCLCPP_INFO(
+          logger_,
+          "Node map plan: %zu graph waypoints (before interpolation)",
+          path.size());
+        buildGeometricPath(global_path, path);
+        if (global_path.poses.empty() && !path.empty()) {
+          RCLCPP_ERROR(
+            logger_,
+            "Node path interpolation produced empty plan from %zu waypoints",
+            path.size());
+        }
+        return;
+      }
+    } catch (const std::exception & ex) {
+      RCLCPP_ERROR(
+        logger_, "3-layer node planning exception: %s — falling back to grid Theta*",
+        ex.what());
+      path.clear();
     }
-    if (goal_unreachable) {
-      RCLCPP_WARN(
-        logger_,
-        "Goal lies in obstacle on raw layer; path ends at L1 sparse node");
-    }
+    RCLCPP_WARN(
+      logger_,
+      "3-layer node Theta* could not find a path — falling back to grid Theta*");
+    path.clear();
+  } else if (use_node_map_ && !node_map_loaded_) {
+    RCLCPP_WARN_ONCE(logger_, "Falling back to grid Theta* (node map not loaded)");
+  }
+
+  if (planner_->isUnsafeToPlan()) {
+    RCLCPP_ERROR(logger_, "Either of the start or goal pose are an obstacle! ");
+    global_path.poses.clear();
+    return;
+  }
+  if (!planner_->generatePath(path)) {
+    RCLCPP_ERROR(logger_, "Could not generate path between the given poses");
+    global_path.poses.clear();
+    return;
+  }
+
+  buildGeometricPath(global_path, path);
+}
+
+void ThetaStarPlanner::buildGeometricPath(
+  nav_msgs::msg::Path & global_path,
+  const std::vector<coordsW> & raw_path)
+{
+  if (smooth_path_mode_ == SmoothPathMode::L1_SPLINE) {
+    buildGeometricPathL1Spline(global_path, raw_path);
   } else {
-    if (use_node_map_ && !node_map_loaded_) {
-      RCLCPP_WARN_ONCE(logger_, "Falling back to grid Theta* (node map not loaded)");
-    }
-    if (planner_->isUnsafeToPlan()) {
-      RCLCPP_ERROR(logger_, "Either of the start or goal pose are an obstacle! ");
-      global_path.poses.clear();
-      return;
-    }
-    if (!planner_->generatePath(path)) {
-      RCLCPP_ERROR(logger_, "Could not generate path between the given poses");
-      global_path.poses.clear();
-      return;
+    buildGeometricPathLegacy(global_path, raw_path);
+  }
+}
+
+void ThetaStarPlanner::buildGeometricPathL1Spline(
+  nav_msgs::msg::Path & global_path,
+  const std::vector<coordsW> & raw_path)
+{
+  const double res = planner_->costmap_->getResolution();
+  const nav2_map_server::DistanceMap * dist_map = nullptr;
+  if (multi_layer_planner_ && !multi_layer_planner_->distance_map_.distance_m.empty()) {
+    dist_map = &multi_layer_planner_->distance_map_;
+  }
+
+  const auto elapsedMs = [](const std::chrono::steady_clock::time_point & start) {
+      return std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - start).count();
+    };
+  const auto t0 = std::chrono::steady_clock::now();
+
+  L1SplinePathConfig l1_cfg;
+  l1_cfg.sample_step_m = curve_path_config_.sample_step_m > 0.0 ?
+    curve_path_config_.sample_step_m : res;
+  l1_cfg.corner_angle_rad = smooth_l1_corner_angle_rad_;
+  l1_cfg.simplify_angle_rad = smooth_l1_simplify_angle_rad_;
+  l1_cfg.fillet_max_leg_fraction = curve_path_config_.fillet_max_leg_fraction;
+  l1_cfg.clearance_radius_factor = smooth_l1_clearance_radius_factor_;
+
+  std::vector<coordsW> dense_pts;
+  L1SplinePathStats l1_stats;
+  L1SplinePathBuilder::build(raw_path, dist_map, l1_cfg, dense_pts, &l1_stats);
+
+  global_path = coordsToPath(dense_pts);
+
+  bool gradient_ok = true;
+  if (smooth_l1_do_gradient_ && global_path.poses.size() > 2) {
+    gradient_ok = OmniPathSmoother::gradientSmooth(
+      global_path, planner_->costmap_, path_smooth_config_, planner_->allow_unknown_);
+  }
+
+  if (smooth_log_timing_) {
+    RCLCPP_INFO(
+      logger_,
+      "L1 spline path: graph=%zu simplified=%zu → dense=%zu | fillet seen=%zu applied=%zu "
+      "rejected=%zu | min_clear=%.3fm | gradient=%s | %.2f ms",
+      l1_stats.graph_waypoints,
+      l1_stats.simplified_waypoints,
+      l1_stats.dense_poses,
+      l1_stats.fillet_corners_seen,
+      l1_stats.fillet_corners_applied,
+      l1_stats.fillet_corners_rejected,
+      l1_stats.min_corner_clearance_m,
+      smooth_l1_do_gradient_ ? (gradient_ok ? "ok" : "partial") : "off",
+      elapsedMs(t0));
+  }
+
+  global_path.header.stamp = clock_->now();
+  global_path.header.frame_id = global_frame_;
+}
+
+void ThetaStarPlanner::buildGeometricPathLegacy(
+  nav_msgs::msg::Path & global_path,
+  const std::vector<coordsW> & raw_path)
+{
+  std::vector<coordsW> waypoints = raw_path;
+  const bool do_string_pull =
+    (smooth_path_ && smooth_do_string_pull_) ||
+    (smooth_do_curve_fit_ && smooth_do_string_pull_);
+  if (do_string_pull && waypoints.size() >= 2) {
+    OmniPathSmoother::stringPull(
+      waypoints, planner_->costmap_, planner_->allow_unknown_, path_smooth_config_);
+  }
+
+  const double res = planner_->costmap_->getResolution();
+  curve_path_config_.corner_angle_rad = path_smooth_config_.string_pull_corner_angle_rad;
+  if (curve_path_config_.sample_step_m <= 0.0) {
+    curve_path_config_.sample_step_m = res;
+  }
+
+  const auto elapsedMs = [](const std::chrono::steady_clock::time_point & start) {
+      return std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - start).count();
+    };
+
+  const auto t0 = std::chrono::steady_clock::now();
+  CurveFitStats fillet_stats;
+  const size_t sparse_count = raw_path.size();
+  if (smooth_do_curve_fit_ && waypoints.size() >= 2) {
+    CurvePathSmoother::fitCurvesGeometric(
+      waypoints, curve_path_config_, nullptr, 0.85, &fillet_stats);
+    if (smooth_log_timing_ && fillet_stats.fillet_corners_seen > 0) {
+      RCLCPP_INFO(
+        logger_,
+        "Corner fillet (geometry): seen=%zu applied=%zu rejected=%zu | waypoints %zu→%zu",
+        fillet_stats.fillet_corners_seen,
+        fillet_stats.fillet_corners_applied,
+        fillet_stats.fillet_corners_rejected,
+        sparse_count,
+        waypoints.size());
     }
   }
 
-  global_path = linearInterpolation(path, planner_->costmap_->getResolution());
+  const bool waypoints_dense = waypoints.size() > sparse_count + sparse_count / 3;
+  if (waypoints_dense) {
+    global_path = coordsToPath(waypoints);
+  } else {
+    global_path = linearInterpolation(waypoints, res);
+  }
+
+  bool gradient_ok = true;
+  if (smooth_path_ && smooth_do_gradient_ && global_path.poses.size() > 2) {
+    gradient_ok = OmniPathSmoother::gradientSmooth(
+      global_path, planner_->costmap_, path_smooth_config_, planner_->allow_unknown_);
+  }
+
+  if (smooth_log_timing_) {
+    RCLCPP_INFO(
+      logger_,
+      "Path post-process: sparse=%zu dense=%zu poses=%zu | mode=legacy fillet=%s gradient=%s(%s) | %.2f ms",
+      sparse_count,
+      waypoints.size(),
+      global_path.poses.size(),
+      smooth_do_curve_fit_ ? "on" : "off",
+      (smooth_path_ && smooth_do_gradient_) ? "on" : "off",
+      gradient_ok ? "ok" : "partial",
+      elapsedMs(t0));
+  }
+
   global_path.header.stamp = clock_->now();
   global_path.header.frame_id = global_frame_;
 }
@@ -546,7 +902,18 @@ nav_msgs::msg::Path ThetaStarPlanner::linearInterpolation(
 {
   nav_msgs::msg::Path pa;
 
+  if (raw_path.empty()) {
+    return pa;
+  }
+
   geometry_msgs::msg::PoseStamped p1;
+  if (raw_path.size() == 1 || dist_bw_points <= 0.0) {
+    p1.pose.position.x = raw_path[0].x;
+    p1.pose.position.y = raw_path[0].y;
+    pa.poses.push_back(p1);
+    return pa;
+  }
+
   for (unsigned int j = 0; j < raw_path.size() - 1; j++) {
     coordsW pt1 = raw_path[j];
     p1.pose.position.x = pt1.x;
@@ -565,6 +932,14 @@ nav_msgs::msg::Path ThetaStarPlanner::linearInterpolation(
     }
   }
 
+  p1.pose.position.x = raw_path.back().x;
+  p1.pose.position.y = raw_path.back().y;
+  pa.poses.push_back(p1);
+
+  if (pa.poses.size() > kMaxInterpolatedPoses) {
+    pa.poses.resize(kMaxInterpolatedPoses);
+  }
+
   return pa;
 }
 
@@ -581,6 +956,10 @@ ThetaStarPlanner::dynamicParametersCallback(std::vector<rclcpp::Parameter> param
         planner_->how_many_corners_ = parameter.as_int();
       } else if (name == name_ + ".steering_max_smoothing_passes") {
         swerve_steering_config_.max_smoothing_passes = parameter.as_int();
+      } else if (name == name_ + ".smooth_max_iterations") {
+        path_smooth_config_.max_iterations = parameter.as_int();
+      } else if (name == name_ + ".smooth_refinement_num") {
+        path_smooth_config_.refinement_num = parameter.as_int();
       }
     } else if (type == ParameterType::PARAMETER_DOUBLE) {
       if (name == name_ + ".w_euc_cost") {
@@ -601,9 +980,32 @@ ThetaStarPlanner::dynamicParametersCallback(std::vector<rclcpp::Parameter> param
         swerve_steering_config_.nominal_path_speed = parameter.as_double();
       } else if (name == name_ + ".steering_max_body_yaw_rate") {
         swerve_steering_config_.max_body_yaw_rate = parameter.as_double();
+      } else if (name == name_ + ".smooth_w_data") {
+        path_smooth_config_.w_data = parameter.as_double();
+      } else if (name == name_ + ".smooth_w_smooth") {
+        path_smooth_config_.w_smooth = parameter.as_double();
+      } else if (name == name_ + ".smooth_tolerance") {
+        path_smooth_config_.tolerance = parameter.as_double();
+      } else if (name == name_ + ".smooth_string_pull_corner_angle_rad") {
+        path_smooth_config_.string_pull_corner_angle_rad = parameter.as_double();
+        curve_path_config_.corner_angle_rad = path_smooth_config_.string_pull_corner_angle_rad;
+      } else if (name == name_ + ".smooth_curve_sample_step_m") {
+        curve_path_config_.sample_step_m = parameter.as_double();
+      } else if (name == name_ + ".smooth_curve_fillet_max_leg_fraction") {
+        curve_path_config_.fillet_max_leg_fraction = parameter.as_double();
+      } else if (name == name_ + ".smooth_l1_clearance_radius_factor") {
+        smooth_l1_clearance_radius_factor_ = parameter.as_double();
+      } else if (name == name_ + ".smooth_l1_corner_angle_rad") {
+        smooth_l1_corner_angle_rad_ = parameter.as_double();
+      } else if (name == name_ + ".smooth_l1_simplify_angle_rad") {
+        smooth_l1_simplify_angle_rad_ = parameter.as_double();
+      } else if (name == name_ + ".smooth_l1_do_gradient") {
+        smooth_l1_do_gradient_ = parameter.as_bool();
       }
     } else if (type == ParameterType::PARAMETER_STRING) {
-      if (name == name_ + ".path_orientation_mode") {
+      if (name == name_ + ".smooth_path_mode") {
+        smooth_path_mode_ = parseSmoothPathMode(parameter.as_string());
+      } else if (name == name_ + ".path_orientation_mode") {
         path_orientation_mode_ = parsePathOrientationMode(parameter.as_string());
         if (!assign_path_orientations_) {
           path_orientation_mode_ = PathOrientationMode::NONE;
@@ -631,11 +1033,25 @@ ThetaStarPlanner::dynamicParametersCallback(std::vector<rclcpp::Parameter> param
         }
       } else if (name == name_ + ".enforce_steering_continuity") {
         enforce_steering_continuity_ = parameter.as_bool();
+      } else if (name == name_ + ".tangent_in_place_rotation_markers") {
+        tangent_in_place_rotation_markers_ = parameter.as_bool();
       } else if (name == name_ + ".use_node_map") {
         use_node_map_ = parameter.as_bool();
         if (use_node_map_) {
           node_map_loaded_ = loadNodeMapResources();
         }
+      } else if (name == name_ + ".smooth_path") {
+        smooth_path_ = parameter.as_bool();
+      } else if (name == name_ + ".smooth_do_string_pull") {
+        smooth_do_string_pull_ = parameter.as_bool();
+      } else if (name == name_ + ".smooth_do_gradient") {
+        smooth_do_gradient_ = parameter.as_bool();
+      } else if (name == name_ + ".smooth_do_refinement") {
+        path_smooth_config_.do_refinement = parameter.as_bool();
+      } else if (name == name_ + ".smooth_do_curve_fit") {
+        smooth_do_curve_fit_ = parameter.as_bool();
+      } else if (name == name_ + ".smooth_log_timing") {
+        smooth_log_timing_ = parameter.as_bool();
       }
     }
   }

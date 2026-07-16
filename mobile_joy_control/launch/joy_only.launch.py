@@ -21,12 +21,12 @@ def launch_setup(context, *args, **kwargs):
                               'cmd_vel_mux_params.yaml')
 
     # 读取 chassis.cfg 文件（使用绝对路径）
-    robot_type = "diff_drive"  # 默认值
+    robot_type = "omni"  # 默认值
     try:
         # chassis_config_file 是绝对路径，直接读取
         with open(chassis_config_file, 'r') as f:
             robot_config = json.load(f)  # .cfg文件内容是JSON格式
-            robot_type = robot_config.get("robot_name", "diff_drive")
+            robot_type = robot_config.get("robot_name", "omni")
             print(f"[INFO] Detected robot type: {robot_type}")
     except Exception as e:
         print(

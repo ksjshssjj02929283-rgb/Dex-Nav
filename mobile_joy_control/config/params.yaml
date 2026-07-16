@@ -30,7 +30,7 @@ mobile_joy_control:
       script_action_1: "/home/dexforce/w1/dexe_mobile_application/script/records/ACTIONS/guns/"  # 按键1的动作
 
       # 控制参数
-      omni_mode: false              # 是否为全向模式
+      omni_mode: true              # 是否为全向模式
       axis_linear_y: 0           # [全向模式] Y轴平移
       axis_angular_z: 2          # [全向模式] Z轴旋转
 
@@ -69,7 +69,7 @@ mobile_joy_control:
       script_action_1: "/home/dexforce/w1/dexe_mobile_application/script/records/ACTIONS/guns/"  # 按键1的动作
 
       # 控制参数
-      omni_mode: false              # 是否为全向模式
+      omni_mode: true              # 是否为全向模式
       axis_linear_y: 0           # [全向模式] Y轴平移（可根据BEITONG手柄调整）
       axis_angular_z: 2          # [全向模式] Z轴旋转（可根据BEITONG手柄调整）
 

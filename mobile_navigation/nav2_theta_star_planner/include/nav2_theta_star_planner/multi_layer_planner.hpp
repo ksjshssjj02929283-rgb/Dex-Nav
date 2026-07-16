@@ -10,6 +10,7 @@
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "nav2_map_server/node_map_types.hpp"
 #include "nav2_theta_star_planner/node_theta_star.hpp"
+#include "nav2_theta_star_planner/theta_star.hpp"
 
 namespace theta_star
 {
@@ -28,6 +29,13 @@ public:
   double w_euc_cost_{1.0};
   double w_heuristic_cost_{1.0};
   bool allow_unknown_{false};
+
+  /// L3 raw graphs can exceed 80k nodes; above this use costmap Theta* for the final leg.
+  static constexpr size_t kMaxRawGraphNodes = 8000;
+  /// Skip L2 local graph; L1 global + costmap final leg is enough for speed.
+  static constexpr bool kUseLocalLayer = false;
+  /// Direct line final leg below this distance (m); avoids full-grid Theta*.
+  static constexpr double kDirectFinalLegMaxDistM = 2.5;
 
   bool hasMaps() const
   {
@@ -49,6 +57,14 @@ private:
     double from_x, double from_y,
     double to_x, double to_y,
     std::vector<coordsW> & segment) const;
+  bool planFinalLegOnCostmap(
+    double from_x, double from_y,
+    double to_x, double to_y,
+    std::vector<coordsW> & segment) const;
+  void appendFinalApproach(
+    std::vector<coordsW> & raw_path,
+    double from_x, double from_y,
+    double goal_x, double goal_y) const;
   void appendSegment(
     std::vector<coordsW> & combined,
     const std::vector<coordsW> & segment) const;

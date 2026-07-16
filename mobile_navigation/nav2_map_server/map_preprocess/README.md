@@ -71,6 +71,20 @@ python3 .../visualize_preprocessed_map.py --map-yaml .../map.yaml --hide-raw
 python3 .../visualize_preprocessed_map.py --map-yaml .../map.yaml --hide-global --hide-local
 ```
 
+### RViz — 分层显示 node map
+
+已集成到 `nav2_bringup/launch/rviz_launch.py`（与 RViz 同启）：
+
+```bash
+ros2 launch nav2_bringup rviz_launch.py use_sim_time:=true \
+  rviz_config:=/path/to/omni_display.rviz \
+  map_yaml:=~/.dexe/data/maps/<map_name>/map.yaml
+```
+
+`map_yaml` 指向 **原始 `map.yaml`**（同目录需有 `preprocessed/`）。RViz 里已预置 **NodeMap L1/L2/L3** MarkerArray（话题 `/nodemap_markers`）。
+
+可选：`show_global` / `show_local` / `show_raw` / `show_nodemap:=false`
+
 ## Planner params (`ThetaStarBased`)
 
 ```yaml

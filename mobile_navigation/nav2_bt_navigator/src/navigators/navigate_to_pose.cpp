@@ -224,7 +224,7 @@ void
 NavigateToPoseNavigator::initializeGoalPose(ActionT::Goal::ConstSharedPtr goal)
 {
   geometry_msgs::msg::PoseStamped current_pose;
-  nav2_util::getCurrentPose(
+  const bool have_current_pose = nav2_util::getCurrentPose(
     current_pose, *feedback_utils_.tf,
     feedback_utils_.global_frame, feedback_utils_.robot_frame,
     feedback_utils_.transform_tolerance);
@@ -245,6 +245,24 @@ NavigateToPoseNavigator::initializeGoalPose(ActionT::Goal::ConstSharedPtr goal)
   start_time_ = clock_->now();
   auto blackboard = bt_action_server_->getBlackboard();
   blackboard->set<int>("number_recoveries", 0);  // NOLINT
+
+  // Capture the navigation-task yaw once. The default BT forwards this pose
+  // separately from the geometric start, so periodic replans can use current
+  // robot x/y without silently redefining Theta* `start` yaw every cycle.
+  // If TF is temporarily unavailable, do not publish an invalid quaternion;
+  // ComputePathToPose then falls back to its unchanged legacy behavior.
+  if (have_current_pose) {
+    blackboard->set<geometry_msgs::msg::PoseStamped>(
+      "navigation_orientation_reference", current_pose);
+  } else {
+    // Overwrite a reference left by a previous task. The BT action validates
+    // the empty frame and safely disables the optional feature for this goal.
+    blackboard->set<geometry_msgs::msg::PoseStamped>(
+      "navigation_orientation_reference", geometry_msgs::msg::PoseStamped{});
+    RCLCPP_WARN(
+      logger_,
+      "Could not capture navigation orientation reference; planners will use current start yaw");
+  }
 
   // Update the goal pose on the blackboard
   blackboard->set<geometry_msgs::msg::PoseStamped>(goal_blackboard_id_, goal->pose);

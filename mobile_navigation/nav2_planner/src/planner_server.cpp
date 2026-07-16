@@ -13,6 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <iomanip>
@@ -64,6 +65,10 @@ PlannerServer::PlannerServer(const rclcpp::NodeOptions & options)
   // upstream BTs hard-code planner_id="GridBased". Switchable at runtime:
   //   ros2 param set /planner_server override_planner_id true|false
   declare_parameter("override_planner_id", false);
+  // Empty by default for full backwards compatibility. A planner ID must be
+  // explicitly listed before an Action orientation reference can alter the
+  // yaw passed to that plugin; start x/y are never replaced.
+  declare_parameter("orientation_reference_planners", std::vector<std::string>{});
   // route_fallback_planner: when the dispatched planner is the route planner
   // and it returns no path SPECIFICALLY because the map has no route graph,
   // retry with this free-space planner. Empty = no fallback.
@@ -164,6 +169,25 @@ PlannerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
     "override_planner_id = %s (when true, every getPlan() ignores caller's "
     "planner_id and uses active_planner='%s')",
     override_planner_id_ ? "true" : "false", active_planner_.c_str());
+
+  get_parameter("orientation_reference_planners", orientation_reference_planners_);
+  for (auto it = orientation_reference_planners_.begin();
+    it != orientation_reference_planners_.end(); )
+  {
+    if (!planners_.count(*it)) {
+      RCLCPP_WARN(
+        get_logger(),
+        "Ignoring unknown orientation_reference_planners entry '%s'",
+        it->c_str());
+      it = orientation_reference_planners_.erase(it);
+    } else {
+      RCLCPP_INFO(
+        get_logger(),
+        "Task-level orientation reference enabled for planner '%s'",
+        it->c_str());
+      ++it;
+    }
+  }
 
   // Resolve route→free-space fallback planner
   get_parameter("route_fallback_planner", route_fallback_planner_);
@@ -550,7 +574,25 @@ PlannerServer::computePlan()
       return;
     }
 
-    result->path = getPlan(start, goal_pose, goal->planner_id);
+    geometry_msgs::msg::PoseStamped orientation_reference;
+    const geometry_msgs::msg::PoseStamped * orientation_reference_ptr = nullptr;
+    if (goal->use_orientation_reference) {
+      orientation_reference = goal->orientation_reference;
+      // Transform the reference independently. A TF failure only disables the
+      // optional yaw feature for this cycle; normal planning remains available.
+      if (costmap_ros_->transformPoseToGlobalFrame(
+          orientation_reference, orientation_reference))
+      {
+        orientation_reference_ptr = &orientation_reference;
+      } else {
+        RCLCPP_WARN(
+          get_logger(),
+          "Could not transform task orientation reference; using current start yaw");
+      }
+    }
+
+    result->path = getPlan(
+      start, goal_pose, goal->planner_id, orientation_reference_ptr);
 
     if (!validatePath(action_server_pose_, goal_pose, result->path, goal->planner_id)) {
       return;
@@ -583,7 +625,8 @@ nav_msgs::msg::Path
 PlannerServer::getPlan(
   const geometry_msgs::msg::PoseStamped & start,
   const geometry_msgs::msg::PoseStamped & goal,
-  const std::string & planner_id)
+  const std::string & planner_id,
+  const geometry_msgs::msg::PoseStamped * orientation_reference)
 {
   RCLCPP_DEBUG(
     get_logger(), "Attempting to a find path from (%.2f, %.2f) to "
@@ -628,7 +671,23 @@ PlannerServer::getPlan(
     }
   }
 
-  auto path = planners_[effective_id]->createPlan(start, goal);
+  geometry_msgs::msg::PoseStamped planner_start = start;
+  const bool planner_allows_reference =
+    std::find(
+    orientation_reference_planners_.begin(),
+    orientation_reference_planners_.end(), effective_id) !=
+    orientation_reference_planners_.end();
+  if (orientation_reference != nullptr && planner_allows_reference) {
+    // Deliberately copy only orientation. Replanning geometry must always
+    // start at the current robot position, never at the task's old x/y.
+    planner_start.pose.orientation = orientation_reference->pose.orientation;
+    RCLCPP_DEBUG(
+      get_logger(),
+      "Planner '%s' using task-level orientation with current start position",
+      effective_id.c_str());
+  }
+
+  auto path = planners_[effective_id]->createPlan(planner_start, goal);
 
   // Generic planner fallback: if the dispatched planner produced no path AND
   // it implements FallbackProvider AND reports a non-NONE fallback reason
@@ -650,6 +709,8 @@ PlannerServer::getPlan(
         "planner '%s'",
         effective_id.c_str(), nav2_route_planner::toString(reason),
         route_fallback_planner_.c_str());
+      // The fallback planner is intentionally given the untouched current
+      // start pose. Opt-in belongs to the actually dispatched planner only.
       path = planners_[route_fallback_planner_]->createPlan(start, goal);
     }
   }

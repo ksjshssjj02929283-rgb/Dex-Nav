@@ -66,12 +66,15 @@ public:
    * @brief Method to get plan from the desired plugin
    * @param start starting pose
    * @param goal goal request
+   * @param planner_id requested planner plugin ID
+   * @param orientation_reference optional task-level yaw reference
    * @return Path
    */
   nav_msgs::msg::Path getPlan(
     const geometry_msgs::msg::PoseStamped & start,
     const geometry_msgs::msg::PoseStamped & goal,
-    const std::string & planner_id);
+    const std::string & planner_id,
+    const geometry_msgs::msg::PoseStamped * orientation_reference = nullptr);
 
 protected:
   /**
@@ -248,6 +251,11 @@ protected:
   // When false (default): nav2 standard behavior — caller-supplied
   // planner_id wins; active_planner_ only kicks in as a fallback.
   bool override_planner_id_{false};
+
+  // Explicit opt-in list for planners allowed to receive a task-level yaw
+  // reference. Planners not listed here always receive the untouched current
+  // robot start pose, preserving Route/Smac and third-party plugin behavior.
+  std::vector<std::string> orientation_reference_planners_;
 
   // Free-space planner to retry with when the route planner reports no route
   // graph (map has no road network). Empty = disabled. "route_fallback_planner".

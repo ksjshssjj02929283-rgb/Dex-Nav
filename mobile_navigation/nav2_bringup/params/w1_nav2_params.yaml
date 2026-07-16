@@ -18,6 +18,7 @@ bt_navigator:
       - nav2_follow_path_action_bt_node
       - nav2_spin_action_bt_node
       - nav2_wait_action_bt_node
+      - nav2_park_wheels_action_bt_node
       - nav2_assisted_teleop_action_bt_node
       - nav2_back_up_action_bt_node
       - nav2_drive_on_heading_bt_node
@@ -89,33 +90,49 @@ controller_server:
       movement_time_allowance: 5.0 # 近目标模式：允许未达到足够进展的时间，单位 s
     goal_checker:
       plugin: "nav2_controller::LongitudinalGoalChecker"
-      lon_goal_tolerance: 0.02
-      lat_goal_tolerance: 0.02
-      yaw_goal_tolerance: 0.02
+      lon_goal_tolerance: 0.10
+      lat_goal_tolerance: 0.10
+      yaw_goal_tolerance: 0.10
       stateful: True    
     FollowPath:
       plugin: "nav2_mppi_controller::MPPIController"
-      time_steps: 40 # 56
+      # Theta* tangent 专用三阶段控制：起点原地对齐 -> 沿切线跟踪 -> 终点原地对齐。
+      # 只有路径同时带有 ThetaStarBased.tangent_in_place_rotation_markers 时才生效；
+      # start/auto/goal/none 以及其他规划器路径仍直接进入原 MPPI 流程。
+      tangent_phase_control_enabled: true
+      tangent_rotate_kp: 1.5
+      tangent_rotate_max_speed: 0.5
+      tangent_rotate_min_speed: 0.08
+      tangent_rotate_max_accel: 0.7
+      tangent_start_yaw_tolerance: 0.03
+      tangent_goal_yaw_tolerance: 0.03
+      tangent_goal_xy_tolerance: 0.05
+      tangent_stopped_linear_velocity: 0.03
+      tangent_stopped_angular_velocity: 0.03
+      tangent_rotation_simulate_ahead_time: 0.5
+      time_steps: 32 # 40
       model_dt: 0.1 # 0.05
-      batch_size: 2000
+      batch_size: 1400 #2000
       vx_std: 0.25 # 0.2
-      vy_std: 0.2
-      wz_std: 0.3 # 0.35 # 0.25 # 0.4
-      vx_max: 0.7 # 0.5
+      vy_std: 0.1 #0.1
+      wz_std: 0.15 # 0.3
+      vx_max: 1.0 # 0.5
       vx_min: -0.5 # -1.05 # -0.35
-      vy_max: 0.5
+      vy_max: 1.0
       wz_max: 0.75
-      ax_max: 0.5
-      ax_min: -0.5
+      ax_max: 0.6
+      ax_min: -0.6
+      ay_max: 0.5
+      ay_min: -0.5
       az_max: 0.7
-      jx_max: 1.0
-      jz_max: 1.5
+      jx_max: 0.6
+      jz_max: 0.9
       iteration_count: 1
       prune_distance: 2.5 # 3.7 # 1.7 (must )
       transform_tolerance: 0.1
-      temperature: 0.3
+      temperature: 0.5 #0.3
       gamma: 0.015
-      motion_model: "DiffDrive" #Ackermann, DiffDrive
+      motion_model: "Omni" #Ackermann, DiffDrive
       open_loop: true
       visualize: false
       reset_period: 1.0 # (only in Humble)
@@ -125,7 +142,7 @@ controller_server:
         time_step: 3
       AckermannConstraints:
         min_turning_r: 0.5
-      critics: ["ConstraintCritic", "CostCritic", "ObstaclesCritic", "GoalCritic", "GoalAngleCritic", "PathAlignCritic", "PathFollowCritic", "PathAngleCritic", "PreferForwardCritic", "VelocityDeadbandCritic"]
+      critics: ["ConstraintCritic", "CostCritic", "ObstaclesCritic", "GoalCritic", "GoalAngleCritic", "PathAlignCritic", "PathFollowCritic", "PathAngleCritic", "PreferForwardCritic", "VelocityDeadbandCritic", "TwirlingCritic"]
       # critics: ["ConstraintCritic", "CostCritic", "GoalCritic", "GoalAngleCritic", "PathAlignCritic", "PathFollowCritic", "PathAngleCritic", "PreferForwardCritic"]
       ConstraintCritic:
         enabled: true
@@ -140,9 +157,9 @@ controller_server:
         enabled: true
         cost_power: 1
         cost_weight: 3.0 # 3.0
-        threshold_to_consider: 0.1 # 0.5
+        threshold_to_consider: 0.05 # 0.5
       PreferForwardCritic:
-        enabled: true
+        enabled: false #xiugai
         cost_power: 1
         cost_weight: 5.0
         threshold_to_consider: 0.25
@@ -174,8 +191,7 @@ controller_server:
         trajectory_point_step: 3
         threshold_to_consider: 0.5
         offset_from_furthest: 15 # 20
-        # Theta* + assign_path_orientations=true 时建议 true，跟踪路径 yaw
-        use_path_orientations: false
+        use_path_orientations: true
       PathFollowCritic:
         enabled: true
         cost_power: 1
@@ -183,8 +199,7 @@ controller_server:
         offset_from_furthest: 5
         threshold_to_consider: 2.2 # 1.4
       PathAngleCritic:
-        # 全向 + Theta*(path_orientation_mode=start) 时建议关闭，否则会强制朝路径切线转
-        enabled: true
+        enabled: false #xiugai
         cost_power: 1
         cost_weight: 4.0
         offset_from_furthest: 2
@@ -192,7 +207,7 @@ controller_server:
         max_angle_to_furthest: 1.0
         mode: 0
       TwirlingCritic:
-        enabled: true
+        enabled: false
         twirling_cost_power: 1
         twirling_cost_weight: 10.0
       VelocityDeadbandCritic:
@@ -436,10 +451,13 @@ planner_server:
     #   ros2 param set /planner_server active_planner ThetaStarBased    # Theta* 几何最短路径
     # 详见 [[10. 双规划器热切换方案——PlannerSwitcher 设计与实现]]
     planner_plugins: ["RouteGridPlanner", "SmacGridBased", "ThetaStarBased"]
-    active_planner: "RouteGridPlanner"   # 默认用路网规划器（dynamic）
+    active_planner: "ThetaStarBased"   # 默认用路网规划器（dynamic）
                                          # 可选值：RouteGridPlanner / SmacGridBased / ThetaStarBased
     override_planner_id: true            # true: 忽略 BT planner_id，强制 active；
                                          # false: nav2 标准 fallback 语义
+    # 任务初始 yaw 仅允许传给 ThetaStar。白名单外的 Route/Smac 始终使用
+    # 当前机器人完整 start pose，避免影响路网投影和状态格起始运动学。
+    orientation_reference_planners: ["ThetaStarBased"]
     route_fallback_planner: "SmacGridBased"  # RouteGridPlanner 无路网数据(地图未建路网)时退化到此自由规划器
 
     # ─── 规划器 1：路网（NavRouteGraphPlanner）────────────────────────
@@ -514,7 +532,7 @@ planner_server:
       w_euc_cost: 1.0
       w_traversal_cost: 2.0
       allow_unknown: false
-      # false=末点用 goal 给定 yaw；true=末点用进近段路径切线（全向固定朝向请保持 false）
+      # false=最终朝向用 goal 给定值（默认/我们期望）；true=用路径切线方向
       use_final_approach_orientation: false
       terminal_checking_interval: 5000
       # ── 路径点 orientation（mode=auto，全向推荐）────────────────────────
@@ -522,13 +540,15 @@ planner_server:
       # 起终点 yaw 不同 → 沿路径弧长从 start 平滑插值到 goal
       # 配合 MPPI：PathAngleCritic.enabled=false，PathAlign.use_path_orientations=true
       assign_path_orientations: true
-      path_orientation_mode: "auto"    # auto | none | start | goal | tangent
+      path_orientation_mode: "tangent"    # auto | none | start | goal | tangent
       path_orientation_same_threshold_rad: 0.02   # ~1.1° 内视为同朝向
+      # tangent 时插入首尾零位移旋转标记；其他 orientation mode 不使用该标记。
+      tangent_in_place_rotation_markers: true
       # ── B 层：舵轮连续性（对齐 mobile_cmd_omni_region.cpp，减少途中停车转舵）──
-      enforce_steering_continuity: true
+      enforce_steering_continuity: false
       steering_chassis_wheelbase: 0.46   # CHASSIS_SIZE_L 460mm
       steering_chassis_track: 0.345      # CHASSIS_SIZE_W 345mm
-      steering_limit_rad: 1.570796       # 舵角 ±π/2 限位
+      steering_limit_rad: 2.42       # 舵角 ±π/2 限位
       steering_max_wheel_angle_step: 1.0 # ANGLE_EPS，超过则 Two-Phase 停轮
       steering_nominal_path_speed: 0.5   # 沿路径仿真标称速度 m/s
       steering_max_body_yaw_rate: 1.2    # body yaw 变化率上限 rad/s，宜 ≥ MPPI wz_max
@@ -605,15 +625,15 @@ velocity_smoother:
   ros__parameters:
     use_sim_time: True
     smoothing_frequency: 20.0
-    scale_velocities: False
+    scale_velocities: true
     feedback: "OPEN_LOOP"
     input_topic: "cmd_vel_nav"
     output_topic: "control/cmd_vel_nav"
     # Test
-    max_velocity: [0.7, 0.0, 0.75]
-    min_velocity: [-0.5, 0.0, -0.75]  
-    max_accel: [0.5, 0.0, 0.7]
-    max_decel: [-0.5, 0.0, -0.7]    
+    max_velocity: [1.0, 1.0, 0.75]
+    min_velocity: [-0.5, -0.5, -0.75]  
+    max_accel: [1.2, 1.0, 1.0]
+    max_decel: [-1.2, -1.0, -1.0]    
     # Original
     # max_velocity: [0.26, 0.0, 1.0]
     # min_velocity: [-0.26, 0.0, -1.0]  
@@ -625,6 +645,6 @@ velocity_smoother:
     # max_accel: [1.0, 0.0, 0.5]
     # max_decel: [-1.0, 0.0, -0.5]    
     odom_topic: "feedback/odom"
-    odom_duration: 0.1
-    deadband_velocity: [0.0, 0.0, 0.0]
+    odom_duration: 0.01
+    deadband_velocity: [0.005, 0.005, 0.008]
     velocity_timeout: 1.0

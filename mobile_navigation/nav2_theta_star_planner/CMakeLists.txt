@@ -43,6 +43,9 @@ add_library(${library_name} SHARED
   src/theta_star.cpp
   src/node_theta_star.cpp
   src/multi_layer_planner.cpp
+  src/omni_path_smoother.cpp
+  src/curve_path_smoother.cpp
+  src/l1_spline_path.cpp
   src/theta_star_planner.cpp
   src/swerve_steering_model.cpp
 )
@@ -65,6 +68,22 @@ install(DIRECTORY include/
 
 install(FILES theta_star_planner.xml
   DESTINATION share/${PROJECT_NAME}
+)
+
+install(
+  PROGRAMS
+    test/plan_from_rviz.py
+    test/run_map_plan_demo.sh
+  DESTINATION lib/${PROJECT_NAME}
+)
+
+install(
+  DIRECTORY test/
+  DESTINATION share/${PROJECT_NAME}/test
+  FILES_MATCHING
+  PATTERN "*.yaml"
+  PATTERN "*.rviz"
+  PATTERN "*.launch.py"
 )
 
 

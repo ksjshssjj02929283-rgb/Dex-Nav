@@ -6,28 +6,30 @@
 
 #include <cmath>
 
+#include "nav2_costmap_2d/cost_values.hpp"
+
 namespace theta_star
 {
 
 bool MultiLayerNodePlanner::isTrueGoalReachable(unsigned int gx, unsigned int gy) const
 {
-  if (!raw_map_.grid_node_id.empty()) {
-    const int idx = static_cast<int>(gy) * raw_map_.width + static_cast<int>(gx);
-    if (idx >= 0 && idx < static_cast<int>(raw_map_.grid_node_id.size())) {
-      return raw_map_.grid_node_id[static_cast<size_t>(idx)] >= 0;
-    }
-    return false;
-  }
   if (!costmap_) {
     return false;
   }
-  const int cost = costmap_->getCost(gx, gy);
-  return (cost == UNKNOWN_COST && allow_unknown_) || cost == FREE_COST;
+  if (gx >= costmap_->getSizeInCellsX() || gy >= costmap_->getSizeInCellsY()) {
+    return false;
+  }
+  const unsigned char cost = costmap_->getCost(gx, gy);
+  if (cost >= nav2_costmap_2d::INSCRIBED_INFLATED_OBSTACLE) {
+    return false;
+  }
+  return cost == nav2_costmap_2d::FREE_SPACE ||
+         (cost == nav2_costmap_2d::NO_INFORMATION && allow_unknown_);
 }
 
 bool MultiLayerNodePlanner::planOnLayer(
   const nav2_map_server::NodeMap & layer_map,
-  double min_clearance,
+  double /*min_clearance*/,
   double from_x, double from_y,
   double to_x, double to_y,
   std::vector<coordsW> & segment) const
@@ -39,18 +41,77 @@ bool MultiLayerNodePlanner::planOnLayer(
 
   NodeThetaStar planner;
   planner.costmap_ = costmap_;
-  planner.distance_map_ = distance_map_;
+  // Preprocessed graph edges already encode clearance; skip distance-map LOS in search.
   planner.w_euc_cost_ = w_euc_cost_;
   planner.w_traversal_cost_ = w_traversal_cost_;
   planner.w_heuristic_cost_ = w_heuristic_cost_;
   planner.allow_unknown_ = allow_unknown_;
-  planner.setNodeMap(layer_map, min_clearance);
+  planner.max_expansions_ = static_cast<int>(layer_map.nodes.size()) + 64;
+  planner.setNodeMap(layer_map, 0.0);
   planner.setStartAndGoalWorld(from_x, from_y, to_x, to_y);
 
   if (planner.isUnsafeToPlan()) {
     return false;
   }
   return planner.generatePath(segment);
+}
+
+bool MultiLayerNodePlanner::planFinalLegOnCostmap(
+  double from_x, double from_y,
+  double to_x, double to_y,
+  std::vector<coordsW> & segment) const
+{
+  segment.clear();
+  const double dist = std::hypot(to_x - from_x, to_y - from_y);
+  if (dist < 1e-3) {
+    segment.push_back({from_x, from_y});
+    return true;
+  }
+
+  // Short final approach: straight segment (L1 already routed through sparse nodes).
+  if (dist <= kDirectFinalLegMaxDistM) {
+    segment.push_back({from_x, from_y});
+    segment.push_back({to_x, to_y});
+    return true;
+  }
+
+  if (!costmap_) {
+    return false;
+  }
+
+  ThetaStar planner;
+  planner.costmap_ = costmap_;
+  planner.w_euc_cost_ = w_euc_cost_;
+  planner.w_traversal_cost_ = w_traversal_cost_;
+  planner.w_heuristic_cost_ = w_heuristic_cost_;
+  planner.allow_unknown_ = allow_unknown_;
+
+  geometry_msgs::msg::PoseStamped start_pose;
+  geometry_msgs::msg::PoseStamped goal_pose;
+  start_pose.pose.position.x = from_x;
+  start_pose.pose.position.y = from_y;
+  goal_pose.pose.position.x = to_x;
+  goal_pose.pose.position.y = to_y;
+  planner.setStartAndGoal(start_pose, goal_pose);
+
+  if (planner.isUnsafeToPlan()) {
+    return false;
+  }
+  return planner.generatePath(segment);
+}
+
+void MultiLayerNodePlanner::appendFinalApproach(
+  std::vector<coordsW> & raw_path,
+  double from_x, double from_y,
+  double goal_x, double goal_y) const
+{
+  std::vector<coordsW> seg_final;
+  if (planFinalLegOnCostmap(from_x, from_y, goal_x, goal_y, seg_final)) {
+    appendSegment(raw_path, seg_final);
+    return;
+  }
+  coordsW g{goal_x, goal_y};
+  raw_path.push_back(g);
 }
 
 void MultiLayerNodePlanner::appendSegment(
@@ -93,10 +154,10 @@ bool MultiLayerNodePlanner::generatePath(
   const bool goal_reachable = isTrueGoalReachable(mgx, mgy);
   goal_unreachable_out = !goal_reachable;
 
-  // Layer 1: start → sparse global node nearest true goal
+  // L1: sparse global graph (fast graph A*, no per-edge LOS on costmap).
   NodeThetaStar finder;
-  finder.setNodeMap(global_map_, global_map_.min_clearance_m);
-  const int global_goal_id = finder.findNearestNode(static_cast<int>(mgx), static_cast<int>(mgy));
+  finder.setNodeMap(global_map_, 0.0);
+  const int global_goal_id = finder.findNearestNodeWorld(true_gx, true_gy);
   if (global_goal_id < 0) {
     return false;
   }
@@ -104,7 +165,7 @@ bool MultiLayerNodePlanner::generatePath(
 
   std::vector<coordsW> seg_global;
   if (!planOnLayer(
-      global_map_, global_map_.min_clearance_m,
+      global_map_, 0.0,
       start.pose.position.x, start.pose.position.y,
       global_goal_node.x, global_goal_node.y,
       seg_global))
@@ -114,78 +175,35 @@ bool MultiLayerNodePlanner::generatePath(
   appendSegment(raw_path, seg_global);
 
   if (!goal_reachable) {
-    // Goal in obstacle: stop at L1 sparse node (already path end)
     return !raw_path.empty();
   }
 
-  // Layer 2: global endpoint → local node nearest true goal
-  if (!local_map_.nodes.empty()) {
-    finder.setNodeMap(local_map_, local_map_.min_clearance_m);
-    const int local_goal_id = finder.findNearestNode(static_cast<int>(mgx), static_cast<int>(mgy));
+  const double leg_from_x = seg_global.empty() ? start.pose.position.x : seg_global.back().x;
+  const double leg_from_y = seg_global.empty() ? start.pose.position.y : seg_global.back().y;
 
+  if (kUseLocalLayer && !local_map_.nodes.empty()) {
+    finder.setNodeMap(local_map_, 0.0);
+    const int local_goal_id = finder.findNearestNodeWorld(true_gx, true_gy);
     if (local_goal_id >= 0) {
       const auto & local_goal = local_map_.nodes[static_cast<size_t>(local_goal_id)];
       std::vector<coordsW> seg_local;
       if (planOnLayer(
-          local_map_, local_map_.min_clearance_m,
+          local_map_, 0.0,
           global_goal_node.x, global_goal_node.y,
           local_goal.x, local_goal.y,
           seg_local))
       {
         appendSegment(raw_path, seg_local);
-
-        // Layer 3: local endpoint → exact true goal on raw/original grid
-        if (!raw_map_.nodes.empty()) {
-          std::vector<coordsW> seg_raw;
-          const auto & local_end = seg_local.empty() ? global_goal_node : local_map_.nodes[
-            static_cast<size_t>(local_goal_id)];
-          if (planOnLayer(
-              raw_map_, raw_map_.min_clearance_m,
-              local_end.x, local_end.y,
-              true_gx, true_gy,
-              seg_raw))
-          {
-            appendSegment(raw_path, seg_raw);
-          } else {
-            // Raw segment failed: append true goal if LOS from local end is clear
-            coordsW g{true_gx, true_gy};
-            raw_path.push_back(g);
-          }
-        } else {
-          coordsW g{true_gx, true_gy};
-          raw_path.push_back(g);
-        }
-      } else {
-        // L2 failed: try L3 directly from global node
-        std::vector<coordsW> seg_raw;
-        if (!raw_map_.nodes.empty() &&
-          planOnLayer(raw_map_, raw_map_.min_clearance_m,
-          global_goal_node.x, global_goal_node.y, true_gx, true_gy, seg_raw))
-        {
-          appendSegment(raw_path, seg_raw);
-        } else {
-          coordsW g{true_gx, true_gy};
-          raw_path.push_back(g);
-        }
+        const double lx = seg_local.empty() ? leg_from_x : seg_local.back().x;
+        const double ly = seg_local.empty() ? leg_from_y : seg_local.back().y;
+        appendFinalApproach(raw_path, lx, ly, true_gx, true_gy);
+        return !raw_path.empty();
       }
     }
-  } else if (!raw_map_.nodes.empty()) {
-    std::vector<coordsW> seg_raw;
-    if (planOnLayer(
-        raw_map_, raw_map_.min_clearance_m,
-        global_goal_node.x, global_goal_node.y,
-        true_gx, true_gy, seg_raw))
-    {
-      appendSegment(raw_path, seg_raw);
-    } else {
-      coordsW g{true_gx, true_gy};
-      raw_path.push_back(g);
-    }
-  } else {
-    coordsW g{true_gx, true_gy};
-    raw_path.push_back(g);
   }
 
+  // Default: L1 global waypoints + short final leg (line or costmap Theta*).
+  appendFinalApproach(raw_path, leg_from_x, leg_from_y, true_gx, true_gy);
   return !raw_path.empty();
 }
 

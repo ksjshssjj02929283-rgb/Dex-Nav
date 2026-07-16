@@ -16,10 +16,12 @@
 namespace theta_star
 {
 
-/// Lazy Theta* on a preprocessed node graph with distance-map LOS checks.
+/// A* on a preprocessed node graph (edges validated at map build time).
 class NodeThetaStar
 {
 public:
+  static constexpr int kDefaultMaxExpansions = 10000;
+
   nav2_costmap_2d::Costmap2D * costmap_{nullptr};
   nav2_map_server::DistanceMap distance_map_;
   nav2_map_server::NodeMap node_map_;
@@ -31,6 +33,7 @@ public:
   double min_clearance_m_{0.45};
 
   int nodes_opened{0};
+  int max_expansions_{kDefaultMaxExpansions};
 
   bool hasNodeMap() const {return !node_map_.nodes.empty();}
 
@@ -47,6 +50,8 @@ public:
   bool isUnsafeToPlan() const;
 
   int findNearestNode(int gx, int gy) const;
+
+  int findNearestNodeWorld(double wx, double wy) const;
 
 private:
   struct GraphNode
@@ -69,6 +74,11 @@ private:
     }
   };
 
+  bool generatePathGraphAStar(std::vector<coordsW> & raw_path);
+  void collectNeighborIds(int node_id, std::vector<int> & out) const;
+  void backtraceWorld(std::vector<coordsW> & raw_points, const GraphNode * curr) const;
+  void backtrace(std::vector<coordsW> & raw_points, const GraphNode * curr) const;
+
   int start_id_{-1};
   int goal_id_{-1};
   std::vector<GraphNode> graph_nodes_;
@@ -79,7 +89,6 @@ private:
   double traversalCost(int gx, int gy) const;
   void resetParent(GraphNode * curr);
   void expandNeighbors(GraphNode * curr);
-  void backtrace(std::vector<coordsW> & raw_points, const GraphNode * curr) const;
   void clearSearch();
   void buildGridIndex();
 };
