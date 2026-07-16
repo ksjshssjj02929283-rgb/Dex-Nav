@@ -12,10 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "robot_storytelling/story_evaluator.hpp"
+#include "robot_storytelling/area_attribute_teller.hpp"
 
 #include <cstddef>
 #include <string>
+
+#include "robot_storytelling/teller_registry.hpp"
 
 namespace robot_storytelling
 {
@@ -64,7 +66,7 @@ void centroid(
 }
 }  // namespace
 
-std::vector<nav_interfaces::msg::Story> evaluateStories(
+std::vector<nav_interfaces::msg::Story> evaluateAreaStories(
   double rx, double ry,
   const std::vector<nav_interfaces::msg::AreaInfo> & areas,
   const std::vector<nav_interfaces::msg::RoomInfo> & rooms,
@@ -112,4 +114,24 @@ std::vector<nav_interfaces::msg::Story> evaluateStories(
   return out;
 }
 
+void AreaAttributeTeller::Init(rclcpp::Node * node)
+{
+  charger_radius_ = node->declare_parameter("charger_radius", 1.0);
+}
+
+void AreaAttributeTeller::Update(
+  const TellerContext & ctx,
+  std::vector<nav_interfaces::msg::Story> * stories)
+{
+  static const std::vector<nav_interfaces::msg::AreaInfo> kEmptyAreas;
+  static const std::vector<nav_interfaces::msg::RoomInfo> kEmptyRooms;
+  const auto & areas = ctx.areas ? *ctx.areas : kEmptyAreas;
+  const auto & rooms = ctx.rooms ? *ctx.rooms : kEmptyRooms;
+
+  const auto events = evaluateAreaStories(ctx.robot_x, ctx.robot_y, areas, rooms, charger_radius_);
+  stories->insert(stories->end(), events.begin(), events.end());
+}
+
 }  // namespace robot_storytelling
+
+ROBOT_STORYTELLER_REGISTER(AreaAttributeTeller)

@@ -15,6 +15,7 @@
 #ifndef ROBOT_STORYTELLING__STORYTELLING_NODE_HPP_
 #define ROBOT_STORYTELLING__STORYTELLING_NODE_HPP_
 
+#include <memory>
 #include <optional>
 #include <utility>
 #include <vector>
@@ -24,10 +25,19 @@
 #include "nav_interfaces/msg/area_info_array.hpp"
 #include "nav_interfaces/msg/room_info_array.hpp"
 #include "nav_interfaces/msg/robot_stories.hpp"
+#include "robot_storytelling/teller_base.hpp"
 
 namespace robot_storytelling
 {
 
+// Storytelling 主类（对齐 Apollo modules/storytelling/storytelling.cc 的
+// Storytelling + FrameManager：Init() 按名字从 TellerRegistry 创建并初始化
+// enabled_tellers 列出的 teller，每个 timer 周期驱动全部 teller、聚合发布）。
+//
+// 新增一种语义事件 = 新建一对 XxxTeller.hpp/cpp 实现 TellerBase +
+// ROBOT_STORYTELLER_REGISTER(XxxTeller)，把类名加进 enabled_tellers 参数即可
+// 启用——不需要改这个类。
+//
 // 共享状态仅由单线程 executor（rclcpp::spin）上的回调与定时器访问，无锁安全。
 // 若改用 MultiThreadedExecutor 需加锁。
 class StorytellingNode : public rclcpp::Node
@@ -41,11 +51,11 @@ private:
   void onOdom(const nav_msgs::msg::Odometry::SharedPtr msg);
   void onTimer();
 
-  double charger_radius_{1.0};
-
   std::vector<nav_interfaces::msg::AreaInfo> areas_;
   std::vector<nav_interfaces::msg::RoomInfo> rooms_;
   std::optional<std::pair<double, double>> odom_xy_;
+
+  std::vector<std::unique_ptr<TellerBase>> tellers_;
 
   rclcpp::Subscription<nav_interfaces::msg::AreaInfoArray>::SharedPtr areas_sub_;
   rclcpp::Subscription<nav_interfaces::msg::RoomInfoArray>::SharedPtr rooms_sub_;

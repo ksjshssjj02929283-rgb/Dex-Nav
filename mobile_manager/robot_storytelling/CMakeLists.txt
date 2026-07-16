@@ -22,33 +22,30 @@ set(dependencies
   nav_interfaces
 )
 
-add_library(story_evaluator SHARED
-  src/story_evaluator.cpp
-)
-ament_target_dependencies(story_evaluator ${dependencies})
-
-install(TARGETS story_evaluator
-  ARCHIVE DESTINATION lib
-  LIBRARY DESTINATION lib
-  RUNTIME DESTINATION bin
-)
-install(DIRECTORY include/ DESTINATION include)
-
+# 所有 teller 编译进同一个共享库：teller 只通过 TellerRegistry 的运行时字符串
+# 查找被使用（storytelling_node.cpp 不直接引用 AreaAttributeTeller /
+# RouteAttributeTeller 符号），若把某个 teller 单独编成静态库、又没有代码
+# 直接引用其符号，链接器可能整个丢弃该编译单元，ROBOT_STORYTELLER_REGISTER
+# 的静态注册对象就不会执行。同库编译规避这个问题。
 add_library(storytelling_core SHARED
+  src/teller_registry.cpp
+  src/area_attribute_teller.cpp
+  src/route_attribute_teller.cpp
   src/storytelling_node.cpp
 )
-target_link_libraries(storytelling_core story_evaluator)
 ament_target_dependencies(storytelling_core ${dependencies})
-
-add_executable(storytelling_node src/main.cpp)
-target_link_libraries(storytelling_node storytelling_core)
-ament_target_dependencies(storytelling_node ${dependencies})
 
 install(TARGETS storytelling_core
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin
 )
+install(DIRECTORY include/ DESTINATION include)
+
+add_executable(storytelling_node src/main.cpp)
+target_link_libraries(storytelling_node storytelling_core)
+ament_target_dependencies(storytelling_node ${dependencies})
+
 install(TARGETS storytelling_node
   RUNTIME DESTINATION lib/${PROJECT_NAME}
 )
@@ -59,12 +56,16 @@ if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
   ament_lint_auto_find_test_dependencies()
 
-  ament_add_gtest(test_story_evaluator test/test_story_evaluator.cpp)
-  target_link_libraries(test_story_evaluator story_evaluator)
-  ament_target_dependencies(test_story_evaluator ${dependencies})
+  ament_add_gtest(test_area_attribute_teller test/test_area_attribute_teller.cpp)
+  target_link_libraries(test_area_attribute_teller storytelling_core)
+  ament_target_dependencies(test_area_attribute_teller ${dependencies})
+
+  ament_add_gtest(test_route_attribute_teller test/test_route_attribute_teller.cpp)
+  target_link_libraries(test_route_attribute_teller storytelling_core)
+  ament_target_dependencies(test_route_attribute_teller ${dependencies})
 endif()
 
-ament_export_libraries(story_evaluator)
+ament_export_libraries(storytelling_core)
 ament_export_dependencies(${dependencies})
 ament_export_include_directories(include)
 ament_package()

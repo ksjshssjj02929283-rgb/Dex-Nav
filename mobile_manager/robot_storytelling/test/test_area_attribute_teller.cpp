@@ -17,9 +17,9 @@
 #include <string>
 #include <vector>
 
-#include "robot_storytelling/story_evaluator.hpp"
+#include "robot_storytelling/area_attribute_teller.hpp"
 
-using robot_storytelling::evaluateStories;
+using robot_storytelling::evaluateAreaStories;
 using robot_storytelling::pointInPolygon;
 
 namespace
@@ -38,57 +38,57 @@ std::vector<geometry_msgs::msg::Pose2D> rect(double x0, double y0, double x1, do
 }
 }  // namespace
 
-TEST(StoryEvaluator, PointInPolygonBasic)
+TEST(AreaAttributeTeller, PointInPolygonBasic)
 {
   auto sq = rect(0.0, 0.0, 2.0, 2.0);
   EXPECT_TRUE(pointInPolygon(1.0, 1.0, sq));
   EXPECT_FALSE(pointInPolygon(3.0, 1.0, sq));
 }
 
-TEST(StoryEvaluator, InRoomEmitsStory)
+TEST(AreaAttributeTeller, InRoomEmitsStory)
 {
   nav_interfaces::msg::RoomInfo room;
   room.name = "meeting_3";
   room.polygon = rect(0.0, 0.0, 2.0, 2.0);
 
-  auto stories = evaluateStories(1.0, 1.0, {}, {room}, 1.0);
+  auto stories = evaluateAreaStories(1.0, 1.0, {}, {room}, 1.0);
 
   ASSERT_EQ(stories.size(), 1u);
   EXPECT_EQ(stories[0].event_type, "IN_ROOM");
   EXPECT_EQ(stories[0].source_id, "meeting_3");
 }
 
-TEST(StoryEvaluator, InSpeedLimitAreaEmitsStory)
+TEST(AreaAttributeTeller, InSpeedLimitAreaEmitsStory)
 {
   nav_interfaces::msg::AreaInfo area;
   area.name = "slow_zone";
   area.type = 3;
   area.polygon = rect(0.0, 0.0, 2.0, 2.0);
 
-  auto stories = evaluateStories(1.0, 1.0, {area}, {}, 1.0);
+  auto stories = evaluateAreaStories(1.0, 1.0, {area}, {}, 1.0);
 
   ASSERT_EQ(stories.size(), 1u);
   EXPECT_EQ(stories[0].event_type, "IN_SPEED_LIMIT");
   EXPECT_EQ(stories[0].source_id, "slow_zone");
 }
 
-TEST(StoryEvaluator, CloseToChargerByDistance)
+TEST(AreaAttributeTeller, CloseToChargerByDistance)
 {
   nav_interfaces::msg::AreaInfo area;
   area.name = "dock_a";
   area.type = 7;
   area.polygon = rect(0.0, 0.0, 2.0, 2.0);
 
-  auto near = evaluateStories(1.5, 1.0, {area}, {}, 1.0);
+  auto near = evaluateAreaStories(1.5, 1.0, {area}, {}, 1.0);
   ASSERT_EQ(near.size(), 1u);
   EXPECT_EQ(near[0].event_type, "CLOSE_TO_CHARGER");
   EXPECT_EQ(near[0].source_id, "dock_a");
 
-  auto far = evaluateStories(10.0, 10.0, {area}, {}, 1.0);
+  auto far = evaluateAreaStories(10.0, 10.0, {area}, {}, 1.0);
   EXPECT_TRUE(far.empty());
 }
 
-TEST(StoryEvaluator, NoAreasNoRoomsYieldsEmpty)
+TEST(AreaAttributeTeller, NoAreasNoRoomsYieldsEmpty)
 {
-  EXPECT_TRUE(evaluateStories(1.0, 1.0, {}, {}, 1.0).empty());
+  EXPECT_TRUE(evaluateAreaStories(1.0, 1.0, {}, {}, 1.0).empty());
 }

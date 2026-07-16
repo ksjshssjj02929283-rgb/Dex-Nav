@@ -15,9 +15,15 @@
 #include "robot_storytelling/storytelling_node.hpp"
 
 #include <chrono>
+#include <sstream>
 #include <string>
 
-#include "robot_storytelling/story_evaluator.hpp"
+#include "robot_storytelling/teller_registry.hpp"
+
+// 各 teller 的 .cpp（含 ROBOT_STORYTELLER_REGISTER 静态注册对象）与本文件
+// 编译进同一个 storytelling_core 共享库（见 CMakeLists.txt），确保注册
+// 对象的静态初始化一定会随库加载执行——不能把某个 teller 单独编成静态库
+// 又不被其它代码直接引用符号，否则链接器可能整个丢弃该编译单元。
 
 namespace robot_storytelling
 {
@@ -26,7 +32,6 @@ StorytellingNode::StorytellingNode(const rclcpp::NodeOptions & options)
 : rclcpp::Node("robot_storytelling", options)
 {
   const double rate_hz = declare_parameter("rate_hz", 10.0);
-  charger_radius_ = declare_parameter("charger_radius", 1.0);
   const std::string areas_topic =
     declare_parameter<std::string>("areas_topic", "/map_asset_manager/areas");
   const std::string rooms_topic =
@@ -35,6 +40,22 @@ StorytellingNode::StorytellingNode(const rclcpp::NodeOptions & options)
     declare_parameter<std::string>("odom_topic", "/feedback/odom");
   const std::string stories_topic =
     declare_parameter<std::string>("stories_topic", "/robot_stories");
+  const std::vector<std::string> enabled_tellers = declare_parameter<std::vector<std::string>>(
+    "enabled_tellers", {"AreaAttributeTeller", "RouteAttributeTeller"});
+
+  for (const auto & name : enabled_tellers) {
+    auto teller = TellerRegistry::Instance().Create(name);
+    if (!teller) {
+      RCLCPP_ERROR(
+        get_logger(),
+        "enabled_tellers 里的 '%s' 未注册（检查类名拼写 / 是否忘记链接该 teller 的编译单元），跳过",
+        name.c_str());
+      continue;
+    }
+    teller->Init(this);
+    RCLCPP_INFO(get_logger(), "teller 已启用: %s", teller->Name().c_str());
+    tellers_.push_back(std::move(teller));
+  }
 
   rclcpp::QoS latched(rclcpp::KeepLast(1));
   latched.transient_local().reliable();
@@ -57,11 +78,15 @@ StorytellingNode::StorytellingNode(const rclcpp::NodeOptions & options)
     std::chrono::duration_cast<std::chrono::nanoseconds>(period),
     [this]() {onTimer();});
 
+  std::ostringstream teller_names;
+  for (const auto & t : tellers_) {
+    teller_names << t->Name() << " ";
+  }
   RCLCPP_INFO(
     get_logger(),
-    "robot_storytelling up. areas=%s rooms=%s odom=%s -> stories=%s (%.1fHz, charger_r=%.2f)",
-    areas_topic.c_str(), rooms_topic.c_str(), odom_topic.c_str(),
-    stories_topic.c_str(), rate_hz, charger_radius_);
+    "robot_storytelling up. tellers=[ %s] areas=%s rooms=%s odom=%s -> stories=%s (%.1fHz)",
+    teller_names.str().c_str(), areas_topic.c_str(), rooms_topic.c_str(), odom_topic.c_str(),
+    stories_topic.c_str(), rate_hz);
 }
 
 void StorytellingNode::onAreas(const nav_interfaces::msg::AreaInfoArray::SharedPtr msg)
@@ -84,10 +109,18 @@ void StorytellingNode::onTimer()
   if (!odom_xy_) {
     return;
   }
+
+  TellerContext ctx;
+  ctx.robot_x = odom_xy_->first;
+  ctx.robot_y = odom_xy_->second;
+  ctx.areas = &areas_;
+  ctx.rooms = &rooms_;
+
   nav_interfaces::msg::RobotStories out;
   out.header.stamp = now();
-  out.stories = evaluateStories(
-    odom_xy_->first, odom_xy_->second, areas_, rooms_, charger_radius_);
+  for (const auto & teller : tellers_) {
+    teller->Update(ctx, &out.stories);
+  }
   stories_pub_->publish(out);
 }
 
