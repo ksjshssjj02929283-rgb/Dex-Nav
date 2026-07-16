@@ -35,7 +35,6 @@ private:
     struct RenderStats {
         size_t total_areas{0};
         size_t keepout_areas{0};
-        size_t speed_areas{0};
         size_t ignored_areas{0};
         // ignored_by_type[t] 记录 AreaInfo.type==t 的区域未成功转换为 mask 的数量。
         // index 0 用于上游新增类型时的兜底（落入 default 分支）。
@@ -54,20 +53,16 @@ private:
     void clearMasksFromMap(const nav_msgs::msg::OccupancyGrid& map);
     RenderStats renderAreas();
     bool renderKeepoutArea(const nav_interfaces::msg::AreaInfo& area);
-    bool renderSpeedArea(const nav_interfaces::msg::AreaInfo& area);
     bool rasterizeRestrictedPolygon(const std::vector<geometry_msgs::msg::Point>& polygon);
     bool rasterizeVirtualWall(const std::vector<geometry_msgs::msg::Point>& points);
-    bool rasterizeSpeedPolygon(const std::vector<geometry_msgs::msg::Point>& polygon, float speed_limit);
 
     bool computeBounds(const std::vector<geometry_msgs::msg::Point>& points,
                        double* min_x,
                        double* min_y,
                        double* max_x,
                        double* max_y) const;
-    int8_t encodeSpeedLimit(float speed_limit) const;
     bool worldToMap(double wx, double wy, int* mx, int* my) const;
     void setKeepoutCell(int mx, int my);
-    void setSpeedCell(int mx, int my, float speed_limit, int8_t encoded);
     void fillPolygonCells(const std::vector<geometry_msgs::msg::Point>& polygon,
                           const nav_msgs::msg::MapMetaData& info,
                           const std::function<void(int, int)>& fill_cell) const;
@@ -85,9 +80,7 @@ private:
     rclcpp::Subscription<std_msgs::msg::String>::SharedPtr map_name_sub_;
 
     rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr keepout_mask_pub_;
-    rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr speed_mask_pub_;
     rclcpp::Publisher<nav2_msgs::msg::CostmapFilterInfo>::SharedPtr keepout_filter_info_pub_;
-    rclcpp::Publisher<nav2_msgs::msg::CostmapFilterInfo>::SharedPtr speed_filter_info_pub_;
     rclcpp::Publisher<std_msgs::msg::String>::SharedPtr status_pub_;
     rclcpp::TimerBase::SharedPtr status_timer_;
 
@@ -95,8 +88,6 @@ private:
     nav_msgs::msg::OccupancyGrid latest_map_;
     nav_interfaces::msg::AreaInfoArray latest_areas_;
     nav_msgs::msg::OccupancyGrid keepout_mask_;
-    nav_msgs::msg::OccupancyGrid speed_mask_;
-    std::vector<float> speed_limits_grid_;
 
     bool has_map_{false};
     bool has_areas_{false};
@@ -112,12 +103,8 @@ private:
     std::string areas_topic_;
     std::string map_name_topic_;
     std::string keepout_mask_topic_;
-    std::string speed_mask_topic_;
     std::string keepout_filter_info_topic_;
-    std::string speed_filter_info_topic_;
 
-    double speed_base_{0.0};
-    double speed_multiplier_{0.01};
     double virtual_wall_width_{0.10};
 };
 

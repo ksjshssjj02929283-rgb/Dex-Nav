@@ -15,7 +15,6 @@ namespace {
 constexpr int8_t kOccupancyFree = 0;
 constexpr int8_t kOccupancyKeepout = 100;
 constexpr uint8_t kKeepoutFilterType = 0;
-constexpr uint8_t kSpeedFilterAbsoluteType = 2;
 constexpr double kHashPositionResolution = 0.001;      // 1 mm
 constexpr double kHashAngleResolution = 0.0001;        // about 0.006 degree
 constexpr double kHashSpeedResolution = 0.001;         // 1 mm/s
@@ -53,11 +52,7 @@ AreaFilterAdapter::AreaFilterAdapter(rclcpp::Node* node) : node_(node) {
     node_->declare_parameter<std::string>("areas_topic", "/map_asset_manager/areas");
     node_->declare_parameter<std::string>("map_name_topic", "map_manager/map_name");
     node_->declare_parameter<std::string>("keepout_mask_topic", "/keepout_filter_mask");
-    node_->declare_parameter<std::string>("speed_mask_topic", "/speed_filter_mask");
     node_->declare_parameter<std::string>("keepout_filter_info_topic", "/keepout_costmap_filter_info");
-    node_->declare_parameter<std::string>("speed_filter_info_topic", "/speed_costmap_filter_info");
-    node_->declare_parameter<double>("speed_base", 0.0);
-    node_->declare_parameter<double>("speed_multiplier", 0.01);
     node_->declare_parameter<double>("virtual_wall_width", 0.10);
     node_->declare_parameter<double>("publish_status_period_sec", 5.0);
 
@@ -65,11 +60,7 @@ AreaFilterAdapter::AreaFilterAdapter(rclcpp::Node* node) : node_(node) {
     areas_topic_ = node_->get_parameter("areas_topic").as_string();
     map_name_topic_ = node_->get_parameter("map_name_topic").as_string();
     keepout_mask_topic_ = node_->get_parameter("keepout_mask_topic").as_string();
-    speed_mask_topic_ = node_->get_parameter("speed_mask_topic").as_string();
     keepout_filter_info_topic_ = node_->get_parameter("keepout_filter_info_topic").as_string();
-    speed_filter_info_topic_ = node_->get_parameter("speed_filter_info_topic").as_string();
-    speed_base_ = node_->get_parameter("speed_base").as_double();
-    speed_multiplier_ = node_->get_parameter("speed_multiplier").as_double();
     virtual_wall_width_ = node_->get_parameter("virtual_wall_width").as_double();
     const double status_period = node_->get_parameter("publish_status_period_sec").as_double();
 
@@ -83,11 +74,8 @@ AreaFilterAdapter::AreaFilterAdapter(rclcpp::Node* node) : node_(node) {
         map_name_topic_, latched_qos, std::bind(&AreaFilterAdapter::onMapName, this, std::placeholders::_1));
 
     keepout_mask_pub_ = node_->create_publisher<nav_msgs::msg::OccupancyGrid>(keepout_mask_topic_, latched_qos);
-    speed_mask_pub_ = node_->create_publisher<nav_msgs::msg::OccupancyGrid>(speed_mask_topic_, latched_qos);
     keepout_filter_info_pub_ =
         node_->create_publisher<nav2_msgs::msg::CostmapFilterInfo>(keepout_filter_info_topic_, latched_qos);
-    speed_filter_info_pub_ =
-        node_->create_publisher<nav2_msgs::msg::CostmapFilterInfo>(speed_filter_info_topic_, latched_qos);
     status_pub_ = node_->create_publisher<std_msgs::msg::String>("~/status", 10);
 
     status_timer_ = node_->create_wall_timer(
@@ -154,7 +142,6 @@ void AreaFilterAdapter::onMapName(const std_msgs::msg::String::SharedPtr msg) {
         clearMasksFromMap(latest_map_);
         publishFilterInfo();
         keepout_mask_pub_->publish(keepout_mask_);
-        speed_mask_pub_->publish(speed_mask_);
         last_stats_ = RenderStats{};
     }
 
@@ -171,8 +158,7 @@ void AreaFilterAdapter::onStatusTimer() {
     std_msgs::msg::String msg;
     std::ostringstream oss;
     oss << "state=" << stateToString() << " map=" << current_map_name_ << " areas=" << last_stats_.total_areas
-        << " keepout=" << last_stats_.keepout_areas << " speed=" << last_stats_.speed_areas
-        << " ignored=" << last_stats_.ignored_areas;
+        << " keepout=" << last_stats_.keepout_areas << " ignored=" << last_stats_.ignored_areas;
     const std::string breakdown = formatIgnoredBreakdown(last_stats_);
     if (!breakdown.empty()) {
         oss << " ignored_by_type=" << breakdown;
@@ -200,11 +186,10 @@ void AreaFilterAdapter::renderAndPublish() {
     last_stats_ = renderAreas();
     publishFilterInfo();
     keepout_mask_pub_->publish(keepout_mask_);
-    speed_mask_pub_->publish(speed_mask_);
     const std::string breakdown = formatIgnoredBreakdown(last_stats_);
     RCLCPP_INFO(
-        node_->get_logger(), "Area filters updated: map='%s' areas=%zu keepout=%zu speed=%zu ignored=%zu%s%s hash=%zu",
-        current_map_name_.c_str(), last_stats_.total_areas, last_stats_.keepout_areas, last_stats_.speed_areas,
+        node_->get_logger(), "Area filters updated: map='%s' areas=%zu keepout=%zu ignored=%zu%s%s hash=%zu",
+        current_map_name_.c_str(), last_stats_.total_areas, last_stats_.keepout_areas,
         last_stats_.ignored_areas, breakdown.empty() ? "" : " ignored_by_type=", breakdown.c_str(), render_hash);
     state_ = LifecycleState::ACTIVE;
     last_render_hash_ = render_hash;
@@ -226,40 +211,29 @@ void AreaFilterAdapter::publishFilterInfo() {
     keepout_info.base = 0.0;
     keepout_info.multiplier = 1.0;
     keepout_filter_info_pub_->publish(keepout_info);
-
-    nav2_msgs::msg::CostmapFilterInfo speed_info;
-    speed_info.header.stamp = stamp;
-    speed_info.header.frame_id = latest_map_.header.frame_id;
-    speed_info.type = kSpeedFilterAbsoluteType;
-    speed_info.filter_mask_topic = speed_mask_topic_;
-    speed_info.base = speed_base_;
-    speed_info.multiplier = speed_multiplier_;
-    speed_filter_info_pub_->publish(speed_info);
 }
 
 bool AreaFilterAdapter::readyToRender() const { return has_map_ && has_areas_; }
 
 void AreaFilterAdapter::clearMasksFromMap(const nav_msgs::msg::OccupancyGrid& map) {
     keepout_mask_ = map;
-    speed_mask_ = map;
     keepout_mask_.data.assign(static_cast<size_t>(keepout_mask_.info.width) * keepout_mask_.info.height,
                               kOccupancyFree);
-    speed_mask_.data.assign(static_cast<size_t>(speed_mask_.info.width) * speed_mask_.info.height, kOccupancyFree);
-    speed_limits_grid_.assign(speed_mask_.data.size(), std::numeric_limits<float>::infinity());
 
     const auto stamp = node_->now();
     keepout_mask_.header.stamp = stamp;
-    speed_mask_.header.stamp = stamp;
 }
 
 // ──────────────────────────────────────────────────────────────────────
 // 区域分类与栅格化
 // ──────────────────────────────────────────────────────────────────────
 
-// 按 AreaInfo.type 分类区域，将 keepout 和 speed 区域分别写入对应 mask。
+// 按 AreaInfo.type 分类区域，将 keepout 区域写入 mask。
 // 显式枚举 AreaInfo 当前已知的 9 个类型常量：
 //   - VIRTUAL_WALL / RESTRICTED_AREA -> keepout mask
-//   - SPEED_LIMIT_AREA               -> speed mask
+//   - SPEED_LIMIT_AREA               -> 不再走 costmap filter（见 17 号文档）；
+//                                       限速由 L4 storytelling + L5 SpeedLimitBridge
+//                                       语义通路直接对接 controller，本层仅计数。
 //   - DETOUR_AREA / STOP_OBSTACLE_AREA / PARKING_AREA / CHARGING_AREA /
 //     ELEVATOR_AREA / BUMPY_AREA     -> 本层不映射 Nav2 costmap filter，
 //                                       仅按类型计数，由其它适配层消费。
@@ -284,14 +258,8 @@ AreaFilterAdapter::RenderStats AreaFilterAdapter::renderAreas() {
                     markIgnored(area.type);
                 }
                 break;
-            case nav_interfaces::msg::AreaInfo::SPEED_LIMIT_AREA:
-                if (renderSpeedArea(area)) {
-                    ++stats.speed_areas;
-                } else {
-                    markIgnored(area.type);
-                }
-                break;
             // 已知但不属于 Nav2 costmap filter 范畴的类型：明确计数，不静默吞掉。
+            case nav_interfaces::msg::AreaInfo::SPEED_LIMIT_AREA:
             case nav_interfaces::msg::AreaInfo::DETOUR_AREA:
             case nav_interfaces::msg::AreaInfo::STOP_OBSTACLE_AREA:
             case nav_interfaces::msg::AreaInfo::PARKING_AREA:
@@ -328,20 +296,6 @@ bool AreaFilterAdapter::renderKeepoutArea(const nav_interfaces::msg::AreaInfo& a
         return false;
     }
     return rasterizeRestrictedPolygon(points);
-}
-
-bool AreaFilterAdapter::renderSpeedArea(const nav_interfaces::msg::AreaInfo& area) {
-    if (area.max_speed <= 0.0f) {
-        RCLCPP_WARN(node_->get_logger(), "Ignore speed area '%s': max_speed must be > 0", area.name.c_str());
-        return false;
-    }
-
-    const auto points = toPoints(area.polygon);
-    if (points.size() < 3U) {
-        RCLCPP_WARN(node_->get_logger(), "Ignore speed area '%s': need at least 3 points", area.name.c_str());
-        return false;
-    }
-    return rasterizeSpeedPolygon(points, area.max_speed);
 }
 
 bool AreaFilterAdapter::rasterizeRestrictedPolygon(const std::vector<geometry_msgs::msg::Point>& polygon) {
@@ -382,22 +336,6 @@ bool AreaFilterAdapter::rasterizeVirtualWall(const std::vector<geometry_msgs::ms
             last_my = my;
         }
     }
-
-    return true;
-}
-
-bool AreaFilterAdapter::rasterizeSpeedPolygon(const std::vector<geometry_msgs::msg::Point>& polygon,
-                                              float speed_limit) {
-    const int8_t encoded = encodeSpeedLimit(speed_limit);
-    if (encoded <= 0) {
-        RCLCPP_WARN(node_->get_logger(),
-                    "Ignore speed area: speed %.3f can not be encoded with base %.3f multiplier %.4f", speed_limit,
-                    speed_base_, speed_multiplier_);
-        return false;
-    }
-
-    fillPolygonCells(polygon, speed_mask_.info,
-                     [this, speed_limit, encoded](int mx, int my) { setSpeedCell(mx, my, speed_limit, encoded); });
 
     return true;
 }
@@ -452,19 +390,6 @@ void AreaFilterAdapter::setKeepoutCell(int mx, int my) {
         return;
     }
     keepout_mask_.data[static_cast<size_t>(my) * info.width + static_cast<size_t>(mx)] = kOccupancyKeepout;
-}
-
-void AreaFilterAdapter::setSpeedCell(int mx, int my, float speed_limit, int8_t encoded) {
-    const auto& info = speed_mask_.info;
-    if (mx < 0 || my < 0 || mx >= static_cast<int>(info.width) || my >= static_cast<int>(info.height)) {
-        return;
-    }
-
-    const size_t index = static_cast<size_t>(my) * info.width + static_cast<size_t>(mx);
-    if (speed_limit < speed_limits_grid_[index]) {
-        speed_limits_grid_[index] = speed_limit;
-        speed_mask_.data[index] = encoded;
-    }
 }
 
 void AreaFilterAdapter::fillPolygonCells(const std::vector<geometry_msgs::msg::Point>& polygon,
@@ -543,18 +468,6 @@ void AreaFilterAdapter::inflateKeepoutCell(int center_mx, int center_my, double 
             }
         }
     }
-}
-
-int8_t AreaFilterAdapter::encodeSpeedLimit(float speed_limit) const {
-    if (speed_multiplier_ <= 0.0) {
-        return 0;
-    }
-
-    const double encoded = std::round((static_cast<double>(speed_limit) - speed_base_) / speed_multiplier_);
-    if (encoded < 1.0 || encoded > 100.0) {
-        return 0;
-    }
-    return static_cast<int8_t>(encoded);
 }
 
 std::vector<geometry_msgs::msg::Point> AreaFilterAdapter::toPoints(

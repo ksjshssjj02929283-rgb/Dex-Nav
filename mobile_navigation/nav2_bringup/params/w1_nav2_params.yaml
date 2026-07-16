@@ -650,7 +650,7 @@ local_costmap:
       # footprint: "[ [0.55, 0.35], [0.55, -0.35], [-0.55, -0.35], [-0.55, 0.35] ]" # Slightly increased for better planning efficiency and safety (real size: 0.95*0.55)
       # plugins: ["voxel_layer", "denoise_layer", "inflation_layer"]  output_topic: "control/cmd_vel_nav"
       plugins: ["static_layer", "obstacle_layer", "denoise_layer", "inflation_layer"]   
-      filters: ["keepout_filter", "keepout_inflation_layer", "speed_filter"]
+      filters: ["keepout_filter", "keepout_inflation_layer"]
       # plugins: ["obstacle_layer", "voxel_layer", "denoise_layer", "inflation_layer"]
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
@@ -729,11 +729,6 @@ local_costmap:
         plugin: "nav2_costmap_2d::InflationLayer"
         enabled: True
         inflation_radius: 0.35
-      speed_filter:
-        plugin: "nav2_costmap_2d::SpeedFilter"
-        enabled: True
-        filter_info_topic: "/speed_costmap_filter_info"
-        speed_limit_topic: "/speed_limit"
       always_send_full_costmap: False # True -> False：只发增量更新，减 publish 序列化开销（rolling 下收益有限但无害）
 
 global_costmap:
@@ -751,7 +746,7 @@ global_costmap:
       # plugins: ["static_layer", "obstacle_layer",  "denoise_layer", "inflation_layer"]
       # plugins: ["static_layer", "voxel_layer", "denoise_layer", "inflation_layer"]
       plugins: ["static_layer", "obstacle_layer", "denoise_layer", "inflation_layer"]
-      filters: ["keepout_filter", "keepout_inflation_layer","speed_filter"]
+      filters: ["keepout_filter", "keepout_inflation_layer"]
       denoise_layer:
         plugin: "nav2_costmap_2d::DenoiseLayer"
         enabled: True
@@ -831,11 +826,6 @@ global_costmap:
         plugin: "nav2_costmap_2d::InflationLayer"
         enabled: True
         inflation_radius: 0.35
-      speed_filter:
-        plugin: "nav2_costmap_2d::SpeedFilter"
-        enabled: True
-        filter_info_topic: "/speed_costmap_filter_info"
-        speed_limit_topic: "/speed_limit"
       always_send_full_costmap: True
 
 map_server:
