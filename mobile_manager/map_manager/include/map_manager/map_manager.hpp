@@ -57,6 +57,9 @@ public:
     void ResetFlags() { has_map_changed_ = false; }
 
 private:
+    // 探测旧扁平格式地图并迁移到 slam/assets 分层（DEC-007 新格式）；LoadMap 前置调用，幂等。
+    bool MigrateLegacyMapLayout(const std::string& map_name);
+
     std::string map_folder_ = "";
     std::vector<std::string> map_list_;
 

@@ -49,6 +49,13 @@ bool MapManager::LoadMap(const std::string& map_name) {
         return true;
     }
 
+    // 启动加载前置：探测旧扁平格式地图并迁移到 slam/assets 分层（DEC-007 新格式），
+    // 迁移完成后才读 slam/map.yaml 正常加载（已是新格式或非地图目录则幂等跳过）。
+    if (!MigrateLegacyMapLayout(map_name)) {
+        LOG(ERROR) << "Legacy map migration failed for: " << map_name;
+        return false;
+    }
+
     bool load_success = loadMapFromYaml(map_yaml_path);
     if (!load_success) {
         LOG(ERROR) << "Failed to load map: " << map_folder_ + "/" + map_name;
@@ -60,6 +67,50 @@ bool MapManager::LoadMap(const std::string& map_name) {
 
     LOG(INFO) << "Load Map success. Current map: " << current_map_name_;
     return true;
+}
+
+// 探测旧扁平格式（map.yaml/map.pgm/*.pbstream/map_assets.json 都在 <map>/ 根），迁移到
+// slam/assets 分层（DEC-007）：底图文件 → slam/，map_assets.json → assets/。原地 mv（同盘原子）。
+// 幂等：已是新格式（slam/map.yaml 存在）或非地图目录（根无 map.yaml）直接跳过。
+bool MapManager::MigrateLegacyMapLayout(const std::string& map_name) {
+    const fs::path map_dir = fs::path(map_folder_) / map_name;
+    const fs::path slam_dir = map_dir / "slam";
+    const fs::path assets_dir = map_dir / "assets";
+
+    // 已是新格式 → 跳过
+    if (fs::exists(slam_dir / "map.yaml")) {
+        return true;
+    }
+    // 根无 map.yaml → 非旧格式地图目录（空/损坏/已迁移中断），交给后续加载报错
+    if (!fs::exists(map_dir / "map.yaml")) {
+        return true;
+    }
+
+    LOG(WARNING) << "Detected legacy (flat) map layout for '" << map_name
+                 << "', migrating to slam/assets layout...";
+    try {
+        fs::create_directories(slam_dir);
+        fs::create_directories(assets_dir);
+
+        // 先收集根目录文件列表（避免迭代中 rename 导致迭代器失效），跳过子目录。
+        std::vector<fs::path> files;
+        for (fs::directory_iterator it(map_dir), end; it != end; ++it) {
+            if (!fs::is_directory(it->status())) files.push_back(it->path());
+        }
+        // 按类型分流：map_assets.json → assets/，其余底图文件 → slam/。
+        for (const auto& src : files) {
+            const std::string fname = src.filename().string();
+            const fs::path dst =
+                (fname == "map_assets.json") ? (assets_dir / fname) : (slam_dir / fname);
+            fs::rename(src, dst);
+            LOG(INFO) << "  migrated " << fname << " -> " << dst.string();
+        }
+        LOG(WARNING) << "Legacy map '" << map_name << "' migrated to slam/assets layout.";
+        return true;
+    } catch (const fs::filesystem_error& e) {
+        LOG(ERROR) << "Failed to migrate legacy map '" << map_name << "': " << e.what();
+        return false;
+    }
 }
 
 bool MapManager::RemoveMap(const std::string& map_name) {
