@@ -1,0 +1,10 @@
+<class_libraries>
+  <library path="prohibition_layer">
+    <class type="costmap_prohibition_layer::ProhibitionLayer" base_class_type="nav2_costmap_2d::Layer">
+      <description>
+        直接用 map_asset_manager 的 RESTRICTED_AREA / VIRTUAL_WALL 多边形栅格化写 costmap，
+        替代"生成全图 mask + KeepoutFilter 消费"的方案（17 号方案文档）。
+      </description>
+    </class>
+  </library>
+</class_libraries>

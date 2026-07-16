@@ -1,0 +1,30 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>costmap_prohibition_layer</name>
+  <version>0.1.0</version>
+  <description>
+    nav2_costmap_2d::Layer 插件：直接把 map_asset_manager 的禁行区
+    （RESTRICTED_AREA）和虚拟墙（VIRTUAL_WALL）多边形栅格化写入 costmap，
+    替代生成全图分辨率 mask 供 Nav2 KeepoutFilter 消费的方案。
+    移植自 rst-tu-dortmund/costmap_prohibition_layer（ROS1）。
+  </description>
+  <maintainer email="robot@dexforce.com">DEXE Robot Engineer</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>pluginlib</depend>
+  <depend>nav2_costmap_2d</depend>
+  <depend>nav_interfaces</depend>
+  <depend>geometry_msgs</depend>
+
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+  <test_depend>ament_cmake_gtest</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

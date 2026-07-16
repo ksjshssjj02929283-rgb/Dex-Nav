@@ -649,8 +649,7 @@ local_costmap:
       footprint: "[[0.35, 0.29], [0.35, -0.29], [-0.35, -0.29], [-0.35, 0.29]]" # Slightly increased for better planning efficiency and safety (real size: 0.95*0.55)
       # footprint: "[ [0.55, 0.35], [0.55, -0.35], [-0.55, -0.35], [-0.55, 0.35] ]" # Slightly increased for better planning efficiency and safety (real size: 0.95*0.55)
       # plugins: ["voxel_layer", "denoise_layer", "inflation_layer"]  output_topic: "control/cmd_vel_nav"
-      plugins: ["static_layer", "obstacle_layer", "denoise_layer", "inflation_layer"]   
-      filters: ["keepout_filter", "keepout_inflation_layer"]
+      plugins: ["static_layer", "obstacle_layer", "denoise_layer", "prohibition_layer", "inflation_layer"]
       # plugins: ["obstacle_layer", "voxel_layer", "denoise_layer", "inflation_layer"]
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
@@ -721,14 +720,12 @@ local_costmap:
       static_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
         map_subscribe_transient_local: True
-      keepout_filter:
-        plugin: "nav2_costmap_2d::KeepoutFilter"
+      prohibition_layer:
+        plugin: "costmap_prohibition_layer::ProhibitionLayer"
         enabled: True
-        filter_info_topic: "/keepout_costmap_filter_info"
-      keepout_inflation_layer:
-        plugin: "nav2_costmap_2d::InflationLayer"
-        enabled: True
-        inflation_radius: 0.35
+        fill_polygons: True
+        areas_topic: "/map_asset_manager/areas"
+        virtual_wall_width: 0.10
       always_send_full_costmap: False # True -> False：只发增量更新，减 publish 序列化开销（rolling 下收益有限但无害）
 
 global_costmap:
@@ -745,8 +742,7 @@ global_costmap:
       track_unknown_space: true   # 静态未知记录为 NO_INFORMATION(255)；配合 obstacle_layer combination_method:2 保住不被清除，规划器靠 allow_unknown:false 避开
       # plugins: ["static_layer", "obstacle_layer",  "denoise_layer", "inflation_layer"]
       # plugins: ["static_layer", "voxel_layer", "denoise_layer", "inflation_layer"]
-      plugins: ["static_layer", "obstacle_layer", "denoise_layer", "inflation_layer"]
-      filters: ["keepout_filter", "keepout_inflation_layer"]
+      plugins: ["static_layer", "obstacle_layer", "denoise_layer", "prohibition_layer", "inflation_layer"]
       denoise_layer:
         plugin: "nav2_costmap_2d::DenoiseLayer"
         enabled: True
@@ -818,14 +814,12 @@ global_costmap:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 10.0
         inflation_radius: 0.35 # 0.75 # 0.55
-      keepout_filter:
-        plugin: "nav2_costmap_2d::KeepoutFilter"
+      prohibition_layer:
+        plugin: "costmap_prohibition_layer::ProhibitionLayer"
         enabled: True
-        filter_info_topic: "/keepout_costmap_filter_info"
-      keepout_inflation_layer:
-        plugin: "nav2_costmap_2d::InflationLayer"
-        enabled: True
-        inflation_radius: 0.35
+        fill_polygons: True
+        areas_topic: "/map_asset_manager/areas"
+        virtual_wall_width: 0.10
       always_send_full_costmap: True
 
 map_server:
