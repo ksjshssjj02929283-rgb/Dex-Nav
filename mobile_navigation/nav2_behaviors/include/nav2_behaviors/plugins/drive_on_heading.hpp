@@ -189,10 +189,15 @@ protected:
         break;
       }
 
-      if (!this->collision_checker_->isCollisionFree(pose2d, fetch_data)) {
-        return false;
+      // 起始位形（sim_position_change==0）不参与碰撞判定：脱困场景下机器人可能已经
+      // 站在越界/致命格上，若把这一帧也纳入检查，逃逸动作第一步就会被自身安全检查
+      // 拒绝，形成"已经越界却无法离开"的死锁。只检查运动过程中真正新扫入的格子。
+      if (sim_position_change != 0.0) {
+        if (!this->collision_checker_->isCollisionFree(pose2d, fetch_data)) {
+          return false;
+        }
+        fetch_data = false;
       }
-      fetch_data = false;
     }
     return true;
   }
