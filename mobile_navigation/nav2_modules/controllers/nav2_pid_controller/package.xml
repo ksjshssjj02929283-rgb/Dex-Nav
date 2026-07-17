@@ -4,7 +4,7 @@
   <name>nav2_pid_controller</name>
   <version>0.0.0</version>
   <description>
-    PID-based nav2_core::Controller plugin ported from dcm_navigation.
+    PID-based nav2_core::Controller plugin.
     Linear (high/low speed switched) + angular PID with a three-stage state
     machine (APPROACHING -> ROTATING_TO_GOAL), reverse support, and
     trajectory consumption (per-point longitudinal_velocity / path_kappa)

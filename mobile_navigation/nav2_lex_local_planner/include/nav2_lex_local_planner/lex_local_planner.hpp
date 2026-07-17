@@ -1,15 +1,12 @@
 // Copyright 2026 DEXE Robot Engineer
 // SPDX-License-Identifier: Apache-2.0
 //
-// ROS2 Nav2 局部规划插件入口。实现冻结接口 nav2_core::LocalPlanner。
-// 从 dcm lex_local_planner/lex_local_planner_ros.h（nav_core::BaseLocalPlanner）移植：
-//   - initialize(name, tf2_ros::Buffer*, costmap_2d::Costmap2DROS*)
-//       -> configure(parent, name, shared_ptr<tf2_ros::Buffer>, shared_ptr<Costmap2DROS>)
-//          + activate()/deactivate()/cleanup()
-//   - 删除 dynamic_reconfigure / odom_helper（速度改由 computeLocalPlan 入参 velocity 提供）
-//   - 删除 ROS1 g_plan_pub_/l_plan_pub_ rviz 发布器
-//   - setPlan(vector<PoseStamped>) -> setPlan(const nav_msgs::msg::Path &)
-//   - computeLocalPlan(vector<PoseStamped>&) -> computeLocalPlan(pose, velocity, nav_msgs::msg::Path&)
+// ROS2 Nav2 局部规划插件入口。实现冻结接口 nav2_core::LocalPlanner：
+//   - configure(parent, name, shared_ptr<tf2_ros::Buffer>, shared_ptr<Costmap2DROS>)
+//     + activate()/deactivate()/cleanup()
+//   - 速度由 computeLocalPlan 入参 velocity 提供（无 odom_helper）
+//   - setPlan(const nav_msgs::msg::Path &)
+//   - computeLocalPlan(pose, velocity, nav_msgs::msg::Path&)
 #ifndef NAV2_LEX_LOCAL_PLANNER__LEX_LOCAL_PLANNER_HPP_
 #define NAV2_LEX_LOCAL_PLANNER__LEX_LOCAL_PLANNER_HPP_
 
@@ -63,8 +60,7 @@ public:
 protected:
   /**
    * @brief 将全局路径裁剪/变换到 global_frame 的窗口内（max_plan_length）。
-   *        从 dcm transformGlobalPlan 移植，tf 用 shared_ptr<tf2_ros::Buffer>，
-   *        ROS1 tf 异常类型改为 tf2::TransformException。
+   *        tf 用 shared_ptr<tf2_ros::Buffer>，异常类型为 tf2::TransformException。
    */
   bool transformGlobalPlan(
     const std::vector<geometry_msgs::msg::PoseStamped> & global_plan,

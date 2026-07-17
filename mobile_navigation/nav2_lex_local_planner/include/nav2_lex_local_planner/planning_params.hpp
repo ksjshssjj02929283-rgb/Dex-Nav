@@ -1,10 +1,7 @@
 // Copyright 2026 DEXE Robot Engineer
 // SPDX-License-Identifier: Apache-2.0
 //
-// 规划参数容器。从 dcm lex_local_planner/planning_params.h 移植：
-//   - 删除 dynamic_reconfigure（LEXLocalPlannerConfig / reconfigure()）
-//   - loadRosParamFromNodeHandle(ros::NodeHandle) -> declareAndLoad(node, name)
-//     使用 ROS2 declare_parameter + get_parameter（参照 nav2 约定）
+// 规划参数容器：使用 ROS2 declare_parameter + get_parameter（参照 nav2 约定）
 #ifndef NAV2_LEX_LOCAL_PLANNER__PLANNING_PARAMS_HPP_
 #define NAV2_LEX_LOCAL_PLANNER__PLANNING_PARAMS_HPP_
 

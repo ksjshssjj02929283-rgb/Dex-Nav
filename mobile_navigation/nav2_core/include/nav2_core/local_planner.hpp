@@ -25,7 +25,6 @@ namespace nav2_core
  * 职责：输入上游全局/路网几何路径 + 实时 costmap，输出避障后的**局部几何路径**。
  * 边界：不规划速度（交 ④SpeedPlanner），不出 cmd_vel（交 ⑤Controller），
  *       不做拓扑选路（交 ①Routing）。
- * 对齐 dcm `nav_core::BaseLocalPlanner`（setPlan + computeLocalPlan），
  * 由 ControllerServer 作为三段 pipeline 的第 1 段持有（pluginlib 加载）。
  */
 class LocalPlanner

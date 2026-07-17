@@ -1,8 +1,7 @@
 // Copyright 2026 DEXE Robot Engineer
 // SPDX-License-Identifier: Apache-2.0
 //
-// 纯数据结构定义（无 ROS 依赖）。从 dcm lex_local_planner/data_type.h 原样移植，
-// 仅替换 include guard。NUM_COSTS = 3 多代价（避障 / 换道 / 距离）。
+// 纯数据结构定义（无 ROS 依赖）。NUM_COSTS = 3 多代价（避障 / 换道 / 距离）。
 #ifndef NAV2_LEX_LOCAL_PLANNER__DATA_TYPE_HPP_
 #define NAV2_LEX_LOCAL_PLANNER__DATA_TYPE_HPP_
 

@@ -1,11 +1,8 @@
 // Copyright 2026 DEXE Robot Engineer
 // SPDX-License-Identifier: Apache-2.0
 //
-// 从 dcm lex_local_planner/planning_param.cpp 移植。默认值原样保留；
-// ROS 边界替换：loadRosParamFromNodeHandle(ros::NodeHandle) ->
-//   declareAndLoad(node, name)，用 declare_parameter + get_parameter；
-// 删除 reconfigure(LEXLocalPlannerConfig)（dynamic_reconfigure）；
-// print() std::cout -> RCLCPP_INFO(logger, ...)。
+// declareAndLoad(node, name) 用 declare_parameter + get_parameter；
+// print() 用 RCLCPP_INFO(logger, ...)。
 #include <iostream>
 #include <string>
 #include <mutex>

@@ -2,11 +2,8 @@
  *
  * @file: nav2_pure_rotation_controller.hpp
  * @brief: 原地旋转控制器（纵向 station/speed PID + 独立角速度 PID 并行）。
- *         由 dcm nav2_pure_rotation_controller（nav_core::BaseController）移植为
- *         ROS2 nav2_core::Controller pluginlib 插件。状态机 / PID / 参数逻辑保持不变，
- *         仅替换 ROS1→ROS2 边界。
- * @author: Yang Haodong, Guo Zhanyu, Wu Maojia （原作者）
- * @port:   ROS1 → ROS2 nav2_core::Controller
+ *         ROS2 nav2_core::Controller pluginlib 插件。
+ * @author: Guo Linfeng （原作者）
  *
  **********************************************************/
 
@@ -52,7 +49,7 @@ public:
   ~PureRotationController() override = default;
 
   /**
-   * @brief 配置 controller（ROS2 生命周期）。对应 dcm initialize()。
+   * @brief 配置 controller（ROS2 生命周期）。
    */
   void configure(
     const rclcpp_lifecycle::LifecycleNode::WeakPtr & parent,
@@ -65,19 +62,18 @@ public:
   void deactivate() override;
 
   /**
-   * @brief 几何路径入口（无速度信息）。对应 dcm setPlan(std::vector<PoseStamped>)。
+   * @brief 几何路径入口（无速度信息）。
    */
   void setPlan(const nav_msgs::msg::Path & path) override;
 
   /**
-   * @brief 带速度时空轨迹入口。对应 dcm setPlan(const dcm_msgs::Path&)。
+   * @brief 带速度时空轨迹入口。
    *        消费 per-point longitudinal_velocity（期望速度）/ path_kappa（曲率）/ pose（几何）。
    */
   void setTrajectory(const nav_interfaces::msg::RobotTrajectory & trajectory) override;
 
   /**
-   * @brief 计算速度指令。对应 dcm computeVelocityCommands(Twist&)。
-   *        用入参 pose 替代内部 getRobotPose、velocity 替代 odom helper。
+   * @brief 计算速度指令。用入参 pose 替代内部 getRobotPose、velocity 替代 odom helper。
    */
   geometry_msgs::msg::TwistStamped computeVelocityCommands(
     const geometry_msgs::msg::PoseStamped & pose,
@@ -85,17 +81,17 @@ public:
     nav2_core::GoalChecker * goal_checker) override;
 
   /**
-   * @brief 限制最大线速度（与轨迹速度取严）。dcm 无对应实现。
+   * @brief 限制最大线速度（与轨迹速度取严）。
    */
   void setSpeedLimit(const double & speed_limit, const bool & percentage) override;
 
   /**
-   * @brief 目标是否到达。保留 dcm 行为（恒返回 false，由上层状态机判定）。
+   * @brief 目标是否到达（恒返回 false，由上层状态机判定）。
    */
   bool isGoalReached();
 
   /**
-   * @brief 设置倒车使能（保留 dcm 倒车逻辑）。
+   * @brief 设置倒车使能。
    */
   void setReverseEnabled(const bool enabled_reverse) {reverse_enabled_ = enabled_reverse;}
 
@@ -109,21 +105,20 @@ private:
   }
 
   /**
-   * @brief 纵向 PID（station + speed 串级）。对应 dcm LinearSpeedControl。
+   * @brief 纵向 PID（station + speed 串级）。
    * @param curr_lin_vel 当前线速度（来自 computeVelocityCommands 的 velocity 入参）
    * @param e_dist       base 系下的纵向误差
    */
   double LinearSpeedControl(double curr_lin_vel, double e_dist);
 
   /**
-   * @brief 角速度 PID。对应 dcm AngularSpeedControl。
+   * @brief 角速度 PID。
    * @param e_theta 当前与目标航向角误差
    */
   double AngularSpeedControl(double e_theta);
 
   /**
-   * @brief 找到轨迹上距机器人最近的点 ID（移植自 nav_util::getClosestWaypointID 的 dcm_msgs::Path 重载，
-   *        改为操作缓存的 nav_msgs::msg::Path 几何）。
+   * @brief 找到轨迹上距机器人最近的点 ID（操作缓存的 nav_msgs::msg::Path 几何）。
    */
   int getClosestWaypointID(
     const nav_msgs::msg::Path & path,

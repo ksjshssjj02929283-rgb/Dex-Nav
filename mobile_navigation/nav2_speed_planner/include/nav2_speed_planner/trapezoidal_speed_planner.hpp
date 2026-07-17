@@ -1,7 +1,7 @@
 // Copyright 2026 DEXE Robot Engineer
 // SPDX-License-Identifier: Apache-2.0
 //
-// T 型（梯形/恒加速度）速度规划器 pluginlib 插件（源自 dcm tcurve）。
+// T 型（梯形/恒加速度）速度规划器 pluginlib 插件。
 //
 // Phase B 剖面（Phase A 包络由基类完成）——后向/前向双传播 pass：
 //   B1 后向减速 pass：v[i] = min(v[i], √(v[i+1]² + 2·|decel|·Δs)) 从终点向前传播，

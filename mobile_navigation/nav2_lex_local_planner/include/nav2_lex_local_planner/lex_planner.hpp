@@ -1,11 +1,9 @@
 // Copyright 2026 DEXE Robot Engineer
 // SPDX-License-Identifier: Apache-2.0
 //
-// Lexicographic 多代价 DP 规划核心。从 dcm lex_local_planner/lex_planner.h 移植：
-//   - costmap_2d::Costmap2D* -> nav2_costmap_2d::Costmap2D*
-//   - 删除 ros::Publisher / visualization() rviz 调试方法
-//   - DP 算法（buildAdjacencyMatrix / connectAdjacencyMatrix / searchAdjacencyMatrix /
-//     edgePropagation / extractPath ...）原样保留
+// Lexicographic 多代价 DP 规划核心。使用 nav2_costmap_2d::Costmap2D*，
+// DP 算法（buildAdjacencyMatrix / connectAdjacencyMatrix / searchAdjacencyMatrix /
+// edgePropagation / extractPath ...）。
 #ifndef NAV2_LEX_LOCAL_PLANNER__LEX_PLANNER_HPP_
 #define NAV2_LEX_LOCAL_PLANNER__LEX_PLANNER_HPP_
 

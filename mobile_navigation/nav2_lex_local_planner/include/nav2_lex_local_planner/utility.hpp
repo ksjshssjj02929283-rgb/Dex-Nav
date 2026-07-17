@@ -1,10 +1,7 @@
 // Copyright 2026 DEXE Robot Engineer
 // SPDX-License-Identifier: Apache-2.0
 //
-// 几何/路径工具函数。从 dcm lex_local_planner/utility.h 移植：
-//   - geometry_msgs::PoseStamped -> geometry_msgs::msg::PoseStamped
-//   - tf::getYaw / tf::createQuaternionFromYaw -> tf2 等价实现
-//   - 删除 ROS1 rviz 可视化函数 visualLaneInRviz（纯调试，无算法意义）
+// 几何/路径工具函数：geometry_msgs::msg::PoseStamped，tf2 等价实现。
 #ifndef NAV2_LEX_LOCAL_PLANNER__UTILITY_HPP_
 #define NAV2_LEX_LOCAL_PLANNER__UTILITY_HPP_
 

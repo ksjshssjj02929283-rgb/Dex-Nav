@@ -25,7 +25,6 @@ namespace nav2_core
  * 职责：把"只有几何"的局部路径升级为**带速度/加速度/时间的时空轨迹**
  *       （RobotTrajectory），按 path 内 speed_hint/region_type 段语义做限速与平滑。
  * 边界：不改路径几何（③Local 定），不做闭环跟踪（⑤Controller），不决定走哪（①②）。
- * 对齐 dcm `nav_core::BaseSpeedPlanner::computeSpeedPlan`（tcurve 三段式为蓝本），
  * 由 ControllerServer 作为三段 pipeline 的第 2 段持有（pluginlib 加载）。
  */
 class SpeedPlanner

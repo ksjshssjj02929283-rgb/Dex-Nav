@@ -1,11 +1,8 @@
 // Copyright 2026 DEXE Robot Engineer
 // SPDX-License-Identifier: Apache-2.0
 //
-// 从 dcm lex_local_planner/lex_planner.cpp 移植。Lexicographic 多代价 DP
-// （邻接矩阵 / Dijkstra 分层 cost 比较 / 提取路径）原样保留；
-// ROS 边界替换：costmap_2d::Costmap2D -> nav2_costmap_2d::Costmap2D；
-// costmap_2d::{LETHAL_OBSTACLE,...} -> nav2_costmap_2d::；ros::ok() -> rclcpp::ok()；
-// 删除 ros::Publisher 与 visualization() rviz 调试方法。
+// Lexicographic 多代价 DP（邻接矩阵 / Dijkstra 分层 cost 比较 / 提取路径），
+// 基于 nav2_costmap_2d::Costmap2D / nav2_costmap_2d::{LETHAL_OBSTACLE,...} / rclcpp::ok()。
 #include <algorithm>
 #include <cmath>
 #include <vector>

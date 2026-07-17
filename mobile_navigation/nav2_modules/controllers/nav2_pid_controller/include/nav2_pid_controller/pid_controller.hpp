@@ -1,4 +1,4 @@
-// Copyright (c) 2023 Yang Haodong, Guo Zhanyu, Wu Maojia (original ROS1 dcm_navigation)
+// Copyright (c) 2023 Guo Linfeng (original ROS1 dcm_navigation)
 // Copyright (c) 2026 dexforce (ROS2 / nav2_core port)
 //
 // Licensed under the Apache License, Version 2.0 (the "License");

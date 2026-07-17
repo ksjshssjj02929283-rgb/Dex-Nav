@@ -6,7 +6,6 @@
   <description>
     原地旋转控制器（nav2_core::Controller pluginlib 插件）。纵向 station/speed PID
     + 独立角速度 PID 并行；enable_lon_adjust 控制是否纯旋转（false = 只转）。
-    由 dcm_navigation nav2_pure_rotation_controller 从 ROS1 nav_core::BaseController 移植而来。
   </description>
   <maintainer email="dexforce@dexforce.com">dexforce</maintainer>
   <license>Apache-2.0</license>

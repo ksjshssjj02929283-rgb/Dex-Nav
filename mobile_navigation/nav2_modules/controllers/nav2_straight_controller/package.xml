@@ -7,8 +7,7 @@
     Straight-line tracking controller for Nav2 (nav2_core::Controller plugin).
     Longitudinal PID for speed holding plus a manual heading PID. Consumes
     nav_interfaces/RobotTrajectory per-point longitudinal_velocity / path_kappa
-    via setTrajectory, or a geometric nav_msgs/Path via setPlan. Ported from
-    dcm_navigation (ROS1 nav_core::BaseController), algorithm preserved.
+    via setTrajectory, or a geometric nav_msgs/Path via setPlan.
   </description>
   <maintainer email="dexforce@dexforce.com">dexforce</maintainer>
   <license>Apache-2.0</license>
