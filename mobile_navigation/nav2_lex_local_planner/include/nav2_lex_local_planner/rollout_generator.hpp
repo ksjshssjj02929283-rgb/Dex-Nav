@@ -1,13 +1,8 @@
 // Copyright 2026 DEXE Robot Engineer
 // SPDX-License-Identifier: Apache-2.0
 //
-// Rollout 生成器（横向发散候选轨迹）。从 dcm lex_local_planner/rollout_generator.h 移植：
-//   - 删除 ros::NodeHandle / 所有 ros::Publisher / initROS()
-//   - 删除仅用于 rviz 调试且在 Run() 中已注释的 nav_msgs::Path 辅助函数
-//     （getCenterPath / getOtherpaths / getRemainingPath / calculatePathYaw(Path) /
-//      fixPathDensity(Path) / trajectoryToMarkers）
-//   - 核心算法（Run / extractPartFromTrajectory / generateRunoffTrajectory /
-//     calculateRollInTrajectories）原样保留
+// Rollout 生成器（横向发散候选轨迹）。核心算法：Run / extractPartFromTrajectory /
+// generateRunoffTrajectory / calculateRollInTrajectories。
 #ifndef NAV2_LEX_LOCAL_PLANNER__ROLLOUT_GENERATOR_HPP_
 #define NAV2_LEX_LOCAL_PLANNER__ROLLOUT_GENERATOR_HPP_
 

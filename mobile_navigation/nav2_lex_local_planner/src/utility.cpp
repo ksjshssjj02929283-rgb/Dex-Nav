@@ -1,10 +1,8 @@
 // Copyright 2026 DEXE Robot Engineer
 // SPDX-License-Identifier: Apache-2.0
 //
-// 从 dcm lex_local_planner/utility.cpp 移植。几何/路径函数原样保留；
-// ROS 边界替换：geometry_msgs::PoseStamped -> ::msg::；tf::getYaw -> tf2::getYaw；
-// tf::createQuaternionFromYaw + quaternionTFToMsg -> tf2::Quaternion::setRPY + toMsg；
-// 删除 ROS1 rviz 函数 visualLaneInRviz。
+// 几何/路径函数：geometry_msgs::msg::PoseStamped；tf2::getYaw；
+// tf2::Quaternion::setRPY + toMsg。
 #include <cmath>
 #include <vector>
 #include <string>

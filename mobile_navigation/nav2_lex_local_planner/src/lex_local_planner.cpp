@@ -1,15 +1,12 @@
 // Copyright 2026 DEXE Robot Engineer
 // SPDX-License-Identifier: Apache-2.0
 //
-// 从 dcm lex_local_planner/lex_local_planner_ros.cpp 移植为 nav2_core::LocalPlanner。
-// 关键转换：
-//   - initialize() -> configure() + activate()/deactivate()/cleanup()
+// 实现 nav2_core::LocalPlanner。
+//   - configure() + activate()/deactivate()/cleanup()
 //   - 参数加载用 PlanningParams::declareAndLoad(node, name)
-//   - setPlan(vector<PoseStamped>) -> setPlan(nav_msgs::msg::Path)
-//   - computeLocalPlan：robot pose 由入参 pose 提供（替代 costmap_ros_->getRobotPose）；
-//     当前速度由入参 velocity 提供（替代 odom_helper_）
-//   - transformGlobalPlan：tf 用 shared_ptr<tf2_ros::Buffer>，ROS1 tf 异常 -> tf2::TransformException
-//   - 删除 dynamic_reconfigure / odom_helper / rviz publishers
+//   - setPlan(nav_msgs::msg::Path)
+//   - computeLocalPlan：robot pose 由入参 pose 提供；当前速度由入参 velocity 提供
+//   - transformGlobalPlan：tf 用 shared_ptr<tf2_ros::Buffer>，异常类型 tf2::TransformException
 #include <algorithm>
 #include <memory>
 #include <string>
@@ -113,7 +110,6 @@ bool LexLocalPlanner::computeLocalPlan(
     return true;
   }
 
-  // robot pose 由入参提供（替代 dcm 的 costmap_ros_->getRobotPose）
   const geometry_msgs::msg::PoseStamped & robot_pose = pose;
 
   std::vector<geometry_msgs::msg::PoseStamped> transformed_plan;
@@ -150,7 +146,6 @@ bool LexLocalPlanner::computeLocalPlan(
   nav2_lex_local_planner::WayPoint current_pose;
   nav2_lex_local_planner::poseStampedMsgToWayPoint(robot_pose, current_pose);
 
-  // 当前速度由入参 velocity 提供（替代 dcm 的 odom_helper_）
   double curr_speed = std::hypot(velocity.linear.x, velocity.linear.y);
 
   std::vector<std::vector<nav2_lex_local_planner::WayPoint>> alternative_paths;
@@ -182,8 +177,6 @@ bool LexLocalPlanner::transformGlobalPlan(
   std::vector<geometry_msgs::msg::PoseStamped> & transformed_plan,
   int * current_goal_idx, geometry_msgs::msg::TransformStamped * tf_plan_to_global) const
 {
-  // 从 dcm base_local_planner/goal_functions 改写：tf2 异常 + shared_ptr buffer
-
   transformed_plan.clear();
 
   try {

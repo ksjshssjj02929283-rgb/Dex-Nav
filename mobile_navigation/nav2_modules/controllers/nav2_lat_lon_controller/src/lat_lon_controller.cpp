@@ -2,9 +2,9 @@
  *
  * @file: nav2_lat_lon_controller.cpp
  * @brief: 纵横解耦 PID 跟踪 controller（nav2_core::Controller 插件实现）。
- *         算法逻辑（五阶段状态机 / 纵横 PID / 参数）完整移植自 dcm 蓝本，
+ *         算法逻辑（五阶段状态机 / 纵横 PID / 参数）完整保留，
  *         仅替换 ROS1 → ROS2 边界（接口 / 参数 / 日志 / 消息 / costmap / 轨迹消费）。
- * @author: Yang Haodong, Guo Zhanyu, Wu Maojia（原 dcm 版本）
+ * @author: Guo Linfeng
  *
  **********************************************************/
 
@@ -95,7 +95,6 @@ void LatLonController::configure(
       node->get_parameter(p + "." + pid + ".saturation", conf.output_saturation_level);
     };
 
-  // 默认值与 dcm 蓝本一致
   nav2_controller_common::PidConf station_def;
   station_def.integrator_enable = true;
   station_def.integrator_saturation_level = 0.3;
@@ -193,7 +192,7 @@ void LatLonController::cacheTrajectory(const std::vector<TrajPoint> & input)
   controller_traj_.clear();
   controller_traj_.reserve(input.size());
 
-  // 将轨迹变换到 map（global）frame，与 dcm 蓝本一致
+  // 将轨迹变换到 map（global）frame
   for (const auto & tp : input) {
     TrajPoint out = tp;
     try {
@@ -259,7 +258,7 @@ void LatLonController::setTrajectory(const nav_interfaces::msg::RobotTrajectory 
     return;
   }
 
-  // 带速度时空轨迹：longitudinal_velocity 作为每点期望速度（dcm PathPose.speed_limit）。
+  // 带速度时空轨迹：longitudinal_velocity 作为每点期望速度。
   // path_kappa（曲率）随点缓存，pose 作为几何输入。
   std::vector<TrajPoint> input;
   input.reserve(trajectory.points.size());
@@ -308,10 +307,10 @@ geometry_msgs::msg::TwistStamped LatLonController::computeVelocityCommands(
     return cmd_vel;
   }
 
-  // 当前位姿由入参 pose 提供（global/map frame），替代 dcm 内部 getRobotPose + tf 到 map。
+  // 当前位姿由入参 pose 提供（global/map frame）
   current_ps_ = pose;
 
-  // 倒车：将朝向旋转 180 度（保留 dcm 逻辑）
+  // 倒车：将朝向旋转 180 度
   if (reverse_enabled_) {
     double reverse_yaw = tf2::getYaw(current_ps_.pose.orientation) + M_PI;
     regularizeAngle(reverse_yaw);

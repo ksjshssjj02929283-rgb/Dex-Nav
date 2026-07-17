@@ -4,9 +4,9 @@
  * @brief: 纵横解耦 PID 跟踪 controller，移植为 nav2_core::Controller 插件。
  *         横向 PID 纠偏 + 纵向 PID 前进；五阶段状态机
  *         APPROACHING → ADJUST_HEADING → ADJUST_DISTANCE → ROTATING_TO_GOAL；
- *         p_window 前视。算法（状态机 / PID / 参数）完整保留自 dcm 蓝本，
+ *         p_window 前视。算法（状态机 / PID / 参数）完整保留，
  *         仅替换 ROS1 → ROS2 边界。
- * @author: Yang Haodong, Guo Zhanyu, Wu Maojia（原 dcm 版本）
+ * @author: Guo Linfeng
  *
  **********************************************************/
 
@@ -117,7 +117,7 @@ private:
     double ignore_dist = 0.0,
     bool ignore_first = false);
 
-  // 裁剪机器人后方的轨迹点；移植自 dcm pruneGlobalPlan
+  // 裁剪机器人后方的轨迹点
   bool pruneGlobalPlan(
     const geometry_msgs::msg::PoseStamped & global_pose,
     std::vector<TrajPoint> & traj,

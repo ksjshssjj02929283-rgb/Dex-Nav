@@ -2,7 +2,7 @@
  *
  * @file: nav2_straight_controller.cpp
  * @brief: 直线跟踪 PID local planner（ROS2 nav2_core::Controller 插件）
- * @author: Yang Haodong, Guo Zhanyu, Wu Maojia, Guo Linfeng
+ * @author: Guo Linfeng, Guo Linfeng
  * @update: 2026-06
  * @version: 2.0
  *
@@ -10,9 +10,8 @@
  * All rights reserved.
  * --------------------------------------------------------
  *
- * 移植自 dcm_navigation（ROS1 nav_core::BaseController）。状态机 / PID / 参数逻辑完整保留，
- * 仅替换 ROS1→ROS2 边界：getRobotPose→入参 pose、odom helper→入参 velocity、
- * dcm_msgs::Path→内部 StraightPathPoint 缓存（speed_limit / curvature / pose）。
+ * 状态机 / PID / 参数逻辑完整保留，仅替换 ROS1→ROS2 边界：getRobotPose→入参 pose、
+ * odom helper→入参 velocity、内部 StraightPathPoint 缓存（speed_limit / curvature / pose）。
  *
  **********************************************************/
 

@@ -1,11 +1,8 @@
 // Copyright 2026 DEXE Robot Engineer
 // SPDX-License-Identifier: Apache-2.0
 //
-// 从 dcm lex_local_planner/rollout_generator.cpp 移植。rollout 生成算法
-// （Run / extractPartFromTrajectory / generateRunoffTrajectory /
-//  calculateRollInTrajectories）原样保留；
-// 删除 ROS1 publisher/initROS 及仅 rviz 调试的 nav_msgs::Path 辅助函数与
-// visualLaneInRviz 调用。
+// rollout 生成算法：Run / extractPartFromTrajectory / generateRunoffTrajectory /
+// calculateRollInTrajectories。
 #include <algorithm>
 #include <vector>
 

@@ -3,7 +3,7 @@
 <package format="3">
   <name>nav2_lex_local_planner</name>
   <version>0.1.0</version>
-  <description>Lexicographic 局部规划器 Nav2 插件（实现 nav2_core::LocalPlanner，从 dcm 移植）</description>
+  <description>Lexicographic 局部规划器 Nav2 插件（实现 nav2_core::LocalPlanner）</description>
   <maintainer email="dexforce@dexforce.com">dexforce</maintainer>
   <license>Apache-2.0</license>
 

@@ -6,7 +6,7 @@
   <description>
     速度规划器插件库（nav2_core::SpeedPlanner 实现，五层架构 ④速度规划层）。
     抽象基类 SpeedPlannerBase 实现 7 个冻结接口 + 恒加速度参考内核（assignConstantAccelProfile），
-    派生 pluginlib 插件：TrapezoidalSpeedPlanner（T 型三段式，dcm tcurve 移植）、
+    派生 pluginlib 插件：TrapezoidalSpeedPlanner（T 型三段式）、
     SCurveSpeedPlanner（S 型 jerk 限制曲线，基于 Ruckig，jerk/加速度严格达标，填 acceleration/relative_time）。
   </description>
   <maintainer email="dexforce@dexforce.com">dexforce</maintainer>

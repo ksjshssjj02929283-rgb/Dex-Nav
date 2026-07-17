@@ -10,8 +10,7 @@
  * All rights reserved.
  * --------------------------------------------------------
  *
- * 由 dcm_navigation/nav_modules/controller/nav2_straight_controller（ROS1 nav_core::BaseController）
- * 移植而来。算法（纵向 PID 保速度 + 手工 PID 控航向 + 状态机）完整保留，仅替换 ROS1→ROS2 边界。
+ * 算法（纵向 PID 保速度 + 手工 PID 控航向 + 状态机）完整保留，仅替换 ROS1→ROS2 边界。
  *
  **********************************************************/
 
@@ -50,7 +49,7 @@ namespace nav2_straight_controller
 /**
  * @brief 内部轨迹点缓存：几何 pose（map 系）+ 期望速度 + 曲率。
  *
- * 替代 ROS1 中的 dcm_msgs::PathPose：speed_limit ← TrajectoryPoint.longitudinal_velocity，
+ * speed_limit ← TrajectoryPoint.longitudinal_velocity，
  * curvature ← TrajectoryPoint.path_kappa，pose ← TrajectoryPoint.pose。
  */
 struct StraightPathPoint
@@ -146,10 +145,10 @@ private:
     angle = angle - 2.0 * M_PI * std::floor((angle + M_PI) / (2.0 * M_PI));
   }
 
-  // ---- 路径长度（移植自 nav_util::computePathLength(dcm_msgs::Path)）----
+  // ---- 路径长度 ----
   double computePathLength(const std::vector<StraightPathPoint> & path) const;
 
-  // ---- 最近点索引（移植自 nav_util::getClosestWaypointID(dcm_msgs::Path)）----
+  // ---- 最近点索引 ----
   int getClosestWaypointID(
     const std::vector<StraightPathPoint> & path,
     const geometry_msgs::msg::PoseStamped & pose,

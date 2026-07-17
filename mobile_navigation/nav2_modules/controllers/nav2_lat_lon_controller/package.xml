@@ -6,7 +6,7 @@
   <description>
     纵横解耦 PID 跟踪 controller（nav2_core::Controller 插件）。横向 PID 纠偏 +
     纵向 PID 前进，五阶段状态机（APPROACHING / ADJUST_HEADING / ADJUST_DISTANCE /
-    ROTATING_TO_GOAL），p_window 前视。由 dcm_navigation 移植到 nav2。
+    ROTATING_TO_GOAL），p_window 前视。
   </description>
   <maintainer email="dexforce@dexforce.com">dexforce</maintainer>
   <license>Apache-2.0</license>

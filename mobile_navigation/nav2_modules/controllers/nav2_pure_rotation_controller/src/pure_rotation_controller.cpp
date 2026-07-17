@@ -3,7 +3,7 @@
  * @file: nav2_pure_rotation_controller.cpp
  * @brief: 原地旋转控制器（纵向 station/speed PID + 独立角速度 PID 并行）。
  *         ROS1 nav_core::BaseController → ROS2 nav2_core::Controller 移植。
- * @author: Yang Haodong, Guo Zhanyu, Wu Maojia （原作者）
+ * @author: Guo Linfeng （原作者）
  *
  **********************************************************/
 
@@ -115,7 +115,7 @@ void PureRotationController::configure(
   // angular_pid_conf：默认 integrator_enable=true, saturation_level=0.5
   declare_pid("angular_pid_conf", angular_pid_conf_, true, 0.5);
 
-  // 控制周期：从全局 controller_frequency 读取（对应 dcm 的 /move_base/controller_frequency）
+  // 控制周期：从全局 controller_frequency 读取
   double controller_frequency = 20.0;
   if (!node->get_parameter("controller_frequency", controller_frequency) ||
     controller_frequency <= 0.0)
@@ -200,9 +200,9 @@ void PureRotationController::setTrajectory(const nav_interfaces::msg::RobotTraje
   std::unique_lock<std::mutex> lock(plan_mutex_);
 
   // 把带速度时空轨迹拆为：几何 nav_msgs::msg::Path + 并行的 per-point 速度 / 曲率向量。
-  // 字段映射：TrajectoryPoint.longitudinal_velocity → 每点期望速度（dcm PathPose.speed_limit）；
-  //          TrajectoryPoint.path_kappa             → 每点曲率（dcm curvature）；
-  //          TrajectoryPoint.pose                   → 几何（dcm pose）。
+  // 字段映射：TrajectoryPoint.longitudinal_velocity → 每点期望速度；
+  //          TrajectoryPoint.path_kappa             → 每点曲率；
+  //          TrajectoryPoint.pose                   → 几何。
   controller_path_ = nav_msgs::msg::Path();
   controller_path_.header = trajectory.header;
   controller_path_.poses.reserve(trajectory.points.size());
@@ -249,7 +249,7 @@ void PureRotationController::setTrajectory(const nav_interfaces::msg::RobotTraje
 
 bool PureRotationController::isGoalReached()
 {
-  // 保留 dcm 行为：恒返回 false，到达由上层状态机判定。
+  // 恒返回 false，到达由上层状态机判定。
   return false;
 }
 
@@ -276,10 +276,9 @@ geometry_msgs::msg::TwistStamped PureRotationController::computeVelocityCommands
     return cmd_vel;
   }
 
-  // 当前位姿：用入参 pose 替代 dcm 内部 getRobotPose。约定 pose 已在全局（map）系下。
+  // 当前位姿：约定 pose 已在全局（map）系下。
   current_ps_ = pose;
 
-  // 当前速度：用入参 velocity 替代 dcm 的 odom helper。
   const double curr_lin_vel = velocity.linear.x;
 
   plan_index_ = getClosestWaypointID(controller_path_, current_ps_, 0.1, true);

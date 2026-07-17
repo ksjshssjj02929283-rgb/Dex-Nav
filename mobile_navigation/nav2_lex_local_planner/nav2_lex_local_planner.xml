@@ -3,7 +3,7 @@
         <class type="nav2_lex_local_planner::LexLocalPlanner" base_class_type="nav2_core::LocalPlanner">
             <description>
                 Lexicographic 多代价局部规划器（rollout 横向发散 + 分层代价 DP 选路），
-                从 dcm lex_local_planner 移植，实现 nav2_core::LocalPlanner 接口。
+                实现 nav2_core::LocalPlanner 接口。
             </description>
         </class>
     </library>
