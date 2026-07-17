@@ -21,6 +21,12 @@
   - BackUp is treated as an optional recovery action: if backing up is blocked
     or out of the local costmap, navigation keeps waiting/retrying instead of
     failing the whole goal.
+  - Unlike the outer global-planning retry, this loop is bounded: an unbounded
+    local recovery loop can spin indefinitely on a position the robot cannot
+    escape, with no signal to the caller that anything is wrong. A bounded
+    count still gives many chances for transient obstacles to clear, but
+    eventually fails the goal so the caller (and any operator watching it)
+    finds out instead of waiting forever.
 -->
 
 <root main_tree_to_execute="MainTree">
