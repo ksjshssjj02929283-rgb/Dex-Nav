@@ -1,0 +1,10 @@
+-- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test':
+ - /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/parameter_handler_test --gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/parameter_handler_test.gtest.xml
+
+terminate called after throwing an instance of 'spdlog::spdlog_ex'
+  what():  Failed opening file /home/dex/.ros/log/parameter_handler_test_43_1784285057268.log for writing: Read-only file system
+
+
+-- run_test.py: return code -6
+-- run_test.py: generate result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/parameter_handler_test.gtest.xml' with failed test
+-- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/parameter_handler_test.gtest.xml'

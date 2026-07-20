@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite
+  name="nav2_mppi_controller.lint_cmake"
+  tests="3"
+  errors="0"
+  failures="0"
+  time="0.002"
+>
+  <testcase
+    name="CMakeLists.txt"
+    classname="nav2_mppi_controller.lint_cmake"/>
+  <testcase
+    name="benchmark/CMakeLists.txt"
+    classname="nav2_mppi_controller.lint_cmake"/>
+  <testcase
+    name="test/CMakeLists.txt"
+    classname="nav2_mppi_controller.lint_cmake"/>
+  <system-out>Checked files:
+* CMakeLists.txt
+* benchmark/CMakeLists.txt
+* test/CMakeLists.txt</system-out>
+</testsuite>

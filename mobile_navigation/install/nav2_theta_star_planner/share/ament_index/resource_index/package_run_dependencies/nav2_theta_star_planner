@@ -1,1 +1,1 @@
-builtin_interfaces;nav2_common;nav2_core;nav2_costmap_2d;nav2_msgs;nav2_util;pluginlib;rclcpp;rclcpp_action;rclcpp_lifecycle;tf2_ros;nav2_map_server;ament_lint_auto;ament_lint_common;ament_cmake_gtest
+/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/ament_cmake_index/share/ament_index/resource_index/package_run_dependencies/nav2_theta_star_planner

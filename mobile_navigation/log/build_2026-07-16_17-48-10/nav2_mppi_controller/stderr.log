@@ -1,0 +1,24 @@
+CMake Warning at CMakeLists.txt:59 (add_library):
+  Cannot generate a safe runtime search path for target mppi_controller
+  because there is a cycle in the constraint graph:
+
+    dir 0 is [/opt/ros/humble/lib]
+      dir 1 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+    dir 1 is [/home/dex/dexe_mobile_nav/install/nav2_msgs/lib]
+      dir 0 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+
+  Some of these libraries may not be found correctly.
+
+
+CMake Warning at CMakeLists.txt:69 (add_library):
+  Cannot generate a safe runtime search path for target mppi_critics because
+  there is a cycle in the constraint graph:
+
+    dir 0 is [/opt/ros/humble/lib]
+      dir 1 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+    dir 1 is [/home/dex/dexe_mobile_nav/install/nav2_msgs/lib]
+      dir 0 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+
+  Some of these libraries may not be found correctly.
+
+

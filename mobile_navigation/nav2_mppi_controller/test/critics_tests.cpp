@@ -96,6 +96,58 @@ TEST(CriticTests, GoalFrameLateralAndLongitudinalErrors)
   EXPECT_NEAR(costs(1), 1.0f, 1e-5f);
 }
 
+TEST(CriticTests, GoalFrameCriticsOnlyScorePredictionTail)
+{
+  auto node = std::make_shared<rclcpp_lifecycle::LifecycleNode>("goal_tail_critic_test");
+  auto costmap_ros = std::make_shared<nav2_costmap_2d::Costmap2DROS>(
+    "dummy_costmap", "", "dummy_costmap");
+  node->declare_parameter("lateral_tail.cost_power", 1);
+  node->declare_parameter("lateral_tail.trajectory_tail_steps", 2);
+  node->declare_parameter("longitudinal_tail.cost_power", 1);
+  node->declare_parameter("longitudinal_tail.trajectory_tail_steps", 2);
+  ParametersHandler param_handler(node);
+  rclcpp_lifecycle::State lstate;
+  costmap_ros->on_configure(lstate);
+
+  models::State state;
+  models::Trajectories trajectories;
+  trajectories.reset(2, 4);
+  models::Path path;
+  path.reset(1);
+  models::Vector costs = models::Vector::Zero(2);
+  float model_dt = 0.1f;
+  CriticData data =
+  {state, trajectories, path, costs, model_dt, false, nullptr, nullptr, std::nullopt,
+    std::nullopt};
+
+  // 候选 0 只在预测前半段误差很大；候选 1 的误差留在最后两步。
+  trajectories.y.row(0) << 10.0f, 10.0f, 0.0f, 0.0f;
+  trajectories.y.row(1) << 0.0f, 0.0f, 1.0f, 1.0f;
+  CriticProfileSettings settings;
+  settings.goal_lateral.weight = 1.0f;
+  settings.goal_longitudinal.weight = 1.0f;
+
+  GoalLateralCritic lateral_critic;
+  lateral_critic.on_configure(
+    node, "mppi", "lateral_tail", costmap_ros, &param_handler);
+  lateral_critic.applyProfileSettings(settings);
+  lateral_critic.score(data);
+  EXPECT_NEAR(costs(0), 0.0f, 1e-5f);
+  EXPECT_NEAR(costs(1), 1.0f, 1e-5f);
+
+  costs.setZero();
+  trajectories.y.setZero();
+  trajectories.x.row(0) << 10.0f, 10.0f, 0.0f, 0.0f;
+  trajectories.x.row(1) << 0.0f, 0.0f, 1.0f, 1.0f;
+  GoalLongitudinalCritic longitudinal_critic;
+  longitudinal_critic.on_configure(
+    node, "mppi", "longitudinal_tail", costmap_ros, &param_handler);
+  longitudinal_critic.applyProfileSettings(settings);
+  longitudinal_critic.score(data);
+  EXPECT_NEAR(costs(0), 0.0f, 1e-5f);
+  EXPECT_NEAR(costs(1), 1.0f, 1e-5f);
+}
+
 TEST(CriticTests, LinearVelocityCriticDoesNotBiasForwardDirection)
 {
   auto node = std::make_shared<rclcpp_lifecycle::LifecycleNode>("linear_velocity_critic_test");
@@ -847,6 +899,19 @@ TEST(CriticTests, AngularVelocityCriticStopsInsideYawTolerance)
   trajectories.yaws.setConstant(0.01f);
   state.wz.row(0).setZero();
   state.wz.row(1).setConstant(-0.1f);
+  critic.score(data);
+  EXPECT_NEAR(costs(0), 0.0, 1e-6);
+  EXPECT_GT(costs(1), costs(0));
+
+  // POSITIONING 即使离最终 yaw 很远，也必须偏好 wz=0，不能提前追最终朝向。
+  CriticProfileSettings positioning_settings;
+  positioning_settings.angular_velocity.weight = 1.0f;
+  positioning_settings.angular_velocity.track_goal_yaw = false;
+  critic.applyProfileSettings(positioning_settings);
+  costs.setZero();
+  trajectories.yaws.setConstant(1.5f);
+  state.wz.row(0).setZero();
+  state.wz.row(1).setConstant(0.1f);
   critic.score(data);
   EXPECT_NEAR(costs(0), 0.0, 1e-6);
   EXPECT_GT(costs(1), costs(0));

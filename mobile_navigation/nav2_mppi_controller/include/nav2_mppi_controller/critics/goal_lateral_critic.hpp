@@ -39,6 +39,8 @@ public:
 protected:
   unsigned int power_{0};
   float weight_{0};
+  // 只评价预测轨迹末端若干步，避免整段平均误差掩盖最终 2 cm 定位质量。
+  int trajectory_tail_steps_{8};
 };
 
 }  // namespace mppi::critics

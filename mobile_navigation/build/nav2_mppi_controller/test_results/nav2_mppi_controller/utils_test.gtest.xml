@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="nav2_mppi_controller" tests="1" failures="0" time="0.128" errors="1" skipped="0">
+  <testcase classname="nav2_mppi_controller" name="utils_test.gtest.missing_result" time="0.128">
+    <error message="The test did not generate a result file:&#10;&#10;terminate called after throwing an instance of 'spdlog::spdlog_ex'&#10;  what():  Failed opening file /home/dex/.ros/log/utils_test_49_1784285057775.log for writing: Read-only file system&#10;"/>
+  </testcase>
+</testsuite>

@@ -90,7 +90,8 @@ protected:
   PathOrientationMode path_orientation_mode_{PathOrientationMode::AUTO};
   /// |start_yaw - goal_yaw| 小于该值(rad) 时视为“同朝向”，全程不做 yaw 插值
   double path_orientation_same_threshold_rad_{0.02};
-  /// TANGENT 模式是否在路径首尾插入零位移旋转标记，供 MPPI 三阶段控制识别。
+  /// 是否插入 orientation mode 零位移标记。参数名保留 tangent_ 前缀兼容旧配置：
+  /// TANGENT=首尾各一个、GOAL=起点一个、START=起点两个、NONE=终点一个；AUTO 无 marker。
   bool tangent_in_place_rotation_markers_{false};
 
   /**

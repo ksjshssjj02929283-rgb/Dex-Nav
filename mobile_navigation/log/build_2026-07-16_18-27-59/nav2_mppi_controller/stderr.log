@@ -1,0 +1,242 @@
+CMake Warning at CMakeLists.txt:59 (add_library):
+  Cannot generate a safe runtime search path for target mppi_controller
+  because there is a cycle in the constraint graph:
+
+    dir 0 is [/opt/ros/humble/lib]
+      dir 1 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+    dir 1 is [/home/dex/dexe_mobile_nav/install/nav2_msgs/lib]
+      dir 0 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+
+  Some of these libraries may not be found correctly.
+
+
+CMake Warning at CMakeLists.txt:69 (add_library):
+  Cannot generate a safe runtime search path for target mppi_critics because
+  there is a cycle in the constraint graph:
+
+    dir 0 is [/opt/ros/humble/lib]
+      dir 1 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+    dir 1 is [/home/dex/dexe_mobile_nav/install/nav2_msgs/lib]
+      dir 0 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+
+  Some of these libraries may not be found correctly.
+
+
+CMake Warning at /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:50 (add_executable):
+  Cannot generate a safe runtime search path for target optimizer_smoke_test
+  because there is a cycle in the constraint graph:
+
+    dir 0 is [/opt/ros/humble/lib]
+      dir 1 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+      dir 2 must precede it due to runtime library [libmppi_controller.so]
+    dir 1 is [/home/dex/dexe_mobile_nav/install/nav2_msgs/lib]
+      dir 0 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+    dir 2 is [/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller]
+
+  Some of these libraries may not be found correctly.
+Call Stack (most recent call first):
+  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:37 (_ament_add_gtest_executable)
+  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest.cmake:68 (ament_add_gtest_executable)
+  test/CMakeLists.txt:16 (ament_add_gtest)
+
+
+CMake Warning at /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:50 (add_executable):
+  Cannot generate a safe runtime search path for target
+  controller_state_transition_test because there is a cycle in the constraint
+  graph:
+
+    dir 0 is [/opt/ros/humble/lib]
+      dir 1 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+      dir 2 must precede it due to runtime library [libmppi_controller.so]
+    dir 1 is [/home/dex/dexe_mobile_nav/install/nav2_msgs/lib]
+      dir 0 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+    dir 2 is [/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller]
+
+  Some of these libraries may not be found correctly.
+Call Stack (most recent call first):
+  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:37 (_ament_add_gtest_executable)
+  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest.cmake:68 (ament_add_gtest_executable)
+  test/CMakeLists.txt:16 (ament_add_gtest)
+
+
+CMake Warning at /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:50 (add_executable):
+  Cannot generate a safe runtime search path for target models_test because
+  there is a cycle in the constraint graph:
+
+    dir 0 is [/opt/ros/humble/lib]
+      dir 1 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+      dir 2 must precede it due to runtime library [libmppi_controller.so]
+    dir 1 is [/home/dex/dexe_mobile_nav/install/nav2_msgs/lib]
+      dir 0 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+    dir 2 is [/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller]
+
+  Some of these libraries may not be found correctly.
+Call Stack (most recent call first):
+  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:37 (_ament_add_gtest_executable)
+  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest.cmake:68 (ament_add_gtest_executable)
+  test/CMakeLists.txt:16 (ament_add_gtest)
+
+
+CMake Warning at /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:50 (add_executable):
+  Cannot generate a safe runtime search path for target noise_generator_test
+  because there is a cycle in the constraint graph:
+
+    dir 0 is [/opt/ros/humble/lib]
+      dir 1 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+      dir 2 must precede it due to runtime library [libmppi_controller.so]
+    dir 1 is [/home/dex/dexe_mobile_nav/install/nav2_msgs/lib]
+      dir 0 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+    dir 2 is [/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller]
+
+  Some of these libraries may not be found correctly.
+Call Stack (most recent call first):
+  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:37 (_ament_add_gtest_executable)
+  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest.cmake:68 (ament_add_gtest_executable)
+  test/CMakeLists.txt:16 (ament_add_gtest)
+
+
+CMake Warning at /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:50 (add_executable):
+  Cannot generate a safe runtime search path for target
+  parameter_handler_test because there is a cycle in the constraint graph:
+
+    dir 0 is [/opt/ros/humble/lib]
+      dir 1 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+      dir 2 must precede it due to runtime library [libmppi_controller.so]
+    dir 1 is [/home/dex/dexe_mobile_nav/install/nav2_msgs/lib]
+      dir 0 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+    dir 2 is [/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller]
+
+  Some of these libraries may not be found correctly.
+Call Stack (most recent call first):
+  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:37 (_ament_add_gtest_executable)
+  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest.cmake:68 (ament_add_gtest_executable)
+  test/CMakeLists.txt:16 (ament_add_gtest)
+
+
+CMake Warning at /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:50 (add_executable):
+  Cannot generate a safe runtime search path for target motion_model_tests
+  because there is a cycle in the constraint graph:
+
+    dir 0 is [/opt/ros/humble/lib]
+      dir 1 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+      dir 2 must precede it due to runtime library [libmppi_controller.so]
+    dir 1 is [/home/dex/dexe_mobile_nav/install/nav2_msgs/lib]
+      dir 0 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+    dir 2 is [/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller]
+
+  Some of these libraries may not be found correctly.
+Call Stack (most recent call first):
+  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:37 (_ament_add_gtest_executable)
+  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest.cmake:68 (ament_add_gtest_executable)
+  test/CMakeLists.txt:16 (ament_add_gtest)
+
+
+CMake Warning at /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:50 (add_executable):
+  Cannot generate a safe runtime search path for target
+  trajectory_visualizer_tests because there is a cycle in the constraint
+  graph:
+
+    dir 0 is [/opt/ros/humble/lib]
+      dir 1 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+      dir 2 must precede it due to runtime library [libmppi_controller.so]
+    dir 1 is [/home/dex/dexe_mobile_nav/install/nav2_msgs/lib]
+      dir 0 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+    dir 2 is [/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller]
+
+  Some of these libraries may not be found correctly.
+Call Stack (most recent call first):
+  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:37 (_ament_add_gtest_executable)
+  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest.cmake:68 (ament_add_gtest_executable)
+  test/CMakeLists.txt:16 (ament_add_gtest)
+
+
+CMake Warning at /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:50 (add_executable):
+  Cannot generate a safe runtime search path for target utils_test because
+  there is a cycle in the constraint graph:
+
+    dir 0 is [/opt/ros/humble/lib]
+      dir 1 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+      dir 2 must precede it due to runtime library [libmppi_controller.so]
+    dir 1 is [/home/dex/dexe_mobile_nav/install/nav2_msgs/lib]
+      dir 0 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+    dir 2 is [/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller]
+
+  Some of these libraries may not be found correctly.
+Call Stack (most recent call first):
+  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:37 (_ament_add_gtest_executable)
+  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest.cmake:68 (ament_add_gtest_executable)
+  test/CMakeLists.txt:16 (ament_add_gtest)
+
+
+CMake Warning at /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:50 (add_executable):
+  Cannot generate a safe runtime search path for target path_handler_test
+  because there is a cycle in the constraint graph:
+
+    dir 0 is [/opt/ros/humble/lib]
+      dir 1 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+      dir 2 must precede it due to runtime library [libmppi_controller.so]
+    dir 1 is [/home/dex/dexe_mobile_nav/install/nav2_msgs/lib]
+      dir 0 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+    dir 2 is [/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller]
+
+  Some of these libraries may not be found correctly.
+Call Stack (most recent call first):
+  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:37 (_ament_add_gtest_executable)
+  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest.cmake:68 (ament_add_gtest_executable)
+  test/CMakeLists.txt:16 (ament_add_gtest)
+
+
+CMake Warning at /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:50 (add_executable):
+  Cannot generate a safe runtime search path for target critic_manager_test
+  because there is a cycle in the constraint graph:
+
+    dir 0 is [/opt/ros/humble/lib]
+      dir 1 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+      dir 2 must precede it due to runtime library [libmppi_controller.so]
+    dir 1 is [/home/dex/dexe_mobile_nav/install/nav2_msgs/lib]
+      dir 0 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+    dir 2 is [/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller]
+
+  Some of these libraries may not be found correctly.
+Call Stack (most recent call first):
+  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:37 (_ament_add_gtest_executable)
+  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest.cmake:68 (ament_add_gtest_executable)
+  test/CMakeLists.txt:16 (ament_add_gtest)
+
+
+CMake Warning at /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:50 (add_executable):
+  Cannot generate a safe runtime search path for target optimizer_unit_tests
+  because there is a cycle in the constraint graph:
+
+    dir 0 is [/opt/ros/humble/lib]
+      dir 1 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+      dir 2 must precede it due to runtime library [libmppi_controller.so]
+    dir 1 is [/home/dex/dexe_mobile_nav/install/nav2_msgs/lib]
+      dir 0 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+    dir 2 is [/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller]
+
+  Some of these libraries may not be found correctly.
+Call Stack (most recent call first):
+  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:37 (_ament_add_gtest_executable)
+  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest.cmake:68 (ament_add_gtest_executable)
+  test/CMakeLists.txt:16 (ament_add_gtest)
+
+
+CMake Warning at /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:50 (add_executable):
+  Cannot generate a safe runtime search path for target critics_tests because
+  there is a cycle in the constraint graph:
+
+    dir 0 is [/opt/ros/humble/lib]
+      dir 1 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+      dir 2 must precede it due to runtime library [libmppi_controller.so]
+    dir 1 is [/home/dex/dexe_mobile_nav/install/nav2_msgs/lib]
+      dir 0 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+    dir 2 is [/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller]
+
+  Some of these libraries may not be found correctly.
+Call Stack (most recent call first):
+  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:37 (_ament_add_gtest_executable)
+  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest.cmake:68 (ament_add_gtest_executable)
+  test/CMakeLists.txt:35 (ament_add_gtest)
+
+

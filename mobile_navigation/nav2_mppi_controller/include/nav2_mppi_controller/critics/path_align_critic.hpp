@@ -57,6 +57,7 @@ protected:
   int trajectory_point_step_{0};
   float max_path_occupancy_ratio_{0};
   bool use_path_orientations_{false};
+  bool ignore_goal_orientation_{true};
   unsigned int power_{0};
   float weight_{0};
 };

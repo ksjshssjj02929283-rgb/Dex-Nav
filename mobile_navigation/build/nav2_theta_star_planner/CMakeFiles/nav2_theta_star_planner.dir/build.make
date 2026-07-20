@@ -111,10 +111,52 @@ CMakeFiles/nav2_theta_star_planner.dir/src/multi_layer_planner.cpp.s: cmake_forc
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/nav2_theta_star_planner.dir/src/multi_layer_planner.cpp.s"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/multi_layer_planner.cpp -o CMakeFiles/nav2_theta_star_planner.dir/src/multi_layer_planner.cpp.s
 
+CMakeFiles/nav2_theta_star_planner.dir/src/omni_path_smoother.cpp.o: CMakeFiles/nav2_theta_star_planner.dir/flags.make
+CMakeFiles/nav2_theta_star_planner.dir/src/omni_path_smoother.cpp.o: /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/omni_path_smoother.cpp
+CMakeFiles/nav2_theta_star_planner.dir/src/omni_path_smoother.cpp.o: CMakeFiles/nav2_theta_star_planner.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/CMakeFiles --progress-num=$(CMAKE_PROGRESS_4) "Building CXX object CMakeFiles/nav2_theta_star_planner.dir/src/omni_path_smoother.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/nav2_theta_star_planner.dir/src/omni_path_smoother.cpp.o -MF CMakeFiles/nav2_theta_star_planner.dir/src/omni_path_smoother.cpp.o.d -o CMakeFiles/nav2_theta_star_planner.dir/src/omni_path_smoother.cpp.o -c /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/omni_path_smoother.cpp
+
+CMakeFiles/nav2_theta_star_planner.dir/src/omni_path_smoother.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/nav2_theta_star_planner.dir/src/omni_path_smoother.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/omni_path_smoother.cpp > CMakeFiles/nav2_theta_star_planner.dir/src/omni_path_smoother.cpp.i
+
+CMakeFiles/nav2_theta_star_planner.dir/src/omni_path_smoother.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/nav2_theta_star_planner.dir/src/omni_path_smoother.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/omni_path_smoother.cpp -o CMakeFiles/nav2_theta_star_planner.dir/src/omni_path_smoother.cpp.s
+
+CMakeFiles/nav2_theta_star_planner.dir/src/curve_path_smoother.cpp.o: CMakeFiles/nav2_theta_star_planner.dir/flags.make
+CMakeFiles/nav2_theta_star_planner.dir/src/curve_path_smoother.cpp.o: /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/curve_path_smoother.cpp
+CMakeFiles/nav2_theta_star_planner.dir/src/curve_path_smoother.cpp.o: CMakeFiles/nav2_theta_star_planner.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/CMakeFiles --progress-num=$(CMAKE_PROGRESS_5) "Building CXX object CMakeFiles/nav2_theta_star_planner.dir/src/curve_path_smoother.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/nav2_theta_star_planner.dir/src/curve_path_smoother.cpp.o -MF CMakeFiles/nav2_theta_star_planner.dir/src/curve_path_smoother.cpp.o.d -o CMakeFiles/nav2_theta_star_planner.dir/src/curve_path_smoother.cpp.o -c /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/curve_path_smoother.cpp
+
+CMakeFiles/nav2_theta_star_planner.dir/src/curve_path_smoother.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/nav2_theta_star_planner.dir/src/curve_path_smoother.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/curve_path_smoother.cpp > CMakeFiles/nav2_theta_star_planner.dir/src/curve_path_smoother.cpp.i
+
+CMakeFiles/nav2_theta_star_planner.dir/src/curve_path_smoother.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/nav2_theta_star_planner.dir/src/curve_path_smoother.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/curve_path_smoother.cpp -o CMakeFiles/nav2_theta_star_planner.dir/src/curve_path_smoother.cpp.s
+
+CMakeFiles/nav2_theta_star_planner.dir/src/l1_spline_path.cpp.o: CMakeFiles/nav2_theta_star_planner.dir/flags.make
+CMakeFiles/nav2_theta_star_planner.dir/src/l1_spline_path.cpp.o: /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/l1_spline_path.cpp
+CMakeFiles/nav2_theta_star_planner.dir/src/l1_spline_path.cpp.o: CMakeFiles/nav2_theta_star_planner.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/CMakeFiles --progress-num=$(CMAKE_PROGRESS_6) "Building CXX object CMakeFiles/nav2_theta_star_planner.dir/src/l1_spline_path.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/nav2_theta_star_planner.dir/src/l1_spline_path.cpp.o -MF CMakeFiles/nav2_theta_star_planner.dir/src/l1_spline_path.cpp.o.d -o CMakeFiles/nav2_theta_star_planner.dir/src/l1_spline_path.cpp.o -c /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/l1_spline_path.cpp
+
+CMakeFiles/nav2_theta_star_planner.dir/src/l1_spline_path.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/nav2_theta_star_planner.dir/src/l1_spline_path.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/l1_spline_path.cpp > CMakeFiles/nav2_theta_star_planner.dir/src/l1_spline_path.cpp.i
+
+CMakeFiles/nav2_theta_star_planner.dir/src/l1_spline_path.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/nav2_theta_star_planner.dir/src/l1_spline_path.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/l1_spline_path.cpp -o CMakeFiles/nav2_theta_star_planner.dir/src/l1_spline_path.cpp.s
+
 CMakeFiles/nav2_theta_star_planner.dir/src/theta_star_planner.cpp.o: CMakeFiles/nav2_theta_star_planner.dir/flags.make
 CMakeFiles/nav2_theta_star_planner.dir/src/theta_star_planner.cpp.o: /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/theta_star_planner.cpp
 CMakeFiles/nav2_theta_star_planner.dir/src/theta_star_planner.cpp.o: CMakeFiles/nav2_theta_star_planner.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/CMakeFiles --progress-num=$(CMAKE_PROGRESS_4) "Building CXX object CMakeFiles/nav2_theta_star_planner.dir/src/theta_star_planner.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/CMakeFiles --progress-num=$(CMAKE_PROGRESS_7) "Building CXX object CMakeFiles/nav2_theta_star_planner.dir/src/theta_star_planner.cpp.o"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/nav2_theta_star_planner.dir/src/theta_star_planner.cpp.o -MF CMakeFiles/nav2_theta_star_planner.dir/src/theta_star_planner.cpp.o.d -o CMakeFiles/nav2_theta_star_planner.dir/src/theta_star_planner.cpp.o -c /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/theta_star_planner.cpp
 
 CMakeFiles/nav2_theta_star_planner.dir/src/theta_star_planner.cpp.i: cmake_force
@@ -128,7 +170,7 @@ CMakeFiles/nav2_theta_star_planner.dir/src/theta_star_planner.cpp.s: cmake_force
 CMakeFiles/nav2_theta_star_planner.dir/src/swerve_steering_model.cpp.o: CMakeFiles/nav2_theta_star_planner.dir/flags.make
 CMakeFiles/nav2_theta_star_planner.dir/src/swerve_steering_model.cpp.o: /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/swerve_steering_model.cpp
 CMakeFiles/nav2_theta_star_planner.dir/src/swerve_steering_model.cpp.o: CMakeFiles/nav2_theta_star_planner.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/CMakeFiles --progress-num=$(CMAKE_PROGRESS_5) "Building CXX object CMakeFiles/nav2_theta_star_planner.dir/src/swerve_steering_model.cpp.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/CMakeFiles --progress-num=$(CMAKE_PROGRESS_8) "Building CXX object CMakeFiles/nav2_theta_star_planner.dir/src/swerve_steering_model.cpp.o"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/nav2_theta_star_planner.dir/src/swerve_steering_model.cpp.o -MF CMakeFiles/nav2_theta_star_planner.dir/src/swerve_steering_model.cpp.o.d -o CMakeFiles/nav2_theta_star_planner.dir/src/swerve_steering_model.cpp.o -c /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/swerve_steering_model.cpp
 
 CMakeFiles/nav2_theta_star_planner.dir/src/swerve_steering_model.cpp.i: cmake_force
@@ -144,6 +186,9 @@ nav2_theta_star_planner_OBJECTS = \
 "CMakeFiles/nav2_theta_star_planner.dir/src/theta_star.cpp.o" \
 "CMakeFiles/nav2_theta_star_planner.dir/src/node_theta_star.cpp.o" \
 "CMakeFiles/nav2_theta_star_planner.dir/src/multi_layer_planner.cpp.o" \
+"CMakeFiles/nav2_theta_star_planner.dir/src/omni_path_smoother.cpp.o" \
+"CMakeFiles/nav2_theta_star_planner.dir/src/curve_path_smoother.cpp.o" \
+"CMakeFiles/nav2_theta_star_planner.dir/src/l1_spline_path.cpp.o" \
 "CMakeFiles/nav2_theta_star_planner.dir/src/theta_star_planner.cpp.o" \
 "CMakeFiles/nav2_theta_star_planner.dir/src/swerve_steering_model.cpp.o"
 
@@ -153,6 +198,9 @@ nav2_theta_star_planner_EXTERNAL_OBJECTS =
 libnav2_theta_star_planner.so: CMakeFiles/nav2_theta_star_planner.dir/src/theta_star.cpp.o
 libnav2_theta_star_planner.so: CMakeFiles/nav2_theta_star_planner.dir/src/node_theta_star.cpp.o
 libnav2_theta_star_planner.so: CMakeFiles/nav2_theta_star_planner.dir/src/multi_layer_planner.cpp.o
+libnav2_theta_star_planner.so: CMakeFiles/nav2_theta_star_planner.dir/src/omni_path_smoother.cpp.o
+libnav2_theta_star_planner.so: CMakeFiles/nav2_theta_star_planner.dir/src/curve_path_smoother.cpp.o
+libnav2_theta_star_planner.so: CMakeFiles/nav2_theta_star_planner.dir/src/l1_spline_path.cpp.o
 libnav2_theta_star_planner.so: CMakeFiles/nav2_theta_star_planner.dir/src/theta_star_planner.cpp.o
 libnav2_theta_star_planner.so: CMakeFiles/nav2_theta_star_planner.dir/src/swerve_steering_model.cpp.o
 libnav2_theta_star_planner.so: CMakeFiles/nav2_theta_star_planner.dir/build.make
@@ -570,7 +618,7 @@ libnav2_theta_star_planner.so: /opt/ros/humble/lib/librosidl_runtime_c.so
 libnav2_theta_star_planner.so: /opt/ros/humble/lib/librcutils.so
 libnav2_theta_star_planner.so: /usr/lib/x86_64-linux-gnu/libpython3.10.so
 libnav2_theta_star_planner.so: CMakeFiles/nav2_theta_star_planner.dir/link.txt
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --bold --progress-dir=/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/CMakeFiles --progress-num=$(CMAKE_PROGRESS_6) "Linking CXX shared library libnav2_theta_star_planner.so"
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --bold --progress-dir=/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/CMakeFiles --progress-num=$(CMAKE_PROGRESS_9) "Linking CXX shared library libnav2_theta_star_planner.so"
 	$(CMAKE_COMMAND) -E cmake_link_script CMakeFiles/nav2_theta_star_planner.dir/link.txt --verbose=$(VERBOSE)
 
 # Rule to build all files generated by this target.

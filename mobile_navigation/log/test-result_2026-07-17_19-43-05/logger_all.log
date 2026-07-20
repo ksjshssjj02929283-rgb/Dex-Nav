@@ -1,0 +1,9 @@
+[0.050s] DEBUG:colcon:Command line arguments: ['/usr/bin/colcon', 'test-result', '--verbose']
+[0.051s] DEBUG:colcon:Parsed command line arguments: Namespace(log_base=None, log_level=None, verb_name='test-result', test_result_base='build', all=False, result_files_only=False, verbose=True, delete=False, delete_yes=False, verb_parser=<colcon_defaults.argument_parser.defaults.DefaultArgumentsDecorator object at 0x7616130598d0>, verb_extension=<colcon_test_result.verb.test_result.TestResultVerb object at 0x7616130585e0>, main=<bound method TestResultVerb.main of <colcon_test_result.verb.test_result.TestResultVerb object at 0x7616130585e0>>)
+[0.053s] Level 1:colcon.colcon_test_result.test_result:get_test_results(ctest)
+[0.064s] Level 1:colcon.colcon_test_result.test_result:get_test_results(xunit)
+[0.071s] DEBUG:colcon.colcon_test_result.test_result.xunit:Skipping 'build/nav2_mppi_controller/Testing/20260717-0224/Test.xml': the root tag is neither 'testsuite' nor 'testsuites'
+[0.072s] DEBUG:colcon.colcon_test_result.test_result.xunit:Skipping 'build/nav2_mppi_controller/Testing/20260717-0924/Test.xml': the root tag is neither 'testsuite' nor 'testsuites'
+[0.073s] DEBUG:colcon.colcon_test_result.test_result.xunit:Skipping 'build/nav2_mppi_controller/Testing/20260717-1044/Test.xml': the root tag is neither 'testsuite' nor 'testsuites'
+[0.073s] DEBUG:colcon.colcon_test_result.test_result.xunit:Skipping 'build/nav2_mppi_controller/Testing/20260717-1143/Test.xml': the root tag is neither 'testsuite' nor 'testsuites'
+[0.079s] DEBUG:colcon.colcon_test_result.test_result.xunit:Skipping 'build/nav2_theta_star_planner/Testing/20260717-1143/Test.xml': the root tag is neither 'testsuite' nor 'testsuites'

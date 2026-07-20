@@ -1,0 +1,431 @@
+CMake Warning at CMakeLists.txt:59 (add_library):
+  Cannot generate a safe runtime search path for target mppi_controller
+  because there is a cycle in the constraint graph:
+
+    dir 0 is [/opt/ros/humble/lib]
+      dir 1 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+    dir 1 is [/home/dex/dexe_mobile_nav/install/nav2_msgs/lib]
+      dir 0 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+
+  Some of these libraries may not be found correctly.
+
+
+CMake Warning at CMakeLists.txt:69 (add_library):
+  Cannot generate a safe runtime search path for target mppi_critics because
+  there is a cycle in the constraint graph:
+
+    dir 0 is [/opt/ros/humble/lib]
+      dir 1 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+    dir 1 is [/home/dex/dexe_mobile_nav/install/nav2_msgs/lib]
+      dir 0 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+
+  Some of these libraries may not be found correctly.
+
+
+CMake Warning at /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:50 (add_executable):
+  Cannot generate a safe runtime search path for target optimizer_smoke_test
+  because there is a cycle in the constraint graph:
+
+    dir 0 is [/opt/ros/humble/lib]
+      dir 1 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+      dir 2 must precede it due to runtime library [libmppi_controller.so]
+    dir 1 is [/home/dex/dexe_mobile_nav/install/nav2_msgs/lib]
+      dir 0 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+    dir 2 is [/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller]
+
+  Some of these libraries may not be found correctly.
+Call Stack (most recent call first):
+  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:37 (_ament_add_gtest_executable)
+  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest.cmake:68 (ament_add_gtest_executable)
+  test/CMakeLists.txt:16 (ament_add_gtest)
+
+
+CMake Warning at /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:50 (add_executable):
+  Cannot generate a safe runtime search path for target
+  controller_state_transition_test because there is a cycle in the constraint
+  graph:
+
+    dir 0 is [/opt/ros/humble/lib]
+      dir 1 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+      dir 2 must precede it due to runtime library [libmppi_controller.so]
+    dir 1 is [/home/dex/dexe_mobile_nav/install/nav2_msgs/lib]
+      dir 0 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+    dir 2 is [/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller]
+
+  Some of these libraries may not be found correctly.
+Call Stack (most recent call first):
+  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:37 (_ament_add_gtest_executable)
+  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest.cmake:68 (ament_add_gtest_executable)
+  test/CMakeLists.txt:16 (ament_add_gtest)
+
+
+CMake Warning at /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:50 (add_executable):
+  Cannot generate a safe runtime search path for target models_test because
+  there is a cycle in the constraint graph:
+
+    dir 0 is [/opt/ros/humble/lib]
+      dir 1 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+      dir 2 must precede it due to runtime library [libmppi_controller.so]
+    dir 1 is [/home/dex/dexe_mobile_nav/install/nav2_msgs/lib]
+      dir 0 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+    dir 2 is [/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller]
+
+  Some of these libraries may not be found correctly.
+Call Stack (most recent call first):
+  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:37 (_ament_add_gtest_executable)
+  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest.cmake:68 (ament_add_gtest_executable)
+  test/CMakeLists.txt:16 (ament_add_gtest)
+
+
+CMake Warning at /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:50 (add_executable):
+  Cannot generate a safe runtime search path for target noise_generator_test
+  because there is a cycle in the constraint graph:
+
+    dir 0 is [/opt/ros/humble/lib]
+      dir 1 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+      dir 2 must precede it due to runtime library [libmppi_controller.so]
+    dir 1 is [/home/dex/dexe_mobile_nav/install/nav2_msgs/lib]
+      dir 0 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+    dir 2 is [/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller]
+
+  Some of these libraries may not be found correctly.
+Call Stack (most recent call first):
+  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:37 (_ament_add_gtest_executable)
+  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest.cmake:68 (ament_add_gtest_executable)
+  test/CMakeLists.txt:16 (ament_add_gtest)
+
+
+CMake Warning at /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:50 (add_executable):
+  Cannot generate a safe runtime search path for target
+  parameter_handler_test because there is a cycle in the constraint graph:
+
+    dir 0 is [/opt/ros/humble/lib]
+      dir 1 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+      dir 2 must precede it due to runtime library [libmppi_controller.so]
+    dir 1 is [/home/dex/dexe_mobile_nav/install/nav2_msgs/lib]
+      dir 0 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+    dir 2 is [/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller]
+
+  Some of these libraries may not be found correctly.
+Call Stack (most recent call first):
+  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:37 (_ament_add_gtest_executable)
+  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest.cmake:68 (ament_add_gtest_executable)
+  test/CMakeLists.txt:16 (ament_add_gtest)
+
+
+CMake Warning at /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:50 (add_executable):
+  Cannot generate a safe runtime search path for target motion_model_tests
+  because there is a cycle in the constraint graph:
+
+    dir 0 is [/opt/ros/humble/lib]
+      dir 1 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+      dir 2 must precede it due to runtime library [libmppi_controller.so]
+    dir 1 is [/home/dex/dexe_mobile_nav/install/nav2_msgs/lib]
+      dir 0 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+    dir 2 is [/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller]
+
+  Some of these libraries may not be found correctly.
+Call Stack (most recent call first):
+  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:37 (_ament_add_gtest_executable)
+  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest.cmake:68 (ament_add_gtest_executable)
+  test/CMakeLists.txt:16 (ament_add_gtest)
+
+
+CMake Warning at /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:50 (add_executable):
+  Cannot generate a safe runtime search path for target
+  trajectory_visualizer_tests because there is a cycle in the constraint
+  graph:
+
+    dir 0 is [/opt/ros/humble/lib]
+      dir 1 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+      dir 2 must precede it due to runtime library [libmppi_controller.so]
+    dir 1 is [/home/dex/dexe_mobile_nav/install/nav2_msgs/lib]
+      dir 0 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+    dir 2 is [/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller]
+
+  Some of these libraries may not be found correctly.
+Call Stack (most recent call first):
+  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:37 (_ament_add_gtest_executable)
+  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest.cmake:68 (ament_add_gtest_executable)
+  test/CMakeLists.txt:16 (ament_add_gtest)
+
+
+CMake Warning at /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:50 (add_executable):
+  Cannot generate a safe runtime search path for target utils_test because
+  there is a cycle in the constraint graph:
+
+    dir 0 is [/opt/ros/humble/lib]
+      dir 1 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+      dir 2 must precede it due to runtime library [libmppi_controller.so]
+    dir 1 is [/home/dex/dexe_mobile_nav/install/nav2_msgs/lib]
+      dir 0 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+    dir 2 is [/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller]
+
+  Some of these libraries may not be found correctly.
+Call Stack (most recent call first):
+  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:37 (_ament_add_gtest_executable)
+  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest.cmake:68 (ament_add_gtest_executable)
+  test/CMakeLists.txt:16 (ament_add_gtest)
+
+
+CMake Warning at /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:50 (add_executable):
+  Cannot generate a safe runtime search path for target path_handler_test
+  because there is a cycle in the constraint graph:
+
+    dir 0 is [/opt/ros/humble/lib]
+      dir 1 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+      dir 2 must precede it due to runtime library [libmppi_controller.so]
+    dir 1 is [/home/dex/dexe_mobile_nav/install/nav2_msgs/lib]
+      dir 0 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+    dir 2 is [/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller]
+
+  Some of these libraries may not be found correctly.
+Call Stack (most recent call first):
+  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:37 (_ament_add_gtest_executable)
+  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest.cmake:68 (ament_add_gtest_executable)
+  test/CMakeLists.txt:16 (ament_add_gtest)
+
+
+CMake Warning at /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:50 (add_executable):
+  Cannot generate a safe runtime search path for target critic_manager_test
+  because there is a cycle in the constraint graph:
+
+    dir 0 is [/opt/ros/humble/lib]
+      dir 1 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+      dir 2 must precede it due to runtime library [libmppi_controller.so]
+    dir 1 is [/home/dex/dexe_mobile_nav/install/nav2_msgs/lib]
+      dir 0 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+    dir 2 is [/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller]
+
+  Some of these libraries may not be found correctly.
+Call Stack (most recent call first):
+  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:37 (_ament_add_gtest_executable)
+  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest.cmake:68 (ament_add_gtest_executable)
+  test/CMakeLists.txt:16 (ament_add_gtest)
+
+
+CMake Warning at /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:50 (add_executable):
+  Cannot generate a safe runtime search path for target optimizer_unit_tests
+  because there is a cycle in the constraint graph:
+
+    dir 0 is [/opt/ros/humble/lib]
+      dir 1 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+      dir 2 must precede it due to runtime library [libmppi_controller.so]
+    dir 1 is [/home/dex/dexe_mobile_nav/install/nav2_msgs/lib]
+      dir 0 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+    dir 2 is [/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller]
+
+  Some of these libraries may not be found correctly.
+Call Stack (most recent call first):
+  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:37 (_ament_add_gtest_executable)
+  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest.cmake:68 (ament_add_gtest_executable)
+  test/CMakeLists.txt:16 (ament_add_gtest)
+
+
+CMake Warning at /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:50 (add_executable):
+  Cannot generate a safe runtime search path for target critics_tests because
+  there is a cycle in the constraint graph:
+
+    dir 0 is [/opt/ros/humble/lib]
+      dir 1 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+      dir 2 must precede it due to runtime library [libmppi_controller.so]
+    dir 1 is [/home/dex/dexe_mobile_nav/install/nav2_msgs/lib]
+      dir 0 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+    dir 2 is [/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller]
+
+  Some of these libraries may not be found correctly.
+Call Stack (most recent call first):
+  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:37 (_ament_add_gtest_executable)
+  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest.cmake:68 (ament_add_gtest_executable)
+  test/CMakeLists.txt:35 (ament_add_gtest)
+
+
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp: In member function ‘void TestableMPPIController::setApproachState(size_t)’:
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:75:5: error: ‘active_stage_’ was not declared in this scope
+   75 |     active_stage_ = nav2_mppi_controller::STAGE_APPROACH;
+      |     ^~~~~~~~~~~~~
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:75:43: error: ‘STAGE_APPROACH’ is not a member of ‘nav2_mppi_controller’
+   75 |     active_stage_ = nav2_mppi_controller::STAGE_APPROACH;
+      |                                           ^~~~~~~~~~~~~~
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:76:5: error: ‘approach_substage_’ was not declared in this scope; did you mean ‘approachSubstage’?
+   76 |     approach_substage_ = substage;
+      |     ^~~~~~~~~~~~~~~~~~
+      |     approachSubstage
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp: In member function ‘void TestableMPPIController::setApproachTolerances(double, double)’:
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:81:5: error: ‘final_yaw_enter_lon_tolerance_’ was not declared in this scope
+   81 |     final_yaw_enter_lon_tolerance_ = enter;
+      |     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:82:5: error: ‘final_yaw_enter_lat_tolerance_’ was not declared in this scope
+   82 |     final_yaw_enter_lat_tolerance_ = enter;
+      |     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:83:5: error: ‘final_yaw_exit_lon_tolerance_’ was not declared in this scope
+   83 |     final_yaw_exit_lon_tolerance_ = exit;
+      |     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:84:5: error: ‘final_yaw_exit_lat_tolerance_’ was not declared in this scope
+   84 |     final_yaw_exit_lat_tolerance_ = exit;
+      |     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp: In member function ‘void TestableMPPIController::updateApproach(double, double)’:
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:89:5: error: ‘updateApproachSubstage’ was not declared in this scope; did you mean ‘approachSubstage’?
+   89 |     updateApproachSubstage(lon, lat);
+      |     ^~~~~~~~~~~~~~~~~~~~~~
+      |     approachSubstage
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp: In member function ‘void TestableMPPIController::setApproachMode(size_t)’:
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:94:5: error: ‘approach_mode_’ was not declared in this scope; did you mean ‘approachMode’?
+   94 |     approach_mode_ = mode;
+      |     ^~~~~~~~~~~~~~
+      |     approachMode
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:95:5: error: ‘approach_mode_locked_’ was not declared in this scope
+   95 |     approach_mode_locked_ = true;
+      |     ^~~~~~~~~~~~~~~~~~~~~
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp: In member function ‘void TestableMPPIController::setPositionFirstYawThreshold(double)’:
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:100:5: error: ‘position_first_yaw_threshold_’ was not declared in this scope; did you mean ‘setPositionFirstYawThreshold’?
+  100 |     position_first_yaw_threshold_ = threshold;
+      |     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      |     setPositionFirstYawThreshold
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp: In member function ‘void TestableMPPIController::setPositionFirstLateralGeometry(double, double)’:
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:105:5: error: ‘position_first_lateral_error_threshold_’ was not declared in this scope
+  105 |     position_first_lateral_error_threshold_ = threshold;
+      |     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:106:5: error: ‘position_first_lateral_ratio_’ was not declared in this scope
+  106 |     position_first_lateral_ratio_ = ratio;
+      |     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp: In member function ‘void TestableMPPIController::enterApproachFrom(size_t, double, double, double)’:
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:112:5: error: ‘active_stage_’ was not declared in this scope
+  112 |     active_stage_ = nav2_mppi_controller::STAGE_APPROACH;
+      |     ^~~~~~~~~~~~~
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:112:43: error: ‘STAGE_APPROACH’ is not a member of ‘nav2_mppi_controller’
+  112 |     active_stage_ = nav2_mppi_controller::STAGE_APPROACH;
+      |                                           ^~~~~~~~~~~~~~
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:114:45: error: ‘STAGE_APPROACH’ is not a member of ‘nav2_mppi_controller’
+  114 |       previous_stage, nav2_mppi_controller::STAGE_APPROACH,
+      |                                             ^~~~~~~~~~~~~~
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:113:5: error: ‘updateApproachMode’ was not declared in this scope; did you mean ‘updateApproach’?
+  113 |     updateApproachMode(
+      |     ^~~~~~~~~~~~~~~~~~
+      |     updateApproach
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp: In member function ‘size_t TestableMPPIController::approachMode() const’:
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:120:12: error: ‘approach_mode_’ was not declared in this scope; did you mean ‘approachMode’?
+  120 |     return approach_mode_;
+      |            ^~~~~~~~~~~~~~
+      |            approachMode
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp: In member function ‘size_t TestableMPPIController::approachSubstage() const’:
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:125:12: error: ‘approach_substage_’ was not declared in this scope; did you mean ‘approachSubstage’?
+  125 |     return approach_substage_;
+      |            ^~~~~~~~~~~~~~~~~~
+      |            approachSubstage
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp: In member function ‘void TestableMPPIController::applySubstageProfile(const mppi::MppiProfileSettings&, size_t, float, float)’:
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:132:5: error: ‘active_stage_’ was not declared in this scope
+  132 |     active_stage_ = nav2_mppi_controller::STAGE_APPROACH;
+      |     ^~~~~~~~~~~~~
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:132:43: error: ‘STAGE_APPROACH’ is not a member of ‘nav2_mppi_controller’
+  132 |     active_stage_ = nav2_mppi_controller::STAGE_APPROACH;
+      |                                           ^~~~~~~~~~~~~~
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:133:5: error: ‘approach_substage_’ was not declared in this scope; did you mean ‘approachSubstage’?
+  133 |     approach_substage_ = substage;
+      |     ^~~~~~~~~~~~~~~~~~
+      |     approachSubstage
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:134:5: error: ‘applied_profile_’ was not declared in this scope; did you mean ‘appliedProfile’?
+  134 |     applied_profile_ = profile;
+      |     ^~~~~~~~~~~~~~~~
+      |     appliedProfile
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:135:5: error: ‘stages_’ was not declared in this scope
+  135 |     stages_[nav2_mppi_controller::STAGE_APPROACH] = profile;
+      |     ^~~~~~~
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:135:35: error: ‘STAGE_APPROACH’ is not a member of ‘nav2_mppi_controller’
+  135 |     stages_[nav2_mppi_controller::STAGE_APPROACH] = profile;
+      |                                   ^~~~~~~~~~~~~~
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:136:5: error: ‘final_yaw_vx_max_’ was not declared in this scope; did you mean ‘final_vx_max’?
+  136 |     final_yaw_vx_max_ = final_vx_max;
+      |     ^~~~~~~~~~~~~~~~~
+      |     final_vx_max
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:137:5: error: ‘final_yaw_wz_max_’ was not declared in this scope; did you mean ‘final_wz_max’?
+  137 |     final_yaw_wz_max_ = final_wz_max;
+      |     ^~~~~~~~~~~~~~~~~
+      |     final_wz_max
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:138:5: error: ‘applyApproachSubstageProfile’ was not declared in this scope; did you mean ‘applySubstageProfile’?
+  138 |     applyApproachSubstageProfile();
+      |     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      |     applySubstageProfile
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp: In member function ‘const mppi::MppiProfileSettings& TestableMPPIController::appliedProfile() const’:
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:143:12: error: ‘applied_profile_’ was not declared in this scope; did you mean ‘appliedProfile’?
+  143 |     return applied_profile_;
+      |            ^~~~~~~~~~~~~~~~
+      |            appliedProfile
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp: In member function ‘virtual void ControllerStateTransitionTest_ApproachSubstageUsesPositionHysteresis_Test::TestBody()’:
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:151:53: error: ‘APPROACH_POSITIONING’ is not a member of ‘nav2_mppi_controller’
+  151 |   controller.setApproachState(nav2_mppi_controller::APPROACH_POSITIONING);
+      |                                                     ^~~~~~~~~~~~~~~~~~~~
+In file included from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:375,
+                 from /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:15:
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:154:66: error: ‘APPROACH_FINAL_YAW’ is not a member of ‘nav2_mppi_controller’
+  154 |   EXPECT_EQ(controller.approachSubstage(), nav2_mppi_controller::APPROACH_FINAL_YAW);
+      |                                                                  ^~~~~~~~~~~~~~~~~~
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:157:66: error: ‘APPROACH_FINAL_YAW’ is not a member of ‘nav2_mppi_controller’
+  157 |   EXPECT_EQ(controller.approachSubstage(), nav2_mppi_controller::APPROACH_FINAL_YAW);
+      |                                                                  ^~~~~~~~~~~~~~~~~~
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:160:66: error: ‘APPROACH_POSITIONING’ is not a member of ‘nav2_mppi_controller’
+  160 |   EXPECT_EQ(controller.approachSubstage(), nav2_mppi_controller::APPROACH_POSITIONING);
+      |                                                                  ^~~~~~~~~~~~~~~~~~~~
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp: In member function ‘virtual void ControllerStateTransitionTest_ApproachSubstageAppliesSeparateProfiles_Test::TestBody()’:
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:174:52: error: ‘APPROACH_POSITION_FIRST’ is not a member of ‘nav2_mppi_controller’
+  174 |   controller.setApproachMode(nav2_mppi_controller::APPROACH_POSITION_FIRST);
+      |                                                    ^~~~~~~~~~~~~~~~~~~~~~~
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:175:66: error: ‘APPROACH_POSITIONING’ is not a member of ‘nav2_mppi_controller’
+  175 |   controller.applySubstageProfile(profile, nav2_mppi_controller::APPROACH_POSITIONING);
+      |                                                                  ^~~~~~~~~~~~~~~~~~~~
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:180:66: error: ‘APPROACH_FINAL_YAW’ is not a member of ‘nav2_mppi_controller’
+  180 |   controller.applySubstageProfile(profile, nav2_mppi_controller::APPROACH_FINAL_YAW);
+      |                                                                  ^~~~~~~~~~~~~~~~~~
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp: In member function ‘virtual void ControllerStateTransitionTest_ApproachModeLocksFromEntryYawError_Test::TestBody()’:
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:197:54: error: ‘STAGE_TRACK’ is not a member of ‘nav2_mppi_controller’
+  197 |   controller.enterApproachFrom(nav2_mppi_controller::STAGE_TRACK, 0.4, 0.02, 0.5);
+      |                                                      ^~~~~~~~~~~
+In file included from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:375,
+                 from /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:15:
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:198:62: error: ‘APPROACH_NORMAL’ is not a member of ‘nav2_mppi_controller’
+  198 |   EXPECT_EQ(controller.approachMode(), nav2_mppi_controller::APPROACH_NORMAL);
+      |                                                              ^~~~~~~~~~~~~~~
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:200:54: error: ‘STAGE_TRACK’ is not a member of ‘nav2_mppi_controller’
+  200 |   controller.enterApproachFrom(nav2_mppi_controller::STAGE_TRACK, 0.4, 0.02, 1.8);
+      |                                                      ^~~~~~~~~~~
+In file included from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:375,
+                 from /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:15:
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:201:62: error: ‘APPROACH_NORMAL’ is not a member of ‘nav2_mppi_controller’
+  201 |   EXPECT_EQ(controller.approachMode(), nav2_mppi_controller::APPROACH_NORMAL);
+      |                                                              ^~~~~~~~~~~~~~~
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:203:54: error: ‘STAGE_TRACK’ is not a member of ‘nav2_mppi_controller’
+  203 |   controller.enterApproachFrom(nav2_mppi_controller::STAGE_TRACK, 0.4, 0.02, -2.8);
+      |                                                      ^~~~~~~~~~~
+In file included from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:375,
+                 from /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:15:
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:204:62: error: ‘APPROACH_POSITION_FIRST’ is not a member of ‘nav2_mppi_controller’
+  204 |   EXPECT_EQ(controller.approachMode(), nav2_mppi_controller::APPROACH_POSITION_FIRST);
+      |                                                              ^~~~~~~~~~~~~~~~~~~~~~~
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp: In member function ‘virtual void ControllerStateTransitionTest_ApproachModeUsesPositionFirstForLateralDominantGoal_Test::TestBody()’:
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:213:54: error: ‘STAGE_TRACK’ is not a member of ‘nav2_mppi_controller’
+  213 |   controller.enterApproachFrom(nav2_mppi_controller::STAGE_TRACK, 0.02, -0.45, 1.5);
+      |                                                      ^~~~~~~~~~~
+In file included from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:375,
+                 from /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:15:
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:214:62: error: ‘APPROACH_POSITION_FIRST’ is not a member of ‘nav2_mppi_controller’
+  214 |   EXPECT_EQ(controller.approachMode(), nav2_mppi_controller::APPROACH_POSITION_FIRST);
+      |                                                              ^~~~~~~~~~~~~~~~~~~~~~~
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:216:54: error: ‘STAGE_TRACK’ is not a member of ‘nav2_mppi_controller’
+  216 |   controller.enterApproachFrom(nav2_mppi_controller::STAGE_TRACK, 0.30, 0.04, 1.5);
+      |                                                      ^~~~~~~~~~~
+In file included from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:375,
+                 from /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:15:
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:217:62: error: ‘APPROACH_NORMAL’ is not a member of ‘nav2_mppi_controller’
+  217 |   EXPECT_EQ(controller.approachMode(), nav2_mppi_controller::APPROACH_NORMAL);
+      |                                                              ^~~~~~~~~~~~~~~
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp: In member function ‘virtual void ControllerStateTransitionTest_NormalApproachKeepsFullYawControlWhilePositioning_Test::TestBody()’:
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:228:52: error: ‘APPROACH_NORMAL’ is not a member of ‘nav2_mppi_controller’
+  228 |   controller.setApproachMode(nav2_mppi_controller::APPROACH_NORMAL);
+      |                                                    ^~~~~~~~~~~~~~~
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:229:66: error: ‘APPROACH_POSITIONING’ is not a member of ‘nav2_mppi_controller’
+  229 |   controller.applySubstageProfile(profile, nav2_mppi_controller::APPROACH_POSITIONING);
+      |                                                                  ^~~~~~~~~~~~~~~~~~~~
+gmake[2]: *** [test/CMakeFiles/controller_state_transition_test.dir/build.make:76：test/CMakeFiles/controller_state_transition_test.dir/controller_state_transition_test.cpp.o] 错误 1
+gmake[1]: *** [CMakeFiles/Makefile2:278：test/CMakeFiles/controller_state_transition_test.dir/all] 错误 2
+gmake[1]: *** 正在等待未完成的任务....
+gmake: *** [Makefile:146：all] 错误 2

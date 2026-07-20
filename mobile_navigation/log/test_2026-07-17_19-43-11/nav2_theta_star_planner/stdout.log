@@ -1,0 +1,108 @@
+UpdateCTestConfiguration  from :/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/CTestConfiguration.ini
+Parse Config file:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/CTestConfiguration.ini
+   Site: dex-TX-Gaming-FA608UH-FA608UH
+   Build name: (empty)
+ Add coverage exclude regular expressions.
+Create new tag: 20260717-1143 - Experimental
+UpdateCTestConfiguration  from :/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/CTestConfiguration.ini
+Parse Config file:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/CTestConfiguration.ini
+Test project /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner
+Constructing a list of tests
+Done constructing a list of tests
+Updating test list for fixtures
+Added 0 tests to meet fixture requirements
+Checking test dependency graph...
+Checking test dependency graph end
+test 1
+    Start 1: test_theta_star
+
+1: Test command: /usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/test_theta_star.gtest.xml" "--package-name" "nav2_theta_star_planner" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/ament_cmake_gtest/test_theta_star.txt" "--command" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_theta_star" "--gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/test_theta_star.gtest.xml"
+1: Test timeout computed to be: 60
+1: -- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner':
+1:  - /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_theta_star --gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/test_theta_star.gtest.xml
+1: Running main() from /opt/ros/humble/src/gtest_vendor/src/gtest_main.cc
+1: [==========] Running 3 tests from 2 test suites.
+1: [----------] Global test environment set-up.
+1: [----------] 1 test from ThetaStarTest
+1: [ RUN      ] ThetaStarTest.test_theta_star
+1: [       OK ] ThetaStarTest.test_theta_star (0 ms)
+1: [----------] 1 test from ThetaStarTest (0 ms total)
+1: 
+1: [----------] 2 tests from ThetaStarPlanner
+1: [ RUN      ] ThetaStarPlanner.test_theta_star_planner
+1: getifaddrs: Operation not permitted
+1: getifaddrs: Operation not permitted
+1: getifaddrs: Operation not permitted
+1: [37;1m2026-07-17 19:43:11.847 [31;1m[[37;1mTRANSPORT_UDP[31;1m Error] [37mError creating socket: Operation not permitted[34;1m -> Function [36minit[m
+1: [37;1m2026-07-17 19:43:11.847 [31;1m[[37;1mRTPS_PARTICIPANT[31;1m Error] [37mUser transport failed to register.[34;1m -> Function [36mRTPSParticipantImpl[m
+1: [INFO] [1784288591.859196138] [global_costmap.global_costmap]: 
+1: 	global_costmap lifecycle node launched. 
+1: 	Waiting on external lifecycle transitions to activate
+1: 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+1: [INFO] [1784288591.859668663] [global_costmap.global_costmap]: Creating Costmap
+1: [INFO] [1784288591.859846424] [global_costmap.global_costmap]: Configuring
+1: [INFO] [1784288591.861971696] [global_costmap.global_costmap]: Using plugin "static_layer"
+1: [INFO] [1784288591.864343500] [global_costmap.global_costmap]: Subscribing to the map topic (/map) with transient local durability
+1: [INFO] [1784288591.865067047] [global_costmap.global_costmap]: Initialized plugin "static_layer"
+1: [INFO] [1784288591.865085732] [global_costmap.global_costmap]: Using plugin "obstacle_layer"
+1: [INFO] [1784288591.865196194] [global_costmap.global_costmap]: Subscribed to Topics: 
+1: [INFO] [1784288591.865228436] [global_costmap.global_costmap]: Initialized plugin "obstacle_layer"
+1: [INFO] [1784288591.865235620] [global_costmap.global_costmap]: Using plugin "inflation_layer"
+1: [INFO] [1784288591.865428790] [global_costmap.global_costmap]: Initialized plugin "inflation_layer"
+1: [INFO] [1784288591.869540287] [ThetaStarPlannerTest]: Theta* path orientation: assign=true mode=auto same_threshold=0.020 rad tangent_in_place_markers=false. Omni: PathAngleCritic off + PathAlign use_path_orientations=true
+1: [INFO] [1784288591.869566337] [ThetaStarPlannerTest]: Theta* steering continuity (B): enforce=true wheelbase=0.460 track=0.345 max_wheel_step=1.00 rad nominal_v=0.50 max_yaw_rate=1.20
+1: [INFO] [1784288591.869573380] [ThetaStarPlannerTest]: Activating plugin test of type nav2_theta_star_planner
+1: [INFO] [1784288591.869577679] [ThetaStarPlannerTest]: Path post-process: smooth_path=true mode=legacy string_pull=true gradient=true fillet_geom=false log_timing=false [build=l1_spline_v3]
+1: [WARN] [1784288591.869592146] [ThetaStarPlannerTest]: Failed to create a unique pose path because the pose is not in free space
+1: [ERROR] [1784288591.869599490] [ThetaStarPlannerTest]: Either of the start or goal pose are an obstacle! 
+1: [ERROR] [1784288591.869625851] [ThetaStarPlannerTest]: createPlan returned empty path (start=0.00,0.00 goal=1.00,1.00)
+1: [INFO] [1784288591.869635039] [ThetaStarPlannerTest]: Deactivating plugin test of type nav2_theta_star_planner
+1: [INFO] [1784288591.869640429] [ThetaStarPlannerTest]: CleaningUp plugin test of type nav2_theta_star_planner
+1: [INFO] [1784288591.869649045] [global_costmap.global_costmap]: Cleaning up
+1: [INFO] [1784288591.873462262] [global_costmap.global_costmap]: Destroying
+1: [       OK ] ThetaStarPlanner.test_theta_star_planner (29 ms)
+1: [ RUN      ] ThetaStarPlanner.test_theta_star_reconfigure
+1: getifaddrs: Operation not permitted
+1: [37;1m2026-07-17 19:43:11.875 [31;1m[[37;1mTRANSPORT_UDP[31;1m Error] [37mError creating socket: Operation not permitted[34;1m -> Function [36minit[m
+1: [37;1m2026-07-17 19:43:11.875 [31;1m[[37;1mRTPS_PARTICIPANT[31;1m Error] [37mUser transport failed to register.[34;1m -> Function [36mRTPSParticipantImpl[m
+1: [INFO] [1784288591.879911959] [global_costmap.global_costmap]: 
+1: 	global_costmap lifecycle node launched. 
+1: 	Waiting on external lifecycle transitions to activate
+1: 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+1: [INFO] [1784288591.880139735] [global_costmap.global_costmap]: Creating Costmap
+1: [INFO] [1784288591.880223476] [global_costmap.global_costmap]: Configuring
+1: [INFO] [1784288591.880661405] [global_costmap.global_costmap]: Using plugin "static_layer"
+1: [INFO] [1784288591.880781094] [global_costmap.global_costmap]: Subscribing to the map topic (/map) with transient local durability
+1: [INFO] [1784288591.880897387] [global_costmap.global_costmap]: Initialized plugin "static_layer"
+1: [INFO] [1784288591.880908990] [global_costmap.global_costmap]: Using plugin "obstacle_layer"
+1: [INFO] [1784288591.880963905] [global_costmap.global_costmap]: Subscribed to Topics: 
+1: [INFO] [1784288591.880976028] [global_costmap.global_costmap]: Initialized plugin "obstacle_layer"
+1: [INFO] [1784288591.880981899] [global_costmap.global_costmap]: Using plugin "inflation_layer"
+1: [INFO] [1784288591.881054929] [global_costmap.global_costmap]: Initialized plugin "inflation_layer"
+1: [INFO] [1784288591.882884434] [ThetaStarPlannerTest]: Theta* path orientation: assign=true mode=auto same_threshold=0.020 rad tangent_in_place_markers=false. Omni: PathAngleCritic off + PathAlign use_path_orientations=true
+1: [INFO] [1784288591.882910264] [ThetaStarPlannerTest]: Theta* steering continuity (B): enforce=true wheelbase=0.460 track=0.345 max_wheel_step=1.00 rad nominal_v=0.50 max_yaw_rate=1.20
+1: [INFO] [1784288591.882921936] [ThetaStarPlannerTest]: Activating plugin test of type nav2_theta_star_planner
+1: [INFO] [1784288591.882927667] [ThetaStarPlannerTest]: Path post-process: smooth_path=true mode=legacy string_pull=true gradient=true fillet_geom=false log_timing=false [build=l1_spline_v3]
+1: Warning: class_loader.ClassLoader: SEVERE WARNING!!! Attempting to unload library while objects created by this loader exist in the heap! You should delete your objects before attempting to unload the library or destroying the ClassLoader. The library will NOT be unloaded.
+1:          at line 127 in ./src/class_loader.cpp
+1: [INFO] [1784288591.886682060] [global_costmap.global_costmap]: Destroying
+1: [       OK ] ThetaStarPlanner.test_theta_star_reconfigure (14 ms)
+1: [----------] 2 tests from ThetaStarPlanner (43 ms total)
+1: 
+1: [----------] Global test environment tear-down
+1: [==========] 3 tests from 2 test suites ran. (43 ms total)
+1: [  PASSED  ] 3 tests.
+1: -- run_test.py: return code 0
+1: -- run_test.py: inject classname prefix into gtest result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/test_theta_star.gtest.xml'
+1: -- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/test_theta_star.gtest.xml'
+1/1 Test #1: test_theta_star ..................   Passed    0.21 sec
+
+The following tests passed:
+	test_theta_star
+
+100% tests passed, 0 tests failed out of 1
+
+Label Time Summary:
+gtest    =   0.21 sec*proc (1 test)
+
+Total Test time (real) =   0.21 sec

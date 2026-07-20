@@ -611,6 +611,15 @@ nav_msgs::msg::Path ThetaStarPlanner::createPlan(
       geometry_msgs::msg::PoseStamped goal_marker = start_marker;
       goal_marker.pose.orientation = goal.pose.orientation;
       global_path.poses = {start_marker, cruise_start, cruise_goal, goal_marker};
+    } else if (path_orientation_mode_ == PathOrientationMode::START)
+    {
+      // START 用两个起点零位移 marker 与 AUTO 显式区分。控制器移除 marker 后，
+      // 平移阶段会硬性保持 wz=0；最后一个真实点仍携带用户 goal yaw 供终点旋转。
+      geometry_msgs::msg::PoseStamped start_marker = pose;
+      geometry_msgs::msg::PoseStamped cruise_start = pose;
+      geometry_msgs::msg::PoseStamped goal_pose = pose;
+      goal_pose.pose.orientation = goal.pose.orientation;
+      global_path.poses = {start_marker, start_marker, cruise_start, goal_pose};
     } else {
       // Every ordinary mode has the same terminal contract: reaching the
       // geometric goal also means reaching the requested goal yaw.
@@ -632,10 +641,11 @@ nav_msgs::msg::Path ThetaStarPlanner::createPlan(
       assignPathOrientations(global_path, start, goal);
     }
 
-    // 2) All ordinary modes share a strict terminal contract. TANGENT with
-    // marker support keeps its cruise endpoint on the path tangent and adds a
-    // duplicate goal pose carrying goal yaw. The controller consumes the
-    // duplicate endpoints as explicit rotate-in-place phase boundaries.
+    // 2) 最后用户 goal yaw 与途中 yaw 策略严格分离。零位移 marker 同时作为
+    // 控制模式契约：TANGENT=首尾各一个、GOAL=起点一个、START=起点两个、
+    // NONE=终点一个、AUTO=无。START 必须显式编码，否则控制器无法把它和
+    // 允许边走边转的 AUTO 区分开。
+    // controller 会先识别并移除 marker，不把重复点交给 MPPI 跟踪。
     const double final_path_yaw = tf2::getYaw(goal.pose.orientation);
 
     // 3) B 层：沿路径仿真舵轮 IK，平滑 yaw 曲线，避免底盘 Two-Phase 停车转舵
@@ -644,26 +654,52 @@ nav_msgs::msg::Path ThetaStarPlanner::createPlan(
     if (enforce_steering_continuity_ &&
       assign_path_orientations_ &&
       path_orientation_mode_ != PathOrientationMode::NONE &&
-      path_orientation_mode_ != PathOrientationMode::TANGENT)
+      path_orientation_mode_ != PathOrientationMode::TANGENT &&
+      path_orientation_mode_ != PathOrientationMode::START &&
+      path_orientation_mode_ != PathOrientationMode::GOAL)
     {
       applySteeringContinuityConstraint(global_path, final_path_yaw);
     }
 
-    if (path_orientation_mode_ == PathOrientationMode::TANGENT &&
-      tangent_in_place_rotation_markers_ && plan_size >= 2)
+    const auto final_goal_orientation =
+      nav2_util::geometry_utils::orientationAroundZAxis(final_path_yaw);
+    // START 的固定朝向语义必须始终显式编码，不能依赖 tangent 专用开关；否则
+    // 关闭 tangent marker 时 START 会再次退化成无法识别的 AUTO。
+    if ((tangent_in_place_rotation_markers_ ||
+      path_orientation_mode_ == PathOrientationMode::START) && plan_size >= 2)
     {
-      geometry_msgs::msg::PoseStamped start_marker = global_path.poses.front();
-      start_marker.pose.orientation = start.pose.orientation;
-      global_path.poses.insert(global_path.poses.begin(), start_marker);
+      if (path_orientation_mode_ == PathOrientationMode::TANGENT) {
+        geometry_msgs::msg::PoseStamped start_marker = global_path.poses.front();
+        start_marker.pose.orientation = start.pose.orientation;
+        global_path.poses.insert(global_path.poses.begin(), start_marker);
 
-      geometry_msgs::msg::PoseStamped goal_marker = global_path.poses.back();
-      goal_marker.pose.orientation =
-        nav2_util::geometry_utils::orientationAroundZAxis(final_path_yaw);
-      global_path.poses.push_back(goal_marker);
+        geometry_msgs::msg::PoseStamped goal_marker = global_path.poses.back();
+        goal_marker.pose.orientation = final_goal_orientation;
+        global_path.poses.push_back(goal_marker);
+      } else if (path_orientation_mode_ == PathOrientationMode::GOAL) {
+        // 仅起点重复表示 GOAL：controller 先原地对齐 goal yaw，再保持该 yaw 平移。
+        geometry_msgs::msg::PoseStamped goal_yaw_start_marker = global_path.poses.front();
+        goal_yaw_start_marker.pose.orientation = final_goal_orientation;
+        global_path.poses.insert(global_path.poses.begin(), goal_yaw_start_marker);
+        global_path.poses.back().pose.orientation = final_goal_orientation;
+      } else if (path_orientation_mode_ == PathOrientationMode::NONE) {
+        // 仅终点重复表示 NONE：途中完全不使用路径 yaw，终点仍保留用户 goal yaw。
+        geometry_msgs::msg::PoseStamped none_mode_goal_marker = global_path.poses.back();
+        none_mode_goal_marker.pose.orientation = final_goal_orientation;
+        global_path.poses.push_back(none_mode_goal_marker);
+      } else if (path_orientation_mode_ == PathOrientationMode::START) {
+        // 两个起点 marker 是 START 的显式协议。不能再与 AUTO 共用“无 marker”，
+        // 否则 MPPI 无从判断当前任务是否允许产生角速度。
+        geometry_msgs::msg::PoseStamped start_marker = global_path.poses.front();
+        global_path.poses.insert(global_path.poses.begin(), start_marker);
+        global_path.poses.insert(global_path.poses.begin(), start_marker);
+        global_path.poses.back().pose.orientation = final_goal_orientation;
+      } else {
+        // AUTO 无 marker；最后 yaw 只供统一 FINAL_YAW 使用。
+        global_path.poses.back().pose.orientation = final_goal_orientation;
+      }
     } else {
-      // 4) Non-marker modes keep the existing strict final goal-yaw contract.
-      global_path.poses.back().pose.orientation =
-        nav2_util::geometry_utils::orientationAroundZAxis(final_path_yaw);
+      global_path.poses.back().pose.orientation = final_goal_orientation;
     }
   }
 

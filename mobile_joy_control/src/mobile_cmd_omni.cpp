@@ -53,29 +53,43 @@ constexpr float kCommandTimeoutS = 0.50f;
 
 // 导航刚结束时 velocity_smoother 仍可能短暂发布减速尾巴，不能把它误判为新任务
 // 而立即取消 X 驻车。超过保护时间且速度明显非零时，才允许遥控/新导航抢占。
-constexpr float kParkPreemptGraceS = 0.50f;
-constexpr float kParkPreemptLinearMps = 0.08f;
-constexpr float kParkPreemptYawRadps = 0.15f;
+// 保护时间覆盖 velocity_smoother 的正常减速尾巴；保护期后按“收到的目标指令”
+// 判断新任务，而不是按尚未爬升的治理后速度判断。起点原地对齐最低约 0.08 rad/s，
+// 因此解除阈值必须明显低于它，否则 X 驻车与起点对齐会互相等待形成死锁。
+constexpr float kParkPreemptGraceS = 0.80f;
+constexpr float kParkPreemptLinearMps = 0.04f;
+constexpr float kParkPreemptYawRadps = 0.04f;
 
 // X 驻车解除后先零轮速快速对舵，再从零起步。对舵目标直接发送最终角度，
 // 不经过普通行驶的每周期舵角目标限幅；实际转速仍由底层舵机驱动器限制。
 constexpr float kUnparkAlignToleranceRad = 0.08f;
 constexpr int kUnparkAlignStableCycles = 3;
-constexpr float kUnparkTargetChangeResetRad = 0.02f;
+constexpr float kUnparkRetargetAngleRad = 0.35f;
+constexpr float kUnparkRetargetConsistencyRad = 0.10f;
+constexpr int kUnparkRetargetStableCycles = 3;
 constexpr float kSteeringFeedbackTimeoutS = 0.25f;
+constexpr float kDriveFeedbackTimeoutS = 0.25f;
 
 // =============================================================================
-// 上游速度变化率限制
+// 最终速度的加速度与 jerk 限制
 // =============================================================================
-// QP 负责可实现性与轮胎侧向拖拽权衡；这里仅保留一层输入加减速度限制。
+// QP 负责可实现性与轮胎侧向拖拽权衡；这里限制最终交给 QP 的速度变化过程。
 // NEED CALIBRATION: 满载测试，以不打滑、不过度冲击且响应可接受为准。
 constexpr bool kCommandGovernorEnabled = true;
 constexpr float kMaxAccelX = 0.60f;    // m/s^2
-constexpr float kMaxAccelY = 0.60f;    // m/s^2
-constexpr float kMaxAccelYaw = 0.75f;  // rad/s^2
-constexpr float kMaxBrakeX = 0.70f;    // m/s^2
-constexpr float kMaxBrakeY = 0.55f;    // m/s^2
-constexpr float kMaxBrakeYaw = 1.20f;  // rad/s^2
+constexpr float kMaxAccelY = 0.50f;    // m/s^2
+constexpr float kMaxAccelYaw = 0.70f;  // rad/s^2
+constexpr float kMaxBrakeX = 0.60f;    // m/s^2
+constexpr float kMaxBrakeY = 0.50f;    // m/s^2
+constexpr float kMaxBrakeYaw = 0.70f;  // rad/s^2
+
+// 最终下发电机前必须再限制一次 jerk：导航经过 velocity_smoother 后未必仍
+// 保持 MPPI 的 jerk 约束，遥控指令也会绕过 MPPI。这里的阈值略高于 MPPI，
+// 让 MPPI 仍负责正常导航轨迹，只拦截上游阶跃、快速松杆和模式切换冲击。
+// 20 Hz 下每周期最大加速度变化分别约为 0.06、0.05、0.09。
+constexpr float kMaxJerkX = 1.20f;    // m/s^3
+constexpr float kMaxJerkY = 1.00f;    // m/s^3
+constexpr float kMaxJerkYaw = 1.80f;  // rad/s^3
 
 // =============================================================================
 // QP 硬约束
@@ -87,15 +101,14 @@ constexpr float kMaxBodyYawRate = 0.75f;      // rad/s
 constexpr float kMaxWheelLinearSpeed = 1.50f; // m/s
 
 // 舵角误差越大，当前轮向可安全输出的纵向轮速上限越低。
-// 该限制直接进入 QP，不再在 QP 后额外乘 global/local drive_scale。
+// QP 内保留硬约束，QP 后再按四轮最大“最终目标角误差”统一缩放轮速，
+// 防止低速指令小于 QP 上限时限速实际不生效。
 // NEED CALIBRATION:
 // - full：误差小于该值时不限制轮速；
-// - crawl：误差达到该值时仅保留最小爬行能力；
-// - min scale：越小越防摩地，越大越灵敏。
-// 从驻车 X 锁（±45°）切回行驶时误差大，过紧会表现为遥控器迟钝/拖地。
-constexpr float kAlignFullSpeedErrorRad = 0.20f;  // 约 11.5 deg（原 0.12）
-constexpr float kAlignCrawlErrorRad = 0.90f;      // 约 51.6 deg
-constexpr float kAlignMinimumSpeedScale = 0.20f;  // 原 0.08，略提高以免大舵角时几乎锁死驱动
+// - stop：误差达到该值时四轮驱动严格为零，不再保留爬行速度。
+constexpr float kAlignFullSpeedErrorRad = 0.08f;  // 约 4.6 度
+constexpr float kAlignStopErrorRad = 0.35f;       // 约 20.1 度
+constexpr float kAlignMinimumSpeedScale = 0.0f;
 
 // =============================================================================
 // QP 目标函数权重
@@ -129,26 +142,42 @@ constexpr float kSteerLimitGuardRad = 0.12f;
 constexpr float kLimitSoftZoneRad = 0.30f;
 constexpr float kLimitCostGain = 0.25f;
 
-// 普通目标角每 50 ms 最多变化约 6.9 度。若等价分支切换需要跨越更大角度，
-// 不直接限幅硬追，而是进入整车协调停车换向状态机。
+// 普通小角度调整每 50 ms 最多变化约 6.9 度；但最终目标角与真实反馈角
+// 相差超过约 20 度时，进入整车协调停车换向，不能用单周期临时目标掩盖误差。
 constexpr float kMaxSteerTargetStepRad = 0.12f;
-constexpr float kCoordinatedSwitchTriggerRad = 1.20f;
+constexpr float kCoordinatedSwitchTriggerRad = 0.35f;
 constexpr int kCoordinatedDecelerationCycles = 5;  // 约 0.25 s 整车减到零
+constexpr float kCoordinatedStoppedRpm = 3.0f;
+constexpr int kCoordinatedStoppedStableCycles = 3;
 constexpr float kCoordinatedAlignToleranceRad = 0.10f;
 constexpr int kCoordinatedAlignStableCycles = 3;
+// 对舵期间 S 曲线仍在跟踪上游目标，完成后保留其稳定方向；轮速单独用统一比例
+// 从零释放，避免重置 S 曲线后瞬时方向失真并立即触发第二次停车换向。
+constexpr int kPostAlignmentDriveRampCycles = 5;  // 20 Hz 下约 0.25 s
+// MPPI 的 vx/vy/wz 每周期都会小幅变化，直接用 0.02 rad 更新舵角目标会使
+// “连续到位”计数长期归零。协调换向期间锁存当前目标；只有新方向相差超过
+// 约 20 度，并连续 3 个周期保持在约 6 度以内，才确认用户/规划器确实改向。
+constexpr float kCoordinatedRetargetAngleRad = 0.35f;
+constexpr float kCoordinatedRetargetConsistencyRad = 0.10f;
+constexpr int kCoordinatedRetargetStableCycles = 3;
 
-// 原地旋转模式采用不同的进入/退出阈值，防止模式在边界来回抖动。
-// 该过滤位于底盘自身的加速度治理器之前，因此进入和退出仍会平滑过渡。
+// 原地旋转模式只允许吞掉接近数值噪声的 vx/vy。旧阈值 0.10 m/s 会把终点阶段
+// “仍需平移定位，同时缓慢调 yaw”的有效全向指令误判为纯旋转，导致机器人提前
+// 停车并把四轮摆成旋转阵型。起点对齐和 final_yaw 的 vx/vy 本来就是严格零，
+// 因此收紧线速度阈值不会影响这两个真正需要原地旋转的阶段。
 constexpr float kRotationModeEnterYawRadps = 0.15f;
 constexpr float kRotationModeExitYawRadps = 0.10f;
-constexpr float kRotationModeEnterLinearMps = 0.10f;
-constexpr float kRotationModeExitLinearMps = 0.14f;
+constexpr float kRotationModeEnterLinearMps = 0.02f;
+constexpr float kRotationModeExitLinearMps = 0.04f;
 
 // =============================================================================
 // 低速稳定与求解器参数
 // =============================================================================
-// NEED CALIBRATION: 低于该速度时目标方向不可靠，保持当前舵角。
-constexpr float kWheelVectorDeadbandMps = 0.03f;
+// 单轮合成速度只有真正接近数学零点时，方向 atan2 才没有意义。
+// 这里不能使用原来的 0.03 m/s 普通速度死区：低速原地旋转时每个轮子的
+// 线速度本来就小，原阈值会把正确的 ±53° 舵角吞掉，却仍然输出差速轮速，
+// 造成四轮保持 0° 时硬拧车体。1e-3 只过滤数值噪声和真正的瞬时旋转中心轮。
+constexpr float kWheelDirectionUndefinedMps = 0.001f;
 constexpr float kLinearCommandDeadbandMps = 0.002f;
 constexpr float kYawCommandDeadbandRadps = 0.003f;
 
@@ -208,20 +237,55 @@ float linearScaleFromError(
          clampf(ratio, 0.0f, 1.0f);
 }
 
-float limitVelocityRate(
-  float target, float current, float max_accel,
-  float max_brake, float dt)
+float limitVelocityJerk(
+  float target, float current, float & current_accel,
+  float max_accel, float max_brake, float max_jerk, float dt)
 {
-  const bool crossing_zero = target * current < 0.0f;
-  const bool reducing_magnitude = std::abs(target) < std::abs(current);
-  const float rate = (crossing_zero || reducing_magnitude) ? max_brake : max_accel;
-  const float maximum_delta = std::max(rate, 0.0f) * dt;
-  const float delta = target - current;
-
-  if (std::abs(delta) <= maximum_delta) {
+  if (dt <= 1e-6f) {
+    current_accel = 0.0f;
     return target;
   }
-  return current + std::copysign(maximum_delta, delta);
+
+  const bool crossing_zero = target * current < 0.0f;
+  const bool reducing_magnitude = std::abs(target) < std::abs(current);
+  const float acceleration_limit = std::max(
+    (crossing_zero || reducing_magnitude) ? max_brake : max_accel, 0.0f);
+  const float delta = target - current;
+
+  if (std::abs(delta) <= 1e-6f && std::abs(current_accel) <= 1e-6f) {
+    current_accel = 0.0f;
+    return target;
+  }
+
+  // sqrt(2 * jerk * |dv|) 是接近目标速度时的加速度收敛包络。
+  // 如果始终保持最大加速度直到最后一个周期，再直接贴到目标速度，最后一步
+  // 仍会形成加速度阶跃；提前压低期望加速度可显著减小这种末端冲击。
+  const float jerk = std::max(max_jerk, 0.0f);
+  const float convergence_accel = jerk > 1e-6f ?
+    std::sqrt(2.0f * jerk * std::abs(delta)) : acceleration_limit;
+  const float desired_accel = std::copysign(
+    std::min(acceleration_limit, convergence_accel), delta);
+
+  float next_accel = desired_accel;
+  if (jerk > 1e-6f) {
+    const float maximum_accel_delta = jerk * dt;
+    const float accel_delta = clampf(
+      desired_accel - current_accel,
+      -maximum_accel_delta, maximum_accel_delta);
+    next_accel = current_accel + accel_delta;
+  }
+  next_accel = clampf(next_accel, -acceleration_limit, acceleration_limit);
+  const float next_velocity = current + next_accel * dt;
+
+  // 离散周期最后仍可能有极小越界。仅在真正跨过目标时贴到目标并清零加速度，
+  // 上面的收敛包络会保证此处的加速度已经很小，避免来回越界形成低速顿挫。
+  if (delta * (target - next_velocity) <= 0.0f) {
+    current_accel = 0.0f;
+    return target;
+  }
+
+  current_accel = next_accel;
+  return next_velocity;
 }
 
 float dot(const Vector3 & lhs, const Vector3 & rhs)
@@ -343,8 +407,11 @@ public:
     current_steer_angle_.fill(0.0f);
     commanded_steer_angle_.fill(0.0f);
     pending_switch_angle_.fill(0.0f);
+    retarget_candidate_angle_.fill(0.0f);
+    unpark_retarget_candidate_angle_.fill(0.0f);
     transition_start_rpm_.fill(0.0f);
     previous_output_rpm_.fill(0.0f);
+    current_drive_rpm_.fill(0.0f);
     previous_candidate_flipped_.fill(false);
     previous_drive_sign_.fill(1.0f);
     previous_allocated_twist_.fill(0.0f);
@@ -388,6 +455,7 @@ private:
   {
     kNormal,
     kDecelerating,
+    kWaitingForStop,
     kSteering,
     kAligning
   };
@@ -477,6 +545,21 @@ private:
     }
     steering_feedback_received_ = true;
     last_steering_feedback_time_ = now();
+
+    // 驱动轮实际转速用于协调换向的“已停车”闭环确认。不能只看本节点已经
+    // 发出 0 rpm，因为重载底盘仍可能受惯性影响继续运动。
+    if (message->speed.size() >= kWheelCount) {
+      for (std::size_t i = 0; i < kWheelCount; ++i) {
+        current_drive_rpm_[i] = static_cast<float>(message->speed[i]);
+      }
+      drive_feedback_received_ = true;
+      last_drive_feedback_time_ = now();
+    } else {
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 2000,
+        "驱动轮反馈只有 %zu 个速度值，期望至少 %zu 个；快速换向将保持零速等待",
+        message->speed.size(), kWheelCount);
+    }
   }
 
   void resetCommandGovernor()
@@ -484,6 +567,9 @@ private:
     governed_vx_ = 0.0f;
     governed_vy_ = 0.0f;
     governed_yaw_rate_ = 0.0f;
+    governed_ax_ = 0.0f;
+    governed_ay_ = 0.0f;
+    governed_yaw_accel_ = 0.0f;
     command_governor_initialized_ = false;
     previous_allocated_twist_.fill(0.0f);
   }
@@ -503,16 +589,21 @@ private:
       governed_vx_ = 0.0f;
       governed_vy_ = 0.0f;
       governed_yaw_rate_ = 0.0f;
+      governed_ax_ = 0.0f;
+      governed_ay_ = 0.0f;
+      governed_yaw_accel_ = 0.0f;
       command_governor_initialized_ = true;
     }
 
-    governed_vx_ = limitVelocityRate(
-      vx_ref, governed_vx_, kMaxAccelX, kMaxBrakeX, kControlPeriodS);
-    governed_vy_ = limitVelocityRate(
-      vy_ref, governed_vy_, kMaxAccelY, kMaxBrakeY, kControlPeriodS);
-    governed_yaw_rate_ = limitVelocityRate(
-      yaw_rate_ref, governed_yaw_rate_, kMaxAccelYaw, kMaxBrakeYaw,
-      kControlPeriodS);
+    governed_vx_ = limitVelocityJerk(
+      vx_ref, governed_vx_, governed_ax_,
+      kMaxAccelX, kMaxBrakeX, kMaxJerkX, kControlPeriodS);
+    governed_vy_ = limitVelocityJerk(
+      vy_ref, governed_vy_, governed_ay_,
+      kMaxAccelY, kMaxBrakeY, kMaxJerkY, kControlPeriodS);
+    governed_yaw_rate_ = limitVelocityJerk(
+      yaw_rate_ref, governed_yaw_rate_, governed_yaw_accel_,
+      kMaxAccelYaw, kMaxBrakeYaw, kMaxJerkYaw, kControlPeriodS);
 
     vx_cmd = governed_vx_;
     vy_cmd = governed_vy_;
@@ -532,7 +623,7 @@ private:
       rotation_dominant_mode_ = true;
       RCLCPP_INFO(
         get_logger(),
-        "进入旋转主导模式：抑制小幅 vx/vy，稳定四轮切线方向");
+        "进入纯旋转模式：vx/vy 已接近零，稳定四轮切线方向");
     } else if (rotation_dominant_mode_ &&
       (yaw_speed <= kRotationModeExitYawRadps ||
       linear_speed >= kRotationModeExitLinearMps))
@@ -540,7 +631,7 @@ private:
       rotation_dominant_mode_ = false;
       RCLCPP_INFO(
         get_logger(),
-        "退出旋转主导模式：恢复完整全向速度指令");
+        "退出纯旋转模式：恢复完整全向速度指令");
     }
 
     if (rotation_dominant_mode_) {
@@ -618,8 +709,8 @@ private:
       const float reference_angle = target_memory_initialized_ ?
         commanded_steer_angle_[wheel] : current_steer_angle_[wheel];
 
-      if (corner_speed < kWheelVectorDeadbandMps) {
-        // 单轮向量太小时 atan2 的方向不可信，沿用上一目标，不重新选分支。
+      if (corner_speed < kWheelDirectionUndefinedMps) {
+        // 该轮速度向量真正接近零时方向没有定义，沿用上一目标，不重新选分支。
         selection.target_angle[wheel] = reference_angle;
         selection.flipped[wheel] = previous_candidate_flipped_[wheel];
         selection.drive_sign[wheel] = previous_drive_sign_[wheel];
@@ -768,7 +859,7 @@ private:
       const float alignment_scale = linearScaleFromError(
         steering_error[wheel],
         kAlignFullSpeedErrorRad,
-        kAlignCrawlErrorRad,
+        kAlignStopErrorRad,
         kAlignMinimumSpeedScale);
       const float wheel_speed_limit = kMaxWheelLinearSpeed * alignment_scale;
       addSymmetricBound(problem, longitudinal, wheel_speed_limit);
@@ -988,6 +1079,8 @@ private:
         return "NORMAL";
       case CoordinatedSwitchState::kDecelerating:
         return "DECELERATING";
+      case CoordinatedSwitchState::kWaitingForStop:
+        return "WAITING_FOR_STOP";
       case CoordinatedSwitchState::kSteering:
         return "STEERING";
       case CoordinatedSwitchState::kAligning:
@@ -996,11 +1089,72 @@ private:
     return "UNKNOWN";
   }
 
+  bool steeringFeedbackFresh() const
+  {
+    return steering_feedback_received_ &&
+           (now() - last_steering_feedback_time_).seconds() <=
+           kSteeringFeedbackTimeoutS;
+  }
+
+  bool driveFeedbackFresh() const
+  {
+    return drive_feedback_received_ &&
+           (now() - last_drive_feedback_time_).seconds() <=
+           kDriveFeedbackTimeoutS;
+  }
+
+  float maximumActualDriveRpm() const
+  {
+    float maximum_rpm = 0.0f;
+    for (const float rpm : current_drive_rpm_) {
+      maximum_rpm = std::max(maximum_rpm, std::abs(rpm));
+    }
+    return maximum_rpm;
+  }
+
+  float maximumSteeringFeedbackError(
+    const std::array<float, kWheelCount> & target_angle) const
+  {
+    float maximum_error = 0.0f;
+    for (std::size_t wheel = 0; wheel < kWheelCount; ++wheel) {
+      maximum_error = std::max(
+        maximum_error,
+        std::abs(angleDiff(target_angle[wheel], current_steer_angle_[wheel])));
+    }
+    return maximum_error;
+  }
+
+  bool steeringReferenceIsValid(const Vector3 & steering_reference) const
+  {
+    return std::hypot(steering_reference[0], steering_reference[1]) >=
+           kLinearCommandDeadbandMps ||
+           std::abs(steering_reference[2]) >= kYawCommandDeadbandRadps;
+  }
+
+  float driveScaleFromFinalSteeringError(float maximum_error) const
+  {
+    return linearScaleFromError(
+      maximum_error, kAlignFullSpeedErrorRad,
+      kAlignStopErrorRad, kAlignMinimumSpeedScale);
+  }
+
+  float nextPostAlignmentDriveScale()
+  {
+    if (post_alignment_drive_ramp_cycle_ >= kPostAlignmentDriveRampCycles) {
+      return 1.0f;
+    }
+    ++post_alignment_drive_ramp_cycle_;
+    return static_cast<float>(post_alignment_drive_ramp_cycle_) /
+           static_cast<float>(kPostAlignmentDriveRampCycles);
+  }
+
   void beginUnparkAlignment()
   {
     unpark_state_ = UnparkState::kSteering;
     unpark_targets_initialized_ = false;
     unpark_align_stable_cycle_ = 0;
+    unpark_retarget_stable_cycle_ = 0;
+    unpark_retarget_candidate_initialized_ = false;
 
     // 驻车期间驱动轮一直是零速，解除时可以直接进入停车对舵。
     coordinated_switch_state_ = CoordinatedSwitchState::kNormal;
@@ -1036,8 +1190,16 @@ private:
     if (reference_is_valid) {
       const SteeringSelection selection = selectSteeringTargets(steering_reference);
       if (selection.success) {
-        float maximum_target_change = 0.0f;
-        if (unpark_targets_initialized_) {
+        if (!unpark_targets_initialized_) {
+          unpark_target_angle_ = selection.target_angle;
+          unpark_target_flipped_ = selection.flipped;
+          unpark_target_drive_sign_ = selection.drive_sign;
+          commanded_steer_angle_ = unpark_target_angle_;
+          target_memory_initialized_ = true;
+          unpark_targets_initialized_ = true;
+          unpark_align_stable_cycle_ = 0;
+        } else {
+          float maximum_target_change = 0.0f;
           for (std::size_t wheel = 0; wheel < kWheelCount; ++wheel) {
             maximum_target_change = std::max(
               maximum_target_change,
@@ -1045,20 +1207,49 @@ private:
                 angleDiff(
                   selection.target_angle[wheel], unpark_target_angle_[wheel])));
           }
-        }
 
-        unpark_target_angle_ = selection.target_angle;
-        unpark_target_flipped_ = selection.flipped;
-        unpark_target_drive_sign_ = selection.drive_sign;
-        commanded_steer_angle_ = unpark_target_angle_;
-        target_memory_initialized_ = true;
+          if (maximum_target_change <= kUnparkRetargetAngleRad) {
+            // 解锁期间也锁存首次运动方向；MPPI 的小幅 vx/vy 抖动不能持续追着摆舵。
+            unpark_retarget_stable_cycle_ = 0;
+            unpark_retarget_candidate_initialized_ = false;
+          } else {
+            float consistency_error = 0.0f;
+            if (unpark_retarget_candidate_initialized_) {
+              for (std::size_t wheel = 0; wheel < kWheelCount; ++wheel) {
+                consistency_error = std::max(
+                  consistency_error,
+                  std::abs(
+                    angleDiff(
+                      selection.target_angle[wheel],
+                      unpark_retarget_candidate_angle_[wheel])));
+              }
+            }
 
-        if (!unpark_targets_initialized_ ||
-          maximum_target_change > kUnparkTargetChangeResetRad)
-        {
-          unpark_align_stable_cycle_ = 0;
+            if (!unpark_retarget_candidate_initialized_ ||
+              consistency_error > kUnparkRetargetConsistencyRad)
+            {
+              unpark_retarget_candidate_angle_ = selection.target_angle;
+              unpark_retarget_candidate_flipped_ = selection.flipped;
+              unpark_retarget_candidate_drive_sign_ = selection.drive_sign;
+              unpark_retarget_candidate_initialized_ = true;
+              unpark_retarget_stable_cycle_ = 1;
+            } else {
+              ++unpark_retarget_stable_cycle_;
+              if (unpark_retarget_stable_cycle_ >= kUnparkRetargetStableCycles) {
+                unpark_target_angle_ = unpark_retarget_candidate_angle_;
+                unpark_target_flipped_ = unpark_retarget_candidate_flipped_;
+                unpark_target_drive_sign_ = unpark_retarget_candidate_drive_sign_;
+                commanded_steer_angle_ = unpark_target_angle_;
+                unpark_align_stable_cycle_ = 0;
+                unpark_retarget_stable_cycle_ = 0;
+                unpark_retarget_candidate_initialized_ = false;
+                RCLCPP_INFO(
+                  get_logger(),
+                  "[Unpark] 确认持续改向：更新锁存启动舵角并重新等待连续到位");
+              }
+            }
+          }
         }
-        unpark_targets_initialized_ = true;
       } else {
         RCLCPP_ERROR_THROTTLE(
           get_logger(), *get_clock(), 1000,
@@ -1110,10 +1301,15 @@ private:
       previous_drive_sign_ = unpark_target_drive_sign_;
       candidate_memory_initialized_ = true;
       unpark_state_ = UnparkState::kInactive;
-      resetCommandGovernor();
+      unpark_retarget_stable_cycle_ = 0;
+      unpark_retarget_candidate_initialized_ = false;
+      // 对舵期间治理器已经连续跟踪上游目标，保留该稳定方向；驱动轮由独立斜坡
+      // 从零释放，避免治理器重置后的 vx/vy/wz 比例失真再次触发换向。
+      previous_allocated_twist_.fill(0.0f);
+      post_alignment_drive_ramp_cycle_ = 0;
       RCLCPP_INFO(
         get_logger(),
-        "[Unpark] 四轮舵角已连续确认到位；下一周期从零平滑起步");
+        "[Unpark] 四轮舵角已连续确认到位；下一周期按稳定方向平滑释放轮速");
     }
 
     return true;
@@ -1131,22 +1327,95 @@ private:
     pending_switch_drive_sign_ = selection.drive_sign;
     transition_start_rpm_ = previous_output_rpm_;
     coordinated_deceleration_cycle_ = 0;
+    coordinated_stop_stable_cycle_ = 0;
     coordinated_align_stable_cycle_ = 0;
+    coordinated_retarget_stable_cycle_ = 0;
+    retarget_candidate_initialized_ = false;
     const float maximum_start_rpm = *std::max_element(
       transition_start_rpm_.begin(), transition_start_rpm_.end(),
       [](float lhs, float rhs) {return std::abs(lhs) < std::abs(rhs);});
     coordinated_switch_state_ = std::abs(maximum_start_rpm) <= 1.0f ?
-      CoordinatedSwitchState::kSteering :
+      CoordinatedSwitchState::kWaitingForStop :
       CoordinatedSwitchState::kDecelerating;
+
+    const float maximum_feedback_error =
+      maximumSteeringFeedbackError(selection.target_angle);
 
     RCLCPP_WARN(
       get_logger(),
-      "触发整车协调换向：最大目标变化 %.3f rad；当前最大轮速 %.1f rpm，"
-      "统一零速后停车摆舵",
-      selection.maximum_target_change, std::abs(maximum_start_rpm));
+      "触发整车协调换向：最终目标相对真实舵角误差 %.3f rad；"
+      "当前最大指令轮速 %.1f rpm，先停车、确认实际轮速为零，再快速对舵",
+      maximum_feedback_error, std::abs(maximum_start_rpm));
+  }
+
+  void updateCoordinatedSwitchTarget(const Vector3 & steering_reference)
+  {
+    if (!steeringReferenceIsValid(steering_reference)) {
+      return;
+    }
+
+    const SteeringSelection selection = selectSteeringTargets(steering_reference);
+    if (!selection.success) {
+      RCLCPP_ERROR_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "协调换向期间无法根据最新速度指令更新舵角目标；继续保持四轮零速");
+      return;
+    }
+
+    float maximum_target_change = 0.0f;
+    for (std::size_t wheel = 0; wheel < kWheelCount; ++wheel) {
+      maximum_target_change = std::max(
+        maximum_target_change,
+        std::abs(
+          angleDiff(
+            selection.target_angle[wheel], pending_switch_angle_[wheel])));
+    }
+
+    if (maximum_target_change <= kCoordinatedRetargetAngleRad) {
+      // 小于迟滞阈值视为 MPPI 正常采样抖动：继续追锁存目标，不能每周期改舵角。
+      coordinated_retarget_stable_cycle_ = 0;
+      retarget_candidate_initialized_ = false;
+      return;
+    }
+
+    float candidate_consistency_error = 0.0f;
+    if (retarget_candidate_initialized_) {
+      for (std::size_t wheel = 0; wheel < kWheelCount; ++wheel) {
+        candidate_consistency_error = std::max(
+          candidate_consistency_error,
+          std::abs(
+            angleDiff(
+              selection.target_angle[wheel], retarget_candidate_angle_[wheel])));
+      }
+    }
+
+    if (!retarget_candidate_initialized_ ||
+      candidate_consistency_error > kCoordinatedRetargetConsistencyRad)
+    {
+      retarget_candidate_angle_ = selection.target_angle;
+      retarget_candidate_flipped_ = selection.flipped;
+      retarget_candidate_drive_sign_ = selection.drive_sign;
+      retarget_candidate_initialized_ = true;
+      coordinated_retarget_stable_cycle_ = 1;
+      return;
+    }
+
+    ++coordinated_retarget_stable_cycle_;
+    if (coordinated_retarget_stable_cycle_ >= kCoordinatedRetargetStableCycles) {
+      pending_switch_angle_ = retarget_candidate_angle_;
+      pending_switch_flipped_ = retarget_candidate_flipped_;
+      pending_switch_drive_sign_ = retarget_candidate_drive_sign_;
+      coordinated_align_stable_cycle_ = 0;
+      coordinated_retarget_stable_cycle_ = 0;
+      retarget_candidate_initialized_ = false;
+      RCLCPP_INFO(
+        get_logger(),
+        "协调换向确认持续改向：更新锁存舵角目标，并重新等待四轮连续到位");
+    }
   }
 
   bool tickCoordinatedSwitch(
+    const Vector3 & steering_reference,
     std::array<float, kWheelCount> & output_angle,
     std::array<float, kWheelCount> & output_rpm)
   {
@@ -1155,6 +1424,7 @@ private:
     }
 
     output_rpm.fill(0.0f);
+    updateCoordinatedSwitchTarget(steering_reference);
 
     if (coordinated_switch_state_ == CoordinatedSwitchState::kDecelerating) {
       // 四个轮子使用同一个缩放比例，禁止“单轮停、其他轮继续推”造成横向摩地。
@@ -1170,45 +1440,72 @@ private:
       previous_output_rpm_ = output_rpm;
 
       if (coordinated_deceleration_cycle_ >= kCoordinatedDecelerationCycles) {
-        coordinated_switch_state_ = CoordinatedSwitchState::kSteering;
+        coordinated_switch_state_ = CoordinatedSwitchState::kWaitingForStop;
+        coordinated_stop_stable_cycle_ = 0;
         previous_allocated_twist_.fill(0.0f);
       }
       return true;
     }
 
-    if (coordinated_switch_state_ == CoordinatedSwitchState::kSteering) {
-      float maximum_remaining = 0.0f;
-      for (std::size_t wheel = 0; wheel < kWheelCount; ++wheel) {
-        commanded_steer_angle_[wheel] = approachAngle(
-          pending_switch_angle_[wheel], commanded_steer_angle_[wheel],
-          kMaxSteerTargetStepRad);
-        maximum_remaining = std::max(
-          maximum_remaining,
-          std::abs(
-            angleDiff(
-              pending_switch_angle_[wheel], commanded_steer_angle_[wheel])));
-      }
+    if (coordinated_switch_state_ == CoordinatedSwitchState::kWaitingForStop) {
+      // 已经发出零轮速后仍保持原舵角，等待驱动轮真实转速连续归零。
+      // 在底盘尚有惯性时摆舵，会把滚动摩擦变成横向滑动摩擦。
       output_angle = commanded_steer_angle_;
       previous_output_rpm_.fill(0.0f);
 
-      if (maximum_remaining <= 1e-4f) {
-        coordinated_switch_state_ = CoordinatedSwitchState::kAligning;
-        coordinated_align_stable_cycle_ = 0;
+      if (!driveFeedbackFresh()) {
+        coordinated_stop_stable_cycle_ = 0;
+        RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 1000,
+          "协调换向等待驱动轮反馈；反馈缺失或超时，保持四轮零速且不摆舵");
+        return true;
       }
+
+      const float maximum_actual_rpm = maximumActualDriveRpm();
+      if (maximum_actual_rpm <= kCoordinatedStoppedRpm) {
+        ++coordinated_stop_stable_cycle_;
+      } else {
+        coordinated_stop_stable_cycle_ = 0;
+      }
+
+      RCLCPP_INFO_THROTTLE(
+        get_logger(), *get_clock(), 500,
+        "协调换向等待实际停车：最大反馈轮速 %.2f rpm，稳定周期 %d/%d",
+        maximum_actual_rpm, coordinated_stop_stable_cycle_,
+        kCoordinatedStoppedStableCycles);
+
+      if (coordinated_stop_stable_cycle_ >= kCoordinatedStoppedStableCycles) {
+        coordinated_switch_state_ = CoordinatedSwitchState::kSteering;
+      }
+      return true;
+    }
+
+    if (coordinated_switch_state_ == CoordinatedSwitchState::kSteering) {
+      // 车体已经由实际轮速确认停止，此时直接发送最终舵角，取消普通行驶的
+      // 0.12 rad/周期软件限幅，让锁车/解锁/快速换向都尽快完成对舵。
+      commanded_steer_angle_ = pending_switch_angle_;
+      output_angle = commanded_steer_angle_;
+      previous_output_rpm_.fill(0.0f);
+      coordinated_switch_state_ = CoordinatedSwitchState::kAligning;
+      coordinated_align_stable_cycle_ = 0;
       return true;
     }
 
     // 目标指令已到位后继续保持整车零速，并依据真实舵角反馈连续确认。
     output_angle = pending_switch_angle_;
     commanded_steer_angle_ = pending_switch_angle_;
-    float maximum_feedback_error = 0.0f;
-    for (std::size_t wheel = 0; wheel < kWheelCount; ++wheel) {
-      maximum_feedback_error = std::max(
-        maximum_feedback_error,
-        std::abs(
-          angleDiff(
-            pending_switch_angle_[wheel], current_steer_angle_[wheel])));
+    previous_output_rpm_.fill(0.0f);
+
+    if (!steeringFeedbackFresh()) {
+      coordinated_align_stable_cycle_ = 0;
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "协调换向等待舵角反馈；反馈缺失或超时，保持四轮零速，不允许起步");
+      return true;
     }
+
+    const float maximum_feedback_error =
+      maximumSteeringFeedbackError(pending_switch_angle_);
 
     if (maximum_feedback_error <= kCoordinatedAlignToleranceRad) {
       ++coordinated_align_stable_cycle_;
@@ -1222,42 +1519,52 @@ private:
       candidate_memory_initialized_ = true;
       previous_output_rpm_.fill(0.0f);
       coordinated_switch_state_ = CoordinatedSwitchState::kNormal;
-      resetCommandGovernor();
+      coordinated_retarget_stable_cycle_ = 0;
+      retarget_candidate_initialized_ = false;
+      // 不重置已经收敛的 S 曲线方向；只把 QP 连续性参考清零，并用统一轮速
+      // 比例从零释放，防止下一周期再次因瞬时方向变化进入协调换向。
+      previous_allocated_twist_.fill(0.0f);
+      post_alignment_drive_ramp_cycle_ = 0;
       RCLCPP_INFO(
         get_logger(),
-        "整车协调换向完成：舵角已连续确认对齐，从零重新平滑加速");
+        "整车协调换向完成：舵角已连续确认对齐，按稳定方向平滑释放轮速");
     }
     return true;
   }
 
   void computeWheels(
     float vx, float vy, float yaw_rate,
-    const Vector3 & steering_reference,
+    const Vector3 & startup_steering_reference,
     std::array<float, kWheelCount> & output_angle,
     std::array<float, kWheelCount> & output_rpm)
   {
-    if (tickUnparkAlignment(steering_reference, output_angle, output_rpm)) {
+    // X 驻车刚解除时治理器会从零爬升，必须用上游完整目标提前完成零速对舵。
+    if (tickUnparkAlignment(startup_steering_reference, output_angle, output_rpm)) {
       return;
     }
 
-    if (tickCoordinatedSwitch(output_angle, output_rpm)) {
+    // 除 Unpark 外，舵角选择必须与真正交给 QP 的 S 曲线治理后速度一致。
+    // 旧实现用原始 MPPI 指令选舵、用治理后速度算轮速；低速时 vy/wz 抖动会让
+    // 舵角方向先跳变并连续触发停车换向，表现为刚起步反复“一顿一顿”。
+    const Vector3 command{vx, vy, yaw_rate};
+    if (tickCoordinatedSwitch(command, output_angle, output_rpm)) {
       return;
     }
 
-    const bool command_is_zero =
-      std::hypot(vx, vy) < kLinearCommandDeadbandMps &&
-      std::abs(yaw_rate) < kYawCommandDeadbandRadps;
-
-    if (command_is_zero) {
+    // 正常行驶也必须检查舵角反馈时效。历史上只要收到过一次反馈就继续运行，
+    // 一旦反馈卡住便会使用旧角度计算轮速；现在反馈超时立即停止四轮驱动。
+    if (!steeringFeedbackFresh()) {
       output_angle = target_memory_initialized_ ?
         commanded_steer_angle_ : current_steer_angle_;
       output_rpm.fill(0.0f);
       previous_output_rpm_.fill(0.0f);
       previous_allocated_twist_.fill(0.0f);
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "正常行驶舵角反馈缺失或超时；保持舵角并停止四轮驱动");
       return;
     }
 
-    const Vector3 command{vx, vy, yaw_rate};
     const SteeringSelection desired_selection = selectSteeringTargets(command);
     if (!desired_selection.success) {
       output_angle = target_memory_initialized_ ?
@@ -1270,11 +1577,24 @@ private:
       return;
     }
 
-    if (desired_selection.maximum_target_change >=
-      kCoordinatedSwitchTriggerRad)
-    {
+    const float maximum_final_steering_error =
+      maximumSteeringFeedbackError(desired_selection.target_angle);
+    if (maximum_final_steering_error >= kCoordinatedSwitchTriggerRad) {
       beginCoordinatedSwitch(desired_selection);
-      (void)tickCoordinatedSwitch(output_angle, output_rpm);
+      (void)tickCoordinatedSwitch(
+        command, output_angle, output_rpm);
+      return;
+    }
+
+    const bool command_is_zero =
+      std::hypot(vx, vy) < kLinearCommandDeadbandMps &&
+      std::abs(yaw_rate) < kYawCommandDeadbandRadps;
+    if (command_is_zero) {
+      output_angle = target_memory_initialized_ ?
+        commanded_steer_angle_ : current_steer_angle_;
+      output_rpm.fill(0.0f);
+      previous_output_rpm_.fill(0.0f);
+      previous_allocated_twist_.fill(0.0f);
       return;
     }
 
@@ -1303,14 +1623,18 @@ private:
       return;
     }
 
+    const float drive_scale =
+      driveScaleFromFinalSteeringError(maximum_final_steering_error);
+    const float release_scale = nextPostAlignmentDriveScale();
     for (std::size_t wheel = 0; wheel < kWheelCount; ++wheel) {
       output_angle[wheel] = allocation.target_angle[wheel];
 
       // 轮速按实际反馈舵角投影，避免舵轮未到位时按理论目标角硬推。
+      // 四轮再统一乘最终舵角误差比例，禁止某些轮子先推、其他轮子仍在摆舵。
       const Vector3 longitudinal = wheelLongitudinalRow(
         wheel, current_steer_angle_[wheel]);
       const float wheel_speed = dot(longitudinal, allocation.twist);
-      output_rpm[wheel] = speedToRpm(wheel_speed);
+      output_rpm[wheel] = speedToRpm(wheel_speed) * drive_scale * release_scale;
     }
 
     commanded_steer_angle_ = allocation.target_angle;
@@ -1323,11 +1647,12 @@ private:
     RCLCPP_INFO_THROTTLE(
       get_logger(), *get_clock(), 1000,
       "OMNI_B_QP: cmd=(%.3f,%.3f,%.3f) alloc=(%.3f,%.3f,%.3f) "
-      "mode=%d active=%d steer_err_max=%.3f lateral_max=%.3f state=%s",
+      "mode=%d active=%d steer_err_max=%.3f drive_scale=%.2f "
+      "lateral_max=%.3f state=%s",
       command[0], command[1], command[2],
       allocation.twist[0], allocation.twist[1], allocation.twist[2],
       allocation.mode_index, allocation.active_constraint_count,
-      allocation.max_steering_error, allocation.max_lateral_speed,
+      maximum_final_steering_error, drive_scale, allocation.max_lateral_speed,
       coordinatedSwitchStateName());
   }
 
@@ -1540,13 +1865,13 @@ private:
     const bool park_grace_elapsed = park_or_hold_active &&
       (now() - park_start_time_).seconds() > kParkPreemptGraceS;
     const bool meaningful_motion =
-      std::hypot(vx, vy) > kParkPreemptLinearMps ||
-      std::abs(yaw_rate) > kParkPreemptYawRadps;
+      std::hypot(vx_ref, vy_ref) > kParkPreemptLinearMps ||
+      std::abs(yaw_rate_ref) > kParkPreemptYawRadps;
     if (park_or_hold_active && park_grace_elapsed && meaningful_motion) {
       RCLCPP_INFO_THROTTLE(
         get_logger(), *get_clock(), 1000,
-        "[ParkWheels] 由明确非零 cmd_vel 解除驻车：linear=%.3f yaw=%.3f",
-        std::hypot(vx, vy), std::abs(yaw_rate));
+        "[ParkWheels] 由明确非零 cmd_vel 解除驻车：reference linear=%.3f yaw=%.3f",
+        std::hypot(vx_ref, vy_ref), std::abs(yaw_rate_ref));
       park_hold_active_.store(false);
       if (park_active_.load()) {
         finishPark(false, "preempted by meaningful cmd_vel");
@@ -1618,6 +1943,11 @@ private:
   bool steering_feedback_received_{false};
   rclcpp::Time last_steering_feedback_time_;
 
+  // 底盘反馈中的驱动轮实际转速，用于确认车体已经停止后才允许摆舵。
+  std::array<float, kWheelCount> current_drive_rpm_{};
+  bool drive_feedback_received_{false};
+  rclcpp::Time last_drive_feedback_time_;
+
   // 上一周期实际发送给舵机的目标角，而不是反馈角。候选连续性必须以它为基准，
   // 否则舵机跟随滞后时，优化器可能误判另一套 angle+pi 分支更优。
   std::array<float, kWheelCount> commanded_steer_angle_{};
@@ -1626,7 +1956,12 @@ private:
   float governed_vx_{0.0f};
   float governed_vy_{0.0f};
   float governed_yaw_rate_{0.0f};
+  // jerk 限制器必须跨周期保存当前加速度，不能只保存上一周期速度。
+  float governed_ax_{0.0f};
+  float governed_ay_{0.0f};
+  float governed_yaw_accel_{0.0f};
   bool command_governor_initialized_{false};
+  int post_alignment_drive_ramp_cycle_{kPostAlignmentDriveRampCycles};
 
   Vector3 previous_allocated_twist_{};
 
@@ -1638,8 +1973,13 @@ private:
   std::array<float, kWheelCount> unpark_target_angle_{};
   std::array<bool, kWheelCount> unpark_target_flipped_{};
   std::array<float, kWheelCount> unpark_target_drive_sign_{};
+  std::array<float, kWheelCount> unpark_retarget_candidate_angle_{};
+  std::array<bool, kWheelCount> unpark_retarget_candidate_flipped_{};
+  std::array<float, kWheelCount> unpark_retarget_candidate_drive_sign_{};
   bool unpark_targets_initialized_{false};
+  bool unpark_retarget_candidate_initialized_{false};
   int unpark_align_stable_cycle_{0};
+  int unpark_retarget_stable_cycle_{0};
 
   // 整车协调换向状态：任何单轮需要跨大角度换分支时，四轮统一减速到零，
   // 停车摆舵并等待真实反馈对齐，避免单轮停转却被其他轮拖着横向摩地。
@@ -1648,10 +1988,18 @@ private:
   std::array<float, kWheelCount> pending_switch_angle_{};
   std::array<bool, kWheelCount> pending_switch_flipped_{};
   std::array<float, kWheelCount> pending_switch_drive_sign_{};
+  // 协调换向期间的候选新方向。先经过“角度迟滞 + 连续周期确认”，再替换
+  // pending_switch_*，避免 MPPI 的 vx/vy 小抖动让四轮永远无法确认到位。
+  std::array<float, kWheelCount> retarget_candidate_angle_{};
+  std::array<bool, kWheelCount> retarget_candidate_flipped_{};
+  std::array<float, kWheelCount> retarget_candidate_drive_sign_{};
+  bool retarget_candidate_initialized_{false};
   std::array<float, kWheelCount> transition_start_rpm_{};
   std::array<float, kWheelCount> previous_output_rpm_{};
   int coordinated_deceleration_cycle_{0};
+  int coordinated_stop_stable_cycle_{0};
   int coordinated_align_stable_cycle_{0};
+  int coordinated_retarget_stable_cycle_{0};
 
   std::array<bool, kWheelCount> previous_candidate_flipped_{};
   std::array<float, kWheelCount> previous_drive_sign_{};

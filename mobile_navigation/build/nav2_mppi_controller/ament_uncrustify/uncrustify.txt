@@ -1,0 +1,191 @@
+-- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller':
+ - /opt/ros/humble/bin/ament_uncrustify --xunit-file /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/uncrustify.xunit.xml
+
+Code style divergence in file 'src/controller.cpp':
+
+--- src/controller.cpp
++++ src/controller.cpp.uncrustify
+@@ -872 +872 @@
+-      float track_limit, float approach_limit) -> float
++    float track_limit, float approach_limit) -> float
+@@ -1204,3 +1204,4 @@
+-         std::abs(shortestAngularDistance(
+-           tf2::getYaw(tangent_goal_pose_.orientation),
+-           tf2::getYaw(goal.orientation))) <= tangent_goal_yaw_tolerance_;
++         std::abs(
++    shortestAngularDistance(
++      tf2::getYaw(tangent_goal_pose_.orientation),
++      tf2::getYaw(goal.orientation))) <= tangent_goal_yaw_tolerance_;
+
+Code style divergence in file 'src/critics/path_align_critic.cpp':
+
+--- src/critics/path_align_critic.cpp
++++ src/critics/path_align_critic.cpp.uncrustify
+@@ -44,2 +44 @@
+-  if (!enabled_ || weight_ <= 0.0f)
+-  {
++  if (!enabled_ || weight_ <= 0.0f) {
+
+Code style divergence in file 'src/critics/path_follow_critic.cpp':
+
+--- src/critics/path_follow_critic.cpp
++++ src/critics/path_follow_critic.cpp.uncrustify
+@@ -35,2 +35 @@
+-  if (!enabled_ || weight_ <= 0.0f || data.path.x.size() < 2)
+-  {
++  if (!enabled_ || weight_ <= 0.0f || data.path.x.size() < 2) {
+
+Code style divergence in file 'src/critics/prefer_forward_critic.cpp':
+
+--- src/critics/prefer_forward_critic.cpp
++++ src/critics/prefer_forward_critic.cpp.uncrustify
+@@ -34,2 +34 @@
+-  if (!enabled_ || weight_ <= 0.0f)
+-  {
++  if (!enabled_ || weight_ <= 0.0f) {
+
+4 files with code style divergence
+No code style divergence in file 'benchmark/controller_benchmark.cpp'
+
+No code style divergence in file 'benchmark/optimizer_benchmark.cpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/controller.hpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/critic_data.hpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/critic_function.hpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/critic_manager.hpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/critics/angular_velocity_critic.hpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/critics/constraint_critic.hpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/critics/cost_critic.hpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/critics/goal_angle_critic.hpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/critics/goal_critic.hpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/critics/goal_lateral_critic.hpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/critics/goal_longitudinal_critic.hpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/critics/linear_velocity_critic.hpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/critics/obstacles_critic.hpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/critics/path_align_critic.hpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/critics/path_align_legacy_critic.hpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/critics/path_angle_critic.hpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/critics/path_follow_critic.hpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/critics/prefer_forward_critic.hpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/critics/twirling_critic.hpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/critics/velocity_deadband_critic.hpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/models/constraints.hpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/models/control_sequence.hpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/models/optimizer_settings.hpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/models/path.hpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/models/state.hpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/models/trajectories.hpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/motion_models.hpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/optimizer.hpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/tools/eigen_types.hpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/tools/noise_generator.hpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/tools/parameters_handler.hpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/tools/path_handler.hpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/tools/trajectory_visualizer.hpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/tools/utils.hpp'
+
+No code style divergence in file 'src/critic_manager.cpp'
+
+No code style divergence in file 'src/critics/angular_velocity_critic.cpp'
+
+No code style divergence in file 'src/critics/constraint_critic.cpp'
+
+No code style divergence in file 'src/critics/cost_critic.cpp'
+
+No code style divergence in file 'src/critics/goal_angle_critic.cpp'
+
+No code style divergence in file 'src/critics/goal_critic.cpp'
+
+No code style divergence in file 'src/critics/goal_lateral_critic.cpp'
+
+No code style divergence in file 'src/critics/goal_longitudinal_critic.cpp'
+
+No code style divergence in file 'src/critics/linear_velocity_critic.cpp'
+
+No code style divergence in file 'src/critics/obstacles_critic.cpp'
+
+No code style divergence in file 'src/critics/path_align_legacy_critic.cpp'
+
+No code style divergence in file 'src/critics/path_angle_critic.cpp'
+
+No code style divergence in file 'src/critics/twirling_critic.cpp'
+
+No code style divergence in file 'src/critics/velocity_deadband_critic.cpp'
+
+No code style divergence in file 'src/noise_generator.cpp'
+
+No code style divergence in file 'src/optimizer.cpp'
+
+No code style divergence in file 'src/parameters_handler.cpp'
+
+No code style divergence in file 'src/path_handler.cpp'
+
+No code style divergence in file 'src/trajectory_visualizer.cpp'
+
+No code style divergence in file 'test/controller_state_transition_test.cpp'
+
+No code style divergence in file 'test/critic_manager_test.cpp'
+
+No code style divergence in file 'test/critics_tests.cpp'
+
+No code style divergence in file 'test/models_test.cpp'
+
+No code style divergence in file 'test/motion_model_tests.cpp'
+
+No code style divergence in file 'test/noise_generator_test.cpp'
+
+No code style divergence in file 'test/optimizer_smoke_test.cpp'
+
+No code style divergence in file 'test/optimizer_unit_tests.cpp'
+
+No code style divergence in file 'test/parameter_handler_test.cpp'
+
+No code style divergence in file 'test/path_handler_test.cpp'
+
+No code style divergence in file 'test/trajectory_visualizer_tests.cpp'
+
+No code style divergence in file 'test/utils/factory.hpp'
+
+No code style divergence in file 'test/utils/models.hpp'
+
+No code style divergence in file 'test/utils/utils.hpp'
+
+No code style divergence in file 'test/utils_test.cpp'
+
+
+
+-- run_test.py: return code 1
+-- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/uncrustify.xunit.xml'

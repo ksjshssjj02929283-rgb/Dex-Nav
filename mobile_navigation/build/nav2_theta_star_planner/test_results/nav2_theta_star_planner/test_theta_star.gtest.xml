@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites tests="3" failures="0" disabled="0" errors="0" time="0.043" timestamp="2026-07-17T19:43:11" name="AllTests">
+  <testsuite name="ThetaStarTest" tests="1" failures="0" disabled="0" errors="0" time="0" timestamp="2026-07-17T19:43:11">
+    <testcase name="test_theta_star" status="run" result="completed" time="0" timestamp="2026-07-17T19:43:11" classname="nav2_theta_star_planner.ThetaStarTest" />
+  </testsuite>
+  <testsuite name="ThetaStarPlanner" tests="2" failures="0" disabled="0" errors="0" time="0.043" timestamp="2026-07-17T19:43:11">
+    <testcase name="test_theta_star_planner" status="run" result="completed" time="0.029" timestamp="2026-07-17T19:43:11" classname="nav2_theta_star_planner.ThetaStarPlanner" />
+    <testcase name="test_theta_star_reconfigure" status="run" result="completed" time="0.014" timestamp="2026-07-17T19:43:11" classname="nav2_theta_star_planner.ThetaStarPlanner" />
+  </testsuite>
+</testsuites>

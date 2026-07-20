@@ -1,0 +1,43 @@
+[0.023s] Invoking command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller': AMENT_PREFIX_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server LD_LIBRARY_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/lib:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib:${LD_LIBRARY_PATH} /usr/bin/ctest -C Release -D ExperimentalTest --no-compress-output -V --force-new-ctest-process -R controller_state_transition_test|test_theta_star
+[0.029s] UpdateCTestConfiguration  from :/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/CTestConfiguration.ini
+[0.029s] Parse Config file:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/CTestConfiguration.ini
+[0.029s]    Site: dex-TX-Gaming-FA608UH-FA608UH
+[0.029s]    Build name: (empty)
+[0.030s]  Add coverage exclude regular expressions.
+[0.030s] Create new tag: 20260717-1143 - Experimental
+[0.030s] UpdateCTestConfiguration  from :/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/CTestConfiguration.ini
+[0.030s] Parse Config file:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/CTestConfiguration.ini
+[0.030s] Test project /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller
+[0.030s] Constructing a list of tests
+[0.030s] Done constructing a list of tests
+[0.030s] Updating test list for fixtures
+[0.030s] Added 0 tests to meet fixture requirements
+[0.031s] Checking test dependency graph...
+[0.031s] Checking test dependency graph end
+[0.031s] test 7
+[0.031s]     Start 7: controller_state_transition_test
+[0.031s] 
+[0.031s] 7: Test command: /usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/controller_state_transition_test.gtest.xml" "--package-name" "nav2_mppi_controller" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/ament_cmake_gtest/controller_state_transition_test.txt" "--command" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/controller_state_transition_test" "--gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/controller_state_transition_test.gtest.xml"
+[0.031s] 7: Test timeout computed to be: 60
+[0.069s] 7: -- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test':
+[0.069s] 7:  - /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/controller_state_transition_test --gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/controller_state_transition_test.gtest.xml
+[0.136s] 7: terminate called after throwing an instance of 'spdlog::spdlog_ex'
+[0.137s] 7:   what():  Failed opening file /home/dex/.ros/log/controller_state_transition_test_34_1784288584718.log for writing: Read-only file system
+[0.214s] 7: -- run_test.py: return code -6
+[0.214s] 7: -- run_test.py: generate result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/controller_state_transition_test.gtest.xml' with failed test
+[0.214s] 7: -- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/controller_state_transition_test.gtest.xml'
+[0.221s] 1/1 Test #7: controller_state_transition_test ...***Failed    0.19 sec
+[0.222s] 
+[0.222s] 0% tests passed, 1 tests failed out of 1
+[0.222s] 
+[0.222s] Label Time Summary:
+[0.222s] gtest    =   0.19 sec*proc (1 test)
+[0.222s] 
+[0.222s] Total Test time (real) =   0.19 sec
+[0.222s] 
+[0.222s] The following tests FAILED:
+[0.222s] 	  7 - controller_state_transition_test (Failed)
+[0.225s] Errors while running CTest
+[0.225s] Output from these tests are in: /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/Testing/Temporary/LastTest.log
+[0.225s] Use "--rerun-failed --output-on-failure" to re-run the failed cases verbosely.
+[0.227s] Invoked command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller' returned '8': AMENT_PREFIX_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server LD_LIBRARY_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/lib:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib:${LD_LIBRARY_PATH} /usr/bin/ctest -C Release -D ExperimentalTest --no-compress-output -V --force-new-ctest-process -R controller_state_transition_test|test_theta_star

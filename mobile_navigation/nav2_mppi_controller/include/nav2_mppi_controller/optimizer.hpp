@@ -53,6 +53,8 @@ struct VelocityProfile
 struct MppiProfileSettings
 {
   VelocityProfile velocity;
+  // 分阶段采样噪声：APPROACH 可使用更小扰动，避免 2 cm 附近命令随机换向。
+  models::SamplingStd sampling_std{0.2f, 0.2f, 0.4f};
   critics::CriticProfileSettings critics;
 };
 

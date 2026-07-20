@@ -42,30 +42,37 @@ void AngularVelocityCritic::initialize()
 
 void AngularVelocityCritic::score(CriticData & data)
 {
-  if (!enabled_ || weight_ <= 0.0f || data.path.yaws.size() < 1) {
+  if (!enabled_ || weight_ <= 0.0f) {
     return;
   }
-
-  const auto goal_idx = data.path.yaws.size() - 1;
-  const float goal_yaw = data.path.yaws(goal_idx);
+  if (track_goal_yaw_ && data.path.yaws.size() < 1) {
+    return;
+  }
 
   const Eigen::Index time_steps = data.state.wz.cols();
   if (time_steps < 1) {
     return;
   }
 
-  // 速度项：按朝向误差算期望角速度 wz_desired = min(wz_max, sqrt(2*az_max*|θ_err|))*sign(θ_err)
-  // θ_err = 归一化(goal_yaw - traj_yaw) 到 [-pi, pi]（atan2(sin,cos)）；罚 |wz - wz_desired|
   models::Vector cost = models::Vector::Zero(data.costs.size());
-  for (Eigen::Index p = 0; p < time_steps; ++p) {
-    const auto dyaw = goal_yaw - data.trajectories.yaws.col(p).array();
-    const models::Vector err = dyaw.sin().binaryExpr(
-      dyaw.cos(), [](float s, float c) {return std::atan2(s, c);});
-    const models::Vector braking_wz =
-      (2.0f * az_max_ * err.abs()).sqrt().min(wz_max_) * err.sign();
-    const models::Vector wz_desired =
-      (err.abs() > stop_yaw_tolerance_).select(braking_wz, 0.0f);
-    cost += (data.state.wz.col(p).array() - wz_desired).abs();
+  if (!track_goal_yaw_) {
+    // APPROACH POSITIONING：这里只做角速度阻尼。不能读取最终 goal yaw，否则会在
+    // lon/lat 尚未进入 2 cm 时主动输出 wz，触发底盘停车对舵并破坏位置收敛。
+    cost = data.state.wz.abs().rowwise().sum();
+  } else {
+    const auto goal_idx = data.path.yaws.size() - 1;
+    const float goal_yaw = data.path.yaws(goal_idx);
+    // FINAL_YAW：按剩余朝向误差生成带制动的期望角速度。
+    for (Eigen::Index p = 0; p < time_steps; ++p) {
+      const auto dyaw = goal_yaw - data.trajectories.yaws.col(p).array();
+      const models::Vector err = dyaw.sin().binaryExpr(
+        dyaw.cos(), [](float s, float c) {return std::atan2(s, c);});
+      const models::Vector braking_wz =
+        (2.0f * az_max_ * err.abs()).sqrt().min(wz_max_) * err.sign();
+      const models::Vector wz_desired =
+        (err.abs() > stop_yaw_tolerance_).select(braking_wz, 0.0f);
+      cost += (data.state.wz.col(p).array() - wz_desired).abs();
+    }
   }
   cost /= static_cast<float>(time_steps);
   data.costs += (cost * weight_).pow(power_);
@@ -81,6 +88,7 @@ void AngularVelocityCritic::score(CriticData & data)
 void AngularVelocityCritic::applyProfileSettings(const CriticProfileSettings & settings)
 {
   weight_ = settings.angular_velocity.weight;
+  track_goal_yaw_ = settings.angular_velocity.track_goal_yaw;
 }
 
 }  // namespace mppi::critics

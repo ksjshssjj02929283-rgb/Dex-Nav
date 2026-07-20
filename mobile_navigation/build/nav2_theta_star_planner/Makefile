@@ -249,6 +249,54 @@ gtest_main/fast:
 	$(MAKE) $(MAKESILENT) -f gtest/CMakeFiles/gtest_main.dir/build.make gtest/CMakeFiles/gtest_main.dir/build
 .PHONY : gtest_main/fast
 
+src/curve_path_smoother.o: src/curve_path_smoother.cpp.o
+.PHONY : src/curve_path_smoother.o
+
+# target to build an object file
+src/curve_path_smoother.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/nav2_theta_star_planner.dir/build.make CMakeFiles/nav2_theta_star_planner.dir/src/curve_path_smoother.cpp.o
+.PHONY : src/curve_path_smoother.cpp.o
+
+src/curve_path_smoother.i: src/curve_path_smoother.cpp.i
+.PHONY : src/curve_path_smoother.i
+
+# target to preprocess a source file
+src/curve_path_smoother.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/nav2_theta_star_planner.dir/build.make CMakeFiles/nav2_theta_star_planner.dir/src/curve_path_smoother.cpp.i
+.PHONY : src/curve_path_smoother.cpp.i
+
+src/curve_path_smoother.s: src/curve_path_smoother.cpp.s
+.PHONY : src/curve_path_smoother.s
+
+# target to generate assembly for a file
+src/curve_path_smoother.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/nav2_theta_star_planner.dir/build.make CMakeFiles/nav2_theta_star_planner.dir/src/curve_path_smoother.cpp.s
+.PHONY : src/curve_path_smoother.cpp.s
+
+src/l1_spline_path.o: src/l1_spline_path.cpp.o
+.PHONY : src/l1_spline_path.o
+
+# target to build an object file
+src/l1_spline_path.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/nav2_theta_star_planner.dir/build.make CMakeFiles/nav2_theta_star_planner.dir/src/l1_spline_path.cpp.o
+.PHONY : src/l1_spline_path.cpp.o
+
+src/l1_spline_path.i: src/l1_spline_path.cpp.i
+.PHONY : src/l1_spline_path.i
+
+# target to preprocess a source file
+src/l1_spline_path.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/nav2_theta_star_planner.dir/build.make CMakeFiles/nav2_theta_star_planner.dir/src/l1_spline_path.cpp.i
+.PHONY : src/l1_spline_path.cpp.i
+
+src/l1_spline_path.s: src/l1_spline_path.cpp.s
+.PHONY : src/l1_spline_path.s
+
+# target to generate assembly for a file
+src/l1_spline_path.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/nav2_theta_star_planner.dir/build.make CMakeFiles/nav2_theta_star_planner.dir/src/l1_spline_path.cpp.s
+.PHONY : src/l1_spline_path.cpp.s
+
 src/multi_layer_planner.o: src/multi_layer_planner.cpp.o
 .PHONY : src/multi_layer_planner.o
 
@@ -296,6 +344,30 @@ src/node_theta_star.s: src/node_theta_star.cpp.s
 src/node_theta_star.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/nav2_theta_star_planner.dir/build.make CMakeFiles/nav2_theta_star_planner.dir/src/node_theta_star.cpp.s
 .PHONY : src/node_theta_star.cpp.s
+
+src/omni_path_smoother.o: src/omni_path_smoother.cpp.o
+.PHONY : src/omni_path_smoother.o
+
+# target to build an object file
+src/omni_path_smoother.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/nav2_theta_star_planner.dir/build.make CMakeFiles/nav2_theta_star_planner.dir/src/omni_path_smoother.cpp.o
+.PHONY : src/omni_path_smoother.cpp.o
+
+src/omni_path_smoother.i: src/omni_path_smoother.cpp.i
+.PHONY : src/omni_path_smoother.i
+
+# target to preprocess a source file
+src/omni_path_smoother.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/nav2_theta_star_planner.dir/build.make CMakeFiles/nav2_theta_star_planner.dir/src/omni_path_smoother.cpp.i
+.PHONY : src/omni_path_smoother.cpp.i
+
+src/omni_path_smoother.s: src/omni_path_smoother.cpp.s
+.PHONY : src/omni_path_smoother.s
+
+# target to generate assembly for a file
+src/omni_path_smoother.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/nav2_theta_star_planner.dir/build.make CMakeFiles/nav2_theta_star_planner.dir/src/omni_path_smoother.cpp.s
+.PHONY : src/omni_path_smoother.cpp.s
 
 src/swerve_steering_model.o: src/swerve_steering_model.cpp.o
 .PHONY : src/swerve_steering_model.o
@@ -412,12 +484,21 @@ help:
 	@echo "... gtest_main"
 	@echo "... nav2_theta_star_planner"
 	@echo "... test_theta_star"
+	@echo "... src/curve_path_smoother.o"
+	@echo "... src/curve_path_smoother.i"
+	@echo "... src/curve_path_smoother.s"
+	@echo "... src/l1_spline_path.o"
+	@echo "... src/l1_spline_path.i"
+	@echo "... src/l1_spline_path.s"
 	@echo "... src/multi_layer_planner.o"
 	@echo "... src/multi_layer_planner.i"
 	@echo "... src/multi_layer_planner.s"
 	@echo "... src/node_theta_star.o"
 	@echo "... src/node_theta_star.i"
 	@echo "... src/node_theta_star.s"
+	@echo "... src/omni_path_smoother.o"
+	@echo "... src/omni_path_smoother.i"
+	@echo "... src/omni_path_smoother.s"
 	@echo "... src/swerve_steering_model.o"
 	@echo "... src/swerve_steering_model.i"
 	@echo "... src/swerve_steering_model.s"

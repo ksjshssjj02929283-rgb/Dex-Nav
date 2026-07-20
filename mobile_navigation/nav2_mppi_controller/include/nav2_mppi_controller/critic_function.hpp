@@ -67,6 +67,10 @@ struct PathAlignCriticSettings
   int offset_from_furthest{0};
   int trajectory_point_step{0};
   float max_path_occupancy_ratio{0.0f};
+  // TRACK 可使用路径点 yaw；APPROACH 定位阶段必须关闭，避免最终 yaw 提前抢占位置控制。
+  bool use_path_orientations{false};
+  // 最后一点 orientation 只属于终点 yaw 阶段；路径跟踪使用倒数第二点 yaw。
+  bool ignore_goal_orientation{true};
 };
 
 struct PreferForwardCriticSettings
@@ -82,7 +86,9 @@ struct LinearVelocityCriticSettings
 
 struct AngularVelocityCriticSettings
 {
-  float weight{0.0f};  // 角速度软约束(跟踪期望角速度 + 罚角加速度)
+  float weight{0.0f};
+  // false 时只把 wz 压向 0 并罚角加速度；true 时才按最终 goal yaw 生成期望 wz。
+  bool track_goal_yaw{true};
 };
 
 struct ObstaclesCriticSettings

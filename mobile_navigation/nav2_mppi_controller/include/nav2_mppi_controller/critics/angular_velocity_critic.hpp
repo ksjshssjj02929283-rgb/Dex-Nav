@@ -23,8 +23,11 @@ namespace mppi::critics
 
 /**
  * @class mppi::critics::AngularVelocityCritic
- * @brief 角速度软约束（双项，同权重，镜像线速度软约束）：
- *        ① 速度项 跟踪按朝向误差算的期望角速度
+ * @brief 角速度软约束（双项，同权重）：
+ *        ① 速度项可按阶段选择：
+ *           - FINAL_YAW 跟踪按朝向误差算出的期望角速度；
+ *           - POSITIONING 将期望角速度固定为 0，禁止最终 yaw 提前抢占位置控制。
+ *        跟踪目标 yaw 时：
  *           wz_desired = min(wz_max, sqrt(2*az_max*|θ_err|)) * sign(θ_err)，
  *           θ_err = 归一化(goal_yaw - traj_yaw)（远离目标朝向=wz_max，接近时平滑降到 0，防朝向过冲）；
  *           当 |θ_err| <= stop_yaw_tolerance 时 wz_desired=0，使控制目标与 GoalChecker 的
@@ -32,8 +35,7 @@ namespace mppi::critics
  *           罚 |wz - wz_desired|。
  *        ② 加速度项 罚相邻 |Δwz|（角加速度，平滑）。
  *        wz_max / az_max 从 FollowPath 全局参数读取。
- *        ⚠️ 语义是「跟踪目标朝向」，应仅在 approach 段启用：track 段朝向应跟路径切线，
- *        若启用会因 θ_err 大而逼 wz→wz_max（持续最大旋转）——故矩阵 track/align 必须设 0。
+ *        TRACK/ALIGN 权重仍应为 0；APPROACH 内部再按定位/最终转向切换上述目标。
  */
 class AngularVelocityCritic : public CriticFunction
 {
@@ -50,6 +52,7 @@ protected:
   float wz_max_{0.75f};  // 从 FollowPath 全局参数读
   float az_max_{0.7f};   // 从 FollowPath 全局参数读（角减速度）
   float stop_yaw_tolerance_{0.02f};  // 进入最终航向容差后，期望角速度直接降为 0
+  bool track_goal_yaw_{true};  // 只有 FINAL_YAW 才允许根据最终目标朝向主动生成 wz
 };
 
 }  // namespace mppi::critics

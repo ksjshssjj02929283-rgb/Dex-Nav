@@ -334,6 +334,22 @@ private:
         return value;
     }
 
+    double filterAxisCommand(double target, double previous, double alpha_acc, double alpha_dec) const {
+        constexpr double reverse_stop_threshold = 0.005;
+
+        // 正负方向切换不能直接从 previous 插值到反向 target，否则一次滤波就可能
+        // 跨过零点，同时给底盘“刹车+反向驱动”。先只向零衰减，确认到零后，
+        // 下一周期再按加速时间常数进入新方向。
+        if (target * previous < 0.0) {
+            const double braking_value = (1.0 - alpha_dec) * previous;
+            return std::abs(braking_value) <= reverse_stop_threshold ? 0.0 : braking_value;
+        }
+
+        const bool increasing_magnitude = std::abs(target) >= std::abs(previous);
+        const double alpha = increasing_magnitude ? alpha_acc : alpha_dec;
+        return (1.0 - alpha) * previous + alpha * target;
+    }
+
     void publishZeroCmd() {
         mobile_diff_control_command.linear.x = 0.0;
         mobile_diff_control_command.linear.y = 0.0;
@@ -879,27 +895,28 @@ private:
                 last_activity_time_ = this->now();
             }
         }
-        // 时间常数化，τ = 0.25 ～ 0.4 s，按喜好调整
+        // 时间常数化滤波；最终下发前 mobile_cmd_omni 还会统一执行加速度和
+        // jerk 限制。这里主要处理摇杆噪声，并保证快速反向一定先经过零速。
         double dt = 0.02;
 
         double alpha_acc = 1.0 - std::exp(-dt / acc_filter_param);
         double alpha_dec = 1.0 - std::exp(-dt / dec_filter_param);
 
         // --- X轴线速度滤波 ---
-        double alpha_x = (fabs(target_linear_x) >= fabs(last_linear_x_)) ? alpha_acc : alpha_dec;
-        mobile_diff_control_command.linear.x = (1 - alpha_x) * last_linear_x_ + alpha_x * target_linear_x;
+        mobile_diff_control_command.linear.x = filterAxisCommand(
+            target_linear_x, last_linear_x_, alpha_acc, alpha_dec);
 
         // --- Y轴线速度滤波 (仅在全向模式下) ---
         if (is_omni_mode_) {
-            double alpha_y = (fabs(target_linear_y) >= fabs(last_linear_y_)) ? alpha_acc : alpha_dec;
-            mobile_diff_control_command.linear.y = (1 - alpha_y) * last_linear_y_ + alpha_y * target_linear_y;
+            mobile_diff_control_command.linear.y = filterAxisCommand(
+                target_linear_y, last_linear_y_, alpha_acc, alpha_dec);
         } else {
             mobile_diff_control_command.linear.y = 0.0;
         }
 
         // --- Z轴角速度滤波 ---
-        double alpha_z = (fabs(target_angular_z) >= fabs(last_angular_z_)) ? alpha_acc : alpha_dec;
-        mobile_diff_control_command.angular.z = (1 - alpha_z) * last_angular_z_ + alpha_z * target_angular_z;
+        mobile_diff_control_command.angular.z = filterAxisCommand(
+            target_angular_z, last_angular_z_, alpha_acc, alpha_dec);
     }
 
     rclcpp::Subscription<sensor_msgs::msg::Joy>::SharedPtr sub;

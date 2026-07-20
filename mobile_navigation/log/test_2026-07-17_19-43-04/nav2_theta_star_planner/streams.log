@@ -1,0 +1,43 @@
+[0.018s] Invoking command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner': AMENT_PREFIX_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server LD_LIBRARY_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/lib:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib:${LD_LIBRARY_PATH} /usr/bin/ctest -C Release -D ExperimentalTest --no-compress-output -V --force-new-ctest-process -R controller_state_transition_test|test_theta_star
+[0.025s] UpdateCTestConfiguration  from :/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/CTestConfiguration.ini
+[0.025s] Parse Config file:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/CTestConfiguration.ini
+[0.025s]    Site: dex-TX-Gaming-FA608UH-FA608UH
+[0.025s]    Build name: (empty)
+[0.026s]  Add coverage exclude regular expressions.
+[0.026s] Create new tag: 20260717-1143 - Experimental
+[0.026s] UpdateCTestConfiguration  from :/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/CTestConfiguration.ini
+[0.026s] Parse Config file:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/CTestConfiguration.ini
+[0.026s] Test project /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner
+[0.026s] Constructing a list of tests
+[0.026s] Done constructing a list of tests
+[0.026s] Updating test list for fixtures
+[0.026s] Added 0 tests to meet fixture requirements
+[0.026s] Checking test dependency graph...
+[0.026s] Checking test dependency graph end
+[0.027s] test 1
+[0.027s]     Start 1: test_theta_star
+[0.027s] 
+[0.027s] 1: Test command: /usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/test_theta_star.gtest.xml" "--package-name" "nav2_theta_star_planner" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/ament_cmake_gtest/test_theta_star.txt" "--command" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_theta_star" "--gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/test_theta_star.gtest.xml"
+[0.027s] 1: Test timeout computed to be: 60
+[0.065s] 1: -- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner':
+[0.065s] 1:  - /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_theta_star --gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/test_theta_star.gtest.xml
+[0.134s] 1: terminate called after throwing an instance of 'spdlog::spdlog_ex'
+[0.134s] 1:   what():  Failed opening file /home/dex/.ros/log/test_theta_star_35_1784288584721.log for writing: Read-only file system
+[0.209s] 1: -- run_test.py: return code -6
+[0.209s] 1: -- run_test.py: generate result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/test_theta_star.gtest.xml' with failed test
+[0.210s] 1: -- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/test_theta_star.gtest.xml'
+[0.217s] 1/1 Test #1: test_theta_star ..................***Failed    0.19 sec
+[0.217s] 
+[0.217s] 0% tests passed, 1 tests failed out of 1
+[0.217s] 
+[0.217s] Label Time Summary:
+[0.217s] gtest    =   0.19 sec*proc (1 test)
+[0.217s] 
+[0.218s] Total Test time (real) =   0.19 sec
+[0.218s] 
+[0.218s] The following tests FAILED:
+[0.218s] 	  1 - test_theta_star (Failed)
+[0.220s] Errors while running CTest
+[0.220s] Output from these tests are in: /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/Testing/Temporary/LastTest.log
+[0.220s] Use "--rerun-failed --output-on-failure" to re-run the failed cases verbosely.
+[0.222s] Invoked command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner' returned '8': AMENT_PREFIX_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server LD_LIBRARY_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/lib:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib:${LD_LIBRARY_PATH} /usr/bin/ctest -C Release -D ExperimentalTest --no-compress-output -V --force-new-ctest-process -R controller_state_transition_test|test_theta_star

@@ -14,6 +14,7 @@
 
 #include "nav2_mppi_controller/optimizer.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <limits>
 #include <memory>
@@ -545,6 +546,14 @@ void Optimizer::setSpeedLimit(double speed_limit, bool percentage)
 void Optimizer::applyProfile(const MppiProfileSettings & profile)
 {
   auto & s = settings_;
+  const models::SamplingStd requested_std{
+    std::max(profile.sampling_std.vx, 1e-4f),
+    std::max(profile.sampling_std.vy, 1e-4f),
+    std::max(profile.sampling_std.wz, 1e-4f)};
+  const bool sampling_std_changed =
+    std::abs(s.sampling_std.vx - requested_std.vx) > 1e-6f ||
+    std::abs(s.sampling_std.vy - requested_std.vy) > 1e-6f ||
+    std::abs(s.sampling_std.wz - requested_std.wz) > 1e-6f;
   RCLCPP_DEBUG(
     logger_,
     "MPPI apply profile: base velocity before vx=[%.3f, %.3f] vy=%.3f wz=%.3f, "
@@ -559,10 +568,19 @@ void Optimizer::applyProfile(const MppiProfileSettings & profile)
   s.base_constraints.vx_min = profile.velocity.vx_min;
   s.base_constraints.vy = profile.velocity.vy_max;
   s.base_constraints.wz = profile.velocity.wz_max;
+  s.sampling_std = requested_std;
 
   applySpeedLimit();
   syncMotionModelConstraints();
   clampControlSequence();
+  if (sampling_std_changed) {
+    // regenerate_noises=false 时噪声矩阵不会逐周期重建；阶段切换必须主动刷新，
+    // 否则虽然参数已更新，APPROACH 仍会继续使用 TRACK 的大噪声样本。
+    noise_generator_.reset(settings_, isHolonomic());
+    RCLCPP_INFO(
+      logger_, "MPPI sampling std switched: vx=%.3f vy=%.3f wz=%.3f",
+      s.sampling_std.vx, s.sampling_std.vy, s.sampling_std.wz);
+  }
   critic_manager_.applyCriticProfileSettings(profile.critics);
   logActiveConstraints();
 }

@@ -158,7 +158,6 @@ nav_msgs::msg::Path PathHandler::transformPath(
     transformToGlobalPlanFrame(robot_pose);
   updateGoalDistance(global_pose);
   auto [transformed_plan, lower_bound] = getGlobalPlanConsideringBoundsInCostmapFrame(global_pose);
-  updateHeadingPathAngle(global_pose, lower_bound);
   const double pruned_distance =
     getIntegratedDistance(global_plan_up_to_inversion_.poses.begin(), lower_bound);
   last_path_progress_ = path_progress_offset_ + pruned_distance;
@@ -233,7 +232,6 @@ void PathHandler::setPath(const nav_msgs::msg::Path & plan)
   path_progress_offset_ = 0.0;
   last_path_progress_ = 0.0;
   last_goal_distance_ = 0.0;
-  last_heading_path_angle_ = 0.0;
   RCLCPP_INFO(
     logger_,
     "MPPI new global plan received: poses=%zu. "
@@ -254,34 +252,6 @@ double PathHandler::getLastGoalDistance() const
 double PathHandler::getLastPathProgress() const
 {
   return last_path_progress_;
-}
-
-double PathHandler::getLastHeadingPathAngle() const
-{
-  return last_heading_path_angle_;
-}
-
-void PathHandler::updateHeadingPathAngle(
-  const geometry_msgs::msg::PoseStamped & global_pose, const PathIterator & closest)
-{
-  auto & poses = global_plan_up_to_inversion_.poses;
-  if (poses.empty() || closest == poses.end()) {
-    last_heading_path_angle_ = 0.0;
-    return;
-  }
-  // 路径在最近点的切线方向：取最近点到前方第 3 个点的方向（更稳，避免单点噪声）
-  const std::ptrdiff_t remaining = std::distance(closest, poses.end());
-  const PathIterator ahead = closest + (remaining > 3 ? 3 : (remaining - 1));
-  double path_yaw;
-  if (ahead != closest) {
-    path_yaw = std::atan2(
-      ahead->pose.position.y - closest->pose.position.y,
-      ahead->pose.position.x - closest->pose.position.x);
-  } else {
-    path_yaw = tf2::getYaw(closest->pose.orientation);
-  }
-  const double robot_yaw = tf2::getYaw(global_pose.pose.orientation);
-  last_heading_path_angle_ = std::fabs(angles::shortest_angular_distance(robot_yaw, path_yaw));
 }
 
 void PathHandler::updateGoalDistance(const geometry_msgs::msg::PoseStamped & global_pose)

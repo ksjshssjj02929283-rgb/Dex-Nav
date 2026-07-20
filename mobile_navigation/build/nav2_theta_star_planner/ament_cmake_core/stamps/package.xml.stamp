@@ -2,7 +2,7 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>nav2_theta_star_planner</name>
-  <version>0.4.3</version>
+  <version>0.4.5</version>
   <description>Theta* Global Planning Plugin</description>
   <maintainer email="dexforce@dexforce.com">dexforce</maintainer>
   <license>Apache-2.0</license>
@@ -20,6 +20,11 @@
   <depend>rclcpp_lifecycle</depend>
   <depend>tf2_ros</depend>
   <depend>nav2_map_server</depend>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>rviz2</exec_depend>
+
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
   <test_depend>ament_cmake_gtest</test_depend>

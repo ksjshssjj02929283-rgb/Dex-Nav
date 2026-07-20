@@ -26,11 +26,12 @@ void GoalLateralCritic::initialize()
 
   getParam(power_, "cost_power", 2);
   getParam(weight_, "cost_weight", 5.0);
+  getParam(trajectory_tail_steps_, "trajectory_tail_steps", 8);
 
   RCLCPP_INFO(
     logger_,
-    "GoalLateralCritic instantiated with %d power, %.3f weight",
-    power_, weight_);
+    "GoalLateralCritic instantiated with %d power, %.3f weight, tail_steps=%d",
+    power_, weight_, trajectory_tail_steps_);
 }
 
 void GoalLateralCritic::score(CriticData & data)
@@ -56,8 +57,11 @@ void GoalLateralCritic::score(CriticData & data)
     return;
   }
 
+  const Eigen::Index tail_steps = trajectory_tail_steps_ <= 0 ?
+    time_steps : std::min<Eigen::Index>(time_steps, trajectory_tail_steps_);
+  const Eigen::Index first_step = time_steps - tail_steps;
   models::Vector cost = models::Vector::Zero(data.costs.size());
-  for (Eigen::Index p = 0; p < time_steps; ++p) {
+  for (Eigen::Index p = first_step; p < time_steps; ++p) {
     // 将候选轨迹点与目标点的位置差投影到固定的目标位姿坐标系。
     // 横向轴为目标朝向的左侧，不随候选轨迹自身 yaw 变化。
     const auto dx = data.trajectories.x.col(p).array() - goal_x;
@@ -66,7 +70,7 @@ void GoalLateralCritic::score(CriticData & data)
     cost += lat_err;
   }
 
-  cost /= static_cast<float>(time_steps);
+  cost /= static_cast<float>(tail_steps);
   data.costs += (cost * weight_).pow(power_);
 }
 

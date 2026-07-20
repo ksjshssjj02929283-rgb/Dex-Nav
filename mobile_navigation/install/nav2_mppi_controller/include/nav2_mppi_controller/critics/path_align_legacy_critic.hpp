@@ -1,0 +1,1 @@
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/critics/path_align_legacy_critic.hpp

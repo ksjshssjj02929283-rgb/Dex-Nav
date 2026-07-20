@@ -90,26 +90,85 @@ controller_server:
       movement_time_allowance: 5.0 # 近目标模式：允许未达到足够进展的时间，单位 s
     goal_checker:
       plugin: "nav2_controller::LongitudinalGoalChecker"
-      lon_goal_tolerance: 0.10
-      lat_goal_tolerance: 0.10
-      yaw_goal_tolerance: 0.10
-      stateful: True    
+      # 2 cm 是硬性验收标准；关闭位置锁存，保证最终 yaw 完成的同一时刻
+      # 纵向和横向误差仍然都在 2 cm 内，转向漂出后不能直接判定成功。
+      lon_goal_tolerance: 0.02
+      lat_goal_tolerance: 0.02
+      yaw_goal_tolerance: 0.02
+      stateful: False
     FollowPath:
       plugin: "nav2_mppi_controller::MPPIController"
-      # Theta* tangent 专用三阶段控制：起点原地对齐 -> 沿切线跟踪 -> 终点原地对齐。
-      # 只有路径同时带有 ThetaStarBased.tangent_in_place_rotation_markers 时才生效；
-      # start/auto/goal/none 以及其他规划器路径仍直接进入原 MPPI 流程。
+      # tangent：起点对齐出发切线；goal：起点对齐用户 goal yaw。
+      # start/auto/none 跳过起点旋转，其中 start 固定起始 yaw 纯平移。
+      # 规划器用零位移 marker 显式传递模式；start 也有独立 marker，不能再和
+      # 允许边走边转的 auto 混为同一模式。
+      # 所有模式在 2 cm 外都使用同一套 MPPI 连续靠近；纵横误差均进入 2 cm 后，
+      # 才停车并用独立旋转命令完成最终 yaw。
+      # 历史参数名保留 tangent_ 前缀；起点状态机对 tangent/goal 生效。
       tangent_phase_control_enabled: true
-      tangent_rotate_kp: 1.5
-      tangent_rotate_max_speed: 0.5
+      tangent_rotate_kp: 1.2
+      tangent_rotate_max_speed: 0.4
       tangent_rotate_min_speed: 0.08
-      tangent_rotate_max_accel: 0.7
-      tangent_start_yaw_tolerance: 0.03
+      tangent_rotate_max_accel: 0.5
+      tangent_start_yaw_tolerance: 0.05
+      # tangent 路径先变换到 controller/odom 坐标系，再沿弧长前视约 6 个 5 cm
+      # 路径点锁存起步 yaw；避免 map/odom 混用以及相邻栅格点方向噪声。
+      start_yaw_lookahead_distance: 0.30
+      # 仅用于识别同一目标的重规划并保留起点状态，不参与终点到位判定。
       tangent_goal_yaw_tolerance: 0.03
       tangent_goal_xy_tolerance: 0.05
       tangent_stopped_linear_velocity: 0.03
       tangent_stopped_angular_velocity: 0.03
       tangent_rotation_simulate_ahead_time: 0.5
+      # 单套 MPPI 的连续制动包络：直接按“距离 2 cm 门槛还剩多少”计算速度上限，
+      # 不再在 1 m 处切换 profile。
+      approach_braking_deceleration: 0.5
+      # record_0717_2003 显示实车在合速度低于约 0.05 m/s 时基本没有里程计响应。
+      # 该值既是制动包络的最低上限，也是终点辅助的目标合速度；辅助只按比例
+      # 放大 MPPI 已给出的 vx/vy 向量，不会分别给两个轴强塞最小速度。
+      terminal_min_translation_speed: 0.05
+      # 只在 2～30 cm 内处理静摩擦死区，远处不改变 MPPI 的正常速度规划。
+      terminal_translation_assist_distance: 0.30
+      # 小于 0.005 m/s 视为明确停车或数值噪声，禁止强制启动。
+      terminal_translation_command_deadband: 0.005
+      # 只放大与目标方向夹角小于 60° 的命令；避障横移、倒车和反向调整不放大。
+      terminal_translation_min_goal_alignment: 0.5
+      stage_track:
+        vx_max: 1.0
+        vx_min: -0.5
+        vy_max: 1.0
+        wz_max: 0.75
+        vx_std: 0.25
+        vy_std: 0.10
+        wz_std: 0.15
+        PathAlignCritic:
+          # 从局部路径起步即参与评分，避免开始一段距离内 wz 没有约束。
+          offset_from_furthest: 1
+          # 使用规划器写入的路径 yaw；tangent 沿切线，auto 才允许渐变 yaw。
+          use_path_orientations: true
+          # path.back() 是用户最终 yaw，只允许 2 cm 后的 FINAL_YAW 使用。
+          # start 模式跟踪到最后位置时仍沿用倒数第二点的 start yaw，禁止边走边转。
+          ignore_goal_orientation: true
+      # 运行时只使用 TRACK 权重；GoalAngle/PathAngle 在位置阶段关闭。
+      stage_weights:
+        GoalCritic: [0.0, 8.0, 0.0]
+        GoalLateralCritic: [0.0, 0.0, 0.0]
+        GoalLongitudinalCritic: [0.0, 0.0, 0.0]
+        GoalAngleCritic: [0.0, 0.0, 0.0]
+        PathAngleCritic: [0.0, 0.0, 0.0]
+        PathAlignCritic: [0.0, 14.0, 0.0]
+        PathFollowCritic: [0.0, 5.0, 0.0]
+        PreferForwardCritic: [0.0, 0.0, 0.0]
+        LinearVelocityCritic: [0.0, 0.0, 0.0]
+        AngularVelocityCritic: [0.0, 0.0, 0.0]
+      # 终点位置回差：纵向、横向都进入 1.8 cm 才开始最终旋转；
+      # 旋转期间任一轴漂出 2 cm 就立即返回位置 MPPI。验收标准仍为 2 cm。
+      approach_final_yaw_enter_lon_tolerance: 0.018
+      approach_final_yaw_enter_lat_tolerance: 0.018
+      approach_final_yaw_exit_lon_tolerance: 0.02
+      approach_final_yaw_exit_lat_tolerance: 0.02
+      # 停转阈值必须小于 goal checker 的 0.02 rad，否则会停在验收角度之外。
+      approach_final_yaw_cmd_stop_yaw_tolerance: 0.015
       time_steps: 32 # 40
       model_dt: 0.1 # 0.05
       batch_size: 1400 #2000
@@ -133,7 +192,9 @@ controller_server:
       temperature: 0.5 #0.3
       gamma: 0.015
       motion_model: "Omni" #Ackermann, DiffDrive
-      open_loop: true
+      # 底盘存在速度平滑、S 曲线和停车对舵，必须用实际 odom 作为 MPPI 初速度，
+      # 否则控制器会把“已发布但尚未执行”的速度误认为真实速度。
+      open_loop: false
       visualize: false
       reset_period: 1.0 # (only in Humble)
       regenerate_noises: false
@@ -142,7 +203,7 @@ controller_server:
         time_step: 3
       AckermannConstraints:
         min_turning_r: 0.5
-      critics: ["ConstraintCritic", "CostCritic", "ObstaclesCritic", "GoalCritic", "GoalAngleCritic", "PathAlignCritic", "PathFollowCritic", "PathAngleCritic", "PreferForwardCritic", "VelocityDeadbandCritic", "TwirlingCritic"]
+      critics: ["ConstraintCritic", "CostCritic", "ObstaclesCritic", "GoalCritic", "GoalLateralCritic", "GoalLongitudinalCritic", "GoalAngleCritic", "PathAlignCritic", "PathFollowCritic", "PathAngleCritic", "PreferForwardCritic", "LinearVelocityCritic", "AngularVelocityCritic", "VelocityDeadbandCritic", "TwirlingCritic"]
       # critics: ["ConstraintCritic", "CostCritic", "GoalCritic", "GoalAngleCritic", "PathAlignCritic", "PathFollowCritic", "PathAngleCritic", "PreferForwardCritic"]
       ConstraintCritic:
         enabled: true
@@ -153,6 +214,18 @@ controller_server:
         cost_power: 1
         cost_weight: 8.0
         threshold_to_consider: 2.2 # 1.4
+      # 横纵向目标误差 critic 只在 APPROACH profile 中获得非零权重。
+      GoalLateralCritic:
+        enabled: true
+        cost_power: 2
+        cost_weight: 0.0
+        # 只评价 3.2 s 预测轨迹最后 8 步（0.8 s），强化最终落点而非整段平均位置。
+        trajectory_tail_steps: 8
+      GoalLongitudinalCritic:
+        enabled: true
+        cost_power: 2
+        cost_weight: 0.0
+        trajectory_tail_steps: 8
       GoalAngleCritic:
         enabled: true
         cost_power: 1
@@ -192,6 +265,8 @@ controller_server:
         threshold_to_consider: 0.5
         offset_from_furthest: 15 # 20
         use_path_orientations: true
+        # 最后一姿态只属于统一终点 yaw 阶段，TRACK 不得提前读取。
+        ignore_goal_orientation: true
       PathFollowCritic:
         enabled: true
         cost_power: 1
@@ -199,13 +274,23 @@ controller_server:
         offset_from_furthest: 5
         threshold_to_consider: 2.2 # 1.4
       PathAngleCritic:
-        enabled: false #xiugai
+        # 运行中不再使用 PathAngleCritic 触发或执行 ALIGN。
+        enabled: true
         cost_power: 1
         cost_weight: 4.0
         offset_from_furthest: 2
         threshold_to_consider: 0.5
         max_angle_to_furthest: 1.0
         mode: 0
+      LinearVelocityCritic:
+        enabled: true
+        cost_power: 2
+        cost_weight: 0.0
+      AngularVelocityCritic:
+        enabled: true
+        cost_power: 2
+        cost_weight: 0.0
+        stop_yaw_tolerance: 0.02
       TwirlingCritic:
         enabled: false
         twirling_cost_power: 1
@@ -214,7 +299,9 @@ controller_server:
         enabled: true
         cost_power: 1
         cost_weight: 10.0
-        deadband_velocities: [0.005, 0.08, 0.01]
+        # 与 velocity_smoother 及底盘实际线速度死区一致。原来的 vy=0.08 会迫使
+        # 机器人在 2 cm 附近仍以较大横移速度修正，容易越过目标后反复换向。
+        deadband_velocities: [0.005, 0.005, 0.008]
 
 local_costmap:
   local_costmap:
@@ -542,7 +629,8 @@ planner_server:
       assign_path_orientations: true
       path_orientation_mode: "tangent"    # auto | none | start | goal | tangent
       path_orientation_same_threshold_rad: 0.02   # ~1.1° 内视为同朝向
-      # tangent 时插入首尾零位移旋转标记；其他 orientation mode 不使用该标记。
+      # orientation mode 标记契约：tangent=首尾各一个、goal=起点一个、
+      # start=起点两个、none=终点一个、auto=无标记。
       tangent_in_place_rotation_markers: true
       # ── B 层：舵轮连续性（对齐 mobile_cmd_omni_region.cpp，减少途中停车转舵）──
       enforce_steering_continuity: false
@@ -627,13 +715,16 @@ velocity_smoother:
     smoothing_frequency: 20.0
     scale_velocities: true
     feedback: "OPEN_LOOP"
-    input_topic: "cmd_vel_nav"
-    output_topic: "control/cmd_vel_nav"
+    # 使用绝对话题名，避免带 namespace 启动时 controller 输出与 smoother 输入分叉。
+    input_topic: "/cmd_vel_nav"
+    output_topic: "/control/cmd_vel_nav"
     # Test
     max_velocity: [1.0, 1.0, 0.75]
     min_velocity: [-0.5, -0.5, -0.75]  
-    max_accel: [1.2, 1.0, 1.0]
-    max_decel: [-1.2, -1.0, -1.0]    
+    # 与 MPPI 和 mobile_cmd_omni 最终速度治理器保持一致，避免上层认为已经
+    # 加速/减速完成，而底盘层仍在二次限幅，造成控制器反复追赶实际速度。
+    max_accel: [0.6, 0.5, 0.7]
+    max_decel: [-0.6, -0.5, -0.7]
     # Original
     # max_velocity: [0.26, 0.0, 1.0]
     # min_velocity: [-0.26, 0.0, -1.0]  

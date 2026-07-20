@@ -1,0 +1,425 @@
+[0.014s] Invoking command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller': AMENT_PREFIX_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:/opt/ros/humble LD_LIBRARY_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib:${LD_LIBRARY_PATH} /usr/bin/cmake /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller -DAMENT_CMAKE_SYMLINK_INSTALL=1 -DCMAKE_INSTALL_PREFIX=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller
+[0.042s] -- Found ament_cmake: 1.3.14 (/opt/ros/humble/share/ament_cmake/cmake)
+[0.142s] -- Override CMake install command with custom implementation using symlinks instead of copying resources
+[0.155s] -- Found rclcpp: 16.0.19 (/opt/ros/humble/share/rclcpp/cmake)
+[0.180s] -- Found rosidl_generator_c: 3.1.8 (/opt/ros/humble/share/rosidl_generator_c/cmake)
+[0.183s] -- Found rosidl_adapter: 3.1.8 (/opt/ros/humble/share/rosidl_adapter/cmake)
+[0.188s] -- Found rosidl_generator_cpp: 3.1.8 (/opt/ros/humble/share/rosidl_generator_cpp/cmake)
+[0.196s] -- Using all available rosidl_typesupport_c: rosidl_typesupport_fastrtps_c;rosidl_typesupport_introspection_c
+[0.206s] -- Using all available rosidl_typesupport_cpp: rosidl_typesupport_fastrtps_cpp;rosidl_typesupport_introspection_cpp
+[0.236s] -- Found rmw_implementation_cmake: 6.1.2 (/opt/ros/humble/share/rmw_implementation_cmake/cmake)
+[0.237s] -- Found rmw_fastrtps_cpp: 6.2.10 (/opt/ros/humble/share/rmw_fastrtps_cpp/cmake)
+[0.323s] -- Using RMW implementation 'rmw_fastrtps_cpp' as default
+[0.361s] -- Found nav2_common: 1.1.20 (/opt/ros/humble/share/nav2_common/cmake)
+[0.362s] -- Found pluginlib: 5.1.4 (/opt/ros/humble/share/pluginlib/cmake)
+[0.377s] -- Found tf2: 0.25.20 (/opt/ros/humble/share/tf2/cmake)
+[0.392s] -- Found visualization_msgs: 4.9.1 (/opt/ros/humble/share/visualization_msgs/cmake)
+[0.417s] -- Found nav_msgs: 4.9.1 (/opt/ros/humble/share/nav_msgs/cmake)
+[0.430s] -- Found nav2_core: 1.1.20 (/opt/ros/humble/share/nav2_core/cmake)
+[0.546s] -- Ensuring Eigen3 include directory is part of orocos-kdl CMake target
+[0.593s] -- Found tf2_eigen: 0.25.20 (/opt/ros/humble/share/tf2_eigen/cmake)
+[0.707s] -- Found ament_lint_auto: 0.12.15 (/opt/ros/humble/share/ament_lint_auto/cmake)
+[0.707s] -- Found ament_cmake_gtest: 1.3.14 (/opt/ros/humble/share/ament_cmake_gtest/cmake)
+[0.761s] -- Found gtest sources under '/opt/ros/humble/src/gtest_vendor': C++ tests using 'Google Test' will be built
+[1.183s] -- Added test 'cppcheck' to perform static code analysis on C / C++ code
+[1.183s] -- Configured cppcheck include dirs: /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include
+[1.183s] -- Configured cppcheck exclude dirs and/or files: 
+[1.187s] -- Added test 'cpplint' to check C / C++ code against the Google style
+[1.187s] -- Configured cpplint exclude dirs and/or files: 
+[1.189s] -- Added test 'lint_cmake' to check CMake code style
+[1.193s] -- Added test 'uncrustify' to check C / C++ code style
+[1.193s] -- Configured uncrustify additional arguments: 
+[1.194s] -- Added test 'xmllint' to check XML markup files
+[1.197s] -- Configuring done
+[1.293s] CMake Warning at CMakeLists.txt:60 (add_library):
+[1.293s]   Cannot generate a safe runtime search path for target mppi_controller
+[1.293s]   because there is a cycle in the constraint graph:
+[1.293s] 
+[1.293s]     dir 0 is [/opt/ros/humble/lib]
+[1.293s]       dir 1 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+[1.293s]     dir 1 is [/home/dex/dexe_mobile_nav/install/nav2_msgs/lib]
+[1.293s]       dir 0 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+[1.294s] 
+[1.294s]   Some of these libraries may not be found correctly.
+[1.294s] 
+[1.294s] 
+[1.339s] CMake Warning at CMakeLists.txt:70 (add_library):
+[1.339s]   Cannot generate a safe runtime search path for target mppi_critics because
+[1.339s]   there is a cycle in the constraint graph:
+[1.339s] 
+[1.339s]     dir 0 is [/opt/ros/humble/lib]
+[1.339s]       dir 1 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+[1.339s]     dir 1 is [/home/dex/dexe_mobile_nav/install/nav2_msgs/lib]
+[1.339s]       dir 0 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+[1.339s] 
+[1.339s]   Some of these libraries may not be found correctly.
+[1.339s] 
+[1.339s] 
+[1.388s] CMake Warning at /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:50 (add_executable):
+[1.388s]   Cannot generate a safe runtime search path for target optimizer_smoke_test
+[1.388s]   because there is a cycle in the constraint graph:
+[1.388s] 
+[1.388s]     dir 0 is [/opt/ros/humble/lib]
+[1.388s]       dir 1 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+[1.388s]       dir 2 must precede it due to runtime library [libmppi_controller.so]
+[1.388s]     dir 1 is [/home/dex/dexe_mobile_nav/install/nav2_msgs/lib]
+[1.388s]       dir 0 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+[1.388s]     dir 2 is [/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller]
+[1.388s] 
+[1.389s]   Some of these libraries may not be found correctly.
+[1.389s] Call Stack (most recent call first):
+[1.389s]   /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:37 (_ament_add_gtest_executable)
+[1.389s]   /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest.cmake:68 (ament_add_gtest_executable)
+[1.389s]   test/CMakeLists.txt:16 (ament_add_gtest)
+[1.389s] 
+[1.389s] 
+[1.436s] CMake Warning at /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:50 (add_executable):
+[1.436s]   Cannot generate a safe runtime search path for target
+[1.436s]   controller_state_transition_test because there is a cycle in the constraint
+[1.436s]   graph:
+[1.436s] 
+[1.436s]     dir 0 is [/opt/ros/humble/lib]
+[1.436s]       dir 1 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+[1.436s]       dir 2 must precede it due to runtime library [libmppi_controller.so]
+[1.436s]     dir 1 is [/home/dex/dexe_mobile_nav/install/nav2_msgs/lib]
+[1.436s]       dir 0 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+[1.436s]     dir 2 is [/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller]
+[1.436s] 
+[1.437s]   Some of these libraries may not be found correctly.
+[1.437s] Call Stack (most recent call first):
+[1.437s]   /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:37 (_ament_add_gtest_executable)
+[1.437s]   /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest.cmake:68 (ament_add_gtest_executable)
+[1.437s]   test/CMakeLists.txt:16 (ament_add_gtest)
+[1.437s] 
+[1.437s] 
+[1.483s] CMake Warning at /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:50 (add_executable):
+[1.484s]   Cannot generate a safe runtime search path for target models_test because
+[1.484s]   there is a cycle in the constraint graph:
+[1.484s] 
+[1.484s]     dir 0 is [/opt/ros/humble/lib]
+[1.484s]       dir 1 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+[1.484s]       dir 2 must precede it due to runtime library [libmppi_controller.so]
+[1.484s]     dir 1 is [/home/dex/dexe_mobile_nav/install/nav2_msgs/lib]
+[1.484s]       dir 0 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+[1.484s]     dir 2 is [/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller]
+[1.484s] 
+[1.484s]   Some of these libraries may not be found correctly.
+[1.485s] Call Stack (most recent call first):
+[1.485s]   /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:37 (_ament_add_gtest_executable)
+[1.485s]   /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest.cmake:68 (ament_add_gtest_executable)
+[1.485s]   test/CMakeLists.txt:16 (ament_add_gtest)
+[1.485s] 
+[1.485s] 
+[1.530s] CMake Warning at /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:50 (add_executable):
+[1.530s]   Cannot generate a safe runtime search path for target noise_generator_test
+[1.530s]   because there is a cycle in the constraint graph:
+[1.531s] 
+[1.531s]     dir 0 is [/opt/ros/humble/lib]
+[1.531s]       dir 1 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+[1.531s]       dir 2 must precede it due to runtime library [libmppi_controller.so]
+[1.531s]     dir 1 is [/home/dex/dexe_mobile_nav/install/nav2_msgs/lib]
+[1.531s]       dir 0 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+[1.531s]     dir 2 is [/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller]
+[1.531s] 
+[1.531s]   Some of these libraries may not be found correctly.
+[1.531s] Call Stack (most recent call first):
+[1.531s]   /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:37 (_ament_add_gtest_executable)
+[1.531s]   /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest.cmake:68 (ament_add_gtest_executable)
+[1.531s]   test/CMakeLists.txt:16 (ament_add_gtest)
+[1.531s] 
+[1.531s] 
+[1.580s] CMake Warning at /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:50 (add_executable):
+[1.580s]   Cannot generate a safe runtime search path for target
+[1.580s]   parameter_handler_test because there is a cycle in the constraint graph:
+[1.580s] 
+[1.580s]     dir 0 is [/opt/ros/humble/lib]
+[1.580s]       dir 1 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+[1.580s]       dir 2 must precede it due to runtime library [libmppi_controller.so]
+[1.580s]     dir 1 is [/home/dex/dexe_mobile_nav/install/nav2_msgs/lib]
+[1.580s]       dir 0 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+[1.580s]     dir 2 is [/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller]
+[1.580s] 
+[1.580s]   Some of these libraries may not be found correctly.
+[1.580s] Call Stack (most recent call first):
+[1.580s]   /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:37 (_ament_add_gtest_executable)
+[1.580s]   /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest.cmake:68 (ament_add_gtest_executable)
+[1.580s]   test/CMakeLists.txt:16 (ament_add_gtest)
+[1.580s] 
+[1.580s] 
+[1.626s] CMake Warning at /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:50 (add_executable):
+[1.627s]   Cannot generate a safe runtime search path for target motion_model_tests
+[1.627s]   because there is a cycle in the constraint graph:
+[1.627s] 
+[1.627s]     dir 0 is [/opt/ros/humble/lib]
+[1.627s]       dir 1 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+[1.627s]       dir 2 must precede it due to runtime library [libmppi_controller.so]
+[1.627s]     dir 1 is [/home/dex/dexe_mobile_nav/install/nav2_msgs/lib]
+[1.627s]       dir 0 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+[1.627s]     dir 2 is [/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller]
+[1.627s] 
+[1.627s]   Some of these libraries may not be found correctly.
+[1.627s] Call Stack (most recent call first):
+[1.627s]   /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:37 (_ament_add_gtest_executable)
+[1.627s]   /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest.cmake:68 (ament_add_gtest_executable)
+[1.627s]   test/CMakeLists.txt:16 (ament_add_gtest)
+[1.627s] 
+[1.627s] 
+[1.676s] CMake Warning at /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:50 (add_executable):
+[1.676s]   Cannot generate a safe runtime search path for target
+[1.677s]   trajectory_visualizer_tests because there is a cycle in the constraint
+[1.677s]   graph:
+[1.677s] 
+[1.677s]     dir 0 is [/opt/ros/humble/lib]
+[1.677s]       dir 1 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+[1.677s]       dir 2 must precede it due to runtime library [libmppi_controller.so]
+[1.677s]     dir 1 is [/home/dex/dexe_mobile_nav/install/nav2_msgs/lib]
+[1.677s]       dir 0 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+[1.677s]     dir 2 is [/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller]
+[1.677s] 
+[1.677s]   Some of these libraries may not be found correctly.
+[1.677s] Call Stack (most recent call first):
+[1.677s]   /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:37 (_ament_add_gtest_executable)
+[1.677s]   /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest.cmake:68 (ament_add_gtest_executable)
+[1.678s]   test/CMakeLists.txt:16 (ament_add_gtest)
+[1.678s] 
+[1.678s] 
+[1.726s] CMake Warning at /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:50 (add_executable):
+[1.726s]   Cannot generate a safe runtime search path for target utils_test because
+[1.726s]   there is a cycle in the constraint graph:
+[1.726s] 
+[1.726s]     dir 0 is [/opt/ros/humble/lib]
+[1.726s]       dir 1 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+[1.726s]       dir 2 must precede it due to runtime library [libmppi_controller.so]
+[1.726s]     dir 1 is [/home/dex/dexe_mobile_nav/install/nav2_msgs/lib]
+[1.726s]       dir 0 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+[1.726s]     dir 2 is [/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller]
+[1.727s] 
+[1.727s]   Some of these libraries may not be found correctly.
+[1.727s] Call Stack (most recent call first):
+[1.727s]   /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:37 (_ament_add_gtest_executable)
+[1.727s]   /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest.cmake:68 (ament_add_gtest_executable)
+[1.727s]   test/CMakeLists.txt:16 (ament_add_gtest)
+[1.727s] 
+[1.727s] 
+[1.775s] CMake Warning at /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:50 (add_executable):
+[1.775s]   Cannot generate a safe runtime search path for target path_handler_test
+[1.775s]   because there is a cycle in the constraint graph:
+[1.776s] 
+[1.776s]     dir 0 is [/opt/ros/humble/lib]
+[1.776s]       dir 1 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+[1.776s]       dir 2 must precede it due to runtime library [libmppi_controller.so]
+[1.776s]     dir 1 is [/home/dex/dexe_mobile_nav/install/nav2_msgs/lib]
+[1.776s]       dir 0 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+[1.776s]     dir 2 is [/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller]
+[1.776s] 
+[1.776s]   Some of these libraries may not be found correctly.
+[1.776s] Call Stack (most recent call first):
+[1.776s]   /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:37 (_ament_add_gtest_executable)
+[1.776s]   /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest.cmake:68 (ament_add_gtest_executable)
+[1.776s]   test/CMakeLists.txt:16 (ament_add_gtest)
+[1.776s] 
+[1.776s] 
+[1.825s] CMake Warning at /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:50 (add_executable):
+[1.825s]   Cannot generate a safe runtime search path for target critic_manager_test
+[1.825s]   because there is a cycle in the constraint graph:
+[1.825s] 
+[1.825s]     dir 0 is [/opt/ros/humble/lib]
+[1.825s]       dir 1 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+[1.825s]       dir 2 must precede it due to runtime library [libmppi_controller.so]
+[1.825s]     dir 1 is [/home/dex/dexe_mobile_nav/install/nav2_msgs/lib]
+[1.825s]       dir 0 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+[1.825s]     dir 2 is [/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller]
+[1.825s] 
+[1.825s]   Some of these libraries may not be found correctly.
+[1.825s] Call Stack (most recent call first):
+[1.825s]   /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:37 (_ament_add_gtest_executable)
+[1.825s]   /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest.cmake:68 (ament_add_gtest_executable)
+[1.826s]   test/CMakeLists.txt:16 (ament_add_gtest)
+[1.826s] 
+[1.826s] 
+[1.875s] CMake Warning at /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:50 (add_executable):
+[1.875s]   Cannot generate a safe runtime search path for target optimizer_unit_tests
+[1.875s]   because there is a cycle in the constraint graph:
+[1.875s] 
+[1.875s]     dir 0 is [/opt/ros/humble/lib]
+[1.875s]       dir 1 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+[1.875s]       dir 2 must precede it due to runtime library [libmppi_controller.so]
+[1.875s]     dir 1 is [/home/dex/dexe_mobile_nav/install/nav2_msgs/lib]
+[1.875s]       dir 0 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+[1.875s]     dir 2 is [/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller]
+[1.875s] 
+[1.875s]   Some of these libraries may not be found correctly.
+[1.875s] Call Stack (most recent call first):
+[1.875s]   /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:37 (_ament_add_gtest_executable)
+[1.875s]   /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest.cmake:68 (ament_add_gtest_executable)
+[1.875s]   test/CMakeLists.txt:16 (ament_add_gtest)
+[1.875s] 
+[1.875s] 
+[1.925s] CMake Warning at /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:50 (add_executable):
+[1.926s]   Cannot generate a safe runtime search path for target critics_tests because
+[1.926s]   there is a cycle in the constraint graph:
+[1.926s] 
+[1.926s]     dir 0 is [/opt/ros/humble/lib]
+[1.926s]       dir 1 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+[1.926s]       dir 2 must precede it due to runtime library [libmppi_controller.so]
+[1.926s]     dir 1 is [/home/dex/dexe_mobile_nav/install/nav2_msgs/lib]
+[1.926s]       dir 0 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]
+[1.926s]     dir 2 is [/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller]
+[1.926s] 
+[1.926s]   Some of these libraries may not be found correctly.
+[1.926s] Call Stack (most recent call first):
+[1.926s]   /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:37 (_ament_add_gtest_executable)
+[1.926s]   /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest.cmake:68 (ament_add_gtest_executable)
+[1.926s]   test/CMakeLists.txt:35 (ament_add_gtest)
+[1.926s] 
+[1.927s] 
+[1.932s] -- Generating done
+[1.982s] -- Build files have been written to: /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller
+[1.997s] Invoked command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller' returned '0': AMENT_PREFIX_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:/opt/ros/humble LD_LIBRARY_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib:${LD_LIBRARY_PATH} /usr/bin/cmake /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller -DAMENT_CMAKE_SYMLINK_INSTALL=1 -DCMAKE_INSTALL_PREFIX=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller
+[1.998s] Invoking command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller': AMENT_PREFIX_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:/opt/ros/humble LD_LIBRARY_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib:${LD_LIBRARY_PATH} /usr/bin/cmake --build /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller -- -j16 -l16
+[2.048s] Consolidate compiler generated dependencies of target gtest_main
+[2.048s] Consolidate compiler generated dependencies of target gtest
+[2.061s] [  7%] Built target gtest_main
+[2.061s] [  7%] Built target gtest
+[2.075s] Consolidate compiler generated dependencies of target mppi_controller
+[2.109s] Consolidate compiler generated dependencies of target mppi_critics
+[2.110s] [ 15%] Building CXX object CMakeFiles/mppi_controller.dir/src/controller.cpp.o
+[2.110s] [ 15%] Building CXX object CMakeFiles/mppi_controller.dir/src/trajectory_visualizer.cpp.o
+[2.110s] [ 15%] Building CXX object CMakeFiles/mppi_controller.dir/src/optimizer.cpp.o
+[2.110s] [ 15%] Building CXX object CMakeFiles/mppi_controller.dir/src/critic_manager.cpp.o
+[2.112s] [ 16%] Building CXX object CMakeFiles/mppi_controller.dir/src/path_handler.cpp.o
+[2.112s] [ 18%] Building CXX object CMakeFiles/mppi_controller.dir/src/parameters_handler.cpp.o
+[2.114s] [ 20%] Building CXX object CMakeFiles/mppi_controller.dir/src/noise_generator.cpp.o
+[2.138s] [ 26%] Building CXX object CMakeFiles/mppi_critics.dir/src/critics/obstacles_critic.cpp.o
+[2.138s] [ 26%] Building CXX object CMakeFiles/mppi_critics.dir/src/critics/goal_critic.cpp.o
+[2.138s] [ 26%] Building CXX object CMakeFiles/mppi_critics.dir/src/critics/cost_critic.cpp.o
+[2.142s] [ 30%] Building CXX object CMakeFiles/mppi_critics.dir/src/critics/goal_longitudinal_critic.cpp.o
+[2.142s] [ 30%] Building CXX object CMakeFiles/mppi_critics.dir/src/critics/goal_lateral_critic.cpp.o
+[2.150s] [ 33%] Building CXX object CMakeFiles/mppi_critics.dir/src/critics/path_align_critic.cpp.o
+[2.151s] [ 33%] Building CXX object CMakeFiles/mppi_critics.dir/src/critics/goal_angle_critic.cpp.o
+[2.154s] [ 35%] Building CXX object CMakeFiles/mppi_critics.dir/src/critics/path_align_legacy_critic.cpp.o
+[2.155s] [ 37%] Building CXX object CMakeFiles/mppi_critics.dir/src/critics/path_follow_critic.cpp.o
+[8.739s] [ 39%] Building CXX object CMakeFiles/mppi_critics.dir/src/critics/path_angle_critic.cpp.o
+[12.163s] [ 41%] Building CXX object CMakeFiles/mppi_critics.dir/src/critics/prefer_forward_critic.cpp.o
+[15.607s] [ 43%] Building CXX object CMakeFiles/mppi_critics.dir/src/critics/twirling_critic.cpp.o
+[15.729s] [ 45%] Building CXX object CMakeFiles/mppi_critics.dir/src/critics/constraint_critic.cpp.o
+[15.802s] [ 47%] Building CXX object CMakeFiles/mppi_critics.dir/src/critics/velocity_deadband_critic.cpp.o
+[15.928s] [ 49%] Building CXX object CMakeFiles/mppi_critics.dir/src/critics/linear_velocity_critic.cpp.o
+[16.058s] [ 50%] Building CXX object CMakeFiles/mppi_critics.dir/src/critics/angular_velocity_critic.cpp.o
+[25.396s] [ 52%] Linking CXX shared library libmppi_controller.so
+[25.795s] [ 52%] Built target mppi_controller
+[25.817s] Consolidate compiler generated dependencies of target parameter_handler_test
+[25.817s] Consolidate compiler generated dependencies of target models_test
+[25.820s] Consolidate compiler generated dependencies of target motion_model_tests
+[25.820s] Consolidate compiler generated dependencies of target path_handler_test
+[25.820s] Consolidate compiler generated dependencies of target utils_test
+[25.820s] Consolidate compiler generated dependencies of target noise_generator_test
+[25.824s] Consolidate compiler generated dependencies of target optimizer_smoke_test
+[25.825s] Consolidate compiler generated dependencies of target critic_manager_test
+[25.825s] Consolidate compiler generated dependencies of target controller_state_transition_test
+[25.825s] Consolidate compiler generated dependencies of target optimizer_unit_tests
+[25.825s] Consolidate compiler generated dependencies of target trajectory_visualizer_tests
+[25.840s] [ 54%] Building CXX object test/CMakeFiles/parameter_handler_test.dir/parameter_handler_test.cpp.o
+[25.841s] [ 56%] Building CXX object test/CMakeFiles/models_test.dir/models_test.cpp.o
+[25.848s] [ 60%] Building CXX object test/CMakeFiles/noise_generator_test.dir/noise_generator_test.cpp.o
+[25.849s] [ 60%] Building CXX object test/CMakeFiles/path_handler_test.dir/path_handler_test.cpp.o
+[25.849s] [ 67%] Building CXX object test/CMakeFiles/utils_test.dir/utils_test.cpp.o
+[25.850s] [ 67%] Building CXX object test/CMakeFiles/critic_manager_test.dir/critic_manager_test.cpp.o
+[25.851s] [ 67%] Building CXX object test/CMakeFiles/optimizer_smoke_test.dir/optimizer_smoke_test.cpp.o
+[25.851s] [ 67%] Building CXX object test/CMakeFiles/trajectory_visualizer_tests.dir/trajectory_visualizer_tests.cpp.o
+[25.851s] [ 71%] Building CXX object test/CMakeFiles/optimizer_unit_tests.dir/optimizer_unit_tests.cpp.o
+[25.852s] [ 71%] Building CXX object test/CMakeFiles/motion_model_tests.dir/motion_model_tests.cpp.o
+[25.855s] [ 73%] Building CXX object test/CMakeFiles/controller_state_transition_test.dir/controller_state_transition_test.cpp.o
+[26.379s] [ 75%] Linking CXX shared library libmppi_critics.so
+[27.264s] [ 75%] Built target mppi_critics
+[27.305s] Consolidate compiler generated dependencies of target critics_tests
+[27.334s] [ 77%] Building CXX object test/CMakeFiles/critics_tests.dir/critics_tests.cpp.o
+[34.690s] [ 79%] Linking CXX executable parameter_handler_test
+[35.182s] [ 81%] Linking CXX executable noise_generator_test
+[35.358s] [ 81%] Built target parameter_handler_test
+[35.763s] [ 83%] Linking CXX executable models_test
+[35.774s] [ 83%] Built target noise_generator_test
+[36.173s] [ 83%] Built target models_test
+[38.026s] [ 84%] Linking CXX executable motion_model_tests
+[38.513s] [ 84%] Built target motion_model_tests
+[38.742s] [ 86%] Linking CXX executable path_handler_test
+[39.309s] [ 86%] Built target path_handler_test
+[40.716s] [ 88%] Linking CXX executable utils_test
+[41.138s] [ 88%] Built target utils_test
+[41.888s] [ 90%] Linking CXX executable critic_manager_test
+[42.315s] [ 90%] Built target critic_manager_test
+[43.661s] [ 92%] Linking CXX executable controller_state_transition_test
+[43.823s] [ 94%] Linking CXX executable optimizer_smoke_test
+[44.130s] [ 94%] Built target controller_state_transition_test
+[44.271s] [ 94%] Built target optimizer_smoke_test
+[44.465s] [ 96%] Linking CXX executable optimizer_unit_tests
+[44.823s] [ 96%] Built target optimizer_unit_tests
+[44.840s] [ 98%] Linking CXX executable critics_tests
+[45.171s] [ 98%] Built target critics_tests
+[48.064s] [100%] Linking CXX executable trajectory_visualizer_tests
+[48.379s] [100%] Built target trajectory_visualizer_tests
+[48.390s] Invoked command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller' returned '0': AMENT_PREFIX_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:/opt/ros/humble LD_LIBRARY_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib:${LD_LIBRARY_PATH} /usr/bin/cmake --build /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller -- -j16 -l16
+[48.400s] Invoking command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller': AMENT_PREFIX_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:/opt/ros/humble LD_LIBRARY_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib:${LD_LIBRARY_PATH} /usr/bin/cmake --install /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller
+[48.407s] -- Install configuration: "Release"
+[48.408s] -- Execute custom install script
+[48.408s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/lib/libmppi_controller.so
+[48.408s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/lib/libmppi_critics.so
+[48.409s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/controller.hpp
+[48.409s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/critic_data.hpp
+[48.409s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/critic_function.hpp
+[48.410s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/critic_manager.hpp
+[48.410s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/critics/angular_velocity_critic.hpp
+[48.410s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/critics/constraint_critic.hpp
+[48.410s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/critics/cost_critic.hpp
+[48.410s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/critics/goal_angle_critic.hpp
+[48.410s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/critics/goal_critic.hpp
+[48.411s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/critics/goal_lateral_critic.hpp
+[48.411s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/critics/goal_longitudinal_critic.hpp
+[48.411s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/critics/linear_velocity_critic.hpp
+[48.411s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/critics/obstacles_critic.hpp
+[48.412s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/critics/path_align_critic.hpp
+[48.412s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/critics/path_align_legacy_critic.hpp
+[48.412s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/critics/path_angle_critic.hpp
+[48.412s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/critics/path_follow_critic.hpp
+[48.412s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/critics/prefer_forward_critic.hpp
+[48.412s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/critics/twirling_critic.hpp
+[48.413s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/critics/velocity_deadband_critic.hpp
+[48.413s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/models/constraints.hpp
+[48.413s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/models/control_sequence.hpp
+[48.413s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/models/optimizer_settings.hpp
+[48.413s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/models/path.hpp
+[48.413s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/models/state.hpp
+[48.413s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/models/trajectories.hpp
+[48.414s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/motion_models.hpp
+[48.414s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/optimizer.hpp
+[48.414s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/tools/eigen_types.hpp
+[48.414s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/tools/noise_generator.hpp
+[48.414s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/tools/parameters_handler.hpp
+[48.414s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/tools/path_handler.hpp
+[48.415s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/tools/trajectory_visualizer.hpp
+[48.415s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/tools/utils.hpp
+[48.415s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/nav2_mppi_controller/environment/library_path.sh
+[48.416s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/nav2_mppi_controller/environment/library_path.dsv
+[48.416s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/nav2_mppi_controller//mppic.xml
+[48.416s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/nav2_mppi_controller//critics.xml
+[48.416s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/ament_index/resource_index/package_run_dependencies/nav2_mppi_controller
+[48.417s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/ament_index/resource_index/parent_prefix_path/nav2_mppi_controller
+[48.417s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/nav2_mppi_controller/environment/ament_prefix_path.sh
+[48.417s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/nav2_mppi_controller/environment/ament_prefix_path.dsv
+[48.417s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/nav2_mppi_controller/environment/path.sh
+[48.417s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/nav2_mppi_controller/environment/path.dsv
+[48.418s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/nav2_mppi_controller/local_setup.bash
+[48.418s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/nav2_mppi_controller/local_setup.sh
+[48.418s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/nav2_mppi_controller/local_setup.zsh
+[48.418s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/nav2_mppi_controller/local_setup.dsv
+[48.418s] -- Symlinking: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/nav2_mppi_controller/package.dsv
+[48.429s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/ament_index/resource_index/packages/nav2_mppi_controller
+[48.429s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/ament_index/resource_index/nav2_core__pluginlib__plugin/nav2_mppi_controller
+[48.429s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/ament_index/resource_index/nav2_mppi_controller__pluginlib__plugin/nav2_mppi_controller
+[48.430s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/nav2_mppi_controller/cmake/ament_cmake_export_libraries-extras.cmake
+[48.430s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/nav2_mppi_controller/cmake/ament_cmake_export_dependencies-extras.cmake
+[48.431s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/nav2_mppi_controller/cmake/ament_cmake_export_include_directories-extras.cmake
+[48.431s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/nav2_mppi_controller/cmake/nav2_mppi_controllerConfig.cmake
+[48.431s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/nav2_mppi_controller/cmake/nav2_mppi_controllerConfig-version.cmake
+[48.431s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/nav2_mppi_controller/package.xml
+[60.016s] Invoked command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller' returned '0': AMENT_PREFIX_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:/opt/ros/humble LD_LIBRARY_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib:${LD_LIBRARY_PATH} /usr/bin/cmake --install /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller

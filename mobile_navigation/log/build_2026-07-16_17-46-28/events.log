@@ -1,0 +1,1075 @@
+[0.000000] (-) TimerEvent: {}
+[0.000049] (-) JobUnselected: {'identifier': 'cmd_vel_mux'}
+[0.000072] (-) JobUnselected: {'identifier': 'costmap_queue'}
+[0.000082] (-) JobUnselected: {'identifier': 'dwb_core'}
+[0.000090] (-) JobUnselected: {'identifier': 'dwb_critics'}
+[0.000098] (-) JobUnselected: {'identifier': 'dwb_msgs'}
+[0.000106] (-) JobUnselected: {'identifier': 'dwb_plugins'}
+[0.000113] (-) JobUnselected: {'identifier': 'nav2_amcl'}
+[0.000120] (-) JobUnselected: {'identifier': 'nav2_behavior_tree'}
+[0.000128] (-) JobUnselected: {'identifier': 'nav2_behaviors'}
+[0.000135] (-) JobUnselected: {'identifier': 'nav2_bringup'}
+[0.000148] (-) JobUnselected: {'identifier': 'nav2_bt_navigator'}
+[0.000207] (-) JobUnselected: {'identifier': 'nav2_collision_monitor'}
+[0.000269] (-) JobUnselected: {'identifier': 'nav2_common'}
+[0.000284] (-) JobUnselected: {'identifier': 'nav2_constrained_smoother'}
+[0.000323] (-) JobUnselected: {'identifier': 'nav2_controller'}
+[0.000332] (-) JobUnselected: {'identifier': 'nav2_core'}
+[0.000398] (-) JobUnselected: {'identifier': 'nav2_costmap_2d'}
+[0.000512] (-) JobUnselected: {'identifier': 'nav2_dwb_controller'}
+[0.000536] (-) JobUnselected: {'identifier': 'nav2_graceful_controller'}
+[0.000566] (-) JobUnselected: {'identifier': 'nav2_lifecycle_manager'}
+[0.000583] (-) JobUnselected: {'identifier': 'nav2_map_server'}
+[0.000592] (-) JobUnselected: {'identifier': 'nav2_msgs'}
+[0.000638] (-) JobUnselected: {'identifier': 'nav2_navfn_planner'}
+[0.000766] (-) JobUnselected: {'identifier': 'nav2_planner'}
+[0.000786] (-) JobUnselected: {'identifier': 'nav2_regulated_pure_pursuit_controller'}
+[0.000819] (-) JobUnselected: {'identifier': 'nav2_rotation_shim_controller'}
+[0.000834] (-) JobUnselected: {'identifier': 'nav2_route_planner'}
+[0.000842] (-) JobUnselected: {'identifier': 'nav2_rviz_plugins'}
+[0.000855] (-) JobUnselected: {'identifier': 'nav2_simple_commander'}
+[0.000862] (-) JobUnselected: {'identifier': 'nav2_smac_planner'}
+[0.000870] (-) JobUnselected: {'identifier': 'nav2_smoother'}
+[0.000878] (-) JobUnselected: {'identifier': 'nav2_theta_star_planner'}
+[0.000902] (-) JobUnselected: {'identifier': 'nav2_util'}
+[0.000910] (-) JobUnselected: {'identifier': 'nav2_velocity_smoother'}
+[0.000932] (-) JobUnselected: {'identifier': 'nav2_voxel_grid'}
+[0.000939] (-) JobUnselected: {'identifier': 'nav2_waypoint_follower'}
+[0.000950] (-) JobUnselected: {'identifier': 'nav_2d_msgs'}
+[0.000960] (-) JobUnselected: {'identifier': 'nav_2d_utils'}
+[0.000968] (-) JobUnselected: {'identifier': 'navigation2'}
+[0.000984] (-) JobUnselected: {'identifier': 'nonpersistent_voxel_layer'}
+[0.000995] (nav2_mppi_controller) JobQueued: {'identifier': 'nav2_mppi_controller', 'dependencies': OrderedDict([('nav2_common', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_common'), ('nav2_msgs', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_msgs'), ('nav2_voxel_grid', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_voxel_grid'), ('nav2_util', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_util'), ('nav2_lifecycle_manager', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_lifecycle_manager'), ('nav2_map_server', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server'), ('nav2_costmap_2d', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_costmap_2d'), ('nav2_core', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_core')])}
+[0.001023] (nav2_mppi_controller) JobStarted: {'identifier': 'nav2_mppi_controller'}
+[0.011660] (nav2_mppi_controller) JobProgress: {'identifier': 'nav2_mppi_controller', 'progress': 'cmake'}
+[0.012294] (nav2_mppi_controller) Command: {'cmd': ['/usr/bin/cmake', '/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller', '-DAMENT_CMAKE_SYMLINK_INSTALL=1', '-DCMAKE_INSTALL_PREFIX=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller'], 'cwd': '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller', 'env': OrderedDict([('LESSOPEN', '| /usr/bin/lesspipe %s'), ('CODEX_CI', '1'), ('LANGUAGE', 'zh_CN'), ('USER', 'dex'), ('LC_TIME', 'zh_CN.UTF-8'), ('XDG_SESSION_TYPE', 'x11'), ('SHLVL', '1'), ('LD_LIBRARY_PATH', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/lib:/home/dex/dexe_mobile_nav/install/nav2_theta_star_planner/lib:/home/dex/dexe_mobile_nav/install/nav2_smac_planner/lib:/home/dex/dexe_mobile_nav/install/nav2_map_server/lib:/home/dex/dexe_mobile_nav/install/nav2_controller/lib:/home/dex/dexe_mobile_nav/install/nav2_msgs/lib:/home/dex/dexe_mobile_nav/install/mobile_joy_control/lib:/usr/lib/x86_64-linux-gnu/gazebo-11/plugins:/opt/ros/humble/opt/rviz_ogre_vendor/lib:/opt/ros/humble/lib/x86_64-linux-gnu:/opt/ros/humble/lib'), ('HOME', '/home/dex'), ('OLDPWD', '/home/dex'), ('DESKTOP_SESSION', 'ubuntu-xorg'), ('NVM_BIN', '/home/dex/.nvm/versions/node/v22.23.1/bin'), ('NVM_INC', '/home/dex/.nvm/versions/node/v22.23.1/include/node'), ('ROS_PYTHON_VERSION', '3'), ('GNOME_SHELL_SESSION_MODE', 'ubuntu'), ('GTK_MODULES', 'gail:atk-bridge'), ('PAGER', 'cat'), ('LC_MONETARY', 'zh_CN.UTF-8'), ('MANAGERPID', '2217'), ('LC_CTYPE', 'C.UTF-8'), ('SYSTEMD_EXEC_PID', '2773'), ('NO_COLOR', '1'), ('DBUS_SESSION_BUS_ADDRESS', 'unix:path=/run/user/1000/bus'), ('COLORTERM', ''), ('TERMINATOR_DBUS_NAME', 'net.tenshu.Terminator21a9d5db22c73a993ff0b42f64b396873'), ('GIO_LAUNCHED_DESKTOP_FILE_PID', '4719'), ('NVM_DIR', '/home/dex/.nvm'), ('COLCON_PREFIX_PATH', '/home/dex/dexe_mobile_nav/mobile_navigation/install:/home/dex/dexe_mobile_nav/install:/home/dex/dexe_mobile_application/install'), ('CODEX_PERMISSION_PROFILE', ':workspace'), ('ROS_DISTRO', 'humble'), ('GTK_IM_MODULE', 'ibus'), ('LOGNAME', 'dex'), ('JOURNAL_STREAM', '8:16976'), ('_', '/usr/bin/colcon'), ('ROS_VERSION', '2'), ('XDG_SESSION_CLASS', 'user'), ('USERNAME', 'dex'), ('TERM', 'dumb'), ('GAZEBO_MODEL_PATH', '/home/dex/dexe_mobile_nav/install/aws_robomaker_small_warehouse_world/share/aws_robomaker_small_warehouse_world/worlds:/home/dex/dexe_mobile_nav/install/aws_robomaker_small_warehouse_world/share/aws_robomaker_small_warehouse_world/models'), ('GNOME_DESKTOP_SESSION_ID', 'this-is-deprecated'), ('ROS_LOCALHOST_ONLY', '0'), ('WINDOWPATH', '2'), ('PATH', '/home/dex/.local/npm/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/codex-path:/home/dex/.codex/tmp/arg0/codex-arg0oqC8NH:/home/dex/.nvm/versions/node/v22.23.1/bin:/home/dex/.local/npm/bin:/opt/ros/humble/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/snap/bin'), ('SESSION_MANAGER', 'local/dex-TX-Gaming-FA608UH-FA608UH:@/tmp/.ICE-unix/2583,unix/dex-TX-Gaming-FA608UH-FA608UH:/tmp/.ICE-unix/2583'), ('INVOCATION_ID', 'e6aa2f29dc5a41a490d401621c2a515d'), ('PAPERSIZE', 'a4'), ('XDG_MENU_PREFIX', 'gnome-'), ('LC_ADDRESS', 'zh_CN.UTF-8'), ('XDG_RUNTIME_DIR', '/run/user/1000'), ('DISPLAY', ':0'), ('CODEX_SANDBOX_NETWORK_DISABLED', '1'), ('TERMINATOR_DBUS_PATH', '/net/tenshu/Terminator2'), ('LANG', 'C.UTF-8'), ('XDG_CURRENT_DESKTOP', 'ubuntu:GNOME'), ('IBUS_DISABLE_SNOOPER', '1'), ('LC_TELEPHONE', 'zh_CN.UTF-8'), ('XMODIFIERS', '@im=ibus'), ('GH_PAGER', 'cat'), ('XDG_SESSION_DESKTOP', 'ubuntu-xorg'), ('XAUTHORITY', '/run/user/1000/gdm/Xauthority'), ('LS_COLORS', 'rs=0:di=01;34:ln=01;36:mh=00:pi=40;33:so=01;35:do=01;35:bd=40;33;01:cd=40;33;01:or=40;31;01:mi=00:su=37;41:sg=30;43:ca=30;41:tw=30;42:ow=34;42:st=37;44:ex=01;32:*.tar=01;31:*.tgz=01;31:*.arc=01;31:*.arj=01;31:*.taz=01;31:*.lha=01;31:*.lz4=01;31:*.lzh=01;31:*.lzma=01;31:*.tlz=01;31:*.txz=01;31:*.tzo=01;31:*.t7z=01;31:*.zip=01;31:*.z=01;31:*.dz=01;31:*.gz=01;31:*.lrz=01;31:*.lz=01;31:*.lzo=01;31:*.xz=01;31:*.zst=01;31:*.tzst=01;31:*.bz2=01;31:*.bz=01;31:*.tbz=01;31:*.tbz2=01;31:*.tz=01;31:*.deb=01;31:*.rpm=01;31:*.jar=01;31:*.war=01;31:*.ear=01;31:*.sar=01;31:*.rar=01;31:*.alz=01;31:*.ace=01;31:*.zoo=01;31:*.cpio=01;31:*.7z=01;31:*.rz=01;31:*.cab=01;31:*.wim=01;31:*.swm=01;31:*.dwm=01;31:*.esd=01;31:*.jpg=01;35:*.jpeg=01;35:*.mjpg=01;35:*.mjpeg=01;35:*.gif=01;35:*.bmp=01;35:*.pbm=01;35:*.pgm=01;35:*.ppm=01;35:*.tga=01;35:*.xbm=01;35:*.xpm=01;35:*.tif=01;35:*.tiff=01;35:*.png=01;35:*.svg=01;35:*.svgz=01;35:*.mng=01;35:*.pcx=01;35:*.mov=01;35:*.mpg=01;35:*.mpeg=01;35:*.m2v=01;35:*.mkv=01;35:*.webm=01;35:*.webp=01;35:*.ogm=01;35:*.mp4=01;35:*.m4v=01;35:*.mp4v=01;35:*.vob=01;35:*.qt=01;35:*.nuv=01;35:*.wmv=01;35:*.asf=01;35:*.rm=01;35:*.rmvb=01;35:*.flc=01;35:*.avi=01;35:*.fli=01;35:*.flv=01;35:*.gl=01;35:*.dl=01;35:*.xcf=01;35:*.xwd=01;35:*.yuv=01;35:*.cgm=01;35:*.emf=01;35:*.ogv=01;35:*.ogx=01;35:*.aac=00;36:*.au=00;36:*.flac=00;36:*.m4a=00;36:*.mid=00;36:*.midi=00;36:*.mka=00;36:*.mp3=00;36:*.mpc=00;36:*.ogg=00;36:*.ra=00;36:*.wav=00;36:*.oga=00;36:*.opus=00;36:*.spx=00;36:*.xspf=00;36:'), ('SSH_AGENT_LAUNCHER', 'gnome-keyring'), ('SSH_AUTH_SOCK', '/run/user/1000/keyring/ssh'), ('AMENT_PREFIX_PATH', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:/home/dex/dexe_mobile_nav/install/w1_nav2:/home/dex/dexe_mobile_nav/install/swerve_robot_gazebo:/home/dex/dexe_mobile_nav/install/swerve_robot_description:/home/dex/dexe_mobile_nav/install/swerve_controller:/home/dex/dexe_mobile_nav/install/nav2_theta_star_planner:/home/dex/dexe_mobile_nav/install/nav2_smac_planner:/home/dex/dexe_mobile_nav/install/nav2_bringup:/home/dex/dexe_mobile_nav/install/nav2_map_server:/home/dex/dexe_mobile_nav/install/nav2_controller:/home/dex/dexe_mobile_nav/install/nav2_msgs:/home/dex/dexe_mobile_nav/install/mobile_joy_control:/home/dex/dexe_mobile_nav/install/aws_robomaker_small_warehouse_world:/home/dex/dexe_mobile_application/install/dexforce_description:/opt/ros/humble'), ('SHELL', '/bin/bash'), ('LC_NAME', 'zh_CN.UTF-8'), ('TERMINATOR_UUID', 'urn:uuid:5bc87b64-a4a4-46fe-a293-98f9d1d3a1d4'), ('QT_ACCESSIBILITY', '1'), ('GDMSESSION', 'ubuntu-xorg'), ('LESSCLOSE', '/usr/bin/lesspipe %s %s'), ('CODEX_THREAD_ID', '019f6886-07b1-7e92-89a1-ba56fed37290'), ('LC_MEASUREMENT', 'zh_CN.UTF-8'), ('GPG_AGENT_INFO', '/run/user/1000/gnupg/S.gpg-agent:0:1'), ('LC_IDENTIFICATION', 'zh_CN.UTF-8'), ('GIT_PAGER', 'cat'), ('QT_IM_MODULE', 'ibus'), ('PWD', '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller'), ('LC_ALL', 'C.UTF-8'), ('CODEX_MANAGED_PACKAGE_ROOT', '/home/dex/.local/npm/lib/node_modules/@openai/codex'), ('XDG_CONFIG_DIRS', '/etc/xdg/xdg-ubuntu-xorg:/etc/xdg'), ('NVM_CD_FLAGS', ''), ('XDG_DATA_DIRS', '/usr/share/ubuntu-xorg:/usr/share/gnome:/usr/local/share/:/usr/share/:/var/lib/snapd/desktop'), ('PYTHONPATH', '/home/dex/dexe_mobile_nav/install/swerve_robot_gazebo/lib/python3.10/site-packages:/home/dex/dexe_mobile_nav/install/swerve_controller/lib/python3.10/site-packages:/home/dex/dexe_mobile_nav/install/nav2_msgs/local/lib/python3.10/dist-packages:/home/dex/dexe_mobile_nav/install/mobile_joy_control/local/lib/python3.10/dist-packages:/opt/ros/humble/lib/python3.10/site-packages:/opt/ros/humble/local/lib/python3.10/dist-packages'), ('LC_NUMERIC', 'zh_CN.UTF-8'), ('LC_PAPER', 'zh_CN.UTF-8'), ('COLCON', '1'), ('CODEX_MANAGED_BY_NPM', '1'), ('VTE_VERSION', '6800'), ('CMAKE_PREFIX_PATH', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner:/home/dex/dexe_mobile_nav/install/w1_nav2:/home/dex/dexe_mobile_nav/install/swerve_robot_description:/home/dex/dexe_mobile_nav/install/nav2_theta_star_planner:/home/dex/dexe_mobile_nav/install/nav2_smac_planner:/home/dex/dexe_mobile_nav/install/nav2_bringup:/home/dex/dexe_mobile_nav/install/nav2_map_server:/home/dex/dexe_mobile_nav/install/nav2_controller:/home/dex/dexe_mobile_nav/install/nav2_msgs:/home/dex/dexe_mobile_nav/install/mobile_joy_control:/home/dex/dexe_mobile_nav/install/aws_robomaker_small_warehouse_world:/home/dex/dexe_mobile_application/install/dexforce_description:/home/dex/dexe_mobile_nav/install/swerve_robot_gazebo:/home/dex/dexe_mobile_nav/install/swerve_controller:/opt/ros/humble')]), 'shell': False}
+[0.062739] (nav2_mppi_controller) StdoutLine: {'line': b'-- The C compiler identification is GNU 11.4.0\n'}
+[0.099454] (-) TimerEvent: {}
+[0.107763] (nav2_mppi_controller) StdoutLine: {'line': b'-- The CXX compiler identification is GNU 11.4.0\n'}
+[0.114479] (nav2_mppi_controller) StdoutLine: {'line': b'-- Detecting C compiler ABI info\n'}
+[0.181328] (nav2_mppi_controller) StdoutLine: {'line': b'-- Detecting C compiler ABI info - done\n'}
+[0.186121] (nav2_mppi_controller) StdoutLine: {'line': b'-- Check for working C compiler: /usr/bin/cc - skipped\n'}
+[0.186356] (nav2_mppi_controller) StdoutLine: {'line': b'-- Detecting C compile features\n'}
+[0.186509] (nav2_mppi_controller) StdoutLine: {'line': b'-- Detecting C compile features - done\n'}
+[0.188359] (nav2_mppi_controller) StdoutLine: {'line': b'-- Detecting CXX compiler ABI info\n'}
+[0.199562] (-) TimerEvent: {}
+[0.265205] (nav2_mppi_controller) StdoutLine: {'line': b'-- Detecting CXX compiler ABI info - done\n'}
+[0.269986] (nav2_mppi_controller) StdoutLine: {'line': b'-- Check for working CXX compiler: /usr/bin/c++ - skipped\n'}
+[0.270183] (nav2_mppi_controller) StdoutLine: {'line': b'-- Detecting CXX compile features\n'}
+[0.270435] (nav2_mppi_controller) StdoutLine: {'line': b'-- Detecting CXX compile features - done\n'}
+[0.274529] (nav2_mppi_controller) StdoutLine: {'line': b'-- Found ament_cmake: 1.3.14 (/opt/ros/humble/share/ament_cmake/cmake)\n'}
+[0.299647] (-) TimerEvent: {}
+[0.390271] (nav2_mppi_controller) StdoutLine: {'line': b'-- Found Python3: /usr/bin/python3 (found version "3.10.12") found components: Interpreter \n'}
+[0.399733] (-) TimerEvent: {}
+[0.439979] (nav2_mppi_controller) StdoutLine: {'line': b'-- Override CMake install command with custom implementation using symlinks instead of copying resources\n'}
+[0.490324] (nav2_mppi_controller) StdoutLine: {'line': b'-- Found rclcpp: 16.0.19 (/opt/ros/humble/share/rclcpp/cmake)\n'}
+[0.499826] (-) TimerEvent: {}
+[0.535378] (nav2_mppi_controller) StdoutLine: {'line': b'-- Found rosidl_generator_c: 3.1.8 (/opt/ros/humble/share/rosidl_generator_c/cmake)\n'}
+[0.541912] (nav2_mppi_controller) StdoutLine: {'line': b'-- Found rosidl_adapter: 3.1.8 (/opt/ros/humble/share/rosidl_adapter/cmake)\n'}
+[0.550451] (nav2_mppi_controller) StdoutLine: {'line': b'-- Found rosidl_generator_cpp: 3.1.8 (/opt/ros/humble/share/rosidl_generator_cpp/cmake)\n'}
+[0.561304] (nav2_mppi_controller) StdoutLine: {'line': b'-- Using all available rosidl_typesupport_c: rosidl_typesupport_fastrtps_c;rosidl_typesupport_introspection_c\n'}
+[0.575443] (nav2_mppi_controller) StdoutLine: {'line': b'-- Using all available rosidl_typesupport_cpp: rosidl_typesupport_fastrtps_cpp;rosidl_typesupport_introspection_cpp\n'}
+[0.599925] (-) TimerEvent: {}
+[0.617684] (nav2_mppi_controller) StdoutLine: {'line': b'-- Found rmw_implementation_cmake: 6.1.2 (/opt/ros/humble/share/rmw_implementation_cmake/cmake)\n'}
+[0.620922] (nav2_mppi_controller) StdoutLine: {'line': b'-- Found rmw_fastrtps_cpp: 6.2.10 (/opt/ros/humble/share/rmw_fastrtps_cpp/cmake)\n'}
+[0.700057] (-) TimerEvent: {}
+[0.716368] (nav2_mppi_controller) StdoutLine: {'line': b'-- Found OpenSSL: /usr/lib/x86_64-linux-gnu/libcrypto.so (found version "3.0.2")  \n'}
+[0.740710] (nav2_mppi_controller) StdoutLine: {'line': b'-- Found FastRTPS: /opt/ros/humble/include  \n'}
+[0.777175] (nav2_mppi_controller) StdoutLine: {'line': b"-- Using RMW implementation 'rmw_fastrtps_cpp' as default\n"}
+[0.788922] (nav2_mppi_controller) StdoutLine: {'line': b'-- Looking for pthread.h\n'}
+[0.800179] (-) TimerEvent: {}
+[0.858641] (nav2_mppi_controller) StdoutLine: {'line': b'-- Looking for pthread.h - found\n'}
+[0.858810] (nav2_mppi_controller) StdoutLine: {'line': b'-- Performing Test CMAKE_HAVE_LIBC_PTHREAD\n'}
+[0.900365] (-) TimerEvent: {}
+[0.931024] (nav2_mppi_controller) StdoutLine: {'line': b'-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Success\n'}
+[0.931680] (nav2_mppi_controller) StdoutLine: {'line': b'-- Found Threads: TRUE  \n'}
+[0.979880] (nav2_mppi_controller) StdoutLine: {'line': b'-- Found nav2_common: 1.1.20 (/opt/ros/humble/share/nav2_common/cmake)\n'}
+[0.983109] (nav2_mppi_controller) StdoutLine: {'line': b'-- Found pluginlib: 5.1.4 (/opt/ros/humble/share/pluginlib/cmake)\n'}
+[1.000547] (-) TimerEvent: {}
+[1.016425] (nav2_mppi_controller) StdoutLine: {'line': b'-- Found tf2: 0.25.20 (/opt/ros/humble/share/tf2/cmake)\n'}
+[1.032221] (nav2_mppi_controller) StdoutLine: {'line': b'-- Found visualization_msgs: 4.9.1 (/opt/ros/humble/share/visualization_msgs/cmake)\n'}
+[1.064365] (nav2_mppi_controller) StdoutLine: {'line': b'-- Found nav_msgs: 4.9.1 (/opt/ros/humble/share/nav_msgs/cmake)\n'}
+[1.079090] (nav2_mppi_controller) StdoutLine: {'line': b'-- Found nav2_core: 1.1.20 (/opt/ros/humble/share/nav2_core/cmake)\n'}
+[1.100587] (-) TimerEvent: {}
+[1.200831] (-) TimerEvent: {}
+[1.231089] (nav2_mppi_controller) StdoutLine: {'line': b'-- Found Eigen3: TRUE (found version "3.4.0") \n'}
+[1.231288] (nav2_mppi_controller) StdoutLine: {'line': b'-- Ensuring Eigen3 include directory is part of orocos-kdl CMake target\n'}
+[1.300911] (-) TimerEvent: {}
+[1.312927] (nav2_mppi_controller) StdoutLine: {'line': b'-- Found tf2_eigen: 0.25.20 (/opt/ros/humble/share/tf2_eigen/cmake)\n'}
+[1.314535] (nav2_mppi_controller) StdoutLine: {'line': b'-- Setting build type to Release as none was specified.\n'}
+[1.316108] (nav2_mppi_controller) StdoutLine: {'line': b'-- Performing Test COMPILER_SUPPORTS_AVX512\n'}
+[1.392798] (nav2_mppi_controller) StdoutLine: {'line': b'-- Performing Test COMPILER_SUPPORTS_AVX512 - Success\n'}
+[1.393111] (nav2_mppi_controller) StdoutLine: {'line': b'-- Performing Test COMPILER_SUPPORTS_SSE4\n'}
+[1.401032] (-) TimerEvent: {}
+[1.472067] (nav2_mppi_controller) StdoutLine: {'line': b'-- Performing Test COMPILER_SUPPORTS_SSE4 - Success\n'}
+[1.472395] (nav2_mppi_controller) StdoutLine: {'line': b'-- Performing Test COMPILER_SUPPORTS_AVX2\n'}
+[1.501127] (-) TimerEvent: {}
+[1.550939] (nav2_mppi_controller) StdoutLine: {'line': b'-- Performing Test COMPILER_SUPPORTS_AVX2 - Success\n'}
+[1.551286] (nav2_mppi_controller) StdoutLine: {'line': b'-- Performing Test COMPILER_SUPPORTS_FMA\n'}
+[1.601207] (-) TimerEvent: {}
+[1.623592] (nav2_mppi_controller) StdoutLine: {'line': b'-- Performing Test COMPILER_SUPPORTS_FMA - Success\n'}
+[1.701292] (-) TimerEvent: {}
+[1.720708] (nav2_mppi_controller) StdoutLine: {'line': b'-- Found ament_lint_auto: 0.12.15 (/opt/ros/humble/share/ament_lint_auto/cmake)\n'}
+[1.723305] (nav2_mppi_controller) StdoutLine: {'line': b'-- Found ament_cmake_gtest: 1.3.14 (/opt/ros/humble/share/ament_cmake_gtest/cmake)\n'}
+[1.793554] (nav2_mppi_controller) StdoutLine: {'line': b"-- Found gtest sources under '/opt/ros/humble/src/gtest_vendor': C++ tests using 'Google Test' will be built\n"}
+[1.801374] (-) TimerEvent: {}
+[1.901549] (-) TimerEvent: {}
+[2.001746] (-) TimerEvent: {}
+[2.101937] (-) TimerEvent: {}
+[2.202119] (-) TimerEvent: {}
+[2.299259] (nav2_mppi_controller) StdoutLine: {'line': b"-- Added test 'cppcheck' to perform static code analysis on C / C++ code\n"}
+[2.299529] (nav2_mppi_controller) StdoutLine: {'line': b'-- Configured cppcheck include dirs: /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include\n'}
+[2.299627] (nav2_mppi_controller) StdoutLine: {'line': b'-- Configured cppcheck exclude dirs and/or files: \n'}
+[2.302164] (-) TimerEvent: {}
+[2.303650] (nav2_mppi_controller) StdoutLine: {'line': b"-- Added test 'cpplint' to check C / C++ code against the Google style\n"}
+[2.303891] (nav2_mppi_controller) StdoutLine: {'line': b'-- Configured cpplint exclude dirs and/or files: \n'}
+[2.305980] (nav2_mppi_controller) StdoutLine: {'line': b"-- Added test 'lint_cmake' to check CMake code style\n"}
+[2.310373] (nav2_mppi_controller) StdoutLine: {'line': b"-- Added test 'uncrustify' to check C / C++ code style\n"}
+[2.310611] (nav2_mppi_controller) StdoutLine: {'line': b'-- Configured uncrustify additional arguments: \n'}
+[2.311392] (nav2_mppi_controller) StdoutLine: {'line': b"-- Added test 'xmllint' to check XML markup files\n"}
+[2.314504] (nav2_mppi_controller) StdoutLine: {'line': b'-- Configuring done\n'}
+[2.386196] (nav2_mppi_controller) StderrLine: {'line': b'CMake Warning at CMakeLists.txt:59 (add_library):\n'}
+[2.386419] (nav2_mppi_controller) StderrLine: {'line': b'  Cannot generate a safe runtime search path for target mppi_controller\n'}
+[2.386499] (nav2_mppi_controller) StderrLine: {'line': b'  because there is a cycle in the constraint graph:\n'}
+[2.386563] (nav2_mppi_controller) StderrLine: {'line': b'\n'}
+[2.386620] (nav2_mppi_controller) StderrLine: {'line': b'    dir 0 is [/opt/ros/humble/lib]\n'}
+[2.386675] (nav2_mppi_controller) StderrLine: {'line': b'      dir 1 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]\n'}
+[2.386729] (nav2_mppi_controller) StderrLine: {'line': b'    dir 1 is [/home/dex/dexe_mobile_nav/install/nav2_msgs/lib]\n'}
+[2.386785] (nav2_mppi_controller) StderrLine: {'line': b'      dir 0 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]\n'}
+[2.386848] (nav2_mppi_controller) StderrLine: {'line': b'\n'}
+[2.386900] (nav2_mppi_controller) StderrLine: {'line': b'  Some of these libraries may not be found correctly.\n'}
+[2.386953] (nav2_mppi_controller) StderrLine: {'line': b'\n'}
+[2.387005] (nav2_mppi_controller) StderrLine: {'line': b'\n'}
+[2.402327] (-) TimerEvent: {}
+[2.427257] (nav2_mppi_controller) StderrLine: {'line': b'CMake Warning at CMakeLists.txt:69 (add_library):\n'}
+[2.427472] (nav2_mppi_controller) StderrLine: {'line': b'  Cannot generate a safe runtime search path for target mppi_critics because\n'}
+[2.427554] (nav2_mppi_controller) StderrLine: {'line': b'  there is a cycle in the constraint graph:\n'}
+[2.427623] (nav2_mppi_controller) StderrLine: {'line': b'\n'}
+[2.427679] (nav2_mppi_controller) StderrLine: {'line': b'    dir 0 is [/opt/ros/humble/lib]\n'}
+[2.427732] (nav2_mppi_controller) StderrLine: {'line': b'      dir 1 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]\n'}
+[2.427786] (nav2_mppi_controller) StderrLine: {'line': b'    dir 1 is [/home/dex/dexe_mobile_nav/install/nav2_msgs/lib]\n'}
+[2.427839] (nav2_mppi_controller) StderrLine: {'line': b'      dir 0 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]\n'}
+[2.427891] (nav2_mppi_controller) StderrLine: {'line': b'\n'}
+[2.427943] (nav2_mppi_controller) StderrLine: {'line': b'  Some of these libraries may not be found correctly.\n'}
+[2.427998] (nav2_mppi_controller) StderrLine: {'line': b'\n'}
+[2.428067] (nav2_mppi_controller) StderrLine: {'line': b'\n'}
+[2.473909] (nav2_mppi_controller) StderrLine: {'line': b'CMake Warning at /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:50 (add_executable):\n'}
+[2.474160] (nav2_mppi_controller) StderrLine: {'line': b'  Cannot generate a safe runtime search path for target optimizer_smoke_test\n'}
+[2.474230] (nav2_mppi_controller) StderrLine: {'line': b'  because there is a cycle in the constraint graph:\n'}
+[2.474263] (nav2_mppi_controller) StderrLine: {'line': b'\n'}
+[2.474289] (nav2_mppi_controller) StderrLine: {'line': b'    dir 0 is [/opt/ros/humble/lib]\n'}
+[2.474314] (nav2_mppi_controller) StderrLine: {'line': b'      dir 1 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]\n'}
+[2.474339] (nav2_mppi_controller) StderrLine: {'line': b'      dir 2 must precede it due to runtime library [libmppi_controller.so]\n'}
+[2.474362] (nav2_mppi_controller) StderrLine: {'line': b'    dir 1 is [/home/dex/dexe_mobile_nav/install/nav2_msgs/lib]\n'}
+[2.474386] (nav2_mppi_controller) StderrLine: {'line': b'      dir 0 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]\n'}
+[2.474411] (nav2_mppi_controller) StderrLine: {'line': b'    dir 2 is [/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller]\n'}
+[2.474434] (nav2_mppi_controller) StderrLine: {'line': b'\n'}
+[2.474458] (nav2_mppi_controller) StderrLine: {'line': b'  Some of these libraries may not be found correctly.\n'}
+[2.474494] (nav2_mppi_controller) StderrLine: {'line': b'Call Stack (most recent call first):\n'}
+[2.474526] (nav2_mppi_controller) StderrLine: {'line': b'  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:37 (_ament_add_gtest_executable)\n'}
+[2.474558] (nav2_mppi_controller) StderrLine: {'line': b'  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest.cmake:68 (ament_add_gtest_executable)\n'}
+[2.474583] (nav2_mppi_controller) StderrLine: {'line': b'  test/CMakeLists.txt:16 (ament_add_gtest)\n'}
+[2.474612] (nav2_mppi_controller) StderrLine: {'line': b'\n'}
+[2.474642] (nav2_mppi_controller) StderrLine: {'line': b'\n'}
+[2.502408] (-) TimerEvent: {}
+[2.518657] (nav2_mppi_controller) StderrLine: {'line': b'CMake Warning at /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:50 (add_executable):\n'}
+[2.518822] (nav2_mppi_controller) StderrLine: {'line': b'  Cannot generate a safe runtime search path for target\n'}
+[2.518868] (nav2_mppi_controller) StderrLine: {'line': b'  controller_state_transition_test because there is a cycle in the constraint\n'}
+[2.518908] (nav2_mppi_controller) StderrLine: {'line': b'  graph:\n'}
+[2.518946] (nav2_mppi_controller) StderrLine: {'line': b'\n'}
+[2.518983] (nav2_mppi_controller) StderrLine: {'line': b'    dir 0 is [/opt/ros/humble/lib]\n'}
+[2.519019] (nav2_mppi_controller) StderrLine: {'line': b'      dir 1 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]\n'}
+[2.519057] (nav2_mppi_controller) StderrLine: {'line': b'      dir 2 must precede it due to runtime library [libmppi_controller.so]\n'}
+[2.519094] (nav2_mppi_controller) StderrLine: {'line': b'    dir 1 is [/home/dex/dexe_mobile_nav/install/nav2_msgs/lib]\n'}
+[2.519132] (nav2_mppi_controller) StderrLine: {'line': b'      dir 0 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]\n'}
+[2.519180] (nav2_mppi_controller) StderrLine: {'line': b'    dir 2 is [/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller]\n'}
+[2.519219] (nav2_mppi_controller) StderrLine: {'line': b'\n'}
+[2.519254] (nav2_mppi_controller) StderrLine: {'line': b'  Some of these libraries may not be found correctly.\n'}
+[2.519290] (nav2_mppi_controller) StderrLine: {'line': b'Call Stack (most recent call first):\n'}
+[2.519325] (nav2_mppi_controller) StderrLine: {'line': b'  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:37 (_ament_add_gtest_executable)\n'}
+[2.519361] (nav2_mppi_controller) StderrLine: {'line': b'  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest.cmake:68 (ament_add_gtest_executable)\n'}
+[2.519397] (nav2_mppi_controller) StderrLine: {'line': b'  test/CMakeLists.txt:16 (ament_add_gtest)\n'}
+[2.519432] (nav2_mppi_controller) StderrLine: {'line': b'\n'}
+[2.519468] (nav2_mppi_controller) StderrLine: {'line': b'\n'}
+[2.563467] (nav2_mppi_controller) StderrLine: {'line': b'CMake Warning at /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:50 (add_executable):\n'}
+[2.563616] (nav2_mppi_controller) StderrLine: {'line': b'  Cannot generate a safe runtime search path for target models_test because\n'}
+[2.563661] (nav2_mppi_controller) StderrLine: {'line': b'  there is a cycle in the constraint graph:\n'}
+[2.563701] (nav2_mppi_controller) StderrLine: {'line': b'\n'}
+[2.563739] (nav2_mppi_controller) StderrLine: {'line': b'    dir 0 is [/opt/ros/humble/lib]\n'}
+[2.563777] (nav2_mppi_controller) StderrLine: {'line': b'      dir 1 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]\n'}
+[2.563814] (nav2_mppi_controller) StderrLine: {'line': b'      dir 2 must precede it due to runtime library [libmppi_controller.so]\n'}
+[2.563851] (nav2_mppi_controller) StderrLine: {'line': b'    dir 1 is [/home/dex/dexe_mobile_nav/install/nav2_msgs/lib]\n'}
+[2.563890] (nav2_mppi_controller) StderrLine: {'line': b'      dir 0 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]\n'}
+[2.563928] (nav2_mppi_controller) StderrLine: {'line': b'    dir 2 is [/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller]\n'}
+[2.563966] (nav2_mppi_controller) StderrLine: {'line': b'\n'}
+[2.564002] (nav2_mppi_controller) StderrLine: {'line': b'  Some of these libraries may not be found correctly.\n'}
+[2.564047] (nav2_mppi_controller) StderrLine: {'line': b'Call Stack (most recent call first):\n'}
+[2.564083] (nav2_mppi_controller) StderrLine: {'line': b'  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:37 (_ament_add_gtest_executable)\n'}
+[2.564120] (nav2_mppi_controller) StderrLine: {'line': b'  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest.cmake:68 (ament_add_gtest_executable)\n'}
+[2.564175] (nav2_mppi_controller) StderrLine: {'line': b'  test/CMakeLists.txt:16 (ament_add_gtest)\n'}
+[2.564221] (nav2_mppi_controller) StderrLine: {'line': b'\n'}
+[2.564255] (nav2_mppi_controller) StderrLine: {'line': b'\n'}
+[2.602568] (-) TimerEvent: {}
+[2.608784] (nav2_mppi_controller) StderrLine: {'line': b'CMake Warning at /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:50 (add_executable):\n'}
+[2.608912] (nav2_mppi_controller) StderrLine: {'line': b'  Cannot generate a safe runtime search path for target noise_generator_test\n'}
+[2.608961] (nav2_mppi_controller) StderrLine: {'line': b'  because there is a cycle in the constraint graph:\n'}
+[2.609002] (nav2_mppi_controller) StderrLine: {'line': b'\n'}
+[2.609040] (nav2_mppi_controller) StderrLine: {'line': b'    dir 0 is [/opt/ros/humble/lib]\n'}
+[2.609078] (nav2_mppi_controller) StderrLine: {'line': b'      dir 1 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]\n'}
+[2.609123] (nav2_mppi_controller) StderrLine: {'line': b'      dir 2 must precede it due to runtime library [libmppi_controller.so]\n'}
+[2.609171] (nav2_mppi_controller) StderrLine: {'line': b'    dir 1 is [/home/dex/dexe_mobile_nav/install/nav2_msgs/lib]\n'}
+[2.609210] (nav2_mppi_controller) StderrLine: {'line': b'      dir 0 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]\n'}
+[2.609246] (nav2_mppi_controller) StderrLine: {'line': b'    dir 2 is [/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller]\n'}
+[2.609282] (nav2_mppi_controller) StderrLine: {'line': b'\n'}
+[2.609317] (nav2_mppi_controller) StderrLine: {'line': b'  Some of these libraries may not be found correctly.\n'}
+[2.609353] (nav2_mppi_controller) StderrLine: {'line': b'Call Stack (most recent call first):\n'}
+[2.609389] (nav2_mppi_controller) StderrLine: {'line': b'  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:37 (_ament_add_gtest_executable)\n'}
+[2.609425] (nav2_mppi_controller) StderrLine: {'line': b'  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest.cmake:68 (ament_add_gtest_executable)\n'}
+[2.609462] (nav2_mppi_controller) StderrLine: {'line': b'  test/CMakeLists.txt:16 (ament_add_gtest)\n'}
+[2.609498] (nav2_mppi_controller) StderrLine: {'line': b'\n'}
+[2.609536] (nav2_mppi_controller) StderrLine: {'line': b'\n'}
+[2.654123] (nav2_mppi_controller) StderrLine: {'line': b'CMake Warning at /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:50 (add_executable):\n'}
+[2.654367] (nav2_mppi_controller) StderrLine: {'line': b'  Cannot generate a safe runtime search path for target\n'}
+[2.654485] (nav2_mppi_controller) StderrLine: {'line': b'  parameter_handler_test because there is a cycle in the constraint graph:\n'}
+[2.654578] (nav2_mppi_controller) StderrLine: {'line': b'\n'}
+[2.654664] (nav2_mppi_controller) StderrLine: {'line': b'    dir 0 is [/opt/ros/humble/lib]\n'}
+[2.654745] (nav2_mppi_controller) StderrLine: {'line': b'      dir 1 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]\n'}
+[2.654826] (nav2_mppi_controller) StderrLine: {'line': b'      dir 2 must precede it due to runtime library [libmppi_controller.so]\n'}
+[2.654910] (nav2_mppi_controller) StderrLine: {'line': b'    dir 1 is [/home/dex/dexe_mobile_nav/install/nav2_msgs/lib]\n'}
+[2.654989] (nav2_mppi_controller) StderrLine: {'line': b'      dir 0 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]\n'}
+[2.655068] (nav2_mppi_controller) StderrLine: {'line': b'    dir 2 is [/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller]\n'}
+[2.655179] (nav2_mppi_controller) StderrLine: {'line': b'\n'}
+[2.655241] (nav2_mppi_controller) StderrLine: {'line': b'  Some of these libraries may not be found correctly.\n'}
+[2.655273] (nav2_mppi_controller) StderrLine: {'line': b'Call Stack (most recent call first):\n'}
+[2.655299] (nav2_mppi_controller) StderrLine: {'line': b'  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:37 (_ament_add_gtest_executable)\n'}
+[2.655323] (nav2_mppi_controller) StderrLine: {'line': b'  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest.cmake:68 (ament_add_gtest_executable)\n'}
+[2.655347] (nav2_mppi_controller) StderrLine: {'line': b'  test/CMakeLists.txt:16 (ament_add_gtest)\n'}
+[2.655370] (nav2_mppi_controller) StderrLine: {'line': b'\n'}
+[2.655393] (nav2_mppi_controller) StderrLine: {'line': b'\n'}
+[2.698866] (nav2_mppi_controller) StderrLine: {'line': b'CMake Warning at /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:50 (add_executable):\n'}
+[2.699042] (nav2_mppi_controller) StderrLine: {'line': b'  Cannot generate a safe runtime search path for target motion_model_tests\n'}
+[2.699079] (nav2_mppi_controller) StderrLine: {'line': b'  because there is a cycle in the constraint graph:\n'}
+[2.699109] (nav2_mppi_controller) StderrLine: {'line': b'\n'}
+[2.699149] (nav2_mppi_controller) StderrLine: {'line': b'    dir 0 is [/opt/ros/humble/lib]\n'}
+[2.699180] (nav2_mppi_controller) StderrLine: {'line': b'      dir 1 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]\n'}
+[2.699208] (nav2_mppi_controller) StderrLine: {'line': b'      dir 2 must precede it due to runtime library [libmppi_controller.so]\n'}
+[2.699232] (nav2_mppi_controller) StderrLine: {'line': b'    dir 1 is [/home/dex/dexe_mobile_nav/install/nav2_msgs/lib]\n'}
+[2.699258] (nav2_mppi_controller) StderrLine: {'line': b'      dir 0 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]\n'}
+[2.699282] (nav2_mppi_controller) StderrLine: {'line': b'    dir 2 is [/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller]\n'}
+[2.699307] (nav2_mppi_controller) StderrLine: {'line': b'\n'}
+[2.699330] (nav2_mppi_controller) StderrLine: {'line': b'  Some of these libraries may not be found correctly.\n'}
+[2.699354] (nav2_mppi_controller) StderrLine: {'line': b'Call Stack (most recent call first):\n'}
+[2.699378] (nav2_mppi_controller) StderrLine: {'line': b'  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:37 (_ament_add_gtest_executable)\n'}
+[2.699404] (nav2_mppi_controller) StderrLine: {'line': b'  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest.cmake:68 (ament_add_gtest_executable)\n'}
+[2.699431] (nav2_mppi_controller) StderrLine: {'line': b'  test/CMakeLists.txt:16 (ament_add_gtest)\n'}
+[2.699455] (nav2_mppi_controller) StderrLine: {'line': b'\n'}
+[2.699481] (nav2_mppi_controller) StderrLine: {'line': b'\n'}
+[2.702604] (-) TimerEvent: {}
+[2.743959] (nav2_mppi_controller) StderrLine: {'line': b'CMake Warning at /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:50 (add_executable):\n'}
+[2.744162] (nav2_mppi_controller) StderrLine: {'line': b'  Cannot generate a safe runtime search path for target\n'}
+[2.744241] (nav2_mppi_controller) StderrLine: {'line': b'  trajectory_visualizer_tests because there is a cycle in the constraint\n'}
+[2.744309] (nav2_mppi_controller) StderrLine: {'line': b'  graph:\n'}
+[2.744368] (nav2_mppi_controller) StderrLine: {'line': b'\n'}
+[2.744423] (nav2_mppi_controller) StderrLine: {'line': b'    dir 0 is [/opt/ros/humble/lib]\n'}
+[2.744476] (nav2_mppi_controller) StderrLine: {'line': b'      dir 1 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]\n'}
+[2.744530] (nav2_mppi_controller) StderrLine: {'line': b'      dir 2 must precede it due to runtime library [libmppi_controller.so]\n'}
+[2.744584] (nav2_mppi_controller) StderrLine: {'line': b'    dir 1 is [/home/dex/dexe_mobile_nav/install/nav2_msgs/lib]\n'}
+[2.744647] (nav2_mppi_controller) StderrLine: {'line': b'      dir 0 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]\n'}
+[2.744699] (nav2_mppi_controller) StderrLine: {'line': b'    dir 2 is [/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller]\n'}
+[2.744752] (nav2_mppi_controller) StderrLine: {'line': b'\n'}
+[2.744806] (nav2_mppi_controller) StderrLine: {'line': b'  Some of these libraries may not be found correctly.\n'}
+[2.744858] (nav2_mppi_controller) StderrLine: {'line': b'Call Stack (most recent call first):\n'}
+[2.744909] (nav2_mppi_controller) StderrLine: {'line': b'  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:37 (_ament_add_gtest_executable)\n'}
+[2.744960] (nav2_mppi_controller) StderrLine: {'line': b'  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest.cmake:68 (ament_add_gtest_executable)\n'}
+[2.745021] (nav2_mppi_controller) StderrLine: {'line': b'  test/CMakeLists.txt:16 (ament_add_gtest)\n'}
+[2.745073] (nav2_mppi_controller) StderrLine: {'line': b'\n'}
+[2.745124] (nav2_mppi_controller) StderrLine: {'line': b'\n'}
+[2.788832] (nav2_mppi_controller) StderrLine: {'line': b'CMake Warning at /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:50 (add_executable):\n'}
+[2.789071] (nav2_mppi_controller) StderrLine: {'line': b'  Cannot generate a safe runtime search path for target utils_test because\n'}
+[2.789198] (nav2_mppi_controller) StderrLine: {'line': b'  there is a cycle in the constraint graph:\n'}
+[2.789301] (nav2_mppi_controller) StderrLine: {'line': b'\n'}
+[2.789395] (nav2_mppi_controller) StderrLine: {'line': b'    dir 0 is [/opt/ros/humble/lib]\n'}
+[2.789481] (nav2_mppi_controller) StderrLine: {'line': b'      dir 1 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]\n'}
+[2.789539] (nav2_mppi_controller) StderrLine: {'line': b'      dir 2 must precede it due to runtime library [libmppi_controller.so]\n'}
+[2.789594] (nav2_mppi_controller) StderrLine: {'line': b'    dir 1 is [/home/dex/dexe_mobile_nav/install/nav2_msgs/lib]\n'}
+[2.789646] (nav2_mppi_controller) StderrLine: {'line': b'      dir 0 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]\n'}
+[2.789706] (nav2_mppi_controller) StderrLine: {'line': b'    dir 2 is [/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller]\n'}
+[2.789750] (nav2_mppi_controller) StderrLine: {'line': b'\n'}
+[2.789774] (nav2_mppi_controller) StderrLine: {'line': b'  Some of these libraries may not be found correctly.\n'}
+[2.789797] (nav2_mppi_controller) StderrLine: {'line': b'Call Stack (most recent call first):\n'}
+[2.789820] (nav2_mppi_controller) StderrLine: {'line': b'  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:37 (_ament_add_gtest_executable)\n'}
+[2.789845] (nav2_mppi_controller) StderrLine: {'line': b'  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest.cmake:68 (ament_add_gtest_executable)\n'}
+[2.789870] (nav2_mppi_controller) StderrLine: {'line': b'  test/CMakeLists.txt:16 (ament_add_gtest)\n'}
+[2.789894] (nav2_mppi_controller) StderrLine: {'line': b'\n'}
+[2.789917] (nav2_mppi_controller) StderrLine: {'line': b'\n'}
+[2.802817] (-) TimerEvent: {}
+[2.833938] (nav2_mppi_controller) StderrLine: {'line': b'CMake Warning at /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:50 (add_executable):\n'}
+[2.834065] (nav2_mppi_controller) StderrLine: {'line': b'  Cannot generate a safe runtime search path for target path_handler_test\n'}
+[2.834115] (nav2_mppi_controller) StderrLine: {'line': b'  because there is a cycle in the constraint graph:\n'}
+[2.834200] (nav2_mppi_controller) StderrLine: {'line': b'\n'}
+[2.834262] (nav2_mppi_controller) StderrLine: {'line': b'    dir 0 is [/opt/ros/humble/lib]\n'}
+[2.834319] (nav2_mppi_controller) StderrLine: {'line': b'      dir 1 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]\n'}
+[2.834385] (nav2_mppi_controller) StderrLine: {'line': b'      dir 2 must precede it due to runtime library [libmppi_controller.so]\n'}
+[2.834437] (nav2_mppi_controller) StderrLine: {'line': b'    dir 1 is [/home/dex/dexe_mobile_nav/install/nav2_msgs/lib]\n'}
+[2.834491] (nav2_mppi_controller) StderrLine: {'line': b'      dir 0 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]\n'}
+[2.834544] (nav2_mppi_controller) StderrLine: {'line': b'    dir 2 is [/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller]\n'}
+[2.834596] (nav2_mppi_controller) StderrLine: {'line': b'\n'}
+[2.834648] (nav2_mppi_controller) StderrLine: {'line': b'  Some of these libraries may not be found correctly.\n'}
+[2.834702] (nav2_mppi_controller) StderrLine: {'line': b'Call Stack (most recent call first):\n'}
+[2.834754] (nav2_mppi_controller) StderrLine: {'line': b'  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:37 (_ament_add_gtest_executable)\n'}
+[2.834807] (nav2_mppi_controller) StderrLine: {'line': b'  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest.cmake:68 (ament_add_gtest_executable)\n'}
+[2.834860] (nav2_mppi_controller) StderrLine: {'line': b'  test/CMakeLists.txt:16 (ament_add_gtest)\n'}
+[2.834911] (nav2_mppi_controller) StderrLine: {'line': b'\n'}
+[2.834962] (nav2_mppi_controller) StderrLine: {'line': b'\n'}
+[2.878883] (nav2_mppi_controller) StderrLine: {'line': b'CMake Warning at /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:50 (add_executable):\n'}
+[2.879226] (nav2_mppi_controller) StderrLine: {'line': b'  Cannot generate a safe runtime search path for target critic_manager_test\n'}
+[2.879270] (nav2_mppi_controller) StderrLine: {'line': b'  because there is a cycle in the constraint graph:\n'}
+[2.879302] (nav2_mppi_controller) StderrLine: {'line': b'\n'}
+[2.879332] (nav2_mppi_controller) StderrLine: {'line': b'    dir 0 is [/opt/ros/humble/lib]\n'}
+[2.879360] (nav2_mppi_controller) StderrLine: {'line': b'      dir 1 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]\n'}
+[2.879389] (nav2_mppi_controller) StderrLine: {'line': b'      dir 2 must precede it due to runtime library [libmppi_controller.so]\n'}
+[2.879415] (nav2_mppi_controller) StderrLine: {'line': b'    dir 1 is [/home/dex/dexe_mobile_nav/install/nav2_msgs/lib]\n'}
+[2.879442] (nav2_mppi_controller) StderrLine: {'line': b'      dir 0 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]\n'}
+[2.879467] (nav2_mppi_controller) StderrLine: {'line': b'    dir 2 is [/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller]\n'}
+[2.879492] (nav2_mppi_controller) StderrLine: {'line': b'\n'}
+[2.879515] (nav2_mppi_controller) StderrLine: {'line': b'  Some of these libraries may not be found correctly.\n'}
+[2.879540] (nav2_mppi_controller) StderrLine: {'line': b'Call Stack (most recent call first):\n'}
+[2.879565] (nav2_mppi_controller) StderrLine: {'line': b'  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:37 (_ament_add_gtest_executable)\n'}
+[2.879590] (nav2_mppi_controller) StderrLine: {'line': b'  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest.cmake:68 (ament_add_gtest_executable)\n'}
+[2.879618] (nav2_mppi_controller) StderrLine: {'line': b'  test/CMakeLists.txt:16 (ament_add_gtest)\n'}
+[2.879642] (nav2_mppi_controller) StderrLine: {'line': b'\n'}
+[2.879664] (nav2_mppi_controller) StderrLine: {'line': b'\n'}
+[2.902889] (-) TimerEvent: {}
+[2.926181] (nav2_mppi_controller) StderrLine: {'line': b'CMake Warning at /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:50 (add_executable):\n'}
+[2.926374] (nav2_mppi_controller) StderrLine: {'line': b'  Cannot generate a safe runtime search path for target optimizer_unit_tests\n'}
+[2.926452] (nav2_mppi_controller) StderrLine: {'line': b'  because there is a cycle in the constraint graph:\n'}
+[2.926505] (nav2_mppi_controller) StderrLine: {'line': b'\n'}
+[2.926538] (nav2_mppi_controller) StderrLine: {'line': b'    dir 0 is [/opt/ros/humble/lib]\n'}
+[2.926563] (nav2_mppi_controller) StderrLine: {'line': b'      dir 1 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]\n'}
+[2.926589] (nav2_mppi_controller) StderrLine: {'line': b'      dir 2 must precede it due to runtime library [libmppi_controller.so]\n'}
+[2.926614] (nav2_mppi_controller) StderrLine: {'line': b'    dir 1 is [/home/dex/dexe_mobile_nav/install/nav2_msgs/lib]\n'}
+[2.926638] (nav2_mppi_controller) StderrLine: {'line': b'      dir 0 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]\n'}
+[2.926662] (nav2_mppi_controller) StderrLine: {'line': b'    dir 2 is [/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller]\n'}
+[2.926685] (nav2_mppi_controller) StderrLine: {'line': b'\n'}
+[2.926708] (nav2_mppi_controller) StderrLine: {'line': b'  Some of these libraries may not be found correctly.\n'}
+[2.926731] (nav2_mppi_controller) StderrLine: {'line': b'Call Stack (most recent call first):\n'}
+[2.926755] (nav2_mppi_controller) StderrLine: {'line': b'  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:37 (_ament_add_gtest_executable)\n'}
+[2.926779] (nav2_mppi_controller) StderrLine: {'line': b'  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest.cmake:68 (ament_add_gtest_executable)\n'}
+[2.926806] (nav2_mppi_controller) StderrLine: {'line': b'  test/CMakeLists.txt:16 (ament_add_gtest)\n'}
+[2.926833] (nav2_mppi_controller) StderrLine: {'line': b'\n'}
+[2.926857] (nav2_mppi_controller) StderrLine: {'line': b'\n'}
+[2.973534] (nav2_mppi_controller) StderrLine: {'line': b'CMake Warning at /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:50 (add_executable):\n'}
+[2.973726] (nav2_mppi_controller) StderrLine: {'line': b'  Cannot generate a safe runtime search path for target critics_tests because\n'}
+[2.973809] (nav2_mppi_controller) StderrLine: {'line': b'  there is a cycle in the constraint graph:\n'}
+[2.973888] (nav2_mppi_controller) StderrLine: {'line': b'\n'}
+[2.973949] (nav2_mppi_controller) StderrLine: {'line': b'    dir 0 is [/opt/ros/humble/lib]\n'}
+[2.974007] (nav2_mppi_controller) StderrLine: {'line': b'      dir 1 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]\n'}
+[2.974062] (nav2_mppi_controller) StderrLine: {'line': b'      dir 2 must precede it due to runtime library [libmppi_controller.so]\n'}
+[2.974129] (nav2_mppi_controller) StderrLine: {'line': b'    dir 1 is [/home/dex/dexe_mobile_nav/install/nav2_msgs/lib]\n'}
+[2.974198] (nav2_mppi_controller) StderrLine: {'line': b'      dir 0 must precede it due to runtime library [libnav2_msgs__rosidl_generator_c.so]\n'}
+[2.974253] (nav2_mppi_controller) StderrLine: {'line': b'    dir 2 is [/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller]\n'}
+[2.974308] (nav2_mppi_controller) StderrLine: {'line': b'\n'}
+[2.974361] (nav2_mppi_controller) StderrLine: {'line': b'  Some of these libraries may not be found correctly.\n'}
+[2.974413] (nav2_mppi_controller) StderrLine: {'line': b'Call Stack (most recent call first):\n'}
+[2.974464] (nav2_mppi_controller) StderrLine: {'line': b'  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest_executable.cmake:37 (_ament_add_gtest_executable)\n'}
+[2.974497] (nav2_mppi_controller) StderrLine: {'line': b'  /opt/ros/humble/share/ament_cmake_gtest/cmake/ament_add_gtest.cmake:68 (ament_add_gtest_executable)\n'}
+[2.974521] (nav2_mppi_controller) StderrLine: {'line': b'  test/CMakeLists.txt:35 (ament_add_gtest)\n'}
+[2.974544] (nav2_mppi_controller) StderrLine: {'line': b'\n'}
+[2.974567] (nav2_mppi_controller) StderrLine: {'line': b'\n'}
+[2.977365] (nav2_mppi_controller) StdoutLine: {'line': b'-- Generating done\n'}
+[3.002977] (-) TimerEvent: {}
+[3.022462] (nav2_mppi_controller) StdoutLine: {'line': b'-- Build files have been written to: /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller\n'}
+[3.036386] (nav2_mppi_controller) CommandEnded: {'returncode': 0}
+[3.037414] (nav2_mppi_controller) JobProgress: {'identifier': 'nav2_mppi_controller', 'progress': 'build'}
+[3.037962] (nav2_mppi_controller) Command: {'cmd': ['/usr/bin/cmake', '--build', '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller', '--', '-j16', '-l16'], 'cwd': '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller', 'env': OrderedDict([('LESSOPEN', '| /usr/bin/lesspipe %s'), ('CODEX_CI', '1'), ('LANGUAGE', 'zh_CN'), ('USER', 'dex'), ('LC_TIME', 'zh_CN.UTF-8'), ('XDG_SESSION_TYPE', 'x11'), ('SHLVL', '1'), ('LD_LIBRARY_PATH', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/lib:/home/dex/dexe_mobile_nav/install/nav2_theta_star_planner/lib:/home/dex/dexe_mobile_nav/install/nav2_smac_planner/lib:/home/dex/dexe_mobile_nav/install/nav2_map_server/lib:/home/dex/dexe_mobile_nav/install/nav2_controller/lib:/home/dex/dexe_mobile_nav/install/nav2_msgs/lib:/home/dex/dexe_mobile_nav/install/mobile_joy_control/lib:/usr/lib/x86_64-linux-gnu/gazebo-11/plugins:/opt/ros/humble/opt/rviz_ogre_vendor/lib:/opt/ros/humble/lib/x86_64-linux-gnu:/opt/ros/humble/lib'), ('HOME', '/home/dex'), ('OLDPWD', '/home/dex'), ('DESKTOP_SESSION', 'ubuntu-xorg'), ('NVM_BIN', '/home/dex/.nvm/versions/node/v22.23.1/bin'), ('NVM_INC', '/home/dex/.nvm/versions/node/v22.23.1/include/node'), ('ROS_PYTHON_VERSION', '3'), ('GNOME_SHELL_SESSION_MODE', 'ubuntu'), ('GTK_MODULES', 'gail:atk-bridge'), ('PAGER', 'cat'), ('LC_MONETARY', 'zh_CN.UTF-8'), ('MANAGERPID', '2217'), ('LC_CTYPE', 'C.UTF-8'), ('SYSTEMD_EXEC_PID', '2773'), ('NO_COLOR', '1'), ('DBUS_SESSION_BUS_ADDRESS', 'unix:path=/run/user/1000/bus'), ('COLORTERM', ''), ('TERMINATOR_DBUS_NAME', 'net.tenshu.Terminator21a9d5db22c73a993ff0b42f64b396873'), ('GIO_LAUNCHED_DESKTOP_FILE_PID', '4719'), ('NVM_DIR', '/home/dex/.nvm'), ('COLCON_PREFIX_PATH', '/home/dex/dexe_mobile_nav/mobile_navigation/install:/home/dex/dexe_mobile_nav/install:/home/dex/dexe_mobile_application/install'), ('CODEX_PERMISSION_PROFILE', ':workspace'), ('ROS_DISTRO', 'humble'), ('GTK_IM_MODULE', 'ibus'), ('LOGNAME', 'dex'), ('JOURNAL_STREAM', '8:16976'), ('_', '/usr/bin/colcon'), ('ROS_VERSION', '2'), ('XDG_SESSION_CLASS', 'user'), ('USERNAME', 'dex'), ('TERM', 'dumb'), ('GAZEBO_MODEL_PATH', '/home/dex/dexe_mobile_nav/install/aws_robomaker_small_warehouse_world/share/aws_robomaker_small_warehouse_world/worlds:/home/dex/dexe_mobile_nav/install/aws_robomaker_small_warehouse_world/share/aws_robomaker_small_warehouse_world/models'), ('GNOME_DESKTOP_SESSION_ID', 'this-is-deprecated'), ('ROS_LOCALHOST_ONLY', '0'), ('WINDOWPATH', '2'), ('PATH', '/home/dex/.local/npm/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/codex-path:/home/dex/.codex/tmp/arg0/codex-arg0oqC8NH:/home/dex/.nvm/versions/node/v22.23.1/bin:/home/dex/.local/npm/bin:/opt/ros/humble/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/snap/bin'), ('SESSION_MANAGER', 'local/dex-TX-Gaming-FA608UH-FA608UH:@/tmp/.ICE-unix/2583,unix/dex-TX-Gaming-FA608UH-FA608UH:/tmp/.ICE-unix/2583'), ('INVOCATION_ID', 'e6aa2f29dc5a41a490d401621c2a515d'), ('PAPERSIZE', 'a4'), ('XDG_MENU_PREFIX', 'gnome-'), ('LC_ADDRESS', 'zh_CN.UTF-8'), ('XDG_RUNTIME_DIR', '/run/user/1000'), ('DISPLAY', ':0'), ('CODEX_SANDBOX_NETWORK_DISABLED', '1'), ('TERMINATOR_DBUS_PATH', '/net/tenshu/Terminator2'), ('LANG', 'C.UTF-8'), ('XDG_CURRENT_DESKTOP', 'ubuntu:GNOME'), ('IBUS_DISABLE_SNOOPER', '1'), ('LC_TELEPHONE', 'zh_CN.UTF-8'), ('XMODIFIERS', '@im=ibus'), ('GH_PAGER', 'cat'), ('XDG_SESSION_DESKTOP', 'ubuntu-xorg'), ('XAUTHORITY', '/run/user/1000/gdm/Xauthority'), ('LS_COLORS', 'rs=0:di=01;34:ln=01;36:mh=00:pi=40;33:so=01;35:do=01;35:bd=40;33;01:cd=40;33;01:or=40;31;01:mi=00:su=37;41:sg=30;43:ca=30;41:tw=30;42:ow=34;42:st=37;44:ex=01;32:*.tar=01;31:*.tgz=01;31:*.arc=01;31:*.arj=01;31:*.taz=01;31:*.lha=01;31:*.lz4=01;31:*.lzh=01;31:*.lzma=01;31:*.tlz=01;31:*.txz=01;31:*.tzo=01;31:*.t7z=01;31:*.zip=01;31:*.z=01;31:*.dz=01;31:*.gz=01;31:*.lrz=01;31:*.lz=01;31:*.lzo=01;31:*.xz=01;31:*.zst=01;31:*.tzst=01;31:*.bz2=01;31:*.bz=01;31:*.tbz=01;31:*.tbz2=01;31:*.tz=01;31:*.deb=01;31:*.rpm=01;31:*.jar=01;31:*.war=01;31:*.ear=01;31:*.sar=01;31:*.rar=01;31:*.alz=01;31:*.ace=01;31:*.zoo=01;31:*.cpio=01;31:*.7z=01;31:*.rz=01;31:*.cab=01;31:*.wim=01;31:*.swm=01;31:*.dwm=01;31:*.esd=01;31:*.jpg=01;35:*.jpeg=01;35:*.mjpg=01;35:*.mjpeg=01;35:*.gif=01;35:*.bmp=01;35:*.pbm=01;35:*.pgm=01;35:*.ppm=01;35:*.tga=01;35:*.xbm=01;35:*.xpm=01;35:*.tif=01;35:*.tiff=01;35:*.png=01;35:*.svg=01;35:*.svgz=01;35:*.mng=01;35:*.pcx=01;35:*.mov=01;35:*.mpg=01;35:*.mpeg=01;35:*.m2v=01;35:*.mkv=01;35:*.webm=01;35:*.webp=01;35:*.ogm=01;35:*.mp4=01;35:*.m4v=01;35:*.mp4v=01;35:*.vob=01;35:*.qt=01;35:*.nuv=01;35:*.wmv=01;35:*.asf=01;35:*.rm=01;35:*.rmvb=01;35:*.flc=01;35:*.avi=01;35:*.fli=01;35:*.flv=01;35:*.gl=01;35:*.dl=01;35:*.xcf=01;35:*.xwd=01;35:*.yuv=01;35:*.cgm=01;35:*.emf=01;35:*.ogv=01;35:*.ogx=01;35:*.aac=00;36:*.au=00;36:*.flac=00;36:*.m4a=00;36:*.mid=00;36:*.midi=00;36:*.mka=00;36:*.mp3=00;36:*.mpc=00;36:*.ogg=00;36:*.ra=00;36:*.wav=00;36:*.oga=00;36:*.opus=00;36:*.spx=00;36:*.xspf=00;36:'), ('SSH_AGENT_LAUNCHER', 'gnome-keyring'), ('SSH_AUTH_SOCK', '/run/user/1000/keyring/ssh'), ('AMENT_PREFIX_PATH', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:/home/dex/dexe_mobile_nav/install/w1_nav2:/home/dex/dexe_mobile_nav/install/swerve_robot_gazebo:/home/dex/dexe_mobile_nav/install/swerve_robot_description:/home/dex/dexe_mobile_nav/install/swerve_controller:/home/dex/dexe_mobile_nav/install/nav2_theta_star_planner:/home/dex/dexe_mobile_nav/install/nav2_smac_planner:/home/dex/dexe_mobile_nav/install/nav2_bringup:/home/dex/dexe_mobile_nav/install/nav2_map_server:/home/dex/dexe_mobile_nav/install/nav2_controller:/home/dex/dexe_mobile_nav/install/nav2_msgs:/home/dex/dexe_mobile_nav/install/mobile_joy_control:/home/dex/dexe_mobile_nav/install/aws_robomaker_small_warehouse_world:/home/dex/dexe_mobile_application/install/dexforce_description:/opt/ros/humble'), ('SHELL', '/bin/bash'), ('LC_NAME', 'zh_CN.UTF-8'), ('TERMINATOR_UUID', 'urn:uuid:5bc87b64-a4a4-46fe-a293-98f9d1d3a1d4'), ('QT_ACCESSIBILITY', '1'), ('GDMSESSION', 'ubuntu-xorg'), ('LESSCLOSE', '/usr/bin/lesspipe %s %s'), ('CODEX_THREAD_ID', '019f6886-07b1-7e92-89a1-ba56fed37290'), ('LC_MEASUREMENT', 'zh_CN.UTF-8'), ('GPG_AGENT_INFO', '/run/user/1000/gnupg/S.gpg-agent:0:1'), ('LC_IDENTIFICATION', 'zh_CN.UTF-8'), ('GIT_PAGER', 'cat'), ('QT_IM_MODULE', 'ibus'), ('PWD', '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller'), ('LC_ALL', 'C.UTF-8'), ('CODEX_MANAGED_PACKAGE_ROOT', '/home/dex/.local/npm/lib/node_modules/@openai/codex'), ('XDG_CONFIG_DIRS', '/etc/xdg/xdg-ubuntu-xorg:/etc/xdg'), ('NVM_CD_FLAGS', ''), ('XDG_DATA_DIRS', '/usr/share/ubuntu-xorg:/usr/share/gnome:/usr/local/share/:/usr/share/:/var/lib/snapd/desktop'), ('PYTHONPATH', '/home/dex/dexe_mobile_nav/install/swerve_robot_gazebo/lib/python3.10/site-packages:/home/dex/dexe_mobile_nav/install/swerve_controller/lib/python3.10/site-packages:/home/dex/dexe_mobile_nav/install/nav2_msgs/local/lib/python3.10/dist-packages:/home/dex/dexe_mobile_nav/install/mobile_joy_control/local/lib/python3.10/dist-packages:/opt/ros/humble/lib/python3.10/site-packages:/opt/ros/humble/local/lib/python3.10/dist-packages'), ('LC_NUMERIC', 'zh_CN.UTF-8'), ('LC_PAPER', 'zh_CN.UTF-8'), ('COLCON', '1'), ('CODEX_MANAGED_BY_NPM', '1'), ('VTE_VERSION', '6800'), ('CMAKE_PREFIX_PATH', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner:/home/dex/dexe_mobile_nav/install/w1_nav2:/home/dex/dexe_mobile_nav/install/swerve_robot_description:/home/dex/dexe_mobile_nav/install/nav2_theta_star_planner:/home/dex/dexe_mobile_nav/install/nav2_smac_planner:/home/dex/dexe_mobile_nav/install/nav2_bringup:/home/dex/dexe_mobile_nav/install/nav2_map_server:/home/dex/dexe_mobile_nav/install/nav2_controller:/home/dex/dexe_mobile_nav/install/nav2_msgs:/home/dex/dexe_mobile_nav/install/mobile_joy_control:/home/dex/dexe_mobile_nav/install/aws_robomaker_small_warehouse_world:/home/dex/dexe_mobile_application/install/dexforce_description:/home/dex/dexe_mobile_nav/install/swerve_robot_gazebo:/home/dex/dexe_mobile_nav/install/swerve_controller:/opt/ros/humble')]), 'shell': False}
+[3.096200] (nav2_mppi_controller) StdoutLine: {'line': b'[  7%] Building CXX object gtest/CMakeFiles/gtest_main.dir/src/gtest_main.cc.o\n'}
+[3.096382] (nav2_mppi_controller) StdoutLine: {'line': b'[ 11%] Building CXX object CMakeFiles/mppi_critics.dir/src/critics/cost_critic.cpp.o\n'}
+[3.096437] (nav2_mppi_controller) StdoutLine: {'line': b'[ 13%] Building CXX object CMakeFiles/mppi_critics.dir/src/critics/goal_critic.cpp.o\n'}
+[3.096494] (nav2_mppi_controller) StdoutLine: {'line': b'[ 15%] Building CXX object CMakeFiles/mppi_controller.dir/src/critic_manager.cpp.o\n'}
+[3.096651] (nav2_mppi_controller) StdoutLine: {'line': b'[ 15%] Building CXX object CMakeFiles/mppi_controller.dir/src/optimizer.cpp.o\n'}
+[3.096707] (nav2_mppi_controller) StdoutLine: {'line': b'[ 15%] Building CXX object CMakeFiles/mppi_controller.dir/src/controller.cpp.o\n'}
+[3.096758] (nav2_mppi_controller) StdoutLine: {'line': b'[ 15%] Building CXX object CMakeFiles/mppi_controller.dir/src/parameters_handler.cpp.o\n'}
+[3.096939] (nav2_mppi_controller) StdoutLine: {'line': b'[ 18%] Building CXX object CMakeFiles/mppi_critics.dir/src/critics/goal_longitudinal_critic.cpp.o\n'}
+[3.096999] (nav2_mppi_controller) StdoutLine: {'line': b'[ 20%] Building CXX object CMakeFiles/mppi_critics.dir/src/critics/goal_lateral_critic.cpp.o\n'}
+[3.097631] (nav2_mppi_controller) StdoutLine: {'line': b'[ 22%] Building CXX object CMakeFiles/mppi_controller.dir/src/trajectory_visualizer.cpp.o\n'}
+[3.100373] (nav2_mppi_controller) StdoutLine: {'line': b'[ 24%] Building CXX object CMakeFiles/mppi_critics.dir/src/critics/goal_angle_critic.cpp.o\n'}
+[3.100548] (nav2_mppi_controller) StdoutLine: {'line': b'[ 24%] Building CXX object CMakeFiles/mppi_critics.dir/src/critics/obstacles_critic.cpp.o\n'}
+[3.100604] (nav2_mppi_controller) StdoutLine: {'line': b'[ 15%] Building CXX object gtest/CMakeFiles/gtest.dir/src/gtest-all.cc.o\n'}
+[3.100646] (nav2_mppi_controller) StdoutLine: {'line': b'[ 26%] Building CXX object CMakeFiles/mppi_controller.dir/src/path_handler.cpp.o\n'}
+[3.102668] (nav2_mppi_controller) StdoutLine: {'line': b'[ 28%] Building CXX object CMakeFiles/mppi_critics.dir/src/critics/path_align_critic.cpp.o\n'}
+[3.103046] (-) TimerEvent: {}
+[3.113910] (nav2_mppi_controller) StdoutLine: {'line': b'[ 30%] Building CXX object CMakeFiles/mppi_controller.dir/src/noise_generator.cpp.o\n'}
+[3.203659] (-) TimerEvent: {}
+[3.307067] (-) TimerEvent: {}
+[3.407354] (-) TimerEvent: {}
+[3.507622] (-) TimerEvent: {}
+[3.607868] (-) TimerEvent: {}
+[3.708200] (-) TimerEvent: {}
+[3.808528] (-) TimerEvent: {}
+[3.909408] (-) TimerEvent: {}
+[4.009986] (-) TimerEvent: {}
+[4.110369] (-) TimerEvent: {}
+[4.210806] (-) TimerEvent: {}
+[4.311171] (-) TimerEvent: {}
+[4.413226] (-) TimerEvent: {}
+[4.513560] (-) TimerEvent: {}
+[4.613917] (-) TimerEvent: {}
+[4.667109] (nav2_mppi_controller) StdoutLine: {'line': b'[ 32%] Linking CXX static library libgtest_main.a\n'}
+[4.714054] (-) TimerEvent: {}
+[4.814407] (-) TimerEvent: {}
+[4.847413] (nav2_mppi_controller) StdoutLine: {'line': b'[ 32%] Built target gtest_main\n'}
+[4.865398] (nav2_mppi_controller) StdoutLine: {'line': b'[ 33%] Building CXX object CMakeFiles/mppi_critics.dir/src/critics/path_align_legacy_critic.cpp.o\n'}
+[4.914527] (-) TimerEvent: {}
+[5.014854] (-) TimerEvent: {}
+[5.115236] (-) TimerEvent: {}
+[5.215725] (-) TimerEvent: {}
+[5.316459] (-) TimerEvent: {}
+[5.416939] (-) TimerEvent: {}
+[5.517420] (-) TimerEvent: {}
+[5.617760] (-) TimerEvent: {}
+[5.718102] (-) TimerEvent: {}
+[5.818588] (-) TimerEvent: {}
+[5.919176] (-) TimerEvent: {}
+[6.021229] (-) TimerEvent: {}
+[6.122625] (-) TimerEvent: {}
+[6.223042] (-) TimerEvent: {}
+[6.323418] (-) TimerEvent: {}
+[6.423817] (-) TimerEvent: {}
+[6.524311] (-) TimerEvent: {}
+[6.625224] (-) TimerEvent: {}
+[6.725560] (-) TimerEvent: {}
+[6.825920] (-) TimerEvent: {}
+[6.927552] (-) TimerEvent: {}
+[7.028122] (-) TimerEvent: {}
+[7.128660] (-) TimerEvent: {}
+[7.229850] (-) TimerEvent: {}
+[7.330501] (-) TimerEvent: {}
+[7.430909] (-) TimerEvent: {}
+[7.533373] (-) TimerEvent: {}
+[7.633796] (-) TimerEvent: {}
+[7.734033] (-) TimerEvent: {}
+[7.834289] (-) TimerEvent: {}
+[7.934910] (-) TimerEvent: {}
+[8.035230] (-) TimerEvent: {}
+[8.135582] (-) TimerEvent: {}
+[8.236050] (-) TimerEvent: {}
+[8.337228] (-) TimerEvent: {}
+[8.437575] (-) TimerEvent: {}
+[8.537957] (-) TimerEvent: {}
+[8.644247] (-) TimerEvent: {}
+[8.757268] (-) TimerEvent: {}
+[8.857698] (-) TimerEvent: {}
+[8.958172] (-) TimerEvent: {}
+[9.058600] (-) TimerEvent: {}
+[9.158956] (-) TimerEvent: {}
+[9.259316] (-) TimerEvent: {}
+[9.359678] (-) TimerEvent: {}
+[9.460250] (-) TimerEvent: {}
+[9.560807] (-) TimerEvent: {}
+[9.589548] (nav2_mppi_controller) StdoutLine: {'line': b'[ 35%] Building CXX object CMakeFiles/mppi_critics.dir/src/critics/path_follow_critic.cpp.o\n'}
+[9.660932] (-) TimerEvent: {}
+[9.762474] (-) TimerEvent: {}
+[9.862980] (-) TimerEvent: {}
+[9.963467] (-) TimerEvent: {}
+[10.064213] (-) TimerEvent: {}
+[10.164442] (-) TimerEvent: {}
+[10.266453] (-) TimerEvent: {}
+[10.368304] (-) TimerEvent: {}
+[10.469341] (-) TimerEvent: {}
+[10.570074] (-) TimerEvent: {}
+[10.672480] (-) TimerEvent: {}
+[10.773149] (-) TimerEvent: {}
+[10.873751] (-) TimerEvent: {}
+[10.974983] (-) TimerEvent: {}
+[11.075618] (-) TimerEvent: {}
+[11.177022] (-) TimerEvent: {}
+[11.277701] (-) TimerEvent: {}
+[11.381660] (-) TimerEvent: {}
+[11.483445] (-) TimerEvent: {}
+[11.583976] (-) TimerEvent: {}
+[11.687707] (-) TimerEvent: {}
+[11.790892] (-) TimerEvent: {}
+[11.891414] (-) TimerEvent: {}
+[11.991781] (-) TimerEvent: {}
+[12.092150] (-) TimerEvent: {}
+[12.192509] (-) TimerEvent: {}
+[12.244177] (nav2_mppi_controller) StdoutLine: {'line': b'[ 37%] Building CXX object CMakeFiles/mppi_critics.dir/src/critics/path_angle_critic.cpp.o\n'}
+[12.292655] (-) TimerEvent: {}
+[12.393171] (-) TimerEvent: {}
+[12.495376] (-) TimerEvent: {}
+[12.598091] (-) TimerEvent: {}
+[12.698902] (-) TimerEvent: {}
+[12.799293] (-) TimerEvent: {}
+[12.899823] (-) TimerEvent: {}
+[13.002599] (-) TimerEvent: {}
+[13.105631] (-) TimerEvent: {}
+[13.206778] (-) TimerEvent: {}
+[13.307323] (-) TimerEvent: {}
+[13.407838] (-) TimerEvent: {}
+[13.509193] (-) TimerEvent: {}
+[13.612229] (-) TimerEvent: {}
+[13.712561] (-) TimerEvent: {}
+[13.812891] (-) TimerEvent: {}
+[13.913451] (-) TimerEvent: {}
+[14.019612] (-) TimerEvent: {}
+[14.121891] (-) TimerEvent: {}
+[14.222451] (-) TimerEvent: {}
+[14.325049] (-) TimerEvent: {}
+[14.425418] (-) TimerEvent: {}
+[14.527464] (-) TimerEvent: {}
+[14.628054] (-) TimerEvent: {}
+[14.728401] (-) TimerEvent: {}
+[14.828862] (-) TimerEvent: {}
+[14.931161] (-) TimerEvent: {}
+[15.035167] (-) TimerEvent: {}
+[15.135688] (-) TimerEvent: {}
+[15.236067] (-) TimerEvent: {}
+[15.336342] (-) TimerEvent: {}
+[15.436603] (-) TimerEvent: {}
+[15.539234] (-) TimerEvent: {}
+[15.639492] (-) TimerEvent: {}
+[15.739760] (-) TimerEvent: {}
+[15.840030] (-) TimerEvent: {}
+[15.843838] (nav2_mppi_controller) StdoutLine: {'line': b'[ 39%] Building CXX object CMakeFiles/mppi_critics.dir/src/critics/prefer_forward_critic.cpp.o\n'}
+[15.941308] (-) TimerEvent: {}
+[16.043805] (-) TimerEvent: {}
+[16.144928] (-) TimerEvent: {}
+[16.247954] (-) TimerEvent: {}
+[16.293515] (nav2_mppi_controller) StdoutLine: {'line': b'[ 41%] Building CXX object CMakeFiles/mppi_critics.dir/src/critics/twirling_critic.cpp.o\n'}
+[16.349396] (-) TimerEvent: {}
+[16.363528] (nav2_mppi_controller) StdoutLine: {'line': b'[ 43%] Building CXX object CMakeFiles/mppi_critics.dir/src/critics/constraint_critic.cpp.o\n'}
+[16.450950] (-) TimerEvent: {}
+[16.551324] (-) TimerEvent: {}
+[16.629854] (nav2_mppi_controller) StdoutLine: {'line': b'[ 45%] Building CXX object CMakeFiles/mppi_critics.dir/src/critics/velocity_deadband_critic.cpp.o\n'}
+[16.651418] (-) TimerEvent: {}
+[16.751665] (-) TimerEvent: {}
+[16.813702] (nav2_mppi_controller) StdoutLine: {'line': b'[ 47%] Linking CXX static library libgtest.a\n'}
+[16.851780] (-) TimerEvent: {}
+[16.851991] (nav2_mppi_controller) StdoutLine: {'line': b'[ 49%] Building CXX object CMakeFiles/mppi_critics.dir/src/critics/linear_velocity_critic.cpp.o\n'}
+[16.928360] (nav2_mppi_controller) StdoutLine: {'line': b'[ 50%] Building CXX object CMakeFiles/mppi_critics.dir/src/critics/angular_velocity_critic.cpp.o\n'}
+[16.951950] (-) TimerEvent: {}
+[17.052394] (-) TimerEvent: {}
+[17.152895] (-) TimerEvent: {}
+[17.157650] (nav2_mppi_controller) StdoutLine: {'line': b'[ 50%] Built target gtest\n'}
+[17.252991] (-) TimerEvent: {}
+[17.354351] (-) TimerEvent: {}
+[17.454703] (-) TimerEvent: {}
+[17.555613] (-) TimerEvent: {}
+[17.656128] (-) TimerEvent: {}
+[17.757413] (-) TimerEvent: {}
+[17.857818] (-) TimerEvent: {}
+[17.960235] (-) TimerEvent: {}
+[18.061447] (-) TimerEvent: {}
+[18.161726] (-) TimerEvent: {}
+[18.262402] (-) TimerEvent: {}
+[18.362659] (-) TimerEvent: {}
+[18.463037] (-) TimerEvent: {}
+[18.563305] (-) TimerEvent: {}
+[18.663541] (-) TimerEvent: {}
+[18.763953] (-) TimerEvent: {}
+[18.864216] (-) TimerEvent: {}
+[18.964521] (-) TimerEvent: {}
+[19.065024] (-) TimerEvent: {}
+[19.166225] (-) TimerEvent: {}
+[19.266557] (-) TimerEvent: {}
+[19.366806] (-) TimerEvent: {}
+[19.468221] (-) TimerEvent: {}
+[19.569127] (-) TimerEvent: {}
+[19.669384] (-) TimerEvent: {}
+[19.769636] (-) TimerEvent: {}
+[19.871225] (-) TimerEvent: {}
+[19.971571] (-) TimerEvent: {}
+[20.071951] (-) TimerEvent: {}
+[20.172199] (-) TimerEvent: {}
+[20.272430] (-) TimerEvent: {}
+[20.372662] (-) TimerEvent: {}
+[20.473004] (-) TimerEvent: {}
+[20.573232] (-) TimerEvent: {}
+[20.673563] (-) TimerEvent: {}
+[20.774241] (-) TimerEvent: {}
+[20.874542] (-) TimerEvent: {}
+[20.974768] (-) TimerEvent: {}
+[21.075013] (-) TimerEvent: {}
+[21.175285] (-) TimerEvent: {}
+[21.276060] (-) TimerEvent: {}
+[21.376384] (-) TimerEvent: {}
+[21.476760] (-) TimerEvent: {}
+[21.577098] (-) TimerEvent: {}
+[21.677450] (-) TimerEvent: {}
+[21.777823] (-) TimerEvent: {}
+[21.878059] (-) TimerEvent: {}
+[21.978822] (-) TimerEvent: {}
+[22.079176] (-) TimerEvent: {}
+[22.179684] (-) TimerEvent: {}
+[22.280044] (-) TimerEvent: {}
+[22.380306] (-) TimerEvent: {}
+[22.480537] (-) TimerEvent: {}
+[22.580792] (-) TimerEvent: {}
+[22.681067] (-) TimerEvent: {}
+[22.781312] (-) TimerEvent: {}
+[22.881527] (-) TimerEvent: {}
+[22.981870] (-) TimerEvent: {}
+[23.082226] (-) TimerEvent: {}
+[23.111615] (nav2_mppi_controller) StdoutLine: {'line': b'[ 52%] Linking CXX shared library libmppi_controller.so\n'}
+[23.182404] (-) TimerEvent: {}
+[23.282834] (-) TimerEvent: {}
+[23.383216] (-) TimerEvent: {}
+[23.483447] (-) TimerEvent: {}
+[23.583696] (-) TimerEvent: {}
+[23.675616] (nav2_mppi_controller) StdoutLine: {'line': b'[ 52%] Built target mppi_controller\n'}
+[23.683813] (-) TimerEvent: {}
+[23.718328] (nav2_mppi_controller) StdoutLine: {'line': b'[ 54%] Building CXX object test/CMakeFiles/utils_test.dir/utils_test.cpp.o\n'}
+[23.719698] (nav2_mppi_controller) StdoutLine: {'line': b'[ 56%] Building CXX object test/CMakeFiles/noise_generator_test.dir/noise_generator_test.cpp.o\n'}
+[23.720710] (nav2_mppi_controller) StdoutLine: {'line': b'[ 58%] Building CXX object test/CMakeFiles/optimizer_smoke_test.dir/optimizer_smoke_test.cpp.o\n'}
+[23.723235] (nav2_mppi_controller) StdoutLine: {'line': b'[ 60%] Building CXX object test/CMakeFiles/controller_state_transition_test.dir/controller_state_transition_test.cpp.o\n'}
+[23.725988] (nav2_mppi_controller) StdoutLine: {'line': b'[ 62%] Building CXX object test/CMakeFiles/motion_model_tests.dir/motion_model_tests.cpp.o\n'}
+[23.727796] (nav2_mppi_controller) StdoutLine: {'line': b'[ 64%] Building CXX object test/CMakeFiles/path_handler_test.dir/path_handler_test.cpp.o\n'}
+[23.728813] (nav2_mppi_controller) StdoutLine: {'line': b'[ 66%] Building CXX object test/CMakeFiles/trajectory_visualizer_tests.dir/trajectory_visualizer_tests.cpp.o\n'}
+[23.731628] (nav2_mppi_controller) StdoutLine: {'line': b'[ 67%] Building CXX object test/CMakeFiles/parameter_handler_test.dir/parameter_handler_test.cpp.o\n'}
+[23.731756] (nav2_mppi_controller) StdoutLine: {'line': b'[ 69%] Building CXX object test/CMakeFiles/models_test.dir/models_test.cpp.o\n'}
+[23.784253] (-) TimerEvent: {}
+[23.887216] (-) TimerEvent: {}
+[23.988015] (-) TimerEvent: {}
+[24.088525] (-) TimerEvent: {}
+[24.189262] (-) TimerEvent: {}
+[24.290968] (-) TimerEvent: {}
+[24.391679] (-) TimerEvent: {}
+[24.493285] (-) TimerEvent: {}
+[24.593654] (-) TimerEvent: {}
+[24.694184] (-) TimerEvent: {}
+[24.795232] (-) TimerEvent: {}
+[24.896006] (-) TimerEvent: {}
+[24.997615] (-) TimerEvent: {}
+[25.098283] (-) TimerEvent: {}
+[25.200449] (-) TimerEvent: {}
+[25.301204] (-) TimerEvent: {}
+[25.401672] (-) TimerEvent: {}
+[25.502092] (-) TimerEvent: {}
+[25.602452] (-) TimerEvent: {}
+[25.702816] (-) TimerEvent: {}
+[25.803252] (-) TimerEvent: {}
+[25.904340] (-) TimerEvent: {}
+[26.004689] (-) TimerEvent: {}
+[26.105066] (-) TimerEvent: {}
+[26.208411] (-) TimerEvent: {}
+[26.308805] (-) TimerEvent: {}
+[26.409250] (-) TimerEvent: {}
+[26.509835] (-) TimerEvent: {}
+[26.610202] (-) TimerEvent: {}
+[26.710605] (-) TimerEvent: {}
+[26.745552] (nav2_mppi_controller) StdoutLine: {'line': b'[ 71%] Building CXX object test/CMakeFiles/critic_manager_test.dir/critic_manager_test.cpp.o\n'}
+[26.785789] (nav2_mppi_controller) StdoutLine: {'line': b'[ 73%] Building CXX object test/CMakeFiles/optimizer_unit_tests.dir/optimizer_unit_tests.cpp.o\n'}
+[26.810747] (-) TimerEvent: {}
+[26.911076] (-) TimerEvent: {}
+[27.011415] (-) TimerEvent: {}
+[27.115455] (-) TimerEvent: {}
+[27.215949] (-) TimerEvent: {}
+[27.316455] (-) TimerEvent: {}
+[27.417259] (-) TimerEvent: {}
+[27.517600] (-) TimerEvent: {}
+[27.618006] (-) TimerEvent: {}
+[27.719360] (-) TimerEvent: {}
+[27.822224] (-) TimerEvent: {}
+[27.922586] (-) TimerEvent: {}
+[28.022930] (-) TimerEvent: {}
+[28.123322] (-) TimerEvent: {}
+[28.223686] (-) TimerEvent: {}
+[28.324510] (-) TimerEvent: {}
+[28.425052] (-) TimerEvent: {}
+[28.526192] (-) TimerEvent: {}
+[28.626573] (-) TimerEvent: {}
+[28.727006] (-) TimerEvent: {}
+[28.827841] (-) TimerEvent: {}
+[28.928228] (-) TimerEvent: {}
+[29.031130] (-) TimerEvent: {}
+[29.133259] (-) TimerEvent: {}
+[29.235114] (-) TimerEvent: {}
+[29.339555] (-) TimerEvent: {}
+[29.440223] (-) TimerEvent: {}
+[29.540552] (-) TimerEvent: {}
+[29.641083] (-) TimerEvent: {}
+[29.741453] (-) TimerEvent: {}
+[29.841850] (-) TimerEvent: {}
+[29.872547] (nav2_mppi_controller) StdoutLine: {'line': b'[ 75%] Linking CXX shared library libmppi_critics.so\n'}
+[29.941992] (-) TimerEvent: {}
+[30.042432] (-) TimerEvent: {}
+[30.143706] (-) TimerEvent: {}
+[30.244062] (-) TimerEvent: {}
+[30.344419] (-) TimerEvent: {}
+[30.446414] (-) TimerEvent: {}
+[30.546866] (-) TimerEvent: {}
+[30.647412] (-) TimerEvent: {}
+[30.747913] (-) TimerEvent: {}
+[30.802985] (nav2_mppi_controller) StdoutLine: {'line': b'[ 75%] Built target mppi_critics\n'}
+[30.848054] (-) TimerEvent: {}
+[30.851626] (nav2_mppi_controller) StdoutLine: {'line': b'[ 77%] Building CXX object test/CMakeFiles/critics_tests.dir/critics_tests.cpp.o\n'}
+[30.948319] (-) TimerEvent: {}
+[31.048687] (-) TimerEvent: {}
+[31.148965] (-) TimerEvent: {}
+[31.251228] (-) TimerEvent: {}
+[31.351791] (-) TimerEvent: {}
+[31.452843] (-) TimerEvent: {}
+[31.553585] (-) TimerEvent: {}
+[31.655351] (-) TimerEvent: {}
+[31.755896] (-) TimerEvent: {}
+[31.856383] (-) TimerEvent: {}
+[31.956616] (-) TimerEvent: {}
+[32.058226] (-) TimerEvent: {}
+[32.158562] (-) TimerEvent: {}
+[32.258805] (-) TimerEvent: {}
+[32.359045] (-) TimerEvent: {}
+[32.459322] (-) TimerEvent: {}
+[32.559556] (-) TimerEvent: {}
+[32.659920] (-) TimerEvent: {}
+[32.760374] (-) TimerEvent: {}
+[32.860736] (-) TimerEvent: {}
+[32.960956] (-) TimerEvent: {}
+[33.061210] (-) TimerEvent: {}
+[33.161527] (-) TimerEvent: {}
+[33.261789] (-) TimerEvent: {}
+[33.362864] (-) TimerEvent: {}
+[33.464457] (-) TimerEvent: {}
+[33.565087] (-) TimerEvent: {}
+[33.665375] (-) TimerEvent: {}
+[33.765654] (-) TimerEvent: {}
+[33.865959] (-) TimerEvent: {}
+[33.966638] (-) TimerEvent: {}
+[34.067337] (-) TimerEvent: {}
+[34.136999] (nav2_mppi_controller) StderrLine: {'line': b'/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp: In member function \xe2\x80\x98void TestableMPPIController::setApproachState(size_t)\xe2\x80\x99:\n'}
+[34.140574] (nav2_mppi_controller) StderrLine: {'line': b'/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:75:5: error: \xe2\x80\x98active_stage_\xe2\x80\x99 was not declared in this scope\n'}
+[34.141045] (nav2_mppi_controller) StderrLine: {'line': b'   75 |     active_stage_ = nav2_mppi_controller::STAGE_APPROACH;\n'}
+[34.141348] (nav2_mppi_controller) StderrLine: {'line': b'      |     ^~~~~~~~~~~~~\n'}
+[34.141662] (nav2_mppi_controller) StderrLine: {'line': b'/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:75:43: error: \xe2\x80\x98STAGE_APPROACH\xe2\x80\x99 is not a member of \xe2\x80\x98nav2_mppi_controller\xe2\x80\x99\n'}
+[34.142265] (nav2_mppi_controller) StderrLine: {'line': b'   75 |     active_stage_ = nav2_mppi_controller::STAGE_APPROACH;\n'}
+[34.144659] (nav2_mppi_controller) StderrLine: {'line': b'      |                                           ^~~~~~~~~~~~~~\n'}
+[34.167553] (-) TimerEvent: {}
+[34.170973] (nav2_mppi_controller) StderrLine: {'line': b'/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:76:5: error: \xe2\x80\x98approach_substage_\xe2\x80\x99 was not declared in this scope; did you mean \xe2\x80\x98approachSubstage\xe2\x80\x99?\n'}
+[34.171708] (nav2_mppi_controller) StderrLine: {'line': b'   76 |     approach_substage_ = substage;\n'}
+[34.172000] (nav2_mppi_controller) StderrLine: {'line': b'      |     ^~~~~~~~~~~~~~~~~~\n'}
+[34.172223] (nav2_mppi_controller) StderrLine: {'line': b'      |     approachSubstage\n'}
+[34.217886] (nav2_mppi_controller) StderrLine: {'line': b'/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp: In member function \xe2\x80\x98void TestableMPPIController::setApproachTolerances(double, double)\xe2\x80\x99:\n'}
+[34.218566] (nav2_mppi_controller) StderrLine: {'line': b'/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:81:5: error: \xe2\x80\x98final_yaw_enter_lon_tolerance_\xe2\x80\x99 was not declared in this scope\n'}
+[34.218856] (nav2_mppi_controller) StderrLine: {'line': b'   81 |     final_yaw_enter_lon_tolerance_ = enter;\n'}
+[34.219235] (nav2_mppi_controller) StderrLine: {'line': b'      |     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n'}
+[34.240235] (nav2_mppi_controller) StdoutLine: {'line': b'[ 79%] Linking CXX executable models_test\n'}
+[34.264999] (nav2_mppi_controller) StderrLine: {'line': b'/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:82:5: error: \xe2\x80\x98final_yaw_enter_lat_tolerance_\xe2\x80\x99 was not declared in this scope\n'}
+[34.265463] (nav2_mppi_controller) StderrLine: {'line': b'   82 |     final_yaw_enter_lat_tolerance_ = enter;\n'}
+[34.265517] (nav2_mppi_controller) StderrLine: {'line': b'      |     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n'}
+[34.268683] (-) TimerEvent: {}
+[34.303221] (nav2_mppi_controller) StdoutLine: {'line': b'[ 81%] Linking CXX executable parameter_handler_test\n'}
+[34.311416] (nav2_mppi_controller) StderrLine: {'line': b'/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:83:5: error: \xe2\x80\x98final_yaw_exit_lon_tolerance_\xe2\x80\x99 was not declared in this scope\n'}
+[34.311681] (nav2_mppi_controller) StderrLine: {'line': b'   83 |     final_yaw_exit_lon_tolerance_ = exit;\n'}
+[34.311731] (nav2_mppi_controller) StderrLine: {'line': b'      |     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n'}
+[34.357639] (nav2_mppi_controller) StderrLine: {'line': b'/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:84:5: error: \xe2\x80\x98final_yaw_exit_lat_tolerance_\xe2\x80\x99 was not declared in this scope\n'}
+[34.357896] (nav2_mppi_controller) StderrLine: {'line': b'   84 |     final_yaw_exit_lat_tolerance_ = exit;\n'}
+[34.357960] (nav2_mppi_controller) StderrLine: {'line': b'      |     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n'}
+[34.368816] (-) TimerEvent: {}
+[34.397335] (nav2_mppi_controller) StderrLine: {'line': b'/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp: In member function \xe2\x80\x98void TestableMPPIController::updateApproach(double, double)\xe2\x80\x99:\n'}
+[34.397583] (nav2_mppi_controller) StderrLine: {'line': b'/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:89:5: error: \xe2\x80\x98updateApproachSubstage\xe2\x80\x99 was not declared in this scope; did you mean \xe2\x80\x98approachSubstage\xe2\x80\x99?\n'}
+[34.397642] (nav2_mppi_controller) StderrLine: {'line': b'   89 |     updateApproachSubstage(lon, lat);\n'}
+[34.397950] (nav2_mppi_controller) StderrLine: {'line': b'      |     ^~~~~~~~~~~~~~~~~~~~~~\n'}
+[34.398280] (nav2_mppi_controller) StderrLine: {'line': b'      |     approachSubstage\n'}
+[34.429606] (nav2_mppi_controller) StderrLine: {'line': b'/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp: In member function \xe2\x80\x98void TestableMPPIController::setApproachMode(size_t)\xe2\x80\x99:\n'}
+[34.429861] (nav2_mppi_controller) StderrLine: {'line': b'/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:94:5: error: \xe2\x80\x98approach_mode_\xe2\x80\x99 was not declared in this scope; did you mean \xe2\x80\x98approachMode\xe2\x80\x99?\n'}
+[34.431001] (nav2_mppi_controller) StderrLine: {'line': b'   94 |     approach_mode_ = mode;\n'}
+[34.431084] (nav2_mppi_controller) StderrLine: {'line': b'      |     ^~~~~~~~~~~~~~\n'}
+[34.431165] (nav2_mppi_controller) StderrLine: {'line': b'      |     approachMode\n'}
+[34.469151] (-) TimerEvent: {}
+[34.477438] (nav2_mppi_controller) StderrLine: {'line': b'/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:95:5: error: \xe2\x80\x98approach_mode_locked_\xe2\x80\x99 was not declared in this scope\n'}
+[34.477679] (nav2_mppi_controller) StderrLine: {'line': b'   95 |     approach_mode_locked_ = true;\n'}
+[34.477727] (nav2_mppi_controller) StderrLine: {'line': b'      |     ^~~~~~~~~~~~~~~~~~~~~\n'}
+[34.524723] (nav2_mppi_controller) StderrLine: {'line': b'/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp: In member function \xe2\x80\x98void TestableMPPIController::setPositionFirstYawThreshold(double)\xe2\x80\x99:\n'}
+[34.525002] (nav2_mppi_controller) StderrLine: {'line': b'/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:100:5: error: \xe2\x80\x98position_first_yaw_threshold_\xe2\x80\x99 was not declared in this scope; did you mean \xe2\x80\x98setPositionFirstYawThreshold\xe2\x80\x99?\n'}
+[34.525252] (nav2_mppi_controller) StderrLine: {'line': b'  100 |     position_first_yaw_threshold_ = threshold;\n'}
+[34.525303] (nav2_mppi_controller) StderrLine: {'line': b'      |     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n'}
+[34.525345] (nav2_mppi_controller) StderrLine: {'line': b'      |     setPositionFirstYawThreshold\n'}
+[34.569230] (-) TimerEvent: {}
+[34.583337] (nav2_mppi_controller) StderrLine: {'line': b'/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp: In member function \xe2\x80\x98void TestableMPPIController::setPositionFirstLateralGeometry(double, double)\xe2\x80\x99:\n'}
+[34.583618] (nav2_mppi_controller) StderrLine: {'line': b'/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:105:5: error: \xe2\x80\x98position_first_lateral_error_threshold_\xe2\x80\x99 was not declared in this scope\n'}
+[34.583679] (nav2_mppi_controller) StderrLine: {'line': b'  105 |     position_first_lateral_error_threshold_ = threshold;\n'}
+[34.583742] (nav2_mppi_controller) StderrLine: {'line': b'      |     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n'}
+[34.636440] (nav2_mppi_controller) StderrLine: {'line': b'/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:106:5: error: \xe2\x80\x98position_first_lateral_ratio_\xe2\x80\x99 was not declared in this scope\n'}
+[34.636654] (nav2_mppi_controller) StderrLine: {'line': b'  106 |     position_first_lateral_ratio_ = ratio;\n'}
+[34.636705] (nav2_mppi_controller) StderrLine: {'line': b'      |     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n'}
+[34.669510] (-) TimerEvent: {}
+[34.672428] (nav2_mppi_controller) StderrLine: {'line': b'/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp: In member function \xe2\x80\x98void TestableMPPIController::enterApproachFrom(size_t, double, double, double)\xe2\x80\x99:\n'}
+[34.672868] (nav2_mppi_controller) StderrLine: {'line': b'/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:112:5: error: \xe2\x80\x98active_stage_\xe2\x80\x99 was not declared in this scope\n'}
+[34.672947] (nav2_mppi_controller) StderrLine: {'line': b'  112 |     active_stage_ = nav2_mppi_controller::STAGE_APPROACH;\n'}
+[34.673030] (nav2_mppi_controller) StderrLine: {'line': b'      |     ^~~~~~~~~~~~~\n'}
+[34.675023] (nav2_mppi_controller) StderrLine: {'line': b'/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:112:43: error: \xe2\x80\x98STAGE_APPROACH\xe2\x80\x99 is not a member of \xe2\x80\x98nav2_mppi_controller\xe2\x80\x99\n'}
+[34.676292] (nav2_mppi_controller) StderrLine: {'line': b'  112 |     active_stage_ = nav2_mppi_controller::STAGE_APPROACH;\n'}
+[34.676391] (nav2_mppi_controller) StderrLine: {'line': b'      |                                           ^~~~~~~~~~~~~~\n'}
+[34.678839] (nav2_mppi_controller) StderrLine: {'line': b'/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:114:45: error: \xe2\x80\x98STAGE_APPROACH\xe2\x80\x99 is not a member of \xe2\x80\x98nav2_mppi_controller\xe2\x80\x99\n'}
+[34.679098] (nav2_mppi_controller) StderrLine: {'line': b'  114 |       previous_stage, nav2_mppi_controller::STAGE_APPROACH,\n'}
+[34.679157] (nav2_mppi_controller) StderrLine: {'line': b'      |                                             ^~~~~~~~~~~~~~\n'}
+[34.723627] (nav2_mppi_controller) StderrLine: {'line': b'/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:113:5: error: \xe2\x80\x98updateApproachMode\xe2\x80\x99 was not declared in this scope; did you mean \xe2\x80\x98updateApproach\xe2\x80\x99?\n'}
+[34.725486] (nav2_mppi_controller) StderrLine: {'line': b'  113 |     updateApproachMode(\n'}
+[34.725778] (nav2_mppi_controller) StderrLine: {'line': b'      |     ^~~~~~~~~~~~~~~~~~\n'}
+[34.729220] (nav2_mppi_controller) StderrLine: {'line': b'      |     updateApproach\n'}
+[34.756203] (nav2_mppi_controller) StderrLine: {'line': b'/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp: In member function \xe2\x80\x98size_t TestableMPPIController::approachMode() const\xe2\x80\x99:\n'}
+[34.756455] (nav2_mppi_controller) StderrLine: {'line': b'/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:120:12: error: \xe2\x80\x98approach_mode_\xe2\x80\x99 was not declared in this scope; did you mean \xe2\x80\x98approachMode\xe2\x80\x99?\n'}
+[34.756526] (nav2_mppi_controller) StderrLine: {'line': b'  120 |     return approach_mode_;\n'}
+[34.756575] (nav2_mppi_controller) StderrLine: {'line': b'      |            ^~~~~~~~~~~~~~\n'}
+[34.756619] (nav2_mppi_controller) StderrLine: {'line': b'      |            approachMode\n'}
+[34.769580] (-) TimerEvent: {}
+[34.791904] (nav2_mppi_controller) StderrLine: {'line': b'/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp: In member function \xe2\x80\x98size_t TestableMPPIController::approachSubstage() const\xe2\x80\x99:\n'}
+[34.792599] (nav2_mppi_controller) StderrLine: {'line': b'/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:125:12: error: \xe2\x80\x98approach_substage_\xe2\x80\x99 was not declared in this scope; did you mean \xe2\x80\x98approachSubstage\xe2\x80\x99?\n'}
+[34.792925] (nav2_mppi_controller) StderrLine: {'line': b'  125 |     return approach_substage_;\n'}
+[34.793395] (nav2_mppi_controller) StderrLine: {'line': b'      |            ^~~~~~~~~~~~~~~~~~\n'}
+[34.793753] (nav2_mppi_controller) StderrLine: {'line': b'      |            approachSubstage\n'}
+[34.829580] (nav2_mppi_controller) StderrLine: {'line': b'/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp: In member function \xe2\x80\x98void TestableMPPIController::applySubstageProfile(const mppi::MppiProfileSettings&, size_t, float, float)\xe2\x80\x99:\n'}
+[34.830295] (nav2_mppi_controller) StderrLine: {'line': b'/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:132:5: error: \xe2\x80\x98active_stage_\xe2\x80\x99 was not declared in this scope\n'}
+[34.830423] (nav2_mppi_controller) StderrLine: {'line': b'  132 |     active_stage_ = nav2_mppi_controller::STAGE_APPROACH;\n'}
+[34.830487] (nav2_mppi_controller) StderrLine: {'line': b'      |     ^~~~~~~~~~~~~\n'}
+[34.830835] (nav2_mppi_controller) StderrLine: {'line': b'/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:132:43: error: \xe2\x80\x98STAGE_APPROACH\xe2\x80\x99 is not a member of \xe2\x80\x98nav2_mppi_controller\xe2\x80\x99\n'}
+[34.830948] (nav2_mppi_controller) StderrLine: {'line': b'  132 |     active_stage_ = nav2_mppi_controller::STAGE_APPROACH;\n'}
+[34.831024] (nav2_mppi_controller) StderrLine: {'line': b'      |                                           ^~~~~~~~~~~~~~\n'}
+[34.868031] (nav2_mppi_controller) StderrLine: {'line': b'/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:133:5: error: \xe2\x80\x98approach_substage_\xe2\x80\x99 was not declared in this scope; did you mean \xe2\x80\x98approachSubstage\xe2\x80\x99?\n'}
+[34.868267] (nav2_mppi_controller) StderrLine: {'line': b'  133 |     approach_substage_ = substage;\n'}
+[34.868334] (nav2_mppi_controller) StderrLine: {'line': b'      |     ^~~~~~~~~~~~~~~~~~\n'}
+[34.868381] (nav2_mppi_controller) StderrLine: {'line': b'      |     approachSubstage\n'}
+[34.869666] (-) TimerEvent: {}
+[34.872946] (nav2_mppi_controller) StdoutLine: {'line': b'[ 81%] Built target models_test\n'}
+[34.901483] (nav2_mppi_controller) StderrLine: {'line': b'/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:134:5: error: \xe2\x80\x98applied_profile_\xe2\x80\x99 was not declared in this scope; did you mean \xe2\x80\x98appliedProfile\xe2\x80\x99?\n'}
+[34.901986] (nav2_mppi_controller) StderrLine: {'line': b'  134 |     applied_profile_ = profile;\n'}
+[34.902227] (nav2_mppi_controller) StderrLine: {'line': b'      |     ^~~~~~~~~~~~~~~~\n'}
+[34.902465] (nav2_mppi_controller) StderrLine: {'line': b'      |     appliedProfile\n'}
+[34.936588] (nav2_mppi_controller) StderrLine: {'line': b'/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:135:5: error: \xe2\x80\x98stages_\xe2\x80\x99 was not declared in this scope\n'}
+[34.937748] (nav2_mppi_controller) StderrLine: {'line': b'  135 |     stages_[nav2_mppi_controller::STAGE_APPROACH] = profile;\n'}
+[34.938093] (nav2_mppi_controller) StderrLine: {'line': b'      |     ^~~~~~~\n'}
+[34.940817] (nav2_mppi_controller) StderrLine: {'line': b'/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:135:35: error: \xe2\x80\x98STAGE_APPROACH\xe2\x80\x99 is not a member of \xe2\x80\x98nav2_mppi_controller\xe2\x80\x99\n'}
+[34.941852] (nav2_mppi_controller) StderrLine: {'line': b'  135 |     stages_[nav2_mppi_controller::STAGE_APPROACH] = profile;\n'}
+[34.942212] (nav2_mppi_controller) StderrLine: {'line': b'      |                                   ^~~~~~~~~~~~~~\n'}
+[34.969840] (-) TimerEvent: {}
+[34.983944] (nav2_mppi_controller) StderrLine: {'line': b'/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:136:5: error: \xe2\x80\x98final_yaw_vx_max_\xe2\x80\x99 was not declared in this scope; did you mean \xe2\x80\x98final_vx_max\xe2\x80\x99?\n'}
+[34.984369] (nav2_mppi_controller) StderrLine: {'line': b'  136 |     final_yaw_vx_max_ = final_vx_max;\n'}
+[34.984430] (nav2_mppi_controller) StderrLine: {'line': b'      |     ^~~~~~~~~~~~~~~~~\n'}
+[34.984474] (nav2_mppi_controller) StderrLine: {'line': b'      |     final_vx_max\n'}
+[35.024810] (nav2_mppi_controller) StderrLine: {'line': b'/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:137:5: error: \xe2\x80\x98final_yaw_wz_max_\xe2\x80\x99 was not declared in this scope; did you mean \xe2\x80\x98final_wz_max\xe2\x80\x99?\n'}
+[35.025041] (nav2_mppi_controller) StderrLine: {'line': b'  137 |     final_yaw_wz_max_ = final_wz_max;\n'}
+[35.025090] (nav2_mppi_controller) StderrLine: {'line': b'      |     ^~~~~~~~~~~~~~~~~\n'}
+[35.025129] (nav2_mppi_controller) StderrLine: {'line': b'      |     final_wz_max\n'}
+[35.068843] (nav2_mppi_controller) StderrLine: {'line': b'/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:138:5: error: \xe2\x80\x98applyApproachSubstageProfile\xe2\x80\x99 was not declared in this scope; did you mean \xe2\x80\x98applySubstageProfile\xe2\x80\x99?\n'}
+[35.070580] (-) TimerEvent: {}
+[35.070751] (nav2_mppi_controller) StderrLine: {'line': b'  138 |     applyApproachSubstageProfile();\n'}
+[35.071231] (nav2_mppi_controller) StderrLine: {'line': b'      |     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~\n'}
+[35.071705] (nav2_mppi_controller) StderrLine: {'line': b'      |     applySubstageProfile\n'}
+[35.103802] (nav2_mppi_controller) StderrLine: {'line': b'/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp: In member function \xe2\x80\x98const mppi::MppiProfileSettings& TestableMPPIController::appliedProfile() const\xe2\x80\x99:\n'}
+[35.104042] (nav2_mppi_controller) StderrLine: {'line': b'/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:143:12: error: \xe2\x80\x98applied_profile_\xe2\x80\x99 was not declared in this scope; did you mean \xe2\x80\x98appliedProfile\xe2\x80\x99?\n'}
+[35.104113] (nav2_mppi_controller) StderrLine: {'line': b'  143 |     return applied_profile_;\n'}
+[35.104180] (nav2_mppi_controller) StderrLine: {'line': b'      |            ^~~~~~~~~~~~~~~~\n'}
+[35.104238] (nav2_mppi_controller) StderrLine: {'line': b'      |            appliedProfile\n'}
+[35.113752] (nav2_mppi_controller) StderrLine: {'line': b'/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp: In member function \xe2\x80\x98virtual void ControllerStateTransitionTest_ApproachSubstageUsesPositionHysteresis_Test::TestBody()\xe2\x80\x99:\n'}
+[35.114111] (nav2_mppi_controller) StderrLine: {'line': b'/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:151:53: error: \xe2\x80\x98APPROACH_POSITIONING\xe2\x80\x99 is not a member of \xe2\x80\x98nav2_mppi_controller\xe2\x80\x99\n'}
+[35.114181] (nav2_mppi_controller) StderrLine: {'line': b'  151 |   controller.setApproachState(nav2_mppi_controller::APPROACH_POSITIONING);\n'}
+[35.114227] (nav2_mppi_controller) StderrLine: {'line': b'      |                                                     ^~~~~~~~~~~~~~~~~~~~\n'}
+[35.115762] (nav2_mppi_controller) StderrLine: {'line': b'In file included from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:375,\n'}
+[35.116223] (nav2_mppi_controller) StderrLine: {'line': b'                 from /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:15:\n'}
+[35.116428] (nav2_mppi_controller) StderrLine: {'line': b'/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:154:66: error: \xe2\x80\x98APPROACH_FINAL_YAW\xe2\x80\x99 is not a member of \xe2\x80\x98nav2_mppi_controller\xe2\x80\x99\n'}
+[35.116517] (nav2_mppi_controller) StderrLine: {'line': b'  154 |   EXPECT_EQ(controller.approachSubstage(), nav2_mppi_controller::APPROACH_FINAL_YAW);\n'}
+[35.116594] (nav2_mppi_controller) StderrLine: {'line': b'      |                                                                  ^~~~~~~~~~~~~~~~~~\n'}
+[35.119212] (nav2_mppi_controller) StderrLine: {'line': b'/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:157:66: error: \xe2\x80\x98APPROACH_FINAL_YAW\xe2\x80\x99 is not a member of \xe2\x80\x98nav2_mppi_controller\xe2\x80\x99\n'}
+[35.119479] (nav2_mppi_controller) StderrLine: {'line': b'  157 |   EXPECT_EQ(controller.approachSubstage(), nav2_mppi_controller::APPROACH_FINAL_YAW);\n'}
+[35.121066] (nav2_mppi_controller) StderrLine: {'line': b'      |                                                                  ^~~~~~~~~~~~~~~~~~\n'}
+[35.121891] (nav2_mppi_controller) StderrLine: {'line': b'/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:160:66: error: \xe2\x80\x98APPROACH_POSITIONING\xe2\x80\x99 is not a member of \xe2\x80\x98nav2_mppi_controller\xe2\x80\x99\n'}
+[35.122076] (nav2_mppi_controller) StderrLine: {'line': b'  160 |   EXPECT_EQ(controller.approachSubstage(), nav2_mppi_controller::APPROACH_POSITIONING);\n'}
+[35.122192] (nav2_mppi_controller) StderrLine: {'line': b'      |                                                                  ^~~~~~~~~~~~~~~~~~~~\n'}
+[35.127203] (nav2_mppi_controller) StderrLine: {'line': b'/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp: In member function \xe2\x80\x98virtual void ControllerStateTransitionTest_ApproachSubstageAppliesSeparateProfiles_Test::TestBody()\xe2\x80\x99:\n'}
+[35.127434] (nav2_mppi_controller) StderrLine: {'line': b'/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:174:52: error: \xe2\x80\x98APPROACH_POSITION_FIRST\xe2\x80\x99 is not a member of \xe2\x80\x98nav2_mppi_controller\xe2\x80\x99\n'}
+[35.127678] (nav2_mppi_controller) StderrLine: {'line': b'  174 |   controller.setApproachMode(nav2_mppi_controller::APPROACH_POSITION_FIRST);\n'}
+[35.127733] (nav2_mppi_controller) StderrLine: {'line': b'      |                                                    ^~~~~~~~~~~~~~~~~~~~~~~\n'}
+[35.127774] (nav2_mppi_controller) StdoutLine: {'line': b'[ 83%] Linking CXX executable noise_generator_test\n'}
+[35.130799] (nav2_mppi_controller) StderrLine: {'line': b'/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:175:66: error: \xe2\x80\x98APPROACH_POSITIONING\xe2\x80\x99 is not a member of \xe2\x80\x98nav2_mppi_controller\xe2\x80\x99\n'}
+[35.131044] (nav2_mppi_controller) StderrLine: {'line': b'  175 |   controller.applySubstageProfile(profile, nav2_mppi_controller::APPROACH_POSITIONING);\n'}
+[35.131108] (nav2_mppi_controller) StderrLine: {'line': b'      |                                                                  ^~~~~~~~~~~~~~~~~~~~\n'}
+[35.135209] (nav2_mppi_controller) StdoutLine: {'line': b'[ 83%] Built target parameter_handler_test\n'}
+[35.135688] (nav2_mppi_controller) StderrLine: {'line': b'/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:180:66: error: \xe2\x80\x98APPROACH_FINAL_YAW\xe2\x80\x99 is not a member of \xe2\x80\x98nav2_mppi_controller\xe2\x80\x99\n'}
+[35.135820] (nav2_mppi_controller) StderrLine: {'line': b'  180 |   controller.applySubstageProfile(profile, nav2_mppi_controller::APPROACH_FINAL_YAW);\n'}
+[35.135866] (nav2_mppi_controller) StderrLine: {'line': b'      |                                                                  ^~~~~~~~~~~~~~~~~~\n'}
+[35.138653] (nav2_mppi_controller) StderrLine: {'line': b'/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp: In member function \xe2\x80\x98virtual void ControllerStateTransitionTest_ApproachModeLocksFromEntryYawError_Test::TestBody()\xe2\x80\x99:\n'}
+[35.138872] (nav2_mppi_controller) StderrLine: {'line': b'/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:197:54: error: \xe2\x80\x98STAGE_TRACK\xe2\x80\x99 is not a member of \xe2\x80\x98nav2_mppi_controller\xe2\x80\x99\n'}
+[35.138919] (nav2_mppi_controller) StderrLine: {'line': b'  197 |   controller.enterApproachFrom(nav2_mppi_controller::STAGE_TRACK, 0.4, 0.02, 0.5);\n'}
+[35.138956] (nav2_mppi_controller) StderrLine: {'line': b'      |                                                      ^~~~~~~~~~~\n'}
+[35.141207] (nav2_mppi_controller) StderrLine: {'line': b'In file included from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:375,\n'}
+[35.141474] (nav2_mppi_controller) StderrLine: {'line': b'                 from /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:15:\n'}
+[35.141528] (nav2_mppi_controller) StderrLine: {'line': b'/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:198:62: error: \xe2\x80\x98APPROACH_NORMAL\xe2\x80\x99 is not a member of \xe2\x80\x98nav2_mppi_controller\xe2\x80\x99\n'}
+[35.142223] (nav2_mppi_controller) StderrLine: {'line': b'  198 |   EXPECT_EQ(controller.approachMode(), nav2_mppi_controller::APPROACH_NORMAL);\n'}
+[35.142470] (nav2_mppi_controller) StderrLine: {'line': b'      |                                                              ^~~~~~~~~~~~~~~\n'}
+[35.144932] (nav2_mppi_controller) StderrLine: {'line': b'/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:200:54: error: \xe2\x80\x98STAGE_TRACK\xe2\x80\x99 is not a member of \xe2\x80\x98nav2_mppi_controller\xe2\x80\x99\n'}
+[35.145174] (nav2_mppi_controller) StderrLine: {'line': b'  200 |   controller.enterApproachFrom(nav2_mppi_controller::STAGE_TRACK, 0.4, 0.02, 1.8);\n'}
+[35.145271] (nav2_mppi_controller) StderrLine: {'line': b'      |                                                      ^~~~~~~~~~~\n'}
+[35.148172] (nav2_mppi_controller) StderrLine: {'line': b'In file included from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:375,\n'}
+[35.148591] (nav2_mppi_controller) StderrLine: {'line': b'                 from /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:15:\n'}
+[35.148637] (nav2_mppi_controller) StderrLine: {'line': b'/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:201:62: error: \xe2\x80\x98APPROACH_NORMAL\xe2\x80\x99 is not a member of \xe2\x80\x98nav2_mppi_controller\xe2\x80\x99\n'}
+[35.148688] (nav2_mppi_controller) StderrLine: {'line': b'  201 |   EXPECT_EQ(controller.approachMode(), nav2_mppi_controller::APPROACH_NORMAL);\n'}
+[35.148726] (nav2_mppi_controller) StderrLine: {'line': b'      |                                                              ^~~~~~~~~~~~~~~\n'}
+[35.151291] (nav2_mppi_controller) StderrLine: {'line': b'/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:203:54: error: \xe2\x80\x98STAGE_TRACK\xe2\x80\x99 is not a member of \xe2\x80\x98nav2_mppi_controller\xe2\x80\x99\n'}
+[35.151528] (nav2_mppi_controller) StderrLine: {'line': b'  203 |   controller.enterApproachFrom(nav2_mppi_controller::STAGE_TRACK, 0.4, 0.02, -2.8);\n'}
+[35.151585] (nav2_mppi_controller) StderrLine: {'line': b'      |                                                      ^~~~~~~~~~~\n'}
+[35.154742] (nav2_mppi_controller) StderrLine: {'line': b'In file included from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:375,\n'}
+[35.155017] (nav2_mppi_controller) StderrLine: {'line': b'                 from /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:15:\n'}
+[35.155088] (nav2_mppi_controller) StderrLine: {'line': b'/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:204:62: error: \xe2\x80\x98APPROACH_POSITION_FIRST\xe2\x80\x99 is not a member of \xe2\x80\x98nav2_mppi_controller\xe2\x80\x99\n'}
+[35.155156] (nav2_mppi_controller) StderrLine: {'line': b'  204 |   EXPECT_EQ(controller.approachMode(), nav2_mppi_controller::APPROACH_POSITION_FIRST);\n'}
+[35.155217] (nav2_mppi_controller) StderrLine: {'line': b'      |                                                              ^~~~~~~~~~~~~~~~~~~~~~~\n'}
+[35.158487] (nav2_mppi_controller) StderrLine: {'line': b'/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp: In member function \xe2\x80\x98virtual void ControllerStateTransitionTest_ApproachModeUsesPositionFirstForLateralDominantGoal_Test::TestBody()\xe2\x80\x99:\n'}
+[35.158692] (nav2_mppi_controller) StderrLine: {'line': b'/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:213:54: error: \xe2\x80\x98STAGE_TRACK\xe2\x80\x99 is not a member of \xe2\x80\x98nav2_mppi_controller\xe2\x80\x99\n'}
+[35.158753] (nav2_mppi_controller) StderrLine: {'line': b'  213 |   controller.enterApproachFrom(nav2_mppi_controller::STAGE_TRACK, 0.02, -0.45, 1.5);\n'}
+[35.158792] (nav2_mppi_controller) StderrLine: {'line': b'      |                                                      ^~~~~~~~~~~\n'}
+[35.161949] (nav2_mppi_controller) StderrLine: {'line': b'In file included from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:375,\n'}
+[35.162536] (nav2_mppi_controller) StderrLine: {'line': b'                 from /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:15:\n'}
+[35.162719] (nav2_mppi_controller) StderrLine: {'line': b'/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:214:62: error: \xe2\x80\x98APPROACH_POSITION_FIRST\xe2\x80\x99 is not a member of \xe2\x80\x98nav2_mppi_controller\xe2\x80\x99\n'}
+[35.162861] (nav2_mppi_controller) StderrLine: {'line': b'  214 |   EXPECT_EQ(controller.approachMode(), nav2_mppi_controller::APPROACH_POSITION_FIRST);\n'}
+[35.163022] (nav2_mppi_controller) StderrLine: {'line': b'      |                                                              ^~~~~~~~~~~~~~~~~~~~~~~\n'}
+[35.164341] (nav2_mppi_controller) StderrLine: {'line': b'/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:216:54: error: \xe2\x80\x98STAGE_TRACK\xe2\x80\x99 is not a member of \xe2\x80\x98nav2_mppi_controller\xe2\x80\x99\n'}
+[35.164696] (nav2_mppi_controller) StderrLine: {'line': b'  216 |   controller.enterApproachFrom(nav2_mppi_controller::STAGE_TRACK, 0.30, 0.04, 1.5);\n'}
+[35.164870] (nav2_mppi_controller) StderrLine: {'line': b'      |                                                      ^~~~~~~~~~~\n'}
+[35.167470] (nav2_mppi_controller) StderrLine: {'line': b'In file included from /opt/ros/humble/src/gtest_vendor/include/gtest/gtest.h:375,\n'}
+[35.168044] (nav2_mppi_controller) StderrLine: {'line': b'                 from /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:15:\n'}
+[35.168290] (nav2_mppi_controller) StderrLine: {'line': b'/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:217:62: error: \xe2\x80\x98APPROACH_NORMAL\xe2\x80\x99 is not a member of \xe2\x80\x98nav2_mppi_controller\xe2\x80\x99\n'}
+[35.168525] (nav2_mppi_controller) StderrLine: {'line': b'  217 |   EXPECT_EQ(controller.approachMode(), nav2_mppi_controller::APPROACH_NORMAL);\n'}
+[35.168858] (nav2_mppi_controller) StderrLine: {'line': b'      |                                                              ^~~~~~~~~~~~~~~\n'}
+[35.171301] (nav2_mppi_controller) StderrLine: {'line': b'/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp: In member function \xe2\x80\x98virtual void ControllerStateTransitionTest_NormalApproachKeepsFullYawControlWhilePositioning_Test::TestBody()\xe2\x80\x99:\n'}
+[35.171851] (-) TimerEvent: {}
+[35.171934] (nav2_mppi_controller) StderrLine: {'line': b'/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:228:52: error: \xe2\x80\x98APPROACH_NORMAL\xe2\x80\x99 is not a member of \xe2\x80\x98nav2_mppi_controller\xe2\x80\x99\n'}
+[35.172142] (nav2_mppi_controller) StderrLine: {'line': b'  228 |   controller.setApproachMode(nav2_mppi_controller::APPROACH_NORMAL);\n'}
+[35.172324] (nav2_mppi_controller) StderrLine: {'line': b'      |                                                    ^~~~~~~~~~~~~~~\n'}
+[35.174006] (nav2_mppi_controller) StderrLine: {'line': b'/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:229:66: error: \xe2\x80\x98APPROACH_POSITIONING\xe2\x80\x99 is not a member of \xe2\x80\x98nav2_mppi_controller\xe2\x80\x99\n'}
+[35.174371] (nav2_mppi_controller) StderrLine: {'line': b'  229 |   controller.applySubstageProfile(profile, nav2_mppi_controller::APPROACH_POSITIONING);\n'}
+[35.174432] (nav2_mppi_controller) StderrLine: {'line': b'      |                                                                  ^~~~~~~~~~~~~~~~~~~~\n'}
+[35.271981] (-) TimerEvent: {}
+[35.372350] (-) TimerEvent: {}
+[35.472604] (-) TimerEvent: {}
+[35.573031] (-) TimerEvent: {}
+[35.673396] (-) TimerEvent: {}
+[35.773638] (-) TimerEvent: {}
+[35.799982] (nav2_mppi_controller) StdoutLine: {'line': b'[ 83%] Built target noise_generator_test\n'}
+[35.873761] (-) TimerEvent: {}
+[35.974006] (-) TimerEvent: {}
+[36.074311] (-) TimerEvent: {}
+[36.174608] (-) TimerEvent: {}
+[36.274942] (-) TimerEvent: {}
+[36.375360] (-) TimerEvent: {}
+[36.475621] (-) TimerEvent: {}
+[36.575893] (-) TimerEvent: {}
+[36.676131] (-) TimerEvent: {}
+[36.776359] (-) TimerEvent: {}
+[36.853620] (nav2_mppi_controller) StdoutLine: {'line': b'[ 84%] Linking CXX executable path_handler_test\n'}
+[36.864463] (nav2_mppi_controller) StdoutLine: {'line': b'[ 86%] Linking CXX executable motion_model_tests\n'}
+[36.876500] (-) TimerEvent: {}
+[36.976738] (-) TimerEvent: {}
+[37.076989] (-) TimerEvent: {}
+[37.177240] (-) TimerEvent: {}
+[37.277533] (-) TimerEvent: {}
+[37.378324] (-) TimerEvent: {}
+[37.444922] (nav2_mppi_controller) StdoutLine: {'line': b'[ 86%] Built target path_handler_test\n'}
+[37.478423] (-) TimerEvent: {}
+[37.578796] (-) TimerEvent: {}
+[37.580547] (nav2_mppi_controller) StdoutLine: {'line': b'[ 86%] Built target motion_model_tests\n'}
+[37.678909] (-) TimerEvent: {}
+[37.779156] (-) TimerEvent: {}
+[37.841524] (nav2_mppi_controller) StderrLine: {'line': b'gmake[2]: *** [test/CMakeFiles/controller_state_transition_test.dir/build.make:76\xef\xbc\x9atest/CMakeFiles/controller_state_transition_test.dir/controller_state_transition_test.cpp.o] \xe9\x94\x99\xe8\xaf\xaf 1\n'}
+[37.841765] (nav2_mppi_controller) StderrLine: {'line': b'gmake[1]: *** [CMakeFiles/Makefile2:278\xef\xbc\x9atest/CMakeFiles/controller_state_transition_test.dir/all] \xe9\x94\x99\xe8\xaf\xaf 2\n'}
+[37.841881] (nav2_mppi_controller) StderrLine: {'line': b'gmake[1]: *** \xe6\xad\xa3\xe5\x9c\xa8\xe7\xad\x89\xe5\xbe\x85\xe6\x9c\xaa\xe5\xae\x8c\xe6\x88\x90\xe7\x9a\x84\xe4\xbb\xbb\xe5\x8a\xa1....\n'}
+[37.879215] (-) TimerEvent: {}
+[37.979514] (-) TimerEvent: {}
+[38.079857] (-) TimerEvent: {}
+[38.180240] (-) TimerEvent: {}
+[38.280658] (-) TimerEvent: {}
+[38.381049] (-) TimerEvent: {}
+[38.481226] (-) TimerEvent: {}
+[38.581444] (-) TimerEvent: {}
+[38.681666] (-) TimerEvent: {}
+[38.781879] (-) TimerEvent: {}
+[38.882104] (-) TimerEvent: {}
+[38.982314] (-) TimerEvent: {}
+[39.082688] (-) TimerEvent: {}
+[39.183003] (-) TimerEvent: {}
+[39.283202] (-) TimerEvent: {}
+[39.328337] (nav2_mppi_controller) StdoutLine: {'line': b'[ 88%] Linking CXX executable utils_test\n'}
+[39.383450] (-) TimerEvent: {}
+[39.483825] (-) TimerEvent: {}
+[39.584045] (-) TimerEvent: {}
+[39.684317] (-) TimerEvent: {}
+[39.738031] (nav2_mppi_controller) StdoutLine: {'line': b'[ 88%] Built target utils_test\n'}
+[39.784434] (-) TimerEvent: {}
+[39.884673] (-) TimerEvent: {}
+[39.984897] (-) TimerEvent: {}
+[40.085103] (-) TimerEvent: {}
+[40.185420] (-) TimerEvent: {}
+[40.285704] (-) TimerEvent: {}
+[40.385902] (-) TimerEvent: {}
+[40.486286] (-) TimerEvent: {}
+[40.586597] (-) TimerEvent: {}
+[40.686799] (-) TimerEvent: {}
+[40.787033] (-) TimerEvent: {}
+[40.887229] (-) TimerEvent: {}
+[40.987439] (-) TimerEvent: {}
+[41.087641] (-) TimerEvent: {}
+[41.187866] (-) TimerEvent: {}
+[41.288085] (-) TimerEvent: {}
+[41.388437] (-) TimerEvent: {}
+[41.488639] (-) TimerEvent: {}
+[41.588824] (-) TimerEvent: {}
+[41.689095] (-) TimerEvent: {}
+[41.789415] (-) TimerEvent: {}
+[41.889648] (-) TimerEvent: {}
+[41.989864] (-) TimerEvent: {}
+[42.090018] (-) TimerEvent: {}
+[42.190389] (-) TimerEvent: {}
+[42.211463] (nav2_mppi_controller) StdoutLine: {'line': b'[ 90%] Linking CXX executable optimizer_smoke_test\n'}
+[42.238586] (nav2_mppi_controller) StdoutLine: {'line': b'[ 92%] Linking CXX executable critic_manager_test\n'}
+[42.290488] (-) TimerEvent: {}
+[42.390708] (-) TimerEvent: {}
+[42.490947] (-) TimerEvent: {}
+[42.591334] (-) TimerEvent: {}
+[42.641592] (nav2_mppi_controller) StdoutLine: {'line': b'[ 92%] Built target optimizer_smoke_test\n'}
+[42.643168] (nav2_mppi_controller) StdoutLine: {'line': b'[ 92%] Built target critic_manager_test\n'}
+[42.691428] (-) TimerEvent: {}
+[42.791694] (-) TimerEvent: {}
+[42.892005] (-) TimerEvent: {}
+[42.992303] (-) TimerEvent: {}
+[43.092494] (-) TimerEvent: {}
+[43.192693] (-) TimerEvent: {}
+[43.292871] (-) TimerEvent: {}
+[43.393064] (-) TimerEvent: {}
+[43.493236] (-) TimerEvent: {}
+[43.593417] (-) TimerEvent: {}
+[43.693635] (-) TimerEvent: {}
+[43.793876] (-) TimerEvent: {}
+[43.894172] (-) TimerEvent: {}
+[43.994445] (-) TimerEvent: {}
+[44.094638] (-) TimerEvent: {}
+[44.194937] (-) TimerEvent: {}
+[44.295199] (-) TimerEvent: {}
+[44.322074] (nav2_mppi_controller) StdoutLine: {'line': b'[ 94%] Linking CXX executable optimizer_unit_tests\n'}
+[44.395325] (-) TimerEvent: {}
+[44.495529] (-) TimerEvent: {}
+[44.595737] (-) TimerEvent: {}
+[44.671339] (nav2_mppi_controller) StdoutLine: {'line': b'[ 94%] Built target optimizer_unit_tests\n'}
+[44.695841] (-) TimerEvent: {}
+[44.796045] (-) TimerEvent: {}
+[44.896189] (-) TimerEvent: {}
+[44.996366] (-) TimerEvent: {}
+[45.096564] (-) TimerEvent: {}
+[45.196812] (-) TimerEvent: {}
+[45.282641] (nav2_mppi_controller) StdoutLine: {'line': b'[ 96%] Linking CXX executable critics_tests\n'}
+[45.296871] (-) TimerEvent: {}
+[45.397086] (-) TimerEvent: {}
+[45.497367] (-) TimerEvent: {}
+[45.597764] (-) TimerEvent: {}
+[45.617509] (nav2_mppi_controller) StdoutLine: {'line': b'[ 96%] Built target critics_tests\n'}
+[45.697925] (-) TimerEvent: {}
+[45.798114] (-) TimerEvent: {}
+[45.898381] (-) TimerEvent: {}
+[45.998570] (-) TimerEvent: {}
+[46.098846] (-) TimerEvent: {}
+[46.124717] (nav2_mppi_controller) StdoutLine: {'line': b'[ 98%] Linking CXX executable trajectory_visualizer_tests\n'}
+[46.198927] (-) TimerEvent: {}
+[46.299125] (-) TimerEvent: {}
+[46.399384] (-) TimerEvent: {}
+[46.442302] (nav2_mppi_controller) StdoutLine: {'line': b'[ 98%] Built target trajectory_visualizer_tests\n'}
+[46.445829] (nav2_mppi_controller) StderrLine: {'line': b'gmake: *** [Makefile:146\xef\xbc\x9aall] \xe9\x94\x99\xe8\xaf\xaf 2\n'}
+[46.468831] (nav2_mppi_controller) CommandEnded: {'returncode': 2}
+[46.500044] (-) TimerEvent: {}
+[46.542795] (nav2_mppi_controller) JobEnded: {'identifier': 'nav2_mppi_controller', 'rc': 2}
+[46.555066] (-) EventReactorShutdown: {}

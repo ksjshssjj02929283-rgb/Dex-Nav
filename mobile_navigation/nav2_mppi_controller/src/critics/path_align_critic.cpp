@@ -29,6 +29,7 @@ void PathAlignCritic::initialize()
   getParam(offset_from_furthest_, "offset_from_furthest", 20);
   getParam(trajectory_point_step_, "trajectory_point_step", 4);
   getParam(use_path_orientations_, "use_path_orientations", false);
+  getParam(ignore_goal_orientation_, "ignore_goal_orientation", true);
 
   RCLCPP_INFO(
     logger_,
@@ -108,7 +109,14 @@ void PathAlignCritic::score(CriticData & data)
         dy = P_y(path_pt) - Ty;
         num_samples += 1.0f;
         if (use_path_orientations_) {
-          dyaw = angles::shortest_angular_distance(P_yaw(path_pt), data.trajectories.yaws(t, p));
+          // path.back() 的 yaw 是用户最终朝向，只能在 FINAL_YAW 使用。START 模式
+          // 若在 TRACK 预测窗口内读到它，就会在到点前边走边转。跟踪最后位置时
+          // 继续使用倒数第二个真实路径点的 yaw，位置代价仍然指向终点坐标。
+          const size_t yaw_path_pt =
+            ignore_goal_orientation_ && path_pt + 1 == static_cast<size_t>(P_yaw.size()) &&
+            path_pt > 0 ? path_pt - 1 : path_pt;
+          dyaw = angles::shortest_angular_distance(
+            P_yaw(yaw_path_pt), data.trajectories.yaws(t, p));
           summed_path_dist += sqrtf(dx * dx + dy * dy + dyaw * dyaw);
         } else {
           summed_path_dist += sqrtf(dx * dx + dy * dy);
@@ -131,6 +139,9 @@ void PathAlignCritic::applyPathAlignCriticSettings(const PathAlignCriticSettings
   offset_from_furthest_ = static_cast<size_t>(std::max(0, settings.offset_from_furthest));
   trajectory_point_step_ = static_cast<size_t>(std::max(1, settings.trajectory_point_step));
   max_path_occupancy_ratio_ = settings.max_path_occupancy_ratio;
+  // 允许控制器按阶段关闭路径 yaw：趋近定位只贴合路径位置，最终 yaw 交给 GoalAngle。
+  use_path_orientations_ = settings.use_path_orientations;
+  ignore_goal_orientation_ = settings.ignore_goal_orientation;
 }
 
 void PathAlignCritic::applyProfileSettings(const CriticProfileSettings & settings)

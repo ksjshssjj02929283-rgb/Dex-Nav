@@ -1,0 +1,999 @@
+[0.000000] (-) TimerEvent: {}
+[0.000169] (nav2_mppi_controller) JobQueued: {'identifier': 'nav2_mppi_controller', 'dependencies': OrderedDict([('nav2_common', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_common'), ('nav2_msgs', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_msgs'), ('nav2_voxel_grid', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_voxel_grid'), ('nav2_util', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_util'), ('nav2_lifecycle_manager', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_lifecycle_manager'), ('nav2_map_server', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server'), ('nav2_costmap_2d', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_costmap_2d'), ('nav2_core', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_core'), ('nav2_mppi_controller', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller')])}
+[0.000269] (nav2_mppi_controller) JobStarted: {'identifier': 'nav2_mppi_controller'}
+[0.099561] (-) TimerEvent: {}
+[0.199771] (-) TimerEvent: {}
+[0.299983] (-) TimerEvent: {}
+[0.400256] (-) TimerEvent: {}
+[0.500480] (-) TimerEvent: {}
+[0.600672] (-) TimerEvent: {}
+[0.700928] (-) TimerEvent: {}
+[0.801257] (-) TimerEvent: {}
+[0.901543] (-) TimerEvent: {}
+[1.001747] (-) TimerEvent: {}
+[1.101948] (-) TimerEvent: {}
+[1.202146] (-) TimerEvent: {}
+[1.302330] (-) TimerEvent: {}
+[1.402517] (-) TimerEvent: {}
+[1.502749] (-) TimerEvent: {}
+[1.602977] (-) TimerEvent: {}
+[1.703188] (-) TimerEvent: {}
+[1.803363] (-) TimerEvent: {}
+[1.903541] (-) TimerEvent: {}
+[2.003807] (-) TimerEvent: {}
+[2.104082] (-) TimerEvent: {}
+[2.204393] (-) TimerEvent: {}
+[2.304766] (-) TimerEvent: {}
+[2.405049] (-) TimerEvent: {}
+[2.505200] (-) TimerEvent: {}
+[2.605383] (-) TimerEvent: {}
+[2.705628] (-) TimerEvent: {}
+[2.805929] (-) TimerEvent: {}
+[2.906202] (-) TimerEvent: {}
+[3.006393] (-) TimerEvent: {}
+[3.106724] (-) TimerEvent: {}
+[3.207043] (-) TimerEvent: {}
+[3.307263] (-) TimerEvent: {}
+[3.407486] (-) TimerEvent: {}
+[3.507693] (-) TimerEvent: {}
+[3.607925] (-) TimerEvent: {}
+[3.708162] (-) TimerEvent: {}
+[3.808439] (-) TimerEvent: {}
+[3.908719] (-) TimerEvent: {}
+[4.008922] (-) TimerEvent: {}
+[4.109112] (-) TimerEvent: {}
+[4.209292] (-) TimerEvent: {}
+[4.309510] (-) TimerEvent: {}
+[4.409831] (-) TimerEvent: {}
+[4.510080] (-) TimerEvent: {}
+[4.610404] (-) TimerEvent: {}
+[4.710701] (-) TimerEvent: {}
+[4.810904] (-) TimerEvent: {}
+[4.911102] (-) TimerEvent: {}
+[5.011317] (-) TimerEvent: {}
+[5.111497] (-) TimerEvent: {}
+[5.211739] (-) TimerEvent: {}
+[5.311923] (-) TimerEvent: {}
+[5.412109] (-) TimerEvent: {}
+[5.512299] (-) TimerEvent: {}
+[5.612482] (-) TimerEvent: {}
+[5.712738] (-) TimerEvent: {}
+[5.813064] (-) TimerEvent: {}
+[5.913272] (-) TimerEvent: {}
+[6.013472] (-) TimerEvent: {}
+[6.113671] (-) TimerEvent: {}
+[6.213894] (-) TimerEvent: {}
+[6.314088] (-) TimerEvent: {}
+[6.414299] (-) TimerEvent: {}
+[6.514498] (-) TimerEvent: {}
+[6.614678] (-) TimerEvent: {}
+[6.714875] (-) TimerEvent: {}
+[6.815079] (-) TimerEvent: {}
+[6.915344] (-) TimerEvent: {}
+[7.015642] (-) TimerEvent: {}
+[7.115983] (-) TimerEvent: {}
+[7.216248] (-) TimerEvent: {}
+[7.316484] (-) TimerEvent: {}
+[7.416655] (-) TimerEvent: {}
+[7.516835] (-) TimerEvent: {}
+[7.617085] (-) TimerEvent: {}
+[7.717360] (-) TimerEvent: {}
+[7.817583] (-) TimerEvent: {}
+[7.917841] (-) TimerEvent: {}
+[8.018110] (-) TimerEvent: {}
+[8.118423] (-) TimerEvent: {}
+[8.218606] (-) TimerEvent: {}
+[8.318926] (-) TimerEvent: {}
+[8.419202] (-) TimerEvent: {}
+[8.519381] (-) TimerEvent: {}
+[8.619578] (-) TimerEvent: {}
+[8.719775] (-) TimerEvent: {}
+[8.819968] (-) TimerEvent: {}
+[8.920158] (-) TimerEvent: {}
+[9.020330] (-) TimerEvent: {}
+[9.120605] (-) TimerEvent: {}
+[9.220900] (-) TimerEvent: {}
+[9.321134] (-) TimerEvent: {}
+[9.421324] (-) TimerEvent: {}
+[9.521502] (-) TimerEvent: {}
+[9.621677] (-) TimerEvent: {}
+[9.721862] (-) TimerEvent: {}
+[9.822081] (-) TimerEvent: {}
+[9.922388] (-) TimerEvent: {}
+[10.022564] (-) TimerEvent: {}
+[10.122748] (-) TimerEvent: {}
+[10.222947] (-) TimerEvent: {}
+[10.323176] (-) TimerEvent: {}
+[10.423457] (-) TimerEvent: {}
+[10.523751] (-) TimerEvent: {}
+[10.623956] (-) TimerEvent: {}
+[10.724176] (-) TimerEvent: {}
+[10.824369] (-) TimerEvent: {}
+[10.924547] (-) TimerEvent: {}
+[11.024739] (-) TimerEvent: {}
+[11.124991] (-) TimerEvent: {}
+[11.225311] (-) TimerEvent: {}
+[11.325590] (-) TimerEvent: {}
+[11.425860] (-) TimerEvent: {}
+[11.526035] (-) TimerEvent: {}
+[11.626223] (-) TimerEvent: {}
+[11.726427] (-) TimerEvent: {}
+[11.826627] (-) TimerEvent: {}
+[11.926829] (-) TimerEvent: {}
+[12.027029] (-) TimerEvent: {}
+[12.127242] (-) TimerEvent: {}
+[12.227516] (-) TimerEvent: {}
+[12.327697] (-) TimerEvent: {}
+[12.427903] (-) TimerEvent: {}
+[12.528202] (-) TimerEvent: {}
+[12.628444] (-) TimerEvent: {}
+[12.728629] (-) TimerEvent: {}
+[12.828819] (-) TimerEvent: {}
+[12.929061] (-) TimerEvent: {}
+[13.029283] (-) TimerEvent: {}
+[13.129657] (-) TimerEvent: {}
+[13.229923] (-) TimerEvent: {}
+[13.330282] (-) TimerEvent: {}
+[13.430634] (-) TimerEvent: {}
+[13.530842] (-) TimerEvent: {}
+[13.631112] (-) TimerEvent: {}
+[13.731509] (-) TimerEvent: {}
+[13.831802] (-) TimerEvent: {}
+[13.931982] (-) TimerEvent: {}
+[14.032178] (-) TimerEvent: {}
+[14.132362] (-) TimerEvent: {}
+[14.232553] (-) TimerEvent: {}
+[14.332752] (-) TimerEvent: {}
+[14.432964] (-) TimerEvent: {}
+[14.533271] (-) TimerEvent: {}
+[14.633512] (-) TimerEvent: {}
+[14.733765] (-) TimerEvent: {}
+[14.834089] (-) TimerEvent: {}
+[14.934391] (-) TimerEvent: {}
+[15.034573] (-) TimerEvent: {}
+[15.134763] (-) TimerEvent: {}
+[15.234943] (-) TimerEvent: {}
+[15.335126] (-) TimerEvent: {}
+[15.438380] (-) TimerEvent: {}
+[15.538665] (-) TimerEvent: {}
+[15.638965] (-) TimerEvent: {}
+[15.739145] (-) TimerEvent: {}
+[15.839331] (-) TimerEvent: {}
+[15.939511] (-) TimerEvent: {}
+[16.039679] (-) TimerEvent: {}
+[16.139867] (-) TimerEvent: {}
+[16.240210] (-) TimerEvent: {}
+[16.340476] (-) TimerEvent: {}
+[16.440681] (-) TimerEvent: {}
+[16.540861] (-) TimerEvent: {}
+[16.641035] (-) TimerEvent: {}
+[16.741222] (-) TimerEvent: {}
+[16.841414] (-) TimerEvent: {}
+[16.941618] (-) TimerEvent: {}
+[17.041800] (-) TimerEvent: {}
+[17.142048] (-) TimerEvent: {}
+[17.242279] (-) TimerEvent: {}
+[17.342449] (-) TimerEvent: {}
+[17.442639] (-) TimerEvent: {}
+[17.542834] (-) TimerEvent: {}
+[17.643011] (-) TimerEvent: {}
+[17.743291] (-) TimerEvent: {}
+[17.843572] (-) TimerEvent: {}
+[17.943761] (-) TimerEvent: {}
+[18.043947] (-) TimerEvent: {}
+[18.144144] (-) TimerEvent: {}
+[18.244352] (-) TimerEvent: {}
+[18.344584] (-) TimerEvent: {}
+[18.444849] (-) TimerEvent: {}
+[18.545060] (-) TimerEvent: {}
+[18.645220] (-) TimerEvent: {}
+[18.745480] (-) TimerEvent: {}
+[18.845769] (-) TimerEvent: {}
+[18.945988] (-) TimerEvent: {}
+[19.046301] (-) TimerEvent: {}
+[19.146617] (-) TimerEvent: {}
+[19.246785] (-) TimerEvent: {}
+[19.346973] (-) TimerEvent: {}
+[19.447210] (-) TimerEvent: {}
+[19.547421] (-) TimerEvent: {}
+[19.647638] (-) TimerEvent: {}
+[19.747870] (-) TimerEvent: {}
+[19.848137] (-) TimerEvent: {}
+[19.948394] (-) TimerEvent: {}
+[20.048620] (-) TimerEvent: {}
+[20.148794] (-) TimerEvent: {}
+[20.248997] (-) TimerEvent: {}
+[20.349377] (-) TimerEvent: {}
+[20.449675] (-) TimerEvent: {}
+[20.549873] (-) TimerEvent: {}
+[20.650068] (-) TimerEvent: {}
+[20.750289] (-) TimerEvent: {}
+[20.850510] (-) TimerEvent: {}
+[20.950764] (-) TimerEvent: {}
+[21.051046] (-) TimerEvent: {}
+[21.151291] (-) TimerEvent: {}
+[21.251493] (-) TimerEvent: {}
+[21.351672] (-) TimerEvent: {}
+[21.451850] (-) TimerEvent: {}
+[21.552081] (-) TimerEvent: {}
+[21.652372] (-) TimerEvent: {}
+[21.752701] (-) TimerEvent: {}
+[21.852894] (-) TimerEvent: {}
+[21.953094] (-) TimerEvent: {}
+[22.053472] (-) TimerEvent: {}
+[22.153739] (-) TimerEvent: {}
+[22.254104] (-) TimerEvent: {}
+[22.354481] (-) TimerEvent: {}
+[22.454775] (-) TimerEvent: {}
+[22.554970] (-) TimerEvent: {}
+[22.655206] (-) TimerEvent: {}
+[22.755485] (-) TimerEvent: {}
+[22.855776] (-) TimerEvent: {}
+[22.956032] (-) TimerEvent: {}
+[23.056463] (-) TimerEvent: {}
+[23.156688] (-) TimerEvent: {}
+[23.256948] (-) TimerEvent: {}
+[23.357248] (-) TimerEvent: {}
+[23.457569] (-) TimerEvent: {}
+[23.557765] (-) TimerEvent: {}
+[23.657994] (-) TimerEvent: {}
+[23.758212] (-) TimerEvent: {}
+[23.858447] (-) TimerEvent: {}
+[23.958702] (-) TimerEvent: {}
+[24.058880] (-) TimerEvent: {}
+[24.159066] (-) TimerEvent: {}
+[24.259244] (-) TimerEvent: {}
+[24.359431] (-) TimerEvent: {}
+[24.459611] (-) TimerEvent: {}
+[24.559821] (-) TimerEvent: {}
+[24.660061] (-) TimerEvent: {}
+[24.760356] (-) TimerEvent: {}
+[24.860627] (-) TimerEvent: {}
+[24.960947] (-) TimerEvent: {}
+[25.061210] (-) TimerEvent: {}
+[25.161487] (-) TimerEvent: {}
+[25.261796] (-) TimerEvent: {}
+[25.361992] (-) TimerEvent: {}
+[25.462186] (-) TimerEvent: {}
+[25.562350] (-) TimerEvent: {}
+[25.662528] (-) TimerEvent: {}
+[25.762809] (-) TimerEvent: {}
+[25.863072] (-) TimerEvent: {}
+[25.963374] (-) TimerEvent: {}
+[26.063560] (-) TimerEvent: {}
+[26.163733] (-) TimerEvent: {}
+[26.263902] (-) TimerEvent: {}
+[26.364081] (-) TimerEvent: {}
+[26.464256] (-) TimerEvent: {}
+[26.564543] (-) TimerEvent: {}
+[26.664810] (-) TimerEvent: {}
+[26.765011] (-) TimerEvent: {}
+[26.865226] (-) TimerEvent: {}
+[26.965434] (-) TimerEvent: {}
+[27.065636] (-) TimerEvent: {}
+[27.165841] (-) TimerEvent: {}
+[27.266047] (-) TimerEvent: {}
+[27.366314] (-) TimerEvent: {}
+[27.466512] (-) TimerEvent: {}
+[27.566707] (-) TimerEvent: {}
+[27.666900] (-) TimerEvent: {}
+[27.767276] (-) TimerEvent: {}
+[27.867531] (-) TimerEvent: {}
+[27.967779] (-) TimerEvent: {}
+[28.067979] (-) TimerEvent: {}
+[28.168189] (-) TimerEvent: {}
+[28.268412] (-) TimerEvent: {}
+[28.368617] (-) TimerEvent: {}
+[28.468825] (-) TimerEvent: {}
+[28.569014] (-) TimerEvent: {}
+[28.669245] (-) TimerEvent: {}
+[28.769439] (-) TimerEvent: {}
+[28.869634] (-) TimerEvent: {}
+[28.969821] (-) TimerEvent: {}
+[29.069996] (-) TimerEvent: {}
+[29.170198] (-) TimerEvent: {}
+[29.270541] (-) TimerEvent: {}
+[29.370838] (-) TimerEvent: {}
+[29.471074] (-) TimerEvent: {}
+[29.571326] (-) TimerEvent: {}
+[29.671521] (-) TimerEvent: {}
+[29.771720] (-) TimerEvent: {}
+[29.871972] (-) TimerEvent: {}
+[29.972225] (-) TimerEvent: {}
+[30.011222] (nav2_mppi_controller) Command: {'cmd': ['/usr/bin/ctest', '-C', 'Release', '-D', 'ExperimentalTest', '--no-compress-output', '-V', '--force-new-ctest-process'], 'cwd': '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller', 'env': OrderedDict([('LESSOPEN', '| /usr/bin/lesspipe %s'), ('CODEX_CI', '1'), ('LANGUAGE', 'zh_CN'), ('USER', 'dex'), ('LC_TIME', 'zh_CN.UTF-8'), ('XDG_SESSION_TYPE', 'x11'), ('SHLVL', '1'), ('LD_LIBRARY_PATH', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/lib:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib:/usr/lib/x86_64-linux-gnu/gazebo-11/plugins:/opt/ros/humble/opt/rviz_ogre_vendor/lib:/opt/ros/humble/lib/x86_64-linux-gnu:/opt/ros/humble/lib'), ('HOME', '/home/dex'), ('OLDPWD', '/home/dex'), ('DESKTOP_SESSION', 'ubuntu-xorg'), ('NVM_BIN', '/home/dex/.nvm/versions/node/v22.23.1/bin'), ('NVM_INC', '/home/dex/.nvm/versions/node/v22.23.1/include/node'), ('ROS_PYTHON_VERSION', '3'), ('GNOME_SHELL_SESSION_MODE', 'ubuntu'), ('GTK_MODULES', 'gail:atk-bridge'), ('PAGER', 'cat'), ('LC_MONETARY', 'zh_CN.UTF-8'), ('MANAGERPID', '2324'), ('LC_CTYPE', 'C.UTF-8'), ('SYSTEMD_EXEC_PID', '2887'), ('NO_COLOR', '1'), ('DBUS_SESSION_BUS_ADDRESS', 'unix:path=/run/user/1000/bus'), ('COLORTERM', ''), ('TERMINATOR_DBUS_NAME', 'net.tenshu.Terminator21a9d5db22c73a993ff0b42f64b396873'), ('GIO_LAUNCHED_DESKTOP_FILE_PID', '6926'), ('NVM_DIR', '/home/dex/.nvm'), ('https_proxy', 'http://127.0.0.1:7897'), ('CODEX_PERMISSION_PROFILE', ':workspace'), ('ROS_DISTRO', 'humble'), ('GTK_IM_MODULE', 'ibus'), ('LOGNAME', 'dex'), ('http_proxy', 'http://127.0.0.1:7897'), ('JOURNAL_STREAM', '8:24006'), ('_', '/usr/bin/colcon'), ('ROS_VERSION', '2'), ('XDG_SESSION_CLASS', 'user'), ('USERNAME', 'dex'), ('TERM', 'dumb'), ('GNOME_DESKTOP_SESSION_ID', 'this-is-deprecated'), ('ROS_LOCALHOST_ONLY', '0'), ('WINDOWPATH', '2'), ('PATH', '/home/dex/.local/npm/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/codex-path:/home/dex/.codex/tmp/arg0/codex-arg0btoLAZ:/home/dex/.nvm/versions/node/v22.23.1/bin:/home/dex/.local/npm/bin:/opt/ros/humble/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/snap/bin'), ('SESSION_MANAGER', 'local/dex-TX-Gaming-FA608UH-FA608UH:@/tmp/.ICE-unix/2695,unix/dex-TX-Gaming-FA608UH-FA608UH:/tmp/.ICE-unix/2695'), ('INVOCATION_ID', '103577e175f54951bcff2125e9f12a6e'), ('PAPERSIZE', 'a4'), ('XDG_MENU_PREFIX', 'gnome-'), ('LC_ADDRESS', 'zh_CN.UTF-8'), ('XDG_RUNTIME_DIR', '/run/user/1000'), ('DISPLAY', ':0'), ('CODEX_SANDBOX_NETWORK_DISABLED', '1'), ('TERMINATOR_DBUS_PATH', '/net/tenshu/Terminator2'), ('LANG', 'C.UTF-8'), ('XDG_CURRENT_DESKTOP', 'ubuntu:GNOME'), ('IBUS_DISABLE_SNOOPER', '1'), ('LC_TELEPHONE', 'zh_CN.UTF-8'), ('XMODIFIERS', '@im=ibus'), ('GH_PAGER', 'cat'), ('XDG_SESSION_DESKTOP', 'ubuntu-xorg'), ('XAUTHORITY', '/run/user/1000/gdm/Xauthority'), ('LS_COLORS', 'rs=0:di=01;34:ln=01;36:mh=00:pi=40;33:so=01;35:do=01;35:bd=40;33;01:cd=40;33;01:or=40;31;01:mi=00:su=37;41:sg=30;43:ca=30;41:tw=30;42:ow=34;42:st=37;44:ex=01;32:*.tar=01;31:*.tgz=01;31:*.arc=01;31:*.arj=01;31:*.taz=01;31:*.lha=01;31:*.lz4=01;31:*.lzh=01;31:*.lzma=01;31:*.tlz=01;31:*.txz=01;31:*.tzo=01;31:*.t7z=01;31:*.zip=01;31:*.z=01;31:*.dz=01;31:*.gz=01;31:*.lrz=01;31:*.lz=01;31:*.lzo=01;31:*.xz=01;31:*.zst=01;31:*.tzst=01;31:*.bz2=01;31:*.bz=01;31:*.tbz=01;31:*.tbz2=01;31:*.tz=01;31:*.deb=01;31:*.rpm=01;31:*.jar=01;31:*.war=01;31:*.ear=01;31:*.sar=01;31:*.rar=01;31:*.alz=01;31:*.ace=01;31:*.zoo=01;31:*.cpio=01;31:*.7z=01;31:*.rz=01;31:*.cab=01;31:*.wim=01;31:*.swm=01;31:*.dwm=01;31:*.esd=01;31:*.jpg=01;35:*.jpeg=01;35:*.mjpg=01;35:*.mjpeg=01;35:*.gif=01;35:*.bmp=01;35:*.pbm=01;35:*.pgm=01;35:*.ppm=01;35:*.tga=01;35:*.xbm=01;35:*.xpm=01;35:*.tif=01;35:*.tiff=01;35:*.png=01;35:*.svg=01;35:*.svgz=01;35:*.mng=01;35:*.pcx=01;35:*.mov=01;35:*.mpg=01;35:*.mpeg=01;35:*.m2v=01;35:*.mkv=01;35:*.webm=01;35:*.webp=01;35:*.ogm=01;35:*.mp4=01;35:*.m4v=01;35:*.mp4v=01;35:*.vob=01;35:*.qt=01;35:*.nuv=01;35:*.wmv=01;35:*.asf=01;35:*.rm=01;35:*.rmvb=01;35:*.flc=01;35:*.avi=01;35:*.fli=01;35:*.flv=01;35:*.gl=01;35:*.dl=01;35:*.xcf=01;35:*.xwd=01;35:*.yuv=01;35:*.cgm=01;35:*.emf=01;35:*.ogv=01;35:*.ogx=01;35:*.aac=00;36:*.au=00;36:*.flac=00;36:*.m4a=00;36:*.mid=00;36:*.midi=00;36:*.mka=00;36:*.mp3=00;36:*.mpc=00;36:*.ogg=00;36:*.ra=00;36:*.wav=00;36:*.oga=00;36:*.opus=00;36:*.spx=00;36:*.xspf=00;36:'), ('SSH_AGENT_LAUNCHER', 'gnome-keyring'), ('SSH_AUTH_SOCK', '/run/user/1000/keyring/ssh'), ('AMENT_PREFIX_PATH', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:/opt/ros/humble'), ('SHELL', '/bin/bash'), ('LC_NAME', 'zh_CN.UTF-8'), ('TERMINATOR_UUID', 'urn:uuid:e13f38a3-d2b2-4cbe-a5b0-12f3f1e47357'), ('QT_ACCESSIBILITY', '1'), ('GDMSESSION', 'ubuntu-xorg'), ('LESSCLOSE', '/usr/bin/lesspipe %s %s'), ('CODEX_THREAD_ID', '019f6dbb-36f4-7521-9582-823d015dcd97'), ('LC_MEASUREMENT', 'zh_CN.UTF-8'), ('GPG_AGENT_INFO', '/run/user/1000/gnupg/S.gpg-agent:0:1'), ('LC_IDENTIFICATION', 'zh_CN.UTF-8'), ('GIT_PAGER', 'cat'), ('QT_IM_MODULE', 'ibus'), ('PWD', '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller'), ('LC_ALL', 'C.UTF-8'), ('CODEX_MANAGED_PACKAGE_ROOT', '/home/dex/.local/npm/lib/node_modules/@openai/codex'), ('XDG_CONFIG_DIRS', '/etc/xdg/xdg-ubuntu-xorg:/etc/xdg'), ('NVM_CD_FLAGS', ''), ('XDG_DATA_DIRS', '/usr/share/ubuntu-xorg:/usr/share/gnome:/usr/local/share/:/usr/share/:/var/lib/snapd/desktop'), ('PYTHONPATH', '/opt/ros/humble/lib/python3.10/site-packages:/opt/ros/humble/local/lib/python3.10/dist-packages'), ('LC_NUMERIC', 'zh_CN.UTF-8'), ('LC_PAPER', 'zh_CN.UTF-8'), ('COLCON', '1'), ('CODEX_MANAGED_BY_NPM', '1'), ('VTE_VERSION', '6800'), ('CMAKE_PREFIX_PATH', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server')]), 'shell': False}
+[30.018586] (nav2_mppi_controller) StdoutLine: {'line': b'UpdateCTestConfiguration  from :/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/CTestConfiguration.ini\n'}
+[30.018870] (nav2_mppi_controller) StdoutLine: {'line': b'Parse Config file:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/CTestConfiguration.ini\n'}
+[30.018913] (nav2_mppi_controller) StdoutLine: {'line': b'   Site: dex-TX-Gaming-FA608UH-FA608UH\n'}
+[30.018948] (nav2_mppi_controller) StdoutLine: {'line': b'   Build name: (empty)\n'}
+[30.018979] (nav2_mppi_controller) StdoutLine: {'line': b' Add coverage exclude regular expressions.\n'}
+[30.019009] (nav2_mppi_controller) StdoutLine: {'line': b'Create new tag: 20260717-0224 - Experimental\n'}
+[30.019038] (nav2_mppi_controller) StdoutLine: {'line': b'UpdateCTestConfiguration  from :/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/CTestConfiguration.ini\n'}
+[30.019065] (nav2_mppi_controller) StdoutLine: {'line': b'Parse Config file:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/CTestConfiguration.ini\n'}
+[30.019095] (nav2_mppi_controller) StdoutLine: {'line': b'Test project /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller\n'}
+[30.019125] (nav2_mppi_controller) StdoutLine: {'line': b'Constructing a list of tests\n'}
+[30.019454] (nav2_mppi_controller) StdoutLine: {'line': b'Done constructing a list of tests\n'}
+[30.019556] (nav2_mppi_controller) StdoutLine: {'line': b'Updating test list for fixtures\n'}
+[30.019591] (nav2_mppi_controller) StdoutLine: {'line': b'Added 0 tests to meet fixture requirements\n'}
+[30.019619] (nav2_mppi_controller) StdoutLine: {'line': b'Checking test dependency graph...\n'}
+[30.019646] (nav2_mppi_controller) StdoutLine: {'line': b'Checking test dependency graph end\n'}
+[30.019673] (nav2_mppi_controller) StdoutLine: {'line': b'test 1\n'}
+[30.019699] (nav2_mppi_controller) StdoutLine: {'line': b'      Start  1: cppcheck\n'}
+[30.019725] (nav2_mppi_controller) StdoutLine: {'line': b'\n'}
+[30.019751] (nav2_mppi_controller) StdoutLine: {'line': b'1: Test command: /usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/cppcheck.xunit.xml" "--package-name" "nav2_mppi_controller" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/ament_cppcheck/cppcheck.txt" "--command" "/opt/ros/humble/bin/ament_cppcheck" "--xunit-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/cppcheck.xunit.xml" "--include_dirs" "/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include"\n'}
+[30.019782] (nav2_mppi_controller) StdoutLine: {'line': b'1: Test timeout computed to be: 300\n'}
+[30.062970] (nav2_mppi_controller) StdoutLine: {'line': b"1: -- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller':\n"}
+[30.063095] (nav2_mppi_controller) StdoutLine: {'line': b'1:  - /opt/ros/humble/bin/ament_cppcheck --xunit-file /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/cppcheck.xunit.xml --include_dirs /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include\n'}
+[30.072354] (-) TimerEvent: {}
+[30.123667] (nav2_mppi_controller) StdoutLine: {'line': b'1: cppcheck 2.7 has known performance issues and therefore will not be used, set the AMENT_CPPCHECK_ALLOW_SLOW_VERSIONS environment variable to override this.\n'}
+[30.133115] (nav2_mppi_controller) StdoutLine: {'line': b'1: -- run_test.py: return code 0\n'}
+[30.133312] (nav2_mppi_controller) StdoutLine: {'line': b"1: -- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/cppcheck.xunit.xml'\n"}
+[30.140172] (nav2_mppi_controller) StdoutLine: {'line': b' 1/17 Test  #1: cppcheck ...........................   Passed    0.12 sec\n'}
+[30.140294] (nav2_mppi_controller) StdoutLine: {'line': b'test 2\n'}
+[30.140331] (nav2_mppi_controller) StdoutLine: {'line': b'      Start  2: cpplint\n'}
+[30.140369] (nav2_mppi_controller) StdoutLine: {'line': b'\n'}
+[30.140403] (nav2_mppi_controller) StdoutLine: {'line': b'2: Test command: /usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/cpplint.xunit.xml" "--package-name" "nav2_mppi_controller" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/ament_cpplint/cpplint.txt" "--command" "/opt/ros/humble/bin/ament_cpplint" "--xunit-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/cpplint.xunit.xml"\n'}
+[30.140435] (nav2_mppi_controller) StdoutLine: {'line': b'2: Test timeout computed to be: 120\n'}
+[30.172419] (-) TimerEvent: {}
+[30.180025] (nav2_mppi_controller) StdoutLine: {'line': b"2: -- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller':\n"}
+[30.180286] (nav2_mppi_controller) StdoutLine: {'line': b'2:  - /opt/ros/humble/bin/ament_cpplint --xunit-file /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/cpplint.xunit.xml\n'}
+[30.272571] (-) TimerEvent: {}
+[30.372843] (-) TimerEvent: {}
+[30.473021] (-) TimerEvent: {}
+[30.573204] (-) TimerEvent: {}
+[30.673390] (-) TimerEvent: {}
+[30.773586] (-) TimerEvent: {}
+[30.873857] (-) TimerEvent: {}
+[30.914453] (nav2_mppi_controller) StdoutLine: {'line': b'2: /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/controller.cpp:298:  Lines should be <= 100 characters long  [whitespace/line_length] [2]\n'}
+[30.914661] (nav2_mppi_controller) StdoutLine: {'line': b'2: /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/controller.cpp:302:  Lines should be <= 100 characters long  [whitespace/line_length] [2]\n'}
+[30.936449] (nav2_mppi_controller) StdoutLine: {'line': b'2: /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/controller.cpp:573:  Lines should be <= 100 characters long  [whitespace/line_length] [2]\n'}
+[30.937340] (nav2_mppi_controller) StdoutLine: {'line': b'2: /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/controller.cpp:584:  Lines should be <= 100 characters long  [whitespace/line_length] [2]\n'}
+[30.941816] (nav2_mppi_controller) StdoutLine: {'line': b'2: /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/controller.cpp:640:  Lines should be <= 100 characters long  [whitespace/line_length] [2]\n'}
+[30.942063] (nav2_mppi_controller) StdoutLine: {'line': b'2: /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/controller.cpp:642:  Lines should be <= 100 characters long  [whitespace/line_length] [2]\n'}
+[30.947087] (nav2_mppi_controller) StdoutLine: {'line': b'2: /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/controller.cpp:699:  Lines should be <= 100 characters long  [whitespace/line_length] [2]\n'}
+[30.953823] (nav2_mppi_controller) StdoutLine: {'line': b'2: /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/controller.cpp:783:  If an else has a brace on one side, it should have it on both  [readability/braces] [5]\n'}
+[30.973943] (-) TimerEvent: {}
+[31.074122] (-) TimerEvent: {}
+[31.168631] (nav2_mppi_controller) StdoutLine: {'line': b'2: /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/critics/path_angle_critic.cpp:19:  Found C system header after C++ system header. Should be: path_angle_critic.h, c system, c++ system, other.  [build/include_order] [4]\n'}
+[31.174182] (-) TimerEvent: {}
+[31.235263] (nav2_mppi_controller) StdoutLine: {'line': b'2: /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/optimizer.cpp:209:  Lines should be <= 100 characters long  [whitespace/line_length] [2]\n'}
+[31.236191] (nav2_mppi_controller) StdoutLine: {'line': b'2: /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/optimizer.cpp:230:  Lines should be <= 100 characters long  [whitespace/line_length] [2]\n'}
+[31.257766] (nav2_mppi_controller) StdoutLine: {'line': b'2: /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/optimizer.cpp:536:  Lines should be <= 100 characters long  [whitespace/line_length] [2]\n'}
+[31.264042] (nav2_mppi_controller) StdoutLine: {'line': b'2: /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/optimizer.cpp:636:  Lines should be <= 100 characters long  [whitespace/line_length] [2]\n'}
+[31.274256] (-) TimerEvent: {}
+[31.281995] (nav2_mppi_controller) StdoutLine: {'line': b'2: /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/path_handler.cpp:24:  Found C++ system header after other header. Should be: path_handler.h, c system, c++ system, other.  [build/include_order] [4]\n'}
+[31.282237] (nav2_mppi_controller) StdoutLine: {'line': b'2: /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/path_handler.cpp:25:  Found C++ system header after other header. Should be: path_handler.h, c system, c++ system, other.  [build/include_order] [4]\n'}
+[31.282437] (nav2_mppi_controller) StdoutLine: {'line': b'2: /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/path_handler.cpp:26:  Found C++ system header after other header. Should be: path_handler.h, c system, c++ system, other.  [build/include_order] [4]\n'}
+[31.287748] (nav2_mppi_controller) StdoutLine: {'line': b'2: /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/path_handler.cpp:98:  Lines should be <= 100 characters long  [whitespace/line_length] [2]\n'}
+[31.290665] (nav2_mppi_controller) StdoutLine: {'line': b'2: /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/path_handler.cpp:141:  Lines should be <= 100 characters long  [whitespace/line_length] [2]\n'}
+[31.294523] (nav2_mppi_controller) StdoutLine: {'line': b'2: /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/path_handler.cpp:192:  Lines should be <= 100 characters long  [whitespace/line_length] [2]\n'}
+[31.295979] (nav2_mppi_controller) StdoutLine: {'line': b'2: /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/path_handler.cpp:216:  Lines should be <= 100 characters long  [whitespace/line_length] [2]\n'}
+[31.301082] (nav2_mppi_controller) StdoutLine: {'line': b'2: /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/path_handler.cpp:291:  Lines should be <= 100 characters long  [whitespace/line_length] [2]\n'}
+[31.374385] (-) TimerEvent: {}
+[31.445059] (nav2_mppi_controller) StdoutLine: {'line': b"2: Not using '--root'\n"}
+[31.446126] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.446256] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/benchmark/controller_benchmark.cpp\n'}
+[31.446298] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.446335] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/benchmark/optimizer_benchmark.cpp\n'}
+[31.446368] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.446397] (nav2_mppi_controller) StdoutLine: {'line': b"2: Using '--root=/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include' argument\n"}
+[31.446429] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.446457] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/controller.hpp\n'}
+[31.446491] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.446521] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/critic_data.hpp\n'}
+[31.446553] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.446581] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/critic_function.hpp\n'}
+[31.446632] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.446668] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/critic_manager.hpp\n'}
+[31.446699] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.446725] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/critics/angular_velocity_critic.hpp\n'}
+[31.446754] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.446781] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/critics/constraint_critic.hpp\n'}
+[31.446825] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.446853] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/critics/cost_critic.hpp\n'}
+[31.446882] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.446907] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/critics/goal_angle_critic.hpp\n'}
+[31.446933] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.446960] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/critics/goal_critic.hpp\n'}
+[31.446987] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.447015] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/critics/goal_lateral_critic.hpp\n'}
+[31.447042] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.447070] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/critics/goal_longitudinal_critic.hpp\n'}
+[31.447107] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.447143] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/critics/linear_velocity_critic.hpp\n'}
+[31.447195] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.447231] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/critics/obstacles_critic.hpp\n'}
+[31.447270] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.447302] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/critics/path_align_critic.hpp\n'}
+[31.447343] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.447375] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/critics/path_align_legacy_critic.hpp\n'}
+[31.447410] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.447444] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/critics/path_angle_critic.hpp\n'}
+[31.447482] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.447513] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/critics/path_follow_critic.hpp\n'}
+[31.447546] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.447583] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/critics/prefer_forward_critic.hpp\n'}
+[31.447622] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.447652] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/critics/twirling_critic.hpp\n'}
+[31.447689] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.447725] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/critics/velocity_deadband_critic.hpp\n'}
+[31.447755] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.447785] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/models/constraints.hpp\n'}
+[31.447818] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.447847] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/models/control_sequence.hpp\n'}
+[31.447883] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.447920] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/models/optimizer_settings.hpp\n'}
+[31.447953] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.447984] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/models/path.hpp\n'}
+[31.448011] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.448044] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/models/state.hpp\n'}
+[31.448073] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.448106] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/models/trajectories.hpp\n'}
+[31.448137] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.448174] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/motion_models.hpp\n'}
+[31.448205] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.448231] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/optimizer.hpp\n'}
+[31.448259] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.448287] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/tools/eigen_types.hpp\n'}
+[31.448327] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.448356] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/tools/noise_generator.hpp\n'}
+[31.448390] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.448425] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/tools/parameters_handler.hpp\n'}
+[31.448453] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.448483] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/tools/path_handler.hpp\n'}
+[31.448511] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.448539] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/tools/trajectory_visualizer.hpp\n'}
+[31.448567] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.448594] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/tools/utils.hpp\n'}
+[31.448639] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.448668] (nav2_mppi_controller) StdoutLine: {'line': b"2: Using '--root=/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src' argument\n"}
+[31.448694] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.448722] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/controller.cpp\n'}
+[31.448749] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.448776] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/critic_manager.cpp\n'}
+[31.448805] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.448832] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/critics/angular_velocity_critic.cpp\n'}
+[31.448861] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.448887] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/critics/constraint_critic.cpp\n'}
+[31.448913] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.448940] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/critics/cost_critic.cpp\n'}
+[31.448966] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.448994] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/critics/goal_angle_critic.cpp\n'}
+[31.449022] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.449047] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/critics/goal_critic.cpp\n'}
+[31.449074] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.449099] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/critics/goal_lateral_critic.cpp\n'}
+[31.449126] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.449154] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/critics/goal_longitudinal_critic.cpp\n'}
+[31.449189] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.449216] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/critics/linear_velocity_critic.cpp\n'}
+[31.449242] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.449268] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/critics/obstacles_critic.cpp\n'}
+[31.449294] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.449320] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/critics/path_align_critic.cpp\n'}
+[31.449347] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.449373] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/critics/path_align_legacy_critic.cpp\n'}
+[31.449399] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.449426] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/critics/path_angle_critic.cpp\n'}
+[31.449460] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.449488] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/critics/path_follow_critic.cpp\n'}
+[31.449514] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.449546] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/critics/prefer_forward_critic.cpp\n'}
+[31.449572] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.449598] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/critics/twirling_critic.cpp\n'}
+[31.449623] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.449649] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/critics/velocity_deadband_critic.cpp\n'}
+[31.449680] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.449706] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/noise_generator.cpp\n'}
+[31.449732] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.449758] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/optimizer.cpp\n'}
+[31.449784] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.449810] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/parameters_handler.cpp\n'}
+[31.449837] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.449862] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/path_handler.cpp\n'}
+[31.449888] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.449915] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/trajectory_visualizer.cpp\n'}
+[31.449941] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.449967] (nav2_mppi_controller) StdoutLine: {'line': b"2: Using '--root=/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test' argument\n"}
+[31.449993] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.450019] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp\n'}
+[31.450045] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.450071] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/critic_manager_test.cpp\n'}
+[31.450097] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.450122] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/critics_tests.cpp\n'}
+[31.450150] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.474455] (-) TimerEvent: {}
+[31.574640] (-) TimerEvent: {}
+[31.674809] (-) TimerEvent: {}
+[31.720349] (nav2_mppi_controller) StdoutLine: {'line': b"2: Category 'build/include_order' errors found: 4\n"}
+[31.720885] (nav2_mppi_controller) StdoutLine: {'line': b"2: Category 'readability/braces' errors found: 1\n"}
+[31.720934] (nav2_mppi_controller) StdoutLine: {'line': b"2: Category 'whitespace/line_length' errors found: 16\n"}
+[31.720969] (nav2_mppi_controller) StdoutLine: {'line': b'2: Total errors found: 21\n'}
+[31.721009] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/models_test.cpp\n'}
+[31.721047] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.721081] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/motion_model_tests.cpp\n'}
+[31.721128] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.721178] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/noise_generator_test.cpp\n'}
+[31.721228] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.721298] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/optimizer_smoke_test.cpp\n'}
+[31.721344] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.721382] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/optimizer_unit_tests.cpp\n'}
+[31.721410] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.721452] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/parameter_handler_test.cpp\n'}
+[31.721481] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.721510] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/path_handler_test.cpp\n'}
+[31.721539] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.721570] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/trajectory_visualizer_tests.cpp\n'}
+[31.721600] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.721629] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/utils/factory.hpp\n'}
+[31.721663] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.721699] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/utils/models.hpp\n'}
+[31.721732] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.721762] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/utils/utils.hpp\n'}
+[31.721790] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.721820] (nav2_mppi_controller) StdoutLine: {'line': b'2: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/utils_test.cpp\n'}
+[31.721848] (nav2_mppi_controller) StdoutLine: {'line': b'2: \n'}
+[31.729511] (nav2_mppi_controller) StdoutLine: {'line': b'2: -- run_test.py: return code 1\n'}
+[31.729700] (nav2_mppi_controller) StdoutLine: {'line': b"2: -- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/cpplint.xunit.xml'\n"}
+[31.736051] (nav2_mppi_controller) StdoutLine: {'line': b' 2/17 Test  #2: cpplint ............................***Failed    1.60 sec\n'}
+[31.736314] (nav2_mppi_controller) StdoutLine: {'line': b'test 3\n'}
+[31.736420] (nav2_mppi_controller) StdoutLine: {'line': b'      Start  3: lint_cmake\n'}
+[31.736496] (nav2_mppi_controller) StdoutLine: {'line': b'\n'}
+[31.736561] (nav2_mppi_controller) StdoutLine: {'line': b'3: Test command: /usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/lint_cmake.xunit.xml" "--package-name" "nav2_mppi_controller" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/ament_lint_cmake/lint_cmake.txt" "--command" "/opt/ros/humble/bin/ament_lint_cmake" "--xunit-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/lint_cmake.xunit.xml"\n'}
+[31.736651] (nav2_mppi_controller) StdoutLine: {'line': b'3: Test timeout computed to be: 60\n'}
+[31.772166] (nav2_mppi_controller) StdoutLine: {'line': b"3: -- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller':\n"}
+[31.772350] (nav2_mppi_controller) StdoutLine: {'line': b'3:  - /opt/ros/humble/bin/ament_lint_cmake --xunit-file /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/lint_cmake.xunit.xml\n'}
+[31.774900] (-) TimerEvent: {}
+[31.816804] (nav2_mppi_controller) StdoutLine: {'line': b'3: \n'}
+[31.817002] (nav2_mppi_controller) StdoutLine: {'line': b'3: No problems found\n'}
+[31.823479] (nav2_mppi_controller) StdoutLine: {'line': b'3: -- run_test.py: return code 0\n'}
+[31.823670] (nav2_mppi_controller) StdoutLine: {'line': b"3: -- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/lint_cmake.xunit.xml'\n"}
+[31.830292] (nav2_mppi_controller) StdoutLine: {'line': b' 3/17 Test  #3: lint_cmake .........................   Passed    0.09 sec\n'}
+[31.830439] (nav2_mppi_controller) StdoutLine: {'line': b'test 4\n'}
+[31.830481] (nav2_mppi_controller) StdoutLine: {'line': b'      Start  4: uncrustify\n'}
+[31.830514] (nav2_mppi_controller) StdoutLine: {'line': b'\n'}
+[31.830545] (nav2_mppi_controller) StdoutLine: {'line': b'4: Test command: /usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/uncrustify.xunit.xml" "--package-name" "nav2_mppi_controller" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/ament_uncrustify/uncrustify.txt" "--command" "/opt/ros/humble/bin/ament_uncrustify" "--xunit-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/uncrustify.xunit.xml"\n'}
+[31.830586] (nav2_mppi_controller) StdoutLine: {'line': b'4: Test timeout computed to be: 60\n'}
+[31.867199] (nav2_mppi_controller) StdoutLine: {'line': b"4: -- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller':\n"}
+[31.867328] (nav2_mppi_controller) StdoutLine: {'line': b'4:  - /opt/ros/humble/bin/ament_uncrustify --xunit-file /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/uncrustify.xunit.xml\n'}
+[31.874976] (-) TimerEvent: {}
+[31.975283] (-) TimerEvent: {}
+[32.075529] (-) TimerEvent: {}
+[32.151625] (nav2_mppi_controller) StdoutLine: {'line': b"4: Code style divergence in file 'include/nav2_mppi_controller/controller.hpp':\n"}
+[32.152481] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.152526] (nav2_mppi_controller) StdoutLine: {'line': b'4: --- include/nav2_mppi_controller/controller.hpp\n'}
+[32.152564] (nav2_mppi_controller) StdoutLine: {'line': b'4: +++ include/nav2_mppi_controller/controller.hpp.uncrustify\n'}
+[32.152609] (nav2_mppi_controller) StdoutLine: {'line': b'4: @@ -50 +50,2 @@\n'}
+[32.152657] (nav2_mppi_controller) StdoutLine: {'line': b'4: -enum ApproachSubstage : size_t {\n'}
+[32.152688] (nav2_mppi_controller) StdoutLine: {'line': b'4: +enum ApproachSubstage : size_t\n'}
+[32.152723] (nav2_mppi_controller) StdoutLine: {'line': b'4: +{\n'}
+[32.152762] (nav2_mppi_controller) StdoutLine: {'line': b'4: @@ -56 +57,2 @@\n'}
+[32.152789] (nav2_mppi_controller) StdoutLine: {'line': b'4: -enum ApproachMode : size_t {\n'}
+[32.152818] (nav2_mppi_controller) StdoutLine: {'line': b'4: +enum ApproachMode : size_t\n'}
+[32.152852] (nav2_mppi_controller) StdoutLine: {'line': b'4: +{\n'}
+[32.152888] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.152921] (nav2_mppi_controller) StdoutLine: {'line': b"4: Code style divergence in file 'src/controller.cpp':\n"}
+[32.152948] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.152981] (nav2_mppi_controller) StdoutLine: {'line': b'4: --- src/controller.cpp\n'}
+[32.153009] (nav2_mppi_controller) StdoutLine: {'line': b'4: +++ src/controller.cpp.uncrustify\n'}
+[32.153045] (nav2_mppi_controller) StdoutLine: {'line': b'4: @@ -584 +584,2 @@\n'}
+[32.153085] (nav2_mppi_controller) StdoutLine: {'line': b'4: -          logger_, "stage_weights.%s needs 3 values [align,track,approach]; ignored", critic.c_str());\n'}
+[32.153128] (nav2_mppi_controller) StdoutLine: {'line': b'4: +          logger_, "stage_weights.%s needs 3 values [align,track,approach]; ignored",\n'}
+[32.153175] (nav2_mppi_controller) StdoutLine: {'line': b'4: +          critic.c_str());\n'}
+[32.153231] (nav2_mppi_controller) StdoutLine: {'line': b'4: @@ -640 +641,2 @@\n'}
+[32.153267] (nav2_mppi_controller) StdoutLine: {'line': b'4: -      profile.critics.path_angle.max_angle_to_furthest, profile.critics.path_angle.forward_preference,\n'}
+[32.153310] (nav2_mppi_controller) StdoutLine: {'line': b'4: +      profile.critics.path_angle.max_angle_to_furthest,\n'}
+[32.153342] (nav2_mppi_controller) StdoutLine: {'line': b'4: +      profile.critics.path_angle.forward_preference,\n'}
+[32.153382] (nav2_mppi_controller) StdoutLine: {'line': b'4: @@ -642 +644,2 @@\n'}
+[32.153409] (nav2_mppi_controller) StdoutLine: {'line': b'4: -      profile.critics.path_align.trajectory_point_step, profile.critics.path_align.max_path_occupancy_ratio,\n'}
+[32.153438] (nav2_mppi_controller) StdoutLine: {'line': b'4: +      profile.critics.path_align.trajectory_point_step,\n'}
+[32.153470] (nav2_mppi_controller) StdoutLine: {'line': b'4: +      profile.critics.path_align.max_path_occupancy_ratio,\n'}
+[32.153509] (nav2_mppi_controller) StdoutLine: {'line': b'4: @@ -1006 +1009 @@\n'}
+[32.153535] (nav2_mppi_controller) StdoutLine: {'line': b'4: -  };\n'}
+[32.153561] (nav2_mppi_controller) StdoutLine: {'line': b'4: +    };\n'}
+[32.153593] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.153631] (nav2_mppi_controller) StdoutLine: {'line': b"4: Code style divergence in file 'src/critics/path_align_critic.cpp':\n"}
+[32.153664] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.153704] (nav2_mppi_controller) StdoutLine: {'line': b'4: --- src/critics/path_align_critic.cpp\n'}
+[32.153731] (nav2_mppi_controller) StdoutLine: {'line': b'4: +++ src/critics/path_align_critic.cpp.uncrustify\n'}
+[32.153769] (nav2_mppi_controller) StdoutLine: {'line': b'4: @@ -44,2 +44 @@\n'}
+[32.153796] (nav2_mppi_controller) StdoutLine: {'line': b'4: -  if (!enabled_ || weight_ <= 0.0f)\n'}
+[32.153824] (nav2_mppi_controller) StdoutLine: {'line': b'4: -  {\n'}
+[32.153852] (nav2_mppi_controller) StdoutLine: {'line': b'4: +  if (!enabled_ || weight_ <= 0.0f) {\n'}
+[32.153884] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.153910] (nav2_mppi_controller) StdoutLine: {'line': b"4: Code style divergence in file 'src/critics/path_follow_critic.cpp':\n"}
+[32.153938] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.153964] (nav2_mppi_controller) StdoutLine: {'line': b'4: --- src/critics/path_follow_critic.cpp\n'}
+[32.153995] (nav2_mppi_controller) StdoutLine: {'line': b'4: +++ src/critics/path_follow_critic.cpp.uncrustify\n'}
+[32.154033] (nav2_mppi_controller) StdoutLine: {'line': b'4: @@ -35,2 +35 @@\n'}
+[32.154071] (nav2_mppi_controller) StdoutLine: {'line': b'4: -  if (!enabled_ || weight_ <= 0.0f || data.path.x.size() < 2)\n'}
+[32.154109] (nav2_mppi_controller) StdoutLine: {'line': b'4: -  {\n'}
+[32.154140] (nav2_mppi_controller) StdoutLine: {'line': b'4: +  if (!enabled_ || weight_ <= 0.0f || data.path.x.size() < 2) {\n'}
+[32.154185] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.154228] (nav2_mppi_controller) StdoutLine: {'line': b"4: Code style divergence in file 'src/critics/prefer_forward_critic.cpp':\n"}
+[32.154255] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.154286] (nav2_mppi_controller) StdoutLine: {'line': b'4: --- src/critics/prefer_forward_critic.cpp\n'}
+[32.154325] (nav2_mppi_controller) StdoutLine: {'line': b'4: +++ src/critics/prefer_forward_critic.cpp.uncrustify\n'}
+[32.154353] (nav2_mppi_controller) StdoutLine: {'line': b'4: @@ -34,2 +34 @@\n'}
+[32.154382] (nav2_mppi_controller) StdoutLine: {'line': b'4: -  if (!enabled_ || weight_ <= 0.0f)\n'}
+[32.154408] (nav2_mppi_controller) StdoutLine: {'line': b'4: -  {\n'}
+[32.154435] (nav2_mppi_controller) StdoutLine: {'line': b'4: +  if (!enabled_ || weight_ <= 0.0f) {\n'}
+[32.154468] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.154506] (nav2_mppi_controller) StdoutLine: {'line': b'4: 5 files with code style divergence\n'}
+[32.154537] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'benchmark/controller_benchmark.cpp'\n"}
+[32.154572] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.154605] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'benchmark/optimizer_benchmark.cpp'\n"}
+[32.154643] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.154670] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'include/nav2_mppi_controller/critic_data.hpp'\n"}
+[32.154700] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.154741] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'include/nav2_mppi_controller/critic_function.hpp'\n"}
+[32.154773] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.154813] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'include/nav2_mppi_controller/critic_manager.hpp'\n"}
+[32.154854] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.154894] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'include/nav2_mppi_controller/critics/angular_velocity_critic.hpp'\n"}
+[32.154926] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.154962] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'include/nav2_mppi_controller/critics/constraint_critic.hpp'\n"}
+[32.154991] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.155026] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'include/nav2_mppi_controller/critics/cost_critic.hpp'\n"}
+[32.155061] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.155092] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'include/nav2_mppi_controller/critics/goal_angle_critic.hpp'\n"}
+[32.155120] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.155147] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'include/nav2_mppi_controller/critics/goal_critic.hpp'\n"}
+[32.155207] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.155234] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'include/nav2_mppi_controller/critics/goal_lateral_critic.hpp'\n"}
+[32.155262] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.155289] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'include/nav2_mppi_controller/critics/goal_longitudinal_critic.hpp'\n"}
+[32.155320] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.155345] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'include/nav2_mppi_controller/critics/linear_velocity_critic.hpp'\n"}
+[32.155372] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.155399] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'include/nav2_mppi_controller/critics/obstacles_critic.hpp'\n"}
+[32.155427] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.155453] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'include/nav2_mppi_controller/critics/path_align_critic.hpp'\n"}
+[32.155480] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.155507] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'include/nav2_mppi_controller/critics/path_align_legacy_critic.hpp'\n"}
+[32.155537] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.155566] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'include/nav2_mppi_controller/critics/path_angle_critic.hpp'\n"}
+[32.155594] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.155621] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'include/nav2_mppi_controller/critics/path_follow_critic.hpp'\n"}
+[32.155649] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.155677] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'include/nav2_mppi_controller/critics/prefer_forward_critic.hpp'\n"}
+[32.155703] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.155739] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'include/nav2_mppi_controller/critics/twirling_critic.hpp'\n"}
+[32.155766] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.155793] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'include/nav2_mppi_controller/critics/velocity_deadband_critic.hpp'\n"}
+[32.155820] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.155847] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'include/nav2_mppi_controller/models/constraints.hpp'\n"}
+[32.155875] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.155904] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'include/nav2_mppi_controller/models/control_sequence.hpp'\n"}
+[32.155932] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.155962] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'include/nav2_mppi_controller/models/optimizer_settings.hpp'\n"}
+[32.155994] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.156023] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'include/nav2_mppi_controller/models/path.hpp'\n"}
+[32.156055] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.156093] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'include/nav2_mppi_controller/models/state.hpp'\n"}
+[32.156133] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.156193] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'include/nav2_mppi_controller/models/trajectories.hpp'\n"}
+[32.156238] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.156275] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'include/nav2_mppi_controller/motion_models.hpp'\n"}
+[32.156338] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.156370] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'include/nav2_mppi_controller/optimizer.hpp'\n"}
+[32.156404] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.156450] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'include/nav2_mppi_controller/tools/eigen_types.hpp'\n"}
+[32.156511] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.156565] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'include/nav2_mppi_controller/tools/noise_generator.hpp'\n"}
+[32.156601] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.156632] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'include/nav2_mppi_controller/tools/parameters_handler.hpp'\n"}
+[32.156661] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.156688] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'include/nav2_mppi_controller/tools/path_handler.hpp'\n"}
+[32.156716] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.156745] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'include/nav2_mppi_controller/tools/trajectory_visualizer.hpp'\n"}
+[32.156775] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.156805] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'include/nav2_mppi_controller/tools/utils.hpp'\n"}
+[32.156835] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.156863] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'src/critic_manager.cpp'\n"}
+[32.156893] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.156921] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'src/critics/angular_velocity_critic.cpp'\n"}
+[32.156952] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.156979] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'src/critics/constraint_critic.cpp'\n"}
+[32.157007] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.157042] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'src/critics/cost_critic.cpp'\n"}
+[32.157070] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.157100] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'src/critics/goal_angle_critic.cpp'\n"}
+[32.157134] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.157203] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'src/critics/goal_critic.cpp'\n"}
+[32.157240] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.157270] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'src/critics/goal_lateral_critic.cpp'\n"}
+[32.157302] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.157331] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'src/critics/goal_longitudinal_critic.cpp'\n"}
+[32.157366] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.157403] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'src/critics/linear_velocity_critic.cpp'\n"}
+[32.157466] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.157508] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'src/critics/obstacles_critic.cpp'\n"}
+[32.157541] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.157576] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'src/critics/path_align_legacy_critic.cpp'\n"}
+[32.157613] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.157645] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'src/critics/path_angle_critic.cpp'\n"}
+[32.157672] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.157701] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'src/critics/twirling_critic.cpp'\n"}
+[32.157733] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.157764] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'src/critics/velocity_deadband_critic.cpp'\n"}
+[32.157796] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.157836] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'src/noise_generator.cpp'\n"}
+[32.157870] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.157900] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'src/optimizer.cpp'\n"}
+[32.157933] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.157960] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'src/parameters_handler.cpp'\n"}
+[32.157995] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.158024] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'src/path_handler.cpp'\n"}
+[32.158051] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.158079] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'src/trajectory_visualizer.cpp'\n"}
+[32.158109] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.158138] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'test/controller_state_transition_test.cpp'\n"}
+[32.158179] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.158208] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'test/critic_manager_test.cpp'\n"}
+[32.158237] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.158267] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'test/critics_tests.cpp'\n"}
+[32.158298] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.158327] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'test/models_test.cpp'\n"}
+[32.158357] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.158387] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'test/motion_model_tests.cpp'\n"}
+[32.158417] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.158457] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'test/noise_generator_test.cpp'\n"}
+[32.158488] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.158518] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'test/optimizer_smoke_test.cpp'\n"}
+[32.158546] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.158574] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'test/optimizer_unit_tests.cpp'\n"}
+[32.158603] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.158630] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'test/parameter_handler_test.cpp'\n"}
+[32.158658] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.158686] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'test/path_handler_test.cpp'\n"}
+[32.158713] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.158742] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'test/trajectory_visualizer_tests.cpp'\n"}
+[32.158771] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.158803] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'test/utils/factory.hpp'\n"}
+[32.158832] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.158860] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'test/utils/models.hpp'\n"}
+[32.158889] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.158916] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'test/utils/utils.hpp'\n"}
+[32.158944] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.158972] (nav2_mppi_controller) StdoutLine: {'line': b"4: No code style divergence in file 'test/utils_test.cpp'\n"}
+[32.159004] (nav2_mppi_controller) StdoutLine: {'line': b'4: \n'}
+[32.160755] (nav2_mppi_controller) StdoutLine: {'line': b'4: -- run_test.py: return code 1\n'}
+[32.160829] (nav2_mppi_controller) StdoutLine: {'line': b"4: -- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/uncrustify.xunit.xml'\n"}
+[32.169428] (nav2_mppi_controller) StdoutLine: {'line': b' 4/17 Test  #4: uncrustify .........................***Failed    0.34 sec\n'}
+[32.169772] (nav2_mppi_controller) StdoutLine: {'line': b'test 5\n'}
+[32.169808] (nav2_mppi_controller) StdoutLine: {'line': b'      Start  5: xmllint\n'}
+[32.169839] (nav2_mppi_controller) StdoutLine: {'line': b'\n'}
+[32.169867] (nav2_mppi_controller) StdoutLine: {'line': b'5: Test command: /usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/xmllint.xunit.xml" "--package-name" "nav2_mppi_controller" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/ament_xmllint/xmllint.txt" "--command" "/opt/ros/humble/bin/ament_xmllint" "--xunit-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/xmllint.xunit.xml"\n'}
+[32.169907] (nav2_mppi_controller) StdoutLine: {'line': b'5: Test timeout computed to be: 60\n'}
+[32.175633] (-) TimerEvent: {}
+[32.208551] (nav2_mppi_controller) StdoutLine: {'line': b"5: -- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller':\n"}
+[32.208684] (nav2_mppi_controller) StdoutLine: {'line': b'5:  - /opt/ros/humble/bin/ament_xmllint --xunit-file /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/xmllint.xunit.xml\n'}
+[32.267912] (nav2_mppi_controller) StdoutLine: {'line': b"5: File 'package.xml' is invalid:\n"}
+[32.268043] (nav2_mppi_controller) StdoutLine: {'line': b'5: error : Operation not permitted\n'}
+[32.268125] (nav2_mppi_controller) StdoutLine: {'line': b'5: warning: failed to load external entity "http://download.ros.org/schema/package_format3.xsd"\n'}
+[32.268247] (nav2_mppi_controller) StdoutLine: {'line': b"5: Schemas parser error : Failed to locate the main schema resource at 'http://download.ros.org/schema/package_format3.xsd'.\n"}
+[32.268316] (nav2_mppi_controller) StdoutLine: {'line': b'5: WXS schema http://download.ros.org/schema/package_format3.xsd failed to compile\n'}
+[32.268380] (nav2_mppi_controller) StdoutLine: {'line': b'5: \n'}
+[32.268440] (nav2_mppi_controller) StdoutLine: {'line': b'5: 1 files are invalid\n'}
+[32.268498] (nav2_mppi_controller) StdoutLine: {'line': b"5: File 'critics.xml' is valid\n"}
+[32.268559] (nav2_mppi_controller) StdoutLine: {'line': b'5: \n'}
+[32.268621] (nav2_mppi_controller) StdoutLine: {'line': b"5: File 'mppic.xml' is valid\n"}
+[32.268679] (nav2_mppi_controller) StdoutLine: {'line': b'5: \n'}
+[32.275914] (nav2_mppi_controller) StdoutLine: {'line': b'5: -- run_test.py: return code 1\n'}
+[32.276086] (-) TimerEvent: {}
+[32.276110] (nav2_mppi_controller) StdoutLine: {'line': b"5: -- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/xmllint.xunit.xml'\n"}
+[32.283743] (nav2_mppi_controller) StdoutLine: {'line': b' 5/17 Test  #5: xmllint ............................***Failed    0.11 sec\n'}
+[32.283919] (nav2_mppi_controller) StdoutLine: {'line': b'test 6\n'}
+[32.283991] (nav2_mppi_controller) StdoutLine: {'line': b'      Start  6: optimizer_smoke_test\n'}
+[32.284070] (nav2_mppi_controller) StdoutLine: {'line': b'\n'}
+[32.284145] (nav2_mppi_controller) StdoutLine: {'line': b'6: Test command: /usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/optimizer_smoke_test.gtest.xml" "--package-name" "nav2_mppi_controller" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/ament_cmake_gtest/optimizer_smoke_test.txt" "--command" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/optimizer_smoke_test" "--gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/optimizer_smoke_test.gtest.xml"\n'}
+[32.284290] (nav2_mppi_controller) StdoutLine: {'line': b'6: Test timeout computed to be: 60\n'}
+[32.321819] (nav2_mppi_controller) StdoutLine: {'line': b"6: -- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test':\n"}
+[32.321944] (nav2_mppi_controller) StdoutLine: {'line': b'6:  - /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/optimizer_smoke_test --gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/optimizer_smoke_test.gtest.xml\n'}
+[32.376229] (-) TimerEvent: {}
+[32.394155] (nav2_mppi_controller) StdoutLine: {'line': b"6: terminate called after throwing an instance of 'spdlog::spdlog_ex'\n"}
+[32.394325] (nav2_mppi_controller) StdoutLine: {'line': b'6:   what():  Failed opening file /home/dex/.ros/log/optimizer_smoke_test_35_1784255094410.log for writing: Read-only file system\n'}
+[32.462512] (nav2_mppi_controller) StdoutLine: {'line': b'6: -- run_test.py: return code -6\n'}
+[32.462639] (nav2_mppi_controller) StdoutLine: {'line': b"6: -- run_test.py: generate result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/optimizer_smoke_test.gtest.xml' with failed test\n"}
+[32.462730] (nav2_mppi_controller) StdoutLine: {'line': b"6: -- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/optimizer_smoke_test.gtest.xml'\n"}
+[32.470269] (nav2_mppi_controller) StdoutLine: {'line': b' 6/17 Test  #6: optimizer_smoke_test ...............***Failed    0.19 sec\n'}
+[32.470587] (nav2_mppi_controller) StdoutLine: {'line': b'test 7\n'}
+[32.470682] (nav2_mppi_controller) StdoutLine: {'line': b'      Start  7: controller_state_transition_test\n'}
+[32.470813] (nav2_mppi_controller) StdoutLine: {'line': b'\n'}
+[32.470861] (nav2_mppi_controller) StdoutLine: {'line': b'7: Test command: /usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/controller_state_transition_test.gtest.xml" "--package-name" "nav2_mppi_controller" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/ament_cmake_gtest/controller_state_transition_test.txt" "--command" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/controller_state_transition_test" "--gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/controller_state_transition_test.gtest.xml"\n'}
+[32.470921] (nav2_mppi_controller) StdoutLine: {'line': b'7: Test timeout computed to be: 60\n'}
+[32.476318] (-) TimerEvent: {}
+[32.510080] (nav2_mppi_controller) StdoutLine: {'line': b"7: -- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test':\n"}
+[32.510218] (nav2_mppi_controller) StdoutLine: {'line': b'7:  - /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/controller_state_transition_test --gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/controller_state_transition_test.gtest.xml\n'}
+[32.574572] (nav2_mppi_controller) StdoutLine: {'line': b"7: terminate called after throwing an instance of 'spdlog::spdlog_ex'\n"}
+[32.574912] (nav2_mppi_controller) StdoutLine: {'line': b'7:   what():  Failed opening file /home/dex/.ros/log/controller_state_transition_test_37_1784255094592.log for writing: Read-only file system\n'}
+[32.576383] (-) TimerEvent: {}
+[32.640761] (nav2_mppi_controller) StdoutLine: {'line': b'7: -- run_test.py: return code -6\n'}
+[32.641044] (nav2_mppi_controller) StdoutLine: {'line': b"7: -- run_test.py: generate result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/controller_state_transition_test.gtest.xml' with failed test\n"}
+[32.641144] (nav2_mppi_controller) StdoutLine: {'line': b"7: -- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/controller_state_transition_test.gtest.xml'\n"}
+[32.648938] (nav2_mppi_controller) StdoutLine: {'line': b' 7/17 Test  #7: controller_state_transition_test ...***Failed    0.18 sec\n'}
+[32.649109] (nav2_mppi_controller) StdoutLine: {'line': b'test 8\n'}
+[32.649154] (nav2_mppi_controller) StdoutLine: {'line': b'      Start  8: models_test\n'}
+[32.649194] (nav2_mppi_controller) StdoutLine: {'line': b'\n'}
+[32.649225] (nav2_mppi_controller) StdoutLine: {'line': b'8: Test command: /usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/models_test.gtest.xml" "--package-name" "nav2_mppi_controller" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/ament_cmake_gtest/models_test.txt" "--command" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/models_test" "--gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/models_test.gtest.xml"\n'}
+[32.649259] (nav2_mppi_controller) StdoutLine: {'line': b'8: Test timeout computed to be: 60\n'}
+[32.676575] (-) TimerEvent: {}
+[32.685798] (nav2_mppi_controller) StdoutLine: {'line': b"8: -- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test':\n"}
+[32.685983] (nav2_mppi_controller) StdoutLine: {'line': b'8:  - /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/models_test --gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/models_test.gtest.xml\n'}
+[32.744872] (nav2_mppi_controller) StdoutLine: {'line': b"8: terminate called after throwing an instance of 'spdlog::spdlog_ex'\n"}
+[32.745106] (nav2_mppi_controller) StdoutLine: {'line': b'8:   what():  Failed opening file /home/dex/.ros/log/models_test_39_1784255094763.log for writing: Read-only file system\n'}
+[32.776639] (-) TimerEvent: {}
+[32.807890] (nav2_mppi_controller) StdoutLine: {'line': b'8: -- run_test.py: return code -6\n'}
+[32.808127] (nav2_mppi_controller) StdoutLine: {'line': b"8: -- run_test.py: generate result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/models_test.gtest.xml' with failed test\n"}
+[32.808242] (nav2_mppi_controller) StdoutLine: {'line': b"8: -- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/models_test.gtest.xml'\n"}
+[32.817072] (nav2_mppi_controller) StdoutLine: {'line': b' 8/17 Test  #8: models_test ........................***Failed    0.17 sec\n'}
+[32.817245] (nav2_mppi_controller) StdoutLine: {'line': b'test 9\n'}
+[32.817283] (nav2_mppi_controller) StdoutLine: {'line': b'      Start  9: noise_generator_test\n'}
+[32.817315] (nav2_mppi_controller) StdoutLine: {'line': b'\n'}
+[32.817344] (nav2_mppi_controller) StdoutLine: {'line': b'9: Test command: /usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/noise_generator_test.gtest.xml" "--package-name" "nav2_mppi_controller" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/ament_cmake_gtest/noise_generator_test.txt" "--command" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/noise_generator_test" "--gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/noise_generator_test.gtest.xml"\n'}
+[32.817384] (nav2_mppi_controller) StdoutLine: {'line': b'9: Test timeout computed to be: 60\n'}
+[32.854000] (nav2_mppi_controller) StdoutLine: {'line': b"9: -- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test':\n"}
+[32.854381] (nav2_mppi_controller) StdoutLine: {'line': b'9:  - /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/noise_generator_test --gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/noise_generator_test.gtest.xml\n'}
+[32.876859] (-) TimerEvent: {}
+[32.916868] (nav2_mppi_controller) StdoutLine: {'line': b"9: terminate called after throwing an instance of 'spdlog::spdlog_ex'\n"}
+[32.917096] (nav2_mppi_controller) StdoutLine: {'line': b'9:   what():  Failed opening file /home/dex/.ros/log/noise_generator_test_41_1784255094934.log for writing: Read-only file system\n'}
+[32.976947] (-) TimerEvent: {}
+[32.982659] (nav2_mppi_controller) StdoutLine: {'line': b'9: -- run_test.py: return code -6\n'}
+[32.982838] (nav2_mppi_controller) StdoutLine: {'line': b"9: -- run_test.py: generate result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/noise_generator_test.gtest.xml' with failed test\n"}
+[32.982883] (nav2_mppi_controller) StdoutLine: {'line': b"9: -- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/noise_generator_test.gtest.xml'\n"}
+[32.988895] (nav2_mppi_controller) StdoutLine: {'line': b' 9/17 Test  #9: noise_generator_test ...............***Failed    0.17 sec\n'}
+[32.989084] (nav2_mppi_controller) StdoutLine: {'line': b'test 10\n'}
+[32.989136] (nav2_mppi_controller) StdoutLine: {'line': b'      Start 10: parameter_handler_test\n'}
+[32.989196] (nav2_mppi_controller) StdoutLine: {'line': b'\n'}
+[32.989229] (nav2_mppi_controller) StdoutLine: {'line': b'10: Test command: /usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/parameter_handler_test.gtest.xml" "--package-name" "nav2_mppi_controller" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/ament_cmake_gtest/parameter_handler_test.txt" "--command" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/parameter_handler_test" "--gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/parameter_handler_test.gtest.xml"\n'}
+[32.989290] (nav2_mppi_controller) StdoutLine: {'line': b'10: Test timeout computed to be: 60\n'}
+[33.027064] (nav2_mppi_controller) StdoutLine: {'line': b"10: -- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test':\n"}
+[33.027254] (nav2_mppi_controller) StdoutLine: {'line': b'10:  - /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/parameter_handler_test --gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/parameter_handler_test.gtest.xml\n'}
+[33.077102] (-) TimerEvent: {}
+[33.091115] (nav2_mppi_controller) StdoutLine: {'line': b"10: terminate called after throwing an instance of 'spdlog::spdlog_ex'\n"}
+[33.091333] (nav2_mppi_controller) StdoutLine: {'line': b'10:   what():  Failed opening file /home/dex/.ros/log/parameter_handler_test_43_1784255095108.log for writing: Read-only file system\n'}
+[33.158593] (nav2_mppi_controller) StdoutLine: {'line': b'10: -- run_test.py: return code -6\n'}
+[33.158846] (nav2_mppi_controller) StdoutLine: {'line': b"10: -- run_test.py: generate result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/parameter_handler_test.gtest.xml' with failed test\n"}
+[33.158944] (nav2_mppi_controller) StdoutLine: {'line': b"10: -- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/parameter_handler_test.gtest.xml'\n"}
+[33.166124] (nav2_mppi_controller) StdoutLine: {'line': b'10/17 Test #10: parameter_handler_test .............***Failed    0.18 sec\n'}
+[33.166347] (nav2_mppi_controller) StdoutLine: {'line': b'test 11\n'}
+[33.166432] (nav2_mppi_controller) StdoutLine: {'line': b'      Start 11: motion_model_tests\n'}
+[33.166513] (nav2_mppi_controller) StdoutLine: {'line': b'\n'}
+[33.166591] (nav2_mppi_controller) StdoutLine: {'line': b'11: Test command: /usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/motion_model_tests.gtest.xml" "--package-name" "nav2_mppi_controller" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/ament_cmake_gtest/motion_model_tests.txt" "--command" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/motion_model_tests" "--gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/motion_model_tests.gtest.xml"\n'}
+[33.166694] (nav2_mppi_controller) StdoutLine: {'line': b'11: Test timeout computed to be: 60\n'}
+[33.177180] (-) TimerEvent: {}
+[33.204457] (nav2_mppi_controller) StdoutLine: {'line': b"11: -- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test':\n"}
+[33.204590] (nav2_mppi_controller) StdoutLine: {'line': b'11:  - /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/motion_model_tests --gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/motion_model_tests.gtest.xml\n'}
+[33.268439] (nav2_mppi_controller) StdoutLine: {'line': b"11: terminate called after throwing an instance of 'spdlog::spdlog_ex'\n"}
+[33.268648] (nav2_mppi_controller) StdoutLine: {'line': b'11:   what():  Failed opening file /home/dex/.ros/log/motion_model_tests_45_1784255095286.log for writing: Read-only file system\n'}
+[33.277292] (-) TimerEvent: {}
+[33.334454] (nav2_mppi_controller) StdoutLine: {'line': b'11: -- run_test.py: return code -6\n'}
+[33.334664] (nav2_mppi_controller) StdoutLine: {'line': b"11: -- run_test.py: generate result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/motion_model_tests.gtest.xml' with failed test\n"}
+[33.334715] (nav2_mppi_controller) StdoutLine: {'line': b"11: -- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/motion_model_tests.gtest.xml'\n"}
+[33.341920] (nav2_mppi_controller) StdoutLine: {'line': b'11/17 Test #11: motion_model_tests .................***Failed    0.18 sec\n'}
+[33.342167] (nav2_mppi_controller) StdoutLine: {'line': b'test 12\n'}
+[33.342257] (nav2_mppi_controller) StdoutLine: {'line': b'      Start 12: trajectory_visualizer_tests\n'}
+[33.342327] (nav2_mppi_controller) StdoutLine: {'line': b'\n'}
+[33.342396] (nav2_mppi_controller) StdoutLine: {'line': b'12: Test command: /usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/trajectory_visualizer_tests.gtest.xml" "--package-name" "nav2_mppi_controller" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/ament_cmake_gtest/trajectory_visualizer_tests.txt" "--command" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/trajectory_visualizer_tests" "--gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/trajectory_visualizer_tests.gtest.xml"\n'}
+[33.342544] (nav2_mppi_controller) StdoutLine: {'line': b'12: Test timeout computed to be: 60\n'}
+[33.377387] (-) TimerEvent: {}
+[33.378908] (nav2_mppi_controller) StdoutLine: {'line': b"12: -- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test':\n"}
+[33.379098] (nav2_mppi_controller) StdoutLine: {'line': b'12:  - /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/trajectory_visualizer_tests --gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/trajectory_visualizer_tests.gtest.xml\n'}
+[33.442189] (nav2_mppi_controller) StdoutLine: {'line': b"12: terminate called after throwing an instance of 'spdlog::spdlog_ex'\n"}
+[33.442561] (nav2_mppi_controller) StdoutLine: {'line': b'12:   what():  Failed opening file /home/dex/.ros/log/trajectory_visualizer_tests_47_1784255095460.log for writing: Read-only file system\n'}
+[33.477562] (-) TimerEvent: {}
+[33.507404] (nav2_mppi_controller) StdoutLine: {'line': b'12: -- run_test.py: return code -6\n'}
+[33.507695] (nav2_mppi_controller) StdoutLine: {'line': b"12: -- run_test.py: generate result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/trajectory_visualizer_tests.gtest.xml' with failed test\n"}
+[33.507803] (nav2_mppi_controller) StdoutLine: {'line': b"12: -- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/trajectory_visualizer_tests.gtest.xml'\n"}
+[33.516046] (nav2_mppi_controller) StdoutLine: {'line': b'12/17 Test #12: trajectory_visualizer_tests ........***Failed    0.17 sec\n'}
+[33.516200] (nav2_mppi_controller) StdoutLine: {'line': b'test 13\n'}
+[33.516246] (nav2_mppi_controller) StdoutLine: {'line': b'      Start 13: utils_test\n'}
+[33.516278] (nav2_mppi_controller) StdoutLine: {'line': b'\n'}
+[33.516319] (nav2_mppi_controller) StdoutLine: {'line': b'13: Test command: /usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/utils_test.gtest.xml" "--package-name" "nav2_mppi_controller" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/ament_cmake_gtest/utils_test.txt" "--command" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/utils_test" "--gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/utils_test.gtest.xml"\n'}
+[33.516354] (nav2_mppi_controller) StdoutLine: {'line': b'13: Test timeout computed to be: 60\n'}
+[33.553769] (nav2_mppi_controller) StdoutLine: {'line': b"13: -- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test':\n"}
+[33.553974] (nav2_mppi_controller) StdoutLine: {'line': b'13:  - /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/utils_test --gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/utils_test.gtest.xml\n'}
+[33.577655] (-) TimerEvent: {}
+[33.617006] (nav2_mppi_controller) StdoutLine: {'line': b"13: terminate called after throwing an instance of 'spdlog::spdlog_ex'\n"}
+[33.617249] (nav2_mppi_controller) StdoutLine: {'line': b'13:   what():  Failed opening file /home/dex/.ros/log/utils_test_49_1784255095635.log for writing: Read-only file system\n'}
+[33.677808] (-) TimerEvent: {}
+[33.683574] (nav2_mppi_controller) StdoutLine: {'line': b'13: -- run_test.py: return code -6\n'}
+[33.683890] (nav2_mppi_controller) StdoutLine: {'line': b"13: -- run_test.py: generate result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/utils_test.gtest.xml' with failed test\n"}
+[33.684003] (nav2_mppi_controller) StdoutLine: {'line': b"13: -- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/utils_test.gtest.xml'\n"}
+[33.691316] (nav2_mppi_controller) StdoutLine: {'line': b'13/17 Test #13: utils_test .........................***Failed    0.17 sec\n'}
+[33.691526] (nav2_mppi_controller) StdoutLine: {'line': b'test 14\n'}
+[33.691643] (nav2_mppi_controller) StdoutLine: {'line': b'      Start 14: path_handler_test\n'}
+[33.691755] (nav2_mppi_controller) StdoutLine: {'line': b'\n'}
+[33.691851] (nav2_mppi_controller) StdoutLine: {'line': b'14: Test command: /usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/path_handler_test.gtest.xml" "--package-name" "nav2_mppi_controller" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/ament_cmake_gtest/path_handler_test.txt" "--command" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/path_handler_test" "--gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/path_handler_test.gtest.xml"\n'}
+[33.691958] (nav2_mppi_controller) StdoutLine: {'line': b'14: Test timeout computed to be: 60\n'}
+[33.728091] (nav2_mppi_controller) StdoutLine: {'line': b"14: -- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test':\n"}
+[33.728312] (nav2_mppi_controller) StdoutLine: {'line': b'14:  - /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/path_handler_test --gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/path_handler_test.gtest.xml\n'}
+[33.777904] (-) TimerEvent: {}
+[33.792394] (nav2_mppi_controller) StdoutLine: {'line': b"14: terminate called after throwing an instance of 'spdlog::spdlog_ex'\n"}
+[33.792723] (nav2_mppi_controller) StdoutLine: {'line': b'14:   what():  Failed opening file /home/dex/.ros/log/path_handler_test_51_1784255095809.log for writing: Read-only file system\n'}
+[33.856916] (nav2_mppi_controller) StdoutLine: {'line': b'14: -- run_test.py: return code -6\n'}
+[33.857216] (nav2_mppi_controller) StdoutLine: {'line': b"14: -- run_test.py: generate result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/path_handler_test.gtest.xml' with failed test\n"}
+[33.857384] (nav2_mppi_controller) StdoutLine: {'line': b"14: -- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/path_handler_test.gtest.xml'\n"}
+[33.864119] (nav2_mppi_controller) StdoutLine: {'line': b'14/17 Test #14: path_handler_test ..................***Failed    0.17 sec\n'}
+[33.864286] (nav2_mppi_controller) StdoutLine: {'line': b'test 15\n'}
+[33.864367] (nav2_mppi_controller) StdoutLine: {'line': b'      Start 15: critic_manager_test\n'}
+[33.864449] (nav2_mppi_controller) StdoutLine: {'line': b'\n'}
+[33.864516] (nav2_mppi_controller) StdoutLine: {'line': b'15: Test command: /usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/critic_manager_test.gtest.xml" "--package-name" "nav2_mppi_controller" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/ament_cmake_gtest/critic_manager_test.txt" "--command" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/critic_manager_test" "--gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/critic_manager_test.gtest.xml"\n'}
+[33.864633] (nav2_mppi_controller) StdoutLine: {'line': b'15: Test timeout computed to be: 60\n'}
+[33.878002] (-) TimerEvent: {}
+[33.902684] (nav2_mppi_controller) StdoutLine: {'line': b"15: -- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test':\n"}
+[33.902824] (nav2_mppi_controller) StdoutLine: {'line': b'15:  - /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/critic_manager_test --gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/critic_manager_test.gtest.xml\n'}
+[33.966198] (nav2_mppi_controller) StdoutLine: {'line': b"15: terminate called after throwing an instance of 'spdlog::spdlog_ex'\n"}
+[33.966335] (nav2_mppi_controller) StdoutLine: {'line': b'15:   what():  Failed opening file /home/dex/.ros/log/critic_manager_test_53_1784255095983.log for writing: Read-only file system\n'}
+[33.978110] (-) TimerEvent: {}
+[34.030610] (nav2_mppi_controller) StdoutLine: {'line': b'15: -- run_test.py: return code -6\n'}
+[34.030945] (nav2_mppi_controller) StdoutLine: {'line': b"15: -- run_test.py: generate result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/critic_manager_test.gtest.xml' with failed test\n"}
+[34.031006] (nav2_mppi_controller) StdoutLine: {'line': b"15: -- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/critic_manager_test.gtest.xml'\n"}
+[34.039032] (nav2_mppi_controller) StdoutLine: {'line': b'15/17 Test #15: critic_manager_test ................***Failed    0.17 sec\n'}
+[34.039249] (nav2_mppi_controller) StdoutLine: {'line': b'test 16\n'}
+[34.039343] (nav2_mppi_controller) StdoutLine: {'line': b'      Start 16: optimizer_unit_tests\n'}
+[34.039425] (nav2_mppi_controller) StdoutLine: {'line': b'\n'}
+[34.039497] (nav2_mppi_controller) StdoutLine: {'line': b'16: Test command: /usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/optimizer_unit_tests.gtest.xml" "--package-name" "nav2_mppi_controller" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/ament_cmake_gtest/optimizer_unit_tests.txt" "--command" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/optimizer_unit_tests" "--gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/optimizer_unit_tests.gtest.xml"\n'}
+[34.039594] (nav2_mppi_controller) StdoutLine: {'line': b'16: Test timeout computed to be: 60\n'}
+[34.078198] (nav2_mppi_controller) StdoutLine: {'line': b"16: -- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test':\n"}
+[34.078348] (-) TimerEvent: {}
+[34.078371] (nav2_mppi_controller) StdoutLine: {'line': b'16:  - /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/optimizer_unit_tests --gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/optimizer_unit_tests.gtest.xml\n'}
+[34.141968] (nav2_mppi_controller) StdoutLine: {'line': b"16: terminate called after throwing an instance of 'spdlog::spdlog_ex'\n"}
+[34.142185] (nav2_mppi_controller) StdoutLine: {'line': b'16:   what():  Failed opening file /home/dex/.ros/log/optimizer_unit_tests_55_1784255096160.log for writing: Read-only file system\n'}
+[34.178455] (-) TimerEvent: {}
+[34.206643] (nav2_mppi_controller) StdoutLine: {'line': b'16: -- run_test.py: return code -6\n'}
+[34.206821] (nav2_mppi_controller) StdoutLine: {'line': b"16: -- run_test.py: generate result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/optimizer_unit_tests.gtest.xml' with failed test\n"}
+[34.206887] (nav2_mppi_controller) StdoutLine: {'line': b"16: -- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/optimizer_unit_tests.gtest.xml'\n"}
+[34.215566] (nav2_mppi_controller) StdoutLine: {'line': b'16/17 Test #16: optimizer_unit_tests ...............***Failed    0.18 sec\n'}
+[34.215767] (nav2_mppi_controller) StdoutLine: {'line': b'test 17\n'}
+[34.215845] (nav2_mppi_controller) StdoutLine: {'line': b'      Start 17: critics_tests\n'}
+[34.215924] (nav2_mppi_controller) StdoutLine: {'line': b'\n'}
+[34.215987] (nav2_mppi_controller) StdoutLine: {'line': b'17: Test command: /usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/critics_tests.gtest.xml" "--package-name" "nav2_mppi_controller" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/ament_cmake_gtest/critics_tests.txt" "--command" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/critics_tests" "--gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/critics_tests.gtest.xml"\n'}
+[34.216083] (nav2_mppi_controller) StdoutLine: {'line': b'17: Test timeout computed to be: 60\n'}
+[34.253703] (nav2_mppi_controller) StdoutLine: {'line': b"17: -- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test':\n"}
+[34.253934] (nav2_mppi_controller) StdoutLine: {'line': b'17:  - /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/critics_tests --gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/critics_tests.gtest.xml\n'}
+[34.278605] (-) TimerEvent: {}
+[34.320502] (nav2_mppi_controller) StdoutLine: {'line': b"17: terminate called after throwing an instance of 'spdlog::spdlog_ex'\n"}
+[34.320819] (nav2_mppi_controller) StdoutLine: {'line': b'17:   what():  Failed opening file /home/dex/.ros/log/critics_tests_57_1784255096339.log for writing: Read-only file system\n'}
+[34.378693] (-) TimerEvent: {}
+[34.385045] (nav2_mppi_controller) StdoutLine: {'line': b'17: -- run_test.py: return code -6\n'}
+[34.385363] (nav2_mppi_controller) StdoutLine: {'line': b"17: -- run_test.py: generate result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/critics_tests.gtest.xml' with failed test\n"}
+[34.385484] (nav2_mppi_controller) StdoutLine: {'line': b"17: -- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/critics_tests.gtest.xml'\n"}
+[34.392726] (nav2_mppi_controller) StdoutLine: {'line': b'17/17 Test #17: critics_tests ......................***Failed    0.18 sec\n'}
+[34.393176] (nav2_mppi_controller) StdoutLine: {'line': b'\n'}
+[34.393445] (nav2_mppi_controller) StdoutLine: {'line': b'12% tests passed, 15 tests failed out of 17\n'}
+[34.393506] (nav2_mppi_controller) StdoutLine: {'line': b'\n'}
+[34.393561] (nav2_mppi_controller) StdoutLine: {'line': b'Label Time Summary:\n'}
+[34.393608] (nav2_mppi_controller) StdoutLine: {'line': b'cppcheck      =   0.12 sec*proc (1 test)\n'}
+[34.393650] (nav2_mppi_controller) StdoutLine: {'line': b'cpplint       =   1.60 sec*proc (1 test)\n'}
+[34.393691] (nav2_mppi_controller) StdoutLine: {'line': b'gtest         =   2.11 sec*proc (12 tests)\n'}
+[34.393725] (nav2_mppi_controller) StdoutLine: {'line': b'lint_cmake    =   0.09 sec*proc (1 test)\n'}
+[34.393767] (nav2_mppi_controller) StdoutLine: {'line': b'linter        =   2.26 sec*proc (5 tests)\n'}
+[34.393812] (nav2_mppi_controller) StdoutLine: {'line': b'uncrustify    =   0.34 sec*proc (1 test)\n'}
+[34.393843] (nav2_mppi_controller) StdoutLine: {'line': b'xmllint       =   0.11 sec*proc (1 test)\n'}
+[34.393870] (nav2_mppi_controller) StdoutLine: {'line': b'\n'}
+[34.393902] (nav2_mppi_controller) StdoutLine: {'line': b'Total Test time (real) =   4.37 sec\n'}
+[34.393949] (nav2_mppi_controller) StdoutLine: {'line': b'\n'}
+[34.393984] (nav2_mppi_controller) StdoutLine: {'line': b'The following tests FAILED:\n'}
+[34.394016] (nav2_mppi_controller) StdoutLine: {'line': b'\t  2 - cpplint (Failed)\n'}
+[34.394047] (nav2_mppi_controller) StdoutLine: {'line': b'\t  4 - uncrustify (Failed)\n'}
+[34.394076] (nav2_mppi_controller) StdoutLine: {'line': b'\t  5 - xmllint (Failed)\n'}
+[34.394107] (nav2_mppi_controller) StdoutLine: {'line': b'\t  6 - optimizer_smoke_test (Failed)\n'}
+[34.394146] (nav2_mppi_controller) StdoutLine: {'line': b'\t  7 - controller_state_transition_test (Failed)\n'}
+[34.394202] (nav2_mppi_controller) StdoutLine: {'line': b'\t  8 - models_test (Failed)\n'}
+[34.394242] (nav2_mppi_controller) StdoutLine: {'line': b'\t  9 - noise_generator_test (Failed)\n'}
+[34.394286] (nav2_mppi_controller) StdoutLine: {'line': b'\t 10 - parameter_handler_test (Failed)\n'}
+[34.394322] (nav2_mppi_controller) StdoutLine: {'line': b'\t 11 - motion_model_tests (Failed)\n'}
+[34.394350] (nav2_mppi_controller) StdoutLine: {'line': b'\t 12 - trajectory_visualizer_tests (Failed)\n'}
+[34.394392] (nav2_mppi_controller) StdoutLine: {'line': b'\t 13 - utils_test (Failed)\n'}
+[34.394433] (nav2_mppi_controller) StdoutLine: {'line': b'\t 14 - path_handler_test (Failed)\n'}
+[34.394470] (nav2_mppi_controller) StdoutLine: {'line': b'\t 15 - critic_manager_test (Failed)\n'}
+[34.394512] (nav2_mppi_controller) StdoutLine: {'line': b'\t 16 - optimizer_unit_tests (Failed)\n'}
+[34.394554] (nav2_mppi_controller) StdoutLine: {'line': b'\t 17 - critics_tests (Failed)\n'}
+[34.396969] (nav2_mppi_controller) StderrLine: {'line': b'Errors while running CTest\n'}
+[34.397227] (nav2_mppi_controller) StderrLine: {'line': b'Output from these tests are in: /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/Testing/Temporary/LastTest.log\n'}
+[34.397330] (nav2_mppi_controller) StderrLine: {'line': b'Use "--rerun-failed --output-on-failure" to re-run the failed cases verbosely.\n'}
+[34.399310] (nav2_mppi_controller) CommandEnded: {'returncode': 8}
+[34.399991] (nav2_mppi_controller) TestFailure: {'identifier': 'nav2_mppi_controller'}
+[34.400042] (nav2_mppi_controller) JobEnded: {'identifier': 'nav2_mppi_controller', 'rc': 0}
+[34.400450] (-) EventReactorShutdown: {}

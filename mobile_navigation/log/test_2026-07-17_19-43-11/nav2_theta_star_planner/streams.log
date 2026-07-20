@@ -1,0 +1,110 @@
+[0.018s] Invoking command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner': AMENT_PREFIX_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server LD_LIBRARY_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/lib:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib:${LD_LIBRARY_PATH} /usr/bin/ctest -C Release -D ExperimentalTest --no-compress-output -V --force-new-ctest-process -R controller_state_transition_test|test_theta_star
+[0.024s] UpdateCTestConfiguration  from :/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/CTestConfiguration.ini
+[0.024s] Parse Config file:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/CTestConfiguration.ini
+[0.024s]    Site: dex-TX-Gaming-FA608UH-FA608UH
+[0.025s]    Build name: (empty)
+[0.025s]  Add coverage exclude regular expressions.
+[0.025s] Create new tag: 20260717-1143 - Experimental
+[0.025s] UpdateCTestConfiguration  from :/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/CTestConfiguration.ini
+[0.025s] Parse Config file:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/CTestConfiguration.ini
+[0.025s] Test project /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner
+[0.025s] Constructing a list of tests
+[0.026s] Done constructing a list of tests
+[0.026s] Updating test list for fixtures
+[0.026s] Added 0 tests to meet fixture requirements
+[0.026s] Checking test dependency graph...
+[0.026s] Checking test dependency graph end
+[0.026s] test 1
+[0.026s]     Start 1: test_theta_star
+[0.026s] 
+[0.026s] 1: Test command: /usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/test_theta_star.gtest.xml" "--package-name" "nav2_theta_star_planner" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/ament_cmake_gtest/test_theta_star.txt" "--command" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_theta_star" "--gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/test_theta_star.gtest.xml"
+[0.026s] 1: Test timeout computed to be: 60
+[0.062s] 1: -- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner':
+[0.062s] 1:  - /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_theta_star --gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/test_theta_star.gtest.xml
+[0.080s] 1: Running main() from /opt/ros/humble/src/gtest_vendor/src/gtest_main.cc
+[0.080s] 1: [==========] Running 3 tests from 2 test suites.
+[0.080s] 1: [----------] Global test environment set-up.
+[0.080s] 1: [----------] 1 test from ThetaStarTest
+[0.080s] 1: [ RUN      ] ThetaStarTest.test_theta_star
+[0.080s] 1: [       OK ] ThetaStarTest.test_theta_star (0 ms)
+[0.081s] 1: [----------] 1 test from ThetaStarTest (0 ms total)
+[0.081s] 1: 
+[0.081s] 1: [----------] 2 tests from ThetaStarPlanner
+[0.081s] 1: [ RUN      ] ThetaStarPlanner.test_theta_star_planner
+[0.081s] 1: getifaddrs: Operation not permitted
+[0.081s] 1: getifaddrs: Operation not permitted
+[0.081s] 1: getifaddrs: Operation not permitted
+[0.081s] 1: [37;1m2026-07-17 19:43:11.847 [31;1m[[37;1mTRANSPORT_UDP[31;1m Error] [37mError creating socket: Operation not permitted[34;1m -> Function [36minit[m
+[0.081s] 1: [37;1m2026-07-17 19:43:11.847 [31;1m[[37;1mRTPS_PARTICIPANT[31;1m Error] [37mUser transport failed to register.[34;1m -> Function [36mRTPSParticipantImpl[m
+[0.093s] 1: [INFO] [1784288591.859196138] [global_costmap.global_costmap]: 
+[0.093s] 1: 	global_costmap lifecycle node launched. 
+[0.093s] 1: 	Waiting on external lifecycle transitions to activate
+[0.093s] 1: 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[0.093s] 1: [INFO] [1784288591.859668663] [global_costmap.global_costmap]: Creating Costmap
+[0.093s] 1: [INFO] [1784288591.859846424] [global_costmap.global_costmap]: Configuring
+[0.096s] 1: [INFO] [1784288591.861971696] [global_costmap.global_costmap]: Using plugin "static_layer"
+[0.098s] 1: [INFO] [1784288591.864343500] [global_costmap.global_costmap]: Subscribing to the map topic (/map) with transient local durability
+[0.099s] 1: [INFO] [1784288591.865067047] [global_costmap.global_costmap]: Initialized plugin "static_layer"
+[0.099s] 1: [INFO] [1784288591.865085732] [global_costmap.global_costmap]: Using plugin "obstacle_layer"
+[0.099s] 1: [INFO] [1784288591.865196194] [global_costmap.global_costmap]: Subscribed to Topics: 
+[0.099s] 1: [INFO] [1784288591.865228436] [global_costmap.global_costmap]: Initialized plugin "obstacle_layer"
+[0.099s] 1: [INFO] [1784288591.865235620] [global_costmap.global_costmap]: Using plugin "inflation_layer"
+[0.099s] 1: [INFO] [1784288591.865428790] [global_costmap.global_costmap]: Initialized plugin "inflation_layer"
+[0.104s] 1: [INFO] [1784288591.869540287] [ThetaStarPlannerTest]: Theta* path orientation: assign=true mode=auto same_threshold=0.020 rad tangent_in_place_markers=false. Omni: PathAngleCritic off + PathAlign use_path_orientations=true
+[0.104s] 1: [INFO] [1784288591.869566337] [ThetaStarPlannerTest]: Theta* steering continuity (B): enforce=true wheelbase=0.460 track=0.345 max_wheel_step=1.00 rad nominal_v=0.50 max_yaw_rate=1.20
+[0.104s] 1: [INFO] [1784288591.869573380] [ThetaStarPlannerTest]: Activating plugin test of type nav2_theta_star_planner
+[0.104s] 1: [INFO] [1784288591.869577679] [ThetaStarPlannerTest]: Path post-process: smooth_path=true mode=legacy string_pull=true gradient=true fillet_geom=false log_timing=false [build=l1_spline_v3]
+[0.104s] 1: [WARN] [1784288591.869592146] [ThetaStarPlannerTest]: Failed to create a unique pose path because the pose is not in free space
+[0.104s] 1: [ERROR] [1784288591.869599490] [ThetaStarPlannerTest]: Either of the start or goal pose are an obstacle! 
+[0.104s] 1: [ERROR] [1784288591.869625851] [ThetaStarPlannerTest]: createPlan returned empty path (start=0.00,0.00 goal=1.00,1.00)
+[0.104s] 1: [INFO] [1784288591.869635039] [ThetaStarPlannerTest]: Deactivating plugin test of type nav2_theta_star_planner
+[0.104s] 1: [INFO] [1784288591.869640429] [ThetaStarPlannerTest]: CleaningUp plugin test of type nav2_theta_star_planner
+[0.104s] 1: [INFO] [1784288591.869649045] [global_costmap.global_costmap]: Cleaning up
+[0.107s] 1: [INFO] [1784288591.873462262] [global_costmap.global_costmap]: Destroying
+[0.109s] 1: [       OK ] ThetaStarPlanner.test_theta_star_planner (29 ms)
+[0.109s] 1: [ RUN      ] ThetaStarPlanner.test_theta_star_reconfigure
+[0.109s] 1: getifaddrs: Operation not permitted
+[0.109s] 1: [37;1m2026-07-17 19:43:11.875 [31;1m[[37;1mTRANSPORT_UDP[31;1m Error] [37mError creating socket: Operation not permitted[34;1m -> Function [36minit[m
+[0.109s] 1: [37;1m2026-07-17 19:43:11.875 [31;1m[[37;1mRTPS_PARTICIPANT[31;1m Error] [37mUser transport failed to register.[34;1m -> Function [36mRTPSParticipantImpl[m
+[0.114s] 1: [INFO] [1784288591.879911959] [global_costmap.global_costmap]: 
+[0.114s] 1: 	global_costmap lifecycle node launched. 
+[0.114s] 1: 	Waiting on external lifecycle transitions to activate
+[0.114s] 1: 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[0.114s] 1: [INFO] [1784288591.880139735] [global_costmap.global_costmap]: Creating Costmap
+[0.114s] 1: [INFO] [1784288591.880223476] [global_costmap.global_costmap]: Configuring
+[0.114s] 1: [INFO] [1784288591.880661405] [global_costmap.global_costmap]: Using plugin "static_layer"
+[0.115s] 1: [INFO] [1784288591.880781094] [global_costmap.global_costmap]: Subscribing to the map topic (/map) with transient local durability
+[0.115s] 1: [INFO] [1784288591.880897387] [global_costmap.global_costmap]: Initialized plugin "static_layer"
+[0.115s] 1: [INFO] [1784288591.880908990] [global_costmap.global_costmap]: Using plugin "obstacle_layer"
+[0.115s] 1: [INFO] [1784288591.880963905] [global_costmap.global_costmap]: Subscribed to Topics: 
+[0.115s] 1: [INFO] [1784288591.880976028] [global_costmap.global_costmap]: Initialized plugin "obstacle_layer"
+[0.115s] 1: [INFO] [1784288591.880981899] [global_costmap.global_costmap]: Using plugin "inflation_layer"
+[0.115s] 1: [INFO] [1784288591.881054929] [global_costmap.global_costmap]: Initialized plugin "inflation_layer"
+[0.117s] 1: [INFO] [1784288591.882884434] [ThetaStarPlannerTest]: Theta* path orientation: assign=true mode=auto same_threshold=0.020 rad tangent_in_place_markers=false. Omni: PathAngleCritic off + PathAlign use_path_orientations=true
+[0.117s] 1: [INFO] [1784288591.882910264] [ThetaStarPlannerTest]: Theta* steering continuity (B): enforce=true wheelbase=0.460 track=0.345 max_wheel_step=1.00 rad nominal_v=0.50 max_yaw_rate=1.20
+[0.117s] 1: [INFO] [1784288591.882921936] [ThetaStarPlannerTest]: Activating plugin test of type nav2_theta_star_planner
+[0.117s] 1: [INFO] [1784288591.882927667] [ThetaStarPlannerTest]: Path post-process: smooth_path=true mode=legacy string_pull=true gradient=true fillet_geom=false log_timing=false [build=l1_spline_v3]
+[0.120s] 1: Warning: class_loader.ClassLoader: SEVERE WARNING!!! Attempting to unload library while objects created by this loader exist in the heap! You should delete your objects before attempting to unload the library or destroying the ClassLoader. The library will NOT be unloaded.
+[0.120s] 1:          at line 127 in ./src/class_loader.cpp
+[0.120s] 1: [INFO] [1784288591.886682060] [global_costmap.global_costmap]: Destroying
+[0.123s] 1: [       OK ] ThetaStarPlanner.test_theta_star_reconfigure (14 ms)
+[0.123s] 1: [----------] 2 tests from ThetaStarPlanner (43 ms total)
+[0.123s] 1: 
+[0.123s] 1: [----------] Global test environment tear-down
+[0.123s] 1: [==========] 3 tests from 2 test suites ran. (43 ms total)
+[0.124s] 1: [  PASSED  ] 3 tests.
+[0.229s] 1: -- run_test.py: return code 0
+[0.229s] 1: -- run_test.py: inject classname prefix into gtest result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/test_theta_star.gtest.xml'
+[0.230s] 1: -- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/test_theta_star.gtest.xml'
+[0.237s] 1/1 Test #1: test_theta_star ..................   Passed    0.21 sec
+[0.237s] 
+[0.238s] The following tests passed:
+[0.238s] 	test_theta_star
+[0.238s] 
+[0.238s] 100% tests passed, 0 tests failed out of 1
+[0.238s] 
+[0.238s] Label Time Summary:
+[0.238s] gtest    =   0.21 sec*proc (1 test)
+[0.238s] 
+[0.238s] Total Test time (real) =   0.21 sec
+[0.242s] Invoked command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner' returned '0': AMENT_PREFIX_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server LD_LIBRARY_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/lib:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib:${LD_LIBRARY_PATH} /usr/bin/ctest -C Release -D ExperimentalTest --no-compress-output -V --force-new-ctest-process -R controller_state_transition_test|test_theta_star

@@ -16,7 +16,7 @@ set(_nav2_theta_star_planner_CONFIG_INCLUDED TRUE)
 
 # output package information
 if(NOT nav2_theta_star_planner_FIND_QUIETLY)
-  message(STATUS "Found nav2_theta_star_planner: 0.4.3 (${nav2_theta_star_planner_DIR})")
+  message(STATUS "Found nav2_theta_star_planner: 0.4.5 (${nav2_theta_star_planner_DIR})")
 endif()
 
 # warn when using a deprecated package

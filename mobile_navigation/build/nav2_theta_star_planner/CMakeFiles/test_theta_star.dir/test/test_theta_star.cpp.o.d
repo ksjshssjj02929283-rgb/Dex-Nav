@@ -985,6 +985,9 @@ CMakeFiles/test_theta_star.dir/test/test_theta_star.cpp.o: \
  /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include/nav2_theta_star_planner/multi_layer_planner.hpp \
  /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/include/nav2_map_server/node_map_types.hpp \
  /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include/nav2_theta_star_planner/node_theta_star.hpp \
+ /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include/nav2_theta_star_planner/omni_path_smoother.hpp \
+ /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include/nav2_theta_star_planner/curve_path_smoother.hpp \
+ /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include/nav2_theta_star_planner/l1_spline_path.hpp \
  /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include/nav2_theta_star_planner/swerve_steering_model.hpp \
  /opt/ros/humble/include/nav2_util/geometry_utils.hpp \
  /opt/ros/humble/include/geometry_msgs/geometry_msgs/msg/pose2_d.hpp \

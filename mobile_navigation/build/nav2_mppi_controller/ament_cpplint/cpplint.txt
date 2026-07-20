@@ -1,0 +1,185 @@
+-- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller':
+ - /opt/ros/humble/bin/ament_cpplint --xunit-file /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/cpplint.xunit.xml
+
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/controller.cpp:322:  Lines should be <= 100 characters long  [whitespace/line_length] [2]
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/controller.cpp:326:  Lines should be <= 100 characters long  [whitespace/line_length] [2]
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/controller.cpp:615:  Lines should be <= 100 characters long  [whitespace/line_length] [2]
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/controller.cpp:733:  Lines should be <= 100 characters long  [whitespace/line_length] [2]
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/controller.cpp:813:  If an else has a brace on one side, it should have it on both  [readability/braces] [5]
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/critics/path_angle_critic.cpp:19:  Found C system header after C++ system header. Should be: path_angle_critic.h, c system, c++ system, other.  [build/include_order] [4]
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/optimizer.cpp:210:  Lines should be <= 100 characters long  [whitespace/line_length] [2]
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/optimizer.cpp:231:  Lines should be <= 100 characters long  [whitespace/line_length] [2]
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/optimizer.cpp:537:  Lines should be <= 100 characters long  [whitespace/line_length] [2]
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/optimizer.cpp:654:  Lines should be <= 100 characters long  [whitespace/line_length] [2]
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/path_handler.cpp:24:  Found C++ system header after other header. Should be: path_handler.h, c system, c++ system, other.  [build/include_order] [4]
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/path_handler.cpp:25:  Found C++ system header after other header. Should be: path_handler.h, c system, c++ system, other.  [build/include_order] [4]
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/path_handler.cpp:26:  Found C++ system header after other header. Should be: path_handler.h, c system, c++ system, other.  [build/include_order] [4]
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/path_handler.cpp:98:  Lines should be <= 100 characters long  [whitespace/line_length] [2]
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/path_handler.cpp:141:  Lines should be <= 100 characters long  [whitespace/line_length] [2]
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/path_handler.cpp:191:  Lines should be <= 100 characters long  [whitespace/line_length] [2]
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/path_handler.cpp:215:  Lines should be <= 100 characters long  [whitespace/line_length] [2]
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/path_handler.cpp:261:  Lines should be <= 100 characters long  [whitespace/line_length] [2]
+Not using '--root'
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/benchmark/controller_benchmark.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/benchmark/optimizer_benchmark.cpp
+
+Using '--root=/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include' argument
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/controller.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/critic_data.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/critic_function.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/critic_manager.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/critics/angular_velocity_critic.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/critics/constraint_critic.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/critics/cost_critic.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/critics/goal_angle_critic.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/critics/goal_critic.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/critics/goal_lateral_critic.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/critics/goal_longitudinal_critic.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/critics/linear_velocity_critic.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/critics/obstacles_critic.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/critics/path_align_critic.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/critics/path_align_legacy_critic.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/critics/path_angle_critic.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/critics/path_follow_critic.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/critics/prefer_forward_critic.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/critics/twirling_critic.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/critics/velocity_deadband_critic.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/models/constraints.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/models/control_sequence.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/models/optimizer_settings.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/models/path.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/models/state.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/models/trajectories.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/motion_models.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/optimizer.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/tools/eigen_types.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/tools/noise_generator.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/tools/parameters_handler.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/tools/path_handler.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/tools/trajectory_visualizer.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/tools/utils.hpp
+
+Using '--root=/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src' argument
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/controller.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/critic_manager.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/critics/angular_velocity_critic.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/critics/constraint_critic.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/critics/cost_critic.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/critics/goal_angle_critic.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/critics/goal_critic.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/critics/goal_lateral_critic.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/critics/goal_longitudinal_critic.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/critics/linear_velocity_critic.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/critics/obstacles_critic.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/critics/path_align_critic.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/critics/path_align_legacy_critic.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/critics/path_angle_critic.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/critics/path_follow_critic.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/critics/prefer_forward_critic.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/critics/twirling_critic.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/critics/velocity_deadband_critic.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/noise_generator.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/optimizer.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/parameters_handler.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/path_handler.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/trajectory_visualizer.cpp
+
+Using '--root=/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test' argument
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/critic_manager_test.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/critics_tests.cpp
+
+Category 'build/include_order' errors found: 4
+Category 'readability/braces' errors found: 1
+Category 'whitespace/line_length' errors found: 13
+Total errors found: 18
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/models_test.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/motion_model_tests.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/noise_generator_test.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/optimizer_smoke_test.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/optimizer_unit_tests.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/parameter_handler_test.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/path_handler_test.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/trajectory_visualizer_tests.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/utils/factory.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/utils/models.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/utils/utils.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/utils_test.cpp
+
+
+
+-- run_test.py: return code 1
+-- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/cpplint.xunit.xml'

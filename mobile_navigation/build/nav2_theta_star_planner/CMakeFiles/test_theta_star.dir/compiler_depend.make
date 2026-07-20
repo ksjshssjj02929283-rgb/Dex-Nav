@@ -1065,8 +1065,12 @@ CMakeFiles/test_theta_star.dir/test/test_theta_star.cpp.o: /home/dex/dexe_mobile
   /opt/ros/humble/include/geometry_msgs/geometry_msgs/msg/detail/twist__builder.hpp \
   /opt/ros/humble/include/geometry_msgs/geometry_msgs/msg/detail/twist__type_support.hpp \
   /opt/ros/humble/include/nav2_util/node_utils.hpp \
-  /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include/nav2_theta_star_planner/node_theta_star.hpp \
+  /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include/nav2_theta_star_planner/multi_layer_planner.hpp \
   /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/include/nav2_map_server/node_map_types.hpp \
+  /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include/nav2_theta_star_planner/node_theta_star.hpp \
+  /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include/nav2_theta_star_planner/omni_path_smoother.hpp \
+  /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include/nav2_theta_star_planner/curve_path_smoother.hpp \
+  /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include/nav2_theta_star_planner/l1_spline_path.hpp \
   /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include/nav2_theta_star_planner/swerve_steering_model.hpp \
   /opt/ros/humble/include/nav2_util/geometry_utils.hpp \
   /opt/ros/humble/include/geometry_msgs/geometry_msgs/msg/pose2_d.hpp \
@@ -1185,6 +1189,8 @@ CMakeFiles/test_theta_star.dir/test/test_theta_star.cpp.o: /home/dex/dexe_mobile
 /opt/ros/humble/include/geometry_msgs/geometry_msgs/msg/detail/twist__struct.hpp:
 
 /opt/ros/humble/include/geometry_msgs/geometry_msgs/msg/detail/polygon__traits.hpp:
+
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include/nav2_theta_star_planner/omni_path_smoother.hpp:
 
 /opt/ros/humble/include/geometry_msgs/geometry_msgs/msg/detail/pose_with_covariance_stamped__type_support.hpp:
 
@@ -1953,6 +1959,8 @@ CMakeFiles/test_theta_star.dir/test/test_theta_star.cpp.o: /home/dex/dexe_mobile
 /usr/include/c++/11/numeric:
 
 /opt/ros/humble/include/builtin_interfaces/builtin_interfaces/msg/detail/duration__traits.hpp:
+
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include/nav2_theta_star_planner/l1_spline_path.hpp:
 
 /opt/ros/humble/include/rclcpp/rclcpp/wait_set_policies/detail/write_preferring_read_write_lock.hpp:
 
@@ -2736,6 +2744,8 @@ CMakeFiles/test_theta_star.dir/test/test_theta_star.cpp.o: /home/dex/dexe_mobile
 
 /opt/ros/humble/include/rmw/rmw/ret_types.h:
 
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include/nav2_theta_star_planner/curve_path_smoother.hpp:
+
 /usr/include/x86_64-linux-gnu/bits/types/__sigval_t.h:
 
 /opt/ros/humble/src/gtest_vendor/include/gtest/internal/gtest-param-util.h:
@@ -3065,6 +3075,8 @@ CMakeFiles/test_theta_star.dir/test/test_theta_star.cpp.o: /home/dex/dexe_mobile
 /opt/ros/humble/include/rclcpp/rclcpp/logger.hpp:
 
 /opt/ros/humble/include/builtin_interfaces/builtin_interfaces/msg/detail/time__type_support.hpp:
+
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include/nav2_theta_star_planner/multi_layer_planner.hpp:
 
 /opt/ros/humble/include/tf2_msgs/tf2_msgs/msg/detail/tf_message__builder.hpp:
 
