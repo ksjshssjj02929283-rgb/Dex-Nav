@@ -60,6 +60,7 @@ private:
   rclcpp_lifecycle::LifecycleNode::WeakPtr node_;
   std::shared_ptr<tf2_ros::Buffer> tf_;
   rclcpp::Logger logger_{rclcpp::get_logger("PathPruningLocalPlanner")};
+  rclcpp::Clock::SharedPtr clock_;
   std::string plugin_name_;
   std::string plan_frame_;
 

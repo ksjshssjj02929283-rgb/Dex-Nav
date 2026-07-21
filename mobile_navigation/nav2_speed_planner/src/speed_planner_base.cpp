@@ -7,6 +7,7 @@
 #include "nav2_speed_planner/speed_planner_base.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <limits>
 #include <stdexcept>
@@ -164,11 +165,67 @@ nav_interfaces::msg::RobotTrajectory SpeedPlannerBase::computeSpeedPlan(
   const nav_msgs::msg::Path & path,
   const geometry_msgs::msg::Twist & current_velocity)
 {
+  using TimingClock = std::chrono::steady_clock;
+  constexpr double kSlowSpeedPlannerWarnMs = 20.0;
+  const auto total_start = TimingClock::now();
+  double input_ms = 0.0;
+  double initialization_ms = 0.0;
+  double obstacle_ms = 0.0;
+  double cruise_ms = 0.0;
+  double curvature_ms = 0.0;
+  double end_constraint_ms = 0.0;
+  double profile_ms = 0.0;
+  double stats_ms = 0.0;
+  double output_ms = 0.0;
+  double path_length = 0.0;
+  size_t work_points = 0;
+  last_obstacle_timing_ = ObstacleConstraintTiming();
+
   nav_interfaces::msg::RobotTrajectory traj;
   traj.header = path.header;
   path_frame_ = path.header.frame_id;
 
+  const auto log_timing = [&](const char * result) {
+      const double total_ms = std::chrono::duration<double, std::milli>(
+        TimingClock::now() - total_start).count();
+      const double measured_ms =
+        input_ms + initialization_ms + obstacle_ms + cruise_ms + curvature_ms +
+        end_constraint_ms + profile_ms + stats_ms + output_ms;
+      const double unaccounted_ms = std::max(0.0, total_ms - measured_ms);
+      const std::string costmap_frame = costmap_ros_ ? costmap_ros_->getGlobalFrameID() : "";
+      if (total_ms >= kSlowSpeedPlannerWarnMs && clock_) {
+        RCLCPP_WARN_THROTTLE(
+          logger_, *clock_, 1000,
+          "[%s] speed planner timing (ms): result=%s total=%.3f input=%.3f init=%.3f "
+          "obstacle=%.3f (tf=%.3f scan=%.3f apply=%.3f) cruise=%.3f curvature=%.3f "
+          "end=%.3f profile=%.3f stats=%.3f output=%.3f unaccounted=%.3f "
+          "tf_required=%s frames=%s->%s points=%zu->%zu->%zu length=%.3f",
+          plugin_name_.c_str(), result, total_ms, input_ms, initialization_ms, obstacle_ms,
+          last_obstacle_timing_.tf_ms, last_obstacle_timing_.scan_ms,
+          last_obstacle_timing_.apply_ms, cruise_ms, curvature_ms, end_constraint_ms,
+          profile_ms, stats_ms, output_ms, unaccounted_ms,
+          last_obstacle_timing_.transform_required ? "true" : "false",
+          path_frame_.c_str(), costmap_frame.c_str(), path.poses.size(), work_points,
+          traj.points.size(), path_length);
+      } else if (clock_) {
+        RCLCPP_DEBUG_THROTTLE(
+          logger_, *clock_, 1000,
+          "[%s] speed planner timing (ms): result=%s total=%.3f input=%.3f init=%.3f "
+          "obstacle=%.3f (tf=%.3f scan=%.3f apply=%.3f) cruise=%.3f curvature=%.3f "
+          "end=%.3f profile=%.3f stats=%.3f output=%.3f unaccounted=%.3f "
+          "tf_required=%s frames=%s->%s points=%zu->%zu->%zu length=%.3f",
+          plugin_name_.c_str(), result, total_ms, input_ms, initialization_ms, obstacle_ms,
+          last_obstacle_timing_.tf_ms, last_obstacle_timing_.scan_ms,
+          last_obstacle_timing_.apply_ms, cruise_ms, curvature_ms, end_constraint_ms,
+          profile_ms, stats_ms, output_ms, unaccounted_ms,
+          last_obstacle_timing_.transform_required ? "true" : "false",
+          path_frame_.c_str(), costmap_frame.c_str(), path.poses.size(), work_points,
+          traj.points.size(), path_length);
+      }
+    };
+
   // 构建内部工作结构。
+  const auto input_start = TimingClock::now();
   std::vector<TrajPointWork> work;
   work.reserve(path.poses.size());
   for (size_t i = 0; i < path.poses.size(); ++i) {
@@ -201,9 +258,13 @@ nav_interfaces::msg::RobotTrajectory SpeedPlannerBase::computeSpeedPlan(
     work.push_back(std::move(p));
   }
 
-  const double path_length = computePathLength(work);
+  path_length = computePathLength(work);
+  work_points = work.size();
+  input_ms = std::chrono::duration<double, std::milli>(
+    TimingClock::now() - input_start).count();
   if (work.size() < 2 || path_length <= kGeometryEpsilon) {
     // 点数不足或纯原地转向：保留完整 pose 序列并禁止线速度。
+    const auto output_start = TimingClock::now();
     for (const auto & p : work) {
       nav_interfaces::msg::TrajectoryPoint tp;
       tp.pose = p.pose;
@@ -214,10 +275,14 @@ nav_interfaces::msg::RobotTrajectory SpeedPlannerBase::computeSpeedPlan(
       tp.segment_id = p.segment_id;
       traj.points.push_back(std::move(tp));
     }
+    output_ms = std::chrono::duration<double, std::milli>(
+      TimingClock::now() - output_start).count();
+    log_timing("terminal_geometry");
     return traj;
   }
 
   // 初始限速取严：max_speed / path speed_hint / 外部限速。
+  const auto initialization_start = TimingClock::now();
   double external_limit = std::numeric_limits<double>::max();
   if (speed_limit_ > 0.0) {
     external_limit = speed_limit_is_percentage_ ?
@@ -236,18 +301,36 @@ nav_interfaces::msg::RobotTrajectory SpeedPlannerBase::computeSpeedPlan(
   points_interval_ = curr_path_length_ / static_cast<double>(work.size() - 1);
 
   const double curr_vel = current_velocity.linear.x;
+  initialization_ms = std::chrono::duration<double, std::milli>(
+    TimingClock::now() - initialization_start).count();
 
   // ====== Phase A 约束包络（逐点 min 叠加，安全置零绝对优先）======
-  const bool has_obstacle = applyObstacleConstraint(work);   // A1 障碍 + 缓冲带置零
-  const double cruise = computeCruiseLimit(work);            // A2 理想巡航求解（纯查询）
-  setPlanSpeedLimit(work, cruise);                           //    巡航回填
-  applyCurvatureConstraint(work, cruise);                    // A3 曲率约束
-  applyEndSpeedConstraint(work);                             // A4 末端蠕行区
+  const auto obstacle_start = TimingClock::now();
+  const bool has_obstacle = applyObstacleConstraint(work);  // A1 障碍 + 缓冲带置零
+  obstacle_ms = std::chrono::duration<double, std::milli>(
+    TimingClock::now() - obstacle_start).count();
+  const auto cruise_start = TimingClock::now();
+  const double cruise = computeCruiseLimit(work);  // A2 理想巡航求解（纯查询）
+  setPlanSpeedLimit(work, cruise);                 //    巡航回填
+  cruise_ms = std::chrono::duration<double, std::milli>(
+    TimingClock::now() - cruise_start).count();
+  const auto curvature_start = TimingClock::now();
+  applyCurvatureConstraint(work, cruise);  // A3 曲率约束
+  curvature_ms = std::chrono::duration<double, std::milli>(
+    TimingClock::now() - curvature_start).count();
+  const auto end_constraint_start = TimingClock::now();
+  applyEndSpeedConstraint(work);  // A4 末端蠕行区
+  end_constraint_ms = std::chrono::duration<double, std::milli>(
+    TimingClock::now() - end_constraint_start).count();
 
   // ====== Phase B hook：派生类生成运动学可行剖面 ======
+  const auto profile_start = TimingClock::now();
   assignVelocityProfile(work, curr_vel, cruise);
+  profile_ms = std::chrono::duration<double, std::milli>(
+    TimingClock::now() - profile_start).count();
 
   // 可观测：巡航上界 vs 实际峰值（"能否到最大限速"直接看日志）。
+  const auto stats_start = TimingClock::now();
   double peak = 0.0;
   for (const auto & p : work) {
     peak = std::max(peak, p.speed_limit);
@@ -258,8 +341,11 @@ nav_interfaces::msg::RobotTrajectory SpeedPlannerBase::computeSpeedPlan(
     plugin_name_.c_str(), cruise, peak,
     peak + 1e-6 >= cruise ? "true" : "false",
     has_obstacle ? "true" : "false", work.size());
+  stats_ms = std::chrono::duration<double, std::milli>(
+    TimingClock::now() - stats_start).count();
 
   // 回填 RobotTrajectory。
+  const auto output_start = TimingClock::now();
   traj.points.reserve(work.size());
   for (const auto & p : work) {
     nav_interfaces::msg::TrajectoryPoint tp;
@@ -273,7 +359,10 @@ nav_interfaces::msg::RobotTrajectory SpeedPlannerBase::computeSpeedPlan(
     tp.segment_id = p.segment_id;
     traj.points.push_back(std::move(tp));
   }
+  output_ms = std::chrono::duration<double, std::milli>(
+    TimingClock::now() - output_start).count();
 
+  log_timing("success");
   return traj;
 }
 
@@ -281,34 +370,54 @@ nav_interfaces::msg::RobotTrajectory SpeedPlannerBase::computeSpeedPlan(
 
 bool SpeedPlannerBase::applyObstacleConstraint(std::vector<TrajPointWork> & path)
 {
+  using TimingClock = std::chrono::steady_clock;
+  const auto total_start = TimingClock::now();
+  last_obstacle_timing_ = ObstacleConstraintTiming();
+  const auto finish_timing = [&]() {
+      last_obstacle_timing_.total_ms = std::chrono::duration<double, std::milli>(
+        TimingClock::now() - total_start).count();
+    };
+
   // A1 障碍约束（安全置零绝对优先）：首个障碍点及其后全部置零，
   // 障碍前 collision_stop_distance_ 缓冲带置零（index 0 为机器人当前位置，不动）。
   if (path.empty()) {
+    finish_timing();
     return false;
   }
 
   // 路径与 costmap 坐标系对齐：FollowPath 路径通常在 map 系，而宿主的 local
   // costmap 在 odom 系——直接用路径坐标查询会相差 map→odom 修正量，把自由区
   // 路径按偏移量"平移"进墙带造成误停障。查询前统一变换到 costmap 系
-  //（2D 刚体变换，每周期取一次 TF，逐点仅乘加）。
+  // （2D 刚体变换，每周期取一次 TF，逐点仅乘加）。
   double tx = 0.0, ty = 0.0, cos_t = 1.0, sin_t = 0.0;
   bool need_transform = false;
+  std::string costmap_frame;
+  if (costmap_ros_) {
+    costmap_frame = costmap_ros_->getGlobalFrameID();
+  }
   if (costmap_ros_ && tf_) {
-    const std::string costmap_frame = costmap_ros_->getGlobalFrameID();
     if (!path_frame_.empty() && !costmap_frame.empty() && path_frame_ != costmap_frame) {
+      last_obstacle_timing_.transform_required = true;
       geometry_msgs::msg::TransformStamped to_costmap;
+      const auto tf_start = TimingClock::now();
       try {
         to_costmap = tf_->lookupTransform(costmap_frame, path_frame_, tf2::TimePointZero);
       } catch (const tf2::TransformException & ex) {
+        last_obstacle_timing_.tf_ms = std::chrono::duration<double, std::milli>(
+          TimingClock::now() - tf_start).count();
         // 变换不可用（如启动期 map 尚未发布）：本周期跳过障碍约束，
         // 好过用错误坐标误停障；下一周期重试（receding-horizon）。
         RCLCPP_WARN_THROTTLE(
           logger_, *clock_, 1000,
           "[%s] cannot transform path (%s) into costmap frame (%s), "
-          "skipping obstacle constraint this cycle: %s",
-          plugin_name_.c_str(), path_frame_.c_str(), costmap_frame.c_str(), ex.what());
+          "skipping obstacle constraint this cycle after %.3f ms: %s",
+          plugin_name_.c_str(), path_frame_.c_str(), costmap_frame.c_str(),
+          last_obstacle_timing_.tf_ms, ex.what());
+        finish_timing();
         return false;
       }
+      last_obstacle_timing_.tf_ms = std::chrono::duration<double, std::milli>(
+        TimingClock::now() - tf_start).count();
       const double yaw = tf2::getYaw(to_costmap.transform.rotation);
       cos_t = std::cos(yaw);
       sin_t = std::sin(yaw);
@@ -318,6 +427,7 @@ bool SpeedPlannerBase::applyObstacleConstraint(std::vector<TrajPointWork> & path
     }
   }
 
+  const auto scan_start = TimingClock::now();
   const std::vector<double> arc_s = computeCumulativeArcLengths(path);
   // 全路径扫描并用 region_type 标记障碍语义（透传到 RobotTrajectory，供消费方与
   // 剖面日志评判使用；M11 真语义接入后此处改为叠加标记而非独占）：
@@ -346,14 +456,18 @@ bool SpeedPlannerBase::applyObstacleConstraint(std::vector<TrajPointWork> & path
       first_obstacle_index = i;
     }
   }
+  last_obstacle_timing_.scan_ms = std::chrono::duration<double, std::milli>(
+    TimingClock::now() - scan_start).count();
   if (first_obstacle_index == path.size()) {
+    finish_timing();
     return false;
   }
+  const auto apply_start = TimingClock::now();
   for (size_t i = first_obstacle_index; i < path.size(); ++i) {
     path[i].speed_limit = 0.0;
   }
   const double buffer_start = arc_s[first_obstacle_index] - collision_stop_distance_;
-  for (size_t j = first_obstacle_index; j-- > 1;) {
+  for (size_t j = first_obstacle_index; j-- > 1; ) {
     if (arc_s[j] <= buffer_start) {
       break;
     }
@@ -362,6 +476,9 @@ bool SpeedPlannerBase::applyObstacleConstraint(std::vector<TrajPointWork> & path
       path[j].region_type = "obstacle_buffer";
     }
   }
+  last_obstacle_timing_.apply_ms = std::chrono::duration<double, std::milli>(
+    TimingClock::now() - apply_start).count();
+  finish_timing();
   return true;
 }
 
