@@ -3,6 +3,7 @@
 #include "nav2_path_pruning_local_planner/path_pruning_local_planner.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <limits>
 #include <memory>
@@ -51,6 +52,7 @@ void PathPruningLocalPlanner::configure(
   tf_ = std::move(tf);
   plugin_name_ = std::move(name);
   logger_ = node->get_logger();
+  clock_ = node->get_clock();
 
   nav2_util::declare_parameter_if_not_declared(
     node, plugin_name_ + ".max_search_distance", rclcpp::ParameterValue(5.0));
@@ -110,44 +112,97 @@ bool PathPruningLocalPlanner::computeLocalPlan(
   const geometry_msgs::msg::Twist & /*velocity*/,
   nav_msgs::msg::Path & local_path)
 {
+  using TimingClock = std::chrono::steady_clock;
+  constexpr double kSlowLocalPlannerWarnMs = 10.0;
+  const auto total_start = TimingClock::now();
+  const auto lock_start = TimingClock::now();
   std::lock_guard<std::mutex> lock(mutex_);
+  const double lock_ms = std::chrono::duration<double, std::milli>(
+    TimingClock::now() - lock_start).count();
   local_path = nav_msgs::msg::Path();
+  double tf_ms = 0.0;
+  double projection_ms = 0.0;
+  double assembly_ms = 0.0;
+  const bool tf_required = pose.header.frame_id != plan_frame_;
+
+  const auto log_timing = [&](const char * result) {
+      const double total_ms = std::chrono::duration<double, std::milli>(
+        TimingClock::now() - total_start).count();
+      const double measured_ms = lock_ms + tf_ms + projection_ms + assembly_ms;
+      const double unaccounted_ms = std::max(0.0, total_ms - measured_ms);
+      if (total_ms >= kSlowLocalPlannerWarnMs) {
+        RCLCPP_WARN_THROTTLE(
+          logger_, *clock_, 1000,
+          "[%s] local planner timing (ms): result=%s total=%.3f lock=%.3f tf=%.3f "
+          "projection=%.3f assembly=%.3f unaccounted=%.3f tf_required=%s "
+          "frames=%s->%s points=%zu->%zu",
+          plugin_name_.c_str(), result, total_ms, lock_ms, tf_ms, projection_ms,
+          assembly_ms, unaccounted_ms, tf_required ? "true" : "false",
+          pose.header.frame_id.c_str(), plan_frame_.c_str(), global_plan_.poses.size(),
+          local_path.poses.size());
+      } else {
+        RCLCPP_DEBUG_THROTTLE(
+          logger_, *clock_, 1000,
+          "[%s] local planner timing (ms): result=%s total=%.3f lock=%.3f tf=%.3f "
+          "projection=%.3f assembly=%.3f unaccounted=%.3f tf_required=%s "
+          "frames=%s->%s points=%zu->%zu",
+          plugin_name_.c_str(), result, total_ms, lock_ms, tf_ms, projection_ms,
+          assembly_ms, unaccounted_ms, tf_required ? "true" : "false",
+          pose.header.frame_id.c_str(), plan_frame_.c_str(), global_plan_.poses.size(),
+          local_path.poses.size());
+      }
+    };
 
   if (global_plan_.poses.empty()) {
     RCLCPP_ERROR(logger_, "Cannot prune an empty global plan");
+    log_timing("empty_plan");
     return false;
   }
   if (plan_frame_.empty() || pose.header.frame_id.empty()) {
     RCLCPP_ERROR(logger_, "Path and robot pose must both have a frame_id");
+    log_timing("missing_frame");
     return false;
   }
 
   geometry_msgs::msg::PoseStamped robot_in_plan;
+  const auto tf_start = TimingClock::now();
   try {
     if (pose.header.frame_id == plan_frame_) {
       robot_in_plan = pose;
     } else {
       if (!tf_) {
         RCLCPP_ERROR(logger_, "No TF buffer available to transform robot pose");
+        tf_ms = std::chrono::duration<double, std::milli>(
+          TimingClock::now() - tf_start).count();
+        log_timing("missing_tf_buffer");
         return false;
       }
       tf_->transform(
         pose, robot_in_plan, plan_frame_,
         tf2::durationFromSec(transform_tolerance_));
     }
+    tf_ms = std::chrono::duration<double, std::milli>(
+      TimingClock::now() - tf_start).count();
   } catch (const tf2::TransformException & ex) {
+    tf_ms = std::chrono::duration<double, std::milli>(
+      TimingClock::now() - tf_start).count();
     RCLCPP_WARN(
-      logger_, "Cannot transform robot pose from '%s' to path frame '%s': %s",
-      pose.header.frame_id.c_str(), plan_frame_.c_str(), ex.what());
+      logger_, "Cannot transform robot pose from '%s' to path frame '%s' after %.3f ms: %s",
+      pose.header.frame_id.c_str(), plan_frame_.c_str(), tf_ms, ex.what());
+    log_timing("tf_failed");
     return false;
   }
 
+  const auto assembly_start = TimingClock::now();
   local_path.header = global_plan_.header;
   local_path.header.frame_id = plan_frame_;
   if (global_plan_.poses.size() == 1) {
     local_path.poses.push_back(global_plan_.poses.back());
     progress_initialized_ = true;
     progress_arc_ = 0.0;
+    assembly_ms = std::chrono::duration<double, std::milli>(
+      TimingClock::now() - assembly_start).count();
+    log_timing("single_pose");
     return true;
   }
   if (cumulative_arc_.back() <= kArcEpsilon) {
@@ -156,17 +211,26 @@ bool PathPruningLocalPlanner::computeLocalPlan(
     local_path.poses = global_plan_.poses;
     progress_initialized_ = true;
     progress_arc_ = 0.0;
+    assembly_ms = std::chrono::duration<double, std::milli>(
+      TimingClock::now() - assembly_start).count();
+    log_timing("zero_length_plan");
     return true;
   }
+  assembly_ms = std::chrono::duration<double, std::milli>(
+    TimingClock::now() - assembly_start).count();
 
   const double total_arc = cumulative_arc_.back();
   const double lower_arc = progress_initialized_ ?
     std::max(0.0, progress_arc_ - max_backtrack_distance_) : 0.0;
   const double upper_arc = progress_initialized_ ?
     std::min(total_arc, progress_arc_ + max_search_distance_) : total_arc;
+  const auto projection_start = TimingClock::now();
   const Projection projection = projectOntoPlan(robot_in_plan, lower_arc, upper_arc);
+  projection_ms = std::chrono::duration<double, std::milli>(
+    TimingClock::now() - projection_start).count();
   if (!projection.valid) {
     RCLCPP_ERROR(logger_, "No valid segment found in path-pruning search window");
+    log_timing("projection_failed");
     return false;
   }
 
@@ -174,6 +238,7 @@ bool PathPruningLocalPlanner::computeLocalPlan(
     std::max(progress_arc_, projection.arc_length) : projection.arc_length;
   progress_initialized_ = true;
 
+  const auto output_start = TimingClock::now();
   size_t start_segment = 0;
   auto projected_start = poseAtArcLength(progress_arc_, start_segment);
   projected_start.header.frame_id = plan_frame_;
@@ -210,7 +275,11 @@ bool PathPruningLocalPlanner::computeLocalPlan(
   if (local_path.poses.back() != true_goal) {
     local_path.poses.push_back(true_goal);
   }
-  return !local_path.poses.empty();
+  assembly_ms += std::chrono::duration<double, std::milli>(
+    TimingClock::now() - output_start).count();
+  const bool success = !local_path.poses.empty();
+  log_timing(success ? "success" : "empty_output");
+  return success;
 }
 
 void PathPruningLocalPlanner::rebuildArcLengths()

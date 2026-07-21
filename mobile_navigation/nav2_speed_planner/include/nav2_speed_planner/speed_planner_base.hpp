@@ -96,6 +96,15 @@ public:
   void setSpeedLimit(const double & speed_limit, const bool & percentage) override;
 
 protected:
+  struct ObstacleConstraintTiming
+  {
+    double total_ms{0.0};
+    double tf_ms{0.0};
+    double scan_ms{0.0};
+    double apply_ms{0.0};
+    bool transform_required{false};
+  };
+
   // ============================================================
   // Phase B hook（派生类必须实现）：在 Phase A 包络之上生成运动学可行的速度剖面。
   // @param work 已完成 Phase A 的工作结构（speed_limit = 包络上界；含障碍零速点）
@@ -201,6 +210,7 @@ protected:
   // 当前路径坐标系（computeSpeedPlan 捕获；A1 查询 costmap 前用于对齐到
   // costmap 系——两者通常分别为 map 与 odom，直接查询会差一个定位修正量）。
   std::string path_frame_;
+  ObstacleConstraintTiming last_obstacle_timing_;
 };
 
 }  // namespace nav2_speed_planner

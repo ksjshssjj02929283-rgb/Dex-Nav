@@ -905,8 +905,8 @@ void ControllerServer::computeControl()
     last_valid_cmd_time_ = now();
     rclcpp::WallRate loop_rate(controller_frequency_);
     // added by hz
-    std::chrono::time_point<std::chrono::high_resolution_clock> start;
-    std::chrono::time_point<std::chrono::high_resolution_clock> end;
+    std::chrono::time_point<std::chrono::steady_clock> start;
+    std::chrono::time_point<std::chrono::steady_clock> end;
     std::chrono::duration<double, std::milli> elapsed;
     // end
     while (rclcpp::ok()) {
@@ -927,9 +927,9 @@ void ControllerServer::computeControl()
       while (!costmap_ros_->isCurrent()) {
         r.sleep();
       }
-      start = std::chrono::high_resolution_clock::now();
+      start = std::chrono::steady_clock::now();
       updateGlobalPath();
-      end = std::chrono::high_resolution_clock::now();
+      end = std::chrono::steady_clock::now();
       elapsed = end - start;
       if (elapsed.count() >= 100) {
         RCLCPP_WARN(
@@ -940,15 +940,7 @@ void ControllerServer::computeControl()
       // ③④ 规划级：每个控制周期先把 global path 裁到机器人投影点，再从最新
       // odom 速度与最新 costmap 重算速度剖面。任何已配置规划阶段失败都零速闭环，
       // 不允许 controller 继续消费上周期缓存轨迹。
-      start = std::chrono::high_resolution_clock::now();
       const bool planning_succeeded = runPlanningPipeline(current_path_);
-      end = std::chrono::high_resolution_clock::now();
-      elapsed = end - start;
-      if (elapsed.count() >= 50) {
-        RCLCPP_WARN(
-          get_logger(), "Planning pipeline cost: %.6f ms",
-          elapsed.count());
-      }
       if (!planning_succeeded) {
         publishZeroVelocity();
         if (!loop_rate.sleep()) {
@@ -960,9 +952,9 @@ void ControllerServer::computeControl()
         continue;
       }
 
-      start = std::chrono::high_resolution_clock::now();
+      start = std::chrono::steady_clock::now();
       computeAndPublishVelocity();
-      end = std::chrono::high_resolution_clock::now();
+      end = std::chrono::steady_clock::now();
       elapsed = end - start;
       if (elapsed.count() >= 100) {
         RCLCPP_WARN(
@@ -976,7 +968,7 @@ void ControllerServer::computeControl()
         break;
       }
 
-      end = std::chrono::high_resolution_clock::now();
+      end = std::chrono::steady_clock::now();
       elapsed = end - start;
 
       if (!loop_rate.sleep()) {
@@ -1090,13 +1082,69 @@ bool ControllerServer::computeLocalPath(
 
 bool ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
 {
+  using PipelineClock = std::chrono::steady_clock;
+  constexpr double kSlowPlanningPipelineWarnMs = 50.0;
+  const auto pipeline_start = PipelineClock::now();
+  double odom_ms = 0.0;
+  double pose_ms = 0.0;
+  double local_planner_ms = 0.0;
+  double speed_set_plan_ms = 0.0;
+  double speed_compute_ms = 0.0;
+  double dispatch_ms = 0.0;
+  double current_dispatch_ms = 0.0;
+  double track_dispatch_ms = 0.0;
+  double approach_dispatch_ms = 0.0;
+  double csv_ms = 0.0;
+  double visualization_ms = 0.0;
+  nav_msgs::msg::Path planning_path;
+
+  const auto elapsed_ms = [](const auto & begin, const auto & end) {
+      return std::chrono::duration<double, std::milli>(end - begin).count();
+    };
+  const auto log_pipeline_timing = [&](const char * result) {
+      const double total_ms = elapsed_ms(pipeline_start, PipelineClock::now());
+      const double measured_ms =
+        odom_ms + pose_ms + local_planner_ms + speed_set_plan_ms + speed_compute_ms +
+        dispatch_ms + csv_ms + visualization_ms;
+      const double unaccounted_ms = std::max(0.0, total_ms - measured_ms);
+      const size_t planning_points = planning_path.poses.size();
+      const std::string & planning_frame = planning_path.header.frame_id;
+      if (total_ms >= kSlowPlanningPipelineWarnMs) {
+        RCLCPP_WARN(
+          get_logger(),
+          "Planning pipeline timing (ms): result=%s total=%.3f odom=%.3f pose=%.3f "
+          "local=%.3f speed_set_plan=%.3f speed_compute=%.3f dispatch=%.3f "
+          "(current=%.3f track=%.3f approach=%.3f) csv=%.3f viz=%.3f "
+          "unaccounted=%.3f points=%zu->%zu->%zu frames=%s->%s",
+          result, total_ms, odom_ms, pose_ms, local_planner_ms, speed_set_plan_ms,
+          speed_compute_ms, dispatch_ms, current_dispatch_ms, track_dispatch_ms,
+          approach_dispatch_ms, csv_ms, visualization_ms, unaccounted_ms,
+          path.poses.size(), planning_points, current_trajectory_.points.size(),
+          path.header.frame_id.c_str(), planning_frame.c_str());
+      } else {
+        RCLCPP_DEBUG_THROTTLE(
+          get_logger(), *get_clock(), 1000,
+          "Planning pipeline timing (ms): result=%s total=%.3f odom=%.3f pose=%.3f "
+          "local=%.3f speed_set_plan=%.3f speed_compute=%.3f dispatch=%.3f "
+          "(current=%.3f track=%.3f approach=%.3f) csv=%.3f viz=%.3f "
+          "unaccounted=%.3f points=%zu->%zu->%zu frames=%s->%s",
+          result, total_ms, odom_ms, pose_ms, local_planner_ms, speed_set_plan_ms,
+          speed_compute_ms, dispatch_ms, current_dispatch_ms, track_dispatch_ms,
+          approach_dispatch_ms, csv_ms, visualization_ms, unaccounted_ms,
+          path.poses.size(), planning_points, current_trajectory_.points.size(),
+          path.header.frame_id.c_str(), planning_frame.c_str());
+      }
+    };
+
   // 规划级（③④），控制循环内每周期执行一次：③ 从机器人投影点裁出后缀路径；
   // ④ 从最新 odom 速度 + 最新 costmap 重算速度剖面。
   current_trajectory_ = nav_interfaces::msg::RobotTrajectory();
   if (current_speed_planner_.empty()) {
+    log_pipeline_timing("speed_planner_disabled");
     return true;  // ④ 未配置：灰度回退，controller 走 setPlan 几何路径
   }
   if (path.poses.empty()) {
+    log_pipeline_timing("empty_input");
     return false;
   }
   auto sp = speed_planners_.find(current_speed_planner_);
@@ -1105,55 +1153,83 @@ bool ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
       get_logger(), *get_clock(), 1000,
       "Configured speed planner '%s' is unavailable; halting this control cycle.",
       current_speed_planner_.c_str());
+    log_pipeline_timing("speed_planner_unavailable");
     return false;
   }
 
+  const auto odom_start = PipelineClock::now();
   const nav_2d_msgs::msg::Twist2D odom_twist = getThresholdedTwist(odom_sub_->getTwist());
+  odom_ms = elapsed_ms(odom_start, PipelineClock::now());
   geometry_msgs::msg::Twist current_velocity;
   current_velocity.linear.x = odom_twist.x;
   current_velocity.linear.y = odom_twist.y;
   current_velocity.angular.z = odom_twist.theta;
 
-  nav_msgs::msg::Path planning_path;
   if (!current_local_planner_.empty()) {
     geometry_msgs::msg::PoseStamped pose;
+    const auto pose_start = PipelineClock::now();
     if (!getRobotPose(pose)) {
+      pose_ms = elapsed_ms(pose_start, PipelineClock::now());
       RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 1000,
         "Cannot get robot pose for local planning; halting this control cycle.");
+      const auto visualization_start = PipelineClock::now();
       publishSpeedPlan(current_trajectory_);
+      visualization_ms = elapsed_ms(visualization_start, PipelineClock::now());
+      log_pipeline_timing("pose_lookup_failed");
       return false;
     }
+    pose_ms = elapsed_ms(pose_start, PipelineClock::now());
+    const auto local_planner_start = PipelineClock::now();
     if (!computeLocalPath(path, pose, current_velocity, planning_path)) {
+      local_planner_ms = elapsed_ms(local_planner_start, PipelineClock::now());
+      const auto visualization_start = PipelineClock::now();
       publishSpeedPlan(current_trajectory_);
+      visualization_ms = elapsed_ms(visualization_start, PipelineClock::now());
+      log_pipeline_timing("local_planner_failed");
       return false;
     }
+    local_planner_ms = elapsed_ms(local_planner_start, PipelineClock::now());
   } else {
     planning_path = path;
   }
 
+  const auto speed_set_plan_start = PipelineClock::now();
   sp->second->setPlan(planning_path);
+  speed_set_plan_ms = elapsed_ms(speed_set_plan_start, PipelineClock::now());
+  const auto speed_compute_start = PipelineClock::now();
   current_trajectory_ = sp->second->computeSpeedPlan(planning_path, current_velocity);
+  speed_compute_ms = elapsed_ms(speed_compute_start, PipelineClock::now());
   if (current_trajectory_.points.empty()) {
     RCLCPP_WARN_THROTTLE(
       get_logger(), *get_clock(), 1000,
       "Speed planner '%s' returned an empty trajectory; halting this control cycle.",
       current_speed_planner_.c_str());
+    const auto visualization_start = PipelineClock::now();
     publishSpeedPlan(current_trajectory_);  // 清除 RViz 旧 marker
+    visualization_ms = elapsed_ms(visualization_start, PipelineClock::now());
+    log_pipeline_timing("speed_planner_failed");
     return false;
   }
 
-  controllers_[current_controller_]->setTrajectory(current_trajectory_);
+  const auto dispatch_trajectory = [&](const std::string & controller_id, double & stage_ms) {
+      const auto dispatch_start = PipelineClock::now();
+      controllers_[controller_id]->setTrajectory(current_trajectory_);
+      stage_ms = elapsed_ms(dispatch_start, PipelineClock::now());
+      dispatch_ms += stage_ms;
+    };
+  dispatch_trajectory(current_controller_, current_dispatch_ms);
   if (staged_control_enabled_) {
     if (track_controller_ != current_controller_) {
-      controllers_[track_controller_]->setTrajectory(current_trajectory_);
+      dispatch_trajectory(track_controller_, track_dispatch_ms);
     }
     if (approach_controller_ != current_controller_ && approach_controller_ != track_controller_) {
-      controllers_[approach_controller_]->setTrajectory(current_trajectory_);
+      dispatch_trajectory(approach_controller_, approach_dispatch_ms);
     }
   }
 
   // 剖面调试日志（行式）：每轮规划一组行，同 id 多行共用，每行一个属性的全路径序列。
+  const auto csv_start = PipelineClock::now();
   if (speed_plan_log_.is_open()) {
     ++speed_plan_seq_;
     const auto & pts = current_trajectory_.points;
@@ -1180,14 +1256,16 @@ bool ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
     row("v", 5, [&](size_t i) {return pts[i].longitudinal_velocity;});
     row("a", 5, [&](size_t i) {return pts[i].acceleration;});
     // jerk = Δa/Δt（T 型 relative_time 全 0 → 0）
-    row("jerk", 5, [&](size_t i) -> double {
+    row(
+      "jerk", 5, [&](size_t i) -> double {
         if (i + 1 >= np) {return 0.0;}
         const double dt = t_arr[i + 1] - t_arr[i];
         if (dt < 1e-6) {return 0.0;}
         return (pts[i + 1].acceleration - pts[i].acceleration) / dt;
       });
     row("kappa", 5, [&](size_t i) {return pts[i].path_kappa;});
-    row("obstacle", 0, [&](size_t i) -> int {
+    row(
+      "obstacle", 0, [&](size_t i) -> int {
         const auto & rt = pts[i].region_type;
         if (rt == "obstacle") {return 1;}
         if (rt == "obstacle_buffer") {return 2;}
@@ -1196,8 +1274,10 @@ bool ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
       });
     speed_plan_log_.flush();
   }
+  csv_ms = elapsed_ms(csv_start, PipelineClock::now());
 
   // RViz 可视化节流（每周期重算但无需每周期重画）。
+  const auto visualization_start = PipelineClock::now();
   const rclcpp::Time viz_now = now();
   if (last_speed_plan_viz_time_.nanoseconds() == 0 ||
     (viz_now - last_speed_plan_viz_time_).seconds() >= 0.5)
@@ -1205,6 +1285,9 @@ bool ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
     publishSpeedPlan(current_trajectory_);
     last_speed_plan_viz_time_ = viz_now;
   }
+  visualization_ms = elapsed_ms(visualization_start, PipelineClock::now());
+
+  log_pipeline_timing("success");
 
   RCLCPP_DEBUG_THROTTLE(
     get_logger(), *get_clock(), 1000,
