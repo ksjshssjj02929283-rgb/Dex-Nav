@@ -121,7 +121,15 @@ controller_server:
     controller_plugins: ["MPPIController", "DWBController", "RPPController", "GracefulController", "RotationShimController", "PIDController", "LatLonController", "PureRotationController", "StraightController"]
     current_goal_checker: "simple_goal_checker"
     current_controller: "RPPController"    # ④ 轨迹速度跟踪版
-    # ④ 速度规划（规划级：path 更新事件驱动生成 RobotTrajectory；current_speed_planner 置空 "" 即禁用/灰度回退）
+    # ③ 局部路径裁剪（与控制/速度规划同频）：从机器人在线段上的投影点保留到真实 goal
+    local_planner_plugins: ["PathPruningLocalPlanner"]
+    current_local_planner: "PathPruningLocalPlanner"  # 置空 "" = global path 直通
+    PathPruningLocalPlanner:
+      plugin: "nav2_path_pruning_local_planner::PathPruningLocalPlanner"
+      max_search_distance: 5.0
+      max_backtrack_distance: 0.5
+      transform_tolerance: 0.2
+    # ④ 速度规划（与控制同频，从③输出起点和当前实测速度重算；置空 "" 即禁用/灰度回退）
     # 运动学上限与下游链路对齐：对齐 velocity_smoother（链路绑定值；MPPI vx_max=1.5 超出 smoother 0.5，由 smoother 截幅）
     speed_planner_plugins: ["TrapezoidalSpeedPlanner", "SCurveSpeedPlanner"]
     current_speed_planner: "TrapezoidalSpeedPlanner"  # 先验证 T 型；S 型待复测后切回

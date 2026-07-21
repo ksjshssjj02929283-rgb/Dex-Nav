@@ -13,7 +13,8 @@
 //     T 型 = 恒加速度前向/后向剖面；S 型 = Ruckig jerk 限制剖面。
 //
 // base 不含任何具体速度剖面算法；computeSpeedPlan 为模板方法：
-//   path → 工作结构（去重）→ Phase A → hook → 组装 RobotTrajectory + 可观测日志。
+//   path → 工作结构（仅合并几何与朝向均等价的冗余点）→ Phase A → hook
+//   → 组装 RobotTrajectory + 可观测日志。
 //
 // 减速语义为 receding-horizon：派生类从**当前实际速度**出发规划，
 // 前提是高频重规划（每控制周期重算，减速区随速度增长逐周期外扩）。

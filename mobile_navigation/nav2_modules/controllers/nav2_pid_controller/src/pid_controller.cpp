@@ -1015,8 +1015,11 @@ int PIDController::getClosestWaypointID(
   double ignore_dist,
   bool ignore_first)
 {
-  if (traj.size() < 2) {  // need at least start and goal
+  if (traj.empty()) {
     return -1;
+  }
+  if (traj.size() == 1) {
+    return 0;
   }
 
   int closest_id = -1;
