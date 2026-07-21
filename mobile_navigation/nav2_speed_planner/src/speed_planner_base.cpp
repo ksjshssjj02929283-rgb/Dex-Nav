@@ -21,6 +21,25 @@
 namespace nav2_speed_planner
 {
 
+namespace
+{
+constexpr double kDuplicateDistanceSq = 1e-8;
+constexpr double kGeometryEpsilon = 1e-9;
+
+bool orientationsEquivalent(
+  const geometry_msgs::msg::Quaternion & lhs,
+  const geometry_msgs::msg::Quaternion & rhs)
+{
+  const double direct_distance_sq =
+    std::pow(lhs.x - rhs.x, 2) + std::pow(lhs.y - rhs.y, 2) +
+    std::pow(lhs.z - rhs.z, 2) + std::pow(lhs.w - rhs.w, 2);
+  const double negated_distance_sq =
+    std::pow(lhs.x + rhs.x, 2) + std::pow(lhs.y + rhs.y, 2) +
+    std::pow(lhs.z + rhs.z, 2) + std::pow(lhs.w + rhs.w, 2);
+  return std::min(direct_distance_sq, negated_distance_sq) <= kGeometryEpsilon;
+}
+}  // namespace
+
 // ============================ 生命周期 ============================
 
 void SpeedPlannerBase::configure(
@@ -152,20 +171,29 @@ nav_interfaces::msg::RobotTrajectory SpeedPlannerBase::computeSpeedPlan(
   // 构建内部工作结构。
   std::vector<TrajPointWork> work;
   work.reserve(path.poses.size());
-  for (const auto & ps : path.poses) {
+  for (size_t i = 0; i < path.poses.size(); ++i) {
+    const auto & ps = path.poses[i];
     TrajPointWork p;
     p.pose = ps;
     // nav_msgs/Path 无段语义字段：透传置默认（known_gap：未来由带语义 path 提供）。
     p.speed_hint = 0.0f;
     p.region_type = "";
     p.segment_id = "";
-    // 相邻重复点去重（<0.1mm）：重复点破坏曲率三点拟合并使点距统计失真；
-    // 姿态取后到者（保住终点朝向）。
+    // 仅合并几何与朝向均等价的相邻点。相同位置但不同朝向的点是终点
+    // 原地转向轨迹，不得作为曲率噪声删除；合并时取后到者保住精确 goal。
     if (!work.empty()) {
       const auto & prev = work.back().pose.pose.position;
       const double dx = ps.pose.position.x - prev.x;
       const double dy = ps.pose.position.y - prev.y;
-      if (dx * dx + dy * dy < 1e-8) {
+      if (dx * dx + dy * dy < kDuplicateDistanceSq &&
+        orientationsEquivalent(ps.pose.orientation, work.back().pose.pose.orientation))
+      {
+        if (i + 1 == path.poses.size() && work.size() == 1) {
+          // Keep both roles in a two-point terminal path even when start and
+          // goal have identical geometry. Controllers may require both.
+          work.push_back(std::move(p));
+          continue;
+        }
         work.back().pose = p.pose;
         continue;
       }
@@ -173,8 +201,9 @@ nav_interfaces::msg::RobotTrajectory SpeedPlannerBase::computeSpeedPlan(
     work.push_back(std::move(p));
   }
 
-  if (work.size() < 2) {
-    // 点数不足：原样返回零速轨迹。
+  const double path_length = computePathLength(work);
+  if (work.size() < 2 || path_length <= kGeometryEpsilon) {
+    // 点数不足或纯原地转向：保留完整 pose 序列并禁止线速度。
     for (const auto & p : work) {
       nav_interfaces::msg::TrajectoryPoint tp;
       tp.pose = p.pose;
@@ -203,7 +232,7 @@ nav_interfaces::msg::RobotTrajectory SpeedPlannerBase::computeSpeedPlan(
     p.speed_limit = init_limit;
   }
 
-  curr_path_length_ = computePathLength(work);
+  curr_path_length_ = path_length;
   points_interval_ = curr_path_length_ / static_cast<double>(work.size() - 1);
 
   const double curr_vel = current_velocity.linear.x;

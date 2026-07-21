@@ -89,6 +89,7 @@ ControllerServer::ControllerServer(const rclcpp::NodeOptions & options)
     "nav2_lat_lon_controller::LatLonController",
     "nav2_pure_rotation_controller::PureRotationController",
     "nav2_straight_controller::StraightController"},
+  local_planner_loader_("nav2_core", "nav2_core::LocalPlanner"),
   speed_planner_loader_("nav2_core", "nav2_core::SpeedPlanner")
 {
   RCLCPP_INFO(get_logger(), "Creating controller server");
@@ -100,6 +101,9 @@ ControllerServer::ControllerServer(const rclcpp::NodeOptions & options)
   declare_parameter("controller_plugins", default_ids_);
   declare_parameter("current_goal_checker", default_goal_checker_ids_.front());
   declare_parameter("current_controller", default_ids_.front());
+  // ③ 局部规划：默认直通 global path，YAML 显式配置后每控制周期生效
+  declare_parameter("local_planner_plugins", std::vector<std::string>());
+  declare_parameter("current_local_planner", std::string(""));
   // ④ 速度规划：默认不启用（空列表 + 空选择器），YAML 显式配置后生效
   declare_parameter("speed_planner_plugins", std::vector<std::string>());
   declare_parameter("current_speed_planner", std::string(""));
@@ -182,6 +186,7 @@ ControllerServer::~ControllerServer()
   progress_checker_.reset();
   goal_checkers_.clear();
   controllers_.clear();
+  local_planners_.clear();
   costmap_thread_.reset();
 }
 
@@ -426,6 +431,47 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
     return nav2_util::CallbackReturn::FAILURE;
   }
 
+  get_parameter("local_planner_plugins", local_planner_ids_);
+  local_planner_types_.resize(local_planner_ids_.size());
+  for (size_t i = 0; i != local_planner_ids_.size(); ++i) {
+    try {
+      local_planner_types_[i] = nav2_util::get_plugin_type_param(node, local_planner_ids_[i]);
+      nav2_core::LocalPlanner::Ptr local_planner =
+        local_planner_loader_.createUniqueInstance(local_planner_types_[i]);
+      RCLCPP_INFO(
+        get_logger(), "Created local planner: %s of type %s",
+        local_planner_ids_[i].c_str(), local_planner_types_[i].c_str());
+      local_planner->configure(
+        node, local_planner_ids_[i], costmap_ros_->getTfBuffer(), costmap_ros_);
+      local_planners_.insert({local_planner_ids_[i], local_planner});
+    } catch (const std::exception & ex) {
+      RCLCPP_FATAL(get_logger(), "Failed to create local planner. Exception: %s", ex.what());
+      return nav2_util::CallbackReturn::FAILURE;
+    }
+  }
+
+  local_planner_ids_concat_.clear();
+  for (const auto & id : local_planner_ids_) {
+    local_planner_ids_concat_ += id + std::string(" ");
+  }
+
+  get_parameter("current_local_planner", current_local_planner_);
+  if (current_local_planner_.empty()) {
+    RCLCPP_INFO(
+      get_logger(),
+      "Local planning disabled (current_local_planner is empty); global path passthrough enabled.");
+  } else if (local_planners_.find(current_local_planner_) == local_planners_.end()) {
+    RCLCPP_FATAL(
+      get_logger(),
+      "Configured current_local_planner '%s' does not exist. Available local planners are: %s.",
+      current_local_planner_.c_str(), local_planner_ids_concat_.c_str());
+    return nav2_util::CallbackReturn::FAILURE;
+  } else {
+    RCLCPP_INFO(
+      get_logger(), "Controller Server has %s local planners available, current: %s.",
+      local_planner_ids_concat_.c_str(), current_local_planner_.c_str());
+  }
+
   get_parameter("speed_planner_plugins", speed_planner_ids_);
   speed_planner_types_.resize(speed_planner_ids_.size());
   for (size_t i = 0; i != speed_planner_ids_.size(); i++) {
@@ -594,6 +640,9 @@ ControllerServer::on_activate(const rclcpp_lifecycle::State & /*state*/)
   for (it = controllers_.begin(); it != controllers_.end(); ++it) {
     it->second->activate();
   }
+  for (auto & lp : local_planners_) {
+    lp.second->activate();
+  }
   for (auto & sp : speed_planners_) {
     sp.second->activate();
   }
@@ -631,6 +680,9 @@ ControllerServer::on_deactivate(const rclcpp_lifecycle::State & /*state*/)
   ControllerMap::iterator it;
   for (it = controllers_.begin(); it != controllers_.end(); ++it) {
     it->second->deactivate();
+  }
+  for (auto & lp : local_planners_) {
+    lp.second->deactivate();
   }
   for (auto & sp : speed_planners_) {
     sp.second->deactivate();
@@ -681,6 +733,11 @@ ControllerServer::on_cleanup(const rclcpp_lifecycle::State & /*state*/)
     it->second->cleanup();
   }
   controllers_.clear();
+
+  for (auto & lp : local_planners_) {
+    lp.second->cleanup();
+  }
+  local_planners_.clear();
 
   for (auto & sp : speed_planners_) {
     sp.second->cleanup();
@@ -880,16 +937,27 @@ void ControllerServer::computeControl()
           elapsed.count());
       }
 
-      // ④ 规划级：每个控制周期在控制计算之前重算速度剖面（receding-horizon：
-      // 从最新 odom 速度与最新 costmap 出发；全局重规划频率低，不能依赖 path 事件）。
+      // ③④ 规划级：每个控制周期先把 global path 裁到机器人投影点，再从最新
+      // odom 速度与最新 costmap 重算速度剖面。任何已配置规划阶段失败都零速闭环，
+      // 不允许 controller 继续消费上周期缓存轨迹。
       start = std::chrono::high_resolution_clock::now();
-      runPlanningPipeline(current_path_);
+      const bool planning_succeeded = runPlanningPipeline(current_path_);
       end = std::chrono::high_resolution_clock::now();
       elapsed = end - start;
       if (elapsed.count() >= 50) {
         RCLCPP_WARN(
-          get_logger(), "Speed planning cost: %.6f ms",
+          get_logger(), "Planning pipeline cost: %.6f ms",
           elapsed.count());
+      }
+      if (!planning_succeeded) {
+        publishZeroVelocity();
+        if (!loop_rate.sleep()) {
+          RCLCPP_WARN(
+            get_logger(),
+            "Control loop missed its desired rate of %.4fHz after planning failure",
+            controller_frequency_);
+        }
+        continue;
       }
 
       start = std::chrono::high_resolution_clock::now();
@@ -956,8 +1024,12 @@ void ControllerServer::setPlannerPath(const nav_msgs::msg::Path & path)
     }
   }
 
-  // ④ 规划级不在此触发：速度剖面在控制循环内每周期重算（见 computeControl），
-  // 保证低频全局重规划下 receding-horizon 语义依然成立。
+  for (auto & lp : local_planners_) {
+    lp.second->setPlan(path);
+  }
+
+  // ③④ 规划级不在此触发：setPlan 只更新插件输入与重置裁剪进度；局部路径和
+  // 速度剖面在控制循环内每周期重算（见 computeControl）。
 
   end_pose_ = path.poses.back();
   end_pose_.header.frame_id = path.header.frame_id;
@@ -981,21 +1053,59 @@ void ControllerServer::setPlannerPath(const nav_msgs::msg::Path & path)
   }
 }
 
-void ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
+bool ControllerServer::computeLocalPath(
+  const nav_msgs::msg::Path & global_path,
+  const geometry_msgs::msg::PoseStamped & pose,
+  const geometry_msgs::msg::Twist & velocity,
+  nav_msgs::msg::Path & local_path)
 {
-  // 规划级（③④），控制循环内每周期执行一次：③ LocalPlanner 暂缺 = 直通（global path
-  // 即输入）；④ SpeedPlanner 从最新 odom 速度 + 最新 costmap 重算速度剖面
-  // （receding-horizon：减速区随实际速度逐周期外扩，障碍约束随 costmap 滚动更新）。
+  local_path = global_path;
+  if (current_local_planner_.empty()) {
+    return true;
+  }
+
+  const auto local_planner = local_planners_.find(current_local_planner_);
+  if (local_planner == local_planners_.end()) {
+    RCLCPP_ERROR_THROTTLE(
+      get_logger(), *get_clock(), 1000,
+      "Configured local planner '%s' is unavailable; halting this control cycle.",
+      current_local_planner_.c_str());
+    local_path = nav_msgs::msg::Path();
+    return false;
+  }
+
+  local_path = nav_msgs::msg::Path();
+  if (!local_planner->second->computeLocalPlan(pose, velocity, local_path) ||
+    local_path.poses.empty())
+  {
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), *get_clock(), 1000,
+      "Local planner '%s' failed or returned an empty path; halting this control cycle.",
+      current_local_planner_.c_str());
+    local_path = nav_msgs::msg::Path();
+    return false;
+  }
+  return true;
+}
+
+bool ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
+{
+  // 规划级（③④），控制循环内每周期执行一次：③ 从机器人投影点裁出后缀路径；
+  // ④ 从最新 odom 速度 + 最新 costmap 重算速度剖面。
   current_trajectory_ = nav_interfaces::msg::RobotTrajectory();
   if (current_speed_planner_.empty()) {
-    return;  // 未配置：灰度回退，controller 走 setPlan 几何路径
+    return true;  // ④ 未配置：灰度回退，controller 走 setPlan 几何路径
   }
   if (path.poses.empty()) {
-    return;
+    return false;
   }
   auto sp = speed_planners_.find(current_speed_planner_);
   if (sp == speed_planners_.end()) {
-    return;
+    RCLCPP_ERROR_THROTTLE(
+      get_logger(), *get_clock(), 1000,
+      "Configured speed planner '%s' is unavailable; halting this control cycle.",
+      current_speed_planner_.c_str());
+    return false;
   }
 
   const nav_2d_msgs::msg::Twist2D odom_twist = getThresholdedTwist(odom_sub_->getTwist());
@@ -1004,16 +1114,33 @@ void ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
   current_velocity.linear.y = odom_twist.y;
   current_velocity.angular.z = odom_twist.theta;
 
-  sp->second->setPlan(path);
-  current_trajectory_ = sp->second->computeSpeedPlan(path, current_velocity);
+  nav_msgs::msg::Path planning_path;
+  if (!current_local_planner_.empty()) {
+    geometry_msgs::msg::PoseStamped pose;
+    if (!getRobotPose(pose)) {
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "Cannot get robot pose for local planning; halting this control cycle.");
+      publishSpeedPlan(current_trajectory_);
+      return false;
+    }
+    if (!computeLocalPath(path, pose, current_velocity, planning_path)) {
+      publishSpeedPlan(current_trajectory_);
+      return false;
+    }
+  } else {
+    planning_path = path;
+  }
+
+  sp->second->setPlan(planning_path);
+  current_trajectory_ = sp->second->computeSpeedPlan(planning_path, current_velocity);
   if (current_trajectory_.points.empty()) {
     RCLCPP_WARN_THROTTLE(
       get_logger(), *get_clock(), 1000,
-      "Speed planner '%s' returned empty trajectory; controllers keep geometric path. "
-      "速度规划返回空轨迹，控制器继续使用几何路径。",
+      "Speed planner '%s' returned an empty trajectory; halting this control cycle.",
       current_speed_planner_.c_str());
     publishSpeedPlan(current_trajectory_);  // 清除 RViz 旧 marker
-    return;
+    return false;
   }
 
   controllers_[current_controller_]->setTrajectory(current_trajectory_);
@@ -1084,6 +1211,7 @@ void ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
     "Speed plan dispatched: planner=%s points=%zu v_start=%.3f",
     current_speed_planner_.c_str(), current_trajectory_.points.size(),
     current_velocity.linear.x);
+  return true;
 }
 
 void ControllerServer::publishSpeedPlan(const nav_interfaces::msg::RobotTrajectory & trajectory)
@@ -2615,6 +2743,9 @@ void ControllerServer::speedLimitCallback(const nav2_msgs::msg::SpeedLimit::Shar
   ControllerMap::iterator it;
   for (it = controllers_.begin(); it != controllers_.end(); ++it) {
     it->second->setSpeedLimit(msg->speed_limit, msg->percentage);
+  }
+  for (auto & lp : local_planners_) {
+    lp.second->setSpeedLimit(msg->speed_limit, msg->percentage);
   }
   // 外部限速同步进速度规划包络（下次 computeSpeedPlan 生效）。
   for (auto & sp : speed_planners_) {

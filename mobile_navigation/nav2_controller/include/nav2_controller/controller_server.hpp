@@ -26,6 +26,7 @@
 #include "nav2_core/controller.hpp"
 #include "nav2_core/progress_checker.hpp"
 #include "nav2_core/goal_checker.hpp"
+#include "nav2_core/local_planner.hpp"
 #include "nav2_core/speed_planner.hpp"
 #include "nav2_costmap_2d/costmap_2d_ros.hpp"
 #include "nav_interfaces/msg/robot_trajectory.hpp"
@@ -56,6 +57,7 @@ class ControllerServer : public nav2_util::LifecycleNode
 public:
   using ControllerMap = std::unordered_map<std::string, nav2_core::Controller::Ptr>;
   using GoalCheckerMap = std::unordered_map<std::string, nav2_core::GoalChecker::Ptr>;
+  using LocalPlannerMap = std::unordered_map<std::string, nav2_core::LocalPlanner::Ptr>;
   using SpeedPlannerMap = std::unordered_map<std::string, nav2_core::SpeedPlanner::Ptr>;
   enum class ControllerPhase { PREPARE, ALIGN, TRACK, APPROACH };
 
@@ -156,16 +158,26 @@ protected:
    */
   void setPlannerPath(const nav_msgs::msg::Path & path);
   /**
-   * @brief 规划级 pipeline（③④）：LocalPlanner（暂缺=直通）→ SpeedPlanner 生成
+   * @brief 规划级 pipeline（③④）：LocalPlanner → SpeedPlanner 生成
    *        RobotTrajectory，缓存并分发给 controller。
    *        在控制循环内每周期执行一次（控制计算之前）：全局重规划频率低，速度剖面
    *        必须从最新 odom 速度与最新 costmap 逐周期重算（receding-horizon 前提）。
    *        控制级升频后若需降低规划频率，可在调用处加分频。
    *        未配置 current_speed_planner（空）时直接返回——controller 走 setPlan 路径，
    *        全链行为与未集成前一致（灰度回退）。
-   * @param path 规划级输入路径（现为 global path）
+   * @param path 规划级输入路径（global path）
+   * @return true 表示可继续执行本控制周期；false 表示规划失败，本周期必须零速闭环
    */
-  void runPlanningPipeline(const nav_msgs::msg::Path & path);
+  bool runPlanningPipeline(const nav_msgs::msg::Path & path);
+  /**
+   * @brief 执行可选的 ③ LocalPlanner。未配置时保持输入路径直通。
+   * @return false 表示已配置插件失败或输出空路径，调用方不得继续消费旧轨迹
+   */
+  bool computeLocalPath(
+    const nav_msgs::msg::Path & global_path,
+    const geometry_msgs::msg::PoseStamped & pose,
+    const geometry_msgs::msg::Twist & velocity,
+    nav_msgs::msg::Path & local_path);
   /**
    * @brief 把带速度轨迹以 MarkerArray 发布到 /navigation/speed_plan 供 RViz 观察：
    *        速度着色 LINE_STRIP（红=0 → 绿=峰值渐变）+ 抽样速度数值文本。
@@ -407,6 +419,13 @@ protected:
   std::vector<std::string> controller_ids_;
   std::vector<std::string> controller_types_;
   std::string controller_ids_concat_, default_controller_, current_controller_;
+
+  // Local Planner Plugins（③ 规划级；current_local_planner 为空 = global path 直通）
+  pluginlib::ClassLoader<nav2_core::LocalPlanner> local_planner_loader_;
+  LocalPlannerMap local_planners_;
+  std::vector<std::string> local_planner_ids_;
+  std::vector<std::string> local_planner_types_;
+  std::string local_planner_ids_concat_, current_local_planner_;
 
   // Speed Planner Plugins（④ 规划级；current_speed_planner 为空 = 禁用/灰度回退）
   pluginlib::ClassLoader<nav2_core::SpeedPlanner> speed_planner_loader_;

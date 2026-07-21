@@ -361,6 +361,15 @@ TEST(ApproachStage, targetLockPinsToGoalWithinLockDistance)
   EXPECT_NE(unlocked, static_cast<int>(traj.size()) - 1);
 }
 
+TEST(ApproachStage, singlePointTerminalTrajectoryIsAValidGoal)
+{
+  ApproachStagePID pid;
+  const auto traj = ApproachStagePID::makeStraightTraj(0.0);
+
+  ASSERT_EQ(traj.size(), 1u);
+  EXPECT_EQ(pid.closestWaypointWrapper(traj, makePose(0.0, 0.0), 0.3, true), 0);
+}
+
 // 速度参考与瞄准目标解耦：瞄准目标在 lock 距离内锁定到终点索引（不变），
 // 但速度参考不得跟着锁到终点的蠕行值——应反映最近点附近仍在下降的连续曲线。
 TEST(ApproachStage, speedDecoupledFromLockedTargetIndex)

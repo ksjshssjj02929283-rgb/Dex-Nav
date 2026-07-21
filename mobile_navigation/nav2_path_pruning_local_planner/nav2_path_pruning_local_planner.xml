@@ -1,0 +1,12 @@
+<class_libraries>
+  <library path="nav2_path_pruning_local_planner">
+    <class
+      type="nav2_path_pruning_local_planner::PathPruningLocalPlanner"
+      base_class_type="nav2_core::LocalPlanner">
+      <description>
+        Projects the robot onto the current global path and removes only the
+        already-traveled prefix while preserving the true global goal.
+      </description>
+    </class>
+  </library>
+</class_libraries>

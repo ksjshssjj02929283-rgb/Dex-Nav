@@ -42,6 +42,15 @@ nav_msgs::msg::Path makeStraightPath(double length)
   return path;
 }
 
+nav_msgs::msg::Path makePrunedStraightPath(double start_x, double length)
+{
+  auto path = makeStraightPath(length);
+  for (auto & pose : path.poses) {
+    pose.pose.position.x += start_x;
+  }
+  return path;
+}
+
 // 测试壳：绕开 ROS configure()，直接设置 protected 参数并调用 computeSpeedPlan。
 template<typename PlannerT>
 class TestablePlanner : public PlannerT
@@ -194,6 +203,64 @@ TEST_P(SpeedProfileDistances, SCurveNotAllZero)
 
 INSTANTIATE_TEST_SUITE_P(
   Distances, SpeedProfileDistances, ::testing::Values(0.3, 0.5, 0.75, 1.0, 3.0, 5.0));
+
+TEST(SpeedProfileRecedingHorizon, TrapezoidalStartsAtMeasuredSpeedOnPrunedPath)
+{
+  TestablePlanner<nav2_speed_planner::TrapezoidalSpeedPlanner> planner;
+  planner.setSharedParams();
+  const auto traj = planner.run(makePrunedStraightPath(2.0, 3.0), 0.23);
+
+  ASSERT_GE(traj.points.size(), 2u);
+  EXPECT_NEAR(traj.points.front().pose.pose.position.x, 2.0, 1e-9);
+  EXPECT_NEAR(traj.points.front().longitudinal_velocity, 0.23, 1e-9);
+}
+
+TEST(SpeedProfileRecedingHorizon, SCurveStartsAtMeasuredSpeedOnPrunedPath)
+{
+  TestableSCurve planner;
+  planner.setSharedParams();
+  planner.setSCurveParams();
+  const auto traj = planner.run(makePrunedStraightPath(2.0, 3.0), 0.23);
+
+  ASSERT_GE(traj.points.size(), 2u);
+  EXPECT_NEAR(traj.points.front().pose.pose.position.x, 2.0, 1e-9);
+  EXPECT_NEAR(traj.points.front().longitudinal_velocity, 0.23, 1e-9);
+}
+
+TEST(SpeedProfileTerminalPath, IdenticalTwoPointGoalPathIsPreservedAndStopped)
+{
+  TestablePlanner<nav2_speed_planner::TrapezoidalSpeedPlanner> planner;
+  planner.setSharedParams();
+  auto path = makeStraightPath(0.0);
+  path.poses.push_back(path.poses.back());
+
+  const auto traj = planner.run(path, 0.4);
+
+  ASSERT_EQ(traj.points.size(), 2u);
+  EXPECT_DOUBLE_EQ(traj.points.front().longitudinal_velocity, 0.0);
+  EXPECT_DOUBLE_EQ(traj.points.back().longitudinal_velocity, 0.0);
+}
+
+TEST(SpeedProfileTerminalPath, PureRotationSequenceReachesControllerUnchanged)
+{
+  TestablePlanner<nav2_speed_planner::TrapezoidalSpeedPlanner> planner;
+  planner.setSharedParams();
+  auto path = makeStraightPath(0.0);
+  path.poses.push_back(path.poses.back());
+  path.poses.push_back(path.poses.back());
+  path.poses[1].pose.orientation.z = std::sin(0.25);
+  path.poses[1].pose.orientation.w = std::cos(0.25);
+  path.poses[2].pose.orientation.z = std::sin(0.5);
+  path.poses[2].pose.orientation.w = std::cos(0.5);
+
+  const auto traj = planner.run(path, 0.4);
+
+  ASSERT_EQ(traj.points.size(), path.poses.size());
+  for (size_t i = 0; i < traj.points.size(); ++i) {
+    EXPECT_EQ(traj.points[i].pose, path.poses[i]);
+    EXPECT_DOUBLE_EQ(traj.points[i].longitudinal_velocity, 0.0);
+  }
+}
 
 // ============ 障碍注入场景（覆盖实机"整条剖面全零"根因）============
 
