@@ -177,8 +177,10 @@ bool PathPruningLocalPlanner::computeLocalPlan(
         log_timing("missing_tf_buffer");
         return false;
       }
+      auto latest_pose = pose;
+      latest_pose.header.stamp = rclcpp::Time(0);
       tf_->transform(
-        pose, robot_in_plan, plan_frame_,
+        latest_pose, robot_in_plan, plan_frame_,
         tf2::durationFromSec(transform_tolerance_));
     }
     tf_ms = std::chrono::duration<double, std::milli>(

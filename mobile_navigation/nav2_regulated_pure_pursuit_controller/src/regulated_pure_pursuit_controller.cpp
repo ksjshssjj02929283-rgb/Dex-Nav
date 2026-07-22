@@ -390,8 +390,10 @@ geometry_msgs::msg::TwistStamped RegulatedPurePursuitController::computeVelocity
     goal_dist_tol_ = pose_tolerance.position.x;
   }
 
-  // Transform path to robot base frame
-  auto transformed_plan = transformGlobalPlan(pose);
+  // Use one latest-common-time TF snapshot for both the geometric plan and the
+  // robot pose used to sample the speed trajectory.
+  geometry_msgs::msg::PoseStamped robot_pose_in_plan;
+  auto transformed_plan = transformGlobalPlan(pose, &robot_pose_in_plan);
 
   // Find look ahead distance and point on path and publish
   double lookahead_dist = getLookAheadDistance(speed);
@@ -448,7 +450,25 @@ geometry_msgs::msg::TwistStamped RegulatedPurePursuitController::computeVelocity
   // 控制器纯跟踪）；无轨迹（速度规划禁用的灰度模式）回退 desired_linear_vel。
   double traj_v = 0.0;
   double traj_accel = 0.0;
-  const bool have_traj = nearestTrajectorySpeed(pose, traj_v, traj_accel);
+  bool trajectory_required = false;
+  bool trajectory_valid = false;
+  std::string trajectory_frame;
+  {
+    std::lock_guard<std::mutex> lock(traj_mutex_);
+    trajectory_required = trajectory_required_;
+    trajectory_valid = trajectory_valid_;
+    trajectory_frame = trajectory_frame_;
+  }
+  if (trajectory_required &&
+    (!trajectory_valid || trajectory_frame != robot_pose_in_plan.header.frame_id))
+  {
+    throw nav2_core::PlannerException(
+            "Speed trajectory is unavailable or not in the controller plan frame");
+  }
+  const bool have_traj = nearestTrajectorySpeed(robot_pose_in_plan, traj_v, traj_accel);
+  if (trajectory_required && !have_traj) {
+    throw nav2_core::PlannerException("Speed trajectory has no usable points");
+  }
   linear_vel = have_traj ? traj_v : desired_linear_vel_;
 
   // Make sure we're in compliance with basic constraints
@@ -914,6 +934,12 @@ void RegulatedPurePursuitController::applyTrackingFeedbackConstraints(
 void RegulatedPurePursuitController::setTrajectory(
   const nav_interfaces::msg::RobotTrajectory & trajectory)
 {
+  std::lock_guard<std::mutex> lock(traj_mutex_);
+  trajectory_required_ = true;
+  trajectory_valid_ = false;
+  trajectory_frame_.clear();
+  traj_speed_points_.clear();
+
   if (trajectory.points.empty()) {
     return;
   }
@@ -921,35 +947,28 @@ void RegulatedPurePursuitController::setTrajectory(
   if (source_frame.empty() && !trajectory.points.front().pose.header.frame_id.empty()) {
     source_frame = trajectory.points.front().pose.header.frame_id;
   }
-  const std::string target_frame = costmap_ros_->getGlobalFrameID();
-  geometry_msgs::msg::TransformStamped to_costmap;
-  bool need_transform = false;
-  if (!source_frame.empty() && source_frame != target_frame) {
-    try {
-      to_costmap = tf_->lookupTransform(
-        target_frame, source_frame, tf2::TimePointZero);
-      need_transform = true;
-    } catch (const tf2::TransformException & ex) {
-      RCLCPP_WARN(
-        logger_, "setTrajectory: TF %s->%s failed (%s), keeping previous trajectory",
-        source_frame.c_str(), target_frame.c_str(), ex.what());
-      return;
-    }
+  if (source_frame.empty()) {
+    RCLCPP_ERROR(logger_, "setTrajectory: trajectory has no frame_id");
+    return;
   }
+
   std::vector<TrajSpeedPoint> pts;
   pts.reserve(trajectory.points.size());
   for (const auto & tp : trajectory.points) {
-    geometry_msgs::msg::PoseStamped ps = tp.pose;
-    if (need_transform) {
-      tf2::doTransform(ps, ps, to_costmap);
+    if (!tp.pose.header.frame_id.empty() && tp.pose.header.frame_id != source_frame) {
+      RCLCPP_ERROR(
+        logger_, "setTrajectory: point frame '%s' differs from trajectory frame '%s'",
+        tp.pose.header.frame_id.c_str(), source_frame.c_str());
+      return;
     }
     pts.push_back(
-      {ps.pose.position.x, ps.pose.position.y,
+      {tp.pose.pose.position.x, tp.pose.pose.position.y,
         std::fabs(static_cast<double>(tp.longitudinal_velocity)),
         static_cast<double>(tp.acceleration)});
   }
-  std::lock_guard<std::mutex> lock(traj_mutex_);
+  trajectory_frame_ = source_frame;
   traj_speed_points_ = std::move(pts);
+  trajectory_valid_ = true;
 }
 
 bool RegulatedPurePursuitController::nearestTrajectorySpeed(
@@ -1057,16 +1076,43 @@ void RegulatedPurePursuitController::setSpeedLimit(
 }
 
 nav_msgs::msg::Path RegulatedPurePursuitController::transformGlobalPlan(
-  const geometry_msgs::msg::PoseStamped & pose)
+  const geometry_msgs::msg::PoseStamped & /*pose*/,
+  geometry_msgs::msg::PoseStamped * robot_pose_in_plan)
 {
   if (global_plan_.poses.empty()) {
     throw nav2_core::PlannerException("Received plan with zero length");
   }
 
-  // let's get the pose of the robot in the frame of the plan
+  const std::string plan_frame = global_plan_.header.frame_id.empty() ?
+    global_plan_.poses.front().header.frame_id : global_plan_.header.frame_id;
+  const std::string base_frame = costmap_ros_->getBaseFrameID();
+  if (plan_frame.empty() || base_frame.empty()) {
+    throw nav2_core::PlannerException("Global plan and robot base frame must be set");
+  }
+
+  // A current-relative query must use one internally consistent TF snapshot.
+  // TimePointZero is the latest common time across the complete plan->base chain;
+  // the no-timeout overload makes a missing snapshot fail immediately.
+  geometry_msgs::msg::TransformStamped base_from_plan;
+  try {
+    base_from_plan = tf_->lookupTransform(base_frame, plan_frame, tf2::TimePointZero);
+  } catch (const tf2::TransformException & ex) {
+    RCLCPP_ERROR(
+      logger_, "Cannot get latest transform from plan frame '%s' to base frame '%s': %s",
+      plan_frame.c_str(), base_frame.c_str(), ex.what());
+    throw nav2_core::PlannerException("Unable to transform global plan into robot frame");
+  }
+
+  tf2::Transform base_from_plan_tf;
+  tf2::fromMsg(base_from_plan.transform, base_from_plan_tf);
+  const tf2::Transform plan_from_base_tf = base_from_plan_tf.inverse();
+
   geometry_msgs::msg::PoseStamped robot_pose;
-  if (!transformPose(global_plan_.header.frame_id, pose, robot_pose)) {
-    throw nav2_core::PlannerException("Unable to transform robot pose into global plan's frame");
+  robot_pose.header.frame_id = plan_frame;
+  robot_pose.header.stamp = base_from_plan.header.stamp;
+  tf2::toMsg(plan_from_base_tf, robot_pose.pose);
+  if (robot_pose_in_plan != nullptr) {
+    *robot_pose_in_plan = robot_pose;
   }
 
   // We'll discard points on the plan that are outside the local costmap
@@ -1093,13 +1139,14 @@ nav_msgs::msg::Path RegulatedPurePursuitController::transformGlobalPlan(
       return euclidean_distance(pose, robot_pose) > max_costmap_extent;
     });
 
-  // Lambda to transform a PoseStamped from global frame to local
+  // Transform all selected poses with the same in-memory snapshot. This avoids
+  // N TF-buffer lookups and preserves position and orientation for every pose.
   auto transformGlobalPoseToLocal = [&](const auto & global_plan_pose) {
       geometry_msgs::msg::PoseStamped stamped_pose, transformed_pose;
-      stamped_pose.header.frame_id = global_plan_.header.frame_id;
-      stamped_pose.header.stamp = robot_pose.header.stamp;
+      stamped_pose.header.frame_id = plan_frame;
+      stamped_pose.header.stamp = base_from_plan.header.stamp;
       stamped_pose.pose = global_plan_pose.pose;
-      transformPose(costmap_ros_->getBaseFrameID(), stamped_pose, transformed_pose);
+      tf2::doTransform(stamped_pose, transformed_pose, base_from_plan);
       transformed_pose.pose.position.z = 0.0;
       return transformed_pose;
     };
@@ -1110,8 +1157,8 @@ nav_msgs::msg::Path RegulatedPurePursuitController::transformGlobalPlan(
     transformation_begin, transformation_end,
     std::back_inserter(transformed_plan.poses),
     transformGlobalPoseToLocal);
-  transformed_plan.header.frame_id = costmap_ros_->getBaseFrameID();
-  transformed_plan.header.stamp = robot_pose.header.stamp;
+  transformed_plan.header.frame_id = base_frame;
+  transformed_plan.header.stamp = base_from_plan.header.stamp;
 
   // Remove the portion of the global plan that we've already passed so we don't
   // process it on the next iteration (this is called path pruning)
@@ -1153,26 +1200,6 @@ double RegulatedPurePursuitController::findVelocitySignChange(
   }
 
   return std::numeric_limits<double>::max();
-}
-
-bool RegulatedPurePursuitController::transformPose(
-  const std::string frame,
-  const geometry_msgs::msg::PoseStamped & in_pose,
-  geometry_msgs::msg::PoseStamped & out_pose) const
-{
-  if (in_pose.header.frame_id == frame) {
-    out_pose = in_pose;
-    return true;
-  }
-
-  try {
-    tf_->transform(in_pose, out_pose, frame, transform_tolerance_);
-    out_pose.header.frame_id = frame;
-    return true;
-  } catch (tf2::TransformException & ex) {
-    RCLCPP_ERROR(logger_, "Exception in transformPose: %s", ex.what());
-  }
-  return false;
 }
 
 double RegulatedPurePursuitController::getCostmapMaxExtent() const
