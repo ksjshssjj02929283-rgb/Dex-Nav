@@ -126,7 +126,6 @@ void SCurveSpeedPlanner::generateRuckigProfile(
 
   std::vector<double> rs{0.0}, rv{in.current_velocity[0]}, ra{0.0}, rt{0.0};
   double tnow = 0.0;
-  int steps_left = 200000;
   bool failed = false;
   for (const auto & tgt : targets) {
     const double s_t = arc_s[tgt.index];
@@ -145,9 +144,31 @@ void SCurveSpeedPlanner::generateRuckigProfile(
     in.target_velocity = {std::max(tgt.velocity, 0.0)};
     in.target_acceleration = {0.0};
 
-    while (steps_left-- > 0) {
+    const double segment_distance = s_t - in.current_position[0];
+    // Bound iterations by a conservative travel, acceleration, and jerk time
+    // for this segment so an infeasible target cannot consume the global cap.
+    const double min_accel_limit = std::min(a_max, d_max);
+    const double duration_budget =
+      2.0 + 2.0 * segment_distance / std::max(seg_vmax, 1e-3) +
+      4.0 * seg_vmax / min_accel_limit + 4.0 * std::sqrt(seg_vmax / max_jerk);
+    if (!std::isfinite(duration_budget) || duration_budget <= 0.0) {
+      failed = true;
+      break;
+    }
+    constexpr double kMaxRuckigSteps = 200000.0;
+    int segment_steps_left = std::max(
+      1, static_cast<int>(std::min(
+        std::ceil(duration_budget / ctrl_dt), kMaxRuckigSteps)));
+    bool segment_finished = false;
+    while (segment_steps_left-- > 0) {
       const ruckig::Result res = otg.update(in, out);
-      if (res == ruckig::Result::Error || res == ruckig::Result::ErrorInvalidInput) {
+      if (res != ruckig::Result::Working && res != ruckig::Result::Finished) {
+        failed = true;
+        break;
+      }
+      if (!std::isfinite(out.new_position[0]) || !std::isfinite(out.new_velocity[0]) ||
+        !std::isfinite(out.new_acceleration[0]))
+      {
         failed = true;
         break;
       }
@@ -158,10 +179,12 @@ void SCurveSpeedPlanner::generateRuckigProfile(
       rt.push_back(tnow);
       out.pass_to_input(in);
       if (res == ruckig::Result::Finished) {
+        segment_finished = true;
         break;
       }
     }
-    if (failed || steps_left <= 0) {
+    if (failed || !segment_finished) {
+      failed = true;
       break;
     }
   }

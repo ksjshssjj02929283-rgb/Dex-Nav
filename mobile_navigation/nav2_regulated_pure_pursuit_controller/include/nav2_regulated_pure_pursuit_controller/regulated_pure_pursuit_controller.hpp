@@ -121,19 +121,8 @@ protected:
    * @return Path in new frame
    */
   nav_msgs::msg::Path transformGlobalPlan(
-    const geometry_msgs::msg::PoseStamped & pose);
-
-  /**
-   * @brief Transform a pose to another frame.
-   * @param frame Frame ID to transform to
-   * @param in_pose Pose input to transform
-   * @param out_pose transformed output
-   * @return bool if successful
-   */
-  bool transformPose(
-    const std::string frame,
-    const geometry_msgs::msg::PoseStamped & in_pose,
-    geometry_msgs::msg::PoseStamped & out_pose) const;
+    const geometry_msgs::msg::PoseStamped & pose,
+    geometry_msgs::msg::PoseStamped * robot_pose_in_plan = nullptr);
 
   /**
    * @brief Get lookahead distance
@@ -287,7 +276,7 @@ protected:
   dynamicParametersCallback(std::vector<rclcpp::Parameter> parameters);
 
   rclcpp_lifecycle::LifecycleNode::WeakPtr node_;
-  /// 缓存速度规划轨迹（变换到 costmap 系；每控制周期重新下发，陈旧窗 ≤1 周期）。
+  /// 缓存速度规划轨迹（保留原始 plan frame；每控制周期重新下发，陈旧窗 ≤1 周期）。
   void setTrajectory(const nav_interfaces::msg::RobotTrajectory & trajectory) override;
 
   /// 最近点起前瞻窗内的最大规划速度（起点状态戳为当前速度，静止时
@@ -348,6 +337,9 @@ protected:
     double accel;
   };
   std::vector<TrajSpeedPoint> traj_speed_points_;
+  std::string trajectory_frame_;
+  bool trajectory_required_{false};
+  bool trajectory_valid_{false};
   std::mutex traj_mutex_;
   double traj_speed_lookahead_{0.1};
 

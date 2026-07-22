@@ -180,6 +180,26 @@ TEST_F(PlannerFixture, TransformsRobotPoseIntoPathFrame)
   EXPECT_EQ(local_path.header.frame_id, "map");
 }
 
+TEST_F(PlannerFixture, UsesLatestTransformWhenPoseStampIsAhead)
+{
+  geometry_msgs::msg::TransformStamped transform;
+  transform.header.frame_id = "map";
+  transform.header.stamp = rclcpp::Time(9, 0, RCL_ROS_TIME);
+  transform.child_frame_id = "odom";
+  transform.transform.translation.x = 1.0;
+  transform.transform.rotation.w = 1.0;
+  ASSERT_TRUE(tf_->setTransform(transform, "test", false));
+  planner_->setPlan(makePath({{0.0, 0.0}, {2.0, 0.0}}));
+  auto robot_pose = makePose(0.0, 0.0, "odom");
+  robot_pose.header.stamp = rclcpp::Time(10, 0, RCL_ROS_TIME);
+
+  const auto local_path = compute(robot_pose);
+
+  ASSERT_GE(local_path.poses.size(), 2u);
+  EXPECT_NEAR(local_path.poses.front().pose.position.x, 1.0, 1e-9);
+  EXPECT_EQ(local_path.header.frame_id, "map");
+}
+
 TEST_F(PlannerFixture, TransformFailureIsReported)
 {
   planner_->setPlan(makePath({{0.0, 0.0}, {2.0, 0.0}}));

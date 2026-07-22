@@ -138,10 +138,19 @@ public:
   }
 
   nav_msgs::msg::Path transformGlobalPlanWrapper(
-    const geometry_msgs::msg::PoseStamped & pose)
+    const geometry_msgs::msg::PoseStamped & pose,
+    geometry_msgs::msg::PoseStamped * robot_pose_in_plan = nullptr)
   {
-    return transformGlobalPlan(pose);
+    return transformGlobalPlan(pose, robot_pose_in_plan);
   }
+
+  void setTrajectoryWrapper(const nav_interfaces::msg::RobotTrajectory & trajectory)
+  {
+    setTrajectory(trajectory);
+  }
+
+  bool trajectoryValidForTest() const {return trajectory_valid_;}
+  std::string trajectoryFrameForTest() const {return trajectory_frame_;}
 };
 
 TEST(RegulatedPurePursuitTest, basicAPI)
@@ -1079,6 +1088,7 @@ protected:
     path_to_costmap.transform.translation.x = 0.0;
     path_to_costmap.transform.translation.y = 0.0;
     path_to_costmap.transform.translation.z = 0.0;
+    path_to_costmap.transform.rotation.w = 1.0;
 
     geometry_msgs::msg::TransformStamped costmap_to_robot;
     costmap_to_robot.header.frame_id = COSTMAP_FRAME;
@@ -1087,6 +1097,7 @@ protected:
     costmap_to_robot.transform.translation.x = robot_position.x;
     costmap_to_robot.transform.translation.y = robot_position.y;
     costmap_to_robot.transform.translation.z = robot_position.z;
+    costmap_to_robot.transform.rotation.w = 1.0;
 
     tf2_msgs::msg::TFMessage tf_message;
     tf_message.transforms = {
@@ -1150,6 +1161,70 @@ TEST_F(TransformGlobalPlanTest, no_pruning_on_large_costmap)
 
   auto transformed_plan = ctrl_->transformGlobalPlanWrapper(robot_pose);
   EXPECT_EQ(transformed_plan.poses.size(), global_plan.poses.size());
+}
+
+TEST_F(TransformGlobalPlanTest, future_stamped_pose_uses_latest_common_time)
+{
+  geometry_msgs::msg::PoseStamped robot_pose;
+  robot_pose.header.frame_id = COSTMAP_FRAME;
+  robot_pose.pose.position.x = -0.1;
+  robot_pose.pose.orientation.w = 1.0;
+  configure_costmap(100u, 0.1);
+  configure_controller(5.0);
+  setup_transforms(robot_pose.pose.position);
+  robot_pose.header.stamp = transform_time_ + rclcpp::Duration::from_seconds(1.0);
+
+  geometry_msgs::msg::PoseStamped start_of_path;
+  start_of_path.header.frame_id = PATH_FRAME;
+  start_of_path.header.stamp = transform_time_;
+  start_of_path.pose.orientation.w = 1.0;
+  auto global_plan = path_utils::generate_path(
+    start_of_path, 0.1, {std::make_unique<path_utils::Straight>(1.0)});
+  constexpr double goal_yaw = 1.2;
+  global_plan.poses.back().pose.orientation.z = std::sin(goal_yaw / 2.0);
+  global_plan.poses.back().pose.orientation.w = std::cos(goal_yaw / 2.0);
+  ctrl_->setPlan(global_plan);
+
+  geometry_msgs::msg::PoseStamped robot_pose_in_plan;
+  const auto transformed_plan =
+    ctrl_->transformGlobalPlanWrapper(robot_pose, &robot_pose_in_plan);
+
+  EXPECT_FALSE(transformed_plan.poses.empty());
+  EXPECT_EQ(rclcpp::Time(transformed_plan.header.stamp), transform_time_);
+  EXPECT_EQ(rclcpp::Time(robot_pose_in_plan.header.stamp), transform_time_);
+  EXPECT_EQ(robot_pose_in_plan.header.frame_id, PATH_FRAME);
+  ASSERT_EQ(transformed_plan.poses.size(), global_plan.poses.size());
+  EXPECT_NEAR(robot_pose_in_plan.pose.position.x, robot_pose.pose.position.x, 1e-9);
+  EXPECT_NEAR(
+    transformed_plan.poses.back().pose.position.x,
+    global_plan.poses.back().pose.position.x - robot_pose.pose.position.x, 1e-9);
+  EXPECT_NEAR(
+    transformed_plan.poses.back().pose.orientation.z,
+    global_plan.poses.back().pose.orientation.z, 1e-9);
+  EXPECT_NEAR(
+    transformed_plan.poses.back().pose.orientation.w,
+    global_plan.poses.back().pose.orientation.w, 1e-9);
+}
+
+TEST_F(TransformGlobalPlanTest, trajectory_stays_in_source_frame_without_tf_lookup)
+{
+  configure_costmap(100u, 0.1);
+  configure_controller(5.0);
+
+  nav_interfaces::msg::RobotTrajectory trajectory;
+  trajectory.header.frame_id = PATH_FRAME;
+  trajectory.points.resize(2);
+  for (size_t i = 0; i < trajectory.points.size(); ++i) {
+    trajectory.points[i].pose.header.frame_id = PATH_FRAME;
+    trajectory.points[i].pose.pose.position.x = static_cast<double>(i);
+    trajectory.points[i].pose.pose.orientation.w = 1.0;
+    trajectory.points[i].longitudinal_velocity = 0.2;
+  }
+
+  ctrl_->setTrajectoryWrapper(trajectory);
+
+  EXPECT_TRUE(ctrl_->trajectoryValidForTest());
+  EXPECT_EQ(ctrl_->trajectoryFrameForTest(), PATH_FRAME);
 }
 
 // This plan shouldn't get pruned because of the costmap,

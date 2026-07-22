@@ -34,6 +34,7 @@
 #include "nav_2d_utils/tf_help.hpp"
 #include "nav2_util/node_utils.hpp"
 #include "nav2_util/geometry_utils.hpp"
+#include "nav2_util/robot_utils.hpp"
 #include "nav2_controller/controller_server.hpp"
 #include "tf2/exceptions.h"
 #pragma GCC diagnostic push
@@ -1168,11 +1169,17 @@ bool ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
   if (!current_local_planner_.empty()) {
     geometry_msgs::msg::PoseStamped pose;
     const auto pose_start = PipelineClock::now();
-    if (!getRobotPose(pose)) {
+    const std::string planning_frame = path.header.frame_id.empty() ?
+      path.poses.front().header.frame_id : path.header.frame_id;
+    const bool pose_available = !planning_frame.empty() && nav2_util::getCurrentPose(
+      pose, *costmap_ros_->getTfBuffer(), planning_frame,
+      costmap_ros_->getBaseFrameID(), costmap_ros_->getTransformTolerance());
+    if (!pose_available) {
       pose_ms = elapsed_ms(pose_start, PipelineClock::now());
       RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 1000,
-        "Cannot get robot pose for local planning; halting this control cycle.");
+        "Cannot get robot pose in path frame '%s' for local planning; "
+        "halting this control cycle.", planning_frame.c_str());
       const auto visualization_start = PipelineClock::now();
       publishSpeedPlan(current_trajectory_);
       visualization_ms = elapsed_ms(visualization_start, PipelineClock::now());

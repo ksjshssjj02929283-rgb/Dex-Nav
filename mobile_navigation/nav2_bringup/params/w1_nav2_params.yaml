@@ -1,7 +1,7 @@
 
 bt_navigator:
   ros__parameters:
-    use_sim_time: True
+    use_sim_time: False
     global_frame: map
     robot_base_frame: base_link
     odom_topic: /feedback/odom
@@ -64,15 +64,16 @@ bt_navigator:
 
 bt_navigator_navigate_through_poses_rclcpp_node:
   ros__parameters:
-    use_sim_time: True
+    use_sim_time: False
 
 bt_navigator_navigate_to_pose_rclcpp_node:
   ros__parameters:
-    use_sim_time: True
+    use_sim_time: False
 
 controller_server:
   ros__parameters:
-    use_sim_time: True
+    use_sim_time: False
+    failure_tolerance: 0.25  # transient controller/TF miss: publish zero cmd, abort after 250 ms
     # nav_monitor 全局路径/阶段回显：随 nav2_nav_monitor 记录使用，关闭则零开销
     enable_nav_monitor_echo: true
     controller_frequency: 10.0 # 控制器控制周期 # Related params: model_dt >= controller period; prediction horizon = time_steps * model_dt
@@ -741,7 +742,7 @@ local_costmap:
       publish_frequency: 2.0 # 14.0 -> 2.0：publish 仅供可视化/外部订阅，降频减更新线程负担
       global_frame: odom # odom
       robot_base_frame: base_link
-      use_sim_time: True
+      use_sim_time: False
       rolling_window: true
       width: 8 # 6
       height: 8 # 6
@@ -842,7 +843,7 @@ global_costmap:
       publish_frequency: 1.0
       global_frame: map
       robot_base_frame: base_link
-      use_sim_time: True
+      use_sim_time: False
       # footprint: "[ [0.55, 0.35], [0.55, -0.35], [-0.55, -0.35], [-0.55, 0.35] ]" # 带 padding 的保守选项（1.10×0.70）
       footprint: "[[0.35, 0.29], [0.35, -0.29], [-0.35, -0.29], [-0.35, 0.29]]" # 真实车体尺寸 0.70m(前后)×0.58m(左右)（此前旁边注释误写 0.95×0.55，该注释有误，实际车体就是这个尺寸，已更正）
       resolution: 0.05
@@ -938,14 +939,14 @@ global_costmap:
 
 map_server:
   ros__parameters:
-    use_sim_time: True
+    use_sim_time: False
     # Overridden in launch by the "map" launch configuration or provided default value.
     # To use in yaml, remove the default "map" value in the tb3_simulation_launch.py file & provide full path to map below.
     yaml_filename: ""
 
 map_saver:
   ros__parameters:
-    use_sim_time: True
+    use_sim_time: False
     save_map_timeout: 5.0
     free_thresh_default: 0.25
     occupied_thresh_default: 0.65
@@ -984,7 +985,7 @@ planner_server:
       step_size: 0.3
       obstacle_cost_threshold: 128
       reject_on_collision: true
-    use_sim_time: True
+    use_sim_time: False
 
     # ─── PlannerServer 原生多 planner 热切换 ─────────────────
     # 关键机制：本工程已 fork nav2_planner 新增两个参数：
@@ -1081,7 +1082,7 @@ planner_server:
       terminal_checking_interval: 5000
 
   # ros__parameters:
-  #   use_sim_time: True
+  #   use_sim_time: False
   #   save_map_timeout: 5.0
   #   free_thresh_default: 0.25
   #   occupied_thresh_default: 0.65
@@ -1110,7 +1111,7 @@ behavior_server:
     global_frame: odom
     robot_base_frame: base_link
     transform_tolerance: 0.1
-    use_sim_time: true
+    use_sim_time: false
     simulate_ahead_time: 2.0
     max_rotational_vel: 0.7
     min_rotational_vel: 0.3
@@ -1118,11 +1119,11 @@ behavior_server:
 
 robot_state_publisher:
   ros__parameters:
-    use_sim_time: True
+    use_sim_time: False
 
 waypoint_follower:
   ros__parameters:
-    use_sim_time: True
+    use_sim_time: False
     loop_rate: 20
     stop_on_failure: false
     waypoint_task_executor_plugin: "wait_at_waypoint"
@@ -1133,7 +1134,7 @@ waypoint_follower:
 
 velocity_smoother:
   ros__parameters:
-    use_sim_time: True
+    use_sim_time: False
     smoothing_frequency: 20.0
     scale_velocities: False
     feedback: "CLOSED_LOOP"
@@ -1161,7 +1162,7 @@ velocity_smoother:
 
 nav2_nav_monitor:
   ros__parameters:
-    use_sim_time: True
+    use_sim_time: False
     # nav_monitor：每次导航任务结束落盘一份任务级 JSON（摘要+轨迹+双速度采样）
     enable: true
     output_dir: "~/.dexe/navigation/nav_monitor"
