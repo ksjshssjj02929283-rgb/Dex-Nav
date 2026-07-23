@@ -1,6 +1,6 @@
 # dexe_sensor_process
 
-`dexe_sensor_process` 是 RGBD 传感器预处理包，当前核心节点是 `rgbd_to_pointcloud`。它订阅 RGBD 相机的深度图和 `CameraInfo`，反投影生成 `sensor_msgs/msg/PointCloud2` 点云，并发布原始点云和过滤后的点云，供 Nav2 costmap 或 RViz 使用。
+`dexe_sensor_process` 是 RGBD 传感器预处理包，当前核心节点是 `rgbd_to_pointcloud`。节点只从深度图和 `CameraInfo` 重建 `sensor_msgs/msg/PointCloud2`，随后发布原始点云和过滤点云，供 Nav2 costmap 或 RViz 使用。
 
 ## 主要文件
 
@@ -26,10 +26,12 @@
 
 1. 订阅深度图和最近一次 `CameraInfo`。
 2. 使用 `fx`、`fy`、`cx`、`cy` 将深度像素反投影为相机坐标系下的 `x/y/z` 点。
-3. 深度单位按毫米转米，当前深度截断距离为 `3.0 m`。
+3. 根据 encoding 将实机 `16UC1/mono16` 毫米深度或 Gazebo `32FC1` 米深度转换为米；`depth_max_range` 默认值为 `3.0 m`，W1 仿真配置为 `5.0 m`。
 4. 为降低计算量，反投影时按固定像素步长采样。
 5. 发布 `pointcloud2_raw`，该点云不做地面过滤。
 6. 对 raw 点云做体素降采样和地面高度过滤后，发布 `pointcloud2_filtered`。
+
+节点不接受已有 PointCloud2 作为输入。仿真与真机使用同一条 `Depth + CameraInfo -> PointCloud2` 重建路径；Gazebo 发布的 `/orbbec/{front,rear}/points` 仅可作为仿真测量对照，不属于本包输入接口。
 
 ## 坐标系与地面过滤
 
@@ -55,7 +57,7 @@
 ## 地面过滤参数
 
 - `ground_filter_frame`：地面过滤使用的临时判断坐标系，默认 `base_link`。
-- `ground_filter_min_height`：低于该高度的点认为是地面或近地噪声并剔除，默认 `0.05 m`。
+- `ground_filter_min_height`：小于等于该高度的点认为是地面或近地噪声并剔除，默认 `0.05 m`。
 - `ground_filter_max_height`：高于该高度的点不作为近地障碍输入，默认 `1.5 m`。
 
 调参建议：
@@ -72,6 +74,10 @@ Nav2 costmap 应订阅过滤后的点云：
 
 - `/orbbec/front/pointcloud2_filtered`
 - `/orbbec/rear/pointcloud2_filtered`
+
+判断过滤结果时应直接检查上述 topic。若 costmap 配置使用
+`nav2_costmap_2d::ObstacleLayer`，则不会发布 `voxel_grid` 或
+`voxel_marked_cloud`；RViz 中遗留的 VoxelGrid display 不能代表当前 filtered 点云。
 
 修改点云输出话题时，需要同步检查：
 
@@ -103,4 +109,4 @@ frame_id: 相机深度 frame，例如 chassis_depth_front_link
 - `flag_mls_filter`、`flag_sor_filter`、`mls_*`、`sor_*` 参数目前有声明和传入，但源码未真正执行 MLS/SOR 过滤。
 - TF 失败时，节点会跳过本帧 `pointcloud2_filtered` 发布，避免 costmap 被无效空点云反复清除。
 - 如果 TF 正常但高度过滤后确实没有有效障碍点，节点会发布带 `x/y/z` 字段的合法空点云，避免 Nav2 costmap 因 `Field x does not exist` 崩溃。
-- `pointcloud2_raw` 当前会随深度回调发布；如后续需要降低带宽或 CPU 压力，可增加参数控制是否发布 raw，或仅在有订阅者时发布。
+- `pointcloud2_raw` 会随深度图回调发布。如后续需要降低带宽或 CPU 压力，可增加参数控制是否发布 raw，或仅在有订阅者时发布。

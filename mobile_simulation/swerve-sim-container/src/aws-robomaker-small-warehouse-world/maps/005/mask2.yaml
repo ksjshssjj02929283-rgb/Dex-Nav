@@ -1,0 +1,6 @@
+image: mask2.pgm    # simulation_mapping_v1.pgm 
+resolution: 0.050000
+origin: [-10.053669, -13.225729, 0.0]
+negate: 0
+occupied_thresh: 0.65
+free_thresh: 0.196

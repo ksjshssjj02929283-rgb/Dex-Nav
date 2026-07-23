@@ -1,0 +1,15 @@
+# Geometry of the simulated swerve base. These MUST match the URDF
+# (swerve_robot_base.xacro steering locx/locy and wheel.xacro radius):
+#   wheelbase   = front<->rear distance (X) = 2 * 0.23   = 0.46 m
+#   wheel_track = left<->right distance (Y) = 2 * 0.1725 = 0.345 m
+#   wheel_radius = DexForce wheel radius (diam 107 mm)    = 0.0535 m
+swerve_commander:
+  ros__parameters:
+    wheelbase: 0.46
+    wheel_track: 0.345
+    wheel_radius: 0.0535
+swerve_odometer:
+  ros__parameters:
+    wheelbase: 0.46
+    wheel_track: 0.345
+    wheel_radius: 0.0535

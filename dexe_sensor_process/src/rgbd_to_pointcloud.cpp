@@ -16,6 +16,7 @@
 #include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/msg/camera_info.hpp>
 #include <sensor_msgs/msg/laser_scan.hpp>
+#include <sensor_msgs/image_encodings.hpp>
 #include <sensor_msgs/point_cloud2_iterator.hpp>
 #include <std_msgs/msg/header.hpp>
 #include <message_filters/subscriber.h>
@@ -41,6 +42,7 @@ public:
         this->declare_parameter<std::string>("output_topic_raw", "");
         this->declare_parameter<std::string>("output_topic_filtered", "");
         this->declare_parameter<std::string>("output_topic_laserscan", "");
+        this->declare_parameter<double>("depth_max_range", 3.0);
         
         // 预处理参数
         this->declare_parameter<bool>("flag_voxel_filter", true);
@@ -64,6 +66,13 @@ public:
         std::string output_topic_raw = this->get_parameter("output_topic_raw").as_string();
         std::string output_topic_filtered = this->get_parameter("output_topic_filtered").as_string();
         std::string output_topic_laserscan = this->get_parameter("output_topic_laserscan").as_string();
+        depth_max_range_ = this->get_parameter("depth_max_range").as_double();
+        if (!std::isfinite(depth_max_range_) || depth_max_range_ <= 0.0) {
+            RCLCPP_WARN(
+                get_logger(), "depth_max_range 非法: %.3f m，回退为 3.0 m",
+                depth_max_range_);
+            depth_max_range_ = 3.0;
+        }
         
         // 如果未指定话题，使用默认命名规则
         if (input_topic.empty()) {
@@ -95,7 +104,6 @@ public:
         
 
         
-        // 创建原生 ROS 订阅（不再使用时间同步器）
         depth_sub_ = this->create_subscription<sensor_msgs::msg::Image>(
             input_topic + "/depth",
             rclcpp::SensorDataQoS(),
@@ -127,10 +135,12 @@ public:
         tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
         
         RCLCPP_INFO(get_logger(), "RGBD 点云转换节点启动，相机名称: %s", camera_name.c_str());
+        RCLCPP_INFO(get_logger(), "输入模式: Depth + CameraInfo 重建");
         RCLCPP_INFO(get_logger(), "订阅深度图话题: %s/depth", input_topic.c_str());
         RCLCPP_INFO(get_logger(), "订阅相机参数话题: %s/camera_info", input_topic.c_str());
         RCLCPP_INFO(get_logger(), "发布原始点云话题: %s", output_topic_raw.c_str());
         RCLCPP_INFO(get_logger(), "发布过滤点云话题: %s", output_topic_filtered.c_str());
+        RCLCPP_INFO(get_logger(), "点云最大深度: %.3f m", depth_max_range_);
         RCLCPP_INFO(get_logger(), "LaserScan 话题已创建: %s（当前源码中 LaserScan 发布路径未启用）", output_topic_laserscan.c_str());
         RCLCPP_INFO(get_logger(), "预处理参数 - 降采样: %s, MLS: %s, 统计滤波: %s",
                    flag_voxel_filter_ ? "启用" : "禁用",
@@ -141,7 +151,7 @@ public:
             ground_filter_frame_.c_str(), ground_filter_min_height_, ground_filter_max_height_);
         RCLCPP_INFO(
             get_logger(),
-            "地面过滤流程: 点云会临时转换到 %s 按 z 高度过滤，最终发布仍保持深度图输入的相机坐标系，便于 Nav2 costmap 正确做 marking/clearing",
+            "地面过滤流程: 点云会临时转换到 %s 按 z 高度过滤，最终发布仍保持 CameraInfo 的光学坐标系，便于 Nav2 costmap 正确做 marking/clearing",
             ground_filter_frame_.c_str());
     }
 
@@ -181,31 +191,35 @@ private:
             RCLCPP_WARN(get_logger(), "收到的图像尺寸非法: %dx%d", width, height);
             return;
         }
-        if (depth_msg->data.size() < static_cast<size_t>(width) * height * 2) {
+        const size_t expected_size = static_cast<size_t>(depth_msg->step) * height;
+        if (depth_msg->step == 0 || depth_msg->data.size() < expected_size) {
             RCLCPP_WARN(get_logger(), "深度图数据长度不足: %zu < %zu",
-                       depth_msg->data.size(), static_cast<size_t>(width) * height * 2);
+                       depth_msg->data.size(), expected_size);
             return;
         }
 
-        // 计算 raw（不过滤地面）和 filtered（剔除地面）
+        // 计算 raw（不过滤地面）
         sensor_msgs::msg::PointCloud2::SharedPtr msg_raw;
-        sensor_msgs::msg::PointCloud2::SharedPtr msg_filtered;
         if (!computePointClouds(depth_msg, camera_info_msg, msg_raw)) {
             RCLCPP_WARN(get_logger(), "深度图转换点云失败");
             return;
         }
-        
-        // 对 msg_filtered 进行滤波处理：体素滤波 + base_link 高度过滤
-        msg_filtered = filterPointCloud(msg_raw);
-        
-        // 发布 raw（未剔除地面）与 filter（剔除地面）
+
+        publishPointClouds(msg_raw);
+    }
+
+    void publishPointClouds(
+        const sensor_msgs::msg::PointCloud2::SharedPtr& msg_raw) {
+        // raw 是深度图反投影结果；filtered 才执行体素与 base_link 高度过滤。
         m_pointcloud_publisher_raw->publish(*msg_raw);
+
+        auto msg_filtered = filterPointCloud(msg_raw);
 
         if (!msg_filtered) {
             RCLCPP_WARN_THROTTLE(
                 get_logger(), *this->get_clock(), 5000,
-                "本帧 filtered 点云未发布：原始点云有 %u 点，但地面过滤所需 TF 或内部转换暂时不可用。为避免 costmap 被空点云反复清除，本帧只发布 raw 点云",
-                msg_raw->width);
+                "本帧 filtered 点云未发布：原始点云有 %zu 点，但地面过滤所需 TF 或内部转换暂时不可用。为避免 costmap 被空点云反复清除，本帧只发布 raw 点云",
+                static_cast<size_t>(msg_raw->width) * msg_raw->height);
             return;
         }
 
@@ -223,10 +237,10 @@ private:
 
         RCLCPP_INFO_THROTTLE(
             get_logger(), *this->get_clock(), 5000,
-            "点云发布状态 - 原始点云: %u 点, 坐标系=%s; 过滤点云: %u 点, 坐标系=%s; 地面过滤判断坐标系=%s, 保留高度范围=[%.3f, %.3f] m",
-            msg_raw->width,
+            "点云发布状态 - 原始点云: %zu 点, 坐标系=%s; 过滤点云: %zu 点, 坐标系=%s; 地面过滤判断坐标系=%s, 保留高度范围=(%.3f, %.3f] m",
+            static_cast<size_t>(msg_raw->width) * msg_raw->height,
             msg_raw->header.frame_id.c_str(),
-            msg_filtered->width,
+            static_cast<size_t>(msg_filtered->width) * msg_filtered->height,
             msg_filtered->header.frame_id.c_str(),
             ground_filter_frame_.c_str(),
             ground_filter_min_height_,
@@ -235,8 +249,8 @@ private:
         if (msg_raw->width > 0 && msg_filtered->width == 0) {
             RCLCPP_WARN_THROTTLE(
                 get_logger(), *this->get_clock(), 5000,
-                "过滤后点云为空：raw 有 %u 点，但 filtered 为 0 点。可能原因：地面高度阈值过严，或当前视野内没有满足高度范围的障碍点",
-                msg_raw->width);
+                "过滤后点云为空：raw 有 %zu 点，但 filtered 为 0 点。可能原因：地面高度阈值过严，或当前视野内没有满足高度范围的障碍点",
+                static_cast<size_t>(msg_raw->width) * msg_raw->height);
         }
 
         // if (m_laserscan_publisher_) {
@@ -513,7 +527,7 @@ private:
                 !std::isfinite(sensor_point.z)) {
                 continue;
             }
-            if (height_point.z >= static_cast<float>(ground_filter_min_height_) &&
+            if (height_point.z > static_cast<float>(ground_filter_min_height_) &&
                 height_point.z <= static_cast<float>(ground_filter_max_height_)) {
                 cloud_height_filtered->points.push_back(sensor_point);
             }
@@ -548,8 +562,34 @@ private:
             return false;
         }
 
-        constexpr float depth_scale = 1000.0f;
-        constexpr float depth_trunc = 3.0f;
+        const bool is_uint16_depth =
+            depth_msg->encoding == sensor_msgs::image_encodings::TYPE_16UC1 ||
+            depth_msg->encoding == sensor_msgs::image_encodings::MONO16;
+        const bool is_float32_depth =
+            depth_msg->encoding == sensor_msgs::image_encodings::TYPE_32FC1;
+        if (!is_uint16_depth && !is_float32_depth) {
+            RCLCPP_WARN(
+                get_logger(), "不支持的深度图编码: %s（仅支持 16UC1/mono16 和 32FC1）",
+                depth_msg->encoding.c_str());
+            return false;
+        }
+        if (depth_msg->is_bigendian) {
+            RCLCPP_WARN(get_logger(), "暂不支持大端序深度图");
+            return false;
+        }
+
+        const size_t bytes_per_pixel = is_uint16_depth ? sizeof(uint16_t) : sizeof(float);
+        const size_t minimum_step = static_cast<size_t>(width) * bytes_per_pixel;
+        if (depth_msg->step < minimum_step) {
+            RCLCPP_WARN(get_logger(), "深度图行跨度不足: %u < %zu", depth_msg->step, minimum_step);
+            return false;
+        }
+        const size_t expected_size = static_cast<size_t>(depth_msg->step) * height;
+        if (depth_msg->data.size() < expected_size) {
+            RCLCPP_WARN(get_logger(), "深度数据长度不足: %zu < %zu",
+                        depth_msg->data.size(), expected_size);
+            return false;
+        }
 
         const auto fx = camera_info_msg->k[0];
         const auto fy = camera_info_msg->k[4];
@@ -560,26 +600,34 @@ private:
             return false;
         }
 
-        const size_t pixel_count = static_cast<size_t>(width) * height;
-        const auto* depth_ptr = reinterpret_cast<const uint16_t*>(depth_msg->data.data());
-        const size_t depth_words = depth_msg->data.size() / sizeof(uint16_t);
-        if (depth_words < pixel_count) {
-            RCLCPP_WARN(get_logger(), "深度数据长度不足: %zu < %zu", depth_words, pixel_count);
-            return false;
+        if (!depth_msg->header.frame_id.empty() &&
+            !camera_info_msg->header.frame_id.empty() &&
+            depth_msg->header.frame_id != camera_info_msg->header.frame_id) {
+            RCLCPP_WARN_THROTTLE(
+                get_logger(), *this->get_clock(), 5000,
+                "Depth frame (%s) 与 CameraInfo 光学 frame (%s) 不一致；重建点云使用 CameraInfo frame",
+                depth_msg->header.frame_id.c_str(),
+                camera_info_msg->header.frame_id.c_str());
         }
+
+        const size_t pixel_count = static_cast<size_t>(width) * height;
 
         std::vector<float> buf_raw;              // 不过滤地面
         buf_raw.reserve(pixel_count * 3 / 2);
 
         for (int v = 0; v < height; v += 3) {
+            const auto* row = depth_msg->data.data() + static_cast<size_t>(v) * depth_msg->step;
             for (int u = 0; u < width; u += 2) {
-                const size_t idx = static_cast<size_t>(v) * width + u;
-                uint16_t depth_raw_val = depth_ptr[idx];
-                if (depth_raw_val == 0) {
-                    continue;
+                const auto* pixel = row + static_cast<size_t>(u) * bytes_per_pixel;
+                float z = 0.0f;
+                if (is_uint16_depth) {
+                    uint16_t depth_mm = 0;
+                    std::memcpy(&depth_mm, pixel, sizeof(depth_mm));
+                    z = static_cast<float>(depth_mm) / 1000.0f;
+                } else {
+                    std::memcpy(&z, pixel, sizeof(z));
                 }
-                float z = static_cast<float>(depth_raw_val) / depth_scale;
-                if (z <= 0.f || z > depth_trunc) {
+                if (!std::isfinite(z) || z <= 0.f || z > static_cast<float>(depth_max_range_)) {
                     continue;
                 }
                 float x = (static_cast<float>(u) - cx) * z / fx;
@@ -596,7 +644,11 @@ private:
         auto make_msg = [&](const std::vector<float>& xyz_buffer) -> sensor_msgs::msg::PointCloud2::SharedPtr {
             auto msg = std::make_shared<sensor_msgs::msg::PointCloud2>();
             msg->header = depth_msg->header;
-            msg->header.frame_id = msg->header.frame_id.empty() ? "camera_frame" : msg->header.frame_id;
+            if (!camera_info_msg->header.frame_id.empty()) {
+                msg->header.frame_id = camera_info_msg->header.frame_id;
+            } else if (msg->header.frame_id.empty()) {
+                msg->header.frame_id = "camera_frame";
+            }
             msg->header.stamp = depth_msg->header.stamp;
             msg->height = 1;
             msg->width = xyz_buffer.size() / 3;
@@ -659,6 +711,7 @@ private:
     std::string ground_filter_frame_ = "base_link";
     double ground_filter_min_height_ = 0.05;
     double ground_filter_max_height_ = 1.5;
+    double depth_max_range_ = 3.0;
     
 
 };

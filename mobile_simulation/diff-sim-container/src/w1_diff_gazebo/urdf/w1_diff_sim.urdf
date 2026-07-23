@@ -1,0 +1,1154 @@
+<robot name="w1_diff_sim">
+  <link name="base_footprint" />
+  <joint name="base_joint" type="fixed">
+    <parent link="base_footprint" />
+    <child link="base_link" />
+    <origin xyz="0 0 0.01" rpy="0 -0 0" />
+    <axis xyz="0 0 0" />
+  </joint>
+  <link name="base_link" />
+  <link name="laser_front_link">
+    </link>
+  <joint name="laser_front_joint" type="fixed">
+    <origin xyz="0.17497299999999999 0.145982 0.233649" rpy="0 -0 0.78539999999999999" />
+    <parent link="base_link" />
+    <child link="laser_front_link" />
+    <axis xyz="0 0 0" />
+  </joint>
+  <link name="laser_rear_link">
+    </link>
+  <joint name="laser_rear_joint" type="fixed">
+    <origin xyz="-0.17497299999999999 -0.145982 0.233649" rpy="0 0 -2.3561999999999999" />
+    <parent link="base_link" />
+    <child link="laser_rear_link" />
+    <axis xyz="0 0 0" />
+  </joint>
+  <joint name="chassis_camera_front_joint" type="fixed">
+    <origin xyz="0.30213899999999999 0.0075799999999999999 0.14019699999999999" rpy="-1.5717000000000001 -0 -1.5717000000000001" />
+    <parent link="base_link" />
+    <child link="chassis_camera_front_link" />
+    <axis xyz="0 0 0" />
+  </joint>
+  <link name="chassis_camera_front_link">
+      </link>
+  <joint name="chassis_depth_front_joint" type="fixed">
+    <origin xyz="-0.0075799999999999999 0 0" rpy="0 -0 0" />
+    <parent link="chassis_camera_front_link" />
+    <child link="chassis_depth_front_link" />
+    <axis xyz="0 0 0" />
+  </joint>
+  <link name="chassis_depth_front_link">
+      </link>
+  <joint name="chassis_camera_rear_joint" type="fixed">
+    <origin xyz="-0.30213899999999999 -0.0075799999999999999 0.14019699999999999" rpy="-1.5717000000000001 -0 1.5717000000000001" />
+    <parent link="base_link" />
+    <child link="chassis_camera_rear_link" />
+    <axis xyz="0 0 0" />
+  </joint>
+  <link name="chassis_camera_rear_link">
+      </link>
+  <joint name="chassis_depth_rear_joint" type="fixed">
+    <origin xyz="-0.0075799999999999999 0 0" rpy="0 -0 0" />
+    <parent link="chassis_camera_rear_link" />
+    <child link="chassis_depth_rear_link" />
+    <axis xyz="0 0 0" />
+  </joint>
+  <link name="chassis_depth_rear_link">
+      </link>
+  <joint name="imu_chassis_joint" type="fixed">
+    <origin rpy="0 -0 0" xyz="0.27300000000000002 0 0" />
+    <parent link="base_link" />
+    <child link="imu_chassis_link" />
+    <axis xyz="0 0 0" />
+  </joint>
+  <link name="imu_chassis_link">
+    
+  </link>
+  <link name="chassis_base_link">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://w1_diff_gazebo/meshes/Visual/chassis/base_link.dae" />
+      </geometry>
+      <material name="">
+        <color rgba="0.27843137254902 0.749019607843137 0.588235294117647 1" />
+      </material>
+    </visual>
+    <inertial>
+      <origin xyz="0 0 0.30" rpy="0 0 0" />
+      <mass value="60.0" />
+      <inertia ixx="8.45" ixy="0" ixz="0" iyy="9.65" iyz="0" izz="3.70" />
+    </inertial>
+    <collision>
+      <origin xyz="0 0 0.10" rpy="0 0 0" />
+      <geometry>
+        <box size="0.70 0.50 0.14" />
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="0.28 0.18 0.015" rpy="0 0 0" />
+      <geometry>
+        <sphere radius="0.02" />
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="0.28 -0.18 0.015" rpy="0 0 0" />
+      <geometry>
+        <sphere radius="0.02" />
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="-0.28 0.18 0.015" rpy="0 0 0" />
+      <geometry>
+        <sphere radius="0.02" />
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="-0.28 -0.18 0.015" rpy="0 0 0" />
+      <geometry>
+        <sphere radius="0.02" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="wheel_left">
+    <inertial>
+      <origin xyz="1.29654835478998E-09 -0.0388109425454037 1.46411155282911E-07" rpy="0 0 0" />
+      <mass value="1.81841495723996" />
+      <inertia ixx="0.00458785167524735" ixy="2.63111479143607E-11" ixz="2.02429770259449E-10" iyy="0.00846145621331285" iyz="7.59817806948718E-11" izz="0.00458785310793277" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="1.5707963267948966 0 0" />
+      <geometry>
+        <cylinder radius="0.063" length="0.045" />
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="1.5707963267948966 0 0" />
+      <geometry>
+        <cylinder radius="0.063" length="0.045" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="wheel_right">
+    <inertial>
+      <origin xyz="-1.29654938174628E-09 0.0388109425454037 1.46411155255155E-07" rpy="0 0 0" />
+      <mass value="1.81841495723996" />
+      <inertia ixx="0.00458785167524735" ixy="2.63111168444812E-11" ixz="-2.02429769062992E-10" iyy="0.00846145621331285" iyz="-7.59817809326904E-11" izz="0.00458785310793277" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="1.5707963267948966 0 0" />
+      <geometry>
+        <cylinder radius="0.063" length="0.045" />
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="1.5707963267948966 0 0" />
+      <geometry>
+        <cylinder radius="0.063" length="0.045" />
+      </geometry>
+    </collision>
+  </link>
+  <link name="torso_base_link"> </link>
+  <link name="ankle">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://w1_diff_gazebo/meshes/Visual/torso/torso1.dae" />
+      </geometry>
+      <material name="">
+        <color rgba="0.27843137254902 0.749019607843137 0.588235294117647 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="knee">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://w1_diff_gazebo/meshes/Visual/torso/torso2.dae" />
+      </geometry>
+      <material name="">
+        <color rgba="0.27843137254902 0.749019607843137 0.588235294117647 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="buttock">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://w1_diff_gazebo/meshes/Visual/torso/torso3.dae" />
+      </geometry>
+      <material name="">
+        <color rgba="0.27843137254902 0.749019607843137 0.588235294117647 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="waist">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://w1_diff_gazebo/meshes/Visual/torso/torso4.dae" />
+      </geometry>
+      <material name="">
+        <color rgba="0.27843137254902 0.749019607843137 0.588235294117647 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="head_base_link"> </link>
+  <link name="neck_base"> </link>
+  <link name="neck1">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://w1_diff_gazebo/meshes/Visual/head/head1.dae" />
+      </geometry>
+      <material name="">
+        <color rgba="0.662745098039216 0.533333333333333 0.749019607843137 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="neck2">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://w1_diff_gazebo/meshes/Visual/head/head2.dae" />
+      </geometry>
+      <material name="">
+        <color rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="left_base_link"> </link>
+  <link name="left_base_to_left_arm_connector"> </link>
+  <link name="left_arm_base"> </link>
+  <link name="left_j1">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://w1_diff_gazebo/meshes/Visual/left_arm/arml1.dae" />
+      </geometry>
+      <material name="">
+        <color rgba="0.27843137254902 0.749019607843137 0.588235294117647 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="left_j2">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://w1_diff_gazebo/meshes/Visual/left_arm/arml2.dae" />
+      </geometry>
+      <material name="">
+        <color rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="left_j3">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://w1_diff_gazebo/meshes/Visual/left_arm/arml3.dae" />
+      </geometry>
+      <material name="">
+        <color rgba="0.392156862745098 0.749019607843137 0.619607843137255 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="left_j4">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://w1_diff_gazebo/meshes/Visual/left_arm/arml4.dae" />
+      </geometry>
+      <material name="">
+        <color rgba="0.211764705882353 0.211764705882353 0.211764705882353 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="left_j5">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://w1_diff_gazebo/meshes/Visual/left_arm/arml5.dae" />
+      </geometry>
+      <material name="">
+        <color rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="left_j6">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://w1_diff_gazebo/meshes/Visual/left_arm/arml6.dae" />
+      </geometry>
+      <material name="">
+        <color rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="left_j7">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://w1_diff_gazebo/meshes/Visual/left_arm/arml7.dae" />
+      </geometry>
+      <material name="">
+        <color rgba="0.749019607843137 0.4 0.423529411764706 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="left_ee">
+    </link>
+  <link name="right_base_link"> </link>
+  <link name="right_base_to_right_arm_connector"> </link>
+  <link name="right_arm_base"> </link>
+  <link name="right_j1">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://w1_diff_gazebo/meshes/Visual/right_arm/armr1.dae" />
+      </geometry>
+      <material name="">
+        <color rgba="0.27843137254902 0.749019607843137 0.588235294117647 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="right_j2">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://w1_diff_gazebo/meshes/Visual/right_arm/armr2.dae" />
+      </geometry>
+      <material name="">
+        <color rgba="0.749019607843137 0.647058823529412 0.505882352941176 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="right_j3">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://w1_diff_gazebo/meshes/Visual/right_arm/armr3.dae" />
+      </geometry>
+      <material name="">
+        <color rgba="0.450980392156863 0.749019607843137 0.549019607843137 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="right_j4">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://w1_diff_gazebo/meshes/Visual/right_arm/armr4.dae" />
+      </geometry>
+      <material name="">
+        <color rgba="0.211764705882353 0.211764705882353 0.211764705882353 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="right_j5">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://w1_diff_gazebo/meshes/Visual/right_arm/armr5.dae" />
+      </geometry>
+      <material name="">
+        <color rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="right_j6">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://w1_diff_gazebo/meshes/Visual/right_arm/armr6.dae" />
+      </geometry>
+      <material name="">
+        <color rgba="0.749019607843137 0.4 0.423529411764706 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="right_j7">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://w1_diff_gazebo/meshes/Visual/right_arm/armr7.dae" />
+      </geometry>
+      <material name="">
+        <color rgba="0.749019607843137 0.4 0.423529411764706 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="right_ee">
+    </link>
+  <link name="left_l_base_link">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://w1_diff_gazebo/meshes/Visual/left_hand/L_base_link.dae" />
+      </geometry>
+      <material name="">
+        <color rgba="0.75294 0.75294 0.75294 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="left_l_thumb_prox">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://w1_diff_gazebo/meshes/Visual/left_hand/L_thumb_prox.dae" />
+      </geometry>
+      <material name="">
+        <color rgba="0.75294 0.75294 0.75294 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="left_l_thumb_dist">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://w1_diff_gazebo/meshes/Visual/left_hand/L_thumb_dist.dae" />
+      </geometry>
+      <material name="">
+        <color rgba="0.75294 0.75294 0.75294 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="left_l_index_prox">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://w1_diff_gazebo/meshes/Visual/left_hand/L_index_prox.dae" />
+      </geometry>
+      <material name="">
+        <color rgba="0.75294 0.75294 0.75294 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="left_l_index_dist">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://w1_diff_gazebo/meshes/Visual/left_hand/L_index_dist.dae" />
+      </geometry>
+      <material name="">
+        <color rgba="0.75294 0.75294 0.75294 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="left_l_middle_prox">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://w1_diff_gazebo/meshes/Visual/left_hand/L_middle_prox.dae" />
+      </geometry>
+      <material name="">
+        <color rgba="0.75294 0.75294 0.75294 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="left_l_middle_dist">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://w1_diff_gazebo/meshes/Visual/left_hand/L_middle_dist.dae" />
+      </geometry>
+      <material name="">
+        <color rgba="0.75294 0.75294 0.75294 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="left_l_ring_prox">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://w1_diff_gazebo/meshes/Visual/left_hand/L_ring_prox.dae" />
+      </geometry>
+      <material name="">
+        <color rgba="0.75294 0.75294 0.75294 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="left_l_ring_dist">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://w1_diff_gazebo/meshes/Visual/left_hand/L_ring_dist.dae" />
+      </geometry>
+      <material name="">
+        <color rgba="0.75294 0.75294 0.75294 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="left_l_little_prox">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://w1_diff_gazebo/meshes/Visual/left_hand/L_little_prox.dae" />
+      </geometry>
+      <material name="">
+        <color rgba="1 1 1 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="left_l_little_dist">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://w1_diff_gazebo/meshes/Visual/left_hand/L_little_dist.dae" />
+      </geometry>
+      <material name="">
+        <color rgba="0.75294 0.75294 0.75294 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="right_r_base_link">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://w1_diff_gazebo/meshes/Visual/right_hand/R_base_link.dae" />
+      </geometry>
+      <material name="">
+        <color rgba="0.75 0.75294 0.75294 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="right_r_thumb_prox">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://w1_diff_gazebo/meshes/Visual/right_hand/R_thumb_prox.dae" />
+      </geometry>
+      <material name="">
+        <color rgba="1 1 1 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="right_r_thumb_dist">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://w1_diff_gazebo/meshes/Visual/right_hand/R_thumb_dist.dae" />
+      </geometry>
+      <material name="">
+        <color rgba="0.75294 0.75294 0.75294 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="right_r_index_prox">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://w1_diff_gazebo/meshes/Visual/right_hand/R_index_prox.dae" />
+      </geometry>
+      <material name="">
+        <color rgba="0.75294 0.75294 0.75294 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="right_r_index_dist">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://w1_diff_gazebo/meshes/Visual/right_hand/R_index_dist.dae" />
+      </geometry>
+      <material name="">
+        <color rgba="0.75294 0.75294 0.75294 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="right_r_middle_prox">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://w1_diff_gazebo/meshes/Visual/right_hand/R_middle_prox.dae" />
+      </geometry>
+      <material name="">
+        <color rgba="0.75294 0.75294 0.75294 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="right_r_middle_dist">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://w1_diff_gazebo/meshes/Visual/right_hand/R_middle_dist.dae" />
+      </geometry>
+      <material name="">
+        <color rgba="0.75294 0.75294 0.75294 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="right_r_ring_prox">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://w1_diff_gazebo/meshes/Visual/right_hand/R_ring_prox.dae" />
+      </geometry>
+      <material name="">
+        <color rgba="0.75294 0.75294 0.75294 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="right_r_ring_dist">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://w1_diff_gazebo/meshes/Visual/right_hand/R_ring_dist.dae" />
+      </geometry>
+      <material name="">
+        <color rgba="0.75294 0.75294 0.75294 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="right_r_little_prox">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://w1_diff_gazebo/meshes/Visual/right_hand/R_little_prox.dae" />
+      </geometry>
+      <material name="">
+        <color rgba="0.75294 0.75294 0.75294 1" />
+      </material>
+    </visual>
+  </link>
+  <link name="right_r_little_dist">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="package://w1_diff_gazebo/meshes/Visual/right_hand/R_little_dist.dae" />
+      </geometry>
+      <material name="">
+        <color rgba="0.75294 0.75294 0.75294 1" />
+      </material>
+    </visual>
+  </link>
+  <joint name="WHEEL_LEFT" type="continuous">
+    <origin xyz="0 0.25390000000000001 0.052999999999999999" rpy="0 -0 0" />
+    <parent link="chassis_base_link" />
+    <child link="wheel_left" />
+    <axis xyz="0 1 0" />
+  </joint>
+  <joint name="WHEEL_RIGHT" type="continuous">
+    <origin xyz="0 -0.25390000000000001 0.052999999999999999" rpy="0 -0 0" />
+    <parent link="chassis_base_link" />
+    <child link="wheel_right" />
+    <axis xyz="0 1 0" />
+  </joint>
+  <joint name="ANKLE" type="fixed">
+    <origin xyz="0 0 0.29199999999999998" rpy="1.5707963267948963 0.70999999999999996 -1.4639752600631157e-16" />
+    <parent link="torso_base_link" />
+    <child link="ankle" />
+    <axis xyz="0 0 -1" />
+  </joint>
+  <joint name="KNEE" type="fixed">
+    <origin xyz="0 0.34000000000000002 0" rpy="0 -0 1.2907999999999999" />
+    <parent link="ankle" />
+    <child link="knee" />
+    <axis xyz="0 0 -1" />
+  </joint>
+  <joint name="BUTTOCK" type="fixed">
+    <origin xyz="0 0.34000000000000002 0" rpy="0 0 -0.58009999999999973" />
+    <parent link="knee" />
+    <child link="buttock" />
+    <axis xyz="0 0 -1" />
+  </joint>
+  <joint name="WAIST" type="fixed">
+    <origin xyz="0 0.1578 0" rpy="-1.5707963267948963 0.076300000000000007 2.0877423177846601e-17" />
+    <parent link="buttock" />
+    <child link="waist" />
+    <axis xyz="0 0 1" />
+  </joint>
+  <joint name="NECK_BASE" type="fixed">
+    <origin xyz="0 0 0.308" rpy="0 -0 0" />
+    <parent link="head_base_link" />
+    <child link="neck_base" />
+  </joint>
+  <joint name="NECK1" type="fixed">
+    <origin xyz="0 0 0" rpy="0 0 -0.0022000000000000001" />
+    <parent link="neck_base" />
+    <child link="neck1" />
+    <axis xyz="0 0 1" />
+  </joint>
+  <joint name="NECK2" type="fixed">
+    <origin xyz="0 0 0.081000000000000003" rpy="-1.5707963267948966 0.035299999999999998 3.4716096964217401e-18" />
+    <parent link="neck1" />
+    <child link="neck2" />
+    <axis xyz="0 0 -1" />
+  </joint>
+  <joint name="LEFT_BASE_TO_LEFT_ARM_CONNECTOR" type="fixed">
+    <origin xyz="0 0.098500000000000004 0.23499999999999999" rpy="-1.5707963267948963 -1.5707963267948966 0" />
+    <parent link="left_base_link" />
+    <child link="left_base_to_left_arm_connector" />
+  </joint>
+  <joint name="LEFT_ARM_BASE" type="fixed">
+    <origin xyz="0 0 0" rpy="0 -0 0" />
+    <parent link="left_base_to_left_arm_connector" />
+    <child link="left_arm_base" />
+  </joint>
+  <joint name="LEFT_J1" type="fixed">
+    <origin xyz="0 0 0" rpy="0 0 -0.070300000000000029" />
+    <parent link="left_arm_base" />
+    <child link="left_j1" />
+    <axis xyz="0 0 1" />
+  </joint>
+  <joint name="LEFT_J2" type="fixed">
+    <origin xyz="0 0 0.10249999999999999" rpy="1.5707963267948966 1.3729 3.1415926535897922" />
+    <parent link="left_j1" />
+    <child link="left_j2" />
+    <axis xyz="0 0 1" />
+  </joint>
+  <joint name="LEFT_J3" type="fixed">
+    <origin xyz="0 0.26000000000000001 0" rpy="-1.5707963267948943 -1.5228963267948969 -1.1593399680918524e-15" />
+    <parent link="left_j2" />
+    <child link="left_j3" />
+    <axis xyz="0 0 1" />
+  </joint>
+  <joint name="LEFT_J4" type="fixed">
+    <origin xyz="0 0 0" rpy="1.5707963267948966 0.10769999999999999 -2.7917329774163377e-17" />
+    <parent link="left_j3" />
+    <child link="left_j4" />
+    <axis xyz="0 0 1" />
+  </joint>
+  <joint name="LEFT_J5" type="fixed">
+    <origin xyz="0 0.16600000000000001 0" rpy="1.5707963267948968 0.028400000000000123 -3.1415926535897931" />
+    <parent link="left_j4" />
+    <child link="left_j5" />
+    <axis xyz="0 0 1" />
+  </joint>
+  <joint name="LEFT_J6" type="fixed">
+    <origin xyz="0 0 0.098000000000000004" rpy="1.5707963267948968 -0.59300000000000008 6.6939952644245342e-17" />
+    <parent link="left_j5" />
+    <child link="left_j6" />
+    <axis xyz="0 0 -1" />
+  </joint>
+  <joint name="LEFT_J7" type="fixed">
+    <origin xyz="0 0 0" rpy="1.5707963267948966 0.049600000000000199 -1.5707963267948968" />
+    <parent link="left_j6" />
+    <child link="left_j7" />
+    <axis xyz="0 0 1" />
+  </joint>
+  <joint name="LEFT_EE" type="fixed">
+    <origin xyz="-0.066000000000000003 0 0" rpy="0 -1.5707963267948966 0" />
+    <parent link="left_j7" />
+    <child link="left_ee" />
+  </joint>
+  <joint name="RIGHT_BASE_TO_RIGHT_ARM_CONNECTOR" type="fixed">
+    <origin xyz="0 -0.098500000000000004 0.23499999999999999" rpy="1.5707963267948963 1.5707963267948966 0" />
+    <parent link="right_base_link" />
+    <child link="right_base_to_right_arm_connector" />
+  </joint>
+  <joint name="RIGHT_ARM_BASE" type="fixed">
+    <origin xyz="0 0 0" rpy="0 -0 0" />
+    <parent link="right_base_to_right_arm_connector" />
+    <child link="right_arm_base" />
+  </joint>
+  <joint name="RIGHT_J1" type="fixed">
+    <origin xyz="0 0 0" rpy="0 -0 0.058800000000000012" />
+    <parent link="right_arm_base" />
+    <child link="right_j1" />
+    <axis xyz="0 0 1" />
+  </joint>
+  <joint name="RIGHT_J2" type="fixed">
+    <origin xyz="0 0 0.10249999999999999" rpy="1.5707963267948977 -1.3733999999999997 -3.1415926535897927" />
+    <parent link="right_j1" />
+    <child link="right_j2" />
+    <axis xyz="0 0 1" />
+  </joint>
+  <joint name="RIGHT_J3" type="fixed">
+    <origin xyz="0 0.26000000000000001 0" rpy="-1.5707963267948952 -1.4895963267948966 -2.0531600897508978e-15" />
+    <parent link="right_j2" />
+    <child link="right_j3" />
+    <axis xyz="0 0 1" />
+  </joint>
+  <joint name="RIGHT_J4" type="fixed">
+    <origin xyz="0 0 0" rpy="1.5707963267948963 0.015800000000000002 -3.4698800533718106e-18" />
+    <parent link="right_j3" />
+    <child link="right_j4" />
+    <axis xyz="0 0 -1" />
+  </joint>
+  <joint name="RIGHT_J5" type="fixed">
+    <origin xyz="0 0.16600000000000001 0" rpy="1.5707963267948968 -0.092999999999999874 3.1415926535897931" />
+    <parent link="right_j4" />
+    <child link="right_j5" />
+    <axis xyz="0 0 1" />
+  </joint>
+  <joint name="RIGHT_J6" type="fixed">
+    <origin xyz="0 0 0.098000000000000004" rpy="1.5707963267948963 -0.31040000000000006 5.8297083122530891e-17" />
+    <parent link="right_j5" />
+    <child link="right_j6" />
+    <axis xyz="0 0 1" />
+  </joint>
+  <joint name="RIGHT_J7" type="fixed">
+    <origin xyz="0 0 0" rpy="1.5707963267948966 0.081400000000000236 -1.5707963267948968" />
+    <parent link="right_j6" />
+    <child link="right_j7" />
+    <axis xyz="0 0 1" />
+  </joint>
+  <joint name="RIGHT_EE" type="fixed">
+    <origin xyz="-0.066000000000000003 0 0" rpy="0 -1.5707963267948966 0" />
+    <parent link="right_j7" />
+    <child link="right_ee" />
+  </joint>
+  <joint name="LEFT_L_THUMBMCP1" type="fixed">
+    <origin xyz="-0.024500000000000001 0.022631999999999999 0.023262999999999999" rpy="0.14578000000000005 -1.0699000000000003 -0.12808000000000003" />
+    <parent link="left_l_base_link" />
+    <child link="left_l_thumb_prox" />
+    <axis xyz="0 1 0" />
+  </joint>
+  <joint name="LEFT_L_THUMBMCP2" type="fixed">
+    <origin xyz="0 0 0.013646999999999999" rpy="0.87266000000000032 -0.49642000000000014 -3.1565777098683756e-17" />
+    <parent link="left_l_thumb_prox" />
+    <child link="left_l_thumb_dist" />
+    <axis xyz="-1 0 0" />
+  </joint>
+  <joint name="LEFT_L_INDEXMCP" type="fixed">
+    <origin xyz="-0.029003000000000001 0.088290999999999994 0.0022155" rpy="-0.029415000000000011 0.052360000000000004 0.034907000000000007" />
+    <parent link="left_l_base_link" />
+    <child link="left_l_index_prox" />
+    <axis xyz="1 0 0" />
+  </joint>
+  <joint name="LEFT_L_INDEXPIP" type="fixed">
+    <origin xyz="0 0.035000000000000003 0" rpy="0.38653000000000015 -0 0" />
+    <parent link="left_l_index_prox" />
+    <child link="left_l_index_dist" />
+    <axis xyz="1 0 0" />
+  </joint>
+  <joint name="LEFT_L_MIDDLEMCP" type="fixed">
+    <origin xyz="-0.0080000000000000002 0.092284000000000005 -0.0017707000000000001" rpy="0 -0 0" />
+    <parent link="left_l_base_link" />
+    <child link="left_l_middle_prox" />
+    <axis xyz="1 0 0" />
+  </joint>
+  <joint name="LEFT_L_MIDDLEPIP" type="fixed">
+    <origin xyz="0 0.042000000000000003 0" rpy="0.36657000000000006 -0 0" />
+    <parent link="left_l_middle_prox" />
+    <child link="left_l_middle_dist" />
+    <axis xyz="1 0 0" />
+  </joint>
+  <joint name="LEFT_L_RINGMCP" type="fixed">
+    <origin xyz="0.013103 0.090290999999999996 -0.0017845000000000001" rpy="-0.0092373999999999998 -0.052360000000000004 -0.034906999999999994" />
+    <parent link="left_l_base_link" />
+    <child link="left_l_ring_prox" />
+    <axis xyz="1 0 0" />
+  </joint>
+  <joint name="LEFT_L_RINGPIP" type="fixed">
+    <origin xyz="0 0.042000000000000003 0" rpy="0.33183000000000012 -0 0" />
+    <parent link="left_l_ring_prox" />
+    <child link="left_l_ring_dist" />
+    <axis xyz="1 0 0" />
+  </joint>
+  <joint name="LEFT_L_LITTLEMCP" type="fixed">
+    <origin xyz="0.033730999999999997 0.083777000000000004 0.0022155" rpy="-0.024908999999999997 -0.052359999999999997 -0.069813" />
+    <parent link="left_l_base_link" />
+    <child link="left_l_little_prox" />
+    <axis xyz="1 0 0" />
+  </joint>
+  <joint name="LEFT_L_LITTLEPIP" type="fixed">
+    <origin xyz="0 0.035000000000000003 0" rpy="0.40494000000000002 -0 0" />
+    <parent link="left_l_little_prox" />
+    <child link="left_l_little_dist" />
+    <axis xyz="1 0 0" />
+  </joint>
+  <joint name="RIGHT_R_THUMBMCP1" type="fixed">
+    <origin xyz="0.024500000000000001 0.024199999999999999 0.021628000000000001" rpy="0 -0.49642000000000003 0" />
+    <parent link="right_r_base_link" />
+    <child link="right_r_thumb_prox" />
+    <axis xyz="0 -1 0" />
+  </joint>
+  <joint name="RIGHT_R_THUMBMCP2" type="fixed">
+    <origin xyz="0.013646999999999999 0 0" rpy="-0.39332000000000006 0.31115000000000004 -0.93514000000000019" />
+    <parent link="right_r_thumb_prox" />
+    <child link="right_r_thumb_dist" />
+    <axis xyz="0 0 1" />
+  </joint>
+  <joint name="RIGHT_R_INDEXMCP" type="fixed">
+    <origin xyz="0.029003000000000001 0.088231000000000004 -0.0039487999999999997" rpy="-0.099290000000000003 -0.054667000000000021 -0.031168000000000001" />
+    <parent link="right_r_base_link" />
+    <child link="right_r_index_prox" />
+    <axis xyz="1 0 0" />
+  </joint>
+  <joint name="RIGHT_R_INDEXPIP" type="fixed">
+    <origin xyz="0 0.035000000000000003 0" rpy="0.38653000000000015 -0 0" />
+    <parent link="right_r_index_prox" />
+    <child link="right_r_index_dist" />
+    <axis xyz="1 0 0" />
+  </joint>
+  <joint name="RIGHT_R_MIDDLEMCP" type="fixed">
+    <origin xyz="0.0080000000000000002 0.091935000000000003 -0.0082038000000000007" rpy="-0.069813 0 0" />
+    <parent link="right_r_base_link" />
+    <child link="right_r_middle_prox" />
+    <axis xyz="1 0 0" />
+  </joint>
+  <joint name="RIGHT_R_MIDDLEPIP" type="fixed">
+    <origin xyz="0 0.042000000000000003 0" rpy="0.36657000000000006 -0 0" />
+    <parent link="right_r_middle_prox" />
+    <child link="right_r_middle_dist" />
+    <axis xyz="1 0 0" />
+  </joint>
+  <joint name="RIGHT_R_RINGMCP" type="fixed">
+    <origin xyz="-0.013103 0.089946999999999999 -0.0080786" rpy="-0.079113000000000003 0.054667000000000014 0.031168000000000005" />
+    <parent link="right_r_base_link" />
+    <child link="right_r_ring_prox" />
+    <axis xyz="1 0 0" />
+  </joint>
+  <joint name="RIGHT_R_RINGPIP" type="fixed">
+    <origin xyz="0 0.042000000000000003 0" rpy="0.33183000000000012 -0 0" />
+    <parent link="right_r_ring_prox" />
+    <child link="right_r_ring_dist" />
+    <axis xyz="1 0 0" />
+  </joint>
+  <joint name="RIGHT_R_LITTLEMCP" type="fixed">
+    <origin xyz="-0.033730999999999997 0.083726999999999996 -0.0036338999999999998" rpy="-0.094666 0.057099000000000004 0.065995999999999999" />
+    <parent link="right_r_base_link" />
+    <child link="right_r_little_prox" />
+    <axis xyz="1 0 0" />
+  </joint>
+  <joint name="RIGHT_R_LITTLEPIP" type="fixed">
+    <origin xyz="0 0.035000000000000003 0" rpy="0.40494000000000002 -0 0" />
+    <parent link="right_r_little_prox" />
+    <child link="right_r_little_dist" />
+    <axis xyz="1 0 0" />
+  </joint>
+  <joint name="BASE_LINK_TO_CHASSIS_CONNECTOR" type="fixed">
+    <origin xyz="0 0 0" rpy="0 -0 0" />
+    <parent link="base_link" />
+    <child link="chassis_base_link" />
+  </joint>
+  <joint name="LEFT_ARM_TO_LEFT_HAND_CONNECTOR" type="fixed">
+    <origin xyz="0 0 0.02" rpy="1.5707963267948963 -0 3.1415926535897931" />
+    <parent link="left_ee" />
+    <child link="left_l_base_link" />
+  </joint>
+  <joint name="RIGHT_ARM_TO_RIGHT_HAND_CONNECTOR" type="fixed">
+    <origin xyz="0 0 0.02" rpy="1.5707963267948963 -0 0" />
+    <parent link="right_ee" />
+    <child link="right_r_base_link" />
+  </joint>
+  <joint name="CHASSIS_TO_TORSO_CONNECTOR" type="fixed">
+    <origin xyz="0 0 0" rpy="0 -0 0" />
+    <parent link="chassis_base_link" />
+    <child link="torso_base_link" />
+  </joint>
+  <joint name="TORSO_TO_LEFT_ARM_CONNECTOR" type="fixed">
+    <origin xyz="0 0 0" rpy="0 -0 0" />
+    <parent link="waist" />
+    <child link="left_base_link" />
+  </joint>
+  <joint name="TORSO_TO_RIGHT_ARM_CONNECTOR" type="fixed">
+    <origin xyz="0 0 0" rpy="0 -0 0" />
+    <parent link="waist" />
+    <child link="right_base_link" />
+  </joint>
+  <joint name="TORSO_TO_HEAD_CONNECTOR" type="fixed">
+    <origin xyz="0 0 0" rpy="0 -0 0" />
+    <parent link="waist" />
+    <child link="head_base_link" />
+  </joint>
+  <gazebo>
+    <plugin name="w1_diff_drive" filename="libgazebo_ros_diff_drive.so">
+      <ros>
+        <remapping>cmd_vel:=/control/cmd_vel</remapping>
+        <remapping>odom:=/feedback/odom</remapping>
+      </ros>
+      <update_rate>100</update_rate>
+      <left_joint>WHEEL_LEFT</left_joint>
+      <right_joint>WHEEL_RIGHT</right_joint>
+      <wheel_separation>0.5078</wheel_separation>
+      <wheel_diameter>0.126</wheel_diameter>
+      <max_wheel_torque>30</max_wheel_torque>
+      <max_wheel_acceleration>1.0</max_wheel_acceleration>
+      <publish_odom>true</publish_odom>
+      <publish_odom_tf>true</publish_odom_tf>
+      <publish_wheel_tf>false</publish_wheel_tf>
+      <odometry_frame>odom</odometry_frame>
+      <robot_base_frame>base_footprint</robot_base_frame>
+    </plugin>
+    <plugin name="w1_joint_state" filename="libgazebo_ros_joint_state_publisher.so">
+      <ros>
+        <remapping>~/out:=joint_states</remapping>
+      </ros>
+      <update_rate>30</update_rate>
+      <joint_name>WHEEL_LEFT</joint_name>
+      <joint_name>WHEEL_RIGHT</joint_name>
+    </plugin>
+  </gazebo>
+  <gazebo reference="wheel_left">
+    <mu1>1.0</mu1>
+    <mu2>1.0</mu2>
+  </gazebo>
+  <gazebo reference="wheel_right">
+    <mu1>1.0</mu1>
+    <mu2>1.0</mu2>
+  </gazebo>
+  <gazebo reference="base_link">
+    <mu1>0.0</mu1>
+    <mu2>0.0</mu2>
+  </gazebo>
+  <gazebo reference="chassis_base_link">
+    <mu1>0.0</mu1>
+    <mu2>0.0</mu2>
+  </gazebo>
+  <gazebo reference="laser_front_link">
+    <sensor name="laser_front" type="ray">
+      <pose>0 0 0 0 0 0</pose>
+      <always_on>true</always_on>
+      <visualize>false</visualize>
+      <update_rate>15</update_rate>
+      <ray>
+        <scan>
+          <horizontal>
+            <samples>720</samples>
+            <resolution>1.0</resolution>
+            <min_angle>-2.356</min_angle>
+            <max_angle>2.356</max_angle>
+          </horizontal>
+        </scan>
+        <range>
+          <min>0.12</min>
+          <max>25.0</max>
+          <resolution>0.015</resolution>
+        </range>
+        <noise>
+          <type>gaussian</type>
+          <mean>0.0</mean>
+          <stddev>0.01</stddev>
+        </noise>
+      </ray>
+      <plugin name="w1_laser_front" filename="libgazebo_ros_ray_sensor.so">
+        <ros>
+          <remapping>~/out:=/laser_scan/front</remapping>
+        </ros>
+        <output_type>sensor_msgs/LaserScan</output_type>
+        <frame_name>laser_front_link</frame_name>
+      </plugin>
+    </sensor>
+  </gazebo>
+  <gazebo reference="laser_rear_link">
+    <sensor name="laser_rear" type="ray">
+      <pose>0 0 0 0 0 0</pose>
+      <always_on>true</always_on>
+      <visualize>false</visualize>
+      <update_rate>15</update_rate>
+      <ray>
+        <scan>
+          <horizontal>
+            <samples>720</samples>
+            <resolution>1.0</resolution>
+            <min_angle>-2.356</min_angle>
+            <max_angle>2.356</max_angle>
+          </horizontal>
+        </scan>
+        <range>
+          <min>0.12</min>
+          <max>25.0</max>
+          <resolution>0.015</resolution>
+        </range>
+        <noise>
+          <type>gaussian</type>
+          <mean>0.0</mean>
+          <stddev>0.01</stddev>
+        </noise>
+      </ray>
+      <plugin name="w1_laser_rear" filename="libgazebo_ros_ray_sensor.so">
+        <ros>
+          <remapping>~/out:=/laser_scan/rear</remapping>
+        </ros>
+        <output_type>sensor_msgs/LaserScan</output_type>
+        <frame_name>laser_rear_link</frame_name>
+      </plugin>
+    </sensor>
+  </gazebo>
+  <gazebo reference="chassis_depth_front_link">
+    <sensor name="realsense_front" type="depth">
+      <pose>0 0 0 -2.356195 -1.569518 -2.356195</pose>
+      <always_on>true</always_on>
+      <visualize>false</visualize>
+      <update_rate>15</update_rate>
+      <camera name="realsense">
+        <horizontal_fov>1.500983</horizontal_fov>
+        <image>
+          <width>640</width>
+          <height>480</height>
+          <format>R8G8B8</format>
+        </image>
+        <depth_camera />
+        <clip>
+          <near>0.1</near>
+          <far>5.0</far>
+        </clip>
+        <noise>
+          <type>gaussian</type>
+          <mean>0.0</mean>
+          <stddev>0.005</stddev>
+        </noise>
+      </camera>
+      <plugin name="w1_realsense_front" filename="libgazebo_ros_camera.so">
+        <ros>
+          <namespace>/orbbec/front</namespace>
+          <remapping>realsense/image_raw:=rgb</remapping>
+          <remapping>realsense/depth/image_raw:=depth</remapping>
+          <remapping>realsense/camera_info:=camera_info</remapping>
+          <remapping>realsense/depth/camera_info:=depth/camera_info</remapping>
+          <remapping>realsense/points:=points</remapping>
+        </ros>
+        <camera_name>realsense</camera_name>
+        <frame_name>chassis_depth_front_link</frame_name>
+        <min_depth>0.1</min_depth>
+        <max_depth>5.0</max_depth>
+      </plugin>
+    </sensor>
+  </gazebo>
+  <gazebo reference="chassis_depth_rear_link">
+    <sensor name="realsense_rear" type="depth">
+      <pose>0 0 0 2.356195 -1.569518 -0.785398</pose>
+      <always_on>true</always_on>
+      <visualize>false</visualize>
+      <update_rate>15</update_rate>
+      <camera name="realsense">
+        <horizontal_fov>1.500983</horizontal_fov>
+        <image>
+          <width>640</width>
+          <height>480</height>
+          <format>R8G8B8</format>
+        </image>
+        <depth_camera />
+        <clip>
+          <near>0.1</near>
+          <far>5.0</far>
+        </clip>
+        <noise>
+          <type>gaussian</type>
+          <mean>0.0</mean>
+          <stddev>0.005</stddev>
+        </noise>
+      </camera>
+      <plugin name="w1_realsense_rear" filename="libgazebo_ros_camera.so">
+        <ros>
+          <namespace>/orbbec/rear</namespace>
+          <remapping>realsense/image_raw:=rgb</remapping>
+          <remapping>realsense/depth/image_raw:=depth</remapping>
+          <remapping>realsense/camera_info:=camera_info</remapping>
+          <remapping>realsense/depth/camera_info:=depth/camera_info</remapping>
+          <remapping>realsense/points:=points</remapping>
+        </ros>
+        <camera_name>realsense</camera_name>
+        <frame_name>chassis_depth_rear_link</frame_name>
+        <min_depth>0.1</min_depth>
+        <max_depth>5.0</max_depth>
+      </plugin>
+    </sensor>
+  </gazebo>
+  <gazebo reference="imu_chassis_link">
+    <sensor name="w1_imu" type="imu">
+      <always_on>true</always_on>
+      <update_rate>100</update_rate>
+      <plugin name="w1_imu_plugin" filename="libgazebo_ros_imu_sensor.so">
+        <ros>
+          <remapping>~/out:=/imu/chassis</remapping>
+        </ros>
+        <frame_name>imu_chassis_link</frame_name>
+      </plugin>
+    </sensor>
+  </gazebo>
+</robot>

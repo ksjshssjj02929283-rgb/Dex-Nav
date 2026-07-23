@@ -1,0 +1,250 @@
+<?xml version="1.0"?>
+<!--
+  DexForce chassis sensor suite for the swerve simulation.
+
+  Two macros are provided:
+    * dexforce_sensor_frames  - the sensor links + fixed joints (TF only).
+        Instantiate this ALWAYS so robot_state_publisher exposes the frames
+        for navigation/perception regardless of whether we are in sim.
+    * dexforce_sensor_gazebo  - the Gazebo Classic sensor plugins that make the
+        sensors actually produce data. Instantiate this ONLY in simulation.
+
+  All frame poses are copied verbatim from the DexForce initial extrinsics
+  (dexforce_description/urdf/DexforceW1V020.urdf), expressed relative to
+  base_link. In this swerve model base_link is the root and chassis_link is
+  identity to it (body_joint), and the DexForce chassis mesh is mounted on
+  chassis_link at identity, so these offsets line up with the chassis mesh.
+-->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- Tiny inertial so fixed-lumped sensor links are well-formed in Gazebo. -->
+  <xacro:macro name="sensor_inertial">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <mass value="0.001" />
+      <inertia ixx="1e-6" ixy="0" ixz="0" iyy="1e-6" iyz="0" izz="1e-6" />
+    </inertial>
+  </xacro:macro>
+
+  <!-- =====================================================================
+       Sensor frames (links + joints) - always instantiated.
+       ===================================================================== -->
+  <xacro:macro name="dexforce_sensor_frames" params="parent:=base_link">
+
+    <!-- 2D lidars (front / rear), level, yaw-only mounting. -->
+    <link name="laser_front_link"><xacro:sensor_inertial /></link>
+    <joint name="laser_front_joint" type="fixed">
+      <origin xyz="0.174973 0.145982 0.233649" rpy="0 0 0.7854" />
+      <parent link="${parent}" />
+      <child link="laser_front_link" />
+    </joint>
+
+    <link name="laser_rear_link"><xacro:sensor_inertial /></link>
+    <joint name="laser_rear_joint" type="fixed">
+      <origin xyz="-0.174973 -0.145982 0.233649" rpy="0 0 -2.3562" />
+      <parent link="${parent}" />
+      <child link="laser_rear_link" />
+    </joint>
+
+    <!-- Front RGB + depth (optical frames: +Z forward). -->
+    <link name="chassis_camera_front_link"><xacro:sensor_inertial /></link>
+    <joint name="chassis_camera_front_joint" type="fixed">
+      <origin xyz="0.302139 0.00758 0.140197" rpy="-1.5717 0 -1.5717" />
+      <parent link="${parent}" />
+      <child link="chassis_camera_front_link" />
+    </joint>
+
+    <link name="chassis_depth_front_link"><xacro:sensor_inertial /></link>
+    <joint name="chassis_depth_front_joint" type="fixed">
+      <origin xyz="-0.00758 0.0 0.0" rpy="0 0 0" />
+      <parent link="chassis_camera_front_link" />
+      <child link="chassis_depth_front_link" />
+    </joint>
+
+    <!-- Rear RGB + depth. -->
+    <link name="chassis_camera_rear_link"><xacro:sensor_inertial /></link>
+    <joint name="chassis_camera_rear_joint" type="fixed">
+      <origin xyz="-0.302139 -0.00758 0.140197" rpy="-1.5717 0 1.5717" />
+      <parent link="${parent}" />
+      <child link="chassis_camera_rear_link" />
+    </joint>
+
+    <link name="chassis_depth_rear_link"><xacro:sensor_inertial /></link>
+    <joint name="chassis_depth_rear_joint" type="fixed">
+      <origin xyz="-0.00758 0.0 0.0" rpy="0 0 0" />
+      <parent link="chassis_camera_rear_link" />
+      <child link="chassis_depth_rear_link" />
+    </joint>
+
+    <!-- Chassis IMU. -->
+    <link name="imu_chassis_link"><xacro:sensor_inertial /></link>
+    <joint name="imu_chassis_joint" type="fixed">
+      <origin xyz="0.273 0 0.0" rpy="0 0 0" />
+      <parent link="${parent}" />
+      <child link="imu_chassis_link" />
+    </joint>
+
+  </xacro:macro>
+
+  <!-- =====================================================================
+       Gazebo sensor plugins - simulation only.
+       ===================================================================== -->
+
+  <!-- 360 deg 2D lidar.
+       Uses the CPU "ray" sensor. The upper-body collisions are now simple box
+       primitives (no trimesh), so ODE's dSpaceCollide2 no longer segfaults on
+       beam/trimesh intersection - the original reason we had switched to
+       gpu_ray. CPU ray is preferable here because it does NOT use the GPU
+       rendering pipeline: that keeps the (single) Gazebo render thread free for
+       the cameras, which is what was starving the gazebo_ros bridge and the
+       controller_manager (slow controller loads, sensors not reaching ROS). It
+       also works headless (gpu_ray returns -inf without a GPU). -->
+  <xacro:macro name="gz_lidar" params="link sensor_name topic">
+    <gazebo reference="${link}">
+      <sensor name="${sensor_name}" type="ray">
+        <pose>0 0 0 0 0 0</pose>
+        <always_on>true</always_on>
+        <visualize>false</visualize>
+        <update_rate>10</update_rate>
+        <ray>
+          <scan>
+            <horizontal>
+              <samples>360</samples>
+              <resolution>1</resolution>
+              <min_angle>-3.14159265</min_angle>
+              <max_angle>3.14159265</max_angle>
+            </horizontal>
+          </scan>
+          <range>
+            <min>0.12</min>
+            <max>25.0</max>
+            <resolution>0.01</resolution>
+          </range>
+          <noise>
+            <type>gaussian</type>
+            <mean>0.0</mean>
+            <stddev>0.01</stddev>
+          </noise>
+        </ray>
+        <plugin name="${sensor_name}_plugin" filename="libgazebo_ros_ray_sensor.so">
+          <ros>
+            <namespace>/</namespace>
+            <remapping>~/out:=${topic}</remapping>
+          </ros>
+          <output_type>sensor_msgs/LaserScan</output_type>
+          <frame_name>${link}</frame_name>
+        </plugin>
+      </sensor>
+    </gazebo>
+  </xacro:macro>
+
+  <!-- RGB camera. The DexForce camera links are optical frames (+Z forward),
+       but a Gazebo camera looks down its local +X. The 'pose' argument rotates
+       the sensor so it actually views along the robot's travel direction (the
+       values are precomputed: front looks +X, rear looks -X, both level/up=+Z).
+       Without this the cameras stared at the open sky of the no-roof warehouse,
+       producing the all-white image. -->
+  <xacro:macro name="gz_camera" params="link sensor_name camera_name pose">
+    <gazebo reference="${link}">
+      <sensor name="${sensor_name}" type="camera">
+        <pose>${pose}</pose>
+        <always_on>true</always_on>
+        <visualize>false</visualize>
+        <update_rate>10</update_rate>
+        <camera name="${camera_name}">
+          <horizontal_fov>1.211</horizontal_fov>
+          <image>
+            <width>320</width>
+            <height>240</height>
+            <format>R8G8B8</format>
+          </image>
+          <clip>
+            <near>0.05</near>
+            <far>30.0</far>
+          </clip>
+        </camera>
+        <plugin name="${sensor_name}_plugin" filename="libgazebo_ros_camera.so">
+          <ros>
+            <namespace>/</namespace>
+          </ros>
+          <camera_name>${camera_name}</camera_name>
+          <frame_name>${link}</frame_name>
+        </plugin>
+      </sensor>
+    </gazebo>
+  </xacro:macro>
+
+  <!-- Depth (RGBD) camera. Same optical->gazebo re-pose as the RGB camera. -->
+  <xacro:macro name="gz_depth_camera" params="link sensor_name camera_name pose namespace">
+    <gazebo reference="${link}">
+      <sensor name="${sensor_name}" type="depth">
+        <pose>${pose}</pose>
+        <always_on>true</always_on>
+        <visualize>false</visualize>
+        <update_rate>15</update_rate>
+        <camera name="${camera_name}">
+          <horizontal_fov>1.500983</horizontal_fov>
+          <image>
+            <width>640</width>
+            <height>480</height>
+            <format>R8G8B8</format>
+          </image>
+          <depth_camera />
+          <clip>
+            <near>0.1</near>
+            <far>5.0</far>
+          </clip>
+          <noise>
+            <type>gaussian</type>
+            <mean>0.0</mean>
+            <stddev>0.005</stddev>
+          </noise>
+        </camera>
+        <plugin name="${sensor_name}_plugin" filename="libgazebo_ros_camera.so">
+          <ros>
+            <namespace>${namespace}</namespace>
+            <remapping>realsense/image_raw:=rgb</remapping>
+            <remapping>realsense/depth/image_raw:=depth</remapping>
+            <remapping>realsense/camera_info:=camera_info</remapping>
+            <remapping>realsense/depth/camera_info:=depth/camera_info</remapping>
+            <remapping>realsense/points:=points</remapping>
+          </ros>
+          <camera_name>${camera_name}</camera_name>
+          <frame_name>${link}</frame_name>
+          <min_depth>0.1</min_depth>
+          <max_depth>5.0</max_depth>
+        </plugin>
+      </sensor>
+    </gazebo>
+  </xacro:macro>
+
+  <!-- IMU -->
+  <xacro:macro name="gz_imu" params="link sensor_name topic">
+    <gazebo reference="${link}">
+      <sensor name="${sensor_name}" type="imu">
+        <always_on>true</always_on>
+        <update_rate>100</update_rate>
+        <plugin name="${sensor_name}_plugin" filename="libgazebo_ros_imu_sensor.so">
+          <ros>
+            <namespace>/</namespace>
+            <remapping>~/out:=${topic}</remapping>
+          </ros>
+          <frame_name>${link}</frame_name>
+        </plugin>
+      </sensor>
+    </gazebo>
+  </xacro:macro>
+
+  <xacro:macro name="dexforce_sensor_gazebo" params="">
+    <xacro:gz_lidar link="laser_front_link" sensor_name="laser_front" topic="/laser_scan/front" />
+    <xacro:gz_lidar link="laser_rear_link"  sensor_name="laser_rear"  topic="/laser_scan/rear" />
+    <!-- Precomputed sensor poses so the Gazebo cameras face front (+X) / rear (-X),
+         level, with image up = +Z (see gz_camera comment). -->
+    <xacro:property name="cam_front_pose" value="0 0 0 -2.356195 -1.569518 -2.356195" />
+    <xacro:property name="cam_rear_pose"  value="0 0 0  2.356195 -1.569518 -0.785398" />
+    <xacro:gz_depth_camera link="chassis_depth_front_link" sensor_name="realsense_front" camera_name="realsense" pose="${cam_front_pose}" namespace="/orbbec/front" />
+    <xacro:gz_depth_camera link="chassis_depth_rear_link"  sensor_name="realsense_rear"  camera_name="realsense" pose="${cam_rear_pose}"  namespace="/orbbec/rear" />
+    <xacro:gz_imu link="imu_chassis_link" sensor_name="imu_chassis" topic="/imu/chassis" />
+  </xacro:macro>
+
+</robot>

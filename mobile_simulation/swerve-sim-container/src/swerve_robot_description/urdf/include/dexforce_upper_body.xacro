@@ -1,0 +1,1221 @@
+<?xml version="1.0"?>
+<!-- AUTO-GENERATED from dexforce_description/urdf/DexforceW1V020.urdf
+     DexForce upper body (torso + head + arms + hands) for appearance +
+     collision only. All actuated joints are converted to FIXED so the
+     body is a stable static payload (no controllers, no flopping). -->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <xacro:macro name="dexforce_upper_body" params="parent:=chassis_link">
+    <link name="torso_base_link" />
+    <link name="ankle">
+      <inertial>
+        <origin xyz="8.0372418e-02 -8.2420334e-06  2.0806937e-02" rpy="0 0 0" />
+        <mass value="6.271734" />
+        <inertia ixx="2.9645785e-02" ixy="-3.6858529e-07" ixz="8.4378843e-03" iyy="1.0944388e-01" iyz="-3.1525774e-03" izz="7.0360182e-02" />
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="file://$(find dexforce_description)/meshes/Visual/torso/torso1.dae" />
+        </geometry>
+        <material name="">
+          <color rgba="0.27843137254902 0.749019607843137 0.588235294117647 1" />
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="-0.00000 0.17000 -0.00009" rpy="0 0 0" />
+        <geometry>
+          <box size="0.13831 0.47813 0.24184" />
+        </geometry>
+      </collision>
+    </link>
+    <link name="knee">
+      <inertial>
+        <origin xyz="7.4144729e-02  3.5641805e-05  5.7481550e-03" rpy="0 0 0" />
+        <mass value="5.7732119" />
+        <inertia ixx="1.3799430e-02" ixy="-3.6600899e-03" ixz="2.7064201e-03" iyy="8.0129350e-02" iyz="-1.8650759e-03" izz="6.4174708e-02" />
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="file://$(find dexforce_description)/meshes/Visual/torso/torso2.dae" />
+        </geometry>
+        <material name="">
+          <color rgba="0.27843137254902 0.749019607843137 0.588235294117647 1" />
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="0.00000 0.17127 -0.00006" rpy="0 0 0" />
+        <geometry>
+          <box size="0.14339 0.48064 0.24179" />
+        </geometry>
+      </collision>
+    </link>
+    <link name="buttock">
+      <inertial>
+        <origin xyz="5.2490838e-02  1.2635673e-05  9.2446495e-03" rpy="0 0 0" />
+        <mass value="7.4072832" />
+        <inertia ixx="2.0057819e-02" ixy="3.3385889e-06" ixz="3.6102235e-03" iyy="4.1292505e-02" iyz="3.9554651e-06" izz="3.5409712e-02" />
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="file://$(find dexforce_description)/meshes/Visual/torso/torso3.dae" />
+        </geometry>
+        <material name="">
+          <color rgba="0.27843137254902 0.749019607843137 0.588235294117647 1" />
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="-0.00000 0.04254 0.00000" rpy="0 0 0" />
+        <geometry>
+          <box size="0.13385 0.21886 0.15094" />
+        </geometry>
+      </collision>
+    </link>
+    <link name="waist">
+      <inertial>
+        <origin xyz="6.4016818e-03  4.8188781e-04  2.0011730e-01" rpy="0 0 0" />
+        <mass value="6.40803" />
+        <inertia ixx="9.4768963e-02" ixy="3.6070706e-04" ixz="1.5765521e-03" iyy="7.8791635e-02" iyz="-7.5017650e-03" izz="3.8690356e-02" />
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="file://$(find dexforce_description)/meshes/Visual/torso/torso4.dae" />
+        </geometry>
+        <material name="">
+          <color rgba="0.27843137254902 0.749019607843137 0.588235294117647 1" />
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="0.00259 0.00000 0.15751" rpy="0 0 0" />
+        <geometry>
+          <box size="0.24484 0.26895 0.35952" />
+        </geometry>
+      </collision>
+    </link>
+    <link name="head_base_link" />
+    <link name="neck_base" />
+    <link name="neck1">
+      <inertial>
+        <origin xyz="8.0771079e-05 -4.9617728e-03  5.2251935e-02 " rpy="0 0 0" />
+        <mass value="0.9607041" />
+        <inertia ixx="1.76988687535663E-05" ixy="-3.29843265585722E-14" ixz="1.12004314355796E-12" iyy="1.698812924773E-05" iyz="4.19769754584448E-06" izz="1.42153718545556E-05" />
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="file://$(find dexforce_description)/meshes/Visual/head/head1.dae" />
+        </geometry>
+        <material name="">
+          <color rgba="0.662745098039216 0.533333333333333 0.749019607843137 1" />
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="0.00000 0.00000 0.03250" rpy="0 0 0" />
+        <geometry>
+          <box size="0.08593 0.08600 0.06500" />
+        </geometry>
+      </collision>
+    </link>
+    <link name="neck2">
+      <inertial>
+        <origin xyz="3.5749562e-02  3.9029998e-02  5.9305750e-03" rpy="0 0 0" />
+        <mass value="0.76222648" />
+        <inertia ixx="0.00119162799314456" ixy="0.000139409177964968" ixz="-1.74009535043774E-06" iyy="0.00102931058067242" iyz="-1.913284242482E-06" izz="0.00092225648400233" />
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="file://$(find dexforce_description)/meshes/Visual/head/head2.dae" />
+        </geometry>
+        <material name="">
+          <color rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="0.01226 -0.05432 -0.00009" rpy="0 0 0" />
+        <geometry>
+          <box size="0.16075 0.16366 0.14852" />
+        </geometry>
+      </collision>
+    </link>
+    <link name="left_base_link" />
+    <link name="left_base_to_left_arm_connector" />
+    <link name="left_arm_base" />
+    <link name="left_j1">
+      <inertial>
+        <origin xyz="-2.2097730e-02  6.8020948e-03  7.8858121e-02" rpy="0 0 0" />
+        <mass value="1.3497532" />
+        <inertia ixx="1.4265178e-03" ixy="6.7924025e-05" ixz="2.0743078e-04" iyy="1.7452314e-03" iyz="-2.5645235e-04" izz="1.0432941e-03" />
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="file://$(find dexforce_description)/meshes/Visual/left_arm/arml1.dae" />
+        </geometry>
+        <material name="">
+          <color rgba="0.27843137254902 0.749019607843137 0.588235294117647 1" />
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="-0.00002 -0.00765 0.07273" rpy="0 0 0" />
+        <geometry>
+          <box size="0.08593 0.07630 0.14547" />
+        </geometry>
+      </collision>
+    </link>
+    <link name="left_j2">
+      <inertial>
+        <origin xyz="7.4493179e-02  5.4776062e-03  1.1269136e-02" rpy="0 0 0" />
+        <mass value="1.4928861" />
+        <inertia ixx="1.2788191e-03" ixy="1.0008039e-04" ixz="2.8099405e-04" iyy="1.7498196e-03" iyz="1.3220976e-04" izz="2.0259514e-03" />
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="file://$(find dexforce_description)/meshes/Visual/left_arm/arml2.dae" />
+        </geometry>
+        <material name="">
+          <color rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="-0.00029 0.04018 0.00023" rpy="0 0 0" />
+        <geometry>
+          <box size="0.11263 0.16870 0.11349" />
+        </geometry>
+      </collision>
+    </link>
+    <link name="left_j3">
+      <inertial>
+        <origin xyz="-3.0779128e-02  2.3551922e-02  9.5698192e-02 " rpy="0 0 0" />
+        <mass value="1.4997301" />
+        <inertia ixx="2.9132663e-03" ixy="1.1962671e-04" ixz="9.9797977e-05" iyy="2.7529670e-03" iyz="-6.5635889e-04" izz="1.7005461e-03" />
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="file://$(find dexforce_description)/meshes/Visual/left_arm/arml3.dae" />
+        </geometry>
+        <material name="">
+          <color rgba="0.392156862745098 0.749019607843137 0.619607843137255 1" />
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="0.00000 -0.00002 -0.04982" rpy="0 0 0" />
+        <geometry>
+          <box size="0.10876 0.10873 0.18894" />
+        </geometry>
+      </collision>
+    </link>
+    <link name="left_j4">
+      <inertial>
+        <origin xyz="7.9139301e-02  9.0218591e-05  4.6401369e-03 " rpy="0 0 0" />
+        <mass value="1.1318974" />
+        <inertia ixx="8.5909310e-04" ixy="2.6724360e-06" ixz="2.3395344e-04" iyy="1.5127053e-03" iyz="6.2885682e-07" izz="1.4507260e-03" />
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="file://$(find dexforce_description)/meshes/Visual/left_arm/arml4.dae" />
+        </geometry>
+        <material name="">
+          <color rgba="0.211764705882353 0.211764705882353 0.211764705882353 1" />
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="-0.00000 0.03917 0.00007" rpy="0 0 0" />
+        <geometry>
+          <box size="0.08768 0.16666 0.08300" />
+        </geometry>
+      </collision>
+    </link>
+    <link name="left_j5">
+      <inertial>
+        <origin xyz="-6.8452097e-05 -1.6339752e-02  4.7773028e-02" rpy="0 0 0" />
+        <mass value="1.1865221" />
+        <inertia ixx="1.7309858e-03" ixy=" 3.3947403e-06" ixz="-4.1732012e-07" iyy="1.5458309e-03" iyz="3.0462375e-04" izz="9.8698385e-04" />
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="file://$(find dexforce_description)/meshes/Visual/left_arm/arml5.dae" />
+        </geometry>
+        <material name="">
+          <color rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="0.00000 0.01700 0.04800" rpy="0 0 0" />
+        <geometry>
+          <box size="0.08202 0.10599 0.18001" />
+        </geometry>
+      </collision>
+    </link>
+    <link name="left_j6">
+      <inertial>
+        <origin xyz="-6.1832337e-05 -4.8607422e-03  1.8408644e-03 " rpy="0 0 0" />
+        <mass value="0.98636414" />
+        <inertia ixx="7.0169968e-04" ixy="1.9289965e-06" ixz="-1.9918164e-07" iyy="6.7308614e-04" iyz="1.0009413e-06" izz="6.2233336e-04" />
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="file://$(find dexforce_description)/meshes/Visual/left_arm/arml6.dae" />
+        </geometry>
+        <material name="">
+          <color rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="0.00364 0.00000 -0.01096" rpy="0 0 0" />
+        <geometry>
+          <box size="0.08607 0.07776 0.09967" />
+        </geometry>
+      </collision>
+    </link>
+    <link name="left_j7">
+      <inertial>
+        <origin xyz="3.5141210e-02 -1.1965400e-06  3.2097365e-02" rpy="0 0 0" />
+        <mass value="0.059937603" />
+        <inertia ixx="2.9853294e-05" ixy="-3.1473258e-09" ixz="2.0599320e-05" iyy="6.9425737e-05" iyz="1.6798548e-09" izz=" 5.8499934e-05" />
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="file://$(find dexforce_description)/meshes/Visual/left_arm/arml7.dae" />
+        </geometry>
+        <material name="">
+          <color rgba="0.749019607843137 0.4 0.423529411764706 1" />
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="-0.01952 0.00000 0.01525" rpy="0 0 0" />
+        <geometry>
+          <box size="0.09467 0.05567 0.06820" />
+        </geometry>
+      </collision>
+    </link>
+    <link name="left_ee">
+      <inertial>
+        <origin xyz="0 0 0.048" rpy="0 0 0" />
+        <mass value="0.05" />
+        <inertia ixx="1E-05" ixy="1E-11" ixz="1E-06" iyy="1E-05" iyz="1E-08" izz="1E-05" />
+      </inertial>
+    </link>
+    <link name="right_base_link" />
+    <link name="right_base_to_right_arm_connector" />
+    <link name="right_arm_base" />
+    <link name="right_j1">
+      <inertial>
+        <origin xyz="-2.2097725e-02 -6.7914130e-03  9.4985333e-02" rpy="0 0 0" />
+        <mass value="1.3497532" />
+        <inertia ixx="1.8001733e-03" ixy="-6.7696013e-05" ixz="5.5060729e-04" iyy="2.1184194e-03" iyz="-9.6365950e-05" izz="1.0437612e-03" />
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="file://$(find dexforce_description)/meshes/Visual/right_arm/armr1.dae" />
+        </geometry>
+        <material name="">
+          <color rgba="0.27843137254902 0.749019607843137 0.588235294117647 1" />
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="-0.00002 -0.00765 0.07273" rpy="0 0 0" />
+        <geometry>
+          <box size="0.08593 0.07630 0.14547" />
+        </geometry>
+      </collision>
+    </link>
+    <link name="right_j2">
+      <inertial>
+        <origin xyz="7.4503421e-02  8.6398496e-03  7.3875448e-03" rpy="0 0 0" />
+        <mass value="1.4928861" />
+        <inertia ixx="1.3168555e-03" ixy="6.4048285e-05" ixz="2.3637923e-05" iyy="1.9564386e-03" iyz="2.2964738e-04" izz="1.8585844e-03" />
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="file://$(find dexforce_description)/meshes/Visual/right_arm/armr2.dae" />
+        </geometry>
+        <material name="">
+          <color rgba="0.749019607843137 0.647058823529412 0.505882352941176 1" />
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="-0.00029 0.04018 0.00023" rpy="0 0 0" />
+        <geometry>
+          <box size="0.11263 0.16870 0.11349" />
+        </geometry>
+      </collision>
+    </link>
+    <link name="right_j3">
+      <inertial>
+        <origin xyz="9.4849212e-03 -2.3561648e-02  1.0295135e-01" rpy="0 0 0" />
+        <mass value="1.4997301" />
+        <inertia ixx="3.6145187e-03" ixy="2.3474607e-04" ixz="-4.2307811e-04" iyy="3.1581989e-03" iyz="8.5973311e-04" izz="1.4009665e-03" />
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="file://$(find dexforce_description)/meshes/Visual/right_arm/armr3.dae" />
+        </geometry>
+        <material name="">
+          <color rgba="0.450980392156863 0.749019607843137 0.549019607843137 1" />
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="0.00007 0.00000 -0.04983" rpy="0 0 0" />
+        <geometry>
+          <box size="0.10826 0.10855 0.18895" />
+        </geometry>
+      </collision>
+    </link>
+    <link name="right_j4">
+      <inertial>
+        <origin xyz="-4.8716687e-05 -7.9139305e-02  4.5417266e-03" rpy="0 0 0" />
+        <mass value="1.1318974" />
+        <inertia ixx="1.5137272e-03" ixy="1.5021396e-06" ixz="-3.2891726e-07" iyy="8.6021305e-04" iyz="-2.3129546e-04" izz="1.4508237e-03" />
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="file://$(find dexforce_description)/meshes/Visual/right_arm/armr4.dae" />
+        </geometry>
+        <material name="">
+          <color rgba="0.211764705882353 0.211764705882353 0.211764705882353 1" />
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="0.00009 0.03915 -0.00006" rpy="0 0 0" />
+        <geometry>
+          <box size="0.08863 0.16671 0.08300" />
+        </geometry>
+      </collision>
+    </link>
+    <link name="right_j5">
+      <inertial>
+        <origin xyz="-7.2715831e-05  1.6196953e-02  4.7799231e-02" rpy="0 0 0" />
+        <mass value="1.1842602" />
+        <inertia ixx="1.7197116e-03" ixy="-3.6654609e-06" ixz="-9.7904563e-07" iyy="1.5409585e-03" iyz="-2.9712912e-04" izz="9.8002806e-04" />
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="file://$(find dexforce_description)/meshes/Visual/right_arm/armr5.dae" />
+        </geometry>
+        <material name="">
+          <color rgba="0.792156862745098 0.819607843137255 0.933333333333333 1" />
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="-0.00000 -0.01700 0.04798" rpy="0 0 0" />
+        <geometry>
+          <box size="0.08202 0.10599 0.17997" />
+        </geometry>
+      </collision>
+    </link>
+    <link name="right_j6">
+      <inertial>
+        <origin xyz="2.5073387e-05  4.8334115e-03  1.8408703e-03" rpy="0 0 0" />
+        <mass value="0.98636414" />
+        <inertia ixx="7.0169927e-04" ixy="2.5091032e-06" ixz="1.0722805e-06" iyy="6.7310741e-04" iyz="-5.5514971e-07" izz="6.2185546e-04" />
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="file://$(find dexforce_description)/meshes/Visual/right_arm/armr6.dae" />
+        </geometry>
+        <material name="">
+          <color rgba="0.749019607843137 0.4 0.423529411764706 1" />
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="0.00366 0.00000 0.01096" rpy="0 0 0" />
+        <geometry>
+          <box size="0.08611 0.07776 0.09967" />
+        </geometry>
+      </collision>
+    </link>
+    <link name="right_j7">
+      <inertial>
+        <origin xyz="3.5641210e-02  1.1775141e-06  3.2097365e-02" rpy="0 0 0" />
+        <mass value="0.059937603" />
+        <inertia ixx="2.9853294e-05" ixy="3.2569734e-09" ixz="2.0599320e-05" iyy="6.9425737e-05" iyz="-1.6864205e-09" izz="5.8499934e-05" />
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="file://$(find dexforce_description)/meshes/Visual/right_arm/armr7.dae" />
+        </geometry>
+        <material name="">
+          <color rgba="0.749019607843137 0.4 0.423529411764706 1" />
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="-0.01952 0.00000 0.01525" rpy="0 0 0" />
+        <geometry>
+          <box size="0.09467 0.05567 0.06820" />
+        </geometry>
+      </collision>
+    </link>
+    <link name="right_ee">
+      <inertial>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <mass value="0.05" />
+        <inertia ixx="1E-05" ixy="1E-11" ixz="1E-06" iyy="1E-05" iyz="1E-08" izz="1E-05" />
+      </inertial>
+    </link>
+    <link name="left_l_base_link">
+      <inertial>
+        <origin xyz="0.0017239 0.0051432 -0.031065" rpy="0 0 0" />
+        <mass value="0.427" />
+        <inertia ixx="0.0010405" ixy="-3.7268E-05" ixz="-3.9415E-05" iyy="0.0013244" iyz="-4.7638E-05" izz="0.00053219" />
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="file://$(find dexforce_description)/meshes/Visual/left_hand/L_base_link.dae" />
+        </geometry>
+        <material name="">
+          <color rgba="0.75294 0.75294 0.75294 1" />
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="0.00104 0.04067 0.00407" rpy="0 0 0" />
+        <geometry>
+          <box size="0.09028 0.12851 0.06248" />
+        </geometry>
+      </collision>
+    </link>
+    <link name="left_l_thumb_prox">
+      <inertial>
+        <origin xyz="0.0017239 0.0051432 -0.031065" rpy="0 0 0" />
+        <mass value="0.005" />
+        <inertia ixx="0.0010405" ixy="-3.7268E-05" ixz="-3.9415E-05" iyy="0.0013244" iyz="-4.7638E-05" izz="0.00053219" />
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="file://$(find dexforce_description)/meshes/Visual/left_hand/L_thumb_prox.dae" />
+        </geometry>
+        <material name="">
+          <color rgba="0.75294 0.75294 0.75294 1" />
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="0.00115 0.00000 0.00750" rpy="0 0 0" />
+        <geometry>
+          <box size="0.01728 0.01110 0.02767" />
+        </geometry>
+      </collision>
+    </link>
+    <link name="left_l_thumb_dist">
+      <inertial>
+        <origin xyz="0.0017239 0.0051432 -0.031065" rpy="0 0 0" />
+        <mass value="0.04" />
+        <inertia ixx="0.0010405" ixy="-3.7268E-05" ixz="-3.9415E-05" iyy="0.0013244" iyz="-4.7638E-05" izz="0.00053219" />
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="file://$(find dexforce_description)/meshes/Visual/left_hand/L_thumb_dist.dae" />
+        </geometry>
+        <material name="">
+          <color rgba="0.75294 0.75294 0.75294 1" />
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="-0.00000 0.03888 0.00803" rpy="0 0 0" />
+        <geometry>
+          <box size="0.02365 0.10053 0.03343" />
+        </geometry>
+      </collision>
+    </link>
+    <link name="left_l_index_prox">
+      <inertial>
+        <origin xyz="0.0017239 0.0051432 -0.031065" rpy="0 0 0" />
+        <mass value="0.008" />
+        <inertia ixx="0.0010405" ixy="-3.7268E-05" ixz="-3.9415E-05" iyy="0.0013244" iyz="-4.7638E-05" izz="0.00053219" />
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="file://$(find dexforce_description)/meshes/Visual/left_hand/L_index_prox.dae" />
+        </geometry>
+        <material name="">
+          <color rgba="0.75294 0.75294 0.75294 1" />
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="0.00000 0.01775 -0.00114" rpy="0 0 0" />
+        <geometry>
+          <box size="0.01623 0.04623 0.01793" />
+        </geometry>
+      </collision>
+    </link>
+    <link name="left_l_index_dist">
+      <inertial>
+        <origin xyz="0.0017239 0.0051432 -0.031065" rpy="0 0 0" />
+        <mass value="0.011" />
+        <inertia ixx="0.0010405" ixy="-3.7268E-05" ixz="-3.9415E-05" iyy="0.0013244" iyz="-4.7638E-05" izz="0.00053219" />
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="file://$(find dexforce_description)/meshes/Visual/left_hand/L_index_dist.dae" />
+        </geometry>
+        <material name="">
+          <color rgba="0.75294 0.75294 0.75294 1" />
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="0.00000 0.02266 0.00429" rpy="0 0 0" />
+        <geometry>
+          <box size="0.01571 0.05737 0.02062" />
+        </geometry>
+      </collision>
+    </link>
+    <link name="left_l_middle_prox">
+      <inertial>
+        <origin xyz="0.0017239 0.0051432 -0.031065" rpy="0 0 0" />
+        <mass value="0.011" />
+        <inertia ixx="0.0010405" ixy="-3.7268E-05" ixz="-3.9415E-05" iyy="0.0013244" iyz="-4.7638E-05" izz="0.00053219" />
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="file://$(find dexforce_description)/meshes/Visual/left_hand/L_middle_prox.dae" />
+        </geometry>
+        <material name="">
+          <color rgba="0.75294 0.75294 0.75294 1" />
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="0.00000 0.02125 -0.00110" rpy="0 0 0" />
+        <geometry>
+          <box size="0.01636 0.05333 0.01866" />
+        </geometry>
+      </collision>
+    </link>
+    <link name="left_l_middle_dist">
+      <inertial>
+        <origin xyz="0.0017239 0.0051432 -0.031065" rpy="0 0 0" />
+        <mass value="0.011" />
+        <inertia ixx="0.0010405" ixy="-3.7268E-05" ixz="-3.9415E-05" iyy="0.0013244" iyz="-4.7638E-05" izz="0.00053219" />
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="file://$(find dexforce_description)/meshes/Visual/left_hand/L_middle_dist.dae" />
+        </geometry>
+        <material name="">
+          <color rgba="0.75294 0.75294 0.75294 1" />
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="0.00000 0.02266 0.00429" rpy="0 0 0" />
+        <geometry>
+          <box size="0.01571 0.05737 0.02062" />
+        </geometry>
+      </collision>
+    </link>
+    <link name="left_l_ring_prox">
+      <inertial>
+        <origin xyz="0.0017239 0.0051432 -0.031065" rpy="0 0 0" />
+        <mass value="0.011" />
+        <inertia ixx="0.0010405" ixy="-3.7268E-05" ixz="-3.9415E-05" iyy="0.0013244" iyz="-4.7638E-05" izz="0.00053219" />
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="file://$(find dexforce_description)/meshes/Visual/left_hand/L_ring_prox.dae" />
+        </geometry>
+        <material name="">
+          <color rgba="0.75294 0.75294 0.75294 1" />
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="-0.00000 0.02125 -0.00138" rpy="0 0 0" />
+        <geometry>
+          <box size="0.01636 0.05335 0.01812" />
+        </geometry>
+      </collision>
+    </link>
+    <link name="left_l_ring_dist">
+      <inertial>
+        <origin xyz="0.0017239 0.0051432 -0.031065" rpy="0 0 0" />
+        <mass value="0.008" />
+        <inertia ixx="0.0010405" ixy="-3.7268E-05" ixz="-3.9415E-05" iyy="0.0013244" iyz="-4.7638E-05" izz="0.00053219" />
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="file://$(find dexforce_description)/meshes/Visual/left_hand/L_ring_dist.dae" />
+        </geometry>
+        <material name="">
+          <color rgba="0.75294 0.75294 0.75294 1" />
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="-0.00000 0.01784 0.00335" rpy="0 0 0" />
+        <geometry>
+          <box size="0.01548 0.04755 0.01842" />
+        </geometry>
+      </collision>
+    </link>
+    <link name="left_l_little_prox">
+      <inertial>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <mass value="0.008" />
+        <inertia ixx="0" ixy="0" ixz="0" iyy="0" iyz="0" izz="0" />
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="file://$(find dexforce_description)/meshes/Visual/left_hand/L_little_prox.dae" />
+        </geometry>
+        <material name="">
+          <color rgba="1 1 1 1" />
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="0.00000 0.01775 -0.00140" rpy="0 0 0" />
+        <geometry>
+          <box size="0.01623 0.04622 0.01741" />
+        </geometry>
+      </collision>
+    </link>
+    <link name="left_l_little_dist">
+      <inertial>
+        <origin xyz="0.0017239 0.0051432 -0.031065" rpy="0 0 0" />
+        <mass value="0.008" />
+        <inertia ixx="0.0010405" ixy="-3.7268E-05" ixz="-3.9415E-05" iyy="0.0013244" iyz="-4.7638E-05" izz="0.00053219" />
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="file://$(find dexforce_description)/meshes/Visual/left_hand/L_little_dist.dae" />
+        </geometry>
+        <material name="">
+          <color rgba="0.75294 0.75294 0.75294 1" />
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="0.00000 0.01547 0.00264" rpy="0 0 0" />
+        <geometry>
+          <box size="0.01535 0.04277 0.01696" />
+        </geometry>
+      </collision>
+    </link>
+    <link name="right_r_base_link">
+      <inertial>
+        <origin xyz="-0.00099373 0.040537 -0.0022835" rpy="0 0 0" />
+        <mass value="0.427" />
+        <inertia ixx="3.4364E-05" ixy="-1.2404E-06" ixz="5.654E-07" iyy="3.9467E-05" iyz="3.8955E-06" izz="6.3984E-05" />
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="file://$(find dexforce_description)/meshes/Visual/right_hand/R_base_link.dae" />
+        </geometry>
+        <material name="">
+          <color rgba="0.75 0.75294 0.75294 1" />
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="-0.00101 0.04077 0.00143" rpy="0 0 0" />
+        <geometry>
+          <box size="0.09029 0.12662 0.06481" />
+        </geometry>
+      </collision>
+    </link>
+    <link name="right_r_thumb_prox">
+      <inertial>
+        <origin xyz="0.0062041 -7.9383E-08 0.0015306" rpy="0 0 0" />
+        <mass value="0.005" />
+        <inertia ixx="4.0639E-08" ixy="5.8675E-13" ixz="2.4299E-09" iyy="9.2485E-08" iyz="7.1049E-13" izz="8.5586E-08" />
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="file://$(find dexforce_description)/meshes/Visual/right_hand/R_thumb_prox.dae" />
+        </geometry>
+        <material name="">
+          <color rgba="1 1 1 1" />
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="0.00750 0.00000 0.00115" rpy="0 0 0" />
+        <geometry>
+          <box size="0.02767 0.01110 0.01728" />
+        </geometry>
+      </collision>
+    </link>
+    <link name="right_r_thumb_dist">
+      <inertial>
+        <origin xyz="0.0083564 0.037204 -3.5884E-07" rpy="0 0 0" />
+        <mass value="0.04" />
+        <inertia ixx="7.1498E-06" ixy="2.0157E-07" ixz="-6.0726E-11" iyy="9.1501E-07" iyz="5.4502E-10" izz="6.8747E-06" />
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="file://$(find dexforce_description)/meshes/Visual/right_hand/R_thumb_dist.dae" />
+        </geometry>
+        <material name="">
+          <color rgba="0.75294 0.75294 0.75294 1" />
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="0.00803 0.03888 -0.00000" rpy="0 0 0" />
+        <geometry>
+          <box size="0.03344 0.10053 0.02365" />
+        </geometry>
+      </collision>
+    </link>
+    <link name="right_r_index_prox">
+      <inertial>
+        <origin xyz="-5.571E-07 0.016609 0.00045746" rpy="0 0 0" />
+        <mass value="0.008" />
+        <inertia ixx="3.3526E-07" ixy="2.9401E-11" ixz="-2.4782E-12" iyy="1.0133E-07" iyz="2.0576E-08" izz="3.7092E-07" />
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="file://$(find dexforce_description)/meshes/Visual/right_hand/R_index_prox.dae" />
+        </geometry>
+        <material name="">
+          <color rgba="0.75294 0.75294 0.75294 1" />
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="0.00000 0.01775 -0.00114" rpy="0 0 0" />
+        <geometry>
+          <box size="0.01623 0.04623 0.01793" />
+        </geometry>
+      </collision>
+    </link>
+    <link name="right_r_index_dist">
+      <inertial>
+        <origin xyz="5.9401E-06 0.025449 0.003278" rpy="0 0 0" />
+        <mass value="0.011" />
+        <inertia ixx="8.4801E-07" ixy="-1.0878E-09" ixz="-1.3683E-10" iyy="1.4147E-07" iyz="-1.0078E-07" izz="8.5502E-07" />
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="file://$(find dexforce_description)/meshes/Visual/right_hand/R_index_dist.dae" />
+        </geometry>
+        <material name="">
+          <color rgba="0.75294 0.75294 0.75294 1" />
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="-0.00000 0.02266 0.00427" rpy="0 0 0" />
+        <geometry>
+          <box size="0.01571 0.05737 0.02059" />
+        </geometry>
+      </collision>
+    </link>
+    <link name="right_r_middle_prox">
+      <inertial>
+        <origin xyz="2.3779E-07 0.020205 0.00053993" rpy="0 0 0" />
+        <mass value="0.011" />
+        <inertia ixx="5.5624E-07" ixy="8E-12" ixz="-8.5151E-12" iyy="1.3298E-07" iyz="2.669E-08" izz="6.0146E-07" />
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="file://$(find dexforce_description)/meshes/Visual/right_hand/R_middle_prox.dae" />
+        </geometry>
+        <material name="">
+          <color rgba="0.75294 0.75294 0.75294 1" />
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="-0.00000 0.02125 -0.00110" rpy="0 0 0" />
+        <geometry>
+          <box size="0.01636 0.05333 0.01867" />
+        </geometry>
+      </collision>
+    </link>
+    <link name="right_r_middle_dist">
+      <inertial>
+        <origin xyz="5.9404E-06 0.025449 0.003278" rpy="0 0 0" />
+        <mass value="0.011" />
+        <inertia ixx="8.4801E-07" ixy="-1.0879E-09" ixz="-1.3705E-10" iyy="1.4147E-07" iyz="-1.0078E-07" izz="8.5501E-07" />
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="file://$(find dexforce_description)/meshes/Visual/right_hand/R_middle_dist.dae" />
+        </geometry>
+        <material name="">
+          <color rgba="0.75294 0.75294 0.75294 1" />
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="-0.00000 0.02266 0.00427" rpy="0 0 0" />
+        <geometry>
+          <box size="0.01571 0.05737 0.02059" />
+        </geometry>
+      </collision>
+    </link>
+    <link name="right_r_ring_prox">
+      <inertial>
+        <origin xyz="2.4507E-07 0.020236 0.00042373" rpy="0 0 0" />
+        <mass value="0.011" />
+        <inertia ixx="5.5623E-07" ixy="7.4604E-12" ixz="-8.5876E-12" iyy="1.3295E-07" iyz="2.7719E-08" izz="6.0149E-07" />
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="file://$(find dexforce_description)/meshes/Visual/right_hand/R_ring_prox.dae" />
+        </geometry>
+        <material name="">
+          <color rgba="0.75294 0.75294 0.75294 1" />
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="0.00000 0.02125 -0.00138" rpy="0 0 0" />
+        <geometry>
+          <box size="0.01636 0.05334 0.01812" />
+        </geometry>
+      </collision>
+    </link>
+    <link name="right_r_ring_dist">
+      <inertial>
+        <origin xyz="5.5799E-07 0.020388 0.0029077" rpy="0 0 0" />
+        <mass value="0.008" />
+        <inertia ixx="3.6793E-07" ixy="-6.504E-13" ixz="-1.1541E-11" iyy="8.4208E-08" iyz="-4.5737E-08" izz="3.8369E-07" />
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="file://$(find dexforce_description)/meshes/Visual/right_hand/R_ring_dist.dae" />
+        </geometry>
+        <material name="">
+          <color rgba="0.75294 0.75294 0.75294 1" />
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="0.00000 0.01783 0.00332" rpy="0 0 0" />
+        <geometry>
+          <box size="0.01548 0.04752 0.01835" />
+        </geometry>
+      </collision>
+    </link>
+    <link name="right_r_little_prox">
+      <inertial>
+        <origin xyz="-5.4618E-07 0.016662 0.00040738" rpy="0 0 0" />
+        <mass value="0.008" />
+        <inertia ixx="3.3526E-07" ixy="2.8461E-11" ixz="-2.3358E-12" iyy="1.0129E-07" iyz="2.1346E-08" izz="3.7096E-07" />
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="file://$(find dexforce_description)/meshes/Visual/right_hand/R_little_prox.dae" />
+        </geometry>
+        <material name="">
+          <color rgba="0.75294 0.75294 0.75294 1" />
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="0.00000 0.01775 -0.00140" rpy="0 0 0" />
+        <geometry>
+          <box size="0.01623 0.04622 0.01740" />
+        </geometry>
+      </collision>
+    </link>
+    <link name="right_r_little_dist">
+      <inertial>
+        <origin xyz="1.062E-05 0.017869 0.0020864" rpy="0 0 0" />
+        <mass value="0.008" />
+        <inertia ixx="2.3262E-07" ixy="-4.9135E-10" ixz="-4.9506E-11" iyy="6.4304E-08" iyz="-2.3564E-08" izz="2.4916E-07" />
+      </inertial>
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0" />
+        <geometry>
+          <mesh filename="file://$(find dexforce_description)/meshes/Visual/right_hand/R_little_dist.dae" />
+        </geometry>
+        <material name="">
+          <color rgba="0.75294 0.75294 0.75294 1" />
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="-0.00000 0.01547 0.00263" rpy="0 0 0" />
+        <geometry>
+          <box size="0.01535 0.04278 0.01695" />
+        </geometry>
+      </collision>
+    </link>
+    <joint name="ANKLE" type="fixed">
+      <origin xyz="0 0 0.292" rpy="1.5707963267948963 0.70999999999999996 -1.4639752600631157e-16" />
+      <parent link="torso_base_link" />
+      <child link="ankle" />
+    </joint>
+    <joint name="KNEE" type="fixed">
+      <origin xyz="0 0.34 0" rpy="0 0 1.2907999999999999" />
+      <parent link="ankle" />
+      <child link="knee" />
+    </joint>
+    <joint name="BUTTOCK" type="fixed">
+      <origin xyz="0 0.34 0" rpy="0 0 -0.58009999999999973" />
+      <parent link="knee" />
+      <child link="buttock" />
+    </joint>
+    <joint name="WAIST" type="fixed">
+      <origin xyz="0 0.1578 0" rpy="-1.5707963267948963 0.076300000000000007 2.0877423177846601e-17" />
+      <parent link="buttock" />
+      <child link="waist" />
+    </joint>
+    <joint name="NECK_BASE" type="fixed">
+      <origin xyz="0 0 0.308" rpy="0 0 0" />
+      <parent link="head_base_link" />
+      <child link="neck_base" />
+    </joint>
+    <joint name="NECK1" type="fixed">
+      <origin xyz="0 0 0" rpy="0 0 -0.0022000000000000001" />
+      <parent link="neck_base" />
+      <child link="neck1" />
+    </joint>
+    <joint name="NECK2" type="fixed">
+      <origin xyz="0 0 0.081" rpy="-1.5707963267948966 0.035299999999999998 3.4716096964217401e-18" />
+      <parent link="neck1" />
+      <child link="neck2" />
+    </joint>
+    <joint name="LEFT_BASE_TO_LEFT_ARM_CONNECTOR" type="fixed">
+      <origin xyz="0 0.0985 0.235" rpy="-1.5707963267948966 -1.5707963267948966 0" />
+      <parent link="left_base_link" />
+      <child link="left_base_to_left_arm_connector" />
+    </joint>
+    <joint name="LEFT_ARM_BASE" type="fixed">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <parent link="left_base_to_left_arm_connector" />
+      <child link="left_arm_base" />
+    </joint>
+    <joint name="LEFT_J1" type="fixed">
+      <origin xyz="0 0 0" rpy="0 0 -0.070300000000000029" />
+      <parent link="left_arm_base" />
+      <child link="left_j1" />
+    </joint>
+    <joint name="LEFT_J2" type="fixed">
+      <origin xyz="0 0 0.1025" rpy="1.5707963267948966 1.3729 3.1415926535897922" />
+      <parent link="left_j1" />
+      <child link="left_j2" />
+    </joint>
+    <joint name="LEFT_J3" type="fixed">
+      <origin xyz="0 0.260 0.0" rpy="-1.5707963267948943 -1.5228963267948969 -1.1593399680918524e-15" />
+      <parent link="left_j2" />
+      <child link="left_j3" />
+    </joint>
+    <joint name="LEFT_J4" type="fixed">
+      <origin xyz="0 0 0" rpy="1.5707963267948966 0.10769999999999999 -2.7917329774163377e-17" />
+      <parent link="left_j3" />
+      <child link="left_j4" />
+    </joint>
+    <joint name="LEFT_J5" type="fixed">
+      <origin xyz="0 0.166 0.0" rpy="1.5707963267948968 0.028400000000000123 -3.1415926535897931" />
+      <parent link="left_j4" />
+      <child link="left_j5" />
+    </joint>
+    <joint name="LEFT_J6" type="fixed">
+      <origin xyz="0 0 0.098" rpy="1.5707963267948968 -0.59300000000000008 6.6939952644245342e-17" />
+      <parent link="left_j5" />
+      <child link="left_j6" />
+    </joint>
+    <joint name="LEFT_J7" type="fixed">
+      <origin xyz="0 0 0" rpy="1.5707963267948966 0.049600000000000199 -1.5707963267948968" />
+      <parent link="left_j6" />
+      <child link="left_j7" />
+    </joint>
+    <joint name="LEFT_EE" type="fixed">
+      <origin xyz="-0.066 0 0" rpy="0 -1.5707963267948966 0" />
+      <parent link="left_j7" />
+      <child link="left_ee" />
+    </joint>
+    <joint name="RIGHT_BASE_TO_RIGHT_ARM_CONNECTOR" type="fixed">
+      <origin xyz="0 -0.0985 0.235" rpy="1.5707963267948966 1.5707963267948966 0" />
+      <parent link="right_base_link" />
+      <child link="right_base_to_right_arm_connector" />
+    </joint>
+    <joint name="RIGHT_ARM_BASE" type="fixed">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <parent link="right_base_to_right_arm_connector" />
+      <child link="right_arm_base" />
+    </joint>
+    <joint name="RIGHT_J1" type="fixed">
+      <origin xyz="0 0 0" rpy="0 0 0.058800000000000012" />
+      <parent link="right_arm_base" />
+      <child link="right_j1" />
+    </joint>
+    <joint name="RIGHT_J2" type="fixed">
+      <origin xyz="0 0 0.1025" rpy="1.5707963267948977 -1.3733999999999997 -3.1415926535897927" />
+      <parent link="right_j1" />
+      <child link="right_j2" />
+    </joint>
+    <joint name="RIGHT_J3" type="fixed">
+      <origin xyz="0 0.260 0.0" rpy="-1.5707963267948952 -1.4895963267948966 -2.0531600897508978e-15" />
+      <parent link="right_j2" />
+      <child link="right_j3" />
+    </joint>
+    <joint name="RIGHT_J4" type="fixed">
+      <origin xyz="0 0 0" rpy="1.5707963267948963 0.015800000000000002 -3.4698800533718106e-18" />
+      <parent link="right_j3" />
+      <child link="right_j4" />
+    </joint>
+    <joint name="RIGHT_J5" type="fixed">
+      <origin xyz="0 0.166 0.0" rpy="1.5707963267948968 -0.092999999999999874 3.1415926535897931" />
+      <parent link="right_j4" />
+      <child link="right_j5" />
+    </joint>
+    <joint name="RIGHT_J6" type="fixed">
+      <origin xyz="0 0 0.098" rpy="1.5707963267948963 -0.31040000000000006 5.8297083122530891e-17" />
+      <parent link="right_j5" />
+      <child link="right_j6" />
+    </joint>
+    <joint name="RIGHT_J7" type="fixed">
+      <origin xyz="0 0 0" rpy="1.5707963267948966 0.081400000000000236 -1.5707963267948968" />
+      <parent link="right_j6" />
+      <child link="right_j7" />
+    </joint>
+    <joint name="RIGHT_EE" type="fixed">
+      <origin xyz="-0.066 0 0" rpy="0 -1.5707963267948966 0" />
+      <parent link="right_j7" />
+      <child link="right_ee" />
+    </joint>
+    <joint name="LEFT_L_THUMBMCP1" type="fixed">
+      <origin xyz="-0.0245 0.022632 0.023263" rpy="0.14578 -1.0699 -0.12808" />
+      <parent link="left_l_base_link" />
+      <child link="left_l_thumb_prox" />
+    </joint>
+    <joint name="LEFT_L_THUMBMCP2" type="fixed">
+      <origin xyz="0 0 0.013647" rpy="0.87266 -0.49642 0" />
+      <parent link="left_l_thumb_prox" />
+      <child link="left_l_thumb_dist" />
+    </joint>
+    <joint name="LEFT_L_INDEXMCP" type="fixed">
+      <origin xyz="-0.029003 0.088291 0.0022155" rpy="-0.029415 0.05236 0.034907" />
+      <parent link="left_l_base_link" />
+      <child link="left_l_index_prox" />
+    </joint>
+    <joint name="LEFT_L_INDEXPIP" type="fixed">
+      <origin xyz="0 0.035 0" rpy="0.38653000000000015 0 0" />
+      <parent link="left_l_index_prox" />
+      <child link="left_l_index_dist" />
+    </joint>
+    <joint name="LEFT_L_MIDDLEMCP" type="fixed">
+      <origin xyz="-0.008 0.092284 -0.0017707" rpy="0 0 0" />
+      <parent link="left_l_base_link" />
+      <child link="left_l_middle_prox" />
+    </joint>
+    <joint name="LEFT_L_MIDDLEPIP" type="fixed">
+      <origin xyz="0 0.042 0" rpy="0.36657000000000006 0 0" />
+      <parent link="left_l_middle_prox" />
+      <child link="left_l_middle_dist" />
+    </joint>
+    <joint name="LEFT_L_RINGMCP" type="fixed">
+      <origin xyz="0.013103 0.090291 -0.0017845" rpy="-0.0092374 -0.05236 -0.034907" />
+      <parent link="left_l_base_link" />
+      <child link="left_l_ring_prox" />
+    </joint>
+    <joint name="LEFT_L_RINGPIP" type="fixed">
+      <origin xyz="0 0.042 0" rpy="0.33183000000000012 0 0" />
+      <parent link="left_l_ring_prox" />
+      <child link="left_l_ring_dist" />
+    </joint>
+    <joint name="LEFT_L_LITTLEMCP" type="fixed">
+      <origin xyz="0.033731 0.083777 0.0022155" rpy="-0.024909 -0.05236 -0.069813" />
+      <parent link="left_l_base_link" />
+      <child link="left_l_little_prox" />
+    </joint>
+    <joint name="LEFT_L_LITTLEPIP" type="fixed">
+      <origin xyz="0 0.035 0" rpy="0.40494000000000002 0 0" />
+      <parent link="left_l_little_prox" />
+      <child link="left_l_little_dist" />
+    </joint>
+    <joint name="RIGHT_R_THUMBMCP1" type="fixed">
+      <origin xyz="0.0245 0.0242 0.021628" rpy="0 -0.49642 0" />
+      <parent link="right_r_base_link" />
+      <child link="right_r_thumb_prox" />
+    </joint>
+    <joint name="RIGHT_R_THUMBMCP2" type="fixed">
+      <origin xyz="0.013647 0 0" rpy="-0.39332 0.31115 -0.93514" />
+      <parent link="right_r_thumb_prox" />
+      <child link="right_r_thumb_dist" />
+    </joint>
+    <joint name="RIGHT_R_INDEXMCP" type="fixed">
+      <origin xyz="0.029003 0.088231 -0.0039488" rpy="-0.09929 -0.054667 -0.031168" />
+      <parent link="right_r_base_link" />
+      <child link="right_r_index_prox" />
+    </joint>
+    <joint name="RIGHT_R_INDEXPIP" type="fixed">
+      <origin xyz="0 0.035 0" rpy="0.38653000000000015 0 0" />
+      <parent link="right_r_index_prox" />
+      <child link="right_r_index_dist" />
+    </joint>
+    <joint name="RIGHT_R_MIDDLEMCP" type="fixed">
+      <origin xyz="0.008 0.091935 -0.0082038" rpy="-0.069813 0 0" />
+      <parent link="right_r_base_link" />
+      <child link="right_r_middle_prox" />
+    </joint>
+    <joint name="RIGHT_R_MIDDLEPIP" type="fixed">
+      <origin xyz="0 0.042 0" rpy="0.36657000000000006 0 0" />
+      <parent link="right_r_middle_prox" />
+      <child link="right_r_middle_dist" />
+    </joint>
+    <joint name="RIGHT_R_RINGMCP" type="fixed">
+      <origin xyz="-0.013103 0.089947 -0.0080786" rpy="-0.079113 0.054667 0.031168" />
+      <parent link="right_r_base_link" />
+      <child link="right_r_ring_prox" />
+    </joint>
+    <joint name="RIGHT_R_RINGPIP" type="fixed">
+      <origin xyz="0 0.042 0" rpy="0.33183000000000012 0 0" />
+      <parent link="right_r_ring_prox" />
+      <child link="right_r_ring_dist" />
+    </joint>
+    <joint name="RIGHT_R_LITTLEMCP" type="fixed">
+      <origin xyz="-0.033731 0.083727 -0.0036339" rpy="-0.094666 0.057099 0.065996" />
+      <parent link="right_r_base_link" />
+      <child link="right_r_little_prox" />
+    </joint>
+    <joint name="RIGHT_R_LITTLEPIP" type="fixed">
+      <origin xyz="0 0.035 0" rpy="0.40494000000000002 0 0" />
+      <parent link="right_r_little_prox" />
+      <child link="right_r_little_dist" />
+    </joint>
+    <joint name="LEFT_ARM_TO_LEFT_HAND_CONNECTOR" type="fixed">
+      <origin xyz="0.0 0.0 0.02" rpy="1.5707963267948963 0.0 3.141592653589793" />
+      <parent link="left_ee" />
+      <child link="left_l_base_link" />
+    </joint>
+    <joint name="RIGHT_ARM_TO_RIGHT_HAND_CONNECTOR" type="fixed">
+      <origin xyz="0.0 0.0 0.02" rpy="1.5707963267948963 0.0 0.0" />
+      <parent link="right_ee" />
+      <child link="right_r_base_link" />
+    </joint>
+    <joint name="CHASSIS_TO_TORSO_CONNECTOR" type="fixed">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <parent link="${parent}" />
+      <child link="torso_base_link" />
+    </joint>
+    <joint name="TORSO_TO_LEFT_ARM_CONNECTOR" type="fixed">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <parent link="waist" />
+      <child link="left_base_link" />
+    </joint>
+    <joint name="TORSO_TO_RIGHT_ARM_CONNECTOR" type="fixed">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <parent link="waist" />
+      <child link="right_base_link" />
+    </joint>
+    <joint name="TORSO_TO_HEAD_CONNECTOR" type="fixed">
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <parent link="waist" />
+      <child link="head_base_link" />
+    </joint>
+  </xacro:macro>
+</robot>
