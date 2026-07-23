@@ -15,7 +15,6 @@
 #ifndef NAV2_CONTROLLER__CONTROLLER_SERVER_HPP_
 #define NAV2_CONTROLLER__CONTROLLER_SERVER_HPP_
 
-#include <fstream>
 #include <memory>
 #include <string>
 #include <thread>
@@ -29,11 +28,13 @@
 #include "nav2_core/local_planner.hpp"
 #include "nav2_core/speed_planner.hpp"
 #include "nav2_costmap_2d/costmap_2d_ros.hpp"
+#include "nav2_speed_planner/speed_plan_state.hpp"
 #include "nav_interfaces/msg/robot_trajectory.hpp"
 #include "tf2_ros/transform_listener.h"
 #include "nav2_msgs/action/follow_path.hpp"
 #include "nav2_msgs/msg/speed_limit.hpp"
 #include "diagnostic_msgs/msg/diagnostic_array.hpp"
+#include "geometry_msgs/msg/vector3_stamped.hpp"
 #include "visualization_msgs/msg/marker_array.hpp"
 #include "std_msgs/msg/string.hpp"
 #include "nav_2d_utils/odom_subscriber.hpp"
@@ -192,6 +193,12 @@ protected:
    * @return 轨迹为空或 TF 不可用时 false。
    */
   bool nearestPlannedSpeed(const geometry_msgs::msg::PoseStamped & pose, double & desired_v);
+  nav2_core::SpeedPlanningBoundary buildSpeedPlanningBoundary(
+    const nav_msgs::msg::Path & path,
+    const geometry_msgs::msg::Twist & measured_velocity);
+  void updateSpeedPlanningContinuityAfterControl(
+    bool control_succeeded, bool trajectory_target_consumed);
+  void invalidateSpeedPlanningContinuity();
   /**
    * @brief Calculates velocity and publishes to "cmd_vel" topic
    */
@@ -393,6 +400,8 @@ protected:
   // 期望速度回显：每控制周期发布当前位置最近轨迹点的规划速度
   rclcpp_lifecycle::LifecyclePublisher<geometry_msgs::msg::Twist>::SharedPtr
     desired_vel_echo_pub_;
+  rclcpp_lifecycle::LifecyclePublisher<geometry_msgs::msg::Vector3Stamped>::SharedPtr
+    controller_target_echo_pub_;
 
   // Progress Checker Plugin
   pluginlib::ClassLoader<nav2_core::ProgressChecker> progress_checker_loader_;
@@ -436,16 +445,9 @@ protected:
   // 轨迹缓存：规划级产出、控制级消费；规划与控制同在 action 线程逐周期串行执行，
   // 无并发；将来拆独立规划线程时需加最小临界区保护
   nav_interfaces::msg::RobotTrajectory current_trajectory_;
+  nav2_speed_planner::SpeedPlanState speed_plan_state_;
   // RViz 可视化节流（速度剖面每周期重算，但只以 ~2Hz 重画）
   rclcpp::Time last_speed_plan_viz_time_{0, 0, RCL_ROS_TIME};
-  // 剖面调试日志：speed_plan_log_dir 非空时，每轮规划的逐点剖面写入该目录下
-  // 按启动时间戳命名的 CSV（列：stamp,seq,i,s,v,accel,kappa,obstacle）；默认关闭
-  std::ofstream speed_plan_log_;
-  std::string speed_plan_log_dir_;
-  // 速度跟踪日志：每个控制周期一行（期望/指令/实际三速 + 阶段），与剖面日志
-  // 同目录同会话时间戳，供 plot_speed_tracking.py 生成 v-t 调参证据图。
-  std::ofstream speed_tracking_log_;
-  uint64_t speed_plan_seq_{0};
 
   double controller_frequency_;
   double min_x_velocity_threshold_;

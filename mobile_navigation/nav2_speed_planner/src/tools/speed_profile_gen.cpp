@@ -94,9 +94,9 @@ public:
   void setEndSpeed(double v) {this->end_speed_ = v;}
   nav_interfaces::msg::RobotTrajectory run(const nav_msgs::msg::Path & path, double v0)
   {
-    geometry_msgs::msg::Twist tw;
-    tw.linear.x = v0;
-    return this->computeSpeedPlan(path, tw);
+    nav2_core::SpeedPlanningBoundary boundary;
+    boundary.velocity.linear.x = v0;
+    return this->computeSpeedPlan(path, boundary);
   }
 };
 

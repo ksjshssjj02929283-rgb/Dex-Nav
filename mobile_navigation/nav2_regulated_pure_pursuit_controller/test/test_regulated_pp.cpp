@@ -658,7 +658,16 @@ TEST(RegulatedPurePursuitTest, nearestTrajectorySpeedExcludesStateStamp)
   EXPECT_TRUE(ctrl->nearestTrajectorySpeedWrapper(pose, v, a));
   EXPECT_GT(v, 0.0);
 
-  // 场景 4：已在末点——无前方点，回退用最近点自身
+  // 场景 4：窗口最大速度不在首个前方点，accel 必须跟随最大速度索引。
+  ctrl->setTrajSpeedPointsForTest(
+    {{0.0, 0.0, 0.0, 0.0}, {0.05, 0.0, 0.1, 0.1}, {0.10, 0.0, 0.25, 0.35},
+      {0.15, 0.0, 0.2, -0.1}},
+    0.1);
+  EXPECT_TRUE(ctrl->nearestTrajectorySpeedWrapper(pose, v, a));
+  EXPECT_NEAR(v, 0.25, 1e-6);
+  EXPECT_NEAR(a, 0.35, 1e-6);
+
+  // 场景 5：已在末点——无前方点，回退用最近点自身
   ctrl->setTrajSpeedPointsForTest({{0.0, 0.0, 0.075, 0.0}}, 0.1);
   EXPECT_TRUE(ctrl->nearestTrajectorySpeedWrapper(pose, v, a));
   EXPECT_NEAR(v, 0.075, 1e-6);

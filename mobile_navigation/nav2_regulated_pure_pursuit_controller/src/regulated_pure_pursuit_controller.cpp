@@ -378,6 +378,11 @@ geometry_msgs::msg::TwistStamped RegulatedPurePursuitController::computeVelocity
 {
   std::lock_guard<std::mutex> lock_reinit(mutex_);
 
+  {
+    std::lock_guard<std::mutex> trajectory_lock(traj_mutex_);
+    last_trajectory_tracking_target_valid_ = false;
+  }
+
   nav2_costmap_2d::Costmap2D * costmap = costmap_ros_->getCostmap();
   std::unique_lock<nav2_costmap_2d::Costmap2D::mutex_t> lock(*(costmap->getMutex()));
 
@@ -494,6 +499,12 @@ geometry_msgs::msg::TwistStamped RegulatedPurePursuitController::computeVelocity
       linear_vel, cross_track_error);
 
     linear_vel = trackLinearVelocity(linear_vel, speed.linear.x, have_traj ? traj_accel : 0.0);
+    if (have_traj) {
+      std::lock_guard<std::mutex> trajectory_lock(traj_mutex_);
+      last_trajectory_tracking_target_valid_ = true;
+      last_trajectory_tracking_target_v_ = traj_v;
+      last_trajectory_tracking_target_a_ = traj_accel;
+    }
 
     // angular_gain > 1 收紧转向补偿曲线滞后；饱和 clamp 兜底（联动降速后
     // 一般已 ≤ 上限，此处防浮点/直线段边界）。
@@ -1002,18 +1013,33 @@ bool RegulatedPurePursuitController::nearestTrajectorySpeed(
     traj_accel = traj_speed_points_[best_i].accel;
     return true;
   }
-  traj_accel = traj_speed_points_[best_i + 1].accel;
-  traj_speed = 0.0;
+  size_t target_i = best_i + 1;
   double dist = 0.0;
   for (size_t i = best_i + 1; i < traj_speed_points_.size(); ++i) {
     const double dx = traj_speed_points_[i].x - traj_speed_points_[i - 1].x;
     const double dy = traj_speed_points_[i].y - traj_speed_points_[i - 1].y;
     dist += std::hypot(dx, dy);
-    traj_speed = std::max(traj_speed, traj_speed_points_[i].speed);
+    if (traj_speed_points_[i].speed > traj_speed_points_[target_i].speed) {
+      target_i = i;
+    }
     if (dist > traj_speed_lookahead_) {
       break;
     }
   }
+  traj_speed = traj_speed_points_[target_i].speed;
+  traj_accel = traj_speed_points_[target_i].accel;
+  return true;
+}
+
+bool RegulatedPurePursuitController::getLastTrajectoryTrackingTarget(
+  double & velocity, double & acceleration)
+{
+  std::lock_guard<std::mutex> lock(traj_mutex_);
+  if (!last_trajectory_tracking_target_valid_) {
+    return false;
+  }
+  velocity = last_trajectory_tracking_target_v_;
+  acceleration = last_trajectory_tracking_target_a_;
   return true;
 }
 

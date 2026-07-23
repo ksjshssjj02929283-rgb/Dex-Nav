@@ -134,10 +134,13 @@ controller_server:
     # 运动学上限与下游链路对齐：对齐 velocity_smoother（链路绑定值；MPPI vx_max=1.5 超出 smoother 0.5，由 smoother 截幅）
     speed_planner_plugins: ["TrapezoidalSpeedPlanner", "SCurveSpeedPlanner"]
     current_speed_planner: "TrapezoidalSpeedPlanner"  # 先验证 T 型；S 型待复测后切回
-    # 剖面调试日志目录（空 "" = 关闭；文件按启动时间戳命名，列含曲率/障碍标记）
-    speed_plan_log_enable: true    # 剖面日志开关（每轮全路径剖面，文件较大，仅调试期开）
-    speed_tracking_log_enable: true    # 跟踪日志开关（每控制周期一行三速，调 PID/accel/jerk 证据）
-    speed_plan_log_dir: "~/.dexe/navigation/speed_planner"
+    speed_planning_boundary:
+      max_age: 0.5
+      max_spatial_error: 0.15
+      max_velocity_error: 0.25
+      goal_position_tolerance: 0.05
+      goal_yaw_tolerance: 0.2
+      branch_heading_tolerance: 0.7853981634
     TrapezoidalSpeedPlanner:
       plugin: "nav2_speed_planner::TrapezoidalSpeedPlanner"
       max_speed: 0.5
@@ -1229,5 +1232,6 @@ nav2_nav_monitor:
     cmd_vel_topic: "cmd_vel_nav"
     smoothed_vel_topic: "control/cmd_vel_nav"
     desired_vel_topic: "/nav_monitor/desired_velocity"
+    controller_target_topic: "/nav_monitor/controller_target"
     odom_topic: "feedback/odom"
     controller_phase_topic: "/nav_monitor/controller_phase"

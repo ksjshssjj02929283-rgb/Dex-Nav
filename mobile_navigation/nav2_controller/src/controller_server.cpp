@@ -16,10 +16,6 @@
 #include <chrono>
 #include <algorithm>
 #include <cstdio>
-#include <cstdlib>
-#include <ctime>
-#include <filesystem>
-#include <iomanip>
 #include <vector>
 #include <memory>
 #include <string>
@@ -109,9 +105,12 @@ ControllerServer::ControllerServer(const rclcpp::NodeOptions & options)
   declare_parameter("speed_planner_plugins", std::vector<std::string>());
   declare_parameter("current_speed_planner", std::string(""));
   // 剖面调试日志目录（空=关闭；~ 展开为 HOME；文件按启动时间戳命名）
-  declare_parameter("speed_plan_log_dir", std::string(""));
-  declare_parameter("speed_plan_log_enable", false);
-  declare_parameter("speed_tracking_log_enable", false);
+  declare_parameter("speed_planning_boundary.max_age", 0.5);
+  declare_parameter("speed_planning_boundary.max_spatial_error", 0.15);
+  declare_parameter("speed_planning_boundary.max_velocity_error", 0.25);
+  declare_parameter("speed_planning_boundary.goal_position_tolerance", 0.05);
+  declare_parameter("speed_planning_boundary.goal_yaw_tolerance", 0.2);
+  declare_parameter("speed_planning_boundary.branch_heading_tolerance", 0.7853981634);
   // nav_monitor 任务回显：默认关闭，零开销
   declare_parameter("enable_nav_monitor_echo", false);
   declare_parameter("min_x_velocity_threshold", rclcpp::ParameterValue(0.0001));
@@ -254,6 +253,24 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
   std::string speed_limit_topic;
   get_parameter("speed_limit_topic", speed_limit_topic);
   get_parameter("failure_tolerance", failure_tolerance_);
+  nav2_speed_planner::SpeedPlanState::Config speed_plan_state_config;
+  get_parameter("speed_planning_boundary.max_age", speed_plan_state_config.max_age);
+  get_parameter(
+    "speed_planning_boundary.max_spatial_error",
+    speed_plan_state_config.max_spatial_error);
+  get_parameter(
+    "speed_planning_boundary.max_velocity_error",
+    speed_plan_state_config.max_velocity_error);
+  get_parameter(
+    "speed_planning_boundary.goal_position_tolerance",
+    speed_plan_state_config.goal_position_tolerance);
+  get_parameter(
+    "speed_planning_boundary.goal_yaw_tolerance",
+    speed_plan_state_config.goal_yaw_tolerance);
+  get_parameter(
+    "speed_planning_boundary.branch_heading_tolerance",
+    speed_plan_state_config.branch_heading_tolerance);
+  speed_plan_state_.configure(speed_plan_state_config);
   get_parameter("near_goal_progress.enabled", near_goal_progress_enabled_);
   get_parameter(
     "near_goal_progress.hold_position_when_goal_pose_reached",
@@ -565,53 +582,9 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
       "nav_monitor/controller_phase", rclcpp::SystemDefaultsQoS());
     desired_vel_echo_pub_ = create_publisher<geometry_msgs::msg::Twist>(
       "nav_monitor/desired_velocity", rclcpp::SystemDefaultsQoS());
-  }
-
-  get_parameter("speed_plan_log_dir", speed_plan_log_dir_);
-  bool speed_plan_log_enable = false;
-  bool speed_tracking_log_enable = false;
-  get_parameter("speed_plan_log_enable", speed_plan_log_enable);
-  get_parameter("speed_tracking_log_enable", speed_tracking_log_enable);
-  if (!speed_plan_log_dir_.empty() &&
-    (speed_plan_log_enable || speed_tracking_log_enable))
-  {
-    std::string dir = speed_plan_log_dir_;
-    if (dir.front() == '~') {
-      const char * home = std::getenv("HOME");
-      if (home != nullptr) {
-        dir = std::string(home) + dir.substr(1);
-      }
-    }
-    std::error_code ec;
-    std::filesystem::create_directories(dir, ec);
-    char ts[32];
-    const std::time_t now_t = std::time(nullptr);
-    std::strftime(ts, sizeof(ts), "%Y%m%d_%H%M%S", std::localtime(&now_t));
-    const std::string file = dir + "/speed_plan_" + ts + ".csv";
-    if (speed_plan_log_enable) {
-      speed_plan_log_.open(file, std::ios::out);
-    }
-    if (speed_plan_log_.is_open()) {
-      // 行式格式：每轮规划若干行、同一 id（轮次）多行共用，每行 = 一个属性的全路径序列。
-      speed_plan_log_ <<
-        "# format: id,attr,v0,v1,...  attr in {stamp,x,y,s,v,a,jerk,kappa,obstacle}; "
-        "obstacle: 0=free 1=obstacle 2=buffer 3=exempt\n";
-      RCLCPP_INFO(get_logger(), "Speed plan debug log: %s", file.c_str());
-    } else if (speed_plan_log_enable) {
-      RCLCPP_WARN(get_logger(), "Failed to open speed plan log in: %s", dir.c_str());
-    }
-    const std::string tracking_file = dir + "/speed_tracking_" + ts + ".csv";
-    if (speed_tracking_log_enable) {
-      speed_tracking_log_.open(tracking_file, std::ios::out);
-    }
-    if (speed_tracking_log_.is_open()) {
-      speed_tracking_log_ <<
-        "# 每控制周期一行：desired_v=当前位置最近轨迹点规划速度，cmd=下发指令，actual=odom 实测\n"
-        "t,stage,desired_v,cmd_v,actual_v,cmd_wz,actual_wz\n";
-      RCLCPP_INFO(get_logger(), "Speed tracking log: %s", tracking_file.c_str());
-    } else if (speed_tracking_log_enable) {
-      RCLCPP_WARN(get_logger(), "Failed to open speed tracking log in: %s", dir.c_str());
-    }
+    controller_target_echo_pub_ =
+      create_publisher<geometry_msgs::msg::Vector3Stamped>(
+      "nav_monitor/controller_target", rclcpp::SystemDefaultsQoS());
   }
 
   // Create the action server that we implement with our followPath method
@@ -659,6 +632,10 @@ ControllerServer::on_activate(const rclcpp_lifecycle::State & /*state*/)
   if (desired_vel_echo_pub_) {
     desired_vel_echo_pub_->on_activate();
   }
+  if (controller_target_echo_pub_) {
+    controller_target_echo_pub_->on_activate();
+  }
+  invalidateSpeedPlanningContinuity();
   action_server_->activate();
 
   auto node = shared_from_this();
@@ -714,6 +691,9 @@ ControllerServer::on_deactivate(const rclcpp_lifecycle::State & /*state*/)
   if (desired_vel_echo_pub_) {
     desired_vel_echo_pub_->on_deactivate();
   }
+  if (controller_target_echo_pub_) {
+    controller_target_echo_pub_->on_deactivate();
+  }
   vel_publisher_->on_deactivate();
   dyn_params_handler_.reset();
 
@@ -763,12 +743,8 @@ ControllerServer::on_cleanup(const rclcpp_lifecycle::State & /*state*/)
   global_path_echo_pub_.reset();
   phase_echo_pub_.reset();
   desired_vel_echo_pub_.reset();
-  if (speed_plan_log_.is_open()) {
-    speed_plan_log_.close();
-  }
-  if (speed_tracking_log_.is_open()) {
-    speed_tracking_log_.close();
-  }
+  controller_target_echo_pub_.reset();
+  invalidateSpeedPlanningContinuity();
   speed_limit_sub_.reset();
 
   return nav2_util::CallbackReturn::SUCCESS;
@@ -1081,6 +1057,40 @@ bool ControllerServer::computeLocalPath(
   return true;
 }
 
+nav2_core::SpeedPlanningBoundary ControllerServer::buildSpeedPlanningBoundary(
+  const nav_msgs::msg::Path & path,
+  const geometry_msgs::msg::Twist & measured_velocity)
+{
+  const auto decision = speed_plan_state_.boundary(path, measured_velocity, now());
+  if (decision.reason.has_value()) {
+    RCLCPP_DEBUG_THROTTLE(
+      get_logger(), *get_clock(), 1000,
+      "Speed planning boundary reseeded: reason=%s",
+      nav2_speed_planner::boundaryReasonName(*decision.reason));
+  }
+  return decision.boundary;
+}
+
+void ControllerServer::updateSpeedPlanningContinuityAfterControl(
+  bool control_succeeded, bool trajectory_target_consumed)
+{
+  const bool longitudinal_tracking_phase =
+    controller_phase_ == ControllerPhase::TRACK ||
+    controller_phase_ == ControllerPhase::APPROACH;
+  if (!control_succeeded || !trajectory_target_consumed || !longitudinal_tracking_phase ||
+    current_trajectory_.points.empty())
+  {
+    invalidateSpeedPlanningContinuity();
+    return;
+  }
+  speed_plan_state_.accept(current_trajectory_, now());
+}
+
+void ControllerServer::invalidateSpeedPlanningContinuity()
+{
+  speed_plan_state_.reset();
+}
+
 bool ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
 {
   using PipelineClock = std::chrono::steady_clock;
@@ -1095,7 +1105,6 @@ bool ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
   double current_dispatch_ms = 0.0;
   double track_dispatch_ms = 0.0;
   double approach_dispatch_ms = 0.0;
-  double csv_ms = 0.0;
   double visualization_ms = 0.0;
   nav_msgs::msg::Path planning_path;
 
@@ -1106,7 +1115,7 @@ bool ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
       const double total_ms = elapsed_ms(pipeline_start, PipelineClock::now());
       const double measured_ms =
         odom_ms + pose_ms + local_planner_ms + speed_set_plan_ms + speed_compute_ms +
-        dispatch_ms + csv_ms + visualization_ms;
+        dispatch_ms + visualization_ms;
       const double unaccounted_ms = std::max(0.0, total_ms - measured_ms);
       const size_t planning_points = planning_path.poses.size();
       const std::string & planning_frame = planning_path.header.frame_id;
@@ -1115,11 +1124,11 @@ bool ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
           get_logger(),
           "Planning pipeline timing (ms): result=%s total=%.3f odom=%.3f pose=%.3f "
           "local=%.3f speed_set_plan=%.3f speed_compute=%.3f dispatch=%.3f "
-          "(current=%.3f track=%.3f approach=%.3f) csv=%.3f viz=%.3f "
+          "(current=%.3f track=%.3f approach=%.3f) viz=%.3f "
           "unaccounted=%.3f points=%zu->%zu->%zu frames=%s->%s",
           result, total_ms, odom_ms, pose_ms, local_planner_ms, speed_set_plan_ms,
           speed_compute_ms, dispatch_ms, current_dispatch_ms, track_dispatch_ms,
-          approach_dispatch_ms, csv_ms, visualization_ms, unaccounted_ms,
+          approach_dispatch_ms, visualization_ms, unaccounted_ms,
           path.poses.size(), planning_points, current_trajectory_.points.size(),
           path.header.frame_id.c_str(), planning_frame.c_str());
       } else {
@@ -1127,11 +1136,11 @@ bool ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
           get_logger(), *get_clock(), 1000,
           "Planning pipeline timing (ms): result=%s total=%.3f odom=%.3f pose=%.3f "
           "local=%.3f speed_set_plan=%.3f speed_compute=%.3f dispatch=%.3f "
-          "(current=%.3f track=%.3f approach=%.3f) csv=%.3f viz=%.3f "
+          "(current=%.3f track=%.3f approach=%.3f) viz=%.3f "
           "unaccounted=%.3f points=%zu->%zu->%zu frames=%s->%s",
           result, total_ms, odom_ms, pose_ms, local_planner_ms, speed_set_plan_ms,
           speed_compute_ms, dispatch_ms, current_dispatch_ms, track_dispatch_ms,
-          approach_dispatch_ms, csv_ms, visualization_ms, unaccounted_ms,
+          approach_dispatch_ms, visualization_ms, unaccounted_ms,
           path.poses.size(), planning_points, current_trajectory_.points.size(),
           path.header.frame_id.c_str(), planning_frame.c_str());
       }
@@ -1205,7 +1214,8 @@ bool ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
   sp->second->setPlan(planning_path);
   speed_set_plan_ms = elapsed_ms(speed_set_plan_start, PipelineClock::now());
   const auto speed_compute_start = PipelineClock::now();
-  current_trajectory_ = sp->second->computeSpeedPlan(planning_path, current_velocity);
+  const auto planning_boundary = buildSpeedPlanningBoundary(planning_path, current_velocity);
+  current_trajectory_ = sp->second->computeSpeedPlan(planning_path, planning_boundary);
   speed_compute_ms = elapsed_ms(speed_compute_start, PipelineClock::now());
   if (current_trajectory_.points.empty()) {
     RCLCPP_WARN_THROTTLE(
@@ -1235,54 +1245,6 @@ bool ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
     }
   }
 
-  // 剖面调试日志（行式）：每轮规划一组行，同 id 多行共用，每行一个属性的全路径序列。
-  const auto csv_start = PipelineClock::now();
-  if (speed_plan_log_.is_open()) {
-    ++speed_plan_seq_;
-    const auto & pts = current_trajectory_.points;
-    const size_t np = pts.size();
-    std::vector<double> s_arr(np, 0.0), t_arr(np, 0.0);
-    for (size_t i = 1; i < np; ++i) {
-      const auto & a = pts[i - 1].pose.pose.position;
-      const auto & b = pts[i].pose.pose.position;
-      s_arr[i] = s_arr[i - 1] + std::hypot(b.x - a.x, b.y - a.y);
-      t_arr[i] = pts[i].relative_time.sec + pts[i].relative_time.nanosec * 1e-9;
-    }
-    speed_plan_log_ << speed_plan_seq_ << ",stamp," << std::fixed
-                    << std::setprecision(3) << now().seconds() << '\n';
-    auto row = [&](const char * attr, int prec, auto getter) {
-        speed_plan_log_ << speed_plan_seq_ << ',' << attr << std::setprecision(prec);
-        for (size_t i = 0; i < np; ++i) {
-          speed_plan_log_ << ',' << getter(i);
-        }
-        speed_plan_log_ << '\n';
-      };
-    row("x", 4, [&](size_t i) {return pts[i].pose.pose.position.x;});
-    row("y", 4, [&](size_t i) {return pts[i].pose.pose.position.y;});
-    row("s", 4, [&](size_t i) {return s_arr[i];});
-    row("v", 5, [&](size_t i) {return pts[i].longitudinal_velocity;});
-    row("a", 5, [&](size_t i) {return pts[i].acceleration;});
-    // jerk = Δa/Δt（T 型 relative_time 全 0 → 0）
-    row(
-      "jerk", 5, [&](size_t i) -> double {
-        if (i + 1 >= np) {return 0.0;}
-        const double dt = t_arr[i + 1] - t_arr[i];
-        if (dt < 1e-6) {return 0.0;}
-        return (pts[i + 1].acceleration - pts[i].acceleration) / dt;
-      });
-    row("kappa", 5, [&](size_t i) {return pts[i].path_kappa;});
-    row(
-      "obstacle", 0, [&](size_t i) -> int {
-        const auto & rt = pts[i].region_type;
-        if (rt == "obstacle") {return 1;}
-        if (rt == "obstacle_buffer") {return 2;}
-        if (rt == "obstacle_exempt") {return 3;}
-        return 0;
-      });
-    speed_plan_log_.flush();
-  }
-  csv_ms = elapsed_ms(csv_start, PipelineClock::now());
-
   // RViz 可视化节流（每周期重算但无需每周期重画）。
   const auto visualization_start = PipelineClock::now();
   const rclcpp::Time viz_now = now();
@@ -1298,9 +1260,11 @@ bool ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
 
   RCLCPP_DEBUG_THROTTLE(
     get_logger(), *get_clock(), 1000,
-    "Speed plan dispatched: planner=%s points=%zu v_start=%.3f",
+    "Speed plan dispatched: planner=%s points=%zu v_start=%.3f a_start=%.3f inherited=%s "
+    "source_age=%.3f",
     current_speed_planner_.c_str(), current_trajectory_.points.size(),
-    current_velocity.linear.x);
+    current_velocity.linear.x, planning_boundary.acceleration,
+    planning_boundary.acceleration_valid ? "true" : "false", planning_boundary.source_age);
   return true;
 }
 
@@ -2247,6 +2211,7 @@ void ControllerServer::resetStagedControlState()
   prepare_backup_active_ = false;
   prepare_check_pending_ = true;
   align_done_ = false;
+  invalidateSpeedPlanningContinuity();
 }
 
 geometry_msgs::msg::TwistStamped ControllerServer::computeControllerVelocity(
@@ -2344,10 +2309,12 @@ bool ControllerServer::nearestPlannedSpeed(
   }
   geometry_msgs::msg::PoseStamped query = pose;
   if (!traj_frame.empty() && pose.header.frame_id != traj_frame) {
+    geometry_msgs::msg::PoseStamped source_pose = pose;
+    source_pose.header.stamp = rclcpp::Time(0);
     rclcpp::Duration tolerance(
       rclcpp::Duration::from_seconds(costmap_ros_->getTransformTolerance()));
     if (!nav_2d_utils::transformPose(
-        costmap_ros_->getTfBuffer(), traj_frame, pose, query, tolerance))
+        costmap_ros_->getTfBuffer(), traj_frame, source_pose, query, tolerance))
     {
       return false;
     }
@@ -2510,12 +2477,18 @@ void ControllerServer::computeAndPublishVelocity()
   auto odom_ms = std::chrono::duration<double, std::milli>(t_odom_end - t_odom_start).count();
 
   geometry_msgs::msg::TwistStamped cmd_vel_2d;
+  bool control_succeeded = false;
+  bool controller_target_valid = false;
+  double controller_target_v = std::numeric_limits<double>::quiet_NaN();
+  double controller_target_a = std::numeric_limits<double>::quiet_NaN();
 
   auto t_compute_start = std::chrono::high_resolution_clock::now();
   try {
     cmd_vel_2d = computeStagedVelocity(pose, twist);
     last_valid_cmd_time_ = now();
+    control_succeeded = true;
   } catch (nav2_core::PlannerException & e) {
+    invalidateSpeedPlanningContinuity();
     if (failure_tolerance_ > 0 || failure_tolerance_ == -1.0) {
       RCLCPP_WARN(this->get_logger(), "%s", e.what());
       cmd_vel_2d.twist.angular.x = 0;
@@ -2537,6 +2510,17 @@ void ControllerServer::computeAndPublishVelocity()
       throw nav2_core::PlannerException(e.what());
     }
   }
+  if (control_succeeded &&
+    (controller_phase_ == ControllerPhase::TRACK ||
+    controller_phase_ == ControllerPhase::APPROACH))
+  {
+    const auto controller = controllers_.find(active_controller_for_log_);
+    if (controller != controllers_.end()) {
+      controller_target_valid = controller->second->getLastTrajectoryTrackingTarget(
+        controller_target_v, controller_target_a);
+    }
+  }
+  updateSpeedPlanningContinuityAfterControl(control_succeeded, controller_target_valid);
   auto t_compute_end = std::chrono::high_resolution_clock::now();
   auto compute_ms = std::chrono::duration<double, std::milli>(t_compute_end - t_compute_start).count();
 
@@ -2550,23 +2534,15 @@ void ControllerServer::computeAndPublishVelocity()
     desired_msg.linear.x = echo_desired_v;
     desired_vel_echo_pub_->publish(desired_msg);
   }
-
-  if (speed_tracking_log_.is_open()) {
-    double desired_v = 0.0;
-    nearestPlannedSpeed(pose, desired_v);
-    // stage 列 = 阶段:控制器（画图脚本按阶段名着色，控制器名留排查用）。
-    const char * phase_name =
-      controller_phase_ == ControllerPhase::PREPARE ? "prepare" :
-      controller_phase_ == ControllerPhase::ALIGN ? "align" :
-      controller_phase_ == ControllerPhase::TRACK ? "track" : "approach";
-    speed_tracking_log_ << std::fixed << std::setprecision(3) << now().seconds() <<
-      ',' << phase_name << ':' << active_controller_for_log_ << std::setprecision(4) <<
-      ',' << desired_v <<
-      ',' << cmd_vel_2d.twist.linear.x <<
-      ',' << twist.x <<
-      ',' << cmd_vel_2d.twist.angular.z <<
-      ',' << twist.theta << '\n';
-    speed_tracking_log_.flush();
+  if (enable_nav_monitor_echo_ && controller_target_valid && controller_target_echo_pub_ &&
+    controller_target_echo_pub_->is_activated())
+  {
+    geometry_msgs::msg::Vector3Stamped target_msg;
+    target_msg.header.stamp = now();
+    target_msg.header.frame_id = current_trajectory_.header.frame_id;
+    target_msg.vector.x = controller_target_v;
+    target_msg.vector.y = controller_target_a;
+    controller_target_echo_pub_->publish(target_msg);
   }
 
   auto t_feedback_start = std::chrono::high_resolution_clock::now();
@@ -2709,6 +2685,7 @@ void ControllerServer::publishVelocity(const geometry_msgs::msg::TwistStamped & 
 
 void ControllerServer::publishZeroVelocity()
 {
+  invalidateSpeedPlanningContinuity();
   geometry_msgs::msg::TwistStamped velocity;
   velocity.twist.angular.x = 0;
   velocity.twist.angular.y = 0;

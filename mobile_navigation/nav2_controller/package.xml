@@ -11,6 +11,7 @@
   <depend>angles</depend>
   <depend>rclcpp</depend>
   <depend>rclcpp_action</depend>
+  <depend>geometry_msgs</depend>
   <depend>std_msgs</depend>
   <depend>diagnostic_msgs</depend>
   <depend>nav2_util</depend>
@@ -18,6 +19,7 @@
   <depend>nav_2d_utils</depend>
   <depend>nav_2d_msgs</depend>
   <depend>nav2_core</depend>
+  <depend>nav2_speed_planner</depend>
   <depend>nav_interfaces</depend>
   <depend>visualization_msgs</depend>
   <depend>pluginlib</depend>

@@ -106,6 +106,9 @@ public:
    */
   void setTrajectory(const nav_interfaces::msg::RobotTrajectory & trajectory) override;
 
+  bool getLastTrajectoryTrackingTarget(
+    double & velocity, double & acceleration) override;
+
   /**
    * @brief Compute the best command given the current pose and velocity
    * @param pose Current robot pose (in costmap global frame)
@@ -317,6 +320,9 @@ protected:
   // nearestTrajectorySpeed 的前方窗长度：最近点之后前方窗内取 max（不含
   // 最近点自身）。同 RPP 参数语义。
   double traj_speed_lookahead_ = 0.1;
+  bool last_trajectory_tracking_target_valid_ = false;
+  double last_trajectory_tracking_target_v_ = 0.0;
+  double last_trajectory_tracking_target_a_ = 0.0;
 
   // ---- approach-stage rotation budget watchdog ----
   // 对机器人实际朝向变化量（非误差）逐周期积分；超预算强制停止。

@@ -18,6 +18,7 @@
 #include "action_msgs/msg/goal_status_array.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "geometry_msgs/msg/twist.hpp"
+#include "geometry_msgs/msg/vector3_stamped.hpp"
 #include "nav2_msgs/action/navigate_to_pose.hpp"
 #include "nav_msgs/msg/odometry.hpp"
 #include "nav_msgs/msg/path.hpp"
@@ -65,6 +66,7 @@ struct NavTaskRecord
   // 四速度源：规划期望 + 控制器原始输出 + velocity_smoother 平滑后 + odom 实测，
   // 各自带相对时间戳采样，供 V-T / V-S 曲线离线绘制
   std::vector<std::array<double, 3>> desired_vel_samples;   // t,v,0
+  std::vector<std::array<double, 3>> controller_target_samples;  // t,v,a
   std::vector<std::array<double, 3>> cmd_vel_samples;       // t,vx,wz
   std::vector<std::array<double, 3>> smoothed_vel_samples;  // t,vx,wz
   std::vector<std::array<double, 3>> odom_vel_samples;      // t,vx,wz
@@ -86,6 +88,7 @@ private:
   void cmdVelCallback(const geometry_msgs::msg::Twist::SharedPtr msg);
   void smoothedVelCallback(const geometry_msgs::msg::Twist::SharedPtr msg);
   void desiredVelCallback(const geometry_msgs::msg::Twist::SharedPtr msg);
+  void controllerTargetCallback(const geometry_msgs::msg::Vector3Stamped::SharedPtr msg);
   void odomCallback(const nav_msgs::msg::Odometry::SharedPtr msg);
   void phaseEchoCallback(const std_msgs::msg::String::SharedPtr msg);
   void feedbackCallback(
@@ -106,6 +109,7 @@ private:
   std::string cmd_vel_topic_;
   std::string smoothed_vel_topic_;
   std::string desired_vel_topic_;
+  std::string controller_target_topic_;
   std::string odom_topic_;
 
   std::optional<NavTaskRecord> current_task_;
@@ -122,6 +126,7 @@ private:
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_sub_;
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr smoothed_vel_sub_;
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr desired_vel_sub_;
+  rclcpp::Subscription<geometry_msgs::msg::Vector3Stamped>::SharedPtr controller_target_sub_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
   rclcpp::Subscription<std_msgs::msg::String>::SharedPtr phase_echo_sub_;
   rclcpp::Subscription<nav2_msgs::action::NavigateToPose_FeedbackMessage>::SharedPtr

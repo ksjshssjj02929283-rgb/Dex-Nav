@@ -11,12 +11,22 @@
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_lifecycle/lifecycle_node.hpp"
 #include "pluginlib/class_loader.hpp"
+#include "builtin_interfaces/msg/time.hpp"
 #include "geometry_msgs/msg/twist.hpp"
 #include "nav_msgs/msg/path.hpp"
 #include "nav_interfaces/msg/robot_trajectory.hpp"
 
 namespace nav2_core
 {
+
+struct SpeedPlanningBoundary
+{
+  geometry_msgs::msg::Twist velocity;
+  double acceleration{0.0};
+  bool acceleration_valid{false};
+  builtin_interfaces::msg::Time source_stamp;
+  double source_age{0.0};
+};
 
 /**
  * @class SpeedPlanner
@@ -52,19 +62,19 @@ public:
   virtual void setPlan(const nav_msgs::msg::Path & path) = 0;
 
   /**
-   * @brief 核心：几何 path + 当前速度 → 带速度的时空轨迹。
+   * @brief 核心：几何 path + 当前运动边界 → 带速度的时空轨迹。
    *
    * 实现需填充 RobotTrajectory.points[] 的运动学/时间字段：
    *   longitudinal_velocity / acceleration / relative_time / path_kappa，
    * 并将几何点的 segment_id / region_type / speed_hint **透传**到对应轨迹点。
    *
-   * @param path             局部几何路径（来自 setPlan 或本次传入）
-   * @param current_velocity 当前速度（用于加减速曲线起点）
+   * @param path     局部几何路径（来自 setPlan 或本次传入）
+   * @param boundary 当前实测速度与可选的连续加速度边界
    * @return 带速度的时空轨迹
    */
   virtual nav_interfaces::msg::RobotTrajectory computeSpeedPlan(
     const nav_msgs::msg::Path & path,
-    const geometry_msgs::msg::Twist & current_velocity) = 0;
+    const SpeedPlanningBoundary & boundary) = 0;
 
   /**
    * @brief 外部限速（区域/事件下发；与 path 内 speed_hint 取严）。
