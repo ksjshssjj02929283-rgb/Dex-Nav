@@ -4,6 +4,7 @@
   "points": [
     {
       "id": "point_1",
+      "wait_time_sec": 2.0,
       "position": {
         "x": 7.895,
         "y": -0.626,

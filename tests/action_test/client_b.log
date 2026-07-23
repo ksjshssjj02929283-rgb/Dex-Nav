@@ -1,0 +1,3 @@
+[INFO] [1784182795.488428547] [client_b]: 【Client B】正在发送导航目标 (x=2.0)...
+[INFO] [1784182795.488814969] [client_b]: 【Client B】目标已被 Server 接受，分配 UUID: 15377d12540d522ed1aa3e21a1c5
+[INFO] [1784182798.491634843] [client_b]: 【Client B】收到结果: 导航成功！UUID: 15377d12540d522ed1aa3e21a1c5

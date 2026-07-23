@@ -38,6 +38,14 @@ public:
     const char* chargerStateName(ChargerState state) const;
 
     bool navToPose(const geometry_msgs::msg::PoseStamped& goal_pose);
+    // 以下三个接口为 NavigateToCharging 改造为 StatefulActionNode 提供非阻塞支持，
+    // 与 navigation_client.py 的 Action 状态约定保持一致：
+    //   sendNavGoal 异步发送 Nav2 goal，立即返回；
+    //   isNavDone 非阻塞轮询，返回 RUNNING/SUCCEEDED/FAILED/CANCELLED；
+    //   cancelNav 在 onHalted 时取消 Nav2 goal，保证回充取消能立即传到 Nav2。
+    bool sendNavGoal(const geometry_msgs::msg::PoseStamped& goal_pose);
+    std::string isNavDone();
+    void cancelNav();
     void publishTwist(double linear_x, double angular_z);
     int runSubprocess(const std::vector<std::string>& cmd);
     void backward();
@@ -56,14 +64,27 @@ private:
     bool is_connected_to_charger_ = false;
     bool apriltag_detection_running_ = false;
     double battery_percentage_ = -1.0;
+
+    // NavigateToCharging 异步导航相关状态。Action server 主循环是单线程 tickRoot，
+    // 这些字段只在主循环线程被 sendNavGoal/isNavDone/cancelNav 访问，无需加锁。
+    bool nav_goal_sent_ = false;             // 是否已发送 Nav2 goal
+    std::shared_ptr<rclcpp_action::ClientGoalHandle<nav2_msgs::action::NavigateToPose>> nav_goal_handle_;
+    std::shared_ptr<rclcpp_action::Client<nav2_msgs::action::NavigateToPose>::SendGoalOptions> nav_send_options_;
+    std::string nav_result_status_ = "RUNNING";  // RUNNING/SUCCEEDED/FAILED/CANCELLED
+    bool nav_result_ready_ = false;          // result 回调是否已置位
 };
 
 // ==================== 行为树节点类 ====================
-class NavigateToCharging : public BT::SyncActionNode {
+class NavigateToCharging : public BT::StatefulActionNode {
 public:
     NavigateToCharging(const std::string& name, const BT::NodeConfiguration& config);
     static BT::PortsList providedPorts();
-    BT::NodeStatus tick() override;
+    BT::NodeStatus onStart() override;
+    BT::NodeStatus onRunning() override;
+    void onHalted() override;
+
+private:
+    std::shared_ptr<AutoChargingNode> charging_node_;
 };
 
 // class AprilTagAndDock : public BT::StatefulActionNode

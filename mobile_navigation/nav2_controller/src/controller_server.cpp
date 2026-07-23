@@ -90,6 +90,17 @@ ControllerServer::ControllerServer(const rclcpp::NodeOptions & options)
     "near_goal_progress.lateral_stall_min_improvement", rclcpp::ParameterValue(0.005));
   declare_parameter(
     "near_goal_progress.lateral_stall_time_allowance", rclcpp::ParameterValue(3.0));
+  // near-goal hold 进入/释放门控：避免与 MPPI final_yaw 动态制动抢占控制权
+  declare_parameter(
+    "near_goal_progress.hold_enter_vx", rclcpp::ParameterValue(0.01));
+  declare_parameter(
+    "near_goal_progress.hold_enter_wz", rclcpp::ParameterValue(0.03));
+  declare_parameter(
+    "near_goal_progress.hold_release_lon_tolerance", rclcpp::ParameterValue(0.04));
+  declare_parameter(
+    "near_goal_progress.hold_release_lat_tolerance", rclcpp::ParameterValue(0.04));
+  declare_parameter(
+    "near_goal_progress.hold_release_yaw_tolerance", rclcpp::ParameterValue(0.04));
 
   // The costmap node is used in the implementation of the controller
   costmap_ros_ = std::make_shared<nav2_costmap_2d::Costmap2DROS>(
@@ -186,6 +197,17 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
     near_goal_lateral_stall_time_allowance);
   near_goal_lateral_stall_time_allowance_ =
     rclcpp::Duration::from_seconds(near_goal_lateral_stall_time_allowance);
+  get_parameter("near_goal_progress.hold_enter_vx", near_goal_hold_enter_vx_);
+  get_parameter("near_goal_progress.hold_enter_wz", near_goal_hold_enter_wz_);
+  get_parameter(
+    "near_goal_progress.hold_release_lon_tolerance",
+    near_goal_hold_release_lon_tolerance_);
+  get_parameter(
+    "near_goal_progress.hold_release_lat_tolerance",
+    near_goal_hold_release_lat_tolerance_);
+  get_parameter(
+    "near_goal_progress.hold_release_yaw_tolerance",
+    near_goal_hold_release_yaw_tolerance_);
   RCLCPP_INFO(
     get_logger(),
     "Near-goal progress: enabled=%s hold_pose=%s distance=%.3f m movement=%.3f m "
@@ -598,6 +620,7 @@ void ControllerServer::setPlannerPath(const nav_msgs::msg::Path & path)
   goal_checkers_[current_goal_checker_]->reset();
   near_goal_progress_acceptance_reached_ = false;
   near_goal_pose_hold_active_ = false;
+  near_goal_hold_outside_accept_count_ = 0;
 
   RCLCPP_DEBUG(
     get_logger(), "Path end point is (%.2f, %.2f)",
@@ -1039,26 +1062,99 @@ void ControllerServer::computeAndPublishVelocity()
   if (near_goal_pose_hold_active_) {
     publishZeroVelocity();
     if (isRobotStoppedForGoalChecker()) {
-      near_goal_pose_hold_active_ = false;
-      RCLCPP_INFO(
-        get_logger(),
-        "Near-goal pose hold: chassis is stopped. GoalChecker will now confirm whether "
-        "the final pose is still inside the acceptance tolerances.");
+      // 停稳后检查误差状态：同时计算是否超出 release 容差、是否仍在 accept 容差内
+      geometry_msgs::msg::PoseStamped transformed_end_pose;
+      bool tf_ok = false;
+      double lon_err = 0.0, lat_err = 0.0, yaw_err = 0.0;
+      try {
+        rclcpp::Duration tf_tol(
+          rclcpp::Duration::from_seconds(costmap_ros_->getTransformTolerance()));
+        if (nav_2d_utils::transformPose(
+            costmap_ros_->getTfBuffer(), pose.header.frame_id,
+            end_pose_, transformed_end_pose, tf_tol))
+        {
+          const double gy = tf2::getYaw(transformed_end_pose.pose.orientation);
+          const double cy = tf2::getYaw(pose.pose.orientation);
+          const double dx = pose.pose.position.x - transformed_end_pose.pose.position.x;
+          const double dy = pose.pose.position.y - transformed_end_pose.pose.position.y;
+          lon_err = std::cos(gy) * dx + std::sin(gy) * dy;
+          lat_err = -std::sin(gy) * dx + std::cos(gy) * dy;
+          yaw_err = angles::shortest_angular_distance(cy, gy);
+          tf_ok = true;
+        }
+      } catch (const tf2::TransformException & ex) {
+        RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 5000,
+          "Near-goal hold release check TF failed: %s. 保持 hold 状态。", ex.what());
+      }
+
+      if (tf_ok) {
+        // 误差超出更宽松的 release 容差：立即释放，交回 MPPI 修正
+        const bool outside_release_tolerance =
+          std::fabs(lon_err) > near_goal_hold_release_lon_tolerance_ ||
+          std::fabs(lat_err) > near_goal_hold_release_lat_tolerance_ ||
+          std::fabs(yaw_err) > near_goal_hold_release_yaw_tolerance_;
+
+        // 误差是否仍在 GoalChecker accept 容差内：直接复用现有函数，
+        // 避免手动比较与自定义 GoalChecker（含精调/滑动窗口等）实际逻辑不一致
+        const bool within_accept =
+          isWithinGoalCheckerTolerance(pose, false, true);
+
+        // 宽限计数：误差超出 accept 但未超 release，累计周期数；连续超 accept 容差则释放
+        if (within_accept) {
+          near_goal_hold_outside_accept_count_ = 0;
+        } else {
+          ++near_goal_hold_outside_accept_count_;
+        }
+        const bool release_after_grace =
+          near_goal_hold_outside_accept_count_ >= near_goal_hold_outside_accept_cycles_;
+
+        if (outside_release_tolerance || release_after_grace) {
+          const size_t outside_accept_cycles = near_goal_hold_outside_accept_count_;
+          near_goal_pose_hold_active_ = false;
+          near_goal_hold_outside_accept_count_ = 0;
+          RCLCPP_INFO(
+            get_logger(),
+            "Near-goal pose hold released: outside_accept_cycles=%zu, outside_release=%s. "
+            "Returning control to MPPI.",
+            outside_accept_cycles,
+            outside_release_tolerance ? "true" : "false");
+        } else {
+          RCLCPP_INFO_THROTTLE(
+            get_logger(), *get_clock(), 1000,
+            "Near-goal pose hold: chassis is stopped, waiting for GoalChecker confirmation. "
+            "lon=%.4f lat=%.4f yaw=%.4f, outside_accept_count=%zu.",
+            lon_err, lat_err, yaw_err, near_goal_hold_outside_accept_count_);
+        }
+      }
     }
     return;
   }
 
+  // near-goal hold 进入门控：位姿满足容差 AND 底盘实际速度已足够低，才允许 ControllerServer 接管。
+  // 否则把动态减速过程交给 MPPI final_yaw，避免在底盘仍有较大惯性时抢占造成卡顿。
+  // 注意：必须用原始 odom 速度，不能用 getThresholdedTwist()，后者会把小速度按 min_*_threshold 清零，
+  // 导致底盘仍有 0.02~0.03 rad/s 时被误判为已停稳而提前进入 hold。
   if (near_goal_hold_position_when_pose_reached_ &&
     isWithinGoalCheckerTolerance(pose, false, true))
   {
-    near_goal_pose_hold_active_ = true;
-    RCLCPP_INFO(
-      get_logger(),
-      "Near-goal pose reached before chassis stopped: holding zero velocity until odometry "
-      "meets the active GoalChecker stop tolerances, preventing MPPI from driving back out "
-      "of the acceptance window.");
-    publishZeroVelocity();
-    return;
+    const nav_2d_msgs::msg::Twist2D raw_odom_twist = odom_sub_->getTwist();
+    const bool speed_low_enough_for_hold =
+      std::fabs(raw_odom_twist.x) <= near_goal_hold_enter_vx_ &&
+      std::fabs(raw_odom_twist.theta) <= near_goal_hold_enter_wz_;
+    if (speed_low_enough_for_hold) {
+      near_goal_pose_hold_active_ = true;
+      near_goal_hold_outside_accept_count_ = 0;
+      RCLCPP_INFO(
+        get_logger(),
+        "Near-goal pose reached and chassis is slow (raw vx=%.4f wz=%.4f <= thresholds %.3f/%.3f): "
+        "holding zero velocity for final stop. GoalChecker will confirm success.",
+        raw_odom_twist.x, raw_odom_twist.theta,
+        near_goal_hold_enter_vx_, near_goal_hold_enter_wz_);
+      publishZeroVelocity();
+      return;
+    }
+    // 速度仍偏高：让 MPPI 继续完成动态减速，不抢占
   }
 
   auto t_progress_start = std::chrono::high_resolution_clock::now();
@@ -1385,6 +1481,16 @@ ControllerServer::dynamicParametersCallback(std::vector<rclcpp::Parameter> param
         near_goal_lateral_stall_time_allowance_ =
           rclcpp::Duration::from_seconds(parameter.as_double());
         resetNearGoalLateralStall();
+      } else if (name == "near_goal_progress.hold_enter_vx") {
+        near_goal_hold_enter_vx_ = parameter.as_double();
+      } else if (name == "near_goal_progress.hold_enter_wz") {
+        near_goal_hold_enter_wz_ = parameter.as_double();
+      } else if (name == "near_goal_progress.hold_release_lon_tolerance") {
+        near_goal_hold_release_lon_tolerance_ = parameter.as_double();
+      } else if (name == "near_goal_progress.hold_release_lat_tolerance") {
+        near_goal_hold_release_lat_tolerance_ = parameter.as_double();
+      } else if (name == "near_goal_progress.hold_release_yaw_tolerance") {
+        near_goal_hold_release_yaw_tolerance_ = parameter.as_double();
       }
     } else if (type == ParameterType::PARAMETER_BOOL) {
       if (name == "near_goal_progress.enabled") {
@@ -1393,6 +1499,7 @@ ControllerServer::dynamicParametersCallback(std::vector<rclcpp::Parameter> param
       } else if (name == "near_goal_progress.hold_position_when_goal_pose_reached") {
         near_goal_hold_position_when_pose_reached_ = parameter.as_bool();
         near_goal_pose_hold_active_ = false;
+        near_goal_hold_outside_accept_count_ = 0;
       } else if (name == "near_goal_progress.lateral_stall_enabled") {
         near_goal_lateral_stall_enabled_ = parameter.as_bool();
         resetNearGoalLateralStall();

@@ -194,6 +194,7 @@ private:
     bool is_requesting_navigation_ = false;  // 防止重复请求导航
 
     bool is_map_set_ = false;
+    int low_battery_count_ = 0;  // 记录低电量的次数，防止电量波动导致频繁触发自动充电任务
     // rclcpp::TimerBase::SharedPtr visualize_timer_;
 };
 

@@ -830,7 +830,24 @@ void MissionManagerROS::BatteryInfoCallback(const nav_interfaces::msg::BatteryIn
     if (robot_status_ == nullptr) {
         return;
     }
-    robot_status_->soc = static_cast<double>(msg->soc);
+    const int kLowBatteryCountThreshold = 5;
+
+    double soc = static_cast<double>(msg->soc);
+    if (soc < mission_manager_->GetParam().auto_charge_threshold) {
+        if (low_battery_count_ < kLowBatteryCountThreshold) {
+            low_battery_count_++;
+        }
+    } else {
+        low_battery_count_ = 0;
+    }
+
+    if (low_battery_count_ < kLowBatteryCountThreshold) {
+        robot_status_->soc = std::max(soc, mission_manager_->GetParam().auto_charge_threshold);
+    } else {
+        robot_status_->soc = soc;
+        RCLCPP_WARN(this->get_logger(), "Low battery count exceeded threshold: %d and soc is %f", low_battery_count_,
+                    soc);
+    }
     robot_status_->is_charging = msg->charge_state;
 }
 

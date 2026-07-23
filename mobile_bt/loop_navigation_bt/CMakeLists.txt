@@ -9,6 +9,7 @@ find_package(sensor_msgs REQUIRED)
 find_package(diagnostic_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(nav2_msgs REQUIRED)
+find_package(nav_msgs REQUIRED)
 find_package(behaviortree_cpp_v3 REQUIRED)
 find_package(nlohmann_json REQUIRED)
 find_package(std_srvs REQUIRED)
@@ -33,6 +34,7 @@ ament_target_dependencies(loop_navigation_nodes
   diagnostic_msgs
   geometry_msgs
   nav2_msgs
+  nav_msgs
   behaviortree_cpp_v3
   nlohmann_json
   std_srvs
@@ -49,6 +51,7 @@ ament_target_dependencies(loop_navigation_bt_node
   sensor_msgs
   geometry_msgs
   nav2_msgs
+  nav_msgs
   behaviortree_cpp_v3
   nlohmann_json
   std_srvs
@@ -70,6 +73,7 @@ ament_target_dependencies(loop_nocharging_bt_node
   sensor_msgs
   geometry_msgs
   nav2_msgs
+  nav_msgs
   behaviortree_cpp_v3
   nlohmann_json
   std_srvs

@@ -95,6 +95,12 @@ controller_server:
       lateral_stall_lat_tolerance: 0.02 # |横向误差|>2cm 才监测；进入2cm后立即结束停滞监测
       lateral_stall_min_improvement: 0.005 # 监测窗口内横向误差至少净改善5mm才重置计时
       lateral_stall_time_allowance: 2.0 # 2秒内未净改善5mm则 FollowPath 失败
+      # near-goal hold 进入/释放门控：避免与 MPPI final_yaw 动态制动抢占控制权
+      hold_enter_vx: 0.01 # 底盘线速度<=此值才允许 ControllerServer 接管 hold
+      hold_enter_wz: 0.03 # 底盘角速度<=此值才允许 ControllerServer 接管 hold；高于此值交给 MPPI 动态减速
+      hold_release_lon_tolerance: 0.04 # hold 释放纵向迟滞(m)，比 accept 容差宽松，避免边界抖动
+      hold_release_lat_tolerance: 0.04 # hold 释放横向迟滞(m)
+      hold_release_yaw_tolerance: 0.04 # hold 释放航向迟滞(rad)，比 yaw_goal_tolerance 宽松
     goal_checker:
       plugin: "nav2_controller::PrecisionLongitudinalGoalChecker"
       desired_lon_goal_tolerance: 0.01 # 优先追求的纵向精度，当前配置为 1cm
@@ -136,7 +142,7 @@ controller_server:
       gamma: 0.015
       motion_model: "DiffDrive" #Ackermann, DiffDrive
       open_loop: false
-      visualize: false
+      visualize: true
       reset_period: 1.0 # (only in Humble)
       regenerate_noises: false
 
@@ -152,18 +158,31 @@ controller_server:
       # approach 内部先调位置、后调最终航向；误差均在目标点坐标系计算
       approach_final_yaw_enter_lon_tolerance: 0.025 # |纵向误差|≤1.5cm 才允许进入最终转向
       approach_final_yaw_enter_lat_tolerance: 0.025 # |横向误差|≤1.5cm 才允许进入最终转向
-      approach_final_yaw_exit_lon_tolerance: 0.03 # 最终转向中纵向漂移>4cm才退回位置调整，避免3cm边界附近反复切子阶段
-      approach_final_yaw_exit_lat_tolerance: 0.03 # 最终转向中横向漂移>4cm才退回位置调整，避免3cm边界附近反复切子阶段
+      approach_final_yaw_exit_lon_tolerance: 0.03 # 最终转向中纵向漂移>6cm且连续3周期才退回位置调整；配合 vx=0 避免原地转向漂移触发子阶段切换
+      approach_final_yaw_exit_lat_tolerance: 0.03 # 最终转向中横向漂移>6cm且连续3周期才退回位置调整
+      approach_final_yaw_exit_violation_threshold: 2 # 连续 N 个周期超退出阈值才真正退出 final_yaw，避免厘米级漂移反复切换
       approach_position_first_yaw_threshold: 2.094 # 进入 approach 时|航向误差|≥120°才锁定 position-first；否则保留完整朝向控制，防止绕圈
       approach_position_first_lateral_error_threshold: 0.05 # 入场横向误差至少5cm才允许按横向主导判定 position-first
       approach_position_first_lateral_ratio: 1.0 # |横向误差|≥|纵向误差|时视为横向主导，允许先修位置再对最终航向
       approach_positioning_goal_angle_weight: 10.0 # 仅 position-first 模式生效：位置调整时暂时减弱最终朝向约束
-      approach_final_yaw_vx_max: 0.01 # 最终转向线速度限制为±1cm/s，只允许厘米级小幅纠偏，减少退出final_yaw后的前后窜动
-      approach_final_yaw_wz_max: 0.75 # 最终转向最大角速度保持较高上限；平滑交给下方 cmd_wz 变化率限幅
-      approach_final_yaw_cmd_wz_slew_rate: 1.0 # final_yaw 输出角速度每秒最多变化1.0rad/s，降低起转过快导致的过冲
-      approach_final_yaw_cmd_brake_accel: 0.4 # final_yaw 按剩余角度提前减速；值越小越早刹车，减少冲过目标角度后反复修正
-      approach_final_yaw_cmd_stop_yaw_tolerance: 0.03 # 与 yaw_goal_tolerance 一致：进入航向容差后，final_yaw输出角速度主动收敛到0等待停稳
-      approach_final_yaw_cmd_direction_deadband: 0.08 # |yaw误差|>0.08rad时锁定方向并按刹车曲线转向；接近后交给MPPI细修
+      approach_final_yaw_vx_max: 0.0 # 最终转向线速度直接设为0；位置已满足2.5cm容差，final_yaw只转角度，避免vx正负切换导致位置漂移触发子阶段切换
+      approach_final_yaw_wz_max: 0.6 # 最终转向最大角速度保持较高上限；平滑交给下方 cmd_wz 变化率限幅
+      approach_final_yaw_cmd_wz_slew_rate: 0.8 # final_yaw 输出角速度每秒最多变化0.8rad/s，降低起转过快导致的过冲
+      approach_final_yaw_cmd_brake_accel: 0.3 # final_yaw 按剩余角度提前减速；值越小越早刹车，减少冲过目标角度后反复修正
+      approach_final_yaw_cmd_actual_decel: 0.35 # 底盘实际角减速度估计(rad/s²)，用于安全速度包络计算
+      approach_final_yaw_cmd_delay: 0.15 # 安全速度包络用的延迟(s)；取 max(此值, 实测dt) 钳在[0.05,0.18]；控制周期偶发180ms时自动收紧包络
+      approach_final_yaw_cmd_brake_safety_margin: 0.004 # 动态制动触发安全余量(rad),必须 < 0.01
+      approach_final_yaw_dynamic_brake_min_wz: 0.10 # 动态急刹最低触发速度(rad/s)；低于此速度不急刹，交给线性曲线平滑降速，避免低速停-启卡顿
+      approach_final_yaw_creep_wz_min: 0.04 # CREEP低速精调最小角速度(rad/s)，足以克服底盘死区
+      approach_final_yaw_creep_wz_max: 0.08 # CREEP低速精调最大角速度(rad/s)，不造成冲击；原0.06偏小，提至0.08增强修正能力
+      approach_final_yaw_internal_tolerance: 0.02 # CREEP进入STOP的内部角度容差(rad)，比goal_checker接受容差严格，预留停止余量
+      approach_final_yaw_creep_enter_yaw_error: 0.08 # CREEP低速区入口：误差<=此值时用[creep_min,creep_max]范围低速精调，覆盖安全包络可能过小的情况
+      approach_final_yaw_creep_enter_max_actual_wz: 0.10 # TRACKING->CREEP直接入口：实际角速度<此值才允许直接进CREEP
+      approach_final_yaw_stop_exit_tolerance: 0.03 # STOP状态退出阈值(rad)；与 yaw_goal_tolerance 对齐，避免0.03~0.04卡死区间
+      approach_final_yaw_envelope_brake_enter_margin: 0.02 # 包络追赶制动触发余量(rad/s)；actual_wz > safe_wz + 此值才触发临时零速
+      approach_final_yaw_envelope_brake_exit_margin: 0.005 # 包络追赶制动释放余量(rad/s)；actual_wz <= safe_wz + 此值才恢复连续控制
+      approach_final_yaw_cmd_stop_yaw_tolerance: 0.02 # 与 internal_tolerance 一致：MPPI主动停车容差，比 yaw_goal_tolerance(0.03) 严格，留余量给 ControllerServer/GoalChecker 确认
+      approach_final_yaw_cmd_direction_deadband: 0.08 # |yaw误差|>0.08rad时锁定旋转方向；进入死区后解除方向锁，继续按刹车曲线低速修正
       # ── 权重矩阵：各 critic 三段权重统一调参入口 [align, track, approach] ──
       stage_weights:
         GoalCritic: [0.0, 0.0, 10.0] # 目标位置距离：趋近段推动轨迹收敛到目标点
