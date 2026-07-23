@@ -4,7 +4,7 @@ bt_navigator:
     use_sim_time: True
     global_frame: map
     robot_base_frame: base_link
-    odom_topic: /odom/wheel
+    odom_topic: /feedback/odom
     bt_loop_duration: 10
     default_server_timeout: 20
     # 'default_nav_through_poses_bt_xml' and 'default_nav_to_pose_bt_xml' are use defaults:
@@ -75,6 +75,7 @@ controller_server:
     progress_checker_plugins: ["progress_checker"] # progress_checker_plugin: "progress_checker" For Humble and older
     goal_checker_plugins: ["goal_checker"] # goal_checker_plugin: "goal_checker" For Galactic and older
     controller_plugins: ["FollowPath"]
+    odom_topic: /feedback/odom
 
     progress_checker:
       plugin: "nav2_controller::PoseProgressChecker"
@@ -186,15 +187,15 @@ local_costmap:
     ros__parameters:
       update_frequency: 14.0 # 5.0
       publish_frequency: 14.0 # 2.0
-      global_frame: map # odom
+      global_frame: odom
       robot_base_frame: base_link
       use_sim_time: True
       rolling_window: true
       width: 8 # 6
       height: 8 # 6
       resolution: 0.05
-      footprint: "[[0.35, 0.29], [0.35, -0.29], [-0.35, -0.29], [-0.35, 0.29]]" # Slightly increased for better planning efficiency and safety (real size: 0.95*0.55)
-      # footprint: "[ [0.55, 0.35], [0.55, -0.35], [-0.55, -0.35], [-0.55, 0.35] ]" # Slightly increased for better planning efficiency and safety (real size: 0.95*0.55)
+      footprint: "[[0.45, 0.35], [0.45, -0.35], [-0.45, -0.35], [-0.45, 0.35]]" # Match the confirmed 0.90 x 0.70 m footprint.
+      # footprint: "[ [0.55, 0.35], [0.55, -0.35], [-0.55, -0.35], [-0.55, 0.35] ]" # Enlarged safety footprint.
       # plugins: ["voxel_layer", "denoise_layer", "inflation_layer"]
       plugins: ["obstacle_layer", "denoise_layer", "inflation_layer"]   
       # plugins: ["obstacle_layer", "voxel_layer", "denoise_layer", "inflation_layer"]
@@ -214,7 +215,7 @@ local_costmap:
         max_obstacle_height: 2.0
         min_obstacle_height: -0.1
         scan_1:
-          topic: /scan_front # /scan
+          topic: /laser_scan/front
           obstacle_max_range: 5.0
           obstacle_min_range: 0.0
           raytrace_max_range: 5.0
@@ -226,7 +227,7 @@ local_costmap:
           data_type: "LaserScan"
           inf_is_valid: false       
         scan_2:
-          topic: /scan_rear # /scan
+          topic: /laser_scan/rear
           obstacle_max_range: 5.0
           obstacle_min_range: 0.0
           raytrace_max_range: 5.0
@@ -239,26 +240,26 @@ local_costmap:
           inf_is_valid: false
         orbbec_rear_marked:
           topic: /orbbec/rear/pointcloud2_filtered
-          observation_persistence: 2.0
-          obstacle_max_range: 30.0
+          observation_persistence: 0.7
+          obstacle_max_range: 5.0
           obstacle_min_range: 0.0
-          raytrace_max_range: 30.0
+          raytrace_max_range: 5.0
           raytrace_min_range: 0.0
           max_obstacle_height: 2.0
-          min_obstacle_height: -0.1
+          min_obstacle_height: 0.05  # Ignore RGBD points below 5 cm in base_link.
           clearing: True
           marking: True
           data_type: "PointCloud2"
           inf_is_valid: false
         orbbec_front_marked:
           topic: /orbbec/front/pointcloud2_filtered
-          observation_persistence: 2.0
-          obstacle_max_range: 30.0
+          observation_persistence: 0.7
+          obstacle_max_range: 5.0
           obstacle_min_range: 0.0
-          raytrace_max_range: 30.0
+          raytrace_max_range: 5.0
           raytrace_min_range: 0.0
           max_obstacle_height: 2.0
-          min_obstacle_height: -0.1
+          min_obstacle_height: 0.05  # Ignore RGBD points below 5 cm in base_link.
           clearing: True
           marking: True
           data_type: "PointCloud2"
@@ -277,8 +278,8 @@ global_costmap:
       global_frame: map
       robot_base_frame: base_link
       use_sim_time: True
-      # footprint: "[ [0.55, 0.35], [0.55, -0.35], [-0.55, -0.35], [-0.55, 0.35] ]" # Slightly increased for better planning efficiency and safety (real size: 0.95*0.55)
-      footprint: "[[0.35, 0.29], [0.35, -0.29], [-0.35, -0.29], [-0.35, 0.29]]" # Slightly increased for better planning efficiency and safety (real size: 0.95*0.55)
+      # footprint: "[ [0.55, 0.35], [0.55, -0.35], [-0.55, -0.35], [-0.55, 0.35] ]" # Enlarged safety footprint.
+      footprint: "[[0.45, 0.35], [0.45, -0.35], [-0.45, -0.35], [-0.45, 0.35]]" # Match the confirmed 0.90 x 0.70 m footprint.
       resolution: 0.05
       track_unknown_space: false # True
       # plugins: ["static_layer", "obstacle_layer",  "denoise_layer", "inflation_layer"]
@@ -296,7 +297,7 @@ global_costmap:
         max_obstacle_height: 2.0
         min_obstacle_height: -0.05
         scan_1:
-          topic: /scan_front # /scan
+          topic: /laser_scan/front
           obstacle_max_range: 30.0
           obstacle_min_range: 0.0
           raytrace_max_range: 30.0
@@ -308,7 +309,7 @@ global_costmap:
           data_type: "LaserScan"
           inf_is_valid: false
         scan_2:
-          topic: /scan_rear # /scan
+          topic: /laser_scan/rear
           obstacle_max_range: 30.0
           obstacle_min_range: 0.0
           raytrace_max_range: 30.0
@@ -321,13 +322,13 @@ global_costmap:
           inf_is_valid: false
         orbbec_rear_marked:
           topic: /orbbec/rear/pointcloud2_filtered
-          observation_persistence: 2.0
-          obstacle_max_range: 30.0
+          observation_persistence: 0.7
+          obstacle_max_range: 5.0
           obstacle_min_range: 0.0
-          raytrace_max_range: 30.0
+          raytrace_max_range: 5.0
           raytrace_min_range: 0.0
           max_obstacle_height: 2.0
-          min_obstacle_height: -0.1
+          min_obstacle_height: 0.05  # Ignore RGBD points below 5 cm in base_link.
           clearing: True
           marking: True
           data_type: "PointCloud2"
@@ -335,13 +336,13 @@ global_costmap:
           
         orbbec_front_marked:
           topic: /orbbec/front/pointcloud2_filtered
-          observation_persistence: 2.0
-          obstacle_max_range: 30.0
+          observation_persistence: 0.7
+          obstacle_max_range: 5.0
           obstacle_min_range: 0.0
-          raytrace_max_range: 30.0
+          raytrace_max_range: 5.0
           raytrace_min_range: 0.0
           max_obstacle_height: 2.0
-          min_obstacle_height: -0.1
+          min_obstacle_height: 0.05  # Ignore RGBD points below 5 cm in base_link.
           clearing: True
           marking: True
           data_type: "PointCloud2"
@@ -398,7 +399,7 @@ planner_server:
       rotation_penalty: 5.0               # Penalty to apply to in-place rotations, if minimum control set contains them
       retrospective_penalty: 0.015
       #lattice_filepath: "default" # rewrite in launch                # The filepath to the state lattice graph
-      lattice_filepath: "$(find-pkg-share nav2_smac_planner)/sample_primitives/5cm_resolution/0.5m_turning_radius/omni/output.json"
+      lattice_filepath: "$(find-pkg-share nav2_smac_planner)/sample_primitives/5cm_resolution/output.json"
       lookup_table_size: 20.0             # Size of the dubin/reeds-sheep distance window to cache, in meters.
       cache_obstacle_heuristic: false     # Cache the obstacle map dynamic programming distance expansion heuristic between subsiquent replannings of the same goal location. Dramatically speeds up replanning performance (40x) if costmap is largely static.
       allow_reverse_expansion: false      # If true, allows the robot to use the primitives to expand in the mirrored opposite direction of the current robot's orientation (to reverse).
@@ -457,7 +458,7 @@ behavior_server:
       plugin: "nav2_behaviors/Wait"
     assisted_teleop:
       plugin: "nav2_behaviors/AssistedTeleop"
-    global_frame: map
+    global_frame: odom
     robot_base_frame: base_link
     transform_tolerance: 0.1
     use_sim_time: true
@@ -487,6 +488,8 @@ velocity_smoother:
     smoothing_frequency: 20.0
     scale_velocities: False
     feedback: "OPEN_LOOP"
+    input_topic: "cmd_vel_nav"
+    output_topic: "control/cmd_vel"
     # Test
     max_velocity: [0.5, 0.5, 0.7]
     min_velocity: [-0.5, -0.5, -0.7]  
@@ -502,7 +505,7 @@ velocity_smoother:
     # min_velocity: [-0.5, 0.0, -2.0]
     # max_accel: [1.0, 0.0, 0.5]
     # max_decel: [-1.0, 0.0, -0.5]    
-    odom_topic: "/odom/wheel"
+    odom_topic: "/feedback/odom"
     odom_duration: 0.1
     deadband_velocity: [0.0, 0.0, 0.0]
     velocity_timeout: 1.0

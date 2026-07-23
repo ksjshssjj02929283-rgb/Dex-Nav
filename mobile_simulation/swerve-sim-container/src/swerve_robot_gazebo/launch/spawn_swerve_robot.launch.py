@@ -8,6 +8,7 @@ from launch.actions import (
     IncludeLaunchDescription,
     RegisterEventHandler,
 )
+from launch.substitutions import LaunchConfiguration
 from launch.event_handlers import OnProcessExit
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
@@ -35,7 +36,11 @@ swerve_controller_launch_path = os.path.join(
 )
 
 # Launch Arguments
-ARGUMENTS: Final[List[DeclareLaunchArgument]] = []
+ARGUMENTS: Final[List[DeclareLaunchArgument]] = [
+    DeclareLaunchArgument("use_sim_time", default_value="true"),
+    DeclareLaunchArgument("x_pose", default_value="0.0"),
+    DeclareLaunchArgument("y_pose", default_value="0.0"),
+]
 
 
 def generate_launch_description() -> LaunchDescription:
@@ -51,7 +56,10 @@ def generate_launch_description() -> LaunchDescription:
     # Include description launch file
     description_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource([description_launch_path]),
-        launch_arguments={"sim": "true"}.items(),
+        launch_arguments={
+            "sim": "true",
+            "use_sim_time": LaunchConfiguration("use_sim_time"),
+        }.items(),
     )
 
     # Spawn robot
@@ -63,6 +71,10 @@ def generate_launch_description() -> LaunchDescription:
             "robot_description",
             "-entity",
             "swerve_robot",
+            "-x",
+            LaunchConfiguration("x_pose"),
+            "-y",
+            LaunchConfiguration("y_pose"),
             "-z",
             "0.35",
             "-timeout",
@@ -119,6 +131,11 @@ def generate_launch_description() -> LaunchDescription:
 
     swerve_control_odom_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource([swerve_controller_launch_path]),
+        launch_arguments={
+            "use_sim_time": LaunchConfiguration("use_sim_time"),
+            "x_pose": LaunchConfiguration("x_pose"),
+            "y_pose": LaunchConfiguration("y_pose"),
+        }.items(),
     )
 
     ld = LaunchDescription(ARGUMENTS)

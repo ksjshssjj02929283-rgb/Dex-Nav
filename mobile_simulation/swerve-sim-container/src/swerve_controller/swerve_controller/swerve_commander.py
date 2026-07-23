@@ -10,7 +10,7 @@ continuous planner (e.g. Nav2/MPPI) that keeps changing the commanded twist.
 The other differences are that this node speaks the simulation's interfaces
 instead of the real robot's:
 
-  * Input : geometry_msgs/Twist on /cmd_vel  (real robot: /control/cmd_vel_omni)
+  * Input : geometry_msgs/Twist on /control/cmd_vel
   * Output: per-joint Float64MultiArray on the 8 ros2_control topics
             /{steering|wheel}_{front|rear}_{left|right}/commands
             (real robot: a single ChassisMotorControl message)
@@ -45,7 +45,7 @@ from .swerve_joints import (
 
 # --- Tuning constants, mirrored from mobile_cmd_omni.cpp -------------------
 CONTROL_PERIOD_S: float = 0.05  # 20 Hz, same as the real controller
-CMD_TIMEOUT_S: float = 0.5  # zero the command if /cmd_vel goes stale
+CMD_TIMEOUT_S: float = 0.5  # zero the command if /control/cmd_vel goes stale
 STEER_MAX_STEP: float = 6.28  # max steering change per cycle (rad)
 SPEED_RAMP_RATE: float = 0.8  # wheel-speed low-pass factor (0-1)
 
@@ -74,7 +74,7 @@ def ramp_angle(target: float, current: float, max_step: float) -> float:
 
 class SwerveCommander(Node):
     """
-    Converts a body twist on /cmd_vel into 8 swerve joint commands using the
+    Converts a body twist on /control/cmd_vel into 8 swerve joint commands using the
     same algorithm as the real DexForce omni chassis controller.
     """
 
@@ -132,7 +132,7 @@ class SwerveCommander(Node):
         }
 
         self.cmd_vel_sub = self.create_subscription(
-            Twist, "/cmd_vel", self._cmd_vel_cb, 10
+            Twist, "/control/cmd_vel", self._cmd_vel_cb, 10
         )
         self.joint_state_sub = self.create_subscription(
             JointState, "/joint_states", self._joint_state_cb, 10

@@ -47,6 +47,14 @@ spawn_launch_path = os.path.join(
 # Launch Arguments
 ARGUMENTS: Optional[List[DeclareLaunchArgument]] = [
     DeclareLaunchArgument(
+        name="use_sim_time",
+        default_value="true",
+        choices=["true", "false"],
+        description="Use the Gazebo simulation clock",
+    ),
+    DeclareLaunchArgument(name="x_pose", default_value="0.0"),
+    DeclareLaunchArgument(name="y_pose", default_value="0.0"),
+    DeclareLaunchArgument(
         name="render",
         default_value="auto",
         choices=["auto", "nvidia", "software"],
@@ -178,6 +186,11 @@ def generate_launch_description() -> LaunchDescription:
 
     swerve_robot_spawn = IncludeLaunchDescription(
         PythonLaunchDescriptionSource([spawn_launch_path]),
+        launch_arguments={
+            "use_sim_time": LaunchConfiguration("use_sim_time"),
+            "x_pose": LaunchConfiguration("x_pose"),
+            "y_pose": LaunchConfiguration("y_pose"),
+        }.items(),
     )
 
     # Give Gazebo time to come up before spawning the robot.

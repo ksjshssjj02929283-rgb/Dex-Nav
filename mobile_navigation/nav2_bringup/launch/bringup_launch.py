@@ -44,6 +44,9 @@ def generate_launch_description():
     use_composition = LaunchConfiguration('use_composition')
     use_respawn = LaunchConfiguration('use_respawn')
     log_level = LaunchConfiguration('log_level')
+    map_odom_x = LaunchConfiguration('map_odom_x')
+    map_odom_y = LaunchConfiguration('map_odom_y')
+    map_odom_yaw = LaunchConfiguration('map_odom_yaw')
 
     # Map fully qualified names to relative ones so the node's namespace can be prepended.
     # In case of the transforms (tf), currently, there doesn't seem to be a better alternative
@@ -124,15 +127,39 @@ def generate_launch_description():
         'log_level', default_value='info',
         description='log level')
 
+    declare_map_odom_x_cmd = DeclareLaunchArgument(
+        'map_odom_x', default_value='0.0',
+        description='Static map-to-odom x translation in metres')
+
+    declare_map_odom_y_cmd = DeclareLaunchArgument(
+        'map_odom_y', default_value='0.0',
+        description='Static map-to-odom y translation in metres')
+
+    declare_map_odom_yaw_cmd = DeclareLaunchArgument(
+        'map_odom_yaw', default_value='0.0',
+        description='Static map-to-odom yaw rotation in radians')
+
     # Simulation without AMCL: publish map->odom immediately on /tf_static.
     # Do NOT set use_sim_time here — static TF must be visible even before
     # /clock is available; Nav2 components still use use_sim_time from params.
     map_to_odom_tf = Node(
-        condition=IfCondition(use_sim_time),
+        condition=IfCondition(PythonExpression([
+            "'", use_sim_time, "'.lower() == 'true' and '", slam,
+            "'.lower() != 'true'"
+        ])),
         package='tf2_ros',
         executable='static_transform_publisher',
         name='map_to_odom_static_tf',
-        arguments=['0', '0', '0', '0', '0', '0', 'map', 'odom'],
+        arguments=[
+            '--x', map_odom_x,
+            '--y', map_odom_y,
+            '--z', '0.0',
+            '--yaw', map_odom_yaw,
+            '--pitch', '0.0',
+            '--roll', '0.0',
+            '--frame-id', 'map',
+            '--child-frame-id', 'odom',
+        ],
         output='screen',
     )
 
@@ -204,6 +231,9 @@ def generate_launch_description():
     ld.add_action(declare_use_composition_cmd)
     ld.add_action(declare_use_respawn_cmd)
     ld.add_action(declare_log_level_cmd)
+    ld.add_action(declare_map_odom_x_cmd)
+    ld.add_action(declare_map_odom_y_cmd)
+    ld.add_action(declare_map_odom_yaw_cmd)
 
     # Add the actions to launch all of the navigation nodes
     ld.add_action(bringup_cmd_group)

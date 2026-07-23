@@ -953,22 +953,22 @@
       </collision>
     </link>
     <joint name="ANKLE" type="fixed">
-      <origin xyz="0 0 0.292" rpy="1.5707963267948966 0 0" />
+      <origin xyz="0 0 0.292" rpy="1.5707963267948963 0.70999999999999996 -1.4639752600631157e-16" />
       <parent link="torso_base_link" />
       <child link="ankle" />
     </joint>
     <joint name="KNEE" type="fixed">
-      <origin xyz="0 0.34 0" rpy="0 0 0" />
+      <origin xyz="0 0.34 0" rpy="0 0 1.2907999999999999" />
       <parent link="ankle" />
       <child link="knee" />
     </joint>
     <joint name="BUTTOCK" type="fixed">
-      <origin xyz="0 0.34 0" rpy="0 0 0" />
+      <origin xyz="0 0.34 0" rpy="0 0 -0.58009999999999973" />
       <parent link="knee" />
       <child link="buttock" />
     </joint>
     <joint name="WAIST" type="fixed">
-      <origin xyz="0 0.1578 0" rpy="-1.5707963267948966 0 0" />
+      <origin xyz="0 0.1578 0" rpy="-1.5707963267948963 0.076300000000000007 2.0877423177846601e-17" />
       <parent link="buttock" />
       <child link="waist" />
     </joint>
@@ -978,12 +978,12 @@
       <child link="neck_base" />
     </joint>
     <joint name="NECK1" type="fixed">
-      <origin xyz="0 0 0" rpy="0 0 0" />
+      <origin xyz="0 0 0" rpy="0 0 -0.0022000000000000001" />
       <parent link="neck_base" />
       <child link="neck1" />
     </joint>
     <joint name="NECK2" type="fixed">
-      <origin xyz="0 0 0.081" rpy="-1.5707963267948966 0 0" />
+      <origin xyz="0 0 0.081" rpy="-1.5707963267948966 0.035299999999999998 3.4716096964217401e-18" />
       <parent link="neck1" />
       <child link="neck2" />
     </joint>
@@ -998,37 +998,37 @@
       <child link="left_arm_base" />
     </joint>
     <joint name="LEFT_J1" type="fixed">
-      <origin xyz="0 0 0" rpy="0 0 0" />
+      <origin xyz="0 0 0" rpy="0 0 -0.070300000000000029" />
       <parent link="left_arm_base" />
       <child link="left_j1" />
     </joint>
     <joint name="LEFT_J2" type="fixed">
-      <origin xyz="0 0 0.1025" rpy="1.5707963267948966 0 3.141592653589793" />
+      <origin xyz="0 0 0.1025" rpy="1.5707963267948966 1.3729 3.1415926535897922" />
       <parent link="left_j1" />
       <child link="left_j2" />
     </joint>
     <joint name="LEFT_J3" type="fixed">
-      <origin xyz="0 0.260 0.0" rpy="1.5707963267948966 -1.5707963267948966 3.141592653589793" />
+      <origin xyz="0 0.260 0.0" rpy="-1.5707963267948943 -1.5228963267948969 -1.1593399680918524e-15" />
       <parent link="left_j2" />
       <child link="left_j3" />
     </joint>
     <joint name="LEFT_J4" type="fixed">
-      <origin xyz="0 0 0" rpy="1.5707963267948966 0 0" />
+      <origin xyz="0 0 0" rpy="1.5707963267948966 0.10769999999999999 -2.7917329774163377e-17" />
       <parent link="left_j3" />
       <child link="left_j4" />
     </joint>
     <joint name="LEFT_J5" type="fixed">
-      <origin xyz="0 0.166 0.0" rpy="-1.5707963267948966 3.141592653589793 0" />
+      <origin xyz="0 0.166 0.0" rpy="1.5707963267948968 0.028400000000000123 -3.1415926535897931" />
       <parent link="left_j4" />
       <child link="left_j5" />
     </joint>
     <joint name="LEFT_J6" type="fixed">
-      <origin xyz="0 0 0.098" rpy="1.5707963267948966 0 0" />
+      <origin xyz="0 0 0.098" rpy="1.5707963267948968 -0.59300000000000008 6.6939952644245342e-17" />
       <parent link="left_j5" />
       <child link="left_j6" />
     </joint>
     <joint name="LEFT_J7" type="fixed">
-      <origin xyz="0 0 0" rpy="-1.5707963267948966 3.141592653589793 1.5707963267948966" />
+      <origin xyz="0 0 0" rpy="1.5707963267948966 0.049600000000000199 -1.5707963267948968" />
       <parent link="left_j6" />
       <child link="left_j7" />
     </joint>
@@ -1048,37 +1048,37 @@
       <child link="right_arm_base" />
     </joint>
     <joint name="RIGHT_J1" type="fixed">
-      <origin xyz="0 0 0" rpy="0 0 0" />
+      <origin xyz="0 0 0" rpy="0 0 0.058800000000000012" />
       <parent link="right_arm_base" />
       <child link="right_j1" />
     </joint>
     <joint name="RIGHT_J2" type="fixed">
-      <origin xyz="0 0 0.1025" rpy="1.5707963267948966 0 3.141592653589793" />
+      <origin xyz="0 0 0.1025" rpy="1.5707963267948977 -1.3733999999999997 -3.1415926535897927" />
       <parent link="right_j1" />
       <child link="right_j2" />
     </joint>
     <joint name="RIGHT_J3" type="fixed">
-      <origin xyz="0 0.260 0.0" rpy="1.5707963267948966 -1.5707963267948966 3.141592653589793" />
+      <origin xyz="0 0.260 0.0" rpy="-1.5707963267948952 -1.4895963267948966 -2.0531600897508978e-15" />
       <parent link="right_j2" />
       <child link="right_j3" />
     </joint>
     <joint name="RIGHT_J4" type="fixed">
-      <origin xyz="0 0 0" rpy="1.5707963267948966 0 0" />
+      <origin xyz="0 0 0" rpy="1.5707963267948963 0.015800000000000002 -3.4698800533718106e-18" />
       <parent link="right_j3" />
       <child link="right_j4" />
     </joint>
     <joint name="RIGHT_J5" type="fixed">
-      <origin xyz="0 0.166 0.0" rpy="-1.5707963267948966 3.141592653589793 0" />
+      <origin xyz="0 0.166 0.0" rpy="1.5707963267948968 -0.092999999999999874 3.1415926535897931" />
       <parent link="right_j4" />
       <child link="right_j5" />
     </joint>
     <joint name="RIGHT_J6" type="fixed">
-      <origin xyz="0 0 0.098" rpy="1.5707963267948966 0 0" />
+      <origin xyz="0 0 0.098" rpy="1.5707963267948963 -0.31040000000000006 5.8297083122530891e-17" />
       <parent link="right_j5" />
       <child link="right_j6" />
     </joint>
     <joint name="RIGHT_J7" type="fixed">
-      <origin xyz="0 0 0" rpy="-1.5707963267948966 3.141592653589793 1.5707963267948966" />
+      <origin xyz="0 0 0" rpy="1.5707963267948966 0.081400000000000236 -1.5707963267948968" />
       <parent link="right_j6" />
       <child link="right_j7" />
     </joint>
@@ -1103,7 +1103,7 @@
       <child link="left_l_index_prox" />
     </joint>
     <joint name="LEFT_L_INDEXPIP" type="fixed">
-      <origin xyz="0 0.035 0" rpy="0.19353 0 0" />
+      <origin xyz="0 0.035 0" rpy="0.38653000000000015 0 0" />
       <parent link="left_l_index_prox" />
       <child link="left_l_index_dist" />
     </joint>
@@ -1113,7 +1113,7 @@
       <child link="left_l_middle_prox" />
     </joint>
     <joint name="LEFT_L_MIDDLEPIP" type="fixed">
-      <origin xyz="0 0.042 0" rpy="0.18357 0 0" />
+      <origin xyz="0 0.042 0" rpy="0.36657000000000006 0 0" />
       <parent link="left_l_middle_prox" />
       <child link="left_l_middle_dist" />
     </joint>
@@ -1123,7 +1123,7 @@
       <child link="left_l_ring_prox" />
     </joint>
     <joint name="LEFT_L_RINGPIP" type="fixed">
-      <origin xyz="0 0.042 0" rpy="0.16583 0 0" />
+      <origin xyz="0 0.042 0" rpy="0.33183000000000012 0 0" />
       <parent link="left_l_ring_prox" />
       <child link="left_l_ring_dist" />
     </joint>
@@ -1133,7 +1133,7 @@
       <child link="left_l_little_prox" />
     </joint>
     <joint name="LEFT_L_LITTLEPIP" type="fixed">
-      <origin xyz="0 0.035 0" rpy="0.20294 0 0" />
+      <origin xyz="0 0.035 0" rpy="0.40494000000000002 0 0" />
       <parent link="left_l_little_prox" />
       <child link="left_l_little_dist" />
     </joint>
@@ -1153,7 +1153,7 @@
       <child link="right_r_index_prox" />
     </joint>
     <joint name="RIGHT_R_INDEXPIP" type="fixed">
-      <origin xyz="0 0.035 0" rpy="0.19353 0 0" />
+      <origin xyz="0 0.035 0" rpy="0.38653000000000015 0 0" />
       <parent link="right_r_index_prox" />
       <child link="right_r_index_dist" />
     </joint>
@@ -1163,7 +1163,7 @@
       <child link="right_r_middle_prox" />
     </joint>
     <joint name="RIGHT_R_MIDDLEPIP" type="fixed">
-      <origin xyz="0 0.042 0" rpy="0.18357 0 0" />
+      <origin xyz="0 0.042 0" rpy="0.36657000000000006 0 0" />
       <parent link="right_r_middle_prox" />
       <child link="right_r_middle_dist" />
     </joint>
@@ -1173,7 +1173,7 @@
       <child link="right_r_ring_prox" />
     </joint>
     <joint name="RIGHT_R_RINGPIP" type="fixed">
-      <origin xyz="0 0.042 0" rpy="0.16583 0 0" />
+      <origin xyz="0 0.042 0" rpy="0.33183000000000012 0 0" />
       <parent link="right_r_ring_prox" />
       <child link="right_r_ring_dist" />
     </joint>
@@ -1183,7 +1183,7 @@
       <child link="right_r_little_prox" />
     </joint>
     <joint name="RIGHT_R_LITTLEPIP" type="fixed">
-      <origin xyz="0 0.035 0" rpy="0.20294 0 0" />
+      <origin xyz="0 0.035 0" rpy="0.40494000000000002 0 0" />
       <parent link="right_r_little_prox" />
       <child link="right_r_little_dist" />
     </joint>

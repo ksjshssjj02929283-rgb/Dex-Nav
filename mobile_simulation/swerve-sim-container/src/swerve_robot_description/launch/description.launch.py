@@ -42,6 +42,12 @@ ARGUMENTS: Final[List[DeclareLaunchArgument]] = [
         choices=["true", "false"],
         description="Attach the DexForce upper body (visual + collision)",
     ),
+    DeclareLaunchArgument(
+        name="use_sim_time",
+        default_value="false",
+        choices=["true", "false"],
+        description="Use the Gazebo simulation clock",
+    ),
 ]
 
 
@@ -74,7 +80,10 @@ def launch_setup(context, *args, **kwargs) -> List[Node]:
         package="robot_state_publisher",
         executable="robot_state_publisher",
         output="screen",
-        parameters=[robot_description],
+        parameters=[
+            robot_description,
+            {"use_sim_time": LaunchConfiguration("use_sim_time")},
+        ],
     )
 
     return [robot_state_publisher_node]

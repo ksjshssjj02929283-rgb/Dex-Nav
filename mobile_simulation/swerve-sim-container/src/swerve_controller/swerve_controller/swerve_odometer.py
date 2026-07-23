@@ -43,7 +43,7 @@ class SwerveOdometer(Node):
       eight swerve joints
 
     Publishers:
-        /odom/wheel -> nav_msgs.msg.Odometry
+        /feedback/odom -> nav_msgs.msg.Odometry
 
       and
 
@@ -51,8 +51,8 @@ class SwerveOdometer(Node):
     """
 
     PARENT_FRAME: Final[str] = "odom"
-    BASE_FRAME: Final[str] = "base_link"
-    WHEEL_ODOM_TOPIC: Final[str] = "/odom/wheel"
+    BASE_FRAME: Final[str] = "base_footprint"
+    WHEEL_ODOM_TOPIC: Final[str] = "/feedback/odom"
     JOINT_STATES_TOPIC: Final[str] = "/joint_states"
     ODOM_PUB_FREQ: Final[float] = 30.0
     NUM_ACTUATORS: Final[int] = 8
@@ -74,6 +74,16 @@ class SwerveOdometer(Node):
         type=ParameterType.PARAMETER_DOUBLE,
         description="radius of wheel in meters",
     )
+    initial_x_descriptor = ParameterDescriptor(
+        name="initial_x",
+        type=ParameterType.PARAMETER_DOUBLE,
+        description="initial odometry x position in meters",
+    )
+    initial_y_descriptor = ParameterDescriptor(
+        name="initial_y",
+        type=ParameterType.PARAMETER_DOUBLE,
+        description="initial odometry y position in meters",
+    )
 
     def __init__(self):
         super().__init__("swerve_odometer")  # init node superclass with name
@@ -82,10 +92,14 @@ class SwerveOdometer(Node):
         self.wheelbase: float
         self.wheel_track: float
         self.wheel_radius: float
+        self.initial_x: float
+        self.initial_y: float
         for descriptor in (
             self.wheelbase_descriptor,
             self.wheel_track_descriptor,
             self.wheel_radius_descriptor,
+            self.initial_x_descriptor,
+            self.initial_y_descriptor,
         ):
             self.declare_parameter(name=descriptor.name, descriptor=descriptor)
             value = self.get_parameter(descriptor.name).get_parameter_value()
@@ -117,8 +131,8 @@ class SwerveOdometer(Node):
 
         # initial pose is at origin (with orientation w set to 1.0)
         self.pose: Pose = Pose()
-        self.pose.position.x = 0.0
-        self.pose.position.y = 0.0
+        self.pose.position.x = self.initial_x
+        self.pose.position.y = self.initial_y
         self.pose.orientation.x = 0.0
         self.pose.orientation.y = 0.0
         self.pose.orientation.z = 0.0

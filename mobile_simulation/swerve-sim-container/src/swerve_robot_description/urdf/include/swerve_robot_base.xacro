@@ -17,8 +17,16 @@
 
     <!-- GENERATION, GENERATES THE ROBOT FROM MACROS -->
 
-    <!-- Main chassis + dummy base link -->
-    <xacro:base name="base_link" />
+    <!-- Match the production TF contract: odom -> base_footprint -> base_link. -->
+    <xacro:base name="base_footprint" />
+    <link name="base_link" />
+    <joint name="base_joint" type="fixed">
+      <parent link="base_footprint" />
+      <child link="base_link" />
+      <origin xyz="0 0 0.01" rpy="0 0 0" />
+    </joint>
+
+    <!-- Main chassis -->
     <xacro:chassis name="chassis_link" parent="base_link" />
 
     <!-- Steering Links + Joints.

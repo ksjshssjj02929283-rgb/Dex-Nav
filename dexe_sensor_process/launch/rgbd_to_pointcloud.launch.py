@@ -6,6 +6,18 @@ from launch_ros.actions import Node
 
 def generate_launch_description():
     # 声明启动参数
+    use_sim_time_arg = DeclareLaunchArgument(
+        'use_sim_time',
+        default_value='false',
+        description='是否使用仿真时钟'
+    )
+
+    depth_max_range_arg = DeclareLaunchArgument(
+        'depth_max_range',
+        default_value='5.0',
+        description='点云保留的最大深度（米）'
+    )
+
     camera_name_arg = DeclareLaunchArgument(
         'camera_name',
         default_value='rear',
@@ -17,7 +29,7 @@ def generate_launch_description():
         default_value='',
         description='输入的 RGBD 话题名称（为空时使用默认规则：/orbbec/{camera_name}）'
     )
-    
+
     output_topic_raw_arg = DeclareLaunchArgument(
         'output_topic_raw',
         default_value='',
@@ -95,7 +107,7 @@ def generate_launch_description():
     ground_filter_min_height_arg = DeclareLaunchArgument(
         'ground_filter_min_height',
         default_value='0.05',
-        description='低于该高度的点会被认为是地面或近地噪声并剔除（米）'
+        description='小于等于该高度的点会被认为是地面或近地噪声并剔除（米）'
     )
 
     ground_filter_max_height_arg = DeclareLaunchArgument(
@@ -115,6 +127,8 @@ def generate_launch_description():
             'output_topic_raw': LaunchConfiguration('output_topic_raw'),
             'output_topic_filtered': LaunchConfiguration('output_topic_filtered'),
             'output_topic_laserscan': LaunchConfiguration('output_topic_laserscan'),
+            'use_sim_time': LaunchConfiguration('use_sim_time'),
+            'depth_max_range': LaunchConfiguration('depth_max_range'),
             'flag_voxel_filter': LaunchConfiguration('flag_voxel_filter'),
             'flag_mls_filter': LaunchConfiguration('flag_mls_filter'),
             'flag_sor_filter': LaunchConfiguration('flag_sor_filter'),
@@ -131,6 +145,8 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
+        use_sim_time_arg,
+        depth_max_range_arg,
         camera_name_arg,
         input_topic_arg,
         output_topic_raw_arg,
