@@ -27,13 +27,19 @@
             <AttemptLogger label="回充对接" counter_key="dock_attempt_count" total="3" />
             <StartDetection />
 
-            <Fallback name="DockAndVerify">
-              <Sequence name="DockThenCheck">
-                <Dock timeout="60.0" />
-                <CheckCharging timeout="20.0" />
+            <!-- 二维码检测或视觉对接失败时仅停止检测，不执行退桩。 -->
+            <Fallback name="DockOnly">
+              <Dock timeout="60.0" />
+              <Sequence name="StopDetectionAfterDockFailure">
+                <StopDetection />
+                <AlwaysFailure />
               </Sequence>
+            </Fallback>
 
-              <Sequence name="RecoverAndRetry">
+            <!-- 只有完成对接后仍未确认充电，才退桩并重新尝试。 -->
+            <Fallback name="VerifyCharging">
+              <CheckCharging timeout="20.0" />
+              <Sequence name="UndockAfterChargingFailure">
                 <StopDetection />
                 <Undocking duration="2.0" />
                 <AlwaysFailure />

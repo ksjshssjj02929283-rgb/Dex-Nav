@@ -303,6 +303,18 @@ protected:
   bool near_goal_progress_enabled_{true};
   bool near_goal_hold_position_when_pose_reached_{false};
   bool near_goal_pose_hold_active_{false};
+  // near-goal hold 进入门控：位姿满足容差且底盘实际速度已足够低时才允许 ControllerServer 接管，
+  // 避免在底盘仍有较大惯性时抢占 MPPI 的动态减速过程
+  double near_goal_hold_enter_vx_{0.01};
+  double near_goal_hold_enter_wz_{0.03};
+  // near-goal hold 释放迟滞：停稳后误差需超过更宽松的阈值才允许释放，避免边界抖动反复抢占
+  double near_goal_hold_release_lon_tolerance_{0.04};
+  double near_goal_hold_release_lat_tolerance_{0.04};
+  double near_goal_hold_release_yaw_tolerance_{0.04};
+  // hold 释放宽限计数：误差持续超出 accept 容差但未超 release 容差时，累计若干周期后释放，
+  // 避免在 0.03~0.04 区间永久卡死（GoalChecker 不成功且 hold 不释放）
+  size_t near_goal_hold_outside_accept_count_{0};
+  size_t near_goal_hold_outside_accept_cycles_{3};
   double near_goal_progress_distance_{0.25};
   double near_goal_progress_required_movement_radius_{0.01};
   double near_goal_progress_required_movement_angle_{0.005};

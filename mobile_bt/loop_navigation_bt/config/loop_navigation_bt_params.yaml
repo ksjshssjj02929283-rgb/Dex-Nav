@@ -1,0 +1,25 @@
+/**:
+  ros__parameters:
+    loop.tick_rate_hz: 10.0  # 行为树主循环频率，单位：Hz。
+
+    navigation.wait_time_sec: 2.0  # 点位未单独配置时的等待时间；导航成功和失败共用，单位：秒。
+    navigation.action_server_wait_timeout_sec: 2.0  # 等待 Nav2 导航 Action server 的最长时间，单位：秒。
+    navigation.odom_topic: /feedback/odom  # 用于累计实际移动距离的里程计话题。
+    navigation.odom_max_increment_m: 0.5  # 单条里程计允许的最大位置增量，超过时视为跳变并忽略，单位：米。
+
+    battery.low_threshold: 30.0  # 低于该电量时触发低电量处理或自动回充，单位：百分比。
+    battery.resume_threshold: 80.0  # 充电达到该电量后允许退桩并恢复导航，单位：百分比。
+    battery.check_enabled_in_nocharging_mode: false  # 无回充模式是否启用低电量检查。
+
+    charging.force: false  # 调用 /auto_charging 时是否强制执行完整回充流程。
+    charging.action_server_wait_timeout_sec: 1.0  # 等待自动回充 Action server 的最长时间，单位：秒。
+
+    undocking.duration_sec: 2.0  # 回充完成后的退桩持续时间，单位：秒。
+    undocking.linear_speed: 0.15  # 退桩线速度，单位：m/s，正值表示向前驶离充电桩。
+
+    goal_error_stats.use_goal_checker_error: true  # 是否优先使用 goal checker 发布的最终到点误差。
+    goal_error_stats.desired_position_tolerance: 0.01  # 期望位置误差阈值，单位：米。
+    goal_error_stats.accept_position_tolerance: 0.02  # 可接受位置误差阈值，单位：米。
+    goal_error_stats.sample_count: 10  # 回退到 TF 统计时连续采集的位姿样本数量。
+    goal_error_stats.sample_interval_sec: 0.1  # TF 位姿样本之间的时间间隔，单位：秒。
+    goal_error_stats.stats_log_interval: 20  # 每累计多少个导航样本输出一次统计汇总。

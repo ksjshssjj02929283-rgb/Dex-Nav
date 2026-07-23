@@ -193,7 +193,7 @@ private:
 
     cv::Mat dist_coeffs(dist);
 
-    double h = tag_size_ / 2.0;
+    const float h = static_cast<float>(tag_size_ / 2.0);
     std::vector<cv::Point3f> obj_pts = {
       {-h, -h, 0},
       { h, -h, 0},

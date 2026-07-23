@@ -1,72 +1,105 @@
 # auto_charging_bt
 
-`auto_charging_bt` 是 ROS 2 自动回充行为树包。它先使用 Nav2 导航到充电桩前置点，再根据 AprilTag 感知结果完成低速倒车对接，最后从电源板诊断信息确认是否开始充电。
+`auto_charging_bt` 是 ROS 2 自动回充行为树包，负责依次完成：
 
-## 回充流程
+1. 判断机器人当前是否已连接或正在充电。
+2. 使用 Nav2 导航到充电桩前置点。
+3. 根据 AprilTag 目标进行低速倒车对接。
+4. 末端低速压入，并确认是否开始充电。
 
-正式流程由 `config/charging_bt.xml` 定义：
+## 1. 快速使用
 
-```text
-自动回充 AutoChargingRoot
-├── 已经充电：直接成功
-├── 已连接但未充电：先退桩，再进入正常回充
-└── 正常回充
-    ├── 导航到充电前置点，最多尝试 3 次
-    └── 对接和充电确认，最多尝试 3 次
-        ├── 启动 AprilTag 检测
-        ├── 三阶段倒车对接
-        ├── 末端低速插入
-        └── 连续确认充电；失败则停止检测、退桩并重试
-```
-
-入口会先对 `/diagnostics_agg` 稳定采样，区分“已充电”“已连接但未充电”和“未连接未充电”。导航与对接分别计数，某一次对接失败不会重新执行已经成功的前置导航。
-
-## 推荐启动与调用
-
-启动 Action server 和 AprilTag 对齐节点：
+### 1.1 启动回充 Action
 
 ```bash
+source /opt/ros/humble/setup.bash
+source install/setup.bash
 ros2 launch auto_charging_bt auto_charging_action.launch.py
 ```
 
-发送一次回充目标：
+以上命令在已经完成构建的 ROS 2 工作空间根目录执行。
+
+该 launch 会启动：
+
+- `/auto_charging` Action server。
+- AprilTag 对齐节点 `apriltag_alignment_tf_node`。
+
+### 1.2 确认接口存在
 
 ```bash
-ros2 action send_goal /auto_charging chassis_interfaces/action/AutoCharging "{force: true}" --feedback
+ros2 action list | grep auto_charging
+ros2 action info /auto_charging
 ```
 
-Action 是推荐接口：
+Action 名称和类型：
 
-- 名称：`/auto_charging`
-- 类型：`chassis_interfaces/action/AutoCharging`
-- 同一时间只执行一个回充目标。
-- feedback（反馈）包含当前行为树状态和尝试次数。
-- 成功、失败或取消时会停止 AprilTag 检测并发布零速度兜底。
+```text
+/auto_charging
+chassis_interfaces/action/AutoCharging
+```
 
-兼容的 Trigger service 入口：
+### 1.3 调用一次回充
+
+推荐使用空 Goal：
 
 ```bash
-ros2 launch auto_charging_bt auto_charging_service.launch.py
-ros2 service call /auto_charging std_srvs/srv/Trigger "{}"
+ros2 action send_goal /auto_charging chassis_interfaces/action/AutoCharging "{}"
 ```
 
-Action 与 Service 名称相同但接口类型不同，调用前应使用 `ros2 action list` 或 `ros2 service list` 确认实际启动的入口。
+需要同时查看 feedback（反馈）时使用：
 
-## 设置充电前置导航点
+```bash
+ros2 action send_goal /auto_charging chassis_interfaces/action/AutoCharging \
+  "{}" --feedback
+```
 
-将机器人遥控到充电桩正前方约 `0.5 m`，确认定位和朝向正确，然后调用：
+`goal` 是 `ros2 action send_goal` 的必填参数，完全省略会由命令行直接报错，Goal 不会发送。
+传入 `"{}"` 时，布尔字段 `force` 使用默认值 `false`，Action 仍会正常执行。
+
+当前源码只打印 `force`，尚未使用它改变回充逻辑：
+
+| Goal 内容 | `force` 实际值 | 当前执行效果 |
+| --- | --- | --- |
+| `"{}"` | `false`（默认值） | 正常执行完整回充流程 |
+| `"{force: false}"` | `false` | 正常执行完整回充流程 |
+| `"{force: true}"` | `true` | 正常执行完整回充流程 |
+
+因此 `force=true` 和 `force=false` 目前没有区别。该字段从命名上预留给“强制回充”，但相关业务
+逻辑尚未实现；当前 `true` 不会跳过入口状态判断或任何安全流程。
+
+`--feedback` 只让终端持续显示 `current_state` 和 `retry_count`，不会改变机器人行为。
+`retry_count` 表示导航重试次数与对接重试次数之和，两个阶段的第一次尝试都不计为重试；需要区分
+具体是哪个阶段发生重试时，查看 `[NavigationRetry]` 和 `[DockRetry]` 日志。
+
+同一时间只允许一个回充任务执行。已有任务运行时，新任务会返回失败。
+
+## 2. 首次使用前保存充电前置点
+
+### 2.1 保存步骤
+
+1. 将机器人遥控到充电桩正前方约 `0.5 m`。
+2. 确认机器人定位正常，朝向适合直接开始倒车对接。
+3. 调用保存服务：
 
 ```bash
 ros2 service call /save_charging_pose std_srvs/srv/Trigger "{}"
 ```
 
-该服务由 `mobile_perception/charging_pose_service_node` 提供，它采样 `map -> base_link` 并保存到：
+4. 确认服务响应中的 `success=true`。
+5. 检查保存结果：
+
+```bash
+cat /home/dexforce/w1/install/mobile_perception/lib/mobile_perception/charging_pose.json
+```
+
+该文件由 `mobile_perception/charging_pose_service_node` 保存，正式回充会从这里读取 Nav2
+前置导航点。当前路径在 Action 和 Service 源码中固定为：
 
 ```text
 /home/dexforce/w1/install/mobile_perception/lib/mobile_perception/charging_pose.json
 ```
 
-当前 Action 和 Service 源码都硬编码读取这个文件。调用后应确认响应 `success=true`，并检查文件存在且内容包含：
+文件至少应包含 `frame_id`、`position` 和 `orientation`：
 
 ```json
 {
@@ -76,188 +109,213 @@ ros2 service call /save_charging_pose std_srvs/srv/Trigger "{}"
 }
 ```
 
-“约 `0.5 m`”是现场放置要求，程序不会自动检查机器人到充电桩的实际距离。
+“约 `0.5 m`”是现场标定要求，保存服务不会自动检查机器人与充电桩的距离。
 
-## 两种目标位姿不要混淆
+## 3. 完整回充流程
 
-| 目标 | 用途 | 来源 |
-| --- | --- | --- |
-| 充电前置导航点 | Nav2 `/navigate_to_pose` 的目标 | `/save_charging_pose` 保存的 `mobile_perception/.../charging_pose.json` |
-| 近距离对接目标 | 倒车控制器计算机器人相对最终对接位的误差 | `apriltag_target_pose`，默认坐标系为 `base_link` |
-| 本包 `config/charging_pose.json` | 旧 `test_docking_controller` 的测试目标 | 本包源码/安装配置 |
-
-正式行为树 `Dock` 不读取本包 `config/charging_pose.json` 作为近距离目标。
-
-## 倒车对接原理
-
-`Dock` 使用 `ReverseDockingController`，外层分为三次停车采样和三段接近：
-
-1. `INITIAL_SAMPLING`：保持零速度，采样并过滤 `apriltag_target_pose`。
-2. `FIRST_APPROACH`：把平均目标锁定到 `odom`，进行第一阶段粗靠近。
-3. `SECOND_SAMPLING`：停车后重新采样近距离目标。
-4. `SECOND_APPROACH`：使用更小阈值和更低限速继续靠近。
-5. `FINAL_SAMPLING`：最终停车采样；若结果相对上一阶段明显变差，会有限次数重采样。
-6. `FINAL_APPROACH`：低速修正最终位置和姿态。
-7. `backward()`：视觉到位后继续低速插入，检测到连接或充电立即停车。
-
-目标锁定后不会直接把 `base_link` 下的相对坐标当常量。程序把目标锁定在固定坐标系 `odom`，每个控制周期再转换回当前 `base_link`，因此误差会随机器人运动正确变化。
-
-底层控制器状态：
-
-- `APPROACHING`：倒车靠近。
-- `ADJUST_HEADING`：优先减小倒车方向误差。
-- `ADJUST_DISTANCE`：修正纵向距离和横向误差。
-- `ROTATING_TO_GOAL`：使用最终姿态 PID 低速修正 yaw。
-- `FINISH`：位置和姿态同时满足阈值后输出零速度。
-
-## ROS 接口
-
-### 订阅
-
-- `/diagnostics_agg` (`diagnostic_msgs/msg/DiagnosticArray`)：充电状态、电量和连接状态。
-- `apriltag_target_pose` (`geometry_msgs/msg/PoseStamped`)：正式倒车对接目标。
-- `apriltag_poses` (`geometry_msgs/msg/PoseArray`)：仅旧控制器测试使用。
-
-### 发布
-
-- `control/cmd_vel_nav` (`geometry_msgs/msg/Twist`)：对接、末端插入、退桩和压力释放速度。
-- `odom -> reverse_docking_static_target`：锁定目标可视化 TF。
-- `base_link -> reverse_docking_target`：当前相对误差可视化 TF。
-
-### 调用的外部接口
-
-- `/navigate_to_pose` (`nav2_msgs/action/NavigateToPose`)
-- `start_apriltag_detection` (`std_srvs/srv/Trigger`)
-- `stop_apriltag_detection` (`std_srvs/srv/Trigger`)
-
-## 参数配置
-
-参数文件为 `config/auto_charging_bt_params.yaml`。它使用 `/**`，因为参数实际由 Action/Service 进程内部创建的 `AutoChargingNode` 读取。
-
-### 入口与充电确认
-
-| 参数 | 当前值 | 作用 |
-| --- | ---: | --- |
-| `entry_state.max_duration` | `0.5 s` | 入口状态最长采样时间 |
-| `entry_state.sample_interval` | `0.1 s` | 入口状态采样间隔 |
-| `entry_state.required_stable_count` | `3` | 连续一致次数 |
-| `check_charging.required_stable_count` | `5` | 连续检测到正在充电的次数 |
-
-### 末端动作
-
-| 参数 | 当前值 | 作用 |
-| --- | ---: | --- |
-| `backward.initial_speed` | `-0.02 m/s` | 视觉到位后的插入速度 |
-| `backward.max_distance` | `0.16 m` | 最大插入距离 |
-| `backward.max_duration` | `8.0 s` | 最大插入时间 |
-| `undocking.speed` | `0.10 m/s` | 退桩速度 |
-| `undocking.duration` | `2.0 s` | 参数默认退桩时间；XML 可通过端口覆盖 |
-| `pressure_relief.speed` | `0.01 m/s` | 确认充电后的前进卸压速度 |
-| `pressure_relief.duration` | `1.0 s` | 当前卸压持续时间 |
-
-检测到充电器连接或 `battery_charging=true` 后，末端插入会立即停止，不会继续使用 `connected_speed` 慢速顶桩。
-
-### `dock.reverse.*`
-
-重点参数：
-
-| 参数 | 当前值 | 作用 |
-| --- | ---: | --- |
-| `target_topic` | `apriltag_target_pose` | 感知目标话题 |
-| `base_frame` | `base_link` | 控制误差坐标系 |
-| `fixed_frame` | `odom` | 锁定目标坐标系 |
-| `initial_sampling_duration` | `1.0 s` | 初始采样时间 |
-| `second_sampling_duration` | `2.0 s` | 第二阶段采样时间 |
-| `final_sampling_duration` | `1.0 s` | 最终采样时间 |
-| `linear_gain` | `0.40` | 纵向控制增益 |
-| `heading_gain` | `1.20` | 倒车方向控制增益 |
-| `final_yaw_gain` | `0.90` | 最终姿态 PID 的 P 增益 |
-| `final_yaw_d_gain` | `0.05` | 最终姿态 PID 的 D 增益 |
-| `final_yaw_offset` | `0.0 rad` | 最终姿态偏置，当前不额外旋转 180° |
-| `max_linear_speed` | `0.18 m/s` | 控制器最大线速度 |
-| `max_angular_speed` | `0.45 rad/s` | 控制器最大角速度 |
-| `final_max_angular_speed` | `0.20 rad/s` | 最终姿态修正角速度上限 |
-
-完整分阶段阈值、采样过滤、速度缩放和加速度限制以 YAML 为准。修改这些参数会影响对接稳定性、碰撞风险、触点压紧程度和成功率，必须在真实机器人上保守验证。
-
-## 测试节点
-
-### `test_reverse_docking_controller`
-
-单独验证当前倒车对接控制器：
-
-```bash
-ros2 run auto_charging_bt test_reverse_docking_controller
-```
-
-它会真实发布 `control/cmd_vel_nav`，只有在机器人周围安全且急停可用时才能运行。
-
-### `test_odom_docking_controller`
-
-验证旧 `DockingController` 对 `base_link` 目标的响应：
-
-```bash
-ros2 run auto_charging_bt test_odom_docking_controller
-```
-
-### `test_docking_controller`
-
-旧 AprilTag PoseArray 对接测试，会读取本包 `config/charging_pose.json`：
-
-```bash
-ros2 run auto_charging_bt test_docking_controller
-```
-
-这些测试节点和正式行为树可能使用不同参数，不应把独立测试结果直接等同于正式回充行为。
-
-## 目录结构
+正式流程由 `config/charging_bt.xml` 定义：
 
 ```text
-auto_charging_bt/
-├── config/
-│   ├── charging_bt.xml
-│   ├── auto_charging_bt_params.yaml
-│   └── charging_pose.json
-├── include/
-├── launch/
-│   ├── auto_charging_action.launch.py
-│   ├── auto_charging_service.launch.py
-│   └── auto_charging_bt.launch.py
-├── src/
-└── test/
+自动回充
+├── 1. 检查入口充电状态
+│   ├── 已经充电：直接返回成功
+│   ├── 已连接但未充电：先退桩，再执行正常回充
+│   └── 未连接且未充电：执行正常回充
+│
+└── 2. 正常回充
+    ├── 导航到充电前置点，最多尝试 3 次
+    └── 对接与充电确认，最多尝试 3 次
+        ├── 启动 AprilTag 检测
+        ├── 三阶段倒车对接
+        ├── 末端低速压入
+        └── 确认充电状态
 ```
 
-## 常见问题
+失败后的处理规则：
 
-### `/auto_charging` 不存在
+1. 导航失败：重新导航，最多尝试 `3` 次。
+2. 二维码检测或视觉对接失败：停止检测，不退桩，重新尝试对接。
+3. 视觉对接和末端压入成功，但没有确认充电：停止检测、退桩，然后重新尝试对接。
+4. 导航和对接分别计数；对接失败不会重新执行已经成功的前置导航。
+
+## 4. 两类目标位姿
+
+| 目标           | 用途                             | 来源                                                                        |
+| -------------- | -------------------------------- | --------------------------------------------------------------------------- |
+| 充电前置导航点 | Nav2`/navigate_to_pose` 的目标 | `/save_charging_pose` 保存的 `mobile_perception/.../charging_pose.json` |
+| 近距离对接目标 | 计算机器人相对最终对接位的误差   | `apriltag_target_pose`，默认位于 `base_link`                            |
+
+本包的 `config/charging_pose.json` 只供旧测试节点使用，正式回充行为树不会读取它作为前置导航点或实时对接目标。
+
+## 5. 三阶段倒车对接
+
+对接过程按以下顺序执行：
+
+1. `INITIAL_SAMPLING`：机器人停车，采集并过滤 AprilTag 目标。
+2. `FIRST_APPROACH`：锁定目标，进行第一阶段粗靠近。
+3. `SECOND_SAMPLING`：停车，近距离重新采样。
+4. `SECOND_APPROACH`：降低速度并使用更严格阈值继续靠近。
+5. `FINAL_SAMPLING`：最终采样；结果明显变差时进行有限次数重采样。
+6. `FINAL_APPROACH`：低速修正最终位置和姿态。
+7. `backward()`：视觉到位后进行末端低速压入；检测到连接或充电时立即停车。
+
+采样目标最初位于 `base_link`。控制器会把目标锁定到固定坐标系 `odom`，机器人运动时再把它转换回
+当前 `base_link`，因此控制误差会随机器人位置变化，而不是一直使用一份不变的相对坐标。
+
+## 6. 日志查看与失败分类
+
+### 6.1 主要日志标签
+
+| 标签                                            | 含义                                        |
+| ----------------------------------------------- | ------------------------------------------- |
+| `[NavigationAttempt]` / `[NavigationRetry]` | 前置导航尝试和重试                          |
+| `[TagStats]`                                  | AprilTag 图像、检出率、目标发布率和错误统计 |
+| `[DockAttempt]` / `[DockRetry]`             | 对接尝试和重试                              |
+| `[DockStage]`                                 | 当前对接阶段                                |
+| `[DockSample]`                                | 采样开始、样本不足和样本丢弃                |
+| `[DockControl]`                               | 当前目标误差和速度指令                      |
+| `[ChargingCheck]`                             | 连接、充电和连续确认次数                    |
+| `[DockFailure]`                               | 统一失败分类、中文原因、处置和诊断计数      |
+| `[DockSuccess]`                               | 视觉对接、末端压入或充电确认成功            |
+
+### 6.2 统一失败分类
+
+| 分类码                     | 含义                           | 优先检查                           |
+| -------------------------- | ------------------------------ | ---------------------------------- |
+| `NO_TARGET`              | 没有收到二维码目标             | 相机、检测节点、目标话题           |
+| `FRAME_MISMATCH`         | 目标坐标系不符合配置           | `base_frame` 和感知输出 frame    |
+| `INVALID_SAMPLES`        | 收到目标，但样本全部无效       | 时间戳、距离限制、坐标系           |
+| `INSUFFICIENT_SAMPLES`   | 有效样本未达到最低数量         | 遮挡、反光、近距离视野、检测稳定性 |
+| `FINAL_SAMPLE_UNSTABLE`  | 最终采样结果反复变差           | 标签抖动、TF、近距离识别质量       |
+| `TF_LOCK_FAILED`         | 无法把目标锁定到`odom`       | `odom -> base_link` TF           |
+| `TF_TRACKING_FAILED`     | 运动时无法转换回`base_link`  | TF 连续性和时间戳                  |
+| `CONTROL_TIMEOUT`        | 有有效目标，但控制未按时到位   | 速度输出、底盘响应、到位阈值       |
+| `DETECTION_START_FAILED` | 启动检测服务失败               | 检测节点和服务状态                 |
+| `CHARGING_NOT_CONFIRMED` | 已完成压入，但没有确认稳定充电 | 触点、电源板诊断、连接和充电字段   |
+
+典型失败日志：
+
+```text
+[DockFailure] type=NO_TARGET，二维码检测或视觉对接超时；
+原因=未收到二维码目标消息；
+处置=停止检测、不退桩，由外层行为树决定是否重试；
+诊断=stage=INITIAL_SAMPLING ... total_recv=0 total_valid=0 ...
+```
+
+诊断字段中：
+
+- `total_recv` / `total_valid`：本次对接累计收到的目标数 / 有效样本数。
+- `reject(...)`：因坐标系、时间戳或距离被丢弃的样本数。
+- `tf(lock=...,tracking=...)`：目标锁定和动态跟踪的 TF 失败次数。
+- `quality(final_inconsistent=...)`：最终样本不稳定并触发重采样的次数。
+
+## 7. 主要配置
+
+参数文件：
+
+```text
+config/auto_charging_bt_params.yaml
+```
+
+| 参数组                | 作用                                      |
+| --------------------- | ----------------------------------------- |
+| `entry_state.*`     | 回充开始时对连接和充电状态去抖            |
+| `check_charging.*`  | 连续确认充电成功                          |
+| `dock.reverse.*`    | AprilTag 采样、三阶段阈值、速度和控制增益 |
+| `backward.*`        | 视觉到位后的末端低速压入                  |
+| `undocking.*`       | 已连接未充电或充电确认失败时退桩          |
+| `pressure_relief.*` | 确认充电后向前卸载顶桩压力                |
+
+当前关键值：
+
+| 参数或行为树端口             |        当前值 |
+| ---------------------------- | ------------: |
+| 导航最大尝试次数             |         `3` |
+| 对接最大尝试次数             |         `3` |
+| 单次视觉对接超时             |    `60.0 s` |
+| 单次充电确认超时             |    `20.0 s` |
+| `dock.reverse.fixed_frame` |      `odom` |
+| `backward.initial_speed`   | `-0.02 m/s` |
+| `backward.max_distance`    |    `0.15 m` |
+| `undocking.speed`          |  `0.10 m/s` |
+| `pressure_relief.duration` |     `0.8 s` |
+
+完整参数及注释以 YAML 和 `charging_bt.xml` 为准。速度、距离、姿态阈值和超时修改后必须在真实机器人上保守验证。
+
+## 8. ROS 接口
+
+### 8.1 对外接口
+
+| 名称               | 类型                                       | 作用                                               |
+| ------------------ | ------------------------------------------ | -------------------------------------------------- |
+| `/auto_charging` | `chassis_interfaces/action/AutoCharging` | 推荐的自动回充入口                                 |
+| `/auto_charging` | `std_srvs/srv/Trigger`                   | 兼容 Service 入口，仅在 Service 版本节点启动时存在 |
+
+Action 和 Service 名称相同，但接口类型不同。联调前使用 `ros2 action list` 和 `ros2 service list` 确认实际启动的入口。
+
+兼容 Service 的启动与调用：
+
+```bash
+ros2 launch auto_charging_bt auto_charging_service.launch.py
+ros2 service call /auto_charging std_srvs/srv/Trigger "{}"
+```
+
+### 8.2 依赖接口
+
+| 名称                         | 类型                                    | 作用                       |
+| ---------------------------- | --------------------------------------- | -------------------------- |
+| `/navigate_to_pose`        | `nav2_msgs/action/NavigateToPose`     | 导航到充电前置点           |
+| `/diagnostics_agg`         | `diagnostic_msgs/msg/DiagnosticArray` | 获取连接、电量和充电状态   |
+| `apriltag_target_pose`     | `geometry_msgs/msg/PoseStamped`       | 近距离对接目标             |
+| `start_apriltag_detection` | `std_srvs/srv/Trigger`                | 启动 AprilTag 检测         |
+| `stop_apriltag_detection`  | `std_srvs/srv/Trigger`                | 停止 AprilTag 检测         |
+| `control/cmd_vel_nav`      | `geometry_msgs/msg/Twist`             | 对接、压入、退桩和卸压速度 |
+
+## 9. 常见问题
+
+### 9.1 `/auto_charging` 不存在
 
 ```bash
 ros2 action list | grep auto_charging
 ros2 node list | grep auto_charging
 ```
 
-正式流程应确认 `auto_charging_action_server_node` 已启动。
+确认 `auto_charging_action_server_node` 已启动，并确认当前终端已 source 正确工作空间。
 
-### 无法读取前置点 JSON
+### 9.2 无法读取充电前置点
 
 ```bash
 cat /home/dexforce/w1/install/mobile_perception/lib/mobile_perception/charging_pose.json
 ```
 
-检查路径、JSON 格式和运行用户权限。该路径为硬编码，换用户、换部署目录或换安装前缀后不会自动适配。
+检查文件是否存在、JSON 格式是否正确，以及运行用户是否有读取权限。
 
-### 修改 XML/YAML 后没有生效
+### 9.3 修改 XML 或 YAML 后没有生效
 
-Action/Service 使用 `ament_index_cpp::get_package_share_directory()` 读取安装目录配置。非 `--symlink-install` 时，需要由用户重新构建并重新 source，再检查 `install/auto_charging_bt/share/auto_charging_bt/config/`。
+程序通过包的安装目录读取配置。非 `--symlink-install` 构建时，修改源码后需要重新构建、重新
+source，并检查：
 
-### Action 与 Service 行为不完全一致
+```bash
+colcon build --packages-select auto_charging_bt --parallel-workers 8
+source install/setup.bash
+```
 
-两个 launch 都启动 AprilTag 对齐节点，但 Action launch 当前额外设置 `target_forward_offset=0.67`，Service launch 没有显式设置。联调时应先统一确认感知节点的实际参数。
+```text
+install/auto_charging_bt/share/auto_charging_bt/config/
+```
 
-### 旧 launch 启动失败
+### 9.4 新回充请求立即失败
 
-`auto_charging_bt.launch.py` 引用了 `auto_charging_bt_node`，但该可执行文件当前没有在 `CMakeLists.txt` 中生成。请优先使用 `auto_charging_action.launch.py`。
+Action server 使用执行锁保证单任务运行。如果已有回充任务尚未结束，新请求会被中止并返回
+`Another auto charging task is already running`。
 
-## 安全说明
+## 10. 安全说明
 
-回充过程会发送 Nav2 目标并直接发布底盘速度。真实机器人测试时必须清空运动区域、保持急停可用并安排人员观察。未经现场确认，不要运行回充 Action、Service 或对接测试节点。
+回充会发送 Nav2 目标，并在近距离对接阶段直接发布底盘速度。真实机器人测试前必须：
+
+1. 清空机器人和充电桩周围的运动区域。
+2. 保持急停可用。
+3. 安排人员现场观察。
+4. 确认前置导航点、AprilTag 方向和充电桩位置正确。
+
+未确认现场安全时，不要调用回充 Action、兼容 Service 或任何对接测试节点。

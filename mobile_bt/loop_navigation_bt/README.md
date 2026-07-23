@@ -1,18 +1,23 @@
 # loop_navigation_bt
 
-`loop_navigation_bt` 是循环导航与回充联调包。它读取 JSON 点位，使用 Nav2 `/navigate_to_pose` 顺序导航，并把每次到点误差写入 `nav_error_log.txt`。
+## 1. 功能
 
-## 当前提供的运行模式
+本包读取 JSON 导航点，通过 Nav2 `/navigate_to_pose` 循环导航，并记录到点误差、导航耗时和移动距离。
 
-### 无回充循环导航
+支持两种模式：
 
-推荐用于导航精度和稳定性测试：
+1. 无回充循环导航：用于导航精度和稳定性测试。
+2. 循环导航与自动回充：低电量时调用 `/auto_charging`，充电完成后退桩并继续导航。
+
+## 2. 启动方式
+
+### 2.1 无回充模式
+
+默认不检查电量：
 
 ```bash
 ros2 launch loop_navigation_bt loop_nocharging.launch.py
 ```
-
-默认 `check_battery:=false`，不依赖底盘电量信息，完成 `navigation_points.json` 中 `rounds` 指定的轮数后退出。
 
 启用低电量检查：
 
@@ -20,182 +25,181 @@ ros2 launch loop_navigation_bt loop_nocharging.launch.py
 ros2 launch loop_navigation_bt loop_nocharging.launch.py check_battery:=true
 ```
 
-启用后，电量低于 `30%` 时会取消当前导航，导航到 JSON 中第一个点，然后退出；该模式不会触发回充。
+电量低于阈值后，机器人返回 JSON 中第一个点并退出，不执行回充。
 
-### 循环导航与自动回充
+### 2.2 自动回充模式
+
+启动循环导航前，先确认 `/auto_charging` Action（动作服务）已经存在：
 
 ```bash
-ros2 launch loop_navigation_bt loop_navigation_bt.launch.py
+ros2 action list -t | grep '^/auto_charging '
 ```
 
-该入口加载 `loop_navigate_bt.xml`：正常时循环导航；电量低于 `30%` 时取消当前目标并调用 `/auto_charging` Action；电量恢复到 XML 当前配置的 `80%` 后执行退桩并继续导航。
+正常情况下应输出：
 
-使用前必须先启动 `auto_charging_bt` 的 Action server：
+```text
+/auto_charging [chassis_interfaces/action/AutoCharging]
+```
+
+如果没有输出，再启动回充 Action server：
 
 ```bash
 ros2 launch auto_charging_bt auto_charging_action.launch.py
 ```
 
-注意：源码中的 XML 注释写有“直到 ≥90%”，但实际节点参数是 `threshold="80"`，运行行为以 `80%` 为准。
+然后确认已经采集回充点，并且文件是有效 JSON：
 
-### 连续回充测试入口
-
-包内还包含 `loop_charging_bt.xml` 和 `loop_charging_bt_node`，用于重复调用 `/auto_charging` Action。它会实际驱动机器人，不应用作普通导航测试。
-
-## 行为树结构
-
-无回充模式：
-
-```text
-主循环 ReactiveSequence
-├── LoopNavigateFourPoints：按点位和轮数导航
-└── BatteryCheck
-    ├── 电量检查关闭或电量 ≥30%：继续
-    └── 电量 <30%
-        ├── CancelNavigation：取消当前导航
-        └── NavigateToFirstPointAndStop：返回第一个点并退出
+```bash
+test -s /home/dexforce/w1/install/mobile_perception/lib/mobile_perception/charging_pose.json && \
+  python3 -m json.tool /home/dexforce/w1/install/mobile_perception/lib/mobile_perception/charging_pose.json
 ```
 
-带回充模式：
+如果文件不存在、为空或解析失败，需要先将机器人移动到充电桩前置点，再采集回充点：
 
-```text
-主循环 ReactiveSequence
-├── LoopNavigateFourPoints：循环导航
-└── BatteryCheck
-    ├── 电量 ≥30%：继续
-    └── 电量 <30%
-        ├── CancelNavigation：取消当前导航
-        ├── CallCharging：调用 /auto_charging Action
-        ├── 等待电量 ≥80%
-        └── Undocking：退桩后继续循环
+```bash
+ros2 service call /save_charging_pose std_srvs/srv/Trigger "{}"
 ```
 
-## 导航点配置
+以上两项检查通过后，启动循环导航：
 
-配置文件：
+```bash
+ros2 launch loop_navigation_bt loop_navigation_bt.launch.py
+```
+
+注意：文件存在且 JSON 格式正确，只能证明回充点已经保存，不能证明点位位置和朝向正确；首次使用或充电桩位置变化后仍需现场确认。
+
+执行流程：
+
+1. 等待有效电量。
+2. 按顺序循环导航。
+3. 低电量时取消当前目标并执行回充。
+4. 电量达到恢复阈值后退桩。
+5. 从原点位序号继续导航。
+
+## 3. 参数配置
+
+参数文件：
+
+```text
+config/loop_navigation_bt_params.yaml
+```
+
+主要参数：
+
+1. `loop.tick_rate_hz`：行为树 tick 频率。
+2. `navigation.wait_time_sec`：点位未单独配置时的默认等待时间。
+3. `navigation.action_server_wait_timeout_sec`：等待 Nav2 Action server 的超时时间。
+4. `navigation.odom_topic`：移动距离统计使用的里程计话题。
+5. `navigation.odom_max_increment_m`：单帧里程计最大有效增量。
+6. `battery.low_threshold`：触发低电量流程的阈值。
+7. `battery.resume_threshold`：充电后允许恢复导航的阈值。
+8. `charging.force`：是否强制执行完整回充流程。
+9. `undocking.duration_sec`：退桩持续时间。
+10. `undocking.linear_speed`：退桩线速度。
+11. `goal_error_stats.*`：误差阈值、采样次数和统计间隔。
+
+## 4. 导航点配置
+
+点位文件：
 
 ```text
 config/navigation_points.json
 ```
 
-当前字段：
+主要字段：
 
-- `frame_id`：目标坐标系，当前为 `map`。
-- `rounds`：完整遍历全部点位的轮数，当前为 `100`。
-- `points`：点位数组；当前是 3 个点，不是固定“四个点”。
-- `id`：日志中使用的点位名称。
-- `position`、`orientation`：目标位置和四元数姿态。
+1. `frame_id`：目标坐标系，通常为 `map`。
+2. `rounds`：完整遍历全部点位的轮数。
+3. `id`：点位名称，用于日志标识。
+4. `wait_time_sec`：当前点位的等待时间，可选；未配置时使用 YAML 默认值。
+5. `position`：目标位置。
+6. `orientation`：目标四元数姿态。
 
-节点通过 `ament_index_cpp::get_package_share_directory()` 读取安装目录中的配置：
+示例：
 
-```text
-install/loop_navigation_bt/share/loop_navigation_bt/config/navigation_points.json
+```json
+{
+  "frame_id": "map",
+  "rounds": 10,
+  "points": [
+    {
+      "id": "point_1",
+      "wait_time_sec": 2.0,
+      "position": {"x": 1.0, "y": 2.0, "z": 0.0},
+      "orientation": {"x": 0.0, "y": 0.0, "z": 0.0, "w": 1.0}
+    }
+  ]
+}
 ```
 
-非 `--symlink-install` 时，修改源码 JSON 后需要由用户重新构建并重新 source，不能假设运行节点会自动读取源码文件。
+## 5. 日志与统计
 
-也可以使用脚本辅助记录点位：
+### 5.1 终端日志
 
-```bash
-ros2 run loop_navigation_bt set_navigation_points.py
-```
+1. 包内节点日志统一使用 UTC+8 时间。
+2. 导航开始时输出点位序号、ID 和目标坐标。
+3. 到位后输出目标坐标、实际坐标和到点误差。
+4. 电量日志输出当前电量和判断阈值。
 
-执行前应先查看脚本提示并确保定位正常。
+### 5.2 误差文件
 
-## 导航误差日志
-
-`LoopNavigateFourPoints` 启动时以截断方式创建：
+运行时会在进程工作目录创建并覆盖：
 
 ```text
 nav_error_log.txt
 ```
 
-文件记录：
+文件记录导航结果、耗时、点位信息、目标与实际位姿、纵向/横向/yaw 误差及汇总统计。
 
-- 导航结果和耗时；
-- 点序号、点 ID；
-- 目标位姿与实际位姿；
-- 目标坐标系下的纵向、横向和 yaw（航向角）误差；
-- 距离误差；
-- 是否进入期望阈值和接受阈值；
-- 程序结束时的总体和分点统计。
+### 5.3 移动距离
 
-日志使用相对路径，因此实际位置取决于进程工作目录。每次启动都会覆盖旧文件，需要保留历史结果时应提前复制或重命名。
+1. 本次移动：当前 Nav2 目标执行期间的里程计增量和。
+2. 累计移动：程序启动后所有导航目标的增量和，切换轮次不会清零。
+3. 回充等待和退桩不计入导航距离。
+4. 该数值会受到里程计噪声、重复目标和取消重试影响，不应直接视为绝对准确的真实里程。
 
-默认优先从 `/navigation_goal_error` 获取 goal checker（到点判断器）最终误差；没有有效消息时回退到 TF 窗口采样。可以关闭该优先路径：
+## 6. ROS 接口
 
-```bash
-ros2 launch loop_navigation_bt loop_nocharging.launch.py use_goal_checker_error:=false
-```
+1. Action 客户端：`/navigate_to_pose`。
+2. 回充 Action 客户端：`/auto_charging`。
+3. 电量订阅：`/diagnostics_agg`。
+4. 误差订阅：`/navigation_goal_error`。
+5. TF 回退：需要 `map` 到机器人基坐标系的变换。
 
-## ROS 接口
+## 7. 常用检查
 
-### Action 客户端
-
-- `/navigate_to_pose`，类型 `nav2_msgs/action/NavigateToPose`。
-- `/auto_charging`，类型 `chassis_interfaces/action/AutoCharging`，仅带回充模式使用。
-
-### 订阅
-
-- `/diagnostics_agg`：从 PowerBoard 诊断项读取 `battery_percentage`。
-- `/navigation_goal_error`：读取导航结束时 goal checker 的误差诊断。
-
-### TF
-
-误差统计回退路径需要 `map` 到机器人基坐标系的 TF 可用。
-
-## 目录结构
-
-```text
-loop_navigation_bt/
-├── config/
-│   ├── loop_navigate_bt.xml
-│   ├── loop_nocharging_bt.xml
-│   ├── loop_charging_bt.xml
-│   └── navigation_points.json
-├── include/loop_navigation_bt/
-├── launch/
-│   ├── loop_navigation_bt.launch.py
-│   └── loop_nocharging.launch.py
-├── scripts/set_navigation_points.py
-└── src/
-```
-
-## 常见问题
-
-### `/navigate_to_pose` 不可用
-
-确认 Nav2 已启动：
+### 7.1 检查 Nav2 Action
 
 ```bash
 ros2 action list | grep navigate_to_pose
 ```
 
-### 带回充模式提示 `/auto_charging` 不可用
-
-确认启动的是 Action server，不是同名 Trigger service：
+### 7.2 检查回充 Action
 
 ```bash
-ros2 action list | grep auto_charging
 ros2 action info /auto_charging
 ```
 
-### 没有电量数据
-
-使用默认的无回充模式 `check_battery:=false`。关闭检查后程序不会因低电量自动返回，底盘应具备独立低电量保护。
-
-### 找不到 `nav_error_log.txt`
-
-从启动命令所在目录开始查找，或使用：
+### 7.3 检查电量与里程计
 
 ```bash
-find . -name nav_error_log.txt
+ros2 topic echo /diagnostics_agg --once
+ros2 topic info /feedback/odom --verbose
 ```
 
-### 修改 XML/JSON 后行为没有变化
+### 7.4 配置修改未生效
 
-检查当前 source 的工作空间和安装目录文件。非软链接安装下，源码改动必须重新构建后才会复制到 `install/.../share`。
+节点读取安装目录中的配置：
 
-## 安全说明
+```text
+install/loop_navigation_bt/share/loop_navigation_bt/config/
+```
 
-本包会发送 Nav2 目标，带回充模式还会触发倒车对接和退桩。真实机器人测试时应清空运动区域、保持急停可用，并安排人员观察。
+非 `--symlink-install` 时，修改 YAML、XML 或 JSON 后需要重新构建并重新 source 工作空间。
+
+## 8. 安全说明
+
+1. 启动前确认定位和 Nav2 状态正常。
+2. 真实机器人测试时保持运动区域无障碍。
+3. 保持急停可用并安排人员观察。
+4. 自动回充模式会直接控制对接和退桩，首次测试应使用低速并保持安全距离。

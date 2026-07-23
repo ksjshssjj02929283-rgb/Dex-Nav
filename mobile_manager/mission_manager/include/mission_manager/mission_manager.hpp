@@ -104,6 +104,7 @@ public:
 
     void EnableRespawnTask(const bool enable) { param_.respawn_task = enable; }
     bool IsRespawnTask() const { return param_.respawn_task; }
+    const MissionManagerParam& GetParam() const { return param_; }
 
     // --------------------------------------------------------
     bool IsNeedNavigation() const { return mission_info_->is_need_navigation(); }
