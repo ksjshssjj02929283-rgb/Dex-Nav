@@ -14,7 +14,8 @@ namespace nav2_speed_planner
 {
 
 void TrapezoidalSpeedPlanner::assignVelocityProfile(
-  std::vector<TrajPointWork> & work, double curr_vel, double cruise_limit)
+  std::vector<TrajPointWork> & work, double curr_vel, double /*curr_accel*/,
+  double cruise_limit)
 {
   if (work.size() < 2) {
     return;

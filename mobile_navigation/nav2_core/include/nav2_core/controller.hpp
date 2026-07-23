@@ -109,6 +109,16 @@ public:
   virtual void setTrajectory(const nav_interfaces::msg::RobotTrajectory & /*trajectory*/) {}
 
   /**
+   * @brief Return the trajectory state used by the most recent longitudinal
+   *        tracking command. Direct-control branches return false.
+   */
+  virtual bool getLastTrajectoryTrackingTarget(
+    double & /*velocity*/, double & /*acceleration*/)
+  {
+    return false;
+  }
+
+  /**
    * @brief Controller computeVelocityCommands - calculates the best command given the current pose and velocity
    *
    * It is presumed that the global plan is already set.

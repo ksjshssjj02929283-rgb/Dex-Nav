@@ -57,6 +57,8 @@ NavMonitorNode::NavMonitorNode()
   declare_parameter("smoothed_vel_topic", std::string("control/cmd_vel_nav"));
   // 规划期望速度（controller_server 回显）与 odom 实测
   declare_parameter("desired_vel_topic", std::string("/nav_monitor/desired_velocity"));
+  declare_parameter(
+    "controller_target_topic", std::string("/nav_monitor/controller_target"));
   declare_parameter("odom_topic", std::string("odom"));
   declare_parameter(
     "controller_phase_topic", std::string("/nav_monitor/controller_phase"));
@@ -112,6 +114,7 @@ NavMonitorNode::NavMonitorNode()
   get_parameter("cmd_vel_topic", cmd_vel_topic_);
   get_parameter("smoothed_vel_topic", smoothed_vel_topic_);
   get_parameter("desired_vel_topic", desired_vel_topic_);
+  get_parameter("controller_target_topic", controller_target_topic_);
   get_parameter("odom_topic", odom_topic_);
 
   goal_pose_echo_sub_ = create_subscription<geometry_msgs::msg::PoseStamped>(
@@ -132,6 +135,9 @@ NavMonitorNode::NavMonitorNode()
   desired_vel_sub_ = create_subscription<geometry_msgs::msg::Twist>(
     desired_vel_topic_, rclcpp::SystemDefaultsQoS(),
     std::bind(&NavMonitorNode::desiredVelCallback, this, std::placeholders::_1));
+  controller_target_sub_ = create_subscription<geometry_msgs::msg::Vector3Stamped>(
+    controller_target_topic_, rclcpp::SystemDefaultsQoS(),
+    std::bind(&NavMonitorNode::controllerTargetCallback, this, std::placeholders::_1));
   odom_sub_ = create_subscription<nav_msgs::msg::Odometry>(
     odom_topic_, rclcpp::SensorDataQoS(),
     std::bind(&NavMonitorNode::odomCallback, this, std::placeholders::_1));
@@ -231,6 +237,16 @@ void NavMonitorNode::desiredVelCallback(const geometry_msgs::msg::Twist::SharedP
   }
   const double t = (this->now() - current_task_->start_time).seconds();
   current_task_->desired_vel_samples.push_back({t, msg->linear.x, msg->angular.z});
+}
+
+void NavMonitorNode::controllerTargetCallback(
+  const geometry_msgs::msg::Vector3Stamped::SharedPtr msg)
+{
+  if (!current_task_.has_value()) {
+    return;
+  }
+  const double t = (this->now() - current_task_->start_time).seconds();
+  current_task_->controller_target_samples.push_back({t, msg->vector.x, msg->vector.y});
 }
 
 void NavMonitorNode::odomCallback(const nav_msgs::msg::Odometry::SharedPtr msg)
@@ -408,6 +424,24 @@ void NavMonitorNode::finalizeAndWrite(const std::string & result)
   j["replanning_count"] = task.replanning_count;
   j["passing_length"] = task.passing_length;
   j["desired_vel"] = vel_block(desired_vel_topic_, task.desired_vel_samples);
+  {
+    double sum_v = 0.0, max_v = 0.0, sum_a = 0.0, max_a = 0.0;
+    for (const auto & sample : task.controller_target_samples) {
+      sum_v += std::fabs(sample[1]);
+      max_v = std::max(max_v, std::fabs(sample[1]));
+      sum_a += std::fabs(sample[2]);
+      max_a = std::max(max_a, std::fabs(sample[2]));
+    }
+    const double count = task.controller_target_samples.empty() ?
+      1.0 : static_cast<double>(task.controller_target_samples.size());
+    j["controller_target"] = {
+      {"topic", controller_target_topic_},
+      {"avg_linear_speed", sum_v / count},
+      {"max_linear_speed", max_v},
+      {"avg_abs_acceleration", sum_a / count},
+      {"max_abs_acceleration", max_a},
+      {"samples", task.controller_target_samples}};
+  }
   j["cmd_vel"] = vel_block(cmd_vel_topic_, task.cmd_vel_samples);
   j["smoothed_vel"] = vel_block(smoothed_vel_topic_, task.smoothed_vel_samples);
   j["odom_vel"] = vel_block(odom_topic_, task.odom_vel_samples);

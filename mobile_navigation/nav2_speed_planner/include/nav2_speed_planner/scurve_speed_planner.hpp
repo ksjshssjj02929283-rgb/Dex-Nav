@@ -49,6 +49,7 @@ public:
    * @param v_env   逐点速度包络上界（>=0），含曲率/障碍约束（障碍处=0，作为停止点）
    * @param arc_s   逐点累计弧长（单调增，arc_s[0]=0）
    * @param v_start 起点当前速度（前向运动，<0 视作 0）
+   * @param a_start 起点当前加速度（会钳位到配置的加减速度能力）
    * @param a_max   最大加速度 (>0)
    * @param d_max   最大减速度幅值 (>0)
    * @param max_jerk jerk 上限 (>0)
@@ -63,6 +64,7 @@ public:
     const std::vector<double> & v_env,
     const std::vector<double> & arc_s,
     double v_start,
+    double a_start,
     double a_max, double d_max,
     double max_jerk, double ctrl_dt,
     std::vector<double> & v_out,
@@ -74,11 +76,12 @@ protected:
   /// Phase B：基类 Phase A 包络（含末端蠕行区）→ Ruckig jerk 限制剖面 → 回填
   /// work（速度/加速度/相对时间）。
   void assignVelocityProfile(
-    std::vector<TrajPointWork> & work, double curr_vel, double cruise_limit) override;
+    std::vector<TrajPointWork> & work, double curr_vel, double curr_accel,
+    double cruise_limit) override;
 
   // —— 参数 ——
   double max_jerk_{0.5};    ///< jerk 上限 (m/s^3)
-  double control_dt_{0.05}; ///< Ruckig 在线步进控制周期 (s)
+  double control_dt_{0.05};  ///< Ruckig 在线步进控制周期 (s)
 };
 
 }  // namespace nav2_speed_planner

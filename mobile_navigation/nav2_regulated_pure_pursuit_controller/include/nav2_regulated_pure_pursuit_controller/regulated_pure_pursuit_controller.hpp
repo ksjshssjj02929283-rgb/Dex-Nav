@@ -103,6 +103,9 @@ public:
    */
   void setPlan(const nav_msgs::msg::Path & path) override;
 
+  bool getLastTrajectoryTrackingTarget(
+    double & velocity, double & acceleration) override;
+
   /**
    * @brief Limits the maximum linear speed of the robot.
    * @param speed_limit expressed in absolute value (in m/s)
@@ -342,6 +345,9 @@ protected:
   bool trajectory_valid_{false};
   std::mutex traj_mutex_;
   double traj_speed_lookahead_{0.1};
+  bool last_trajectory_tracking_target_valid_{false};
+  double last_trajectory_tracking_target_v_{0.0};
+  double last_trajectory_tracking_target_a_{0.0};
 
   // ---- RPP 先验约束（applyConstraints，只降不升，基于静态几何/代价）----
   bool use_regulated_linear_velocity_scaling_;

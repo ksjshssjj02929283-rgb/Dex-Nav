@@ -91,7 +91,7 @@ public:
    */
   nav_interfaces::msg::RobotTrajectory computeSpeedPlan(
     const nav_msgs::msg::Path & path,
-    const geometry_msgs::msg::Twist & current_velocity) override;
+    const nav2_core::SpeedPlanningBoundary & boundary) override;
 
   void setSpeedLimit(const double & speed_limit, const bool & percentage) override;
 
@@ -112,7 +112,8 @@ protected:
   // @param cruise_limit Phase A 求得的巡航上界（可作为剖面上限参考）
   // ============================================================
   virtual void assignVelocityProfile(
-    std::vector<TrajPointWork> & work, double curr_vel, double cruise_limit) = 0;
+    std::vector<TrajPointWork> & work, double curr_vel, double curr_accel,
+    double cruise_limit) = 0;
 
   // ============================================================
   // Phase A 约束包络（共享，逐点 min 叠加；安全置零绝对优先，任何后续写入不得抬升）

@@ -5,6 +5,7 @@
 // 直接测试 SCurveSpeedPlanner::generateRuckigProfile（仅依赖 ruckig，无 ROS）。
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cmath>
 #include <vector>
 
@@ -66,7 +67,8 @@ TEST(SCurveRuckig, RestToCruiseToStop)
   std::vector<double> env(n, 0.6);
   const auto s = uniformArc(n, 0.1);
   std::vector<double> v, a, t;
-  SCurveSpeedPlanner::generateRuckigProfile(env, s, 0.0, 0.35, 0.15, 0.5, 0.05, v, a, t);
+  SCurveSpeedPlanner::generateRuckigProfile(
+    env, s, 0.0, 0.0, 0.35, 0.15, 0.5, 0.05, v, a, t);
   checkBounds(env, v, a, t, 0.35, 0.15, 0.5);
   double vmax = 0.0;
   for (double x : v) {
@@ -84,7 +86,8 @@ TEST(SCurveRuckig, EnvelopeDip)
   }
   const auto s = uniformArc(n, 0.1);
   std::vector<double> v, a, t;
-  SCurveSpeedPlanner::generateRuckigProfile(env, s, 0.0, 0.35, 0.15, 0.5, 0.05, v, a, t);
+  SCurveSpeedPlanner::generateRuckigProfile(
+    env, s, 0.0, 0.0, 0.35, 0.15, 0.5, 0.05, v, a, t);
   checkBounds(env, v, a, t, 0.35, 0.15, 0.5);
 }
 
@@ -94,8 +97,56 @@ TEST(SCurveRuckig, StartWithVelocity)
   std::vector<double> env(n, 0.6);
   const auto s = uniformArc(n, 0.1);
   std::vector<double> v, a, t;
-  SCurveSpeedPlanner::generateRuckigProfile(env, s, 0.4, 0.35, 0.15, 0.5, 0.05, v, a, t);
+  SCurveSpeedPlanner::generateRuckigProfile(
+    env, s, 0.4, 0.0, 0.35, 0.15, 0.5, 0.05, v, a, t);
   checkBounds(env, v, a, t, 0.35, 0.15, 0.5);
+}
+
+TEST(SCurveRuckig, PreservesAndClampsInitialAcceleration)
+{
+  const size_t n = 200;
+  const std::vector<double> env(n, 0.6);
+  const auto s = uniformArc(n, 0.05);
+  std::vector<double> v, a, t;
+
+  SCurveSpeedPlanner::generateRuckigProfile(
+    env, s, 0.2, 0.25, 0.35, 0.15, 0.5, 0.05, v, a, t);
+  ASSERT_FALSE(a.empty());
+  EXPECT_NEAR(a.front(), 0.25, 1e-9);
+
+  SCurveSpeedPlanner::generateRuckigProfile(
+    env, s, 0.2, 1.0, 0.35, 0.15, 0.5, 0.05, v, a, t);
+  ASSERT_FALSE(a.empty());
+  EXPECT_NEAR(a.front(), 0.35, 1e-9);
+
+  SCurveSpeedPlanner::generateRuckigProfile(
+    env, s, 0.2, -1.0, 0.35, 0.15, 0.5, 0.05, v, a, t);
+  ASSERT_FALSE(a.empty());
+  EXPECT_NEAR(a.front(), -0.15, 1e-9);
+}
+
+TEST(SCurveRuckig, RepeatedReplanningKeepsAccelerationState)
+{
+  const size_t n = 300;
+  const std::vector<double> env(n, 0.6);
+  const auto s = uniformArc(n, 0.02);
+  std::vector<double> v, a, t;
+  double v_start = 0.1;
+  double a_start = 0.2;
+
+  for (int cycle = 0; cycle < 8; ++cycle) {
+    SCurveSpeedPlanner::generateRuckigProfile(
+      env, s, v_start, a_start, 0.35, 0.15, 0.5, 0.05, v, a, t);
+    ASSERT_FALSE(a.empty());
+    EXPECT_NEAR(a.front(), a_start, 1e-9);
+    EXPECT_GT(a.front(), 0.05);
+
+    auto sample = std::find_if(t.begin(), t.end(), [](double value) {return value >= 0.1;});
+    ASSERT_NE(sample, t.end());
+    const size_t index = static_cast<size_t>(std::distance(t.begin(), sample));
+    v_start = v[index];
+    a_start = a[index];
+  }
 }
 
 TEST(SCurveRuckig, ObstacleHardStop)
@@ -108,16 +159,19 @@ TEST(SCurveRuckig, ObstacleHardStop)
   }
   const auto s = uniformArc(n, 0.1);
   std::vector<double> v, a, t;
-  SCurveSpeedPlanner::generateRuckigProfile(env, s, 0.0, 0.35, 0.15, 0.5, 0.05, v, a, t);
+  SCurveSpeedPlanner::generateRuckigProfile(
+    env, s, 0.0, 0.0, 0.35, 0.15, 0.5, 0.05, v, a, t);
   checkBounds(env, v, a, t, 0.35, 0.15, 0.5);
 }
 
 TEST(SCurveRuckig, Degenerate)
 {
   std::vector<double> v, a, t;
-  SCurveSpeedPlanner::generateRuckigProfile({}, {}, 0.5, 0.35, 0.15, 0.5, 0.05, v, a, t);
+  SCurveSpeedPlanner::generateRuckigProfile(
+    {}, {}, 0.5, 0.0, 0.35, 0.15, 0.5, 0.05, v, a, t);
   EXPECT_TRUE(v.empty());
-  SCurveSpeedPlanner::generateRuckigProfile({0.4}, {0.0}, 1.0, 0.35, 0.15, 0.5, 0.05, v, a, t);
+  SCurveSpeedPlanner::generateRuckigProfile(
+    {0.4}, {0.0}, 1.0, 0.0, 0.35, 0.15, 0.5, 0.05, v, a, t);
   ASSERT_EQ(v.size(), 1u);
   EXPECT_NEAR(v[0], 0.4, 1e-6);
 }
@@ -133,7 +187,7 @@ TEST(SCurveRuckig, ShortTerminalPath)
   std::vector<double> v, a, t;
 
   SCurveSpeedPlanner::generateRuckigProfile(
-    env, s, 0.0, 0.5, 0.4, 0.5, 0.05, v, a, t, 0.05);
+    env, s, 0.0, 0.0, 0.5, 0.4, 0.5, 0.05, v, a, t, 0.05);
 
   ASSERT_EQ(v.size(), n);
   EXPECT_TRUE(allFinite(v));

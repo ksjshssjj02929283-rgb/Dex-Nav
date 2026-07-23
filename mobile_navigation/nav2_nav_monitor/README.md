@@ -9,7 +9,8 @@
 bt_navigator ── goalReceived() 回显 ──→ /nav_monitor/goal_pose_echo (+behavior_tree)
 controller_server ── setPlannerPath() 回显 ──→ /nav_monitor/current_global_path
 controller_server ── setControllerPhase() 回显 ──→ /nav_monitor/controller_phase
-controller_server ── 每控制周期回显 ──→ /nav_monitor/desired_velocity（规划期望速度）
+controller_server ── 每控制周期回显 ──→ /nav_monitor/desired_velocity（最近规划状态）
+                                      → /nav_monitor/controller_target（控制器目标 v/a）
 /navigate_to_pose/_action/status + feedback（标准 action 内省，零改动）
 cmd_vel_nav（控制器输出，平滑前）+ control/cmd_vel_nav（velocity_smoother 平滑后）
 odom（实测反馈，w1 配置为 feedback/odom）
@@ -37,6 +38,7 @@ odom（实测反馈，w1 配置为 feedback/odom）
 | `cmd_vel_topic` | `cmd_vel_nav` | 控制器输出速度话题（平滑前） |
 | `smoothed_vel_topic` | `control/cmd_vel_nav` | 平滑后速度话题 |
 | `desired_vel_topic` | `/nav_monitor/desired_velocity` | 规划期望速度回显话题 |
+| `controller_target_topic` | `/nav_monitor/controller_target` | 控制器实际选择的轨迹速度/加速度目标 |
 | `odom_topic` | `odom` | 实测速度话题（w1 配置用 `feedback/odom`） |
 | `controller_phase_topic` | `/nav_monitor/controller_phase` | 阶段回显话题 |
 
@@ -52,7 +54,7 @@ ros2 run nav2_nav_monitor analyze_nav_tasks.py [目录] [--no-per-task]
 # 单任务路径图：地图视图（规划×N + 实走轨迹时间渐变 + 误差标注）+ 偏差曲线
 ros2 run nav2_nav_monitor plot_nav_task_path.py <json或目录>
 
-# 单任务速度图：V-T / W-T / V-S / W-S 四面板（期望/控制器输出/平滑后/odom实测四源叠画）
+# 单任务速度图：V-T / W-T / A-T / V-S / W-S（规划状态、控制目标、输出、平滑后、实测）
 ros2 run nav2_nav_monitor plot_nav_task_speed.py <json或目录>
 
 # 测试数据生成（演示/回归用，独立目录不污染真实记录）

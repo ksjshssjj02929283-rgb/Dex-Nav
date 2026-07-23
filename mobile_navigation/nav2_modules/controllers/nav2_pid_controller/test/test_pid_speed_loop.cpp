@@ -390,6 +390,28 @@ TEST(ApproachStage, speedDecoupledFromLockedTargetIndex)
   EXPECT_LT(speed, 0.5);   // 明显低于巡航值——确实反映了减速段的连续下降
 }
 
+TEST(ApproachStage, speedAndAccelerationUseSamePreviewPoint)
+{
+  ApproachStagePID pid;
+  pid.setTrajSpeedLookahead(0.11);
+  auto traj = ApproachStagePID::makeStraightTraj(0.16, 0.05);
+  ASSERT_EQ(traj.size(), 4u);
+  traj[0].speed_limit = 0.0;
+  traj[0].accel = 0.0;
+  traj[1].speed_limit = 0.1;
+  traj[1].accel = 0.1;
+  traj[2].speed_limit = 0.25;
+  traj[2].accel = 0.35;
+  traj[3].speed_limit = 0.2;
+  traj[3].accel = -0.1;
+  pid.setControllerTraj(traj);
+
+  double speed = 0.0, accel = 0.0;
+  ASSERT_TRUE(pid.nearestSpeedWrapper(makePose(0.0, 0.0), speed, accel));
+  EXPECT_NEAR(speed, 0.25, 1e-9);
+  EXPECT_NEAR(accel, 0.35, 1e-9);
+}
+
 // 朝向-速度平滑耦合：连续、无跳变，err_theta=0 时不缩放，
 // |err_theta|>=90° 时缩为 0。
 TEST(ApproachStage, headingSpeedScaleIsSmoothAndBounded)

@@ -33,7 +33,8 @@ public:
 protected:
   /// Phase B：减速规划 → 起点状态戳 → 加速规划（见文件头说明）。
   void assignVelocityProfile(
-    std::vector<TrajPointWork> & work, double curr_vel, double cruise_limit) override;
+    std::vector<TrajPointWork> & work, double curr_vel, double curr_accel,
+    double cruise_limit) override;
 
   /// 减速规划（后向 pass）：为一切低速点生成进入坡道（min 写入，index 0 不参与）。
   void computeDecelPlan(

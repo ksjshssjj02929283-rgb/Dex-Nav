@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.5)
 project(nav2_speed_planner)
 
 find_package(ament_cmake REQUIRED)
+find_package(angles REQUIRED)
 find_package(nav2_common REQUIRED)
 find_package(nav2_core REQUIRED)
 find_package(nav2_costmap_2d REQUIRED)
@@ -23,6 +24,7 @@ include_directories(
 )
 
 set(dependencies
+  angles
   rclcpp
   rclcpp_lifecycle
   geometry_msgs
@@ -39,6 +41,7 @@ set(library_name nav2_speed_planner)
 
 # 单一 library：抽象基类（含恒加速度参考内核）+ 两个 pluginlib 插件。
 add_library(${library_name} SHARED
+  src/speed_plan_state.cpp
   src/speed_planner_base.cpp
   src/trapezoidal_speed_planner.cpp
   src/scurve_speed_planner.cpp)
@@ -59,8 +62,6 @@ install(TARGETS speed_profile_gen
 
 install(PROGRAMS
   scripts/plot_speed_profiles.py
-  scripts/plot_speed_plan_log.py
-  scripts/plot_speed_tracking.py
   scripts/gen_speed_plan_charts.py
   DESTINATION lib/${PROJECT_NAME}
 )
@@ -83,6 +84,10 @@ if(BUILD_TESTING)
 
   # S 型速度曲线（Ruckig）纯算法单测（jerk≤max_jerk / 加速度有界 / 不超包络 / 停车）。
   find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(test_speed_plan_state test/test_speed_plan_state.cpp)
+  target_link_libraries(test_speed_plan_state ${library_name})
+  ament_target_dependencies(test_speed_plan_state ${dependencies})
+
   ament_add_gtest(test_scurve_profile test/test_scurve_profile.cpp)
   target_link_libraries(test_scurve_profile ${library_name} ruckig::ruckig)
   ament_target_dependencies(test_scurve_profile ${dependencies})

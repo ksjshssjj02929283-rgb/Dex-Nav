@@ -176,6 +176,7 @@ void PIDController::cleanup()
 {
   RCLCPP_INFO(logger_, "Cleaning up PID controller \"%s\".", plugin_name_.c_str());
   std::unique_lock<std::mutex> lock(plan_mutex_);
+  last_trajectory_tracking_target_valid_ = false;
   controller_traj_.clear();
 }
 
@@ -395,6 +396,7 @@ geometry_msgs::msg::TwistStamped PIDController::computeVelocityCommands(
   cmd_vel.twist.angular.z = 0.0;
 
   std::unique_lock<std::mutex> lock(plan_mutex_);
+  last_trajectory_tracking_target_valid_ = false;
 
   if (controller_traj_.empty()) {
     RCLCPP_WARN_THROTTLE(logger_, *clock_, 2000, "computeVelocityCommands: no plan set");
@@ -722,6 +724,11 @@ geometry_msgs::msg::TwistStamped PIDController::computeVelocityCommands(
           const double max_cmd_v = raw_max_cmd_v * heading_scale;
           cmd_vel.twist.linear.x = LinearSpeedControl(
             velocity, err_x, max_cmd_v, desired_v, 0.0, traj_ff_accel);
+          if (have_traj_speed) {
+            last_trajectory_tracking_target_valid_ = true;
+            last_trajectory_tracking_target_v_ = desired_linear_vel_;
+            last_trajectory_tracking_target_a_ = traj_ff_accel;
+          }
           cmd_vel.twist.angular.z = AngularSpeedControl(velocity, err_theta);
           break;
         }
@@ -1117,8 +1124,7 @@ bool PIDController::nearestTrajectorySpeed(
     traj_accel = controller_traj_[best_i].accel;
     return true;
   }
-  traj_accel = controller_traj_[best_i + 1].accel;
-  traj_speed = 0.0;
+  size_t target_i = best_i + 1;
   double dist = 0.0;
   for (size_t i = best_i + 1; i < controller_traj_.size(); ++i) {
     const double dx = controller_traj_[i].pose.pose.position.x -
@@ -1126,11 +1132,27 @@ bool PIDController::nearestTrajectorySpeed(
     const double dy = controller_traj_[i].pose.pose.position.y -
       controller_traj_[i - 1].pose.pose.position.y;
     dist += std::hypot(dx, dy);
-    traj_speed = std::max(traj_speed, controller_traj_[i].speed_limit);
+    if (controller_traj_[i].speed_limit > controller_traj_[target_i].speed_limit) {
+      target_i = i;
+    }
     if (dist > traj_speed_lookahead_) {
       break;
     }
   }
+  traj_speed = controller_traj_[target_i].speed_limit;
+  traj_accel = controller_traj_[target_i].accel;
+  return true;
+}
+
+bool PIDController::getLastTrajectoryTrackingTarget(
+  double & velocity, double & acceleration)
+{
+  std::unique_lock<std::mutex> lock(plan_mutex_);
+  if (!last_trajectory_tracking_target_valid_) {
+    return false;
+  }
+  velocity = last_trajectory_tracking_target_v_;
+  acceleration = last_trajectory_tracking_target_a_;
   return true;
 }
 

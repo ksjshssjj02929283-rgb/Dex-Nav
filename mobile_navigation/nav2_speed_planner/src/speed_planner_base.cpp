@@ -163,7 +163,7 @@ void SpeedPlannerBase::setSpeedLimit(const double & speed_limit, const bool & pe
 
 nav_interfaces::msg::RobotTrajectory SpeedPlannerBase::computeSpeedPlan(
   const nav_msgs::msg::Path & path,
-  const geometry_msgs::msg::Twist & current_velocity)
+  const nav2_core::SpeedPlanningBoundary & boundary)
 {
   using TimingClock = std::chrono::steady_clock;
   constexpr double kSlowSpeedPlannerWarnMs = 20.0;
@@ -300,7 +300,8 @@ nav_interfaces::msg::RobotTrajectory SpeedPlannerBase::computeSpeedPlan(
   curr_path_length_ = path_length;
   points_interval_ = curr_path_length_ / static_cast<double>(work.size() - 1);
 
-  const double curr_vel = current_velocity.linear.x;
+  const double curr_vel = boundary.velocity.linear.x;
+  const double curr_accel = boundary.acceleration_valid ? boundary.acceleration : 0.0;
   initialization_ms = std::chrono::duration<double, std::milli>(
     TimingClock::now() - initialization_start).count();
 
@@ -325,7 +326,7 @@ nav_interfaces::msg::RobotTrajectory SpeedPlannerBase::computeSpeedPlan(
 
   // ====== Phase B hook：派生类生成运动学可行剖面 ======
   const auto profile_start = TimingClock::now();
-  assignVelocityProfile(work, curr_vel, cruise);
+  assignVelocityProfile(work, curr_vel, curr_accel, cruise);
   profile_ms = std::chrono::duration<double, std::milli>(
     TimingClock::now() - profile_start).count();
 

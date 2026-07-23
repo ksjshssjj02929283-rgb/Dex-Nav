@@ -2,8 +2,8 @@
 # Copyright 2026 DEXE Robot Engineer
 # SPDX-License-Identifier: Apache-2.0
 """导航任务速度回溯图：nav2_nav_monitor 落盘的 nav_task_*.json 的
-四速度源（规划期望 desired_vel / 控制器输出 cmd_vel / 平滑后 smoothed_vel
-/ odom 实测 odom_vel）V-T 与 V-S 曲线对照。
+规划状态、控制器轨迹目标、控制器输出、平滑后与 odom 实测的 V-T / V-S
+曲线对照，并单独显示控制器目标加速度。
 
 数据来源：nav2_nav_monitor output_dir（默认 ~/.dexe/navigation/nav_monitor）
 下的 nav_task_<时间戳>_<结果>.json（samples 每项 [t,vx,wz]，t 相对任务开始）
@@ -98,7 +98,7 @@ def phase_spans(transitions, total):
 
 
 SOURCES = [
-    ("desired_vel", "期望(规划)", "#212121", 1.8, "--", False),
+    ("desired_vel", "规划状态(最近点)", "#212121", 1.8, "--", False),
     ("cmd_vel", "控制器输出", "#1565c0", 1.0, "-", True),
     ("smoothed_vel", "平滑后", "#e65100", 1.4, "-", True),
     ("odom_vel", "odom实测", "#2e7d32", 1.4, "-", True),
@@ -121,8 +121,8 @@ def main():
     ts_path, ss_path = cumulative_s(d.get("passing_path", []))
     have_s = len(ts_path) >= 2
 
-    fig, axes = plt.subplots(4, 1, figsize=(12, 14))
-    ax_vt, ax_wt, ax_vs, ax_ws = axes
+    fig, axes = plt.subplots(5, 1, figsize=(12, 17))
+    ax_vt, ax_wt, ax_at, ax_vs, ax_ws = axes
 
     # 阶段底色：时间轴面板直接铺，里程轴面板经 t→s 映射铺
     total_t = d.get("end_time", 0) - d.get("start_time", 0)
@@ -130,7 +130,7 @@ def main():
     seen_phases = []
     for t0, t1, name in spans:
         c = PHASE_COLORS.get(name, "#e0e0e0")
-        for ax in (ax_vt, ax_wt):
+        for ax in (ax_vt, ax_wt, ax_at):
             ax.axvspan(t0, t1, color=c, alpha=0.18, lw=0)
         if have_s:
             s0, s1 = t_to_s(t0, ts_path, ss_path), t_to_s(t1, ts_path, ss_path)
@@ -160,6 +160,25 @@ def main():
             if with_wz:
                 ax_ws.plot(s_axis, wz, color=color, lw=lw, ls=ls, label=label)
 
+    target = d.get("controller_target", {})
+    target_samples = target.get("samples", [])
+    if target_samples:
+        target_t = [sample[0] for sample in target_samples]
+        target_v = [sample[1] for sample in target_samples]
+        target_a = [sample[2] for sample in target_samples]
+        ax_vt.plot(target_t, target_v, color="#7b1fa2", lw=1.6,
+                   label="控制器轨迹目标")
+        ax_at.plot(target_t, target_a, color="#7b1fa2", lw=1.4,
+                   label="控制器目标加速度")
+        ax_at.axhline(0.0, color="gray", lw=0.8)
+        if have_s:
+            target_s = [t_to_s(x, ts_path, ss_path) for x in target_t]
+            ax_vs.plot(target_s, target_v, color="#7b1fa2", lw=1.6,
+                       label="控制器轨迹目标")
+    else:
+        ax_at.text(0.5, 0.5, "旧记录无 controller_target 数据",
+                   ha="center", va="center", transform=ax_at.transAxes)
+
     result = d.get("result", "?")
     total_t = d.get("end_time", 0) - d.get("start_time", 0)
     ax_vt.set_title(
@@ -168,13 +187,15 @@ def main():
     ax_vt.set_ylabel("vx (m/s)")
     ax_wt.set_title("图 2：角速度 W-T")
     ax_wt.set_ylabel("wz (rad/s)")
-    for ax in (ax_vt, ax_wt):
+    ax_at.set_title("图 3：控制器轨迹目标加速度 A-T")
+    ax_at.set_ylabel("a (m/s²)")
+    for ax in (ax_vt, ax_wt, ax_at):
         ax.set_xlabel("t (s，相对任务开始)")
 
     if have_s:
-        ax_vs.set_title("图 3：线速度 V-S（横轴=沿实走轨迹累计里程）")
+        ax_vs.set_title("图 4：线速度 V-S（横轴=沿实走轨迹累计里程）")
         ax_vs.set_ylabel("vx (m/s)")
-        ax_ws.set_title("图 4：角速度 W-S")
+        ax_ws.set_title("图 5：角速度 W-S")
         ax_ws.set_ylabel("wz (rad/s)")
         for ax in (ax_vs, ax_ws):
             ax.set_xlabel("s (m)")

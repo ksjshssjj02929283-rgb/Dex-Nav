@@ -118,10 +118,11 @@ def gen_task(a, b, result, t_wall, rng):
 
     # 采样流（弯道转向方向任务级固定，真实机器人一条弯不会来回换向）
     turn_dir = rng.choice([-1.0, 1.0])
-    passing, desired, cmd, smooth, odom = [], [], [], [], []
+    passing, desired, controller_target, cmd, smooth, odom = [], [], [], [], [], []
     odom_lag = rng.uniform(0.10, 0.22)  # odom 相对指令的响应滞后(s)
     t, dt_v, dt_p = 0.0, 0.05, 0.5
     next_p = 0.0
+    previous_target_v = 0.0
     while t <= duration:
         u = min(u_at(t), end_u)
         x, y, yaw = route(u)
@@ -131,8 +132,12 @@ def gen_task(a, b, result, t_wall, rng):
         wz = (0.45 * turn_dir if 0.35 < u < 0.65 and in_track
               else (0.3 if t <= align_t else 0.0))
         spike_v = v * (1.0 + (0.18 if rng.random() < 0.12 else 0.0))
-        desired.append([round(t, 3),
-                        round(speed_profile(min(u_at(t), end_u), vmax), 4), 0.0])
+        planned_state_v = speed_profile(min(u_at(t), end_u), vmax)
+        target_v = speed_profile(min(u_at(t + 0.1), end_u), vmax)
+        target_a = (target_v - previous_target_v) / dt_v if t > 0.0 else 0.0
+        previous_target_v = target_v
+        desired.append([round(t, 3), round(planned_state_v, 4), 0.0])
+        controller_target.append([round(t, 3), round(target_v, 4), round(target_a, 4)])
         cmd.append([round(t, 3), round(spike_v + rng.gauss(0, 0.008), 4),
                     round(wz * (1.0 + (0.2 if rng.random() < 0.1 else 0.0)), 4)])
         smooth.append([round(t, 3), round(v, 4), round(wz, 4)])
@@ -203,6 +208,15 @@ def gen_task(a, b, result, t_wall, rng):
         "passing_length": round(pass_len, 3),
         "desired_vel": {"topic": "/nav_monitor/desired_velocity",
                         **stats(desired), "samples": desired},
+        "controller_target": {
+            "topic": "/nav_monitor/controller_target",
+            "avg_linear_speed": stats(controller_target)["avg_linear_speed"],
+            "max_linear_speed": stats(controller_target)["max_linear_speed"],
+            "avg_abs_acceleration": round(
+                sum(abs(s[2]) for s in controller_target) / len(controller_target), 4),
+            "max_abs_acceleration": round(
+                max(abs(s[2]) for s in controller_target), 4),
+            "samples": controller_target},
         "cmd_vel": {"topic": "cmd_vel_nav", **stats(cmd), "samples": cmd},
         "smoothed_vel": {"topic": "control/cmd_vel_nav", **stats(smooth),
                          "samples": smooth},

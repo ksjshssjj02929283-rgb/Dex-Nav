@@ -77,6 +77,7 @@ void SCurveSpeedPlanner::generateRuckigProfile(
   const std::vector<double> & v_env,
   const std::vector<double> & arc_s,
   double v_start,
+  double a_start,
   double a_max, double d_max,
   double max_jerk, double ctrl_dt,
   std::vector<double> & v_out,
@@ -93,8 +94,10 @@ void SCurveSpeedPlanner::generateRuckigProfile(
   d_max = std::max(1e-3, d_max);
   max_jerk = std::max(1e-3, max_jerk);
   ctrl_dt = std::max(1e-3, ctrl_dt);
+  a_start = std::clamp(a_start, -d_max, a_max);
   if (n == 1) {
     v_out[0] = std::clamp(v_start, 0.0, std::max(0.0, v_env[0]));
+    a_out[0] = a_start;
     return;
   }
 
@@ -119,12 +122,12 @@ void SCurveSpeedPlanner::generateRuckigProfile(
   ruckig::OutputParameter<1> out;
   in.current_position = {0.0};
   in.current_velocity = {std::clamp(v_start, 0.0, std::max(0.0, v_env[0]))};
-  in.current_acceleration = {0.0};
+  in.current_acceleration = {a_start};
   in.max_acceleration = {a_max};
   in.max_jerk = {max_jerk};
   in.min_acceleration = std::array<double, 1>{-d_max};   // 非对称：减速幅值 ≤ d_max
 
-  std::vector<double> rs{0.0}, rv{in.current_velocity[0]}, ra{0.0}, rt{0.0};
+  std::vector<double> rs{0.0}, rv{in.current_velocity[0]}, ra{a_start}, rt{0.0};
   double tnow = 0.0;
   bool failed = false;
   for (const auto & tgt : targets) {
@@ -213,7 +216,8 @@ void SCurveSpeedPlanner::generateRuckigProfile(
 
 // ===================== 插件 hook：Phase B（Ruckig jerk 限制剖面）=====================
 void SCurveSpeedPlanner::assignVelocityProfile(
-  std::vector<TrajPointWork> & work, double curr_vel, double /*cruise_limit*/)
+  std::vector<TrajPointWork> & work, double curr_vel, double curr_accel,
+  double /*cruise_limit*/)
 {
   const size_t n = work.size();
   if (n < 2) {
@@ -235,7 +239,7 @@ void SCurveSpeedPlanner::assignVelocityProfile(
   //    终点目标速度 = end_speed_（障碍停止时函数内部强制 0）。
   std::vector<double> v_out, a_out, t_out;
   generateRuckigProfile(
-    v_env, arc_s, curr_vel,
+    v_env, arc_s, curr_vel, curr_accel,
     accel_, std::fabs(decel_),
     max_jerk_, control_dt_,
     v_out, a_out, t_out, end_speed_);

@@ -3,11 +3,13 @@ project(nav2_controller)
 
 find_package(ament_cmake REQUIRED)
 find_package(nav2_core REQUIRED)
+find_package(nav2_speed_planner REQUIRED)
 find_package(nav2_common REQUIRED)
 find_package(angles REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_action REQUIRED)
 find_package(rclcpp_components REQUIRED)
+find_package(geometry_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(diagnostic_msgs REQUIRED)
 find_package(nav2_util REQUIRED)
@@ -41,6 +43,7 @@ set(dependencies
   rclcpp
   rclcpp_action
   rclcpp_components
+  geometry_msgs
   std_msgs
   diagnostic_msgs
   nav2_msgs
@@ -50,6 +53,7 @@ set(dependencies
   visualization_msgs
   nav2_util
   nav2_core
+  nav2_speed_planner
   pluginlib
 )
 
