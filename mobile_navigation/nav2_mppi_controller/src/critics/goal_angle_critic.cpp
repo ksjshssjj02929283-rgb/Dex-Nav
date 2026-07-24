@@ -48,7 +48,7 @@ void GoalAngleCritic::score(CriticData & data)
   }
 
   const auto goal_idx = data.path.x.size() - 1;
-  const float goal_yaw = data.path.yaws(goal_idx);
+  const float goal_yaw = data.terminal_yaw_override.value_or(data.path.yaws(goal_idx));
 
   const models::Matrix signed_yaw_errors =
     utils::shortest_angular_distance(data.trajectories.yaws, goal_yaw);

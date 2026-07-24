@@ -51,6 +51,17 @@ using nav2_rotation_goal_checker::RotationGoalChecker;
 using nav2_simple_goal_checker::SimpleGoalChecker;
 using nav2_stopped_goal_checker::StoppedGoalChecker;
 
+class FixedNearGoalOdomProvider : public nav2_controller::NearGoalOdomSnapshotProvider
+{
+public:
+  nav2_controller::NearGoalOdomSnapshot snapshot() const override
+  {
+    return value;
+  }
+
+  nav2_controller::NearGoalOdomSnapshot value;
+};
+
 void checkMacro(
   nav2_core::GoalChecker & gc,
   double x0, double y0, double theta0,
@@ -312,6 +323,68 @@ TEST(GoalCheckerDynamicParameters, specialized_tolerances)
     x->get_parameter("high_precision.lon_goal_tolerance").as_double(), 0.13);
   EXPECT_TRUE(high_precision.getTolerances(pose_tol, vel_tol));
   EXPECT_DOUBLE_EQ(pose_tol.position.x, 0.13);
+}
+
+TEST(PrecisionLongitudinalGoalChecker, control_mode_waits_for_context_success)
+{
+  auto x = std::make_shared<TestLifecycleNode>("precision_goal_checker_odom_control");
+  PrecisionLongitudinalGoalChecker gc;
+  auto costmap = std::make_shared<nav2_costmap_2d::Costmap2DROS>(
+    "precision_costmap_odom_control");
+  x->declare_parameter("precision.enable_high_precision", false);
+  gc.initialize(x, "precision", costmap);
+
+  auto provider = std::make_shared<FixedNearGoalOdomProvider>();
+  provider->value.mode = nav2_controller::NearGoalOdomMode::CONTROL;
+  provider->value.goal_generation = 21;
+  provider->value.stage = nav2_controller::NearGoalOdomStage::INACTIVE;
+  gc.setNearGoalOdomContext(provider, 21);
+
+  EXPECT_FALSE(
+    gc.isGoalReached(
+      poseFrom2D(0.0, 0.0, 0.0),
+      poseFrom2D(0.0, 0.0, 0.0),
+      stoppedTwist()));
+
+  provider->value.stage = nav2_controller::NearGoalOdomStage::SUCCESS;
+  provider->value.tf_valid = true;
+  provider->value.odom_continuous = true;
+  provider->value.global_sanity_ok = true;
+  provider->value.goal_generation = 20;
+  EXPECT_FALSE(
+    gc.isGoalReached(
+      poseFrom2D(0.0, 0.0, 0.0),
+      poseFrom2D(0.0, 0.0, 0.0),
+      stoppedTwist()));
+
+  provider->value.goal_generation = 21;
+  EXPECT_TRUE(
+    gc.isGoalReached(
+      poseFrom2D(0.0, 0.0, 0.0),
+      poseFrom2D(0.0, 0.0, 0.0),
+      stoppedTwist()));
+}
+
+TEST(PrecisionLongitudinalGoalChecker, observe_mode_keepsOriginalSuccessLogic)
+{
+  auto x = std::make_shared<TestLifecycleNode>("precision_goal_checker_odom_observe");
+  PrecisionLongitudinalGoalChecker gc;
+  auto costmap = std::make_shared<nav2_costmap_2d::Costmap2DROS>(
+    "precision_costmap_odom_observe");
+  x->declare_parameter("precision.enable_high_precision", false);
+  gc.initialize(x, "precision", costmap);
+
+  auto provider = std::make_shared<FixedNearGoalOdomProvider>();
+  provider->value.mode = nav2_controller::NearGoalOdomMode::OBSERVE;
+  provider->value.goal_generation = 22;
+  provider->value.stage = nav2_controller::NearGoalOdomStage::SUCCESS;
+  gc.setNearGoalOdomContext(provider, 22);
+
+  EXPECT_TRUE(
+    gc.isGoalReached(
+      poseFrom2D(0.0, 0.0, 0.0),
+      poseFrom2D(0.0, 0.0, 0.0),
+      stoppedTwist()));
 }
 
 int main(int argc, char ** argv)

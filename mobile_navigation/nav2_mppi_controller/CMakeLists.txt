@@ -3,9 +3,11 @@ project(nav2_mppi_controller)
 
 find_package(ament_cmake REQUIRED)
 find_package(Eigen3 REQUIRED)
+find_package(nav2_controller REQUIRED)
 
 include_directories(
   include
+  ${nav2_controller_INCLUDE_DIRS}
 )
 
 set(dependencies_pkgs
@@ -113,7 +115,9 @@ if(BUILD_TESTING)
 endif()
 
 ament_export_libraries(${libraries})
-ament_export_dependencies(${dependencies_pkgs})
+# 公共Controller头文件包含NearGoalOdom只读接口，因此向下游导出头文件依赖；
+# MPPI目标本身不通过ament_target_dependencies链接ControllerServer实现库。
+ament_export_dependencies(${dependencies_pkgs} nav2_controller)
 ament_export_include_directories(include)
 pluginlib_export_plugin_description_file(nav2_core mppic.xml)
 pluginlib_export_plugin_description_file(nav2_mppi_controller critics.xml)

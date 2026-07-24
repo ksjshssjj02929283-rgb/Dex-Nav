@@ -38,6 +38,10 @@ void PathAlignCritic::initialize()
 
 void PathAlignCritic::score(CriticData & data)
 {
+  if (data.disable_path_critics) {
+    return;
+  }
+
   // Don't apply close to goal, let the goal critics take over
   // 三阶段 MPPI 中 cost_weight <= 0 表示该阶段关闭路径贴合代价，直接跳过较重的路径匹配循环。
   // threshold 距离门已删（阶段系统管"近目标让位"；避免 approach_distance < threshold 时死区）。

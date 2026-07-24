@@ -17,6 +17,7 @@
 
 #include <array>
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "rclcpp_lifecycle/lifecycle_node.hpp"
@@ -99,10 +100,15 @@ public:
    * @param goal_checker Object to check if goal is completed
    * @return TwistStamped of the MPPI control
    */
+  // 末端覆盖仅携带两个位置量和一个航向量，避免复制锁存Path。
   geometry_msgs::msg::TwistStamped evalControl(
     const geometry_msgs::msg::PoseStamped & robot_pose,
     const geometry_msgs::msg::Twist & robot_speed, const nav_msgs::msg::Path & plan,
-    nav2_core::GoalChecker * goal_checker);
+    nav2_core::GoalChecker * goal_checker,
+    const std::optional<std::array<float, 2>> & terminal_position_override = std::nullopt,
+    const std::optional<float> & terminal_position_yaw_override = std::nullopt,
+    const std::optional<float> & terminal_yaw_override = std::nullopt,
+    bool disable_path_critics = false);
 
   /**
    * @brief Get the trajectories generated in a cycle for visualization
@@ -339,7 +345,8 @@ protected:
 
   CriticData critics_data_ =
   {state_, generated_trajectories_, path_, costs_, settings_.model_dt, false, nullptr, nullptr,
-    std::nullopt, std::nullopt};  /// Caution, keep references
+    std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt,
+    false};  /// Caution, keep references
 
   rclcpp::Logger logger_{rclcpp::get_logger("MPPIController")};
 };

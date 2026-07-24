@@ -15,7 +15,9 @@
 #ifndef NAV2_MPPI_CONTROLLER__CRITIC_DATA_HPP_
 #define NAV2_MPPI_CONTROLLER__CRITIC_DATA_HPP_
 
+#include <array>
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "geometry_msgs/msg/pose_stamped.hpp"
@@ -48,6 +50,12 @@ struct CriticData
   std::shared_ptr<MotionModel> motion_model;
   std::optional<std::vector<bool>> path_pts_valid;
   std::optional<size_t> furthest_reached_path_point;
+  // Odom末端控制的轻量目标覆盖，不复制整条路径。
+  std::optional<std::array<float, 2>> terminal_position_override;
+  // 位置纵横误差始终使用锁存目标朝向；角度控制可继续使用实时目标朝向。
+  std::optional<float> terminal_position_yaw_override;
+  std::optional<float> terminal_yaw_override;
+  bool disable_path_critics{false};
 };
 
 }  // namespace mppi

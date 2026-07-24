@@ -18,3 +18,16 @@ ament_target_dependencies(test_local_planning_stage
 target_link_libraries(test_local_planning_stage
   ${library_name}
 )
+
+ament_add_gtest(near_goal_odom_context_test
+  near_goal_odom_context_test.cpp
+)
+target_include_directories(near_goal_odom_context_test PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/../src
+)
+ament_target_dependencies(near_goal_odom_context_test
+  ${dependencies}
+)
+target_link_libraries(near_goal_odom_context_test
+  ${library_name}
+)

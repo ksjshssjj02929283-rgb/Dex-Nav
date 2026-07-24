@@ -43,6 +43,7 @@
 #include "nav2_util/lifecycle_node.hpp"
 #include "nav2_util/simple_action_server.hpp"
 #include "nav2_util/robot_utils.hpp"
+#include "nav2_controller/near_goal_odom_context.hpp"
 #include "pluginlib/class_loader.hpp"
 #include "pluginlib/class_list_macros.hpp"
 
@@ -50,6 +51,7 @@ namespace nav2_controller
 {
 
 class ProgressChecker;
+class NearGoalOdomContext;
 /**
  * @class nav2_controller::ControllerServer
  * @brief This class hosts variety of plugins of different algorithms to
@@ -314,7 +316,9 @@ protected:
    * @param pose Current robot pose
    * @return true if progress is acceptable
    */
-  bool checkNearGoalProgress(const geometry_msgs::msg::PoseStamped & pose);
+  bool checkNearGoalProgress(
+    const geometry_msgs::msg::PoseStamped & pose,
+    bool check_lateral_stall = true);
   /**
    * @brief Reset the near-goal lateral-error stagnation checker
    */
@@ -354,7 +358,33 @@ protected:
   /**
    * @brief Calls velocity publisher to publish zero velocity
    */
-  void publishZeroVelocity();
+  void publishZeroVelocity(bool log_event = true);
+  /**
+   * @brief 使用同一时刻的TF、目标和实机速度更新近目标Odom状态
+   * @param pose 当前机器人位姿
+   * @param raw_twist 未经过死区处理的实机Odom速度
+   * @return 当前周期只读Snapshot
+   */
+  NearGoalOdomSnapshot updateNearGoalOdom(
+    const geometry_msgs::msg::PoseStamped & pose,
+    const nav_2d_msgs::msg::Twist2D & raw_twist);
+  /**
+   * @brief 控制模式下注入只读Context；关闭或观察模式下注入空Provider以隔离原逻辑
+   */
+  void bindNearGoalOdomConsumers();
+  /**
+   * @brief 检查当前Controller和GoalChecker是否都支持近目标只读接口
+   */
+  void updateNearGoalOdomSessionSupport();
+  /**
+   * @brief 清空上一控制会话的锁存状态并通知插件
+   */
+  void resetNearGoalOdom(uint64_t generation);
+  /**
+   * @brief 发布节流后的近目标Odom标准诊断
+   */
+  void publishNearGoalOdomDiagnostic(
+    const NearGoalOdomSnapshot & snapshot, bool force_publish);
   /**
    * @brief Bypass normal smoothing and request an immediate zero velocity
    */
@@ -422,6 +452,8 @@ protected:
     speed_plan_publisher_;
   rclcpp_lifecycle::LifecyclePublisher<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr
     speed_plan_diagnostics_publisher_;
+  rclcpp_lifecycle::LifecyclePublisher<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr
+    near_goal_odom_publisher_;
   rclcpp::Subscription<nav2_msgs::msg::SpeedLimit>::SharedPtr speed_limit_sub_;
 
   // nav_monitor 任务回显：setPlannerPath() 里每次真正生效的 global path 复述一份，
@@ -589,6 +621,36 @@ protected:
   /// 无条件回到阶段一，不依赖上次导航是到达/取消/异常哪种方式结束。
   void resetStagedControlState();
   std::string active_controller_for_log_{"unset"};
+
+  std::shared_ptr<NearGoalOdomContext> near_goal_odom_context_;
+  uint64_t near_goal_odom_generation_{0};
+  bool near_goal_odom_enabled_{false};
+  bool near_goal_odom_observe_only_{true};
+  bool near_goal_odom_session_supported_{false};
+  double near_goal_odom_entry_distance_{0.10};
+  int near_goal_odom_entry_confirm_cycles_{3};
+  double near_goal_odom_position_lon_tolerance_{0.025};
+  double near_goal_odom_position_lat_tolerance_{0.025};
+  int near_goal_odom_position_confirm_cycles_{5};
+  double near_goal_odom_fine_yaw_entry_error_{0.10};
+  int near_goal_odom_fine_yaw_entry_confirm_cycles_{3};
+  double near_goal_odom_yaw_latch_max_error_jump_{0.05};
+  double near_goal_odom_final_yaw_tolerance_{0.02};
+  int near_goal_odom_stop_confirm_cycles_{3};
+  double near_goal_odom_position_drift_tolerance_{0.025};
+  double near_goal_odom_position_hold_lon_tolerance_{0.04};
+  double near_goal_odom_position_hold_lat_tolerance_{0.04};
+  double near_goal_odom_global_position_abort_tolerance_{0.15};
+  double near_goal_odom_global_yaw_correction_abort_tolerance_{0.35};
+  double near_goal_odom_jump_position_tolerance_{0.10};
+  double near_goal_odom_jump_yaw_tolerance_{0.30};
+  double near_goal_odom_tf_failure_timeout_{0.30};
+  double near_goal_odom_trans_stopped_velocity_{0.01};
+  double near_goal_odom_rot_stopped_velocity_{0.02};
+  rclcpp::Time near_goal_odom_last_diagnostic_time_;
+  NearGoalOdomStage near_goal_odom_last_stage_{NearGoalOdomStage::INACTIVE};
+  NearGoalControlDirective near_goal_odom_last_directive_{
+    NearGoalControlDirective::NORMAL};
 
   // Whether we've published the single controller warning yet
   geometry_msgs::msg::PoseStamped end_pose_;

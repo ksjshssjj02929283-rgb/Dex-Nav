@@ -45,9 +45,12 @@ void GoalLateralCritic::score(CriticData & data)
   }
 
   const auto goal_idx = data.path.x.size() - 1;
-  const float goal_x = data.path.x(goal_idx);
-  const float goal_y = data.path.y(goal_idx);
-  const float goal_yaw = data.path.yaws(goal_idx);
+  const float goal_x = data.terminal_position_override ?
+    data.terminal_position_override->at(0) : data.path.x(goal_idx);
+  const float goal_y = data.terminal_position_override ?
+    data.terminal_position_override->at(1) : data.path.y(goal_idx);
+  const float goal_yaw =
+    data.terminal_position_yaw_override.value_or(data.path.yaws(goal_idx));
   const float goal_sin = std::sin(goal_yaw);
   const float goal_cos = std::cos(goal_yaw);
 

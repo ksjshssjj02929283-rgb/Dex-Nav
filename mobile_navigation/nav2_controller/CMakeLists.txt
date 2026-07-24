@@ -11,6 +11,8 @@ find_package(rclcpp_action REQUIRED)
 find_package(rclcpp_components REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(geometry_msgs REQUIRED)
+find_package(tf2_geometry_msgs REQUIRED)
 find_package(diagnostic_msgs REQUIRED)
 find_package(nav2_util REQUIRED)
 find_package(nav2_msgs REQUIRED)
@@ -36,6 +38,7 @@ set(library_name ${executable_name}_core)
 
 add_library(${library_name} SHARED
   src/controller_server.cpp
+  src/near_goal_odom_context.cpp
 )
 
 set(dependencies
@@ -45,6 +48,8 @@ set(dependencies
   rclcpp_components
   geometry_msgs
   std_msgs
+  geometry_msgs
+  tf2_geometry_msgs
   diagnostic_msgs
   nav2_msgs
   nav_2d_utils

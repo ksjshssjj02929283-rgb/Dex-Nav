@@ -49,6 +49,11 @@ public:
     final_yaw_exit_lat_tolerance_ = exit;
   }
 
+  void setFinalYawExitViolationThreshold(size_t threshold)
+  {
+    final_yaw_exit_violation_threshold_ = threshold;
+  }
+
   void updateApproach(double lon, double lat)
   {
     updateApproachSubstage(lon, lat);
@@ -107,12 +112,50 @@ public:
   {
     return applied_profile_;
   }
+
+  void configureFinalYawEnvelopeBrakeTest()
+  {
+    clock_ = std::make_shared<rclcpp::Clock>(RCL_SYSTEM_TIME);
+    active_stage_ = nav2_mppi_controller::STAGE_APPROACH;
+    approach_substage_ = nav2_mppi_controller::APPROACH_FINAL_YAW;
+    applied_profile_.velocity.wz_max = 0.6f;
+    final_yaw_cmd_wz_slew_rate_ = 0.8f;
+    final_yaw_cmd_stop_yaw_tolerance_ = 0.02f;
+    final_yaw_cmd_direction_deadband_ = 0.08f;
+    final_yaw_cmd_actual_decel_ = 0.35f;
+    final_yaw_cmd_delay_ = 0.15f;
+    final_yaw_cmd_brake_safety_margin_ = 0.004f;
+    final_yaw_dynamic_brake_min_wz_ = 0.10f;
+    final_yaw_internal_tolerance_ = 0.02f;
+    final_yaw_envelope_brake_enter_margin_ = 0.02f;
+    final_yaw_envelope_brake_exit_margin_ = 0.005f;
+  }
+
+  geometry_msgs::msg::TwistStamped runFinalYawCommand(
+    double yaw_error, double actual_wz, bool reset_command_filter = false)
+  {
+    if (reset_command_filter) {
+      final_yaw_cmd_filter_active_ = false;
+    }
+    geometry_msgs::msg::TwistStamped cmd;
+    cmd.twist.angular.z = actual_wz;
+    geometry_msgs::msg::Twist robot_speed;
+    robot_speed.angular.z = actual_wz;
+    smoothFinalYawCommand(cmd, yaw_error, robot_speed);
+    return cmd;
+  }
+
+  bool envelopeBrakingActive() const
+  {
+    return final_yaw_envelope_braking_active_;
+  }
 };
 
 TEST(ControllerStateTransitionTest, ApproachSubstageUsesPositionHysteresis)
 {
   TestableMPPIController controller;
   controller.setApproachTolerances(0.015, 0.02);
+  controller.setFinalYawExitViolationThreshold(2);
   controller.setApproachState(nav2_mppi_controller::APPROACH_POSITIONING);
 
   controller.updateApproach(0.014, -0.015);
@@ -122,7 +165,28 @@ TEST(ControllerStateTransitionTest, ApproachSubstageUsesPositionHysteresis)
   EXPECT_EQ(controller.approachSubstage(), nav2_mppi_controller::APPROACH_FINAL_YAW);
 
   controller.updateApproach(0.021, 0.0);
+  EXPECT_EQ(controller.approachSubstage(), nav2_mppi_controller::APPROACH_FINAL_YAW);
+
+  controller.updateApproach(0.021, 0.0);
   EXPECT_EQ(controller.approachSubstage(), nav2_mppi_controller::APPROACH_POSITIONING);
+}
+
+TEST(ControllerStateTransitionTest, EnvelopeBrakeWaitsUntilActualReturnsInsideSafeEnvelope)
+{
+  TestableMPPIController controller;
+  controller.configureFinalYawEnvelopeBrakeTest();
+
+  const auto braking_cmd = controller.runFinalYawCommand(-0.10, 0.30);
+  EXPECT_TRUE(controller.envelopeBrakingActive());
+  EXPECT_DOUBLE_EQ(braking_cmd.twist.angular.z, 0.0);
+
+  const auto still_braking_cmd = controller.runFinalYawCommand(-0.04, 0.09, true);
+  EXPECT_TRUE(controller.envelopeBrakingActive());
+  EXPECT_DOUBLE_EQ(still_braking_cmd.twist.angular.z, 0.0);
+
+  const auto resumed_cmd = controller.runFinalYawCommand(-0.04, 0.03, true);
+  EXPECT_FALSE(controller.envelopeBrakingActive());
+  EXPECT_GT(resumed_cmd.twist.angular.z, 0.0);
 }
 
 TEST(ControllerStateTransitionTest, ApproachSubstageAppliesSeparateProfiles)

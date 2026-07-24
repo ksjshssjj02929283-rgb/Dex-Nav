@@ -94,6 +94,20 @@ TEST(CriticTests, GoalFrameLateralAndLongitudinalErrors)
   longitudinal_critic.score(data);
   EXPECT_NEAR(costs(0), 0.0f, 1e-5f);
   EXPECT_NEAR(costs(1), 1.0f, 1e-5f);
+
+  // 实时Path朝向变化后，位置纵横轴仍必须使用进入末端阶段时锁存的目标朝向。
+  path.yaws(0) = 0.0f;
+  data.terminal_position_override = std::array<float, 2>{0.0f, 0.0f};
+  data.terminal_position_yaw_override = 1.57079632679f;
+  costs.setZero();
+  lateral_critic.score(data);
+  EXPECT_NEAR(costs(0), 1.0f, 1e-5f);
+  EXPECT_NEAR(costs(1), 0.0f, 1e-5f);
+
+  costs.setZero();
+  longitudinal_critic.score(data);
+  EXPECT_NEAR(costs(0), 0.0f, 1e-5f);
+  EXPECT_NEAR(costs(1), 1.0f, 1e-5f);
 }
 
 TEST(CriticTests, LinearVelocityCriticDoesNotBiasForwardDirection)
@@ -263,6 +277,13 @@ TEST(CriticTests, GoalAngleCritic)
   critic.score(data);
   EXPECT_NEAR(costs(0), 3.0, 0.01);
   EXPECT_NEAR(costs(1), 4.2, 0.01);
+
+  // Odom角度精调必须优先使用锁存航向，而不是实时Path终点航向。
+  costs.setZero();
+  state.wz.setZero();
+  data.terminal_yaw_override = 0.5f;
+  critic.score(data);
+  EXPECT_NEAR(costs(0), 1.5, 0.01);
 }
 
 TEST(CriticTests, GoalCritic)
@@ -312,6 +333,13 @@ TEST(CriticTests, GoalCritic)
   critic.score(data);
   EXPECT_NEAR(costs(2), 2.5, 1e-6);  // (sqrt(10.0 * 10.0) * 5.0 weight
   EXPECT_NEAR(costs.sum(), 2500.0, 1e-6);  // should be 2.5 * 1000
+
+  // Odom末端覆盖必须优先于实时Path终点。
+  costs.setZero();
+  data.terminal_position_override = std::array<float, 2>{1.0f, 0.0f};
+  critic.score(data);
+  EXPECT_NEAR(costs(2), 5.0, 1e-6);
+  EXPECT_NEAR(costs.sum(), 5000.0, 1e-6);
 }
 
 TEST(CriticTests, PathAngleCritic)
@@ -553,6 +581,12 @@ TEST(CriticTests, PathFollowCritic)
   path.x(5) = 0.15;
   critic.score(data);
   EXPECT_NEAR(costs.sum(), 750.0, 1e-2);  // 0.15 * 5 weight * 1000
+
+  // Odom末端控制期间路径类Critic必须完全退出评分。
+  costs.setZero();
+  data.disable_path_critics = true;
+  critic.score(data);
+  EXPECT_NEAR(costs.sum(), 0.0, 1e-6);
 }
 
 TEST(CriticTests, PathAlignCritic)

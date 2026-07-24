@@ -63,6 +63,10 @@ void PathAngleCritic::initialize()
 
 void PathAngleCritic::score(CriticData & data)
 {
+  if (data.disable_path_critics) {
+    return;
+  }
+
   // 三阶段 MPPI 中 cost_weight <= 0 表示该阶段关闭路径朝向代价。
   if (!enabled_ || weight_ <= 0.0f) {
     return;

@@ -154,9 +154,17 @@ void Optimizer::reset()
 geometry_msgs::msg::TwistStamped Optimizer::evalControl(
   const geometry_msgs::msg::PoseStamped & robot_pose,
   const geometry_msgs::msg::Twist & robot_speed,
-  const nav_msgs::msg::Path & plan, nav2_core::GoalChecker * goal_checker)
+  const nav_msgs::msg::Path & plan, nav2_core::GoalChecker * goal_checker,
+  const std::optional<std::array<float, 2>> & terminal_position_override,
+  const std::optional<float> & terminal_position_yaw_override,
+  const std::optional<float> & terminal_yaw_override,
+  bool disable_path_critics)
 {
   prepare(robot_pose, robot_speed, plan, goal_checker);
+  critics_data_.terminal_position_override = terminal_position_override;
+  critics_data_.terminal_position_yaw_override = terminal_position_yaw_override;
+  critics_data_.terminal_yaw_override = terminal_yaw_override;
+  critics_data_.disable_path_critics = disable_path_critics;
 
   do {
     optimize();

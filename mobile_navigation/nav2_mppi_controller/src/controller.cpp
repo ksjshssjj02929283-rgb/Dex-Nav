@@ -102,7 +102,13 @@ void MPPIController::reset()
   approach_substage_ = APPROACH_POSITIONING;
   approach_mode_ = APPROACH_NORMAL;
   approach_mode_locked_ = false;
+  profile_transition_active_ = false;
   active_stage_enter_time_ = clock_->now();
+  resetFinalYawCommandState();
+}
+
+void MPPIController::resetFinalYawCommandState()
+{
   final_yaw_cmd_filter_active_ = false;
   final_yaw_direction_lock_active_ = false;
   final_yaw_locked_direction_ = 0.0f;
@@ -218,6 +224,32 @@ geometry_msgs::msg::TwistStamped MPPIController::computeVelocityCommands(
 {
   constexpr double kSlowTimingWarnMs = 100.0;  // 100.0
   auto t_total_start = std::chrono::high_resolution_clock::now();
+  nav2_controller::NearGoalOdomSnapshot near_goal_snapshot;
+  bool odom_terminal_control = false;
+  if (near_goal_odom_provider_) {
+    near_goal_snapshot = near_goal_odom_provider_->snapshot();
+    odom_terminal_control =
+      near_goal_snapshot.mode == nav2_controller::NearGoalOdomMode::CONTROL &&
+      near_goal_snapshot.goal_generation == expected_goal_generation_ &&
+      near_goal_snapshot.stage != nav2_controller::NearGoalOdomStage::INACTIVE &&
+      near_goal_snapshot.stage != nav2_controller::NearGoalOdomStage::INVALID;
+  }
+  if (
+    odom_terminal_control &&
+    near_goal_snapshot.control_revision != last_near_goal_control_revision_)
+  {
+    resetFinalYawCommandState();
+    last_near_goal_control_revision_ = near_goal_snapshot.control_revision;
+  }
+  if (
+    odom_terminal_control &&
+    near_goal_snapshot.control_directive !=
+    nav2_controller::NearGoalControlDirective::NORMAL)
+  {
+    geometry_msgs::msg::TwistStamped zero;
+    zero.header = robot_pose.header;
+    return zero;
+  }
 
   if (clock_->now() - last_time_called_ > rclcpp::Duration::from_seconds(reset_period_)) {
     reset();
@@ -228,7 +260,7 @@ geometry_msgs::msg::TwistStamped MPPIController::computeVelocityCommands(
 
   auto t_transform_start = std::chrono::high_resolution_clock::now();
   nav_msgs::msg::Path transformed_plan = path_handler_.transformPath(robot_pose);
-  const double goal_distance = path_handler_.getLastGoalDistance();
+  double goal_distance = path_handler_.getLastGoalDistance();
   const double path_progress = path_handler_.getLastPathProgress();
   const double heading_path_angle = path_handler_.getLastHeadingPathAngle();
 
@@ -254,8 +286,45 @@ geometry_msgs::msg::TwistStamped MPPIController::computeVelocityCommands(
     const double yaw_error = robot_yaw - key_goal_yaw;
     key_yaw = std::atan2(std::sin(yaw_error), std::cos(yaw_error));
   }
+  if (odom_terminal_control && near_goal_snapshot.position_goal_latched) {
+    key_goal_x = near_goal_snapshot.goal_in_odom.position.x;
+    key_goal_y = near_goal_snapshot.goal_in_odom.position.y;
+    key_goal_yaw = tf2::getYaw(near_goal_snapshot.goal_in_odom.orientation);
+    key_lon = near_goal_snapshot.odom_lon_error;
+    key_lat = near_goal_snapshot.odom_lat_error;
+    goal_distance = std::hypot(key_lon, key_lat);
+    if (
+      near_goal_snapshot.stage ==
+      nav2_controller::NearGoalOdomStage::ODOM_YAW_FINE ||
+      near_goal_snapshot.stage ==
+      nav2_controller::NearGoalOdomStage::STOP_CONFIRM ||
+      near_goal_snapshot.stage ==
+      nav2_controller::NearGoalOdomStage::SUCCESS)
+    {
+      key_goal_yaw = near_goal_snapshot.yaw_goal_in_odom;
+      key_yaw = near_goal_snapshot.odom_yaw_error;
+    }
+  }
   applyProfileForPathState(
     path_progress, goal_distance, heading_path_angle, key_lon, key_lat, key_yaw);
+  if (odom_terminal_control) {
+    active_stage_ = STAGE_APPROACH;
+    if (
+      near_goal_snapshot.stage ==
+      nav2_controller::NearGoalOdomStage::ODOM_POSITION)
+    {
+      approach_substage_ = APPROACH_POSITIONING;
+    } else {
+      approach_substage_ = APPROACH_FINAL_YAW;
+    }
+    applied_profile_ = stages_[STAGE_APPROACH];
+    applyApproachSubstageProfile();
+    optimizer_.applyProfile(applied_profile_);
+    if (near_goal_snapshot.stage != last_near_goal_odom_stage_) {
+      resetFinalYawCommandState();
+      last_near_goal_odom_stage_ = near_goal_snapshot.stage;
+    }
+  }
   auto t_transform_end = std::chrono::high_resolution_clock::now();
   double transform_ms =
     std::chrono::duration<double, std::milli>(t_transform_end - t_transform_start).count();
@@ -282,8 +351,24 @@ geometry_msgs::msg::TwistStamped MPPIController::computeVelocityCommands(
   optimizer_.setCostmapSnapshot(&costmap_snapshot_);
 
   auto t_optimize_start = std::chrono::high_resolution_clock::now();
+  std::optional<std::array<float, 2>> terminal_position_override;
+  std::optional<float> terminal_position_yaw_override;
+  std::optional<float> terminal_yaw_override;
+  if (odom_terminal_control && near_goal_snapshot.position_goal_latched) {
+    terminal_position_override = std::array<float, 2>{
+      static_cast<float>(near_goal_snapshot.goal_in_odom.position.x),
+      static_cast<float>(near_goal_snapshot.goal_in_odom.position.y)};
+    terminal_position_yaw_override =
+      static_cast<float>(tf2::getYaw(near_goal_snapshot.goal_in_odom.orientation));
+    if (near_goal_snapshot.yaw_goal_latched) {
+      terminal_yaw_override = static_cast<float>(near_goal_snapshot.yaw_goal_in_odom);
+    }
+  }
   geometry_msgs::msg::TwistStamped cmd =
-    optimizer_.evalControl(robot_pose, robot_speed, transformed_plan, goal_checker);
+    optimizer_.evalControl(
+      robot_pose, robot_speed, transformed_plan, goal_checker,
+      terminal_position_override, terminal_position_yaw_override,
+      terminal_yaw_override, odom_terminal_control);
   smoothFinalYawCommand(cmd, key_yaw, robot_speed);
   // final_yaw 阶段在输出端强制线速度归零，不依赖 optimizer 的速度约束
   // 避免 optimizer 旧控制序列残留、profile 过渡未完全应用等导致的小幅 vx
@@ -1059,8 +1144,8 @@ void MPPIController::smoothFinalYawCommand(
   } else {
     // ===== 正常同方向旋转：用安全速度包络连续降速，不完全停车 =====
 
-    // 动态延迟：取配置值和本周期实测 dt 的较大值，钳在 [0.05, 0.18]
-    // 控制周期偶发达到 150~180ms 时，安全包络会自动收紧，避免超调
+    // 动态延迟只使用已校验的控制周期，并限制在 [0.05, 0.18]。
+    // 避免偶发调度停顿被当成底盘响应延迟，使安全包络单周期突变为零。
     const float measured_cycle = static_cast<float>(dt);
     effective_delay = std::clamp(
       std::max(final_yaw_cmd_delay_, measured_cycle), 0.05f, 0.18f);
@@ -1100,15 +1185,21 @@ void MPPIController::smoothFinalYawCommand(
     // 包络追赶制动：actual_wz 超出 safe_wz 时临时请求零速快速降速
     // 与 BRAKING 不同：不锁定到完全停稳，actual 回到包络内立即恢复连续控制
     // 解决"指令满足安全包络但底盘实际速度仍超出"的偶发超调
+    const bool dynamic_brake_speed_high_enough =
+      final_yaw_dynamic_brake_min_wz_ <= 0.0f ||
+      actual_wz_abs >= final_yaw_dynamic_brake_min_wz_;
     const bool actual_above_envelope =
       actual_wz_abs > safe_wz_limit + final_yaw_envelope_brake_enter_margin_;
     if (!final_yaw_envelope_braking_active_ && actual_above_envelope) {
-      final_yaw_envelope_braking_active_ = true;
-      RCLCPP_INFO(
-        logger_,
-        "MPPI final_yaw envelope braking entered: actual=%.3f > safe=%.3f + margin=%.3f. "
-        "Temp zero until actual back inside envelope.",
-        actual_wz_abs, safe_wz_limit, final_yaw_envelope_brake_enter_margin_);
+      if (dynamic_brake_speed_high_enough) {
+        final_yaw_envelope_braking_active_ = true;
+        RCLCPP_INFO(
+          logger_,
+          "MPPI final_yaw envelope braking entered: actual=%.3f > safe=%.3f + margin=%.3f, "
+          "dynamic_brake_min_wz=%.3f. Temp zero until actual back inside envelope.",
+          actual_wz_abs, safe_wz_limit, final_yaw_envelope_brake_enter_margin_,
+          final_yaw_dynamic_brake_min_wz_);
+      }
     }
     if (final_yaw_envelope_braking_active_) {
       const bool actual_back_inside_envelope =
@@ -1439,6 +1530,25 @@ void MPPIController::setPlan(const nav_msgs::msg::Path & path)
 void MPPIController::setSpeedLimit(const double & speed_limit, const bool & percentage)
 {
   optimizer_.setSpeedLimit(speed_limit, percentage);
+}
+
+void MPPIController::setNearGoalOdomContext(
+  std::shared_ptr<const nav2_controller::NearGoalOdomSnapshotProvider> provider,
+  uint64_t expected_generation)
+{
+  // 新目标代次或功能启停时清空Optimizer序列、方向锁和制动状态，避免旧控制状态泄漏。
+  const bool provider_state_changed =
+    static_cast<bool>(provider) != static_cast<bool>(near_goal_odom_provider_);
+  if (
+    expected_generation != expected_goal_generation_ ||
+    provider_state_changed)
+  {
+    reset();
+  }
+  near_goal_odom_provider_ = std::move(provider);
+  expected_goal_generation_ = expected_generation;
+  last_near_goal_control_revision_ = 0;
+  last_near_goal_odom_stage_ = nav2_controller::NearGoalOdomStage::INACTIVE;
 }
 
 }  // namespace nav2_mppi_controller

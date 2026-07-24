@@ -17,6 +17,7 @@
 
 #include <array>
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <string>
 
@@ -28,6 +29,7 @@
 
 #include "nav2_core/controller.hpp"
 #include "nav2_core/goal_checker.hpp"
+#include "nav2_controller/near_goal_odom_context.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_lifecycle/lifecycle_publisher.hpp"
 #include "std_msgs/msg/float64_multi_array.hpp"
@@ -56,7 +58,9 @@ enum ApproachMode : size_t {
   APPROACH_POSITION_FIRST = 1
 };
 
-class MPPIController : public nav2_core::Controller
+class MPPIController
+  : public nav2_core::Controller,
+    public nav2_controller::NearGoalOdomContextConsumer
 {
 public:
   /**
@@ -127,6 +131,11 @@ public:
     */
   void setSpeedLimit(const double & speed_limit, const bool & percentage) override;
 
+  // 注入ControllerServer维护的只读末端状态，不在MPPI内推进状态机。
+  void setNearGoalOdomContext(
+    std::shared_ptr<const nav2_controller::NearGoalOdomSnapshotProvider> provider,
+    uint64_t expected_generation) override;
+
 protected:
   /**
     * @brief Visualize trajectories
@@ -153,6 +162,9 @@ protected:
     geometry_msgs::msg::TwistStamped & cmd,
     double goal_yaw_error,
     const geometry_msgs::msg::Twist & robot_speed);
+
+  // 控制指令经历HOLD/恢复后清空末端滤波与制动状态，下一帧从实际速度重新初始化。
+  void resetFinalYawCommandState();
 
   size_t selectStage(double goal_distance, double heading_path_angle) const;
 
@@ -268,11 +280,17 @@ protected:
   // ⭐ costmap 异步解耦：控制线程读快照副本，try_lock 刷新，永不阻塞等 costmap 更新锁
   nav2_costmap_2d::Costmap2D costmap_snapshot_;
   bool costmap_snapshot_initialized_{false};
-
   // 速度规划轨迹缓存（④ 每控制周期分发；前瞻窗内最大规划速度 → vx 采样上限）
   nav_interfaces::msg::RobotTrajectory reference_trajectory_;
   // 前瞻窗长度（m）：帽允许领先计划加速坡的距离；窗内至少含最近点的下一点（防死锁）
   double traj_speed_cap_lookahead_{0.2};
+
+  std::shared_ptr<const nav2_controller::NearGoalOdomSnapshotProvider>
+    near_goal_odom_provider_;
+  uint64_t expected_goal_generation_{0};
+  uint64_t last_near_goal_control_revision_{0};
+  nav2_controller::NearGoalOdomStage last_near_goal_odom_stage_{
+    nav2_controller::NearGoalOdomStage::INACTIVE};
 };
 
 }  // namespace nav2_mppi_controller

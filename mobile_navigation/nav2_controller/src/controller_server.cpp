@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <algorithm>
 #include <chrono>
 #include <algorithm>
 #include <cstdio>
@@ -32,7 +31,10 @@
 #include "nav2_util/geometry_utils.hpp"
 #include "nav2_util/robot_utils.hpp"
 #include "nav2_controller/controller_server.hpp"
+#include "nav2_controller/near_goal_odom_context.hpp"
+#include "near_goal_odom_context_impl.hpp"
 #include "tf2/exceptions.h"
+#include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wpedantic"
 #include "tf2/utils.h"
@@ -175,6 +177,43 @@ ControllerServer::ControllerServer(const rclcpp::NodeOptions & options)
   declare_parameter(
     "staged_control.prepare.backup_use_distance", rclcpp::ParameterValue(false));
   declare_parameter("staged_control.prepare.backup_distance", rclcpp::ParameterValue(0.3));
+
+  declare_parameter("near_goal_odom.enabled", rclcpp::ParameterValue(false));
+  declare_parameter("near_goal_odom.observe_only", rclcpp::ParameterValue(true));
+  declare_parameter("near_goal_odom.entry_distance", rclcpp::ParameterValue(0.10));
+  declare_parameter("near_goal_odom.entry_confirm_cycles", rclcpp::ParameterValue(3));
+  declare_parameter(
+    "near_goal_odom.position_lon_tolerance", rclcpp::ParameterValue(0.025));
+  declare_parameter(
+    "near_goal_odom.position_lat_tolerance", rclcpp::ParameterValue(0.025));
+  declare_parameter("near_goal_odom.position_confirm_cycles", rclcpp::ParameterValue(5));
+  declare_parameter("near_goal_odom.fine_yaw_entry_error", rclcpp::ParameterValue(0.10));
+  declare_parameter(
+    "near_goal_odom.fine_yaw_entry_confirm_cycles", rclcpp::ParameterValue(3));
+  declare_parameter(
+    "near_goal_odom.yaw_latch_max_error_jump", rclcpp::ParameterValue(0.05));
+  declare_parameter("near_goal_odom.final_yaw_tolerance", rclcpp::ParameterValue(0.02));
+  declare_parameter("near_goal_odom.stop_confirm_cycles", rclcpp::ParameterValue(3));
+  declare_parameter(
+    "near_goal_odom.odom_position_drift_tolerance", rclcpp::ParameterValue(0.025));
+  declare_parameter(
+    "near_goal_odom.position_hold_lon_tolerance", rclcpp::ParameterValue(0.04));
+  declare_parameter(
+    "near_goal_odom.position_hold_lat_tolerance", rclcpp::ParameterValue(0.04));
+  declare_parameter(
+    "near_goal_odom.global_position_abort_tolerance", rclcpp::ParameterValue(0.15));
+  declare_parameter(
+    "near_goal_odom.global_yaw_correction_abort_tolerance",
+    rclcpp::ParameterValue(0.35));
+  declare_parameter(
+    "near_goal_odom.odom_jump_position_tolerance", rclcpp::ParameterValue(0.10));
+  declare_parameter(
+    "near_goal_odom.odom_jump_yaw_tolerance", rclcpp::ParameterValue(0.30));
+  declare_parameter("near_goal_odom.tf_failure_timeout", rclcpp::ParameterValue(0.30));
+  declare_parameter(
+    "near_goal_odom.trans_stopped_velocity", rclcpp::ParameterValue(0.01));
+  declare_parameter(
+    "near_goal_odom.rot_stopped_velocity", rclcpp::ParameterValue(0.02));
 
   // The costmap node is used in the implementation of the controller
   costmap_ros_ = std::make_shared<nav2_costmap_2d::Costmap2DROS>(
@@ -336,6 +375,57 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
   get_parameter("staged_control.prepare.backup_duration", prepare_backup_duration_);
   get_parameter("staged_control.prepare.backup_use_distance", prepare_backup_use_distance_);
   get_parameter("staged_control.prepare.backup_distance", prepare_backup_distance_);
+
+  get_parameter("near_goal_odom.enabled", near_goal_odom_enabled_);
+  get_parameter("near_goal_odom.observe_only", near_goal_odom_observe_only_);
+  get_parameter("near_goal_odom.entry_distance", near_goal_odom_entry_distance_);
+  get_parameter(
+    "near_goal_odom.entry_confirm_cycles", near_goal_odom_entry_confirm_cycles_);
+  get_parameter(
+    "near_goal_odom.position_lon_tolerance", near_goal_odom_position_lon_tolerance_);
+  get_parameter(
+    "near_goal_odom.position_lat_tolerance", near_goal_odom_position_lat_tolerance_);
+  get_parameter(
+    "near_goal_odom.position_confirm_cycles", near_goal_odom_position_confirm_cycles_);
+  get_parameter(
+    "near_goal_odom.fine_yaw_entry_error", near_goal_odom_fine_yaw_entry_error_);
+  get_parameter(
+    "near_goal_odom.fine_yaw_entry_confirm_cycles",
+    near_goal_odom_fine_yaw_entry_confirm_cycles_);
+  get_parameter(
+    "near_goal_odom.yaw_latch_max_error_jump",
+    near_goal_odom_yaw_latch_max_error_jump_);
+  get_parameter(
+    "near_goal_odom.final_yaw_tolerance", near_goal_odom_final_yaw_tolerance_);
+  get_parameter(
+    "near_goal_odom.stop_confirm_cycles", near_goal_odom_stop_confirm_cycles_);
+  get_parameter(
+    "near_goal_odom.odom_position_drift_tolerance",
+    near_goal_odom_position_drift_tolerance_);
+  get_parameter(
+    "near_goal_odom.position_hold_lon_tolerance",
+    near_goal_odom_position_hold_lon_tolerance_);
+  get_parameter(
+    "near_goal_odom.position_hold_lat_tolerance",
+    near_goal_odom_position_hold_lat_tolerance_);
+  get_parameter(
+    "near_goal_odom.global_position_abort_tolerance",
+    near_goal_odom_global_position_abort_tolerance_);
+  get_parameter(
+    "near_goal_odom.global_yaw_correction_abort_tolerance",
+    near_goal_odom_global_yaw_correction_abort_tolerance_);
+  get_parameter(
+    "near_goal_odom.odom_jump_position_tolerance",
+    near_goal_odom_jump_position_tolerance_);
+  get_parameter(
+    "near_goal_odom.odom_jump_yaw_tolerance",
+    near_goal_odom_jump_yaw_tolerance_);
+  get_parameter(
+    "near_goal_odom.tf_failure_timeout", near_goal_odom_tf_failure_timeout_);
+  get_parameter(
+    "near_goal_odom.trans_stopped_velocity", near_goal_odom_trans_stopped_velocity_);
+  get_parameter(
+    "near_goal_odom.rot_stopped_velocity", near_goal_odom_rot_stopped_velocity_);
   RCLCPP_INFO(
     get_logger(),
     "Near-goal progress: enabled=%s hold_pose=%s distance=%.3f m movement=%.3f m "
@@ -564,6 +654,41 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
       approach_distance_);
   }
 
+  NearGoalOdomParameters near_goal_parameters;
+  near_goal_parameters.mode = !near_goal_odom_enabled_ ?
+    NearGoalOdomMode::DISABLED :
+    (near_goal_odom_observe_only_ ? NearGoalOdomMode::OBSERVE : NearGoalOdomMode::CONTROL);
+  near_goal_parameters.entry_distance = near_goal_odom_entry_distance_;
+  near_goal_parameters.entry_confirm_cycles = near_goal_odom_entry_confirm_cycles_;
+  near_goal_parameters.position_lon_tolerance = near_goal_odom_position_lon_tolerance_;
+  near_goal_parameters.position_lat_tolerance = near_goal_odom_position_lat_tolerance_;
+  near_goal_parameters.position_confirm_cycles = near_goal_odom_position_confirm_cycles_;
+  near_goal_parameters.fine_yaw_entry_error = near_goal_odom_fine_yaw_entry_error_;
+  near_goal_parameters.fine_yaw_entry_confirm_cycles =
+    near_goal_odom_fine_yaw_entry_confirm_cycles_;
+  near_goal_parameters.yaw_latch_max_error_jump =
+    near_goal_odom_yaw_latch_max_error_jump_;
+  near_goal_parameters.final_yaw_tolerance = near_goal_odom_final_yaw_tolerance_;
+  near_goal_parameters.stop_confirm_cycles = near_goal_odom_stop_confirm_cycles_;
+  near_goal_parameters.odom_position_drift_tolerance =
+    near_goal_odom_position_drift_tolerance_;
+  near_goal_parameters.position_hold_lon_tolerance =
+    near_goal_odom_position_hold_lon_tolerance_;
+  near_goal_parameters.position_hold_lat_tolerance =
+    near_goal_odom_position_hold_lat_tolerance_;
+  near_goal_parameters.global_position_abort_tolerance =
+    near_goal_odom_global_position_abort_tolerance_;
+  near_goal_parameters.global_yaw_correction_abort_tolerance =
+    near_goal_odom_global_yaw_correction_abort_tolerance_;
+  near_goal_parameters.odom_jump_position_tolerance =
+    near_goal_odom_jump_position_tolerance_;
+  near_goal_parameters.odom_jump_yaw_tolerance = near_goal_odom_jump_yaw_tolerance_;
+  near_goal_parameters.tf_failure_timeout = near_goal_odom_tf_failure_timeout_;
+  near_goal_parameters.trans_stopped_velocity = near_goal_odom_trans_stopped_velocity_;
+  near_goal_parameters.rot_stopped_velocity = near_goal_odom_rot_stopped_velocity_;
+  near_goal_odom_context_ = std::make_shared<NearGoalOdomContext>(near_goal_parameters);
+  bindNearGoalOdomConsumers();
+
   odom_sub_ = std::make_unique<nav_2d_utils::OdomSubscriber>(node);
   get_parameter("hard_stop_topic", hard_stop_topic_);
   vel_publisher_ = create_publisher<geometry_msgs::msg::Twist>("cmd_vel", 1);
@@ -593,6 +718,8 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
       create_publisher<geometry_msgs::msg::Vector3Stamped>(
       "nav_monitor/controller_target", rclcpp::SystemDefaultsQoS());
   }
+  near_goal_odom_publisher_ = create_publisher<diagnostic_msgs::msg::DiagnosticArray>(
+    "/near_goal_odom/debug", rclcpp::QoS(rclcpp::KeepLast(5)).reliable());
 
   // Create the action server that we implement with our followPath method
   action_server_ = std::make_unique<ActionServer>(
@@ -648,6 +775,7 @@ ControllerServer::on_activate(const rclcpp_lifecycle::State & /*state*/)
   speed_plan_cycle_id_ = 0;
   speed_plan_path_id_ = 0;
   speed_plan_cycle_ = SpeedPlanCycleContext();
+  near_goal_odom_publisher_->on_activate();
   action_server_->activate();
 
   auto node = shared_from_this();
@@ -692,6 +820,11 @@ ControllerServer::on_deactivate(const rclcpp_lifecycle::State & /*state*/)
   }
 
   publishHardStopVelocity();
+  if (near_goal_odom_context_) {
+    near_goal_odom_context_->reset(
+      near_goal_odom_generation_, NearGoalTransitionReason::MODE_CHANGED);
+  }
+  near_goal_odom_publisher_->on_deactivate();
   goal_error_publisher_->on_deactivate();
   speed_plan_publisher_->on_deactivate();
   speed_plan_diagnostics_publisher_->on_deactivate();
@@ -761,6 +894,8 @@ ControllerServer::on_cleanup(const rclcpp_lifecycle::State & /*state*/)
   desired_vel_echo_pub_.reset();
   controller_target_echo_pub_.reset();
   invalidateSpeedPlanningContinuity();
+  near_goal_odom_publisher_.reset();
+  near_goal_odom_context_.reset();
   speed_limit_sub_.reset();
 
   return nav2_util::CallbackReturn::SUCCESS;
@@ -852,6 +987,335 @@ bool ControllerServer::findGoalCheckerId(
   return true;
 }
 
+void ControllerServer::bindNearGoalOdomConsumers()
+{
+  if (!near_goal_odom_context_) {
+    return;
+  }
+
+  std::shared_ptr<const NearGoalOdomSnapshotProvider> provider;
+  if (
+    near_goal_odom_enabled_ && !near_goal_odom_observe_only_ &&
+    near_goal_odom_session_supported_)
+  {
+    provider =
+      std::static_pointer_cast<const NearGoalOdomSnapshotProvider>(near_goal_odom_context_);
+  }
+  for (auto & entry : controllers_) {
+    auto * consumer = dynamic_cast<NearGoalOdomContextConsumer *>(entry.second.get());
+    if (consumer != nullptr) {
+      consumer->setNearGoalOdomContext(provider, near_goal_odom_generation_);
+    }
+  }
+  for (auto & entry : goal_checkers_) {
+    auto * consumer = dynamic_cast<NearGoalOdomContextConsumer *>(entry.second.get());
+    if (consumer != nullptr) {
+      consumer->setNearGoalOdomContext(provider, near_goal_odom_generation_);
+    }
+  }
+}
+
+void ControllerServer::updateNearGoalOdomSessionSupport()
+{
+  const auto controller = controllers_.find(current_controller_);
+  const auto goal_checker = goal_checkers_.find(current_goal_checker_);
+  const bool controller_supported =
+    controller != controllers_.end() &&
+    dynamic_cast<NearGoalOdomContextConsumer *>(controller->second.get()) != nullptr;
+  const bool goal_checker_supported =
+    goal_checker != goal_checkers_.end() &&
+    dynamic_cast<NearGoalOdomContextConsumer *>(goal_checker->second.get()) != nullptr;
+  near_goal_odom_session_supported_ = controller_supported && goal_checker_supported;
+
+  if (
+    near_goal_odom_enabled_ && !near_goal_odom_observe_only_ &&
+    !near_goal_odom_session_supported_)
+  {
+    RCLCPP_WARN(
+      get_logger(),
+      "NearGoalOdom未接管：当前插件组合不完整支持只读Context，"
+      "controller=%s supported=%s，goal_checker=%s supported=%s，保持原控制逻辑。",
+      current_controller_.c_str(), controller_supported ? "true" : "false",
+      current_goal_checker_.c_str(), goal_checker_supported ? "true" : "false");
+  }
+}
+
+void ControllerServer::resetNearGoalOdom(uint64_t generation)
+{
+  near_goal_odom_generation_ = generation;
+  if (near_goal_odom_context_) {
+    near_goal_odom_context_->reset(
+      near_goal_odom_generation_, NearGoalTransitionReason::GOAL_CHANGED);
+    near_goal_odom_last_stage_ = NearGoalOdomStage::INACTIVE;
+    near_goal_odom_last_directive_ = NearGoalControlDirective::NORMAL;
+    if (near_goal_odom_enabled_ && !near_goal_odom_observe_only_) {
+      bindNearGoalOdomConsumers();
+    }
+  }
+}
+
+NearGoalOdomSnapshot ControllerServer::updateNearGoalOdom(
+  const geometry_msgs::msg::PoseStamped & pose,
+  const nav_2d_msgs::msg::Twist2D & raw_twist)
+{
+  if (!near_goal_odom_context_) {
+    return NearGoalOdomSnapshot();
+  }
+
+  using TimingClock = std::chrono::steady_clock;
+  constexpr double kSlowTimingWarnMs = 5.0;
+  const auto total_start = TimingClock::now();
+  double prepare_ms = 0.0;
+  double robot_tf_ms = 0.0;
+  double map_tf_ms = 0.0;
+  double error_ms = 0.0;
+  double context_ms = 0.0;
+  double event_ms = 0.0;
+  double diagnostic_ms = 0.0;
+  const auto elapsed_ms = [](const auto & start, const auto & end) {
+      return std::chrono::duration<double, std::milli>(end - start).count();
+    };
+
+  NearGoalOdomInput input;
+  const auto evaluation_time = now();
+  const bool pose_has_stamp =
+    pose.header.stamp.sec != 0 || pose.header.stamp.nanosec != 0;
+  input.stamp = pose_has_stamp ? rclcpp::Time(pose.header.stamp) : evaluation_time;
+  input.evaluation_stamp = evaluation_time;
+  input.actual_vx = raw_twist.x;
+  input.actual_wz = raw_twist.theta;
+
+  if (!near_goal_odom_enabled_) {
+    return near_goal_odom_context_->snapshot();
+  }
+  if (end_pose_.header.frame_id.empty()) {
+    return near_goal_odom_context_->update(input);
+  }
+
+  const std::string & odom_frame = costmap_ros_->getGlobalFrameID();
+  const std::string & map_frame = end_pose_.header.frame_id;
+  input.tf_age = std::max(0.0, (evaluation_time - input.stamp).seconds());
+  rclcpp::Duration tolerance =
+    rclcpp::Duration::from_seconds(costmap_ros_->getTransformTolerance());
+  prepare_ms = elapsed_ms(total_start, TimingClock::now());
+
+  try {
+    const auto robot_tf_start = TimingClock::now();
+    geometry_msgs::msg::PoseStamped robot_in_odom = pose;
+    if (pose.header.frame_id != odom_frame &&
+      !nav_2d_utils::transformPose(
+        costmap_ros_->getTfBuffer(), odom_frame, pose, robot_in_odom, tolerance))
+    {
+      throw tf2::TransformException("无法将机器人位姿转换到Odom坐标系");
+    }
+    robot_tf_ms = elapsed_ms(robot_tf_start, TimingClock::now());
+
+    const auto map_tf_start = TimingClock::now();
+    geometry_msgs::msg::PoseStamped goal_at_stamp = end_pose_;
+    geometry_msgs::msg::PoseStamped goal_in_odom;
+    geometry_msgs::msg::TransformStamped map_to_odom;
+    if (map_frame != odom_frame) {
+      // 控制热路径只读取最新可用TF，避免等待精确时刻的map→odom阻塞控制周期。
+      const rclcpp::Time latest_transform_time(
+        0, 0, input.stamp.get_clock_type());
+      const rclcpp::Duration no_wait = rclcpp::Duration::from_nanoseconds(0);
+      map_to_odom = costmap_ros_->getTfBuffer()->lookupTransform(
+        odom_frame, map_frame, latest_transform_time, no_wait);
+      const rclcpp::Time transform_stamp(map_to_odom.header.stamp);
+      if (transform_stamp.nanoseconds() != 0) {
+        const double transform_time_offset =
+          (evaluation_time - transform_stamp).seconds();
+        if (std::abs(transform_time_offset) > tolerance.seconds()) {
+          throw tf2::ExtrapolationException(
+                  "最新map→odom TF时间偏差为" +
+                  std::to_string(transform_time_offset) +
+                  "s，超过阈值" + std::to_string(tolerance.seconds()) + "s");
+        }
+      }
+      // 同一周期复用同一份TF完成目标转换和诊断，保证锁存数据一致。
+      goal_at_stamp.header.stamp = map_to_odom.header.stamp;
+      tf2::doTransform(goal_at_stamp, goal_in_odom, map_to_odom);
+    } else {
+      goal_at_stamp.header.stamp = input.stamp;
+      goal_in_odom = goal_at_stamp;
+      goal_in_odom.header.frame_id = odom_frame;
+    }
+    map_tf_ms = elapsed_ms(map_tf_start, TimingClock::now());
+
+    const auto error_start = TimingClock::now();
+    // 刚体变换不改变两姿态间距离和角差，直接在Odom中比较实时转换目标与机器人，
+    // 避免每个控制周期再做一次robot→map TF查询。
+    const double live_goal_yaw = tf2::getYaw(goal_in_odom.pose.orientation);
+    const double robot_odom_yaw = tf2::getYaw(robot_in_odom.pose.orientation);
+    const double dx =
+      robot_in_odom.pose.position.x - goal_in_odom.pose.position.x;
+    const double dy =
+      robot_in_odom.pose.position.y - goal_in_odom.pose.position.y;
+    input.live_map_position_error = std::hypot(dx, dy);
+    input.live_map_lon_error =
+      std::cos(live_goal_yaw) * dx + std::sin(live_goal_yaw) * dy;
+    input.live_map_lat_error =
+      -std::sin(live_goal_yaw) * dx + std::cos(live_goal_yaw) * dy;
+    input.live_map_yaw_error = angles::shortest_angular_distance(
+      live_goal_yaw, robot_odom_yaw);
+    input.robot_in_odom = robot_in_odom.pose;
+    input.live_goal_in_odom = goal_in_odom.pose;
+
+    if (map_frame != odom_frame) {
+      input.map_to_odom_x = map_to_odom.transform.translation.x;
+      input.map_to_odom_y = map_to_odom.transform.translation.y;
+      input.map_to_odom_yaw = tf2::getYaw(map_to_odom.transform.rotation);
+      const rclcpp::Time transform_stamp(map_to_odom.header.stamp);
+      if (transform_stamp.nanoseconds() != 0) {
+        input.tf_age = std::max(
+          input.tf_age,
+          std::max(0.0, (evaluation_time - transform_stamp).seconds()));
+      }
+    }
+    input.tf_valid = true;
+    error_ms = elapsed_ms(error_start, TimingClock::now());
+  } catch (const tf2::TransformException & ex) {
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), *get_clock(), 2000,
+      "NearGoalOdom TF失败：%s", ex.what());
+    input.tf_valid = false;
+  }
+
+  const auto context_start = TimingClock::now();
+  const auto current = near_goal_odom_context_->update(input);
+  context_ms = elapsed_ms(context_start, TimingClock::now());
+
+  const auto event_start = TimingClock::now();
+  const auto previous_directive = near_goal_odom_last_directive_;
+  const bool state_changed =
+    current.stage != near_goal_odom_last_stage_ ||
+    current.control_directive != previous_directive;
+  if (state_changed) {
+    RCLCPP_INFO(
+      get_logger(),
+      "NearGoalOdom: generation=%llu mode=%s stage=%s->%s directive=%s reason=%s "
+      "map=(%.3f,%.3f,%.3f) odom=(%.3f,%.3f,%.3f) "
+      "goal_odom=(%.3f,%.3f,%.3f) actual=(%.3f,%.3f)",
+      static_cast<unsigned long long>(current.goal_generation),
+      toString(current.mode), toString(near_goal_odom_last_stage_), toString(current.stage),
+      toString(current.control_directive), toString(current.transition_reason),
+      current.live_map_lon_error, current.live_map_lat_error, current.live_map_yaw_error,
+      current.odom_lon_error, current.odom_lat_error, current.odom_yaw_error,
+      current.goal_in_odom.position.x, current.goal_in_odom.position.y,
+      tf2::getYaw(current.goal_in_odom.orientation),
+      current.actual_vx, current.actual_wz);
+  }
+  if (
+    current.mode == NearGoalOdomMode::CONTROL &&
+    previous_directive != NearGoalControlDirective::NORMAL &&
+    current.control_directive == NearGoalControlDirective::NORMAL)
+  {
+    // 暂停期间不累计近目标无进展时间，恢复控制时从当前Odom位姿重新建立基线。
+    resetNearGoalProgress();
+  }
+  near_goal_odom_last_stage_ = current.stage;
+  near_goal_odom_last_directive_ = current.control_directive;
+  event_ms = elapsed_ms(event_start, TimingClock::now());
+
+  const auto diagnostic_start = TimingClock::now();
+  publishNearGoalOdomDiagnostic(current, state_changed);
+  diagnostic_ms = elapsed_ms(diagnostic_start, TimingClock::now());
+
+  const double total_ms = elapsed_ms(total_start, TimingClock::now());
+  const double measured_ms =
+    prepare_ms + robot_tf_ms + map_tf_ms + error_ms + context_ms + event_ms + diagnostic_ms;
+  const double other_ms = std::max(0.0, total_ms - measured_ms);
+  if (total_ms >= kSlowTimingWarnMs) {
+    // 只记录慢周期，避免性能诊断本身持续占用控制线程。
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), *get_clock(), 1000,
+      "NearGoalOdom耗时(ms): stage=%s total=%.3f prepare=%.3f robot_tf=%.3f "
+      "map_tf=%.3f error=%.3f context=%.3f event=%.3f diagnostic=%.3f other=%.3f",
+      toString(current.stage), total_ms, prepare_ms, robot_tf_ms, map_tf_ms,
+      error_ms, context_ms, event_ms, diagnostic_ms, other_ms);
+  }
+  return current;
+}
+
+void ControllerServer::publishNearGoalOdomDiagnostic(
+  const NearGoalOdomSnapshot & snapshot,
+  bool force_publish)
+{
+  if (
+    !near_goal_odom_publisher_ || !near_goal_odom_publisher_->is_activated() ||
+    !near_goal_odom_context_)
+  {
+    return;
+  }
+
+  const auto stamp = now();
+  if (
+    !force_publish &&
+    near_goal_odom_last_diagnostic_time_.nanoseconds() != 0 &&
+    (stamp - near_goal_odom_last_diagnostic_time_).seconds() < 0.5)
+  {
+    return;
+  }
+  near_goal_odom_last_diagnostic_time_ = stamp;
+  if (snapshot.mode == NearGoalOdomMode::DISABLED) {
+    return;
+  }
+
+  diagnostic_msgs::msg::DiagnosticArray message;
+  message.header.stamp = stamp;
+  diagnostic_msgs::msg::DiagnosticStatus status;
+  status.name = "NearGoalOdom";
+  status.hardware_id = "controller_server";
+  status.level = snapshot.stage == NearGoalOdomStage::INVALID ?
+    diagnostic_msgs::msg::DiagnosticStatus::ERROR :
+    diagnostic_msgs::msg::DiagnosticStatus::OK;
+  status.message = toString(snapshot.stage);
+  auto add = [&status](const std::string & key, const auto & value) {
+      diagnostic_msgs::msg::KeyValue item;
+      item.key = key;
+      item.value = std::to_string(value);
+      status.values.emplace_back(std::move(item));
+    };
+  auto add_text = [&status](const std::string & key, const char * value) {
+      diagnostic_msgs::msg::KeyValue item;
+      item.key = key;
+      item.value = value;
+      status.values.emplace_back(std::move(item));
+    };
+  add_text("mode", toString(snapshot.mode));
+  add_text("stage", toString(snapshot.stage));
+  add_text("control_directive", toString(snapshot.control_directive));
+  add_text("transition_reason", toString(snapshot.transition_reason));
+  add("goal_generation", snapshot.goal_generation);
+  add("control_revision", snapshot.control_revision);
+  add("snapshot_stamp", snapshot.snapshot_stamp.seconds());
+  add("tf_age", snapshot.tf_age);
+  add("map_position_error", snapshot.live_map_position_error);
+  add("map_lon_error", snapshot.live_map_lon_error);
+  add("map_lat_error", snapshot.live_map_lat_error);
+  add("map_yaw_error", snapshot.live_map_yaw_error);
+  add("odom_lon_error", snapshot.odom_lon_error);
+  add("odom_lat_error", snapshot.odom_lat_error);
+  add("odom_yaw_error", snapshot.odom_yaw_error);
+  add("odom_drift", snapshot.odom_drift_since_position_reached);
+  add("yaw_error_before_latch", snapshot.yaw_error_before_latch);
+  add("yaw_error_after_latch", snapshot.yaw_error_after_latch);
+  add("map_to_odom_delta_x", snapshot.map_to_odom_delta_x);
+  add("map_to_odom_delta_y", snapshot.map_to_odom_delta_y);
+  add("map_to_odom_delta_yaw", snapshot.map_to_odom_delta_yaw);
+  add("global_yaw_consistency_delta", snapshot.global_yaw_consistency_delta);
+  add("actual_vx", snapshot.actual_vx);
+  add("actual_wz", snapshot.actual_wz);
+  add("tf_valid", snapshot.tf_valid);
+  add("odom_continuous", snapshot.odom_continuous);
+  add("global_sanity_ok", snapshot.global_sanity_ok);
+  add("position_goal_latched", snapshot.position_goal_latched);
+  add("position_reached_latched", snapshot.position_reached_latched);
+  add("yaw_goal_latched", snapshot.yaw_goal_latched);
+  message.status.emplace_back(std::move(status));
+  near_goal_odom_publisher_->publish(std::move(message));
+}
+
 void ControllerServer::computeControl()
 {
   std::lock_guard<std::mutex> lock(dynamic_params_lock_);
@@ -873,8 +1337,8 @@ void ControllerServer::computeControl()
     if (findControllerId(c_name, current_controller)) {
       current_controller_ = current_controller;
     } else {
-      action_server_->terminate_current();
-      return;
+      throw nav2_core::PlannerException(
+              "请求的Controller不存在，终止当前FollowPath。");
     }
 
     std::string gc_name = action_server_->get_current_goal()->goal_checker_id;
@@ -882,10 +1346,12 @@ void ControllerServer::computeControl()
     if (findGoalCheckerId(gc_name, current_goal_checker)) {
       current_goal_checker_ = current_goal_checker;
     } else {
-      action_server_->terminate_current();
-      return;
+      throw nav2_core::PlannerException(
+              "请求的GoalChecker不存在，终止当前FollowPath。");
     }
 
+    updateNearGoalOdomSessionSupport();
+    resetNearGoalOdom(near_goal_odom_generation_ + 1);
     setPlannerPath(
       action_server_->get_current_goal()->path,
       PathUpdateType::NEW_GOAL);
@@ -907,6 +1373,11 @@ void ControllerServer::computeControl()
     while (rclcpp::ok()) {
       if (action_server_ == nullptr || !action_server_->is_server_active()) {
         RCLCPP_DEBUG(get_logger(), "Action server unavailable or inactive. Stopping.");
+        publishZeroVelocity();
+        if (near_goal_odom_context_) {
+          near_goal_odom_context_->reset(
+            near_goal_odom_generation_, NearGoalTransitionReason::GOAL_CHANGED);
+        }
         return;
       }
 
@@ -916,6 +1387,10 @@ void ControllerServer::computeControl()
         // The FollowPath result is the controller-side stop acknowledgement used
         // by BtActionNode cleanup. Publish zero before making that result visible.
         action_server_->terminate_all();
+        if (near_goal_odom_context_) {
+          near_goal_odom_context_->reset(
+            near_goal_odom_generation_, NearGoalTransitionReason::GOAL_CHANGED);
+        }
         return;
       }
 
@@ -997,12 +1472,20 @@ void ControllerServer::computeControl()
     RCLCPP_ERROR(this->get_logger(), "%s", e.what());
     publishHardStopVelocity();
     action_server_->terminate_current();
+    if (near_goal_odom_context_) {
+      near_goal_odom_context_->reset(
+        near_goal_odom_generation_, NearGoalTransitionReason::GOAL_CHANGED);
+    }
     return;
   }catch (std::exception & e) {
     RCLCPP_ERROR(this->get_logger(), "%s", e.what());
     publishHardStopVelocity();
     std::shared_ptr<Action::Result> result = std::make_shared<Action::Result>();
     action_server_->terminate_current(result);
+    if (near_goal_odom_context_) {
+      near_goal_odom_context_->reset(
+        near_goal_odom_generation_, NearGoalTransitionReason::GOAL_CHANGED);
+    }
     return;
   }
   RCLCPP_DEBUG(get_logger(), "Controller succeeded, setting result");
@@ -1011,6 +1494,10 @@ void ControllerServer::computeControl()
 
   // TODO(orduno) #861 Handle a pending preemption and set controller name
   action_server_->succeeded_current();
+  if (near_goal_odom_context_) {
+    near_goal_odom_context_->reset(
+      near_goal_odom_generation_, NearGoalTransitionReason::GOAL_CHANGED);
+  }
 }
 
 void ControllerServer::setPlannerPath(
@@ -1709,7 +2196,9 @@ bool ControllerServer::isNearGoal(const geometry_msgs::msg::PoseStamped & pose)
   return std::hypot(dx, dy) <= near_goal_progress_distance_;
 }
 
-bool ControllerServer::checkNearGoalProgress(const geometry_msgs::msg::PoseStamped & pose)
+bool ControllerServer::checkNearGoalProgress(
+  const geometry_msgs::msg::PoseStamped & pose,
+  bool check_lateral_stall)
 {
   constexpr int kLateralStallEntryCycles = 5;
 
@@ -1725,7 +2214,7 @@ bool ControllerServer::checkNearGoalProgress(const geometry_msgs::msg::PoseStamp
     in_near_goal_progress_mode_ = true;
   }
 
-  if (near_goal_lateral_stall_enabled_) {
+  if (near_goal_lateral_stall_enabled_ && check_lateral_stall) {
     geometry_msgs::msg::PoseStamped transformed_end_pose;
     try {
       rclcpp::Duration tolerance(
@@ -2593,7 +3082,41 @@ void ControllerServer::computeAndPublishVelocity()
   auto t_pose_end = std::chrono::high_resolution_clock::now();
   auto pose_ms = std::chrono::duration<double, std::milli>(t_pose_end - t_pose_start).count();
 
-  if (near_goal_pose_hold_active_) {
+  // 本周期只读取一次原始Odom速度，供状态机、停止判断和Controller共同使用。
+  const nav_2d_msgs::msg::Twist2D raw_odom_twist = odom_sub_->getTwist();
+  const auto t_near_goal_odom_start = std::chrono::high_resolution_clock::now();
+  NearGoalOdomSnapshot near_goal_snapshot;
+  if (
+    near_goal_odom_enabled_ &&
+    (near_goal_odom_observe_only_ || near_goal_odom_session_supported_))
+  {
+    near_goal_snapshot = updateNearGoalOdom(pose, raw_odom_twist);
+  }
+  const auto t_near_goal_odom_end = std::chrono::high_resolution_clock::now();
+  const double near_goal_odom_ms = std::chrono::duration<double, std::milli>(
+    t_near_goal_odom_end - t_near_goal_odom_start).count();
+  const bool odom_terminal_control =
+    near_goal_snapshot.mode == NearGoalOdomMode::CONTROL &&
+    near_goal_snapshot.goal_generation == near_goal_odom_generation_ &&
+    near_goal_snapshot.stage != NearGoalOdomStage::INACTIVE;
+  if (odom_terminal_control) {
+    if (
+      near_goal_snapshot.control_directive ==
+      NearGoalControlDirective::HOLD_ZERO)
+    {
+      publishZeroVelocity(false);
+      return;
+    }
+    if (
+      near_goal_snapshot.control_directive ==
+      NearGoalControlDirective::TERMINATE)
+    {
+      throw nav2_core::PlannerException(
+              "NearGoalOdom状态无效，将由统一异常出口发送零速度并终止当前FollowPath。");
+    }
+  }
+
+  if (!odom_terminal_control && near_goal_pose_hold_active_) {
     publishZeroVelocity();
     if (isRobotStoppedForGoalChecker()) {
       // 停稳后检查误差状态：同时计算是否超出 release 容差、是否仍在 accept 容差内
@@ -2669,10 +3192,9 @@ void ControllerServer::computeAndPublishVelocity()
   // 否则把动态减速过程交给 MPPI final_yaw，避免在底盘仍有较大惯性时抢占造成卡顿。
   // 注意：必须用原始 odom 速度，不能用 getThresholdedTwist()，后者会把小速度按 min_*_threshold 清零，
   // 导致底盘仍有 0.02~0.03 rad/s 时被误判为已停稳而提前进入 hold。
-  if (near_goal_hold_position_when_pose_reached_ &&
+  if (!odom_terminal_control && near_goal_hold_position_when_pose_reached_ &&
     isWithinGoalCheckerTolerance(pose, false, true))
   {
-    const nav_2d_msgs::msg::Twist2D raw_odom_twist = odom_sub_->getTwist();
     const bool speed_low_enough_for_hold =
       std::fabs(raw_odom_twist.x) <= near_goal_hold_enter_vx_ &&
       std::fabs(raw_odom_twist.theta) <= near_goal_hold_enter_wz_;
@@ -2693,9 +3215,18 @@ void ControllerServer::computeAndPublishVelocity()
 
   auto t_progress_start = std::chrono::high_resolution_clock::now();
   const bool in_goal_accept_position = isWithinGoalCheckerTolerance(pose, false, false);
-  if (near_goal_progress_enabled_ && isNearGoal(pose)) {
-    if (!checkNearGoalProgress(pose)) {
-      if (isWithinGoalCheckerTolerance(pose, true)) {
+  // 新功能已得到同周期目标距离时直接复用，避免再为原进展检查重复查询同一目标TF。
+  bool is_near_goal_for_progress = false;
+  if (near_goal_progress_enabled_) {
+    is_near_goal_for_progress =
+      near_goal_odom_enabled_ && near_goal_snapshot.tf_valid ?
+      near_goal_snapshot.live_map_position_error <= near_goal_progress_distance_ :
+      isNearGoal(pose);
+  }
+  if (near_goal_progress_enabled_ && is_near_goal_for_progress) {
+    // Odom末端阶段仍保留运动进展超时，但不再用实时map横向误差否定已锁存位置。
+    if (!checkNearGoalProgress(pose, !odom_terminal_control)) {
+      if (!odom_terminal_control && isWithinGoalCheckerTolerance(pose, true)) {
         publishZeroVelocity();
         publish_control_failure("goal_tolerance_zero_cmd");
         return;
@@ -2720,7 +3251,7 @@ void ControllerServer::computeAndPublishVelocity()
   auto progress_ms = std::chrono::duration<double, std::milli>(t_progress_end - t_progress_start).count();
 
   auto t_odom_start = std::chrono::high_resolution_clock::now();
-  nav_2d_msgs::msg::Twist2D twist = getThresholdedTwist(odom_sub_->getTwist());
+  nav_2d_msgs::msg::Twist2D twist = getThresholdedTwist(raw_odom_twist);
   auto t_odom_end = std::chrono::high_resolution_clock::now();
   auto odom_ms = std::chrono::duration<double, std::milli>(t_odom_end - t_odom_start).count();
 
@@ -2858,16 +3389,17 @@ void ControllerServer::computeAndPublishVelocity()
 
   auto t_total_end = std::chrono::high_resolution_clock::now();
   auto total_ms = std::chrono::duration<double, std::milli>(t_total_end - t_total_start).count();
-  auto measured_ms = pose_ms + progress_ms + odom_ms + compute_ms + feedback_ms + publish_ms;
+  auto measured_ms =
+    pose_ms + near_goal_odom_ms + progress_ms + odom_ms + compute_ms + feedback_ms + publish_ms;
   auto unaccounted_ms = total_ms - measured_ms;
 
   if (total_ms >= kSlowTimingWarnMs) {
     RCLCPP_WARN(
       get_logger(),
-      "ControllerServer timing (ms): total=%.3f getPose=%.3f progress=%.3f odom=%.3f "
-      "compute=%.3f feedback=%.3f publish=%.3f unaccounted=%.3f",
-      total_ms, pose_ms, progress_ms, odom_ms, compute_ms, feedback_ms, publish_ms,
-      unaccounted_ms);
+      "ControllerServer timing (ms): total=%.3f getPose=%.3f nearGoalOdom=%.3f "
+      "progress=%.3f odom=%.3f compute=%.3f feedback=%.3f publish=%.3f unaccounted=%.3f",
+      total_ms, pose_ms, near_goal_odom_ms, progress_ms, odom_ms, compute_ms,
+      feedback_ms, publish_ms, unaccounted_ms);
   }
 }
 
@@ -2877,20 +3409,14 @@ void ControllerServer::updateGlobalPath()
     auto goal = action_server_->accept_pending_goal();
     std::string requested_controller;
     if (!findControllerId(goal->controller_id, requested_controller)) {
-      RCLCPP_INFO(
-        get_logger(), "Terminating action, invalid controller %s requested. 终止导航：请求的 controller_id 无效。",
-        goal->controller_id.c_str());
-      action_server_->terminate_current();
-      return;
+      throw nav2_core::PlannerException(
+              "待更新路径请求了不存在的Controller，终止当前FollowPath。");
     }
 
     std::string requested_goal_checker;
     if (!findGoalCheckerId(goal->goal_checker_id, requested_goal_checker)) {
-      RCLCPP_INFO(
-        get_logger(), "Terminating action, invalid goal checker %s requested. 终止导航：请求的 goal_checker_id 无效。",
-        goal->goal_checker_id.c_str());
-      action_server_->terminate_current();
-      return;
+      throw nav2_core::PlannerException(
+              "待更新路径请求了不存在的GoalChecker，终止当前FollowPath。");
     }
 
     geometry_msgs::msg::PoseStamped pose;
@@ -2900,6 +3426,27 @@ void ControllerServer::updateGlobalPath()
     const bool got_pose = getRobotPose(pose);
     const bool in_accept_position =
       got_pose && isWithinGoalCheckerTolerance(pose, false, false);
+    NearGoalOdomSnapshot near_goal_snapshot;
+    if (near_goal_odom_context_) {
+      near_goal_snapshot = near_goal_odom_context_->snapshot();
+    }
+    const bool odom_terminal_active =
+      near_goal_snapshot.mode == NearGoalOdomMode::CONTROL &&
+      near_goal_snapshot.goal_generation == near_goal_odom_generation_ &&
+      near_goal_snapshot.stage != NearGoalOdomStage::INACTIVE &&
+      near_goal_snapshot.stage != NearGoalOdomStage::INVALID;
+    if (
+      same_controller && same_goal_checker && same_goal &&
+      odom_terminal_active)
+    {
+      RCLCPP_INFO(
+        get_logger(),
+        "保留近目标Odom状态并更新同目标path：generation=%llu，stage=%s。",
+        static_cast<unsigned long long>(near_goal_odom_generation_),
+        toString(near_goal_snapshot.stage));
+      setPlannerPath(goal->path, PathUpdateType::SAME_GOAL_GEOMETRY);
+      return;
+    }
     if (same_controller && same_goal_checker && same_goal && in_accept_position)
     {
       RCLCPP_INFO(
@@ -2932,6 +3479,10 @@ void ControllerServer::updateGlobalPath()
 
     current_controller_ = requested_controller;
     current_goal_checker_ = requested_goal_checker;
+    updateNearGoalOdomSessionSupport();
+    if (!same_goal || !same_controller || !same_goal_checker) {
+      resetNearGoalOdom(near_goal_odom_generation_ + 1);
+    }
     RCLCPP_INFO(get_logger(), "Passing new path to controller.");
     const auto update_type =
       same_controller && same_goal_checker && same_goal ?
@@ -2948,7 +3499,7 @@ void ControllerServer::publishVelocity(const geometry_msgs::msg::TwistStamped & 
   }
 }
 
-void ControllerServer::publishZeroVelocity()
+void ControllerServer::publishZeroVelocity(bool log_event)
 {
   invalidateSpeedPlanningContinuity();
   geometry_msgs::msg::TwistStamped velocity;
@@ -2961,12 +3512,12 @@ void ControllerServer::publishZeroVelocity()
   velocity.header.frame_id = costmap_ros_->getBaseFrameID();
   velocity.header.stamp = now();
 
-  if (odom_sub_) {
+  if (log_event && odom_sub_) {
     const auto actual_twist = getThresholdedTwist(odom_sub_->getTwist());
     const size_t subscriber_count = vel_publisher_ ?
       vel_publisher_->get_subscription_count() : 0;
-    RCLCPP_WARN(
-      get_logger(),
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), *get_clock(), 1000,
       "[ControllerStopDebug] Publishing zero velocity: actual odom velocity vx=%.3f m/s, "
       "vy=%.3f m/s, wz=%.3f rad/s, cmd_vel subscribers=%zu. This is a stop request; "
       "the velocity smoother and chassis still need time to decelerate.",
@@ -2992,6 +3543,17 @@ void ControllerServer::publishHardStopVelocity()
 
 bool ControllerServer::isGoalReached()
 {
+  if (
+    near_goal_odom_enabled_ && !near_goal_odom_observe_only_ &&
+    near_goal_odom_session_supported_)
+  {
+    // 控制模式的GoalChecker只读取共享Snapshot，空参数避免重复查询实时map目标TF。
+    const geometry_msgs::msg::Pose unused_pose;
+    const geometry_msgs::msg::Twist unused_velocity;
+    return goal_checkers_[current_goal_checker_]->isGoalReached(
+      unused_pose, unused_pose, unused_velocity);
+  }
+
   if (near_goal_progress_acceptance_reached_) {
     RCLCPP_INFO(
       get_logger(),
@@ -3104,27 +3666,69 @@ rcl_interfaces::msg::SetParametersResult
 ControllerServer::dynamicParametersCallback(std::vector<rclcpp::Parameter> parameters)
 {
   rcl_interfaces::msg::SetParametersResult result;
+  bool near_goal_odom_changed = false;
 
-  for (auto parameter : parameters) {
+  // 先校验整批近目标参数，避免部分参数已写入后才发现后续值非法。
+  for (const auto & parameter : parameters) {
+    const auto & name = parameter.get_name();
+    if (name.rfind("near_goal_odom.", 0) != 0) {
+      continue;
+    }
+    if (
+      parameter.get_type() == ParameterType::PARAMETER_DOUBLE &&
+      parameter.as_double() < 0.0)
+    {
+      result.successful = false;
+      result.reason = name + "不能小于0";
+      return result;
+    }
+    if (
+      parameter.get_type() == ParameterType::PARAMETER_INTEGER &&
+      parameter.as_int() < 1)
+    {
+      result.successful = false;
+      result.reason = name + "必须至少为1个控制周期";
+      return result;
+    }
+  }
+
+  const bool updates_server_parameters = std::any_of(
+    parameters.begin(), parameters.end(),
+    [](const rclcpp::Parameter & parameter) {
+      const auto & name = parameter.get_name();
+      return
+        name.find('.') == std::string::npos ||
+        name.rfind("near_goal_progress.", 0) == 0 ||
+        name.rfind("staged_control.", 0) == 0 ||
+        name.rfind("near_goal_odom.", 0) == 0;
+    });
+  if (!updates_server_parameters) {
+    result.successful = true;
+    return result;
+  }
+
+  // 整批参数、Context和Provider切换共用一把锁，禁止控制会话读到半更新状态。
+  std::unique_lock<std::mutex> lock(dynamic_params_lock_, std::try_to_lock);
+  if (!lock.owns_lock()) {
+    RCLCPP_WARN(
+      get_logger(),
+      "控制器运行期间不能动态修改ControllerServer参数");
+    result.successful = false;
+    result.reason = "控制器运行期间不能动态修改ControllerServer参数";
+    return result;
+  }
+
+  for (const auto & parameter : parameters) {
     const auto & type = parameter.get_type();
     const auto & name = parameter.get_name();
 
-    // Plugin parameters handle their own updates, but these namespaces belong to this server.
+    // 插件参数由插件自行处理，以下命名空间属于ControllerServer。
     if (name.find('.') != std::string::npos &&
       name.rfind("near_goal_progress.", 0) != 0 &&
-      name.rfind("staged_control.", 0) != 0)
+      name.rfind("staged_control.", 0) != 0 &&
+      name.rfind("near_goal_odom.", 0) != 0)
     {
       continue;
-    }
-
-    if (!dynamic_params_lock_.try_lock()) {
-      RCLCPP_WARN(
-        get_logger(),
-        "Unable to dynamically change Parameters while the controller is currently running");
-      result.successful = false;
-      result.reason =
-        "Unable to dynamically change Parameters while the controller is currently running";
-      return result;
     }
 
     if (type == ParameterType::PARAMETER_DOUBLE) {
@@ -3193,6 +3797,56 @@ ControllerServer::dynamicParametersCallback(std::vector<rclcpp::Parameter> param
         prepare_backup_duration_ = parameter.as_double();
       } else if (name == "staged_control.prepare.backup_distance") {
         prepare_backup_distance_ = parameter.as_double();
+      } else if (name == "near_goal_odom.entry_distance") {
+        near_goal_odom_entry_distance_ = std::max(0.0, parameter.as_double());
+        near_goal_odom_changed = true;
+      } else if (name == "near_goal_odom.position_lon_tolerance") {
+        near_goal_odom_position_lon_tolerance_ = std::max(0.0, parameter.as_double());
+        near_goal_odom_changed = true;
+      } else if (name == "near_goal_odom.position_lat_tolerance") {
+        near_goal_odom_position_lat_tolerance_ = std::max(0.0, parameter.as_double());
+        near_goal_odom_changed = true;
+      } else if (name == "near_goal_odom.fine_yaw_entry_error") {
+        near_goal_odom_fine_yaw_entry_error_ = std::max(0.0, parameter.as_double());
+        near_goal_odom_changed = true;
+      } else if (name == "near_goal_odom.yaw_latch_max_error_jump") {
+        near_goal_odom_yaw_latch_max_error_jump_ = std::max(0.0, parameter.as_double());
+        near_goal_odom_changed = true;
+      } else if (name == "near_goal_odom.final_yaw_tolerance") {
+        near_goal_odom_final_yaw_tolerance_ = std::max(0.0, parameter.as_double());
+        near_goal_odom_changed = true;
+      } else if (name == "near_goal_odom.odom_position_drift_tolerance") {
+        near_goal_odom_position_drift_tolerance_ = std::max(0.0, parameter.as_double());
+        near_goal_odom_changed = true;
+      } else if (name == "near_goal_odom.position_hold_lon_tolerance") {
+        near_goal_odom_position_hold_lon_tolerance_ = std::max(0.0, parameter.as_double());
+        near_goal_odom_changed = true;
+      } else if (name == "near_goal_odom.position_hold_lat_tolerance") {
+        near_goal_odom_position_hold_lat_tolerance_ = std::max(0.0, parameter.as_double());
+        near_goal_odom_changed = true;
+      } else if (name == "near_goal_odom.global_position_abort_tolerance") {
+        near_goal_odom_global_position_abort_tolerance_ =
+          std::max(0.0, parameter.as_double());
+        near_goal_odom_changed = true;
+      } else if (name == "near_goal_odom.global_yaw_correction_abort_tolerance") {
+        near_goal_odom_global_yaw_correction_abort_tolerance_ =
+          std::max(0.0, parameter.as_double());
+        near_goal_odom_changed = true;
+      } else if (name == "near_goal_odom.odom_jump_position_tolerance") {
+        near_goal_odom_jump_position_tolerance_ = std::max(0.0, parameter.as_double());
+        near_goal_odom_changed = true;
+      } else if (name == "near_goal_odom.odom_jump_yaw_tolerance") {
+        near_goal_odom_jump_yaw_tolerance_ = std::max(0.0, parameter.as_double());
+        near_goal_odom_changed = true;
+      } else if (name == "near_goal_odom.tf_failure_timeout") {
+        near_goal_odom_tf_failure_timeout_ = std::max(0.0, parameter.as_double());
+        near_goal_odom_changed = true;
+      } else if (name == "near_goal_odom.trans_stopped_velocity") {
+        near_goal_odom_trans_stopped_velocity_ = std::max(0.0, parameter.as_double());
+        near_goal_odom_changed = true;
+      } else if (name == "near_goal_odom.rot_stopped_velocity") {
+        near_goal_odom_rot_stopped_velocity_ = std::max(0.0, parameter.as_double());
+        near_goal_odom_changed = true;
       }
     } else if (type == ParameterType::PARAMETER_STRING) {
       if (name == "current_controller") {
@@ -3251,6 +3905,22 @@ ControllerServer::dynamicParametersCallback(std::vector<rclcpp::Parameter> param
     } else if (type == ParameterType::PARAMETER_INTEGER) {
       if (name == "staged_control.prepare.obstacle_cost_threshold") {
         prepare_obstacle_cost_threshold_ = static_cast<int>(parameter.as_int());
+      } else if (name == "near_goal_odom.entry_confirm_cycles") {
+        near_goal_odom_entry_confirm_cycles_ =
+          std::max<int64_t>(1, parameter.as_int());
+        near_goal_odom_changed = true;
+      } else if (name == "near_goal_odom.position_confirm_cycles") {
+        near_goal_odom_position_confirm_cycles_ =
+          std::max<int64_t>(1, parameter.as_int());
+        near_goal_odom_changed = true;
+      } else if (name == "near_goal_odom.fine_yaw_entry_confirm_cycles") {
+        near_goal_odom_fine_yaw_entry_confirm_cycles_ =
+          std::max<int64_t>(1, parameter.as_int());
+        near_goal_odom_changed = true;
+      } else if (name == "near_goal_odom.stop_confirm_cycles") {
+        near_goal_odom_stop_confirm_cycles_ =
+          std::max<int64_t>(1, parameter.as_int());
+        near_goal_odom_changed = true;
       }
     } else if (type == ParameterType::PARAMETER_BOOL) {
       if (name == "near_goal_progress.enabled") {
@@ -3271,10 +3941,52 @@ ControllerServer::dynamicParametersCallback(std::vector<rclcpp::Parameter> param
         prepare_backup_active_ = false;
       } else if (name == "staged_control.prepare.backup_use_distance") {
         prepare_backup_use_distance_ = parameter.as_bool();
+      } else if (name == "near_goal_odom.enabled") {
+        near_goal_odom_enabled_ = parameter.as_bool();
+        near_goal_odom_changed = true;
+      } else if (name == "near_goal_odom.observe_only") {
+        near_goal_odom_observe_only_ = parameter.as_bool();
+        near_goal_odom_changed = true;
       }
     }
 
-    dynamic_params_lock_.unlock();
+  }
+
+  if (near_goal_odom_changed && near_goal_odom_context_) {
+    NearGoalOdomParameters near_goal_parameters;
+    near_goal_parameters.mode = !near_goal_odom_enabled_ ?
+      NearGoalOdomMode::DISABLED :
+      (near_goal_odom_observe_only_ ? NearGoalOdomMode::OBSERVE : NearGoalOdomMode::CONTROL);
+    near_goal_parameters.entry_distance = near_goal_odom_entry_distance_;
+    near_goal_parameters.entry_confirm_cycles = near_goal_odom_entry_confirm_cycles_;
+    near_goal_parameters.position_lon_tolerance = near_goal_odom_position_lon_tolerance_;
+    near_goal_parameters.position_lat_tolerance = near_goal_odom_position_lat_tolerance_;
+    near_goal_parameters.position_confirm_cycles = near_goal_odom_position_confirm_cycles_;
+    near_goal_parameters.fine_yaw_entry_error = near_goal_odom_fine_yaw_entry_error_;
+    near_goal_parameters.fine_yaw_entry_confirm_cycles =
+      near_goal_odom_fine_yaw_entry_confirm_cycles_;
+    near_goal_parameters.yaw_latch_max_error_jump =
+      near_goal_odom_yaw_latch_max_error_jump_;
+    near_goal_parameters.final_yaw_tolerance = near_goal_odom_final_yaw_tolerance_;
+    near_goal_parameters.stop_confirm_cycles = near_goal_odom_stop_confirm_cycles_;
+    near_goal_parameters.odom_position_drift_tolerance =
+      near_goal_odom_position_drift_tolerance_;
+    near_goal_parameters.position_hold_lon_tolerance =
+      near_goal_odom_position_hold_lon_tolerance_;
+    near_goal_parameters.position_hold_lat_tolerance =
+      near_goal_odom_position_hold_lat_tolerance_;
+    near_goal_parameters.global_position_abort_tolerance =
+      near_goal_odom_global_position_abort_tolerance_;
+    near_goal_parameters.global_yaw_correction_abort_tolerance =
+      near_goal_odom_global_yaw_correction_abort_tolerance_;
+    near_goal_parameters.odom_jump_position_tolerance =
+      near_goal_odom_jump_position_tolerance_;
+    near_goal_parameters.odom_jump_yaw_tolerance = near_goal_odom_jump_yaw_tolerance_;
+    near_goal_parameters.tf_failure_timeout = near_goal_odom_tf_failure_timeout_;
+    near_goal_parameters.trans_stopped_velocity = near_goal_odom_trans_stopped_velocity_;
+    near_goal_parameters.rot_stopped_velocity = near_goal_odom_rot_stopped_velocity_;
+    near_goal_odom_context_->setParameters(near_goal_parameters);
+    bindNearGoalOdomConsumers();
   }
 
   result.successful = true;
