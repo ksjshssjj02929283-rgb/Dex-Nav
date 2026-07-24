@@ -13,13 +13,14 @@
 #include <memory>
 #include <string>
 
+#include <nav_interfaces/action/navigate_to_point.hpp>
 #include <nav_interfaces/srv/add_nav_point.hpp>
 #include <nav_interfaces/srv/get_all_nav_points.hpp>
 #include <nav_interfaces/srv/remove_nav_point.hpp>
 #include <nav_interfaces/srv/sample_nav_point.hpp>
-#include <nav_interfaces/srv/nav_to_point.hpp>
 #include <nav_interfaces/srv/update_nav_point.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <rclcpp_action/rclcpp_action.hpp>
 
 namespace map_asset_rviz_plugin {
 
@@ -41,6 +42,7 @@ Q_SIGNALS:
     void refreshDone(QVariantList points);   // 每项为 QVariantMap{name, type, x, y, theta, tolerance}
     void operationFinished(bool success, QString msg);
     void poseFilled(double x, double y, double yaw_rad);
+    void navigationStatus(QString msg);
 
 private Q_SLOTS:
     void onRefresh();
@@ -54,6 +56,10 @@ private Q_SLOTS:
     void applyPoseFilled(double x, double y, double yaw_rad);
 
 private:
+    using NavigateToPointAction = nav_interfaces::action::NavigateToPoint;
+    using GoalHandleNavigateToPoint =
+        rclcpp_action::ClientGoalHandle<NavigateToPointAction>;
+
     void rebuildClients();
 
     QListWidget*   list_;
@@ -77,8 +83,8 @@ private:
     rclcpp::Client<nav_interfaces::srv::AddNavPoint>::SharedPtr     add_client_;
     rclcpp::Client<nav_interfaces::srv::RemoveNavPoint>::SharedPtr  remove_client_;
     rclcpp::Client<nav_interfaces::srv::SampleNavPoint>::SharedPtr  sample_client_;
-    rclcpp::Client<nav_interfaces::srv::NavToPoint>::SharedPtr      nav_client_;
     rclcpp::Client<nav_interfaces::srv::UpdateNavPoint>::SharedPtr  update_client_;
+    rclcpp_action::Client<NavigateToPointAction>::SharedPtr          nav_client_;
 };
 
 }  // namespace map_asset_rviz_plugin

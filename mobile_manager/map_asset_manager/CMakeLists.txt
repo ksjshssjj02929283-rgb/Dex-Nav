@@ -184,6 +184,7 @@ if(rviz_common_FOUND AND Qt5_FOUND AND pluginlib_FOUND)
 
   ament_target_dependencies(map_asset_rviz_plugin
     rclcpp
+    rclcpp_action
     nav_interfaces
     geometry_msgs
     std_srvs

@@ -97,6 +97,8 @@ NavPointTab::NavPointTab(QWidget* parent) : QWidget(parent) {
     connect(this, &NavPointTab::refreshDone,        this, &NavPointTab::applyRefresh,         Qt::QueuedConnection);
     connect(this, &NavPointTab::operationFinished,  this, &NavPointTab::applyOperationResult, Qt::QueuedConnection);
     connect(this, &NavPointTab::poseFilled,         this, &NavPointTab::applyPoseFilled,      Qt::QueuedConnection);
+    connect(this, &NavPointTab::navigationStatus,
+            status_label_, &QLabel::setText, Qt::QueuedConnection);
 
     // 工具拖拽完成后预填草稿（跨线程安全）
     connect(NavPointDraftBridge::instance(), &NavPointDraftBridge::draftReady,
@@ -118,8 +120,9 @@ void NavPointTab::rebuildClients() {
     add_client_     = node_->create_client<nav_interfaces::srv::AddNavPoint>(prefix_ + "/add_point");
     remove_client_  = node_->create_client<nav_interfaces::srv::RemoveNavPoint>(prefix_ + "/remove_point");
     sample_client_  = node_->create_client<nav_interfaces::srv::SampleNavPoint>(prefix_ + "/sample_point");
-    nav_client_     = node_->create_client<nav_interfaces::srv::NavToPoint>(prefix_ + "/nav_to_point");
     update_client_  = node_->create_client<nav_interfaces::srv::UpdateNavPoint>(prefix_ + "/update_nav_point");
+    nav_client_     = rclcpp_action::create_client<NavigateToPointAction>(
+        node_, prefix_ + "/navigate_to_point");
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -353,30 +356,83 @@ void NavPointTab::onNavTo() {
     auto* sel = list_->currentItem();
     if (!sel) { status_label_->setText("请先选择目标点位"); return; }
 
-    QString text = sel->text();
-    int bracket = text.indexOf(']');
-    int paren   = text.indexOf('(');
-    QString name = (bracket >= 0 && paren > bracket)
-        ? text.mid(bracket + 2, paren - bracket - 3).trimmed()
-        : text.trimmed();
+    const QString name =
+        sel->data(Qt::UserRole).toMap().value("name").toString().trimmed();
+    if (name.isEmpty()) {
+        status_label_->setText("选中项缺少点位名称，请先「刷新列表」");
+        return;
+    }
 
-    auto req = std::make_shared<nav_interfaces::srv::NavToPoint::Request>();
-    req->nav_point.name = name.toStdString();
+    if (!nav_client_->action_server_is_ready()) {
+        status_label_->setText(
+            QString("导航 Action 未就绪：%1/navigate_to_point")
+                .arg(QString::fromStdString(prefix_)));
+        return;
+    }
+
+    NavigateToPointAction::Goal goal;
+    goal.point_name = name.toStdString();
+    goal.use_pose = false;
 
     nav_btn_->setEnabled(false);
-    status_label_->setText(QString("导航到 %1...").arg(name));
+    status_label_->setText(QString("正在发送导航目标：%1...").arg(name));
 
-    nav_client_->async_send_request(
-        req,
-        [this](rclcpp::Client<nav_interfaces::srv::NavToPoint>::SharedFuture fut) {
-            try {
-                auto resp = fut.get();
-                Q_EMIT operationFinished(resp->success,
-                    resp->success ? "导航指令已发送" : "导航指令发送失败");
-            } catch (const std::exception& ex) {
-                Q_EMIT operationFinished(false, QString("导航异常: %1").arg(ex.what()));
+    auto options =
+        rclcpp_action::Client<NavigateToPointAction>::SendGoalOptions();
+    options.goal_response_callback =
+        [this, name](const GoalHandleNavigateToPoint::SharedPtr& goal_handle) {
+            if (!goal_handle) {
+                Q_EMIT operationFinished(
+                    false, QString("导航目标被拒绝：%1").arg(name));
+                return;
             }
-        });
+            Q_EMIT navigationStatus(
+                QString("导航目标已接受：%1").arg(name));
+        };
+    options.feedback_callback =
+        [this, name](
+            GoalHandleNavigateToPoint::SharedPtr,
+            const std::shared_ptr<const NavigateToPointAction::Feedback> feedback) {
+            if (!feedback) return;
+            Q_EMIT navigationStatus(
+                QString("导航到 %1：%2")
+                    .arg(name)
+                    .arg(QString::fromStdString(feedback->current_status)));
+        };
+    options.result_callback =
+        [this, name](const GoalHandleNavigateToPoint::WrappedResult& result) {
+            const QString message = result.result
+                ? QString::fromStdString(result.result->message)
+                : QString();
+            switch (result.code) {
+                case rclcpp_action::ResultCode::SUCCEEDED: {
+                    const bool success = result.result && result.result->success;
+                    Q_EMIT operationFinished(
+                        success,
+                        success
+                            ? QString("已到达：%1").arg(name)
+                            : QString("导航失败：%1").arg(message));
+                    break;
+                }
+                case rclcpp_action::ResultCode::ABORTED:
+                    Q_EMIT operationFinished(
+                        false, QString("导航中止：%1").arg(message));
+                    break;
+                case rclcpp_action::ResultCode::CANCELED:
+                    Q_EMIT operationFinished(false, "导航已取消");
+                    break;
+                default:
+                    Q_EMIT operationFinished(false, "导航结果未知");
+                    break;
+            }
+        };
+
+    try {
+        nav_client_->async_send_goal(goal, options);
+    } catch (const std::exception& ex) {
+        Q_EMIT operationFinished(
+            false, QString("导航异常: %1").arg(ex.what()));
+    }
 }
 
 void NavPointTab::applyRefresh(QVariantList points) {
