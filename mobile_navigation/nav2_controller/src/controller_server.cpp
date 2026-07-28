@@ -186,7 +186,7 @@ ControllerServer::ControllerServer(const rclcpp::NodeOptions & options)
     "near_goal_odom.position_lon_tolerance", rclcpp::ParameterValue(0.025));
   declare_parameter(
     "near_goal_odom.position_lat_tolerance", rclcpp::ParameterValue(0.025));
-  declare_parameter("near_goal_odom.position_confirm_cycles", rclcpp::ParameterValue(5));
+  declare_parameter("near_goal_odom.position_confirm_cycles", rclcpp::ParameterValue(2));
   declare_parameter("near_goal_odom.fine_yaw_entry_error", rclcpp::ParameterValue(0.10));
   declare_parameter(
     "near_goal_odom.fine_yaw_entry_confirm_cycles", rclcpp::ParameterValue(3));
@@ -687,6 +687,9 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
   near_goal_parameters.trans_stopped_velocity = near_goal_odom_trans_stopped_velocity_;
   near_goal_parameters.rot_stopped_velocity = near_goal_odom_rot_stopped_velocity_;
   near_goal_odom_context_ = std::make_shared<NearGoalOdomContext>(near_goal_parameters);
+  RCLCPP_INFO(
+    get_logger(), "NearGoalOdom configured: enabled=%s, mode=%s",
+    near_goal_odom_enabled_ ? "true" : "false", toString(near_goal_parameters.mode));
   bindNearGoalOdomConsumers();
 
   odom_sub_ = std::make_unique<nav_2d_utils::OdomSubscriber>(node);
@@ -926,16 +929,12 @@ bool ControllerServer::findControllerId(
 
   if (controllers_.find(c_name) == controllers_.end()) {
     if (controllers_.size() == 1 && c_name.empty()) {
-      RCLCPP_WARN_ONCE(
-        get_logger(), "No controller was specified in action call. "
-        "动作请求没有指定 controller，Server 将使用唯一已加载插件 %s。"
-        "This warning will appear once.",
-        controller_ids_concat_.c_str());
       current_controller = controllers_.begin()->first;
+      RCLCPP_DEBUG_ONCE(
+        get_logger(), "Controller: using default '%s'", current_controller.c_str());
     } else {
       RCLCPP_ERROR(
-        get_logger(), "FollowPath called with controller name %s, "
-        "which does not exist. 请求的 controller_id 不存在。Available controllers are: %s.",
+        get_logger(), "FollowPath controller not found: requested='%s', available='%s'",
         c_name.c_str(), controller_ids_concat_.c_str());
       return false;
     }
@@ -965,17 +964,12 @@ bool ControllerServer::findGoalCheckerId(
 
   if (goal_checkers_.find(c_name) == goal_checkers_.end()) {
     if (goal_checkers_.size() == 1 && c_name.empty()) {
-      RCLCPP_WARN_ONCE(
-        get_logger(), "No goal checker was specified in parameter 'current_goal_checker'."
-        " 动作请求没有指定 goal_checker，Server 将使用唯一已加载插件 %s。"
-        "This warning will appear once.",
-        goal_checker_ids_concat_.c_str());
       current_goal_checker = goal_checkers_.begin()->first;
+      RCLCPP_DEBUG_ONCE(
+        get_logger(), "GoalChecker: using default '%s'", current_goal_checker.c_str());
     } else {
       RCLCPP_ERROR(
-        get_logger(), "FollowPath called with goal_checker name %s in parameter"
-        " 'current_goal_checker', which does not exist. 请求的 goal_checker_id 不存在。"
-        "Available goal checkers are: %s.",
+        get_logger(), "FollowPath goal checker not found: requested='%s', available='%s'",
         c_name.c_str(), goal_checker_ids_concat_.c_str());
       return false;
     }
@@ -1033,8 +1027,8 @@ void ControllerServer::updateNearGoalOdomSessionSupport()
   {
     RCLCPP_WARN(
       get_logger(),
-      "NearGoalOdom未接管：当前插件组合不完整支持只读Context，"
-      "controller=%s supported=%s，goal_checker=%s supported=%s，保持原控制逻辑。",
+      "NearGoalOdom disabled for this goal: controller=%s supported=%s, "
+      "goal_checker=%s supported=%s",
       current_controller_.c_str(), controller_supported ? "true" : "false",
       current_goal_checker_.c_str(), goal_checker_supported ? "true" : "false");
   }
@@ -1106,7 +1100,7 @@ NearGoalOdomSnapshot ControllerServer::updateNearGoalOdom(
       !nav_2d_utils::transformPose(
         costmap_ros_->getTfBuffer(), odom_frame, pose, robot_in_odom, tolerance))
     {
-      throw tf2::TransformException("无法将机器人位姿转换到Odom坐标系");
+      throw tf2::TransformException("Failed to transform robot pose into Odom");
     }
     robot_tf_ms = elapsed_ms(robot_tf_start, TimingClock::now());
 
@@ -1127,9 +1121,9 @@ NearGoalOdomSnapshot ControllerServer::updateNearGoalOdom(
           (evaluation_time - transform_stamp).seconds();
         if (std::abs(transform_time_offset) > tolerance.seconds()) {
           throw tf2::ExtrapolationException(
-                  "最新map→odom TF时间偏差为" +
+                  "Latest map-to-odom TF offset " +
                   std::to_string(transform_time_offset) +
-                  "s，超过阈值" + std::to_string(tolerance.seconds()) + "s");
+                  " s exceeds tolerance " + std::to_string(tolerance.seconds()) + " s");
         }
       }
       // 同一周期复用同一份TF完成目标转换和诊断，保证锁存数据一致。
@@ -1177,7 +1171,7 @@ NearGoalOdomSnapshot ControllerServer::updateNearGoalOdom(
   } catch (const tf2::TransformException & ex) {
     RCLCPP_WARN_THROTTLE(
       get_logger(), *get_clock(), 2000,
-      "NearGoalOdom TF失败：%s", ex.what());
+      "NearGoalOdom TF failed: %s", ex.what());
     input.tf_valid = false;
   }
 
@@ -1191,19 +1185,29 @@ NearGoalOdomSnapshot ControllerServer::updateNearGoalOdom(
     current.stage != near_goal_odom_last_stage_ ||
     current.control_directive != previous_directive;
   if (state_changed) {
-    RCLCPP_INFO(
-      get_logger(),
-      "NearGoalOdom: generation=%llu mode=%s stage=%s->%s directive=%s reason=%s "
-      "map=(%.3f,%.3f,%.3f) odom=(%.3f,%.3f,%.3f) "
-      "goal_odom=(%.3f,%.3f,%.3f) actual=(%.3f,%.3f)",
-      static_cast<unsigned long long>(current.goal_generation),
-      toString(current.mode), toString(near_goal_odom_last_stage_), toString(current.stage),
-      toString(current.control_directive), toString(current.transition_reason),
-      current.live_map_lon_error, current.live_map_lat_error, current.live_map_yaw_error,
-      current.odom_lon_error, current.odom_lat_error, current.odom_yaw_error,
-      current.goal_in_odom.position.x, current.goal_in_odom.position.y,
-      tf2::getYaw(current.goal_in_odom.orientation),
-      current.actual_vx, current.actual_wz);
+    if (current.yaw_goal_latched) {
+      RCLCPP_INFO(
+        get_logger(),
+        "NearGoalOdom: goal_seq=%llu mode=%s %s->%s reason=%s cmd=%s "
+        "map_err=(%.3f,%.3f,%.3f) odom_err=(%.3f,%.3f,%.3f) vel=(%.3f,%.3f)",
+        static_cast<unsigned long long>(current.goal_generation),
+        toString(current.mode), toString(near_goal_odom_last_stage_), toString(current.stage),
+        toString(current.transition_reason), toString(current.control_directive),
+        current.live_map_lon_error, current.live_map_lat_error, current.live_map_yaw_error,
+        current.odom_lon_error, current.odom_lat_error, current.odom_yaw_error,
+        current.actual_vx, current.actual_wz);
+    } else {
+      RCLCPP_INFO(
+        get_logger(),
+        "NearGoalOdom: goal_seq=%llu mode=%s %s->%s reason=%s cmd=%s "
+        "map_err=(%.3f,%.3f,%.3f) odom_pos_err=(%.3f,%.3f) vel=(%.3f,%.3f)",
+        static_cast<unsigned long long>(current.goal_generation),
+        toString(current.mode), toString(near_goal_odom_last_stage_), toString(current.stage),
+        toString(current.transition_reason), toString(current.control_directive),
+        current.live_map_lon_error, current.live_map_lat_error, current.live_map_yaw_error,
+        current.odom_lon_error, current.odom_lat_error,
+        current.actual_vx, current.actual_wz);
+    }
   }
   if (
     current.mode == NearGoalOdomMode::CONTROL &&
@@ -1229,7 +1233,7 @@ NearGoalOdomSnapshot ControllerServer::updateNearGoalOdom(
     // 只记录慢周期，避免性能诊断本身持续占用控制线程。
     RCLCPP_WARN_THROTTLE(
       get_logger(), *get_clock(), 1000,
-      "NearGoalOdom耗时(ms): stage=%s total=%.3f prepare=%.3f robot_tf=%.3f "
+      "NearGoalOdom timing(ms): stage=%s total=%.3f prepare=%.3f robot_tf=%.3f "
       "map_tf=%.3f error=%.3f context=%.3f event=%.3f diagnostic=%.3f other=%.3f",
       toString(current.stage), total_ms, prepare_ms, robot_tf_ms, map_tf_ms,
       error_ms, context_ms, event_ms, diagnostic_ms, other_ms);
@@ -1320,15 +1324,19 @@ void ControllerServer::computeControl()
 {
   std::lock_guard<std::mutex> lock(dynamic_params_lock_);
 
-  RCLCPP_INFO(get_logger(), "Received a goal, begin computing control effort.");
   if (odom_sub_) {
     const auto start_twist = getThresholdedTwist(odom_sub_->getTwist());
-    RCLCPP_INFO(
-      get_logger(),
-      "[ControllerStopDebug] FollowPath started: actual odom velocity vx=%.3f m/s, "
-      "vy=%.3f m/s, wz=%.3f rad/s. If these values are not near zero immediately after a "
-      "previous stop request, BT recovery restarted control before the robot fully stopped.",
-      start_twist.x, start_twist.y, start_twist.theta);
+    const bool robot_is_moving =
+      start_twist.x != 0.0 || start_twist.y != 0.0 || start_twist.theta != 0.0;
+    if (robot_is_moving) {
+      RCLCPP_INFO(
+        get_logger(), "FollowPath started while moving: odom=(vx=%.3f, vy=%.3f, wz=%.3f)",
+        start_twist.x, start_twist.y, start_twist.theta);
+    } else {
+      RCLCPP_INFO(get_logger(), "FollowPath started");
+    }
+  } else {
+    RCLCPP_INFO(get_logger(), "FollowPath started");
   }
 
   try {
@@ -1338,7 +1346,7 @@ void ControllerServer::computeControl()
       current_controller_ = current_controller;
     } else {
       throw nav2_core::PlannerException(
-              "请求的Controller不存在，终止当前FollowPath。");
+              "Requested FollowPath controller does not exist");
     }
 
     std::string gc_name = action_server_->get_current_goal()->goal_checker_id;
@@ -1347,7 +1355,7 @@ void ControllerServer::computeControl()
       current_goal_checker_ = current_goal_checker;
     } else {
       throw nav2_core::PlannerException(
-              "请求的GoalChecker不存在，终止当前FollowPath。");
+              "Requested FollowPath goal checker does not exist");
     }
 
     updateNearGoalOdomSessionSupport();
@@ -1364,13 +1372,25 @@ void ControllerServer::computeControl()
     // 判定——没有可靠信号能区分“恢复重试”与“真正开始新导航”。
 
     last_valid_cmd_time_ = now();
+    // 新目标若已满足位姿与停稳容差，直接完成，避免首个MPPI周期失败后误触发恢复。
+    geometry_msgs::msg::PoseStamped initial_pose;
+    const bool initial_goal_reached =
+      getRobotPose(initial_pose) &&
+      isWithinGoalCheckerTolerance(initial_pose, false, true) &&
+      isRobotStoppedForGoalChecker();
+    if (initial_goal_reached) {
+      RCLCPP_INFO(
+        get_logger(),
+        "Initial goal already satisfied: pose and stop tolerances met; skipping control");
+    }
+
     rclcpp::WallRate loop_rate(controller_frequency_);
     // added by hz
     std::chrono::time_point<std::chrono::steady_clock> start;
     std::chrono::time_point<std::chrono::steady_clock> end;
     std::chrono::duration<double, std::milli> elapsed;
     // end
-    while (rclcpp::ok()) {
+    while (rclcpp::ok() && !initial_goal_reached) {
       if (action_server_ == nullptr || !action_server_->is_server_active()) {
         RCLCPP_DEBUG(get_logger(), "Action server unavailable or inactive. Stopping.");
         publishZeroVelocity();
@@ -1509,7 +1529,7 @@ void ControllerServer::setPlannerPath(
     "Providing path to the controller %s", current_controller_.c_str());
   if (path.poses.empty()) {
     throw nav2_core::PlannerException(
-            "Invalid path, Path is empty. 路径无效：path.poses 为空，通常表示 FollowPath 收到了空路径，无法进行局部控制。");
+            "FollowPath received an empty path");
   }
   controllers_[current_controller_]->setPlan(path);
   if (staged_control_enabled_) {
@@ -2185,9 +2205,7 @@ bool ControllerServer::isNearGoal(const geometry_msgs::msg::PoseStamped & pose)
   } catch (const tf2::TransformException & ex) {
     RCLCPP_WARN_THROTTLE(
       get_logger(), *get_clock(), 5000,
-      "Unable to transform end pose for near-goal progress check: %s. "
-      "近目标进度检查无法转换终点位姿，请检查 TF。",
-      ex.what());
+      "Near-goal progress TF failed: %s", ex.what());
     return false;
   }
 
@@ -2311,9 +2329,7 @@ bool ControllerServer::checkNearGoalProgress(
       resetNearGoalLateralStall();
       RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 5000,
-        "Unable to transform end pose for lateral-stall check: %s. "
-        "横向误差停滞检查无法转换终点位姿，请检查 TF。",
-        ex.what());
+        "Near-goal lateral-stall TF failed: %s", ex.what());
     }
   }
 
@@ -2348,8 +2364,7 @@ bool ControllerServer::checkNearGoalProgress(
   RCLCPP_WARN(
     get_logger(),
     "Near-goal progress timeout: elapsed=%.3f s, moved=%.4f m, rotated=%.4f rad, "
-    "required movement=%.4f m or angle=%.4f rad. "
-    "近目标区域进度超时：机器人接近目标后没有满足最小位移或转角要求。",
+    "required=(%.4f m or %.4f rad)",
     elapsed.seconds(), moved_distance, moved_angle,
     near_goal_progress_required_movement_radius_,
     near_goal_progress_required_movement_angle_);
@@ -2380,9 +2395,7 @@ bool ControllerServer::isWithinGoalCheckerTolerance(
   } catch (const tf2::TransformException & ex) {
     RCLCPP_WARN_THROTTLE(
       get_logger(), *get_clock(), 5000,
-      "Unable to transform end pose for near-goal tolerance check: %s. "
-      "近目标兜底误差检查无法转换终点位姿，请检查 TF。",
-      ex.what());
+      "Near-goal tolerance TF failed: %s", ex.what());
     return false;
   }
 
@@ -2464,12 +2477,12 @@ bool ControllerServer::isWithinGoalCheckerTolerance(
     if (mark_goal_reached_on_success) {
       RCLCPP_WARN(
         get_logger(),
-        "近目标进度检查超时，但当前误差已满足 goal_checker 接受容差，按到位成功处理："
-        "lon_err=%.4f/%.4f, lat_err=%.4f/%.4f, yaw_err=%.4f/%.4f, "
-        "linear_vel=%.4f, angular_vel=%.4f",
-        lon_err, std::fabs(goal_tolerance.position.x),
-        lat_err, std::fabs(goal_tolerance.position.y),
-        yaw_err, std::fabs(yaw_tolerance),
+        "Near-goal timeout accepted: err=(%.4f,%.4f,%.4f), "
+        "limit=(%.4f,%.4f,%.4f), vel=(%.4f,%.4f)",
+        lon_err, lat_err, yaw_err,
+        std::fabs(goal_tolerance.position.x),
+        std::fabs(goal_tolerance.position.y),
+        std::fabs(yaw_tolerance),
         std::hypot(velocity.linear.x, velocity.linear.y),
         std::fabs(velocity.angular.z));
       if (goal_error_publisher_ && goal_error_publisher_->is_activated()) {
@@ -2506,14 +2519,10 @@ bool ControllerServer::isWithinGoalCheckerTolerance(
         add_double("lateral_error", lat_err);
         add_double("distance_error", std::hypot(lon_err, lat_err));
         add_double("yaw_error", yaw_err);
-        add_double("desired_longitudinal_tolerance", std::fabs(goal_tolerance.position.x));
-        add_double("desired_lateral_tolerance", std::fabs(goal_tolerance.position.y));
         add_double("accept_longitudinal_tolerance", std::fabs(goal_tolerance.position.x));
         add_double("accept_lateral_tolerance", std::fabs(goal_tolerance.position.y));
         add_double("yaw_tolerance", std::fabs(yaw_tolerance));
-        add_bool("within_desired_tolerance", false);
         add_bool("within_accept_tolerance", true);
-        add_bool("desired_window_stable", false);
 
         msg.status.push_back(status);
         goal_error_publisher_->publish(msg);
@@ -2529,11 +2538,11 @@ bool ControllerServer::isWithinGoalCheckerTolerance(
 
   RCLCPP_WARN(
     get_logger(),
-    "近目标进度检查超时，且当前误差仍未满足 goal_checker 接受容差："
-    "lon_err=%.4f/%.4f, lat_err=%.4f/%.4f, yaw_err=%.4f/%.4f",
-    lon_err, std::fabs(goal_tolerance.position.x),
-    lat_err, std::fabs(goal_tolerance.position.y),
-    yaw_err, std::fabs(yaw_tolerance));
+    "Near-goal timeout rejected: err=(%.4f,%.4f,%.4f), limit=(%.4f,%.4f,%.4f)",
+    lon_err, lat_err, yaw_err,
+    std::fabs(goal_tolerance.position.x),
+    std::fabs(goal_tolerance.position.y),
+    std::fabs(yaw_tolerance));
   return false;
 }
 
@@ -2580,9 +2589,7 @@ bool ControllerServer::isSamePathGoal(const nav_msgs::msg::Path & path)
   } catch (const tf2::TransformException & ex) {
     RCLCPP_WARN_THROTTLE(
       get_logger(), *get_clock(), 5000,
-      "Unable to transform pending path end pose for same-goal check: %s. "
-      "无法转换待更新 path 的终点，按新路径处理。",
-      ex.what());
+      "Pending path goal TF failed; treating as a new goal: %s", ex.what());
     return false;
   }
 
@@ -2602,8 +2609,7 @@ bool ControllerServer::isSamePathGoal(const nav_msgs::msg::Path & path)
   if (!same_goal) {
     RCLCPP_INFO(
       get_logger(),
-      "近目标 path 更新未被视为同一目标：goal_delta=%.4f/%.4f m, "
-      "yaw_delta=%.4f/%.4f rad，将正常更新 path。",
+      "Path goal changed: delta=(%.4f m/%.4f m, %.4f rad/%.4f rad)",
       goal_delta, kSameGoalPositionTolerance, yaw_delta, kSameGoalYawTolerance);
   }
   return same_goal;
@@ -3077,7 +3083,7 @@ void ControllerServer::computeAndPublishVelocity()
   if (!getRobotPose(pose)) {
     publish_control_failure("pose_lookup_failed");
     throw nav2_core::PlannerException(
-            "Failed to obtain robot pose. 获取机器人位姿失败，通常需要检查 TF、定位状态或 costmap frame。");
+            "Failed to obtain robot pose");
   }
   auto t_pose_end = std::chrono::high_resolution_clock::now();
   auto pose_ms = std::chrono::duration<double, std::milli>(t_pose_end - t_pose_start).count();
@@ -3112,7 +3118,7 @@ void ControllerServer::computeAndPublishVelocity()
       NearGoalControlDirective::TERMINATE)
     {
       throw nav2_core::PlannerException(
-              "NearGoalOdom状态无效，将由统一异常出口发送零速度并终止当前FollowPath。");
+              "NearGoalOdom entered an invalid state");
     }
   }
 
@@ -3142,7 +3148,7 @@ void ControllerServer::computeAndPublishVelocity()
       } catch (const tf2::TransformException & ex) {
         RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 5000,
-          "Near-goal hold release check TF failed: %s. 保持 hold 状态。", ex.what());
+          "Near-goal hold TF failed; keeping hold: %s", ex.what());
       }
 
       if (tf_ok) {
@@ -3203,8 +3209,7 @@ void ControllerServer::computeAndPublishVelocity()
       near_goal_hold_outside_accept_count_ = 0;
       RCLCPP_INFO(
         get_logger(),
-        "Near-goal pose reached and chassis is slow (raw vx=%.4f wz=%.4f <= thresholds %.3f/%.3f): "
-        "holding zero velocity for final stop. GoalChecker will confirm success.",
+        "Near-goal hold entered: odom=(vx=%.4f,wz=%.4f), limit=(%.3f,%.3f)",
         raw_odom_twist.x, raw_odom_twist.theta,
         near_goal_hold_enter_vx_, near_goal_hold_enter_wz_);
       publishZeroVelocity();
@@ -3233,7 +3238,7 @@ void ControllerServer::computeAndPublishVelocity()
       }
       publish_control_failure("near_goal_progress_failed");
       throw nav2_core::PlannerException(
-              "Failed to make near-goal progress. 接近目标点后长时间没有足够位移/转角，可能卡住或被约束。");
+              "Failed to make near-goal progress");
     }
   } else if (!in_goal_accept_position) {
     if (in_near_goal_progress_mode_) {
@@ -3244,7 +3249,7 @@ void ControllerServer::computeAndPublishVelocity()
     if (!progress_checker_->check(pose)) {
       publish_control_failure("progress_failed");
       throw nav2_core::PlannerException(
-              "Failed to make progress. 进度检查失败，机器人在规定时间内没有有效前进，可能被障碍、空路径或控制失败卡住。");
+              "Failed to make progress");
     }
   }
   auto t_progress_end = std::chrono::high_resolution_clock::now();
@@ -3288,7 +3293,7 @@ void ControllerServer::computeAndPublishVelocity()
       {
         publish_control_failure("controller_patience_exceeded");
         throw nav2_core::PlannerException(
-                "Controller patience exceeded. 局部控制器在 failure_tolerance 时间内没有生成有效速度，控制耐心超时。");
+                "Controller patience exceeded");
       }
     } else {
       publish_control_failure("controller_exception");
@@ -3410,13 +3415,13 @@ void ControllerServer::updateGlobalPath()
     std::string requested_controller;
     if (!findControllerId(goal->controller_id, requested_controller)) {
       throw nav2_core::PlannerException(
-              "待更新路径请求了不存在的Controller，终止当前FollowPath。");
+              "Updated path requested an unknown controller");
     }
 
     std::string requested_goal_checker;
     if (!findGoalCheckerId(goal->goal_checker_id, requested_goal_checker)) {
       throw nav2_core::PlannerException(
-              "待更新路径请求了不存在的GoalChecker，终止当前FollowPath。");
+              "Updated path requested an unknown goal checker");
     }
 
     geometry_msgs::msg::PoseStamped pose;
@@ -3441,7 +3446,7 @@ void ControllerServer::updateGlobalPath()
     {
       RCLCPP_INFO(
         get_logger(),
-        "保留近目标Odom状态并更新同目标path：generation=%llu，stage=%s。",
+        "NearGoalOdom path updated: goal_seq=%llu, stage=%s",
         static_cast<unsigned long long>(near_goal_odom_generation_),
         toString(near_goal_snapshot.stage));
       setPlannerPath(goal->path, PathUpdateType::SAME_GOAL_GEOMETRY);
@@ -3451,28 +3456,25 @@ void ControllerServer::updateGlobalPath()
     {
       RCLCPP_INFO(
         get_logger(),
-        "忽略近目标 path 更新：目标点不变且当前位置已进入 goal_checker 2cm 接受窗口，"
-        "继续使用当前末端路径完成精调，避免重置 goal_checker 和 MPPI 末端状态。pending path poses=%zu",
+        "Near-goal path update ignored: same goal within acceptance, pending_poses=%zu",
         goal->path.poses.size());
       return;
     }
 
     if (same_goal && !in_accept_position) {
       if (got_pose) {
-        RCLCPP_INFO(
+        RCLCPP_DEBUG(
           get_logger(),
-          "近目标 path 更新未忽略：目标点不变，但当前位置尚未进入 goal_checker 2cm 接受窗口。");
+          "Near-goal path update applied: outside acceptance");
       } else {
-        RCLCPP_INFO(
+        RCLCPP_DEBUG(
           get_logger(),
-          "近目标 path 更新未忽略：目标点不变，但当前无法获取机器人位姿，无法确认是否进入 "
-          "goal_checker 2cm 接受窗口。");
+          "Near-goal path update applied: robot pose unavailable");
       }
     } else if (same_goal && (!same_controller || !same_goal_checker)) {
-      RCLCPP_INFO(
+      RCLCPP_DEBUG(
         get_logger(),
-        "近目标 path 更新未忽略：目标点不变，但 controller 或 goal_checker 已变化，"
-        "same_controller=%s, same_goal_checker=%s。",
+        "Near-goal path update applied: same_controller=%s, same_goal_checker=%s",
         same_controller ? "true" : "false",
         same_goal_checker ? "true" : "false");
     }
@@ -3483,7 +3485,7 @@ void ControllerServer::updateGlobalPath()
     if (!same_goal || !same_controller || !same_goal_checker) {
       resetNearGoalOdom(near_goal_odom_generation_ + 1);
     }
-    RCLCPP_INFO(get_logger(), "Passing new path to controller.");
+    RCLCPP_DEBUG(get_logger(), "Passing updated path to controller");
     const auto update_type =
       same_controller && same_goal_checker && same_goal ?
       PathUpdateType::SAME_GOAL_GEOMETRY : PathUpdateType::NEW_GOAL;
@@ -3513,15 +3515,24 @@ void ControllerServer::publishZeroVelocity(bool log_event)
   velocity.header.stamp = now();
 
   if (log_event && odom_sub_) {
-    const auto actual_twist = getThresholdedTwist(odom_sub_->getTwist());
+    const auto actual_twist = odom_sub_->getTwist();
     const size_t subscriber_count = vel_publisher_ ?
       vel_publisher_->get_subscription_count() : 0;
-    RCLCPP_WARN_THROTTLE(
-      get_logger(), *get_clock(), 1000,
-      "[ControllerStopDebug] Publishing zero velocity: actual odom velocity vx=%.3f m/s, "
-      "vy=%.3f m/s, wz=%.3f rad/s, cmd_vel subscribers=%zu. This is a stop request; "
-      "the velocity smoother and chassis still need time to decelerate.",
-      actual_twist.x, actual_twist.y, actual_twist.theta, subscriber_count);
+    if (subscriber_count == 0) {
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 1000, "Zero velocity has no subscribers");
+    } else {
+      const bool robot_is_moving =
+        std::hypot(actual_twist.x, actual_twist.y) >
+        near_goal_odom_trans_stopped_velocity_ ||
+        std::abs(actual_twist.theta) > near_goal_odom_rot_stopped_velocity_;
+      if (robot_is_moving) {
+        RCLCPP_INFO_THROTTLE(
+          get_logger(), *get_clock(), 1000,
+          "Zero velocity requested while moving: odom=(vx=%.3f,vy=%.3f,wz=%.3f)",
+          actual_twist.x, actual_twist.y, actual_twist.theta);
+      }
+    }
   }
   publishVelocity(velocity);
 }
@@ -3557,8 +3568,7 @@ bool ControllerServer::isGoalReached()
   if (near_goal_progress_acceptance_reached_) {
     RCLCPP_INFO(
       get_logger(),
-      "Reached the goal by near-goal acceptance fallback. "
-      "近目标进度检查已确认误差满足接受容差，返回到位成功。");
+      "Goal reached by near-goal acceptance fallback");
     return true;
   }
 
@@ -3679,7 +3689,7 @@ ControllerServer::dynamicParametersCallback(std::vector<rclcpp::Parameter> param
       parameter.as_double() < 0.0)
     {
       result.successful = false;
-      result.reason = name + "不能小于0";
+      result.reason = name + " must be non-negative";
       return result;
     }
     if (
@@ -3687,7 +3697,7 @@ ControllerServer::dynamicParametersCallback(std::vector<rclcpp::Parameter> param
       parameter.as_int() < 1)
     {
       result.successful = false;
-      result.reason = name + "必须至少为1个控制周期";
+      result.reason = name + " must be at least one control cycle";
       return result;
     }
   }
@@ -3712,9 +3722,9 @@ ControllerServer::dynamicParametersCallback(std::vector<rclcpp::Parameter> param
   if (!lock.owns_lock()) {
     RCLCPP_WARN(
       get_logger(),
-      "控制器运行期间不能动态修改ControllerServer参数");
+      "ControllerServer parameters cannot change during control");
     result.successful = false;
-    result.reason = "控制器运行期间不能动态修改ControllerServer参数";
+    result.reason = "ControllerServer parameters cannot change during control";
     return result;
   }
 

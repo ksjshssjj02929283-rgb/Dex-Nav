@@ -191,13 +191,13 @@ controller_server:
       hold_release_lat_tolerance: 0.04 # hold 释放横向迟滞(m)
       hold_release_yaw_tolerance: 0.03 # hold 释放航向迟滞(rad)，比 yaw_goal_tolerance 宽松
     near_goal_odom:
-      enabled: true # 启用近目标Odom状态计算；当前仅观察，不改变控制和到位结果
-      observe_only: false # true仅发布诊断；实机观察通过前禁止改为false
+      enabled: true # 启用近目标Odom状态计算
+      observe_only: false # true仅发布诊断，false参与控制和到位判断
       entry_distance: 0.10 # 距目标小于该值时准备锁存Odom目标，单位m
       entry_confirm_cycles: 3 # 连续满足入口距离的控制周期数
       position_lon_tolerance: 0.025 # Odom纵向位置到位阈值，单位m
       position_lat_tolerance: 0.025 # Odom横向位置到位阈值，单位m
-      position_confirm_cycles: 5 # 位置连续满足阈值后才锁存到位
+      position_confirm_cycles: 2 # 位置连续满足2个周期后消除线速度；同向旋转可直接进入角度控制
       fine_yaw_entry_error: 0.10 # 进入Odom角度精调的map航向误差，单位rad
       fine_yaw_entry_confirm_cycles: 3 # 航向入口连续满足周期数
       yaw_latch_max_error_jump: 0.05 # map/Odom角度切换允许的最大误差阶跃，单位rad
@@ -213,19 +213,6 @@ controller_server:
       tf_failure_timeout: 0.30 # 末端模式允许TF连续失败的最长时间，单位s
       trans_stopped_velocity: 0.01 # 最终停稳允许的实机线速度，单位m/s
       rot_stopped_velocity: 0.02 # 最终停稳允许的实机角速度，单位rad/s
-    goal_checker:
-      plugin: "nav2_controller::PrecisionLongitudinalGoalChecker"
-      desired_lon_goal_tolerance: 0.01 # 优先追求的纵向精度，当前配置为 1cm
-      desired_lat_goal_tolerance: 0.01 # 优先追求的横向精度，当前配置为 1cm
-      accept_lon_goal_tolerance: 0.03 # 精调后允许接受的纵向精度，当前配置为 3cm
-      accept_lat_goal_tolerance: 0.03 # 精调后允许接受的横向精度，当前配置为 3cm
-      yaw_goal_tolerance: 0.02
-      enable_high_precision: false # true：先追求 1cm 高精度；false：只要求 3cm 接受精度
-      refine_cycles: 40 # controller_frequency=10Hz，对应进入 3cm 后继续精调约 4s
-      stable_window_size: 5 # controller_frequency=10Hz，对应最近约 0.5s 的高精度稳定窗口
-      check_stopped: true # 最终转向后必须停稳再报成功，避免带角速度越过目标姿态并放大位置误差
-      trans_stopped_velocity: 0.01 # check_stopped=true 时生效，线速度小于该值才认为已停稳，单位 m/s
-      rot_stopped_velocity: 0.02 # check_stopped=true 时生效，角速度小于该值才认为已停稳，单位 rad/s
     FollowPath:
       movement_time_allowance: 4.0 # 近目标模式：4 秒内没有足够进展就让 FollowPath 失败并进入恢复
     simple_goal_checker:

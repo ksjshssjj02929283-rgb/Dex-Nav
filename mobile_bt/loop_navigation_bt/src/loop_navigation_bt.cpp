@@ -852,12 +852,14 @@ bool LoopNavigateFourPoints::getLatestGoalCheckerErrorSample(const Pose& goal, N
         !get_double("lateral_error", sample.lat_error) ||
         !get_double("yaw_error", sample.yaw_error) ||
         !get_double("distance_error", sample.dist_error) ||
-        !get_bool("within_desired_tolerance", sample.within_desired_tolerance) ||
         !get_bool("within_accept_tolerance", sample.within_accept_tolerance)) {
         LOOP_RCLCPP_WARN(node_->get_logger(), "goal_checker 误差消息字段不完整，改用 TF 窗口统计。");
         return false;
     }
 
+    // 1cm统计属于测试指标，不再依赖已删除的高精度GoalChecker模式。
+    sample.within_desired_tolerance =
+        isWithinPositionTolerance(sample.lon_error, sample.lat_error, desired_position_tolerance_);
     sample.from_goal_checker = true;
     sample.valid = true;
     LOOP_RCLCPP_INFO(node_->get_logger(),

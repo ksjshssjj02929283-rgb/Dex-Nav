@@ -43,19 +43,26 @@ using namespace mppi;  // NOLINT
  * @class mppi::MPPIController
  * @brief Main plugin controller for MPPI Controller
  */
-// 三阶段枚举（消灭 magic index 0/1/2）：数组顺序 = 枚举值
-enum Stage : size_t { STAGE_ALIGN = 0, STAGE_TRACK = 1, STAGE_APPROACH = 2 };
+// MPPI控制阶段使用强类型枚举，业务逻辑禁止使用数字表示状态。
+enum class Stage : size_t
+{
+  ALIGN,
+  TRACK,
+  APPROACH
+};
 
 // approach 内部子阶段：先修正目标坐标系位置误差，再完成最终朝向。
-enum ApproachSubstage : size_t {
-  APPROACH_POSITIONING = 0,
-  APPROACH_FINAL_YAW = 1
+enum class ApproachSubstage : size_t
+{
+  POSITIONING,
+  FINAL_YAW
 };
 
 // 进入 approach 时按当时的最终航向误差锁定位置调整策略，避免过程中来回切换。
-enum ApproachMode : size_t {
-  APPROACH_NORMAL = 0,
-  APPROACH_POSITION_FIRST = 1
+enum class ApproachMode : size_t
+{
+  NORMAL,
+  POSITION_FIRST
 };
 
 class MPPIController
@@ -151,7 +158,7 @@ protected:
     double goal_longitudinal_error, double goal_lateral_error, double goal_yaw_error);
 
   void updateApproachMode(
-    size_t previous_stage, size_t selected_stage, double goal_longitudinal_error,
+    Stage previous_stage, Stage selected_stage, double goal_longitudinal_error,
     double goal_lateral_error, double goal_yaw_error);
 
   void updateApproachSubstage(double goal_longitudinal_error, double goal_lateral_error);
@@ -166,13 +173,30 @@ protected:
   // 控制指令经历HOLD/恢复后清空末端滤波与制动状态，下一帧从实际速度重新初始化。
   void resetFinalYawCommandState();
 
-  size_t selectStage(double goal_distance, double heading_path_angle) const;
+  Stage selectStage(double goal_distance, double heading_path_angle) const;
 
-  std::string stageName(size_t profile) const;
+  const char * stageName(Stage stage) const;
 
-  std::string approachSubstageName() const;
+  const char * approachSubstageName() const;
 
-  std::string approachModeName() const;
+  const char * approachModeName() const;
+
+  // 返回末端航向控制状态名称，避免日志输出难维护的数字状态。
+  const char * finalYawControlStateName() const;
+
+  // 将具名控制阶段映射到内部profile存储位置，业务逻辑不直接使用数组下标。
+  size_t profileStorageIndex(Stage stage) const;
+
+  MppiProfileSettings & profileFor(Stage stage);
+
+  const MppiProfileSettings & profileFor(Stage stage) const;
+
+  // 仅用于兼容既有Float64调试Topic，控制逻辑和日志禁止使用这些数字编码。
+  double profileDebugStageCode() const;
+
+  double profileDebugSubstageCode() const;
+
+  double profileDebugModeCode() const;
 
   MppiProfileSettings interpolateProfiles(
     const MppiProfileSettings & from,
@@ -252,18 +276,19 @@ protected:
   bool final_yaw_envelope_braking_active_{false};
   float final_yaw_envelope_brake_enter_margin_{0.02f};  // actual > safe_wz + 此值才触发
   float final_yaw_envelope_brake_exit_margin_{0.005f};  // actual <= safe_wz + 此值才释放
-  // final_yaw 内部三态机：TRACKING(正常刹车曲线) -> BRAKING(动态急刹) -> CREEP(低速精调) -> STOP
+  // final_yaw 内部状态机：TRACKING(正常刹车曲线) -> BRAKING(动态急刹) -> CREEP(低速精调) -> STOP
   // CREEP 阶段不会再触发动态急刹，避免"急停-微调-再急停"循环
-  enum FinalYawControlState : size_t {
-    FINAL_YAW_TRACKING = 0,
-    FINAL_YAW_BRAKING = 1,
-    FINAL_YAW_CREEP = 2,
-    FINAL_YAW_STOP = 3
+  enum class FinalYawControlState : size_t
+  {
+    TRACKING,
+    BRAKING,
+    CREEP,
+    STOP
   };
-  size_t final_yaw_control_state_{FINAL_YAW_TRACKING};
-  size_t active_stage_{0};
-  size_t approach_substage_{APPROACH_POSITIONING};
-  size_t approach_mode_{APPROACH_NORMAL};
+  FinalYawControlState final_yaw_control_state_{FinalYawControlState::TRACKING};
+  Stage active_stage_{Stage::ALIGN};
+  ApproachSubstage approach_substage_{ApproachSubstage::POSITIONING};
+  ApproachMode approach_mode_{ApproachMode::NORMAL};
   bool approach_mode_locked_{false};
   bool profile_transition_active_{false};
   rclcpp::Time active_stage_enter_time_;
@@ -291,6 +316,7 @@ protected:
   uint64_t last_near_goal_control_revision_{0};
   nav2_controller::NearGoalOdomStage last_near_goal_odom_stage_{
     nav2_controller::NearGoalOdomStage::INACTIVE};
+
 };
 
 }  // namespace nav2_mppi_controller

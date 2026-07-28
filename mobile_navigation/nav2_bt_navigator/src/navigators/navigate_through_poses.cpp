@@ -33,12 +33,6 @@ double getYaw(const geometry_msgs::msg::Quaternion & q)
     1.0 - 2.0 * (q.y * q.y + q.z * q.z));
 }
 
-double radToDeg(double rad)
-{
-  constexpr double kRadToDeg = 180.0 / 3.14159265358979323846;
-  return rad * kRadToDeg;
-}
-
 }  // namespace
 
 bool
@@ -116,7 +110,7 @@ NavigateThroughPosesNavigator::goalCompleted(
 
   const auto goal = bt_action_server_->getCurrentGoal();
   if (!goal || goal->poses.empty()) {
-    RCLCPP_WARN(logger_, "多点导航成功，但无法获取最终执行目标，跳过到点日志");
+    RCLCPP_WARN(logger_, "Multi-pose navigation succeeded without final goal metadata");
     return;
   }
 
@@ -128,11 +122,9 @@ NavigateThroughPosesNavigator::goalCompleted(
 
   RCLCPP_INFO(
     logger_,
-    "多点导航到点: uuid=%s, frame=%s, target=(%.3f, %.3f, %.3f), "
-    "yaw=%.4f rad/%.2f deg, poses=%zu",
+    "Multi-pose navigation reached: uuid=%s, frame=%s, goal=(%.3f,%.3f,%.4f), poses=%zu",
     goal_uuid.c_str(), final_goal.header.frame_id.c_str(),
-    pose.position.x, pose.position.y, pose.position.z,
-    goal_yaw, radToDeg(goal_yaw), goal->poses.size());
+    pose.position.x, pose.position.y, goal_yaw, goal->poses.size());
 }
 
 void
@@ -230,7 +222,7 @@ NavigateThroughPosesNavigator::onPreempt(ActionT::Goal::ConstSharedPtr goal)
     // 接受新目标时，SimpleActionServer 会将旧目标置为 ABORTED。
     const auto pending_goal = bt_action_server_->acceptPendingGoal();
     if (!pending_goal) {
-      RCLCPP_ERROR(logger_, "多点导航抢占失败：无法接受待处理的新目标");
+      RCLCPP_ERROR(logger_, "Multi-pose navigation preemption failed: pending goal unavailable");
       return;
     }
 
@@ -239,15 +231,11 @@ NavigateThroughPosesNavigator::onPreempt(ActionT::Goal::ConstSharedPtr goal)
     blackboard->set<nav_msgs::msg::Path>(path_blackboard_id_, nav_msgs::msg::Path());
     initializeGoalPoses(pending_goal);
 
-    RCLCPP_INFO(logger_, "新多点导航目标已覆盖旧目标：旧 FollowPath 已停止，旧路径已清空");
+    RCLCPP_INFO(logger_, "Multi-pose navigation goal preempted");
   } else {
     RCLCPP_WARN(
       logger_,
-      "Preemption request was rejected since the requested BT XML file is not the same "
-      "as the one that the current goal is executing. Preemption with a new BT is invalid "
-      "since it would require cancellation of the previous goal instead of true preemption."
-      "\nCancel the current goal and send a new action request if you want to use a "
-      "different BT XML file. For now, continuing to track the last goal until completion.");
+      "Navigation preemption rejected: behavior tree changed");
     bt_action_server_->terminatePendingGoal();
   }
 }
@@ -261,10 +249,9 @@ NavigateThroughPosesNavigator::initializeGoalPoses(ActionT::Goal::ConstSharedPtr
 
     RCLCPP_INFO(
       logger_,
-      "Begin navigating from current location through %zu poses to "
-      "(%.2f, %.2f, yaw=%.4f rad/%.2f deg)",
+      "Multi-pose navigation started: poses=%zu, goal=(%.2f,%.2f,%.4f)",
       goal->poses.size(), last_goal_pose.position.x, last_goal_pose.position.y,
-      goal_yaw, radToDeg(goal_yaw));
+      goal_yaw);
   }
 
   // Reset state for new action feedback

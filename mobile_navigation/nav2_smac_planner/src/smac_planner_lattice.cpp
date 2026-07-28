@@ -362,10 +362,10 @@ nav_msgs::msg::Path SmacPlannerLattice::createPlan(
   auto end_time = std::chrono::high_resolution_clock::now();
   std::chrono::duration<double> elapsed_time = end_time - start_time;
 
-  RCLCPP_INFO(
+  RCLCPP_DEBUG(
     _logger,
-    "Path creation took %.6f seconds.",
-    elapsed_time.count());
+    "Plan time: %.3fms",
+    elapsed_time.count() * 1000.0);
   // end
 
   if (!error.empty()) {

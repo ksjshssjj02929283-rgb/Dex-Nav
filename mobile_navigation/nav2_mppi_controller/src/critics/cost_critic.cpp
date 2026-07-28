@@ -262,12 +262,6 @@ void CostCritic::score(CriticData & data)
   data.fail_flag = all_trajectories_collide;
 
   if (all_trajectories_collide && costmap_) {
-    const double origin_x = costmap_->getOriginX();
-    const double origin_y = costmap_->getOriginY();
-    const double size_x = costmap_->getSizeInMetersX();
-    const double size_y = costmap_->getSizeInMetersY();
-    const double map_center_x = origin_x + size_x * 0.5;
-    const double map_center_y = origin_y + size_y * 0.5;
     const double robot_x = data.state.pose.pose.position.x;
     const double robot_y = data.state.pose.pose.position.y;
     const double average_collision_step = collision_count > 0 ?
@@ -275,20 +269,16 @@ void CostCritic::score(CriticData & data)
 
     RCLCPP_ERROR(
       logger_,
-      "[MPPI][CostCritic] All trajectories collide: %zu/%zu trajectories, %zu steps. "
-      "First-collision reasons: out_of_bounds=%zu, center_lethal=%zu, center_unknown=%zu, "
-      "footprint_lethal=%zu, footprint_unknown=%zu, other=%zu. "
-      "First-collision step (zero-based): min=%zu, avg=%.1f, max=%zu. "
-      "Robot=(%.3f, %.3f), costmap origin=(%.3f, %.3f), size=(%.3f, %.3f), "
-      "robot_offset_from_map_center=(%.3f, %.3f). "
-      "Earliest example: source=%s, pose=(%.3f, %.3f, yaw=%.3f), "
-      "center_cost=%.0f, evaluated_cost=%.0f.",
+      "MPPI all trajectories collide: count=%zu/%zu, steps=%zu, "
+      "reasons=(bounds=%zu,center_lethal=%zu,center_unknown=%zu,"
+      "footprint_lethal=%zu,footprint_unknown=%zu,other=%zu), "
+      "first_step=(%zu,%.1f,%zu), robot=(%.3f,%.3f), "
+      "example=(%s,%.3f,%.3f,%.3f,%.0f,%.0f)",
       collision_count, trajectory_count, traj_len,
       out_of_bounds_count, center_lethal_count, center_unknown_count,
       footprint_lethal_count, footprint_unknown_count, other_collision_count,
       earliest_collision_step, average_collision_step, latest_collision_step,
-      robot_x, robot_y, origin_x, origin_y, size_x, size_y,
-      robot_x - map_center_x, robot_y - map_center_y,
+      robot_x, robot_y,
       collisionReasonName(example_reason), example_x, example_y, example_yaw,
       example_center_cost, example_evaluated_cost);
   }

@@ -34,9 +34,9 @@ void FollowPathAction::on_tick()
   getInput("controller_id", goal_.controller_id);
   getInput("goal_checker_id", goal_.goal_checker_id);
 
-  RCLCPP_INFO(
+  RCLCPP_DEBUG(
     node_->get_logger(),
-    "[BT][Action:FollowPath] 开始请求局部控制，controller_id='%s'，goal_checker_id='%s'，path poses=%zu",
+    "[BT] FollowPath requested: controller=%s, goal_checker=%s, poses=%zu",
     goal_.controller_id.c_str(), goal_.goal_checker_id.c_str(), goal_.path.poses.size());
 }
 
@@ -52,8 +52,7 @@ BT::NodeStatus FollowPathAction::tick()
     if (!waiting_for_valid_path_) {
       RCLCPP_WARN(
         node_->get_logger(),
-        "[BT][Action:FollowPath] 当前没有有效 path，暂不发送 FollowPath goal，"
-        "等待下一次全局规划生成非空路径");
+        "[BT] FollowPath waiting for a valid path");
     }
     waiting_for_valid_path_ = true;
     setStatus(BT::NodeStatus::RUNNING);
@@ -63,7 +62,7 @@ BT::NodeStatus FollowPathAction::tick()
   if (waiting_for_valid_path_) {
     RCLCPP_INFO(
       node_->get_logger(),
-      "[BT][Action:FollowPath] 收到有效 path poses=%zu，退出等待并开始局部控制", path.poses.size());
+      "[BT] FollowPath resumed: poses=%zu", path.poses.size());
     waiting_for_valid_path_ = false;
     BtActionNode<nav2_msgs::action::FollowPath>::halt();
   }
@@ -83,16 +82,16 @@ void FollowPathAction::on_wait_for_result(
     if (new_path.poses.empty()) {
       RCLCPP_WARN_THROTTLE(
         node_->get_logger(), *node_->get_clock(), 2000,
-        "[BT][Action:FollowPath] 检测到 empty path 更新，old poses=%zu，new poses=0，"
-        "忽略本次更新，继续跟踪上一条有效路径",
+        "[BT][Action:FollowPath] Empty path update ignored: previous_poses=%zu; "
+        "continuing to track the last valid path",
         goal_.path.poses.size());
       return;
     }
 
     // the action server on the next loop iteration
-    RCLCPP_INFO(
+    RCLCPP_DEBUG(
       node_->get_logger(),
-      "[BT][Action:FollowPath] 检测到 path 更新，old poses=%zu，new poses=%zu，准备更新 follow_path goal",
+      "[BT] FollowPath updated: poses=%zu->%zu",
       goal_.path.poses.size(), new_path.poses.size());
     goal_.path = new_path;
     goal_updated_ = true;
@@ -104,7 +103,7 @@ void FollowPathAction::on_wait_for_result(
   if (goal_.controller_id != new_controller_id) {
     RCLCPP_INFO(
       node_->get_logger(),
-      "[BT][Action:FollowPath] 检测到 controller_id 更新，'%s' -> '%s'",
+      "[BT] FollowPath controller: %s->%s",
       goal_.controller_id.c_str(), new_controller_id.c_str());
     goal_.controller_id = new_controller_id;
     goal_updated_ = true;
@@ -116,7 +115,7 @@ void FollowPathAction::on_wait_for_result(
   if (goal_.goal_checker_id != new_goal_checker_id) {
     RCLCPP_INFO(
       node_->get_logger(),
-      "[BT][Action:FollowPath] 检测到 goal_checker_id 更新，'%s' -> '%s'",
+      "[BT] FollowPath goal_checker: %s->%s",
       goal_.goal_checker_id.c_str(), new_goal_checker_id.c_str());
     goal_.goal_checker_id = new_goal_checker_id;
     goal_updated_ = true;
@@ -127,7 +126,7 @@ BT::NodeStatus FollowPathAction::on_success()
 {
   RCLCPP_INFO(
     node_->get_logger(),
-    "[BT][Action:FollowPath] 局部控制 SUCCESS，controller_id='%s'，path poses=%zu",
+    "[BT] FollowPath succeeded: controller=%s, poses=%zu",
     goal_.controller_id.c_str(), goal_.path.poses.size());
   return BT::NodeStatus::SUCCESS;
 }
@@ -136,8 +135,7 @@ BT::NodeStatus FollowPathAction::on_aborted()
 {
   RCLCPP_WARN(
     node_->get_logger(),
-    "******************** [BT Action ABORTED][FollowPath] ******************** "
-    "局部控制 ABORTED，controller_id='%s'，path poses=%zu，返回 FAILURE",
+    "[BT] FollowPath aborted: controller=%s, poses=%zu",
     goal_.controller_id.c_str(), goal_.path.poses.size());
   return BT::NodeStatus::FAILURE;
 }
@@ -150,14 +148,13 @@ BT::NodeStatus FollowPathAction::on_cancelled()
     waiting_for_valid_path_ = true;
     RCLCPP_INFO(
       node_->get_logger(),
-      "[BT][Action:FollowPath] 局部控制 CANCELED，且当前 blackboard path 为空，"
-      "进入等待重规划状态，返回 RUNNING；收到新的非空 path 后再重新发送 FollowPath goal");
+      "[BT] FollowPath canceled: waiting for replanning");
     return BT::NodeStatus::RUNNING;
   }
 
-  RCLCPP_INFO(
+  RCLCPP_DEBUG(
     node_->get_logger(),
-    "[BT][Action:FollowPath] 局部控制 CANCELED，controller_id='%s'，path poses=%zu，返回 SUCCESS",
+    "[BT] FollowPath canceled: controller=%s, poses=%zu",
     goal_.controller_id.c_str(), goal_.path.poses.size());
   return BT::NodeStatus::SUCCESS;
 }

@@ -60,8 +60,7 @@ public:
     if (command->target.y != 0.0 || command->target.z != 0.0) {
       RCLCPP_INFO(
         this->logger_,
-        "DrivingOnHeading in Y and Z not supported, will only move in X. "
-        "DriveOnHeading 不支持 Y/Z 方向移动，只会沿 X 方向运动。");
+        "DriveOnHeading supports X-axis motion only");
       return Status::FAILED;
     }
 
@@ -69,8 +68,7 @@ public:
     if (!((command->target.x > 0.0) == (command->speed > 0.0)) ) {
       RCLCPP_ERROR(
         this->logger_,
-        "Speed and command sign did not match. "
-        "速度方向和目标距离方向不一致，DriveOnHeading/BackUp 无法执行。");
+        "DriveOnHeading target and speed directions do not match");
       return Status::FAILED;
     }
 
@@ -86,8 +84,7 @@ public:
     {
       RCLCPP_ERROR(
         this->logger_,
-        "Initial robot pose is not available. "
-        "获取初始机器人位姿失败，DriveOnHeading/BackUp 无法开始。");
+        "DriveOnHeading initial pose unavailable");
       return Status::FAILED;
     }
 
@@ -105,8 +102,7 @@ public:
       this->stopRobot();
       RCLCPP_WARN(
         this->logger_,
-        "Exceeded time allowance before reaching the DriveOnHeading goal - Exiting DriveOnHeading. "
-        "超出 time_allowance 仍未完成运动，停止 DriveOnHeading/BackUp。");
+        "DriveOnHeading timed out");
       return Status::FAILED;
     }
 
@@ -117,8 +113,7 @@ public:
     {
       RCLCPP_ERROR(
         this->logger_,
-        "Current robot pose is not available. "
-        "获取当前机器人位姿失败，DriveOnHeading/BackUp 无法继续。");
+        "DriveOnHeading current pose unavailable");
       return Status::FAILED;
     }
 
@@ -148,8 +143,7 @@ public:
       this->stopRobot();
       RCLCPP_WARN(
         this->logger_,
-        "Collision Ahead - Exiting DriveOnHeading. "
-        "预测运动方向存在碰撞、高代价或越界风险，停止 DriveOnHeading/BackUp。");
+        "DriveOnHeading stopped: collision risk");
       return Status::FAILED;
     }
 

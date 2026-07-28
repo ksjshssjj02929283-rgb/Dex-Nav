@@ -42,8 +42,7 @@ BT::NodeStatus PipelineSequence::tick()
       case BT::NodeStatus::FAILURE:
         RCLCPP_ERROR(
           rclcpp::get_logger("nav2_behavior_tree"),
-          "******************** [BT Critical][PipelineSequence:%s] ******************** "
-          "child '%s' returned FAILURE，PipelineSequence 返回 FAILURE 并 haltChildren",
+          "BT PipelineSequence failed: node=%s, child=%s",
           name().c_str(), children_nodes_[i]->name().c_str());
         ControlNode::haltChildren();
         last_child_ticked_ = 0;  // reset

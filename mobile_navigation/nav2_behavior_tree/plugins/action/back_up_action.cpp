@@ -46,8 +46,7 @@ void BackUpAction::on_tick()
   increment_recovery_count();
   RCLCPP_WARN(
     node_->get_logger(),
-    "-------------------- [BT Recovery Action][BackUp] -------------------- "
-    "开始后退恢复 BackUp，backup_dist=%.3f m，backup_speed=%.3f m/s，time_allowance=%.3f s",
+    "BT BackUp started: distance=%.3f m, speed=%.3f m/s, timeout=%.3f s",
     goal_.target.x, goal_.speed,
     static_cast<double>(goal_.time_allowance.sec) +
     static_cast<double>(goal_.time_allowance.nanosec) * 1e-9);
@@ -57,7 +56,7 @@ BT::NodeStatus BackUpAction::on_success()
 {
   RCLCPP_INFO(
     node_->get_logger(),
-    "[BT][Action:BackUp] 后退恢复 SUCCESS，backup_dist=%.3f m，backup_speed=%.3f m/s",
+    "BT BackUp succeeded: distance=%.3f m, speed=%.3f m/s",
     goal_.target.x, goal_.speed);
   return BT::NodeStatus::SUCCESS;
 }
@@ -66,9 +65,7 @@ BT::NodeStatus BackUpAction::on_aborted()
 {
   RCLCPP_ERROR(
     node_->get_logger(),
-    "******************** [BT Action ABORTED][BackUp] ******************** "
-    "后退恢复 ABORTED，backup_dist=%.3f m，backup_speed=%.3f m/s，返回 FAILURE；"
-    "请查看 behavior_server 附近日志判断是否 Collision Ahead 或 Pose Goes Off Grid",
+    "BT BackUp aborted: distance=%.3f m, speed=%.3f m/s",
     goal_.target.x, goal_.speed);
   return BT::NodeStatus::FAILURE;
 }
@@ -77,7 +74,7 @@ BT::NodeStatus BackUpAction::on_cancelled()
 {
   RCLCPP_INFO(
     node_->get_logger(),
-    "[BT][Action:BackUp] 后退恢复 CANCELED，backup_dist=%.3f m，backup_speed=%.3f m/s，返回 SUCCESS",
+    "BT BackUp canceled: distance=%.3f m, speed=%.3f m/s",
     goal_.target.x, goal_.speed);
   return BT::NodeStatus::SUCCESS;
 }

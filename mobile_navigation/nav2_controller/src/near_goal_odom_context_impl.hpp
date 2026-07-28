@@ -19,7 +19,7 @@ struct NearGoalOdomParameters
   int entry_confirm_cycles{3};
   double position_lon_tolerance{0.025};
   double position_lat_tolerance{0.025};
-  int position_confirm_cycles{5};
+  int position_confirm_cycles{2};
   double fine_yaw_entry_error{0.10};
   int fine_yaw_entry_confirm_cycles{3};
   double yaw_latch_max_error_jump{0.05};
@@ -82,6 +82,8 @@ private:
   void updateOdomPositionErrorsLocked(
     const geometry_msgs::msg::Pose & robot_in_odom);
   bool robotStoppedLocked() const;
+  // 线速度停稳后允许同向角速度直接交给最终转向，反向旋转仍需先完全停稳。
+  bool readyForYawHandoffLocked(double live_map_yaw_error) const;
   bool positionHoldValidLocked() const;
   bool odomContinuousLocked(const NearGoalOdomInput & input);
 

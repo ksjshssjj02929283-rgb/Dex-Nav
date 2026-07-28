@@ -54,6 +54,7 @@ enum class NearGoalTransitionReason
 {
   NONE,
   ENTRY_STABLE,
+  POSITION_SETTLING,
   POSITION_STABLE,
   FINE_YAW_STABLE,
   STOP_STABLE,
@@ -181,6 +182,8 @@ inline const char * toString(NearGoalTransitionReason reason)
       return "NONE";
     case NearGoalTransitionReason::ENTRY_STABLE:
       return "ENTRY_STABLE";
+    case NearGoalTransitionReason::POSITION_SETTLING:
+      return "POSITION_SETTLING";
     case NearGoalTransitionReason::POSITION_STABLE:
       return "POSITION_STABLE";
     case NearGoalTransitionReason::FINE_YAW_STABLE:

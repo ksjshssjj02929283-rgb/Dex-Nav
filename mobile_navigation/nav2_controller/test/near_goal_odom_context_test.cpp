@@ -99,6 +99,120 @@ TEST(NearGoalOdomContextTest, ReportsOdomPositionErrorOnEntryLatchCycle)
   EXPECT_NEAR(snapshot.odom_lat_error, -0.10, 1e-9);
 }
 
+TEST(NearGoalOdomContextTest, BrakesBeforeLatchingPositionWhileMoving)
+{
+  auto parameters = testParameters();
+  parameters.mode = NearGoalOdomMode::CONTROL;
+  parameters.position_confirm_cycles = 2;
+  NearGoalOdomContext context(parameters);
+  context.reset(22, NearGoalTransitionReason::GOAL_CHANGED);
+
+  context.update(makeInput(100000000, 0.02, 0.0, 0.20, 0.02, 0.20));
+  context.update(makeInput(200000000, 0.01, 0.0, 0.20, 0.01, 0.20, 0.04, 0.0));
+  const auto braking_snapshot =
+    context.update(makeInput(300000000, 0.0, 0.0, 0.20, 0.0, 0.20, 0.04, 0.0));
+
+  EXPECT_EQ(braking_snapshot.stage, NearGoalOdomStage::ODOM_POSITION);
+  EXPECT_EQ(
+    braking_snapshot.control_directive,
+    NearGoalControlDirective::HOLD_ZERO);
+  EXPECT_EQ(
+    braking_snapshot.transition_reason,
+    NearGoalTransitionReason::POSITION_SETTLING);
+  EXPECT_FALSE(braking_snapshot.position_reached_latched);
+
+  const auto stopped_snapshot =
+    context.update(makeInput(400000000, 0.0, 0.0, 0.20, 0.0, 0.20));
+  EXPECT_EQ(stopped_snapshot.stage, NearGoalOdomStage::MAP_YAW_COARSE);
+  EXPECT_EQ(stopped_snapshot.control_directive, NearGoalControlDirective::NORMAL);
+  EXPECT_TRUE(stopped_snapshot.position_reached_latched);
+}
+
+TEST(NearGoalOdomContextTest, HandsOffSameDirectionRotationWithoutFullStop)
+{
+  auto parameters = testParameters();
+  parameters.mode = NearGoalOdomMode::CONTROL;
+  parameters.position_confirm_cycles = 2;
+  NearGoalOdomContext context(parameters);
+  context.reset(24, NearGoalTransitionReason::GOAL_CHANGED);
+
+  context.update(makeInput(100000000, 0.02, 0.0, 0.20, 0.02, 0.20));
+  context.update(makeInput(200000000, 0.01, 0.0, 0.20, 0.01, 0.20, 0.0, -0.15));
+  const auto snapshot =
+    context.update(makeInput(300000000, 0.0, 0.0, 0.20, 0.0, 0.20, 0.0, -0.15));
+
+  EXPECT_EQ(snapshot.stage, NearGoalOdomStage::MAP_YAW_COARSE);
+  EXPECT_EQ(snapshot.control_directive, NearGoalControlDirective::NORMAL);
+  EXPECT_TRUE(snapshot.position_reached_latched);
+}
+
+TEST(NearGoalOdomContextTest, StopsOppositeRotationBeforeYawHandoff)
+{
+  auto parameters = testParameters();
+  parameters.mode = NearGoalOdomMode::CONTROL;
+  parameters.position_confirm_cycles = 2;
+  NearGoalOdomContext context(parameters);
+  context.reset(25, NearGoalTransitionReason::GOAL_CHANGED);
+
+  context.update(makeInput(100000000, 0.02, 0.0, 0.20, 0.02, 0.20));
+  context.update(makeInput(200000000, 0.01, 0.0, 0.20, 0.01, 0.20, 0.0, 0.15));
+  const auto braking_snapshot =
+    context.update(makeInput(300000000, 0.0, 0.0, 0.20, 0.0, 0.20, 0.0, 0.15));
+
+  EXPECT_EQ(braking_snapshot.stage, NearGoalOdomStage::ODOM_POSITION);
+  EXPECT_EQ(
+    braking_snapshot.control_directive,
+    NearGoalControlDirective::HOLD_ZERO);
+  EXPECT_EQ(
+    braking_snapshot.transition_reason,
+    NearGoalTransitionReason::POSITION_SETTLING);
+
+  const auto stopped_snapshot =
+    context.update(makeInput(400000000, 0.0, 0.0, 0.20, 0.0, 0.20));
+  EXPECT_EQ(stopped_snapshot.stage, NearGoalOdomStage::MAP_YAW_COARSE);
+  EXPECT_EQ(stopped_snapshot.control_directive, NearGoalControlDirective::NORMAL);
+}
+
+TEST(NearGoalOdomContextTest, KeepsBrakingIfTranslationMovesDuringSameDirectionRotation)
+{
+  auto parameters = testParameters();
+  parameters.mode = NearGoalOdomMode::CONTROL;
+  parameters.position_confirm_cycles = 2;
+  NearGoalOdomContext context(parameters);
+  context.reset(26, NearGoalTransitionReason::GOAL_CHANGED);
+
+  context.update(makeInput(100000000, 0.02, 0.0, 0.20, 0.02, 0.20));
+  context.update(makeInput(200000000, 0.01, 0.0, 0.20, 0.01, 0.20, 0.04, -0.15));
+  const auto snapshot =
+    context.update(makeInput(300000000, 0.0, 0.0, 0.20, 0.0, 0.20, 0.04, -0.15));
+
+  EXPECT_EQ(snapshot.stage, NearGoalOdomStage::ODOM_POSITION);
+  EXPECT_EQ(snapshot.control_directive, NearGoalControlDirective::HOLD_ZERO);
+  EXPECT_FALSE(snapshot.position_reached_latched);
+}
+
+TEST(NearGoalOdomContextTest, ResumesPositioningIfErrorLeavesToleranceWhileBraking)
+{
+  auto parameters = testParameters();
+  parameters.mode = NearGoalOdomMode::CONTROL;
+  parameters.position_confirm_cycles = 2;
+  NearGoalOdomContext context(parameters);
+  context.reset(23, NearGoalTransitionReason::GOAL_CHANGED);
+
+  context.update(makeInput(100000000, 0.02, 0.0, 0.20, 0.02, 0.20));
+  context.update(makeInput(200000000, 0.01, 0.0, 0.20, 0.01, 0.20, 0.04, 0.0));
+  context.update(makeInput(300000000, 0.0, 0.0, 0.20, 0.0, 0.20, 0.04, 0.0));
+  ASSERT_EQ(
+    context.snapshot().control_directive,
+    NearGoalControlDirective::HOLD_ZERO);
+
+  const auto snapshot =
+    context.update(makeInput(400000000, 0.03, 0.0, 0.20, 0.03, 0.20));
+  EXPECT_EQ(snapshot.stage, NearGoalOdomStage::ODOM_POSITION);
+  EXPECT_EQ(snapshot.control_directive, NearGoalControlDirective::NORMAL);
+  EXPECT_FALSE(snapshot.position_reached_latched);
+}
+
 TEST(NearGoalOdomContextTest, BrakesBeforeReturningToPosition)
 {
   auto parameters = testParameters();

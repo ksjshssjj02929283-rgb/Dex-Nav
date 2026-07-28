@@ -234,11 +234,7 @@ void PathHandler::setPath(const nav_msgs::msg::Path & plan)
   last_path_progress_ = 0.0;
   last_goal_distance_ = 0.0;
   last_heading_path_angle_ = 0.0;
-  RCLCPP_INFO(
-    logger_,
-    "MPPI new global plan received: poses=%zu. "
-    "Reset three-stage path_progress and goal_distance stats.",
-    global_plan_.poses.size());
+  RCLCPP_DEBUG(logger_, "MPPI plan updated: poses=%zu", global_plan_.poses.size());
   if (enforce_path_inversion_) {
     inversion_locale_ = utils::removePosesAfterFirstInversion(global_plan_up_to_inversion_);
   }

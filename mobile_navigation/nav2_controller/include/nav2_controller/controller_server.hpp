@@ -631,7 +631,7 @@ protected:
   int near_goal_odom_entry_confirm_cycles_{3};
   double near_goal_odom_position_lon_tolerance_{0.025};
   double near_goal_odom_position_lat_tolerance_{0.025};
-  int near_goal_odom_position_confirm_cycles_{5};
+  int near_goal_odom_position_confirm_cycles_{2};
   double near_goal_odom_fine_yaw_entry_error_{0.10};
   int near_goal_odom_fine_yaw_entry_confirm_cycles_{3};
   double near_goal_odom_yaw_latch_max_error_jump_{0.05};

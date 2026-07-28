@@ -53,12 +53,12 @@ track
 注意：
 - **趋近段优先级最高**：近目标即使车头没对准路径也进 approach（对齐 GOAL 而非路径，GoalAngle 接管）。
 - **对齐段按角度**：车头偏离路径 >align_enter(~30°) 即进 align（起点 OR 中途失准都触发），对齐后(<align_exit~18°)回 track。
-- profile 数组索引：**0=align, 1=track, 2=approach**（沿用 profile_1/2/3 yaml 段名）。
+- 控制逻辑统一使用 `Stage::ALIGN`、`Stage::TRACK`、`Stage::APPROACH`，禁止使用数组下标表示阶段。
 
 ## 3. 三个阶段的定位
 
 ```text
-三段式 MPPI（profile 索引 0/1/2 = align/track/approach）
+三段式 MPPI（ALIGN / TRACK / APPROACH）
 ├── align 对齐段（heading_path_angle > align_enter_angle）
 │   └── 快速转向对齐路径方向；PathAngle 主导、PathAlign/Follow 降低；保留后退机动避障（DesiredVelocity 关）
 │
@@ -201,7 +201,7 @@ track
 - **块名语义化**：`profile_1/2/3` → `stage_align` / `stage_track` / `stage_approach`。
 - **权重矩阵**：各 critic 三段权重集中在 `stage_weights:`（`CriticName: [align, track, approach]`），一行看全三段、调参最直观；非权重 sub-param(offset/threshold/last_n 等)留在 `stage_*` 块。
 - **切换参数**：`approach_distance`(原 profile_goal_distance)、`align_enter_angle`/`align_exit_angle`；`profile_start_distance` 已删（对齐段改按角度切）。
-- 代码侧：`enum Stage{STAGE_ALIGN/TRACK/APPROACH}` 消 magic index，`selectStage`/`stageName`/`configureStages`/`stages_`/`active_stage_` 语义命名。
+- 代码侧：`enum class Stage{ALIGN/TRACK/APPROACH}` 禁止用数字表示业务状态，`selectStage`/`stageName`/`configureStages`/`active_stage_` 均使用强类型状态。
 
 ## 7. 配置位置
 
@@ -220,11 +220,10 @@ profile_switch_hysteresis: 0.05
 三段式相关日志重点字段：
 
 ```text
-MPPI profiles: start_distance=0.500 goal_distance=1.500 transition_duration=1.000 switch_hysteresis=0.050
-MPPI profile_0/1/2 velocity: vx=[..., ...] vy=... wz=...
-MPPI profile state: active=... selected=... path_progress=... goal_distance=...
-MPPI profile switched: 0 -> 1, reason=track/跟踪段, ... heading_angle=...
-MPPI active constraints: vx=[..., ...] vy=... wz=...
+MPPI profile=align velocity: vx=[..., ...] vy=... wz=...
+MPPI profile: align -> track, path_progress=..., goal_distance=...
+[MPPI] stage=track mode=inactive substage=inactive goal_dist=...
+final_yaw control: ... state=TRACKING
 ```
 
 | 日志字段 | 用途 |
@@ -240,7 +239,7 @@ MPPI active constraints: vx=[..., ...] vy=... wz=...
 ## 9. 风险和注意事项
 
 - 三段式切换只改变速度约束和部分 critic 参数，**不重置 optimizer，也不重建 critic 插件**。
-- 三段已差异化，调参时注意三段是一个整体：改末端停靠能力须同时考虑 MPPI 末段 critic + 速度限制 + `goal_checker`（单改 goal_checker 只延长精调时间，不改优化代价）。
-- `profile_3` 的 `vx_max/wz_max` 已降到 0.2/0.30，终点更稳但到位时间可能变长；配合 `goal_checker.enable_high_precision` 开关平衡精度与到点速度。
+- 三段已差异化，调参时注意三段是一个整体：改末端停靠能力须同时考虑 MPPI 末段 critic、速度限制和到位容差（单改 GoalChecker 只改变成功判定，不改优化代价）。
+- `profile_3` 的 `vx_max/wz_max` 已降到 0.2/0.30，终点更稳但到位时间可能变长；最终到位由当前GoalChecker或NearGoalOdom状态机确认。
 - 近目标膨胀过滤只影响 MPPI 评分，不改真实 costmap；动态/致命障碍安全由 costmap 致命层 + `collision_monitor` 独立兜底。
 - 若使用速度限制层，最终运行速度约束 = 当前 profile 速度约束 × speed limit 比例（或按绝对限速换算）。

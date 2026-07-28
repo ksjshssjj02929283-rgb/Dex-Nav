@@ -84,8 +84,9 @@ void CriticManager::evalTrajectoriesScores(
 
     if (critic_ms >= kSlowCriticWarnMs) {
       RCLCPP_WARN(
-        logger_, "Critic timing (ms): name=%s cost=%.3f fail=%d",
-        critic_names_[q].c_str(), critic_ms, data.fail_flag);
+        logger_, "MPPI critic slow: name=%s, cost=%.3f ms, failed=%s",
+        critic_names_[q].c_str(), critic_ms,
+        data.fail_flag ? "true" : "false");
     }
   }
 }

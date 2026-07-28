@@ -21,7 +21,7 @@ progress_checker 负责判断机器人是否还在有效前进
 ```text
 1. 近目标进展检查 near_goal_progress
 2. 支持纵向/横向误差拆分的 goal_checker
-3. 支持 1cm 优先、2cm 退让接受的高精度 goal_checker
+3. 支持 NearGoalOdom 近目标控制结果接入
 ```
 
 ## 1. 代码结构
@@ -189,9 +189,9 @@ near_goal_progress:
 注意：
 
 ```text
-如果 goal_checker 的精调时间变长，
-near_goal_progress.movement_time_allowance 也需要匹配评估。
-否则可能 goal_checker 还在尝试 1cm 精调，progress_checker 已经先判失败。
+如果近目标控制的收敛时间变长，
+near_goal_progress.movement_time_allowance 需要同步评估。
+否则可能尚未满足到位条件，progress_checker 已经先判失败。
 ```
 
 ## 6. 修改插件时需要同步的文件
@@ -293,7 +293,7 @@ mobile_navigation/nav2_controller/plugins/test/goal_checker.cpp
 ## 9. 开发注意事项
 
 1. `goal_checker` 只负责判断是否到达目标，不负责生成速度。
-2. 如果要增强末端控制能力，应同时关注 MPPI 的末段 critic、速度限制和 goal_checker。单独改 goal_checker 只能延长精调时间，不能直接改变 MPPI 优化代价。
+2. 如果要增强末端控制能力，应同时关注 MPPI 的末段 critic、速度限制和到位容差；修改 GoalChecker 只能改变成功判定，不能直接改变 MPPI 优化代价。
 3. 精确停车建议使用目标点坐标系下的纵向/横向误差，不建议使用机器人当前车体坐标系作为误差参考。
 4. 中文注释只写在关键函数、关键参数和关键分支上，不要逐行翻译代码。
 5. 修改参数后要结合日志确认实际加载的是哪个插件，以及最终成功原因是什么。

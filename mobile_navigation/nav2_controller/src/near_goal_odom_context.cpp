@@ -170,6 +170,22 @@ bool NearGoalOdomContext::robotStoppedLocked() const
     std::abs(snapshot_.actual_wz) <= parameters_.rot_stopped_velocity;
 }
 
+bool NearGoalOdomContext::readyForYawHandoffLocked(double live_map_yaw_error) const
+{
+  if (std::abs(snapshot_.actual_vx) > parameters_.trans_stopped_velocity) {
+    return false;
+  }
+  if (std::abs(snapshot_.actual_wz) <= parameters_.rot_stopped_velocity) {
+    return true;
+  }
+  if (std::abs(live_map_yaw_error) <= parameters_.final_yaw_tolerance) {
+    return false;
+  }
+
+  // yaw_error=current-goal：正误差需要顺时针负转，负误差需要逆时针正转。
+  return live_map_yaw_error * snapshot_.actual_wz < 0.0;
+}
+
 bool NearGoalOdomContext::positionHoldValidLocked() const
 {
   return
@@ -393,22 +409,29 @@ NearGoalOdomSnapshot NearGoalOdomContext::update(const NearGoalOdomInput & input
         break;
 
       case NearGoalOdomStage::ODOM_POSITION:
-        setControlDirectiveLocked(NearGoalControlDirective::NORMAL);
         if (
           std::abs(snapshot_.odom_lon_error) <= parameters_.position_lon_tolerance &&
           std::abs(snapshot_.odom_lat_error) <= parameters_.position_lat_tolerance)
         {
-          ++position_confirm_count_;
+          position_confirm_count_ = std::min(
+            position_confirm_count_ + 1, parameters_.position_confirm_cycles);
         } else {
           position_confirm_count_ = 0;
         }
         if (position_confirm_count_ >= parameters_.position_confirm_cycles) {
+          // 位置连续合格后先消除线速度；同向角速度可直接交给最终转向，避免无谓停顿。
+          if (!readyForYawHandoffLocked(input.live_map_yaw_error)) {
+            snapshot_.transition_reason = NearGoalTransitionReason::POSITION_SETTLING;
+            setControlDirectiveLocked(NearGoalControlDirective::HOLD_ZERO);
+            break;
+          }
           snapshot_.position_reached_latched = true;
           snapshot_.position_reached_pose_in_odom = input.robot_in_odom;
           transitionToLocked(
             NearGoalOdomStage::MAP_YAW_COARSE,
             NearGoalTransitionReason::POSITION_STABLE);
         }
+        setControlDirectiveLocked(NearGoalControlDirective::NORMAL);
         break;
 
       case NearGoalOdomStage::MAP_YAW_COARSE:

@@ -148,7 +148,7 @@ void Optimizer::reset()
 
   noise_generator_.reset(settings_, isHolonomic());
   motion_model_->initialize(settings_.constraints, settings_.model_dt);
-  RCLCPP_INFO(logger_, "Optimizer reset");
+  RCLCPP_DEBUG(logger_, "Optimizer reset");
 }
 
 geometry_msgs::msg::TwistStamped Optimizer::evalControl(
@@ -212,11 +212,12 @@ void Optimizer::optimize()
     {
       RCLCPP_WARN(
         logger_,
-        "Optimizer iteration %zu timing (ms): generate=%.3f critics=%.3f update=%.3f total=%.3f "
-        "[batch=%u steps=%u fail=%d]. "
-        "MPPI single optimization too long; use generate/critics/update to tell if sampling/prediction, critic scoring, or control-sequence update is slow.",
-        i, generate_ms, critic_ms, update_ms, total_ms,
-        settings_.batch_size, settings_.time_steps, critics_data_.fail_flag);
+        "MPPI optimizer slow: iteration=%zu, total=%.3f ms, generate=%.3f, "
+        "critics=%.3f, update=%.3f, batch=%u, steps=%u, failed=%s",
+        i, total_ms, generate_ms,
+        critic_ms, update_ms,
+        settings_.batch_size, settings_.time_steps,
+        critics_data_.fail_flag ? "true" : "false");
     }
   }
 }
@@ -540,9 +541,9 @@ void Optimizer::setSpeedLimit(double speed_limit, bool percentage)
 
   RCLCPP_INFO(
     logger_,
-    "MPPI speed limit updated: active=%d value=%.3f percentage=%d. "
-    "Received speed limit update; will combine with the current three-stage profile velocity constraints.",
-    speed_limit_active_, speed_limit_, speed_limit_is_percentage_);
+    "MPPI speed limit: active=%s, value=%.3f, percentage=%s",
+    speed_limit_active_ ? "true" : "false", speed_limit_,
+    speed_limit_is_percentage_ ? "true" : "false");
 
   applySpeedLimit();
   syncMotionModelConstraints();
@@ -654,14 +655,14 @@ void Optimizer::logActiveConstraints() const
     logger_,
     "MPPI active constraints: vx=[%.3f, %.3f] vy=%.3f wz=%.3f "
     "ax=[%.3f, %.3f] ay=[%.3f, %.3f] az=%.3f jx=%.3f jz=%.3f "
-    "speed_limit_active=%d speed_limit=%.3f percentage=%d. "
-    "These are the runtime constraints actually used for sampling, prediction, and output clamping.",
+    "speed_limit_active=%s speed_limit=%.3f percentage=%s",
     s.constraints.vx_min, s.constraints.vx_max,
     s.constraints.vy, s.constraints.wz,
     s.constraints.ax_min, s.constraints.ax_max,
     s.constraints.ay_min, s.constraints.ay_max,
     s.constraints.az_max, s.constraints.jx_max, s.constraints.jz_max,
-    speed_limit_active_, speed_limit_, speed_limit_is_percentage_);
+    speed_limit_active_ ? "true" : "false", speed_limit_,
+    speed_limit_is_percentage_ ? "true" : "false");
 }
 
 models::Trajectories & Optimizer::getGeneratedTrajectories()

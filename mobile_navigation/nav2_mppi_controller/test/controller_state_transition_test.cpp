@@ -35,9 +35,9 @@ RosLockGuard g_rclcpp;
 class TestableMPPIController : public nav2_mppi_controller::MPPIController
 {
 public:
-  void setApproachState(size_t substage)
+  void setApproachState(nav2_mppi_controller::ApproachSubstage substage)
   {
-    active_stage_ = nav2_mppi_controller::STAGE_APPROACH;
+    active_stage_ = nav2_mppi_controller::Stage::APPROACH;
     approach_substage_ = substage;
   }
 
@@ -59,7 +59,7 @@ public:
     updateApproachSubstage(lon, lat);
   }
 
-  void setApproachMode(size_t mode)
+  void setApproachMode(nav2_mppi_controller::ApproachMode mode)
   {
     approach_mode_ = mode;
     approach_mode_locked_ = true;
@@ -77,32 +77,34 @@ public:
   }
 
   void enterApproachFrom(
-    size_t previous_stage, double lon_error, double lat_error, double yaw_error)
+    nav2_mppi_controller::Stage previous_stage,
+    double lon_error, double lat_error, double yaw_error)
   {
-    active_stage_ = nav2_mppi_controller::STAGE_APPROACH;
+    active_stage_ = nav2_mppi_controller::Stage::APPROACH;
     updateApproachMode(
-      previous_stage, nav2_mppi_controller::STAGE_APPROACH,
+      previous_stage, nav2_mppi_controller::Stage::APPROACH,
       lon_error, lat_error, yaw_error);
   }
 
-  size_t approachMode() const
+  nav2_mppi_controller::ApproachMode approachMode() const
   {
     return approach_mode_;
   }
 
-  size_t approachSubstage() const
+  nav2_mppi_controller::ApproachSubstage approachSubstage() const
   {
     return approach_substage_;
   }
 
   void applySubstageProfile(
-    const mppi::MppiProfileSettings & profile, size_t substage,
+    const mppi::MppiProfileSettings & profile,
+    nav2_mppi_controller::ApproachSubstage substage,
     float final_vx_max = 0.03f, float final_wz_max = 0.4f)
   {
-    active_stage_ = nav2_mppi_controller::STAGE_APPROACH;
+    active_stage_ = nav2_mppi_controller::Stage::APPROACH;
     approach_substage_ = substage;
     applied_profile_ = profile;
-    stages_[nav2_mppi_controller::STAGE_APPROACH] = profile;
+    profileFor(nav2_mppi_controller::Stage::APPROACH) = profile;
     final_yaw_vx_max_ = final_vx_max;
     final_yaw_wz_max_ = final_wz_max;
     applyApproachSubstageProfile();
@@ -116,8 +118,8 @@ public:
   void configureFinalYawEnvelopeBrakeTest()
   {
     clock_ = std::make_shared<rclcpp::Clock>(RCL_SYSTEM_TIME);
-    active_stage_ = nav2_mppi_controller::STAGE_APPROACH;
-    approach_substage_ = nav2_mppi_controller::APPROACH_FINAL_YAW;
+    active_stage_ = nav2_mppi_controller::Stage::APPROACH;
+    approach_substage_ = nav2_mppi_controller::ApproachSubstage::FINAL_YAW;
     applied_profile_.velocity.wz_max = 0.6f;
     final_yaw_cmd_wz_slew_rate_ = 0.8f;
     final_yaw_cmd_stop_yaw_tolerance_ = 0.02f;
@@ -156,19 +158,19 @@ TEST(ControllerStateTransitionTest, ApproachSubstageUsesPositionHysteresis)
   TestableMPPIController controller;
   controller.setApproachTolerances(0.015, 0.02);
   controller.setFinalYawExitViolationThreshold(2);
-  controller.setApproachState(nav2_mppi_controller::APPROACH_POSITIONING);
+  controller.setApproachState(nav2_mppi_controller::ApproachSubstage::POSITIONING);
 
   controller.updateApproach(0.014, -0.015);
-  EXPECT_EQ(controller.approachSubstage(), nav2_mppi_controller::APPROACH_FINAL_YAW);
+  EXPECT_EQ(controller.approachSubstage(), nav2_mppi_controller::ApproachSubstage::FINAL_YAW);
 
   controller.updateApproach(0.019, -0.019);
-  EXPECT_EQ(controller.approachSubstage(), nav2_mppi_controller::APPROACH_FINAL_YAW);
+  EXPECT_EQ(controller.approachSubstage(), nav2_mppi_controller::ApproachSubstage::FINAL_YAW);
 
   controller.updateApproach(0.021, 0.0);
-  EXPECT_EQ(controller.approachSubstage(), nav2_mppi_controller::APPROACH_FINAL_YAW);
+  EXPECT_EQ(controller.approachSubstage(), nav2_mppi_controller::ApproachSubstage::FINAL_YAW);
 
   controller.updateApproach(0.021, 0.0);
-  EXPECT_EQ(controller.approachSubstage(), nav2_mppi_controller::APPROACH_POSITIONING);
+  EXPECT_EQ(controller.approachSubstage(), nav2_mppi_controller::ApproachSubstage::POSITIONING);
 }
 
 TEST(ControllerStateTransitionTest, EnvelopeBrakeWaitsUntilActualReturnsInsideSafeEnvelope)
@@ -200,13 +202,13 @@ TEST(ControllerStateTransitionTest, ApproachSubstageAppliesSeparateProfiles)
   profile.critics.angular_velocity.weight = 5.0f;
 
   TestableMPPIController controller;
-  controller.setApproachMode(nav2_mppi_controller::APPROACH_POSITION_FIRST);
-  controller.applySubstageProfile(profile, nav2_mppi_controller::APPROACH_POSITIONING);
+  controller.setApproachMode(nav2_mppi_controller::ApproachMode::POSITION_FIRST);
+  controller.applySubstageProfile(profile, nav2_mppi_controller::ApproachSubstage::POSITIONING);
   EXPECT_FLOAT_EQ(controller.appliedProfile().critics.goal_angle.weight, 10.0f);
   EXPECT_FLOAT_EQ(controller.appliedProfile().critics.angular_velocity.weight, 0.0f);
   EXPECT_FLOAT_EQ(controller.appliedProfile().critics.path_angle.weight, 2.0f);
 
-  controller.applySubstageProfile(profile, nav2_mppi_controller::APPROACH_FINAL_YAW);
+  controller.applySubstageProfile(profile, nav2_mppi_controller::ApproachSubstage::FINAL_YAW);
   EXPECT_FLOAT_EQ(controller.appliedProfile().velocity.vx_max, 0.03f);
   EXPECT_FLOAT_EQ(controller.appliedProfile().velocity.vx_min, -0.03f);
   EXPECT_FLOAT_EQ(controller.appliedProfile().velocity.wz_max, 0.4f);
@@ -223,14 +225,14 @@ TEST(ControllerStateTransitionTest, ApproachModeLocksFromEntryYawError)
   controller.setPositionFirstYawThreshold(2.094);
   controller.setPositionFirstLateralGeometry(0.05, 1.0);
 
-  controller.enterApproachFrom(nav2_mppi_controller::STAGE_TRACK, 0.4, 0.02, 0.5);
-  EXPECT_EQ(controller.approachMode(), nav2_mppi_controller::APPROACH_NORMAL);
+  controller.enterApproachFrom(nav2_mppi_controller::Stage::TRACK, 0.4, 0.02, 0.5);
+  EXPECT_EQ(controller.approachMode(), nav2_mppi_controller::ApproachMode::NORMAL);
 
-  controller.enterApproachFrom(nav2_mppi_controller::STAGE_TRACK, 0.4, 0.02, 1.8);
-  EXPECT_EQ(controller.approachMode(), nav2_mppi_controller::APPROACH_NORMAL);
+  controller.enterApproachFrom(nav2_mppi_controller::Stage::TRACK, 0.4, 0.02, 1.8);
+  EXPECT_EQ(controller.approachMode(), nav2_mppi_controller::ApproachMode::NORMAL);
 
-  controller.enterApproachFrom(nav2_mppi_controller::STAGE_TRACK, 0.4, 0.02, -2.8);
-  EXPECT_EQ(controller.approachMode(), nav2_mppi_controller::APPROACH_POSITION_FIRST);
+  controller.enterApproachFrom(nav2_mppi_controller::Stage::TRACK, 0.4, 0.02, -2.8);
+  EXPECT_EQ(controller.approachMode(), nav2_mppi_controller::ApproachMode::POSITION_FIRST);
 }
 
 TEST(ControllerStateTransitionTest, ApproachModeUsesPositionFirstForLateralDominantGoal)
@@ -239,11 +241,11 @@ TEST(ControllerStateTransitionTest, ApproachModeUsesPositionFirstForLateralDomin
   controller.setPositionFirstYawThreshold(2.094);
   controller.setPositionFirstLateralGeometry(0.05, 1.0);
 
-  controller.enterApproachFrom(nav2_mppi_controller::STAGE_TRACK, 0.02, -0.45, 1.5);
-  EXPECT_EQ(controller.approachMode(), nav2_mppi_controller::APPROACH_POSITION_FIRST);
+  controller.enterApproachFrom(nav2_mppi_controller::Stage::TRACK, 0.02, -0.45, 1.5);
+  EXPECT_EQ(controller.approachMode(), nav2_mppi_controller::ApproachMode::POSITION_FIRST);
 
-  controller.enterApproachFrom(nav2_mppi_controller::STAGE_TRACK, 0.30, 0.04, 1.5);
-  EXPECT_EQ(controller.approachMode(), nav2_mppi_controller::APPROACH_NORMAL);
+  controller.enterApproachFrom(nav2_mppi_controller::Stage::TRACK, 0.30, 0.04, 1.5);
+  EXPECT_EQ(controller.approachMode(), nav2_mppi_controller::ApproachMode::NORMAL);
 }
 
 TEST(ControllerStateTransitionTest, NormalApproachKeepsFullYawControlWhilePositioning)
@@ -254,8 +256,8 @@ TEST(ControllerStateTransitionTest, NormalApproachKeepsFullYawControlWhilePositi
   profile.critics.angular_velocity.weight = 5.0f;
 
   TestableMPPIController controller;
-  controller.setApproachMode(nav2_mppi_controller::APPROACH_NORMAL);
-  controller.applySubstageProfile(profile, nav2_mppi_controller::APPROACH_POSITIONING);
+  controller.setApproachMode(nav2_mppi_controller::ApproachMode::NORMAL);
+  controller.applySubstageProfile(profile, nav2_mppi_controller::ApproachSubstage::POSITIONING);
 
   EXPECT_FLOAT_EQ(controller.appliedProfile().critics.goal_angle.weight, 75.0f);
   EXPECT_FLOAT_EQ(controller.appliedProfile().critics.angular_velocity.weight, 5.0f);

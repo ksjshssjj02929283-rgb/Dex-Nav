@@ -42,6 +42,8 @@ BehaviorTreeEngine::run(
 {
   rclcpp::WallRate loopRate(loopTimeout);
   BT::NodeStatus result = BT::NodeStatus::RUNNING;
+  const auto logger = rclcpp::get_logger("BehaviorTreeEngine");
+  rclcpp::Clock throttle_clock(RCL_STEADY_TIME);
 
   // Loop until something happens with ROS or the node completes
   try {
@@ -56,15 +58,15 @@ BehaviorTreeEngine::run(
       onLoop();
 
       if (!loopRate.sleep()) {
-        RCLCPP_WARN(
-          rclcpp::get_logger("BehaviorTreeEngine"),
-          "Behavior Tree tick rate %0.2f was exceeded!",
+        RCLCPP_DEBUG_THROTTLE(
+          logger, throttle_clock, 1000,
+          "BT tick overrun: target=%.2fHz",
           1.0 / (loopRate.period().count() * 1.0e-9));
       }
     }
   } catch (const std::exception & ex) {
     RCLCPP_ERROR(
-      rclcpp::get_logger("BehaviorTreeEngine"),
+      logger,
       "Behavior tree threw exception: %s. Exiting with failure.", ex.what());
     return BtStatus::FAILED;
   }

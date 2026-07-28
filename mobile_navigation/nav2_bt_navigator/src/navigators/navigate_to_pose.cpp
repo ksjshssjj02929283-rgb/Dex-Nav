@@ -33,12 +33,6 @@ double getYaw(const geometry_msgs::msg::Quaternion & q)
     1.0 - 2.0 * (q.y * q.y + q.z * q.z));
 }
 
-double radToDeg(double rad)
-{
-  constexpr double kRadToDeg = 180.0 / 3.14159265358979323846;
-  return rad * kRadToDeg;
-}
-
 }  // namespace
 
 bool
@@ -169,7 +163,7 @@ NavigateToPoseNavigator::goalCompleted(
 
   const auto goal = bt_action_server_->getCurrentGoal();
   if (!goal) {
-    RCLCPP_WARN(logger_, "导航成功，但无法获取最终执行目标，跳过到点日志");
+    RCLCPP_WARN(logger_, "Navigation succeeded, but the final goal is unavailable");
     return;
   }
 
@@ -180,11 +174,9 @@ NavigateToPoseNavigator::goalCompleted(
 
   RCLCPP_INFO(
     logger_,
-    "导航到点: uuid=%s, frame=%s, target=(%.3f, %.3f, %.3f), "
-    "yaw=%.4f rad/%.2f deg",
+    "Navigation succeeded: id=%s, frame=%s, goal=(%.3f, %.3f, yaw=%.3f)",
     goal_uuid.c_str(), goal->pose.header.frame_id.c_str(),
-    pose.position.x, pose.position.y, pose.position.z,
-    goal_yaw, radToDeg(goal_yaw));
+    pose.position.x, pose.position.y, goal_yaw);
 }
 
 void
@@ -259,8 +251,6 @@ NavigateToPoseNavigator::onLoop()
 void
 NavigateToPoseNavigator::onPreempt(ActionT::Goal::ConstSharedPtr goal)
 {
-  RCLCPP_INFO(logger_, "Received goal preemption request");
-
   if (goal->behavior_tree == bt_action_server_->getCurrentBTFilename() ||
     (goal->behavior_tree.empty() &&
     bt_action_server_->getCurrentBTFilename() == bt_action_server_->getDefaultBTFilename()))
@@ -271,7 +261,7 @@ NavigateToPoseNavigator::onPreempt(ActionT::Goal::ConstSharedPtr goal)
     // 接受新目标时，SimpleActionServer 会将旧目标置为 ABORTED。
     const auto pending_goal = bt_action_server_->acceptPendingGoal();
     if (!pending_goal) {
-      RCLCPP_ERROR(logger_, "导航抢占失败：无法接受待处理的新目标");
+      RCLCPP_ERROR(logger_, "Navigation preemption failed: pending goal unavailable");
       return;
     }
 
@@ -280,15 +270,10 @@ NavigateToPoseNavigator::onPreempt(ActionT::Goal::ConstSharedPtr goal)
     blackboard->set<nav_msgs::msg::Path>(path_blackboard_id_, nav_msgs::msg::Path());
     initializeGoalPose(pending_goal);
 
-    RCLCPP_INFO(logger_, "新导航目标已覆盖旧目标：旧 FollowPath 已停止，旧路径已清空");
+    RCLCPP_INFO(logger_, "Navigation preempted: previous control stopped and path cleared");
   } else {
     RCLCPP_WARN(
-      logger_,
-      "Preemption request was rejected since the requested BT XML file is not the same "
-      "as the one that the current goal is executing. Preemption with a new BT is invalid "
-      "since it would require cancellation of the previous goal instead of true preemption."
-      "\nCancel the current goal and send a new action request if you want to use a "
-      "different BT XML file. For now, continuing to track the last goal until completion.");
+      logger_, "Navigation preemption rejected: behavior tree differs from active goal");
     bt_action_server_->terminatePendingGoal();
   }
 }
@@ -307,12 +292,11 @@ NavigateToPoseNavigator::initializeGoalPose(ActionT::Goal::ConstSharedPtr goal)
 
   RCLCPP_INFO(
     logger_,
-    "Begin navigating from current location (%.2f, %.2f, yaw=%.4f rad/%.2f deg) "
-    "to (%.2f, %.2f, yaw=%.4f rad/%.2f deg)",
+    "Navigation started: from=(%.2f, %.2f, yaw=%.3f) goal=(%.2f, %.2f, yaw=%.3f)",
     current_pose.pose.position.x, current_pose.pose.position.y,
-    current_yaw, radToDeg(current_yaw),
+    current_yaw,
     goal->pose.pose.position.x, goal->pose.pose.position.y,
-    goal_yaw, radToDeg(goal_yaw));
+    goal_yaw);
 
   // Reset state for new action feedback
   start_time_ = clock_->now();
