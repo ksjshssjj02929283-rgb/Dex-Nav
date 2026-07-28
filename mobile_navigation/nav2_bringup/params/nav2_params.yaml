@@ -905,5 +905,11 @@ nav2_nav_monitor:
     smoothed_vel_topic: "control/cmd_vel_nav"
     desired_vel_topic: "/nav_monitor/desired_velocity"
     controller_target_topic: "/nav_monitor/controller_target"
+    speed_plan_diagnostics_topic: "/navigation/speed_plan_diagnostics"
     odom_topic: "odom"
+    # 只作为 nav_monitor 离线检测阈值；须与当前 SCurveSpeedPlanner 限值同步
+    target_acceleration_limit: 0.5
+    target_deceleration_limit: 0.35
+    target_jerk_limit: 0.5
+    motion_limit_tolerance_ratio: 0.05
     controller_phase_topic: "/nav_monitor/controller_phase"

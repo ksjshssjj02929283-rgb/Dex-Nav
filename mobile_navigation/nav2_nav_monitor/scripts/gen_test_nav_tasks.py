@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 # Copyright 2026 DEXE Robot Engineer
 # SPDX-License-Identifier: Apache-2.0
-"""nav_monitor 测试数据生成器：按 nav2_nav_monitor 落盘的同款 JSON schema
-生成带真实感变化的导航任务记录，供批量分析脚本演示/回归测试。
+"""
+Nav monitor 测试数据生成器.
+
+按 nav2_nav_monitor 落盘的同款 JSON schema 生成带真实感变化的导航任务记录，
+供批量分析脚本演示/回归测试。
 
 模拟场景：机器人在 4 个站点（A/B/C/D）间连续跑任务——站点间路径为
 带弯道的贝塞尔曲线，梯形速度剖面+弯道减速，控制器输出带尖峰/平滑后干净，
@@ -32,7 +35,7 @@ BT_NAME = "navigate_to_pose_w_replanning_and_recovery.xml"
 
 
 def bezier(p0, p1, ctrl, u):
-    """二次贝塞尔 + 切向 yaw。"""
+    """二次贝塞尔 + 切向 yaw."""
     x = (1 - u) ** 2 * p0[0] + 2 * (1 - u) * u * ctrl[0] + u ** 2 * p1[0]
     y = (1 - u) ** 2 * p0[1] + 2 * (1 - u) * u * ctrl[1] + u ** 2 * p1[1]
     dx = 2 * (1 - u) * (ctrl[0] - p0[0]) + 2 * u * (p1[0] - ctrl[0])
@@ -41,7 +44,7 @@ def bezier(p0, p1, ctrl, u):
 
 
 def route_of(a, b, rng):
-    """站点 a→b 的路径函数（带随机侧偏控制点）。"""
+    """站点 a→b 的路径函数（带随机侧偏控制点）."""
     p0, p1 = STATIONS[a][:2], STATIONS[b][:2]
     mx, my = (p0[0] + p1[0]) / 2, (p0[1] + p1[1]) / 2
     dx, dy = p1[0] - p0[0], p1[1] - p0[1]
@@ -52,7 +55,7 @@ def route_of(a, b, rng):
 
 
 def curvature_zone(u):
-    """弯道减速带（贝塞尔中段曲率最大）。"""
+    """弯道减速带（贝塞尔中段曲率最大）."""
     return 0.55 if 0.35 < u < 0.65 else 1.0
 
 
@@ -90,7 +93,7 @@ def gen_task(a, b, result, t_wall, rng):
     duration = align_t + track_t + approach_t
 
     def u_at(t_rel):
-        """track 段内时间→路径进度（按剖面推进）。"""
+        """Track 段内时间→路径进度（按剖面推进）."""
         if t_rel <= align_t:
             return 0.0
         acc, tt = 0.0, t_rel - align_t
@@ -186,7 +189,58 @@ def gen_task(a, b, result, t_wall, rng):
     start = STATIONS[a]
     recoveries = rng.choice([0, 0, 0, 1, 1, 2]) if result != "succeeded" else \
         rng.choice([0, 0, 0, 0, 1])
+    speed_plan_cycles = []
+    previous_acceleration = 0.0
+    for cycle_index, target in enumerate(controller_target[::2], start=1):
+        cycle_t, target_v, target_a = target
+        path_id = min(
+            replans + 1,
+            1 + int((cycle_t / max(duration, 1e-6)) * (replans + 1)))
+        inherited = cycle_index > 1
+        if cycle_t < align_t:
+            phase = "align"
+            controller = "direct_align"
+        elif cycle_t <= align_t + track_t:
+            phase = "track"
+            controller = "MPPIController"
+        else:
+            phase = "approach"
+            controller = "PIDController"
+        speed_plan_cycles.append({
+            "t": cycle_t,
+            "cycle_id": cycle_index,
+            "path_id": path_id,
+            "planning_succeeded": True,
+            "planning_result": "success",
+            "planner": "SCurveSpeedPlanner",
+            "local_path": {
+                "point_count": 41,
+                "length": round(plan_len * max(0.0, 1.0 - cycle_t / duration), 4),
+            },
+            "trajectory_point_count": 41,
+            "boundary": {
+                "computed": True,
+                "reason": "inherited" if inherited else "FIRST_CYCLE",
+                "velocity": target_v,
+                "acceleration": previous_acceleration if inherited else 0.0,
+                "acceleration_valid": inherited,
+                "source_age": 0.1 if inherited else 0.0,
+                "source_stamp": {"sec": int(t_wall + cycle_t), "nanosec": 0},
+            },
+            "terminal": {"valid": True, "infeasible": False},
+            "control_receipt": {
+                "valid": True,
+                "control_succeeded": True,
+                "result": "success",
+                "velocity": target_v,
+                "acceleration": target_a,
+                "controller": controller,
+                "phase": phase,
+            },
+        })
+        previous_acceleration = target_a
     return {
+        "schema_version": 2,
         "start_time": t_wall,
         "end_time": t_wall + duration,
         "start_pose": {"x": start[0], "y": start[1], "yaw": start[2]},
@@ -206,6 +260,14 @@ def gen_task(a, b, result, t_wall, rng):
         "planned_path_length_first": round(plan_len, 3),
         "replanning_count": replans + 1,
         "passing_length": round(pass_len, 3),
+        "motion_limits": {
+            "max_acceleration": 0.5,
+            "max_deceleration": 0.4,
+            "max_abs_jerk": 0.5,
+            "tolerance_ratio": 0.05,
+            "source": "test_fixture",
+        },
+        "speed_plan_diagnostics_topic": "/navigation/speed_plan_diagnostics",
         "desired_vel": {"topic": "/nav_monitor/desired_velocity",
                         **stats(desired), "samples": desired},
         "controller_target": {
@@ -222,8 +284,16 @@ def gen_task(a, b, result, t_wall, rng):
                          "samples": smooth},
         "odom_vel": {"topic": "feedback/odom", **stats(odom), "samples": odom},
         "phase_transitions": phases,
+        "speed_plan_cycles": speed_plan_cycles,
+        "speed_plan_cycle_summary": {
+            "count": len(speed_plan_cycles),
+            "planning_success_count": len(speed_plan_cycles),
+            "control_receipt_valid_count": len(speed_plan_cycles),
+            "terminal_infeasible_count": 0,
+        },
         "passing_path": passing,
         "planned_paths": planned,
+        "planned_path_ids": list(range(1, replans + 2)),
     }
 
 

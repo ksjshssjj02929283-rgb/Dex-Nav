@@ -1,6 +1,7 @@
 # Copyright 2026 DEXE Robot Engineer
 # SPDX-License-Identifier: Apache-2.0
-"""nav_monitor 分析脚本公共工具：数据目录解析。
+"""
+Nav monitor 分析脚本公共工具：数据目录解析.
 
 解析顺序（谁先命中用谁）：
   1. 命令行显式传入的目录/文件
@@ -42,7 +43,7 @@ def _from_marker():
 
 
 def resolve_data_dir(cli_arg=None, quiet=False):
-    """按解析顺序返回数据目录（已展开 ~）；quiet=False 时打印来源。"""
+    """按解析顺序返回数据目录（已展开 ~）；quiet=False 时打印来源."""
     if cli_arg:
         return os.path.expanduser(cli_arg)
     val = _from_running_node()

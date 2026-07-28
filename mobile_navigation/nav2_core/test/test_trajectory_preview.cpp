@@ -27,7 +27,8 @@ TEST(TrajectoryPreview, TimeAlignedProjectionInterpolatesVelocityAndAcceleration
   ASSERT_TRUE(nav2_core::hasValidRelativeTime(points));
 
   nav2_core::TrajectoryPreview preview;
-  ASSERT_TRUE(nav2_core::sampleTrajectoryPreview(
+  ASSERT_TRUE(
+    nav2_core::sampleTrajectoryPreview(
       points, 0.01, 0.0, true, 0.08, 0.1, preview));
 
   EXPECT_EQ(preview.mode, nav2_core::TrajectoryPreviewMode::TIME_ALIGNED);
@@ -43,7 +44,8 @@ TEST(TrajectoryPreview, InvalidOrNonMonotonicTimeUsesSpatialFallback)
   ASSERT_FALSE(nav2_core::hasValidRelativeTime(points));
 
   nav2_core::TrajectoryPreview preview;
-  ASSERT_TRUE(nav2_core::sampleTrajectoryPreview(
+  ASSERT_TRUE(
+    nav2_core::sampleTrajectoryPreview(
       points, 0.0, 0.0, false, 0.1, 0.1, preview));
 
   EXPECT_EQ(preview.mode, nav2_core::TrajectoryPreviewMode::SPATIAL_FALLBACK);

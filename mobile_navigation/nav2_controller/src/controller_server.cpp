@@ -575,7 +575,7 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
   speed_plan_diagnostics_publisher_ =
     create_publisher<diagnostic_msgs::msg::DiagnosticArray>(
     "/navigation/speed_plan_diagnostics",
-    rclcpp::QoS(rclcpp::KeepLast(1)).reliable().transient_local());
+    rclcpp::QoS(rclcpp::KeepLast(100)).reliable().transient_local());
 
   get_parameter("enable_nav_monitor_echo", enable_nav_monitor_echo_);
   if (enable_nav_monitor_echo_) {
@@ -640,6 +640,9 @@ ControllerServer::on_activate(const rclcpp_lifecycle::State & /*state*/)
     controller_target_echo_pub_->on_activate();
   }
   invalidateSpeedPlanningContinuity();
+  speed_plan_cycle_id_ = 0;
+  speed_plan_path_id_ = 0;
+  speed_plan_cycle_ = SpeedPlanCycleContext();
   action_server_->activate();
 
   auto node = shared_from_this();
@@ -923,7 +926,18 @@ void ControllerServer::computeControl()
       // ③④ 规划级：每个控制周期先把 global path 裁到机器人投影点，再从最新
       // odom 速度与最新 costmap 重算速度剖面。任何已配置规划阶段失败都零速闭环，
       // 不允许 controller 继续消费上周期缓存轨迹。
-      const bool planning_succeeded = runPlanningPipeline(current_path_);
+      bool planning_succeeded = false;
+      try {
+        planning_succeeded = runPlanningPipeline(current_path_);
+      } catch (const std::exception &) {
+        if (speed_plan_cycle_.active) {
+          speed_plan_cycle_.planning_result = "planning_exception";
+          publishSpeedPlanDiagnostics(
+            false, false, std::numeric_limits<double>::quiet_NaN(),
+            std::numeric_limits<double>::quiet_NaN(), "not_run");
+        }
+        throw;
+      }
       if (!planning_succeeded) {
         publishZeroVelocity();
         if (!loop_rate.sleep()) {
@@ -1019,6 +1033,7 @@ void ControllerServer::setPlannerPath(const nav_msgs::msg::Path & path)
 
   current_path_ = path;
   controller_phase_ = ControllerPhase::TRACK;
+  ++speed_plan_path_id_;
 
   // nav_monitor 任务回显：这里是"一条 path 真正生效"语义上唯一的落点
   // （setPlannerPath 是首条路径与后续每次重规划的共同收敛点），复述一份供
@@ -1068,6 +1083,12 @@ nav2_core::SpeedPlanningBoundary ControllerServer::buildSpeedPlanningBoundary(
   const geometry_msgs::msg::Twist & measured_velocity)
 {
   const auto decision = speed_plan_state_.boundary(path, measured_velocity, now());
+  if (speed_plan_cycle_.active) {
+    speed_plan_cycle_.boundary = decision.boundary;
+    speed_plan_cycle_.boundary_computed = true;
+    speed_plan_cycle_.boundary_reason = decision.reason.has_value() ?
+      nav2_speed_planner::boundaryReasonName(*decision.reason) : "inherited";
+  }
   if (decision.reason.has_value()) {
     RCLCPP_DEBUG_THROTTLE(
       get_logger(), *get_clock(), 1000,
@@ -1161,7 +1182,16 @@ bool ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
     log_pipeline_timing("speed_planner_disabled");
     return true;  // ④ 未配置：灰度回退，controller 走 setPlan 几何路径
   }
+  speed_plan_cycle_ = SpeedPlanCycleContext();
+  speed_plan_cycle_.active = true;
+  speed_plan_cycle_.cycle_id = ++speed_plan_cycle_id_;
+  speed_plan_cycle_.path_id = speed_plan_path_id_;
+  speed_plan_cycle_.planner_id = current_speed_planner_;
   if (path.poses.empty()) {
+    speed_plan_cycle_.planning_result = "empty_input";
+    publishSpeedPlanDiagnostics(
+      false, false, std::numeric_limits<double>::quiet_NaN(),
+      std::numeric_limits<double>::quiet_NaN(), "not_run");
     log_pipeline_timing("empty_input");
     return false;
   }
@@ -1171,6 +1201,10 @@ bool ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
       get_logger(), *get_clock(), 1000,
       "Configured speed planner '%s' is unavailable; halting this control cycle.",
       current_speed_planner_.c_str());
+    speed_plan_cycle_.planning_result = "speed_planner_unavailable";
+    publishSpeedPlanDiagnostics(
+      false, false, std::numeric_limits<double>::quiet_NaN(),
+      std::numeric_limits<double>::quiet_NaN(), "not_run");
     log_pipeline_timing("speed_planner_unavailable");
     return false;
   }
@@ -1200,6 +1234,10 @@ bool ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
       const auto visualization_start = PipelineClock::now();
       publishSpeedPlan(current_trajectory_);
       visualization_ms = elapsed_ms(visualization_start, PipelineClock::now());
+      speed_plan_cycle_.planning_result = "pose_lookup_failed";
+      publishSpeedPlanDiagnostics(
+        false, false, std::numeric_limits<double>::quiet_NaN(),
+        std::numeric_limits<double>::quiet_NaN(), "not_run");
       log_pipeline_timing("pose_lookup_failed");
       return false;
     }
@@ -1210,12 +1248,23 @@ bool ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
       const auto visualization_start = PipelineClock::now();
       publishSpeedPlan(current_trajectory_);
       visualization_ms = elapsed_ms(visualization_start, PipelineClock::now());
+      speed_plan_cycle_.planning_result = "local_planner_failed";
+      publishSpeedPlanDiagnostics(
+        false, false, std::numeric_limits<double>::quiet_NaN(),
+        std::numeric_limits<double>::quiet_NaN(), "not_run");
       log_pipeline_timing("local_planner_failed");
       return false;
     }
     local_planner_ms = elapsed_ms(local_planner_start, PipelineClock::now());
   } else {
     planning_path = path;
+  }
+  speed_plan_cycle_.local_path_point_count = planning_path.poses.size();
+  for (size_t index = 1; index < planning_path.poses.size(); ++index) {
+    const auto & previous = planning_path.poses[index - 1].pose.position;
+    const auto & current = planning_path.poses[index].pose.position;
+    speed_plan_cycle_.local_path_length +=
+      std::hypot(current.x - previous.x, current.y - previous.y);
   }
 
   const auto speed_set_plan_start = PipelineClock::now();
@@ -1225,7 +1274,8 @@ bool ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
   const auto planning_boundary = buildSpeedPlanningBoundary(planning_path, current_velocity);
   current_trajectory_ = sp->second->computeSpeedPlan(planning_path, planning_boundary);
   const auto planning_diagnostics = sp->second->getLastPlanningDiagnostics();
-  publishSpeedPlanDiagnostics(planning_diagnostics, current_speed_planner_);
+  speed_plan_cycle_.terminal = planning_diagnostics;
+  speed_plan_cycle_.terminal_valid = true;
   if (planning_diagnostics.terminal_infeasible) {
     RCLCPP_WARN_THROTTLE(
       get_logger(), *get_clock(), 1000,
@@ -1242,6 +1292,10 @@ bool ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
     const auto visualization_start = PipelineClock::now();
     publishSpeedPlan(current_trajectory_);  // 清除 RViz 旧 marker
     visualization_ms = elapsed_ms(visualization_start, PipelineClock::now());
+    speed_plan_cycle_.planning_result = "speed_planner_failed";
+    publishSpeedPlanDiagnostics(
+      false, false, std::numeric_limits<double>::quiet_NaN(),
+      std::numeric_limits<double>::quiet_NaN(), "not_run");
     log_pipeline_timing("speed_planner_failed");
     return false;
   }
@@ -1273,6 +1327,8 @@ bool ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
   }
   visualization_ms = elapsed_ms(visualization_start, PipelineClock::now());
 
+  speed_plan_cycle_.planning_succeeded = true;
+  speed_plan_cycle_.planning_result = "success";
   log_pipeline_timing("success");
 
   RCLCPP_DEBUG_THROTTLE(
@@ -1448,34 +1504,92 @@ void ControllerServer::publishSpeedPlan(const nav_interfaces::msg::RobotTrajecto
 }
 
 void ControllerServer::publishSpeedPlanDiagnostics(
-  const nav2_core::SpeedPlanningDiagnostics & diagnostics,
-  const std::string & planner_id)
+  bool control_succeeded,
+  bool control_receipt_valid,
+  double consumed_target_velocity,
+  double consumed_target_acceleration,
+  const std::string & control_result)
 {
+  if (!speed_plan_cycle_.active) {
+    return;
+  }
+  const SpeedPlanCycleContext cycle = speed_plan_cycle_;
+  speed_plan_cycle_.active = false;
   if (!speed_plan_diagnostics_publisher_ ||
     !speed_plan_diagnostics_publisher_->is_activated())
   {
     return;
   }
 
+  const bool receipt_valid =
+    control_receipt_valid &&
+    std::isfinite(consumed_target_velocity) &&
+    std::isfinite(consumed_target_acceleration);
   diagnostic_msgs::msg::DiagnosticArray message;
   message.header.stamp = now();
   diagnostic_msgs::msg::DiagnosticStatus status;
-  status.level = diagnostics.terminal_infeasible ?
-    diagnostic_msgs::msg::DiagnosticStatus::WARN :
-    diagnostic_msgs::msg::DiagnosticStatus::OK;
+  if (!cycle.planning_succeeded || !control_succeeded) {
+    status.level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
+  } else if (cycle.terminal_valid && cycle.terminal.terminal_infeasible) {
+    status.level = diagnostic_msgs::msg::DiagnosticStatus::WARN;
+  } else {
+    status.level = diagnostic_msgs::msg::DiagnosticStatus::OK;
+  }
   status.name = "navigation_speed_plan";
-  status.message = diagnostics.terminal_infeasible ? "terminal_infeasible" : "ok";
+  if (!cycle.planning_succeeded) {
+    status.message = cycle.planning_result;
+  } else if (!control_succeeded) {
+    status.message = control_result;
+  } else if (cycle.terminal_valid && cycle.terminal.terminal_infeasible) {
+    status.message = "terminal_infeasible";
+  } else {
+    status.message = "ok";
+  }
   status.hardware_id = "nav2_controller";
 
-  diagnostic_msgs::msg::KeyValue planner;
-  planner.key = "planner";
-  planner.value = planner_id;
-  status.values.push_back(planner);
-
-  diagnostic_msgs::msg::KeyValue terminal_infeasible;
-  terminal_infeasible.key = "terminal_infeasible";
-  terminal_infeasible.value = diagnostics.terminal_infeasible ? "true" : "false";
-  status.values.push_back(terminal_infeasible);
+  const auto add_value = [&status](const std::string & key, const std::string & value) {
+      diagnostic_msgs::msg::KeyValue item;
+      item.key = key;
+      item.value = value;
+      status.values.push_back(std::move(item));
+    };
+  add_value("schema_version", "1");
+  add_value("cycle_id", std::to_string(cycle.cycle_id));
+  add_value("path_id", std::to_string(cycle.path_id));
+  add_value("planning_succeeded", cycle.planning_succeeded ? "true" : "false");
+  add_value("planning_result", cycle.planning_result);
+  add_value("planner", cycle.planner_id);
+  add_value("local_path_point_count", std::to_string(cycle.local_path_point_count));
+  add_value("local_path_length", std::to_string(cycle.local_path_length));
+  add_value("trajectory_point_count", std::to_string(current_trajectory_.points.size()));
+  add_value("boundary_computed", cycle.boundary_computed ? "true" : "false");
+  add_value("boundary_reason", cycle.boundary_reason);
+  if (cycle.boundary_computed) {
+    add_value("boundary_velocity", std::to_string(cycle.boundary.velocity.linear.x));
+    add_value("boundary_acceleration", std::to_string(cycle.boundary.acceleration));
+    add_value(
+      "boundary_acceleration_valid",
+      cycle.boundary.acceleration_valid ? "true" : "false");
+    add_value("boundary_source_age", std::to_string(cycle.boundary.source_age));
+    add_value(
+      "boundary_source_stamp_sec", std::to_string(cycle.boundary.source_stamp.sec));
+    add_value(
+      "boundary_source_stamp_nanosec", std::to_string(cycle.boundary.source_stamp.nanosec));
+  }
+  add_value("terminal_valid", cycle.terminal_valid ? "true" : "false");
+  add_value(
+    "terminal_infeasible",
+    cycle.terminal_valid && cycle.terminal.terminal_infeasible ? "true" : "false");
+  add_value("control_succeeded", control_succeeded ? "true" : "false");
+  add_value("control_result", control_result);
+  add_value("control_receipt_valid", receipt_valid ? "true" : "false");
+  if (receipt_valid) {
+    add_value("control_target_velocity", std::to_string(consumed_target_velocity));
+    add_value("control_target_acceleration", std::to_string(consumed_target_acceleration));
+  }
+  add_value(
+    "controller", control_result == "not_run" ? "not_run" : active_controller_for_log_);
+  add_value("phase", controllerPhaseName(controller_phase_));
 
   message.status.push_back(status);
   speed_plan_diagnostics_publisher_->publish(message);
@@ -2388,11 +2502,17 @@ bool ControllerServer::nearestPlannedSpeed(
 void ControllerServer::computeAndPublishVelocity()
 {
   constexpr double kSlowTimingWarnMs = 100.0;
+  const auto publish_control_failure = [this](const std::string & result) {
+      publishSpeedPlanDiagnostics(
+        false, false, std::numeric_limits<double>::quiet_NaN(),
+        std::numeric_limits<double>::quiet_NaN(), result);
+    };
   geometry_msgs::msg::PoseStamped pose;
   auto t_total_start = std::chrono::high_resolution_clock::now();
 
   auto t_pose_start = std::chrono::high_resolution_clock::now();
   if (!getRobotPose(pose)) {
+    publish_control_failure("pose_lookup_failed");
     throw nav2_core::PlannerException(
             "Failed to obtain robot pose. 获取机器人位姿失败，通常需要检查 TF、定位状态或 costmap frame。");
   }
@@ -2503,8 +2623,10 @@ void ControllerServer::computeAndPublishVelocity()
     if (!checkNearGoalProgress(pose)) {
       if (isWithinGoalCheckerTolerance(pose, true)) {
         publishZeroVelocity();
+        publish_control_failure("goal_tolerance_zero_cmd");
         return;
       }
+      publish_control_failure("near_goal_progress_failed");
       throw nav2_core::PlannerException(
               "Failed to make near-goal progress. 接近目标点后长时间没有足够位移/转角，可能卡住或被约束。");
     }
@@ -2515,6 +2637,7 @@ void ControllerServer::computeAndPublishVelocity()
       progress_checker_->reset();
     }
     if (!progress_checker_->check(pose)) {
+      publish_control_failure("progress_failed");
       throw nav2_core::PlannerException(
               "Failed to make progress. 进度检查失败，机器人在规定时间内没有有效前进，可能被障碍、空路径或控制失败卡住。");
     }
@@ -2554,12 +2677,18 @@ void ControllerServer::computeAndPublishVelocity()
       if ((now() - last_valid_cmd_time_).seconds() > failure_tolerance_ &&
         failure_tolerance_ != -1.0)
       {
+        publish_control_failure("controller_patience_exceeded");
         throw nav2_core::PlannerException(
                 "Controller patience exceeded. 局部控制器在 failure_tolerance 时间内没有生成有效速度，控制耐心超时。");
       }
     } else {
+      publish_control_failure("controller_exception");
       throw nav2_core::PlannerException(e.what());
     }
+  } catch (const std::exception &) {
+    invalidateSpeedPlanningContinuity();
+    publish_control_failure("control_std_exception");
+    throw;
   }
   if (control_succeeded &&
     (controller_phase_ == ControllerPhase::TRACK ||
@@ -2573,6 +2702,9 @@ void ControllerServer::computeAndPublishVelocity()
   }
   updateSpeedPlanningContinuityAfterControl(
     control_succeeded, controller_target_valid, controller_target_v, controller_target_a);
+  publishSpeedPlanDiagnostics(
+    control_succeeded, controller_target_valid, controller_target_v, controller_target_a,
+    control_succeeded ? "success" : "control_failed");
   auto t_compute_end = std::chrono::high_resolution_clock::now();
   auto compute_ms = std::chrono::duration<double, std::milli>(t_compute_end - t_compute_start).count();
 

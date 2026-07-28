@@ -8,6 +8,7 @@ find_package(rclcpp_action REQUIRED)
 find_package(nav2_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
+find_package(diagnostic_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(action_msgs REQUIRED)
 
@@ -30,6 +31,7 @@ set(dependencies
   nav2_msgs
   nav_msgs
   geometry_msgs
+  diagnostic_msgs
   std_msgs
   action_msgs
 )
@@ -70,6 +72,7 @@ install(PROGRAMS
 
 install(FILES
   scripts/nav_task_common.py
+  scripts/motion_diagnostics.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
@@ -79,8 +82,22 @@ install(DIRECTORY include/
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
+  find_package(ament_cmake_gtest REQUIRED)
+  find_package(Python3 REQUIRED COMPONENTS Interpreter)
   set(ament_cmake_copyright_FOUND TRUE)
   ament_lint_auto_find_test_dependencies()
+  add_test(
+    NAME motion_diagnostics
+    COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/test/test_motion_diagnostics.py
+  )
+  set_tests_properties(
+    motion_diagnostics PROPERTIES ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1")
+  ament_add_gtest(test_speed_plan_cycle_diagnostics
+    test/test_speed_plan_cycle_diagnostics.cpp
+  )
+  target_link_libraries(test_speed_plan_cycle_diagnostics ${library_name})
+  ament_target_dependencies(test_speed_plan_cycle_diagnostics diagnostic_msgs)
 endif()
 
 ament_export_include_directories(include)

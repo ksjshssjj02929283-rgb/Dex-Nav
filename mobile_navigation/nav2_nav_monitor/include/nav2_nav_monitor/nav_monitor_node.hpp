@@ -1,5 +1,7 @@
+// Copyright 2026 DEXE Robot Engineer
+
 // 导航任务级监控：以 /navigate_to_pose 的 goal 生命周期为唯一任务边界
-//（controller_server 内部调用会因 BT 恢复重试在同一次导航内重入，
+// （controller_server 内部调用会因 BT 恢复重试在同一次导航内重入，
 // 不能作任务边界）；开始信号靠 bt_navigator 的
 // goal 回显话题（Humble 被动订阅拿不到别的 client 发的 goal 内容），结束/过程
 // 信号复用标准 action 内省话题（status/feedback），零改动。
@@ -8,6 +10,8 @@
 #define NAV2_NAV_MONITOR__NAV_MONITOR_NODE_HPP_
 
 #include <array>
+#include <cstdint>
+#include <limits>
 #include <map>
 #include <optional>
 #include <string>
@@ -16,6 +20,8 @@
 
 #include "rclcpp/rclcpp.hpp"
 #include "action_msgs/msg/goal_status_array.hpp"
+#include "diagnostic_msgs/msg/diagnostic_array.hpp"
+#include "diagnostic_msgs/msg/diagnostic_status.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "geometry_msgs/msg/twist.hpp"
 #include "geometry_msgs/msg/vector3_stamped.hpp"
@@ -26,6 +32,41 @@
 
 namespace nav2_nav_monitor
 {
+
+struct SpeedPlanCycleSample
+{
+  double time{0.0};
+  uint64_t cycle_id{0};
+  uint64_t path_id{0};
+  bool planning_succeeded{false};
+  std::string planning_result;
+  std::string planner;
+  size_t local_path_point_count{0};
+  double local_path_length{0.0};
+  size_t trajectory_point_count{0};
+  bool boundary_computed{false};
+  std::string boundary_reason;
+  double boundary_velocity{std::numeric_limits<double>::quiet_NaN()};
+  double boundary_acceleration{std::numeric_limits<double>::quiet_NaN()};
+  bool boundary_acceleration_valid{false};
+  double boundary_source_age{std::numeric_limits<double>::quiet_NaN()};
+  int32_t boundary_source_stamp_sec{0};
+  uint32_t boundary_source_stamp_nanosec{0};
+  bool terminal_valid{false};
+  bool terminal_infeasible{false};
+  bool control_succeeded{false};
+  std::string control_result;
+  bool control_receipt_valid{false};
+  double control_target_velocity{std::numeric_limits<double>::quiet_NaN()};
+  double control_target_acceleration{std::numeric_limits<double>::quiet_NaN()};
+  std::string controller;
+  std::string phase;
+};
+
+bool parseSpeedPlanCycleStatus(
+  const diagnostic_msgs::msg::DiagnosticStatus & status,
+  double relative_time,
+  SpeedPlanCycleSample & sample);
 
 // 一次导航任务的记录状态，从 goal_pose_echo 到达开始累积，到终态落盘后清空。
 struct NavTaskRecord
@@ -58,6 +99,7 @@ struct NavTaskRecord
   size_t replanning_count = 0;
   double planned_path_length_first = 0.0;
   std::vector<std::vector<std::array<double, 3>>> planned_paths;  // 每条 x,y,yaw
+  std::vector<std::optional<uint64_t>> planned_path_ids;  // 与 planned_paths 索引对齐
 
   std::vector<std::array<double, 4>> passing_path;  // 降频采样 t(相对起始),x,y,yaw
   double passing_length = 0.0;
@@ -70,6 +112,7 @@ struct NavTaskRecord
   std::vector<std::array<double, 3>> cmd_vel_samples;       // t,vx,wz
   std::vector<std::array<double, 3>> smoothed_vel_samples;  // t,vx,wz
   std::vector<std::array<double, 3>> odom_vel_samples;      // t,vx,wz
+  std::vector<SpeedPlanCycleSample> speed_plan_cycles;
 
   // 四阶段切换序列（controller_server setControllerPhase 回显）：t + 阶段名，
   // 供批量分析计算 prepare/align/track/approach 各段时长
@@ -89,6 +132,8 @@ private:
   void smoothedVelCallback(const geometry_msgs::msg::Twist::SharedPtr msg);
   void desiredVelCallback(const geometry_msgs::msg::Twist::SharedPtr msg);
   void controllerTargetCallback(const geometry_msgs::msg::Vector3Stamped::SharedPtr msg);
+  void speedPlanDiagnosticsCallback(
+    const diagnostic_msgs::msg::DiagnosticArray::SharedPtr msg);
   void odomCallback(const nav_msgs::msg::Odometry::SharedPtr msg);
   void phaseEchoCallback(const std_msgs::msg::String::SharedPtr msg);
   void feedbackCallback(
@@ -110,7 +155,12 @@ private:
   std::string smoothed_vel_topic_;
   std::string desired_vel_topic_;
   std::string controller_target_topic_;
+  std::string speed_plan_diagnostics_topic_;
   std::string odom_topic_;
+  double target_acceleration_limit_{0.0};
+  double target_deceleration_limit_{0.0};
+  double target_jerk_limit_{0.0};
+  double motion_limit_tolerance_ratio_{0.05};
 
   std::optional<NavTaskRecord> current_task_;
 
@@ -127,6 +177,8 @@ private:
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr smoothed_vel_sub_;
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr desired_vel_sub_;
   rclcpp::Subscription<geometry_msgs::msg::Vector3Stamped>::SharedPtr controller_target_sub_;
+  rclcpp::Subscription<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr
+    speed_plan_diagnostics_sub_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
   rclcpp::Subscription<std_msgs::msg::String>::SharedPtr phase_echo_sub_;
   rclcpp::Subscription<nav2_msgs::action::NavigateToPose_FeedbackMessage>::SharedPtr
