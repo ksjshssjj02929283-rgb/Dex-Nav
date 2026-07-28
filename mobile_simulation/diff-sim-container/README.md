@@ -15,14 +15,15 @@ diff-sim-container/
       config/real_robot_default_tf.json # 真机 bag 提取的 64 条默认机器人内部 TF
       scripts/gen_w1_diff_sim_urdf.py   # 生成器：可视化 URDF → 仿真 URDF（模型更新后重跑）
       urdf/w1_diff_sim.urdf             # 生成产物（已提交，mesh URI 指向本包）
-      launch/spawn_w1_diff.launch.py    # rsp + spawn
+      src/sim_cmd_vel_bridge.cpp        # 生产 Nav2 速度输出 → Gazebo 底盘话题适配
+      launch/spawn_w1_diff.launch.py    # rsp + spawn + sim_cmd_vel_bridge
 ```
 
 ## 运行
 
 一键入口：`ros2 launch w1_nav2 diff_sim.launch.py`（gzserver/gzclient + W1 + Nav2 + Rviz）。
 全向对应 `ros2 launch w1_nav2 omni_sim.launch.py`。
-Nav2 参数：`nav2_bringup/params/w1_nav2_params_diff_sim.yaml`。
+Nav2 参数：直接复用生产配置 `nav2_bringup/params/w1_nav2_params.yaml`。
 导航模式的静态 `map→odom` 由 `nav2_bringup` 唯一发布；建图模式由 SLAM 发布。
 
 ## W1 模型更新同步
@@ -56,14 +57,26 @@ cd <workspace> && colcon build --packages-select w1_diff_gazebo --parallel-worke
 
 | 话题/TF | 方向 | 说明 |
 |---------|------|------|
-| `/control/cmd_vel` | 订阅 | 差速插件速度指令（Nav2 velocity_smoother 输出）|
+| `/control/cmd_vel_nav` | 订阅 | 生产 `velocity_smoother` 输出；由 `sim_cmd_vel_bridge` 原样转发 |
+| `/control/cmd_vel` | 订阅 | 差速插件底盘速度指令，也是 teleop/直驱接口 |
 | `/feedback/odom` + `odom→base_footprint` TF | 发布 | ground-truth 里程计（话题名对齐实机 chassis 反馈）|
 | `/laser_scan/front`、`/laser_scan/rear` | 发布 | 前后激光（±135°，15Hz）|
 | `/imu/chassis` | 发布 | IMU（100Hz）|
 | 机器人内部 TF | 发布 | 64 条父子变换对齐真机默认 bag；轮 TF 随 joint_states 动态更新 |
 
+差速仿真直接复用生产参数，因此不在 YAML 中改写速度输出话题。仿真适配层负责
+`/control/cmd_vel_nav → /control/cmd_vel`；若出现“已有全局路径但 odom 始终为零”，
+应先确认 `/sim_cmd_vel_bridge` 存在，并检查这两个话题的发布者/订阅者。
+
+生产参数默认使用 `RouteGridPlanner`，并配置
+`route_fallback_planner: "ThetaStarBased"`。当
+`/map_asset_manager/get_route_graph` 不存在且没有已加载路网时，Route planner 返回
+`NO_ROUTE_GRAPH`，PlannerServer 立即转交 Theta Star；后台 RouteGraph 服务发现日志
+不会阻塞本次规划。后续局部跟踪仍由当前 controller（例如 MPPI）执行。
+
 ## 关键参数与物理简化（详见生成器 docstring）
 
 - wheel_separation = 0.5078 / wheel_radius = 0.063（取自 URDF 几何链）
-- 上身 40 关节按真机默认姿态固定；碰撞体 = 2 轮圆柱 + 底盘盒（0.70×0.50×0.14，顶面低于 ray sensor 物理扫描平面，防自扫）+ 4 无摩擦万向球
+- 上身 40 关节按真机默认姿态固定；碰撞体 = 2 轮圆柱 + 底盘盒（0.70×0.50×0.14，顶面低于 ray sensor 物理扫描平面，防自扫）+ 前后中心线 2 个无摩擦万向球
+- 左右驱动轮与前后中心线万向球底面共面，构成菱形四点支撑；避免四角 skid 共面时六点接触卸载驱动轮，也避免抬高 skid 后底盘绕轮轴产生静态俯仰
 - 惯量 = 2 轮原值 + 底盘 60kg 集中盒惯量（可视化惯量直接进物理引擎会 NaN）

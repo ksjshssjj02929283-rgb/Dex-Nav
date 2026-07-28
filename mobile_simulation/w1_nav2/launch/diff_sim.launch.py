@@ -2,7 +2,7 @@
 """W1 双轮差速仿真一键启动：Gazebo + W1 + RGBD + Nav2 + Rviz.
 
 机器人模型来自 diff-sim-container/w1_diff_gazebo（自包含，内置 mesh）。
-Nav2 参数：w1_nav2_params_diff_sim.yaml（实机差速参数的仿真适配版）。
+Nav2 参数：直接复用实机 w1_nav2_params.yaml，保持差速仿真与生产配置一致。
 """
 
 import os
@@ -47,7 +47,7 @@ def generate_launch_description():
                                'sim_warehouse_v1', 'slam', 'map.yaml')
     default_params = os.path.join(
         get_package_share_directory('nav2_bringup'), 'params',
-        'w1_nav2_params_diff_sim.yaml')
+        'w1_nav2_params.yaml')
     declare_use_sim_time = DeclareLaunchArgument(
         'use_sim_time', default_value='true',
         description='Use Gazebo simulation clock')

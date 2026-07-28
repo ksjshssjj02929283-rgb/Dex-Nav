@@ -38,10 +38,20 @@ set(dependencies
 )
 
 set(library_name nav2_speed_planner)
+set(support_library_name nav2_speed_plan_state)
 
-# 单一 library：抽象基类（含恒加速度参考内核）+ 两个 pluginlib 插件。
+# SpeedPlanState is linked by controller_server. Keep it outside the plugin
+# library so loading controller_server cannot preload the plugin factories
+# before pluginlib creates its ClassLoader.
+add_library(${support_library_name} SHARED
+  src/speed_plan_state.cpp)
+
+ament_target_dependencies(${support_library_name}
+  ${dependencies}
+)
+
+# pluginlib-only library: it must only be opened by pluginlib.
 add_library(${library_name} SHARED
-  src/speed_plan_state.cpp
   src/speed_planner_base.cpp
   src/trapezoidal_speed_planner.cpp
   src/scurve_speed_planner.cpp)
@@ -66,7 +76,7 @@ install(PROGRAMS
   DESTINATION lib/${PROJECT_NAME}
 )
 
-install(TARGETS ${library_name}
+install(TARGETS ${support_library_name} ${library_name}
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin
@@ -85,7 +95,7 @@ if(BUILD_TESTING)
   # S 型速度曲线（Ruckig）纯算法单测（jerk≤max_jerk / 加速度有界 / 不超包络 / 停车）。
   find_package(ament_cmake_gtest REQUIRED)
   ament_add_gtest(test_speed_plan_state test/test_speed_plan_state.cpp)
-  target_link_libraries(test_speed_plan_state ${library_name})
+  target_link_libraries(test_speed_plan_state ${support_library_name})
   ament_target_dependencies(test_speed_plan_state ${dependencies})
 
   ament_add_gtest(test_scurve_profile test/test_scurve_profile.cpp)
@@ -99,7 +109,9 @@ if(BUILD_TESTING)
 endif()
 
 ament_export_include_directories(include)
-ament_export_libraries(${library_name})
+# Consumers only need the non-plugin state library. Exporting the plugin
+# library would make component containers preload it and lose its factories.
+ament_export_libraries(${support_library_name})
 ament_export_dependencies(${dependencies})
 
 pluginlib_export_plugin_description_file(nav2_core nav2_speed_planner.xml)

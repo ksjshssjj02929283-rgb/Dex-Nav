@@ -109,7 +109,8 @@ void RouteGraphLoader::onTimer()
   // Non-blocking readiness check — inspects the local discovery cache only.
   if (!route_graph_client_->service_is_ready()) {
     RCLCPP_INFO_THROTTLE(logger, *node->get_clock(), 5000,
-      "RouteGraphLoader: waiting for %s",
+      "RouteGraphLoader: waiting for %s without blocking planning requests; "
+      "RouteGridPlanner will request its configured fallback until the service is ready",
       route_graph_srv_name_.c_str());
     return;
   }

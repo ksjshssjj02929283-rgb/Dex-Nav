@@ -12,6 +12,7 @@
   <exec_depend>nav2_bringup</exec_depend>
   <exec_depend>aws_robomaker_small_warehouse_world</exec_depend>
   <exec_depend>swerve_robot_gazebo</exec_depend>
+  <exec_depend>w1_diff_gazebo</exec_depend>
   <exec_depend>dexe_sensor_process</exec_depend>
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
