@@ -60,7 +60,7 @@ public:
    * @param v_end   路径终点目标速度：仅当停止点为路径终点时生效；
    *                停止点为障碍（零包络点）时内部强制 0
    */
-  static void generateRuckigProfile(
+  static bool generateRuckigProfile(
     const std::vector<double> & v_env,
     const std::vector<double> & arc_s,
     double v_start,

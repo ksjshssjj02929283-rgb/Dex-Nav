@@ -222,16 +222,14 @@ BoundaryDecision SpeedPlanState::boundary(
   const auto & second = accepted_trajectory_.points[best_segment + 1];
   if (!std::isfinite(first.longitudinal_velocity) ||
     !std::isfinite(second.longitudinal_velocity) ||
-    !std::isfinite(first.acceleration) ||
-    !std::isfinite(second.acceleration))
+    !std::isfinite(accepted_target_velocity_) ||
+    !std::isfinite(accepted_target_acceleration_))
   {
     return reseed(measured_velocity, BoundaryReason::INVALID_NUMERIC);
   }
   const double sampled_velocity = first.longitudinal_velocity + best_ratio *
     (second.longitudinal_velocity - first.longitudinal_velocity);
-  const double sampled_acceleration = first.acceleration + best_ratio *
-    (second.acceleration - first.acceleration);
-  if (!std::isfinite(sampled_velocity) || !std::isfinite(sampled_acceleration)) {
+  if (!std::isfinite(sampled_velocity)) {
     return reseed(measured_velocity, BoundaryReason::INVALID_NUMERIC);
   }
   if (std::fabs(measured_velocity.linear.x - sampled_velocity) >
@@ -242,7 +240,10 @@ BoundaryDecision SpeedPlanState::boundary(
 
   BoundaryDecision decision;
   decision.boundary.velocity = measured_velocity;
-  decision.boundary.acceleration = sampled_acceleration;
+  // Velocity is always re-anchored to the latest odometry. Acceleration must
+  // continue from the exact preview target consumed by the controller, not
+  // from a spatial resample at the next local path origin.
+  decision.boundary.acceleration = accepted_target_acceleration_;
   decision.boundary.acceleration_valid = true;
   decision.boundary.source_stamp = accepted_trajectory_time_;
   decision.boundary.source_age = age;
@@ -251,14 +252,21 @@ BoundaryDecision SpeedPlanState::boundary(
 
 void SpeedPlanState::accept(
   const nav_interfaces::msg::RobotTrajectory & trajectory,
+  double consumed_target_velocity,
+  double consumed_target_acceleration,
   const rclcpp::Time & now)
 {
   std::lock_guard<std::mutex> lock(mutex_);
-  if (trajectory.points.empty()) {
+  if (trajectory.points.empty() ||
+    !std::isfinite(consumed_target_velocity) ||
+    !std::isfinite(consumed_target_acceleration))
+  {
     resetUnlocked(BoundaryReason::INVALID_NUMERIC);
     return;
   }
   accepted_trajectory_ = trajectory;
+  accepted_target_velocity_ = consumed_target_velocity;
+  accepted_target_acceleration_ = consumed_target_acceleration;
   accepted_trajectory_time_ = now;
   valid_ = true;
 }
@@ -278,6 +286,8 @@ bool SpeedPlanState::valid() const
 void SpeedPlanState::resetUnlocked(BoundaryReason reason)
 {
   accepted_trajectory_ = nav_interfaces::msg::RobotTrajectory();
+  accepted_target_velocity_ = 0.0;
+  accepted_target_acceleration_ = 0.0;
   accepted_trajectory_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
   valid_ = false;
   invalidation_reason_ = reason;

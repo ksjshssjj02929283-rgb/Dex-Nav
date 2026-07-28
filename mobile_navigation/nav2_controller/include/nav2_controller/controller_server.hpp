@@ -186,6 +186,9 @@ protected:
    * @param trajectory 速度规划输出轨迹
    */
   void publishSpeedPlan(const nav_interfaces::msg::RobotTrajectory & trajectory);
+  void publishSpeedPlanDiagnostics(
+    const nav2_core::SpeedPlanningDiagnostics & diagnostics,
+    const std::string & planner_id);
 
   /**
    * @brief 查询当前轨迹上距机器人最近点的规划速度（期望速度）。
@@ -197,7 +200,8 @@ protected:
     const nav_msgs::msg::Path & path,
     const geometry_msgs::msg::Twist & measured_velocity);
   void updateSpeedPlanningContinuityAfterControl(
-    bool control_succeeded, bool trajectory_target_consumed);
+    bool control_succeeded, bool trajectory_target_consumed,
+    double consumed_target_velocity, double consumed_target_acceleration);
   void invalidateSpeedPlanningContinuity();
   /**
    * @brief Calculates velocity and publishes to "cmd_vel" topic
@@ -388,6 +392,8 @@ protected:
     goal_error_publisher_;
   rclcpp_lifecycle::LifecyclePublisher<visualization_msgs::msg::MarkerArray>::SharedPtr
     speed_plan_publisher_;
+  rclcpp_lifecycle::LifecyclePublisher<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr
+    speed_plan_diagnostics_publisher_;
   rclcpp::Subscription<nav2_msgs::msg::SpeedLimit>::SharedPtr speed_limit_sub_;
 
   // nav_monitor 任务回显：setPlannerPath() 里每次真正生效的 global path 复述一份，

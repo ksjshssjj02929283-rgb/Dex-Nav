@@ -39,6 +39,33 @@ bool orientationsEquivalent(
     std::pow(lhs.z + rhs.z, 2) + std::pow(lhs.w + rhs.w, 2);
   return std::min(direct_distance_sq, negated_distance_sq) <= kGeometryEpsilon;
 }
+
+TrajPointWork interpolatePoint(
+  const TrajPointWork & from, const TrajPointWork & to, double ratio)
+{
+  ratio = std::clamp(ratio, 0.0, 1.0);
+  TrajPointWork out = from;
+  out.pose.pose.position.x =
+    from.pose.pose.position.x + (to.pose.pose.position.x - from.pose.pose.position.x) * ratio;
+  out.pose.pose.position.y =
+    from.pose.pose.position.y + (to.pose.pose.position.y - from.pose.pose.position.y) * ratio;
+  out.pose.pose.position.z =
+    from.pose.pose.position.z + (to.pose.pose.position.z - from.pose.pose.position.z) * ratio;
+  out.pose.pose.orientation = ratio < 0.5 ? from.pose.pose.orientation : to.pose.pose.orientation;
+  out.speed_limit = std::min(from.speed_limit, to.speed_limit);
+  if (from.speed_hint > 0.0f && to.speed_hint > 0.0f) {
+    out.speed_hint = std::min(from.speed_hint, to.speed_hint);
+  } else {
+    out.speed_hint = std::max(from.speed_hint, to.speed_hint);
+  }
+  if (from.region_type != to.region_type) {
+    out.region_type.clear();
+  }
+  if (from.segment_id != to.segment_id) {
+    out.segment_id.clear();
+  }
+  return out;
+}
 }  // namespace
 
 // ============================ 生命周期 ============================
@@ -165,6 +192,7 @@ nav_interfaces::msg::RobotTrajectory SpeedPlannerBase::computeSpeedPlan(
   const nav_msgs::msg::Path & path,
   const nav2_core::SpeedPlanningBoundary & boundary)
 {
+  last_planning_diagnostics_ = nav2_core::SpeedPlanningDiagnostics();
   using TimingClock = std::chrono::steady_clock;
   constexpr double kSlowSpeedPlannerWarnMs = 20.0;
   const auto total_start = TimingClock::now();
@@ -297,6 +325,9 @@ nav_interfaces::msg::RobotTrajectory SpeedPlannerBase::computeSpeedPlan(
     p.speed_limit = init_limit;
   }
 
+  insertEndSpeedBoundary(work);
+  work_points = work.size();
+
   curr_path_length_ = path_length;
   points_interval_ = curr_path_length_ / static_cast<double>(work.size() - 1);
 
@@ -365,6 +396,11 @@ nav_interfaces::msg::RobotTrajectory SpeedPlannerBase::computeSpeedPlan(
 
   log_timing("success");
   return traj;
+}
+
+nav2_core::SpeedPlanningDiagnostics SpeedPlannerBase::getLastPlanningDiagnostics() const
+{
+  return last_planning_diagnostics_;
 }
 
 // ============================ Phase A 约束包络 ============================
@@ -652,17 +688,53 @@ void SpeedPlannerBase::applyCurvatureConstraint(
   }
 }
 
+void SpeedPlannerBase::insertEndSpeedBoundary(std::vector<TrajPointWork> & path) const
+{
+  const double v_creep = std::max(end_speed_, 0.0);
+  if (path.size() < 2 || stop_distance_ <= 0.0 || v_creep < 1e-3) {
+    return;
+  }
+
+  const std::vector<double> arc_s = computeCumulativeArcLengths(path);
+  const double total_s = arc_s.back();
+  const double boundary_s = total_s - stop_distance_;
+  if (boundary_s <= kGeometryEpsilon || boundary_s >= total_s - kGeometryEpsilon) {
+    return;
+  }
+
+  constexpr double kBoundaryTolerance = 1e-4;
+  auto upper = std::lower_bound(arc_s.begin(), arc_s.end(), boundary_s);
+  if (upper != arc_s.end() && std::fabs(*upper - boundary_s) <= kBoundaryTolerance) {
+    return;
+  }
+  if (upper != arc_s.begin() && std::fabs(*(upper - 1) - boundary_s) <= kBoundaryTolerance) {
+    return;
+  }
+
+  const size_t upper_index = static_cast<size_t>(std::distance(arc_s.begin(), upper));
+  if (upper_index == 0 || upper_index >= path.size()) {
+    return;
+  }
+  const double segment_length = arc_s[upper_index] - arc_s[upper_index - 1];
+  if (segment_length <= kGeometryEpsilon) {
+    return;
+  }
+  const double ratio = (boundary_s - arc_s[upper_index - 1]) / segment_length;
+  path.insert(
+    path.begin() + static_cast<std::ptrdiff_t>(upper_index),
+    interpolatePoint(path[upper_index - 1], path[upper_index], ratio));
+}
+
 void SpeedPlannerBase::applyEndSpeedConstraint(std::vector<TrajPointWork> & path)
 {
-  // A4 末端蠕行区：距终点 stop_distance_ 内包络压到 end_speed_——低速到点保证精度。
-  // min 保留障碍零速；end_speed_ < 1e-3（硬停配置）时无蠕行区（终点收敛交给 Phase B）。
+  // A4 只约束未来点。index 0 是当前实测边界，不能被 stop zone 改写。
   const double v_creep = std::max(end_speed_, 0.0);
   if (path.size() < 2 || stop_distance_ <= 0.0 || v_creep < 1e-3) {
     return;
   }
   const std::vector<double> arc_s = computeCumulativeArcLengths(path);
-  for (size_t i = path.size(); i-- > 0;) {
-    if (arc_s.back() - arc_s[i] > stop_distance_) {
+  for (size_t i = path.size(); i-- > 1; ) {
+    if (arc_s.back() - arc_s[i] > stop_distance_ + 1e-6) {
       break;
     }
     path[i].speed_limit = std::min(path[i].speed_limit, v_creep);

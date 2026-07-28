@@ -59,10 +59,14 @@ rclcpp::Time testTime()
   return rclcpp::Time(10, 0, RCL_ROS_TIME);
 }
 
-void acceptRecentTrajectory(SpeedPlanState & state)
+void acceptRecentTrajectory(
+  SpeedPlanState & state,
+  double consumed_target_velocity = 0.35,
+  double consumed_target_acceleration = -0.2)
 {
   state.accept(
-    makeTrajectory(), testTime() - rclcpp::Duration::from_seconds(0.1));
+    makeTrajectory(), consumed_target_velocity, consumed_target_acceleration,
+    testTime() - rclcpp::Duration::from_seconds(0.1));
 }
 
 void expectReason(const BoundaryDecision & decision, BoundaryReason reason)
@@ -96,7 +100,8 @@ TEST(SpeedPlanStateTest, RejectsExpiredTrajectory)
 {
   SpeedPlanState state;
   state.accept(
-    makeTrajectory(), testTime() - rclcpp::Duration::from_seconds(0.6));
+    makeTrajectory(), 0.35, -0.2,
+    testTime() - rclcpp::Duration::from_seconds(0.6));
 
   expectReason(
     state.boundary(makePath(), makeVelocity(), testTime()),
@@ -176,7 +181,7 @@ TEST(SpeedPlanStateTest, RejectsInvalidNumericInput)
     BoundaryReason::INVALID_NUMERIC);
 }
 
-TEST(SpeedPlanStateTest, InterpolatesAcceptedAccelerationForCompatiblePath)
+TEST(SpeedPlanStateTest, InheritsConsumedTargetAccelerationForCompatiblePath)
 {
   SpeedPlanState state;
   acceptRecentTrajectory(state);
@@ -185,7 +190,7 @@ TEST(SpeedPlanStateTest, InterpolatesAcceptedAccelerationForCompatiblePath)
 
   EXPECT_TRUE(decision.inherited());
   EXPECT_FALSE(decision.reason.has_value());
-  EXPECT_NEAR(decision.boundary.acceleration, 0.15, 1e-9);
+  EXPECT_NEAR(decision.boundary.acceleration, -0.2, 1e-9);
   EXPECT_NEAR(decision.boundary.source_age, 0.1, 1e-9);
   EXPECT_NEAR(decision.boundary.velocity.linear.x, 0.3, 1e-9);
 }
@@ -193,7 +198,19 @@ TEST(SpeedPlanStateTest, InterpolatesAcceptedAccelerationForCompatiblePath)
 TEST(SpeedPlanStateTest, EmptyAcceptanceFailsClosed)
 {
   SpeedPlanState state;
-  state.accept(nav_interfaces::msg::RobotTrajectory(), testTime());
+  state.accept(nav_interfaces::msg::RobotTrajectory(), 0.35, -0.2, testTime());
+
+  EXPECT_FALSE(state.valid());
+  expectReason(
+    state.boundary(makePath(), makeVelocity(), testTime()),
+    BoundaryReason::INVALID_NUMERIC);
+}
+
+TEST(SpeedPlanStateTest, InvalidConsumedTargetFailsClosed)
+{
+  SpeedPlanState state;
+  state.accept(
+    makeTrajectory(), 0.35, std::numeric_limits<double>::quiet_NaN(), testTime());
 
   EXPECT_FALSE(state.valid());
   expectReason(

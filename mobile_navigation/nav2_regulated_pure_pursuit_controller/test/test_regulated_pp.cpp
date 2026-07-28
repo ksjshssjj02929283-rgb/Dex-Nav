@@ -95,10 +95,13 @@ public:
   }
 
   void setTrajSpeedPointsForTest(
-    const std::vector<TrajSpeedPoint> & pts, double lookahead)
+    const std::vector<TrajSpeedPoint> & pts, double lookahead,
+    double time_lookahead = 0.0)
   {
     traj_speed_points_ = pts;
     traj_speed_lookahead_ = lookahead;
+    trajectory_time_valid_ = nav2_core::hasValidRelativeTime(traj_speed_points_);
+    traj_time_lookahead_ = time_lookahead;
   }
 
   bool nearestTrajectorySpeedWrapper(
@@ -671,6 +674,25 @@ TEST(RegulatedPurePursuitTest, nearestTrajectorySpeedExcludesStateStamp)
   ctrl->setTrajSpeedPointsForTest({{0.0, 0.0, 0.075, 0.0}}, 0.1);
   EXPECT_TRUE(ctrl->nearestTrajectorySpeedWrapper(pose, v, a));
   EXPECT_NEAR(v, 0.075, 1e-6);
+}
+
+TEST(RegulatedPurePursuitTest, trajectorySpeedUsesTimeAlignedInterpolation)
+{
+  auto ctrl = std::make_shared<BasicAPIRPP>();
+  ctrl->setTrajSpeedPointsForTest(
+    {{0.00, 0.0, 0.60, -0.10, 0.00},
+      {0.02, 0.0, 0.55, -0.20, 0.04},
+      {0.06, 0.0, 0.45, -0.40, 0.12},
+      {0.10, 0.0, 0.35, -0.40, 0.20}},
+    0.1, 0.08);
+
+  geometry_msgs::msg::PoseStamped pose;
+  pose.pose.position.x = 0.01;
+  double velocity = 0.0;
+  double acceleration = 0.0;
+  ASSERT_TRUE(ctrl->nearestTrajectorySpeedWrapper(pose, velocity, acceleration));
+  EXPECT_NEAR(velocity, 0.475, 1e-9);
+  EXPECT_NEAR(acceleration, -0.35, 1e-9);
 }
 
 TEST(RegulatedPurePursuitTest, trackLinearVelocityCommandIntegrator)

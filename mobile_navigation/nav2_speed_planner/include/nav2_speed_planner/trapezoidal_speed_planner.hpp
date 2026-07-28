@@ -46,6 +46,10 @@ protected:
   /// 加速规划（前向 pass）：起步 + 一切低速区出口的再加速坡道（min 写入）。
   void computeAccelPlan(
     std::vector<TrajPointWork> & work, const std::vector<double> & arc_s) const;
+
+  /// stop zone 目标不可达时抬到当前减速度能力下的最低可达速度。
+  void enforceTerminalReachability(
+    std::vector<TrajPointWork> & work, const std::vector<double> & arc_s) const;
 };
 
 }  // namespace nav2_speed_planner

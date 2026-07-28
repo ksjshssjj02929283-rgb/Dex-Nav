@@ -7,14 +7,17 @@
 // 同时把每条剖面导出 CSV 到 /tmp/speed_plan_test/，供 plot_speed_profiles.py 画图。
 #include <gtest/gtest.h>
 
+#include <sys/stat.h>
+
 #include <cmath>
 #include <cstdio>
+#include <limits>
 #include <string>
-#include <sys/stat.h>
 #include <vector>
 
 #include "nav2_speed_planner/trapezoidal_speed_planner.hpp"
 #include "nav2_speed_planner/scurve_speed_planner.hpp"
+#include "nav2_core/trajectory_preview.hpp"
 
 namespace
 {
@@ -38,6 +41,31 @@ nav_msgs::msg::Path makeStraightPath(double length)
     ps.pose.position.x = i * kPointStep;
     ps.pose.orientation.w = 1.0;
     path.poses.push_back(ps);
+  }
+  return path;
+}
+
+nav_msgs::msg::Path makeTwoPointPath(double length)
+{
+  nav_msgs::msg::Path path;
+  path.header.frame_id = "map";
+  for (double x : {0.0, length}) {
+    geometry_msgs::msg::PoseStamped ps;
+    ps.header.frame_id = "map";
+    ps.pose.position.x = x;
+    ps.pose.orientation.w = 1.0;
+    path.poses.push_back(ps);
+  }
+  return path;
+}
+
+nav_msgs::msg::Path makeStraightPathToExactGoal(double length)
+{
+  auto path = makeStraightPath(length);
+  if (path.poses.back().pose.position.x < length - 1e-9) {
+    auto goal = path.poses.back();
+    goal.pose.position.x = length;
+    path.poses.push_back(goal);
   }
   return path;
 }
@@ -67,6 +95,17 @@ public:
     this->stop_distance_ = kStopDistance;
     this->collision_stop_distance_ = 0.2;
     // costmap_ros_ 为空 → isObstacleAt 恒 false → A1 跳过（离线纯算法测试）
+  }
+  void setTerminalParams(double end_speed, double stop_distance, double decel = kDecel)
+  {
+    this->end_speed_ = end_speed;
+    this->stop_distance_ = stop_distance;
+    this->decel_ = decel;
+  }
+  void setMotionLimits(double max_speed, double accel)
+  {
+    this->max_speed_ = max_speed;
+    this->accel_ = accel;
   }
   nav_interfaces::msg::RobotTrajectory run(const nav_msgs::msg::Path & path, double v0)
   {
@@ -234,6 +273,161 @@ TEST(SpeedProfileRecedingHorizon, SCurveStartsAtMeasuredSpeedOnPrunedPath)
   ASSERT_GE(traj.points.size(), 2u);
   EXPECT_NEAR(traj.points.front().pose.pose.position.x, 2.0, 1e-9);
   EXPECT_NEAR(traj.points.front().longitudinal_velocity, 0.23, 1e-9);
+}
+
+TEST(SpeedProfileTerminalPath, StopBoundaryIsInsertedAtExactDistance)
+{
+  TestablePlanner<nav2_speed_planner::TrapezoidalSpeedPlanner> planner;
+  planner.setSharedParams();
+  planner.setTerminalParams(0.05, 0.05, -0.4);
+  const auto path = makeStraightPath(0.31);
+  const auto traj = planner.run(path, 0.0);
+
+  const auto boundary = std::find_if(
+    traj.points.begin(), traj.points.end(), [](const auto & point) {
+      return std::fabs(point.pose.pose.position.x - 0.25) < 1e-6;
+    });
+  ASSERT_NE(boundary, traj.points.end());
+  EXPECT_EQ(boundary->region_type, "stop_zone");
+  EXPECT_NEAR(boundary->longitudinal_velocity, 0.05, 1e-6);
+  EXPECT_EQ(traj.points.back().pose, path.poses.back());
+}
+
+TEST(SpeedProfileTerminalPath, TrapezoidalMovingStartUsesReachableBraking)
+{
+  TestablePlanner<nav2_speed_planner::TrapezoidalSpeedPlanner> planner;
+  planner.setSharedParams();
+  planner.setTerminalParams(0.05, 0.05, -0.4);
+  constexpr double kLength = 0.0225;
+  constexpr double kStartSpeed = 0.325;
+  const auto traj = planner.run(makeTwoPointPath(kLength), kStartSpeed, -0.4);
+
+  ASSERT_EQ(traj.points.size(), 2u);
+  EXPECT_NEAR(traj.points.front().longitudinal_velocity, kStartSpeed, 1e-9);
+  EXPECT_GT(traj.points.back().longitudinal_velocity, 0.05);
+  const double implied_decel =
+    (kStartSpeed * kStartSpeed -
+    traj.points.back().longitudinal_velocity * traj.points.back().longitudinal_velocity) /
+    (2.0 * kLength);
+  EXPECT_LE(implied_decel, 0.4 + 1e-6);
+}
+
+TEST(SpeedProfileTerminalPath, SCurveMovingStartUsesReachableBraking)
+{
+  TestableSCurve planner;
+  planner.setSharedParams();
+  planner.setSCurveParams();
+  planner.setTerminalParams(0.05, 0.05, -0.4);
+  constexpr double kLength = 0.0225;
+  constexpr double kStartSpeed = 0.325;
+  const auto traj = planner.run(makeTwoPointPath(kLength), kStartSpeed, -0.4);
+
+  ASSERT_EQ(traj.points.size(), 2u);
+  EXPECT_NEAR(traj.points.front().longitudinal_velocity, kStartSpeed, 1e-9);
+  EXPECT_NEAR(traj.points.front().acceleration, -0.4, 1e-9);
+  EXPECT_GT(traj.points.back().longitudinal_velocity, 0.05);
+  EXPECT_GE(traj.points.back().acceleration, -0.4 - 1e-6);
+  EXPECT_GT(
+    traj.points.back().relative_time.sec +
+    traj.points.back().relative_time.nanosec * 1e-9, 0.0);
+  const double implied_decel =
+    (kStartSpeed * kStartSpeed -
+    traj.points.back().longitudinal_velocity * traj.points.back().longitudinal_velocity) /
+    (2.0 * kLength);
+  EXPECT_LE(implied_decel, 0.4 + 0.01);
+  EXPECT_TRUE(planner.getLastPlanningDiagnostics().terminal_infeasible);
+}
+
+TEST(SpeedProfileTerminalPath, SCurveW1MovingStartDistanceMatrixIsReachable)
+{
+  TestableSCurve planner;
+  planner.setSharedParams();
+  planner.setSCurveParams();
+  planner.setTerminalParams(0.05, 0.05, -0.4);
+
+  for (double length : {0.02, 0.05, 0.08, 0.13}) {
+    SCOPED_TRACE("remaining=" + std::to_string(length));
+    const auto traj = planner.run(makeStraightPathToExactGoal(length), 0.325, -0.4);
+    ASSERT_GE(traj.points.size(), 2u);
+    EXPECT_NEAR(traj.points.front().longitudinal_velocity, 0.325, 1e-9);
+    EXPECT_NEAR(traj.points.front().acceleration, -0.4, 1e-9);
+    for (size_t i = 0; i + 1 < traj.points.size(); ++i) {
+      const auto & p0 = traj.points[i];
+      const auto & p1 = traj.points[i + 1];
+      const double ds = p1.pose.pose.position.x - p0.pose.pose.position.x;
+      ASSERT_GT(ds, 0.0);
+      const double implied_decel =
+        (p0.longitudinal_velocity * p0.longitudinal_velocity -
+        p1.longitudinal_velocity * p1.longitudinal_velocity) / (2.0 * ds);
+      EXPECT_LE(implied_decel, 0.4 + 0.01);
+      EXPECT_GE(p1.acceleration, -0.4 - 1e-6);
+      EXPECT_LE(p1.acceleration, 0.5 + 1e-6);
+    }
+  }
+}
+
+TEST(SpeedProfileRecedingHorizon, SCurveTenHertzTimePreviewReachesStopZoneSpeed)
+{
+  TestableSCurve planner;
+  planner.setSharedParams();
+  planner.setSCurveParams();
+  planner.setMotionLimits(0.6, 0.5);
+  planner.setTerminalParams(0.05, 0.05, -0.4);
+  constexpr double kControllerDt = 0.1;
+  constexpr double kGoal = 2.0;
+  double position = 0.0;
+  double velocity = 0.6;
+  double acceleration = 0.0;
+  bool entered_stop_zone = false;
+  double terminal_min_velocity = std::numeric_limits<double>::infinity();
+
+  for (int cycle = 0; cycle < 100 && position < kGoal - 0.005; ++cycle) {
+    const double remaining = kGoal - position;
+    const auto traj = planner.run(
+      makeStraightPathToExactGoal(remaining), velocity, acceleration);
+    ASSERT_GE(traj.points.size(), 2u);
+    EXPECT_FALSE(planner.getLastPlanningDiagnostics().terminal_infeasible)
+      << "normal long path became infeasible at cycle " << cycle <<
+      " remaining=" << remaining << " input_v=" << velocity <<
+      " input_a=" << acceleration;
+
+    std::vector<nav2_core::TrajectoryPreviewPoint> preview_points;
+    preview_points.reserve(traj.points.size());
+    for (const auto & point : traj.points) {
+      preview_points.push_back(
+      {
+        point.pose.pose.position.x, point.pose.pose.position.y,
+        point.longitudinal_velocity, point.acceleration,
+        nav2_core::durationToSeconds(point.relative_time)});
+    }
+    ASSERT_TRUE(nav2_core::hasValidRelativeTime(preview_points));
+    nav2_core::TrajectoryPreview preview;
+    ASSERT_TRUE(
+      nav2_core::sampleTrajectoryPreview(
+        preview_points, 0.0, 0.0, true, kControllerDt, 0.1, preview));
+
+    const double next_position = position + 0.5 * (velocity + preview.velocity) * kControllerDt;
+    if (!entered_stop_zone && next_position >= kGoal - 0.05) {
+      entered_stop_zone = true;
+      EXPECT_LE(preview.velocity, 0.06);
+    }
+    if (next_position >= kGoal - 0.15) {
+      terminal_min_velocity = std::min(terminal_min_velocity, preview.velocity);
+      EXPECT_GE(preview.velocity, 0.049)
+        << "terminal velocity undershot stop_speed at cycle " << cycle <<
+        " input_v=" << velocity << " input_a=" << acceleration <<
+        " preview_a=" << preview.acceleration;
+      if (preview.velocity <= 0.051) {
+        EXPECT_LE(preview.acceleration, 1e-3)
+          << "terminal profile must not rebound with positive acceleration";
+      }
+    }
+    position = next_position;
+    velocity = preview.velocity;
+    acceleration = preview.acceleration;
+  }
+  EXPECT_TRUE(entered_stop_zone);
+  EXPECT_GE(terminal_min_velocity, 0.049);
 }
 
 TEST(SpeedProfileTerminalPath, IdenticalTwoPointGoalPathIsPreservedAndStopped)

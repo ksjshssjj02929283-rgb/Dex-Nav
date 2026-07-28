@@ -104,7 +104,6 @@ ControllerServer::ControllerServer(const rclcpp::NodeOptions & options)
   // ④ 速度规划：默认不启用（空列表 + 空选择器），YAML 显式配置后生效
   declare_parameter("speed_planner_plugins", std::vector<std::string>());
   declare_parameter("current_speed_planner", std::string(""));
-  // 剖面调试日志目录（空=关闭；~ 展开为 HOME；文件按启动时间戳命名）
   declare_parameter("speed_planning_boundary.max_age", 0.5);
   declare_parameter("speed_planning_boundary.max_spatial_error", 0.15);
   declare_parameter("speed_planning_boundary.max_velocity_error", 0.25);
@@ -573,6 +572,10 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
   speed_plan_publisher_ = create_publisher<visualization_msgs::msg::MarkerArray>(
     "/navigation/speed_plan",
     rclcpp::QoS(rclcpp::KeepLast(1)).reliable().transient_local());
+  speed_plan_diagnostics_publisher_ =
+    create_publisher<diagnostic_msgs::msg::DiagnosticArray>(
+    "/navigation/speed_plan_diagnostics",
+    rclcpp::QoS(rclcpp::KeepLast(1)).reliable().transient_local());
 
   get_parameter("enable_nav_monitor_echo", enable_nav_monitor_echo_);
   if (enable_nav_monitor_echo_) {
@@ -623,6 +626,7 @@ ControllerServer::on_activate(const rclcpp_lifecycle::State & /*state*/)
   vel_publisher_->on_activate();
   goal_error_publisher_->on_activate();
   speed_plan_publisher_->on_activate();
+  speed_plan_diagnostics_publisher_->on_activate();
   if (global_path_echo_pub_) {
     global_path_echo_pub_->on_activate();
   }
@@ -682,6 +686,7 @@ ControllerServer::on_deactivate(const rclcpp_lifecycle::State & /*state*/)
   publishZeroVelocity();
   goal_error_publisher_->on_deactivate();
   speed_plan_publisher_->on_deactivate();
+  speed_plan_diagnostics_publisher_->on_deactivate();
   if (global_path_echo_pub_) {
     global_path_echo_pub_->on_deactivate();
   }
@@ -740,6 +745,7 @@ ControllerServer::on_cleanup(const rclcpp_lifecycle::State & /*state*/)
   vel_publisher_.reset();
   goal_error_publisher_.reset();
   speed_plan_publisher_.reset();
+  speed_plan_diagnostics_publisher_.reset();
   global_path_echo_pub_.reset();
   phase_echo_pub_.reset();
   desired_vel_echo_pub_.reset();
@@ -1072,7 +1078,8 @@ nav2_core::SpeedPlanningBoundary ControllerServer::buildSpeedPlanningBoundary(
 }
 
 void ControllerServer::updateSpeedPlanningContinuityAfterControl(
-  bool control_succeeded, bool trajectory_target_consumed)
+  bool control_succeeded, bool trajectory_target_consumed,
+  double consumed_target_velocity, double consumed_target_acceleration)
 {
   const bool longitudinal_tracking_phase =
     controller_phase_ == ControllerPhase::TRACK ||
@@ -1083,7 +1090,8 @@ void ControllerServer::updateSpeedPlanningContinuityAfterControl(
     invalidateSpeedPlanningContinuity();
     return;
   }
-  speed_plan_state_.accept(current_trajectory_, now());
+  speed_plan_state_.accept(
+    current_trajectory_, consumed_target_velocity, consumed_target_acceleration, now());
 }
 
 void ControllerServer::invalidateSpeedPlanningContinuity()
@@ -1216,6 +1224,15 @@ bool ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
   const auto speed_compute_start = PipelineClock::now();
   const auto planning_boundary = buildSpeedPlanningBoundary(planning_path, current_velocity);
   current_trajectory_ = sp->second->computeSpeedPlan(planning_path, planning_boundary);
+  const auto planning_diagnostics = sp->second->getLastPlanningDiagnostics();
+  publishSpeedPlanDiagnostics(planning_diagnostics, current_speed_planner_);
+  if (planning_diagnostics.terminal_infeasible) {
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), *get_clock(), 1000,
+      "Speed plan diagnostic: planner=%s terminal_infeasible=true; "
+      "using a continuous reachable braking profile.",
+      current_speed_planner_.c_str());
+  }
   speed_compute_ms = elapsed_ms(speed_compute_start, PipelineClock::now());
   if (current_trajectory_.points.empty()) {
     RCLCPP_WARN_THROTTLE(
@@ -1428,6 +1445,40 @@ void ControllerServer::publishSpeedPlan(const nav_interfaces::msg::RobotTrajecto
   }
 
   speed_plan_publisher_->publish(marker_array);
+}
+
+void ControllerServer::publishSpeedPlanDiagnostics(
+  const nav2_core::SpeedPlanningDiagnostics & diagnostics,
+  const std::string & planner_id)
+{
+  if (!speed_plan_diagnostics_publisher_ ||
+    !speed_plan_diagnostics_publisher_->is_activated())
+  {
+    return;
+  }
+
+  diagnostic_msgs::msg::DiagnosticArray message;
+  message.header.stamp = now();
+  diagnostic_msgs::msg::DiagnosticStatus status;
+  status.level = diagnostics.terminal_infeasible ?
+    diagnostic_msgs::msg::DiagnosticStatus::WARN :
+    diagnostic_msgs::msg::DiagnosticStatus::OK;
+  status.name = "navigation_speed_plan";
+  status.message = diagnostics.terminal_infeasible ? "terminal_infeasible" : "ok";
+  status.hardware_id = "nav2_controller";
+
+  diagnostic_msgs::msg::KeyValue planner;
+  planner.key = "planner";
+  planner.value = planner_id;
+  status.values.push_back(planner);
+
+  diagnostic_msgs::msg::KeyValue terminal_infeasible;
+  terminal_infeasible.key = "terminal_infeasible";
+  terminal_infeasible.value = diagnostics.terminal_infeasible ? "true" : "false";
+  status.values.push_back(terminal_infeasible);
+
+  message.status.push_back(status);
+  speed_plan_diagnostics_publisher_->publish(message);
 }
 
 void ControllerServer::resetNearGoalProgress()
@@ -2520,7 +2571,8 @@ void ControllerServer::computeAndPublishVelocity()
         controller_target_v, controller_target_a);
     }
   }
-  updateSpeedPlanningContinuityAfterControl(control_succeeded, controller_target_valid);
+  updateSpeedPlanningContinuityAfterControl(
+    control_succeeded, controller_target_valid, controller_target_v, controller_target_a);
   auto t_compute_end = std::chrono::high_resolution_clock::now();
   auto compute_ms = std::chrono::duration<double, std::milli>(t_compute_end - t_compute_start).count();
 

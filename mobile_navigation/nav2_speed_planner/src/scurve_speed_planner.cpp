@@ -53,6 +53,426 @@ std::vector<SpeedTarget> extractDescentTargets(
   }
   return targets;
 }
+
+bool generateRuckigVelocityProfile(
+  double v_start, double a_start, double a_max, double d_max,
+  double max_jerk, double ctrl_dt, double v_end,
+  std::vector<double> & position, std::vector<double> & velocity,
+  std::vector<double> & acceleration, std::vector<double> & time)
+{
+  ruckig::Ruckig<1> otg(ctrl_dt);
+  ruckig::InputParameter<1> in;
+  ruckig::OutputParameter<1> out;
+  in.control_interface = ruckig::ControlInterface::Velocity;
+  in.current_position = {0.0};
+  in.current_velocity = {std::max(v_start, 0.0)};
+  in.current_acceleration = {std::clamp(a_start, -d_max, a_max)};
+  in.target_velocity = {std::max(v_end, 0.0)};
+  in.target_acceleration = {0.0};
+  in.max_acceleration = {a_max};
+  in.min_acceleration = std::array<double, 1>{-d_max};
+  in.max_jerk = {max_jerk};
+
+  position = {0.0};
+  velocity = {in.current_velocity[0]};
+  acceleration = {in.current_acceleration[0]};
+  time = {0.0};
+
+  constexpr int kMaxSteps = 200000;
+  for (int step = 1; step <= kMaxSteps; ++step) {
+    const ruckig::Result result = otg.update(in, out);
+    if (result != ruckig::Result::Working && result != ruckig::Result::Finished) {
+      return false;
+    }
+    if (!std::isfinite(out.new_position[0]) || !std::isfinite(out.new_velocity[0]) ||
+      !std::isfinite(out.new_acceleration[0]) ||
+      out.new_position[0] + 1e-9 < position.back())
+    {
+      return false;
+    }
+    position.push_back(out.new_position[0]);
+    velocity.push_back(std::max(out.new_velocity[0], 0.0));
+    acceleration.push_back(out.new_acceleration[0]);
+    time.push_back(step * ctrl_dt);
+    out.pass_to_input(in);
+    if (result == ruckig::Result::Finished) {
+      return true;
+    }
+  }
+  return false;
+}
+
+struct JerkPhase
+{
+  double duration;
+  double jerk;
+  double end_acceleration;
+};
+
+void integrateConstantJerk(
+  double duration, double jerk,
+  double & position, double & velocity, double & acceleration)
+{
+  position += velocity * duration +
+    0.5 * acceleration * duration * duration +
+    jerk * duration * duration * duration / 6.0;
+  velocity += acceleration * duration + 0.5 * jerk * duration * duration;
+  acceleration += jerk * duration;
+}
+
+bool sampleJerkPhases(
+  double initial_velocity, double initial_acceleration, double ctrl_dt,
+  const std::vector<JerkPhase> & phases,
+  std::vector<double> & position, std::vector<double> & velocity,
+  std::vector<double> & acceleration, std::vector<double> & time)
+{
+  constexpr double kNumericTolerance = 1e-9;
+  position = {0.0};
+  velocity = {initial_velocity};
+  acceleration = {initial_acceleration};
+  time = {0.0};
+
+  double total_duration = 0.0;
+  for (const auto & phase : phases) {
+    if (!std::isfinite(phase.duration) || phase.duration < 0.0) {
+      return false;
+    }
+    total_duration += phase.duration;
+  }
+  if (!std::isfinite(total_duration)) {
+    return false;
+  }
+  if (total_duration <= kNumericTolerance) {
+    return true;
+  }
+
+  double state_position = 0.0;
+  double state_velocity = initial_velocity;
+  double state_acceleration = initial_acceleration;
+  double elapsed = 0.0;
+  size_t phase_index = 0;
+  double phase_remaining = phases.front().duration;
+  constexpr int kMaxSteps = 200000;
+  for (int step = 0; step < kMaxSteps && elapsed < total_duration; ++step) {
+    const double sample_duration = std::min(ctrl_dt, total_duration - elapsed);
+    double sample_remaining = sample_duration;
+    while (sample_remaining > kNumericTolerance && phase_index < phases.size()) {
+      const double duration = std::min(sample_remaining, phase_remaining);
+      integrateConstantJerk(
+        duration, phases[phase_index].jerk,
+        state_position, state_velocity, state_acceleration);
+      sample_remaining -= duration;
+      phase_remaining -= duration;
+      if (phase_remaining <= kNumericTolerance) {
+        state_acceleration = phases[phase_index].end_acceleration;
+        ++phase_index;
+        if (phase_index < phases.size()) {
+          phase_remaining = phases[phase_index].duration;
+        }
+      }
+    }
+    if (!std::isfinite(state_position) || !std::isfinite(state_velocity) ||
+      !std::isfinite(state_acceleration) ||
+      state_position + kNumericTolerance < position.back())
+    {
+      return false;
+    }
+    elapsed += sample_duration;
+    position.push_back(state_position);
+    velocity.push_back(std::max(state_velocity, 0.0));
+    acceleration.push_back(state_acceleration);
+    time.push_back(elapsed);
+  }
+  return elapsed + kNumericTolerance >= total_duration;
+}
+
+// Ruckig velocity mode is allowed to cross v_end and accelerate back to it.
+// For a non-zero terminal creep speed, construct the time-optimal monotonic
+// jerk-limited braking transition explicitly instead:
+//
+//   a_start --(-j)--> a_peak --(hold)--> a_peak --(+j)--> 0
+//
+// a_peak is solved from the requested velocity loss. Therefore the final
+// state reaches (v_end, 0) from above without a positive-acceleration rebound.
+// If a_start is already so negative that releasing it immediately must cross
+// v_end, stable_target_reachable is false and the physically continuous best
+// effort is an immediate +j release.
+bool generateReachableBrakingProfile(
+  double v_start, double a_start, double a_max, double d_max,
+  double max_jerk, double ctrl_dt, double v_end,
+  std::vector<double> & position, std::vector<double> & velocity,
+  std::vector<double> & acceleration, std::vector<double> & time,
+  bool & stable_target_reachable)
+{
+  constexpr double kNumericTolerance = 1e-9;
+  const double initial_velocity = std::max(v_start, 0.0);
+  const double initial_acceleration = std::clamp(a_start, -d_max, a_max);
+  const double target_velocity = std::max(v_end, 0.0);
+  stable_target_reachable = true;
+
+  // Preserve the established hard-stop fallback and recovery from an already
+  // undershot measured speed. R40 concerns braking to a non-zero creep speed.
+  if (target_velocity < 1e-3 ||
+    initial_velocity < target_velocity - kNumericTolerance)
+  {
+    stable_target_reachable = initial_velocity >= target_velocity;
+    return generateRuckigVelocityProfile(
+      initial_velocity, initial_acceleration, a_max, d_max,
+      max_jerk, ctrl_dt, target_velocity,
+      position, velocity, acceleration, time);
+  }
+
+  const double velocity_loss = initial_velocity - target_velocity;
+  const double release_loss = initial_acceleration < 0.0 ?
+    initial_acceleration * initial_acceleration / (2.0 * max_jerk) : 0.0;
+  std::vector<JerkPhase> phases;
+
+  if (velocity_loss + kNumericTolerance < release_loss) {
+    // No future trajectory can keep v >= v_end from this state. Do not add
+    // more braking or a positive-acceleration rebound: release immediately.
+    stable_target_reachable = false;
+    phases.push_back(
+        {
+          -initial_acceleration / max_jerk, max_jerk, 0.0});
+  } else {
+    const double peak_magnitude = std::sqrt(
+      std::max(
+        0.0, max_jerk * velocity_loss +
+        0.5 * initial_acceleration * initial_acceleration));
+    const double peak_acceleration = -std::min(peak_magnitude, d_max);
+    const double ramp_down_time =
+      (initial_acceleration - peak_acceleration) / max_jerk;
+    if (ramp_down_time > kNumericTolerance) {
+      phases.push_back(
+          {
+            ramp_down_time, -max_jerk, peak_acceleration});
+    }
+
+    if (peak_magnitude > d_max + kNumericTolerance) {
+      const double triangular_loss =
+        d_max * d_max / max_jerk -
+        initial_acceleration * initial_acceleration / (2.0 * max_jerk);
+      const double hold_time =
+        std::max(0.0, (velocity_loss - triangular_loss) / d_max);
+      if (hold_time > kNumericTolerance) {
+        phases.push_back({hold_time, 0.0, peak_acceleration});
+      }
+    }
+
+    const double ramp_up_time = -peak_acceleration / max_jerk;
+    if (ramp_up_time > kNumericTolerance) {
+      phases.push_back({ramp_up_time, max_jerk, 0.0});
+    }
+  }
+
+  if (!sampleJerkPhases(
+      initial_velocity, initial_acceleration, ctrl_dt, phases,
+      position, velocity, acceleration, time))
+  {
+    return false;
+  }
+  if (phases.empty()) {
+    acceleration.front() = 0.0;
+    if (stable_target_reachable) {
+      velocity.front() = target_velocity;
+    }
+    return true;
+  }
+  acceleration.back() = 0.0;
+  if (stable_target_reachable) {
+    if (std::fabs(velocity.back() - target_velocity) > 1e-6) {
+      return false;
+    }
+    velocity.back() = target_velocity;
+  }
+  return true;
+}
+
+// Build a stable terminal segment that reaches (distance, v_end, a=0)
+// without crossing v_end. Existing acceleration is first released to zero;
+// any remaining distance is spent coasting before a monotonic S-curve brake.
+// This explicit release/coast reserve prevents receding-horizon replans from
+// carrying a large negative acceleration into the creep-speed boundary.
+bool generateStableTerminalSegment(
+  double v_start, double a_start, double d_max,
+  double max_jerk, double ctrl_dt, double distance, double v_end,
+  std::vector<double> & position, std::vector<double> & velocity,
+  std::vector<double> & acceleration, std::vector<double> & time)
+{
+  constexpr double kNumericTolerance = 1e-9;
+  const double initial_velocity = std::max(v_start, 0.0);
+  const double initial_acceleration = a_start;
+  const double target_velocity = std::max(v_end, 0.0);
+  if (distance <= kNumericTolerance ||
+    initial_velocity < target_velocity - kNumericTolerance)
+  {
+    return false;
+  }
+
+  if (initial_acceleration < -kNumericTolerance) {
+    const double velocity_loss = initial_velocity - target_velocity;
+    const double release_loss =
+      initial_acceleration * initial_acceleration / (2.0 * max_jerk);
+    if (velocity_loss + kNumericTolerance < release_loss) {
+      return false;
+    }
+
+    const double peak_magnitude = std::sqrt(
+      std::max(
+        0.0, max_jerk * velocity_loss +
+        0.5 * initial_acceleration * initial_acceleration));
+    const double peak_acceleration = -std::min(peak_magnitude, d_max);
+    std::vector<JerkPhase> direct_phases;
+    const double ramp_down_time =
+      (initial_acceleration - peak_acceleration) / max_jerk;
+    if (ramp_down_time > kNumericTolerance) {
+      direct_phases.push_back(
+          {
+            ramp_down_time, -max_jerk, peak_acceleration});
+    }
+    if (peak_magnitude > d_max + kNumericTolerance) {
+      const double triangular_loss =
+        d_max * d_max / max_jerk -
+        initial_acceleration * initial_acceleration / (2.0 * max_jerk);
+      const double hold_time =
+        std::max(0.0, (velocity_loss - triangular_loss) / d_max);
+      if (hold_time > kNumericTolerance) {
+        direct_phases.push_back(
+            {
+              hold_time, 0.0, peak_acceleration});
+      }
+    }
+    const double ramp_up_time = -peak_acceleration / max_jerk;
+    if (ramp_up_time > kNumericTolerance) {
+      direct_phases.push_back(
+          {
+            ramp_up_time, max_jerk, 0.0});
+    }
+
+    std::vector<double> direct_s, direct_v, direct_a, direct_t;
+    if (!sampleJerkPhases(
+        initial_velocity, initial_acceleration, ctrl_dt, direct_phases,
+        direct_s, direct_v, direct_a, direct_t))
+    {
+      return false;
+    }
+    const double remaining_distance = distance - direct_s.back();
+    constexpr double kControllerPreviewSteps = 2.0;
+    const double release_reserve_distance =
+      std::max(initial_velocity, target_velocity) *
+      kControllerPreviewSteps * ctrl_dt;
+    if (remaining_distance < -1e-6) {
+      return false;
+    }
+    if (remaining_distance <= release_reserve_distance + 1e-6) {
+      if (remaining_distance > kNumericTolerance) {
+        direct_phases.push_back(
+            {
+              remaining_distance / target_velocity, 0.0, 0.0});
+      }
+      if (!sampleJerkPhases(
+          initial_velocity, initial_acceleration, ctrl_dt, direct_phases,
+          position, velocity, acceleration, time))
+      {
+        return false;
+      }
+      if (std::fabs(position.back() - distance) > 1e-6 ||
+        std::fabs(velocity.back() - target_velocity) > 1e-6 ||
+        std::fabs(acceleration.back()) > 1e-6)
+      {
+        return false;
+      }
+      position.back() = distance;
+      velocity.back() = target_velocity;
+      acceleration.back() = 0.0;
+      return true;
+    }
+  }
+
+  std::vector<JerkPhase> release_phases;
+  if (initial_acceleration < -kNumericTolerance) {
+    release_phases.push_back(
+        {
+          -initial_acceleration / max_jerk, max_jerk, 0.0});
+  } else if (initial_acceleration > kNumericTolerance) {
+    release_phases.push_back(
+        {
+          initial_acceleration / max_jerk, -max_jerk, 0.0});
+  }
+
+  std::vector<double> release_s, release_v, release_a, release_t;
+  if (!sampleJerkPhases(
+      initial_velocity, initial_acceleration, ctrl_dt, release_phases,
+      release_s, release_v, release_a, release_t))
+  {
+    return false;
+  }
+  const double released_velocity = release_v.back();
+  const double released_distance = release_s.back();
+  if (released_velocity < target_velocity - kNumericTolerance) {
+    return false;
+  }
+
+  const double velocity_loss = released_velocity - target_velocity;
+  const double peak_magnitude = std::min(
+    std::sqrt(std::max(0.0, max_jerk * velocity_loss)), d_max);
+  std::vector<JerkPhase> braking_phases;
+  if (peak_magnitude > kNumericTolerance) {
+    braking_phases.push_back(
+        {
+          peak_magnitude / max_jerk, -max_jerk, -peak_magnitude});
+    const double triangular_loss = peak_magnitude * peak_magnitude / max_jerk;
+    if (velocity_loss > triangular_loss + kNumericTolerance) {
+      braking_phases.push_back(
+          {
+            (velocity_loss - triangular_loss) / peak_magnitude,
+            0.0, -peak_magnitude});
+    }
+    braking_phases.push_back(
+        {
+          peak_magnitude / max_jerk, max_jerk, 0.0});
+  }
+
+  std::vector<double> braking_s, braking_v, braking_a, braking_t;
+  if (!sampleJerkPhases(
+      released_velocity, 0.0, ctrl_dt, braking_phases,
+      braking_s, braking_v, braking_a, braking_t))
+  {
+    return false;
+  }
+  const double minimum_distance = released_distance + braking_s.back();
+  if (minimum_distance > distance + 1e-6) {
+    return false;
+  }
+
+  std::vector<JerkPhase> phases = release_phases;
+  const double coast_distance = std::max(0.0, distance - minimum_distance);
+  if (coast_distance > kNumericTolerance) {
+    if (released_velocity <= kNumericTolerance) {
+      return false;
+    }
+    phases.push_back(
+        {
+          coast_distance / released_velocity, 0.0, 0.0});
+  }
+  phases.insert(phases.end(), braking_phases.begin(), braking_phases.end());
+  if (!sampleJerkPhases(
+      initial_velocity, initial_acceleration, ctrl_dt, phases,
+      position, velocity, acceleration, time))
+  {
+    return false;
+  }
+  if (std::fabs(position.back() - distance) > 1e-6 ||
+    std::fabs(velocity.back() - target_velocity) > 1e-6 ||
+    std::fabs(acceleration.back()) > 1e-6)
+  {
+    return false;
+  }
+  position.back() = distance;
+  velocity.back() = target_velocity;
+  acceleration.back() = 0.0;
+  return true;
+}
 }  // namespace
 
 void SCurveSpeedPlanner::configure(
@@ -73,7 +493,7 @@ void SCurveSpeedPlanner::configure(
 }
 
 // ===================== Ruckig 沿弧长生成 jerk 限制速度剖面 =====================
-void SCurveSpeedPlanner::generateRuckigProfile(
+bool SCurveSpeedPlanner::generateRuckigProfile(
   const std::vector<double> & v_env,
   const std::vector<double> & arc_s,
   double v_start,
@@ -89,7 +509,7 @@ void SCurveSpeedPlanner::generateRuckigProfile(
   v_out.assign(n, 0.0);
   a_out.assign(n, 0.0);
   t_out.assign(n, 0.0);
-  if (n == 0) {return;}
+  if (n == 0) {return false;}
   a_max = std::max(1e-3, a_max);
   d_max = std::max(1e-3, d_max);
   max_jerk = std::max(1e-3, max_jerk);
@@ -98,7 +518,7 @@ void SCurveSpeedPlanner::generateRuckigProfile(
   if (n == 1) {
     v_out[0] = std::clamp(v_start, 0.0, std::max(0.0, v_env[0]));
     a_out[0] = a_start;
-    return;
+    return false;
   }
 
   // 停止点：首个零包络点（障碍）否则终点。障碍停止时终点速度强制 0。
@@ -117,12 +537,22 @@ void SCurveSpeedPlanner::generateRuckigProfile(
   std::vector<SpeedTarget> targets = extractDescentTargets(v_env, stop_i);
   targets.push_back({stop_i, v_end});
 
+  size_t terminal_start_i = stop_i;
+  if (!stop_at_env_zero) {
+    while (terminal_start_i > 0 && v_env[terminal_start_i - 1] <= v_end + 1e-3) {
+      --terminal_start_i;
+    }
+  }
+
   ruckig::Ruckig<1> otg(ctrl_dt);
   ruckig::InputParameter<1> in;
   ruckig::OutputParameter<1> out;
+  const double initial_velocity = std::max(v_start, 0.0);
+  const double initial_acceleration = a_start;
   in.current_position = {0.0};
-  in.current_velocity = {std::clamp(v_start, 0.0, std::max(0.0, v_env[0]))};
-  in.current_acceleration = {a_start};
+  in.current_velocity = {initial_velocity};
+  in.current_acceleration = {initial_acceleration};
+  in.min_velocity = std::array<double, 1>{0.0};
   in.max_acceleration = {a_max};
   in.max_jerk = {max_jerk};
   in.min_acceleration = std::array<double, 1>{-d_max};   // 非对称：减速幅值 ≤ d_max
@@ -130,6 +560,7 @@ void SCurveSpeedPlanner::generateRuckigProfile(
   std::vector<double> rs{0.0}, rv{in.current_velocity[0]}, ra{a_start}, rt{0.0};
   double tnow = 0.0;
   bool failed = false;
+  bool terminal_infeasible = false;
   for (const auto & tgt : targets) {
     const double s_t = arc_s[tgt.index];
     if (s_t <= in.current_position[0] + 1e-9) {
@@ -148,6 +579,35 @@ void SCurveSpeedPlanner::generateRuckigProfile(
     in.target_acceleration = {0.0};
 
     const double segment_distance = s_t - in.current_position[0];
+    if (!stop_at_env_zero && v_end >= 1e-3 &&
+      tgt.index >= terminal_start_i &&
+      in.current_acceleration[0] < -1e-9 &&
+      in.current_velocity[0] >= v_end - 1e-9)
+    {
+      std::vector<double> seg_s, seg_v, seg_a, seg_t;
+      if (!generateStableTerminalSegment(
+          in.current_velocity[0], in.current_acceleration[0],
+          d_max, max_jerk, ctrl_dt, segment_distance, v_end,
+          seg_s, seg_v, seg_a, seg_t))
+      {
+        failed = true;
+        terminal_infeasible = true;
+        break;
+      }
+      const double segment_start_s = in.current_position[0];
+      for (size_t index = 1; index < seg_s.size(); ++index) {
+        rs.push_back(segment_start_s + seg_s[index]);
+        rv.push_back(seg_v[index]);
+        ra.push_back(seg_a[index]);
+        rt.push_back(tnow + seg_t[index]);
+      }
+      tnow += seg_t.back();
+      in.current_position = {s_t};
+      in.current_velocity = {v_end};
+      in.current_acceleration = {0.0};
+      continue;
+    }
+
     // Bound iterations by a conservative travel, acceleration, and jerk time
     // for this segment so an infeasible target cannot consume the global cap.
     const double min_accel_limit = std::min(a_max, d_max);
@@ -156,6 +616,7 @@ void SCurveSpeedPlanner::generateRuckigProfile(
       4.0 * seg_vmax / min_accel_limit + 4.0 * std::sqrt(seg_vmax / max_jerk);
     if (!std::isfinite(duration_budget) || duration_budget <= 0.0) {
       failed = true;
+      terminal_infeasible = !stop_at_env_zero && tgt.index >= terminal_start_i;
       break;
     }
     constexpr double kMaxRuckigSteps = 200000.0;
@@ -167,12 +628,14 @@ void SCurveSpeedPlanner::generateRuckigProfile(
       const ruckig::Result res = otg.update(in, out);
       if (res != ruckig::Result::Working && res != ruckig::Result::Finished) {
         failed = true;
+        terminal_infeasible = !stop_at_env_zero && tgt.index >= terminal_start_i;
         break;
       }
       if (!std::isfinite(out.new_position[0]) || !std::isfinite(out.new_velocity[0]) ||
         !std::isfinite(out.new_acceleration[0]))
       {
         failed = true;
+        terminal_infeasible = !stop_at_env_zero && tgt.index >= terminal_start_i;
         break;
       }
       tnow += ctrl_dt;
@@ -188,21 +651,70 @@ void SCurveSpeedPlanner::generateRuckigProfile(
     }
     if (failed || !segment_finished) {
       failed = true;
+      terminal_infeasible = terminal_infeasible ||
+        (!stop_at_env_zero && tgt.index >= terminal_start_i);
       break;
     }
   }
 
-  // 重采样到路径点弧长；停止点之后置终点速度（障碍停止时 v_end 已强制 0）；
-  // 最终对包络限幅消除重采样残差。
+  bool braking_fallback = false;
+  bool stable_target_reachable = true;
+  if (failed) {
+    braking_fallback = generateReachableBrakingProfile(
+      initial_velocity, initial_acceleration, a_max, d_max,
+      max_jerk, ctrl_dt, v_end, rs, rv, ra, rt,
+      stable_target_reachable);
+    if (!braking_fallback) {
+      rs = {0.0};
+      rv = {initial_velocity};
+      ra = {initial_acceleration};
+      rt = {0.0};
+    } else if (!stop_at_env_zero) {
+      constexpr double kTerminalSpeedTolerance = 1e-3;
+      constexpr double kTerminalAccelerationTolerance = 1e-3;
+      const bool undershot = std::any_of(
+        rv.begin(), rv.end(),
+        [v_end](double velocity) {
+          return velocity < v_end - kTerminalSpeedTolerance;
+        });
+      size_t stable_index = rv.size();
+      for (size_t index = 0; index < rv.size(); ++index) {
+        if (std::fabs(rv[index] - v_end) <= kTerminalSpeedTolerance &&
+          std::fabs(ra[index]) <= kTerminalAccelerationTolerance)
+        {
+          stable_index = index;
+          break;
+        }
+      }
+      const double stable_s = stable_index == rv.size() ?
+        std::numeric_limits<double>::infinity() : rs[stable_index];
+      constexpr double kControllerPreviewSteps = 2.0;
+      // The controller consumes two Ruckig samples ahead at 10 Hz. Allow one
+      // additional planner sample for the discrete stable-state boundary.
+      const double stable_position_tolerance =
+        (std::max(initial_velocity, v_end) * kControllerPreviewSteps +
+        v_end) * ctrl_dt;
+      terminal_infeasible =
+        !stable_target_reachable || undershot ||
+        stable_s >
+        arc_s[terminal_start_i] + stable_position_tolerance + 1e-6;
+    }
+  }
+
+  // 正常剖面遵守包络；位置硬目标不可达时，改用同源的 jerk 限制制动状态，
+  // 不再只钳 velocity 伪造已经到达 end_speed。
   size_t k = 0;
   for (size_t i = 0; i < n; ++i) {
-    if (arc_s[i] >= target - 1e-9) {
+    if (!failed && arc_s[i] >= target - 1e-9) {
       v_out[i] = v_end; a_out[i] = 0.0; t_out[i] = rt.back();
       continue;
     }
     while (k + 1 < rs.size() && rs[k + 1] < arc_s[i]) {++k;}
     if (k + 1 >= rs.size()) {
       v_out[i] = rv.back(); a_out[i] = ra.back(); t_out[i] = rt.back();
+      if (failed && rv.back() > 1e-3 && arc_s[i] > rs.back()) {
+        t_out[i] += (arc_s[i] - rs.back()) / rv.back();
+      }
     } else {
       const double denom = rs[k + 1] - rs[k];
       const double f = (denom > 1e-9) ? std::clamp((arc_s[i] - rs[k]) / denom, 0.0, 1.0) : 0.0;
@@ -210,8 +722,12 @@ void SCurveSpeedPlanner::generateRuckigProfile(
       a_out[i] = ra[k] + f * (ra[k + 1] - ra[k]);
       t_out[i] = rt[k] + f * (rt[k + 1] - rt[k]);
     }
-    v_out[i] = std::min(std::max(0.0, v_out[i]), std::max(0.0, v_env[i]));
+    v_out[i] = std::max(0.0, v_out[i]);
+    if (!failed && i > 0) {
+      v_out[i] = std::min(v_out[i], std::max(0.0, v_env[i]));
+    }
   }
+  return terminal_infeasible;
 }
 
 // ===================== 插件 hook：Phase B（Ruckig jerk 限制剖面）=====================
@@ -238,7 +754,7 @@ void SCurveSpeedPlanner::assignVelocityProfile(
   // 2) Ruckig 生成 jerk 限制剖面（非对称 a_max / d_max=|decel_|）。
   //    终点目标速度 = end_speed_（障碍停止时函数内部强制 0）。
   std::vector<double> v_out, a_out, t_out;
-  generateRuckigProfile(
+  last_planning_diagnostics_.terminal_infeasible = generateRuckigProfile(
     v_env, arc_s, curr_vel, curr_accel,
     accel_, std::fabs(decel_),
     max_jerk_, control_dt_,
