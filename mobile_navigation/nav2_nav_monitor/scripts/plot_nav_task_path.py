@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 # Copyright 2026 DEXE Robot Engineer
 # SPDX-License-Identifier: Apache-2.0
-"""导航任务路径回溯图：nav2_nav_monitor 落盘的 nav_task_*.json 的
-规划路径（含每次重规划）与实际移动轨迹地图视图对照。
+"""
+导航任务路径回溯图.
+
+对照 nav2_nav_monitor 落盘 JSON 中的规划路径与实际移动轨迹地图视图。
 
 数据来源：nav2_nav_monitor output_dir（默认 ~/.dexe/navigation/nav_monitor）
 下的 nav_task_<时间戳>_<结果>.json
@@ -25,13 +27,13 @@ import sys
 
 import matplotlib
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-from matplotlib.collections import LineCollection
+import matplotlib.pyplot as plt  # noqa: E402
+from matplotlib.collections import LineCollection  # noqa: E402
 matplotlib.rcParams["font.sans-serif"] = [
     "Noto Sans CJK SC", "WenQuanYi Micro Hei", "AR PL UMing CN", "DejaVu Sans"]
 matplotlib.rcParams["axes.unicode_minus"] = False
 
-from nav_task_common import resolve_data_dir
+from nav_task_common import resolve_data_dir  # noqa: E402
 
 
 def resolve_json(path):
@@ -54,7 +56,7 @@ PHASE_COLORS = {
 
 
 def pose_at_time(t, passing):
-    """时间→实走轨迹位置线性插值（passing 每项 [t,x,y,yaw]）。"""
+    """时间→实走轨迹位置线性插值（passing 每项 [t,x,y,yaw]）."""
     if not passing:
         return None
     if t <= passing[0][0]:
@@ -68,7 +70,7 @@ def pose_at_time(t, passing):
 
 
 def nearest_dist(px, py, path_xy):
-    """点到折线各顶点的最近距离（顶点级，够用；不做线段投影）。"""
+    """点到折线各顶点的最近距离（顶点级，够用；不做线段投影）."""
     return min(math.hypot(px - x, py - y) for x, y in path_xy)
 
 

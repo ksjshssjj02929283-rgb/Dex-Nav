@@ -1,3 +1,5 @@
+// Copyright 2026 DEXE Robot Engineer
+
 #include "rclcpp/rclcpp.hpp"
 #include "nav2_nav_monitor/nav_monitor_node.hpp"
 

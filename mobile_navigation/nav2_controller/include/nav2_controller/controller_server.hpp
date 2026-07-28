@@ -15,6 +15,7 @@
 #ifndef NAV2_CONTROLLER__CONTROLLER_SERVER_HPP_
 #define NAV2_CONTROLLER__CONTROLLER_SERVER_HPP_
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <thread>
@@ -187,8 +188,11 @@ protected:
    */
   void publishSpeedPlan(const nav_interfaces::msg::RobotTrajectory & trajectory);
   void publishSpeedPlanDiagnostics(
-    const nav2_core::SpeedPlanningDiagnostics & diagnostics,
-    const std::string & planner_id);
+    bool control_succeeded,
+    bool control_receipt_valid,
+    double consumed_target_velocity,
+    double consumed_target_acceleration,
+    const std::string & control_result);
 
   /**
    * @brief 查询当前轨迹上距机器人最近点的规划速度（期望速度）。
@@ -452,6 +456,25 @@ protected:
   // 无并发；将来拆独立规划线程时需加最小临界区保护
   nav_interfaces::msg::RobotTrajectory current_trajectory_;
   nav2_speed_planner::SpeedPlanState speed_plan_state_;
+  struct SpeedPlanCycleContext
+  {
+    bool active{false};
+    uint64_t cycle_id{0};
+    uint64_t path_id{0};
+    bool planning_succeeded{false};
+    std::string planning_result{"not_started"};
+    std::string planner_id;
+    size_t local_path_point_count{0};
+    double local_path_length{0.0};
+    nav2_core::SpeedPlanningBoundary boundary;
+    bool boundary_computed{false};
+    std::string boundary_reason{"not_computed"};
+    nav2_core::SpeedPlanningDiagnostics terminal;
+    bool terminal_valid{false};
+  };
+  uint64_t speed_plan_cycle_id_{0};
+  uint64_t speed_plan_path_id_{0};
+  SpeedPlanCycleContext speed_plan_cycle_;
   // RViz 可视化节流（速度剖面每周期重算，但只以 ~2Hz 重画）
   rclcpp::Time last_speed_plan_viz_time_{0, 0, RCL_ROS_TIME};
 

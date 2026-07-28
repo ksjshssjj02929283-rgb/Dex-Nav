@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 # Copyright 2026 DEXE Robot Engineer
 # SPDX-License-Identifier: Apache-2.0
-"""导航任务批量分析：一条指令扫描 nav_monitor 目录下全部 nav_task_*.json，
-生成两份汇总（按任务 / 按导航点）+ 每任务图表，保存到带时间戳的子目录。
+"""
+导航任务批量分析.
+
+一条指令扫描 nav_monitor 目录下全部 nav_task_*.json，生成两份汇总
+（按任务 / 按导航点）+ 每任务图表，保存到带时间戳的子目录。
 
 数据来源：nav2_nav_monitor output_dir（默认 ~/.dexe/navigation/nav_monitor）
 
@@ -41,12 +44,20 @@ import time
 
 import matplotlib
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt  # noqa: E402
 matplotlib.rcParams["font.sans-serif"] = [
     "Noto Sans CJK SC", "WenQuanYi Micro Hei", "AR PL UMing CN", "DejaVu Sans"]
 matplotlib.rcParams["axes.unicode_minus"] = False
 
-from nav_task_common import resolve_data_dir
+from nav_task_common import resolve_data_dir  # noqa: E402
+from motion_diagnostics import (  # noqa: E402
+    DEFAULT_ACCEL_WINDOW_SEC,
+    DEFAULT_JERK_WINDOW_SEC,
+    controller_target_dynamics,
+    limits_from_task,
+    summarize_dynamics,
+    velocity_dynamics,
+)
 
 PHASES = ["prepare", "align", "track", "approach"]
 PHASE_COLORS = {
@@ -63,7 +74,7 @@ def mean(vals):
 
 
 def label_bars(ax, bars, fmt="{:.3f}", fontsize=7, signed=False):
-    """条形图逐条标值。"""
+    """条形图逐条标值."""
     for b in bars:
         h = b.get_height() + b.get_y() if not signed else b.get_height()
         va = "bottom" if h >= 0 else "top"
@@ -73,7 +84,7 @@ def label_bars(ax, bars, fmt="{:.3f}", fontsize=7, signed=False):
 
 
 def phase_durations(transitions, total):
-    """[[t,phase],...] + 总时长 → {phase: 秒}；无切换记录时全归"其他"。"""
+    """[[t,phase],...] + 总时长 → {phase: 秒}；无切换记录时全归"其他"."""
     durs = {p: 0.0 for p in PHASES}
     durs["其他"] = 0.0
     if not transitions:
@@ -102,7 +113,7 @@ def load_tasks(d):
 
 
 def cluster_goals(tasks):
-    """目标点聚类（贪心，容差 GOAL_CLUSTER_TOL）→ (簇中心列表, 每任务簇编号)。"""
+    """目标点聚类（贪心，容差 GOAL_CLUSTER_TOL）→ (簇中心列表, 每任务簇编号)."""
     centers, labels = [], []
     for t in tasks:
         g = t.get("goal_pose", {})
@@ -118,7 +129,7 @@ def cluster_goals(tasks):
 
 
 def lon_lat_err(err, goal_yaw):
-    """goal 系纵/横误差：JSON 已有字段直接用，旧数据由世界系 x/y 旋转得到。"""
+    """Goal 系纵/横误差：JSON 已有字段直接用，旧数据由世界系 x/y 旋转得到."""
     if "longitudinal" in err and "lateral" in err:
         return err["longitudinal"], err["lateral"]
     ex, ey = err.get("x", 0.0), err.get("y", 0.0)
@@ -127,7 +138,10 @@ def lon_lat_err(err, goal_yaw):
     return lon, lat
 
 
-def build_rows(tasks):
+def build_rows(
+        tasks, limit_overrides=None,
+        accel_window_sec=DEFAULT_ACCEL_WINDOW_SEC,
+        jerk_window_sec=DEFAULT_JERK_WINDOW_SEC):
     rows = []
     for t in tasks:
         total = t.get("end_time", 0) - t.get("start_time", 0)
@@ -136,6 +150,15 @@ def build_rows(tasks):
         goal = t.get("goal_pose", {})
         lon, lat = lon_lat_err(err, goal.get("yaw", 0.0))
         sm = t.get("smoothed_vel", {})
+        limits = limits_from_task(t, limit_overrides)
+        target_dynamics = controller_target_dynamics(
+            t.get("controller_target", {}).get("samples", []),
+            jerk_window_sec)
+        target_summary = summarize_dynamics(target_dynamics, limits)
+        odom_dynamics = velocity_dynamics(
+            t.get("odom_vel", {}).get("samples", []),
+            accel_window_sec, jerk_window_sec)
+        odom_summary = summarize_dynamics(odom_dynamics)
         rows.append({
             "file": t["_file"],
             "result": t.get("result", "?"),
@@ -151,6 +174,19 @@ def build_rows(tasks):
             "passing_length_m": round(t.get("passing_length", 0.0), 3),
             "replanning_count": t.get("replanning_count", 0),
             "recoveries": t.get("number_of_recoveries", 0),
+            "dynamics_status": target_summary["status"],
+            "target_max_accel_mps2": round(target_summary["max_acceleration"], 4),
+            "target_min_accel_mps2": round(target_summary["min_acceleration"], 4),
+            "target_max_abs_jerk_mps3": round(target_summary["max_abs_jerk"], 4),
+            "target_accel_limit_events":
+                target_summary["acceleration_exceedance_events"],
+            "target_decel_limit_events":
+                target_summary["deceleration_exceedance_events"],
+            "target_jerk_limit_events": target_summary["jerk_exceedance_events"],
+            "odom_est_max_abs_accel_mps2":
+                round(odom_summary["max_abs_acceleration"], 4),
+            "odom_est_max_abs_jerk_mps3":
+                round(odom_summary["max_abs_jerk"], 4),
             **{f"{p}_s": round(durs[p], 2) for p in PHASES},
             "other_s": round(durs["其他"], 2),
         })
@@ -158,20 +194,31 @@ def build_rows(tasks):
 
 
 def overall_stats(rows):
-    """总平均（succeeded 任务）。"""
+    """总平均（succeeded 任务）."""
     ok = [r for r in rows if r["result"] == "succeeded"]
     s = {
         "任务数": f"{len(rows)}（成功 {len(ok)}，成功率 {len(ok)/len(rows)*100:.0f}%）",
-        "平均纵向误差 |lon|": f"{mean([abs(r['err_lon_m']) for r in ok]):.4f} m"
-                            f"（max {max([abs(r['err_lon_m']) for r in ok], default=0):.4f}）",
-        "平均横向误差 |lat|": f"{mean([abs(r['err_lat_m']) for r in ok]):.4f} m"
-                            f"（max {max([abs(r['err_lat_m']) for r in ok], default=0):.4f}）",
-        "平均角度误差 |yaw|": f"{mean([abs(r['err_yaw_deg']) for r in ok]):.2f} °"
-                            f"（max {max([abs(r['err_yaw_deg']) for r in ok], default=0):.2f}）",
+        "平均纵向误差 |lon|": (
+            f"{mean([abs(r['err_lon_m']) for r in ok]):.4f} m"
+            f"（max {max([abs(r['err_lon_m']) for r in ok], default=0):.4f}）"),
+        "平均横向误差 |lat|": (
+            f"{mean([abs(r['err_lat_m']) for r in ok]):.4f} m"
+            f"（max {max([abs(r['err_lat_m']) for r in ok], default=0):.4f}）"),
+        "平均角度误差 |yaw|": (
+            f"{mean([abs(r['err_yaw_deg']) for r in ok]):.2f} °"
+            f"（max {max([abs(r['err_yaw_deg']) for r in ok], default=0):.2f}）"),
         "平均总时长": f"{mean([r['duration_s'] for r in ok]):.2f} s",
         **{f"平均 {p} 段时间": f"{mean([r[f'{p}_s'] for r in ok]):.2f} s"
            for p in PHASES},
         "平均速度(每任务avg的均值)": f"{mean([r['avg_speed_mps'] for r in ok]):.3f} m/s",
+        "控制目标峰值（任务峰值均值）":
+            f"a+ {mean([r['target_max_accel_mps2'] for r in ok]):.3f} / "
+            f"a- {mean([r['target_min_accel_mps2'] for r in ok]):.3f} m/s²；"
+            f"|jerk| {mean([r['target_max_abs_jerk_mps3'] for r in ok]):.3f} m/s³",
+        "控制目标运动限值检测":
+            f"{sum(r['dynamics_status'] == 'exceeded' for r in rows)} 个任务超限 / "
+            f"{sum(r['dynamics_status'] == 'ok' for r in rows)} 个通过 / "
+            f"{sum(r['dynamics_status'] == 'no_limits' for r in rows)} 个未配置限值",
         "平均实走里程": f"{mean([r['passing_length_m'] for r in ok]):.2f} m",
         "总重规划/recovery 次数":
             f"{sum(r['replanning_count'] for r in rows)} / "
@@ -181,15 +228,22 @@ def overall_stats(rows):
 
 
 def average_row(ok_rows):
-    """summary_tasks.csv 末尾的均值行（succeeded；误差列取绝对值均值）。"""
+    """Summary_tasks.csv 末尾的均值行（succeeded；误差列取绝对值均值）."""
     row = {"file": "均值(succeeded)", "result": f"n={len(ok_rows)}",
            "goal_x": "", "goal_y": ""}
     for k in ["duration_s", "avg_speed_mps", "max_speed_mps",
-              "passing_length_m", "replanning_count", "recoveries"] + \
+              "passing_length_m", "replanning_count", "recoveries",
+              "target_max_accel_mps2", "target_min_accel_mps2",
+              "target_max_abs_jerk_mps3", "target_accel_limit_events",
+              "target_decel_limit_events", "target_jerk_limit_events",
+              "odom_est_max_abs_accel_mps2",
+              "odom_est_max_abs_jerk_mps3"] + \
             [f"{p}_s" for p in PHASES] + ["other_s"]:
         row[k] = round(mean([r[k] for r in ok_rows]), 4)
     for k in ["err_lon_m", "err_lat_m", "err_yaw_deg", "err_dist_m"]:
         row[k] = round(mean([abs(r[k]) for r in ok_rows]), 4)
+    row["dynamics_status"] = (
+        f"exceeded={sum(r['dynamics_status'] == 'exceeded' for r in ok_rows)}")
     return row
 
 
@@ -197,12 +251,14 @@ def plot_summary_tasks(rows, stats, out_dir):
     ok = [r for r in rows if r["result"] == "succeeded"]
     idx = list(range(len(rows)))
     short = [r["file"].replace("nav_task_", "").replace(".json", "") for r in rows]
-    fig = plt.figure(figsize=(max(12, len(rows) * 1.1), 20))
-    gs = fig.add_gridspec(4, 1, height_ratios=[1.2, 1.3, 1.3, 1.3], hspace=0.55)
+    fig = plt.figure(figsize=(max(12, len(rows) * 1.1), 25))
+    gs = fig.add_gridspec(
+        5, 1, height_ratios=[1.2, 1.3, 1.3, 1.3, 1.3], hspace=0.55)
     ax_tab = fig.add_subplot(gs[0])
     ax_err = fig.add_subplot(gs[1])
     ax_time = fig.add_subplot(gs[2])
     ax_speed = fig.add_subplot(gs[3])
+    ax_dynamics = fig.add_subplot(gs[4])
 
     # 表 0：总平均统计
     ax_tab.axis("off")
@@ -278,14 +334,45 @@ def plot_summary_tasks(rows, stats, out_dir):
     ax_speed.set_ylabel("v (m/s)")
     ax_speed.legend(loc="best", fontsize=9)
 
-    for ax in (ax_err, ax_time, ax_speed):
+    # 图 4：每任务控制目标 acceleration / jerk 峰值
+    accel_pos = [r["target_max_accel_mps2"] for r in rows]
+    accel_neg = [abs(r["target_min_accel_mps2"]) for r in rows]
+    b1 = ax_dynamics.bar(
+        [i - 0.2 for i in idx], accel_pos, 0.38,
+        color="#7b1fa2", label="target max +a")
+    b2 = ax_dynamics.bar(
+        [i + 0.2 for i in idx], accel_neg, 0.38,
+        color="#ab47bc", label="target max |decel|")
+    label_bars(ax_dynamics, b1)
+    label_bars(ax_dynamics, b2)
+    ax_dyn_jerk = ax_dynamics.twinx()
+    jerk = [r["target_max_abs_jerk_mps3"] for r in rows]
+    ax_dyn_jerk.plot(
+        idx, jerk, "o-", color="#c62828", lw=1.2, ms=4,
+        label="target max |jerk|")
+    for i, value in enumerate(jerk):
+        ax_dyn_jerk.annotate(
+            f"{value:.3f}", (i, value), ha="center", va="bottom", fontsize=7)
+    ax_dynamics.set_title(
+        "图 4：每任务控制器轨迹目标动力学峰值"
+        "（红色任务标签=dynamics limit exceeded）")
+    ax_dynamics.set_ylabel("|acceleration| (m/s²)")
+    ax_dyn_jerk.set_ylabel("|jerk| (m/s³)")
+    h1, l1 = ax_dynamics.get_legend_handles_labels()
+    h2, l2 = ax_dyn_jerk.get_legend_handles_labels()
+    ax_dynamics.legend(h1 + h2, l1 + l2, loc="best", fontsize=9)
+
+    for ax in (ax_err, ax_time, ax_speed, ax_dynamics):
         ax.set_xticks(idx)
         ax.set_xticklabels(short, rotation=45, ha="right", fontsize=7)
-        # 失败任务横轴标签标红
+        # 失败任务或运动学超限任务横轴标签标红
         for lbl, r in zip(ax.get_xticklabels(), rows):
-            if r["result"] != "succeeded":
+            if r["dynamics_status"] == "exceeded":
+                lbl.set_color("#c62828")
+            elif r["result"] != "succeeded":
                 lbl.set_color(RESULT_COLORS.get(r["result"], "#c62828"))
         ax.grid(True, axis="y", alpha=0.3)
+    ax_dyn_jerk.grid(False)
 
     fig.savefig(os.path.join(out_dir, "summary_tasks.png"), dpi=130,
                 bbox_inches="tight")
@@ -293,7 +380,7 @@ def plot_summary_tasks(rows, stats, out_dir):
 
 
 def build_point_rows(rows, centers, labels):
-    """每点位聚合指标（精度/速度/阶段时间用 succeeded；次数含全部）。"""
+    """每点位聚合指标（精度/速度/阶段时间用 succeeded；次数含全部）."""
     prows = []
     for i, (cx, cy) in enumerate(centers):
         all_i = [rows[j] for j in range(len(rows)) if labels[j] == i]
@@ -310,6 +397,13 @@ def build_point_rows(rows, centers, labels):
             "err_yaw_mean_deg": round(mean([abs(r["err_yaw_deg"]) for r in ok]), 2),
             "err_yaw_max_deg": round(max([abs(r["err_yaw_deg"]) for r in ok], default=0), 2),
             "avg_speed_mean_mps": round(mean([r["avg_speed_mps"] for r in ok]), 3),
+            "target_max_abs_accel_mean_mps2": round(
+                mean([max(r["target_max_accel_mps2"],
+                          abs(r["target_min_accel_mps2"])) for r in ok]), 3),
+            "target_max_abs_jerk_mean_mps3": round(
+                mean([r["target_max_abs_jerk_mps3"] for r in ok]), 3),
+            "dynamics_exceeded_tasks":
+                sum(r["dynamics_status"] == "exceeded" for r in all_i),
             "duration_mean_s": round(mean([r["duration_s"] for r in ok]), 2),
             **{f"{p}_mean_s": round(mean([r[f"{p}_s"] for r in ok]), 2)
                for p in PHASES},
@@ -403,6 +497,18 @@ def main():
         help="nav_task_*.json 所在目录（缺省=nav2_nav_monitor 配置的 output_dir）")
     ap.add_argument(
         "--no-per-task", action="store_true", help="跳过每任务的路径/速度图，只出汇总")
+    ap.add_argument("--accel-limit", type=float, default=None,
+                    help="覆盖 JSON 中的目标正加速度限值 m/s²")
+    ap.add_argument("--decel-limit", type=float, default=None,
+                    help="覆盖 JSON 中的目标减速度绝对值限值 m/s²")
+    ap.add_argument("--jerk-limit", type=float, default=None,
+                    help="覆盖 JSON 中的目标 |jerk| 限值 m/s³")
+    ap.add_argument("--limit-tolerance-ratio", type=float, default=None,
+                    help="限值检测相对容差（默认读 JSON；旧数据默认 0.05）")
+    ap.add_argument("--accel-window", type=float, default=DEFAULT_ACCEL_WINDOW_SEC,
+                    help="由速度估算加速度的局部回归窗口 s（默认 0.30）")
+    ap.add_argument("--jerk-window", type=float, default=DEFAULT_JERK_WINDOW_SEC,
+                    help="由加速度估算 jerk 的局部回归窗口 s（默认 0.30）")
     args = ap.parse_args()
 
     d = resolve_data_dir(args.dir)
@@ -416,7 +522,14 @@ def main():
     os.makedirs(out_dir, exist_ok=True)
     print(f"分析 {len(tasks)} 个导航任务 → {out_dir}")
 
-    rows = build_rows(tasks)
+    limit_overrides = {
+        "max_acceleration": args.accel_limit,
+        "max_deceleration": args.decel_limit,
+        "max_abs_jerk": args.jerk_limit,
+        "tolerance_ratio": args.limit_tolerance_ratio,
+    }
+    rows = build_rows(
+        tasks, limit_overrides, args.accel_window, args.jerk_window)
     stats, ok_rows = overall_stats(rows)
 
     # ---- 第一部分：按任务横铺 + 总平均 ----
@@ -449,9 +562,23 @@ def main():
             for script, suffix in (
                     ("plot_nav_task_path.py", "_path.png"),
                     ("plot_nav_task_speed.py", "_speed.png")):
+                command = [
+                    sys.executable, os.path.join(here, script), src,
+                    "--out", os.path.join(tasks_dir, stem + suffix)]
+                if script == "plot_nav_task_speed.py":
+                    command.extend([
+                        "--accel-window", str(args.accel_window),
+                        "--jerk-window", str(args.jerk_window)])
+                    for flag, value in (
+                            ("--accel-limit", args.accel_limit),
+                            ("--decel-limit", args.decel_limit),
+                            ("--jerk-limit", args.jerk_limit),
+                            ("--limit-tolerance-ratio",
+                             args.limit_tolerance_ratio)):
+                        if value is not None:
+                            command.extend([flag, str(value)])
                 subprocess.run(
-                    [sys.executable, os.path.join(here, script), src,
-                     "--out", os.path.join(tasks_dir, stem + suffix)],
+                    command,
                     check=True, capture_output=True)
         print(f"已保存：{tasks_dir}/ 下 {len(tasks) * 2} 张每任务图")
 
