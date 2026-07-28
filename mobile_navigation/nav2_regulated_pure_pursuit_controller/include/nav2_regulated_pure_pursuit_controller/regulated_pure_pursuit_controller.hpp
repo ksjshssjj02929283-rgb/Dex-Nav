@@ -24,6 +24,7 @@
 
 #include "nav2_costmap_2d/footprint_collision_checker.hpp"
 #include "nav2_core/controller.hpp"
+#include "nav2_core/trajectory_preview.hpp"
 #include "nav2_controller_common/pid_controller.h"
 #include "nav_interfaces/msg/robot_trajectory.hpp"
 #include "rclcpp/rclcpp.hpp"
@@ -332,19 +333,15 @@ protected:
   tf2::Duration transform_tolerance_;
   double angular_gain_{1.0};
   double near_curvature_check_dist_{0.3};
-  struct TrajSpeedPoint
-  {
-    double x;
-    double y;
-    double speed;
-    double accel;
-  };
+  using TrajSpeedPoint = nav2_core::TrajectoryPreviewPoint;
   std::vector<TrajSpeedPoint> traj_speed_points_;
   std::string trajectory_frame_;
   bool trajectory_required_{false};
   bool trajectory_valid_{false};
+  bool trajectory_time_valid_{false};
   std::mutex traj_mutex_;
   double traj_speed_lookahead_{0.1};
+  double traj_time_lookahead_{0.0};
   bool last_trajectory_tracking_target_valid_{false};
   double last_trajectory_tracking_target_v_{0.0};
   double last_trajectory_tracking_target_a_{0.0};

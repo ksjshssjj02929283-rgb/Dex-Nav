@@ -38,9 +38,14 @@ install(DIRECTORY include/
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
+  find_package(ament_cmake_gtest REQUIRED)
   # the following line skips the linter which checks for copyrights
   set(ament_cmake_copyright_FOUND TRUE)
   ament_lint_auto_find_test_dependencies()
+
+  ament_add_gtest(test_trajectory_preview test/test_trajectory_preview.cpp)
+  target_include_directories(test_trajectory_preview PRIVATE include)
+  ament_target_dependencies(test_trajectory_preview builtin_interfaces)
 endif()
 
 ament_export_include_directories(include)

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <gtest/gtest.h>
 
+#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
@@ -74,9 +75,13 @@ public:
   }
 
   void seedAcceptedTrajectory(
-    const nav_interfaces::msg::RobotTrajectory & trajectory, double age)
+    const nav_interfaces::msg::RobotTrajectory & trajectory, double age,
+    double consumed_target_velocity = 0.35,
+    double consumed_target_acceleration = -0.2)
   {
-    speed_plan_state_.accept(trajectory, now() - rclcpp::Duration::from_seconds(age));
+    speed_plan_state_.accept(
+      trajectory, consumed_target_velocity, consumed_target_acceleration,
+      now() - rclcpp::Duration::from_seconds(age));
   }
 
   nav2_core::SpeedPlanningBoundary boundaryFor(
@@ -92,10 +97,14 @@ public:
     current_trajectory_ = trajectory;
   }
 
-  void updateContinuity(ControllerPhase phase, bool succeeded, bool consumed)
+  void updateContinuity(
+    ControllerPhase phase, bool succeeded, bool consumed,
+    double consumed_target_velocity = 0.35,
+    double consumed_target_acceleration = -0.2)
   {
     controller_phase_ = phase;
-    updateSpeedPlanningContinuityAfterControl(succeeded, consumed);
+    updateSpeedPlanningContinuityAfterControl(
+      succeeded, consumed, consumed_target_velocity, consumed_target_acceleration);
   }
 
   void resetStages() {resetStagedControlState();}
@@ -190,7 +199,7 @@ TEST(LocalPlanningStage, ConfiguredEmptyOutputIsFailClosed)
   EXPECT_TRUE(output.poses.empty());
 }
 
-TEST(SpeedPlanningBoundary, InterpolatesAcceptedTrajectoryState)
+TEST(SpeedPlanningBoundary, InheritsConsumedTrajectoryTargetState)
 {
   auto controller = std::make_shared<ControllerShim>();
   controller->seedAcceptedTrajectory(makeTrajectory(), 0.1);
@@ -199,7 +208,7 @@ TEST(SpeedPlanningBoundary, InterpolatesAcceptedTrajectoryState)
     makePath({{0.5, 0.0}, {1.0, 0.0}, {2.0, 0.0}}), 0.31);
 
   ASSERT_TRUE(boundary.acceleration_valid);
-  EXPECT_NEAR(boundary.acceleration, 0.15, 1e-9);
+  EXPECT_NEAR(boundary.acceleration, -0.2, 1e-9);
   EXPECT_NEAR(boundary.source_age, 0.1, 0.03);
   EXPECT_NEAR(boundary.velocity.linear.x, 0.31, 1e-9);
 }
@@ -240,8 +249,12 @@ TEST(SpeedPlanningBoundary, AcceptsOnlyConsumedTrackingTrajectoryAndResets)
 
   controller->setCurrentTrajectory(trajectory);
   controller->updateContinuity(
-    nav2_controller::ControllerServer::ControllerPhase::TRACK, true, true);
+    nav2_controller::ControllerServer::ControllerPhase::TRACK, true, true, 0.31, -0.18);
   EXPECT_TRUE(controller->continuityValid());
+  EXPECT_NEAR(
+    controller->boundaryFor(
+      makePath({{0.5, 0.0}, {1.0, 0.0}, {2.0, 0.0}}), 0.31).acceleration,
+    -0.18, 1e-9);
 
   controller->resetStages();
   EXPECT_FALSE(controller->continuityValid());
@@ -254,6 +267,12 @@ TEST(SpeedPlanningBoundary, AcceptsOnlyConsumedTrackingTrajectoryAndResets)
   controller->setCurrentTrajectory(trajectory);
   controller->updateContinuity(
     nav2_controller::ControllerServer::ControllerPhase::APPROACH, true, false);
+  EXPECT_FALSE(controller->continuityValid());
+
+  controller->setCurrentTrajectory(trajectory);
+  controller->updateContinuity(
+    nav2_controller::ControllerServer::ControllerPhase::TRACK, true, true,
+    0.31, std::numeric_limits<double>::quiet_NaN());
   EXPECT_FALSE(controller->continuityValid());
 }
 

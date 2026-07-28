@@ -93,6 +93,8 @@ public:
     const nav_msgs::msg::Path & path,
     const nav2_core::SpeedPlanningBoundary & boundary) override;
 
+  nav2_core::SpeedPlanningDiagnostics getLastPlanningDiagnostics() const override;
+
   void setSpeedLimit(const double & speed_limit, const bool & percentage) override;
 
 protected:
@@ -133,8 +135,11 @@ protected:
   /// A3 曲率约束：小半径处限速（只降不升）+ 曲率值写入 + 转弯保持匀速（可选）。
   void applyCurvatureConstraint(std::vector<TrajPointWork> & path, const double ex_speed_limit);
 
-  /// A4 末端蠕行区：距终点 stop_distance_ 内包络压到 end_speed_（min，保留障碍零速），
-  /// 低速到点保证精度；end_speed_ < 1e-3（硬停配置）时不设蠕行区。
+  /// 在 goal 前 stop_distance_ 处插入精确 stop-zone 入口，避免入口依赖路径采样点距。
+  void insertEndSpeedBoundary(std::vector<TrajPointWork> & path) const;
+
+  /// A4 末端蠕行区：未来点距终点 stop_distance_ 内包络压到 end_speed_；
+  /// index 0 是当前实测边界，不被未来包络覆盖。
   void applyEndSpeedConstraint(std::vector<TrajPointWork> & path);
 
   // ============================================================
@@ -212,6 +217,7 @@ protected:
   // costmap 系——两者通常分别为 map 与 odom，直接查询会差一个定位修正量）。
   std::string path_frame_;
   ObstacleConstraintTiming last_obstacle_timing_;
+  nav2_core::SpeedPlanningDiagnostics last_planning_diagnostics_;
 };
 
 }  // namespace nav2_speed_planner

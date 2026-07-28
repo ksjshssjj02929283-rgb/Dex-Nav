@@ -64,6 +64,8 @@ public:
 
   void accept(
     const nav_interfaces::msg::RobotTrajectory & trajectory,
+    double consumed_target_velocity,
+    double consumed_target_acceleration,
     const rclcpp::Time & now);
 
   void reset(BoundaryReason reason = BoundaryReason::EXPLICIT_INVALIDATION);
@@ -76,6 +78,8 @@ private:
   mutable std::mutex mutex_;
   Config config_;
   nav_interfaces::msg::RobotTrajectory accepted_trajectory_;
+  double accepted_target_velocity_{0.0};
+  double accepted_target_acceleration_{0.0};
   rclcpp::Time accepted_trajectory_time_{0, 0, RCL_ROS_TIME};
   bool valid_{false};
   BoundaryReason invalidation_reason_{BoundaryReason::FIRST_CYCLE};

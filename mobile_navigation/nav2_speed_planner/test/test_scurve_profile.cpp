@@ -199,3 +199,90 @@ TEST(SCurveRuckig, ShortTerminalPath)
     EXPECT_LE(v[i], env[i] + 1e-3);
   }
 }
+
+TEST(SCurveRuckig, InfeasibleStopZoneUsesReachableJerkLimitedBraking)
+{
+  const std::vector<double> env{0.6, 0.05, 0.05, 0.05};
+  const auto s = uniformArc(env.size(), 0.02);
+  std::vector<double> v, a, t;
+
+  SCurveSpeedPlanner::generateRuckigProfile(
+    env, s, 0.325, 0.0, 0.5, 0.4, 0.5, 0.05, v, a, t, 0.05);
+
+  ASSERT_EQ(v.size(), env.size());
+  ASSERT_EQ(a.size(), env.size());
+  ASSERT_EQ(t.size(), env.size());
+  EXPECT_NEAR(v.front(), 0.325, 1e-9);
+  EXPECT_NEAR(a.front(), 0.0, 1e-9);
+  EXPECT_GT(v[1], 0.05) << "an unreachable future target must not be envelope-clamped";
+  for (size_t i = 0; i < v.size(); ++i) {
+    EXPECT_TRUE(std::isfinite(v[i]));
+    EXPECT_TRUE(std::isfinite(a[i]));
+    EXPECT_TRUE(std::isfinite(t[i]));
+    EXPECT_GE(v[i], 0.05 - 1e-6);
+    EXPECT_GE(a[i], -0.4 - 1e-6);
+    EXPECT_LE(a[i], 0.5 + 1e-6);
+    if (i == 0) {
+      continue;
+    }
+    EXPECT_GT(t[i], t[i - 1]);
+    const double implied_decel =
+      (v[i - 1] * v[i - 1] - v[i] * v[i]) / (2.0 * (s[i] - s[i - 1]));
+    EXPECT_LE(implied_decel, 0.4 + 0.01);
+    const double jerk = std::fabs(a[i] - a[i - 1]) / (t[i] - t[i - 1]);
+    EXPECT_LE(jerk, 0.5 + 0.05);
+  }
+}
+
+TEST(SCurveRuckig, TerminalFallbackDoesNotUndershootOrRebound)
+{
+  const size_t n = 101;
+  std::vector<double> env(n, 0.05);
+  env.front() = 0.6;
+  const auto s = uniformArc(n, 0.02);
+  std::vector<double> v, a, t;
+
+  const bool terminal_infeasible = SCurveSpeedPlanner::generateRuckigProfile(
+    env, s, 0.6, 0.0, 0.5, 0.4, 0.5, 0.05, v, a, t, 0.05);
+
+  EXPECT_TRUE(terminal_infeasible);
+  ASSERT_EQ(v.size(), n);
+  ASSERT_EQ(a.size(), n);
+  ASSERT_EQ(t.size(), n);
+  for (size_t i = 0; i < n; ++i) {
+    EXPECT_GE(v[i], 0.05 - 1e-6);
+    EXPECT_LE(a[i], 1e-6) << "terminal fallback must not accelerate back up";
+    if (i > 0) {
+      EXPECT_LE(v[i], v[i - 1] + 1e-6);
+      EXPECT_GT(t[i], t[i - 1]);
+    }
+  }
+  EXPECT_NEAR(v.back(), 0.05, 1e-6);
+  EXPECT_NEAR(a.back(), 0.0, 1e-6);
+}
+
+TEST(SCurveRuckig, LateNegativeAccelerationReleasesWithoutRebound)
+{
+  const size_t n = 51;
+  std::vector<double> env(n, 0.05);
+  env.front() = 0.6;
+  const auto s = uniformArc(n, 0.01);
+  std::vector<double> v, a, t;
+
+  const bool terminal_infeasible = SCurveSpeedPlanner::generateRuckigProfile(
+    env, s, 0.0583, -0.108, 0.5, 0.4, 0.5, 0.05, v, a, t, 0.05);
+
+  EXPECT_TRUE(terminal_infeasible);
+  ASSERT_EQ(v.size(), n);
+  double min_velocity = v.front();
+  for (size_t i = 0; i < n; ++i) {
+    min_velocity = std::min(min_velocity, v[i]);
+    EXPECT_LE(a[i], 1e-6) << "an unavoidable release must not add a rebound";
+    if (i > 0) {
+      EXPECT_LE(v[i], v[i - 1] + 1e-6);
+    }
+  }
+  EXPECT_NEAR(min_velocity, 0.046636, 1e-3);
+  EXPECT_NEAR(v.back(), min_velocity, 1e-6);
+  EXPECT_NEAR(a.back(), 0.0, 1e-6);
+}

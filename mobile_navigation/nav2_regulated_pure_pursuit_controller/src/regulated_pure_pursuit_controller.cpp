@@ -87,6 +87,8 @@ void RegulatedPurePursuitController::configure(
     node, plugin_name_ + ".near_curvature_check_dist", rclcpp::ParameterValue(0.3));
   declare_parameter_if_not_declared(
     node, plugin_name_ + ".traj_speed_lookahead", rclcpp::ParameterValue(0.1));
+  declare_parameter_if_not_declared(
+    node, plugin_name_ + ".traj_time_lookahead", rclcpp::ParameterValue(0.0));
 
   node->get_parameter(plugin_name_ + ".lookahead_dist", lookahead_dist_);
   node->get_parameter(plugin_name_ + ".min_lookahead_dist", min_lookahead_dist_);
@@ -102,6 +104,7 @@ void RegulatedPurePursuitController::configure(
   node->get_parameter(plugin_name_ + ".angular_gain", angular_gain_);
   node->get_parameter(plugin_name_ + ".near_curvature_check_dist", near_curvature_check_dist_);
   node->get_parameter(plugin_name_ + ".traj_speed_lookahead", traj_speed_lookahead_);
+  node->get_parameter(plugin_name_ + ".traj_time_lookahead", traj_time_lookahead_);
 
   // ---- RPP 先验约束（applyConstraints，只降不升）----
   declare_parameter_if_not_declared(
@@ -280,6 +283,7 @@ void RegulatedPurePursuitController::configure(
   node->get_parameter("controller_frequency", control_frequency);
   transform_tolerance_ = tf2::durationFromSec(transform_tolerance);
   control_duration_ = 1.0 / control_frequency;
+  traj_time_lookahead_ = std::max(std::fabs(traj_time_lookahead_), control_duration_);
 
   /** Possible to drive in reverse direction if and only if
    "use_rotate_to_heading" parameter is set to false **/
@@ -948,6 +952,7 @@ void RegulatedPurePursuitController::setTrajectory(
   std::lock_guard<std::mutex> lock(traj_mutex_);
   trajectory_required_ = true;
   trajectory_valid_ = false;
+  trajectory_time_valid_ = false;
   trajectory_frame_.clear();
   traj_speed_points_.clear();
 
@@ -972,13 +977,17 @@ void RegulatedPurePursuitController::setTrajectory(
         tp.pose.header.frame_id.c_str(), source_frame.c_str());
       return;
     }
-    pts.push_back(
-      {tp.pose.pose.position.x, tp.pose.pose.position.y,
-        std::fabs(static_cast<double>(tp.longitudinal_velocity)),
-        static_cast<double>(tp.acceleration)});
+    TrajSpeedPoint point;
+    point.x = tp.pose.pose.position.x;
+    point.y = tp.pose.pose.position.y;
+    point.speed_limit = std::fabs(static_cast<double>(tp.longitudinal_velocity));
+    point.accel = static_cast<double>(tp.acceleration);
+    point.relative_time = nav2_core::durationToSeconds(tp.relative_time);
+    pts.push_back(point);
   }
   trajectory_frame_ = source_frame;
   traj_speed_points_ = std::move(pts);
+  trajectory_time_valid_ = nav2_core::hasValidRelativeTime(traj_speed_points_);
   trajectory_valid_ = true;
 }
 
@@ -989,45 +998,15 @@ bool RegulatedPurePursuitController::nearestTrajectorySpeed(
   if (traj_speed_points_.empty()) {
     return false;
   }
-  double best_d2 = std::numeric_limits<double>::max();
-  size_t best_i = 0;
-  for (size_t i = 0; i < traj_speed_points_.size(); ++i) {
-    const double dx = traj_speed_points_[i].x - pose.pose.position.x;
-    const double dy = traj_speed_points_[i].y - pose.pose.position.y;
-    const double d2 = dx * dx + dy * dy;
-    if (d2 < best_d2) {
-      best_d2 = d2;
-      best_i = i;
-    }
+  nav2_core::TrajectoryPreview preview;
+  if (!nav2_core::sampleTrajectoryPreview(
+      traj_speed_points_, pose.pose.position.x, pose.pose.position.y,
+      trajectory_time_valid_, traj_time_lookahead_, traj_speed_lookahead_, preview))
+  {
+    return false;
   }
-  // 速度目标 = 前方 lookahead 窗内的 max，且「排除最近点自身」：最近点几乎
-  // 恒为 receding-horizon 剖面的状态戳首点（=当前实际速度，是测量不是指令），
-  // 纳入 max 会让目标自我背书——超速被固化为新目标（反馈失去回拉误差）、
-  // 减速坡道上目标死锁在当前速度（直到换控制器才断崖）。静止起步时最近点
-  // 速度恒 0 的自引用死锁同样由前方坡道点破环。
-  // accel 与速度窗同基准取首个前方点：最近点是状态戳，其 accel 由实测
-  // 反推（实测滞后越多越负），与 PID 误差项双重携带同一份滞后会双倍下压；
-  // 前方点的 accel 才是"规划要求的加速度"。
-  if (best_i + 1 >= traj_speed_points_.size()) {
-    traj_speed = traj_speed_points_[best_i].speed;  // 已在末点，无前方点可用
-    traj_accel = traj_speed_points_[best_i].accel;
-    return true;
-  }
-  size_t target_i = best_i + 1;
-  double dist = 0.0;
-  for (size_t i = best_i + 1; i < traj_speed_points_.size(); ++i) {
-    const double dx = traj_speed_points_[i].x - traj_speed_points_[i - 1].x;
-    const double dy = traj_speed_points_[i].y - traj_speed_points_[i - 1].y;
-    dist += std::hypot(dx, dy);
-    if (traj_speed_points_[i].speed > traj_speed_points_[target_i].speed) {
-      target_i = i;
-    }
-    if (dist > traj_speed_lookahead_) {
-      break;
-    }
-  }
-  traj_speed = traj_speed_points_[target_i].speed;
-  traj_accel = traj_speed_points_[target_i].accel;
+  traj_speed = preview.velocity;
+  traj_accel = preview.acceleration;
   return true;
 }
 

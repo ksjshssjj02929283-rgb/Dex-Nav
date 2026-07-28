@@ -31,6 +31,7 @@
 
 #include "nav2_core/controller.hpp"
 #include "nav2_core/goal_checker.hpp"
+#include "nav2_core/trajectory_preview.hpp"
 #include "nav2_costmap_2d/costmap_2d_ros.hpp"
 #include "nav2_util/node_utils.hpp"
 
@@ -144,12 +145,10 @@ protected:
   /**
    * @brief Single cached trajectory point: geometry + segment speed/curvature.
    */
-  struct TrajPoint
+  struct TrajPoint : public nav2_core::TrajectoryPreviewPoint
   {
     geometry_msgs::msg::PoseStamped pose;
-    double speed_limit = 0.0;  // desired longitudinal velocity (m/s)
     double curvature = 0.0;    // path_kappa
-    double accel = 0.0;        // 规划加速度，供速度环前馈（几何路径回退时恒 0）
   };
 
   enum ControllerStage
@@ -320,6 +319,8 @@ protected:
   // nearestTrajectorySpeed 的前方窗长度：最近点之后前方窗内取 max（不含
   // 最近点自身）。同 RPP 参数语义。
   double traj_speed_lookahead_ = 0.1;
+  double traj_time_lookahead_ = 0.0;
+  bool trajectory_time_valid_ = false;
   bool last_trajectory_tracking_target_valid_ = false;
   double last_trajectory_tracking_target_v_ = 0.0;
   double last_trajectory_tracking_target_a_ = 0.0;

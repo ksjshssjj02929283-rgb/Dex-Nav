@@ -39,6 +39,7 @@ void TrapezoidalSpeedPlanner::assignVelocityProfile(
   computeDecelPlan(work, arc_s);        // 后向：一切低速点的进入坡道
   stampStartVelocity(work, curr_vel);   // 起点状态戳（receding-horizon）
   computeAccelPlan(work, arc_s);        // 前向：起步 + 一切低速区出口的再加速坡道
+  enforceTerminalReachability(work, arc_s);
 
   // 逐点填充 accel 字段（局部段加速度 (v[i+1]²−v[i]²)/(2·Δs)）：恒加速度剖面
   // 内部虽是分段常数，但此前一直留空 0——消费侧（⑤ 控制器速度环）想用它做
@@ -57,6 +58,29 @@ void TrapezoidalSpeedPlanner::assignVelocityProfile(
   }
 }
 
+void TrapezoidalSpeedPlanner::enforceTerminalReachability(
+  std::vector<TrajPointWork> & work, const std::vector<double> & arc_s) const
+{
+  if (decel_ >= -1e-6 || stop_distance_ <= 0.0 || end_speed_ < 1e-3) {
+    return;
+  }
+  for (size_t i = 0; i + 1 < work.size(); ++i) {
+    if (arc_s.back() - arc_s[i + 1] > stop_distance_ + 1e-6 ||
+      work[i + 1].speed_limit < 1e-3)
+    {
+      continue;
+    }
+    const double ds = arc_s[i + 1] - arc_s[i];
+    if (ds <= 1e-9) {
+      continue;
+    }
+    const double v_prev = std::max(0.0, work[i].speed_limit);
+    const double reachable_sq = v_prev * v_prev + 2.0 * decel_ * ds;
+    const double v_min_reachable = reachable_sq > 0.0 ? std::sqrt(reachable_sq) : 0.0;
+    work[i + 1].speed_limit = std::max(work[i + 1].speed_limit, v_min_reachable);
+  }
+}
+
 // ============================ 减速规划（后向 pass）============================
 
 void TrapezoidalSpeedPlanner::computeDecelPlan(
@@ -65,7 +89,7 @@ void TrapezoidalSpeedPlanner::computeDecelPlan(
   // v[i] = min(v[i], √(v[i+1]² + 2·|decel|·Δs))，从终点向前传播。
   // 对一切低速点（每个曲率 cap / 蠕行区 / 障碍零速 / 硬停终点）自动生成
   // 物理正确的进入坡道。index 0 为机器人当前速度（状态戳），不参与设置。
-  for (size_t i = work.size() - 1; i-- > 1;) {
+  for (size_t i = work.size() - 1; i-- > 1; ) {
     const double ds = arc_s[i + 1] - arc_s[i];
     const double v_next = work[i + 1].speed_limit;
     const double v_reachable = std::sqrt(v_next * v_next - 2.0 * decel_ * ds);

@@ -81,6 +81,8 @@ void PIDController::configure(
   declare_parameter_if_not_declared(
     node, p + ".traj_speed_lookahead", rclcpp::ParameterValue(0.1));
   declare_parameter_if_not_declared(
+    node, p + ".traj_time_lookahead", rclcpp::ParameterValue(0.0));
+  declare_parameter_if_not_declared(
     node, p + ".approach_rotation_budget_deg", rclcpp::ParameterValue(200.0));
 
   node->get_parameter(p + ".long_precision", long_precision_);
@@ -112,6 +114,7 @@ void PIDController::configure(
   final_target_lock_distance_ = std::fabs(final_target_lock_distance_);
   node->get_parameter(p + ".traj_speed_lookahead", traj_speed_lookahead_);
   traj_speed_lookahead_ = std::fabs(traj_speed_lookahead_);
+  node->get_parameter(p + ".traj_time_lookahead", traj_time_lookahead_);
   double approach_rotation_budget_deg = 200.0;
   node->get_parameter(p + ".approach_rotation_budget_deg", approach_rotation_budget_deg);
   approach_rotation_budget_ = std::fabs(approach_rotation_budget_deg) * M_PI / 180.0;
@@ -152,6 +155,7 @@ void PIDController::configure(
   if (controller_frequency > 0.0) {
     d_t_ = 1.0 / controller_frequency;
   }
+  traj_time_lookahead_ = std::max(std::fabs(traj_time_lookahead_), d_t_);
 
   station_nav2_pid_controller_.Init(low_speed_station_pid_conf_);
   speed_nav2_pid_controller_.Init(low_speed_pid_conf_);
@@ -178,6 +182,7 @@ void PIDController::cleanup()
   std::unique_lock<std::mutex> lock(plan_mutex_);
   last_trajectory_tracking_target_valid_ = false;
   controller_traj_.clear();
+  trajectory_time_valid_ = false;
 }
 
 bool PIDController::cachePathAsTrajectory(const nav_msgs::msg::Path & path)
@@ -219,6 +224,8 @@ bool PIDController::cachePathAsTrajectory(const nav_msgs::msg::Path & path)
       tp.pose.header.frame_id = global_frame_;
     }
     tp.speed_limit = default_desired_linear_vel_;  // geometric path: fallback speed
+    tp.x = tp.pose.pose.position.x;
+    tp.y = tp.pose.pose.position.y;
     tp.curvature = 0.0;
     transformed_traj.push_back(std::move(tp));
   }
@@ -245,6 +252,7 @@ bool PIDController::cachePathAsTrajectory(const nav_msgs::msg::Path & path)
     cached_goal.position.x, cached_goal.position.y, tf2::getYaw(cached_goal.orientation));
 
   controller_traj_ = std::move(transformed_traj);
+  trajectory_time_valid_ = false;
   return true;
 }
 
@@ -317,6 +325,9 @@ void PIDController::setTrajectory(const nav_interfaces::msg::RobotTrajectory & t
     tp.speed_limit = pt.longitudinal_velocity;
     tp.curvature = pt.path_kappa;
     tp.accel = pt.acceleration;
+    tp.x = tp.pose.pose.position.x;
+    tp.y = tp.pose.pose.position.y;
+    tp.relative_time = nav2_core::durationToSeconds(pt.relative_time);
     transformed_traj.push_back(std::move(tp));
   }
 
@@ -342,6 +353,7 @@ void PIDController::setTrajectory(const nav_interfaces::msg::RobotTrajectory & t
     cached_goal.position.x, cached_goal.position.y, tf2::getYaw(cached_goal.orientation));
 
   controller_traj_ = std::move(transformed_traj);
+  trajectory_time_valid_ = nav2_core::hasValidRelativeTime(controller_traj_);
 
   plan_index_ = std::min(1, static_cast<int>(controller_traj_.size()) - 1);
 
@@ -1105,42 +1117,15 @@ bool PIDController::nearestTrajectorySpeed(
   if (controller_traj_.empty()) {
     return false;
   }
-  double best_d2 = std::numeric_limits<double>::max();
-  size_t best_i = 0;
-  for (size_t i = 0; i < controller_traj_.size(); ++i) {
-    const double dx = controller_traj_[i].pose.pose.position.x - pose.pose.position.x;
-    const double dy = controller_traj_[i].pose.pose.position.y - pose.pose.position.y;
-    const double d2 = dx * dx + dy * dy;
-    if (d2 < best_d2) {
-      best_d2 = d2;
-      best_i = i;
-    }
+  nav2_core::TrajectoryPreview preview;
+  if (!nav2_core::sampleTrajectoryPreview(
+      controller_traj_, pose.pose.position.x, pose.pose.position.y,
+      trajectory_time_valid_, traj_time_lookahead_, traj_speed_lookahead_, preview))
+  {
+    return false;
   }
-  // 速度目标 = 最近点之后前方窗内的 max，且排除最近点自身：最近点几乎恒为
-  // 规划层 receding-horizon 剖面的状态戳首点（=当前实测速度），纳入 max 会
-  // 让目标自我背书。accel 与速度窗同基准取首个前方点的值。
-  if (best_i + 1 >= controller_traj_.size()) {
-    traj_speed = controller_traj_[best_i].speed_limit;  // 已在末点，无前方点可用
-    traj_accel = controller_traj_[best_i].accel;
-    return true;
-  }
-  size_t target_i = best_i + 1;
-  double dist = 0.0;
-  for (size_t i = best_i + 1; i < controller_traj_.size(); ++i) {
-    const double dx = controller_traj_[i].pose.pose.position.x -
-      controller_traj_[i - 1].pose.pose.position.x;
-    const double dy = controller_traj_[i].pose.pose.position.y -
-      controller_traj_[i - 1].pose.pose.position.y;
-    dist += std::hypot(dx, dy);
-    if (controller_traj_[i].speed_limit > controller_traj_[target_i].speed_limit) {
-      target_i = i;
-    }
-    if (dist > traj_speed_lookahead_) {
-      break;
-    }
-  }
-  traj_speed = controller_traj_[target_i].speed_limit;
-  traj_accel = controller_traj_[target_i].accel;
+  traj_speed = preview.velocity;
+  traj_accel = preview.acceleration;
   return true;
 }
 

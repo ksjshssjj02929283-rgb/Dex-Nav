@@ -28,6 +28,11 @@ struct SpeedPlanningBoundary
   double source_age{0.0};
 };
 
+struct SpeedPlanningDiagnostics
+{
+  bool terminal_infeasible{false};
+};
+
 /**
  * @class SpeedPlanner
  * @brief 五层架构 ④速度规划层接口（项目 32 / DEC-007，Nav2 原生缺此层）。
@@ -75,6 +80,11 @@ public:
   virtual nav_interfaces::msg::RobotTrajectory computeSpeedPlan(
     const nav_msgs::msg::Path & path,
     const SpeedPlanningBoundary & boundary) = 0;
+
+  virtual SpeedPlanningDiagnostics getLastPlanningDiagnostics() const
+  {
+    return SpeedPlanningDiagnostics();
+  }
 
   /**
    * @brief 外部限速（区域/事件下发；与 path 内 speed_hint 取严）。

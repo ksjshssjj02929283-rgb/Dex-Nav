@@ -315,6 +315,7 @@ controller_server:
       angular_gain: 1.2    # 角速度增益：>1 收紧转向补偿曲线跟踪滞后（横向误差大→上调，振荡→下调）
       near_curvature_check_dist: 0.3          # 近场固定距离曲率采样点（不随速度缩放）；③角速度饱和联动降速取远端/近场两点曲率中更尖锐者，避免前瞻越远曲率越被稀释而漏看近场路径突变
       traj_speed_lookahead: 0.1    # 轨迹速度目标=最近点之后前方窗内 max（不含状态戳）；静止起步靠前方坡道点破自引用环
+      traj_time_lookahead: 0.0     # 0=自动取至少一个 controller 周期；relative_time 无效时才回退上方空间窗
       # ── RPP 先验约束（applyConstraints，只降不升，基于静态几何/代价）──
       use_regulated_linear_velocity_scaling: True
       regulated_linear_scaling_min_radius: 1.2    # RPP 层曲率减速阈值（carrot 弦曲率）；④A3 层阈值见 speed planner 块（半径大于两者则两层都不减速）
@@ -397,6 +398,7 @@ controller_server:
       angular_cmd_reseed_error: 0.3    # 同上，角速度指令积分器版本
       final_target_lock_distance: 0.3    # 距终点小于此值直接锁定终点索引（消除末段最近点跳变）；须 ≥ staged_control.approach_distance
       traj_speed_lookahead: 0.1    # 速度参考与瞄准目标解耦：最近点之后前方窗内 max（不含最近点自身，避免状态戳自引用）
+      traj_time_lookahead: 0.0     # 0=自动取至少一个 controller 周期；relative_time 无效时才回退上方空间窗
       approach_rotation_budget_deg: 200.0    # 单次 approach/rotating 累计旋转量安全网，超此值强制停止（度）
       final_rotation_max_v: 0.05
       final_rotation_linear_deadband: 0.005

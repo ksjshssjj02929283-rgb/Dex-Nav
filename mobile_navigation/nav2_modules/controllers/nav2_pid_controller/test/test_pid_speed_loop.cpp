@@ -283,6 +283,8 @@ public:
       p.pose.pose.position.x = i * step;
       p.pose.pose.position.y = 0.0;
       p.pose.pose.orientation.w = 1.0;
+      p.x = p.pose.pose.position.x;
+      p.y = p.pose.pose.position.y;
       traj.push_back(p);
     }
     return traj;
@@ -302,6 +304,8 @@ public:
       p.pose.pose.position.x = x;
       p.pose.pose.position.y = 0.0;
       p.pose.pose.orientation.w = 1.0;
+      p.x = x;
+      p.y = 0.0;
       if (x <= decel_start_x) {
         p.speed_limit = high_speed;
       } else {
@@ -324,8 +328,13 @@ public:
   {
     return nearestTrajectorySpeed(pose, speed, accel);
   }
-  void setControllerTraj(const std::vector<TrajPoint> & traj) {controller_traj_ = traj;}
+  void setControllerTraj(const std::vector<TrajPoint> & traj)
+  {
+    controller_traj_ = traj;
+    trajectory_time_valid_ = nav2_core::hasValidRelativeTime(controller_traj_);
+  }
   void setTrajSpeedLookahead(double v) {traj_speed_lookahead_ = v;}
+  void setTrajTimeLookahead(double v) {traj_time_lookahead_ = v;}
   static double headingScale(double err_theta) {return headingSpeedScale(err_theta);}
   void resetWatchdog(double theta_rob) {resetRotationWatchdog(theta_rob);}
   bool tickWatchdog(double theta_rob) {return updateRotationWatchdog(theta_rob);}
@@ -410,6 +419,35 @@ TEST(ApproachStage, speedAndAccelerationUseSamePreviewPoint)
   ASSERT_TRUE(pid.nearestSpeedWrapper(makePose(0.0, 0.0), speed, accel));
   EXPECT_NEAR(speed, 0.25, 1e-9);
   EXPECT_NEAR(accel, 0.35, 1e-9);
+}
+
+TEST(ApproachStage, trajectorySpeedUsesTimeAlignedInterpolation)
+{
+  ApproachStagePID pid;
+  pid.setTrajSpeedLookahead(0.1);
+  pid.setTrajTimeLookahead(0.08);
+  auto traj = ApproachStagePID::makeStraightTraj(0.10, 0.02);
+  ASSERT_EQ(traj.size(), 6u);
+  traj.resize(4);
+  traj[0].speed_limit = 0.60;
+  traj[0].accel = -0.10;
+  traj[0].relative_time = 0.00;
+  traj[1].speed_limit = 0.55;
+  traj[1].accel = -0.20;
+  traj[1].relative_time = 0.04;
+  traj[2].speed_limit = 0.45;
+  traj[2].accel = -0.40;
+  traj[2].relative_time = 0.12;
+  traj[3].speed_limit = 0.35;
+  traj[3].accel = -0.40;
+  traj[3].relative_time = 0.20;
+  pid.setControllerTraj(traj);
+
+  double velocity = 0.0;
+  double acceleration = 0.0;
+  ASSERT_TRUE(pid.nearestSpeedWrapper(makePose(0.01, 0.0), velocity, acceleration));
+  EXPECT_NEAR(velocity, 0.475, 1e-9);
+  EXPECT_NEAR(acceleration, -0.35, 1e-9);
 }
 
 // 朝向-速度平滑耦合：连续、无跳变，err_theta=0 时不缩放，
