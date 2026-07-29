@@ -62,6 +62,7 @@ public:
   using LocalPlannerMap = std::unordered_map<std::string, nav2_core::LocalPlanner::Ptr>;
   using SpeedPlannerMap = std::unordered_map<std::string, nav2_core::SpeedPlanner::Ptr>;
   enum class ControllerPhase { PREPARE, ALIGN, TRACK, APPROACH };
+  enum class PathUpdateType { NEW_GOAL, SAME_GOAL_GEOMETRY };
 
   /**
    * @brief Constructor for nav2_controller::ControllerServer
@@ -157,8 +158,20 @@ protected:
   /**
    * @brief Assigns path to controller
    * @param path Path received from action server
+   * @param update_type Whether this starts a new goal or only replaces geometry
+   *        for the same controller, goal checker, and navigation goal
    */
-  void setPlannerPath(const nav_msgs::msg::Path & path);
+  void setPlannerPath(
+    const nav_msgs::msg::Path & path,
+    PathUpdateType update_type);
+  /**
+   * @brief Commit path bookkeeping after controller/local-planner geometry is updated
+   * @param path Path already assigned to controller and local-planner plugins
+   * @param update_type Path update semantics used to reset or preserve navigation state
+   */
+  void commitPlannerPathState(
+    const nav_msgs::msg::Path & path,
+    PathUpdateType update_type);
   /**
    * @brief 规划级 pipeline（③④）：LocalPlanner → SpeedPlanner 生成
    *        RobotTrajectory，缓存并分发给 controller。

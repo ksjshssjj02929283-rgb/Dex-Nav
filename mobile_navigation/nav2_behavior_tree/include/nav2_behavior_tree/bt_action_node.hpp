@@ -16,8 +16,10 @@
 #define NAV2_BEHAVIOR_TREE__BT_ACTION_NODE_HPP_
 
 #include <memory>
+#include <set>
 #include <string>
 #include <chrono>
+#include <vector>
 
 #include "behaviortree_cpp_v3/action_node.h"
 #include "nav2_util/node_utils.hpp"
@@ -185,6 +187,11 @@ public:
    */
   BT::NodeStatus tick() override
   {
+    if (goal_cleanup_active_) {
+      return poll_goal_cleanup(bt_loop_duration_) ?
+             BT::NodeStatus::FAILURE : BT::NodeStatus::RUNNING;
+    }
+
     // first step to be done only at the beginning of the Action
     if (status() == BT::NodeStatus::IDLE) {
       // setting the status to RUNNING to notify the BT Loggers (if any)
@@ -206,7 +213,8 @@ public:
       // if new goal was sent and action server has not yet responded
       // check the future goal handle
       if (future_goal_handle_) {
-        auto elapsed = (node_->now() - time_goal_sent_).template to_chrono<std::chrono::milliseconds>();
+        auto elapsed =
+          (node_->now() - time_goal_sent_).template to_chrono<std::chrono::milliseconds>();
         if (!is_future_goal_handle_complete(elapsed)) {
           // return RUNNING if there is still some time before timeout happens
           if (elapsed < server_timeout_) {
@@ -215,10 +223,12 @@ public:
           // if server has taken more time than the specified timeout value return FAILURE
           RCLCPP_WARN(
             node_->get_logger(),
-            "Timed out while waiting for action server to acknowledge goal request for %s",
+            "Timed out while waiting for action server to acknowledge goal request for %s. "
+            "Draining the request and waiting for action termination before returning FAILURE",
             action_name_.c_str());
-          future_goal_handle_.reset();
-          return BT::NodeStatus::FAILURE;
+          begin_goal_cleanup("goal response timeout");
+          return poll_goal_cleanup(0ms) ?
+                 BT::NodeStatus::FAILURE : BT::NodeStatus::RUNNING;
         }
       }
 
@@ -236,17 +246,20 @@ public:
         {
           goal_updated_ = false;
           send_new_goal();
-          auto elapsed = (node_->now() - time_goal_sent_).template to_chrono<std::chrono::milliseconds>();
+          auto elapsed =
+            (node_->now() - time_goal_sent_).template to_chrono<std::chrono::milliseconds>();
           if (!is_future_goal_handle_complete(elapsed)) {
             if (elapsed < server_timeout_) {
               return BT::NodeStatus::RUNNING;
             }
             RCLCPP_WARN(
               node_->get_logger(),
-              "Timed out while waiting for action server to acknowledge goal request for %s",
+              "Timed out while waiting for action server to acknowledge goal update for %s. "
+              "Draining current and pending goals before returning FAILURE",
               action_name_.c_str());
-            future_goal_handle_.reset();
-            return BT::NodeStatus::FAILURE;
+            begin_goal_cleanup("goal update response timeout");
+            return poll_goal_cleanup(0ms) ?
+                   BT::NodeStatus::FAILURE : BT::NodeStatus::RUNNING;
           }
         }
 
@@ -262,8 +275,11 @@ public:
       if (e.what() == std::string("send_goal failed") ||
         e.what() == std::string("Goal was rejected by the action server"))
       {
-        // Action related failure that should not fail the tree, but the node
-        return BT::NodeStatus::FAILURE;
+        // An update can fail while the previous goal is still active. Do not let
+        // the tree retry or finish until every goal owned by this node is terminal.
+        begin_goal_cleanup(e.what());
+        return poll_goal_cleanup(0ms) ?
+               BT::NodeStatus::FAILURE : BT::NodeStatus::RUNNING;
       } else {
         // Internal exception to propagate to the tree
         throw e;
@@ -288,6 +304,9 @@ public:
         throw std::logic_error("BtActionNode::Tick: invalid status value");
     }
 
+    if (goal_handle_) {
+      received_result_goal_ids_.erase(goal_handle_->get_goal_id());
+    }
     goal_handle_.reset();
     return status;
   }
@@ -298,26 +317,18 @@ public:
    */
   void halt() override
   {
-    if (should_cancel_goal()) {
-      auto future_result = action_client_->async_get_result(goal_handle_);
-      auto future_cancel = action_client_->async_cancel_goal(goal_handle_);
-      if (callback_group_executor_.spin_until_future_complete(future_cancel, server_timeout_) !=
-        rclcpp::FutureReturnCode::SUCCESS)
-      {
+    const bool had_goal_in_flight =
+      goal_cleanup_active_ || future_goal_handle_ || should_cancel_goal();
+    if (had_goal_in_flight) {
+      begin_goal_cleanup("BT halt");
+      while (rclcpp::ok() && !poll_goal_cleanup(bt_loop_duration_)) {
+      }
+      if (goal_cleanup_active_) {
         RCLCPP_ERROR(
           node_->get_logger(),
-          "Failed to cancel action server for %s", action_name_.c_str());
+          "ROS shutdown interrupted action cleanup for %s before termination acknowledgement",
+          action_name_.c_str());
       }
-      // 
-
-      // if (callback_group_executor_.spin_until_future_complete(future_result, server_timeout_) !=
-      //   rclcpp::FutureReturnCode::SUCCESS)
-      // {
-      //   RCLCPP_ERROR(
-      //     node_->get_logger(),
-      //     "Failed to get result for %s in node halt!", action_name_.c_str());
-      // }
-
       on_cancelled();
     }
 
@@ -344,9 +355,10 @@ protected:
     callback_group_executor_.spin_some();
     auto status = goal_handle_->get_status();
 
-    // Check if the goal is still executing
+    // Check if the goal is still executing or already canceling.
     return status == action_msgs::msg::GoalStatus::STATUS_ACCEPTED ||
-           status == action_msgs::msg::GoalStatus::STATUS_EXECUTING;
+           status == action_msgs::msg::GoalStatus::STATUS_EXECUTING ||
+           status == action_msgs::msg::GoalStatus::STATUS_CANCELING;
   }
 
   /**
@@ -358,6 +370,9 @@ protected:
     auto send_goal_options = typename rclcpp_action::Client<ActionT>::SendGoalOptions();
     send_goal_options.result_callback =
       [this](const typename rclcpp_action::ClientGoalHandle<ActionT>::WrappedResult & result) {
+        if (goal_cleanup_active_) {
+          received_result_goal_ids_.insert(result.goal_id);
+        }
         if (future_goal_handle_) {
           RCLCPP_DEBUG(
             node_->get_logger(),
@@ -369,7 +384,7 @@ protected:
         // TODO(#1652): a work around until rcl_action interface is updated
         // if goal ids are not matched, the older goal call this callback so ignore the result
         // if matched, it must be processed (including aborted)
-        if (this->goal_handle_->get_goal_id() == result.goal_id) {
+        if (this->goal_handle_ && this->goal_handle_->get_goal_id() == result.goal_id) {
           goal_result_available_ = true;
           result_ = result;
         }
@@ -398,7 +413,6 @@ protected:
 
     // server has already timed out, no need to sleep
     if (remaining <= std::chrono::milliseconds(0)) {
-      future_goal_handle_.reset();
       return false;
     }
 
@@ -422,6 +436,138 @@ protected:
     }
 
     return false;
+  }
+
+  /**
+   * @brief Start fail-closed cleanup for every current or not-yet-acknowledged goal.
+   *
+   * A goal response timeout does not cancel the request at the ROS action protocol
+   * layer. Keeping the response future and retiring the eventual goal handle prevents
+   * a late goal from becoming an orphan or racing with a retry.
+   */
+  void begin_goal_cleanup(const std::string & reason)
+  {
+    if (goal_cleanup_active_) {
+      return;
+    }
+
+    goal_cleanup_active_ = true;
+    cleanup_goal_handles_.clear();
+    cleanup_cancel_requested_goal_ids_.clear();
+    remember_goal_for_cleanup(goal_handle_);
+    RCLCPP_WARN(
+      node_->get_logger(),
+      "Action cleanup started for %s: %s", action_name_.c_str(), reason.c_str());
+  }
+
+  /**
+   * @brief Progress cleanup and report whether all requests have a terminal result.
+   */
+  bool poll_goal_cleanup(std::chrono::milliseconds wait)
+  {
+    if (!goal_cleanup_active_) {
+      return true;
+    }
+
+    if (future_goal_handle_) {
+      const auto rc =
+        callback_group_executor_.spin_until_future_complete(*future_goal_handle_, wait);
+      if (rc == rclcpp::FutureReturnCode::SUCCESS) {
+        auto late_goal_handle = future_goal_handle_->get();
+        future_goal_handle_.reset();
+        if (late_goal_handle) {
+          goal_handle_ = late_goal_handle;
+          remember_goal_for_cleanup(late_goal_handle);
+        }
+      } else if (rc == rclcpp::FutureReturnCode::INTERRUPTED) {
+        return false;
+      }
+    } else if (wait > 0ms) {
+      callback_group_executor_.spin_once(wait);
+    } else {
+      callback_group_executor_.spin_some();
+    }
+
+    for (const auto & handle : cleanup_goal_handles_) {
+      request_goal_cancel(handle);
+    }
+    callback_group_executor_.spin_some();
+
+    if (future_goal_handle_) {
+      return false;
+    }
+    for (const auto & handle : cleanup_goal_handles_) {
+      if (received_result_goal_ids_.count(handle->get_goal_id()) == 0 &&
+        !is_goal_terminal(handle))
+      {
+        return false;
+      }
+    }
+
+    for (const auto & handle : cleanup_goal_handles_) {
+      received_result_goal_ids_.erase(handle->get_goal_id());
+    }
+    cleanup_goal_handles_.clear();
+    cleanup_cancel_requested_goal_ids_.clear();
+    goal_handle_.reset();
+    goal_result_available_ = false;
+    goal_cleanup_active_ = false;
+    RCLCPP_INFO(
+      node_->get_logger(),
+      "Action cleanup completed for %s; all owned goals are terminal",
+      action_name_.c_str());
+    return true;
+  }
+
+  bool is_goal_terminal(
+    const typename rclcpp_action::ClientGoalHandle<ActionT>::SharedPtr & handle) const
+  {
+    const auto status = handle->get_status();
+    return status == action_msgs::msg::GoalStatus::STATUS_SUCCEEDED ||
+           status == action_msgs::msg::GoalStatus::STATUS_CANCELED ||
+           status == action_msgs::msg::GoalStatus::STATUS_ABORTED;
+  }
+
+  void remember_goal_for_cleanup(
+    const typename rclcpp_action::ClientGoalHandle<ActionT>::SharedPtr & handle)
+  {
+    if (!handle) {
+      return;
+    }
+    const auto & goal_id = handle->get_goal_id();
+    for (const auto & existing : cleanup_goal_handles_) {
+      if (existing->get_goal_id() == goal_id) {
+        return;
+      }
+    }
+    cleanup_goal_handles_.push_back(handle);
+    request_goal_cancel(handle);
+  }
+
+  void request_goal_cancel(
+    const typename rclcpp_action::ClientGoalHandle<ActionT>::SharedPtr & handle)
+  {
+    if (!handle) {
+      return;
+    }
+    const auto status = handle->get_status();
+    if (status != action_msgs::msg::GoalStatus::STATUS_ACCEPTED &&
+      status != action_msgs::msg::GoalStatus::STATUS_EXECUTING)
+    {
+      return;
+    }
+    const auto & goal_id = handle->get_goal_id();
+    if (!cleanup_cancel_requested_goal_ids_.insert(goal_id).second) {
+      return;
+    }
+    try {
+      (void)action_client_->async_cancel_goal(handle);
+    } catch (const rclcpp_action::exceptions::UnknownGoalHandleError &) {
+      RCLCPP_DEBUG(
+        node_->get_logger(),
+        "Goal for %s reached a terminal state before its cleanup cancel was sent",
+        action_name_.c_str());
+    }
   }
 
   /**
@@ -464,7 +610,16 @@ protected:
   std::shared_ptr<std::shared_future<typename rclcpp_action::ClientGoalHandle<ActionT>::SharedPtr>>
   future_goal_handle_;
   rclcpp::Time time_goal_sent_;
-  
+
+  // A timed-out goal request is still live until its response arrives. Cleanup
+  // retains all involved handles and waits for their result callbacks, making
+  // timeout retry and BT termination fail-closed.
+  bool goal_cleanup_active_{false};
+  std::vector<typename rclcpp_action::ClientGoalHandle<ActionT>::SharedPtr>
+  cleanup_goal_handles_;
+  std::set<rclcpp_action::GoalUUID> cleanup_cancel_requested_goal_ids_;
+  std::set<rclcpp_action::GoalUUID> received_result_goal_ids_;
+
   // Can be set in on_tick or on_wait_for_result to indicate if a goal should be sent.
   bool should_send_goal_;
 };
