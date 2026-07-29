@@ -16,25 +16,13 @@ def generate_launch_description():
 
     use_sim_time = LaunchConfiguration('use_sim_time')
 
-    json_file = os.path.join(
-        '/home/dexforce/w1/dexe_mobile_application/mobile_simulation/w1_nav2/',
-        'config', 'config.json')
-    with open(json_file, 'r') as f:
-        config_data = json.load(f)
-
-    # 从 json 读取 Time
-    map_folder = config_data.get("map_filename", "default")
-    map_file = os.path.join(
-        '/home/dexforce/w1/dexe_mobile_application/mobile_simulation/w1_nav2/'
-        'maps', map_folder, 'map.yaml')
-
     lattice_file_package = get_package_share_directory('nav2_smac_planner')
     lattice_file = os.path.join(lattice_file_package, 'sample_primitives',
                                 '5cm_resolution', 'output.json')
 
     original_params_file = os.path.join(
         get_package_share_directory('nav2_bringup'), 'params',
-        'w1_nav2_params.yaml')
+        'w1_nav2_params_diff.yaml')
 
     # 用 RewrittenYaml 覆盖其中的参数
     configured_params = RewrittenYaml(

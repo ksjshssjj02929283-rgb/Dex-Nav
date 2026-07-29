@@ -341,6 +341,10 @@ geometry_msgs::msg::TwistStamped MPPIController::computeVelocityCommands(
 
 void MPPIController::publishProfileDebug(double path_progress, double goal_distance)
 {
+  if (profile_debug_publisher_->get_subscription_count() == 0) {
+    return;
+  }
+
   if (!profile_debug_publisher_ || !profile_debug_publisher_->is_activated()) {
     return;
   }
