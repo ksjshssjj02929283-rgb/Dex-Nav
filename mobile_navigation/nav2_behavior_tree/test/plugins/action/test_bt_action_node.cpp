@@ -14,6 +14,7 @@
 // limitations under the License.
 
 #include <gtest/gtest.h>
+#include <atomic>
 #include <memory>
 #include <set>
 #include <vector>
@@ -59,6 +60,17 @@ public:
     server_loop_rate_ = server_loop_rate;
   }
 
+  void resetCounters()
+  {
+    accepted_goals_ = 0;
+    active_goals_ = 0;
+    canceled_goals_ = 0;
+  }
+
+  int acceptedGoalCount() const {return accepted_goals_;}
+  int activeGoalCount() const {return active_goals_;}
+  int canceledGoalCount() const {return canceled_goals_;}
+
 protected:
   rclcpp_action::GoalResponse handle_goal(
     const rclcpp_action::GoalUUID &,
@@ -68,6 +80,7 @@ protected:
     if (sleep_duration_ > 0ms) {
       std::this_thread::sleep_for(sleep_duration_);
     }
+    ++accepted_goals_;
     return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
   }
 
@@ -89,11 +102,13 @@ protected:
   {
     // this needs to return quickly to avoid blocking the executor, so spin up a new thread
     if (handle) {
+      ++active_goals_;
       const auto goal = handle->get_goal();
       auto result = std::make_shared<test_msgs::action::Fibonacci::Result>();
 
       if (goal->order < 0) {
         handle->abort(result);
+        --active_goals_;
         return;
       }
 
@@ -105,7 +120,9 @@ protected:
       for (int i = 1; (i < goal->order) && rclcpp::ok(); ++i) {
         if (handle->is_canceling()) {
           RCLCPP_INFO(this->get_logger(), "Goal is canceling.");
+          ++canceled_goals_;
           handle->canceled(result);
+          --active_goals_;
           return;
         }
 
@@ -115,6 +132,7 @@ protected:
       }
 
       handle->succeed(result);
+      --active_goals_;
     }
   }
 
@@ -122,6 +140,9 @@ protected:
   rclcpp_action::Server<test_msgs::action::Fibonacci>::SharedPtr action_server_;
   std::chrono::milliseconds sleep_duration_;
   std::chrono::nanoseconds server_loop_rate_;
+  std::atomic<int> accepted_goals_{0};
+  std::atomic<int> active_goals_{0};
+  std::atomic<int> canceled_goals_{0};
 };
 
 class FibonacciAction : public nav2_behavior_tree::BtActionNode<test_msgs::action::Fibonacci>
@@ -136,6 +157,17 @@ public:
   void on_tick() override
   {
     getInput("order", goal_.order);
+  }
+
+  void on_wait_for_result(
+    std::shared_ptr<const test_msgs::action::Fibonacci::Feedback>) override
+  {
+    int order = goal_.order;
+    getInput("order", order);
+    if (goal_.order != order) {
+      goal_.order = order;
+      goal_updated_ = true;
+    }
   }
 
   BT::NodeStatus on_success() override
@@ -175,6 +207,7 @@ public:
     config_->blackboard->set<std::chrono::milliseconds>("bt_loop_duration", 10ms);
     config_->blackboard->set<bool>("initial_pose_received", false);
     config_->blackboard->set<bool>("on_cancelled_triggered", false);
+    config_->blackboard->set<int>("order", 5);
 
     BT::NodeBuilder builder =
       [](const std::string & name, const BT::NodeConfiguration & config)
@@ -205,6 +238,7 @@ public:
           std::this_thread::sleep_for(100ns);
         }
       });
+    action_server_->resetCounters();
   }
 
   void TearDown() override
@@ -315,8 +349,10 @@ TEST_F(BTActionNodeTestFixture, test_server_timeout_success)
   // the BT should have failed
   EXPECT_EQ(result, BT::NodeStatus::FAILURE);
 
-  // since the server timeout is 20ms and bt loop duration is 10ms, number of ticks should be 2
-  EXPECT_EQ(ticks, 2);
+  // Timeout is detected at 20ms, but FAILURE is intentionally delayed until the
+  // late goal response has been received and the goal is terminal.
+  EXPECT_GE(ticks, 2);
+  EXPECT_EQ(action_server_->activeGoalCount(), 0);
 }
 
 TEST_F(BTActionNodeTestFixture, test_server_timeout_failure)
@@ -360,8 +396,10 @@ TEST_F(BTActionNodeTestFixture, test_server_timeout_failure)
   // the BT should have failed
   EXPECT_EQ(result, BT::NodeStatus::FAILURE);
 
-  // since the server timeout is 90ms and bt loop duration is 10ms, number of ticks should be 9
-  EXPECT_EQ(ticks, 9);
+  // The request must be drained before FAILURE, so the old fixed nine-tick
+  // timeout assertion is replaced by a terminal-goal invariant.
+  EXPECT_GE(ticks, 9);
+  EXPECT_EQ(action_server_->activeGoalCount(), 0);
 
   // start a new execution cycle with the previous BT to ensure previous state doesn't leak into
   // the new cycle
@@ -393,6 +431,51 @@ TEST_F(BTActionNodeTestFixture, test_server_timeout_failure)
   // since the server timeout was smaller than the action server goal handling duration
   // the BT should have failed
   EXPECT_EQ(result, BT::NodeStatus::SUCCESS);
+}
+
+TEST_F(BTActionNodeTestFixture, test_goal_update_timeout_drains_before_failure)
+{
+  std::string xml_txt =
+    R"(
+      <root main_tree_to_execute = "MainTree" >
+        <BehaviorTree ID="MainTree">
+            <Fibonacci order="{order}" />
+        </BehaviorTree>
+      </root>)";
+
+  config_->blackboard->set<std::chrono::milliseconds>("server_timeout", 20ms);
+  config_->blackboard->set<std::chrono::milliseconds>("bt_loop_duration", 10ms);
+  config_->blackboard->set<int>("order", 1000000);
+  tree_ = std::make_shared<BT::Tree>(factory_->createTreeFromText(xml_txt, config_->blackboard));
+
+  action_server_->setHandleGoalSleepDuration(2ms);
+  action_server_->setServerLoopRate(5ms);
+  rclcpp::WallRate loop_rate(5ms);
+  BT::NodeStatus result = BT::NodeStatus::RUNNING;
+
+  for (int i = 0; i < 20 && action_server_->acceptedGoalCount() < 1; ++i) {
+    result = tree_->tickRoot();
+    loop_rate.sleep();
+  }
+  ASSERT_EQ(result, BT::NodeStatus::RUNNING);
+  ASSERT_EQ(action_server_->acceptedGoalCount(), 1);
+
+  // The update response arrives after the client timeout. The node must stay
+  // RUNNING while both the old and late goals are canceled and acknowledged.
+  action_server_->setHandleGoalSleepDuration(100ms);
+  config_->blackboard->set<int>("order", 1000001);
+  int ticks_after_update = 0;
+  while (rclcpp::ok() && result == BT::NodeStatus::RUNNING && ticks_after_update < 100) {
+    result = tree_->tickRoot();
+    ++ticks_after_update;
+    loop_rate.sleep();
+  }
+
+  EXPECT_EQ(result, BT::NodeStatus::FAILURE);
+  EXPECT_EQ(action_server_->acceptedGoalCount(), 2);
+  EXPECT_EQ(action_server_->activeGoalCount(), 0);
+  EXPECT_GE(action_server_->canceledGoalCount(), 2);
+  EXPECT_GT(ticks_after_update, 4);
 }
 
 TEST_F(BTActionNodeTestFixture, test_server_cancel)
@@ -441,6 +524,7 @@ TEST_F(BTActionNodeTestFixture, test_server_cancel)
   // that the on_cancel is triggered after halting node
   bool on_cancelled_triggered = config_->blackboard->get<bool>("on_cancelled_triggered");
   EXPECT_EQ(on_cancelled_triggered, true);
+  EXPECT_EQ(action_server_->activeGoalCount(), 0);
 
   // ticks variable must be 5 because execution time of the action server
   // is at least 1000000 x 50 ms
@@ -473,6 +557,7 @@ TEST_F(BTActionNodeTestFixture, test_server_cancel)
   // that the on_cancel is triggered after halting node
   on_cancelled_triggered = config_->blackboard->get<bool>("on_cancelled_triggered");
   EXPECT_EQ(on_cancelled_triggered, true);
+  EXPECT_EQ(action_server_->activeGoalCount(), 0);
 
   // ticks variable must be 7 because execution time of the action server
   // is at least 1000000 x 50 ms

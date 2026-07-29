@@ -47,11 +47,47 @@ private:
   nav_msgs::msg::Path plan_;
 };
 
+class FakeGoalChecker : public nav2_core::GoalChecker
+{
+public:
+  void initialize(
+    const rclcpp_lifecycle::LifecycleNode::WeakPtr &,
+    const std::string &,
+    const std::shared_ptr<nav2_costmap_2d::Costmap2DROS>) override {}
+
+  void reset() override {++reset_count_;}
+
+  bool isGoalReached(
+    const geometry_msgs::msg::Pose &,
+    const geometry_msgs::msg::Pose &,
+    const geometry_msgs::msg::Twist &) override
+  {
+    return false;
+  }
+
+  bool getTolerances(
+    geometry_msgs::msg::Pose &,
+    geometry_msgs::msg::Twist &) override
+  {
+    return false;
+  }
+
+  size_t resetCount() const {return reset_count_;}
+
+private:
+  size_t reset_count_{0};
+};
+
 class ControllerShim : public nav2_controller::ControllerServer
 {
 public:
   ControllerShim()
-  : nav2_controller::ControllerServer(rclcpp::NodeOptions()) {}
+  : nav2_controller::ControllerServer(rclcpp::NodeOptions()),
+    fake_goal_checker_(std::make_shared<FakeGoalChecker>())
+  {
+    current_goal_checker_ = "test_goal_checker";
+    goal_checkers_.insert({current_goal_checker_, fake_goal_checker_});
+  }
 
   void disableLocalPlanner()
   {
@@ -109,6 +145,30 @@ public:
 
   void resetStages() {resetStagedControlState();}
   bool continuityValid() const {return speed_plan_state_.valid();}
+
+  void setTerminalStateForTest()
+  {
+    controller_phase_ = ControllerPhase::APPROACH;
+    near_goal_progress_acceptance_reached_ = true;
+    near_goal_pose_hold_active_ = true;
+    near_goal_hold_outside_accept_count_ = 2;
+  }
+
+  void commitPathForTest(
+    const nav_msgs::msg::Path & path,
+    PathUpdateType update_type)
+  {
+    commitPlannerPathState(path, update_type);
+  }
+
+  ControllerPhase phase() const {return controller_phase_;}
+  bool nearGoalAcceptanceReached() const {return near_goal_progress_acceptance_reached_;}
+  bool nearGoalPoseHoldActive() const {return near_goal_pose_hold_active_;}
+  size_t nearGoalOutsideCount() const {return near_goal_hold_outside_accept_count_;}
+  size_t goalCheckerResetCount() const {return fake_goal_checker_->resetCount();}
+
+private:
+  std::shared_ptr<FakeGoalChecker> fake_goal_checker_;
 };
 
 struct RclcppFixture
@@ -274,6 +334,48 @@ TEST(SpeedPlanningBoundary, AcceptsOnlyConsumedTrackingTrajectoryAndResets)
     nav2_controller::ControllerServer::ControllerPhase::TRACK, true, true,
     0.31, std::numeric_limits<double>::quiet_NaN());
   EXPECT_FALSE(controller->continuityValid());
+}
+
+TEST(SpeedPlanningBoundary, SameGoalGeometryUpdatePreservesTerminalState)
+{
+  auto controller = std::make_shared<ControllerShim>();
+  controller->seedAcceptedTrajectory(makeTrajectory(), 0.1, 0.31, -0.18);
+  controller->setTerminalStateForTest();
+
+  const auto updated_path = makePath({{0.5, 0.0}, {1.1, 0.05}, {2.0, 0.0}});
+  controller->commitPathForTest(
+    updated_path,
+    nav2_controller::ControllerServer::PathUpdateType::SAME_GOAL_GEOMETRY);
+
+  EXPECT_EQ(
+    controller->phase(),
+    nav2_controller::ControllerServer::ControllerPhase::APPROACH);
+  EXPECT_TRUE(controller->continuityValid());
+  EXPECT_TRUE(controller->nearGoalAcceptanceReached());
+  EXPECT_TRUE(controller->nearGoalPoseHoldActive());
+  EXPECT_EQ(controller->nearGoalOutsideCount(), 2u);
+  EXPECT_NEAR(
+    controller->boundaryFor(updated_path, 0.31).acceleration,
+    -0.18, 1e-9);
+}
+
+TEST(SpeedPlanningBoundary, NewGoalPathResetsTerminalBookkeeping)
+{
+  auto controller = std::make_shared<ControllerShim>();
+  controller->setTerminalStateForTest();
+
+  const auto new_goal_path = makePath({{0.5, 0.0}, {1.5, 0.0}, {2.5, 0.0}});
+  controller->commitPathForTest(
+    new_goal_path,
+    nav2_controller::ControllerServer::PathUpdateType::NEW_GOAL);
+
+  EXPECT_EQ(
+    controller->phase(),
+    nav2_controller::ControllerServer::ControllerPhase::TRACK);
+  EXPECT_FALSE(controller->nearGoalAcceptanceReached());
+  EXPECT_FALSE(controller->nearGoalPoseHoldActive());
+  EXPECT_EQ(controller->nearGoalOutsideCount(), 0u);
+  EXPECT_EQ(controller->goalCheckerResetCount(), 1u);
 }
 
 }  // namespace

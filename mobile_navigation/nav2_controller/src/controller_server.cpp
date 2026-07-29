@@ -879,7 +879,9 @@ void ControllerServer::computeControl()
       return;
     }
 
-    setPlannerPath(action_server_->get_current_goal()->path);
+    setPlannerPath(
+      action_server_->get_current_goal()->path,
+      PathUpdateType::NEW_GOAL);
     progress_checker_->reset();
     resetNearGoalProgress();
     // 阶段状态只以“到达目标”为重置基准（isGoalReached 分支），不在此处重置：
@@ -903,14 +905,24 @@ void ControllerServer::computeControl()
 
       if (action_server_->is_cancel_requested()) {
         RCLCPP_INFO(get_logger(), "Goal was canceled. Stopping the robot.");
-        action_server_->terminate_all();
         publishZeroVelocity();
+        // The FollowPath result is the controller-side stop acknowledgement used
+        // by BtActionNode cleanup. Publish zero before making that result visible.
+        action_server_->terminate_all();
         return;
       }
 
       // Don't compute a trajectory until costmap is valid (after clear costmap)
       rclcpp::Rate r(100);
       while (!costmap_ros_->isCurrent()) {
+        if (action_server_->is_cancel_requested()) {
+          RCLCPP_INFO(
+            get_logger(),
+            "Goal was canceled while waiting for the costmap. Stopping the robot.");
+          publishZeroVelocity();
+          action_server_->terminate_all();
+          return;
+        }
         r.sleep();
       }
       start = std::chrono::steady_clock::now();
@@ -994,7 +1006,9 @@ void ControllerServer::computeControl()
   action_server_->succeeded_current();
 }
 
-void ControllerServer::setPlannerPath(const nav_msgs::msg::Path & path)
+void ControllerServer::setPlannerPath(
+  const nav_msgs::msg::Path & path,
+  PathUpdateType update_type)
 {
   RCLCPP_DEBUG(
     get_logger(),
@@ -1020,19 +1034,34 @@ void ControllerServer::setPlannerPath(const nav_msgs::msg::Path & path)
   // ③④ 规划级不在此触发：setPlan 只更新插件输入与重置裁剪进度；局部路径和
   // 速度剖面在控制循环内每周期重算（见 computeControl）。
 
+  commitPlannerPathState(path, update_type);
+}
+
+void ControllerServer::commitPlannerPathState(
+  const nav_msgs::msg::Path & path,
+  PathUpdateType update_type)
+{
   end_pose_ = path.poses.back();
   end_pose_.header.frame_id = path.header.frame_id;
-  goal_checkers_[current_goal_checker_]->reset();
-  near_goal_progress_acceptance_reached_ = false;
-  near_goal_pose_hold_active_ = false;
-  near_goal_hold_outside_accept_count_ = 0;
+  if (update_type == PathUpdateType::NEW_GOAL) {
+    goal_checkers_[current_goal_checker_]->reset();
+    near_goal_progress_acceptance_reached_ = false;
+    near_goal_pose_hold_active_ = false;
+    near_goal_hold_outside_accept_count_ = 0;
+    controller_phase_ = ControllerPhase::TRACK;
+  } else {
+    RCLCPP_INFO(
+      get_logger(),
+      "同目标 path 仅替换几何：保留 controller phase=%s、goal/near-goal 状态和 "
+      "SpeedPlanState 已消费 (v,a) 连续性。",
+      controllerPhaseName(controller_phase_));
+  }
 
   RCLCPP_DEBUG(
     get_logger(), "Path end point is (%.2f, %.2f)",
     end_pose_.pose.position.x, end_pose_.pose.position.y);
 
   current_path_ = path;
-  controller_phase_ = ControllerPhase::TRACK;
   ++speed_plan_path_id_;
 
   // nav_monitor 任务回显：这里是"一条 path 真正生效"语义上唯一的落点
@@ -2855,7 +2884,10 @@ void ControllerServer::updateGlobalPath()
     current_controller_ = requested_controller;
     current_goal_checker_ = requested_goal_checker;
     RCLCPP_INFO(get_logger(), "Passing new path to controller.");
-    setPlannerPath(goal->path);
+    const auto update_type =
+      same_controller && same_goal_checker && same_goal ?
+      PathUpdateType::SAME_GOAL_GEOMETRY : PathUpdateType::NEW_GOAL;
+    setPlannerPath(goal->path, update_type);
   }
 }
 
