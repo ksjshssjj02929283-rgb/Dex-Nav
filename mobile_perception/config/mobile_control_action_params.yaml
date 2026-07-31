@@ -1,71 +1,80 @@
-mobile_control_action_node:
-  ros__parameters:
-    # 基础参数
-    control_frequency: 20.0
-    # 进入目标容差后持续发送零速度的确认时间，防止刚到达就提前报成功
-    stop_confirm_duration: 0.2
-    max_v: 0.35
-    min_v: 0.0
-    max_w: 1.0
-    accel_x_max: 0.5
-    straight_max_w_inc: 1.57
-    rotate_to_heading_max_angular_accel: 1.0
-    rotate_to_heading_kp: 1.2
-    rotate_stop_yaw_error: 0.02
+mobile_control_action_node:  # 底盘精控Action节点
+  ros__parameters:  # ROS 2节点参数
+    control_frequency: 20.0  # 控制频率，Hz
+    control_reference_frame: "odom"  # 目标锁存与误差计算参考系
+    stop_confirm_duration: 0.2  # 到位后连续停稳确认时间，s
+    max_v: 0.40  # 直线最大速度，m/s
+    min_v: 0.01  # 直线最低有效速度，m/s；过大会增加过冲
+    max_w: 1.0  # 全局角速度上限，rad/s
+    accel_x_max: 0.5  # 直线最大加速度，m/s²
+    decel_x_max: 0.5  # 直线最大减速度，m/s²
+    straight_max_w_inc: 1.57  # 直行角速度单周期最大增量，rad/s
+    rotate_to_heading_max_angular_accel: 1.0  # 转向最大角加速度，rad/s²
+    rotate_to_heading_max_angular_decel: 0.8  # 转向最大角减速度，rad/s²
+    rotate_stop_yaw_error: 0.02  # 转向进入停车阶段的角度误差，rad
+    rotate_stop_angular_vel: 0.03  # 转向停稳角速度阈值，rad/s
 
-    k_rho: 1.5
+    k_rho: 1.5  # 距离到目标速度的比例系数
+    near_target_dist: 0.15  # 直线近目标减速范围，m
+    near_target_min_speed_scale: 0.8  # 近目标最低速度比例，范围[0,1]
+    cmd_vel_filter_alpha: 0.5  # 直行角速度滤波系数，越大响应越快
+    min_angular_vel: 0.03  # 转向重新起动最小角速度，rad/s
+    xy_tolerance: 0.02  # 直线纵向到位容差，m
+    yaw_tolerance: 0.02  # 航向到位容差，rad
+    goal_mode_rotate_xy_threshold: 0.03  # 原地转向目标位移上限，m
 
-    near_target_dist: 0.15
-    # 近目标附加减速比例下限。基础速度仍由 k_rho * distance 线性降至 0；
-    # 设置为 0.5 可缩短最后几厘米的低速爬行，同时保留平滑减速。
-    near_target_min_speed_scale: 0.5
-    cmd_vel_filter_alpha: 0.5
-    min_angular_vel: 0.01
-    xy_tolerance: 0.02
-    yaw_tolerance: 0.02
-    goal_mode_rotate_xy_threshold: 0.03
+    pure_rotation:  # 原地转向参数
+      velocity_curve: "sine"  # 速度曲线：阶跃step或正弦sine
+      max_angular_vel: 0.8  # 原地转向最大角速度，rad/s
+      sine_ramp_duration: 0.5  # sine曲线升速时间，s
+      sine_slowdown_yaw_error: 0.2  # sine曲线减速角度范围，rad
+      brake_safety_factor: 0.8  # 制动安全系数，越小越保守
 
-    pure_rotation:
-      angular_pid:
-        integrator_enable: true
-        integrator_saturation_level: 0.5
-        kp: 0.6
+    straight:  # 直线运动参数
+      velocity_curve: "sine"  # 速度曲线：阶跃step或正弦sine
+      sine_ramp_duration: 0.8  # sine曲线升速时间，s
+      sine_slowdown_distance: 0.2  # sine曲线减速距离，m
+      brake_safety_factor: 0.75  # 制动安全系数，越小越保守
+      stop_linear_vel: 0.03  # 直线停稳速度阈值，m/s
+
+      station_pid:  # 前进位置外环PID
+        integrator_enable: true  # 启用积分项
+        integrator_saturation_level: 0.3  # 积分限幅
+        kp: 1.0
         ki: 0.01
         kd: 0.10
 
-    straight:
-      station_pid:
-        integrator_enable: true
-        integrator_saturation_level: 0.3
+      high_speed_pid:  # 前进高速段速度PID
+        integrator_enable: true  # 启用积分项
+        integrator_saturation_level: 0.3  # 积分限幅
         kp: 1.0
         ki: 0.01
         kd: 0.10
-      high_speed_pid:
-        integrator_enable: true
-        integrator_saturation_level: 0.3
+
+      low_speed_pid:  # 前进低速段速度PID
+        integrator_enable: true  # 启用积分项
+        integrator_saturation_level: 0.3  # 积分限幅
         kp: 1.0
         ki: 0.01
         kd: 0.10
-      low_speed_pid:
-        integrator_enable: true
-        integrator_saturation_level: 0.3
+
+      reverse_station_pid:  # 后退位置外环PID
+        integrator_enable: true  # 启用积分项
+        integrator_saturation_level: 0.5  # 积分限幅
         kp: 1.0
         ki: 0.01
         kd: 0.10
-      reverse_station_pid:
-        integrator_enable: true
-        integrator_saturation_level: 0.5
+
+      reverse_speed_pid:  # 后退速度PID
+        integrator_enable: true  # 启用积分项
+        integrator_saturation_level: 0.5  # 积分限幅
         kp: 1.0
         ki: 0.01
         kd: 0.10
-      reverse_speed_pid:
-        integrator_enable: true
-        integrator_saturation_level: 0.5
+
+      angular_pid:  # 直行航向角速度PID
         kp: 1.0
         ki: 0.01
         kd: 0.10
-      angular_pid:
-        kp: 1.0
-        ki: 0.01
-        kd: 0.10
-      switch_speed: 0.1
+
+      switch_speed: 0.1  # 前进高低速PID切换阈值，m/s

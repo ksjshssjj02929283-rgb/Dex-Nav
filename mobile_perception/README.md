@@ -1,408 +1,189 @@
 # mobile_perception
 
-`mobile_perception` 是 `dexe_mobile_nav` 下的 ROS 2 感知与精确泊车控制包，主要用于 AprilTag 识别、相机到车体坐标转换、充电位姿保存、导航目标发布和底盘末端精控。
-
-当前包使用 `ament_cmake`，同时包含 C++ 节点与 Python 脚本。C++ 节点是当前更清晰的主线实现，Python 脚本中保留了调试、仿真和早期编排逻辑。
+`mobile_perception` 是 `dexe_mobile_nav` 中的 ROS 2 功能包，包含底盘直控、AprilTag 检测、前方障碍检测和充电位姿保存等功能。包使用 `ament_cmake` 构建，主要节点使用 C++ 实现，同时保留部分 Python 辅助脚本。
 
 ## 目录结构
 
 ```text
-mobile_perception/
-├── CMakeLists.txt
-├── package.xml
-├── launch/
-│   ├── mobile_control.launch.py
+dexe_mobile_nav/mobile_perception/
+├── config/                         # 参数和传感器配置
+│   └── mobile_control_action_params.yaml
+├── launch/                         # ROS 2 启动文件
 │   └── mobile_control_action.launch.py
-├── config/
-│   ├── camera_config.json
-│   ├── camera_config_1280.json
-│   ├── camera_config_shenzhen.json
-│   ├── camera_config_simulation.json
-│   ├── tags_config.json
-│   ├── docking_config.json
-│   ├── docking_config_simulation.json
-│   ├── mobile_control_params.yaml
-│   ├── mobile_control_action_params.yaml
-│   ├── docking.yaml
-│   └── params.yaml
-├── src/
-│   ├── apriltag_detection_node.cpp
-│   ├── apriltag_alignment_tf_node.cpp
-│   ├── mobile_control_node.cpp
-│   ├── mobile_control_action_node.cpp
-│   ├── obstacle_detector_node.cpp
-│   └── charging_pose_service.cpp
-├── include/
-│   └── mobile_perception/
-│       └── obstacle_detector_node.hpp
-├── scripts/
-│   ├── detect_apriltags*.py
-│   ├── control_robot*.py
-│   ├── nav_then_precise*.py
-│   ├── nav_goal_*.py
-│   ├── goal_controller*.py
-│   └── 其他调试脚本
-└── images/
+├── src/                            # C++ 节点源码
+├── include/mobile_perception/      # C++ 头文件
+├── scripts/                        # Python 辅助与调试脚本
+├── test/                           # 底盘速度响应与直控效果测试
+│   ├── chassis_test_common.py
+│   ├── precise_straight_action_test.py
+│   ├── precise_rotation_action_test.py
+│   └── README.md
+├── images/                         # 图像资源
+├── CMakeLists.txt
+└── package.xml
 ```
 
-## 核心节点
+## 主要功能
 
-| 节点/脚本 | 类型 | 作用 |
-| --- | --- | --- |
-| `apriltag_detection_node` | C++ | 按服务启动/停止 AprilTag 检测，发布 `apriltag_poses`。 |
-| `apriltag_alignment_tf_node` | C++ | 持续检测 AprilTag，发布调试姿态和原始/对齐后的 tag TF。 |
-| `mobile_control_node` | C++ | 订阅目标位姿并输出底盘速度，实现末端精确控制与平滑停止。 |
-| `mobile_control_action_node` | C++ | 通过 `control/precise_control` action 接收精控目标，并直接输出底盘速度。 |
-| `obstacle_detector_node` | C++ | 订阅局部代价地图，检测车体前方矩形区域是否存在障碍物，并发布结果与 RViz Marker。 |
-| `charging_pose_service_node` | C++ | 通过服务采样 `map -> base_link`，保存充电位姿 JSON。 |
-| `detect_apriltags.py` / `detect_apriltags_service.py` | Python | Python 版 AprilTag 检测实现，依赖 `pupil_apriltags`。 |
-| `control_robot.py` / `control_robot_simulation.py` | Python | 基于 `apriltag_poses` 的早期精控脚本。 |
-| `nav_then_precise.py` / `nav_then_precise_bt.py` | Python | Nav2 导航后接 AprilTag 精控的编排脚本。 |
-| `nav_goal_publisher.py` / `nav_goal_publisher_loop.py` | Python | 向 Nav2 `navigate_to_pose` action 发布目标。 |
+| 节点                           | 功能                                                               |
+| ------------------------------ | ------------------------------------------------------------------ |
+| `mobile_control_action_node` | 通过 Action 接收目标位姿，执行直线运动或原地转向，并输出底盘速度。 |
+| `apriltag_detection_node`    | 按服务启动或停止 AprilTag 检测，发布标签位姿。                     |
+| `apriltag_alignment_tf_node` | 发布 AprilTag 原始、对齐和目标位姿 TF，便于调试与目标生成。        |
+| `obstacle_detector_node`     | 根据局部代价地图检测车体前方区域内的障碍物。                       |
+| `charging_pose_service_node` | 采样机器人当前位姿并保存充电位姿。                                 |
 
-## 主要话题与服务
+`mobile_control_node` 是保留的旧版底盘直控节点。当前建议使用 Action 接口的 `mobile_control_action_node`，不要让两个节点同时向 `/control/cmd_vel` 发布速度。
 
-### `mobile_control_node`
+## 底盘直控
 
-订阅：
+`mobile_control_action_node` 的主要接口如下：
 
-- `control/ctrl_pose` (`geometry_msgs/msg/PoseStamped`)：控制目标位姿，可为非 `map` 坐标系，节点会尝试转换到 `map`。
-- `feedback/odom` (`nav_msgs/msg/Odometry`)：底盘实际速度反馈，用于限加速度和平滑停止。
+| 类型   | 名称                         | 说明                                                |
+| ------ | ---------------------------- | --------------------------------------------------- |
+| Action | `/control/precise_control` | 接收`nav_interfaces/action/PreciseControl` 目标。 |
+| 订阅   | `/feedback/odom`           | 获取底盘实际线速度和角速度。                        |
+| 发布   | `/control/cmd_vel`         | 输出底盘线速度和角速度。                            |
+| TF     | `odom -> base_link`        | 默认用于锁定目标并计算运动误差。                    |
 
-发布：
+节点根据目标位移自动选择直线模式或原地转向模式。同一时间只执行一个目标；取消目标时会先平滑停车，再返回取消结果。
 
-- `control/cmd_vel` (`geometry_msgs/msg/Twist`)：底盘控制速度。
+### 配置文件
 
-服务：
+底盘直控参数统一配置在：
 
-- `control/get_control_status` (`std_srvs/srv/Trigger`)：返回 `IDLE`、`CONTROL`、`SUCCEED`、`CANCEL CONTROL` 或 `CANCELED`。
-- `control/cancel_chassis_control` (`std_srvs/srv/Trigger`)：取消当前控制并按反馈速度平滑停车。
-
-### `mobile_control_action_node`
-
-Action：
-
-- `control/precise_control` (`nav_interfaces/action/PreciseControl`)：接收 `geometry_msgs/msg/PoseStamped` 目标位姿，节点内部完成 TF 转换、精控、反馈和取消。
-
-订阅：
-
-- `feedback/odom` (`nav_msgs/msg/Odometry`)：底盘实际速度反馈，用于限加速度和平滑停止。
-
-发布：
-
-- `control/cmd_vel` (`geometry_msgs/msg/Twist`)：底盘控制速度。
-
-运行约束：
-
-- `mobile_control_action_node` 不订阅 `control/ctrl_pose`，也不调用 `mobile_control_node` 的状态或取消服务。
-- 同一时间只接受一个 active goal；已有 goal 执行时会拒绝新 goal。
-- 客户端 cancel 会触发平滑停车，停车完成后 action 返回 `CANCELLED`。
-- 不要让 `mobile_control_node` 和 `mobile_control_action_node` 同时控制同一个 `control/cmd_vel` 链路，否则两个节点会竞争发布底盘速度。
-
-### `apriltag_detection_node`
-
-服务：
-
-- `start_apriltag_detection` (`std_srvs/srv/Trigger`)：创建图像订阅、TF listener 和 AprilTag detector。
-- `stop_apriltag_detection` (`std_srvs/srv/Trigger`)：释放检测资源。
-
-发布：
-
-- `apriltag_poses` (`geometry_msgs/msg/PoseArray`)：检测到的 tag 在 `base_link` 下的位姿。
-- 调试 TF `base_link -> apriltag_detection_debug_<id>`：与 `apriltag_poses` 中对应 pose 完全一致，用于在 RViz 中判断 raw tag 视觉测量是否抖动；不作为控制输入。
-
-依赖 TF：
-
-- `base_link -> camera_link`，其中 `camera_link` 来自 `config/camera_config.json`。
-
-### `apriltag_alignment_tf_node`
-
-订阅：
-
-- 调用 `start_apriltag_detection` 后订阅图像；调用 `stop_apriltag_detection` 后取消订阅。
-- 默认图像话题来自 `config/camera_config.json` 的 `cameras[0].topic_name`，可通过参数 `image_topic` 覆盖。
-
-发布：
-
-- 以下话题和 TF 仅在 `start_apriltag_detection` 启动检测后创建并发布，`stop_apriltag_detection` 后关闭发布。
-- 默认 `apriltag_poses_debug` (`geometry_msgs/msg/PoseArray`)。
-- 默认 TF 子坐标系 `apriltag_raw_<id>` 和 `apriltag_aligned_<id>`。
-- 默认 `apriltag_target_pose` (`geometry_msgs/msg/PoseStamped`)：以 `apriltag_aligned_<id>` 为基准，沿其 X 轴前移 `target_forward_offset` 后发布到 `target_frame`，默认绑定在 `base_link` 下。
-- 默认 TF 子坐标系 `apriltag_target_<id>`：与 `apriltag_target_pose` 使用同一个目标位姿，便于 RViz 可视化。
-
-服务：
-
-- `start_apriltag_detection` (`std_srvs/srv/Trigger`)：创建 detector、TF listener/broadcaster、图像订阅和发布器，开始检测。
-- `stop_apriltag_detection` (`std_srvs/srv/Trigger`)：释放 detector、TF、图像订阅和发布器，停止检测以降低 CPU 占用。
-
-运行日志：
-
-- 检测启动后每 `5 s` 输出一次 `[TagStats]`，停止检测时输出累计 `[TagSummary]`。
-- `image/detect/target/lost/last` 分别表示图像、检出、目标发布、连续丢失和最近目标间隔。
-- `gray` 为最近帧灰度均值/标准差，`tf_err/cv_err` 为 TF 和图像转换错误数。
-- 灰度数据只用于现场对比，不能单独证明环境过暗。
-- 没有图像或当前统计窗口没有发布目标时使用 WARN 级别；正常识别时使用 INFO 级别。
-
-常用参数：
-
-- `image_topic`
-- `camera_link`
-- `tag_size`
-- `pose_topic`
-- `publish_tag_tf`
-- `publish_aligned_tf`
-- `raw_frame_prefix`
-- `aligned_frame_prefix`
-- `publish_target_pose`
-- `publish_target_tf`
-- `target_pose_topic`
-- `target_frame`
-- `target_frame_prefix`
-- `target_forward_offset`
-
-### `obstacle_detector_node`
-
-订阅：
-
-- `local_costmap/costmap` (`nav_msgs/msg/OccupancyGrid`)：默认局部代价地图，可通过参数 `costmap_topic` 覆盖。
-
-发布：
-
-- `obstacle_detector/has_obstacle` (`std_msgs/msg/Bool`)：前方检测区域内是否存在代价值达到阈值的障碍物。
-- `obstacle_detector/markers` (`visualization_msgs/msg/Marker`)：检测到的障碍物采样点。
-- `obstacle_detector/detection_box` (`visualization_msgs/msg/Marker`)：当前检测矩形框，有障碍物时红色，无障碍物时绿色。
-
-依赖 TF：
-
-- `costmap.header.frame_id -> robot_base_frame`，默认 `robot_base_frame` 为 `base_link`。
-
-常用参数：
-
-- `costmap_topic`：默认 `local_costmap/costmap`。
-- `robot_base_frame`：默认 `base_link`。
-- `front_distance`：车体前方检测距离，默认 `1.0` 米。
-- `left_width` / `right_width`：检测矩形左右宽度，默认各 `0.5` 米。
-- `obstacle_threshold`：障碍物代价值阈值，默认 `50`。
-- `detection_frequency`：检测频率，默认 `10.0` Hz；小于等于 0 时回退到 10 Hz。
-
-## 配置文件
-
-| 文件 | 说明 |
-| --- | --- |
-| `config/camera_config.json` | 当前默认相机配置，包含图像话题、`camera_link`、内参和畸变参数。 |
-| `config/camera_config_simulation.json` | 仿真相机配置，默认图像话题为 `/camera/image_raw`。 |
-| `config/camera_config_1280.json` / `camera_config_shenzhen.json` | 其他实机相机标定配置。 |
-| `config/tags_config.json` | AprilTag family、tag 尺寸和检测约束。 |
-| `config/mobile_control_params.yaml` | `mobile_control_node` 控制频率、速度限幅、增益、死区和收敛阈值。 |
-| `config/mobile_control_action_params.yaml` | `mobile_control_action_node` 控制频率、速度限幅、增益、死区和收敛阈值。 |
-| `config/docking_config.json` | 实机充电位姿和预充电位姿。 |
-| `config/docking_config_simulation.json` | 仿真充电位姿。 |
-| `config/params.yaml` | Nav2 目标发布脚本使用的示例目标。 |
-| `config/docking.yaml` | 旧版/备用 docking 控制参数和目标点。 |
-
-切换仿真与实机时，重点检查：
-
-- `camera_config*.json` 中的 `topic_name`、`camera_link`、内参和畸变参数。
-- `docking_config*.json` 中的目标位姿。
-- Python 旧脚本中是否读取了固定文件名，例如 `docking_config.json` 或 `docking_config_simulation.json`。
-- TF 树是否包含 `map`、`base_link` 和相机坐标系。
-
-## 依赖
-
-ROS 2 依赖主要来自 `CMakeLists.txt` 和 `package.xml`：
-
-- `rclcpp`
-- `rclpy`
-- `cv_bridge`
-- `OpenCV`
-- `apriltag`
-- `apriltag_ros`
-- `tf2`
-- `tf2_ros`
-- `tf2_geometry_msgs`
-- `geometry_msgs`
-- `sensor_msgs`
-- `nav_msgs`
-- `std_srvs`
-- `ament_index_cpp`
-- `nlohmann_json`
-- `yaml-cpp`
-- `nav2_util`
-- `nav2_graceful_controller`
-
-Python 脚本还可能依赖：
-
-- `pupil-apriltags`
-- `opencv-python`
-- `numpy`
-- `scipy`
-- `transforms3d`
-- `py_trees`
-- `nav2_msgs`
-- 仓库内自定义消息/服务包，例如 `custom_interfaces`、`chassis_interfaces`
-
-示例安装命令：
-
-```bash
-python3 -m pip install pupil-apriltags opencv-python scipy transforms3d py_trees
-sudo apt-get install ros-humble-control-toolbox ros-humble-tf2-ros ros-humble-tf2-geometry-msgs
-sudo apt-get install ros-humble-apriltag-ros ros-humble-rqt ros-humble-rqt-plot ros-humble-rqt-common-plugins
+```text
+dexe_mobile_nav/mobile_perception/config/mobile_control_action_params.yaml
 ```
 
-ARM 环境如遇到二进制兼容问题，历史记录中使用过：
+主要参数分为以下几类：
+
+- 公共参数：控制频率、参考坐标系、到位确认时间、速度和加减速度上限。
+- 直线参数：速度曲线、升速时间、减速距离、停车速度阈值和直线 PID。
+- 原地转向参数：最大角速度、升速时间、减速角度范围和制动系数。
+- 到位参数：直线位置容差、航向容差和停稳速度阈值。
+
+修改参数后需要重启节点才能生效。运行时可使用以下命令确认实际参数：
 
 ```bash
-python3 -m pip install numpy==1.26.0
+ros2 param get /mobile_control_action_node control_reference_frame
+ros2 param get /mobile_control_action_node xy_tolerance
 ```
 
-国内网络环境可使用镜像源：
+## 使用方式
+
+### 启动底盘直控
 
 ```bash
-python3 -m pip install pupil-apriltags -i https://pypi.tuna.tsinghua.edu.cn/simple
-python3 -m pip install opencv-python -i https://pypi.tuna.tsinghua.edu.cn/simple
-```
-
-## 运行示例
-
-先 source 工作空间：
-
-```bash
+cd dexe_mobile_nav
 source install/setup.bash
-```
-
-启动底盘精控节点：
-
-```bash
-ros2 launch mobile_perception mobile_control.launch.py
-```
-
-使用自定义参数文件：
-
-```bash
-ros2 launch mobile_perception mobile_control.launch.py params_file:=/path/to/mobile_control_params.yaml
-```
-
-启动 Action 版底盘精控节点：
-
-```bash
 ros2 launch mobile_perception mobile_control_action.launch.py
 ```
 
-使用自定义 Action 版参数文件：
+指定参数文件：
 
 ```bash
-ros2 launch mobile_perception mobile_control_action.launch.py params_file:=/path/to/mobile_control_action_params.yaml
+ros2 launch mobile_perception mobile_control_action.launch.py \
+  params_file:="$(pwd)/mobile_perception/config/mobile_control_action_params.yaml"
 ```
 
-发送 Action 精控目标：
+### 发送直线目标
+
+以下命令表示以当前 `base_link` 为起点向前运动 `1.0 m`：
 
 ```bash
-ros2 action send_goal /control/precise_control nav_interfaces/action/PreciseControl \
-  "{target_pose: {header: {frame_id: map}, pose: {position: {x: 1.0, y: 0.0, z: 0.0}, orientation: {w: 1.0}}}}" \
+ros2 action send_goal /control/precise_control \
+  nav_interfaces/action/PreciseControl \
+  "{target_pose: {header: {frame_id: base_link}, pose: {position: {x: 1.0}, orientation: {w: 1.0}}}}" \
   --feedback
 ```
 
-启动 C++ AprilTag 检测节点，并通过服务开始检测：
+向后运动时，将 `position.x` 设置为负值。
+
+### 发送原地转向目标
+
+以下命令表示原地逆时针转动 `90°`：
 
 ```bash
+ros2 action send_goal /control/precise_control \
+  nav_interfaces/action/PreciseControl \
+  "{target_pose: {header: {frame_id: base_link}, pose: {orientation: {z: 0.707107, w: 0.707107}}}}" \
+  --feedback
+```
+
+目标角度的正值表示逆时针，负值表示顺时针。原地转向开始后，节点会锁定旋转模式和目标方向。
+
+### 启动其他节点
+
+```bash
+# AprilTag 检测
 ros2 run mobile_perception apriltag_detection_node
-ros2 service call /start_apriltag_detection std_srvs/srv/Trigger {}
-```
+ros2 service call /start_apriltag_detection std_srvs/srv/Trigger "{}"
 
-停止检测：
-
-```bash
-ros2 service call /stop_apriltag_detection std_srvs/srv/Trigger {}
-```
-
-启动 AprilTag 对齐 TF 调试节点：
-
-```bash
+# AprilTag 对齐与目标 TF
 ros2 run mobile_perception apriltag_alignment_tf_node
-ros2 service call /start_apriltag_detection std_srvs/srv/Trigger {}
-ros2 service call /stop_apriltag_detection std_srvs/srv/Trigger {}
-```
 
-启动前方障碍检测节点：
-
-```bash
+# 前方障碍检测
 ros2 run mobile_perception obstacle_detector_node
-```
 
-示例覆盖检测范围和代价地图话题：
-
-```bash
-ros2 run mobile_perception obstacle_detector_node --ros-args \
-  -p costmap_topic:=/local_costmap/costmap \
-  -p front_distance:=1.0 \
-  -p left_width:=0.5 \
-  -p right_width:=0.5 \
-  -p obstacle_threshold:=50
-```
-
-发布一个精控目标：
-
-```bash
-ros2 run mobile_perception ctrl_goal_publisher.py
-```
-
-查询精控状态：
-
-```bash
-ros2 service call /control/get_control_status std_srvs/srv/Trigger {}
-```
-
-取消精控：
-
-```bash
-ros2 service call /control/cancel_chassis_control std_srvs/srv/Trigger {}
-```
-
-保存当前充电位姿：
-
-```bash
+# 保存充电位姿
 ros2 run mobile_perception charging_pose_service_node
-ros2 service call /save_charging_pose std_srvs/srv/Trigger {}
+ros2 service call /save_charging_pose std_srvs/srv/Trigger "{}"
 ```
 
-注意：`charging_pose_service.cpp` 当前保存路径硬编码为 `/home/dexforce/w1/install/mobile_perception/lib/mobile_perception/charging_pose.json`，在其他机器或工作空间上使用前应先修改为参数化路径或确认该路径存在且可写。
+## 测试脚本
 
-## 调试命令
+`mobile_perception/test` 目录中的三个脚本彼此独立，可分别运行：
 
-查看 TF 树：
+| 脚本                                | 功能                                                 |
+| ----------------------------------- | ---------------------------------------------------- |
+| `chassis_test_common.py`          | 发送阶跃、梯形或正弦速度，统计底盘对速度指令的响应。 |
+| `precise_straight_action_test.py` | 测试直线底盘直控的耗时、最终误差、横向偏移和过冲。   |
+| `precise_rotation_action_test.py` | 测试原地转向底盘直控的耗时、最终误差和过冲。         |
+
+运行前先加载 ROS 2 和当前工作空间环境：
 
 ```bash
-ros2 run tf2_tools view_frames
+cd dexe_mobile_nav
+source install/setup.bash
+cd mobile_perception/test
 ```
 
-手动发布速度，低速测试底盘链路：
+速度阶跃响应示例：
 
 ```bash
-ros2 topic pub /control/cmd_vel geometry_msgs/msg/Twist "{linear: {x: -0.05, y: 0.0, z: 0.0}, angular: {x: 0.0, y: 0.0, z: 0.0}}" -r 1
-ros2 topic pub /control/cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.0, y: 0.0, z: 0.0}, angular: {x: 0.0, y: 0.0, z: 0.0}}" -r 1
+python3 chassis_test_common.py \
+  --waveform step \
+  --linear 0.1 \
+  --angular 0 \
+  --duration 10
 ```
 
-执行脱桩动作：
+直线和原地转向的单次可视化测试：
 
 ```bash
-ros2 run mobile_perception undocking.py --timeout 1 --direction 1 --speed 0.015
+python3 precise_straight_action_test.py --distance-m 0.5 --mode visual
+python3 precise_rotation_action_test.py --angle-deg 90 --mode visual
 ```
 
-## 控制策略简述
+压测模式可设置重复次数，默认在正负方向之间交替执行：
 
-`mobile_control_node` 会把目标转换到 `base_link` 下，根据目标相对车体的位置和角度计算速度：
+```bash
+python3 precise_straight_action_test.py \
+  --distance-m 0.5 \
+  --mode stress \
+  --test-count 100
+```
 
-- 距离未收敛时使用 `rho-alpha-beta` 类控制律。
-- 目标在车体后方且横向误差较小时进入倒车模式。
-- 接近目标时降低距离增益，并解耦部分最终姿态修正。
-- 位置收敛后单独旋转对齐航向。
-- 输出速度经过加速度限制和低通滤波。
-- 到达后持续发布零速若干周期，状态服务先返回一次 `SUCCEED`，之后回到 `IDLE`。
+可视化模式会在 `test/results` 中生成原始数据、统计结果、中文报告和曲线图；压测模式只输出逐轮结果并生成 `stress_report.txt`。完整参数和更多示例见 `dexe_mobile_nav/mobile_perception/test/README.md`，也可运行：
 
-## 已知注意事项
+```bash
+python3 <脚本名称> --help
+```
 
-- `package.xml` 中依赖声明少于 `CMakeLists.txt` 实际使用的依赖，新增节点或清理包依赖时需要同步维护。
-- `CMakeLists.txt` 安装的 Python 脚本不是 `scripts/` 下全部文件，例如 `control_robot_1.py`、`control_robot_pre.py`、`pid_controller.py`、`get_control_status.py` 等未全部安装。
-- 部分 Python 脚本仍引用旧包名、旧话题或自定义接口，使用前应先检查当前系统中的话题、服务、TF 和接口包是否匹配。
-- `camera_config.json` 是 C++ AprilTag 节点默认读取的文件；如果要运行仿真配置，建议改为参数化或明确替换配置文件。
-- 精控和泊车相关脚本会发布底盘速度，实机运行前必须确认急停、障碍物状态和速度限幅。
+## 运行注意事项
+
+- 启动前确认 `/feedback/odom` 和 `odom -> base_link` TF 正常更新。
+- 实机运行前确认急停可用、运动区域无障碍物，并检查速度上限。
+- `/control/cmd_vel` 同一时间只应有一个有效控制来源，避免多个节点竞争输出。
+- 修改控制参数时一次只调整一类参数，并记录调整前后的实机结果。
