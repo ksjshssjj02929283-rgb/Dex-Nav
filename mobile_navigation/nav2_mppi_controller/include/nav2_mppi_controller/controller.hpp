@@ -173,6 +173,9 @@ protected:
   // 控制指令经历HOLD/恢复后清空末端滤波与制动状态，下一帧从实际速度重新初始化。
   void resetFinalYawCommandState();
 
+  // 新目标到来时清除上一目标的阶段和Profile，确保首周期从ALIGN开始。
+  void resetForNewGoal();
+
   Stage selectStage(double goal_distance, double heading_path_angle) const;
 
   const char * stageName(Stage stage) const;

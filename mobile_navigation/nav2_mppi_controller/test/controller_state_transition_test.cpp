@@ -115,6 +115,31 @@ public:
     return applied_profile_;
   }
 
+  void forceApproachProfileTransition()
+  {
+    active_stage_ = nav2_mppi_controller::Stage::APPROACH;
+    applied_profile_ = profileFor(nav2_mppi_controller::Stage::APPROACH);
+    transition_start_profile_ = applied_profile_;
+    transition_target_profile_ = profileFor(nav2_mppi_controller::Stage::TRACK);
+    profile_transition_active_ = true;
+    optimizer_.applyProfile(applied_profile_);
+  }
+
+  nav2_mppi_controller::Stage activeStage() const
+  {
+    return active_stage_;
+  }
+
+  bool profileTransitionActive() const
+  {
+    return profile_transition_active_;
+  }
+
+  const mppi::models::ControlConstraints & activeConstraints() const
+  {
+    return optimizer_.getActiveConstraints();
+  }
+
   void configureFinalYawEnvelopeBrakeTest()
   {
     clock_ = std::make_shared<rclcpp::Clock>(RCL_SYSTEM_TIME);
@@ -261,6 +286,47 @@ TEST(ControllerStateTransitionTest, NormalApproachKeepsFullYawControlWhilePositi
 
   EXPECT_FLOAT_EQ(controller.appliedProfile().critics.goal_angle.weight, 75.0f);
   EXPECT_FLOAT_EQ(controller.appliedProfile().critics.angular_velocity.weight, 5.0f);
+}
+
+TEST(ControllerStateTransitionTest, NewGoalGenerationResetsStageProfileAndTransitionOnce)
+{
+  TestCostmapSettings costmap_settings{};
+
+  rclcpp::NodeOptions options;
+  std::vector<rclcpp::Parameter> params;
+  setUpControllerParams(false, params);
+  params.emplace_back("dummy.stage_align.vx_min", -0.2);
+  params.emplace_back("dummy.stage_approach.vx_min", -0.15);
+  options.parameter_overrides(params);
+
+  auto node = getDummyNode(options);
+  auto tf_buffer = std::make_shared<tf2_ros::Buffer>(node->get_clock());
+  auto costmap_ros = getDummyCostmapRos(costmap_settings);
+  costmap_ros->setRobotFootprint(getDummySquareFootprint(0.01));
+
+  auto controller = std::make_shared<TestableMPPIController>();
+  std::weak_ptr<rclcpp_lifecycle::LifecycleNode> weak_node{node};
+  controller->configure(weak_node, node->get_name(), tf_buffer, costmap_ros);
+  controller->activate();
+
+  controller->forceApproachProfileTransition();
+  controller->setNearGoalOdomContext(nullptr, 1);
+
+  EXPECT_EQ(controller->activeStage(), nav2_mppi_controller::Stage::ALIGN);
+  EXPECT_FALSE(controller->profileTransitionActive());
+  EXPECT_FLOAT_EQ(controller->appliedProfile().velocity.vx_min, -0.2f);
+  EXPECT_FLOAT_EQ(controller->activeConstraints().vx_min, -0.2f);
+
+  // 同一generation的重规划不应再次重置当前阶段。
+  controller->forceApproachProfileTransition();
+  controller->setNearGoalOdomContext(nullptr, 1);
+
+  EXPECT_EQ(controller->activeStage(), nav2_mppi_controller::Stage::APPROACH);
+  EXPECT_TRUE(controller->profileTransitionActive());
+  EXPECT_FLOAT_EQ(controller->activeConstraints().vx_min, -0.15f);
+
+  controller->deactivate();
+  controller->cleanup();
 }
 
 // Tests basic transition from configure->active->process->deactive->cleanup

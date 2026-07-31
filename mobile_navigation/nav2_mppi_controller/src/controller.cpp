@@ -109,6 +109,19 @@ void MPPIController::reset()
   resetFinalYawCommandState();
 }
 
+void MPPIController::resetForNewGoal()
+{
+  active_stage_ = Stage::ALIGN;
+  applied_profile_ = profileFor(Stage::ALIGN);
+  transition_start_profile_ = applied_profile_;
+  transition_target_profile_ = applied_profile_;
+  profile_transition_active_ = false;
+
+  // 先恢复ALIGN约束再重置Optimizer，使新采样噪声和控制序列不再沿用上一目标的Profile。
+  optimizer_.applyProfile(applied_profile_);
+  reset();
+}
+
 void MPPIController::resetFinalYawCommandState()
 {
   final_yaw_cmd_filter_active_ = false;
@@ -1607,13 +1620,15 @@ void MPPIController::setNearGoalOdomContext(
   std::shared_ptr<const nav2_controller::NearGoalOdomSnapshotProvider> provider,
   uint64_t expected_generation)
 {
-  // 新目标代次或功能启停时清空Optimizer序列、方向锁和制动状态，避免旧控制状态泄漏。
+  const bool goal_generation_changed =
+    expected_generation != expected_goal_generation_;
   const bool provider_state_changed =
     static_cast<bool>(provider) != static_cast<bool>(near_goal_odom_provider_);
-  if (
-    expected_generation != expected_goal_generation_ ||
-    provider_state_changed)
-  {
+
+  if (goal_generation_changed) {
+    resetForNewGoal();
+  } else if (provider_state_changed) {
+    // 仅功能启停时沿用通用重置，不强制切换当前控制阶段和Profile。
     reset();
   }
   near_goal_odom_provider_ = std::move(provider);
