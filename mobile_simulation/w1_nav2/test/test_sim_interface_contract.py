@@ -372,3 +372,31 @@ def test_navigation_owns_only_the_non_slam_map_to_odom_transform():
     assert "'--yaw', map_odom_yaw" in bringup
     assert "'--frame-id', 'map'" in bringup
     assert "'--child-frame-id', 'odom'" in bringup
+
+
+def test_arm_build_keeps_the_w1_nav2_real_robot_transition_package():
+    """ARM releases keep the real launch while excluding simulation packages."""
+    manifest = ET.fromstring(
+        read("mobile_simulation/w1_nav2/package.xml"))
+    exec_dependencies = {
+        dependency.text
+        for dependency in manifest.findall("exec_depend")
+    }
+    simulation_dependencies = {
+        "aws_robomaker_small_warehouse_world",
+        "swerve_robot_gazebo",
+        "w1_diff_gazebo",
+    }
+
+    assert simulation_dependencies.isdisjoint(exec_dependencies)
+    assert {"nav2_bringup", "dexe_sensor_process"}.issubset(
+        exec_dependencies)
+    assert (
+        REPO / "mobile_simulation/w1_nav2/launch/"
+        "w1_nav2_actual.launch.py").exists()
+
+    build_script = read("build.sh")
+    assert 'if [ "$package_name" = "w1_nav2" ]; then' in build_script
+    assert (
+        'colcon build --packages-select w1_nav2 '
+        '"${COLCON_BUILD_ARGS[@]}"' in build_script)

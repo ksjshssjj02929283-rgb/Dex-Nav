@@ -1,0 +1,10 @@
+<library path="mobile_control_speed_profile_plugins">
+  <class
+    name="mobile_perception::mobile_control::SCurveSpeedProfilePlanner"
+    type="mobile_perception::mobile_control::SCurveSpeedProfilePlanner"
+    base_class_type="mobile_perception::mobile_control::SpeedProfilePlanner">
+    <description>
+      Costmap-free, one-dimensional jerk-limited S-curve planner backed by Ruckig.
+    </description>
+  </class>
+</library>

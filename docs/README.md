@@ -71,7 +71,7 @@
 - `apriltag_detection_node`：按服务启动/停止 AprilTag 检测，发布 `apriltag_poses`，并发布调试 TF。
 - `apriltag_alignment_tf_node`：持续检测 AprilTag，发布 raw/aligned tag TF、调试位姿和基于 tag 的目标位姿。
 - `mobile_control_node`：订阅 `control/ctrl_pose` 和 `feedback/odom`，输出 `control/cmd_vel`，用于目标位姿下的底盘末端精控。
-- `mobile_control_action_node`：通过 `control/precise_control` action 接收精控目标，执行 TF 转换、控制、反馈和取消处理。
+- `mobile_control_action_node`：通过 `control/precise_control` action 接收精控目标，负责 TF、反馈和取消编排，并委托不依赖 costmap 的 `StraightController` / `RotationController` 计算速度。
 - `obstacle_detector_node`：订阅局部 costmap，检测车体前方矩形区域是否存在障碍物，并发布 Bool 与 RViz Marker。
 - `charging_pose_service_node`：采样 `map -> base_link` 并保存充电位姿 JSON。
 

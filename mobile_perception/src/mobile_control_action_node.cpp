@@ -1,738 +1,972 @@
 // ----------------------------------------------------------------------------
-// Copyright (c) 2021-2025 DexForce Technology Co., Ltd.
+// Copyright (c) 2021-2026 DexForce Technology Co., Ltd.
 //
 // All rights reserved.
 // ----------------------------------------------------------------------------
 
-#include <rclcpp/rclcpp.hpp>
-#include <rclcpp_action/rclcpp_action.hpp>
-#include <geometry_msgs/msg/pose_stamped.hpp>
-#include <geometry_msgs/msg/twist.hpp>
-#include <nav_interfaces/action/precise_control.hpp>
-#include <nav_msgs/msg/odometry.hpp>
 #include <tf2/utils.h>
-#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
 
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdint>
+#include <geometry_msgs/msg/pose_stamped.hpp>
+#include <geometry_msgs/msg/twist.hpp>
+#include <iomanip>
 #include <memory>
+#include <nav_interfaces/action/precise_control.hpp>
+#include <nav_interfaces/msg/robot_trajectory.hpp>
+#include <nav_msgs/msg/odometry.hpp>
+#include <nav_msgs/msg/path.hpp>
+#include <pluginlib/class_loader.hpp>
+#include <rclcpp/rclcpp.hpp>
+#include <rclcpp_action/rclcpp_action.hpp>
+#include <sstream>
+#include <stdexcept>
 #include <string>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+
+#include "mobile_perception/mobile_control/goal_checker.hpp"
+#include "mobile_perception/mobile_control/rotation_controller.hpp"
+#include "mobile_perception/mobile_control/short_trajectory_builder.hpp"
+#include "mobile_perception/mobile_control/speed_profile_planner.hpp"
+#include "mobile_perception/mobile_control/straight_controller.hpp"
 
 using namespace std::chrono_literals;
 
-class MobileControlActionNode : public rclcpp::Node
-{
+namespace {
+
+constexpr double kPi = 3.14159265358979323846;
+
+double normalizedAngle(double angle) { return std::atan2(std::sin(angle), std::cos(angle)); }
+
+std::string makePlanId(const rclcpp_action::GoalUUID& goal_id) {
+    std::ostringstream stream;
+    stream << "mobile_control_";
+    for (const auto byte : goal_id) {
+        stream << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(byte);
+    }
+    return stream.str();
+}
+
+}  // namespace
+
+class MobileControlActionNode : public rclcpp::Node {
 public:
     using PreciseControl = nav_interfaces::action::PreciseControl;
     using GoalHandlePreciseControl = rclcpp_action::ServerGoalHandle<PreciseControl>;
+    using GoalMode = mobile_perception::mobile_control::MotionMode;
+    using GoalCheckMode = mobile_perception::mobile_control::GoalCheckMode;
+    using GoalControlState = mobile_perception::mobile_control::GoalControlState;
+    using SpeedProfilePlanner = mobile_perception::mobile_control::SpeedProfilePlanner;
 
-    struct PidConfig
-    {
-        bool integrator_enable{true};
-        double integrator_saturation_level{0.3};
-        double kp{0.0};
-        double ki{0.0};
-        double kd{0.0};
-    };
+    MobileControlActionNode()
+        : Node("mobile_control_action_node"),
+          speed_planner_loader_("mobile_perception", "mobile_perception::mobile_control::SpeedProfilePlanner") {
+        declareParameters();
+        loadParameters();
 
-    struct PidState
-    {
-        double integral{0.0};
-        double prev_error{0.0};
-        bool has_prev{false};
-    };
-
-    enum class GoalMode
-    {
-        STRAIGHT,
-        ROTATE
-    };
-
-    MobileControlActionNode() : Node("mobile_control_action_node")
-    {
-        this->declare_parameter("control_frequency", 20.0);
-        this->declare_parameter("stop_confirm_duration", 0.2);
-        this->declare_parameter("max_v", 0.35);
-        this->declare_parameter("min_v", 0.0);
-        this->declare_parameter("max_w", 1.0);
-        this->declare_parameter("accel_x_max", 0.5);
-        this->declare_parameter("straight_max_w_inc", 1.57);
-        this->declare_parameter("rotate_to_heading_max_angular_accel", 1.0);
-        this->declare_parameter("rotate_stop_yaw_error", 0.02);
-        this->declare_parameter("k_rho", 0.8);
-        this->declare_parameter("near_target_dist", 0.3);
-        this->declare_parameter("near_target_min_speed_scale", 0.5);
-        this->declare_parameter("cmd_vel_filter_alpha", 0.3);
-        this->declare_parameter("min_angular_vel", 0.01);
-        this->declare_parameter("xy_tolerance", 0.02);
-        this->declare_parameter("yaw_tolerance", 0.04);
-        this->declare_parameter("goal_mode_rotate_xy_threshold", 0.03);
-        this->declare_parameter("pure_rotation.angular_pid.integrator_enable", true);
-        this->declare_parameter("pure_rotation.angular_pid.integrator_saturation_level", 0.5);
-        this->declare_parameter("pure_rotation.angular_pid.kp", 1.0);
-        this->declare_parameter("pure_rotation.angular_pid.ki", 0.01);
-        this->declare_parameter("pure_rotation.angular_pid.kd", 0.10);
-        this->declare_parameter("straight.station_pid.integrator_enable", true);
-        this->declare_parameter("straight.station_pid.integrator_saturation_level", 0.3);
-        this->declare_parameter("straight.station_pid.kp", 1.0);
-        this->declare_parameter("straight.station_pid.ki", 0.01);
-        this->declare_parameter("straight.station_pid.kd", 0.10);
-        this->declare_parameter("straight.high_speed_pid.integrator_enable", true);
-        this->declare_parameter("straight.high_speed_pid.integrator_saturation_level", 0.3);
-        this->declare_parameter("straight.high_speed_pid.kp", 1.0);
-        this->declare_parameter("straight.high_speed_pid.ki", 0.01);
-        this->declare_parameter("straight.high_speed_pid.kd", 0.10);
-        this->declare_parameter("straight.low_speed_pid.integrator_enable", true);
-        this->declare_parameter("straight.low_speed_pid.integrator_saturation_level", 0.3);
-        this->declare_parameter("straight.low_speed_pid.kp", 1.0);
-        this->declare_parameter("straight.low_speed_pid.ki", 0.01);
-        this->declare_parameter("straight.low_speed_pid.kd", 0.10);
-        this->declare_parameter("straight.reverse_station_pid.integrator_enable", true);
-        this->declare_parameter("straight.reverse_station_pid.integrator_saturation_level", 0.5);
-        this->declare_parameter("straight.reverse_station_pid.kp", 1.0);
-        this->declare_parameter("straight.reverse_station_pid.ki", 0.01);
-        this->declare_parameter("straight.reverse_station_pid.kd", 0.10);
-        this->declare_parameter("straight.reverse_speed_pid.integrator_enable", true);
-        this->declare_parameter("straight.reverse_speed_pid.integrator_saturation_level", 0.5);
-        this->declare_parameter("straight.reverse_speed_pid.kp", 1.0);
-        this->declare_parameter("straight.reverse_speed_pid.ki", 0.01);
-        this->declare_parameter("straight.reverse_speed_pid.kd", 0.10);
-        this->declare_parameter("straight.angular_pid.kp", 1.0);
-        this->declare_parameter("straight.angular_pid.ki", 0.01);
-        this->declare_parameter("straight.angular_pid.kd", 0.10);
-        this->declare_parameter("straight.switch_speed", 0.1);
-
-        control_frequency_ = this->get_parameter("control_frequency").as_double();
-        stop_confirm_duration_ =
-            std::max(0.0, this->get_parameter("stop_confirm_duration").as_double());
-        stop_confirm_cycles_ = std::max(
-            1, static_cast<int>(std::ceil(stop_confirm_duration_ * control_frequency_)));
-        max_v_ = this->get_parameter("max_v").as_double();
-        min_v_ = this->get_parameter("min_v").as_double();
-        max_w_ = this->get_parameter("max_w").as_double();
-        accel_x_max_ = this->get_parameter("accel_x_max").as_double();
-        straight_max_w_inc_ = this->get_parameter("straight_max_w_inc").as_double();
-        rotate_to_heading_max_angular_accel_ =
-            this->get_parameter("rotate_to_heading_max_angular_accel").as_double();
-        rotate_stop_yaw_error_ = this->get_parameter("rotate_stop_yaw_error").as_double();
-        k_rho_ = this->get_parameter("k_rho").as_double();
-        near_target_dist_ = this->get_parameter("near_target_dist").as_double();
-        near_target_min_speed_scale_ = std::clamp(
-            this->get_parameter("near_target_min_speed_scale").as_double(), 0.0, 1.0);
-        filter_alpha_ = this->get_parameter("cmd_vel_filter_alpha").as_double();
-        min_angular_vel_ = this->get_parameter("min_angular_vel").as_double();
-        xy_tolerance_ = this->get_parameter("xy_tolerance").as_double();
-        yaw_tolerance_ = this->get_parameter("yaw_tolerance").as_double();
-        goal_mode_rotate_xy_threshold_ = this->get_parameter("goal_mode_rotate_xy_threshold").as_double();
-        pure_rotation_angular_pid_conf_ = loadPidConfig("pure_rotation.angular_pid", 0.5);
-        straight_station_pid_conf_ = loadPidConfig("straight.station_pid", 0.3);
-        straight_high_speed_pid_conf_ = loadPidConfig("straight.high_speed_pid", 0.3);
-        straight_low_speed_pid_conf_ = loadPidConfig("straight.low_speed_pid", 0.3);
-        straight_reverse_station_pid_conf_ = loadPidConfig("straight.reverse_station_pid", 0.5);
-        straight_reverse_speed_pid_conf_ = loadPidConfig("straight.reverse_speed_pid", 0.5);
-        straight_angular_kp_ = this->get_parameter("straight.angular_pid.kp").as_double();
-        straight_angular_ki_ = this->get_parameter("straight.angular_pid.ki").as_double();
-        straight_angular_kd_ = this->get_parameter("straight.angular_pid.kd").as_double();
-        straight_switch_speed_ = this->get_parameter("straight.switch_speed").as_double();
+        const std::string planner_plugin = this->get_parameter("speed_profile_plugin").as_string();
+        try {
+            speed_planner_ = speed_planner_loader_.createSharedInstance(planner_plugin);
+        } catch (const pluginlib::PluginlibException& error) {
+            throw std::runtime_error("Cannot load speed profile plugin '" + planner_plugin + "': " + error.what());
+        }
 
         tf_buffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
         tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
         cmd_vel_pub_ = this->create_publisher<geometry_msgs::msg::Twist>("control/cmd_vel", 10);
+        const auto plan_qos = rclcpp::QoS(1).reliable().transient_local();
+        path_pub_ = this->create_publisher<nav_msgs::msg::Path>("control/planned_path", plan_qos);
+        trajectory_pub_ =
+            this->create_publisher<nav_interfaces::msg::RobotTrajectory>("control/planned_trajectory", plan_qos);
         odom_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
-            "feedback/odom", 10,
-            std::bind(&MobileControlActionNode::odomCallback, this, std::placeholders::_1));
+            "feedback/odom", 10, std::bind(&MobileControlActionNode::odomCallback, this, std::placeholders::_1));
 
         action_server_ = rclcpp_action::create_server<PreciseControl>(
-            this,
-            "control/precise_control",
+            this, "control/precise_control",
             std::bind(&MobileControlActionNode::handleGoal, this, std::placeholders::_1, std::placeholders::_2),
             std::bind(&MobileControlActionNode::handleCancel, this, std::placeholders::_1),
             std::bind(&MobileControlActionNode::handleAccepted, this, std::placeholders::_1));
 
-        timer_ = this->create_wall_timer(
-            std::chrono::milliseconds(static_cast<int>(1000.0 / control_frequency_)),
-            std::bind(&MobileControlActionNode::controlLoop, this));
+        timer_ = this->create_wall_timer(std::chrono::duration<double>(1.0 / control_frequency_),
+                                         std::bind(&MobileControlActionNode::controlLoop, this));
 
-        RCLCPP_INFO(
-            this->get_logger(),
-            "Action 控制参数：停稳确认=%.3fs（%d周期），控制频率=%.1fHz，"
-            "近目标减速距离=%.3fm，近目标最低速度比例=%.2f",
-            stop_confirm_duration_, stop_confirm_cycles_, control_frequency_,
-            near_target_dist_, near_target_min_speed_scale_);
-
-        resetControlState();
+        const auto& checker_config = goal_checker_->config();
+        RCLCPP_INFO(this->get_logger(),
+                    "精控链路就绪：S曲线插件=%s，控制频率=%.1fHz，GoalChecker="
+                    "(translation: longitudinal<=%.4fm + lateral<=%.4fm + yaw<=%.4frad; "
+                    "rotation: yaw only; both: |v|<=%.4fm/s + |w|<=%.4frad/s + confirm=%.2fs), "
+                    "geometry_frame=map, tracking_error_frame=base_link(latest TF), "
+                    "velocity_feedback=feedback/odom.twist, "
+                    "straight_control=S(v,a)+position_pid+speed_pid, straight_stop=(%.4fm->%.4fm/s), "
+                    "rotation_min_w=%.4frad/s, "
+                    "effective_terminal_w=%.4frad/s",
+                    planner_plugin.c_str(), control_frequency_, checker_config.longitudinal_tolerance,
+                    checker_config.lateral_tolerance, checker_config.yaw_tolerance,
+                    checker_config.stopped_linear_velocity, checker_config.stopped_angular_velocity,
+                    checker_config.confirm_duration, this->get_parameter("straight.stop_distance").as_double(),
+                    this->get_parameter("straight.stop_speed").as_double(),
+                    rotation_controller_config_.min_angular_velocity,
+                    rotation_controller_config_.terminal_angular_velocity);
     }
 
 private:
     rclcpp_action::Server<PreciseControl>::SharedPtr action_server_;
     std::shared_ptr<GoalHandlePreciseControl> active_goal_handle_;
     rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_pub_;
+    rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr path_pub_;
+    rclcpp::Publisher<nav_interfaces::msg::RobotTrajectory>::SharedPtr trajectory_pub_;
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
     rclcpp::TimerBase::SharedPtr timer_;
 
     std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
     std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
+    pluginlib::ClassLoader<SpeedProfilePlanner> speed_planner_loader_;
+    std::shared_ptr<SpeedProfilePlanner> speed_planner_;
+    std::unique_ptr<mobile_perception::mobile_control::StraightController> straight_controller_;
+    std::unique_ptr<mobile_perception::mobile_control::RotationController> rotation_controller_;
+    std::unique_ptr<mobile_perception::mobile_control::PreciseGoalChecker> goal_checker_;
 
-    geometry_msgs::msg::PoseStamped target_pose_odom_;
-    geometry_msgs::msg::Twist pre_cmd_vel_;
-    geometry_msgs::msg::Twist filtered_cmd_vel_;
-    bool get_map_pose_{false};
-    bool is_goal_{false};
+    geometry_msgs::msg::PoseStamped target_pose_map_;
+    geometry_msgs::msg::Twist measured_velocity_;
+    mobile_perception::mobile_control::ShortTrajectory active_trajectory_;
+    GoalMode goal_mode_{GoalMode::Straight};
+    bool reverse_{false};
+    bool clockwise_{false};
     bool is_cancelling_{false};
+    bool has_odom_{false};
+    std::chrono::steady_clock::time_point last_odom_time_{};
     std::chrono::steady_clock::time_point goal_started_time_{};
-    bool goal_timer_started_{false};
-    int stop_count_{0};
-    int stop_confirm_cycles_{1};
-    GoalMode goal_mode_{GoalMode::STRAIGHT};
+    double initial_motion_{0.0};
+    double continuous_rotation_yaw_error_{0.0};
+    double trajectory_progress_{0.0};
+    double last_longitudinal_error_{0.0};
+    double last_lateral_error_{0.0};
+    double last_yaw_error_{0.0};
+    double last_goal_stable_duration_{0.0};
+    bool goal_pose_reached_logged_{false};
 
-    double control_frequency_;
-    double stop_confirm_duration_;
-    double max_v_;
-    double min_v_;
-    double max_w_;
-    double accel_x_max_;
-    double straight_max_w_inc_;
-    double rotate_to_heading_max_angular_accel_;
-    double rotate_stop_yaw_error_;
-    double k_rho_;
-    double near_target_dist_;
-    double near_target_min_speed_scale_;
-    double filter_alpha_;
-    double min_angular_vel_;
-    double xy_tolerance_;
-    double yaw_tolerance_;
-    double goal_mode_rotate_xy_threshold_;
-    PidConfig pure_rotation_angular_pid_conf_;
-    PidConfig straight_station_pid_conf_;
-    PidConfig straight_high_speed_pid_conf_;
-    PidConfig straight_low_speed_pid_conf_;
-    PidConfig straight_reverse_station_pid_conf_;
-    PidConfig straight_reverse_speed_pid_conf_;
-    PidState pure_rotation_angular_pid_state_;
-    PidState straight_station_pid_state_;
-    PidState straight_high_speed_pid_state_;
-    PidState straight_low_speed_pid_state_;
-    PidState straight_reverse_station_pid_state_;
-    PidState straight_reverse_speed_pid_state_;
-    double straight_angular_kp_;
-    double straight_angular_ki_;
-    double straight_angular_kd_;
-    double straight_switch_speed_;
-    double straight_angular_error_prev_{0.0};
-    double straight_angular_integral_{0.0};
+    double control_frequency_{20.0};
+    double odom_timeout_{0.5};
+    double execution_timeout_{30.0};
+    double goal_mode_rotate_xy_threshold_{0.05};
+    double straight_max_initial_heading_error_{5.0 * kPi / 180.0};
+    double trajectory_preview_time_{0.05};
+    int64_t control_status_log_period_ms_{500};
+    mobile_perception::mobile_control::SpeedProfileRequest linear_profile_request_;
+    mobile_perception::mobile_control::SpeedProfileRequest angular_profile_request_;
+    mobile_perception::mobile_control::TerminalSlowdownConstraint linear_terminal_slowdown_;
+    mobile_perception::mobile_control::TerminalSlowdownConstraint angular_terminal_slowdown_;
+    mobile_perception::mobile_control::RotationControllerConfig rotation_controller_config_;
 
-    PidConfig loadPidConfig(const std::string &prefix, double default_integrator_saturation_level)
-    {
-        PidConfig config;
+    void declarePidParameters(
+        const std::string& prefix, double default_kp, double default_ki, double default_kd, double default_saturation) {
+        this->declare_parameter(prefix + ".integrator_enable", true);
+        this->declare_parameter(prefix + ".integrator_saturation_level", default_saturation);
+        this->declare_parameter(prefix + ".kp", default_kp);
+        this->declare_parameter(prefix + ".ki", default_ki);
+        this->declare_parameter(prefix + ".kd", default_kd);
+    }
+
+    void declareParameters() {
+        this->declare_parameter("control_frequency", 20.0);
+        this->declare_parameter("odom_timeout", 0.5);
+        this->declare_parameter("execution_timeout", 30.0);
+        this->declare_parameter("goal_mode_rotate_xy_threshold", 0.05);
+        this->declare_parameter("trajectory_tracking.preview_time", 0.05);
+        this->declare_parameter("logging.control_status_period", 0.5);
+        this->declare_parameter("speed_profile_plugin", "mobile_perception::mobile_control::SCurveSpeedProfilePlanner");
+
+        this->declare_parameter("s_curve.sample_period", 0.05);
+        this->declare_parameter("s_curve.max_duration", 30.0);
+        this->declare_parameter("s_curve.linear.max_velocity", 0.35);
+        this->declare_parameter("s_curve.linear.max_acceleration", 0.5);
+        this->declare_parameter("s_curve.linear.max_deceleration", 0.5);
+        this->declare_parameter("s_curve.linear.max_jerk", 1.0);
+        this->declare_parameter("s_curve.angular.max_velocity", 0.75);
+        this->declare_parameter("s_curve.angular.max_acceleration", 1.0);
+        this->declare_parameter("s_curve.angular.max_deceleration", 1.0);
+        this->declare_parameter("s_curve.angular.max_jerk", 2.0);
+        this->declare_parameter("goal_checker.longitudinal_tolerance", 0.005);
+        this->declare_parameter("goal_checker.lateral_tolerance", 0.005);
+        this->declare_parameter("goal_checker.yaw_tolerance", 0.008);
+        this->declare_parameter("goal_checker.stopped_linear_velocity", 0.005);
+        this->declare_parameter("goal_checker.stopped_angular_velocity", 0.01);
+        this->declare_parameter("goal_checker.confirm_duration", 0.2);
+
+        this->declare_parameter("straight.max_angular_velocity", 1.0);
+        this->declare_parameter("straight.max_angular_acceleration", 1.57);
+        this->declare_parameter("straight.max_initial_heading_error", 5.0 * kPi / 180.0);
+        this->declare_parameter("straight.stop_distance", 0.05);
+        this->declare_parameter("straight.stop_speed", 0.03);
+        declarePidParameters("straight.position_pid", 1.5, 0.0, 0.0, 0.1);
+        declarePidParameters("straight.speed_pid", 1.0, 0.01, 0.10, 0.3);
+        declarePidParameters("straight.lateral_pid", 1.0, 0.01, 0.10, 0.3);
+        declarePidParameters("straight.heading_pid", 1.0, 0.01, 0.10, 0.3);
+        this->declare_parameter("rotation.yaw_kp", 2.0);
+        this->declare_parameter("rotation.min_angular_velocity", 0.02);
+        this->declare_parameter("rotation.terminal_slowdown_angle", 0.30);
+        this->declare_parameter("rotation.terminal_angular_velocity", 0.01);
+        declarePidParameters("rotation.angular_velocity_pid", 1.0, 0.01, 0.10, 0.5);
+    }
+
+    mobile_perception::mobile_control::PidConfig loadPidConfig(const std::string& prefix) {
+        mobile_perception::mobile_control::PidConfig config;
         config.integrator_enable = this->get_parameter(prefix + ".integrator_enable").as_bool();
-        config.integrator_saturation_level =
-            this->get_parameter(prefix + ".integrator_saturation_level").as_double();
+        config.integrator_saturation_level = this->get_parameter(prefix + ".integrator_saturation_level").as_double();
         config.kp = this->get_parameter(prefix + ".kp").as_double();
         config.ki = this->get_parameter(prefix + ".ki").as_double();
         config.kd = this->get_parameter(prefix + ".kd").as_double();
-        if (config.integrator_saturation_level <= 0.0) {
-            config.integrator_saturation_level = default_integrator_saturation_level;
-        }
         return config;
     }
 
-    void resetPidState(PidState &state)
-    {
-        state.integral = 0.0;
-        state.prev_error = 0.0;
-        state.has_prev = false;
+    void loadParameters() {
+        control_frequency_ = std::max(1.0, this->get_parameter("control_frequency").as_double());
+        odom_timeout_ = std::max(0.01, this->get_parameter("odom_timeout").as_double());
+        execution_timeout_ = std::max(0.1, this->get_parameter("execution_timeout").as_double());
+        goal_mode_rotate_xy_threshold_ =
+            std::max(0.0, this->get_parameter("goal_mode_rotate_xy_threshold").as_double());
+        straight_max_initial_heading_error_ =
+            std::max(0.0, this->get_parameter("straight.max_initial_heading_error").as_double());
+        trajectory_preview_time_ = std::max(0.0, this->get_parameter("trajectory_tracking.preview_time").as_double());
+        control_status_log_period_ms_ = static_cast<int64_t>(
+            1000.0 * std::max(0.1, this->get_parameter("logging.control_status_period").as_double()));
+
+        const double sample_period = this->get_parameter("s_curve.sample_period").as_double();
+        const double max_duration = this->get_parameter("s_curve.max_duration").as_double();
+        linear_profile_request_.sample_period = sample_period;
+        linear_profile_request_.max_duration = max_duration;
+        linear_profile_request_.max_velocity = this->get_parameter("s_curve.linear.max_velocity").as_double();
+        linear_profile_request_.max_acceleration = this->get_parameter("s_curve.linear.max_acceleration").as_double();
+        linear_profile_request_.max_deceleration = this->get_parameter("s_curve.linear.max_deceleration").as_double();
+        linear_profile_request_.max_jerk = this->get_parameter("s_curve.linear.max_jerk").as_double();
+        angular_profile_request_.sample_period = sample_period;
+        angular_profile_request_.max_duration = max_duration;
+        angular_profile_request_.max_velocity = this->get_parameter("s_curve.angular.max_velocity").as_double();
+        angular_profile_request_.max_acceleration = this->get_parameter("s_curve.angular.max_acceleration").as_double();
+        angular_profile_request_.max_deceleration = this->get_parameter("s_curve.angular.max_deceleration").as_double();
+        angular_profile_request_.max_jerk = this->get_parameter("s_curve.angular.max_jerk").as_double();
+
+        mobile_perception::mobile_control::GoalCheckerConfig checker_config;
+        checker_config.longitudinal_tolerance = this->get_parameter("goal_checker.longitudinal_tolerance").as_double();
+        checker_config.lateral_tolerance = this->get_parameter("goal_checker.lateral_tolerance").as_double();
+        checker_config.yaw_tolerance = this->get_parameter("goal_checker.yaw_tolerance").as_double();
+        checker_config.stopped_linear_velocity =
+            this->get_parameter("goal_checker.stopped_linear_velocity").as_double();
+        checker_config.stopped_angular_velocity =
+            this->get_parameter("goal_checker.stopped_angular_velocity").as_double();
+        checker_config.confirm_duration = this->get_parameter("goal_checker.confirm_duration").as_double();
+        goal_checker_ = std::make_unique<mobile_perception::mobile_control::PreciseGoalChecker>(checker_config);
+
+        mobile_perception::mobile_control::StraightControllerConfig straight_config;
+        straight_config.max_linear_velocity = linear_profile_request_.max_velocity;
+        straight_config.max_angular_velocity = this->get_parameter("straight.max_angular_velocity").as_double();
+        straight_config.max_linear_acceleration = linear_profile_request_.max_acceleration;
+        straight_config.max_linear_deceleration = linear_profile_request_.max_deceleration;
+        straight_config.max_angular_acceleration = this->get_parameter("straight.max_angular_acceleration").as_double();
+        linear_terminal_slowdown_.motion = std::max(0.0, this->get_parameter("straight.stop_distance").as_double());
+        linear_terminal_slowdown_.velocity = std::clamp(this->get_parameter("straight.stop_speed").as_double(), 0.0,
+                                                        linear_profile_request_.max_velocity);
+        straight_config.terminal_slowdown_distance = linear_terminal_slowdown_.motion;
+        straight_config.terminal_linear_velocity = linear_terminal_slowdown_.velocity;
+        straight_config.position_pid = loadPidConfig("straight.position_pid");
+        straight_config.speed_pid = loadPidConfig("straight.speed_pid");
+        straight_config.lateral_pid = loadPidConfig("straight.lateral_pid");
+        straight_config.heading_pid = loadPidConfig("straight.heading_pid");
+        straight_controller_ = std::make_unique<mobile_perception::mobile_control::StraightController>(straight_config);
+
+        rotation_controller_config_.yaw_kp = this->get_parameter("rotation.yaw_kp").as_double();
+        rotation_controller_config_.yaw_tolerance = checker_config.yaw_tolerance;
+        rotation_controller_config_.min_angular_velocity =
+            this->get_parameter("rotation.min_angular_velocity").as_double();
+        rotation_controller_config_.terminal_slowdown_angle =
+            this->get_parameter("rotation.terminal_slowdown_angle").as_double();
+        rotation_controller_config_.terminal_angular_velocity =
+            this->get_parameter("rotation.terminal_angular_velocity").as_double();
+        rotation_controller_config_.max_angular_velocity = angular_profile_request_.max_velocity;
+        rotation_controller_config_.min_angular_velocity = std::clamp(
+            rotation_controller_config_.min_angular_velocity, 0.0, rotation_controller_config_.max_angular_velocity);
+        if (rotation_controller_config_.terminal_angular_velocity < rotation_controller_config_.min_angular_velocity) {
+            RCLCPP_WARN(this->get_logger(),
+                        "rotation.terminal_angular_velocity=%.4frad/s is below the deadband-compensated "
+                        "rotation.min_angular_velocity=%.4frad/s; using the executable minimum in the terminal zone",
+                        rotation_controller_config_.terminal_angular_velocity,
+                        rotation_controller_config_.min_angular_velocity);
+            rotation_controller_config_.terminal_angular_velocity = rotation_controller_config_.min_angular_velocity;
+        }
+        rotation_controller_config_.terminal_slowdown_angle =
+            std::max(rotation_controller_config_.yaw_tolerance, rotation_controller_config_.terminal_slowdown_angle);
+        rotation_controller_config_.terminal_angular_velocity =
+            std::clamp(rotation_controller_config_.terminal_angular_velocity, 0.0,
+                       rotation_controller_config_.max_angular_velocity);
+        angular_terminal_slowdown_.motion = rotation_controller_config_.terminal_slowdown_angle;
+        angular_terminal_slowdown_.velocity = rotation_controller_config_.terminal_angular_velocity;
+        rotation_controller_config_.max_angular_acceleration =
+            std::min(angular_profile_request_.max_acceleration, angular_profile_request_.max_deceleration);
+        rotation_controller_config_.angular_velocity_pid = loadPidConfig("rotation.angular_velocity_pid");
+        rotation_controller_ =
+            std::make_unique<mobile_perception::mobile_control::RotationController>(rotation_controller_config_);
     }
 
-    void resetPidStates()
-    {
-        resetPidState(pure_rotation_angular_pid_state_);
-        resetPidState(straight_station_pid_state_);
-        resetPidState(straight_high_speed_pid_state_);
-        resetPidState(straight_low_speed_pid_state_);
-        resetPidState(straight_reverse_station_pid_state_);
-        resetPidState(straight_reverse_speed_pid_state_);
-        straight_angular_error_prev_ = 0.0;
-        straight_angular_integral_ = 0.0;
+    void resetControllers() {
+        straight_controller_->reset();
+        rotation_controller_->reset();
+        goal_checker_->reset();
     }
 
-    void resetControlState()
-    {
-        get_map_pose_ = false;
-        is_goal_ = false;
+    void resetExecutionState() {
         is_cancelling_ = false;
-        stop_count_ = 0;
-        goal_mode_ = GoalMode::STRAIGHT;
-        filtered_cmd_vel_.linear.x = 0.0;
-        filtered_cmd_vel_.angular.z = 0.0;
-        pre_cmd_vel_.linear.x = 0.0;
-        pre_cmd_vel_.angular.z = 0.0;
-        goal_timer_started_ = false;
-        resetPidStates();
+        goal_mode_ = GoalMode::Straight;
+        reverse_ = false;
+        clockwise_ = false;
+        initial_motion_ = 0.0;
+        continuous_rotation_yaw_error_ = 0.0;
+        trajectory_progress_ = 0.0;
+        last_longitudinal_error_ = 0.0;
+        last_lateral_error_ = 0.0;
+        last_yaw_error_ = 0.0;
+        last_goal_stable_duration_ = 0.0;
+        goal_pose_reached_logged_ = false;
+        active_trajectory_.path = nav_msgs::msg::Path();
+        active_trajectory_.trajectory = nav_interfaces::msg::RobotTrajectory();
+        active_trajectory_.motion_profile = mobile_perception::mobile_control::SpeedProfile{};
+        active_trajectory_.mode = GoalMode::Straight;
+        active_trajectory_.direction = 1.0;
+        active_trajectory_.total_motion = 0.0;
+        resetControllers();
     }
 
-    double goalElapsedSeconds() const
-    {
-        if (!goal_timer_started_) {
+    double goalElapsedSeconds() const {
+        if (!active_goal_handle_) {
             return -1.0;
         }
-        return std::chrono::duration<double>(
-                   std::chrono::steady_clock::now() - goal_started_time_)
-            .count();
+        return std::chrono::duration<double>(std::chrono::steady_clock::now() - goal_started_time_).count();
     }
 
-    double runPid(const PidConfig &config, PidState &state, double error, double dt)
-    {
-        if (dt <= 0.0 || !std::isfinite(error)) {
-            return 0.0;
-        }
-
-        if (config.integrator_enable) {
-            state.integral += error * dt;
-            state.integral = std::clamp(
-                state.integral,
-                -config.integrator_saturation_level,
-                config.integrator_saturation_level);
-        } else {
-            state.integral = 0.0;
-        }
-
-        double derivative = 0.0;
-        if (state.has_prev) {
-            derivative = (error - state.prev_error) / dt;
-        }
-
-        state.prev_error = error;
-        state.has_prev = true;
-        return config.kp * error + config.ki * state.integral + config.kd * derivative;
+    bool odomIsFresh() const {
+        return has_odom_ && std::chrono::duration<double>(std::chrono::steady_clock::now() - last_odom_time_).count() <=
+                                odom_timeout_;
     }
 
-    void odomCallback(const nav_msgs::msg::Odometry::SharedPtr msg)
-    {
-        pre_cmd_vel_.linear.x = msg->twist.twist.linear.x;
-        pre_cmd_vel_.angular.z = msg->twist.twist.angular.z;
+    void odomCallback(const nav_msgs::msg::Odometry::SharedPtr message) {
+        measured_velocity_ = message->twist.twist;
+        has_odom_ = true;
+        last_odom_time_ = std::chrono::steady_clock::now();
     }
 
-    bool transformTargetToMap(
-        const geometry_msgs::msg::PoseStamped &target_pose,
-        geometry_msgs::msg::PoseStamped &target_pose_map,
-        std::string &error_msg)
-    {
+    bool transformTargetToMap(const geometry_msgs::msg::PoseStamped& target,
+                              geometry_msgs::msg::PoseStamped& target_map,
+                              std::string& error) {
         try {
-            if (target_pose.header.frame_id != "map") {
-                target_pose_map = tf_buffer_->transform(target_pose, "map", tf2::durationFromSec(0.1));
-            } else {
-                target_pose_map = target_pose;
-            }
-        } catch (const tf2::TransformException &ex) {
-            error_msg = ex.what();
+            target_map = target.header.frame_id == "map"
+                             ? target
+                             : tf_buffer_->transform(target, "map", tf2::durationFromSec(0.1));
+            target_map.header.frame_id = "map";
+            // The goal is now a fixed map coordinate. All later base-relative
+            // queries must use the latest robot transform, not the original
+            // goal timestamp (which eventually leaves the TF cache).
+            target_map.header.stamp = rclcpp::Time(0);
+        } catch (const tf2::TransformException& exception) {
+            error = exception.what();
             return false;
         }
         return true;
     }
 
-    void setTarget(const geometry_msgs::msg::PoseStamped &target_pose)
-    {
-        target_pose_odom_ = target_pose;
-        get_map_pose_ = true;
-        is_goal_ = false;
-        is_cancelling_ = false;
-        stop_count_ = 0;
-        filtered_cmd_vel_.linear.x = 0.0;
-        filtered_cmd_vel_.angular.z = 0.0;
-        resetPidStates();
+    bool currentPoseInMap(geometry_msgs::msg::PoseStamped& pose, std::string& error) {
+        try {
+            const auto transform = tf_buffer_->lookupTransform("map", "base_link", tf2::TimePointZero);
+            pose.header = transform.header;
+            pose.header.frame_id = "map";
+            pose.pose.position.x = transform.transform.translation.x;
+            pose.pose.position.y = transform.transform.translation.y;
+            pose.pose.position.z = transform.transform.translation.z;
+            pose.pose.orientation = transform.transform.rotation;
+        } catch (const tf2::TransformException& exception) {
+            error = exception.what();
+            return false;
+        }
+        return true;
     }
 
-    void setGoalModeFromInput(const geometry_msgs::msg::PoseStamped &input_pose)
-    {
-        const double input_dx = input_pose.pose.position.x;
-        const double input_dy = input_pose.pose.position.y;
-        const double input_yaw = tf2::getYaw(input_pose.pose.orientation);
-        const double input_dist = std::hypot(input_dx, input_dy);
+    bool poseInBase(const geometry_msgs::msg::PoseStamped& pose_map,
+                    geometry_msgs::msg::PoseStamped& pose_base,
+                    std::string& error) {
+        try {
+            auto pose_at_latest = pose_map;
+            pose_at_latest.header.stamp = rclcpp::Time(0);
+            pose_base = tf_buffer_->transform(pose_at_latest, "base_link", tf2::durationFromSec(0.1));
+        } catch (const tf2::TransformException& exception) {
+            error = exception.what();
+            return false;
+        }
+        return true;
+    }
 
-        if (input_dist < goal_mode_rotate_xy_threshold_ && std::fabs(input_yaw) >= yaw_tolerance_) {
-            goal_mode_ = GoalMode::ROTATE;
+    bool makePlan(const geometry_msgs::msg::PoseStamped& start_pose,
+                  const geometry_msgs::msg::PoseStamped& target_base,
+                  const std::string& plan_id,
+                  std::string& error) {
+        const double distance = std::hypot(target_base.pose.position.x, target_base.pose.position.y);
+        const double yaw_error = normalizedAngle(tf2::getYaw(target_base.pose.orientation));
+        const auto& checker_config = goal_checker_->config();
+        goal_mode_ = distance <= goal_mode_rotate_xy_threshold_ && std::fabs(yaw_error) > checker_config.yaw_tolerance
+                         ? GoalMode::Rotation
+                         : GoalMode::Straight;
+
+        reverse_ = goal_mode_ == GoalMode::Straight && target_base.pose.position.x < 0.0;
+        clockwise_ = goal_mode_ == GoalMode::Rotation && yaw_error < 0.0;
+        initial_motion_ = goal_mode_ == GoalMode::Straight ? distance : std::fabs(yaw_error);
+        const char* mode_name = goal_mode_ == GoalMode::Straight ? (reverse_ ? "REVERSE" : "STRAIGHT")
+                                                                 : (clockwise_ ? "ROTATE_CW" : "ROTATE_CCW");
+        const double direction = (goal_mode_ == GoalMode::Straight ? reverse_ : clockwise_) ? -1.0 : 1.0;
+        continuous_rotation_yaw_error_ = goal_mode_ == GoalMode::Rotation ? direction * initial_motion_ : 0.0;
+        const double start_yaw = tf2::getYaw(start_pose.pose.orientation);
+        const double goal_yaw = tf2::getYaw(target_pose_map_.pose.orientation);
+
+        if (goal_mode_ == GoalMode::Straight) {
+            const double delta_x = target_pose_map_.pose.position.x - start_pose.pose.position.x;
+            const double delta_y = target_pose_map_.pose.position.y - start_pose.pose.position.y;
+            const double path_travel_yaw = distance > 1e-9 ? std::atan2(delta_y, delta_x) : start_yaw;
+            const double straight_path_heading_map = normalizedAngle(path_travel_yaw + (reverse_ ? kPi : 0.0));
+            const auto heading_check = mobile_perception::mobile_control::checkStraightHeadingAlignment(
+                start_yaw, goal_yaw, straight_path_heading_map, straight_max_initial_heading_error_);
+            const double radians_to_degrees = 180.0 / kPi;
+            if (!heading_check.accepted) {
+                RCLCPP_ERROR(this->get_logger(),
+                             "[精控 2/7 控制前角度检查失败] plan_id=%s, mode=%s, "
+                             "goal_to_robot=%.3fdeg, path_to_robot=%.3fdeg, goal_to_path=%.3fdeg, threshold=%.3fdeg",
+                             plan_id.c_str(), mode_name, heading_check.goal_to_robot_error * radians_to_degrees,
+                             heading_check.path_to_robot_error * radians_to_degrees,
+                             heading_check.goal_to_path_error * radians_to_degrees,
+                             straight_max_initial_heading_error_ * radians_to_degrees);
+                std::ostringstream stream;
+                stream << "ANGLE_CHECK_FAILED: straight heading misalignment exceeds "
+                       << straight_max_initial_heading_error_ * radians_to_degrees << " deg";
+                error = stream.str();
+                return false;
+            }
+            RCLCPP_INFO(this->get_logger(),
+                        "[精控 2/7 控制前角度检查通过] plan_id=%s, mode=%s, "
+                        "goal_to_robot=%.3fdeg, path_to_robot=%.3fdeg, goal_to_path=%.3fdeg, threshold=%.3fdeg",
+                        plan_id.c_str(), mode_name, heading_check.goal_to_robot_error * radians_to_degrees,
+                        heading_check.path_to_robot_error * radians_to_degrees,
+                        heading_check.goal_to_path_error * radians_to_degrees,
+                        straight_max_initial_heading_error_ * radians_to_degrees);
         } else {
-            goal_mode_ = GoalMode::STRAIGHT;
+            RCLCPP_INFO(this->get_logger(),
+                        "[精控 2/7 控制前角度检查] plan_id=%s, mode=%s, skipped=true, reason=rotation_mode",
+                        plan_id.c_str(), mode_name);
         }
+
+        RCLCPP_INFO(this->get_logger(),
+                    "[精控 2/7 路径规划完成] plan_id=%s, mode=%s, frame=map, "
+                    "start=(%.4f, %.4f, %.4f), goal=(%.4f, %.4f, %.4f), path_points=2, motion=%.4f",
+                    plan_id.c_str(), mode_name, start_pose.pose.position.x, start_pose.pose.position.y, start_yaw,
+                    target_pose_map_.pose.position.x, target_pose_map_.pose.position.y, goal_yaw, initial_motion_);
+
+        mobile_perception::mobile_control::SpeedProfile profile;
+        if (goal_mode_ == GoalMode::Rotation) {
+            auto request = angular_profile_request_;
+            const double speed_along_motion = measured_velocity_.angular.z * direction;
+            if (speed_along_motion < -checker_config.stopped_angular_velocity) {
+                error = "robot is rotating opposite to the requested one-shot trajectory";
+                return false;
+            }
+            request.distance = initial_motion_;
+            request.initial_velocity = std::max(0.0, speed_along_motion);
+            request.initial_acceleration = 0.0;
+            request.target_velocity = 0.0;
+            if (!mobile_perception::mobile_control::planSpeedProfileWithTerminalSlowdown(
+                    *speed_planner_, request, angular_terminal_slowdown_, profile, error)) {
+                return false;
+            }
+
+            double peak_velocity = 0.0;
+            double peak_acceleration = 0.0;
+            double peak_deceleration = 0.0;
+            double peak_jerk = 0.0;
+            for (const auto& point : profile.points) {
+                peak_velocity = std::max(peak_velocity, std::fabs(point.velocity));
+                peak_acceleration = std::max(peak_acceleration, point.acceleration);
+                peak_deceleration = std::max(peak_deceleration, -point.acceleration);
+                peak_jerk = std::max(peak_jerk, std::fabs(point.jerk));
+            }
+            RCLCPP_INFO(
+                this->get_logger(),
+                "[精控 3/7 S角速度规划完成] plan_id=%s, plugin=%s, points=%zu, duration=%.3fs, "
+                "peak_w=%.4f, peak_accel=%.4f, peak_decel=%.4f, peak_jerk=%.4f, "
+                "controller=ANGLE_OUTER+ANGULAR_VELOCITY_PID, yaw_kp=%.3f, "
+                "pid=(kp=%.3f,ki=%.3f,kd=%.3f,i_sat=%.3f), min_w=%.3f, "
+                "slowdown_point=%.3frad, terminal_zone=%.3frad, terminal_w=%.3frad/s, stop_yaw=%.3frad, "
+                "max_w=%.3f, max_alpha=%.3f",
+                plan_id.c_str(), this->get_parameter("speed_profile_plugin").as_string().c_str(), profile.points.size(),
+                profile.duration, peak_velocity, peak_acceleration, peak_deceleration, peak_jerk,
+                rotation_controller_config_.yaw_kp, rotation_controller_config_.angular_velocity_pid.kp,
+                rotation_controller_config_.angular_velocity_pid.ki,
+                rotation_controller_config_.angular_velocity_pid.kd,
+                rotation_controller_config_.angular_velocity_pid.integrator_saturation_level,
+                rotation_controller_config_.min_angular_velocity,
+                std::max(0.0, initial_motion_ - angular_terminal_slowdown_.motion), angular_terminal_slowdown_.motion,
+                angular_terminal_slowdown_.velocity, rotation_controller_config_.yaw_tolerance,
+                rotation_controller_config_.max_angular_velocity, rotation_controller_config_.max_angular_acceleration);
+        } else {
+            const bool already_inside_goal =
+                std::fabs(target_base.pose.position.x) <= checker_config.longitudinal_tolerance &&
+                std::fabs(target_base.pose.position.y) <= checker_config.lateral_tolerance &&
+                std::fabs(yaw_error) <= checker_config.yaw_tolerance;
+            if (already_inside_goal) {
+                profile.points.push_back(mobile_perception::mobile_control::SpeedProfilePoint{});
+            } else {
+                auto request = linear_profile_request_;
+                const double direction = reverse_ ? -1.0 : 1.0;
+                const double speed_along_motion = measured_velocity_.linear.x * direction;
+                if (speed_along_motion < -checker_config.stopped_linear_velocity) {
+                    error = "robot is moving opposite to the requested one-shot trajectory";
+                    return false;
+                }
+                request.distance = initial_motion_;
+                request.initial_velocity = std::max(0.0, speed_along_motion);
+                request.initial_acceleration = 0.0;
+                request.target_velocity = 0.0;
+                if (!mobile_perception::mobile_control::planSpeedProfileWithTerminalSlowdown(
+                        *speed_planner_, request, linear_terminal_slowdown_, profile, error)) {
+                    return false;
+                }
+            }
+
+            double peak_velocity = 0.0;
+            double peak_acceleration = 0.0;
+            double peak_deceleration = 0.0;
+            double peak_jerk = 0.0;
+            for (const auto& point : profile.points) {
+                peak_velocity = std::max(peak_velocity, std::fabs(point.velocity));
+                peak_acceleration = std::max(peak_acceleration, point.acceleration);
+                peak_deceleration = std::max(peak_deceleration, -point.acceleration);
+                peak_jerk = std::max(peak_jerk, std::fabs(point.jerk));
+            }
+            RCLCPP_INFO(this->get_logger(),
+                        "[精控 3/7 S速度规划完成] plan_id=%s, plugin=%s, points=%zu, duration=%.3fs, "
+                        "peak_v=%.4f, peak_accel=%.4f, peak_decel=%.4f, peak_j=%.4f, "
+                        "slowdown_point=%.4fm, slowdown_distance=%.4fm, slowdown_speed=%.4fm/s, preview=%.3fs",
+                        plan_id.c_str(), this->get_parameter("speed_profile_plugin").as_string().c_str(),
+                        profile.points.size(), profile.duration, peak_velocity, peak_acceleration, peak_deceleration,
+                        peak_jerk, std::max(0.0, initial_motion_ - linear_terminal_slowdown_.motion),
+                        linear_terminal_slowdown_.motion, linear_terminal_slowdown_.velocity, trajectory_preview_time_);
+        }
+
+        active_trajectory_ = mobile_perception::mobile_control::ShortTrajectoryBuilder::build(
+            start_pose, target_pose_map_, profile, goal_mode_, direction, plan_id);
+        path_pub_->publish(active_trajectory_.path);
+        trajectory_pub_->publish(active_trajectory_.trajectory);
+        return true;
     }
 
-    rclcpp_action::GoalResponse handleGoal(
-        const rclcpp_action::GoalUUID &,
-        std::shared_ptr<const PreciseControl::Goal> goal)
-    {
+    rclcpp_action::GoalResponse handleGoal(const rclcpp_action::GoalUUID& goal_id,
+                                           std::shared_ptr<const PreciseControl::Goal> goal) {
+        const std::string plan_id = makePlanId(goal_id);
+        RCLCPP_INFO(this->get_logger(),
+                    "[精控 1/7 收到Goal] plan_id=%s, frame=%s, stamp=%d.%09u, "
+                    "target=(%.4f, %.4f, %.4f)",
+                    plan_id.c_str(), goal->target_pose.header.frame_id.c_str(), goal->target_pose.header.stamp.sec,
+                    goal->target_pose.header.stamp.nanosec, goal->target_pose.pose.position.x,
+                    goal->target_pose.pose.position.y, tf2::getYaw(goal->target_pose.pose.orientation));
         if (active_goal_handle_) {
-            RCLCPP_WARN(
-                this->get_logger(),
-                "[底盘直控目标被拒绝] 已有目标正在执行，当前任务已运行 %.3fs。",
-                goalElapsedSeconds());
+            RCLCPP_WARN(this->get_logger(),
+                        "[精控 7/7 接口返回][目标拒绝] plan_id=%s, terminal=REJECTED, "
+                        "reason=已有目标执行中, active_time=%.3fs",
+                        plan_id.c_str(), goalElapsedSeconds());
             return rclcpp_action::GoalResponse::REJECT;
         }
 
-        geometry_msgs::msg::PoseStamped target_pose_map;
-        std::string error_msg;
-        if (!transformTargetToMap(goal->target_pose, target_pose_map, error_msg)) {
-            RCLCPP_WARN(
-                this->get_logger(),
-                "[底盘直控目标被拒绝] 无法将目标从 %s 转换到 map，原因=%s。",
-                goal->target_pose.header.frame_id.c_str(), error_msg.c_str());
+        geometry_msgs::msg::PoseStamped target_map;
+        std::string error;
+        if (!transformTargetToMap(goal->target_pose, target_map, error)) {
+            RCLCPP_WARN(this->get_logger(),
+                        "[精控 7/7 接口返回][目标拒绝] plan_id=%s, terminal=REJECTED, "
+                        "reason=目标无法转换到map, detail=%s",
+                        plan_id.c_str(), error.c_str());
             return rclcpp_action::GoalResponse::REJECT;
         }
-
+        RCLCPP_INFO(this->get_logger(), "[精控 1/7 Goal已接受] plan_id=%s", plan_id.c_str());
         return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
     }
 
-    rclcpp_action::CancelResponse handleCancel(const std::shared_ptr<GoalHandlePreciseControl>)
-    {
+    rclcpp_action::CancelResponse handleCancel(const std::shared_ptr<GoalHandlePreciseControl>) {
         RCLCPP_INFO(
-            this->get_logger(),
-            "[底盘直控取消请求已接受] 当前任务已运行 %.3fs，接下来执行平滑停车。",
-            goalElapsedSeconds());
+            this->get_logger(), "[精控取消请求] plan_id=%s",
+            active_trajectory_.trajectory.plan_id.empty() ? "pending" : active_trajectory_.trajectory.plan_id.c_str());
         return rclcpp_action::CancelResponse::ACCEPT;
     }
 
-    void handleAccepted(const std::shared_ptr<GoalHandlePreciseControl> goal_handle)
-    {
-        const auto goal = goal_handle->get_goal();
-        geometry_msgs::msg::PoseStamped target_pose_map;
-        std::string error_msg;
-        if (!transformTargetToMap(goal->target_pose, target_pose_map, error_msg)) {
+    void handleAccepted(const std::shared_ptr<GoalHandlePreciseControl> goal_handle) {
+        const std::string plan_id = makePlanId(goal_handle->get_goal_id());
+        if (!odomIsFresh()) {
             auto result = std::make_shared<PreciseControl::Result>();
             result->success = false;
-            result->message = "Cannot transform goal to map: " + error_msg;
+            result->message = "Cannot plan: odometry is unavailable or stale";
             goal_handle->abort(result);
-            RCLCPP_ERROR(
-                this->get_logger(),
-                "[底盘直控执行中止] goal 接受后再次转换 TF 失败，"
-                "目标坐标系=%s，原因=%s。",
-                goal->target_pose.header.frame_id.c_str(), error_msg.c_str());
+            RCLCPP_ERROR(this->get_logger(),
+                         "[精控 7/7 接口返回][规划失败] plan_id=%s, terminal=ABORTED, "
+                         "success=false, reason=odom不可用或已超时",
+                         plan_id.c_str());
             return;
+        }
+
+        geometry_msgs::msg::PoseStamped start_pose;
+        geometry_msgs::msg::PoseStamped target_base;
+        std::string error;
+        if (!transformTargetToMap(goal_handle->get_goal()->target_pose, target_pose_map_, error) ||
+            !currentPoseInMap(start_pose, error) || !poseInBase(target_pose_map_, target_base, error)) {
+            auto result = std::make_shared<PreciseControl::Result>();
+            result->success = false;
+            result->message = "Cannot create one-shot path: " + error;
+            goal_handle->abort(result);
+            RCLCPP_ERROR(this->get_logger(),
+                         "[精控 7/7 接口返回][规划失败] plan_id=%s, terminal=ABORTED, "
+                         "success=false, reason=TF中断, detail=%s",
+                         plan_id.c_str(), error.c_str());
+            return;
+        }
+
+        resetExecutionState();
+        if (!makePlan(start_pose, target_base, plan_id, error)) {
+            auto result = std::make_shared<PreciseControl::Result>();
+            result->success = false;
+            result->message = "One-shot planning failed: " + error;
+            goal_handle->abort(result);
+            RCLCPP_ERROR(this->get_logger(),
+                         "[精控 7/7 接口返回][规划失败] plan_id=%s, terminal=ABORTED, "
+                         "success=false, reason=一次性规划失败, detail=%s",
+                         plan_id.c_str(), error.c_str());
+            return;
+        }
+        if (goal_mode_ == GoalMode::Rotation) {
+            // Seed the rate limiter once at the goal boundary. During control,
+            // odometry remains feedback only and never becomes command state.
+            rotation_controller_->reset(measured_velocity_.angular.z);
         }
 
         active_goal_handle_ = goal_handle;
         goal_started_time_ = std::chrono::steady_clock::now();
-        goal_timer_started_ = true;
-        setGoalModeFromInput(goal->target_pose);
-        setTarget(target_pose_map);
         RCLCPP_INFO(
-            this->get_logger(),
-            "[底盘直控状态变化] IDLE -> CONTROL，模式=%s，"
-            "输入目标=(x=%.3fm, y=%.3fm, yaw=%.3frad)，目标坐标系=%s。",
-            goal_mode_ == GoalMode::STRAIGHT ? "直线" : "原地旋转",
-            goal->target_pose.pose.position.x, goal->target_pose.pose.position.y,
-            tf2::getYaw(goal->target_pose.pose.orientation),
-            goal->target_pose.header.frame_id.c_str());
+            this->get_logger(), "[精控 4/7 控制开始] plan_id=%s, mode=%s, motion=%.4f, points=%zu, duration=%.3fs",
+            active_trajectory_.trajectory.plan_id.c_str(),
+            goal_mode_ == GoalMode::Straight ? (reverse_ ? "REVERSE" : "STRAIGHT")
+                                             : (clockwise_ ? "ROTATE_CW" : "ROTATE_CCW"),
+            initial_motion_, active_trajectory_.trajectory.points.size(), active_trajectory_.motion_profile.duration);
     }
 
-    void publishFeedback(const std::string &status)
-    {
+    void publishFeedback(const std::string& status) {
         if (!active_goal_handle_) {
             return;
         }
-
         auto feedback = std::make_shared<PreciseControl::Feedback>();
         feedback->current_status = status;
         active_goal_handle_->publish_feedback(feedback);
     }
 
-    void finishSucceeded()
-    {
+    void publishZeroVelocity() { cmd_vel_pub_->publish(geometry_msgs::msg::Twist{}); }
+
+    void finishSucceeded() {
         if (!active_goal_handle_) {
             return;
         }
-
+        publishZeroVelocity();
         auto result = std::make_shared<PreciseControl::Result>();
         result->success = true;
         result->message = "SUCCEEDED";
-        RCLCPP_INFO(
-            this->get_logger(),
-            "[底盘直控最终结果] CONTROL -> SUCCEEDED，"
-            "停稳确认完成，总耗时=%.3fs。",
-            goalElapsedSeconds());
+        const auto& config = goal_checker_->config();
+        const bool position_required = goal_mode_ == GoalMode::Straight;
+        const char* mode_name =
+            position_required ? (reverse_ ? "REVERSE" : "STRAIGHT") : (clockwise_ ? "ROTATE_CW" : "ROTATE_CCW");
+        if (position_required) {
+            RCLCPP_INFO(this->get_logger(),
+                        "[精控 6/7 最终到点精度] plan_id=%s, verdict=PASS, mode=%s, "
+                        "checks=position+yaw+speed+dwell, longitudinal=%.4f/%.4fm, "
+                        "lateral=%.4f/%.4fm, yaw=%.4f/%.4frad, "
+                        "|v|=%.4f/%.4fm/s, |w|=%.4f/%.4frad/s, stable=%.3f/%.3fs",
+                        active_trajectory_.trajectory.plan_id.c_str(), mode_name, last_longitudinal_error_,
+                        config.longitudinal_tolerance, last_lateral_error_, config.lateral_tolerance, last_yaw_error_,
+                        config.yaw_tolerance, std::fabs(measured_velocity_.linear.x), config.stopped_linear_velocity,
+                        std::fabs(measured_velocity_.angular.z), config.stopped_angular_velocity,
+                        last_goal_stable_duration_, config.confirm_duration);
+        } else {
+            RCLCPP_INFO(this->get_logger(),
+                        "[精控 6/7 最终到点精度] plan_id=%s, verdict=PASS, mode=%s, "
+                        "checks=yaw+speed+dwell, longitudinal=%.4fm(diagnostic), "
+                        "lateral=%.4fm(diagnostic), yaw=%.4f/%.4frad, "
+                        "|v|=%.4f/%.4fm/s, |w|=%.4f/%.4frad/s, stable=%.3f/%.3fs",
+                        active_trajectory_.trajectory.plan_id.c_str(), mode_name, last_longitudinal_error_,
+                        last_lateral_error_, last_yaw_error_, config.yaw_tolerance,
+                        std::fabs(measured_velocity_.linear.x), config.stopped_linear_velocity,
+                        std::fabs(measured_velocity_.angular.z), config.stopped_angular_velocity,
+                        last_goal_stable_duration_, config.confirm_duration);
+        }
+        RCLCPP_INFO(this->get_logger(),
+                    "[精控 7/7 接口返回][成功] plan_id=%s, terminal=SUCCEEDED, success=true, "
+                    "time=%.3fs, mode=%s, position_required=%s, "
+                    "goal_longitudinal=%.4fm, goal_lateral=%.4fm, "
+                    "yaw=%.4frad, v=%.4fm/s, w=%.4frad/s",
+                    active_trajectory_.trajectory.plan_id.c_str(), goalElapsedSeconds(), mode_name,
+                    position_required ? "true" : "false", last_longitudinal_error_, last_lateral_error_,
+                    last_yaw_error_, measured_velocity_.linear.x, measured_velocity_.angular.z);
         active_goal_handle_->succeed(result);
         active_goal_handle_.reset();
-        resetControlState();
+        resetExecutionState();
     }
 
-    void finishCanceled()
-    {
+    void finishCanceled() {
         if (!active_goal_handle_) {
-            resetControlState();
             return;
         }
-
+        publishZeroVelocity();
         auto result = std::make_shared<PreciseControl::Result>();
         result->success = false;
         result->message = "CANCELLED";
+        RCLCPP_INFO(this->get_logger(),
+                    "[精控 7/7 接口返回][取消] plan_id=%s, terminal=CANCELED, success=false, "
+                    "time=%.3fs, v=%.4fm/s, w=%.4frad/s",
+                    active_trajectory_.trajectory.plan_id.c_str(), goalElapsedSeconds(), measured_velocity_.linear.x,
+                    measured_velocity_.angular.z);
         active_goal_handle_->canceled(result);
         active_goal_handle_.reset();
-        resetControlState();
+        resetExecutionState();
     }
 
-    void startCancellation()
-    {
-        if (!is_cancelling_) {
-            is_cancelling_ = true;
-            get_map_pose_ = false;
-            is_goal_ = false;
-            stop_count_ = 0;
-            resetPidStates();
-            RCLCPP_INFO(
-                this->get_logger(),
-                "[底盘直控状态变化] CONTROL -> CANCELLING，"
-                "任务耗时=%.3fs，开始平滑减速，当前速度=(线速度 %.3fm/s, 角速度 %.3frad/s)。",
-                goalElapsedSeconds(), pre_cmd_vel_.linear.x, pre_cmd_vel_.angular.z);
-        }
-    }
-
-    geometry_msgs::msg::Twist computeRotateToHeadingCommand(double yaw_error, double dt)
-    {
-        geometry_msgs::msg::Twist cmd_vel;
-        const double abs_error = std::fabs(yaw_error);
-
-        if (abs_error < rotate_stop_yaw_error_) {
-            resetPidState(pure_rotation_angular_pid_state_);
-            return cmd_vel;
-        }
-
-        double angular_vel = runPid(
-            pure_rotation_angular_pid_conf_, pure_rotation_angular_pid_state_, yaw_error, dt);
-        angular_vel = std::clamp(angular_vel, -max_w_, max_w_);
-        if (std::fabs(angular_vel) < min_angular_vel_) {
-            angular_vel = std::copysign(min_angular_vel_, yaw_error);
-        }
-
-        cmd_vel.angular.z = angular_vel;
-        return cmd_vel;
-    }
-
-    geometry_msgs::msg::Twist computeStraightPidCommand(
-        const geometry_msgs::msg::Pose &target_pose,
-        const geometry_msgs::msg::Twist &current_velocity,
-        double dt,
-        bool reverse_mode)
-    {
-        geometry_msgs::msg::Twist cmd_vel;
-        const double err_x = target_pose.position.x;
-        const double raw_target_yaw_in_base = std::atan2(
-            std::sin(tf2::getYaw(target_pose.orientation)),
-            std::cos(tf2::getYaw(target_pose.orientation)));
-        (void)reverse_mode;
-        const double yaw_error =
-            std::fabs(raw_target_yaw_in_base) < yaw_tolerance_ ? 0.0 : raw_target_yaw_in_base;
-
-        const double dist = std::fabs(err_x);
-        double desired_linear_vel = std::min(max_v_, k_rho_ * dist);
-        if (dist < near_target_dist_ && near_target_dist_ > 0.0) {
-            const double distance_ratio = std::clamp(
-                dist / near_target_dist_, 0.0, 1.0);
-            const double speed_scale = near_target_min_speed_scale_ +
-                (1.0 - near_target_min_speed_scale_) * distance_ratio;
-            desired_linear_vel *= speed_scale;
-        }
-        desired_linear_vel = std::clamp(desired_linear_vel, min_v_, max_v_);
-        if (reverse_mode) {
-            desired_linear_vel = -desired_linear_vel;
-        }
-
-        const PidConfig &station_conf =
-            reverse_mode ? straight_reverse_station_pid_conf_ : straight_station_pid_conf_;
-        PidState &station_state =
-            reverse_mode ? straight_reverse_station_pid_state_ : straight_station_pid_state_;
-        const bool use_low_speed = std::fabs(current_velocity.linear.x) < straight_switch_speed_;
-        const PidConfig &speed_conf = reverse_mode
-            ? straight_reverse_speed_pid_conf_
-            : (use_low_speed ? straight_low_speed_pid_conf_ : straight_high_speed_pid_conf_);
-        PidState &speed_state = reverse_mode
-            ? straight_reverse_speed_pid_state_
-            : (use_low_speed ? straight_low_speed_pid_state_ : straight_high_speed_pid_state_);
-
-        const double speed_error = desired_linear_vel - current_velocity.linear.x;
-        const double speed_offset = runPid(station_conf, station_state, err_x, dt);
-        const double speed_controller_input = speed_offset + speed_error;
-        double acceleration_cmd = runPid(speed_conf, speed_state, speed_controller_input, dt);
-        acceleration_cmd = std::clamp(acceleration_cmd, -accel_x_max_, accel_x_max_);
-
-        double linear_output = current_velocity.linear.x + acceleration_cmd * dt;
-        if (!std::isfinite(linear_output)) {
-            linear_output = 0.0;
-        }
-        if (!reverse_mode) {
-            linear_output = std::clamp(
-                linear_output, min_v_, std::max(min_v_, desired_linear_vel * 1.5));
-        } else {
-            linear_output = std::clamp(
-                linear_output, std::min(-min_v_, desired_linear_vel * 1.5), -min_v_);
-        }
-        if (dist <= xy_tolerance_) {
-            linear_output = 0.0;
-        }
-
-        double desired_w = std::clamp(yaw_error / dt, -max_w_, max_w_);
-        const double angular_error = desired_w - current_velocity.angular.z;
-        straight_angular_integral_ += angular_error * dt;
-        const double angular_derivative = (angular_error - straight_angular_error_prev_) / dt;
-        straight_angular_error_prev_ = angular_error;
-
-        double w_inc = straight_angular_kp_ * angular_error +
-                       straight_angular_ki_ * straight_angular_integral_ +
-                       straight_angular_kd_ * angular_derivative;
-        w_inc = std::clamp(w_inc, -straight_max_w_inc_, straight_max_w_inc_);
-
-        double angular_output = current_velocity.angular.z + w_inc;
-        angular_output = std::clamp(angular_output, -max_w_, max_w_);
-        if (!std::isfinite(angular_output)) {
-            angular_output = 0.0;
-        }
-
-        const double yaw_error_abs = std::fabs(yaw_error);
-        if (yaw_error_abs < M_PI / 8.0) {
-            angular_output *= 0.25;
-        } else if (yaw_error_abs < M_PI_4) {
-            const double factor =
-                1.0 - (M_PI_4 - yaw_error_abs) / (M_PI_4 - M_PI / 8.0) * 0.25;
-            angular_output *= factor;
-        }
-
-        cmd_vel.linear.x = linear_output;
-        cmd_vel.angular.z = angular_output;
-        return cmd_vel;
-    }
-
-    void controlLoop()
-    {
+    void abortExecution(const std::string& message) {
         if (!active_goal_handle_) {
             return;
         }
+        publishZeroVelocity();
+        auto result = std::make_shared<PreciseControl::Result>();
+        result->success = false;
+        result->message = message;
+        RCLCPP_ERROR(this->get_logger(),
+                     "[精控中断][7/7 接口返回] plan_id=%s, terminal=ABORTED, success=false, "
+                     "time=%.3fs, reason=%s",
+                     active_trajectory_.trajectory.plan_id.c_str(), goalElapsedSeconds(), message.c_str());
+        active_goal_handle_->abort(result);
+        active_goal_handle_.reset();
+        resetExecutionState();
+    }
 
+    void startCancellation() {
+        if (!is_cancelling_) {
+            is_cancelling_ = true;
+            resetControllers();
+            RCLCPP_INFO(this->get_logger(), "[精控取消] plan_id=%s, 开始按反馈速度平滑停车",
+                        active_trajectory_.trajectory.plan_id.c_str());
+        }
+    }
+
+    void runCancellation() {
+        publishFeedback("CANCELLING");
+        const double dt = 1.0 / control_frequency_;
+        geometry_msgs::msg::Twist command;
+        const auto decelerate = [dt](double velocity, double deceleration) {
+            const double delta = deceleration * dt;
+            return velocity > 0.0 ? std::max(0.0, velocity - delta) : std::min(0.0, velocity + delta);
+        };
+        command.linear.x = decelerate(measured_velocity_.linear.x, linear_profile_request_.max_deceleration);
+        command.angular.z = decelerate(measured_velocity_.angular.z, angular_profile_request_.max_deceleration);
+
+        const auto& config = goal_checker_->config();
+        if (std::fabs(measured_velocity_.linear.x) <= config.stopped_linear_velocity &&
+            std::fabs(measured_velocity_.angular.z) <= config.stopped_angular_velocity) {
+            finishCanceled();
+            return;
+        }
+        cmd_vel_pub_->publish(command);
+    }
+
+    void controlLoop() {
+        if (!active_goal_handle_) {
+            return;
+        }
         if (active_goal_handle_->is_canceling()) {
             startCancellation();
         }
-
         if (is_cancelling_) {
-            publishFeedback("CANCELLING");
-            geometry_msgs::msg::Twist cmd_vel;
-            const double dt = 1.0 / control_frequency_;
-            const double linear_decel = accel_x_max_ * dt;
-            const double angular_decel = rotate_to_heading_max_angular_accel_ * dt;
+            runCancellation();
+            return;
+        }
 
-            if (pre_cmd_vel_.linear.x > 0.0) {
-                cmd_vel.linear.x = std::max(0.0, pre_cmd_vel_.linear.x - linear_decel);
-            } else if (pre_cmd_vel_.linear.x < 0.0) {
-                cmd_vel.linear.x = std::min(0.0, pre_cmd_vel_.linear.x + linear_decel);
-            }
+        if (!odomIsFresh()) {
+            abortExecution("ODOM_INTERRUPTED: feedback/odom is unavailable or stale");
+            return;
+        }
+        if (goalElapsedSeconds() > execution_timeout_) {
+            abortExecution("EXECUTION_TIMEOUT: one-shot trajectory did not converge");
+            return;
+        }
 
-            if (pre_cmd_vel_.angular.z > 0.0) {
-                cmd_vel.angular.z = std::max(0.0, pre_cmd_vel_.angular.z - angular_decel);
-            } else if (pre_cmd_vel_.angular.z < 0.0) {
-                cmd_vel.angular.z = std::min(0.0, pre_cmd_vel_.angular.z + angular_decel);
-            }
+        geometry_msgs::msg::PoseStamped target_base;
+        std::string error;
+        if (!poseInBase(target_pose_map_, target_base, error)) {
+            abortExecution("TF_INTERRUPTED: " + error);
+            return;
+        }
 
-            if (std::fabs(cmd_vel.linear.x) < 0.01 && std::fabs(cmd_vel.angular.z) < 0.01) {
-                cmd_vel.linear.x = 0.0;
-                cmd_vel.angular.z = 0.0;
-                cmd_vel_pub_->publish(cmd_vel);
-                RCLCPP_INFO(
-                    this->get_logger(),
-                    "[底盘直控最终结果] CANCELLING -> CANCELLED，"
-                    "平滑停车完成，总耗时=%.3fs，最终速度阈值内。",
-                    goalElapsedSeconds());
-                finishCanceled();
+        const double longitudinal_error = target_base.pose.position.x;
+        const double lateral_error = target_base.pose.position.y;
+        const double yaw_error = normalizedAngle(tf2::getYaw(target_base.pose.orientation));
+        last_longitudinal_error_ = longitudinal_error;
+        last_lateral_error_ = lateral_error;
+        last_yaw_error_ = yaw_error;
+        const double dt = 1.0 / control_frequency_;
+
+        const auto goal_check_mode =
+            goal_mode_ == GoalMode::Straight ? GoalCheckMode::Translation : GoalCheckMode::Rotation;
+        const auto goal_state =
+            goal_checker_->update({longitudinal_error, lateral_error, yaw_error, measured_velocity_.linear.x,
+                                   measured_velocity_.angular.z, dt, goal_check_mode});
+        last_goal_stable_duration_ = goal_state.stable_duration;
+        const auto goal_control_state = mobile_perception::mobile_control::selectGoalControlState(goal_state);
+        if (goal_state.pose_reached) {
+            goal_pose_reached_logged_ = true;
+            const char* phase = goal_control_state == GoalControlState::Succeeded
+                                    ? "SUCCEEDED"
+                                    : (goal_control_state == GoalControlState::HoldZero
+                                           ? "CONFIRMING_STOP"
+                                           : (goal_mode_ == GoalMode::Straight ? "DECELERATING_S_CURVE"
+                                                                               : "ANGLE_SPEED_CASCADE_SETTLING"));
+            RCLCPP_INFO_THROTTLE(
+                this->get_logger(), *this->get_clock(), control_status_log_period_ms_,
+                "[精控 6/7 到点检查] plan_id=%s, phase=%s, position_required=%s, "
+                "position_ok=%s, yaw_ok=%s, pose_ok=true, speed_ok=%s, "
+                "stable=%.3f/%.3fs, longitudinal=%.4f/%.4fm, lateral=%.4f/%.4fm, "
+                "yaw=%.4f/%.4frad, |v|=%.4f/%.4fm/s, |w|=%.4f/%.4frad/s",
+                active_trajectory_.trajectory.plan_id.c_str(), phase, goal_state.position_required ? "true" : "false",
+                goal_state.position_reached ? "true" : "false", goal_state.yaw_reached ? "true" : "false",
+                goal_state.speed_reached ? "true" : "false", goal_state.stable_duration,
+                goal_checker_->config().confirm_duration, longitudinal_error,
+                goal_checker_->config().longitudinal_tolerance, lateral_error,
+                goal_checker_->config().lateral_tolerance, yaw_error, goal_checker_->config().yaw_tolerance,
+                std::fabs(measured_velocity_.linear.x), goal_checker_->config().stopped_linear_velocity,
+                std::fabs(measured_velocity_.angular.z), goal_checker_->config().stopped_angular_velocity);
+            if (goal_control_state == GoalControlState::Succeeded) {
+                finishSucceeded();
                 return;
             }
-
-            cmd_vel_pub_->publish(cmd_vel);
-            return;
-        }
-
-        if (is_goal_ && stop_count_ >= stop_confirm_cycles_) {
-            publishFeedback("SUCCEEDED");
-            finishSucceeded();
-            return;
-        }
-
-        if (!get_map_pose_) {
-            publishFeedback("IDLE");
-            return;
-        }
-
-        publishFeedback("CONTROL");
-
-        geometry_msgs::msg::PoseStamped target_pose_in_base;
-        try {
-            const geometry_msgs::msg::TransformStamped transform = tf_buffer_->lookupTransform(
-                "base_link", "map", tf2::TimePointZero);
-            tf2::doTransform(target_pose_odom_, target_pose_in_base, transform);
-        } catch (const tf2::TransformException &ex) {
-            RCLCPP_WARN_THROTTLE(
-                this->get_logger(), *this->get_clock(), 2000,
-                "[底盘直控等待 TF] map -> base_link 转换失败，"
-                "任务耗时=%.3fs，控制指令暂不更新，原因=%s。",
-                goalElapsedSeconds(), ex.what());
-            return;
-        }
-
-        const double dist = std::hypot(
-            target_pose_in_base.pose.position.x, target_pose_in_base.pose.position.y);
-        const double x_error = target_pose_in_base.pose.position.x;
-        const double yaw_error = tf2::getYaw(target_pose_in_base.pose.orientation);
-        const double dt = 1.0 / control_frequency_;
-        const bool is_reverse_mode =
-            target_pose_in_base.pose.position.x < 0.0 &&
-            std::fabs(target_pose_in_base.pose.position.y) < 0.5;
-
-        geometry_msgs::msg::Twist cmd_vel;
-        if (goal_mode_ == GoalMode::ROTATE && std::fabs(dist) < xy_tolerance_) {
-            cmd_vel = computeRotateToHeadingCommand(yaw_error, dt);
-        } else {
-            cmd_vel = computeStraightPidCommand(
-                target_pose_in_base.pose, pre_cmd_vel_, dt, is_reverse_mode);
-        }
-
-        filtered_cmd_vel_.linear.x =
-            filter_alpha_ * cmd_vel.linear.x + (1.0 - filter_alpha_) * filtered_cmd_vel_.linear.x;
-        filtered_cmd_vel_.angular.z =
-            filter_alpha_ * cmd_vel.angular.z + (1.0 - filter_alpha_) * filtered_cmd_vel_.angular.z;
-
-        if (goal_mode_ == GoalMode::STRAIGHT) {
-            if (std::fabs(x_error) < xy_tolerance_ && std::fabs(yaw_error) < yaw_tolerance_) {
-                is_goal_ = true;
+            if (goal_control_state == GoalControlState::HoldZero) {
+                publishZeroVelocity();
+                publishFeedback("GOAL_CHECK:CONFIRMING_STOP");
+                return;
             }
-        } else if (std::fabs(dist) < xy_tolerance_ && std::fabs(yaw_error) < yaw_tolerance_) {
-            is_goal_ = true;
+        }
+        if (!goal_state.pose_reached && goal_pose_reached_logged_) {
+            RCLCPP_WARN(this->get_logger(), "[精控 6/7 到点检查] plan_id=%s, GoalChecker离开容差窗口，继续闭环修正",
+                        active_trajectory_.trajectory.plan_id.c_str());
+            goal_pose_reached_logged_ = false;
         }
 
-        if (is_goal_) {
-            resetPidStates();
-            filtered_cmd_vel_.linear.x = 0.0;
-            filtered_cmd_vel_.angular.z = 0.0;
-            stop_count_++;
+        geometry_msgs::msg::Twist command;
+        if (goal_mode_ == GoalMode::Straight) {
+            const double direction = reverse_ ? -1.0 : 1.0;
+            trajectory_progress_ = mobile_perception::mobile_control::computeStraightProgress(
+                initial_motion_, longitudinal_error, reverse_);
+            const auto reference = mobile_perception::mobile_control::sampleSpeedProfileForTracking(
+                active_trajectory_.motion_profile, trajectory_progress_, goalElapsedSeconds(),
+                trajectory_preview_time_);
 
-            cmd_vel_pub_->publish(filtered_cmd_vel_);
-            if (stop_count_ == 1) {
-                RCLCPP_INFO(
-                    this->get_logger(),
-                    "[底盘直控到达目标] 进入停稳确认，任务耗时=%.3fs，"
-                    "最终误差：x=%.4fm，距离=%.4fm，yaw=%.4frad；"
-                    "需连续确认 %d 个控制周期（%.3fs）后返回成功。",
-                    goalElapsedSeconds(), x_error, dist, yaw_error,
-                    stop_confirm_cycles_, stop_confirm_duration_);
+            geometry_msgs::msg::PoseStamped tracking_pose_map;
+            if (!mobile_perception::mobile_control::ShortTrajectoryBuilder::samplePoseByMotion(
+                    active_trajectory_, reference.position, tracking_pose_map)) {
+                abortExecution("TRAJECTORY_INVALID: cannot sample straight tracking point");
+                return;
             }
+            geometry_msgs::msg::PoseStamped tracking_pose_base;
+            if (!poseInBase(tracking_pose_map, tracking_pose_base, error)) {
+                abortExecution("TF_INTERRUPTED: tracking point transform failed: " + error);
+                return;
+            }
+            const double tracking_longitudinal_error = tracking_pose_base.pose.position.x;
+            const double tracking_lateral_error = tracking_pose_base.pose.position.y;
+            const double goal_yaw_error = yaw_error;
+            const auto controller_command = straight_controller_->computeCommand(
+                {direction * reference.velocity, tracking_longitudinal_error, tracking_lateral_error, goal_yaw_error,
+                 measured_velocity_.linear.x, measured_velocity_.angular.z, dt, reverse_,
+                 direction * reference.acceleration, longitudinal_error, true});
+            command.linear.x = controller_command.linear_x;
+            command.angular.z = controller_command.angular_z;
+            publishFeedback(goal_state.pose_reached
+                                ? "GOAL_CHECK:PID_SETTLING"
+                                : (reverse_ ? "TRACKING:S_CURVE_PID_REVERSE" : "TRACKING:S_CURVE_PID_STRAIGHT"));
+
+            RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), control_status_log_period_ms_,
+                                 "[精控 5/7 控制中] plan_id=%s, phase=STRAIGHT_PID, progress=%.4f/%.4f, "
+                                 "goal_longitudinal=%.4f, goal_lateral=%.4f, tracking_longitudinal=%.4f, "
+                                 "tracking_lateral=%.4f, goal_yaw=%.4f, ref_position=%.4f, ref_t=%.3f, ref_v=%.4f, "
+                                 "ref_a=%.4f, plan_v_limit=%.4f, stop_limited=%s, "
+                                 "position_pid=%.4f, target_v=%.4f, speed_pid=%.4f, "
+                                 "cmd_accel=%.4f, measured_v=%.4f, measured_w=%.4f, cmd_v=%.4f, cmd_w=%.4f",
+                                 active_trajectory_.trajectory.plan_id.c_str(), trajectory_progress_, initial_motion_,
+                                 longitudinal_error, lateral_error, tracking_longitudinal_error, tracking_lateral_error,
+                                 yaw_error, reference.position, reference.relative_time, direction * reference.velocity,
+                                 direction * reference.acceleration, controller_command.planned_linear_velocity_limit,
+                                 controller_command.terminal_velocity_applied ? "true" : "false",
+                                 controller_command.position_pid_output, controller_command.target_linear_velocity,
+                                 controller_command.speed_pid_output, controller_command.linear_acceleration_command,
+                                 measured_velocity_.linear.x, measured_velocity_.angular.z, command.linear.x,
+                                 command.angular.z);
         } else {
-            stop_count_ = 0;
-            cmd_vel_pub_->publish(filtered_cmd_vel_);
+            const double direction = clockwise_ ? -1.0 : 1.0;
+            continuous_rotation_yaw_error_ =
+                mobile_perception::mobile_control::unwrapRotationError(yaw_error, continuous_rotation_yaw_error_);
+            const double rotation_progress =
+                std::clamp(initial_motion_ - direction * continuous_rotation_yaw_error_, 0.0, initial_motion_);
+            const auto reference = mobile_perception::mobile_control::sampleSpeedProfileForTracking(
+                active_trajectory_.motion_profile, rotation_progress, goalElapsedSeconds(), trajectory_preview_time_);
+            const double tracking_yaw_error =
+                normalizedAngle(continuous_rotation_yaw_error_ - direction * (initial_motion_ - reference.position));
+            const auto controller_command = rotation_controller_->computeCommand(
+                {direction * reference.velocity, direction * reference.acceleration, tracking_yaw_error,
+                 continuous_rotation_yaw_error_, measured_velocity_.angular.z, dt});
+            command.angular.z = controller_command.angular_z;
+            if (command.angular.z < 0.0) {
+                publishFeedback("TRACKING:S_CURVE_ANGLE_SPEED_CASCADE_CW");
+            } else if (command.angular.z > 0.0) {
+                publishFeedback("TRACKING:S_CURVE_ANGLE_SPEED_CASCADE_CCW");
+            } else {
+                publishFeedback("TRACKING:S_CURVE_ANGLE_SPEED_CASCADE_HOLD");
+            }
+
+            RCLCPP_INFO_THROTTLE(
+                this->get_logger(), *this->get_clock(), control_status_log_period_ms_,
+                "[精控 5/7 控制中] plan_id=%s, phase=ANGLE_SPEED_CASCADE, "
+                "goal_yaw=%.4f, control_yaw=%.4f, tracking_yaw=%.4f, "
+                "goal_longitudinal=%.4f, goal_lateral=%.4f, "
+                "ref_position=%.4f/%.4f, ref_t=%.3f, ref_w=%.4f, ref_alpha=%.4f, "
+                "plan_w_limit=%.4f, brake_w=%.4f, brake_limited=%s, target_w=%.4f, speed_pid=%.4f, "
+                "min_w_applied=%s, terminal_w_applied=%s, cmd_alpha=%.4f, "
+                "measured_v=%.4f, measured_w=%.4f, cmd_w=%.4f",
+                active_trajectory_.trajectory.plan_id.c_str(), yaw_error, continuous_rotation_yaw_error_,
+                tracking_yaw_error, longitudinal_error, lateral_error, reference.position, initial_motion_,
+                reference.relative_time, direction * reference.velocity, direction * reference.acceleration,
+                controller_command.planned_angular_velocity_limit, controller_command.braking_angular_velocity_limit,
+                controller_command.braking_limited ? "true" : "false", controller_command.target_angular_velocity,
+                controller_command.angular_velocity_pid_output,
+                controller_command.minimum_velocity_applied ? "true" : "false",
+                controller_command.terminal_velocity_applied ? "true" : "false",
+                controller_command.angular_acceleration_command, measured_velocity_.linear.x,
+                measured_velocity_.angular.z, command.angular.z);
         }
+        cmd_vel_pub_->publish(command);
     }
 };
 
-int main(int argc, char **argv)
-{
+int main(int argc, char** argv) {
     rclcpp::init(argc, argv);
-    auto node = std::make_shared<MobileControlActionNode>();
-    rclcpp::spin(node);
+    try {
+        rclcpp::spin(std::make_shared<MobileControlActionNode>());
+    } catch (const std::exception& error) {
+        RCLCPP_FATAL(rclcpp::get_logger("mobile_control_action_node"), "%s", error.what());
+    }
     rclcpp::shutdown();
     return 0;
 }

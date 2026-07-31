@@ -28,13 +28,21 @@ mobile_perception/
 ├── src/
 │   ├── apriltag_detection_node.cpp
 │   ├── apriltag_alignment_tf_node.cpp
-│   ├── mobile_control_node.cpp
 │   ├── mobile_control_action_node.cpp
+│   ├── mobile_control/
+│   │   ├── straight_controller.cpp
+│   │   └── rotation_controller.cpp
 │   ├── obstacle_detector_node.cpp
 │   └── charging_pose_service.cpp
 ├── include/
 │   └── mobile_perception/
+│       ├── mobile_control/
+│       │   ├── pid_controller.hpp
+│       │   ├── straight_controller.hpp
+│       │   └── rotation_controller.hpp
 │       └── obstacle_detector_node.hpp
+├── test/
+│   └── test_mobile_control_controllers.cpp
 ├── scripts/
 │   ├── detect_apriltags*.py
 │   ├── control_robot*.py
@@ -51,8 +59,8 @@ mobile_perception/
 | --- | --- | --- |
 | `apriltag_detection_node` | C++ | 按服务启动/停止 AprilTag 检测，发布 `apriltag_poses`。 |
 | `apriltag_alignment_tf_node` | C++ | 持续检测 AprilTag，发布调试姿态和原始/对齐后的 tag TF。 |
-| `mobile_control_node` | C++ | 订阅目标位姿并输出底盘速度，实现末端精确控制与平滑停止。 |
-| `mobile_control_action_node` | C++ | 通过 `control/precise_control` action 接收精控目标，并直接输出底盘速度。 |
+| `mobile_control_node` | C++（legacy，可选） | 仅在 `src/mobile_control_node.cpp` 存在时构建，订阅目标位姿并输出底盘速度。 |
+| `mobile_control_action_node` | C++ | 通过 `control/precise_control` action 生成一次短 Path；直行跟踪 S 曲线 Trajectory，旋转使用直接角度反馈，并用速度感知 GoalChecker 判定完成。 |
 | `obstacle_detector_node` | C++ | 订阅局部代价地图，检测车体前方矩形区域是否存在障碍物，并发布结果与 RViz Marker。 |
 | `charging_pose_service_node` | C++ | 通过服务采样 `map -> base_link`，保存充电位姿 JSON。 |
 | `detect_apriltags.py` / `detect_apriltags_service.py` | Python | Python 版 AprilTag 检测实现，依赖 `pupil_apriltags`。 |
@@ -98,6 +106,106 @@ Action：
 - 同一时间只接受一个 active goal；已有 goal 执行时会拒绝新 goal。
 - 客户端 cancel 会触发平滑停车，停车完成后 action 返回 `CANCELLED`。
 - 不要让 `mobile_control_node` 和 `mobile_control_action_node` 同时控制同一个 `control/cmd_vel` 链路，否则两个节点会竞争发布底盘速度。
+
+控制模块边界：
+
+- `SpeedProfilePlanner` 是无 Lifecycle/TF/costmap 的 pluginlib 接口；当前只注册
+  `SCurveSpeedProfilePlanner`，由 Ruckig 分别在距离域和角度域为直行/倒车与原地旋转
+  生成速度、加速度和 jerk 有界的 S 曲线。公共
+  `planSpeedProfileWithTerminalSlowdown()` 在规划阶段先扣除末端 slow-down 距离/角度：
+  主段从起点规划到 slow-down point，并以 slow-down speed 作为末速度；末端段从同一
+  `(position, velocity, acceleration)` 连续状态规划到 goal 零速。Action 与曲线工具
+  共用该函数，controller 不负责在 slow-down 边界截断速度。
+- `ShortTrajectoryBuilder` 将接收 goal 时冻结的两点短 Path 与一维 profile 组合为
+  `RobotTrajectory`。直行/倒车点携带纵向速度，原地旋转点携带角速度；两种模式都只在
+  goal 接收时规划一次。
+- `StraightController` 的纵向控制只保留两级基础 PID：外环
+  `straight.position_pid` 根据当前 tracking point 在 `base_link` 下的带符号 x 误差
+  生成速度修正，并与 S 曲线参考速度相加；active profile 内计划 `|ref_v|` 是目标速度
+  不得突破的距离可行包络。内环 `straight.speed_pid` 根据目标速度与实测速度之差生成
+  加速度修正，再与 S 曲线 `ref_a`（包括负的减速度）合成命令。命令不再按正/倒车限制输出
+  符号，也不再维护 high/low/reverse PID、最小线速度、末段 recovery 或越点特例。
+  加速度从上一周期命令积分，实测速度只进入速度误差；这样执行器尚未克服 deadband 时，
+  PID 仍可自然累积有效命令，无需在 controller 中再加最小速度分支。
+  当 profile 到达末点时 tracking point 就是 goal，越点会让 x 误差自然换符号，PID
+  因而可反向修正纵向误差，最终 success 仍由 GoalChecker 的三轴、v/w 与 dwell 判定。
+  `straight.stop_distance=0.05 m` 定义末端低速段：主 S 段只规划
+  `max(0, total_distance - 0.05 m)`，并保证到 slow-down point 时速度已经连续降到
+  `straight.stop_speed=0.03 m/s`；剩余 5 cm 使用第二段 S 曲线继续规划到 goal 零速。
+  controller 内同值约束只作为异常反馈下的安全上限，不承担边界变速。
+  `angular_z` 同时叠加当前 S 曲线 tracking point 在 `base_link` 下的横向误差
+  `straight.lateral_pid` 与 goal yaw 误差 `straight.heading_pid`，倒车时只反转横向转向
+  符号。直行规划前会检查 goal、当前机器人和路径期望车体朝向的三组角度差，任一超过
+  `straight.max_initial_heading_error`（默认 `5°`）即 `ABORTED`，不进入 S 规划与控制。
+- `RotationController` 是连续两级控制器：第一级将角度域 S 曲线的参考角速度与
+  tracking yaw 外环修正相加，并用目标剩余角构造
+  `sqrt(2 * max_alpha * abs(goal_yaw_error))` 制动速度包络，避免外环在减速段吃掉 S 曲线
+  预留的停车距离；第二级用 `rotation.angular_velocity_pid` 跟踪“目标角速度 - 实测角速度”，
+  PID 输出作为角加速度修正，与正常段 S 曲线角加速度前馈相加。制动包络生效时则直接按
+  目标角速度与上一周期命令之差生成有界制动前馈。最终角速度命令限制在
+  `±0.75 rad/s`，角加速度限制为 `±1.0 rad/s²`。
+- `rotation.terminal_slowdown_angle` 定义末端低速段：主角速度 S 曲线在
+  `total_angle - terminal_slowdown_angle` 处以有效 terminal speed 收尾，剩余角度从该
+  连续状态继续规划到 goal 零速。RotationController 在末段只限制目标不得高于 terminal
+  speed，不再把已经低于该值的规划参考重新抬高。最终 stop 范围由
+  `goal_checker.yaw_tolerance` 定义，再由实测 v/w 和 dwell 判定成功。
+- 目标机日志显示 `|cmd_w|≈0.005～0.016 rad/s` 时底盘可能不动；因此
+  `rotation.min_angular_velocity=0.02 rad/s` 作为可调的 deadband 补偿下限。当前
+  `terminal_angular_velocity=0.01 rad/s` 低于该下限，运行时会明确告警并使用可执行的
+  `0.02 rad/s`；若底盘经标定可执行 `0.01 rad/s`，应把最小角速度同步下调到不高于
+  terminal 值。StraightController 不再在控制核心内增加最小线速度特例；若目标机仍受
+  线速度 deadband 影响，应先调外环 PID，再在底盘驱动/统一速度接口层处理 deadband。
+- 旋转 S 曲线按实际有符号角进度加有界时间预瞄采样；Action 计算采样进度，
+  RotationController 本身不维护 lag-recovery 或 `TERMINAL_YAW`。计划 `|ref_w|` 是 yaw
+  外环不得突破的距离可行包络。曲线结束后参考角速度自然为零，tracking yaw 外环继续消除目标角残差，
+  制动速度包络在越点后禁止目标角速度继续远离 goal；普通段、末段和越点纠偏仍共用同一个
+  `computeCommand()`。Action 对旋转 goal error 做跨 `±pi` 连续展开，避免 180° goal
+  在角度归一化分支点改变已经规划的旋转方向。
+- 直行轨迹参考以实际空间进度为主，并在 `trajectory_tracking.preview_time` 范围内做有界时间预瞄；
+  默认预瞄 `0.05 s`，用于跳过 S 曲线 `v=0、a=0` 的起始状态自锁，同时不会按墙钟时间
+  无限制跑完整条轨迹。
+- `PreciseGoalChecker` 按运动模式选择几何门：直行/倒车检查目标在 `base_link` 下的
+  纵向、横向和 yaw；原地旋转只把 yaw 纳入成功判定，纵向/横向仅作为诊断量，不阻塞
+  success。两种模式都继续检查实测线速度、实测角速度和连续停稳时间。当前阈值为纵向/横向
+  `0.005 m`、yaw `0.008 rad`、`|v| <= 0.005 m/s`、`|w| <= 0.01 rad/s`、
+  连续 `0.2 s`，全部可配置。
+- 位姿先进入容差而速度尚未达标时，直行继续跟踪 S 曲线，旋转继续执行角度-角速度反馈；
+  只有实测速度也进入静止阈值后才发布零速并开始连续停稳确认。
+- `mobile_control_action_node` 只负责 Action、TF/odom freshness、一次规划、轨迹执行、
+  fail-fast、取消和发布。TF/odom 中断或执行超时会先发布零速度再 `ABORTED`。
+- goal 转成固定的 map 坐标后不再保留请求时间戳；每个控制周期用最新共同 TF 快照计算
+  `map -> base_link` 相对误差，避免 goal 时间戳滑出 TF 缓存后出现 past extrapolation。
+- 整条链路不启动 ControllerServer、不创建 costmap、不在线重规划，也不使用
+  `SpeedPlanState`；因此仍适用于允许靠近障碍物的末端精控。
+
+观测话题：
+
+- `control/planned_path` (`nav_msgs/msg/Path`)：每个 accepted goal 生成并发布一次。
+- `control/planned_trajectory` (`nav_interfaces/msg/RobotTrajectory`)：直行是一次性 S 曲线轨迹；
+  旋转是一次性角度域 S 曲线轨迹。使用 reliable + transient-local QoS，便于后启动的调试工具查看。
+
+阶段日志：
+
+- `1/7 收到Goal / Goal已接受`：输入 frame、时间戳和目标位姿。
+- `2/7 控制前角度检查 / 路径规划完成`：直行 goal/robot/path 三组角度差和阈值，以及
+  固定 map 短路径、模式、起终点和运动量；超限时不进入 3/7。
+- `3/7 S速度规划完成 / S角速度规划完成`：插件、轨迹点数、时长及速度/加速度/jerk 峰值；
+  旋转同时输出两级控制器参数。
+- `4/7 控制开始`：进入 Trajectory 跟踪。
+- `5/7 控制中`：不再输出径向 `distance`，两种模式都输出 goal 纵向/横向误差；
+  直行另输出当前有符号空间进度、S 参考、有效 target v、speed PID、
+  `min_v_applied/recovery_applied` 和双闭环误差；旋转输出
+  `phase=ANGLE_SPEED_CASCADE`、S 曲线 `ref_w/ref_alpha`、tracking yaw、外环目标角速度、
+  角速度 PID 修正、实测角速度和 `cmd_w`。由 `logging.control_status_period` 节流，
+  默认 `0.5 s`。
+- `6/7 到点检查`：输出 `position_required`；直行检查纵向/横向/yaw，旋转只检查 yaw，
+  两种模式都检查速度和连续停稳时间；
+  success 前额外输出一条不节流的 `最终到点精度`。
+- `7/7 接口返回`：`SUCCEEDED`、`CANCELED`、`ABORTED` 或 `REJECTED`；成功时输出
+  `goal_longitudinal/goal_lateral/yaw/v/w`，不混入径向 distance。
+
+同一次 Action 的所有阶段均携带由 goal UUID 派生的同一 `plan_id`，可直接按
+`plan_id` 过滤整条执行链。
 
 ### `apriltag_detection_node`
 
@@ -227,8 +335,6 @@ ROS 2 依赖主要来自 `CMakeLists.txt` 和 `package.xml`：
 - `ament_index_cpp`
 - `nlohmann_json`
 - `yaml-cpp`
-- `nav2_util`
-- `nav2_graceful_controller`
 
 Python 脚本还可能依赖：
 
@@ -387,6 +493,32 @@ ros2 topic pub /control/cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.0, y: 0.
 ```bash
 ros2 run mobile_perception undocking.py --timeout 1 --direction 1 --speed 0.015
 ```
+
+生成精控生产 S 曲线图（需要以 `BUILD_TESTING=ON` 构建，默认输出到
+`~/.dexe/navigation/mobile_control_speed_profiles`）：
+
+```bash
+python3 mobile_perception/test/plot_mobile_control_speed_profiles.py \
+  --planner-executable build/mobile_perception/mobile_control_speed_profile_dump \
+  --params-file mobile_perception/config/mobile_control_action_params.yaml
+```
+
+Python 只读取参数、调用 C++ 工具和绘图，不复制任何速度规划或 slowdown 公式。C++ 工具
+逐点复用运行时同一套 `planSpeedProfileWithTerminalSlowdown()`、
+`SCurveSpeedProfilePlanner`、`sampleSpeedProfileForTracking()`、
+`StraightController::computeCommand()` 与 `RotationController::computeCommand()`。每张图
+同时显示组合 S profile 原始速度、运行时采样速度和 controller target，并标出 slow-down
+point 之后的末端规划段：
+
+- 直线读取 `straight.stop_distance/stop_speed`；
+- 旋转读取 `rotation.terminal_slowdown_angle/terminal_angular_velocity`，并显示受
+  `rotation.min_angular_velocity` 约束后的实际有效 slowdown speed；
+- 所有默认值直接来自指定的 `mobile_control_action_params.yaml`，命令行参数只作为显式
+  override。
+
+默认生成平移 `0.1～1.0m` 每 `0.1m`、旋转 `0～180°` 每 `30°` 共 17 组 PNG/CSV 和
+`summary.csv`。图中的 `runtime controller target` 是生产 controller 的目标速度；
+最终 `cmd_v/cmd_w` 仍取决于实测速度、PID 状态与底盘响应，不能由离线曲线代替实机记录。
 
 ## 控制策略简述
 

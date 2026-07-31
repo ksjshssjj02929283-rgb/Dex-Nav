@@ -73,6 +73,12 @@ if [ "$BUILD_SIMULATION_ENABLED" = "false" ]; then
         SIMULATION_PACKAGE_OUTPUT=$(colcon list --base-paths "$SIMULATION_DIR" --names-only)
         while IFS= read -r package_name; do
             if [ -n "$package_name" ]; then
+                # 0.4.6 transition: w1_nav2 still installs the physical-robot
+                # launch entry. In 0.5.0 that entry moves to nav2_bringup and
+                # the remaining simulation package will be renamed w1_sim.
+                if [ "$package_name" = "w1_nav2" ]; then
+                    continue
+                fi
                 SIMULATION_PACKAGES+=("$package_name")
             fi
         done <<< "$SIMULATION_PACKAGE_OUTPUT"
@@ -105,6 +111,10 @@ colcon build --packages-up-to nav2_graceful_controller "${COLCON_BUILD_ARGS[@]}"
 colcon build --packages-up-to nav2_bringup "${COLCON_BUILD_ARGS[@]}"
 colcon build --packages-up-to dexe_sensor_process "${COLCON_BUILD_ARGS[@]}"
 source "${INSTALL_DIR}/setup.bash"
+if [ "$BUILD_SIMULATION_ENABLED" = "false" ]; then
+    echo "⚙️ 显式编译 0.4.6 真机启动过渡包 w1_nav2 ..."
+    colcon build --packages-select w1_nav2 "${COLCON_BUILD_ARGS[@]}"
+fi
 colcon build "${COLCON_BUILD_ARGS[@]}"
 
 # === 6. 打包 install 目录 ===

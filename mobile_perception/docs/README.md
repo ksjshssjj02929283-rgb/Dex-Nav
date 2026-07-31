@@ -14,9 +14,14 @@
 `mobile_control_action_node` 是 Action 版底盘末端精控节点，接口为
 `control/precise_control` (`nav_interfaces/action/PreciseControl`)。
 
-Action goal 中的 `target_pose` 使用 `geometry_msgs/msg/PoseStamped`。节点接收到 goal 后在内部执行
-`mobile_control_node` 同等的 TF 转换、PID 控制、速度滤波、到点判定和平滑取消逻辑，并直接发布
-`control/cmd_vel`。
+Action goal 中的 `target_pose` 使用 `geometry_msgs/msg/PoseStamped`。节点接收到 goal 后负责
+TF 转换、Action 状态、速度滤波、到点判定和平滑取消，并把控制计算分别委托给
+`StraightController` 和 `RotationController`，最后发布 `control/cmd_vel`。
+
+两个控制器位于 `include/mobile_perception/mobile_control/` 和
+`src/mobile_control/`，只接收普通数值输入，不依赖 ROS、Nav2 controller 或 costmap。
+这一边界用于允许机器人靠近障碍物的末端精控。当前首版保持原有控制曲线，末段速度优化留到后续
+控制策略迭代。
 
 主要接口：
 

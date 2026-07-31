@@ -1,71 +1,95 @@
 mobile_control_action_node:
   ros__parameters:
-    # 基础参数
+    # 控制循环与“一次规划、不中断”保护
     control_frequency: 20.0
-    # 进入目标容差后持续发送零速度的确认时间，防止刚到达就提前报成功
-    stop_confirm_duration: 0.2
-    max_v: 0.35
-    min_v: 0.0
-    max_w: 1.0
-    accel_x_max: 0.5
-    straight_max_w_inc: 1.57
-    rotate_to_heading_max_angular_accel: 1.0
-    rotate_to_heading_kp: 1.2
-    rotate_stop_yaw_error: 0.02
+    odom_timeout: 0.5
+    execution_timeout: 30.0
+    goal_mode_rotate_xy_threshold: 0.05
 
-    k_rho: 1.5
+    # 轨迹跟踪：空间进度为主，最多向前预瞄一个控制周期，避免 S 曲线零状态首点自锁
+    trajectory_tracking:
+      preview_time: 0.05
 
-    near_target_dist: 0.15
-    # 近目标附加减速比例下限。基础速度仍由 k_rho * distance 线性降至 0；
-    # 设置为 0.5 可缩短最后几厘米的低速爬行，同时保留平滑减速。
-    near_target_min_speed_scale: 0.5
-    cmd_vel_filter_alpha: 0.5
-    min_angular_vel: 0.01
-    xy_tolerance: 0.02
-    yaw_tolerance: 0.02
-    goal_mode_rotate_xy_threshold: 0.03
+    # 控制过程日志节流周期；阶段切换和 Action 结果不节流
+    logging:
+      control_status_period: 0.5
 
-    pure_rotation:
-      angular_pid:
-        integrator_enable: true
-        integrator_saturation_level: 0.5
-        kp: 0.6
-        ki: 0.01
-        kd: 0.10
+    # 当前只注册 S 曲线插件，不提供 T 型速度规划分支
+    speed_profile_plugin: "mobile_perception::mobile_control::SCurveSpeedProfilePlanner"
+    s_curve:
+      sample_period: 0.02
+      max_duration: 30.0
+      linear:
+        max_velocity: 0.35
+        max_acceleration: 0.5
+        max_deceleration: 0.5
+        max_jerk: 1.0
+      angular:
+        max_velocity: 0.75
+        max_acceleration: 1.0
+        max_deceleration: 1.0
+        # S 曲线必须显式给出 jerk；当前保持原角度域规划默认值
+        max_jerk: 2.0
+
+    # 直行成功检查纵向/横向/yaw；旋转只检查 yaw；两者均检查实际速度停稳和连续确认时间
+    goal_checker:
+      longitudinal_tolerance: 0.005
+      lateral_tolerance: 0.005
+      yaw_tolerance: 0.008
+      stopped_linear_velocity: 0.005
+      stopped_angular_velocity: 0.01
+      confirm_duration: 0.2
 
     straight:
-      station_pid:
+      max_angular_velocity: 1.0
+      max_angular_acceleration: 1.57
+      # 规划时先扣除末端 5 cm：主 S 段到 slow-down point 时末速度为 0.03 m/s，
+      # 剩余 5 cm 从连续状态继续规划到 goal 零速；controller 同值约束仅作为安全上限
+      stop_distance: 0.05
+      stop_speed: 0.03
+      # 直行前 goal/robot/path 三者任一角度差超过 5°即拒绝执行
+      max_initial_heading_error: 0.0872664626
+      # 外环：tracking point 的纵向距离误差 -> 目标线速度修正
+      position_pid:
+        integrator_enable: true
+        integrator_saturation_level: 0.1
+        kp: 1.5
+        ki: 0.0
+        kd: 0.0
+      # 内环：目标线速度 - 实测线速度 -> 加速度命令
+      speed_pid:
         integrator_enable: true
         integrator_saturation_level: 0.3
         kp: 1.0
         ki: 0.01
         kd: 0.10
-      high_speed_pid:
+      lateral_pid:
         integrator_enable: true
         integrator_saturation_level: 0.3
         kp: 1.0
         ki: 0.01
         kd: 0.10
-      low_speed_pid:
+      heading_pid:
         integrator_enable: true
         integrator_saturation_level: 0.3
         kp: 1.0
         ki: 0.01
         kd: 0.10
-      reverse_station_pid:
+
+    rotation:
+      # 第一级：S 曲线参考角速度 + tracking yaw 外环修正，并受 goal 剩余角的制动速度包络约束
+      yaw_kp: 1.0
+      # 目标机 angular cmd 的有效下限；应高于角速度 deadband，且仍遵守 ±1.0rad/s²
+      min_angular_velocity: 0.02
+      # 规划时先扣除末端角度：主 S 段到 slow-down point 时末速度为有效 terminal speed，
+      # 剩余角度从连续状态继续规划到 goal 零速。若 terminal 值低于 min_angular_velocity，
+      # 规划使用可执行最小角速度；controller 不再在边界强制覆盖规划速度
+      terminal_slowdown_angle: 0.03
+      terminal_angular_velocity: 0.01
+      # 第二级：目标角速度 - 实测角速度的 PID 角加速度修正
+      angular_velocity_pid:
         integrator_enable: true
         integrator_saturation_level: 0.5
         kp: 1.0
         ki: 0.01
         kd: 0.10
-      reverse_speed_pid:
-        integrator_enable: true
-        integrator_saturation_level: 0.5
-        kp: 1.0
-        ki: 0.01
-        kd: 0.10
-      angular_pid:
-        kp: 1.0
-        ki: 0.01
-        kd: 0.10
-      switch_speed: 0.1
