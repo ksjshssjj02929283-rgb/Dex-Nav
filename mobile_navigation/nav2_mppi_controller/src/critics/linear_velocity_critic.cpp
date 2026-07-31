@@ -45,8 +45,10 @@ void LinearVelocityCritic::score(CriticData & data)
   }
 
   const auto goal_idx = data.path.x.size() - 1;
-  const float goal_x = data.path.x(goal_idx);
-  const float goal_y = data.path.y(goal_idx);
+  const float goal_x = data.terminal_position_override ?
+    data.terminal_position_override->at(0) : data.path.x(goal_idx);
+  const float goal_y = data.terminal_position_override ?
+    data.terminal_position_override->at(1) : data.path.y(goal_idx);
 
   const Eigen::Index time_steps = data.trajectories.x.cols();
   if (time_steps < 1) {

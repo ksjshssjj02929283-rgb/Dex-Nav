@@ -325,12 +325,12 @@ controller_server:
       # ── 权重矩阵：各 critic 三段权重统一调参入口 [align, track, approach] ──
       stage_weights:
         GoalCritic: [0.0, 0.0, 10.0] # 目标位置距离：趋近段推动轨迹收敛到目标点
-        GoalLateralCritic: [0.0, 10.0, 200.0] # 目标横向误差：减小目标相对车身的左右偏差
-        GoalLongitudinalCritic: [0.0, 0.0, 50.0] # 目标纵向误差：减小目标相对车身的前后偏差
-        GoalAngleCritic: [0.0, 0.0, 100.0] # 目标朝向误差：降低一点抢角度倾向，减少final_yaw过冲抖动
-        PathAngleCritic: [18.0, 5.0, 2.0] # 路径朝向误差：使车头朝向前方路径点
-        PathAlignCritic: [5.0, 40.0, 10.0] # 路径贴合误差：使候选轨迹尽量贴合全局路径
-        PathFollowCritic: [0.0, 5.0, 2.0] # 路径推进：推动轨迹末端沿全局路径前进
+        GoalLateralCritic: [0.0, 10.0, 220.0] # 目标横向误差：减小目标相对车身的左右偏差
+        GoalLongitudinalCritic: [0.0, 0.0, 60.0] # 目标纵向误差：减小目标相对车身的前后偏差
+        GoalAngleCritic: [0.0, 0.0, 30.0] # 目标朝向误差：降低一点抢角度倾向，减少final_yaw过冲抖动
+        PathAngleCritic: [18.0, 5.0, 1.0] # approach由目标位姿Critic接管，关闭路径朝向计算
+        PathAlignCritic: [5.0, 40.0, 1.0] # approach关闭路径贴合计算，减少近目标轨迹匹配开销
+        PathFollowCritic: [0.0, 5.0, 1.0] # approach关闭路径推进，避免与最终位置收敛目标竞争
         PreferForwardCritic: [5.0, 10.0, 5.0] # 前进偏好：惩罚倒车运动，鼓励向前行驶
         LinearVelocityCritic: [0.0, 10.0, 10.0]  # 线速度大小软约束：不偏置正/负方向，按当前阶段上限随剩余距离减速
         AngularVelocityCritic: [0.0, 0.0, 12.0]      # 镜像线速度(朝向减速)+角速度平滑：approach 专用；提高第三阶段权重，让wz更跟随期望且更平滑

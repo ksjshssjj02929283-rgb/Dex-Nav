@@ -145,6 +145,13 @@ TEST(CriticTests, LinearVelocityCriticDoesNotBiasForwardDirection)
 
   EXPECT_NEAR(costs(0), costs(1), 1e-6f);
   EXPECT_NEAR(costs(0), 0.0f, 1e-6f);
+
+  // Odom末端控制锁存目标后，速度包络必须围绕锁存目标计算，而不是继续使用Path终点。
+  costs.setZero();
+  data.terminal_position_override = std::array<float, 2>{0.0f, 0.0f};
+  critic.score(data);
+  EXPECT_NEAR(costs(0), costs(1), 1e-6f);
+  EXPECT_NEAR(costs(0), 0.0625f, 1e-6f);
 }
 
 TEST(CriticTests, ConstraintsCritic)
@@ -884,4 +891,13 @@ TEST(CriticTests, AngularVelocityCriticStopsInsideYawTolerance)
   critic.score(data);
   EXPECT_NEAR(costs(0), 0.0, 1e-6);
   EXPECT_GT(costs(1), costs(0));
+
+  // Odom角度目标锁存后，角速度包络必须使用锁存航向而不是实时Path终点航向。
+  costs.setZero();
+  trajectories.yaws.setConstant(0.5f);
+  state.wz.setZero();
+  data.terminal_yaw_override = 0.5f;
+  critic.score(data);
+  EXPECT_NEAR(costs(0), 0.0, 1e-6);
+  EXPECT_NEAR(costs(1), 0.0, 1e-6);
 }

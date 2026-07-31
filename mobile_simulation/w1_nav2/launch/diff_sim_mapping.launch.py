@@ -10,6 +10,7 @@
   ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args -r cmd_vel:=/control/cmd_vel
 """
 
+import glob
 import os
 
 from launch.conditions import IfCondition
@@ -17,8 +18,21 @@ from launch.substitutions import LaunchConfiguration, PythonExpression
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import (DeclareLaunchArgument, IncludeLaunchDescription,
-                            SetEnvironmentVariable)
+                            SetEnvironmentVariable, TimerAction)
 from launch.launch_description_sources import PythonLaunchDescriptionSource
+
+
+def _gazebo_resource_path(world_share):
+    """构造 Gazebo 资源路径，确保 OGRE 能加载系统材质并创建渲染 Scene。"""
+    resource_parts = [world_share]
+    for candidate in sorted(glob.glob('/usr/share/gazebo-*'), reverse=True):
+        if os.path.isdir(os.path.join(candidate, 'media', 'materials')):
+            resource_parts.append(candidate)
+            break
+    existing_resource_path = os.environ.get('GAZEBO_RESOURCE_PATH', '')
+    if existing_resource_path:
+        resource_parts.append(existing_resource_path)
+    return os.pathsep.join(resource_parts)
 
 
 def generate_launch_description():
@@ -81,6 +95,12 @@ def generate_launch_description():
                              'diff_sim.rviz')
         }.items())
 
+    # Gazebo 渲染 Scene 和 spawn 服务并非同时就绪，延迟插入带深度相机的机器人。
+    delayed_gzclient_cmd = TimerAction(period=8.0, actions=[gzclient_cmd])
+    delayed_spawn_w1_diff_cmd = TimerAction(
+        period=8.0, actions=[spawn_w1_diff_cmd])
+    delayed_rviz_cmd = TimerAction(period=15.0, actions=[rviz_cmd])
+
     # 环境变量同 diff_sim.launch.py
     localhost_only = SetEnvironmentVariable('ROS_LOCALHOST_ONLY', '1')
     disable_model_db = SetEnvironmentVariable('GAZEBO_MODEL_DATABASE_URI', '')
@@ -93,6 +113,8 @@ def generate_launch_description():
         '__GLX_VENDOR_LIBRARY_NAME', 'nvidia', condition=use_nvidia)
     software_gl = SetEnvironmentVariable(
         'LIBGL_ALWAYS_SOFTWARE', '1', condition=use_software)
+    resource_path = SetEnvironmentVariable(
+        'GAZEBO_RESOURCE_PATH', _gazebo_resource_path(pkg_aws_robomaker))
     w1_diff_share_parent = os.path.dirname(
         get_package_share_directory('w1_diff_gazebo'))
     model_path = SetEnvironmentVariable(
@@ -113,10 +135,11 @@ def generate_launch_description():
     ld.add_action(nvidia_offload)
     ld.add_action(nvidia_glx)
     ld.add_action(software_gl)
+    ld.add_action(resource_path)
     ld.add_action(model_path)
     ld.add_action(gzserver_cmd)
-    ld.add_action(gzclient_cmd)
-    ld.add_action(spawn_w1_diff_cmd)
-    ld.add_action(rviz_cmd)
+    ld.add_action(delayed_gzclient_cmd)
+    ld.add_action(delayed_spawn_w1_diff_cmd)
+    ld.add_action(delayed_rviz_cmd)
 
     return ld

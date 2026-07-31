@@ -5,6 +5,7 @@
 Nav2 参数：直接复用实机 w1_nav2_params.yaml，保持差速仿真与生产配置一致。
 """
 
+import glob
 import os
 
 from launch.conditions import IfCondition
@@ -12,8 +13,21 @@ from launch.substitutions import LaunchConfiguration, PythonExpression
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import (DeclareLaunchArgument, IncludeLaunchDescription,
-                            SetEnvironmentVariable)
+                            SetEnvironmentVariable, TimerAction)
 from launch.launch_description_sources import PythonLaunchDescriptionSource
+
+
+def _gazebo_resource_path(world_share):
+    """构造 Gazebo 资源路径，确保 OGRE 能加载系统材质并创建渲染 Scene。"""
+    resource_parts = [world_share]
+    for candidate in sorted(glob.glob('/usr/share/gazebo-*'), reverse=True):
+        if os.path.isdir(os.path.join(candidate, 'media', 'materials')):
+            resource_parts.append(candidate)
+            break
+    existing_resource_path = os.environ.get('GAZEBO_RESOURCE_PATH', '')
+    if existing_resource_path:
+        resource_parts.append(existing_resource_path)
+    return os.pathsep.join(resource_parts)
 
 
 def generate_launch_description():
@@ -147,6 +161,15 @@ def generate_launch_description():
             'map_odom_yaw': map_odom_yaw,
         }.items())
 
+    # Gazebo 的 spawn 服务早于渲染 Scene 完全就绪；带深度相机的模型必须延迟插入。
+    delayed_gzclient_cmd = TimerAction(period=8.0, actions=[gzclient_cmd])
+    delayed_spawn_w1_diff_cmd = TimerAction(
+        period=8.0, actions=[spawn_w1_diff_cmd])
+    # 等机器人和动态 TF 就绪后再启动 Nav2/RViz，避免启动期反复等待 TF。
+    delayed_rviz_cmd = TimerAction(period=15.0, actions=[rviz_cmd])
+    delayed_nav2_bringup_cmd = TimerAction(
+        period=15.0, actions=[nav2_bringup_cmd])
+
     # 仿真环境变量（对齐 swerve sim.launch.py 的做法）：
     # 1) 仅 loopback 通信，避免 DDS 多播发现风暴（节点多时控制器/服务会拖垮）
     localhost_only = SetEnvironmentVariable('ROS_LOCALHOST_ONLY', '1')
@@ -161,7 +184,10 @@ def generate_launch_description():
         '__GLX_VENDOR_LIBRARY_NAME', 'nvidia', condition=use_nvidia)
     software_gl = SetEnvironmentVariable(
         'LIBGL_ALWAYS_SOFTWARE', '1', condition=use_software)
-    # 3) 让 gazebo 能解析 W1 mesh 的 package://w1_diff_gazebo/... URI：
+    # 3) 加入世界资源和 Gazebo 系统材质，避免渲染 Scene 初始化为空。
+    resource_path = SetEnvironmentVariable(
+        'GAZEBO_RESOURCE_PATH', _gazebo_resource_path(pkg_aws_robomaker))
+    # 4) 让 gazebo 能解析 W1 mesh 的 package://w1_diff_gazebo/... URI：
     #    gazebo classic 对 package:// 按 GAZEBO_MODEL_PATH 逐项搜索 <包名>/<相对路径>
     #    （Rviz 走 ament 索引不受影响，漏设则 gzclient 里机器人不可见）
     w1_diff_share_parent = os.path.dirname(
@@ -190,13 +216,14 @@ def generate_launch_description():
     ld.add_action(nvidia_offload)
     ld.add_action(nvidia_glx)
     ld.add_action(software_gl)
+    ld.add_action(resource_path)
     ld.add_action(model_path)
     ld.add_action(gzserver_cmd)
-    ld.add_action(gzclient_cmd)
-    ld.add_action(spawn_w1_diff_cmd)
+    ld.add_action(delayed_gzclient_cmd)
+    ld.add_action(delayed_spawn_w1_diff_cmd)
     ld.add_action(front_rgbd_cmd)
     ld.add_action(rear_rgbd_cmd)
-    ld.add_action(rviz_cmd)
-    ld.add_action(nav2_bringup_cmd)
+    ld.add_action(delayed_rviz_cmd)
+    ld.add_action(delayed_nav2_bringup_cmd)
 
     return ld

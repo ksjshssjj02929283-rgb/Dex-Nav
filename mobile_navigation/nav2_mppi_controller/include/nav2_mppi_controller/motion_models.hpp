@@ -79,20 +79,19 @@ public:
     }
 
     const Eigen::Index batch_size = state.vx.rows();
-    models::Vector vx_acc_prev = models::Vector::Zero(batch_size);
-    models::Vector wz_acc_prev = models::Vector::Zero(batch_size);
+    resizeScratchBuffers(batch_size, is_holo);
 
     // 第一个控制步只施加速度/加速度约束，作为后续 jerk 约束的起点
     auto v_init = state.vx.col(0);
     auto cv_init = state.cvx.col(0);
     auto v_first = state.vx.col(1);
-    const models::Vector lower_vx_init =
+    lower_vx_ =
       (v_init > 0.0f).select(v_init + min_delta_vx, v_init - max_delta_vx);
-    const models::Vector upper_vx_init =
+    upper_vx_ =
       (v_init > 0.0f).select(v_init + max_delta_vx, v_init - min_delta_vx);
-    cv_init = cv_init.min(upper_vx_init).max(lower_vx_init);
+    cv_init = cv_init.min(upper_vx_).max(lower_vx_);
     v_first = cv_init;
-    vx_acc_prev = ((v_first - v_init) / model_dt_).min(
+    vx_acc_prev_ = ((v_first - v_init) / model_dt_).min(
       control_constraints_.ax_max).max(control_constraints_.ax_min);
 
     auto w_init = state.wz.col(0);
@@ -100,26 +99,24 @@ public:
     auto w_first = state.wz.col(1);
     cw_init = cw_init.min(w_init + max_delta_wz).max(w_init - max_delta_wz);
     w_first = cw_init;
-    wz_acc_prev = ((w_first - w_init) / model_dt_).min(
+    wz_acc_prev_ = ((w_first - w_init) / model_dt_).min(
       control_constraints_.az_max).max(-control_constraints_.az_max);
 
-    models::Vector vy_acc_prev;
     if (is_holo) {
       const float max_delta_vy = model_dt_ * control_constraints_.ay_max;
       const float min_delta_vy = model_dt_ * control_constraints_.ay_min;
 
-      vy_acc_prev = models::Vector::Zero(batch_size);
       auto vy_init = state.vy.col(0);
       auto cvy_init = state.cvy.col(0);
       auto vy_first = state.vy.col(1);
 
-      const models::Vector lower_vy_init =
+      lower_vy_ =
         (vy_init > 0.0f).select(vy_init + min_delta_vy, vy_init - max_delta_vy);
-      const models::Vector upper_vy_init =
+      upper_vy_ =
         (vy_init > 0.0f).select(vy_init + max_delta_vy, vy_init - min_delta_vy);
-      cvy_init = cvy_init.min(upper_vy_init).max(lower_vy_init);
+      cvy_init = cvy_init.min(upper_vy_).max(lower_vy_);
       vy_first = cvy_init;
-      vy_acc_prev = ((vy_first - vy_init) / model_dt_).min(
+      vy_acc_prev_ = ((vy_first - vy_init) / model_dt_).min(
         control_constraints_.ay_max).max(control_constraints_.ay_min);
     }
 
@@ -129,28 +126,28 @@ public:
       auto cv = state.cvx.col(i - 1);
       auto v_next = state.vx.col(i);
 
-      const models::Vector lower_vx =
+      lower_vx_ =
         (v_prev > 0.0f).select(v_prev + min_delta_vx, v_prev - max_delta_vx);
-      const models::Vector upper_vx =
+      upper_vx_ =
         (v_prev > 0.0f).select(v_prev + max_delta_vx, v_prev - min_delta_vx);
-      cv = cv.min(upper_vx).max(lower_vx);
-      models::Vector vx_acc = ((cv - v_prev) / model_dt_).min(
-        vx_acc_prev + max_delta_ax).max(vx_acc_prev - max_delta_ax);
-      vx_acc = vx_acc.min(control_constraints_.ax_max).max(control_constraints_.ax_min);
-      v_next = v_prev + vx_acc * model_dt_;
+      cv = cv.min(upper_vx_).max(lower_vx_);
+      vx_acc_ = ((cv - v_prev) / model_dt_).min(
+        vx_acc_prev_ + max_delta_ax).max(vx_acc_prev_ - max_delta_ax);
+      vx_acc_ = vx_acc_.min(control_constraints_.ax_max).max(control_constraints_.ax_min);
+      v_next = v_prev + vx_acc_ * model_dt_;
       cv = v_next;
-      vx_acc_prev = vx_acc;
+      vx_acc_prev_ = vx_acc_;
 
       auto w_prev = state.wz.col(i - 1);
       auto cw = state.cwz.col(i - 1);
       auto w_next = state.wz.col(i);
       cw = cw.min(w_prev + max_delta_wz).max(w_prev - max_delta_wz);
-      models::Vector wz_acc = ((cw - w_prev) / model_dt_).min(
-        wz_acc_prev + max_delta_wz_acc).max(wz_acc_prev - max_delta_wz_acc);
-      wz_acc = wz_acc.min(control_constraints_.az_max).max(-control_constraints_.az_max);
-      w_next = w_prev + wz_acc * model_dt_;
+      wz_acc_ = ((cw - w_prev) / model_dt_).min(
+        wz_acc_prev_ + max_delta_wz_acc).max(wz_acc_prev_ - max_delta_wz_acc);
+      wz_acc_ = wz_acc_.min(control_constraints_.az_max).max(-control_constraints_.az_max);
+      w_next = w_prev + wz_acc_ * model_dt_;
       cw = w_next;
-      wz_acc_prev = wz_acc;
+      wz_acc_prev_ = wz_acc_;
 
       if (is_holo) {
         const float max_delta_vy = model_dt_ * control_constraints_.ay_max;
@@ -160,17 +157,17 @@ public:
         auto cvy = state.cvy.col(i - 1);
         auto vy_next = state.vy.col(i);
 
-        const models::Vector lower_vy =
+        lower_vy_ =
           (vy_prev > 0.0f).select(vy_prev + min_delta_vy, vy_prev - max_delta_vy);
-        const models::Vector upper_vy =
+        upper_vy_ =
           (vy_prev > 0.0f).select(vy_prev + max_delta_vy, vy_prev - min_delta_vy);
-        cvy = cvy.min(upper_vy).max(lower_vy);
-        models::Vector vy_acc = ((cvy - vy_prev) / model_dt_).min(
-          vy_acc_prev + max_delta_ax).max(vy_acc_prev - max_delta_ax);
-        vy_acc = vy_acc.min(control_constraints_.ay_max).max(control_constraints_.ay_min);
-        vy_next = vy_prev + vy_acc * model_dt_;
+        cvy = cvy.min(upper_vy_).max(lower_vy_);
+        vy_acc_ = ((cvy - vy_prev) / model_dt_).min(
+          vy_acc_prev_ + max_delta_ax).max(vy_acc_prev_ - max_delta_ax);
+        vy_acc_ = vy_acc_.min(control_constraints_.ay_max).max(control_constraints_.ay_min);
+        vy_next = vy_prev + vy_acc_ * model_dt_;
         cvy = vy_next;
-        vy_acc_prev = vy_acc;
+        vy_acc_prev_ = vy_acc_;
       }
     }
   }
@@ -188,9 +185,41 @@ public:
   virtual void applyConstraints(models::ControlSequence & /*control_sequence*/) {}
 
 protected:
+  /**
+   * @brief 按采样批次调整临时向量，仅在batch size变化时重新分配内存
+   */
+  void resizeScratchBuffers(Eigen::Index batch_size, bool is_holo)
+  {
+    if (vx_acc_prev_.size() != batch_size) {
+      vx_acc_prev_.resize(batch_size);
+      wz_acc_prev_.resize(batch_size);
+      lower_vx_.resize(batch_size);
+      upper_vx_.resize(batch_size);
+      vx_acc_.resize(batch_size);
+      wz_acc_.resize(batch_size);
+    }
+
+    if (is_holo && vy_acc_prev_.size() != batch_size) {
+      vy_acc_prev_.resize(batch_size);
+      lower_vy_.resize(batch_size);
+      upper_vy_.resize(batch_size);
+      vy_acc_.resize(batch_size);
+    }
+  }
+
   float model_dt_{0.0f};
   models::ControlConstraints control_constraints_{0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
     0.0f, 0.0f, 0.0f, 0.0f};
+  models::Vector vx_acc_prev_;
+  models::Vector wz_acc_prev_;
+  models::Vector vy_acc_prev_;
+  models::Vector lower_vx_;
+  models::Vector upper_vx_;
+  models::Vector lower_vy_;
+  models::Vector upper_vy_;
+  models::Vector vx_acc_;
+  models::Vector wz_acc_;
+  models::Vector vy_acc_;
 };
 
 /**

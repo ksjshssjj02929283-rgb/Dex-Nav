@@ -47,7 +47,8 @@ void AngularVelocityCritic::score(CriticData & data)
   }
 
   const auto goal_idx = data.path.yaws.size() - 1;
-  const float goal_yaw = data.path.yaws(goal_idx);
+  const float goal_yaw =
+    data.terminal_yaw_override.value_or(data.path.yaws(goal_idx));
 
   const Eigen::Index time_steps = data.state.wz.cols();
   if (time_steps < 1) {

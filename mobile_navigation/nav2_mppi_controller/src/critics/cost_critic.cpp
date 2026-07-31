@@ -147,7 +147,8 @@ float CostCritic::distanceToObstacle(float cost) const
 
 void CostCritic::score(CriticData & data)
 {
-  if (!enabled_) {
+  // 当前阶段关闭软代价时直接跳过整批轨迹遍历；致命碰撞仍由ObstaclesCritic统一检查。
+  if (!enabled_ || weight_ <= 0.0f) {
     return;
   }
 

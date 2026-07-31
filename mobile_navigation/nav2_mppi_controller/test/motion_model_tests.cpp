@@ -177,3 +177,39 @@ TEST(MotionModelTests, AckermannTest)
   // Check it cleanly destructs
   model.reset();
 }
+
+TEST(MotionModelTests, ScratchBuffersHandleBatchSizeChanges)
+{
+  constexpr int timesteps = 6;
+  const models::ControlConstraints constraints{
+    1.0f, -1.0f, 1.0f, 1.0f,
+    2.0f, -2.0f, -2.0f, 2.0f,
+    2.0f, 4.0f, 4.0f};
+
+  OmniMotionModel model;
+  model.initialize(constraints, 0.1f);
+
+  const auto predict = [&model, timesteps](int batches) {
+    models::State state;
+    state.reset(batches, timesteps);
+    state.cvx.setConstant(0.4f);
+    state.cvy.setConstant(-0.3f);
+    state.cwz.setConstant(0.2f);
+    model.predict(state);
+    return state;
+  };
+
+  const auto first = predict(7);
+  const auto resized = predict(3);
+  const auto restored = predict(7);
+
+  EXPECT_EQ(resized.vx.rows(), 3);
+  EXPECT_EQ(resized.vy.rows(), 3);
+  EXPECT_EQ(resized.wz.rows(), 3);
+  EXPECT_TRUE(resized.vx.isFinite().all());
+  EXPECT_TRUE(resized.vy.isFinite().all());
+  EXPECT_TRUE(resized.wz.isFinite().all());
+  EXPECT_TRUE(restored.vx.isApprox(first.vx));
+  EXPECT_TRUE(restored.vy.isApprox(first.vy));
+  EXPECT_TRUE(restored.wz.isApprox(first.wz));
+}
