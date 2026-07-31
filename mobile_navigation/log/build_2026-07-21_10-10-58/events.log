@@ -1,0 +1,399 @@
+[0.000000] (-) TimerEvent: {}
+[0.000153] (-) JobUnselected: {'identifier': 'cmd_vel_mux'}
+[0.000500] (-) JobUnselected: {'identifier': 'costmap_queue'}
+[0.000541] (-) JobUnselected: {'identifier': 'dwb_core'}
+[0.000565] (-) JobUnselected: {'identifier': 'dwb_critics'}
+[0.000665] (-) JobUnselected: {'identifier': 'dwb_msgs'}
+[0.000705] (-) JobUnselected: {'identifier': 'dwb_plugins'}
+[0.000741] (-) JobUnselected: {'identifier': 'nav2_amcl'}
+[0.000847] (-) JobUnselected: {'identifier': 'nav2_behavior_tree'}
+[0.000867] (-) JobUnselected: {'identifier': 'nav2_behaviors'}
+[0.000883] (-) JobUnselected: {'identifier': 'nav2_bt_navigator'}
+[0.000912] (-) JobUnselected: {'identifier': 'nav2_collision_monitor'}
+[0.000933] (-) JobUnselected: {'identifier': 'nav2_common'}
+[0.000984] (-) JobUnselected: {'identifier': 'nav2_constrained_smoother'}
+[0.001002] (-) JobUnselected: {'identifier': 'nav2_controller'}
+[0.001026] (-) JobUnselected: {'identifier': 'nav2_core'}
+[0.001047] (-) JobUnselected: {'identifier': 'nav2_costmap_2d'}
+[0.001064] (-) JobUnselected: {'identifier': 'nav2_dwb_controller'}
+[0.001085] (-) JobUnselected: {'identifier': 'nav2_graceful_controller'}
+[0.001145] (-) JobUnselected: {'identifier': 'nav2_lifecycle_manager'}
+[0.001164] (-) JobUnselected: {'identifier': 'nav2_map_server'}
+[0.001182] (-) JobUnselected: {'identifier': 'nav2_mppi_controller'}
+[0.001245] (-) JobUnselected: {'identifier': 'nav2_msgs'}
+[0.001270] (-) JobUnselected: {'identifier': 'nav2_navfn_planner'}
+[0.001288] (-) JobUnselected: {'identifier': 'nav2_planner'}
+[0.001306] (-) JobUnselected: {'identifier': 'nav2_regulated_pure_pursuit_controller'}
+[0.001323] (-) JobUnselected: {'identifier': 'nav2_rotation_shim_controller'}
+[0.001440] (-) JobUnselected: {'identifier': 'nav2_route_planner'}
+[0.001448] (-) JobUnselected: {'identifier': 'nav2_rviz_plugins'}
+[0.001456] (-) JobUnselected: {'identifier': 'nav2_simple_commander'}
+[0.001463] (-) JobUnselected: {'identifier': 'nav2_smac_planner'}
+[0.001471] (-) JobUnselected: {'identifier': 'nav2_smoother'}
+[0.001479] (-) JobUnselected: {'identifier': 'nav2_util'}
+[0.001487] (-) JobUnselected: {'identifier': 'nav2_velocity_smoother'}
+[0.001495] (-) JobUnselected: {'identifier': 'nav2_voxel_grid'}
+[0.001502] (-) JobUnselected: {'identifier': 'nav2_waypoint_follower'}
+[0.001510] (-) JobUnselected: {'identifier': 'nav_2d_msgs'}
+[0.001519] (-) JobUnselected: {'identifier': 'nav_2d_utils'}
+[0.001590] (-) JobUnselected: {'identifier': 'navigation2'}
+[0.001599] (-) JobUnselected: {'identifier': 'nonpersistent_voxel_layer'}
+[0.001608] (nav2_theta_star_planner) JobQueued: {'identifier': 'nav2_theta_star_planner', 'dependencies': OrderedDict([('nav2_common', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_common'), ('nav2_msgs', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_msgs'), ('nav2_voxel_grid', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_voxel_grid'), ('nav2_util', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_util'), ('nav2_lifecycle_manager', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_lifecycle_manager'), ('nav2_map_server', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server'), ('nav2_costmap_2d', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_costmap_2d'), ('nav2_core', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_core')])}
+[0.001630] (nav2_bringup) JobQueued: {'identifier': 'nav2_bringup', 'dependencies': OrderedDict([('nav2_common', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_common'), ('nav_2d_msgs', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav_2d_msgs'), ('dwb_msgs', '/home/dex/dexe_mobile_nav/mobile_navigation/install/dwb_msgs'), ('nav2_msgs', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_msgs'), ('nav2_voxel_grid', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_voxel_grid'), ('nav2_simple_commander', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_simple_commander'), ('nav2_util', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_util'), ('nav2_amcl', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_amcl'), ('nav2_behavior_tree', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_behavior_tree'), ('nav2_lifecycle_manager', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_lifecycle_manager'), ('nav2_map_server', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server'), ('nav2_velocity_smoother', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_velocity_smoother'), ('nav_2d_utils', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav_2d_utils'), ('nav2_costmap_2d', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_costmap_2d'), ('nav2_rviz_plugins', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_rviz_plugins'), ('costmap_queue', '/home/dex/dexe_mobile_nav/mobile_navigation/install/costmap_queue'), ('nav2_collision_monitor', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_collision_monitor'), ('nav2_core', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_core'), ('dwb_core', '/home/dex/dexe_mobile_nav/mobile_navigation/install/dwb_core'), ('nav2_behaviors', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_behaviors'), ('nav2_bt_navigator', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_bt_navigator'), ('nav2_constrained_smoother', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_constrained_smoother'), ('nav2_controller', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_controller'), ('nav2_mppi_controller', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller'), ('nav2_navfn_planner', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_navfn_planner'), ('nav2_regulated_pure_pursuit_controller', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_regulated_pure_pursuit_controller'), ('nav2_smac_planner', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_smac_planner'), ('nav2_smoother', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_smoother'), ('nav2_theta_star_planner', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner'), ('nav2_waypoint_follower', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_waypoint_follower'), ('dwb_critics', '/home/dex/dexe_mobile_nav/mobile_navigation/install/dwb_critics'), ('dwb_plugins', '/home/dex/dexe_mobile_nav/mobile_navigation/install/dwb_plugins'), ('nav2_rotation_shim_controller', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_rotation_shim_controller'), ('nav2_route_planner', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_route_planner'), ('nav2_dwb_controller', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_dwb_controller'), ('nav2_planner', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_planner'), ('navigation2', '/home/dex/dexe_mobile_nav/mobile_navigation/install/navigation2')])}
+[0.001670] (nav2_theta_star_planner) JobStarted: {'identifier': 'nav2_theta_star_planner'}
+[0.010378] (nav2_theta_star_planner) JobProgress: {'identifier': 'nav2_theta_star_planner', 'progress': 'cmake'}
+[0.011110] (nav2_theta_star_planner) JobProgress: {'identifier': 'nav2_theta_star_planner', 'progress': 'build'}
+[0.011517] (nav2_theta_star_planner) Command: {'cmd': ['/usr/bin/cmake', '--build', '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner', '--', '-j16', '-l16'], 'cwd': '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner', 'env': OrderedDict([('LESSOPEN', '| /usr/bin/lesspipe %s'), ('CODEX_CI', '1'), ('LANGUAGE', 'zh_CN'), ('USER', 'dex'), ('LC_TIME', 'zh_CN.UTF-8'), ('XDG_SESSION_TYPE', 'x11'), ('SHLVL', '1'), ('LD_LIBRARY_PATH', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib:/usr/lib/x86_64-linux-gnu/gazebo-11/plugins:/opt/ros/humble/opt/rviz_ogre_vendor/lib:/opt/ros/humble/lib/x86_64-linux-gnu:/opt/ros/humble/lib'), ('HOME', '/home/dex'), ('OLDPWD', '/home/dex'), ('DESKTOP_SESSION', 'ubuntu-xorg'), ('NVM_BIN', '/home/dex/.nvm/versions/node/v22.23.1/bin'), ('NVM_INC', '/home/dex/.nvm/versions/node/v22.23.1/include/node'), ('ROS_PYTHON_VERSION', '3'), ('GNOME_SHELL_SESSION_MODE', 'ubuntu'), ('GTK_MODULES', 'gail:atk-bridge'), ('PAGER', 'cat'), ('LC_MONETARY', 'zh_CN.UTF-8'), ('MANAGERPID', '2108'), ('LC_CTYPE', 'C.UTF-8'), ('SYSTEMD_EXEC_PID', '2589'), ('NO_COLOR', '1'), ('DBUS_SESSION_BUS_ADDRESS', 'unix:path=/run/user/1000/bus'), ('COLORTERM', ''), ('TERMINATOR_DBUS_NAME', 'net.tenshu.Terminator23558193cd9818af7fe4d2c2f5bd9d00f'), ('GIO_LAUNCHED_DESKTOP_FILE_PID', '8667'), ('NVM_DIR', '/home/dex/.nvm'), ('CODEX_PERMISSION_PROFILE', ':workspace'), ('ROS_DISTRO', 'humble'), ('GTK_IM_MODULE', 'ibus'), ('LOGNAME', 'dex'), ('http_proxy', 'https://127.0.0.1:7897'), ('JOURNAL_STREAM', '8:10945'), ('_', '/usr/bin/colcon'), ('ROS_VERSION', '2'), ('XDG_SESSION_CLASS', 'user'), ('USERNAME', 'dex'), ('TERM', 'dumb'), ('GNOME_DESKTOP_SESSION_ID', 'this-is-deprecated'), ('ROS_LOCALHOST_ONLY', '0'), ('WINDOWPATH', '2'), ('PATH', '/home/dex/.local/npm/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/codex-path:/home/dex/.codex/tmp/arg0/codex-arg0wclkfQ:/home/dex/.nvm/versions/node/v22.23.1/bin:/home/dex/.local/npm/bin:/opt/ros/humble/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/snap/bin'), ('SESSION_MANAGER', 'local/dex-TX-Gaming-FA608UH-FA608UH:@/tmp/.ICE-unix/2404,unix/dex-TX-Gaming-FA608UH-FA608UH:/tmp/.ICE-unix/2404'), ('INVOCATION_ID', '35d51128ab174db89c959789b5861112'), ('PAPERSIZE', 'a4'), ('XDG_MENU_PREFIX', 'gnome-'), ('LC_ADDRESS', 'zh_CN.UTF-8'), ('XDG_RUNTIME_DIR', '/run/user/1000'), ('DISPLAY', ':1'), ('CODEX_SANDBOX_NETWORK_DISABLED', '1'), ('TERMINATOR_DBUS_PATH', '/net/tenshu/Terminator2'), ('LANG', 'C.UTF-8'), ('XDG_CURRENT_DESKTOP', 'ubuntu:GNOME'), ('IBUS_DISABLE_SNOOPER', '1'), ('LC_TELEPHONE', 'zh_CN.UTF-8'), ('XMODIFIERS', '@im=ibus'), ('GH_PAGER', 'cat'), ('XDG_SESSION_DESKTOP', 'ubuntu-xorg'), ('XAUTHORITY', '/run/user/1000/gdm/Xauthority'), ('LS_COLORS', 'rs=0:di=01;34:ln=01;36:mh=00:pi=40;33:so=01;35:do=01;35:bd=40;33;01:cd=40;33;01:or=40;31;01:mi=00:su=37;41:sg=30;43:ca=30;41:tw=30;42:ow=34;42:st=37;44:ex=01;32:*.tar=01;31:*.tgz=01;31:*.arc=01;31:*.arj=01;31:*.taz=01;31:*.lha=01;31:*.lz4=01;31:*.lzh=01;31:*.lzma=01;31:*.tlz=01;31:*.txz=01;31:*.tzo=01;31:*.t7z=01;31:*.zip=01;31:*.z=01;31:*.dz=01;31:*.gz=01;31:*.lrz=01;31:*.lz=01;31:*.lzo=01;31:*.xz=01;31:*.zst=01;31:*.tzst=01;31:*.bz2=01;31:*.bz=01;31:*.tbz=01;31:*.tbz2=01;31:*.tz=01;31:*.deb=01;31:*.rpm=01;31:*.jar=01;31:*.war=01;31:*.ear=01;31:*.sar=01;31:*.rar=01;31:*.alz=01;31:*.ace=01;31:*.zoo=01;31:*.cpio=01;31:*.7z=01;31:*.rz=01;31:*.cab=01;31:*.wim=01;31:*.swm=01;31:*.dwm=01;31:*.esd=01;31:*.jpg=01;35:*.jpeg=01;35:*.mjpg=01;35:*.mjpeg=01;35:*.gif=01;35:*.bmp=01;35:*.pbm=01;35:*.pgm=01;35:*.ppm=01;35:*.tga=01;35:*.xbm=01;35:*.xpm=01;35:*.tif=01;35:*.tiff=01;35:*.png=01;35:*.svg=01;35:*.svgz=01;35:*.mng=01;35:*.pcx=01;35:*.mov=01;35:*.mpg=01;35:*.mpeg=01;35:*.m2v=01;35:*.mkv=01;35:*.webm=01;35:*.webp=01;35:*.ogm=01;35:*.mp4=01;35:*.m4v=01;35:*.mp4v=01;35:*.vob=01;35:*.qt=01;35:*.nuv=01;35:*.wmv=01;35:*.asf=01;35:*.rm=01;35:*.rmvb=01;35:*.flc=01;35:*.avi=01;35:*.fli=01;35:*.flv=01;35:*.gl=01;35:*.dl=01;35:*.xcf=01;35:*.xwd=01;35:*.yuv=01;35:*.cgm=01;35:*.emf=01;35:*.ogv=01;35:*.ogx=01;35:*.aac=00;36:*.au=00;36:*.flac=00;36:*.m4a=00;36:*.mid=00;36:*.midi=00;36:*.mka=00;36:*.mp3=00;36:*.mpc=00;36:*.ogg=00;36:*.ra=00;36:*.wav=00;36:*.oga=00;36:*.opus=00;36:*.spx=00;36:*.xspf=00;36:'), ('SSH_AGENT_LAUNCHER', 'gnome-keyring'), ('SSH_AUTH_SOCK', '/run/user/1000/keyring/ssh'), ('AMENT_PREFIX_PATH', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:/opt/ros/humble'), ('SHELL', '/bin/bash'), ('LC_NAME', 'zh_CN.UTF-8'), ('TERMINATOR_UUID', 'urn:uuid:cbe53817-7274-497c-a73c-346868bee61f'), ('QT_ACCESSIBILITY', '1'), ('GDMSESSION', 'ubuntu-xorg'), ('LESSCLOSE', '/usr/bin/lesspipe %s %s'), ('CODEX_THREAD_ID', '019f825f-1886-7f43-8834-04578e1a1d6c'), ('LC_MEASUREMENT', 'zh_CN.UTF-8'), ('GPG_AGENT_INFO', '/run/user/1000/gnupg/S.gpg-agent:0:1'), ('LC_IDENTIFICATION', 'zh_CN.UTF-8'), ('GIT_PAGER', 'cat'), ('QT_IM_MODULE', 'ibus'), ('PWD', '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner'), ('LC_ALL', 'C.UTF-8'), ('CODEX_MANAGED_PACKAGE_ROOT', '/home/dex/.local/npm/lib/node_modules/@openai/codex'), ('XDG_CONFIG_DIRS', '/etc/xdg/xdg-ubuntu-xorg:/etc/xdg'), ('NVM_CD_FLAGS', ''), ('XDG_DATA_DIRS', '/usr/share/ubuntu-xorg:/usr/share/gnome:/usr/local/share/:/usr/share/:/var/lib/snapd/desktop'), ('PYTHONPATH', '/opt/ros/humble/lib/python3.10/site-packages:/opt/ros/humble/local/lib/python3.10/dist-packages'), ('LC_NUMERIC', 'zh_CN.UTF-8'), ('LC_PAPER', 'zh_CN.UTF-8'), ('COLCON', '1'), ('CODEX_MANAGED_BY_NPM', '1'), ('VTE_VERSION', '6800'), ('CMAKE_PREFIX_PATH', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:/opt/ros/humble')]), 'shell': False}
+[0.066445] (nav2_theta_star_planner) StdoutLine: {'line': b'[ 26%] Built target gtest_main\n'}
+[0.066668] (nav2_theta_star_planner) StdoutLine: {'line': b'[ 26%] Built target gtest\n'}
+[0.081249] (nav2_theta_star_planner) StdoutLine: {'line': b'Consolidate compiler generated dependencies of target nav2_theta_star_planner\n'}
+[0.099902] (-) TimerEvent: {}
+[0.102412] (nav2_theta_star_planner) StdoutLine: {'line': b'[ 86%] Built target nav2_theta_star_planner\n'}
+[0.122528] (nav2_theta_star_planner) StdoutLine: {'line': b'Consolidate compiler generated dependencies of target test_theta_star\n'}
+[0.138951] (nav2_theta_star_planner) StdoutLine: {'line': b'[100%] Built target test_theta_star\n'}
+[0.150607] (nav2_theta_star_planner) CommandEnded: {'returncode': 0}
+[0.152079] (nav2_theta_star_planner) JobProgress: {'identifier': 'nav2_theta_star_planner', 'progress': 'install'}
+[0.162619] (nav2_theta_star_planner) Command: {'cmd': ['/usr/bin/cmake', '--install', '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner'], 'cwd': '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner', 'env': OrderedDict([('LESSOPEN', '| /usr/bin/lesspipe %s'), ('CODEX_CI', '1'), ('LANGUAGE', 'zh_CN'), ('USER', 'dex'), ('LC_TIME', 'zh_CN.UTF-8'), ('XDG_SESSION_TYPE', 'x11'), ('SHLVL', '1'), ('LD_LIBRARY_PATH', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib:/usr/lib/x86_64-linux-gnu/gazebo-11/plugins:/opt/ros/humble/opt/rviz_ogre_vendor/lib:/opt/ros/humble/lib/x86_64-linux-gnu:/opt/ros/humble/lib'), ('HOME', '/home/dex'), ('OLDPWD', '/home/dex'), ('DESKTOP_SESSION', 'ubuntu-xorg'), ('NVM_BIN', '/home/dex/.nvm/versions/node/v22.23.1/bin'), ('NVM_INC', '/home/dex/.nvm/versions/node/v22.23.1/include/node'), ('ROS_PYTHON_VERSION', '3'), ('GNOME_SHELL_SESSION_MODE', 'ubuntu'), ('GTK_MODULES', 'gail:atk-bridge'), ('PAGER', 'cat'), ('LC_MONETARY', 'zh_CN.UTF-8'), ('MANAGERPID', '2108'), ('LC_CTYPE', 'C.UTF-8'), ('SYSTEMD_EXEC_PID', '2589'), ('NO_COLOR', '1'), ('DBUS_SESSION_BUS_ADDRESS', 'unix:path=/run/user/1000/bus'), ('COLORTERM', ''), ('TERMINATOR_DBUS_NAME', 'net.tenshu.Terminator23558193cd9818af7fe4d2c2f5bd9d00f'), ('GIO_LAUNCHED_DESKTOP_FILE_PID', '8667'), ('NVM_DIR', '/home/dex/.nvm'), ('CODEX_PERMISSION_PROFILE', ':workspace'), ('ROS_DISTRO', 'humble'), ('GTK_IM_MODULE', 'ibus'), ('LOGNAME', 'dex'), ('http_proxy', 'https://127.0.0.1:7897'), ('JOURNAL_STREAM', '8:10945'), ('_', '/usr/bin/colcon'), ('ROS_VERSION', '2'), ('XDG_SESSION_CLASS', 'user'), ('USERNAME', 'dex'), ('TERM', 'dumb'), ('GNOME_DESKTOP_SESSION_ID', 'this-is-deprecated'), ('ROS_LOCALHOST_ONLY', '0'), ('WINDOWPATH', '2'), ('PATH', '/home/dex/.local/npm/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/codex-path:/home/dex/.codex/tmp/arg0/codex-arg0wclkfQ:/home/dex/.nvm/versions/node/v22.23.1/bin:/home/dex/.local/npm/bin:/opt/ros/humble/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/snap/bin'), ('SESSION_MANAGER', 'local/dex-TX-Gaming-FA608UH-FA608UH:@/tmp/.ICE-unix/2404,unix/dex-TX-Gaming-FA608UH-FA608UH:/tmp/.ICE-unix/2404'), ('INVOCATION_ID', '35d51128ab174db89c959789b5861112'), ('PAPERSIZE', 'a4'), ('XDG_MENU_PREFIX', 'gnome-'), ('LC_ADDRESS', 'zh_CN.UTF-8'), ('XDG_RUNTIME_DIR', '/run/user/1000'), ('DISPLAY', ':1'), ('CODEX_SANDBOX_NETWORK_DISABLED', '1'), ('TERMINATOR_DBUS_PATH', '/net/tenshu/Terminator2'), ('LANG', 'C.UTF-8'), ('XDG_CURRENT_DESKTOP', 'ubuntu:GNOME'), ('IBUS_DISABLE_SNOOPER', '1'), ('LC_TELEPHONE', 'zh_CN.UTF-8'), ('XMODIFIERS', '@im=ibus'), ('GH_PAGER', 'cat'), ('XDG_SESSION_DESKTOP', 'ubuntu-xorg'), ('XAUTHORITY', '/run/user/1000/gdm/Xauthority'), ('LS_COLORS', 'rs=0:di=01;34:ln=01;36:mh=00:pi=40;33:so=01;35:do=01;35:bd=40;33;01:cd=40;33;01:or=40;31;01:mi=00:su=37;41:sg=30;43:ca=30;41:tw=30;42:ow=34;42:st=37;44:ex=01;32:*.tar=01;31:*.tgz=01;31:*.arc=01;31:*.arj=01;31:*.taz=01;31:*.lha=01;31:*.lz4=01;31:*.lzh=01;31:*.lzma=01;31:*.tlz=01;31:*.txz=01;31:*.tzo=01;31:*.t7z=01;31:*.zip=01;31:*.z=01;31:*.dz=01;31:*.gz=01;31:*.lrz=01;31:*.lz=01;31:*.lzo=01;31:*.xz=01;31:*.zst=01;31:*.tzst=01;31:*.bz2=01;31:*.bz=01;31:*.tbz=01;31:*.tbz2=01;31:*.tz=01;31:*.deb=01;31:*.rpm=01;31:*.jar=01;31:*.war=01;31:*.ear=01;31:*.sar=01;31:*.rar=01;31:*.alz=01;31:*.ace=01;31:*.zoo=01;31:*.cpio=01;31:*.7z=01;31:*.rz=01;31:*.cab=01;31:*.wim=01;31:*.swm=01;31:*.dwm=01;31:*.esd=01;31:*.jpg=01;35:*.jpeg=01;35:*.mjpg=01;35:*.mjpeg=01;35:*.gif=01;35:*.bmp=01;35:*.pbm=01;35:*.pgm=01;35:*.ppm=01;35:*.tga=01;35:*.xbm=01;35:*.xpm=01;35:*.tif=01;35:*.tiff=01;35:*.png=01;35:*.svg=01;35:*.svgz=01;35:*.mng=01;35:*.pcx=01;35:*.mov=01;35:*.mpg=01;35:*.mpeg=01;35:*.m2v=01;35:*.mkv=01;35:*.webm=01;35:*.webp=01;35:*.ogm=01;35:*.mp4=01;35:*.m4v=01;35:*.mp4v=01;35:*.vob=01;35:*.qt=01;35:*.nuv=01;35:*.wmv=01;35:*.asf=01;35:*.rm=01;35:*.rmvb=01;35:*.flc=01;35:*.avi=01;35:*.fli=01;35:*.flv=01;35:*.gl=01;35:*.dl=01;35:*.xcf=01;35:*.xwd=01;35:*.yuv=01;35:*.cgm=01;35:*.emf=01;35:*.ogv=01;35:*.ogx=01;35:*.aac=00;36:*.au=00;36:*.flac=00;36:*.m4a=00;36:*.mid=00;36:*.midi=00;36:*.mka=00;36:*.mp3=00;36:*.mpc=00;36:*.ogg=00;36:*.ra=00;36:*.wav=00;36:*.oga=00;36:*.opus=00;36:*.spx=00;36:*.xspf=00;36:'), ('SSH_AGENT_LAUNCHER', 'gnome-keyring'), ('SSH_AUTH_SOCK', '/run/user/1000/keyring/ssh'), ('AMENT_PREFIX_PATH', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:/opt/ros/humble'), ('SHELL', '/bin/bash'), ('LC_NAME', 'zh_CN.UTF-8'), ('TERMINATOR_UUID', 'urn:uuid:cbe53817-7274-497c-a73c-346868bee61f'), ('QT_ACCESSIBILITY', '1'), ('GDMSESSION', 'ubuntu-xorg'), ('LESSCLOSE', '/usr/bin/lesspipe %s %s'), ('CODEX_THREAD_ID', '019f825f-1886-7f43-8834-04578e1a1d6c'), ('LC_MEASUREMENT', 'zh_CN.UTF-8'), ('GPG_AGENT_INFO', '/run/user/1000/gnupg/S.gpg-agent:0:1'), ('LC_IDENTIFICATION', 'zh_CN.UTF-8'), ('GIT_PAGER', 'cat'), ('QT_IM_MODULE', 'ibus'), ('PWD', '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner'), ('LC_ALL', 'C.UTF-8'), ('CODEX_MANAGED_PACKAGE_ROOT', '/home/dex/.local/npm/lib/node_modules/@openai/codex'), ('XDG_CONFIG_DIRS', '/etc/xdg/xdg-ubuntu-xorg:/etc/xdg'), ('NVM_CD_FLAGS', ''), ('XDG_DATA_DIRS', '/usr/share/ubuntu-xorg:/usr/share/gnome:/usr/local/share/:/usr/share/:/var/lib/snapd/desktop'), ('PYTHONPATH', '/opt/ros/humble/lib/python3.10/site-packages:/opt/ros/humble/local/lib/python3.10/dist-packages'), ('LC_NUMERIC', 'zh_CN.UTF-8'), ('LC_PAPER', 'zh_CN.UTF-8'), ('COLCON', '1'), ('CODEX_MANAGED_BY_NPM', '1'), ('VTE_VERSION', '6800'), ('CMAKE_PREFIX_PATH', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:/opt/ros/humble')]), 'shell': False}
+[0.171789] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Install configuration: "Release"\n'}
+[0.172024] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Execute custom install script\n'}
+[0.172127] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/nav2_theta_star_planner//theta_star_planner.xml\n'}
+[0.172281] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/lib/libnav2_theta_star_planner.so\n'}
+[0.172589] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/include//nav2_theta_star_planner/curve_path_smoother.hpp\n'}
+[0.172693] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/include//nav2_theta_star_planner/l1_spline_path.hpp\n'}
+[0.172757] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/include//nav2_theta_star_planner/multi_layer_planner.hpp\n'}
+[0.172822] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/include//nav2_theta_star_planner/node_theta_star.hpp\n'}
+[0.172899] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/include//nav2_theta_star_planner/omni_path_smoother.hpp\n'}
+[0.172977] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/include//nav2_theta_star_planner/swerve_steering_model.hpp\n'}
+[0.173056] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/include//nav2_theta_star_planner/theta_star.hpp\n'}
+[0.173121] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/include//nav2_theta_star_planner/theta_star_planner.hpp\n'}
+[0.173220] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/nav2_theta_star_planner/theta_star_planner.xml\n'}
+[0.173317] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/lib/nav2_theta_star_planner/plan_from_rviz.py\n'}
+[0.173397] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/lib/nav2_theta_star_planner/run_map_plan_demo.sh\n'}
+[0.173497] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/nav2_theta_star_planner/environment/library_path.sh\n'}
+[0.173649] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/nav2_theta_star_planner/environment/library_path.dsv\n'}
+[0.173742] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/ament_index/resource_index/package_run_dependencies/nav2_theta_star_planner\n'}
+[0.173863] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/ament_index/resource_index/parent_prefix_path/nav2_theta_star_planner\n'}
+[0.173947] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/nav2_theta_star_planner/environment/ament_prefix_path.sh\n'}
+[0.174101] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/nav2_theta_star_planner/environment/ament_prefix_path.dsv\n'}
+[0.174164] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/nav2_theta_star_planner/environment/path.sh\n'}
+[0.174221] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/nav2_theta_star_planner/environment/path.dsv\n'}
+[0.174311] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/nav2_theta_star_planner/local_setup.bash\n'}
+[0.174391] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/nav2_theta_star_planner/local_setup.sh\n'}
+[0.174483] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/nav2_theta_star_planner/local_setup.zsh\n'}
+[0.174571] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/nav2_theta_star_planner/local_setup.dsv\n'}
+[0.174650] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Symlinking: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/nav2_theta_star_planner/package.dsv\n'}
+[0.183912] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/ament_index/resource_index/packages/nav2_theta_star_planner\n'}
+[0.184217] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/ament_index/resource_index/nav2_core__pluginlib__plugin/nav2_theta_star_planner\n'}
+[0.184368] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/nav2_theta_star_planner/cmake/ament_cmake_export_include_directories-extras.cmake\n'}
+[0.184429] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/nav2_theta_star_planner/cmake/ament_cmake_export_libraries-extras.cmake\n'}
+[0.184590] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/nav2_theta_star_planner/cmake/ament_cmake_export_dependencies-extras.cmake\n'}
+[0.184777] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/nav2_theta_star_planner/cmake/nav2_theta_star_plannerConfig.cmake\n'}
+[0.184827] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/nav2_theta_star_planner/cmake/nav2_theta_star_plannerConfig-version.cmake\n'}
+[0.184868] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/nav2_theta_star_planner/package.xml\n'}
+[0.184909] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Up-to-date: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/nav2_theta_star_planner/test\n'}
+[0.184951] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Up-to-date: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/nav2_theta_star_planner/test/map_plan_demo.launch.py\n'}
+[0.184986] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Up-to-date: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/nav2_theta_star_planner/test/plan_demo_params.yaml\n'}
+[0.185021] (nav2_theta_star_planner) StdoutLine: {'line': b'-- Up-to-date: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/share/nav2_theta_star_planner/test/plan_demo.rviz\n'}
+[0.199970] (-) TimerEvent: {}
+[0.300220] (-) TimerEvent: {}
+[0.400475] (-) TimerEvent: {}
+[0.500696] (-) TimerEvent: {}
+[0.600939] (-) TimerEvent: {}
+[0.701275] (-) TimerEvent: {}
+[0.801475] (-) TimerEvent: {}
+[0.901716] (-) TimerEvent: {}
+[1.001928] (-) TimerEvent: {}
+[1.102142] (-) TimerEvent: {}
+[1.202373] (-) TimerEvent: {}
+[1.302692] (-) TimerEvent: {}
+[1.402965] (-) TimerEvent: {}
+[1.503234] (-) TimerEvent: {}
+[1.603422] (-) TimerEvent: {}
+[1.703594] (-) TimerEvent: {}
+[1.803949] (-) TimerEvent: {}
+[1.904188] (-) TimerEvent: {}
+[2.004391] (-) TimerEvent: {}
+[2.104622] (-) TimerEvent: {}
+[2.204868] (-) TimerEvent: {}
+[2.305076] (-) TimerEvent: {}
+[2.405280] (-) TimerEvent: {}
+[2.505559] (-) TimerEvent: {}
+[2.605853] (-) TimerEvent: {}
+[2.706048] (-) TimerEvent: {}
+[2.806340] (-) TimerEvent: {}
+[2.906544] (-) TimerEvent: {}
+[3.006845] (-) TimerEvent: {}
+[3.107159] (-) TimerEvent: {}
+[3.207435] (-) TimerEvent: {}
+[3.307668] (-) TimerEvent: {}
+[3.407848] (-) TimerEvent: {}
+[3.508047] (-) TimerEvent: {}
+[3.608236] (-) TimerEvent: {}
+[3.708412] (-) TimerEvent: {}
+[3.808676] (-) TimerEvent: {}
+[3.908949] (-) TimerEvent: {}
+[4.009211] (-) TimerEvent: {}
+[4.109435] (-) TimerEvent: {}
+[4.209658] (-) TimerEvent: {}
+[4.309972] (-) TimerEvent: {}
+[4.410271] (-) TimerEvent: {}
+[4.510503] (-) TimerEvent: {}
+[4.610733] (-) TimerEvent: {}
+[4.710933] (-) TimerEvent: {}
+[4.811138] (-) TimerEvent: {}
+[4.911410] (-) TimerEvent: {}
+[5.011766] (-) TimerEvent: {}
+[5.111973] (-) TimerEvent: {}
+[5.212250] (-) TimerEvent: {}
+[5.312552] (-) TimerEvent: {}
+[5.412915] (-) TimerEvent: {}
+[5.513187] (-) TimerEvent: {}
+[5.613551] (-) TimerEvent: {}
+[5.713822] (-) TimerEvent: {}
+[5.814054] (-) TimerEvent: {}
+[5.914286] (-) TimerEvent: {}
+[6.014486] (-) TimerEvent: {}
+[6.114749] (-) TimerEvent: {}
+[6.215024] (-) TimerEvent: {}
+[6.315312] (-) TimerEvent: {}
+[6.415526] (-) TimerEvent: {}
+[6.515715] (-) TimerEvent: {}
+[6.616074] (-) TimerEvent: {}
+[6.716331] (-) TimerEvent: {}
+[6.816663] (-) TimerEvent: {}
+[6.916865] (-) TimerEvent: {}
+[7.017102] (-) TimerEvent: {}
+[7.117381] (-) TimerEvent: {}
+[7.217601] (-) TimerEvent: {}
+[7.317883] (-) TimerEvent: {}
+[7.418184] (-) TimerEvent: {}
+[7.518401] (-) TimerEvent: {}
+[7.618589] (-) TimerEvent: {}
+[7.718790] (-) TimerEvent: {}
+[7.819071] (-) TimerEvent: {}
+[7.919379] (-) TimerEvent: {}
+[8.019596] (-) TimerEvent: {}
+[8.119791] (-) TimerEvent: {}
+[8.219983] (-) TimerEvent: {}
+[8.320175] (-) TimerEvent: {}
+[8.420384] (-) TimerEvent: {}
+[8.520586] (-) TimerEvent: {}
+[8.620824] (-) TimerEvent: {}
+[8.721127] (-) TimerEvent: {}
+[8.821398] (-) TimerEvent: {}
+[8.921581] (-) TimerEvent: {}
+[9.021760] (-) TimerEvent: {}
+[9.122076] (-) TimerEvent: {}
+[9.222360] (-) TimerEvent: {}
+[9.322631] (-) TimerEvent: {}
+[9.422822] (-) TimerEvent: {}
+[9.523006] (-) TimerEvent: {}
+[9.623188] (-) TimerEvent: {}
+[9.723370] (-) TimerEvent: {}
+[9.823582] (-) TimerEvent: {}
+[9.923787] (-) TimerEvent: {}
+[10.024025] (-) TimerEvent: {}
+[10.124312] (-) TimerEvent: {}
+[10.224578] (-) TimerEvent: {}
+[10.324776] (-) TimerEvent: {}
+[10.425107] (-) TimerEvent: {}
+[10.525379] (-) TimerEvent: {}
+[10.625653] (-) TimerEvent: {}
+[10.725868] (-) TimerEvent: {}
+[10.826070] (-) TimerEvent: {}
+[10.926313] (-) TimerEvent: {}
+[11.026659] (-) TimerEvent: {}
+[11.126961] (-) TimerEvent: {}
+[11.227155] (-) TimerEvent: {}
+[11.327348] (-) TimerEvent: {}
+[11.427550] (-) TimerEvent: {}
+[11.527739] (-) TimerEvent: {}
+[11.627969] (-) TimerEvent: {}
+[11.728216] (-) TimerEvent: {}
+[11.828512] (-) TimerEvent: {}
+[11.928753] (-) TimerEvent: {}
+[12.028963] (-) TimerEvent: {}
+[12.129140] (-) TimerEvent: {}
+[12.229339] (-) TimerEvent: {}
+[12.329560] (-) TimerEvent: {}
+[12.429731] (-) TimerEvent: {}
+[12.529936] (-) TimerEvent: {}
+[12.630131] (-) TimerEvent: {}
+[12.730415] (-) TimerEvent: {}
+[12.830651] (-) TimerEvent: {}
+[12.930849] (-) TimerEvent: {}
+[13.031106] (-) TimerEvent: {}
+[13.131388] (-) TimerEvent: {}
+[13.231693] (-) TimerEvent: {}
+[13.331948] (-) TimerEvent: {}
+[13.432164] (-) TimerEvent: {}
+[13.532377] (-) TimerEvent: {}
+[13.632577] (-) TimerEvent: {}
+[13.732751] (-) TimerEvent: {}
+[13.832961] (-) TimerEvent: {}
+[13.933247] (-) TimerEvent: {}
+[14.033430] (-) TimerEvent: {}
+[14.133603] (-) TimerEvent: {}
+[14.233815] (-) TimerEvent: {}
+[14.334150] (-) TimerEvent: {}
+[14.434413] (-) TimerEvent: {}
+[14.534682] (-) TimerEvent: {}
+[14.634933] (-) TimerEvent: {}
+[14.735149] (-) TimerEvent: {}
+[14.835354] (-) TimerEvent: {}
+[14.935656] (-) TimerEvent: {}
+[15.035961] (-) TimerEvent: {}
+[15.136180] (-) TimerEvent: {}
+[15.236462] (-) TimerEvent: {}
+[15.336701] (-) TimerEvent: {}
+[15.436974] (-) TimerEvent: {}
+[15.537352] (-) TimerEvent: {}
+[15.637700] (-) TimerEvent: {}
+[15.737941] (-) TimerEvent: {}
+[15.838132] (-) TimerEvent: {}
+[15.938331] (-) TimerEvent: {}
+[16.038525] (-) TimerEvent: {}
+[16.138712] (-) TimerEvent: {}
+[16.238995] (-) TimerEvent: {}
+[16.339240] (-) TimerEvent: {}
+[16.439552] (-) TimerEvent: {}
+[16.539815] (-) TimerEvent: {}
+[16.640015] (-) TimerEvent: {}
+[16.740271] (-) TimerEvent: {}
+[16.840568] (-) TimerEvent: {}
+[16.940780] (-) TimerEvent: {}
+[17.041057] (-) TimerEvent: {}
+[17.141258] (-) TimerEvent: {}
+[17.241467] (-) TimerEvent: {}
+[17.341747] (-) TimerEvent: {}
+[17.441970] (-) TimerEvent: {}
+[17.542223] (-) TimerEvent: {}
+[17.642511] (-) TimerEvent: {}
+[17.742711] (-) TimerEvent: {}
+[17.842900] (-) TimerEvent: {}
+[17.943111] (-) TimerEvent: {}
+[18.043316] (-) TimerEvent: {}
+[18.143577] (-) TimerEvent: {}
+[18.243853] (-) TimerEvent: {}
+[18.344044] (-) TimerEvent: {}
+[18.444254] (-) TimerEvent: {}
+[18.544450] (-) TimerEvent: {}
+[18.644592] (-) TimerEvent: {}
+[18.744795] (-) TimerEvent: {}
+[18.845026] (-) TimerEvent: {}
+[18.945339] (-) TimerEvent: {}
+[19.045609] (-) TimerEvent: {}
+[19.145794] (-) TimerEvent: {}
+[19.245981] (-) TimerEvent: {}
+[19.346293] (-) TimerEvent: {}
+[19.446577] (-) TimerEvent: {}
+[19.546896] (-) TimerEvent: {}
+[19.647139] (-) TimerEvent: {}
+[19.747328] (-) TimerEvent: {}
+[19.847545] (-) TimerEvent: {}
+[19.947809] (-) TimerEvent: {}
+[20.048093] (-) TimerEvent: {}
+[20.148293] (-) TimerEvent: {}
+[20.248593] (-) TimerEvent: {}
+[20.348788] (-) TimerEvent: {}
+[20.449029] (-) TimerEvent: {}
+[20.549392] (-) TimerEvent: {}
+[20.649642] (-) TimerEvent: {}
+[20.749946] (-) TimerEvent: {}
+[20.850143] (-) TimerEvent: {}
+[20.950344] (-) TimerEvent: {}
+[21.050542] (-) TimerEvent: {}
+[21.150747] (-) TimerEvent: {}
+[21.250937] (-) TimerEvent: {}
+[21.351126] (-) TimerEvent: {}
+[21.451337] (-) TimerEvent: {}
+[21.551533] (-) TimerEvent: {}
+[21.651721] (-) TimerEvent: {}
+[21.751911] (-) TimerEvent: {}
+[21.852089] (-) TimerEvent: {}
+[21.952345] (-) TimerEvent: {}
+[22.052604] (-) TimerEvent: {}
+[22.152880] (-) TimerEvent: {}
+[22.253067] (-) TimerEvent: {}
+[22.353249] (-) TimerEvent: {}
+[22.453462] (-) TimerEvent: {}
+[22.553685] (-) TimerEvent: {}
+[22.653862] (-) TimerEvent: {}
+[22.754116] (-) TimerEvent: {}
+[22.854333] (-) TimerEvent: {}
+[22.954579] (-) TimerEvent: {}
+[23.054768] (-) TimerEvent: {}
+[23.154956] (-) TimerEvent: {}
+[23.255271] (-) TimerEvent: {}
+[23.355563] (-) TimerEvent: {}
+[23.455895] (-) TimerEvent: {}
+[23.556107] (-) TimerEvent: {}
+[23.656308] (-) TimerEvent: {}
+[23.756531] (-) TimerEvent: {}
+[23.856743] (-) TimerEvent: {}
+[23.956955] (-) TimerEvent: {}
+[24.057177] (-) TimerEvent: {}
+[24.157362] (-) TimerEvent: {}
+[24.257622] (-) TimerEvent: {}
+[24.357935] (-) TimerEvent: {}
+[24.458139] (-) TimerEvent: {}
+[24.558401] (-) TimerEvent: {}
+[24.658739] (-) TimerEvent: {}
+[24.758997] (-) TimerEvent: {}
+[24.859188] (-) TimerEvent: {}
+[24.959367] (-) TimerEvent: {}
+[25.059572] (-) TimerEvent: {}
+[25.159780] (-) TimerEvent: {}
+[25.260081] (-) TimerEvent: {}
+[25.360267] (-) TimerEvent: {}
+[25.460452] (-) TimerEvent: {}
+[25.560661] (-) TimerEvent: {}
+[25.660859] (-) TimerEvent: {}
+[25.761052] (-) TimerEvent: {}
+[25.861387] (-) TimerEvent: {}
+[25.961671] (-) TimerEvent: {}
+[26.061986] (-) TimerEvent: {}
+[26.162220] (-) TimerEvent: {}
+[26.262409] (-) TimerEvent: {}
+[26.362570] (-) TimerEvent: {}
+[26.462753] (-) TimerEvent: {}
+[26.562970] (-) TimerEvent: {}
+[26.663255] (-) TimerEvent: {}
+[26.763481] (-) TimerEvent: {}
+[26.863759] (-) TimerEvent: {}
+[26.964061] (-) TimerEvent: {}
+[27.064322] (-) TimerEvent: {}
+[27.164600] (-) TimerEvent: {}
+[27.264827] (-) TimerEvent: {}
+[27.365034] (-) TimerEvent: {}
+[27.465226] (-) TimerEvent: {}
+[27.565434] (-) TimerEvent: {}
+[27.665663] (-) TimerEvent: {}
+[27.765842] (-) TimerEvent: {}
+[27.866061] (-) TimerEvent: {}
+[27.966313] (-) TimerEvent: {}
+[28.066579] (-) TimerEvent: {}
+[28.166803] (-) TimerEvent: {}
+[28.267004] (-) TimerEvent: {}
+[28.367201] (-) TimerEvent: {}
+[28.467447] (-) TimerEvent: {}
+[28.567780] (-) TimerEvent: {}
+[28.668040] (-) TimerEvent: {}
+[28.768227] (-) TimerEvent: {}
+[28.868411] (-) TimerEvent: {}
+[28.968581] (-) TimerEvent: {}
+[29.068758] (-) TimerEvent: {}
+[29.168937] (-) TimerEvent: {}
+[29.269199] (-) TimerEvent: {}
+[29.369498] (-) TimerEvent: {}
+[29.469695] (-) TimerEvent: {}
+[29.569878] (-) TimerEvent: {}
+[29.670078] (-) TimerEvent: {}
+[29.770383] (-) TimerEvent: {}
+[29.870671] (-) TimerEvent: {}
+[29.970895] (-) TimerEvent: {}
+[30.030372] (nav2_theta_star_planner) CommandEnded: {'returncode': 0}
+[30.043557] (nav2_theta_star_planner) JobEnded: {'identifier': 'nav2_theta_star_planner', 'rc': 0}
+[30.044336] (nav2_bringup) JobStarted: {'identifier': 'nav2_bringup'}
+[30.049639] (nav2_bringup) JobEnded: {'identifier': 'nav2_bringup', 'rc': 1}
+[30.060139] (-) EventReactorShutdown: {}

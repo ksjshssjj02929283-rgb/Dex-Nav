@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <testsuite
   name="nav2_mppi_controller.cpplint"
-  tests="88"
-  failures="18"
+  tests="87"
+  failures="17"
   errors="0"
-  time="1.510"
+  time="1.778"
 >
   <testcase
     name="/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/benchmark/controller_benchmark.cpp"
@@ -115,31 +115,25 @@
     name="/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/tools/utils.hpp"
     classname="nav2_mppi_controller.cpplint"/>
   <testcase
-    name="whitespace/line_length [2] (/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/controller.cpp:322)"
+    name="whitespace/line_length [2] (/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/controller.cpp:488)"
     classname="nav2_mppi_controller.cpplint"
   >
       <failure message="Lines should be &lt;= 100 characters long"/>
   </testcase>
   <testcase
-    name="whitespace/line_length [2] (/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/controller.cpp:326)"
+    name="whitespace/line_length [2] (/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/controller.cpp:492)"
     classname="nav2_mppi_controller.cpplint"
   >
       <failure message="Lines should be &lt;= 100 characters long"/>
   </testcase>
   <testcase
-    name="whitespace/line_length [2] (/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/controller.cpp:615)"
+    name="whitespace/line_length [2] (/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/controller.cpp:913)"
     classname="nav2_mppi_controller.cpplint"
   >
       <failure message="Lines should be &lt;= 100 characters long"/>
   </testcase>
   <testcase
-    name="whitespace/line_length [2] (/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/controller.cpp:733)"
-    classname="nav2_mppi_controller.cpplint"
-  >
-      <failure message="Lines should be &lt;= 100 characters long"/>
-  </testcase>
-  <testcase
-    name="readability/braces [5] (/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/controller.cpp:813)"
+    name="readability/braces [5] (/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/controller.cpp:1097)"
     classname="nav2_mppi_controller.cpplint"
   >
       <failure message="If an else has a brace on one side, it should have it on both"/>

@@ -1,10 +1,39 @@
 -- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test':
  - /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/trajectory_visualizer_tests --gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/trajectory_visualizer_tests.gtest.xml
 
-terminate called after throwing an instance of 'spdlog::spdlog_ex'
-  what():  Failed opening file /home/dex/.ros/log/trajectory_visualizer_tests_47_1784285057609.log for writing: Read-only file system
+Running main() from /opt/ros/humble/src/gtest_vendor/src/gtest_main.cc
+[==========] Running 4 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 4 tests from TrajectoryVisualizerTests
+[ RUN      ] TrajectoryVisualizerTests.StateTransition
+getifaddrs: Operation not permitted
+getifaddrs: Operation not permitted
+getifaddrs: Operation not permitted
+[37;1m2026-07-22 12:09:51.720 [31;1m[[37;1mTRANSPORT_UDP[31;1m Error] [37mError creating socket: Operation not permitted[34;1m -> Function [36minit[m
+[37;1m2026-07-22 12:09:51.720 [31;1m[[37;1mRTPS_PARTICIPANT[31;1m Error] [37mUser transport failed to register.[34;1m -> Function [36mRTPSParticipantImpl[m
+[       OK ] TrajectoryVisualizerTests.StateTransition (11 ms)
+[ RUN      ] TrajectoryVisualizerTests.VisPathRepub
+getifaddrs: Operation not permitted
+[37;1m2026-07-22 12:09:51.731 [31;1m[[37;1mTRANSPORT_UDP[31;1m Error] [37mError creating socket: Operation not permitted[34;1m -> Function [36minit[m
+[37;1m2026-07-22 12:09:51.731 [31;1m[[37;1mRTPS_PARTICIPANT[31;1m Error] [37mUser transport failed to register.[34;1m -> Function [36mRTPSParticipantImpl[m
+[       OK ] TrajectoryVisualizerTests.VisPathRepub (4 ms)
+[ RUN      ] TrajectoryVisualizerTests.VisOptimalTrajectory
+getifaddrs: Operation not permitted
+[37;1m2026-07-22 12:09:51.735 [31;1m[[37;1mTRANSPORT_UDP[31;1m Error] [37mError creating socket: Operation not permitted[34;1m -> Function [36minit[m
+[37;1m2026-07-22 12:09:51.735 [31;1m[[37;1mRTPS_PARTICIPANT[31;1m Error] [37mUser transport failed to register.[34;1m -> Function [36mRTPSParticipantImpl[m
+[       OK ] TrajectoryVisualizerTests.VisOptimalTrajectory (4 ms)
+[ RUN      ] TrajectoryVisualizerTests.VisCandidateTrajectories
+getifaddrs: Operation not permitted
+[37;1m2026-07-22 12:09:51.739 [31;1m[[37;1mTRANSPORT_UDP[31;1m Error] [37mError creating socket: Operation not permitted[34;1m -> Function [36minit[m
+[37;1m2026-07-22 12:09:51.739 [31;1m[[37;1mRTPS_PARTICIPANT[31;1m Error] [37mUser transport failed to register.[34;1m -> Function [36mRTPSParticipantImpl[m
+[       OK ] TrajectoryVisualizerTests.VisCandidateTrajectories (4 ms)
+[----------] 4 tests from TrajectoryVisualizerTests (23 ms total)
+
+[----------] Global test environment tear-down
+[==========] 4 tests from 1 test suite ran. (23 ms total)
+[  PASSED  ] 4 tests.
 
 
--- run_test.py: return code -6
--- run_test.py: generate result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/trajectory_visualizer_tests.gtest.xml' with failed test
+-- run_test.py: return code 0
+-- run_test.py: inject classname prefix into gtest result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/trajectory_visualizer_tests.gtest.xml'
 -- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/trajectory_visualizer_tests.gtest.xml'

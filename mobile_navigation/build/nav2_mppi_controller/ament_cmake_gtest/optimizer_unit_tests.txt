@@ -1,10 +1,355 @@
 -- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test':
  - /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/optimizer_unit_tests --gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/optimizer_unit_tests.gtest.xml
 
-terminate called after throwing an instance of 'spdlog::spdlog_ex'
-  what():  Failed opening file /home/dex/.ros/log/optimizer_unit_tests_55_1784285058295.log for writing: Read-only file system
+Running main() from /opt/ros/humble/src/gtest_vendor/src/gtest_main.cc
+[==========] Running 12 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 12 tests from OptimizerTests
+[ RUN      ] OptimizerTests.BasicInitializedFunctions
+getifaddrs: Operation not permitted
+getifaddrs: Operation not permitted
+getifaddrs: Operation not permitted
+[37;1m2026-07-22 12:09:52.482 [31;1m[[37;1mTRANSPORT_UDP[31;1m Error] [37mError creating socket: Operation not permitted[34;1m -> Function [36minit[m
+[37;1m2026-07-22 12:09:52.482 [31;1m[[37;1mRTPS_PARTICIPANT[31;1m Error] [37mUser transport failed to register.[34;1m -> Function [36mRTPSParticipantImpl[m
+[INFO] [1784693392.490729295] [dummy_costmap.dummy_costmap]: 
+	dummy_costmap lifecycle node launched. 
+	Waiting on external lifecycle transitions to activate
+	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[INFO] [1784693392.491141735] [dummy_costmap.dummy_costmap]: Creating Costmap
+[INFO] [1784693392.491236471] [dummy_costmap.dummy_costmap]: Configuring
+[INFO] [1784693392.492759294] [dummy_costmap.dummy_costmap]: Using plugin "static_layer"
+[INFO] [1784693392.494533586] [dummy_costmap.dummy_costmap]: Subscribing to the map topic (/map) with transient local durability
+[INFO] [1784693392.495163181] [dummy_costmap.dummy_costmap]: Initialized plugin "static_layer"
+[INFO] [1784693392.495176135] [dummy_costmap.dummy_costmap]: Using plugin "obstacle_layer"
+[INFO] [1784693392.495241157] [dummy_costmap.dummy_costmap]: Subscribed to Topics: 
+[INFO] [1784693392.495262156] [dummy_costmap.dummy_costmap]: Initialized plugin "obstacle_layer"
+[INFO] [1784693392.495265773] [dummy_costmap.dummy_costmap]: Using plugin "inflation_layer"
+[INFO] [1784693392.495371450] [dummy_costmap.dummy_costmap]: Initialized plugin "inflation_layer"
+[WARN] [1784693392.498009444] [my_node]: Controller period is less then model dt, consider setting it equal
+[INFO] [1784693392.502416941] [my_node]: Optimizer reset
+[INFO] [1784693392.505168557] [my_node]: Optimizer reset
+Warning: class_loader.ClassLoader: SEVERE WARNING!!! Attempting to unload library while objects created by this loader exist in the heap! You should delete your objects before attempting to unload the library or destroying the ClassLoader. The library will NOT be unloaded.
+         at line 127 in ./src/class_loader.cpp
+[INFO] [1784693392.507184230] [dummy_costmap.dummy_costmap]: Destroying
+[       OK ] OptimizerTests.BasicInitializedFunctions (28 ms)
+[ RUN      ] OptimizerTests.TestOptimizerMotionModels
+getifaddrs: Operation not permitted
+[37;1m2026-07-22 12:09:52.510 [31;1m[[37;1mTRANSPORT_UDP[31;1m Error] [37mError creating socket: Operation not permitted[34;1m -> Function [36minit[m
+[37;1m2026-07-22 12:09:52.510 [31;1m[[37;1mRTPS_PARTICIPANT[31;1m Error] [37mUser transport failed to register.[34;1m -> Function [36mRTPSParticipantImpl[m
+[INFO] [1784693392.513507353] [dummy_costmap.dummy_costmap]: 
+	dummy_costmap lifecycle node launched. 
+	Waiting on external lifecycle transitions to activate
+	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[INFO] [1784693392.513766406] [dummy_costmap.dummy_costmap]: Creating Costmap
+[INFO] [1784693392.513849181] [dummy_costmap.dummy_costmap]: Configuring
+[INFO] [1784693392.514251952] [dummy_costmap.dummy_costmap]: Using plugin "static_layer"
+[INFO] [1784693392.514368199] [dummy_costmap.dummy_costmap]: Subscribing to the map topic (/map) with transient local durability
+[INFO] [1784693392.514447668] [dummy_costmap.dummy_costmap]: Initialized plugin "static_layer"
+[INFO] [1784693392.514454310] [dummy_costmap.dummy_costmap]: Using plugin "obstacle_layer"
+[INFO] [1784693392.514499735] [dummy_costmap.dummy_costmap]: Subscribed to Topics: 
+[INFO] [1784693392.514509563] [dummy_costmap.dummy_costmap]: Initialized plugin "obstacle_layer"
+[INFO] [1784693392.514513430] [dummy_costmap.dummy_costmap]: Using plugin "inflation_layer"
+[INFO] [1784693392.514575246] [dummy_costmap.dummy_costmap]: Initialized plugin "inflation_layer"
+[WARN] [1784693392.515477981] [my_node]: Controller period is less then model dt, consider setting it equal
+[INFO] [1784693392.520000342] [my_node]: Optimizer reset
+Warning: class_loader.ClassLoader: SEVERE WARNING!!! Attempting to unload library while objects created by this loader exist in the heap! You should delete your objects before attempting to unload the library or destroying the ClassLoader. The library will NOT be unloaded.
+         at line 127 in ./src/class_loader.cpp
+[INFO] [1784693392.521445800] [dummy_costmap.dummy_costmap]: Destroying
+[       OK ] OptimizerTests.TestOptimizerMotionModels (14 ms)
+[ RUN      ] OptimizerTests.setOffsetTests
+getifaddrs: Operation not permitted
+[37;1m2026-07-22 12:09:52.524 [31;1m[[37;1mTRANSPORT_UDP[31;1m Error] [37mError creating socket: Operation not permitted[34;1m -> Function [36minit[m
+[37;1m2026-07-22 12:09:52.524 [31;1m[[37;1mRTPS_PARTICIPANT[31;1m Error] [37mUser transport failed to register.[34;1m -> Function [36mRTPSParticipantImpl[m
+[INFO] [1784693392.527994134] [dummy_costmap.dummy_costmap]: 
+	dummy_costmap lifecycle node launched. 
+	Waiting on external lifecycle transitions to activate
+	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[INFO] [1784693392.528247517] [dummy_costmap.dummy_costmap]: Creating Costmap
+[INFO] [1784693392.528332655] [dummy_costmap.dummy_costmap]: Configuring
+[INFO] [1784693392.528719718] [dummy_costmap.dummy_costmap]: Using plugin "static_layer"
+[INFO] [1784693392.528827359] [dummy_costmap.dummy_costmap]: Subscribing to the map topic (/map) with transient local durability
+[INFO] [1784693392.528911456] [dummy_costmap.dummy_costmap]: Initialized plugin "static_layer"
+[INFO] [1784693392.528920663] [dummy_costmap.dummy_costmap]: Using plugin "obstacle_layer"
+[INFO] [1784693392.528971317] [dummy_costmap.dummy_costmap]: Subscribed to Topics: 
+[INFO] [1784693392.528979483] [dummy_costmap.dummy_costmap]: Initialized plugin "obstacle_layer"
+[INFO] [1784693392.528983099] [dummy_costmap.dummy_costmap]: Using plugin "inflation_layer"
+[INFO] [1784693392.529037621] [dummy_costmap.dummy_costmap]: Initialized plugin "inflation_layer"
+[WARN] [1784693392.529750572] [my_node]: Controller period is less then model dt, consider setting it equal
+[INFO] [1784693392.533564431] [my_node]: Optimizer reset
+[WARN] [1784693392.533606740] [my_node]: Controller period is less then model dt, consider setting it equal
+[INFO] [1784693392.533612160] [my_node]: Controller period is equal to model dt. Control sequence shifting is ON
+Warning: class_loader.ClassLoader: SEVERE WARNING!!! Attempting to unload library while objects created by this loader exist in the heap! You should delete your objects before attempting to unload the library or destroying the ClassLoader. The library will NOT be unloaded.
+         at line 127 in ./src/class_loader.cpp
+[INFO] [1784693392.534838209] [dummy_costmap.dummy_costmap]: Destroying
+[       OK ] OptimizerTests.setOffsetTests (14 ms)
+[ RUN      ] OptimizerTests.resetTests
+getifaddrs: Operation not permitted
+[37;1m2026-07-22 12:09:52.538 [31;1m[[37;1mTRANSPORT_UDP[31;1m Error] [37mError creating socket: Operation not permitted[34;1m -> Function [36minit[m
+[37;1m2026-07-22 12:09:52.538 [31;1m[[37;1mRTPS_PARTICIPANT[31;1m Error] [37mUser transport failed to register.[34;1m -> Function [36mRTPSParticipantImpl[m
+[INFO] [1784693392.540968291] [dummy_costmap.dummy_costmap]: 
+	dummy_costmap lifecycle node launched. 
+	Waiting on external lifecycle transitions to activate
+	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[INFO] [1784693392.541213399] [dummy_costmap.dummy_costmap]: Creating Costmap
+[INFO] [1784693392.541290823] [dummy_costmap.dummy_costmap]: Configuring
+[INFO] [1784693392.541651166] [dummy_costmap.dummy_costmap]: Using plugin "static_layer"
+[INFO] [1784693392.541753257] [dummy_costmap.dummy_costmap]: Subscribing to the map topic (/map) with transient local durability
+[INFO] [1784693392.541825071] [dummy_costmap.dummy_costmap]: Initialized plugin "static_layer"
+[INFO] [1784693392.541831723] [dummy_costmap.dummy_costmap]: Using plugin "obstacle_layer"
+[INFO] [1784693392.541878721] [dummy_costmap.dummy_costmap]: Subscribed to Topics: 
+[INFO] [1784693392.541886315] [dummy_costmap.dummy_costmap]: Initialized plugin "obstacle_layer"
+[INFO] [1784693392.541889521] [dummy_costmap.dummy_costmap]: Using plugin "inflation_layer"
+[INFO] [1784693392.541932641] [dummy_costmap.dummy_costmap]: Initialized plugin "inflation_layer"
+[WARN] [1784693392.542815810] [my_node]: Controller period is less then model dt, consider setting it equal
+[INFO] [1784693392.546652842] [my_node]: Optimizer reset
+[INFO] [1784693392.548205310] [my_node]: Optimizer reset
+Warning: class_loader.ClassLoader: SEVERE WARNING!!! Attempting to unload library while objects created by this loader exist in the heap! You should delete your objects before attempting to unload the library or destroying the ClassLoader. The library will NOT be unloaded.
+         at line 127 in ./src/class_loader.cpp
+[INFO] [1784693392.549788054] [dummy_costmap.dummy_costmap]: Destroying
+[       OK ] OptimizerTests.resetTests (15 ms)
+[ RUN      ] OptimizerTests.FallbackTests
+getifaddrs: Operation not permitted
+[37;1m2026-07-22 12:09:52.552 [31;1m[[37;1mTRANSPORT_UDP[31;1m Error] [37mError creating socket: Operation not permitted[34;1m -> Function [36minit[m
+[37;1m2026-07-22 12:09:52.552 [31;1m[[37;1mRTPS_PARTICIPANT[31;1m Error] [37mUser transport failed to register.[34;1m -> Function [36mRTPSParticipantImpl[m
+[INFO] [1784693392.555438652] [dummy_costmap.dummy_costmap]: 
+	dummy_costmap lifecycle node launched. 
+	Waiting on external lifecycle transitions to activate
+	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[INFO] [1784693392.555719406] [dummy_costmap.dummy_costmap]: Creating Costmap
+[INFO] [1784693392.555823590] [dummy_costmap.dummy_costmap]: Configuring
+[INFO] [1784693392.556296864] [dummy_costmap.dummy_costmap]: Using plugin "static_layer"
+[INFO] [1784693392.556418922] [dummy_costmap.dummy_costmap]: Subscribing to the map topic (/map) with transient local durability
+[INFO] [1784693392.556512677] [dummy_costmap.dummy_costmap]: Initialized plugin "static_layer"
+[INFO] [1784693392.556521313] [dummy_costmap.dummy_costmap]: Using plugin "obstacle_layer"
+[INFO] [1784693392.556571637] [dummy_costmap.dummy_costmap]: Subscribed to Topics: 
+[INFO] [1784693392.556580083] [dummy_costmap.dummy_costmap]: Initialized plugin "obstacle_layer"
+[INFO] [1784693392.556583459] [dummy_costmap.dummy_costmap]: Using plugin "inflation_layer"
+[INFO] [1784693392.556645625] [dummy_costmap.dummy_costmap]: Initialized plugin "inflation_layer"
+[WARN] [1784693392.557504157] [my_node]: Controller period is less then model dt, consider setting it equal
+[INFO] [1784693392.561292438] [my_node]: Optimizer reset
+[INFO] [1784693392.562808458] [my_node]: Optimizer reset
+[INFO] [1784693392.564249749] [my_node]: Optimizer reset
+[INFO] [1784693392.565659300] [my_node]: Optimizer reset
+Warning: class_loader.ClassLoader: SEVERE WARNING!!! Attempting to unload library while objects created by this loader exist in the heap! You should delete your objects before attempting to unload the library or destroying the ClassLoader. The library will NOT be unloaded.
+         at line 127 in ./src/class_loader.cpp
+[INFO] [1784693392.567142619] [dummy_costmap.dummy_costmap]: Destroying
+[       OK ] OptimizerTests.FallbackTests (18 ms)
+[ RUN      ] OptimizerTests.PrepareTests
+getifaddrs: Operation not permitted
+[37;1m2026-07-22 12:09:52.570 [31;1m[[37;1mTRANSPORT_UDP[31;1m Error] [37mError creating socket: Operation not permitted[34;1m -> Function [36minit[m
+[37;1m2026-07-22 12:09:52.570 [31;1m[[37;1mRTPS_PARTICIPANT[31;1m Error] [37mUser transport failed to register.[34;1m -> Function [36mRTPSParticipantImpl[m
+[INFO] [1784693392.574003115] [dummy_costmap.dummy_costmap]: 
+	dummy_costmap lifecycle node launched. 
+	Waiting on external lifecycle transitions to activate
+	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[INFO] [1784693392.574269101] [dummy_costmap.dummy_costmap]: Creating Costmap
+[INFO] [1784693392.574358698] [dummy_costmap.dummy_costmap]: Configuring
+[INFO] [1784693392.574963487] [dummy_costmap.dummy_costmap]: Using plugin "static_layer"
+[INFO] [1784693392.575076528] [dummy_costmap.dummy_costmap]: Subscribing to the map topic (/map) with transient local durability
+[INFO] [1784693392.575161877] [dummy_costmap.dummy_costmap]: Initialized plugin "static_layer"
+[INFO] [1784693392.575185111] [dummy_costmap.dummy_costmap]: Using plugin "obstacle_layer"
+[INFO] [1784693392.575234794] [dummy_costmap.dummy_costmap]: Subscribed to Topics: 
+[INFO] [1784693392.575245834] [dummy_costmap.dummy_costmap]: Initialized plugin "obstacle_layer"
+[INFO] [1784693392.575251465] [dummy_costmap.dummy_costmap]: Using plugin "inflation_layer"
+[INFO] [1784693392.575303582] [dummy_costmap.dummy_costmap]: Initialized plugin "inflation_layer"
+[WARN] [1784693392.575992047] [my_node]: Controller period is less then model dt, consider setting it equal
+[INFO] [1784693392.579820413] [my_node]: Optimizer reset
+Warning: class_loader.ClassLoader: SEVERE WARNING!!! Attempting to unload library while objects created by this loader exist in the heap! You should delete your objects before attempting to unload the library or destroying the ClassLoader. The library will NOT be unloaded.
+         at line 127 in ./src/class_loader.cpp
+[INFO] [1784693392.581514275] [dummy_costmap.dummy_costmap]: Destroying
+[       OK ] OptimizerTests.PrepareTests (13 ms)
+[ RUN      ] OptimizerTests.shiftControlSequenceTests
+getifaddrs: Operation not permitted
+[37;1m2026-07-22 12:09:52.584 [31;1m[[37;1mTRANSPORT_UDP[31;1m Error] [37mError creating socket: Operation not permitted[34;1m -> Function [36minit[m
+[37;1m2026-07-22 12:09:52.584 [31;1m[[37;1mRTPS_PARTICIPANT[31;1m Error] [37mUser transport failed to register.[34;1m -> Function [36mRTPSParticipantImpl[m
+[INFO] [1784693392.587469010] [dummy_costmap.dummy_costmap]: 
+	dummy_costmap lifecycle node launched. 
+	Waiting on external lifecycle transitions to activate
+	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[INFO] [1784693392.587705321] [dummy_costmap.dummy_costmap]: Creating Costmap
+[INFO] [1784693392.587782555] [dummy_costmap.dummy_costmap]: Configuring
+[INFO] [1784693392.588149340] [dummy_costmap.dummy_costmap]: Using plugin "static_layer"
+[INFO] [1784693392.588250479] [dummy_costmap.dummy_costmap]: Subscribing to the map topic (/map) with transient local durability
+[INFO] [1784693392.588322483] [dummy_costmap.dummy_costmap]: Initialized plugin "static_layer"
+[INFO] [1784693392.588329156] [dummy_costmap.dummy_costmap]: Using plugin "obstacle_layer"
+[INFO] [1784693392.588368118] [dummy_costmap.dummy_costmap]: Subscribed to Topics: 
+[INFO] [1784693392.588374731] [dummy_costmap.dummy_costmap]: Initialized plugin "obstacle_layer"
+[INFO] [1784693392.588377897] [dummy_costmap.dummy_costmap]: Using plugin "inflation_layer"
+[INFO] [1784693392.588419735] [dummy_costmap.dummy_costmap]: Initialized plugin "inflation_layer"
+[WARN] [1784693392.589046324] [my_node]: Controller period is less then model dt, consider setting it equal
+[INFO] [1784693392.593131660] [my_node]: Optimizer reset
+Warning: class_loader.ClassLoader: SEVERE WARNING!!! Attempting to unload library while objects created by this loader exist in the heap! You should delete your objects before attempting to unload the library or destroying the ClassLoader. The library will NOT be unloaded.
+         at line 127 in ./src/class_loader.cpp
+[INFO] [1784693392.594310961] [dummy_costmap.dummy_costmap]: Destroying
+[       OK ] OptimizerTests.shiftControlSequenceTests (13 ms)
+[ RUN      ] OptimizerTests.SpeedLimitTests
+getifaddrs: Operation not permitted
+[37;1m2026-07-22 12:09:52.596 [31;1m[[37;1mTRANSPORT_UDP[31;1m Error] [37mError creating socket: Operation not permitted[34;1m -> Function [36minit[m
+[37;1m2026-07-22 12:09:52.597 [31;1m[[37;1mRTPS_PARTICIPANT[31;1m Error] [37mUser transport failed to register.[34;1m -> Function [36mRTPSParticipantImpl[m
+[INFO] [1784693392.600625378] [dummy_costmap.dummy_costmap]: 
+	dummy_costmap lifecycle node launched. 
+	Waiting on external lifecycle transitions to activate
+	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[INFO] [1784693392.600943832] [dummy_costmap.dummy_costmap]: Creating Costmap
+[INFO] [1784693392.601037016] [dummy_costmap.dummy_costmap]: Configuring
+[INFO] [1784693392.601465566] [dummy_costmap.dummy_costmap]: Using plugin "static_layer"
+[INFO] [1784693392.601577615] [dummy_costmap.dummy_costmap]: Subscribing to the map topic (/map) with transient local durability
+[INFO] [1784693392.601658095] [dummy_costmap.dummy_costmap]: Initialized plugin "static_layer"
+[INFO] [1784693392.601665539] [dummy_costmap.dummy_costmap]: Using plugin "obstacle_layer"
+[INFO] [1784693392.601713759] [dummy_costmap.dummy_costmap]: Subscribed to Topics: 
+[INFO] [1784693392.601721554] [dummy_costmap.dummy_costmap]: Initialized plugin "obstacle_layer"
+[INFO] [1784693392.601724970] [dummy_costmap.dummy_costmap]: Using plugin "inflation_layer"
+[INFO] [1784693392.601778961] [dummy_costmap.dummy_costmap]: Initialized plugin "inflation_layer"
+[WARN] [1784693392.602443562] [my_node]: Controller period is less then model dt, consider setting it equal
+[INFO] [1784693392.606321731] [my_node]: Optimizer reset
+[INFO] [1784693392.606349923] [my_node]: MPPI speed limit updated: active=0 value=0.000 percentage=0. Received speed limit update; will combine with the current three-stage profile velocity constraints.
+[INFO] [1784693392.606366655] [my_node]: MPPI speed limit updated: active=1 value=50.000 percentage=1. Received speed limit update; will combine with the current three-stage profile velocity constraints.
+[INFO] [1784693392.606373437] [my_node]: MPPI speed limit updated: active=0 value=0.000 percentage=1. Received speed limit update; will combine with the current three-stage profile velocity constraints.
+[INFO] [1784693392.606378527] [my_node]: MPPI speed limit updated: active=1 value=0.750 percentage=0. Received speed limit update; will combine with the current three-stage profile velocity constraints.
+Warning: class_loader.ClassLoader: SEVERE WARNING!!! Attempting to unload library while objects created by this loader exist in the heap! You should delete your objects before attempting to unload the library or destroying the ClassLoader. The library will NOT be unloaded.
+         at line 127 in ./src/class_loader.cpp
+[INFO] [1784693392.607578446] [dummy_costmap.dummy_costmap]: Destroying
+[       OK ] OptimizerTests.SpeedLimitTests (14 ms)
+[ RUN      ] OptimizerTests.applyControlSequenceConstraintsTests
+getifaddrs: Operation not permitted
+[37;1m2026-07-22 12:09:52.610 [31;1m[[37;1mTRANSPORT_UDP[31;1m Error] [37mError creating socket: Operation not permitted[34;1m -> Function [36minit[m
+[37;1m2026-07-22 12:09:52.610 [31;1m[[37;1mRTPS_PARTICIPANT[31;1m Error] [37mUser transport failed to register.[34;1m -> Function [36mRTPSParticipantImpl[m
+[INFO] [1784693392.613604084] [dummy_costmap.dummy_costmap]: 
+	dummy_costmap lifecycle node launched. 
+	Waiting on external lifecycle transitions to activate
+	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[INFO] [1784693392.613844653] [dummy_costmap.dummy_costmap]: Creating Costmap
+[INFO] [1784693392.613930012] [dummy_costmap.dummy_costmap]: Configuring
+[INFO] [1784693392.614291247] [dummy_costmap.dummy_costmap]: Using plugin "static_layer"
+[INFO] [1784693392.614393367] [dummy_costmap.dummy_costmap]: Subscribing to the map topic (/map) with transient local durability
+[INFO] [1784693392.614464981] [dummy_costmap.dummy_costmap]: Initialized plugin "static_layer"
+[INFO] [1784693392.614471493] [dummy_costmap.dummy_costmap]: Using plugin "obstacle_layer"
+[INFO] [1784693392.614510987] [dummy_costmap.dummy_costmap]: Subscribed to Topics: 
+[INFO] [1784693392.614517860] [dummy_costmap.dummy_costmap]: Initialized plugin "obstacle_layer"
+[INFO] [1784693392.614521036] [dummy_costmap.dummy_costmap]: Using plugin "inflation_layer"
+[INFO] [1784693392.614563555] [dummy_costmap.dummy_costmap]: Initialized plugin "inflation_layer"
+[WARN] [1784693392.615337740] [my_node]: Controller period is less then model dt, consider setting it equal
+[INFO] [1784693392.619491674] [my_node]: Optimizer reset
+[INFO] [1784693392.621684667] [my_node]: Optimizer reset
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/optimizer_unit_tests.cpp:529: Failure
+The difference between sequence.wz(1) and 0.05 is 0.12499999701976776, which exceeds 1e-6, where
+sequence.wz(1) evaluates to 0.17499999701976776,
+0.05 evaluates to 0.050000000000000003, and
+1e-6 evaluates to 9.9999999999999995e-07.
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/optimizer_unit_tests.cpp:530: Failure
+The difference between sequence.wz(2) and 0.10 is 0.24999999403953552, which exceeds 1e-6, where
+sequence.wz(2) evaluates to 0.34999999403953552,
+0.10 evaluates to 0.10000000000000001, and
+1e-6 evaluates to 9.9999999999999995e-07.
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/optimizer_unit_tests.cpp:531: Failure
+The difference between sequence.wz(3) and 0.15 is 0.37499997615814207, which exceeds 1e-6, where
+sequence.wz(3) evaluates to 0.52499997615814209,
+0.15 evaluates to 0.14999999999999999, and
+1e-6 evaluates to 9.9999999999999995e-07.
+Warning: class_loader.ClassLoader: SEVERE WARNING!!! Attempting to unload library while objects created by this loader exist in the heap! You should delete your objects before attempting to unload the library or destroying the ClassLoader. The library will NOT be unloaded.
+         at line 127 in ./src/class_loader.cpp
+[INFO] [1784693392.623223399] [dummy_costmap.dummy_costmap]: Destroying
+[  FAILED  ] OptimizerTests.applyControlSequenceConstraintsTests (15 ms)
+[ RUN      ] OptimizerTests.updateStateVelocitiesTests
+getifaddrs: Operation not permitted
+[37;1m2026-07-22 12:09:52.625 [31;1m[[37;1mTRANSPORT_UDP[31;1m Error] [37mError creating socket: Operation not permitted[34;1m -> Function [36minit[m
+[37;1m2026-07-22 12:09:52.625 [31;1m[[37;1mRTPS_PARTICIPANT[31;1m Error] [37mUser transport failed to register.[34;1m -> Function [36mRTPSParticipantImpl[m
+[INFO] [1784693392.629728963] [dummy_costmap.dummy_costmap]: 
+	dummy_costmap lifecycle node launched. 
+	Waiting on external lifecycle transitions to activate
+	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[INFO] [1784693392.630111978] [dummy_costmap.dummy_costmap]: Creating Costmap
+[INFO] [1784693392.630204581] [dummy_costmap.dummy_costmap]: Configuring
+[INFO] [1784693392.630642789] [dummy_costmap.dummy_costmap]: Using plugin "static_layer"
+[INFO] [1784693392.630748877] [dummy_costmap.dummy_costmap]: Subscribing to the map topic (/map) with transient local durability
+[INFO] [1784693392.630825991] [dummy_costmap.dummy_costmap]: Initialized plugin "static_layer"
+[INFO] [1784693392.630835348] [dummy_costmap.dummy_costmap]: Using plugin "obstacle_layer"
+[INFO] [1784693392.630883498] [dummy_costmap.dummy_costmap]: Subscribed to Topics: 
+[INFO] [1784693392.630891924] [dummy_costmap.dummy_costmap]: Initialized plugin "obstacle_layer"
+[INFO] [1784693392.630895360] [dummy_costmap.dummy_costmap]: Using plugin "inflation_layer"
+[INFO] [1784693392.630939613] [dummy_costmap.dummy_costmap]: Initialized plugin "inflation_layer"
+[WARN] [1784693392.631660769] [my_node]: Controller period is less then model dt, consider setting it equal
+[INFO] [1784693392.635713133] [my_node]: Optimizer reset
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/optimizer_unit_tests.cpp:195: Failure
+The difference between state.vx(0, 1) and 0.75 is 4.25, which exceeds 1e-6, where
+state.vx(0, 1) evaluates to 5,
+0.75 evaluates to 0.75, and
+1e-6 evaluates to 9.9999999999999995e-07.
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/optimizer_unit_tests.cpp:196: Failure
+The difference between state.vy(0, 1) and 0.5 is 0.5, which exceeds 1e-6, where
+state.vy(0, 1) evaluates to 1,
+0.5 evaluates to 0.5, and
+1e-6 evaluates to 9.9999999999999995e-07.
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/optimizer_unit_tests.cpp:197: Failure
+The difference between state.wz(0, 1) and 0.1 is 5.9000000000000004, which exceeds 1e-6, where
+state.wz(0, 1) evaluates to 6,
+0.1 evaluates to 0.10000000000000001, and
+1e-6 evaluates to 9.9999999999999995e-07.
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/optimizer_unit_tests.cpp:211: Failure
+The difference between state.vx(0, 1) and -0.75 is 4.25, which exceeds 1e-6, where
+state.vx(0, 1) evaluates to -5,
+-0.75 evaluates to -0.75, and
+1e-6 evaluates to 9.9999999999999995e-07.
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/optimizer_unit_tests.cpp:212: Failure
+The difference between state.vy(0, 1) and -0.5 is 0.5, which exceeds 1e-6, where
+state.vy(0, 1) evaluates to -1,
+-0.5 evaluates to -0.5, and
+1e-6 evaluates to 9.9999999999999995e-07.
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/optimizer_unit_tests.cpp:213: Failure
+The difference between state.wz(0, 1) and -0.1 is 5.9000000000000004, which exceeds 1e-6, where
+state.wz(0, 1) evaluates to -6,
+-0.1 evaluates to -0.10000000000000001, and
+1e-6 evaluates to 9.9999999999999995e-07.
+Warning: class_loader.ClassLoader: SEVERE WARNING!!! Attempting to unload library while objects created by this loader exist in the heap! You should delete your objects before attempting to unload the library or destroying the ClassLoader. The library will NOT be unloaded.
+         at line 127 in ./src/class_loader.cpp
+[INFO] [1784693392.638750933] [dummy_costmap.dummy_costmap]: Destroying
+[  FAILED  ] OptimizerTests.updateStateVelocitiesTests (16 ms)
+[ RUN      ] OptimizerTests.getControlFromSequenceAsTwistTests
+getifaddrs: Operation not permitted
+[37;1m2026-07-22 12:09:52.642 [31;1m[[37;1mTRANSPORT_UDP[31;1m Error] [37mError creating socket: Operation not permitted[34;1m -> Function [36minit[m
+[37;1m2026-07-22 12:09:52.642 [31;1m[[37;1mRTPS_PARTICIPANT[31;1m Error] [37mUser transport failed to register.[34;1m -> Function [36mRTPSParticipantImpl[m
+[INFO] [1784693392.645079176] [dummy_costmap.dummy_costmap]: 
+	dummy_costmap lifecycle node launched. 
+	Waiting on external lifecycle transitions to activate
+	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[INFO] [1784693392.645343249] [dummy_costmap.dummy_costmap]: Creating Costmap
+[INFO] [1784693392.645430311] [dummy_costmap.dummy_costmap]: Configuring
+[INFO] [1784693392.645915367] [dummy_costmap.dummy_costmap]: Using plugin "static_layer"
+[INFO] [1784693392.646024741] [dummy_costmap.dummy_costmap]: Subscribing to the map topic (/map) with transient local durability
+[INFO] [1784693392.646116292] [dummy_costmap.dummy_costmap]: Initialized plugin "static_layer"
+[INFO] [1784693392.646124437] [dummy_costmap.dummy_costmap]: Using plugin "obstacle_layer"
+[INFO] [1784693392.646176133] [dummy_costmap.dummy_costmap]: Subscribed to Topics: 
+[INFO] [1784693392.646187074] [dummy_costmap.dummy_costmap]: Initialized plugin "obstacle_layer"
+[INFO] [1784693392.646191793] [dummy_costmap.dummy_costmap]: Using plugin "inflation_layer"
+[INFO] [1784693392.646283534] [dummy_costmap.dummy_costmap]: Initialized plugin "inflation_layer"
+[WARN] [1784693392.647140603] [my_node]: Controller period is less then model dt, consider setting it equal
+[INFO] [1784693392.650956276] [my_node]: Optimizer reset
+Warning: class_loader.ClassLoader: SEVERE WARNING!!! Attempting to unload library while objects created by this loader exist in the heap! You should delete your objects before attempting to unload the library or destroying the ClassLoader. The library will NOT be unloaded.
+         at line 127 in ./src/class_loader.cpp
+[INFO] [1784693392.652443352] [dummy_costmap.dummy_costmap]: Destroying
+[       OK ] OptimizerTests.getControlFromSequenceAsTwistTests (14 ms)
+[ RUN      ] OptimizerTests.integrateStateVelocitiesTests
+getifaddrs: Operation not permitted
+[37;1m2026-07-22 12:09:52.655 [31;1m[[37;1mTRANSPORT_UDP[31;1m Error] [37mError creating socket: Operation not permitted[34;1m -> Function [36minit[m
+[37;1m2026-07-22 12:09:52.655 [31;1m[[37;1mRTPS_PARTICIPANT[31;1m Error] [37mUser transport failed to register.[34;1m -> Function [36mRTPSParticipantImpl[m
+[INFO] [1784693392.659052028] [dummy_costmap.dummy_costmap]: 
+	dummy_costmap lifecycle node launched. 
+	Waiting on external lifecycle transitions to activate
+	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[INFO] [1784693392.659313115] [dummy_costmap.dummy_costmap]: Creating Costmap
+[INFO] [1784693392.659411278] [dummy_costmap.dummy_costmap]: Configuring
+[INFO] [1784693392.660119059] [dummy_costmap.dummy_costmap]: Using plugin "static_layer"
+[INFO] [1784693392.660247800] [dummy_costmap.dummy_costmap]: Subscribing to the map topic (/map) with transient local durability
+[INFO] [1784693392.660338258] [dummy_costmap.dummy_costmap]: Initialized plugin "static_layer"
+[INFO] [1784693392.660345692] [dummy_costmap.dummy_costmap]: Using plugin "obstacle_layer"
+[INFO] [1784693392.660393081] [dummy_costmap.dummy_costmap]: Subscribed to Topics: 
+[INFO] [1784693392.660401617] [dummy_costmap.dummy_costmap]: Initialized plugin "obstacle_layer"
+[INFO] [1784693392.660404913] [dummy_costmap.dummy_costmap]: Using plugin "inflation_layer"
+[INFO] [1784693392.660460116] [dummy_costmap.dummy_costmap]: Initialized plugin "inflation_layer"
+[WARN] [1784693392.661223150] [my_node]: Controller period is less then model dt, consider setting it equal
+[INFO] [1784693392.665311792] [my_node]: Optimizer reset
 
 
--- run_test.py: return code -6
+-- run_test.py: return code -11
 -- run_test.py: generate result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/optimizer_unit_tests.gtest.xml' with failed test
 -- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/optimizer_unit_tests.gtest.xml'

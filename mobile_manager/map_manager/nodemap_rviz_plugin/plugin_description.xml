@@ -1,0 +1,26 @@
+<library path="nodemap_rviz_plugin">
+  <class name="nodemap_rviz_plugin/NodeMapEditorPanel"
+         type="nodemap_rviz_plugin::NodeMapEditorPanel"
+         base_class_type="rviz_common::Panel">
+    <description>
+      三层 NodeMap 生成与编辑面板：自定义 L1/L2 均匀间距和偏移、拖动节点、
+      自动障碍物连边、人工增删连接，并保存为 Theta* 可直接读取的文件。
+    </description>
+  </class>
+
+  <class name="nodemap_rviz_plugin/MoveNodeTool"
+         type="nodemap_rviz_plugin::MoveNodeTool"
+         base_class_type="rviz_common::Tool">
+    <description>
+      拖动 L1/L2 节点；释放时检查占用与净空，并自动重算默认连接。快捷键 M。
+    </description>
+  </class>
+
+  <class name="nodemap_rviz_plugin/EditEdgeTool"
+         type="nodemap_rviz_plugin::EditEdgeTool"
+         base_class_type="rviz_common::Tool">
+    <description>
+      依次选择两个节点，切换其双向连接关系；默认执行障碍物与净空校验。快捷键 E。
+    </description>
+  </class>
+</library>

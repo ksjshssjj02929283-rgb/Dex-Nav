@@ -1,10 +1,35 @@
 -- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test':
  - /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/parameter_handler_test --gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/parameter_handler_test.gtest.xml
 
-terminate called after throwing an instance of 'spdlog::spdlog_ex'
-  what():  Failed opening file /home/dex/.ros/log/parameter_handler_test_43_1784285057268.log for writing: Read-only file system
+Running main() from /opt/ros/humble/src/gtest_vendor/src/gtest_main.cc
+[==========] Running 4 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 4 tests from ParameterHandlerTest
+[ RUN      ] ParameterHandlerTest.asTypeConversionTest
+[       OK ] ParameterHandlerTest.asTypeConversionTest (0 ms)
+[ RUN      ] ParameterHandlerTest.PrePostDynamicCallbackTest
+[       OK ] ParameterHandlerTest.PrePostDynamicCallbackTest (0 ms)
+[ RUN      ] ParameterHandlerTest.GetSystemParamsTest
+getifaddrs: Operation not permitted
+getifaddrs: Operation not permitted
+getifaddrs: Operation not permitted
+[37;1m2026-07-22 12:09:51.350 [31;1m[[37;1mTRANSPORT_UDP[31;1m Error] [37mError creating socket: Operation not permitted[34;1m -> Function [36minit[m
+[37;1m2026-07-22 12:09:51.350 [31;1m[[37;1mRTPS_PARTICIPANT[31;1m Error] [37mUser transport failed to register.[34;1m -> Function [36mRTPSParticipantImpl[m
+[       OK ] ParameterHandlerTest.GetSystemParamsTest (9 ms)
+[ RUN      ] ParameterHandlerTest.DynamicAndStaticParametersTest
+getifaddrs: Operation not permitted
+[37;1m2026-07-22 12:09:51.359 [31;1m[[37;1mTRANSPORT_UDP[31;1m Error] [37mError creating socket: Operation not permitted[34;1m -> Function [36minit[m
+[37;1m2026-07-22 12:09:51.359 [31;1m[[37;1mRTPS_PARTICIPANT[31;1m Error] [37mUser transport failed to register.[34;1m -> Function [36mRTPSParticipantImpl[m
+[WARN] [1784693391.361825088] [my_node]: Parameter my_node.verbose not found
+[WARN] [1784693391.364418058] [my_node]: Parameter static_int not found
+[       OK ] ParameterHandlerTest.DynamicAndStaticParametersTest (8 ms)
+[----------] 4 tests from ParameterHandlerTest (17 ms total)
+
+[----------] Global test environment tear-down
+[==========] 4 tests from 1 test suite ran. (17 ms total)
+[  PASSED  ] 4 tests.
 
 
--- run_test.py: return code -6
--- run_test.py: generate result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/parameter_handler_test.gtest.xml' with failed test
+-- run_test.py: return code 0
+-- run_test.py: inject classname prefix into gtest result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/parameter_handler_test.gtest.xml'
 -- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/parameter_handler_test.gtest.xml'

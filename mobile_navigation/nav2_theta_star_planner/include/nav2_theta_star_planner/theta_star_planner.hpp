@@ -93,6 +93,8 @@ protected:
   /// 是否插入 orientation mode 零位移标记。参数名保留 tangent_ 前缀兼容旧配置：
   /// TANGENT=首尾各一个、GOAL=起点一个、START=起点两个、NONE=终点一个；AUTO 无 marker。
   bool tangent_in_place_rotation_markers_{false};
+  /// TANGENT 模式进入终点前该距离后保持来向 yaw，避免最后一个极短栅格连接改变切线。
+  double tangent_terminal_yaw_hold_distance_{0.20};
 
   /**
    * @brief B 层：沿路径仿真舵轮 IK，限制舵角跳变（对齐 mobile_cmd_omni_region.cpp）
@@ -167,6 +169,30 @@ protected:
   void buildGeometricPathL1Spline(
     nav_msgs::msg::Path & global_path,
     const std::vector<coordsW> & raw_path);
+
+  /**
+   * @brief 将栅格中心路径安全连接到用户给出的连续坐标起点/终点
+   *
+   * Theta* 搜索节点仍是栅格中心；本函数在平滑结束后补首尾短连接，使控制器跟踪的
+   * 几何终点与用户目标完全一致。连接沿线逐点检查膨胀后的 costmap，失败时不发布
+   * 可能穿障碍物的路径。
+   *
+   * @param path 已生成的栅格中心几何路径
+   * @param start 用户给出的精确连续坐标起点
+   * @param goal 用户给出的精确连续坐标终点
+   * @param connect_goal false 表示规划器有意返回替代终点，此时不强接原始 goal
+   * @return 首尾连接均安全时为 true
+   */
+  bool connectPathToExactEndpoints(
+    nav_msgs::msg::Path & path,
+    const geometry_msgs::msg::PoseStamped & start,
+    const geometry_msgs::msg::PoseStamped & goal,
+    bool connect_goal = true) const;
+
+  /** @brief 检查一段连续世界坐标直线是否全部落在 Theta* 可通行栅格中 */
+  bool isWorldSegmentSafe(
+    const geometry_msgs::msg::Point & from,
+    const geometry_msgs::msg::Point & to) const;
 
   static SmoothPathMode parseSmoothPathMode(const std::string & mode);
 

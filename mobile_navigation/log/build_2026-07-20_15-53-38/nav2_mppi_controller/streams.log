@@ -1,0 +1,177 @@
+[0.013s] Invoking command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller': AMENT_PREFIX_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:/opt/ros/humble LD_LIBRARY_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib:${LD_LIBRARY_PATH} /usr/bin/cmake /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller -DCMAKE_BUILD_TYPE=Release -DAMENT_CMAKE_SYMLINK_INSTALL=1 -DCMAKE_INSTALL_PREFIX=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller
+[0.028s] -- Found ament_cmake: 1.3.14 (/opt/ros/humble/share/ament_cmake/cmake)
+[0.112s] -- Override CMake install command with custom implementation using symlinks instead of copying resources
+[0.121s] -- Found rclcpp: 16.0.19 (/opt/ros/humble/share/rclcpp/cmake)
+[0.143s] -- Found rosidl_generator_c: 3.1.8 (/opt/ros/humble/share/rosidl_generator_c/cmake)
+[0.145s] -- Found rosidl_adapter: 3.1.8 (/opt/ros/humble/share/rosidl_adapter/cmake)
+[0.150s] -- Found rosidl_generator_cpp: 3.1.8 (/opt/ros/humble/share/rosidl_generator_cpp/cmake)
+[0.157s] -- Using all available rosidl_typesupport_c: rosidl_typesupport_fastrtps_c;rosidl_typesupport_introspection_c
+[0.166s] -- Using all available rosidl_typesupport_cpp: rosidl_typesupport_fastrtps_cpp;rosidl_typesupport_introspection_cpp
+[0.191s] -- Found rmw_implementation_cmake: 6.1.2 (/opt/ros/humble/share/rmw_implementation_cmake/cmake)
+[0.192s] -- Found rmw_fastrtps_cpp: 6.2.10 (/opt/ros/humble/share/rmw_fastrtps_cpp/cmake)
+[0.273s] -- Using RMW implementation 'rmw_fastrtps_cpp' as default
+[0.310s] -- Found nav2_common: 1.1.20 (/opt/ros/humble/share/nav2_common/cmake)
+[0.310s] -- Found pluginlib: 5.1.4 (/opt/ros/humble/share/pluginlib/cmake)
+[0.325s] -- Found tf2: 0.25.20 (/opt/ros/humble/share/tf2/cmake)
+[0.337s] -- Found visualization_msgs: 4.9.1 (/opt/ros/humble/share/visualization_msgs/cmake)
+[0.361s] -- Found nav_msgs: 4.9.1 (/opt/ros/humble/share/nav_msgs/cmake)
+[0.372s] -- Found nav2_core: 1.1.20 (/opt/ros/humble/share/nav2_core/cmake)
+[0.480s] -- Ensuring Eigen3 include directory is part of orocos-kdl CMake target
+[0.521s] -- Found tf2_eigen: 0.25.20 (/opt/ros/humble/share/tf2_eigen/cmake)
+[0.655s] -- Found ament_lint_auto: 0.12.15 (/opt/ros/humble/share/ament_lint_auto/cmake)
+[0.656s] -- Found ament_cmake_gtest: 1.3.14 (/opt/ros/humble/share/ament_cmake_gtest/cmake)
+[0.706s] -- Found gtest sources under '/opt/ros/humble/src/gtest_vendor': C++ tests using 'Google Test' will be built
+[1.080s] -- Added test 'cppcheck' to perform static code analysis on C / C++ code
+[1.080s] -- Configured cppcheck include dirs: /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include
+[1.080s] -- Configured cppcheck exclude dirs and/or files: 
+[1.083s] -- Added test 'cpplint' to check C / C++ code against the Google style
+[1.083s] -- Configured cpplint exclude dirs and/or files: 
+[1.085s] -- Added test 'lint_cmake' to check CMake code style
+[1.089s] -- Added test 'uncrustify' to check C / C++ code style
+[1.089s] -- Configured uncrustify additional arguments: 
+[1.089s] -- Added test 'xmllint' to check XML markup files
+[1.091s] -- Configuring done
+[1.691s] -- Generating done
+[1.734s] -- Build files have been written to: /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller
+[1.746s] Invoked command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller' returned '0': AMENT_PREFIX_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:/opt/ros/humble LD_LIBRARY_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib:${LD_LIBRARY_PATH} /usr/bin/cmake /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller -DCMAKE_BUILD_TYPE=Release -DAMENT_CMAKE_SYMLINK_INSTALL=1 -DCMAKE_INSTALL_PREFIX=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller
+[1.747s] Invoking command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller': AMENT_PREFIX_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:/opt/ros/humble LD_LIBRARY_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib:${LD_LIBRARY_PATH} /usr/bin/cmake --build /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller -- -j16 -l16
+[1.790s] Consolidate compiler generated dependencies of target gtest_main
+[1.790s] Consolidate compiler generated dependencies of target gtest
+[1.800s] [  3%] Built target gtest_main
+[1.801s] [  7%] Built target gtest
+[1.813s] Consolidate compiler generated dependencies of target mppi_controller
+[1.835s] [ 13%] Building CXX object CMakeFiles/mppi_controller.dir/src/trajectory_visualizer.cpp.o
+[1.835s] [ 13%] Building CXX object CMakeFiles/mppi_controller.dir/src/critic_manager.cpp.o
+[1.835s] [ 13%] Building CXX object CMakeFiles/mppi_controller.dir/src/optimizer.cpp.o
+[1.835s] [ 15%] Building CXX object CMakeFiles/mppi_controller.dir/src/path_handler.cpp.o
+[1.835s] [ 16%] Building CXX object CMakeFiles/mppi_controller.dir/src/controller.cpp.o
+[1.848s] Consolidate compiler generated dependencies of target mppi_critics
+[1.874s] [ 20%] Building CXX object CMakeFiles/mppi_critics.dir/src/critics/obstacles_critic.cpp.o
+[1.874s] [ 20%] Building CXX object CMakeFiles/mppi_critics.dir/src/critics/cost_critic.cpp.o
+[1.875s] [ 22%] Building CXX object CMakeFiles/mppi_critics.dir/src/critics/goal_critic.cpp.o
+[1.877s] [ 24%] Building CXX object CMakeFiles/mppi_critics.dir/src/critics/goal_lateral_critic.cpp.o
+[1.879s] [ 26%] Building CXX object CMakeFiles/mppi_critics.dir/src/critics/goal_longitudinal_critic.cpp.o
+[1.880s] [ 30%] Building CXX object CMakeFiles/mppi_critics.dir/src/critics/path_align_critic.cpp.o
+[1.880s] [ 30%] Building CXX object CMakeFiles/mppi_critics.dir/src/critics/goal_angle_critic.cpp.o
+[1.880s] [ 32%] Building CXX object CMakeFiles/mppi_critics.dir/src/critics/path_align_legacy_critic.cpp.o
+[1.882s] [ 33%] Building CXX object CMakeFiles/mppi_critics.dir/src/critics/path_follow_critic.cpp.o
+[1.890s] [ 35%] Building CXX object CMakeFiles/mppi_critics.dir/src/critics/path_angle_critic.cpp.o
+[1.894s] [ 37%] Building CXX object CMakeFiles/mppi_critics.dir/src/critics/prefer_forward_critic.cpp.o
+[35.025s] [ 41%] Building CXX object CMakeFiles/mppi_critics.dir/src/critics/twirling_critic.cpp.o
+[35.030s] [ 41%] Building CXX object CMakeFiles/mppi_critics.dir/src/critics/constraint_critic.cpp.o
+[35.151s] [ 43%] Building CXX object CMakeFiles/mppi_critics.dir/src/critics/velocity_deadband_critic.cpp.o
+[35.987s] [ 45%] Building CXX object CMakeFiles/mppi_critics.dir/src/critics/angular_velocity_critic.cpp.o
+[35.988s] [ 47%] Building CXX object CMakeFiles/mppi_critics.dir/src/critics/linear_velocity_critic.cpp.o
+[49.180s] [ 49%] Linking CXX shared library libmppi_controller.so
+[49.529s] [ 52%] Built target mppi_controller
+[49.554s] Consolidate compiler generated dependencies of target parameter_handler_test
+[49.554s] Consolidate compiler generated dependencies of target models_test
+[49.554s] Consolidate compiler generated dependencies of target noise_generator_test
+[49.555s] Consolidate compiler generated dependencies of target motion_model_tests
+[49.555s] Consolidate compiler generated dependencies of target utils_test
+[49.555s] Consolidate compiler generated dependencies of target path_handler_test
+[49.562s] Consolidate compiler generated dependencies of target optimizer_smoke_test
+[49.562s] Consolidate compiler generated dependencies of target trajectory_visualizer_tests
+[49.562s] Consolidate compiler generated dependencies of target controller_state_transition_test
+[49.562s] Consolidate compiler generated dependencies of target critic_manager_test
+[49.562s] Consolidate compiler generated dependencies of target optimizer_unit_tests
+[49.579s] [ 58%] Linking CXX executable motion_model_tests
+[49.579s] [ 58%] Building CXX object test/CMakeFiles/path_handler_test.dir/path_handler_test.cpp.o
+[49.579s] [ 58%] Linking CXX executable parameter_handler_test
+[49.579s] [ 62%] Linking CXX executable noise_generator_test
+[49.579s] [ 62%] Linking CXX executable models_test
+[49.579s] [ 64%] Building CXX object test/CMakeFiles/trajectory_visualizer_tests.dir/trajectory_visualizer_tests.cpp.o
+[49.579s] [ 66%] Building CXX object test/CMakeFiles/critic_manager_test.dir/critic_manager_test.cpp.o
+[49.581s] [ 69%] Building CXX object test/CMakeFiles/optimizer_unit_tests.dir/optimizer_unit_tests.cpp.o
+[49.581s] [ 69%] Building CXX object test/CMakeFiles/controller_state_transition_test.dir/controller_state_transition_test.cpp.o
+[49.582s] [ 71%] Building CXX object test/CMakeFiles/utils_test.dir/utils_test.cpp.o
+[49.588s] [ 73%] Building CXX object test/CMakeFiles/optimizer_smoke_test.dir/optimizer_smoke_test.cpp.o
+[49.615s] [ 75%] Linking CXX shared library libmppi_critics.so
+[50.391s] [ 77%] Built target models_test
+[50.471s] [ 79%] Built target noise_generator_test
+[50.480s] [ 81%] Built target motion_model_tests
+[50.493s] [ 81%] Built target mppi_critics
+[50.560s] Consolidate compiler generated dependencies of target critics_tests
+[50.563s] [ 83%] Built target parameter_handler_test
+[50.604s] [ 84%] Building CXX object test/CMakeFiles/critics_tests.dir/critics_tests.cpp.o
+[62.730s] [ 86%] Linking CXX executable path_handler_test
+[63.129s] [ 86%] Built target path_handler_test
+[64.349s] [ 88%] Linking CXX executable utils_test
+[64.637s] [ 88%] Built target utils_test
+[65.945s] [ 90%] Linking CXX executable critic_manager_test
+[66.260s] [ 90%] Built target critic_manager_test
+[66.654s] [ 92%] Linking CXX executable optimizer_smoke_test
+[66.959s] [ 92%] Built target optimizer_smoke_test
+[67.457s] [ 94%] Linking CXX executable controller_state_transition_test
+[67.503s] [ 96%] Linking CXX executable critics_tests
+[67.769s] [ 96%] Built target controller_state_transition_test
+[67.775s] [ 98%] Linking CXX executable optimizer_unit_tests
+[67.813s] [ 98%] Built target critics_tests
+[68.034s] [ 98%] Built target optimizer_unit_tests
+[70.398s] [100%] Linking CXX executable trajectory_visualizer_tests
+[70.661s] [100%] Built target trajectory_visualizer_tests
+[70.705s] Invoked command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller' returned '0': AMENT_PREFIX_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:/opt/ros/humble LD_LIBRARY_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib:${LD_LIBRARY_PATH} /usr/bin/cmake --build /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller -- -j16 -l16
+[70.737s] Invoking command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller': AMENT_PREFIX_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:/opt/ros/humble LD_LIBRARY_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib:${LD_LIBRARY_PATH} /usr/bin/cmake --install /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller
+[70.745s] -- Install configuration: "Release"
+[70.746s] -- Execute custom install script
+[70.746s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/lib/libmppi_controller.so
+[70.746s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/lib/libmppi_critics.so
+[70.747s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/controller.hpp
+[70.747s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/critic_data.hpp
+[70.747s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/critic_function.hpp
+[70.747s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/critic_manager.hpp
+[70.747s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/critics/angular_velocity_critic.hpp
+[70.747s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/critics/constraint_critic.hpp
+[70.748s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/critics/cost_critic.hpp
+[70.748s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/critics/goal_angle_critic.hpp
+[70.748s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/critics/goal_critic.hpp
+[70.748s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/critics/goal_lateral_critic.hpp
+[70.748s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/critics/goal_longitudinal_critic.hpp
+[70.748s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/critics/linear_velocity_critic.hpp
+[70.748s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/critics/obstacles_critic.hpp
+[70.749s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/critics/path_align_critic.hpp
+[70.749s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/critics/path_align_legacy_critic.hpp
+[70.749s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/critics/path_angle_critic.hpp
+[70.749s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/critics/path_follow_critic.hpp
+[70.749s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/critics/prefer_forward_critic.hpp
+[70.749s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/critics/twirling_critic.hpp
+[70.749s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/critics/velocity_deadband_critic.hpp
+[70.749s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/models/constraints.hpp
+[70.749s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/models/control_sequence.hpp
+[70.750s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/models/optimizer_settings.hpp
+[70.750s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/models/path.hpp
+[70.750s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/models/state.hpp
+[70.750s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/models/trajectories.hpp
+[70.750s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/motion_models.hpp
+[70.750s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/optimizer.hpp
+[70.750s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/tools/eigen_types.hpp
+[70.751s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/tools/noise_generator.hpp
+[70.751s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/tools/parameters_handler.hpp
+[70.751s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/tools/path_handler.hpp
+[70.751s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/tools/trajectory_visualizer.hpp
+[70.751s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/tools/utils.hpp
+[70.752s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/nav2_mppi_controller/environment/library_path.sh
+[70.752s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/nav2_mppi_controller/environment/library_path.dsv
+[70.752s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/nav2_mppi_controller//mppic.xml
+[70.752s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/nav2_mppi_controller//critics.xml
+[70.753s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/ament_index/resource_index/package_run_dependencies/nav2_mppi_controller
+[70.753s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/ament_index/resource_index/parent_prefix_path/nav2_mppi_controller
+[70.754s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/nav2_mppi_controller/environment/ament_prefix_path.sh
+[70.754s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/nav2_mppi_controller/environment/ament_prefix_path.dsv
+[70.754s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/nav2_mppi_controller/environment/path.sh
+[70.754s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/nav2_mppi_controller/environment/path.dsv
+[70.754s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/nav2_mppi_controller/local_setup.bash
+[70.754s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/nav2_mppi_controller/local_setup.sh
+[70.755s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/nav2_mppi_controller/local_setup.zsh
+[70.755s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/nav2_mppi_controller/local_setup.dsv
+[70.755s] -- Symlinking: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/nav2_mppi_controller/package.dsv
+[70.764s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/ament_index/resource_index/packages/nav2_mppi_controller
+[70.764s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/ament_index/resource_index/nav2_core__pluginlib__plugin/nav2_mppi_controller
+[70.765s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/ament_index/resource_index/nav2_mppi_controller__pluginlib__plugin/nav2_mppi_controller
+[70.765s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/nav2_mppi_controller/cmake/ament_cmake_export_libraries-extras.cmake
+[70.765s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/nav2_mppi_controller/cmake/ament_cmake_export_dependencies-extras.cmake
+[70.765s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/nav2_mppi_controller/cmake/ament_cmake_export_include_directories-extras.cmake
+[70.765s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/nav2_mppi_controller/cmake/nav2_mppi_controllerConfig.cmake
+[70.765s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/nav2_mppi_controller/cmake/nav2_mppi_controllerConfig-version.cmake
+[70.766s] -- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/nav2_mppi_controller/package.xml
+[90.196s] Invoked command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller' returned '0': AMENT_PREFIX_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:/opt/ros/humble LD_LIBRARY_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib:${LD_LIBRARY_PATH} /usr/bin/cmake --install /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller

@@ -1,0 +1,342 @@
+[0.000000] (-) TimerEvent: {}
+[0.000467] (nav2_theta_star_planner) JobQueued: {'identifier': 'nav2_theta_star_planner', 'dependencies': OrderedDict([('nav2_common', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_common'), ('nav2_msgs', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_msgs'), ('nav2_voxel_grid', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_voxel_grid'), ('nav2_util', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_util'), ('nav2_lifecycle_manager', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_lifecycle_manager'), ('nav2_map_server', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server'), ('nav2_costmap_2d', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_costmap_2d'), ('nav2_core', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_core'), ('nav2_theta_star_planner', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner')])}
+[0.000541] (nav2_theta_star_planner) JobStarted: {'identifier': 'nav2_theta_star_planner'}
+[0.021052] (nav2_theta_star_planner) Command: {'cmd': ['/usr/bin/ctest', '-C', 'Release', '-D', 'ExperimentalTest', '--no-compress-output', '-V', '--force-new-ctest-process'], 'cwd': '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner', 'env': OrderedDict([('LESSOPEN', '| /usr/bin/lesspipe %s'), ('CODEX_CI', '1'), ('LANGUAGE', 'zh_CN'), ('USER', 'dex'), ('LC_TIME', 'zh_CN.UTF-8'), ('XDG_SESSION_TYPE', 'x11'), ('SHLVL', '1'), ('LD_LIBRARY_PATH', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/lib:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib:/usr/lib/x86_64-linux-gnu/gazebo-11/plugins:/opt/ros/humble/opt/rviz_ogre_vendor/lib:/opt/ros/humble/lib/x86_64-linux-gnu:/opt/ros/humble/lib'), ('HOME', '/home/dex'), ('OLDPWD', '/home/dex'), ('DESKTOP_SESSION', 'ubuntu-xorg'), ('NVM_BIN', '/home/dex/.nvm/versions/node/v22.23.1/bin'), ('NVM_INC', '/home/dex/.nvm/versions/node/v22.23.1/include/node'), ('ROS_PYTHON_VERSION', '3'), ('GNOME_SHELL_SESSION_MODE', 'ubuntu'), ('GTK_MODULES', 'gail:atk-bridge'), ('PAGER', 'cat'), ('LC_MONETARY', 'zh_CN.UTF-8'), ('MANAGERPID', '2135'), ('LC_CTYPE', 'C.UTF-8'), ('SYSTEMD_EXEC_PID', '2609'), ('NO_COLOR', '1'), ('DBUS_SESSION_BUS_ADDRESS', 'unix:path=/run/user/1000/bus'), ('COLORTERM', ''), ('TERMINATOR_DBUS_NAME', 'net.tenshu.Terminator23558193cd9818af7fe4d2c2f5bd9d00f'), ('GIO_LAUNCHED_DESKTOP_FILE_PID', '9380'), ('NVM_DIR', '/home/dex/.nvm'), ('CODEX_PERMISSION_PROFILE', ':workspace'), ('ROS_DISTRO', 'humble'), ('GTK_IM_MODULE', 'ibus'), ('LOGNAME', 'dex'), ('JOURNAL_STREAM', '8:23736'), ('_', '/usr/bin/colcon'), ('ROS_VERSION', '2'), ('XDG_SESSION_CLASS', 'user'), ('USERNAME', 'dex'), ('TERM', 'dumb'), ('GNOME_DESKTOP_SESSION_ID', 'this-is-deprecated'), ('ROS_LOCALHOST_ONLY', '0'), ('WINDOWPATH', '2'), ('PATH', '/home/dex/.local/npm/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/codex-path:/home/dex/.codex/tmp/arg0/codex-arg0vHJHLv:/home/dex/.nvm/versions/node/v22.23.1/bin:/home/dex/.local/npm/bin:/opt/ros/humble/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/snap/bin'), ('SESSION_MANAGER', 'local/dex-TX-Gaming-FA608UH-FA608UH:@/tmp/.ICE-unix/2433,unix/dex-TX-Gaming-FA608UH-FA608UH:/tmp/.ICE-unix/2433'), ('INVOCATION_ID', '88ccecaef64348b896827be644338cad'), ('PAPERSIZE', 'a4'), ('XDG_MENU_PREFIX', 'gnome-'), ('LC_ADDRESS', 'zh_CN.UTF-8'), ('XDG_RUNTIME_DIR', '/run/user/1000'), ('DISPLAY', ':1'), ('CODEX_SANDBOX_NETWORK_DISABLED', '1'), ('TERMINATOR_DBUS_PATH', '/net/tenshu/Terminator2'), ('LANG', 'C.UTF-8'), ('XDG_CURRENT_DESKTOP', 'ubuntu:GNOME'), ('IBUS_DISABLE_SNOOPER', '1'), ('LC_TELEPHONE', 'zh_CN.UTF-8'), ('XMODIFIERS', '@im=ibus'), ('GH_PAGER', 'cat'), ('XDG_SESSION_DESKTOP', 'ubuntu-xorg'), ('XAUTHORITY', '/run/user/1000/gdm/Xauthority'), ('LS_COLORS', 'rs=0:di=01;34:ln=01;36:mh=00:pi=40;33:so=01;35:do=01;35:bd=40;33;01:cd=40;33;01:or=40;31;01:mi=00:su=37;41:sg=30;43:ca=30;41:tw=30;42:ow=34;42:st=37;44:ex=01;32:*.tar=01;31:*.tgz=01;31:*.arc=01;31:*.arj=01;31:*.taz=01;31:*.lha=01;31:*.lz4=01;31:*.lzh=01;31:*.lzma=01;31:*.tlz=01;31:*.txz=01;31:*.tzo=01;31:*.t7z=01;31:*.zip=01;31:*.z=01;31:*.dz=01;31:*.gz=01;31:*.lrz=01;31:*.lz=01;31:*.lzo=01;31:*.xz=01;31:*.zst=01;31:*.tzst=01;31:*.bz2=01;31:*.bz=01;31:*.tbz=01;31:*.tbz2=01;31:*.tz=01;31:*.deb=01;31:*.rpm=01;31:*.jar=01;31:*.war=01;31:*.ear=01;31:*.sar=01;31:*.rar=01;31:*.alz=01;31:*.ace=01;31:*.zoo=01;31:*.cpio=01;31:*.7z=01;31:*.rz=01;31:*.cab=01;31:*.wim=01;31:*.swm=01;31:*.dwm=01;31:*.esd=01;31:*.jpg=01;35:*.jpeg=01;35:*.mjpg=01;35:*.mjpeg=01;35:*.gif=01;35:*.bmp=01;35:*.pbm=01;35:*.pgm=01;35:*.ppm=01;35:*.tga=01;35:*.xbm=01;35:*.xpm=01;35:*.tif=01;35:*.tiff=01;35:*.png=01;35:*.svg=01;35:*.svgz=01;35:*.mng=01;35:*.pcx=01;35:*.mov=01;35:*.mpg=01;35:*.mpeg=01;35:*.m2v=01;35:*.mkv=01;35:*.webm=01;35:*.webp=01;35:*.ogm=01;35:*.mp4=01;35:*.m4v=01;35:*.mp4v=01;35:*.vob=01;35:*.qt=01;35:*.nuv=01;35:*.wmv=01;35:*.asf=01;35:*.rm=01;35:*.rmvb=01;35:*.flc=01;35:*.avi=01;35:*.fli=01;35:*.flv=01;35:*.gl=01;35:*.dl=01;35:*.xcf=01;35:*.xwd=01;35:*.yuv=01;35:*.cgm=01;35:*.emf=01;35:*.ogv=01;35:*.ogx=01;35:*.aac=00;36:*.au=00;36:*.flac=00;36:*.m4a=00;36:*.mid=00;36:*.midi=00;36:*.mka=00;36:*.mp3=00;36:*.mpc=00;36:*.ogg=00;36:*.ra=00;36:*.wav=00;36:*.oga=00;36:*.opus=00;36:*.spx=00;36:*.xspf=00;36:'), ('SSH_AGENT_LAUNCHER', 'gnome-keyring'), ('SSH_AUTH_SOCK', '/run/user/1000/keyring/ssh'), ('AMENT_PREFIX_PATH', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:/opt/ros/humble'), ('SHELL', '/bin/bash'), ('LC_NAME', 'zh_CN.UTF-8'), ('TERMINATOR_UUID', 'urn:uuid:73d32ecd-c060-4653-9797-92e0fe11fb3a'), ('QT_ACCESSIBILITY', '1'), ('GDMSESSION', 'ubuntu-xorg'), ('LESSCLOSE', '/usr/bin/lesspipe %s %s'), ('CODEX_THREAD_ID', '019f7d37-1253-77e1-ae23-2559308acc13'), ('LC_MEASUREMENT', 'zh_CN.UTF-8'), ('GPG_AGENT_INFO', '/run/user/1000/gnupg/S.gpg-agent:0:1'), ('LC_IDENTIFICATION', 'zh_CN.UTF-8'), ('GIT_PAGER', 'cat'), ('QT_IM_MODULE', 'ibus'), ('PWD', '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner'), ('LC_ALL', 'C.UTF-8'), ('CODEX_MANAGED_PACKAGE_ROOT', '/home/dex/.local/npm/lib/node_modules/@openai/codex'), ('XDG_CONFIG_DIRS', '/etc/xdg/xdg-ubuntu-xorg:/etc/xdg'), ('NVM_CD_FLAGS', ''), ('XDG_DATA_DIRS', '/usr/share/ubuntu-xorg:/usr/share/gnome:/usr/local/share/:/usr/share/:/var/lib/snapd/desktop'), ('PYTHONPATH', '/opt/ros/humble/lib/python3.10/site-packages:/opt/ros/humble/local/lib/python3.10/dist-packages'), ('LC_NUMERIC', 'zh_CN.UTF-8'), ('LC_PAPER', 'zh_CN.UTF-8'), ('COLCON', '1'), ('CODEX_MANAGED_BY_NPM', '1'), ('VTE_VERSION', '6800'), ('CMAKE_PREFIX_PATH', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server')]), 'shell': False}
+[0.029397] (nav2_theta_star_planner) StdoutLine: {'line': b'UpdateCTestConfiguration  from :/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/CTestConfiguration.ini\n'}
+[0.029636] (nav2_theta_star_planner) StdoutLine: {'line': b'Parse Config file:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/CTestConfiguration.ini\n'}
+[0.029752] (nav2_theta_star_planner) StdoutLine: {'line': b'   Site: dex-TX-Gaming-FA608UH-FA608UH\n'}
+[0.029939] (nav2_theta_star_planner) StdoutLine: {'line': b'   Build name: (empty)\n'}
+[0.030124] (nav2_theta_star_planner) StdoutLine: {'line': b' Add coverage exclude regular expressions.\n'}
+[0.030222] (nav2_theta_star_planner) StdoutLine: {'line': b'Create new tag: 20260720-1129 - Experimental\n'}
+[0.030269] (nav2_theta_star_planner) StdoutLine: {'line': b'UpdateCTestConfiguration  from :/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/CTestConfiguration.ini\n'}
+[0.030303] (nav2_theta_star_planner) StdoutLine: {'line': b'Parse Config file:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/CTestConfiguration.ini\n'}
+[0.030353] (nav2_theta_star_planner) StdoutLine: {'line': b'Test project /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner\n'}
+[0.030391] (nav2_theta_star_planner) StdoutLine: {'line': b'Constructing a list of tests\n'}
+[0.030433] (nav2_theta_star_planner) StdoutLine: {'line': b'Done constructing a list of tests\n'}
+[0.030469] (nav2_theta_star_planner) StdoutLine: {'line': b'Updating test list for fixtures\n'}
+[0.030509] (nav2_theta_star_planner) StdoutLine: {'line': b'Added 0 tests to meet fixture requirements\n'}
+[0.030535] (nav2_theta_star_planner) StdoutLine: {'line': b'Checking test dependency graph...\n'}
+[0.030568] (nav2_theta_star_planner) StdoutLine: {'line': b'Checking test dependency graph end\n'}
+[0.030599] (nav2_theta_star_planner) StdoutLine: {'line': b'test 1\n'}
+[0.030631] (nav2_theta_star_planner) StdoutLine: {'line': b'    Start 1: test_theta_star\n'}
+[0.030666] (nav2_theta_star_planner) StdoutLine: {'line': b'\n'}
+[0.030705] (nav2_theta_star_planner) StdoutLine: {'line': b'1: Test command: /usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/test_theta_star.gtest.xml" "--package-name" "nav2_theta_star_planner" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/ament_cmake_gtest/test_theta_star.txt" "--command" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_theta_star" "--gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/test_theta_star.gtest.xml"\n'}
+[0.030740] (nav2_theta_star_planner) StdoutLine: {'line': b'1: Test timeout computed to be: 60\n'}
+[0.065584] (nav2_theta_star_planner) StdoutLine: {'line': b"1: -- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner':\n"}
+[0.065795] (nav2_theta_star_planner) StdoutLine: {'line': b'1:  - /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_theta_star --gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/test_theta_star.gtest.xml\n'}
+[0.099835] (-) TimerEvent: {}
+[0.139264] (nav2_theta_star_planner) StdoutLine: {'line': b"1: terminate called after throwing an instance of 'spdlog::spdlog_ex'\n"}
+[0.139615] (nav2_theta_star_planner) StdoutLine: {'line': b'1:   what():  Failed opening file /home/dex/.ros/log/test_theta_star_19_1784546969957.log for writing: Read-only file system\n'}
+[0.195516] (nav2_theta_star_planner) StdoutLine: {'line': b'1: -- run_test.py: return code -6\n'}
+[0.195955] (nav2_theta_star_planner) StdoutLine: {'line': b"1: -- run_test.py: generate result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/test_theta_star.gtest.xml' with failed test\n"}
+[0.196093] (nav2_theta_star_planner) StdoutLine: {'line': b"1: -- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/test_theta_star.gtest.xml'\n"}
+[0.199934] (-) TimerEvent: {}
+[0.201645] (nav2_theta_star_planner) StdoutLine: {'line': b'1/9 Test #1: test_theta_star ..................***Failed    0.17 sec\n'}
+[0.201989] (nav2_theta_star_planner) StdoutLine: {'line': b'test 2\n'}
+[0.202143] (nav2_theta_star_planner) StdoutLine: {'line': b'    Start 2: copyright\n'}
+[0.202230] (nav2_theta_star_planner) StdoutLine: {'line': b'\n'}
+[0.202330] (nav2_theta_star_planner) StdoutLine: {'line': b'2: Test command: /usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/copyright.xunit.xml" "--package-name" "nav2_theta_star_planner" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/ament_copyright/copyright.txt" "--command" "/opt/ros/humble/bin/ament_copyright" "--xunit-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/copyright.xunit.xml"\n'}
+[0.202468] (nav2_theta_star_planner) StdoutLine: {'line': b'2: Test timeout computed to be: 200\n'}
+[0.238264] (nav2_theta_star_planner) StdoutLine: {'line': b"2: -- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner':\n"}
+[0.238468] (nav2_theta_star_planner) StdoutLine: {'line': b'2:  - /opt/ros/humble/bin/ament_copyright --xunit-file /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/copyright.xunit.xml\n'}
+[0.300105] (-) TimerEvent: {}
+[0.388016] (nav2_theta_star_planner) StdoutLine: {'line': b'2: include/nav2_theta_star_planner/curve_path_smoother.hpp: could not find copyright notice\n'}
+[0.388272] (nav2_theta_star_planner) StdoutLine: {'line': b'2: include/nav2_theta_star_planner/l1_spline_path.hpp: could not find copyright notice\n'}
+[0.388376] (nav2_theta_star_planner) StdoutLine: {'line': b'2: include/nav2_theta_star_planner/multi_layer_planner.hpp: could not find copyright notice\n'}
+[0.388454] (nav2_theta_star_planner) StdoutLine: {'line': b'2: include/nav2_theta_star_planner/node_theta_star.hpp: could not find copyright notice\n'}
+[0.388526] (nav2_theta_star_planner) StdoutLine: {'line': b'2: include/nav2_theta_star_planner/omni_path_smoother.hpp: could not find copyright notice\n'}
+[0.388627] (nav2_theta_star_planner) StdoutLine: {'line': b'2: src/curve_path_smoother.cpp: could not find copyright notice\n'}
+[0.388695] (nav2_theta_star_planner) StdoutLine: {'line': b'2: src/l1_spline_path.cpp: could not find copyright notice\n'}
+[0.388762] (nav2_theta_star_planner) StdoutLine: {'line': b'2: src/multi_layer_planner.cpp: could not find copyright notice\n'}
+[0.388828] (nav2_theta_star_planner) StdoutLine: {'line': b'2: src/node_theta_star.cpp: could not find copyright notice\n'}
+[0.388895] (nav2_theta_star_planner) StdoutLine: {'line': b'2: src/omni_path_smoother.cpp: could not find copyright notice\n'}
+[0.388962] (nav2_theta_star_planner) StdoutLine: {'line': b'2: test/map_plan_demo.launch.py: could not find copyright notice\n'}
+[0.389027] (nav2_theta_star_planner) StdoutLine: {'line': b'2: test/plan_from_rviz.py: could not find copyright notice\n'}
+[0.389070] (nav2_theta_star_planner) StdoutLine: {'line': b'2: 12 errors, checked 19 files\n'}
+[0.394927] (nav2_theta_star_planner) StdoutLine: {'line': b'2: -- run_test.py: return code 1\n'}
+[0.395218] (nav2_theta_star_planner) StdoutLine: {'line': b"2: -- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/copyright.xunit.xml'\n"}
+[0.400187] (-) TimerEvent: {}
+[0.401251] (nav2_theta_star_planner) StdoutLine: {'line': b'2/9 Test #2: copyright ........................***Failed    0.20 sec\n'}
+[0.401585] (nav2_theta_star_planner) StdoutLine: {'line': b'test 3\n'}
+[0.401695] (nav2_theta_star_planner) StdoutLine: {'line': b'    Start 3: cppcheck\n'}
+[0.401787] (nav2_theta_star_planner) StdoutLine: {'line': b'\n'}
+[0.401884] (nav2_theta_star_planner) StdoutLine: {'line': b'3: Test command: /usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/cppcheck.xunit.xml" "--package-name" "nav2_theta_star_planner" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/ament_cppcheck/cppcheck.txt" "--command" "/opt/ros/humble/bin/ament_cppcheck" "--xunit-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/cppcheck.xunit.xml" "--include_dirs" "/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include"\n'}
+[0.401982] (nav2_theta_star_planner) StdoutLine: {'line': b'3: Test timeout computed to be: 300\n'}
+[0.440412] (nav2_theta_star_planner) StdoutLine: {'line': b"3: -- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner':\n"}
+[0.440555] (nav2_theta_star_planner) StdoutLine: {'line': b'3:  - /opt/ros/humble/bin/ament_cppcheck --xunit-file /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/cppcheck.xunit.xml --include_dirs /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include\n'}
+[0.496453] (nav2_theta_star_planner) StdoutLine: {'line': b'3: cppcheck 2.7 has known performance issues and therefore will not be used, set the AMENT_CPPCHECK_ALLOW_SLOW_VERSIONS environment variable to override this.\n'}
+[0.500263] (-) TimerEvent: {}
+[0.503879] (nav2_theta_star_planner) StdoutLine: {'line': b'3: -- run_test.py: return code 0\n'}
+[0.504041] (nav2_theta_star_planner) StdoutLine: {'line': b"3: -- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/cppcheck.xunit.xml'\n"}
+[0.511152] (nav2_theta_star_planner) StdoutLine: {'line': b'3/9 Test #3: cppcheck .........................   Passed    0.11 sec\n'}
+[0.511350] (nav2_theta_star_planner) StdoutLine: {'line': b'test 4\n'}
+[0.511435] (nav2_theta_star_planner) StdoutLine: {'line': b'    Start 4: cpplint\n'}
+[0.511514] (nav2_theta_star_planner) StdoutLine: {'line': b'\n'}
+[0.511607] (nav2_theta_star_planner) StdoutLine: {'line': b'4: Test command: /usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/cpplint.xunit.xml" "--package-name" "nav2_theta_star_planner" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/ament_cpplint/cpplint.txt" "--command" "/opt/ros/humble/bin/ament_cpplint" "--xunit-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/cpplint.xunit.xml"\n'}
+[0.511708] (nav2_theta_star_planner) StdoutLine: {'line': b'4: Test timeout computed to be: 120\n'}
+[0.548442] (nav2_theta_star_planner) StdoutLine: {'line': b"4: -- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner':\n"}
+[0.548566] (nav2_theta_star_planner) StdoutLine: {'line': b'4:  - /opt/ros/humble/bin/ament_cpplint --xunit-file /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/cpplint.xunit.xml\n'}
+[0.600478] (-) TimerEvent: {}
+[0.611774] (nav2_theta_star_planner) StdoutLine: {'line': b'4: /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include/nav2_theta_star_planner/curve_path_smoother.hpp:42:  Lines should be <= 100 characters long  [whitespace/line_length] [2]\n'}
+[0.700599] (-) TimerEvent: {}
+[0.800809] (-) TimerEvent: {}
+[0.878237] (nav2_theta_star_planner) StdoutLine: {'line': b'4: /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/node_theta_star.cpp:370:  Lines should be <= 100 characters long  [whitespace/line_length] [2]\n'}
+[0.896103] (nav2_theta_star_planner) StdoutLine: {'line': b'4: /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/omni_path_smoother.cpp:64:  Lines should be <= 100 characters long  [whitespace/line_length] [2]\n'}
+[0.898242] (nav2_theta_star_planner) StdoutLine: {'line': b'4: /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/omni_path_smoother.cpp:92:  Lines should be <= 100 characters long  [whitespace/line_length] [2]\n'}
+[0.900697] (nav2_theta_star_planner) StdoutLine: {'line': b'4: /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/omni_path_smoother.cpp:127:  Lines should be <= 100 characters long  [whitespace/line_length] [2]\n'}
+[0.900877] (-) TimerEvent: {}
+[0.901423] (nav2_theta_star_planner) StdoutLine: {'line': b'4: /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/omni_path_smoother.cpp:140:  Lines should be <= 100 characters long  [whitespace/line_length] [2]\n'}
+[0.928081] (nav2_theta_star_planner) StdoutLine: {'line': b'4: /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/swerve_steering_model.cpp:129:  Lines should be <= 100 characters long  [whitespace/line_length] [2]\n'}
+[1.000998] (-) TimerEvent: {}
+[1.047605] (nav2_theta_star_planner) StdoutLine: {'line': b'4: /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/theta_star_planner.cpp:1059:  Lines should be <= 100 characters long  [whitespace/line_length] [2]\n'}
+[1.101127] (-) TimerEvent: {}
+[1.106822] (nav2_theta_star_planner) StdoutLine: {'line': b"4: Category 'whitespace/line_length' errors found: 8\n"}
+[1.107312] (nav2_theta_star_planner) StdoutLine: {'line': b'4: Total errors found: 8\n'}
+[1.107417] (nav2_theta_star_planner) StdoutLine: {'line': b"4: Using '--root=/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include' argument\n"}
+[1.107499] (nav2_theta_star_planner) StdoutLine: {'line': b'4: \n'}
+[1.107572] (nav2_theta_star_planner) StdoutLine: {'line': b'4: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include/nav2_theta_star_planner/curve_path_smoother.hpp\n'}
+[1.107647] (nav2_theta_star_planner) StdoutLine: {'line': b'4: \n'}
+[1.107714] (nav2_theta_star_planner) StdoutLine: {'line': b'4: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include/nav2_theta_star_planner/l1_spline_path.hpp\n'}
+[1.107787] (nav2_theta_star_planner) StdoutLine: {'line': b'4: \n'}
+[1.107854] (nav2_theta_star_planner) StdoutLine: {'line': b'4: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include/nav2_theta_star_planner/multi_layer_planner.hpp\n'}
+[1.107883] (nav2_theta_star_planner) StdoutLine: {'line': b'4: \n'}
+[1.107909] (nav2_theta_star_planner) StdoutLine: {'line': b'4: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include/nav2_theta_star_planner/node_theta_star.hpp\n'}
+[1.107936] (nav2_theta_star_planner) StdoutLine: {'line': b'4: \n'}
+[1.107962] (nav2_theta_star_planner) StdoutLine: {'line': b'4: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include/nav2_theta_star_planner/omni_path_smoother.hpp\n'}
+[1.107991] (nav2_theta_star_planner) StdoutLine: {'line': b'4: \n'}
+[1.108017] (nav2_theta_star_planner) StdoutLine: {'line': b'4: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include/nav2_theta_star_planner/swerve_steering_model.hpp\n'}
+[1.108044] (nav2_theta_star_planner) StdoutLine: {'line': b'4: \n'}
+[1.108082] (nav2_theta_star_planner) StdoutLine: {'line': b'4: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include/nav2_theta_star_planner/theta_star.hpp\n'}
+[1.108114] (nav2_theta_star_planner) StdoutLine: {'line': b'4: \n'}
+[1.108140] (nav2_theta_star_planner) StdoutLine: {'line': b'4: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include/nav2_theta_star_planner/theta_star_planner.hpp\n'}
+[1.108167] (nav2_theta_star_planner) StdoutLine: {'line': b'4: \n'}
+[1.108193] (nav2_theta_star_planner) StdoutLine: {'line': b"4: Using '--root=/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src' argument\n"}
+[1.108219] (nav2_theta_star_planner) StdoutLine: {'line': b'4: \n'}
+[1.108245] (nav2_theta_star_planner) StdoutLine: {'line': b'4: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/curve_path_smoother.cpp\n'}
+[1.108272] (nav2_theta_star_planner) StdoutLine: {'line': b'4: \n'}
+[1.108299] (nav2_theta_star_planner) StdoutLine: {'line': b'4: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/l1_spline_path.cpp\n'}
+[1.108325] (nav2_theta_star_planner) StdoutLine: {'line': b'4: \n'}
+[1.108350] (nav2_theta_star_planner) StdoutLine: {'line': b'4: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/multi_layer_planner.cpp\n'}
+[1.108383] (nav2_theta_star_planner) StdoutLine: {'line': b'4: \n'}
+[1.108412] (nav2_theta_star_planner) StdoutLine: {'line': b'4: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/node_theta_star.cpp\n'}
+[1.108438] (nav2_theta_star_planner) StdoutLine: {'line': b'4: \n'}
+[1.108463] (nav2_theta_star_planner) StdoutLine: {'line': b'4: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/omni_path_smoother.cpp\n'}
+[1.108489] (nav2_theta_star_planner) StdoutLine: {'line': b'4: \n'}
+[1.108514] (nav2_theta_star_planner) StdoutLine: {'line': b'4: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/swerve_steering_model.cpp\n'}
+[1.108539] (nav2_theta_star_planner) StdoutLine: {'line': b'4: \n'}
+[1.108565] (nav2_theta_star_planner) StdoutLine: {'line': b'4: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/theta_star.cpp\n'}
+[1.108591] (nav2_theta_star_planner) StdoutLine: {'line': b'4: \n'}
+[1.108616] (nav2_theta_star_planner) StdoutLine: {'line': b'4: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/theta_star_planner.cpp\n'}
+[1.108641] (nav2_theta_star_planner) StdoutLine: {'line': b'4: \n'}
+[1.108667] (nav2_theta_star_planner) StdoutLine: {'line': b"4: Using '--root=/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/test' argument\n"}
+[1.108693] (nav2_theta_star_planner) StdoutLine: {'line': b'4: \n'}
+[1.108718] (nav2_theta_star_planner) StdoutLine: {'line': b'4: Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/test/test_theta_star.cpp\n'}
+[1.108743] (nav2_theta_star_planner) StdoutLine: {'line': b'4: \n'}
+[1.113849] (nav2_theta_star_planner) StdoutLine: {'line': b'4: -- run_test.py: return code 1\n'}
+[1.114030] (nav2_theta_star_planner) StdoutLine: {'line': b"4: -- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/cpplint.xunit.xml'\n"}
+[1.119740] (nav2_theta_star_planner) StdoutLine: {'line': b'4/9 Test #4: cpplint ..........................***Failed    0.61 sec\n'}
+[1.119999] (nav2_theta_star_planner) StdoutLine: {'line': b'test 5\n'}
+[1.120094] (nav2_theta_star_planner) StdoutLine: {'line': b'    Start 5: flake8\n'}
+[1.120176] (nav2_theta_star_planner) StdoutLine: {'line': b'\n'}
+[1.120238] (nav2_theta_star_planner) StdoutLine: {'line': b'5: Test command: /usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/flake8.xunit.xml" "--package-name" "nav2_theta_star_planner" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/ament_flake8/flake8.txt" "--command" "/opt/ros/humble/bin/ament_flake8" "--xunit-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/flake8.xunit.xml"\n'}
+[1.120343] (nav2_theta_star_planner) StdoutLine: {'line': b'5: Test timeout computed to be: 60\n'}
+[1.155902] (nav2_theta_star_planner) StdoutLine: {'line': b"5: -- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner':\n"}
+[1.156054] (nav2_theta_star_planner) StdoutLine: {'line': b'5:  - /opt/ros/humble/bin/ament_flake8 --xunit-file /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/flake8.xunit.xml\n'}
+[1.201271] (-) TimerEvent: {}
+[1.285438] (nav2_theta_star_planner) StdoutLine: {'line': b"5:                 f'(planner_server also logs baseline vs curve post-process ms if smooth_log_timing=true)')\n"}
+[1.285566] (nav2_theta_star_planner) StdoutLine: {'line': b'5:                                                                                                    ^\n'}
+[1.285604] (nav2_theta_star_planner) StdoutLine: {'line': b'5: 1     E501 line too long (106 > 99 characters)\n'}
+[1.285640] (nav2_theta_star_planner) StdoutLine: {'line': b'5: \n'}
+[1.285667] (nav2_theta_star_planner) StdoutLine: {'line': b'5: ./test/plan_from_rviz.py:126:100: E501 line too long (106 > 99 characters)\n'}
+[1.285694] (nav2_theta_star_planner) StdoutLine: {'line': b'5: \n'}
+[1.285720] (nav2_theta_star_planner) StdoutLine: {'line': b'5: \n'}
+[1.285745] (nav2_theta_star_planner) StdoutLine: {'line': b'5: 2 files checked\n'}
+[1.285772] (nav2_theta_star_planner) StdoutLine: {'line': b'5: 1 errors\n'}
+[1.285798] (nav2_theta_star_planner) StdoutLine: {'line': b'5: \n'}
+[1.285834] (nav2_theta_star_planner) StdoutLine: {'line': b"5: 'E'-type errors: 1\n"}
+[1.285875] (nav2_theta_star_planner) StdoutLine: {'line': b'5: \n'}
+[1.285916] (nav2_theta_star_planner) StdoutLine: {'line': b'5: Checked files:\n'}
+[1.285956] (nav2_theta_star_planner) StdoutLine: {'line': b'5: \n'}
+[1.285998] (nav2_theta_star_planner) StdoutLine: {'line': b'5: * ./test/map_plan_demo.launch.py\n'}
+[1.286033] (nav2_theta_star_planner) StdoutLine: {'line': b'5: * ./test/plan_from_rviz.py\n'}
+[1.298868] (nav2_theta_star_planner) StdoutLine: {'line': b'5: -- run_test.py: return code 1\n'}
+[1.299111] (nav2_theta_star_planner) StdoutLine: {'line': b"5: -- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/flake8.xunit.xml'\n"}
+[1.301367] (-) TimerEvent: {}
+[1.304872] (nav2_theta_star_planner) StdoutLine: {'line': b'5/9 Test #5: flake8 ...........................***Failed    0.18 sec\n'}
+[1.305219] (nav2_theta_star_planner) StdoutLine: {'line': b'test 6\n'}
+[1.305328] (nav2_theta_star_planner) StdoutLine: {'line': b'    Start 6: lint_cmake\n'}
+[1.305415] (nav2_theta_star_planner) StdoutLine: {'line': b'\n'}
+[1.305495] (nav2_theta_star_planner) StdoutLine: {'line': b'6: Test command: /usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/lint_cmake.xunit.xml" "--package-name" "nav2_theta_star_planner" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/ament_lint_cmake/lint_cmake.txt" "--command" "/opt/ros/humble/bin/ament_lint_cmake" "--xunit-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/lint_cmake.xunit.xml"\n'}
+[1.305588] (nav2_theta_star_planner) StdoutLine: {'line': b'6: Test timeout computed to be: 60\n'}
+[1.339766] (nav2_theta_star_planner) StdoutLine: {'line': b"6: -- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner':\n"}
+[1.339974] (nav2_theta_star_planner) StdoutLine: {'line': b'6:  - /opt/ros/humble/bin/ament_lint_cmake --xunit-file /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/lint_cmake.xunit.xml\n'}
+[1.380864] (nav2_theta_star_planner) StdoutLine: {'line': b'6: \n'}
+[1.381108] (nav2_theta_star_planner) StdoutLine: {'line': b'6: No problems found\n'}
+[1.387037] (nav2_theta_star_planner) StdoutLine: {'line': b'6: -- run_test.py: return code 0\n'}
+[1.387295] (nav2_theta_star_planner) StdoutLine: {'line': b"6: -- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/lint_cmake.xunit.xml'\n"}
+[1.392902] (nav2_theta_star_planner) StdoutLine: {'line': b'6/9 Test #6: lint_cmake .......................   Passed    0.09 sec\n'}
+[1.393216] (nav2_theta_star_planner) StdoutLine: {'line': b'test 7\n'}
+[1.393305] (nav2_theta_star_planner) StdoutLine: {'line': b'    Start 7: pep257\n'}
+[1.393376] (nav2_theta_star_planner) StdoutLine: {'line': b'\n'}
+[1.393446] (nav2_theta_star_planner) StdoutLine: {'line': b'7: Test command: /usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/pep257.xunit.xml" "--package-name" "nav2_theta_star_planner" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/ament_pep257/pep257.txt" "--command" "/opt/ros/humble/bin/ament_pep257" "--xunit-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/pep257.xunit.xml"\n'}
+[1.393539] (nav2_theta_star_planner) StdoutLine: {'line': b'7: Test timeout computed to be: 60\n'}
+[1.401437] (-) TimerEvent: {}
+[1.427079] (nav2_theta_star_planner) StdoutLine: {'line': b"7: -- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner':\n"}
+[1.427300] (nav2_theta_star_planner) StdoutLine: {'line': b'7:  - /opt/ros/humble/bin/ament_pep257 --xunit-file /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/pep257.xunit.xml\n'}
+[1.501636] (nav2_theta_star_planner) StdoutLine: {'line': b'7: checking ./test/map_plan_demo.launch.py\n'}
+[1.501847] (-) TimerEvent: {}
+[1.501878] (nav2_theta_star_planner) StdoutLine: {'line': b'7: checking ./test/plan_from_rviz.py\n'}
+[1.501977] (nav2_theta_star_planner) StdoutLine: {'line': b'7: No problems found\n'}
+[1.511251] (nav2_theta_star_planner) StdoutLine: {'line': b'7: -- run_test.py: return code 0\n'}
+[1.511535] (nav2_theta_star_planner) StdoutLine: {'line': b"7: -- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/pep257.xunit.xml'\n"}
+[1.517504] (nav2_theta_star_planner) StdoutLine: {'line': b'7/9 Test #7: pep257 ...........................   Passed    0.12 sec\n'}
+[1.517633] (nav2_theta_star_planner) StdoutLine: {'line': b'test 8\n'}
+[1.517706] (nav2_theta_star_planner) StdoutLine: {'line': b'    Start 8: uncrustify\n'}
+[1.517780] (nav2_theta_star_planner) StdoutLine: {'line': b'\n'}
+[1.517879] (nav2_theta_star_planner) StdoutLine: {'line': b'8: Test command: /usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/uncrustify.xunit.xml" "--package-name" "nav2_theta_star_planner" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/ament_uncrustify/uncrustify.txt" "--command" "/opt/ros/humble/bin/ament_uncrustify" "--xunit-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/uncrustify.xunit.xml"\n'}
+[1.518031] (nav2_theta_star_planner) StdoutLine: {'line': b'8: Test timeout computed to be: 60\n'}
+[1.553730] (nav2_theta_star_planner) StdoutLine: {'line': b"8: -- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner':\n"}
+[1.553869] (nav2_theta_star_planner) StdoutLine: {'line': b'8:  - /opt/ros/humble/bin/ament_uncrustify --xunit-file /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/uncrustify.xunit.xml\n'}
+[1.601974] (-) TimerEvent: {}
+[1.702275] (-) TimerEvent: {}
+[1.709308] (nav2_theta_star_planner) StdoutLine: {'line': b"8: Code style divergence in file 'src/curve_path_smoother.cpp':\n"}
+[1.710005] (nav2_theta_star_planner) StdoutLine: {'line': b'8: \n'}
+[1.710073] (nav2_theta_star_planner) StdoutLine: {'line': b'8: --- src/curve_path_smoother.cpp\n'}
+[1.710118] (nav2_theta_star_planner) StdoutLine: {'line': b'8: +++ src/curve_path_smoother.cpp.uncrustify\n'}
+[1.710150] (nav2_theta_star_planner) StdoutLine: {'line': b'8: @@ -144,4 +144,6 @@\n'}
+[1.710177] (nav2_theta_star_planner) StdoutLine: {'line': b'8: -  const int gx = static_cast<int>(std::floor((x - distance_map->origin_x) /\n'}
+[1.710205] (nav2_theta_star_planner) StdoutLine: {'line': b'8: -    distance_map->resolution));\n'}
+[1.710232] (nav2_theta_star_planner) StdoutLine: {'line': b'8: -  const int gy = static_cast<int>(std::floor((y - distance_map->origin_y) /\n'}
+[1.710280] (nav2_theta_star_planner) StdoutLine: {'line': b'8: -    distance_map->resolution));\n'}
+[1.710306] (nav2_theta_star_planner) StdoutLine: {'line': b'8: +  const int gx = static_cast<int>(std::floor(\n'}
+[1.710360] (nav2_theta_star_planner) StdoutLine: {'line': b'8: +      (x - distance_map->origin_x) /\n'}
+[1.710421] (nav2_theta_star_planner) StdoutLine: {'line': b'8: +      distance_map->resolution));\n'}
+[1.710480] (nav2_theta_star_planner) StdoutLine: {'line': b'8: +  const int gy = static_cast<int>(std::floor(\n'}
+[1.710539] (nav2_theta_star_planner) StdoutLine: {'line': b'8: +      (y - distance_map->origin_y) /\n'}
+[1.710598] (nav2_theta_star_planner) StdoutLine: {'line': b'8: +      distance_map->resolution));\n'}
+[1.710661] (nav2_theta_star_planner) StdoutLine: {'line': b'8: \n'}
+[1.710721] (nav2_theta_star_planner) StdoutLine: {'line': b"8: Code style divergence in file 'src/node_theta_star.cpp':\n"}
+[1.710782] (nav2_theta_star_planner) StdoutLine: {'line': b'8: \n'}
+[1.710842] (nav2_theta_star_planner) StdoutLine: {'line': b'8: --- src/node_theta_star.cpp\n'}
+[1.710900] (nav2_theta_star_planner) StdoutLine: {'line': b'8: +++ src/node_theta_star.cpp.uncrustify\n'}
+[1.710958] (nav2_theta_star_planner) StdoutLine: {'line': b'8: @@ -370 +370,3 @@\n'}
+[1.711019] (nav2_theta_star_planner) StdoutLine: {'line': b'8: -    if (curr->id < 0 || static_cast<size_t>(curr->id) >= n || closed[static_cast<size_t>(curr->id)]) {\n'}
+[1.711096] (nav2_theta_star_planner) StdoutLine: {'line': b'8: +    if (curr->id < 0 || static_cast<size_t>(curr->id) >= n ||\n'}
+[1.711172] (nav2_theta_star_planner) StdoutLine: {'line': b'8: +      closed[static_cast<size_t>(curr->id)])\n'}
+[1.711231] (nav2_theta_star_planner) StdoutLine: {'line': b'8: +    {\n'}
+[1.711290] (nav2_theta_star_planner) StdoutLine: {'line': b'8: \n'}
+[1.711348] (nav2_theta_star_planner) StdoutLine: {'line': b"8: Code style divergence in file 'src/omni_path_smoother.cpp':\n"}
+[1.711407] (nav2_theta_star_planner) StdoutLine: {'line': b'8: \n'}
+[1.711465] (nav2_theta_star_planner) StdoutLine: {'line': b'8: --- src/omni_path_smoother.cpp\n'}
+[1.711507] (nav2_theta_star_planner) StdoutLine: {'line': b'8: +++ src/omni_path_smoother.cpp.uncrustify\n'}
+[1.711533] (nav2_theta_star_planner) StdoutLine: {'line': b'8: @@ -64 +64,4 @@\n'}
+[1.711558] (nav2_theta_star_planner) StdoutLine: {'line': b'8: -  if (!isCellFree(costmap, static_cast<unsigned int>(cx), static_cast<unsigned int>(cy), allow_unknown)) {\n'}
+[1.711584] (nav2_theta_star_planner) StdoutLine: {'line': b'8: +  if (!isCellFree(\n'}
+[1.711612] (nav2_theta_star_planner) StdoutLine: {'line': b'8: +      costmap, static_cast<unsigned int>(cx), static_cast<unsigned int>(cy),\n'}
+[1.711638] (nav2_theta_star_planner) StdoutLine: {'line': b'8: +      allow_unknown))\n'}
+[1.711664] (nav2_theta_star_planner) StdoutLine: {'line': b'8: +  {\n'}
+[1.711690] (nav2_theta_star_planner) StdoutLine: {'line': b'8: @@ -92 +95,3 @@\n'}
+[1.711716] (nav2_theta_star_planner) StdoutLine: {'line': b'8: -        !isCellFree(costmap, static_cast<unsigned int>(cx + u_x), static_cast<unsigned int>(cy), allow_unknown) &&\n'}
+[1.711743] (nav2_theta_star_planner) StdoutLine: {'line': b'8: +        !isCellFree(\n'}
+[1.711768] (nav2_theta_star_planner) StdoutLine: {'line': b'8: +          costmap, static_cast<unsigned int>(cx + u_x), static_cast<unsigned int>(cy),\n'}
+[1.711799] (nav2_theta_star_planner) StdoutLine: {'line': b'8: +          allow_unknown) &&\n'}
+[1.711824] (nav2_theta_star_planner) StdoutLine: {'line': b'8: @@ -127 +132,3 @@\n'}
+[1.711850] (nav2_theta_star_planner) StdoutLine: {'line': b'8: -        !isCellFree(costmap, static_cast<unsigned int>(cx), static_cast<unsigned int>(cy + u_y), allow_unknown) &&\n'}
+[1.711876] (nav2_theta_star_planner) StdoutLine: {'line': b'8: +        !isCellFree(\n'}
+[1.711902] (nav2_theta_star_planner) StdoutLine: {'line': b'8: +          costmap, static_cast<unsigned int>(cx), static_cast<unsigned int>(cy + u_y),\n'}
+[1.711927] (nav2_theta_star_planner) StdoutLine: {'line': b'8: +          allow_unknown) &&\n'}
+[1.711956] (nav2_theta_star_planner) StdoutLine: {'line': b'8: @@ -140 +147,3 @@\n'}
+[1.711982] (nav2_theta_star_planner) StdoutLine: {'line': b'8: -  return isCellFree(costmap, static_cast<unsigned int>(x1i), static_cast<unsigned int>(y1i), allow_unknown);\n'}
+[1.712008] (nav2_theta_star_planner) StdoutLine: {'line': b'8: +  return isCellFree(\n'}
+[1.712033] (nav2_theta_star_planner) StdoutLine: {'line': b'8: +    costmap, static_cast<unsigned int>(x1i), static_cast<unsigned int>(y1i),\n'}
+[1.712058] (nav2_theta_star_planner) StdoutLine: {'line': b'8: +    allow_unknown);\n'}
+[1.712097] (nav2_theta_star_planner) StdoutLine: {'line': b'8: \n'}
+[1.712122] (nav2_theta_star_planner) StdoutLine: {'line': b"8: Code style divergence in file 'src/swerve_steering_model.cpp':\n"}
+[1.712148] (nav2_theta_star_planner) StdoutLine: {'line': b'8: \n'}
+[1.712173] (nav2_theta_star_planner) StdoutLine: {'line': b'8: --- src/swerve_steering_model.cpp\n'}
+[1.712200] (nav2_theta_star_planner) StdoutLine: {'line': b'8: +++ src/swerve_steering_model.cpp.uncrustify\n'}
+[1.712225] (nav2_theta_star_planner) StdoutLine: {'line': b'8: @@ -129 +129,2 @@\n'}
+[1.712251] (nav2_theta_star_planner) StdoutLine: {'line': b'8: -    max_jump = std::max(max_jump, static_cast<double>(std::abs(angleDiff(chosen, prev_wheel_angle[i]))));\n'}
+[1.712277] (nav2_theta_star_planner) StdoutLine: {'line': b'8: +    max_jump =\n'}
+[1.712303] (nav2_theta_star_planner) StdoutLine: {'line': b'8: +      std::max(max_jump, static_cast<double>(std::abs(angleDiff(chosen, prev_wheel_angle[i]))));\n'}
+[1.712329] (nav2_theta_star_planner) StdoutLine: {'line': b'8: \n'}
+[1.712354] (nav2_theta_star_planner) StdoutLine: {'line': b'8: 4 files with code style divergence\n'}
+[1.712379] (nav2_theta_star_planner) StdoutLine: {'line': b"8: No code style divergence in file 'include/nav2_theta_star_planner/curve_path_smoother.hpp'\n"}
+[1.712405] (nav2_theta_star_planner) StdoutLine: {'line': b'8: \n'}
+[1.712430] (nav2_theta_star_planner) StdoutLine: {'line': b"8: No code style divergence in file 'include/nav2_theta_star_planner/l1_spline_path.hpp'\n"}
+[1.712457] (nav2_theta_star_planner) StdoutLine: {'line': b'8: \n'}
+[1.712482] (nav2_theta_star_planner) StdoutLine: {'line': b"8: No code style divergence in file 'include/nav2_theta_star_planner/multi_layer_planner.hpp'\n"}
+[1.712508] (nav2_theta_star_planner) StdoutLine: {'line': b'8: \n'}
+[1.712533] (nav2_theta_star_planner) StdoutLine: {'line': b"8: No code style divergence in file 'include/nav2_theta_star_planner/node_theta_star.hpp'\n"}
+[1.712559] (nav2_theta_star_planner) StdoutLine: {'line': b'8: \n'}
+[1.712584] (nav2_theta_star_planner) StdoutLine: {'line': b"8: No code style divergence in file 'include/nav2_theta_star_planner/omni_path_smoother.hpp'\n"}
+[1.712610] (nav2_theta_star_planner) StdoutLine: {'line': b'8: \n'}
+[1.712636] (nav2_theta_star_planner) StdoutLine: {'line': b"8: No code style divergence in file 'include/nav2_theta_star_planner/swerve_steering_model.hpp'\n"}
+[1.712662] (nav2_theta_star_planner) StdoutLine: {'line': b'8: \n'}
+[1.712687] (nav2_theta_star_planner) StdoutLine: {'line': b"8: No code style divergence in file 'include/nav2_theta_star_planner/theta_star.hpp'\n"}
+[1.712713] (nav2_theta_star_planner) StdoutLine: {'line': b'8: \n'}
+[1.712738] (nav2_theta_star_planner) StdoutLine: {'line': b"8: No code style divergence in file 'include/nav2_theta_star_planner/theta_star_planner.hpp'\n"}
+[1.712774] (nav2_theta_star_planner) StdoutLine: {'line': b'8: \n'}
+[1.712799] (nav2_theta_star_planner) StdoutLine: {'line': b"8: No code style divergence in file 'src/l1_spline_path.cpp'\n"}
+[1.712824] (nav2_theta_star_planner) StdoutLine: {'line': b'8: \n'}
+[1.712850] (nav2_theta_star_planner) StdoutLine: {'line': b"8: No code style divergence in file 'src/multi_layer_planner.cpp'\n"}
+[1.712890] (nav2_theta_star_planner) StdoutLine: {'line': b'8: \n'}
+[1.712915] (nav2_theta_star_planner) StdoutLine: {'line': b"8: No code style divergence in file 'src/theta_star.cpp'\n"}
+[1.712944] (nav2_theta_star_planner) StdoutLine: {'line': b'8: \n'}
+[1.712969] (nav2_theta_star_planner) StdoutLine: {'line': b"8: No code style divergence in file 'src/theta_star_planner.cpp'\n"}
+[1.712995] (nav2_theta_star_planner) StdoutLine: {'line': b'8: \n'}
+[1.713020] (nav2_theta_star_planner) StdoutLine: {'line': b"8: No code style divergence in file 'test/test_theta_star.cpp'\n"}
+[1.713045] (nav2_theta_star_planner) StdoutLine: {'line': b'8: \n'}
+[1.716116] (nav2_theta_star_planner) StdoutLine: {'line': b'8: -- run_test.py: return code 1\n'}
+[1.716301] (nav2_theta_star_planner) StdoutLine: {'line': b"8: -- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/uncrustify.xunit.xml'\n"}
+[1.722253] (nav2_theta_star_planner) StdoutLine: {'line': b'8/9 Test #8: uncrustify .......................***Failed    0.20 sec\n'}
+[1.722464] (nav2_theta_star_planner) StdoutLine: {'line': b'test 9\n'}
+[1.722514] (nav2_theta_star_planner) StdoutLine: {'line': b'    Start 9: xmllint\n'}
+[1.722555] (nav2_theta_star_planner) StdoutLine: {'line': b'\n'}
+[1.722596] (nav2_theta_star_planner) StdoutLine: {'line': b'9: Test command: /usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/xmllint.xunit.xml" "--package-name" "nav2_theta_star_planner" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/ament_xmllint/xmllint.txt" "--command" "/opt/ros/humble/bin/ament_xmllint" "--xunit-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/xmllint.xunit.xml"\n'}
+[1.722656] (nav2_theta_star_planner) StdoutLine: {'line': b'9: Test timeout computed to be: 60\n'}
+[1.756726] (nav2_theta_star_planner) StdoutLine: {'line': b"9: -- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner':\n"}
+[1.756848] (nav2_theta_star_planner) StdoutLine: {'line': b'9:  - /opt/ros/humble/bin/ament_xmllint --xunit-file /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/xmllint.xunit.xml\n'}
+[1.802397] (-) TimerEvent: {}
+[1.805430] (nav2_theta_star_planner) StdoutLine: {'line': b"9: File 'package.xml' is invalid:\n"}
+[1.805733] (nav2_theta_star_planner) StdoutLine: {'line': b'9: warning: failed to load external entity "http://download.ros.org/schema/package_format3.xsd"\n'}
+[1.805858] (nav2_theta_star_planner) StdoutLine: {'line': b"9: Schemas parser error : Failed to locate the main schema resource at 'http://download.ros.org/schema/package_format3.xsd'.\n"}
+[1.805965] (nav2_theta_star_planner) StdoutLine: {'line': b'9: WXS schema http://download.ros.org/schema/package_format3.xsd failed to compile\n'}
+[1.806067] (nav2_theta_star_planner) StdoutLine: {'line': b'9: \n'}
+[1.806185] (nav2_theta_star_planner) StdoutLine: {'line': b'9: 1 files are invalid\n'}
+[1.806285] (nav2_theta_star_planner) StdoutLine: {'line': b"9: File 'theta_star_planner.xml' is valid\n"}
+[1.806341] (nav2_theta_star_planner) StdoutLine: {'line': b'9: \n'}
+[1.812098] (nav2_theta_star_planner) StdoutLine: {'line': b'9: -- run_test.py: return code 1\n'}
+[1.812268] (nav2_theta_star_planner) StdoutLine: {'line': b"9: -- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/xmllint.xunit.xml'\n"}
+[1.819056] (nav2_theta_star_planner) StdoutLine: {'line': b'9/9 Test #9: xmllint ..........................***Failed    0.10 sec\n'}
+[1.819539] (nav2_theta_star_planner) StdoutLine: {'line': b'\n'}
+[1.819629] (nav2_theta_star_planner) StdoutLine: {'line': b'33% tests passed, 6 tests failed out of 9\n'}
+[1.819697] (nav2_theta_star_planner) StdoutLine: {'line': b'\n'}
+[1.819760] (nav2_theta_star_planner) StdoutLine: {'line': b'Label Time Summary:\n'}
+[1.819821] (nav2_theta_star_planner) StdoutLine: {'line': b'copyright     =   0.20 sec*proc (1 test)\n'}
+[1.819892] (nav2_theta_star_planner) StdoutLine: {'line': b'cppcheck      =   0.11 sec*proc (1 test)\n'}
+[1.819980] (nav2_theta_star_planner) StdoutLine: {'line': b'cpplint       =   0.61 sec*proc (1 test)\n'}
+[1.820082] (nav2_theta_star_planner) StdoutLine: {'line': b'flake8        =   0.18 sec*proc (1 test)\n'}
+[1.820161] (nav2_theta_star_planner) StdoutLine: {'line': b'gtest         =   0.17 sec*proc (1 test)\n'}
+[1.820229] (nav2_theta_star_planner) StdoutLine: {'line': b'lint_cmake    =   0.09 sec*proc (1 test)\n'}
+[1.820305] (nav2_theta_star_planner) StdoutLine: {'line': b'linter        =   1.61 sec*proc (8 tests)\n'}
+[1.820372] (nav2_theta_star_planner) StdoutLine: {'line': b'pep257        =   0.12 sec*proc (1 test)\n'}
+[1.820435] (nav2_theta_star_planner) StdoutLine: {'line': b'uncrustify    =   0.20 sec*proc (1 test)\n'}
+[1.820495] (nav2_theta_star_planner) StdoutLine: {'line': b'xmllint       =   0.10 sec*proc (1 test)\n'}
+[1.820557] (nav2_theta_star_planner) StdoutLine: {'line': b'\n'}
+[1.820617] (nav2_theta_star_planner) StdoutLine: {'line': b'Total Test time (real) =   1.79 sec\n'}
+[1.820680] (nav2_theta_star_planner) StdoutLine: {'line': b'\n'}
+[1.820747] (nav2_theta_star_planner) StdoutLine: {'line': b'The following tests FAILED:\n'}
+[1.820776] (nav2_theta_star_planner) StdoutLine: {'line': b'\t  1 - test_theta_star (Failed)\n'}
+[1.820803] (nav2_theta_star_planner) StdoutLine: {'line': b'\t  2 - copyright (Failed)\n'}
+[1.820830] (nav2_theta_star_planner) StdoutLine: {'line': b'\t  4 - cpplint (Failed)\n'}
+[1.820856] (nav2_theta_star_planner) StdoutLine: {'line': b'\t  5 - flake8 (Failed)\n'}
+[1.820883] (nav2_theta_star_planner) StdoutLine: {'line': b'\t  8 - uncrustify (Failed)\n'}
+[1.820910] (nav2_theta_star_planner) StdoutLine: {'line': b'\t  9 - xmllint (Failed)\n'}
+[1.822102] (nav2_theta_star_planner) StderrLine: {'line': b'Errors while running CTest\n'}
+[1.822194] (nav2_theta_star_planner) StderrLine: {'line': b'Output from these tests are in: /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/Testing/Temporary/LastTest.log\n'}
+[1.822244] (nav2_theta_star_planner) StderrLine: {'line': b'Use "--rerun-failed --output-on-failure" to re-run the failed cases verbosely.\n'}
+[1.823572] (nav2_theta_star_planner) CommandEnded: {'returncode': 8}
+[1.823847] (nav2_theta_star_planner) TestFailure: {'identifier': 'nav2_theta_star_planner'}
+[1.823861] (nav2_theta_star_planner) JobEnded: {'identifier': 'nav2_theta_star_planner', 'rc': 0}
+[1.824128] (-) EventReactorShutdown: {}

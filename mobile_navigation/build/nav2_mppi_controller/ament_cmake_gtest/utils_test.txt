@@ -1,10 +1,78 @@
 -- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test':
  - /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/utils_test --gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/utils_test.gtest.xml
 
-terminate called after throwing an instance of 'spdlog::spdlog_ex'
-  what():  Failed opening file /home/dex/.ros/log/utils_test_49_1784285057775.log for writing: Read-only file system
+Running main() from /opt/ros/humble/src/gtest_vendor/src/gtest_main.cc
+[==========] Running 10 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 10 tests from UtilsTests
+[ RUN      ] UtilsTests.MarkerPopulationUtils
+[       OK ] UtilsTests.MarkerPopulationUtils (0 ms)
+[ RUN      ] UtilsTests.ConversionTests
+[       OK ] UtilsTests.ConversionTests (0 ms)
+[ RUN      ] UtilsTests.WithTolTests
+[       OK ] UtilsTests.WithTolTests (0 ms)
+[ RUN      ] UtilsTests.AnglesTests
+[       OK ] UtilsTests.AnglesTests (0 ms)
+[ RUN      ] UtilsTests.FurthestAndClosestReachedPoint
+[       OK ] UtilsTests.FurthestAndClosestReachedPoint (0 ms)
+[ RUN      ] UtilsTests.FindClosestPathPointBoundaries
+[       OK ] UtilsTests.FindClosestPathPointBoundaries (0 ms)
+[ RUN      ] UtilsTests.findPathCosts
+getifaddrs: Operation not permitted
+getifaddrs: Operation not permitted
+getifaddrs: Operation not permitted
+[37;1m2026-07-22 12:09:51.902 [31;1m[[37;1mTRANSPORT_UDP[31;1m Error] [37mError creating socket: Operation not permitted[34;1m -> Function [36minit[m
+[37;1m2026-07-22 12:09:51.902 [31;1m[[37;1mRTPS_PARTICIPANT[31;1m Error] [37mUser transport failed to register.[34;1m -> Function [36mRTPSParticipantImpl[m
+[INFO] [1784693391.909248369] [dummy_costmap.dummy_costmap]: 
+	dummy_costmap lifecycle node launched. 
+	Waiting on external lifecycle transitions to activate
+	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[INFO] [1784693391.909647875] [dummy_costmap.dummy_costmap]: Creating Costmap
+[INFO] [1784693391.909722625] [dummy_costmap.dummy_costmap]: Configuring
+[INFO] [1784693391.911183431] [dummy_costmap.dummy_costmap]: Using plugin "static_layer"
+[INFO] [1784693391.913083628] [dummy_costmap.dummy_costmap]: Subscribing to the map topic (/map) with transient local durability
+[INFO] [1784693391.913655045] [dummy_costmap.dummy_costmap]: Initialized plugin "static_layer"
+[INFO] [1784693391.913666556] [dummy_costmap.dummy_costmap]: Using plugin "obstacle_layer"
+[INFO] [1784693391.913721899] [dummy_costmap.dummy_costmap]: Subscribed to Topics: 
+[INFO] [1784693391.913741215] [dummy_costmap.dummy_costmap]: Initialized plugin "obstacle_layer"
+[INFO] [1784693391.913744431] [dummy_costmap.dummy_costmap]: Using plugin "inflation_layer"
+[INFO] [1784693391.913873863] [dummy_costmap.dummy_costmap]: Initialized plugin "inflation_layer"
+Warning: class_loader.ClassLoader: SEVERE WARNING!!! Attempting to unload library while objects created by this loader exist in the heap! You should delete your objects before attempting to unload the library or destroying the ClassLoader. The library will NOT be unloaded.
+         at line 127 in ./src/class_loader.cpp
+[INFO] [1784693391.918326044] [dummy_costmap.dummy_costmap]: Destroying
+[       OK ] UtilsTests.findPathCosts (19 ms)
+[ RUN      ] UtilsTests.SmootherTest
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/utils_test.cpp:375: Failure
+The difference between history[3].vx and 0.2 is 0.15227152705192565, which exceeds 0.05, where
+history[3].vx evaluates to 0.35227152705192566,
+0.2 evaluates to 0.20000000000000001, and
+0.05 evaluates to 0.050000000000000003.
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/utils_test.cpp:376: Failure
+The difference between history[3].vy and 0.0 is 0.18041004240512848, which exceeds 0.035, where
+history[3].vy evaluates to 0.18041004240512848,
+0.0 evaluates to 0, and
+0.035 evaluates to 0.035000000000000003.
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/utils_test.cpp:377: Failure
+The difference between history[3].wz and 0.23 is 0.27768280029296877, which exceeds 0.02, where
+history[3].wz evaluates to 0.50768280029296875,
+0.23 evaluates to 0.23000000000000001, and
+0.02 evaluates to 0.02.
+[  FAILED  ] UtilsTests.SmootherTest (0 ms)
+[ RUN      ] UtilsTests.FindPathInversionTest
+[       OK ] UtilsTests.FindPathInversionTest (0 ms)
+[ RUN      ] UtilsTests.RemovePosesAfterPathInversionTest
+[       OK ] UtilsTests.RemovePosesAfterPathInversionTest (0 ms)
+[----------] 10 tests from UtilsTests (19 ms total)
+
+[----------] Global test environment tear-down
+[==========] 10 tests from 1 test suite ran. (19 ms total)
+[  PASSED  ] 9 tests.
+[  FAILED  ] 1 test, listed below:
+[  FAILED  ] UtilsTests.SmootherTest
+
+ 1 FAILED TEST
 
 
--- run_test.py: return code -6
--- run_test.py: generate result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/utils_test.gtest.xml' with failed test
+-- run_test.py: return code 1
+-- run_test.py: inject classname prefix into gtest result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/utils_test.gtest.xml'
 -- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/utils_test.gtest.xml'

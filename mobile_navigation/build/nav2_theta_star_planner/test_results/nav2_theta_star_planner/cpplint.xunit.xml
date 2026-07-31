@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite
+  name="nav2_theta_star_planner.cpplint"
+  tests="20"
+  failures="8"
+  errors="0"
+  time="0.510"
+>
+  <testcase
+    name="whitespace/line_length [2] (/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include/nav2_theta_star_planner/curve_path_smoother.hpp:42)"
+    classname="nav2_theta_star_planner.cpplint"
+  >
+      <failure message="Lines should be &lt;= 100 characters long"/>
+  </testcase>
+  <testcase
+    name="/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include/nav2_theta_star_planner/l1_spline_path.hpp"
+    classname="nav2_theta_star_planner.cpplint"/>
+  <testcase
+    name="/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include/nav2_theta_star_planner/multi_layer_planner.hpp"
+    classname="nav2_theta_star_planner.cpplint"/>
+  <testcase
+    name="/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include/nav2_theta_star_planner/node_theta_star.hpp"
+    classname="nav2_theta_star_planner.cpplint"/>
+  <testcase
+    name="/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include/nav2_theta_star_planner/omni_path_smoother.hpp"
+    classname="nav2_theta_star_planner.cpplint"/>
+  <testcase
+    name="/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include/nav2_theta_star_planner/swerve_steering_model.hpp"
+    classname="nav2_theta_star_planner.cpplint"/>
+  <testcase
+    name="/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include/nav2_theta_star_planner/theta_star.hpp"
+    classname="nav2_theta_star_planner.cpplint"/>
+  <testcase
+    name="/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include/nav2_theta_star_planner/theta_star_planner.hpp"
+    classname="nav2_theta_star_planner.cpplint"/>
+  <testcase
+    name="/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/curve_path_smoother.cpp"
+    classname="nav2_theta_star_planner.cpplint"/>
+  <testcase
+    name="/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/l1_spline_path.cpp"
+    classname="nav2_theta_star_planner.cpplint"/>
+  <testcase
+    name="/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/multi_layer_planner.cpp"
+    classname="nav2_theta_star_planner.cpplint"/>
+  <testcase
+    name="whitespace/line_length [2] (/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/node_theta_star.cpp:370)"
+    classname="nav2_theta_star_planner.cpplint"
+  >
+      <failure message="Lines should be &lt;= 100 characters long"/>
+  </testcase>
+  <testcase
+    name="whitespace/line_length [2] (/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/omni_path_smoother.cpp:64)"
+    classname="nav2_theta_star_planner.cpplint"
+  >
+      <failure message="Lines should be &lt;= 100 characters long"/>
+  </testcase>
+  <testcase
+    name="whitespace/line_length [2] (/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/omni_path_smoother.cpp:92)"
+    classname="nav2_theta_star_planner.cpplint"
+  >
+      <failure message="Lines should be &lt;= 100 characters long"/>
+  </testcase>
+  <testcase
+    name="whitespace/line_length [2] (/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/omni_path_smoother.cpp:127)"
+    classname="nav2_theta_star_planner.cpplint"
+  >
+      <failure message="Lines should be &lt;= 100 characters long"/>
+  </testcase>
+  <testcase
+    name="whitespace/line_length [2] (/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/omni_path_smoother.cpp:140)"
+    classname="nav2_theta_star_planner.cpplint"
+  >
+      <failure message="Lines should be &lt;= 100 characters long"/>
+  </testcase>
+  <testcase
+    name="whitespace/line_length [2] (/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/swerve_steering_model.cpp:129)"
+    classname="nav2_theta_star_planner.cpplint"
+  >
+      <failure message="Lines should be &lt;= 100 characters long"/>
+  </testcase>
+  <testcase
+    name="/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/theta_star.cpp"
+    classname="nav2_theta_star_planner.cpplint"/>
+  <testcase
+    name="whitespace/line_length [2] (/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/theta_star_planner.cpp:1059)"
+    classname="nav2_theta_star_planner.cpplint"
+  >
+      <failure message="Lines should be &lt;= 100 characters long"/>
+  </testcase>
+  <testcase
+    name="/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/test/test_theta_star.cpp"
+    classname="nav2_theta_star_planner.cpplint"/>
+  <system-out>Checked files:
+* /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include/nav2_theta_star_planner/curve_path_smoother.hpp
+* /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include/nav2_theta_star_planner/l1_spline_path.hpp
+* /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include/nav2_theta_star_planner/multi_layer_planner.hpp
+* /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include/nav2_theta_star_planner/node_theta_star.hpp
+* /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include/nav2_theta_star_planner/omni_path_smoother.hpp
+* /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include/nav2_theta_star_planner/swerve_steering_model.hpp
+* /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include/nav2_theta_star_planner/theta_star.hpp
+* /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include/nav2_theta_star_planner/theta_star_planner.hpp
+* /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/curve_path_smoother.cpp
+* /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/l1_spline_path.cpp
+* /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/multi_layer_planner.cpp
+* /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/node_theta_star.cpp
+* /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/omni_path_smoother.cpp
+* /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/swerve_steering_model.cpp
+* /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/theta_star.cpp
+* /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/theta_star_planner.cpp
+* /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/test/test_theta_star.cpp</system-out>
+</testsuite>

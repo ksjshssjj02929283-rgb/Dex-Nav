@@ -1,0 +1,28 @@
+Start testing: Jul 23 10:29 CST
+----------------------------------------------------------
+7/17 Testing: controller_state_transition_test
+7/17 Test: controller_state_transition_test
+Command: "/usr/bin/python3" "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/controller_state_transition_test.gtest.xml" "--package-name" "nav2_mppi_controller" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/ament_cmake_gtest/controller_state_transition_test.txt" "--command" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/controller_state_transition_test" "--gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/controller_state_transition_test.gtest.xml"
+Directory: /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test
+"controller_state_transition_test" start time: Jul 23 10:29 CST
+Output:
+----------------------------------------------------------
+-- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test':
+ - /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/controller_state_transition_test --gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/controller_state_transition_test.gtest.xml
+terminate called after throwing an instance of 'spdlog::spdlog_ex'
+  what():  Failed opening file /home/dex/.ros/log/controller_state_transition_test_41_1784773772515.log for writing: Read-only file system
+-- run_test.py: return code -6
+-- run_test.py: generate result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/controller_state_transition_test.gtest.xml' with failed test
+-- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/controller_state_transition_test.gtest.xml'
+<end of output>
+Test time =   0.19 sec
+----------------------------------------------------------
+Test Failed.
+"controller_state_transition_test" end time: Jul 23 10:29 CST
+"controller_state_transition_test" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Jul 23 10:29 CST
+
+gtest =   0.19 sec*proc
+

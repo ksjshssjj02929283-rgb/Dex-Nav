@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="nav2_mppi_controller" tests="1" failures="0" time="0.129" errors="1" skipped="0">
-  <testcase classname="nav2_mppi_controller" name="path_handler_test.gtest.missing_result" time="0.129">
-    <error message="The test did not generate a result file:&#10;&#10;terminate called after throwing an instance of 'spdlog::spdlog_ex'&#10;  what():  Failed opening file /home/dex/.ros/log/path_handler_test_51_1784285057949.log for writing: Read-only file system&#10;"/>
-  </testcase>
-</testsuite>
+<testsuites tests="4" failures="0" disabled="0" errors="0" time="0.054" timestamp="2026-07-22T12:09:52" name="AllTests">
+  <testsuite name="PathHandlerTests" tests="4" failures="0" disabled="0" errors="0" time="0.054" timestamp="2026-07-22T12:09:52">
+    <testcase name="GetAndPrunePath" status="run" result="completed" time="0.001" timestamp="2026-07-22T12:09:52" classname="nav2_mppi_controller.PathHandlerTests" />
+    <testcase name="TestBounds" status="run" result="completed" time="0.032" timestamp="2026-07-22T12:09:52" classname="nav2_mppi_controller.PathHandlerTests" />
+    <testcase name="TestTransforms" status="run" result="completed" time="0.02" timestamp="2026-07-22T12:09:52" classname="nav2_mppi_controller.PathHandlerTests" />
+    <testcase name="TestInversionToleranceChecks" status="run" result="completed" time="0.001" timestamp="2026-07-22T12:09:52" classname="nav2_mppi_controller.PathHandlerTests" />
+  </testsuite>
+</testsuites>

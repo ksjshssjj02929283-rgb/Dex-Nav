@@ -1,0 +1,4 @@
+2026-07-28 11:51:24.949 [INFO] 全向底盘测试节点已启动；命令话题=/control/cmd_vel_omni，odom=/feedback/odom，电机反馈=/feedback/omni_chassis_motor，IMU=/imu/data，map_frame=map，base_frame=base_link
+2026-07-28 11:51:24.950 [INFO] 详细日志文件：/home/dex/dexe_mobile_nav/omni_test_logs/omni_chassis_test.log
+2026-07-28 11:51:24.950 [INFO] 配置参数后执行：ros2 param set /omni_chassis_test run_test true
+2026-07-28 11:51:27.737 [WARNING] 测试节点退出，已连续发布零速

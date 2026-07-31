@@ -22,15 +22,9 @@ find_package(nav_msgs REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
+find_package(std_msgs REQUIRED)
 find_package(chassis_interfaces REQUIRED)
-find_package(builtin_interfaces REQUIRED)
-find_package(rosidl_default_generators REQUIRED)
-
-# [ParkWheels] 接口放在本包，避免依赖定制版 nav2_msgs
-rosidl_generate_interfaces(${PROJECT_NAME}
-  "action/ParkWheels.action"
-  DEPENDENCIES builtin_interfaces
-)
+find_package(nav_interfaces REQUIRED)
 
 find_package(PkgConfig QUIET)
 if(PkgConfig_FOUND)
@@ -69,9 +63,8 @@ if(BUILD_TESTING)
   ament_lint_auto_find_test_dependencies()
 endif()
 
-# CMake target 不能与 rosidl_generate_interfaces(${PROJECT_NAME}) 同名，
-# 否则会和接口自定义 target "mobile_joy_control" 冲突。
-# OUTPUT_NAME 仍为 mobile_joy_control，launch 里 executable 不用改。
+# CMake target 使用独立名称，OUTPUT_NAME 仍为 mobile_joy_control，
+# launch 里的 executable 不需要修改。
 add_executable(mobile_joy_control_node
   src/mobile_joy_control.cpp
 )
@@ -100,12 +93,10 @@ ament_target_dependencies(mobile_cmd_omni
   rclcpp
   rclcpp_action
   geometry_msgs
+  std_msgs
   chassis_interfaces
+  nav_interfaces
 )
-
-# 链接本包生成的 ParkWheels action 类型支持
-rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
-target_link_libraries(mobile_cmd_omni "${cpp_typesupport_target}")
 
 install(TARGETS
   mobile_joy_control_node
@@ -123,5 +114,9 @@ install(
   DESTINATION share/${PROJECT_NAME}
 )
 
-ament_export_dependencies(rosidl_default_runtime)
+install(
+  PROGRAMS scripts/omni_chassis_test.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 ament_package()

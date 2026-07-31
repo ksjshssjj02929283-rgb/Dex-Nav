@@ -1,10 +1,432 @@
 -- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test':
  - /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/critics_tests --gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/critics_tests.gtest.xml
 
-terminate called after throwing an instance of 'spdlog::spdlog_ex'
-  what():  Failed opening file /home/dex/.ros/log/critics_tests_57_1784285058469.log for writing: Read-only file system
+Running main() from /opt/ros/humble/src/gtest_vendor/src/gtest_main.cc
+[==========] Running 24 tests from 2 test suites.
+[----------] Global test environment set-up.
+[----------] 10 tests from UtilsTests
+[ RUN      ] UtilsTests.MarkerPopulationUtils
+[       OK ] UtilsTests.MarkerPopulationUtils (0 ms)
+[ RUN      ] UtilsTests.ConversionTests
+[       OK ] UtilsTests.ConversionTests (0 ms)
+[ RUN      ] UtilsTests.WithTolTests
+[       OK ] UtilsTests.WithTolTests (0 ms)
+[ RUN      ] UtilsTests.AnglesTests
+[       OK ] UtilsTests.AnglesTests (0 ms)
+[ RUN      ] UtilsTests.FurthestAndClosestReachedPoint
+[       OK ] UtilsTests.FurthestAndClosestReachedPoint (0 ms)
+[ RUN      ] UtilsTests.FindClosestPathPointBoundaries
+[       OK ] UtilsTests.FindClosestPathPointBoundaries (0 ms)
+[ RUN      ] UtilsTests.findPathCosts
+getifaddrs: Operation not permitted
+getifaddrs: Operation not permitted
+getifaddrs: Operation not permitted
+[37;1m2026-07-22 12:09:52.793 [31;1m[[37;1mTRANSPORT_UDP[31;1m Error] [37mError creating socket: Operation not permitted[34;1m -> Function [36minit[m
+[37;1m2026-07-22 12:09:52.793 [31;1m[[37;1mRTPS_PARTICIPANT[31;1m Error] [37mUser transport failed to register.[34;1m -> Function [36mRTPSParticipantImpl[m
+[INFO] [1784693392.800171763] [dummy_costmap.dummy_costmap]: 
+	dummy_costmap lifecycle node launched. 
+	Waiting on external lifecycle transitions to activate
+	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[INFO] [1784693392.800583021] [dummy_costmap.dummy_costmap]: Creating Costmap
+[INFO] [1784693392.800667669] [dummy_costmap.dummy_costmap]: Configuring
+[INFO] [1784693392.802148082] [dummy_costmap.dummy_costmap]: Using plugin "static_layer"
+[INFO] [1784693392.802432783] [dummy_costmap.dummy_costmap]: Subscribing to the map topic (/map) with transient local durability
+[INFO] [1784693392.802892812] [dummy_costmap.dummy_costmap]: Initialized plugin "static_layer"
+[INFO] [1784693392.802906628] [dummy_costmap.dummy_costmap]: Using plugin "obstacle_layer"
+[INFO] [1784693392.802989252] [dummy_costmap.dummy_costmap]: Subscribed to Topics: 
+[INFO] [1784693392.803028776] [dummy_costmap.dummy_costmap]: Initialized plugin "obstacle_layer"
+[INFO] [1784693392.803034006] [dummy_costmap.dummy_costmap]: Using plugin "inflation_layer"
+[INFO] [1784693392.803161614] [dummy_costmap.dummy_costmap]: Initialized plugin "inflation_layer"
+Warning: class_loader.ClassLoader: SEVERE WARNING!!! Attempting to unload library while objects created by this loader exist in the heap! You should delete your objects before attempting to unload the library or destroying the ClassLoader. The library will NOT be unloaded.
+         at line 127 in ./src/class_loader.cpp
+[INFO] [1784693392.806635829] [dummy_costmap.dummy_costmap]: Destroying
+[       OK ] UtilsTests.findPathCosts (16 ms)
+[ RUN      ] UtilsTests.SmootherTest
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/utils_test.cpp:375: Failure
+The difference between history[3].vx and 0.2 is 0.15227152705192565, which exceeds 0.05, where
+history[3].vx evaluates to 0.35227152705192566,
+0.2 evaluates to 0.20000000000000001, and
+0.05 evaluates to 0.050000000000000003.
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/utils_test.cpp:376: Failure
+The difference between history[3].vy and 0.0 is 0.18041004240512848, which exceeds 0.035, where
+history[3].vy evaluates to 0.18041004240512848,
+0.0 evaluates to 0, and
+0.035 evaluates to 0.035000000000000003.
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/utils_test.cpp:377: Failure
+The difference between history[3].wz and 0.23 is 0.27768280029296877, which exceeds 0.02, where
+history[3].wz evaluates to 0.50768280029296875,
+0.23 evaluates to 0.23000000000000001, and
+0.02 evaluates to 0.02.
+[  FAILED  ] UtilsTests.SmootherTest (0 ms)
+[ RUN      ] UtilsTests.FindPathInversionTest
+[       OK ] UtilsTests.FindPathInversionTest (0 ms)
+[ RUN      ] UtilsTests.RemovePosesAfterPathInversionTest
+[       OK ] UtilsTests.RemovePosesAfterPathInversionTest (0 ms)
+[----------] 10 tests from UtilsTests (16 ms total)
+
+[----------] 14 tests from CriticTests
+[ RUN      ] CriticTests.GoalFrameLateralAndLongitudinalErrors
+getifaddrs: Operation not permitted
+[37;1m2026-07-22 12:09:52.808 [31;1m[[37;1mTRANSPORT_UDP[31;1m Error] [37mError creating socket: Operation not permitted[34;1m -> Function [36minit[m
+[37;1m2026-07-22 12:09:52.808 [31;1m[[37;1mRTPS_PARTICIPANT[31;1m Error] [37mUser transport failed to register.[34;1m -> Function [36mRTPSParticipantImpl[m
+[INFO] [1784693392.812612275] [dummy_costmap.dummy_costmap]: 
+	dummy_costmap lifecycle node launched. 
+	Waiting on external lifecycle transitions to activate
+	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[INFO] [1784693392.812979129] [dummy_costmap.dummy_costmap]: Creating Costmap
+[INFO] [1784693392.813144999] [dummy_costmap.dummy_costmap]: Configuring
+[INFO] [1784693392.813766189] [dummy_costmap.dummy_costmap]: Using plugin "static_layer"
+[INFO] [1784693392.813895350] [dummy_costmap.dummy_costmap]: Subscribing to the map topic (/map) with transient local durability
+[INFO] [1784693392.813982252] [dummy_costmap.dummy_costmap]: Initialized plugin "static_layer"
+[INFO] [1784693392.813989014] [dummy_costmap.dummy_costmap]: Using plugin "obstacle_layer"
+[INFO] [1784693392.814032816] [dummy_costmap.dummy_costmap]: Subscribed to Topics: 
+[INFO] [1784693392.814041743] [dummy_costmap.dummy_costmap]: Initialized plugin "obstacle_layer"
+[INFO] [1784693392.814044949] [dummy_costmap.dummy_costmap]: Using plugin "inflation_layer"
+[INFO] [1784693392.814136269] [dummy_costmap.dummy_costmap]: Initialized plugin "inflation_layer"
+[INFO] [1784693392.814879617] [goal_frame_critic_test]: GoalLateralCritic instantiated with 1 power, 5.000 weight, tail_steps=8
+[INFO] [1784693392.814940961] [goal_frame_critic_test]: GoalLongitudinalCritic instantiated with 1 power, 5.000 weight, tail_steps=8
+Warning: class_loader.ClassLoader: SEVERE WARNING!!! Attempting to unload library while objects created by this loader exist in the heap! You should delete your objects before attempting to unload the library or destroying the ClassLoader. The library will NOT be unloaded.
+         at line 127 in ./src/class_loader.cpp
+[INFO] [1784693392.816079567] [dummy_costmap.dummy_costmap]: Destroying
+[       OK ] CriticTests.GoalFrameLateralAndLongitudinalErrors (10 ms)
+[ RUN      ] CriticTests.GoalFrameCriticsOnlyScorePredictionTail
+getifaddrs: Operation not permitted
+[37;1m2026-07-22 12:09:52.819 [31;1m[[37;1mTRANSPORT_UDP[31;1m Error] [37mError creating socket: Operation not permitted[34;1m -> Function [36minit[m
+[37;1m2026-07-22 12:09:52.819 [31;1m[[37;1mRTPS_PARTICIPANT[31;1m Error] [37mUser transport failed to register.[34;1m -> Function [36mRTPSParticipantImpl[m
+[INFO] [1784693392.822299226] [dummy_costmap.dummy_costmap]: 
+	dummy_costmap lifecycle node launched. 
+	Waiting on external lifecycle transitions to activate
+	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[INFO] [1784693392.822556897] [dummy_costmap.dummy_costmap]: Creating Costmap
+[INFO] [1784693392.822665790] [dummy_costmap.dummy_costmap]: Configuring
+[INFO] [1784693392.823086876] [dummy_costmap.dummy_costmap]: Using plugin "static_layer"
+[INFO] [1784693392.823241766] [dummy_costmap.dummy_costmap]: Subscribing to the map topic (/map) with transient local durability
+[INFO] [1784693392.823362611] [dummy_costmap.dummy_costmap]: Initialized plugin "static_layer"
+[INFO] [1784693392.823372480] [dummy_costmap.dummy_costmap]: Using plugin "obstacle_layer"
+[INFO] [1784693392.823429055] [dummy_costmap.dummy_costmap]: Subscribed to Topics: 
+[INFO] [1784693392.823440697] [dummy_costmap.dummy_costmap]: Initialized plugin "obstacle_layer"
+[INFO] [1784693392.823445496] [dummy_costmap.dummy_costmap]: Using plugin "inflation_layer"
+[INFO] [1784693392.823515777] [dummy_costmap.dummy_costmap]: Initialized plugin "inflation_layer"
+[INFO] [1784693392.824149250] [goal_tail_critic_test]: GoalLateralCritic instantiated with 1 power, 5.000 weight, tail_steps=2
+[INFO] [1784693392.824187812] [goal_tail_critic_test]: GoalLongitudinalCritic instantiated with 1 power, 5.000 weight, tail_steps=2
+Warning: class_loader.ClassLoader: SEVERE WARNING!!! Attempting to unload library while objects created by this loader exist in the heap! You should delete your objects before attempting to unload the library or destroying the ClassLoader. The library will NOT be unloaded.
+         at line 127 in ./src/class_loader.cpp
+[INFO] [1784693392.825156610] [dummy_costmap.dummy_costmap]: Destroying
+[       OK ] CriticTests.GoalFrameCriticsOnlyScorePredictionTail (9 ms)
+[ RUN      ] CriticTests.LinearVelocityCriticDoesNotBiasForwardDirection
+getifaddrs: Operation not permitted
+[37;1m2026-07-22 12:09:52.827 [31;1m[[37;1mTRANSPORT_UDP[31;1m Error] [37mError creating socket: Operation not permitted[34;1m -> Function [36minit[m
+[37;1m2026-07-22 12:09:52.827 [31;1m[[37;1mRTPS_PARTICIPANT[31;1m Error] [37mUser transport failed to register.[34;1m -> Function [36mRTPSParticipantImpl[m
+[INFO] [1784693392.830683757] [dummy_costmap.dummy_costmap]: 
+	dummy_costmap lifecycle node launched. 
+	Waiting on external lifecycle transitions to activate
+	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[INFO] [1784693392.830928574] [dummy_costmap.dummy_costmap]: Creating Costmap
+[INFO] [1784693392.831006760] [dummy_costmap.dummy_costmap]: Configuring
+[INFO] [1784693392.831348117] [dummy_costmap.dummy_costmap]: Using plugin "static_layer"
+[INFO] [1784693392.831448444] [dummy_costmap.dummy_costmap]: Subscribing to the map topic (/map) with transient local durability
+[INFO] [1784693392.831517093] [dummy_costmap.dummy_costmap]: Initialized plugin "static_layer"
+[INFO] [1784693392.831523585] [dummy_costmap.dummy_costmap]: Using plugin "obstacle_layer"
+[INFO] [1784693392.831565012] [dummy_costmap.dummy_costmap]: Subscribed to Topics: 
+[INFO] [1784693392.831572165] [dummy_costmap.dummy_costmap]: Initialized plugin "obstacle_layer"
+[INFO] [1784693392.831575401] [dummy_costmap.dummy_costmap]: Using plugin "inflation_layer"
+[INFO] [1784693392.831617660] [dummy_costmap.dummy_costmap]: Initialized plugin "inflation_layer"
+[INFO] [1784693392.832188456] [linear_velocity_critic_test]: LinearVelocityCritic instantiated with 2 power, 5.000 weight, speed_max=0.700, ax_max=0.500
+Warning: class_loader.ClassLoader: SEVERE WARNING!!! Attempting to unload library while objects created by this loader exist in the heap! You should delete your objects before attempting to unload the library or destroying the ClassLoader. The library will NOT be unloaded.
+         at line 127 in ./src/class_loader.cpp
+[INFO] [1784693392.833096591] [dummy_costmap.dummy_costmap]: Destroying
+[       OK ] CriticTests.LinearVelocityCriticDoesNotBiasForwardDirection (8 ms)
+[ RUN      ] CriticTests.ConstraintsCritic
+getifaddrs: Operation not permitted
+[37;1m2026-07-22 12:09:52.835 [31;1m[[37;1mTRANSPORT_UDP[31;1m Error] [37mError creating socket: Operation not permitted[34;1m -> Function [36minit[m
+[37;1m2026-07-22 12:09:52.835 [31;1m[[37;1mRTPS_PARTICIPANT[31;1m Error] [37mUser transport failed to register.[34;1m -> Function [36mRTPSParticipantImpl[m
+[INFO] [1784693392.838432551] [dummy_costmap.dummy_costmap]: 
+	dummy_costmap lifecycle node launched. 
+	Waiting on external lifecycle transitions to activate
+	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[INFO] [1784693392.838664855] [dummy_costmap.dummy_costmap]: Creating Costmap
+[INFO] [1784693392.838739674] [dummy_costmap.dummy_costmap]: Configuring
+[INFO] [1784693392.839087514] [dummy_costmap.dummy_costmap]: Using plugin "static_layer"
+[INFO] [1784693392.839198050] [dummy_costmap.dummy_costmap]: Subscribing to the map topic (/map) with transient local durability
+[INFO] [1784693392.839299409] [dummy_costmap.dummy_costmap]: Initialized plugin "static_layer"
+[INFO] [1784693392.839306502] [dummy_costmap.dummy_costmap]: Using plugin "obstacle_layer"
+[INFO] [1784693392.839373788] [dummy_costmap.dummy_costmap]: Subscribed to Topics: 
+[INFO] [1784693392.839383957] [dummy_costmap.dummy_costmap]: Initialized plugin "obstacle_layer"
+[INFO] [1784693392.839387353] [dummy_costmap.dummy_costmap]: Using plugin "inflation_layer"
+[INFO] [1784693392.839444149] [dummy_costmap.dummy_costmap]: Initialized plugin "inflation_layer"
+[INFO] [1784693392.840306449] [my_node]: ConstraintCritic instantiated with 1 power and 4.000000 weight.
+Warning: class_loader.ClassLoader: SEVERE WARNING!!! Attempting to unload library while objects created by this loader exist in the heap! You should delete your objects before attempting to unload the library or destroying the ClassLoader. The library will NOT be unloaded.
+         at line 127 in ./src/class_loader.cpp
+[INFO] [1784693392.841927394] [dummy_costmap.dummy_costmap]: Destroying
+[       OK ] CriticTests.ConstraintsCritic (9 ms)
+[ RUN      ] CriticTests.GoalAngleCritic
+getifaddrs: Operation not permitted
+[37;1m2026-07-22 12:09:52.844 [31;1m[[37;1mTRANSPORT_UDP[31;1m Error] [37mError creating socket: Operation not permitted[34;1m -> Function [36minit[m
+[37;1m2026-07-22 12:09:52.844 [31;1m[[37;1mRTPS_PARTICIPANT[31;1m Error] [37mUser transport failed to register.[34;1m -> Function [36mRTPSParticipantImpl[m
+[INFO] [1784693392.848223276] [dummy_costmap.dummy_costmap]: 
+	dummy_costmap lifecycle node launched. 
+	Waiting on external lifecycle transitions to activate
+	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[INFO] [1784693392.848478192] [dummy_costmap.dummy_costmap]: Creating Costmap
+[INFO] [1784693392.848555096] [dummy_costmap.dummy_costmap]: Configuring
+[INFO] [1784693392.848928964] [dummy_costmap.dummy_costmap]: Using plugin "static_layer"
+[INFO] [1784693392.849033328] [dummy_costmap.dummy_costmap]: Subscribing to the map topic (/map) with transient local durability
+[INFO] [1784693392.849106205] [dummy_costmap.dummy_costmap]: Initialized plugin "static_layer"
+[INFO] [1784693392.849112406] [dummy_costmap.dummy_costmap]: Using plugin "obstacle_layer"
+[INFO] [1784693392.849152260] [dummy_costmap.dummy_costmap]: Subscribed to Topics: 
+[INFO] [1784693392.849159083] [dummy_costmap.dummy_costmap]: Initialized plugin "obstacle_layer"
+[INFO] [1784693392.849162339] [dummy_costmap.dummy_costmap]: Using plugin "inflation_layer"
+[INFO] [1784693392.849205600] [dummy_costmap.dummy_costmap]: Initialized plugin "inflation_layer"
+[INFO] [1784693392.849787316] [my_node]: GoalAngleCritic instantiated with 1 power, 3.000 weight, 2.000 wrong-way ratio and 0.050 rad direction deadband.
+Warning: class_loader.ClassLoader: SEVERE WARNING!!! Attempting to unload library while objects created by this loader exist in the heap! You should delete your objects before attempting to unload the library or destroying the ClassLoader. The library will NOT be unloaded.
+         at line 127 in ./src/class_loader.cpp
+[INFO] [1784693392.851734581] [dummy_costmap.dummy_costmap]: Destroying
+[       OK ] CriticTests.GoalAngleCritic (10 ms)
+[ RUN      ] CriticTests.GoalCritic
+getifaddrs: Operation not permitted
+[37;1m2026-07-22 12:09:52.854 [31;1m[[37;1mTRANSPORT_UDP[31;1m Error] [37mError creating socket: Operation not permitted[34;1m -> Function [36minit[m
+[37;1m2026-07-22 12:09:52.855 [31;1m[[37;1mRTPS_PARTICIPANT[31;1m Error] [37mUser transport failed to register.[34;1m -> Function [36mRTPSParticipantImpl[m
+[INFO] [1784693392.857647858] [dummy_costmap.dummy_costmap]: 
+	dummy_costmap lifecycle node launched. 
+	Waiting on external lifecycle transitions to activate
+	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[INFO] [1784693392.858002610] [dummy_costmap.dummy_costmap]: Creating Costmap
+[INFO] [1784693392.858120430] [dummy_costmap.dummy_costmap]: Configuring
+[INFO] [1784693392.858512192] [dummy_costmap.dummy_costmap]: Using plugin "static_layer"
+[INFO] [1784693392.858641814] [dummy_costmap.dummy_costmap]: Subscribing to the map topic (/map) with transient local durability
+[INFO] [1784693392.858738394] [dummy_costmap.dummy_costmap]: Initialized plugin "static_layer"
+[INFO] [1784693392.858748342] [dummy_costmap.dummy_costmap]: Using plugin "obstacle_layer"
+[INFO] [1784693392.858809166] [dummy_costmap.dummy_costmap]: Subscribed to Topics: 
+[INFO] [1784693392.858819375] [dummy_costmap.dummy_costmap]: Initialized plugin "obstacle_layer"
+[INFO] [1784693392.858824124] [dummy_costmap.dummy_costmap]: Using plugin "inflation_layer"
+[INFO] [1784693392.858895086] [dummy_costmap.dummy_costmap]: Initialized plugin "inflation_layer"
+[INFO] [1784693392.859765882] [my_node]: GoalCritic instantiated with 1 power and 5.000000 weight.
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/critics_tests.cpp:357: Failure
+The difference between costs(2) and 0.0 is 50, which exceeds 1e-6, where
+costs(2) evaluates to 50,
+0.0 evaluates to 0, and
+1e-6 evaluates to 9.9999999999999995e-07.
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/critics_tests.cpp:358: Failure
+The difference between costs.sum() and 0.0 is 50000, which exceeds 1e-6, where
+costs.sum() evaluates to 50000,
+0.0 evaluates to 0, and
+1e-6 evaluates to 9.9999999999999995e-07.
+Warning: class_loader.ClassLoader: SEVERE WARNING!!! Attempting to unload library while objects created by this loader exist in the heap! You should delete your objects before attempting to unload the library or destroying the ClassLoader. The library will NOT be unloaded.
+         at line 127 in ./src/class_loader.cpp
+[INFO] [1784693392.860942778] [dummy_costmap.dummy_costmap]: Destroying
+[  FAILED  ] CriticTests.GoalCritic (9 ms)
+[ RUN      ] CriticTests.PathAngleCritic
+getifaddrs: Operation not permitted
+[37;1m2026-07-22 12:09:52.863 [31;1m[[37;1mTRANSPORT_UDP[31;1m Error] [37mError creating socket: Operation not permitted[34;1m -> Function [36minit[m
+[37;1m2026-07-22 12:09:52.863 [31;1m[[37;1mRTPS_PARTICIPANT[31;1m Error] [37mUser transport failed to register.[34;1m -> Function [36mRTPSParticipantImpl[m
+[INFO] [1784693392.866833514] [dummy_costmap.dummy_costmap]: 
+	dummy_costmap lifecycle node launched. 
+	Waiting on external lifecycle transitions to activate
+	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[INFO] [1784693392.867080095] [dummy_costmap.dummy_costmap]: Creating Costmap
+[INFO] [1784693392.867156057] [dummy_costmap.dummy_costmap]: Configuring
+[INFO] [1784693392.867499708] [dummy_costmap.dummy_costmap]: Using plugin "static_layer"
+[INFO] [1784693392.867601859] [dummy_costmap.dummy_costmap]: Subscribing to the map topic (/map) with transient local durability
+[INFO] [1784693392.867673863] [dummy_costmap.dummy_costmap]: Initialized plugin "static_layer"
+[INFO] [1784693392.867680445] [dummy_costmap.dummy_costmap]: Using plugin "obstacle_layer"
+[INFO] [1784693392.867720911] [dummy_costmap.dummy_costmap]: Subscribed to Topics: 
+[INFO] [1784693392.867728425] [dummy_costmap.dummy_costmap]: Initialized plugin "obstacle_layer"
+[INFO] [1784693392.867732012] [dummy_costmap.dummy_costmap]: Using plugin "inflation_layer"
+[INFO] [1784693392.867774671] [dummy_costmap.dummy_costmap]: Initialized plugin "inflation_layer"
+[INFO] [1784693392.868609369] [my_node]: PathAngleCritic instantiated with 1 power, 2.000 weight, 2.000 wrong-way ratio and 0.050 rad direction deadband. Reversing allowed.
+Warning: class_loader.ClassLoader: SEVERE WARNING!!! Attempting to unload library while objects created by this loader exist in the heap! You should delete your objects before attempting to unload the library or destroying the ClassLoader. The library will NOT be unloaded.
+         at line 127 in ./src/class_loader.cpp
+[INFO] [1784693392.871231704] [dummy_costmap.dummy_costmap]: Destroying
+[       OK ] CriticTests.PathAngleCritic (10 ms)
+[ RUN      ] CriticTests.PreferForwardCritic
+getifaddrs: Operation not permitted
+[37;1m2026-07-22 12:09:52.874 [31;1m[[37;1mTRANSPORT_UDP[31;1m Error] [37mError creating socket: Operation not permitted[34;1m -> Function [36minit[m
+[37;1m2026-07-22 12:09:52.874 [31;1m[[37;1mRTPS_PARTICIPANT[31;1m Error] [37mUser transport failed to register.[34;1m -> Function [36mRTPSParticipantImpl[m
+[INFO] [1784693392.877343162] [dummy_costmap.dummy_costmap]: 
+	dummy_costmap lifecycle node launched. 
+	Waiting on external lifecycle transitions to activate
+	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[INFO] [1784693392.877669621] [dummy_costmap.dummy_costmap]: Creating Costmap
+[INFO] [1784693392.877780578] [dummy_costmap.dummy_costmap]: Configuring
+[INFO] [1784693392.878285631] [dummy_costmap.dummy_costmap]: Using plugin "static_layer"
+[INFO] [1784693392.878397470] [dummy_costmap.dummy_costmap]: Subscribing to the map topic (/map) with transient local durability
+[INFO] [1784693392.878484232] [dummy_costmap.dummy_costmap]: Initialized plugin "static_layer"
+[INFO] [1784693392.878492647] [dummy_costmap.dummy_costmap]: Using plugin "obstacle_layer"
+[INFO] [1784693392.878537772] [dummy_costmap.dummy_costmap]: Subscribed to Topics: 
+[INFO] [1784693392.878546558] [dummy_costmap.dummy_costmap]: Initialized plugin "obstacle_layer"
+[INFO] [1784693392.878549974] [dummy_costmap.dummy_costmap]: Using plugin "inflation_layer"
+[INFO] [1784693392.878593305] [dummy_costmap.dummy_costmap]: Initialized plugin "inflation_layer"
+[INFO] [1784693392.879195529] [my_node]: PreferForwardCritic instantiated with 1 power and 5.000000 weight.
+Warning: class_loader.ClassLoader: SEVERE WARNING!!! Attempting to unload library while objects created by this loader exist in the heap! You should delete your objects before attempting to unload the library or destroying the ClassLoader. The library will NOT be unloaded.
+         at line 127 in ./src/class_loader.cpp
+[INFO] [1784693392.880154389] [dummy_costmap.dummy_costmap]: Destroying
+[       OK ] CriticTests.PreferForwardCritic (9 ms)
+[ RUN      ] CriticTests.TwirlingCritic
+getifaddrs: Operation not permitted
+[37;1m2026-07-22 12:09:52.882 [31;1m[[37;1mTRANSPORT_UDP[31;1m Error] [37mError creating socket: Operation not permitted[34;1m -> Function [36minit[m
+[37;1m2026-07-22 12:09:52.882 [31;1m[[37;1mRTPS_PARTICIPANT[31;1m Error] [37mUser transport failed to register.[34;1m -> Function [36mRTPSParticipantImpl[m
+[INFO] [1784693392.886058971] [dummy_costmap.dummy_costmap]: 
+	dummy_costmap lifecycle node launched. 
+	Waiting on external lifecycle transitions to activate
+	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[INFO] [1784693392.886293699] [dummy_costmap.dummy_costmap]: Creating Costmap
+[INFO] [1784693392.886370572] [dummy_costmap.dummy_costmap]: Configuring
+[INFO] [1784693392.886720135] [dummy_costmap.dummy_costmap]: Using plugin "static_layer"
+[INFO] [1784693392.886824910] [dummy_costmap.dummy_costmap]: Subscribing to the map topic (/map) with transient local durability
+[INFO] [1784693392.886904379] [dummy_costmap.dummy_costmap]: Initialized plugin "static_layer"
+[INFO] [1784693392.886912013] [dummy_costmap.dummy_costmap]: Using plugin "obstacle_layer"
+[INFO] [1784693392.886953811] [dummy_costmap.dummy_costmap]: Subscribed to Topics: 
+[INFO] [1784693392.886961636] [dummy_costmap.dummy_costmap]: Initialized plugin "obstacle_layer"
+[INFO] [1784693392.886964741] [dummy_costmap.dummy_costmap]: Using plugin "inflation_layer"
+[INFO] [1784693392.887008132] [dummy_costmap.dummy_costmap]: Initialized plugin "inflation_layer"
+[INFO] [1784693392.887588235] [my_node]: TwirlingCritic instantiated with 1 power and 10.000000 weight.
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/critics_tests.cpp:559: Failure
+The difference between costs(0) and 3.3 is 1.6828395843505861, which exceeds 4e-1, where
+costs(0) evaluates to 4.9828395843505859,
+3.3 evaluates to 3.2999999999999998, and
+4e-1 evaluates to 0.40000000000000002.
+Warning: class_loader.ClassLoader: SEVERE WARNING!!! Attempting to unload library while objects created by this loader exist in the heap! You should delete your objects before attempting to unload the library or destroying the ClassLoader. The library will NOT be unloaded.
+         at line 127 in ./src/class_loader.cpp
+[INFO] [1784693392.889226894] [dummy_costmap.dummy_costmap]: Destroying
+[  FAILED  ] CriticTests.TwirlingCritic (9 ms)
+[ RUN      ] CriticTests.PathFollowCritic
+getifaddrs: Operation not permitted
+[37;1m2026-07-22 12:09:52.891 [31;1m[[37;1mTRANSPORT_UDP[31;1m Error] [37mError creating socket: Operation not permitted[34;1m -> Function [36minit[m
+[37;1m2026-07-22 12:09:52.891 [31;1m[[37;1mRTPS_PARTICIPANT[31;1m Error] [37mUser transport failed to register.[34;1m -> Function [36mRTPSParticipantImpl[m
+[INFO] [1784693392.894785951] [dummy_costmap.dummy_costmap]: 
+	dummy_costmap lifecycle node launched. 
+	Waiting on external lifecycle transitions to activate
+	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[INFO] [1784693392.895084608] [dummy_costmap.dummy_costmap]: Creating Costmap
+[INFO] [1784693392.895211645] [dummy_costmap.dummy_costmap]: Configuring
+[INFO] [1784693392.895696951] [dummy_costmap.dummy_costmap]: Using plugin "static_layer"
+[INFO] [1784693392.895862520] [dummy_costmap.dummy_costmap]: Subscribing to the map topic (/map) with transient local durability
+[INFO] [1784693392.895988375] [dummy_costmap.dummy_costmap]: Initialized plugin "static_layer"
+[INFO] [1784693392.895997232] [dummy_costmap.dummy_costmap]: Using plugin "obstacle_layer"
+[INFO] [1784693392.896052034] [dummy_costmap.dummy_costmap]: Subscribed to Topics: 
+[INFO] [1784693392.896063746] [dummy_costmap.dummy_costmap]: Initialized plugin "obstacle_layer"
+[INFO] [1784693392.896067543] [dummy_costmap.dummy_costmap]: Using plugin "inflation_layer"
+[INFO] [1784693392.896128807] [dummy_costmap.dummy_costmap]: Initialized plugin "inflation_layer"
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/critics_tests.cpp:601: Failure
+The difference between costs.sum() and 0.0 is 8500, which exceeds 1e-6, where
+costs.sum() evaluates to 8500,
+0.0 evaluates to 0, and
+1e-6 evaluates to 9.9999999999999995e-07.
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/critics_tests.cpp:607: Failure
+The difference between costs.sum() and 750.0 is 8500, which exceeds 1e-2, where
+costs.sum() evaluates to 9250,
+750.0 evaluates to 750, and
+1e-2 evaluates to 0.01.
+Warning: class_loader.ClassLoader: SEVERE WARNING!!! Attempting to unload library while objects created by this loader exist in the heap! You should delete your objects before attempting to unload the library or destroying the ClassLoader. The library will NOT be unloaded.
+         at line 127 in ./src/class_loader.cpp
+[INFO] [1784693392.898029255] [dummy_costmap.dummy_costmap]: Destroying
+[  FAILED  ] CriticTests.PathFollowCritic (9 ms)
+[ RUN      ] CriticTests.PathAlignCritic
+getifaddrs: Operation not permitted
+[37;1m2026-07-22 12:09:52.900 [31;1m[[37;1mTRANSPORT_UDP[31;1m Error] [37mError creating socket: Operation not permitted[34;1m -> Function [36minit[m
+[37;1m2026-07-22 12:09:52.900 [31;1m[[37;1mRTPS_PARTICIPANT[31;1m Error] [37mUser transport failed to register.[34;1m -> Function [36mRTPSParticipantImpl[m
+[INFO] [1784693392.903989961] [dummy_costmap.dummy_costmap]: 
+	dummy_costmap lifecycle node launched. 
+	Waiting on external lifecycle transitions to activate
+	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[INFO] [1784693392.904238725] [dummy_costmap.dummy_costmap]: Creating Costmap
+[INFO] [1784693392.904316090] [dummy_costmap.dummy_costmap]: Configuring
+[INFO] [1784693392.904713181] [dummy_costmap.dummy_costmap]: Using plugin "static_layer"
+[INFO] [1784693392.904825150] [dummy_costmap.dummy_costmap]: Subscribing to the map topic (/map) with transient local durability
+[INFO] [1784693392.904912202] [dummy_costmap.dummy_costmap]: Initialized plugin "static_layer"
+[INFO] [1784693392.904920137] [dummy_costmap.dummy_costmap]: Using plugin "obstacle_layer"
+[INFO] [1784693392.904961645] [dummy_costmap.dummy_costmap]: Subscribed to Topics: 
+[INFO] [1784693392.904969339] [dummy_costmap.dummy_costmap]: Initialized plugin "obstacle_layer"
+[INFO] [1784693392.904972785] [dummy_costmap.dummy_costmap]: Using plugin "inflation_layer"
+[INFO] [1784693392.905016778] [dummy_costmap.dummy_costmap]: Initialized plugin "inflation_layer"
+[INFO] [1784693392.905730800] [my_node]: ReferenceTrajectoryCritic instantiated with 1 power and 10.000000 weight
+Warning: class_loader.ClassLoader: SEVERE WARNING!!! Attempting to unload library while objects created by this loader exist in the heap! You should delete your objects before attempting to unload the library or destroying the ClassLoader. The library will NOT be unloaded.
+         at line 127 in ./src/class_loader.cpp
+[INFO] [1784693392.907255627] [dummy_costmap.dummy_costmap]: Destroying
+[       OK ] CriticTests.PathAlignCritic (9 ms)
+[ RUN      ] CriticTests.PathAlignLegacyCritic
+getifaddrs: Operation not permitted
+[37;1m2026-07-22 12:09:52.910 [31;1m[[37;1mTRANSPORT_UDP[31;1m Error] [37mError creating socket: Operation not permitted[34;1m -> Function [36minit[m
+[37;1m2026-07-22 12:09:52.910 [31;1m[[37;1mRTPS_PARTICIPANT[31;1m Error] [37mUser transport failed to register.[34;1m -> Function [36mRTPSParticipantImpl[m
+[INFO] [1784693392.913318133] [dummy_costmap.dummy_costmap]: 
+	dummy_costmap lifecycle node launched. 
+	Waiting on external lifecycle transitions to activate
+	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[INFO] [1784693392.913618263] [dummy_costmap.dummy_costmap]: Creating Costmap
+[INFO] [1784693392.913751833] [dummy_costmap.dummy_costmap]: Configuring
+[INFO] [1784693392.914245745] [dummy_costmap.dummy_costmap]: Using plugin "static_layer"
+[INFO] [1784693392.914370317] [dummy_costmap.dummy_costmap]: Subscribing to the map topic (/map) with transient local durability
+[INFO] [1784693392.914499719] [dummy_costmap.dummy_costmap]: Initialized plugin "static_layer"
+[INFO] [1784693392.914510258] [dummy_costmap.dummy_costmap]: Using plugin "obstacle_layer"
+[INFO] [1784693392.914559290] [dummy_costmap.dummy_costmap]: Subscribed to Topics: 
+[INFO] [1784693392.914570701] [dummy_costmap.dummy_costmap]: Initialized plugin "obstacle_layer"
+[INFO] [1784693392.914574478] [dummy_costmap.dummy_costmap]: Using plugin "inflation_layer"
+[INFO] [1784693392.914629391] [dummy_costmap.dummy_costmap]: Initialized plugin "inflation_layer"
+[INFO] [1784693392.915357630] [my_node]: ReferenceTrajectoryCritic instantiated with 1 power and 10.000000 weight
+Warning: class_loader.ClassLoader: SEVERE WARNING!!! Attempting to unload library while objects created by this loader exist in the heap! You should delete your objects before attempting to unload the library or destroying the ClassLoader. The library will NOT be unloaded.
+         at line 127 in ./src/class_loader.cpp
+[INFO] [1784693392.916383244] [dummy_costmap.dummy_costmap]: Destroying
+[       OK ] CriticTests.PathAlignLegacyCritic (9 ms)
+[ RUN      ] CriticTests.VelocityDeadbandCritic
+getifaddrs: Operation not permitted
+[37;1m2026-07-22 12:09:52.919 [31;1m[[37;1mTRANSPORT_UDP[31;1m Error] [37mError creating socket: Operation not permitted[34;1m -> Function [36minit[m
+[37;1m2026-07-22 12:09:52.919 [31;1m[[37;1mRTPS_PARTICIPANT[31;1m Error] [37mUser transport failed to register.[34;1m -> Function [36mRTPSParticipantImpl[m
+[INFO] [1784693392.922272647] [dummy_costmap.dummy_costmap]: 
+	dummy_costmap lifecycle node launched. 
+	Waiting on external lifecycle transitions to activate
+	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[INFO] [1784693392.922505893] [dummy_costmap.dummy_costmap]: Creating Costmap
+[INFO] [1784693392.922587024] [dummy_costmap.dummy_costmap]: Configuring
+[INFO] [1784693392.922935825] [dummy_costmap.dummy_costmap]: Using plugin "static_layer"
+[INFO] [1784693392.923037195] [dummy_costmap.dummy_costmap]: Subscribing to the map topic (/map) with transient local durability
+[INFO] [1784693392.923108157] [dummy_costmap.dummy_costmap]: Initialized plugin "static_layer"
+[INFO] [1784693392.923115110] [dummy_costmap.dummy_costmap]: Using plugin "obstacle_layer"
+[INFO] [1784693392.923156848] [dummy_costmap.dummy_costmap]: Subscribed to Topics: 
+[INFO] [1784693392.923164552] [dummy_costmap.dummy_costmap]: Initialized plugin "obstacle_layer"
+[INFO] [1784693392.923167818] [dummy_costmap.dummy_costmap]: Using plugin "inflation_layer"
+[INFO] [1784693392.923210668] [dummy_costmap.dummy_costmap]: Initialized plugin "inflation_layer"
+[INFO] [1784693392.923787746] [my_node]: VelocityDeadbandCritic instantiated with 1 power, 35 weight, deadband_velocity [0.08,0.08,0.08]
+Warning: class_loader.ClassLoader: SEVERE WARNING!!! Attempting to unload library while objects created by this loader exist in the heap! You should delete your objects before attempting to unload the library or destroying the ClassLoader. The library will NOT be unloaded.
+         at line 127 in ./src/class_loader.cpp
+[INFO] [1784693392.924988988] [dummy_costmap.dummy_costmap]: Destroying
+[       OK ] CriticTests.VelocityDeadbandCritic (9 ms)
+[ RUN      ] CriticTests.AngularVelocityCriticStopsInsideYawTolerance
+getifaddrs: Operation not permitted
+[37;1m2026-07-22 12:09:52.927 [31;1m[[37;1mTRANSPORT_UDP[31;1m Error] [37mError creating socket: Operation not permitted[34;1m -> Function [36minit[m
+[37;1m2026-07-22 12:09:52.927 [31;1m[[37;1mRTPS_PARTICIPANT[31;1m Error] [37mUser transport failed to register.[34;1m -> Function [36mRTPSParticipantImpl[m
+[INFO] [1784693392.930370724] [dummy_costmap.dummy_costmap]: 
+	dummy_costmap lifecycle node launched. 
+	Waiting on external lifecycle transitions to activate
+	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[INFO] [1784693392.930698445] [dummy_costmap.dummy_costmap]: Creating Costmap
+[INFO] [1784693392.930790567] [dummy_costmap.dummy_costmap]: Configuring
+[INFO] [1784693392.931154717] [dummy_costmap.dummy_costmap]: Using plugin "static_layer"
+[INFO] [1784693392.931266265] [dummy_costmap.dummy_costmap]: Subscribing to the map topic (/map) with transient local durability
+[INFO] [1784693392.931345844] [dummy_costmap.dummy_costmap]: Initialized plugin "static_layer"
+[INFO] [1784693392.931353218] [dummy_costmap.dummy_costmap]: Using plugin "obstacle_layer"
+[INFO] [1784693392.931398061] [dummy_costmap.dummy_costmap]: Subscribed to Topics: 
+[INFO] [1784693392.931406156] [dummy_costmap.dummy_costmap]: Initialized plugin "obstacle_layer"
+[INFO] [1784693392.931409733] [dummy_costmap.dummy_costmap]: Using plugin "inflation_layer"
+[INFO] [1784693392.931453685] [dummy_costmap.dummy_costmap]: Initialized plugin "inflation_layer"
+[INFO] [1784693392.932043486] [angular_velocity_critic_test]: AngularVelocityCritic instantiated with 2 power, 1.000 weight, wz_max=0.750, az_max=0.700, stop_yaw_tolerance=0.020 rad
+Warning: class_loader.ClassLoader: SEVERE WARNING!!! Attempting to unload library while objects created by this loader exist in the heap! You should delete your objects before attempting to unload the library or destroying the ClassLoader. The library will NOT be unloaded.
+         at line 127 in ./src/class_loader.cpp
+[INFO] [1784693392.933051908] [dummy_costmap.dummy_costmap]: Destroying
+[       OK ] CriticTests.AngularVelocityCriticStopsInsideYawTolerance (8 ms)
+[----------] 14 tests from CriticTests (127 ms total)
+
+[----------] Global test environment tear-down
+[==========] 24 tests from 2 test suites ran. (143 ms total)
+[  PASSED  ] 20 tests.
+[  FAILED  ] 4 tests, listed below:
+[  FAILED  ] UtilsTests.SmootherTest
+[  FAILED  ] CriticTests.GoalCritic
+[  FAILED  ] CriticTests.TwirlingCritic
+[  FAILED  ] CriticTests.PathFollowCritic
+
+ 4 FAILED TESTS
 
 
--- run_test.py: return code -6
--- run_test.py: generate result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/critics_tests.gtest.xml' with failed test
+-- run_test.py: return code 1
+-- run_test.py: inject classname prefix into gtest result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/critics_tests.gtest.xml'
 -- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/critics_tests.gtest.xml'

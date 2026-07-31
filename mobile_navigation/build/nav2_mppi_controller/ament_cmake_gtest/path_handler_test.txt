@@ -1,10 +1,70 @@
 -- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test':
  - /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/path_handler_test --gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/path_handler_test.gtest.xml
 
-terminate called after throwing an instance of 'spdlog::spdlog_ex'
-  what():  Failed opening file /home/dex/.ros/log/path_handler_test_51_1784285057949.log for writing: Read-only file system
+Running main() from /opt/ros/humble/src/gtest_vendor/src/gtest_main.cc
+[==========] Running 4 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 4 tests from PathHandlerTests
+[ RUN      ] PathHandlerTests.GetAndPrunePath
+[INFO] [1784693392.079945852] [MPPIController]: MPPI new global plan received: poses=11. Reset three-stage path_progress and goal_distance stats.
+[       OK ] PathHandlerTests.GetAndPrunePath (1 ms)
+[ RUN      ] PathHandlerTests.TestBounds
+getifaddrs: Operation not permitted
+getifaddrs: Operation not permitted
+getifaddrs: Operation not permitted
+[37;1m2026-07-22 12:09:52.080 [31;1m[[37;1mTRANSPORT_UDP[31;1m Error] [37mError creating socket: Operation not permitted[34;1m -> Function [36minit[m
+[37;1m2026-07-22 12:09:52.080 [31;1m[[37;1mRTPS_PARTICIPANT[31;1m Error] [37mUser transport failed to register.[34;1m -> Function [36mRTPSParticipantImpl[m
+[INFO] [1784693392.089363742] [dummy_costmap.dummy_costmap]: 
+	dummy_costmap lifecycle node launched. 
+	Waiting on external lifecycle transitions to activate
+	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[INFO] [1784693392.089782433] [dummy_costmap.dummy_costmap]: Creating Costmap
+[INFO] [1784693392.089985643] [dummy_costmap.dummy_costmap]: Configuring
+[INFO] [1784693392.091601289] [dummy_costmap.dummy_costmap]: Using plugin "static_layer"
+[INFO] [1784693392.093295822] [dummy_costmap.dummy_costmap]: Subscribing to the map topic (/map) with transient local durability
+[INFO] [1784693392.093773994] [dummy_costmap.dummy_costmap]: Initialized plugin "static_layer"
+[INFO] [1784693392.093785886] [dummy_costmap.dummy_costmap]: Using plugin "obstacle_layer"
+[INFO] [1784693392.093850988] [dummy_costmap.dummy_costmap]: Subscribed to Topics: 
+[INFO] [1784693392.093933011] [dummy_costmap.dummy_costmap]: Initialized plugin "obstacle_layer"
+[INFO] [1784693392.093937630] [dummy_costmap.dummy_costmap]: Using plugin "inflation_layer"
+[INFO] [1784693392.094067873] [dummy_costmap.dummy_costmap]: Initialized plugin "inflation_layer"
+[INFO] [1784693392.096843063] [my_node]: MPPI new global plan received: poses=100. Reset three-stage path_progress and goal_distance stats.
+Warning: class_loader.ClassLoader: SEVERE WARNING!!! Attempting to unload library while objects created by this loader exist in the heap! You should delete your objects before attempting to unload the library or destroying the ClassLoader. The library will NOT be unloaded.
+         at line 127 in ./src/class_loader.cpp
+[INFO] [1784693392.111074157] [dummy_costmap.dummy_costmap]: Destroying
+[       OK ] PathHandlerTests.TestBounds (32 ms)
+[ RUN      ] PathHandlerTests.TestTransforms
+getifaddrs: Operation not permitted
+[37;1m2026-07-22 12:09:52.113 [31;1m[[37;1mTRANSPORT_UDP[31;1m Error] [37mError creating socket: Operation not permitted[34;1m -> Function [36minit[m
+[37;1m2026-07-22 12:09:52.113 [31;1m[[37;1mRTPS_PARTICIPANT[31;1m Error] [37mUser transport failed to register.[34;1m -> Function [36mRTPSParticipantImpl[m
+[INFO] [1784693392.116510474] [dummy_costmap.dummy_costmap]: 
+	dummy_costmap lifecycle node launched. 
+	Waiting on external lifecycle transitions to activate
+	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[INFO] [1784693392.116775179] [dummy_costmap.dummy_costmap]: Creating Costmap
+[INFO] [1784693392.116875696] [dummy_costmap.dummy_costmap]: Configuring
+[INFO] [1784693392.117258140] [dummy_costmap.dummy_costmap]: Using plugin "static_layer"
+[INFO] [1784693392.117371732] [dummy_costmap.dummy_costmap]: Subscribing to the map topic (/map) with transient local durability
+[INFO] [1784693392.117448265] [dummy_costmap.dummy_costmap]: Initialized plugin "static_layer"
+[INFO] [1784693392.117456681] [dummy_costmap.dummy_costmap]: Using plugin "obstacle_layer"
+[INFO] [1784693392.117510781] [dummy_costmap.dummy_costmap]: Subscribed to Topics: 
+[INFO] [1784693392.117520970] [dummy_costmap.dummy_costmap]: Initialized plugin "obstacle_layer"
+[INFO] [1784693392.117525719] [dummy_costmap.dummy_costmap]: Using plugin "inflation_layer"
+[INFO] [1784693392.117577967] [dummy_costmap.dummy_costmap]: Initialized plugin "inflation_layer"
+[INFO] [1784693392.128616341] [my_node]: MPPI new global plan received: poses=100. Reset three-stage path_progress and goal_distance stats.
+Warning: class_loader.ClassLoader: SEVERE WARNING!!! Attempting to unload library while objects created by this loader exist in the heap! You should delete your objects before attempting to unload the library or destroying the ClassLoader. The library will NOT be unloaded.
+         at line 127 in ./src/class_loader.cpp
+[INFO] [1784693392.131400668] [dummy_costmap.dummy_costmap]: Destroying
+[       OK ] PathHandlerTests.TestTransforms (20 ms)
+[ RUN      ] PathHandlerTests.TestInversionToleranceChecks
+[       OK ] PathHandlerTests.TestInversionToleranceChecks (1 ms)
+[----------] 4 tests from PathHandlerTests (54 ms total)
+
+[----------] Global test environment tear-down
+[==========] 4 tests from 1 test suite ran. (54 ms total)
+[  PASSED  ] 4 tests.
 
 
--- run_test.py: return code -6
--- run_test.py: generate result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/path_handler_test.gtest.xml' with failed test
+-- run_test.py: return code 0
+-- run_test.py: inject classname prefix into gtest result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/path_handler_test.gtest.xml'
 -- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/path_handler_test.gtest.xml'

@@ -18,6 +18,7 @@
 #include "rclcpp/rclcpp.hpp"
 #include "nav2_theta_star_planner/theta_star.hpp"
 #include "nav2_theta_star_planner/theta_star_planner.hpp"
+#include "tf2/utils.h"
 
 class init_rclcpp
 {
@@ -66,6 +67,25 @@ public:
       return generatePath(path);
     }
     return false;
+  }
+};
+
+/// 暴露少量受保护接口，用于验证路径后处理；不改变生产类的 public API。
+class test_theta_star_planner : public nav2_theta_star_planner::ThetaStarPlanner
+{
+public:
+  void setTangentTerminalYawHoldDistance(double distance)
+  {
+    tangent_terminal_yaw_hold_distance_ = distance;
+  }
+
+  void assignTangentOrientations(
+    nav_msgs::msg::Path & path,
+    const geometry_msgs::msg::PoseStamped & start,
+    const geometry_msgs::msg::PoseStamped & goal)
+  {
+    path_orientation_mode_ = nav2_theta_star_planner::PathOrientationMode::TANGENT;
+    assignPathOrientations(path, start, goal);
   }
 };
 
@@ -167,7 +187,33 @@ TEST(ThetaStarPlanner, test_theta_star_planner) {
   nav_msgs::msg::Path path = planner_2d->createPlan(start, goal);
   EXPECT_GT(static_cast<int>(path.poses.size()), 0);
 
+  // 同一 5 cm 栅格内但连续坐标不同：必须保留完整亚栅格短线，不能折叠成起点。
+  start.pose.position.x = 0.011;
+  start.pose.position.y = 0.012;
+  goal = start;
+  goal.pose.position.x = 0.031;
+  goal.pose.position.y = 0.032;
+  path = planner_2d->createPlan(start, goal);
+  ASSERT_EQ(path.poses.size(), 2u);
+  EXPECT_NEAR(path.poses.front().pose.position.x, start.pose.position.x, 1e-9);
+  EXPECT_NEAR(path.poses.front().pose.position.y, start.pose.position.y, 1e-9);
+  EXPECT_NEAR(path.poses.back().pose.position.x, goal.pose.position.x, 1e-9);
+  EXPECT_NEAR(path.poses.back().pose.position.y, goal.pose.position.y, 1e-9);
+
+  // 跨栅格搜索仍由 Theta* 完成，但首尾必须接回用户输入的连续坐标。
+  goal.pose.position.x = 0.311;
+  goal.pose.position.y = 0.212;
+  path = planner_2d->createPlan(start, goal);
+  ASSERT_GE(path.poses.size(), 2u);
+  EXPECT_NEAR(path.poses.front().pose.position.x, start.pose.position.x, 1e-9);
+  EXPECT_NEAR(path.poses.front().pose.position.y, start.pose.position.y, 1e-9);
+  EXPECT_NEAR(path.poses.back().pose.position.x, goal.pose.position.x, 1e-9);
+  EXPECT_NEAR(path.poses.back().pose.position.y, goal.pose.position.y, 1e-9);
+
   costmap_ros->getCostmap()->setCost(0, 0, 100);
+  start.pose.position.x = 0.0;
+  start.pose.position.y = 0.0;
+  goal = start;
   path = planner_2d->createPlan(start, goal);
   EXPECT_EQ(static_cast<int>(path.poses.size()), 0);
   costmap_ros->getCostmap()->setCost(0, 0, 0);
@@ -190,6 +236,34 @@ TEST(ThetaStarPlanner, test_theta_star_planner) {
   costmap_ros->on_cleanup(rclcpp_lifecycle::State());
   life_node.reset();
   costmap_ros.reset();
+}
+
+TEST(ThetaStarPlanner, tangent_short_terminal_path_holds_current_yaw)
+{
+  test_theta_star_planner planner;
+  planner.setTangentTerminalYawHoldDistance(0.20);
+
+  geometry_msgs::msg::PoseStamped start;
+  geometry_msgs::msg::PoseStamped goal;
+  const double current_yaw = -1.47;
+  start.pose.orientation = nav2_util::geometry_utils::orientationAroundZAxis(current_yaw);
+  goal.pose.orientation = nav2_util::geometry_utils::orientationAroundZAxis(0.03);
+
+  nav_msgs::msg::Path path;
+  path.poses.resize(2);
+  path.poses[0] = start;
+  path.poses[1] = goal;
+  path.poses[1].pose.position.x = 0.05;
+  path.poses[1].pose.position.y = -0.05;
+
+  planner.assignTangentOrientations(path, start, goal);
+  EXPECT_NEAR(tf2::getYaw(path.poses.front().pose.orientation), current_yaw, 1e-6);
+  EXPECT_NEAR(tf2::getYaw(path.poses.back().pose.orientation), current_yaw, 1e-6);
+
+  // 参数设为 0 可关闭保持逻辑，恢复为这条 7 cm 斜线自身的切线方向。
+  planner.setTangentTerminalYawHoldDistance(0.0);
+  planner.assignTangentOrientations(path, start, goal);
+  EXPECT_NEAR(tf2::getYaw(path.poses.front().pose.orientation), -M_PI_4, 1e-6);
 }
 
 TEST(ThetaStarPlanner, test_theta_star_reconfigure)
@@ -218,6 +292,7 @@ TEST(ThetaStarPlanner, test_theta_star_reconfigure)
     {rclcpp::Parameter("test.how_many_corners", 8),
       rclcpp::Parameter("test.w_euc_cost", 1.0),
       rclcpp::Parameter("test.w_traversal_cost", 2.0),
+      rclcpp::Parameter("test.tangent_terminal_yaw_hold_distance", 0.15),
       rclcpp::Parameter("test.use_final_approach_orientation", false),
       rclcpp::Parameter("test.allow_unknown", false)});
 
@@ -230,6 +305,9 @@ TEST(ThetaStarPlanner, test_theta_star_reconfigure)
     life_node->get_parameter("test.w_euc_cost").as_double(),
     1.0);
   EXPECT_EQ(life_node->get_parameter("test.w_traversal_cost").as_double(), 2.0);
+  EXPECT_EQ(
+    life_node->get_parameter("test.tangent_terminal_yaw_hold_distance").as_double(),
+    0.15);
   EXPECT_EQ(life_node->get_parameter("test.use_final_approach_orientation").as_bool(), false);
   EXPECT_EQ(life_node->get_parameter("test.allow_unknown").as_bool(), false);
 

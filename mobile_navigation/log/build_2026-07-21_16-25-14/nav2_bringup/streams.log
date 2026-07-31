@@ -1,0 +1,69 @@
+[0.013s] Invoking command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_bringup': AMENT_PREFIX_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:/opt/ros/humble LD_LIBRARY_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/lib:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/lib:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib:${LD_LIBRARY_PATH} /usr/bin/cmake /home/dex/dexe_mobile_nav/mobile_navigation/nav2_bringup -DAMENT_CMAKE_SYMLINK_INSTALL=1 -DCMAKE_INSTALL_PREFIX=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_bringup
+[0.062s] -- The C compiler identification is GNU 11.4.0
+[0.106s] -- The CXX compiler identification is GNU 11.4.0
+[0.112s] -- Detecting C compiler ABI info
+[0.176s] -- Detecting C compiler ABI info - done
+[0.180s] -- Check for working C compiler: /usr/bin/cc - skipped
+[0.180s] -- Detecting C compile features
+[0.181s] -- Detecting C compile features - done
+[0.182s] -- Detecting CXX compiler ABI info
+[0.256s] -- Detecting CXX compiler ABI info - done
+[0.260s] -- Check for working CXX compiler: /usr/bin/c++ - skipped
+[0.260s] -- Detecting CXX compile features
+[0.260s] -- Detecting CXX compile features - done
+[0.262s] -- Found ament_cmake: 1.3.14 (/opt/ros/humble/share/ament_cmake/cmake)
+[0.374s] -- Found Python3: /usr/bin/python3 (found version "3.10.12") found components: Interpreter 
+[0.416s] -- Override CMake install command with custom implementation using symlinks instead of copying resources
+[0.440s] -- Found nav2_common: 1.1.20 (/opt/ros/humble/share/nav2_common/cmake)
+[0.443s] -- Found navigation2: 1.1.20 (/opt/ros/humble/share/navigation2/cmake)
+[0.443s] -- Setting build type to Release as none was specified.
+[0.446s] -- Found ament_lint_auto: 0.12.15 (/opt/ros/humble/share/ament_lint_auto/cmake)
+[0.532s] -- Added test 'copyright' to check source files copyright and LICENSE
+[0.535s] -- Added test 'flake8' to check Python code syntax and style conventions
+[0.535s] -- Added test 'lint_cmake' to check CMake code style
+[0.536s] -- Added test 'pep257' to check Python code against some of the docstring style conventions in PEP 257
+[0.538s] -- Added test 'xmllint' to check XML markup files
+[0.540s] -- Configuring done
+[0.542s] -- Generating done
+[0.543s] -- Build files have been written to: /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_bringup
+[0.547s] Invoked command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_bringup' returned '0': AMENT_PREFIX_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:/opt/ros/humble LD_LIBRARY_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/lib:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/lib:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib:${LD_LIBRARY_PATH} /usr/bin/cmake /home/dex/dexe_mobile_nav/mobile_navigation/nav2_bringup -DAMENT_CMAKE_SYMLINK_INSTALL=1 -DCMAKE_INSTALL_PREFIX=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_bringup
+[0.548s] Invoking command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_bringup': AMENT_PREFIX_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:/opt/ros/humble LD_LIBRARY_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/lib:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/lib:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib:${LD_LIBRARY_PATH} /usr/bin/cmake --build /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_bringup -- -j16 -l16
+[0.583s] Invoked command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_bringup' returned '0': AMENT_PREFIX_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:/opt/ros/humble LD_LIBRARY_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/lib:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/lib:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib:${LD_LIBRARY_PATH} /usr/bin/cmake --build /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_bringup -- -j16 -l16
+[0.585s] Invoking command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_bringup': AMENT_PREFIX_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:/opt/ros/humble LD_LIBRARY_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/lib:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/lib:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib:${LD_LIBRARY_PATH} /usr/bin/cmake --install /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_bringup
+[0.592s] -- Install configuration: "Release"
+[0.592s] -- Execute custom install script
+[0.592s] -- Symlinking: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_bringup/share/nav2_bringup/launch/bringup_launch.py
+[0.601s] -- Symlinking: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_bringup/share/nav2_bringup/launch/cloned_multi_tb3_simulation_launch.py
+[0.609s] -- Symlinking: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_bringup/share/nav2_bringup/launch/localization_launch.py
+[0.617s] -- Symlinking: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_bringup/share/nav2_bringup/launch/navigation_launch.py
+[0.628s] -- Symlinking: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_bringup/share/nav2_bringup/launch/rviz_launch.py
+[0.637s] -- Symlinking: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_bringup/share/nav2_bringup/launch/slam_launch.py
+[0.646s] -- Symlinking: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_bringup/share/nav2_bringup/launch/tb3_simulation_launch.py
+[0.654s] -- Symlinking: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_bringup/share/nav2_bringup/launch/unique_multi_tb3_simulation_launch.py
+[0.662s] -- Symlinking: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_bringup/share/nav2_bringup/maps/turtlebot3_world.pgm
+[0.669s] -- Symlinking: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_bringup/share/nav2_bringup/maps/turtlebot3_world.yaml
+[0.678s] -- Symlinking: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_bringup/share/nav2_bringup/rviz/nav2_default_view.rviz
+[0.686s] -- Symlinking: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_bringup/share/nav2_bringup/rviz/nav2_namespaced_view.rviz
+[0.695s] -- Symlinking: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_bringup/share/nav2_bringup/worlds/waffle.model
+[0.703s] -- Symlinking: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_bringup/share/nav2_bringup/worlds/world_only.model
+[0.711s] -- Symlinking: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_bringup/share/nav2_bringup/params/nav2_params.yaml
+[0.720s] -- Symlinking: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_bringup/share/nav2_bringup/params/w1_nav2_params.yaml
+[0.728s] -- Symlinking: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_bringup/share/nav2_bringup/params/w1_nav2_params（复件）.yaml
+[0.737s] -- Symlinking: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_bringup/share/nav2_bringup/params/w1_nav2_rgbd_params.yaml
+[0.746s] -- Symlinking: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_bringup/share/nav2_bringup/urdf/turtlebot3_waffle.urdf
+[0.755s] -- Symlinking: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_bringup/share/ament_index/resource_index/package_run_dependencies/nav2_bringup
+[0.763s] -- Symlinking: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_bringup/share/ament_index/resource_index/parent_prefix_path/nav2_bringup
+[0.772s] -- Symlinking: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_bringup/share/nav2_bringup/environment/ament_prefix_path.sh
+[0.781s] -- Symlinking: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_bringup/share/nav2_bringup/environment/ament_prefix_path.dsv
+[0.791s] -- Symlinking: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_bringup/share/nav2_bringup/environment/path.sh
+[0.801s] -- Symlinking: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_bringup/share/nav2_bringup/environment/path.dsv
+[0.809s] -- Symlinking: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_bringup/share/nav2_bringup/local_setup.bash
+[0.819s] -- Symlinking: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_bringup/share/nav2_bringup/local_setup.sh
+[0.827s] -- Symlinking: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_bringup/share/nav2_bringup/local_setup.zsh
+[0.837s] -- Symlinking: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_bringup/share/nav2_bringup/local_setup.dsv
+[0.845s] -- Symlinking: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_bringup/share/nav2_bringup/package.dsv
+[0.854s] -- Symlinking: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_bringup/share/ament_index/resource_index/packages/nav2_bringup
+[0.863s] -- Symlinking: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_bringup/share/nav2_bringup/cmake/nav2_bringupConfig.cmake
+[0.872s] -- Symlinking: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_bringup/share/nav2_bringup/cmake/nav2_bringupConfig-version.cmake
+[0.880s] -- Symlinking: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_bringup/share/nav2_bringup/package.xml
+[0.892s] Invoked command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_bringup' returned '0': AMENT_PREFIX_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:${AMENT_PREFIX_PATH} CMAKE_PREFIX_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:/opt/ros/humble LD_LIBRARY_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/lib:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/lib:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib:${LD_LIBRARY_PATH} /usr/bin/cmake --install /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_bringup

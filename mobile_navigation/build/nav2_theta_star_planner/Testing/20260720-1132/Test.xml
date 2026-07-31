@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Site BuildName="(empty)"
+	BuildStamp="20260720-1132-Experimental"
+	Name="dex-TX-Gaming-FA608UH-FA608UH"
+	Generator="ctest-3.22.1"
+	CompilerName="/usr/bin/c++"
+	CompilerVersion="11.4.0"
+	OSName="Linux"
+	Hostname="dex-TX-Gaming-FA608UH-FA608UH"
+	OSRelease="6.8.0-124-generic"
+	OSVersion="#124~22.04.1-Ubuntu SMP PREEMPT_DYNAMIC Tue May 26 21:05:19 UTC "
+	OSPlatform="x86_64"
+	Is64Bits="1"
+	VendorString="AuthenticAMD"
+	VendorID="Advanced Micro Devices"
+	FamilyID="25"
+	ModelID="117"
+	ProcessorCacheSize="1024"
+	NumberOfLogicalCPU="16"
+	NumberOfPhysicalCPU="8"
+	TotalVirtualMemory="16383"
+	TotalPhysicalMemory="15266"
+	LogicalProcessorsPerPhysical="2"
+	ProcessorClockFrequency="1450.89"
+	>
+	<Testing>
+		<StartDateTime>Jul 20 19:32 CST</StartDateTime>
+		<StartTestTime>1784547129</StartTestTime>
+		<TestList>
+			<Test>./test_theta_star</Test>
+		</TestList>
+		<Test Status="passed">
+			<Name>test_theta_star</Name>
+			<Path>.</Path>
+			<FullName>./test_theta_star</FullName>
+			<FullCommandLine>/usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/test_theta_star.gtest.xml" "--package-name" "nav2_theta_star_planner" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/ament_cmake_gtest/test_theta_star.txt" "--command" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_theta_star" "--gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/test_theta_star.gtest.xml"</FullCommandLine>
+			<Results>
+				<NamedMeasurement type="numeric/double" name="Execution Time">
+					<Value>0.186655</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="numeric/double" name="Processors">
+					<Value>1</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Completion Status">
+					<Value>Completed</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Command Line">
+					<Value>/usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/test_theta_star.gtest.xml" "--package-name" "nav2_theta_star_planner" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/ament_cmake_gtest/test_theta_star.txt" "--command" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_theta_star" "--gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/test_theta_star.gtest.xml"</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Environment">
+					<Value>#CTEST_RESOURCE_GROUP_COUNT=</Value>
+				</NamedMeasurement>
+				<Measurement>
+					<Value>-- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner':
+ - /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_theta_star --gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/test_theta_star.gtest.xml
+Running main() from /opt/ros/humble/src/gtest_vendor/src/gtest_main.cc
+[==========] Running 4 tests from 2 test suites.
+[----------] Global test environment set-up.
+[----------] 1 test from ThetaStarTest
+[ RUN      ] ThetaStarTest.test_theta_star
+[       OK ] ThetaStarTest.test_theta_star (0 ms)
+[----------] 1 test from ThetaStarTest (0 ms total)
+
+[----------] 3 tests from ThetaStarPlanner
+[ RUN      ] ThetaStarPlanner.test_theta_star_planner
+getifaddrs: Operation not permitted
+getifaddrs: Operation not permitted
+getifaddrs: Operation not permitted
+[NON-XML-CHAR-0x1B][37;1m2026-07-20 19:32:09.365 [NON-XML-CHAR-0x1B][31;1m[[NON-XML-CHAR-0x1B][37;1mTRANSPORT_UDP[NON-XML-CHAR-0x1B][31;1m Error] [NON-XML-CHAR-0x1B][37mError creating socket: Operation not permitted[NON-XML-CHAR-0x1B][34;1m -&gt; Function [NON-XML-CHAR-0x1B][36minit[NON-XML-CHAR-0x1B][m
+[NON-XML-CHAR-0x1B][37;1m2026-07-20 19:32:09.365 [NON-XML-CHAR-0x1B][31;1m[[NON-XML-CHAR-0x1B][37;1mRTPS_PARTICIPANT[NON-XML-CHAR-0x1B][31;1m Error] [NON-XML-CHAR-0x1B][37mUser transport failed to register.[NON-XML-CHAR-0x1B][34;1m -&gt; Function [NON-XML-CHAR-0x1B][36mRTPSParticipantImpl[NON-XML-CHAR-0x1B][m
+[INFO] [1784547129.372947208] [global_costmap.global_costmap]: 
+	global_costmap lifecycle node launched. 
+	Waiting on external lifecycle transitions to activate
+	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[INFO] [1784547129.373353189] [global_costmap.global_costmap]: Creating Costmap
+[INFO] [1784547129.373438491] [global_costmap.global_costmap]: Configuring
+[INFO] [1784547129.374935422] [global_costmap.global_costmap]: Using plugin "static_layer"
+[INFO] [1784547129.376801414] [global_costmap.global_costmap]: Subscribing to the map topic (/map) with transient local durability
+[INFO] [1784547129.377355306] [global_costmap.global_costmap]: Initialized plugin "static_layer"
+[INFO] [1784547129.377365335] [global_costmap.global_costmap]: Using plugin "obstacle_layer"
+[INFO] [1784547129.377421080] [global_costmap.global_costmap]: Subscribed to Topics: 
+[INFO] [1784547129.377436440] [global_costmap.global_costmap]: Initialized plugin "obstacle_layer"
+[INFO] [1784547129.377439505] [global_costmap.global_costmap]: Using plugin "inflation_layer"
+[INFO] [1784547129.377543042] [global_costmap.global_costmap]: Initialized plugin "inflation_layer"
+[INFO] [1784547129.380110345] [ThetaStarPlannerTest]: Theta* path orientation: assign=true mode=auto same_threshold=0.020 rad tangent_in_place_markers=false terminal_yaw_hold=0.200 m. Omni: PathAngleCritic off + PathAlign use_path_orientations=true
+[INFO] [1784547129.380126856] [ThetaStarPlannerTest]: Theta* steering continuity (B): enforce=true wheelbase=0.460 track=0.345 max_wheel_step=1.00 rad nominal_v=0.50 max_yaw_rate=1.20
+[INFO] [1784547129.380132617] [ThetaStarPlannerTest]: Activating plugin test of type nav2_theta_star_planner
+[INFO] [1784547129.380136384] [ThetaStarPlannerTest]: Path post-process: smooth_path=true mode=legacy string_pull=true gradient=true fillet_geom=false log_timing=false [build=l1_spline_v3]
+[WARN] [1784547129.380201729] [ThetaStarPlannerTest]: Failed to create a unique pose path because the pose is not in free space
+[ERROR] [1784547129.380206498] [ThetaStarPlannerTest]: Either of the start or goal pose are an obstacle! 
+[ERROR] [1784547129.380224882] [ThetaStarPlannerTest]: createPlan returned empty path (start=0.00,0.00 goal=1.00,1.00)
+[INFO] [1784547129.380230533] [ThetaStarPlannerTest]: Deactivating plugin test of type nav2_theta_star_planner
+[INFO] [1784547129.380233870] [ThetaStarPlannerTest]: CleaningUp plugin test of type nav2_theta_star_planner
+[INFO] [1784547129.380256953] [global_costmap.global_costmap]: Cleaning up
+[INFO] [1784547129.382206935] [global_costmap.global_costmap]: Destroying
+[       OK ] ThetaStarPlanner.test_theta_star_planner (19 ms)
+[ RUN      ] ThetaStarPlanner.tangent_short_terminal_path_holds_current_yaw
+[       OK ] ThetaStarPlanner.tangent_short_terminal_path_holds_current_yaw (0 ms)
+[ RUN      ] ThetaStarPlanner.test_theta_star_reconfigure
+getifaddrs: Operation not permitted
+[NON-XML-CHAR-0x1B][37;1m2026-07-20 19:32:09.384 [NON-XML-CHAR-0x1B][31;1m[[NON-XML-CHAR-0x1B][37;1mTRANSPORT_UDP[NON-XML-CHAR-0x1B][31;1m Error] [NON-XML-CHAR-0x1B][37mError creating socket: Operation not permitted[NON-XML-CHAR-0x1B][34;1m -&gt; Function [NON-XML-CHAR-0x1B][36minit[NON-XML-CHAR-0x1B][m
+[NON-XML-CHAR-0x1B][37;1m2026-07-20 19:32:09.384 [NON-XML-CHAR-0x1B][31;1m[[NON-XML-CHAR-0x1B][37;1mRTPS_PARTICIPANT[NON-XML-CHAR-0x1B][31;1m Error] [NON-XML-CHAR-0x1B][37mUser transport failed to register.[NON-XML-CHAR-0x1B][34;1m -&gt; Function [NON-XML-CHAR-0x1B][36mRTPSParticipantImpl[NON-XML-CHAR-0x1B][m
+[INFO] [1784547129.386851771] [global_costmap.global_costmap]: 
+	global_costmap lifecycle node launched. 
+	Waiting on external lifecycle transitions to activate
+	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[INFO] [1784547129.387091907] [global_costmap.global_costmap]: Creating Costmap
+[INFO] [1784547129.387178602] [global_costmap.global_costmap]: Configuring
+[INFO] [1784547129.387515170] [global_costmap.global_costmap]: Using plugin "static_layer"
+[INFO] [1784547129.387615351] [global_costmap.global_costmap]: Subscribing to the map topic (/map) with transient local durability
+[INFO] [1784547129.387687187] [global_costmap.global_costmap]: Initialized plugin "static_layer"
+[INFO] [1784547129.387695403] [global_costmap.global_costmap]: Using plugin "obstacle_layer"
+[INFO] [1784547129.387742572] [global_costmap.global_costmap]: Subscribed to Topics: 
+[INFO] [1784547129.387750658] [global_costmap.global_costmap]: Initialized plugin "obstacle_layer"
+[INFO] [1784547129.387755617] [global_costmap.global_costmap]: Using plugin "inflation_layer"
+[INFO] [1784547129.387803979] [global_costmap.global_costmap]: Initialized plugin "inflation_layer"
+[INFO] [1784547129.388600150] [ThetaStarPlannerTest]: Theta* path orientation: assign=true mode=auto same_threshold=0.020 rad tangent_in_place_markers=false terminal_yaw_hold=0.200 m. Omni: PathAngleCritic off + PathAlign use_path_orientations=true
+[INFO] [1784547129.388616311] [ThetaStarPlannerTest]: Theta* steering continuity (B): enforce=true wheelbase=0.460 track=0.345 max_wheel_step=1.00 rad nominal_v=0.50 max_yaw_rate=1.20
+[INFO] [1784547129.388624446] [ThetaStarPlannerTest]: Activating plugin test of type nav2_theta_star_planner
+[INFO] [1784547129.388632101] [ThetaStarPlannerTest]: Path post-process: smooth_path=true mode=legacy string_pull=true gradient=true fillet_geom=false log_timing=false [build=l1_spline_v3]
+Warning: class_loader.ClassLoader: SEVERE WARNING!!! Attempting to unload library while objects created by this loader exist in the heap! You should delete your objects before attempting to unload the library or destroying the ClassLoader. The library will NOT be unloaded.
+         at line 127 in ./src/class_loader.cpp
+[INFO] [1784547129.391065269] [global_costmap.global_costmap]: Destroying
+[       OK ] ThetaStarPlanner.test_theta_star_reconfigure (9 ms)
+[----------] 3 tests from ThetaStarPlanner (28 ms total)
+
+[----------] Global test environment tear-down
+[==========] 4 tests from 2 test suites ran. (29 ms total)
+[  PASSED  ] 4 tests.
+-- run_test.py: return code 0
+-- run_test.py: inject classname prefix into gtest result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/test_theta_star.gtest.xml'
+-- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/test_theta_star.gtest.xml'
+</Value>
+				</Measurement>
+			</Results>
+			<Labels>
+				<Label>gtest</Label>
+			</Labels>
+		</Test>
+		<EndDateTime>Jul 20 19:32 CST</EndDateTime>
+		<EndTestTime>1784547129</EndTestTime>
+		<ElapsedMinutes>0</ElapsedMinutes>
+	</Testing>
+</Site>

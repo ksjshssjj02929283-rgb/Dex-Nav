@@ -1,10 +1,28 @@
 -- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test':
  - /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/motion_model_tests --gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/motion_model_tests.gtest.xml
 
-terminate called after throwing an instance of 'spdlog::spdlog_ex'
-  what():  Failed opening file /home/dex/.ros/log/motion_model_tests_45_1784285057439.log for writing: Read-only file system
+Running main() from /opt/ros/humble/src/gtest_vendor/src/gtest_main.cc
+[==========] Running 3 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 3 tests from MotionModelTests
+[ RUN      ] MotionModelTests.DiffDriveTest
+[       OK ] MotionModelTests.DiffDriveTest (1 ms)
+[ RUN      ] MotionModelTests.OmniTest
+[       OK ] MotionModelTests.OmniTest (2 ms)
+[ RUN      ] MotionModelTests.AckermannTest
+getifaddrs: Operation not permitted
+getifaddrs: Operation not permitted
+getifaddrs: Operation not permitted
+[37;1m2026-07-22 12:09:51.551 [31;1m[[37;1mTRANSPORT_UDP[31;1m Error] [37mError creating socket: Operation not permitted[34;1m -> Function [36minit[m
+[37;1m2026-07-22 12:09:51.551 [31;1m[[37;1mRTPS_PARTICIPANT[31;1m Error] [37mUser transport failed to register.[34;1m -> Function [36mRTPSParticipantImpl[m
+[       OK ] MotionModelTests.AckermannTest (10 ms)
+[----------] 3 tests from MotionModelTests (13 ms total)
+
+[----------] Global test environment tear-down
+[==========] 3 tests from 1 test suite ran. (13 ms total)
+[  PASSED  ] 3 tests.
 
 
--- run_test.py: return code -6
--- run_test.py: generate result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/motion_model_tests.gtest.xml' with failed test
+-- run_test.py: return code 0
+-- run_test.py: inject classname prefix into gtest result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/motion_model_tests.gtest.xml'
 -- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/motion_model_tests.gtest.xml'

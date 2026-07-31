@@ -1,0 +1,497 @@
+[0.000000] (-) TimerEvent: {}
+[0.000145] (-) JobUnselected: {'identifier': 'cmd_vel_mux'}
+[0.000160] (-) JobUnselected: {'identifier': 'costmap_queue'}
+[0.000171] (-) JobUnselected: {'identifier': 'dwb_core'}
+[0.000180] (-) JobUnselected: {'identifier': 'dwb_critics'}
+[0.000189] (-) JobUnselected: {'identifier': 'dwb_msgs'}
+[0.000198] (-) JobUnselected: {'identifier': 'dwb_plugins'}
+[0.000206] (-) JobUnselected: {'identifier': 'nav2_amcl'}
+[0.000214] (-) JobUnselected: {'identifier': 'nav2_behavior_tree'}
+[0.000221] (-) JobUnselected: {'identifier': 'nav2_behaviors'}
+[0.000229] (-) JobUnselected: {'identifier': 'nav2_bringup'}
+[0.000237] (-) JobUnselected: {'identifier': 'nav2_bt_navigator'}
+[0.000244] (-) JobUnselected: {'identifier': 'nav2_collision_monitor'}
+[0.000252] (-) JobUnselected: {'identifier': 'nav2_common'}
+[0.000260] (-) JobUnselected: {'identifier': 'nav2_constrained_smoother'}
+[0.000267] (-) JobUnselected: {'identifier': 'nav2_controller'}
+[0.000275] (-) JobUnselected: {'identifier': 'nav2_core'}
+[0.000282] (-) JobUnselected: {'identifier': 'nav2_costmap_2d'}
+[0.000290] (-) JobUnselected: {'identifier': 'nav2_dwb_controller'}
+[0.000297] (-) JobUnselected: {'identifier': 'nav2_graceful_controller'}
+[0.000305] (-) JobUnselected: {'identifier': 'nav2_lifecycle_manager'}
+[0.000406] (-) JobUnselected: {'identifier': 'nav2_map_server'}
+[0.000414] (-) JobUnselected: {'identifier': 'nav2_msgs'}
+[0.000422] (-) JobUnselected: {'identifier': 'nav2_navfn_planner'}
+[0.000429] (-) JobUnselected: {'identifier': 'nav2_planner'}
+[0.000437] (-) JobUnselected: {'identifier': 'nav2_regulated_pure_pursuit_controller'}
+[0.000445] (-) JobUnselected: {'identifier': 'nav2_rotation_shim_controller'}
+[0.000453] (-) JobUnselected: {'identifier': 'nav2_route_planner'}
+[0.000460] (-) JobUnselected: {'identifier': 'nav2_rviz_plugins'}
+[0.000468] (-) JobUnselected: {'identifier': 'nav2_simple_commander'}
+[0.000476] (-) JobUnselected: {'identifier': 'nav2_smac_planner'}
+[0.000483] (-) JobUnselected: {'identifier': 'nav2_smoother'}
+[0.000492] (-) JobUnselected: {'identifier': 'nav2_theta_star_planner'}
+[0.000499] (-) JobUnselected: {'identifier': 'nav2_util'}
+[0.000507] (-) JobUnselected: {'identifier': 'nav2_velocity_smoother'}
+[0.000514] (-) JobUnselected: {'identifier': 'nav2_voxel_grid'}
+[0.000522] (-) JobUnselected: {'identifier': 'nav2_waypoint_follower'}
+[0.000529] (-) JobUnselected: {'identifier': 'nav_2d_msgs'}
+[0.000537] (-) JobUnselected: {'identifier': 'nav_2d_utils'}
+[0.000545] (-) JobUnselected: {'identifier': 'navigation2'}
+[0.000552] (-) JobUnselected: {'identifier': 'nonpersistent_voxel_layer'}
+[0.000562] (nav2_mppi_controller) JobQueued: {'identifier': 'nav2_mppi_controller', 'dependencies': OrderedDict([('nav2_common', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_common'), ('nav2_msgs', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_msgs'), ('nav2_voxel_grid', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_voxel_grid'), ('nav2_util', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_util'), ('nav2_lifecycle_manager', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_lifecycle_manager'), ('nav2_map_server', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server'), ('nav2_costmap_2d', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_costmap_2d'), ('nav2_core', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_core')])}
+[0.000592] (nav2_mppi_controller) JobStarted: {'identifier': 'nav2_mppi_controller'}
+[0.012141] (nav2_mppi_controller) JobProgress: {'identifier': 'nav2_mppi_controller', 'progress': 'cmake'}
+[0.013459] (nav2_mppi_controller) Command: {'cmd': ['/usr/bin/cmake', '/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller', '-DAMENT_CMAKE_SYMLINK_INSTALL=1', '-DCMAKE_INSTALL_PREFIX=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller'], 'cwd': '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller', 'env': OrderedDict([('LESSOPEN', '| /usr/bin/lesspipe %s'), ('CODEX_CI', '1'), ('LANGUAGE', 'zh_CN'), ('USER', 'dex'), ('LC_TIME', 'zh_CN.UTF-8'), ('XDG_SESSION_TYPE', 'x11'), ('SHLVL', '1'), ('LD_LIBRARY_PATH', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib:/usr/lib/x86_64-linux-gnu/gazebo-11/plugins:/opt/ros/humble/opt/rviz_ogre_vendor/lib:/opt/ros/humble/lib/x86_64-linux-gnu:/opt/ros/humble/lib'), ('HOME', '/home/dex'), ('OLDPWD', '/home/dex'), ('DESKTOP_SESSION', 'ubuntu-xorg'), ('NVM_BIN', '/home/dex/.nvm/versions/node/v22.23.1/bin'), ('NVM_INC', '/home/dex/.nvm/versions/node/v22.23.1/include/node'), ('ROS_PYTHON_VERSION', '3'), ('GNOME_SHELL_SESSION_MODE', 'ubuntu'), ('GTK_MODULES', 'gail:atk-bridge'), ('PAGER', 'cat'), ('LC_MONETARY', 'zh_CN.UTF-8'), ('MANAGERPID', '2108'), ('LC_CTYPE', 'C.UTF-8'), ('SYSTEMD_EXEC_PID', '2589'), ('NO_COLOR', '1'), ('DBUS_SESSION_BUS_ADDRESS', 'unix:path=/run/user/1000/bus'), ('COLORTERM', ''), ('TERMINATOR_DBUS_NAME', 'net.tenshu.Terminator23558193cd9818af7fe4d2c2f5bd9d00f'), ('GIO_LAUNCHED_DESKTOP_FILE_PID', '8667'), ('NVM_DIR', '/home/dex/.nvm'), ('CODEX_PERMISSION_PROFILE', ':workspace'), ('ROS_DISTRO', 'humble'), ('GTK_IM_MODULE', 'ibus'), ('LOGNAME', 'dex'), ('http_proxy', 'https://127.0.0.1:7897'), ('JOURNAL_STREAM', '8:10945'), ('_', '/usr/bin/colcon'), ('ROS_VERSION', '2'), ('XDG_SESSION_CLASS', 'user'), ('USERNAME', 'dex'), ('TERM', 'dumb'), ('GNOME_DESKTOP_SESSION_ID', 'this-is-deprecated'), ('ROS_LOCALHOST_ONLY', '0'), ('WINDOWPATH', '2'), ('PATH', '/home/dex/.local/npm/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/codex-path:/home/dex/.codex/tmp/arg0/codex-arg0wclkfQ:/home/dex/.nvm/versions/node/v22.23.1/bin:/home/dex/.local/npm/bin:/opt/ros/humble/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/snap/bin'), ('SESSION_MANAGER', 'local/dex-TX-Gaming-FA608UH-FA608UH:@/tmp/.ICE-unix/2404,unix/dex-TX-Gaming-FA608UH-FA608UH:/tmp/.ICE-unix/2404'), ('INVOCATION_ID', '35d51128ab174db89c959789b5861112'), ('PAPERSIZE', 'a4'), ('XDG_MENU_PREFIX', 'gnome-'), ('LC_ADDRESS', 'zh_CN.UTF-8'), ('XDG_RUNTIME_DIR', '/run/user/1000'), ('DISPLAY', ':1'), ('CODEX_SANDBOX_NETWORK_DISABLED', '1'), ('TERMINATOR_DBUS_PATH', '/net/tenshu/Terminator2'), ('LANG', 'C.UTF-8'), ('XDG_CURRENT_DESKTOP', 'ubuntu:GNOME'), ('IBUS_DISABLE_SNOOPER', '1'), ('LC_TELEPHONE', 'zh_CN.UTF-8'), ('XMODIFIERS', '@im=ibus'), ('GH_PAGER', 'cat'), ('XDG_SESSION_DESKTOP', 'ubuntu-xorg'), ('XAUTHORITY', '/run/user/1000/gdm/Xauthority'), ('LS_COLORS', 'rs=0:di=01;34:ln=01;36:mh=00:pi=40;33:so=01;35:do=01;35:bd=40;33;01:cd=40;33;01:or=40;31;01:mi=00:su=37;41:sg=30;43:ca=30;41:tw=30;42:ow=34;42:st=37;44:ex=01;32:*.tar=01;31:*.tgz=01;31:*.arc=01;31:*.arj=01;31:*.taz=01;31:*.lha=01;31:*.lz4=01;31:*.lzh=01;31:*.lzma=01;31:*.tlz=01;31:*.txz=01;31:*.tzo=01;31:*.t7z=01;31:*.zip=01;31:*.z=01;31:*.dz=01;31:*.gz=01;31:*.lrz=01;31:*.lz=01;31:*.lzo=01;31:*.xz=01;31:*.zst=01;31:*.tzst=01;31:*.bz2=01;31:*.bz=01;31:*.tbz=01;31:*.tbz2=01;31:*.tz=01;31:*.deb=01;31:*.rpm=01;31:*.jar=01;31:*.war=01;31:*.ear=01;31:*.sar=01;31:*.rar=01;31:*.alz=01;31:*.ace=01;31:*.zoo=01;31:*.cpio=01;31:*.7z=01;31:*.rz=01;31:*.cab=01;31:*.wim=01;31:*.swm=01;31:*.dwm=01;31:*.esd=01;31:*.jpg=01;35:*.jpeg=01;35:*.mjpg=01;35:*.mjpeg=01;35:*.gif=01;35:*.bmp=01;35:*.pbm=01;35:*.pgm=01;35:*.ppm=01;35:*.tga=01;35:*.xbm=01;35:*.xpm=01;35:*.tif=01;35:*.tiff=01;35:*.png=01;35:*.svg=01;35:*.svgz=01;35:*.mng=01;35:*.pcx=01;35:*.mov=01;35:*.mpg=01;35:*.mpeg=01;35:*.m2v=01;35:*.mkv=01;35:*.webm=01;35:*.webp=01;35:*.ogm=01;35:*.mp4=01;35:*.m4v=01;35:*.mp4v=01;35:*.vob=01;35:*.qt=01;35:*.nuv=01;35:*.wmv=01;35:*.asf=01;35:*.rm=01;35:*.rmvb=01;35:*.flc=01;35:*.avi=01;35:*.fli=01;35:*.flv=01;35:*.gl=01;35:*.dl=01;35:*.xcf=01;35:*.xwd=01;35:*.yuv=01;35:*.cgm=01;35:*.emf=01;35:*.ogv=01;35:*.ogx=01;35:*.aac=00;36:*.au=00;36:*.flac=00;36:*.m4a=00;36:*.mid=00;36:*.midi=00;36:*.mka=00;36:*.mp3=00;36:*.mpc=00;36:*.ogg=00;36:*.ra=00;36:*.wav=00;36:*.oga=00;36:*.opus=00;36:*.spx=00;36:*.xspf=00;36:'), ('SSH_AGENT_LAUNCHER', 'gnome-keyring'), ('SSH_AUTH_SOCK', '/run/user/1000/keyring/ssh'), ('AMENT_PREFIX_PATH', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:/opt/ros/humble'), ('SHELL', '/bin/bash'), ('LC_NAME', 'zh_CN.UTF-8'), ('TERMINATOR_UUID', 'urn:uuid:cbe53817-7274-497c-a73c-346868bee61f'), ('QT_ACCESSIBILITY', '1'), ('GDMSESSION', 'ubuntu-xorg'), ('LESSCLOSE', '/usr/bin/lesspipe %s %s'), ('CODEX_THREAD_ID', '019f825f-1886-7f43-8834-04578e1a1d6c'), ('LC_MEASUREMENT', 'zh_CN.UTF-8'), ('GPG_AGENT_INFO', '/run/user/1000/gnupg/S.gpg-agent:0:1'), ('LC_IDENTIFICATION', 'zh_CN.UTF-8'), ('GIT_PAGER', 'cat'), ('QT_IM_MODULE', 'ibus'), ('PWD', '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller'), ('LC_ALL', 'C.UTF-8'), ('CODEX_MANAGED_PACKAGE_ROOT', '/home/dex/.local/npm/lib/node_modules/@openai/codex'), ('XDG_CONFIG_DIRS', '/etc/xdg/xdg-ubuntu-xorg:/etc/xdg'), ('NVM_CD_FLAGS', ''), ('XDG_DATA_DIRS', '/usr/share/ubuntu-xorg:/usr/share/gnome:/usr/local/share/:/usr/share/:/var/lib/snapd/desktop'), ('PYTHONPATH', '/opt/ros/humble/lib/python3.10/site-packages:/opt/ros/humble/local/lib/python3.10/dist-packages'), ('LC_NUMERIC', 'zh_CN.UTF-8'), ('LC_PAPER', 'zh_CN.UTF-8'), ('COLCON', '1'), ('CODEX_MANAGED_BY_NPM', '1'), ('VTE_VERSION', '6800'), ('CMAKE_PREFIX_PATH', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:/opt/ros/humble')]), 'shell': False}
+[0.030260] (nav2_mppi_controller) StdoutLine: {'line': b'-- Found ament_cmake: 1.3.14 (/opt/ros/humble/share/ament_cmake/cmake)\n'}
+[0.099776] (-) TimerEvent: {}
+[0.119083] (nav2_mppi_controller) StdoutLine: {'line': b'-- Override CMake install command with custom implementation using symlinks instead of copying resources\n'}
+[0.127881] (nav2_mppi_controller) StdoutLine: {'line': b'-- Found rclcpp: 16.0.19 (/opt/ros/humble/share/rclcpp/cmake)\n'}
+[0.150986] (nav2_mppi_controller) StdoutLine: {'line': b'-- Found rosidl_generator_c: 3.1.8 (/opt/ros/humble/share/rosidl_generator_c/cmake)\n'}
+[0.153023] (nav2_mppi_controller) StdoutLine: {'line': b'-- Found rosidl_adapter: 3.1.8 (/opt/ros/humble/share/rosidl_adapter/cmake)\n'}
+[0.158244] (nav2_mppi_controller) StdoutLine: {'line': b'-- Found rosidl_generator_cpp: 3.1.8 (/opt/ros/humble/share/rosidl_generator_cpp/cmake)\n'}
+[0.165504] (nav2_mppi_controller) StdoutLine: {'line': b'-- Using all available rosidl_typesupport_c: rosidl_typesupport_fastrtps_c;rosidl_typesupport_introspection_c\n'}
+[0.175191] (nav2_mppi_controller) StdoutLine: {'line': b'-- Using all available rosidl_typesupport_cpp: rosidl_typesupport_fastrtps_cpp;rosidl_typesupport_introspection_cpp\n'}
+[0.199382] (nav2_mppi_controller) StdoutLine: {'line': b'-- Found rmw_implementation_cmake: 6.1.2 (/opt/ros/humble/share/rmw_implementation_cmake/cmake)\n'}
+[0.199819] (-) TimerEvent: {}
+[0.200736] (nav2_mppi_controller) StdoutLine: {'line': b'-- Found rmw_fastrtps_cpp: 6.2.10 (/opt/ros/humble/share/rmw_fastrtps_cpp/cmake)\n'}
+[0.289761] (nav2_mppi_controller) StdoutLine: {'line': b"-- Using RMW implementation 'rmw_fastrtps_cpp' as default\n"}
+[0.299922] (-) TimerEvent: {}
+[0.336746] (nav2_mppi_controller) StdoutLine: {'line': b'-- Found nav2_common: 1.1.20 (/opt/ros/humble/share/nav2_common/cmake)\n'}
+[0.337115] (nav2_mppi_controller) StdoutLine: {'line': b'-- Found pluginlib: 5.1.4 (/opt/ros/humble/share/pluginlib/cmake)\n'}
+[0.350936] (nav2_mppi_controller) StdoutLine: {'line': b'-- Found tf2: 0.25.20 (/opt/ros/humble/share/tf2/cmake)\n'}
+[0.362874] (nav2_mppi_controller) StdoutLine: {'line': b'-- Found visualization_msgs: 4.9.1 (/opt/ros/humble/share/visualization_msgs/cmake)\n'}
+[0.388469] (nav2_mppi_controller) StdoutLine: {'line': b'-- Found nav_msgs: 4.9.1 (/opt/ros/humble/share/nav_msgs/cmake)\n'}
+[0.400040] (-) TimerEvent: {}
+[0.400356] (nav2_mppi_controller) StdoutLine: {'line': b'-- Found nav2_core: 1.1.20 (/opt/ros/humble/share/nav2_core/cmake)\n'}
+[0.500150] (-) TimerEvent: {}
+[0.519481] (nav2_mppi_controller) StdoutLine: {'line': b'-- Ensuring Eigen3 include directory is part of orocos-kdl CMake target\n'}
+[0.566912] (nav2_mppi_controller) StdoutLine: {'line': b'-- Found tf2_eigen: 0.25.20 (/opt/ros/humble/share/tf2_eigen/cmake)\n'}
+[0.600393] (-) TimerEvent: {}
+[0.700686] (-) TimerEvent: {}
+[0.728106] (nav2_mppi_controller) StdoutLine: {'line': b'-- Found ament_lint_auto: 0.12.15 (/opt/ros/humble/share/ament_lint_auto/cmake)\n'}
+[0.728793] (nav2_mppi_controller) StdoutLine: {'line': b'-- Found ament_cmake_gtest: 1.3.14 (/opt/ros/humble/share/ament_cmake_gtest/cmake)\n'}
+[0.785120] (nav2_mppi_controller) StdoutLine: {'line': b"-- Found gtest sources under '/opt/ros/humble/src/gtest_vendor': C++ tests using 'Google Test' will be built\n"}
+[0.800876] (-) TimerEvent: {}
+[0.901183] (-) TimerEvent: {}
+[1.001367] (-) TimerEvent: {}
+[1.101544] (-) TimerEvent: {}
+[1.201708] (-) TimerEvent: {}
+[1.230548] (nav2_mppi_controller) StdoutLine: {'line': b"-- Added test 'cppcheck' to perform static code analysis on C / C++ code\n"}
+[1.231010] (nav2_mppi_controller) StdoutLine: {'line': b'-- Configured cppcheck include dirs: /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include\n'}
+[1.231109] (nav2_mppi_controller) StdoutLine: {'line': b'-- Configured cppcheck exclude dirs and/or files: \n'}
+[1.234321] (nav2_mppi_controller) StdoutLine: {'line': b"-- Added test 'cpplint' to check C / C++ code against the Google style\n"}
+[1.234408] (nav2_mppi_controller) StdoutLine: {'line': b'-- Configured cpplint exclude dirs and/or files: \n'}
+[1.235839] (nav2_mppi_controller) StdoutLine: {'line': b"-- Added test 'lint_cmake' to check CMake code style\n"}
+[1.239651] (nav2_mppi_controller) StdoutLine: {'line': b"-- Added test 'uncrustify' to check C / C++ code style\n"}
+[1.239734] (nav2_mppi_controller) StdoutLine: {'line': b'-- Configured uncrustify additional arguments: \n'}
+[1.240298] (nav2_mppi_controller) StdoutLine: {'line': b"-- Added test 'xmllint' to check XML markup files\n"}
+[1.243314] (nav2_mppi_controller) StdoutLine: {'line': b'-- Configuring done\n'}
+[1.301807] (-) TimerEvent: {}
+[1.402094] (-) TimerEvent: {}
+[1.502374] (-) TimerEvent: {}
+[1.602562] (-) TimerEvent: {}
+[1.702740] (-) TimerEvent: {}
+[1.802994] (-) TimerEvent: {}
+[1.903243] (-) TimerEvent: {}
+[1.914784] (nav2_mppi_controller) StdoutLine: {'line': b'-- Generating done\n'}
+[1.965293] (nav2_mppi_controller) StdoutLine: {'line': b'-- Build files have been written to: /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller\n'}
+[1.979831] (nav2_mppi_controller) CommandEnded: {'returncode': 0}
+[1.980437] (nav2_mppi_controller) JobProgress: {'identifier': 'nav2_mppi_controller', 'progress': 'build'}
+[1.980903] (nav2_mppi_controller) Command: {'cmd': ['/usr/bin/cmake', '--build', '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller', '--', '-j16', '-l16'], 'cwd': '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller', 'env': OrderedDict([('LESSOPEN', '| /usr/bin/lesspipe %s'), ('CODEX_CI', '1'), ('LANGUAGE', 'zh_CN'), ('USER', 'dex'), ('LC_TIME', 'zh_CN.UTF-8'), ('XDG_SESSION_TYPE', 'x11'), ('SHLVL', '1'), ('LD_LIBRARY_PATH', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib:/usr/lib/x86_64-linux-gnu/gazebo-11/plugins:/opt/ros/humble/opt/rviz_ogre_vendor/lib:/opt/ros/humble/lib/x86_64-linux-gnu:/opt/ros/humble/lib'), ('HOME', '/home/dex'), ('OLDPWD', '/home/dex'), ('DESKTOP_SESSION', 'ubuntu-xorg'), ('NVM_BIN', '/home/dex/.nvm/versions/node/v22.23.1/bin'), ('NVM_INC', '/home/dex/.nvm/versions/node/v22.23.1/include/node'), ('ROS_PYTHON_VERSION', '3'), ('GNOME_SHELL_SESSION_MODE', 'ubuntu'), ('GTK_MODULES', 'gail:atk-bridge'), ('PAGER', 'cat'), ('LC_MONETARY', 'zh_CN.UTF-8'), ('MANAGERPID', '2108'), ('LC_CTYPE', 'C.UTF-8'), ('SYSTEMD_EXEC_PID', '2589'), ('NO_COLOR', '1'), ('DBUS_SESSION_BUS_ADDRESS', 'unix:path=/run/user/1000/bus'), ('COLORTERM', ''), ('TERMINATOR_DBUS_NAME', 'net.tenshu.Terminator23558193cd9818af7fe4d2c2f5bd9d00f'), ('GIO_LAUNCHED_DESKTOP_FILE_PID', '8667'), ('NVM_DIR', '/home/dex/.nvm'), ('CODEX_PERMISSION_PROFILE', ':workspace'), ('ROS_DISTRO', 'humble'), ('GTK_IM_MODULE', 'ibus'), ('LOGNAME', 'dex'), ('http_proxy', 'https://127.0.0.1:7897'), ('JOURNAL_STREAM', '8:10945'), ('_', '/usr/bin/colcon'), ('ROS_VERSION', '2'), ('XDG_SESSION_CLASS', 'user'), ('USERNAME', 'dex'), ('TERM', 'dumb'), ('GNOME_DESKTOP_SESSION_ID', 'this-is-deprecated'), ('ROS_LOCALHOST_ONLY', '0'), ('WINDOWPATH', '2'), ('PATH', '/home/dex/.local/npm/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/codex-path:/home/dex/.codex/tmp/arg0/codex-arg0wclkfQ:/home/dex/.nvm/versions/node/v22.23.1/bin:/home/dex/.local/npm/bin:/opt/ros/humble/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/snap/bin'), ('SESSION_MANAGER', 'local/dex-TX-Gaming-FA608UH-FA608UH:@/tmp/.ICE-unix/2404,unix/dex-TX-Gaming-FA608UH-FA608UH:/tmp/.ICE-unix/2404'), ('INVOCATION_ID', '35d51128ab174db89c959789b5861112'), ('PAPERSIZE', 'a4'), ('XDG_MENU_PREFIX', 'gnome-'), ('LC_ADDRESS', 'zh_CN.UTF-8'), ('XDG_RUNTIME_DIR', '/run/user/1000'), ('DISPLAY', ':1'), ('CODEX_SANDBOX_NETWORK_DISABLED', '1'), ('TERMINATOR_DBUS_PATH', '/net/tenshu/Terminator2'), ('LANG', 'C.UTF-8'), ('XDG_CURRENT_DESKTOP', 'ubuntu:GNOME'), ('IBUS_DISABLE_SNOOPER', '1'), ('LC_TELEPHONE', 'zh_CN.UTF-8'), ('XMODIFIERS', '@im=ibus'), ('GH_PAGER', 'cat'), ('XDG_SESSION_DESKTOP', 'ubuntu-xorg'), ('XAUTHORITY', '/run/user/1000/gdm/Xauthority'), ('LS_COLORS', 'rs=0:di=01;34:ln=01;36:mh=00:pi=40;33:so=01;35:do=01;35:bd=40;33;01:cd=40;33;01:or=40;31;01:mi=00:su=37;41:sg=30;43:ca=30;41:tw=30;42:ow=34;42:st=37;44:ex=01;32:*.tar=01;31:*.tgz=01;31:*.arc=01;31:*.arj=01;31:*.taz=01;31:*.lha=01;31:*.lz4=01;31:*.lzh=01;31:*.lzma=01;31:*.tlz=01;31:*.txz=01;31:*.tzo=01;31:*.t7z=01;31:*.zip=01;31:*.z=01;31:*.dz=01;31:*.gz=01;31:*.lrz=01;31:*.lz=01;31:*.lzo=01;31:*.xz=01;31:*.zst=01;31:*.tzst=01;31:*.bz2=01;31:*.bz=01;31:*.tbz=01;31:*.tbz2=01;31:*.tz=01;31:*.deb=01;31:*.rpm=01;31:*.jar=01;31:*.war=01;31:*.ear=01;31:*.sar=01;31:*.rar=01;31:*.alz=01;31:*.ace=01;31:*.zoo=01;31:*.cpio=01;31:*.7z=01;31:*.rz=01;31:*.cab=01;31:*.wim=01;31:*.swm=01;31:*.dwm=01;31:*.esd=01;31:*.jpg=01;35:*.jpeg=01;35:*.mjpg=01;35:*.mjpeg=01;35:*.gif=01;35:*.bmp=01;35:*.pbm=01;35:*.pgm=01;35:*.ppm=01;35:*.tga=01;35:*.xbm=01;35:*.xpm=01;35:*.tif=01;35:*.tiff=01;35:*.png=01;35:*.svg=01;35:*.svgz=01;35:*.mng=01;35:*.pcx=01;35:*.mov=01;35:*.mpg=01;35:*.mpeg=01;35:*.m2v=01;35:*.mkv=01;35:*.webm=01;35:*.webp=01;35:*.ogm=01;35:*.mp4=01;35:*.m4v=01;35:*.mp4v=01;35:*.vob=01;35:*.qt=01;35:*.nuv=01;35:*.wmv=01;35:*.asf=01;35:*.rm=01;35:*.rmvb=01;35:*.flc=01;35:*.avi=01;35:*.fli=01;35:*.flv=01;35:*.gl=01;35:*.dl=01;35:*.xcf=01;35:*.xwd=01;35:*.yuv=01;35:*.cgm=01;35:*.emf=01;35:*.ogv=01;35:*.ogx=01;35:*.aac=00;36:*.au=00;36:*.flac=00;36:*.m4a=00;36:*.mid=00;36:*.midi=00;36:*.mka=00;36:*.mp3=00;36:*.mpc=00;36:*.ogg=00;36:*.ra=00;36:*.wav=00;36:*.oga=00;36:*.opus=00;36:*.spx=00;36:*.xspf=00;36:'), ('SSH_AGENT_LAUNCHER', 'gnome-keyring'), ('SSH_AUTH_SOCK', '/run/user/1000/keyring/ssh'), ('AMENT_PREFIX_PATH', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:/opt/ros/humble'), ('SHELL', '/bin/bash'), ('LC_NAME', 'zh_CN.UTF-8'), ('TERMINATOR_UUID', 'urn:uuid:cbe53817-7274-497c-a73c-346868bee61f'), ('QT_ACCESSIBILITY', '1'), ('GDMSESSION', 'ubuntu-xorg'), ('LESSCLOSE', '/usr/bin/lesspipe %s %s'), ('CODEX_THREAD_ID', '019f825f-1886-7f43-8834-04578e1a1d6c'), ('LC_MEASUREMENT', 'zh_CN.UTF-8'), ('GPG_AGENT_INFO', '/run/user/1000/gnupg/S.gpg-agent:0:1'), ('LC_IDENTIFICATION', 'zh_CN.UTF-8'), ('GIT_PAGER', 'cat'), ('QT_IM_MODULE', 'ibus'), ('PWD', '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller'), ('LC_ALL', 'C.UTF-8'), ('CODEX_MANAGED_PACKAGE_ROOT', '/home/dex/.local/npm/lib/node_modules/@openai/codex'), ('XDG_CONFIG_DIRS', '/etc/xdg/xdg-ubuntu-xorg:/etc/xdg'), ('NVM_CD_FLAGS', ''), ('XDG_DATA_DIRS', '/usr/share/ubuntu-xorg:/usr/share/gnome:/usr/local/share/:/usr/share/:/var/lib/snapd/desktop'), ('PYTHONPATH', '/opt/ros/humble/lib/python3.10/site-packages:/opt/ros/humble/local/lib/python3.10/dist-packages'), ('LC_NUMERIC', 'zh_CN.UTF-8'), ('LC_PAPER', 'zh_CN.UTF-8'), ('COLCON', '1'), ('CODEX_MANAGED_BY_NPM', '1'), ('VTE_VERSION', '6800'), ('CMAKE_PREFIX_PATH', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:/opt/ros/humble')]), 'shell': False}
+[2.003325] (-) TimerEvent: {}
+[2.028127] (nav2_mppi_controller) StdoutLine: {'line': b'Consolidate compiler generated dependencies of target gtest_main\n'}
+[2.028625] (nav2_mppi_controller) StdoutLine: {'line': b'Consolidate compiler generated dependencies of target gtest\n'}
+[2.045649] (nav2_mppi_controller) StdoutLine: {'line': b'[  7%] Built target gtest\n'}
+[2.046022] (nav2_mppi_controller) StdoutLine: {'line': b'[  7%] Built target gtest_main\n'}
+[2.054704] (nav2_mppi_controller) StdoutLine: {'line': b'Consolidate compiler generated dependencies of target mppi_controller\n'}
+[2.081219] (nav2_mppi_controller) StdoutLine: {'line': b'[  9%] Building CXX object CMakeFiles/mppi_controller.dir/src/controller.cpp.o\n'}
+[2.088726] (nav2_mppi_controller) StdoutLine: {'line': b'Consolidate compiler generated dependencies of target mppi_critics\n'}
+[2.103511] (-) TimerEvent: {}
+[2.113644] (nav2_mppi_controller) StdoutLine: {'line': b'[ 41%] Built target mppi_critics\n'}
+[2.203634] (-) TimerEvent: {}
+[2.303987] (-) TimerEvent: {}
+[2.404262] (-) TimerEvent: {}
+[2.504463] (-) TimerEvent: {}
+[2.604649] (-) TimerEvent: {}
+[2.704839] (-) TimerEvent: {}
+[2.805064] (-) TimerEvent: {}
+[2.905340] (-) TimerEvent: {}
+[3.005622] (-) TimerEvent: {}
+[3.105809] (-) TimerEvent: {}
+[3.205999] (-) TimerEvent: {}
+[3.306303] (-) TimerEvent: {}
+[3.406598] (-) TimerEvent: {}
+[3.506955] (-) TimerEvent: {}
+[3.607188] (-) TimerEvent: {}
+[3.707384] (-) TimerEvent: {}
+[3.807579] (-) TimerEvent: {}
+[3.907782] (-) TimerEvent: {}
+[4.007996] (-) TimerEvent: {}
+[4.108195] (-) TimerEvent: {}
+[4.208483] (-) TimerEvent: {}
+[4.308705] (-) TimerEvent: {}
+[4.409023] (-) TimerEvent: {}
+[4.509515] (-) TimerEvent: {}
+[4.609790] (-) TimerEvent: {}
+[4.710167] (-) TimerEvent: {}
+[4.810360] (-) TimerEvent: {}
+[4.910566] (-) TimerEvent: {}
+[5.010809] (-) TimerEvent: {}
+[5.111051] (-) TimerEvent: {}
+[5.211255] (-) TimerEvent: {}
+[5.311549] (-) TimerEvent: {}
+[5.411774] (-) TimerEvent: {}
+[5.511967] (-) TimerEvent: {}
+[5.612292] (-) TimerEvent: {}
+[5.712603] (-) TimerEvent: {}
+[5.812932] (-) TimerEvent: {}
+[5.913286] (-) TimerEvent: {}
+[6.013484] (-) TimerEvent: {}
+[6.113677] (-) TimerEvent: {}
+[6.213952] (-) TimerEvent: {}
+[6.314156] (-) TimerEvent: {}
+[6.414365] (-) TimerEvent: {}
+[6.514541] (-) TimerEvent: {}
+[6.614725] (-) TimerEvent: {}
+[6.715026] (-) TimerEvent: {}
+[6.815316] (-) TimerEvent: {}
+[6.915621] (-) TimerEvent: {}
+[7.015902] (-) TimerEvent: {}
+[7.116144] (-) TimerEvent: {}
+[7.216339] (-) TimerEvent: {}
+[7.316540] (-) TimerEvent: {}
+[7.416756] (-) TimerEvent: {}
+[7.516935] (-) TimerEvent: {}
+[7.617123] (-) TimerEvent: {}
+[7.717340] (-) TimerEvent: {}
+[7.817637] (-) TimerEvent: {}
+[7.917849] (-) TimerEvent: {}
+[8.018116] (-) TimerEvent: {}
+[8.118307] (-) TimerEvent: {}
+[8.218625] (-) TimerEvent: {}
+[8.318924] (-) TimerEvent: {}
+[8.419263] (-) TimerEvent: {}
+[8.519532] (-) TimerEvent: {}
+[8.619739] (-) TimerEvent: {}
+[8.719934] (-) TimerEvent: {}
+[8.820200] (-) TimerEvent: {}
+[8.920516] (-) TimerEvent: {}
+[9.020706] (-) TimerEvent: {}
+[9.120915] (-) TimerEvent: {}
+[9.221101] (-) TimerEvent: {}
+[9.321281] (-) TimerEvent: {}
+[9.421477] (-) TimerEvent: {}
+[9.521744] (-) TimerEvent: {}
+[9.622013] (-) TimerEvent: {}
+[9.722306] (-) TimerEvent: {}
+[9.822499] (-) TimerEvent: {}
+[9.922701] (-) TimerEvent: {}
+[10.022931] (-) TimerEvent: {}
+[10.123133] (-) TimerEvent: {}
+[10.223332] (-) TimerEvent: {}
+[10.323632] (-) TimerEvent: {}
+[10.423918] (-) TimerEvent: {}
+[10.524193] (-) TimerEvent: {}
+[10.624611] (-) TimerEvent: {}
+[10.724875] (-) TimerEvent: {}
+[10.825234] (-) TimerEvent: {}
+[10.925469] (-) TimerEvent: {}
+[11.025684] (-) TimerEvent: {}
+[11.125937] (-) TimerEvent: {}
+[11.226128] (-) TimerEvent: {}
+[11.326310] (-) TimerEvent: {}
+[11.426495] (-) TimerEvent: {}
+[11.526696] (-) TimerEvent: {}
+[11.626969] (-) TimerEvent: {}
+[11.727174] (-) TimerEvent: {}
+[11.827483] (-) TimerEvent: {}
+[11.927804] (-) TimerEvent: {}
+[12.028151] (-) TimerEvent: {}
+[12.128332] (-) TimerEvent: {}
+[12.228551] (-) TimerEvent: {}
+[12.328764] (-) TimerEvent: {}
+[12.428988] (-) TimerEvent: {}
+[12.529189] (-) TimerEvent: {}
+[12.629394] (-) TimerEvent: {}
+[12.729725] (-) TimerEvent: {}
+[12.830005] (-) TimerEvent: {}
+[12.930294] (-) TimerEvent: {}
+[13.030640] (-) TimerEvent: {}
+[13.130910] (-) TimerEvent: {}
+[13.231085] (-) TimerEvent: {}
+[13.331319] (-) TimerEvent: {}
+[13.431514] (-) TimerEvent: {}
+[13.531729] (-) TimerEvent: {}
+[13.631949] (-) TimerEvent: {}
+[13.732167] (-) TimerEvent: {}
+[13.832349] (-) TimerEvent: {}
+[13.932537] (-) TimerEvent: {}
+[13.940554] (nav2_mppi_controller) StdoutLine: {'line': b'[ 43%] Linking CXX shared library libmppi_controller.so\n'}
+[14.032755] (-) TimerEvent: {}
+[14.133052] (-) TimerEvent: {}
+[14.225045] (nav2_mppi_controller) StdoutLine: {'line': b'[ 54%] Built target mppi_controller\n'}
+[14.233210] (-) TimerEvent: {}
+[14.242065] (nav2_mppi_controller) StdoutLine: {'line': b'Consolidate compiler generated dependencies of target parameter_handler_test\n'}
+[14.242263] (nav2_mppi_controller) StdoutLine: {'line': b'Consolidate compiler generated dependencies of target models_test\n'}
+[14.243009] (nav2_mppi_controller) StdoutLine: {'line': b'Consolidate compiler generated dependencies of target motion_model_tests\n'}
+[14.243822] (nav2_mppi_controller) StdoutLine: {'line': b'Consolidate compiler generated dependencies of target noise_generator_test\n'}
+[14.244575] (nav2_mppi_controller) StdoutLine: {'line': b'Consolidate compiler generated dependencies of target optimizer_smoke_test\n'}
+[14.244778] (nav2_mppi_controller) StdoutLine: {'line': b'Consolidate compiler generated dependencies of target path_handler_test\n'}
+[14.246353] (nav2_mppi_controller) StdoutLine: {'line': b'Consolidate compiler generated dependencies of target trajectory_visualizer_tests\n'}
+[14.246792] (nav2_mppi_controller) StdoutLine: {'line': b'Consolidate compiler generated dependencies of target controller_state_transition_test\n'}
+[14.246947] (nav2_mppi_controller) StdoutLine: {'line': b'Consolidate compiler generated dependencies of target utils_test\n'}
+[14.247422] (nav2_mppi_controller) StdoutLine: {'line': b'Consolidate compiler generated dependencies of target optimizer_unit_tests\n'}
+[14.247559] (nav2_mppi_controller) StdoutLine: {'line': b'Consolidate compiler generated dependencies of target critic_manager_test\n'}
+[14.249018] (nav2_mppi_controller) StdoutLine: {'line': b'Consolidate compiler generated dependencies of target critics_tests\n'}
+[14.259485] (nav2_mppi_controller) StdoutLine: {'line': b'[ 60%] Linking CXX executable models_test\n'}
+[14.259681] (nav2_mppi_controller) StdoutLine: {'line': b'[ 60%] Linking CXX executable motion_model_tests\n'}
+[14.259733] (nav2_mppi_controller) StdoutLine: {'line': b'[ 60%] Linking CXX executable parameter_handler_test\n'}
+[14.265434] (nav2_mppi_controller) StdoutLine: {'line': b'[ 64%] Linking CXX executable critic_manager_test\n'}
+[14.265605] (nav2_mppi_controller) StdoutLine: {'line': b'[ 64%] Building CXX object test/CMakeFiles/optimizer_smoke_test.dir/optimizer_smoke_test.cpp.o\n'}
+[14.265670] (nav2_mppi_controller) StdoutLine: {'line': b'[ 67%] Linking CXX executable trajectory_visualizer_tests\n'}
+[14.265712] (nav2_mppi_controller) StdoutLine: {'line': b'[ 67%] Building CXX object test/CMakeFiles/controller_state_transition_test.dir/controller_state_transition_test.cpp.o\n'}
+[14.265753] (nav2_mppi_controller) StdoutLine: {'line': b'[ 69%] Linking CXX executable utils_test\n'}
+[14.266177] (nav2_mppi_controller) StdoutLine: {'line': b'[ 71%] Linking CXX executable noise_generator_test\n'}
+[14.274996] (nav2_mppi_controller) StdoutLine: {'line': b'[ 73%] Linking CXX executable path_handler_test\n'}
+[14.275215] (nav2_mppi_controller) StdoutLine: {'line': b'[ 75%] Linking CXX executable critics_tests\n'}
+[14.275254] (nav2_mppi_controller) StdoutLine: {'line': b'[ 77%] Linking CXX executable optimizer_unit_tests\n'}
+[14.334649] (-) TimerEvent: {}
+[14.434994] (-) TimerEvent: {}
+[14.535351] (-) TimerEvent: {}
+[14.635770] (-) TimerEvent: {}
+[14.737427] (-) TimerEvent: {}
+[14.839718] (-) TimerEvent: {}
+[14.941260] (-) TimerEvent: {}
+[15.043489] (-) TimerEvent: {}
+[15.144232] (-) TimerEvent: {}
+[15.247011] (-) TimerEvent: {}
+[15.351882] (-) TimerEvent: {}
+[15.453447] (-) TimerEvent: {}
+[15.554624] (-) TimerEvent: {}
+[15.614866] (nav2_mppi_controller) StdoutLine: {'line': b'[ 79%] Built target models_test\n'}
+[15.654930] (-) TimerEvent: {}
+[15.694448] (nav2_mppi_controller) StdoutLine: {'line': b'[ 81%] Built target noise_generator_test\n'}
+[15.711622] (nav2_mppi_controller) StdoutLine: {'line': b'[ 83%] Built target motion_model_tests\n'}
+[15.753695] (nav2_mppi_controller) StdoutLine: {'line': b'[ 84%] Built target parameter_handler_test\n'}
+[15.754939] (-) TimerEvent: {}
+[15.843312] (nav2_mppi_controller) StdoutLine: {'line': b'[ 86%] Built target utils_test\n'}
+[15.855169] (-) TimerEvent: {}
+[15.949956] (nav2_mppi_controller) StdoutLine: {'line': b'[ 90%] Built target critics_tests\n'}
+[15.950243] (nav2_mppi_controller) StdoutLine: {'line': b'[ 90%] Built target critic_manager_test\n'}
+[15.953103] (nav2_mppi_controller) StdoutLine: {'line': b'[ 92%] Built target path_handler_test\n'}
+[15.955240] (-) TimerEvent: {}
+[15.963037] (nav2_mppi_controller) StdoutLine: {'line': b'[ 94%] Built target trajectory_visualizer_tests\n'}
+[15.971184] (nav2_mppi_controller) StdoutLine: {'line': b'[ 96%] Built target optimizer_unit_tests\n'}
+[16.055433] (-) TimerEvent: {}
+[16.155792] (-) TimerEvent: {}
+[16.256045] (-) TimerEvent: {}
+[16.356346] (-) TimerEvent: {}
+[16.456590] (-) TimerEvent: {}
+[16.556927] (-) TimerEvent: {}
+[16.657215] (-) TimerEvent: {}
+[16.757502] (-) TimerEvent: {}
+[16.857718] (-) TimerEvent: {}
+[16.958006] (-) TimerEvent: {}
+[17.058387] (-) TimerEvent: {}
+[17.158645] (-) TimerEvent: {}
+[17.258908] (-) TimerEvent: {}
+[17.359151] (-) TimerEvent: {}
+[17.459356] (-) TimerEvent: {}
+[17.559534] (-) TimerEvent: {}
+[17.659723] (-) TimerEvent: {}
+[17.760034] (-) TimerEvent: {}
+[17.860271] (-) TimerEvent: {}
+[17.960539] (-) TimerEvent: {}
+[18.061023] (-) TimerEvent: {}
+[18.161291] (-) TimerEvent: {}
+[18.261507] (-) TimerEvent: {}
+[18.361704] (-) TimerEvent: {}
+[18.461912] (-) TimerEvent: {}
+[18.562117] (-) TimerEvent: {}
+[18.662300] (-) TimerEvent: {}
+[18.762485] (-) TimerEvent: {}
+[18.862701] (-) TimerEvent: {}
+[18.963028] (-) TimerEvent: {}
+[19.063286] (-) TimerEvent: {}
+[19.163610] (-) TimerEvent: {}
+[19.263809] (-) TimerEvent: {}
+[19.364091] (-) TimerEvent: {}
+[19.464374] (-) TimerEvent: {}
+[19.564667] (-) TimerEvent: {}
+[19.664879] (-) TimerEvent: {}
+[19.765073] (-) TimerEvent: {}
+[19.865294] (-) TimerEvent: {}
+[19.965477] (-) TimerEvent: {}
+[20.065654] (-) TimerEvent: {}
+[20.165834] (-) TimerEvent: {}
+[20.266029] (-) TimerEvent: {}
+[20.366329] (-) TimerEvent: {}
+[20.466654] (-) TimerEvent: {}
+[20.566893] (-) TimerEvent: {}
+[20.667187] (-) TimerEvent: {}
+[20.767450] (-) TimerEvent: {}
+[20.867761] (-) TimerEvent: {}
+[20.967971] (-) TimerEvent: {}
+[21.068196] (-) TimerEvent: {}
+[21.168419] (-) TimerEvent: {}
+[21.268610] (-) TimerEvent: {}
+[21.368827] (-) TimerEvent: {}
+[21.469045] (-) TimerEvent: {}
+[21.569345] (-) TimerEvent: {}
+[21.669608] (-) TimerEvent: {}
+[21.770031] (-) TimerEvent: {}
+[21.870305] (-) TimerEvent: {}
+[21.970605] (-) TimerEvent: {}
+[22.070918] (-) TimerEvent: {}
+[22.171102] (-) TimerEvent: {}
+[22.271297] (-) TimerEvent: {}
+[22.371506] (-) TimerEvent: {}
+[22.471808] (-) TimerEvent: {}
+[22.572025] (-) TimerEvent: {}
+[22.672238] (-) TimerEvent: {}
+[22.772520] (-) TimerEvent: {}
+[22.872765] (-) TimerEvent: {}
+[22.973083] (-) TimerEvent: {}
+[23.073467] (-) TimerEvent: {}
+[23.173781] (-) TimerEvent: {}
+[23.273962] (-) TimerEvent: {}
+[23.374210] (-) TimerEvent: {}
+[23.474444] (-) TimerEvent: {}
+[23.574654] (-) TimerEvent: {}
+[23.674924] (-) TimerEvent: {}
+[23.775458] (-) TimerEvent: {}
+[23.875819] (-) TimerEvent: {}
+[23.976212] (-) TimerEvent: {}
+[24.076596] (-) TimerEvent: {}
+[24.176942] (-) TimerEvent: {}
+[24.277156] (-) TimerEvent: {}
+[24.377347] (-) TimerEvent: {}
+[24.477596] (-) TimerEvent: {}
+[24.577806] (-) TimerEvent: {}
+[24.678034] (-) TimerEvent: {}
+[24.778295] (-) TimerEvent: {}
+[24.878595] (-) TimerEvent: {}
+[24.978933] (-) TimerEvent: {}
+[25.079244] (-) TimerEvent: {}
+[25.179562] (-) TimerEvent: {}
+[25.279772] (-) TimerEvent: {}
+[25.379998] (-) TimerEvent: {}
+[25.480220] (-) TimerEvent: {}
+[25.580431] (-) TimerEvent: {}
+[25.680610] (-) TimerEvent: {}
+[25.780798] (-) TimerEvent: {}
+[25.881104] (-) TimerEvent: {}
+[25.981420] (-) TimerEvent: {}
+[26.081745] (-) TimerEvent: {}
+[26.182102] (-) TimerEvent: {}
+[26.282357] (-) TimerEvent: {}
+[26.382666] (-) TimerEvent: {}
+[26.483033] (-) TimerEvent: {}
+[26.583217] (-) TimerEvent: {}
+[26.683426] (-) TimerEvent: {}
+[26.783614] (-) TimerEvent: {}
+[26.883807] (-) TimerEvent: {}
+[26.984045] (-) TimerEvent: {}
+[26.993580] (nav2_mppi_controller) StdoutLine: {'line': b'[ 98%] Linking CXX executable optimizer_smoke_test\n'}
+[27.084153] (-) TimerEvent: {}
+[27.184388] (-) TimerEvent: {}
+[27.284578] (-) TimerEvent: {}
+[27.303433] (nav2_mppi_controller) StdoutLine: {'line': b'[ 98%] Built target optimizer_smoke_test\n'}
+[27.384690] (-) TimerEvent: {}
+[27.484917] (-) TimerEvent: {}
+[27.585322] (-) TimerEvent: {}
+[27.685634] (-) TimerEvent: {}
+[27.785869] (-) TimerEvent: {}
+[27.886074] (-) TimerEvent: {}
+[27.899920] (nav2_mppi_controller) StdoutLine: {'line': b'[100%] Linking CXX executable controller_state_transition_test\n'}
+[27.986170] (-) TimerEvent: {}
+[28.086370] (-) TimerEvent: {}
+[28.186550] (-) TimerEvent: {}
+[28.210090] (nav2_mppi_controller) StdoutLine: {'line': b'[100%] Built target controller_state_transition_test\n'}
+[28.221622] (nav2_mppi_controller) CommandEnded: {'returncode': 0}
+[28.222107] (nav2_mppi_controller) JobProgress: {'identifier': 'nav2_mppi_controller', 'progress': 'install'}
+[28.231616] (nav2_mppi_controller) Command: {'cmd': ['/usr/bin/cmake', '--install', '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller'], 'cwd': '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller', 'env': OrderedDict([('LESSOPEN', '| /usr/bin/lesspipe %s'), ('CODEX_CI', '1'), ('LANGUAGE', 'zh_CN'), ('USER', 'dex'), ('LC_TIME', 'zh_CN.UTF-8'), ('XDG_SESSION_TYPE', 'x11'), ('SHLVL', '1'), ('LD_LIBRARY_PATH', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib:/usr/lib/x86_64-linux-gnu/gazebo-11/plugins:/opt/ros/humble/opt/rviz_ogre_vendor/lib:/opt/ros/humble/lib/x86_64-linux-gnu:/opt/ros/humble/lib'), ('HOME', '/home/dex'), ('OLDPWD', '/home/dex'), ('DESKTOP_SESSION', 'ubuntu-xorg'), ('NVM_BIN', '/home/dex/.nvm/versions/node/v22.23.1/bin'), ('NVM_INC', '/home/dex/.nvm/versions/node/v22.23.1/include/node'), ('ROS_PYTHON_VERSION', '3'), ('GNOME_SHELL_SESSION_MODE', 'ubuntu'), ('GTK_MODULES', 'gail:atk-bridge'), ('PAGER', 'cat'), ('LC_MONETARY', 'zh_CN.UTF-8'), ('MANAGERPID', '2108'), ('LC_CTYPE', 'C.UTF-8'), ('SYSTEMD_EXEC_PID', '2589'), ('NO_COLOR', '1'), ('DBUS_SESSION_BUS_ADDRESS', 'unix:path=/run/user/1000/bus'), ('COLORTERM', ''), ('TERMINATOR_DBUS_NAME', 'net.tenshu.Terminator23558193cd9818af7fe4d2c2f5bd9d00f'), ('GIO_LAUNCHED_DESKTOP_FILE_PID', '8667'), ('NVM_DIR', '/home/dex/.nvm'), ('CODEX_PERMISSION_PROFILE', ':workspace'), ('ROS_DISTRO', 'humble'), ('GTK_IM_MODULE', 'ibus'), ('LOGNAME', 'dex'), ('http_proxy', 'https://127.0.0.1:7897'), ('JOURNAL_STREAM', '8:10945'), ('_', '/usr/bin/colcon'), ('ROS_VERSION', '2'), ('XDG_SESSION_CLASS', 'user'), ('USERNAME', 'dex'), ('TERM', 'dumb'), ('GNOME_DESKTOP_SESSION_ID', 'this-is-deprecated'), ('ROS_LOCALHOST_ONLY', '0'), ('WINDOWPATH', '2'), ('PATH', '/home/dex/.local/npm/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/codex-path:/home/dex/.codex/tmp/arg0/codex-arg0wclkfQ:/home/dex/.nvm/versions/node/v22.23.1/bin:/home/dex/.local/npm/bin:/opt/ros/humble/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/snap/bin'), ('SESSION_MANAGER', 'local/dex-TX-Gaming-FA608UH-FA608UH:@/tmp/.ICE-unix/2404,unix/dex-TX-Gaming-FA608UH-FA608UH:/tmp/.ICE-unix/2404'), ('INVOCATION_ID', '35d51128ab174db89c959789b5861112'), ('PAPERSIZE', 'a4'), ('XDG_MENU_PREFIX', 'gnome-'), ('LC_ADDRESS', 'zh_CN.UTF-8'), ('XDG_RUNTIME_DIR', '/run/user/1000'), ('DISPLAY', ':1'), ('CODEX_SANDBOX_NETWORK_DISABLED', '1'), ('TERMINATOR_DBUS_PATH', '/net/tenshu/Terminator2'), ('LANG', 'C.UTF-8'), ('XDG_CURRENT_DESKTOP', 'ubuntu:GNOME'), ('IBUS_DISABLE_SNOOPER', '1'), ('LC_TELEPHONE', 'zh_CN.UTF-8'), ('XMODIFIERS', '@im=ibus'), ('GH_PAGER', 'cat'), ('XDG_SESSION_DESKTOP', 'ubuntu-xorg'), ('XAUTHORITY', '/run/user/1000/gdm/Xauthority'), ('LS_COLORS', 'rs=0:di=01;34:ln=01;36:mh=00:pi=40;33:so=01;35:do=01;35:bd=40;33;01:cd=40;33;01:or=40;31;01:mi=00:su=37;41:sg=30;43:ca=30;41:tw=30;42:ow=34;42:st=37;44:ex=01;32:*.tar=01;31:*.tgz=01;31:*.arc=01;31:*.arj=01;31:*.taz=01;31:*.lha=01;31:*.lz4=01;31:*.lzh=01;31:*.lzma=01;31:*.tlz=01;31:*.txz=01;31:*.tzo=01;31:*.t7z=01;31:*.zip=01;31:*.z=01;31:*.dz=01;31:*.gz=01;31:*.lrz=01;31:*.lz=01;31:*.lzo=01;31:*.xz=01;31:*.zst=01;31:*.tzst=01;31:*.bz2=01;31:*.bz=01;31:*.tbz=01;31:*.tbz2=01;31:*.tz=01;31:*.deb=01;31:*.rpm=01;31:*.jar=01;31:*.war=01;31:*.ear=01;31:*.sar=01;31:*.rar=01;31:*.alz=01;31:*.ace=01;31:*.zoo=01;31:*.cpio=01;31:*.7z=01;31:*.rz=01;31:*.cab=01;31:*.wim=01;31:*.swm=01;31:*.dwm=01;31:*.esd=01;31:*.jpg=01;35:*.jpeg=01;35:*.mjpg=01;35:*.mjpeg=01;35:*.gif=01;35:*.bmp=01;35:*.pbm=01;35:*.pgm=01;35:*.ppm=01;35:*.tga=01;35:*.xbm=01;35:*.xpm=01;35:*.tif=01;35:*.tiff=01;35:*.png=01;35:*.svg=01;35:*.svgz=01;35:*.mng=01;35:*.pcx=01;35:*.mov=01;35:*.mpg=01;35:*.mpeg=01;35:*.m2v=01;35:*.mkv=01;35:*.webm=01;35:*.webp=01;35:*.ogm=01;35:*.mp4=01;35:*.m4v=01;35:*.mp4v=01;35:*.vob=01;35:*.qt=01;35:*.nuv=01;35:*.wmv=01;35:*.asf=01;35:*.rm=01;35:*.rmvb=01;35:*.flc=01;35:*.avi=01;35:*.fli=01;35:*.flv=01;35:*.gl=01;35:*.dl=01;35:*.xcf=01;35:*.xwd=01;35:*.yuv=01;35:*.cgm=01;35:*.emf=01;35:*.ogv=01;35:*.ogx=01;35:*.aac=00;36:*.au=00;36:*.flac=00;36:*.m4a=00;36:*.mid=00;36:*.midi=00;36:*.mka=00;36:*.mp3=00;36:*.mpc=00;36:*.ogg=00;36:*.ra=00;36:*.wav=00;36:*.oga=00;36:*.opus=00;36:*.spx=00;36:*.xspf=00;36:'), ('SSH_AGENT_LAUNCHER', 'gnome-keyring'), ('SSH_AUTH_SOCK', '/run/user/1000/keyring/ssh'), ('AMENT_PREFIX_PATH', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:/opt/ros/humble'), ('SHELL', '/bin/bash'), ('LC_NAME', 'zh_CN.UTF-8'), ('TERMINATOR_UUID', 'urn:uuid:cbe53817-7274-497c-a73c-346868bee61f'), ('QT_ACCESSIBILITY', '1'), ('GDMSESSION', 'ubuntu-xorg'), ('LESSCLOSE', '/usr/bin/lesspipe %s %s'), ('CODEX_THREAD_ID', '019f825f-1886-7f43-8834-04578e1a1d6c'), ('LC_MEASUREMENT', 'zh_CN.UTF-8'), ('GPG_AGENT_INFO', '/run/user/1000/gnupg/S.gpg-agent:0:1'), ('LC_IDENTIFICATION', 'zh_CN.UTF-8'), ('GIT_PAGER', 'cat'), ('QT_IM_MODULE', 'ibus'), ('PWD', '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller'), ('LC_ALL', 'C.UTF-8'), ('CODEX_MANAGED_PACKAGE_ROOT', '/home/dex/.local/npm/lib/node_modules/@openai/codex'), ('XDG_CONFIG_DIRS', '/etc/xdg/xdg-ubuntu-xorg:/etc/xdg'), ('NVM_CD_FLAGS', ''), ('XDG_DATA_DIRS', '/usr/share/ubuntu-xorg:/usr/share/gnome:/usr/local/share/:/usr/share/:/var/lib/snapd/desktop'), ('PYTHONPATH', '/opt/ros/humble/lib/python3.10/site-packages:/opt/ros/humble/local/lib/python3.10/dist-packages'), ('LC_NUMERIC', 'zh_CN.UTF-8'), ('LC_PAPER', 'zh_CN.UTF-8'), ('COLCON', '1'), ('CODEX_MANAGED_BY_NPM', '1'), ('VTE_VERSION', '6800'), ('CMAKE_PREFIX_PATH', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:/opt/ros/humble')]), 'shell': False}
+[28.240097] (nav2_mppi_controller) StdoutLine: {'line': b'-- Install configuration: "Release"\n'}
+[28.240391] (nav2_mppi_controller) StdoutLine: {'line': b'-- Execute custom install script\n'}
+[28.240605] (nav2_mppi_controller) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/lib/libmppi_controller.so\n'}
+[28.240743] (nav2_mppi_controller) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/lib/libmppi_critics.so\n'}
+[28.241218] (nav2_mppi_controller) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/controller.hpp\n'}
+[28.241518] (nav2_mppi_controller) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/critic_data.hpp\n'}
+[28.241621] (nav2_mppi_controller) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/critic_function.hpp\n'}
+[28.241654] (nav2_mppi_controller) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/critic_manager.hpp\n'}
+[28.241683] (nav2_mppi_controller) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/critics/angular_velocity_critic.hpp\n'}
+[28.241713] (nav2_mppi_controller) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/critics/constraint_critic.hpp\n'}
+[28.241760] (nav2_mppi_controller) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/critics/cost_critic.hpp\n'}
+[28.241818] (nav2_mppi_controller) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/critics/goal_angle_critic.hpp\n'}
+[28.241848] (nav2_mppi_controller) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/critics/goal_critic.hpp\n'}
+[28.241920] (nav2_mppi_controller) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/critics/goal_lateral_critic.hpp\n'}
+[28.241947] (nav2_mppi_controller) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/critics/goal_longitudinal_critic.hpp\n'}
+[28.241995] (nav2_mppi_controller) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/critics/linear_velocity_critic.hpp\n'}
+[28.242049] (nav2_mppi_controller) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/critics/obstacles_critic.hpp\n'}
+[28.242119] (nav2_mppi_controller) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/critics/path_align_critic.hpp\n'}
+[28.242189] (nav2_mppi_controller) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/critics/path_align_legacy_critic.hpp\n'}
+[28.242261] (nav2_mppi_controller) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/critics/path_angle_critic.hpp\n'}
+[28.242331] (nav2_mppi_controller) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/critics/path_follow_critic.hpp\n'}
+[28.242399] (nav2_mppi_controller) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/critics/prefer_forward_critic.hpp\n'}
+[28.242475] (nav2_mppi_controller) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/critics/twirling_critic.hpp\n'}
+[28.242547] (nav2_mppi_controller) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/critics/velocity_deadband_critic.hpp\n'}
+[28.242627] (nav2_mppi_controller) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/models/constraints.hpp\n'}
+[28.242699] (nav2_mppi_controller) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/models/control_sequence.hpp\n'}
+[28.242767] (nav2_mppi_controller) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/models/optimizer_settings.hpp\n'}
+[28.242839] (nav2_mppi_controller) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/models/path.hpp\n'}
+[28.242928] (nav2_mppi_controller) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/models/state.hpp\n'}
+[28.243002] (nav2_mppi_controller) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/models/trajectories.hpp\n'}
+[28.243064] (nav2_mppi_controller) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/motion_models.hpp\n'}
+[28.243136] (nav2_mppi_controller) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/optimizer.hpp\n'}
+[28.243203] (nav2_mppi_controller) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/tools/eigen_types.hpp\n'}
+[28.243273] (nav2_mppi_controller) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/tools/noise_generator.hpp\n'}
+[28.243346] (nav2_mppi_controller) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/tools/parameters_handler.hpp\n'}
+[28.243420] (nav2_mppi_controller) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/tools/path_handler.hpp\n'}
+[28.243489] (nav2_mppi_controller) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/tools/trajectory_visualizer.hpp\n'}
+[28.243560] (nav2_mppi_controller) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/include//nav2_mppi_controller/tools/utils.hpp\n'}
+[28.243676] (nav2_mppi_controller) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/nav2_mppi_controller/environment/library_path.sh\n'}
+[28.243823] (nav2_mppi_controller) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/nav2_mppi_controller/environment/library_path.dsv\n'}
+[28.243983] (nav2_mppi_controller) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/nav2_mppi_controller//mppic.xml\n'}
+[28.244041] (nav2_mppi_controller) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/nav2_mppi_controller//critics.xml\n'}
+[28.244119] (nav2_mppi_controller) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/ament_index/resource_index/package_run_dependencies/nav2_mppi_controller\n'}
+[28.244199] (nav2_mppi_controller) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/ament_index/resource_index/parent_prefix_path/nav2_mppi_controller\n'}
+[28.244267] (nav2_mppi_controller) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/nav2_mppi_controller/environment/ament_prefix_path.sh\n'}
+[28.244385] (nav2_mppi_controller) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/nav2_mppi_controller/environment/ament_prefix_path.dsv\n'}
+[28.244468] (nav2_mppi_controller) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/nav2_mppi_controller/environment/path.sh\n'}
+[28.244590] (nav2_mppi_controller) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/nav2_mppi_controller/environment/path.dsv\n'}
+[28.244663] (nav2_mppi_controller) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/nav2_mppi_controller/local_setup.bash\n'}
+[28.244755] (nav2_mppi_controller) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/nav2_mppi_controller/local_setup.sh\n'}
+[28.244840] (nav2_mppi_controller) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/nav2_mppi_controller/local_setup.zsh\n'}
+[28.244938] (nav2_mppi_controller) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/nav2_mppi_controller/local_setup.dsv\n'}
+[28.244991] (nav2_mppi_controller) StdoutLine: {'line': b'-- Symlinking: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/nav2_mppi_controller/package.dsv\n'}
+[28.253420] (nav2_mppi_controller) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/ament_index/resource_index/packages/nav2_mppi_controller\n'}
+[28.253771] (nav2_mppi_controller) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/ament_index/resource_index/nav2_core__pluginlib__plugin/nav2_mppi_controller\n'}
+[28.253937] (nav2_mppi_controller) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/ament_index/resource_index/nav2_mppi_controller__pluginlib__plugin/nav2_mppi_controller\n'}
+[28.254052] (nav2_mppi_controller) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/nav2_mppi_controller/cmake/ament_cmake_export_libraries-extras.cmake\n'}
+[28.254112] (nav2_mppi_controller) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/nav2_mppi_controller/cmake/ament_cmake_export_dependencies-extras.cmake\n'}
+[28.254169] (nav2_mppi_controller) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/nav2_mppi_controller/cmake/ament_cmake_export_include_directories-extras.cmake\n'}
+[28.254224] (nav2_mppi_controller) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/nav2_mppi_controller/cmake/nav2_mppi_controllerConfig.cmake\n'}
+[28.254277] (nav2_mppi_controller) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/nav2_mppi_controller/cmake/nav2_mppi_controllerConfig-version.cmake\n'}
+[28.254344] (nav2_mppi_controller) StdoutLine: {'line': b'-- Up-to-date symlink: /home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/share/nav2_mppi_controller/package.xml\n'}
+[28.286647] (-) TimerEvent: {}
+[28.386813] (-) TimerEvent: {}
+[28.487027] (-) TimerEvent: {}
+[28.587252] (-) TimerEvent: {}
+[28.687437] (-) TimerEvent: {}
+[28.787601] (-) TimerEvent: {}
+[28.887775] (-) TimerEvent: {}
+[28.987967] (-) TimerEvent: {}
+[29.088257] (-) TimerEvent: {}
+[29.188509] (-) TimerEvent: {}
+[29.288709] (-) TimerEvent: {}
+[29.388966] (-) TimerEvent: {}
+[29.489189] (-) TimerEvent: {}
+[29.589382] (-) TimerEvent: {}
+[29.689562] (-) TimerEvent: {}
+[29.789737] (-) TimerEvent: {}
+[29.889915] (-) TimerEvent: {}
+[29.990092] (-) TimerEvent: {}
+[30.002340] (nav2_mppi_controller) CommandEnded: {'returncode': 0}
+[30.024122] (nav2_mppi_controller) JobEnded: {'identifier': 'nav2_mppi_controller', 'rc': 0}
+[30.024898] (-) EventReactorShutdown: {}

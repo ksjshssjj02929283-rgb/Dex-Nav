@@ -1,0 +1,38 @@
+UpdateCTestConfiguration  from :/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/CTestConfiguration.ini
+Parse Config file:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/CTestConfiguration.ini
+   Site: dex-TX-Gaming-FA608UH-FA608UH
+   Build name: (empty)
+ Add coverage exclude regular expressions.
+Create new tag: 20260721-0206 - Experimental
+UpdateCTestConfiguration  from :/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/CTestConfiguration.ini
+Parse Config file:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/CTestConfiguration.ini
+Test project /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller
+Constructing a list of tests
+Done constructing a list of tests
+Updating test list for fixtures
+Added 0 tests to meet fixture requirements
+Checking test dependency graph...
+Checking test dependency graph end
+test 7
+    Start 7: controller_state_transition_test
+
+7: Test command: /usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/controller_state_transition_test.gtest.xml" "--package-name" "nav2_mppi_controller" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/ament_cmake_gtest/controller_state_transition_test.txt" "--command" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/controller_state_transition_test" "--gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/controller_state_transition_test.gtest.xml"
+7: Test timeout computed to be: 60
+7: -- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test':
+7:  - /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/controller_state_transition_test --gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/controller_state_transition_test.gtest.xml
+7: terminate called after throwing an instance of 'spdlog::spdlog_ex'
+7:   what():  Failed opening file /home/dex/.ros/log/controller_state_transition_test_20_1784599601010.log for writing: Read-only file system
+7: -- run_test.py: return code -6
+7: -- run_test.py: generate result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/controller_state_transition_test.gtest.xml' with failed test
+7: -- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/controller_state_transition_test.gtest.xml'
+1/1 Test #7: controller_state_transition_test ...***Failed    0.20 sec
+
+0% tests passed, 1 tests failed out of 1
+
+Label Time Summary:
+gtest    =   0.20 sec*proc (1 test)
+
+Total Test time (real) =   0.20 sec
+
+The following tests FAILED:
+	  7 - controller_state_transition_test (Failed)

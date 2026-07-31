@@ -18,7 +18,7 @@ bt_navigator:
       - nav2_follow_path_action_bt_node
       - nav2_spin_action_bt_node
       - nav2_wait_action_bt_node
-      - nav2_park_wheels_action_bt_node
+      - nav2_steering_angle_control_action_bt_node
       - nav2_assisted_teleop_action_bt_node
       - nav2_back_up_action_bt_node
       - nav2_drive_on_heading_bt_node
@@ -120,12 +120,21 @@ controller_server:
       tangent_stopped_linear_velocity: 0.03
       tangent_stopped_angular_velocity: 0.03
       tangent_rotation_simulate_ahead_time: 0.5
+      # TANGENT 起点旋转完成后先锁存首个有效 TRACK 命令。底盘仍在零速对舵时
+      # 不消耗混合窗口；实测线速度达到 0.03 m/s 后，用 0.8 s 渐进放开后续
+      # MPPI vx/vy/wz，避免首几帧采样方向变化反复触发 0.35 rad 停车保护。
+      tangent_track_entry_blend_duration: 0.8
+      tangent_track_entry_motion_threshold: 0.03
+      tangent_track_entry_command_deadband: 0.01
+      # 与 Theta* 的 tangent_terminal_yaw_hold_distance 保持一致；进入该区域后
+      # 路径 yaw 已冻结，控制器同时启用 wz 阻尼，避免低速采样角速度引起摆舵。
+      tangent_terminal_yaw_hold_distance: 0.20
       # 单套 MPPI 的连续制动包络：直接按“距离 2 cm 门槛还剩多少”计算速度上限，
       # 不再在 1 m 处切换 profile。
       approach_braking_deceleration: 0.5
       # record_0717_2003 显示实车在合速度低于约 0.05 m/s 时基本没有里程计响应。
-      # 该值既是制动包络的最低上限，也是终点辅助的目标合速度；辅助只按比例
-      # 放大 MPPI 已给出的 vx/vy 向量，不会分别给两个轴强塞最小速度。
+      # 该值既是制动包络的最低上限，也是终点辅助的目标合速度；未进入下方
+      # TANGENT/START 短距控制的模式仍只放大方向正确的 MPPI 合速度向量。
       terminal_min_translation_speed: 0.05
       # 只在 2～30 cm 内处理静摩擦死区，远处不改变 MPPI 的正常速度规划。
       terminal_translation_assist_distance: 0.30
@@ -133,13 +142,56 @@ controller_server:
       terminal_translation_command_deadband: 0.005
       # 只放大与目标方向夹角小于 60° 的命令；避障横移、倒车和反向调整不放大。
       terminal_translation_min_goal_alignment: 0.5
+      # TANGENT/START/AUTO 的终点近区在 MPPI 之前连续输出目标方向平移，避免
+      # 随机采样的零/非零首命令造成顿挫。AUTO 同时保留独立 yaw 闭环和舵轮投影。
+      # v=clamp(0.8*(distance-容差), 0.05, 0.20)，直达不安全时退回 MPPI。
+      tangent_terminal_position_kp: 0.8
+      tangent_terminal_position_max_speed: 0.20
+      # AUTO 独有的世界路径方向保持与舵轮可行性投影。底盘 0.35 rad 协调换向
+      # 保护保持不变；上层不再用 wz/线速度比例禁止低速旋转。世界平移方向取
+      # 规划路径前视点，同目标重规划的小幅方向变化按世界坐标渐进过渡；最终命令
+      # 仍做 footprint 检查，舵轮不易执行时继续缩小线速度和 wz。
+      auto_chassis_length: 0.460
+      auto_chassis_width: 0.345
+      # 0.45 rad/s 完成 90° 约需 3.5 s；与线速度解耦，短路径也能完成旋转。
+      auto_max_angular_speed: 0.45
+      auto_max_angular_acceleration: 0.7
+      # record_0723_1224 中单纯 ±0.07 rad/s 夹紧仍产生角加速度反复翻转。
+      # 先低通 wz 目标，再限制跨周期角加速度 jerk；不降低最大 yaw 速度。
+      auto_angular_speed_filter_alpha: 0.45
+      auto_max_angular_jerk: 3.0
+      # AUTO 普通巡航只低通合速度大小，vx/vy 始终同比例缩放，因此不会改变
+      # auto_path_direction_lookahead_distance 已锁定的世界直线路径方向。终点
+      # 30 cm 确定性定位和其他 orientation mode 均不使用本滤波。
+      auto_linear_speed_filter_alpha: 0.35
+      auto_max_linear_acceleration: 0.6
+      auto_max_linear_deceleration: 0.8
+      auto_max_wheel_steer_step: 0.08
+      auto_steering_filter_simulate_ahead_time: 0.5
+      # 70 cm 前视会跳过 Theta* 原始起点接入的厘米级短线段，并弱化局部折线
+      # 在边走边转时放大成 S 形修正。终点进入 30 cm 确定性控制后不再依赖该
+      # 前视距离，因此不会削弱最后 XY/yaw 校准。
+      auto_path_direction_lookahead_distance: 0.70
+      # MPPI 明确给出接近零的平移时不强行启动，只保留其独立旋转语义。
+      auto_path_direction_command_deadband: 0.005
+      # 同目标 Theta* 重规划最多按 0.8 rad/s 改变世界平移方向，33° 跳变约
+      # 0.72 s 过渡；若新规划方向一次改变超过 60°，视为明确绕障并立即采用，
+      # 再由后续 0.5 s footprint 检查决定是否可执行。
+      auto_path_direction_max_rate: 0.8
+      auto_path_direction_emergency_reset_angle: 1.047
+      # AUTO 进入 30 cm 确定性位置阶段后，平移直达精确 XY，yaw 独立闭环。
+      auto_terminal_yaw_kp: 1.2
+      # 路径足够长时在终点前 20 cm 完成主要旋转；短路径自动使用全部路径长度。
+      auto_yaw_completion_distance_before_goal: 0.20
       stage_track:
         vx_max: 1.0
         vx_min: -0.5
         vy_max: 1.0
         wz_max: 0.75
         vx_std: 0.25
-        vy_std: 0.10
+        # 横移起步时提高 vy 探索范围，避免采样长期集中在接近零的横向速度，
+        # 造成“停一下再走”；这里只增加采样覆盖，不提高任何最大运行速度。
+        vy_std: 0.15
         wz_std: 0.15
         PathAlignCritic:
           # 从局部路径起步即参与评分，避免开始一段距离内 wz 没有约束。
@@ -152,15 +204,18 @@ controller_server:
       # 运行时只使用 TRACK 权重；GoalAngle/PathAngle 在位置阶段关闭。
       stage_weights:
         GoalCritic: [0.0, 8.0, 0.0]
-        GoalLateralCritic: [0.0, 0.0, 0.0]
-        GoalLongitudinalCritic: [0.0, 0.0, 0.0]
+        # TRACK 远离终点时关闭；进入 30 cm 终点定位区后，仅启用这两个
+        # APPROACH 列位置权重，不改变 AUTO/TANGENT 等模式的 yaw 行为。
+        GoalLateralCritic: [0.0, 0.0, 40.0]
+        GoalLongitudinalCritic: [0.0, 0.0, 25.0]
         GoalAngleCritic: [0.0, 0.0, 0.0]
         PathAngleCritic: [0.0, 0.0, 0.0]
         PathAlignCritic: [0.0, 14.0, 0.0]
         PathFollowCritic: [0.0, 5.0, 0.0]
         PreferForwardCritic: [0.0, 0.0, 0.0]
         LinearVelocityCritic: [0.0, 0.0, 0.0]
-        AngularVelocityCritic: [0.0, 0.0, 0.0]
+        # 仅由 tangent 终点 yaw 保持区取 APPROACH 列，将无效 wz 压向零。
+        AngularVelocityCritic: [0.0, 0.0, 15.0]
       # 终点位置回差：纵向、横向都进入 1.8 cm 才开始最终旋转；
       # 旋转期间任一轴漂出 2 cm 就立即返回位置 MPPI。验收标准仍为 2 cm。
       approach_final_yaw_enter_lon_tolerance: 0.018
@@ -173,7 +228,8 @@ controller_server:
       model_dt: 0.1 # 0.05
       batch_size: 1400 #2000
       vx_std: 0.25 # 0.2
-      vy_std: 0.1 #0.1
+      # 与 stage_track 保持一致：增强横移候选覆盖，不改变 vy_max。
+      vy_std: 0.15 #0.1
       wz_std: 0.15 # 0.3
       vx_max: 1.0 # 0.5
       vx_min: -0.5 # -1.05 # -0.35
@@ -181,8 +237,10 @@ controller_server:
       wz_max: 0.75
       ax_max: 0.6
       ax_min: -0.6
-      ay_max: 0.5
-      ay_min: -0.5
+      # 全向底盘 X/Y 平移能力按同一等级治理，避免横移比纵移多一层限幅，
+      # 导致 MPPI 反复追赶尚未达到的 vy；最大速度参数保持不变。
+      ay_max: 0.6
+      ay_min: -0.6
       az_max: 0.7
       jx_max: 0.6
       jz_max: 0.9
@@ -219,13 +277,14 @@ controller_server:
         enabled: true
         cost_power: 2
         cost_weight: 0.0
-        # 只评价 3.2 s 预测轨迹最后 8 步（0.8 s），强化最终落点而非整段平均位置。
-        trajectory_tail_steps: 8
+        # 0 = 评价全部 3.2 s 预测窗。舵轮底盘真正执行的是第一步，
+        # 只看末尾会允许“前几步乱走、后面再补回”，从而每周期改变舵角。
+        trajectory_tail_steps: 0
       GoalLongitudinalCritic:
         enabled: true
         cost_power: 2
         cost_weight: 0.0
-        trajectory_tail_steps: 8
+        trajectory_tail_steps: 0
       GoalAngleCritic:
         enabled: true
         cost_power: 1
@@ -296,7 +355,10 @@ controller_server:
         twirling_cost_power: 1
         twirling_cost_weight: 10.0
       VelocityDeadbandCritic:
-        enabled: true
+        # 终点静摩擦已由 terminal_min_translation_speed 的目标方向抬升处理。
+        # 此 critic 会分别鼓励 vx/vy/wz 离开零点，对全向底盘会诱导无需的
+        # 侧向和角速度，放大终点摆舵，因此关闭。
+        enabled: false
         cost_power: 1
         cost_weight: 10.0
         # 与 velocity_smoother 及底盘实际线速度死区一致。原来的 vy=0.08 会迫使
@@ -632,6 +694,9 @@ planner_server:
       # orientation mode 标记契约：tangent=首尾各一个、goal=起点一个、
       # start=起点两个、none=终点一个、auto=无标记。
       tangent_in_place_rotation_markers: true
+      # 仅 TANGENT 生效：终点前 20 cm 保持进入该区域时的路径 yaw；若重规划路径
+      # 本身不足 20 cm，则保持当前机器人 yaw，避免最后一条极短栅格斜线触发转舵。
+      tangent_terminal_yaw_hold_distance: 0.20
       # ── B 层：舵轮连续性（对齐 mobile_cmd_omni_region.cpp，减少途中停车转舵）──
       enforce_steering_continuity: false
       steering_chassis_wheelbase: 0.46   # CHASSIS_SIZE_L 460mm
@@ -721,10 +786,10 @@ velocity_smoother:
     # Test
     max_velocity: [1.0, 1.0, 0.75]
     min_velocity: [-0.5, -0.5, -0.75]  
-    # 与 MPPI 和 mobile_cmd_omni 最终速度治理器保持一致，避免上层认为已经
-    # 加速/减速完成，而底盘层仍在二次限幅，造成控制器反复追赶实际速度。
-    max_accel: [0.6, 0.5, 0.7]
-    max_decel: [-0.6, -0.5, -0.7]
+    # 与 MPPI 和 mobile_cmd_omni 最终速度治理器保持一致；X/Y 平移使用相同
+    # 加减速度，避免横移命令在三层限制之间反复追赶，最大速度保持不变。
+    max_accel: [0.6, 0.6, 0.7]
+    max_decel: [-0.6, -0.6, -0.7]
     # Original
     # max_velocity: [0.26, 0.0, 1.0]
     # min_velocity: [-0.26, 0.0, -1.0]  

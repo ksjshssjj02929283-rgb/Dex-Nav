@@ -1,0 +1,349 @@
+[0.000000] (-) TimerEvent: {}
+[0.000147] (nav2_mppi_controller) JobQueued: {'identifier': 'nav2_mppi_controller', 'dependencies': OrderedDict([('nav2_common', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_common'), ('nav2_msgs', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_msgs'), ('nav2_voxel_grid', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_voxel_grid'), ('nav2_util', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_util'), ('nav2_lifecycle_manager', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_lifecycle_manager'), ('nav2_map_server', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server'), ('nav2_costmap_2d', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_costmap_2d'), ('nav2_core', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_core'), ('nav2_mppi_controller', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller')])}
+[0.000172] (nav2_mppi_controller) JobStarted: {'identifier': 'nav2_mppi_controller'}
+[0.021918] (nav2_mppi_controller) Command: {'cmd': ['/usr/bin/ctest', '-C', 'Release', '-D', 'ExperimentalTest', '--no-compress-output', '-V', '--force-new-ctest-process', '-R', 'controller_state_transition_test', '--output-on-failure'], 'cwd': '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller', 'env': OrderedDict([('LESSOPEN', '| /usr/bin/lesspipe %s'), ('CODEX_CI', '1'), ('LANGUAGE', 'zh_CN'), ('USER', 'dex'), ('LC_TIME', 'zh_CN.UTF-8'), ('XDG_SESSION_TYPE', 'x11'), ('SHLVL', '1'), ('LD_LIBRARY_PATH', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/lib:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/lib:/usr/lib/x86_64-linux-gnu/gazebo-11/plugins:/opt/ros/humble/opt/rviz_ogre_vendor/lib:/opt/ros/humble/lib/x86_64-linux-gnu:/opt/ros/humble/lib'), ('HOME', '/home/dex'), ('OLDPWD', '/home/dex'), ('DESKTOP_SESSION', 'ubuntu-xorg'), ('NVM_BIN', '/home/dex/.nvm/versions/node/v22.23.1/bin'), ('NVM_INC', '/home/dex/.nvm/versions/node/v22.23.1/include/node'), ('ROS_PYTHON_VERSION', '3'), ('GNOME_SHELL_SESSION_MODE', 'ubuntu'), ('GTK_MODULES', 'gail:atk-bridge'), ('PAGER', 'cat'), ('LC_MONETARY', 'zh_CN.UTF-8'), ('MANAGERPID', '2108'), ('LC_CTYPE', 'C.UTF-8'), ('ROS_LOG_DIR', '/tmp/dexe_ros_test_logs'), ('SYSTEMD_EXEC_PID', '2589'), ('NO_COLOR', '1'), ('DBUS_SESSION_BUS_ADDRESS', 'unix:path=/run/user/1000/bus'), ('COLORTERM', ''), ('TERMINATOR_DBUS_NAME', 'net.tenshu.Terminator23558193cd9818af7fe4d2c2f5bd9d00f'), ('GIO_LAUNCHED_DESKTOP_FILE_PID', '8667'), ('NVM_DIR', '/home/dex/.nvm'), ('COLCON_PREFIX_PATH', '/home/dex/dexe_mobile_nav/mobile_navigation/install'), ('CODEX_PERMISSION_PROFILE', ':workspace'), ('ROS_DISTRO', 'humble'), ('GTK_IM_MODULE', 'ibus'), ('LOGNAME', 'dex'), ('http_proxy', 'https://127.0.0.1:7897'), ('JOURNAL_STREAM', '8:10945'), ('_', '/usr/bin/colcon'), ('ROS_VERSION', '2'), ('XDG_SESSION_CLASS', 'user'), ('USERNAME', 'dex'), ('TERM', 'dumb'), ('GNOME_DESKTOP_SESSION_ID', 'this-is-deprecated'), ('ROS_LOCALHOST_ONLY', '0'), ('WINDOWPATH', '2'), ('PATH', '/home/dex/.local/npm/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/codex-path:/home/dex/.codex/tmp/arg0/codex-arg0wclkfQ:/home/dex/.nvm/versions/node/v22.23.1/bin:/home/dex/.local/npm/bin:/opt/ros/humble/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/snap/bin'), ('SESSION_MANAGER', 'local/dex-TX-Gaming-FA608UH-FA608UH:@/tmp/.ICE-unix/2404,unix/dex-TX-Gaming-FA608UH-FA608UH:/tmp/.ICE-unix/2404'), ('INVOCATION_ID', '35d51128ab174db89c959789b5861112'), ('PAPERSIZE', 'a4'), ('XDG_MENU_PREFIX', 'gnome-'), ('LC_ADDRESS', 'zh_CN.UTF-8'), ('XDG_RUNTIME_DIR', '/run/user/1000'), ('DISPLAY', ':1'), ('CODEX_SANDBOX_NETWORK_DISABLED', '1'), ('TERMINATOR_DBUS_PATH', '/net/tenshu/Terminator2'), ('LANG', 'C.UTF-8'), ('XDG_CURRENT_DESKTOP', 'ubuntu:GNOME'), ('IBUS_DISABLE_SNOOPER', '1'), ('LC_TELEPHONE', 'zh_CN.UTF-8'), ('XMODIFIERS', '@im=ibus'), ('GH_PAGER', 'cat'), ('XDG_SESSION_DESKTOP', 'ubuntu-xorg'), ('XAUTHORITY', '/run/user/1000/gdm/Xauthority'), ('LS_COLORS', 'rs=0:di=01;34:ln=01;36:mh=00:pi=40;33:so=01;35:do=01;35:bd=40;33;01:cd=40;33;01:or=40;31;01:mi=00:su=37;41:sg=30;43:ca=30;41:tw=30;42:ow=34;42:st=37;44:ex=01;32:*.tar=01;31:*.tgz=01;31:*.arc=01;31:*.arj=01;31:*.taz=01;31:*.lha=01;31:*.lz4=01;31:*.lzh=01;31:*.lzma=01;31:*.tlz=01;31:*.txz=01;31:*.tzo=01;31:*.t7z=01;31:*.zip=01;31:*.z=01;31:*.dz=01;31:*.gz=01;31:*.lrz=01;31:*.lz=01;31:*.lzo=01;31:*.xz=01;31:*.zst=01;31:*.tzst=01;31:*.bz2=01;31:*.bz=01;31:*.tbz=01;31:*.tbz2=01;31:*.tz=01;31:*.deb=01;31:*.rpm=01;31:*.jar=01;31:*.war=01;31:*.ear=01;31:*.sar=01;31:*.rar=01;31:*.alz=01;31:*.ace=01;31:*.zoo=01;31:*.cpio=01;31:*.7z=01;31:*.rz=01;31:*.cab=01;31:*.wim=01;31:*.swm=01;31:*.dwm=01;31:*.esd=01;31:*.jpg=01;35:*.jpeg=01;35:*.mjpg=01;35:*.mjpeg=01;35:*.gif=01;35:*.bmp=01;35:*.pbm=01;35:*.pgm=01;35:*.ppm=01;35:*.tga=01;35:*.xbm=01;35:*.xpm=01;35:*.tif=01;35:*.tiff=01;35:*.png=01;35:*.svg=01;35:*.svgz=01;35:*.mng=01;35:*.pcx=01;35:*.mov=01;35:*.mpg=01;35:*.mpeg=01;35:*.m2v=01;35:*.mkv=01;35:*.webm=01;35:*.webp=01;35:*.ogm=01;35:*.mp4=01;35:*.m4v=01;35:*.mp4v=01;35:*.vob=01;35:*.qt=01;35:*.nuv=01;35:*.wmv=01;35:*.asf=01;35:*.rm=01;35:*.rmvb=01;35:*.flc=01;35:*.avi=01;35:*.fli=01;35:*.flv=01;35:*.gl=01;35:*.dl=01;35:*.xcf=01;35:*.xwd=01;35:*.yuv=01;35:*.cgm=01;35:*.emf=01;35:*.ogv=01;35:*.ogx=01;35:*.aac=00;36:*.au=00;36:*.flac=00;36:*.m4a=00;36:*.mid=00;36:*.midi=00;36:*.mka=00;36:*.mp3=00;36:*.mpc=00;36:*.ogg=00;36:*.ra=00;36:*.wav=00;36:*.oga=00;36:*.opus=00;36:*.spx=00;36:*.xspf=00;36:'), ('SSH_AGENT_LAUNCHER', 'gnome-keyring'), ('SSH_AUTH_SOCK', '/run/user/1000/keyring/ssh'), ('AMENT_PREFIX_PATH', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_bringup:/opt/ros/humble'), ('SHELL', '/bin/bash'), ('LC_NAME', 'zh_CN.UTF-8'), ('TERMINATOR_UUID', 'urn:uuid:cbe53817-7274-497c-a73c-346868bee61f'), ('QT_ACCESSIBILITY', '1'), ('GDMSESSION', 'ubuntu-xorg'), ('LESSCLOSE', '/usr/bin/lesspipe %s %s'), ('CODEX_THREAD_ID', '019f825f-1886-7f43-8834-04578e1a1d6c'), ('LC_MEASUREMENT', 'zh_CN.UTF-8'), ('GPG_AGENT_INFO', '/run/user/1000/gnupg/S.gpg-agent:0:1'), ('LC_IDENTIFICATION', 'zh_CN.UTF-8'), ('GIT_PAGER', 'cat'), ('QT_IM_MODULE', 'ibus'), ('PWD', '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller'), ('LC_ALL', 'C.UTF-8'), ('CODEX_MANAGED_PACKAGE_ROOT', '/home/dex/.local/npm/lib/node_modules/@openai/codex'), ('XDG_CONFIG_DIRS', '/etc/xdg/xdg-ubuntu-xorg:/etc/xdg'), ('NVM_CD_FLAGS', ''), ('XDG_DATA_DIRS', '/usr/share/ubuntu-xorg:/usr/share/gnome:/usr/local/share/:/usr/share/:/var/lib/snapd/desktop'), ('PYTHONPATH', '/opt/ros/humble/lib/python3.10/site-packages:/opt/ros/humble/local/lib/python3.10/dist-packages'), ('LC_NUMERIC', 'zh_CN.UTF-8'), ('LC_PAPER', 'zh_CN.UTF-8'), ('COLCON', '1'), ('CODEX_MANAGED_BY_NPM', '1'), ('VTE_VERSION', '6800'), ('CMAKE_PREFIX_PATH', '/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_bringup')]), 'shell': False}
+[0.029516] (nav2_mppi_controller) StdoutLine: {'line': b'UpdateCTestConfiguration  from :/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/CTestConfiguration.ini\n'}
+[0.029824] (nav2_mppi_controller) StdoutLine: {'line': b'Parse Config file:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/CTestConfiguration.ini\n'}
+[0.029909] (nav2_mppi_controller) StdoutLine: {'line': b'   Site: dex-TX-Gaming-FA608UH-FA608UH\n'}
+[0.029976] (nav2_mppi_controller) StdoutLine: {'line': b'   Build name: (empty)\n'}
+[0.030038] (nav2_mppi_controller) StdoutLine: {'line': b' Add coverage exclude regular expressions.\n'}
+[0.030106] (nav2_mppi_controller) StdoutLine: {'line': b'Create new tag: 20260721-0958 - Experimental\n'}
+[0.030174] (nav2_mppi_controller) StdoutLine: {'line': b'UpdateCTestConfiguration  from :/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/CTestConfiguration.ini\n'}
+[0.030233] (nav2_mppi_controller) StdoutLine: {'line': b'Parse Config file:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/CTestConfiguration.ini\n'}
+[0.030295] (nav2_mppi_controller) StdoutLine: {'line': b'Test project /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller\n'}
+[0.030357] (nav2_mppi_controller) StdoutLine: {'line': b'Constructing a list of tests\n'}
+[0.030524] (nav2_mppi_controller) StdoutLine: {'line': b'Done constructing a list of tests\n'}
+[0.030594] (nav2_mppi_controller) StdoutLine: {'line': b'Updating test list for fixtures\n'}
+[0.030652] (nav2_mppi_controller) StdoutLine: {'line': b'Added 0 tests to meet fixture requirements\n'}
+[0.030708] (nav2_mppi_controller) StdoutLine: {'line': b'Checking test dependency graph...\n'}
+[0.030763] (nav2_mppi_controller) StdoutLine: {'line': b'Checking test dependency graph end\n'}
+[0.030818] (nav2_mppi_controller) StdoutLine: {'line': b'test 7\n'}
+[0.030875] (nav2_mppi_controller) StdoutLine: {'line': b'    Start 7: controller_state_transition_test\n'}
+[0.030930] (nav2_mppi_controller) StdoutLine: {'line': b'\n'}
+[0.030991] (nav2_mppi_controller) StdoutLine: {'line': b'7: Test command: /usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/controller_state_transition_test.gtest.xml" "--package-name" "nav2_mppi_controller" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/ament_cmake_gtest/controller_state_transition_test.txt" "--command" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/controller_state_transition_test" "--gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/controller_state_transition_test.gtest.xml"\n'}
+[0.031024] (nav2_mppi_controller) StdoutLine: {'line': b'7: Test timeout computed to be: 60\n'}
+[0.068634] (nav2_mppi_controller) StdoutLine: {'line': b"7: -- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test':\n"}
+[0.068832] (nav2_mppi_controller) StdoutLine: {'line': b'7:  - /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/controller_state_transition_test --gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/controller_state_transition_test.gtest.xml\n'}
+[0.081655] (nav2_mppi_controller) StdoutLine: {'line': b'7: Running main() from /opt/ros/humble/src/gtest_vendor/src/gtest_main.cc\n'}
+[0.081958] (nav2_mppi_controller) StdoutLine: {'line': b'7: [==========] Running 42 tests from 1 test suite.\n'}
+[0.081994] (nav2_mppi_controller) StdoutLine: {'line': b'7: [----------] Global test environment set-up.\n'}
+[0.082023] (nav2_mppi_controller) StdoutLine: {'line': b'7: [----------] 42 tests from ControllerStateTransitionTest\n'}
+[0.082054] (nav2_mppi_controller) StdoutLine: {'line': b'7: [ RUN      ] ControllerStateTransitionTest.ApproachSubstageUsesPositionHysteresis\n'}
+[0.082093] (nav2_mppi_controller) StdoutLine: {'line': b'7: [INFO] [1784627934.545684940] [MPPIController]: MPPI approach substage switched: positioning -> final_yaw, |lon|=0.014, |lat|=0.015\n'}
+[0.082132] (nav2_mppi_controller) StdoutLine: {'line': b'7: [INFO] [1784627934.545771844] [MPPIController]: MPPI approach substage switched: final_yaw -> positioning, |lon|=0.021, |lat|=0.000\n'}
+[0.082161] (nav2_mppi_controller) StdoutLine: {'line': b'7: [       OK ] ControllerStateTransitionTest.ApproachSubstageUsesPositionHysteresis (0 ms)\n'}
+[0.082192] (nav2_mppi_controller) StdoutLine: {'line': b'7: [ RUN      ] ControllerStateTransitionTest.PositionMppiAlwaysUsesTrackProfile\n'}
+[0.082290] (nav2_mppi_controller) StdoutLine: {'line': b'7: [       OK ] ControllerStateTransitionTest.PositionMppiAlwaysUsesTrackProfile (0 ms)\n'}
+[0.082317] (nav2_mppi_controller) StdoutLine: {'line': b'7: [ RUN      ] ControllerStateTransitionTest.ApproachSubstageAppliesOmniFinalYawProfile\n'}
+[0.082343] (nav2_mppi_controller) StdoutLine: {'line': b'7: [       OK ] ControllerStateTransitionTest.ApproachSubstageAppliesOmniFinalYawProfile (0 ms)\n'}
+[0.082369] (nav2_mppi_controller) StdoutLine: {'line': b'7: [ RUN      ] ControllerStateTransitionTest.ApproachBrakingEnvelopeIsContinuousAtBoundary\n'}
+[0.082395] (nav2_mppi_controller) StdoutLine: {'line': b'7: [       OK ] ControllerStateTransitionTest.ApproachBrakingEnvelopeIsContinuousAtBoundary (0 ms)\n'}
+[0.082444] (nav2_mppi_controller) StdoutLine: {'line': b'7: [ RUN      ] ControllerStateTransitionTest.TerminalGoalAxesPreserveOrientationMode\n'}
+[0.082482] (nav2_mppi_controller) StdoutLine: {'line': b'7: [       OK ] ControllerStateTransitionTest.TerminalGoalAxesPreserveOrientationMode (0 ms)\n'}
+[0.082512] (nav2_mppi_controller) StdoutLine: {'line': b'7: [ RUN      ] ControllerStateTransitionTest.TerminalGoalAxesStayOffOutsideAssistDistance\n'}
+[0.082537] (nav2_mppi_controller) StdoutLine: {'line': b'7: [       OK ] ControllerStateTransitionTest.TerminalGoalAxesStayOffOutsideAssistDistance (0 ms)\n'}
+[0.082562] (nav2_mppi_controller) StdoutLine: {'line': b'7: [ RUN      ] ControllerStateTransitionTest.TangentTerminalHoldDampsSpuriousYaw\n'}
+[0.082586] (nav2_mppi_controller) StdoutLine: {'line': b'7: [       OK ] ControllerStateTransitionTest.TangentTerminalHoldDampsSpuriousYaw (0 ms)\n'}
+[0.082619] (nav2_mppi_controller) StdoutLine: {'line': b'7: [ RUN      ] ControllerStateTransitionTest.TangentYawDampingStaysOffBeforeHoldRegion\n'}
+[0.082653] (nav2_mppi_controller) StdoutLine: {'line': b'7: [       OK ] ControllerStateTransitionTest.TangentYawDampingStaysOffBeforeHoldRegion (0 ms)\n'}
+[0.082680] (nav2_mppi_controller) StdoutLine: {'line': b'7: [ RUN      ] ControllerStateTransitionTest.FinalYawLocksBothTranslationAxes\n'}
+[0.082722] (nav2_mppi_controller) StdoutLine: {'line': b'7: [INFO] [1784627934.545900137] [MPPIController]: MPPI final_yaw direction locked: direction=-1, yaw_error=0.500 rad. The direction will be kept until |yaw_error| <= 0.050 rad.\n'}
+[0.082757] (nav2_mppi_controller) StdoutLine: {'line': b'7: [       OK ] ControllerStateTransitionTest.FinalYawLocksBothTranslationAxes (0 ms)\n'}
+[0.082789] (nav2_mppi_controller) StdoutLine: {'line': b'7: [ RUN      ] ControllerStateTransitionTest.ApproachModeLocksFromEntryGeometry\n'}
+[0.082872] (nav2_mppi_controller) StdoutLine: {'line': b'7: [INFO] [1784627934.545923962] [MPPIController]: MPPI approach mode locked: normal, entry |lon|=0.400 m |lat|=0.020 m |yaw_error|=0.500 rad, yaw_threshold=2.094 rad, lateral_threshold=0.050 m, lateral_ratio=1.000, reason=normal_geometry. The mode remains locked until leaving approach.\n'}
+[0.082899] (nav2_mppi_controller) StdoutLine: {'line': b'7: [INFO] [1784627934.545930965] [MPPIController]: MPPI approach mode locked: position_first, entry |lon|=0.020 m |lat|=0.450 m |yaw_error|=1.500 rad, yaw_threshold=2.094 rad, lateral_threshold=0.050 m, lateral_ratio=1.000, reason=lateral_dominant. The mode remains locked until leaving approach.\n'}
+[0.082924] (nav2_mppi_controller) StdoutLine: {'line': b'7: [INFO] [1784627934.545934452] [MPPIController]: MPPI approach mode locked: position_first, entry |lon|=0.400 m |lat|=0.020 m |yaw_error|=2.800 rad, yaw_threshold=2.094 rad, lateral_threshold=0.050 m, lateral_ratio=1.000, reason=large_yaw. The mode remains locked until leaving approach.\n'}
+[0.082956] (nav2_mppi_controller) StdoutLine: {'line': b'7: [       OK ] ControllerStateTransitionTest.ApproachModeLocksFromEntryGeometry (0 ms)\n'}
+[0.082996] (nav2_mppi_controller) StdoutLine: {'line': b'7: [ RUN      ] ControllerStateTransitionTest.DeterministicTerminalCommandUsesStableGoalDirection\n'}
+[0.083067] (nav2_mppi_controller) StdoutLine: {'line': b'7: [       OK ] ControllerStateTransitionTest.DeterministicTerminalCommandUsesStableGoalDirection (0 ms)\n'}
+[0.083092] (nav2_mppi_controller) StdoutLine: {'line': b'7: [ RUN      ] ControllerStateTransitionTest.DeterministicTerminalCommandStartsContinuouslyFromZero\n'}
+[0.083116] (nav2_mppi_controller) StdoutLine: {'line': b'7: [       OK ] ControllerStateTransitionTest.DeterministicTerminalCommandStartsContinuouslyFromZero (0 ms)\n'}
+[0.083142] (nav2_mppi_controller) StdoutLine: {'line': b'7: [ RUN      ] ControllerStateTransitionTest.DeterministicTerminalControlAlsoCoversAuto\n'}
+[0.083166] (nav2_mppi_controller) StdoutLine: {'line': b'7: [       OK ] ControllerStateTransitionTest.DeterministicTerminalControlAlsoCoversAuto (0 ms)\n'}
+[0.083201] (nav2_mppi_controller) StdoutLine: {'line': b'7: [ RUN      ] ControllerStateTransitionTest.DeterministicTerminalSpeedChangesContinuouslyWithDistance\n'}
+[0.083227] (nav2_mppi_controller) StdoutLine: {'line': b'7: [       OK ] ControllerStateTransitionTest.DeterministicTerminalSpeedChangesContinuouslyWithDistance (0 ms)\n'}
+[0.083252] (nav2_mppi_controller) StdoutLine: {'line': b'7: [ RUN      ] ControllerStateTransitionTest.DeterministicTerminalCommandRespectsZeroSpeedLimit\n'}
+[0.083276] (nav2_mppi_controller) StdoutLine: {'line': b'7: [       OK ] ControllerStateTransitionTest.DeterministicTerminalCommandRespectsZeroSpeedLimit (0 ms)\n'}
+[0.083302] (nav2_mppi_controller) StdoutLine: {'line': b'7: [ RUN      ] ControllerStateTransitionTest.AutoYawRateIsIndependentOfLinearSpeed\n'}
+[0.083338] (nav2_mppi_controller) StdoutLine: {'line': b'7: [       OK ] ControllerStateTransitionTest.AutoYawRateIsIndependentOfLinearSpeed (0 ms)\n'}
+[0.083373] (nav2_mppi_controller) StdoutLine: {'line': b'7: [ RUN      ] ControllerStateTransitionTest.AutoPureRotationIsAllowedAtZeroLinearSpeed\n'}
+[0.083433] (nav2_mppi_controller) StdoutLine: {'line': b'7: [       OK ] ControllerStateTransitionTest.AutoPureRotationIsAllowedAtZeroLinearSpeed (0 ms)\n'}
+[0.083479] (nav2_mppi_controller) StdoutLine: {'line': b'7: [ RUN      ] ControllerStateTransitionTest.AutoProjectionKeepsStraightWorldVelocityWhileTurning\n'}
+[0.083516] (nav2_mppi_controller) StdoutLine: {'line': b'7: [       OK ] ControllerStateTransitionTest.AutoProjectionKeepsStraightWorldVelocityWhileTurning (1 ms)\n'}
+[0.083550] (nav2_mppi_controller) StdoutLine: {'line': b'7: [ RUN      ] ControllerStateTransitionTest.AutoProjectionNeverInterpolatesWorldDirection\n'}
+[0.083580] (nav2_mppi_controller) StdoutLine: {'line': b'7: [       OK ] ControllerStateTransitionTest.AutoProjectionNeverInterpolatesWorldDirection (0 ms)\n'}
+[0.083606] (nav2_mppi_controller) StdoutLine: {'line': b'7: [ RUN      ] ControllerStateTransitionTest.AutoPathReferenceKeepsMppiSpeedAndUsesLookaheadDirection\n'}
+[0.083638] (nav2_mppi_controller) StdoutLine: {'line': b'7: [       OK ] ControllerStateTransitionTest.AutoPathReferenceKeepsMppiSpeedAndUsesLookaheadDirection (0 ms)\n'}
+[0.083666] (nav2_mppi_controller) StdoutLine: {'line': b'7: [ RUN      ] ControllerStateTransitionTest.AutoPathReferenceCompensatesCurrentRobotYaw\n'}
+[0.083692] (nav2_mppi_controller) StdoutLine: {'line': b'7: [       OK ] ControllerStateTransitionTest.AutoPathReferenceCompensatesCurrentRobotYaw (0 ms)\n'}
+[0.083719] (nav2_mppi_controller) StdoutLine: {'line': b'7: [ RUN      ] ControllerStateTransitionTest.AutoPathReferenceDoesNotForceStartFromZeroCommand\n'}
+[0.083745] (nav2_mppi_controller) StdoutLine: {'line': b'7: [       OK ] ControllerStateTransitionTest.AutoPathReferenceDoesNotForceStartFromZeroCommand (0 ms)\n'}
+[0.083776] (nav2_mppi_controller) StdoutLine: {'line': b'7: [ RUN      ] ControllerStateTransitionTest.AutoProjectionReducesYawWithoutRotatingPathDirection\n'}
+[0.083811] (nav2_mppi_controller) StdoutLine: {'line': b'7: [       OK ] ControllerStateTransitionTest.AutoProjectionReducesYawWithoutRotatingPathDirection (0 ms)\n'}
+[0.083847] (nav2_mppi_controller) StdoutLine: {'line': b'7: [ RUN      ] ControllerStateTransitionTest.AutoSteeringFilterDoesNotChangeOtherModes\n'}
+[0.083896] (nav2_mppi_controller) StdoutLine: {'line': b'7: [       OK ] ControllerStateTransitionTest.AutoSteeringFilterDoesNotChangeOtherModes (0 ms)\n'}
+[0.083948] (nav2_mppi_controller) StdoutLine: {'line': b'7: [ RUN      ] ControllerStateTransitionTest.AutoPathAlignmentDoesNotChangeOtherModes\n'}
+[0.083983] (nav2_mppi_controller) StdoutLine: {'line': b'7: [       OK ] ControllerStateTransitionTest.AutoPathAlignmentDoesNotChangeOtherModes (0 ms)\n'}
+[0.084013] (nav2_mppi_controller) StdoutLine: {'line': b'7: [ RUN      ] ControllerStateTransitionTest.AutoFilterFallsBackWhenCollisionCheckUnavailable\n'}
+[0.084042] (nav2_mppi_controller) StdoutLine: {'line': b'7: [       OK ] ControllerStateTransitionTest.AutoFilterFallsBackWhenCollisionCheckUnavailable (0 ms)\n'}
+[0.084067] (nav2_mppi_controller) StdoutLine: {'line': b'7: [ RUN      ] ControllerStateTransitionTest.AutoYawProfileKeepsTaskProgressAcrossReplans\n'}
+[0.084093] (nav2_mppi_controller) StdoutLine: {'line': b'7: [       OK ] ControllerStateTransitionTest.AutoYawProfileKeepsTaskProgressAcrossReplans (0 ms)\n'}
+[0.084124] (nav2_mppi_controller) StdoutLine: {'line': b'7: [ RUN      ] ControllerStateTransitionTest.AutoYawProfileFinishesBeforeTerminalRegion\n'}
+[0.084149] (nav2_mppi_controller) StdoutLine: {'line': b'7: [       OK ] ControllerStateTransitionTest.AutoYawProfileFinishesBeforeTerminalRegion (0 ms)\n'}
+[0.084173] (nav2_mppi_controller) StdoutLine: {'line': b'7: [ RUN      ] ControllerStateTransitionTest.ControllerNotFail\n'}
+[0.084198] (nav2_mppi_controller) StdoutLine: {'line': b'7: getifaddrs: Operation not permitted\n'}
+[0.084229] (nav2_mppi_controller) StdoutLine: {'line': b'7: getifaddrs: Operation not permitted\n'}
+[0.084260] (nav2_mppi_controller) StdoutLine: {'line': b'7: getifaddrs: Operation not permitted\n'}
+[0.084285] (nav2_mppi_controller) StdoutLine: {'line': b'7: \x1b[37;1m2026-07-21 17:58:54.547 \x1b[31;1m[\x1b[37;1mTRANSPORT_UDP\x1b[31;1m Error] \x1b[37mError creating socket: Operation not permitted\x1b[34;1m -> Function \x1b[36minit\x1b[m\n'}
+[0.084314] (nav2_mppi_controller) StdoutLine: {'line': b'7: \x1b[37;1m2026-07-21 17:58:54.547 \x1b[31;1m[\x1b[37;1mRTPS_PARTICIPANT\x1b[31;1m Error] \x1b[37mUser transport failed to register.\x1b[34;1m -> Function \x1b[36mRTPSParticipantImpl\x1b[m\n'}
+[0.091768] (nav2_mppi_controller) StdoutLine: {'line': b'7: [INFO] [1784627934.556125752] [cost_map_node.cost_map_node]: \n'}
+[0.091999] (nav2_mppi_controller) StdoutLine: {'line': b'7: \tcost_map_node lifecycle node launched. \n'}
+[0.092088] (nav2_mppi_controller) StdoutLine: {'line': b'7: \tWaiting on external lifecycle transitions to activate\n'}
+[0.092221] (nav2_mppi_controller) StdoutLine: {'line': b'7: \tSee https://design.ros2.org/articles/node_lifecycle.html for more information.\n'}
+[0.092284] (nav2_mppi_controller) StdoutLine: {'line': b'7: [INFO] [1784627934.556518274] [cost_map_node.cost_map_node]: Creating Costmap\n'}
+[0.092342] (nav2_mppi_controller) StdoutLine: {'line': b'7: [INFO] [1784627934.556607763] [cost_map_node.cost_map_node]: Configuring\n'}
+[0.093778] (nav2_mppi_controller) StdoutLine: {'line': b'7: [INFO] [1784627934.558319500] [cost_map_node.cost_map_node]: Using plugin "static_layer"\n'}
+[0.096236] (nav2_mppi_controller) StdoutLine: {'line': b'7: [INFO] [1784627934.560703869] [cost_map_node.cost_map_node]: Subscribing to the map topic (/map) with transient local durability\n'}
+[0.096885] (nav2_mppi_controller) StdoutLine: {'line': b'7: [INFO] [1784627934.561302931] [cost_map_node.cost_map_node]: Initialized plugin "static_layer"\n'}
+[0.097044] (nav2_mppi_controller) StdoutLine: {'line': b'7: [INFO] [1784627934.561315164] [cost_map_node.cost_map_node]: Using plugin "obstacle_layer"\n'}
+[0.097081] (nav2_mppi_controller) StdoutLine: {'line': b'7: [INFO] [1784627934.561394024] [cost_map_node.cost_map_node]: Subscribed to Topics: \n'}
+[0.097118] (nav2_mppi_controller) StdoutLine: {'line': b'7: [INFO] [1784627934.561424491] [cost_map_node.cost_map_node]: Initialized plugin "obstacle_layer"\n'}
+[0.097148] (nav2_mppi_controller) StdoutLine: {'line': b'7: [INFO] [1784627934.561431845] [cost_map_node.cost_map_node]: Using plugin "inflation_layer"\n'}
+[0.097173] (nav2_mppi_controller) StdoutLine: {'line': b'7: [INFO] [1784627934.561547724] [cost_map_node.cost_map_node]: Initialized plugin "inflation_layer"\n'}
+[0.099764] (-) TimerEvent: {}
+[0.100706] (nav2_mppi_controller) StdoutLine: {'line': b'7: [INFO] [1784627934.565084632] [MPPIController]: MPPI profile_1 velocity: vx=[-0.500, 0.700] vy=0.500 wz=0.750. Goal(w=0.000) GoalLateral(w=0.000) GoalLongitudinal(w=0.000) GoalAngle(w=0.000) PathAngle(w=7.000 off=3 max_angle=0.700 forward=1) PathAlign(w=8.000 off=8 step=3 occ=0.080 yaw=0) PathFollow(w=7.000 off=7) PreferForward(w=6.000). weight=0 disables this cost for the stage.\n'}
+[0.100782] (nav2_mppi_controller) StdoutLine: {'line': b'7: [INFO] [1784627934.565111633] [MPPIController]: MPPI profile_2 velocity: vx=[-0.500, 0.700] vy=0.500 wz=0.750. Goal(w=8.000) GoalLateral(w=0.000) GoalLongitudinal(w=0.000) GoalAngle(w=0.000) PathAngle(w=0.000 off=3 max_angle=0.900 forward=1) PathAlign(w=14.000 off=1 step=3 occ=0.050 yaw=0) PathFollow(w=5.000 off=5) PreferForward(w=0.000). weight=0 disables this cost for the stage.\n'}
+[0.100815] (nav2_mppi_controller) StdoutLine: {'line': b'7: [INFO] [1784627934.565120700] [MPPIController]: MPPI profile_3 velocity: vx=[-0.500, 0.700] vy=0.500 wz=0.750. Goal(w=4.000) GoalLateral(w=40.000) GoalLongitudinal(w=25.000) GoalAngle(w=8.000) PathAngle(w=1.000 off=2 max_angle=1.000 forward=1) PathAlign(w=2.000 off=15 step=3 occ=0.050 yaw=0) PathFollow(w=1.000 off=5) PreferForward(w=1.000). weight=0 disables this cost for the stage.\n'}
+[0.100993] (nav2_mppi_controller) StdoutLine: {'line': b'7: [WARN] [1784627934.565484087] [dummy]: Controller period is less then model dt, consider setting it equal\n'}
+[0.105814] (nav2_mppi_controller) StdoutLine: {'line': b'7: [INFO] [1784627934.570199684] [dummy]: Optimizer reset\n'}
+[0.107573] (nav2_mppi_controller) StdoutLine: {'line': b'7: [INFO] [1784627934.571744825] [MPPIController]: Configured MPPI Controller: dummy\xef\xbc\x8ctangent/goal \xe8\xb5\xb7\xe7\x82\xb9\xe5\xaf\xb9\xe9\xbd\x90=\xe5\x85\xb3\xe9\x97\xad\xef\xbc\x8c\xe4\xb9\x8b\xe5\x90\x8e\xe8\xbf\x90\xe8\xa1\x8c TRACK/APPROACH\n'}
+[0.107726] (nav2_mppi_controller) StdoutLine: {'line': b'7: [WARN] [1784627934.571776876] [dummy]: Parameter dummy.verbose not found\n'}
+[0.109088] (nav2_mppi_controller) StdoutLine: {'line': b'7: [INFO] [1784627934.573624720] [dummy]: Optimizer reset\n'}
+[0.109150] (nav2_mppi_controller) StdoutLine: {'line': b'7: [INFO] [1784627934.573690955] [MPPIController]: Activated MPPI Controller: dummy\n'}
+[0.110899] (nav2_mppi_controller) StdoutLine: {'line': b'7: [INFO] [1784627934.575407561] [dummy]: Optimizer reset\n'}
+[0.111144] (nav2_mppi_controller) StdoutLine: {'line': b'7: [INFO] [1784627934.575425856] [MPPIController]: \xe6\x96\xb0\xe5\xaf\xbc\xe8\x88\xaa\xe7\x9b\xae\xe6\xa0\x87\xef\xbc\x9aorientation_mode=auto\xef\xbc\x8c\xe8\xb5\xb7\xe7\x82\xb9\xe5\xaf\xb9\xe9\xbd\x90=\xe8\xb7\xb3\xe8\xbf\x87\xef\xbc\x8c\xe7\x9b\xb4\xe6\x8e\xa5 FOLLOW\xef\xbc\x9bgoal_yaw=0.000\n'}
+[0.111209] (nav2_mppi_controller) StdoutLine: {'line': b'7: [INFO] [1784627934.575438249] [dummy]: MPPI new global plan received: poses=8. Reset three-stage path_progress and goal_distance stats.\n'}
+[0.111283] (nav2_mppi_controller) StdoutLine: {'line': b'7: [ERROR] [1784627934.575475840] [tf2_buffer]: Do not call canTransform or lookupTransform with a timeout unless you are using another thread for populating data. Without a dedicated thread it will always timeout.  If you have a separate thread servicing tf messages, call setUsingDedicatedThread(true) on your Buffer instance.\n'}
+[0.111363] (nav2_mppi_controller) StdoutLine: {'line': b'7: [ERROR] [1784627934.575548848] [dummy]: Exception in lookupTransform: "map" passed to lookupTransform argument target_frame does not exist. . TF lookup failed; cannot transform global path into costmap frame.\n'}
+[0.111573] (nav2_mppi_controller) StdoutLine: {'line': b'7: /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:840: Failure\n'}
+[0.111656] (nav2_mppi_controller) StdoutLine: {'line': b"7: Expected: controller->computeVelocityCommands(pose, velocity, {}) doesn't throw an exception.\n"}
+[0.111717] (nav2_mppi_controller) StdoutLine: {'line': b'7:   Actual: it throws.\n'}
+[0.111776] (nav2_mppi_controller) StdoutLine: {'line': b'7: [INFO] [1784627934.575608240] [dummy]: MPPI speed limit updated: active=1 value=0.500 percentage=1. Received speed limit update; will combine with the current three-stage profile velocity constraints.\n'}
+[0.111835] (nav2_mppi_controller) StdoutLine: {'line': b'7: [INFO] [1784627934.575617999] [dummy]: MPPI speed limit updated: active=1 value=0.500 percentage=0. Received speed limit update; will combine with the current three-stage profile velocity constraints.\n'}
+[0.111898] (nav2_mppi_controller) StdoutLine: {'line': b'7: [INFO] [1784627934.575623159] [dummy]: MPPI speed limit updated: active=1 value=1.000 percentage=1. Received speed limit update; will combine with the current three-stage profile velocity constraints.\n'}
+[0.111955] (nav2_mppi_controller) StdoutLine: {'line': b'7: [INFO] [1784627934.575628819] [MPPIController]: Deactivated MPPI Controller: dummy\n'}
+[0.112013] (nav2_mppi_controller) StdoutLine: {'line': b'7: [INFO] [1784627934.576006283] [MPPIController]: Cleaned up MPPI Controller: dummy\n'}
+[0.112491] (nav2_mppi_controller) StdoutLine: {'line': b'7: Warning: class_loader.ClassLoader: SEVERE WARNING!!! Attempting to unload library while objects created by this loader exist in the heap! You should delete your objects before attempting to unload the library or destroying the ClassLoader. The library will NOT be unloaded.\n'}
+[0.112797] (nav2_mppi_controller) StdoutLine: {'line': b'7:          at line 127 in ./src/class_loader.cpp\n'}
+[0.114029] (nav2_mppi_controller) StdoutLine: {'line': b'7: [INFO] [1784627934.578303306] [cost_map_node.cost_map_node]: Destroying\n'}
+[0.116677] (nav2_mppi_controller) StdoutLine: {'line': b'7: [  FAILED  ] ControllerStateTransitionTest.ControllerNotFail (35 ms)\n'}
+[0.116938] (nav2_mppi_controller) StdoutLine: {'line': b'7: [ RUN      ] ControllerStateTransitionTest.TangentMarkerContract\n'}
+[0.117105] (nav2_mppi_controller) StdoutLine: {'line': b'7: [       OK ] ControllerStateTransitionTest.TangentMarkerContract (0 ms)\n'}
+[0.117169] (nav2_mppi_controller) StdoutLine: {'line': b'7: [ RUN      ] ControllerStateTransitionTest.StartAlignmentOnlyRunsForTangentAndGoal\n'}
+[0.117238] (nav2_mppi_controller) StdoutLine: {'line': b'7: [       OK ] ControllerStateTransitionTest.StartAlignmentOnlyRunsForTangentAndGoal (0 ms)\n'}
+[0.117306] (nav2_mppi_controller) StdoutLine: {'line': b'7: [ RUN      ] ControllerStateTransitionTest.StartAndGoalCruiseNeverOutputAngularVelocity\n'}
+[0.117392] (nav2_mppi_controller) StdoutLine: {'line': b'7: [       OK ] ControllerStateTransitionTest.StartAndGoalCruiseNeverOutputAngularVelocity (0 ms)\n'}
+[0.117653] (nav2_mppi_controller) StdoutLine: {'line': b'7: [ RUN      ] ControllerStateTransitionTest.TerminalTranslationLiftPreservesVectorDirection\n'}
+[0.117785] (nav2_mppi_controller) StdoutLine: {'line': b'7: [       OK ] ControllerStateTransitionTest.TerminalTranslationLiftPreservesVectorDirection (0 ms)\n'}
+[0.117882] (nav2_mppi_controller) StdoutLine: {'line': b'7: [ RUN      ] ControllerStateTransitionTest.TerminalTranslationLiftRejectsZeroAndWrongDirection\n'}
+[0.117972] (nav2_mppi_controller) StdoutLine: {'line': b'7: [       OK ] ControllerStateTransitionTest.TerminalTranslationLiftRejectsZeroAndWrongDirection (0 ms)\n'}
+[0.118059] (nav2_mppi_controller) StdoutLine: {'line': b'7: [ RUN      ] ControllerStateTransitionTest.TerminalTranslationLiftRespectsActiveSpeedLimit\n'}
+[0.118119] (nav2_mppi_controller) StdoutLine: {'line': b'7: [       OK ] ControllerStateTransitionTest.TerminalTranslationLiftRespectsActiveSpeedLimit (0 ms)\n'}
+[0.118174] (nav2_mppi_controller) StdoutLine: {'line': b'7: [ RUN      ] ControllerStateTransitionTest.GoalStartYawUsesGoalOrientationNotPathTangent\n'}
+[0.118248] (nav2_mppi_controller) StdoutLine: {'line': b'7: [       OK ] ControllerStateTransitionTest.GoalStartYawUsesGoalOrientationNotPathTangent (0 ms)\n'}
+[0.118303] (nav2_mppi_controller) StdoutLine: {'line': b'7: [ RUN      ] ControllerStateTransitionTest.ControllerFrameStartYawUsesArcLengthLookahead\n'}
+[0.118356] (nav2_mppi_controller) StdoutLine: {'line': b'7: [       OK ] ControllerStateTransitionTest.ControllerFrameStartYawUsesArcLengthLookahead (0 ms)\n'}
+[0.118438] (nav2_mppi_controller) StdoutLine: {'line': b'7: [ RUN      ] ControllerStateTransitionTest.RecoveryReplanKeepsSameNavigationTask\n'}
+[0.118499] (nav2_mppi_controller) StdoutLine: {'line': b'7: [       OK ] ControllerStateTransitionTest.RecoveryReplanKeepsSameNavigationTask (0 ms)\n'}
+[0.118564] (nav2_mppi_controller) StdoutLine: {'line': b'7: [ RUN      ] ControllerStateTransitionTest.StartRotationCommandRampsWithoutOdomResponse\n'}
+[0.118589] (nav2_mppi_controller) StdoutLine: {'line': b'7: [       OK ] ControllerStateTransitionTest.StartRotationCommandRampsWithoutOdomResponse (0 ms)\n'}
+[0.118615] (nav2_mppi_controller) StdoutLine: {'line': b'7: [ RUN      ] ControllerStateTransitionTest.FinalYawWaitsOnceThenRotatesContinuously\n'}
+[0.118641] (nav2_mppi_controller) StdoutLine: {'line': b'7: [       OK ] ControllerStateTransitionTest.FinalYawWaitsOnceThenRotatesContinuously (0 ms)\n'}
+[0.118668] (nav2_mppi_controller) StdoutLine: {'line': b'7: [ RUN      ] ControllerStateTransitionTest.TangentAlignmentCommandsNeverTranslate\n'}
+[0.118709] (nav2_mppi_controller) StdoutLine: {'line': b'7: [INFO] [1784627934.581167913] [MPPIController]: tangent \xe8\xb5\xb7\xe7\x82\xb9\xe9\x98\xb6\xe6\xae\xb5\xef\xbc\x9astart_stop -> start_yaw_align\n'}
+[0.118752] (nav2_mppi_controller) StdoutLine: {'line': b'7: [       OK ] ControllerStateTransitionTest.TangentAlignmentCommandsNeverTranslate (0 ms)\n'}
+[0.118782] (nav2_mppi_controller) StdoutLine: {'line': b'7: [ RUN      ] ControllerStateTransitionTest.TangentAlignmentBrakesBeforeYawTarget\n'}
+[0.118815] (nav2_mppi_controller) StdoutLine: {'line': b'7: [       OK ] ControllerStateTransitionTest.TangentAlignmentBrakesBeforeYawTarget (0 ms)\n'}
+[0.118849] (nav2_mppi_controller) StdoutLine: {'line': b'7: [----------] 42 tests from ControllerStateTransitionTest (36 ms total)\n'}
+[0.118878] (nav2_mppi_controller) StdoutLine: {'line': b'7: \n'}
+[0.118906] (nav2_mppi_controller) StdoutLine: {'line': b'7: [----------] Global test environment tear-down\n'}
+[0.118933] (nav2_mppi_controller) StdoutLine: {'line': b'7: [==========] 42 tests from 1 test suite ran. (36 ms total)\n'}
+[0.118959] (nav2_mppi_controller) StdoutLine: {'line': b'7: [  PASSED  ] 41 tests.\n'}
+[0.118985] (nav2_mppi_controller) StdoutLine: {'line': b'7: [  FAILED  ] 1 test, listed below:\n'}
+[0.119012] (nav2_mppi_controller) StdoutLine: {'line': b'7: [  FAILED  ] ControllerStateTransitionTest.ControllerNotFail\n'}
+[0.119038] (nav2_mppi_controller) StdoutLine: {'line': b'7: \n'}
+[0.119065] (nav2_mppi_controller) StdoutLine: {'line': b'7:  1 FAILED TEST\n'}
+[0.199851] (-) TimerEvent: {}
+[0.221570] (nav2_mppi_controller) StdoutLine: {'line': b'7: -- run_test.py: return code 1\n'}
+[0.221920] (nav2_mppi_controller) StdoutLine: {'line': b"7: -- run_test.py: inject classname prefix into gtest result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/controller_state_transition_test.gtest.xml'\n"}
+[0.222033] (nav2_mppi_controller) StdoutLine: {'line': b"7: -- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/controller_state_transition_test.gtest.xml'\n"}
+[0.229977] (nav2_mppi_controller) StdoutLine: {'line': b'1/1 Test #7: controller_state_transition_test ...***Failed    0.20 sec\n'}
+[0.230174] (nav2_mppi_controller) StdoutLine: {'line': b"-- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test':\n"}
+[0.230220] (nav2_mppi_controller) StdoutLine: {'line': b' - /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/controller_state_transition_test --gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/controller_state_transition_test.gtest.xml\n'}
+[0.230251] (nav2_mppi_controller) StdoutLine: {'line': b'Running main() from /opt/ros/humble/src/gtest_vendor/src/gtest_main.cc\n'}
+[0.230278] (nav2_mppi_controller) StdoutLine: {'line': b'[==========] Running 42 tests from 1 test suite.\n'}
+[0.230304] (nav2_mppi_controller) StdoutLine: {'line': b'[----------] Global test environment set-up.\n'}
+[0.230329] (nav2_mppi_controller) StdoutLine: {'line': b'[----------] 42 tests from ControllerStateTransitionTest\n'}
+[0.230355] (nav2_mppi_controller) StdoutLine: {'line': b'[ RUN      ] ControllerStateTransitionTest.ApproachSubstageUsesPositionHysteresis\n'}
+[0.230380] (nav2_mppi_controller) StdoutLine: {'line': b'[INFO] [1784627934.545684940] [MPPIController]: MPPI approach substage switched: positioning -> final_yaw, |lon|=0.014, |lat|=0.015\n'}
+[0.230419] (nav2_mppi_controller) StdoutLine: {'line': b'[INFO] [1784627934.545771844] [MPPIController]: MPPI approach substage switched: final_yaw -> positioning, |lon|=0.021, |lat|=0.000\n'}
+[0.230446] (nav2_mppi_controller) StdoutLine: {'line': b'[       OK ] ControllerStateTransitionTest.ApproachSubstageUsesPositionHysteresis (0 ms)\n'}
+[0.230470] (nav2_mppi_controller) StdoutLine: {'line': b'[ RUN      ] ControllerStateTransitionTest.PositionMppiAlwaysUsesTrackProfile\n'}
+[0.230496] (nav2_mppi_controller) StdoutLine: {'line': b'[       OK ] ControllerStateTransitionTest.PositionMppiAlwaysUsesTrackProfile (0 ms)\n'}
+[0.230521] (nav2_mppi_controller) StdoutLine: {'line': b'[ RUN      ] ControllerStateTransitionTest.ApproachSubstageAppliesOmniFinalYawProfile\n'}
+[0.230546] (nav2_mppi_controller) StdoutLine: {'line': b'[       OK ] ControllerStateTransitionTest.ApproachSubstageAppliesOmniFinalYawProfile (0 ms)\n'}
+[0.230570] (nav2_mppi_controller) StdoutLine: {'line': b'[ RUN      ] ControllerStateTransitionTest.ApproachBrakingEnvelopeIsContinuousAtBoundary\n'}
+[0.230594] (nav2_mppi_controller) StdoutLine: {'line': b'[       OK ] ControllerStateTransitionTest.ApproachBrakingEnvelopeIsContinuousAtBoundary (0 ms)\n'}
+[0.230618] (nav2_mppi_controller) StdoutLine: {'line': b'[ RUN      ] ControllerStateTransitionTest.TerminalGoalAxesPreserveOrientationMode\n'}
+[0.230642] (nav2_mppi_controller) StdoutLine: {'line': b'[       OK ] ControllerStateTransitionTest.TerminalGoalAxesPreserveOrientationMode (0 ms)\n'}
+[0.230665] (nav2_mppi_controller) StdoutLine: {'line': b'[ RUN      ] ControllerStateTransitionTest.TerminalGoalAxesStayOffOutsideAssistDistance\n'}
+[0.230688] (nav2_mppi_controller) StdoutLine: {'line': b'[       OK ] ControllerStateTransitionTest.TerminalGoalAxesStayOffOutsideAssistDistance (0 ms)\n'}
+[0.230712] (nav2_mppi_controller) StdoutLine: {'line': b'[ RUN      ] ControllerStateTransitionTest.TangentTerminalHoldDampsSpuriousYaw\n'}
+[0.230735] (nav2_mppi_controller) StdoutLine: {'line': b'[       OK ] ControllerStateTransitionTest.TangentTerminalHoldDampsSpuriousYaw (0 ms)\n'}
+[0.230759] (nav2_mppi_controller) StdoutLine: {'line': b'[ RUN      ] ControllerStateTransitionTest.TangentYawDampingStaysOffBeforeHoldRegion\n'}
+[0.230782] (nav2_mppi_controller) StdoutLine: {'line': b'[       OK ] ControllerStateTransitionTest.TangentYawDampingStaysOffBeforeHoldRegion (0 ms)\n'}
+[0.230806] (nav2_mppi_controller) StdoutLine: {'line': b'[ RUN      ] ControllerStateTransitionTest.FinalYawLocksBothTranslationAxes\n'}
+[0.230829] (nav2_mppi_controller) StdoutLine: {'line': b'[INFO] [1784627934.545900137] [MPPIController]: MPPI final_yaw direction locked: direction=-1, yaw_error=0.500 rad. The direction will be kept until |yaw_error| <= 0.050 rad.\n'}
+[0.230862] (nav2_mppi_controller) StdoutLine: {'line': b'[       OK ] ControllerStateTransitionTest.FinalYawLocksBothTranslationAxes (0 ms)\n'}
+[0.230890] (nav2_mppi_controller) StdoutLine: {'line': b'[ RUN      ] ControllerStateTransitionTest.ApproachModeLocksFromEntryGeometry\n'}
+[0.230913] (nav2_mppi_controller) StdoutLine: {'line': b'[INFO] [1784627934.545923962] [MPPIController]: MPPI approach mode locked: normal, entry |lon|=0.400 m |lat|=0.020 m |yaw_error|=0.500 rad, yaw_threshold=2.094 rad, lateral_threshold=0.050 m, lateral_ratio=1.000, reason=normal_geometry. The mode remains locked until leaving approach.\n'}
+[0.230939] (nav2_mppi_controller) StdoutLine: {'line': b'[INFO] [1784627934.545930965] [MPPIController]: MPPI approach mode locked: position_first, entry |lon|=0.020 m |lat|=0.450 m |yaw_error|=1.500 rad, yaw_threshold=2.094 rad, lateral_threshold=0.050 m, lateral_ratio=1.000, reason=lateral_dominant. The mode remains locked until leaving approach.\n'}
+[0.230964] (nav2_mppi_controller) StdoutLine: {'line': b'[INFO] [1784627934.545934452] [MPPIController]: MPPI approach mode locked: position_first, entry |lon|=0.400 m |lat|=0.020 m |yaw_error|=2.800 rad, yaw_threshold=2.094 rad, lateral_threshold=0.050 m, lateral_ratio=1.000, reason=large_yaw. The mode remains locked until leaving approach.\n'}
+[0.230988] (nav2_mppi_controller) StdoutLine: {'line': b'[       OK ] ControllerStateTransitionTest.ApproachModeLocksFromEntryGeometry (0 ms)\n'}
+[0.231012] (nav2_mppi_controller) StdoutLine: {'line': b'[ RUN      ] ControllerStateTransitionTest.DeterministicTerminalCommandUsesStableGoalDirection\n'}
+[0.231040] (nav2_mppi_controller) StdoutLine: {'line': b'[       OK ] ControllerStateTransitionTest.DeterministicTerminalCommandUsesStableGoalDirection (0 ms)\n'}
+[0.231064] (nav2_mppi_controller) StdoutLine: {'line': b'[ RUN      ] ControllerStateTransitionTest.DeterministicTerminalCommandStartsContinuouslyFromZero\n'}
+[0.231088] (nav2_mppi_controller) StdoutLine: {'line': b'[       OK ] ControllerStateTransitionTest.DeterministicTerminalCommandStartsContinuouslyFromZero (0 ms)\n'}
+[0.231112] (nav2_mppi_controller) StdoutLine: {'line': b'[ RUN      ] ControllerStateTransitionTest.DeterministicTerminalControlAlsoCoversAuto\n'}
+[0.231136] (nav2_mppi_controller) StdoutLine: {'line': b'[       OK ] ControllerStateTransitionTest.DeterministicTerminalControlAlsoCoversAuto (0 ms)\n'}
+[0.231160] (nav2_mppi_controller) StdoutLine: {'line': b'[ RUN      ] ControllerStateTransitionTest.DeterministicTerminalSpeedChangesContinuouslyWithDistance\n'}
+[0.231184] (nav2_mppi_controller) StdoutLine: {'line': b'[       OK ] ControllerStateTransitionTest.DeterministicTerminalSpeedChangesContinuouslyWithDistance (0 ms)\n'}
+[0.231208] (nav2_mppi_controller) StdoutLine: {'line': b'[ RUN      ] ControllerStateTransitionTest.DeterministicTerminalCommandRespectsZeroSpeedLimit\n'}
+[0.231232] (nav2_mppi_controller) StdoutLine: {'line': b'[       OK ] ControllerStateTransitionTest.DeterministicTerminalCommandRespectsZeroSpeedLimit (0 ms)\n'}
+[0.231257] (nav2_mppi_controller) StdoutLine: {'line': b'[ RUN      ] ControllerStateTransitionTest.AutoYawRateIsIndependentOfLinearSpeed\n'}
+[0.231281] (nav2_mppi_controller) StdoutLine: {'line': b'[       OK ] ControllerStateTransitionTest.AutoYawRateIsIndependentOfLinearSpeed (0 ms)\n'}
+[0.231306] (nav2_mppi_controller) StdoutLine: {'line': b'[ RUN      ] ControllerStateTransitionTest.AutoPureRotationIsAllowedAtZeroLinearSpeed\n'}
+[0.231330] (nav2_mppi_controller) StdoutLine: {'line': b'[       OK ] ControllerStateTransitionTest.AutoPureRotationIsAllowedAtZeroLinearSpeed (0 ms)\n'}
+[0.231354] (nav2_mppi_controller) StdoutLine: {'line': b'[ RUN      ] ControllerStateTransitionTest.AutoProjectionKeepsStraightWorldVelocityWhileTurning\n'}
+[0.231378] (nav2_mppi_controller) StdoutLine: {'line': b'[       OK ] ControllerStateTransitionTest.AutoProjectionKeepsStraightWorldVelocityWhileTurning (1 ms)\n'}
+[0.231403] (nav2_mppi_controller) StdoutLine: {'line': b'[ RUN      ] ControllerStateTransitionTest.AutoProjectionNeverInterpolatesWorldDirection\n'}
+[0.231435] (nav2_mppi_controller) StdoutLine: {'line': b'[       OK ] ControllerStateTransitionTest.AutoProjectionNeverInterpolatesWorldDirection (0 ms)\n'}
+[0.231465] (nav2_mppi_controller) StdoutLine: {'line': b'[ RUN      ] ControllerStateTransitionTest.AutoPathReferenceKeepsMppiSpeedAndUsesLookaheadDirection\n'}
+[0.231489] (nav2_mppi_controller) StdoutLine: {'line': b'[       OK ] ControllerStateTransitionTest.AutoPathReferenceKeepsMppiSpeedAndUsesLookaheadDirection (0 ms)\n'}
+[0.231515] (nav2_mppi_controller) StdoutLine: {'line': b'[ RUN      ] ControllerStateTransitionTest.AutoPathReferenceCompensatesCurrentRobotYaw\n'}
+[0.231540] (nav2_mppi_controller) StdoutLine: {'line': b'[       OK ] ControllerStateTransitionTest.AutoPathReferenceCompensatesCurrentRobotYaw (0 ms)\n'}
+[0.231564] (nav2_mppi_controller) StdoutLine: {'line': b'[ RUN      ] ControllerStateTransitionTest.AutoPathReferenceDoesNotForceStartFromZeroCommand\n'}
+[0.231588] (nav2_mppi_controller) StdoutLine: {'line': b'[       OK ] ControllerStateTransitionTest.AutoPathReferenceDoesNotForceStartFromZeroCommand (0 ms)\n'}
+[0.231613] (nav2_mppi_controller) StdoutLine: {'line': b'[ RUN      ] ControllerStateTransitionTest.AutoProjectionReducesYawWithoutRotatingPathDirection\n'}
+[0.231637] (nav2_mppi_controller) StdoutLine: {'line': b'[       OK ] ControllerStateTransitionTest.AutoProjectionReducesYawWithoutRotatingPathDirection (0 ms)\n'}
+[0.231661] (nav2_mppi_controller) StdoutLine: {'line': b'[ RUN      ] ControllerStateTransitionTest.AutoSteeringFilterDoesNotChangeOtherModes\n'}
+[0.231685] (nav2_mppi_controller) StdoutLine: {'line': b'[       OK ] ControllerStateTransitionTest.AutoSteeringFilterDoesNotChangeOtherModes (0 ms)\n'}
+[0.231708] (nav2_mppi_controller) StdoutLine: {'line': b'[ RUN      ] ControllerStateTransitionTest.AutoPathAlignmentDoesNotChangeOtherModes\n'}
+[0.231732] (nav2_mppi_controller) StdoutLine: {'line': b'[       OK ] ControllerStateTransitionTest.AutoPathAlignmentDoesNotChangeOtherModes (0 ms)\n'}
+[0.231762] (nav2_mppi_controller) StdoutLine: {'line': b'[ RUN      ] ControllerStateTransitionTest.AutoFilterFallsBackWhenCollisionCheckUnavailable\n'}
+[0.231785] (nav2_mppi_controller) StdoutLine: {'line': b'[       OK ] ControllerStateTransitionTest.AutoFilterFallsBackWhenCollisionCheckUnavailable (0 ms)\n'}
+[0.231809] (nav2_mppi_controller) StdoutLine: {'line': b'[ RUN      ] ControllerStateTransitionTest.AutoYawProfileKeepsTaskProgressAcrossReplans\n'}
+[0.231832] (nav2_mppi_controller) StdoutLine: {'line': b'[       OK ] ControllerStateTransitionTest.AutoYawProfileKeepsTaskProgressAcrossReplans (0 ms)\n'}
+[0.231855] (nav2_mppi_controller) StdoutLine: {'line': b'[ RUN      ] ControllerStateTransitionTest.AutoYawProfileFinishesBeforeTerminalRegion\n'}
+[0.231878] (nav2_mppi_controller) StdoutLine: {'line': b'[       OK ] ControllerStateTransitionTest.AutoYawProfileFinishesBeforeTerminalRegion (0 ms)\n'}
+[0.231901] (nav2_mppi_controller) StdoutLine: {'line': b'[ RUN      ] ControllerStateTransitionTest.ControllerNotFail\n'}
+[0.231925] (nav2_mppi_controller) StdoutLine: {'line': b'getifaddrs: Operation not permitted\n'}
+[0.231949] (nav2_mppi_controller) StdoutLine: {'line': b'getifaddrs: Operation not permitted\n'}
+[0.231972] (nav2_mppi_controller) StdoutLine: {'line': b'getifaddrs: Operation not permitted\n'}
+[0.231995] (nav2_mppi_controller) StdoutLine: {'line': b'\x1b[37;1m2026-07-21 17:58:54.547 \x1b[31;1m[\x1b[37;1mTRANSPORT_UDP\x1b[31;1m Error] \x1b[37mError creating socket: Operation not permitted\x1b[34;1m -> Function \x1b[36minit\x1b[m\n'}
+[0.232020] (nav2_mppi_controller) StdoutLine: {'line': b'\x1b[37;1m2026-07-21 17:58:54.547 \x1b[31;1m[\x1b[37;1mRTPS_PARTICIPANT\x1b[31;1m Error] \x1b[37mUser transport failed to register.\x1b[34;1m -> Function \x1b[36mRTPSParticipantImpl\x1b[m\n'}
+[0.232048] (nav2_mppi_controller) StdoutLine: {'line': b'[INFO] [1784627934.556125752] [cost_map_node.cost_map_node]: \n'}
+[0.232072] (nav2_mppi_controller) StdoutLine: {'line': b'\tcost_map_node lifecycle node launched. \n'}
+[0.232107] (nav2_mppi_controller) StdoutLine: {'line': b'\tWaiting on external lifecycle transitions to activate\n'}
+[0.232149] (nav2_mppi_controller) StdoutLine: {'line': b'\tSee https://design.ros2.org/articles/node_lifecycle.html for more information.\n'}
+[0.232174] (nav2_mppi_controller) StdoutLine: {'line': b'[INFO] [1784627934.556518274] [cost_map_node.cost_map_node]: Creating Costmap\n'}
+[0.232198] (nav2_mppi_controller) StdoutLine: {'line': b'[INFO] [1784627934.556607763] [cost_map_node.cost_map_node]: Configuring\n'}
+[0.232222] (nav2_mppi_controller) StdoutLine: {'line': b'[INFO] [1784627934.558319500] [cost_map_node.cost_map_node]: Using plugin "static_layer"\n'}
+[0.232245] (nav2_mppi_controller) StdoutLine: {'line': b'[INFO] [1784627934.560703869] [cost_map_node.cost_map_node]: Subscribing to the map topic (/map) with transient local durability\n'}
+[0.232268] (nav2_mppi_controller) StdoutLine: {'line': b'[INFO] [1784627934.561302931] [cost_map_node.cost_map_node]: Initialized plugin "static_layer"\n'}
+[0.232292] (nav2_mppi_controller) StdoutLine: {'line': b'[INFO] [1784627934.561315164] [cost_map_node.cost_map_node]: Using plugin "obstacle_layer"\n'}
+[0.232316] (nav2_mppi_controller) StdoutLine: {'line': b'[INFO] [1784627934.561394024] [cost_map_node.cost_map_node]: Subscribed to Topics: \n'}
+[0.232339] (nav2_mppi_controller) StdoutLine: {'line': b'[INFO] [1784627934.561424491] [cost_map_node.cost_map_node]: Initialized plugin "obstacle_layer"\n'}
+[0.232433] (nav2_mppi_controller) StdoutLine: {'line': b'[INFO] [1784627934.561431845] [cost_map_node.cost_map_node]: Using plugin "inflation_layer"\n'}
+[0.232462] (nav2_mppi_controller) StdoutLine: {'line': b'[INFO] [1784627934.561547724] [cost_map_node.cost_map_node]: Initialized plugin "inflation_layer"\n'}
+[0.232487] (nav2_mppi_controller) StdoutLine: {'line': b'[INFO] [1784627934.565084632] [MPPIController]: MPPI profile_1 velocity: vx=[-0.500, 0.700] vy=0.500 wz=0.750. Goal(w=0.000) GoalLateral(w=0.000) GoalLongitudinal(w=0.000) GoalAngle(w=0.000) PathAngle(w=7.000 off=3 max_angle=0.700 forward=1) PathAlign(w=8.000 off=8 step=3 occ=0.080 yaw=0) PathFollow(w=7.000 off=7) PreferForward(w=6.000). weight=0 disables this cost for the stage.\n'}
+[0.232513] (nav2_mppi_controller) StdoutLine: {'line': b'[INFO] [1784627934.565111633] [MPPIController]: MPPI profile_2 velocity: vx=[-0.500, 0.700] vy=0.500 wz=0.750. Goal(w=8.000) GoalLateral(w=0.000) GoalLongitudinal(w=0.000) GoalAngle(w=0.000) PathAngle(w=0.000 off=3 max_angle=0.900 forward=1) PathAlign(w=14.000 off=1 step=3 occ=0.050 yaw=0) PathFollow(w=5.000 off=5) PreferForward(w=0.000). weight=0 disables this cost for the stage.\n'}
+[0.232540] (nav2_mppi_controller) StdoutLine: {'line': b'[INFO] [1784627934.565120700] [MPPIController]: MPPI profile_3 velocity: vx=[-0.500, 0.700] vy=0.500 wz=0.750. Goal(w=4.000) GoalLateral(w=40.000) GoalLongitudinal(w=25.000) GoalAngle(w=8.000) PathAngle(w=1.000 off=2 max_angle=1.000 forward=1) PathAlign(w=2.000 off=15 step=3 occ=0.050 yaw=0) PathFollow(w=1.000 off=5) PreferForward(w=1.000). weight=0 disables this cost for the stage.\n'}
+[0.232565] (nav2_mppi_controller) StdoutLine: {'line': b'[WARN] [1784627934.565484087] [dummy]: Controller period is less then model dt, consider setting it equal\n'}
+[0.232594] (nav2_mppi_controller) StdoutLine: {'line': b'[INFO] [1784627934.570199684] [dummy]: Optimizer reset\n'}
+[0.232619] (nav2_mppi_controller) StdoutLine: {'line': b'[INFO] [1784627934.571744825] [MPPIController]: Configured MPPI Controller: dummy\xef\xbc\x8ctangent/goal \xe8\xb5\xb7\xe7\x82\xb9\xe5\xaf\xb9\xe9\xbd\x90=\xe5\x85\xb3\xe9\x97\xad\xef\xbc\x8c\xe4\xb9\x8b\xe5\x90\x8e\xe8\xbf\x90\xe8\xa1\x8c TRACK/APPROACH\n'}
+[0.232644] (nav2_mppi_controller) StdoutLine: {'line': b'[WARN] [1784627934.571776876] [dummy]: Parameter dummy.verbose not found\n'}
+[0.232669] (nav2_mppi_controller) StdoutLine: {'line': b'[INFO] [1784627934.573624720] [dummy]: Optimizer reset\n'}
+[0.232693] (nav2_mppi_controller) StdoutLine: {'line': b'[INFO] [1784627934.573690955] [MPPIController]: Activated MPPI Controller: dummy\n'}
+[0.232718] (nav2_mppi_controller) StdoutLine: {'line': b'[INFO] [1784627934.575407561] [dummy]: Optimizer reset\n'}
+[0.232762] (nav2_mppi_controller) StdoutLine: {'line': b'[INFO] [1784627934.575425856] [MPPIController]: \xe6\x96\xb0\xe5\xaf\xbc\xe8\x88\xaa\xe7\x9b\xae\xe6\xa0\x87\xef\xbc\x9aorientation_mode=auto\xef\xbc\x8c\xe8\xb5\xb7\xe7\x82\xb9\xe5\xaf\xb9\xe9\xbd\x90=\xe8\xb7\xb3\xe8\xbf\x87\xef\xbc\x8c\xe7\x9b\xb4\xe6\x8e\xa5 FOLLOW\xef\xbc\x9bgoal_yaw=0.000\n'}
+[0.232795] (nav2_mppi_controller) StdoutLine: {'line': b'[INFO] [1784627934.575438249] [dummy]: MPPI new global plan received: poses=8. Reset three-stage path_progress and goal_distance stats.\n'}
+[0.232820] (nav2_mppi_controller) StdoutLine: {'line': b'[ERROR] [1784627934.575475840] [tf2_buffer]: Do not call canTransform or lookupTransform with a timeout unless you are using another thread for populating data. Without a dedicated thread it will always timeout.  If you have a separate thread servicing tf messages, call setUsingDedicatedThread(true) on your Buffer instance.\n'}
+[0.232846] (nav2_mppi_controller) StdoutLine: {'line': b'[ERROR] [1784627934.575548848] [dummy]: Exception in lookupTransform: "map" passed to lookupTransform argument target_frame does not exist. . TF lookup failed; cannot transform global path into costmap frame.\n'}
+[0.232876] (nav2_mppi_controller) StdoutLine: {'line': b'/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:840: Failure\n'}
+[0.232901] (nav2_mppi_controller) StdoutLine: {'line': b"Expected: controller->computeVelocityCommands(pose, velocity, {}) doesn't throw an exception.\n"}
+[0.232924] (nav2_mppi_controller) StdoutLine: {'line': b'  Actual: it throws.\n'}
+[0.232948] (nav2_mppi_controller) StdoutLine: {'line': b'[INFO] [1784627934.575608240] [dummy]: MPPI speed limit updated: active=1 value=0.500 percentage=1. Received speed limit update; will combine with the current three-stage profile velocity constraints.\n'}
+[0.232973] (nav2_mppi_controller) StdoutLine: {'line': b'[INFO] [1784627934.575617999] [dummy]: MPPI speed limit updated: active=1 value=0.500 percentage=0. Received speed limit update; will combine with the current three-stage profile velocity constraints.\n'}
+[0.232999] (nav2_mppi_controller) StdoutLine: {'line': b'[INFO] [1784627934.575623159] [dummy]: MPPI speed limit updated: active=1 value=1.000 percentage=1. Received speed limit update; will combine with the current three-stage profile velocity constraints.\n'}
+[0.233024] (nav2_mppi_controller) StdoutLine: {'line': b'[INFO] [1784627934.575628819] [MPPIController]: Deactivated MPPI Controller: dummy\n'}
+[0.233048] (nav2_mppi_controller) StdoutLine: {'line': b'[INFO] [1784627934.576006283] [MPPIController]: Cleaned up MPPI Controller: dummy\n'}
+[0.233072] (nav2_mppi_controller) StdoutLine: {'line': b'Warning: class_loader.ClassLoader: SEVERE WARNING!!! Attempting to unload library while objects created by this loader exist in the heap! You should delete your objects before attempting to unload the library or destroying the ClassLoader. The library will NOT be unloaded.\n'}
+[0.233097] (nav2_mppi_controller) StdoutLine: {'line': b'         at line 127 in ./src/class_loader.cpp\n'}
+[0.233121] (nav2_mppi_controller) StdoutLine: {'line': b'[INFO] [1784627934.578303306] [cost_map_node.cost_map_node]: Destroying\n'}
+[0.233146] (nav2_mppi_controller) StdoutLine: {'line': b'[  FAILED  ] ControllerStateTransitionTest.ControllerNotFail (35 ms)\n'}
+[0.233171] (nav2_mppi_controller) StdoutLine: {'line': b'[ RUN      ] ControllerStateTransitionTest.TangentMarkerContract\n'}
+[0.233196] (nav2_mppi_controller) StdoutLine: {'line': b'[       OK ] ControllerStateTransitionTest.TangentMarkerContract (0 ms)\n'}
+[0.233221] (nav2_mppi_controller) StdoutLine: {'line': b'[ RUN      ] ControllerStateTransitionTest.StartAlignmentOnlyRunsForTangentAndGoal\n'}
+[0.233246] (nav2_mppi_controller) StdoutLine: {'line': b'[       OK ] ControllerStateTransitionTest.StartAlignmentOnlyRunsForTangentAndGoal (0 ms)\n'}
+[0.233270] (nav2_mppi_controller) StdoutLine: {'line': b'[ RUN      ] ControllerStateTransitionTest.StartAndGoalCruiseNeverOutputAngularVelocity\n'}
+[0.233299] (nav2_mppi_controller) StdoutLine: {'line': b'[       OK ] ControllerStateTransitionTest.StartAndGoalCruiseNeverOutputAngularVelocity (0 ms)\n'}
+[0.233324] (nav2_mppi_controller) StdoutLine: {'line': b'[ RUN      ] ControllerStateTransitionTest.TerminalTranslationLiftPreservesVectorDirection\n'}
+[0.233349] (nav2_mppi_controller) StdoutLine: {'line': b'[       OK ] ControllerStateTransitionTest.TerminalTranslationLiftPreservesVectorDirection (0 ms)\n'}
+[0.233373] (nav2_mppi_controller) StdoutLine: {'line': b'[ RUN      ] ControllerStateTransitionTest.TerminalTranslationLiftRejectsZeroAndWrongDirection\n'}
+[0.233399] (nav2_mppi_controller) StdoutLine: {'line': b'[       OK ] ControllerStateTransitionTest.TerminalTranslationLiftRejectsZeroAndWrongDirection (0 ms)\n'}
+[0.233442] (nav2_mppi_controller) StdoutLine: {'line': b'[ RUN      ] ControllerStateTransitionTest.TerminalTranslationLiftRespectsActiveSpeedLimit\n'}
+[0.233467] (nav2_mppi_controller) StdoutLine: {'line': b'[       OK ] ControllerStateTransitionTest.TerminalTranslationLiftRespectsActiveSpeedLimit (0 ms)\n'}
+[0.233491] (nav2_mppi_controller) StdoutLine: {'line': b'[ RUN      ] ControllerStateTransitionTest.GoalStartYawUsesGoalOrientationNotPathTangent\n'}
+[0.233516] (nav2_mppi_controller) StdoutLine: {'line': b'[       OK ] ControllerStateTransitionTest.GoalStartYawUsesGoalOrientationNotPathTangent (0 ms)\n'}
+[0.233541] (nav2_mppi_controller) StdoutLine: {'line': b'[ RUN      ] ControllerStateTransitionTest.ControllerFrameStartYawUsesArcLengthLookahead\n'}
+[0.233565] (nav2_mppi_controller) StdoutLine: {'line': b'[       OK ] ControllerStateTransitionTest.ControllerFrameStartYawUsesArcLengthLookahead (0 ms)\n'}
+[0.233591] (nav2_mppi_controller) StdoutLine: {'line': b'[ RUN      ] ControllerStateTransitionTest.RecoveryReplanKeepsSameNavigationTask\n'}
+[0.233617] (nav2_mppi_controller) StdoutLine: {'line': b'[       OK ] ControllerStateTransitionTest.RecoveryReplanKeepsSameNavigationTask (0 ms)\n'}
+[0.233643] (nav2_mppi_controller) StdoutLine: {'line': b'[ RUN      ] ControllerStateTransitionTest.StartRotationCommandRampsWithoutOdomResponse\n'}
+[0.233669] (nav2_mppi_controller) StdoutLine: {'line': b'[       OK ] ControllerStateTransitionTest.StartRotationCommandRampsWithoutOdomResponse (0 ms)\n'}
+[0.233696] (nav2_mppi_controller) StdoutLine: {'line': b'[ RUN      ] ControllerStateTransitionTest.FinalYawWaitsOnceThenRotatesContinuously\n'}
+[0.233722] (nav2_mppi_controller) StdoutLine: {'line': b'[       OK ] ControllerStateTransitionTest.FinalYawWaitsOnceThenRotatesContinuously (0 ms)\n'}
+[0.233754] (nav2_mppi_controller) StdoutLine: {'line': b'[ RUN      ] ControllerStateTransitionTest.TangentAlignmentCommandsNeverTranslate\n'}
+[0.233779] (nav2_mppi_controller) StdoutLine: {'line': b'[INFO] [1784627934.581167913] [MPPIController]: tangent \xe8\xb5\xb7\xe7\x82\xb9\xe9\x98\xb6\xe6\xae\xb5\xef\xbc\x9astart_stop -> start_yaw_align\n'}
+[0.233804] (nav2_mppi_controller) StdoutLine: {'line': b'[       OK ] ControllerStateTransitionTest.TangentAlignmentCommandsNeverTranslate (0 ms)\n'}
+[0.233827] (nav2_mppi_controller) StdoutLine: {'line': b'[ RUN      ] ControllerStateTransitionTest.TangentAlignmentBrakesBeforeYawTarget\n'}
+[0.233865] (nav2_mppi_controller) StdoutLine: {'line': b'[       OK ] ControllerStateTransitionTest.TangentAlignmentBrakesBeforeYawTarget (0 ms)\n'}
+[0.233894] (nav2_mppi_controller) StdoutLine: {'line': b'[----------] 42 tests from ControllerStateTransitionTest (36 ms total)\n'}
+[0.233929] (nav2_mppi_controller) StdoutLine: {'line': b'\n'}
+[0.234081] (nav2_mppi_controller) StdoutLine: {'line': b'[----------] Global test environment tear-down\n'}
+[0.234155] (nav2_mppi_controller) StdoutLine: {'line': b'[==========] 42 tests from 1 test suite ran. (36 ms total)\n'}
+[0.234220] (nav2_mppi_controller) StdoutLine: {'line': b'[  PASSED  ] 41 tests.\n'}
+[0.234271] (nav2_mppi_controller) StdoutLine: {'line': b'[  FAILED  ] 1 test, listed below:\n'}
+[0.234946] (nav2_mppi_controller) StdoutLine: {'line': b'[  FAILED  ] ControllerStateTransitionTest.ControllerNotFail\n'}
+[0.235034] (nav2_mppi_controller) StdoutLine: {'line': b'\n'}
+[0.235067] (nav2_mppi_controller) StdoutLine: {'line': b' 1 FAILED TEST\n'}
+[0.235109] (nav2_mppi_controller) StdoutLine: {'line': b'-- run_test.py: return code 1\n'}
+[0.235203] (nav2_mppi_controller) StdoutLine: {'line': b"-- run_test.py: inject classname prefix into gtest result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/controller_state_transition_test.gtest.xml'\n"}
+[0.235244] (nav2_mppi_controller) StdoutLine: {'line': b"-- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/controller_state_transition_test.gtest.xml'\n"}
+[0.235276] (nav2_mppi_controller) StdoutLine: {'line': b'\n'}
+[0.235307] (nav2_mppi_controller) StdoutLine: {'line': b'\n'}
+[0.235335] (nav2_mppi_controller) StdoutLine: {'line': b'0% tests passed, 1 tests failed out of 1\n'}
+[0.235447] (nav2_mppi_controller) StdoutLine: {'line': b'\n'}
+[0.235474] (nav2_mppi_controller) StdoutLine: {'line': b'Label Time Summary:\n'}
+[0.235500] (nav2_mppi_controller) StdoutLine: {'line': b'gtest    =   0.20 sec*proc (1 test)\n'}
+[0.235526] (nav2_mppi_controller) StdoutLine: {'line': b'\n'}
+[0.235552] (nav2_mppi_controller) StdoutLine: {'line': b'Total Test time (real) =   0.20 sec\n'}
+[0.235583] (nav2_mppi_controller) StdoutLine: {'line': b'\n'}
+[0.235608] (nav2_mppi_controller) StdoutLine: {'line': b'The following tests FAILED:\n'}
+[0.235631] (nav2_mppi_controller) StdoutLine: {'line': b'\t  7 - controller_state_transition_test (Failed)\n'}
+[0.235656] (nav2_mppi_controller) StderrLine: {'line': b'Errors while running CTest\n'}
+[0.235698] (nav2_mppi_controller) CommandEnded: {'returncode': 8}
+[0.235887] (nav2_mppi_controller) TestFailure: {'identifier': 'nav2_mppi_controller'}
+[0.235902] (nav2_mppi_controller) JobEnded: {'identifier': 'nav2_mppi_controller', 'rc': 0}
+[0.236156] (-) EventReactorShutdown: {}

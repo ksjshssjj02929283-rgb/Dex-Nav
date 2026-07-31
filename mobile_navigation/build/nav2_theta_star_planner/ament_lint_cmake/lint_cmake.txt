@@ -1,0 +1,9 @@
+-- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner':
+ - /opt/ros/humble/bin/ament_lint_cmake --xunit-file /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/lint_cmake.xunit.xml
+
+
+No problems found
+
+
+-- run_test.py: return code 0
+-- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/lint_cmake.xunit.xml'

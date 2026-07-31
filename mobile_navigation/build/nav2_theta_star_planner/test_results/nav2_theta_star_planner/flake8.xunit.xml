@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite
+  name="nav2_theta_star_planner.flake8"
+  tests="1"
+  errors="0"
+  failures="1"
+  time="0.073"
+>
+  <testcase
+    name="E501 (./test/plan_from_rviz.py:126:100)"
+    classname="nav2_theta_star_planner.flake8"
+  >
+      <failure message="line too long (106 &gt; 99 characters):&#10;                f'(planner_server also logs baseline vs curve post-process ms if smooth_log_timing=true)')&#10;"/>
+  </testcase>
+  <system-out>Checked files:
+* ./test/map_plan_demo.launch.py
+* ./test/plan_from_rviz.py</system-out>
+</testsuite>

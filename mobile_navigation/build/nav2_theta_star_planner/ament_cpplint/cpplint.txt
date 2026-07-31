@@ -1,0 +1,57 @@
+-- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner':
+ - /opt/ros/humble/bin/ament_cpplint --xunit-file /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/cpplint.xunit.xml
+
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include/nav2_theta_star_planner/curve_path_smoother.hpp:42:  Lines should be <= 100 characters long  [whitespace/line_length] [2]
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/node_theta_star.cpp:370:  Lines should be <= 100 characters long  [whitespace/line_length] [2]
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/omni_path_smoother.cpp:64:  Lines should be <= 100 characters long  [whitespace/line_length] [2]
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/omni_path_smoother.cpp:92:  Lines should be <= 100 characters long  [whitespace/line_length] [2]
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/omni_path_smoother.cpp:127:  Lines should be <= 100 characters long  [whitespace/line_length] [2]
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/omni_path_smoother.cpp:140:  Lines should be <= 100 characters long  [whitespace/line_length] [2]
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/swerve_steering_model.cpp:129:  Lines should be <= 100 characters long  [whitespace/line_length] [2]
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/theta_star_planner.cpp:1059:  Lines should be <= 100 characters long  [whitespace/line_length] [2]
+Category 'whitespace/line_length' errors found: 8
+Total errors found: 8
+Using '--root=/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include' argument
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include/nav2_theta_star_planner/curve_path_smoother.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include/nav2_theta_star_planner/l1_spline_path.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include/nav2_theta_star_planner/multi_layer_planner.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include/nav2_theta_star_planner/node_theta_star.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include/nav2_theta_star_planner/omni_path_smoother.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include/nav2_theta_star_planner/swerve_steering_model.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include/nav2_theta_star_planner/theta_star.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include/nav2_theta_star_planner/theta_star_planner.hpp
+
+Using '--root=/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src' argument
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/curve_path_smoother.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/l1_spline_path.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/multi_layer_planner.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/node_theta_star.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/omni_path_smoother.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/swerve_steering_model.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/theta_star.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/theta_star_planner.cpp
+
+Using '--root=/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/test' argument
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/test/test_theta_star.cpp
+
+
+
+-- run_test.py: return code 1
+-- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/cpplint.xunit.xml'

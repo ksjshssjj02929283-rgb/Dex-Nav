@@ -1207,6 +1207,17 @@ CMakeFiles/mppi_controller.dir/src/controller.cpp.o: \
  /opt/ros/humble/include/nav2_core/controller.hpp \
  /opt/ros/humble/include/nav2_costmap_2d/nav2_costmap_2d/footprint_collision_checker.hpp \
  /opt/ros/humble/include/nav2_util/robot_utils.hpp \
+ /opt/ros/humble/include/std_msgs/std_msgs/msg/bool.hpp \
+ /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/bool__struct.hpp \
+ /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/bool__builder.hpp \
+ /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/bool__traits.hpp \
+ /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/bool__type_support.hpp \
+ /opt/ros/humble/include/std_msgs/std_msgs/msg/rosidl_generator_cpp__visibility_control.hpp \
+ /opt/ros/humble/include/std_msgs/std_msgs/msg/float64.hpp \
+ /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/float64__struct.hpp \
+ /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/float64__builder.hpp \
+ /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/float64__traits.hpp \
+ /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/float64__type_support.hpp \
  /opt/ros/humble/include/std_msgs/std_msgs/msg/float64_multi_array.hpp \
  /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/float64_multi_array__struct.hpp \
  /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/multi_array_layout__struct.hpp \
@@ -1216,6 +1227,10 @@ CMakeFiles/mppi_controller.dir/src/controller.cpp.o: \
  /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/multi_array_layout__traits.hpp \
  /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/multi_array_dimension__traits.hpp \
  /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/float64_multi_array__type_support.hpp \
- /opt/ros/humble/include/std_msgs/std_msgs/msg/rosidl_generator_cpp__visibility_control.hpp \
+ /opt/ros/humble/include/std_msgs/std_msgs/msg/u_int64.hpp \
+ /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/u_int64__struct.hpp \
+ /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/u_int64__builder.hpp \
+ /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/u_int64__traits.hpp \
+ /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/u_int64__type_support.hpp \
  /opt/ros/humble/include/nav2_core/exceptions.hpp \
  /opt/ros/humble/include/pluginlib/pluginlib/class_list_macros.hpp

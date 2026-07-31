@@ -1,0 +1,17 @@
+CMake Error at CMakeLists.txt:20 (find_package):
+  By not providing "Findnav_interfaces.cmake" in CMAKE_MODULE_PATH this
+  project has asked CMake to find a package configuration file provided by
+  "nav_interfaces", but CMake did not find one.
+
+  Could not find a package configuration file provided by "nav_interfaces"
+  with any of the following names:
+
+    nav_interfacesConfig.cmake
+    nav_interfaces-config.cmake
+
+  Add the installation prefix of "nav_interfaces" to CMAKE_PREFIX_PATH or set
+  "nav_interfaces_DIR" to a directory containing one of the above files.  If
+  "nav_interfaces" provides a separate development package or SDK, be sure it
+  has been installed.
+
+

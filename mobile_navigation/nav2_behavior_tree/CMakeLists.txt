@@ -17,8 +17,8 @@ find_package(tf2_geometry_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(std_srvs REQUIRED)
 find_package(nav2_util REQUIRED)
-# [ParkWheels] Action 定义在 mobile_joy_control，不依赖定制 nav2_msgs
-find_package(mobile_joy_control REQUIRED)
+# [SteeringAngleControl] Action 定义在统一的导航接口包中
+find_package(nav_interfaces REQUIRED)
 
 nav2_package()
 
@@ -43,7 +43,7 @@ set(dependencies
   std_msgs
   std_srvs
   nav2_util
-  mobile_joy_control
+  nav_interfaces
 )
 
 add_library(${library_name} SHARED
@@ -96,9 +96,12 @@ list(APPEND plugin_libs nav2_spin_action_bt_node)
 add_library(nav2_wait_action_bt_node SHARED plugins/action/wait_action.cpp)
 list(APPEND plugin_libs nav2_wait_action_bt_node)
 
-# [ParkWheels] 导航结束后四轮朝里驻车（Client → /park_wheels）
-add_library(nav2_park_wheels_action_bt_node SHARED plugins/action/park_wheels_action.cpp)
-list(APPEND plugin_libs nav2_park_wheels_action_bt_node)
+# [SteeringAngleControl] 导航结束后四轮朝里驻车
+# （Client → /steering_angle_control）
+add_library(
+  nav2_steering_angle_control_action_bt_node SHARED
+  plugins/action/steering_angle_control_action.cpp)
+list(APPEND plugin_libs nav2_steering_angle_control_action_bt_node)
 
 add_library(nav2_assisted_teleop_action_bt_node SHARED plugins/action/assisted_teleop_action.cpp)
 list(APPEND plugin_libs nav2_assisted_teleop_action_bt_node)

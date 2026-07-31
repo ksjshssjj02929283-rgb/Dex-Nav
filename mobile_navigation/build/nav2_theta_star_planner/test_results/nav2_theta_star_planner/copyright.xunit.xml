@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite
+  name="nav2_theta_star_planner.copyright"
+  tests="19"
+  errors="0"
+  failures="12"
+  time="0.091"
+>
+  <testcase
+    name="include/nav2_theta_star_planner/curve_path_smoother.hpp"
+    classname="nav2_theta_star_planner.copyright"
+  >
+      <failure message="could not find copyright notice"/>
+  </testcase>
+  <testcase
+    name="include/nav2_theta_star_planner/l1_spline_path.hpp"
+    classname="nav2_theta_star_planner.copyright"
+  >
+      <failure message="could not find copyright notice"/>
+  </testcase>
+  <testcase
+    name="include/nav2_theta_star_planner/multi_layer_planner.hpp"
+    classname="nav2_theta_star_planner.copyright"
+  >
+      <failure message="could not find copyright notice"/>
+  </testcase>
+  <testcase
+    name="include/nav2_theta_star_planner/node_theta_star.hpp"
+    classname="nav2_theta_star_planner.copyright"
+  >
+      <failure message="could not find copyright notice"/>
+  </testcase>
+  <testcase
+    name="include/nav2_theta_star_planner/omni_path_smoother.hpp"
+    classname="nav2_theta_star_planner.copyright"
+  >
+      <failure message="could not find copyright notice"/>
+  </testcase>
+  <testcase
+    name="include/nav2_theta_star_planner/swerve_steering_model.hpp"
+    classname="nav2_theta_star_planner.copyright"/>
+  <testcase
+    name="include/nav2_theta_star_planner/theta_star.hpp"
+    classname="nav2_theta_star_planner.copyright"/>
+  <testcase
+    name="include/nav2_theta_star_planner/theta_star_planner.hpp"
+    classname="nav2_theta_star_planner.copyright"/>
+  <testcase
+    name="src/curve_path_smoother.cpp"
+    classname="nav2_theta_star_planner.copyright"
+  >
+      <failure message="could not find copyright notice"/>
+  </testcase>
+  <testcase
+    name="src/l1_spline_path.cpp"
+    classname="nav2_theta_star_planner.copyright"
+  >
+      <failure message="could not find copyright notice"/>
+  </testcase>
+  <testcase
+    name="src/multi_layer_planner.cpp"
+    classname="nav2_theta_star_planner.copyright"
+  >
+      <failure message="could not find copyright notice"/>
+  </testcase>
+  <testcase
+    name="src/node_theta_star.cpp"
+    classname="nav2_theta_star_planner.copyright"
+  >
+      <failure message="could not find copyright notice"/>
+  </testcase>
+  <testcase
+    name="src/omni_path_smoother.cpp"
+    classname="nav2_theta_star_planner.copyright"
+  >
+      <failure message="could not find copyright notice"/>
+  </testcase>
+  <testcase
+    name="src/swerve_steering_model.cpp"
+    classname="nav2_theta_star_planner.copyright"/>
+  <testcase
+    name="src/theta_star.cpp"
+    classname="nav2_theta_star_planner.copyright"/>
+  <testcase
+    name="src/theta_star_planner.cpp"
+    classname="nav2_theta_star_planner.copyright"/>
+  <testcase
+    name="test/map_plan_demo.launch.py"
+    classname="nav2_theta_star_planner.copyright"
+  >
+      <failure message="could not find copyright notice"/>
+  </testcase>
+  <testcase
+    name="test/plan_from_rviz.py"
+    classname="nav2_theta_star_planner.copyright"
+  >
+      <failure message="could not find copyright notice"/>
+  </testcase>
+  <testcase
+    name="test/test_theta_star.cpp"
+    classname="nav2_theta_star_planner.copyright"/>
+  <system-out>Checked files:
+* include/nav2_theta_star_planner/curve_path_smoother.hpp
+* include/nav2_theta_star_planner/l1_spline_path.hpp
+* include/nav2_theta_star_planner/multi_layer_planner.hpp
+* include/nav2_theta_star_planner/node_theta_star.hpp
+* include/nav2_theta_star_planner/omni_path_smoother.hpp
+* include/nav2_theta_star_planner/swerve_steering_model.hpp
+* include/nav2_theta_star_planner/theta_star.hpp
+* include/nav2_theta_star_planner/theta_star_planner.hpp
+* src/curve_path_smoother.cpp
+* src/l1_spline_path.cpp
+* src/multi_layer_planner.cpp
+* src/node_theta_star.cpp
+* src/omni_path_smoother.cpp
+* src/swerve_steering_model.cpp
+* src/theta_star.cpp
+* src/theta_star_planner.cpp
+* test/map_plan_demo.launch.py
+* test/plan_from_rviz.py
+* test/test_theta_star.cpp</system-out>
+</testsuite>

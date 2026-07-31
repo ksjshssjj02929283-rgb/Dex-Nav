@@ -1243,6 +1243,17 @@ test/CMakeFiles/controller_state_transition_test.dir/controller_state_transition
  /opt/ros/humble/include/nav2_core/controller.hpp \
  /opt/ros/humble/include/nav2_costmap_2d/nav2_costmap_2d/footprint_collision_checker.hpp \
  /opt/ros/humble/include/nav2_util/robot_utils.hpp \
+ /opt/ros/humble/include/std_msgs/std_msgs/msg/bool.hpp \
+ /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/bool__struct.hpp \
+ /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/bool__builder.hpp \
+ /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/bool__traits.hpp \
+ /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/bool__type_support.hpp \
+ /opt/ros/humble/include/std_msgs/std_msgs/msg/rosidl_generator_cpp__visibility_control.hpp \
+ /opt/ros/humble/include/std_msgs/std_msgs/msg/float64.hpp \
+ /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/float64__struct.hpp \
+ /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/float64__builder.hpp \
+ /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/float64__traits.hpp \
+ /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/float64__type_support.hpp \
  /opt/ros/humble/include/std_msgs/std_msgs/msg/float64_multi_array.hpp \
  /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/float64_multi_array__struct.hpp \
  /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/multi_array_layout__struct.hpp \
@@ -1252,7 +1263,11 @@ test/CMakeFiles/controller_state_transition_test.dir/controller_state_transition
  /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/multi_array_layout__traits.hpp \
  /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/multi_array_dimension__traits.hpp \
  /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/float64_multi_array__type_support.hpp \
- /opt/ros/humble/include/std_msgs/std_msgs/msg/rosidl_generator_cpp__visibility_control.hpp \
+ /opt/ros/humble/include/std_msgs/std_msgs/msg/u_int64.hpp \
+ /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/u_int64__struct.hpp \
+ /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/u_int64__builder.hpp \
+ /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/u_int64__traits.hpp \
+ /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/u_int64__type_support.hpp \
  /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/utils/utils.hpp \
  /opt/ros/humble/include/tf2_ros/tf2_ros/transform_broadcaster.h \
  /opt/ros/humble/include/tf2_ros/tf2_ros/transform_broadcaster.hpp \

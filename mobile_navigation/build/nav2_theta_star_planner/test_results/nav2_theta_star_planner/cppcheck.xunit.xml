@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite
+  name="nav2_theta_star_planner.cppcheck"
+  tests="17"
+  errors="0"
+  failures="0"
+  time="0.000"
+  skipped="17"
+>
+  <testcase
+    name="include/nav2_theta_star_planner/curve_path_smoother.hpp"
+    classname="nav2_theta_star_planner.cppcheck"
+  >
+    <skipped type="skip" message="">
+      ![CDATA[Test Skipped due to cppcheck 2.7 performance issues]]
+    </skipped>
+  </testcase>
+  <testcase
+    name="include/nav2_theta_star_planner/l1_spline_path.hpp"
+    classname="nav2_theta_star_planner.cppcheck"
+  >
+    <skipped type="skip" message="">
+      ![CDATA[Test Skipped due to cppcheck 2.7 performance issues]]
+    </skipped>
+  </testcase>
+  <testcase
+    name="include/nav2_theta_star_planner/multi_layer_planner.hpp"
+    classname="nav2_theta_star_planner.cppcheck"
+  >
+    <skipped type="skip" message="">
+      ![CDATA[Test Skipped due to cppcheck 2.7 performance issues]]
+    </skipped>
+  </testcase>
+  <testcase
+    name="include/nav2_theta_star_planner/node_theta_star.hpp"
+    classname="nav2_theta_star_planner.cppcheck"
+  >
+    <skipped type="skip" message="">
+      ![CDATA[Test Skipped due to cppcheck 2.7 performance issues]]
+    </skipped>
+  </testcase>
+  <testcase
+    name="include/nav2_theta_star_planner/omni_path_smoother.hpp"
+    classname="nav2_theta_star_planner.cppcheck"
+  >
+    <skipped type="skip" message="">
+      ![CDATA[Test Skipped due to cppcheck 2.7 performance issues]]
+    </skipped>
+  </testcase>
+  <testcase
+    name="include/nav2_theta_star_planner/swerve_steering_model.hpp"
+    classname="nav2_theta_star_planner.cppcheck"
+  >
+    <skipped type="skip" message="">
+      ![CDATA[Test Skipped due to cppcheck 2.7 performance issues]]
+    </skipped>
+  </testcase>
+  <testcase
+    name="include/nav2_theta_star_planner/theta_star.hpp"
+    classname="nav2_theta_star_planner.cppcheck"
+  >
+    <skipped type="skip" message="">
+      ![CDATA[Test Skipped due to cppcheck 2.7 performance issues]]
+    </skipped>
+  </testcase>
+  <testcase
+    name="include/nav2_theta_star_planner/theta_star_planner.hpp"
+    classname="nav2_theta_star_planner.cppcheck"
+  >
+    <skipped type="skip" message="">
+      ![CDATA[Test Skipped due to cppcheck 2.7 performance issues]]
+    </skipped>
+  </testcase>
+  <testcase
+    name="src/curve_path_smoother.cpp"
+    classname="nav2_theta_star_planner.cppcheck"
+  >
+    <skipped type="skip" message="">
+      ![CDATA[Test Skipped due to cppcheck 2.7 performance issues]]
+    </skipped>
+  </testcase>
+  <testcase
+    name="src/l1_spline_path.cpp"
+    classname="nav2_theta_star_planner.cppcheck"
+  >
+    <skipped type="skip" message="">
+      ![CDATA[Test Skipped due to cppcheck 2.7 performance issues]]
+    </skipped>
+  </testcase>
+  <testcase
+    name="src/multi_layer_planner.cpp"
+    classname="nav2_theta_star_planner.cppcheck"
+  >
+    <skipped type="skip" message="">
+      ![CDATA[Test Skipped due to cppcheck 2.7 performance issues]]
+    </skipped>
+  </testcase>
+  <testcase
+    name="src/node_theta_star.cpp"
+    classname="nav2_theta_star_planner.cppcheck"
+  >
+    <skipped type="skip" message="">
+      ![CDATA[Test Skipped due to cppcheck 2.7 performance issues]]
+    </skipped>
+  </testcase>
+  <testcase
+    name="src/omni_path_smoother.cpp"
+    classname="nav2_theta_star_planner.cppcheck"
+  >
+    <skipped type="skip" message="">
+      ![CDATA[Test Skipped due to cppcheck 2.7 performance issues]]
+    </skipped>
+  </testcase>
+  <testcase
+    name="src/swerve_steering_model.cpp"
+    classname="nav2_theta_star_planner.cppcheck"
+  >
+    <skipped type="skip" message="">
+      ![CDATA[Test Skipped due to cppcheck 2.7 performance issues]]
+    </skipped>
+  </testcase>
+  <testcase
+    name="src/theta_star.cpp"
+    classname="nav2_theta_star_planner.cppcheck"
+  >
+    <skipped type="skip" message="">
+      ![CDATA[Test Skipped due to cppcheck 2.7 performance issues]]
+    </skipped>
+  </testcase>
+  <testcase
+    name="src/theta_star_planner.cpp"
+    classname="nav2_theta_star_planner.cppcheck"
+  >
+    <skipped type="skip" message="">
+      ![CDATA[Test Skipped due to cppcheck 2.7 performance issues]]
+    </skipped>
+  </testcase>
+  <testcase
+    name="test/test_theta_star.cpp"
+    classname="nav2_theta_star_planner.cppcheck"
+  >
+    <skipped type="skip" message="">
+      ![CDATA[Test Skipped due to cppcheck 2.7 performance issues]]
+    </skipped>
+  </testcase>
+  <system-err>Tests Skipped due to cppcheck 2.7 performance issues</system-err>
+</testsuite>

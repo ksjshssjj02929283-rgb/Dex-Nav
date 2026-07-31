@@ -1,0 +1,23 @@
+-- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner':
+ - /opt/ros/humble/bin/ament_flake8 --xunit-file /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/flake8.xunit.xml
+
+                f'(planner_server also logs baseline vs curve post-process ms if smooth_log_timing=true)')
+                                                                                                   ^
+1     E501 line too long (106 > 99 characters)
+
+./test/plan_from_rviz.py:126:100: E501 line too long (106 > 99 characters)
+
+
+2 files checked
+1 errors
+
+'E'-type errors: 1
+
+Checked files:
+
+* ./test/map_plan_demo.launch.py
+* ./test/plan_from_rviz.py
+
+
+-- run_test.py: return code 1
+-- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/flake8.xunit.xml'

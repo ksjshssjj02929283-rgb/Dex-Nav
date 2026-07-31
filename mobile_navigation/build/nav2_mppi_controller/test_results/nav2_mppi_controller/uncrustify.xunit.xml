@@ -2,9 +2,9 @@
 <testsuite
   name="nav2_mppi_controller.uncrustify"
   tests="74"
-  failures="4"
+  failures="3"
   errors="0"
-  time="0.245"
+  time="0.262"
 >
   <testcase
     name="benchmark/controller_benchmark.cpp"
@@ -116,23 +116,7 @@
     classname="nav2_mppi_controller.uncrustify"/>
   <testcase
     name="src/controller.cpp"
-    classname="nav2_mppi_controller.uncrustify"
-  >
-      <failure message="Diff with 13 lines"><![CDATA[--- src/controller.cpp
-+++ src/controller.cpp.uncrustify
-@@ -872 +872 @@
--      float track_limit, float approach_limit) -> float
-+    float track_limit, float approach_limit) -> float
-@@ -1204,3 +1204,4 @@
--         std::abs(shortestAngularDistance(
--           tf2::getYaw(tangent_goal_pose_.orientation),
--           tf2::getYaw(goal.orientation))) <= tangent_goal_yaw_tolerance_;
-+         std::abs(
-+    shortestAngularDistance(
-+      tf2::getYaw(tangent_goal_pose_.orientation),
-+      tf2::getYaw(goal.orientation))) <= tangent_goal_yaw_tolerance_;
-]]></failure>
-  </testcase>
+    classname="nav2_mppi_controller.uncrustify"/>
   <testcase
     name="src/critic_manager.cpp"
     classname="nav2_mppi_controller.uncrustify"/>
@@ -169,7 +153,7 @@
   >
       <failure message="Diff with 6 lines"><![CDATA[--- src/critics/path_align_critic.cpp
 +++ src/critics/path_align_critic.cpp.uncrustify
-@@ -44,2 +44 @@
+@@ -45,2 +45 @@
 -  if (!enabled_ || weight_ <= 0.0f)
 -  {
 +  if (!enabled_ || weight_ <= 0.0f) {

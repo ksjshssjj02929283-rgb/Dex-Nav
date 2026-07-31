@@ -1,0 +1,569 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Site BuildName="(empty)"
+	BuildStamp="20260720-1129-Experimental"
+	Name="dex-TX-Gaming-FA608UH-FA608UH"
+	Generator="ctest-3.22.1"
+	CompilerName="/usr/bin/c++"
+	CompilerVersion="11.4.0"
+	OSName="Linux"
+	Hostname="dex-TX-Gaming-FA608UH-FA608UH"
+	OSRelease="6.8.0-124-generic"
+	OSVersion="#124~22.04.1-Ubuntu SMP PREEMPT_DYNAMIC Tue May 26 21:05:19 UTC "
+	OSPlatform="x86_64"
+	Is64Bits="1"
+	VendorString="AuthenticAMD"
+	VendorID="Advanced Micro Devices"
+	FamilyID="25"
+	ModelID="117"
+	ProcessorCacheSize="1024"
+	NumberOfLogicalCPU="16"
+	NumberOfPhysicalCPU="8"
+	TotalVirtualMemory="16383"
+	TotalPhysicalMemory="15266"
+	LogicalProcessorsPerPhysical="2"
+	ProcessorClockFrequency="4934.24"
+	>
+	<Testing>
+		<StartDateTime>Jul 20 19:29 CST</StartDateTime>
+		<StartTestTime>1784546969</StartTestTime>
+		<TestList>
+			<Test>./test_theta_star</Test>
+			<Test>./copyright</Test>
+			<Test>./cppcheck</Test>
+			<Test>./cpplint</Test>
+			<Test>./flake8</Test>
+			<Test>./lint_cmake</Test>
+			<Test>./pep257</Test>
+			<Test>./uncrustify</Test>
+			<Test>./xmllint</Test>
+		</TestList>
+		<Test Status="failed">
+			<Name>test_theta_star</Name>
+			<Path>.</Path>
+			<FullName>./test_theta_star</FullName>
+			<FullCommandLine>/usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/test_theta_star.gtest.xml" "--package-name" "nav2_theta_star_planner" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/ament_cmake_gtest/test_theta_star.txt" "--command" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_theta_star" "--gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/test_theta_star.gtest.xml"</FullCommandLine>
+			<Results>
+				<NamedMeasurement type="text/string" name="Exit Code">
+					<Value>Failed</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Exit Value">
+					<Value>1</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="numeric/double" name="Execution Time">
+					<Value>0.171405</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="numeric/double" name="Processors">
+					<Value>1</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Completion Status">
+					<Value>Completed</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Command Line">
+					<Value>/usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/test_theta_star.gtest.xml" "--package-name" "nav2_theta_star_planner" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/ament_cmake_gtest/test_theta_star.txt" "--command" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_theta_star" "--gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/test_theta_star.gtest.xml"</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Environment">
+					<Value>#CTEST_RESOURCE_GROUP_COUNT=</Value>
+				</NamedMeasurement>
+				<Measurement>
+					<Value>-- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner':
+ - /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_theta_star --gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/test_theta_star.gtest.xml
+terminate called after throwing an instance of 'spdlog::spdlog_ex'
+  what():  Failed opening file /home/dex/.ros/log/test_theta_star_19_1784546969957.log for writing: Read-only file system
+-- run_test.py: return code -6
+-- run_test.py: generate result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/test_theta_star.gtest.xml' with failed test
+-- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/test_theta_star.gtest.xml'
+</Value>
+				</Measurement>
+			</Results>
+			<Labels>
+				<Label>gtest</Label>
+			</Labels>
+		</Test>
+		<Test Status="failed">
+			<Name>copyright</Name>
+			<Path>.</Path>
+			<FullName>./copyright</FullName>
+			<FullCommandLine>/usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/copyright.xunit.xml" "--package-name" "nav2_theta_star_planner" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/ament_copyright/copyright.txt" "--command" "/opt/ros/humble/bin/ament_copyright" "--xunit-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/copyright.xunit.xml"</FullCommandLine>
+			<Results>
+				<NamedMeasurement type="text/string" name="Exit Code">
+					<Value>Failed</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Exit Value">
+					<Value>1</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="numeric/double" name="Execution Time">
+					<Value>0.199168</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="numeric/double" name="Processors">
+					<Value>1</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Completion Status">
+					<Value>Completed</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Command Line">
+					<Value>/usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/copyright.xunit.xml" "--package-name" "nav2_theta_star_planner" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/ament_copyright/copyright.txt" "--command" "/opt/ros/humble/bin/ament_copyright" "--xunit-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/copyright.xunit.xml"</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Environment">
+					<Value>#CTEST_RESOURCE_GROUP_COUNT=</Value>
+				</NamedMeasurement>
+				<Measurement>
+					<Value>-- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner':
+ - /opt/ros/humble/bin/ament_copyright --xunit-file /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/copyright.xunit.xml
+include/nav2_theta_star_planner/curve_path_smoother.hpp: could not find copyright notice
+include/nav2_theta_star_planner/l1_spline_path.hpp: could not find copyright notice
+include/nav2_theta_star_planner/multi_layer_planner.hpp: could not find copyright notice
+include/nav2_theta_star_planner/node_theta_star.hpp: could not find copyright notice
+include/nav2_theta_star_planner/omni_path_smoother.hpp: could not find copyright notice
+src/curve_path_smoother.cpp: could not find copyright notice
+src/l1_spline_path.cpp: could not find copyright notice
+src/multi_layer_planner.cpp: could not find copyright notice
+src/node_theta_star.cpp: could not find copyright notice
+src/omni_path_smoother.cpp: could not find copyright notice
+test/map_plan_demo.launch.py: could not find copyright notice
+test/plan_from_rviz.py: could not find copyright notice
+12 errors, checked 19 files
+-- run_test.py: return code 1
+-- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/copyright.xunit.xml'
+</Value>
+				</Measurement>
+			</Results>
+			<Labels>
+				<Label>copyright</Label>
+				<Label>linter</Label>
+			</Labels>
+		</Test>
+		<Test Status="passed">
+			<Name>cppcheck</Name>
+			<Path>.</Path>
+			<FullName>./cppcheck</FullName>
+			<FullCommandLine>/usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/cppcheck.xunit.xml" "--package-name" "nav2_theta_star_planner" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/ament_cppcheck/cppcheck.txt" "--command" "/opt/ros/humble/bin/ament_cppcheck" "--xunit-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/cppcheck.xunit.xml" "--include_dirs" "/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include"</FullCommandLine>
+			<Results>
+				<NamedMeasurement type="numeric/double" name="Execution Time">
+					<Value>0.109377</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="numeric/double" name="Processors">
+					<Value>1</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Completion Status">
+					<Value>Completed</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Command Line">
+					<Value>/usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/cppcheck.xunit.xml" "--package-name" "nav2_theta_star_planner" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/ament_cppcheck/cppcheck.txt" "--command" "/opt/ros/humble/bin/ament_cppcheck" "--xunit-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/cppcheck.xunit.xml" "--include_dirs" "/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include"</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Environment">
+					<Value>#CTEST_RESOURCE_GROUP_COUNT=</Value>
+				</NamedMeasurement>
+				<Measurement>
+					<Value>-- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner':
+ - /opt/ros/humble/bin/ament_cppcheck --xunit-file /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/cppcheck.xunit.xml --include_dirs /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include
+cppcheck 2.7 has known performance issues and therefore will not be used, set the AMENT_CPPCHECK_ALLOW_SLOW_VERSIONS environment variable to override this.
+-- run_test.py: return code 0
+-- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/cppcheck.xunit.xml'
+</Value>
+				</Measurement>
+			</Results>
+			<Labels>
+				<Label>cppcheck</Label>
+				<Label>linter</Label>
+			</Labels>
+		</Test>
+		<Test Status="failed">
+			<Name>cpplint</Name>
+			<Path>.</Path>
+			<FullName>./cpplint</FullName>
+			<FullCommandLine>/usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/cpplint.xunit.xml" "--package-name" "nav2_theta_star_planner" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/ament_cpplint/cpplint.txt" "--command" "/opt/ros/humble/bin/ament_cpplint" "--xunit-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/cpplint.xunit.xml"</FullCommandLine>
+			<Results>
+				<NamedMeasurement type="text/string" name="Exit Code">
+					<Value>Failed</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Exit Value">
+					<Value>1</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="numeric/double" name="Execution Time">
+					<Value>0.608532</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="numeric/double" name="Processors">
+					<Value>1</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Completion Status">
+					<Value>Completed</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Command Line">
+					<Value>/usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/cpplint.xunit.xml" "--package-name" "nav2_theta_star_planner" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/ament_cpplint/cpplint.txt" "--command" "/opt/ros/humble/bin/ament_cpplint" "--xunit-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/cpplint.xunit.xml"</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Environment">
+					<Value>#CTEST_RESOURCE_GROUP_COUNT=</Value>
+				</NamedMeasurement>
+				<Measurement>
+					<Value>-- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner':
+ - /opt/ros/humble/bin/ament_cpplint --xunit-file /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/cpplint.xunit.xml
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include/nav2_theta_star_planner/curve_path_smoother.hpp:42:  Lines should be &lt;= 100 characters long  [whitespace/line_length] [2]
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/node_theta_star.cpp:370:  Lines should be &lt;= 100 characters long  [whitespace/line_length] [2]
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/omni_path_smoother.cpp:64:  Lines should be &lt;= 100 characters long  [whitespace/line_length] [2]
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/omni_path_smoother.cpp:92:  Lines should be &lt;= 100 characters long  [whitespace/line_length] [2]
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/omni_path_smoother.cpp:127:  Lines should be &lt;= 100 characters long  [whitespace/line_length] [2]
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/omni_path_smoother.cpp:140:  Lines should be &lt;= 100 characters long  [whitespace/line_length] [2]
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/swerve_steering_model.cpp:129:  Lines should be &lt;= 100 characters long  [whitespace/line_length] [2]
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/theta_star_planner.cpp:1059:  Lines should be &lt;= 100 characters long  [whitespace/line_length] [2]
+Category 'whitespace/line_length' errors found: 8
+Total errors found: 8
+Using '--root=/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include' argument
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include/nav2_theta_star_planner/curve_path_smoother.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include/nav2_theta_star_planner/l1_spline_path.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include/nav2_theta_star_planner/multi_layer_planner.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include/nav2_theta_star_planner/node_theta_star.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include/nav2_theta_star_planner/omni_path_smoother.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include/nav2_theta_star_planner/swerve_steering_model.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include/nav2_theta_star_planner/theta_star.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/include/nav2_theta_star_planner/theta_star_planner.hpp
+
+Using '--root=/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src' argument
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/curve_path_smoother.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/l1_spline_path.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/multi_layer_planner.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/node_theta_star.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/omni_path_smoother.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/swerve_steering_model.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/theta_star.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/src/theta_star_planner.cpp
+
+Using '--root=/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/test' argument
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner/test/test_theta_star.cpp
+
+-- run_test.py: return code 1
+-- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/cpplint.xunit.xml'
+</Value>
+				</Measurement>
+			</Results>
+			<Labels>
+				<Label>cpplint</Label>
+				<Label>linter</Label>
+			</Labels>
+		</Test>
+		<Test Status="failed">
+			<Name>flake8</Name>
+			<Path>.</Path>
+			<FullName>./flake8</FullName>
+			<FullCommandLine>/usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/flake8.xunit.xml" "--package-name" "nav2_theta_star_planner" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/ament_flake8/flake8.txt" "--command" "/opt/ros/humble/bin/ament_flake8" "--xunit-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/flake8.xunit.xml"</FullCommandLine>
+			<Results>
+				<NamedMeasurement type="text/string" name="Exit Code">
+					<Value>Failed</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Exit Value">
+					<Value>1</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="numeric/double" name="Execution Time">
+					<Value>0.184703</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="numeric/double" name="Processors">
+					<Value>1</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Completion Status">
+					<Value>Completed</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Command Line">
+					<Value>/usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/flake8.xunit.xml" "--package-name" "nav2_theta_star_planner" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/ament_flake8/flake8.txt" "--command" "/opt/ros/humble/bin/ament_flake8" "--xunit-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/flake8.xunit.xml"</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Environment">
+					<Value>#CTEST_RESOURCE_GROUP_COUNT=</Value>
+				</NamedMeasurement>
+				<Measurement>
+					<Value>-- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner':
+ - /opt/ros/humble/bin/ament_flake8 --xunit-file /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/flake8.xunit.xml
+                f'(planner_server also logs baseline vs curve post-process ms if smooth_log_timing=true)')
+                                                                                                   ^
+1     E501 line too long (106 &gt; 99 characters)
+
+./test/plan_from_rviz.py:126:100: E501 line too long (106 &gt; 99 characters)
+
+
+2 files checked
+1 errors
+
+'E'-type errors: 1
+
+Checked files:
+
+* ./test/map_plan_demo.launch.py
+* ./test/plan_from_rviz.py
+-- run_test.py: return code 1
+-- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/flake8.xunit.xml'
+</Value>
+				</Measurement>
+			</Results>
+			<Labels>
+				<Label>flake8</Label>
+				<Label>linter</Label>
+			</Labels>
+		</Test>
+		<Test Status="passed">
+			<Name>lint_cmake</Name>
+			<Path>.</Path>
+			<FullName>./lint_cmake</FullName>
+			<FullCommandLine>/usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/lint_cmake.xunit.xml" "--package-name" "nav2_theta_star_planner" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/ament_lint_cmake/lint_cmake.txt" "--command" "/opt/ros/humble/bin/ament_lint_cmake" "--xunit-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/lint_cmake.xunit.xml"</FullCommandLine>
+			<Results>
+				<NamedMeasurement type="numeric/double" name="Execution Time">
+					<Value>0.087756</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="numeric/double" name="Processors">
+					<Value>1</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Completion Status">
+					<Value>Completed</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Command Line">
+					<Value>/usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/lint_cmake.xunit.xml" "--package-name" "nav2_theta_star_planner" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/ament_lint_cmake/lint_cmake.txt" "--command" "/opt/ros/humble/bin/ament_lint_cmake" "--xunit-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/lint_cmake.xunit.xml"</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Environment">
+					<Value>#CTEST_RESOURCE_GROUP_COUNT=</Value>
+				</NamedMeasurement>
+				<Measurement>
+					<Value>-- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner':
+ - /opt/ros/humble/bin/ament_lint_cmake --xunit-file /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/lint_cmake.xunit.xml
+
+No problems found
+-- run_test.py: return code 0
+-- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/lint_cmake.xunit.xml'
+</Value>
+				</Measurement>
+			</Results>
+			<Labels>
+				<Label>lint_cmake</Label>
+				<Label>linter</Label>
+			</Labels>
+		</Test>
+		<Test Status="passed">
+			<Name>pep257</Name>
+			<Path>.</Path>
+			<FullName>./pep257</FullName>
+			<FullCommandLine>/usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/pep257.xunit.xml" "--package-name" "nav2_theta_star_planner" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/ament_pep257/pep257.txt" "--command" "/opt/ros/humble/bin/ament_pep257" "--xunit-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/pep257.xunit.xml"</FullCommandLine>
+			<Results>
+				<NamedMeasurement type="numeric/double" name="Execution Time">
+					<Value>0.124221</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="numeric/double" name="Processors">
+					<Value>1</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Completion Status">
+					<Value>Completed</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Command Line">
+					<Value>/usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/pep257.xunit.xml" "--package-name" "nav2_theta_star_planner" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/ament_pep257/pep257.txt" "--command" "/opt/ros/humble/bin/ament_pep257" "--xunit-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/pep257.xunit.xml"</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Environment">
+					<Value>#CTEST_RESOURCE_GROUP_COUNT=</Value>
+				</NamedMeasurement>
+				<Measurement>
+					<Value>-- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner':
+ - /opt/ros/humble/bin/ament_pep257 --xunit-file /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/pep257.xunit.xml
+checking ./test/map_plan_demo.launch.py
+checking ./test/plan_from_rviz.py
+No problems found
+-- run_test.py: return code 0
+-- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/pep257.xunit.xml'
+</Value>
+				</Measurement>
+			</Results>
+			<Labels>
+				<Label>linter</Label>
+				<Label>pep257</Label>
+			</Labels>
+		</Test>
+		<Test Status="failed">
+			<Name>uncrustify</Name>
+			<Path>.</Path>
+			<FullName>./uncrustify</FullName>
+			<FullCommandLine>/usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/uncrustify.xunit.xml" "--package-name" "nav2_theta_star_planner" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/ament_uncrustify/uncrustify.txt" "--command" "/opt/ros/humble/bin/ament_uncrustify" "--xunit-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/uncrustify.xunit.xml"</FullCommandLine>
+			<Results>
+				<NamedMeasurement type="text/string" name="Exit Code">
+					<Value>Failed</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Exit Value">
+					<Value>1</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="numeric/double" name="Execution Time">
+					<Value>0.20454</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="numeric/double" name="Processors">
+					<Value>1</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Completion Status">
+					<Value>Completed</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Command Line">
+					<Value>/usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/uncrustify.xunit.xml" "--package-name" "nav2_theta_star_planner" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/ament_uncrustify/uncrustify.txt" "--command" "/opt/ros/humble/bin/ament_uncrustify" "--xunit-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/uncrustify.xunit.xml"</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Environment">
+					<Value>#CTEST_RESOURCE_GROUP_COUNT=</Value>
+				</NamedMeasurement>
+				<Measurement>
+					<Value>-- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner':
+ - /opt/ros/humble/bin/ament_uncrustify --xunit-file /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/uncrustify.xunit.xml
+Code style divergence in file 'src/curve_path_smoother.cpp':
+
+--- src/curve_path_smoother.cpp
++++ src/curve_path_smoother.cpp.uncrustify
+@@ -144,4 +144,6 @@
+-  const int gx = static_cast&lt;int&gt;(std::floor((x - distance_map-&gt;origin_x) /
+-    distance_map-&gt;resolution));
+-  const int gy = static_cast&lt;int&gt;(std::floor((y - distance_map-&gt;origin_y) /
+-    distance_map-&gt;resolution));
++  const int gx = static_cast&lt;int&gt;(std::floor(
++      (x - distance_map-&gt;origin_x) /
++      distance_map-&gt;resolution));
++  const int gy = static_cast&lt;int&gt;(std::floor(
++      (y - distance_map-&gt;origin_y) /
++      distance_map-&gt;resolution));
+
+Code style divergence in file 'src/node_theta_star.cpp':
+
+--- src/node_theta_star.cpp
++++ src/node_theta_star.cpp.uncrustify
+@@ -370 +370,3 @@
+-    if (curr-&gt;id &lt; 0 || static_cast&lt;size_t&gt;(curr-&gt;id) &gt;= n || closed[static_cast&lt;size_t&gt;(curr-&gt;id)]) {
++    if (curr-&gt;id &lt; 0 || static_cast&lt;size_t&gt;(curr-&gt;id) &gt;= n ||
++      closed[static_cast&lt;size_t&gt;(curr-&gt;id)])
++    {
+
+Code style divergence in file 'src/omni_path_smoother.cpp':
+
+--- src/omni_path_smoother.cpp
++++ src/omni_path_smoother.cpp.uncrustify
+@@ -64 +64,4 @@
+-  if (!isCellFree(costmap, static_cast&lt;unsigned int&gt;(cx), static_cast&lt;unsigned int&gt;(cy), allow_unknown)) {
++  if (!isCellFree(
++      costmap, static_cast&lt;unsigned int&gt;(cx), static_cast&lt;unsigned int&gt;(cy),
++      allow_unknown))
++  {
+@@ -92 +95,3 @@
+-        !isCellFree(costmap, static_cast&lt;unsigned int&gt;(cx + u_x), static_cast&lt;unsigned int&gt;(cy), allow_unknown) &amp;&amp;
++        !isCellFree(
++          costmap, static_cast&lt;unsigned int&gt;(cx + u_x), static_cast&lt;unsigned int&gt;(cy),
++          allow_unknown) &amp;&amp;
+@@ -127 +132,3 @@
+-        !isCellFree(costmap, static_cast&lt;unsigned int&gt;(cx), static_cast&lt;unsigned int&gt;(cy + u_y), allow_unknown) &amp;&amp;
++        !isCellFree(
++          costmap, static_cast&lt;unsigned int&gt;(cx), static_cast&lt;unsigned int&gt;(cy + u_y),
++          allow_unknown) &amp;&amp;
+@@ -140 +147,3 @@
+-  return isCellFree(costmap, static_cast&lt;unsigned int&gt;(x1i), static_cast&lt;unsigned int&gt;(y1i), allow_unknown);
++  return isCellFree(
++    costmap, static_cast&lt;unsigned int&gt;(x1i), static_cast&lt;unsigned int&gt;(y1i),
++    allow_unknown);
+
+Code style divergence in file 'src/swerve_steering_model.cpp':
+
+--- src/swerve_steering_model.cpp
++++ src/swerve_steering_model.cpp.uncrustify
+@@ -129 +129,2 @@
+-    max_jump = std::max(max_jump, static_cast&lt;double&gt;(std::abs(angleDiff(chosen, prev_wheel_angle[i]))));
++    max_jump =
++      std::max(max_jump, static_cast&lt;double&gt;(std::abs(angleDiff(chosen, prev_wheel_angle[i]))));
+
+4 files with code style divergence
+No code style divergence in file 'include/nav2_theta_star_planner/curve_path_smoother.hpp'
+
+No code style divergence in file 'include/nav2_theta_star_planner/l1_spline_path.hpp'
+
+No code style divergence in file 'include/nav2_theta_star_planner/multi_layer_planner.hpp'
+
+No code style divergence in file 'include/nav2_theta_star_planner/node_theta_star.hpp'
+
+No code style divergence in file 'include/nav2_theta_star_planner/omni_path_smoother.hpp'
+
+No code style divergence in file 'include/nav2_theta_star_planner/swerve_steering_model.hpp'
+
+No code style divergence in file 'include/nav2_theta_star_planner/theta_star.hpp'
+
+No code style divergence in file 'include/nav2_theta_star_planner/theta_star_planner.hpp'
+
+No code style divergence in file 'src/l1_spline_path.cpp'
+
+No code style divergence in file 'src/multi_layer_planner.cpp'
+
+No code style divergence in file 'src/theta_star.cpp'
+
+No code style divergence in file 'src/theta_star_planner.cpp'
+
+No code style divergence in file 'test/test_theta_star.cpp'
+
+-- run_test.py: return code 1
+-- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/uncrustify.xunit.xml'
+</Value>
+				</Measurement>
+			</Results>
+			<Labels>
+				<Label>linter</Label>
+				<Label>uncrustify</Label>
+			</Labels>
+		</Test>
+		<Test Status="failed">
+			<Name>xmllint</Name>
+			<Path>.</Path>
+			<FullName>./xmllint</FullName>
+			<FullCommandLine>/usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/xmllint.xunit.xml" "--package-name" "nav2_theta_star_planner" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/ament_xmllint/xmllint.txt" "--command" "/opt/ros/humble/bin/ament_xmllint" "--xunit-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/xmllint.xunit.xml"</FullCommandLine>
+			<Results>
+				<NamedMeasurement type="text/string" name="Exit Code">
+					<Value>Failed</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Exit Value">
+					<Value>1</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="numeric/double" name="Execution Time">
+					<Value>0.0965522</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="numeric/double" name="Processors">
+					<Value>1</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Completion Status">
+					<Value>Completed</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Command Line">
+					<Value>/usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/xmllint.xunit.xml" "--package-name" "nav2_theta_star_planner" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/ament_xmllint/xmllint.txt" "--command" "/opt/ros/humble/bin/ament_xmllint" "--xunit-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/xmllint.xunit.xml"</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Environment">
+					<Value>#CTEST_RESOURCE_GROUP_COUNT=</Value>
+				</NamedMeasurement>
+				<Measurement>
+					<Value>-- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner':
+ - /opt/ros/humble/bin/ament_xmllint --xunit-file /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/xmllint.xunit.xml
+File 'package.xml' is invalid:
+warning: failed to load external entity "http://download.ros.org/schema/package_format3.xsd"
+Schemas parser error : Failed to locate the main schema resource at 'http://download.ros.org/schema/package_format3.xsd'.
+WXS schema http://download.ros.org/schema/package_format3.xsd failed to compile
+
+1 files are invalid
+File 'theta_star_planner.xml' is valid
+
+-- run_test.py: return code 1
+-- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/xmllint.xunit.xml'
+</Value>
+				</Measurement>
+			</Results>
+			<Labels>
+				<Label>linter</Label>
+				<Label>xmllint</Label>
+			</Labels>
+		</Test>
+		<EndDateTime>Jul 20 19:29 CST</EndDateTime>
+		<EndTestTime>1784546971</EndTestTime>
+		<ElapsedMinutes>0</ElapsedMinutes>
+	</Testing>
+</Site>

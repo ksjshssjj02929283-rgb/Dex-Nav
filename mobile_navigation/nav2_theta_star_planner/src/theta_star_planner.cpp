@@ -29,6 +29,7 @@ namespace nav2_theta_star_planner
 namespace
 {
 constexpr size_t kMaxInterpolatedPoses = 50000;
+constexpr double kEndpointPositionEpsilon = 1e-6;
 
 nav_msgs::msg::Path coordsToPath(const std::vector<coordsW> & pts)
 {
@@ -160,7 +161,31 @@ void ThetaStarPlanner::assignPathOrientations(
     return;
   }
 
-  // TANGENT：相邻点方向作为 yaw（差速车/需要贴路径切线时使用）
+  // TANGENT：通常使用相邻点切线作为 yaw。进入终点保持区后冻结为“来向 yaw”，
+  // 避免 5 cm 栅格量化产生的最后一条极短斜线突然改变参考朝向。若整条新路径都比
+  // 保持距离短（终点附近重规划的典型情况），直接沿用当前机器人 yaw；全向底盘仍可
+  // 横移到精确 XY，最终 goal yaw 继续由末尾零位移 marker 独立处理。
+  const std::vector<double> cum_dist = computeCumulativePathLength(path);
+  const double total_length = cum_dist.back();
+  const double hold_distance = std::max(0.0, tangent_terminal_yaw_hold_distance_);
+  const double hold_start_distance = std::max(0.0, total_length - hold_distance);
+  double terminal_hold_yaw = tf2::getYaw(start.pose.orientation);
+
+  if (plan_size > 1 && total_length > hold_distance && hold_distance > 0.0) {
+    // 找到跨过“终点保持区起点”的有效线段，把它的方向作为终端来向。
+    for (size_t i = 0; i + 1 < plan_size; ++i) {
+      if (cum_dist[i + 1] + kEndpointPositionEpsilon < hold_start_distance) {
+        continue;
+      }
+      const auto & p0 = path.poses[i].pose.position;
+      const auto & p1 = path.poses[i + 1].pose.position;
+      if (std::hypot(p1.x - p0.x, p1.y - p0.y) > kEndpointPositionEpsilon) {
+        terminal_hold_yaw = std::atan2(p1.y - p0.y, p1.x - p0.x);
+        break;
+      }
+    }
+  }
+
   for (size_t i = 0; i + 1 < plan_size; ++i) {
     const auto & p0 = path.poses[i].pose.position;
     const auto & p1 = path.poses[i + 1].pose.position;
@@ -172,7 +197,9 @@ void ThetaStarPlanner::assignPathOrientations(
       }
       continue;
     }
-    const double theta = std::atan2(dy, dx);
+    const bool in_terminal_hold =
+      hold_distance > 0.0 && cum_dist[i] + kEndpointPositionEpsilon >= hold_start_distance;
+    const double theta = in_terminal_hold ? terminal_hold_yaw : std::atan2(dy, dx);
     path.poses[i].pose.orientation =
       nav2_util::geometry_utils::orientationAroundZAxis(theta);
   }
@@ -251,6 +278,12 @@ void ThetaStarPlanner::configure(
     node, name + ".tangent_in_place_rotation_markers", rclcpp::ParameterValue(false));
   node->get_parameter(
     name + ".tangent_in_place_rotation_markers", tangent_in_place_rotation_markers_);
+
+  nav2_util::declare_parameter_if_not_declared(
+    node, name + ".tangent_terminal_yaw_hold_distance", rclcpp::ParameterValue(0.20));
+  node->get_parameter(
+    name + ".tangent_terminal_yaw_hold_distance", tangent_terminal_yaw_hold_distance_);
+  tangent_terminal_yaw_hold_distance_ = std::max(0.0, tangent_terminal_yaw_hold_distance_);
 
   if (!assign_path_orientations_) {
     path_orientation_mode_ = PathOrientationMode::NONE;
@@ -432,12 +465,13 @@ void ThetaStarPlanner::configure(
   RCLCPP_INFO(
     logger_,
     "Theta* path orientation: assign=%s mode=%s same_threshold=%.3f rad "
-    "tangent_in_place_markers=%s. "
+    "tangent_in_place_markers=%s terminal_yaw_hold=%.3f m. "
     "Omni: PathAngleCritic off + PathAlign use_path_orientations=true",
     assign_path_orientations_ ? "true" : "false",
     path_orientation_mode_param.c_str(),
     path_orientation_same_threshold_rad_,
-    tangent_in_place_rotation_markers_ ? "true" : "false");
+    tangent_in_place_rotation_markers_ ? "true" : "false",
+    tangent_terminal_yaw_hold_distance_);
 
   RCLCPP_INFO(
     logger_,
@@ -580,10 +614,20 @@ nav_msgs::msg::Path ThetaStarPlanner::createPlan(
 
   std::unique_lock<nav2_costmap_2d::Costmap2D::mutex_t> lock(*(planner_->costmap_->getMutex()));
 
-  // Corner case of start and goal beeing on the same cell
+  // 起终点先转换到栅格，仅把栅格用于 Theta* 搜索；用户的连续坐标会在搜索后接回。
   unsigned int mx_start, my_start, mx_goal, my_goal;
-  planner_->costmap_->worldToMap(start.pose.position.x, start.pose.position.y, mx_start, my_start);
-  planner_->costmap_->worldToMap(goal.pose.position.x, goal.pose.position.y, mx_goal, my_goal);
+  const bool start_in_map = planner_->costmap_->worldToMap(
+    start.pose.position.x, start.pose.position.y, mx_start, my_start);
+  const bool goal_in_map = planner_->costmap_->worldToMap(
+    goal.pose.position.x, goal.pose.position.y, mx_goal, my_goal);
+  if (!start_in_map || !goal_in_map) {
+    RCLCPP_WARN(
+      logger_, "Failed to create path because start or goal is outside the costmap");
+    return global_path;
+  }
+
+  // 同一栅格不再退化成一个栅格中心/起点：只要 XY 不同，就直接输出经过安全检查的
+  // 亚栅格短线 [精确 start, 精确 goal]，再走下方统一的 yaw 与 marker 后处理。
   if (mx_start == mx_goal && my_start == my_goal) {
     if (!planner_->isSafe(mx_start, my_start)) {
       RCLCPP_WARN(
@@ -593,44 +637,49 @@ nav_msgs::msg::Path ThetaStarPlanner::createPlan(
     }
     global_path.header.stamp = clock_->now();
     global_path.header.frame_id = global_frame_;
-    geometry_msgs::msg::PoseStamped pose;
-    pose.header = global_path.header;
-    pose.pose.position.z = 0.0;
-
-    pose.pose = start.pose;
-    if (path_orientation_mode_ == PathOrientationMode::TANGENT &&
-      tangent_in_place_rotation_markers_)
-    {
-      // Keep the same marker contract as a normal tangent path. There is no
-      // cruise distance in this case, so the MPPI tangent phase controller
-      // will perform start alignment and then final goal alignment in place.
-      geometry_msgs::msg::PoseStamped start_marker = pose;
-      start_marker.pose.orientation = start.pose.orientation;
-      geometry_msgs::msg::PoseStamped cruise_start = start_marker;
-      geometry_msgs::msg::PoseStamped cruise_goal = start_marker;
-      geometry_msgs::msg::PoseStamped goal_marker = start_marker;
-      goal_marker.pose.orientation = goal.pose.orientation;
-      global_path.poses = {start_marker, cruise_start, cruise_goal, goal_marker};
-    } else if (path_orientation_mode_ == PathOrientationMode::START)
-    {
-      // START 用两个起点零位移 marker 与 AUTO 显式区分。控制器移除 marker 后，
-      // 平移阶段会硬性保持 wz=0；最后一个真实点仍携带用户 goal yaw 供终点旋转。
-      geometry_msgs::msg::PoseStamped start_marker = pose;
-      geometry_msgs::msg::PoseStamped cruise_start = pose;
-      geometry_msgs::msg::PoseStamped goal_pose = pose;
-      goal_pose.pose.orientation = goal.pose.orientation;
-      global_path.poses = {start_marker, start_marker, cruise_start, goal_pose};
-    } else {
-      // Every ordinary mode has the same terminal contract: reaching the
-      // geometric goal also means reaching the requested goal yaw.
-      pose.pose.orientation = goal.pose.orientation;
-      global_path.poses.push_back(pose);
+    if (!isWorldSegmentSafe(start.pose.position, goal.pose.position)) {
+      RCLCPP_WARN(logger_, "The exact same-cell start-to-goal connection is not collision free");
+      return global_path;
     }
-    return global_path;
-  }
 
-  planner_->setStartAndGoal(start, goal);
-  getPlan(global_path, start, goal);
+    geometry_msgs::msg::PoseStamped exact_start = start;
+    geometry_msgs::msg::PoseStamped exact_goal = goal;
+    exact_start.header = global_path.header;
+    exact_goal.header = global_path.header;
+    exact_start.pose.position.z = 0.0;
+    exact_goal.pose.position.z = 0.0;
+    global_path.poses.push_back(exact_start);
+
+    const double exact_distance = std::hypot(
+      goal.pose.position.x - start.pose.position.x,
+      goal.pose.position.y - start.pose.position.y);
+    if (exact_distance > kEndpointPositionEpsilon) {
+      global_path.poses.push_back(exact_goal);
+    } else {
+      // 真正同一点沿用原有模式协议：AUTO 等模式保持单点，TANGENT/START 保留各自
+      // 的显式 marker，使“只改变目标 yaw”的任务仍能进入控制器的原地旋转阶段。
+      if (path_orientation_mode_ == PathOrientationMode::TANGENT &&
+        tangent_in_place_rotation_markers_)
+      {
+        geometry_msgs::msg::PoseStamped start_marker = exact_start;
+        geometry_msgs::msg::PoseStamped cruise_start = exact_start;
+        geometry_msgs::msg::PoseStamped cruise_goal = exact_start;
+        geometry_msgs::msg::PoseStamped goal_marker = exact_start;
+        goal_marker.pose.orientation = goal.pose.orientation;
+        global_path.poses = {start_marker, cruise_start, cruise_goal, goal_marker};
+      } else if (path_orientation_mode_ == PathOrientationMode::START) {
+        geometry_msgs::msg::PoseStamped goal_pose = exact_start;
+        goal_pose.pose.orientation = goal.pose.orientation;
+        global_path.poses = {exact_start, exact_start, exact_start, goal_pose};
+      } else {
+        global_path.poses.front().pose.orientation = goal.pose.orientation;
+      }
+      return global_path;
+    }
+  } else {
+    planner_->setStartAndGoal(start, goal);
+    getPlan(global_path, start, goal);
+  }
 
   const size_t plan_size = global_path.poses.size();
   if (plan_size > 0) {
@@ -757,6 +806,13 @@ void ThetaStarPlanner::getPlan(
           "Node map plan: %zu graph waypoints (before interpolation)",
           path.size());
         buildGeometricPath(global_path, path);
+        // goal_unreachable=true 表示多层规划器有意停在替代节点，不能再强接原始障碍终点。
+        if (!global_path.poses.empty() &&
+          !connectPathToExactEndpoints(global_path, start, goal, !goal_unreachable))
+        {
+          RCLCPP_ERROR(logger_, "Could not safely connect node-map path to exact endpoints");
+          global_path.poses.clear();
+        }
         if (global_path.poses.empty() && !path.empty()) {
           RCLCPP_ERROR(
             logger_,
@@ -791,6 +847,88 @@ void ThetaStarPlanner::getPlan(
   }
 
   buildGeometricPath(global_path, path);
+  if (!global_path.poses.empty() &&
+    !connectPathToExactEndpoints(global_path, start, goal))
+  {
+    RCLCPP_ERROR(logger_, "Could not safely connect Theta* path to exact endpoints");
+    global_path.poses.clear();
+  }
+}
+
+bool ThetaStarPlanner::isWorldSegmentSafe(
+  const geometry_msgs::msg::Point & from,
+  const geometry_msgs::msg::Point & to) const
+{
+  const double dx = to.x - from.x;
+  const double dy = to.y - from.y;
+  const double distance = std::hypot(dx, dy);
+
+  // costmap 已包含机器人外形膨胀。用 1/4 栅格分辨率采样短连接，可覆盖连接经过的
+  // 每个栅格；沿用 Theta*::isSafe 的判定，避免端点修正绕过规划器的障碍规则。
+  const double sample_step = std::max(0.001, planner_->costmap_->getResolution() * 0.25);
+  const size_t sample_count = std::max<size_t>(
+    1, static_cast<size_t>(std::ceil(distance / sample_step)));
+  for (size_t i = 0; i <= sample_count; ++i) {
+    const double ratio = static_cast<double>(i) / static_cast<double>(sample_count);
+    unsigned int mx = 0;
+    unsigned int my = 0;
+    if (!planner_->costmap_->worldToMap(from.x + ratio * dx, from.y + ratio * dy, mx, my) ||
+      !planner_->isSafe(mx, my))
+    {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool ThetaStarPlanner::connectPathToExactEndpoints(
+  nav_msgs::msg::Path & path,
+  const geometry_msgs::msg::PoseStamped & start,
+  const geometry_msgs::msg::PoseStamped & goal,
+  bool connect_goal) const
+{
+  if (path.poses.empty()) {
+    return false;
+  }
+
+  geometry_msgs::msg::PoseStamped exact_start = start;
+  exact_start.header = path.header;
+  exact_start.pose.position.z = 0.0;
+  const auto & grid_start = path.poses.front().pose.position;
+  const double start_gap = std::hypot(
+    exact_start.pose.position.x - grid_start.x,
+    exact_start.pose.position.y - grid_start.y);
+  if (start_gap <= kEndpointPositionEpsilon) {
+    path.poses.front().pose.position = exact_start.pose.position;
+  } else {
+    if (!isWorldSegmentSafe(exact_start.pose.position, grid_start)) {
+      return false;
+    }
+    // 首点必须是当前机器人连续坐标，MPPI 再从该点连续积分，不会“跳到”栅格中心。
+    path.poses.insert(path.poses.begin(), exact_start);
+  }
+
+  if (!connect_goal) {
+    return true;
+  }
+
+  geometry_msgs::msg::PoseStamped exact_goal = goal;
+  exact_goal.header = path.header;
+  exact_goal.pose.position.z = 0.0;
+  const auto & grid_goal = path.poses.back().pose.position;
+  const double goal_gap = std::hypot(
+    exact_goal.pose.position.x - grid_goal.x,
+    exact_goal.pose.position.y - grid_goal.y);
+  if (goal_gap <= kEndpointPositionEpsilon) {
+    path.poses.back().pose.position = exact_goal.pose.position;
+  } else {
+    if (!isWorldSegmentSafe(grid_goal, exact_goal.pose.position)) {
+      return false;
+    }
+    // 末点恢复为用户下发的连续坐标，目标容差不再受 5 cm 栅格中心量化限制。
+    path.poses.push_back(exact_goal);
+  }
+  return true;
 }
 
 void ThetaStarPlanner::buildGeometricPath(
@@ -918,7 +1056,8 @@ void ThetaStarPlanner::buildGeometricPathLegacy(
   if (smooth_log_timing_) {
     RCLCPP_INFO(
       logger_,
-      "Path post-process: sparse=%zu dense=%zu poses=%zu | mode=legacy fillet=%s gradient=%s(%s) | %.2f ms",
+      "Path post-process: sparse=%zu dense=%zu poses=%zu | mode=legacy "
+      "fillet=%s gradient=%s(%s) | %.2f ms",
       sparse_count,
       waypoints.size(),
       global_path.poses.size(),
@@ -1004,6 +1143,8 @@ ThetaStarPlanner::dynamicParametersCallback(std::vector<rclcpp::Parameter> param
         planner_->w_traversal_cost_ = parameter.as_double();
       } else if (name == name_ + ".path_orientation_same_threshold_rad") {
         path_orientation_same_threshold_rad_ = parameter.as_double();
+      } else if (name == name_ + ".tangent_terminal_yaw_hold_distance") {
+        tangent_terminal_yaw_hold_distance_ = std::max(0.0, parameter.as_double());
       } else if (name == name_ + ".steering_chassis_wheelbase") {
         swerve_steering_config_.wheelbase = parameter.as_double();
       } else if (name == name_ + ".steering_chassis_track") {

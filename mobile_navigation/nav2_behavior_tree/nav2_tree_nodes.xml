@@ -194,9 +194,13 @@
       <input_port name="server_timeout">Server timeout</input_port>
     </Action>
 
-    <!-- [ParkWheels] 四轮朝里驻车；Server=/park_wheels（mobile_cmd_omni） -->
-    <Action ID="ParkWheels">
-      <input_port name="steer_angle_rad" default="0.785">Inward steer magnitude (rad)</input_port>
+    <!-- [SteeringAngleControl] 四轮按指定舵角驻车；
+         Server=/steering_angle_control（mobile_cmd_omni） -->
+    <Action ID="SteeringAngleControl">
+      <input_port name="front_left_angle_rad" default="0.785">Front-left steer angle (rad)</input_port>
+      <input_port name="front_right_angle_rad" default="-0.785">Front-right steer angle (rad)</input_port>
+      <input_port name="rear_left_angle_rad" default="-0.785">Rear-left steer angle (rad)</input_port>
+      <input_port name="rear_right_angle_rad" default="0.785">Rear-right steer angle (rad)</input_port>
       <input_port name="timeout_sec" default="3.0">Max settle time (s)</input_port>
       <input_port name="settle_tolerance_rad" default="0.08">Max |error| to succeed (rad)</input_port>
       <input_port name="server_name">Server name</input_port>

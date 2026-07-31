@@ -1,10 +1,25 @@
 -- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test':
  - /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/models_test --gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/models_test.gtest.xml
 
-terminate called after throwing an instance of 'spdlog::spdlog_ex'
-  what():  Failed opening file /home/dex/.ros/log/models_test_39_1784285056924.log for writing: Read-only file system
+Running main() from /opt/ros/humble/src/gtest_vendor/src/gtest_main.cc
+[==========] Running 4 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 4 tests from ModelsTest
+[ RUN      ] ModelsTest.ControlSequenceTest
+[       OK ] ModelsTest.ControlSequenceTest (0 ms)
+[ RUN      ] ModelsTest.PathTest
+[       OK ] ModelsTest.PathTest (0 ms)
+[ RUN      ] ModelsTest.StateTest
+[       OK ] ModelsTest.StateTest (0 ms)
+[ RUN      ] ModelsTest.TrajectoriesTest
+[       OK ] ModelsTest.TrajectoriesTest (0 ms)
+[----------] 4 tests from ModelsTest (0 ms total)
+
+[----------] Global test environment tear-down
+[==========] 4 tests from 1 test suite ran. (0 ms total)
+[  PASSED  ] 4 tests.
 
 
--- run_test.py: return code -6
--- run_test.py: generate result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/models_test.gtest.xml' with failed test
+-- run_test.py: return code 0
+-- run_test.py: inject classname prefix into gtest result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/models_test.gtest.xml'
 -- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/models_test.gtest.xml'

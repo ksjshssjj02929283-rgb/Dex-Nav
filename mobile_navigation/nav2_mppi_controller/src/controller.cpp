@@ -20,6 +20,7 @@
 #include "nav2_mppi_controller/tools/utils.hpp"
 #include "nav2_core/exceptions.hpp"
 #include "nav2_costmap_2d/cost_values.hpp"
+#include "nav2_util/geometry_utils.hpp"
 #include "tf2/utils.h"  // tf2::getYaw（到点精度 log）
 
 // #define BENCHMARK_TESTING
@@ -40,6 +41,17 @@ double poseDistance(const geometry_msgs::msg::Pose & lhs, const geometry_msgs::m
   return std::hypot(
     lhs.position.x - rhs.position.x,
     lhs.position.y - rhs.position.y);
+}
+
+double integratedPathLength(const nav_msgs::msg::Path & path)
+{
+  double length = 0.0;
+  for (size_t i = 1; i < path.poses.size(); ++i) {
+    const auto & previous = path.poses[i - 1].pose.position;
+    const auto & current = path.poses[i].pose.position;
+    length += std::hypot(current.x - previous.x, current.y - previous.y);
+  }
+  return length;
 }
 
 }  // namespace
@@ -89,6 +101,26 @@ void MPPIController::configure(
   getParam(
     tangent_rotation_simulate_ahead_time_,
     "tangent_rotation_simulate_ahead_time", 0.5);
+  getParam(
+    tangent_track_entry_blend_duration_,
+    "tangent_track_entry_blend_duration", 0.8);
+  getParam(
+    tangent_track_entry_motion_threshold_,
+    "tangent_track_entry_motion_threshold", 0.03);
+  getParam(
+    tangent_track_entry_command_deadband_,
+    "tangent_track_entry_command_deadband", 0.01);
+  tangent_track_entry_blend_duration_ = std::max(
+    0.0, tangent_track_entry_blend_duration_);
+  tangent_track_entry_motion_threshold_ = std::max(
+    0.0, tangent_track_entry_motion_threshold_);
+  tangent_track_entry_command_deadband_ = std::max(
+    0.0, tangent_track_entry_command_deadband_);
+  getParam(
+    tangent_terminal_yaw_hold_distance_,
+    "tangent_terminal_yaw_hold_distance", 0.20);
+  tangent_terminal_yaw_hold_distance_ = std::max(
+    0.0, tangent_terminal_yaw_hold_distance_);
 
   double controller_frequency = 10.0;
   node->get_parameter("controller_frequency", controller_frequency);
@@ -112,6 +144,16 @@ void MPPIController::configure(
     costmap_ros_->getGlobalFrameID(), parameters_handler_.get());
   profile_debug_publisher_ =
     node->create_publisher<std_msgs::msg::Float64MultiArray>("/mppi/profile_debug", 10);
+  auto_mode_publisher_ =
+    node->create_publisher<std_msgs::msg::Bool>("/control/nav_auto_mode", 10);
+  tangent_mode_publisher_ =
+    node->create_publisher<std_msgs::msg::Bool>("/control/nav_tangent_mode", 10);
+  auto_terminal_publisher_ =
+    node->create_publisher<std_msgs::msg::Bool>("/control/nav_auto_terminal", 10);
+  auto_task_id_publisher_ =
+    node->create_publisher<std_msgs::msg::UInt64>("/control/nav_auto_task_id", 10);
+  auto_yaw_remaining_publisher_ =
+    node->create_publisher<std_msgs::msg::Float64>("/control/nav_auto_yaw_remaining", 10);
 
   RCLCPP_INFO(
     logger_,
@@ -128,7 +170,24 @@ void MPPIController::cleanup()
   current_path_control_mode_ = PathControlMode::AUTO;
   navigation_goal_initialized_ = false;
   start_yaw_target_pending_ = false;
+  auto_command_filter_initialized_ = false;
+  last_auto_filtered_command_ = geometry_msgs::msg::Twist();
+  last_auto_filter_robot_yaw_ = 0.0;
+  last_auto_filtered_wz_acceleration_ = 0.0;
+  auto_path_world_yaw_initialized_ = false;
+  auto_path_world_yaw_pending_ = false;
+  tangent_track_entry_active_ = false;
+  tangent_track_entry_reference_initialized_ = false;
+  tangent_track_entry_moving_time_ = 0.0;
+  auto_yaw_task_initialized_ = false;
+  auto_task_progress_ = 0.0;
+  auto_task_id_ = 0;
   profile_debug_publisher_.reset();
+  auto_mode_publisher_.reset();
+  tangent_mode_publisher_.reset();
+  auto_terminal_publisher_.reset();
+  auto_task_id_publisher_.reset();
+  auto_yaw_remaining_publisher_.reset();
   parameters_handler_.reset();
   RCLCPP_INFO(logger_, "Cleaned up MPPI Controller: %s", name_.c_str());
 }
@@ -139,14 +198,54 @@ void MPPIController::activate()
   if (profile_debug_publisher_) {
     profile_debug_publisher_->on_activate();
   }
+  if (auto_mode_publisher_) {
+    auto_mode_publisher_->on_activate();
+  }
+  if (tangent_mode_publisher_) {
+    tangent_mode_publisher_->on_activate();
+  }
+  if (auto_terminal_publisher_) {
+    auto_terminal_publisher_->on_activate();
+  }
+  if (auto_task_id_publisher_) {
+    auto_task_id_publisher_->on_activate();
+  }
+  if (auto_yaw_remaining_publisher_) {
+    auto_yaw_remaining_publisher_->on_activate();
+  }
   parameters_handler_->start();
   RCLCPP_INFO(logger_, "Activated MPPI Controller: %s", name_.c_str());
 }
 
 void MPPIController::deactivate()
 {
+  // 必须在 lifecycle publisher 关闭前发送 false。底盘还会检查消息新鲜度，即使
+  // 进程异常退出或网络丢包，也不会把之后的遥控命令长期误认为 AUTO。
+  publishAutoModeState(false);
+  publishTangentModeState(false);
+  publishAutoTerminalState(false);
+  if (auto_yaw_remaining_publisher_ && auto_yaw_remaining_publisher_->is_activated()) {
+    auto message = std::make_unique<std_msgs::msg::Float64>();
+    message->data = 0.0;
+    auto_yaw_remaining_publisher_->publish(std::move(message));
+  }
   if (profile_debug_publisher_) {
     profile_debug_publisher_->on_deactivate();
+  }
+  if (auto_mode_publisher_) {
+    auto_mode_publisher_->on_deactivate();
+  }
+  if (tangent_mode_publisher_) {
+    tangent_mode_publisher_->on_deactivate();
+  }
+  if (auto_terminal_publisher_) {
+    auto_terminal_publisher_->on_deactivate();
+  }
+  if (auto_task_id_publisher_) {
+    auto_task_id_publisher_->on_deactivate();
+  }
+  if (auto_yaw_remaining_publisher_) {
+    auto_yaw_remaining_publisher_->on_deactivate();
   }
   trajectory_visualizer_.on_deactivate();
   RCLCPP_INFO(logger_, "Deactivated MPPI Controller: %s", name_.c_str());
@@ -155,6 +254,17 @@ void MPPIController::deactivate()
 void MPPIController::reset()
 {
   optimizer_.reset();
+  // 超过 reset_period 未收到控制调用时，期间可能执行过 BackUp/Spin 等行为并改变
+  // 实际舵角；旧 AUTO 合速度不能继续作为舵角连续性参考，下一次由底盘安全对舵。
+  auto_command_filter_initialized_ = false;
+  last_auto_filtered_command_ = geometry_msgs::msg::Twist();
+  last_auto_filter_robot_yaw_ = 0.0;
+  last_auto_filtered_wz_acceleration_ = 0.0;
+  auto_path_world_yaw_initialized_ = false;
+  auto_path_world_yaw_pending_ = false;
+  tangent_track_entry_active_ = false;
+  tangent_track_entry_reference_initialized_ = false;
+  tangent_track_entry_moving_time_ = 0.0;
   approach_substage_ = APPROACH_POSITIONING;
   approach_mode_ = APPROACH_NORMAL;
   approach_mode_locked_ = false;
@@ -221,8 +331,23 @@ geometry_msgs::msg::TwistStamped MPPIController::computeVelocityCommands(
 
   std::lock_guard<std::mutex> param_lock(*parameters_handler_->getLock());
 
+  // 在 controller_server 发布本周期 cmd_vel 之前先刷新模式标志；底盘只在 AUTO
+  // 且标志足够新鲜时启用真实舵角投影，其他模式完全走原有分配路径。
+  publishAutoModeState(current_path_control_mode_ == PathControlMode::AUTO);
+  // TANGENT 单独发布，底盘才能只在该模式锁存协调换向目标；不能再用
+  // “非 AUTO”代替，否则会把已经稳定的 START/GOAL 一并改掉。
+  publishTangentModeState(current_path_control_mode_ == PathControlMode::TANGENT);
+
   auto t_transform_start = std::chrono::high_resolution_clock::now();
   nav_msgs::msg::Path transformed_plan = path_handler_.transformPath(robot_pose);
+  // setPlan() 保存的 AUTO 路径仍在全局 plan frame（通常为 map），robot_pose 则在
+  // controller/local-costmap frame（本机通常为 odom）。发布函数会先把完整目标位姿
+  // 变换到 robot_pose 所在坐标系，再计算剩余 yaw，禁止直接混算 map/odom 角度。
+  publishAutoYawRemaining(robot_pose);
+  // 必须在剩余 yaw 刷新之后再发布任务编号。底盘收到新编号会主动丢弃上一任务
+  // 的 yaw 缓存；若两个话题在回调线程中交错，下一控制周期仍会再次发布二者，
+  // 因而最多只会保守地延后一个上层控制周期，不会拿旧目标 yaw 锁定新任务分支。
+  publishAutoTaskId();
 
   // TANGENT 需要出发切线 yaw，GOAL 需要用户 goal yaw；两者都必须从已经变换到
   // controller/costmap 坐标系的路径提取。START/AUTO/NONE 的 pending 始终为 false。
@@ -243,6 +368,7 @@ geometry_msgs::msg::TwistStamped MPPIController::computeVelocityCommands(
 
   // tangent/goal 起点停车旋转阶段直接接管；其他模式或完成后继续 TRACK/APPROACH。
   if (auto tangent_command = computeTangentStartCommand(robot_pose, robot_speed)) {
+    publishAutoTerminalState(false);
     return *tangent_command;
   }
 
@@ -294,6 +420,14 @@ geometry_msgs::msg::TwistStamped MPPIController::computeVelocityCommands(
       final_yaw_rotation_started_ = false;
       last_start_rotation_command_wz_ = 0.0;
       start_rotation_command_initialized_ = false;
+      // final_yaw 直接输出纯旋转命令并绕过 AUTO 投影；之后若因位置漂移重新进入
+      // 定位阶段，不能继续使用旋转前的旧世界速度和旧舵角参考。
+      auto_command_filter_initialized_ = false;
+      last_auto_filtered_command_ = geometry_msgs::msg::Twist();
+      last_auto_filter_robot_yaw_ = 0.0;
+      last_auto_filtered_wz_acceleration_ = 0.0;
+      auto_path_world_yaw_initialized_ = false;
+      auto_path_world_yaw_pending_ = false;
       RCLCPP_INFO(
         logger_,
         "终点位置已进入严格容差，切换到独立 final_yaw：|lon|=%.3f m |lat|=%.3f m",
@@ -301,6 +435,10 @@ geometry_msgs::msg::TwistStamped MPPIController::computeVelocityCommands(
     }
 
     auto command = computeFinalGoalYawCommand(robot_pose, robot_speed, key_yaw);
+    // final_yaw 也属于上一版已验证的终点逻辑，不允许途中预测或
+    // AUTO 换向目标锁定改变它。这里只发布隔离标志，命令计算本身不变。
+    publishAutoTerminalState(
+      current_path_control_mode_ == PathControlMode::AUTO);
     RCLCPP_INFO_THROTTLE(
       logger_, *clock_, 1000,
       "[MPPI] stage=final_yaw mode=%s err[lon=%.3f lat=%.3f yaw=%.3f] "
@@ -349,16 +487,45 @@ geometry_msgs::msg::TwistStamped MPPIController::computeVelocityCommands(
   // critic 评分指向快照，evalControl 全程不持 live costmap 锁
   optimizer_.setCostmapSnapshot(&costmap_snapshot_);
 
+  // TANGENT/START 的短距位置控制不再逐周期等待 MPPI 随机采样给出非零首命令。
+  // 直达段安全时连续输出目标方向速度；只有安全检查不通过才进入下方 MPPI。
+  if (key_has_goal) {
+    if (auto terminal_command = computeTerminalPositionCommand(
+        robot_pose, robot_speed, key_goal_x, key_goal_y, key_goal_yaw, goal_distance))
+    {
+      publishAutoTerminalState(
+        current_path_control_mode_ == PathControlMode::AUTO);
+      publishProfileDebug(path_progress, goal_distance);
+      return *terminal_command;
+    }
+  }
+
+  // 只有确认本周期不返回上面两类终点命令后才发 false，避免同一周期先 false
+  // 后 true 在跨进程订阅端形成短暂竞态。
+  publishAutoTerminalState(false);
+
   auto t_optimize_start = std::chrono::high_resolution_clock::now();
   geometry_msgs::msg::TwistStamped cmd =
     optimizer_.evalControl(robot_pose, robot_speed, transformed_plan, goal_checker);
   enforceTerminalExecutableTranslation(
     cmd, robot_pose, key_goal_x, key_goal_y, goal_distance);
   enforceFixedCruiseYaw(cmd);
-  publishProfileDebug(path_progress, goal_distance);
+  // 只在 TANGENT 起点对齐刚结束的 TRACK 接入窗口生效；START/GOAL/AUTO
+  // 以及上方已返回的终点确定性控制均不会进入。
+  smoothTangentTrackEntryCommand(cmd, robot_speed);
+  const auto command_before_auto_path_alignment = cmd.twist;
+  // 只有 AUTO 把平移方向绑定到规划路径的世界坐标前视方向。其他 orientation mode
+  // 继续完整使用各自原有控制语义，不能被 AUTO 的边走边转优化改写。
+  alignAutoTranslationWithPath(cmd, robot_pose, transformed_plan);
+  (void)enforceAutoSteeringContinuity(
+    cmd, robot_pose, robot_speed, &command_before_auto_path_alignment);
   auto t_optimize_end = std::chrono::high_resolution_clock::now();
   double optimize_ms =
     std::chrono::duration<double, std::milli>(t_optimize_end - t_optimize_start).count();
+  // 在 rosbag 中附带控制器各阶段耗时，下一轮可直接区分“MPPI计算超时”和
+  // “底盘约束主动停车”。前三个新增字段只追加在原 26 项之后，不改变旧索引。
+  publishProfileDebug(
+    path_progress, goal_distance, transform_ms, wait_lock_ms, optimize_ms);
 
   double visualize_ms = 0.0;
   if (visualize_) {
@@ -401,7 +568,9 @@ geometry_msgs::msg::TwistStamped MPPIController::computeVelocityCommands(
   return cmd;
 }
 
-void MPPIController::publishProfileDebug(double path_progress, double goal_distance)
+void MPPIController::publishProfileDebug(
+  double path_progress, double goal_distance,
+  double transform_ms, double costmap_lock_ms, double optimize_ms)
 {
   if (!profile_debug_publisher_ || !profile_debug_publisher_->is_activated()) {
     return;
@@ -437,8 +606,117 @@ void MPPIController::publishProfileDebug(double path_progress, double goal_dista
     final_yaw_exit_lat_tolerance_,
     position_first_yaw_threshold_,
     active_stage_ == STAGE_APPROACH ? static_cast<double>(approach_mode_ + 1) : 0.0,
+    // 追加字段 26～28：路径变换/状态处理、costmap 快照锁、MPPI+AUTO 后处理。
+    // 终点确定性分支没有执行 MPPI 时保持 -1，便于离线分析明确区分。
+    transform_ms,
+    costmap_lock_ms,
+    optimize_ms,
   };
   profile_debug_publisher_->publish(std::move(msg));
+}
+
+void MPPIController::publishAutoModeState(bool active)
+{
+  if (!auto_mode_publisher_ || !auto_mode_publisher_->is_activated()) {
+    return;
+  }
+
+  auto message = std::make_unique<std_msgs::msg::Bool>();
+  message->data = active;
+  auto_mode_publisher_->publish(std::move(message));
+}
+
+void MPPIController::publishTangentModeState(bool active)
+{
+  if (!tangent_mode_publisher_ || !tangent_mode_publisher_->is_activated()) {
+    return;
+  }
+
+  auto message = std::make_unique<std_msgs::msg::Bool>();
+  message->data = active;
+  tangent_mode_publisher_->publish(std::move(message));
+}
+
+void MPPIController::publishAutoTerminalState(bool active)
+{
+  if (!auto_terminal_publisher_ || !auto_terminal_publisher_->is_activated()) {
+    return;
+  }
+
+  auto message = std::make_unique<std_msgs::msg::Bool>();
+  message->data = active;
+  auto_terminal_publisher_->publish(std::move(message));
+}
+
+void MPPIController::publishAutoTaskId()
+{
+  if (
+    !auto_task_id_publisher_ || !auto_task_id_publisher_->is_activated() ||
+    current_path_control_mode_ != PathControlMode::AUTO ||
+    !auto_yaw_task_initialized_ || auto_task_id_ == 0)
+  {
+    return;
+  }
+
+  auto message = std::make_unique<std_msgs::msg::UInt64>();
+  message->data = auto_task_id_;
+  auto_task_id_publisher_->publish(std::move(message));
+}
+
+void MPPIController::publishAutoYawRemaining(
+  const geometry_msgs::msg::PoseStamped & robot_pose)
+{
+  if (
+    !auto_yaw_remaining_publisher_ ||
+    !auto_yaw_remaining_publisher_->is_activated())
+  {
+    return;
+  }
+
+  auto message = std::make_unique<std_msgs::msg::Float64>();
+  if (
+    current_path_control_mode_ != PathControlMode::AUTO ||
+    !auto_yaw_task_initialized_)
+  {
+    // 非 AUTO 显式发布零值；底盘还会同时检查 AUTO mode 与消息新鲜度，
+    // 因此不会把本话题用于其他 orientation mode。
+    message->data = 0.0;
+    auto_yaw_remaining_publisher_->publish(std::move(message));
+    return;
+  }
+
+  const auto & task_plan = path_handler_.getPath();
+  if (task_plan.poses.empty() || task_plan.header.frame_id.empty()) {
+    // AUTO 路径暂时不可用时不发布伪造的零值。底盘消息新鲜度超时后会自动
+    // 禁用整段分支预选，继续使用原有即时舵角与 0.35 rad 安全保护。
+    RCLCPP_WARN_THROTTLE(
+      logger_, *clock_, 1000,
+      "AUTO 剩余 yaw 未发布：当前完整任务路径为空或缺少 frame_id");
+    return;
+  }
+
+  // transformPath() 为局部控制只保留 prune_distance 内的窗口，长路径时其末点
+  // 不一定是用户最终目标。因此从 PathHandler 保存的完整任务路径取 back()，
+  // 再按当前 robot_pose 时间变换到 local costmap/controller 坐标系。
+  geometry_msgs::msg::PoseStamped goal_in_plan_frame = task_plan.poses.back();
+  goal_in_plan_frame.header.frame_id = task_plan.header.frame_id;
+  goal_in_plan_frame.header.stamp = robot_pose.header.stamp;
+  geometry_msgs::msg::PoseStamped goal_in_controller_frame;
+  if (!costmap_ros_->transformPoseToGlobalFrame(
+      goal_in_plan_frame, goal_in_controller_frame))
+  {
+    // TF 失败时宁可让消息变旧并关闭新增预选，也不能再次混用 map/odom yaw。
+    RCLCPP_WARN_THROTTLE(
+      logger_, *clock_, 1000,
+      "AUTO 剩余 yaw 未发布：目标无法从 frame=%s 变换到 controller frame=%s",
+      task_plan.header.frame_id.c_str(), robot_pose.header.frame_id.c_str());
+    return;
+  }
+
+  const double robot_yaw = tf2::getYaw(robot_pose.pose.orientation);
+  const double goal_yaw = tf2::getYaw(goal_in_controller_frame.pose.orientation);
+  message->data = shortestAngularDistance(robot_yaw, goal_yaw);
+  auto_yaw_remaining_publisher_->publish(std::move(message));
 }
 
 void MPPIController::configureStages()
@@ -533,6 +811,12 @@ void MPPIController::configureStages()
   getParam(
     terminal_translation_min_goal_alignment_, "terminal_translation_min_goal_alignment",
     0.5, ParameterType::Static);
+  getParam(
+    tangent_terminal_position_kp_, "tangent_terminal_position_kp",
+    0.8, ParameterType::Static);
+  getParam(
+    tangent_terminal_position_max_speed_, "tangent_terminal_position_max_speed",
+    0.20, ParameterType::Static);
   getParam(profile_transition_duration_, "profile_transition_duration", 1.0, ParameterType::Static);
   getParam(approach_hysteresis_, "approach_hysteresis", 0.05, ParameterType::Static);
   approach_hysteresis_ = std::max(0.0, approach_hysteresis_);
@@ -544,6 +828,83 @@ void MPPIController::configureStages()
     0.0, terminal_translation_command_deadband_);
   terminal_translation_min_goal_alignment_ = std::clamp(
     terminal_translation_min_goal_alignment_, -1.0, 1.0);
+  tangent_terminal_position_kp_ = std::max(0.0, tangent_terminal_position_kp_);
+  tangent_terminal_position_max_speed_ = std::max(
+    terminal_min_translation_speed_, tangent_terminal_position_max_speed_);
+  getParam(
+    auto_chassis_length_, "auto_chassis_length", 0.460, ParameterType::Static);
+  getParam(
+    auto_chassis_width_, "auto_chassis_width", 0.345, ParameterType::Static);
+  getParam(
+    auto_max_angular_speed_, "auto_max_angular_speed",
+    0.45, ParameterType::Static);
+  getParam(
+    auto_max_angular_acceleration_, "auto_max_angular_acceleration",
+    0.7, ParameterType::Static);
+  getParam(
+    auto_angular_speed_filter_alpha_, "auto_angular_speed_filter_alpha",
+    0.45, ParameterType::Static);
+  getParam(
+    auto_max_angular_jerk_, "auto_max_angular_jerk",
+    3.0, ParameterType::Static);
+  getParam(
+    auto_linear_speed_filter_alpha_, "auto_linear_speed_filter_alpha",
+    0.35, ParameterType::Static);
+  getParam(
+    auto_max_linear_acceleration_, "auto_max_linear_acceleration",
+    0.6, ParameterType::Static);
+  getParam(
+    auto_max_linear_deceleration_, "auto_max_linear_deceleration",
+    0.8, ParameterType::Static);
+  getParam(
+    auto_max_wheel_steer_step_, "auto_max_wheel_steer_step",
+    0.08, ParameterType::Static);
+  getParam(
+    auto_steering_filter_simulate_ahead_time_,
+    "auto_steering_filter_simulate_ahead_time", 0.5, ParameterType::Static);
+  getParam(
+    auto_path_direction_lookahead_distance_,
+    "auto_path_direction_lookahead_distance", 0.70, ParameterType::Static);
+  getParam(
+    auto_path_direction_command_deadband_,
+    "auto_path_direction_command_deadband", 0.005, ParameterType::Static);
+  getParam(
+    auto_path_direction_max_rate_,
+    "auto_path_direction_max_rate", 0.8, ParameterType::Static);
+  getParam(
+    auto_path_direction_emergency_reset_angle_,
+    "auto_path_direction_emergency_reset_angle", 1.047, ParameterType::Static);
+  getParam(
+    auto_terminal_yaw_kp_, "auto_terminal_yaw_kp",
+    1.2, ParameterType::Static);
+  getParam(
+    auto_yaw_completion_distance_before_goal_,
+    "auto_yaw_completion_distance_before_goal", 0.20, ParameterType::Static);
+  auto_chassis_length_ = std::max(0.0, auto_chassis_length_);
+  auto_chassis_width_ = std::max(0.0, auto_chassis_width_);
+  auto_max_angular_speed_ = std::max(0.0, auto_max_angular_speed_);
+  auto_max_angular_acceleration_ = std::max(0.0, auto_max_angular_acceleration_);
+  auto_angular_speed_filter_alpha_ = std::clamp(
+    auto_angular_speed_filter_alpha_, 0.0, 1.0);
+  auto_max_angular_jerk_ = std::max(0.0, auto_max_angular_jerk_);
+  auto_linear_speed_filter_alpha_ = std::clamp(
+    auto_linear_speed_filter_alpha_, 0.0, 1.0);
+  auto_max_linear_acceleration_ = std::max(0.0, auto_max_linear_acceleration_);
+  auto_max_linear_deceleration_ = std::max(0.0, auto_max_linear_deceleration_);
+  auto_max_wheel_steer_step_ = std::max(0.0, auto_max_wheel_steer_step_);
+  auto_steering_filter_simulate_ahead_time_ = std::max(
+    0.0, auto_steering_filter_simulate_ahead_time_);
+  auto_path_direction_lookahead_distance_ = std::max(
+    0.01, auto_path_direction_lookahead_distance_);
+  auto_path_direction_command_deadband_ = std::max(
+    0.0, auto_path_direction_command_deadband_);
+  auto_path_direction_max_rate_ = std::max(
+    0.0, auto_path_direction_max_rate_);
+  auto_path_direction_emergency_reset_angle_ = std::clamp(
+    auto_path_direction_emergency_reset_angle_, 0.0, M_PI);
+  auto_terminal_yaw_kp_ = std::max(0.0, auto_terminal_yaw_kp_);
+  auto_yaw_completion_distance_before_goal_ = std::max(
+    0.0, auto_yaw_completion_distance_before_goal_);
   getParam(
     final_yaw_enter_lon_tolerance_, "approach_final_yaw_enter_lon_tolerance",
     0.015, ParameterType::Static);
@@ -831,6 +1192,7 @@ void MPPIController::applyProfileForPathState(
 
   // 只连续收紧同一 profile 的平移速度约束，不再切换到低速 APPROACH profile。
   applyApproachBrakingEnvelope(goal_distance);
+  applyTerminalGoalAxisWeights(goal_distance);
   applied_profile_.critics.linear_velocity.speed_max = std::max(
     std::abs(applied_profile_.velocity.vx_min),
     std::abs(applied_profile_.velocity.vx_max));
@@ -1024,6 +1386,753 @@ void MPPIController::enforceFixedCruiseYaw(geometry_msgs::msg::TwistStamped & cm
   }
 }
 
+void MPPIController::blendTangentTrackEntryCommand(
+  geometry_msgs::msg::Twist & command,
+  const geometry_msgs::msg::Twist & entry_reference,
+  double blend_ratio)
+{
+  const double ratio = std::clamp(blend_ratio, 0.0, 1.0);
+  if (ratio >= 1.0) {
+    return;
+  }
+
+  // 参考命令按当前 MPPI 合速度等比例缩放，使 vx/vy/wz 的几何比例保持不变。
+  // 这样在底盘零速对舵期间锁住的是“轮向”而非某个固定低速度；之后再逐步
+  // 混入新命令，不会因为 MPPI 正常加速而提前改变首个物理分支。
+  geometry_msgs::msg::Twist scaled_reference = entry_reference;
+  const double reference_linear_speed = std::hypot(
+    entry_reference.linear.x, entry_reference.linear.y);
+  const double requested_linear_speed = std::hypot(
+    command.linear.x, command.linear.y);
+  if (reference_linear_speed > 1e-6 && requested_linear_speed > 1e-6) {
+    const double scale = requested_linear_speed / reference_linear_speed;
+    scaled_reference.linear.x *= scale;
+    scaled_reference.linear.y *= scale;
+    scaled_reference.angular.z *= scale;
+  }
+
+  command.linear.x =
+    (1.0 - ratio) * scaled_reference.linear.x + ratio * command.linear.x;
+  command.linear.y =
+    (1.0 - ratio) * scaled_reference.linear.y + ratio * command.linear.y;
+  command.angular.z =
+    (1.0 - ratio) * scaled_reference.angular.z + ratio * command.angular.z;
+}
+
+void MPPIController::smoothTangentTrackEntryCommand(
+  geometry_msgs::msg::TwistStamped & cmd,
+  const geometry_msgs::msg::Twist & robot_speed)
+{
+  if (
+    current_path_control_mode_ != PathControlMode::TANGENT ||
+    !tangent_track_entry_active_)
+  {
+    return;
+  }
+
+  const double command_linear_speed = std::hypot(
+    cmd.twist.linear.x, cmd.twist.linear.y);
+  if (
+    command_linear_speed <= tangent_track_entry_command_deadband_ &&
+    std::abs(cmd.twist.angular.z) <= tangent_track_entry_command_deadband_)
+  {
+    // MPPI 明确给零时必须尊重停车；同时不拿数值零点初始化舵轮方向。
+    tangent_track_entry_last_time_ = clock_->now();
+    return;
+  }
+
+  const auto now = clock_->now();
+  if (!tangent_track_entry_reference_initialized_) {
+    tangent_track_entry_reference_ = cmd.twist;
+    tangent_track_entry_reference_initialized_ = true;
+    tangent_track_entry_moving_time_ = 0.0;
+    tangent_track_entry_last_time_ = now;
+    RCLCPP_INFO(
+      logger_,
+      "TANGENT TRACK 连续接入：锁存首个有效命令 (%.3f, %.3f, %.3f)，"
+      "等待底盘真实移动后再放开 MPPI 新方向",
+      cmd.twist.linear.x, cmd.twist.linear.y, cmd.twist.angular.z);
+    return;
+  }
+
+  const double raw_dt = (now - tangent_track_entry_last_time_).seconds();
+  tangent_track_entry_last_time_ = now;
+  const double dt = std::clamp(
+    raw_dt, 0.0, std::max(2.0 * control_duration_, 0.2));
+  const double actual_linear_speed = std::hypot(
+    robot_speed.linear.x, robot_speed.linear.y);
+  const bool robot_has_started_moving =
+    actual_linear_speed >= tangent_track_entry_motion_threshold_ ||
+    std::abs(robot_speed.angular.z) >= tangent_stopped_angular_velocity_;
+  if (robot_has_started_moving) {
+    // 只累计“真实已经走起来”的时间。底盘因 0.35 rad 保护零速对舵期间，
+    // 上层即使运行数秒也不会把混合窗口耗尽，避免刚释放就跳到另一轮向。
+    tangent_track_entry_moving_time_ += dt;
+  }
+
+  const double blend_ratio = tangent_track_entry_blend_duration_ <= 1e-6 ?
+    1.0 :
+    std::clamp(
+    tangent_track_entry_moving_time_ / tangent_track_entry_blend_duration_,
+    0.0, 1.0);
+  blendTangentTrackEntryCommand(
+    cmd.twist, tangent_track_entry_reference_, blend_ratio);
+
+  if (blend_ratio >= 1.0) {
+    tangent_track_entry_active_ = false;
+    tangent_track_entry_reference_initialized_ = false;
+    tangent_track_entry_moving_time_ = 0.0;
+    RCLCPP_INFO(
+      logger_, "TANGENT TRACK 连续接入完成：恢复完整 MPPI vx/vy/wz 命令");
+  }
+}
+
+bool MPPIController::makeAutoPathAlignedTranslation(
+  geometry_msgs::msg::Twist & command,
+  const geometry_msgs::msg::Pose & robot_pose,
+  const nav_msgs::msg::Path & transformed_plan,
+  double lookahead_distance, double command_deadband)
+{
+  const double requested_speed = std::hypot(command.linear.x, command.linear.y);
+  if (
+    requested_speed <= std::max(0.0, command_deadband) ||
+    transformed_plan.poses.size() < 2)
+  {
+    return false;
+  }
+
+  // transformPath() 已经把路径变换到 controller/costmap 世界坐标系。先找到离机器人
+  // 最近的路径点，再沿路径累计前视距离；这样会跳过 Theta* 为接入原始起点生成的
+  // 厘米级短线段，也不会拿最后目标 yaw 去推断平移方向。
+  size_t closest_index = 0;
+  double closest_distance_squared = std::numeric_limits<double>::infinity();
+  for (size_t index = 0; index < transformed_plan.poses.size(); ++index) {
+    const auto & point = transformed_plan.poses[index].pose.position;
+    const double dx = point.x - robot_pose.position.x;
+    const double dy = point.y - robot_pose.position.y;
+    const double distance_squared = dx * dx + dy * dy;
+    if (distance_squared < closest_distance_squared) {
+      closest_distance_squared = distance_squared;
+      closest_index = index;
+    }
+  }
+
+  const double safe_lookahead = std::max(0.01, lookahead_distance);
+  geometry_msgs::msg::Point target = transformed_plan.poses.back().pose.position;
+  double accumulated_distance = 0.0;
+  for (size_t index = closest_index + 1; index < transformed_plan.poses.size(); ++index) {
+    const auto & previous = transformed_plan.poses[index - 1].pose.position;
+    const auto & current = transformed_plan.poses[index].pose.position;
+    const double segment_x = current.x - previous.x;
+    const double segment_y = current.y - previous.y;
+    const double segment_length = std::hypot(segment_x, segment_y);
+    if (segment_length <= 1e-9) {
+      continue;
+    }
+
+    if (accumulated_distance + segment_length >= safe_lookahead) {
+      const double ratio =
+        (safe_lookahead - accumulated_distance) / segment_length;
+      target.x = previous.x + ratio * segment_x;
+      target.y = previous.y + ratio * segment_y;
+      target.z = previous.z + ratio * (current.z - previous.z);
+      break;
+    }
+    accumulated_distance += segment_length;
+  }
+
+  const double world_x = target.x - robot_pose.position.x;
+  const double world_y = target.y - robot_pose.position.y;
+  const double world_norm = std::hypot(world_x, world_y);
+  if (world_norm <= 1e-6) {
+    return false;
+  }
+
+  // 只采用 MPPI 给出的合速度大小，不采用随机采样出来的平移方向。世界方向始终
+  // 指向路径前视点；机器人 yaw 改变时，每周期重新反算本体 vx/vy，形成全向底盘
+  // “车身旋转但世界轨迹不随车身转弯”的速度补偿。
+  const double normalized_world_x = world_x / world_norm;
+  const double normalized_world_y = world_y / world_norm;
+  const double robot_yaw = tf2::getYaw(robot_pose.orientation);
+  command.linear.x = requested_speed *
+    (std::cos(robot_yaw) * normalized_world_x +
+    std::sin(robot_yaw) * normalized_world_y);
+  command.linear.y = requested_speed *
+    (-std::sin(robot_yaw) * normalized_world_x +
+    std::cos(robot_yaw) * normalized_world_y);
+  return true;
+}
+
+bool MPPIController::limitAutoPathDirectionChange(
+  geometry_msgs::msg::Twist & command,
+  double robot_yaw, double previous_world_yaw,
+  bool history_initialized, double max_step,
+  double emergency_reset_angle, double & selected_world_yaw)
+{
+  const double linear_speed = std::hypot(command.linear.x, command.linear.y);
+  if (linear_speed <= 1e-9) {
+    selected_world_yaw = previous_world_yaw;
+    return false;
+  }
+
+  // cmd_vel 是本体坐标，先还原为世界方向；只限制方向角，合速度大小完全保留。
+  const double world_x =
+    std::cos(robot_yaw) * command.linear.x -
+    std::sin(robot_yaw) * command.linear.y;
+  const double world_y =
+    std::sin(robot_yaw) * command.linear.x +
+    std::cos(robot_yaw) * command.linear.y;
+  const double desired_world_yaw = std::atan2(world_y, world_x);
+  selected_world_yaw = desired_world_yaw;
+
+  if (!history_initialized) {
+    return false;
+  }
+
+  const double direction_change = shortestAngularDistance(
+    previous_world_yaw, desired_world_yaw);
+  const double safe_emergency_angle = std::max(0.0, emergency_reset_angle);
+  if (
+    safe_emergency_angle > 0.0 &&
+    std::abs(direction_change) >= safe_emergency_angle)
+  {
+    // 大于紧急阈值说明规划器明确要求绕开当前方向。这里不拖慢改道，后续仍会
+    // 对最终常速度轨迹做 footprint 碰撞检查，并保留 MPPI 原始命令兜底。
+    return false;
+  }
+
+  const double safe_step = std::max(0.0, max_step);
+  if (safe_step <= 0.0 || std::abs(direction_change) <= safe_step) {
+    return false;
+  }
+
+  selected_world_yaw = previous_world_yaw +
+    std::clamp(direction_change, -safe_step, safe_step);
+  const double selected_body_yaw = selected_world_yaw - robot_yaw;
+  command.linear.x = linear_speed * std::cos(selected_body_yaw);
+  command.linear.y = linear_speed * std::sin(selected_body_yaw);
+  return true;
+}
+
+bool MPPIController::alignAutoTranslationWithPath(
+  geometry_msgs::msg::TwistStamped & cmd,
+  const geometry_msgs::msg::PoseStamped & robot_pose,
+  const nav_msgs::msg::Path & transformed_plan)
+{
+  if (current_path_control_mode_ != PathControlMode::AUTO) {
+    return false;
+  }
+
+  const auto original = cmd.twist;
+  if (!makeAutoPathAlignedTranslation(
+      cmd.twist, robot_pose.pose, transformed_plan,
+      auto_path_direction_lookahead_distance_, auto_path_direction_command_deadband_))
+  {
+    auto_path_world_yaw_pending_ = false;
+    return false;
+  }
+
+  const double robot_yaw = tf2::getYaw(robot_pose.pose.orientation);
+  double selected_world_yaw = 0.0;
+  const bool direction_limited = limitAutoPathDirectionChange(
+    cmd.twist, robot_yaw, last_auto_path_world_yaw_,
+    auto_path_world_yaw_initialized_,
+    auto_path_direction_max_rate_ * control_duration_,
+    auto_path_direction_emergency_reset_angle_, selected_world_yaw);
+  // 这里只暂存本周期候选方向；必须等 enforceAutoSteeringContinuity() 的
+  // footprint 检查通过后才提交历史，避免不可执行方向逐周期污染连续化参考。
+  pending_auto_path_world_yaw_ = selected_world_yaw;
+  auto_path_world_yaw_pending_ = true;
+
+  RCLCPP_INFO_THROTTLE(
+    logger_, *clock_, 1000,
+    "AUTO 路径世界方向保持：MPPI本体=(%.3f, %.3f)，路径对齐本体=(%.3f, %.3f)，"
+    "重规划方向渐进=%s",
+    original.linear.x, original.linear.y, cmd.twist.linear.x, cmd.twist.linear.y,
+    direction_limited ? "是" : "否");
+  return true;
+}
+
+bool MPPIController::filterAutoLinearSpeedMagnitude(
+  geometry_msgs::msg::Twist & command,
+  const geometry_msgs::msg::Twist & previous_command,
+  bool history_initialized, double filter_alpha,
+  double maximum_acceleration_step, double maximum_deceleration_step)
+{
+  if (!history_initialized) {
+    // 首帧继续交给既有 velocity_smoother 从零起步，避免上、下两层同时初始化
+    // 为零而额外延长启动时间；本滤波从第二条 AUTO 巡航命令开始抑制往返追逐。
+    return false;
+  }
+
+  const double desired_speed = std::hypot(command.linear.x, command.linear.y);
+  if (desired_speed <= 1e-9) {
+    // 显式零平移和纯旋转必须立即生效，不能由低通残留出一段爬行速度。
+    return false;
+  }
+
+  const double previous_speed = std::hypot(
+    previous_command.linear.x, previous_command.linear.y);
+  const double safe_alpha = std::clamp(filter_alpha, 0.0, 1.0);
+  const double low_pass_speed = previous_speed +
+    safe_alpha * (desired_speed - previous_speed);
+  const double maximum_step = desired_speed >= previous_speed ?
+    std::max(0.0, maximum_acceleration_step) :
+    std::max(0.0, maximum_deceleration_step);
+  double filtered_speed = std::clamp(
+    low_pass_speed, previous_speed - maximum_step, previous_speed + maximum_step);
+  // 数值上始终限制在上一速度和当前目标之间，禁止滤波器越过目标后反向修正，
+  // 否则它自己也会制造一次“加速—减速”波动。
+  filtered_speed = std::clamp(
+    filtered_speed, std::min(previous_speed, desired_speed),
+    std::max(previous_speed, desired_speed));
+
+  if (std::abs(filtered_speed - desired_speed) <= 1e-9) {
+    return false;
+  }
+  const double scale = filtered_speed / desired_speed;
+  // vx/vy 同比例缩放，因此 alignAutoTranslationWithPath() 选定的世界直线方向
+  // 完全不变；这里只压制 MPPI 随机首控制量造成的合速度呼吸。
+  command.linear.x *= scale;
+  command.linear.y *= scale;
+  return true;
+}
+
+double MPPIController::filterAutoAngularVelocity(
+  double target_wz, double previous_wz, bool history_initialized,
+  double filter_alpha, double maximum_acceleration,
+  double maximum_jerk, double dt, double & acceleration_state)
+{
+  if (!history_initialized || dt <= 1e-6) {
+    acceleration_state = 0.0;
+    return target_wz;
+  }
+
+  const double safe_alpha = std::clamp(filter_alpha, 0.0, 1.0);
+  const double filtered_target =
+    previous_wz + safe_alpha * (target_wz - previous_wz);
+  const double error = filtered_target - previous_wz;
+  if (std::abs(error) <= 1e-9) {
+    // 目标暂时稳定时仍按 jerk 把角加速度连续拉回零。不能直接把输出贴在
+    // previous_wz 并清空状态，否则只是把速度锯齿换成隐藏的加速度阶跃。
+    const double maximum_acceleration_delta = std::max(0.0, maximum_jerk) * dt;
+    acceleration_state = std::clamp(
+      0.0, acceleration_state - maximum_acceleration_delta,
+      acceleration_state + maximum_acceleration_delta);
+    return previous_wz + acceleration_state * dt;
+  }
+
+  const double safe_maximum_acceleration = std::max(0.0, maximum_acceleration);
+  double desired_acceleration = std::clamp(
+    error / dt, -safe_maximum_acceleration, safe_maximum_acceleration);
+
+  // 接近目标时提前降低期望角加速度。否则即使 jerk 连续，最后一周期仍可能
+  // 以最大加速度越过目标，再在下一周期反向，重新形成小幅锯齿。
+  const double safe_maximum_jerk = std::max(0.0, maximum_jerk);
+  if (safe_maximum_jerk > 1e-9) {
+    const double braking_acceleration =
+      std::sqrt(2.0 * safe_maximum_jerk * std::abs(error));
+    desired_acceleration = std::copysign(
+      std::min(std::abs(desired_acceleration), braking_acceleration), error);
+    const double maximum_acceleration_delta = safe_maximum_jerk * dt;
+    acceleration_state = std::clamp(
+      desired_acceleration,
+      acceleration_state - maximum_acceleration_delta,
+      acceleration_state + maximum_acceleration_delta);
+  } else {
+    acceleration_state = desired_acceleration;
+  }
+  acceleration_state = std::clamp(
+    acceleration_state, -safe_maximum_acceleration, safe_maximum_acceleration);
+
+  const double next_wz = previous_wz + acceleration_state * dt;
+  if (error * (filtered_target - next_wz) <= 0.0) {
+    acceleration_state = 0.0;
+    return filtered_target;
+  }
+  return next_wz;
+}
+
+bool MPPIController::enforceAutoSteeringContinuity(
+  geometry_msgs::msg::TwistStamped & cmd,
+  const geometry_msgs::msg::PoseStamped & robot_pose,
+  const geometry_msgs::msg::Twist & robot_speed,
+  const geometry_msgs::msg::Twist * collision_fallback,
+  bool always_check_collision)
+{
+  if (current_path_control_mode_ != PathControlMode::AUTO) {
+    return true;
+  }
+
+  const bool command_is_zero =
+    std::hypot(cmd.twist.linear.x, cmd.twist.linear.y) <= 1e-6 &&
+    std::abs(cmd.twist.angular.z) <= 1e-6;
+  if (command_is_zero) {
+    // 停车必须立即生效，但不能用瞬时零命令清掉上一可执行舵角参考；否则下一条
+    // MPPI 非零命令又会以“无历史”跳变一次。
+    auto_path_world_yaw_pending_ = false;
+    return true;
+  }
+
+  const auto original = cmd.twist;
+  auto filtered = original;
+  const double robot_yaw = tf2::getYaw(robot_pose.pose.orientation);
+
+  // collision_fallback 只在普通 MPPI 巡航分支传入；终点 30 cm 确定性位置控制
+  // 传 nullptr，继续使用已经验证的一次到位速度。这样速度连续化严格限定在
+  // record_0722_1751 出现反复加减速的 AUTO 巡航，不影响最终定位和其他模式。
+  const bool linear_speed_filtered = collision_fallback &&
+    filterAutoLinearSpeedMagnitude(
+    filtered, last_auto_filtered_command_, auto_command_filter_initialized_,
+    auto_linear_speed_filter_alpha_,
+    auto_max_linear_acceleration_ * control_duration_,
+    auto_max_linear_deceleration_ * control_duration_);
+
+  // AUTO 的角速度不再与线速度绑定。旧实现只把相邻 wz 夹在 ±0.07 rad/s，
+  // record_0723_1224 中目标每次反向就立刻切换到相反最大角加速度，形成明显
+  // 锯齿。现在先低通目标，再用跨周期角加速度状态限制 jerk。
+  const double reference_wz = auto_command_filter_initialized_ ?
+    last_auto_filtered_command_.angular.z : robot_speed.angular.z;
+  double candidate_wz_acceleration = auto_command_filter_initialized_ ?
+    last_auto_filtered_wz_acceleration_ : 0.0;
+  filtered.angular.z = filterAutoAngularVelocity(
+    filtered.angular.z, reference_wz, true,
+    auto_angular_speed_filter_alpha_, auto_max_angular_acceleration_,
+    auto_max_angular_jerk_, control_duration_, candidate_wz_acceleration);
+
+  const bool projected = projectAutoCommandForSteering(
+    filtered, last_auto_filtered_command_, auto_command_filter_initialized_,
+    last_auto_filter_robot_yaw_, robot_yaw,
+    auto_chassis_length_, auto_chassis_width_, auto_max_angular_speed_,
+    auto_max_wheel_steer_step_);
+  const bool limited = linear_speed_filtered || projected ||
+    std::abs(filtered.angular.z - original.angular.z) > 1e-9;
+  const bool path_direction_changed = collision_fallback &&
+    (std::abs(filtered.linear.x - collision_fallback->linear.x) > 1e-9 ||
+    std::abs(filtered.linear.y - collision_fallback->linear.y) > 1e-9 ||
+    std::abs(filtered.angular.z - collision_fallback->angular.z) > 1e-9);
+  if (
+    (always_check_collision || limited || path_direction_changed) &&
+    !isAutoCommandCollisionFree(filtered, robot_pose))
+  {
+    RCLCPP_WARN_THROTTLE(
+      logger_, *clock_, 1000,
+      "AUTO 最终世界方向命令的 0.5s 轨迹存在碰撞风险，保留 MPPI 原始命令");
+    if (collision_fallback) {
+      cmd.twist = *collision_fallback;
+    }
+    // 路径方向和角加速度历史都只提交可执行命令；失败时保留上一周期状态。
+    auto_path_world_yaw_pending_ = false;
+    return false;
+  }
+
+  cmd.twist = filtered;
+  last_auto_filtered_command_ = filtered;
+  last_auto_filter_robot_yaw_ = robot_yaw;
+  last_auto_filtered_wz_acceleration_ = control_duration_ > 1e-6 ?
+    (filtered.angular.z - reference_wz) / control_duration_ : 0.0;
+  last_auto_filtered_wz_acceleration_ = std::clamp(
+    last_auto_filtered_wz_acceleration_,
+    -auto_max_angular_acceleration_, auto_max_angular_acceleration_);
+  if (auto_path_world_yaw_pending_) {
+    last_auto_path_world_yaw_ = pending_auto_path_world_yaw_;
+    auto_path_world_yaw_initialized_ = true;
+    auto_path_world_yaw_pending_ = false;
+  }
+  auto_command_filter_initialized_ = true;
+
+  if (limited) {
+    RCLCPP_INFO_THROTTLE(
+      logger_, *clock_, 1000,
+      "AUTO 世界速度/舵轮可行性投影：MPPI=(%.3f, %.3f, %.3f)，"
+      "可执行=(%.3f, %.3f, %.3f)",
+      original.linear.x, original.linear.y, original.angular.z,
+      cmd.twist.linear.x, cmd.twist.linear.y, cmd.twist.angular.z);
+  }
+  return true;
+}
+
+bool MPPIController::isAutoCommandCollisionFree(
+  const geometry_msgs::msg::Twist & command,
+  const geometry_msgs::msg::PoseStamped & robot_pose)
+{
+  if (!costmap_snapshot_initialized_ || auto_steering_filter_simulate_ahead_time_ <= 0.0) {
+    return false;
+  }
+
+  nav2_costmap_2d::FootprintCollisionChecker<nav2_costmap_2d::Costmap2D *> checker(
+    &costmap_snapshot_);
+  const auto & footprint = costmap_ros_->getRobotFootprint();
+  const bool track_unknown = costmap_ros_->getLayeredCostmap()->isTrackingUnknown();
+  const double simulation_step = std::min(0.05, control_duration_);
+  double x = robot_pose.pose.position.x;
+  double y = robot_pose.pose.position.y;
+  double yaw = tf2::getYaw(robot_pose.pose.orientation);
+  // AUTO 每个控制周期都会按新 yaw 反算本体 vx/vy，因此预测窗口内应保持当前的
+  // 世界平移向量，而不是错误地保持本体向量。后者会预测出一条随车身转弯的弧线。
+  const double world_vx =
+    std::cos(yaw) * command.linear.x - std::sin(yaw) * command.linear.y;
+  const double world_vy =
+    std::sin(yaw) * command.linear.x + std::cos(yaw) * command.linear.y;
+
+  for (
+    double time = simulation_step;
+    time <= auto_steering_filter_simulate_ahead_time_ + 1e-9;
+    time += simulation_step)
+  {
+    x += world_vx * simulation_step;
+    y += world_vy * simulation_step;
+    yaw += command.angular.z * simulation_step;
+
+    const double footprint_cost = checker.footprintCostAtPose(x, y, yaw, footprint);
+    if (
+      (footprint_cost == static_cast<double>(nav2_costmap_2d::NO_INFORMATION) &&
+      track_unknown) ||
+      footprint_cost >= static_cast<double>(nav2_costmap_2d::LETHAL_OBSTACLE))
+    {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool MPPIController::projectAutoCommandForSteering(
+  geometry_msgs::msg::Twist & command,
+  const geometry_msgs::msg::Twist & previous_command,
+  bool history_initialized,
+  double previous_robot_yaw, double current_robot_yaw,
+  double chassis_length, double chassis_width,
+  double max_angular_speed, double max_wheel_steer_step)
+{
+  bool limited = false;
+  const double safe_max_wz = std::max(0.0, max_angular_speed);
+  const double bounded_wz = std::clamp(command.angular.z, -safe_max_wz, safe_max_wz);
+  if (std::abs(bounded_wz - command.angular.z) > 1e-9) {
+    command.angular.z = bounded_wz;
+    limited = true;
+  }
+
+  const double safe_step = std::max(0.0, max_wheel_steer_step);
+  if (!history_initialized || safe_step <= 0.0) {
+    return limited;
+  }
+
+  auto wheelVector = [chassis_length, chassis_width](
+    const geometry_msgs::msg::Twist & twist, std::size_t wheel)
+    {
+      const bool is_right = wheel == 1 || wheel == 3;
+      const bool is_front = wheel == 0 || wheel == 1;
+      const double x_sign = is_right ? 1.0 : -1.0;
+      const double y_sign = is_front ? 1.0 : -1.0;
+      return std::array<double, 2>{
+      twist.linear.x + x_sign * chassis_width * twist.angular.z * 0.5,
+      twist.linear.y + y_sign * chassis_length * twist.angular.z * 0.5};
+    };
+
+  auto maximumSteerChange = [&wheelVector](
+    const geometry_msgs::msg::Twist & from,
+    const geometry_msgs::msg::Twist & to)
+    {
+      constexpr double kPi = 3.14159265358979323846;
+      double maximum_change = 0.0;
+      for (std::size_t wheel = 0; wheel < 4; ++wheel) {
+        const auto from_vector = wheelVector(from, wheel);
+        const auto to_vector = wheelVector(to, wheel);
+        if (
+          std::hypot(from_vector[0], from_vector[1]) <= 1e-4 ||
+          std::hypot(to_vector[0], to_vector[1]) <= 1e-4)
+        {
+          // 与底盘一致：轮速向量接近零时舵角无定义，保持上一目标，不触发改向。
+          continue;
+        }
+        const double from_angle = std::atan2(from_vector[1], from_vector[0]);
+        const double to_angle = std::atan2(to_vector[1], to_vector[0]);
+        const double full_turn_change = std::abs(
+          shortestAngularDistance(from_angle, to_angle));
+        // 舵轮允许“舵角 + pi、轮速反向”的等价解，比较 modulo-pi 的最小舵角变化。
+        const double equivalent_change = std::min(
+          full_turn_change, std::abs(kPi - full_turn_change));
+        maximum_change = std::max(maximum_change, equivalent_change);
+      }
+      return maximum_change;
+    };
+
+  const auto desired = command;
+  const double desired_change = maximumSteerChange(previous_command, desired);
+  if (desired_change <= safe_step + 1e-9) {
+    return limited;
+  }
+
+  (void)previous_robot_yaw;
+  // 平移方向已由 alignAutoTranslationWithPath() 锁定到规划路径的世界前视方向。
+  // 舵轮不易执行时，只能降低该方向上的速度大小和本周期 wz 推进量；绝不能再在
+  // “上一条 MPPI 世界方向”和“当前世界方向”之间插值，否则连续若干周期会真实
+  // 积分出 record_0721_1714 中约 30～40 cm 的弧形偏线。
+  const double desired_world_x =
+    std::cos(current_robot_yaw) * desired.linear.x -
+    std::sin(current_robot_yaw) * desired.linear.y;
+  const double desired_world_y =
+    std::sin(current_robot_yaw) * desired.linear.x +
+    std::cos(current_robot_yaw) * desired.linear.y;
+  const double desired_linear_speed = std::hypot(desired_world_x, desired_world_y);
+  if (desired_linear_speed <= 1e-6) {
+    // 纯旋转没有“世界平移方向”可保持；保留独立 wz，让底盘原有 0.35 rad
+    // 协调停车对舵保护作为最终安全兜底。
+    return limited;
+  }
+  const double world_unit_x = desired_world_x / desired_linear_speed;
+  const double world_unit_y = desired_world_y / desired_linear_speed;
+
+  auto commandAtRatios = [&](double linear_ratio, double yaw_ratio) {
+      geometry_msgs::msg::Twist candidate;
+      const double candidate_speed = linear_ratio * desired_linear_speed;
+      const double world_x = candidate_speed * world_unit_x;
+      const double world_y = candidate_speed * world_unit_y;
+      candidate.linear.x =
+        std::cos(current_robot_yaw) * world_x + std::sin(current_robot_yaw) * world_y;
+      candidate.linear.y =
+        -std::sin(current_robot_yaw) * world_x + std::cos(current_robot_yaw) * world_y;
+      candidate.angular.z = previous_command.angular.z +
+        yaw_ratio * (desired.angular.z - previous_command.angular.z);
+      return candidate;
+    };
+
+  // record_0721_1834 证明 41×41 穷举会把控制器中位周期从约 0.10s 拖到
+  // 0.17～0.21s。这里先固定线速度，用 8 次二分求最大可行 wz 推进比例；只有
+  // 全线速度连 yaw_ratio=0 都不可行时，才尝试 7 个更低线速度档。由于找到
+  // 任一可行档就立即返回，搜索内实际最多 24 次四轮检查（加前置检查约 25 次），
+  // 仍保持“线速度优先、wz 其次”的原优化语义。
+  constexpr int kYawBinaryIterations = 8;
+  constexpr int kLinearSearchSteps = 8;
+  auto findMaximumYawRatio = [&](double linear_ratio, geometry_msgs::msg::Twist & result) {
+      const auto full_yaw_candidate = commandAtRatios(linear_ratio, 1.0);
+      if (
+        maximumSteerChange(previous_command, full_yaw_candidate) <=
+        safe_step + 1e-9)
+      {
+        result = full_yaw_candidate;
+        return true;
+      }
+
+      auto feasible_candidate = commandAtRatios(linear_ratio, 0.0);
+      if (
+        maximumSteerChange(previous_command, feasible_candidate) >
+        safe_step + 1e-9)
+      {
+        return false;
+      }
+
+      double feasible_ratio = 0.0;
+      double infeasible_ratio = 1.0;
+      for (int iteration = 0; iteration < kYawBinaryIterations; ++iteration) {
+        const double ratio = 0.5 * (feasible_ratio + infeasible_ratio);
+        const auto candidate = commandAtRatios(linear_ratio, ratio);
+        if (maximumSteerChange(previous_command, candidate) <= safe_step + 1e-9) {
+          feasible_ratio = ratio;
+          feasible_candidate = candidate;
+        } else {
+          infeasible_ratio = ratio;
+        }
+      }
+      result = feasible_candidate;
+      return true;
+    };
+
+  geometry_msgs::msg::Twist feasible_command;
+  if (findMaximumYawRatio(1.0, feasible_command)) {
+    command = feasible_command;
+    return true;
+  }
+  // 不取 linear_ratio=0，避免零轮速向量让舵角无定义并丢失连续参考。
+  for (int linear_step = kLinearSearchSteps - 1; linear_step >= 1; --linear_step) {
+    const double linear_ratio =
+      static_cast<double>(linear_step) / static_cast<double>(kLinearSearchSteps);
+    if (findMaximumYawRatio(linear_ratio, feasible_command)) {
+      command = feasible_command;
+      return true;
+    }
+  }
+
+  // 路径方向突变到连最低非零速度都不可行时，不在上层伪造另一条世界方向。
+  // 保留路径对齐目标，交给底盘既有 0.35 rad 协调停车换向保护安全完成对舵。
+  return limited;
+}
+
+void MPPIController::applyPersistentAutoYawProfile(
+  nav_msgs::msg::Path & path,
+  double task_start_yaw, double task_goal_yaw,
+  double task_progress, double initial_path_length,
+  double completion_distance_before_goal)
+{
+  if (path.poses.empty()) {
+    return;
+  }
+
+  const double yaw_delta = shortestAngularDistance(task_start_yaw, task_goal_yaw);
+  const double safe_initial_length = std::max(0.0, initial_path_length);
+  const double safe_completion_distance = std::max(0.0, completion_distance_before_goal);
+
+  // 路径足够长时提前完成主要旋转，给最后的确定性位置控制留下稳定朝向区；短路径
+  // 则使用全部长度，不把一个 90° 任务人为压到零长度内。
+  double yaw_travel_length = safe_initial_length - safe_completion_distance;
+  if (yaw_travel_length <= 1e-6) {
+    yaw_travel_length = std::max(1e-6, safe_initial_length);
+  }
+  const double clamped_progress = std::clamp(
+    task_progress, 0.0, safe_initial_length);
+
+  double local_distance = 0.0;
+  for (size_t i = 0; i < path.poses.size(); ++i) {
+    if (i > 0) {
+      const auto & previous = path.poses[i - 1].pose.position;
+      const auto & current = path.poses[i].pose.position;
+      local_distance += std::hypot(current.x - previous.x, current.y - previous.y);
+    }
+    const double u = std::clamp(
+      (clamped_progress + local_distance) / yaw_travel_length, 0.0, 1.0);
+    // 三次 smoothstep 让任务起步和完成处的 yaw 斜率都连续，避免路径点朝向突变。
+    const double smooth_u = u * u * (3.0 - 2.0 * u);
+    const double yaw = task_start_yaw + smooth_u * yaw_delta;
+    path.poses[i].pose.orientation =
+      nav2_util::geometry_utils::orientationAroundZAxis(yaw);
+  }
+
+  // 最后一个真实目标点始终保留用户 goal yaw，供严格位置容差内的 final_yaw 使用。
+  path.poses.back().pose.orientation =
+    nav2_util::geometry_utils::orientationAroundZAxis(task_goal_yaw);
+}
+
+void MPPIController::applyTerminalGoalAxisWeights(double goal_distance)
+{
+  if (
+    !std::isfinite(goal_distance) ||
+    goal_distance > terminal_translation_assist_distance_)
+  {
+    return;
+  }
+
+  // 这两个 critic 本身没有距离门控，不能在整个 TRACK 阶段常开。这里只在
+  // 终点近区取 APPROACH 预置权重；不修改 PathAlign 或最终 goal yaw 设置。
+  applied_profile_.critics.goal_lateral.weight =
+    stages_[STAGE_APPROACH].critics.goal_lateral.weight;
+  applied_profile_.critics.goal_longitudinal.weight =
+    stages_[STAGE_APPROACH].critics.goal_longitudinal.weight;
+
+  // Theta* 在 tangent 终点保持区已将路径 yaw 冻结为进入时的来向，
+  // 此时正确的 yaw 动作就是保持不动。record_0720_1945 中该区间 MPPI
+  // 长期输出约 0.19 rad/s，会使四个舵轮的合成速度方向不断变化。
+  // 只在 TANGENT 且与规划器相同的保持距离内加角速度阻尼；
+  // AUTO/NONE 仍可按各自 yaw 语义运行，START/GOAL 另有硬性 wz=0 约束。
+  if (
+    current_path_control_mode_ == PathControlMode::TANGENT &&
+    goal_distance <= tangent_terminal_yaw_hold_distance_)
+  {
+    applied_profile_.critics.angular_velocity.weight =
+      stages_[STAGE_APPROACH].critics.angular_velocity.weight;
+    applied_profile_.critics.angular_velocity.track_goal_yaw = false;
+  }
+}
+
 void MPPIController::enforceTerminalExecutableTranslation(
   geometry_msgs::msg::TwistStamped & cmd,
   const geometry_msgs::msg::PoseStamped & robot_pose,
@@ -1049,6 +2158,7 @@ void MPPIController::enforceTerminalExecutableTranslation(
 
   const double original_vx = cmd.twist.linear.x;
   const double original_vy = cmd.twist.linear.y;
+
   if (liftTerminalTranslationCommand(
       cmd, goal_body_x, goal_body_y,
       static_cast<float>(terminal_min_translation_speed_),
@@ -1063,6 +2173,192 @@ void MPPIController::enforceTerminalExecutableTranslation(
       goal_distance, original_vx, original_vy,
       cmd.twist.linear.x, cmd.twist.linear.y);
   }
+}
+
+std::optional<geometry_msgs::msg::TwistStamped>
+MPPIController::computeTerminalPositionCommand(
+  const geometry_msgs::msg::PoseStamped & robot_pose,
+  const geometry_msgs::msg::Twist & robot_speed,
+  double goal_x, double goal_y, double goal_yaw, double goal_distance)
+{
+  const double position_tolerance = std::max(
+    final_yaw_enter_lon_tolerance_, final_yaw_enter_lat_tolerance_);
+  if (
+    !usesDeterministicTerminalPositionControl(current_path_control_mode_) ||
+    !std::isfinite(goal_distance) || goal_distance <= position_tolerance ||
+    goal_distance > terminal_translation_assist_distance_ ||
+    !isDirectTerminalTranslationCollisionFree(
+      robot_pose, goal_x, goal_y, goal_distance, position_tolerance))
+  {
+    return std::nullopt;
+  }
+
+  const double robot_yaw = tf2::getYaw(robot_pose.pose.orientation);
+  const double dx = goal_x - robot_pose.pose.position.x;
+  const double dy = goal_y - robot_pose.pose.position.y;
+  const double goal_body_x = std::cos(robot_yaw) * dx + std::sin(robot_yaw) * dy;
+  const double goal_body_y = -std::sin(robot_yaw) * dx + std::cos(robot_yaw) * dy;
+
+  auto command = makeStoppedCommand();
+  if (!makeDeterministicTerminalTranslation(
+      command, goal_body_x, goal_body_y, goal_distance, position_tolerance,
+      static_cast<float>(terminal_min_translation_speed_),
+      static_cast<float>(tangent_terminal_position_max_speed_),
+      static_cast<float>(tangent_terminal_position_kp_),
+      optimizer_.getActiveConstraints()))
+  {
+    return std::nullopt;
+  }
+
+  if (current_path_control_mode_ == PathControlMode::AUTO) {
+    // AUTO 终点位置阶段仍允许边走边转，但不再依赖 MPPI 随机采样。平移方向始终
+    // 直接指向精确 XY，角速度独立追踪最终 yaw，再由世界速度/舵轮投影保证可执行。
+    const double yaw_error = shortestAngularDistance(robot_yaw, goal_yaw);
+    double desired_abs_wz = std::min(
+      auto_max_angular_speed_, auto_terminal_yaw_kp_ * std::abs(yaw_error));
+    if (auto_max_angular_acceleration_ > 0.0) {
+      const double braking_angle = std::max(
+        0.0, std::abs(yaw_error) - final_yaw_cmd_stop_yaw_tolerance_);
+      desired_abs_wz = std::min(
+        desired_abs_wz,
+        std::sqrt(2.0 * auto_max_angular_acceleration_ * braking_angle));
+    }
+    command.twist.angular.z = std::copysign(desired_abs_wz, yaw_error);
+
+    // 短路径若仍剩较大 yaw，不能让平移先冲到终点再原地补角。按当前最大角速度
+    // 估算完成剩余 yaw 所需时间，只同比例降低平移速度大小、绝不改变世界直线方向；
+    // 下限仍保留实车已验证可执行的 0.05 m/s，避免降进静摩擦死区后再次停在门外。
+    const double translation_speed = std::hypot(
+      command.twist.linear.x, command.twist.linear.y);
+    if (
+      translation_speed > 1e-6 &&
+      std::abs(yaw_error) > final_yaw_cmd_stop_yaw_tolerance_ &&
+      auto_max_angular_speed_ > 1e-6)
+    {
+      const double remaining_distance = std::max(
+        0.0, goal_distance - position_tolerance);
+      const double yaw_completion_speed =
+        0.8 * auto_max_angular_speed_ * remaining_distance / std::abs(yaw_error);
+      const double translation_limit = std::max(
+        terminal_min_translation_speed_, yaw_completion_speed);
+      if (translation_speed > translation_limit) {
+        const double scale = translation_limit / translation_speed;
+        command.twist.linear.x *= scale;
+        command.twist.linear.y *= scale;
+      }
+    }
+    // AUTO 的直达段同时发生旋转，必须按“世界直线平移+当前角速度”
+    // 向前检查。检查放在舵轮投影的最终命令上，只做一次；若不安全则
+    // 不更新舵轮历史，并放弃确定性接管、退回原 MPPI 避障轨迹。
+    if (!enforceAutoSteeringContinuity(
+        command, robot_pose, robot_speed, nullptr, true))
+    {
+      return std::nullopt;
+    }
+  } else {
+    // TANGENT 保持终点来向，START 保持起始 yaw，两者的短距阶段不允许旋转。
+    command.twist.angular.z = 0.0;
+  }
+  RCLCPP_INFO_THROTTLE(
+    logger_, *clock_, 1000,
+    "%s 终点连续位置控制：goal_dist=%.3f m，cmd=(%.3f, %.3f, %.3f)",
+    pathControlModeName(current_path_control_mode_), goal_distance,
+    command.twist.linear.x, command.twist.linear.y, command.twist.angular.z);
+  return command;
+}
+
+bool MPPIController::usesDeterministicTerminalPositionControl(PathControlMode mode)
+{
+  return mode == PathControlMode::TANGENT || mode == PathControlMode::START ||
+         mode == PathControlMode::AUTO;
+}
+
+bool MPPIController::makeDeterministicTerminalTranslation(
+  geometry_msgs::msg::TwistStamped & cmd,
+  double goal_body_x, double goal_body_y, double goal_distance,
+  double position_tolerance, float minimum_speed, float maximum_speed,
+  float proportional_gain,
+  const models::ControlConstraints & constraints)
+{
+  const double target_distance = std::hypot(goal_body_x, goal_body_y);
+  if (target_distance <= 1e-6 || goal_distance <= position_tolerance) {
+    return false;
+  }
+
+  const double remaining_distance = std::max(0.0, goal_distance - position_tolerance);
+  const double low_speed = std::max(0.0f, minimum_speed);
+  const double high_speed = std::max(low_speed, static_cast<double>(maximum_speed));
+  double executable_speed = std::clamp(
+    std::max(0.0f, proportional_gain) * remaining_distance,
+    low_speed, high_speed);
+
+  const double unit_x = goal_body_x / target_distance;
+  const double unit_y = goal_body_y / target_distance;
+  if (std::abs(unit_x) > 1e-6) {
+    const double x_limit = unit_x > 0.0 ?
+      std::max(0.0f, constraints.vx_max) :
+      std::max(0.0f, -constraints.vx_min);
+    executable_speed = std::min(executable_speed, x_limit / std::abs(unit_x));
+  }
+  if (std::abs(unit_y) > 1e-6) {
+    executable_speed = std::min(
+      executable_speed,
+      static_cast<double>(std::max(0.0f, constraints.vy)) / std::abs(unit_y));
+  }
+  if (executable_speed <= 1e-6) {
+    return false;
+  }
+
+  cmd.twist.linear.x = unit_x * executable_speed;
+  cmd.twist.linear.y = unit_y * executable_speed;
+  return true;
+}
+
+bool MPPIController::isDirectTerminalTranslationCollisionFree(
+  const geometry_msgs::msg::PoseStamped & robot_pose,
+  double goal_x, double goal_y, double goal_distance,
+  double position_tolerance)
+{
+  if (!costmap_snapshot_initialized_ || goal_distance <= position_tolerance) {
+    return false;
+  }
+
+  const double dx = goal_x - robot_pose.pose.position.x;
+  const double dy = goal_y - robot_pose.pose.position.y;
+  const double direct_distance = std::hypot(dx, dy);
+  if (direct_distance <= 1e-6) {
+    return false;
+  }
+
+  const double travel_distance = std::max(0.0, direct_distance - position_tolerance);
+  const double sample_spacing = std::max(
+    0.01, 0.5 * costmap_snapshot_.getResolution());
+  const int sample_count = std::max(
+    1, static_cast<int>(std::ceil(travel_distance / sample_spacing)));
+  const double yaw = tf2::getYaw(robot_pose.pose.orientation);
+  nav2_costmap_2d::FootprintCollisionChecker<nav2_costmap_2d::Costmap2D *> checker(
+    &costmap_snapshot_);
+
+  for (int i = 1; i <= sample_count; ++i) {
+    const double ratio = static_cast<double>(i) / sample_count;
+    const double distance = ratio * travel_distance;
+    const double x = robot_pose.pose.position.x + distance * dx / direct_distance;
+    const double y = robot_pose.pose.position.y + distance * dy / direct_distance;
+    const double footprint_cost = checker.footprintCostAtPose(
+      x, y, yaw, costmap_ros_->getRobotFootprint());
+    if (
+      (footprint_cost == static_cast<double>(nav2_costmap_2d::NO_INFORMATION) &&
+      costmap_ros_->getLayeredCostmap()->isTrackingUnknown()) ||
+      footprint_cost >= static_cast<double>(nav2_costmap_2d::LETHAL_OBSTACLE))
+    {
+      RCLCPP_WARN_THROTTLE(
+        logger_, *clock_, 1000,
+        "%s 终点直达段存在碰撞风险，保留 MPPI 原始命令",
+        pathControlModeName(current_path_control_mode_));
+      return false;
+    }
+  }
+  return true;
 }
 
 bool MPPIController::liftTerminalTranslationCommand(
@@ -1460,9 +2756,10 @@ bool MPPIController::isSameNavigationGoal(const geometry_msgs::msg::Pose & goal)
 {
   return navigation_goal_initialized_ &&
          poseDistance(tangent_goal_pose_, goal) <= tangent_goal_xy_tolerance_ &&
-         std::abs(shortestAngularDistance(
-           tf2::getYaw(tangent_goal_pose_.orientation),
-           tf2::getYaw(goal.orientation))) <= tangent_goal_yaw_tolerance_;
+         std::abs(
+    shortestAngularDistance(
+      tf2::getYaw(tangent_goal_pose_.orientation),
+      tf2::getYaw(goal.orientation))) <= tangent_goal_yaw_tolerance_;
 }
 
 bool MPPIController::configureStartPoseInControllerFrame(
@@ -1589,6 +2886,15 @@ MPPIController::computeTangentStartCommand(
         active_stage_enter_time_ = clock_->now();
         profile_transition_active_ = false;
         applied_profile_ = stages_[STAGE_TRACK];
+        if (current_path_control_mode_ == PathControlMode::TANGENT) {
+          // record_0723_1224 中起点旋转结束后，MPPI 在底盘零速对舵期间连续改变
+          // vx/vy/wz，导致 pending 舵角追逐采样并累计停车约 4 s。这里从下一条
+          // 有效 TRACK 命令开始锁住首个轮向，真实走起来后才渐进放开。
+          tangent_track_entry_active_ = true;
+          tangent_track_entry_reference_initialized_ = false;
+          tangent_track_entry_moving_time_ = 0.0;
+          tangent_track_entry_last_time_ = clock_->now();
+        }
         transition(TangentPhase::TRACK);
         // 明确发布一个零速周期作为起点状态机与 MPPI 的边界；下一周期开始 TRACK。
         return makeStoppedCommand();
@@ -1706,10 +3012,25 @@ void MPPIController::setPlan(const nav_msgs::msg::Path & path)
   if (path.poses.empty()) {
     tangent_phase_ = TangentPhase::DISABLED;
     current_path_control_mode_ = PathControlMode::AUTO;
+    // 空路径代表当前导航控制任务已经清空，不能把内部默认枚举 AUTO 发布给底盘。
+    publishAutoModeState(false);
+    publishTangentModeState(false);
+    publishAutoTerminalState(false);
     start_yaw_target_pending_ = false;
     // 显式空路径代表当前控制任务已经被清空；之后即便目标坐标相同，也应作为
     // 新任务若为 tangent 会重新执行起点对齐；恢复重试只更新非空 plan，不走这里。
     navigation_goal_initialized_ = false;
+    auto_command_filter_initialized_ = false;
+    last_auto_filtered_command_ = geometry_msgs::msg::Twist();
+    last_auto_filter_robot_yaw_ = 0.0;
+    last_auto_filtered_wz_acceleration_ = 0.0;
+    auto_path_world_yaw_initialized_ = false;
+    auto_path_world_yaw_pending_ = false;
+    tangent_track_entry_active_ = false;
+    tangent_track_entry_reference_initialized_ = false;
+    tangent_track_entry_moving_time_ = 0.0;
+    auto_yaw_task_initialized_ = false;
+    auto_task_progress_ = 0.0;
     path_handler_.setPath(path);
     return;
   }
@@ -1723,6 +3044,48 @@ void MPPIController::setPlan(const nav_msgs::msg::Path & path)
   // 恢复都会重新进入起点 yaw 对齐。任务结束由显式空路径/生命周期清理复位。
   const bool same_task =
     isSameNavigationGoal(final_goal) && path_control_mode == current_path_control_mode_;
+
+  if (path_control_mode == PathControlMode::AUTO && !tracking_path.poses.empty()) {
+    const double remaining_path_length = integratedPathLength(tracking_path);
+    if (!same_task || !auto_yaw_task_initialized_) {
+      if (!same_task) {
+        // record_0723_0946 中连续 5 次 AUTO 的 nav_auto_mode 始终为 true，导致
+        // 底盘只有第 1 次做整段分支预选。任务编号只在真正的新目标递增；同一
+        // 目标约 3 s 一次的 Theta* 重规划不会递增，也就不会让行驶中反复摆舵。
+        ++auto_task_id_;
+        // uint64 回绕在实际寿命内不会发生；仍避免 0 与“尚无任务”的哨兵冲突。
+        if (auto_task_id_ == 0) {
+          auto_task_id_ = 1;
+        }
+      }
+      // 只在真正的新目标到来时锁存起始 yaw、目标 yaw 和初始路径长度。之后 Theta*
+      // 即使从机器人当前位置重规划，也不能再把当前 yaw 当成新的插值起点。
+      auto_task_start_yaw_ = tf2::getYaw(tracking_path.poses.front().pose.orientation);
+      auto_task_goal_yaw_ = tf2::getYaw(final_goal.orientation);
+      auto_task_initial_path_length_ = std::max(remaining_path_length, 1e-6);
+      auto_task_progress_ = 0.0;
+      auto_yaw_task_initialized_ = true;
+    } else {
+      // 同目标重规划通常会缩短剩余路径。用初始长度减当前剩余长度估算整次任务
+      // 的单调进度；同时累加上一条路径已经裁剪掉的弧长，使绕行路径变长时也不会
+      // 把 yaw 拉回起点。两种估计取最大值，避免定位抖动让 yaw 进度倒退。
+      auto_task_progress_ = std::min(
+        auto_task_initial_path_length_,
+        auto_task_progress_ + std::max(0.0, path_handler_.getLastPathProgress()));
+      const double estimated_progress = std::max(
+        0.0, auto_task_initial_path_length_ - remaining_path_length);
+      auto_task_progress_ = std::max(auto_task_progress_, estimated_progress);
+    }
+    applyPersistentAutoYawProfile(
+      tracking_path, auto_task_start_yaw_, auto_task_goal_yaw_,
+      auto_task_progress_, auto_task_initial_path_length_,
+      auto_yaw_completion_distance_before_goal_);
+  } else {
+    // 其他 orientation mode 使用各自明确的 yaw 语义，不共享 AUTO 的任务状态。
+    auto_yaw_task_initialized_ = false;
+    auto_task_progress_ = 0.0;
+  }
+
   tangent_goal_pose_ = final_goal;
   navigation_goal_initialized_ = true;
   current_path_control_mode_ = path_control_mode;
@@ -1739,6 +3102,15 @@ void MPPIController::setPlan(const nav_msgs::msg::Path & path)
     final_yaw_rotation_started_ = false;
     last_start_rotation_command_wz_ = 0.0;
     start_rotation_command_initialized_ = false;
+    auto_command_filter_initialized_ = false;
+    last_auto_filtered_command_ = geometry_msgs::msg::Twist();
+    last_auto_filter_robot_yaw_ = 0.0;
+    last_auto_filtered_wz_acceleration_ = 0.0;
+    auto_path_world_yaw_initialized_ = false;
+    auto_path_world_yaw_pending_ = false;
+    tangent_track_entry_active_ = false;
+    tangent_track_entry_reference_initialized_ = false;
+    tangent_track_entry_moving_time_ = 0.0;
     profile_transition_active_ = false;
     applied_profile_ = stages_[STAGE_TRACK];
     optimizer_.reset();

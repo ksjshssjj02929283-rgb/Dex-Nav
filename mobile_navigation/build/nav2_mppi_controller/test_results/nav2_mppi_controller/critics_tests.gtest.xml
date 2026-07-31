@@ -1,6 +1,75 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="nav2_mppi_controller" tests="1" failures="0" time="0.130" errors="1" skipped="0">
-  <testcase classname="nav2_mppi_controller" name="critics_tests.gtest.missing_result" time="0.130">
-    <error message="The test did not generate a result file:&#10;&#10;terminate called after throwing an instance of 'spdlog::spdlog_ex'&#10;  what():  Failed opening file /home/dex/.ros/log/critics_tests_57_1784285058469.log for writing: Read-only file system&#10;"/>
-  </testcase>
-</testsuite>
+<testsuites tests="24" failures="4" disabled="0" errors="0" time="0.143" timestamp="2026-07-22T12:09:52" name="AllTests">
+  <testsuite name="UtilsTests" tests="10" failures="1" disabled="0" errors="0" time="0.016" timestamp="2026-07-22T12:09:52">
+    <testcase name="MarkerPopulationUtils" status="run" result="completed" time="0" timestamp="2026-07-22T12:09:52" classname="nav2_mppi_controller.UtilsTests" />
+    <testcase name="ConversionTests" status="run" result="completed" time="0" timestamp="2026-07-22T12:09:52" classname="nav2_mppi_controller.UtilsTests" />
+    <testcase name="WithTolTests" status="run" result="completed" time="0" timestamp="2026-07-22T12:09:52" classname="nav2_mppi_controller.UtilsTests" />
+    <testcase name="AnglesTests" status="run" result="completed" time="0" timestamp="2026-07-22T12:09:52" classname="nav2_mppi_controller.UtilsTests" />
+    <testcase name="FurthestAndClosestReachedPoint" status="run" result="completed" time="0" timestamp="2026-07-22T12:09:52" classname="nav2_mppi_controller.UtilsTests" />
+    <testcase name="FindClosestPathPointBoundaries" status="run" result="completed" time="0" timestamp="2026-07-22T12:09:52" classname="nav2_mppi_controller.UtilsTests" />
+    <testcase name="findPathCosts" status="run" result="completed" time="0.016" timestamp="2026-07-22T12:09:52" classname="nav2_mppi_controller.UtilsTests" />
+    <testcase name="SmootherTest" status="run" result="completed" time="0" timestamp="2026-07-22T12:09:52" classname="nav2_mppi_controller.UtilsTests">
+      <failure message="/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/utils_test.cpp:375&#x0A;The difference between history[3].vx and 0.2 is 0.15227152705192565, which exceeds 0.05, where&#x0A;history[3].vx evaluates to 0.35227152705192566,&#x0A;0.2 evaluates to 0.20000000000000001, and&#x0A;0.05 evaluates to 0.050000000000000003." type=""><![CDATA[/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/utils_test.cpp:375
+The difference between history[3].vx and 0.2 is 0.15227152705192565, which exceeds 0.05, where
+history[3].vx evaluates to 0.35227152705192566,
+0.2 evaluates to 0.20000000000000001, and
+0.05 evaluates to 0.050000000000000003.]]></failure>
+      <failure message="/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/utils_test.cpp:376&#x0A;The difference between history[3].vy and 0.0 is 0.18041004240512848, which exceeds 0.035, where&#x0A;history[3].vy evaluates to 0.18041004240512848,&#x0A;0.0 evaluates to 0, and&#x0A;0.035 evaluates to 0.035000000000000003." type=""><![CDATA[/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/utils_test.cpp:376
+The difference between history[3].vy and 0.0 is 0.18041004240512848, which exceeds 0.035, where
+history[3].vy evaluates to 0.18041004240512848,
+0.0 evaluates to 0, and
+0.035 evaluates to 0.035000000000000003.]]></failure>
+      <failure message="/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/utils_test.cpp:377&#x0A;The difference between history[3].wz and 0.23 is 0.27768280029296877, which exceeds 0.02, where&#x0A;history[3].wz evaluates to 0.50768280029296875,&#x0A;0.23 evaluates to 0.23000000000000001, and&#x0A;0.02 evaluates to 0.02." type=""><![CDATA[/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/utils_test.cpp:377
+The difference between history[3].wz and 0.23 is 0.27768280029296877, which exceeds 0.02, where
+history[3].wz evaluates to 0.50768280029296875,
+0.23 evaluates to 0.23000000000000001, and
+0.02 evaluates to 0.02.]]></failure>
+    </testcase>
+    <testcase name="FindPathInversionTest" status="run" result="completed" time="0" timestamp="2026-07-22T12:09:52" classname="nav2_mppi_controller.UtilsTests" />
+    <testcase name="RemovePosesAfterPathInversionTest" status="run" result="completed" time="0" timestamp="2026-07-22T12:09:52" classname="nav2_mppi_controller.UtilsTests" />
+  </testsuite>
+  <testsuite name="CriticTests" tests="14" failures="3" disabled="0" errors="0" time="0.127" timestamp="2026-07-22T12:09:52">
+    <testcase name="GoalFrameLateralAndLongitudinalErrors" status="run" result="completed" time="0.01" timestamp="2026-07-22T12:09:52" classname="nav2_mppi_controller.CriticTests" />
+    <testcase name="GoalFrameCriticsOnlyScorePredictionTail" status="run" result="completed" time="0.009" timestamp="2026-07-22T12:09:52" classname="nav2_mppi_controller.CriticTests" />
+    <testcase name="LinearVelocityCriticDoesNotBiasForwardDirection" status="run" result="completed" time="0.008" timestamp="2026-07-22T12:09:52" classname="nav2_mppi_controller.CriticTests" />
+    <testcase name="ConstraintsCritic" status="run" result="completed" time="0.009" timestamp="2026-07-22T12:09:52" classname="nav2_mppi_controller.CriticTests" />
+    <testcase name="GoalAngleCritic" status="run" result="completed" time="0.01" timestamp="2026-07-22T12:09:52" classname="nav2_mppi_controller.CriticTests" />
+    <testcase name="GoalCritic" status="run" result="completed" time="0.009" timestamp="2026-07-22T12:09:52" classname="nav2_mppi_controller.CriticTests">
+      <failure message="/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/critics_tests.cpp:357&#x0A;The difference between costs(2) and 0.0 is 50, which exceeds 1e-6, where&#x0A;costs(2) evaluates to 50,&#x0A;0.0 evaluates to 0, and&#x0A;1e-6 evaluates to 9.9999999999999995e-07." type=""><![CDATA[/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/critics_tests.cpp:357
+The difference between costs(2) and 0.0 is 50, which exceeds 1e-6, where
+costs(2) evaluates to 50,
+0.0 evaluates to 0, and
+1e-6 evaluates to 9.9999999999999995e-07.]]></failure>
+      <failure message="/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/critics_tests.cpp:358&#x0A;The difference between costs.sum() and 0.0 is 50000, which exceeds 1e-6, where&#x0A;costs.sum() evaluates to 50000,&#x0A;0.0 evaluates to 0, and&#x0A;1e-6 evaluates to 9.9999999999999995e-07." type=""><![CDATA[/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/critics_tests.cpp:358
+The difference between costs.sum() and 0.0 is 50000, which exceeds 1e-6, where
+costs.sum() evaluates to 50000,
+0.0 evaluates to 0, and
+1e-6 evaluates to 9.9999999999999995e-07.]]></failure>
+    </testcase>
+    <testcase name="PathAngleCritic" status="run" result="completed" time="0.01" timestamp="2026-07-22T12:09:52" classname="nav2_mppi_controller.CriticTests" />
+    <testcase name="PreferForwardCritic" status="run" result="completed" time="0.009" timestamp="2026-07-22T12:09:52" classname="nav2_mppi_controller.CriticTests" />
+    <testcase name="TwirlingCritic" status="run" result="completed" time="0.009" timestamp="2026-07-22T12:09:52" classname="nav2_mppi_controller.CriticTests">
+      <failure message="/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/critics_tests.cpp:559&#x0A;The difference between costs(0) and 3.3 is 1.6828395843505861, which exceeds 4e-1, where&#x0A;costs(0) evaluates to 4.9828395843505859,&#x0A;3.3 evaluates to 3.2999999999999998, and&#x0A;4e-1 evaluates to 0.40000000000000002." type=""><![CDATA[/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/critics_tests.cpp:559
+The difference between costs(0) and 3.3 is 1.6828395843505861, which exceeds 4e-1, where
+costs(0) evaluates to 4.9828395843505859,
+3.3 evaluates to 3.2999999999999998, and
+4e-1 evaluates to 0.40000000000000002.]]></failure>
+    </testcase>
+    <testcase name="PathFollowCritic" status="run" result="completed" time="0.009" timestamp="2026-07-22T12:09:52" classname="nav2_mppi_controller.CriticTests">
+      <failure message="/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/critics_tests.cpp:601&#x0A;The difference between costs.sum() and 0.0 is 8500, which exceeds 1e-6, where&#x0A;costs.sum() evaluates to 8500,&#x0A;0.0 evaluates to 0, and&#x0A;1e-6 evaluates to 9.9999999999999995e-07." type=""><![CDATA[/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/critics_tests.cpp:601
+The difference between costs.sum() and 0.0 is 8500, which exceeds 1e-6, where
+costs.sum() evaluates to 8500,
+0.0 evaluates to 0, and
+1e-6 evaluates to 9.9999999999999995e-07.]]></failure>
+      <failure message="/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/critics_tests.cpp:607&#x0A;The difference between costs.sum() and 750.0 is 8500, which exceeds 1e-2, where&#x0A;costs.sum() evaluates to 9250,&#x0A;750.0 evaluates to 750, and&#x0A;1e-2 evaluates to 0.01." type=""><![CDATA[/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/critics_tests.cpp:607
+The difference between costs.sum() and 750.0 is 8500, which exceeds 1e-2, where
+costs.sum() evaluates to 9250,
+750.0 evaluates to 750, and
+1e-2 evaluates to 0.01.]]></failure>
+    </testcase>
+    <testcase name="PathAlignCritic" status="run" result="completed" time="0.009" timestamp="2026-07-22T12:09:52" classname="nav2_mppi_controller.CriticTests" />
+    <testcase name="PathAlignLegacyCritic" status="run" result="completed" time="0.009" timestamp="2026-07-22T12:09:52" classname="nav2_mppi_controller.CriticTests" />
+    <testcase name="VelocityDeadbandCritic" status="run" result="completed" time="0.009" timestamp="2026-07-22T12:09:52" classname="nav2_mppi_controller.CriticTests" />
+    <testcase name="AngularVelocityCriticStopsInsideYawTolerance" status="run" result="completed" time="0.008" timestamp="2026-07-22T12:09:52" classname="nav2_mppi_controller.CriticTests" />
+  </testsuite>
+</testsuites>

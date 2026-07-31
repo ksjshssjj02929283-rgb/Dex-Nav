@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite
+  name="nav2_theta_star_planner.pep257"
+  tests="2"
+  errors="0"
+  failures="0"
+  time="0.012"
+>
+  <testcase
+    name="./test/map_plan_demo.launch.py"
+    classname="nav2_theta_star_planner.pep257"/>
+  <testcase
+    name="./test/plan_from_rviz.py"
+    classname="nav2_theta_star_planner.pep257"/>
+  <system-out>Checked files:
+* ./test/map_plan_demo.launch.py
+* ./test/plan_from_rviz.py</system-out>
+</testsuite>

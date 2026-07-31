@@ -1,0 +1,95 @@
+-- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/nav2_theta_star_planner':
+ - /opt/ros/humble/bin/ament_uncrustify --xunit-file /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/uncrustify.xunit.xml
+
+Code style divergence in file 'src/curve_path_smoother.cpp':
+
+--- src/curve_path_smoother.cpp
++++ src/curve_path_smoother.cpp.uncrustify
+@@ -144,4 +144,6 @@
+-  const int gx = static_cast<int>(std::floor((x - distance_map->origin_x) /
+-    distance_map->resolution));
+-  const int gy = static_cast<int>(std::floor((y - distance_map->origin_y) /
+-    distance_map->resolution));
++  const int gx = static_cast<int>(std::floor(
++      (x - distance_map->origin_x) /
++      distance_map->resolution));
++  const int gy = static_cast<int>(std::floor(
++      (y - distance_map->origin_y) /
++      distance_map->resolution));
+
+Code style divergence in file 'src/node_theta_star.cpp':
+
+--- src/node_theta_star.cpp
++++ src/node_theta_star.cpp.uncrustify
+@@ -370 +370,3 @@
+-    if (curr->id < 0 || static_cast<size_t>(curr->id) >= n || closed[static_cast<size_t>(curr->id)]) {
++    if (curr->id < 0 || static_cast<size_t>(curr->id) >= n ||
++      closed[static_cast<size_t>(curr->id)])
++    {
+
+Code style divergence in file 'src/omni_path_smoother.cpp':
+
+--- src/omni_path_smoother.cpp
++++ src/omni_path_smoother.cpp.uncrustify
+@@ -64 +64,4 @@
+-  if (!isCellFree(costmap, static_cast<unsigned int>(cx), static_cast<unsigned int>(cy), allow_unknown)) {
++  if (!isCellFree(
++      costmap, static_cast<unsigned int>(cx), static_cast<unsigned int>(cy),
++      allow_unknown))
++  {
+@@ -92 +95,3 @@
+-        !isCellFree(costmap, static_cast<unsigned int>(cx + u_x), static_cast<unsigned int>(cy), allow_unknown) &&
++        !isCellFree(
++          costmap, static_cast<unsigned int>(cx + u_x), static_cast<unsigned int>(cy),
++          allow_unknown) &&
+@@ -127 +132,3 @@
+-        !isCellFree(costmap, static_cast<unsigned int>(cx), static_cast<unsigned int>(cy + u_y), allow_unknown) &&
++        !isCellFree(
++          costmap, static_cast<unsigned int>(cx), static_cast<unsigned int>(cy + u_y),
++          allow_unknown) &&
+@@ -140 +147,3 @@
+-  return isCellFree(costmap, static_cast<unsigned int>(x1i), static_cast<unsigned int>(y1i), allow_unknown);
++  return isCellFree(
++    costmap, static_cast<unsigned int>(x1i), static_cast<unsigned int>(y1i),
++    allow_unknown);
+
+Code style divergence in file 'src/swerve_steering_model.cpp':
+
+--- src/swerve_steering_model.cpp
++++ src/swerve_steering_model.cpp.uncrustify
+@@ -129 +129,2 @@
+-    max_jump = std::max(max_jump, static_cast<double>(std::abs(angleDiff(chosen, prev_wheel_angle[i]))));
++    max_jump =
++      std::max(max_jump, static_cast<double>(std::abs(angleDiff(chosen, prev_wheel_angle[i]))));
+
+4 files with code style divergence
+No code style divergence in file 'include/nav2_theta_star_planner/curve_path_smoother.hpp'
+
+No code style divergence in file 'include/nav2_theta_star_planner/l1_spline_path.hpp'
+
+No code style divergence in file 'include/nav2_theta_star_planner/multi_layer_planner.hpp'
+
+No code style divergence in file 'include/nav2_theta_star_planner/node_theta_star.hpp'
+
+No code style divergence in file 'include/nav2_theta_star_planner/omni_path_smoother.hpp'
+
+No code style divergence in file 'include/nav2_theta_star_planner/swerve_steering_model.hpp'
+
+No code style divergence in file 'include/nav2_theta_star_planner/theta_star.hpp'
+
+No code style divergence in file 'include/nav2_theta_star_planner/theta_star_planner.hpp'
+
+No code style divergence in file 'src/l1_spline_path.cpp'
+
+No code style divergence in file 'src/multi_layer_planner.cpp'
+
+No code style divergence in file 'src/theta_star.cpp'
+
+No code style divergence in file 'src/theta_star_planner.cpp'
+
+No code style divergence in file 'test/test_theta_star.cpp'
+
+
+
+-- run_test.py: return code 1
+-- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_theta_star_planner/test_results/nav2_theta_star_planner/uncrustify.xunit.xml'

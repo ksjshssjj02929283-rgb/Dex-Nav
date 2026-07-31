@@ -1334,6 +1334,17 @@ test/CMakeFiles/optimizer_smoke_test.dir/optimizer_smoke_test.cpp.o: /home/dex/d
   /opt/ros/humble/include/nav2_core/controller.hpp \
   /opt/ros/humble/include/nav2_costmap_2d/nav2_costmap_2d/footprint_collision_checker.hpp \
   /opt/ros/humble/include/nav2_util/robot_utils.hpp \
+  /opt/ros/humble/include/std_msgs/std_msgs/msg/bool.hpp \
+  /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/bool__struct.hpp \
+  /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/bool__builder.hpp \
+  /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/bool__traits.hpp \
+  /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/bool__type_support.hpp \
+  /opt/ros/humble/include/std_msgs/std_msgs/msg/rosidl_generator_cpp__visibility_control.hpp \
+  /opt/ros/humble/include/std_msgs/std_msgs/msg/float64.hpp \
+  /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/float64__struct.hpp \
+  /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/float64__builder.hpp \
+  /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/float64__traits.hpp \
+  /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/float64__type_support.hpp \
   /opt/ros/humble/include/std_msgs/std_msgs/msg/float64_multi_array.hpp \
   /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/float64_multi_array__struct.hpp \
   /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/multi_array_layout__struct.hpp \
@@ -1342,11 +1353,8 @@ test/CMakeFiles/optimizer_smoke_test.dir/optimizer_smoke_test.cpp.o: /home/dex/d
   /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/float64_multi_array__traits.hpp \
   /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/multi_array_layout__traits.hpp \
   /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/multi_array_dimension__traits.hpp \
-  /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/float64_multi_array__type_support.hpp \
-  /opt/ros/humble/include/std_msgs/std_msgs/msg/rosidl_generator_cpp__visibility_control.hpp
+  /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/float64_multi_array__type_support.hpp
 
-
-/opt/ros/humble/include/std_msgs/std_msgs/msg/rosidl_generator_cpp__visibility_control.hpp:
 
 /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/float64_multi_array__traits.hpp:
 
@@ -1355,6 +1363,24 @@ test/CMakeFiles/optimizer_smoke_test.dir/optimizer_smoke_test.cpp.o: /home/dex/d
 /opt/ros/humble/include/std_msgs/std_msgs/msg/detail/float64_multi_array__struct.hpp:
 
 /opt/ros/humble/include/std_msgs/std_msgs/msg/float64_multi_array.hpp:
+
+/opt/ros/humble/include/std_msgs/std_msgs/msg/detail/float64__type_support.hpp:
+
+/opt/ros/humble/include/std_msgs/std_msgs/msg/detail/float64__traits.hpp:
+
+/opt/ros/humble/include/std_msgs/std_msgs/msg/detail/float64__builder.hpp:
+
+/opt/ros/humble/include/std_msgs/std_msgs/msg/detail/float64__struct.hpp:
+
+/opt/ros/humble/include/std_msgs/std_msgs/msg/rosidl_generator_cpp__visibility_control.hpp:
+
+/opt/ros/humble/include/std_msgs/std_msgs/msg/detail/bool__type_support.hpp:
+
+/opt/ros/humble/include/std_msgs/std_msgs/msg/detail/bool__traits.hpp:
+
+/opt/ros/humble/include/std_msgs/std_msgs/msg/detail/bool__builder.hpp:
+
+/opt/ros/humble/include/std_msgs/std_msgs/msg/bool.hpp:
 
 /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/tools/trajectory_visualizer.hpp:
 
@@ -1623,6 +1649,8 @@ test/CMakeFiles/optimizer_smoke_test.dir/optimizer_smoke_test.cpp.o: /home/dex/d
 /usr/lib/gcc/x86_64-linux-gnu/11/include/xtestintrin.h:
 
 /usr/include/c++/11/optional:
+
+/opt/ros/humble/include/std_msgs/std_msgs/msg/detail/bool__struct.hpp:
 
 /usr/include/c++/11/condition_variable:
 
@@ -2207,6 +2235,8 @@ test/CMakeFiles/optimizer_smoke_test.dir/optimizer_smoke_test.cpp.o: /home/dex/d
 /opt/ros/humble/include/rmw/rmw/subscription_content_filter_options.h:
 
 /usr/include/x86_64-linux-gnu/bits/wctype-wchar.h:
+
+/opt/ros/humble/include/std_msgs/std_msgs/msg/float64.hpp:
 
 /usr/include/eigen3/Eigen/src/Core/MathFunctions.h:
 

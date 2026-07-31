@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite
+  name="nav2_theta_star_planner.xmllint"
+  tests="2"
+  errors="0"
+  failures="1"
+  time="0.010"
+>
+  <testcase
+    name="package.xml"
+    classname="nav2_theta_star_planner.xmllint"
+  >
+      <failure message="Diff with 295 lines"><![CDATA[warning: failed to load external entity "http://download.ros.org/schema/package_format3.xsd"
+Schemas parser error : Failed to locate the main schema resource at 'http://download.ros.org/schema/package_format3.xsd'.
+WXS schema http://download.ros.org/schema/package_format3.xsd failed to compile
+]]></failure>
+  </testcase>
+  <testcase
+    name="theta_star_planner.xml"
+    classname="nav2_theta_star_planner.xmllint"/>
+  <system-out>Checked files:
+* package.xml
+* theta_star_planner.xml</system-out>
+</testsuite>

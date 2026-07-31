@@ -1,0 +1,43 @@
+[30.026s] Invoking command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller': CMAKE_PREFIX_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_bringup LD_LIBRARY_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/lib:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/lib:/usr/lib/x86_64-linux-gnu/gazebo-11/plugins:/opt/ros/humble/opt/rviz_ogre_vendor/lib:/opt/ros/humble/lib/x86_64-linux-gnu:/opt/ros/humble/lib /usr/bin/ctest -C Release -D ExperimentalTest --no-compress-output -V --force-new-ctest-process -R controller_state_transition_test
+[30.032s] UpdateCTestConfiguration  from :/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/CTestConfiguration.ini
+[30.032s] Parse Config file:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/CTestConfiguration.ini
+[30.032s]    Site: dex-TX-Gaming-FA608UH-FA608UH
+[30.032s]    Build name: (empty)
+[30.032s]  Add coverage exclude regular expressions.
+[30.032s] Create new tag: 20260723-0229 - Experimental
+[30.032s] UpdateCTestConfiguration  from :/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/CTestConfiguration.ini
+[30.032s] Parse Config file:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/CTestConfiguration.ini
+[30.032s] Test project /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller
+[30.032s] Constructing a list of tests
+[30.033s] Done constructing a list of tests
+[30.033s] Updating test list for fixtures
+[30.033s] Added 0 tests to meet fixture requirements
+[30.033s] Checking test dependency graph...
+[30.033s] Checking test dependency graph end
+[30.033s] test 7
+[30.033s]     Start 7: controller_state_transition_test
+[30.033s] 
+[30.033s] 7: Test command: /usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/controller_state_transition_test.gtest.xml" "--package-name" "nav2_mppi_controller" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/ament_cmake_gtest/controller_state_transition_test.txt" "--command" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/controller_state_transition_test" "--gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/controller_state_transition_test.gtest.xml"
+[30.033s] 7: Test timeout computed to be: 60
+[30.069s] 7: -- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test':
+[30.069s] 7:  - /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/controller_state_transition_test --gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/controller_state_transition_test.gtest.xml
+[30.139s] 7: terminate called after throwing an instance of 'spdlog::spdlog_ex'
+[30.140s] 7:   what():  Failed opening file /home/dex/.ros/log/controller_state_transition_test_41_1784773772515.log for writing: Read-only file system
+[30.216s] 7: -- run_test.py: return code -6
+[30.216s] 7: -- run_test.py: generate result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/controller_state_transition_test.gtest.xml' with failed test
+[30.216s] 7: -- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/controller_state_transition_test.gtest.xml'
+[30.222s] 1/1 Test #7: controller_state_transition_test ...***Failed    0.19 sec
+[30.222s] 
+[30.222s] 0% tests passed, 1 tests failed out of 1
+[30.222s] 
+[30.223s] Label Time Summary:
+[30.223s] gtest    =   0.19 sec*proc (1 test)
+[30.223s] 
+[30.223s] Total Test time (real) =   0.19 sec
+[30.223s] 
+[30.223s] The following tests FAILED:
+[30.223s] 	  7 - controller_state_transition_test (Failed)
+[30.225s] Errors while running CTest
+[30.225s] Output from these tests are in: /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/Testing/Temporary/LastTest.log
+[30.226s] Use "--rerun-failed --output-on-failure" to re-run the failed cases verbosely.
+[30.228s] Invoked command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller' returned '8': CMAKE_PREFIX_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_bringup LD_LIBRARY_PATH=/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_mppi_controller/lib:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_map_server/lib:/home/dex/dexe_mobile_nav/mobile_navigation/install/nav2_theta_star_planner/lib:/usr/lib/x86_64-linux-gnu/gazebo-11/plugins:/opt/ros/humble/opt/rviz_ogre_vendor/lib:/opt/ros/humble/lib/x86_64-linux-gnu:/opt/ros/humble/lib /usr/bin/ctest -C Release -D ExperimentalTest --no-compress-output -V --force-new-ctest-process -R controller_state_transition_test

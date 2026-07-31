@@ -1,0 +1,339 @@
+UpdateCTestConfiguration  from :/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/CTestConfiguration.ini
+Parse Config file:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/CTestConfiguration.ini
+   Site: dex-TX-Gaming-FA608UH-FA608UH
+   Build name: (empty)
+ Add coverage exclude regular expressions.
+Create new tag: 20260721-0958 - Experimental
+UpdateCTestConfiguration  from :/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/CTestConfiguration.ini
+Parse Config file:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/CTestConfiguration.ini
+Test project /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller
+Constructing a list of tests
+Done constructing a list of tests
+Updating test list for fixtures
+Added 0 tests to meet fixture requirements
+Checking test dependency graph...
+Checking test dependency graph end
+test 7
+    Start 7: controller_state_transition_test
+
+7: Test command: /usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/controller_state_transition_test.gtest.xml" "--package-name" "nav2_mppi_controller" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/ament_cmake_gtest/controller_state_transition_test.txt" "--command" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/controller_state_transition_test" "--gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/controller_state_transition_test.gtest.xml"
+7: Test timeout computed to be: 60
+7: -- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test':
+7:  - /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/controller_state_transition_test --gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/controller_state_transition_test.gtest.xml
+7: Running main() from /opt/ros/humble/src/gtest_vendor/src/gtest_main.cc
+7: [==========] Running 42 tests from 1 test suite.
+7: [----------] Global test environment set-up.
+7: [----------] 42 tests from ControllerStateTransitionTest
+7: [ RUN      ] ControllerStateTransitionTest.ApproachSubstageUsesPositionHysteresis
+7: [INFO] [1784627934.545684940] [MPPIController]: MPPI approach substage switched: positioning -> final_yaw, |lon|=0.014, |lat|=0.015
+7: [INFO] [1784627934.545771844] [MPPIController]: MPPI approach substage switched: final_yaw -> positioning, |lon|=0.021, |lat|=0.000
+7: [       OK ] ControllerStateTransitionTest.ApproachSubstageUsesPositionHysteresis (0 ms)
+7: [ RUN      ] ControllerStateTransitionTest.PositionMppiAlwaysUsesTrackProfile
+7: [       OK ] ControllerStateTransitionTest.PositionMppiAlwaysUsesTrackProfile (0 ms)
+7: [ RUN      ] ControllerStateTransitionTest.ApproachSubstageAppliesOmniFinalYawProfile
+7: [       OK ] ControllerStateTransitionTest.ApproachSubstageAppliesOmniFinalYawProfile (0 ms)
+7: [ RUN      ] ControllerStateTransitionTest.ApproachBrakingEnvelopeIsContinuousAtBoundary
+7: [       OK ] ControllerStateTransitionTest.ApproachBrakingEnvelopeIsContinuousAtBoundary (0 ms)
+7: [ RUN      ] ControllerStateTransitionTest.TerminalGoalAxesPreserveOrientationMode
+7: [       OK ] ControllerStateTransitionTest.TerminalGoalAxesPreserveOrientationMode (0 ms)
+7: [ RUN      ] ControllerStateTransitionTest.TerminalGoalAxesStayOffOutsideAssistDistance
+7: [       OK ] ControllerStateTransitionTest.TerminalGoalAxesStayOffOutsideAssistDistance (0 ms)
+7: [ RUN      ] ControllerStateTransitionTest.TangentTerminalHoldDampsSpuriousYaw
+7: [       OK ] ControllerStateTransitionTest.TangentTerminalHoldDampsSpuriousYaw (0 ms)
+7: [ RUN      ] ControllerStateTransitionTest.TangentYawDampingStaysOffBeforeHoldRegion
+7: [       OK ] ControllerStateTransitionTest.TangentYawDampingStaysOffBeforeHoldRegion (0 ms)
+7: [ RUN      ] ControllerStateTransitionTest.FinalYawLocksBothTranslationAxes
+7: [INFO] [1784627934.545900137] [MPPIController]: MPPI final_yaw direction locked: direction=-1, yaw_error=0.500 rad. The direction will be kept until |yaw_error| <= 0.050 rad.
+7: [       OK ] ControllerStateTransitionTest.FinalYawLocksBothTranslationAxes (0 ms)
+7: [ RUN      ] ControllerStateTransitionTest.ApproachModeLocksFromEntryGeometry
+7: [INFO] [1784627934.545923962] [MPPIController]: MPPI approach mode locked: normal, entry |lon|=0.400 m |lat|=0.020 m |yaw_error|=0.500 rad, yaw_threshold=2.094 rad, lateral_threshold=0.050 m, lateral_ratio=1.000, reason=normal_geometry. The mode remains locked until leaving approach.
+7: [INFO] [1784627934.545930965] [MPPIController]: MPPI approach mode locked: position_first, entry |lon|=0.020 m |lat|=0.450 m |yaw_error|=1.500 rad, yaw_threshold=2.094 rad, lateral_threshold=0.050 m, lateral_ratio=1.000, reason=lateral_dominant. The mode remains locked until leaving approach.
+7: [INFO] [1784627934.545934452] [MPPIController]: MPPI approach mode locked: position_first, entry |lon|=0.400 m |lat|=0.020 m |yaw_error|=2.800 rad, yaw_threshold=2.094 rad, lateral_threshold=0.050 m, lateral_ratio=1.000, reason=large_yaw. The mode remains locked until leaving approach.
+7: [       OK ] ControllerStateTransitionTest.ApproachModeLocksFromEntryGeometry (0 ms)
+7: [ RUN      ] ControllerStateTransitionTest.DeterministicTerminalCommandUsesStableGoalDirection
+7: [       OK ] ControllerStateTransitionTest.DeterministicTerminalCommandUsesStableGoalDirection (0 ms)
+7: [ RUN      ] ControllerStateTransitionTest.DeterministicTerminalCommandStartsContinuouslyFromZero
+7: [       OK ] ControllerStateTransitionTest.DeterministicTerminalCommandStartsContinuouslyFromZero (0 ms)
+7: [ RUN      ] ControllerStateTransitionTest.DeterministicTerminalControlAlsoCoversAuto
+7: [       OK ] ControllerStateTransitionTest.DeterministicTerminalControlAlsoCoversAuto (0 ms)
+7: [ RUN      ] ControllerStateTransitionTest.DeterministicTerminalSpeedChangesContinuouslyWithDistance
+7: [       OK ] ControllerStateTransitionTest.DeterministicTerminalSpeedChangesContinuouslyWithDistance (0 ms)
+7: [ RUN      ] ControllerStateTransitionTest.DeterministicTerminalCommandRespectsZeroSpeedLimit
+7: [       OK ] ControllerStateTransitionTest.DeterministicTerminalCommandRespectsZeroSpeedLimit (0 ms)
+7: [ RUN      ] ControllerStateTransitionTest.AutoYawRateIsIndependentOfLinearSpeed
+7: [       OK ] ControllerStateTransitionTest.AutoYawRateIsIndependentOfLinearSpeed (0 ms)
+7: [ RUN      ] ControllerStateTransitionTest.AutoPureRotationIsAllowedAtZeroLinearSpeed
+7: [       OK ] ControllerStateTransitionTest.AutoPureRotationIsAllowedAtZeroLinearSpeed (0 ms)
+7: [ RUN      ] ControllerStateTransitionTest.AutoProjectionKeepsStraightWorldVelocityWhileTurning
+7: [       OK ] ControllerStateTransitionTest.AutoProjectionKeepsStraightWorldVelocityWhileTurning (1 ms)
+7: [ RUN      ] ControllerStateTransitionTest.AutoProjectionNeverInterpolatesWorldDirection
+7: [       OK ] ControllerStateTransitionTest.AutoProjectionNeverInterpolatesWorldDirection (0 ms)
+7: [ RUN      ] ControllerStateTransitionTest.AutoPathReferenceKeepsMppiSpeedAndUsesLookaheadDirection
+7: [       OK ] ControllerStateTransitionTest.AutoPathReferenceKeepsMppiSpeedAndUsesLookaheadDirection (0 ms)
+7: [ RUN      ] ControllerStateTransitionTest.AutoPathReferenceCompensatesCurrentRobotYaw
+7: [       OK ] ControllerStateTransitionTest.AutoPathReferenceCompensatesCurrentRobotYaw (0 ms)
+7: [ RUN      ] ControllerStateTransitionTest.AutoPathReferenceDoesNotForceStartFromZeroCommand
+7: [       OK ] ControllerStateTransitionTest.AutoPathReferenceDoesNotForceStartFromZeroCommand (0 ms)
+7: [ RUN      ] ControllerStateTransitionTest.AutoProjectionReducesYawWithoutRotatingPathDirection
+7: [       OK ] ControllerStateTransitionTest.AutoProjectionReducesYawWithoutRotatingPathDirection (0 ms)
+7: [ RUN      ] ControllerStateTransitionTest.AutoSteeringFilterDoesNotChangeOtherModes
+7: [       OK ] ControllerStateTransitionTest.AutoSteeringFilterDoesNotChangeOtherModes (0 ms)
+7: [ RUN      ] ControllerStateTransitionTest.AutoPathAlignmentDoesNotChangeOtherModes
+7: [       OK ] ControllerStateTransitionTest.AutoPathAlignmentDoesNotChangeOtherModes (0 ms)
+7: [ RUN      ] ControllerStateTransitionTest.AutoFilterFallsBackWhenCollisionCheckUnavailable
+7: [       OK ] ControllerStateTransitionTest.AutoFilterFallsBackWhenCollisionCheckUnavailable (0 ms)
+7: [ RUN      ] ControllerStateTransitionTest.AutoYawProfileKeepsTaskProgressAcrossReplans
+7: [       OK ] ControllerStateTransitionTest.AutoYawProfileKeepsTaskProgressAcrossReplans (0 ms)
+7: [ RUN      ] ControllerStateTransitionTest.AutoYawProfileFinishesBeforeTerminalRegion
+7: [       OK ] ControllerStateTransitionTest.AutoYawProfileFinishesBeforeTerminalRegion (0 ms)
+7: [ RUN      ] ControllerStateTransitionTest.ControllerNotFail
+7: getifaddrs: Operation not permitted
+7: getifaddrs: Operation not permitted
+7: getifaddrs: Operation not permitted
+7: [37;1m2026-07-21 17:58:54.547 [31;1m[[37;1mTRANSPORT_UDP[31;1m Error] [37mError creating socket: Operation not permitted[34;1m -> Function [36minit[m
+7: [37;1m2026-07-21 17:58:54.547 [31;1m[[37;1mRTPS_PARTICIPANT[31;1m Error] [37mUser transport failed to register.[34;1m -> Function [36mRTPSParticipantImpl[m
+7: [INFO] [1784627934.556125752] [cost_map_node.cost_map_node]: 
+7: 	cost_map_node lifecycle node launched. 
+7: 	Waiting on external lifecycle transitions to activate
+7: 	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+7: [INFO] [1784627934.556518274] [cost_map_node.cost_map_node]: Creating Costmap
+7: [INFO] [1784627934.556607763] [cost_map_node.cost_map_node]: Configuring
+7: [INFO] [1784627934.558319500] [cost_map_node.cost_map_node]: Using plugin "static_layer"
+7: [INFO] [1784627934.560703869] [cost_map_node.cost_map_node]: Subscribing to the map topic (/map) with transient local durability
+7: [INFO] [1784627934.561302931] [cost_map_node.cost_map_node]: Initialized plugin "static_layer"
+7: [INFO] [1784627934.561315164] [cost_map_node.cost_map_node]: Using plugin "obstacle_layer"
+7: [INFO] [1784627934.561394024] [cost_map_node.cost_map_node]: Subscribed to Topics: 
+7: [INFO] [1784627934.561424491] [cost_map_node.cost_map_node]: Initialized plugin "obstacle_layer"
+7: [INFO] [1784627934.561431845] [cost_map_node.cost_map_node]: Using plugin "inflation_layer"
+7: [INFO] [1784627934.561547724] [cost_map_node.cost_map_node]: Initialized plugin "inflation_layer"
+7: [INFO] [1784627934.565084632] [MPPIController]: MPPI profile_1 velocity: vx=[-0.500, 0.700] vy=0.500 wz=0.750. Goal(w=0.000) GoalLateral(w=0.000) GoalLongitudinal(w=0.000) GoalAngle(w=0.000) PathAngle(w=7.000 off=3 max_angle=0.700 forward=1) PathAlign(w=8.000 off=8 step=3 occ=0.080 yaw=0) PathFollow(w=7.000 off=7) PreferForward(w=6.000). weight=0 disables this cost for the stage.
+7: [INFO] [1784627934.565111633] [MPPIController]: MPPI profile_2 velocity: vx=[-0.500, 0.700] vy=0.500 wz=0.750. Goal(w=8.000) GoalLateral(w=0.000) GoalLongitudinal(w=0.000) GoalAngle(w=0.000) PathAngle(w=0.000 off=3 max_angle=0.900 forward=1) PathAlign(w=14.000 off=1 step=3 occ=0.050 yaw=0) PathFollow(w=5.000 off=5) PreferForward(w=0.000). weight=0 disables this cost for the stage.
+7: [INFO] [1784627934.565120700] [MPPIController]: MPPI profile_3 velocity: vx=[-0.500, 0.700] vy=0.500 wz=0.750. Goal(w=4.000) GoalLateral(w=40.000) GoalLongitudinal(w=25.000) GoalAngle(w=8.000) PathAngle(w=1.000 off=2 max_angle=1.000 forward=1) PathAlign(w=2.000 off=15 step=3 occ=0.050 yaw=0) PathFollow(w=1.000 off=5) PreferForward(w=1.000). weight=0 disables this cost for the stage.
+7: [WARN] [1784627934.565484087] [dummy]: Controller period is less then model dt, consider setting it equal
+7: [INFO] [1784627934.570199684] [dummy]: Optimizer reset
+7: [INFO] [1784627934.571744825] [MPPIController]: Configured MPPI Controller: dummy，tangent/goal 起点对齐=关闭，之后运行 TRACK/APPROACH
+7: [WARN] [1784627934.571776876] [dummy]: Parameter dummy.verbose not found
+7: [INFO] [1784627934.573624720] [dummy]: Optimizer reset
+7: [INFO] [1784627934.573690955] [MPPIController]: Activated MPPI Controller: dummy
+7: [INFO] [1784627934.575407561] [dummy]: Optimizer reset
+7: [INFO] [1784627934.575425856] [MPPIController]: 新导航目标：orientation_mode=auto，起点对齐=跳过，直接 FOLLOW；goal_yaw=0.000
+7: [INFO] [1784627934.575438249] [dummy]: MPPI new global plan received: poses=8. Reset three-stage path_progress and goal_distance stats.
+7: [ERROR] [1784627934.575475840] [tf2_buffer]: Do not call canTransform or lookupTransform with a timeout unless you are using another thread for populating data. Without a dedicated thread it will always timeout.  If you have a separate thread servicing tf messages, call setUsingDedicatedThread(true) on your Buffer instance.
+7: [ERROR] [1784627934.575548848] [dummy]: Exception in lookupTransform: "map" passed to lookupTransform argument target_frame does not exist. . TF lookup failed; cannot transform global path into costmap frame.
+7: /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:840: Failure
+7: Expected: controller->computeVelocityCommands(pose, velocity, {}) doesn't throw an exception.
+7:   Actual: it throws.
+7: [INFO] [1784627934.575608240] [dummy]: MPPI speed limit updated: active=1 value=0.500 percentage=1. Received speed limit update; will combine with the current three-stage profile velocity constraints.
+7: [INFO] [1784627934.575617999] [dummy]: MPPI speed limit updated: active=1 value=0.500 percentage=0. Received speed limit update; will combine with the current three-stage profile velocity constraints.
+7: [INFO] [1784627934.575623159] [dummy]: MPPI speed limit updated: active=1 value=1.000 percentage=1. Received speed limit update; will combine with the current three-stage profile velocity constraints.
+7: [INFO] [1784627934.575628819] [MPPIController]: Deactivated MPPI Controller: dummy
+7: [INFO] [1784627934.576006283] [MPPIController]: Cleaned up MPPI Controller: dummy
+7: Warning: class_loader.ClassLoader: SEVERE WARNING!!! Attempting to unload library while objects created by this loader exist in the heap! You should delete your objects before attempting to unload the library or destroying the ClassLoader. The library will NOT be unloaded.
+7:          at line 127 in ./src/class_loader.cpp
+7: [INFO] [1784627934.578303306] [cost_map_node.cost_map_node]: Destroying
+7: [  FAILED  ] ControllerStateTransitionTest.ControllerNotFail (35 ms)
+7: [ RUN      ] ControllerStateTransitionTest.TangentMarkerContract
+7: [       OK ] ControllerStateTransitionTest.TangentMarkerContract (0 ms)
+7: [ RUN      ] ControllerStateTransitionTest.StartAlignmentOnlyRunsForTangentAndGoal
+7: [       OK ] ControllerStateTransitionTest.StartAlignmentOnlyRunsForTangentAndGoal (0 ms)
+7: [ RUN      ] ControllerStateTransitionTest.StartAndGoalCruiseNeverOutputAngularVelocity
+7: [       OK ] ControllerStateTransitionTest.StartAndGoalCruiseNeverOutputAngularVelocity (0 ms)
+7: [ RUN      ] ControllerStateTransitionTest.TerminalTranslationLiftPreservesVectorDirection
+7: [       OK ] ControllerStateTransitionTest.TerminalTranslationLiftPreservesVectorDirection (0 ms)
+7: [ RUN      ] ControllerStateTransitionTest.TerminalTranslationLiftRejectsZeroAndWrongDirection
+7: [       OK ] ControllerStateTransitionTest.TerminalTranslationLiftRejectsZeroAndWrongDirection (0 ms)
+7: [ RUN      ] ControllerStateTransitionTest.TerminalTranslationLiftRespectsActiveSpeedLimit
+7: [       OK ] ControllerStateTransitionTest.TerminalTranslationLiftRespectsActiveSpeedLimit (0 ms)
+7: [ RUN      ] ControllerStateTransitionTest.GoalStartYawUsesGoalOrientationNotPathTangent
+7: [       OK ] ControllerStateTransitionTest.GoalStartYawUsesGoalOrientationNotPathTangent (0 ms)
+7: [ RUN      ] ControllerStateTransitionTest.ControllerFrameStartYawUsesArcLengthLookahead
+7: [       OK ] ControllerStateTransitionTest.ControllerFrameStartYawUsesArcLengthLookahead (0 ms)
+7: [ RUN      ] ControllerStateTransitionTest.RecoveryReplanKeepsSameNavigationTask
+7: [       OK ] ControllerStateTransitionTest.RecoveryReplanKeepsSameNavigationTask (0 ms)
+7: [ RUN      ] ControllerStateTransitionTest.StartRotationCommandRampsWithoutOdomResponse
+7: [       OK ] ControllerStateTransitionTest.StartRotationCommandRampsWithoutOdomResponse (0 ms)
+7: [ RUN      ] ControllerStateTransitionTest.FinalYawWaitsOnceThenRotatesContinuously
+7: [       OK ] ControllerStateTransitionTest.FinalYawWaitsOnceThenRotatesContinuously (0 ms)
+7: [ RUN      ] ControllerStateTransitionTest.TangentAlignmentCommandsNeverTranslate
+7: [INFO] [1784627934.581167913] [MPPIController]: tangent 起点阶段：start_stop -> start_yaw_align
+7: [       OK ] ControllerStateTransitionTest.TangentAlignmentCommandsNeverTranslate (0 ms)
+7: [ RUN      ] ControllerStateTransitionTest.TangentAlignmentBrakesBeforeYawTarget
+7: [       OK ] ControllerStateTransitionTest.TangentAlignmentBrakesBeforeYawTarget (0 ms)
+7: [----------] 42 tests from ControllerStateTransitionTest (36 ms total)
+7: 
+7: [----------] Global test environment tear-down
+7: [==========] 42 tests from 1 test suite ran. (36 ms total)
+7: [  PASSED  ] 41 tests.
+7: [  FAILED  ] 1 test, listed below:
+7: [  FAILED  ] ControllerStateTransitionTest.ControllerNotFail
+7: 
+7:  1 FAILED TEST
+7: -- run_test.py: return code 1
+7: -- run_test.py: inject classname prefix into gtest result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/controller_state_transition_test.gtest.xml'
+7: -- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/controller_state_transition_test.gtest.xml'
+1/1 Test #7: controller_state_transition_test ...***Failed    0.20 sec
+-- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test':
+ - /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/controller_state_transition_test --gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/controller_state_transition_test.gtest.xml
+Running main() from /opt/ros/humble/src/gtest_vendor/src/gtest_main.cc
+[==========] Running 42 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 42 tests from ControllerStateTransitionTest
+[ RUN      ] ControllerStateTransitionTest.ApproachSubstageUsesPositionHysteresis
+[INFO] [1784627934.545684940] [MPPIController]: MPPI approach substage switched: positioning -> final_yaw, |lon|=0.014, |lat|=0.015
+[INFO] [1784627934.545771844] [MPPIController]: MPPI approach substage switched: final_yaw -> positioning, |lon|=0.021, |lat|=0.000
+[       OK ] ControllerStateTransitionTest.ApproachSubstageUsesPositionHysteresis (0 ms)
+[ RUN      ] ControllerStateTransitionTest.PositionMppiAlwaysUsesTrackProfile
+[       OK ] ControllerStateTransitionTest.PositionMppiAlwaysUsesTrackProfile (0 ms)
+[ RUN      ] ControllerStateTransitionTest.ApproachSubstageAppliesOmniFinalYawProfile
+[       OK ] ControllerStateTransitionTest.ApproachSubstageAppliesOmniFinalYawProfile (0 ms)
+[ RUN      ] ControllerStateTransitionTest.ApproachBrakingEnvelopeIsContinuousAtBoundary
+[       OK ] ControllerStateTransitionTest.ApproachBrakingEnvelopeIsContinuousAtBoundary (0 ms)
+[ RUN      ] ControllerStateTransitionTest.TerminalGoalAxesPreserveOrientationMode
+[       OK ] ControllerStateTransitionTest.TerminalGoalAxesPreserveOrientationMode (0 ms)
+[ RUN      ] ControllerStateTransitionTest.TerminalGoalAxesStayOffOutsideAssistDistance
+[       OK ] ControllerStateTransitionTest.TerminalGoalAxesStayOffOutsideAssistDistance (0 ms)
+[ RUN      ] ControllerStateTransitionTest.TangentTerminalHoldDampsSpuriousYaw
+[       OK ] ControllerStateTransitionTest.TangentTerminalHoldDampsSpuriousYaw (0 ms)
+[ RUN      ] ControllerStateTransitionTest.TangentYawDampingStaysOffBeforeHoldRegion
+[       OK ] ControllerStateTransitionTest.TangentYawDampingStaysOffBeforeHoldRegion (0 ms)
+[ RUN      ] ControllerStateTransitionTest.FinalYawLocksBothTranslationAxes
+[INFO] [1784627934.545900137] [MPPIController]: MPPI final_yaw direction locked: direction=-1, yaw_error=0.500 rad. The direction will be kept until |yaw_error| <= 0.050 rad.
+[       OK ] ControllerStateTransitionTest.FinalYawLocksBothTranslationAxes (0 ms)
+[ RUN      ] ControllerStateTransitionTest.ApproachModeLocksFromEntryGeometry
+[INFO] [1784627934.545923962] [MPPIController]: MPPI approach mode locked: normal, entry |lon|=0.400 m |lat|=0.020 m |yaw_error|=0.500 rad, yaw_threshold=2.094 rad, lateral_threshold=0.050 m, lateral_ratio=1.000, reason=normal_geometry. The mode remains locked until leaving approach.
+[INFO] [1784627934.545930965] [MPPIController]: MPPI approach mode locked: position_first, entry |lon|=0.020 m |lat|=0.450 m |yaw_error|=1.500 rad, yaw_threshold=2.094 rad, lateral_threshold=0.050 m, lateral_ratio=1.000, reason=lateral_dominant. The mode remains locked until leaving approach.
+[INFO] [1784627934.545934452] [MPPIController]: MPPI approach mode locked: position_first, entry |lon|=0.400 m |lat|=0.020 m |yaw_error|=2.800 rad, yaw_threshold=2.094 rad, lateral_threshold=0.050 m, lateral_ratio=1.000, reason=large_yaw. The mode remains locked until leaving approach.
+[       OK ] ControllerStateTransitionTest.ApproachModeLocksFromEntryGeometry (0 ms)
+[ RUN      ] ControllerStateTransitionTest.DeterministicTerminalCommandUsesStableGoalDirection
+[       OK ] ControllerStateTransitionTest.DeterministicTerminalCommandUsesStableGoalDirection (0 ms)
+[ RUN      ] ControllerStateTransitionTest.DeterministicTerminalCommandStartsContinuouslyFromZero
+[       OK ] ControllerStateTransitionTest.DeterministicTerminalCommandStartsContinuouslyFromZero (0 ms)
+[ RUN      ] ControllerStateTransitionTest.DeterministicTerminalControlAlsoCoversAuto
+[       OK ] ControllerStateTransitionTest.DeterministicTerminalControlAlsoCoversAuto (0 ms)
+[ RUN      ] ControllerStateTransitionTest.DeterministicTerminalSpeedChangesContinuouslyWithDistance
+[       OK ] ControllerStateTransitionTest.DeterministicTerminalSpeedChangesContinuouslyWithDistance (0 ms)
+[ RUN      ] ControllerStateTransitionTest.DeterministicTerminalCommandRespectsZeroSpeedLimit
+[       OK ] ControllerStateTransitionTest.DeterministicTerminalCommandRespectsZeroSpeedLimit (0 ms)
+[ RUN      ] ControllerStateTransitionTest.AutoYawRateIsIndependentOfLinearSpeed
+[       OK ] ControllerStateTransitionTest.AutoYawRateIsIndependentOfLinearSpeed (0 ms)
+[ RUN      ] ControllerStateTransitionTest.AutoPureRotationIsAllowedAtZeroLinearSpeed
+[       OK ] ControllerStateTransitionTest.AutoPureRotationIsAllowedAtZeroLinearSpeed (0 ms)
+[ RUN      ] ControllerStateTransitionTest.AutoProjectionKeepsStraightWorldVelocityWhileTurning
+[       OK ] ControllerStateTransitionTest.AutoProjectionKeepsStraightWorldVelocityWhileTurning (1 ms)
+[ RUN      ] ControllerStateTransitionTest.AutoProjectionNeverInterpolatesWorldDirection
+[       OK ] ControllerStateTransitionTest.AutoProjectionNeverInterpolatesWorldDirection (0 ms)
+[ RUN      ] ControllerStateTransitionTest.AutoPathReferenceKeepsMppiSpeedAndUsesLookaheadDirection
+[       OK ] ControllerStateTransitionTest.AutoPathReferenceKeepsMppiSpeedAndUsesLookaheadDirection (0 ms)
+[ RUN      ] ControllerStateTransitionTest.AutoPathReferenceCompensatesCurrentRobotYaw
+[       OK ] ControllerStateTransitionTest.AutoPathReferenceCompensatesCurrentRobotYaw (0 ms)
+[ RUN      ] ControllerStateTransitionTest.AutoPathReferenceDoesNotForceStartFromZeroCommand
+[       OK ] ControllerStateTransitionTest.AutoPathReferenceDoesNotForceStartFromZeroCommand (0 ms)
+[ RUN      ] ControllerStateTransitionTest.AutoProjectionReducesYawWithoutRotatingPathDirection
+[       OK ] ControllerStateTransitionTest.AutoProjectionReducesYawWithoutRotatingPathDirection (0 ms)
+[ RUN      ] ControllerStateTransitionTest.AutoSteeringFilterDoesNotChangeOtherModes
+[       OK ] ControllerStateTransitionTest.AutoSteeringFilterDoesNotChangeOtherModes (0 ms)
+[ RUN      ] ControllerStateTransitionTest.AutoPathAlignmentDoesNotChangeOtherModes
+[       OK ] ControllerStateTransitionTest.AutoPathAlignmentDoesNotChangeOtherModes (0 ms)
+[ RUN      ] ControllerStateTransitionTest.AutoFilterFallsBackWhenCollisionCheckUnavailable
+[       OK ] ControllerStateTransitionTest.AutoFilterFallsBackWhenCollisionCheckUnavailable (0 ms)
+[ RUN      ] ControllerStateTransitionTest.AutoYawProfileKeepsTaskProgressAcrossReplans
+[       OK ] ControllerStateTransitionTest.AutoYawProfileKeepsTaskProgressAcrossReplans (0 ms)
+[ RUN      ] ControllerStateTransitionTest.AutoYawProfileFinishesBeforeTerminalRegion
+[       OK ] ControllerStateTransitionTest.AutoYawProfileFinishesBeforeTerminalRegion (0 ms)
+[ RUN      ] ControllerStateTransitionTest.ControllerNotFail
+getifaddrs: Operation not permitted
+getifaddrs: Operation not permitted
+getifaddrs: Operation not permitted
+[37;1m2026-07-21 17:58:54.547 [31;1m[[37;1mTRANSPORT_UDP[31;1m Error] [37mError creating socket: Operation not permitted[34;1m -> Function [36minit[m
+[37;1m2026-07-21 17:58:54.547 [31;1m[[37;1mRTPS_PARTICIPANT[31;1m Error] [37mUser transport failed to register.[34;1m -> Function [36mRTPSParticipantImpl[m
+[INFO] [1784627934.556125752] [cost_map_node.cost_map_node]: 
+	cost_map_node lifecycle node launched. 
+	Waiting on external lifecycle transitions to activate
+	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[INFO] [1784627934.556518274] [cost_map_node.cost_map_node]: Creating Costmap
+[INFO] [1784627934.556607763] [cost_map_node.cost_map_node]: Configuring
+[INFO] [1784627934.558319500] [cost_map_node.cost_map_node]: Using plugin "static_layer"
+[INFO] [1784627934.560703869] [cost_map_node.cost_map_node]: Subscribing to the map topic (/map) with transient local durability
+[INFO] [1784627934.561302931] [cost_map_node.cost_map_node]: Initialized plugin "static_layer"
+[INFO] [1784627934.561315164] [cost_map_node.cost_map_node]: Using plugin "obstacle_layer"
+[INFO] [1784627934.561394024] [cost_map_node.cost_map_node]: Subscribed to Topics: 
+[INFO] [1784627934.561424491] [cost_map_node.cost_map_node]: Initialized plugin "obstacle_layer"
+[INFO] [1784627934.561431845] [cost_map_node.cost_map_node]: Using plugin "inflation_layer"
+[INFO] [1784627934.561547724] [cost_map_node.cost_map_node]: Initialized plugin "inflation_layer"
+[INFO] [1784627934.565084632] [MPPIController]: MPPI profile_1 velocity: vx=[-0.500, 0.700] vy=0.500 wz=0.750. Goal(w=0.000) GoalLateral(w=0.000) GoalLongitudinal(w=0.000) GoalAngle(w=0.000) PathAngle(w=7.000 off=3 max_angle=0.700 forward=1) PathAlign(w=8.000 off=8 step=3 occ=0.080 yaw=0) PathFollow(w=7.000 off=7) PreferForward(w=6.000). weight=0 disables this cost for the stage.
+[INFO] [1784627934.565111633] [MPPIController]: MPPI profile_2 velocity: vx=[-0.500, 0.700] vy=0.500 wz=0.750. Goal(w=8.000) GoalLateral(w=0.000) GoalLongitudinal(w=0.000) GoalAngle(w=0.000) PathAngle(w=0.000 off=3 max_angle=0.900 forward=1) PathAlign(w=14.000 off=1 step=3 occ=0.050 yaw=0) PathFollow(w=5.000 off=5) PreferForward(w=0.000). weight=0 disables this cost for the stage.
+[INFO] [1784627934.565120700] [MPPIController]: MPPI profile_3 velocity: vx=[-0.500, 0.700] vy=0.500 wz=0.750. Goal(w=4.000) GoalLateral(w=40.000) GoalLongitudinal(w=25.000) GoalAngle(w=8.000) PathAngle(w=1.000 off=2 max_angle=1.000 forward=1) PathAlign(w=2.000 off=15 step=3 occ=0.050 yaw=0) PathFollow(w=1.000 off=5) PreferForward(w=1.000). weight=0 disables this cost for the stage.
+[WARN] [1784627934.565484087] [dummy]: Controller period is less then model dt, consider setting it equal
+[INFO] [1784627934.570199684] [dummy]: Optimizer reset
+[INFO] [1784627934.571744825] [MPPIController]: Configured MPPI Controller: dummy，tangent/goal 起点对齐=关闭，之后运行 TRACK/APPROACH
+[WARN] [1784627934.571776876] [dummy]: Parameter dummy.verbose not found
+[INFO] [1784627934.573624720] [dummy]: Optimizer reset
+[INFO] [1784627934.573690955] [MPPIController]: Activated MPPI Controller: dummy
+[INFO] [1784627934.575407561] [dummy]: Optimizer reset
+[INFO] [1784627934.575425856] [MPPIController]: 新导航目标：orientation_mode=auto，起点对齐=跳过，直接 FOLLOW；goal_yaw=0.000
+[INFO] [1784627934.575438249] [dummy]: MPPI new global plan received: poses=8. Reset three-stage path_progress and goal_distance stats.
+[ERROR] [1784627934.575475840] [tf2_buffer]: Do not call canTransform or lookupTransform with a timeout unless you are using another thread for populating data. Without a dedicated thread it will always timeout.  If you have a separate thread servicing tf messages, call setUsingDedicatedThread(true) on your Buffer instance.
+[ERROR] [1784627934.575548848] [dummy]: Exception in lookupTransform: "map" passed to lookupTransform argument target_frame does not exist. . TF lookup failed; cannot transform global path into costmap frame.
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp:840: Failure
+Expected: controller->computeVelocityCommands(pose, velocity, {}) doesn't throw an exception.
+  Actual: it throws.
+[INFO] [1784627934.575608240] [dummy]: MPPI speed limit updated: active=1 value=0.500 percentage=1. Received speed limit update; will combine with the current three-stage profile velocity constraints.
+[INFO] [1784627934.575617999] [dummy]: MPPI speed limit updated: active=1 value=0.500 percentage=0. Received speed limit update; will combine with the current three-stage profile velocity constraints.
+[INFO] [1784627934.575623159] [dummy]: MPPI speed limit updated: active=1 value=1.000 percentage=1. Received speed limit update; will combine with the current three-stage profile velocity constraints.
+[INFO] [1784627934.575628819] [MPPIController]: Deactivated MPPI Controller: dummy
+[INFO] [1784627934.576006283] [MPPIController]: Cleaned up MPPI Controller: dummy
+Warning: class_loader.ClassLoader: SEVERE WARNING!!! Attempting to unload library while objects created by this loader exist in the heap! You should delete your objects before attempting to unload the library or destroying the ClassLoader. The library will NOT be unloaded.
+         at line 127 in ./src/class_loader.cpp
+[INFO] [1784627934.578303306] [cost_map_node.cost_map_node]: Destroying
+[  FAILED  ] ControllerStateTransitionTest.ControllerNotFail (35 ms)
+[ RUN      ] ControllerStateTransitionTest.TangentMarkerContract
+[       OK ] ControllerStateTransitionTest.TangentMarkerContract (0 ms)
+[ RUN      ] ControllerStateTransitionTest.StartAlignmentOnlyRunsForTangentAndGoal
+[       OK ] ControllerStateTransitionTest.StartAlignmentOnlyRunsForTangentAndGoal (0 ms)
+[ RUN      ] ControllerStateTransitionTest.StartAndGoalCruiseNeverOutputAngularVelocity
+[       OK ] ControllerStateTransitionTest.StartAndGoalCruiseNeverOutputAngularVelocity (0 ms)
+[ RUN      ] ControllerStateTransitionTest.TerminalTranslationLiftPreservesVectorDirection
+[       OK ] ControllerStateTransitionTest.TerminalTranslationLiftPreservesVectorDirection (0 ms)
+[ RUN      ] ControllerStateTransitionTest.TerminalTranslationLiftRejectsZeroAndWrongDirection
+[       OK ] ControllerStateTransitionTest.TerminalTranslationLiftRejectsZeroAndWrongDirection (0 ms)
+[ RUN      ] ControllerStateTransitionTest.TerminalTranslationLiftRespectsActiveSpeedLimit
+[       OK ] ControllerStateTransitionTest.TerminalTranslationLiftRespectsActiveSpeedLimit (0 ms)
+[ RUN      ] ControllerStateTransitionTest.GoalStartYawUsesGoalOrientationNotPathTangent
+[       OK ] ControllerStateTransitionTest.GoalStartYawUsesGoalOrientationNotPathTangent (0 ms)
+[ RUN      ] ControllerStateTransitionTest.ControllerFrameStartYawUsesArcLengthLookahead
+[       OK ] ControllerStateTransitionTest.ControllerFrameStartYawUsesArcLengthLookahead (0 ms)
+[ RUN      ] ControllerStateTransitionTest.RecoveryReplanKeepsSameNavigationTask
+[       OK ] ControllerStateTransitionTest.RecoveryReplanKeepsSameNavigationTask (0 ms)
+[ RUN      ] ControllerStateTransitionTest.StartRotationCommandRampsWithoutOdomResponse
+[       OK ] ControllerStateTransitionTest.StartRotationCommandRampsWithoutOdomResponse (0 ms)
+[ RUN      ] ControllerStateTransitionTest.FinalYawWaitsOnceThenRotatesContinuously
+[       OK ] ControllerStateTransitionTest.FinalYawWaitsOnceThenRotatesContinuously (0 ms)
+[ RUN      ] ControllerStateTransitionTest.TangentAlignmentCommandsNeverTranslate
+[INFO] [1784627934.581167913] [MPPIController]: tangent 起点阶段：start_stop -> start_yaw_align
+[       OK ] ControllerStateTransitionTest.TangentAlignmentCommandsNeverTranslate (0 ms)
+[ RUN      ] ControllerStateTransitionTest.TangentAlignmentBrakesBeforeYawTarget
+[       OK ] ControllerStateTransitionTest.TangentAlignmentBrakesBeforeYawTarget (0 ms)
+[----------] 42 tests from ControllerStateTransitionTest (36 ms total)
+
+[----------] Global test environment tear-down
+[==========] 42 tests from 1 test suite ran. (36 ms total)
+[  PASSED  ] 41 tests.
+[  FAILED  ] 1 test, listed below:
+[  FAILED  ] ControllerStateTransitionTest.ControllerNotFail
+
+ 1 FAILED TEST
+-- run_test.py: return code 1
+-- run_test.py: inject classname prefix into gtest result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/controller_state_transition_test.gtest.xml'
+-- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/controller_state_transition_test.gtest.xml'
+
+
+0% tests passed, 1 tests failed out of 1
+
+Label Time Summary:
+gtest    =   0.20 sec*proc (1 test)
+
+Total Test time (real) =   0.20 sec
+
+The following tests FAILED:
+	  7 - controller_state_transition_test (Failed)
+Errors while running CTest

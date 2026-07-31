@@ -1,0 +1,1135 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Site BuildName="(empty)"
+	BuildStamp="20260721-0826-Experimental"
+	Name="dex-TX-Gaming-FA608UH-FA608UH"
+	Generator="ctest-3.22.1"
+	CompilerName="/usr/bin/c++"
+	CompilerVersion="11.4.0"
+	OSName="Linux"
+	Hostname="dex-TX-Gaming-FA608UH-FA608UH"
+	OSRelease="6.8.0-124-generic"
+	OSVersion="#124~22.04.1-Ubuntu SMP PREEMPT_DYNAMIC Tue May 26 21:05:19 UTC "
+	OSPlatform="x86_64"
+	Is64Bits="1"
+	VendorString="AuthenticAMD"
+	VendorID="Advanced Micro Devices"
+	FamilyID="25"
+	ModelID="117"
+	ProcessorCacheSize="1024"
+	NumberOfLogicalCPU="16"
+	NumberOfPhysicalCPU="8"
+	TotalVirtualMemory="16383"
+	TotalPhysicalMemory="15266"
+	LogicalProcessorsPerPhysical="2"
+	ProcessorClockFrequency="4327.69"
+	>
+	<Testing>
+		<StartDateTime>Jul 21 16:26 CST</StartDateTime>
+		<StartTestTime>1784622379</StartTestTime>
+		<TestList>
+			<Test>./cppcheck</Test>
+			<Test>./cpplint</Test>
+			<Test>./lint_cmake</Test>
+			<Test>./uncrustify</Test>
+			<Test>./xmllint</Test>
+			<Test>./test/optimizer_smoke_test</Test>
+			<Test>./test/controller_state_transition_test</Test>
+			<Test>./test/models_test</Test>
+			<Test>./test/noise_generator_test</Test>
+			<Test>./test/parameter_handler_test</Test>
+			<Test>./test/motion_model_tests</Test>
+			<Test>./test/trajectory_visualizer_tests</Test>
+			<Test>./test/utils_test</Test>
+			<Test>./test/path_handler_test</Test>
+			<Test>./test/critic_manager_test</Test>
+			<Test>./test/optimizer_unit_tests</Test>
+			<Test>./test/critics_tests</Test>
+		</TestList>
+		<Test Status="passed">
+			<Name>cppcheck</Name>
+			<Path>.</Path>
+			<FullName>./cppcheck</FullName>
+			<FullCommandLine>/usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/cppcheck.xunit.xml" "--package-name" "nav2_mppi_controller" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/ament_cppcheck/cppcheck.txt" "--command" "/opt/ros/humble/bin/ament_cppcheck" "--xunit-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/cppcheck.xunit.xml" "--include_dirs" "/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include"</FullCommandLine>
+			<Results>
+				<NamedMeasurement type="numeric/double" name="Execution Time">
+					<Value>0.110308</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="numeric/double" name="Processors">
+					<Value>1</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Completion Status">
+					<Value>Completed</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Command Line">
+					<Value>/usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/cppcheck.xunit.xml" "--package-name" "nav2_mppi_controller" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/ament_cppcheck/cppcheck.txt" "--command" "/opt/ros/humble/bin/ament_cppcheck" "--xunit-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/cppcheck.xunit.xml" "--include_dirs" "/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include"</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Environment">
+					<Value>#CTEST_RESOURCE_GROUP_COUNT=</Value>
+				</NamedMeasurement>
+				<Measurement>
+					<Value>-- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller':
+ - /opt/ros/humble/bin/ament_cppcheck --xunit-file /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/cppcheck.xunit.xml --include_dirs /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include
+cppcheck 2.7 has known performance issues and therefore will not be used, set the AMENT_CPPCHECK_ALLOW_SLOW_VERSIONS environment variable to override this.
+-- run_test.py: return code 0
+-- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/cppcheck.xunit.xml'
+</Value>
+				</Measurement>
+			</Results>
+			<Labels>
+				<Label>cppcheck</Label>
+				<Label>linter</Label>
+			</Labels>
+		</Test>
+		<Test Status="failed">
+			<Name>cpplint</Name>
+			<Path>.</Path>
+			<FullName>./cpplint</FullName>
+			<FullCommandLine>/usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/cpplint.xunit.xml" "--package-name" "nav2_mppi_controller" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/ament_cpplint/cpplint.txt" "--command" "/opt/ros/humble/bin/ament_cpplint" "--xunit-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/cpplint.xunit.xml"</FullCommandLine>
+			<Results>
+				<NamedMeasurement type="text/string" name="Exit Code">
+					<Value>Failed</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Exit Value">
+					<Value>1</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="numeric/double" name="Execution Time">
+					<Value>1.74419</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="numeric/double" name="Processors">
+					<Value>1</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Completion Status">
+					<Value>Completed</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Command Line">
+					<Value>/usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/cpplint.xunit.xml" "--package-name" "nav2_mppi_controller" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/ament_cpplint/cpplint.txt" "--command" "/opt/ros/humble/bin/ament_cpplint" "--xunit-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/cpplint.xunit.xml"</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Environment">
+					<Value>#CTEST_RESOURCE_GROUP_COUNT=</Value>
+				</NamedMeasurement>
+				<Measurement>
+					<Value>-- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller':
+ - /opt/ros/humble/bin/ament_cpplint --xunit-file /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/cpplint.xunit.xml
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/controller.cpp:423:  Lines should be &lt;= 100 characters long  [whitespace/line_length] [2]
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/controller.cpp:427:  Lines should be &lt;= 100 characters long  [whitespace/line_length] [2]
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/controller.cpp:791:  Lines should be &lt;= 100 characters long  [whitespace/line_length] [2]
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/controller.cpp:975:  If an else has a brace on one side, it should have it on both  [readability/braces] [5]
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/critics/path_angle_critic.cpp:19:  Found C system header after C++ system header. Should be: path_angle_critic.h, c system, c++ system, other.  [build/include_order] [4]
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/optimizer.cpp:210:  Lines should be &lt;= 100 characters long  [whitespace/line_length] [2]
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/optimizer.cpp:231:  Lines should be &lt;= 100 characters long  [whitespace/line_length] [2]
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/optimizer.cpp:537:  Lines should be &lt;= 100 characters long  [whitespace/line_length] [2]
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/optimizer.cpp:654:  Lines should be &lt;= 100 characters long  [whitespace/line_length] [2]
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/path_handler.cpp:24:  Found C++ system header after other header. Should be: path_handler.h, c system, c++ system, other.  [build/include_order] [4]
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/path_handler.cpp:25:  Found C++ system header after other header. Should be: path_handler.h, c system, c++ system, other.  [build/include_order] [4]
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/path_handler.cpp:26:  Found C++ system header after other header. Should be: path_handler.h, c system, c++ system, other.  [build/include_order] [4]
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/path_handler.cpp:98:  Lines should be &lt;= 100 characters long  [whitespace/line_length] [2]
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/path_handler.cpp:141:  Lines should be &lt;= 100 characters long  [whitespace/line_length] [2]
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/path_handler.cpp:191:  Lines should be &lt;= 100 characters long  [whitespace/line_length] [2]
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/path_handler.cpp:215:  Lines should be &lt;= 100 characters long  [whitespace/line_length] [2]
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/path_handler.cpp:261:  Lines should be &lt;= 100 characters long  [whitespace/line_length] [2]
+Not using '--root'
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/benchmark/controller_benchmark.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/benchmark/optimizer_benchmark.cpp
+
+Using '--root=/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include' argument
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/controller.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/critic_data.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/critic_function.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/critic_manager.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/critics/angular_velocity_critic.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/critics/constraint_critic.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/critics/cost_critic.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/critics/goal_angle_critic.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/critics/goal_critic.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/critics/goal_lateral_critic.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/critics/goal_longitudinal_critic.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/critics/linear_velocity_critic.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/critics/obstacles_critic.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/critics/path_align_critic.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/critics/path_align_legacy_critic.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/critics/path_angle_critic.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/critics/path_follow_critic.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/critics/prefer_forward_critic.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/critics/twirling_critic.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/critics/velocity_deadband_critic.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/models/constraints.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/models/control_sequence.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/models/optimizer_settings.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/models/path.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/models/state.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/models/trajectories.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/motion_models.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/optimizer.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/tools/eigen_types.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/tools/noise_generator.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/tools/parameters_handler.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/tools/path_handler.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/tools/trajectory_visualizer.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/include/nav2_mppi_controller/tools/utils.hpp
+
+Using '--root=/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src' argument
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/controller.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/critic_manager.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/critics/angular_velocity_critic.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/critics/constraint_critic.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/critics/cost_critic.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/critics/goal_angle_critic.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/critics/goal_critic.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/critics/goal_lateral_critic.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/critics/goal_longitudinal_critic.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/critics/linear_velocity_critic.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/critics/obstacles_critic.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/critics/path_align_critic.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/critics/path_align_legacy_critic.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/critics/path_angle_critic.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/critics/path_follow_critic.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/critics/prefer_forward_critic.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/critics/twirling_critic.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/critics/velocity_deadband_critic.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/noise_generator.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/optimizer.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/parameters_handler.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/path_handler.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/trajectory_visualizer.cpp
+
+Using '--root=/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test' argument
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/controller_state_transition_test.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/critic_manager_test.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/critics_tests.cpp
+
+Category 'build/include_order' errors found: 4
+Category 'readability/braces' errors found: 1
+Category 'whitespace/line_length' errors found: 12
+Total errors found: 17
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/models_test.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/motion_model_tests.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/noise_generator_test.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/optimizer_smoke_test.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/optimizer_unit_tests.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/parameter_handler_test.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/path_handler_test.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/trajectory_visualizer_tests.cpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/utils/factory.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/utils/models.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/utils/utils.hpp
+
+Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/utils_test.cpp
+
+-- run_test.py: return code 1
+-- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/cpplint.xunit.xml'
+</Value>
+				</Measurement>
+			</Results>
+			<Labels>
+				<Label>cpplint</Label>
+				<Label>linter</Label>
+			</Labels>
+		</Test>
+		<Test Status="passed">
+			<Name>lint_cmake</Name>
+			<Path>.</Path>
+			<FullName>./lint_cmake</FullName>
+			<FullCommandLine>/usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/lint_cmake.xunit.xml" "--package-name" "nav2_mppi_controller" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/ament_lint_cmake/lint_cmake.txt" "--command" "/opt/ros/humble/bin/ament_lint_cmake" "--xunit-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/lint_cmake.xunit.xml"</FullCommandLine>
+			<Results>
+				<NamedMeasurement type="numeric/double" name="Execution Time">
+					<Value>0.0922005</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="numeric/double" name="Processors">
+					<Value>1</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Completion Status">
+					<Value>Completed</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Command Line">
+					<Value>/usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/lint_cmake.xunit.xml" "--package-name" "nav2_mppi_controller" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/ament_lint_cmake/lint_cmake.txt" "--command" "/opt/ros/humble/bin/ament_lint_cmake" "--xunit-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/lint_cmake.xunit.xml"</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Environment">
+					<Value>#CTEST_RESOURCE_GROUP_COUNT=</Value>
+				</NamedMeasurement>
+				<Measurement>
+					<Value>-- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller':
+ - /opt/ros/humble/bin/ament_lint_cmake --xunit-file /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/lint_cmake.xunit.xml
+
+No problems found
+-- run_test.py: return code 0
+-- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/lint_cmake.xunit.xml'
+</Value>
+				</Measurement>
+			</Results>
+			<Labels>
+				<Label>lint_cmake</Label>
+				<Label>linter</Label>
+			</Labels>
+		</Test>
+		<Test Status="failed">
+			<Name>uncrustify</Name>
+			<Path>.</Path>
+			<FullName>./uncrustify</FullName>
+			<FullCommandLine>/usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/uncrustify.xunit.xml" "--package-name" "nav2_mppi_controller" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/ament_uncrustify/uncrustify.txt" "--command" "/opt/ros/humble/bin/ament_uncrustify" "--xunit-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/uncrustify.xunit.xml"</FullCommandLine>
+			<Results>
+				<NamedMeasurement type="text/string" name="Exit Code">
+					<Value>Failed</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Exit Value">
+					<Value>1</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="numeric/double" name="Execution Time">
+					<Value>0.422325</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="numeric/double" name="Processors">
+					<Value>1</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Completion Status">
+					<Value>Completed</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Command Line">
+					<Value>/usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/uncrustify.xunit.xml" "--package-name" "nav2_mppi_controller" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/ament_uncrustify/uncrustify.txt" "--command" "/opt/ros/humble/bin/ament_uncrustify" "--xunit-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/uncrustify.xunit.xml"</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Environment">
+					<Value>#CTEST_RESOURCE_GROUP_COUNT=</Value>
+				</NamedMeasurement>
+				<Measurement>
+					<Value>-- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller':
+ - /opt/ros/humble/bin/ament_uncrustify --xunit-file /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/uncrustify.xunit.xml
+Code style divergence in file 'src/controller.cpp':
+
+--- src/controller.cpp
++++ src/controller.cpp.uncrustify
+@@ -2012,3 +2012,4 @@
+-         std::abs(shortestAngularDistance(
+-           tf2::getYaw(tangent_goal_pose_.orientation),
+-           tf2::getYaw(goal.orientation))) &lt;= tangent_goal_yaw_tolerance_;
++         std::abs(
++    shortestAngularDistance(
++      tf2::getYaw(tangent_goal_pose_.orientation),
++      tf2::getYaw(goal.orientation))) &lt;= tangent_goal_yaw_tolerance_;
+
+Code style divergence in file 'src/critics/path_align_critic.cpp':
+
+--- src/critics/path_align_critic.cpp
++++ src/critics/path_align_critic.cpp.uncrustify
+@@ -45,2 +45 @@
+-  if (!enabled_ || weight_ &lt;= 0.0f)
+-  {
++  if (!enabled_ || weight_ &lt;= 0.0f) {
+
+Code style divergence in file 'src/critics/path_follow_critic.cpp':
+
+--- src/critics/path_follow_critic.cpp
++++ src/critics/path_follow_critic.cpp.uncrustify
+@@ -35,2 +35 @@
+-  if (!enabled_ || weight_ &lt;= 0.0f || data.path.x.size() &lt; 2)
+-  {
++  if (!enabled_ || weight_ &lt;= 0.0f || data.path.x.size() &lt; 2) {
+
+Code style divergence in file 'src/critics/prefer_forward_critic.cpp':
+
+--- src/critics/prefer_forward_critic.cpp
++++ src/critics/prefer_forward_critic.cpp.uncrustify
+@@ -34,2 +34 @@
+-  if (!enabled_ || weight_ &lt;= 0.0f)
+-  {
++  if (!enabled_ || weight_ &lt;= 0.0f) {
+
+Code style divergence in file 'test/controller_state_transition_test.cpp':
+
+--- test/controller_state_transition_test.cpp
++++ test/controller_state_transition_test.cpp.uncrustify
+@@ -834 +834,2 @@
+-  EXPECT_TRUE(TangentTestableMPPIController::liftTerminalTranslationCommand(
++  EXPECT_TRUE(
++    TangentTestableMPPIController::liftTerminalTranslationCommand(
+@@ -848 +849,2 @@
+-  EXPECT_FALSE(TangentTestableMPPIController::liftTerminalTranslationCommand(
++  EXPECT_FALSE(
++    TangentTestableMPPIController::liftTerminalTranslationCommand(
+@@ -853 +855,2 @@
+-  EXPECT_FALSE(TangentTestableMPPIController::liftTerminalTranslationCommand(
++  EXPECT_FALSE(
++    TangentTestableMPPIController::liftTerminalTranslationCommand(
+@@ -867 +870,2 @@
+-  EXPECT_TRUE(TangentTestableMPPIController::liftTerminalTranslationCommand(
++  EXPECT_TRUE(
++    TangentTestableMPPIController::liftTerminalTranslationCommand(
+
+5 files with code style divergence
+No code style divergence in file 'benchmark/controller_benchmark.cpp'
+
+No code style divergence in file 'benchmark/optimizer_benchmark.cpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/controller.hpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/critic_data.hpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/critic_function.hpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/critic_manager.hpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/critics/angular_velocity_critic.hpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/critics/constraint_critic.hpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/critics/cost_critic.hpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/critics/goal_angle_critic.hpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/critics/goal_critic.hpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/critics/goal_lateral_critic.hpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/critics/goal_longitudinal_critic.hpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/critics/linear_velocity_critic.hpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/critics/obstacles_critic.hpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/critics/path_align_critic.hpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/critics/path_align_legacy_critic.hpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/critics/path_angle_critic.hpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/critics/path_follow_critic.hpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/critics/prefer_forward_critic.hpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/critics/twirling_critic.hpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/critics/velocity_deadband_critic.hpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/models/constraints.hpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/models/control_sequence.hpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/models/optimizer_settings.hpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/models/path.hpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/models/state.hpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/models/trajectories.hpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/motion_models.hpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/optimizer.hpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/tools/eigen_types.hpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/tools/noise_generator.hpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/tools/parameters_handler.hpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/tools/path_handler.hpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/tools/trajectory_visualizer.hpp'
+
+No code style divergence in file 'include/nav2_mppi_controller/tools/utils.hpp'
+
+No code style divergence in file 'src/critic_manager.cpp'
+
+No code style divergence in file 'src/critics/angular_velocity_critic.cpp'
+
+No code style divergence in file 'src/critics/constraint_critic.cpp'
+
+No code style divergence in file 'src/critics/cost_critic.cpp'
+
+No code style divergence in file 'src/critics/goal_angle_critic.cpp'
+
+No code style divergence in file 'src/critics/goal_critic.cpp'
+
+No code style divergence in file 'src/critics/goal_lateral_critic.cpp'
+
+No code style divergence in file 'src/critics/goal_longitudinal_critic.cpp'
+
+No code style divergence in file 'src/critics/linear_velocity_critic.cpp'
+
+No code style divergence in file 'src/critics/obstacles_critic.cpp'
+
+No code style divergence in file 'src/critics/path_align_legacy_critic.cpp'
+
+No code style divergence in file 'src/critics/path_angle_critic.cpp'
+
+No code style divergence in file 'src/critics/twirling_critic.cpp'
+
+No code style divergence in file 'src/critics/velocity_deadband_critic.cpp'
+
+No code style divergence in file 'src/noise_generator.cpp'
+
+No code style divergence in file 'src/optimizer.cpp'
+
+No code style divergence in file 'src/parameters_handler.cpp'
+
+No code style divergence in file 'src/path_handler.cpp'
+
+No code style divergence in file 'src/trajectory_visualizer.cpp'
+
+No code style divergence in file 'test/critic_manager_test.cpp'
+
+No code style divergence in file 'test/critics_tests.cpp'
+
+No code style divergence in file 'test/models_test.cpp'
+
+No code style divergence in file 'test/motion_model_tests.cpp'
+
+No code style divergence in file 'test/noise_generator_test.cpp'
+
+No code style divergence in file 'test/optimizer_smoke_test.cpp'
+
+No code style divergence in file 'test/optimizer_unit_tests.cpp'
+
+No code style divergence in file 'test/parameter_handler_test.cpp'
+
+No code style divergence in file 'test/path_handler_test.cpp'
+
+No code style divergence in file 'test/trajectory_visualizer_tests.cpp'
+
+No code style divergence in file 'test/utils/factory.hpp'
+
+No code style divergence in file 'test/utils/models.hpp'
+
+No code style divergence in file 'test/utils/utils.hpp'
+
+No code style divergence in file 'test/utils_test.cpp'
+
+-- run_test.py: return code 1
+-- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/uncrustify.xunit.xml'
+</Value>
+				</Measurement>
+			</Results>
+			<Labels>
+				<Label>linter</Label>
+				<Label>uncrustify</Label>
+			</Labels>
+		</Test>
+		<Test Status="failed">
+			<Name>xmllint</Name>
+			<Path>.</Path>
+			<FullName>./xmllint</FullName>
+			<FullCommandLine>/usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/xmllint.xunit.xml" "--package-name" "nav2_mppi_controller" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/ament_xmllint/xmllint.txt" "--command" "/opt/ros/humble/bin/ament_xmllint" "--xunit-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/xmllint.xunit.xml"</FullCommandLine>
+			<Results>
+				<NamedMeasurement type="text/string" name="Exit Code">
+					<Value>Failed</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Exit Value">
+					<Value>1</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="numeric/double" name="Execution Time">
+					<Value>0.111326</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="numeric/double" name="Processors">
+					<Value>1</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Completion Status">
+					<Value>Completed</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Command Line">
+					<Value>/usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/xmllint.xunit.xml" "--package-name" "nav2_mppi_controller" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/ament_xmllint/xmllint.txt" "--command" "/opt/ros/humble/bin/ament_xmllint" "--xunit-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/xmllint.xunit.xml"</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Environment">
+					<Value>#CTEST_RESOURCE_GROUP_COUNT=</Value>
+				</NamedMeasurement>
+				<Measurement>
+					<Value>-- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller':
+ - /opt/ros/humble/bin/ament_xmllint --xunit-file /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/xmllint.xunit.xml
+File 'package.xml' is invalid:
+error : Unknown IO error
+warning: failed to load external entity "http://download.ros.org/schema/package_format3.xsd"
+Schemas parser error : Failed to locate the main schema resource at 'http://download.ros.org/schema/package_format3.xsd'.
+WXS schema http://download.ros.org/schema/package_format3.xsd failed to compile
+
+1 files are invalid
+File 'critics.xml' is valid
+
+File 'mppic.xml' is valid
+
+-- run_test.py: return code 1
+-- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/xmllint.xunit.xml'
+</Value>
+				</Measurement>
+			</Results>
+			<Labels>
+				<Label>linter</Label>
+				<Label>xmllint</Label>
+			</Labels>
+		</Test>
+		<Test Status="failed">
+			<Name>optimizer_smoke_test</Name>
+			<Path>./test</Path>
+			<FullName>./test/optimizer_smoke_test</FullName>
+			<FullCommandLine>/usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/optimizer_smoke_test.gtest.xml" "--package-name" "nav2_mppi_controller" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/ament_cmake_gtest/optimizer_smoke_test.txt" "--command" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/optimizer_smoke_test" "--gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/optimizer_smoke_test.gtest.xml"</FullCommandLine>
+			<Results>
+				<NamedMeasurement type="text/string" name="Exit Code">
+					<Value>Failed</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Exit Value">
+					<Value>1</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="numeric/double" name="Execution Time">
+					<Value>0.174693</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="numeric/double" name="Processors">
+					<Value>1</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Completion Status">
+					<Value>Completed</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Command Line">
+					<Value>/usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/optimizer_smoke_test.gtest.xml" "--package-name" "nav2_mppi_controller" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/ament_cmake_gtest/optimizer_smoke_test.txt" "--command" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/optimizer_smoke_test" "--gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/optimizer_smoke_test.gtest.xml"</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Environment">
+					<Value>#CTEST_RESOURCE_GROUP_COUNT=</Value>
+				</NamedMeasurement>
+				<Measurement>
+					<Value>-- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test':
+ - /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/optimizer_smoke_test --gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/optimizer_smoke_test.gtest.xml
+terminate called after throwing an instance of 'spdlog::spdlog_ex'
+  what():  Failed opening file /home/dex/.ros/log/optimizer_smoke_test_42_1784622381671.log for writing: Read-only file system
+-- run_test.py: return code -6
+-- run_test.py: generate result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/optimizer_smoke_test.gtest.xml' with failed test
+-- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/optimizer_smoke_test.gtest.xml'
+</Value>
+				</Measurement>
+			</Results>
+			<Labels>
+				<Label>gtest</Label>
+			</Labels>
+		</Test>
+		<Test Status="failed">
+			<Name>controller_state_transition_test</Name>
+			<Path>./test</Path>
+			<FullName>./test/controller_state_transition_test</FullName>
+			<FullCommandLine>/usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/controller_state_transition_test.gtest.xml" "--package-name" "nav2_mppi_controller" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/ament_cmake_gtest/controller_state_transition_test.txt" "--command" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/controller_state_transition_test" "--gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/controller_state_transition_test.gtest.xml"</FullCommandLine>
+			<Results>
+				<NamedMeasurement type="text/string" name="Exit Code">
+					<Value>Failed</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Exit Value">
+					<Value>1</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="numeric/double" name="Execution Time">
+					<Value>0.166734</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="numeric/double" name="Processors">
+					<Value>1</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Completion Status">
+					<Value>Completed</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Command Line">
+					<Value>/usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/controller_state_transition_test.gtest.xml" "--package-name" "nav2_mppi_controller" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/ament_cmake_gtest/controller_state_transition_test.txt" "--command" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/controller_state_transition_test" "--gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/controller_state_transition_test.gtest.xml"</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Environment">
+					<Value>#CTEST_RESOURCE_GROUP_COUNT=</Value>
+				</NamedMeasurement>
+				<Measurement>
+					<Value>-- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test':
+ - /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/controller_state_transition_test --gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/controller_state_transition_test.gtest.xml
+terminate called after throwing an instance of 'spdlog::spdlog_ex'
+  what():  Failed opening file /home/dex/.ros/log/controller_state_transition_test_44_1784622381846.log for writing: Read-only file system
+-- run_test.py: return code -6
+-- run_test.py: generate result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/controller_state_transition_test.gtest.xml' with failed test
+-- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/controller_state_transition_test.gtest.xml'
+</Value>
+				</Measurement>
+			</Results>
+			<Labels>
+				<Label>gtest</Label>
+			</Labels>
+		</Test>
+		<Test Status="failed">
+			<Name>models_test</Name>
+			<Path>./test</Path>
+			<FullName>./test/models_test</FullName>
+			<FullCommandLine>/usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/models_test.gtest.xml" "--package-name" "nav2_mppi_controller" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/ament_cmake_gtest/models_test.txt" "--command" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/models_test" "--gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/models_test.gtest.xml"</FullCommandLine>
+			<Results>
+				<NamedMeasurement type="text/string" name="Exit Code">
+					<Value>Failed</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Exit Value">
+					<Value>1</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="numeric/double" name="Execution Time">
+					<Value>0.161654</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="numeric/double" name="Processors">
+					<Value>1</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Completion Status">
+					<Value>Completed</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Command Line">
+					<Value>/usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/models_test.gtest.xml" "--package-name" "nav2_mppi_controller" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/ament_cmake_gtest/models_test.txt" "--command" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/models_test" "--gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/models_test.gtest.xml"</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Environment">
+					<Value>#CTEST_RESOURCE_GROUP_COUNT=</Value>
+				</NamedMeasurement>
+				<Measurement>
+					<Value>-- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test':
+ - /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/models_test --gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/models_test.gtest.xml
+terminate called after throwing an instance of 'spdlog::spdlog_ex'
+  what():  Failed opening file /home/dex/.ros/log/models_test_46_1784622382008.log for writing: Read-only file system
+-- run_test.py: return code -6
+-- run_test.py: generate result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/models_test.gtest.xml' with failed test
+-- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/models_test.gtest.xml'
+</Value>
+				</Measurement>
+			</Results>
+			<Labels>
+				<Label>gtest</Label>
+			</Labels>
+		</Test>
+		<Test Status="failed">
+			<Name>noise_generator_test</Name>
+			<Path>./test</Path>
+			<FullName>./test/noise_generator_test</FullName>
+			<FullCommandLine>/usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/noise_generator_test.gtest.xml" "--package-name" "nav2_mppi_controller" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/ament_cmake_gtest/noise_generator_test.txt" "--command" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/noise_generator_test" "--gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/noise_generator_test.gtest.xml"</FullCommandLine>
+			<Results>
+				<NamedMeasurement type="text/string" name="Exit Code">
+					<Value>Failed</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Exit Value">
+					<Value>1</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="numeric/double" name="Execution Time">
+					<Value>0.166066</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="numeric/double" name="Processors">
+					<Value>1</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Completion Status">
+					<Value>Completed</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Command Line">
+					<Value>/usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/noise_generator_test.gtest.xml" "--package-name" "nav2_mppi_controller" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/ament_cmake_gtest/noise_generator_test.txt" "--command" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/noise_generator_test" "--gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/noise_generator_test.gtest.xml"</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Environment">
+					<Value>#CTEST_RESOURCE_GROUP_COUNT=</Value>
+				</NamedMeasurement>
+				<Measurement>
+					<Value>-- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test':
+ - /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/noise_generator_test --gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/noise_generator_test.gtest.xml
+terminate called after throwing an instance of 'spdlog::spdlog_ex'
+  what():  Failed opening file /home/dex/.ros/log/noise_generator_test_48_1784622382173.log for writing: Read-only file system
+-- run_test.py: return code -6
+-- run_test.py: generate result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/noise_generator_test.gtest.xml' with failed test
+-- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/noise_generator_test.gtest.xml'
+</Value>
+				</Measurement>
+			</Results>
+			<Labels>
+				<Label>gtest</Label>
+			</Labels>
+		</Test>
+		<Test Status="failed">
+			<Name>parameter_handler_test</Name>
+			<Path>./test</Path>
+			<FullName>./test/parameter_handler_test</FullName>
+			<FullCommandLine>/usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/parameter_handler_test.gtest.xml" "--package-name" "nav2_mppi_controller" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/ament_cmake_gtest/parameter_handler_test.txt" "--command" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/parameter_handler_test" "--gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/parameter_handler_test.gtest.xml"</FullCommandLine>
+			<Results>
+				<NamedMeasurement type="text/string" name="Exit Code">
+					<Value>Failed</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Exit Value">
+					<Value>1</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="numeric/double" name="Execution Time">
+					<Value>0.168532</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="numeric/double" name="Processors">
+					<Value>1</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Completion Status">
+					<Value>Completed</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Command Line">
+					<Value>/usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/parameter_handler_test.gtest.xml" "--package-name" "nav2_mppi_controller" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/ament_cmake_gtest/parameter_handler_test.txt" "--command" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/parameter_handler_test" "--gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/parameter_handler_test.gtest.xml"</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Environment">
+					<Value>#CTEST_RESOURCE_GROUP_COUNT=</Value>
+				</NamedMeasurement>
+				<Measurement>
+					<Value>-- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test':
+ - /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/parameter_handler_test --gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/parameter_handler_test.gtest.xml
+terminate called after throwing an instance of 'spdlog::spdlog_ex'
+  what():  Failed opening file /home/dex/.ros/log/parameter_handler_test_50_1784622382342.log for writing: Read-only file system
+-- run_test.py: return code -6
+-- run_test.py: generate result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/parameter_handler_test.gtest.xml' with failed test
+-- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/parameter_handler_test.gtest.xml'
+</Value>
+				</Measurement>
+			</Results>
+			<Labels>
+				<Label>gtest</Label>
+			</Labels>
+		</Test>
+		<Test Status="failed">
+			<Name>motion_model_tests</Name>
+			<Path>./test</Path>
+			<FullName>./test/motion_model_tests</FullName>
+			<FullCommandLine>/usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/motion_model_tests.gtest.xml" "--package-name" "nav2_mppi_controller" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/ament_cmake_gtest/motion_model_tests.txt" "--command" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/motion_model_tests" "--gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/motion_model_tests.gtest.xml"</FullCommandLine>
+			<Results>
+				<NamedMeasurement type="text/string" name="Exit Code">
+					<Value>Failed</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Exit Value">
+					<Value>1</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="numeric/double" name="Execution Time">
+					<Value>0.167311</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="numeric/double" name="Processors">
+					<Value>1</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Completion Status">
+					<Value>Completed</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Command Line">
+					<Value>/usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/motion_model_tests.gtest.xml" "--package-name" "nav2_mppi_controller" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/ament_cmake_gtest/motion_model_tests.txt" "--command" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/motion_model_tests" "--gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/motion_model_tests.gtest.xml"</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Environment">
+					<Value>#CTEST_RESOURCE_GROUP_COUNT=</Value>
+				</NamedMeasurement>
+				<Measurement>
+					<Value>-- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test':
+ - /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/motion_model_tests --gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/motion_model_tests.gtest.xml
+terminate called after throwing an instance of 'spdlog::spdlog_ex'
+  what():  Failed opening file /home/dex/.ros/log/motion_model_tests_52_1784622382510.log for writing: Read-only file system
+-- run_test.py: return code -6
+-- run_test.py: generate result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/motion_model_tests.gtest.xml' with failed test
+-- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/motion_model_tests.gtest.xml'
+</Value>
+				</Measurement>
+			</Results>
+			<Labels>
+				<Label>gtest</Label>
+			</Labels>
+		</Test>
+		<Test Status="failed">
+			<Name>trajectory_visualizer_tests</Name>
+			<Path>./test</Path>
+			<FullName>./test/trajectory_visualizer_tests</FullName>
+			<FullCommandLine>/usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/trajectory_visualizer_tests.gtest.xml" "--package-name" "nav2_mppi_controller" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/ament_cmake_gtest/trajectory_visualizer_tests.txt" "--command" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/trajectory_visualizer_tests" "--gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/trajectory_visualizer_tests.gtest.xml"</FullCommandLine>
+			<Results>
+				<NamedMeasurement type="text/string" name="Exit Code">
+					<Value>Failed</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Exit Value">
+					<Value>1</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="numeric/double" name="Execution Time">
+					<Value>0.171931</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="numeric/double" name="Processors">
+					<Value>1</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Completion Status">
+					<Value>Completed</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Command Line">
+					<Value>/usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/trajectory_visualizer_tests.gtest.xml" "--package-name" "nav2_mppi_controller" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/ament_cmake_gtest/trajectory_visualizer_tests.txt" "--command" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/trajectory_visualizer_tests" "--gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/trajectory_visualizer_tests.gtest.xml"</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Environment">
+					<Value>#CTEST_RESOURCE_GROUP_COUNT=</Value>
+				</NamedMeasurement>
+				<Measurement>
+					<Value>-- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test':
+ - /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/trajectory_visualizer_tests --gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/trajectory_visualizer_tests.gtest.xml
+terminate called after throwing an instance of 'spdlog::spdlog_ex'
+  what():  Failed opening file /home/dex/.ros/log/trajectory_visualizer_tests_54_1784622382678.log for writing: Read-only file system
+-- run_test.py: return code -6
+-- run_test.py: generate result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/trajectory_visualizer_tests.gtest.xml' with failed test
+-- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/trajectory_visualizer_tests.gtest.xml'
+</Value>
+				</Measurement>
+			</Results>
+			<Labels>
+				<Label>gtest</Label>
+			</Labels>
+		</Test>
+		<Test Status="failed">
+			<Name>utils_test</Name>
+			<Path>./test</Path>
+			<FullName>./test/utils_test</FullName>
+			<FullCommandLine>/usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/utils_test.gtest.xml" "--package-name" "nav2_mppi_controller" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/ament_cmake_gtest/utils_test.txt" "--command" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/utils_test" "--gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/utils_test.gtest.xml"</FullCommandLine>
+			<Results>
+				<NamedMeasurement type="text/string" name="Exit Code">
+					<Value>Failed</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Exit Value">
+					<Value>1</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="numeric/double" name="Execution Time">
+					<Value>0.167271</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="numeric/double" name="Processors">
+					<Value>1</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Completion Status">
+					<Value>Completed</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Command Line">
+					<Value>/usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/utils_test.gtest.xml" "--package-name" "nav2_mppi_controller" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/ament_cmake_gtest/utils_test.txt" "--command" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/utils_test" "--gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/utils_test.gtest.xml"</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Environment">
+					<Value>#CTEST_RESOURCE_GROUP_COUNT=</Value>
+				</NamedMeasurement>
+				<Measurement>
+					<Value>-- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test':
+ - /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/utils_test --gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/utils_test.gtest.xml
+terminate called after throwing an instance of 'spdlog::spdlog_ex'
+  what():  Failed opening file /home/dex/.ros/log/utils_test_56_1784622382848.log for writing: Read-only file system
+-- run_test.py: return code -6
+-- run_test.py: generate result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/utils_test.gtest.xml' with failed test
+-- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/utils_test.gtest.xml'
+</Value>
+				</Measurement>
+			</Results>
+			<Labels>
+				<Label>gtest</Label>
+			</Labels>
+		</Test>
+		<Test Status="failed">
+			<Name>path_handler_test</Name>
+			<Path>./test</Path>
+			<FullName>./test/path_handler_test</FullName>
+			<FullCommandLine>/usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/path_handler_test.gtest.xml" "--package-name" "nav2_mppi_controller" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/ament_cmake_gtest/path_handler_test.txt" "--command" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/path_handler_test" "--gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/path_handler_test.gtest.xml"</FullCommandLine>
+			<Results>
+				<NamedMeasurement type="text/string" name="Exit Code">
+					<Value>Failed</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Exit Value">
+					<Value>1</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="numeric/double" name="Execution Time">
+					<Value>0.168812</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="numeric/double" name="Processors">
+					<Value>1</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Completion Status">
+					<Value>Completed</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Command Line">
+					<Value>/usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/path_handler_test.gtest.xml" "--package-name" "nav2_mppi_controller" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/ament_cmake_gtest/path_handler_test.txt" "--command" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/path_handler_test" "--gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/path_handler_test.gtest.xml"</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Environment">
+					<Value>#CTEST_RESOURCE_GROUP_COUNT=</Value>
+				</NamedMeasurement>
+				<Measurement>
+					<Value>-- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test':
+ - /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/path_handler_test --gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/path_handler_test.gtest.xml
+terminate called after throwing an instance of 'spdlog::spdlog_ex'
+  what():  Failed opening file /home/dex/.ros/log/path_handler_test_58_1784622383017.log for writing: Read-only file system
+-- run_test.py: return code -6
+-- run_test.py: generate result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/path_handler_test.gtest.xml' with failed test
+-- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/path_handler_test.gtest.xml'
+</Value>
+				</Measurement>
+			</Results>
+			<Labels>
+				<Label>gtest</Label>
+			</Labels>
+		</Test>
+		<Test Status="failed">
+			<Name>critic_manager_test</Name>
+			<Path>./test</Path>
+			<FullName>./test/critic_manager_test</FullName>
+			<FullCommandLine>/usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/critic_manager_test.gtest.xml" "--package-name" "nav2_mppi_controller" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/ament_cmake_gtest/critic_manager_test.txt" "--command" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/critic_manager_test" "--gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/critic_manager_test.gtest.xml"</FullCommandLine>
+			<Results>
+				<NamedMeasurement type="text/string" name="Exit Code">
+					<Value>Failed</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Exit Value">
+					<Value>1</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="numeric/double" name="Execution Time">
+					<Value>0.169469</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="numeric/double" name="Processors">
+					<Value>1</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Completion Status">
+					<Value>Completed</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Command Line">
+					<Value>/usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/critic_manager_test.gtest.xml" "--package-name" "nav2_mppi_controller" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/ament_cmake_gtest/critic_manager_test.txt" "--command" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/critic_manager_test" "--gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/critic_manager_test.gtest.xml"</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Environment">
+					<Value>#CTEST_RESOURCE_GROUP_COUNT=</Value>
+				</NamedMeasurement>
+				<Measurement>
+					<Value>-- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test':
+ - /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/critic_manager_test --gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/critic_manager_test.gtest.xml
+terminate called after throwing an instance of 'spdlog::spdlog_ex'
+  what():  Failed opening file /home/dex/.ros/log/critic_manager_test_60_1784622383187.log for writing: Read-only file system
+-- run_test.py: return code -6
+-- run_test.py: generate result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/critic_manager_test.gtest.xml' with failed test
+-- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/critic_manager_test.gtest.xml'
+</Value>
+				</Measurement>
+			</Results>
+			<Labels>
+				<Label>gtest</Label>
+			</Labels>
+		</Test>
+		<Test Status="failed">
+			<Name>optimizer_unit_tests</Name>
+			<Path>./test</Path>
+			<FullName>./test/optimizer_unit_tests</FullName>
+			<FullCommandLine>/usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/optimizer_unit_tests.gtest.xml" "--package-name" "nav2_mppi_controller" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/ament_cmake_gtest/optimizer_unit_tests.txt" "--command" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/optimizer_unit_tests" "--gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/optimizer_unit_tests.gtest.xml"</FullCommandLine>
+			<Results>
+				<NamedMeasurement type="text/string" name="Exit Code">
+					<Value>Failed</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Exit Value">
+					<Value>1</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="numeric/double" name="Execution Time">
+					<Value>0.167547</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="numeric/double" name="Processors">
+					<Value>1</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Completion Status">
+					<Value>Completed</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Command Line">
+					<Value>/usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/optimizer_unit_tests.gtest.xml" "--package-name" "nav2_mppi_controller" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/ament_cmake_gtest/optimizer_unit_tests.txt" "--command" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/optimizer_unit_tests" "--gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/optimizer_unit_tests.gtest.xml"</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Environment">
+					<Value>#CTEST_RESOURCE_GROUP_COUNT=</Value>
+				</NamedMeasurement>
+				<Measurement>
+					<Value>-- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test':
+ - /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/optimizer_unit_tests --gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/optimizer_unit_tests.gtest.xml
+terminate called after throwing an instance of 'spdlog::spdlog_ex'
+  what():  Failed opening file /home/dex/.ros/log/optimizer_unit_tests_62_1784622383356.log for writing: Read-only file system
+-- run_test.py: return code -6
+-- run_test.py: generate result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/optimizer_unit_tests.gtest.xml' with failed test
+-- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/optimizer_unit_tests.gtest.xml'
+</Value>
+				</Measurement>
+			</Results>
+			<Labels>
+				<Label>gtest</Label>
+			</Labels>
+		</Test>
+		<Test Status="failed">
+			<Name>critics_tests</Name>
+			<Path>./test</Path>
+			<FullName>./test/critics_tests</FullName>
+			<FullCommandLine>/usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/critics_tests.gtest.xml" "--package-name" "nav2_mppi_controller" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/ament_cmake_gtest/critics_tests.txt" "--command" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/critics_tests" "--gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/critics_tests.gtest.xml"</FullCommandLine>
+			<Results>
+				<NamedMeasurement type="text/string" name="Exit Code">
+					<Value>Failed</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Exit Value">
+					<Value>1</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="numeric/double" name="Execution Time">
+					<Value>0.165205</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="numeric/double" name="Processors">
+					<Value>1</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Completion Status">
+					<Value>Completed</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Command Line">
+					<Value>/usr/bin/python3 "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/critics_tests.gtest.xml" "--package-name" "nav2_mppi_controller" "--output-file" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/ament_cmake_gtest/critics_tests.txt" "--command" "/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/critics_tests" "--gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/critics_tests.gtest.xml"</Value>
+				</NamedMeasurement>
+				<NamedMeasurement type="text/string" name="Environment">
+					<Value>#CTEST_RESOURCE_GROUP_COUNT=</Value>
+				</NamedMeasurement>
+				<Measurement>
+					<Value>-- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test':
+ - /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/critics_tests --gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/critics_tests.gtest.xml
+terminate called after throwing an instance of 'spdlog::spdlog_ex'
+  what():  Failed opening file /home/dex/.ros/log/critics_tests_64_1784622383525.log for writing: Read-only file system
+-- run_test.py: return code -6
+-- run_test.py: generate result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/critics_tests.gtest.xml' with failed test
+-- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/critics_tests.gtest.xml'
+</Value>
+				</Measurement>
+			</Results>
+			<Labels>
+				<Label>gtest</Label>
+			</Labels>
+		</Test>
+		<EndDateTime>Jul 21 16:26 CST</EndDateTime>
+		<EndTestTime>1784622383</EndTestTime>
+		<ElapsedMinutes>0</ElapsedMinutes>
+	</Testing>
+</Site>

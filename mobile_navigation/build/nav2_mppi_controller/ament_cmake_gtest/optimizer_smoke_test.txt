@@ -1,10 +1,165 @@
 -- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test':
  - /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/optimizer_smoke_test --gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/optimizer_smoke_test.gtest.xml
 
-terminate called after throwing an instance of 'spdlog::spdlog_ex'
-  what():  Failed opening file /home/dex/.ros/log/optimizer_smoke_test_35_1784285056571.log for writing: Read-only file system
+Running main() from /opt/ros/humble/src/gtest_vendor/src/gtest_main.cc
+[==========] Running 3 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 3 tests from OptimizerTests/OptimizerSuite
+[ RUN      ] OptimizerTests/OptimizerSuite.OptimizerTest/0
+getifaddrs: Operation not permitted
+getifaddrs: Operation not permitted
+getifaddrs: Operation not permitted
+[37;1m2026-07-22 12:09:50.707 [31;1m[[37;1mTRANSPORT_UDP[31;1m Error] [37mError creating socket: Operation not permitted[34;1m -> Function [36minit[m
+[37;1m2026-07-22 12:09:50.707 [31;1m[[37;1mRTPS_PARTICIPANT[31;1m Error] [37mUser transport failed to register.[34;1m -> Function [36mRTPSParticipantImpl[m
+[INFO] [1784693390.714731631] [cost_map_node.cost_map_node]: 
+	cost_map_node lifecycle node launched. 
+	Waiting on external lifecycle transitions to activate
+	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[INFO] [1784693390.715167335] [cost_map_node.cost_map_node]: Creating Costmap
+[INFO] [1784693390.715244048] [cost_map_node.cost_map_node]: Configuring
+[INFO] [1784693390.716734300] [cost_map_node.cost_map_node]: Using plugin "static_layer"
+[INFO] [1784693390.718457256] [cost_map_node.cost_map_node]: Subscribing to the map topic (/map) with transient local durability
+[INFO] [1784693390.719069258] [cost_map_node.cost_map_node]: Initialized plugin "static_layer"
+[INFO] [1784693390.719085248] [cost_map_node.cost_map_node]: Using plugin "obstacle_layer"
+[INFO] [1784693390.719165057] [cost_map_node.cost_map_node]: Subscribed to Topics: 
+[INFO] [1784693390.719200974] [cost_map_node.cost_map_node]: Initialized plugin "obstacle_layer"
+[INFO] [1784693390.719207406] [cost_map_node.cost_map_node]: Using plugin "inflation_layer"
+[INFO] [1784693390.719332549] [cost_map_node.cost_map_node]: Initialized plugin "inflation_layer"
+[WARN] [1784693390.724138500] [dummy]: Controller period is less then model dt, consider setting it equal
+[INFO] [1784693390.725242651] [dummy]: GoalCritic instantiated with 1 power and 5.000000 weight.
+[INFO] [1784693390.725266055] [dummy]: Critic loaded : mppi::critics::GoalCritic
+[INFO] [1784693390.725326207] [dummy]: GoalAngleCritic instantiated with 1 power, 3.000 weight, 2.000 wrong-way ratio and 0.050 rad direction deadband.
+[INFO] [1784693390.725338911] [dummy]: Critic loaded : mppi::critics::GoalAngleCritic
+[INFO] [1784693390.725406657] [dummy]: ObstaclesCritic instantiated with 1 power and 20.000000 / 1.500000 weights. Critic will collision check based on circular cost.
+[INFO] [1784693390.725413039] [dummy]: Critic loaded : mppi::critics::ObstaclesCritic
+[INFO] [1784693390.725474694] [dummy]: ReferenceTrajectoryCritic instantiated with 1 power and 10.000000 weight
+[INFO] [1784693390.725482769] [dummy]: Critic loaded : mppi::critics::PathAlignCritic
+[INFO] [1784693390.725522443] [dummy]: TwirlingCritic instantiated with 1 power and 10.000000 weight.
+[INFO] [1784693390.725530388] [dummy]: Critic loaded : mppi::critics::TwirlingCritic
+[INFO] [1784693390.725581163] [dummy]: Critic loaded : mppi::critics::PathFollowCritic
+[INFO] [1784693390.725618152] [dummy]: PreferForwardCritic instantiated with 1 power and 5.000000 weight.
+[INFO] [1784693390.725622971] [dummy]: Critic loaded : mppi::critics::PreferForwardCritic
+[INFO] [1784693390.726502142] [dummy]: Optimizer reset
 
 
--- run_test.py: return code -6
--- run_test.py: generate result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/optimizer_smoke_test.gtest.xml' with failed test
+--------------------OPTIMIZER OPTIONS-----------------------------
+Critics: GoalCritic GoalAngleCritic ObstaclesCritic PathAlignCritic TwirlingCritic PathFollowCritic PreferForwardCritic 
+Motion model: Omni
+Consider footprint: 1
+Iterations: 1
+Batch size: 400
+Time steps: 15
+Path points: 50
+
+-------------------------------------------------------------------
+
+Warning: class_loader.ClassLoader: SEVERE WARNING!!! Attempting to unload library while objects created by this loader exist in the heap! You should delete your objects before attempting to unload the library or destroying the ClassLoader. The library will NOT be unloaded.
+         at line 127 in ./src/class_loader.cpp
+[INFO] [1784693390.728911048] [cost_map_node.cost_map_node]: Destroying
+[       OK ] OptimizerTests/OptimizerSuite.OptimizerTest/0 (24 ms)
+[ RUN      ] OptimizerTests/OptimizerSuite.OptimizerTest/1
+getifaddrs: Operation not permitted
+[37;1m2026-07-22 12:09:50.731 [31;1m[[37;1mTRANSPORT_UDP[31;1m Error] [37mError creating socket: Operation not permitted[34;1m -> Function [36minit[m
+[37;1m2026-07-22 12:09:50.731 [31;1m[[37;1mRTPS_PARTICIPANT[31;1m Error] [37mUser transport failed to register.[34;1m -> Function [36mRTPSParticipantImpl[m
+[INFO] [1784693390.733700298] [cost_map_node.cost_map_node]: 
+	cost_map_node lifecycle node launched. 
+	Waiting on external lifecycle transitions to activate
+	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[INFO] [1784693390.733965703] [cost_map_node.cost_map_node]: Creating Costmap
+[INFO] [1784693390.734047245] [cost_map_node.cost_map_node]: Configuring
+[INFO] [1784693390.734505080] [cost_map_node.cost_map_node]: Using plugin "static_layer"
+[INFO] [1784693390.734616207] [cost_map_node.cost_map_node]: Subscribing to the map topic (/map) with transient local durability
+[INFO] [1784693390.734688833] [cost_map_node.cost_map_node]: Initialized plugin "static_layer"
+[INFO] [1784693390.734695185] [cost_map_node.cost_map_node]: Using plugin "obstacle_layer"
+[INFO] [1784693390.734731964] [cost_map_node.cost_map_node]: Subscribed to Topics: 
+[INFO] [1784693390.734739367] [cost_map_node.cost_map_node]: Initialized plugin "obstacle_layer"
+[INFO] [1784693390.734742593] [cost_map_node.cost_map_node]: Using plugin "inflation_layer"
+[INFO] [1784693390.734782949] [cost_map_node.cost_map_node]: Initialized plugin "inflation_layer"
+[WARN] [1784693390.736883509] [dummy]: Controller period is less then model dt, consider setting it equal
+[INFO] [1784693390.737181616] [dummy]: GoalCritic instantiated with 1 power and 5.000000 weight.
+[INFO] [1784693390.737223043] [dummy]: Critic loaded : mppi::critics::GoalCritic
+[INFO] [1784693390.737282875] [dummy]: GoalAngleCritic instantiated with 1 power, 3.000 weight, 2.000 wrong-way ratio and 0.050 rad direction deadband.
+[INFO] [1784693390.737295068] [dummy]: Critic loaded : mppi::critics::GoalAngleCritic
+[INFO] [1784693390.737380487] [dummy]: InflationCostCritic instantiated with 1 power and 300.000000 / 0.015000 weights. Critic will collision check based on circular cost.
+[INFO] [1784693390.737391968] [dummy]: Critic loaded : mppi::critics::CostCritic
+[INFO] [1784693390.737467590] [dummy]: PathAngleCritic instantiated with 1 power, 2.000 weight, 2.000 wrong-way ratio and 0.050 rad direction deadband. Reversing allowed.
+[INFO] [1784693390.737479592] [dummy]: Critic loaded : mppi::critics::PathAngleCritic
+[INFO] [1784693390.737515880] [dummy]: Critic loaded : mppi::critics::PathFollowCritic
+[INFO] [1784693390.737542069] [dummy]: PreferForwardCritic instantiated with 1 power and 5.000000 weight.
+[INFO] [1784693390.737546918] [dummy]: Critic loaded : mppi::critics::PreferForwardCritic
+[INFO] [1784693390.738017476] [dummy]: Optimizer reset
+
+
+--------------------OPTIMIZER OPTIONS-----------------------------
+Critics: GoalCritic GoalAngleCritic CostCritic PathAngleCritic PathFollowCritic PreferForwardCritic 
+Motion model: DiffDrive
+Consider footprint: 1
+Iterations: 1
+Batch size: 400
+Time steps: 15
+Path points: 50
+
+-------------------------------------------------------------------
+
+Warning: class_loader.ClassLoader: SEVERE WARNING!!! Attempting to unload library while objects created by this loader exist in the heap! You should delete your objects before attempting to unload the library or destroying the ClassLoader. The library will NOT be unloaded.
+         at line 127 in ./src/class_loader.cpp
+[INFO] [1784693390.740206722] [cost_map_node.cost_map_node]: Destroying
+[       OK ] OptimizerTests/OptimizerSuite.OptimizerTest/1 (11 ms)
+[ RUN      ] OptimizerTests/OptimizerSuite.OptimizerTest/2
+getifaddrs: Operation not permitted
+[37;1m2026-07-22 12:09:50.742 [31;1m[[37;1mTRANSPORT_UDP[31;1m Error] [37mError creating socket: Operation not permitted[34;1m -> Function [36minit[m
+[37;1m2026-07-22 12:09:50.742 [31;1m[[37;1mRTPS_PARTICIPANT[31;1m Error] [37mUser transport failed to register.[34;1m -> Function [36mRTPSParticipantImpl[m
+[INFO] [1784693390.744685412] [cost_map_node.cost_map_node]: 
+	cost_map_node lifecycle node launched. 
+	Waiting on external lifecycle transitions to activate
+	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[INFO] [1784693390.744944636] [cost_map_node.cost_map_node]: Creating Costmap
+[INFO] [1784693390.745009577] [cost_map_node.cost_map_node]: Configuring
+[INFO] [1784693390.745340765] [cost_map_node.cost_map_node]: Using plugin "static_layer"
+[INFO] [1784693390.745438398] [cost_map_node.cost_map_node]: Subscribing to the map topic (/map) with transient local durability
+[INFO] [1784693390.745503389] [cost_map_node.cost_map_node]: Initialized plugin "static_layer"
+[INFO] [1784693390.745509230] [cost_map_node.cost_map_node]: Using plugin "obstacle_layer"
+[INFO] [1784693390.745544365] [cost_map_node.cost_map_node]: Subscribed to Topics: 
+[INFO] [1784693390.745551639] [cost_map_node.cost_map_node]: Initialized plugin "obstacle_layer"
+[INFO] [1784693390.745554775] [cost_map_node.cost_map_node]: Using plugin "inflation_layer"
+[INFO] [1784693390.745594549] [cost_map_node.cost_map_node]: Initialized plugin "inflation_layer"
+[WARN] [1784693390.747127480] [dummy]: Controller period is less then model dt, consider setting it equal
+[INFO] [1784693390.747373389] [dummy]: GoalCritic instantiated with 1 power and 5.000000 weight.
+[INFO] [1784693390.747383709] [dummy]: Critic loaded : mppi::critics::GoalCritic
+[INFO] [1784693390.747415849] [dummy]: GoalAngleCritic instantiated with 1 power, 3.000 weight, 2.000 wrong-way ratio and 0.050 rad direction deadband.
+[INFO] [1784693390.747421820] [dummy]: Critic loaded : mppi::critics::GoalAngleCritic
+[INFO] [1784693390.747473887] [dummy]: ObstaclesCritic instantiated with 1 power and 20.000000 / 1.500000 weights. Critic will collision check based on circular cost.
+[INFO] [1784693390.747479377] [dummy]: Critic loaded : mppi::critics::ObstaclesCritic
+[INFO] [1784693390.747521295] [dummy]: PathAngleCritic instantiated with 1 power, 2.000 weight, 2.000 wrong-way ratio and 0.050 rad direction deadband. Reversing allowed.
+[INFO] [1784693390.747526204] [dummy]: Critic loaded : mppi::critics::PathAngleCritic
+[INFO] [1784693390.747553475] [dummy]: Critic loaded : mppi::critics::PathFollowCritic
+[INFO] [1784693390.747575797] [dummy]: PreferForwardCritic instantiated with 1 power and 5.000000 weight.
+[INFO] [1784693390.747579955] [dummy]: Critic loaded : mppi::critics::PreferForwardCritic
+[INFO] [1784693390.748024334] [dummy]: Optimizer reset
+
+
+--------------------OPTIMIZER OPTIONS-----------------------------
+Critics: GoalCritic GoalAngleCritic ObstaclesCritic PathAngleCritic PathFollowCritic PreferForwardCritic 
+Motion model: Ackermann
+Consider footprint: 1
+Iterations: 1
+Batch size: 400
+Time steps: 15
+Path points: 50
+
+-------------------------------------------------------------------
+
+Warning: class_loader.ClassLoader: SEVERE WARNING!!! Attempting to unload library while objects created by this loader exist in the heap! You should delete your objects before attempting to unload the library or destroying the ClassLoader. The library will NOT be unloaded.
+         at line 127 in ./src/class_loader.cpp
+[INFO] [1784693390.750605703] [cost_map_node.cost_map_node]: Destroying
+[       OK ] OptimizerTests/OptimizerSuite.OptimizerTest/2 (11 ms)
+[----------] 3 tests from OptimizerTests/OptimizerSuite (46 ms total)
+
+[----------] Global test environment tear-down
+[==========] 3 tests from 1 test suite ran. (46 ms total)
+[  PASSED  ] 3 tests.
+
+
+-- run_test.py: return code 0
+-- run_test.py: inject classname prefix into gtest result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/optimizer_smoke_test.gtest.xml'
 -- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/optimizer_smoke_test.gtest.xml'

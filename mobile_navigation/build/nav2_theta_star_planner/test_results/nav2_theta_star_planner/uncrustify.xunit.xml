@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite
+  name="nav2_theta_star_planner.uncrustify"
+  tests="17"
+  failures="4"
+  errors="0"
+  time="0.112"
+>
+  <testcase
+    name="include/nav2_theta_star_planner/curve_path_smoother.hpp"
+    classname="nav2_theta_star_planner.uncrustify"/>
+  <testcase
+    name="include/nav2_theta_star_planner/l1_spline_path.hpp"
+    classname="nav2_theta_star_planner.uncrustify"/>
+  <testcase
+    name="include/nav2_theta_star_planner/multi_layer_planner.hpp"
+    classname="nav2_theta_star_planner.uncrustify"/>
+  <testcase
+    name="include/nav2_theta_star_planner/node_theta_star.hpp"
+    classname="nav2_theta_star_planner.uncrustify"/>
+  <testcase
+    name="include/nav2_theta_star_planner/omni_path_smoother.hpp"
+    classname="nav2_theta_star_planner.uncrustify"/>
+  <testcase
+    name="include/nav2_theta_star_planner/swerve_steering_model.hpp"
+    classname="nav2_theta_star_planner.uncrustify"/>
+  <testcase
+    name="include/nav2_theta_star_planner/theta_star.hpp"
+    classname="nav2_theta_star_planner.uncrustify"/>
+  <testcase
+    name="include/nav2_theta_star_planner/theta_star_planner.hpp"
+    classname="nav2_theta_star_planner.uncrustify"/>
+  <testcase
+    name="src/curve_path_smoother.cpp"
+    classname="nav2_theta_star_planner.uncrustify"
+  >
+      <failure message="Diff with 13 lines"><![CDATA[--- src/curve_path_smoother.cpp
++++ src/curve_path_smoother.cpp.uncrustify
+@@ -144,4 +144,6 @@
+-  const int gx = static_cast<int>(std::floor((x - distance_map->origin_x) /
+-    distance_map->resolution));
+-  const int gy = static_cast<int>(std::floor((y - distance_map->origin_y) /
+-    distance_map->resolution));
++  const int gx = static_cast<int>(std::floor(
++      (x - distance_map->origin_x) /
++      distance_map->resolution));
++  const int gy = static_cast<int>(std::floor(
++      (y - distance_map->origin_y) /
++      distance_map->resolution));
+]]></failure>
+  </testcase>
+  <testcase
+    name="src/l1_spline_path.cpp"
+    classname="nav2_theta_star_planner.uncrustify"/>
+  <testcase
+    name="src/multi_layer_planner.cpp"
+    classname="nav2_theta_star_planner.uncrustify"/>
+  <testcase
+    name="src/node_theta_star.cpp"
+    classname="nav2_theta_star_planner.uncrustify"
+  >
+      <failure message="Diff with 7 lines"><![CDATA[--- src/node_theta_star.cpp
++++ src/node_theta_star.cpp.uncrustify
+@@ -370 +370,3 @@
+-    if (curr->id < 0 || static_cast<size_t>(curr->id) >= n || closed[static_cast<size_t>(curr->id)]) {
++    if (curr->id < 0 || static_cast<size_t>(curr->id) >= n ||
++      closed[static_cast<size_t>(curr->id)])
++    {
+]]></failure>
+  </testcase>
+  <testcase
+    name="src/omni_path_smoother.cpp"
+    classname="nav2_theta_star_planner.uncrustify"
+  >
+      <failure message="Diff with 23 lines"><![CDATA[--- src/omni_path_smoother.cpp
++++ src/omni_path_smoother.cpp.uncrustify
+@@ -64 +64,4 @@
+-  if (!isCellFree(costmap, static_cast<unsigned int>(cx), static_cast<unsigned int>(cy), allow_unknown)) {
++  if (!isCellFree(
++      costmap, static_cast<unsigned int>(cx), static_cast<unsigned int>(cy),
++      allow_unknown))
++  {
+@@ -92 +95,3 @@
+-        !isCellFree(costmap, static_cast<unsigned int>(cx + u_x), static_cast<unsigned int>(cy), allow_unknown) &&
++        !isCellFree(
++          costmap, static_cast<unsigned int>(cx + u_x), static_cast<unsigned int>(cy),
++          allow_unknown) &&
+@@ -127 +132,3 @@
+-        !isCellFree(costmap, static_cast<unsigned int>(cx), static_cast<unsigned int>(cy + u_y), allow_unknown) &&
++        !isCellFree(
++          costmap, static_cast<unsigned int>(cx), static_cast<unsigned int>(cy + u_y),
++          allow_unknown) &&
+@@ -140 +147,3 @@
+-  return isCellFree(costmap, static_cast<unsigned int>(x1i), static_cast<unsigned int>(y1i), allow_unknown);
++  return isCellFree(
++    costmap, static_cast<unsigned int>(x1i), static_cast<unsigned int>(y1i),
++    allow_unknown);
+]]></failure>
+  </testcase>
+  <testcase
+    name="src/swerve_steering_model.cpp"
+    classname="nav2_theta_star_planner.uncrustify"
+  >
+      <failure message="Diff with 6 lines"><![CDATA[--- src/swerve_steering_model.cpp
++++ src/swerve_steering_model.cpp.uncrustify
+@@ -129 +129,2 @@
+-    max_jump = std::max(max_jump, static_cast<double>(std::abs(angleDiff(chosen, prev_wheel_angle[i]))));
++    max_jump =
++      std::max(max_jump, static_cast<double>(std::abs(angleDiff(chosen, prev_wheel_angle[i]))));
+]]></failure>
+  </testcase>
+  <testcase
+    name="src/theta_star.cpp"
+    classname="nav2_theta_star_planner.uncrustify"/>
+  <testcase
+    name="src/theta_star_planner.cpp"
+    classname="nav2_theta_star_planner.uncrustify"/>
+  <testcase
+    name="test/test_theta_star.cpp"
+    classname="nav2_theta_star_planner.uncrustify"/>
+  <system-out>Checked files:
+* include/nav2_theta_star_planner/curve_path_smoother.hpp
+* include/nav2_theta_star_planner/l1_spline_path.hpp
+* include/nav2_theta_star_planner/multi_layer_planner.hpp
+* include/nav2_theta_star_planner/node_theta_star.hpp
+* include/nav2_theta_star_planner/omni_path_smoother.hpp
+* include/nav2_theta_star_planner/swerve_steering_model.hpp
+* include/nav2_theta_star_planner/theta_star.hpp
+* include/nav2_theta_star_planner/theta_star_planner.hpp
+* src/curve_path_smoother.cpp
+* src/l1_spline_path.cpp
+* src/multi_layer_planner.cpp
+* src/node_theta_star.cpp
+* src/omni_path_smoother.cpp
+* src/swerve_steering_model.cpp
+* src/theta_star.cpp
+* src/theta_star_planner.cpp
+* test/test_theta_star.cpp</system-out>
+</testsuite>

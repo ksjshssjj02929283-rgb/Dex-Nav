@@ -1,11 +1,10 @@
 -- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller':
  - /opt/ros/humble/bin/ament_cpplint --xunit-file /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/cpplint.xunit.xml
 
-/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/controller.cpp:322:  Lines should be <= 100 characters long  [whitespace/line_length] [2]
-/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/controller.cpp:326:  Lines should be <= 100 characters long  [whitespace/line_length] [2]
-/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/controller.cpp:615:  Lines should be <= 100 characters long  [whitespace/line_length] [2]
-/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/controller.cpp:733:  Lines should be <= 100 characters long  [whitespace/line_length] [2]
-/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/controller.cpp:813:  If an else has a brace on one side, it should have it on both  [readability/braces] [5]
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/controller.cpp:488:  Lines should be <= 100 characters long  [whitespace/line_length] [2]
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/controller.cpp:492:  Lines should be <= 100 characters long  [whitespace/line_length] [2]
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/controller.cpp:913:  Lines should be <= 100 characters long  [whitespace/line_length] [2]
+/home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/controller.cpp:1097:  If an else has a brace on one side, it should have it on both  [readability/braces] [5]
 /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/critics/path_angle_critic.cpp:19:  Found C system header after C++ system header. Should be: path_angle_critic.h, c system, c++ system, other.  [build/include_order] [4]
 /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/optimizer.cpp:210:  Lines should be <= 100 characters long  [whitespace/line_length] [2]
 /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/src/optimizer.cpp:231:  Lines should be <= 100 characters long  [whitespace/line_length] [2]
@@ -153,8 +152,8 @@ Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller
 
 Category 'build/include_order' errors found: 4
 Category 'readability/braces' errors found: 1
-Category 'whitespace/line_length' errors found: 13
-Total errors found: 18
+Category 'whitespace/line_length' errors found: 12
+Total errors found: 17
 Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/models_test.cpp
 
 Done processing /home/dex/dexe_mobile_nav/mobile_navigation/nav2_mppi_controller/test/motion_model_tests.cpp

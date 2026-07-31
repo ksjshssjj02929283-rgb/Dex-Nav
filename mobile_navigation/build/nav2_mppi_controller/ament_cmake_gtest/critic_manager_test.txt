@@ -1,10 +1,67 @@
 -- run_test.py: invoking following command in '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test':
  - /home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test/critic_manager_test --gtest_output=xml:/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/critic_manager_test.gtest.xml
 
-terminate called after throwing an instance of 'spdlog::spdlog_ex'
-  what():  Failed opening file /home/dex/.ros/log/critic_manager_test_53_1784285058122.log for writing: Read-only file system
+Running main() from /opt/ros/humble/src/gtest_vendor/src/gtest_main.cc
+[==========] Running 2 tests from 1 test suite.
+[----------] Global test environment set-up.
+[----------] 2 tests from CriticManagerTests
+[ RUN      ] CriticManagerTests.BasicCriticOperations
+getifaddrs: Operation not permitted
+getifaddrs: Operation not permitted
+getifaddrs: Operation not permitted
+[37;1m2026-07-22 12:09:52.293 [31;1m[[37;1mTRANSPORT_UDP[31;1m Error] [37mError creating socket: Operation not permitted[34;1m -> Function [36minit[m
+[37;1m2026-07-22 12:09:52.293 [31;1m[[37;1mRTPS_PARTICIPANT[31;1m Error] [37mUser transport failed to register.[34;1m -> Function [36mRTPSParticipantImpl[m
+[INFO] [1784693392.302248375] [dummy_costmap.dummy_costmap]: 
+	dummy_costmap lifecycle node launched. 
+	Waiting on external lifecycle transitions to activate
+	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[INFO] [1784693392.302741736] [dummy_costmap.dummy_costmap]: Creating Costmap
+[INFO] [1784693392.302844788] [dummy_costmap.dummy_costmap]: Configuring
+[INFO] [1784693392.304476243] [dummy_costmap.dummy_costmap]: Using plugin "static_layer"
+[INFO] [1784693392.306235367] [dummy_costmap.dummy_costmap]: Subscribing to the map topic (/map) with transient local durability
+[INFO] [1784693392.306752101] [dummy_costmap.dummy_costmap]: Initialized plugin "static_layer"
+[INFO] [1784693392.306762180] [dummy_costmap.dummy_costmap]: Using plugin "obstacle_layer"
+[INFO] [1784693392.306820889] [dummy_costmap.dummy_costmap]: Subscribed to Topics: 
+[INFO] [1784693392.306839825] [dummy_costmap.dummy_costmap]: Initialized plugin "obstacle_layer"
+[INFO] [1784693392.306843311] [dummy_costmap.dummy_costmap]: Using plugin "inflation_layer"
+[INFO] [1784693392.307083409] [dummy_costmap.dummy_costmap]: Initialized plugin "inflation_layer"
+Warning: class_loader.ClassLoader: SEVERE WARNING!!! Attempting to unload library while objects created by this loader exist in the heap! You should delete your objects before attempting to unload the library or destroying the ClassLoader. The library will NOT be unloaded.
+         at line 127 in ./src/class_loader.cpp
+[INFO] [1784693392.311209070] [dummy_costmap.dummy_costmap]: Destroying
+[       OK ] CriticManagerTests.BasicCriticOperations (21 ms)
+[ RUN      ] CriticManagerTests.CriticLoadingTest
+getifaddrs: Operation not permitted
+[37;1m2026-07-22 12:09:52.314 [31;1m[[37;1mTRANSPORT_UDP[31;1m Error] [37mError creating socket: Operation not permitted[34;1m -> Function [36minit[m
+[37;1m2026-07-22 12:09:52.314 [31;1m[[37;1mRTPS_PARTICIPANT[31;1m Error] [37mUser transport failed to register.[34;1m -> Function [36mRTPSParticipantImpl[m
+[INFO] [1784693392.317401199] [dummy_costmap.dummy_costmap]: 
+	dummy_costmap lifecycle node launched. 
+	Waiting on external lifecycle transitions to activate
+	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[INFO] [1784693392.317642890] [dummy_costmap.dummy_costmap]: Creating Costmap
+[INFO] [1784693392.317721557] [dummy_costmap.dummy_costmap]: Configuring
+[INFO] [1784693392.318176897] [dummy_costmap.dummy_costmap]: Using plugin "static_layer"
+[INFO] [1784693392.318319984] [dummy_costmap.dummy_costmap]: Subscribing to the map topic (/map) with transient local durability
+[INFO] [1784693392.318414200] [dummy_costmap.dummy_costmap]: Initialized plugin "static_layer"
+[INFO] [1784693392.318421273] [dummy_costmap.dummy_costmap]: Using plugin "obstacle_layer"
+[INFO] [1784693392.318462229] [dummy_costmap.dummy_costmap]: Subscribed to Topics: 
+[INFO] [1784693392.318472488] [dummy_costmap.dummy_costmap]: Initialized plugin "obstacle_layer"
+[INFO] [1784693392.318475684] [dummy_costmap.dummy_costmap]: Using plugin "inflation_layer"
+[INFO] [1784693392.318538942] [dummy_costmap.dummy_costmap]: Initialized plugin "inflation_layer"
+[INFO] [1784693392.320279381] [my_node]: ConstraintCritic instantiated with 1 power and 4.000000 weight.
+[INFO] [1784693392.320338382] [my_node]: Critic loaded : mppi::critics::ConstraintCritic
+[INFO] [1784693392.320372485] [my_node]: PreferForwardCritic instantiated with 1 power and 5.000000 weight.
+[INFO] [1784693392.320378086] [my_node]: Critic loaded : mppi::critics::PreferForwardCritic
+Warning: class_loader.ClassLoader: SEVERE WARNING!!! Attempting to unload library while objects created by this loader exist in the heap! You should delete your objects before attempting to unload the library or destroying the ClassLoader. The library will NOT be unloaded.
+         at line 127 in ./src/class_loader.cpp
+[INFO] [1784693392.321481034] [dummy_costmap.dummy_costmap]: Destroying
+[       OK ] CriticManagerTests.CriticLoadingTest (10 ms)
+[----------] 2 tests from CriticManagerTests (31 ms total)
+
+[----------] Global test environment tear-down
+[==========] 2 tests from 1 test suite ran. (31 ms total)
+[  PASSED  ] 2 tests.
 
 
--- run_test.py: return code -6
--- run_test.py: generate result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/critic_manager_test.gtest.xml' with failed test
+-- run_test.py: return code 0
+-- run_test.py: inject classname prefix into gtest result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/critic_manager_test.gtest.xml'
 -- run_test.py: verify result file '/home/dex/dexe_mobile_nav/mobile_navigation/build/nav2_mppi_controller/test_results/nav2_mppi_controller/critic_manager_test.gtest.xml'
