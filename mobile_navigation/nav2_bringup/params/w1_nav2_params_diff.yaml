@@ -108,7 +108,7 @@ controller_server:
       accel: 0.5
       decel: -0.4
       end_speed: 0.05
-      stop_distance: 0.05
+      stop_distance: 0.075
       collision_stop_distance: 0.2
       obstacle_cost_threshold: 254   # 254=LETHAL：path 点在障碍格内才停障（253 内切区会误伤贴障碍路径）
       obstacle_start_exempt_distance: 0.25  # 起点豁免：贴墙停放时自身在内切区，无豁免整条剖面被置零
@@ -126,7 +126,7 @@ controller_server:
       accel: 0.5
       decel: -0.4
       end_speed: 0.05
-      stop_distance: 0.05
+      stop_distance: 0.075
       collision_stop_distance: 0.2
       obstacle_cost_threshold: 254   # 254=LETHAL：path 点在障碍格内才停障（253 内切区会误伤贴障碍路径）
       obstacle_start_exempt_distance: 0.25  # 起点豁免：贴墙停放时自身在内切区，无豁免整条剖面被置零
@@ -141,7 +141,7 @@ controller_server:
       control_dt: 0.05
     staged_control:
       enabled: True
-      track_controller: "RPPController"
+      track_controller: "MPPIController"
       approach_controller: "PIDController"
       approach_distance: 0.3
       align_heading_tolerance: 0.26  # 30 deg
@@ -249,7 +249,7 @@ controller_server:
       batch_size: 1500
       vx_std: 0.25 # 0.2
       vy_std: 0.2
-      wz_std: 0.3 # 0.35 # 0.25 # 0.4
+      wz_std: 0.25 # 0.35 # 0.25 # 0.4
       vx_max: 0.8 # 基础速度约束；运行时会被三阶段 profile 覆盖
       vx_min: -0.5 # 基础倒车约束；运行时会被三阶段 profile 覆盖
       vy_max: 0.5 # DiffDrive 下通常不生效
@@ -370,7 +370,7 @@ controller_server:
         collision_cost: 100000.0
         collision_margin_distance: 0.05 # 0.1
         near_goal_distance: 0.5
-        inflation_radius: 0.3 # 0.75 # 0.55 # 0.6 # (only in Humble)
+        inflation_radius: 0.35 # 0.75 # 0.55 # 0.6 # (only in Humble)
         cost_scaling_factor: 10.0 # (only in Humble)
       CostCritic:
         enabled: true
@@ -752,7 +752,7 @@ local_costmap:
       width: 8 # 6
       height: 8 # 6
       resolution: 0.05
-      footprint: "[[0.35, 0.29], [0.35, -0.29], [-0.35, -0.29], [-0.35, 0.29]]" # 真实车体尺寸 0.70m(前后)×0.58m(左右)（此前旁边注释误写 0.95×0.55，该注释有误，实际车体就是这个尺寸，已更正）
+      footprint: "[[0.35, 0.35], [0.35, -0.35], [-0.35, -0.35], [-0.35, 0.35]]" # 真实车体尺寸 0.70m(前后)×0.58m(左右)（此前旁边注释误写 0.95×0.55，该注释有误，实际车体就是这个尺寸，已更正）
       # footprint: "[ [0.55, 0.35], [0.55, -0.35], [-0.55, -0.35], [-0.55, 0.35] ]" # 带 padding 的保守选项（1.10×0.70）
       # plugins: ["voxel_layer", "denoise_layer", "inflation_layer"]  output_topic: "control/cmd_vel_nav"
       plugins: ["static_layer", "obstacle_layer", "denoise_layer", "inflation_layer"]   
@@ -760,7 +760,7 @@ local_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 10.0
-        inflation_radius: 0.3 # 0.75 # 0.55
+        inflation_radius: 0.35 # 0.75 # 0.55
       denoise_layer:
         plugin: "nav2_costmap_2d::DenoiseLayer"
         enabled: True
@@ -850,7 +850,7 @@ global_costmap:
       robot_base_frame: base_link
       use_sim_time: False
       # footprint: "[ [0.55, 0.35], [0.55, -0.35], [-0.55, -0.35], [-0.55, 0.35] ]" # 带 padding 的保守选项（1.10×0.70）
-      footprint: "[[0.35, 0.29], [0.35, -0.29], [-0.35, -0.29], [-0.35, 0.29]]" # 真实车体尺寸 0.70m(前后)×0.58m(左右)（此前旁边注释误写 0.95×0.55，该注释有误，实际车体就是这个尺寸，已更正）
+      footprint: "[[0.35, 0.35], [0.35, -0.35], [-0.35, -0.35], [-0.35, 0.35]]" # 真实车体尺寸 0.70m(前后)×0.58m(左右)（此前旁边注释误写 0.95×0.55，该注释有误，实际车体就是这个尺寸，已更正）
       resolution: 0.05
       track_unknown_space: true   # 静态未知记录为 NO_INFORMATION(255)；配合 obstacle_layer combination_method:2 保住不被清除，规划器靠 allow_unknown:false 避开
       # plugins: ["static_layer", "obstacle_layer",  "denoise_layer", "inflation_layer"]
@@ -926,7 +926,7 @@ global_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 10.0
-        inflation_radius: 0.3 # 0.75 # 0.55
+        inflation_radius: 0.35 # 0.75 # 0.55
       keepout_filter:
         plugin: "nav2_costmap_2d::KeepoutFilter"
         enabled: True
@@ -934,7 +934,7 @@ global_costmap:
       keepout_inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         enabled: True
-        inflation_radius: 0.3
+        inflation_radius: 0.35
       speed_filter:
         plugin: "nav2_costmap_2d::SpeedFilter"
         enabled: True
@@ -1007,7 +1007,7 @@ planner_server:
                                          # 可选值：RouteGridPlanner / SmacGridBased / ThetaStarBased
     override_planner_id: true            # true: 忽略 BT planner_id，强制 active；
                                          # false: nav2 标准 fallback 语义
-    route_fallback_planner: "ThetaStarBased"  # RouteGridPlanner 无路网数据(地图未建路网)时退化到此自由规划器（Theta* 轻量直线族适合无路网自由空间，末端处置由 goal_line_interp 统一）
+    route_fallback_planner: "SmacGridBased"  # RouteGridPlanner 无路网数据(地图未建路网)时退化到此自由规划器（Theta* 轻量直线族适合无路网自由空间，末端处置由 goal_line_interp 统一）
 
     # ─── 规划器 1：路网（NavRouteGraphPlanner）────────────────────────
     RouteGridPlanner:
