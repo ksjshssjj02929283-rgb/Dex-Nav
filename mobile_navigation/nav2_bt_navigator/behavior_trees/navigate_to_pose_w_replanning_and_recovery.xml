@@ -78,7 +78,7 @@
 
 
       <!-- 局部控制 -->
-      <RecoveryNode number_of_retries="9999" name="FollowPathAfterBackUpRetry">
+      <RecoveryNode number_of_retries="1" name="FollowPathAfterBackUpRetry">
 
         <!-- 内层：FollowPath 失败后，尝试清 local，然后立即 FollowPath 1 次 -->
         <RecoveryNode number_of_retries="1" name="FollowPathInnerRetry">
@@ -90,7 +90,7 @@
           </ForceSuccess>
         </RecoveryNode>
 
-        <!-- 如果立即重试仍失败，则等待 1 秒、清 local、后退，然后继续重试局部控制 -->
+        <!-- 如果立即重试仍失败，则等待、清 local、后退；仅在后退成功后再重试一次 -->
         <Sequence name="WaitClearBackUpAfterFollowPathFailed">
           <Wait wait_duration="1" server_name="wait_local"/>
 
@@ -98,10 +98,8 @@
             <ClearEntireCostmap name="ClearLocalCostmap-BeforeBackUp"
               service_name="local_costmap/clear_entirely_local_costmap"/>
           </ForceSuccess>
-          <ForceSuccess>
-            <!-- <Wait wait_duration="1" server_name="wait_local"/> -->
-            <BackUp name="BackUpAfterLocalRetries" backup_dist="0.30" backup_speed="0.08" time_allowance="5"/>
-          </ForceSuccess>
+          <!-- BackUp 被碰撞检查拒绝时必须向上传播 FAILURE，禁止吞掉失败后重启 FollowPath。 -->
+          <BackUp name="BackUpAfterLocalRetries" backup_dist="0.30" backup_speed="0.08" time_allowance="5"/>
         </Sequence>
 
       </RecoveryNode>

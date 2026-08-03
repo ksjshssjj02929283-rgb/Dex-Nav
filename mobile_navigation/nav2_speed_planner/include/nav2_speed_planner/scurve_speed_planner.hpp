@@ -72,16 +72,32 @@ public:
     std::vector<double> & t_out,
     double v_end = 0.0);
 
+  /**
+   * @brief Convert end-to-end command execution delay into distance consumed
+   *        before physical braking can be credited.
+   *
+   * Negative planned acceleration is deliberately not credited here: it is a
+   * continuity target, not proof that the chassis has established the same
+   * deceleration. Positive acceleration is retained conservatively.
+   */
+  static double computeTerminalExecutionReserve(
+    double velocity, double planned_acceleration,
+    double execution_delay, double safety_margin);
+
 protected:
   /// Phase B：基类 Phase A 包络（含末端蠕行区）→ Ruckig jerk 限制剖面 → 回填
   /// work（速度/加速度/相对时间）。
   void assignVelocityProfile(
     std::vector<TrajPointWork> & work, double curr_vel, double curr_accel,
-    double cruise_limit) override;
+    double cruise_limit, bool terminal_brake_latched) override;
 
   // —— 参数 ——
   double max_jerk_{0.5};    ///< jerk 上限 (m/s^3)
   double control_dt_{0.05};  ///< Ruckig 在线步进控制周期 (s)
+  // Existing trajectory preview already compensates part of the control loop.
+  // Configure this as the measured residual target->chassis p99 delay.
+  double terminal_execution_delay_{0.0};
+  double terminal_safety_margin_{0.0};
 };
 
 }  // namespace nav2_speed_planner

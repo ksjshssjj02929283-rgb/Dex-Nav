@@ -7,9 +7,11 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstddef>
 #include <limits>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "nav2_util/node_utils.hpp"
@@ -288,6 +290,81 @@ bool generateReachableBrakingProfile(
   return true;
 }
 
+double computeStableBrakingDistance(
+  double v_start, double a_start, double a_max, double d_max,
+  double max_jerk, double ctrl_dt, double v_end)
+{
+  if (v_start <= v_end + 1e-9) {
+    return 0.0;
+  }
+  std::vector<double> position, velocity, acceleration, time;
+  bool stable_target_reachable = false;
+  if (!generateReachableBrakingProfile(
+      v_start, a_start, a_max, d_max, max_jerk, ctrl_dt, v_end,
+      position, velocity, acceleration, time, stable_target_reachable) ||
+    position.empty() || !stable_target_reachable || !std::isfinite(position.back()))
+  {
+    return std::numeric_limits<double>::infinity();
+  }
+  return std::max(0.0, position.back());
+}
+
+size_t applyTerminalSpeedEnvelope(
+  std::vector<TrajPointWork> & work, double anchor_s, double end_speed)
+{
+  constexpr double kGeometryTolerance = 1e-6;
+  constexpr double kBoundaryTolerance = 1e-4;
+  std::vector<double> arc_s(work.size(), 0.0);
+  for (size_t index = 1; index < work.size(); ++index) {
+    const auto & previous = work[index - 1].pose.pose.position;
+    const auto & current = work[index].pose.pose.position;
+    arc_s[index] = arc_s[index - 1] +
+      std::hypot(current.x - previous.x, current.y - previous.y);
+  }
+  anchor_s = std::clamp(anchor_s, 0.0, arc_s.back());
+
+  size_t anchor_index = 1;
+  if (anchor_s > kGeometryTolerance) {
+    auto upper = std::lower_bound(arc_s.begin() + 1, arc_s.end(), anchor_s);
+    anchor_index = static_cast<size_t>(std::distance(arc_s.begin(), upper));
+    if (upper == arc_s.end()) {
+      anchor_index = work.size() - 1;
+    } else if (std::fabs(*upper - anchor_s) > kBoundaryTolerance) {
+      const size_t lower_index = anchor_index - 1;
+      const double segment_length = arc_s[anchor_index] - arc_s[lower_index];
+      if (segment_length > kGeometryTolerance) {
+        const double ratio = (anchor_s - arc_s[lower_index]) / segment_length;
+        TrajPointWork anchor = work[lower_index];
+        const auto & from = work[lower_index].pose.pose.position;
+        const auto & to = work[anchor_index].pose.pose.position;
+        anchor.pose.pose.position.x = from.x + ratio * (to.x - from.x);
+        anchor.pose.pose.position.y = from.y + ratio * (to.y - from.y);
+        anchor.pose.pose.position.z = from.z + ratio * (to.z - from.z);
+        anchor.pose.pose.orientation =
+          ratio < 0.5 ? work[lower_index].pose.pose.orientation :
+          work[anchor_index].pose.pose.orientation;
+        anchor.speed_limit = std::min(
+          {work[lower_index].speed_limit, work[anchor_index].speed_limit, end_speed});
+        anchor.curvature = std::max(
+          std::fabs(work[lower_index].curvature), std::fabs(work[anchor_index].curvature));
+        if (anchor.region_type.empty()) {
+          anchor.region_type = "terminal_reserve";
+        }
+        work.insert(
+          work.begin() + static_cast<std::ptrdiff_t>(anchor_index), std::move(anchor));
+      }
+    }
+  }
+
+  for (size_t index = anchor_index; index < work.size(); ++index) {
+    work[index].speed_limit = std::min(work[index].speed_limit, end_speed);
+    if (work[index].region_type.empty()) {
+      work[index].region_type = "terminal_reserve";
+    }
+  }
+  return anchor_index;
+}
+
 // Build a stable terminal segment that reaches (distance, v_end, a=0)
 // without crossing v_end. Existing acceleration is first released to zero;
 // any remaining distance is spent coasting before a monotonic S-curve brake.
@@ -488,8 +565,33 @@ void SCurveSpeedPlanner::configure(
     node, plugin_name_ + ".max_jerk", rclcpp::ParameterValue(0.5));
   nav2_util::declare_parameter_if_not_declared(
     node, plugin_name_ + ".control_dt", rclcpp::ParameterValue(0.05));
+  nav2_util::declare_parameter_if_not_declared(
+    node, plugin_name_ + ".terminal_execution_delay", rclcpp::ParameterValue(0.0));
+  nav2_util::declare_parameter_if_not_declared(
+    node, plugin_name_ + ".terminal_safety_margin", rclcpp::ParameterValue(0.0));
   node->get_parameter(plugin_name_ + ".max_jerk", max_jerk_);
   node->get_parameter(plugin_name_ + ".control_dt", control_dt_);
+  node->get_parameter(
+    plugin_name_ + ".terminal_execution_delay", terminal_execution_delay_);
+  node->get_parameter(
+    plugin_name_ + ".terminal_safety_margin", terminal_safety_margin_);
+  terminal_execution_delay_ = std::max(0.0, terminal_execution_delay_);
+  terminal_safety_margin_ = std::max(0.0, terminal_safety_margin_);
+}
+
+double SCurveSpeedPlanner::computeTerminalExecutionReserve(
+  double velocity, double planned_acceleration,
+  double execution_delay, double safety_margin)
+{
+  velocity = std::max(0.0, velocity);
+  execution_delay = std::max(0.0, execution_delay);
+  safety_margin = std::max(0.0, safety_margin);
+  // A negative consumed target acceleration preserves jerk continuity, but it
+  // does not prove that the smoother/chassis has established that braking.
+  const double conservative_acceleration = std::max(0.0, planned_acceleration);
+  return velocity * execution_delay +
+         0.5 * conservative_acceleration * execution_delay * execution_delay +
+         safety_margin;
 }
 
 // ===================== Ruckig 沿弧长生成 jerk 限制速度剖面 =====================
@@ -691,6 +793,8 @@ bool SCurveSpeedPlanner::generateRuckigProfile(
       constexpr double kControllerPreviewSteps = 2.0;
       // The controller consumes two Ruckig samples ahead at 10 Hz. Allow one
       // additional planner sample for the discrete stable-state boundary.
+      // Dynamic reserve is an execution-lag allowance and does not replace
+      // this existing numeric/resampling tolerance.
       const double stable_position_tolerance =
         (std::max(initial_velocity, v_end) * kControllerPreviewSteps +
         v_end) * ctrl_dt;
@@ -733,15 +837,56 @@ bool SCurveSpeedPlanner::generateRuckigProfile(
 // ===================== 插件 hook：Phase B（Ruckig jerk 限制剖面）=====================
 void SCurveSpeedPlanner::assignVelocityProfile(
   std::vector<TrajPointWork> & work, double curr_vel, double curr_accel,
-  double /*cruise_limit*/)
+  double /*cruise_limit*/, bool terminal_brake_latched)
 {
-  const size_t n = work.size();
-  if (n < 2) {
+  if (work.size() < 2) {
     return;
   }
 
-  // 1) 累计弧长 + 包络（Phase A 已由基类完成：障碍/巡航/曲率/末端蠕行区，
-  //    包络零点含障碍缓冲带，蠕行区已压到 end_speed）。
+  // 1) Dynamic terminal reserve. The regular stop_distance keeps its semantic
+  //    meaning; the reserve makes the profile reach stable creep speed earlier
+  //    and then coast through the reserved segment and stop zone.
+  const auto initial_arc_s = computeCumulativeArcLengths(work);
+  const bool obstacle_or_hard_stop = std::any_of(
+    work.begin() + 1, work.end(),
+    [](const TrajPointWork & point) {return point.speed_limit < 1e-3;});
+  if (!obstacle_or_hard_stop && end_speed_ >= 1e-3 && stop_distance_ > 0.0) {
+    const double terminal_boundary_s = std::max(0.0, initial_arc_s.back() - stop_distance_);
+    const double conservative_acceleration = std::max(0.0, curr_accel);
+    const double braking_distance = computeStableBrakingDistance(
+      std::max(0.0, curr_vel), conservative_acceleration,
+      accel_, std::fabs(decel_), max_jerk_, control_dt_, end_speed_);
+    const double continuity_braking_distance = computeStableBrakingDistance(
+      std::max(0.0, curr_vel), curr_accel,
+      accel_, std::fabs(decel_), max_jerk_, control_dt_, end_speed_);
+    const double execution_reserve = computeTerminalExecutionReserve(
+      curr_vel, curr_accel, terminal_execution_delay_, terminal_safety_margin_);
+
+    last_planning_diagnostics_.terminal_execution_reserve = execution_reserve;
+    last_planning_diagnostics_.terminal_braking_distance = braking_distance;
+    last_planning_diagnostics_.terminal_distance_available = terminal_boundary_s;
+    last_planning_diagnostics_.terminal_brake_required = terminal_brake_latched ||
+      !std::isfinite(braking_distance) ||
+      terminal_boundary_s <= braking_distance + execution_reserve + 1e-6;
+
+    double anchor_s = std::max(0.0, terminal_boundary_s - execution_reserve);
+    if (terminal_brake_latched && std::isfinite(continuity_braking_distance)) {
+      // Same-goal path replacement may temporarily lengthen the local path.
+      // Once braking is latched, the reserve has already selected the start
+      // cycle: from then on, target the current shortest reachable braking
+      // distance instead of subtracting the full reserve again every cycle.
+      // This prevents both re-acceleration on a lengthened path and a false
+      // infeasible result while the reserved distance is being consumed.
+      anchor_s = std::min(terminal_boundary_s, continuity_braking_distance);
+    }
+    if (execution_reserve > 1e-9 || terminal_brake_latched) {
+      applyTerminalSpeedEnvelope(work, anchor_s, end_speed_);
+    }
+  }
+
+  const size_t n = work.size();
+  // 2) 累计弧长 + 包络（Phase A 已由基类完成：障碍/巡航/曲率/末端蠕行区，
+  //    包络零点含障碍缓冲带，动态 reserve 已提前稳定蠕行边界）。
   std::vector<double> v_env(n, 0.0), arc_s(n, 0.0);
   v_env[0] = std::max(0.0, work[0].speed_limit);
   for (size_t i = 1; i < n; ++i) {
@@ -751,7 +896,7 @@ void SCurveSpeedPlanner::assignVelocityProfile(
     v_env[i] = std::max(0.0, work[i].speed_limit);
   }
 
-  // 2) Ruckig 生成 jerk 限制剖面（非对称 a_max / d_max=|decel_|）。
+  // 3) Ruckig 生成 jerk 限制剖面（非对称 a_max / d_max=|decel_|）。
   //    终点目标速度 = end_speed_（障碍停止时函数内部强制 0）。
   std::vector<double> v_out, a_out, t_out;
   last_planning_diagnostics_.terminal_infeasible = generateRuckigProfile(
@@ -760,7 +905,7 @@ void SCurveSpeedPlanner::assignVelocityProfile(
     max_jerk_, control_dt_,
     v_out, a_out, t_out, end_speed_);
 
-  // 3) 回填 work（曲率已由 Phase A3 填好）。
+  // 4) 回填 work（曲率已由 Phase A3 填好）。
   for (size_t i = 0; i < n; ++i) {
     work[i].speed_limit = v_out[i];
     work[i].accel = a_out[i];

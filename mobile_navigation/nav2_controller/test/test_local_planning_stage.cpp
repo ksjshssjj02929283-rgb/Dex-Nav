@@ -154,6 +154,16 @@ public:
     near_goal_hold_outside_accept_count_ = 2;
   }
 
+  void latchTerminalBrakeForTest()
+  {
+    nav2_core::SpeedPlanningDiagnostics diagnostics;
+    diagnostics.terminal_brake_required = true;
+    diagnostics.terminal_distance_available = 0.5;
+    diagnostics.terminal_braking_distance = 0.4;
+    diagnostics.terminal_execution_reserve = 0.1;
+    updateTerminalBrakeLatch(diagnostics);
+  }
+
   void commitPathForTest(
     const nav_msgs::msg::Path & path,
     PathUpdateType update_type)
@@ -166,6 +176,7 @@ public:
   bool nearGoalPoseHoldActive() const {return near_goal_pose_hold_active_;}
   size_t nearGoalOutsideCount() const {return near_goal_hold_outside_accept_count_;}
   size_t goalCheckerResetCount() const {return fake_goal_checker_->resetCount();}
+  bool terminalBrakeLatched() const {return terminal_brake_latched_;}
 
 private:
   std::shared_ptr<FakeGoalChecker> fake_goal_checker_;
@@ -341,6 +352,7 @@ TEST(SpeedPlanningBoundary, SameGoalGeometryUpdatePreservesTerminalState)
   auto controller = std::make_shared<ControllerShim>();
   controller->seedAcceptedTrajectory(makeTrajectory(), 0.1, 0.31, -0.18);
   controller->setTerminalStateForTest();
+  controller->latchTerminalBrakeForTest();
 
   const auto updated_path = makePath({{0.5, 0.0}, {1.1, 0.05}, {2.0, 0.0}});
   controller->commitPathForTest(
@@ -354,15 +366,17 @@ TEST(SpeedPlanningBoundary, SameGoalGeometryUpdatePreservesTerminalState)
   EXPECT_TRUE(controller->nearGoalAcceptanceReached());
   EXPECT_TRUE(controller->nearGoalPoseHoldActive());
   EXPECT_EQ(controller->nearGoalOutsideCount(), 2u);
+  EXPECT_TRUE(controller->terminalBrakeLatched());
   EXPECT_NEAR(
-    controller->boundaryFor(updated_path, 0.31).acceleration,
-    -0.18, 1e-9);
+    controller->boundaryFor(updated_path, 0.31).acceleration, -0.18, 1e-9);
+  EXPECT_TRUE(controller->boundaryFor(updated_path, 0.31).terminal_brake_latched);
 }
 
 TEST(SpeedPlanningBoundary, NewGoalPathResetsTerminalBookkeeping)
 {
   auto controller = std::make_shared<ControllerShim>();
   controller->setTerminalStateForTest();
+  controller->latchTerminalBrakeForTest();
 
   const auto new_goal_path = makePath({{0.5, 0.0}, {1.5, 0.0}, {2.5, 0.0}});
   controller->commitPathForTest(
@@ -376,6 +390,7 @@ TEST(SpeedPlanningBoundary, NewGoalPathResetsTerminalBookkeeping)
   EXPECT_FALSE(controller->nearGoalPoseHoldActive());
   EXPECT_EQ(controller->nearGoalOutsideCount(), 0u);
   EXPECT_EQ(controller->goalCheckerResetCount(), 1u);
+  EXPECT_FALSE(controller->terminalBrakeLatched());
 }
 
 }  // namespace

@@ -38,6 +38,7 @@
 #include "geometry_msgs/msg/vector3_stamped.hpp"
 #include "visualization_msgs/msg/marker_array.hpp"
 #include "std_msgs/msg/string.hpp"
+#include "std_msgs/msg/empty.hpp"
 #include "nav_2d_utils/odom_subscriber.hpp"
 #include "nav2_util/lifecycle_node.hpp"
 #include "nav2_util/simple_action_server.hpp"
@@ -216,6 +217,10 @@ protected:
   nav2_core::SpeedPlanningBoundary buildSpeedPlanningBoundary(
     const nav_msgs::msg::Path & path,
     const geometry_msgs::msg::Twist & measured_velocity);
+  /// Latch terminal braking for the current goal once the planner reaches the
+  /// dynamic braking boundary or reports that the stable terminal state is late.
+  void updateTerminalBrakeLatch(
+    const nav2_core::SpeedPlanningDiagnostics & diagnostics);
   void updateSpeedPlanningContinuityAfterControl(
     bool control_succeeded, bool trajectory_target_consumed,
     double consumed_target_velocity, double consumed_target_acceleration);
@@ -351,6 +356,10 @@ protected:
    */
   void publishZeroVelocity();
   /**
+   * @brief Bypass normal smoothing and request an immediate zero velocity
+   */
+  void publishHardStopVelocity();
+  /**
    * @brief Checks if goal is reached
    * @return true or false
    */
@@ -405,6 +414,8 @@ protected:
   // Publishers and subscribers
   std::unique_ptr<nav_2d_utils::OdomSubscriber> odom_sub_;
   rclcpp_lifecycle::LifecyclePublisher<geometry_msgs::msg::Twist>::SharedPtr vel_publisher_;
+  rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::Empty>::SharedPtr hard_stop_publisher_;
+  std::string hard_stop_topic_{"cmd_vel_hard_stop"};
   rclcpp_lifecycle::LifecyclePublisher<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr
     goal_error_publisher_;
   rclcpp_lifecycle::LifecyclePublisher<visualization_msgs::msg::MarkerArray>::SharedPtr
@@ -469,6 +480,9 @@ protected:
   // 无并发；将来拆独立规划线程时需加最小临界区保护
   nav_interfaces::msg::RobotTrajectory current_trajectory_;
   nav2_speed_planner::SpeedPlanState speed_plan_state_;
+  // Goal-lifecycle state owned by ControllerServer. Same-goal geometry updates
+  // preserve it; a new goal / successful completion resets it.
+  bool terminal_brake_latched_{false};
   struct SpeedPlanCycleContext
   {
     bool active{false};

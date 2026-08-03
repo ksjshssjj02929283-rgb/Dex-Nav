@@ -23,6 +23,7 @@
 #include "nav2_velocity_smoother/velocity_smoother.hpp"
 #include "nav_msgs/msg/odometry.hpp"
 #include "geometry_msgs/msg/twist.hpp"
+#include "std_msgs/msg/empty.hpp"
 
 using namespace std::chrono_literals;
 
@@ -48,9 +49,78 @@ public:
   bool isOdomSmoother() {return odom_smoother_ ? true : false;}
   bool hasCommandMsg() {return last_command_time_.nanoseconds() != 0;}
   geometry_msgs::msg::Twist::SharedPtr lastCommandMsg() {return command_;}
+  geometry_msgs::msg::Twist lastOutputMsg() {return last_cmd_;}
+  geometry_msgs::msg::Twist odomVelocity() {return odom_smoother_->getTwist();}
+  bool hardStopActive() const {return hard_stop_active_;}
 
   void sendCommandMsg(geometry_msgs::msg::Twist::SharedPtr msg) {inputCommandCallback(msg);}
+  void sendHardStop()
+  {
+    hardStopCallback(std::make_shared<std_msgs::msg::Empty>());
+  }
+  void runTimer() {smootherTimer();}
+  void setLastOutput(const geometry_msgs::msg::Twist & msg) {last_cmd_ = msg;}
+  void activateOutputPublisher() {smoothed_cmd_pub_->on_activate();}
 };
+
+TEST(VelocitySmootherTest, hardStopImmediatelyResetsAndHoldsOutput)
+{
+  auto smoother = std::make_shared<VelSmootherShim>();
+  smoother->declare_parameter("hard_stop_duration", rclcpp::ParameterValue(10.0));
+  smoother->set_parameter(rclcpp::Parameter("hard_stop_duration", 10.0));
+  rclcpp_lifecycle::State state;
+  smoother->configure(state);
+  smoother->activateOutputPublisher();
+
+  auto cmd = std::make_shared<geometry_msgs::msg::Twist>();
+  cmd->linear.x = 0.5;
+  smoother->sendCommandMsg(cmd);
+  smoother->runTimer();
+  EXPECT_GT(smoother->lastOutputMsg().linear.x, 0.0);
+
+  smoother->sendHardStop();
+  EXPECT_TRUE(smoother->hardStopActive());
+  EXPECT_EQ(smoother->lastOutputMsg(), geometry_msgs::msg::Twist());
+  EXPECT_EQ(*smoother->lastCommandMsg(), geometry_msgs::msg::Twist());
+
+  // Commands arriving during the safety hold cannot re-arm motion.
+  smoother->sendCommandMsg(cmd);
+  smoother->runTimer();
+  EXPECT_EQ(smoother->lastOutputMsg(), geometry_msgs::msg::Twist());
+  EXPECT_EQ(*smoother->lastCommandMsg(), geometry_msgs::msg::Twist());
+}
+
+TEST(VelocitySmootherTest, closedLoopStopConvergesWhenOdometryIsFrozen)
+{
+  auto smoother = std::make_shared<VelSmootherShim>();
+  smoother->declare_parameter("feedback", rclcpp::ParameterValue(std::string("CLOSED_LOOP")));
+  smoother->set_parameter(rclcpp::Parameter("feedback", std::string("CLOSED_LOOP")));
+  rclcpp_lifecycle::State state;
+  smoother->configure(state);
+  smoother->activateOutputPublisher();
+
+  auto odom_pub = smoother->create_publisher<nav_msgs::msg::Odometry>("odom", 1);
+  odom_pub->on_activate();
+  nav_msgs::msg::Odometry odom;
+  odom.header.stamp = smoother->now();
+  odom.twist.twist.linear.x = 0.4;
+  odom_pub->publish(odom);
+  rclcpp::spin_some(smoother->get_node_base_interface());
+  ASSERT_NEAR(smoother->odomVelocity().linear.x, 0.4, 1e-9);
+
+  geometry_msgs::msg::Twist previous_output;
+  previous_output.linear.x = 0.4;
+  smoother->setLastOutput(previous_output);
+  smoother->sendCommandMsg(std::make_shared<geometry_msgs::msg::Twist>());
+
+  // Frozen odometry stays at 0.4. The stop path must nevertheless integrate the previous
+  // output down to zero instead of reproducing the same one-step value every cycle.
+  for (int i = 0; i < 4; ++i) {
+    smoother->runTimer();
+  }
+  EXPECT_NEAR(smoother->lastOutputMsg().linear.x, 0.0, 1e-9);
+  EXPECT_NEAR(smoother->odomVelocity().linear.x, 0.4, 1e-9);
+}
 
 TEST(VelocitySmootherTest, openLoopTestTimer)
 {

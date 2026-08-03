@@ -51,6 +51,21 @@ public:
   using Ptr = std::shared_ptr<PlannerException>;
 };
 
+/**
+ * @brief A controller command was rejected because executing it would collide.
+ *
+ * Collision failures are safety events, not ordinary transient planning failures. Keeping a
+ * distinct exception type lets the controller server bypass its failure-tolerance window and
+ * request an immediate stop without parsing exception strings.
+ */
+class CollisionException : public PlannerException
+{
+public:
+  explicit CollisionException(const std::string description)
+  : PlannerException(description) {}
+  using Ptr = std::shared_ptr<CollisionException>;
+};
+
 }  // namespace nav2_core
 
 #endif  // NAV2_CORE__EXCEPTIONS_HPP_

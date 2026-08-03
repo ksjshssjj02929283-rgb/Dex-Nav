@@ -26,6 +26,7 @@
 #include "nav2_util/node_utils.hpp"
 #include "nav2_util/odometry_utils.hpp"
 #include "nav2_util/robot_utils.hpp"
+#include "std_msgs/msg/empty.hpp"
 
 namespace nav2_velocity_smoother
 {
@@ -116,6 +117,17 @@ protected:
   void inputCommandCallback(const geometry_msgs::msg::Twist::SharedPtr msg);
 
   /**
+   * @brief Immediately publish zero and hold zero for the configured safety interval
+   * @param msg Hard-stop event (payload intentionally empty)
+   */
+  void hardStopCallback(const std_msgs::msg::Empty::SharedPtr msg);
+
+  /**
+   * @brief Reset smoothing state and publish an immediate zero command
+   */
+  void hardStop();
+
+  /**
    * @brief Main worker timer function
    */
   void smootherTimer();
@@ -132,6 +144,7 @@ protected:
   rclcpp_lifecycle::LifecyclePublisher<geometry_msgs::msg::Twist>::SharedPtr
     smoothed_cmd_pub_;
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr cmd_sub_;
+  rclcpp::Subscription<std_msgs::msg::Empty>::SharedPtr hard_stop_sub_;
   rclcpp::TimerBase::SharedPtr timer_;
 
   rclcpp::Clock::SharedPtr clock_;
@@ -144,6 +157,7 @@ protected:
   std::string input_topic_;
   std::string output_topic_;
   std::string odom_topic_;
+  std::string hard_stop_topic_;
   bool open_loop_;
   bool stopped_{true};
   bool scale_velocities_;
@@ -154,6 +168,9 @@ protected:
   std::vector<double> deadband_velocities_;
   rclcpp::Duration velocity_timeout_{0, 0};
   rclcpp::Time last_command_time_;
+  double hard_stop_duration_{0.5};
+  bool hard_stop_active_{false};
+  std::chrono::steady_clock::time_point hard_stop_until_;
 
   rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr dyn_params_handler_;
 };

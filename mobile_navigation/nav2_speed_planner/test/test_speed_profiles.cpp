@@ -11,6 +11,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <deque>
 #include <limits>
 #include <string>
 #include <vector>
@@ -122,6 +123,17 @@ public:
     boundary.acceleration_valid = true;
     return this->computeSpeedPlan(path, boundary);
   }
+  nav_interfaces::msg::RobotTrajectory run(
+    const nav_msgs::msg::Path & path, double v0, double a0,
+    bool terminal_brake_latched)
+  {
+    nav2_core::SpeedPlanningBoundary boundary;
+    boundary.velocity.linear.x = v0;
+    boundary.acceleration = a0;
+    boundary.acceleration_valid = true;
+    boundary.terminal_brake_latched = terminal_brake_latched;
+    return this->computeSpeedPlan(path, boundary);
+  }
 };
 
 class TestableSCurve : public TestablePlanner<nav2_speed_planner::SCurveSpeedPlanner>
@@ -131,6 +143,11 @@ public:
   {
     max_jerk_ = 0.5;
     control_dt_ = 0.05;
+  }
+  void setTerminalReserve(double execution_delay, double safety_margin)
+  {
+    terminal_execution_delay_ = execution_delay;
+    terminal_safety_margin_ = safety_margin;
   }
 };
 
@@ -428,6 +445,159 @@ TEST(SpeedProfileRecedingHorizon, SCurveTenHertzTimePreviewReachesStopZoneSpeed)
   }
   EXPECT_TRUE(entered_stop_zone);
   EXPECT_GE(terminal_min_velocity, 0.049);
+}
+
+TEST(SpeedProfileTerminalReserve, ReachesStableCreepBeforeReservedBoundary)
+{
+  TestableSCurve planner;
+  planner.setSharedParams();
+  planner.setSCurveParams();
+  planner.setMotionLimits(0.6, 0.5);
+  planner.setTerminalParams(0.05, 0.075, -0.4);
+  planner.setTerminalReserve(0.35, 0.05);
+
+  constexpr double kGoal = 2.0;
+  constexpr double kStartSpeed = 0.6;
+  const auto traj = planner.run(
+    makeStraightPathToExactGoal(kGoal), kStartSpeed, 0.0, false);
+  const double reserve = nav2_speed_planner::SCurveSpeedPlanner::
+    computeTerminalExecutionReserve(kStartSpeed, 0.0, 0.35, 0.05);
+  const double reserved_boundary = kGoal - 0.075 - reserve;
+
+  bool stable_creep_found = false;
+  for (const auto & point : traj.points) {
+    if (point.longitudinal_velocity <= 0.051 && std::fabs(point.acceleration) <= 1e-3) {
+      stable_creep_found = true;
+      EXPECT_LE(point.pose.pose.position.x, reserved_boundary + kPointStep + 1e-3)
+        << "stable creep boundary may shift by at most one path sample";
+      break;
+    }
+  }
+  EXPECT_TRUE(stable_creep_found);
+  const auto diagnostics = planner.getLastPlanningDiagnostics();
+  EXPECT_NEAR(diagnostics.terminal_execution_reserve, reserve, 1e-9);
+  EXPECT_FALSE(diagnostics.terminal_infeasible);
+}
+
+TEST(SpeedProfileTerminalReserve, ScalesWithVelocityAndPositiveAcceleration)
+{
+  using nav2_speed_planner::SCurveSpeedPlanner;
+  EXPECT_NEAR(
+    SCurveSpeedPlanner::computeTerminalExecutionReserve(0.6, 0.2, 0.35, 0.05),
+    0.27225, 1e-9);
+  EXPECT_NEAR(
+    SCurveSpeedPlanner::computeTerminalExecutionReserve(0.6, -0.2, 0.35, 0.05),
+    0.26, 1e-9);
+  EXPECT_DOUBLE_EQ(
+    SCurveSpeedPlanner::computeTerminalExecutionReserve(-0.1, 0.0, -1.0, -0.2),
+    0.0);
+}
+
+TEST(SpeedProfileRecedingHorizon, DynamicReserveHandlesDelayedLaggedPlant)
+{
+  TestableSCurve planner;
+  planner.setSharedParams();
+  planner.setSCurveParams();
+  planner.setMotionLimits(0.6, 0.5);
+  planner.setTerminalParams(0.05, 0.075, -0.4);
+  planner.setTerminalReserve(0.35, 0.05);
+
+  constexpr double kControllerDt = 0.1;
+  constexpr double kGoal = 3.0;
+  constexpr int kCommandDelaySteps = 2;
+  // 200 ms transport delay + 150 ms first-order acceleration response models
+  // the observed roughly 300-334 ms execution latency while preserving the
+  // configured 0.4 m/s^2 steady-state braking authority.
+  constexpr double kPlantTimeConstant = 0.15;
+  double position = 0.0;
+  double velocity = 0.6;
+  double consumed_target_acceleration = 0.0;
+  bool terminal_brake_latched = false;
+  bool terminal_brake_seen = false;
+  bool reached_creep_before_stop_zone = false;
+  double actual_acceleration = 0.0;
+  std::deque<double> delayed_accelerations(kCommandDelaySteps, 0.0);
+
+  for (int cycle = 0; cycle < 120 && position < kGoal - 0.002; ++cycle) {
+    const double remaining = kGoal - position;
+    const auto traj = planner.run(
+      makeStraightPathToExactGoal(remaining), velocity,
+      consumed_target_acceleration, terminal_brake_latched);
+    ASSERT_GE(traj.points.size(), 2u);
+    const auto diagnostics = planner.getLastPlanningDiagnostics();
+    if (diagnostics.terminal_brake_required) {
+      terminal_brake_latched = true;
+      terminal_brake_seen = true;
+    }
+
+    std::vector<nav2_core::TrajectoryPreviewPoint> preview_points;
+    preview_points.reserve(traj.points.size());
+    for (const auto & point : traj.points) {
+      preview_points.push_back(
+      {
+        point.pose.pose.position.x, point.pose.pose.position.y,
+        point.longitudinal_velocity, point.acceleration,
+        nav2_core::durationToSeconds(point.relative_time)});
+    }
+    nav2_core::TrajectoryPreview preview;
+    ASSERT_TRUE(
+      nav2_core::sampleTrajectoryPreview(
+        preview_points, 0.0, 0.0,
+        nav2_core::hasValidRelativeTime(preview_points),
+        kControllerDt, 0.1, preview));
+    if (diagnostics.terminal_infeasible) {
+      EXPECT_TRUE(terminal_brake_latched);
+      EXPECT_LE(preview.acceleration, 1e-6)
+        << "latched infeasible fallback must continue braking at cycle " << cycle;
+    }
+    consumed_target_acceleration = preview.acceleration;
+    delayed_accelerations.push_back(preview.acceleration);
+    const double delayed_acceleration = delayed_accelerations.front();
+    delayed_accelerations.pop_front();
+    actual_acceleration += std::clamp(
+      (delayed_acceleration - actual_acceleration) /
+      kPlantTimeConstant * kControllerDt, -0.4, 0.5);
+    actual_acceleration = std::clamp(actual_acceleration, -0.4, 0.5);
+    const double next_velocity = std::max(
+      0.0, velocity + actual_acceleration * kControllerDt);
+    const double next_position = position +
+      0.5 * (velocity + next_velocity) * kControllerDt;
+    if (next_velocity <= 0.06) {
+      reached_creep_before_stop_zone = true;
+      EXPECT_LE(next_position, kGoal - 0.075)
+        << "delayed plant must reach creep before entering the stop zone";
+      break;
+    }
+    if (next_position >= kGoal - 0.075) {
+      ADD_FAILURE() << "entered stop zone at " << next_velocity << " m/s";
+      break;
+    }
+    position = next_position;
+    velocity = next_velocity;
+  }
+
+  EXPECT_TRUE(terminal_brake_seen);
+  EXPECT_TRUE(reached_creep_before_stop_zone);
+}
+
+TEST(SpeedProfileTerminalReserve, LatchedBrakeDoesNotRearmCruiseOnLongerPath)
+{
+  TestableSCurve planner;
+  planner.setSharedParams();
+  planner.setSCurveParams();
+  planner.setMotionLimits(0.6, 0.5);
+  planner.setTerminalParams(0.05, 0.075, -0.4);
+  planner.setTerminalReserve(0.35, 0.05);
+
+  constexpr double kMeasuredVelocity = 0.4;
+  const auto traj = planner.run(
+    makeStraightPathToExactGoal(2.0), kMeasuredVelocity, -0.2, true);
+  ASSERT_GE(traj.points.size(), 2u);
+  for (const auto & point : traj.points) {
+    EXPECT_LE(point.longitudinal_velocity, kMeasuredVelocity + 1e-6);
+    EXPECT_LE(point.acceleration, 1e-6);
+  }
+  EXPECT_TRUE(planner.getLastPlanningDiagnostics().terminal_brake_required);
 }
 
 TEST(SpeedProfileTerminalPath, IdenticalTwoPointGoalPathIsPreservedAndStopped)

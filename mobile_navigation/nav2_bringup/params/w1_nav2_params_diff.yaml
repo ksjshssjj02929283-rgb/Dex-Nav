@@ -139,6 +139,12 @@ controller_server:
       enable_constant_velocity_while_turning: False
       max_jerk: 0.5
       control_dt: 0.05
+      # R41：现有 time preview 之外的 target→底盘执行延迟。
+      # 本次现场出现一次 334ms 长周期，先取 0.35s 临时安全基线；它不是 p99，
+      # 必须用实机批量 target/cmd/odom 数据重新标定。
+      terminal_execution_delay: 0.35
+      # 独立于 stop_distance：要求在 stop-zone 入口前额外稳定 5cm，吸收路径/odom 抖动。
+      terminal_safety_margin: 0.05
     staged_control:
       enabled: True
       track_controller: "MPPIController"

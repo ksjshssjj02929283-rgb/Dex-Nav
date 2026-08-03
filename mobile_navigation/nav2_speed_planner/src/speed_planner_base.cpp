@@ -357,7 +357,8 @@ nav_interfaces::msg::RobotTrajectory SpeedPlannerBase::computeSpeedPlan(
 
   // ====== Phase B hook：派生类生成运动学可行剖面 ======
   const auto profile_start = TimingClock::now();
-  assignVelocityProfile(work, curr_vel, curr_accel, cruise);
+  assignVelocityProfile(
+    work, curr_vel, curr_accel, cruise, boundary.terminal_brake_latched);
   profile_ms = std::chrono::duration<double, std::milli>(
     TimingClock::now() - profile_start).count();
 

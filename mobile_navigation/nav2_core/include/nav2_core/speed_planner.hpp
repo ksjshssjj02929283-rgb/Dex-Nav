@@ -24,6 +24,10 @@ struct SpeedPlanningBoundary
   geometry_msgs::msg::Twist velocity;
   double acceleration{0.0};
   bool acceleration_valid{false};
+  // ControllerServer owns the goal lifecycle. Once terminal braking starts,
+  // same-goal geometry updates must not let a receding-horizon planner coast
+  // or accelerate again because the refreshed path happened to become longer.
+  bool terminal_brake_latched{false};
   builtin_interfaces::msg::Time source_stamp;
   double source_age{0.0};
 };
@@ -31,6 +35,10 @@ struct SpeedPlanningBoundary
 struct SpeedPlanningDiagnostics
 {
   bool terminal_infeasible{false};
+  bool terminal_brake_required{false};
+  double terminal_execution_reserve{0.0};
+  double terminal_braking_distance{0.0};
+  double terminal_distance_available{0.0};
 };
 
 /**

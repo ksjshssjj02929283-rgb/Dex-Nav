@@ -117,6 +117,7 @@ ControllerServer::ControllerServer(const rclcpp::NodeOptions & options)
   declare_parameter("min_theta_velocity_threshold", rclcpp::ParameterValue(0.0001));
 
   declare_parameter("speed_limit_topic", rclcpp::ParameterValue("speed_limit"));
+  declare_parameter("hard_stop_topic", rclcpp::ParameterValue("cmd_vel_hard_stop"));
 
   declare_parameter("failure_tolerance", rclcpp::ParameterValue(0.0));
   declare_parameter("near_goal_progress.enabled", rclcpp::ParameterValue(true));
@@ -564,7 +565,10 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
   }
 
   odom_sub_ = std::make_unique<nav_2d_utils::OdomSubscriber>(node);
+  get_parameter("hard_stop_topic", hard_stop_topic_);
   vel_publisher_ = create_publisher<geometry_msgs::msg::Twist>("cmd_vel", 1);
+  hard_stop_publisher_ = create_publisher<std_msgs::msg::Empty>(
+    hard_stop_topic_, rclcpp::QoS(1).reliable());
   goal_error_publisher_ = create_publisher<diagnostic_msgs::msg::DiagnosticArray>(
     "/navigation_goal_error",
     rclcpp::QoS(rclcpp::KeepLast(10)).reliable().transient_local());
@@ -624,6 +628,7 @@ ControllerServer::on_activate(const rclcpp_lifecycle::State & /*state*/)
     sp.second->activate();
   }
   vel_publisher_->on_activate();
+  hard_stop_publisher_->on_activate();
   goal_error_publisher_->on_activate();
   speed_plan_publisher_->on_activate();
   speed_plan_diagnostics_publisher_->on_activate();
@@ -686,7 +691,7 @@ ControllerServer::on_deactivate(const rclcpp_lifecycle::State & /*state*/)
     costmap_ros_->deactivate();
   }
 
-  publishZeroVelocity();
+  publishHardStopVelocity();
   goal_error_publisher_->on_deactivate();
   speed_plan_publisher_->on_deactivate();
   speed_plan_diagnostics_publisher_->on_deactivate();
@@ -703,6 +708,7 @@ ControllerServer::on_deactivate(const rclcpp_lifecycle::State & /*state*/)
     controller_target_echo_pub_->on_deactivate();
   }
   vel_publisher_->on_deactivate();
+  hard_stop_publisher_->on_deactivate();
   dyn_params_handler_.reset();
 
   // destroy bond connection
@@ -746,6 +752,7 @@ ControllerServer::on_cleanup(const rclcpp_lifecycle::State & /*state*/)
   odom_sub_.reset();
   costmap_thread_.reset();
   vel_publisher_.reset();
+  hard_stop_publisher_.reset();
   goal_error_publisher_.reset();
   speed_plan_publisher_.reset();
   speed_plan_diagnostics_publisher_.reset();
@@ -905,7 +912,7 @@ void ControllerServer::computeControl()
 
       if (action_server_->is_cancel_requested()) {
         RCLCPP_INFO(get_logger(), "Goal was canceled. Stopping the robot.");
-        publishZeroVelocity();
+        publishHardStopVelocity();
         // The FollowPath result is the controller-side stop acknowledgement used
         // by BtActionNode cleanup. Publish zero before making that result visible.
         action_server_->terminate_all();
@@ -919,7 +926,7 @@ void ControllerServer::computeControl()
           RCLCPP_INFO(
             get_logger(),
             "Goal was canceled while waiting for the costmap. Stopping the robot.");
-          publishZeroVelocity();
+          publishHardStopVelocity();
           action_server_->terminate_all();
           return;
         }
@@ -988,12 +995,12 @@ void ControllerServer::computeControl()
     }
   } catch (nav2_core::PlannerException & e) {
     RCLCPP_ERROR(this->get_logger(), "%s", e.what());
-    publishZeroVelocity();
+    publishHardStopVelocity();
     action_server_->terminate_current();
     return;
   }catch (std::exception & e) {
     RCLCPP_ERROR(this->get_logger(), "%s", e.what());
-    publishZeroVelocity();
+    publishHardStopVelocity();
     std::shared_ptr<Action::Result> result = std::make_shared<Action::Result>();
     action_server_->terminate_current(result);
     return;
@@ -1049,12 +1056,13 @@ void ControllerServer::commitPlannerPathState(
     near_goal_pose_hold_active_ = false;
     near_goal_hold_outside_accept_count_ = 0;
     controller_phase_ = ControllerPhase::TRACK;
+    terminal_brake_latched_ = false;
   } else {
     RCLCPP_INFO(
       get_logger(),
       "同目标 path 仅替换几何：保留 controller phase=%s、goal/near-goal 状态和 "
-      "SpeedPlanState 已消费 (v,a) 连续性。",
-      controllerPhaseName(controller_phase_));
+      "SpeedPlanState 已消费 (v,a) 连续性、terminal_brake_latched=%s。",
+      controllerPhaseName(controller_phase_), terminal_brake_latched_ ? "true" : "false");
   }
 
   RCLCPP_DEBUG(
@@ -1111,7 +1119,8 @@ nav2_core::SpeedPlanningBoundary ControllerServer::buildSpeedPlanningBoundary(
   const nav_msgs::msg::Path & path,
   const geometry_msgs::msg::Twist & measured_velocity)
 {
-  const auto decision = speed_plan_state_.boundary(path, measured_velocity, now());
+  auto decision = speed_plan_state_.boundary(path, measured_velocity, now());
+  decision.boundary.terminal_brake_latched = terminal_brake_latched_;
   if (speed_plan_cycle_.active) {
     speed_plan_cycle_.boundary = decision.boundary;
     speed_plan_cycle_.boundary_computed = true;
@@ -1125,6 +1134,25 @@ nav2_core::SpeedPlanningBoundary ControllerServer::buildSpeedPlanningBoundary(
       nav2_speed_planner::boundaryReasonName(*decision.reason));
   }
   return decision.boundary;
+}
+
+void ControllerServer::updateTerminalBrakeLatch(
+  const nav2_core::SpeedPlanningDiagnostics & diagnostics)
+{
+  if (terminal_brake_latched_ ||
+    (!diagnostics.terminal_brake_required && !diagnostics.terminal_infeasible))
+  {
+    return;
+  }
+  terminal_brake_latched_ = true;
+  RCLCPP_WARN(
+    get_logger(),
+    "Terminal brake latched: available=%.3f m braking=%.3f m reserve=%.3f m "
+    "infeasible=%s. Same-goal path updates may not re-arm cruise acceleration.",
+    diagnostics.terminal_distance_available,
+    diagnostics.terminal_braking_distance,
+    diagnostics.terminal_execution_reserve,
+    diagnostics.terminal_infeasible ? "true" : "false");
 }
 
 void ControllerServer::updateSpeedPlanningContinuityAfterControl(
@@ -1305,6 +1333,7 @@ bool ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
   const auto planning_diagnostics = sp->second->getLastPlanningDiagnostics();
   speed_plan_cycle_.terminal = planning_diagnostics;
   speed_plan_cycle_.terminal_valid = true;
+  updateTerminalBrakeLatch(planning_diagnostics);
   if (planning_diagnostics.terminal_infeasible) {
     RCLCPP_WARN_THROTTLE(
       get_logger(), *get_clock(), 1000,
@@ -1609,6 +1638,21 @@ void ControllerServer::publishSpeedPlanDiagnostics(
   add_value(
     "terminal_infeasible",
     cycle.terminal_valid && cycle.terminal.terminal_infeasible ? "true" : "false");
+  add_value(
+    "terminal_brake_required",
+    cycle.terminal_valid && cycle.terminal.terminal_brake_required ? "true" : "false");
+  add_value("terminal_brake_latched", terminal_brake_latched_ ? "true" : "false");
+  if (cycle.terminal_valid) {
+    add_value(
+      "terminal_execution_reserve",
+      std::to_string(cycle.terminal.terminal_execution_reserve));
+    add_value(
+      "terminal_braking_distance",
+      std::to_string(cycle.terminal.terminal_braking_distance));
+    add_value(
+      "terminal_distance_available",
+      std::to_string(cycle.terminal.terminal_distance_available));
+  }
   add_value("control_succeeded", control_succeeded ? "true" : "false");
   add_value("control_result", control_result);
   add_value("control_receipt_valid", receipt_valid ? "true" : "false");
@@ -2405,6 +2449,7 @@ void ControllerServer::resetStagedControlState()
   prepare_backup_active_ = false;
   prepare_check_pending_ = true;
   align_done_ = false;
+  terminal_brake_latched_ = false;
   invalidateSpeedPlanningContinuity();
 }
 
@@ -2690,6 +2735,10 @@ void ControllerServer::computeAndPublishVelocity()
     cmd_vel_2d = computeStagedVelocity(pose, twist);
     last_valid_cmd_time_ = now();
     control_succeeded = true;
+  } catch (nav2_core::CollisionException & e) {
+    publishHardStopVelocity();
+    publish_control_failure("collision_detected");
+    throw;
   } catch (nav2_core::PlannerException & e) {
     invalidateSpeedPlanningContinuity();
     if (failure_tolerance_ > 0 || failure_tolerance_ == -1.0) {
@@ -2924,6 +2973,21 @@ void ControllerServer::publishZeroVelocity()
       actual_twist.x, actual_twist.y, actual_twist.theta, subscriber_count);
   }
   publishVelocity(velocity);
+}
+
+void ControllerServer::publishHardStopVelocity()
+{
+  if (hard_stop_publisher_ && hard_stop_publisher_->is_activated()) {
+    hard_stop_publisher_->publish(std::make_unique<std_msgs::msg::Empty>());
+    RCLCPP_ERROR(
+      get_logger(),
+      "Hard-stop request published on '%s' (subscribers=%zu).",
+      hard_stop_topic_.c_str(), hard_stop_publisher_->get_subscription_count());
+  } else {
+    RCLCPP_ERROR(
+      get_logger(), "Hard-stop publisher is inactive; falling back to a zero cmd_vel request.");
+  }
+  publishZeroVelocity();
 }
 
 bool ControllerServer::isGoalReached()

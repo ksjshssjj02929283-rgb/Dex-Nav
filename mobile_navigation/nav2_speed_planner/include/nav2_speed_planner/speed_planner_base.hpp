@@ -115,7 +115,7 @@ protected:
   // ============================================================
   virtual void assignVelocityProfile(
     std::vector<TrajPointWork> & work, double curr_vel, double curr_accel,
-    double cruise_limit) = 0;
+    double cruise_limit, bool terminal_brake_latched) = 0;
 
   // ============================================================
   // Phase A 约束包络（共享，逐点 min 叠加；安全置零绝对优先，任何后续写入不得抬升）
