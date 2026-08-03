@@ -149,6 +149,42 @@ def test_navigation_parameters_consume_the_same_topics():
             assert f"/orbbec/{side}/pointcloud2_filtered" in text
 
 
+def test_arm_build_keeps_w1_nav2_for_real_robot_launch_transition():
+    """0.4.6 ARM builds retain w1_nav2 until the 0.5.0 package split."""
+    manifest = read("mobile_simulation/w1_nav2/package.xml")
+    for dependency in (
+        "aws_robomaker_small_warehouse_world",
+        "swerve_robot_gazebo",
+        "w1_diff_gazebo",
+    ):
+        assert f"<exec_depend>{dependency}</exec_depend>" not in manifest
+
+    assert (REPO / "mobile_simulation/w1_nav2/launch/"
+            "w1_nav2_actual.launch.py").is_file()
+
+    build_script = read("build.sh")
+    assert 'BASH_SOURCE[0]' in build_script
+    assert 'SOURCE_ROOT="${SCRIPT_DIR}"' in build_script
+    assert 'SIMULATION_DIR="${SOURCE_ROOT}/mobile_simulation"' in build_script
+    assert '[ "$package_name" != "w1_nav2" ]' in build_script
+    assert ('run_colcon_build --packages-select w1_nav2 '
+            '"${COLCON_BUILD_ARGS[@]}"') in build_script
+    assert build_script.count(
+        'run_colcon_build --packages-select w1_nav2') == 1
+    assert 'FINAL_SKIP_PACKAGES+=("w1_nav2")' in build_script
+    assert ('run_colcon_build '
+            '"${FINAL_COLCON_BUILD_ARGS[@]}"') in build_script
+    direct_colcon_builds = [
+        line.strip()
+        for line in build_script.splitlines()
+        if line.strip().startswith("colcon build")
+    ]
+    assert direct_colcon_builds == ['colcon build "$@"']
+    assert "printf ' %q' colcon build \"$@\"" in build_script
+    for future_contract in ("0.5.0", "nav2_bringup", "w1_sim"):
+        assert future_contract in build_script
+
+
 def test_diff_sim_bridges_production_navigation_commands_to_gazebo():
     """Diff simulation adapts the production Nav2 output to its chassis API."""
     production_params = read(
