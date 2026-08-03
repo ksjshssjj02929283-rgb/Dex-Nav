@@ -1,12 +1,13 @@
 #pragma once
 
+#include <memory>
+#include <string>
+
 #include <OgreManualObject.h>
 #include <OgreSceneNode.h>
 
-#include <memory>
 #include <rclcpp/rclcpp.hpp>
 #include <rviz_common/tool.hpp>
-#include <string>
 
 namespace map_asset_rviz_plugin {
 
@@ -33,7 +34,7 @@ private:
     int junction_counter_{0};  ///< auto-ID 计数，用于建议默认名
 
     Ogre::ManualObject* preview_obj_{nullptr};
-    Ogre::SceneNode* preview_node_{nullptr};
+    Ogre::SceneNode*    preview_node_{nullptr};
 
     void updatePreview(double x, double y);
     void clearPreview();

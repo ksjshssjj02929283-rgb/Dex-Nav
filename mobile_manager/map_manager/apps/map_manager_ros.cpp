@@ -53,49 +53,48 @@ MapManagerROS::MapManagerROS() : rclcpp::Node("map_manager") {
     map_pub_ = this->create_publisher<nav_msgs::msg::OccupancyGrid>("map", rclcpp::QoS(1).transient_local().reliable());
     map_metadata_pub_ =
         this->create_publisher<nav_msgs::msg::MapMetaData>("map_info", rclcpp::QoS(1).transient_local().reliable());
-    map_folder_pub_ = this->create_publisher<std_msgs::msg::String>("map_manager/map_folder",
-                                                                    rclcpp::QoS(1).transient_local().reliable());
-    map_name_pub_ = this->create_publisher<std_msgs::msg::String>("map_manager/map_name",
-                                                                  rclcpp::QoS(1).transient_local().reliable());
+    // 地图状态原子下发（folder+name+epoch）：消费方订阅它按 epoch 比对重载
+    map_state_pub_ = this->create_publisher<nav_interfaces::msg::MapState>(
+        "~/map_state", rclcpp::QoS(1).transient_local().reliable());
 
     // 所有服务使用专门的 callback group，避免死锁
     get_map_data_srv_ = this->create_service<nav_msgs::srv::GetMap>(
-        "map_manager/get_current_map_data",
+        "~/get_current_map_data",
         std::bind(&MapManagerROS::GetCurrentMapDataCallback, this, std::placeholders::_1, std::placeholders::_2),
         rmw_qos_profile_services_default, callback_group_services_);
 
     get_map_info_srv_ = this->create_service<nav_interfaces::srv::GetMapInfo>(
-        "map_manager/get_current_map_info",
+        "~/get_current_map_info",
         std::bind(&MapManagerROS::GetCurrentMapInfoCallback, this, std::placeholders::_1, std::placeholders::_2),
         rmw_qos_profile_services_default, callback_group_services_);
 
     get_map_folder_srv_ = this->create_service<nav_interfaces::srv::GetString>(
-        "map_manager/get_map_folder",
+        "~/get_map_folder",
         std::bind(&MapManagerROS::GetMapFolderCallback, this, std::placeholders::_1, std::placeholders::_2),
         rmw_qos_profile_services_default, callback_group_services_);
 
     get_map_name_srv_ = this->create_service<nav_interfaces::srv::GetString>(
-        "map_manager/get_map_name",
+        "~/get_map_name",
         std::bind(&MapManagerROS::GetMapNameCallback, this, std::placeholders::_1, std::placeholders::_2),
         rmw_qos_profile_services_default, callback_group_services_);
 
     get_all_maps_srv_ = this->create_service<nav_interfaces::srv::GetMapList>(
-        "map_manager/get_map_list",
+        "~/get_map_list",
         std::bind(&MapManagerROS::GetMapListCallback, this, std::placeholders::_1, std::placeholders::_2),
         rmw_qos_profile_services_default, callback_group_services_);
 
     load_map_srv_ = this->create_service<nav_interfaces::srv::LoadMap>(
-        "map_manager/load_map",
+        "~/load_map",
         std::bind(&MapManagerROS::LoadMapCallback, this, std::placeholders::_1, std::placeholders::_2),
         rmw_qos_profile_services_default, callback_group_services_);
 
     remove_map_srv_ = this->create_service<nav_interfaces::srv::DeleteMap>(
-        "map_manager/remove_map",
+        "~/remove_map",
         std::bind(&MapManagerROS::RemoveMapCallback, this, std::placeholders::_1, std::placeholders::_2),
         rmw_qos_profile_services_default, callback_group_services_);
 
     rename_map_srv_ = this->create_service<nav_interfaces::srv::RenameMap>(
-        "map_manager/rename_map",
+        "~/rename_map",
         std::bind(&MapManagerROS::RenameMapCallback, this, std::placeholders::_1, std::placeholders::_2),
         rmw_qos_profile_services_default, callback_group_services_);
 
@@ -176,34 +175,18 @@ void MapManagerROS::PublishMapAndNotify() {
         map_pub_->publish(*map_ptr);
     }
 
-    std_msgs::msg::String map_folder_msg;
-    map_folder_msg.data = map_manager_->GetMapFolder();
-    map_folder_pub_->publish(map_folder_msg);
-
-    std_msgs::msg::String map_name_msg;
-    map_name_msg.data = map_manager_->GetMapName();
-    map_name_pub_->publish(map_name_msg);
+    // 原子下发 MapState（folder+name+epoch+stamp）：消费方按 epoch 比对重载，同名重载/回退也能感知
+    nav_interfaces::msg::MapState map_state_msg;
+    map_state_msg.header.stamp = this->get_clock()->now();
+    map_state_msg.map_folder = map_manager_->GetMapFolder();
+    map_state_msg.map_name = map_manager_->GetMapName();
+    map_state_msg.epoch = map_manager_->GetEpoch();
+    map_state_pub_->publish(map_state_msg);
 
     this->set_parameter(rclcpp::Parameter("map_name", map_manager_->GetMapName()));
 
-    // 参数同步（可选：用参数服务暴露）
-    // 地图生效延时，给其他节点足够时间处理话题回调
-    // 500ms 足够让话题回调完成
-    std::this_thread::sleep_for(500ms);
-
-    if (map_manager_->HasMapChanged()) {
-        // 注意：ActivateCurrentMap 会调用服务，但由于话题已发布
-        // 其他节点可能已经通过话题回调处理了地图变更
-        // 即使服务调用失败，只要必需节点通过话题处理成功即可
-        bool activate_success = ActivateCurrentMap();
-        map_manager_->ResetFlags();
-
-        if (!activate_success) {
-            RCLCPP_WARN(this->get_logger(),
-                        "ActivateCurrentMap returned false, but map data has been published via topics. "
-                        "Check if required nodes received the map change notification.");
-        }
-    }
+    // 自动生效走 latched map_state（epoch）：消费方自动重载，无需主动 push。
+    map_manager_->ResetFlags();
 }
 
 void MapManagerROS::RemoveMapCallback(const std::shared_ptr<nav_interfaces::srv::DeleteMap::Request> req,
@@ -225,14 +208,9 @@ void MapManagerROS::RenameMapCallback(const std::shared_ptr<nav_interfaces::srv:
         return;
     }
 
-    // 当前加载的地图被改名 → 联动 ROS 参数 + 重发话题
+    // 当前加载的地图被改名 → epoch+1 + 重发 map_state（消费方据新名/路径重载）
     if (is_current_map) {
-        this->set_parameter(rclcpp::Parameter("map_name", map_manager_->GetMapName()));
-        RCLCPP_INFO(this->get_logger(), "Updated map_name parameter to: %s", map_manager_->GetMapName().c_str());
-
-        std_msgs::msg::String map_name_msg;
-        map_name_msg.data = map_manager_->GetMapName();
-        map_name_pub_->publish(map_name_msg);
+        PublishMapAndNotify();
     }
 
     // 默认地图的名字被改 → 同步配置文件
@@ -299,87 +277,6 @@ void MapManagerROS::GetMapNameCallback(const std::shared_ptr<nav_interfaces::srv
     (void)req;
     res->data = map_manager_->GetMapName();
     res->success = true;
-}
-
-bool MapManagerROS::ActivateCurrentMap() {
-    bool all_success = true;
-
-    // 步骤1：先激活 nav_point_manager（加载导航点）
-    // RCLCPP_INFO(this->get_logger(), "Step 1: Activating nav_point_manager...");
-    // if (!SetActivateSignalToNode("nav_point_manager", config_->GetNavPointManagerService())) {
-    //   RCLCPP_ERROR(this->get_logger(), "❌ Failed to activate nav_point_manager");
-    //   all_success = false;
-    // } else {
-    //   RCLCPP_INFO(this->get_logger(), "✅ nav_point_manager activated successfully");
-    //   // 等待 nav_point_manager 完成导航点加载（文件I/O）
-    //   RCLCPP_INFO(this->get_logger(), "Waiting for nav_point_manager to complete loading...");
-    //   std::this_thread::sleep_for(std::chrono::milliseconds(200));
-    // }
-
-    // // 步骤2：激活 mission_manager（此时导航点已加载完成）
-    // RCLCPP_INFO(this->get_logger(), "Step 2: Activating mission_manager...");
-    // if (!SetActivateSignalToNode("mission_manager", config_->GetMissionManagerService())) {
-    //   RCLCPP_ERROR(this->get_logger(), "❌ Failed to activate mission_manager");
-    //   all_success = false;
-    // } else {
-    //   RCLCPP_INFO(this->get_logger(), "✅ mission_manager activated successfully");
-    // }
-
-    // 步骤3：激活 localization 节点（唯一需要 push 通知的节点）
-    // move_base / docking_base 已移除：move_base 通过 latched topic 自行同步
-    RCLCPP_INFO(this->get_logger(), "Step 3: Activating localization...");
-    if (!SetActivateSignalToNode("localization", config_->GetLocalizationService())) {
-        RCLCPP_WARN(this->get_logger(),
-                    "⚠️  localization not available after retries (will fall back to latched topic sync)");
-        all_success = false;
-    } else {
-        RCLCPP_INFO(this->get_logger(), "✅ Successfully activated: localization");
-    }
-
-    return all_success;
-}
-
-bool MapManagerROS::SetActivateSignalToNode(const std::string& node_name, const std::string& service_name) {
-    constexpr int kMaxAttempts = 3;
-    constexpr auto kWaitServiceTimeout = 10s;
-    constexpr auto kCallResponseTimeout = 3s;
-
-    auto client = this->create_client<std_srvs::srv::Trigger>(service_name);
-
-    for (int attempt = 1; attempt <= kMaxAttempts; ++attempt) {
-        RCLCPP_INFO(this->get_logger(), "Activating %s (attempt %d/%d, waiting up to 10s for service)...",
-                    node_name.c_str(), attempt, kMaxAttempts);
-
-        if (!client->wait_for_service(kWaitServiceTimeout)) {
-            RCLCPP_WARN(this->get_logger(), "%s not available (attempt %d/%d)", service_name.c_str(), attempt,
-                        kMaxAttempts);
-            continue;
-        }
-
-        auto request = std::make_shared<std_srvs::srv::Trigger::Request>();
-        auto future = client->async_send_request(request);
-
-        // 使用 MultiThreadedExecutor，future.wait_for() 可在其他线程接收响应
-        auto status = future.wait_for(kCallResponseTimeout);
-        if (status != std::future_status::ready) {
-            RCLCPP_WARN(this->get_logger(), "%s call timeout (attempt %d/%d)", service_name.c_str(), attempt,
-                        kMaxAttempts);
-            continue;
-        }
-
-        auto resp = future.get();
-        if (!resp->success) {
-            RCLCPP_WARN(this->get_logger(), "%s call failed (attempt %d/%d): %s", service_name.c_str(), attempt,
-                        kMaxAttempts, resp->message.c_str());
-            continue;
-        }
-
-        RCLCPP_INFO(this->get_logger(), "%s call success (attempt %d)", service_name.c_str(), attempt);
-        return true;
-    }
-
-    RCLCPP_ERROR(this->get_logger(), "Failed to activate %s after %d attempts", node_name.c_str(), kMaxAttempts);
-    return false;
 }
 
 }  // namespace map_manager

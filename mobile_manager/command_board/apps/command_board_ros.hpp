@@ -27,9 +27,14 @@
 
 #include "localization_sm.h"
 #include "nav_interfaces/msg/localization_state.hpp"
+#include "nav_interfaces/msg/map_state.hpp"
 #include "nav_interfaces/srv/load_map.hpp"
+#include "nav_interfaces/srv/set_pose.hpp"
 #include "nav_interfaces/srv/reset_map_origin_by_xy_yaw.hpp"
 #include "nav_interfaces/srv/transform_assets.hpp"
+#include "map_version_manager.hpp"
+#include "status_monitor.hpp"
+#include "auto_map_saver.hpp"
 
 namespace command_board {
 
@@ -37,10 +42,6 @@ class CommandBoardManagerROS : public rclcpp::Node {
 public:
     CommandBoardManagerROS();
     ~CommandBoardManagerROS() = default;
-
-    void OnLocalizationState(const nav_interfaces::msg::LocalizationState::SharedPtr msg);
-
-    void OnDiagnosticsAgg(const diagnostic_msgs::msg::DiagnosticArray::SharedPtr msg);
 
     void StopRobotMovement();
 
@@ -67,10 +68,15 @@ private:
     // 内部：调用子进程 reset_map_origin_tool
     bool RunResetMapOriginTool(const std::string& map_name, double x, double y, double yaw, std::string& out_log);
 
-    rclcpp::CallbackGroup::SharedPtr callback_group_;
+    // Tunable parameters (declared in ctor).
+    int    reset_origin_sample_frames_{11};
+    double reset_origin_sample_timeout_sec_{5.0};
+    double service_call_timeout_sec_{15.0};
+    double service_wait_timeout_sec_{3.0};
+    bool   react_to_estop_{true};
+    bool   react_to_bumper_{true};
 
-    rclcpp::Subscription<nav_interfaces::msg::LocalizationState>::SharedPtr localization_state_sub_;
-    rclcpp::Subscription<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr diagnostics_agg_sub_;
+    rclcpp::CallbackGroup::SharedPtr callback_group_;
 
     rclcpp_action::Client<nav2_msgs::action::NavigateToPose>::SharedPtr navigation_action_client_;
 
@@ -88,11 +94,52 @@ private:
     std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
     std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
 
-    // 当前地图名称（从 map_manager/map_name 话题获取）
+    // 当前地图名称（从 map_manager/map_state 话题获取）
     std::string current_map_name_;
-    rclcpp::Subscription<std_msgs::msg::String>::SharedPtr map_name_sub_;
+    rclcpp::Subscription<nav_interfaces::msg::MapState>::SharedPtr map_state_sub_;
 
     std::unique_ptr<Localization_SM> localization_sm_;
+
+    // 地图版本备份 + 回退单入口（移植自 nav2_command_board）
+    std::unique_ptr<MapVersionManager> map_version_manager_;
+
+    // 状态聚合 + 条件自动保存地图（移植自 nav2_command_board）
+    std::unique_ptr<StatusMonitor> status_monitor_;
+    std::unique_ptr<AutoMapSaver>  auto_map_saver_;
+
+    // ── 急停丢位恢复（estop 断里程计会丢位，激光雷达照常工作）──────────
+    enum class RecoverState { kNormal, kSafeStop, kRelocating, kGlobalReloc, kAlarm };
+    void OnRecoverTimer();
+    void SnapshotGoodPose();
+    bool RobotIsStill() const;
+    void StopLocalization();
+    void StartLocalization();
+    void Relocalize(const geometry_msgs::msg::Pose2D& pose);
+    void GlobalRelocalize();
+    void RaiseAlarm(const std::string& reason);
+    void PushRecoverStatus();
+    static const char* RecoverStateToString(RecoverState s);
+
+    bool   enable_loss_recovery_{true};
+    double recover_settle_sec_{1.0};
+    double reloc_wait_sec_{2.0};
+    double score_good_{0.8};
+    double score_bad_{0.5};
+    double pose_cache_min_score_{0.6};
+    double velocity_still_threshold_{0.05};
+    RecoverState recover_state_{RecoverState::kNormal};
+    bool         safety_active_{false};
+    geometry_msgs::msg::Pose2D last_known_pose_{};
+    bool         last_known_pose_valid_{false};
+    rclcpp::Time settle_start_;
+    rclcpp::Time reloc_start_;
+    float        latest_score_{0.0f};
+    int          last_localization_status_{-999};
+    std::string  last_alarm_;
+    rclcpp::Client<nav_interfaces::srv::SetPose>::SharedPtr relocalization_cli_;
+    rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr global_reloc_cli_;
+    rclcpp::TimerBase::SharedPtr recover_timer_;
+    rclcpp::Publisher<std_msgs::msg::String>::SharedPtr alarm_pub_;
 };
 
 }  // namespace command_board

@@ -1,0 +1,19 @@
+<library path="command_board_rviz_plugins">
+  <class name="command_board_rviz_plugins/CommandBoardStatusPanel"
+         type="command_board_rviz_plugins::CommandBoardStatusPanel"
+         base_class_type="rviz_common::Panel">
+    <description>
+      command_board 状态显示面板：订阅 NavSystemStatus + auto_map_saver_status，
+      分区卡片可视化电池/安全/定位/任务/位姿/自动保存/急停丢位恢复（纯只读）。
+    </description>
+  </class>
+
+  <class name="command_board_rviz_plugins/CommandBoardControlPanel"
+         type="command_board_rviz_plugins::CommandBoardControlPanel"
+         base_class_type="rviz_common::Panel">
+    <description>
+      command_board 控制面板：保存导航地图 / 备份地图与资产 / 回退地图 / 重置地图原点
+      （当前位姿 + 指定 xyyaw）+ 全局重定位（localization_node）。危险操作二次确认。
+    </description>
+  </class>
+</library>

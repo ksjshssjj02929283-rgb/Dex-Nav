@@ -85,5 +85,30 @@ install(DIRECTORY config
   DESTINATION share/${PROJECT_NAME}
 )
 
-ament_package()
+install(PROGRAMS
+  scripts/map_manager_test.py
+  DESTINATION lib/${PROJECT_NAME}
+)
 
+install(FILES
+  test_support/build_standard_map_data.py
+  test_support/validate_standard_map_data.py
+  test_support/map_manager_auto_test.py
+  test_support/map_manager_data_test.py
+  test_support/run_map_manager_acceptance.py
+  test_support/run_map_manager_local_self_test.py
+  test_support/map_manager_test_paths.py
+  DESTINATION lib/${PROJECT_NAME}/map_manager_test_support
+)
+
+install(FILES
+  test_data/standard_map_manifest.json
+  DESTINATION share/${PROJECT_NAME}/test_data
+)
+
+install(DIRECTORY
+  test_data/map_standard
+  DESTINATION share/${PROJECT_NAME}/test_data
+)
+
+ament_package()

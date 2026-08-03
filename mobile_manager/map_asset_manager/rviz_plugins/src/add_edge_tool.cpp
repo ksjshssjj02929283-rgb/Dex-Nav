@@ -5,9 +5,7 @@
 //   右键（未选起点时）→ 退出工具
 
 #include "map_asset_rviz_plugin/add_edge_tool.hpp"
-
-#include <OgreManualObject.h>
-#include <OgreSceneManager.h>
+#include "map_asset_rviz_plugin/route_graph_tools_common.hpp"
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -18,14 +16,17 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QMetaObject>
+
+#include <OgreManualObject.h>
+#include <OgreSceneManager.h>
+
 #include <nav_interfaces/srv/add_route_edge.hpp>
-#include <pluginlib/class_list_macros.hpp>
 #include <rviz_common/display_context.hpp>
 #include <rviz_common/interaction/view_picker_iface.hpp>
 #include <rviz_common/ros_integration/ros_node_abstraction_iface.hpp>
 #include <rviz_common/viewport_mouse_event.hpp>
 
-#include "map_asset_rviz_plugin/route_graph_tools_common.hpp"
+#include <pluginlib/class_list_macros.hpp>
 
 namespace map_asset_rviz_plugin {
 
@@ -34,40 +35,38 @@ namespace map_asset_rviz_plugin {
 // ---------------------------------------------------------------------------
 namespace {
 
-EdgeConfig showEdgeConfigDialog(const EndpointInfo& from, const EndpointInfo& to, const std::string& edge_type_label) {
+EdgeConfig showEdgeConfigDialog(const EndpointInfo& from, const EndpointInfo& to,
+                                const std::string& edge_type_label)
+{
     QDialog dlg;
-    dlg.setWindowTitle(QString("路网边配置 — %1").arg(QString::fromStdString(edge_type_label)));
+    dlg.setWindowTitle(QString("路网边配置 — %1")
+                           .arg(QString::fromStdString(edge_type_label)));
     auto* form = new QFormLayout(&dlg);
 
     form->addRow("类型:", new QLabel(QString::fromStdString(edge_type_label)));
-    form->addRow("起点:", new QLabel(QString::fromStdString("[" + from.type + "] " + from.id)));
-    form->addRow("终点:", new QLabel(QString::fromStdString("[" + to.type + "] " + to.id)));
+    form->addRow("起点:", new QLabel(
+        QString::fromStdString("[" + from.type + "] " + from.id)));
+    form->addRow("终点:", new QLabel(
+        QString::fromStdString("[" + to.type + "] " + to.id)));
 
-    auto* id_edit = new QLineEdit(QString::fromStdString(from.id + "_" + to.id));
-    auto* bidir_cb = new QCheckBox("单向通行");
+    auto* id_edit    = new QLineEdit(
+        QString::fromStdString(from.id + "_" + to.id));
+    auto* bidir_cb   = new QCheckBox("单向通行");
     auto* speed_spin = new QDoubleSpinBox();
-    speed_spin->setRange(0.0, 10.0);
-    speed_spin->setValue(0.8);
-    speed_spin->setSuffix(" m/s");
-    auto* xtol_spin = new QDoubleSpinBox();
-    xtol_spin->setRange(0.0, 5.0);
-    xtol_spin->setValue(0.3);
-    xtol_spin->setSuffix(" m");
-    auto* ttol_spin = new QDoubleSpinBox();
-    ttol_spin->setRange(0.0, 6.28);
-    ttol_spin->setValue(0.5);
-    ttol_spin->setSuffix(" rad");
+    speed_spin->setRange(0.0, 10.0); speed_spin->setValue(0.8); speed_spin->setSuffix(" m/s");
+    auto* xtol_spin  = new QDoubleSpinBox();
+    xtol_spin->setRange(0.0, 5.0);   xtol_spin->setValue(0.3); xtol_spin->setSuffix(" m");
+    auto* ttol_spin  = new QDoubleSpinBox();
+    ttol_spin->setRange(0.0, 6.28);  ttol_spin->setValue(0.5); ttol_spin->setSuffix(" rad");
     auto* width_spin = new QDoubleSpinBox();
-    width_spin->setRange(0.0, 10.0);
-    width_spin->setValue(0.0);
-    width_spin->setSuffix(" m (0=不限)");
+    width_spin->setRange(0.0, 10.0); width_spin->setValue(0.0); width_spin->setSuffix(" m (0=不限)");
     auto* policy_box = new QComboBox();
     policy_box->addItems({"STOP", "DETOUR"});
 
-    form->addRow("边 ID:", id_edit);
-    form->addRow("", bidir_cb);
+    form->addRow("边 ID:",    id_edit);
+    form->addRow("",          bidir_cb);
     form->addRow("最大速度:", speed_spin);
-    form->addRow("XY 容差:", xtol_spin);
+    form->addRow("XY 容差:",  xtol_spin);
     form->addRow("朝向容差:", ttol_spin);
     form->addRow("通道宽度:", width_spin);
     form->addRow("障碍策略:", policy_box);
@@ -79,14 +78,14 @@ EdgeConfig showEdgeConfigDialog(const EndpointInfo& from, const EndpointInfo& to
 
     EdgeConfig res;
     if (dlg.exec() == QDialog::Accepted) {
-        res.accepted = true;
-        res.edge_id = id_edit->text().toStdString();
+        res.accepted      = true;
+        res.edge_id       = id_edit->text().toStdString();
         res.bidirectional = !bidir_cb->isChecked();
-        res.max_speed = static_cast<float>(speed_spin->value());
-        res.xy_tolerance = static_cast<float>(xtol_spin->value());
-        res.th_tolerance = static_cast<float>(ttol_spin->value());
-        res.lane_width = static_cast<float>(width_spin->value());
-        res.obs_policy = policy_box->currentText().toStdString();
+        res.max_speed     = static_cast<float>(speed_spin->value());
+        res.xy_tolerance  = static_cast<float>(xtol_spin->value());
+        res.th_tolerance  = static_cast<float>(ttol_spin->value());
+        res.lane_width    = static_cast<float>(width_spin->value());
+        res.obs_policy    = policy_box->currentText().toStdString();
     }
     return res;
 }
@@ -97,19 +96,15 @@ EdgeConfig showEdgeConfigDialog(const EndpointInfo& from, const EndpointInfo& to
 // AddEdgeTool
 // ---------------------------------------------------------------------------
 
-AddEdgeTool::AddEdgeTool() { shortcut_key_ = 'l'; }
+AddEdgeTool::AddEdgeTool() {
+    shortcut_key_ = 'l';
+}
 
 AddEdgeTool::~AddEdgeTool() {
     if (context_) {
         auto* scene = context_->getSceneManager();
-        if (preview_node_) {
-            scene->destroySceneNode(preview_node_);
-            preview_node_ = nullptr;
-        }
-        if (preview_obj_) {
-            scene->destroyManualObject(preview_obj_);
-            preview_obj_ = nullptr;
-        }
+        if (preview_node_) { scene->destroySceneNode(preview_node_); preview_node_ = nullptr; }
+        if (preview_obj_)  { scene->destroyManualObject(preview_obj_); preview_obj_ = nullptr; }
     }
 }
 
@@ -117,7 +112,8 @@ void AddEdgeTool::onInitialize() {
     node_ = context_->getRosNodeAbstraction().lock()->get_raw_node();
     auto* scene = context_->getSceneManager();
 
-    const std::string name = "map_asset_edge_preview_" + std::to_string(reinterpret_cast<uintptr_t>(this));
+    const std::string name =
+        "map_asset_edge_preview_" + std::to_string(reinterpret_cast<uintptr_t>(this));
     preview_obj_ = scene->createManualObject(name);
     preview_obj_->setDynamic(true);
     preview_node_ = scene->getRootSceneNode()->createChildSceneNode();
@@ -130,27 +126,26 @@ void AddEdgeTool::activate() {
         setStatus("请先点击「开始修改路网 [R]」再操作");
         return;
     }
-    selecting_ = false;
-    loading_ = true;
+    selecting_  = false;
+    loading_    = true;
     endpoints_.clear();
     setStatus("正在加载端点列表…");
 
     // 异步加载：nav 点和 junction 并行请求，回调到 Qt 主线程刷新预览
-    loadEndpointsAsync(node_, service_prefix_, [this](std::vector<EndpointInfo> eps) {
-        QMetaObject::invokeMethod(
-            this,
-            [this, eps = std::move(eps)]() mutable {
-                endpoints_ = std::move(eps);
-                loading_ = false;
-                updatePreview(last_mx_, last_my_);
-                if (context_) context_->queueRender();
-                setStatus(
-                    endpoints_.empty()
+    loadEndpointsAsync(node_, service_prefix_,
+        [this](std::vector<EndpointInfo> eps) {
+            QMetaObject::invokeMethod(this,
+                [this, eps = std::move(eps)]() mutable {
+                    endpoints_ = std::move(eps);
+                    loading_   = false;
+                    updatePreview(last_mx_, last_my_);
+                    if (context_) context_->queueRender();
+                    setStatus(endpoints_.empty()
                         ? "当前没有可用端点（先添加 NavPoint 或 Junction）"
-                        : QString("已加载 %1 个端点，左键选起点，右键退出").arg(static_cast<int>(endpoints_.size())));
-            },
-            Qt::QueuedConnection);
-    });
+                        : QString("已加载 %1 个端点，左键选起点，右键退出")
+                              .arg(static_cast<int>(endpoints_.size())));
+                }, Qt::QueuedConnection);
+        });
 }
 
 void AddEdgeTool::deactivate() {
@@ -162,7 +157,8 @@ void AddEdgeTool::deactivate() {
 int AddEdgeTool::processMouseEvent(rviz_common::ViewportMouseEvent& event) {
     if (!s_route_graph_editing) return Render;
     Ogre::Vector3 pos;
-    const bool got3d = context_->getViewPicker()->get3DPoint(event.panel, event.x, event.y, pos);
+    const bool got3d =
+        context_->getViewPicker()->get3DPoint(event.panel, event.x, event.y, pos);
     const double mx = got3d ? pos.x : 0.0;
     const double my = got3d ? pos.y : 0.0;
 
@@ -185,7 +181,7 @@ int AddEdgeTool::processMouseEvent(rviz_common::ViewportMouseEvent& event) {
                 setStatus("附近没有端点（需在 0.5m 范围内点击）");
                 return Render;
             }
-            from_ep_ = *ep;
+            from_ep_   = *ep;
             selecting_ = true;
             setStatus(QString("起点 [%1] %2 — 左键选终点，右键取消")
                           .arg(QString::fromStdString(ep->type))
@@ -196,7 +192,8 @@ int AddEdgeTool::processMouseEvent(rviz_common::ViewportMouseEvent& event) {
 
         // 第二次左键（selecting_=true）：snap 终点 → 弹对话框 → 提交 → 链式继续
         // 对标 line_tool 的 leftDown → AddLine → 新点成为下一次的起点
-        const EndpointInfo* ep = findNearest(mx, my, endpoints_, kSnapRadius, from_ep_.id);
+        const EndpointInfo* ep =
+            findNearest(mx, my, endpoints_, kSnapRadius, from_ep_.id);
         if (!ep) {
             setStatus("附近没有可选终点（需在 0.5m 范围内）");
             return Render;
@@ -265,52 +262,62 @@ void AddEdgeTool::updatePreview(double mx, double my) {
     drawRing(preview_obj_, from_ep_.x, from_ep_.y, kPreviewZ, 0.22f, 0.1f, 1.0f, 0.3f);
 
     // 预览连线：起点 → 鼠标（青色）
-    drawSegment(preview_obj_, from_ep_.x, from_ep_.y, static_cast<float>(mx), static_cast<float>(my), kPreviewZ, 0.2f,
-                0.8f, 1.0f);
+    drawSegment(preview_obj_,
+                from_ep_.x, from_ep_.y,
+                static_cast<float>(mx), static_cast<float>(my),
+                kPreviewZ, 0.2f, 0.8f, 1.0f);
 
     // 若当前鼠标附近有可 snap 的终点，高亮它（黄色）并改用 snap 连线（绿色）
     const EndpointInfo* ep = findNearest(mx, my, endpoints_, kSnapRadius, from_ep_.id);
     if (ep) {
         drawRing(preview_obj_, ep->x, ep->y, kPreviewZ, 0.22f, 1.0f, 0.9f, 0.1f);
-        drawSegment(preview_obj_, from_ep_.x, from_ep_.y, ep->x, ep->y, kPreviewZ + 0.01f, 0.1f, 1.0f, 0.3f);
+        drawSegment(preview_obj_,
+                    from_ep_.x, from_ep_.y,
+                    ep->x, ep->y,
+                    kPreviewZ + 0.01f, 0.1f, 1.0f, 0.3f);
     }
 }
 
 void AddEdgeTool::clearPreview() {
-    if (preview_obj_) preview_obj_->clear();
+    if (preview_obj_)  preview_obj_->clear();
     if (preview_node_) preview_node_->setVisible(false);
 }
 
-void AddEdgeTool::submitEdge(const EndpointInfo& from, const EndpointInfo& to, const EdgeConfig& cfg) {
-    auto client = node_->create_client<nav_interfaces::srv::AddRouteEdge>(service_prefix_ + "/add_route_edge");
-    auto req = std::make_shared<nav_interfaces::srv::AddRouteEdge::Request>();
-    req->edge.id = cfg.edge_id;
-    req->edge.from_ep.id = from.id;
-    req->edge.from_ep.type = from.type;
-    req->edge.to_ep.id = to.id;
-    req->edge.to_ep.type = to.type;
-    req->edge.edge_type = "LINE";
-    req->edge.bidirectional = cfg.bidirectional;
-    req->edge.max_speed = cfg.max_speed;
-    req->edge.xy_tolerance = cfg.xy_tolerance;
-    req->edge.th_tolerance = cfg.th_tolerance;
-    req->edge.lane_width = cfg.lane_width;
-    req->edge.obs_policy = cfg.obs_policy;
+void AddEdgeTool::submitEdge(const EndpointInfo& from, const EndpointInfo& to,
+                              const EdgeConfig& cfg) {
+    auto client = node_->create_client<nav_interfaces::srv::AddRouteEdge>(
+        service_prefix_ + "/add_route_edge");
+    auto req                 = std::make_shared<nav_interfaces::srv::AddRouteEdge::Request>();
+    req->edge.id             = cfg.edge_id;
+    req->edge.from_ep.id     = from.id;
+    req->edge.from_ep.type   = from.type;
+    req->edge.to_ep.id       = to.id;
+    req->edge.to_ep.type     = to.type;
+    req->edge.edge_type      = "LINE";
+    req->edge.bidirectional  = cfg.bidirectional;
+    req->edge.max_speed      = cfg.max_speed;
+    req->edge.xy_tolerance   = cfg.xy_tolerance;
+    req->edge.th_tolerance   = cfg.th_tolerance;
+    req->edge.lane_width     = cfg.lane_width;
+    req->edge.obs_policy     = cfg.obs_policy;
 
     const QString eid = QString::fromStdString(cfg.edge_id);
-    client->async_send_request(req, [this, eid](rclcpp::Client<nav_interfaces::srv::AddRouteEdge>::SharedFuture fut) {
-        try {
-            auto resp = fut.get();
-            setStatus(resp->success ? QString("边 '%1' 添加成功").arg(eid)
-                                    : QString("添加失败: %1").arg(QString::fromStdString(resp->message)));
-        } catch (const std::exception& ex) {
-            setStatus(QString("异常: %1").arg(ex.what()));
-        }
-    });
+    client->async_send_request(req,
+        [this, eid](rclcpp::Client<nav_interfaces::srv::AddRouteEdge>::SharedFuture fut) {
+            try {
+                auto resp = fut.get();
+                setStatus(resp->success
+                    ? QString("边 '%1' 添加成功").arg(eid)
+                    : QString("添加失败: %1").arg(
+                          QString::fromStdString(resp->message)));
+            } catch (const std::exception& ex) {
+                setStatus(QString("异常: %1").arg(ex.what()));
+            }
+        });
 }
 
 void AddEdgeTool::load(const rviz_common::Config& config) { Tool::load(config); }
-void AddEdgeTool::save(rviz_common::Config config) const { Tool::save(config); }
+void AddEdgeTool::save(rviz_common::Config config) const  { Tool::save(config); }
 
 }  // namespace map_asset_rviz_plugin
 

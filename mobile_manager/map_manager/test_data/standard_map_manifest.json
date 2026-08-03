@@ -1,0 +1,90 @@
+{
+  "generated_at": "2026-07-27T10:20:52.419779+00:00",
+  "samples": {
+    "broken_legacy": {
+      "expected_failure": "missing map.yaml",
+      "name": "mm_test_broken"
+    },
+    "legacy_flat": {
+      "asset_counts": {
+        "areas": 0,
+        "points": 1,
+        "routes": 0
+      },
+      "canaries": [
+        "AUTO_LEGACY_POINT"
+      ],
+      "name": "mm_test_legacy"
+    },
+    "map_a": {
+      "asset_counts": {
+        "areas": 1,
+        "points": 1,
+        "routes": 0
+      },
+      "canaries": [
+        "AUTO_A_POINT",
+        "AUTO_A_AREA"
+      ],
+      "name": "mm_test_a",
+      "rollback": {
+        "asset_counts": {
+          "areas": 0,
+          "points": 2,
+          "routes": 1
+        },
+        "assets_version_ts": "20260725-000001",
+        "canaries": [
+          "AUTO_ROLLBACK_POINT_1",
+          "AUTO_ROLLBACK_POINT_2",
+          "AUTO_ROLLBACK_ROUTE"
+        ],
+        "map_version_ts": "20260725-000001"
+      }
+    },
+    "map_b": {
+      "asset_counts": {
+        "areas": 0,
+        "points": 2,
+        "routes": 1
+      },
+      "canaries": [
+        "AUTO_B_POINT_1",
+        "AUTO_B_POINT_2",
+        "AUTO_B_ROUTE"
+      ],
+      "name": "mm_test_b"
+    }
+  },
+  "schema_version": 1,
+  "sha256": {
+    "maps/mm_test_a/assets/backups/map_assets.20260725-000001.json": "178662ede44a2c4a26ffd421ec998fd17244836fbc46aae7a597e083441eaa1d",
+    "maps/mm_test_a/assets/map_assets.json": "f9be61e35f337f85456232f6de6690e03811d0a4b09cf717fc31640e8675ca3a",
+    "maps/mm_test_a/slam/backups/backup.20260725-000001/map.pbstream": "a824491dc78e5154d003f6dc6dd51c317ee63beb0d40a8a6e739a9934a4bce79",
+    "maps/mm_test_a/slam/backups/backup.20260725-000001/map.png": "644fa71303061a319ba1a476461f268bbdd37af05dbd0556e3c3562f9fd9ca63",
+    "maps/mm_test_a/slam/backups/backup.20260725-000001/map.yaml": "c1ae5cd5e582855231bd3d43fd90c45034d150b6a14f56954a10e41bd99adfe9",
+    "maps/mm_test_a/slam/map.pbstream": "a824491dc78e5154d003f6dc6dd51c317ee63beb0d40a8a6e739a9934a4bce79",
+    "maps/mm_test_a/slam/map.png": "8a33e9952e93050dcf197b8f24604f3e712e95fe867e2b4178527d65fb3de74c",
+    "maps/mm_test_a/slam/map.yaml": "c1ae5cd5e582855231bd3d43fd90c45034d150b6a14f56954a10e41bd99adfe9",
+    "maps/mm_test_b/assets/map_assets.json": "d2803710bf6070d6f0da30fa5e76e98c9bbb2ebc0f5104c9a9a7e2cf5b527e23",
+    "maps/mm_test_b/slam/map.pbstream": "a824491dc78e5154d003f6dc6dd51c317ee63beb0d40a8a6e739a9934a4bce79",
+    "maps/mm_test_b/slam/map.png": "fba7884ec5a5fa986a27c8cbe30cf66a55329c6935bf67e5051555438a737092",
+    "maps/mm_test_b/slam/map.yaml": "c1ae5cd5e582855231bd3d43fd90c45034d150b6a14f56954a10e41bd99adfe9",
+    "maps/mm_test_broken/map.pbstream": "a824491dc78e5154d003f6dc6dd51c317ee63beb0d40a8a6e739a9934a4bce79",
+    "maps/mm_test_broken/map.png": "8a33e9952e93050dcf197b8f24604f3e712e95fe867e2b4178527d65fb3de74c",
+    "maps/mm_test_legacy/map.pbstream": "a824491dc78e5154d003f6dc6dd51c317ee63beb0d40a8a6e739a9934a4bce79",
+    "maps/mm_test_legacy/map.png": "8a33e9952e93050dcf197b8f24604f3e712e95fe867e2b4178527d65fb3de74c",
+    "maps/mm_test_legacy/map.yaml": "c1ae5cd5e582855231bd3d43fd90c45034d150b6a14f56954a10e41bd99adfe9",
+    "maps/mm_test_legacy/map_assets.json": "b73cf7052153ec404e27cf6e481498c5f22932fa89c8d5ccf7f438b1338630e5"
+  },
+  "source": {
+    "name": "map_standard",
+    "path": "/home/fengbro/.dexe/data/maps/map_standard",
+    "sha256": {
+      "assets/map_assets.json": "ab421528ab6e688e3f7c7d8c66cf37e52fa56bd877889c6af3d807f657063c96",
+      "slam/map.pbstream": "a824491dc78e5154d003f6dc6dd51c317ee63beb0d40a8a6e739a9934a4bce79",
+      "slam/map.png": "8a33e9952e93050dcf197b8f24604f3e712e95fe867e2b4178527d65fb3de74c",
+      "slam/map.yaml": "c1ae5cd5e582855231bd3d43fd90c45034d150b6a14f56954a10e41bd99adfe9"
+    }
+  }
+}

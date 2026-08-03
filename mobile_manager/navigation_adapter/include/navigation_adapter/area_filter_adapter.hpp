@@ -7,8 +7,10 @@
 #include <geometry_msgs/msg/point.hpp>
 #include <geometry_msgs/msg/pose2_d.hpp>
 #include <nav2_msgs/msg/costmap_filter_info.hpp>
+#include <cstdint>
 #include <nav_interfaces/msg/area_info.hpp>
 #include <nav_interfaces/msg/area_info_array.hpp>
+#include <nav_interfaces/msg/map_state.hpp>
 #include <nav_msgs/msg/occupancy_grid.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/string.hpp>
@@ -44,7 +46,7 @@ private:
 
     void onMap(const nav_msgs::msg::OccupancyGrid::SharedPtr msg);
     void onAreas(const nav_interfaces::msg::AreaInfoArray::SharedPtr msg);
-    void onMapName(const std_msgs::msg::String::SharedPtr msg);
+    void onMapState(const nav_interfaces::msg::MapState::SharedPtr msg);
     void onStatusTimer();
 
     void renderAndPublish();
@@ -82,7 +84,7 @@ private:
     // ── ROS 接口 ─────────────────────────────────────────────────
     rclcpp::Subscription<nav_msgs::msg::OccupancyGrid>::SharedPtr map_sub_;
     rclcpp::Subscription<nav_interfaces::msg::AreaInfoArray>::SharedPtr areas_sub_;
-    rclcpp::Subscription<std_msgs::msg::String>::SharedPtr map_name_sub_;
+    rclcpp::Subscription<nav_interfaces::msg::MapState>::SharedPtr map_state_sub_;
 
     rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr keepout_mask_pub_;
     rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr speed_mask_pub_;
@@ -102,6 +104,7 @@ private:
     bool has_areas_{false};
 
     std::string current_map_name_;
+    uint64_t last_epoch_{0};  // 上次处理的 map_state epoch；比对它判断地图是否变更
     size_t last_render_hash_{0U};
     bool has_last_render_hash_{false};
     LifecycleState state_{LifecycleState::WAITING_MAP};
@@ -110,7 +113,7 @@ private:
     // ── 参数 ─────────────────────────────────────────────────────
     std::string map_topic_;
     std::string areas_topic_;
-    std::string map_name_topic_;
+    std::string map_state_topic_;
     std::string keepout_mask_topic_;
     std::string speed_mask_topic_;
     std::string keepout_filter_info_topic_;
