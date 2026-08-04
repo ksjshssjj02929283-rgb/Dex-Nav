@@ -137,9 +137,6 @@ class DataRunner:
     ) -> None:
         from nav_interfaces.msg import MapState
         from nav_interfaces.srv import (
-            GetAllAreas,
-            GetAllNavPoints,
-            GetAllRoutes,
             LoadMap,
             RenameMap,
             RollbackMap,
@@ -161,9 +158,6 @@ class DataRunner:
         self.LoadMap = LoadMap
         self.RenameMap = RenameMap
         self.RollbackMap = RollbackMap
-        self.GetAllNavPoints = GetAllNavPoints
-        self.GetAllRoutes = GetAllRoutes
-        self.GetAllAreas = GetAllAreas
 
     def state(self, after_epoch: int = -1) -> Any:
         return self.harness.wait_message(
@@ -217,37 +211,25 @@ class DataRunner:
         after = self.state(before.epoch) if response.success else self.state()
         return response, after
 
-    def asset_names(self) -> tuple[set[str], set[str], set[str]]:
-        points = self.harness.call(
-            self.GetAllNavPoints,
-            "/map_asset_manager/get_all_nav_points",
-            self.GetAllNavPoints.Request(),
-        )
-        routes = self.harness.call(
-            self.GetAllRoutes,
-            "/map_asset_manager/get_all_routes",
-            self.GetAllRoutes.Request(),
-        )
-        areas = self.harness.call(
-            self.GetAllAreas,
-            "/map_asset_manager/get_all_areas",
-            self.GetAllAreas.Request(),
-        )
-        if not points.success or not routes.success or not areas.success:
-            raise RuntimeError("one or more map_asset_manager queries failed")
+    def asset_names(
+        self, map_name: str
+    ) -> tuple[set[str], set[str], set[str]]:
+        path = self.maps_root / map_name / "assets/map_assets.json"
+        value = json.loads(path.read_text(encoding="utf-8"))
         return (
-            {item.name for item in points.points},
-            {item.name for item in routes.routes},
-            {item.name for item in areas.area_info_list},
+            {item["name"] for item in value.get("points", [])},
+            {item["name"] for item in value.get("routes", [])},
+            {item["name"] for item in value.get("areas", [])},
         )
 
     def check_canaries(self, tc: str, spec: dict[str, Any]) -> None:
+        map_name = spec.get("name") or self.state().map_name
         self.report.action(
             tc,
-            "查询地图资产",
-            "get_all_nav_points/get_all_routes/get_all_areas",
+            "读取当前地图资产文件",
+            f"map={map_name}, path=assets/map_assets.json",
         )
-        points, routes, areas = self.asset_names()
+        points, routes, areas = self.asset_names(map_name)
         actual = points | routes | areas
         expected = set(spec.get("canaries", []))
         counts = spec["asset_counts"]
@@ -259,7 +241,7 @@ class DataRunner:
         )
         self.report.add(
             tc,
-            "资产 canary 与计数",
+            "资产文件 canary 与计数",
             passed,
             (
                 f"points={sorted(points)}, routes={sorted(routes)}, "

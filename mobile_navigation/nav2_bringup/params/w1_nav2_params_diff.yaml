@@ -151,9 +151,9 @@ controller_server:
       approach_controller: "PIDController"
       approach_distance: 0.3
       align_heading_tolerance: 0.26  # 30 deg
-      align_angular_kp: 1.5
+      align_angular_kp: 1.0
       align_max_angular_velocity: 0.75
-      align_min_angular_velocity: 0.08
+      align_min_angular_velocity: 0.05
       align_target_distance: 0.3    # align 朝向对齐的目标点距离——盯路径前方该距离的目标点方位角（同 RPP carrot 取向），而非局部路径切向
       prepare:
         enabled: True

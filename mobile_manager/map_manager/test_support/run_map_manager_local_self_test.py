@@ -600,7 +600,6 @@ def main() -> int:
             }
             from run_map_manager_acceptance import (
                 BASELINE_SERVICES,
-                DATA_SERVICES,
                 ROLLBACK_CANDIDATES,
                 evaluate_ros_graph,
                 graph_pending_detail,
@@ -614,7 +613,6 @@ def main() -> int:
             complete_graph = evaluate_ros_graph(
                 {"/map_manager/map_state", "/map"},
                 set(BASELINE_SERVICES)
-                | set(DATA_SERVICES)
                 | {ROLLBACK_CANDIDATES[0]},
             )
             baseline_graph["timeout_sec"] = 30.0
@@ -636,10 +634,7 @@ def main() -> int:
                     require_data=True,
                 )
                 and "/map (topic)" in pending_detail
-                and all(
-                    service in pending_detail
-                    for service in DATA_SERVICES
-                )
+                and "/map_asset_manager/" not in pending_detail
                 and ROLLBACK_CANDIDATES[0] in pending_detail
             )
             offline_ok = (

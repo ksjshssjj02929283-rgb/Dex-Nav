@@ -64,6 +64,8 @@ NavPointTab::NavPointTab(QWidget* parent) : QWidget(parent) {
     edit_btn_    = new QPushButton("修改属性");
     remove_btn_  = new QPushButton("删除选中");
     nav_btn_     = new QPushButton("导航到选中");
+    cancel_nav_btn_ = new QPushButton("取消导航");
+    cancel_nav_btn_->setEnabled(false);
 
     auto* btn_row1 = new QHBoxLayout();
     btn_row1->addWidget(refresh_btn_);
@@ -73,7 +75,10 @@ NavPointTab::NavPointTab(QWidget* parent) : QWidget(parent) {
     btn_row2->addWidget(add_btn_);
     btn_row2->addWidget(edit_btn_);
     btn_row2->addWidget(remove_btn_);
-    btn_row2->addWidget(nav_btn_);
+
+    auto* btn_row3 = new QHBoxLayout();
+    btn_row3->addWidget(nav_btn_);
+    btn_row3->addWidget(cancel_nav_btn_);
 
     // ── 状态 ──────────────────────────────────────────────────────
     status_label_ = new QLabel("就绪");
@@ -85,6 +90,7 @@ NavPointTab::NavPointTab(QWidget* parent) : QWidget(parent) {
     root->addWidget(input_box);
     root->addLayout(btn_row1);
     root->addLayout(btn_row2);
+    root->addLayout(btn_row3);
     root->addWidget(status_label_);
 
     connect(refresh_btn_, &QPushButton::clicked, this, &NavPointTab::onRefresh);
@@ -93,12 +99,16 @@ NavPointTab::NavPointTab(QWidget* parent) : QWidget(parent) {
     connect(edit_btn_,    &QPushButton::clicked, this, &NavPointTab::onEdit);
     connect(remove_btn_,  &QPushButton::clicked, this, &NavPointTab::onRemove);
     connect(nav_btn_,     &QPushButton::clicked, this, &NavPointTab::onNavTo);
+    connect(cancel_nav_btn_, &QPushButton::clicked,
+            this, &NavPointTab::onCancelNav);
 
     connect(this, &NavPointTab::refreshDone,        this, &NavPointTab::applyRefresh,         Qt::QueuedConnection);
     connect(this, &NavPointTab::operationFinished,  this, &NavPointTab::applyOperationResult, Qt::QueuedConnection);
     connect(this, &NavPointTab::poseFilled,         this, &NavPointTab::applyPoseFilled,      Qt::QueuedConnection);
     connect(this, &NavPointTab::navigationStatus,
             status_label_, &QLabel::setText, Qt::QueuedConnection);
+    connect(this, &NavPointTab::navigationActiveChanged,
+            this, &NavPointTab::applyNavigationActive, Qt::QueuedConnection);
 
     // 工具拖拽完成后预填草稿（跨线程安全）
     connect(NavPointDraftBridge::instance(), &NavPointDraftBridge::draftReady,
@@ -116,6 +126,14 @@ void NavPointTab::setServicePrefix(const std::string& prefix) {
 }
 
 void NavPointTab::rebuildClients() {
+    {
+        std::lock_guard<std::mutex> lock(navigation_goal_mutex_);
+        ++navigation_generation_;
+        navigation_goal_handle_.reset();
+        navigation_active_ = false;
+    }
+    applyNavigationActive(false);
+
     get_all_client_ = node_->create_client<nav_interfaces::srv::GetAllNavPoints>(prefix_ + "/get_all_nav_points");
     add_client_     = node_->create_client<nav_interfaces::srv::AddNavPoint>(prefix_ + "/add_point");
     remove_client_  = node_->create_client<nav_interfaces::srv::RemoveNavPoint>(prefix_ + "/remove_point");
@@ -374,18 +392,43 @@ void NavPointTab::onNavTo() {
     goal.point_name = name.toStdString();
     goal.use_pose = false;
 
-    nav_btn_->setEnabled(false);
+    uint64_t generation;
+    {
+        std::lock_guard<std::mutex> lock(navigation_goal_mutex_);
+        generation = ++navigation_generation_;
+        navigation_goal_handle_.reset();
+        navigation_active_ = true;
+    }
+    applyNavigationActive(true);
+    cancel_nav_btn_->setEnabled(false);
     status_label_->setText(QString("正在发送导航目标：%1...").arg(name));
 
     auto options =
         rclcpp_action::Client<NavigateToPointAction>::SendGoalOptions();
     options.goal_response_callback =
-        [this, name](const GoalHandleNavigateToPoint::SharedPtr& goal_handle) {
+        [this, name, generation](const GoalHandleNavigateToPoint::SharedPtr& goal_handle) {
             if (!goal_handle) {
+                {
+                    std::lock_guard<std::mutex> lock(navigation_goal_mutex_);
+                    if (navigation_generation_ == generation) {
+                        navigation_goal_handle_.reset();
+                        navigation_active_ = false;
+                    }
+                }
+                Q_EMIT navigationActiveChanged(false);
                 Q_EMIT operationFinished(
                     false, QString("导航目标被拒绝：%1").arg(name));
                 return;
             }
+            {
+                std::lock_guard<std::mutex> lock(navigation_goal_mutex_);
+                if (navigation_generation_ != generation) {
+                    return;
+                }
+                navigation_goal_handle_ = goal_handle;
+                navigation_active_ = true;
+            }
+            Q_EMIT navigationActiveChanged(true);
             Q_EMIT navigationStatus(
                 QString("导航目标已接受：%1").arg(name));
         };
@@ -400,7 +443,16 @@ void NavPointTab::onNavTo() {
                     .arg(QString::fromStdString(feedback->current_status)));
         };
     options.result_callback =
-        [this, name](const GoalHandleNavigateToPoint::WrappedResult& result) {
+        [this, name, generation](const GoalHandleNavigateToPoint::WrappedResult& result) {
+            {
+                std::lock_guard<std::mutex> lock(navigation_goal_mutex_);
+                if (navigation_generation_ != generation) {
+                    return;
+                }
+                navigation_goal_handle_.reset();
+                navigation_active_ = false;
+            }
+            Q_EMIT navigationActiveChanged(false);
             const QString message = result.result
                 ? QString::fromStdString(result.result->message)
                 : QString();
@@ -430,8 +482,44 @@ void NavPointTab::onNavTo() {
     try {
         nav_client_->async_send_goal(goal, options);
     } catch (const std::exception& ex) {
+        {
+            std::lock_guard<std::mutex> lock(navigation_goal_mutex_);
+            if (navigation_generation_ == generation) {
+                navigation_goal_handle_.reset();
+                navigation_active_ = false;
+            }
+        }
+        Q_EMIT navigationActiveChanged(false);
         Q_EMIT operationFinished(
             false, QString("导航异常: %1").arg(ex.what()));
+    }
+}
+
+void NavPointTab::onCancelNav() {
+    if (!nav_client_) {
+        status_label_->setText("节点未初始化");
+        return;
+    }
+
+    GoalHandleNavigateToPoint::SharedPtr goal_handle;
+    {
+        std::lock_guard<std::mutex> lock(navigation_goal_mutex_);
+        goal_handle = navigation_goal_handle_;
+    }
+    if (!goal_handle) {
+        status_label_->setText("当前没有可取消的导航任务");
+        applyNavigationActive(false);
+        return;
+    }
+
+    cancel_nav_btn_->setEnabled(false);
+    status_label_->setText("正在发送取消导航请求...");
+    try {
+        nav_client_->async_cancel_goal(goal_handle);
+        status_label_->setText("取消请求已发送，等待导航端确认...");
+    } catch (const std::exception& ex) {
+        cancel_nav_btn_->setEnabled(true);
+        status_label_->setText(QString("取消导航异常: %1").arg(ex.what()));
     }
 }
 
@@ -460,8 +548,19 @@ void NavPointTab::applyOperationResult(bool success, QString msg) {
     add_btn_->setEnabled(true);
     edit_btn_->setEnabled(true);
     remove_btn_->setEnabled(true);
-    nav_btn_->setEnabled(true);
     if (success) onRefresh();
+}
+
+void NavPointTab::applyNavigationActive(bool) {
+    bool active = false;
+    bool has_goal = false;
+    {
+        std::lock_guard<std::mutex> lock(navigation_goal_mutex_);
+        active = navigation_active_;
+        has_goal = navigation_goal_handle_ != nullptr;
+    }
+    nav_btn_->setEnabled(!active);
+    cancel_nav_btn_->setEnabled(active && has_goal);
 }
 
 void NavPointTab::applyPoseFilled(double x, double y, double yaw_rad) {

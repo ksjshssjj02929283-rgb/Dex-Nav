@@ -10,7 +10,9 @@
 #include <QVariantList>
 #include <QWidget>
 
+#include <cstdint>
 #include <memory>
+#include <mutex>
 #include <string>
 
 #include <nav_interfaces/action/navigate_to_point.hpp>
@@ -43,6 +45,7 @@ Q_SIGNALS:
     void operationFinished(bool success, QString msg);
     void poseFilled(double x, double y, double yaw_rad);
     void navigationStatus(QString msg);
+    void navigationActiveChanged(bool active);
 
 private Q_SLOTS:
     void onRefresh();
@@ -51,9 +54,11 @@ private Q_SLOTS:
     void onRemove();
     void onEdit();
     void onNavTo();
+    void onCancelNav();
     void applyRefresh(QVariantList points);
     void applyOperationResult(bool success, QString msg);
     void applyPoseFilled(double x, double y, double yaw_rad);
+    void applyNavigationActive(bool active);
 
 private:
     using NavigateToPointAction = nav_interfaces::action::NavigateToPoint;
@@ -74,6 +79,7 @@ private:
     QPushButton*   edit_btn_;
     QPushButton*   remove_btn_;
     QPushButton*   nav_btn_;
+    QPushButton*   cancel_nav_btn_;
     QLabel*        status_label_;
 
     rclcpp::Node::SharedPtr node_;
@@ -85,6 +91,11 @@ private:
     rclcpp::Client<nav_interfaces::srv::SampleNavPoint>::SharedPtr  sample_client_;
     rclcpp::Client<nav_interfaces::srv::UpdateNavPoint>::SharedPtr  update_client_;
     rclcpp_action::Client<NavigateToPointAction>::SharedPtr          nav_client_;
+
+    std::mutex navigation_goal_mutex_;
+    GoalHandleNavigateToPoint::SharedPtr navigation_goal_handle_;
+    bool navigation_active_{false};
+    uint64_t navigation_generation_{0};
 };
 
 }  // namespace map_asset_rviz_plugin
