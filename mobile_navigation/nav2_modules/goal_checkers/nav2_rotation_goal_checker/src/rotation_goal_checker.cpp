@@ -13,9 +13,11 @@
 // limitations under the License.
 
 #include <cmath>
+#include <functional>
 #include <memory>
 #include <string>
 #include <limits>
+#include <vector>
 
 #include "nav2_rotation_goal_checker/rotation_goal_checker.hpp"
 
@@ -28,6 +30,9 @@
 namespace nav2_rotation_goal_checker
 {
 
+using rcl_interfaces::msg::ParameterType;
+using std::placeholders::_1;
+
 RotationGoalChecker::RotationGoalChecker()
 : yaw_goal_tolerance_(0.25),
   rot_stopped_velocity_(0.05)
@@ -37,7 +42,7 @@ RotationGoalChecker::RotationGoalChecker()
 void RotationGoalChecker::initialize(
   const rclcpp_lifecycle::LifecycleNode::WeakPtr & parent,
   const std::string & plugin_name,
-  const std::shared_ptr<nav2_costmap_2d::Costmap2DROS> /*costmap_ros*/)
+  const std::shared_ptr<nav2_costmap_2d::Costmap2DROS>/*costmap_ros*/)
 {
   plugin_name_ = plugin_name;
   auto node = parent.lock();
@@ -53,6 +58,9 @@ void RotationGoalChecker::initialize(
 
   node->get_parameter(plugin_name + ".yaw_goal_tolerance", yaw_goal_tolerance_);
   node->get_parameter(plugin_name + ".rot_stopped_velocity", rot_stopped_velocity_);
+
+  dyn_params_handler_ = node->add_on_set_parameters_callback(
+    std::bind(&RotationGoalChecker::dynamicParametersCallback, this, _1));
 }
 
 void RotationGoalChecker::reset()
@@ -103,6 +111,33 @@ bool RotationGoalChecker::getTolerances(
   vel_tolerance.angular.z = rot_stopped_velocity_;
 
   return true;
+}
+
+rcl_interfaces::msg::SetParametersResult
+RotationGoalChecker::dynamicParametersCallback(std::vector<rclcpp::Parameter> parameters)
+{
+  rcl_interfaces::msg::SetParametersResult result;
+  const std::string tolerance_name = plugin_name_ + ".yaw_goal_tolerance";
+  for (const auto & parameter : parameters) {
+    if (parameter.get_name() != tolerance_name) {
+      continue;
+    }
+    if (parameter.get_type() != ParameterType::PARAMETER_DOUBLE ||
+      !std::isfinite(parameter.as_double()) || parameter.as_double() <= 0.0)
+    {
+      result.successful = false;
+      result.reason = tolerance_name + " must be a finite number greater than zero";
+      return result;
+    }
+  }
+
+  for (const auto & parameter : parameters) {
+    if (parameter.get_name() == tolerance_name) {
+      yaw_goal_tolerance_ = parameter.as_double();
+    }
+  }
+  result.successful = true;
+  return result;
 }
 
 }  // namespace nav2_rotation_goal_checker

@@ -2,5 +2,14 @@ ament_add_gtest(pctest progress_checker.cpp)
 target_link_libraries(pctest simple_progress_checker pose_progress_checker)
 find_package(nav2_simple_goal_checker REQUIRED)
 find_package(nav2_stopped_goal_checker REQUIRED)
+find_package(nav2_position_goal_checker REQUIRED)
+find_package(nav2_rotation_goal_checker REQUIRED)
+find_package(nav2_high_precision_goal_checker REQUIRED)
 ament_add_gtest(gctest goal_checker.cpp)
-ament_target_dependencies(gctest ${dependencies} nav2_simple_goal_checker nav2_stopped_goal_checker)
+ament_target_dependencies(
+  gctest ${dependencies}
+  nav2_simple_goal_checker
+  nav2_stopped_goal_checker
+  nav2_position_goal_checker
+  nav2_rotation_goal_checker
+  nav2_high_precision_goal_checker)

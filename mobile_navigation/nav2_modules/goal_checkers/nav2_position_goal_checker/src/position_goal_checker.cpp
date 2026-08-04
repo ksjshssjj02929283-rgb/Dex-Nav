@@ -13,9 +13,11 @@
 // limitations under the License.
 
 #include <cmath>
+#include <functional>
 #include <memory>
 #include <string>
 #include <limits>
+#include <vector>
 
 #include "nav2_position_goal_checker/position_goal_checker.hpp"
 
@@ -25,6 +27,9 @@
 
 namespace nav2_position_goal_checker
 {
+
+using rcl_interfaces::msg::ParameterType;
+using std::placeholders::_1;
 
 PositionGoalChecker::PositionGoalChecker()
 : xy_goal_tolerance_(0.05),
@@ -37,7 +42,7 @@ PositionGoalChecker::PositionGoalChecker()
 void PositionGoalChecker::initialize(
   const rclcpp_lifecycle::LifecycleNode::WeakPtr & parent,
   const std::string & plugin_name,
-  const std::shared_ptr<nav2_costmap_2d::Costmap2DROS> /*costmap_ros*/)
+  const std::shared_ptr<nav2_costmap_2d::Costmap2DROS>/*costmap_ros*/)
 {
   plugin_name_ = plugin_name;
   auto node = parent.lock();
@@ -59,6 +64,9 @@ void PositionGoalChecker::initialize(
   node->get_parameter(plugin_name + ".rot_stopped_velocity", rot_stopped_velocity_);
 
   xy_goal_tolerance_sq_ = xy_goal_tolerance_ * xy_goal_tolerance_;
+
+  dyn_params_handler_ = node->add_on_set_parameters_callback(
+    std::bind(&PositionGoalChecker::dynamicParametersCallback, this, _1));
 }
 
 void PositionGoalChecker::reset()
@@ -110,6 +118,34 @@ bool PositionGoalChecker::getTolerances(
   vel_tolerance.angular.z = invalid_field;
 
   return true;
+}
+
+rcl_interfaces::msg::SetParametersResult
+PositionGoalChecker::dynamicParametersCallback(std::vector<rclcpp::Parameter> parameters)
+{
+  rcl_interfaces::msg::SetParametersResult result;
+  const std::string tolerance_name = plugin_name_ + ".xy_goal_tolerance";
+  for (const auto & parameter : parameters) {
+    if (parameter.get_name() != tolerance_name) {
+      continue;
+    }
+    if (parameter.get_type() != ParameterType::PARAMETER_DOUBLE ||
+      !std::isfinite(parameter.as_double()) || parameter.as_double() <= 0.0)
+    {
+      result.successful = false;
+      result.reason = tolerance_name + " must be a finite number greater than zero";
+      return result;
+    }
+  }
+
+  for (const auto & parameter : parameters) {
+    if (parameter.get_name() == tolerance_name) {
+      xy_goal_tolerance_ = parameter.as_double();
+      xy_goal_tolerance_sq_ = xy_goal_tolerance_ * xy_goal_tolerance_;
+    }
+  }
+  result.successful = true;
+  return result;
 }
 
 }  // namespace nav2_position_goal_checker

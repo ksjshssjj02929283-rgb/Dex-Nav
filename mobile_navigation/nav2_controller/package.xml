@@ -30,6 +30,9 @@
   <test_depend>ament_cmake_pytest</test_depend>
   <test_depend>nav2_simple_goal_checker</test_depend>
   <test_depend>nav2_stopped_goal_checker</test_depend>
+  <test_depend>nav2_position_goal_checker</test_depend>
+  <test_depend>nav2_rotation_goal_checker</test_depend>
+  <test_depend>nav2_high_precision_goal_checker</test_depend>
 
   <export>
     <build_type>ament_cmake</build_type>

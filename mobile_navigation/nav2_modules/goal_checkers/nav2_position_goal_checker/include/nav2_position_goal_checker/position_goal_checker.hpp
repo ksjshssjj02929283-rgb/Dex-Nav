@@ -12,12 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef POSITION_GOAL_CHECKER__POSITION_GOAL_CHECKER_HPP_
-#define POSITION_GOAL_CHECKER__POSITION_GOAL_CHECKER_HPP_
+#ifndef NAV2_POSITION_GOAL_CHECKER__POSITION_GOAL_CHECKER_HPP_
+#define NAV2_POSITION_GOAL_CHECKER__POSITION_GOAL_CHECKER_HPP_
 
 #include <memory>
 #include <string>
+#include <vector>
 
+#include "rcl_interfaces/msg/set_parameters_result.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_lifecycle/lifecycle_node.hpp"
 #include "geometry_msgs/msg/pose.hpp"
@@ -65,10 +67,14 @@ protected:
   double xy_goal_tolerance_sq_;
   double trans_stopped_velocity_, rot_stopped_velocity_;
   std::string plugin_name_;
+  rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr dyn_params_handler_;
 
   rclcpp::Logger logger_{rclcpp::get_logger("PositionGoalChecker")};
+
+  rcl_interfaces::msg::SetParametersResult
+  dynamicParametersCallback(std::vector<rclcpp::Parameter> parameters);
 };
 
 }  // namespace nav2_position_goal_checker
 
-#endif  // POSITION_GOAL_CHECKER__POSITION_GOAL_CHECKER_HPP_
+#endif  // NAV2_POSITION_GOAL_CHECKER__POSITION_GOAL_CHECKER_HPP_

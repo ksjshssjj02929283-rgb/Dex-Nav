@@ -12,11 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <algorithm>
 #include <cmath>
 #include <deque>
+#include <functional>
 #include <limits>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "nav2_high_precision_goal_checker/high_precision_goal_checker.hpp"
 
@@ -29,6 +32,9 @@
 
 namespace nav2_high_precision_goal_checker
 {
+
+using rcl_interfaces::msg::ParameterType;
+using std::placeholders::_1;
 
 HighPrecisionGoalChecker::HighPrecisionGoalChecker()
 : lat_goal_tolerance_(0.25),
@@ -44,7 +50,7 @@ HighPrecisionGoalChecker::HighPrecisionGoalChecker()
 void HighPrecisionGoalChecker::initialize(
   const rclcpp_lifecycle::LifecycleNode::WeakPtr & parent,
   const std::string & plugin_name,
-  const std::shared_ptr<nav2_costmap_2d::Costmap2DROS> /*costmap_ros*/)
+  const std::shared_ptr<nav2_costmap_2d::Costmap2DROS>/*costmap_ros*/)
 {
   plugin_name_ = plugin_name;
   auto node = parent.lock();
@@ -76,6 +82,9 @@ void HighPrecisionGoalChecker::initialize(
   node->get_parameter(plugin_name + ".rot_stopped_velocity", rot_stopped_velocity_);
   node->get_parameter(plugin_name + ".trans_stopped_velocity", trans_stopped_velocity_);
   node->get_parameter(plugin_name + ".stateful", stateful_);
+
+  dyn_params_handler_ = node->add_on_set_parameters_callback(
+    std::bind(&HighPrecisionGoalChecker::dynamicParametersCallback, this, _1));
 }
 
 void HighPrecisionGoalChecker::reset()
@@ -192,6 +201,54 @@ bool HighPrecisionGoalChecker::getTolerances(
   vel_tolerance.angular.z = rot_stopped_velocity_;
 
   return true;
+}
+
+rcl_interfaces::msg::SetParametersResult
+HighPrecisionGoalChecker::dynamicParametersCallback(std::vector<rclcpp::Parameter> parameters)
+{
+  rcl_interfaces::msg::SetParametersResult result;
+  const std::vector<std::string> tolerance_names = {
+    plugin_name_ + ".lon_goal_tolerance",
+    plugin_name_ + ".lat_goal_tolerance",
+    plugin_name_ + ".yaw_goal_tolerance"};
+
+  for (const auto & parameter : parameters) {
+    if (std::find(
+        tolerance_names.begin(), tolerance_names.end(),
+        parameter.get_name()) == tolerance_names.end())
+    {
+      continue;
+    }
+    if (parameter.get_type() != ParameterType::PARAMETER_DOUBLE ||
+      !std::isfinite(parameter.as_double()) || parameter.as_double() <= 0.0)
+    {
+      result.successful = false;
+      result.reason = parameter.get_name() + " must be a finite number greater than zero";
+      return result;
+    }
+  }
+
+  bool tolerance_changed = false;
+  for (const auto & parameter : parameters) {
+    const auto & name = parameter.get_name();
+    if (name == plugin_name_ + ".lon_goal_tolerance") {
+      lon_goal_tolerance_ = parameter.as_double();
+      tolerance_changed = true;
+    } else if (name == plugin_name_ + ".lat_goal_tolerance") {
+      lat_goal_tolerance_ = parameter.as_double();
+      tolerance_changed = true;
+    } else if (name == plugin_name_ + ".yaw_goal_tolerance") {
+      yaw_goal_tolerance_ = parameter.as_double();
+      tolerance_changed = true;
+    }
+  }
+  if (tolerance_changed) {
+    reset();
+    theta_errors_.clear();
+    longitude_errors_.clear();
+  }
+  result.successful = true;
+  return result;
 }
 
 double HighPrecisionGoalChecker::CalculateMean(const std::deque<double> & data)

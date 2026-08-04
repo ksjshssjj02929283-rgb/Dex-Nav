@@ -32,15 +32,22 @@
  *  POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include <cmath>
 #include <memory>
 #include <string>
 
 #include "gtest/gtest.h"
+#include "nav2_high_precision_goal_checker/high_precision_goal_checker.hpp"
+#include "nav2_position_goal_checker/position_goal_checker.hpp"
+#include "nav2_rotation_goal_checker/rotation_goal_checker.hpp"
 #include "nav2_simple_goal_checker/simple_goal_checker.hpp"
 #include "nav2_stopped_goal_checker/stopped_goal_checker.hpp"
 #include "nav_2d_utils/conversions.hpp"
 #include "nav2_util/lifecycle_node.hpp"
 
+using nav2_high_precision_goal_checker::HighPrecisionGoalChecker;
+using nav2_position_goal_checker::PositionGoalChecker;
+using nav2_rotation_goal_checker::RotationGoalChecker;
 using nav2_simple_goal_checker::SimpleGoalChecker;
 using nav2_stopped_goal_checker::StoppedGoalChecker;
 
@@ -254,6 +261,57 @@ TEST(StoppedGoalChecker, get_tol_and_dynamic_params)
   EXPECT_TRUE(gc.getTolerances(pose_tol, vel_tol));
   EXPECT_EQ(pose_tol.position.x, 200.0);
   EXPECT_EQ(pose_tol.position.y, 200.0);
+}
+
+TEST(GoalCheckerDynamicParameters, specialized_tolerances)
+{
+  auto x = std::make_shared<TestLifecycleNode>("specialized_goal_checkers");
+  auto costmap = std::make_shared<nav2_costmap_2d::Costmap2DROS>("test_costmap");
+  PositionGoalChecker position;
+  RotationGoalChecker rotation;
+  HighPrecisionGoalChecker high_precision;
+  position.initialize(x, "position", costmap);
+  rotation.initialize(x, "rotation", costmap);
+  high_precision.initialize(x, "high_precision", costmap);
+
+  auto parameter_client = std::make_shared<rclcpp::AsyncParametersClient>(
+    x->get_node_base_interface(), x->get_node_topics_interface(),
+    x->get_node_graph_interface(), x->get_node_services_interface());
+  auto result = parameter_client->set_parameters_atomically(
+    {rclcpp::Parameter("position.xy_goal_tolerance", 0.11),
+      rclcpp::Parameter("rotation.yaw_goal_tolerance", 0.12),
+      rclcpp::Parameter("high_precision.lon_goal_tolerance", 0.13),
+      rclcpp::Parameter("high_precision.lat_goal_tolerance", 0.14),
+      rclcpp::Parameter("high_precision.yaw_goal_tolerance", 0.15)});
+  rclcpp::spin_until_future_complete(x->get_node_base_interface(), result);
+  EXPECT_TRUE(result.get().successful);
+
+  geometry_msgs::msg::Pose pose_tol;
+  geometry_msgs::msg::Twist vel_tol;
+  EXPECT_TRUE(position.getTolerances(pose_tol, vel_tol));
+  EXPECT_DOUBLE_EQ(pose_tol.position.x, 0.11);
+  EXPECT_DOUBLE_EQ(pose_tol.position.y, 0.11);
+
+  EXPECT_TRUE(rotation.getTolerances(pose_tol, vel_tol));
+  EXPECT_NEAR(
+    2.0 * std::atan2(
+      pose_tol.orientation.z, pose_tol.orientation.w), 0.12, 1e-12);
+
+  EXPECT_TRUE(high_precision.getTolerances(pose_tol, vel_tol));
+  EXPECT_DOUBLE_EQ(pose_tol.position.x, 0.13);
+  EXPECT_DOUBLE_EQ(pose_tol.position.y, 0.14);
+  EXPECT_NEAR(
+    2.0 * std::atan2(
+      pose_tol.orientation.z, pose_tol.orientation.w), 0.15, 1e-12);
+
+  auto rejected = parameter_client->set_parameters_atomically(
+    {rclcpp::Parameter("high_precision.lon_goal_tolerance", -0.1)});
+  rclcpp::spin_until_future_complete(x->get_node_base_interface(), rejected);
+  EXPECT_FALSE(rejected.get().successful);
+  EXPECT_DOUBLE_EQ(
+    x->get_parameter("high_precision.lon_goal_tolerance").as_double(), 0.13);
+  EXPECT_TRUE(high_precision.getTolerances(pose_tol, vel_tol));
+  EXPECT_DOUBLE_EQ(pose_tol.position.x, 0.13);
 }
 
 int main(int argc, char ** argv)
