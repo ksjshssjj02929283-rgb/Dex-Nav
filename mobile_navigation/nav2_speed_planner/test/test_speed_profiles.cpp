@@ -493,6 +493,33 @@ TEST(SpeedProfileTerminalReserve, ScalesWithVelocityAndPositiveAcceleration)
     0.0);
 }
 
+TEST(SpeedProfileTerminalReserve, ColdStartLongPathDoesNotCollapseToEndSpeed)
+{
+  TestableSCurve planner;
+  planner.setSharedParams();
+  planner.setSCurveParams();
+  planner.setMotionLimits(0.6, 0.5);
+  planner.setTerminalParams(0.05, 0.075, -0.4);
+  // Reproduce the field runtime where the new reserve parameters were not
+  // loaded. A missing reserve must not turn a normal 3.24 m startup into a
+  // terminal-infeasible all-creep profile.
+  planner.setTerminalReserve(0.0, 0.0);
+
+  const auto trajectory = planner.run(
+    makeStraightPathToExactGoal(3.24), 0.0, 0.0, false);
+  ASSERT_GE(trajectory.points.size(), 2u);
+  const auto diagnostics = planner.getLastPlanningDiagnostics();
+  EXPECT_FALSE(diagnostics.terminal_brake_required);
+  EXPECT_FALSE(diagnostics.terminal_infeasible);
+
+  double peak_velocity = 0.0;
+  for (const auto & point : trajectory.points) {
+    peak_velocity = std::max(peak_velocity, point.longitudinal_velocity);
+  }
+  EXPECT_GT(peak_velocity, 0.3)
+    << "cold-start long path must contain a normal cruise/acceleration segment";
+}
+
 TEST(SpeedProfileRecedingHorizon, DynamicReserveHandlesDelayedLaggedPlant)
 {
   TestableSCurve planner;

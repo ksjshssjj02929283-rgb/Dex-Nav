@@ -1137,13 +1137,33 @@ nav2_core::SpeedPlanningBoundary ControllerServer::buildSpeedPlanningBoundary(
 }
 
 void ControllerServer::updateTerminalBrakeLatch(
-  const nav2_core::SpeedPlanningDiagnostics & diagnostics)
+  const nav2_core::SpeedPlanningDiagnostics & diagnostics,
+  bool longitudinal_continuity_valid)
 {
-  if (terminal_brake_latched_ ||
-    (!diagnostics.terminal_brake_required && !diagnostics.terminal_infeasible))
-  {
+  if (terminal_brake_latched_ || !diagnostics.terminal_brake_required) {
     return;
   }
+
+  // Speed planning runs before the staged controller selects ALIGN/TRACK for
+  // the current cycle. On a new stationary goal there is no consumed
+  // longitudinal target yet, so a transient planner infeasible diagnostic is
+  // not allowed to create sticky terminal state. Keep the fail-safe behavior
+  // for a moving robot: a positive or non-finite required braking distance is
+  // sufficient to latch even before the first compatible control receipt.
+  constexpr double kBrakingDistanceEpsilon = 1e-6;
+  const bool motion_requires_braking =
+    !std::isfinite(diagnostics.terminal_braking_distance) ||
+    diagnostics.terminal_braking_distance > kBrakingDistanceEpsilon;
+  if (!longitudinal_continuity_valid && !motion_requires_braking) {
+    RCLCPP_DEBUG_THROTTLE(
+      get_logger(), *get_clock(), 1000,
+      "Terminal brake condition deferred: no longitudinal continuity and "
+      "braking distance is zero (available=%.3f m, infeasible=%s).",
+      diagnostics.terminal_distance_available,
+      diagnostics.terminal_infeasible ? "true" : "false");
+    return;
+  }
+
   terminal_brake_latched_ = true;
   RCLCPP_WARN(
     get_logger(),
@@ -1333,7 +1353,8 @@ bool ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
   const auto planning_diagnostics = sp->second->getLastPlanningDiagnostics();
   speed_plan_cycle_.terminal = planning_diagnostics;
   speed_plan_cycle_.terminal_valid = true;
-  updateTerminalBrakeLatch(planning_diagnostics);
+  updateTerminalBrakeLatch(
+    planning_diagnostics, planning_boundary.acceleration_valid);
   if (planning_diagnostics.terminal_infeasible) {
     RCLCPP_WARN_THROTTLE(
       get_logger(), *get_clock(), 1000,
