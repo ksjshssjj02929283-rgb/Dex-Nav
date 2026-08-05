@@ -1,13 +1,16 @@
 """Static regression tests for the shared W1 simulation interface contract."""
 
 import ast
+import math
 from pathlib import Path
 import re
+import xml.etree.ElementTree as ET
 
 
 REPO = Path(__file__).resolve().parents[3]
 
 COMMAND_TOPIC = "/control/cmd_vel"
+NAV_COMMAND_TOPIC = "/control/cmd_vel_nav"
 ODOM_TOPIC = "/feedback/odom"
 FRONT_SCAN_TOPIC = "/laser_scan/front"
 REAR_SCAN_TOPIC = "/laser_scan/rear"
@@ -128,7 +131,6 @@ def test_navigation_parameters_consume_the_same_topics():
         "mobile_navigation/nav2_bringup/params/w1_nav2_params.yaml",
         "mobile_navigation/nav2_bringup/params/w1_nav2_rgbd_params.yaml",
         "mobile_navigation/nav2_bringup/params/w1_nav2_params_omni.yaml",
-        "mobile_navigation/nav2_bringup/params/w1_nav2_params_diff_sim.yaml",
     ):
         text = read(params)
         for topic in (ODOM_TOPIC, FRONT_SCAN_TOPIC, REAR_SCAN_TOPIC):
@@ -139,13 +141,120 @@ def test_navigation_parameters_consume_the_same_topics():
 
     for params in (
         "mobile_navigation/nav2_bringup/params/w1_nav2_params_omni.yaml",
-        "mobile_navigation/nav2_bringup/params/w1_nav2_params_diff_sim.yaml",
     ):
         text = read(params)
         assert re.search(r'input_topic:\s*["\']?cmd_vel_nav', text)
         assert re.search(r'output_topic:\s*["\']?control/cmd_vel', text)
         for side in ("front", "rear"):
             assert f"/orbbec/{side}/pointcloud2_filtered" in text
+
+
+def test_arm_build_keeps_w1_nav2_for_real_robot_launch_transition():
+    """0.4.6 ARM builds retain w1_nav2 until the 0.5.0 package split."""
+    manifest = read("mobile_simulation/w1_nav2/package.xml")
+    for dependency in (
+        "aws_robomaker_small_warehouse_world",
+        "swerve_robot_gazebo",
+        "w1_diff_gazebo",
+    ):
+        assert f"<exec_depend>{dependency}</exec_depend>" not in manifest
+
+    assert (REPO / "mobile_simulation/w1_nav2/launch/"
+            "w1_nav2_actual.launch.py").is_file()
+
+    build_script = read("build.sh")
+    assert 'BASH_SOURCE[0]' in build_script
+    assert 'SOURCE_ROOT="${SCRIPT_DIR}"' in build_script
+    assert 'SIMULATION_DIR="${SOURCE_ROOT}/mobile_simulation"' in build_script
+    assert '[ "$package_name" != "w1_nav2" ]' in build_script
+    assert ('run_colcon_build --packages-select w1_nav2 '
+            '"${COLCON_BUILD_ARGS[@]}"') in build_script
+    assert build_script.count(
+        'run_colcon_build --packages-select w1_nav2') == 1
+    assert 'FINAL_SKIP_PACKAGES+=("w1_nav2")' in build_script
+    assert ('run_colcon_build '
+            '"${FINAL_COLCON_BUILD_ARGS[@]}"') in build_script
+    direct_colcon_builds = [
+        line.strip()
+        for line in build_script.splitlines()
+        if line.strip().startswith("colcon build")
+    ]
+    assert direct_colcon_builds == ['colcon build "$@"']
+    assert "printf ' %q' colcon build \"$@\"" in build_script
+    for future_contract in ("0.5.0", "nav2_bringup", "w1_sim"):
+        assert future_contract in build_script
+
+
+def test_diff_sim_bridges_production_navigation_commands_to_gazebo():
+    """Diff simulation adapts the production Nav2 output to its chassis API."""
+    production_params = read(
+        "mobile_navigation/nav2_bringup/params/w1_nav2_params.yaml")
+    bridge = read(
+        "mobile_simulation/diff-sim-container/src/w1_diff_gazebo/"
+        "src/sim_cmd_vel_bridge.cpp")
+    spawn = read(
+        "mobile_simulation/diff-sim-container/src/w1_diff_gazebo/"
+        "launch/spawn_w1_diff.launch.py")
+
+    assert re.search(
+        r'output_topic:\s*["\']?control/cmd_vel_nav', production_params)
+    for topic in (NAV_COMMAND_TOPIC, COMMAND_TOPIC):
+        assert topic in bridge
+        assert topic in spawn
+    assert "sim_cmd_vel_bridge" in spawn
+
+
+def test_diff_chassis_supports_are_coplanar_and_pitch_stable():
+    """Drive wheels and two centerline skids form one ground plane."""
+    root = ET.fromstring(read(
+        "mobile_simulation/diff-sim-container/src/w1_diff_gazebo/"
+        "urdf/w1_diff_sim.urdf"))
+    chassis = root.find("./link[@name='chassis_base_link']")
+    assert chassis is not None
+
+    skids = []
+    for collision in chassis.findall("collision"):
+        sphere = collision.find("./geometry/sphere")
+        if sphere is None:
+            continue
+        x, y, z = (
+            float(value)
+            for value in collision.find("origin").get("xyz").split()
+        )
+        skids.append((x, y, z, float(sphere.get("radius"))))
+
+    assert len(skids) == 2
+    assert {(x, y) for x, y, _, _ in skids} == {(0.28, 0.0), (-0.28, 0.0)}
+
+    wheel_joint = root.find("./joint[@name='WHEEL_LEFT']/origin")
+    wheel_collision = root.find(
+        "./link[@name='wheel_left']/collision/geometry/cylinder")
+    assert wheel_joint is not None
+    assert wheel_collision is not None
+    wheel_center_z = float(wheel_joint.get("xyz").split()[2])
+    wheel_ground_z = wheel_center_z - float(wheel_collision.get("radius"))
+
+    for _, _, center_z, radius in skids:
+        assert math.isclose(center_z - radius, wheel_ground_z, abs_tol=1e-9)
+
+
+def test_missing_route_graph_uses_theta_star_fallback():
+    """An unavailable route-graph service requests the configured fallback."""
+    production_params = read(
+        "mobile_navigation/nav2_bringup/params/w1_nav2_params.yaml")
+    route_planner = read(
+        "mobile_navigation/nav2_route_planner/src/"
+        "nav_route_graph_planner.cpp")
+    planner_server = read(
+        "mobile_navigation/nav2_planner/src/planner_server.cpp")
+    loader = read(
+        "mobile_navigation/nav2_route_planner/src/route_graph_loader.cpp")
+
+    assert 'route_fallback_planner: "ThetaStarBased"' in production_params
+    assert "last_fallback_reason_ = FallbackReason::NO_ROUTE_GRAPH" in (
+        route_planner)
+    assert "planners_[route_fallback_planner_]->createPlan" in planner_server
+    assert "without blocking planning requests" in loader
 
 
 def test_tf_chain_uses_base_footprint_between_odom_and_base_link():
@@ -210,6 +319,62 @@ def test_all_sim_launches_share_the_same_rviz_configuration():
         launch = read(launch_file)
         assert "diff_sim.rviz" in launch
         assert "omni_display.rviz" not in launch
+
+
+def test_sim_navigation_goal_interfaces_match_production_rviz():
+    """Simulation exposes both goal tools; diff simulation uses production params."""
+    rviz = read("mobile_simulation/w1_nav2/rviz/diff_sim.rviz")
+    assert rviz.count("nav2_rviz_plugins/GoalTool") == 1
+    assert rviz.count("rviz_default_plugins/SetGoal") == 1
+    assert re.search(
+        r"rviz_default_plugins/SetGoal\s+Topic:.*?Value:\s+/?goal_pose",
+        rviz,
+        re.DOTALL,
+    )
+
+    omni_params = read(
+        "mobile_navigation/nav2_bringup/params/w1_nav2_params_omni.yaml")
+    assert 'current_goal_checker: "goal_checker"' in omni_params
+    assert 'current_controller: "FollowPath"' in omni_params
+    assert re.search(r"staged_control:\s+enabled:\s+false", omni_params)
+    assert 'plugin: "nav2_simple_goal_checker::SimpleGoalChecker"' in omni_params
+    assert 'plugin: "nav2_controller::SimpleGoalChecker"' not in omni_params
+
+    production_params = read(
+        "mobile_navigation/nav2_bringup/params/w1_nav2_params.yaml")
+    assert 'current_goal_checker: "high_precision_goal_checker"' in production_params
+    assert 'current_controller: "RPPController"' in production_params
+    assert 'speed_planner_plugins: ["TrapezoidalSpeedPlanner", "SCurveSpeedPlanner"]' in (
+        production_params)
+    assert 'plugin: "nav2_simple_goal_checker::SimpleGoalChecker"' in production_params
+
+    diff_launch = read("mobile_simulation/w1_nav2/launch/diff_sim.launch.py")
+    assert "'w1_nav2_params.yaml'" in diff_launch
+    assert "w1_nav2_params_diff_sim.yaml" not in diff_launch
+    assert not (
+        REPO / "mobile_navigation/nav2_bringup/params/"
+        "w1_nav2_params_diff_sim.yaml").exists()
+
+
+def test_speed_planner_plugin_is_not_linked_into_controller_server():
+    """The host exports state support only; pluginlib exclusively loads factories."""
+    speed_cmake = read(
+        "mobile_navigation/nav2_speed_planner/CMakeLists.txt")
+    assert "set(support_library_name nav2_speed_plan_state)" in speed_cmake
+    assert re.search(
+        r"add_library\(\$\{support_library_name\}\s+SHARED\s+"
+        r"src/speed_plan_state\.cpp\)",
+        speed_cmake,
+    )
+    assert re.search(
+        r"add_library\(\$\{library_name\}\s+SHARED\s+"
+        r"src/speed_planner_base\.cpp\s+"
+        r"src/trapezoidal_speed_planner\.cpp\s+"
+        r"src/scurve_speed_planner\.cpp\)",
+        speed_cmake,
+    )
+    assert "ament_export_libraries(${support_library_name})" in speed_cmake
+    assert "ament_export_libraries(${library_name})" not in speed_cmake
 
 
 def test_mapping_launches_leave_map_to_odom_to_slam():

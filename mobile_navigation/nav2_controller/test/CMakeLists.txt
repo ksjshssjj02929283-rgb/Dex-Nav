@@ -8,3 +8,13 @@ ament_target_dependencies(test_dynamic_parameters
 target_link_libraries(test_dynamic_parameters
   ${library_name}
 )
+
+ament_add_gtest(test_local_planning_stage
+  test_local_planning_stage.cpp
+)
+ament_target_dependencies(test_local_planning_stage
+  ${dependencies}
+)
+target_link_libraries(test_local_planning_stage
+  ${library_name}
+)

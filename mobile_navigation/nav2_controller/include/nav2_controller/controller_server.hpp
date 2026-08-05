@@ -15,6 +15,7 @@
 #ifndef NAV2_CONTROLLER__CONTROLLER_SERVER_HPP_
 #define NAV2_CONTROLLER__CONTROLLER_SERVER_HPP_
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <thread>
@@ -25,11 +26,19 @@
 #include "nav2_core/controller.hpp"
 #include "nav2_core/progress_checker.hpp"
 #include "nav2_core/goal_checker.hpp"
+#include "nav2_core/local_planner.hpp"
+#include "nav2_core/speed_planner.hpp"
 #include "nav2_costmap_2d/costmap_2d_ros.hpp"
+#include "nav2_speed_planner/speed_plan_state.hpp"
+#include "nav_interfaces/msg/robot_trajectory.hpp"
 #include "tf2_ros/transform_listener.h"
 #include "nav2_msgs/action/follow_path.hpp"
 #include "nav2_msgs/msg/speed_limit.hpp"
 #include "diagnostic_msgs/msg/diagnostic_array.hpp"
+#include "geometry_msgs/msg/vector3_stamped.hpp"
+#include "visualization_msgs/msg/marker_array.hpp"
+#include "std_msgs/msg/string.hpp"
+#include "std_msgs/msg/empty.hpp"
 #include "nav_2d_utils/odom_subscriber.hpp"
 #include "nav2_util/lifecycle_node.hpp"
 #include "nav2_util/simple_action_server.hpp"
@@ -51,6 +60,10 @@ class ControllerServer : public nav2_util::LifecycleNode
 public:
   using ControllerMap = std::unordered_map<std::string, nav2_core::Controller::Ptr>;
   using GoalCheckerMap = std::unordered_map<std::string, nav2_core::GoalChecker::Ptr>;
+  using LocalPlannerMap = std::unordered_map<std::string, nav2_core::LocalPlanner::Ptr>;
+  using SpeedPlannerMap = std::unordered_map<std::string, nav2_core::SpeedPlanner::Ptr>;
+  enum class ControllerPhase { PREPARE, ALIGN, TRACK, APPROACH };
+  enum class PathUpdateType { NEW_GOAL, SAME_GOAL_GEOMETRY };
 
   /**
    * @brief Constructor for nav2_controller::ControllerServer
@@ -146,12 +159,146 @@ protected:
   /**
    * @brief Assigns path to controller
    * @param path Path received from action server
+   * @param update_type Whether this starts a new goal or only replaces geometry
+   *        for the same controller, goal checker, and navigation goal
    */
-  void setPlannerPath(const nav_msgs::msg::Path & path);
+  void setPlannerPath(
+    const nav_msgs::msg::Path & path,
+    PathUpdateType update_type);
+  /**
+   * @brief Commit path bookkeeping after controller/local-planner geometry is updated
+   * @param path Path already assigned to controller and local-planner plugins
+   * @param update_type Path update semantics used to reset or preserve navigation state
+   */
+  void commitPlannerPathState(
+    const nav_msgs::msg::Path & path,
+    PathUpdateType update_type);
+  /**
+   * @brief 规划级 pipeline（③④）：LocalPlanner → SpeedPlanner 生成
+   *        RobotTrajectory，缓存并分发给 controller。
+   *        在控制循环内每周期执行一次（控制计算之前）：全局重规划频率低，速度剖面
+   *        必须从最新 odom 速度与最新 costmap 逐周期重算（receding-horizon 前提）。
+   *        控制级升频后若需降低规划频率，可在调用处加分频。
+   *        未配置 current_speed_planner（空）时直接返回——controller 走 setPlan 路径，
+   *        全链行为与未集成前一致（灰度回退）。
+   * @param path 规划级输入路径（global path）
+   * @return true 表示可继续执行本控制周期；false 表示规划失败，本周期必须零速闭环
+   */
+  bool runPlanningPipeline(const nav_msgs::msg::Path & path);
+  /**
+   * @brief 执行可选的 ③ LocalPlanner。未配置时保持输入路径直通。
+   * @return false 表示已配置插件失败或输出空路径，调用方不得继续消费旧轨迹
+   */
+  bool computeLocalPath(
+    const nav_msgs::msg::Path & global_path,
+    const geometry_msgs::msg::PoseStamped & pose,
+    const geometry_msgs::msg::Twist & velocity,
+    nav_msgs::msg::Path & local_path);
+  /**
+   * @brief 把带速度轨迹以 MarkerArray 发布到 /navigation/speed_plan 供 RViz 观察：
+   *        速度着色 LINE_STRIP（红=0 → 绿=峰值渐变）+ 抽样速度数值文本。
+   *        轨迹为空时发布 DELETEALL 清除旧 marker。
+   * @param trajectory 速度规划输出轨迹
+   */
+  void publishSpeedPlan(const nav_interfaces::msg::RobotTrajectory & trajectory);
+  void publishSpeedPlanDiagnostics(
+    bool control_succeeded,
+    bool control_receipt_valid,
+    double consumed_target_velocity,
+    double consumed_target_acceleration,
+    const std::string & control_result);
+
+  /**
+   * @brief 查询当前轨迹上距机器人最近点的规划速度（期望速度）。
+   *        位姿与轨迹坐标系不同时按当周期 TF 对齐后再查询。
+   * @return 轨迹为空或 TF 不可用时 false。
+   */
+  bool nearestPlannedSpeed(const geometry_msgs::msg::PoseStamped & pose, double & desired_v);
+  nav2_core::SpeedPlanningBoundary buildSpeedPlanningBoundary(
+    const nav_msgs::msg::Path & path,
+    const geometry_msgs::msg::Twist & measured_velocity);
+  /// Latch terminal braking for the current goal once the planner reaches the
+  /// dynamic braking boundary or reports that the stable terminal state is late.
+  void updateTerminalBrakeLatch(
+    const nav2_core::SpeedPlanningDiagnostics & diagnostics);
+  void updateSpeedPlanningContinuityAfterControl(
+    bool control_succeeded, bool trajectory_target_consumed,
+    double consumed_target_velocity, double consumed_target_acceleration);
+  void invalidateSpeedPlanningContinuity();
   /**
    * @brief Calculates velocity and publishes to "cmd_vel" topic
    */
   void computeAndPublishVelocity();
+  /**
+   * @brief Select and execute the current four-stage controller phase
+   * @param pose Current robot pose
+   * @param twist Current robot twist after velocity thresholding
+   * @return Velocity command for the selected phase
+   */
+  geometry_msgs::msg::TwistStamped computeStagedVelocity(
+    const geometry_msgs::msg::PoseStamped & pose,
+    const nav_2d_msgs::msg::Twist2D & twist);
+  /**
+   * @brief Compute velocity from a loaded controller plugin
+   * @param controller_id Controller plugin ID
+   * @param pose Current robot pose
+   * @param twist Current robot twist after velocity thresholding
+   * @return Velocity command from the selected plugin
+   */
+  geometry_msgs::msg::TwistStamped computeControllerVelocity(
+    const std::string & controller_id,
+    const geometry_msgs::msg::PoseStamped & pose,
+    const nav_2d_msgs::msg::Twist2D & twist);
+  /**
+   * @brief Publish direct reverse command when prepare phase detects front obstacle
+   * @return true when a reverse command should be used
+   */
+  bool shouldRunPrepareBackup();
+  /**
+   * @brief Check local costmap cells in a front rectangle of the robot
+   * @return true when obstacle cost exceeds configured prepare threshold
+   */
+  bool isObstacleNearFootprint();
+
+  /// 后退方向安全检查（参考 nav2_behaviors::DriveOnHeading 的逐周期 costmap
+  /// 校验，复用 prepare_obstacle_check_distance_ 作为检测距离）：后退启动前
+  /// 与后退过程中每周期都查，避免盲目后退撞上身后障碍。
+  bool isRearObstacleDetected();
+
+  /// 前/左/右/后共用：查询单点是否落在障碍代价内（TF 变换 + costmap 采样）。
+  bool isCostmapCellBlocked(
+    nav2_costmap_2d::Costmap2D * costmap, unsigned char cost_threshold,
+    double x, double y);
+  /**
+   * @brief Compute yaw error between robot heading and local path tangent
+   * @param pose Current robot pose
+   * @param yaw_error Output yaw error in radians
+   * @return true when path tangent could be calculated
+   */
+  /// align 朝向误差 = 机器人当前朝向 与 "机器人→路径前方 align_target_distance_
+  /// 处目标点" 方位角 之差（同 RPP carrot 点取向原理，非局部路径切向）。
+  bool getTargetPointHeadingError(
+    const geometry_msgs::msg::PoseStamped & pose, double & yaw_error);
+  /**
+   * @brief Compute Euclidean distance from robot pose to current goal
+   * @param pose Current robot pose
+   * @return Distance to goal in meters, or infinity on transform failure
+   */
+  double getDistanceToGoal(const geometry_msgs::msg::PoseStamped & pose);
+  /**
+   * @brief Update current phase and emit transition logs
+   * @param phase New phase
+   * @param reason Transition reason for logs
+   */
+  void setControllerPhase(ControllerPhase phase, const std::string & reason);
+  /**
+   * @brief Human-readable phase name
+   */
+  const char * controllerPhaseName(ControllerPhase phase) const;
+  /**
+   * @brief Return configured plugin type for a goal checker id
+   */
+  std::string getGoalCheckerType(const std::string & goal_checker_id) const;
   /**
    * @brief Reset the near-goal progress checker baseline
    */
@@ -209,6 +356,10 @@ protected:
    */
   void publishZeroVelocity();
   /**
+   * @brief Bypass normal smoothing and request an immediate zero velocity
+   */
+  void publishHardStopVelocity();
+  /**
    * @brief Checks if goal is reached
    * @return true or false
    */
@@ -263,9 +414,28 @@ protected:
   // Publishers and subscribers
   std::unique_ptr<nav_2d_utils::OdomSubscriber> odom_sub_;
   rclcpp_lifecycle::LifecyclePublisher<geometry_msgs::msg::Twist>::SharedPtr vel_publisher_;
+  rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::Empty>::SharedPtr hard_stop_publisher_;
+  std::string hard_stop_topic_{"cmd_vel_hard_stop"};
   rclcpp_lifecycle::LifecyclePublisher<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr
     goal_error_publisher_;
+  rclcpp_lifecycle::LifecyclePublisher<visualization_msgs::msg::MarkerArray>::SharedPtr
+    speed_plan_publisher_;
+  rclcpp_lifecycle::LifecyclePublisher<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr
+    speed_plan_diagnostics_publisher_;
   rclcpp::Subscription<nav2_msgs::msg::SpeedLimit>::SharedPtr speed_limit_sub_;
+
+  // nav_monitor 任务回显：setPlannerPath() 里每次真正生效的 global path 复述一份，
+  // 供 nav2_nav_monitor 记录 planned_path_length/replanning_count；setControllerPhase()
+  // 切换时复述阶段名，供 nav_monitor 记录 phase_transitions（track/approach 段时间分析）。
+  // 默认关闭零开销
+  bool enable_nav_monitor_echo_{false};
+  rclcpp_lifecycle::LifecyclePublisher<nav_msgs::msg::Path>::SharedPtr global_path_echo_pub_;
+  rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::String>::SharedPtr phase_echo_pub_;
+  // 期望速度回显：每控制周期发布当前位置最近轨迹点的规划速度
+  rclcpp_lifecycle::LifecyclePublisher<geometry_msgs::msg::Twist>::SharedPtr
+    desired_vel_echo_pub_;
+  rclcpp_lifecycle::LifecyclePublisher<geometry_msgs::msg::Vector3Stamped>::SharedPtr
+    controller_target_echo_pub_;
 
   // Progress Checker Plugin
   pluginlib::ClassLoader<nav2_core::ProgressChecker> progress_checker_loader_;
@@ -282,7 +452,7 @@ protected:
   std::vector<std::string> default_goal_checker_types_;
   std::vector<std::string> goal_checker_ids_;
   std::vector<std::string> goal_checker_types_;
-  std::string goal_checker_ids_concat_, current_goal_checker_;
+  std::string goal_checker_ids_concat_, default_goal_checker_, current_goal_checker_;
 
   // Controller Plugins
   pluginlib::ClassLoader<nav2_core::Controller> lp_loader_;
@@ -291,7 +461,49 @@ protected:
   std::vector<std::string> default_types_;
   std::vector<std::string> controller_ids_;
   std::vector<std::string> controller_types_;
-  std::string controller_ids_concat_, current_controller_;
+  std::string controller_ids_concat_, default_controller_, current_controller_;
+
+  // Local Planner Plugins（③ 规划级；current_local_planner 为空 = global path 直通）
+  pluginlib::ClassLoader<nav2_core::LocalPlanner> local_planner_loader_;
+  LocalPlannerMap local_planners_;
+  std::vector<std::string> local_planner_ids_;
+  std::vector<std::string> local_planner_types_;
+  std::string local_planner_ids_concat_, current_local_planner_;
+
+  // Speed Planner Plugins（④ 规划级；current_speed_planner 为空 = 禁用/灰度回退）
+  pluginlib::ClassLoader<nav2_core::SpeedPlanner> speed_planner_loader_;
+  SpeedPlannerMap speed_planners_;
+  std::vector<std::string> speed_planner_ids_;
+  std::vector<std::string> speed_planner_types_;
+  std::string speed_planner_ids_concat_, current_speed_planner_;
+  // 轨迹缓存：规划级产出、控制级消费；规划与控制同在 action 线程逐周期串行执行，
+  // 无并发；将来拆独立规划线程时需加最小临界区保护
+  nav_interfaces::msg::RobotTrajectory current_trajectory_;
+  nav2_speed_planner::SpeedPlanState speed_plan_state_;
+  // Goal-lifecycle state owned by ControllerServer. Same-goal geometry updates
+  // preserve it; a new goal / successful completion resets it.
+  bool terminal_brake_latched_{false};
+  struct SpeedPlanCycleContext
+  {
+    bool active{false};
+    uint64_t cycle_id{0};
+    uint64_t path_id{0};
+    bool planning_succeeded{false};
+    std::string planning_result{"not_started"};
+    std::string planner_id;
+    size_t local_path_point_count{0};
+    double local_path_length{0.0};
+    nav2_core::SpeedPlanningBoundary boundary;
+    bool boundary_computed{false};
+    std::string boundary_reason{"not_computed"};
+    nav2_core::SpeedPlanningDiagnostics terminal;
+    bool terminal_valid{false};
+  };
+  uint64_t speed_plan_cycle_id_{0};
+  uint64_t speed_plan_path_id_{0};
+  SpeedPlanCycleContext speed_plan_cycle_;
+  // RViz 可视化节流（速度剖面每周期重算，但只以 ~2Hz 重画）
+  rclcpp::Time last_speed_plan_viz_time_{0, 0, RCL_ROS_TIME};
 
   double controller_frequency_;
   double min_x_velocity_threshold_;
@@ -337,6 +549,46 @@ protected:
   bool near_goal_progress_acceptance_reached_{false};
   geometry_msgs::msg::PoseStamped near_goal_baseline_pose_;
   rclcpp::Time near_goal_baseline_time_;
+
+  bool staged_control_enabled_{true};
+  ControllerPhase controller_phase_{ControllerPhase::TRACK};
+  std::string track_controller_{"MPPIController"};
+  std::string approach_controller_{"PIDController"};
+  double approach_distance_{0.3};
+  double align_heading_tolerance_{0.5235987756};
+  double align_angular_kp_{1.5};
+  double align_target_distance_{0.3};
+  double align_max_angular_velocity_{0.5};
+  double align_min_angular_velocity_{0.08};
+  bool prepare_enabled_{true};
+  // 检查区域 = 机器人真实 footprint 前沿 ~ 前沿+该距离，宽度取 footprint 实际半宽
+  // （非人工设定值，随机型 footprint 配置自动生效）。
+  double prepare_obstacle_check_distance_{0.2};
+  // 左右检测：footprint 全长（后沿~前沿）两侧各外扩该距离；<=0 关闭。
+  // 单参数同时控制左右（对称）。
+  double prepare_side_check_distance_{0.15};
+  int prepare_obstacle_cost_threshold_{253};
+  double prepare_backup_speed_{-0.08};
+  double prepare_backup_duration_{0.6};
+  // true：按 prepare_backup_distance_ 走完固定后退距离（用起点位移估计，
+  // duration 兜底防跑飞）；false（默认）：按 duration 定时后退。
+  bool prepare_backup_use_distance_{false};
+  double prepare_backup_distance_{0.3};
+  bool prepare_backup_active_{false};
+  bool prepare_check_pending_{true};
+  // align 阶段状态机：本次导航是否已完成过 align（含"收敛"与"无法计算朝向,
+  // 视为跳过"两种终止方式）。仅到达目标时重置（同 prepare——
+  // computeControl() 会因 BT 恢复重试被多次重新进入，不能在入口重置）。
+  // 一旦置真，本次导航剩余时间不再回退进 align——中途朝向误差变大交给
+  // track 阶段的控制器自身处理（RPP/MPPI 均有各自的朝向纠偏机制）。
+  bool align_done_{false};
+  rclcpp::Time prepare_backup_start_time_;
+  geometry_msgs::msg::PoseStamped prepare_backup_start_pose_;
+
+  /// 每次新导航开始（computeControl 入口）与到达目标时调用：阶段状态
+  /// 无条件回到阶段一，不依赖上次导航是到达/取消/异常哪种方式结束。
+  void resetStagedControlState();
+  std::string active_controller_for_log_{"unset"};
 
   // Whether we've published the single controller warning yet
   geometry_msgs::msg::PoseStamped end_pose_;

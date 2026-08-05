@@ -10,14 +10,15 @@ DexforceW1V020.urdf 是纯可视化模型（轮关节 fixed、无 gazebo 插件�
 4. wheel_left / wheel_right link 补圆柱 collision + visual（原模型轮子无几何，
    半径按模型自身几何链推导：base_joint z 0.010 + WHEEL z 0.053 = 0.063）
 5. 碰撞体极简化（防物理 NaN）：删除全部原始 collision（43 个 .obj 网格——含手指/手臂，
-   数值不稳定且底盘仿真不需要）；仅保留：轮圆柱 ×2 + 底盘盒 ×1 + 无摩擦万向球 ×4（skid）。
-   skid 底面比驱动轮底面高 5mm，避免辅助支撑卸载驱动轮
+   数值不稳定且底盘仿真不需要）；仅保留：轮圆柱 ×2 + 底盘盒 ×1 + 前后中心线
+   无摩擦万向球 ×2（skid）。skid 与驱动轮底面共面，形成菱形四点支撑，消除底盘俯仰；
+   不使用四个共面 skid，避免六点接触重新卸载驱动轮
 6. 追加 gazebo 插件：diff_drive（订 /control/cmd_vel，发 /feedback/odom + odom→base_footprint TF）、
    joint_state（轮关节 → rsp 发轮 TF）、前后激光（/laser_scan/front|rear）、IMU（/imu/chassis）、
    前后 RealSense 风格 RGBD（/orbbec/{front,rear}/{rgb,depth,camera_info}）
 7. 摩擦：轮 mu 1.0；万向球/底盘盒 mu 0（滑动支撑）
 
-话题契约与原 buddi 模型完全一致 → w1_nav2_params_diff_sim.yaml 无需改动。
+话题契约与原 buddi 模型完全一致，可直接复用生产 w1_nav2_params.yaml。
 
 用法：python3 gen_w1_diff_sim_urdf.py [源URDF] [输出URDF] [真机TF配置]
 默认源：本包内置快照 urdf/source/DexforceW1V020.urdf（自包含，不依赖 dexe_mobile_application；
@@ -33,7 +34,9 @@ import xml.etree.ElementTree as ET
 WHEEL_SEPARATION = 0.5078   # WHEEL_LEFT/RIGHT origin y=±0.2539
 WHEEL_RADIUS = 0.063        # base_joint z 0.010 + WHEEL 关节 z 0.053（轮心离地高）
 WHEEL_WIDTH = 0.045
-SKID_CENTER_Z = 0.015       # r=0.02；底面比驱动轮底面高 5mm，确保驱动轮承受法向载荷
+SKID_RADIUS = 0.02
+SKID_CENTER_Z = 0.010       # 底面 z=-0.010，与驱动轮底面共面
+SKID_X = 0.28
 
 DEFAULT_SRC = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                            "..", "urdf", "source", "DexforceW1V020.urdf")
@@ -424,13 +427,14 @@ def main():
                 '<collision><origin xyz="0 0 0.10" rpy="0 0 0"/>'
                 '<geometry><box size="0.70 0.50 0.14"/></geometry></collision>')
             link.append(box)
-            # 4 个无摩擦万向球（skid）：r 0.02，球底比轮底高 5mm，避免辅助支撑卸载驱动轮。
-            for sx in (0.28, -0.28):
-                for sy in (0.18, -0.18):
-                    sph = ET.fromstring(
-                        f'<collision><origin xyz="{sx} {sy} {SKID_CENTER_Z}" rpy="0 0 0"/>'
-                        '<geometry><sphere radius="0.02"/></geometry></collision>')
-                    link.append(sph)
+            # 前后中心线各一个无摩擦万向球，与左右驱动轮构成菱形四点支撑。
+            # 四个角点 skid 共面会形成六点超静定接触并卸载驱动轮；抬高 skid 又会
+            # 让底盘绕驱动轮轴产生 atan(clearance / SKID_X) 的静态俯仰。
+            for sx in (SKID_X, -SKID_X):
+                sph = ET.fromstring(
+                    f'<collision><origin xyz="{sx} 0 {SKID_CENTER_Z}" rpy="0 0 0"/>'
+                    f'<geometry><sphere radius="{SKID_RADIUS}"/></geometry></collision>')
+                link.append(sph)
 
     extra = ET.fromstring(GAZEBO_EXTRA)
     for el in list(extra):

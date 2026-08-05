@@ -16,9 +16,12 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <limits>
+#include <string>
 #include "nav2_mppi_controller/controller.hpp"
 #include "nav2_mppi_controller/tools/utils.hpp"
 #include "tf2/utils.h"  // tf2::getYaw（到点精度 log）
+#include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
 
 // #define BENCHMARK_TESTING
 
@@ -43,6 +46,7 @@ void MPPIController::configure(
   auto getParam = parameters_handler_->getParamGetter(name_);
   getParam(visualize_, "visualize", false);
   getParam(reset_period_, "reset_period", 1.0);
+  getParam(traj_speed_cap_lookahead_, "trajectory_speed_cap_lookahead", 0.2);
   configureStages();
   active_stage_enter_time_ = clock_->now();
 
@@ -107,6 +111,66 @@ void MPPIController::reset()
   final_yaw_envelope_braking_active_ = false;
   final_yaw_control_state_ = FINAL_YAW_TRACKING;
   final_yaw_exit_violation_count_ = 0;
+  reference_trajectory_.points.clear();
+  optimizer_.setTrajectorySpeedCap(-1.0);
+}
+
+void MPPIController::setTrajectory(const nav_interfaces::msg::RobotTrajectory & trajectory)
+{
+  reference_trajectory_ = trajectory;
+}
+
+double MPPIController::nearestTrajectorySpeed(
+  const geometry_msgs::msg::PoseStamped & robot_pose) const
+{
+  if (reference_trajectory_.points.empty()) {
+    return -1.0;
+  }
+  std::string traj_frame = reference_trajectory_.header.frame_id;
+  if (traj_frame.empty()) {
+    traj_frame = reference_trajectory_.points.front().pose.header.frame_id;
+  }
+  geometry_msgs::msg::PoseStamped pose_in_traj = robot_pose;
+  if (!traj_frame.empty() && robot_pose.header.frame_id != traj_frame) {
+    try {
+      geometry_msgs::msg::PoseStamped query = robot_pose;
+      query.header.stamp = rclcpp::Time(0);
+      tf_buffer_->transform(query, pose_in_traj, traj_frame, tf2::durationFromSec(0.1));
+    } catch (const tf2::TransformException &) {
+      return -1.0;  // TF 失败：本周期不设帽，回退 profile 约束
+    }
+  }
+  size_t nearest_i = 0;
+  double best_d2 = std::numeric_limits<double>::max();
+  const auto & pts = reference_trajectory_.points;
+  for (size_t i = 0; i < pts.size(); ++i) {
+    const double dx = pts[i].pose.pose.position.x - pose_in_traj.pose.position.x;
+    const double dy = pts[i].pose.pose.position.y - pose_in_traj.pose.position.y;
+    const double d2 = dx * dx + dy * dy;
+    if (d2 < best_d2) {
+      best_d2 = d2;
+      nearest_i = i;
+    }
+  }
+
+  // 帽 = 前瞻窗 [最近点, +trajectory_speed_cap_lookahead] 内的最大规划速度，
+  // 不能取最近点本身——剖面每周期从当前实际速度重规划（receding-horizon），
+  // "当前位置的计划速度"恒等于当前速度，静止时会形成"帽=0 → 动不了 → 速度恒 0"
+  // 的自引用死锁。窗的含义：允许 MPPI 领先计划加速坡多远——窗越小越贴近计划的
+  // 加速形状，但必须至少包含最近点的下一个点（点距稀疏时防死锁复发）；
+  // 减速段剖面递减，窗内最大值=当前位置计划速度，不受窗大小影响（不提前刹）。
+  double cap = std::fabs(pts[nearest_i].longitudinal_velocity);
+  double s = 0.0;
+  for (size_t j = nearest_i + 1; j < pts.size(); ++j) {
+    const double dx = pts[j].pose.pose.position.x - pts[j - 1].pose.pose.position.x;
+    const double dy = pts[j].pose.pose.position.y - pts[j - 1].pose.pose.position.y;
+    s += std::hypot(dx, dy);
+    cap = std::max(cap, std::fabs(pts[j].longitudinal_velocity));
+    if (s >= traj_speed_cap_lookahead_ && j > nearest_i + 1) {
+      break;
+    }
+  }
+  return cap;
 }
 
 // geometry_msgs::msg::TwistStamped MPPIController::computeVelocityCommands(
@@ -169,6 +233,11 @@ geometry_msgs::msg::TwistStamped MPPIController::computeVelocityCommands(
   const double heading_path_angle = path_handler_.getLastHeadingPathAngle();
 
   // 提前捕获目标位姿（用于 approach 子阶段和到点精度 log；plan 后续可能被 move 走）
+  // ④ 轨迹参考速度：最近轨迹点的规划速度作为本周期 vx 采样上限（叠加在 profile 之上）。
+  // 减速尾段/曲率限速/障碍零速由速度规划剖面逐点编码；无轨迹/TF 失败时不设帽。
+  optimizer_.setTrajectorySpeedCap(nearestTrajectorySpeed(robot_pose));
+
+  // 提前捕获目标位姿（用于到点精度 log；transformed_plan 后续可能被 visualize move 走）
   double key_goal_x = 0.0, key_goal_y = 0.0, key_goal_yaw = 0.0;
   double key_lon = 0.0, key_lat = 0.0, key_yaw = 0.0;
   const bool key_has_goal = !transformed_plan.poses.empty();
@@ -272,6 +341,10 @@ geometry_msgs::msg::TwistStamped MPPIController::computeVelocityCommands(
 
 void MPPIController::publishProfileDebug(double path_progress, double goal_distance)
 {
+  if (profile_debug_publisher_->get_subscription_count() == 0) {
+    return;
+  }
+
   if (!profile_debug_publisher_ || !profile_debug_publisher_->is_activated()) {
     return;
   }

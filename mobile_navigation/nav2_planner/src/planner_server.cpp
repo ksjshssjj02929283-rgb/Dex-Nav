@@ -32,6 +32,9 @@
 #include "nav2_costmap_2d/cost_values.hpp"
 
 #include "nav2_planner/planner_server.hpp"
+#include "nav2_costmap_2d/footprint_collision_checker.hpp"
+#include "nav2_costmap_2d/cost_values.hpp"
+#include "tf2/utils.h"
 // Generic planner-fallback interface: any planner implementing FallbackProvider
 // can ask the server to dispatch the configured fallback planner.
 #include "nav2_route_planner/planner_fallback.hpp"
@@ -46,6 +49,7 @@ namespace nav2_planner
 PlannerServer::PlannerServer(const rclcpp::NodeOptions & options)
 : nav2_util::LifecycleNode("planner_server", "", options),
   gp_loader_("nav2_core", "nav2_core::GlobalPlanner"),
+  smoother_loader_("nav2_core", "nav2_core::Smoother"),
   default_ids_{"GridBased"},
   default_types_{"nav2_navfn_planner/NavfnPlanner"},
   costmap_(nullptr)
@@ -55,12 +59,12 @@ PlannerServer::PlannerServer(const rclcpp::NodeOptions & options)
   // Declare this node's parameters
   declare_parameter("planner_plugins", default_ids_);
   declare_parameter("expected_planner_frequency", 1.0);
-  // active_planner: which registered planner key to use when the action
+  // current_planner: which registered planner key to use when the action
   // caller's planner_id is empty or does not match any registered plugin.
-  // Switchable at runtime: ros2 param set /planner_server active_planner <key>
-  declare_parameter("active_planner", std::string(""));
+  // Switchable at runtime: ros2 param set /planner_server current_planner <key>
+  declare_parameter("current_planner", std::string(""));
   // override_planner_id: when true, ignore caller-supplied planner_id and
-  // always dispatch to active_planner_. Used for runtime hot-swapping when
+  // always dispatch to current_planner_. Used for runtime hot-swapping when
   // upstream BTs hard-code planner_id="GridBased". Switchable at runtime:
   //   ros2 param set /planner_server override_planner_id true|false
   declare_parameter("override_planner_id", false);
@@ -68,6 +72,18 @@ PlannerServer::PlannerServer(const rclcpp::NodeOptions & options)
   // and it returns no path SPECIFICALLY because the map has no route graph,
   // retry with this free-space planner. Empty = no fallback.
   declare_parameter("route_fallback_planner", std::string(""));
+
+  // 末端直线插值统一后处理（原 smac fork 定制上收）：开关 + 参数
+  declare_parameter("goal_line_interp_enable", false);
+  declare_parameter("goal_line_interp_tail_distance", 0.3);
+  declare_parameter("goal_line_interp_step", 0.02);
+
+  // 路径平滑统一后处理（getPlan 出口，goal_line_interp 之后）：开关 + 插件表 +
+  // current_* 选择 + 单次平滑时间预算。
+  declare_parameter("smoother_enable", false);
+  declare_parameter("smoother_plugins", std::vector<std::string>{});
+  declare_parameter("current_smoother", std::string(""));
+  declare_parameter("smoother_max_time", 0.1);
 
   get_parameter("planner_plugins", planner_ids_);
   if (planner_ids_ == default_ids_) {
@@ -139,22 +155,22 @@ PlannerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
     get_logger(),
     "Planner Server has %s planners available.", planner_ids_concat_.c_str());
 
-  // Resolve active_planner_ from parameter (default = first registered planner)
+  // Resolve current_planner_ from parameter (default = first registered planner)
   {
     std::string active_param;
-    get_parameter("active_planner", active_param);
+    get_parameter("current_planner", active_param);
     if (!active_param.empty() && planners_.find(active_param) != planners_.end()) {
-      active_planner_ = active_param;
+      current_planner_ = active_param;
     } else {
       if (!active_param.empty()) {
         RCLCPP_WARN(
           get_logger(),
-          "active_planner '%s' is not a registered planner; defaulting to '%s'",
+          "current_planner '%s' is not a registered planner; defaulting to '%s'",
           active_param.c_str(), planner_ids_.front().c_str());
       }
-      active_planner_ = planner_ids_.empty() ? "" : planner_ids_.front();
+      current_planner_ = planner_ids_.empty() ? "" : planner_ids_.front();
     }
-    RCLCPP_INFO(get_logger(), "Active planner set to '%s'", active_planner_.c_str());
+    RCLCPP_INFO(get_logger(), "Active planner set to '%s'", current_planner_.c_str());
   }
 
   // Resolve override flag
@@ -162,8 +178,67 @@ PlannerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
   RCLCPP_INFO(
     get_logger(),
     "override_planner_id = %s (when true, every getPlan() ignores caller's "
-    "planner_id and uses active_planner='%s')",
-    override_planner_id_ ? "true" : "false", active_planner_.c_str());
+    "planner_id and uses current_planner='%s')",
+    override_planner_id_ ? "true" : "false", current_planner_.c_str());
+
+  get_parameter("goal_line_interp_enable", goal_line_interp_enable_);
+  get_parameter("goal_line_interp_tail_distance", goal_line_interp_tail_distance_);
+  get_parameter("goal_line_interp_step", goal_line_interp_step_);
+  if (goal_line_interp_enable_) {
+    RCLCPP_INFO(
+      get_logger(),
+      "goal_line_interp enabled: tail_distance=%.2f step=%.2f",
+      goal_line_interp_tail_distance_, goal_line_interp_step_);
+  }
+
+  // ── 路径平滑统一后处理：加载 smoother 插件 ──
+  get_parameter("smoother_enable", smoother_enable_);
+  get_parameter("smoother_plugins", smoother_ids_);
+  get_parameter("current_smoother", current_smoother_);
+  get_parameter("smoother_max_time", smoother_max_time_);
+  if (smoother_enable_ && !smoother_ids_.empty()) {
+    // nav2_core::Smoother 接口要求 CostmapSubscriber/FootprintSubscriber：
+    // 订阅自家 global costmap 的 raw/footprint 话题（与 smoother_server 同法）。
+    smoother_costmap_sub_ = std::make_shared<nav2_costmap_2d::CostmapSubscriber>(
+      shared_from_this(), "global_costmap/costmap_raw");
+    smoother_footprint_sub_ = std::make_shared<nav2_costmap_2d::FootprintSubscriber>(
+      shared_from_this(), "global_costmap/published_footprint", *tf_);
+    smoother_types_.resize(smoother_ids_.size());
+    for (size_t i = 0; i != smoother_ids_.size(); i++) {
+      try {
+        smoother_types_[i] = nav2_util::get_plugin_type_param(node, smoother_ids_[i]);
+        nav2_core::Smoother::Ptr smoother =
+          smoother_loader_.createUniqueInstance(smoother_types_[i]);
+        RCLCPP_INFO(
+          get_logger(), "Created path smoother plugin %s of type %s",
+          smoother_ids_[i].c_str(), smoother_types_[i].c_str());
+        smoother->configure(
+          shared_from_this(), smoother_ids_[i], tf_,
+          smoother_costmap_sub_, smoother_footprint_sub_);
+        smoothers_.insert({smoother_ids_[i], smoother});
+      } catch (const pluginlib::PluginlibException & ex) {
+        RCLCPP_FATAL(
+          get_logger(), "Failed to create path smoother. Exception: %s", ex.what());
+        return nav2_util::CallbackReturn::FAILURE;
+      }
+    }
+    smoother_ids_concat_.clear();
+    for (const auto & id : smoother_ids_) {
+      smoother_ids_concat_ += id + std::string(" ");
+    }
+    if (current_smoother_.empty() || !smoothers_.count(current_smoother_)) {
+      if (!current_smoother_.empty()) {
+        RCLCPP_WARN(
+          get_logger(), "current_smoother '%s' is not registered; defaulting to '%s'",
+          current_smoother_.c_str(), smoother_ids_.front().c_str());
+      }
+      current_smoother_ = smoother_ids_.front();
+    }
+    RCLCPP_INFO(
+      get_logger(), "Path smoothing enabled: current_smoother='%s' (available: %s) "
+      "max_time=%.2fs", current_smoother_.c_str(), smoother_ids_concat_.c_str(),
+      smoother_max_time_);
+  }
 
   // Resolve route→free-space fallback planner
   get_parameter("route_fallback_planner", route_fallback_planner_);
@@ -231,6 +306,9 @@ PlannerServer::on_activate(const rclcpp_lifecycle::State & /*state*/)
   for (it = planners_.begin(); it != planners_.end(); ++it) {
     it->second->activate();
   }
+  for (auto & sm : smoothers_) {
+    sm.second->activate();
+  }
 
   auto node = shared_from_this();
 
@@ -276,6 +354,9 @@ PlannerServer::on_deactivate(const rclcpp_lifecycle::State & /*state*/)
   for (it = planners_.begin(); it != planners_.end(); ++it) {
     it->second->deactivate();
   }
+  for (auto & sm : smoothers_) {
+    sm.second->deactivate();
+  }
 
   dyn_params_handler_.reset();
 
@@ -309,6 +390,12 @@ PlannerServer::on_cleanup(const rclcpp_lifecycle::State & /*state*/)
   for (it = planners_.begin(); it != planners_.end(); ++it) {
     it->second->cleanup();
   }
+  for (auto & sm : smoothers_) {
+    sm.second->cleanup();
+  }
+  smoothers_.clear();
+  smoother_costmap_sub_.reset();
+  smoother_footprint_sub_.reset();
 
   planners_.clear();
   costmap_thread_.reset();
@@ -592,33 +679,33 @@ PlannerServer::getPlan(
 
   // Resolve the effective planner. Two modes:
   //   (1) override_planner_id_ == true: ignore caller's planner_id and
-  //       always use active_planner_ (hot-swap mode).
+  //       always use current_planner_ (hot-swap mode).
   //   (2) override_planner_id_ == false (nav2 default): caller's
-  //       planner_id wins; active_planner_ is only used as fallback when
+  //       planner_id wins; current_planner_ is only used as fallback when
   //       caller's planner_id is empty or not registered.
   std::string effective_id = planner_id;
 
   if (override_planner_id_ &&
-    !active_planner_.empty() && planners_.count(active_planner_))
+    !current_planner_.empty() && planners_.count(current_planner_))
   {
     // Mode (1): hot-swap override
-    if (!planner_id.empty() && planner_id != active_planner_) {
+    if (!planner_id.empty() && planner_id != current_planner_) {
       RCLCPP_DEBUG(
         get_logger(),
         "override_planner_id=true: caller requested '%s' but dispatching to active '%s'",
-        planner_id.c_str(), active_planner_.c_str());
+        planner_id.c_str(), current_planner_.c_str());
     }
-    effective_id = active_planner_;
+    effective_id = current_planner_;
   } else if (planners_.find(effective_id) == planners_.end()) {
-    // Mode (2): fallback to active_planner_ on miss
-    if (!active_planner_.empty() && planners_.count(active_planner_)) {
+    // Mode (2): fallback to current_planner_ on miss
+    if (!current_planner_.empty() && planners_.count(current_planner_)) {
       if (!planner_id.empty()) {
         RCLCPP_WARN(
           get_logger(),
-          "Requested planner '%s' not found; falling back to active_planner '%s'",
-          planner_id.c_str(), active_planner_.c_str());
+          "Requested planner '%s' not found; falling back to current_planner '%s'",
+          planner_id.c_str(), current_planner_.c_str());
       }
-      effective_id = active_planner_;
+      effective_id = current_planner_;
     } else {
       RCLCPP_ERROR(
         get_logger(), "planner '%s' is not a valid planner. "
@@ -654,7 +741,130 @@ PlannerServer::getPlan(
     }
   }
 
+  // 末端直线插值统一后处理（所有 planner 的输出都经过这里）。
+  if (goal_line_interp_enable_) {
+    applyGoalLineInterpolation(path, start, goal);
+  }
+
+  // 路径平滑统一后处理（在直线接管之后：接缝拐角一并磨圆）。
+  if (smoother_enable_) {
+    applyPathSmoothing(path);
+  }
+
   return path;
+}
+
+void PlannerServer::applyPathSmoothing(nav_msgs::msg::Path & path)
+{
+  if (path.poses.size() < 3 || !smoothers_.count(current_smoother_)) {
+    return;
+  }
+  const nav_msgs::msg::Path original = path;
+  try {
+    if (!smoothers_[current_smoother_]->smooth(
+        path, rclcpp::Duration::from_seconds(smoother_max_time_)))
+    {
+      RCLCPP_DEBUG(
+        get_logger(), "smoother '%s' hit time budget (%.2fs), result kept as-is",
+        current_smoother_.c_str(), smoother_max_time_);
+    }
+  } catch (const std::exception & e) {
+    // 平滑是锦上添花：任何异常回退未平滑路径，不影响规划可用性。
+    RCLCPP_WARN(
+      get_logger(), "smoother '%s' failed (%s) — using unsmoothed path",
+      current_smoother_.c_str(), e.what());
+    path = original;
+  }
+}
+
+bool PlannerServer::isGoalFootprintFree(const geometry_msgs::msg::PoseStamped & goal)
+{
+  nav2_costmap_2d::FootprintCollisionChecker<nav2_costmap_2d::Costmap2D *>
+  checker(costmap_);
+  const double cost = checker.footprintCostAtPose(
+    goal.pose.position.x, goal.pose.position.y,
+    tf2::getYaw(goal.pose.orientation), costmap_ros_->getRobotFootprint());
+  return cost < static_cast<double>(nav2_costmap_2d::LETHAL_OBSTACLE);
+}
+
+void PlannerServer::appendGoalLine(
+  nav_msgs::msg::Path & path,
+  const geometry_msgs::msg::PoseStamped & from,
+  const geometry_msgs::msg::PoseStamped & goal)
+{
+  const double dx = goal.pose.position.x - from.pose.position.x;
+  const double dy = goal.pose.position.y - from.pose.position.y;
+  const double dist = std::hypot(dx, dy);
+  const double step = std::max(goal_line_interp_step_, 1e-3);
+  const int steps = std::max(1, static_cast<int>(dist / step));
+  const double yaw_from = tf2::getYaw(from.pose.orientation);
+  double yaw_diff = tf2::getYaw(goal.pose.orientation) - yaw_from;
+  while (yaw_diff > M_PI) {yaw_diff -= 2.0 * M_PI;}
+  while (yaw_diff < -M_PI) {yaw_diff += 2.0 * M_PI;}
+
+  for (int i = 1; i <= steps; ++i) {
+    const double f = static_cast<double>(i) / steps;
+    geometry_msgs::msg::PoseStamped pose;
+    pose.header = path.header;
+    pose.pose.position.x = from.pose.position.x + f * dx;
+    pose.pose.position.y = from.pose.position.y + f * dy;
+    tf2::Quaternion q;
+    q.setRPY(0.0, 0.0, yaw_from + f * yaw_diff);
+    pose.pose.orientation = tf2::toMsg(q);
+    path.poses.push_back(pose);
+  }
+}
+
+void PlannerServer::applyGoalLineInterpolation(
+  nav_msgs::msg::Path & path,
+  const geometry_msgs::msg::PoseStamped & start,
+  const geometry_msgs::msg::PoseStamped & goal)
+{
+  const auto dist_to_goal = [&goal](const geometry_msgs::msg::Pose & p) {
+      return std::hypot(
+        p.position.x - goal.pose.position.x, p.position.y - goal.pose.position.y);
+    };
+
+  if (path.poses.empty()) {
+    // 失败兜底：仅在已贴近 goal 且 goal footprint 无碰撞时直线补线——
+    // 远距离失败仍交给 BT 等待重规划，不掩盖规划失败。判定半径与尾段
+    // 替换窗口共用 tail_distance（同一语义：goal 附近直线接管范围）。
+    const double dist = dist_to_goal(start.pose);
+    if (dist > goal_line_interp_tail_distance_ || !isGoalFootprintFree(goal)) {
+      return;
+    }
+    RCLCPP_WARN(
+      get_logger(),
+      "goal_line_interp: planner returned empty path near goal (%.2fm) — "
+      "using straight-line interpolation start→goal.", dist);
+    path.header.frame_id = costmap_ros_->getGlobalFrameID();
+    path.header.stamp = now();
+    geometry_msgs::msg::PoseStamped start_pose = start;
+    start_pose.header = path.header;
+    path.poses.push_back(start_pose);
+    appendGoalLine(path, start_pose, goal);
+    return;
+  }
+
+  // 成功路径：尾点已进入替换窗口 → 截断窗口内尾段（末端机动，如朝向对齐
+  // 弯钩），直线插值补到 goal。窗口外路径原样保留。
+  if (dist_to_goal(path.poses.back().pose) > goal_line_interp_tail_distance_ ||
+    !isGoalFootprintFree(goal))
+  {
+    return;
+  }
+  size_t keep = path.poses.size();
+  while (keep > 1 && dist_to_goal(path.poses[keep - 1].pose) <=
+    goal_line_interp_tail_distance_)
+  {
+    --keep;
+  }
+  path.poses.resize(keep);
+  RCLCPP_DEBUG(
+    get_logger(),
+    "goal_line_interp: replaced path tail within %.2fm of goal with straight "
+    "interpolation (%zu poses kept).", goal_line_interp_tail_distance_, keep);
+  appendGoalLine(path, path.poses.back(), goal);
 }
 
 void
@@ -741,21 +951,34 @@ PlannerServer::dynamicParametersCallback(std::vector<rclcpp::Parameter> paramete
         }
       }
     } else if (type == ParameterType::PARAMETER_STRING) {
-      if (name == "active_planner") {
+      if (name == "current_smoother") {
+        const std::string requested = parameter.as_string();
+        if (smoothers_.find(requested) == smoothers_.end()) {
+          RCLCPP_WARN(
+            get_logger(),
+            "Rejecting current_smoother='%s': not a registered smoother. Available: %s",
+            requested.c_str(), smoother_ids_concat_.c_str());
+          result.successful = false;
+          result.reason = "unknown smoother key: " + requested;
+        } else {
+          current_smoother_ = requested;
+          RCLCPP_INFO(get_logger(), "current_smoother switched to '%s'", requested.c_str());
+        }
+      } else if (name == "current_planner") {
         const std::string requested = parameter.as_string();
         if (planners_.find(requested) == planners_.end()) {
           RCLCPP_WARN(
             get_logger(),
-            "Rejecting active_planner='%s': not a registered planner. Available: %s",
+            "Rejecting current_planner='%s': not a registered planner. Available: %s",
             requested.c_str(), planner_ids_concat_.c_str());
           result.successful = false;
           result.reason = "unknown planner key: " + requested;
           return result;
         }
         RCLCPP_INFO(
-          get_logger(), "active_planner: '%s' -> '%s'",
-          active_planner_.c_str(), requested.c_str());
-        active_planner_ = requested;
+          get_logger(), "current_planner: '%s' -> '%s'",
+          current_planner_.c_str(), requested.c_str());
+        current_planner_ = requested;
       }
     } else if (type == ParameterType::PARAMETER_BOOL) {
       if (name == "override_planner_id") {
@@ -763,10 +986,10 @@ PlannerServer::dynamicParametersCallback(std::vector<rclcpp::Parameter> paramete
         override_planner_id_ = parameter.as_bool();
         RCLCPP_INFO(
           get_logger(),
-          "override_planner_id: %s -> %s (active_planner='%s')",
+          "override_planner_id: %s -> %s (current_planner='%s')",
           old_v ? "true" : "false",
           override_planner_id_ ? "true" : "false",
-          active_planner_.c_str());
+          current_planner_.c_str());
       }
     }
   }

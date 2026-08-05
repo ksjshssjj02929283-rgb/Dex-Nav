@@ -7,6 +7,9 @@
   <maintainer email="linfeng.guo@dexforce.com">linfeng.guo</maintainer>
   <license>Proprietary</license>
 
+  <depend>geometry_msgs</depend>
+  <depend>rclcpp</depend>
+
   <exec_depend>gazebo_ros</exec_depend>
   <exec_depend>gazebo_plugins</exec_depend>
   <exec_depend>robot_state_publisher</exec_depend>

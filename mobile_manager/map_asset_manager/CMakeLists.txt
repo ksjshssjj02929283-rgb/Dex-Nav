@@ -99,6 +99,17 @@ install(DIRECTORY include/
   DESTINATION include
 )
 
+install(PROGRAMS
+  scripts/debug/debug_map_asset_manager.sh
+  scripts/map_asset_manager_test.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
+install(FILES
+  test_data/map_assets_standard.json
+  DESTINATION share/map_asset_manager/test_data
+)
+
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   ament_lint_auto_find_test_dependencies()

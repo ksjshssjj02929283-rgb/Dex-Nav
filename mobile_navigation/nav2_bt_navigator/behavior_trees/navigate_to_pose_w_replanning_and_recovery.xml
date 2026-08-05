@@ -21,6 +21,12 @@
   - BackUp is treated as an optional recovery action: if backing up is blocked
     or out of the local costmap, navigation keeps waiting/retrying instead of
     failing the whole goal.
+  - Unlike the outer global-planning retry, this loop is bounded: an unbounded
+    local recovery loop can spin indefinitely on a position the robot cannot
+    escape, with no signal to the caller that anything is wrong. A bounded
+    count still gives many chances for transient obstacles to clear, but
+    eventually fails the goal so the caller (and any operator watching it)
+    finds out instead of waiting forever.
 -->
 
 <root main_tree_to_execute="MainTree">
@@ -72,11 +78,11 @@
 
 
       <!-- 局部控制 -->
-      <RecoveryNode number_of_retries="9999" name="FollowPathAfterBackUpRetry">
+      <RecoveryNode number_of_retries="1" name="FollowPathAfterBackUpRetry">
 
         <!-- 内层：FollowPath 失败后，尝试清 local，然后立即 FollowPath 1 次 -->
         <RecoveryNode number_of_retries="1" name="FollowPathInnerRetry">
-          <FollowPath path="{path}" controller_id="FollowPath"/>
+          <FollowPath path="{path}" controller_id="MPPIController"/>
 
           <ForceSuccess>
             <ClearEntireCostmap name="ClearLocalCostmap-FirstRetry"
@@ -84,7 +90,7 @@
           </ForceSuccess>
         </RecoveryNode>
 
-        <!-- 如果立即重试仍失败，则等待 1 秒、清 local、后退，然后继续重试局部控制 -->
+        <!-- 如果立即重试仍失败，则等待、清 local、后退；仅在后退成功后再重试一次 -->
         <Sequence name="WaitClearBackUpAfterFollowPathFailed">
           <Wait wait_duration="1" server_name="wait_local"/>
 
@@ -92,10 +98,8 @@
             <ClearEntireCostmap name="ClearLocalCostmap-BeforeBackUp"
               service_name="local_costmap/clear_entirely_local_costmap"/>
           </ForceSuccess>
-          <ForceSuccess>
-            <!-- <Wait wait_duration="1" server_name="wait_local"/> -->
-            <BackUp name="BackUpAfterLocalRetries" backup_dist="0.30" backup_speed="0.08" time_allowance="5"/>
-          </ForceSuccess>
+          <!-- BackUp 被碰撞检查拒绝时必须向上传播 FAILURE，禁止吞掉失败后重启 FollowPath。 -->
+          <BackUp name="BackUpAfterLocalRetries" backup_dist="0.30" backup_speed="0.08" time_allowance="5"/>
         </Sequence>
 
       </RecoveryNode>

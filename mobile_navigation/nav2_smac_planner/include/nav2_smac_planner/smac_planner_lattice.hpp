@@ -96,10 +96,6 @@ public:
   * @param step  插值步长（米），默认 0.02m
   * @return nav_msgs::msg::Path 插值生成的路径
   */
-  nav_msgs::msg::Path interpolatePath(
-    const geometry_msgs::msg::PoseStamped & start,
-    const geometry_msgs::msg::PoseStamped & goal,
-    double step = 0.02);
 
 
 

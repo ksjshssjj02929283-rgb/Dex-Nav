@@ -1,0 +1,10 @@
+<class_libraries>
+    <library path="nav2_lex_local_planner">
+        <class type="nav2_lex_local_planner::LexLocalPlanner" base_class_type="nav2_core::LocalPlanner">
+            <description>
+                Lexicographic 多代价局部规划器（rollout 横向发散 + 分层代价 DP 选路），
+                实现 nav2_core::LocalPlanner 接口。
+            </description>
+        </class>
+    </library>
+</class_libraries>

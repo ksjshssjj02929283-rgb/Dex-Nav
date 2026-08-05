@@ -14,7 +14,7 @@
         </Sequence>
       </RateController>
       <KeepRunningUntilFailure>
-        <FollowPath path="{truncated_path}" controller_id="FollowPath"/>
+        <FollowPath path="{truncated_path}" controller_id="MPPIController"/>
       </KeepRunningUntilFailure>
     </PipelineSequence>
   </BehaviorTree>

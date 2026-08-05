@@ -23,6 +23,7 @@
   <depend>nav_interfaces</depend>
   <depend>rcl_interfaces</depend>
   <depend>nlohmann-json-dev</depend>
+  <exec_depend>rclpy</exec_depend>
 
   <!-- RViz2 插件依赖（可选；无 RViz 环境时 CMake QUIET 跳过） -->
   <depend>rviz_common</depend>

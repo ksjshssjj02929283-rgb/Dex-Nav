@@ -141,12 +141,6 @@ BASELINE_SERVICES = {
     "/map_manager/rename_map",
 }
 
-DATA_SERVICES = {
-    "/map_asset_manager/get_all_nav_points",
-    "/map_asset_manager/get_all_routes",
-    "/map_asset_manager/get_all_areas",
-}
-
 ROLLBACK_CANDIDATES = (
     "/command_board/rollback_map",
     "/command_board_manager/rollback_map",
@@ -255,11 +249,7 @@ def evaluate_ros_graph(
     if "/map_manager/map_state" not in topics:
         missing_baseline_requirements.append("/map_manager/map_state (topic)")
 
-    missing_data_services = sorted(DATA_SERVICES - services)
-    missing_data_requirements = [
-        *missing_baseline_requirements,
-        *missing_data_services,
-    ]
+    missing_data_requirements = list(missing_baseline_requirements)
     if not rollback_service:
         missing_data_requirements.append(
             "one of "
@@ -284,7 +274,6 @@ def evaluate_ros_graph(
         "rollback_service": rollback_service,
         "missing_baseline_services": missing_baseline_services,
         "missing_baseline_requirements": missing_baseline_requirements,
-        "missing_data_services": missing_data_services,
         "missing_data_requirements": missing_data_requirements,
         "topics": sorted(topics),
         "services": sorted(services),

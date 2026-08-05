@@ -1,5 +1,5 @@
 <class_libraries>
-  <library path="simple_goal_checker">
+  <library path="nav2_simple_goal_checker">
     <class type="dwb_plugins::SimpleGoalChecker" base_class_type="nav2_core::GoalChecker">
       <description></description>
     </class>
@@ -12,7 +12,7 @@
       <description></description>
     </class>
   </library>
-  <library path="stopped_goal_checker">
+  <library path="nav2_stopped_goal_checker">
     <class type="dwb_plugins::StoppedGoalChecker" base_class_type="nav2_core::GoalChecker">
       <description></description>
     </class>

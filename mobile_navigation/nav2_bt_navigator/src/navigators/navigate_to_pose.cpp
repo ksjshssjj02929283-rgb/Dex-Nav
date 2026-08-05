@@ -70,6 +70,18 @@ NavigateToPoseNavigator::configure(
     "goal_pose",
     rclcpp::SystemDefaultsQoS(),
     std::bind(&NavigateToPoseNavigator::onGoalPoseReceived, this, std::placeholders::_1));
+
+  // nav_monitor 任务回显（默认关闭，零开销）
+  if (!node->has_parameter("enable_nav_monitor_echo")) {
+    node->declare_parameter("enable_nav_monitor_echo", false);
+  }
+  enable_nav_monitor_echo_ = node->get_parameter("enable_nav_monitor_echo").as_bool();
+  if (enable_nav_monitor_echo_) {
+    goal_pose_echo_pub_ = node->create_publisher<geometry_msgs::msg::PoseStamped>(
+      "nav_monitor/goal_pose_echo", rclcpp::SystemDefaultsQoS());
+    goal_bt_echo_pub_ = node->create_publisher<std_msgs::msg::String>(
+      "nav_monitor/goal_behavior_tree_echo", rclcpp::SystemDefaultsQoS());
+  }
   return true;
 }
 
@@ -99,6 +111,33 @@ NavigateToPoseNavigator::cleanup()
 {
   goal_sub_.reset();
   self_client_.reset();
+  goal_pose_echo_pub_.reset();
+  goal_bt_echo_pub_.reset();
+  return true;
+}
+
+bool
+NavigateToPoseNavigator::activate()
+{
+  // LifecyclePublisher 必须显式激活，否则 publish 被静默丢弃
+  if (goal_pose_echo_pub_) {
+    goal_pose_echo_pub_->on_activate();
+  }
+  if (goal_bt_echo_pub_) {
+    goal_bt_echo_pub_->on_activate();
+  }
+  return true;
+}
+
+bool
+NavigateToPoseNavigator::deactivate()
+{
+  if (goal_pose_echo_pub_) {
+    goal_pose_echo_pub_->on_deactivate();
+  }
+  if (goal_bt_echo_pub_) {
+    goal_bt_echo_pub_->on_deactivate();
+  }
   return true;
 }
 
@@ -282,6 +321,19 @@ NavigateToPoseNavigator::initializeGoalPose(ActionT::Goal::ConstSharedPtr goal)
 
   // Update the goal pose on the blackboard
   blackboard->set<geometry_msgs::msg::PoseStamped>(goal_blackboard_id_, goal->pose);
+
+  // nav_monitor 任务回显：这里是"一次新导航开始"语义上唯一的落点——
+  // goalReceived() 与 onPreempt() 都收敛到这一个函数，抢占场景下重新触发也是正确语义
+  // （抢占即当前任务提前结束、新任务立即开始）
+  if (enable_nav_monitor_echo_) {
+    geometry_msgs::msg::PoseStamped goal_echo = goal->pose;
+    goal_echo.header.stamp = start_time_;
+    goal_pose_echo_pub_->publish(goal_echo);
+
+    std_msgs::msg::String bt_echo;
+    bt_echo.data = goal->behavior_tree;
+    goal_bt_echo_pub_->publish(bt_echo);
+  }
 }
 
 void

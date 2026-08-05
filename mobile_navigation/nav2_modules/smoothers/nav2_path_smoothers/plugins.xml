@@ -1,0 +1,20 @@
+<library path="polynomial_smoother">
+  <class name="nav2_path_smoothers::PolynomialSmoother" type="nav2_path_smoothers::PolynomialSmoother" base_class_type="nav2_core::Smoother">
+    <description>Savitzky-Golay 滑窗多项式平滑器（默认 5 次）：单遍卷积，保长趋势，端点固定。</description>
+  </class>
+</library>
+<library path="simple_smoother">
+  <class name="nav2_path_smoothers::SimpleSmoother" type="nav2_path_smoothers::SimpleSmoother" base_class_type="nav2_core::Smoother">
+    <description>迭代梯度平滑（copy 自 nav2_smoother，统一归口）：数据项+平滑项加权收敛，带碰撞回退。</description>
+  </class>
+</library>
+<library path="savitzky_golay_smoother">
+  <class name="nav2_path_smoothers::SavitzkyGolaySmoother" type="nav2_path_smoothers::SavitzkyGolaySmoother" base_class_type="nav2_core::Smoother">
+    <description>Savitzky-Golay 平滑（copy 自 nav2_smoother，固定 7 点窗）：与自研 PolynomialSmoother（可配阶/窗）互补。</description>
+  </class>
+</library>
+<library path="elastic_band_smoother">
+  <class name="nav2_path_smoothers::ElasticBandSmoother" type="nav2_path_smoothers::ElasticBandSmoother" base_class_type="nav2_core::Smoother">
+    <description>弹性带平滑器：内张力 + costmap 代价梯度斥力迭代平衡，代价感知平滑。</description>
+  </class>
+</library>

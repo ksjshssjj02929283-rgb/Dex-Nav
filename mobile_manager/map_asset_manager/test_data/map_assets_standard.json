@@ -1,0 +1,146 @@
+{
+  "areas": [
+    {
+      "attribute": "map_asset_manager_auto_complete_area",
+      "charger_type": "",
+      "depth_min_height": 0.1,
+      "manual_linked_point_names": [],
+      "max_speed": 0.35,
+      "name": "AUTO_ASSET_AREA",
+      "polygon": [
+        {"x": -1.5, "y": -1.5},
+        {"x": 1.5, "y": -1.5},
+        {"x": 1.5, "y": 1.5},
+        {"x": -1.5, "y": 1.5}
+      ],
+      "related_junction_ids": ["AUTO_ASSET_JUNCTION"],
+      "related_nav_point_names": [
+        "AUTO_ASSET_POINT_A",
+        "AUTO_ASSET_POINT_B"
+      ],
+      "stop_distance": 0.0,
+      "type": "SPEED_LIMIT_AREA"
+    }
+  ],
+  "dsg": {
+    "edges": [],
+    "layers": {
+      "BUILDINGS": [],
+      "FLOORS": [],
+      "OBJECTS": [],
+      "PLACES": [],
+      "ROOMS": [
+        {
+          "attribute": "map_asset_manager_auto_complete_room",
+          "behavior": {
+            "additional_area_names": [],
+            "depth_min_height_m": 0.0,
+            "detour_enabled": false,
+            "max_speed_m_s": 0.0,
+            "restricted": false,
+            "stop_distance_m": 0.0
+          },
+          "bounding_box": [-2.0, -2.0, 0.0, 2.0, 2.0, 0.0],
+          "created_at_ns": 1,
+          "display_label": "Auto Asset Room",
+          "external_dsg_node_id": "auto:test:room",
+          "id": "room:AUTO_ASSET_ROOM:manual",
+          "manual_anchor_point_names": [
+            "AUTO_ASSET_POINT_A",
+            "AUTO_ASSET_POINT_B"
+          ],
+          "name": "AUTO_ASSET_ROOM",
+          "polygon": [
+            {"x": -2.0, "y": -2.0},
+            {"x": 2.0, "y": -2.0},
+            {"x": 2.0, "y": 2.0},
+            {"x": -2.0, "y": 2.0}
+          ],
+          "pose": {
+            "orientation": {"w": 1.0, "x": 0.0, "y": 0.0, "z": 0.0},
+            "position": {"x": 0.0, "y": 0.0, "z": 0.0}
+          },
+          "related_junction_ids": ["AUTO_ASSET_JUNCTION"],
+          "related_nav_point_names": [
+            "AUTO_ASSET_POINT_A",
+            "AUTO_ASSET_POINT_B"
+          ],
+          "semantic_label": "meeting room",
+          "source": "manual",
+          "type": "MEETING_ROOM",
+          "updated_at_ns": 1
+        }
+      ]
+    },
+    "metadata": {
+      "name": "dexe_dsg",
+      "schema_compatible_with": "spark_dsg/1.2",
+      "version": "1.0"
+    }
+  },
+  "points": [
+    {
+      "name": "AUTO_ASSET_POINT_A",
+      "pose": {"x": -1.0, "y": 0.0, "yaw": 0.1},
+      "tolerance": 0.2,
+      "type": "STATION"
+    },
+    {
+      "name": "AUTO_ASSET_POINT_B",
+      "pose": {"x": 1.0, "y": 0.0, "yaw": -0.1},
+      "tolerance": 0.2,
+      "type": "STATION"
+    },
+    {
+      "name": "AUTO_ASSET_POINT_C",
+      "pose": {"x": 3.0, "y": 0.0, "yaw": 0.0},
+      "tolerance": 0.2,
+      "type": "STATION"
+    }
+  ],
+  "route_graph": {
+    "edges": [
+      {
+        "bidirectional": true,
+        "control_points": [],
+        "edge_type": "LINE",
+        "from": {"id": "AUTO_ASSET_POINT_A", "type": "nav"},
+        "id": "AUTO_ASSET_EDGE_A",
+        "lane_width": 0.8,
+        "max_speed": 0.4,
+        "obs_policy": "STOP",
+        "th_tolerance": 0.3,
+        "to": {"id": "AUTO_ASSET_JUNCTION", "type": "junction"},
+        "xy_tolerance": 0.2
+      },
+      {
+        "bidirectional": false,
+        "control_points": [[0.5, 1.0], [1.0, 0.5]],
+        "edge_type": "BEZIER",
+        "from": {"id": "AUTO_ASSET_JUNCTION", "type": "junction"},
+        "id": "AUTO_ASSET_EDGE_B",
+        "lane_width": 0.7,
+        "max_speed": 0.3,
+        "obs_policy": "DETOUR",
+        "th_tolerance": 0.4,
+        "to": {"id": "AUTO_ASSET_POINT_B", "type": "nav"},
+        "xy_tolerance": 0.25
+      }
+    ],
+    "junctions": [
+      {"id": "AUTO_ASSET_JUNCTION", "x": 0.0, "y": 1.0, "yaw": 0.5}
+    ]
+  },
+  "routes": [
+    {
+      "name": "AUTO_ASSET_ROUTE",
+      "points": [
+        "AUTO_ASSET_POINT_A",
+        "AUTO_ASSET_POINT_B",
+        "AUTO_ASSET_POINT_C"
+      ]
+    }
+  ],
+  "schema_compatible_with": "spark_dsg/1.2",
+  "schema_version": "2.0"
+}

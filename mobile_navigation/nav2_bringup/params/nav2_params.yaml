@@ -46,6 +46,8 @@ bt_navigator:
     robot_base_frame: base_link
     odom_topic: /odom
     bt_loop_duration: 10
+    # nav_monitor 任务回显：随 nav2_nav_monitor 记录使用，关闭则零开销
+    enable_nav_monitor_echo: true
     default_server_timeout: 200
     # 'default_nav_through_poses_bt_xml' and 'default_nav_to_pose_bt_xml' are use defaults:
     # nav2_bt_navigator/navigate_to_pose_w_replanning_and_recovery.xml
@@ -111,14 +113,94 @@ bt_navigator_navigate_to_pose_rclcpp_node:
 controller_server:
   ros__parameters:
     use_sim_time: True
+    # nav_monitor 全局路径/阶段回显：随 nav2_nav_monitor 记录使用，关闭则零开销
+    enable_nav_monitor_echo: true
     controller_frequency: 20.0
     min_x_velocity_threshold: 0.001
     min_y_velocity_threshold: 0.5
     min_theta_velocity_threshold: 0.001
     failure_tolerance: 0.3
     progress_checker_plugin: "progress_checker"
-    goal_checker_plugins: ["general_goal_checker"] # "precise_goal_checker"
-    controller_plugins: ["FollowPath"]
+    goal_checker_plugins: ["simple_goal_checker", "stopped_goal_checker", "position_goal_checker", "rotation_goal_checker", "longitudinal_goal_checker", "high_precision_goal_checker"]
+    controller_plugins: ["MPPIController", "DWBController", "RPPController", "GracefulController", "RotationShimController", "PIDController", "LatLonController", "PureRotationController", "StraightController"]
+    current_goal_checker: "simple_goal_checker"
+    current_controller: "RPPController"
+    # ③ 局部路径裁剪（与控制/速度规划同频）：从机器人在线段上的投影点保留到真实 goal
+    local_planner_plugins: ["PathPruningLocalPlanner"]
+    current_local_planner: "PathPruningLocalPlanner"  # 置空 "" = global path 直通
+    PathPruningLocalPlanner:
+      plugin: "nav2_path_pruning_local_planner::PathPruningLocalPlanner"
+      max_search_distance: 5.0
+      max_backtrack_distance: 0.5
+      transform_tolerance: 0.2
+    # ④ 速度规划（与控制同频，从③输出起点和当前实测速度重算；置空 "" 即禁用/灰度回退）
+    # 运动学上限与下游链路对齐：对齐 DWB(max_vel_x/acc_lim_x) 与 velocity_smoother(max_velocity/max_accel)
+    speed_planner_plugins: ["TrapezoidalSpeedPlanner", "SCurveSpeedPlanner"]
+    current_speed_planner: "TrapezoidalSpeedPlanner"  # 先验证 T 型；S 型待复测后切回
+    speed_planning_boundary:
+      max_age: 0.5
+      max_spatial_error: 0.15
+      max_velocity_error: 0.25
+      goal_position_tolerance: 0.05
+      goal_yaw_tolerance: 0.2
+      branch_heading_tolerance: 0.7853981634
+    TrapezoidalSpeedPlanner:
+      plugin: "nav2_speed_planner::TrapezoidalSpeedPlanner"
+      max_speed: 0.26
+      min_speed: 0.03
+      accel: 0.5
+      decel: -0.35
+      end_speed: 0.03
+      stop_distance: 0.1
+      collision_stop_distance: 0.2
+      obstacle_cost_threshold: 254   # 254=LETHAL：path 点在障碍格内才停障（253 内切区会误伤贴障碍路径）
+      obstacle_start_exempt_distance: 0.25  # 起点豁免：贴墙停放时自身在内切区，无豁免整条剖面被置零
+      curve_compute_dist: 0.1
+      regulated_linear_scaling_min_radius: 1.2
+      min_curvature_speed: 0.1
+      curve_lead_in_distance: 0.3    # O-6：进弯前该距离即压到弯道限速（给跟踪滞后留边际）
+      curve_lead_out_distance: 0.15   # O-6：出弯后延续该距离才恢复
+      constant_velocity_dist_threshold: 0.1
+      enable_constant_velocity_while_turning: False
+    SCurveSpeedPlanner:
+      plugin: "nav2_speed_planner::SCurveSpeedPlanner"
+      max_speed: 0.26
+      min_speed: 0.03
+      accel: 0.5
+      decel: -0.35
+      end_speed: 0.03
+      stop_distance: 0.1
+      collision_stop_distance: 0.2
+      obstacle_cost_threshold: 254   # 254=LETHAL：path 点在障碍格内才停障（253 内切区会误伤贴障碍路径）
+      obstacle_start_exempt_distance: 0.25  # 起点豁免：贴墙停放时自身在内切区，无豁免整条剖面被置零
+      curve_compute_dist: 0.1
+      regulated_linear_scaling_min_radius: 1.2
+      min_curvature_speed: 0.1
+      curve_lead_in_distance: 0.3    # O-6：进弯前该距离即压到弯道限速（给跟踪滞后留边际）
+      curve_lead_out_distance: 0.15   # O-6：出弯后延续该距离才恢复
+      constant_velocity_dist_threshold: 0.1
+      enable_constant_velocity_while_turning: False
+      max_jerk: 0.5
+      control_dt: 0.05
+    staged_control:
+      enabled: True
+      track_controller: "RPPController"
+      approach_controller: "PIDController"
+      approach_distance: 0.3
+      align_heading_tolerance: 0.5236  # 30 deg
+      align_angular_kp: 1.5
+      align_max_angular_velocity: 0.5
+      align_min_angular_velocity: 0.08
+      align_target_distance: 0.3    # align 朝向对齐的目标点距离——盯路径前方该距离的目标点方位角（同 RPP carrot 取向），而非局部路径切向
+      prepare:
+        enabled: True
+        obstacle_check_distance: 0.2    # footprint 前沿 + 该距离内检测（宽度取 footprint 实际半宽）
+        side_check_distance: 0.15    # 左右检测：footprint 全长两侧各外扩该距离（对称，<=0 关闭）
+        obstacle_cost_threshold: 253
+        backup_speed: -0.08
+        backup_duration: 0.6    # 定时模式时长；距离模式下作为安全兜底上限
+        backup_use_distance: false    # true=按 backup_distance 走固定距离；false=按 backup_duration 定时
+        backup_distance: 0.3
 
     # Progress checker parameters
     progress_checker:
@@ -127,19 +209,50 @@ controller_server:
       movement_time_allowance: 10.0
     # Goal checker parameters
     #precise_goal_checker:
-    #  plugin: "nav2_controller::SimpleGoalChecker"
+    #  plugin: "nav2_simple_goal_checker::SimpleGoalChecker"
     #  xy_goal_tolerance: 0.25
     #  yaw_goal_tolerance: 0.25
     #  stateful: True
-    general_goal_checker:
-      stateful: True
-      plugin: "nav2_controller::SimpleGoalChecker"
+    simple_goal_checker:
+      plugin: "nav2_simple_goal_checker::SimpleGoalChecker"
       xy_goal_tolerance: 0.25
       yaw_goal_tolerance: 0.25
+      stateful: True
+    stopped_goal_checker:
+      stateful: True
+      plugin: "nav2_stopped_goal_checker::StoppedGoalChecker"
+      xy_goal_tolerance: 0.25
+      yaw_goal_tolerance: 0.25
+      trans_stopped_velocity: 0.05
+      rot_stopped_velocity: 0.05
+    position_goal_checker:
+      plugin: "nav2_position_goal_checker::PositionGoalChecker"
+      xy_goal_tolerance: 0.05
+      trans_stopped_velocity: 0.01
+      rot_stopped_velocity: 0.05
+    rotation_goal_checker:
+      plugin: "nav2_rotation_goal_checker::RotationGoalChecker"
+      yaw_goal_tolerance: 0.25
+      rot_stopped_velocity: 0.05
+    longitudinal_goal_checker:
+      plugin: "nav2_longitudinal_goal_checker::LongitudinalGoalChecker"
+      lon_goal_tolerance: 0.02
+      lat_goal_tolerance: 0.04
+      yaw_goal_tolerance: 0.02
+      trans_stopped_velocity: 0.01
+      rot_stopped_velocity: 0.01
+      stateful: True
+    high_precision_goal_checker:
+      plugin: "nav2_high_precision_goal_checker::HighPrecisionGoalChecker"
+      lon_goal_tolerance: 0.02
+      lat_goal_tolerance: 0.04
+      yaw_goal_tolerance: 0.02
+      trans_stopped_velocity: 0.01
+      rot_stopped_velocity: 0.01
+      stateful: True
     # DWB parameters
-    FollowPath:
+    DWBController:
       plugin: "dwb_core::DWBLocalPlanner"
-      debug_trajectory_details: True
       min_vel_x: 0.0
       min_vel_y: 0.0
       max_vel_x: 0.26
@@ -162,11 +275,17 @@ controller_server:
       sim_time: 1.7
       linear_granularity: 0.05
       angular_granularity: 0.025
-      transform_tolerance: 0.2
+      discretize_by_time: False
+      time_granularity: 0.5
+      include_last_point: True
+      prune_plan: True
+      prune_distance: 2.0
+      forward_prune_distance: 2.0
+      shorten_transformed_plan: True
+      trajectory_generator_name: "dwb_plugins::StandardTrajectoryGenerator"
       xy_goal_tolerance: 0.25
       trans_stopped_velocity: 0.25
       short_circuit_trajectory_evaluation: True
-      stateful: True
       critics: ["RotateToGoal", "Oscillation", "BaseObstacle", "GoalAlign", "PathAlign", "PathDist", "GoalDist"]
       BaseObstacle.scale: 0.02
       PathAlign.scale: 32.0
@@ -178,6 +297,312 @@ controller_server:
       RotateToGoal.scale: 32.0
       RotateToGoal.slowing_factor: 5.0
       RotateToGoal.lookahead_time: -1.0
+    MPPIController:
+      plugin: "nav2_mppi_controller::MPPIController"
+      # ④ 轨迹速度帽前瞻窗（m）：帽允许领先计划加速坡的距离；减速段不受影响；需 >= 2 倍路径点距
+      trajectory_speed_cap_lookahead: 0.1
+      model_dt: 0.05
+      critics: ["ConstraintCritic", "CostCritic", "ObstaclesCritic", "GoalCritic", "GoalAngleCritic", "PathAlignCritic", "PathFollowCritic", "PathAngleCritic", "PreferForwardCritic", "VelocityDeadbandCritic"]
+    RPPController:
+      plugin: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
+      # ── 前瞻与轨迹对接：carrot 点怎么找、期望速度从哪来 ──
+      lookahead_dist: 0.6
+      min_lookahead_dist: 0.3
+      max_lookahead_dist: 0.9
+      lookahead_time: 1.5
+      use_velocity_scaled_lookahead_dist: True    # 低速时缩短前瞻（lookahead=v×lookahead_time，钳 [min,max]）——弯道跟踪更紧
+      use_interpolation: True
+      angular_gain: 1.2    # 角速度增益：>1 收紧转向补偿曲线跟踪滞后（横向误差大→上调，振荡→下调）
+      near_curvature_check_dist: 0.3          # 近场固定距离曲率采样点（不随速度缩放）；③角速度饱和联动降速取远端/近场两点曲率中更尖锐者，避免前瞻越远曲率越被稀释而漏看近场路径突变
+      traj_speed_lookahead: 0.1    # 轨迹速度目标=最近点之后前方窗内 max（不含状态戳）；静止起步靠前方坡道点破自引用环
+      traj_time_lookahead: 0.0     # 0=自动取至少一个 controller 周期；relative_time 无效时才回退上方空间窗
+      # ── RPP 先验约束（applyConstraints，只降不升，基于静态几何/代价）──
+      use_regulated_linear_velocity_scaling: True
+      regulated_linear_scaling_min_radius: 1.2    # RPP 层曲率减速阈值（carrot 弦曲率）；④A3 层阈值见 speed planner 块（半径大于两者则两层都不减速）
+      regulated_linear_scaling_min_speed: 0.25
+      use_cost_regulated_linear_velocity_scaling: True
+      cost_scaling_dist: 0.6
+      cost_scaling_gain: 1.0
+      inflation_cost_scaling_factor: 3.0
+      min_approach_linear_velocity: 0.05
+      approach_velocity_scaling_dist: 0.6
+      # ── RPP 反馈约束 ①②③（applyTrackingFeedbackConstraints，基于运行时实际状态）──
+      lateral_error_threshold: 0.15     # 横向误差减速起始阈值 (m)
+      lateral_error_max_dist: 0.5       # 横向误差达此值降到 min_scale (m)
+      min_lateral_speed_scale: 0.3      # 横向误差减速下限比例
+      heading_error_scaling_min_angle: 0.35   # 朝向误差减速起始阈值 (rad≈20°)；曲率随前瞻距离衰减，此项不受前瞻长度稀释
+      heading_error_scaling_max_angle: 0.785  # 朝向误差减速降到 min_heading_speed_scale 时的角度上界（独立于 rotate_to_path_entry_angle，避免两处调参互相牵连）
+      min_heading_speed_scale: 0.3            # 朝向误差达 heading_error_scaling_max_angle 时降到的下限比例
+      max_angular_vel: 1.5              # 角速度上限 (rad/s)：饱和时联动降 v 保持转弯半径
+      # ── 速度环（trackLinearVelocity，恒生效）──
+      desired_linear_vel: 0.3    # 三重角色：无轨迹时的回退目标 / 速度环输出界绝对兜底 / 区域限速(speedLimit)入口——必须 ≥ speed planner max_speed 并留余量，否则会钳低规划巡航速度
+      max_linear_accel: 0.5    # 速度环加速度限幅 (m/s²)；调大≈目标直发
+      speed_loop_kp: 2.0
+      speed_loop_ki: 0.2
+      speed_loop_kd: 0.0
+      speed_loop_integrator_saturation: 0.3    # 积分项限幅 (m/s²)，须 >0（0=积分被恒钳零、ki 失效）
+      speed_loop_cmd_reseed_error: 0.3    # 指令积分器与实测偏差超此值时重新对齐（外力/急停兜底）
+      # ── 离散转向模式：rotate_to_path（中途朝向修正）与 rotate_to_goal（终点原地转对齐）参数各自独立 ──
+      use_rotate_to_heading: True
+      max_angular_accel: 3.2    # 两者共用：机器人角加速度物理上限，非行为调参
+      rotate_to_path_entry_angle: 0.785   # shouldRotateToPath 进入阈值
+      rotate_to_path_exit_angle: 0.35     # 滞回退出阈值，须 < 进入阈值
+      rotate_to_path_angular_vel: 1.8     # 角速度饱和上限
+      rotate_to_path_angular_kp: 1.0      # 角速度 = kp·angle_to_path，饱和于上面的 angular_vel
+      rotate_to_goal_angular_vel: 1.8     # 终点原地转对齐目标朝向：角速度饱和上限，与 rotate_to_path 独立
+      rotate_to_goal_angular_kp: 1.0      # 终点原地转对齐目标朝向：P 控制增益，与 rotate_to_path 独立
+      allow_reversing: False
+      # ── 碰撞检测 ──
+      use_collision_detection: True
+      max_allowed_time_to_collision_up_to_carrot: 1.0
+    GracefulController:
+      plugin: "nav2_graceful_controller::GracefulController"
+      motion_target_dist: 0.6
+      k_phi: 3.0
+      k_delta: 2.0
+      beta: 0.2
+      lambda: 2.0
+      v_linear_min: 0.1
+      v_linear_max: 0.5
+      v_angular_max: 1.0
+      slowdown_radius: 1.5
+      initial_rotation: True
+      initial_rotation_min_angle: 0.75
+      final_rotation: True
+      rotation_scaling_factor: 0.5
+      allow_backward: False
+    RotationShimController:
+      plugin: "nav2_rotation_shim_controller::RotationShimController"
+      primary_controller: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
+      angular_dist_threshold: 0.785
+      forward_sampling_distance: 0.5
+      rotate_to_heading_angular_vel: 1.8
+      max_angular_accel: 3.2
+      simulate_ahead_time: 1.0
+    PIDController:
+      plugin: "nav2_pid_controller::PIDController"
+      long_precision: 0.02
+      lat_precision: 0.04
+      o_precision: 0.5
+      angular_error_deadband: 0.008
+      max_v: 0.5
+      min_v: 0.0
+      max_v_inc: 0.5
+      max_w: 1.57
+      min_w: 0.02
+      max_w_inc: 1.57
+      k_theta: 0.5
+      switch_speed: 0.1
+      default_desired_linear_vel: 0.15
+      speed_loop_cmd_reseed_error: 0.3   # 指令积分器与实测偏差超此值时重新对齐（外力/急停兜底）
+      angular_cmd_reseed_error: 0.3    # 同上，角速度指令积分器版本
+      final_target_lock_distance: 0.3    # 距终点小于此值直接锁定终点索引（消除末段最近点跳变）；须 ≥ staged_control.approach_distance
+      traj_speed_lookahead: 0.1    # 速度参考与瞄准目标解耦：最近点之后前方窗内 max（不含最近点自身，避免状态戳自引用）
+      traj_time_lookahead: 0.0     # 0=自动取至少一个 controller 周期；relative_time 无效时才回退上方空间窗
+      approach_rotation_budget_deg: 200.0    # 单次 approach/rotating 累计旋转量安全网，超此值强制停止（度）
+      final_rotation_max_v: 0.05
+      final_rotation_linear_deadband: 0.005
+      high_speed_station_pid_conf:
+        integrator_enable: True
+        integrator_saturation_level: 0.3
+        kp: 1.0
+        ki: 0.01
+        kd: 0.1
+        kaw: 0.0
+      low_speed_station_pid_conf:
+        integrator_enable: True
+        integrator_saturation_level: 0.3
+        kp: 1.0
+        ki: 0.01
+        kd: 0.1
+        kaw: 0.0
+      high_speed_pid_conf:
+        integrator_enable: True
+        integrator_saturation_level: 0.3
+        kp: 1.0
+        ki: 0.01
+        kd: 0.1
+        kaw: 0.0
+      low_speed_pid_conf:
+        integrator_enable: True
+        integrator_saturation_level: 0.3
+        kp: 1.0
+        ki: 0.01
+        kd: 0.1
+        kaw: 0.0
+      reverse_station_pid_conf:
+        integrator_enable: True
+        integrator_saturation_level: 0.5
+        kp: 1.0
+        ki: 0.01
+        kd: 0.1
+        kaw: 0.0
+      reverse_speed_pid_conf:
+        integrator_enable: True
+        integrator_saturation_level: 0.5
+        kp: 1.0
+        ki: 0.01
+        kd: 0.1
+        kaw: 0.0
+      angular_station_pid_conf:
+        integrator_enable: True
+        integrator_saturation_level: 0.5
+        kp: 1.0
+        ki: 0.01
+        kd: 0.1
+        kaw: 0.0
+    LatLonController:
+      plugin: "nav2_lat_lon_controller::LatLonController"
+      p_window: 0.5
+      long_precision: 0.02
+      lat_precision: 0.04
+      o_precision: 0.5
+      max_v: 0.5
+      min_v: 0.0
+      max_v_inc: 0.5
+      max_w: 1.57
+      min_w: 0.0
+      max_w_inc: 1.57
+      k_theta: 0.5
+      switch_speed: 0.1
+      high_speed_station_pid_conf:
+        integrator_enable: True
+        integrator_saturation_level: 0.3
+        kp: 1.0
+        ki: 0.01
+        kd: 0.1
+        kaw: 0.0
+        saturation: 0.0
+      low_speed_station_pid_conf:
+        integrator_enable: True
+        integrator_saturation_level: 0.3
+        kp: 1.0
+        ki: 0.01
+        kd: 0.1
+        kaw: 0.0
+        saturation: 0.0
+      high_speed_pid_conf:
+        integrator_enable: True
+        integrator_saturation_level: 0.3
+        kp: 1.0
+        ki: 0.01
+        kd: 0.1
+        kaw: 0.0
+        saturation: 0.0
+      low_speed_pid_conf:
+        integrator_enable: True
+        integrator_saturation_level: 0.3
+        kp: 1.0
+        ki: 0.01
+        kd: 0.1
+        kaw: 0.0
+        saturation: 0.0
+      reverse_station_pid_conf:
+        integrator_enable: True
+        integrator_saturation_level: 0.5
+        kp: 1.0
+        ki: 0.01
+        kd: 0.1
+        kaw: 0.0
+        saturation: 0.0
+      reverse_speed_pid_conf:
+        integrator_enable: True
+        integrator_saturation_level: 0.5
+        kp: 1.0
+        ki: 0.01
+        kd: 0.1
+        kaw: 0.0
+        saturation: 0.0
+      angular_station_pid_conf:
+        integrator_enable: True
+        integrator_saturation_level: 0.5
+        kp: 1.0
+        ki: 0.01
+        kd: 0.1
+        kaw: 0.0
+        saturation: 0.0
+    PureRotationController:
+      plugin: "nav2_pure_rotation_controller::PureRotationController"
+      long_precision: 0.02
+      lat_precision: 0.04
+      o_precision: 0.02
+      max_v: 0.5
+      min_v: 0.0
+      max_v_inc: 0.5
+      max_w: 1.57
+      min_w: 0.0
+      max_w_inc: 1.57
+      enable_lon_adjust: False
+      station_pid_conf:
+        integrator_enable: True
+        integrator_saturation_level: 0.3
+        kp: 1.0
+        ki: 0.01
+        kd: 0.1
+        kaw: 0.0
+        saturation: 0.0
+      speed_pid_conf:
+        integrator_enable: True
+        integrator_saturation_level: 0.3
+        kp: 1.0
+        ki: 0.01
+        kd: 0.1
+        kaw: 0.0
+        saturation: 0.0
+      angular_pid_conf:
+        integrator_enable: True
+        integrator_saturation_level: 0.5
+        kp: 1.0
+        ki: 0.01
+        kd: 0.1
+        kaw: 0.0
+        saturation: 0.0
+    StraightController:
+      plugin: "nav2_straight_controller::StraightController"
+      long_precision: 0.02
+      lat_precision: 0.04
+      o_precision: 0.5
+      max_v: 0.5
+      min_v: 0.0
+      max_v_inc: 0.5
+      max_w: 1.57
+      min_w: 0.0
+      max_w_inc: 1.57
+      max_path_length: 0.5
+      k_w_p: 1.0
+      k_w_i: 0.01
+      k_w_d: 0.1
+      switch_speed: 0.1
+      station_pid_conf:
+        integrator_enable: True
+        integrator_saturation_level: 0.3
+        kp: 1.0
+        ki: 0.01
+        kd: 0.1
+      high_speed_pid_conf:
+        integrator_enable: True
+        integrator_saturation_level: 0.3
+        kp: 1.0
+        ki: 0.01
+        kd: 0.1
+      low_speed_pid_conf:
+        integrator_enable: True
+        integrator_saturation_level: 0.3
+        kp: 1.0
+        ki: 0.01
+        kd: 0.1
+      reverse_station_pid_conf:
+        integrator_enable: True
+        integrator_saturation_level: 0.5
+        kp: 1.0
+        ki: 0.01
+        kd: 0.1
+      reverse_speed_pid_conf:
+        integrator_enable: True
+        integrator_saturation_level: 0.5
+        kp: 1.0
+        ki: 0.01
+        kd: 0.1
 
 local_costmap:
   local_costmap:
@@ -275,23 +700,137 @@ map_saver:
 planner_server:
   ros__parameters:
     expected_planner_frequency: 20.0
-    use_sim_time: True
-    planner_plugins: ["GridBased"]
-    GridBased:
-      plugin: "nav2_navfn_planner/NavfnPlanner"
-      tolerance: 0.5
-      use_astar: false
-      allow_unknown: true
-
-smoother_server:
-  ros__parameters:
-    use_sim_time: True
-    smoother_plugins: ["simple_smoother"]
-    simple_smoother:
-      plugin: "nav2_smoother::SimpleSmoother"
+    goal_line_interp_enable: true        # 开关
+    goal_line_interp_tail_distance: 0.3  # goal 附近直线接管范围：成功路径截尾段换直线；失败(空路径)且 start 在此范围内时直线兜底
+    goal_line_interp_step: 0.02          # 插值点距 (m)。须足够小：末端 0.1x 低速带仅占减速坡道底部 8~33mm，0.05 点距会整段漏采
+    # ── 路径平滑统一后处理（getPlan 出口，goal_line_interp 之后）──
+    smoother_enable: true
+    smoother_max_time: 0.1          # 单次平滑时间预算 (s)
+    smoother_plugins: ["SimpleSmoother", "SavitzkyGolaySmoother", "PolynomialSmoother", "ElasticBandSmoother"]
+    current_smoother: "SimpleSmoother"   # 热切换：ros2 param set /planner_server current_smoother <key>
+    SavitzkyGolaySmoother:
+      plugin: "nav2_path_smoothers::SavitzkyGolaySmoother"
+      do_refinement: True
+      refinement_num: 2
+    SimpleSmoother:
+      plugin: "nav2_path_smoothers::SimpleSmoother"
       tolerance: 1.0e-10
       max_its: 1000
       do_refinement: True
+    PolynomialSmoother:
+      plugin: "nav2_path_smoothers::PolynomialSmoother"
+      poly_order: 5          # 拟合阶数（2~5）
+      window_size: 15        # 滑窗点数（奇数；越大越平滑，转角处收缩越多）
+      reject_on_collision: true
+    ElasticBandSmoother:
+      plugin: "nav2_path_smoothers::ElasticBandSmoother"
+      max_iterations: 100
+      w_smooth: 0.5          # 内张力权重（拉直/平滑）
+      w_obstacle: 0.3        # 障碍斥力权重（代价感知推离）
+      step_size: 0.3
+      obstacle_cost_threshold: 128
+      reject_on_collision: true
+    use_sim_time: True
+    # ─── PlannerServer 原生多 planner 热切换 ─────────────────
+    # 关键机制：本工程已 fork nav2_planner 新增两个参数：
+    #   - current_planner: 运行时选哪个 planner（必须 ∈ planner_plugins）
+    #   - override_planner_id: 当 true 时忽略 BT 传的 planner_id，
+    #     强制使用 current_planner → 实现 BT 不动的热切换
+    # 切换命令（无需重启 planner_server）：
+    #   ros2 param set /planner_server current_planner RouteGridPlanner  # 路网规划
+    #   ros2 param set /planner_server current_planner SmacGridBased     # SmacPlannerLattice 自由路径
+    #   ros2 param set /planner_server current_planner ThetaStarBased    # Theta* 几何最短路径
+    # 详见 [[10. 双规划器热切换方案——PlannerSwitcher 设计与实现]]
+    planner_plugins: ["RouteGridPlanner", "SmacGridBased", "ThetaStarBased"]
+    current_planner: "RouteGridPlanner"   # 默认用路网规划器（dynamic）
+                                         # 可选值：RouteGridPlanner / SmacGridBased / ThetaStarBased
+    override_planner_id: true            # true: 忽略 BT planner_id，强制 active；
+                                         # false: nav2 标准 fallback 语义
+    route_fallback_planner: "ThetaStarBased"  # RouteGridPlanner 无路网数据(地图未建路网)时退化到此自由规划器（Theta* 轻量直线族适合无路网自由空间，末端处置由 goal_line_interp 统一）
+
+    # ─── 规划器 1：路网（NavRouteGraphPlanner）────────────────────────
+    RouteGridPlanner:
+      plugin: "nav2_route_planner/NavRouteGraphPlanner"
+      asset_manager_node_name: "map_asset_manager"
+      data_load_timeout_sec: 5.0
+      projection_node_threshold_m: 0.5
+      projection_edge_threshold_m: 0.5
+      waypoints_per_meter: 20
+      bezier_samples_per_edge: 40
+      publish_route_plan: true
+      # false=最终朝向用 goal 给定值（默认/我们期望）；true=用路径切线方向
+      use_final_approach_orientation: false
+
+      # ── Costmap-aware 安全层 ─────────────
+      # 起点 → 路网 + 路网 → 终点：始终用 Theta* 规划（必做无开关）。
+      # Theta* 自带 unsafe-to-plan 检测：起/终点在 lethal 内或不可达时
+      # 直接返回失败 → 整个 plan 拒绝。
+      #
+      # 路网中间段 obstacle bypass：参数开关（默认关）。
+      # 热切换：ros2 param set /planner_server RouteGridPlanner.costmap_aware_mode true
+      costmap_aware_mode: false
+      obstacle_cost_threshold: 220.0
+      obstacle_start_exempt_distance: 0.25  # 起点豁免：贴墙停放时自身在内切区，无豁免整条剖面被置零
+      obstacle_margin_before_m: 0.5
+      obstacle_margin_after_m: 0.5
+      bypass_max_replan_length_m: 10.0
+      theta_star_max_corners: 8
+      theta_star_allow_unknown: false
+
+    # ─── 规划器 2：自由路径（SmacPlannerLattice）──────────────────────
+    SmacGridBased:
+      plugin: "nav2_smac_planner/SmacPlannerLattice"
+      allow_unknown: false
+      tolerance: 1.0e-10 # 禁止目标附近容忍点替代目标点，失败后由 BT 停止等待并重规划
+      max_iterations: 2000000
+      max_on_approach_iterations: 2000
+      max_planning_time: 5.0
+      analytic_expansion_ratio: 3.5
+      analytic_expansion_max_length: 3.0
+      analytic_expansion_max_cost: 200.0
+      analytic_expansion_max_cost_override: false
+      reverse_penalty: 2.0
+      change_penalty: 0.05
+      non_straight_penalty: 1.0
+      cost_penalty: 2.0
+      rotation_penalty: 5.0
+      retrospective_penalty: 0.015
+      # lattice_filepath: "$(find-pkg-share nav2_smac_planner)/sample_primitives/5cm_resolution/0.5m_turning_radius/diff/output.json"
+      lattice_filepath: "$(find-pkg-share nav2_smac_planner)/sample_primitives/5cm_resolution/output.json"
+      lookup_table_size: 20.0
+      cache_obstacle_heuristic: false
+      allow_reverse_expansion: false
+      smooth_path: True
+      smoother:
+        max_iterations: 1000
+        w_smooth: 0.3
+        w_data: 0.2
+        tolerance: 1.0e-10
+        do_refinement: true
+        refinement_num: 2
+
+    # ─── 规划器 3：Theta* 自由路径（nav2_theta_star_planner）──────────
+    # 用途：与 RouteGridPlanner / SmacGridBased 并存，作为第三个可热切换
+    # 选项。Theta* 是 grid-based 几何最短路径搜索（允许对角线走线，路径
+    # 比 NavfnPlanner 更直），适合"无路网约束 + 大致直走"场景。
+    # 切换命令：
+    #   ros2 param set /planner_server current_planner ThetaStarBased
+    ThetaStarBased:
+      plugin: "nav2_theta_star_planner/ThetaStarPlanner"
+      how_many_corners: 8
+      w_euc_cost: 1.0
+      w_traversal_cost: 2.0
+      allow_unknown: false
+      # false=最终朝向用 goal 给定值（默认/我们期望）；true=用路径切线方向
+      use_final_approach_orientation: false
+      terminal_checking_interval: 5000
+
+  # ros__parameters:
+  #   use_sim_time: True
+  #   save_map_timeout: 5.0
+  #   free_thresh_default: 0.25
+  #   occupied_thresh_default: 0.65
+  #   map_subscribe_transient_local: True
 
 behavior_server:
   ros__parameters:
@@ -353,3 +892,24 @@ velocity_smoother:
     odom_duration: 0.1
     deadband_velocity: [0.0, 0.0, 0.0]
     velocity_timeout: 1.0
+
+nav2_nav_monitor:
+  ros__parameters:
+    use_sim_time: True
+    enable: true
+    output_dir: "~/.dexe/navigation/nav_monitor"
+    max_retained_files: 300
+    passing_path_sample_period: 0.5
+    # 双速度源：控制器原始输出（平滑前）/ velocity_smoother 平滑后
+    cmd_vel_topic: "cmd_vel_nav"
+    smoothed_vel_topic: "control/cmd_vel_nav"
+    desired_vel_topic: "/nav_monitor/desired_velocity"
+    controller_target_topic: "/nav_monitor/controller_target"
+    speed_plan_diagnostics_topic: "/navigation/speed_plan_diagnostics"
+    odom_topic: "odom"
+    # 只作为 nav_monitor 离线检测阈值；须与当前 SCurveSpeedPlanner 限值同步
+    target_acceleration_limit: 0.5
+    target_deceleration_limit: 0.35
+    target_jerk_limit: 0.5
+    motion_limit_tolerance_ratio: 0.05
+    controller_phase_topic: "/nav_monitor/controller_phase"
