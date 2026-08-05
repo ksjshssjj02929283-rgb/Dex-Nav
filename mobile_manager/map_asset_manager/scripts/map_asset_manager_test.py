@@ -99,6 +99,49 @@ def validate_fixture(value: dict[str, Any]) -> list[str]:
             f"point names mismatch: actual={sorted(names)}, "
             f"expected={sorted(expected_names)}"
         )
+    endpoints = {
+        ("nav", item.get("name")): (
+            float(item.get("pose", {}).get("x", 0.0)),
+            float(item.get("pose", {}).get("y", 0.0)),
+        )
+        for item in value.get("points", [])
+    }
+    endpoints.update({
+        ("junction", item.get("id")): (
+            float(item.get("x", 0.0)), float(item.get("y", 0.0))
+        )
+        for item in value.get("route_graph", {}).get("junctions", [])
+    })
+    for edge in value.get("route_graph", {}).get("edges", []):
+        edge_id = edge.get("id", "<unnamed>")
+        from_key = (
+            edge.get("from", {}).get("type"), edge.get("from", {}).get("id")
+        )
+        to_key = (
+            edge.get("to", {}).get("type"), edge.get("to", {}).get("id")
+        )
+        if from_key not in endpoints or to_key not in endpoints:
+            errors.append(
+                f"edge {edge_id} references missing endpoint: "
+                f"from={from_key}, to={to_key}"
+            )
+            continue
+        control_points = edge.get("control_points", [])
+        if edge.get("edge_type") != "BEZIER":
+            continue
+        if len(control_points) < 2:
+            errors.append(f"BEZIER edge {edge_id} needs at least 2 control points")
+            continue
+        if any(
+            abs(float(actual) - expected) > 1e-5
+            for actual, expected in zip(control_points[0], endpoints[from_key])
+        ):
+            errors.append(f"BEZIER edge {edge_id} start is not snapped")
+        if any(
+            abs(float(actual) - expected) > 1e-5
+            for actual, expected in zip(control_points[-1], endpoints[to_key])
+        ):
+            errors.append(f"BEZIER edge {edge_id} end is not snapped")
     return errors
 
 
@@ -303,7 +346,7 @@ class AssetRunner:
     def __init__(
         self, harness: RosHarness, report: Report, maps_root: Path, fixture: Path
     ) -> None:
-        from geometry_msgs.msg import Pose2D
+        from geometry_msgs.msg import Point, Pose2D
         from nav_interfaces.msg import MapState
         from nav_interfaces.srv import (
             AddAreaInfo, AddNavPoint, AddRoom, AddRoute, AddRouteEdge,
@@ -324,6 +367,7 @@ class AssetRunner:
         self.status_topic = f"{self.prefix}/status"
         self.epoch = 0
         self.Pose2D = Pose2D
+        self.Point = Point
         self.MapState = MapState
         self.String = String
         service_types = (
@@ -350,6 +394,11 @@ class AssetRunner:
     def pose(self, x: float, y: float, theta: float = 0.0) -> Any:
         result = self.Pose2D()
         result.x, result.y, result.theta = x, y, theta
+        return result
+
+    def point(self, x: float, y: float) -> Any:
+        result = self.Point()
+        result.x, result.y = x, y
         return result
 
     @staticmethod
@@ -698,8 +747,13 @@ class AssetRunner:
         add_edge.edge.from_ep.type = "nav"
         add_edge.edge.to_ep.id = "AUTO_TMP_JUNCTION"
         add_edge.edge.to_ep.type = "junction"
-        add_edge.edge.edge_type = "LINE"
+        add_edge.edge.edge_type = "BEZIER"
         add_edge.edge.max_speed = 0.2
+        add_edge.edge.control_points = [
+            self.point(-99.0, -98.0),
+            self.point(10.0, 11.0),
+            self.point(98.0, 99.0),
+        ]
         edge_added = self.harness.call(
             self.AddRouteEdge, self.service("add_route_edge"), add_edge
         )
@@ -719,6 +773,10 @@ class AssetRunner:
         current_edge = next(
             (item for item in current_graph.edges if item.id == "AUTO_TMP_EDGE"),
             None,
+        )
+        snapped_control_points = (
+            [(point.x, point.y) for point in current_edge.control_points]
+            if current_edge else []
         )
         remove_edge = self.RemoveRouteEdge.Request()
         remove_edge.id = "AUTO_TMP_EDGE"
@@ -743,6 +801,13 @@ class AssetRunner:
                 and current_edge.bidirectional
                 and self.close(current_edge.max_speed, 0.15)
                 and current_edge.obs_policy == "DETOUR"
+                and len(current_edge.control_points) == 3
+                and self.close(current_edge.control_points[0].x, 3.0)
+                and self.close(current_edge.control_points[0].y, 0.0)
+                and self.close(current_edge.control_points[1].x, 10.0)
+                and self.close(current_edge.control_points[1].y, 11.0)
+                and self.close(current_edge.control_points[-1].x, 20.0)
+                and self.close(current_edge.control_points[-1].y, 20.0)
                 and edge_removed.success and junction_removed.success
                 and {item.id for item in final.junctions}
                 == {"AUTO_ASSET_JUNCTION"}
@@ -751,7 +816,8 @@ class AssetRunner:
             ),
             f"add_junction={junction_added.success}, add_edge={edge_added.success}, "
             f"update_edge={edge_updated.success}, remove_edge={edge_removed.success}, "
-            f"remove_junction={junction_removed.success}",
+            f"remove_junction={junction_removed.success}, "
+            f"snapped_control_points={snapped_control_points}",
         )
 
     def tc06(self) -> None:
