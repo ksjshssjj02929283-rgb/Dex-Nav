@@ -19,7 +19,8 @@ ros2 launch cartographer_ros dexe_slam_2d.launch.py use_sim_time:=true map_name:
 ```
 
 `omni_sim.launch.py` 与 `diff_sim.launch.py` 统一支持：`use_sim_time`、`map`、
-`params_file`、`slam`、`x_pose`、`y_pose`、`gui` 和 `render`。其中 `params_file`
+`params_file`、`slam`、`x_pose`、`y_pose`、`gui` 和 `render`。差速入口还支持
+`use_rgbd`；设为 `false` 时同时不加载 Gazebo RGBD Sensor 和前后点云转换节点。其中 `params_file`
 默认值按底盘类型区分，其余参数含义一致。
 
 四个导航/建图入口统一使用 `w1_nav2/rviz/diff_sim.rviz`，全向与差速不再维护

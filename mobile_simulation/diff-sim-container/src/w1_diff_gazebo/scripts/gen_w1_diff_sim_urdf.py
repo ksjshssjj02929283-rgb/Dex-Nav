@@ -25,6 +25,7 @@ DexforceW1V020.urdf 是纯可视化模型（轮关节 fixed、无 gazebo 插件�
 W1 模型更新时把新 URDF + meshes/Visual 拷入本包后重跑本脚本）。
 mesh URI 统一重写为 package://w1_diff_gazebo/...（meshes/Visual 已随包内置）。
 """
+import copy
 import json
 import math
 import os
@@ -350,6 +351,29 @@ def apply_tf_profile(root, transforms):
     return len(joints_by_edge)
 
 
+def write_no_rgbd_variant(tree, dst):
+    """生成不含 Gazebo RGBD Sensor 的模型，保留完整 TF 与其他传感器。"""
+    no_rgbd_tree = copy.deepcopy(tree)
+    removed = 0
+    for gazebo in no_rgbd_tree.getroot().findall("gazebo"):
+        if gazebo.get("reference") not in (
+                "chassis_depth_front_link", "chassis_depth_rear_link"):
+            continue
+        for sensor in list(gazebo.findall("sensor")):
+            gazebo.remove(sensor)
+            removed += 1
+    if removed != 2:
+        raise ValueError(
+            f"Expected two Gazebo RGBD sensors, removed {removed}")
+
+    stem, extension = os.path.splitext(dst)
+    no_rgbd_dst = f"{stem}_no_rgbd{extension}"
+    ET.indent(no_rgbd_tree, space="  ")
+    no_rgbd_tree.write(
+        no_rgbd_dst, encoding="unicode", xml_declaration=False)
+    return no_rgbd_dst
+
+
 def main():
     src = (sys.argv[1] if len(sys.argv) > 1 and sys.argv[1] else DEFAULT_SRC)
     dst = (sys.argv[2] if len(sys.argv) > 2 and sys.argv[2]
@@ -442,9 +466,11 @@ def main():
 
     ET.indent(tree, space="  ")
     tree.write(dst, encoding="unicode", xml_declaration=False)
+    no_rgbd_dst = write_no_rgbd_variant(tree, dst)
     print(f"生成 {dst}：真机 TF ×{n_profile}，轮关节 continuous ×{n_wheel}，"
           f"上身关节转 fixed ×{n_fixed}，"
           f"mesh URI 重写 ×{n_uri}，separation={WHEEL_SEPARATION} radius={WHEEL_RADIUS}")
+    print(f"生成 {no_rgbd_dst}：已移除前后 Gazebo RGBD Sensor")
 
 
 if __name__ == "__main__":

@@ -15,6 +15,7 @@ diff-sim-container/
       config/real_robot_default_tf.json # 真机 bag 提取的 64 条默认机器人内部 TF
       scripts/gen_w1_diff_sim_urdf.py   # 生成器：可视化 URDF → 仿真 URDF（模型更新后重跑）
       urdf/w1_diff_sim.urdf             # 生成产物（已提交，mesh URI 指向本包）
+      urdf/w1_diff_sim_no_rgbd.urdf     # 关闭 RGBD 时使用（保留激光、IMU 与里程计）
       src/sim_cmd_vel_bridge.cpp        # 生产 Nav2 速度输出 → Gazebo 底盘话题适配
       launch/spawn_w1_diff.launch.py    # rsp + spawn + sim_cmd_vel_bridge
 ```
@@ -22,8 +23,10 @@ diff-sim-container/
 ## 运行
 
 一键入口：`ros2 launch w1_nav2 diff_sim.launch.py`（gzserver/gzclient + W1 + Nav2 + Rviz）。
+完全关闭 Gazebo RGBD Sensor 和点云转换节点：
+`ros2 launch w1_nav2 diff_sim.launch.py use_rgbd:=false`。
 全向对应 `ros2 launch w1_nav2 omni_sim.launch.py`。
-Nav2 参数：直接复用生产配置 `nav2_bringup/params/w1_nav2_params.yaml`。
+Nav2 参数：直接复用生产配置 `nav2_bringup/params/w1_nav2_params_diff.yaml`。
 导航模式的静态 `map→odom` 由 `nav2_bringup` 唯一发布；建图模式由 SLAM 发布。
 
 ## W1 模型更新同步

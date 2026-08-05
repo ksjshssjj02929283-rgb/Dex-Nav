@@ -11,6 +11,7 @@ import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
+from launch.conditions import IfCondition, UnlessCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
@@ -18,19 +19,26 @@ from launch_ros.actions import Node
 def generate_launch_description() -> LaunchDescription:
     urdf_path = os.path.join(
         get_package_share_directory('w1_diff_gazebo'), 'urdf', 'w1_diff_sim.urdf')
+    urdf_no_rgbd_path = os.path.join(
+        get_package_share_directory('w1_diff_gazebo'), 'urdf',
+        'w1_diff_sim_no_rgbd.urdf')
     with open(urdf_path, 'r') as infp:
         robot_description = infp.read()
 
     x_pose = LaunchConfiguration('x_pose', default='0.0')
     y_pose = LaunchConfiguration('y_pose', default='0.0')
     use_sim_time = LaunchConfiguration('use_sim_time')
+    use_rgbd = LaunchConfiguration('use_rgbd')
 
     declare_x = DeclareLaunchArgument('x_pose', default_value='0.0')
     declare_y = DeclareLaunchArgument('y_pose', default_value='0.0')
     declare_use_sim_time = DeclareLaunchArgument(
         'use_sim_time', default_value='true')
+    declare_use_rgbd = DeclareLaunchArgument(
+        'use_rgbd', default_value='true', choices=['true', 'false'],
+        description='Load the Gazebo RGBD sensors')
 
-    spawn_entity = Node(
+    spawn_entity_with_rgbd = Node(
         package='gazebo_ros',
         executable='spawn_entity.py',
         arguments=['-entity', 'w1_diff',
@@ -38,6 +46,18 @@ def generate_launch_description() -> LaunchDescription:
                    '-x', x_pose,
                    '-y', y_pose,
                    '-z', '0.05'],
+        condition=IfCondition(use_rgbd),
+        output='screen')
+
+    spawn_entity_without_rgbd = Node(
+        package='gazebo_ros',
+        executable='spawn_entity.py',
+        arguments=['-entity', 'w1_diff',
+                   '-file', urdf_no_rgbd_path,
+                   '-x', x_pose,
+                   '-y', y_pose,
+                   '-z', '0.05'],
+        condition=UnlessCondition(use_rgbd),
         output='screen')
 
     robot_state_publisher = Node(
@@ -62,7 +82,9 @@ def generate_launch_description() -> LaunchDescription:
         declare_x,
         declare_y,
         declare_use_sim_time,
-        spawn_entity,
+        declare_use_rgbd,
+        spawn_entity_with_rgbd,
+        spawn_entity_without_rgbd,
         robot_state_publisher,
         cmd_vel_bridge,
     ])

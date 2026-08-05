@@ -2,7 +2,7 @@
 """W1 双轮差速仿真一键启动：Gazebo + W1 + RGBD + Nav2 + Rviz.
 
 机器人模型来自 diff-sim-container/w1_diff_gazebo（自包含，内置 mesh）。
-Nav2 参数：直接复用实机 w1_nav2_params.yaml，保持差速仿真与生产配置一致。
+Nav2 参数：直接复用实机 w1_nav2_params_diff.yaml，保持差速仿真与生产配置一致。
 """
 
 import glob
@@ -41,6 +41,7 @@ def generate_launch_description():
         get_package_share_directory('dexe_sensor_process'), 'launch')
 
     use_sim_time = LaunchConfiguration('use_sim_time')
+    use_rgbd = LaunchConfiguration('use_rgbd')
     x_pose = LaunchConfiguration('x_pose')
     y_pose = LaunchConfiguration('y_pose')
     slam = LaunchConfiguration('slam')
@@ -61,10 +62,13 @@ def generate_launch_description():
                                'sim_warehouse_v1', 'slam', 'map.yaml')
     default_params = os.path.join(
         get_package_share_directory('nav2_bringup'), 'params',
-        'w1_nav2_params.yaml')
+        'w1_nav2_params_diff.yaml')
     declare_use_sim_time = DeclareLaunchArgument(
         'use_sim_time', default_value='true',
         description='Use Gazebo simulation clock')
+    declare_use_rgbd = DeclareLaunchArgument(
+        'use_rgbd', default_value='true', choices=['true', 'false'],
+        description='Start Gazebo RGBD sensors and point-cloud converters')
     declare_slam = DeclareLaunchArgument(
         'slam', default_value='False',
         description='Run SLAM instead of map_server')
@@ -113,23 +117,26 @@ def generate_launch_description():
             'x_pose': x_pose,
             'y_pose': y_pose,
             'use_sim_time': use_sim_time,
+            'use_rgbd': use_rgbd,
         }.items())
 
     front_rgbd_cmd = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(rgbd_launch_dir, 'front_p2c.launch.py')),
+        condition=IfCondition(use_rgbd),
         launch_arguments={
             'use_sim_time': use_sim_time,
-            'depth_max_range': '5.0',
+            'depth_max_range': '4.9',
             'ground_filter_min_height': '0.05',
         }.items())
 
     rear_rgbd_cmd = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(rgbd_launch_dir, 'rear_p2c.launch.py')),
+        condition=IfCondition(use_rgbd),
         launch_arguments={
             'use_sim_time': use_sim_time,
-            'depth_max_range': '5.0',
+            'depth_max_range': '4.9',
             'ground_filter_min_height': '0.05',
         }.items())
 
@@ -165,7 +172,7 @@ def generate_launch_description():
     delayed_gzclient_cmd = TimerAction(period=8.0, actions=[gzclient_cmd])
     delayed_spawn_w1_diff_cmd = TimerAction(
         period=8.0, actions=[spawn_w1_diff_cmd])
-    # 等机器人和动态 TF 就绪后再启动 Nav2/RViz，避免启动期反复等待 TF。
+    # 等机器人、里程计和动态 TF 就绪后再启动 Nav2/RViz，避免启动期反复等待 TF。
     delayed_rviz_cmd = TimerAction(period=15.0, actions=[rviz_cmd])
     delayed_nav2_bringup_cmd = TimerAction(
         period=15.0, actions=[nav2_bringup_cmd])
@@ -201,6 +208,7 @@ def generate_launch_description():
 
     ld = LaunchDescription()
     ld.add_action(declare_use_sim_time)
+    ld.add_action(declare_use_rgbd)
     ld.add_action(declare_slam)
     ld.add_action(declare_map)
     ld.add_action(declare_params)
