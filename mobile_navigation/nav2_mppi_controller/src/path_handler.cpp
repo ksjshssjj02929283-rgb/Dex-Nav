@@ -42,6 +42,7 @@ void PathHandler::initialize(
 
   auto getParam = parameters_handler_->getParamGetter(name_);
   getParam(max_robot_pose_search_dist_, "max_robot_pose_search_dist", getMaxCostmapDist());
+  getParam(max_robot_pose_deviation_, "max_robot_pose_deviation", 0.5);
   getParam(prune_distance_, "prune_distance", 1.5);
   getParam(transform_tolerance_, "transform_tolerance", 0.1);
   getParam(enforce_path_inversion_, "enforce_path_inversion", false);
@@ -90,7 +91,7 @@ PathHandler::getGlobalPlanConsideringBoundsInCostmapFrame(
   if (!same_frame) {
     try {
       plan_to_costmap_tf = tf_buffer_->lookupTransform(
-        costmap_frame, plan_frame, global_pose.header.stamp,
+        costmap_frame, plan_frame, tf2::TimePointZero,
         tf2::durationFromSec(transform_tolerance_));
     } catch (tf2::TransformException & ex) {
       RCLCPP_ERROR(
@@ -188,6 +189,16 @@ nav_msgs::msg::Path PathHandler::transformPath(
   }
 
   if (transformed_plan.poses.empty()) {
+    RCLCPP_ERROR(
+      logger_,
+      "[MPPI Diagnostic] Path empty! Robot pose: (%.3f, %.3f). "
+      "Remaining global plan size: %zu. "
+      "Costmap global frame: %s. "
+      "closest_point index: %ld",
+      global_pose.pose.position.x, global_pose.pose.position.y,
+      global_plan_up_to_inversion_.poses.size(),
+      costmap_->getGlobalFrameID().c_str(),
+      std::distance(global_plan_up_to_inversion_.poses.begin(), lower_bound));
     throw std::runtime_error(
             "Resulting plan has 0 poses in it. Path empty after transform to local costmap; global path may be empty, outside costmap, or pruned to no valid points.");
   }
@@ -205,9 +216,10 @@ bool PathHandler::transformPose(
   }
 
   try {
-    tf_buffer_->transform(
-      in_pose, out_pose, frame,
+    auto transform = tf_buffer_->lookupTransform(
+      frame, in_pose.header.frame_id, tf2::TimePointZero,
       tf2::durationFromSec(transform_tolerance_));
+    tf2::doTransform(in_pose, out_pose, transform);
     out_pose.header.frame_id = frame;
     return true;
   } catch (tf2::TransformException & ex) {

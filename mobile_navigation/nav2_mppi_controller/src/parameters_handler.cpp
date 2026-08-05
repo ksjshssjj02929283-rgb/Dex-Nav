@@ -46,7 +46,9 @@ ParametersHandler::dynamicParamsCallback(
   std::lock_guard<std::mutex> lock(parameters_change_mutex_);
 
   for (auto & pre_cb : pre_callbacks_) {
-    pre_cb();
+    if (pre_cb) {
+      pre_cb();
+    }
   }
 
   for (auto & param : parameters) {
@@ -55,14 +57,18 @@ ParametersHandler::dynamicParamsCallback(
     if (auto callback = get_param_callbacks_.find(param_name);
       callback != get_param_callbacks_.end())
     {
-      callback->second(param);
+      if (callback->second) {
+        callback->second(param);
+      }
     } else {
       RCLCPP_WARN(logger_, "Parameter %s not found", param_name.c_str());
     }
   }
 
   for (auto & post_cb : post_callbacks_) {
-    post_cb();
+    if (post_cb) {
+      post_cb();
+    }
   }
 
   result.successful = true;

@@ -1,8 +1,23 @@
 #!/usr/bin/env bash
 set -e  # 出错立即退出
 
-SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-SOURCE_ROOT="${SCRIPT_DIR}"
+# 彻底清理 Conda 环境对 ROS 2 系统 Python 3.10 的污染
+export PATH=$(echo "$PATH" | tr ':' '\n' | grep -v -E "conda|miniconda" | paste -sd: -s)
+export PATH=/opt/ros/humble/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH}
+
+unset PYTHONPATH
+unset PYTHONHOME
+unset CONDA_PREFIX
+unset CONDA_DEFAULT_ENV
+unset CONDA_PYTHON_EXE
+unset CONDA_SHLVL
+
+if type conda &>/dev/null; then
+    conda deactivate 2>/dev/null || true
+fi
+
+export PYTHON_EXECUTABLE=/usr/bin/python3
+
 WORKSPACE_DIR=$(pwd)
 INSTALL_DIR="${WORKSPACE_DIR}/install"
 OUTPUT_DIR="${WORKSPACE_DIR}/release"
@@ -12,6 +27,7 @@ TAR_PATH="${OUTPUT_DIR}/install.tar.gz"
 BUILD_START=$(date +%s)
 
 source /opt/ros/humble/setup.bash
+COLCON_ARGS="--cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DPython3_EXECUTABLE=/usr/bin/python3"
 
 resolve_build_simulation() {
     local mode="${1,,}"
@@ -74,7 +90,7 @@ if ! BUILD_SIMULATION_ENABLED=$(resolve_build_simulation "$BUILD_SIMULATION_MODE
     exit 2
 fi
 
-COLCON_COMMON_BUILD_ARGS=(--parallel-workers 8)
+COLCON_COMMON_BUILD_ARGS=(--parallel-workers 2)
 COLCON_BUILD_ARGS=("${COLCON_COMMON_BUILD_ARGS[@]}")
 SIMULATION_PACKAGES=()
 

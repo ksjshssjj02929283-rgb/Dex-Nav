@@ -192,7 +192,7 @@ void CostCritic::score(CriticData & data)
       // So the center point has more information than the footprint
       bool out_of_bounds = false;
       pose_cost = costAtPose(traj.x(i, j), traj.y(i, j), &out_of_bounds);
-      if (pose_cost < 1.0f) {continue;}  // In free space
+      if (pose_cost < 1.0f || out_of_bounds) {continue;}  // In free space or outside local costmap bounds
 
       float evaluated_cost = pose_cost;
       bool used_footprint = false;

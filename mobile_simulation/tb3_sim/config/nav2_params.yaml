@@ -1,0 +1,606 @@
+amcl:
+  ros__parameters:
+    use_sim_time: True
+    initial_pose:
+      x: -2.0
+      y: -0.5
+      z: 0.0
+      yaw: 0.0
+    alpha1: 0.2
+    alpha2: 0.2
+    alpha3: 0.2
+    alpha4: 0.2
+    alpha5: 0.2
+    base_frame_id: "base_footprint"
+    beam_skip_distance: 0.5
+    beam_skip_error_threshold: 0.9
+    beam_skip_threshold: 0.3
+    do_beamskip: false
+    global_frame_id: "map"
+    lambda_short: 0.1
+    laser_likelihood_max_dist: 2.0
+    laser_max_range: 100.0
+    laser_min_range: -1.0
+    laser_model_type: "likelihood_field"
+    max_beams: 60
+    max_particles: 2000
+    min_particles: 500
+    odom_frame_id: "odom"
+    pf_err: 0.05
+    pf_z: 0.99
+    maintainer_email: "antigravity@google.com"
+    recovery_alpha_fast: 0.0
+    recovery_alpha_slow: 0.0
+    resample_interval: 1
+    robot_model_type: "nav2_amcl::DifferentialMotionModel"
+    save_pose_rate: 0.5
+    sigma_hit: 0.2
+    tf_broadcast: true
+    transform_tolerance: 1.0
+    always_use_initial_pose: true
+    update_min_a: 0.2
+    update_min_d: 0.25
+    z_hit: 0.5
+    z_max: 0.05
+    z_rand: 0.5
+    z_short: 0.05
+    scan_topic: /laser_scan/front
+
+bt_navigator:
+  ros__parameters:
+    use_sim_time: True
+    global_frame: map
+    robot_base_frame: base_link
+    odom_topic: /odom
+    bt_loop_duration: 10
+    default_server_timeout: 200
+    plugin_lib_names:
+      - nav2_compute_path_to_pose_action_bt_node
+      - nav2_compute_path_through_poses_action_bt_node
+      - nav2_smooth_path_action_bt_node
+      - nav2_follow_path_action_bt_node
+      - nav2_spin_action_bt_node
+      - nav2_wait_action_bt_node
+      - nav2_assisted_teleop_action_bt_node
+      - nav2_back_up_action_bt_node
+      - nav2_drive_on_heading_bt_node
+      - nav2_clear_costmap_service_bt_node
+      - nav2_is_stuck_condition_bt_node
+      - nav2_goal_reached_condition_bt_node
+      - nav2_goal_updated_condition_bt_node
+      - nav2_globally_updated_goal_condition_bt_node
+      - nav2_is_path_valid_condition_bt_node
+      - nav2_initial_pose_received_condition_bt_node
+      - nav2_reinitialize_global_localization_service_bt_node
+      - nav2_rate_controller_bt_node
+      - nav2_distance_controller_bt_node
+      - nav2_speed_controller_bt_node
+      - nav2_truncate_path_action_bt_node
+      - nav2_truncate_path_local_action_bt_node
+      - nav2_goal_updater_node_bt_node
+      - nav2_recovery_node_bt_node
+      - nav2_pipeline_sequence_bt_node
+      - nav2_round_robin_node_bt_node
+      - nav2_transform_available_condition_bt_node
+      - nav2_time_expired_condition_bt_node
+      - nav2_path_expiring_timer_condition
+      - nav2_distance_traveled_condition_bt_node
+      - nav2_single_trigger_bt_node
+      - nav2_goal_updated_controller_bt_node
+      - nav2_is_battery_low_condition_bt_node
+      - nav2_navigate_through_poses_action_bt_node
+      - nav2_navigate_to_pose_action_bt_node
+      - nav2_remove_passed_goals_action_bt_node
+      - nav2_planner_selector_bt_node
+      - nav2_controller_selector_bt_node
+      - nav2_goal_checker_selector_bt_node
+      - nav2_controller_cancel_bt_node
+      - nav2_path_longer_on_approach_bt_node
+      - nav2_wait_cancel_bt_node
+      - nav2_spin_cancel_bt_node
+      - nav2_back_up_cancel_bt_node
+      - nav2_assisted_teleop_cancel_bt_node
+      - nav2_drive_on_heading_cancel_bt_node
+      - nav2_is_battery_charging_condition_bt_node
+      - nav2_is_near_goal_condition_bt_node
+
+bt_navigator_navigate_through_poses_rclcpp_node:
+  ros__parameters:
+    use_sim_time: True
+
+bt_navigator_navigate_to_pose_rclcpp_node:
+  ros__parameters:
+    use_sim_time: True
+
+controller_server:
+  ros__parameters:
+    use_sim_time: True
+    controller_frequency: 10.0
+    progress_checker_plugins: ["progress_checker"]
+    goal_checker_plugins: ["simple_goal_checker", "stopped_goal_checker", "position_goal_checker", "rotation_goal_checker", "high_precision_goal_checker"]
+    current_goal_checker: "high_precision_goal_checker"
+    controller_plugins: ["MPPIController"]
+    current_controller: "MPPIController"
+    staged_control:
+      enabled: True
+      track_controller: "MPPIController"
+      approach_controller: "MPPIController"
+      approach_distance: 0.3
+    odom_topic: /odom
+    progress_checker:
+      plugin: "nav2_controller::PoseProgressChecker"
+      required_movement_radius: 0.05
+      required_movement_angle: 0.05
+      movement_time_allowance: 10.0
+    near_goal_progress:
+      enabled: True
+      hold_position_when_goal_pose_reached: true
+      distance: 0.10
+      required_movement_radius: 0.005
+      required_movement_angle: 0.01
+      movement_time_allowance: 8.0
+      lateral_stall_enabled: false
+    high_precision_goal_checker:
+      plugin: "nav2_high_precision_goal_checker::HighPrecisionGoalChecker"
+      desired_lon_goal_tolerance: 0.02
+      desired_lat_goal_tolerance: 0.02
+      accept_lon_goal_tolerance: 0.04
+      accept_lat_goal_tolerance: 0.04
+      yaw_goal_tolerance: 0.15
+      enable_high_precision: false
+      refine_cycles: 5
+      stable_window_size: 3
+      check_stopped: false
+      trans_stopped_velocity: 0.01
+      rot_stopped_velocity: 0.02
+    simple_goal_checker:
+      plugin: "nav2_simple_goal_checker::SimpleGoalChecker"
+      xy_goal_tolerance: 0.02
+      yaw_goal_tolerance: 0.02
+      stateful: True
+    stopped_goal_checker:
+      plugin: "nav2_stopped_goal_checker::StoppedGoalChecker"
+      xy_goal_tolerance: 0.02
+      yaw_goal_tolerance: 0.02
+      trans_stopped_velocity: 0.05
+      rot_stopped_velocity: 0.05
+      stateful: True
+    position_goal_checker:
+      plugin: "nav2_position_goal_checker::PositionGoalChecker"
+      xy_goal_tolerance: 0.02
+      trans_stopped_velocity: 0.01
+      rot_stopped_velocity: 0.05
+    rotation_goal_checker:
+      plugin: "nav2_rotation_goal_checker::RotationGoalChecker"
+      yaw_goal_tolerance: 0.02
+      rot_stopped_velocity: 0.05
+
+    MPPIController:
+      plugin: "nav2_mppi_controller::MPPIController"
+
+      # ============================================================
+      # 1. MPPI 采样与运动学参数
+      # ============================================================
+      time_steps: 40
+      model_dt: 0.1
+      batch_size: 1500
+      vx_std: 0.25
+      vy_std: 0.2
+      wz_std: 0.25
+      vx_max: 0.8 # 基础速度约束；运行时会被三阶段 profile 覆盖
+      vx_min: -0.5 # 基础倒车约束；运行时会被三阶段 profile 覆盖
+      vy_max: 0.5 # DiffDrive 下通常不生效
+      wz_max: 0.75 # 基础角速度约束；运行时会被三阶段 profile 覆盖
+      ax_max: 0.6
+      ax_min: -0.6
+      az_max: 0.7
+      jx_max: 1.0
+      jz_max: 1.5
+      iteration_count: 1
+      prune_distance: 2.5
+      transform_tolerance: 0.3
+      temperature: 0.3
+      gamma: 0.015
+      motion_model: "DiffDrive"
+      open_loop: false
+      use_cuda: true
+      visualize: true
+      reset_period: 1.0
+      regenerate_noises: false
+      max_robot_pose_deviation: 0.5
+
+      # ============================================================
+      # 2. 三阶段切换参数
+      # ============================================================
+      approach_distance: 0.35
+      profile_transition_duration: 1.0
+      align_enter_angle: 0.65
+      align_exit_angle: 0.31
+      track_stage_min_duration: 1.2
+      align_force_enter_angle: 1.2
+      # approach 内部先调位置、后调最终航向；误差均在目标点坐标系计算
+      approach_final_yaw_enter_lon_tolerance: 0.025
+      approach_final_yaw_enter_lat_tolerance: 0.025
+      approach_final_yaw_exit_lon_tolerance: 0.03
+      approach_final_yaw_exit_lat_tolerance: 0.03
+      approach_final_yaw_exit_violation_threshold: 2
+      approach_position_first_yaw_threshold: 2.094
+      approach_position_first_lateral_error_threshold: 0.05
+      approach_position_first_lateral_ratio: 1.0
+      approach_positioning_goal_angle_weight: 10.0
+      approach_final_yaw_vx_max: 0.0
+      approach_final_yaw_wz_max: 0.6
+      approach_final_yaw_cmd_wz_slew_rate: 0.8
+      approach_final_yaw_cmd_brake_accel: 0.3
+      approach_final_yaw_cmd_actual_decel: 0.35
+      approach_final_yaw_cmd_delay: 0.15
+      approach_final_yaw_cmd_brake_safety_margin: 0.004
+      approach_final_yaw_dynamic_brake_min_wz: 0.10
+      approach_final_yaw_creep_wz_min: 0.04
+      approach_final_yaw_creep_wz_max: 0.08
+      approach_final_yaw_internal_tolerance: 0.02
+      approach_final_yaw_creep_enter_yaw_error: 0.08
+      approach_final_yaw_creep_enter_max_actual_wz: 0.10
+      approach_final_yaw_stop_exit_tolerance: 0.03
+      approach_final_yaw_envelope_brake_enter_margin: 0.02
+      approach_final_yaw_envelope_brake_exit_margin: 0.005
+      approach_final_yaw_cmd_stop_yaw_tolerance: 0.02
+      approach_final_yaw_cmd_direction_deadband: 0.08
+      # ── 权重矩阵：各 critic 三段权重统一调参入口 [align, track, approach] ──
+      stage_weights:
+        GoalCritic: [0.0, 0.0, 10.0]
+        GoalLateralCritic: [0.0, 10.0, 200.0]
+        GoalLongitudinalCritic: [0.0, 0.0, 50.0]
+        GoalAngleCritic: [0.0, 0.0, 100.0]
+        PathAngleCritic: [18.0, 5.0, 2.0]
+        PathAlignCritic: [5.0, 40.0, 10.0]
+        PathFollowCritic: [0.0, 5.0, 2.0]
+        PreferForwardCritic: [5.0, 10.0, 5.0]
+        LinearVelocityCritic: [0.0, 10.0, 10.0]
+        AngularVelocityCritic: [0.0, 0.0, 12.0]
+        ObstaclesCritic: [5.0, 50.0, 0.0]
+        CostCritic: [5.0, 50.0, 0.0]
+
+      # ── 三段速度策略（per-stage 覆盖全局；只放速度，critic 子参数/权重不在此）──
+      stage_align:    # 对齐段：低 vx 专注转向、高 wz 快速对齐、允许小幅倒车机动
+        vx_max: 0.5
+        vx_min: -0.2
+        vy_max: 0.5
+        wz_max: 0.75
+      stage_track:    # 跟踪段：全速通行
+        vx_max: 0.5
+        vx_min: -0.5
+        vy_max: 0.5
+        wz_max: 0.75
+      stage_approach: # 趋近段：限制前后速度，减少厘米级停车时的越界和反复换向
+        vx_max: 0.2
+        vx_min: -0.15
+        vy_max: 0.5
+        wz_max: 0.75
+
+      # ============================================================
+      # 三阶段 align/track/approach：权重统一由上方 stage_weights 矩阵调；
+      # 速度见上方 stage_align/track/approach 块；子参数(offset/threshold/last_n)用 C++ 默认；
+      # 切换由 align_enter_angle/align_exit_angle/approach_distance。
+      # ============================================================
+      # ============================================================
+      # 6. 可视化、车辆约束与全局安全/可行性代价
+      #    行为类权重已由 stage_weights 矩阵管理。
+      # ============================================================
+      TrajectoryVisualizer:
+        trajectory_step: 5
+        time_step: 3
+      AckermannConstraints:
+        min_turning_r: 0.5
+      # critics 是插件加载列表；阶段权重由上方 stage_weights 矩阵覆盖。
+      critics: ["ConstraintCritic", "CostCritic", "ObstaclesCritic", "GoalCritic", "GoalLateralCritic", "GoalLongitudinalCritic", "GoalAngleCritic", "PathAlignCritic", "PathFollowCritic", "PathAngleCritic", "PreferForwardCritic", "LinearVelocityCritic", "AngularVelocityCritic", "VelocityDeadbandCritic"]
+      ConstraintCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 4.0
+      GoalAngleCritic:
+        wrong_way_cost_ratio: 5.0 # 按当前真实最短角误差方向惩罚反向旋转，final_yaw 中仍然生效
+        direction_deadband: 0.01 # 小于GoalChecker的0.02rad容差，避免“未到点但方向惩罚已关闭”的空档
+      PathAngleCritic:
+        wrong_way_cost_ratio: 2.0 # 惩罚角速度与最短路径角误差异号，防止反向绕转 270°
+        direction_deadband: 0.05 # 接近对齐时关闭方向惩罚，避免 wz 正负号抖动，单位 rad
+      ObstaclesCritic:
+        enabled: true
+        cost_power: 1
+        repulsion_weight: 1.1 # 1.5
+        critical_weight: 20.0
+        consider_footprint: true
+        collision_cost: 100000.0
+        collision_margin_distance: 0.05 # 0.1
+        near_goal_distance: 0.5
+        inflation_radius: 0.3 # 0.75 # 0.55 # 0.6 # (only in Humble)
+        cost_scaling_factor: 10.0 # (only in Humble)
+      CostCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 3.81
+        critical_cost: 300.0
+        consider_footprint: true
+        collision_cost: 1000000.0
+        near_goal_distance: 0.5
+        trajectory_point_step: 2
+      # GoalLateralCritic / GoalLongitudinalCritic：无全局子参数（deadband 已废弃、threshold 距离门已移除）；
+      # 权重由 stage_weights 矩阵管，cost_power/last_n_points 用 C++ 默认。
+      LinearVelocityCritic: # 线速度大小软约束：speed_desired=min(当前阶段速度上限,√(2·ax_max·d))，不强制前进方向
+        enabled: true
+        cost_power: 2
+        cost_weight: 8.0 # 初值，bag 调；与 goal critic 量级相当
+      AngularVelocityCritic: # 角速度软约束(镜像线速度)：wz_desired=min(wz_max,√(2·az_max·朝向误差))跟踪 + |Δwz|平滑；wz_max/az_max 从全局参数读；approach 专用(track/align 矩阵设0)
+        enabled: true
+        cost_power: 2
+        cost_weight: 10.0 # 初值，bag 调
+        stop_yaw_tolerance: 0.03 # 与GoalChecker航向容差一致：进入此范围后期望角速度为0，等待停稳成功
+      VelocityDeadbandCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 10.0
+        deadband_velocities: [0.00, 0.08, 0.00] # 0.005, 0.08, 0.01
+
+local_costmap:
+  local_costmap:
+    ros__parameters:
+      update_frequency: 5.0
+      publish_frequency: 2.0
+      global_frame: odom
+      robot_base_frame: base_link
+      use_sim_time: True
+      rolling_window: true
+      width: 3
+      height: 3
+      resolution: 0.05
+      footprint: "[[0.21, 0.21], [0.21, -0.21], [-0.21, -0.21], [-0.21, 0.21]]"
+      plugins: ["static_layer", "obstacle_layer", "denoise_layer", "inflation_layer"]
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        cost_scaling_factor: 10.0
+        inflation_radius: 0.3
+      denoise_layer:
+        plugin: "nav2_costmap_2d::DenoiseLayer"
+        enabled: True
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: True
+        observation_sources: scan_front scan_rear
+        footprint_clearing_enabled: true
+        max_obstacle_height: 2.0
+        min_obstacle_height: 0.05  # 修正：只接受地面以上的点，避免底盘结构点入图（原-0.1）
+        scan_front:
+          topic: /laser_scan/front
+          obstacle_max_range: 2.5
+          obstacle_min_range: 0.45
+          raytrace_max_range: 3.0
+          raytrace_min_range: 0.20  # 剔除0.2m内近盲区（原0.0）
+          max_obstacle_height: 2.0
+          min_obstacle_height: 0.05  # 修正：只接受地面以上的点（原-0.05）
+          clearing: True
+          marking: True
+          data_type: "LaserScan"
+          inf_is_valid: false
+        scan_rear:
+          topic: /laser_scan/rear
+          obstacle_max_range: 2.5
+          obstacle_min_range: 0.45
+          raytrace_max_range: 3.0
+          raytrace_min_range: 0.20  # 剔除0.2m内近盲区（原0.0）
+          max_obstacle_height: 2.0
+          min_obstacle_height: 0.05  # 修正：只接受地面以上的点（原-0.05）
+          clearing: True
+          marking: True
+          data_type: "LaserScan"
+          inf_is_valid: false
+      static_layer:
+        plugin: "nav2_costmap_2d::StaticLayer"
+        map_topic: "/map"
+        map_subscribe_transient_local: True
+      always_send_full_costmap: False
+
+global_costmap:
+  global_costmap:
+    ros__parameters:
+      update_frequency: 1.0
+      publish_frequency: 1.0
+      global_frame: map
+      robot_base_frame: base_link
+      use_sim_time: True
+      footprint: "[[0.21, 0.21], [0.21, -0.21], [-0.21, -0.21], [-0.21, 0.21]]"
+      resolution: 0.05
+      track_unknown_space: true
+      plugins: ["static_layer", "obstacle_layer", "denoise_layer", "inflation_layer"]
+      denoise_layer:
+        plugin: "nav2_costmap_2d::DenoiseLayer"
+        enabled: True
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: True
+        combination_method: 2
+        observation_sources: scan_front scan_rear
+        footprint_clearing_enabled: true
+        max_obstacle_height: 2.0
+        min_obstacle_height: 0.05  # 修正：只接受地面以上的点（原-0.05）
+        scan_front:
+          topic: /laser_scan/front
+          obstacle_max_range: 3.0
+          obstacle_min_range: 0.45
+          raytrace_max_range: 3.0
+          raytrace_min_range: 0.20  # 剔除0.2m内近盲区（原0.0）
+          max_obstacle_height: 2.0
+          min_obstacle_height: 0.05  # 修正：只接受地面以上的点（原-0.05）
+          clearing: True
+          marking: True
+          data_type: "LaserScan"
+          inf_is_valid: false
+        scan_rear:
+          topic: /laser_scan/rear
+          obstacle_max_range: 3.0
+          obstacle_min_range: 0.45
+          raytrace_max_range: 3.0
+          raytrace_min_range: 0.20  # 剔除0.2m内近盲区（原0.0）
+          max_obstacle_height: 2.0
+          min_obstacle_height: 0.05  # 修正：只接受地面以上的点（原-0.05）
+          clearing: True
+          marking: True
+          data_type: "LaserScan"
+          inf_is_valid: false
+      static_layer:
+        plugin: "nav2_costmap_2d::StaticLayer"
+        map_topic: "/map"
+        map_subscribe_transient_local: True
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        cost_scaling_factor: 10.0
+        inflation_radius: 0.3
+
+map_server:
+  ros__parameters:
+    use_sim_time: True
+    yaml_filename: ""
+
+map_saver:
+  ros__parameters:
+    use_sim_time: True
+    save_map_timeout: 5.0
+    free_thresh_default: 0.25
+    occupied_thresh_default: 0.65
+    map_subscribe_transient_local: True
+
+planner_server:
+  ros__parameters:
+    expected_planner_frequency: 0.2
+    use_sim_time: True
+    planner_plugins: ["SmacGridBased", "ThetaStarBased"]
+    active_planner: ""
+    override_planner_id: true
+    route_fallback_planner: "SmacGridBased"
+
+    RouteGridPlanner:
+      plugin: "nav2_route_planner/NavRouteGraphPlanner"
+      asset_manager_node_name: "map_asset_manager"
+      data_load_timeout_sec: 5.0
+      projection_node_threshold_m: 0.5
+      projection_edge_threshold_m: 0.5
+      waypoints_per_meter: 20
+      bezier_samples_per_edge: 40
+      publish_route_plan: true
+      use_final_approach_orientation: false
+      costmap_aware_mode: false
+      obstacle_cost_threshold: 220.0
+      obstacle_margin_before_m: 0.5
+      obstacle_margin_after_m: 0.5
+      bypass_max_replan_length_m: 10.0
+      theta_star_max_corners: 8
+      theta_star_allow_unknown: false
+
+    SmacGridBased:
+      plugin: "nav2_smac_planner/SmacPlannerLattice"
+      allow_unknown: false
+      tolerance: 1.0e-10
+      max_iterations: 2000000
+      max_on_approach_iterations: 2000
+      max_planning_time: 5.0
+      analytic_expansion_ratio: 3.5
+      analytic_expansion_max_length: 0.3
+      analytic_expansion_max_cost: 200.0
+      analytic_expansion_max_cost_override: false
+      reverse_penalty: 2.0
+      change_penalty: 0.05
+      non_straight_penalty: 3.0
+      cost_penalty: 1.3
+      rotation_penalty: 5.0
+      retrospective_penalty: 0.015
+      lattice_filepath: "$(find-pkg-share nav2_smac_planner)/sample_primitives/5cm_resolution/output.json"
+      lookup_table_size: 20.0
+      cache_obstacle_heuristic: false
+      allow_reverse_expansion: false
+      smooth_path: True
+      smoother:
+        max_iterations: 1000
+        w_smooth: 0.6
+        w_data: 0.2
+        tolerance: 1.0e-10
+        do_refinement: true
+        refinement_num: 2
+
+    ThetaStarBased:
+      plugin: "nav2_theta_star_planner/ThetaStarPlanner"
+      how_many_corners: 8
+      w_euc_cost: 1.0
+      w_traversal_cost: 2.0
+      allow_unknown: false
+      use_final_approach_orientation: false
+      terminal_checking_interval: 5000
+
+smoother_server:
+  ros__parameters:
+    use_sim_time: True
+    smoother_plugins: ["simple_smoother"]
+    simple_smoother:
+      plugin: "nav2_smoother::SimpleSmoother"
+      tolerance: 1.0e-10
+      max_its: 1000
+      do_refinement: True
+
+behavior_server:
+  ros__parameters:
+    costmap_topic: local_costmap/costmap_raw
+    footprint_topic: local_costmap/published_footprint
+    cycle_frequency: 10.0
+    behavior_plugins: ["spin", "backup", "drive_on_heading", "assisted_teleop", "wait", "wait_global", "wait_local"]
+    spin:
+      plugin: "nav2_behaviors/Spin"
+    backup:
+      plugin: "nav2_behaviors/BackUp"
+    drive_on_heading:
+      plugin: "nav2_behaviors/DriveOnHeading"
+    wait:
+      plugin: "nav2_behaviors/Wait"
+    wait_global:
+      plugin: "nav2_behaviors/Wait"
+    wait_local:
+      plugin: "nav2_behaviors/Wait"
+    assisted_teleop:
+      plugin: "nav2_behaviors/AssistedTeleop"
+    global_frame: odom
+    robot_base_frame: base_link
+    transform_tolerance: 0.3
+    use_sim_time: true
+    simulate_ahead_time: 2.0
+    max_rotational_vel: 0.7
+    min_rotational_vel: 0.3
+    rotational_acc_lim: 0.7
+
+robot_state_publisher:
+  ros__parameters:
+    use_sim_time: True
+
+waypoint_follower:
+  ros__parameters:
+    use_sim_time: True
+    loop_rate: 20
+    stop_on_failure: false
+    waypoint_task_executor_plugin: "wait_at_waypoint"
+    wait_at_waypoint:
+      plugin: "nav2_waypoint_follower::WaitAtWaypoint"
+      enabled: True
+      waypoint_pause_duration: 200
+
+velocity_smoother:
+  ros__parameters:
+    use_sim_time: True
+    smoothing_frequency: 20.0
+    scale_velocities: False
+    feedback: "CLOSED_LOOP"
+    input_topic: "cmd_vel_nav"
+    output_topic: "control/cmd_vel"
+    max_velocity: [0.5, 0.0, 1.5]
+    min_velocity: [-0.5, 0.0, -1.5]
+    max_accel: [1.2, 0.0, 3.2]
+    max_decel: [-2.5, 0.0, -3.2]
+    odom_topic: "odom"
+    odom_duration: 0.01
+    deadband_velocity: [0.005, 0.005, 0.008]
+    velocity_timeout: 1.0

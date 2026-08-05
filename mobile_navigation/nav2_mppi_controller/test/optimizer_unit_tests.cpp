@@ -213,6 +213,25 @@ public:
     EXPECT_NEAR(state.wz(0, 1), -0.1, 1e-6);
   }
 
+  void testRebuildCudaStateVels()
+  {
+    models::State state;
+    state.reset(2, 4);
+    state.speed.linear.x = 0.2;
+    state.speed.angular.z = -0.3;
+    state.cvx.row(0) << 0.1, 0.2, 0.3, 0.4;
+    state.cvx.row(1) << -0.1, -0.2, -0.3, -0.4;
+    state.cwz.row(0) << 0.4, 0.5, 0.6, 0.7;
+    state.cwz.row(1) << -0.4, -0.5, -0.6, -0.7;
+
+    rebuildStateVelocitiesFromControls(state);
+
+    EXPECT_TRUE(state.vx.col(0).isConstant(0.2));
+    EXPECT_TRUE(state.wz.col(0).isConstant(-0.3));
+    EXPECT_TRUE(state.vx.rightCols(3).isApprox(state.cvx.leftCols(3)));
+    EXPECT_TRUE(state.wz.rightCols(3).isApprox(state.cwz.leftCols(3)));
+  }
+
   geometry_msgs::msg::TwistStamped getControlFromSequenceAsTwistWrapper()
   {
     builtin_interfaces::msg::Time stamp;
@@ -565,6 +584,23 @@ TEST(OptimizerTests, updateStateVelocitiesTests)
   optimizer_tester.resetMotionModel();
   optimizer_tester.testSetOmniModel();
   optimizer_tester.testupdateStateVels();
+}
+
+TEST(OptimizerTests, rebuildCudaStateVelocitiesTests)
+{
+  auto node = std::make_shared<rclcpp_lifecycle::LifecycleNode>("my_node");
+  OptimizerTester optimizer_tester;
+  node->declare_parameter("controller_frequency", rclcpp::ParameterValue(30.0));
+  node->declare_parameter("mppic.batch_size", rclcpp::ParameterValue(2));
+  node->declare_parameter("mppic.time_steps", rclcpp::ParameterValue(4));
+  auto costmap_ros = std::make_shared<nav2_costmap_2d::Costmap2DROS>(
+    "dummy_costmap", "", "dummy_costmap");
+  ParametersHandler param_handler(node);
+  rclcpp_lifecycle::State lstate;
+  costmap_ros->on_configure(lstate);
+  optimizer_tester.initialize(node, "mppic", costmap_ros, &param_handler);
+
+  optimizer_tester.testRebuildCudaStateVels();
 }
 
 TEST(OptimizerTests, getControlFromSequenceAsTwistTests)

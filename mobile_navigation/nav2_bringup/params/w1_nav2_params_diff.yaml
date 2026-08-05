@@ -191,7 +191,7 @@ controller_server:
       hold_release_lat_tolerance: 0.04 # hold 释放横向迟滞(m)
       hold_release_yaw_tolerance: 0.04 # hold 释放航向迟滞(rad)，比 yaw_goal_tolerance 宽松
     goal_checker:
-      plugin: "nav2_controller::PrecisionLongitudinalGoalChecker"
+      plugin: "nav2_high_precision_goal_checker::HighPrecisionGoalChecker"
       desired_lon_goal_tolerance: 0.01 # 优先追求的纵向精度，当前配置为 1cm
       desired_lat_goal_tolerance: 0.01 # 优先追求的横向精度，当前配置为 1cm
       accept_lon_goal_tolerance: 0.03 # 精调后允许接受的纵向精度，当前配置为 3cm

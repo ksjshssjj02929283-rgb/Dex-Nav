@@ -28,6 +28,7 @@ void TrajectoryVisualizer::on_configure(
   trajectories_publisher_ =
     node->create_publisher<visualization_msgs::msg::MarkerArray>("/trajectories", 1);
   transformed_path_pub_ = node->create_publisher<nav_msgs::msg::Path>("transformed_global_plan", 1);
+  local_path_pub_ = node->create_publisher<nav_msgs::msg::Path>("local_plan", 1);
   parameters_handler_ = parameters_handler;
 
   auto getParam = parameters_handler->getParamGetter(name + ".TrajectoryVisualizer");
@@ -42,18 +43,21 @@ void TrajectoryVisualizer::on_cleanup()
 {
   trajectories_publisher_.reset();
   transformed_path_pub_.reset();
+  local_path_pub_.reset();
 }
 
 void TrajectoryVisualizer::on_activate()
 {
   trajectories_publisher_->on_activate();
   transformed_path_pub_->on_activate();
+  local_path_pub_->on_activate();
 }
 
 void TrajectoryVisualizer::on_deactivate()
 {
   trajectories_publisher_->on_deactivate();
   transformed_path_pub_->on_deactivate();
+  local_path_pub_->on_deactivate();
 }
 
 void TrajectoryVisualizer::add(
@@ -80,6 +84,21 @@ void TrajectoryVisualizer::add(
 
   for (Eigen::Index i = 0; i < size; i++) {
     add_marker(i);
+  }
+
+  if (marker_namespace == "Optimal Trajectory") {
+    optimal_path_ = std::make_shared<nav_msgs::msg::Path>();
+    optimal_path_->header.frame_id = frame_id_;
+    optimal_path_->poses.resize(size);
+    for (Eigen::Index i = 0; i < size; i++) {
+      geometry_msgs::msg::PoseStamped pose;
+      pose.header.frame_id = frame_id_;
+      pose.pose.position.x = trajectory(i, 0);
+      pose.pose.position.y = trajectory(i, 1);
+      pose.pose.position.z = 0.06;
+      pose.pose.orientation.w = 1.0;
+      optimal_path_->poses[i] = pose;
+    }
   }
 }
 
@@ -112,12 +131,18 @@ void TrajectoryVisualizer::reset()
 {
   marker_id_ = 0;
   points_ = std::make_unique<visualization_msgs::msg::MarkerArray>();
+  optimal_path_.reset();
 }
 
 void TrajectoryVisualizer::visualize(const nav_msgs::msg::Path & plan)
 {
   if (trajectories_publisher_->get_subscription_count() > 0) {
     trajectories_publisher_->publish(std::move(points_));
+  }
+
+  if (optimal_path_ && local_path_pub_->get_subscription_count() > 0) {
+    optimal_path_->header.stamp = plan.header.stamp;
+    local_path_pub_->publish(*optimal_path_);
   }
 
   reset();

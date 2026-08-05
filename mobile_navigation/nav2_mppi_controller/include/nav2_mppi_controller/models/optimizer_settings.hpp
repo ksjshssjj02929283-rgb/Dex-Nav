@@ -39,6 +39,7 @@ struct OptimizerSettings
   bool open_loop{false};
   bool shift_control_sequence{false};
   size_t retry_attempt_limit{0};
+  bool use_cuda{true};
 };
 
 }  // namespace mppi::models

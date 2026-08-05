@@ -1,0 +1,53 @@
+# syntax=docker/dockerfile:1
+FROM ros:humble-ros-base
+
+# 避免交互式询问
+ENV DEBIAN_FRONTEND=noninteractive
+
+# 换源为中国科大 Ubuntu Ports 源，提高 apt-get 下载速度
+RUN sed -i 's/ports.ubuntu.com/mirrors.ustc.edu.cn/g' /etc/apt/sources.list
+
+# 安装基础编译依赖、pip以及常用工具
+RUN apt-get update && apt-get install -y \
+    python3-pip \
+    python3-colcon-common-extensions \
+    build-essential \
+    cmake \
+    git \
+    ninja-build \
+    ros-humble-bondcpp \
+    ros-humble-test-msgs \
+    ros-humble-diagnostic-updater \
+    ros-humble-laser-geometry \
+    ros-humble-map-msgs \
+    ros-humble-angles \
+    ros-humble-behaviortree-cpp-v3 \
+    ros-humble-ompl \
+    ros-humble-pcl-conversions \
+    ros-humble-rviz-common \
+    ros-humble-rviz-default-plugins \
+    ros-humble-rviz-rendering \
+    ros-humble-cv-bridge \
+    libboost-all-dev \
+    libgraphicsmagick++1-dev \
+    libceres-dev \
+    qtbase5-dev \
+    nlohmann-json3-dev \
+    libopencv-dev \
+    libpcl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# 安装 rosdepc（国内加速版 rosdep），解决 rosdep update 无法连接 Github 的问题
+RUN pip3 install rosdepc
+
+# 初始化并更新 rosdepc
+RUN rosdepc init || true
+RUN rosdepc update
+
+# 在构建镜像时，通过 bind mount 挂载源码，并自动安装所有 package.xml 中声明的第三方依赖包
+RUN --mount=type=bind,source=.,target=/tmp/src \
+    apt-get update && \
+    rosdepc install --from-paths /tmp/src --ignore-src -y -r --rosdistro humble && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /workspace

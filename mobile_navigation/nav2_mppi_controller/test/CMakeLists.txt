@@ -10,6 +10,8 @@ set(TEST_NAMES
   path_handler_test
   critic_manager_test
   optimizer_unit_tests
+  cuda_rollout_comparison_test
+  cuda_critic_comparison_test
 )
 
 foreach(name IN LISTS TEST_NAMES)
@@ -23,6 +25,7 @@ foreach(name IN LISTS TEST_NAMES)
 
   target_link_libraries(${name}
     mppi_controller
+    mppi_critics
   )
 
   if(${TEST_DEBUG_INFO})

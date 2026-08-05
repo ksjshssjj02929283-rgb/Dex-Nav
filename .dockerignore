@@ -1,0 +1,11 @@
+.git
+.vscode
+build
+build_arm64
+install
+install_arm64
+log
+log_arm64
+release
+*.tar.gz
+*.deb

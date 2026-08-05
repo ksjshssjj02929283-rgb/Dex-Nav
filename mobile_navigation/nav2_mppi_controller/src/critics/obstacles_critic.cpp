@@ -117,13 +117,34 @@ void ObstaclesCritic::score(CriticData & data)
     return;
   }
 
-  if (consider_footprint_) {
-    // footprint may have changed since initialization if user has dynamic footprints
-    possibly_inscribed_cost_ = findCircumscribedCost(costmap_ros_);
-  }
-
   const bool near_goal = utils::withinPositionGoalTolerance(
     near_goal_distance_, data.state.pose.pose, data.path);
+
+  if (data.use_cuda && data.cuda_optimizer != nullptr && data.cuda_optimizer->isCudaAvailable()) {
+    std::vector<float> gpu_costs;
+    bool success = data.cuda_optimizer->evaluateObstacleCosts(
+      costmap_->getCharMap(),
+      costmap_->getSizeInCellsX(),
+      costmap_->getSizeInCellsY(),
+      costmap_->getResolution(),
+      costmap_->getOriginX(),
+      costmap_->getOriginY(),
+      possibly_inscribed_cost_,
+      inflation_scale_factor_,
+      inflation_radius_,
+      critical_weight_,
+      repulsion_weight_,
+      near_goal,
+      power_,
+      gpu_costs
+    );
+
+    if (success) {
+      data.costs += Eigen::Map<const Eigen::ArrayXf>(gpu_costs.data(), gpu_costs.size());
+      data.fail_flag = (gpu_costs.empty() || (Eigen::Map<const Eigen::ArrayXf>(gpu_costs.data(), gpu_costs.size()) >= 10000.0f).all());
+      return;
+    }
+  }
 
   models::Vector raw_cost = models::Vector::Zero(data.costs.size());
   models::Vector repulsive_cost = models::Vector::Zero(data.costs.size());

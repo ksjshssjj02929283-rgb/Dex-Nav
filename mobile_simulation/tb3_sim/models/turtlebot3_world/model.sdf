@@ -1,0 +1,96 @@
+<?xml version="1.0" ?>
+<sdf version="1.6">
+  <model name="turtlebot3_world">
+    <static>true</static>
+    
+    <!-- Outer Walls -->
+    <link name="wall_north">
+      <collision name="collision">
+        <geometry>
+          <box>
+            <size>5.0 0.12 0.5</size>
+          </box>
+        </geometry>
+      </collision>
+      <visual name="visual">
+        <geometry>
+          <box>
+            <size>5.0 0.12 0.5</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.7 0.7 0.7 1</ambient>
+          <diffuse>0.7 0.7 0.7 1</diffuse>
+        </material>
+      </visual>
+      <pose>0.0 2.5 0.25 0 0 0</pose>
+    </link>
+
+    <link name="wall_south">
+      <collision name="collision">
+        <geometry>
+          <box>
+            <size>5.0 0.12 0.5</size>
+          </box>
+        </geometry>
+      </collision>
+      <visual name="visual">
+        <geometry>
+          <box>
+            <size>5.0 0.12 0.5</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.7 0.7 0.7 1</ambient>
+          <diffuse>0.7 0.7 0.7 1</diffuse>
+        </material>
+      </visual>
+      <pose>0.0 -2.5 0.25 0 0 0</pose>
+    </link>
+
+    <link name="wall_east">
+      <collision name="collision">
+        <geometry>
+          <box>
+            <size>5.0 0.12 0.5</size>
+          </box>
+        </geometry>
+      </collision>
+      <visual name="visual">
+        <geometry>
+          <box>
+            <size>5.0 0.12 0.5</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.7 0.7 0.7 1</ambient>
+          <diffuse>0.7 0.7 0.7 1</diffuse>
+        </material>
+      </visual>
+      <pose>2.5 0.0 0.25 0 0 1.570796</pose>
+    </link>
+
+    <link name="wall_west">
+      <collision name="collision">
+        <geometry>
+          <box>
+            <size>5.0 0.12 0.5</size>
+          </box>
+        </geometry>
+      </collision>
+      <visual name="visual">
+        <geometry>
+          <box>
+            <size>5.0 0.12 0.5</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.7 0.7 0.7 1</ambient>
+          <diffuse>0.7 0.7 0.7 1</diffuse>
+        </material>
+      </visual>
+      <pose>-2.5 0.0 0.25 0 0 1.570796</pose>
+    </link>
+
+  </model>
+</sdf>
