@@ -161,7 +161,14 @@ public:
     diagnostics.terminal_distance_available = 0.5;
     diagnostics.terminal_braking_distance = 0.4;
     diagnostics.terminal_execution_reserve = 0.1;
-    updateTerminalBrakeLatch(diagnostics);
+    updateTerminalBrakeLatch(diagnostics, true);
+  }
+
+  void updateTerminalBrakeForTest(
+    const nav2_core::SpeedPlanningDiagnostics & diagnostics,
+    bool longitudinal_continuity_valid)
+  {
+    updateTerminalBrakeLatch(diagnostics, longitudinal_continuity_valid);
   }
 
   void commitPathForTest(
@@ -391,6 +398,48 @@ TEST(SpeedPlanningBoundary, NewGoalPathResetsTerminalBookkeeping)
   EXPECT_EQ(controller->nearGoalOutsideCount(), 0u);
   EXPECT_EQ(controller->goalCheckerResetCount(), 1u);
   EXPECT_FALSE(controller->terminalBrakeLatched());
+}
+
+TEST(SpeedPlanningBoundary, TerminalInfeasibleOutsideDynamicGuardDoesNotLatch)
+{
+  auto controller = std::make_shared<ControllerShim>();
+  nav2_core::SpeedPlanningDiagnostics diagnostics;
+  diagnostics.terminal_infeasible = true;
+  diagnostics.terminal_brake_required = false;
+  diagnostics.terminal_distance_available = 3.24;
+  diagnostics.terminal_braking_distance = 0.0;
+
+  controller->updateTerminalBrakeForTest(diagnostics, false);
+
+  EXPECT_FALSE(controller->terminalBrakeLatched());
+}
+
+TEST(SpeedPlanningBoundary, StationaryTerminalConditionWaitsForLongitudinalContinuity)
+{
+  auto controller = std::make_shared<ControllerShim>();
+  nav2_core::SpeedPlanningDiagnostics diagnostics;
+  diagnostics.terminal_brake_required = true;
+  diagnostics.terminal_distance_available = 0.02;
+  diagnostics.terminal_braking_distance = 0.0;
+
+  controller->updateTerminalBrakeForTest(diagnostics, false);
+  EXPECT_FALSE(controller->terminalBrakeLatched());
+
+  controller->updateTerminalBrakeForTest(diagnostics, true);
+  EXPECT_TRUE(controller->terminalBrakeLatched());
+}
+
+TEST(SpeedPlanningBoundary, MovingTerminalConditionLatchesWithoutPriorReceipt)
+{
+  auto controller = std::make_shared<ControllerShim>();
+  nav2_core::SpeedPlanningDiagnostics diagnostics;
+  diagnostics.terminal_brake_required = true;
+  diagnostics.terminal_distance_available = 0.35;
+  diagnostics.terminal_braking_distance = 0.4;
+
+  controller->updateTerminalBrakeForTest(diagnostics, false);
+
+  EXPECT_TRUE(controller->terminalBrakeLatched());
 }
 
 }  // namespace

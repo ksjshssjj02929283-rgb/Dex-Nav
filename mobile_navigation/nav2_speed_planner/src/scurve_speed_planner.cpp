@@ -577,6 +577,12 @@ void SCurveSpeedPlanner::configure(
     plugin_name_ + ".terminal_safety_margin", terminal_safety_margin_);
   terminal_execution_delay_ = std::max(0.0, terminal_execution_delay_);
   terminal_safety_margin_ = std::max(0.0, terminal_safety_margin_);
+  RCLCPP_INFO(
+    node->get_logger(),
+    "%s effective terminal config: end_speed=%.3f m/s stop_distance=%.3f m "
+    "execution_delay=%.3f s safety_margin=%.3f m",
+    plugin_name_.c_str(), end_speed_, stop_distance_,
+    terminal_execution_delay_, terminal_safety_margin_);
 }
 
 double SCurveSpeedPlanner::computeTerminalExecutionReserve(

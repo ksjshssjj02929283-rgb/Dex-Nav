@@ -217,10 +217,13 @@ protected:
   nav2_core::SpeedPlanningBoundary buildSpeedPlanningBoundary(
     const nav_msgs::msg::Path & path,
     const geometry_msgs::msg::Twist & measured_velocity);
-  /// Latch terminal braking for the current goal once the planner reaches the
-  /// dynamic braking boundary or reports that the stable terminal state is late.
+  /// Latch terminal braking only after the planner reaches the dynamic braking
+  /// boundary and the cycle has either longitudinal continuity or non-zero
+  /// braking motion. A diagnostic-only infeasible result must not poison a
+  /// stationary goal's ALIGN -> TRACK startup.
   void updateTerminalBrakeLatch(
-    const nav2_core::SpeedPlanningDiagnostics & diagnostics);
+    const nav2_core::SpeedPlanningDiagnostics & diagnostics,
+    bool longitudinal_continuity_valid);
   void updateSpeedPlanningContinuityAfterControl(
     bool control_succeeded, bool trajectory_target_consumed,
     double consumed_target_velocity, double consumed_target_acceleration);
