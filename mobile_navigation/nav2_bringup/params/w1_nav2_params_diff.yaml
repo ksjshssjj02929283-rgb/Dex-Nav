@@ -192,7 +192,7 @@ controller_server:
       hold_release_yaw_tolerance: 0.03 # hold 释放航向迟滞(rad)，比 yaw_goal_tolerance 宽松
     near_goal_odom:
       enabled: true # 启用近目标Odom状态计算
-      observe_only: false # true仅发布诊断，false参与控制和到位判断
+      observe_only: true # true仅发布诊断，false参与控制和到位判断
       entry_distance: 0.10 # 距目标小于该值时准备锁存Odom目标，单位m
       entry_confirm_cycles: 3 # 连续满足入口距离的控制周期数
       position_lon_tolerance: 0.025 # Odom纵向位置到位阈值，单位m
