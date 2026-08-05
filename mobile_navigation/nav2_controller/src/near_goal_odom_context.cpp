@@ -246,6 +246,12 @@ void NearGoalOdomContext::updateErrorsLocked(const NearGoalOdomInput & input)
 
   if (snapshot_.position_goal_latched) {
     updateOdomPositionErrorsLocked(input.robot_in_odom);
+    // 目标在map中固定。机器人正常移动只会改变robot_in_odom，不会改变实时目标的
+    // Odom坐标；因此此差值能够反映锁存后map->odom带来的累计位置修正。
+    snapshot_.global_position_correction = poseDistance(
+      input.live_goal_in_odom, snapshot_.goal_in_odom);
+  } else {
+    snapshot_.global_position_correction = 0.0;
   }
 
   if (snapshot_.yaw_goal_latched) {
@@ -342,9 +348,11 @@ NearGoalOdomSnapshot NearGoalOdomContext::update(const NearGoalOdomInput & input
     return snapshot_;
   }
 
+  // 不能使用“机器人距目标的实时误差”判断全局定位修正：机器人正常前冲也会增大该误差。
+  // 只比较实时map目标与锁存目标在Odom中的相对位移，检测真正的map->odom累计修正。
   bool global_sanity_ok =
-    input.live_map_position_error <= parameters_.global_position_abort_tolerance ||
-    snapshot_.stage == NearGoalOdomStage::INACTIVE;
+    snapshot_.stage == NearGoalOdomStage::INACTIVE ||
+    snapshot_.global_position_correction <= parameters_.global_position_abort_tolerance;
   if (snapshot_.stage == NearGoalOdomStage::MAP_YAW_COARSE) {
     global_sanity_ok =
       global_sanity_ok &&

@@ -1189,23 +1189,27 @@ NearGoalOdomSnapshot ControllerServer::updateNearGoalOdom(
       RCLCPP_INFO(
         get_logger(),
         "NearGoalOdom: goal_seq=%llu mode=%s %s->%s reason=%s cmd=%s "
-        "map_err=(%.3f,%.3f,%.3f) odom_err=(%.3f,%.3f,%.3f) vel=(%.3f,%.3f)",
+        "map_err=(%.3f,%.3f,%.3f) odom_err=(%.3f,%.3f,%.3f) "
+        "global_pos_correction=%.3f vel=(%.3f,%.3f)",
         static_cast<unsigned long long>(current.goal_generation),
         toString(current.mode), toString(near_goal_odom_last_stage_), toString(current.stage),
         toString(current.transition_reason), toString(current.control_directive),
         current.live_map_lon_error, current.live_map_lat_error, current.live_map_yaw_error,
         current.odom_lon_error, current.odom_lat_error, current.odom_yaw_error,
+        current.global_position_correction,
         current.actual_vx, current.actual_wz);
     } else {
       RCLCPP_INFO(
         get_logger(),
         "NearGoalOdom: goal_seq=%llu mode=%s %s->%s reason=%s cmd=%s "
-        "map_err=(%.3f,%.3f,%.3f) odom_pos_err=(%.3f,%.3f) vel=(%.3f,%.3f)",
+        "map_err=(%.3f,%.3f,%.3f) odom_pos_err=(%.3f,%.3f) "
+        "global_pos_correction=%.3f vel=(%.3f,%.3f)",
         static_cast<unsigned long long>(current.goal_generation),
         toString(current.mode), toString(near_goal_odom_last_stage_), toString(current.stage),
         toString(current.transition_reason), toString(current.control_directive),
         current.live_map_lon_error, current.live_map_lat_error, current.live_map_yaw_error,
         current.odom_lon_error, current.odom_lat_error,
+        current.global_position_correction,
         current.actual_vx, current.actual_wz);
     }
   }
@@ -1307,6 +1311,7 @@ void ControllerServer::publishNearGoalOdomDiagnostic(
   add("map_to_odom_delta_x", snapshot.map_to_odom_delta_x);
   add("map_to_odom_delta_y", snapshot.map_to_odom_delta_y);
   add("map_to_odom_delta_yaw", snapshot.map_to_odom_delta_yaw);
+  add("global_position_correction", snapshot.global_position_correction);
   add("global_yaw_consistency_delta", snapshot.global_yaw_consistency_delta);
   add("actual_vx", snapshot.actual_vx);
   add("actual_wz", snapshot.actual_wz);

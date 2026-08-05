@@ -28,6 +28,7 @@ struct NearGoalOdomParameters
   double odom_position_drift_tolerance{0.025};
   double position_hold_lon_tolerance{0.04};
   double position_hold_lat_tolerance{0.04};
+  // 锁存目标后，实时目标在Odom中的累计位移超过该值视为全局位置修正。
   double global_position_abort_tolerance{0.15};
   double global_yaw_correction_abort_tolerance{0.35};
   double odom_jump_position_tolerance{0.10};

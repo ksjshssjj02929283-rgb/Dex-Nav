@@ -101,6 +101,8 @@ struct NearGoalOdomSnapshot
   double map_to_odom_delta_x{0.0};
   double map_to_odom_delta_y{0.0};
   double map_to_odom_delta_yaw{0.0};
+  // 锁存位置目标后，实时map目标在Odom中的累计位移；用于区分定位修正与机器人自身运动。
+  double global_position_correction{0.0};
   double global_yaw_consistency_delta{0.0};
   double actual_vx{0.0};
   double actual_wz{0.0};

@@ -206,7 +206,7 @@ controller_server:
       odom_position_drift_tolerance: 0.025 # 位置到位后相对到位姿态允许的真实漂移，单位m
       position_hold_lon_tolerance: 0.04 # 位置到位后相对锁存目标允许的纵向误差，单位m
       position_hold_lat_tolerance: 0.04 # 位置到位后相对锁存目标允许的横向误差，单位m
-      global_position_abort_tolerance: 0.15 # 实时map位置误差的宽松异常保护，单位m
+      global_position_abort_tolerance: 0.15 # 锁存目标后实时目标在Odom中的累计位置修正超过此值则中止，单位m
       global_yaw_correction_abort_tolerance: 0.35 # map→odom角度修正异常保护，单位rad
       odom_jump_position_tolerance: 0.10 # Odom单周期位置突变基础阈值，单位m
       odom_jump_yaw_tolerance: 0.30 # Odom单周期航向突变基础阈值，单位rad

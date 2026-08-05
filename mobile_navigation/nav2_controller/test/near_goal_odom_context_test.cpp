@@ -344,6 +344,59 @@ TEST(NearGoalOdomContextTest, KeepsLatchedPositionAcrossLiveMapCorrection)
   EXPECT_NEAR(snapshot.odom_lon_error, -0.05, 1e-9);
 }
 
+TEST(NearGoalOdomContextTest, DoesNotTreatNormalRobotMotionAsGlobalCorrection)
+{
+  auto parameters = testParameters();
+  parameters.global_position_abort_tolerance = 0.15;
+  NearGoalOdomContext context(parameters);
+  context.reset(27, NearGoalTransitionReason::GOAL_CHANGED);
+
+  auto input = makeInput(100000000, 0.05, 0.0, 0.0, 0.05, 0.0);
+  input.live_goal_in_odom.position.x = 0.0;
+  context.update(input);
+  ASSERT_EQ(context.snapshot().stage, NearGoalOdomStage::ODOM_POSITION);
+
+  // 机器人自身移出目标0.15m外，但固定map目标在Odom中的位置没有变化。
+  input = makeInput(400000000, 0.16, 0.0, 0.0, 0.16, 0.0, 0.40, 0.0);
+  input.live_goal_in_odom.position.x = 0.0;
+  const auto snapshot = context.update(input);
+
+  EXPECT_EQ(snapshot.stage, NearGoalOdomStage::ODOM_POSITION);
+  EXPECT_TRUE(snapshot.global_sanity_ok);
+  EXPECT_NEAR(snapshot.global_position_correction, 0.0, 1e-9);
+}
+
+TEST(NearGoalOdomContextTest, InvalidatesCumulativeGlobalPositionCorrection)
+{
+  auto parameters = testParameters();
+  parameters.global_position_abort_tolerance = 0.15;
+  NearGoalOdomContext context(parameters);
+  context.reset(28, NearGoalTransitionReason::GOAL_CHANGED);
+
+  auto input = makeInput(100000000, 0.05, 0.0, 0.0, 0.05, 0.0);
+  input.live_goal_in_odom.position.x = 0.0;
+  context.update(input);
+  ASSERT_EQ(context.snapshot().stage, NearGoalOdomStage::ODOM_POSITION);
+
+  // 每次修正都低于阈值，但相对锁存目标的累计修正最终超过阈值。
+  input = makeInput(200000000, 0.05, 0.0, 0.0, 0.05, 0.0);
+  input.live_goal_in_odom.position.x = 0.06;
+  EXPECT_EQ(context.update(input).stage, NearGoalOdomStage::ODOM_POSITION);
+
+  input = makeInput(300000000, 0.05, 0.0, 0.0, 0.05, 0.0);
+  input.live_goal_in_odom.position.x = 0.12;
+  EXPECT_EQ(context.update(input).stage, NearGoalOdomStage::ODOM_POSITION);
+
+  input = makeInput(400000000, 0.05, 0.0, 0.0, 0.05, 0.0);
+  input.live_goal_in_odom.position.x = 0.18;
+  const auto snapshot = context.update(input);
+
+  EXPECT_EQ(snapshot.stage, NearGoalOdomStage::INVALID);
+  EXPECT_EQ(snapshot.control_directive, NearGoalControlDirective::TERMINATE);
+  EXPECT_EQ(snapshot.transition_reason, NearGoalTransitionReason::GLOBAL_CORRECTION);
+  EXPECT_NEAR(snapshot.global_position_correction, 0.18, 1e-9);
+}
+
 TEST(NearGoalOdomContextTest, KeepsPositionReachedAfterSmallMapCorrection)
 {
   NearGoalOdomContext context(testParameters());
