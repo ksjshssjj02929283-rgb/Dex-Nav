@@ -48,8 +48,7 @@ public:
     float * host_traj_yaws,
     float * host_cvx = nullptr,
     float * host_cvy = nullptr,
-    float * host_cwz = nullptr,
-    float goal_distance = -1.0f);
+    float * host_cwz = nullptr);
 
   /**
    * @brief Evaluate obstacle costs using CUDA parallel grid/footprint collision check
@@ -61,12 +60,15 @@ public:
     float resolution,
     float origin_x,
     float origin_y,
-    float circumscribed_cost,
+    float inscribed_radius,
     float inflation_scale_factor,
     float inflation_radius,
+    float collision_margin_distance,
+    float collision_cost,
     float critical_weight,
     float repulsion_weight,
     bool near_goal,
+    bool unknown_is_collision,
     unsigned int power,
     std::vector<float> & host_costs);
 

@@ -63,8 +63,7 @@ bool CudaOptimizer::generateNoisedTrajectories(
   float * host_traj_yaws,
   float * host_cvx,
   float * host_cvy,
-  float * host_cwz,
-  float goal_distance)
+  float * host_cwz)
 {
   bool res = cuda_generate_trajectories(
     batch_size_, time_steps_, model_dt_, is_holonomic_,
@@ -77,7 +76,7 @@ bool CudaOptimizer::generateNoisedTrajectories(
     d_cvx_, d_cvy_, d_cwz_,
     d_ctrl_vx_, d_ctrl_vy_, d_ctrl_wz_,
     host_traj_x, host_traj_y, host_traj_yaws,
-    host_cvx, host_cvy, host_cwz, goal_distance, stream_);
+    host_cvx, host_cvy, host_cwz, stream_);
 
   // ⭐【轨迹数据屏障】确保轨迹从 GPU 回传到 CPU 内存后，CPU 侧的所有 Critic 才能读取计算
   synchronizeStream();
@@ -91,12 +90,15 @@ bool CudaOptimizer::evaluateObstacleCosts(
   float resolution,
   float origin_x,
   float origin_y,
-  float circumscribed_cost,
+  float inscribed_radius,
   float inflation_scale_factor,
   float inflation_radius,
+  float collision_margin_distance,
+  float collision_cost,
   float critical_weight,
   float repulsion_weight,
   bool near_goal,
+  bool unknown_is_collision,
   unsigned int power,
   std::vector<float> & host_costs)
 {
@@ -110,8 +112,8 @@ bool CudaOptimizer::evaluateObstacleCosts(
     batch_size_, time_steps_,
     d_traj_x_, d_traj_y_, &d_costmap_, d_costs_,
     costmap_data, costmap_changed, size_x, size_y, resolution, origin_x, origin_y,
-    circumscribed_cost, inflation_scale_factor, inflation_radius,
-    critical_weight, repulsion_weight, near_goal, power,
+    inscribed_radius, inflation_scale_factor, inflation_radius, collision_margin_distance,
+    collision_cost, critical_weight, repulsion_weight, near_goal, unknown_is_collision, power,
     host_costs.data(), stream_);
 }
 

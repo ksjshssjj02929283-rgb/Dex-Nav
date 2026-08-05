@@ -42,15 +42,16 @@ bool cuda_generate_trajectories(
   void * d_cvx, void * d_cvy, void * d_cwz,
   void * d_ctrl_vx, void * d_ctrl_vy, void * d_ctrl_wz,
   float * host_traj_x, float * host_traj_y, float * host_traj_yaws,
-  float * host_cvx, float * host_cvy, float * host_cwz, float goal_distance = -1.0f, void * stream = nullptr);
+  float * host_cvx, float * host_cvy, float * host_cwz, void * stream = nullptr);
 
 bool cuda_evaluate_obstacles(
   size_t batch_size, size_t time_steps,
   void * d_traj_x, void * d_traj_y, void ** d_costmap, void * d_costs,
   const unsigned char * host_costmap, bool costmap_changed, unsigned int size_x, unsigned int size_y,
   float resolution, float origin_x, float origin_y,
-  float circumscribed_cost, float inflation_scale_factor, float inflation_radius,
-  float critical_weight, float repulsion_weight, bool near_goal, unsigned int power,
+  float inscribed_radius, float inflation_scale_factor, float inflation_radius,
+  float collision_margin_distance, float collision_cost, float critical_weight,
+  float repulsion_weight, bool near_goal, bool unknown_is_collision, unsigned int power,
   float * host_costs, void * stream = nullptr);
 
 bool cuda_evaluate_path_angle(

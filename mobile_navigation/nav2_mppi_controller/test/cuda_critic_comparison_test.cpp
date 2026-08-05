@@ -106,8 +106,8 @@ TEST_F(CudaCriticComparisonTest, ObstaclesCriticGpuVsCpuConsistency)
     costmap_->getCharMap(),
     size_x_, size_y_, resolution_,
     costmap_->getOriginX(), costmap_->getOriginY(),
-    253.0f, 10.0f, 0.55f,
-    20.0f, 1.5f, false, 1,
+    0.20f, 10.0f, 0.55f, 0.10f, 10000.0f,
+    20.0f, 1.5f, false, true, 1,
     gpu_costs);
 
   ASSERT_TRUE(ok);
@@ -116,7 +116,7 @@ TEST_F(CudaCriticComparisonTest, ObstaclesCriticGpuVsCpuConsistency)
   // 2. 统计 GPU 侧障碍物碰撞检测与分值分布
   size_t gpu_collisions = 0;
   for (size_t r = 0; r < batch_size_; ++r) {
-    if (gpu_costs[r] >= 10000.0f) {
+    if (gpu_costs[r] >= 200000.0f) {
       gpu_collisions++;
     }
   }
@@ -134,7 +134,10 @@ TEST_F(CudaCriticComparisonTest, ObstaclesCriticGpuVsCpuConsistency)
       unsigned int mx, my;
       if (costmap_->worldToMap(px, py, mx, my)) {
         unsigned char cell_cost = costmap_->getCost(mx, my);
-        if (cell_cost >= nav2_costmap_2d::LETHAL_OBSTACLE) {
+        if (cell_cost == nav2_costmap_2d::LETHAL_OBSTACLE ||
+          cell_cost == nav2_costmap_2d::INSCRIBED_INFLATED_OBSTACLE ||
+          cell_cost == nav2_costmap_2d::NO_INFORMATION)
+        {
           collided = true;
           break;
         }

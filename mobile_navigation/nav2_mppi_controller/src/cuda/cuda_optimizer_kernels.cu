@@ -37,7 +37,6 @@ __global__ void generate_trajectories_kernel(
   const float * __restrict__ control_wz,
   models::ControlConstraints constraints,
   models::SamplingStd sampling_std,
-  float goal_distance,
   float * __restrict__ traj_x,
   float * __restrict__ traj_y,
   float * __restrict__ traj_yaws,
@@ -73,23 +72,16 @@ __global__ void generate_trajectories_kernel(
   float next_vy = is_holonomic ? init_state.speed_vy : 0.0f;
   float next_wz = init_state.speed_wz;
 
-  // 根据当前机器到目标的剩余距离计算安全前向减速包络
-  float safe_vx_cap = constraints.vx_max;
-  if (goal_distance > 0.0f && goal_distance < 3.0f) {
-    float decel = fabsf(constraints.ax_min) > 1e-3f ? fabsf(constraints.ax_min) : 0.6f;
-    safe_vx_cap = fminf(constraints.vx_max, sqrtf(2.0f * decel * fmaxf(goal_distance, 0.01f)));
-  }
-
   for (size_t c = 0; c < time_steps; ++c) {
     float noise_vx = curand_normal(&local_state) * sampling_std.vx;
     float noise_wz = curand_normal(&local_state) * sampling_std.wz;
     float noise_vy = is_holonomic ? curand_normal(&local_state) * sampling_std.vy : 0.0f;
 
-    // Match the CPU admissible sample set with distance-deceleration cap.
-    float sampled_vx = clampf(control_vx[c] + noise_vx, constraints.vx_min, safe_vx_cap);
-    float sampled_wz = clampf(control_wz[c] + noise_wz, -constraints.wz, constraints.wz);
-    float sampled_vy = is_holonomic ?
-      clampf(control_vy[c] + noise_vy, -constraints.vy, constraints.vy) : 0.0f;
+    // CPU samples unconstrained Gaussian controls, then MotionModel::predict applies
+    // acceleration and jerk constraints to the columns consumed by the rollout.
+    float sampled_vx = control_vx[c] + noise_vx;
+    float sampled_wz = control_wz[c] + noise_wz;
+    float sampled_vy = is_holonomic ? control_vy[c] + noise_vy : 0.0f;
 
     if (c > 0) {
       rollout_vx = next_vx;
@@ -178,12 +170,15 @@ __global__ void evaluate_obstacles_kernel(
   float resolution,
   float origin_x,
   float origin_y,
-  float circumscribed_cost,
+  float inscribed_radius,
   float inflation_scale_factor,
   float inflation_radius,
+  float collision_margin_distance,
+  float collision_cost,
   float critical_weight,
   float repulsion_weight,
   bool near_goal,
+  bool unknown_is_collision,
   unsigned int power,
   float * __restrict__ costs)
 {
@@ -195,12 +190,7 @@ __global__ void evaluate_obstacles_kernel(
   bool collided = false;
 
   constexpr float LOG_253 = 5.5333895f;
-  constexpr size_t NEAR_STEPS = 16;
-
-  for (size_t c = 0; c < time_steps; ) {
-    size_t step_inc = (c < NEAR_STEPS) ? 1 : 2;
-    float weight_factor = (float)step_inc;
-
+  for (size_t c = 0; c < time_steps; ++c) {
     size_t idx = r * time_steps + c;
     float px = traj_x[idx];
     float py = traj_y[idx];
@@ -208,34 +198,29 @@ __global__ void evaluate_obstacles_kernel(
     int mx = __float2int_rd((px - origin_x) / resolution);
     int my = __float2int_rd((py - origin_y) / resolution);
 
-    if (mx < 0 || mx >= (int)size_x || my < 0 || my >= (int)size_y) {
-      c += step_inc;
-      continue;
-    }
-
-    unsigned char cell_cost = costmap_data[my * size_x + mx];
-    if (cell_cost >= 254) {
+    const bool outside_map = mx < 0 || mx >= (int)size_x || my < 0 || my >= (int)size_y;
+    const unsigned char cell_cost = outside_map ? 255 : costmap_data[my * size_x + mx];
+    if (cell_cost == 254 || cell_cost == 253 || (cell_cost == 255 && unknown_is_collision)) {
       collided = true;
       break;
-    } else if (cell_cost >= 1) {
+    } else if (cell_cost >= 1 && cell_cost < 253) {
       if (inflation_radius > 0.0f && inflation_scale_factor > 0.0f && repulsion_weight > 0.0f) {
-        float dist_to_obj = (LOG_253 - __logf((float)cell_cost)) / inflation_scale_factor;
-        if (dist_to_obj < 0.10f) {
-          traj_cost += (0.10f - dist_to_obj) * weight_factor;
+        const float dist_to_obj =
+          (inflation_scale_factor * inscribed_radius - __logf((float)cell_cost) + LOG_253) /
+          inflation_scale_factor - inscribed_radius;
+        if (dist_to_obj < collision_margin_distance) {
+          traj_cost += collision_margin_distance - dist_to_obj;
         } else if (!near_goal && dist_to_obj < inflation_radius) {
-          repulsive_cost += (inflation_radius - dist_to_obj) * weight_factor;
+          repulsive_cost += inflation_radius - dist_to_obj;
         }
       }
     }
-    c += step_inc;
   }
 
-  if (collided) {
-    costs[r] = 10000.0f;
-  } else {
-    float total = (critical_weight * traj_cost) + (repulsion_weight * repulsive_cost / (float)time_steps);
-    costs[r] = powf(total, (float)power);
-  }
+  const float raw_cost = collided ? collision_cost : traj_cost;
+  const float total =
+    (critical_weight * raw_cost) + (repulsion_weight * repulsive_cost / (float)time_steps);
+  costs[r] = powf(total, (float)power);
 }
 
 // ── Launcher Functions ──
@@ -338,7 +323,7 @@ bool cuda_generate_trajectories(
   void * d_cvx, void * d_cvy, void * d_cwz,
   void * d_ctrl_vx, void * d_ctrl_vy, void * d_ctrl_wz,
   float * host_traj_x, float * host_traj_y, float * host_traj_yaws,
-  float * host_cvx, float * host_cvy, float * host_cwz, float goal_distance, void * stream)
+  float * host_cvx, float * host_cvy, float * host_cwz, void * stream)
 {
   cudaStream_t custream = (stream) ? *((cudaStream_t *)stream) : 0;
 
@@ -356,7 +341,6 @@ bool cuda_generate_trajectories(
     (curandState *)curand_states,
     batch_size, time_steps, model_dt, is_holonomic,
     init_state, (float *)d_ctrl_vx, (float *)(is_holonomic ? d_ctrl_vy : NULL), (float *)d_ctrl_wz, constraints, sampling_std,
-    goal_distance,
     (float *)d_traj_x, (float *)d_traj_y, (float *)d_traj_yaws,
     (float *)d_cvx, (float *)d_cvy, (float *)d_cwz);
 
@@ -403,8 +387,9 @@ bool cuda_evaluate_obstacles(
   void * d_traj_x, void * d_traj_y, void ** d_costmap, void * d_costs,
   const unsigned char * host_costmap, bool costmap_changed, unsigned int size_x, unsigned int size_y,
   float resolution, float origin_x, float origin_y,
-  float circumscribed_cost, float inflation_scale_factor, float inflation_radius,
-  float critical_weight, float repulsion_weight, bool near_goal, unsigned int power,
+  float inscribed_radius, float inflation_scale_factor, float inflation_radius,
+  float collision_margin_distance, float collision_cost, float critical_weight,
+  float repulsion_weight, bool near_goal, bool unknown_is_collision, unsigned int power,
   float * host_costs, void * stream)
 {
   cudaStream_t custream = (stream) ? *((cudaStream_t *)stream) : 0;
@@ -414,7 +399,7 @@ bool cuda_evaluate_obstacles(
     cudaMalloc(d_costmap, map_size * sizeof(unsigned char));
     costmap_changed = true;
   }
-  
+
   if (costmap_changed) {
     cudaMemcpyAsync(*d_costmap, host_costmap, map_size * sizeof(unsigned char), cudaMemcpyHostToDevice, custream);
   }
@@ -426,8 +411,8 @@ bool cuda_evaluate_obstacles(
     batch_size, time_steps,
     (const float *)d_traj_x, (const float *)d_traj_y, (const unsigned char *)*d_costmap,
     size_x, size_y, resolution, origin_x, origin_y,
-    circumscribed_cost, inflation_scale_factor, inflation_radius,
-    critical_weight, repulsion_weight, near_goal, power,
+    inscribed_radius, inflation_scale_factor, inflation_radius, collision_margin_distance,
+    collision_cost, critical_weight, repulsion_weight, near_goal, unknown_is_collision, power,
     (float *)d_costs);
 
   cudaError_t err = cudaGetLastError();
@@ -489,11 +474,7 @@ __global__ void evaluate_path_angle_kernel(
       }
     }
 
-    float yaw_err = fabsf(cuda_shortest_angular_distance(tyaw, target_yaw));
-    if (wrong_way_cost_ratio != 1.0f && yaw_err > (float)M_PI_2) {
-      yaw_err *= wrong_way_cost_ratio;
-    }
-    yaw_error_sum += yaw_err;
+    yaw_error_sum += fabsf(cuda_shortest_angular_distance(tyaw, target_yaw));
   }
 
   float total_cost = powf(yaw_error_sum / (float)time_steps * weight, (float)power);

@@ -103,8 +103,7 @@ public:
   geometry_msgs::msg::TwistStamped evalControl(
     const geometry_msgs::msg::PoseStamped & robot_pose,
     const geometry_msgs::msg::Twist & robot_speed, const nav_msgs::msg::Path & plan,
-    nav2_core::GoalChecker * goal_checker,
-    double path_progress = -1.0, double goal_distance = -1.0);
+    nav2_core::GoalChecker * goal_checker);
 
   /**
    * @brief Get the trajectories generated in a cycle for visualization
@@ -236,8 +235,7 @@ protected:
   void updateInitialStateVelocities(models::State & state) const;
 
   /**
-   * @brief Rebuild rollout state velocities from already constrained controls
-   * @param state State whose control matrices were produced by the CUDA rollout
+   * @brief Populate state velocities with the same column convention as MotionModel::predict
    */
   void rebuildStateVelocitiesFromControls(models::State & state) const;
 
@@ -279,8 +277,6 @@ protected:
    */
   geometry_msgs::msg::TwistStamped
   getControlFromSequenceAsTwist(const builtin_interfaces::msg::Time & stamp);
-
-  float current_goal_distance_{-1.0f};
 
   /**
    * @brief Whether the motion model is holonomic
@@ -331,7 +327,7 @@ protected:
   ParametersHandler * parameters_handler_;
   CriticManager critic_manager_;
   NoiseGenerator noise_generator_;
-  mppi::cuda::CudaOptimizer cuda_optimizer_;
+  cuda::CudaOptimizer cuda_optimizer_;
 
   models::OptimizerSettings settings_;
   bool speed_limit_active_{false};
@@ -350,7 +346,7 @@ protected:
 
   CriticData critics_data_ =
   {state_, generated_trajectories_, path_, costs_, settings_.model_dt, false, nullptr, nullptr,
-    std::nullopt, std::nullopt, nullptr, true};  /// Caution, keep references
+    std::nullopt, std::nullopt, nullptr, false};  /// Caution, keep references
 
   rclcpp::Logger logger_{rclcpp::get_logger("MPPIController")};
 };

@@ -19,7 +19,7 @@ bool CudaOptimizer::initialize(size_t batch_size, size_t time_steps, float model
   model_dt_ = model_dt;
   is_holonomic_ = is_holonomic;
   cuda_initialized_ = false;
-  
+
   std::cout << "[MPPI CUDA] Pure CUDA mode active. NVCC compiler / CUDA device required for GPU acceleration." << std::endl;
   return false;
 }
@@ -46,8 +46,7 @@ bool CudaOptimizer::generateNoisedTrajectories(
   float * host_traj_yaws,
   float * host_cvx,
   float * host_cvy,
-  float * host_cwz,
-  float goal_distance)
+  float * host_cwz)
 {
   (void)init_state;
   (void)control_vx;
@@ -71,12 +70,15 @@ bool CudaOptimizer::evaluateObstacleCosts(
   float resolution,
   float origin_x,
   float origin_y,
-  float circumscribed_cost,
+  float inscribed_radius,
   float inflation_scale_factor,
   float inflation_radius,
+  float collision_margin_distance,
+  float collision_cost,
   float critical_weight,
   float repulsion_weight,
   bool near_goal,
+  bool unknown_is_collision,
   unsigned int power,
   std::vector<float> & host_costs)
 {
@@ -86,12 +88,15 @@ bool CudaOptimizer::evaluateObstacleCosts(
   (void)resolution;
   (void)origin_x;
   (void)origin_y;
-  (void)circumscribed_cost;
+  (void)inscribed_radius;
   (void)inflation_scale_factor;
   (void)inflation_radius;
+  (void)collision_margin_distance;
+  (void)collision_cost;
   (void)critical_weight;
   (void)repulsion_weight;
   (void)near_goal;
+  (void)unknown_is_collision;
   (void)power;
   (void)host_costs;
   return false;

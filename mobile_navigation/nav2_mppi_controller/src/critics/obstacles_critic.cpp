@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include <cmath>
+#include <vector>
 #include "nav2_mppi_controller/critics/obstacles_critic.hpp"
 
 namespace mppi::critics
@@ -117,33 +118,38 @@ void ObstaclesCritic::score(CriticData & data)
     return;
   }
 
+  if (consider_footprint_) {
+    // footprint may have changed since initialization if user has dynamic footprints
+    possibly_inscribed_cost_ = findCircumscribedCost(costmap_ros_);
+  }
+
   const bool near_goal = utils::withinPositionGoalTolerance(
     near_goal_distance_, data.state.pose.pose, data.path);
 
-  if (data.use_cuda && data.cuda_optimizer != nullptr && data.cuda_optimizer->isCudaAvailable()) {
+  // The CUDA kernel intentionally handles only the point-costmap mode. Footprint collision
+  // checking depends on Costmap2DROS geometry and must stay on CPU to preserve semantics.
+  if (!consider_footprint_ && data.use_cuda && data.cuda_optimizer != nullptr &&
+    data.cuda_optimizer->isCudaAvailable())
+  {
     std::vector<float> gpu_costs;
-    bool success = data.cuda_optimizer->evaluateObstacleCosts(
-      costmap_->getCharMap(),
-      costmap_->getSizeInCellsX(),
-      costmap_->getSizeInCellsY(),
-      costmap_->getResolution(),
-      costmap_->getOriginX(),
-      costmap_->getOriginY(),
-      possibly_inscribed_cost_,
-      inflation_scale_factor_,
-      inflation_radius_,
-      critical_weight_,
-      repulsion_weight_,
-      near_goal,
-      power_,
-      gpu_costs
-    );
-
-    if (success) {
+    const bool unknown_is_collision =
+      !costmap_ros_->getLayeredCostmap()->isTrackingUnknown();
+    const bool success = data.cuda_optimizer->evaluateObstacleCosts(
+      costmap_->getCharMap(), costmap_->getSizeInCellsX(), costmap_->getSizeInCellsY(),
+      costmap_->getResolution(), costmap_->getOriginX(), costmap_->getOriginY(),
+      costmap_ros_->getLayeredCostmap()->getInscribedRadius(), inflation_scale_factor_,
+      inflation_radius_, collision_margin_distance_, collision_cost_, critical_weight_,
+      repulsion_weight_, near_goal, unknown_is_collision, power_, gpu_costs);
+    if (success && gpu_costs.size() == static_cast<size_t>(data.costs.size())) {
       data.costs += Eigen::Map<const Eigen::ArrayXf>(gpu_costs.data(), gpu_costs.size());
-      data.fail_flag = (gpu_costs.empty() || (Eigen::Map<const Eigen::ArrayXf>(gpu_costs.data(), gpu_costs.size()) >= 10000.0f).all());
+      const float collision_score = std::pow(critical_weight_ * collision_cost_, power_);
+      data.fail_flag = std::all_of(
+        gpu_costs.begin(), gpu_costs.end(), [collision_score](float value) {
+          return std::abs(value - collision_score) <= 1e-3f * std::max(1.0f, collision_score);
+        });
       return;
     }
+    RCLCPP_WARN(logger_, "CUDA obstacle critic failed; using CPU scoring for this iteration");
   }
 
   models::Vector raw_cost = models::Vector::Zero(data.costs.size());

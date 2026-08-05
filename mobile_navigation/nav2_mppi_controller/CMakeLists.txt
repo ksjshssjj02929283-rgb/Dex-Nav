@@ -48,8 +48,14 @@ endif()
 if(COMPILER_SUPPORTS_AVX2)
   add_compile_options(-mavx2)
 endif()
-# 使用标准的 CPU 浮点运算 (遵循 IEEE 754 标准，移除 -ffast-math 与 -ffp-contract=fast)
-add_compile_options(-O3 -mtune=generic)
+
+if(COMPILER_SUPPORTS_FMA)
+  add_compile_options(-mfma)
+endif()
+
+# Keep the pre-CUDA CPU compilation behavior unchanged. CUDA uses the same rollout and
+# critic equations; comparisons are tolerance-based because the two devices differ in FP math.
+add_compile_options(-O3 -finline-limit=10000000 -ffp-contract=fast -ffast-math -mtune=generic)
 
 find_program(NVCC_EXECUTABLE nvcc HINTS /usr/bin /usr/local/cuda/bin /usr/local/cuda-12.6/bin /usr/local/cuda-12.0/bin /usr/local/cuda-11.8/bin /usr/local/cuda-11.5/bin)
 if(NVCC_EXECUTABLE)
@@ -75,7 +81,7 @@ if(NVCC_EXECUTABLE)
   else()
     message(STATUS "[MPPI CUDA] User specified custom CMAKE_CUDA_ARCHITECTURES: ${CMAKE_CUDA_ARCHITECTURES}")
   endif()
-  
+
   get_directory_property(CURRENT_DIR_COMPILE_OPTIONS COMPILE_OPTIONS)
   string(REPLACE "-Wdeprecated" "" CLEAN_COMPILE_OPTIONS "${CURRENT_DIR_COMPILE_OPTIONS}")
   string(REPLACE "-Werror" "" CLEAN_COMPILE_OPTIONS "${CLEAN_COMPILE_OPTIONS}")
@@ -89,7 +95,7 @@ if(NVCC_EXECUTABLE)
     CUDA_ARCHITECTURES "${CMAKE_CUDA_ARCHITECTURES}"
     CUDA_SEPARABLE_COMPILATION ON
   )
-  
+
   # 普通 GPU 浮点运算设置 (遵循标准 IEEE 754 规范，精确除法与开方)
   target_compile_options(mppi_cuda_backend PRIVATE
     $<$<COMPILE_LANGUAGE:CUDA>:

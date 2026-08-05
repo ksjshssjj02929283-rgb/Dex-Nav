@@ -23,7 +23,6 @@
 #include <cmath>
 
 #include "nav2_costmap_2d/costmap_filters/filter_values.hpp"
-#include "tf2/utils.h"
 
 namespace mppi
 {
@@ -52,6 +51,7 @@ void Optimizer::initialize(
 
 void Optimizer::shutdown()
 {
+  cuda_optimizer_.shutdown();
   noise_generator_.shutdown();
 }
 
@@ -85,7 +85,6 @@ void Optimizer::getParams()
   getParam(s.retry_attempt_limit, "retry_attempt_limit", 1);
   getParam(s.open_loop, "open_loop", false);
   getParam(s.use_cuda, "use_cuda", true);
-  RCLCPP_INFO(logger_, "MPPI Optimizer use_cuda configuration set to: %s", s.use_cuda ? "ENABLED (true)" : "DISABLED (false)");
 
   // 确保加速度参数符号正确
   s.base_constraints.ax_max = fabs(s.base_constraints.ax_max);
@@ -151,26 +150,20 @@ void Optimizer::reset()
 
   noise_generator_.reset(settings_, isHolonomic());
   motion_model_->initialize(settings_.constraints, settings_.model_dt);
-  cuda_optimizer_.initialize(settings_.batch_size, settings_.time_steps, settings_.model_dt, isHolonomic());
+  cuda_optimizer_.shutdown();
+  if (settings_.use_cuda) {
+    const bool available = cuda_optimizer_.initialize(
+      settings_.batch_size, settings_.time_steps, settings_.model_dt, isHolonomic());
+    RCLCPP_INFO(logger_, "MPPI CUDA rollout/critic backend: %s", available ? "enabled" : "unavailable; using CPU");
+  }
   RCLCPP_INFO(logger_, "Optimizer reset");
 }
 
 geometry_msgs::msg::TwistStamped Optimizer::evalControl(
   const geometry_msgs::msg::PoseStamped & robot_pose,
   const geometry_msgs::msg::Twist & robot_speed,
-  const nav_msgs::msg::Path & plan, nav2_core::GoalChecker * goal_checker,
-  double path_progress, double goal_distance)
+  const nav_msgs::msg::Path & plan, nav2_core::GoalChecker * goal_checker)
 {
-  if (goal_distance > 0.0) {
-    current_goal_distance_ = static_cast<float>(goal_distance);
-  } else if (!plan.poses.empty()) {
-    float g_dx = plan.poses.back().pose.position.x - robot_pose.pose.position.x;
-    float g_dy = plan.poses.back().pose.position.y - robot_pose.pose.position.y;
-    current_goal_distance_ = std::sqrt(g_dx * g_dx + g_dy * g_dy);
-  } else {
-    current_goal_distance_ = -1.0f;
-  }
-
   prepare(robot_pose, robot_speed, plan, goal_checker);
 
   do {
@@ -180,119 +173,6 @@ geometry_msgs::msg::TwistStamped Optimizer::evalControl(
   auto control = getControlFromSequenceAsTwist(plan.header.stamp);
 
   last_command_vel_ = control.twist;
-
-  // ──【控制精度与运动行为结构化评估日志 [MPPI_EVAL]】──
-  if (!plan.poses.empty()) {
-    const double robot_x = robot_pose.pose.position.x;
-    const double robot_y = robot_pose.pose.position.y;
-    const double robot_yaw = tf2::getYaw(robot_pose.pose.orientation);
-
-    // 1. 计算航向误差 heading_error (相对于前向参考点)
-    size_t target_idx = std::min(static_cast<size_t>(4), plan.poses.size() - 1);
-    const double dx = plan.poses[target_idx].pose.position.x - robot_x;
-    const double dy = plan.poses[target_idx].pose.position.y - robot_y;
-    const double target_yaw = std::atan2(dy, dx);
-    const double heading_error = std::atan2(std::sin(target_yaw - robot_yaw), std::cos(target_yaw - robot_yaw));
-    const double heading_deg = heading_error * 180.0 / M_PI;
-
-    // 2. 计算交叉轨迹误差 XTE (Cross-Track Error)
-    double min_dist_sq = std::numeric_limits<double>::max();
-    for (const auto & pose : plan.poses) {
-      double px = pose.pose.position.x;
-      double py = pose.pose.position.y;
-      double dist_sq = (px - robot_x) * (px - robot_x) + (py - robot_y) * (py - robot_y);
-      if (dist_sq < min_dist_sq) {
-        min_dist_sq = dist_sq;
-      }
-    }
-    const double xte = std::sqrt(min_dist_sq);
-
-    // 3. 计算加速度与角加速度 (用于评估运动平滑度)
-    static rclcpp::Time last_stamp = plan.header.stamp;
-    static geometry_msgs::msg::Twist prev_cmd_vel;
-    double dt = (rclcpp::Time(plan.header.stamp) - last_stamp).seconds();
-    if (dt <= 1e-4) dt = settings_.model_dt;
-
-    const double ax = (control.twist.linear.x - prev_cmd_vel.linear.x) / dt;
-    const double wz_dot = (control.twist.angular.z - prev_cmd_vel.angular.z) / dt;
-
-    prev_cmd_vel = control.twist;
-    last_stamp = plan.header.stamp;
-
-    // 4. 计算到终点的直线距离与航向差 (用于到位精度检测)
-    const auto & goal_pose = plan.poses.back().pose;
-    const double goal_dx = goal_pose.position.x - robot_x;
-    const double goal_dy = goal_pose.position.y - robot_y;
-    const double goal_dist = std::sqrt(goal_dx * goal_dx + goal_dy * goal_dy);
-    const double goal_yaw = tf2::getYaw(goal_pose.orientation);
-    const double goal_yaw_err = std::atan2(std::sin(goal_yaw - robot_yaw), std::cos(goal_yaw - robot_yaw));
-    const double goal_yaw_deg = goal_yaw_err * 180.0 / M_PI;
-
-    const int is_cuda = (settings_.use_cuda && cuda_optimizer_.isCudaAvailable()) ? 1 : 0;
-    const double now_sec = rclcpp::Clock(RCL_ROS_TIME).now().seconds();
-    static auto diag_clock = std::make_shared<rclcpp::Clock>(RCL_ROS_TIME);
-
-    // 结构化 Key-Value 单行输出，供 Python 脚本抓取做对比分析
-    RCLCPP_INFO(
-      logger_,
-      "[MPPI_EVAL] time=%.3f, cuda=%d, heading_err=%.4f, xte=%.4f, vx=%.4f, vy=%.4f, wz=%.4f, ax=%.4f, wz_dot=%.4f, goal_dist=%.4f, goal_yaw_err=%.4f",
-      now_sec, is_cuda, heading_error, xte, control.twist.linear.x, control.twist.linear.y, control.twist.angular.z, ax, wz_dot, goal_dist, goal_yaw_err);
-
-    // 当机器人进入目标区域 (如离终点 < 0.5m) 或机器停稳时，特别触发到位精度事件日志
-    if (goal_dist < 0.50 || (goal_checker && goal_checker->isGoalReached(robot_pose.pose, goal_pose, robot_speed))) {
-      RCLCPP_INFO_THROTTLE(
-        logger_, *diag_clock, 200,
-        "[MPPI_GOAL_EVAL] time=%.3f, cuda=%d, goal_dist=%.4f, goal_yaw_err=%.4f, goal_yaw_deg=%.2f, vx=%.3f, wz=%.3f",
-        now_sec, is_cuda, goal_dist, goal_yaw_err, goal_yaw_deg, control.twist.linear.x, control.twist.angular.z);
-    }
-
-    // 终点越界与减速包络诊断日志：监控采样轨迹末端超越终点的距离 (D_traj - D_goal)
-    if (goal_dist < 2.5) {
-      float max_traj_dist = 0.0f;
-      for (size_t c = 0; c < generated_trajectories_.x.cols(); ++c) {
-        float dx = generated_trajectories_.x(0, c) - robot_x;
-        float dy = generated_trajectories_.y(0, c) - robot_y;
-        float d = std::sqrt(dx * dx + dy * dy);
-        if (d > max_traj_dist) max_traj_dist = d;
-      }
-      float overshoot = max_traj_dist - goal_dist;
-      if (overshoot > 0.2f) {
-        RCLCPP_WARN_THROTTLE(
-          logger_, *diag_clock, 500,
-          "[MPPI_GOAL_OVERSHOOT_DIAG] Mode: %s | DistToGoal: %.3fm | MaxTrajLength: %.3fm | Overshoot: +%.3fm | Cmd_vx: %.3fm/s. "
-          "Diagnosis: CUDA rollout horizon (T*dt*vx) exceeds remaining distance to goal. Goal/LinearVelocity critics need distance-deceleration envelope.",
-          is_cuda ? "GPU (CUDA)" : "CPU", goal_dist, max_traj_dist, overshoot, control.twist.linear.x);
-      }
-    }
-
-    RCLCPP_INFO_THROTTLE(
-      logger_, *diag_clock, 500,
-      "[MPPI HEADING DIAG] HeadingErr: %.2f rad (%.1f deg) | XTE: %.3fm | Cmd: vx=%.3f m/s, wz=%.3f rad/s | CUDA: %s",
-      heading_error, heading_deg, xte,
-      control.twist.linear.x, control.twist.angular.z,
-      is_cuda ? "ENABLED" : "DISABLED");
-
-    // 专项倒车指令诊断日志：监控后退/倒车指令 (vx < -0.01 m/s) 的触发
-    if (control.twist.linear.x < -0.01) {
-      RCLCPP_WARN_THROTTLE(
-        logger_, *diag_clock, 200,
-        "[MPPI_REVERSE_DIAG] Reverse Cmd Triggered! Mode: %s | vx=%.3f m/s, wz=%.3f rad/s | HeadingErr=%.2f rad (%.1f deg), XTE=%.3fm. "
-        "Explanation: %s",
-        is_cuda ? "GPU (CUDA)" : "CPU",
-        control.twist.linear.x, control.twist.angular.z,
-        heading_error, heading_deg, xte,
-        is_cuda ? "CUDA parallel sampling generated lower cost for negative vx trajectory under current heading error."
-                : "CPU sequential sampling selected negative vx trajectory.");
-    }
-
-    if (std::abs(heading_error) > 0.45 && control.twist.linear.x > 0.1 && std::abs(control.twist.angular.z) < 0.5) {
-      RCLCPP_WARN_THROTTLE(
-        logger_, *diag_clock, 1000,
-        "[MPPI HEADING ALIGNMENT SLOW] Large heading error (%.1f deg) detected, but MPPI outputs forward vel vx=%.3f m/s with small angular vel wz=%.3f rad/s! "
-        "Check PathAngleCritic/PathAlignCritic weights or PreferForwardCritic penalty.",
-        heading_deg, control.twist.linear.x, control.twist.angular.z);
-    }
-  }
 
   if (settings_.shift_control_sequence) {
     shiftControlSequence();
@@ -306,21 +186,12 @@ void Optimizer::optimize()
   constexpr double kSlowOptimizeWarnMs = 100.0;
 
   for (size_t i = 0; i < settings_.iteration_count; ++i) {
-    costs_.fill(0.0f);
-    critics_data_.fail_flag = false;
-
     auto t_generate_start = std::chrono::high_resolution_clock::now();
     generateNoisedTrajectories();
     auto t_generate_end = std::chrono::high_resolution_clock::now();
 
     auto t_critic_start = std::chrono::high_resolution_clock::now();
     critic_manager_.evalTrajectoriesScores(critics_data_);
-
-    // ⭐【方案二：CUDA Stream 异步流单点同步屏障】
-    // CPU 侧 Critics 计算完毕后，一次性同步等待 GPU 侧的异步核函数完成，实现 CPU-GPU 时间重叠
-    if (settings_.use_cuda && cuda_optimizer_.isCudaAvailable()) {
-      cuda_optimizer_.synchronizeStream();
-    }
     auto t_critic_end = std::chrono::high_resolution_clock::now();
 
     auto t_update_start = std::chrono::high_resolution_clock::now();
@@ -335,11 +206,12 @@ void Optimizer::optimize()
       std::chrono::duration<double, std::milli>(t_update_end - t_update_start).count();
     const double total_ms = generate_ms + critic_ms + update_ms;
 
-    static auto clock_ptr = std::make_shared<rclcpp::Clock>(RCL_ROS_TIME);
+    static auto timing_clock = std::make_shared<rclcpp::Clock>(RCL_ROS_TIME);
     RCLCPP_INFO_THROTTLE(
-      logger_, *clock_ptr, 1000,
-      "[MPPI STEP BREAKDOWN] Step1_Rollout=%.3fms | Step2_CriticScoring=%.3fms | Step3_SequenceUpdate=%.3fms | TotalOpt=%.3fms",
-      generate_ms, critic_ms, update_ms, total_ms);
+      logger_, *timing_clock, 1000,
+      "[MPPI_TIMING] cuda=%d rollout_ms=%.3f critics_ms=%.3f update_ms=%.3f total_ms=%.3f",
+      settings_.use_cuda && cuda_optimizer_.isCudaAvailable(), generate_ms, critic_ms, update_ms,
+      total_ms);
 
     if (
       total_ms >= kSlowOptimizeWarnMs || generate_ms >= kSlowOptimizeWarnMs ||
@@ -392,13 +264,7 @@ void Optimizer::prepare(
   critics_data_.furthest_reached_path_point.reset();
   critics_data_.path_pts_valid.reset();
   critics_data_.cuda_optimizer = &cuda_optimizer_;
-  critics_data_.use_cuda = settings_.use_cuda;
-
-  // ➕【起步前向热启动】当小车静止且控制序列为 0 时，赋予正向向前种子，彻底解决第一帧下发 0 速度问题
-  if (std::abs(state_.speed.linear.x) < 0.05f && control_sequence_.vx.maxCoeff() < 0.05f) {
-    float warm_start_vx = std::max(0.15f, settings_.constraints.vx_max * 0.4f);
-    control_sequence_.vx.setConstant(warm_start_vx);
-  }
+  critics_data_.use_cuda = settings_.use_cuda && cuda_optimizer_.isCudaAvailable();
 }
 
 void Optimizer::shiftControlSequence()
@@ -422,67 +288,38 @@ void Optimizer::shiftControlSequence()
 void Optimizer::generateNoisedTrajectories()
 {
   if (settings_.use_cuda && cuda_optimizer_.isCudaAvailable()) {
-    auto t_cuda_start = std::chrono::high_resolution_clock::now();
-
-    mppi::cuda::CudaState init_state{
+    const cuda::CudaState initial_state{
       static_cast<float>(state_.pose.pose.position.x),
       static_cast<float>(state_.pose.pose.position.y),
       static_cast<float>(tf2::getYaw(state_.pose.pose.orientation)),
       static_cast<float>(state_.speed.linear.x),
       static_cast<float>(state_.speed.linear.y),
-      static_cast<float>(state_.speed.angular.z)
-    };
-
-    std::vector<float> control_vx(
+      static_cast<float>(state_.speed.angular.z)};
+    const std::vector<float> control_vx(
       control_sequence_.vx.data(), control_sequence_.vx.data() + control_sequence_.vx.size());
-    std::vector<float> control_wz(
+    const std::vector<float> control_wz(
       control_sequence_.wz.data(), control_sequence_.wz.data() + control_sequence_.wz.size());
     std::vector<float> control_vy;
-    if (isHolonomic() && control_sequence_.vy.size() > 0) {
+    if (isHolonomic()) {
       control_vy.assign(
         control_sequence_.vy.data(), control_sequence_.vy.data() + control_sequence_.vy.size());
     }
 
-    float goal_dist = current_goal_distance_;
-
     if (cuda_optimizer_.generateNoisedTrajectories(
-        init_state, control_vx, control_vy, control_wz,
+        initial_state, control_vx, control_vy, control_wz,
         settings_.constraints, settings_.sampling_std,
-        generated_trajectories_.x.data(),
-        generated_trajectories_.y.data(),
-        generated_trajectories_.yaws.data(),
-        state_.cvx.data(),
-        isHolonomic() ? state_.cvy.data() : nullptr,
-        state_.cwz.data(),
-        goal_dist))
+        generated_trajectories_.x.data(), generated_trajectories_.y.data(),
+        generated_trajectories_.yaws.data(), state_.cvx.data(),
+        isHolonomic() ? state_.cvy.data() : nullptr, state_.cwz.data()))
     {
-      cuda_optimizer_.synchronizeStream();
-
-      // CUDA returns the constrained controls and integrated poses. Rebuild the state velocity
-      // matrices with the same temporal convention as MotionModel::predict(), because several
-      // CPU critics score state.vx/vy/wz even when rollout generation runs on the GPU.
       rebuildStateVelocitiesFromControls(state_);
-
-      auto t_cuda_end = std::chrono::high_resolution_clock::now();
-      double cuda_ms =
-        std::chrono::duration<double, std::milli>(t_cuda_end - t_cuda_start).count();
-
-      (void)cuda_ms;
       return;
     }
+    RCLCPP_WARN(logger_, "MPPI CUDA rollout failed; falling back to CPU for this iteration");
   }
 
   noise_generator_.setNoisedControls(state_, control_sequence_);
   noise_generator_.generateNextNoises();
-
-  // Sampling limits are part of the control domain, not merely an output clamp. Keeping sampled
-  // controls inside the active profile prevents critics from evaluating controls that the robot
-  // can never execute and gives CPU and CUDA the same admissible sample set.
-  state_.cvx = state_.cvx.min(settings_.constraints.vx_max).max(settings_.constraints.vx_min);
-  state_.cwz = state_.cwz.min(settings_.constraints.wz).max(-settings_.constraints.wz);
-  if (isHolonomic()) {
-    state_.cvy = state_.cvy.min(settings_.constraints.vy).max(-settings_.constraints.vy);
-  }
   updateStateVelocities(state_);
   integrateStateVelocities(generated_trajectories_, state_);
 }
@@ -561,16 +398,6 @@ void Optimizer::applyControlSequenceConstraints()
   // 在车辆运动学约束前再次硬限幅，保证最终发布的 offset 控制量也满足阶段速度约束。
   clampControlSequence();
   motion_model_->applyConstraints(control_sequence_);
-
-  // ➕【零速度根因深度诊断】如果优化的当前时刻控制量为 0，输出具体控制量与 Cost 详细指标
-  if (std::abs(control_sequence_.vx(0)) < 1e-3 && std::abs(control_sequence_.wz(0)) < 1e-3) {
-    static auto clock_ptr = std::make_shared<rclcpp::Clock>(RCL_ROS_TIME);
-    RCLCPP_WARN_THROTTLE(
-      logger_, *clock_ptr, 1000,
-      "[MPPI ZERO-CMD DIAG] Control sequence converged to zero! vx(0)=%.4f, wz(0)=%.4f | fail_flag=%d, min_cost=%.2f, max_cost=%.2f",
-      control_sequence_.vx(0), control_sequence_.wz(0),
-      critics_data_.fail_flag, costs_.minCoeff(), costs_.maxCoeff());
-  }
 }
 
 void Optimizer::updateStateVelocities(
@@ -594,16 +421,13 @@ void Optimizer::updateInitialStateVelocities(
 void Optimizer::rebuildStateVelocitiesFromControls(models::State & state) const
 {
   updateInitialStateVelocities(state);
-
-  const Eigen::Index time_steps = state.vx.cols();
-  if (time_steps < 2) {
+  if (state.vx.cols() < 2) {
     return;
   }
-
-  state.vx.rightCols(time_steps - 1) = state.cvx.leftCols(time_steps - 1);
-  state.wz.rightCols(time_steps - 1) = state.cwz.leftCols(time_steps - 1);
+  state.vx.rightCols(state.vx.cols() - 1) = state.cvx.leftCols(state.cvx.cols() - 1);
+  state.wz.rightCols(state.wz.cols() - 1) = state.cwz.leftCols(state.cwz.cols() - 1);
   if (isHolonomic()) {
-    state.vy.rightCols(time_steps - 1) = state.cvy.leftCols(time_steps - 1);
+    state.vy.rightCols(state.vy.cols() - 1) = state.cvy.leftCols(state.cvy.cols() - 1);
   }
 }
 
@@ -713,17 +537,7 @@ void Optimizer::updateControlSequence()
 
   const auto costs_normalized = costs_ - costs_.minCoeff();
   const auto exponents = (-1.0f / settings_.temperature * costs_normalized).exp();
-
-  // ⭐【Softmax Epsilon 微弱长尾截断】剔除权重 < 1e-4 的微弱/高 Cost 拖尾分量，消除 GPU 单精度浮点数归约尾巴拉高线速度
-  models::Vector truncated_exponents = exponents.unaryExpr([](float val) {
-    return val < 1e-4f ? 0.0f : val;
-  });
-  float exp_sum = truncated_exponents.sum();
-  if (exp_sum <= 0.0f) {
-    exp_sum = exponents.sum();
-    truncated_exponents = exponents;
-  }
-  const models::Vector softmaxes = truncated_exponents / exp_sum;
+  const models::Vector softmaxes = exponents / exponents.sum();
 
   for (Eigen::Index i = 0; i < state_.cvx.cols(); ++i) {
     control_sequence_.vx(i) = (state_.cvx.col(i) * softmaxes).sum();

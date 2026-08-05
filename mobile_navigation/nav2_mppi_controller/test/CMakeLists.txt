@@ -10,8 +10,6 @@ set(TEST_NAMES
   path_handler_test
   critic_manager_test
   optimizer_unit_tests
-  cuda_rollout_comparison_test
-  cuda_critic_comparison_test
 )
 
 foreach(name IN LISTS TEST_NAMES)
@@ -25,13 +23,19 @@ foreach(name IN LISTS TEST_NAMES)
 
   target_link_libraries(${name}
     mppi_controller
-    mppi_critics
   )
 
   if(${TEST_DEBUG_INFO})
     target_compile_definitions(${name} PUBLIC -DTEST_DEBUG_INFO)
   endif()
 
+endforeach()
+
+# CUDA parity checks are feature-specific and intentionally do not alter the regular test setup.
+foreach(name IN ITEMS cuda_rollout_comparison_test cuda_critic_comparison_test)
+  ament_add_gtest(${name} ${name}.cpp)
+  ament_target_dependencies(${name} ${dependencies_pkgs})
+  target_link_libraries(${name} mppi_controller mppi_critics)
 endforeach()
 
 # This is a special case requiring linking against the critics library
