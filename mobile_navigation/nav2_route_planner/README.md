@@ -17,6 +17,7 @@ Junctions + Edges) served by `map_asset_manager`. It outputs the standard
 | `cost_function.{hpp,cpp}` | Edge/heuristic cost (distance + cross-floor + reg-element + prefs) |
 | `astar_searcher.{hpp,cpp}` | A* over the road-graph, supports start-on-edge entry |
 | `path_interpolator.{hpp,cpp}` | LINE/BEZIER sampling, start transition, goal alignment |
+| `costmap_aware_layer.{hpp,cpp}` | Optional costmap-driven projection, Theta* transitions, and in-graph bypass |
 | `route_plan_publisher.{hpp,cpp}` | Lifecycle-aware `RoutePlan` topic publisher (transient_local) |
 | `nav_route_graph_planner.{hpp,cpp}` | Plugin entry point, glues everything to `nav2_core::GlobalPlanner` |
 
@@ -56,10 +57,15 @@ Junctions + Edges) served by `map_asset_manager`. It outputs the standard
 ```
 createPlan(start, goal):
   graph = lazy-load via RouteGraphLoader if not ready
-  start_proj = projector_->project(start)        # ON_NODE | ON_EDGE | INVALID
-  goal_id    = projector_->projectToNode(goal)   # must be a NavPoint
-  result     = AStarSearcher::search(start_proj, goal_id, weights, prefs)
-  plan       = PathInterpolator::interpolate(start, goal, ..., result)
+  start_proj = projector_->projectPreferEdge(start)
+  goal_proj  = projector_->projectGoalUnlimited(goal) # shared-node tie -> ON_NODE
+  if enable_route_costmap_avoidance:
+    validate shared-node goal; shift unsafe ON_EDGE projections
+    optionally use same-side Theta* shortcut
+  result = AStarSearcher::search(augmented_graph, weights, prefs)
+  plan   = PathInterpolator::interpolate(start, goal, ..., result)
+  if enable_route_costmap_avoidance:
+    Theta*-rewrite start/goal transitions and in-graph obstacle bypass
   publish RoutePlan(plan)                        # parallel, with semantics
   return    plan.toNavPath()                     # nav_msgs::Path for Nav2
 ```
@@ -69,10 +75,31 @@ priority queue and an admissible heuristic so it scales to large graphs.
 Path interpolation (LINE / Bernstein-Bézier) is a stateless port of the
 ROS1 `InterpolatePath` / `genBezierPointsByControlPoints` routines.
 
-## Limits / future work
+## Route costmap avoidance switch
 
-The current commit covers Stage A of the project plan (weeks 1-3 of
-`7. nav2_route_planner 设计方案.md`). Costmap-aware start-transition
-checking and Theta\* local bypass (§4.8 in the design doc) are not yet
-wired in; they will be added in week 4 alongside dynamic params and a
-matching unit test.
+`RouteGridPlanner.enable_route_costmap_avoidance` is the master switch for
+costmap-driven geometry changes inside `NavRouteGraphPlanner` and supports
+runtime parameter updates.
+
+| Value | RouteGridPlanner behavior |
+|------|----------------------------|
+| `false` (default) | No projection shifting, same-side Theta*, start/goal transition Theta*, or in-graph Theta* bypass. Road-graph A* still selects graph topology. |
+| `true` | Enables all four costmap-driven route-geometry stages. An unsafe exact shared-node goal fails closed instead of being moved onto an arbitrary incident edge. |
+
+Controller-side collision checking and PlannerServer's no-route-graph fallback
+are independent safety/availability mechanisms and are not disabled by this
+parameter.
+
+```bash
+ros2 param set /planner_server \
+  RouteGridPlanner.enable_route_costmap_avoidance true
+```
+
+The former `RouteGridPlanner.costmap_aware_mode` parameter was removed in
+version `0.4.6`; launch/configuration files must use the new name.
+
+## Safety boundary
+
+Disabling route-level costmap avoidance is intended for controlled road-graph
+operation and diagnosis. It must not be used to disable controller collision
+stopping, and it does not make a straight start/goal transition safe to drive.

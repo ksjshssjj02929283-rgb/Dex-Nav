@@ -76,9 +76,9 @@ public:
     double projection_node_threshold_m{0.5};
     double projection_edge_threshold_m{1.0};
 
-    // "Same-side shortcut": when start/goal projections sit within this
-    // distance, skip graph routing and Theta\* direct.
-    // 0.0 disables.
+    // "Same-side shortcut": when avoidance is enabled and start/goal
+    // projections sit within this distance, skip graph routing and use
+    // Theta\* directly. 0.0 disables independently.
     double shortcut_max_proj_distance_m{0.5};
 
     // Cost
@@ -93,7 +93,7 @@ public:
     bool publish_route_plan{true};
     bool use_final_approach_orientation{false};
 
-    // Costmap-aware Layer 2 (see [[7. nav2_route_planner 设计方案]] §4.8)
+    // RouteGridPlanner costmap avoidance (see project R43).
     CostmapAwareLayer::Params ca;
   };
 
@@ -133,10 +133,10 @@ private:
   bool rewriteTransitionWithThetaStar(
     InterpolatedSegment & seg, const std::string & expected_id);
 
-  /// Run Layer 2 obstacle detection on `nav_path`. Always publishes
-  /// the diagnostic markers. When `costmap_aware_mode` is on AND
-  /// obstacles are present, splices Theta*-bypass segments into the
-  /// path in-place (reverse-order so indices stay valid).
+  /// Run obstacle detection on `nav_path` only while total route costmap
+  /// avoidance is enabled. Splices Theta*-bypass segments into the path
+  /// in-place (reverse-order so indices stay valid) and clears stale markers
+  /// while disabled.
   void applyObstacleBypass(
     nav_msgs::msg::Path & nav_path, const rclcpp::Time & stamp);
 
