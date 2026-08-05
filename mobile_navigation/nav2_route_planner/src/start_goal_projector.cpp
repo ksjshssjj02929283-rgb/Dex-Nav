@@ -148,7 +148,8 @@ StartGoalProjector::Result StartGoalProjector::scanGraph(
   const geometry_msgs::msg::PoseStamped & pose,
   const TopoGraph & graph,
   bool apply_node_threshold,
-  bool apply_edge_threshold) const
+  bool apply_edge_threshold,
+  bool prefer_node_on_tie) const
 {
   Result r;
   const double px = pose.pose.position.x;
@@ -253,9 +254,15 @@ StartGoalProjector::Result StartGoalProjector::scanGraph(
   if (!node_avail && !edge_avail) {
     return r;  // empty graph
   }
-  // Smaller distance wins. On exact tie EDGE wins (it carries direction
-  // info, prevents start-side U-turn).
-  if (node_avail && (!edge_avail || best_node_d < best_edge.distance)) {
+  // Smaller distance wins. Start-side callers keep the historical EDGE tie
+  // break to preserve direction. Goal-side callers prefer a shared NODE on
+  // exact/numerical tie so an arbitrary incident edge cannot redefine the
+  // target topology.
+  const bool node_wins_tie = prefer_node_on_tie &&
+    std::abs(best_node_d - best_edge.distance) <= kSnapEpsilon;
+  if (node_avail &&
+    (!edge_avail || best_node_d < best_edge.distance || node_wins_tie))
+  {
     r.type = ResultType::ON_NODE;
     r.id = best_node_id;
     r.distance = best_node_d;
@@ -282,6 +289,13 @@ StartGoalProjector::Result StartGoalProjector::projectUnlimited(
   const TopoGraph & graph) const
 {
   return scanGraph(pose, graph, false, false);
+}
+
+StartGoalProjector::Result StartGoalProjector::projectGoalUnlimited(
+  const geometry_msgs::msg::PoseStamped & pose,
+  const TopoGraph & graph) const
+{
+  return scanGraph(pose, graph, false, false, true);
 }
 
 StartGoalProjector::Result StartGoalProjector::projectPreferEdge(

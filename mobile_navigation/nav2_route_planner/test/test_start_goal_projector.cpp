@@ -252,6 +252,41 @@ TEST(ProjectorUnlimitedTest, NearerEndpointOfEdge)
   EXPECT_EQ(*endpoint, "B");
 }
 
+// R43 regression: a goal exactly at a node shared by multiple incident edges
+// must remain ON_NODE. Start-side edge preference is preserved independently.
+TEST(ProjectorUnlimitedTest, GoalAtSharedNodePrefersNodeOnTie)
+{
+  auto g = std::make_unique<TopoGraph>();
+  std::vector<TopoNode> nodes;
+  TopoNode a; a.id = "A"; a.kind = NodeKind::NAV_POINT;
+  a.x = 0.0; a.y = 0.0; nodes.push_back(a);
+  TopoNode shared; shared.id = "shared"; shared.kind = NodeKind::NAV_POINT;
+  shared.x = 1.0; shared.y = 0.0; nodes.push_back(shared);
+  TopoNode c; c.id = "C"; c.kind = NodeKind::NAV_POINT;
+  c.x = 1.0; c.y = -1.0; nodes.push_back(c);
+
+  std::vector<TopoEdge> edges;
+  TopoEdge main; main.id = "main"; main.from_id = "A"; main.to_id = "shared";
+  main.geometry = EdgeGeometry::LINE; edges.push_back(main);
+  TopoEdge branch; branch.id = "branch"; branch.from_id = "C";
+  branch.to_id = "shared"; branch.geometry = EdgeGeometry::LINE;
+  edges.push_back(branch);
+  g->rebuildFrom(std::move(nodes), std::move(edges));
+
+  auto lock = g->lockShared();
+  StartGoalProjector::Params pr;
+  StartGoalProjector proj(pr);
+
+  const auto exact_goal = pose(1.0, 0.0);
+  const auto start_semantics = proj.projectPreferEdge(exact_goal, *g);
+  EXPECT_EQ(start_semantics.type, StartGoalProjector::ResultType::ON_EDGE);
+
+  const auto goal_semantics = proj.projectGoalUnlimited(exact_goal, *g);
+  EXPECT_EQ(goal_semantics.type, StartGoalProjector::ResultType::ON_NODE);
+  EXPECT_EQ(goal_semantics.id, "shared");
+  EXPECT_NEAR(goal_semantics.distance, 0.0, 1e-9);
+}
+
 int main(int argc, char ** argv)
 {
   ::testing::InitGoogleTest(&argc, argv);
