@@ -211,6 +211,7 @@ void RouteGraphManager::addEdgeCallback(
         res->message = "Edge 'to' endpoint not found: " + edge.to.type + ":" + edge.to.id;
         return;
     }
+    snapEdgeEndpoints(edge);
     if (!edge_store_->add(edge)) {
         res->success = false;
         res->message = "Edge id '" + edge.id + "' already exists";
@@ -253,6 +254,7 @@ void RouteGraphManager::updateEdgeCallback(
         res->message = "Edge 'to' endpoint not found: " + edge.to.type + ":" + edge.to.id;
         return;
     }
+    snapEdgeEndpoints(edge);
     if (!edge_store_->update(edge)) {
         res->success = false;
         res->message = "Edge '" + edge.id + "' not found";
@@ -600,12 +602,47 @@ void RouteGraphManager::publishMarkers() {
 // ──────────────────────────────────────────────────────────────────────
 
 bool RouteGraphManager::endpointExists(const RouteEndpoint& ep) const {
+    std::pair<float, float> position;
+    return endpointPosition(ep, position);
+}
+
+bool RouteGraphManager::endpointPosition(
+    const RouteEndpoint& ep, std::pair<float, float>& position) const
+{
     if (ep.type == "nav") {
-        return point_store_->getPoint(ep.id).has_value();
+        const auto point = point_store_->getPoint(ep.id);
+        if (!point.has_value()) return false;
+        position = {
+            static_cast<float>(point->x), static_cast<float>(point->y)};
+        return true;
     } else if (ep.type == "junction") {
-        return junction_store_->has(ep.id);
+        const auto junction = junction_store_->get(ep.id);
+        if (!junction.has_value()) return false;
+        position = {junction->x, junction->y};
+        return true;
     }
     return false;
+}
+
+void RouteGraphManager::snapEdgeEndpoints(RouteEdge& edge) const {
+    if (edge.edge_type != "BEZIER") return;
+
+    std::pair<float, float> from_position;
+    std::pair<float, float> to_position;
+    if (!endpointPosition(edge.from, from_position) ||
+        !endpointPosition(edge.to, to_position)) {
+        return;
+    }
+
+    if (edge.control_points.empty()) {
+        edge.control_points = {from_position, to_position};
+    } else if (edge.control_points.size() == 1) {
+        const auto middle = edge.control_points.front();
+        edge.control_points = {from_position, middle, to_position};
+    } else {
+        edge.control_points.front() = from_position;
+        edge.control_points.back() = to_position;
+    }
 }
 
 }  // namespace map_asset_manager

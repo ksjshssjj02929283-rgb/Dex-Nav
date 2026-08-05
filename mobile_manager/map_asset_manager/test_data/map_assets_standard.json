@@ -115,7 +115,7 @@
       },
       {
         "bidirectional": false,
-        "control_points": [[0.5, 1.0], [1.0, 0.5]],
+        "control_points": [[0.0, 1.0], [0.5, 1.0], [1.0, 0.5], [1.0, 0.0]],
         "edge_type": "BEZIER",
         "from": {"id": "AUTO_ASSET_JUNCTION", "type": "junction"},
         "id": "AUTO_ASSET_EDGE_B",

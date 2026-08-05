@@ -5,6 +5,7 @@
 #include <memory>
 #include <rclcpp/rclcpp.hpp>
 #include <string>
+#include <utility>
 #include <visualization_msgs/msg/marker_array.hpp>
 
 #include "nav_interfaces/srv/add_route_junction.hpp"
@@ -67,6 +68,9 @@ private:
 
     // ── 辅助 ──────────────────────────────────────────────────────
     bool endpointExists(const RouteEndpoint& ep) const;
+    bool endpointPosition(
+        const RouteEndpoint& ep, std::pair<float, float>& position) const;
+    void snapEdgeEndpoints(RouteEdge& edge) const;
 
     // ── 成员 ──────────────────────────────────────────────────────
     rclcpp::Node*                    node_;
