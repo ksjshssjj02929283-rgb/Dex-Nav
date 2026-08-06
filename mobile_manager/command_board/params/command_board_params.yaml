@@ -6,7 +6,7 @@
     # ── AutoMapSaver (DEC-005 + DEC-006 daily trigger) ───────────
     # 自动保存是唯一需运营调整的参数组（日触发时刻 + 6 保存条件阈值），显式暴露。
     auto_map_saver:
-      enable: true
+      enable: false
       # 保存时间窗口（DEC-016：时间点→时间段，窗内轮询补存）
       save_window_start_hour: 20          # 0-23, local time
       save_window_start_minute: 0         # 0-59
