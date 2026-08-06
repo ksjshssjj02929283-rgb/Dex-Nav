@@ -57,7 +57,7 @@ Note: The maximum allowed time to collision is thresholded by the lookahead poin
 | `min_lookahead_dist` | The minimum lookahead distance threshold when using velocity scaled lookahead distances | 
 | `max_lookahead_dist` | The maximum lookahead distance threshold when using velocity scaled lookahead distances | 
 | `lookahead_time` | The time to project the velocity by to find the velocity scaled lookahead distance. Also known as the lookahead gain. | 
-| `rotate_to_heading_angular_vel` | If rotate to heading is used, this is the angular velocity to use. | 
+| `rotate_to_path_angular_vel` | If rotate to heading is used, this is the angular velocity to use for mid-path corrections (`shouldRotateToPath`). Independent from `rotate_to_goal_angular_vel`. | 
 | `transform_tolerance` | The TF transform tolerance | 
 | `use_velocity_scaled_lookahead_dist` | Whether to use the velocity scaled lookahead distances or constant `lookahead_distance` | 
 | `min_approach_linear_velocity` | The minimum velocity threshold to apply when approaching the goal | 
@@ -72,7 +72,11 @@ Note: The maximum allowed time to collision is thresholded by the lookahead poin
 | `regulated_linear_scaling_min_radius` | The turning radius for which the regulation features are triggered. Remember, sharper turns have smaller radii | 
 | `regulated_linear_scaling_min_speed` | The minimum speed for which the regulated features can send, to ensure process is still achievable even in high cost spaces with high curvature. | 
 | `use_rotate_to_heading` | Whether to enable rotating to rough heading and goal orientation when using holonomic planners. Recommended on for all robot types except ackermann, which cannot rotate in place. | 
-| `rotate_to_heading_min_angle` | The difference in the path orientation and the starting robot orientation to trigger a rotate in place, if `use_rotate_to_heading` is enabled. | 
+| `rotate_to_path_entry_angle` | The difference in the path orientation and the starting robot orientation to trigger a rotate in place, if `use_rotate_to_heading` is enabled. | 
+| `rotate_to_path_exit_angle` | Hysteresis exit threshold for the rotate-in-place mode entered via `rotate_to_path_entry_angle`; must be smaller than the entry angle. | 
+| `rotate_to_path_angular_kp` | Proportional gain for the rotate-to-path angular velocity command: `angular_vel = clamp(kp * angle_to_path, -rotate_to_path_angular_vel, rotate_to_path_angular_vel)`. Independent from `rotate_to_goal_angular_kp`. | 
+| `rotate_to_goal_angular_vel` | Angular velocity used when rotating in place to align with the final goal orientation (`shouldRotateToGoalHeading`). Independent from `rotate_to_path_angular_vel`. | 
+| `rotate_to_goal_angular_kp` | Proportional gain for the rotate-to-goal angular velocity command, same formula as `rotate_to_path_angular_kp`. Independent from `rotate_to_path_angular_kp`. | 
 | `max_angular_accel` | Maximum allowable angular acceleration while rotating to heading, if enabled | 
 | `max_robot_pose_search_dist` | Maximum integrated distance along the path to bound the search for the closest pose to the robot. This is set by default to the maximum costmap extent, so it shouldn't be set manually unless there are loops within the local costmap. | 
 | `use_interpolation` | Enables interpolation between poses on the path for lookahead point selection. Helps sparse paths to avoid inducing discontinuous commanded velocities. Set this to false for a potential performance boost, at the expense of smooth control. | 
@@ -96,7 +100,7 @@ controller_server:
       required_movement_radius: 0.5
       movement_time_allowance: 10.0
     goal_checker:
-      plugin: "nav2_controller::SimpleGoalChecker"
+      plugin: "nav2_simple_goal_checker::SimpleGoalChecker"
       xy_goal_tolerance: 0.25
       yaw_goal_tolerance: 0.25
       stateful: True
@@ -107,7 +111,7 @@ controller_server:
       min_lookahead_dist: 0.3
       max_lookahead_dist: 0.9
       lookahead_time: 1.5
-      rotate_to_heading_angular_vel: 1.8
+      rotate_to_path_angular_vel: 1.8
       transform_tolerance: 0.1
       use_velocity_scaled_lookahead_dist: false
       min_approach_linear_velocity: 0.05
@@ -119,7 +123,11 @@ controller_server:
       regulated_linear_scaling_min_radius: 0.9
       regulated_linear_scaling_min_speed: 0.25
       use_rotate_to_heading: true
-      rotate_to_heading_min_angle: 0.785
+      rotate_to_path_entry_angle: 0.785
+      rotate_to_path_exit_angle: 0.35
+      rotate_to_path_angular_kp: 1.0
+      rotate_to_goal_angular_vel: 1.8
+      rotate_to_goal_angular_kp: 1.0
       max_angular_accel: 3.2
       max_robot_pose_search_dist: 10.0
       use_interpolation: false

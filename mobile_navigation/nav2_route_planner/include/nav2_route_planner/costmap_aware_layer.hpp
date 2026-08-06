@@ -25,18 +25,11 @@ namespace nav2_route_planner
 
 /// Costmap-aware safety layer on top of the road-graph planner.
 ///
-/// Two layers, separately gated:
-///   Layer 1 — start-transition lethal check (mandatory, no on/off):
-///     verifies that the straight line from `start_pose` to the road-graph
-///     entry point does not cross lethal cost cells, which would mean the
-///     planner is silently asking the controller to walk through a wall.
-///
-///   Layer 2 — costmap-driven Theta* local bypass (opt-in via
-///     `costmap_aware_mode` param):
-///     scans the produced plan for stretches of lethal cost, then asks
-///     nav2_theta_star_planner's ThetaStar to compute a free-space detour
-///     between (obstacle - margin_before) and (obstacle + margin_after),
-///     splicing the result back into the path.
+/// `enable_route_costmap_avoidance` is the single RouteGridPlanner-level
+/// master switch. When false, this layer must not change route geometry:
+/// projection shifting, same-side Theta*, transition Theta*, and in-graph
+/// bypass are all disabled. Controller-side collision protection remains a
+/// separate safety boundary and is intentionally unaffected.
 ///
 /// See `7. nav2_route_planner 设计方案.md` §4.8 for the design rationale.
 class CostmapAwareLayer
@@ -44,19 +37,14 @@ class CostmapAwareLayer
 public:
   struct Params
   {
-    // Layer 1 (start/goal transition): no toggle. Theta* either succeeds
-    // or fails. If start or goal is in lethal cost, Theta* returns
-    // unsafe and the whole plan is rejected — that is the intended
-    // contract; no separate threshold needed.
-
-    // Layer 2 (in-graph obstacle bypass, gated)
-    bool   costmap_aware_mode{false};
+    // Total RouteGridPlanner costmap-driven avoidance switch.
+    bool enable_route_costmap_avoidance{false};
     double obstacle_cost_threshold{220.0};
     double obstacle_margin_before_m{1.0};
     double obstacle_margin_after_m{1.0};
     double bypass_max_replan_length_m{10.0};
-    int    theta_star_max_corners{8};
-    bool   theta_star_allow_unknown{true};
+    int theta_star_max_corners{8};
+    bool theta_star_allow_unknown{true};
   };
 
   CostmapAwareLayer(
@@ -66,13 +54,14 @@ public:
   void configure(const Params & p);
   void cleanup();
   void updateParams(const Params & p);  // safe to call at runtime
-  bool isLayer2Enabled() const {return p_.costmap_aware_mode;}
+  bool isEnabled() const {return p_.enable_route_costmap_avoidance;}
 
   struct ThetaStarFailureDiagnostic
   {
     enum class Reason
     {
       NONE,
+      DISABLED,
       UNAVAILABLE,
       OUT_OF_BOUNDS,
       UNSAFE_ENDPOINT,
@@ -91,11 +80,11 @@ public:
     bool allow_unknown{false};
   };
 
-  /// General-purpose Theta* planner on the live costmap. Used by all
-  /// three call sites:
-  ///   (a) start → graph entry  (Layer 1, mandatory)
-  ///   (b) graph exit → goal     (Layer 1, mandatory)
-  ///   (c) in-graph obstacle bypass (Layer 2, gated)
+  /// General-purpose Theta* planner on the live costmap. When the total
+  /// avoidance switch is enabled, it is used by all three call sites:
+  ///   (a) start → graph entry
+  ///   (b) graph exit → goal
+  ///   (c) in-graph obstacle bypass
   ///
   /// Returns sampled poses (start->end order, dense at half costmap
   /// resolution) or nullopt on failure. On failure,
@@ -108,6 +97,12 @@ public:
     const geometry_msgs::msg::PoseStamped & seg_end);
 
   std::string describeLastThetaStarFailure() const;
+
+  /// Endpoint safety used for ON_NODE goals. When avoidance is disabled the
+  /// check is bypassed. When enabled, missing/out-of-bounds/weighted/lethal
+  /// costmap data fails closed; FREE_SPACE (and optionally unknown) passes.
+  bool isEndpointSafe(
+    const geometry_msgs::msg::PoseStamped & pose) const;
 
   // ─── Layer 2 (in-graph obstacle detection) ──────────────────────────
   struct ObstacleSegment
@@ -156,14 +151,13 @@ public:
     int waypoints_per_meter) const;
 
 private:
-
   rclcpp_lifecycle::LifecycleNode::WeakPtr parent_;
   rclcpp::Logger logger_{rclcpp::get_logger("CostmapAwareLayer")};
   std::shared_ptr<nav2_costmap_2d::Costmap2DROS> costmap_ros_;
   nav2_costmap_2d::Costmap2D * costmap_{nullptr};
 
   // Lazily constructed in configure() so that Theta* doesn't allocate
-  // unless layer 2 is at least once requested.
+  // until route costmap avoidance is requested.
   std::unique_ptr<theta_star::ThetaStar> theta_star_;
 
   Params p_;

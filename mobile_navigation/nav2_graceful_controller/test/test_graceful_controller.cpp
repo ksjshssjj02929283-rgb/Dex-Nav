@@ -16,7 +16,7 @@
 #include "rclcpp/rclcpp.hpp"
 #include "nav2_costmap_2d/costmap_2d.hpp"
 #include "nav2_util/lifecycle_node.hpp"
-#include "nav2_controller/plugins/simple_goal_checker.hpp"
+#include "nav2_simple_goal_checker/simple_goal_checker.hpp"
 #include "nav2_core/exceptions.hpp"
 #include "nav2_graceful_controller/ego_polar_coords.hpp"
 #include "nav2_graceful_controller/smooth_control_law.hpp"
@@ -952,7 +952,7 @@ TEST(GracefulControllerTest, computeVelocityCommandRotate) {
   robot_velocity.linear.y = 0.0;
 
   // Set the goal checker
-  nav2_controller::SimpleGoalChecker checker;
+  nav2_simple_goal_checker::SimpleGoalChecker checker;
   checker.initialize(node, "checker", costmap_ros);
 
   auto cmd_vel = controller->computeVelocityCommands(robot_pose, robot_velocity, &checker);
@@ -1028,7 +1028,7 @@ TEST(GracefulControllerTest, computeVelocityCommandRegular) {
   robot_velocity.linear.y = 0.0;
 
   // Set the goal checker
-  nav2_controller::SimpleGoalChecker checker;
+  nav2_simple_goal_checker::SimpleGoalChecker checker;
   checker.initialize(node, "checker", costmap_ros);
 
   auto cmd_vel = controller->computeVelocityCommands(robot_pose, robot_velocity, &checker);
@@ -1109,7 +1109,7 @@ TEST(GracefulControllerTest, computeVelocityCommandRegularBackwards) {
   robot_velocity.linear.y = 0.0;
 
   // Set the goal checker
-  nav2_controller::SimpleGoalChecker checker;
+  nav2_simple_goal_checker::SimpleGoalChecker checker;
   checker.initialize(node, "checker", costmap_ros);
 
   auto cmd_vel = controller->computeVelocityCommands(robot_pose, robot_velocity, &checker);
@@ -1192,7 +1192,7 @@ TEST(GracefulControllerTest, computeVelocityCommandFinal) {
   robot_velocity.linear.y = 0.0;
 
   // Set the goal checker
-  nav2_controller::SimpleGoalChecker checker;
+  nav2_simple_goal_checker::SimpleGoalChecker checker;
   checker.initialize(node, "checker", costmap_ros);
 
   auto cmd_vel = controller->computeVelocityCommands(robot_pose, robot_velocity, &checker);

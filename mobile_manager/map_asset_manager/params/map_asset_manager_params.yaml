@@ -7,6 +7,5 @@ map_asset_manager_node:
     controller_server_name: "/controller_server"
     # 是否自动保存（修改后立即持久化到地图目录的 map_assets.json）
     auto_save: true
-    # 注意：地图名称通过订阅 map_manager/map_name 话题自动获取
-    # 地图根目录通过订阅 map_manager/map_folder 话题自动获取
+    # 注意：地图名称 + 根目录通过订阅 map_manager/map_state 话题自动获取（folder+name+epoch 原子下发）
     # 文件保存位置：{map_folder}/{map_name}/map_assets.json

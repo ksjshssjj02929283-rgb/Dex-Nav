@@ -135,6 +135,14 @@ Action：
 - `start_apriltag_detection` (`std_srvs/srv/Trigger`)：创建 detector、TF listener/broadcaster、图像订阅和发布器，开始检测。
 - `stop_apriltag_detection` (`std_srvs/srv/Trigger`)：释放 detector、TF、图像订阅和发布器，停止检测以降低 CPU 占用。
 
+运行日志：
+
+- 检测启动后每 `5 s` 输出一次 `[TagStats]`，停止检测时输出累计 `[TagSummary]`。
+- `image/detect/target/lost/last` 分别表示图像、检出、目标发布、连续丢失和最近目标间隔。
+- `gray` 为最近帧灰度均值/标准差，`tf_err/cv_err` 为 TF 和图像转换错误数。
+- 灰度数据只用于现场对比，不能单独证明环境过暗。
+- 没有图像或当前统计窗口没有发布目标时使用 WARN 级别；正常识别时使用 INFO 级别。
+
 常用参数：
 
 - `image_topic`

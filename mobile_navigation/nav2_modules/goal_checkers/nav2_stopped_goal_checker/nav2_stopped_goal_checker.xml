@@ -1,0 +1,10 @@
+<class_libraries>
+    <library path="nav2_stopped_goal_checker">
+        <class type="nav2_stopped_goal_checker::StoppedGoalChecker" base_class_type="nav2_core::GoalChecker">
+            <description>
+                Checks whether the robot has reached the goal pose (XY + yaw tolerances) and is
+                stopped (angular and translational velocities below the configured thresholds).
+            </description>
+        </class>
+    </library>
+</class_libraries>

@@ -3,17 +3,21 @@ project(nav2_controller)
 
 find_package(ament_cmake REQUIRED)
 find_package(nav2_core REQUIRED)
+find_package(nav2_speed_planner REQUIRED)
 find_package(nav2_common REQUIRED)
 find_package(angles REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_action REQUIRED)
 find_package(rclcpp_components REQUIRED)
+find_package(geometry_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(diagnostic_msgs REQUIRED)
 find_package(nav2_util REQUIRED)
 find_package(nav2_msgs REQUIRED)
 find_package(nav_2d_utils REQUIRED)
 find_package(nav_2d_msgs REQUIRED)
+find_package(nav_interfaces REQUIRED)
+find_package(visualization_msgs REQUIRED)
 find_package(pluginlib REQUIRED)
 
 nav2_package()
@@ -39,21 +43,19 @@ set(dependencies
   rclcpp
   rclcpp_action
   rclcpp_components
+  geometry_msgs
   std_msgs
   diagnostic_msgs
   nav2_msgs
   nav_2d_utils
   nav_2d_msgs
+  nav_interfaces
+  visualization_msgs
   nav2_util
   nav2_core
+  nav2_speed_planner
   pluginlib
 )
-
-add_library(longitudinal_goal_checker SHARED plugins/longitudinal_goal_checker.cpp)
-ament_target_dependencies(longitudinal_goal_checker ${dependencies})
-
-add_library(precision_longitudinal_goal_checker SHARED plugins/precision_longitudinal_goal_checker.cpp)
-ament_target_dependencies(precision_longitudinal_goal_checker ${dependencies})
 
 add_library(simple_progress_checker SHARED plugins/simple_progress_checker.cpp)
 ament_target_dependencies(simple_progress_checker ${dependencies})
@@ -61,13 +63,6 @@ ament_target_dependencies(simple_progress_checker ${dependencies})
 add_library(pose_progress_checker SHARED plugins/pose_progress_checker.cpp)
 target_link_libraries(pose_progress_checker simple_progress_checker)
 ament_target_dependencies(pose_progress_checker ${dependencies})
-
-add_library(simple_goal_checker SHARED plugins/simple_goal_checker.cpp)
-ament_target_dependencies(simple_goal_checker ${dependencies})
-
-add_library(stopped_goal_checker SHARED plugins/stopped_goal_checker.cpp)
-target_link_libraries(stopped_goal_checker simple_goal_checker)
-ament_target_dependencies(stopped_goal_checker ${dependencies})
 
 ament_target_dependencies(${library_name}
   ${dependencies}
@@ -91,7 +86,7 @@ target_link_libraries(${executable_name} ${library_name})
 
 rclcpp_components_register_nodes(${library_name} "nav2_controller::ControllerServer")
 
-install(TARGETS longitudinal_goal_checker precision_longitudinal_goal_checker simple_progress_checker pose_progress_checker simple_goal_checker stopped_goal_checker ${library_name}
+install(TARGETS simple_progress_checker pose_progress_checker ${library_name}
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin
@@ -114,12 +109,8 @@ endif()
 
 ament_export_include_directories(include)
 ament_export_libraries(
-  longitudinal_goal_checker
-  precision_longitudinal_goal_checker
   simple_progress_checker
   pose_progress_checker
-  simple_goal_checker
-  stopped_goal_checker
   ${library_name})
 ament_export_dependencies(${dependencies})
 pluginlib_export_plugin_description_file(nav2_core plugins.xml)

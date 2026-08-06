@@ -130,6 +130,11 @@ public:
    */
   BT::NodeStatus tick() override
   {
+    if (request_timed_out_) {
+      return drain_timed_out_request(bt_loop_duration_) ?
+             BT::NodeStatus::FAILURE : BT::NodeStatus::RUNNING;
+    }
+
     if (!request_sent_) {
       // reset the flag to send the request or not,
       // allowing the user the option to set it in on_tick
@@ -154,7 +159,25 @@ public:
    */
   void halt() override
   {
+    if (request_sent_) {
+      if (!request_timed_out_) {
+        RCLCPP_WARN(
+          node_->get_logger(),
+          "BT halt is waiting for the in-flight service call to %s to finish.",
+          service_name_.c_str());
+        request_timed_out_ = true;
+      }
+      while (rclcpp::ok() && !drain_timed_out_request(bt_loop_duration_)) {
+      }
+      if (request_sent_) {
+        RCLCPP_ERROR(
+          node_->get_logger(),
+          "ROS shutdown interrupted service cleanup for %s before response acknowledgement.",
+          service_name_.c_str());
+      }
+    }
     request_sent_ = false;
+    request_timed_out_ = false;
     setStatus(BT::NodeStatus::IDLE);
   }
 
@@ -208,9 +231,41 @@ public:
 
     RCLCPP_WARN(
       node_->get_logger(),
-      "Node timed out while executing service call to %s.", service_name_.c_str());
+      "Node timed out while executing service call to %s. "
+      "The request cannot be canceled, so its response will be drained before FAILURE or retry.",
+      service_name_.c_str());
+    request_timed_out_ = true;
+    return BT::NodeStatus::RUNNING;
+  }
+
+  /**
+   * @brief Wait for a timed-out, non-cancelable service request to finish.
+   *
+   * Returning FAILURE immediately would allow a retry or navigator result while
+   * the old side effect can still execute. Draining the response serializes the
+   * retry and keeps public task completion behind the service side effect.
+   */
+  bool drain_timed_out_request(std::chrono::milliseconds wait)
+  {
+    if (!request_sent_) {
+      request_timed_out_ = false;
+      return true;
+    }
+
+    const auto rc =
+      callback_group_executor_.spin_until_future_complete(future_result_, wait);
+    if (rc != rclcpp::FutureReturnCode::SUCCESS) {
+      return false;
+    }
+
+    (void)future_result_.get();
     request_sent_ = false;
-    return BT::NodeStatus::FAILURE;
+    request_timed_out_ = false;
+    RCLCPP_INFO(
+      node_->get_logger(),
+      "Timed-out service call to %s has completed; FAILURE may now propagate safely.",
+      service_name_.c_str());
+    return true;
   }
 
   /**
@@ -252,6 +307,7 @@ protected:
   // To track the server response when a new request is sent
   std::shared_future<typename ServiceT::Response::SharedPtr> future_result_;
   bool request_sent_{false};
+  bool request_timed_out_{false};
   rclcpp::Time sent_time_;
 
   // Can be set in on_tick or on_wait_for_result to indicate if a request should be sent.

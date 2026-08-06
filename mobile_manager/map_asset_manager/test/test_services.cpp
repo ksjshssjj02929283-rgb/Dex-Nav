@@ -1,6 +1,6 @@
 /**
  * @file test_services.cpp
- * @brief NavPointManager / RouteManager ROS2 Service 集成测试
+ * @brief NavPointManager / RouteManager / RouteGraphManager ROS2 Service 集成测试
  *
  * 策略：
  *   - 直接构造 NavPointManager / RouteManager（注入 Store + EventBus）
@@ -12,14 +12,17 @@
  */
 
 #include <gtest/gtest.h>
-
 #include <rclcpp/rclcpp.hpp>
 
 #include "map_asset_manager/data_event_bus.hpp"
 #include "map_asset_manager/point_manager/nav_point_manager.hpp"
 #include "map_asset_manager/point_manager/point_store.hpp"
+#include "map_asset_manager/route_graph_manager/junction_store.hpp"
+#include "map_asset_manager/route_graph_manager/route_edge_store.hpp"
+#include "map_asset_manager/route_graph_manager/route_graph_manager.hpp"
 #include "map_asset_manager/route_manager/route_manager.hpp"
 #include "map_asset_manager/route_manager/route_store.hpp"
+#include "nav_interfaces/srv/add_route_edge.hpp"
 #include "nav_interfaces/srv/add_nav_point.hpp"
 #include "nav_interfaces/srv/add_route.hpp"
 #include "nav_interfaces/srv/get_all_nav_points.hpp"
@@ -28,6 +31,7 @@
 #include "nav_interfaces/srv/remove_nav_point.hpp"
 #include "nav_interfaces/srv/remove_route.hpp"
 #include "nav_interfaces/srv/update_nav_point.hpp"
+#include "nav_interfaces/srv/update_route_edge.hpp"
 
 using namespace std::chrono_literals;
 
@@ -35,8 +39,10 @@ using namespace std::chrono_literals;
 // 辅助函数
 // ═══════════════════════════════════════════════════════════════════════
 
-static nav_interfaces::msg::NavPoint makeMsg(
-    const std::string& name, const std::string& type = "STATION", float x = 1.0f, float y = 2.0f, float theta = 0.0f) {
+static nav_interfaces::msg::NavPoint makeMsg(const std::string& name,
+                                             const std::string& type = "STATION",
+                                             float x = 1.0f, float y = 2.0f,
+                                             float theta = 0.0f) {
     nav_interfaces::msg::NavPoint pt;
     pt.name = name;
     pt.type = type;
@@ -48,11 +54,13 @@ static nav_interfaces::msg::NavPoint makeMsg(
 
 // 同步调用服务（阻塞直到收到响应或超时）
 template <typename SrvT>
-typename SrvT::Response::SharedPtr callService(rclcpp::Node::SharedPtr client_node,
-                                               const std::string& service_name,
-                                               typename SrvT::Request::SharedPtr request,
-                                               rclcpp::executors::SingleThreadedExecutor& exec,
-                                               std::chrono::milliseconds timeout = 2000ms) {
+typename SrvT::Response::SharedPtr callService(
+    rclcpp::Node::SharedPtr client_node,
+    const std::string& service_name,
+    typename SrvT::Request::SharedPtr request,
+    rclcpp::executors::SingleThreadedExecutor& exec,
+    std::chrono::milliseconds timeout = 2000ms) {
+
     auto client = client_node->create_client<SrvT>(service_name);
     EXPECT_TRUE(client->wait_for_service(timeout)) << "Service not available: " << service_name;
 
@@ -80,14 +88,15 @@ protected:
         executor_->add_node(host_node_);
         executor_->add_node(client_node_);
 
-        point_store_ = std::make_shared<map_asset_manager::PointStore>(host_node_->get_logger());
+        point_store_ = std::make_shared<map_asset_manager::PointStore>(
+            host_node_->get_logger());
         event_bus_ = std::make_shared<map_asset_manager::DataEventBus>();
 
         save_called_ = 0;
         auto save_fn = [this]() { ++save_called_; };
 
-        point_mgr_ =
-            std::make_shared<map_asset_manager::NavPointManager>(host_node_.get(), point_store_, event_bus_, save_fn);
+        point_mgr_ = std::make_shared<map_asset_manager::NavPointManager>(
+            host_node_.get(), point_store_, event_bus_, save_fn);
 
         // 服务名（~/xxx → /test_host_nav/xxx）
         prefix_ = "/test_host_nav";
@@ -101,7 +110,8 @@ protected:
     }
 
     template <typename SrvT>
-    typename SrvT::Response::SharedPtr call(const std::string& srv_name, typename SrvT::Request::SharedPtr req) {
+    typename SrvT::Response::SharedPtr call(const std::string& srv_name,
+                                            typename SrvT::Request::SharedPtr req) {
         return callService<SrvT>(client_node_, prefix_ + srv_name, req, *executor_);
     }
 
@@ -241,17 +251,21 @@ TEST_F(NavPointManagerServiceTest, RemovePoint_TriggersCascadeViaEventBus) {
     }
 
     // 构造 RouteStore，加入一条 r1 路线
-    auto route_store = std::make_shared<map_asset_manager::RouteStore>(host_node_->get_logger());
+    auto route_store = std::make_shared<map_asset_manager::RouteStore>(
+        host_node_->get_logger());
     route_store->addRoute({"r1", {"p1", "p2", "p3"}});
 
     // 构造 RouteManager（注册服务）
     auto rm_save = 0;
-    auto route_mgr = std::make_shared<map_asset_manager::RouteManager>(host_node_.get(), route_store, point_store_,
-                                                                       event_bus_, [&rm_save]() { ++rm_save; });
+    auto route_mgr = std::make_shared<map_asset_manager::RouteManager>(
+        host_node_.get(), route_store, point_store_, event_bus_,
+        [&rm_save]() { ++rm_save; });
 
     // 手动注册级联：导航点删除 → 路线清理（模拟 MapAssetManagerNode::registerEventHandlers）
     event_bus_->subscribe(map_asset_manager::AssetEventType::POINT_REMOVED,
-                          [&route_mgr](const map_asset_manager::AssetEvent& e) { route_mgr->onPointRemoved(e.name); });
+        [&route_mgr](const map_asset_manager::AssetEvent& e) {
+            route_mgr->onPointRemoved(e.name);
+        });
 
     // 删除 p2 → EventBus 通知 RouteManager → r1 的 p2 被移除
     auto rm_req = std::make_shared<nav_interfaces::srv::RemoveNavPoint::Request>();
@@ -282,13 +296,16 @@ protected:
         executor_->add_node(host_node_);
         executor_->add_node(client_node_);
 
-        point_store_ = std::make_shared<map_asset_manager::PointStore>(host_node_->get_logger());
-        route_store_ = std::make_shared<map_asset_manager::RouteStore>(host_node_->get_logger());
+        point_store_ = std::make_shared<map_asset_manager::PointStore>(
+            host_node_->get_logger());
+        route_store_ = std::make_shared<map_asset_manager::RouteStore>(
+            host_node_->get_logger());
         event_bus_ = std::make_shared<map_asset_manager::DataEventBus>();
 
         save_called_ = 0;
-        route_mgr_ = std::make_shared<map_asset_manager::RouteManager>(host_node_.get(), route_store_, point_store_,
-                                                                       event_bus_, [this]() { ++save_called_; });
+        route_mgr_ = std::make_shared<map_asset_manager::RouteManager>(
+            host_node_.get(), route_store_, point_store_, event_bus_,
+            [this]() { ++save_called_; });
 
         prefix_ = "/test_host_route";
 
@@ -306,7 +323,8 @@ protected:
     }
 
     template <typename SrvT>
-    typename SrvT::Response::SharedPtr call(const std::string& srv_name, typename SrvT::Request::SharedPtr req) {
+    typename SrvT::Response::SharedPtr call(const std::string& srv_name,
+                                            typename SrvT::Request::SharedPtr req) {
         return callService<SrvT>(client_node_, prefix_ + srv_name, req, *executor_);
     }
 
@@ -428,6 +446,113 @@ TEST_F(RouteManagerServiceTest, SaveIsTriggeredOnMutation) {
     auto rm_req = std::make_shared<nav_interfaces::srv::RemoveRoute::Request>();
     rm_req->name = "r1";
     call<nav_interfaces::srv::RemoveRoute>("/remove_route", rm_req);
+    EXPECT_EQ(save_called_, 2);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// 测试夹具：RouteGraphManager
+// ═══════════════════════════════════════════════════════════════════════
+
+class RouteGraphManagerServiceTest : public ::testing::Test {
+protected:
+    void SetUp() override {
+        host_node_ = std::make_shared<rclcpp::Node>("test_host_route_graph");
+        client_node_ = std::make_shared<rclcpp::Node>("test_client_route_graph");
+
+        executor_ = std::make_unique<rclcpp::executors::SingleThreadedExecutor>();
+        executor_->add_node(host_node_);
+        executor_->add_node(client_node_);
+
+        point_store_ = std::make_shared<map_asset_manager::PointStore>(
+            host_node_->get_logger());
+        junction_store_ = std::make_shared<map_asset_manager::JunctionStore>(
+            host_node_->get_logger());
+        edge_store_ = std::make_shared<map_asset_manager::RouteEdgeStore>(
+            host_node_->get_logger());
+        event_bus_ = std::make_shared<map_asset_manager::DataEventBus>();
+
+        point_store_->addPoint({"p1", "STATION", 1.0, 2.0, 0.0, 0.05});
+        point_store_->addPoint({"p2", "STATION", 8.0, 9.0, 0.0, 0.05});
+        graph_mgr_ = std::make_shared<map_asset_manager::RouteGraphManager>(
+            host_node_.get(), junction_store_, edge_store_, point_store_,
+            event_bus_, [this]() { ++save_called_; });
+        prefix_ = "/test_host_route_graph";
+    }
+
+    void TearDown() override {
+        executor_->cancel();
+        graph_mgr_.reset();
+        host_node_.reset();
+        client_node_.reset();
+    }
+
+    template <typename SrvT>
+    typename SrvT::Response::SharedPtr call(
+        const std::string& srv_name, typename SrvT::Request::SharedPtr req) {
+        return callService<SrvT>(client_node_, prefix_ + srv_name, req, *executor_);
+    }
+
+    static geometry_msgs::msg::Point point(double x, double y) {
+        geometry_msgs::msg::Point value;
+        value.x = x;
+        value.y = y;
+        return value;
+    }
+
+    rclcpp::Node::SharedPtr host_node_;
+    rclcpp::Node::SharedPtr client_node_;
+    std::unique_ptr<rclcpp::executors::SingleThreadedExecutor> executor_;
+    std::shared_ptr<map_asset_manager::PointStore> point_store_;
+    std::shared_ptr<map_asset_manager::JunctionStore> junction_store_;
+    std::shared_ptr<map_asset_manager::RouteEdgeStore> edge_store_;
+    std::shared_ptr<map_asset_manager::DataEventBus> event_bus_;
+    std::shared_ptr<map_asset_manager::RouteGraphManager> graph_mgr_;
+    std::string prefix_;
+    int save_called_{0};
+};
+
+TEST_F(RouteGraphManagerServiceTest, AddAndUpdateBezier_SnapEndpointsToNavPoints) {
+    auto add_req = std::make_shared<nav_interfaces::srv::AddRouteEdge::Request>();
+    add_req->edge.id = "curve";
+    add_req->edge.from_ep.id = "p1";
+    add_req->edge.from_ep.type = "nav";
+    add_req->edge.to_ep.id = "p2";
+    add_req->edge.to_ep.type = "nav";
+    add_req->edge.edge_type = "BEZIER";
+    add_req->edge.control_points = {
+        point(-100.0, -101.0), point(4.0, 5.0), point(100.0, 101.0)};
+
+    auto add_res = call<nav_interfaces::srv::AddRouteEdge>(
+        "/add_route_edge", add_req);
+    ASSERT_NE(add_res, nullptr);
+    ASSERT_TRUE(add_res->success);
+
+    auto stored = edge_store_->get("curve");
+    ASSERT_TRUE(stored.has_value());
+    ASSERT_EQ(stored->control_points.size(), 3u);
+    EXPECT_FLOAT_EQ(stored->control_points.front().first, 1.0f);
+    EXPECT_FLOAT_EQ(stored->control_points.front().second, 2.0f);
+    EXPECT_FLOAT_EQ(stored->control_points[1].first, 4.0f);
+    EXPECT_FLOAT_EQ(stored->control_points[1].second, 5.0f);
+    EXPECT_FLOAT_EQ(stored->control_points.back().first, 8.0f);
+    EXPECT_FLOAT_EQ(stored->control_points.back().second, 9.0f);
+
+    auto update_req = std::make_shared<nav_interfaces::srv::UpdateRouteEdge::Request>();
+    update_req->edge = add_req->edge;
+    update_req->edge.control_points.front() = point(-200.0, -201.0);
+    update_req->edge.control_points.back() = point(200.0, 201.0);
+    auto update_res = call<nav_interfaces::srv::UpdateRouteEdge>(
+        "/update_route_edge", update_req);
+    ASSERT_NE(update_res, nullptr);
+    ASSERT_TRUE(update_res->success);
+
+    stored = edge_store_->get("curve");
+    ASSERT_TRUE(stored.has_value());
+    ASSERT_EQ(stored->control_points.size(), 3u);
+    EXPECT_FLOAT_EQ(stored->control_points.front().first, 1.0f);
+    EXPECT_FLOAT_EQ(stored->control_points.front().second, 2.0f);
+    EXPECT_FLOAT_EQ(stored->control_points.back().first, 8.0f);
+    EXPECT_FLOAT_EQ(stored->control_points.back().second, 9.0f);
     EXPECT_EQ(save_called_, 2);
 }
 

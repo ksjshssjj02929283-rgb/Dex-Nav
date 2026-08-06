@@ -287,46 +287,6 @@ bool SmacPlannerLattice::isAreaFree(nav2_costmap_2d::Costmap2D* costmap, const g
 }
 // end
 
-nav_msgs::msg::Path SmacPlannerLattice::interpolatePath(
-  const geometry_msgs::msg::PoseStamped & start,
-  const geometry_msgs::msg::PoseStamped & goal,
-  double step)   // 5cm
-{
-  nav_msgs::msg::Path path;
-  path.header.stamp = _clock->now(); 
-  path.header.frame_id = _global_frame; 
-
-  double dx = goal.pose.position.x - start.pose.position.x;
-  double dy = goal.pose.position.y - start.pose.position.y;
-  double dist = std::hypot(dx, dy);
-
-  int steps = std::max(1, static_cast<int>(dist / step));
-
-  double yaw_start = tf2::getYaw(start.pose.orientation);
-  double yaw_goal  = tf2::getYaw(goal.pose.orientation);
-  double yaw_diff  = angles::shortest_angular_distance(yaw_start, yaw_goal);
-
-  for (int i = 0; i <= steps; ++i) {
-    double t = static_cast<double>(i) / steps;
-
-    geometry_msgs::msg::PoseStamped p;
-    p.header = path.header;
-    p.pose.position.x = start.pose.position.x + t * dx;
-    p.pose.position.y = start.pose.position.y + t * dy;
-    p.pose.position.z = 0.0;
-
-    double yaw = yaw_start + t * yaw_diff;
-    tf2::Quaternion q;
-    q.setRPY(0, 0, yaw);
-    p.pose.orientation = tf2::toMsg(q);
-
-    path.poses.push_back(p);
-  }
-
-  return path;
-}
-
-
 nav_msgs::msg::Path SmacPlannerLattice::createPlan(
   const geometry_msgs::msg::PoseStamped & start,
   const geometry_msgs::msg::PoseStamped & goal)
@@ -408,41 +368,11 @@ nav_msgs::msg::Path SmacPlannerLattice::createPlan(
     elapsed_time.count());
   // end
 
-  // if (!error.empty()) {
-  //   RCLCPP_WARN(
-  //     _logger,
-  //     "%s: failed to create plan, %s.",
-  //     _name.c_str(), error.c_str());
-  //   return plan;
-  // }
   if (!error.empty()) {
-    double dx = goal.pose.position.x - start.pose.position.x;
-    double dy = goal.pose.position.y - start.pose.position.y;
-    double dist = std::hypot(dx, dy);
-  
     RCLCPP_WARN(
       _logger,
-      "%s: failed to create plan (%s), dist to goal = %.3f",
-      _name.c_str(), error.c_str(), dist);
-  
-    // 兜底条件：距离近 + 目标区域可达
-    if (dist < 0.2 && isAreaFree(_costmap, goal)) {
-      RCLCPP_WARN(
-        _logger,
-        "Using interpolated path fallback (distance %.2f m).",
-        dist);
-  
-      auto interp_path = interpolatePath(
-        start, goal, 0.02);
-  
-      if (_raw_plan_publisher->get_subscription_count() > 0) {
-        _raw_plan_publisher->publish(interp_path);
-      }
-  
-      return interp_path;
-    }
-
-    // 否则保持原行为
+      "%s: failed to create plan, %s.",
+      _name.c_str(), error.c_str());
     return plan;
   }
   // Convert to world coordinates
@@ -466,72 +396,6 @@ nav_msgs::msg::Path SmacPlannerLattice::createPlan(
     plan.poses.push_back(pose);
   }
 
-  // ---------- Near-goal position-only interpolation (Scheme A) ----------
-  constexpr double NEAR_GOAL_DIST = 0.30;   // 30cm
-  constexpr double INTERP_STEP    = 0.02;   // 2cm
-
-  if (!plan.poses.empty()) {
-
-    // 取 lattice 生成后的“真正尾点”
-    geometry_msgs::msg::PoseStamped tail_pose = plan.poses.back();
-
-    double dx = goal.pose.position.x - tail_pose.pose.position.x;
-    double dy = goal.pose.position.y - tail_pose.pose.position.y;
-    double dist = std::hypot(dx, dy);
-
-    if (dist < NEAR_GOAL_DIST && isAreaFree(_costmap, goal)) {
-
-      RCLCPP_INFO(
-        _logger,
-        "Near goal (%.2fm). Replacing tail with position-only interpolation.",
-        dist);
-
-      // 1. 找插值起点：向前找一个“还算稳定”的点
-      //    防止只用最后一个 lattice 点（可能带横向）
-      constexpr size_t MAX_BACKTRACK = 15;
-      const size_t n = plan.poses.size();
-      size_t interp_start_idx = n - 1; 
-      size_t steps = 0;
-      bool found = false;
-      // 向前最多回溯 MAX_BACKTRACK 个点
-      size_t back_limit = std::min(MAX_BACKTRACK, n - 1);
-      for (size_t k = 0; k < back_limit; ++k) {
-        size_t i = n - 1 - k;
-
-        double dx_i = goal.pose.position.x - plan.poses[i].pose.position.x;
-        double dy_i = goal.pose.position.y - plan.poses[i].pose.position.y;
-
-        if (std::hypot(dx_i, dy_i) > NEAR_GOAL_DIST) {
-          interp_start_idx = i;
-          found = true;
-          break;
-        }
-      }
-
-      // 若没找到，使用倒数第 MAX_BACKTRACK 个点
-      if (!found) {
-        interp_start_idx = n - 1 - back_limit;
-      } 
-
-      geometry_msgs::msg::PoseStamped interp_start =
-        plan.poses[interp_start_idx];
-
-      // 2. 截断 lattice 尾段
-      plan.poses.resize(interp_start_idx + 1);
-
-      // 3. 生成 position-only 插值路径
-      auto interp_path = interpolatePath(
-        interp_start,
-        goal,
-        INTERP_STEP);
-
-      // 4. 拼接插值路径（跳过第一个点，避免重复）
-      for (size_t i = 1; i < interp_path.poses.size(); ++i) {
-        plan.poses.push_back(interp_path.poses[i]);
-      }
-    }
-  }
-  // ---------- End near-goal handling ----------
   if(isAreaFree(_costmap, goal))
   {
     plan.poses.push_back(goal);

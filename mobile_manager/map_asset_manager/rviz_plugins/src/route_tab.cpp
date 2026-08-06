@@ -36,11 +36,11 @@ RouteTab::RouteTab(QWidget* parent) : QWidget(parent) {
     auto* selected_label = new QLabel("已选顺序：");
 
     // 中间操作按钮
-    add_point_btn_ = new QPushButton(">>");
+    add_point_btn_    = new QPushButton(">>");
     remove_point_btn_ = new QPushButton("<<");
-    up_btn_ = new QPushButton("↑");
-    down_btn_ = new QPushButton("↓");
-    auto* mid_vbox = new QVBoxLayout();
+    up_btn_           = new QPushButton("↑");
+    down_btn_         = new QPushButton("↓");
+    auto* mid_vbox    = new QVBoxLayout();
     mid_vbox->addStretch();
     mid_vbox->addWidget(add_point_btn_);
     mid_vbox->addWidget(remove_point_btn_);
@@ -49,7 +49,7 @@ RouteTab::RouteTab(QWidget* parent) : QWidget(parent) {
     mid_vbox->addWidget(down_btn_);
     mid_vbox->addStretch();
 
-    auto* list_left = new QVBoxLayout();
+    auto* list_left  = new QVBoxLayout();
     list_left->addWidget(points_label);
     list_left->addWidget(point_list_);
 
@@ -70,8 +70,8 @@ RouteTab::RouteTab(QWidget* parent) : QWidget(parent) {
     // ── 按钮行 ────────────────────────────────────────────────────
     refresh_routes_btn_ = new QPushButton("刷新路线");
     refresh_points_btn_ = new QPushButton("刷新点位");
-    create_btn_ = new QPushButton("创建路线");
-    remove_route_btn_ = new QPushButton("删除选中路线");
+    create_btn_         = new QPushButton("创建路线");
+    remove_route_btn_   = new QPushButton("删除选中路线");
 
     auto* btn_row = new QHBoxLayout();
     btn_row->addWidget(refresh_routes_btn_);
@@ -93,8 +93,8 @@ RouteTab::RouteTab(QWidget* parent) : QWidget(parent) {
     // ── 信号连接 ──────────────────────────────────────────────────
     connect(refresh_routes_btn_, &QPushButton::clicked, this, &RouteTab::onRefreshRoutes);
     connect(refresh_points_btn_, &QPushButton::clicked, this, &RouteTab::onRefreshPoints);
-    connect(create_btn_, &QPushButton::clicked, this, &RouteTab::onCreate);
-    connect(remove_route_btn_, &QPushButton::clicked, this, &RouteTab::onRemove);
+    connect(create_btn_,         &QPushButton::clicked, this, &RouteTab::onCreate);
+    connect(remove_route_btn_,   &QPushButton::clicked, this, &RouteTab::onRemove);
 
     connect(route_list_, &QListWidget::itemClicked, this, &RouteTab::onRouteSelected);
 
@@ -107,7 +107,9 @@ RouteTab::RouteTab(QWidget* parent) : QWidget(parent) {
             }
         }
     });
-    connect(remove_point_btn_, &QPushButton::clicked, this, [this]() { qDeleteAll(selected_list_->selectedItems()); });
+    connect(remove_point_btn_, &QPushButton::clicked, this, [this]() {
+        qDeleteAll(selected_list_->selectedItems());
+    });
     connect(up_btn_, &QPushButton::clicked, this, [this]() {
         int row = selected_list_->currentRow();
         if (row <= 0) return;
@@ -123,8 +125,8 @@ RouteTab::RouteTab(QWidget* parent) : QWidget(parent) {
         selected_list_->setCurrentRow(row + 1);
     });
 
-    connect(this, &RouteTab::refreshDone, this, &RouteTab::applyRefreshRoutes, Qt::QueuedConnection);
-    connect(this, &RouteTab::operationFinished, this, &RouteTab::applyOperationResult, Qt::QueuedConnection);
+    connect(this, &RouteTab::refreshDone,          this, &RouteTab::applyRefreshRoutes,  Qt::QueuedConnection);
+    connect(this, &RouteTab::operationFinished,    this, &RouteTab::applyOperationResult, Qt::QueuedConnection);
     connect(this, &RouteTab::pointListRefreshDone, this, &RouteTab::applyPointListRefresh, Qt::QueuedConnection);
 }
 
@@ -144,26 +146,24 @@ void RouteTab::setAvailablePoints(const QStringList& names) {
 }
 
 void RouteTab::rebuildClients() {
-    add_client_ = node_->create_client<nav_interfaces::srv::AddRoute>(prefix_ + "/add_route");
-    remove_client_ = node_->create_client<nav_interfaces::srv::RemoveRoute>(prefix_ + "/remove_route");
-    get_client_ = node_->create_client<nav_interfaces::srv::GetRoute>(prefix_ + "/get_route");
-    get_all_routes_client_ = node_->create_client<nav_interfaces::srv::GetAllRoutes>(prefix_ + "/get_all_routes");
-    get_points_client_ = node_->create_client<nav_interfaces::srv::GetAllNavPoints>(prefix_ + "/get_all_nav_points");
+    add_client_              = node_->create_client<nav_interfaces::srv::AddRoute>(prefix_ + "/add_route");
+    remove_client_           = node_->create_client<nav_interfaces::srv::RemoveRoute>(prefix_ + "/remove_route");
+    get_client_              = node_->create_client<nav_interfaces::srv::GetRoute>(prefix_ + "/get_route");
+    get_all_routes_client_   = node_->create_client<nav_interfaces::srv::GetAllRoutes>(prefix_ + "/get_all_routes");
+    get_points_client_       = node_->create_client<nav_interfaces::srv::GetAllNavPoints>(prefix_ + "/get_all_nav_points");
 }
 
 // ──────────────────────────────────────────────────────────────────────
 
 void RouteTab::onRefreshRoutes() {
-    if (!get_all_routes_client_) {
-        status_label_->setText("节点未初始化");
-        return;
-    }
+    if (!get_all_routes_client_) { status_label_->setText("节点未初始化"); return; }
     refresh_routes_btn_->setEnabled(false);
     status_label_->setText("刷新路线...");
 
     auto req = std::make_shared<nav_interfaces::srv::GetAllRoutes::Request>();
     get_all_routes_client_->async_send_request(
-        req, [this](rclcpp::Client<nav_interfaces::srv::GetAllRoutes>::SharedFuture fut) {
+        req,
+        [this](rclcpp::Client<nav_interfaces::srv::GetAllRoutes>::SharedFuture fut) {
             try {
                 auto resp = fut.get();
                 QStringList items;
@@ -173,7 +173,9 @@ void RouteTab::onRefreshRoutes() {
                         if (i) pts += " → ";
                         pts += QString::fromStdString(r.point_names[i]);
                     }
-                    items << QString("%1  [%2]").arg(QString::fromStdString(r.name)).arg(pts);
+                    items << QString("%1  [%2]")
+                                 .arg(QString::fromStdString(r.name))
+                                 .arg(pts);
                 }
                 Q_EMIT refreshDone(items);
             } catch (const std::exception& ex) {
@@ -183,14 +185,12 @@ void RouteTab::onRefreshRoutes() {
 }
 
 void RouteTab::onRefreshPoints() {
-    if (!get_points_client_) {
-        status_label_->setText("节点未初始化");
-        return;
-    }
+    if (!get_points_client_) { status_label_->setText("节点未初始化"); return; }
     status_label_->setText("刷新点位...");
     auto req = std::make_shared<nav_interfaces::srv::GetAllNavPoints::Request>();
     get_points_client_->async_send_request(
-        req, [this](rclcpp::Client<nav_interfaces::srv::GetAllNavPoints>::SharedFuture fut) {
+        req,
+        [this](rclcpp::Client<nav_interfaces::srv::GetAllNavPoints>::SharedFuture fut) {
             try {
                 auto resp = fut.get();
                 QStringList names;
@@ -205,19 +205,10 @@ void RouteTab::onRefreshPoints() {
 }
 
 void RouteTab::onCreate() {
-    if (!add_client_) {
-        status_label_->setText("节点未初始化");
-        return;
-    }
+    if (!add_client_) { status_label_->setText("节点未初始化"); return; }
     const std::string name = name_edit_->text().trimmed().toStdString();
-    if (name.empty()) {
-        status_label_->setText("错误：请填写路线名称");
-        return;
-    }
-    if (selected_list_->count() == 0) {
-        status_label_->setText("错误：请至少选择一个点位");
-        return;
-    }
+    if (name.empty()) { status_label_->setText("错误：请填写路线名称"); return; }
+    if (selected_list_->count() == 0) { status_label_->setText("错误：请至少选择一个点位"); return; }
 
     auto req = std::make_shared<nav_interfaces::srv::AddRoute::Request>();
     req->name = name;
@@ -228,36 +219,33 @@ void RouteTab::onCreate() {
     create_btn_->setEnabled(false);
     status_label_->setText("创建路线中...");
 
-    add_client_->async_send_request(req, [this](rclcpp::Client<nav_interfaces::srv::AddRoute>::SharedFuture fut) {
-        try {
-            auto resp = fut.get();
-            Q_EMIT operationFinished(
-                resp->success, resp->success ? "路线创建成功"
-                                             : QString("路线创建失败: %1").arg(QString::fromStdString(resp->message)));
-        } catch (const std::exception& ex) {
-            Q_EMIT operationFinished(false, QString("创建异常: %1").arg(ex.what()));
-        }
-    });
+    add_client_->async_send_request(
+        req,
+        [this](rclcpp::Client<nav_interfaces::srv::AddRoute>::SharedFuture fut) {
+            try {
+                auto resp = fut.get();
+                Q_EMIT operationFinished(resp->success,
+                    resp->success ? "路线创建成功" : QString("路线创建失败: %1").arg(
+                        QString::fromStdString(resp->message)));
+            } catch (const std::exception& ex) {
+                Q_EMIT operationFinished(false, QString("创建异常: %1").arg(ex.what()));
+            }
+        });
 }
 
 void RouteTab::onRemove() {
-    if (!remove_client_) {
-        status_label_->setText("节点未初始化");
-        return;
-    }
+    if (!remove_client_) { status_label_->setText("节点未初始化"); return; }
     auto* sel = route_list_->currentItem();
-    if (!sel) {
-        status_label_->setText("请先选择要删除的路线");
-        return;
-    }
+    if (!sel) { status_label_->setText("请先选择要删除的路线"); return; }
 
     // 条目格式: "route_name  [点1 → 点2]"，提取名称部分
     const QString full_text = sel->text();
     const int sep = full_text.indexOf("  [");
     const QString name = (sep >= 0) ? full_text.left(sep) : full_text;
 
-    if (QMessageBox::question(this, "确认删除", QString("确定删除路线 \"%1\"？").arg(name),
-                              QMessageBox::Yes | QMessageBox::No) != QMessageBox::Yes) {
+    if (QMessageBox::question(this, "确认删除",
+            QString("确定删除路线 \"%1\"？").arg(name),
+            QMessageBox::Yes | QMessageBox::No) != QMessageBox::Yes) {
         return;
     }
 
@@ -267,16 +255,18 @@ void RouteTab::onRemove() {
     remove_route_btn_->setEnabled(false);
     status_label_->setText("删除路线中...");
 
-    remove_client_->async_send_request(req, [this](rclcpp::Client<nav_interfaces::srv::RemoveRoute>::SharedFuture fut) {
-        try {
-            auto resp = fut.get();
-            Q_EMIT operationFinished(
-                resp->success, resp->success ? "路线删除成功"
-                                             : QString("路线删除失败: %1").arg(QString::fromStdString(resp->message)));
-        } catch (const std::exception& ex) {
-            Q_EMIT operationFinished(false, QString("删除异常: %1").arg(ex.what()));
-        }
-    });
+    remove_client_->async_send_request(
+        req,
+        [this](rclcpp::Client<nav_interfaces::srv::RemoveRoute>::SharedFuture fut) {
+            try {
+                auto resp = fut.get();
+                Q_EMIT operationFinished(resp->success,
+                    resp->success ? "路线删除成功" : QString("路线删除失败: %1").arg(
+                        QString::fromStdString(resp->message)));
+            } catch (const std::exception& ex) {
+                Q_EMIT operationFinished(false, QString("删除异常: %1").arg(ex.what()));
+            }
+        });
 }
 
 void RouteTab::onRouteSelected(QListWidgetItem* item) {
@@ -289,20 +279,22 @@ void RouteTab::onRouteSelected(QListWidgetItem* item) {
     auto req = std::make_shared<nav_interfaces::srv::GetRoute::Request>();
     req->name = name.toStdString();
 
-    get_client_->async_send_request(req, [this](rclcpp::Client<nav_interfaces::srv::GetRoute>::SharedFuture fut) {
-        try {
-            auto resp = fut.get();
-            if (resp->success) {
-                QStringList pts;
-                for (const auto& p : resp->point_names) {
-                    pts << QString::fromStdString(p);
+    get_client_->async_send_request(
+        req,
+        [this](rclcpp::Client<nav_interfaces::srv::GetRoute>::SharedFuture fut) {
+            try {
+                auto resp = fut.get();
+                if (resp->success) {
+                    QStringList pts;
+                    for (const auto& p : resp->point_names) {
+                        pts << QString::fromStdString(p);
+                    }
+                    QString detail = QString("路线点位: %1").arg(pts.join(" → "));
+                    QMetaObject::invokeMethod(route_detail_label_, "setText",
+                        Qt::QueuedConnection, Q_ARG(QString, detail));
                 }
-                QString detail = QString("路线点位: %1").arg(pts.join(" → "));
-                QMetaObject::invokeMethod(route_detail_label_, "setText", Qt::QueuedConnection, Q_ARG(QString, detail));
-            }
-        } catch (...) {
-        }
-    });
+            } catch (...) {}
+        });
 }
 
 void RouteTab::applyRefreshRoutes(QStringList routes) {

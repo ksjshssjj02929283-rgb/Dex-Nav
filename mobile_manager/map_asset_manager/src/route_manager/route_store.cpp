@@ -100,8 +100,8 @@ std::vector<std::string> RouteStore::onPointRenamed(const std::string& old_name,
         }
         if (changed) {
             modified.push_back(name);
-            RCLCPP_INFO(logger_, "Route '%s': renamed point '%s' -> '%s'", name.c_str(), old_name.c_str(),
-                        new_name.c_str());
+            RCLCPP_INFO(logger_, "Route '%s': renamed point '%s' -> '%s'",
+                        name.c_str(), old_name.c_str(), new_name.c_str());
         }
     }
     return modified;

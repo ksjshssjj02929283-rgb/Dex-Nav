@@ -35,6 +35,9 @@
 #include "tf2_ros/transform_listener.h"
 #include "tf2_ros/create_timer_ros.h"
 #include "nav2_costmap_2d/costmap_2d_ros.hpp"
+#include "nav2_costmap_2d/costmap_subscriber.hpp"
+#include "nav2_costmap_2d/footprint_subscriber.hpp"
+#include "nav2_core/smoother.hpp"
 #include "pluginlib/class_loader.hpp"
 #include "pluginlib/class_list_macros.hpp"
 #include "nav2_core/global_planner.hpp"
@@ -61,6 +64,7 @@ public:
   ~PlannerServer();
 
   using PlannerMap = std::unordered_map<std::string, nav2_core::GlobalPlanner::Ptr>;
+  using SmootherMap = std::unordered_map<std::string, nav2_core::Smoother::Ptr>;
 
   /**
    * @brief Method to get plan from the desired plugin
@@ -230,6 +234,24 @@ protected:
   // Planner
   PlannerMap planners_;
   pluginlib::ClassLoader<nav2_core::GlobalPlanner> gp_loader_;
+
+  // ── 路径平滑统一后处理（getPlan 出口，goal_line_interp 之后；current_* 口径）──
+  // 平滑责任归"生产折线的那一层"：global 侧折线源 = Theta* 拐点 / 直线接管接缝；
+  // ③ local planner（优化型）输出天然平滑，不做二次平滑（doc 17）。
+  SmootherMap smoothers_;
+  pluginlib::ClassLoader<nav2_core::Smoother> smoother_loader_;
+  std::vector<std::string> smoother_ids_;
+  std::vector<std::string> smoother_types_;
+  std::string smoother_ids_concat_;
+  std::string current_smoother_;
+  bool smoother_enable_{false};
+  double smoother_max_time_{0.1};
+  std::shared_ptr<nav2_costmap_2d::CostmapSubscriber> smoother_costmap_sub_;
+  std::shared_ptr<nav2_costmap_2d::FootprintSubscriber> smoother_footprint_sub_;
+
+  /// 平滑统一后处理：current_smoother 对 path 执行 smooth()，异常/碰撞由插件
+  /// 内部防护，此处兜底捕获并保留未平滑路径。
+  void applyPathSmoothing(nav_msgs::msg::Path & path);
   std::vector<std::string> default_ids_;
   std::vector<std::string> default_types_;
   std::vector<std::string> planner_ids_;
@@ -237,16 +259,16 @@ protected:
   double max_planner_duration_;
   std::string planner_ids_concat_;
   // The currently active planner key used as fallback when planner_id is
-  // empty or not found. Switchable at runtime via the "active_planner" param.
-  std::string active_planner_;
+  // empty or not found. Switchable at runtime via the "current_planner" param.
+  std::string current_planner_;
 
   // When true, the planner_id sent by callers (e.g. BT's hard-coded
-  // "GridBased") is IGNORED and getPlan always dispatches to active_planner_.
+  // "GridBased") is IGNORED and getPlan always dispatches to current_planner_.
   // This is the "hot-swap" mode: register all candidate planners under their
   // real names (RouteGridPlanner, SmacGridBased, ...), set
-  // override_planner_id=true, and flip active_planner at runtime.
+  // override_planner_id=true, and flip current_planner at runtime.
   // When false (default): nav2 standard behavior — caller-supplied
-  // planner_id wins; active_planner_ only kicks in as a fallback.
+  // planner_id wins; current_planner_ only kicks in as a fallback.
   bool override_planner_id_{false};
 
   // Free-space planner to retry with when the route planner reports no route
@@ -258,6 +280,35 @@ protected:
 
   // TF buffer
   std::shared_ptr<tf2_ros::Buffer> tf_;
+
+  /**
+   * @brief 末端直线插值统一后处理（原 smac fork 定制逻辑上收，对所有 planner 生效）：
+   *   - 成功路径：尾点距 goal ≤ tail_distance 时，截断该窗口内尾段（如朝向对齐
+   *     弯钩等末端机动），直线插值补到 goal——朝向对齐交给控制器末端旋转
+   *   - 失败兜底：规划为空且 start 距 goal ≤ tail_distance 时，直线插值 start→goal
+   *     （近距目标首次规划的保护：短距机动超出运动学 planner 求解能力时必然失败）
+   *   两分支均要求 goal 处 footprint 无碰撞；位置线性插值 + yaw 线性混合。
+   */
+  void applyGoalLineInterpolation(
+    nav_msgs::msg::Path & path,
+    const geometry_msgs::msg::PoseStamped & start,
+    const geometry_msgs::msg::PoseStamped & goal);
+
+  /// goal 处机器人 footprint 无碰撞检查（全局 costmap，LETHAL 阈值）。
+  bool isGoalFootprintFree(const geometry_msgs::msg::PoseStamped & goal);
+
+  /// 从 from 直线插值到 goal 并追加到 path（跳过 from 本身，防重复点）。
+  void appendGoalLine(
+    nav_msgs::msg::Path & path,
+    const geometry_msgs::msg::PoseStamped & from,
+    const geometry_msgs::msg::PoseStamped & goal);
+
+  // 末端直线插值参数（开关与参数暴露到 YAML）。
+  // tail_distance 同时用于两个分支：成功路径的尾段替换窗口 + 失败兜底的
+  // 判定半径——两者语义相同（goal 附近多大范围内允许直线接管），单参数管理。
+  bool goal_line_interp_enable_{false};
+  double goal_line_interp_tail_distance_{0.3};
+  double goal_line_interp_step_{0.02};
 
   // Global Costmap
   std::shared_ptr<nav2_costmap_2d::Costmap2DROS> costmap_ros_;

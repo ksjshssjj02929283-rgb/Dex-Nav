@@ -1,0 +1,40 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>nav2_speed_planner</name>
+  <version>0.4.6</version>
+  <description>
+    速度规划器插件库（nav2_core::SpeedPlanner 实现，五层架构 ④速度规划层）。
+    抽象基类 SpeedPlannerBase 实现 7 个冻结接口 + 恒加速度参考内核（assignConstantAccelProfile），
+    派生 pluginlib 插件：TrapezoidalSpeedPlanner（T 型三段式）、
+    SCurveSpeedPlanner（S 型 jerk 限制曲线，基于 Ruckig，jerk/加速度严格达标，填 acceleration/relative_time）。
+  </description>
+  <maintainer email="dexforce@dexforce.com">dexforce</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>nav2_common</depend>
+  <depend>angles</depend>
+  <depend>nav2_core</depend>
+  <depend>nav2_costmap_2d</depend>
+  <depend>nav2_util</depend>
+  <depend>nav_msgs</depend>
+  <depend>nav_interfaces</depend>
+  <depend>geometry_msgs</depend>
+  <depend>pluginlib</depend>
+  <depend>rclcpp</depend>
+  <depend>rclcpp_lifecycle</depend>
+  <depend>tf2_ros</depend>
+  <depend>ruckig</depend>
+
+
+  <test_depend>ament_cmake_gtest</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+  <test_depend>ament_lint_auto</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+    <nav2_core plugin="${prefix}/nav2_speed_planner.xml" />
+  </export>
+</package>

@@ -98,13 +98,22 @@ VelocitySmoother::on_configure(const rclcpp_lifecycle::State &)
   declare_parameter_if_not_declared(
     node, "deadband_velocity", rclcpp::ParameterValue(std::vector<double>{0.0, 0.0, 0.0}));
   declare_parameter_if_not_declared(node, "velocity_timeout", rclcpp::ParameterValue(1.0));
+  declare_parameter_if_not_declared(
+    node, "hard_stop_topic", rclcpp::ParameterValue(std::string("cmd_vel_hard_stop")));
+  declare_parameter_if_not_declared(node, "hard_stop_duration", rclcpp::ParameterValue(0.5));
   node->get_parameter("odom_topic", odom_topic_);
   node->get_parameter("input_topic", input_topic_);
   node->get_parameter("output_topic", output_topic_);
   node->get_parameter("odom_duration", odom_duration_);
   node->get_parameter("deadband_velocity", deadband_velocities_);
   node->get_parameter("velocity_timeout", velocity_timeout_dbl);
+  node->get_parameter("hard_stop_topic", hard_stop_topic_);
+  node->get_parameter("hard_stop_duration", hard_stop_duration_);
   velocity_timeout_ = rclcpp::Duration::from_seconds(velocity_timeout_dbl);
+
+  if (hard_stop_duration_ < 0.0) {
+    throw std::runtime_error("hard_stop_duration must be greater than or equal to zero");
+  }
 
   if (max_velocities_.size() != 3 || min_velocities_.size() != 3 ||
     max_accels_.size() != 3 || max_decels_.size() != 3 || deadband_velocities_.size() != 3)
@@ -132,6 +141,9 @@ VelocitySmoother::on_configure(const rclcpp_lifecycle::State &)
   cmd_sub_ = create_subscription<geometry_msgs::msg::Twist>(
     input_topic_, rclcpp::QoS(1),
     std::bind(&VelocitySmoother::inputCommandCallback, this, std::placeholders::_1));
+  hard_stop_sub_ = create_subscription<std_msgs::msg::Empty>(
+    hard_stop_topic_, rclcpp::QoS(1).reliable(),
+    std::bind(&VelocitySmoother::hardStopCallback, this, std::placeholders::_1));
 
   return nav2_util::CallbackReturn::SUCCESS;
 }
@@ -158,6 +170,7 @@ nav2_util::CallbackReturn
 VelocitySmoother::on_deactivate(const rclcpp_lifecycle::State &)
 {
   RCLCPP_INFO(get_logger(), "Deactivating");
+  hardStop();
   if (timer_) {
     timer_->cancel();
     timer_.reset();
@@ -177,6 +190,10 @@ VelocitySmoother::on_cleanup(const rclcpp_lifecycle::State &)
   smoothed_cmd_pub_.reset();
   odom_smoother_.reset();
   cmd_sub_.reset();
+  hard_stop_sub_.reset();
+  command_.reset();
+  last_cmd_ = geometry_msgs::msg::Twist();
+  hard_stop_active_ = false;
   return nav2_util::CallbackReturn::SUCCESS;
 }
 
@@ -195,8 +212,45 @@ void VelocitySmoother::inputCommandCallback(const geometry_msgs::msg::Twist::Sha
     return;
   }
 
+  if (hard_stop_active_) {
+    if (std::chrono::steady_clock::now() < hard_stop_until_) {
+      if (*msg != geometry_msgs::msg::Twist()) {
+        RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 1000,
+          "Ignoring non-zero velocity during the hard-stop hold interval.");
+      }
+      return;
+    }
+    hard_stop_active_ = false;
+  }
+
   command_ = msg;
   last_command_time_ = now();
+}
+
+void VelocitySmoother::hardStopCallback(const std_msgs::msg::Empty::SharedPtr)
+{
+  hardStop();
+}
+
+void VelocitySmoother::hardStop()
+{
+  hard_stop_active_ = true;
+  hard_stop_until_ = std::chrono::steady_clock::now() +
+    std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+    std::chrono::duration<double>(hard_stop_duration_));
+  command_ = std::make_shared<geometry_msgs::msg::Twist>();
+  last_cmd_ = geometry_msgs::msg::Twist();
+  last_command_time_ = now();
+  stopped_ = true;
+
+  if (smoothed_cmd_pub_ && smoothed_cmd_pub_->is_activated()) {
+    smoothed_cmd_pub_->publish(std::make_unique<geometry_msgs::msg::Twist>());
+  }
+  RCLCPP_ERROR(
+    get_logger(),
+    "Hard stop received: published zero immediately and holding zero for %.3f seconds.",
+    hard_stop_duration_);
 }
 
 double VelocitySmoother::findEtaConstraint(
@@ -255,6 +309,16 @@ double VelocitySmoother::applyConstraints(
 
 void VelocitySmoother::smootherTimer()
 {
+  if (hard_stop_active_) {
+    if (std::chrono::steady_clock::now() < hard_stop_until_) {
+      if (smoothed_cmd_pub_ && smoothed_cmd_pub_->is_activated()) {
+        smoothed_cmd_pub_->publish(std::make_unique<geometry_msgs::msg::Twist>());
+      }
+      return;
+    }
+    hard_stop_active_ = false;
+  }
+
   // Wait until the first command is received
   if (!command_) {
     return;
@@ -275,7 +339,11 @@ void VelocitySmoother::smootherTimer()
 
   // Get current velocity based on feedback type
   geometry_msgs::msg::Twist current_;
-  if (open_loop_) {
+  // A stop command must converge from the previous output, not repeatedly restart from odometry.
+  // With stale/frozen odometry, re-anchoring every cycle can otherwise publish the same non-zero
+  // one-step deceleration forever (the failure observed after the RPP collision stop request).
+  const bool zero_command = *command_ == geometry_msgs::msg::Twist();
+  if (open_loop_ || zero_command) {
     current_ = last_cmd_;
   } else {
     current_ = odom_smoother_->getTwist();
@@ -360,6 +428,13 @@ VelocitySmoother::dynamicParametersCallback(std::vector<rclcpp::Parameter> param
         odom_smoother_ =
           std::make_unique<nav2_util::OdomSmoother>(
           shared_from_this(), odom_duration_, odom_topic_);
+      } else if (name == "hard_stop_duration") {
+        if (parameter.as_double() < 0.0) {
+          RCLCPP_WARN(get_logger(), "hard_stop_duration must not be negative");
+          result.successful = false;
+          break;
+        }
+        hard_stop_duration_ = parameter.as_double();
       }
     } else if (type == ParameterType::PARAMETER_DOUBLE_ARRAY) {
       if (parameter.as_double_array().size() != 3) {

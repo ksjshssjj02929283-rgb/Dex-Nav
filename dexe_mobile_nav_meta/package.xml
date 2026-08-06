@@ -2,7 +2,7 @@
 <?xml-model href="http://download.ros.org/schema/package_format_3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>dexe_mobile_nav_meta</name>
-  <version>0.4.5</version>
+  <version>0.4.6</version>
   <description>dexe_mobile_nav repository metapackage (CI 用以读取版本号)</description>
   <maintainer email="dexforce@dexforce.com">Dexforce</maintainer>
   <license>Proprietary</license>

@@ -1,18 +1,19 @@
 #pragma once
 
+#include <cmath>
+#include <chrono>
+#include <functional>
+#include <mutex>
+#include <string>
+#include <vector>
+#include <utility>
+
 #include <OgreManualObject.h>
 #include <OgreRenderOperation.h>
 
-#include <chrono>
-#include <cmath>
-#include <functional>
-#include <mutex>
+#include <rclcpp/rclcpp.hpp>
 #include <nav_interfaces/srv/get_all_nav_points.hpp>
 #include <nav_interfaces/srv/get_route_graph.hpp>
-#include <rclcpp/rclcpp.hpp>
-#include <string>
-#include <utility>
-#include <vector>
 
 namespace map_asset_rviz_plugin {
 
@@ -30,14 +31,14 @@ struct EndpointInfo {
 // Edge configuration collected from the config dialog
 // ---------------------------------------------------------------------------
 struct EdgeConfig {
-    bool accepted{false};  ///< true if user clicked OK in the dialog
+    bool        accepted{false};  ///< true if user clicked OK in the dialog
     std::string edge_id;
     std::string edge_type{"LINE"};
-    bool bidirectional{false};
-    float max_speed{0.8f};
-    float xy_tolerance{0.3f};
-    float th_tolerance{0.5f};
-    float lane_width{0.0f};
+    bool        bidirectional{false};
+    float       max_speed{0.8f};
+    float       xy_tolerance{0.3f};
+    float       th_tolerance{0.5f};
+    float       lane_width{0.0f};
     std::string obs_policy{"STOP"};
 };
 
@@ -55,38 +56,42 @@ inline bool s_route_graph_editing = false;
 // ---------------------------------------------------------------------------
 // Load all endpoints (nav points + junctions) synchronously
 // ---------------------------------------------------------------------------
-inline std::vector<EndpointInfo> loadEndpoints(rclcpp::Node::SharedPtr node, const std::string& prefix) {
+inline std::vector<EndpointInfo> loadEndpoints(
+    rclcpp::Node::SharedPtr node, const std::string& prefix)
+{
     std::vector<EndpointInfo> eps;
 
     // --- nav points ---
-    auto pts_cli = node->create_client<nav_interfaces::srv::GetAllNavPoints>(prefix + "/get_all_nav_points");
+    auto pts_cli = node->create_client<nav_interfaces::srv::GetAllNavPoints>(
+        prefix + "/get_all_nav_points");
     if (pts_cli->wait_for_service(std::chrono::milliseconds(800))) {
         auto req = std::make_shared<nav_interfaces::srv::GetAllNavPoints::Request>();
         auto fut = pts_cli->async_send_request(req);
         if (fut.wait_for(std::chrono::seconds(2)) == std::future_status::ready) {
             for (const auto& pt : fut.get()->points) {
                 EndpointInfo ep;
-                ep.id = pt.name;
+                ep.id   = pt.name;
                 ep.type = "nav";
-                ep.x = static_cast<float>(pt.x);
-                ep.y = static_cast<float>(pt.y);
+                ep.x    = static_cast<float>(pt.x);
+                ep.y    = static_cast<float>(pt.y);
                 eps.push_back(ep);
             }
         }
     }
 
     // --- junctions ---
-    auto grph_cli = node->create_client<nav_interfaces::srv::GetRouteGraph>(prefix + "/get_route_graph");
+    auto grph_cli = node->create_client<nav_interfaces::srv::GetRouteGraph>(
+        prefix + "/get_route_graph");
     if (grph_cli->wait_for_service(std::chrono::milliseconds(800))) {
         auto req = std::make_shared<nav_interfaces::srv::GetRouteGraph::Request>();
         auto fut = grph_cli->async_send_request(req);
         if (fut.wait_for(std::chrono::seconds(2)) == std::future_status::ready) {
             for (const auto& jct : fut.get()->junctions) {
                 EndpointInfo ep;
-                ep.id = jct.id;
+                ep.id   = jct.id;
                 ep.type = "junction";
-                ep.x = jct.x;
-                ep.y = jct.y;
+                ep.x    = jct.x;
+                ep.y    = jct.y;
                 eps.push_back(ep);
             }
         }
@@ -101,9 +106,11 @@ inline std::vector<EndpointInfo> loadEndpoints(rclcpp::Node::SharedPtr node, con
 // Caller is responsible for dispatching the callback to the Qt main thread
 // (via QMetaObject::invokeMethod with Qt::QueuedConnection) if needed.
 // ---------------------------------------------------------------------------
-inline void loadEndpointsAsync(rclcpp::Node::SharedPtr node,
-                               const std::string& prefix,
-                               std::function<void(std::vector<EndpointInfo>)> on_done) {
+inline void loadEndpointsAsync(
+    rclcpp::Node::SharedPtr node,
+    const std::string& prefix,
+    std::function<void(std::vector<EndpointInfo>)> on_done)
+{
     // Shared state between two independent async service calls
     struct State {
         std::mutex mu;
@@ -122,21 +129,24 @@ inline void loadEndpointsAsync(rclcpp::Node::SharedPtr node,
         }
     };
     auto state = std::make_shared<State>();
-    state->cb = std::move(on_done);
+    state->cb  = std::move(on_done);
 
     // ---- nav points ----
-    auto pts_cli = node->create_client<nav_interfaces::srv::GetAllNavPoints>(prefix + "/get_all_nav_points");
+    auto pts_cli = node->create_client<nav_interfaces::srv::GetAllNavPoints>(
+        prefix + "/get_all_nav_points");
     if (pts_cli->service_is_ready()) {
         pts_cli->async_send_request(
             std::make_shared<nav_interfaces::srv::GetAllNavPoints::Request>(),
-            [state, pts_cli](rclcpp::Client<nav_interfaces::srv::GetAllNavPoints>::SharedFuture fut) {
+            [state, pts_cli](
+                rclcpp::Client<nav_interfaces::srv::GetAllNavPoints>::SharedFuture fut) {
                 std::vector<EndpointInfo> eps;
                 try {
                     for (const auto& pt : fut.get()->points) {
-                        eps.push_back({pt.name, "nav", static_cast<float>(pt.x), static_cast<float>(pt.y)});
+                        eps.push_back({pt.name, "nav",
+                                       static_cast<float>(pt.x),
+                                       static_cast<float>(pt.y)});
                     }
-                } catch (...) {
-                }
+                } catch (...) {}
                 std::lock_guard<std::mutex> lk(state->mu);
                 state->navpts = std::move(eps);
                 ++state->done_count;
@@ -149,18 +159,19 @@ inline void loadEndpointsAsync(rclcpp::Node::SharedPtr node,
     }
 
     // ---- junctions ----
-    auto grph_cli = node->create_client<nav_interfaces::srv::GetRouteGraph>(prefix + "/get_route_graph");
+    auto grph_cli = node->create_client<nav_interfaces::srv::GetRouteGraph>(
+        prefix + "/get_route_graph");
     if (grph_cli->service_is_ready()) {
         grph_cli->async_send_request(
             std::make_shared<nav_interfaces::srv::GetRouteGraph::Request>(),
-            [state, grph_cli](rclcpp::Client<nav_interfaces::srv::GetRouteGraph>::SharedFuture fut) {
+            [state, grph_cli](
+                rclcpp::Client<nav_interfaces::srv::GetRouteGraph>::SharedFuture fut) {
                 std::vector<EndpointInfo> eps;
                 try {
                     for (const auto& jct : fut.get()->junctions) {
                         eps.push_back({jct.id, "junction", jct.x, jct.y});
                     }
-                } catch (...) {
-                }
+                } catch (...) {}
                 std::lock_guard<std::mutex> lk(state->mu);
                 state->junctions = std::move(eps);
                 ++state->done_count;
@@ -176,19 +187,22 @@ inline void loadEndpointsAsync(rclcpp::Node::SharedPtr node,
 // ---------------------------------------------------------------------------
 // Load only junctions
 // ---------------------------------------------------------------------------
-inline std::vector<EndpointInfo> loadJunctions(rclcpp::Node::SharedPtr node, const std::string& prefix) {
+inline std::vector<EndpointInfo> loadJunctions(
+    rclcpp::Node::SharedPtr node, const std::string& prefix)
+{
     std::vector<EndpointInfo> eps;
-    auto cli = node->create_client<nav_interfaces::srv::GetRouteGraph>(prefix + "/get_route_graph");
+    auto cli = node->create_client<nav_interfaces::srv::GetRouteGraph>(
+        prefix + "/get_route_graph");
     if (cli->wait_for_service(std::chrono::milliseconds(800))) {
         auto req = std::make_shared<nav_interfaces::srv::GetRouteGraph::Request>();
         auto fut = cli->async_send_request(req);
         if (fut.wait_for(std::chrono::seconds(2)) == std::future_status::ready) {
             for (const auto& jct : fut.get()->junctions) {
                 EndpointInfo ep;
-                ep.id = jct.id;
+                ep.id   = jct.id;
                 ep.type = "junction";
-                ep.x = jct.x;
-                ep.y = jct.y;
+                ep.x    = jct.x;
+                ep.y    = jct.y;
                 eps.push_back(ep);
             }
         }
@@ -199,11 +213,12 @@ inline std::vector<EndpointInfo> loadJunctions(rclcpp::Node::SharedPtr node, con
 // ---------------------------------------------------------------------------
 // Find nearest endpoint within radius (optionally exclude one id)
 // ---------------------------------------------------------------------------
-inline const EndpointInfo* findNearest(double x,
-                                       double y,
-                                       const std::vector<EndpointInfo>& eps,
-                                       float radius = kSnapRadius,
-                                       const std::string& exclude_id = "") {
+inline const EndpointInfo* findNearest(
+    double x, double y,
+    const std::vector<EndpointInfo>& eps,
+    float radius = kSnapRadius,
+    const std::string& exclude_id = "")
+{
     float best2 = radius * radius;
     const EndpointInfo* best = nullptr;
     for (const auto& ep : eps) {
@@ -211,10 +226,7 @@ inline const EndpointInfo* findNearest(double x,
         float dx = ep.x - static_cast<float>(x);
         float dy = ep.y - static_cast<float>(y);
         float d2 = dx * dx + dy * dy;
-        if (d2 < best2) {
-            best2 = d2;
-            best = &ep;
-        }
+        if (d2 < best2) { best2 = d2; best = &ep; }
     }
     return best;
 }
@@ -222,13 +234,14 @@ inline const EndpointInfo* findNearest(double x,
 // ---------------------------------------------------------------------------
 // Bezier curve computation (Bernstein basis)
 // ---------------------------------------------------------------------------
-inline std::vector<std::pair<float, float>> computeBezier(const std::vector<std::pair<float, float>>& ctrl_pts,
-                                                          int segments = 40) {
+inline std::vector<std::pair<float, float>> computeBezier(
+    const std::vector<std::pair<float, float>>& ctrl_pts, int segments = 40)
+{
     std::vector<std::pair<float, float>> result;
     if (ctrl_pts.size() < 2) return result;
 
     const int n = static_cast<int>(ctrl_pts.size()) - 1;
-    auto binom = [](int nn, int k) -> float {
+    auto binom  = [](int nn, int k) -> float {
         if (k == 0 || k == nn) return 1.0f;
         float val = 1.0f;
         for (int i = 0; i < k; ++i) val = val * (nn - i) / (i + 1);
@@ -253,8 +266,10 @@ inline std::vector<std::pair<float, float>> computeBezier(const std::vector<std:
 // ---------------------------------------------------------------------------
 
 /// Draw a circle ring (one ManualObject section)
-inline void drawRing(
-    Ogre::ManualObject* obj, float cx, float cy, float cz, float radius, float r, float g, float b, int segs = 20) {
+inline void drawRing(Ogre::ManualObject* obj,
+                     float cx, float cy, float cz, float radius,
+                     float r, float g, float b, int segs = 20)
+{
     obj->begin("BaseWhiteNoLighting", Ogre::RenderOperation::OT_LINE_STRIP);
     obj->colour(r, g, b, 1.0f);
     for (int i = 0; i <= segs; ++i) {
@@ -265,8 +280,10 @@ inline void drawRing(
 }
 
 /// Draw a line segment (one ManualObject section)
-inline void drawSegment(
-    Ogre::ManualObject* obj, float x0, float y0, float x1, float y1, float z, float r, float g, float b) {
+inline void drawSegment(Ogre::ManualObject* obj,
+                        float x0, float y0, float x1, float y1, float z,
+                        float r, float g, float b)
+{
     obj->begin("BaseWhiteNoLighting", Ogre::RenderOperation::OT_LINE_LIST);
     obj->colour(r, g, b, 1.0f);
     obj->position(x0, y0, z);
@@ -276,8 +293,10 @@ inline void drawSegment(
 }
 
 /// Draw a bezier curve through ctrl_pts (one ManualObject section)
-inline void drawBezierCurve(
-    Ogre::ManualObject* obj, const std::vector<std::pair<float, float>>& ctrl_pts, float z, float r, float g, float b) {
+inline void drawBezierCurve(Ogre::ManualObject* obj,
+                            const std::vector<std::pair<float, float>>& ctrl_pts,
+                            float z, float r, float g, float b)
+{
     auto pts = computeBezier(ctrl_pts);
     if (pts.size() < 2) return;
     obj->begin("BaseWhiteNoLighting", Ogre::RenderOperation::OT_LINE_STRIP);
@@ -289,7 +308,9 @@ inline void drawBezierCurve(
 }
 
 /// Draw a small X mark (two crossed lines)
-inline void drawCross(Ogre::ManualObject* obj, float cx, float cy, float cz, float half, float r, float g, float b) {
+inline void drawCross(Ogre::ManualObject* obj, float cx, float cy, float cz,
+                      float half, float r, float g, float b)
+{
     obj->begin("BaseWhiteNoLighting", Ogre::RenderOperation::OT_LINE_LIST);
     obj->colour(r, g, b, 1.0f);
     obj->position(cx - half, cy - half, cz);

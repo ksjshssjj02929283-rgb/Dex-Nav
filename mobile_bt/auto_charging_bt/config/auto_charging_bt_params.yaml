@@ -13,14 +13,14 @@
     # 充电确认成功后短时向前移动，减小机器人继续顶住充电桩的机械压力。
     pressure_relief:
       speed: 0.01               # 前进速度，单位 m/s；正值表示离开充电桩方向。
-      duration: 1.0             # 固定发送速度的时长，单位 s。
+      duration: 0.8             # 固定发送速度的时长，单位 s。
       control_rate: 50.0        # 速度发布频率，单位 Hz。
 
     # 视觉到位后的末端后退；检测到连接或正在充电会立即停止。
     backward:
       initial_speed: -0.02       # 后退速度，单位 m/s；负值表示后退。
       connected_speed: -0.005    # 兼容旧参数；当前检测到连接/充电会直接停。
-      max_distance: 0.16         # 最大后退距离，单位 m；防止长时间顶桩。
+      max_distance: 0.15         # 最大后退距离，单位 m；防止长时间顶桩。
       stable_duration: 1.0       # 兼容旧参数；当前不再等待连接稳定。
       max_duration: 8.0          # 最大后退时间，单位 s。
       control_rate: 50.0         # 后退控制频率，单位 Hz。

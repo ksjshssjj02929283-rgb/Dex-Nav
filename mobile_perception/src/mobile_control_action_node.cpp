@@ -16,6 +16,7 @@
 #include <tf2_ros/transform_listener.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <memory>
 #include <string>
@@ -53,6 +54,7 @@ public:
     MobileControlActionNode() : Node("mobile_control_action_node")
     {
         this->declare_parameter("control_frequency", 20.0);
+        this->declare_parameter("stop_confirm_duration", 0.2);
         this->declare_parameter("max_v", 0.35);
         this->declare_parameter("min_v", 0.0);
         this->declare_parameter("max_w", 1.0);
@@ -62,6 +64,7 @@ public:
         this->declare_parameter("rotate_stop_yaw_error", 0.02);
         this->declare_parameter("k_rho", 0.8);
         this->declare_parameter("near_target_dist", 0.3);
+        this->declare_parameter("near_target_min_speed_scale", 0.5);
         this->declare_parameter("cmd_vel_filter_alpha", 0.3);
         this->declare_parameter("min_angular_vel", 0.01);
         this->declare_parameter("xy_tolerance", 0.02);
@@ -103,6 +106,10 @@ public:
         this->declare_parameter("straight.switch_speed", 0.1);
 
         control_frequency_ = this->get_parameter("control_frequency").as_double();
+        stop_confirm_duration_ =
+            std::max(0.0, this->get_parameter("stop_confirm_duration").as_double());
+        stop_confirm_cycles_ = std::max(
+            1, static_cast<int>(std::ceil(stop_confirm_duration_ * control_frequency_)));
         max_v_ = this->get_parameter("max_v").as_double();
         min_v_ = this->get_parameter("min_v").as_double();
         max_w_ = this->get_parameter("max_w").as_double();
@@ -113,6 +120,8 @@ public:
         rotate_stop_yaw_error_ = this->get_parameter("rotate_stop_yaw_error").as_double();
         k_rho_ = this->get_parameter("k_rho").as_double();
         near_target_dist_ = this->get_parameter("near_target_dist").as_double();
+        near_target_min_speed_scale_ = std::clamp(
+            this->get_parameter("near_target_min_speed_scale").as_double(), 0.0, 1.0);
         filter_alpha_ = this->get_parameter("cmd_vel_filter_alpha").as_double();
         min_angular_vel_ = this->get_parameter("min_angular_vel").as_double();
         xy_tolerance_ = this->get_parameter("xy_tolerance").as_double();
@@ -148,6 +157,13 @@ public:
             std::chrono::milliseconds(static_cast<int>(1000.0 / control_frequency_)),
             std::bind(&MobileControlActionNode::controlLoop, this));
 
+        RCLCPP_INFO(
+            this->get_logger(),
+            "Action 控制参数：停稳确认=%.3fs（%d周期），控制频率=%.1fHz，"
+            "近目标减速距离=%.3fm，近目标最低速度比例=%.2f",
+            stop_confirm_duration_, stop_confirm_cycles_, control_frequency_,
+            near_target_dist_, near_target_min_speed_scale_);
+
         resetControlState();
     }
 
@@ -167,10 +183,14 @@ private:
     bool get_map_pose_{false};
     bool is_goal_{false};
     bool is_cancelling_{false};
+    std::chrono::steady_clock::time_point goal_started_time_{};
+    bool goal_timer_started_{false};
     int stop_count_{0};
+    int stop_confirm_cycles_{1};
     GoalMode goal_mode_{GoalMode::STRAIGHT};
 
     double control_frequency_;
+    double stop_confirm_duration_;
     double max_v_;
     double min_v_;
     double max_w_;
@@ -180,6 +200,7 @@ private:
     double rotate_stop_yaw_error_;
     double k_rho_;
     double near_target_dist_;
+    double near_target_min_speed_scale_;
     double filter_alpha_;
     double min_angular_vel_;
     double xy_tolerance_;
@@ -249,7 +270,18 @@ private:
         filtered_cmd_vel_.angular.z = 0.0;
         pre_cmd_vel_.linear.x = 0.0;
         pre_cmd_vel_.angular.z = 0.0;
+        goal_timer_started_ = false;
         resetPidStates();
+    }
+
+    double goalElapsedSeconds() const
+    {
+        if (!goal_timer_started_) {
+            return -1.0;
+        }
+        return std::chrono::duration<double>(
+                   std::chrono::steady_clock::now() - goal_started_time_)
+            .count();
     }
 
     double runPid(const PidConfig &config, PidState &state, double error, double dt)
@@ -333,15 +365,20 @@ private:
         std::shared_ptr<const PreciseControl::Goal> goal)
     {
         if (active_goal_handle_) {
-            RCLCPP_WARN(this->get_logger(), "Rejecting precise control goal because another goal is active");
+            RCLCPP_WARN(
+                this->get_logger(),
+                "[底盘直控目标被拒绝] 已有目标正在执行，当前任务已运行 %.3fs。",
+                goalElapsedSeconds());
             return rclcpp_action::GoalResponse::REJECT;
         }
 
         geometry_msgs::msg::PoseStamped target_pose_map;
         std::string error_msg;
         if (!transformTargetToMap(goal->target_pose, target_pose_map, error_msg)) {
-            RCLCPP_WARN(this->get_logger(), "Rejecting precise control goal: cannot transform goal to map: %s",
-                        error_msg.c_str());
+            RCLCPP_WARN(
+                this->get_logger(),
+                "[底盘直控目标被拒绝] 无法将目标从 %s 转换到 map，原因=%s。",
+                goal->target_pose.header.frame_id.c_str(), error_msg.c_str());
             return rclcpp_action::GoalResponse::REJECT;
         }
 
@@ -350,7 +387,10 @@ private:
 
     rclcpp_action::CancelResponse handleCancel(const std::shared_ptr<GoalHandlePreciseControl>)
     {
-        RCLCPP_INFO(this->get_logger(), "Precise control cancel requested");
+        RCLCPP_INFO(
+            this->get_logger(),
+            "[底盘直控取消请求已接受] 当前任务已运行 %.3fs，接下来执行平滑停车。",
+            goalElapsedSeconds());
         return rclcpp_action::CancelResponse::ACCEPT;
     }
 
@@ -364,16 +404,27 @@ private:
             result->success = false;
             result->message = "Cannot transform goal to map: " + error_msg;
             goal_handle->abort(result);
+            RCLCPP_ERROR(
+                this->get_logger(),
+                "[底盘直控执行中止] goal 接受后再次转换 TF 失败，"
+                "目标坐标系=%s，原因=%s。",
+                goal->target_pose.header.frame_id.c_str(), error_msg.c_str());
             return;
         }
 
         active_goal_handle_ = goal_handle;
+        goal_started_time_ = std::chrono::steady_clock::now();
+        goal_timer_started_ = true;
         setGoalModeFromInput(goal->target_pose);
         setTarget(target_pose_map);
         RCLCPP_INFO(
             this->get_logger(),
-            "Accepted precise control goal in map frame, mode=%s",
-            goal_mode_ == GoalMode::STRAIGHT ? "STRAIGHT" : "ROTATE");
+            "[底盘直控状态变化] IDLE -> CONTROL，模式=%s，"
+            "输入目标=(x=%.3fm, y=%.3fm, yaw=%.3frad)，目标坐标系=%s。",
+            goal_mode_ == GoalMode::STRAIGHT ? "直线" : "原地旋转",
+            goal->target_pose.pose.position.x, goal->target_pose.pose.position.y,
+            tf2::getYaw(goal->target_pose.pose.orientation),
+            goal->target_pose.header.frame_id.c_str());
     }
 
     void publishFeedback(const std::string &status)
@@ -396,6 +447,11 @@ private:
         auto result = std::make_shared<PreciseControl::Result>();
         result->success = true;
         result->message = "SUCCEEDED";
+        RCLCPP_INFO(
+            this->get_logger(),
+            "[底盘直控最终结果] CONTROL -> SUCCEEDED，"
+            "停稳确认完成，总耗时=%.3fs。",
+            goalElapsedSeconds());
         active_goal_handle_->succeed(result);
         active_goal_handle_.reset();
         resetControlState();
@@ -424,7 +480,11 @@ private:
             is_goal_ = false;
             stop_count_ = 0;
             resetPidStates();
-            RCLCPP_INFO(this->get_logger(), "Precise control cancel accepted, starting smooth stop");
+            RCLCPP_INFO(
+                this->get_logger(),
+                "[底盘直控状态变化] CONTROL -> CANCELLING，"
+                "任务耗时=%.3fs，开始平滑减速，当前速度=(线速度 %.3fm/s, 角速度 %.3frad/s)。",
+                goalElapsedSeconds(), pre_cmd_vel_.linear.x, pre_cmd_vel_.angular.z);
         }
     }
 
@@ -467,7 +527,11 @@ private:
         const double dist = std::fabs(err_x);
         double desired_linear_vel = std::min(max_v_, k_rho_ * dist);
         if (dist < near_target_dist_ && near_target_dist_ > 0.0) {
-            desired_linear_vel *= std::max(0.2, dist / near_target_dist_);
+            const double distance_ratio = std::clamp(
+                dist / near_target_dist_, 0.0, 1.0);
+            const double speed_scale = near_target_min_speed_scale_ +
+                (1.0 - near_target_min_speed_scale_) * distance_ratio;
+            desired_linear_vel *= speed_scale;
         }
         desired_linear_vel = std::clamp(desired_linear_vel, min_v_, max_v_);
         if (reverse_mode) {
@@ -571,7 +635,11 @@ private:
                 cmd_vel.linear.x = 0.0;
                 cmd_vel.angular.z = 0.0;
                 cmd_vel_pub_->publish(cmd_vel);
-                RCLCPP_INFO(this->get_logger(), "Precise control cancel completed, robot stopped");
+                RCLCPP_INFO(
+                    this->get_logger(),
+                    "[底盘直控最终结果] CANCELLING -> CANCELLED，"
+                    "平滑停车完成，总耗时=%.3fs，最终速度阈值内。",
+                    goalElapsedSeconds());
                 finishCanceled();
                 return;
             }
@@ -580,7 +648,7 @@ private:
             return;
         }
 
-        if (is_goal_ && stop_count_ >= 5) {
+        if (is_goal_ && stop_count_ >= stop_confirm_cycles_) {
             publishFeedback("SUCCEEDED");
             finishSucceeded();
             return;
@@ -598,7 +666,12 @@ private:
             const geometry_msgs::msg::TransformStamped transform = tf_buffer_->lookupTransform(
                 "base_link", "map", tf2::TimePointZero);
             tf2::doTransform(target_pose_odom_, target_pose_in_base, transform);
-        } catch (tf2::TransformException &) {
+        } catch (const tf2::TransformException &ex) {
+            RCLCPP_WARN_THROTTLE(
+                this->get_logger(), *this->get_clock(), 2000,
+                "[底盘直控等待 TF] map -> base_link 转换失败，"
+                "任务耗时=%.3fs，控制指令暂不更新，原因=%s。",
+                goalElapsedSeconds(), ex.what());
             return;
         }
 
@@ -642,8 +715,11 @@ private:
             if (stop_count_ == 1) {
                 RCLCPP_INFO(
                     this->get_logger(),
-                    "Precise control goal reached with final error: x_error=%.4f m, dist=%.4f m, yaw=%.4f rad",
-                    x_error, dist, yaw_error);
+                    "[底盘直控到达目标] 进入停稳确认，任务耗时=%.3fs，"
+                    "最终误差：x=%.4fm，距离=%.4fm，yaw=%.4frad；"
+                    "需连续确认 %d 个控制周期（%.3fs）后返回成功。",
+                    goalElapsedSeconds(), x_error, dist, yaw_error,
+                    stop_confirm_cycles_, stop_confirm_duration_);
             }
         } else {
             stop_count_ = 0;

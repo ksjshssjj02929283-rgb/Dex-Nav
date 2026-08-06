@@ -90,7 +90,7 @@ CmdVelMux::CmdVelMux(rclcpp::NodeOptions options)
     param_cb_ = add_on_set_parameters_callback(std::bind(&CmdVelMux::parameterUpdate, this, std::placeholders::_1));
 
     output_topic_pub_ = this->create_publisher<geometry_msgs::msg::Twist>("cmd_vel", 10);
-    RCLCPP_DEBUG(get_logger(), "CmdVelMux : subscribe to output topic 'cmd_vel'");
+    RCLCPP_INFO(get_logger(), "CmdVelMux : publishing output on '%s'", output_topic_pub_->get_topic_name());
 
     active_subscriber_pub_ =
         this->create_publisher<std_msgs::msg::String>("active", rclcpp::QoS(1).transient_local());  // latched topic
@@ -189,9 +189,10 @@ void CmdVelMux::configureFromParameters(const std::map<std::string, ParameterVal
             values->sub_ = this->create_subscription<geometry_msgs::msg::Twist>(
                 values->values_.topic, 10,
                 [this, key](const geometry_msgs::msg::Twist::SharedPtr msg) { cmdVelCallback(msg, key); });
-            RCLCPP_DEBUG(get_logger(), "CmdVelMux : subscribed to '%s' on topic '%s'. pr: %" PRId64 ", to: %.2f",
-                         values->name_.c_str(), values->values_.topic.c_str(), values->values_.priority,
-                         values->values_.timeout);
+            RCLCPP_INFO(get_logger(),
+                        "CmdVelMux : input '%s' topic='%s', priority=%" PRId64 ", timeout=%.2fs",
+                        values->name_.c_str(), values->sub_->get_topic_name(), values->values_.priority,
+                        values->values_.timeout);
         } else {
             RCLCPP_DEBUG(get_logger(), "CmdVelMux : no need to re-subscribe to input topic '%s'",
                          values->values_.topic.c_str());
@@ -323,15 +324,37 @@ void CmdVelMux::cmdVelCallback(const std::shared_ptr<geometry_msgs::msg::Twist> 
     // already allowed or has higher priority that the currently allowed
     if ((allowed_ == VACANT) || (allowed_ == key) || (map_[key]->values_.priority > map_[allowed_]->values_.priority)) {
         if (allowed_ != key) {
+            const std::string previous_allowed = allowed_;
             allowed_ = key;
 
             // Notify the world that a new cmd_vel source took the control
             auto active_msg = std::make_unique<std_msgs::msg::String>();
             active_msg->data = map_[key]->name_;
             active_subscriber_pub_->publish(std::move(active_msg));
+
+            RCLCPP_INFO(get_logger(),
+                        "CmdVelMux : active input changed from '%s' to '%s' (topic='%s', priority=%" PRId64 ")",
+                        previous_allowed == VACANT ? "idle" : previous_allowed.c_str(), map_[key]->name_.c_str(),
+                        map_[key]->sub_->get_topic_name(), map_[key]->values_.priority);
         }
 
         output_topic_pub_->publish(*msg);
+        RCLCPP_INFO_THROTTLE(
+            get_logger(), *get_clock(), 5000,
+            "CmdVelMux : forwarding '%s' -> '%s': linear=(%.3f, %.3f, %.3f), angular=(%.3f, %.3f, %.3f), "
+            "output_subscribers=%zu",
+            map_[key]->sub_->get_topic_name(), output_topic_pub_->get_topic_name(), msg->linear.x, msg->linear.y,
+            msg->linear.z, msg->angular.x, msg->angular.y, msg->angular.z,
+            output_topic_pub_->get_subscription_count());
+    } else {
+        RCLCPP_WARN_THROTTLE(
+            get_logger(), *get_clock(), 2000,
+            "CmdVelMux : input '%s' (topic='%s', priority=%" PRId64
+            ") is not forwarded; active input is '%s' (topic='%s', priority=%" PRId64
+            "); incoming linear=(%.3f, %.3f), angular_z=%.3f",
+            map_[key]->name_.c_str(), map_[key]->sub_->get_topic_name(), map_[key]->values_.priority,
+            map_[allowed_]->name_.c_str(), map_[allowed_]->sub_->get_topic_name(), map_[allowed_]->values_.priority,
+            msg->linear.x, msg->linear.y, msg->angular.z);
     }
 }
 
@@ -347,6 +370,9 @@ void CmdVelMux::timerCallback(const std::string& key) {
         auto active_msg = std::make_unique<std_msgs::msg::String>();
         active_msg->data = "idle";
         active_subscriber_pub_->publish(std::move(active_msg));
+
+        RCLCPP_WARN(get_logger(), "CmdVelMux : active input '%s' timed out after %.2fs; active input is now idle",
+                    map_[key]->name_.c_str(), map_[key]->values_.timeout);
     }
 }
 

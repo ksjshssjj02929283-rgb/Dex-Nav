@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <package format="3">
   <name>command_board</name>
-  <version>0.4.5</version>
+  <version>0.4.6</version>
   <description>导航系统管理</description>
 
   <maintainer email="maintainer@example.com">Maintainer</maintainer>
@@ -22,8 +22,16 @@
   <depend>yaml-cpp</depend>
   <depend>glog</depend>
   <depend>boost</depend>
+  <depend>nlohmann-json-dev</depend>
+
+  <!-- RViz2 状态显示面板依赖（可选；无 RViz 环境时 CMake QUIET 跳过） -->
+  <depend>std_msgs</depend>
+  <depend>rviz_common</depend>
+  <depend>rviz_rendering</depend>
+  <depend>pluginlib</depend>
 
   <export>
     <build_type>ament_cmake</build_type>
+    <rviz plugin="${prefix}/rviz_plugins/plugin_description.xml"/>
   </export>
 </package>

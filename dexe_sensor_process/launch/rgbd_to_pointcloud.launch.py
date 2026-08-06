@@ -6,6 +6,18 @@ from launch_ros.actions import Node
 
 def generate_launch_description():
     # 声明启动参数
+    use_sim_time_arg = DeclareLaunchArgument(
+        'use_sim_time',
+        default_value='false',
+        description='是否使用仿真时钟'
+    )
+
+    depth_max_range_arg = DeclareLaunchArgument(
+        'depth_max_range',
+        default_value='5.0',
+        description='点云保留的最大深度（米）'
+    )
+
     camera_name_arg = DeclareLaunchArgument(
         'camera_name',
         default_value='rear',
@@ -17,7 +29,7 @@ def generate_launch_description():
         default_value='',
         description='输入的 RGBD 话题名称（为空时使用默认规则：/orbbec/{camera_name}）'
     )
-    
+
     output_topic_raw_arg = DeclareLaunchArgument(
         'output_topic_raw',
         default_value='',
@@ -34,6 +46,12 @@ def generate_launch_description():
         'output_topic_laserscan',
         default_value='',
         description='输出的 LaserScan 话题（为空时使用默认规则：{input_topic}/laser_scan）'
+    )
+
+    division_mode_arg = DeclareLaunchArgument(
+        'division_mode',
+        default_value='true',
+        description='是否处理一帧、跳过一帧；关闭时处理全部输入帧'
     )
 
     # 预处理参数
@@ -95,13 +113,44 @@ def generate_launch_description():
     ground_filter_min_height_arg = DeclareLaunchArgument(
         'ground_filter_min_height',
         default_value='0.05',
-        description='低于该高度的点会被认为是地面或近地噪声并剔除（米）'
+        description='小于等于该高度的点会被认为是地面或近地噪声并剔除（米）'
     )
 
     ground_filter_max_height_arg = DeclareLaunchArgument(
         'ground_filter_max_height',
         default_value='1.5',
         description='高于该高度的点不会作为近地障碍输入（米）'
+    )
+
+    obstacle_extraction_method_arg = DeclareLaunchArgument(
+        'obstacle_extraction_method',
+        default_value='height_filter',
+        description='障碍物提取方法：height_filter 或 uv_disparity'
+    )
+    uv_disparity_min_z_arg = DeclareLaunchArgument(
+        'uv_disparity_min_z',
+        default_value='0.3',
+        description='双视差最小深度'
+    )
+    uv_disparity_max_z_arg = DeclareLaunchArgument(
+        'uv_disparity_max_z',
+        default_value='3.0',
+        description='双视差最大深度'
+    )
+    uv_disparity_dz_arg = DeclareLaunchArgument(
+        'uv_disparity_dz',
+        default_value='0.02',
+        description='双视差深度分辨率'
+    )
+    uv_disparity_v_margin_arg = DeclareLaunchArgument(
+        'uv_disparity_v_margin',
+        default_value='15',
+        description='双视差地面V向容差'
+    )
+    uv_disparity_min_u_count_arg = DeclareLaunchArgument(
+        'uv_disparity_min_u_count',
+        default_value='5',
+        description='双视差U向噪声过滤阈值'
     )
 
     # 创建节点
@@ -115,6 +164,9 @@ def generate_launch_description():
             'output_topic_raw': LaunchConfiguration('output_topic_raw'),
             'output_topic_filtered': LaunchConfiguration('output_topic_filtered'),
             'output_topic_laserscan': LaunchConfiguration('output_topic_laserscan'),
+            'use_sim_time': LaunchConfiguration('use_sim_time'),
+            'depth_max_range': LaunchConfiguration('depth_max_range'),
+            'division_mode': LaunchConfiguration('division_mode'),
             'flag_voxel_filter': LaunchConfiguration('flag_voxel_filter'),
             'flag_mls_filter': LaunchConfiguration('flag_mls_filter'),
             'flag_sor_filter': LaunchConfiguration('flag_sor_filter'),
@@ -126,16 +178,25 @@ def generate_launch_description():
             'ground_filter_frame': LaunchConfiguration('ground_filter_frame'),
             'ground_filter_min_height': LaunchConfiguration('ground_filter_min_height'),
             'ground_filter_max_height': LaunchConfiguration('ground_filter_max_height'),
+            'obstacle_extraction_method': LaunchConfiguration('obstacle_extraction_method'),
+            'uv_disparity_min_z': LaunchConfiguration('uv_disparity_min_z'),
+            'uv_disparity_max_z': LaunchConfiguration('uv_disparity_max_z'),
+            'uv_disparity_dz': LaunchConfiguration('uv_disparity_dz'),
+            'uv_disparity_v_margin': LaunchConfiguration('uv_disparity_v_margin'),
+            'uv_disparity_min_u_count': LaunchConfiguration('uv_disparity_min_u_count'),
         }],
         output='screen'
     )
 
     return LaunchDescription([
+        use_sim_time_arg,
+        depth_max_range_arg,
         camera_name_arg,
         input_topic_arg,
         output_topic_raw_arg,
         output_topic_filtered_arg,
         output_topic_laserscan_arg,
+        division_mode_arg,
         flag_voxel_filter_arg,
         flag_mls_filter_arg,
         flag_sor_filter_arg,
@@ -147,5 +208,11 @@ def generate_launch_description():
         ground_filter_frame_arg,
         ground_filter_min_height_arg,
         ground_filter_max_height_arg,
+        obstacle_extraction_method_arg,
+        uv_disparity_min_z_arg,
+        uv_disparity_max_z_arg,
+        uv_disparity_dz_arg,
+        uv_disparity_v_margin_arg,
+        uv_disparity_min_u_count_arg,
         rgbd_to_pointcloud_node,
     ])

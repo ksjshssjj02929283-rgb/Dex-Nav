@@ -35,20 +35,20 @@ nav2_controller/
 ├── plugins/
 │   ├── simple_progress_checker.cpp
 │   ├── pose_progress_checker.cpp
-│   ├── simple_goal_checker.cpp
-│   ├── stopped_goal_checker.cpp
-│   ├── longitudinal_goal_checker.cpp
-│   └── precision_longitudinal_goal_checker.cpp
+│   ├── nav2_simple_goal_checker.cpp
+│   ├── nav2_stopped_goal_checker.cpp
+│   ├── nav2_longitudinal_goal_checker.cpp
+│   └── precision_nav2_longitudinal_goal_checker.cpp
 │
 ├── include/nav2_controller/
 │   ├── controller_server.hpp
 │   └── plugins/
 │       ├── simple_progress_checker.hpp
 │       ├── pose_progress_checker.hpp
-│       ├── simple_goal_checker.hpp
-│       ├── stopped_goal_checker.hpp
-│       ├── longitudinal_goal_checker.hpp
-│       └── precision_longitudinal_goal_checker.hpp
+│       ├── nav2_simple_goal_checker.hpp
+│       ├── nav2_stopped_goal_checker.hpp
+│       ├── nav2_longitudinal_goal_checker.hpp
+│       └── precision_nav2_longitudinal_goal_checker.hpp
 │
 ├── plugins.xml
 ├── CMakeLists.txt
@@ -145,152 +145,21 @@ movement_time_allowance:
 
 ### 3.2 Goal Checker
 
-```text
-nav2_controller::SimpleGoalChecker
-```
-
-默认简单到点判断，主要看当前位置和目标点的 XY 距离，以及 yaw 误差。
+`nav2_controller` 不再导出 goal checker 插件。Goal checker 已统一归口到
+`nav2_modules/goal_checkers/`，运行配置应使用这些插件类型：
 
 ```text
-nav2_controller::StoppedGoalChecker
+nav2_simple_goal_checker::SimpleGoalChecker
+nav2_stopped_goal_checker::StoppedGoalChecker
+nav2_position_goal_checker::PositionGoalChecker
+nav2_rotation_goal_checker::RotationGoalChecker
+nav2_longitudinal_goal_checker::LongitudinalGoalChecker
+nav2_high_precision_goal_checker::HighPrecisionGoalChecker
 ```
 
-在 `SimpleGoalChecker` 基础上额外检查机器人速度是否足够小。
+`nav2_controller` 只保留 progress checker 和 ControllerServer。
 
-```text
-nav2_controller::LongitudinalGoalChecker
-```
-
-按目标点朝向把误差拆成：
-
-```text
-lon_err：纵向误差，前后误差
-lat_err：横向误差，左右误差
-yaw_err：航向角误差
-```
-
-适合精确停车、对齐停车姿态等场景。
-
-```text
-nav2_controller::PrecisionLongitudinalGoalChecker
-```
-
-高精度版本。它优先追求 `1cm` 精度，如果精调后仍无法进入 `1cm`，但一直保持在 `2cm` 内，则退让接受成功。
-
-## 4. PrecisionLongitudinalGoalChecker
-
-当前 `w1_nav2_params.yaml` 使用的是：
-
-```yaml
-goal_checker:
-  plugin: "nav2_controller::PrecisionLongitudinalGoalChecker"
-  desired_lon_goal_tolerance: 0.01
-  desired_lat_goal_tolerance: 0.01
-  accept_lon_goal_tolerance: 0.02
-  accept_lat_goal_tolerance: 0.02
-  yaw_goal_tolerance: 0.02
-  enable_high_precision: false
-  refine_cycles: 40
-  stable_window_size: 5
-  check_stopped: false
-  trans_stopped_velocity: 0.01
-  rot_stopped_velocity: 0.02
-```
-
-### 4.1 设计目标
-
-```text
-优先目标：
-  纵向误差和横向误差都进入 1cm。
-
-最终接受：
-  如果进入 2cm 后继续精调一段时间仍进不了 1cm，
-  但仍保持在 2cm 内，则允许导航成功。
-```
-
-这个策略可以称为：
-
-```text
-双阈值到点判定
-```
-
-或：
-
-```text
-分级容差退让策略
-```
-
-### 4.2 误差坐标系
-
-误差按照目标点坐标系计算，不按照机器人当前 `base_link` 坐标系计算。
-
-核心含义：
-
-```text
-以目标停车姿态为参考：
-├── 机器人在目标前后偏多少：lon_err
-└── 机器人在目标左右偏多少：lat_err
-```
-
-这样更适合停车和对齐目标姿态。否则如果机器人自身朝向已经偏了，用当前车体坐标系计算误差，会让纵向/横向误差的意义跟着车头一起变化。
-
-### 4.3 状态逻辑
-
-```text
-PrecisionLongitudinalGoalChecker
-├── 超出 2cm 接受区
-│   ├── 清空精调状态
-│   └── 返回 false
-│
-├── 进入 2cm 接受区，但没有进入 1cm 目标区
-│   ├── 记录误差窗口
-│   ├── refine_count 累加
-│   └── 返回 false，继续让 controller 精调
-│
-├── enable_high_precision=false，且位置和角度满足接受精度
-│   └── 直接返回 true，不再追求 1cm
-│
-├── 本次误差和近 10 次平均误差都进入 1cm 目标区
-│   └── 返回 true
-│
-└── 精调达到 refine_cycles，且仍在 2cm 内
-    └── 返回 true，退让接受成功
-```
-
-### 4.4 参数解释
-
-```text
-desired_lon_goal_tolerance / desired_lat_goal_tolerance
-  优先追求的纵向/横向精度。当前是 0.01m，也就是 1cm。
-
-accept_lon_goal_tolerance / accept_lat_goal_tolerance
-  最终接受的纵向/横向精度。当前是 0.02m，也就是 2cm。
-
-yaw_goal_tolerance
-  目标航向角容差。当前是 0.02rad，约 1.15 度。
-
-enable_high_precision
-  是否启用高精度到点判定。
-  true 表示先追求 desired_* 的 1cm 精度，再按 refine_cycles 退让到 accept_*。
-  false 表示只要进入 accept_* 的 2cm 接受精度且 yaw 满足，就直接判定成功。
-
-refine_cycles
-  进入 2cm 后继续尝试精调的控制周期数。
-  当前 controller_frequency=10Hz，refine_cycles=40 约等于 4s。
-
-stable_window_size
-  滑动误差窗口大小。
-  当前 controller_frequency=10Hz，stable_window_size=5 约等于最近 0.5s。
-
-check_stopped
-  是否要求速度也足够小才算成功。
-  当前为 false，表示只按位置和角度判断。
-
-trans_stopped_velocity / rot_stopped_velocity
-  check_stopped=true 时使用的线速度和角速度阈值。
-```
-
-## 5. near_goal_progress
+## 4. near_goal_progress
 
 `near_goal_progress` 是本仓库对近目标阶段的进展检查增强。
 
@@ -375,11 +244,10 @@ requested goal_checker_id does not exist
 优先检查：
 
 ```text
-1. lon_err / lat_err 是否进入 accept 容差
+1. lon_err / lat_err 是否进入配置的 lon_goal_tolerance / lat_goal_tolerance
 2. yaw_err 是否小于 yaw_goal_tolerance
-3. refine_cycles 是否过长
-4. near_goal_progress 是否先触发失败
-5. 如果 check_stopped=true，速度阈值是否过严
+3. near_goal_progress 是否先触发失败
+4. 如果使用 stopped/high_precision goal checker，速度阈值是否过严
 ```
 
 ### 7.3 很快成功但精度不够
@@ -387,11 +255,10 @@ requested goal_checker_id does not exist
 优先检查：
 
 ```text
-1. 是否真的加载了 PrecisionLongitudinalGoalChecker
-2. desired_* 是否仍是 0.01
-3. accept_* 是否被设置得过大
-4. refine_cycles 是否过小
-5. 日志中成功原因是 desired success 还是 accept fallback success
+1. 是否真的加载了预期的 nav2_modules/goal_checkers 插件
+2. lon_goal_tolerance / lat_goal_tolerance / xy_goal_tolerance 是否设置过大
+3. stateful=true 时是否在第一次进入位置窗口后跳过后续位置检查
+4. action 请求中是否传入了非预期 goal_checker_id
 ```
 
 ## 8. 测试与构建说明

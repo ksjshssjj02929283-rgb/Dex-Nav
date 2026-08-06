@@ -14,6 +14,7 @@
 // limitations under the License.
 
 #include <gtest/gtest.h>
+#include <atomic>
 #include <memory>
 #include <set>
 #include <string>
@@ -29,6 +30,26 @@ public:
   ClearEntireCostmapService()
   : TestService("clear_entire_costmap")
   {}
+
+  void setDelay(std::chrono::milliseconds delay) {delay_ = delay.count();}
+  void resetCompletedCount() {completed_count_ = 0;}
+  int completedCount() const {return completed_count_;}
+
+protected:
+  void handle_service(
+    const std::shared_ptr<rmw_request_id_t> request_header,
+    const std::shared_ptr<nav2_msgs::srv::ClearEntireCostmap::Request> request,
+    const std::shared_ptr<nav2_msgs::srv::ClearEntireCostmap::Response> response) override
+  {
+    std::this_thread::sleep_for(std::chrono::milliseconds(delay_.load()));
+    TestService<nav2_msgs::srv::ClearEntireCostmap>::handle_service(
+      request_header, request, response);
+    ++completed_count_;
+  }
+
+private:
+  std::atomic<int64_t> delay_{0};
+  std::atomic<int> completed_count_{0};
 };
 
 class ClearEntireCostmapServiceTestFixture : public ::testing::Test
@@ -71,6 +92,8 @@ public:
   void SetUp() override
   {
     config_->blackboard->set("number_recoveries", 0);
+    server_->setDelay(std::chrono::milliseconds(0));
+    server_->resetCompletedCount();
   }
 
   void TearDown() override
@@ -107,6 +130,43 @@ TEST_F(ClearEntireCostmapServiceTestFixture, test_tick)
   EXPECT_EQ(config_->blackboard->get<int>("number_recoveries"), 0);
   EXPECT_EQ(tree_->rootNode()->executeTick(), BT::NodeStatus::SUCCESS);
   EXPECT_EQ(config_->blackboard->get<int>("number_recoveries"), 1);
+}
+
+TEST_F(ClearEntireCostmapServiceTestFixture, test_timeout_drains_before_failure)
+{
+  std::string xml_txt =
+    R"(
+      <root main_tree_to_execute = "MainTree" >
+        <BehaviorTree ID="MainTree">
+            <ClearEntireCostmap service_name="clear_entire_costmap"/>
+        </BehaviorTree>
+      </root>)";
+
+  config_->blackboard->set<std::chrono::milliseconds>(
+    "server_timeout", std::chrono::milliseconds(20));
+  config_->blackboard->set<std::chrono::milliseconds>(
+    "bt_loop_duration", std::chrono::milliseconds(10));
+  server_->setDelay(std::chrono::milliseconds(80));
+  tree_ = std::make_shared<BT::Tree>(factory_->createTreeFromText(xml_txt, config_->blackboard));
+
+  BT::NodeStatus result = BT::NodeStatus::RUNNING;
+  int ticks = 0;
+  rclcpp::WallRate loop_rate(std::chrono::milliseconds(5));
+  while (rclcpp::ok() && result == BT::NodeStatus::RUNNING && ticks < 100) {
+    result = tree_->tickRoot();
+    ++ticks;
+    if (result != BT::NodeStatus::RUNNING) {
+      EXPECT_EQ(server_->completedCount(), 1);
+    }
+    loop_rate.sleep();
+  }
+
+  EXPECT_EQ(result, BT::NodeStatus::FAILURE);
+  EXPECT_EQ(server_->completedCount(), 1);
+  // Recovery accounting happens when the single request is sent. Draining the
+  // timed-out response must not send a duplicate request or increment it again.
+  EXPECT_EQ(config_->blackboard->get<int>("number_recoveries"), 1);
+  EXPECT_GT(ticks, 2);
 }
 
 class ClearCostmapExceptRegionService : public TestService<nav2_msgs::srv::ClearCostmapExceptRegion>

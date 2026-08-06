@@ -374,7 +374,7 @@ private:
             }
 
             // 执行Python脚本，传递参数
-            std::string cmd = "python3 " + script_path + " " + param_path;
+            std::string cmd = "taskset -c 3-4 python3 " + script_path + " " + param_path;
             int result = std::system(cmd.c_str());
 
             {
@@ -412,7 +412,7 @@ private:
                 RCLCPP_INFO(this->get_logger(), "================================================");
             }
 
-            std::string standby_cmd = "python3 " + script_path + " " + script_param_0;
+            std::string standby_cmd = "taskset -c 3-4 python3 " + script_path + " " + script_param_0;
             int standby_result = std::system(standby_cmd.c_str());
 
             {
@@ -440,7 +440,7 @@ private:
                 RCLCPP_INFO(this->get_logger(), "=============================================");
             }
 
-            std::string action_cmd = "python3 " + action_script_path + " " + action_param_path;
+            std::string action_cmd = "taskset -c 3-4 python3 " + action_script_path + " " + action_param_path;
             int action_result = std::system(action_cmd.c_str());
 
             {

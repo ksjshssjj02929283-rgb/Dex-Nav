@@ -13,7 +13,6 @@
  */
 
 #include <gtest/gtest.h>
-
 #include <rclcpp/rclcpp.hpp>
 
 #include "map_asset_manager/area_manager/area_store.hpp"
@@ -28,9 +27,7 @@ using namespace map_asset_manager;
 
 static NavPoint makePoint(const std::string& name,
                           const std::string& type = "STATION",
-                          double x = 1.0,
-                          double y = 2.0,
-                          double yaw = 0.0,
+                          double x = 1.0, double y = 2.0, double yaw = 0.0,
                           double tol = 0.05) {
     NavPoint p;
     p.name = name;
@@ -42,17 +39,20 @@ static NavPoint makePoint(const std::string& name,
     return p;
 }
 
-static Route makeRoute(const std::string& name, const std::vector<std::string>& pts) {
+static Route makeRoute(const std::string& name,
+                       const std::vector<std::string>& pts) {
     Route r;
     r.name = name;
     r.point_names = pts;
     return r;
 }
 
-static Area makeArea(const std::string& name, uint32_t type = AreaType::SPEED_LIMIT_AREA, double max_speed = 0.3) {
+static Area makeArea(const std::string& name,
+                     uint32_t type = AreaType::SPEED_LIMIT_AREA,
+                     double max_speed = 0.3) {
     Area a;
-    a.name = name;
-    a.type = type;
+    a.name      = name;
+    a.type      = type;
     a.max_speed = static_cast<float>(max_speed);
     return a;
 }
@@ -63,7 +63,9 @@ static Area makeArea(const std::string& name, uint32_t type = AreaType::SPEED_LI
 
 class PointStoreTest : public ::testing::Test {
 protected:
-    void SetUp() override { store_ = std::make_unique<PointStore>(rclcpp::get_logger("test_point_store")); }
+    void SetUp() override {
+        store_ = std::make_unique<PointStore>(rclcpp::get_logger("test_point_store"));
+    }
     std::unique_ptr<PointStore> store_;
 };
 
@@ -105,16 +107,22 @@ TEST_F(PointStoreTest, GetPoint_Exists_ReturnsCorrectData) {
     EXPECT_DOUBLE_EQ(got->tolerance, 0.1);
 }
 
-TEST_F(PointStoreTest, GetPoint_NotExists_ReturnsNullopt) { EXPECT_FALSE(store_->getPoint("nonexistent").has_value()); }
+TEST_F(PointStoreTest, GetPoint_NotExists_ReturnsNullopt) {
+    EXPECT_FALSE(store_->getPoint("nonexistent").has_value());
+}
 
 TEST_F(PointStoreTest, HasPoint_AfterAdd_ReturnsTrue) {
     store_->addPoint(makePoint("p1"));
     EXPECT_TRUE(store_->hasPoint("p1"));
 }
 
-TEST_F(PointStoreTest, HasPoint_NotAdded_ReturnsFalse) { EXPECT_FALSE(store_->hasPoint("p_missing")); }
+TEST_F(PointStoreTest, HasPoint_NotAdded_ReturnsFalse) {
+    EXPECT_FALSE(store_->hasPoint("p_missing"));
+}
 
-TEST_F(PointStoreTest, GetAllPoints_Empty_ReturnsEmptyVector) { EXPECT_TRUE(store_->getAllPoints().empty()); }
+TEST_F(PointStoreTest, GetAllPoints_Empty_ReturnsEmptyVector) {
+    EXPECT_TRUE(store_->getAllPoints().empty());
+}
 
 TEST_F(PointStoreTest, GetAllPoints_AfterAdd_ContainsAllPoints) {
     store_->addPoint(makePoint("p1"));
@@ -136,7 +144,9 @@ TEST_F(PointStoreTest, UpdatePoint_Exists_UpdatesData) {
     EXPECT_DOUBLE_EQ(got->x, 9.0);
 }
 
-TEST_F(PointStoreTest, UpdatePoint_NotExists_ReturnsFalse) { EXPECT_FALSE(store_->updatePoint(makePoint("ghost"))); }
+TEST_F(PointStoreTest, UpdatePoint_NotExists_ReturnsFalse) {
+    EXPECT_FALSE(store_->updatePoint(makePoint("ghost")));
+}
 
 // ── 删除 ────────────────────────────────────────────────────────────────
 
@@ -147,7 +157,9 @@ TEST_F(PointStoreTest, RemovePoint_Exists_RemovesIt) {
     EXPECT_TRUE(store_->getAllPoints().empty());
 }
 
-TEST_F(PointStoreTest, RemovePoint_NotExists_ReturnsFalse) { EXPECT_FALSE(store_->removePoint("ghost")); }
+TEST_F(PointStoreTest, RemovePoint_NotExists_ReturnsFalse) {
+    EXPECT_FALSE(store_->removePoint("ghost"));
+}
 
 TEST_F(PointStoreTest, RemovePoint_OnlyRemovesTarget) {
     store_->addPoint(makePoint("p1"));
@@ -197,13 +209,17 @@ TEST_F(PointStoreTest, SetPoints_ReplacesExistingData) {
 
 class RouteStoreTest : public ::testing::Test {
 protected:
-    void SetUp() override { store_ = std::make_unique<RouteStore>(rclcpp::get_logger("test_route_store")); }
+    void SetUp() override {
+        store_ = std::make_unique<RouteStore>(rclcpp::get_logger("test_route_store"));
+    }
     std::unique_ptr<RouteStore> store_;
 };
 
 // ── 新增 ────────────────────────────────────────────────────────────────
 
-TEST_F(RouteStoreTest, AddRoute_New_ReturnsTrue) { EXPECT_TRUE(store_->addRoute(makeRoute("r1", {"p1", "p2", "p3"}))); }
+TEST_F(RouteStoreTest, AddRoute_New_ReturnsTrue) {
+    EXPECT_TRUE(store_->addRoute(makeRoute("r1", {"p1", "p2", "p3"})));
+}
 
 TEST_F(RouteStoreTest, AddRoute_Duplicate_ReturnsFalse) {
     store_->addRoute(makeRoute("r1", {"p1"}));
@@ -222,7 +238,9 @@ TEST_F(RouteStoreTest, GetRoute_Exists_ReturnsCorrectData) {
     EXPECT_EQ(got->point_names[2], "p3");
 }
 
-TEST_F(RouteStoreTest, GetRoute_NotExists_ReturnsNullopt) { EXPECT_FALSE(store_->getRoute("ghost").has_value()); }
+TEST_F(RouteStoreTest, GetRoute_NotExists_ReturnsNullopt) {
+    EXPECT_FALSE(store_->getRoute("ghost").has_value());
+}
 
 TEST_F(RouteStoreTest, HasRoute_AfterAdd_ReturnsTrue) {
     store_->addRoute(makeRoute("r1", {}));
@@ -257,7 +275,9 @@ TEST_F(RouteStoreTest, RemoveRoute_Exists_RemovesIt) {
     EXPECT_FALSE(store_->hasRoute("r1"));
 }
 
-TEST_F(RouteStoreTest, RemoveRoute_NotExists_ReturnsFalse) { EXPECT_FALSE(store_->removeRoute("ghost")); }
+TEST_F(RouteStoreTest, RemoveRoute_NotExists_ReturnsFalse) {
+    EXPECT_FALSE(store_->removeRoute("ghost"));
+}
 
 // ── 清空 ────────────────────────────────────────────────────────────────
 
@@ -348,13 +368,17 @@ TEST_F(RouteStoreTest, OnPointRenamed_PointOccursMultipleTimes_AllRenamed) {
 
 class AreaStoreTest : public ::testing::Test {
 protected:
-    void SetUp() override { store_ = std::make_unique<AreaStore>(rclcpp::get_logger("test_area_store")); }
+    void SetUp() override {
+        store_ = std::make_unique<AreaStore>(rclcpp::get_logger("test_area_store"));
+    }
     std::unique_ptr<AreaStore> store_;
 };
 
 // ── 新增 ────────────────────────────────────────────────────────────────
 
-TEST_F(AreaStoreTest, AddArea_New_ReturnsTrue) { EXPECT_TRUE(store_->addArea(makeArea("a1"))); }
+TEST_F(AreaStoreTest, AddArea_New_ReturnsTrue) {
+    EXPECT_TRUE(store_->addArea(makeArea("a1")));
+}
 
 TEST_F(AreaStoreTest, AddArea_Duplicate_ReturnsFalse) {
     store_->addArea(makeArea("a1"));
@@ -364,12 +388,9 @@ TEST_F(AreaStoreTest, AddArea_Duplicate_ReturnsFalse) {
 TEST_F(AreaStoreTest, AddArea_WithPolygon_StoresPolygon) {
     Area a = makeArea("zone1", AreaType::RESTRICTED_AREA);
     geometry_msgs::msg::Point p1, p2, p3;
-    p1.x = 0.0;
-    p1.y = 0.0;
-    p2.x = 1.0;
-    p2.y = 0.0;
-    p3.x = 1.0;
-    p3.y = 1.0;
+    p1.x = 0.0; p1.y = 0.0;
+    p2.x = 1.0; p2.y = 0.0;
+    p3.x = 1.0; p3.y = 1.0;
     a.polygon = {p1, p2, p3};
 
     store_->addArea(a);
@@ -390,14 +411,18 @@ TEST_F(AreaStoreTest, GetArea_Exists_ReturnsCorrectData) {
     EXPECT_FLOAT_EQ(got->max_speed, 0.5f);
 }
 
-TEST_F(AreaStoreTest, GetArea_NotExists_ReturnsNullopt) { EXPECT_FALSE(store_->getArea("ghost").has_value()); }
+TEST_F(AreaStoreTest, GetArea_NotExists_ReturnsNullopt) {
+    EXPECT_FALSE(store_->getArea("ghost").has_value());
+}
 
 TEST_F(AreaStoreTest, HasArea_AfterAdd_ReturnsTrue) {
     store_->addArea(makeArea("a1"));
     EXPECT_TRUE(store_->hasArea("a1"));
 }
 
-TEST_F(AreaStoreTest, HasArea_NotAdded_ReturnsFalse) { EXPECT_FALSE(store_->hasArea("missing")); }
+TEST_F(AreaStoreTest, HasArea_NotAdded_ReturnsFalse) {
+    EXPECT_FALSE(store_->hasArea("missing"));
+}
 
 TEST_F(AreaStoreTest, GetAllAreas_ReturnsAll) {
     store_->addArea(makeArea("a1"));
@@ -413,8 +438,7 @@ TEST_F(AreaStoreTest, UpdateArea_Exists_UpdatesData) {
     Area updated = makeArea("a1", AreaType::RESTRICTED_AREA, 0.0);
 
     geometry_msgs::msg::Point p;
-    p.x = 5.0;
-    p.y = 5.0;
+    p.x = 5.0; p.y = 5.0;
     updated.polygon = {p};
 
     EXPECT_TRUE(store_->updateArea(updated));
@@ -424,7 +448,9 @@ TEST_F(AreaStoreTest, UpdateArea_Exists_UpdatesData) {
     EXPECT_EQ(got->polygon.size(), 1u);
 }
 
-TEST_F(AreaStoreTest, UpdateArea_NotExists_ReturnsFalse) { EXPECT_FALSE(store_->updateArea(makeArea("ghost"))); }
+TEST_F(AreaStoreTest, UpdateArea_NotExists_ReturnsFalse) {
+    EXPECT_FALSE(store_->updateArea(makeArea("ghost")));
+}
 
 // ── 删除 ────────────────────────────────────────────────────────────────
 
@@ -434,7 +460,9 @@ TEST_F(AreaStoreTest, RemoveArea_Exists_RemovesIt) {
     EXPECT_FALSE(store_->hasArea("a1"));
 }
 
-TEST_F(AreaStoreTest, RemoveArea_NotExists_ReturnsFalse) { EXPECT_FALSE(store_->removeArea("ghost")); }
+TEST_F(AreaStoreTest, RemoveArea_NotExists_ReturnsFalse) {
+    EXPECT_FALSE(store_->removeArea("ghost"));
+}
 
 TEST_F(AreaStoreTest, RemoveArea_OnlyRemovesTarget) {
     store_->addArea(makeArea("a1"));
@@ -468,11 +496,12 @@ TEST_F(AreaStoreTest, GetAreasMap_ContainsCorrectEntries) {
 
 TEST_F(AreaStoreTest, AddArea_WithLinkedPoint_StoresLinkedPoint) {
     Area a = makeArea("charging_zone", AreaType::CHARGING_AREA);
-    a.linked_point_name = "charging_1";
+    a.manual_linked_point_names.push_back("charging_1");
     store_->addArea(a);
     auto got = store_->getArea("charging_zone");
     ASSERT_TRUE(got.has_value());
-    EXPECT_EQ(got->linked_point_name, "charging_1");
+    ASSERT_EQ(got->manual_linked_point_names.size(), 1u);
+    EXPECT_EQ(got->manual_linked_point_names.front(), "charging_1");
 }
 
 // ═══════════════════════════════════════════════════════════════════════

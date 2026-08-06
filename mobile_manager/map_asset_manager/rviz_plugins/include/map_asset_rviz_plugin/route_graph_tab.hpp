@@ -5,12 +5,14 @@
 #include <QListWidget>
 #include <QPushButton>
 #include <QWidget>
+
 #include <memory>
+#include <string>
+
 #include <nav_interfaces/srv/get_route_graph.hpp>
 #include <nav_interfaces/srv/remove_route_edge.hpp>
 #include <nav_interfaces/srv/remove_route_junction.hpp>
 #include <rclcpp/rclcpp.hpp>
-#include <string>
 
 namespace map_asset_rviz_plugin {
 
@@ -41,13 +43,13 @@ private:
     QPushButton* refresh_btn_;
     QPushButton* remove_edge_btn_;
     QPushButton* remove_junction_btn_;
-    QLabel* status_label_;
+    QLabel*      status_label_;
 
     rclcpp::Node::SharedPtr node_;
     std::string prefix_{"/map_asset_manager"};
 
-    rclcpp::Client<nav_interfaces::srv::GetRouteGraph>::SharedPtr get_graph_client_;
-    rclcpp::Client<nav_interfaces::srv::RemoveRouteEdge>::SharedPtr remove_edge_client_;
+    rclcpp::Client<nav_interfaces::srv::GetRouteGraph>::SharedPtr      get_graph_client_;
+    rclcpp::Client<nav_interfaces::srv::RemoveRouteEdge>::SharedPtr    remove_edge_client_;
     rclcpp::Client<nav_interfaces::srv::RemoveRouteJunction>::SharedPtr remove_junction_client_;
 };
 

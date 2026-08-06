@@ -2,7 +2,7 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>nav2_controller</name>
-  <version>0.4.5</version>
+  <version>0.4.6</version>
   <description>Controller action interface, add Log print</description>
   <maintainer email="dexforce@dexforce.com">dexforce</maintainer>
   <license>Apache-2.0</license>
@@ -11,6 +11,7 @@
   <depend>angles</depend>
   <depend>rclcpp</depend>
   <depend>rclcpp_action</depend>
+  <depend>geometry_msgs</depend>
   <depend>std_msgs</depend>
   <depend>diagnostic_msgs</depend>
   <depend>nav2_util</depend>
@@ -18,12 +19,20 @@
   <depend>nav_2d_utils</depend>
   <depend>nav_2d_msgs</depend>
   <depend>nav2_core</depend>
+  <depend>nav2_speed_planner</depend>
+  <depend>nav_interfaces</depend>
+  <depend>visualization_msgs</depend>
   <depend>pluginlib</depend>
 
   <test_depend>ament_lint_common</test_depend>
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_cmake_gtest</test_depend>
   <test_depend>ament_cmake_pytest</test_depend>
+  <test_depend>nav2_simple_goal_checker</test_depend>
+  <test_depend>nav2_stopped_goal_checker</test_depend>
+  <test_depend>nav2_position_goal_checker</test_depend>
+  <test_depend>nav2_rotation_goal_checker</test_depend>
+  <test_depend>nav2_high_precision_goal_checker</test_depend>
 
   <export>
     <build_type>ament_cmake</build_type>

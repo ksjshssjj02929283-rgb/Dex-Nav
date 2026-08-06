@@ -1,9 +1,10 @@
 #pragma once
 
 #include <memory>
+#include <string>
+
 #include <rclcpp/rclcpp.hpp>
 #include <rviz_common/tool.hpp>
-#include <string>
 
 namespace map_asset_rviz_plugin {
 
@@ -19,7 +20,6 @@ public:
     int processMouseEvent(rviz_common::ViewportMouseEvent&) override { return 0; }
     void load(const rviz_common::Config& c) override { Tool::load(c); }
     void save(rviz_common::Config c) const override { Tool::save(c); }
-
 private:
     rclcpp::Node::SharedPtr node_;
     std::string service_prefix_{"/map_asset_manager"};
@@ -37,7 +37,6 @@ public:
     int processMouseEvent(rviz_common::ViewportMouseEvent&) override { return 0; }
     void load(const rviz_common::Config& c) override { Tool::load(c); }
     void save(rviz_common::Config c) const override { Tool::save(c); }
-
 private:
     rclcpp::Node::SharedPtr node_;
     std::string service_prefix_{"/map_asset_manager"};

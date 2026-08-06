@@ -70,6 +70,18 @@ NavigateToPoseNavigator::configure(
     "goal_pose",
     rclcpp::SystemDefaultsQoS(),
     std::bind(&NavigateToPoseNavigator::onGoalPoseReceived, this, std::placeholders::_1));
+
+  // nav_monitor 任务回显（默认关闭，零开销）
+  if (!node->has_parameter("enable_nav_monitor_echo")) {
+    node->declare_parameter("enable_nav_monitor_echo", false);
+  }
+  enable_nav_monitor_echo_ = node->get_parameter("enable_nav_monitor_echo").as_bool();
+  if (enable_nav_monitor_echo_) {
+    goal_pose_echo_pub_ = node->create_publisher<geometry_msgs::msg::PoseStamped>(
+      "nav_monitor/goal_pose_echo", rclcpp::SystemDefaultsQoS());
+    goal_bt_echo_pub_ = node->create_publisher<std_msgs::msg::String>(
+      "nav_monitor/goal_behavior_tree_echo", rclcpp::SystemDefaultsQoS());
+  }
   return true;
 }
 
@@ -99,6 +111,33 @@ NavigateToPoseNavigator::cleanup()
 {
   goal_sub_.reset();
   self_client_.reset();
+  goal_pose_echo_pub_.reset();
+  goal_bt_echo_pub_.reset();
+  return true;
+}
+
+bool
+NavigateToPoseNavigator::activate()
+{
+  // LifecyclePublisher 必须显式激活，否则 publish 被静默丢弃
+  if (goal_pose_echo_pub_) {
+    goal_pose_echo_pub_->on_activate();
+  }
+  if (goal_bt_echo_pub_) {
+    goal_bt_echo_pub_->on_activate();
+  }
+  return true;
+}
+
+bool
+NavigateToPoseNavigator::deactivate()
+{
+  if (goal_pose_echo_pub_) {
+    goal_pose_echo_pub_->on_deactivate();
+  }
+  if (goal_bt_echo_pub_) {
+    goal_bt_echo_pub_->on_deactivate();
+  }
   return true;
 }
 
@@ -122,8 +161,30 @@ NavigateToPoseNavigator::goalReceived(ActionT::Goal::ConstSharedPtr goal)
 void
 NavigateToPoseNavigator::goalCompleted(
   typename ActionT::Result::SharedPtr /*result*/,
-  const nav2_behavior_tree::BtStatus /*final_bt_status*/)
+  const nav2_behavior_tree::BtStatus final_bt_status)
 {
+  if (final_bt_status != nav2_behavior_tree::BtStatus::SUCCEEDED) {
+    return;
+  }
+
+  const auto goal = bt_action_server_->getCurrentGoal();
+  if (!goal) {
+    RCLCPP_WARN(logger_, "导航成功，但无法获取最终执行目标，跳过到点日志");
+    return;
+  }
+
+  const auto & pose = goal->pose.pose;
+  const double goal_yaw = getYaw(pose.orientation);
+  const std::string goal_uuid =
+    rclcpp_action::to_string(bt_action_server_->getCurrentGoalId());
+
+  RCLCPP_INFO(
+    logger_,
+    "导航到点: uuid=%s, frame=%s, target=(%.3f, %.3f, %.3f), "
+    "yaw=%.4f rad/%.2f deg",
+    goal_uuid.c_str(), goal->pose.header.frame_id.c_str(),
+    pose.position.x, pose.position.y, pose.position.z,
+    goal_yaw, radToDeg(goal_yaw));
 }
 
 void
@@ -204,10 +265,22 @@ NavigateToPoseNavigator::onPreempt(ActionT::Goal::ConstSharedPtr goal)
     (goal->behavior_tree.empty() &&
     bt_action_server_->getCurrentBTFilename() == bt_action_server_->getDefaultBTFilename()))
   {
-    // if pending goal requests the same BT as the current goal, accept the pending goal
-    // if pending goal has an empty behavior_tree field, it requests the default BT file
-    // accept the pending goal if the current goal is running the default BT file
-    initializeGoalPose(bt_action_server_->acceptPendingGoal());
+    // 新目标覆盖旧目标时，先停止旧行为树，确保旧 FollowPath 不再继续执行。
+    bt_action_server_->haltTree();
+
+    // 接受新目标时，SimpleActionServer 会将旧目标置为 ABORTED。
+    const auto pending_goal = bt_action_server_->acceptPendingGoal();
+    if (!pending_goal) {
+      RCLCPP_ERROR(logger_, "导航抢占失败：无法接受待处理的新目标");
+      return;
+    }
+
+    // 清空旧目标生成的路径，下一次行为树 tick 将立即为新目标重新规划。
+    auto blackboard = bt_action_server_->getBlackboard();
+    blackboard->set<nav_msgs::msg::Path>(path_blackboard_id_, nav_msgs::msg::Path());
+    initializeGoalPose(pending_goal);
+
+    RCLCPP_INFO(logger_, "新导航目标已覆盖旧目标：旧 FollowPath 已停止，旧路径已清空");
   } else {
     RCLCPP_WARN(
       logger_,
@@ -248,6 +321,19 @@ NavigateToPoseNavigator::initializeGoalPose(ActionT::Goal::ConstSharedPtr goal)
 
   // Update the goal pose on the blackboard
   blackboard->set<geometry_msgs::msg::PoseStamped>(goal_blackboard_id_, goal->pose);
+
+  // nav_monitor 任务回显：这里是"一次新导航开始"语义上唯一的落点——
+  // goalReceived() 与 onPreempt() 都收敛到这一个函数，抢占场景下重新触发也是正确语义
+  // （抢占即当前任务提前结束、新任务立即开始）
+  if (enable_nav_monitor_echo_) {
+    geometry_msgs::msg::PoseStamped goal_echo = goal->pose;
+    goal_echo.header.stamp = start_time_;
+    goal_pose_echo_pub_->publish(goal_echo);
+
+    std_msgs::msg::String bt_echo;
+    bt_echo.data = goal->behavior_tree;
+    goal_bt_echo_pub_->publish(bt_echo);
+  }
 }
 
 void

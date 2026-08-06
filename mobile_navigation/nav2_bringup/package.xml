@@ -2,7 +2,7 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>nav2_bringup</name>
-  <version>0.4.5</version>
+  <version>0.4.6</version>
   <description>update merge main Bringup scripts and configurations for the Nav2 stack</description>
   <maintainer email="dexforce@dexforce.com">dexforce</maintainer>
   <license>Apache-2.0</license>
@@ -16,6 +16,23 @@
   <exec_depend>navigation2</exec_depend>
   <exec_depend>nav2_common</exec_depend>
   <exec_depend>slam_toolbox</exec_depend>
+  <exec_depend>dwb_core</exec_depend>
+  <exec_depend>nav2_mppi_controller</exec_depend>
+  <exec_depend>nav2_regulated_pure_pursuit_controller</exec_depend>
+  <exec_depend>nav2_graceful_controller</exec_depend>
+  <exec_depend>nav2_rotation_shim_controller</exec_depend>
+  <exec_depend>nav2_pid_controller</exec_depend>
+  <exec_depend>nav2_lat_lon_controller</exec_depend>
+  <exec_depend>nav2_pure_rotation_controller</exec_depend>
+  <exec_depend>nav2_straight_controller</exec_depend>
+  <exec_depend>nav2_simple_goal_checker</exec_depend>
+  <exec_depend>nav2_stopped_goal_checker</exec_depend>
+  <exec_depend>nav2_position_goal_checker</exec_depend>
+  <exec_depend>nav2_rotation_goal_checker</exec_depend>
+  <exec_depend>nav2_longitudinal_goal_checker</exec_depend>
+  <exec_depend>nav2_high_precision_goal_checker</exec_depend>
+  <exec_depend>nav2_path_pruning_local_planner</exec_depend>
+  <exec_depend>nav2_speed_planner</exec_depend>
 
   <test_depend>ament_lint_common</test_depend>
   <test_depend>ament_lint_auto</test_depend>

@@ -47,6 +47,7 @@
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "geometry_msgs/msg/twist_stamped.hpp"
 #include "nav_msgs/msg/path.hpp"
+#include "nav_interfaces/msg/robot_trajectory.hpp"
 #include "nav2_core/goal_checker.hpp"
 
 
@@ -97,6 +98,25 @@ public:
    * @param path The global plan
    */
   virtual void setPlan(const nav_msgs::msg::Path & path) = 0;
+
+  /**
+   * @brief 设置带速度的时空轨迹（五层架构 ④SpeedPlanner 输出，项目 32 / DEC-011）。
+   *
+   * 轨迹跟踪型 controller override 此方法，消费 per-point longitudinal_velocity / path_kappa
+   * 等做纯跟踪（不再自行决速）。默认空实现，保持对现有几何路径型 controller 向后兼容。
+   * @param trajectory 带速度 / 加速度 / 时间 / 段语义的轨迹（来自 SpeedPlanner）
+   */
+  virtual void setTrajectory(const nav_interfaces::msg::RobotTrajectory & /*trajectory*/) {}
+
+  /**
+   * @brief Return the trajectory state used by the most recent longitudinal
+   *        tracking command. Direct-control branches return false.
+   */
+  virtual bool getLastTrajectoryTrackingTarget(
+    double & /*velocity*/, double & /*acceleration*/)
+  {
+    return false;
+  }
 
   /**
    * @brief Controller computeVelocityCommands - calculates the best command given the current pose and velocity

@@ -1,0 +1,3 @@
+[INFO] [1784182794.492648780] [client_a]: 【Client A】正在发送导航目标 (x=1.0)...
+[INFO] [1784182794.493082234] [client_a]: 【Client A】目标已被 Server 接受，分配 UUID: b3ecf2f3e25bb2d1e15dc52b016a818
+[WARN] [1784182795.488865274] [client_a]: 【Client A】收到结果: 导航被中止 (ABORTED，可能被抢占)！UUID: b3ecf2f3e25bb2d1e15dc52b016a818

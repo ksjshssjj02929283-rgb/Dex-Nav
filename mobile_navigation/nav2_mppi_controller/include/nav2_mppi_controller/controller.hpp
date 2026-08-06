@@ -114,6 +114,13 @@ public:
   void setPlan(const nav_msgs::msg::Path & path) override;
 
   /**
+    * @brief 消费速度规划轨迹（④ 产出）：每个控制周期取最近轨迹点的规划速度，
+    *        作为采样器的前向 vx 上限（叠加在三阶段 profile 约束之上）。
+    * @param trajectory 带逐点速度的时空轨迹
+    */
+  void setTrajectory(const nav_interfaces::msg::RobotTrajectory & trajectory) override;
+
+  /**
     * @brief Set new speed limit from callback
     * @param speed_limit Speed limit to use
     * @param percentage Bool if the speed limit is absolute or relative
@@ -164,6 +171,9 @@ protected:
 
   void publishProfileDebug(double path_progress, double goal_distance);
 
+  /// 最近轨迹点的规划速度（机器人位姿先转到轨迹坐标系）；无轨迹/TF 失败返回 -1（不设帽）。
+  double nearestTrajectorySpeed(const geometry_msgs::msg::PoseStamped & robot_pose) const;
+
   std::string name_;
   rclcpp_lifecycle::LifecycleNode::WeakPtr parent_;
   rclcpp::Clock::SharedPtr clock_;
@@ -196,6 +206,10 @@ protected:
   double final_yaw_enter_lat_tolerance_{0.015};
   double final_yaw_exit_lon_tolerance_{0.02};
   double final_yaw_exit_lat_tolerance_{0.02};
+  // final_yaw 退出连续违反计数：位置误差连续 N 个周期超退出阈值才真正退出，避免原地转向的厘米级漂移
+  // 导致 final_yaw <-> positioning 反复切换
+  size_t final_yaw_exit_violation_count_{0};
+  size_t final_yaw_exit_violation_threshold_{3};
   double position_first_yaw_threshold_{2.094};
   double position_first_lateral_error_threshold_{0.05};
   double position_first_lateral_ratio_{1.0};
@@ -206,6 +220,35 @@ protected:
   float final_yaw_cmd_brake_accel_{0.7f};
   float final_yaw_cmd_stop_yaw_tolerance_{0.0f};
   float final_yaw_cmd_direction_deadband_{0.05f};
+  float final_yaw_cmd_actual_decel_{0.4f};  // 底盘实际角减速度估计，用于动态制动距离计算
+  float final_yaw_cmd_delay_{0.15f};        // 控制周期+平滑器+底盘通信延迟，用于动态制动距离
+  float final_yaw_cmd_brake_safety_margin_{0.01f};  // 动态制动触发安全余量
+  // 动态急刹最低触发速度：低于此速度不触发急刹，交给线性曲线平滑降速，避免低速停-启卡顿
+  float final_yaw_dynamic_brake_min_wz_{0.10f};
+  // CREEP 低速精调阶段：动态制动结束后用此范围角速度完成最后修正，不再触发急刹
+  float final_yaw_creep_wz_min_{0.04f};
+  float final_yaw_creep_wz_max_{0.06f};
+  float final_yaw_internal_tolerance_{0.02f};  // CREEP 进入 STOP 的内部容差，比 GoalChecker 接受容差严格，预留停止余量
+  // TRACKING -> CREEP 直接入口：低速接近目标时不必走 BRAKING，直接进入 CREEP 低速精调
+  float final_yaw_creep_enter_yaw_error_{0.06f};      // 误差<=此值且速度低时进入 CREEP
+  float final_yaw_creep_enter_max_actual_wz_{0.10f};  // 实际角速度<此值才允许直接进 CREEP
+  // STOP 状态退出阈值：比 internal_tolerance 宽松，比 direction_deadband 小，避免 STOP 后小幅漂移不修正
+  float final_yaw_stop_exit_tolerance_{0.04f};
+  bool final_yaw_braking_active_{false};    // 动态制动锁定状态，触发后持续输出零直到底盘停稳
+  // 包络追赶制动：actual_wz 超出 safe_wz 时临时请求零速快速降速，
+  // 但不锁定到完全停稳，actual 回到包络内立即恢复连续控制（区别于 BRAKING）
+  bool final_yaw_envelope_braking_active_{false};
+  float final_yaw_envelope_brake_enter_margin_{0.02f};  // actual > safe_wz + 此值才触发
+  float final_yaw_envelope_brake_exit_margin_{0.005f};  // actual <= safe_wz + 此值才释放
+  // final_yaw 内部三态机：TRACKING(正常刹车曲线) -> BRAKING(动态急刹) -> CREEP(低速精调) -> STOP
+  // CREEP 阶段不会再触发动态急刹，避免"急停-微调-再急停"循环
+  enum FinalYawControlState : size_t {
+    FINAL_YAW_TRACKING = 0,
+    FINAL_YAW_BRAKING = 1,
+    FINAL_YAW_CREEP = 2,
+    FINAL_YAW_STOP = 3
+  };
+  size_t final_yaw_control_state_{FINAL_YAW_TRACKING};
   size_t active_stage_{0};
   size_t approach_substage_{APPROACH_POSITIONING};
   size_t approach_mode_{APPROACH_NORMAL};
@@ -225,6 +268,11 @@ protected:
   // ⭐ costmap 异步解耦：控制线程读快照副本，try_lock 刷新，永不阻塞等 costmap 更新锁
   nav2_costmap_2d::Costmap2D costmap_snapshot_;
   bool costmap_snapshot_initialized_{false};
+
+  // 速度规划轨迹缓存（④ 每控制周期分发；前瞻窗内最大规划速度 → vx 采样上限）
+  nav_interfaces::msg::RobotTrajectory reference_trajectory_;
+  // 前瞻窗长度（m）：帽允许领先计划加速坡的距离；窗内至少含最近点的下一点（防死锁）
+  double traj_speed_cap_lookahead_{0.2};
 };
 
 }  // namespace nav2_mppi_controller

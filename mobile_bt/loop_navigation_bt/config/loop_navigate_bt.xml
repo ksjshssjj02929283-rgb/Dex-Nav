@@ -1,41 +1,31 @@
 <root BTCPP_format="4" main_tree_to_execute="MainTree">
   <BehaviorTree ID="MainTree">
 
-    <!-- 这是全局的大循环；ReactiveSequence 每 tick 从头执行，
-         但不会导致 ActionNode 重发 goal（前提是 ActionNode 正确实现）
-    -->
+    <!-- ReactiveSequence 每个 tick 都先执行电量分支，因此导航途中也能响应低电量。 -->
     <ReactiveSequence name="MainLoop">
 
-      <!-- ① 导航四个点位（循环） -->
-      <!--   Loop 节点内部应该按 tick 驱动，不重复发 goal -->
-      <LoopNavigateFourPoints points="{navigation_points}"/>
-      <!-- ② 电量检查与充电流程 -->
-      <Fallback name="BatteryCheck">
-        
-        <!-- ②-1 只要电量 ≥ 30%，BatteryCheck SUCCESS，继续导航循环 -->
-        <CheckBatteryAboveThreshold threshold="30"/>
+      <!-- threshold=0 只用于等待首条有效电量；无数据时不允许误启动导航或回充。 -->
+      <WaitForBatteryAboveThreshold threshold="0"/>
 
-        <!-- ②-2 电量 < 30% → 进入充电流程 -->
+      <!-- Fallback 在充电子树 RUNNING 时会保持当前子节点，不会因电量重新超过低阈值而提前跳回导航。 -->
+      <Fallback name="BatteryCheckAndCharging">
+        <CheckBatteryAboveThreshold threshold="{low_battery_threshold}"/>
+
         <Sequence name="ChargingSequence">
-
-          <!-- (a) 首先 cancel 当前导航，避免与充电导航冲突 -->
+          <!-- 先取消当前 Nav2 目标，再由 /auto_charging 接管机器人。 -->
           <CancelNavigation/>
-
-          <!-- (b) 导航到充电桩 + 插电（CallCharging） -->
-          <!--     注意：这是一个 ActionNode，不会被重复启动 -->
           <CallCharging/>
-          
-          <!-- (c) 充电期间持续检测电量，直到 ≥ 90% -->
-          <RetryUntilSuccessful num_attempts="-1">
-              <CheckBatteryAboveThreshold threshold="80"/>
-              
-          </RetryUntilSuccessful>
 
-          <!-- (d) 电量充足后，退出充电桩 -->
-          <Undocking duration="4.0"/>
+          <!-- 电量未达到恢复阈值时返回 RUNNING，避免 Retry 无限同步重试造成忙循环。 -->
+          <WaitForBatteryAboveThreshold threshold="{resume_battery_threshold}"/>
 
+          <!-- 退桩完成时清除暂停标志，下一次 tick 恢复循环导航。 -->
+          <Undocking duration="{undocking_duration}" linear_speed="{undocking_linear_speed}"/>
         </Sequence>
       </Fallback>
+
+      <!-- 电量正常或完整回充退桩结束后，继续按 JSON 点位循环导航。 -->
+      <LoopNavigateFourPoints points="{navigation_points}"/>
 
     </ReactiveSequence>
   </BehaviorTree>

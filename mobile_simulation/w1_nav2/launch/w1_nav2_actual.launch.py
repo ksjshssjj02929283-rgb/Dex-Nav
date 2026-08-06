@@ -5,7 +5,7 @@ import os
 from launch.substitutions import LaunchConfiguration
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
 from nav2_common.launch import RewrittenYaml  # nav2 提供的工具
@@ -22,7 +22,7 @@ def generate_launch_description():
 
     original_params_file = os.path.join(
         get_package_share_directory('nav2_bringup'), 'params',
-        'w1_nav2_params.yaml')
+        'w1_nav2_params_diff.yaml')
 
     # 用 RewrittenYaml 覆盖其中的参数
     configured_params = RewrittenYaml(
@@ -46,6 +46,10 @@ def generate_launch_description():
 
     ld = LaunchDescription()
 
+    ld.add_action(DeclareLaunchArgument(
+        'use_sim_time',
+        default_value='false',
+        description='Use simulation clock; keep false on the physical robot'))
     ld.add_action(nav2_bringup_cmd)
 
     return ld

@@ -59,9 +59,10 @@ void RouteEdgeStore::set(const std::vector<RouteEdge>& edges) {
 std::vector<std::string> RouteEdgeStore::removeEdgesContainingNav(const std::string& nav_id) {
     std::lock_guard<std::mutex> lock(mutex_);
     std::vector<std::string> removed;
-    for (auto it = map_.begin(); it != map_.end();) {
+    for (auto it = map_.begin(); it != map_.end(); ) {
         const auto& e = it->second;
-        bool refs = (e.from.type == "nav" && e.from.id == nav_id) || (e.to.type == "nav" && e.to.id == nav_id);
+        bool refs = (e.from.type == "nav" && e.from.id == nav_id) ||
+                    (e.to.type   == "nav" && e.to.id   == nav_id);
         if (refs) {
             removed.push_back(it->first);
             it = map_.erase(it);
@@ -75,10 +76,10 @@ std::vector<std::string> RouteEdgeStore::removeEdgesContainingNav(const std::str
 std::vector<std::string> RouteEdgeStore::removeEdgesContainingJunction(const std::string& jct_id) {
     std::lock_guard<std::mutex> lock(mutex_);
     std::vector<std::string> removed;
-    for (auto it = map_.begin(); it != map_.end();) {
+    for (auto it = map_.begin(); it != map_.end(); ) {
         const auto& e = it->second;
-        bool refs =
-            (e.from.type == "junction" && e.from.id == jct_id) || (e.to.type == "junction" && e.to.id == jct_id);
+        bool refs = (e.from.type == "junction" && e.from.id == jct_id) ||
+                    (e.to.type   == "junction" && e.to.id   == jct_id);
         if (refs) {
             removed.push_back(it->first);
             it = map_.erase(it);

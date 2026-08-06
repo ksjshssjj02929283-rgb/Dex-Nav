@@ -2,7 +2,7 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>nav2_velocity_smoother</name>
-  <version>0.4.5</version>
+  <version>0.4.6</version>
   <description>Nav2's Output velocity smoother</description>
   <maintainer email="dexforce@dexforce.com">dexforce</maintainer>
   <license>Apache-2.0</license>
@@ -11,6 +11,7 @@
   <depend>rclcpp</depend>
   <depend>rclcpp_components</depend>
   <depend>geometry_msgs</depend>
+  <depend>std_msgs</depend>
   <depend>nav2_util</depend>
 
   <test_depend>ament_lint_common</test_depend>

@@ -5,6 +5,12 @@ from launch_ros.actions import Node
 
 
 def generate_launch_description():
+    use_sim_time_arg = DeclareLaunchArgument(
+        'use_sim_time', default_value='false', description='是否使用仿真时钟'
+    )
+    depth_max_range_arg = DeclareLaunchArgument(
+        'depth_max_range', default_value='5.0', description='点云保留的最大深度（米）'
+    )
     # 公共参数声明（保持不变）
     flag_voxel_filter_arg = DeclareLaunchArgument(
         'flag_voxel_filter', default_value='true', description='是否启用降采样滤波（体素滤波）'
@@ -34,12 +40,25 @@ def generate_launch_description():
         'ground_filter_frame', default_value='base_link', description='地面过滤使用的坐标系'
     )
     ground_filter_min_height_arg = DeclareLaunchArgument(
-        'ground_filter_min_height', default_value='0.05', description='base_link下低于该高度的点认为是地面并剔除；调高会过滤更多低矮点，单位米'
+        'ground_filter_min_height', default_value='0.05', description='base_link下小于等于该高度的点认为是地面并剔除；调高会过滤更多低矮点，单位米'
     )
     ground_filter_max_height_arg = DeclareLaunchArgument(
         'ground_filter_max_height', default_value='1.5', description='base_link下高于该高度的点不作为近地障碍输入；调低会减少高处点进入costmap，单位米'
     )
 
+
+    enable_laserscan_arg = DeclareLaunchArgument(
+        'enable_laserscan', default_value='true', description='是否将过滤后的点云压缩并发布为 2D LaserScan'
+    )
+    division_mode_arg = DeclareLaunchArgument(
+        'division_mode', default_value='true', description='是否处理一帧、跳过一帧；关闭时处理全部输入帧'
+    )
+    step_u_arg = DeclareLaunchArgument(
+        'step_u', default_value='2', description='深度图列采样步长'
+    )
+    step_v_arg = DeclareLaunchArgument(
+        'step_v', default_value='3', description='深度图行采样步长'
+    )
 
     # 前置相机节点
     front_rgbd_node = Node(
@@ -53,6 +72,12 @@ def generate_launch_description():
             'output_topic_raw': '/orbbec/front/pointcloud2_raw',
             'output_topic_filtered': '/orbbec/front/pointcloud2_filtered',
             'output_topic_laserscan': '/orbbec/front/laser_scan',
+            'use_sim_time': LaunchConfiguration('use_sim_time'),
+            'depth_max_range': LaunchConfiguration('depth_max_range'),
+            'enable_laserscan': LaunchConfiguration('enable_laserscan'),
+            'division_mode': LaunchConfiguration('division_mode'),
+            'step_u': LaunchConfiguration('step_u'),
+            'step_v': LaunchConfiguration('step_v'),
             
             # 公共参数
             'flag_voxel_filter': LaunchConfiguration('flag_voxel_filter'),
@@ -74,6 +99,12 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
+        use_sim_time_arg,
+        depth_max_range_arg,
+        enable_laserscan_arg,
+        division_mode_arg,
+        step_u_arg,
+        step_v_arg,
         # 公共参数
         flag_voxel_filter_arg,
         flag_mls_filter_arg,

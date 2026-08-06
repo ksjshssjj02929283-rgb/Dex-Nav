@@ -1,0 +1,40 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>nav2_straight_controller</name>
+  <version>0.4.6</version>
+  <description>
+    Straight-line tracking controller for Nav2 (nav2_core::Controller plugin).
+    Longitudinal PID for speed holding plus a manual heading PID. Consumes
+    nav_interfaces/RobotTrajectory per-point longitudinal_velocity / path_kappa
+    via setTrajectory, or a geometric nav_msgs/Path via setPlan.
+  </description>
+  <maintainer email="dexforce@dexforce.com">dexforce</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>nav2_common</depend>
+  <depend>nav2_core</depend>
+  <depend>nav2_costmap_2d</depend>
+  <depend>nav2_util</depend>
+  <depend>nav_msgs</depend>
+  <depend>nav_interfaces</depend>
+  <depend>geometry_msgs</depend>
+  <depend>std_msgs</depend>
+  <depend>pluginlib</depend>
+  <depend>rclcpp</depend>
+  <depend>rclcpp_lifecycle</depend>
+  <depend>tf2</depend>
+  <depend>tf2_ros</depend>
+  <depend>tf2_geometry_msgs</depend>
+  <depend>nav2_controller_common</depend>
+
+  <test_depend>ament_lint_common</test_depend>
+  <test_depend>ament_lint_auto</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+    <nav2_core plugin="${prefix}/nav2_straight_controller.xml" />
+  </export>
+</package>

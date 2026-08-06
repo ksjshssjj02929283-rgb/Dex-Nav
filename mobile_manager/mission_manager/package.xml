@@ -2,7 +2,7 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>mission_manager</name>
-  <version>0.4.5</version>
+  <version>0.4.6</version>
   <description>The mission_manager package for ROS2</description>
   <maintainer email="ahoy@fetchrobotics.com">Aaron Hoy</maintainer>
   <license>BSD</license>

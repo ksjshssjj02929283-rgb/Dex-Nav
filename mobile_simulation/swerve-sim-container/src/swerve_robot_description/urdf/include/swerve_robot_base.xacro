@@ -1,0 +1,50 @@
+<?xml version="1.0"?>
+<!-- Top-level file for generating the swerve drive robot -->
+
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <xacro:macro name="swerve_robot_base">
+    <!-- MACRO FILES, ALLOW FOR GENERATION OF THE VARIOUS PARTS-->
+
+    <!-- Import chassis and dummy base link-->
+    <xacro:include filename="$(find swerve_robot_description)/urdf/include/robot_parts/chassis.xacro" />
+
+    <!-- Import steering links and joints -->
+    <xacro:include filename="$(find swerve_robot_description)/urdf/include/robot_parts/steering.xacro" />
+
+    <!-- Import wheel links and joints -->
+    <xacro:include filename="$(find swerve_robot_description)/urdf/include/robot_parts/wheel.xacro" />
+
+    <!-- GENERATION, GENERATES THE ROBOT FROM MACROS -->
+
+    <!-- Match the production TF contract: odom -> base_footprint -> base_link. -->
+    <xacro:base name="base_footprint" />
+    <link name="base_link" />
+    <joint name="base_joint" type="fixed">
+      <parent link="base_footprint" />
+      <child link="base_link" />
+      <origin xyz="0 0 0.01" rpy="0 0 0" />
+    </joint>
+
+    <!-- Main chassis -->
+    <xacro:chassis name="chassis_link" parent="base_link" />
+
+    <!-- Steering Links + Joints.
+         Positions match the real DexForce omni base:
+           wheelbase (front<->rear, X) = 0.46 m  -> locx = +/-0.23
+           wheel_track (left<->right, Y) = 0.345 m -> locy = +/-0.1725
+         Keep these in sync with swerve_controller/config/robot_geometry.yaml. -->
+    <xacro:steering locationprefix="front_right" locx="0.23" locy="-0.1725" />
+    <xacro:steering locationprefix="front_left" locx="0.23" locy="0.1725" />
+    <xacro:steering locationprefix="rear_left" locx="-0.23" locy="0.1725" />
+    <xacro:steering locationprefix="rear_right" locx="-0.23" locy="-0.1725" />
+
+    <!-- Wheel Links + Joints -->
+    <xacro:wheel locationprefix="front_right" />
+    <xacro:wheel locationprefix="front_left" />
+    <xacro:wheel locationprefix="rear_left" />
+    <xacro:wheel locationprefix="rear_right" />
+
+  </xacro:macro>
+
+</robot>

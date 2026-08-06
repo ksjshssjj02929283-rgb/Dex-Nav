@@ -13,10 +13,10 @@
       <!-- ② 电量检查与停止流程 -->
       <Fallback name="BatteryCheck">
 
-        <!-- ②-1 只要电量 ≥ 30%，BatteryCheck SUCCESS，继续导航循环 -->
-        <CheckBatteryAboveThreshold threshold="30" enabled="{check_battery}"/>
+        <!-- 电量检查默认关闭；启用后低于 YAML 阈值会进入返回首点流程。 -->
+        <CheckBatteryAboveThreshold threshold="{low_battery_threshold}" enabled="{check_battery}"/>
 
-        <!-- ②-2 电量 < 30% → 进入停止流程 -->
+        <!-- 电量低于 YAML 阈值时进入停止流程。 -->
         <Sequence name="StopSequence">
 
           <!-- (a) 首先 cancel 当前导航 -->

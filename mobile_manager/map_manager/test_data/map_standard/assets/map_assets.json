@@ -1,0 +1,26 @@
+{
+  "areas": [],
+  "dsg": {
+    "edges": [],
+    "layers": {
+      "BUILDINGS": [],
+      "FLOORS": [],
+      "OBJECTS": [],
+      "PLACES": [],
+      "ROOMS": []
+    },
+    "metadata": {
+      "name": "dexe_dsg",
+      "schema_compatible_with": "spark_dsg/1.2",
+      "version": "1.0"
+    }
+  },
+  "points": [],
+  "route_graph": {
+    "edges": [],
+    "junctions": []
+  },
+  "routes": [],
+  "schema_compatible_with": "spark_dsg/1.2",
+  "schema_version": "2.0"
+}

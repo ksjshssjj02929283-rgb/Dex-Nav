@@ -2,11 +2,12 @@
 #define MAP_ASSET_RVIZ_PLUGIN__DELETE_EDGE_TOOL_HPP_
 
 #include <memory>
-#include <nav_interfaces/srv/get_route_graph.hpp>
-#include <nav_interfaces/srv/remove_route_edge.hpp>
+#include <string>
+
 #include <rclcpp/rclcpp.hpp>
 #include <rviz_common/tool.hpp>
-#include <string>
+#include <nav_interfaces/srv/get_route_graph.hpp>
+#include <nav_interfaces/srv/remove_route_edge.hpp>
 
 namespace map_asset_rviz_plugin {
 
@@ -29,7 +30,7 @@ private:
     rclcpp::Node::SharedPtr node_;
     std::string service_prefix_{"/map_asset_manager"};
 
-    rclcpp::Client<nav_interfaces::srv::GetRouteGraph>::SharedPtr get_graph_client_;
+    rclcpp::Client<nav_interfaces::srv::GetRouteGraph>::SharedPtr   get_graph_client_;
     rclcpp::Client<nav_interfaces::srv::RemoveRouteEdge>::SharedPtr remove_edge_client_;
 };
 

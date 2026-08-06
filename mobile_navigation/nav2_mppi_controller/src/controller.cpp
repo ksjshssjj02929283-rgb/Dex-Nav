@@ -16,9 +16,12 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <limits>
+#include <string>
 #include "nav2_mppi_controller/controller.hpp"
 #include "nav2_mppi_controller/tools/utils.hpp"
 #include "tf2/utils.h"  // tf2::getYaw（到点精度 log）
+#include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
 
 // #define BENCHMARK_TESTING
 
@@ -43,6 +46,7 @@ void MPPIController::configure(
   auto getParam = parameters_handler_->getParamGetter(name_);
   getParam(visualize_, "visualize", false);
   getParam(reset_period_, "reset_period", 1.0);
+  getParam(traj_speed_cap_lookahead_, "trajectory_speed_cap_lookahead", 0.2);
   configureStages();
   active_stage_enter_time_ = clock_->now();
 
@@ -103,6 +107,70 @@ void MPPIController::reset()
   final_yaw_direction_lock_active_ = false;
   final_yaw_locked_direction_ = 0.0f;
   last_final_yaw_cmd_wz_ = 0.0f;
+  final_yaw_braking_active_ = false;
+  final_yaw_envelope_braking_active_ = false;
+  final_yaw_control_state_ = FINAL_YAW_TRACKING;
+  final_yaw_exit_violation_count_ = 0;
+  reference_trajectory_.points.clear();
+  optimizer_.setTrajectorySpeedCap(-1.0);
+}
+
+void MPPIController::setTrajectory(const nav_interfaces::msg::RobotTrajectory & trajectory)
+{
+  reference_trajectory_ = trajectory;
+}
+
+double MPPIController::nearestTrajectorySpeed(
+  const geometry_msgs::msg::PoseStamped & robot_pose) const
+{
+  if (reference_trajectory_.points.empty()) {
+    return -1.0;
+  }
+  std::string traj_frame = reference_trajectory_.header.frame_id;
+  if (traj_frame.empty()) {
+    traj_frame = reference_trajectory_.points.front().pose.header.frame_id;
+  }
+  geometry_msgs::msg::PoseStamped pose_in_traj = robot_pose;
+  if (!traj_frame.empty() && robot_pose.header.frame_id != traj_frame) {
+    try {
+      geometry_msgs::msg::PoseStamped query = robot_pose;
+      query.header.stamp = rclcpp::Time(0);
+      tf_buffer_->transform(query, pose_in_traj, traj_frame, tf2::durationFromSec(0.1));
+    } catch (const tf2::TransformException &) {
+      return -1.0;  // TF 失败：本周期不设帽，回退 profile 约束
+    }
+  }
+  size_t nearest_i = 0;
+  double best_d2 = std::numeric_limits<double>::max();
+  const auto & pts = reference_trajectory_.points;
+  for (size_t i = 0; i < pts.size(); ++i) {
+    const double dx = pts[i].pose.pose.position.x - pose_in_traj.pose.position.x;
+    const double dy = pts[i].pose.pose.position.y - pose_in_traj.pose.position.y;
+    const double d2 = dx * dx + dy * dy;
+    if (d2 < best_d2) {
+      best_d2 = d2;
+      nearest_i = i;
+    }
+  }
+
+  // 帽 = 前瞻窗 [最近点, +trajectory_speed_cap_lookahead] 内的最大规划速度，
+  // 不能取最近点本身——剖面每周期从当前实际速度重规划（receding-horizon），
+  // "当前位置的计划速度"恒等于当前速度，静止时会形成"帽=0 → 动不了 → 速度恒 0"
+  // 的自引用死锁。窗的含义：允许 MPPI 领先计划加速坡多远——窗越小越贴近计划的
+  // 加速形状，但必须至少包含最近点的下一个点（点距稀疏时防死锁复发）；
+  // 减速段剖面递减，窗内最大值=当前位置计划速度，不受窗大小影响（不提前刹）。
+  double cap = std::fabs(pts[nearest_i].longitudinal_velocity);
+  double s = 0.0;
+  for (size_t j = nearest_i + 1; j < pts.size(); ++j) {
+    const double dx = pts[j].pose.pose.position.x - pts[j - 1].pose.pose.position.x;
+    const double dy = pts[j].pose.pose.position.y - pts[j - 1].pose.pose.position.y;
+    s += std::hypot(dx, dy);
+    cap = std::max(cap, std::fabs(pts[j].longitudinal_velocity));
+    if (s >= traj_speed_cap_lookahead_ && j > nearest_i + 1) {
+      break;
+    }
+  }
+  return cap;
 }
 
 // geometry_msgs::msg::TwistStamped MPPIController::computeVelocityCommands(
@@ -165,6 +233,11 @@ geometry_msgs::msg::TwistStamped MPPIController::computeVelocityCommands(
   const double heading_path_angle = path_handler_.getLastHeadingPathAngle();
 
   // 提前捕获目标位姿（用于 approach 子阶段和到点精度 log；plan 后续可能被 move 走）
+  // ④ 轨迹参考速度：最近轨迹点的规划速度作为本周期 vx 采样上限（叠加在 profile 之上）。
+  // 减速尾段/曲率限速/障碍零速由速度规划剖面逐点编码；无轨迹/TF 失败时不设帽。
+  optimizer_.setTrajectorySpeedCap(nearestTrajectorySpeed(robot_pose));
+
+  // 提前捕获目标位姿（用于到点精度 log；transformed_plan 后续可能被 visualize move 走）
   double key_goal_x = 0.0, key_goal_y = 0.0, key_goal_yaw = 0.0;
   double key_lon = 0.0, key_lat = 0.0, key_yaw = 0.0;
   const bool key_has_goal = !transformed_plan.poses.empty();
@@ -212,6 +285,15 @@ geometry_msgs::msg::TwistStamped MPPIController::computeVelocityCommands(
   geometry_msgs::msg::TwistStamped cmd =
     optimizer_.evalControl(robot_pose, robot_speed, transformed_plan, goal_checker);
   smoothFinalYawCommand(cmd, key_yaw, robot_speed);
+  // final_yaw 阶段在输出端强制线速度归零，不依赖 optimizer 的速度约束
+  // 避免 optimizer 旧控制序列残留、profile 过渡未完全应用等导致的小幅 vx
+  if (
+    active_stage_ == STAGE_APPROACH &&
+    approach_substage_ == APPROACH_FINAL_YAW)
+  {
+    cmd.twist.linear.x = 0.0;
+    cmd.twist.linear.y = 0.0;
+  }
   publishProfileDebug(path_progress, goal_distance);
   auto t_optimize_end = std::chrono::high_resolution_clock::now();
   double optimize_ms =
@@ -259,6 +341,10 @@ geometry_msgs::msg::TwistStamped MPPIController::computeVelocityCommands(
 
 void MPPIController::publishProfileDebug(double path_progress, double goal_distance)
 {
+  if (profile_debug_publisher_->get_subscription_count() == 0) {
+    return;
+  }
+
   if (!profile_debug_publisher_ || !profile_debug_publisher_->is_activated()) {
     return;
   }
@@ -379,6 +465,13 @@ void MPPIController::configureStages()
   getParam(
     final_yaw_exit_lat_tolerance_, "approach_final_yaw_exit_lat_tolerance",
     0.02, ParameterType::Static);
+  // final_yaw 退出连续违反周期数：ROS 2 整数参数底层是 int64，用 int 中转避免 size_t 类型问题
+  int final_yaw_exit_violation_threshold_param = 3;
+  getParam(
+    final_yaw_exit_violation_threshold_param, "approach_final_yaw_exit_violation_threshold",
+    3, ParameterType::Static);
+  final_yaw_exit_violation_threshold_ =
+    static_cast<size_t>(std::max(1, final_yaw_exit_violation_threshold_param));
   getParam(
     position_first_yaw_threshold_, "approach_position_first_yaw_threshold",
     2.094, ParameterType::Static);
@@ -407,6 +500,56 @@ void MPPIController::configureStages()
   getParam(
     final_yaw_cmd_direction_deadband_, "approach_final_yaw_cmd_direction_deadband",
     0.05, ParameterType::Static);
+  getParam(
+    final_yaw_cmd_actual_decel_, "approach_final_yaw_cmd_actual_decel",
+    0.4, ParameterType::Static);
+  final_yaw_cmd_actual_decel_ = std::max(0.01f, final_yaw_cmd_actual_decel_);
+  getParam(
+    final_yaw_cmd_delay_, "approach_final_yaw_cmd_delay",
+    0.15, ParameterType::Static);
+  final_yaw_cmd_delay_ = std::max(0.0f, final_yaw_cmd_delay_);
+  getParam(
+    final_yaw_cmd_brake_safety_margin_, "approach_final_yaw_cmd_brake_safety_margin",
+    0.01, ParameterType::Static);
+  final_yaw_cmd_brake_safety_margin_ = std::max(0.0f, final_yaw_cmd_brake_safety_margin_);
+  getParam(
+    final_yaw_dynamic_brake_min_wz_, "approach_final_yaw_dynamic_brake_min_wz",
+    0.10, ParameterType::Static);
+  final_yaw_dynamic_brake_min_wz_ = std::max(0.0f, final_yaw_dynamic_brake_min_wz_);
+  getParam(
+    final_yaw_creep_wz_min_, "approach_final_yaw_creep_wz_min",
+    0.04, ParameterType::Static);
+  final_yaw_creep_wz_min_ = std::max(0.0f, final_yaw_creep_wz_min_);
+  getParam(
+    final_yaw_creep_wz_max_, "approach_final_yaw_creep_wz_max",
+    0.06, ParameterType::Static);
+  final_yaw_creep_wz_max_ = std::max(final_yaw_creep_wz_min_, final_yaw_creep_wz_max_);
+  getParam(
+    final_yaw_internal_tolerance_, "approach_final_yaw_internal_tolerance",
+    0.02, ParameterType::Static);
+  final_yaw_internal_tolerance_ = std::max(0.0f, final_yaw_internal_tolerance_);
+  getParam(
+    final_yaw_creep_enter_yaw_error_, "approach_final_yaw_creep_enter_yaw_error",
+    0.06, ParameterType::Static);
+  final_yaw_creep_enter_yaw_error_ =
+    std::max(final_yaw_internal_tolerance_, final_yaw_creep_enter_yaw_error_);
+  getParam(
+    final_yaw_creep_enter_max_actual_wz_, "approach_final_yaw_creep_enter_max_actual_wz",
+    0.10, ParameterType::Static);
+  final_yaw_creep_enter_max_actual_wz_ = std::max(0.0f, final_yaw_creep_enter_max_actual_wz_);
+  getParam(
+    final_yaw_stop_exit_tolerance_, "approach_final_yaw_stop_exit_tolerance",
+    0.04, ParameterType::Static);
+  final_yaw_stop_exit_tolerance_ =
+    std::max(final_yaw_internal_tolerance_, final_yaw_stop_exit_tolerance_);
+  getParam(
+    final_yaw_envelope_brake_enter_margin_, "approach_final_yaw_envelope_brake_enter_margin",
+    0.02, ParameterType::Static);
+  final_yaw_envelope_brake_enter_margin_ = std::max(0.0f, final_yaw_envelope_brake_enter_margin_);
+  getParam(
+    final_yaw_envelope_brake_exit_margin_, "approach_final_yaw_envelope_brake_exit_margin",
+    0.005, ParameterType::Static);
+  final_yaw_envelope_brake_exit_margin_ = std::max(0.0f, final_yaw_envelope_brake_exit_margin_);
   final_yaw_enter_lon_tolerance_ = std::max(0.0, final_yaw_enter_lon_tolerance_);
   final_yaw_enter_lat_tolerance_ = std::max(0.0, final_yaw_enter_lat_tolerance_);
   final_yaw_exit_lon_tolerance_ = std::max(
@@ -707,10 +850,19 @@ void MPPIController::updateApproachSubstage(
   const double abs_lat = std::abs(goal_lateral_error);
   const size_t previous_substage = approach_substage_;
   if (approach_substage_ == APPROACH_FINAL_YAW) {
-    if (abs_lon > final_yaw_exit_lon_tolerance_ ||
-      abs_lat > final_yaw_exit_lat_tolerance_)
-    {
+    // final_yaw 退出需连续 N 个周期位置误差超退出阈值，避免原地转向的厘米级漂移
+    // 导致 final_yaw <-> positioning 反复切换（第一份日志主因）
+    const bool position_far_outside =
+      abs_lon > final_yaw_exit_lon_tolerance_ ||
+      abs_lat > final_yaw_exit_lat_tolerance_;
+    if (position_far_outside) {
+      ++final_yaw_exit_violation_count_;
+    } else {
+      final_yaw_exit_violation_count_ = 0;
+    }
+    if (final_yaw_exit_violation_count_ >= final_yaw_exit_violation_threshold_) {
       approach_substage_ = APPROACH_POSITIONING;
+      final_yaw_exit_violation_count_ = 0;
     }
   } else if (
     abs_lon <= final_yaw_enter_lon_tolerance_ &&
@@ -720,10 +872,18 @@ void MPPIController::updateApproachSubstage(
   }
 
   if (previous_substage != approach_substage_) {
+    // 每次进入 final_yaw 子阶段，重置内部状态机到 TRACKING
+    if (approach_substage_ == APPROACH_FINAL_YAW) {
+      final_yaw_control_state_ = FINAL_YAW_TRACKING;
+      final_yaw_braking_active_ = false;
+      final_yaw_exit_violation_count_ = 0;
+    }
     RCLCPP_INFO(
-      logger_, "MPPI approach substage switched: %s -> %s, |lon|=%.3f, |lat|=%.3f",
+      logger_, "MPPI approach substage switched: %s -> %s, |lon|=%.3f, |lat|=%.3f, "
+      "exit_violation_count=%zu",
       previous_substage == APPROACH_FINAL_YAW ? "final_yaw" : "positioning",
-      approachSubstageName().c_str(), abs_lon, abs_lat);
+      approachSubstageName().c_str(), abs_lon, abs_lat,
+      final_yaw_exit_violation_count_);
   }
 }
 
@@ -753,12 +913,11 @@ void MPPIController::applyApproachSubstageProfile()
   }
 
   // 最终转向近似原地完成：保留位置类 critic 防漂移，关闭会鼓励平移的软代价。
-  applied_profile_.velocity.vx_max =
-    std::min(applied_profile_.velocity.vx_max, final_yaw_vx_max_);
-  applied_profile_.velocity.vx_min =
-    std::max(applied_profile_.velocity.vx_min, -final_yaw_vx_max_);
-  applied_profile_.velocity.wz_max =
-    std::min(applied_profile_.velocity.wz_max, final_yaw_wz_max_);
+  // final_yaw 阶段线速度直接设为 0，避免原地转向时正负 vx 切换导致位置漂移触发子阶段切换
+  // （第一份日志中 lon 从 0.005 漂到 0.035 退出 final_yaw 的主因）
+  applied_profile_.velocity.vx_max = std::min(applied_profile_.velocity.vx_max, final_yaw_vx_max_);
+  applied_profile_.velocity.vx_min = std::max(applied_profile_.velocity.vx_min, -final_yaw_vx_max_);
+  applied_profile_.velocity.wz_max = std::min(applied_profile_.velocity.wz_max, final_yaw_wz_max_);
   applied_profile_.critics.path_angle.weight = 0.0f;
   applied_profile_.critics.linear_velocity.weight = 0.0f;
   applied_profile_.critics.prefer_forward.weight = 0.0f;
@@ -777,6 +936,8 @@ void MPPIController::smoothFinalYawCommand(
     final_yaw_cmd_filter_active_ = false;
     final_yaw_direction_lock_active_ = false;
     final_yaw_locked_direction_ = 0.0f;
+    final_yaw_braking_active_ = false;
+    final_yaw_envelope_braking_active_ = false;
     return;
   }
 
@@ -795,57 +956,304 @@ void MPPIController::smoothFinalYawCommand(
   const float wz_limit = std::max(0.0f, applied_profile_.velocity.wz_max);
   const float abs_yaw_error = static_cast<float>(std::abs(goal_yaw_error));
   const float stop_yaw_tolerance = std::max(0.0f, final_yaw_cmd_stop_yaw_tolerance_);
-  float target_wz = static_cast<float>(cmd.twist.angular.z);
-  if (
-    stop_yaw_tolerance > 0.0f &&
-    abs_yaw_error <= stop_yaw_tolerance)
-  {
-    target_wz = 0.0f;
+  // 方向死区不能小于停止容差，否则会在停止容差内还在反复切换方向锁
+  const float direction_deadband =
+    std::max(stop_yaw_tolerance, final_yaw_cmd_direction_deadband_);
+
+  // 期望旋转方向：goal_yaw_error = current - goal，误差为正需要负转，为负需要正转
+  const float desired_direction =
+    goal_yaw_error > 0.0 ? -1.0f :
+    goal_yaw_error < 0.0 ? 1.0f : 0.0f;
+
+  float target_wz = 0.0f;
+  // 本周期是否强制零输出（绕过斜率限制）
+  bool force_zero_output = false;
+  // 是否需要保持零速直到底盘实际停稳（用于 stop_tolerance / crossed_goal 场景）
+  bool hold_zero_until_stopped = false;
+  // 安全速度包络相关变量（在 else 分支内赋值，供日志使用）
+  float safe_wz_limit = 0.0f;
+  float effective_delay = 0.0f;
+
+  // ========================================================================
+  // 动态制动改造：同方向正常旋转用安全速度包络连续降速，不完全停车；
+  // 只有反方向/越过目标/进 stop_tolerance 才完全停车（hold_zero_until_stopped）
+  // ========================================================================
+
+  // 底盘实际角速度状态
+  const float actual_wz = static_cast<float>(robot_speed.angular.z);
+  const float actual_wz_abs = std::abs(actual_wz);
+  constexpr float kChassisStoppedWz = 0.015f;
+  const bool chassis_stopped = actual_wz_abs <= kChassisStoppedWz;
+  const bool chassis_still_moving = !chassis_stopped;
+
+  // ===== crossed_goal 检测（使用上一周期方向锁快照）=====
+  // 必须在更新本周期方向锁之前判断，否则正常越过目标时误差必然 < direction_deadband，
+  // 方向锁已被清除，crossed_goal 永远为 false
+  const bool previous_direction_lock_active = final_yaw_direction_lock_active_;
+  const float previous_locked_direction = final_yaw_locked_direction_;
+  const bool crossed_goal =
+    previous_direction_lock_active &&
+    abs_yaw_error < 0.5f &&
+    previous_locked_direction * static_cast<float>(goal_yaw_error) > 0.0f;
+
+  // ===== 方向锁判断（在 crossed_goal 之后更新）=====
+  // 先确定本周期有效控制方向 command_direction，避免 ±π 边界跳变导致急停误判
+  float command_direction = desired_direction;
+  if (!crossed_goal) {
+    if (abs_yaw_error > direction_deadband) {
+      if (!final_yaw_direction_lock_active_) {
+        final_yaw_locked_direction_ = desired_direction;
+        final_yaw_direction_lock_active_ = true;
+        RCLCPP_INFO(
+          logger_,
+          "MPPI final_yaw direction locked: direction=%+.0f, yaw_error=%.3f rad. "
+          "The direction will be kept until |yaw_error| <= %.3f rad.",
+          final_yaw_locked_direction_, goal_yaw_error, direction_deadband);
+      }
+      command_direction = final_yaw_locked_direction_;
+    } else {
+      final_yaw_direction_lock_active_ = false;
+      final_yaw_locked_direction_ = 0.0f;
+    }
+  } else {
+    // 越过目标：清除方向锁，本周期完全停车，下周期重新定向
     final_yaw_direction_lock_active_ = false;
     final_yaw_locked_direction_ = 0.0f;
-  } else if (abs_yaw_error > final_yaw_cmd_direction_deadband_) {
-    // final_yaw 阶段只做目标朝向收敛。航向误差还明显大于死区时，锁定正确旋转
-    // 方向，避免 yaw_error 在 ±pi 边界从 +3.13 跳到 -3.13 后立刻反向。
-    //
-    // 角速度不再“一直顶到 wz_max 再突然停”，而是按剩余角度和可用角加速度
-    // 计算刹车曲线：误差大时允许接近 wz_max，越接近目标角度越提前降速，减少
-    // 冲过目标姿态后的来回修正。
-    if (!final_yaw_direction_lock_active_) {
-      // goal_yaw_error 的符号语义是 current - goal。要让误差收敛到 0，
-      // 角速度方向应与误差符号相反：误差为负需要正转，误差为正需要负转。
-      final_yaw_locked_direction_ = goal_yaw_error > 0.0 ? -1.0f : 1.0f;
-      final_yaw_direction_lock_active_ = true;
+  }
+
+  // 是否必须完全停车：反方向旋转 / 越过目标 / 进入 stop_tolerance
+  // 注意：用方向锁后的 command_direction 判断，不能用 desired_direction
+  // 否则 ±π 边界跳变会让 desired_direction 瞬间反向，误判为 wrong_direction
+  const bool actual_wrong_direction =
+    chassis_still_moving && command_direction * actual_wz < 0.0f;
+
+  if (abs_yaw_error <= stop_yaw_tolerance) {
+    // 已进入停止容差，立即停车；若底盘未停稳则保持零速锁定
+    target_wz = 0.0f;
+    force_zero_output = true;
+    hold_zero_until_stopped = chassis_still_moving;
+    final_yaw_direction_lock_active_ = false;
+    final_yaw_locked_direction_ = 0.0f;
+  } else if (crossed_goal) {
+    // 已经越过目标方向，先制动消除惯性，避免继续沿错误方向旋转
+    target_wz = 0.0f;
+    force_zero_output = true;
+    hold_zero_until_stopped = chassis_still_moving;
+    RCLCPP_INFO(
+      logger_,
+      "MPPI final_yaw crossed goal: prev_locked_dir=%+.0f, yaw_error=%.3f rad. "
+      "Holding zero until the chassis stops.",
+      previous_locked_direction, goal_yaw_error);
+  } else if (actual_wrong_direction) {
+    // 底盘实际方向与有效控制方向相反：必须先完全停车再重新定向
+    target_wz = 0.0f;
+    force_zero_output = true;
+    hold_zero_until_stopped = chassis_still_moving;
+    final_yaw_direction_lock_active_ = false;
+    final_yaw_locked_direction_ = 0.0f;
+    RCLCPP_INFO(
+      logger_,
+      "MPPI final_yaw actual wrong direction: cmd_dir=%+.0f, actual_wz=%.3f. "
+      "Holding zero until the chassis stops.",
+      command_direction, actual_wz);
+  } else {
+    // ===== 正常同方向旋转：用安全速度包络连续降速，不完全停车 =====
+
+    // 动态延迟：取配置值和本周期实测 dt 的较大值，钳在 [0.05, 0.18]
+    // 控制周期偶发达到 150~180ms 时，安全包络会自动收紧，避免超调
+    const float measured_cycle = static_cast<float>(dt);
+    effective_delay = std::clamp(
+      std::max(final_yaw_cmd_delay_, measured_cycle), 0.05f, 0.18f);
+
+    // 安全速度包络：按剩余角度和实际减速度计算当前允许的最大角速度
+    // v = sqrt(2 * a * s_eff)，s_eff 已扣除延迟期间继续转的角度和安全余量
+    // 这是绝对上限，任何阶段都不能突破，否则会超调
+    safe_wz_limit = wz_limit;
+    if (final_yaw_cmd_actual_decel_ > 0.0f) {
+      const float remaining_yaw = std::max(
+        0.0f,
+        abs_yaw_error - final_yaw_internal_tolerance_ - final_yaw_cmd_brake_safety_margin_);
+      const float effective_remaining_yaw = std::max(
+        0.0f, remaining_yaw - actual_wz_abs * effective_delay);
+      safe_wz_limit = std::sqrt(
+        2.0f * final_yaw_cmd_actual_decel_ * effective_remaining_yaw);
+    }
+    float target_wz_abs = std::min(wz_limit, safe_wz_limit);
+
+    // CREEP 低速区：误差较小时用 [creep_min, creep_max] 范围的低速精调
+    // CREEP 是"希望使用的速度"，安全包络是"不能超过的速度"，取 min
+    // 这样越接近目标，安全包络越小，CREEP 不会突破安全包络导致超调
+    if (
+      abs_yaw_error > final_yaw_internal_tolerance_ &&
+      abs_yaw_error <= final_yaw_creep_enter_yaw_error_)
+    {
+      const float remaining_error =
+        std::max(0.0f, abs_yaw_error - final_yaw_internal_tolerance_);
+      float creep_wz_abs = 1.5f * remaining_error;
+      creep_wz_abs = std::clamp(
+        creep_wz_abs, final_yaw_creep_wz_min_, final_yaw_creep_wz_max_);
+      target_wz_abs = std::min(target_wz_abs, creep_wz_abs);
+    }
+
+    target_wz = command_direction * target_wz_abs;
+
+    // 包络追赶制动：actual_wz 超出 safe_wz 时临时请求零速快速降速
+    // 与 BRAKING 不同：不锁定到完全停稳，actual 回到包络内立即恢复连续控制
+    // 解决"指令满足安全包络但底盘实际速度仍超出"的偶发超调
+    const bool actual_above_envelope =
+      actual_wz_abs > safe_wz_limit + final_yaw_envelope_brake_enter_margin_;
+    if (!final_yaw_envelope_braking_active_ && actual_above_envelope) {
+      final_yaw_envelope_braking_active_ = true;
       RCLCPP_INFO(
         logger_,
-        "MPPI final_yaw direction locked: direction=%+.0f, yaw_error=%.3f rad. "
-        "The direction will be kept until |yaw_error| <= %.3f rad.",
-        final_yaw_locked_direction_, goal_yaw_error, final_yaw_cmd_direction_deadband_);
+        "MPPI final_yaw envelope braking entered: actual=%.3f > safe=%.3f + margin=%.3f. "
+        "Temp zero until actual back inside envelope.",
+        actual_wz_abs, safe_wz_limit, final_yaw_envelope_brake_enter_margin_);
     }
-    float target_wz_abs = wz_limit;
-    if (final_yaw_cmd_brake_accel_ > 0.0f) {
-      const float braking_yaw_error = std::max(0.0f, abs_yaw_error - stop_yaw_tolerance);
-      target_wz_abs = std::min(
-        wz_limit,
-        std::sqrt(2.0f * final_yaw_cmd_brake_accel_ * braking_yaw_error));
-    }
-    target_wz = final_yaw_locked_direction_ * target_wz_abs;
-  } else {
-    final_yaw_direction_lock_active_ = false;
-    final_yaw_locked_direction_ = 0.0f;
-    // 接近目标方向时，不强行顶满角速度，只禁止明显反向的小抖动。
-    if (goal_yaw_error > 0.0) {
-      target_wz = std::min(0.0f, target_wz);
-    } else {
-      target_wz = std::max(0.0f, target_wz);
+    if (final_yaw_envelope_braking_active_) {
+      const bool actual_back_inside_envelope =
+        actual_wz_abs <= safe_wz_limit + final_yaw_envelope_brake_exit_margin_;
+      if (actual_back_inside_envelope) {
+        final_yaw_envelope_braking_active_ = false;
+        RCLCPP_INFO(
+          logger_,
+          "MPPI final_yaw envelope braking exited: actual=%.3f <= safe=%.3f + margin=%.3f. "
+          "Resume continuous control.",
+          actual_wz_abs, safe_wz_limit, final_yaw_envelope_brake_exit_margin_);
+      } else {
+        // 仍在包络外：本周期强制零速降速，但不设 braking_active（不等完全停稳）
+        target_wz = 0.0f;
+        force_zero_output = true;
+      }
     }
   }
 
-  const float max_delta = final_yaw_cmd_wz_slew_rate_ * static_cast<float>(dt);
-  const float filtered_wz = std::clamp(
-    target_wz,
-    last_final_yaw_cmd_wz_ - max_delta,
-    last_final_yaw_cmd_wz_ + max_delta);
+  // stop_tolerance / crossed_goal / wrong_direction 场景下要求保持零速直到底盘停稳
+  // 同步设置状态机为 BRAKING，保持日志状态与实际行为一致
+  if (hold_zero_until_stopped) {
+    final_yaw_braking_active_ = true;
+    final_yaw_control_state_ = FINAL_YAW_BRAKING;
+  }
+
+  // BRAKING 状态：完全停车阶段，持续输出零直到底盘停稳
+  if (final_yaw_braking_active_) {
+    target_wz = 0.0f;
+    force_zero_output = true;
+    if (chassis_stopped) {
+      final_yaw_braking_active_ = false;
+      if (abs_yaw_error <= final_yaw_internal_tolerance_) {
+        final_yaw_control_state_ = FINAL_YAW_STOP;
+        RCLCPP_INFO(
+          logger_,
+          "MPPI final_yaw BRAKING->STOP: yaw_error=%.3f <= internal_tol=%.3f, chassis stopped.",
+          goal_yaw_error, final_yaw_internal_tolerance_);
+      } else {
+        // 停稳后仍未到位：状态回 TRACKING，下一周期重新走安全速度包络/CREEP
+        final_yaw_control_state_ = FINAL_YAW_TRACKING;
+        RCLCPP_INFO(
+          logger_,
+          "MPPI final_yaw BRAKING->TRACKING: yaw_error=%.3f > internal_tol=%.3f, "
+          "resuming continuous correction.",
+          goal_yaw_error, final_yaw_internal_tolerance_);
+      }
+    }
+  }
+
+  // STOP 状态：已到位，持续输出零，等待 ControllerServer/GoalChecker 确认
+  if (final_yaw_control_state_ == FINAL_YAW_STOP && !final_yaw_braking_active_) {
+    target_wz = 0.0f;
+    force_zero_output = true;
+    // 误差超出 stop_exit_tolerance 后退出 STOP，统一回 TRACKING
+    // CREEP 不再作为独立状态，只是 TRACKING 状态下小误差区的速度计算逻辑
+    if (abs_yaw_error > final_yaw_stop_exit_tolerance_) {
+      final_yaw_control_state_ = FINAL_YAW_TRACKING;
+      RCLCPP_INFO(
+        logger_,
+        "MPPI final_yaw STOP->TRACKING: yaw_error=%.3f exceeded exit_tol=%.3f.",
+        goal_yaw_error, final_yaw_stop_exit_tolerance_);
+    }
+  }
+
+  // 斜率限制：加速慢、减速快；方向反转时本周期先刹到零
+  const float accel_slew_rate = final_yaw_cmd_wz_slew_rate_;
+  // 减速斜率至少与刹车曲线假设的减速度一致，否则斜率限制会让刹车比规划晚
+  const float decel_slew_rate = std::max(
+    2.0f * final_yaw_cmd_wz_slew_rate_,
+    final_yaw_cmd_brake_accel_);
+
+  const bool direction_reversal =
+    target_wz * last_final_yaw_cmd_wz_ < 0.0f;
+  // 实际底盘仍在旋转（未停稳，>0.015）且目标方向与实际方向相反时也必须先刹到零
+  // 避免在底盘未停稳时直接发反向指令
+  const bool actual_direction_reversal =
+    chassis_still_moving && target_wz * actual_wz < 0.0f;
+  const bool reducing_magnitude =
+    std::abs(target_wz) < std::abs(last_final_yaw_cmd_wz_);
+  const bool is_braking =
+    direction_reversal || actual_direction_reversal ||
+    reducing_magnitude || final_yaw_braking_active_;
+
+  // 制动锁定、实际方向反转、指令方向反转时都先把目标钳到零，避免直接反向冲击
+  float filter_target_wz = target_wz;
+  if (
+    final_yaw_braking_active_ ||
+    actual_direction_reversal)
+  {
+    filter_target_wz = 0.0f;
+  } else if (
+    direction_reversal &&
+    std::abs(last_final_yaw_cmd_wz_) > 1e-3f)
+  {
+    filter_target_wz = 0.0f;
+  }
+
+  // 任何强制零输出场景（stop_tolerance / crossed_goal / 动态制动）都直接请求零速，
+  // 绕过本函数的斜率限制。动态停止距离已按底盘实测减速度规划，
+  // 后续速度平滑器和底盘负责实际减速。
+  float filtered_wz;
+  if (force_zero_output || final_yaw_braking_active_) {
+    filtered_wz = 0.0f;
+  } else {
+    const float selected_slew_rate = is_braking ? decel_slew_rate : accel_slew_rate;
+    const float max_delta = selected_slew_rate * static_cast<float>(dt);
+    filtered_wz =
+      last_final_yaw_cmd_wz_ +
+      std::clamp(
+        filter_target_wz - last_final_yaw_cmd_wz_,
+        -max_delta,
+        max_delta);
+  }
+
+  // 安全包络硬钳制：减速时绝不能突破本周期安全目标
+  // 加速可以慢，但减速时 |filtered| 不得 > |target|，否则安全包络形同虚设
+  // 这是最关键的一道防线：斜率限制只控制变化率，不控制绝对值上限
+  if (!force_zero_output && !final_yaw_braking_active_) {
+    if (std::abs(target_wz) <= 1e-6f) {
+      filtered_wz = 0.0f;
+    } else if (filtered_wz * target_wz <= 0.0f) {
+      // 过滤后方向与目标方向不同（包括反方向），先归零
+      filtered_wz = 0.0f;
+    } else {
+      // 同方向：|filtered| 不得超过 |target|
+      filtered_wz = std::copysign(
+        std::min(std::abs(filtered_wz), std::abs(target_wz)),
+        target_wz);
+    }
+  }
+
   cmd.twist.angular.z = std::clamp(filtered_wz, -wz_limit, wz_limit);
+
+  // 节流日志：final_yaw 阶段每周期的目标/实际/安全包络/状态机，便于排查超调和卡顿
+  // 实机必须确认：|filtered| <= |target| <= safe_wz，任何周期都不能违反
+  RCLCPP_INFO_THROTTLE(
+    logger_, *clock_, 500,
+    "final_yaw control: error=%+.4f last=%+.3f target=%+.3f filtered=%+.3f actual=%+.3f "
+    "safe_wz=%.3f delay=%.3f dt=%.3f braking=%d state=%zu",
+    goal_yaw_error, last_final_yaw_cmd_wz_, target_wz,
+    static_cast<float>(cmd.twist.angular.z),
+    actual_wz, safe_wz_limit, effective_delay,
+    static_cast<float>(dt), final_yaw_braking_active_,
+    final_yaw_control_state_);
 
   last_final_yaw_cmd_wz_ = static_cast<float>(cmd.twist.angular.z);
   last_final_yaw_cmd_time_ = now;

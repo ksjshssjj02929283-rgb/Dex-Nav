@@ -149,6 +149,15 @@ public:
   }
 
   /**
+   * @brief 获取当前正在执行目标的 Action UUID
+   * @return 当前目标 UUID
+   */
+  const rclcpp_action::GoalUUID getCurrentGoalId() const
+  {
+    return action_server_->get_current_goal_id();
+  }
+
+  /**
    * @brief Wrapper function to get pending goal
    * @return Shared pointer to pending action goal
    */

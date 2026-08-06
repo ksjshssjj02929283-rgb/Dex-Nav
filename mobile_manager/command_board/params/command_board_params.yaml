@@ -1,0 +1,27 @@
+# command_board 参数文件
+# 运行时节点名为 command_board_manager（launch 内 name 覆盖为 command_board）；
+# 顶层用 /** 通配，匹配任意运行时节点名，确保参数注入。
+/**:
+  ros__parameters:
+    # ── AutoMapSaver (DEC-005 + DEC-006 daily trigger) ───────────
+    # 自动保存是唯一需运营调整的参数组（日触发时刻 + 6 保存条件阈值），显式暴露。
+    auto_map_saver:
+      enable: false
+      # 保存时间窗口（DEC-016：时间点→时间段，窗内轮询补存）
+      save_window_start_hour: 20          # 0-23, local time
+      save_window_start_minute: 0         # 0-59
+      save_window_end_hour: 21            # 0-23
+      save_window_end_minute: 0           # 0-59
+      check_poll_interval_sec: 60.0       # 窗内轮询周期
+      # DEC-017：幂等真值源 = 底图 backup 目录（<map>/slam/backups/backup.<今天>），不再用独立状态文件
+      save_service: "/localization_node/save_map"
+      save_service_timeout_sec: 30.0
+      pose_change_threshold_m: 0.10       # skip if no displacement above this
+      yaw_change_threshold_rad: 0.05
+      velocity_threshold_mps: 0.02        # skip if moving above this
+      angular_velocity_threshold_rps: 0.02
+      battery_soc_skip_below: 10          # SOC < 此值则跳过；-1 = 禁用电量检查
+      skip_when_task_not_idle: true
+
+    # ── Phase 3.4 预留（功能未实现，代码暂未 declare）──
+    # initial_mode / auto_recover_from_emergency / localization_loss_grace_sec / topic_timeout_sec

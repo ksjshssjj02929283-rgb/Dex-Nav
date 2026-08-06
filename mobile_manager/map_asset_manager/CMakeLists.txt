@@ -33,12 +33,16 @@ add_library(${PROJECT_NAME}_lib
   src/file_manager.cpp
   src/navigation_executor.cpp
   src/map_asset_manager_node.cpp
+  src/polygon_utils.cpp
+  src/spatial_indexer.cpp
   src/point_manager/point_store.cpp
   src/point_manager/nav_point_manager.cpp
   src/route_manager/route_store.cpp
   src/route_manager/route_manager.cpp
   src/area_manager/area_store.cpp
   src/area_manager/area_manager.cpp
+  src/room_manager/room_store.cpp
+  src/room_manager/room_manager.cpp
   src/route_graph_manager/junction_store.cpp
   src/route_graph_manager/route_edge_store.cpp
   src/route_graph_manager/route_graph_manager.cpp
@@ -95,6 +99,17 @@ install(DIRECTORY include/
   DESTINATION include
 )
 
+install(PROGRAMS
+  scripts/debug/debug_map_asset_manager.sh
+  scripts/map_asset_manager_test.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
+install(FILES
+  test_data/map_assets_standard.json
+  DESTINATION share/map_asset_manager/test_data
+)
+
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   ament_lint_auto_find_test_dependencies()
@@ -145,8 +160,10 @@ if(rviz_common_FOUND AND Qt5_FOUND AND pluginlib_FOUND)
     rviz_plugins/src/nav_point_draft_bridge.cpp
     rviz_plugins/src/route_tab.cpp
     rviz_plugins/src/area_tab.cpp
+    rviz_plugins/src/room_tab.cpp
     rviz_plugins/src/add_nav_point_tool.cpp
     rviz_plugins/src/add_area_tool.cpp
+    rviz_plugins/src/add_room_tool.cpp
     rviz_plugins/src/route_graph_tab.cpp
     rviz_plugins/src/add_junction_tool.cpp
     rviz_plugins/src/add_edge_tool.cpp
@@ -159,8 +176,10 @@ if(rviz_common_FOUND AND Qt5_FOUND AND pluginlib_FOUND)
     rviz_plugins/include/map_asset_rviz_plugin/nav_point_draft_bridge.hpp
     rviz_plugins/include/map_asset_rviz_plugin/route_tab.hpp
     rviz_plugins/include/map_asset_rviz_plugin/area_tab.hpp
+    rviz_plugins/include/map_asset_rviz_plugin/room_tab.hpp
     rviz_plugins/include/map_asset_rviz_plugin/add_nav_point_tool.hpp
     rviz_plugins/include/map_asset_rviz_plugin/add_area_tool.hpp
+    rviz_plugins/include/map_asset_rviz_plugin/add_room_tool.hpp
     rviz_plugins/include/map_asset_rviz_plugin/route_graph_tab.hpp
     rviz_plugins/include/map_asset_rviz_plugin/add_junction_tool.hpp
     rviz_plugins/include/map_asset_rviz_plugin/add_edge_tool.hpp
@@ -176,6 +195,7 @@ if(rviz_common_FOUND AND Qt5_FOUND AND pluginlib_FOUND)
 
   ament_target_dependencies(map_asset_rviz_plugin
     rclcpp
+    rclcpp_action
     nav_interfaces
     geometry_msgs
     std_srvs
