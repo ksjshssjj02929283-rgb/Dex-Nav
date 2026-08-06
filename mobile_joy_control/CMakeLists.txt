@@ -6,9 +6,9 @@ if(NOT CMAKE_C_STANDARD)
   set(CMAKE_C_STANDARD 99)
 endif()
 
-# Default to C++14
+# ROS 2 Humble 和本节点使用 std::clamp，需要 C++17。
 if(NOT CMAKE_CXX_STANDARD)
-  set(CMAKE_CXX_STANDARD 14)
+  set(CMAKE_CXX_STANDARD 17)
 endif()
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
@@ -17,6 +17,7 @@ endif()
 
 # find dependencies
 find_package(ament_cmake REQUIRED)
+find_package(ament_cmake_python REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclpy REQUIRED)
 find_package(geometry_msgs REQUIRED)
@@ -24,6 +25,7 @@ find_package(nav_msgs REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
+find_package(std_msgs REQUIRED)
 find_package(chassis_interfaces REQUIRED)
 
 # Find SDL2
@@ -62,6 +64,7 @@ endif()
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
+  find_package(ament_cmake_pytest REQUIRED)
   # the following line skips the linter which checks for copyrights
   # uncomment the line when a copyright and license is not present in all source files
   #set(ament_cmake_copyright_FOUND TRUE)
@@ -69,6 +72,9 @@ if(BUILD_TESTING)
   # uncomment the line when this package is not in a git repo
   #set(ament_cmake_cpplint_FOUND TRUE)
   ament_lint_auto_find_test_dependencies()
+  ament_add_pytest_test(test_controller_binding
+    test/test_controller_binding.py
+  )
 endif()
 
 add_executable(mobile_joy_control
@@ -83,6 +89,7 @@ ament_target_dependencies(mobile_joy_control
   rclcpp
   geometry_msgs
   sensor_msgs
+  std_msgs
 )
 
 if(SDL2_FOUND)
@@ -106,6 +113,11 @@ install(TARGETS
   DESTINATION lib/${PROJECT_NAME}
 )
 
+install(PROGRAMS
+  scripts/controller_binding_guard.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 install(
   DIRECTORY launch 
   DESTINATION share/${PROJECT_NAME}
@@ -115,5 +127,8 @@ install(
   DIRECTORY config
   DESTINATION share/${PROJECT_NAME}
 )
+
+# 安装接收器插入配对校验模块，供运行时监视器复用和独立测试。
+ament_python_install_package(${PROJECT_NAME})
 
 ament_package()
