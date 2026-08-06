@@ -61,10 +61,15 @@ void CostmapAwareLayer::configure(const Params & p)
   }
   RCLCPP_INFO(
     logger_,
-    "CostmapAwareLayer configured: layer1=Theta* (start/goal transitions) "
-    "layer2=%s obstacle_thr=%.1f margin_before=%.2fm margin_after=%.2fm "
+    "Route costmap avoidance configured: total=%s "
+    "[projection_shift=%s same_side_theta=%s transitions=%s in_graph_bypass=%s] "
+    "obstacle_thr=%.1f margin_before=%.2fm margin_after=%.2fm "
     "bypass_max=%.2fm theta_corners=%d unknown=%s",
-    p_.costmap_aware_mode ? "ON" : "OFF",
+    p_.enable_route_costmap_avoidance ? "ON" : "OFF",
+    p_.enable_route_costmap_avoidance ? "ON" : "OFF",
+    p_.enable_route_costmap_avoidance ? "ON" : "OFF",
+    p_.enable_route_costmap_avoidance ? "ON" : "OFF",
+    p_.enable_route_costmap_avoidance ? "ON" : "OFF",
     p_.obstacle_cost_threshold,
     p_.obstacle_margin_before_m, p_.obstacle_margin_after_m,
     p_.bypass_max_replan_length_m,
@@ -97,6 +102,9 @@ std::string CostmapAwareLayer::describeLastThetaStarFailure() const
   const auto & d = *last_theta_star_failure_;
   std::ostringstream oss;
   switch (d.reason) {
+    case ThetaStarFailureDiagnostic::Reason::DISABLED:
+      oss << "RouteGridPlanner costmap avoidance is disabled";
+      break;
     case ThetaStarFailureDiagnostic::Reason::UNAVAILABLE:
       oss << "Theta* 或 costmap 不可用(theta_star/costmap unavailable)";
       break;
@@ -145,6 +153,13 @@ CostmapAwareLayer::planWithThetaStar(
   const geometry_msgs::msg::PoseStamped & seg_end)
 {
   last_theta_star_failure_.reset();
+  if (!isEnabled()) {
+    ThetaStarFailureDiagnostic d;
+    d.reason = ThetaStarFailureDiagnostic::Reason::DISABLED;
+    d.allow_unknown = p_.theta_star_allow_unknown;
+    last_theta_star_failure_ = d;
+    return std::nullopt;
+  }
   if (!theta_star_ || !costmap_) {
     ThetaStarFailureDiagnostic d;
     d.reason = ThetaStarFailureDiagnostic::Reason::UNAVAILABLE;
@@ -268,6 +283,23 @@ CostmapAwareLayer::planWithThetaStar(
   return out;
 }
 
+bool CostmapAwareLayer::isEndpointSafe(
+  const geometry_msgs::msg::PoseStamped & pose) const
+{
+  if (!isEnabled()) {return true;}
+  if (!costmap_) {return false;}
+
+  unsigned int mx{0};
+  unsigned int my{0};
+  std::unique_lock<nav2_costmap_2d::Costmap2D::mutex_t> lock(*costmap_->getMutex());
+  if (!costmap_->worldToMap(pose.pose.position.x, pose.pose.position.y, mx, my)) {
+    return false;
+  }
+  const auto cost = costmap_->getCost(mx, my);
+  return cost == nav2_costmap_2d::FREE_SPACE ||
+         (p_.theta_star_allow_unknown && cost == nav2_costmap_2d::NO_INFORMATION);
+}
+
 unsigned char CostmapAwareLayer::getCostAt(double x, double y) const
 {
   if (!costmap_) {return nav2_costmap_2d::FREE_SPACE;}
@@ -283,7 +315,7 @@ CostmapAwareLayer::detectAllObstacles(
   const std::vector<geometry_msgs::msg::PoseStamped> & plan) const
 {
   std::vector<ObstacleSegment> out;
-  if (!costmap_ || plan.size() < 2) {return out;}
+  if (!isEnabled() || !costmap_ || plan.size() < 2) {return out;}
 
   std::unique_lock<nav2_costmap_2d::Costmap2D::mutex_t> lock(*costmap_->getMutex());
 
@@ -366,6 +398,7 @@ CostmapAwareLayer::shiftProjectionPastObstacle(
   int num_bezier_samples,
   int waypoints_per_meter) const
 {
+  if (!isEnabled()) {return in;}
   if (in.type != StartGoalProjector::ResultType::ON_EDGE) {return in;}
   if (!costmap_) {return in;}
   auto e = graph.getEdge(in.id);

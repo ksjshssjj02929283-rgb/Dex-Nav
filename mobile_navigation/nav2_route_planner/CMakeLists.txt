@@ -107,6 +107,10 @@ if(BUILD_TESTING)
   ament_add_gtest(test_path_interpolator test/test_path_interpolator.cpp)
   ament_target_dependencies(test_path_interpolator ${dependencies})
   target_link_libraries(test_path_interpolator ${library_name})
+
+  ament_add_gtest(test_costmap_aware_layer test/test_costmap_aware_layer.cpp)
+  ament_target_dependencies(test_costmap_aware_layer ${dependencies})
+  target_link_libraries(test_costmap_aware_layer ${library_name})
 endif()
 
 ament_export_include_directories(include)

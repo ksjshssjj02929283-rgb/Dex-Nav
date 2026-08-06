@@ -1028,14 +1028,12 @@ planner_server:
       # false=最终朝向用 goal 给定值（默认/我们期望）；true=用路径切线方向
       use_final_approach_orientation: false
 
-      # ── Costmap-aware 安全层 ─────────────
-      # 起点 → 路网 + 路网 → 终点：始终用 Theta* 规划（必做无开关）。
-      # Theta* 自带 unsafe-to-plan 检测：起/终点在 lethal 内或不可达时
-      # 直接返回失败 → 整个 plan 拒绝。
-      #
-      # 路网中间段 obstacle bypass：参数开关（默认关）。
-      # 热切换：ros2 param set /planner_server RouteGridPlanner.costmap_aware_mode true
-      costmap_aware_mode: false
+      # ── RouteGridPlanner costmap 避障总开关 ─────────────
+      # false：不做投影滑移、same-side Theta*、起终点 Theta* 接入或路网中段 bypass；
+      #        路网节点间 A* 仍用于拓扑选路，控制器碰撞保护仍独立生效。
+      # true ：启用上述全部 RouteGridPlanner costmap 驱动的路径改写。
+      # 热切换：ros2 param set /planner_server RouteGridPlanner.enable_route_costmap_avoidance true
+      enable_route_costmap_avoidance: false
       obstacle_cost_threshold: 220.0
       obstacle_start_exempt_distance: 0.25  # 起点豁免：贴墙停放时自身在内切区，无豁免整条剖面被置零
       obstacle_margin_before_m: 0.5
@@ -1148,7 +1146,7 @@ velocity_smoother:
     use_sim_time: False
     smoothing_frequency: 20.0
     scale_velocities: False
-    feedback: "CLOSED_LOOP"
+    feedback: "OPEN_LOOP"
     input_topic: "cmd_vel_nav"
     output_topic: "control/cmd_vel_nav"
     # Test
@@ -1167,7 +1165,7 @@ velocity_smoother:
     # max_accel: [1.0, 0.0, 0.5]
     # max_decel: [-1.0, 0.0, -0.5]
     odom_topic: "feedback/odom"
-    odom_duration: 0.01
+    odom_duration: 0.1
     deadband_velocity: [0.005, 0.005, 0.008]
     velocity_timeout: 1.0
 

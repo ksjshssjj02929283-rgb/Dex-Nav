@@ -27,11 +27,12 @@ namespace nav2_route_planner
 ///     projection. Used by 2026-05 "arbitrary start/goal" extension —
 ///     callers above use Theta\* to bridge `pose ↔ projected point`.
 ///
-/// Both modes apply the SAME fair-competition rule:
+/// Unlimited projection applies a fair-competition rule:
 ///   • compute the nearest NODE distance (across NAV_POINT + JUNCTION)
 ///   • compute the nearest EDGE-projection distance (across enabled edges)
-///   • smaller distance wins. On exact tie EDGE wins (it carries direction
-///     info so we won't U-turn at the start).
+///   • smaller distance wins. The start-side API keeps the historical
+///     EDGE-on-tie behavior; the goal-side API keeps an exact shared node as
+///     ON_NODE so container iteration cannot change the goal topology.
 class StartGoalProjector
 {
 public:
@@ -87,6 +88,14 @@ public:
   /// behavior so unit tests written against bounded mode keep passing
   /// when the thresholds are relaxed.
   Result projectUnlimited(
+    const geometry_msgs::msg::PoseStamped & pose,
+    const TopoGraph & graph) const;
+
+  /// Unlimited goal projection. The nearest NODE and EDGE still compete by
+  /// distance, but an exact/numerical tie is resolved to ON_NODE. This keeps
+  /// a goal at a shared road-graph node attached to every incident edge
+  /// instead of arbitrarily selecting one edge from the graph container.
+  Result projectGoalUnlimited(
     const geometry_msgs::msg::PoseStamped & pose,
     const TopoGraph & graph) const;
 
@@ -156,7 +165,8 @@ private:
     const geometry_msgs::msg::PoseStamped & pose,
     const TopoGraph & graph,
     bool apply_node_threshold,
-    bool apply_edge_threshold) const;
+    bool apply_edge_threshold,
+    bool prefer_node_on_tie = false) const;
 
   Params p_;
 };

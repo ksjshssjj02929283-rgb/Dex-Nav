@@ -155,7 +155,7 @@ void PIDController::configure(
   if (controller_frequency > 0.0) {
     d_t_ = 1.0 / controller_frequency;
   }
-  traj_time_lookahead_ = std::max(std::fabs(traj_time_lookahead_), d_t_);
+  traj_time_lookahead_ = nav2_core::computeEffectiveTimeLookahead(traj_time_lookahead_, d_t_);
 
   station_nav2_pid_controller_.Init(low_speed_station_pid_conf_);
   speed_nav2_pid_controller_.Init(low_speed_pid_conf_);

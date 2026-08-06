@@ -493,6 +493,33 @@ TEST(SpeedProfileTerminalReserve, ScalesWithVelocityAndPositiveAcceleration)
     0.0);
 }
 
+TEST(SpeedProfileTerminalReserve, ColdStartLongPathDoesNotCollapseToEndSpeed)
+{
+  TestableSCurve planner;
+  planner.setSharedParams();
+  planner.setSCurveParams();
+  planner.setMotionLimits(0.6, 0.5);
+  planner.setTerminalParams(0.05, 0.075, -0.4);
+  // Reproduce the field runtime where the new reserve parameters were not
+  // loaded. A missing reserve must not turn a normal 3.24 m startup into a
+  // terminal-infeasible all-creep profile.
+  planner.setTerminalReserve(0.0, 0.0);
+
+  const auto trajectory = planner.run(
+    makeStraightPathToExactGoal(3.24), 0.0, 0.0, false);
+  ASSERT_GE(trajectory.points.size(), 2u);
+  const auto diagnostics = planner.getLastPlanningDiagnostics();
+  EXPECT_FALSE(diagnostics.terminal_brake_required);
+  EXPECT_FALSE(diagnostics.terminal_infeasible);
+
+  double peak_velocity = 0.0;
+  for (const auto & point : trajectory.points) {
+    peak_velocity = std::max(peak_velocity, point.longitudinal_velocity);
+  }
+  EXPECT_GT(peak_velocity, 0.3)
+    << "cold-start long path must contain a normal cruise/acceleration segment";
+}
+
 TEST(SpeedProfileRecedingHorizon, DynamicReserveHandlesDelayedLaggedPlant)
 {
   TestableSCurve planner;
@@ -642,7 +669,7 @@ class TWithStartObstacle
   : public TestablePlanner<nav2_speed_planner::TrapezoidalSpeedPlanner>
 {
 public:
-  bool isObstacleAt(double x, double /*y*/) const override {return x <= 0.10;}
+  bool isObstacleAt(double x, double /*y*/, double /*theta*/) const override {return x <= 0.10;}
 };
 
 TEST(SpeedProfileObstacle, StartInObstacleIsExempted)
@@ -665,7 +692,7 @@ class TWithMidObstacle
   : public TestablePlanner<nav2_speed_planner::TrapezoidalSpeedPlanner>
 {
 public:
-  bool isObstacleAt(double x, double /*y*/) const override {return x >= 0.70;}
+  bool isObstacleAt(double x, double /*y*/, double /*theta*/) const override {return x >= 0.70;}
 };
 
 // 5m 路径、3m 处障碍：长路径 + 巡航段 + 中途障碍（T/S 各测一次）。
@@ -673,13 +700,13 @@ class TWithObstacleAt3m
   : public TestablePlanner<nav2_speed_planner::TrapezoidalSpeedPlanner>
 {
 public:
-  bool isObstacleAt(double x, double /*y*/) const override {return x >= 3.0;}
+  bool isObstacleAt(double x, double /*y*/, double /*theta*/) const override {return x >= 3.0;}
 };
 
 class SWithObstacleAt3m : public TestableSCurve
 {
 public:
-  bool isObstacleAt(double x, double /*y*/) const override {return x >= 3.0;}
+  bool isObstacleAt(double x, double /*y*/, double /*theta*/) const override {return x >= 3.0;}
 };
 
 template<typename PlannerT>

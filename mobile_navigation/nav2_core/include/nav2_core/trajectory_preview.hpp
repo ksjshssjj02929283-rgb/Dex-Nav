@@ -43,6 +43,16 @@ inline double durationToSeconds(const builtin_interfaces::msg::Duration & durati
   return static_cast<double>(duration.sec) + 1e-9 * static_cast<double>(duration.nanosec);
 }
 
+// R44: RPP 与 PID 曾各自内联同一行公式（`max(|configured|, control_period)`），
+// 两份拷贝各自读取自己的 controller_frequency，实际前瞻量按 20/10/14 Hz 分别漂移成
+// 0.050/0.100/0.071s——方向与"补偿执行延迟"的需求相反（跑得越快补偿越少）。
+// 收拢到唯一实现，任何未来的口径调整（例如把控制周期改成真实测得的执行延迟）
+// 只需要改这一处，两个 consumer 不会再分别漂移。
+inline double computeEffectiveTimeLookahead(double configured_time_lookahead, double control_period)
+{
+  return std::max(std::fabs(configured_time_lookahead), control_period);
+}
+
 template<typename PointT>
 bool hasValidRelativeTime(const std::vector<PointT> & points)
 {

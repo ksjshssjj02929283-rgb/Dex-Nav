@@ -134,10 +134,14 @@ const std::vector<ParamHandler> & paramTable()
       [](P & p, const rclcpp::Parameter & v) {p.use_final_approach_orientation = v.as_bool();},
       false},
 
-    // ── Costmap-aware Layer 2 (triggers_ca=true → push to ca_layer) ─
-    {"costmap_aware_mode",
-      [](const P & p) {return rclcpp::ParameterValue(p.ca.costmap_aware_mode);},
-      [](P & p, const rclcpp::Parameter & v) {p.ca.costmap_aware_mode = v.as_bool();},
+    // ── Route costmap avoidance (triggers_ca=true → push to ca_layer) ─
+    {"enable_route_costmap_avoidance",
+      [](const P & p) {
+        return rclcpp::ParameterValue(p.ca.enable_route_costmap_avoidance);
+      },
+      [](P & p, const rclcpp::Parameter & v) {
+        p.ca.enable_route_costmap_avoidance = v.as_bool();
+      },
       true},
     {"obstacle_cost_threshold",
       [](const P & p) {return rclcpp::ParameterValue(p.ca.obstacle_cost_threshold);},
@@ -236,10 +240,10 @@ void NavRouteGraphPlanner::configure(
   RCLCPP_INFO(logger_,
     "nav2_route_planner '%s' configured. asset_node=%s "
     "node_threshold=%.2fm edge_threshold=%.2fm "
-    "costmap_aware_mode=%s",
+    "enable_route_costmap_avoidance=%s",
     name_.c_str(), params_.asset_manager_node_name.c_str(),
     params_.projection_node_threshold_m, params_.projection_edge_threshold_m,
-    params_.ca.costmap_aware_mode ? "ON" : "OFF");
+    params_.ca.enable_route_costmap_avoidance ? "ON" : "OFF");
 }
 
 void NavRouteGraphPlanner::cleanup()
@@ -362,6 +366,22 @@ nav_msgs::msg::Path NavRouteGraphPlanner::createPlan(
   if (!projs) {return empty_path;}
   auto & [start_proj, goal_proj] = *projs;
 
+  const bool route_avoidance_enabled = ca_layer_ && ca_layer_->isEnabled();
+
+  // An exact shared-node goal stays ON_NODE. When route avoidance is enabled,
+  // an unsafe node fails closed instead of being reassigned to an arbitrary
+  // incident edge and shifted to a different topology.
+  if (route_avoidance_enabled &&
+    goal_proj.type == StartGoalProjector::ResultType::ON_NODE &&
+    !ca_layer_->isEndpointSafe(goal))
+  {
+    RCLCPP_ERROR(logger_,
+      "Goal node '%s' is not safe in the current costmap; preserving ON_NODE "
+      "topology and returning an empty path instead of shifting to another edge.",
+      goal_proj.id.c_str());
+    return empty_path;
+  }
+
   // Step 2 — obstacle-aware projection adjustment. If a projection
   // lands inside a lethal-cost run on its edge, the transition Theta*
   // rewrite (step 4) would fail with "endpoint unreachable" and the whole
@@ -371,7 +391,7 @@ nav_msgs::msg::Path NavRouteGraphPlanner::createPlan(
   //   start_proj slides toward `goal`  — into the goal-side of the route
   //   goal_proj  slides toward `start` — into the start-side of the route
   // Both shift inward, on the reachable half of the obstacle.
-  if (ca_layer_) {
+  if (route_avoidance_enabled) {
     if (auto shifted = ca_layer_->shiftProjectionPastObstacle(
         start_proj, goal, *graph_,
         params_.bezier_samples_per_edge, params_.waypoints_per_meter))
@@ -418,8 +438,10 @@ nav_msgs::msg::Path NavRouteGraphPlanner::createPlan(
 
   // Step 3 — same-side shortcut: when both projections sit very close,
   // skip the graph and let Theta* connect start→goal directly.
-  if (auto shortcut = trySameSideShortcut(start, goal, start_proj, goal_proj)) {
-    return *shortcut;
+  if (route_avoidance_enabled) {
+    if (auto shortcut = trySameSideShortcut(start, goal, start_proj, goal_proj)) {
+      return *shortcut;
+    }
   }
 
   // Step 4 — augment the graph with a virtual node at each ON_EDGE
@@ -461,7 +483,7 @@ nav_msgs::msg::Path NavRouteGraphPlanner::createPlan(
   auto stamp = clock_->now();
 
   // Step 6 — Theta*-rewrite the two transition placeholder segments.
-  if (ca_layer_ && !plan.segments.empty()) {
+  if (route_avoidance_enabled && !plan.segments.empty()) {
     if (!rewriteTransitionWithThetaStar(
         plan.segments.front(), "__start_transition__"))
     {
@@ -618,7 +640,7 @@ NavRouteGraphPlanner::projectEndpoints(
   }
   logProjectionDiagnostic(logger_, "start_proj", start_proj, start, *graph_);
 
-  auto goal_proj = projector_->projectPreferEdge(goal, *graph_);
+  auto goal_proj = projector_->projectGoalUnlimited(goal, *graph_);
   if (goal_proj.type == StartGoalProjector::ResultType::INVALID) {
     RCLCPP_ERROR(logger_,
       "Goal pose (%.2f, %.2f) — graph has no nodes or edges, cannot plan",
@@ -851,8 +873,8 @@ void NavRouteGraphPlanner::applyObstacleBypass(
     }
   }
 
-  // Bypass-splice only when costmap-aware mode is on.
-  if (!ca_layer_->isLayer2Enabled() || obstacles.empty()) {return;}
+  // Bypass-splice only when total route costmap avoidance is on.
+  if (!ca_layer_->isEnabled() || obstacles.empty()) {return;}
 
   RCLCPP_INFO(logger_,
     "Layer 2: detected %zu obstacle run(s) on path of %zu samples",

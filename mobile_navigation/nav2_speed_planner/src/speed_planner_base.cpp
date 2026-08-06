@@ -79,6 +79,11 @@ void SpeedPlannerBase::configure(
   plugin_name_ = name;
   tf_ = tf;
   costmap_ros_ = costmap_ros;
+  // R47：与 RPP 同源的 footprint 碰撞查询；costmap 指针在 isObstacleAt 每次调用时用
+  // setCostmap 刷新，构造期传空指针即可（RPP 也是同一时机以 costmap_ 构造）。
+  collision_checker_ = std::make_unique<nav2_costmap_2d::
+      FootprintCollisionChecker<nav2_costmap_2d::Costmap2D *>>(
+    costmap_ros_ ? costmap_ros_->getCostmap() : nullptr);
 
   auto node = parent.lock();
   logger_ = node->get_logger();
@@ -427,7 +432,7 @@ bool SpeedPlannerBase::applyObstacleConstraint(std::vector<TrajPointWork> & path
   // costmap 在 odom 系——直接用路径坐标查询会相差 map→odom 修正量，把自由区
   // 路径按偏移量"平移"进墙带造成误停障。查询前统一变换到 costmap 系
   // （2D 刚体变换，每周期取一次 TF，逐点仅乘加）。
-  double tx = 0.0, ty = 0.0, cos_t = 1.0, sin_t = 0.0;
+  double tx = 0.0, ty = 0.0, cos_t = 1.0, sin_t = 0.0, yaw_offset = 0.0;
   bool need_transform = false;
   std::string costmap_frame;
   if (costmap_ros_) {
@@ -461,6 +466,7 @@ bool SpeedPlannerBase::applyObstacleConstraint(std::vector<TrajPointWork> & path
       sin_t = std::sin(yaw);
       tx = to_costmap.transform.translation.x;
       ty = to_costmap.transform.translation.y;
+      yaw_offset = yaw;
       need_transform = true;
     }
   }
@@ -476,13 +482,16 @@ bool SpeedPlannerBase::applyObstacleConstraint(std::vector<TrajPointWork> & path
   for (size_t i = 0; i < path.size(); ++i) {
     double wx = path[i].pose.pose.position.x;
     double wy = path[i].pose.pose.position.y;
+    // R47：footprint 查询需要姿态；路径点朝向随路径坐标系一起变换到 costmap 系。
+    double wyaw = tf2::getYaw(path[i].pose.pose.orientation);
     if (need_transform) {
       const double px = wx;
       const double py = wy;
       wx = cos_t * px - sin_t * py + tx;
       wy = sin_t * px + cos_t * py + ty;
+      wyaw += yaw_offset;
     }
-    if (!isObstacleAt(wx, wy)) {
+    if (!isObstacleAt(wx, wy, wyaw)) {
       continue;
     }
     if (arc_s[i] <= obstacle_start_exempt_distance_) {
@@ -833,21 +842,29 @@ double SpeedPlannerBase::calcCurvature(
          (p2.position.y - p1.position.y) * (p3.position.x - p1.position.x)) / denominator;
 }
 
-bool SpeedPlannerBase::isObstacleAt(double x, double y) const
+bool SpeedPlannerBase::isObstacleAt(double x, double y, double theta) const
 {
+  // R47：原实现是路径中心线单点 costmap 格值查询，和 RPP 的 footprint 查询口径不一致——
+  // 障碍贴中心线两侧、不压中心线本身时（拐弯贴墙、货架棱角）会被本函数漏检，只能靠 RPP
+  // 的 isCollisionImminent 在很近的距离二值急停。现改为与 RPP 同源的 footprint 查询：
+  // FootprintCollisionChecker::footprintCostAtPose，取机器人在 (x,y,theta) 姿态下、
+  // 整个 footprint 覆盖格子的最大代价。阈值、NO_INFORMATION 处理与原逻辑保持一致，
+  // 仅检查几何从单点改为整车。
   nav2_costmap_2d::Costmap2D * costmap = costmap_ros_ ? costmap_ros_->getCostmap() : nullptr;
-  if (costmap == nullptr) {
+  if (costmap == nullptr || !collision_checker_) {
     return false;
   }
   unsigned int mx, my;
   if (!costmap->worldToMap(x, y, mx, my)) {
     return false;
   }
-  const unsigned char cost = costmap->getCost(mx, my);
-  if (cost == nav2_costmap_2d::NO_INFORMATION) {
+  collision_checker_->setCostmap(costmap);
+  const double footprint_cost = collision_checker_->footprintCostAtPose(
+    x, y, theta, costmap_ros_->getRobotFootprint());
+  if (footprint_cost == static_cast<double>(nav2_costmap_2d::NO_INFORMATION)) {
     return false;  // 未知区域不当障碍（阈值 254 时 255 会被 >= 误伤）
   }
-  return cost >= static_cast<unsigned char>(obstacle_cost_threshold_);
+  return footprint_cost >= static_cast<double>(obstacle_cost_threshold_);
 }
 
 }  // namespace nav2_speed_planner
