@@ -2,7 +2,7 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>nav2_straight_controller</name>
-  <version>2.0.0</version>
+  <version>0.4.6</version>
   <description>
     Straight-line tracking controller for Nav2 (nav2_core::Controller plugin).
     Longitudinal PID for speed holding plus a manual heading PID. Consumes

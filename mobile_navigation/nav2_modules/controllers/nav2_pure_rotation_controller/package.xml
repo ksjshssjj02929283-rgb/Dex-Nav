@@ -2,7 +2,7 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>nav2_pure_rotation_controller</name>
-  <version>0.0.0</version>
+  <version>0.4.6</version>
   <description>
     原地旋转控制器（nav2_core::Controller pluginlib 插件）。纵向 station/speed PID
     + 独立角速度 PID 并行；enable_lon_adjust 控制是否纯旋转（false = 只转）。

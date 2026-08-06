@@ -3,7 +3,7 @@
   schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="2">
   <name>swerve_controller</name>
-  <version>0.1.0</version>
+  <version>0.4.6</version>
   <description>ros controller for swerve drive vehicles</description>
   <maintainer email="robotics@freshconsulting.com">Robotics @ Fresh Consulting</maintainer>
   <author email="robotics@freshconsulting.com">Robotics @ Fresh Consulting</author>
