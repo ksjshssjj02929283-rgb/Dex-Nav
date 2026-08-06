@@ -5,6 +5,7 @@ from rclpy.node import Node
 from geometry_msgs.msg import PoseStamped
 import rclpy.time
 from tf2_ros import Buffer, TransformListener
+from rclpy.executors import ExternalShutdownException  # 1. 导入 ExternalShutdownException
 import time
 
 class BaseLinkPosition(Node):
@@ -105,11 +106,17 @@ def main(args=None):
             # 精确控制频率，使用系统sleep而非ROS2定时器，降低CPU占用
             time.sleep(sleep_duration)
             
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, ExternalShutdownException):
+        # 2. 增加对 ExternalShutdownException 的捕获，防止 Systemd/SIGTERM 关闭时抛出连环崩溃
         pass
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        # 3. 使用 try-except 包裹 shutdown，防止 context 竞争抛出 RCLError
+        try:
+            if rclpy.ok():
+                rclpy.shutdown()
+        except Exception:
+            pass
 
 if __name__ == '__main__':
     main()

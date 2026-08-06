@@ -803,7 +803,7 @@ local_costmap:
           data_type: "LaserScan"
           inf_is_valid: false
         orbbec_rear_marked:
-          topic: /orbbec/rear/pointcloud2_filtered
+          topic: /orbbec/rear/laser_scan
           observation_persistence: 0.7
           obstacle_max_range: 5.0
           obstacle_min_range: 0.0
@@ -813,10 +813,10 @@ local_costmap:
           min_obstacle_height: -0.1
           clearing: True
           marking: True
-          data_type: "PointCloud2"
+          data_type: "LaserScan"
           inf_is_valid: false
         orbbec_front_marked:
-          topic: /orbbec/front/pointcloud2_filtered
+          topic: /orbbec/front/laser_scan
           observation_persistence: 0.7
           obstacle_max_range: 5.0
           obstacle_min_range: 0.0
@@ -826,7 +826,7 @@ local_costmap:
           min_obstacle_height: -0.1
           clearing: True
           marking: True
-          data_type: "PointCloud2"
+          data_type: "LaserScan"
           inf_is_valid: false
 
       static_layer:
@@ -899,7 +899,7 @@ global_costmap:
           data_type: "LaserScan"
           inf_is_valid: false
         orbbec_rear_marked:
-          topic: /orbbec/rear/pointcloud2_filtered
+          topic: /orbbec/rear/laser_scan
           observation_persistence: 2.0
           obstacle_max_range: 30.0
           obstacle_min_range: 0.0
@@ -909,11 +909,11 @@ global_costmap:
           min_obstacle_height: -0.1
           clearing: True
           marking: True
-          data_type: "PointCloud2"
+          data_type: "LaserScan"
           inf_is_valid: false
           
         orbbec_front_marked:
-          topic: /orbbec/front/pointcloud2_filtered
+          topic: /orbbec/front/laser_scan
           observation_persistence: 2.0
           obstacle_max_range: 30.0
           obstacle_min_range: 0.0
@@ -923,7 +923,7 @@ global_costmap:
           min_obstacle_height: -0.1
           clearing: True
           marking: True
-          data_type: "PointCloud2"
+          data_type: "LaserScan"
           inf_is_valid: false
           
       static_layer:

@@ -46,6 +46,19 @@ def generate_launch_description():
         'ground_filter_max_height', default_value='1.5', description='base_link下高于该高度的点不作为近地障碍输入；调低会减少高处点进入costmap，单位米'
     )
 
+    enable_laserscan_arg = DeclareLaunchArgument(
+        'enable_laserscan', default_value='true', description='是否将过滤后的点云压缩并发布为 2D LaserScan'
+    )
+    division_mode_arg = DeclareLaunchArgument(
+        'division_mode', default_value='true', description='是否处理一帧、跳过一帧；关闭时处理全部输入帧'
+    )
+    step_u_arg = DeclareLaunchArgument(
+        'step_u', default_value='2', description='深度图列采样步长'
+    )
+    step_v_arg = DeclareLaunchArgument(
+        'step_v', default_value='3', description='深度图行采样步长'
+    )
+
     # 后置相机节点
     rear_rgbd_node = Node(
         package='dexe_sensor_process',
@@ -60,6 +73,10 @@ def generate_launch_description():
             'output_topic_laserscan': '/orbbec/rear/laser_scan',
             'use_sim_time': LaunchConfiguration('use_sim_time'),
             'depth_max_range': LaunchConfiguration('depth_max_range'),
+            'enable_laserscan': LaunchConfiguration('enable_laserscan'),
+            'division_mode': LaunchConfiguration('division_mode'),
+            'step_u': LaunchConfiguration('step_u'),
+            'step_v': LaunchConfiguration('step_v'),
             
             # 公共参数（与前置相同）
             'flag_voxel_filter': LaunchConfiguration('flag_voxel_filter'),
@@ -83,6 +100,10 @@ def generate_launch_description():
     return LaunchDescription([
         use_sim_time_arg,
         depth_max_range_arg,
+        enable_laserscan_arg,
+        division_mode_arg,
+        step_u_arg,
+        step_v_arg,
         # 公共参数
         flag_voxel_filter_arg,
         flag_mls_filter_arg,

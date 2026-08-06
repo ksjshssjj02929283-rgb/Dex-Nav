@@ -63,4 +63,15 @@ install(DIRECTORY
   DESTINATION share/${PROJECT_NAME}/launch
 )
 
+if(BUILD_TESTING)
+  find_package(ament_cmake_gtest REQUIRED)
+
+  ament_add_gtest(test_rgbd_processing_state
+    test/test_rgbd_processing_state.cpp
+  )
+  target_include_directories(test_rgbd_processing_state PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+  )
+endif()
+
 ament_package()
