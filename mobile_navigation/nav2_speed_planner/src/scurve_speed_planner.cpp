@@ -849,14 +849,49 @@ void SCurveSpeedPlanner::assignVelocityProfile(
     return;
   }
 
-  // 1) Dynamic terminal reserve. The regular stop_distance keeps its semantic
+  // 1) Dynamic execution-delay reserve. The regular stop_distance keeps its semantic
   //    meaning; the reserve makes the profile reach stable creep speed earlier
   //    and then coast through the reserved segment and stop zone.
+  //
+  // R47：以前这段只在 !obstacle_or_hard_stop（到达目标点）时生效——障碍触发的硬零速点
+  // （Phase A1 已经把 work[first_obstacle_index..end] 全部置零）完全没有 execution_reserve，
+  // 是零裕度的位置硬目标；即使 §isObstacleAt 已改为 footprint 检测能正确看到障碍，停车
+  // 目标本身仍然不会提前。现在障碍分支复用同一套 execution_reserve 计算，只是末速目标不同
+  // （障碍=0，到达目标=end_speed_），把"為障碍减速"和"为终点减速"统一成同一套有延迟余量
+  // 的设计。obstacle 分支暂不接 terminal_brake_latched 的锁存/续接语义（那是目标点专属的
+  // 生命周期状态机，障碍是否需要等价的锁存是后续 P2 typed-constraint 统一时再设计的问题，
+  // 这里先解决"完全没有余量"这个更基础的缺口）。
   const auto initial_arc_s = computeCumulativeArcLengths(work);
-  const bool obstacle_or_hard_stop = std::any_of(
-    work.begin() + 1, work.end(),
-    [](const TrajPointWork & point) {return point.speed_limit < 1e-3;});
-  if (!obstacle_or_hard_stop && end_speed_ >= 1e-3 && stop_distance_ > 0.0) {
+  size_t hard_zero_index = work.size();
+  for (size_t index = 1; index < work.size(); ++index) {
+    if (work[index].speed_limit < 1e-3) {
+      hard_zero_index = index;
+      break;
+    }
+  }
+  const bool obstacle_or_hard_stop = hard_zero_index != work.size();
+
+  if (obstacle_or_hard_stop) {
+    const double obstacle_boundary_s = initial_arc_s[hard_zero_index];
+    const double conservative_acceleration = std::max(0.0, curr_accel);
+    const double braking_distance = computeStableBrakingDistance(
+      std::max(0.0, curr_vel), conservative_acceleration,
+      accel_, std::fabs(decel_), max_jerk_, control_dt_, 0.0);
+    const double execution_reserve = computeTerminalExecutionReserve(
+      curr_vel, curr_accel, terminal_execution_delay_, terminal_safety_margin_);
+
+    last_planning_diagnostics_.terminal_execution_reserve = execution_reserve;
+    last_planning_diagnostics_.terminal_braking_distance = braking_distance;
+    last_planning_diagnostics_.terminal_distance_available = obstacle_boundary_s;
+    last_planning_diagnostics_.terminal_brake_required =
+      !std::isfinite(braking_distance) ||
+      obstacle_boundary_s <= braking_distance + execution_reserve + 1e-6;
+
+    if (execution_reserve > 1e-9) {
+      const double anchor_s = std::max(0.0, obstacle_boundary_s - execution_reserve);
+      applyTerminalSpeedEnvelope(work, anchor_s, 0.0);
+    }
+  } else if (end_speed_ >= 1e-3 && stop_distance_ > 0.0) {
     const double terminal_boundary_s = std::max(0.0, initial_arc_s.back() - stop_distance_);
     const double conservative_acceleration = std::max(0.0, curr_accel);
     const double braking_distance = computeStableBrakingDistance(

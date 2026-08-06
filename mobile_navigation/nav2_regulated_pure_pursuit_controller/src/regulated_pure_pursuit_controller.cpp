@@ -283,7 +283,8 @@ void RegulatedPurePursuitController::configure(
   node->get_parameter("controller_frequency", control_frequency);
   transform_tolerance_ = tf2::durationFromSec(transform_tolerance);
   control_duration_ = 1.0 / control_frequency;
-  traj_time_lookahead_ = std::max(std::fabs(traj_time_lookahead_), control_duration_);
+  traj_time_lookahead_ = nav2_core::computeEffectiveTimeLookahead(
+    traj_time_lookahead_, control_duration_);
 
   /** Possible to drive in reverse direction if and only if
    "use_rotate_to_heading" parameter is set to false **/

@@ -80,14 +80,20 @@
       <!-- 局部控制 -->
       <RecoveryNode number_of_retries="1" name="FollowPathAfterBackUpRetry">
 
-        <!-- 内层：FollowPath 失败后，尝试清 local，然后立即 FollowPath 1 次 -->
+        <!-- 内层：FollowPath 失败后，等机器人真正停稳、清 local，再重试 FollowPath 1 次。
+             R47：velocity_smoother 硬急停时承诺 hold zero 0.5s；此前这里是 ForceSuccess
+             零等待重试，33~46ms 后就带着未清零的速度重新下发控制，几乎必然复现同一次碰撞
+             （R44/R45/R47 三次实机记录同一模式）。0.5s 与 smoother 的 hold 承诺对齐。 -->
         <RecoveryNode number_of_retries="1" name="FollowPathInnerRetry">
           <FollowPath path="{path}" controller_id="MPPIController"/>
 
-          <ForceSuccess>
-            <ClearEntireCostmap name="ClearLocalCostmap-FirstRetry"
-              service_name="local_costmap/clear_entirely_local_costmap"/>
-          </ForceSuccess>
+          <Sequence name="WaitStopBeforeFollowPathRetry">
+            <Wait wait_duration="0.5" server_name="wait_local"/>
+            <ForceSuccess>
+              <ClearEntireCostmap name="ClearLocalCostmap-FirstRetry"
+                service_name="local_costmap/clear_entirely_local_costmap"/>
+            </ForceSuccess>
+          </Sequence>
         </RecoveryNode>
 
         <!-- 如果立即重试仍失败，则等待、清 local、后退；仅在后退成功后再重试一次 -->

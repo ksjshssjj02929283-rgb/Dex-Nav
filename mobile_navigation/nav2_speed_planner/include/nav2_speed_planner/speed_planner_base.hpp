@@ -30,6 +30,7 @@
 #include "tf2_ros/buffer.h"
 #include "nav2_costmap_2d/costmap_2d_ros.hpp"
 #include "nav2_costmap_2d/costmap_2d.hpp"
+#include "nav2_costmap_2d/footprint_collision_checker.hpp"
 #include "geometry_msgs/msg/twist.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "nav_msgs/msg/path.hpp"
@@ -163,14 +164,23 @@ protected:
     const geometry_msgs::msg::Pose & p2,
     const geometry_msgs::msg::Pose & p3);
 
-  /// 障碍判定：costmap 上 (x,y) 处 cost >= obstacle_cost_threshold_（virtual 供测试注入）。
-  virtual bool isObstacleAt(double x, double y) const;
+  /// 障碍判定：机器人在 (x,y,theta) 姿态下的 footprint 代价 >= obstacle_cost_threshold_
+  /// （virtual 供测试注入）。R47：原实现只查路径中心线单点，贴中心线两侧、不压中心线
+  /// 本身的障碍会被完全漏检——RPP 的 isCollisionImminent 是 footprint 查询，两套检测
+  /// 口径不一致，SpeedPlanner 因此看不到 RPP 独立捕获到的障碍。现改为与 RPP 同源的
+  /// footprint 查询（阈值、更新频率不变，仅检查几何从单点改为整车）。
+  virtual bool isObstacleAt(double x, double y, double theta) const;
 
   // —— 成员（protected：派生类可访问）——
   std::string plugin_name_;
   rclcpp_lifecycle::LifecycleNode::WeakPtr node_;
   std::shared_ptr<tf2_ros::Buffer> tf_;
   std::shared_ptr<nav2_costmap_2d::Costmap2DROS> costmap_ros_;
+  // footprint 障碍查询（与 RegulatedPurePursuitController::collision_checker_ 同类型，
+  // 保证两套检测口径一致）；costmap 指针在 isObstacleAt 每次调用时刷新，因为规划期与
+  // configure 期的实际 Costmap2D* 可能不同。
+  std::unique_ptr<nav2_costmap_2d::FootprintCollisionChecker<nav2_costmap_2d::Costmap2D *>>
+  collision_checker_;
   rclcpp::Logger logger_{rclcpp::get_logger("SpeedPlannerBase")};
   rclcpp::Clock::SharedPtr clock_;
 

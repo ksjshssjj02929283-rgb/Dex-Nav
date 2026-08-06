@@ -669,7 +669,7 @@ class TWithStartObstacle
   : public TestablePlanner<nav2_speed_planner::TrapezoidalSpeedPlanner>
 {
 public:
-  bool isObstacleAt(double x, double /*y*/) const override {return x <= 0.10;}
+  bool isObstacleAt(double x, double /*y*/, double /*theta*/) const override {return x <= 0.10;}
 };
 
 TEST(SpeedProfileObstacle, StartInObstacleIsExempted)
@@ -692,7 +692,7 @@ class TWithMidObstacle
   : public TestablePlanner<nav2_speed_planner::TrapezoidalSpeedPlanner>
 {
 public:
-  bool isObstacleAt(double x, double /*y*/) const override {return x >= 0.70;}
+  bool isObstacleAt(double x, double /*y*/, double /*theta*/) const override {return x >= 0.70;}
 };
 
 // 5m 路径、3m 处障碍：长路径 + 巡航段 + 中途障碍（T/S 各测一次）。
@@ -700,13 +700,13 @@ class TWithObstacleAt3m
   : public TestablePlanner<nav2_speed_planner::TrapezoidalSpeedPlanner>
 {
 public:
-  bool isObstacleAt(double x, double /*y*/) const override {return x >= 3.0;}
+  bool isObstacleAt(double x, double /*y*/, double /*theta*/) const override {return x >= 3.0;}
 };
 
 class SWithObstacleAt3m : public TestableSCurve
 {
 public:
-  bool isObstacleAt(double x, double /*y*/) const override {return x >= 3.0;}
+  bool isObstacleAt(double x, double /*y*/, double /*theta*/) const override {return x >= 3.0;}
 };
 
 template<typename PlannerT>

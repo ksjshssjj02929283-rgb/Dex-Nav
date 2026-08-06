@@ -1146,7 +1146,7 @@ velocity_smoother:
     use_sim_time: False
     smoothing_frequency: 20.0
     scale_velocities: False
-    feedback: "CLOSED_LOOP"
+    feedback: "OPEN_LOOP"
     input_topic: "cmd_vel_nav"
     output_topic: "control/cmd_vel_nav"
     # Test
@@ -1165,7 +1165,7 @@ velocity_smoother:
     # max_accel: [1.0, 0.0, 0.5]
     # max_decel: [-1.0, 0.0, -0.5]
     odom_topic: "feedback/odom"
-    odom_duration: 0.01
+    odom_duration: 0.1
     deadband_velocity: [0.005, 0.005, 0.008]
     velocity_timeout: 1.0
 

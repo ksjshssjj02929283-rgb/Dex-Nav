@@ -116,7 +116,7 @@ class WithObstacleBand : public BaseT
 public:
   double obs_from_{1e9};
   double obs_to_{1e9};
-  bool isObstacleAt(double x, double /*y*/) const override
+  bool isObstacleAt(double x, double /*y*/, double /*theta*/) const override
   {
     return x >= obs_from_ && x <= obs_to_;
   }
