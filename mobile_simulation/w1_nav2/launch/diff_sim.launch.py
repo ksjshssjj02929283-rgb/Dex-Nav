@@ -15,6 +15,7 @@ from launch import LaunchDescription
 from launch.actions import (DeclareLaunchArgument, IncludeLaunchDescription,
                             SetEnvironmentVariable, TimerAction)
 from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch_ros.actions import Node
 
 
 def _gazebo_resource_path(world_share):
@@ -168,6 +169,15 @@ def generate_launch_description():
             'map_odom_yaw': map_odom_yaw,
         }.items())
 
+    # 蓝色规划路径与红色实际 Odom 轨迹的对照。节点从 /plan 收到新规划时
+    # 清空上一段轨迹，因此红线始终只表示当前规划后的实际行驶过程。
+    path_trace_cmd = Node(
+        package='w1_nav2',
+        executable='path_trace_visualizer.py',
+        name='path_trace_visualizer',
+        output='screen',
+        parameters=[{'use_sim_time': use_sim_time}])
+
     # Gazebo 的 spawn 服务早于渲染 Scene 完全就绪；带深度相机的模型必须延迟插入。
     delayed_gzclient_cmd = TimerAction(period=8.0, actions=[gzclient_cmd])
     delayed_spawn_w1_diff_cmd = TimerAction(
@@ -231,6 +241,7 @@ def generate_launch_description():
     ld.add_action(delayed_spawn_w1_diff_cmd)
     ld.add_action(front_rgbd_cmd)
     ld.add_action(rear_rgbd_cmd)
+    ld.add_action(path_trace_cmd)
     ld.add_action(delayed_rviz_cmd)
     ld.add_action(delayed_nav2_bringup_cmd)
 

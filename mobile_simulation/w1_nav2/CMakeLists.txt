@@ -36,4 +36,10 @@ install(DIRECTORY
   DESTINATION share/${PROJECT_NAME}
 )
 
+# 仿真运行时的轻量路径可视化节点：记录每轮规划后的实际 Odom 轨迹。
+install(PROGRAMS
+  script/path_trace_visualizer.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 ament_package()

@@ -204,6 +204,23 @@ def test_diff_sim_bridges_production_navigation_commands_to_gazebo():
     assert "sim_cmd_vel_bridge" in spawn
 
 
+def test_diff_sim_visualizes_planned_and_actual_paths_separately():
+    """蓝色 /plan 与红色实际 Odom 轨迹必须使用不同 Topic。"""
+    launch = read("mobile_simulation/w1_nav2/launch/diff_sim.launch.py")
+    rviz = read("mobile_simulation/w1_nav2/rviz/diff_sim.rviz")
+    visualizer = read(
+        "mobile_simulation/w1_nav2/script/path_trace_visualizer.py")
+
+    assert "path_trace_visualizer.py" in launch
+    assert "Value: /plan" in rviz
+    assert "Color: 0; 80; 255" in rviz
+    assert "Value: /navigation/actual_path" in rviz
+    assert "Color: 255; 0; 0" in rviz
+    assert "PLAN_TOPIC = '/plan'" in visualizer
+    assert "ODOM_TOPIC = '/feedback/odom'" in visualizer
+    assert "self.actual_path = Path()" in visualizer
+
+
 def test_diff_chassis_supports_are_coplanar_and_pitch_stable():
     """Drive wheels and two centerline skids form one ground plane."""
     root = ET.fromstring(read(
