@@ -20,7 +20,18 @@
 - 过滤点云输出：`{input_topic}/pointcloud2_filtered`
 - LaserScan 输出参数：`output_topic_laserscan`
 
-当前代码保留了点云转 `LaserScan` 的实现，但发布路径仍处于注释状态，实际稳定输出是 `pointcloud2_raw` 和 `pointcloud2_filtered`。
+当 `enable_laserscan=true` 时，节点把过滤后的点云转换成 `LaserScan` 并发布；关闭时发布
+`pointcloud2_filtered`。原始点云 `pointcloud2_raw` 在两种模式下都会发布。
+
+## 输入帧二分频与时间语义
+
+- `division_mode`：默认 `true`。开启后严格按“处理一帧、跳过一帧”工作；关闭后处理每个满足前置条件的输入帧。
+- 该参数不是目标频率控制。输入稳定为 15 Hz 时，开启后的理论处理频率约为 7.5 Hz，而不是 10 Hz。
+- 节点不改写输入消息的 `header.stamp`；点云和 `LaserScan` 继续沿用源深度图时间戳。
+- `LaserScan.scan_time` 使用相邻两次成功生成 Scan 的源时间戳差值。第一帧、零时间戳或时间戳不单调时为 `0.0`，并重新建立时间基线。
+
+如后续需要稳定的独立输出节拍，应另行实现 Timer + latest-frame 模式；它不属于当前
+`division_mode` 的语义。
 
 ## 点云生成流程
 
