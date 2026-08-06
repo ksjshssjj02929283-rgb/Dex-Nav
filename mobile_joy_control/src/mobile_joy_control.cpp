@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <mutex>
+#include <sstream>
 #include <string>
 #include <thread>
 
@@ -106,6 +107,9 @@ public:
         // 接收手柄话题
         sub = this->create_subscription<sensor_msgs::msg::Joy>("/joy", 1,
                                                                std::bind(&mobile_joy_log_control::callback, this, _1));
+        controller_binding_sub_ = this->create_subscription<std_msgs::msg::Bool>(
+            "control/controller_binding_ok", 1,
+            std::bind(&mobile_joy_log_control::controllerBindingCallback, this, _1));
         mobile_diff_control_pub_joy_ = this->create_publisher<geometry_msgs::msg::Twist>("/control/cmd_vel_joy", 1);
         mobile_omni_control_pub_joy_ =
             this->create_publisher<geometry_msgs::msg::Twist>("/control/cmd_vel_omni_joy", 1);
@@ -612,8 +616,41 @@ private:
         }).detach();
     }
 
+    // 配对状态变化时立即清除遥控授权和初始化状态，防止旧手柄状态继续生效。
+    void controllerBindingCallback(const std_msgs::msg::Bool::SharedPtr msg) {
+        if (controller_binding_ok_ == msg->data) {
+            return;
+        }
+
+        controller_binding_ok_ = msg->data;
+        zero_pub_count_no_data_ = 0;
+        zero_pub_count_disabled_ = 0;
+        prev_no_data_ = true;
+        remote_state_ = RemoteControlState::DISABLED;
+        joy_init_flag = false;
+        init_pending_ = false;
+        init_print_count_ = 0;
+        if (controller_binding_ok_) {
+            joy_state = -1;
+            RCLCPP_INFO(this->get_logger(), "手柄配对恢复，请重新初始化手柄");
+        } else {
+            joy_state = -2;
+            publishZeroCmd();
+            RCLCPP_ERROR(this->get_logger(), "手柄配对失败，已停止遥操");
+        }
+    }
+
     void pub_timer_callback() {
         rclcpp::Time now = this->now();
+        if (!controller_binding_ok_) {
+            remote_state_ = RemoteControlState::DISABLED;
+            joy_state = -2;
+            joy_in.data = joy_state;
+            pub_joy_in_->publish(joy_in);
+            publishZeroCmd();
+            return;
+        }
+
         if ((now - last_joy_time_).seconds() > 0.5) {
             if (!prev_no_data_) {
                 zero_pub_count_no_data_ = 5;
@@ -705,6 +742,10 @@ private:
     }
 
     void callback(const sensor_msgs::msg::Joy::SharedPtr Joy) {
+        if (!controller_binding_ok_) {
+            return;
+        }
+
         // 如果参数未加载，尝试加载参数（收到手柄数据说明设备已连接）
         if (!parameters_loaded_) {
             RCLCPP_WARN(this->get_logger(), "No parameters loaded, trying to load parameters");
@@ -714,6 +755,34 @@ private:
                 RCLCPP_WARN(this->get_logger(), "Failed to load parameters, no parameters loaded");
                 return;
             }
+        }
+
+        const auto valid_button_index = [&Joy](int index) {
+            return index >= 0 && static_cast<size_t>(index) < Joy->buttons.size();
+        };
+        const auto valid_axis_index = [&Joy](int index) {
+            return index >= 0 && static_cast<size_t>(index) < Joy->axes.size();
+        };
+        const bool required_buttons_valid =
+            valid_button_index(button_enable_remote) &&
+            valid_button_index(button_medium_speed);
+        const bool required_axes_valid =
+            valid_axis_index(axis_left_right) &&
+            valid_axis_index(axis_forward_backward) &&
+            valid_axis_index(axis_fixed_speed) &&
+            valid_axis_index(axis_fixed_angular) &&
+            (!is_omni_mode_ ||
+             (valid_axis_index(axis_linear_y) &&
+              valid_axis_index(axis_angular_z)));
+        if (!required_buttons_valid || !required_axes_valid ||
+            (!joy_init_flag && Joy->axes.size() < 4)) {
+            remote_state_ = RemoteControlState::DISABLED;
+            joy_state = -2;
+            RCLCPP_ERROR_THROTTLE(
+                this->get_logger(), *this->get_clock(), 2000,
+                "手柄消息维度与参数不匹配：buttons=%zu，axes=%zu，忽略本帧输入",
+                Joy->buttons.size(), Joy->axes.size());
+            return;
         }
 
         last_joy_time_ = this->now();
@@ -1065,6 +1134,7 @@ private:
     }
 
     rclcpp::Subscription<sensor_msgs::msg::Joy>::SharedPtr sub;
+    rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr controller_binding_sub_;
     rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr mobile_diff_control_pub_joy_;
     rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr mobile_omni_control_pub_joy_;
     rclcpp::Publisher<std_msgs::msg::Int16>::SharedPtr pub_joy_in_;
@@ -1078,6 +1148,7 @@ private:
 
     // 运动模式相关变量
     RemoteControlState remote_state_ = RemoteControlState::DISABLED;
+    bool controller_binding_ok_ = false;  // 运行时手柄配对状态
 
     // 摇杆值
     double left_right_value = 0.0;        // 左推右推值
