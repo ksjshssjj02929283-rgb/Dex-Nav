@@ -14,7 +14,7 @@ import json
 
 def generate_launch_description():
 
-    use_sim_time = LaunchConfiguration('use_sim_time')
+    use_sim_time = LaunchConfiguration('use_sim_time', default='false')
 
     lattice_file_package = get_package_share_directory('nav2_smac_planner')
     lattice_file = os.path.join(lattice_file_package, 'sample_primitives',
