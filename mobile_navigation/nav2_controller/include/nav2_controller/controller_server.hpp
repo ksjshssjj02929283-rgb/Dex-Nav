@@ -298,6 +298,10 @@ protected:
    */
   const char * controllerPhaseName(ControllerPhase phase) const;
   /**
+   * @brief 获取指定分段当前实际执行的控制算法名称，仅用于诊断日志
+   */
+  std::string controllerForPhaseLog(ControllerPhase phase) const;
+  /**
    * @brief Return configured plugin type for a goal checker id
    */
   std::string getGoalCheckerType(const std::string & goal_checker_id) const;

@@ -36,7 +36,7 @@ void FollowPathAction::on_tick()
 
   RCLCPP_DEBUG(
     node_->get_logger(),
-    "[BT] FollowPath requested: controller=%s, goal_checker=%s, poses=%zu",
+    "[BT] FollowPath requested: requested_controller=%s, goal_checker=%s, poses=%zu",
     goal_.controller_id.c_str(), goal_.goal_checker_id.c_str(), goal_.path.poses.size());
 }
 
@@ -103,7 +103,7 @@ void FollowPathAction::on_wait_for_result(
   if (goal_.controller_id != new_controller_id) {
     RCLCPP_INFO(
       node_->get_logger(),
-      "[BT] FollowPath controller: %s->%s",
+      "[BT] FollowPath requested_controller: %s->%s",
       goal_.controller_id.c_str(), new_controller_id.c_str());
     goal_.controller_id = new_controller_id;
     goal_updated_ = true;
@@ -126,7 +126,7 @@ BT::NodeStatus FollowPathAction::on_success()
 {
   RCLCPP_INFO(
     node_->get_logger(),
-    "[BT] FollowPath succeeded: controller=%s, poses=%zu",
+    "[BT] FollowPath succeeded: requested_controller=%s, poses=%zu",
     goal_.controller_id.c_str(), goal_.path.poses.size());
   return BT::NodeStatus::SUCCESS;
 }
@@ -135,7 +135,7 @@ BT::NodeStatus FollowPathAction::on_aborted()
 {
   RCLCPP_WARN(
     node_->get_logger(),
-    "[BT] FollowPath aborted: controller=%s, poses=%zu",
+    "[BT] FollowPath aborted: requested_controller=%s, poses=%zu",
     goal_.controller_id.c_str(), goal_.path.poses.size());
   return BT::NodeStatus::FAILURE;
 }
@@ -154,7 +154,7 @@ BT::NodeStatus FollowPathAction::on_cancelled()
 
   RCLCPP_DEBUG(
     node_->get_logger(),
-    "[BT] FollowPath canceled: controller=%s, poses=%zu",
+    "[BT] FollowPath canceled: requested_controller=%s, poses=%zu",
     goal_.controller_id.c_str(), goal_.path.poses.size());
   return BT::NodeStatus::SUCCESS;
 }

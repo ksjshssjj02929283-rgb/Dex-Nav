@@ -1354,6 +1354,18 @@ void ControllerServer::computeControl()
               "Requested FollowPath controller does not exist");
     }
 
+    if (staged_control_enabled_) {
+      RCLCPP_INFO(
+        get_logger(),
+        "FollowPath control: requested=%s, tracking=%s, approach=%s",
+        current_controller_.c_str(), track_controller_.c_str(), approach_controller_.c_str());
+    } else {
+      RCLCPP_INFO(
+        get_logger(),
+        "FollowPath control: active=%s (staged control disabled)",
+        current_controller_.c_str());
+    }
+
     std::string gc_name = action_server_->get_current_goal()->goal_checker_id;
     std::string current_goal_checker;
     if (findGoalCheckerId(gc_name, current_goal_checker)) {
@@ -2645,6 +2657,21 @@ std::string ControllerServer::getGoalCheckerType(const std::string & goal_checke
   return "unknown";
 }
 
+std::string ControllerServer::controllerForPhaseLog(ControllerPhase phase) const
+{
+  switch (phase) {
+    case ControllerPhase::PREPARE:
+      return "direct_prepare_backup";
+    case ControllerPhase::ALIGN:
+      return "direct_align";
+    case ControllerPhase::TRACK:
+      return staged_control_enabled_ ? track_controller_ : current_controller_;
+    case ControllerPhase::APPROACH:
+      return approach_controller_;
+  }
+  return "unknown";
+}
+
 void ControllerServer::setControllerPhase(ControllerPhase phase, const std::string & reason)
 {
   if (controller_phase_ == phase) {
@@ -2652,9 +2679,10 @@ void ControllerServer::setControllerPhase(ControllerPhase phase, const std::stri
   }
   RCLCPP_INFO(
     get_logger(),
-    "Controller phase transition: %s -> %s (%s)",
+    "Controller phase: %s -> %s, active_controller=%s (%s)",
     controllerPhaseName(controller_phase_),
     controllerPhaseName(phase),
+    controllerForPhaseLog(phase).c_str(),
     reason.c_str());
   controller_phase_ = phase;
 
