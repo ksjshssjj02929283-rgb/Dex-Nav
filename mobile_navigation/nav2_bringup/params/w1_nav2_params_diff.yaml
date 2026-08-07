@@ -97,7 +97,8 @@ controller_server:
     speed_planning_boundary:
       max_age: 0.5
       max_spatial_error: 0.15
-      max_velocity_error: 0.25
+      replan_dev: 0.10
+      failsafe_deviation_cycles: 5
       goal_position_tolerance: 0.05
       goal_yaw_tolerance: 0.2
       branch_heading_tolerance: 0.7853981634
@@ -112,6 +113,11 @@ controller_server:
       collision_stop_distance: 0.2
       obstacle_cost_threshold: 254   # 254=LETHAL：path 点在障碍格内才停障（253 内切区会误伤贴障碍路径）
       obstacle_start_exempt_distance: 0.25  # 起点豁免：贴墙停放时自身在内切区，无豁免整条剖面被置零
+      # P0-3 障碍约束「无法评估」（TF 变换失败 / costmap 缺失）时的处置策略。
+      # fail_closed（默认，生产）：本周期输出空轨迹 → ControllerServer 发零速。
+      # fail_open：跳过障碍约束继续规划——即改动前的隐式行为，仅限仿真/明确灰度。
+      # ⚠️ 不含「路径点超出 costmap 覆盖」，那是 OUT_OF_RANGE，属正常情况不触发策略。
+      obstacle_unavailable_policy: "fail_closed"
       curve_compute_dist: 0.1
       regulated_linear_scaling_min_radius: 1.2
       min_curvature_speed: 0.1
@@ -130,8 +136,16 @@ controller_server:
       collision_stop_distance: 0.2
       obstacle_cost_threshold: 254   # 254=LETHAL：path 点在障碍格内才停障（253 内切区会误伤贴障碍路径）
       obstacle_start_exempt_distance: 0.25  # 起点豁免：贴墙停放时自身在内切区，无豁免整条剖面被置零
+      # P0-3 障碍约束「无法评估」（TF 变换失败 / costmap 缺失）时的处置策略。
+      # fail_closed（默认，生产）：本周期输出空轨迹 → ControllerServer 发零速。
+      # fail_open：跳过障碍约束继续规划——即改动前的隐式行为，仅限仿真/明确灰度。
+      # ⚠️ 不含「路径点超出 costmap 覆盖」，那是 OUT_OF_RANGE，属正常情况不触发策略。
+      obstacle_unavailable_policy: "fail_closed"
       curve_compute_dist: 0.1
-      regulated_linear_scaling_min_radius: 0.01
+      # 2026-08-06：原为 0.01（1cm），而 A3 的判据是 `if (radius > min_rad) continue;`——
+      # 真实路径不可能出现 1cm 半径，曲率限速因此一次都没触发过（连带 curve_lead_in/out
+      # 也失效，它们依赖曲率限速点集非空）。恢复为与其余 yaml / 代码默认一致的 1.2。
+      regulated_linear_scaling_min_radius: 1.2
       min_curvature_speed: 0.1
       curve_lead_in_distance: 0.3
       curve_lead_out_distance: 0.3

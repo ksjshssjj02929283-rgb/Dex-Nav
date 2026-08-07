@@ -159,14 +159,81 @@ TEST(SpeedPlanStateTest, RejectsSpatialMismatch)
     BoundaryReason::SPATIAL_MISMATCH);
 }
 
-TEST(SpeedPlanStateTest, RejectsVelocityMismatch)
+// P1-2（重构方案 §2.3）：结构性门全部通过、但速度偏离超出 replan_dev 时，
+// 不再整体拒绝——加速度仍然继承（inherited()==true），只有速度重锚定到实测。
+TEST(SpeedPlanStateTest, PartiallyReseedsOnVelocityDeviationKeepingAcceleration)
 {
   SpeedPlanState state;
+  acceptRecentTrajectory(state);  // consumed accel = -0.2
+
+  const auto decision = state.boundary(makePath(), makeVelocity(0.7), testTime());
+
+  ASSERT_TRUE(decision.reason.has_value());
+  EXPECT_EQ(*decision.reason, BoundaryReason::VELOCITY_MISMATCH);
+  EXPECT_TRUE(decision.inherited());               // 加速度仍继承
+  EXPECT_FALSE(decision.velocity_inherited);        // 速度未继承
+  EXPECT_NEAR(decision.boundary.acceleration, -0.2, 1e-9);
+  EXPECT_NEAR(decision.boundary.velocity.linear.x, 0.7, 1e-9);  // 重锚定到实测，不是采样值
+}
+
+// 偏离在 replan_dev 内：不仅加速度，速度也直接继承计划采样值（不再无条件取实测）。
+TEST(SpeedPlanStateTest, InheritsPlannedVelocityWithinReplanDev)
+{
+  SpeedPlanState state;
+  acceptRecentTrajectory(state);  // 路径投影处的计划采样速度 = 0.3
+
+  // 实测 0.35 与采样 0.3 相差 0.05 < 默认 replan_dev(0.10)。
+  const auto decision = state.boundary(makePath(), makeVelocity(0.35), testTime());
+
+  EXPECT_TRUE(decision.inherited());
+  EXPECT_TRUE(decision.velocity_inherited);
+  EXPECT_FALSE(decision.reason.has_value());
+  EXPECT_NEAR(decision.boundary.velocity.linear.x, 0.3, 1e-9);  // 取计划值，不是实测 0.35
+  EXPECT_NEAR(decision.boundary.acceleration, -0.2, 1e-9);
+}
+
+// 连续 failsafe_deviation_cycles 次都命中 VELOCITY_MISMATCH，第 N 次升级为
+// FAILSAFE：加速度也不再继承，防止计划持续脱离现实（打滑/卡阻）时被无限期原谅。
+TEST(SpeedPlanStateTest, EscalatesToFailsafeAfterConsecutiveVelocityDeviation)
+{
+  SpeedPlanState state;
+  SpeedPlanState::Config config;
+  config.failsafe_deviation_cycles = 3;
+  state.configure(config);
   acceptRecentTrajectory(state);
 
-  expectReason(
-    state.boundary(makePath(), makeVelocity(0.7), testTime()),
-    BoundaryReason::VELOCITY_MISMATCH);
+  for (int cycle = 0; cycle < 2; ++cycle) {
+    const auto decision = state.boundary(makePath(), makeVelocity(0.7), testTime());
+    ASSERT_TRUE(decision.reason.has_value());
+    EXPECT_EQ(*decision.reason, BoundaryReason::VELOCITY_MISMATCH) << "cycle=" << cycle;
+    EXPECT_TRUE(decision.inherited()) << "cycle=" << cycle;
+  }
+
+  const auto failsafe_decision = state.boundary(makePath(), makeVelocity(0.7), testTime());
+  ASSERT_TRUE(failsafe_decision.reason.has_value());
+  EXPECT_EQ(*failsafe_decision.reason, BoundaryReason::VELOCITY_MISMATCH_FAILSAFE);
+  EXPECT_FALSE(failsafe_decision.inherited());
+}
+
+// 连续偏离计数在正常（继承）周期后清零：偏离两次、正常一次、再偏离两次，
+// 不应该在第二轮偏离的第二次就触发 failsafe（若计数未清零则会）。
+TEST(SpeedPlanStateTest, ResetsDeviationCounterAfterInheritedCycle)
+{
+  SpeedPlanState state;
+  SpeedPlanState::Config config;
+  config.failsafe_deviation_cycles = 3;
+  state.configure(config);
+  acceptRecentTrajectory(state);
+
+  state.boundary(makePath(), makeVelocity(0.7), testTime());
+  state.boundary(makePath(), makeVelocity(0.7), testTime());
+  const auto good_cycle = state.boundary(makePath(), makeVelocity(0.3), testTime());
+  EXPECT_TRUE(good_cycle.velocity_inherited);
+
+  const auto after_reset = state.boundary(makePath(), makeVelocity(0.7), testTime());
+  ASSERT_TRUE(after_reset.reason.has_value());
+  EXPECT_EQ(*after_reset.reason, BoundaryReason::VELOCITY_MISMATCH)
+    << "counter should have reset after the inherited cycle, not escalated to failsafe";
 }
 
 TEST(SpeedPlanStateTest, RejectsInvalidNumericInput)
@@ -189,6 +256,7 @@ TEST(SpeedPlanStateTest, InheritsConsumedTargetAccelerationForCompatiblePath)
   const auto decision = state.boundary(makePath(), makeVelocity(), testTime());
 
   EXPECT_TRUE(decision.inherited());
+  EXPECT_TRUE(decision.velocity_inherited);
   EXPECT_FALSE(decision.reason.has_value());
   EXPECT_NEAR(decision.boundary.acceleration, -0.2, 1e-9);
   EXPECT_NEAR(decision.boundary.source_age, 0.1, 1e-9);

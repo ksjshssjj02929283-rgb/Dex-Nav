@@ -95,13 +95,26 @@ public:
     this->end_speed_ = kEndSpeed;
     this->stop_distance_ = kStopDistance;
     this->collision_stop_distance_ = 0.2;
-    // costmap_ros_ 为空 → isObstacleAt 恒 false → A1 跳过（离线纯算法测试）
+    // 离线纯算法测试没有 costmap → A1 判定为「不可评估」。这里显式选 FAIL_OPEN，
+    // 保持"跳过障碍约束、只验证剖面算法"的原有语义；FAIL_CLOSED 的行为另有专测。
+    this->obstacle_unavailable_policy_ = nav2_speed_planner::ConstraintFailurePolicy::FAIL_OPEN;
+    // costmap_ros_ 为空 → A1 判定为「不可评估」；测试壳统一设 fail_open 保持离线纯算法语义
   }
   void setTerminalParams(double end_speed, double stop_distance, double decel = kDecel)
   {
     this->end_speed_ = end_speed;
     this->stop_distance_ = stop_distance;
     this->decel_ = decel;
+  }
+  // 暴露 A2 回填，供包络层性质测试直接调用（无需跑完整 pipeline）
+  void callSetPlanSpeedLimit(
+    std::vector<nav2_speed_planner::TrajPointWork> & work, double cruise)
+  {
+    this->setPlanSpeedLimit(work, cruise);
+  }
+  void setUnavailablePolicy(nav2_speed_planner::ConstraintFailurePolicy policy)
+  {
+    this->obstacle_unavailable_policy_ = policy;
   }
   void setMotionLimits(double max_speed, double accel)
   {
@@ -669,7 +682,14 @@ class TWithStartObstacle
   : public TestablePlanner<nav2_speed_planner::TrapezoidalSpeedPlanner>
 {
 public:
-  bool isObstacleAt(double x, double /*y*/, double /*theta*/) const override {return x <= 0.10;}
+  nav2_speed_planner::PointObstacleStatus checkObstacleAt(
+    double x, double /*y*/, double /*theta*/) const override
+  {
+    return (x <= 0.10) ? nav2_speed_planner::PointObstacleStatus::OBSTACLE :
+           nav2_speed_planner::PointObstacleStatus::FREE;
+  }
+  // 注入障碍即代表 costmap 正常可查，否则会先在可用性闸门短路
+  bool isObstacleQueryAvailable() const override {return true;}
 };
 
 TEST(SpeedProfileObstacle, StartInObstacleIsExempted)
@@ -692,7 +712,14 @@ class TWithMidObstacle
   : public TestablePlanner<nav2_speed_planner::TrapezoidalSpeedPlanner>
 {
 public:
-  bool isObstacleAt(double x, double /*y*/, double /*theta*/) const override {return x >= 0.70;}
+  nav2_speed_planner::PointObstacleStatus checkObstacleAt(
+    double x, double /*y*/, double /*theta*/) const override
+  {
+    return (x >= 0.70) ? nav2_speed_planner::PointObstacleStatus::OBSTACLE :
+           nav2_speed_planner::PointObstacleStatus::FREE;
+  }
+  // 注入障碍即代表 costmap 正常可查，否则会先在可用性闸门短路
+  bool isObstacleQueryAvailable() const override {return true;}
 };
 
 // 5m 路径、3m 处障碍：长路径 + 巡航段 + 中途障碍（T/S 各测一次）。
@@ -700,13 +727,27 @@ class TWithObstacleAt3m
   : public TestablePlanner<nav2_speed_planner::TrapezoidalSpeedPlanner>
 {
 public:
-  bool isObstacleAt(double x, double /*y*/, double /*theta*/) const override {return x >= 3.0;}
+  nav2_speed_planner::PointObstacleStatus checkObstacleAt(
+    double x, double /*y*/, double /*theta*/) const override
+  {
+    return (x >= 3.0) ? nav2_speed_planner::PointObstacleStatus::OBSTACLE :
+           nav2_speed_planner::PointObstacleStatus::FREE;
+  }
+  // 注入障碍即代表 costmap 正常可查，否则会先在可用性闸门短路
+  bool isObstacleQueryAvailable() const override {return true;}
 };
 
 class SWithObstacleAt3m : public TestableSCurve
 {
 public:
-  bool isObstacleAt(double x, double /*y*/, double /*theta*/) const override {return x >= 3.0;}
+  nav2_speed_planner::PointObstacleStatus checkObstacleAt(
+    double x, double /*y*/, double /*theta*/) const override
+  {
+    return (x >= 3.0) ? nav2_speed_planner::PointObstacleStatus::OBSTACLE :
+           nav2_speed_planner::PointObstacleStatus::FREE;
+  }
+  // 注入障碍即代表 costmap 正常可查，否则会先在可用性闸门短路
+  bool isObstacleQueryAvailable() const override {return true;}
 };
 
 template<typename PlannerT>
@@ -882,4 +923,148 @@ TEST(SpeedProfileObstacle, MidPathObstacleStopsWithBuffer)
     }
   }
   EXPECT_GT(peak, 0.1) << "pre-obstacle segment should still move";
+}
+
+// ============ P0-3 障碍约束 fail-safe 策略（调研 P0-3，2026-08-07）============
+//
+// 关键区分：「查过了没障碍」与「没法查」此前都以 return false 表达，调用方无法区分，
+// 等价于隐式 FAIL_OPEN——TF 一失败机器人就在无任何障碍约束的状态下继续巡航。
+// 离线测试壳 costmap_ros_ 为空，正是 "costmap_unavailable" 这一不可评估场景。
+
+TEST(SpeedPlannerFailSafe, FailClosedEmitsEmptyTrajectoryWhenConstraintUnavailable)
+{
+  TestablePlanner<nav2_speed_planner::TrapezoidalSpeedPlanner> planner;
+  planner.setSharedParams();
+  planner.setUnavailablePolicy(nav2_speed_planner::ConstraintFailurePolicy::FAIL_CLOSED);
+
+  auto traj = planner.run(makeStraightPath(2.0), 0.0);
+
+  EXPECT_TRUE(traj.points.empty())
+    << "FAIL_CLOSED must emit an empty trajectory so ControllerServer publishes zero velocity";
+}
+
+TEST(SpeedPlannerFailSafe, FailOpenKeepsPlanningWhenConstraintUnavailable)
+{
+  TestablePlanner<nav2_speed_planner::TrapezoidalSpeedPlanner> planner;
+  planner.setSharedParams();
+  planner.setUnavailablePolicy(nav2_speed_planner::ConstraintFailurePolicy::FAIL_OPEN);
+
+  auto traj = planner.run(makeStraightPath(2.0), 0.0);
+
+  ASSERT_FALSE(traj.points.empty()) << "FAIL_OPEN must keep the previous behaviour";
+  double peak = 0.0;
+  for (const auto & p : traj.points) {
+    peak = std::max(peak, p.longitudinal_velocity);
+  }
+  EXPECT_GT(peak, 0.1) << "FAIL_OPEN should still produce a normal profile";
+}
+
+// OUT_OF_RANGE 不得被当成障碍，也不得触发 FAIL_CLOSED——否则任何超出 costmap
+// 覆盖（±4m rolling window）的长路径都会让机器人原地不动。
+TEST(SpeedPlannerFailSafe, OutOfRangePointsAreNotObstaclesAndDoNotFailClosed)
+{
+  class TAllOutOfRange
+    : public TestablePlanner<nav2_speed_planner::TrapezoidalSpeedPlanner>
+  {
+public:
+    nav2_speed_planner::PointObstacleStatus checkObstacleAt(
+      double /*x*/, double /*y*/, double /*theta*/) const override
+    {
+      return nav2_speed_planner::PointObstacleStatus::OUT_OF_RANGE;
+    }
+    // 假装 costmap 就绪，使扫描真正跑起来（否则会先在可用性检查处返回）
+    bool isObstacleQueryAvailable() const override {return true;}
+  };
+  TAllOutOfRange planner;
+  planner.setSharedParams();
+  // 即便策略是 FAIL_CLOSED，全程 OUT_OF_RANGE 也不应触发失败。
+  planner.setUnavailablePolicy(nav2_speed_planner::ConstraintFailurePolicy::FAIL_CLOSED);
+
+  auto traj = planner.run(makeStraightPath(5.0), 0.0);
+
+  ASSERT_FALSE(traj.points.empty())
+    << "all-out-of-range must NOT be treated as an unevaluable constraint";
+  double peak = 0.0;
+  for (const auto & p : traj.points) {
+    peak = std::max(peak, p.longitudinal_velocity);
+  }
+  EXPECT_GT(peak, 0.5) << "out-of-range points must not be treated as obstacles";
+}
+
+// ============ 步 2：② 包络层取严语义（2026-08-07）============
+//
+// Phase A 的契约是"逐点 min 叠加"，但 A2 回填此前是无条件覆写，会把任何在它之前
+// 写入的逐点限速抹掉。今天行为等价（A2 之前各点限速均匀），但 M11 区域限速 /
+// producer 化之后会被整体抹平。
+
+namespace
+{
+std::vector<nav2_speed_planner::TrajPointWork> makeWorkWithLimits(
+  const std::vector<double> & limits)
+{
+  std::vector<nav2_speed_planner::TrajPointWork> work;
+  for (size_t i = 0; i < limits.size(); ++i) {
+    nav2_speed_planner::TrajPointWork p;
+    p.pose.pose.position.x = static_cast<double>(i) * kPointStep;
+    p.pose.pose.orientation.w = 1.0;
+    p.speed_limit = limits[i];
+    work.push_back(p);
+  }
+  return work;
+}
+}  // namespace
+
+// 核心性质（单调性）：A2 回填不得抬高任何一点。
+TEST(SpeedPlannerEnvelope, CruiseBackfillNeverRaisesAnyPoint)
+{
+  TestablePlanner<nav2_speed_planner::TrapezoidalSpeedPlanner> planner;
+  planner.setSharedParams();
+
+  //                             低于巡航   等于巡航  高于巡航  安全置零
+  const std::vector<double> in = {0.20,     0.60,    0.95,     0.0};
+  auto work = makeWorkWithLimits(in);
+  planner.callSetPlanSpeedLimit(work, 0.60);
+
+  for (size_t i = 0; i < in.size(); ++i) {
+    EXPECT_LE(work[i].speed_limit, in[i] + 1e-9)
+      << "A2 raised point " << i << " from " << in[i] << " to " << work[i].speed_limit;
+  }
+  EXPECT_NEAR(work[0].speed_limit, 0.20, 1e-9) << "更严的逐点限速必须存活";
+  EXPECT_NEAR(work[1].speed_limit, 0.60, 1e-9);
+  EXPECT_NEAR(work[2].speed_limit, 0.60, 1e-9) << "高于巡航的点应被压到巡航";
+  EXPECT_NEAR(work[3].speed_limit, 0.0, 1e-9) << "安全置零点不得被回填";
+}
+
+// 无逐点约束时（今天的实际情形），取严与覆写等价——保证本次改动不改变现有行为。
+TEST(SpeedPlannerEnvelope, UniformInputIsUnchangedByStacking)
+{
+  TestablePlanner<nav2_speed_planner::TrapezoidalSpeedPlanner> planner;
+  planner.setSharedParams();
+
+  auto work = makeWorkWithLimits({0.60, 0.60, 0.60, 0.0});
+  planner.callSetPlanSpeedLimit(work, 0.60);
+
+  EXPECT_NEAR(work[0].speed_limit, 0.60, 1e-9);
+  EXPECT_NEAR(work[1].speed_limit, 0.60, 1e-9);
+  EXPECT_NEAR(work[2].speed_limit, 0.60, 1e-9);
+  EXPECT_NEAR(work[3].speed_limit, 0.0, 1e-9);
+}
+
+// 唯一的行为分歧：外部限速低于 min_speed_ 时，改动前会被 clamp 抬到 min_speed_
+// （即忽略更严的外部限速），改动后取严、尊重它。此用例把新行为钉住。
+TEST(SpeedPlannerEnvelope, ExternalLimitBelowMinSpeedIsHonoured)
+{
+  TestablePlanner<nav2_speed_planner::TrapezoidalSpeedPlanner> planner;
+  planner.setSharedParams();      // kMinSpeed = 0.03
+  planner.setSpeedLimit(0.01, false);   // 绝对值，低于 min_speed_
+
+  auto traj = planner.run(makeStraightPath(2.0), 0.0);
+
+  ASSERT_FALSE(traj.points.empty());
+  double peak = 0.0;
+  for (const auto & p : traj.points) {
+    peak = std::max(peak, p.longitudinal_velocity);
+  }
+  EXPECT_LE(peak, 0.01 + 1e-6)
+    << "external speed limit stricter than min_speed_ must be honoured, not clamped up";
 }

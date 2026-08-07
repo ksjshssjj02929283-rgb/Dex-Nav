@@ -106,7 +106,11 @@ ControllerServer::ControllerServer(const rclcpp::NodeOptions & options)
   declare_parameter("current_speed_planner", std::string(""));
   declare_parameter("speed_planning_boundary.max_age", 0.5);
   declare_parameter("speed_planning_boundary.max_spatial_error", 0.15);
-  declare_parameter("speed_planning_boundary.max_velocity_error", 0.25);
+  // P1-2（重构方案 §2.3）：|实测-计划采样速度| 在此内继承计划速度，
+  // 否则重锚定到实测但仍保留加速度；旧名 max_velocity_error 的语义是
+  // "超出即整体拒绝"，已改行为，改名避免和旧默认值（0.25）混淆。
+  declare_parameter("speed_planning_boundary.replan_dev", 0.10);
+  declare_parameter("speed_planning_boundary.failsafe_deviation_cycles", 5);
   declare_parameter("speed_planning_boundary.goal_position_tolerance", 0.05);
   declare_parameter("speed_planning_boundary.goal_yaw_tolerance", 0.2);
   declare_parameter("speed_planning_boundary.branch_heading_tolerance", 0.7853981634);
@@ -259,8 +263,11 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
     "speed_planning_boundary.max_spatial_error",
     speed_plan_state_config.max_spatial_error);
   get_parameter(
-    "speed_planning_boundary.max_velocity_error",
-    speed_plan_state_config.max_velocity_error);
+    "speed_planning_boundary.replan_dev",
+    speed_plan_state_config.replan_dev);
+  get_parameter(
+    "speed_planning_boundary.failsafe_deviation_cycles",
+    speed_plan_state_config.failsafe_deviation_cycles);
   get_parameter(
     "speed_planning_boundary.goal_position_tolerance",
     speed_plan_state_config.goal_position_tolerance);

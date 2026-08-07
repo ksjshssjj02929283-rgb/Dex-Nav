@@ -116,9 +116,12 @@ class WithObstacleBand : public BaseT
 public:
   double obs_from_{1e9};
   double obs_to_{1e9};
-  bool isObstacleAt(double x, double /*y*/, double /*theta*/) const override
+  nav2_speed_planner::PointObstacleStatus checkObstacleAt(
+    double x, double /*y*/, double /*theta*/) const override
   {
-    return x >= obs_from_ && x <= obs_to_;
+    return (x >= obs_from_ && x <= obs_to_) ?
+           nav2_speed_planner::PointObstacleStatus::OBSTACLE :
+           nav2_speed_planner::PointObstacleStatus::FREE;
   }
 };
 

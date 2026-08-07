@@ -21,6 +21,7 @@
 #ifndef NAV2_SPEED_PLANNER__SPEED_PLANNER_BASE_HPP_
 #define NAV2_SPEED_PLANNER__SPEED_PLANNER_BASE_HPP_
 
+#include <limits>
 #include <memory>
 #include <string>
 #include <vector>
@@ -59,6 +60,54 @@ struct TrajPointWork
   float speed_hint{0.0f};
   std::string region_type;
   std::string segment_id;
+};
+
+/**
+ * @enum ConstraintFailurePolicy
+ * @brief 约束**无法评估**时的处置策略（调研 P0-3）。
+ *
+ * 注意区分"无法评估"与"评估结果为无约束"：
+ *   - 无法评估 = TF 变换失败 / costmap 缺失 → 我们**不知道**前方有没有障碍
+ *   - 无约束   = 查过了，确实没有障碍
+ * 此前两者都以 `return false` 表达，调用方无法区分，等价于隐式 FAIL_OPEN——
+ * 即 TF 一失败，机器人就在"没有任何障碍约束"的状态下继续按巡航速度行驶。
+ */
+enum class ConstraintFailurePolicy
+{
+  /// 本周期速度规划失败（输出空轨迹），由 ControllerServer 发布零速。生产默认。
+  FAIL_CLOSED,
+  /// 跳过该约束继续规划。仅允许仿真/明确灰度，且必须有 diagnostic。
+  FAIL_OPEN
+};
+
+/**
+ * @enum PointObstacleStatus
+ * @brief 单点障碍判定的三态。
+ *
+ * ⚠️ `OUT_OF_RANGE` 不是失败：local costmap 是 ±4m 的 rolling window，
+ * 路径上超出覆盖范围的点属正常情况（footprint 半对角 0.495m → 约 3.5m 之后即出图）。
+ * 若把它当作"不可评估"并触发 FAIL_CLOSED，任何长于约 3.5m 的路径都会让机器人原地不动。
+ * 它只计数、只上报，不参与策略判定——但计数本身很重要：R47 的幻影障碍
+ * （出图被 nav2 判成 LETHAL）当初若有这个计数，一眼就能看出"3.5m 之后全是出图"。
+ */
+enum class PointObstacleStatus
+{
+  FREE,          ///< 查过，无障碍
+  OBSTACLE,      ///< 查过，有障碍
+  OUT_OF_RANGE   ///< 超出 costmap 覆盖，无信息（正常，不判障、不触发策略）
+};
+
+/**
+ * @struct ObstacleConstraintOutcome
+ * @brief A1 障碍约束的结果——把"有没有障碍"与"能不能评估"分开表达。
+ */
+struct ObstacleConstraintOutcome
+{
+  bool has_obstacle{false};        ///< 是否检测到障碍（仅在 evaluable 时有意义）
+  bool evaluable{true};            ///< false = 本周期无法评估（TF/costmap 不可用）
+  std::string unavailable_reason;  ///< evaluable=false 时的机器可读原因
+  size_t scanned_points{0};        ///< 实际完成查询的点数
+  size_t out_of_range_points{0};   ///< 超出 costmap 覆盖的点数（观测用）
 };
 
 /**
@@ -123,14 +172,16 @@ protected:
   // ============================================================
 
   /// A1 障碍约束：首个障碍点及其后全部置零，障碍前 collision_stop_distance_ 缓冲带置零
-  /// （index 0 为机器人当前位置，不动）。@return 是否检测到障碍
-  bool applyObstacleConstraint(std::vector<TrajPointWork> & path);
+  /// （index 0 为机器人当前位置，不动）。
+  /// @return 见 ObstacleConstraintOutcome——**"没有障碍"与"没法查"是两件事**
+  ObstacleConstraintOutcome applyObstacleConstraint(std::vector<TrajPointWork> & path);
 
   /// A2 理想巡航上界（纯查询）：非零速点限速的最小值，clamp 到 [min_speed_, max_speed_]；
   /// 全部点被安全置零时返回 0。
   double computeCruiseLimit(const std::vector<TrajPointWork> & path) const;
 
-  /// A2 回填：巡航上界写入所有非零速点（零速点跳过，安全零不回填）。
+  /// A2 回填：巡航上界与各点现有限速**取严**后写入非零速点（零速点跳过，安全零不回填）。
+  /// 取严而非覆写，才符合 Phase A 的"逐点 min 叠加"契约——见 .cpp 内说明。
   void setPlanSpeedLimit(std::vector<TrajPointWork> & path, const double speed_limit);
 
   /// A3 曲率约束：小半径处限速（只降不升）+ 曲率值写入 + 转弯保持匀速（可选）。
@@ -164,12 +215,35 @@ protected:
     const geometry_msgs::msg::Pose & p2,
     const geometry_msgs::msg::Pose & p3);
 
-  /// 障碍判定：机器人在 (x,y,theta) 姿态下的 footprint 代价 >= obstacle_cost_threshold_
-  /// （virtual 供测试注入）。R47：原实现只查路径中心线单点，贴中心线两侧、不压中心线
-  /// 本身的障碍会被完全漏检——RPP 的 isCollisionImminent 是 footprint 查询，两套检测
-  /// 口径不一致，SpeedPlanner 因此看不到 RPP 独立捕获到的障碍。现改为与 RPP 同源的
-  /// footprint 查询（阈值、更新频率不变，仅检查几何从单点改为整车）。
-  virtual bool isObstacleAt(double x, double y, double theta) const;
+  /// footprint 代价查询不可用（costmap 缺失 / 位姿或 footprint 越出地图）时的返回值。
+  static constexpr double kFootprintCostUnavailable = -1.0;
+
+  /// 机器人在 (x,y,theta) 姿态下的 footprint 覆盖格子最大代价；
+  /// 不可用时返回 kFootprintCostUnavailable。
+  ///
+  /// ⚠️ nav2 的 `FootprintCollisionChecker::footprintCost` 在**任一 footprint 顶点
+  /// `worldToMap` 失败时直接返回 LETHAL_OBSTACLE**。local costmap 是 8×8 rolling
+  /// （±4m），footprint 半对角约 0.495m，于是路径上超过约 3.5m 的点会因顶点出图被
+  /// 判成"障碍"——R47 改成 footprint 查询后引入的幻影障碍。这里先逐顶点校验是否全部
+  /// 在图内，出图一律按"无信息、不判障"处理（与 R47 之前单点查询 worldToMap 失败
+  /// 即返回 false 的语义一致）。
+  double footprintCostAt(double x, double y, double theta) const;
+
+  /// 障碍判定（三态，virtual 供测试注入）：机器人在 (x,y,theta) 姿态下的 footprint
+  /// 代价 >= obstacle_cost_threshold_ 即 OBSTACLE；查询超出 costmap 覆盖返回
+  /// OUT_OF_RANGE（无信息，不判障）。
+  ///
+  /// R47：原实现只查路径中心线单点，贴中心线两侧、不压中心线本身的障碍会被完全漏检——
+  /// RPP 的 isCollisionImminent 是 footprint 查询，两套检测口径不一致，SpeedPlanner
+  /// 因此看不到 RPP 独立捕获到的障碍。现改为与 RPP 同源的 footprint 查询
+  /// （阈值、更新频率不变，仅检查几何从单点改为整车）。
+  virtual PointObstacleStatus checkObstacleAt(double x, double y, double theta) const;
+
+  /// 障碍约束是否**具备评估条件**（costmap 就绪）。virtual 供测试注入。
+  /// 与 checkObstacleAt 的 OUT_OF_RANGE 是两件事：这里为 false 表示整轮没法查
+  /// （触发 ConstraintFailurePolicy），OUT_OF_RANGE 只表示某点在覆盖范围外。
+  virtual bool isObstacleQueryAvailable() const;
+
 
   // —— 成员（protected：派生类可访问）——
   std::string plugin_name_;
@@ -177,7 +251,7 @@ protected:
   std::shared_ptr<tf2_ros::Buffer> tf_;
   std::shared_ptr<nav2_costmap_2d::Costmap2DROS> costmap_ros_;
   // footprint 障碍查询（与 RegulatedPurePursuitController::collision_checker_ 同类型，
-  // 保证两套检测口径一致）；costmap 指针在 isObstacleAt 每次调用时刷新，因为规划期与
+  // 保证两套检测口径一致）；costmap 指针在 footprintCostAt 每次调用时刷新，因为规划期与
   // configure 期的实际 Costmap2D* 可能不同。
   std::unique_ptr<nav2_costmap_2d::FootprintCollisionChecker<nav2_costmap_2d::Costmap2D *>>
   collision_checker_;
@@ -215,6 +289,10 @@ protected:
   // 在障碍内切区（cost>=253），无豁免会把整条剖面置零形成起步死锁；
   // 近身避障由 prepare/控制器障碍代价负责，速度规划只管起步不被自己锁死。
   double obstacle_start_exempt_distance_{0.25};
+  // 障碍约束**无法评估**（TF 变换失败 / costmap 缺失）时的处置策略（调研 P0-3）。
+  // 生产默认 FAIL_CLOSED：本周期输出空轨迹 → ControllerServer 发零速。
+  // ⚠️ 不含"路径点出图"——那是 OUT_OF_RANGE，属正常情况，见 PointObstacleStatus。
+  ConstraintFailurePolicy obstacle_unavailable_policy_{ConstraintFailurePolicy::FAIL_CLOSED};
 
   // 外部限速（setSpeedLimit 保存；computeSpeedPlan 与 path speed_hint 取严）。
   double speed_limit_{0.0};

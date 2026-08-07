@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "nav2_costmap_2d/cost_values.hpp"
+#include "nav2_costmap_2d/footprint.hpp"
 #include "nav2_util/node_utils.hpp"
 #include "tf2/utils.h"
 
@@ -79,7 +80,7 @@ void SpeedPlannerBase::configure(
   plugin_name_ = name;
   tf_ = tf;
   costmap_ros_ = costmap_ros;
-  // R47：与 RPP 同源的 footprint 碰撞查询；costmap 指针在 isObstacleAt 每次调用时用
+  // R47：与 RPP 同源的 footprint 碰撞查询；costmap 指针在 footprintCostAt 每次调用时用
   // setCostmap 刷新，构造期传空指针即可（RPP 也是同一时机以 costmap_ 构造）。
   collision_checker_ = std::make_unique<nav2_costmap_2d::
       FootprintCollisionChecker<nav2_costmap_2d::Costmap2D *>>(
@@ -121,6 +122,9 @@ void SpeedPlannerBase::configure(
     node, plugin_name_ + ".obstacle_cost_threshold", rclcpp::ParameterValue(254));
   nav2_util::declare_parameter_if_not_declared(
     node, plugin_name_ + ".obstacle_start_exempt_distance", rclcpp::ParameterValue(0.25));
+  nav2_util::declare_parameter_if_not_declared(
+    node, plugin_name_ + ".obstacle_unavailable_policy", rclcpp::ParameterValue(
+      std::string("fail_closed")));
 
   node->get_parameter(plugin_name_ + ".max_speed", max_speed_);
   node->get_parameter(plugin_name_ + ".min_speed", min_speed_);
@@ -146,6 +150,23 @@ void SpeedPlannerBase::configure(
   node->get_parameter(
     plugin_name_ + ".obstacle_start_exempt_distance", obstacle_start_exempt_distance_);
   obstacle_start_exempt_distance_ = std::max(obstacle_start_exempt_distance_, 0.0);
+  std::string obstacle_unavailable_policy = "fail_closed";
+  node->get_parameter(plugin_name_ + ".obstacle_unavailable_policy", obstacle_unavailable_policy);
+  if (obstacle_unavailable_policy == "fail_open") {
+    obstacle_unavailable_policy_ = ConstraintFailurePolicy::FAIL_OPEN;
+    RCLCPP_WARN(
+      logger_,
+      "[%s] obstacle_unavailable_policy=fail_open: when TF or costmap is unavailable the "
+      "robot will keep cruising WITHOUT obstacle constraints. Intended for simulation or "
+      "explicit grayscale only.", plugin_name_.c_str());
+  } else {
+    obstacle_unavailable_policy_ = ConstraintFailurePolicy::FAIL_CLOSED;
+    if (obstacle_unavailable_policy != "fail_closed") {
+      RCLCPP_WARN(
+        logger_, "[%s] unknown obstacle_unavailable_policy '%s'; falling back to fail_closed.",
+        plugin_name_.c_str(), obstacle_unavailable_policy.c_str());
+    }
+  }
 
   // 参数非法只告警不 abort（避免拖垮整个 nav 栈）。
   if (max_speed_ <= min_speed_) {
@@ -343,9 +364,36 @@ nav_interfaces::msg::RobotTrajectory SpeedPlannerBase::computeSpeedPlan(
 
   // ====== Phase A 约束包络（逐点 min 叠加，安全置零绝对优先）======
   const auto obstacle_start = TimingClock::now();
-  const bool has_obstacle = applyObstacleConstraint(work);  // A1 障碍 + 缓冲带置零
+  const ObstacleConstraintOutcome obstacle_outcome =
+    applyObstacleConstraint(work);  // A1 障碍 + 缓冲带置零
   obstacle_ms = std::chrono::duration<double, std::milli>(
     TimingClock::now() - obstacle_start).count();
+  const bool has_obstacle = obstacle_outcome.has_obstacle;
+
+  // 调研 P0-3：障碍约束**无法评估**时按显式策略处置，而不是静默当作"无障碍"。
+  // FAIL_CLOSED（生产默认）返回空轨迹 → runPlanningPipeline 判空 → 控制器发零速。
+  if (!obstacle_outcome.evaluable) {
+    if (obstacle_unavailable_policy_ == ConstraintFailurePolicy::FAIL_CLOSED) {
+      // clock_ 仅在 ROS configure() 后可用；离线测试壳直接设参数、不走 configure。
+      if (clock_) {
+        RCLCPP_ERROR_THROTTLE(
+          logger_, *clock_, 1000,
+          "[%s] obstacle constraint unavailable (%s) and policy=FAIL_CLOSED: "
+          "emitting empty trajectory so the controller stops this cycle.",
+          plugin_name_.c_str(), obstacle_outcome.unavailable_reason.c_str());
+      }
+      traj.points.clear();
+      log_timing("obstacle_constraint_unavailable_fail_closed");
+      return traj;
+    }
+    if (clock_) {
+      RCLCPP_WARN_THROTTLE(
+        logger_, *clock_, 1000,
+        "[%s] obstacle constraint unavailable (%s) but policy=FAIL_OPEN: "
+        "continuing WITHOUT any obstacle constraint this cycle.",
+        plugin_name_.c_str(), obstacle_outcome.unavailable_reason.c_str());
+    }
+  }
   const auto cruise_start = TimingClock::now();
   const double cruise = computeCruiseLimit(work);  // A2 理想巡航求解（纯查询）
   setPlanSpeedLimit(work, cruise);                 //    巡航回填
@@ -375,10 +423,12 @@ nav_interfaces::msg::RobotTrajectory SpeedPlannerBase::computeSpeedPlan(
   }
   RCLCPP_DEBUG(
     logger_,
-    "[%s] speed profile: cruise_limit=%.3f peak=%.3f reached=%s obstacle=%s points=%zu",
+    "[%s] speed profile: cruise_limit=%.3f peak=%.3f reached=%s obstacle=%s points=%zu "
+    "scanned=%zu out_of_range=%zu",
     plugin_name_.c_str(), cruise, peak,
     peak + 1e-6 >= cruise ? "true" : "false",
-    has_obstacle ? "true" : "false", work.size());
+    has_obstacle ? "true" : "false", work.size(),
+    obstacle_outcome.scanned_points, obstacle_outcome.out_of_range_points);
   stats_ms = std::chrono::duration<double, std::milli>(
     TimingClock::now() - stats_start).count();
 
@@ -411,8 +461,10 @@ nav2_core::SpeedPlanningDiagnostics SpeedPlannerBase::getLastPlanningDiagnostics
 
 // ============================ Phase A 约束包络 ============================
 
-bool SpeedPlannerBase::applyObstacleConstraint(std::vector<TrajPointWork> & path)
+ObstacleConstraintOutcome SpeedPlannerBase::applyObstacleConstraint(
+  std::vector<TrajPointWork> & path)
 {
+  ObstacleConstraintOutcome outcome;
   using TimingClock = std::chrono::steady_clock;
   const auto total_start = TimingClock::now();
   last_obstacle_timing_ = ObstacleConstraintTiming();
@@ -425,7 +477,7 @@ bool SpeedPlannerBase::applyObstacleConstraint(std::vector<TrajPointWork> & path
   // 障碍前 collision_stop_distance_ 缓冲带置零（index 0 为机器人当前位置，不动）。
   if (path.empty()) {
     finish_timing();
-    return false;
+    return outcome;  // 空路径：可评估，无障碍
   }
 
   // 路径与 costmap 坐标系对齐：FollowPath 路径通常在 map 系，而宿主的 local
@@ -450,14 +502,19 @@ bool SpeedPlannerBase::applyObstacleConstraint(std::vector<TrajPointWork> & path
           TimingClock::now() - tf_start).count();
         // 变换不可用（如启动期 map 尚未发布）：本周期跳过障碍约束，
         // 好过用错误坐标误停障；下一周期重试（receding-horizon）。
-        RCLCPP_WARN_THROTTLE(
-          logger_, *clock_, 1000,
-          "[%s] cannot transform path (%s) into costmap frame (%s), "
-          "skipping obstacle constraint this cycle after %.3f ms: %s",
-          plugin_name_.c_str(), path_frame_.c_str(), costmap_frame.c_str(),
-          last_obstacle_timing_.tf_ms, ex.what());
+        if (clock_) {
+          RCLCPP_WARN_THROTTLE(
+            logger_, *clock_, 1000,
+            "[%s] cannot transform path (%s) into costmap frame (%s) after %.3f ms: %s",
+            plugin_name_.c_str(), path_frame_.c_str(), costmap_frame.c_str(),
+            last_obstacle_timing_.tf_ms, ex.what());
+        }
         finish_timing();
-        return false;
+        // ⚠️ 关键改动：TF 失败是"没法查"，不是"没障碍"。此前两者同为 return false，
+        // 调用方无法区分 → 隐式 FAIL_OPEN（该周期无任何障碍约束仍按巡航速度行驶）。
+        outcome.evaluable = false;
+        outcome.unavailable_reason = "tf_transform_failed";
+        return outcome;
       }
       last_obstacle_timing_.tf_ms = std::chrono::duration<double, std::milli>(
         TimingClock::now() - tf_start).count();
@@ -469,6 +526,15 @@ bool SpeedPlannerBase::applyObstacleConstraint(std::vector<TrajPointWork> & path
       yaw_offset = yaw;
       need_transform = true;
     }
+  }
+
+  // costmap 缺失同样是"没法查"。整轮判一次，不逐点判——逐点判会把它和
+  // OUT_OF_RANGE（正常的覆盖范围外）混淆。
+  if (!isObstacleQueryAvailable()) {
+    finish_timing();
+    outcome.evaluable = false;
+    outcome.unavailable_reason = "costmap_unavailable";
+    return outcome;
   }
 
   const auto scan_start = TimingClock::now();
@@ -491,7 +557,14 @@ bool SpeedPlannerBase::applyObstacleConstraint(std::vector<TrajPointWork> & path
       wy = sin_t * px + cos_t * py + ty;
       wyaw += yaw_offset;
     }
-    if (!isObstacleAt(wx, wy, wyaw)) {
+    const PointObstacleStatus point_status = checkObstacleAt(wx, wy, wyaw);
+    if (point_status == PointObstacleStatus::OUT_OF_RANGE) {
+      // 超出 costmap 覆盖：无信息，不判障、不触发策略，只计数供观测。
+      ++outcome.out_of_range_points;
+      continue;
+    }
+    ++outcome.scanned_points;
+    if (point_status == PointObstacleStatus::FREE) {
       continue;
     }
     if (arc_s[i] <= obstacle_start_exempt_distance_) {
@@ -507,7 +580,7 @@ bool SpeedPlannerBase::applyObstacleConstraint(std::vector<TrajPointWork> & path
     TimingClock::now() - scan_start).count();
   if (first_obstacle_index == path.size()) {
     finish_timing();
-    return false;
+    return outcome;  // 查过了，确实没有障碍
   }
   const auto apply_start = TimingClock::now();
   for (size_t i = first_obstacle_index; i < path.size(); ++i) {
@@ -526,7 +599,8 @@ bool SpeedPlannerBase::applyObstacleConstraint(std::vector<TrajPointWork> & path
   last_obstacle_timing_.apply_ms = std::chrono::duration<double, std::milli>(
     TimingClock::now() - apply_start).count();
   finish_timing();
-  return true;
+  outcome.has_obstacle = true;
+  return outcome;
 }
 
 double SpeedPlannerBase::computeCruiseLimit(const std::vector<TrajPointWork> & path) const
@@ -558,7 +632,21 @@ void SpeedPlannerBase::setPlanSpeedLimit(
     if (path[i].speed_limit < 1e-3) {
       continue;
     }
-    path[i].speed_limit = valid_speed_limit;
+    // 【步 2】取严而非覆写：与本文件头声明的 "Phase A 逐点 min 叠加" 契约一致。
+    //
+    // 改动前是无条件 `= valid_speed_limit`，会把**任何在 A2 之前写入的逐点限速抹掉**。
+    // 今天行为等价——A2 之前所有非零点的限速是均匀的（初始取严对全路径写同一个值，
+    // 而 speed_hint 目前恒为 0）——但这条覆写是一颗定时炸弹：
+    //   - M11 区域限速 / 逐点 speed_hint 接入后（调研 P0-2），逐点差异会被整体抹平；
+    //   - 任何想在 A2 之前产出逐点约束的 producer（调研 P1-1）都会失效。
+    // 本会话曾实撞过一次：在 A1 里写逐点减速值，被这里覆写掉。
+    //
+    // ⚠️ 唯一行为分歧：外部限速 < min_speed_(默认 0.05) 的病态取值。
+    // 改动前 cruise 会被 clamp 抬到 min_speed_ 再覆写下去（即忽略更严的外部限速）；
+    // 改动后取严，尊重外部限速。min_speed_ 的语义本就是"巡航值的下限"而非
+    // "每点的地板"——A3 曲率用自己的 min_curvature_speed_、A4 末端写 end_speed_，
+    // 两者都可低于 min_speed_，改动后与它们一致。
+    path[i].speed_limit = std::min(path[i].speed_limit, valid_speed_limit);
   }
 }
 
@@ -842,29 +930,64 @@ double SpeedPlannerBase::calcCurvature(
          (p2.position.y - p1.position.y) * (p3.position.x - p1.position.x)) / denominator;
 }
 
-bool SpeedPlannerBase::isObstacleAt(double x, double y, double theta) const
+double SpeedPlannerBase::footprintCostAt(double x, double y, double theta) const
 {
   // R47：原实现是路径中心线单点 costmap 格值查询，和 RPP 的 footprint 查询口径不一致——
-  // 障碍贴中心线两侧、不压中心线本身时（拐弯贴墙、货架棱角）会被本函数漏检，只能靠 RPP
-  // 的 isCollisionImminent 在很近的距离二值急停。现改为与 RPP 同源的 footprint 查询：
-  // FootprintCollisionChecker::footprintCostAtPose，取机器人在 (x,y,theta) 姿态下、
-  // 整个 footprint 覆盖格子的最大代价。阈值、NO_INFORMATION 处理与原逻辑保持一致，
-  // 仅检查几何从单点改为整车。
+  // 障碍贴中心线两侧、不压中心线本身时（拐弯贴墙、货架棱角）会被漏检，只能靠 RPP
+  // 的 isCollisionImminent 在很近的距离二值急停。现与 RPP 同源做 footprint 查询。
   nav2_costmap_2d::Costmap2D * costmap = costmap_ros_ ? costmap_ros_->getCostmap() : nullptr;
   if (costmap == nullptr || !collision_checker_) {
-    return false;
+    return kFootprintCostUnavailable;
   }
   unsigned int mx, my;
   if (!costmap->worldToMap(x, y, mx, my)) {
-    return false;
+    return kFootprintCostUnavailable;
   }
+
+  std::vector<geometry_msgs::msg::Point> footprint = costmap_ros_->getRobotFootprint();
+  if (footprint.size() < 3) {
+    return kFootprintCostUnavailable;
+  }
+  std::vector<geometry_msgs::msg::Point> oriented;
+  nav2_costmap_2d::transformFootprint(x, y, theta, footprint, oriented);
+
+  // ⚠️ 幻影障碍防护（R47 回归修复）：nav2 的 FootprintCollisionChecker::footprintCost
+  // 在任一顶点 worldToMap 失败时**直接返回 LETHAL_OBSTACLE**。local costmap 为 8×8
+  // rolling（±4m），footprint 半对角约 0.495m，于是路径上超过约 3.5m 的点每周期都会
+  // 因顶点出图被判成障碍。出图属于"无信息"而非"有障碍"，这里显式判定并按不可用返回
+  // （与 R47 之前单点查询 worldToMap 失败即 false 的语义一致）。
+  for (const auto & point : oriented) {
+    unsigned int px, py;
+    if (!costmap->worldToMap(point.x, point.y, px, py)) {
+      return kFootprintCostUnavailable;
+    }
+  }
+
   collision_checker_->setCostmap(costmap);
-  const double footprint_cost = collision_checker_->footprintCostAtPose(
-    x, y, theta, costmap_ros_->getRobotFootprint());
-  if (footprint_cost == static_cast<double>(nav2_costmap_2d::NO_INFORMATION)) {
-    return false;  // 未知区域不当障碍（阈值 254 时 255 会被 >= 误伤）
-  }
-  return footprint_cost >= static_cast<double>(obstacle_cost_threshold_);
+  return collision_checker_->footprintCost(oriented);
 }
+
+bool SpeedPlannerBase::isObstacleQueryAvailable() const
+{
+  return costmap_ros_ != nullptr && costmap_ros_->getCostmap() != nullptr;
+}
+
+PointObstacleStatus SpeedPlannerBase::checkObstacleAt(
+  double x, double y, double theta) const
+{
+  const double footprint_cost = footprintCostAt(x, y, theta);
+  if (footprint_cost == kFootprintCostUnavailable) {
+    // 位姿或 footprint 顶点越出 costmap → 该点无信息。
+    // 这不是"约束不可评估"，只是这一点在感知范围外（rolling window 只有 ±4m），
+    // 属正常情况；若按不可评估处理并 FAIL_CLOSED，长于约 3.5m 的路径会全程零速。
+    return PointObstacleStatus::OUT_OF_RANGE;
+  }
+  if (footprint_cost == static_cast<double>(nav2_costmap_2d::NO_INFORMATION)) {
+    return PointObstacleStatus::OUT_OF_RANGE;  // 未知区域同样无信息，不判障
+  }
+  return footprint_cost >= static_cast<double>(obstacle_cost_threshold_) ?
+         PointObstacleStatus::OBSTACLE : PointObstacleStatus::FREE;
+}
+
 
 }  // namespace nav2_speed_planner
