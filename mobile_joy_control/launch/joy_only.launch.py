@@ -80,6 +80,17 @@ def launch_setup(context, *args, **kwargs):
                                  output='screen')
         nodes.append(cmd_omni_vel_node)
 
+        # [Layer 3][Start Coordinator Launch]
+        # 节点位于 navigation velocity_smoother 与 cmd_vel_mux 之间；
+        # 遥控话题仍直接进入 mux，不经过起步门控。
+        start_coordinator_node = Node(
+            package='mobile_joy_control',
+            executable='omni_start_coordinator',
+            name='omni_start_coordinator',
+            parameters=[config_file],
+            output='screen')
+        nodes.append(start_coordinator_node)
+
     return nodes
 
 

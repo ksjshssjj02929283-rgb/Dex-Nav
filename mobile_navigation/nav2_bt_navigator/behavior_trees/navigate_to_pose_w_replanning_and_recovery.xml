@@ -108,15 +108,13 @@
 
     </PipelineSequence>
 
-    <!--
-      [SteeringAngleControl] 暂时关闭导航结束后的自动驻车。
-      保留原配置，后续如需恢复，只需取消下面节点的 XML 注释。
-
-      <SteeringAngleControl name="SteeringAngleControlAfterNav"
-        front_left_angle_rad="0.785" front_right_angle_rad="-0.785"
-        rear_left_angle_rad="-0.785" rear_right_angle_rad="0.785"
-        timeout_sec="3.0" settle_tolerance_rad="0.08"/>
-    -->
+    <!-- [Layer 3F][Upper Parking Policy]
+         FollowPath 成功并由 ControllerServer 发布零速度后，上层 BT 请求一次 X 型静止对舵。
+         Action 到位即结束；后续零 Twist 由 region 按“零轮速并保持当前舵角”执行。 -->
+    <SteeringAngleControl name="SteeringAngleControlAfterNav"
+      front_left_angle_rad="0.785" front_right_angle_rad="-0.785"
+      rear_left_angle_rad="-0.785" rear_right_angle_rad="0.785"
+      timeout_sec="3.0" settle_tolerance_rad="0.08"/>
 
     </Sequence>
   </BehaviorTree>

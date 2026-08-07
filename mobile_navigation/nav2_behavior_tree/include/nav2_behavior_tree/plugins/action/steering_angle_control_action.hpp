@@ -1,7 +1,7 @@
 // Copyright (c) 2026
 //
 // [SteeringAngleControl] BT Action 客户端：调用 /steering_angle_control，
-// 使四轮按指定舵角驻车。
+// 在四轮零速条件下完成一次目标舵角对齐；是否用于驻车由行为树上层决定。
 // 对应 Server 在 mobile_joy_control/mobile_cmd_omni 中实现。
 
 #ifndef NAV2_BEHAVIOR_TREE__PLUGINS__ACTION__STEERING_ANGLE_CONTROL_ACTION_HPP_

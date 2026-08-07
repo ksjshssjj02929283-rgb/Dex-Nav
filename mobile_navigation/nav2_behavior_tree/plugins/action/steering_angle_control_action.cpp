@@ -1,6 +1,6 @@
 // Copyright (c) 2026
 //
-// [SteeringAngleControl] BT Action 客户端实现。
+// [SteeringAngleControl] BT 一次性静止对舵客户端实现，不携带驻车锁存策略。
 
 #include <memory>
 #include <string>

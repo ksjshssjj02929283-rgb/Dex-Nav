@@ -96,7 +96,7 @@ list(APPEND plugin_libs nav2_spin_action_bt_node)
 add_library(nav2_wait_action_bt_node SHARED plugins/action/wait_action.cpp)
 list(APPEND plugin_libs nav2_wait_action_bt_node)
 
-# [SteeringAngleControl] 导航结束后四轮朝里驻车
+# [SteeringAngleControl] 四轮零速执行一次目标舵角对齐；驻车策略由上层 BT 决定
 # （Client → /steering_angle_control）
 add_library(
   nav2_steering_angle_control_action_bt_node SHARED

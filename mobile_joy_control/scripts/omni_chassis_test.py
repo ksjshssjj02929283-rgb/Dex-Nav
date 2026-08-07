@@ -2,18 +2,21 @@
 """全向底盘运动测试工具。
 
 功能概览：
-1. 支持 map 坐标系下的 X+/X-/Y+/Y-、任意角度平移和原地旋转；
+1. 支持按 map/odom/base_link 等可配置坐标系执行 X+/X-/Y+/Y-、
+   任意角度平移和原地旋转；
 2. 支持用户按“速度+距离/角度”定义有限次数的组合循环测试；
 3. 通过 ROS 2 动态参数设置速度、运行时间、平移角度和旋转角度；
-4. 测试期间持续发布 Twist，结束后主动发布零速并等待车辆稳定；
-5. verbose 模式把状态写入可由 tail -f 查看的一般文本日志；
-6. 每次测试保存 CSV、map 轨迹图、里程计速度响应图、IMU 倾角图、
+4. 首个非零 Twist 前调用 SteeringAngleControl 静止预对舵并等待到位；
+5. 平移测试按可配置加减速度生成速度斜坡，结束后主动发布零速并等待车辆稳定；
+6. verbose 模式把状态写入可由 tail -f 查看的一般文本日志；
+7. 每次测试保存 CSV、map 轨迹图、里程计速度响应图、IMU 倾角图、
    四轮电机反馈图和底盘电流/温度/故障状态图。
 
 安全约定：
 - 本脚本直接发布 /control/cmd_vel_omni。测试前应停止导航、手柄或其他同话题发布者；
-- 平移角度以 map +X 为 0 度，逆时针为正；
+- 平移角度以 command_frame_id 的 +X 为 0 度，逆时针为正；
 - 平移模式令 angular.z=0；原地旋转模式令 linear.x/linear.y=0；
+- 预对舵未成功时禁止发布非零测试速度；
 - 循环次数必须是有限值，脚本不提供无限循环，避免车辆无人值守持续运动；
 - Ctrl-C、cancel_test=true、TF 丢失都会立即发布零速。
 """
@@ -30,10 +33,13 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import rclpy
+from action_msgs.msg import GoalStatus
 from chassis_interfaces.msg import ChassisMotorControl
 from geometry_msgs.msg import Twist
+from nav_interfaces.action import SteeringAngleControl
 from nav_msgs.msg import Odometry
 from rcl_interfaces.msg import ParameterDescriptor, SetParametersResult
+from rclpy.action import ActionClient
 from rclpy.node import Node
 from rclpy.parameter import Parameter
 from rclpy.qos import qos_profile_sensor_data
@@ -60,6 +66,7 @@ VALID_MODES = (
     + tuple(ROTATION_MODE_TO_SIGN)
 )
 WHEEL_NAMES = ("front_left", "front_right", "rear_left", "rear_right")
+WHEEL_COUNT = len(WHEEL_NAMES)
 
 
 def normalize_angle(angle: float) -> float:
@@ -120,6 +127,7 @@ class OdomState:
 @dataclass
 class MotorState:
     stamp_sec: float
+    receive_sec: float
     position: List[float]
     speed: List[float]
 
@@ -226,12 +234,17 @@ def parse_chassis_status_json(
 @dataclass
 class TestConfig:
     mode: str
+    command_frame_id: str
     speed_mps: float
+    linear_accel_mps2: float
+    linear_decel_mps2: float
     angular_speed_radps: float
     duration_sec: float
     angle_deg: float
     direction_x: float
     direction_y: float
+    map_direction_x: float
+    map_direction_y: float
     rotation_direction: float
     rotation_angle_deg: float
     settle_time_sec: float
@@ -259,7 +272,7 @@ def parse_loop_step(step_text: str) -> LoopStep:
 
     平移格式：
       x_positive,速度m/s,距离m
-      angle,速度m/s,距离m,map角度deg
+      angle,速度m/s,距离m,command_frame_id 下角度deg
     旋转格式：
       rotate_left,角速度rad/s,旋转角度deg
     """
@@ -320,6 +333,8 @@ class OmniChassisTest(Node):
         self.imu_topic = str(self.get_parameter("imu_topic").value)
         self.robot_state_topic = str(
             self.get_parameter("robot_state_topic").value)
+        self.steering_action_name = str(
+            self.get_parameter("steering_action_name").value)
         self.map_frame = str(self.get_parameter("map_frame").value)
         self.base_frame = str(self.get_parameter("base_frame").value)
         self.verbose = bool(self.get_parameter("verbose").value)
@@ -331,6 +346,11 @@ class OmniChassisTest(Node):
         self.file_logger = self._create_file_logger(self.log_path)
 
         self.command_pub = self.create_publisher(Twist, self.command_topic, 10)
+        # [Test Presteer][Action Client]
+        # 测试脚本仍直接发布最终 Twist，但首个非零速度之前先通过 region
+        # 自己提供的 Action 静止对舵，避免另一个节点争抢电机控制话题。
+        self.steering_action_client = ActionClient(
+            self, SteeringAngleControl, self.steering_action_name)
         self.odom_sub = self.create_subscription(
             Odometry, self.odom_topic, self._odom_callback, 50)
         self.motor_sub = self.create_subscription(
@@ -375,6 +395,14 @@ class OmniChassisTest(Node):
         self.latest_motor: Optional[MotorState] = None
         self.latest_imu: Optional[ImuState] = None
         self.latest_chassis_status: Optional[ChassisStatusState] = None
+        self.presteer_goal_handle = None
+        self.presteer_request_id = 0
+        self.presteer_started_sec = 0.0
+        self.presteer_deadline_sec = 0.0
+        self.presteer_max_error_rad = math.nan
+        self.presteer_targets_rad: List[float] = []
+        self.presteer_elapsed_sec = math.nan
+        self.presteer_result_message = ""
         self.config: Optional[TestConfig] = None
         self.start_pose: Optional[Pose2D] = None
         self.stop_pose: Optional[Pose2D] = None
@@ -400,12 +428,14 @@ class OmniChassisTest(Node):
         self._log(
             "info",
             "全向底盘测试节点已启动；命令话题=%s，odom=%s，电机反馈=%s，"
-            "IMU=%s，底盘状态=%s，map_frame=%s，base_frame=%s",
+            "IMU=%s，底盘状态=%s，预对舵Action=%s，"
+            "map_frame=%s，base_frame=%s",
             self.command_topic,
             self.odom_topic,
             self.motor_feedback_topic,
             self.imu_topic,
             self.robot_state_topic,
+            self.steering_action_name,
             self.map_frame,
             self.base_frame,
         )
@@ -449,9 +479,26 @@ class OmniChassisTest(Node):
             ParameterDescriptor(description="平移速度绝对值，单位 m/s，必须大于 0"),
         )
         self.declare_parameter(
+            "linear_accel_mps2",
+            0.50,
+            ParameterDescriptor(
+                description=(
+                    "平移起步加速度斜坡，单位 m/s^2；"
+                    "只在测试脚本生成 Twist 时生效，不修改 region")),
+        )
+        self.declare_parameter(
+            "linear_decel_mps2",
+            0.50,
+            ParameterDescriptor(
+                description=(
+                    "平移停车减速度斜坡，单位 m/s^2；"
+                    "只在测试脚本生成 Twist 时生效，不修改 region")),
+        )
+        self.declare_parameter(
             "duration_sec",
             3.0,
-            ParameterDescriptor(description="持续发送运动速度的时间，单位 s"),
+            ParameterDescriptor(
+                description="平移运动总时间，包含加速、匀速和减速，单位 s"),
         )
         self.declare_parameter(
             "angular_speed_radps",
@@ -471,7 +518,56 @@ class OmniChassisTest(Node):
             "translation_angle_deg",
             0.0,
             ParameterDescriptor(
-                description="mode=angle 时生效；map +X 为 0 度，逆时针为正"),
+                description=(
+                    "mode=angle 时生效；command_frame_id 的 +X 为 0 度，"
+                    "逆时针为正")),
+        )
+        self.declare_parameter(
+            "command_frame_id",
+            "map",
+            ParameterDescriptor(
+                description=(
+                    "平移速度的解释坐标系，可设 map、odom、base_link 或任意"
+                    "可查询到 frame->base_frame TF 的坐标系")),
+        )
+        self.declare_parameter(
+            "presteer_enabled",
+            True,
+            ParameterDescriptor(
+                description=(
+                    "每次测试首个非零速度前调用 SteeringAngleControl "
+                    "静止预对舵并等待到位")),
+        )
+        self.declare_parameter(
+            "action_timeout_sec",
+            3.0,
+            ParameterDescriptor(description="预对舵 Action 服务端执行超时，单位 s"),
+        )
+        self.declare_parameter(
+            "settle_tolerance_rad",
+            0.08,
+            ParameterDescriptor(description="预对舵最大舵角到位误差，单位 rad"),
+        )
+        self.declare_parameter(
+            "steering_feedback_timeout_sec",
+            0.2,
+            ParameterDescriptor(
+                description="计算预对舵等价解允许的舵角反馈最大接收延迟，单位 s"),
+        )
+        self.declare_parameter(
+            "chassis_length",
+            0.460,
+            ParameterDescriptor(description="前后轮距，单位 m；应与 region 一致"),
+        )
+        self.declare_parameter(
+            "chassis_width",
+            0.345,
+            ParameterDescriptor(description="左右轮距，单位 m；应与 region 一致"),
+        )
+        self.declare_parameter(
+            "steering_limit_rad",
+            2.513274,
+            ParameterDescriptor(description="机械舵角绝对限位，单位 rad；应与 region 一致"),
         )
         self.declare_parameter(
             "settle_time_sec",
@@ -510,7 +606,7 @@ class OmniChassisTest(Node):
             ParameterDescriptor(
                 description=(
                     "循环步骤字符串数组。平移=模式,速度m/s,距离m；"
-                    "任意平移=angle,速度,距离,map角度deg；"
+                    "任意平移=angle,速度,距离,命令坐标系角度deg；"
                     "旋转=rotate_left/right,角速度rad/s,角度deg")),
         )
         self.declare_parameter(
@@ -533,6 +629,11 @@ class OmniChassisTest(Node):
             "command_topic",
             "/control/cmd_vel_omni",
             ParameterDescriptor(description="底盘速度命令话题；修改后需重启脚本"),
+        )
+        self.declare_parameter(
+            "steering_action_name",
+            "/steering_angle_control",
+            ParameterDescriptor(description="静止预对舵 Action 名称；修改后需重启脚本"),
         )
         self.declare_parameter(
             "odom_topic",
@@ -619,10 +720,20 @@ class OmniChassisTest(Node):
         runtime_parameters = {
             "mode",
             "speed_mps",
+            "linear_accel_mps2",
+            "linear_decel_mps2",
             "duration_sec",
             "angular_speed_radps",
             "rotation_angle_deg",
             "translation_angle_deg",
+            "command_frame_id",
+            "presteer_enabled",
+            "action_timeout_sec",
+            "settle_tolerance_rad",
+            "steering_feedback_timeout_sec",
+            "chassis_length",
+            "chassis_width",
+            "steering_limit_rad",
             "settle_time_sec",
             "log_period_sec",
             "overshoot_threshold_m",
@@ -646,12 +757,42 @@ class OmniChassisTest(Node):
                     successful=False,
                     reason=f"mode 必须是 {VALID_MODES} 之一",
                 )
+            if name == "command_frame_id":
+                frame_id = str(value).strip().lstrip("/")
+                if not frame_id:
+                    return SetParametersResult(
+                        successful=False,
+                        reason="command_frame_id 不能为空",
+                    )
             if name == "speed_mps" and float(value) <= 0.0:
                 return SetParametersResult(
                     successful=False, reason="speed_mps 必须大于 0")
+            if name == "linear_accel_mps2" and float(value) <= 0.0:
+                return SetParametersResult(
+                    successful=False,
+                    reason="linear_accel_mps2 必须大于 0",
+                )
+            if name == "linear_decel_mps2" and float(value) <= 0.0:
+                return SetParametersResult(
+                    successful=False,
+                    reason="linear_decel_mps2 必须大于 0",
+                )
             if name == "duration_sec" and float(value) <= 0.0:
                 return SetParametersResult(
                     successful=False, reason="duration_sec 必须大于 0")
+            if (
+                name in {
+                    "action_timeout_sec",
+                    "settle_tolerance_rad",
+                    "steering_feedback_timeout_sec",
+                    "chassis_length",
+                    "chassis_width",
+                    "steering_limit_rad",
+                }
+                and float(value) <= 0.0
+            ):
+                return SetParametersResult(
+                    successful=False, reason=f"{name} 必须大于 0")
             if name == "angular_speed_radps" and float(value) <= 0.0:
                 return SetParametersResult(
                     successful=False, reason="angular_speed_radps 必须大于 0")
@@ -746,6 +887,7 @@ class OmniChassisTest(Node):
         speed.extend([math.nan] * (4 - len(speed)))
         self.latest_motor = MotorState(
             stamp_sec=stamp,
+            receive_sec=self._now_sec(),
             position=position,
             speed=speed,
         )
@@ -835,10 +977,25 @@ class OmniChassisTest(Node):
                     error,
                 )
 
-    def _lookup_map_pose(self) -> Optional[Pose2D]:
+    def _lookup_pose_in_frame(self, frame_id: str) -> Optional[Pose2D]:
+        """查询 base_frame 在指定参考坐标系中的二维位姿。
+
+        command_frame_id=odom 时只使用 odom->base_frame，不经过 map->odom；
+        command_frame_id=base_frame 时返回单位变换，速度可直接赋给 Twist。
+        """
+        normalized_frame = frame_id.strip().lstrip("/")
+        normalized_base = self.base_frame.strip().lstrip("/")
+        if normalized_frame == normalized_base:
+            return Pose2D(
+                x=0.0,
+                y=0.0,
+                yaw=0.0,
+                stamp_sec=self._now_sec(),
+            )
+
         try:
             transform = self.tf_buffer.lookup_transform(
-                self.map_frame, self.base_frame, Time())
+                normalized_frame, normalized_base, Time())
         except TransformException:
             return None
 
@@ -856,8 +1013,14 @@ class OmniChassisTest(Node):
             stamp_sec=stamp,
         )
 
+    def _lookup_map_pose(self) -> Optional[Pose2D]:
+        return self._lookup_pose_in_frame(self.map_frame)
+
     def _read_test_config(self) -> TestConfig:
         mode = str(self.get_parameter("mode").value)
+        command_frame_id = str(
+            self.get_parameter("command_frame_id").value
+        ).strip().lstrip("/")
         requested_angle = float(
             self.get_parameter("translation_angle_deg").value)
         angle_deg = MODE_TO_ANGLE_DEG.get(mode, requested_angle)
@@ -869,6 +1032,10 @@ class OmniChassisTest(Node):
         rotation_direction = ROTATION_MODE_TO_SIGN.get(mode, 0.0)
         duration_sec = float(self.get_parameter("duration_sec").value)
         speed_mps = float(self.get_parameter("speed_mps").value)
+        linear_accel_mps2 = float(
+            self.get_parameter("linear_accel_mps2").value)
+        linear_decel_mps2 = float(
+            self.get_parameter("linear_decel_mps2").value)
         if mode in ROTATION_MODE_TO_SIGN:
             # 原地旋转使用“角度÷角速度”自动计算命令持续时间。
             duration_sec = (
@@ -876,7 +1043,10 @@ class OmniChassisTest(Node):
             speed_mps = 0.0
         return TestConfig(
             mode=mode,
+            command_frame_id=command_frame_id,
             speed_mps=speed_mps,
+            linear_accel_mps2=linear_accel_mps2,
+            linear_decel_mps2=linear_decel_mps2,
             angular_speed_radps=(
                 angular_speed_radps
                 if mode in ROTATION_MODE_TO_SIGN
@@ -886,6 +1056,8 @@ class OmniChassisTest(Node):
             angle_deg=angle_deg,
             direction_x=math.cos(angle_rad),
             direction_y=math.sin(angle_rad),
+            map_direction_x=math.cos(angle_rad),
+            map_direction_y=math.sin(angle_rad),
             rotation_direction=rotation_direction,
             rotation_angle_deg=(
                 rotation_angle_deg
@@ -912,16 +1084,28 @@ class OmniChassisTest(Node):
             self.get_parameter("overshoot_threshold_m").value)
         rotation_overshoot_threshold_deg = float(
             self.get_parameter("rotation_overshoot_threshold_deg").value)
+        linear_accel_mps2 = float(
+            self.get_parameter("linear_accel_mps2").value)
+        linear_decel_mps2 = float(
+            self.get_parameter("linear_decel_mps2").value)
+        command_frame_id = str(
+            self.get_parameter("command_frame_id").value
+        ).strip().lstrip("/")
 
         if step.mode in ROTATION_MODE_TO_SIGN:
             return TestConfig(
                 mode=step.mode,
+                command_frame_id=command_frame_id,
                 speed_mps=0.0,
+                linear_accel_mps2=linear_accel_mps2,
+                linear_decel_mps2=linear_decel_mps2,
                 angular_speed_radps=step.speed,
                 duration_sec=math.radians(step.amount) / step.speed,
                 angle_deg=0.0,
                 direction_x=0.0,
                 direction_y=0.0,
+                map_direction_x=0.0,
+                map_direction_y=0.0,
                 rotation_direction=ROTATION_MODE_TO_SIGN[step.mode],
                 rotation_angle_deg=step.amount,
                 settle_time_sec=settle_time_sec,
@@ -934,14 +1118,42 @@ class OmniChassisTest(Node):
         angle_deg = MODE_TO_ANGLE_DEG.get(
             step.mode, step.translation_angle_deg)
         angle_rad = math.radians(angle_deg)
+        accel_time_sec = step.speed / linear_accel_mps2
+        decel_time_sec = step.speed / linear_decel_mps2
+        transition_distance_m = 0.5 * step.speed * (
+            accel_time_sec + decel_time_sec)
+        if step.amount <= transition_distance_m:
+            peak_speed_mps = math.sqrt(
+                2.0
+                * step.amount
+                / (
+                    1.0 / linear_accel_mps2
+                    + 1.0 / linear_decel_mps2
+                )
+            )
+            duration_sec = (
+                peak_speed_mps / linear_accel_mps2
+                + peak_speed_mps / linear_decel_mps2
+            )
+        else:
+            duration_sec = (
+                accel_time_sec
+                + decel_time_sec
+                + (step.amount - transition_distance_m) / step.speed
+            )
         return TestConfig(
             mode=step.mode,
+            command_frame_id=command_frame_id,
             speed_mps=step.speed,
+            linear_accel_mps2=linear_accel_mps2,
+            linear_decel_mps2=linear_decel_mps2,
             angular_speed_radps=0.0,
-            duration_sec=step.amount / step.speed,
+            duration_sec=duration_sec,
             angle_deg=angle_deg,
             direction_x=math.cos(angle_rad),
             direction_y=math.sin(angle_rad),
+            map_direction_x=math.cos(angle_rad),
+            map_direction_y=math.sin(angle_rad),
             rotation_direction=0.0,
             rotation_angle_deg=0.0,
             settle_time_sec=settle_time_sec,
@@ -1040,24 +1252,463 @@ class OmniChassisTest(Node):
             pass
         return sorted(set(names))
 
-    def _begin_test(self) -> None:
+    @staticmethod
+    def _frame_velocity_to_base(
+        frame_pose: Pose2D, vx_frame: float, vy_frame: float
+    ) -> Tuple[float, float]:
+        """只做参考坐标系到 base_frame 的二维速度旋转。"""
+        cos_yaw = math.cos(frame_pose.yaw)
+        sin_yaw = math.sin(frame_pose.yaw)
+        return (
+            cos_yaw * vx_frame + sin_yaw * vy_frame,
+            -sin_yaw * vx_frame + cos_yaw * vy_frame,
+        )
+
+    def _initial_body_command(
+        self, config: TestConfig, command_frame_pose: Optional[Pose2D]
+    ) -> Tuple[float, float, float]:
+        """生成即将放行的第一帧 base_frame Twist。"""
+        if config.is_rotation:
+            return (
+                0.0,
+                0.0,
+                config.rotation_direction * config.angular_speed_radps,
+            )
+        if command_frame_pose is None:
+            raise ValueError(
+                f"缺少 TF {config.command_frame_id} -> {self.base_frame}")
+        vx_frame = config.speed_mps * config.direction_x
+        vy_frame = config.speed_mps * config.direction_y
+        vx_base, vy_base = self._frame_velocity_to_base(
+            command_frame_pose, vx_frame, vy_frame)
+        return vx_base, vy_base, 0.0
+
+    def _compute_presteer_targets(
+        self,
+        vx_base: float,
+        vy_base: float,
+        wz: float,
+        current_angles: List[float],
+    ) -> List[float]:
+        """按 region 几何计算四轮起步角，并选择离反馈最近的 π 等价解。
+
+        [Test Presteer][Initial Steering Solver]
+        这里只计算首个 Twist 对应的目标舵角；运动期间的连续解算仍完全由
+        mobile_cmd_omni_region.cpp 负责。
+        """
+        if len(current_angles) < WHEEL_COUNT or not all(
+            math.isfinite(value) for value in current_angles[:WHEEL_COUNT]
+        ):
+            raise ValueError("缺少四轮有效舵角反馈")
+
+        chassis_length = float(
+            self.get_parameter("chassis_length").value)
+        chassis_width = float(
+            self.get_parameter("chassis_width").value)
+        steering_limit = float(
+            self.get_parameter("steering_limit_rad").value)
+        targets: List[float] = []
+
+        for wheel in range(WHEEL_COUNT):
+            is_right = wheel in (1, 3)
+            is_front = wheel in (0, 1)
+            width_sign = 1.0 if is_right else -1.0
+            length_sign = 1.0 if is_front else -1.0
+            wheel_vx = vx_base + width_sign * chassis_width * wz * 0.5
+            wheel_vy = vy_base + length_sign * chassis_length * wz * 0.5
+
+            if math.hypot(wheel_vx, wheel_vy) <= 1.0e-4:
+                targets.append(current_angles[wheel])
+                continue
+
+            candidate_a = normalize_angle(math.atan2(wheel_vy, wheel_vx))
+            candidate_b = normalize_angle(candidate_a + math.pi)
+            valid_a = abs(candidate_a) <= steering_limit
+            valid_b = abs(candidate_b) <= steering_limit
+            if not valid_a and not valid_b:
+                raise ValueError(
+                    f"{WHEEL_NAMES[wheel]} 在 ±{steering_limit:.3f}rad "
+                    "限位内没有可用起步舵角")
+
+            cost_a = (
+                abs(normalize_angle(candidate_a - current_angles[wheel]))
+                if valid_a
+                else math.inf
+            )
+            cost_b = (
+                abs(normalize_angle(candidate_b - current_angles[wheel]))
+                if valid_b
+                else math.inf
+            )
+            targets.append(candidate_a if cost_a <= cost_b else candidate_b)
+
+        return targets
+
+    def _cancel_presteer_goal(self, reason: str) -> None:
+        """撤销测试脚本当前持有的对舵目标，并使迟到回调失效。"""
+        self.presteer_request_id += 1
+        goal_handle = self.presteer_goal_handle
+        self.presteer_goal_handle = None
+        if goal_handle is not None:
+            self._log("warning", "取消测试预对舵：%s", reason)
+            try:
+                goal_handle.cancel_goal_async()
+            except RuntimeError as error:
+                self._log("warning", "发送预对舵取消请求失败：%s", error)
+
+    def _presteer_feedback_callback(
+        self, feedback_message: object, request_id: int
+    ) -> None:
+        if (
+            request_id != self.presteer_request_id
+            or self.state != "presteering"
+        ):
+            return
+        feedback = feedback_message.feedback
+        self.presteer_max_error_rad = float(feedback.max_steer_error)
+
+    def _presteer_goal_response_callback(
+        self, future: object, request_id: int
+    ) -> None:
+        try:
+            goal_handle = future.result()
+        except Exception as error:  # rclpy Future 可转发中间件异常
+            if request_id == self.presteer_request_id:
+                self._abort_test(f"发送预对舵目标失败：{error}")
+            return
+
+        if (
+            request_id != self.presteer_request_id
+            or self.state != "presteering"
+        ):
+            if goal_handle is not None and goal_handle.accepted:
+                goal_handle.cancel_goal_async()
+            return
+        if goal_handle is None or not goal_handle.accepted:
+            self._abort_test("SteeringAngleControl 拒绝了预对舵目标")
+            return
+
+        self.presteer_goal_handle = goal_handle
+        result_future = goal_handle.get_result_async()
+        result_future.add_done_callback(
+            lambda done_future: self._presteer_result_callback(
+                done_future, request_id))
+
+    def _presteer_result_callback(
+        self, future: object, request_id: int
+    ) -> None:
+        if (
+            request_id != self.presteer_request_id
+            or self.state != "presteering"
+        ):
+            return
+        self.presteer_goal_handle = None
+        self.presteer_elapsed_sec = self._now_sec() - self.presteer_started_sec
+        try:
+            wrapped_result = future.result()
+        except Exception as error:  # rclpy Future 可转发中间件异常
+            self._abort_test(f"读取预对舵结果失败：{error}")
+            return
+
+        action_result = wrapped_result.result
+        self.presteer_result_message = (
+            str(action_result.message) if action_result is not None else "")
+        succeeded = (
+            wrapped_result.status == GoalStatus.STATUS_SUCCEEDED
+            and action_result is not None
+            and bool(action_result.success)
+        )
+        if not succeeded:
+            self._abort_test(
+                "预对舵未成功："
+                f"status={wrapped_result.status}，"
+                f"message={self.presteer_result_message or '无'}")
+            return
+
+        self._log(
+            "info",
+            "[Test Presteer] 四轮已到位，耗时=%.3fs，"
+            "最终反馈最大误差=%.4frad；开始放行速度",
+            self.presteer_elapsed_sec,
+            self.presteer_max_error_rad,
+        )
+        self._start_motion_after_presteer()
+
+    def _send_presteer_goal(self, targets: List[float]) -> None:
+        """异步调用 SteeringAngleControl；完成前测试状态保持 presteering。"""
+        self.presteer_request_id += 1
+        request_id = self.presteer_request_id
+        timeout_sec = float(
+            self.get_parameter("action_timeout_sec").value)
+        tolerance_rad = float(
+            self.get_parameter("settle_tolerance_rad").value)
+
+        goal = SteeringAngleControl.Goal()
+        goal.target_steer_angles_rad = targets
+        goal.timeout_sec = timeout_sec
+        goal.settle_tolerance_rad = tolerance_rad
+
+        self.presteer_started_sec = self._now_sec()
+        # 服务端自己在 action_timeout_sec 到期时返回；客户端多留 1 秒，
+        # 防止结果消息丢失时测试永久卡在预对舵状态。
+        self.presteer_deadline_sec = (
+            self.presteer_started_sec + timeout_sec + 1.0)
+        self.presteer_max_error_rad = math.nan
+        self.presteer_targets_rad = list(targets)
+        self.presteer_elapsed_sec = math.nan
+        self.presteer_result_message = ""
+
+        try:
+            send_future = self.steering_action_client.send_goal_async(
+                goal,
+                feedback_callback=lambda feedback_message: (
+                    self._presteer_feedback_callback(
+                        feedback_message, request_id)),
+            )
+        except Exception as error:  # Action 类型支持或中间件异常
+            self._abort_test(f"发送预对舵请求失败：{error}")
+            return
+        send_future.add_done_callback(
+            lambda done_future: self._presteer_goal_response_callback(
+                done_future, request_id))
+        self._log(
+            "info",
+            "[Test Presteer] 已发送静止对舵目标："
+            "FL/FR/RL/RR=[%.3f, %.3f, %.3f, %.3f]rad，"
+            "容差=%.3frad，超时=%.2fs；速度保持为零",
+            targets[0],
+            targets[1],
+            targets[2],
+            targets[3],
+            tolerance_rad,
+            timeout_sec,
+        )
+
+    def _start_motion_after_presteer(self) -> None:
+        """Action 成功后重新取起点和 TF，再从 t=0 开始正式运动采样。"""
+        if self.state != "presteering" or self.config is None:
+            return
         pose = self._lookup_map_pose()
+        command_frame_pose = (
+            pose
+            if self.config.command_frame_id
+            == self.map_frame.strip().lstrip("/")
+            else self._lookup_pose_in_frame(self.config.command_frame_id)
+        )
+        if pose is None:
+            self._abort_test(
+                f"预对舵完成后缺少 TF {self.map_frame} -> "
+                f"{self.base_frame}")
+            return
+        if not self.config.is_rotation and command_frame_pose is None:
+            self._abort_test(
+                f"预对舵完成后缺少 TF {self.config.command_frame_id} -> "
+                f"{self.base_frame}")
+            return
+        command_frame_yaw_in_map = (
+            normalize_angle(pose.yaw - command_frame_pose.yaw)
+            if command_frame_pose is not None
+            else math.nan
+        )
+        self._start_motion(
+            self.config,
+            pose,
+            command_frame_pose,
+            command_frame_yaw_in_map,
+        )
+
+    @staticmethod
+    def _linear_profile(
+        config: TestConfig,
+    ) -> Tuple[float, float, float]:
+        """返回峰值速度、加速结束时刻和减速开始时刻。"""
+        inverse_accel_sum = (
+            1.0 / config.linear_accel_mps2
+            + 1.0 / config.linear_decel_mps2
+        )
+        peak_speed_mps = min(
+            config.speed_mps,
+            config.duration_sec / inverse_accel_sum,
+        )
+        accel_end_sec = peak_speed_mps / config.linear_accel_mps2
+        decel_start_sec = (
+            config.duration_sec
+            - peak_speed_mps / config.linear_decel_mps2
+        )
+        return peak_speed_mps, accel_end_sec, decel_start_sec
+
+    @classmethod
+    def _linear_speed_at(
+        cls, config: TestConfig, elapsed_sec: float
+    ) -> float:
+        """返回加减速斜坡在指定时刻生成的平移速度绝对值。"""
+        peak_speed, accel_end, decel_start = cls._linear_profile(config)
+        moving_time = min(max(0.0, elapsed_sec), config.duration_sec)
+        if moving_time < accel_end:
+            return config.linear_accel_mps2 * moving_time
+        if moving_time < decel_start:
+            return peak_speed
+        return max(
+            0.0,
+            config.linear_decel_mps2
+            * (config.duration_sec - moving_time),
+        )
+
+    @classmethod
+    def _linear_distance_at(
+        cls, config: TestConfig, elapsed_sec: float
+    ) -> float:
+        """积分加减速斜坡，得到指定时刻的理论平移距离。"""
+        moving_time = min(
+            max(0.0, elapsed_sec),
+            config.duration_sec,
+        )
+        peak_speed, accel_end, decel_start = cls._linear_profile(config)
+        accel_distance = (
+            0.5 * config.linear_accel_mps2 * accel_end**2)
+        if moving_time <= accel_end:
+            return 0.5 * config.linear_accel_mps2 * moving_time**2
+        cruise_distance = peak_speed * (decel_start - accel_end)
+        if moving_time <= decel_start:
+            return (
+                accel_distance
+                + peak_speed * (moving_time - accel_end)
+            )
+        decel_elapsed = moving_time - decel_start
+        return (
+            accel_distance
+            + cruise_distance
+            + peak_speed * decel_elapsed
+            - 0.5 * config.linear_decel_mps2 * decel_elapsed**2
+        )
+
+    def _begin_test(self) -> None:
+        config = self.pending_config or self._read_test_config()
+        pose = self._lookup_map_pose()
+        command_frame_pose = (
+            pose
+            if config.command_frame_id == self.map_frame.strip().lstrip("/")
+            else self._lookup_pose_in_frame(config.command_frame_id)
+        )
+        command_frame_yaw_in_map = math.nan
+        if pose is not None and command_frame_pose is not None:
+            command_frame_yaw_in_map = normalize_angle(
+                pose.yaw - command_frame_pose.yaw)
         now_sec = self._now_sec()
-        if pose is None or self.latest_odom is None:
+        command_frame_ready = config.is_rotation or command_frame_pose is not None
+        if pose is None or self.latest_odom is None or not command_frame_ready:
+            self._publish_zero()
             if now_sec - self.last_wait_warning_sec >= 2.0:
                 self.last_wait_warning_sec = now_sec
                 self._log(
                     "warning",
-                    "等待启动条件：需要 TF %s -> %s 和 %s 消息",
+                    "等待启动条件：需要 TF %s -> %s、TF %s -> %s 和 %s 消息",
                     self.map_frame,
+                    self.base_frame,
+                    config.command_frame_id,
                     self.base_frame,
                     self.odom_topic,
                 )
             return
 
-        config = self.pending_config or self._read_test_config()
+        presteer_enabled = bool(
+            self.get_parameter("presteer_enabled").value)
+        if presteer_enabled:
+            feedback_timeout_sec = float(
+                self.get_parameter(
+                    "steering_feedback_timeout_sec").value)
+            motor_feedback_ready = (
+                self.latest_motor is not None
+                and now_sec - self.latest_motor.receive_sec
+                <= feedback_timeout_sec
+                and all(
+                    math.isfinite(value)
+                    for value in self.latest_motor.position[:WHEEL_COUNT]
+                )
+            )
+            action_server_ready = (
+                self.steering_action_client.server_is_ready())
+            if not motor_feedback_ready or not action_server_ready:
+                self._publish_zero()
+                if now_sec - self.last_wait_warning_sec >= 2.0:
+                    self.last_wait_warning_sec = now_sec
+                    self._log(
+                        "warning",
+                        "[Test Presteer] 等待启动条件："
+                        "四轮舵角反馈新鲜=%s（阈值 %.3fs），"
+                        "Action %s 可用=%s；速度保持为零",
+                        motor_feedback_ready,
+                        feedback_timeout_sec,
+                        self.steering_action_name,
+                        action_server_ready,
+                    )
+                return
+
+            assert self.latest_motor is not None
+            try:
+                vx_base, vy_base, wz = self._initial_body_command(
+                    config, command_frame_pose)
+                targets = self._compute_presteer_targets(
+                    vx_base,
+                    vy_base,
+                    wz,
+                    self.latest_motor.position,
+                )
+            except ValueError as error:
+                self._abort_test(f"无法计算起步预对舵角：{error}")
+                return
+
+            self.pending_config = None
+            self.config = config
+            self.state = "presteering"
+            self.start_requested = False
+            self.last_status_log_sec = -math.inf
+            self.set_parameters(
+                [Parameter("run_test", Parameter.Type.BOOL, False)])
+            self._publish_zero()
+            self._log("info", "=" * 88)
+            self._send_presteer_goal(targets)
+            return
+
+        self.presteer_targets_rad = []
+        self.presteer_elapsed_sec = 0.0
+        self.presteer_result_message = "disabled"
+        self._start_motion(
+            config,
+            pose,
+            command_frame_pose,
+            command_frame_yaw_in_map,
+        )
+
+    def _start_motion(
+        self,
+        config: TestConfig,
+        pose: Pose2D,
+        command_frame_pose: Optional[Pose2D],
+        command_frame_yaw_in_map: float,
+    ) -> None:
+        """建立正式测试起点；只有预对舵成功（或明确禁用）后才能进入。"""
+        now_sec = self._now_sec()
         self.pending_config = None
-        travel_distance = config.speed_mps * config.duration_sec
+        if not config.is_rotation:
+            assert command_frame_pose is not None
+            # [Test Command Frame] 把命令坐标系方向换算到 map，仅用于理论轨迹、
+            # 横向误差和绘图；实际发布仍在每周期使用 command_frame->base。
+            yaw_map_from_command = normalize_angle(
+                pose.yaw - command_frame_pose.yaw)
+            cos_map_from_command = math.cos(yaw_map_from_command)
+            sin_map_from_command = math.sin(yaw_map_from_command)
+            config.map_direction_x = (
+                cos_map_from_command * config.direction_x
+                - sin_map_from_command * config.direction_y
+            )
+            config.map_direction_y = (
+                sin_map_from_command * config.direction_x
+                + cos_map_from_command * config.direction_y
+            )
+
+        travel_distance = self._linear_distance_at(
+            config, config.duration_sec)
         if config.is_rotation:
             target = Pose2D(
                 x=pose.x,
@@ -1071,8 +1722,8 @@ class OmniChassisTest(Node):
             )
         else:
             target = Pose2D(
-                x=pose.x + config.direction_x * travel_distance,
-                y=pose.y + config.direction_y * travel_distance,
+                x=pose.x + config.map_direction_x * travel_distance,
+                y=pose.y + config.map_direction_y * travel_distance,
                 yaw=pose.yaw,
                 stamp_sec=pose.stamp_sec,
             )
@@ -1087,10 +1738,11 @@ class OmniChassisTest(Node):
             if config.is_rotation
             else f"{config.speed_mps:.3f}mps"
         )
+        frame_run_name = config.command_frame_id.replace("/", "_")
         run_name = (
             datetime.now().strftime("%Y%m%d_%H%M%S_%f")
             + loop_prefix
-            + f"_{config.mode}_{speed_label}"
+            + f"_{frame_run_name}_{config.mode}_{speed_label}"
         )
         self.run_dir = self.output_dir / run_name
         self.run_dir.mkdir(parents=True, exist_ok=False)
@@ -1132,14 +1784,33 @@ class OmniChassisTest(Node):
                 config.duration_sec,
             )
         else:
+            (
+                peak_speed_mps,
+                accel_end_sec,
+                decel_start_sec,
+            ) = self._linear_profile(config)
             self._log(
                 "info",
-                "平移测试开始：mode=%s，速度=%.3f m/s，时间=%.3f s，"
-                "map 平移角=%.3f deg，理论距离=%.3f m",
+                "平移测试开始：mode=%s，目标/实际峰值速度="
+                "%.3f/%.3f m/s，时间=%.3f s，"
+                "加/减速度=%.3f/%.3f m/s^2，"
+                "加速结束/减速开始=%.3f/%.3f s，"
+                "command_frame_id=%s，frame 内平移角=%.3f deg，"
+                "frame 在 map 中的起始 yaw=%.3f deg，"
+                "起始 map 方向=%.3f deg，理论距离=%.3f m",
                 config.mode,
                 config.speed_mps,
+                peak_speed_mps,
                 config.duration_sec,
+                config.linear_accel_mps2,
+                config.linear_decel_mps2,
+                accel_end_sec,
+                decel_start_sec,
+                config.command_frame_id,
                 config.angle_deg,
+                math.degrees(command_frame_yaw_in_map),
+                math.degrees(math.atan2(
+                    config.map_direction_y, config.map_direction_x)),
                 travel_distance,
             )
         self._log(
@@ -1207,19 +1878,21 @@ class OmniChassisTest(Node):
             # 节点关闭过程中通信上下文可能已经失效，此时不能再发布消息。
             self._log("warning", "零速发布失败：%s", error)
 
-    def _publish_map_velocity(
-        self, pose: Pose2D, vx_map: float, vy_map: float, wz: float = 0.0
+    def _publish_frame_velocity(
+        self, frame_pose: Pose2D, vx_frame: float, vy_frame: float,
+        wz: float = 0.0
     ) -> Tuple[float, float]:
-        """将 map 固定方向速度转换到底盘坐标系并附带旋转速度后发布。
+        """将指定坐标系中的平移速度转换到底盘坐标系后发布。
 
-        map -> base 的二维速度旋转：
-          vx_base =  cos(yaw) * vx_map + sin(yaw) * vy_map
-          vy_base = -sin(yaw) * vx_map + cos(yaw) * vy_map
+        frame -> base 的二维速度旋转：
+          vx_base =  cos(yaw) * vx_frame + sin(yaw) * vy_frame
+          vy_base = -sin(yaw) * vx_frame + cos(yaw) * vy_frame
+
+        geometry_msgs/Twist 本身没有 Header；command_frame_id 只决定输入数值
+        如何解释，发布给 region 的 linear.x/y 始终是 base_frame 语义。
         """
-        cos_yaw = math.cos(pose.yaw)
-        sin_yaw = math.sin(pose.yaw)
-        vx_base = cos_yaw * vx_map + sin_yaw * vy_map
-        vy_base = -sin_yaw * vx_map + cos_yaw * vy_map
+        vx_base, vy_base = self._frame_velocity_to_base(
+            frame_pose, vx_frame, vy_frame)
 
         message = Twist()
         message.linear.x = vx_base
@@ -1279,6 +1952,30 @@ class OmniChassisTest(Node):
                 self._begin_test()
             return
 
+        if self.state == "presteering":
+            # [Test Presteer][Zero Gate]
+            # Action 完成前持续向普通 Twist 链发布零速。region 此时由 Action
+            # 独占电机输出，因此绝不会提前放行测试速度。
+            self._publish_zero()
+            now_sec = self._now_sec()
+            if now_sec >= self.presteer_deadline_sec:
+                self._abort_test(
+                    "等待 SteeringAngleControl 结果超过客户端保护时限")
+                return
+            if (
+                self.verbose
+                and now_sec - self.last_status_log_sec >= 0.5
+            ):
+                self.last_status_log_sec = now_sec
+                self._log(
+                    "info",
+                    "[Test Presteer] 等待四轮到位："
+                    "当前最大误差=%.4frad，客户端剩余保护时间=%.2fs",
+                    self.presteer_max_error_rad,
+                    max(0.0, self.presteer_deadline_sec - now_sec),
+                )
+            return
+
         assert self.config is not None
         assert self.start_pose is not None
         assert self.target_pose is not None
@@ -1289,8 +1986,26 @@ class OmniChassisTest(Node):
                 f"运行中丢失 TF {self.map_frame} -> {self.base_frame}")
             return
 
+        command_frame_pose = (
+            pose
+            if self.config.command_frame_id
+            == self.map_frame.strip().lstrip("/")
+            else self._lookup_pose_in_frame(self.config.command_frame_id)
+        )
+        if not self.config.is_rotation and command_frame_pose is None:
+            self._abort_test(
+                f"运行中丢失 TF {self.config.command_frame_id} -> "
+                f"{self.base_frame}")
+            return
+        command_frame_yaw_in_map = math.nan
+        if command_frame_pose is not None:
+            command_frame_yaw_in_map = normalize_angle(
+                pose.yaw - command_frame_pose.yaw)
+
         now_sec = self._now_sec()
         elapsed_sec = now_sec - self.test_start_sec
+        command_vx_frame = 0.0
+        command_vy_frame = 0.0
         command_vx_map = 0.0
         command_vy_map = 0.0
         command_vx_base = 0.0
@@ -1305,12 +2020,43 @@ class OmniChassisTest(Node):
                         * self.config.angular_speed_radps
                     )
                 else:
+                    ramped_speed_mps = self._linear_speed_at(
+                        self.config, elapsed_sec)
+                    command_vx_frame = (
+                        ramped_speed_mps * self.config.direction_x)
+                    command_vy_frame = (
+                        ramped_speed_mps * self.config.direction_y)
+                    assert command_frame_pose is not None
+                    command_vx_base, command_vy_base = (
+                        self._publish_frame_velocity(
+                            command_frame_pose,
+                            command_vx_frame,
+                            command_vy_frame,
+                            command_wz,
+                        )
+                    )
+
+                    # 同一命令换算到 map 后写入 CSV，便于 map/odom 两次测试
+                    # 使用统一坐标系叠图比较。
+                    yaw_map_from_command = command_frame_yaw_in_map
+                    cos_map_from_command = math.cos(yaw_map_from_command)
+                    sin_map_from_command = math.sin(yaw_map_from_command)
                     command_vx_map = (
-                        self.config.speed_mps * self.config.direction_x)
+                        cos_map_from_command * command_vx_frame
+                        - sin_map_from_command * command_vy_frame
+                    )
                     command_vy_map = (
-                        self.config.speed_mps * self.config.direction_y)
-                command_vx_base, command_vy_base = self._publish_map_velocity(
-                    pose, command_vx_map, command_vy_map, command_wz)
+                        sin_map_from_command * command_vx_frame
+                        + cos_map_from_command * command_vy_frame
+                    )
+                if self.config.is_rotation:
+                    # 绕 Z 轴角速度不受平面参考系旋转影响。
+                    self._publish_frame_velocity(
+                        Pose2D(0.0, 0.0, 0.0, now_sec),
+                        0.0,
+                        0.0,
+                        command_wz,
+                    )
             else:
                 self._publish_zero()
                 self.stop_pose = pose
@@ -1325,6 +2071,9 @@ class OmniChassisTest(Node):
             now_sec=now_sec,
             elapsed_sec=elapsed_sec,
             pose=pose,
+            command_frame_yaw_in_map=command_frame_yaw_in_map,
+            command_vx_frame=command_vx_frame,
+            command_vy_frame=command_vy_frame,
             command_vx_map=command_vx_map,
             command_vy_map=command_vy_map,
             command_vx_base=command_vx_base,
@@ -1362,10 +2111,10 @@ class OmniChassisTest(Node):
                 ),
                 stamp_sec=0.0,
             )
-        distance = self.config.speed_mps * moving_time
+        distance = self._linear_distance_at(self.config, moving_time)
         return Pose2D(
-            x=self.start_pose.x + self.config.direction_x * distance,
-            y=self.start_pose.y + self.config.direction_y * distance,
+            x=self.start_pose.x + self.config.map_direction_x * distance,
+            y=self.start_pose.y + self.config.map_direction_y * distance,
             yaw=self.start_pose.yaw,
             stamp_sec=0.0,
         )
@@ -1375,6 +2124,9 @@ class OmniChassisTest(Node):
         now_sec: float,
         elapsed_sec: float,
         pose: Pose2D,
+        command_frame_yaw_in_map: float,
+        command_vx_frame: float,
+        command_vy_frame: float,
         command_vx_map: float,
         command_vy_map: float,
         command_vx_base: float,
@@ -1419,6 +2171,15 @@ class OmniChassisTest(Node):
             "target_error_y": pose.y - self.target_pose.y,
             "target_error_yaw_rad": normalize_angle(
                 pose.yaw - self.target_pose.yaw),
+            "command_frame_id": (
+                self.config.command_frame_id if self.config else ""),
+            "command_frame_yaw_in_map_rad": command_frame_yaw_in_map,
+            "command_frame_yaw_in_map_deg": (
+                math.degrees(command_frame_yaw_in_map)
+                if math.isfinite(command_frame_yaw_in_map)
+                else math.nan),
+            "cmd_vx_command_frame": command_vx_frame,
+            "cmd_vy_command_frame": command_vy_frame,
             "cmd_vx_map": command_vx_map,
             "cmd_vy_map": command_vy_map,
             "cmd_vx_base": command_vx_base,
@@ -1611,9 +2372,32 @@ class OmniChassisTest(Node):
                 f"累计旋转={math.degrees(self.rotation_progress_rad):.2f}deg"
             )
         else:
+            initial_map_direction_deg = math.degrees(math.atan2(
+                self.config.map_direction_y,
+                self.config.map_direction_x,
+            ))
+            current_command_frame_yaw_deg = math.nan
+            current_command_speed_mps = math.nan
+            if self.samples:
+                current_command_frame_yaw_deg = float(
+                    self.samples[-1]["command_frame_yaw_in_map_deg"]
+                )
+                current_command_speed_mps = math.hypot(
+                    float(self.samples[-1]["cmd_vx_command_frame"]),
+                    float(self.samples[-1]["cmd_vy_command_frame"]),
+                )
             motion_text = (
-                f"平移速度={self.config.speed_mps:.3f}m/s，"
-                f"map角={self.config.angle_deg:.2f}deg"
+                f"命令/目标平移速度="
+                f"{current_command_speed_mps:.3f}/"
+                f"{self.config.speed_mps:.3f}m/s，"
+                f"加/减速度="
+                f"{self.config.linear_accel_mps2:.3f}/"
+                f"{self.config.linear_decel_mps2:.3f}m/s^2，"
+                f"command_frame={self.config.command_frame_id}，"
+                f"frame内角度={self.config.angle_deg:.2f}deg，"
+                f"起始map角度={initial_map_direction_deg:.2f}deg，"
+                f"frame相对map当前角度="
+                f"{current_command_frame_yaw_deg:.2f}deg"
             )
 
         self._log(
@@ -1704,23 +2488,26 @@ class OmniChassisTest(Node):
             )
         else:
             final_progress = (
-                (final_pose.x - self.start_pose.x) * self.config.direction_x
-                + (final_pose.y - self.start_pose.y) * self.config.direction_y
+                (final_pose.x - self.start_pose.x)
+                * self.config.map_direction_x
+                + (final_pose.y - self.start_pose.y)
+                * self.config.map_direction_y
             )
-            expected_distance = (
-                self.config.speed_mps * self.config.duration_sec)
+            expected_distance = self._linear_distance_at(
+                self.config, self.config.duration_sec)
             along_error = final_progress - expected_distance
             cross_error = (
-                -(final_pose.x - self.start_pose.x) * self.config.direction_y
+                -(final_pose.x - self.start_pose.x)
+                * self.config.map_direction_y
                 + (final_pose.y - self.start_pose.y)
-                * self.config.direction_x
+                * self.config.map_direction_x
             )
             max_progress = max(
                 (
                     (float(row["map_x"]) - self.start_pose.x)
-                    * self.config.direction_x
+                    * self.config.map_direction_x
                     + (float(row["map_y"]) - self.start_pose.y)
-                    * self.config.direction_y
+                    * self.config.map_direction_y
                 )
                 for row in self.samples
             )
@@ -1776,9 +2563,92 @@ class OmniChassisTest(Node):
             if math.isfinite(float(row[key]))
         ]
 
+        initial_map_direction_deg = math.degrees(math.atan2(
+            self.config.map_direction_y,
+            self.config.map_direction_x,
+        ))
+        initial_command_frame_yaw_in_map_deg = next(
+            (
+                float(row["command_frame_yaw_in_map_deg"])
+                for row in self.samples
+                if math.isfinite(
+                    float(row["command_frame_yaw_in_map_deg"]))
+            ),
+            math.nan,
+        )
+        command_frame_yaws_deg = [
+            float(row["command_frame_yaw_in_map_deg"])
+            for row in self.samples
+            if math.isfinite(float(row["command_frame_yaw_in_map_deg"]))
+        ]
+        command_frame_yaw_mean_deg = (
+            sum(command_frame_yaws_deg) / len(command_frame_yaws_deg)
+            if command_frame_yaws_deg
+            else math.nan
+        )
+        command_frame_yaw_min_deg = (
+            min(command_frame_yaws_deg)
+            if command_frame_yaws_deg
+            else math.nan
+        )
+        command_frame_yaw_max_deg = (
+            max(command_frame_yaws_deg)
+            if command_frame_yaws_deg
+            else math.nan
+        )
+        command_frame_yaw_span_deg = (
+            command_frame_yaw_max_deg - command_frame_yaw_min_deg
+            if command_frame_yaws_deg
+            else math.nan
+        )
         summary_lines = [
             "全向底盘测试结果",
             f"mode: {self.config.mode}",
+            f"command_frame_id: {self.config.command_frame_id}",
+            (
+                "presteer_enabled: "
+                f"{bool(self.get_parameter('presteer_enabled').value)}"
+            ),
+            f"presteer_action_name: {self.steering_action_name}",
+            (
+                "presteer_targets_rad_fl_fr_rl_rr: "
+                + (
+                    ", ".join(
+                        f"{value:.6f}"
+                        for value in self.presteer_targets_rad)
+                    if self.presteer_targets_rad
+                    else "none"
+                )
+            ),
+            f"presteer_elapsed_sec: {self.presteer_elapsed_sec:.6f}",
+            (
+                "presteer_final_max_error_rad: "
+                f"{self.presteer_max_error_rad:.6f}"
+            ),
+            (
+                "presteer_result_message: "
+                f"{self.presteer_result_message or 'none'}"
+            ),
+            (
+                "initial_command_frame_yaw_in_map_deg: "
+                f"{initial_command_frame_yaw_in_map_deg:.6f}"
+            ),
+            (
+                "command_frame_yaw_in_map_mean_deg: "
+                f"{command_frame_yaw_mean_deg:.6f}"
+            ),
+            (
+                "command_frame_yaw_in_map_min_deg: "
+                f"{command_frame_yaw_min_deg:.6f}"
+            ),
+            (
+                "command_frame_yaw_in_map_max_deg: "
+                f"{command_frame_yaw_max_deg:.6f}"
+            ),
+            (
+                "command_frame_yaw_in_map_span_deg: "
+                f"{command_frame_yaw_span_deg:.6f}"
+            ),
             f"duration_sec: {self.config.duration_sec:.6f}",
             (
                 "start_map: "
@@ -1830,8 +2700,20 @@ class OmniChassisTest(Node):
                 [
                     f"speed_mps: {self.config.speed_mps:.6f}",
                     (
+                        "linear_accel_mps2: "
+                        f"{self.config.linear_accel_mps2:.6f}"
+                    ),
+                    (
+                        "linear_decel_mps2: "
+                        f"{self.config.linear_decel_mps2:.6f}"
+                    ),
+                    (
                         "translation_angle_deg: "
                         f"{self.config.angle_deg:.6f}"
+                    ),
+                    (
+                        "initial_map_direction_deg: "
+                        f"{initial_map_direction_deg:.6f}"
                     ),
                     f"expected_distance_m: {expected_distance:.6f}",
                     f"along_track_error_m: {along_error:.6f}",
@@ -2077,6 +2959,10 @@ class OmniChassisTest(Node):
         self.stop_pose = None
         self.target_pose = None
         self.run_dir = None
+        self.presteer_targets_rad = []
+        self.presteer_elapsed_sec = math.nan
+        self.presteer_max_error_rad = math.nan
+        self.presteer_result_message = ""
         if self.loop_active:
             # 循环中的每一步仍走完整的停止观察和结果保存流程。完成后先保持
             # 零速等待 loop_pause_sec，再由定时器自动取出下一步。
@@ -2101,6 +2987,7 @@ class OmniChassisTest(Node):
             )
 
     def _abort_test(self, reason: str) -> None:
+        self._cancel_presteer_goal(reason)
         self._publish_zero()
         self._log("error", "测试中止并已发布零速：%s", reason)
         aborted_run_dir = self.run_dir
@@ -2108,11 +2995,18 @@ class OmniChassisTest(Node):
             self._write_csv(self.run_dir / "samples_aborted.csv")
         self.state = "idle"
         self.start_requested = False
+        if bool(self.get_parameter("run_test").value):
+            self.set_parameters(
+                [Parameter("run_test", Parameter.Type.BOOL, False)])
         self.config = None
         self.start_pose = None
         self.stop_pose = None
         self.target_pose = None
         self.run_dir = None
+        self.presteer_targets_rad = []
+        self.presteer_elapsed_sec = math.nan
+        self.presteer_max_error_rad = math.nan
+        self.presteer_result_message = ""
         if self.loop_active or self.loop_start_requested:
             if aborted_run_dir is not None:
                 self.loop_result_dirs.append(
@@ -2257,15 +3151,16 @@ class OmniChassisTest(Node):
                 time_values,
                 [
                     (float(row["map_x"]) - self.start_pose.x)
-                    * self.config.direction_x
+                    * self.config.map_direction_x
                     + (float(row["map_y"]) - self.start_pose.y)
-                    * self.config.direction_y
+                    * self.config.map_direction_y
                     for row in self.samples
                 ],
                 label="along-track progress",
             )
             axes[1].axhline(
-                self.config.speed_mps * self.config.duration_sec,
+                self._linear_distance_at(
+                    self.config, self.config.duration_sec),
                 color="tab:red",
                 linestyle="--",
                 label="theoretical distance",
@@ -2520,6 +3415,7 @@ class OmniChassisTest(Node):
 
     def emergency_stop(self) -> None:
         """退出前连续发布数次零速，提高停止命令被底层收到的概率。"""
+        self._cancel_presteer_goal("测试节点退出")
         for _ in range(5):
             self._publish_zero()
         self._log("warning", "测试节点退出，已连续发布零速")

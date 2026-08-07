@@ -6,16 +6,15 @@
 
 脚本可以完成以下测试：
 
-- 沿 map 坐标系 X 正方向直行；
-- 沿 map 坐标系 X 负方向直行；
-- 沿 map 坐标系 Y 正方向横移；
-- 沿 map 坐标系 Y 负方向横移；
-- 沿 map 坐标系下任意指定角度平移；
+- 沿可配置命令坐标系的 X 正/负方向直行；
+- 沿可配置命令坐标系的 Y 正/负方向横移；
+- 沿可配置命令坐标系下任意指定角度平移；
 - 原地向左或向右旋转指定角度；
 - 按用户定义的速度、距离、旋转角度和动作顺序执行有限循环测试；
 - 记录 map 位姿、理论目标、里程计速度、IMU 倾角和四轮电机反馈；
 - 记录底盘左右汇总电流、温度、状态字和错误码；
 - 自动生成 CSV、测试汇总和曲线图片；
+- 每一步运动前调用 `SteeringAngleControl` 静止预对舵，到位后才发送非零速度；
 - 停止发送运动速度后继续采样一段时间，用于观察停车过冲。
 
 平移模式只发送线速度，令 `angular.z=0`；原地旋转模式只发送 `angular.z`，令线速度为 0。脚本不提供无限循环，避免车辆在无人值守时持续运动。
@@ -53,14 +52,15 @@ ros2 topic info /control/cmd_vel_omni --verbose
 
 ## 3. 坐标系与角度定义
 
-所有测试方向都以建图或定位使用的 `map` 坐标系为准。
+平移测试方向由 `command_frame_id` 决定，默认值为建图或定位使用的
+`map`。也可以设为 `odom`、`base_link` 或其他能够查询到 TF 的坐标系。
 
-- `0°`：map X 正方向；
-- `90°`：map Y 正方向；
-- `180°`：map X 负方向；
-- `-90°`：map Y 负方向；
-- 正角度：从 map X 正方向开始逆时针旋转；
-- 负角度：从 map X 正方向开始顺时针旋转。
+- `0°`：命令坐标系 X 正方向；
+- `90°`：命令坐标系 Y 正方向；
+- `180°`：命令坐标系 X 负方向；
+- `-90°`：命令坐标系 Y 负方向；
+- 正角度：从命令坐标系 X 正方向开始逆时针旋转；
+- 负角度：从命令坐标系 X 正方向开始顺时针旋转。
 
 模式与方向对应关系：
 
@@ -74,7 +74,10 @@ ros2 topic info /control/cmd_vel_omni --verbose
 | `rotate_left` | 原地逆时针旋转 | 由 `rotation_angle_deg` 指定 |
 | `rotate_right` | 原地顺时针旋转 | 由 `rotation_angle_deg` 指定 |
 
-机器人自身朝向不会改变上述方向定义。脚本会根据机器人当前 yaw，将 map 方向的速度自动转换到底盘坐标系。
+机器人自身朝向不会改变上述方向定义。脚本会查询
+`command_frame_id -> base_link`，把该坐标系中的速度转换为 region 接收的
+车体坐标系速度。`geometry_msgs/Twist` 没有 `header.frame_id`，所以
+`command_frame_id` 是脚本参数，而不是消息字段。
 
 ---
 
@@ -85,11 +88,13 @@ ros2 topic info /control/cmd_vel_omni --verbose
 | 用途 | 话题 | 消息类型 |
 |---|---|---|
 | 底盘速度命令 | `/control/cmd_vel_omni` | `geometry_msgs/msg/Twist` |
+| 起步静止预对舵 | `/steering_angle_control` | `nav_interfaces/action/SteeringAngleControl` |
 | 里程计反馈 | `/feedback/odom` | `nav_msgs/msg/Odometry` |
 | 四轮位置和速度 | `/feedback/omni_chassis_motor` | `chassis_interfaces/msg/ChassisMotorControl` |
 | 底盘 IMU | `/imu/chassis/refined` | `sensor_msgs/msg/Imu` |
 | 底盘汇总状态 | `/feedback/robot_server_state` | `std_msgs/msg/String`，内容为 JSON |
-| 位姿坐标变换 | `map -> base_link` | TF |
+| 轨迹记录位姿变换 | `map -> base_link` | TF |
+| 命令速度变换 | `command_frame_id -> base_link` | TF |
 
 其中 `/feedback/robot_server_state` 当前能够提供：
 
@@ -169,6 +174,7 @@ source install/setup.bash
 
 python3 src/mobile_joy_control/scripts/omni_chassis_test.py --ros-args \
   -p output_dir:=/home/dexforce/omni_test/omni_test_logs \
+  -p settle_tolerance_rad:=0.08 \
   -p verbose:=true
 ```
 
@@ -182,8 +188,19 @@ python3 src/mobile_joy_control/scripts/omni_chassis_test.py --ros-args \
 |---|---:|---|
 | `mode` | `x_positive` | 运动模式 |
 | `speed_mps` | `0.10` | 平移速度绝对值，单位 m/s，必须大于 0 |
-| `duration_sec` | `3.0` | 持续发送运动速度的时间，单位 s |
-| `translation_angle_deg` | `0.0` | `mode=angle` 时的 map 平移角度 |
+| `linear_accel_mps2` | `0.50` | 平移起步加速度斜坡，单位 m/s²；只在本脚本发布 Twist 时生效 |
+| `linear_decel_mps2` | `0.50` | 平移停车减速度斜坡，单位 m/s²；只在本脚本发布 Twist 时生效 |
+| `duration_sec` | `3.0` | 整个平移运动时间，包含加速、匀速和减速，单位 s |
+| `command_frame_id` | `map` | 平移速度的解释坐标系；支持 `map`、`odom`、`base_link` 或其他有效 TF frame |
+| `translation_angle_deg` | `0.0` | `mode=angle` 时相对 `command_frame_id` +X 的平移角度 |
+| `presteer_enabled` | `true` | 每一步首个非零速度前是否静止预对舵并等待到位 |
+| `steering_action_name` | `/steering_angle_control` | 静止预对舵 Action 名称 |
+| `action_timeout_sec` | `3.0` | 预对舵 Action 执行超时，单位 s |
+| `settle_tolerance_rad` | `0.08` | 预对舵最大舵角到位误差，单位 rad |
+| `steering_feedback_timeout_sec` | `0.2` | 选择最近 π 等价解所用舵角反馈的最大接收延迟 |
+| `chassis_length` | `0.460` | 前后轮距，单位 m，必须与 region 一致 |
+| `chassis_width` | `0.345` | 左右轮距，单位 m，必须与 region 一致 |
+| `steering_limit_rad` | `2.513274` | 舵角绝对限位，单位 rad，必须与 region 一致 |
 | `angular_speed_radps` | `0.30` | 原地旋转角速度绝对值，单位 rad/s |
 | `rotation_angle_deg` | `90.0` | 单次原地旋转角度，范围 `(0, 360]` |
 | `settle_time_sec` | `2.0` | 停止后继续采样的时间，用于观察过冲 |
@@ -192,17 +209,31 @@ python3 src/mobile_joy_control/scripts/omni_chassis_test.py --ros-args \
 | `overshoot_threshold_m` | `0.01` | 过冲判定阈值，单位 m |
 | `rotation_overshoot_threshold_deg` | `2.0` | 原地旋转过冲判定阈值，单位 deg |
 | `loop_steps` | 见下文 | 用户定义的循环动作字符串数组 |
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!11
+例如把预对舵到位阈值调为 `0.05 rad`（约 `2.86°`），需在测试空闲时执行：
+
+```bash
+ros2 param set /omni_chassis_test settle_tolerance_rad 0.05
+```
+
+也可以在启动脚本时直接指定：
+
+```bash
+python3 src/mobile_joy_control/scripts/omni_chassis_test.py --ros-args \
+  -p settle_tolerance_rad:=0.05
+```
 | `loop_count` | `1` | 完整执行 `loop_steps` 的次数，范围 `1~1000` |
 | `loop_pause_sec` | `1.0` | 相邻动作之间持续发零速的等待时间，单位 s |
 | `publish_rate_hz` | `20.0` | 速度命令发布频率，默认周期为 50 ms |
 | `run_test` | `false` | 设置为 `true` 后启动一次测试 |
 | `run_loop` | `false` | 设置为 `true` 后启动一次有限循环测试 |
 | `cancel_test` | `false` | 设置为 `true` 后立即取消测试并发送零速 |
-
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 以下参数在节点启动时读取，修改后应重启脚本：
 
 - `publish_rate_hz`
 - `command_topic`
+- `steering_action_name`
 - `odom_topic`
 - `motor_feedback_topic`
 - `imu_topic`
@@ -224,10 +255,92 @@ python3 src/mobile_joy_control/scripts/omni_chassis_test.py --ros-args \
 3. 设置运行时间；
 4. 如有需要，设置停止后采样时间和过冲阈值；
 5. 设置 `run_test=true` 启动测试；
-6. 等待脚本自动结束；
-7. 查看日志、CSV、汇总和图片。
+6. 脚本保持零速，计算第一帧运动对应的四轮舵角并调用预对舵 Action；
+7. 四轮反馈全部进入容差后，脚本重新记录正式起点，并按加减速度参数生成完整速度斜坡；
+8. 等待脚本自动结束；
+9. 查看日志、CSV、汇总和图片。
 
 一次测试结束后，`run_test` 会自动恢复为 `false`。节点不会退出，可以继续修改参数并执行下一次测试。
+
+### 8.0.1 起步预对舵
+
+默认 `presteer_enabled=true`。每次单次测试以及循环测试的每一个步骤都会执行：
+
+```text
+持续发布零 Twist
+  -> 根据第一帧 base_link Twist 计算 FL/FR/RL/RR 目标舵角
+  -> 根据最新舵角反馈选择距离最近的 π 等价解
+  -> 调用 /steering_angle_control
+  -> 等待 Action 报告四轮到位
+  -> 重新采集 map 起点并从 t=0 放行非零速度
+```
+
+Action 被拒绝、执行失败、超时、反馈过旧或测试被取消时，不会发送非零测试
+速度。`summary.txt` 会保存目标舵角、对舵耗时、最终最大误差和结果消息。
+
+只有排查旧行为时才建议临时关闭：
+
+```bash
+ros2 param set /omni_chassis_test presteer_enabled false
+```
+
+正常落地测试应保持为 `true`。
+
+### 8.0.2 平移加减速度斜坡
+
+平移测试默认由脚本使用 `0.50 m/s²` 加速，并在运动结束前使用
+`0.50 m/s²` 减速到零。该功能不修改也不依赖 region 内部的速度处理：
+
+```bash
+ros2 param set /omni_chassis_test linear_accel_mps2 0.5
+ros2 param set /omni_chassis_test linear_decel_mps2 0.5
+```
+
+单次测试的 `duration_sec` 包含加速、匀速和减速时间。如果设置
+`speed_mps=0.5`、加减速度均为 `0.5 m/s²`、`duration_sec=3.0`，速度曲线
+为“加速 `1.0 s` → 保持 `1.0 s` → 减速 `1.0 s`”，理论距离为
+`1.0 m`。
+
+如果运行时间不足以达到 `speed_mps`，脚本自动生成三角形速度曲线。例如
+上述参数改为 `duration_sec=1.0` 时，实际峰值速度为 `0.25 m/s`，随后
+立即进入减速，理论距离为 `0.125 m`，不会违反加减速度限制。
+
+该斜坡只作用于平移速度，原地旋转保持原来的角速度指令。循环测试的
+平移步骤仍以指定距离为准，脚本会自动延长该步骤的时间以补偿起步斜坡。
+
+### 8.0.3 对比 map 与 odom 命令方向
+
+`geometry_msgs/Twist` 没有 Header，因此脚本不能在消息里真正填写
+`header.frame_id`。`command_frame_id` 是脚本对输入速度数值的解释方式：
+
+- `map`：使用 `map -> base_link` 把固定 map 方向速度转换成车体速度；
+- `odom`：只使用 `odom -> base_link`，不会使用 `map -> odom`；
+- `base_link`：不旋转速度，直接赋值到 `Twist.linear.x/y`。
+
+先执行原有 map +X 测试：
+
+```bash
+ros2 param set /omni_chassis_test command_frame_id map
+ros2 param set /omni_chassis_test mode x_positive
+ros2 param set /omni_chassis_test speed_mps 0.05
+ros2 param set /omni_chassis_test duration_sec 3.0
+ros2 param set /omni_chassis_test run_test true
+```
+
+机器人回到相同起始条件后，再执行 odom +X：
+
+```bash
+ros2 param set /omni_chassis_test command_frame_id odom
+ros2 param set /omni_chassis_test mode x_positive
+ros2 param set /omni_chassis_test speed_mps 0.05
+ros2 param set /omni_chassis_test duration_sec 3.0
+ros2 param set /omni_chassis_test run_test true
+```
+
+CSV 中的 `command_frame_yaw_in_map_deg` 会逐周期记录命令坐标系在 map
+中的旋转角；`summary.txt` 还会给出其平均值、最小值、最大值和变化范围。
+如果 odom 测试相对 map 测试稳定相差约 12°，且这些统计值也接近这个角度，
+应重点检查 `map -> odom` 的初始化或定位修正。
 
 ### 8.1 X 正方向直行
 
@@ -271,7 +384,8 @@ ros2 param set /omni_chassis_test run_test true
 
 ### 8.5 任意角度平移
 
-下面的例子表示沿 map 坐标系 `30°` 方向，以 `0.05 m/s` 运行 `1 s`：
+下面的例子表示沿 `command_frame_id` 坐标系 `30°` 方向，以
+`0.05 m/s` 运行 `1 s`：
 
 ```bash
 ros2 param set /omni_chassis_test mode angle
@@ -316,11 +430,12 @@ ros2 param set /omni_chassis_test run_test true
 
 ```text
 固定方向平移：模式,速度m/s,距离m
-任意角度平移：angle,速度m/s,距离m,map角度deg
+任意角度平移：angle,速度m/s,距离m,命令坐标系角度deg
 原地旋转：rotate_left或rotate_right,角速度rad/s,旋转角度deg
 ```
 
-例如，下面定义“向前 0.5 m → 左转 90° → 沿 map 45° 平移 0.3 m → 右转 90°”，完整动作重复 3 次：
+例如，下面定义“沿命令坐标系 X+ 前进 0.5 m → 左转 90° →
+沿命令坐标系 45° 平移 0.3 m → 右转 90°”，完整动作重复 3 次：
 
 ```bash
 ros2 param set /omni_chassis_test loop_steps \
@@ -333,7 +448,10 @@ ros2 param set /omni_chassis_test run_loop true
 这里平移步骤使用“距离”而不是“时间”，脚本内部自动计算：
 
 ```text
-平移时间 = 距离 ÷ 平移速度
+能达到目标速度时：
+  平移时间 = 加速时间 + 匀速时间 + 减速时间
+距离短、未达到目标速度时：
+  脚本按加速度和减速度计算可达到的三角形曲线峰值及总时间
 旋转时间 = 旋转角度（rad）÷ 角速度
 总动作数 = loop_steps 中的动作数 × loop_count
 ```
@@ -374,7 +492,7 @@ verbose 日志包括：
 
 - 当前测试阶段；
 - 已运行时间和设定运行时间；
-- map 平移角度；
+- 命令坐标系中的平移角度；
 - 原地旋转角速度、目标角度和累计实际旋转角度；
 - 当前 map 位姿；
 - 当前理论位姿；
@@ -520,6 +638,9 @@ ls -lh /home/dexforce/omni_test/omni_test_logs/latest/
 - `map_x/map_y/map_yaw_rad`：实际 map 位姿；
 - `theory_x/theory_y`：当前时刻理论位置；
 - `target_error_x/target_error_y/target_error_yaw_rad`：相对最终目标误差；
+- `command_frame_id`：本次命令使用的参考坐标系；
+- `command_frame_yaw_in_map_rad/deg`：命令坐标系在 map 中的当前 yaw；
+- `cmd_vx_command_frame/cmd_vy_command_frame`：设置坐标系中的原始命令速度；
 - `cmd_vx_map/cmd_vy_map`：map 下命令速度；
 - `cmd_vx_base/cmd_vy_base`：转换到底盘坐标系后的命令速度；
 - `cmd_wz`：原地旋转命令角速度；
@@ -676,28 +797,17 @@ yaw 误差 = 实际终点 yaw - 理论终点 yaw
 
 ---
 
-## 14. 驻车状态下的低速测试注意事项
+## 14. 当前 region 下的低速测试注意事项
 
-当前 `mobile_cmd_omni_region.cpp` 的驻车保持解除条件为：
+当前 region 已没有驻车锁存、`0.8 s` 保护期或 Unpark 状态机。
 
-- 驻车保护时间超过 `0.8 s`；
-- 平移速度大小严格大于 `0.04 m/s`，或者旋转速度大小严格大于 `0.04 rad/s`。
+- 零 Twist：四轮轮速为零并保持当前反馈舵角；
+- 非零 Twist：立即进入普通几何解算；
+- 如果舵角误差超过 region 的 Two-Phase 阈值，四个驱动轮保持零速并先对舵；
+- 测试脚本不会主动调用 `SteeringAngleControl`。
 
-因此：
-
-- 正好发送 `0.04 m/s` 不能解除驻车；
-- 发送 `0.05 m/s` 可以满足当前平移解除阈值；
-- 如果需要测试小于或等于 `0.04 m/s` 的速度，测试前必须确认底盘不处于驻车保持状态。
-
-驻车被新运动指令解除后，不会立即给驱动轮速度，而是进入驻车恢复对舵状态：
-
-1. 按当前运动指令计算四轮目标舵角；
-2. 对舵期间四个驱动轮速度始终保持为 0；
-3. 四轮真实舵角反馈误差需要连续 3 个控制周期不超过 `0.08 rad`；
-4. 达到条件的当前周期仍保持零轮速；
-5. 下一控制周期才恢复正常轮速解算。
-
-脚本会持续发送设置的速度直到 `duration_sec` 结束，但它不会主动调用驻车 Action。
+因此低速测试不再需要超过旧版驻车解除阈值，但仍应确认没有导航、遥控器
+或其他节点同时发布 `/control/cmd_vel_omni`。
 
 ---
 

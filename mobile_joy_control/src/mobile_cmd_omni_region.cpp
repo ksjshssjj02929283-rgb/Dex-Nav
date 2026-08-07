@@ -26,23 +26,16 @@
 #define PI_CHASSIS 3.141592f
 #define FRONT_DIRECTION_ANGLE 1.570796f  // 车头方向相对舵角零位偏移
 #define ZERO_ANGLE_THETA 0.090625f       // 舵机零位机械偏置
-#define STEER_ANGLE_LIMIT (PI_CHASSIS * 0.8f)  // 舵角限位（rad，默认90度）
+#define STEER_ANGLE_LIMIT (PI_CHASSIS * 0.8f)  // 舵角限位（rad，约144度）
 
 #define STEER_MAX_STEP 6.28f  // rad / cycle
 #define SPEED_RAMP_RATE 0.8f
 #define ANGLE_EPS 1.0f
 
-// 驻车完成后先保持一小段时间，避免导航速度平滑器残留的减速指令立即解除驻车。
-static constexpr float PARK_PREEMPT_GRACE_SEC = 0.8f;
-// 只有明确的新运动指令超过以下阈值，才认为新任务需要解除驻车。
-static constexpr float PARK_PREEMPT_LINEAR_MPS = 0.001f;
-static constexpr float PARK_PREEMPT_YAW_RADPS = 0.001f;
-// 真正解除驻车保持后，必须先零轮速对舵。0.08rad 约为 4.6°，
-// 与 SteeringAngleControl 默认到位容差一致，避免原 ANGLE_EPS=1rad
-// 导致 45° 未对正就起步。
-static constexpr float UNPARK_ALIGN_TOLERANCE_RAD = 0.08f;
-// 连续多个控制周期到位才恢复轮速，过滤单帧反馈抖动。
-static constexpr int UNPARK_ALIGN_STABLE_CYCLES = 3;
+// [Layer 1][Zero Command Contract]
+// region 对“零 Twist”的解释仅是安全停轮并保持当前舵角，不包含驻车策略。
+static constexpr float ZERO_CMD_LINEAR_EPS = 1.0e-4f;
+static constexpr float ZERO_CMD_YAW_EPS = 1.0e-4f;
 
 // static inline float wrap_pi(float ang)
 // {
@@ -80,7 +73,6 @@ public:
             prev_angle_[i] = 0.0f;
             prev_speed_rpm_[i] = 0.0f;
         }
-        prev_vx_ = 0.0f;
 
         // 订阅 /control/cmd_vel
         cmd_vel_sub_ = this->create_subscription<geometry_msgs::msg::Twist>(
@@ -95,23 +87,25 @@ public:
         motor_control_pub_ =
             this->create_publisher<chassis_interfaces::msg::ChassisMotorControl>("/control/omni_chassis_motors", 10);
 
-        // 提供 /steering_angle_control Action Server。
-        // 驻车指令和正常底盘指令由同一节点发布，
+        // [Layer 1][Steering Primitive]
+        // 提供一次性 /steering_angle_control Action Server。
+        // 静止对舵和正常底盘指令由同一节点发布，
         // 避免两个节点同时写 /control/omni_chassis_motors 导致指令互相覆盖。
         steering_angle_control_server_ =
             rclcpp_action::create_server<SteeringAngleControl>(
             this, "steering_angle_control",
-            std::bind(&MobileOmniController::handleParkGoal, this, std::placeholders::_1, std::placeholders::_2),
-            std::bind(&MobileOmniController::handleParkCancel, this, std::placeholders::_1),
-            std::bind(&MobileOmniController::handleParkAccepted, this, std::placeholders::_1));
+            std::bind(&MobileOmniController::handleSteeringGoal, this, std::placeholders::_1, std::placeholders::_2),
+            std::bind(&MobileOmniController::handleSteeringCancel, this, std::placeholders::_1),
+            std::bind(&MobileOmniController::handleSteeringAccepted, this, std::placeholders::_1));
 
         // 初始化缓存指令与时间戳
         latest_cmd_ = geometry_msgs::msg::Twist();
         last_cmd_time_ = this->now();
 
-        // 20Hz 定时器：定时解算并发布电机控制指令
+        // [Layer 1][Region Control Frequency]
+        // 100Hz 定时器：降低 Twist 缓存等待时间；不改变底盘几何解算职责。
         using namespace std::chrono_literals;
-        timer_ = this->create_wall_timer(50ms, std::bind(&MobileOmniController::publishControlCallback, this));
+        timer_ = this->create_wall_timer(10ms, std::bind(&MobileOmniController::publishControlCallback, this));
         RCLCPP_INFO(
             this->get_logger(),
             "[ControlTiming] 已启用底盘控制耗时统计，车辆运动时每 1 秒输出一次平均值和最大值");
@@ -124,6 +118,7 @@ private:
                 prev_angle_[i] = static_cast<float>(msg->position[i]);
             }
             steering_feedback_received_ = true;
+            last_steering_feedback_time_ = this->now();
         }
         if (msg->speed.size() >= 4) {
             for (int i = 0; i < 4; ++i) {
@@ -134,21 +129,22 @@ private:
         }
     }
 
-    rclcpp_action::GoalResponse handleParkGoal(
+    // [Layer 1][Steering Primitive] 只校验执行条件，不判断起步或驻车用途。
+    rclcpp_action::GoalResponse handleSteeringGoal(
         const rclcpp_action::GoalUUID&,
         std::shared_ptr<const SteeringAngleControl::Goal> goal) {
         {
-            std::lock_guard<std::mutex> lock(park_mutex_);
-            if (park_active_) {
+            std::lock_guard<std::mutex> lock(steering_action_mutex_);
+            if (steering_action_active_) {
                 RCLCPP_WARN(
                     this->get_logger(),
-                    "[SteeringAngleControl] 已有驻车任务正在执行，拒绝新任务");
+                    "[SteeringAngleControl] 已有静止对舵任务正在执行，拒绝新任务");
                 return rclcpp_action::GoalResponse::REJECT;
             }
         }
 
-        // 驻车目标同样必须满足本文件统一配置的舵角机械限位。
-        for (std::size_t wheel = 0; wheel < park_targets_.size(); ++wheel) {
+        // Action 目标与普通解算共用同一机械舵角限位。
+        for (std::size_t wheel = 0; wheel < steering_action_targets_.size(); ++wheel) {
             const float target = goal->target_steer_angles_rad[wheel];
             if (!std::isfinite(target) || std::abs(target) > STEER_ANGLE_LIMIT) {
                 RCLCPP_WARN(
@@ -163,14 +159,14 @@ private:
         return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
     }
 
-    rclcpp_action::CancelResponse handleParkCancel(
+    rclcpp_action::CancelResponse handleSteeringCancel(
         const std::shared_ptr<GoalHandleSteeringAngleControl>) {
         RCLCPP_INFO(
-            this->get_logger(), "[SteeringAngleControl] 收到取消驻车请求");
+            this->get_logger(), "[SteeringAngleControl] 收到取消静止对舵请求");
         return rclcpp_action::CancelResponse::ACCEPT;
     }
 
-    void handleParkAccepted(
+    void handleSteeringAccepted(
         const std::shared_ptr<GoalHandleSteeringAngleControl> goal_handle) {
         const auto goal = goal_handle->get_goal();
         float timeout = goal->timeout_sec;
@@ -183,17 +179,16 @@ private:
         }
 
         {
-            std::lock_guard<std::mutex> lock(park_mutex_);
-            park_targets_ = goal->target_steer_angles_rad;
-            park_tolerance_ = tolerance;
-            park_start_time_ = this->now();
-            park_deadline_ = park_start_time_ + rclcpp::Duration::from_seconds(timeout);
-            park_goal_handle_ = goal_handle;
-            park_hold_active_ = false;
-            park_active_ = true;
-            // 新的 SteeringAngleControl 指令优先级高于正在进行的驻车恢复对舵。
-            unpark_align_active_ = false;
-            unpark_align_stable_cycles_ = 0;
+            std::lock_guard<std::mutex> lock(steering_action_mutex_);
+            steering_action_targets_ = goal->target_steer_angles_rad;
+            steering_action_tolerance_ = tolerance;
+            steering_action_start_time_ = this->now();
+            steering_action_deadline_ =
+                steering_action_start_time_ + rclcpp::Duration::from_seconds(timeout);
+            steering_action_goal_handle_ = goal_handle;
+            // 新 Action 接管此前可能存在的目标保持；执行期间仍由 Action 分支输出。
+            steering_action_hold_active_ = false;
+            steering_action_active_ = true;
         }
 
         RCLCPP_INFO(
@@ -206,17 +201,25 @@ private:
             tolerance, timeout);
     }
 
-    void finishPark(bool success, const std::string& message) {
+    void finishSteeringAction(bool success, const std::string& message) {
         std::shared_ptr<GoalHandleSteeringAngleControl> goal_handle;
         rclcpp::Time start_time;
+        bool target_hold_enabled = false;
         {
-            std::lock_guard<std::mutex> lock(park_mutex_);
-            goal_handle = park_goal_handle_;
-            start_time = park_start_time_;
-            park_goal_handle_.reset();
-            park_active_ = false;
-            // 驻车成功后始终锁存零轮速与目标舵角，直到明确的新运动指令解除。
-            park_hold_active_ = success;
+            std::lock_guard<std::mutex> lock(steering_action_mutex_);
+            goal_handle = steering_action_goal_handle_;
+            start_time = steering_action_start_time_;
+            steering_action_goal_handle_.reset();
+            steering_action_active_ = false;
+            // [Layer 1][Steering Primitive Handoff]
+            // 只有真正成功的目标才进入零速保持。超时或取消不能锁存一个尚未到位的
+            // 角度。保持只负责电机输出连续性，首条新非零 Twist 会自动解除。
+            target_hold_enabled =
+                success && goal_handle && !goal_handle->is_canceling();
+            steering_action_hold_active_ = target_hold_enabled;
+            if (target_hold_enabled) {
+                steering_action_hold_start_time_ = this->now();
+            }
         }
 
         if (!goal_handle) {
@@ -236,47 +239,53 @@ private:
         } else if (success) {
             goal_handle->succeed(result);
             RCLCPP_INFO(
-                this->get_logger(), "[SteeringAngleControl] 任务完成：%s",
+                this->get_logger(),
+                "[SteeringAngleControl] 任务完成并锁存目标舵角：%s；"
+                "收到新的非零 Twist 后自动解除",
                 message.c_str());
         } else {
             goal_handle->abort(result);
             RCLCPP_WARN(
-                this->get_logger(), "[SteeringAngleControl] 驻车失败：%s",
+                this->get_logger(), "[SteeringAngleControl] 静止对舵失败：%s",
                 message.c_str());
         }
     }
 
-    // 返回 true 表示本周期已生成驻车指令，调用方应直接发布，不再执行正常运动解算。
-    bool tickParkMode(chassis_interfaces::msg::ChassisMotorControl& output) {
+    // [Layer 1][Steering Primitive]
+    // 返回 true 表示本周期由 Action 生成“目标舵角 + 四轮零速”，
+    // 调用方直接发布，不执行普通 Twist 解算。
+    bool tickSteeringAction(chassis_interfaces::msg::ChassisMotorControl& output) {
         std::array<float, 4> targets{};
         std::shared_ptr<GoalHandleSteeringAngleControl> goal_handle;
         float tolerance = 0.08f;
         rclcpp::Time deadline;
-        bool park_active = false;
-        bool park_hold_active = false;
+        rclcpp::Time start_time;
         {
-            std::lock_guard<std::mutex> lock(park_mutex_);
-            park_active = park_active_;
-            park_hold_active = park_hold_active_;
-            if (!park_active && !park_hold_active) {
+            std::lock_guard<std::mutex> lock(steering_action_mutex_);
+            if (!steering_action_active_) {
                 return false;
             }
-            targets = park_targets_;
-            tolerance = park_tolerance_;
-            deadline = park_deadline_;
-            goal_handle = park_goal_handle_;
+            targets = steering_action_targets_;
+            tolerance = steering_action_tolerance_;
+            deadline = steering_action_deadline_;
+            start_time = steering_action_start_time_;
+            goal_handle = steering_action_goal_handle_;
         }
 
         output.position.resize(4);
         output.speed.resize(4);
-        float max_error = steering_feedback_received_
+        // 必须使用 Action 接受之后到达的新反馈，避免用历史舵角误判到位。
+        const bool feedback_after_goal =
+            steering_feedback_received_ &&
+            (last_steering_feedback_time_ - start_time).seconds() >= 0.0;
+        float max_error = feedback_after_goal
                               ? 0.0f
                               : std::numeric_limits<float>::infinity();
         for (std::size_t wheel = 0; wheel < targets.size(); ++wheel) {
-            // 驻车期间始终直接下发目标舵角，同时强制四个驱动轮转速为零。
+            // Action 执行期间始终直接下发目标舵角，并强制四个驱动轮为零速。
             output.position[wheel] = targets[wheel];
             output.speed[wheel] = 0.0;
-            if (steering_feedback_received_) {
+            if (feedback_after_goal) {
                 max_error = std::max(
                     max_error, std::abs(angle_diff(targets[wheel], prev_angle_[wheel])));
             }
@@ -284,14 +293,8 @@ private:
         output.estop = 0;
         output.neutral = 0;
 
-        // Action 成功后进入保持状态；保持阶段只持续输出驻车姿态，
-        // 不再重复发送反馈和结果。
-        if (park_hold_active && !park_active) {
-            return true;
-        }
-
         if (goal_handle && goal_handle->is_canceling()) {
-            finishPark(false, "驻车任务被取消");
+            finishSteeringAction(false, "静止对舵任务被取消");
             return true;
         }
 
@@ -302,159 +305,61 @@ private:
             goal_handle->publish_feedback(feedback);
         }
 
-        if (steering_feedback_received_ && max_error <= tolerance) {
-            finishPark(true, "四轮舵角已到达驻车位置");
+        if (feedback_after_goal && max_error <= tolerance) {
+            finishSteeringAction(true, "四轮舵角已到达目标位置，零速目标保持已启用");
         } else if (this->now() >= deadline) {
-            finishPark(false, "等待驻车舵角到位超时");
+            finishSteeringAction(false, "等待舵角到位超时");
         }
         return true;
     }
 
-    static bool isMeaningfulMotion(float vx, float vy, float vw) {
-        return std::hypot(vx, vy) > PARK_PREEMPT_LINEAR_MPS ||
-               std::abs(vw) > PARK_PREEMPT_YAW_RADPS;
-    }
-
-    // 真正驻车解除后的独立恢复状态机：
-    // 1. 按解除驻车的运动方向解算四轮目标角；
-    // 2. 对舵期间四个驱动轮始终保持零速；
-    // 3. 真实舵角反馈连续到位后，本周期仍发布零速，下一周期才恢复正常轮速。
-    //
-    // 该状态由驻车保持被新的运动指令解除时触发。
-    bool tickUnparkAlignment(
+    // [Layer 1][Steering Primitive Handoff]
+    // Action 成功以后、上层仍给零 Twist 时继续发布原理论目标，防止把机械回弹后的
+    // 反馈角逐帧当作新目标而慢慢漂回零位。只接受“锁存开始之后到达”的新非零
+    // Twist 作为解除条件，避免 Action 前遗留的缓存速度误解除。
+    bool tickSteeringTargetHold(
+        chassis_interfaces::msg::ChassisMotorControl& output,
         float vx, float vy, float vw,
-        chassis_interfaces::msg::ChassisMotorControl& output) {
-        geometry_msgs::msg::Twist reference_cmd;
+        const rclcpp::Time& command_time,
+        bool command_timed_out) {
+        std::array<float, 4> targets{};
+        bool release_for_motion = false;
         {
-            std::lock_guard<std::mutex> lock(park_mutex_);
-            if (!unpark_align_active_) {
+            std::lock_guard<std::mutex> lock(steering_action_mutex_);
+            if (!steering_action_hold_active_) {
                 return false;
             }
 
-            // 遥控器或导航在对舵期间可能改变运动方向。只有当前指令仍是明确
-            // 运动指令时才更新参考方向；短暂回零时沿用触发解除驻车的方向，
-            // 避免目标舵角在对舵过程中突然跳回 atan2(0,0) 的零角。
-            if (isMeaningfulMotion(vx, vy, vw)) {
-                unpark_reference_cmd_ = geometry_msgs::msg::Twist();
-                unpark_reference_cmd_.linear.x = vx;
-                unpark_reference_cmd_.linear.y = vy;
-                unpark_reference_cmd_.angular.z = vw;
+            const bool nonzero_command =
+                std::hypot(vx, vy) > ZERO_CMD_LINEAR_EPS ||
+                std::abs(vw) > ZERO_CMD_YAW_EPS;
+            const bool command_arrived_after_hold =
+                (command_time - steering_action_hold_start_time_).seconds() > 0.0;
+            release_for_motion =
+                !command_timed_out && nonzero_command && command_arrived_after_hold;
+            if (release_for_motion) {
+                steering_action_hold_active_ = false;
+            } else {
+                targets = steering_action_targets_;
             }
-            reference_cmd = unpark_reference_cmd_;
         }
 
-        float target_angle[4];
-        float ignored_speed_rpm[4];
-        compute_wheels(
-            static_cast<float>(reference_cmd.linear.x),
-            static_cast<float>(reference_cmd.linear.y),
-            static_cast<float>(reference_cmd.angular.z),
-            target_angle,
-            ignored_speed_rpm);
+        if (release_for_motion) {
+            RCLCPP_INFO(
+                this->get_logger(),
+                "[SteeringAngleControl] 收到新的非零 Twist，解除目标舵角锁存并恢复正常解算");
+            return false;
+        }
 
         output.position.resize(4);
         output.speed.resize(4);
-        float max_error = steering_feedback_received_
-                              ? 0.0f
-                              : std::numeric_limits<float>::infinity();
-        for (int wheel = 0; wheel < 4; ++wheel) {
-            output.position[wheel] = target_angle[wheel];
-            // 驻车恢复最重要的安全约束：舵角没有稳定到位前绝不输出驱动轮速度。
-            output.speed[wheel] = 0.0f;
-            if (steering_feedback_received_) {
-                max_error = std::max(
-                    max_error,
-                    std::abs(angle_diff(target_angle[wheel], prev_angle_[wheel])));
-            }
+        for (std::size_t wheel = 0; wheel < targets.size(); ++wheel) {
+            output.position[wheel] = targets[wheel];
+            output.speed[wheel] = 0.0;
         }
         output.estop = 0;
         output.neutral = 0;
-
-        bool alignment_complete = false;
-        int stable_cycles = 0;
-        {
-            std::lock_guard<std::mutex> lock(park_mutex_);
-            if (steering_feedback_received_ &&
-                max_error <= UNPARK_ALIGN_TOLERANCE_RAD) {
-                ++unpark_align_stable_cycles_;
-            } else {
-                unpark_align_stable_cycles_ = 0;
-            }
-            stable_cycles = unpark_align_stable_cycles_;
-            if (unpark_align_stable_cycles_ >= UNPARK_ALIGN_STABLE_CYCLES) {
-                unpark_align_active_ = false;
-                unpark_align_stable_cycles_ = 0;
-                alignment_complete = true;
-            }
-        }
-
-        if (alignment_complete) {
-            RCLCPP_INFO(
-                this->get_logger(),
-                "[Unpark] 四轮已连续 %d 个周期对正，最大误差=%.3f rad；"
-                "本周期保持零轮速，下一周期恢复正常解算",
-                UNPARK_ALIGN_STABLE_CYCLES, max_error);
-        } else {
-            RCLCPP_INFO_THROTTLE(
-                this->get_logger(), *this->get_clock(), 500,
-                "[Unpark] 零轮速对舵中：最大误差=%.3f rad，稳定周期=%d/%d",
-                max_error, stable_cycles, UNPARK_ALIGN_STABLE_CYCLES);
-        }
         return true;
-    }
-
-    // 驻车后只有明确的新运动指令才允许恢复，防止导航结束时的速度尾巴误解除。
-    void releaseParkForNewMotion(float vx, float vy, float vw) {
-        bool should_release = false;
-        bool action_in_progress = false;
-        bool start_unpark_alignment = false;
-        {
-            std::lock_guard<std::mutex> lock(park_mutex_);
-            const bool parking = park_active_ || park_hold_active_;
-            const bool grace_elapsed =
-                parking && (this->now() - park_start_time_).seconds() > PARK_PREEMPT_GRACE_SEC;
-            const bool meaningful_motion = isMeaningfulMotion(vx, vy, vw);
-            should_release = grace_elapsed && meaningful_motion;
-            action_in_progress = park_active_;
-            if (should_release) {
-                // 驻车保持或正在执行的驻车被新运动解除时，先零速对舵。
-                start_unpark_alignment = parking;
-                if (!action_in_progress) {
-                    park_hold_active_ = false;
-                }
-                if (start_unpark_alignment) {
-                    unpark_align_active_ = true;
-                    unpark_align_stable_cycles_ = 0;
-                    unpark_reference_cmd_ = geometry_msgs::msg::Twist();
-                    unpark_reference_cmd_.linear.x = vx;
-                    unpark_reference_cmd_.linear.y = vy;
-                    unpark_reference_cmd_.angular.z = vw;
-                }
-            }
-        }
-
-        if (!should_release) {
-            return;
-        }
-
-        if (action_in_progress) {
-            finishPark(false, "驻车被新的运动指令抢占");
-        }
-
-        if (start_unpark_alignment) {
-            RCLCPP_INFO(
-                this->get_logger(),
-                "[Unpark] 检测到新的运动指令，解除真实驻车并进入零轮速对舵："
-                "linear=%.3f m/s，yaw=%.3f rad/s，容差=%.3f rad",
-                std::hypot(vx, vy), std::abs(vw),
-                UNPARK_ALIGN_TOLERANCE_RAD);
-        } else {
-            RCLCPP_INFO(
-                this->get_logger(),
-                "[SteeringAngleControl] 驻车被运动指令抢占，恢复正常控制："
-                "linear=%.3f m/s，yaw=%.3f rad/s",
-                std::hypot(vx, vy), std::abs(vw));
-        }
     }
 
     // 常量定义
@@ -462,52 +367,29 @@ private:
     // static constexpr float ANGLE_TOLERANCE = 0.01f;        // 角度容差（rad），判断是否接近目标角度
 
     // 计算两个角度之间的最小差值（考虑角度的周期性）
-    static float angle_diff(float target, float current) {
-        float diff = target - current;
-        // 将差值规范化到 [-pi, pi]
-        while (diff > PI_CHASSIS) diff -= 2.0f * PI_CHASSIS;
-        while (diff < -PI_CHASSIS) diff += 2.0f * PI_CHASSIS;
-        return diff;
-    }
-
-    // 选择最优角度（考虑与前一帧的连续性）
-    // 当vx接近0时，atan2(vy, vx)可能返回±pi/2，需要选择与前一帧最接近的
-    static float select_optimal_angle(float angle_candidate, float prev_angle, float vx, float vy) {
-        // 只有当角度接近±pi/2时才需要考虑多值性
-        // 判断是否接近±pi/2（容差0.1）
-        float abs_angle = std::abs(angle_candidate);
-        if (abs_angle > STEER_ANGLE_LIMIT - 0.1f && abs_angle < STEER_ANGLE_LIMIT + 0.1f) {
-            // 接近±pi/2，考虑两个候选值
-            float candidate1 = STEER_ANGLE_LIMIT;
-            float candidate2 = -STEER_ANGLE_LIMIT;
-
-            // 计算两个候选角度与前一帧的差值
-            float diff1 = std::abs(angle_diff(candidate1, prev_angle));
-            float diff2 = std::abs(angle_diff(candidate2, prev_angle));
-
-            // 选择差值较小的角度（保持连续性）
-            if (diff2 < diff1) {
-                return candidate2;
-            } else {
-                return candidate1;
-            }
-        }
-
-        // 不接近±pi/2，直接返回
-        return angle_candidate;
-    }
-
-    // 检查是否跨过x=0（x方向速度符号改变）
-    // 返回值：true 表示需要平滑过渡，false 表示可以直接执行
-    static bool is_crossing_zero(float prev_vx, float curr_vx) {
-        // 当x速度从正到0或从负到0，或直接越过0（正到负、负到正）都视为跨过0
-        if ((prev_vx > 0.0f && curr_vx <= 0.0f) || (prev_vx < 0.0f && curr_vx >= 0.0f)) {
-            return true;
-        }
-        return false;
-    }
+    //static float angle_diff(float target, float current) {
+    //    float diff = target - current;
+    //    // 将差值规范化到 [-pi, pi]
+    //    while (diff > PI_CHASSIS) diff -= 2.0f * PI_CHASSIS;
+    //    while (diff < -PI_CHASSIS) diff += 2.0f * PI_CHASSIS;
+    //    return diff;
+    //}
 
     void compute_wheels(float vx, float vy, float vw, float out_angle[4], float out_speed_rpm[4]) {
+        // [Layer 1][Zero Command Contract]
+        // 零速度不重新求 atan2(0, 0)，直接保持真实反馈对应的当前舵角。
+        // 驻车上层只需持续给零 Twist；region 不需要知道“是否驻车”。
+        const bool command_is_zero =
+            std::hypot(vx, vy) <= ZERO_CMD_LINEAR_EPS &&
+            std::abs(vw) <= ZERO_CMD_YAW_EPS;
+        if (command_is_zero) {
+            for (int i = 0; i < 4; ++i) {
+                out_angle[i] = prev_angle_[i];
+                out_speed_rpm[i] = 0.0f;
+            }
+            return;
+        }
+
         const float L = CHASSIS_SIZE_L * 0.001f;
         const float W = CHASSIS_SIZE_W * 0.001f;
 
@@ -561,6 +443,19 @@ private:
         bool steering_done = true;
         for (int i = 0; i < 4; ++i) {
             if (ang_err[i] > ANGLE_EPS) {
+                if(ang_err[i] >= STEER_ANGLE_LIMIT){
+                    RCLCPP_ERROR(
+                        this->get_logger(),
+                        "[compute_wheels] 第 %d 个车轮舵角误差 %.3f rad 超出限位 %.3f rad，"
+                        "可能存在舵机故障或反馈异常，强制停速",
+                        i, ang_err[i], STEER_ANGLE_LIMIT);
+                } else {
+                    RCLCPP_WARN(
+                        this->get_logger(),
+                        "[compute_wheels] 第 %d 个车轮舵角误差 %.3f rad 超过阈值 %.3f rad，"
+                        "本周期强制停速",
+                        i, ang_err[i], ANGLE_EPS);
+                }
                 steering_done = false;
                 break;
             }
@@ -572,7 +467,7 @@ private:
         for (int i = 0; i < 4; ++i) {
             /* 舵角：始终允许转 */
             out_angle[i] = ramp_angle(target_ang[i], prev_angle_[i],
-                                      STEER_MAX_STEP  // 20Hz
+                                      STEER_MAX_STEP  // 100Hz
             );
 
             if (!steering_done) {
@@ -705,10 +600,7 @@ private:
         last_control_callback_begin_ = callback_begin;
         last_control_callback_valid_ = true;
 
-        // 判断舵机是否到位
-        bool steering_done = true;
-
-        // 20Hz 定时解算并发布
+        // [Layer 1][Region Control Frequency] 100Hz 定时解算并发布。
         geometry_msgs::msg::Twist cmd;
         rclcpp::Time cmd_time;
         {
@@ -734,27 +626,23 @@ private:
         const float vy = static_cast<float>(cmd.linear.y);
         const float vw = static_cast<float>(cmd.angular.z);
 
-        // 新任务的明确非零速度可以解除驻车；驻车保护期内的减速尾巴不会触发解除。
-        releaseParkForNewMotion(vx, vy, vw);
-
         auto motor_control_msg = chassis_interfaces::msg::ChassisMotorControl();
         motor_control_msg.header.stamp = this->now();
         motor_control_msg.header.frame_id = "base_link";
 
-        // 驻车优先级高于正常速度解算。驻车期间直接发布零轮速和指定舵角。
-        if (tickParkMode(motor_control_msg)) {
+        // [Layer 1][Steering Primitive] Action 执行期间由同一电机出口静止对舵。
+        if (tickSteeringAction(motor_control_msg)) {
             motor_control_pub_->publish(motor_control_msg);
-            // 驻车路径没有进入正常 compute_wheels，清空统计窗口，避免与正常
-            // 行驶样本混在同一组平均值中。
+            // 静止对舵不计入正常行驶解算耗时窗口。
             recordControlTiming(false, 0.0, 0.0, 0.0, 0.0, 0.0);
             return;
         }
 
-        // 真正驻车解除后先进入独立恢复状态：按当前运动方向对舵，但轮速保持为零。
-        // 对舵稳定完成的下一周期才会落入后面的正常解算。
-        if (tickUnparkAlignment(vx, vy, vw, motor_control_msg)) {
+        // Action 成功后的零速交接期继续保持理论目标角；新的非零 Twist 会在本函数
+        // 内解除锁存，并让同一控制周期继续进入正常轮向解算。
+        if (tickSteeringTargetHold(
+            motor_control_msg, vx, vy, vw, cmd_time, command_timed_out)) {
             motor_control_pub_->publish(motor_control_msg);
-            // 驻车恢复属于零轮速对舵状态，不计入正常行驶解算耗时。
             recordControlTiming(false, 0.0, 0.0, 0.0, 0.0, 0.0);
             return;
         }
@@ -815,22 +703,19 @@ private:
     bool timing_window_active_{false};
     ControlTimingStatistics timing_statistics_{};
 
-    // /steering_angle_control Action 状态。执行中负责等待舵角反馈，
-    // 成功后持续保持目标姿态。
+    // [Layer 1][Steering Primitive] /steering_angle_control 保存当前执行目标；成功后
+    // 仅在零 Twist 下保持同一目标，第一条新非零 Twist 到达即恢复正常解算。
     rclcpp_action::Server<SteeringAngleControl>::SharedPtr
         steering_angle_control_server_;
-    std::mutex park_mutex_;
-    bool park_active_{false};
-    bool park_hold_active_{false};
-    std::array<float, 4> park_targets_{};
-    float park_tolerance_{0.08f};
-    rclcpp::Time park_deadline_;
-    rclcpp::Time park_start_time_;
-    std::shared_ptr<GoalHandleSteeringAngleControl> park_goal_handle_;
-    // 驻车保持被新运动解除后，先零轮速对舵再恢复驱动。
-    bool unpark_align_active_{false};
-    int unpark_align_stable_cycles_{0};
-    geometry_msgs::msg::Twist unpark_reference_cmd_;
+    std::mutex steering_action_mutex_;
+    bool steering_action_active_{false};
+    bool steering_action_hold_active_{false};
+    std::array<float, 4> steering_action_targets_{};
+    float steering_action_tolerance_{0.08f};
+    rclcpp::Time steering_action_deadline_;
+    rclcpp::Time steering_action_start_time_;
+    rclcpp::Time steering_action_hold_start_time_;
+    std::shared_ptr<GoalHandleSteeringAngleControl> steering_action_goal_handle_;
 
     // 缓存最新的速度指令
     std::mutex cmd_mutex_;
@@ -838,10 +723,10 @@ private:
     rclcpp::Time last_cmd_time_;
 
     // 历史状态：用于保持角度和速度的连续性
-    bool steering_feedback_received_{false};  // 收到真实舵角反馈后才允许判定驻车完成
+    bool steering_feedback_received_{false};
+    rclcpp::Time last_steering_feedback_time_;
     float prev_angle_[4];      // 前一帧的舵角
     float prev_speed_rpm_[4];  // 前一帧的速度
-    float prev_vx_;            // 前一帧的x方向速度（用于检测是否跨过0）
 };
 
 int main(int argc, char* argv[]) {

@@ -71,7 +71,15 @@ add_executable(mobile_joy_control_node
 set_target_properties(mobile_joy_control_node PROPERTIES OUTPUT_NAME "mobile_joy_control")
 
 add_executable(mobile_cmd_omni
-  src/mobile_cmd_omni.cpp
+  # [Layer 1][Region Controller]
+  # 底盘执行层固定使用 region 版本：只消费最终 Twist，并负责舵轮解算与电机输出。
+  src/mobile_cmd_omni_region.cpp
+)
+
+# [Layer 3][Start Coordinator Build]
+# 起步协调层只在导航 Twist 链路上做门控并调用 SteeringAngleControl。
+add_executable(omni_start_coordinator
+  src/omni_start_coordinator.cpp
 )
 
 ament_target_dependencies(mobile_joy_control_node
@@ -98,9 +106,19 @@ ament_target_dependencies(mobile_cmd_omni
   nav_interfaces
 )
 
+ament_target_dependencies(omni_start_coordinator
+  rclcpp
+  rclcpp_action
+  geometry_msgs
+  std_msgs
+  chassis_interfaces
+  nav_interfaces
+)
+
 install(TARGETS
   mobile_joy_control_node
   mobile_cmd_omni
+  omni_start_coordinator
   DESTINATION lib/${PROJECT_NAME}
 )
 

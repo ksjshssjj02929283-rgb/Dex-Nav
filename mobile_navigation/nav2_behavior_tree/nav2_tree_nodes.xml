@@ -194,7 +194,8 @@
       <input_port name="server_timeout">Server timeout</input_port>
     </Action>
 
-    <!-- [SteeringAngleControl] 四轮按指定舵角驻车；
+    <!-- [SteeringAngleControl] 四轮零速执行一次目标舵角对齐；
+         是否用于驻车及后续保持由上层 BT 决定。
          Server=/steering_angle_control（mobile_cmd_omni） -->
     <Action ID="SteeringAngleControl">
       <input_port name="front_left_angle_rad" default="0.785">Front-left steer angle (rad)</input_port>

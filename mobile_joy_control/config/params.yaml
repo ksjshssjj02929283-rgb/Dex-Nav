@@ -2,6 +2,33 @@ joy_node:
   ros__parameters:
     joy_dev: "/dev/input/js0"  # 默认设备路径
 
+# [Layer 3][Start Coordinator Parameters]
+# 仅负责 AUTO 新任务的“零速门控 -> Action 预对舵 -> 放行速度”。
+omni_start_coordinator:
+  ros__parameters:
+    input_topic: "/control/cmd_vel_nav_presteer"
+    output_topic: "/control/cmd_vel_nav"
+    auto_mode_topic: "/control/nav_auto_mode"
+    auto_task_id_topic: "/control/nav_auto_task_id"
+    steering_feedback_topic: "/feedback/omni_chassis_motor"
+    steering_action_name: "/steering_angle_control"
+    chassis_length: 0.460
+    chassis_width: 0.345
+    steering_limit_rad: 2.513274
+    command_linear_deadband: 0.005
+    command_yaw_deadband: 0.008
+    action_timeout_sec: 3.0
+    settle_tolerance_rad: 0.08
+    # [Layer 3B][Feedback Freshness] 超时后禁止用旧舵角选择起步等价解。
+    steering_feedback_timeout_sec: 0.2
+
+# 底盘测试脚本参数。通过 --params-file 加载本文件时生效，也可在每次
+# 启动或空闲状态下用 ROS 参数覆盖。
+omni_chassis_test:
+  ros__parameters:
+    # 四轮最大舵角误差不超过该值时，认为预对舵完成；必须大于 0。
+    settle_tolerance_rad: 0.08
+
 mobile_joy_control:
   ros__parameters:
     # Logitech手柄参数（默认）

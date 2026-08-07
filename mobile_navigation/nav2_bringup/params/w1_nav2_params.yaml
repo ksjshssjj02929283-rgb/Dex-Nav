@@ -77,17 +77,21 @@ controller_server:
     goal_checker_plugins: ["goal_checker"] # goal_checker_plugin: "goal_checker" For Galactic and older
     controller_plugins: ["FollowPath"]
     odom_topic: /feedback/odom
+    # MPPI 暂时找不到安全轨迹时，持续发布零速并重新计算；
+    # 30 秒内障碍消失就自动恢复。
+    failure_tolerance: 30.0
+    #failure_tolerance修改未同步到机器人处TODO：明天过来测试一下
     progress_checker:
       plugin: "nav2_controller::PoseProgressChecker" # 进展检查插件
       required_movement_radius: 0.1 # 普通模式：判定有进展所需的移动距离，单位 m
       required_movement_angle: 0.01 # 普通模式：判定有进展所需的旋转角度，单位 rad
-      movement_time_allowance: 3.0 # 普通模式：允许未达到足够进展的时间，单位 s
+      movement_time_allowance: 35.0 #3.0 # 普通模式：允许未达到足够进展的时间，单位 s
     near_goal_progress:
       enabled: True # 是否启用接近目标点时的宽松进展检查
       distance: 0.20 # 距离目标点小于该值时进入近目标模式，单位 m
       required_movement_radius: 0.01 # 近目标模式：判定有进展所需的移动距离，单位 m
       required_movement_angle: 0.01 # 近目标模式：判定有进展所需的旋转角度，单位 rad
-      movement_time_allowance: 5.0 # 近目标模式：允许未达到足够进展的时间，单位 s
+      movement_time_allowance: 35.0 #5.0 # 近目标模式：允许未达到足够进展的时间，单位 s
     goal_checker:
       plugin: "nav2_controller::LongitudinalGoalChecker"
       # 2 cm 是硬性验收标准；关闭位置锁存，保证最终 yaw 完成的同一时刻
@@ -782,7 +786,10 @@ velocity_smoother:
     feedback: "OPEN_LOOP"
     # 使用绝对话题名，避免带 namespace 启动时 controller 输出与 smoother 输入分叉。
     input_topic: "/cmd_vel_nav"
-    output_topic: "/control/cmd_vel_nav"
+    # [Layer 3][Start Gate Wiring]
+    # AUTO 首条速度先进入独立起步协调层；成功预对舵后再由该层发布
+    # /control/cmd_vel_nav 给 cmd_vel_mux。遥控链路不受影响。
+    output_topic: "/control/cmd_vel_nav_presteer"
     # Test
     max_velocity: [1.0, 1.0, 0.75]
     min_velocity: [-0.5, -0.5, -0.75]  
