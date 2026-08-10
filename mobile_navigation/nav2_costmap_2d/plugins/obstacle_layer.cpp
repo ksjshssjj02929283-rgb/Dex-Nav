@@ -114,12 +114,6 @@ void ObstacleLayer::onInitialize()
     logger_,
     "Subscribed to Topics: %s", topics_string.c_str());
 
-  // added by hz for testing
-  cloud_pub_ = node->create_publisher<sensor_msgs::msg::PointCloud2>(
-    "input_cloud", rclcpp::QoS(rclcpp::KeepLast(1)).transient_local().reliable());
-  cloud_pub_->on_activate();
-  // end
-
   rolling_window_ = layered_costmap_->isRolling();
 
   if (track_unknown_space) {
@@ -347,21 +341,16 @@ ObstacleLayer::laserScanCallback(
 
   // project the scan into a point cloud
   try {
-    projector_.transformLaserScanToPointCloud(message->header.frame_id, *message, cloud, *tf_);
-    // added by hz for testing
-    sensor_msgs::msg::PointCloud2 tmp_pointcloud(cloud);
-    auto ob_sub_cloud = std::make_unique<sensor_msgs::msg::PointCloud2>(std::move(tmp_pointcloud));
-    bool publish_cloud = true;
-    if (publish_cloud) {
-      cloud_pub_->publish(std::move(ob_sub_cloud));
-    }
-    // end
+    std::lock_guard<std::mutex> lock(projector_mutex_);
+    projector_.transformLaserScanToPointCloud(
+      message->header.frame_id, *message, cloud, *tf_);
   } catch (tf2::TransformException & ex) {
     RCLCPP_WARN(
       logger_,
       "High fidelity enabled, but TF returned a transform exception to frame %s: %s",
       global_frame_.c_str(),
       ex.what());
+    std::lock_guard<std::mutex> lock(projector_mutex_);
     projector_.projectLaser(*message, cloud);
   } catch (std::runtime_error & ex) {
     RCLCPP_WARN(
@@ -406,12 +395,14 @@ ObstacleLayer::laserScanValidInfCallback(
 
   // project the scan into a point cloud
   try {
+    std::lock_guard<std::mutex> lock(projector_mutex_);
     projector_.transformLaserScanToPointCloud(message.header.frame_id, message, cloud, *tf_);
   } catch (tf2::TransformException & ex) {
     RCLCPP_WARN(
       logger_,
       "High fidelity enabled, but TF returned a transform exception to frame %s: %s",
       global_frame_.c_str(), ex.what());
+    std::lock_guard<std::mutex> lock(projector_mutex_);
     projector_.projectLaser(message, cloud);
   } catch (std::runtime_error & ex) {
     RCLCPP_WARN(
