@@ -39,6 +39,7 @@
 #define NAV2_COSTMAP_2D__OBSTACLE_LAYER_HPP_
 
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -231,6 +232,8 @@ protected:
 
   /// @brief Used to project laser scans into point clouds
   laser_geometry::LaserProjection projector_;
+  /// @brief Protects the mutable cache inside LaserProjection from concurrent scan callbacks
+  std::mutex projector_mutex_;
   /// @brief Used for the observation message filters
   std::vector<std::shared_ptr<message_filters::SubscriberBase<rclcpp_lifecycle::LifecycleNode>>>
   observation_subscribers_;
@@ -254,9 +257,6 @@ protected:
   bool was_reset_;
   int combination_method_;
 
-  // added by hz for testing
-  rclcpp_lifecycle::LifecyclePublisher<sensor_msgs::msg::PointCloud2>::SharedPtr cloud_pub_;
-  // end
 };
 
 }  // namespace nav2_costmap_2d
