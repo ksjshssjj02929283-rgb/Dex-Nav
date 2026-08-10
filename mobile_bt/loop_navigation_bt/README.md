@@ -2,7 +2,9 @@
 
 ## 1. 功能
 
-本包读取 JSON 导航点，通过 Nav2 `/navigate_to_pose` 循环导航，并记录到点误差、导航耗时和移动距离。
+本包从当前地图的 `assets/map_assets.json` 读取导航点坐标，再按
+`config/navigation_points.json` 指定的顺序，通过 Nav2 `/navigate_to_pose`
+循环导航，并记录到点误差、导航耗时和移动距离。
 
 支持两种模式：
 
@@ -25,7 +27,7 @@ ros2 launch loop_navigation_bt loop_nocharging.launch.py
 ros2 launch loop_navigation_bt loop_nocharging.launch.py check_battery:=true
 ```
 
-电量低于阈值后，机器人返回 JSON 中第一个点并退出，不执行回充。
+电量低于阈值后，机器人返回导航计划中的第一个点并退出，不执行回充。
 
 ### 2.2 自动回充模式
 
@@ -87,7 +89,7 @@ config/loop_navigation_bt_params.yaml
 主要参数：
 
 1. `loop.tick_rate_hz`：行为树 tick 频率。
-2. `navigation.wait_time_sec`：点位未单独配置时的默认等待时间。
+2. `navigation.map_state_wait_timeout_sec`：启动时等待当前地图状态的超时时间。
 3. `navigation.action_server_wait_timeout_sec`：等待 Nav2 Action server 的超时时间。
 4. `navigation.odom_topic`：移动距离统计使用的里程计话题。
 5. `navigation.odom_max_increment_m`：单帧里程计最大有效增量。
@@ -96,41 +98,55 @@ config/loop_navigation_bt_params.yaml
 8. `charging.force`：是否强制执行完整回充流程。
 9. `undocking.duration_sec`：退桩持续时间。
 10. `undocking.linear_speed`：退桩线速度。
-11. `goal_error_stats.*`：误差阈值、采样次数和统计间隔。
+11. `goal_error_stats.*`：误差阈值和 TF 回退采样参数。
 
 ## 4. 导航点配置
 
-点位文件：
+导航计划文件：
 
 ```text
 config/navigation_points.json
 ```
 
-主要字段：
+该文件只负责三件事：
 
-1. `frame_id`：目标坐标系，通常为 `map`。
-2. `rounds`：完整遍历全部点位的轮数。
-3. `id`：点位名称，用于日志标识。
-4. `wait_time_sec`：当前点位的等待时间，可选；未配置时使用 YAML 默认值。
-5. `position`：目标位置。
-6. `orientation`：目标四元数姿态。
+1. `rounds`：完整遍历全部点位的轮数；设为 `0` 表示持续运行。
+2. `points` 数组的先后顺序：机器人实际执行的点位顺序。
+3. `id` 和 `wait_time_sec`：点位名称以及到点或失败后的停留时间，单位为秒。
 
 示例：
 
 ```json
 {
-  "frame_id": "map",
   "rounds": 10,
   "points": [
     {
       "id": "point_1",
-      "wait_time_sec": 2.0,
-      "position": {"x": 1.0, "y": 2.0, "z": 0.0},
-      "orientation": {"x": 0.0, "y": 0.0, "z": 0.0, "w": 1.0}
+      "wait_time_sec": 2.0
+    },
+    {
+      "id": "point_2",
+      "wait_time_sec": 5.0
     }
   ]
 }
 ```
+
+启动时节点订阅 `/map_manager/map_state`，按下面的路径读取当前地图资产：
+
+```text
+<map_folder>/<map_name>/assets/map_assets.json
+```
+
+导航计划中的每个 `id` 必须与 `map_assets.json` 的 `points[].name` 完全一致。
+坐标 `x`、`y` 和朝向 `yaw` 只从地图资产读取；计划文件出现坐标字段时程序会拒绝启动。
+程序启动后会持续监听地图版本。如果运行过程中地图名称、资产路径或 `epoch`
+发生变化，程序会取消当前行为树并提前停止，防止把旧地图坐标发送给新地图。
+确认新地图定位正常后，需要重新启动本程序。
+
+新增或修改坐标应使用 RViz 的地图资产工具，或使用
+`/map_asset_manager/sample_point`、`/map_asset_manager/add_point` 等地图资产接口。
+本包不再提供 `set_navigation_points.py`。
 
 ## 5. 日志与统计
 
@@ -149,7 +165,13 @@ config/navigation_points.json
 nav_error_log.txt
 ```
 
-文件记录导航结果、耗时、点位信息、目标与实际位姿、纵向/横向/yaw 误差及汇总统计。
+文件面向现场测试人员，逐次记录轮次、点位、成功或失败、导航耗时、位置误差、
+角度误差、本次行驶距离和累计距离，所有数值都在表头标明单位。测试结束或程序
+退出时追加简洁汇总；未获得有效数据时显示“未获取”，不会用 `0` 冒充有效误差。
+汇总中的测试状态会明确区分“正常完成”“提前停止”和“测试失败”，目标被拒绝、
+意外取消、地图切换或配置错误不会再被报告成“全部成功”。
+
+其中“导航耗时”只统计 Nav2 执行当前目标的时间，不包含点位配置的停留时间。
 
 ### 5.3 移动距离
 
@@ -164,7 +186,8 @@ nav_error_log.txt
 2. 回充 Action 客户端：`/auto_charging`。
 3. 电量订阅：`/diagnostics_agg`。
 4. 误差订阅：`/navigation_goal_error`。
-5. TF 回退：需要 `map` 到机器人基坐标系的变换。
+5. 当前地图订阅：`/map_manager/map_state`（Transient Local，可靠）。
+6. TF 回退：需要 `map` 到机器人基坐标系的变换。
 
 ## 7. 常用检查
 
@@ -187,7 +210,14 @@ ros2 topic echo /diagnostics_agg --once
 ros2 topic info /feedback/odom --verbose
 ```
 
-### 7.4 配置修改未生效
+### 7.4 检查当前地图和点位
+
+```bash
+ros2 topic echo --once /map_manager/map_state
+ros2 service call /map_asset_manager/get_all_points nav_interfaces/srv/GetAllNavPoints "{}"
+```
+
+### 7.5 配置修改未生效
 
 节点读取安装目录中的配置：
 

@@ -1,49 +1,13 @@
 {
-  "frame_id": "map",
   "rounds": 100,
   "points": [
     {
       "id": "point_1",
-      "wait_time_sec": 2.0,
-      "position": {
-        "x": 7.895,
-        "y": -0.626,
-        "z": 0.010
-      },
-      "orientation": {
-        "x": 0.0,
-        "y": 0.0,
-        "z": 1.0,
-        "w": 0.0
-      }
+      "wait_time_sec": 2.0
     },
     {
       "id": "point_2",
-      "position": {
-        "x": 4.672,
-        "y": -0.417,
-        "z": 0.010
-      },
-      "orientation": {
-        "x": 0.0,
-        "y": 0.0,
-        "z": 0.707,
-        "w": 0.707
-      }
-    },
-    {
-      "id": "point_3",
-      "position": {
-        "x": 2.289,
-        "y": -0.283,
-        "z": 0.010
-      },
-      "orientation": {
-        "x": 0.0,
-        "y": 0.0,
-        "z": 1.0,
-        "w": 0.0
-      }
+      "wait_time_sec": 2.0
     }
   ]
 }

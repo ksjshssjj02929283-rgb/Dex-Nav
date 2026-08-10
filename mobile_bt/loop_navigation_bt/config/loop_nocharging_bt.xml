@@ -6,9 +6,9 @@
     -->
     <ReactiveSequence name="MainLoop">
 
-      <!-- ① 导航四个点位（循环） -->
+      <!-- ① 按导航计划中的点位顺序循环 -->
       <!--   Loop 节点内部应该按 tick 驱动，不重复发 goal -->
-      <LoopNavigateFourPoints points="{navigation_points}"/>
+      <LoopNavigateFourPoints points="{navigation_points}" assets="{map_assets_file}"/>
 
       <!-- ② 电量检查与停止流程 -->
       <Fallback name="BatteryCheck">
@@ -23,7 +23,7 @@
           <CancelNavigation/>
 
           <!-- (b) 导航到第一个点并设置停止标志 -->
-          <NavigateToFirstPointAndStop points="{navigation_points}"/>
+          <NavigateToFirstPointAndStop points="{navigation_points}" assets="{map_assets_file}"/>
 
         </Sequence>
       </Fallback>

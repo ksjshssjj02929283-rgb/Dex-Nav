@@ -6,14 +6,19 @@
 #include <tf2_ros/transform_listener.h>
 #include <tf2/utils.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <csignal>
+#include <filesystem>
 #include <fstream>
 #include <iomanip>
+#include <limits>
 #include <numeric>
 #include <sstream>
+#include <unordered_map>
 
+#include "nav_interfaces/msg/map_state.hpp"
 #include "nlohmann/json.hpp"
 
 namespace loop_navigation_bt {
@@ -68,69 +73,188 @@ float parseBatteryPercentage(const diagnostic_msgs::msg::DiagnosticArray& msg) {
     return -1.0f;
 }
 
-// 读取导航点 JSON，并同时获得点位名称、停留时间和总循环轮数。
-std::vector<geometry_msgs::msg::PoseStamped> parseNavPoints(const std::string& json_path,
+MapAssetsContext waitForCurrentMapAssets(const rclcpp::Node::SharedPtr& node, double timeout_sec) {
+    nav_interfaces::msg::MapState::SharedPtr current_map_state;
+    const auto qos = rclcpp::QoS(rclcpp::KeepLast(1)).transient_local().reliable();
+    auto subscription = node->create_subscription<nav_interfaces::msg::MapState>(
+        "/map_manager/map_state", qos,
+        [&current_map_state](const nav_interfaces::msg::MapState::SharedPtr msg) { current_map_state = msg; });
+
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::duration<double>(timeout_sec);
+    while (rclcpp::ok() && !current_map_state && std::chrono::steady_clock::now() < deadline) {
+        rclcpp::spin_some(node);
+        rclcpp::sleep_for(std::chrono::milliseconds(50));
+    }
+
+    if (!current_map_state) {
+        LOOP_RCLCPP_ERROR(node->get_logger(),
+                          "等待 /map_manager/map_state 超时（%.1f 秒），无法确定当前地图。", timeout_sec);
+        return {};
+    }
+    if (current_map_state->epoch == 0 || current_map_state->map_folder.empty() ||
+        current_map_state->map_name.empty()) {
+        LOOP_RCLCPP_ERROR(node->get_logger(),
+                          "当前地图状态无效：epoch=%lu，map_folder='%s'，map_name='%s'。",
+                          static_cast<unsigned long>(current_map_state->epoch),
+                          current_map_state->map_folder.c_str(), current_map_state->map_name.c_str());
+        return {};
+    }
+
+    const std::filesystem::path assets_file = std::filesystem::path(current_map_state->map_folder) /
+                                              current_map_state->map_name / "assets" / "map_assets.json";
+    std::error_code error;
+    if (!std::filesystem::is_regular_file(assets_file, error)) {
+        LOOP_RCLCPP_ERROR(node->get_logger(), "当前地图的资产文件不存在或不可读取：%s。",
+                          assets_file.string().c_str());
+        return {};
+    }
+
+    LOOP_RCLCPP_INFO(node->get_logger(), "当前地图：%s（epoch=%lu），导航点坐标读取自：%s。",
+                     current_map_state->map_name.c_str(),
+                     static_cast<unsigned long>(current_map_state->epoch), assets_file.string().c_str());
+    return {assets_file.lexically_normal().string(), current_map_state->map_name, current_map_state->epoch};
+}
+
+void writeStartupFailureLog(const std::string& reason) {
+    std::ofstream log_file("nav_error_log.txt", std::ios::out | std::ios::trunc);
+    if (!log_file.is_open()) {
+        return;
+    }
+    log_file << "循环导航测试记录\n";
+    log_file << "开始时间：" << currentUtc8Time() << "\n\n";
+    log_file << "测试状态：启动失败\n";
+    log_file << "原因：" << reason << "\n";
+}
+
+namespace {
+
+struct AssetPointPose {
+    double x = 0.0;
+    double y = 0.0;
+    double yaw = 0.0;
+};
+
+bool readJsonFile(const std::string& path, const char* label, rclcpp::Logger logger, nlohmann::json& json) {
+    std::ifstream file(path);
+    if (!file.is_open()) {
+        LOOP_RCLCPP_ERROR(logger, "无法打开%s：%s。", label, path.c_str());
+        return false;
+    }
+    try {
+        file >> json;
+    } catch (const nlohmann::json::exception& error) {
+        LOOP_RCLCPP_ERROR(logger, "%s不是有效 JSON：%s（%s）。", label, path.c_str(), error.what());
+        return false;
+    }
+    return true;
+}
+
+}  // namespace
+
+// 导航计划只决定轮数、点位顺序和停留时间；所有目标坐标均按名称从地图资产解析。
+std::vector<geometry_msgs::msg::PoseStamped> parseNavPoints(const std::string& plan_path,
+                                                            const std::string& assets_path,
                                                             rclcpp::Logger logger,
                                                             std::vector<std::string>& goal_ids,
                                                             int& total_rounds,
-                                                            std::vector<double>& goal_wait_times_sec,
-                                                            double default_wait_time_sec) {
+                                                            std::vector<double>& goal_wait_times_sec) {
     std::vector<geometry_msgs::msg::PoseStamped> points;
-    std::ifstream file(json_path);
-    if (!file.is_open()) {
-        LOOP_RCLCPP_ERROR(logger, "Failed to open navigation points file: %s", json_path.c_str());
+    nlohmann::json plan;
+    nlohmann::json assets;
+    if (!readJsonFile(plan_path, "导航计划文件", logger, plan) ||
+        !readJsonFile(assets_path, "地图资产文件", logger, assets)) {
         return points;
     }
-    nlohmann::json j;
-    file >> j;
-    std::string frame = j.value("frame_id", std::string("map"));
-    total_rounds = j.value("rounds", 0);
+
+    if (!plan.is_object() || !plan.contains("rounds") || !plan["rounds"].is_number_integer() ||
+        !plan.contains("points") || !plan["points"].is_array() || plan["points"].empty()) {
+        LOOP_RCLCPP_ERROR(logger, "导航计划必须包含非负整数 rounds 和非空 points 数组：%s。",
+                          plan_path.c_str());
+        return points;
+    }
+    const auto rounds = plan["rounds"].get<std::int64_t>();
+    if (rounds < 0 || rounds > std::numeric_limits<int>::max()) {
+        LOOP_RCLCPP_ERROR(logger, "导航计划 rounds 超出有效范围：%ld。", static_cast<long>(rounds));
+        return points;
+    }
+    total_rounds = static_cast<int>(rounds);
+
+    if (!assets.is_object() || !assets.contains("points") || !assets["points"].is_array()) {
+        LOOP_RCLCPP_ERROR(logger, "地图资产缺少 points 数组：%s。", assets_path.c_str());
+        return points;
+    }
+
+    std::unordered_map<std::string, AssetPointPose> asset_points;
+    for (const auto& item : assets["points"]) {
+        if (!item.is_object() || !item.contains("name") || !item["name"].is_string() ||
+            !item.contains("pose") || !item["pose"].is_object()) {
+            LOOP_RCLCPP_ERROR(logger, "地图资产中存在缺少 name 或 pose 的点位：%s。", assets_path.c_str());
+            return points;
+        }
+        const std::string name = item["name"].get<std::string>();
+        const auto& pose = item["pose"];
+        if (name.empty() || !pose.contains("x") || !pose["x"].is_number() || !pose.contains("y") ||
+            !pose["y"].is_number() || !pose.contains("yaw") || !pose["yaw"].is_number()) {
+            LOOP_RCLCPP_ERROR(logger, "地图资产点位 '%s' 的 x、y 或 yaw 无效。", name.c_str());
+            return points;
+        }
+        const AssetPointPose asset_pose{pose["x"].get<double>(), pose["y"].get<double>(),
+                                        pose["yaw"].get<double>()};
+        if (!std::isfinite(asset_pose.x) || !std::isfinite(asset_pose.y) || !std::isfinite(asset_pose.yaw)) {
+            LOOP_RCLCPP_ERROR(logger, "地图资产点位 '%s' 的坐标必须是有限数值。", name.c_str());
+            return points;
+        }
+        if (!asset_points.emplace(name, asset_pose).second) {
+            LOOP_RCLCPP_ERROR(logger, "地图资产中存在重名点位：'%s'。", name.c_str());
+            return points;
+        }
+    }
+
     goal_ids.clear();
     goal_wait_times_sec.clear();
-    for (const auto& item : j["points"]) {
-        const std::string goal_id = item.value("id", "goal_" + std::to_string(points.size()));
-        geometry_msgs::msg::PoseStamped pose;
-        pose.header.frame_id = frame;
-        pose.header.stamp = rclcpp::Clock().now();
-        pose.pose.position.x = item["position"].value("x", 0.0);
-        pose.pose.position.y = item["position"].value("y", 0.0);
-        pose.pose.position.z = item["position"].value("z", 0.0);
-        pose.pose.orientation.x = item["orientation"].value("x", 0.0);
-        pose.pose.orientation.y = item["orientation"].value("y", 0.0);
-        pose.pose.orientation.z = item["orientation"].value("z", 0.0);
-        pose.pose.orientation.w = item["orientation"].value("w", 1.0);
-        double wait_time_sec = default_wait_time_sec;
-        const auto wait_time = item.find("wait_time_sec");
-        if (wait_time != item.end()) {
-            if (wait_time->is_number()) {
-                const double configured_wait_time_sec = wait_time->get<double>();
-                if (std::isfinite(configured_wait_time_sec) && configured_wait_time_sec >= 0.0) {
-                    wait_time_sec = configured_wait_time_sec;
-                } else {
-                    LOOP_RCLCPP_WARN(logger,
-                                "点位 %s 的 wait_time_sec 必须是非负有限数值，改用 YAML 默认值 %.2f 秒。",
-                                goal_id.c_str(), default_wait_time_sec);
-                }
-            } else {
-                LOOP_RCLCPP_WARN(logger,
-                            "点位 %s 的 wait_time_sec 不是数值，改用 YAML 默认值 %.2f 秒。",
-                            goal_id.c_str(), default_wait_time_sec);
-            }
+    for (const auto& item : plan["points"]) {
+        if (!item.is_object() || !item.contains("id") || !item["id"].is_string()) {
+            LOOP_RCLCPP_ERROR(logger, "导航计划的每个点都必须设置字符串 id。");
+            return {};
         }
+        if (item.contains("position") || item.contains("orientation") || item.contains("pose")) {
+            LOOP_RCLCPP_ERROR(logger,
+                              "导航计划点位 '%s' 仍包含坐标字段；坐标只能保存在 map_assets.json。",
+                              item["id"].get<std::string>().c_str());
+            return {};
+        }
+        const std::string goal_id = item["id"].get<std::string>();
+        const auto asset_point = asset_points.find(goal_id);
+        if (goal_id.empty() || asset_point == asset_points.end()) {
+            LOOP_RCLCPP_ERROR(logger, "导航计划点位 '%s' 在当前地图资产中不存在：%s。", goal_id.c_str(),
+                              assets_path.c_str());
+            return {};
+        }
+        if (!item.contains("wait_time_sec") || !item["wait_time_sec"].is_number()) {
+            LOOP_RCLCPP_ERROR(logger, "导航计划点位 '%s' 必须设置 wait_time_sec。", goal_id.c_str());
+            return {};
+        }
+        const double wait_time_sec = item["wait_time_sec"].get<double>();
+        if (!std::isfinite(wait_time_sec) || wait_time_sec < 0.0) {
+            LOOP_RCLCPP_ERROR(logger, "导航计划点位 '%s' 的 wait_time_sec 必须是非负有限数值。",
+                              goal_id.c_str());
+            return {};
+        }
+
+        const auto& asset_pose = asset_point->second;
+        geometry_msgs::msg::PoseStamped pose;
+        pose.header.frame_id = "map";
+        pose.pose.position.x = asset_pose.x;
+        pose.pose.position.y = asset_pose.y;
+        pose.pose.orientation.z = std::sin(asset_pose.yaw * 0.5);
+        pose.pose.orientation.w = std::cos(asset_pose.yaw * 0.5);
         goal_ids.push_back(goal_id);
         goal_wait_times_sec.push_back(wait_time_sec);
         points.push_back(pose);
     }
-    LOOP_RCLCPP_INFO(logger, "Successfully parsed %zu navigation points, rounds=%d.", points.size(), total_rounds);
+    LOOP_RCLCPP_INFO(logger, "导航计划加载成功：%zu 个点位，轮数=%d；坐标全部来自当前地图资产。",
+                     points.size(), total_rounds);
     return points;
-}
-
-std::vector<geometry_msgs::msg::PoseStamped> parseNavPoints(const std::string& json_path, rclcpp::Logger logger) {
-    std::vector<std::string> unused_goal_ids;
-    std::vector<double> unused_goal_wait_times_sec;
-    int unused_total_rounds = 0;
-    return parseNavPoints(json_path, logger, unused_goal_ids, unused_total_rounds,
-                          unused_goal_wait_times_sec, 0.0);
 }
 
 //--- Implementation for LoopNavigateFourPoints ---
@@ -140,13 +264,28 @@ LoopNavigateFourPoints::LoopNavigateFourPoints(const std::string& name,
     : BtActionNode(name, config, node_ptr) {
     action_client_ = rclcpp_action::create_client<NavigateToPose>(node_, "/navigate_to_pose");
 
+    try {
+        expected_map_epoch_ = config.blackboard->get<std::uint64_t>("map_epoch");
+        expected_map_assets_file_ =
+            std::filesystem::path(config.blackboard->get<std::string>("map_assets_file"))
+                .lexically_normal()
+                .string();
+    } catch (const std::exception& error) {
+        map_changed_ = true;
+        setTestEndState(TestEndState::FAILED, "程序内部缺少当前地图信息");
+        LOOP_RCLCPP_ERROR(node_->get_logger(), "读取行为树地图上下文失败：%s。", error.what());
+    }
+
+    map_state_sub_ = node_->create_subscription<nav_interfaces::msg::MapState>(
+        "/map_manager/map_state", rclcpp::QoS(rclcpp::KeepLast(1)).transient_local().reliable(),
+        [this](const nav_interfaces::msg::MapState::ConstSharedPtr msg) {
+            handleMapState(msg->epoch, msg->map_folder, msg->map_name);
+        });
+
     // TF 用于在导航结束后读取机器人实际位姿并计算到点误差。
     tf_buffer_ = std::make_shared<tf2_ros::Buffer>(node_->get_clock());
     tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
-    if (!node_->has_parameter("navigation.wait_time_sec")) {
-        node_->declare_parameter("navigation.wait_time_sec", wait_time_sec_);
-    }
     if (!node_->has_parameter("navigation.action_server_wait_timeout_sec")) {
         node_->declare_parameter("navigation.action_server_wait_timeout_sec", action_server_wait_timeout_sec_);
     }
@@ -171,25 +310,15 @@ LoopNavigateFourPoints::LoopNavigateFourPoints(const std::string& name,
     if (!node_->has_parameter("goal_error_stats.use_goal_checker_error")) {
         node_->declare_parameter("goal_error_stats.use_goal_checker_error", use_goal_checker_error_);
     }
-    if (!node_->has_parameter("goal_error_stats.stats_log_interval")) {
-        node_->declare_parameter("goal_error_stats.stats_log_interval", static_cast<int>(stats_log_interval_));
-    }
-    node_->get_parameter("navigation.wait_time_sec", wait_time_sec_);
     node_->get_parameter("navigation.action_server_wait_timeout_sec", action_server_wait_timeout_sec_);
     node_->get_parameter("navigation.odom_topic", odom_topic_);
     node_->get_parameter("navigation.odom_max_increment_m", odom_max_increment_m_);
     node_->get_parameter("goal_error_stats.desired_position_tolerance", desired_position_tolerance_);
     node_->get_parameter("goal_error_stats.accept_position_tolerance", accept_position_tolerance_);
     int pose_sample_count = static_cast<int>(pose_sample_count_);
-    int stats_log_interval = static_cast<int>(stats_log_interval_);
     node_->get_parameter("goal_error_stats.sample_count", pose_sample_count);
     node_->get_parameter("goal_error_stats.sample_interval_sec", pose_sample_interval_sec_);
     node_->get_parameter("goal_error_stats.use_goal_checker_error", use_goal_checker_error_);
-    node_->get_parameter("goal_error_stats.stats_log_interval", stats_log_interval);
-    if (!std::isfinite(wait_time_sec_) || wait_time_sec_ < 0.0) {
-        LOOP_RCLCPP_WARN(node_->get_logger(), "navigation.wait_time_sec 必须是非负有限数值，重置为 2.0 秒。");
-        wait_time_sec_ = 2.0;
-    }
     if (action_server_wait_timeout_sec_ <= 0.0) {
         LOOP_RCLCPP_WARN(node_->get_logger(),
                     "navigation.action_server_wait_timeout_sec 必须大于 0，重置为 2.0 秒。");
@@ -213,15 +342,8 @@ LoopNavigateFourPoints::LoopNavigateFourPoints(const std::string& name,
         LOOP_RCLCPP_WARN(node_->get_logger(), "goal_error_stats.sample_interval_sec 不能为负数，重置为 0.1。");
         pose_sample_interval_sec_ = 0.1;
     }
-    if (stats_log_interval > 0) {
-        stats_log_interval_ = static_cast<std::size_t>(stats_log_interval);
-    } else {
-        LOOP_RCLCPP_WARN(node_->get_logger(), "goal_error_stats.stats_log_interval 必须为正数，保持默认值 %zu。",
-                    stats_log_interval_);
-    }
-    LOOP_RCLCPP_INFO(node_->get_logger(),
-                "循环导航参数：点位默认等待 %.2f s，Action server 超时 %.2f s。",
-                wait_time_sec_, action_server_wait_timeout_sec_);
+    LOOP_RCLCPP_INFO(node_->get_logger(), "循环导航参数：Action server 超时 %.2f s。",
+                     action_server_wait_timeout_sec_);
     LOOP_RCLCPP_INFO(node_->get_logger(), "导航里程统计：订阅 %s，单次里程计增量上限 %.3f m。",
                 odom_topic_.c_str(), odom_max_increment_m_);
     odom_sub_ = node_->create_subscription<nav_msgs::msg::Odometry>(
@@ -241,46 +363,131 @@ LoopNavigateFourPoints::LoopNavigateFourPoints(const std::string& name,
             });
     }
 
-    // 每次启动覆盖旧日志，避免不同批次的统计结果混在一起。
+    // 每次启动覆盖旧日志；先写测试标题，后续即使配置错误也不会留下空文件。
     log_file_.open("nav_error_log.txt", std::ios::out | std::ios::trunc);
     if (log_file_.is_open()) {
-        log_file_ << "# 结果 耗时_s 点序号 点ID 目标x 目标y 目标yaw 当前x 当前y 当前yaw "
-                     "纵向误差 横向误差 误差yaw 距离误差 本次里程_m 累计里程_m 里程有效 "
-                     "期望阈值内 接受阈值内"
-                  << std::endl;
-        log_file_ << "# 误差定义: 纵向/横向误差均按目标点坐标系投影，和 goal_checker 保持一致" << std::endl;
-        log_file_ << "# 采样方式: 导航结束后按点位 wait_time_sec 等待；未配置时默认等待 "
-                  << wait_time_sec_ << " s，再连续采样 " << pose_sample_count_ << " 次，每次间隔 "
-                  << pose_sample_interval_sec_ << " s，对误差窗口求平均" << std::endl;
-        log_file_ << "# 统计阈值: 期望阈值=" << desired_position_tolerance_
-                  << " m, 接受阈值=" << accept_position_tolerance_ << " m" << std::endl;
-        log_file_ << "# 里程定义: 仅在 Nav2 目标执行期间，对 " << odom_topic_
-                  << " 相邻位置增量进行累加；不包含自动回充和退桩距离" << std::endl;
+        log_file_ << "循环导航测试记录\n";
+        log_file_ << "开始时间：" << currentUtc8Time() << "\n";
+        log_file_.flush();
+    } else {
+        LOOP_RCLCPP_ERROR(node_->get_logger(), "无法创建 nav_error_log.txt，请检查进程工作目录写权限。");
     }
-
-    // ROS 关闭时补写最终统计，避免 Ctrl+C 后丢失汇总结果。
-    rclcpp::on_shutdown([this]() {
-        if (!stats_logged_ && log_file_.is_open()) {
-            LOOP_RCLCPP_INFO(node_->get_logger(), "ROS shutdown detected, calculating navigation statistics...");
-            calculateAndLogStats();
-            log_file_.close();
-            stats_logged_ = true;
-        }
-    });
 }
 
 LoopNavigateFourPoints::~LoopNavigateFourPoints() {
     if (log_file_.is_open()) {
+        if (test_end_state_ == TestEndState::RUNNING) {
+            std::string failure_reason;
+            std::string stop_reason;
+            try {
+                failure_reason = config().blackboard->get<std::string>("test_failure_reason");
+            } catch (...) {
+            }
+            try {
+                stop_reason = config().blackboard->get<std::string>("test_stop_reason");
+            } catch (...) {
+            }
+
+            if (!failure_reason.empty()) {
+                setTestEndState(TestEndState::FAILED, failure_reason);
+            } else if (!stop_reason.empty()) {
+                setTestEndState(TestEndState::STOPPED, stop_reason);
+            } else {
+                setTestEndState(TestEndState::STOPPED, "程序在完成计划前结束");
+            }
+        }
         calculateAndLogStats();
         log_file_.close();
     }
 }
 
+void LoopNavigateFourPoints::handleMapState(std::uint64_t epoch,
+                                            const std::string& map_folder,
+                                            const std::string& map_name) {
+    // 测试已经结束后不再改变最终状态，避免退出阶段收到晚到的 MapState 后误报。
+    if (test_end_state_ != TestEndState::RUNNING) {
+        return;
+    }
+
+    const std::string current_assets_file =
+        (std::filesystem::path(map_folder) / map_name / "assets" / "map_assets.json")
+            .lexically_normal()
+            .string();
+    if (epoch == expected_map_epoch_ && current_assets_file == expected_map_assets_file_) {
+        return;
+    }
+    if (map_changed_.exchange(true)) {
+        return;
+    }
+
+    std::ostringstream reason;
+    reason << "检测到地图已切换：启动时 epoch=" << expected_map_epoch_ << "，当前 epoch=" << epoch
+           << "；为防止使用旧地图坐标，测试已停止";
+    setTestEndState(TestEndState::STOPPED, reason.str());
+    try {
+        config().blackboard->set("map_changed", true);
+        config().blackboard->set("test_stop_reason", reason.str());
+    } catch (...) {
+    }
+    LOOP_RCLCPP_ERROR(node_->get_logger(), "%s。", reason.str().c_str());
+}
+
+void LoopNavigateFourPoints::setTestEndState(TestEndState state, const std::string& reason) {
+    if (test_end_state_ != TestEndState::RUNNING) {
+        return;
+    }
+    test_end_state_ = state;
+    test_end_reason_ = reason;
+}
+
+const char* LoopNavigateFourPoints::testEndStateText() const {
+    switch (test_end_state_) {
+        case TestEndState::COMPLETED:
+            return "正常完成";
+        case TestEndState::STOPPED:
+            return "提前停止";
+        case TestEndState::FAILED:
+            return "测试失败";
+        case TestEndState::RUNNING:
+        default:
+            return "运行中";
+    }
+}
+
 BT::PortsList LoopNavigateFourPoints::providedPorts() {
-    return {BT::InputPort<std::string>("points", "Path to the JSON file with navigation points")};
+    return {BT::InputPort<std::string>("points", "只包含轮数、点位顺序和停留时间的导航计划"),
+            BT::InputPort<std::string>("assets", "当前地图的 map_assets.json")};
+}
+
+void LoopNavigateFourPoints::writeTestLogHeader() {
+    if (!log_file_.is_open() || log_header_written_) {
+        return;
+    }
+
+    log_file_ << "\n";
+    log_file_ << "计划轮数：" << (total_rounds_ > 0 ? std::to_string(total_rounds_) : "持续运行") << "\n";
+    log_file_ << "点位顺序：";
+    for (std::size_t i = 0; i < goal_ids_.size(); ++i) {
+        if (i > 0) {
+            log_file_ << " -> ";
+        }
+        log_file_ << goal_ids_[i] << "（停留 " << std::fixed << std::setprecision(1)
+                  << goal_wait_times_sec_[i] << " 秒）";
+    }
+    log_file_ << "\n\n";
+    log_file_ << "轮次 | 点位 | 结果 | 导航耗时(秒) | 位置误差(厘米) | 角度误差(度) | "
+                 "本次行驶(米) | 累计行驶(米)\n";
+    log_file_ << "--------------------------------------------------------------------------------\n";
+    log_file_.flush();
+    log_header_written_ = true;
 }
 
 BT::NodeStatus LoopNavigateFourPoints::onStart() {
+    if (map_changed_) {
+        LOOP_RCLCPP_ERROR(node_->get_logger(), "当前地图与启动地图不一致，停止循环导航。");
+        return BT::NodeStatus::FAILURE;
+    }
+
     if (navigation_complete_) {
         try {
             config().blackboard->set("nav_loop_complete", true);
@@ -315,24 +522,35 @@ BT::NodeStatus LoopNavigateFourPoints::onStart() {
 
     // Load points once
     if (goals_.empty()) {
-        auto json_path = getInput<std::string>("points");
-        if (!json_path) {
-            LOOP_RCLCPP_ERROR(node_->get_logger(), "'points' port is missing.");
+        const auto plan_path = getInput<std::string>("points");
+        const auto assets_path = getInput<std::string>("assets");
+        if (!plan_path || !assets_path) {
+            LOOP_RCLCPP_ERROR(node_->get_logger(), "行为树缺少 points 或 assets 输入端口。");
+            setTestEndState(TestEndState::FAILED, "程序内部缺少导航计划或地图资产路径");
             return BT::NodeStatus::FAILURE;
         }
-        goals_ = parseNavPoints(json_path.value(), node_->get_logger(), goal_ids_, total_rounds_,
-                                goal_wait_times_sec_, wait_time_sec_);
+        goals_ = parseNavPoints(plan_path.value(), assets_path.value(), node_->get_logger(), goal_ids_,
+                                total_rounds_, goal_wait_times_sec_);
         if (goals_.empty()) {
+            setTestEndState(TestEndState::FAILED, "导航计划或当前地图点位配置错误，请联系技术人员");
             return BT::NodeStatus::FAILURE;
         }
         per_goal_stats_.resize(goals_.size());
         for (std::size_t i = 0; i < per_goal_stats_.size(); ++i) {
             per_goal_stats_[i].id = goal_ids_[i];
         }
+        writeTestLogHeader();
     }
 
     if (!action_client_->wait_for_action_server(std::chrono::duration<double>(action_server_wait_timeout_sec_))) {
         LOOP_RCLCPP_ERROR(node_->get_logger(), "Action server /navigate_to_pose not available.");
+        setTestEndState(TestEndState::FAILED, "导航服务未启动，测试无法开始");
+        return BT::NodeStatus::FAILURE;
+    }
+
+    // Action server 等待期间地图可能发生变化，发送目标前再处理一次 MapState。
+    rclcpp::spin_some(node_);
+    if (map_changed_) {
         return BT::NodeStatus::FAILURE;
     }
 
@@ -386,6 +604,16 @@ BT::NodeStatus LoopNavigateFourPoints::onStart() {
 }
 
 BT::NodeStatus LoopNavigateFourPoints::onRunning() {
+    if (map_changed_) {
+        if (goal_handle_) {
+            action_client_->async_cancel_goal(goal_handle_);
+        }
+        stopDistanceTracking();
+        goal_handle_.reset();
+        result_ready_ = false;
+        return BT::NodeStatus::FAILURE;
+    }
+
     // If paused mid-execution, cancel current goal and yield SUCCESS
     try {
         bool paused = config().blackboard->get<bool>("nav_paused");
@@ -418,6 +646,12 @@ BT::NodeStatus LoopNavigateFourPoints::onRunning() {
                             "导航目标被服务器拒绝，本次已累计移动 %.3f m，累计导航距离 %.3f m。",
                             distance_snapshot.goal_distance_m, distance_snapshot.cumulative_distance_m);
                 LOOP_RCLCPP_ERROR(node_->get_logger(), "Goal was rejected by server.");
+                failed_nav_++;
+                const double elapsed_sec =
+                    std::chrono::duration<double>(std::chrono::steady_clock::now() - goal_start_time_).count();
+                logNavigationError(NavigationErrorSample{}, distance_snapshot, elapsed_sec, false,
+                                   current_goal_index_);
+                setTestEndState(TestEndState::FAILED, "导航目标被导航服务拒绝");
                 return BT::NodeStatus::FAILURE;
             }
             // goal_handle_ will have been set in goal_response_callback
@@ -433,10 +667,12 @@ BT::NodeStatus LoopNavigateFourPoints::onRunning() {
     // Handle result
     if (result_code_ == rclcpp_action::ResultCode::SUCCEEDED) {
         const auto arrival_wall_time = std::chrono::system_clock::now();
+        const double navigation_elapsed_sec =
+            std::chrono::duration<double>(std::chrono::steady_clock::now() - goal_start_time_).count();
         succeeded_nav_++;
         const auto distance_snapshot = stopDistanceTracking();
 
-        // 到点后按当前点位配置停留；点位未配置时已在解析阶段回退到 YAML 默认值。
+        // 到点后按当前点位配置的时间停留，再采集稳定后的最终误差。
         const std::string& current_goal_id = goal_ids_[current_goal_index_];
         const double current_wait_time_sec = goal_wait_times_sec_[current_goal_index_];
         LOOP_RCLCPP_INFO(node_->get_logger(),
@@ -448,6 +684,13 @@ BT::NodeStatus LoopNavigateFourPoints::onRunning() {
             LOOP_RCLCPP_WARN(node_->get_logger(), "本次导航未收到有效里程计，显示的本次移动距离为 0。");
         }
         spinNodeForDuration(current_wait_time_sec, "成功到点后的稳定等待");
+        if (map_changed_) {
+            logNavigationError(NavigationErrorSample{}, distance_snapshot, navigation_elapsed_sec, true,
+                               current_goal_index_);
+            goal_handle_.reset();
+            result_ready_ = false;
+            return BT::NodeStatus::FAILURE;
+        }
 
         // Log error
         const auto& goal_pose_msg = goals_[current_goal_index_].pose;
@@ -457,9 +700,14 @@ BT::NodeStatus LoopNavigateFourPoints::onRunning() {
         tf2::Matrix3x3(q_goal).getRPY(roll, pitch, yaw_goal);
         Pose goal_pose = {goal_pose_msg.position.x, goal_pose_msg.position.y, yaw_goal};
 
-        const double elapsed_sec =
-            std::chrono::duration<double>(std::chrono::steady_clock::now() - goal_start_time_).count();
         const auto error_sample = getNavigationErrorSample(goal_pose);
+        if (map_changed_) {
+            logNavigationError(NavigationErrorSample{}, distance_snapshot, navigation_elapsed_sec, true,
+                               current_goal_index_);
+            goal_handle_.reset();
+            result_ready_ = false;
+            return BT::NodeStatus::FAILURE;
+        }
         const std::string arrival_time_text = formatUtc8Time(arrival_wall_time);
         LOOP_RCLCPP_INFO_AT(node_->get_logger(), arrival_time_text, "到达目标点 #%d（%s）。",
                             current_goal_index_ + 1, current_goal_id.c_str());
@@ -483,7 +731,7 @@ BT::NodeStatus LoopNavigateFourPoints::onRunning() {
             // 先更新轮数，避免本次误差统计写出旧轮数
             completed_rounds_++;
         }
-        logNavigationError(goal_pose, error_sample, distance_snapshot, elapsed_sec, true, current_goal_index_);
+        logNavigationError(error_sample, distance_snapshot, navigation_elapsed_sec, true, current_goal_index_);
 
         current_goal_index_ = (current_goal_index_ + 1) % goals_.size();
         if (current_goal_index_ == 0) {
@@ -495,13 +743,14 @@ BT::NodeStatus LoopNavigateFourPoints::onRunning() {
             }
             if (total_rounds_ > 0 && completed_rounds_ >= total_rounds_) {
                 navigation_complete_ = true;
+                setTestEndState(TestEndState::COMPLETED, "已完成计划轮数");
                 try {
                     config().blackboard->set("nav_loop_complete", true);
                 } catch (...) {
                 }
             }
-            if (last_stats_logged_sample_count_ != dist_errors_.size()) {
-                calculateAndLogStats(true);
+            if (navigation_complete_) {
+                calculateAndLogStats();
             }
         }
         goal_handle_.reset();
@@ -510,6 +759,8 @@ BT::NodeStatus LoopNavigateFourPoints::onRunning() {
     } else if (result_code_ == rclcpp_action::ResultCode::ABORTED) {
         // If navigation to a point fails, continue with the next point
         LOOP_RCLCPP_WARN(node_->get_logger(), "Goal #%d aborted (failed). Continue to next goal.", current_goal_index_ + 1);
+        const double navigation_elapsed_sec =
+            std::chrono::duration<double>(std::chrono::steady_clock::now() - goal_start_time_).count();
         failed_nav_++;
         const auto distance_snapshot = stopDistanceTracking();
         LOOP_RCLCPP_WARN(node_->get_logger(),
@@ -523,6 +774,13 @@ BT::NodeStatus LoopNavigateFourPoints::onRunning() {
         // 失败后使用与成功相同的当前点位停留时间，再统计机器人最终停止位置。
         const double current_wait_time_sec = goal_wait_times_sec_[current_goal_index_];
         spinNodeForDuration(current_wait_time_sec, "导航失败后的稳定等待");
+        if (map_changed_) {
+            logNavigationError(NavigationErrorSample{}, distance_snapshot, navigation_elapsed_sec, false,
+                               current_goal_index_);
+            goal_handle_.reset();
+            result_ready_ = false;
+            return BT::NodeStatus::FAILURE;
+        }
 
         const auto& goal_pose_msg = goals_[current_goal_index_].pose;
         tf2::Quaternion q_goal;
@@ -531,15 +789,20 @@ BT::NodeStatus LoopNavigateFourPoints::onRunning() {
         tf2::Matrix3x3(q_goal).getRPY(roll, pitch, yaw_goal);
         Pose goal_pose = {goal_pose_msg.position.x, goal_pose_msg.position.y, yaw_goal};
 
-        const double elapsed_sec =
-            std::chrono::duration<double>(std::chrono::steady_clock::now() - goal_start_time_).count();
         const auto error_sample = getNavigationErrorSample(goal_pose);
+        if (map_changed_) {
+            logNavigationError(NavigationErrorSample{}, distance_snapshot, navigation_elapsed_sec, false,
+                               current_goal_index_);
+            goal_handle_.reset();
+            result_ready_ = false;
+            return BT::NodeStatus::FAILURE;
+        }
         const bool completes_round = ((current_goal_index_ + 1) % goals_.size()) == 0;
         if (completes_round) {
             // 先更新轮数，避免本次误差统计写出旧轮数
             completed_rounds_++;
         }
-        logNavigationError(goal_pose, error_sample, distance_snapshot, elapsed_sec, false, current_goal_index_);
+        logNavigationError(error_sample, distance_snapshot, navigation_elapsed_sec, false, current_goal_index_);
 
         current_goal_index_ = (current_goal_index_ + 1) % goals_.size();
         if (current_goal_index_ == 0) {
@@ -551,13 +814,14 @@ BT::NodeStatus LoopNavigateFourPoints::onRunning() {
             }
             if (total_rounds_ > 0 && completed_rounds_ >= total_rounds_) {
                 navigation_complete_ = true;
+                setTestEndState(TestEndState::COMPLETED, "已完成计划轮数");
                 try {
                     config().blackboard->set("nav_loop_complete", true);
                 } catch (...) {
                 }
             }
-            if (last_stats_logged_sample_count_ != dist_errors_.size()) {
-                calculateAndLogStats(true);
+            if (navigation_complete_) {
+                calculateAndLogStats();
             }
         }
         goal_handle_.reset();
@@ -571,12 +835,26 @@ BT::NodeStatus LoopNavigateFourPoints::onRunning() {
                     current_goal_index_ + 1, distance_snapshot.goal_distance_m,
                     distance_snapshot.cumulative_distance_m);
         LOOP_RCLCPP_WARN(node_->get_logger(), "Goal #%d canceled. Return FAILURE.", current_goal_index_ + 1);
+        failed_nav_++;
+        const double elapsed_sec =
+            std::chrono::duration<double>(std::chrono::steady_clock::now() - goal_start_time_).count();
+        logNavigationError(NavigationErrorSample{}, distance_snapshot, elapsed_sec, false, current_goal_index_);
+        setTestEndState(TestEndState::FAILED, "导航目标被意外取消");
         goal_handle_.reset();
         result_ready_ = false;
         return BT::NodeStatus::FAILURE;
     }
 
-    return BT::NodeStatus::RUNNING;
+    const auto distance_snapshot = stopDistanceTracking();
+    failed_nav_++;
+    const double elapsed_sec =
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - goal_start_time_).count();
+    logNavigationError(NavigationErrorSample{}, distance_snapshot, elapsed_sec, false, current_goal_index_);
+    setTestEndState(TestEndState::FAILED, "导航返回了未知结果");
+    LOOP_RCLCPP_ERROR(node_->get_logger(), "导航返回未知结果，测试停止。");
+    goal_handle_.reset();
+    result_ready_ = false;
+    return BT::NodeStatus::FAILURE;
 }
 
 void LoopNavigateFourPoints::odometryCallback(const nav_msgs::msg::Odometry::ConstSharedPtr msg) {
@@ -642,7 +920,7 @@ void LoopNavigateFourPoints::spinNodeForDuration(double duration_sec, const char
         LOOP_RCLCPP_INFO_AT(node_->get_logger(), formatUtc8Time(wall_start_time), "%s开始计时：%.2f 秒。",
                             reason, duration_sec);
     }
-    while (std::chrono::steady_clock::now() < end_time && rclcpp::ok()) {
+    while (std::chrono::steady_clock::now() < end_time && rclcpp::ok() && !map_changed_) {
         rclcpp::spin_some(node_);
         rclcpp::sleep_for(std::chrono::milliseconds(100));
     }
@@ -650,7 +928,13 @@ void LoopNavigateFourPoints::spinNodeForDuration(double duration_sec, const char
 
 LoopNavigateFourPoints::NavigationErrorSample LoopNavigateFourPoints::getNavigationErrorSample(const Pose& goal) {
     NavigationErrorSample sample;
+    if (map_changed_) {
+        return sample;
+    }
     rclcpp::spin_some(node_);
+    if (map_changed_) {
+        return sample;
+    }
     if (use_goal_checker_error_ && getLatestGoalCheckerErrorSample(goal, sample)) {
         LOOP_RCLCPP_INFO(node_->get_logger(),
                     "使用 goal_checker 发布的最终误差写入导航统计：lon=%.4f, lat=%.4f, yaw=%.4f, dist=%.4f",
@@ -676,9 +960,12 @@ LoopNavigateFourPoints::NavigationErrorSample LoopNavigateFourPoints::getNavigat
     const double cos_yaw = std::cos(goal.yaw);
     const double sin_yaw = std::sin(goal.yaw);
 
-    for (std::size_t i = 0; i < pose_sample_count_; ++i) {
+    for (std::size_t i = 0; i < pose_sample_count_ && !map_changed_; ++i) {
         try {
             rclcpp::spin_some(node_);
+            if (map_changed_) {
+                return {};
+            }
             const auto transform = tf_buffer_->lookupTransform("map", "base_link", tf2::TimePointZero);
 
             const auto& tr = transform.transform.translation;
@@ -710,7 +997,7 @@ LoopNavigateFourPoints::NavigationErrorSample LoopNavigateFourPoints::getNavigat
         }
     }
 
-    if (xs.empty()) {
+    if (map_changed_ || xs.empty()) {
         return sample;
     }
 
@@ -866,8 +1153,7 @@ bool LoopNavigateFourPoints::getLatestGoalCheckerErrorSample(const Pose& goal, N
     return true;
 }
 
-void LoopNavigateFourPoints::logNavigationError(const Pose& goal,
-                                                const NavigationErrorSample& error_sample,
+void LoopNavigateFourPoints::logNavigationError(const NavigationErrorSample& error_sample,
                                                 const DistanceSnapshot& distance_snapshot,
                                                 double elapsed_sec,
                                                 bool succeeded,
@@ -876,53 +1162,59 @@ void LoopNavigateFourPoints::logNavigationError(const Pose& goal,
         return;
     }
 
-    const Pose& current = error_sample.current;
     const double err_lon = error_sample.lon_error;
     const double err_lat = error_sample.lat_error;
     const double err_yaw = error_sample.yaw_error;
     const double err_dist = error_sample.dist_error;
     if (!error_sample.valid) {
-        LOOP_RCLCPP_WARN(node_->get_logger(), "误差统计未获取到有效 TF 样本，本次写入零误差样本。");
+        LOOP_RCLCPP_WARN(node_->get_logger(), "未获取到有效到点误差，本次导航仍记录结果，但不纳入误差统计。");
     }
-    const bool within_1cm = error_sample.from_goal_checker ?
-        error_sample.within_desired_tolerance :
-        isWithinPositionTolerance(err_lon, err_lat, desired_position_tolerance_);
-    const bool within_2cm = error_sample.from_goal_checker ?
-        error_sample.within_accept_tolerance :
-        isWithinPositionTolerance(err_lon, err_lat, accept_position_tolerance_);
+    if (!distance_snapshot.valid) {
+        ++missing_distance_count_;
+    }
+    const bool within_1cm = error_sample.valid &&
+        (error_sample.from_goal_checker
+             ? error_sample.within_desired_tolerance
+             : isWithinPositionTolerance(err_lon, err_lat, desired_position_tolerance_));
+    const bool within_2cm = error_sample.valid &&
+        (error_sample.from_goal_checker
+             ? error_sample.within_accept_tolerance
+             : isWithinPositionTolerance(err_lon, err_lat, accept_position_tolerance_));
 
-    lon_errors_.push_back(err_lon);
-    lat_errors_.push_back(err_lat);
-    yaw_errors_.push_back(std::abs(err_yaw));
-    dist_errors_.push_back(err_dist);
-    if (within_1cm) {
-        within_1cm_count_++;
-    }
-    if (within_2cm) {
-        within_2cm_count_++;
-    }
-
-    if (succeeded) {
-        success_lon_errors_.push_back(err_lon);
-        success_lat_errors_.push_back(err_lat);
-        success_yaw_errors_.push_back(std::abs(err_yaw));
-        success_dist_errors_.push_back(err_dist);
+    if (error_sample.valid) {
+        lon_errors_.push_back(err_lon);
+        lat_errors_.push_back(err_lat);
+        yaw_errors_.push_back(std::abs(err_yaw));
+        dist_errors_.push_back(err_dist);
         if (within_1cm) {
-            success_within_1cm_count_++;
+            within_1cm_count_++;
         }
         if (within_2cm) {
-            success_within_2cm_count_++;
+            within_2cm_count_++;
         }
-    } else {
-        failed_lon_errors_.push_back(err_lon);
-        failed_lat_errors_.push_back(err_lat);
-        failed_yaw_errors_.push_back(std::abs(err_yaw));
-        failed_dist_errors_.push_back(err_dist);
-        if (within_1cm) {
-            failed_within_1cm_count_++;
-        }
-        if (within_2cm) {
-            failed_within_2cm_count_++;
+
+        if (succeeded) {
+            success_lon_errors_.push_back(err_lon);
+            success_lat_errors_.push_back(err_lat);
+            success_yaw_errors_.push_back(std::abs(err_yaw));
+            success_dist_errors_.push_back(err_dist);
+            if (within_1cm) {
+                success_within_1cm_count_++;
+            }
+            if (within_2cm) {
+                success_within_2cm_count_++;
+            }
+        } else {
+            failed_lon_errors_.push_back(err_lon);
+            failed_lat_errors_.push_back(err_lat);
+            failed_yaw_errors_.push_back(std::abs(err_yaw));
+            failed_dist_errors_.push_back(err_dist);
+            if (within_1cm) {
+                failed_within_1cm_count_++;
+            }
+            if (within_2cm) {
+                failed_within_2cm_count_++;
+            }
         }
     }
 
@@ -932,28 +1224,32 @@ void LoopNavigateFourPoints::logNavigationError(const Pose& goal,
         if (succeeded) {
             goal_stats.succeeded++;
             goal_stats.success_elapsed_times.push_back(elapsed_sec);
-            goal_stats.success_lon_errors.push_back(err_lon);
-            goal_stats.success_lat_errors.push_back(err_lat);
-            goal_stats.success_yaw_errors.push_back(std::abs(err_yaw));
-            goal_stats.success_dist_errors.push_back(err_dist);
-            if (within_1cm) {
-                goal_stats.success_within_1cm++;
-            }
-            if (within_2cm) {
-                goal_stats.success_within_2cm++;
+            if (error_sample.valid) {
+                goal_stats.success_lon_errors.push_back(err_lon);
+                goal_stats.success_lat_errors.push_back(err_lat);
+                goal_stats.success_yaw_errors.push_back(std::abs(err_yaw));
+                goal_stats.success_dist_errors.push_back(err_dist);
+                if (within_1cm) {
+                    goal_stats.success_within_1cm++;
+                }
+                if (within_2cm) {
+                    goal_stats.success_within_2cm++;
+                }
             }
         } else {
             goal_stats.failed++;
             goal_stats.failed_elapsed_times.push_back(elapsed_sec);
-            goal_stats.failed_lon_errors.push_back(err_lon);
-            goal_stats.failed_lat_errors.push_back(err_lat);
-            goal_stats.failed_yaw_errors.push_back(std::abs(err_yaw));
-            goal_stats.failed_dist_errors.push_back(err_dist);
-            if (within_1cm) {
-                goal_stats.failed_within_1cm++;
-            }
-            if (within_2cm) {
-                goal_stats.failed_within_2cm++;
+            if (error_sample.valid) {
+                goal_stats.failed_lon_errors.push_back(err_lon);
+                goal_stats.failed_lat_errors.push_back(err_lat);
+                goal_stats.failed_yaw_errors.push_back(std::abs(err_yaw));
+                goal_stats.failed_dist_errors.push_back(err_dist);
+                if (within_1cm) {
+                    goal_stats.failed_within_1cm++;
+                }
+                if (within_2cm) {
+                    goal_stats.failed_within_2cm++;
+                }
             }
         }
     }
@@ -961,17 +1257,38 @@ void LoopNavigateFourPoints::logNavigationError(const Pose& goal,
     if (log_file_.is_open()) {
         const std::string goal_id =
             goal_index < goal_ids_.size() ? goal_ids_[goal_index] : "goal_" + std::to_string(goal_index);
-        log_file_ << (succeeded ? "成功" : "失败") << " " << std::fixed << std::setprecision(4) << elapsed_sec
-                  << " " << goal_index << " " << goal_id << " " << goal.x << " " << goal.y << " " << goal.yaw << " "
-                  << current.x << " " << current.y << " " << current.yaw << " " << err_lon << " " << err_lat << " "
-                  << err_yaw << " " << err_dist << " " << distance_snapshot.goal_distance_m << " "
-                  << distance_snapshot.cumulative_distance_m << " " << (distance_snapshot.valid ? 1 : 0) << " "
-                  << (within_1cm ? 1 : 0) << " " << (within_2cm ? 1 : 0)
-                  << std::endl;
-    }
+        const int round_number =
+            completed_rounds_ + ((goal_index + 1 < goals_.size()) ? 1 : 0);
+        std::string round_text = std::to_string(round_number);
+        if (total_rounds_ > 0) {
+            round_text += "/" + std::to_string(total_rounds_);
+        }
 
-    if (dist_errors_.size() % stats_log_interval_ == 0) {
-        calculateAndLogStats();
+        std::ostringstream position_error;
+        std::ostringstream yaw_error;
+        if (error_sample.valid) {
+            position_error << std::fixed << std::setprecision(2) << err_dist * 100.0;
+            yaw_error << std::fixed << std::setprecision(2) << std::abs(err_yaw) * 180.0 / M_PI;
+        } else {
+            position_error << "未获取";
+            yaw_error << "未获取";
+        }
+
+        std::ostringstream goal_distance;
+        std::ostringstream cumulative_distance;
+        if (distance_snapshot.valid) {
+            goal_distance << std::fixed << std::setprecision(2) << distance_snapshot.goal_distance_m;
+            cumulative_distance << std::fixed << std::setprecision(2)
+                                << distance_snapshot.cumulative_distance_m;
+        } else {
+            goal_distance << "未获取";
+            cumulative_distance << "未获取";
+        }
+
+        log_file_ << round_text << " | " << goal_id << " | " << (succeeded ? "成功" : "失败") << " | "
+                  << std::fixed << std::setprecision(2) << elapsed_sec << " | " << position_error.str() << " | "
+                  << yaw_error.str() << " | " << goal_distance.str() << " | " << cumulative_distance.str() << "\n";
+        log_file_.flush();
     }
 }
 
@@ -1011,52 +1328,16 @@ LoopNavigateFourPoints::MetricStats LoopNavigateFourPoints::calculateMetricStats
     return stats;
 }
 
-void LoopNavigateFourPoints::calculateAndLogStats(bool force) {
-    if (dist_errors_.empty()) {
+void LoopNavigateFourPoints::calculateAndLogStats() {
+    const std::size_t total_nav = static_cast<std::size_t>(succeeded_nav_ + failed_nav_);
+    if (summary_written_ || !log_file_.is_open()) {
         return;
     }
 
-    if (!force && dist_errors_.size() == last_stats_logged_sample_count_) {
-        return;
-    }
-
-    const int total_nav = succeeded_nav_ + failed_nav_;
-    const double success_rate = total_nav > 0 ? static_cast<double>(succeeded_nav_) * 100.0 / total_nav : 0.0;
+    const double success_rate =
+        total_nav > 0 ? static_cast<double>(succeeded_nav_) * 100.0 / static_cast<double>(total_nav) : 0.0;
     auto percentage = [](int count, std::size_t total) {
         return total > 0 ? static_cast<double>(count) * 100.0 / static_cast<double>(total) : 0.0;
-    };
-
-    auto write_metric_block = [this](const std::string& label,
-                                     const std::vector<double>& lon_errors,
-                                     const std::vector<double>& lat_errors,
-                                     const std::vector<double>& dist_errors,
-                                     const std::vector<double>& yaw_errors,
-                                     int within_1cm_count,
-                                     int within_2cm_count,
-                                     const auto& percentage_fn) {
-        log_file_ << "- " << label << "\n";
-        log_file_ << "  样本数: " << dist_errors.size() << "\n";
-        if (dist_errors.empty()) {
-            log_file_ << "  误差: 无样本\n";
-            return;
-        }
-
-        const MetricStats lon_stats = calculateMetricStats(lon_errors);
-        const MetricStats lat_stats = calculateMetricStats(lat_errors);
-        const MetricStats dist_stats = calculateMetricStats(dist_errors);
-        const MetricStats yaw_stats = calculateMetricStats(yaw_errors);
-
-        log_file_ << std::fixed << std::setprecision(4);
-        log_file_ << "  纵向误差: MAE " << lon_stats.mean << " m, 标准差 " << lon_stats.std_dev << " m\n";
-        log_file_ << "  横向误差: MAE " << lat_stats.mean << " m, 标准差 " << lat_stats.std_dev << " m\n";
-        log_file_ << "  距离误差: MAE " << dist_stats.mean << " m, 标准差 " << dist_stats.std_dev << " m\n";
-        log_file_ << std::fixed << std::setprecision(2);
-        log_file_ << "  角度误差: MAE " << yaw_stats.mean * 180.0 / M_PI << " deg, 标准差 "
-                  << yaw_stats.std_dev * 180.0 / M_PI << " deg\n";
-        log_file_ << "  位置误差满足期望阈值(" << desired_position_tolerance_ << " m): " << within_1cm_count
-                  << " 次, 占比 " << percentage_fn(within_1cm_count, dist_errors.size()) << "%\n";
-        log_file_ << "  位置误差满足接受阈值(" << accept_position_tolerance_ << " m): " << within_2cm_count
-                  << " 次, 占比 " << percentage_fn(within_2cm_count, dist_errors.size()) << "%\n";
     };
 
     auto calculate_average_elapsed = [](const std::vector<double>& elapsed_times) {
@@ -1066,90 +1347,102 @@ void LoopNavigateFourPoints::calculateAndLogStats(bool force) {
         return std::accumulate(elapsed_times.begin(), elapsed_times.end(), 0.0) / elapsed_times.size();
     };
 
-    auto write_average_elapsed = [&calculate_average_elapsed](const std::string& label,
-                                                              const std::vector<double>& elapsed_times,
-                                                              std::ostream& os) {
-        os << label;
-        if (elapsed_times.empty()) {
-            os << "无样本";
-            return;
-        }
-        os << std::fixed << std::setprecision(4) << calculate_average_elapsed(elapsed_times) << " s";
-    };
+    std::vector<double> all_elapsed_times;
+    for (const auto& goal_stats : per_goal_stats_) {
+        all_elapsed_times.insert(all_elapsed_times.end(), goal_stats.elapsed_times.begin(),
+                                 goal_stats.elapsed_times.end());
+    }
 
-    if (log_file_.is_open()) {
-        log_file_ << "\n\n================ 导航统计汇总（截至当前轮） ================\n";
-        log_file_ << "轮数: " << completed_rounds_ << "/";
-        if (total_rounds_ > 0) {
-            log_file_ << total_rounds_;
-        } else {
-            log_file_ << "无限";
-        }
-        log_file_ << " | 样本数: " << dist_errors_.size() << " | 成功: " << succeeded_nav_
-                  << " | 失败: " << failed_nav_ << " | 成功率: " << std::fixed << std::setprecision(2)
-                  << success_rate << "%\n";
-        {
-            std::lock_guard<std::mutex> lock(distance_mutex_);
-            log_file_ << std::fixed << std::setprecision(3)
-                      << "累计导航移动距离: " << cumulative_navigation_distance_m_ << " m\n\n";
-        }
+    double cumulative_distance_m = 0.0;
+    {
+        std::lock_guard<std::mutex> lock(distance_mutex_);
+        cumulative_distance_m = cumulative_navigation_distance_m_;
+    }
 
-        log_file_ << "[总体误差]\n";
-        write_metric_block("全部样本", lon_errors_, lat_errors_, dist_errors_, yaw_errors_, within_1cm_count_,
-                           within_2cm_count_, percentage);
-        write_metric_block("成功样本", success_lon_errors_, success_lat_errors_, success_dist_errors_,
-                           success_yaw_errors_, success_within_1cm_count_, success_within_2cm_count_, percentage);
-        write_metric_block("失败样本", failed_lon_errors_, failed_lat_errors_, failed_dist_errors_, failed_yaw_errors_,
-                           failed_within_1cm_count_, failed_within_2cm_count_, percentage);
+    log_file_ << "\n================ 测试汇总 ================\n";
+    log_file_ << "测试状态：" << testEndStateText() << "\n";
+    if (!test_end_reason_.empty()) {
+        log_file_ << "原因：" << test_end_reason_ << "\n";
+    }
+    log_file_ << "完成轮数：" << completed_rounds_;
+    if (total_rounds_ > 0) {
+        log_file_ << "/" << total_rounds_;
+    }
+    log_file_ << "\n";
+    log_file_ << "导航次数：" << total_nav << "（成功 " << succeeded_nav_ << "，失败 " << failed_nav_
+              << "，成功率 " << std::fixed << std::setprecision(1) << success_rate << "%）\n";
+    if (!all_elapsed_times.empty()) {
+        log_file_ << "平均导航耗时：" << std::fixed << std::setprecision(2)
+                  << calculate_average_elapsed(all_elapsed_times) << " 秒\n";
+    } else {
+        log_file_ << "平均导航耗时：无有效记录\n";
+    }
+    log_file_ << "累计导航距离：" << std::fixed << std::setprecision(2) << cumulative_distance_m << " 米";
+    if (missing_distance_count_ > 0) {
+        log_file_ << "（" << missing_distance_count_ << " 次未获取里程计，本数值不完整）";
+    }
+    log_file_ << "\n";
+    log_file_ << "有效误差记录：" << dist_errors_.size() << "/" << total_nav << "\n";
 
-        log_file_ << "\n[各点成功率与平均耗时]\n";
+    if (!dist_errors_.empty()) {
+        const MetricStats dist_stats = calculateMetricStats(dist_errors_);
+        const MetricStats yaw_stats = calculateMetricStats(yaw_errors_);
+        const double max_dist_error = *std::max_element(dist_errors_.begin(), dist_errors_.end());
+        const double max_yaw_error = *std::max_element(yaw_errors_.begin(), yaw_errors_.end());
+        log_file_ << "平均位置误差：" << std::fixed << std::setprecision(2) << dist_stats.mean * 100.0
+                  << " 厘米（最大 " << max_dist_error * 100.0 << " 厘米）\n";
+        log_file_ << "平均角度误差：" << std::fixed << std::setprecision(2)
+                  << yaw_stats.mean * 180.0 / M_PI << " 度（最大 " << max_yaw_error * 180.0 / M_PI
+                  << " 度）\n";
+        log_file_ << "位置误差不超过 " << desired_position_tolerance_ * 100.0 << " 厘米："
+                  << within_1cm_count_ << "/" << dist_errors_.size() << "（"
+                  << percentage(within_1cm_count_, dist_errors_.size()) << "%）\n";
+        log_file_ << "位置误差不超过 " << accept_position_tolerance_ * 100.0 << " 厘米："
+                  << within_2cm_count_ << "/" << dist_errors_.size() << "（"
+                  << percentage(within_2cm_count_, dist_errors_.size()) << "%）\n";
+    } else {
+        log_file_ << "到点误差：未获取，无法评价到点精度\n";
+    }
+
+    if (!per_goal_stats_.empty()) {
+        log_file_ << "\n各点结果：\n";
         for (std::size_t i = 0; i < per_goal_stats_.size(); ++i) {
             const auto& goal_stats = per_goal_stats_[i];
             const int goal_total = goal_stats.succeeded + goal_stats.failed;
             const double goal_success_rate =
                 goal_total > 0 ? static_cast<double>(goal_stats.succeeded) * 100.0 / goal_total : 0.0;
             const std::string goal_id = goal_stats.id.empty() ? "goal_" + std::to_string(i) : goal_stats.id;
+            std::vector<double> goal_dist_errors = goal_stats.success_dist_errors;
+            goal_dist_errors.insert(goal_dist_errors.end(), goal_stats.failed_dist_errors.begin(),
+                                    goal_stats.failed_dist_errors.end());
 
-            log_file_ << "- 点 " << i << " (" << goal_id << "): 总数 " << goal_total << ", 成功 "
-                      << goal_stats.succeeded << ", 失败 " << goal_stats.failed << ", 成功率 " << std::fixed
-                      << std::setprecision(2) << goal_success_rate << "%, ";
-            log_file_ << "期望阈值内 " << (goal_stats.success_within_1cm + goal_stats.failed_within_1cm)
-                      << " 次, 接受阈值内 " << (goal_stats.success_within_2cm + goal_stats.failed_within_2cm)
-                      << " 次, ";
-            write_average_elapsed("总平均耗时 ", goal_stats.elapsed_times, log_file_);
-            log_file_ << ", ";
-            write_average_elapsed("成功平均耗时 ", goal_stats.success_elapsed_times, log_file_);
-            log_file_ << ", ";
-            write_average_elapsed("失败平均耗时 ", goal_stats.failed_elapsed_times, log_file_);
+            log_file_ << "- " << goal_id << "：共 " << goal_total << " 次，成功 " << goal_stats.succeeded
+                      << "，失败 " << goal_stats.failed << "，成功率 " << std::fixed << std::setprecision(1)
+                      << goal_success_rate << "%，平均耗时 " << std::setprecision(2)
+                      << calculate_average_elapsed(goal_stats.elapsed_times) << " 秒";
+            if (!goal_dist_errors.empty()) {
+                log_file_ << "，平均位置误差 " << calculateMetricStats(goal_dist_errors).mean * 100.0 << " 厘米";
+            } else {
+                log_file_ << "，位置误差未获取";
+            }
             log_file_ << "\n";
         }
-
-        log_file_ << "\n[各点误差]\n";
-        for (std::size_t i = 0; i < per_goal_stats_.size(); ++i) {
-            const auto& goal_stats = per_goal_stats_[i];
-            const std::string goal_id = goal_stats.id.empty() ? "goal_" + std::to_string(i) : goal_stats.id;
-            log_file_ << "点 " << i << " (" << goal_id << ")\n";
-            write_metric_block("成功误差", goal_stats.success_lon_errors, goal_stats.success_lat_errors,
-                               goal_stats.success_dist_errors, goal_stats.success_yaw_errors,
-                               goal_stats.success_within_1cm, goal_stats.success_within_2cm, percentage);
-            write_metric_block("失败误差", goal_stats.failed_lon_errors, goal_stats.failed_lat_errors,
-                               goal_stats.failed_dist_errors, goal_stats.failed_yaw_errors,
-                               goal_stats.failed_within_1cm, goal_stats.failed_within_2cm, percentage);
-        }
-
-        log_file_ << "============================================================\n";
-        log_file_.flush();
     }
 
-    const MetricStats dist_stats = calculateMetricStats(dist_errors_);
-    const MetricStats yaw_stats = calculateMetricStats(yaw_errors_);
-    LOOP_RCLCPP_INFO(node_->get_logger(),
-                "Navigation stats (%zu samples): dist mean=%.4f m, dist 3sigma=%.2f%%, yaw mean=%.2f deg, "
-                "yaw 3sigma=%.2f%%",
-                dist_errors_.size(), dist_stats.mean, dist_stats.sigma3_probability, yaw_stats.mean * 180.0 / M_PI,
-                yaw_stats.sigma3_probability);
+    if (test_end_state_ == TestEndState::COMPLETED && failed_nav_ == 0) {
+        log_file_ << "\n测试结果：计划已完成，全部导航成功\n";
+    } else if (test_end_state_ == TestEndState::COMPLETED) {
+        log_file_ << "\n测试结果：计划已完成，但存在导航失败\n";
+    } else {
+        log_file_ << "\n测试结果：计划未正常完成，请查看测试状态和原因\n";
+    }
+    log_file_ << "============================================\n";
+    log_file_.flush();
+    summary_written_ = true;
 
-    last_stats_logged_sample_count_ = dist_errors_.size();
+    LOOP_RCLCPP_INFO(node_->get_logger(),
+                     "导航测试汇总已写入 nav_error_log.txt：状态=%s，共 %zu 次，成功 %d，失败 %d。",
+                     testEndStateText(), total_nav, succeeded_nav_, failed_nav_);
 }
 
 void LoopNavigateFourPoints::onHalted() {
@@ -1421,17 +1714,23 @@ NavigateToFirstPointAndStop::NavigateToFirstPointAndStop(const std::string& name
 }
 
 BT::PortsList NavigateToFirstPointAndStop::providedPorts() {
-    return {BT::InputPort<std::string>("points", "Path to the JSON file with navigation points")};
+    return {BT::InputPort<std::string>("points", "只包含轮数、点位顺序和停留时间的导航计划"),
+            BT::InputPort<std::string>("assets", "当前地图的 map_assets.json")};
 }
 
 BT::NodeStatus NavigateToFirstPointAndStop::onStart() {
     if (goals_.empty()) {
-        auto json_path = getInput<std::string>("points");
-        if (!json_path) {
-            LOOP_RCLCPP_ERROR(node_->get_logger(), "[LowBattery] 'points' port is missing.");
+        const auto plan_path = getInput<std::string>("points");
+        const auto assets_path = getInput<std::string>("assets");
+        if (!plan_path || !assets_path) {
+            LOOP_RCLCPP_ERROR(node_->get_logger(), "[LowBattery] 行为树缺少 points 或 assets 输入端口。");
             return BT::NodeStatus::FAILURE;
         }
-        goals_ = parseNavPoints(json_path.value(), node_->get_logger());
+        std::vector<std::string> unused_goal_ids;
+        std::vector<double> unused_goal_wait_times_sec;
+        int unused_total_rounds = 0;
+        goals_ = parseNavPoints(plan_path.value(), assets_path.value(), node_->get_logger(), unused_goal_ids,
+                                unused_total_rounds, unused_goal_wait_times_sec);
         if (goals_.empty()) {
             return BT::NodeStatus::FAILURE;
         }
@@ -1447,7 +1746,7 @@ BT::NodeStatus NavigateToFirstPointAndStop::onStart() {
     goal_handle_.reset();
 
     auto goal_msg = NavigateToPose::Goal();
-    goal_msg.pose = goals_[0];  // 低电量停止点固定使用 JSON 中的第一个点。
+    goal_msg.pose = goals_[0];  // 低电量停止点固定使用导航计划中的第一个点。
     goal_msg.pose.header.stamp = node_->now();
 
     LOOP_RCLCPP_WARN(node_->get_logger(), "[LowBattery] Battery low! Navigating to first point (%.2f, %.2f) then stopping.",

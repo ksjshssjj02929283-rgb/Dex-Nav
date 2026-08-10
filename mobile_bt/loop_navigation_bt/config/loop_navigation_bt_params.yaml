@@ -2,7 +2,7 @@
   ros__parameters:
     loop.tick_rate_hz: 10.0  # 行为树主循环频率，单位：Hz。
 
-    navigation.wait_time_sec: 2.0  # 点位未单独配置时的等待时间；导航成功和失败共用，单位：秒。
+    navigation.map_state_wait_timeout_sec: 5.0  # 启动时等待当前地图状态的最长时间，单位：秒。
     navigation.action_server_wait_timeout_sec: 2.0  # 等待 Nav2 导航 Action server 的最长时间，单位：秒。
     navigation.odom_topic: /feedback/odom  # 用于累计实际移动距离的里程计话题。
     navigation.odom_max_increment_m: 0.5  # 单条里程计允许的最大位置增量，超过时视为跳变并忽略，单位：米。
@@ -22,4 +22,3 @@
     goal_error_stats.accept_position_tolerance: 0.02  # 可接受位置误差阈值，单位：米。
     goal_error_stats.sample_count: 10  # 回退到 TF 统计时连续采集的位姿样本数量。
     goal_error_stats.sample_interval_sec: 0.1  # TF 位姿样本之间的时间间隔，单位：秒。
-    goal_error_stats.stats_log_interval: 20  # 每累计多少个导航样本输出一次统计汇总。
