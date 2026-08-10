@@ -9,7 +9,7 @@
 //     A2 computeCruiseLimit + setPlanSpeedLimit（理想巡航求解 + 回填）
 //     A3 applyCurvatureConstraint（曲率限速）
 //     A4 applyEndSpeedConstraint（末端蠕行区：距终点 stop_distance 内压到 end_speed）
-//   Phase B 运动学可行化（派生类纯虚 assignVelocityProfile）：
+//   Phase B 运动学可行化（派生类纯虚 generateProfile）：
 //     T 型 = 恒加速度前向/后向剖面；S 型 = Ruckig jerk 限制剖面。
 //
 // base 不含任何具体速度剖面算法；computeSpeedPlan 为模板方法：
@@ -21,6 +21,7 @@
 #ifndef NAV2_SPEED_PLANNER__SPEED_PLANNER_BASE_HPP_
 #define NAV2_SPEED_PLANNER__SPEED_PLANNER_BASE_HPP_
 
+#include <limits>
 #include <memory>
 #include <string>
 #include <vector>
@@ -37,29 +38,12 @@
 #include "nav_interfaces/msg/robot_trajectory.hpp"
 
 #include "nav2_core/speed_planner.hpp"
+#include "nav2_speed_planner/constraints/obstacle_constraint.hpp"
+#include "nav2_speed_planner/core/feasibility.hpp"
+#include "nav2_speed_planner/core/velocity_envelope.hpp"
 
 namespace nav2_speed_planner
 {
-
-/**
- * @struct TrajPointWork
- * @brief 内部工作结构：{pose, speed_limit, curvature} + S 型扩展字段 + 语义透传字段。
- */
-struct TrajPointWork
-{
-  geometry_msgs::msg::PoseStamped pose;
-  double speed_limit{0.0};
-  double curvature{0.0};
-
-  // —— 时空剖面扩展字段（恒加速度剖面默认 0，jerk 限制剖面回填）——
-  double accel{0.0};
-  double rel_time{0.0};
-
-  // —— 透传字段（来自带语义的 path；nav_msgs/Path 无此字段时置默认）——
-  float speed_hint{0.0f};
-  std::string region_type;
-  std::string segment_id;
-};
 
 /**
  * @class SpeedPlannerBase
@@ -88,11 +72,11 @@ public:
    * @brief 模板方法：path + 当前速度 → 带速度的时空轨迹。
    *        固定流程：构建工作结构（相邻重复点去重）→ 初始限速取严（外部限速/速度提示）→
    *        Phase A 约束包络（A1 障碍 → A2 巡航 → A3 曲率 → A4 末端蠕行）→
-   *        Phase B hook assignVelocityProfile → 组装 RobotTrajectory + 剖面可观测日志。
+   *        Phase B hook generateProfile → 组装 RobotTrajectory + 剖面可观测日志。
    */
   nav_interfaces::msg::RobotTrajectory computeSpeedPlan(
     const nav_msgs::msg::Path & path,
-    const nav2_core::SpeedPlanningBoundary & boundary) override;
+    const nav2_core::InitialMotionState & boundary) override;
 
   nav2_core::SpeedPlanningDiagnostics getLastPlanningDiagnostics() const override;
 
@@ -114,7 +98,7 @@ protected:
   // @param curr_vel 当前实际速度（receding-horizon 起点）
   // @param cruise_limit Phase A 求得的巡航上界（可作为剖面上限参考）
   // ============================================================
-  virtual void assignVelocityProfile(
+  virtual void generateProfile(
     std::vector<TrajPointWork> & work, double curr_vel, double curr_accel,
     double cruise_limit, bool terminal_brake_latched) = 0;
 
@@ -122,26 +106,39 @@ protected:
   // Phase A 约束包络（共享，逐点 min 叠加；安全置零绝对优先，任何后续写入不得抬升）
   // ============================================================
 
-  /// A1 障碍约束：首个障碍点及其后全部置零，障碍前 collision_stop_distance_ 缓冲带置零
-  /// （index 0 为机器人当前位置，不动）。@return 是否检测到障碍
-  bool applyObstacleConstraint(std::vector<TrajPointWork> & path);
+  /// A1 障碍约束：首个障碍点及其后全部置零，障碍前 obstacle_zero_buffer_ 缓冲带置零
+  /// （index 0 为机器人当前位置，不动）。
+  /// @return 见 ObstacleConstraintOutcome——**"没有障碍"与"没法查"是两件事**
+  ObstacleConstraintOutcome produceObstacleConstraint(const std::vector<TrajPointWork> & path);
 
   /// A2 理想巡航上界（纯查询）：非零速点限速的最小值，clamp 到 [min_speed_, max_speed_]；
   /// 全部点被安全置零时返回 0。
-  double computeCruiseLimit(const std::vector<TrajPointWork> & path) const;
+  double computeProfileCruiseTarget(const std::vector<TrajPointWork> & path) const;
 
-  /// A2 回填：巡航上界写入所有非零速点（零速点跳过，安全零不回填）。
-  void setPlanSpeedLimit(std::vector<TrajPointWork> & path, const double speed_limit);
+  /// A2 回填：巡航上界与各点现有限速**取严**后写入非零速点（零速点跳过，安全零不回填）。
+  /// 取严而非覆写，才符合 Phase A 的"逐点 min 叠加"契约——见 .cpp 内说明。
 
   /// A3 曲率约束：小半径处限速（只降不升）+ 曲率值写入 + 转弯保持匀速（可选）。
-  void applyCurvatureConstraint(std::vector<TrajPointWork> & path, const double ex_speed_limit);
+  /// 曲率由编排层计算并写入路径点（它是路径的几何属性，不是约束），
+  /// 本产出方只消费。
+  /// A3 横向加速度约束：`v ≤ √(a_lat_max / |κ|)`。
+  ///
+  /// **不再依赖巡航基准。** 旧式 `v = cruise × radius / min_radius` 把同一半径的
+  /// 弯道在不同巡航速度下限到不同速度——实测弯道最低速随外部限速在
+  /// [0.125, 0.417] 漂移 **3.3 倍**（横向加速度 0.031 → 0.347 m/s²），物理上错误。
+  /// 该错误也是"A3 必须排在 A2 之后"这条顺序依赖的唯一来源；公式改正后
+  /// 四条约束在值语义上彻底可自由组合。
+  VelocityConstraint produceLateralAccelConstraint(
+    const std::vector<TrajPointWork> & path,
+    const std::vector<double> & curvature_vec) const;
 
-  /// 在 goal 前 stop_distance_ 处插入精确 stop-zone 入口，避免入口依赖路径采样点距。
+  /// 在 goal 前 terminal_creep_distance_ 处插入精确 stop-zone 入口，避免入口依赖路径采样点距。
   void insertEndSpeedBoundary(std::vector<TrajPointWork> & path) const;
 
-  /// A4 末端蠕行区：未来点距终点 stop_distance_ 内包络压到 end_speed_；
+  /// A4 末端蠕行区：未来点距终点 terminal_creep_distance_ 内包络压到 end_speed_；
   /// index 0 是当前实测边界，不被未来包络覆盖。
-  void applyEndSpeedConstraint(std::vector<TrajPointWork> & path);
+  VelocityConstraint produceTerminalConstraint(
+    const std::vector<TrajPointWork> & path) const;
 
   // ============================================================
   // 共享工具（T/S 均可用）
@@ -156,7 +153,7 @@ protected:
 
   /// 三点圆拟合曲率序列（Menger 曲率）。
   std::vector<double> calcTrajectoryCurvatureFrom3Points(
-    const std::vector<TrajPointWork> & path, size_t idx_dist);
+    const std::vector<TrajPointWork> & path, double compute_dist) const;
 
   /// 三点 Menger 曲率（denominator 过小抛 std::runtime_error）。
   static double calcCurvature(
@@ -164,12 +161,43 @@ protected:
     const geometry_msgs::msg::Pose & p2,
     const geometry_msgs::msg::Pose & p3);
 
-  /// 障碍判定：机器人在 (x,y,theta) 姿态下的 footprint 代价 >= obstacle_cost_threshold_
-  /// （virtual 供测试注入）。R47：原实现只查路径中心线单点，贴中心线两侧、不压中心线
-  /// 本身的障碍会被完全漏检——RPP 的 isCollisionImminent 是 footprint 查询，两套检测
-  /// 口径不一致，SpeedPlanner 因此看不到 RPP 独立捕获到的障碍。现改为与 RPP 同源的
-  /// footprint 查询（阈值、更新频率不变，仅检查几何从单点改为整车）。
-  virtual bool isObstacleAt(double x, double y, double theta) const;
+  /// footprint 代价查询不可用（costmap 缺失 / 位姿或 footprint 越出地图）时的返回值。
+  static constexpr double kFootprintCostUnavailable = -1.0;
+
+  /// 机器人在 (x,y,theta) 姿态下的 footprint 覆盖格子最大代价；
+  /// 不可用时返回 kFootprintCostUnavailable。
+  ///
+  /// ⚠️ nav2 的 `FootprintCollisionChecker::footprintCost` 在**任一 footprint 顶点
+  /// `worldToMap` 失败时直接返回 LETHAL_OBSTACLE**。local costmap 是 8×8 rolling
+  /// （±4m），footprint 半对角约 0.495m，于是路径上超过约 3.5m 的点会因顶点出图被
+  /// 判成"障碍"——R47 改成 footprint 查询后引入的幻影障碍。这里先逐顶点校验是否全部
+  /// 在图内，出图一律按"无信息、不判障"处理（与 R47 之前单点查询 worldToMap 失败
+  /// 即返回 false 的语义一致）。
+  double footprintCostAt(double x, double y, double theta) const;
+
+  /// 障碍判定（三态，virtual 供测试注入）：机器人在 (x,y,theta) 姿态下的 footprint
+  /// 代价 >= obstacle_cost_threshold_ 即 OBSTACLE；查询超出 costmap 覆盖返回
+  /// OUT_OF_RANGE（无信息，不判障）。
+  ///
+  /// R47：原实现只查路径中心线单点，贴中心线两侧、不压中心线本身的障碍会被完全漏检——
+  /// RPP 的 isCollisionImminent 是 footprint 查询，两套检测口径不一致，SpeedPlanner
+  /// 因此看不到 RPP 独立捕获到的障碍。现改为与 RPP 同源的 footprint 查询
+  /// （阈值、更新频率不变，仅检查几何从单点改为整车）。
+  virtual PointObstacleStatus checkObstacleAt(double x, double y, double theta) const;
+
+  /// 障碍约束是否**具备评估条件**（costmap 就绪）。virtual 供测试注入。
+  /// 与 checkObstacleAt 的 OUT_OF_RANGE 是两件事：这里为 false 表示整轮没法查
+  /// （触发 ConstraintFailurePolicy），OUT_OF_RANGE 只表示某点在覆盖范围外。
+  virtual bool isObstacleQueryAvailable() const;
+
+  /// 逐点限速提示 [m/s]，0 = 该点无提示。默认恒返回 0——与今天行为一致。
+  ///
+  /// 消费端早已就位（初始限速取严会 min 进来），**缺的一直是生产端**：
+  /// nav_msgs/Path 没有段语义字段，于是这里只能写 0，M11 区域限速无处落地。
+  /// 这个接缝就是 P0-2（SemanticLocalPath）要覆写的点：带语义的 path 接入后，
+  /// 由子类按 segment 返回区域限速，无需在 SpeedPlanner 内反查业务数据库。
+  virtual float pointSpeedHint(const nav_msgs::msg::Path & path, size_t index) const;
+
 
   // —— 成员（protected：派生类可访问）——
   std::string plugin_name_;
@@ -177,7 +205,7 @@ protected:
   std::shared_ptr<tf2_ros::Buffer> tf_;
   std::shared_ptr<nav2_costmap_2d::Costmap2DROS> costmap_ros_;
   // footprint 障碍查询（与 RegulatedPurePursuitController::collision_checker_ 同类型，
-  // 保证两套检测口径一致）；costmap 指针在 isObstacleAt 每次调用时刷新，因为规划期与
+  // 保证两套检测口径一致）；costmap 指针在 footprintCostAt 每次调用时刷新，因为规划期与
   // configure 期的实际 Costmap2D* 可能不同。
   std::unique_ptr<nav2_costmap_2d::FootprintCollisionChecker<nav2_costmap_2d::Costmap2D *>>
   collision_checker_;
@@ -192,7 +220,7 @@ protected:
   double min_speed_{0.03};
   double accel_{0.35};
   double decel_{-0.15};
-  double curve_compute_dist_{0.1};
+  double curvature_stencil_arc_{0.1};
   double regulated_linear_scaling_min_radius_{1.2};
   double min_curvature_speed_{0.1};
   double constant_velocity_dist_threshold_{0.1};
@@ -202,11 +230,33 @@ protected:
   double curve_lead_in_distance_{0.3};
   double curve_lead_out_distance_{0.15};
   bool enable_constant_velocity_while_turning_{false};
-  // 路径终点目标速度。>=1e-3：末端 stop_distance_ 内蠕行该速度；
+
+  /// A3 横向加速度（曲率）约束总开关。默认 **true**：开关为 true 时行为与
+  /// 无此开关时逐字节相同。
+  ///
+  /// 存在的理由是**让"关闭"成为显式声明**。此前关闭它的唯一手段是把
+  /// `regulated_linear_scaling_min_radius` 设成 `0.00001`，使判据
+  /// `radius > min_radius` 恒成立——那是用参数极值冒充开关：读 yaml 的人
+  /// 看不出意图，离线场景库还得专门写注释说明这处刻意分歧。
+  ///
+  /// 当前部署确实关着它，因为限速公式 `v = cruise × radius / min_radius`
+  /// **物理上是错的**（横向加速度限制应为 `v = √(a_lat/|κ|)`，与巡航速度无关），
+  /// 实测弯道最低速随外部限速漂移 3.3 倍（离线 XFAIL「曲率约束（跨场景）」）。
+  /// 公式修正后把本开关打开即可，`min_radius` 则始终保持真实阈值。
+  bool enable_curvature_constraint_{true};
+
+  /// 允许的最大横向加速度 [m/s²]。A3 的物理量纲基准。
+  ///
+  /// 与 `regulated_linear_scaling_min_radius`（判定"多小才算弯道"的**激活门**）
+  /// 分工不同：门决定哪些点参与约束，本参数决定被约束到多少。
+  /// 二者满足 `√(max_lateral_accel × min_radius) ≈ max_speed` 时限速在门处连续；
+  /// 默认 0.3 与 1.2 / 0.6 正好满足（0.6² / 1.2 = 0.30）。
+  double max_lateral_accel_{0.3};
+  // 路径终点目标速度。>=1e-3：末端 terminal_creep_distance_ 内蠕行该速度；
   // <1e-3：无蠕行区，剖面在终点收敛到 0。
   double end_speed_{0.03};
-  double stop_distance_{0.2};
-  double collision_stop_distance_{0.2};
+  double terminal_creep_distance_{0.2};
+  double obstacle_zero_buffer_{0.2};
   // 障碍判定 cost 阈值（cost >= 即视为障碍；NO_INFORMATION 恒不算）。
   // 默认 254=LETHAL：只有 path 点真正落在障碍格内才触发停障——
   // 253 内切区是"机器人中心到此会碰撞"的膨胀带，会把贴障碍的合法路径误判停障。
@@ -215,13 +265,16 @@ protected:
   // 在障碍内切区（cost>=253），无豁免会把整条剖面置零形成起步死锁；
   // 近身避障由 prepare/控制器障碍代价负责，速度规划只管起步不被自己锁死。
   double obstacle_start_exempt_distance_{0.25};
+  // 障碍约束**无法评估**（TF 变换失败 / costmap 缺失）时的处置策略（调研 P0-3）。
+  // 生产默认 FAIL_CLOSED：本周期输出空轨迹 → ControllerServer 发零速。
+  // ⚠️ 不含"路径点出图"——那是 OUT_OF_RANGE，属正常情况，见 PointObstacleStatus。
+  ConstraintFailurePolicy obstacle_unavailable_policy_{ConstraintFailurePolicy::FAIL_CLOSED};
 
   // 外部限速（setSpeedLimit 保存；computeSpeedPlan 与 path speed_hint 取严）。
   double speed_limit_{0.0};
   bool speed_limit_is_percentage_{false};
 
   // 运行时缓存。
-  double curr_path_length_{0.0};
   double points_interval_{0.1};
   // 当前路径坐标系（computeSpeedPlan 捕获；A1 查询 costmap 前用于对齐到
   // costmap 系——两者通常分别为 map 与 odom，直接查询会差一个定位修正量）。
