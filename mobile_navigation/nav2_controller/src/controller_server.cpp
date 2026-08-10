@@ -594,6 +594,9 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
       "nav_monitor/controller_target", rclcpp::SystemDefaultsQoS());
   }
 
+  nav_status_pub_ = create_publisher<nav_interfaces::msg::NavigationStatus>(
+    "navigation_status", 10);
+
   // Create the action server that we implement with our followPath method
   action_server_ = std::make_unique<ActionServer>(
     shared_from_this(),
@@ -648,6 +651,7 @@ ControllerServer::on_activate(const rclcpp_lifecycle::State & /*state*/)
   speed_plan_cycle_id_ = 0;
   speed_plan_path_id_ = 0;
   speed_plan_cycle_ = SpeedPlanCycleContext();
+  nav_status_pub_->on_activate();
   action_server_->activate();
 
   auto node = shared_from_this();
@@ -692,6 +696,7 @@ ControllerServer::on_deactivate(const rclcpp_lifecycle::State & /*state*/)
   }
 
   publishHardStopVelocity();
+  nav_status_pub_->on_deactivate();
   goal_error_publisher_->on_deactivate();
   speed_plan_publisher_->on_deactivate();
   speed_plan_diagnostics_publisher_->on_deactivate();
@@ -752,6 +757,7 @@ ControllerServer::on_cleanup(const rclcpp_lifecycle::State & /*state*/)
   odom_sub_.reset();
   costmap_thread_.reset();
   vel_publisher_.reset();
+  nav_status_pub_.reset();
   hard_stop_publisher_.reset();
   goal_error_publisher_.reset();
   speed_plan_publisher_.reset();
@@ -867,6 +873,8 @@ void ControllerServer::computeControl()
       start_twist.x, start_twist.y, start_twist.theta);
   }
 
+  publishNavigationStatus(nav_interfaces::msg::NavigationStatus::NAVIGATING);
+
   try {
     std::string c_name = action_server_->get_current_goal()->controller_id;
     std::string current_controller;
@@ -913,6 +921,7 @@ void ControllerServer::computeControl()
       if (action_server_->is_cancel_requested()) {
         RCLCPP_INFO(get_logger(), "Goal was canceled. Stopping the robot.");
         publishHardStopVelocity();
+        publishNavigationStatus(nav_interfaces::msg::NavigationStatus::IDLE);
         // The FollowPath result is the controller-side stop acknowledgement used
         // by BtActionNode cleanup. Publish zero before making that result visible.
         action_server_->terminate_all();
@@ -927,6 +936,7 @@ void ControllerServer::computeControl()
             get_logger(),
             "Goal was canceled while waiting for the costmap. Stopping the robot.");
           publishHardStopVelocity();
+          publishNavigationStatus(nav_interfaces::msg::NavigationStatus::IDLE);
           action_server_->terminate_all();
           return;
         }
@@ -993,16 +1003,27 @@ void ControllerServer::computeControl()
           controller_frequency_, elapsed.count());
       }
     }
+  } catch (nav2_core::CollisionException & e) {
+    RCLCPP_ERROR(this->get_logger(), "Collision detected! %s", e.what());
+    publishHardStopVelocity();
+    publishNavigationStatus(nav_interfaces::msg::NavigationStatus::FAILED, e.what());
+    action_server_->terminate_current();
+    publishNavigationStatus(nav_interfaces::msg::NavigationStatus::IDLE);
+    return;
   } catch (nav2_core::PlannerException & e) {
     RCLCPP_ERROR(this->get_logger(), "%s", e.what());
     publishHardStopVelocity();
+    publishNavigationStatus(nav_interfaces::msg::NavigationStatus::FAILED, e.what());
     action_server_->terminate_current();
+    publishNavigationStatus(nav_interfaces::msg::NavigationStatus::IDLE);
     return;
   }catch (std::exception & e) {
     RCLCPP_ERROR(this->get_logger(), "%s", e.what());
     publishHardStopVelocity();
+    publishNavigationStatus(nav_interfaces::msg::NavigationStatus::FAILED, e.what());
     std::shared_ptr<Action::Result> result = std::make_shared<Action::Result>();
     action_server_->terminate_current(result);
+    publishNavigationStatus(nav_interfaces::msg::NavigationStatus::IDLE);
     return;
   }
   RCLCPP_DEBUG(get_logger(), "Controller succeeded, setting result");
@@ -1010,7 +1031,9 @@ void ControllerServer::computeControl()
   publishZeroVelocity();
 
   // TODO(orduno) #861 Handle a pending preemption and set controller name
+  publishNavigationStatus(nav_interfaces::msg::NavigationStatus::FINISHED);
   action_server_->succeeded_current();
+  publishNavigationStatus(nav_interfaces::msg::NavigationStatus::IDLE);
 }
 
 void ControllerServer::setPlannerPath(
@@ -1418,6 +1441,17 @@ bool ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
     current_velocity.linear.x, planning_boundary.acceleration,
     planning_boundary.acceleration_valid ? "true" : "false", planning_boundary.source_age);
   return true;
+}
+
+void ControllerServer::publishNavigationStatus(int32_t status, const std::string & message)
+{
+  if (nav_status_pub_ && nav_status_pub_->is_activated()) {
+    auto msg = std::make_unique<nav_interfaces::msg::NavigationStatus>();
+    msg->status = status;
+    msg->message = message;
+    nav_status_pub_->publish(std::move(msg));
+    RCLCPP_INFO(get_logger(), "[PublishNavigationStatus] status: %d, message: %s", status, message.c_str());
+  }
 }
 
 void ControllerServer::publishSpeedPlan(const nav_interfaces::msg::RobotTrajectory & trajectory)

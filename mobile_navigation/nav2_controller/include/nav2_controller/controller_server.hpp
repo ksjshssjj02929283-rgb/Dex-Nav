@@ -31,6 +31,7 @@
 #include "nav2_costmap_2d/costmap_2d_ros.hpp"
 #include "nav2_speed_planner/speed_plan_state.hpp"
 #include "nav_interfaces/msg/robot_trajectory.hpp"
+#include "nav_interfaces/msg/navigation_status.hpp"
 #include "tf2_ros/transform_listener.h"
 #include "nav2_msgs/action/follow_path.hpp"
 #include "nav2_msgs/msg/speed_limit.hpp"
@@ -201,6 +202,8 @@ protected:
    * @param trajectory 速度规划输出轨迹
    */
   void publishSpeedPlan(const nav_interfaces::msg::RobotTrajectory & trajectory);
+
+  void publishNavigationStatus(int32_t status, const std::string & message = "");
   void publishSpeedPlanDiagnostics(
     bool control_succeeded,
     bool control_receipt_valid,
@@ -425,6 +428,10 @@ protected:
     speed_plan_publisher_;
   rclcpp_lifecycle::LifecyclePublisher<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr
     speed_plan_diagnostics_publisher_;
+  rclcpp_lifecycle::LifecyclePublisher<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr
+    near_goal_odom_publisher_;
+  rclcpp_lifecycle::LifecyclePublisher<nav_interfaces::msg::NavigationStatus>::SharedPtr
+    nav_status_pub_;
   rclcpp::Subscription<nav2_msgs::msg::SpeedLimit>::SharedPtr speed_limit_sub_;
 
   // nav_monitor 任务回显：setPlannerPath() 里每次真正生效的 global path 复述一份，
