@@ -115,17 +115,17 @@ public:
     double consumed_target_velocity = 0.35,
     double consumed_target_acceleration = -0.2)
   {
-    speed_plan_state_.accept(
+    initial_motion_arbiter_.accept(
       trajectory, consumed_target_velocity, consumed_target_acceleration,
       now() - rclcpp::Duration::from_seconds(age));
   }
 
-  nav2_core::SpeedPlanningBoundary boundaryFor(
+  nav2_core::InitialMotionState boundaryFor(
     const nav_msgs::msg::Path & path, double measured_velocity)
   {
     geometry_msgs::msg::Twist velocity;
     velocity.linear.x = measured_velocity;
-    return buildSpeedPlanningBoundary(path, velocity);
+    return buildInitialMotionState(path, velocity);
   }
 
   void setCurrentTrajectory(const nav_interfaces::msg::RobotTrajectory & trajectory)
@@ -144,7 +144,7 @@ public:
   }
 
   void resetStages() {resetStagedControlState();}
-  bool continuityValid() const {return speed_plan_state_.valid();}
+  bool continuityValid() const {return initial_motion_arbiter_.valid();}
 
   void setTerminalStateForTest()
   {
@@ -277,21 +277,21 @@ TEST(LocalPlanningStage, ConfiguredEmptyOutputIsFailClosed)
   EXPECT_TRUE(output.poses.empty());
 }
 
-TEST(SpeedPlanningBoundary, InheritsConsumedTrajectoryTargetState)
+TEST(InitialMotionState, InheritsConsumedTrajectoryTargetState)
 {
   auto controller = std::make_shared<ControllerShim>();
   controller->seedAcceptedTrajectory(makeTrajectory(), 0.1);
 
-  const auto boundary = controller->boundaryFor(
+  const auto initial_motion = controller->boundaryFor(
     makePath({{0.5, 0.0}, {1.0, 0.0}, {2.0, 0.0}}), 0.31);
 
-  ASSERT_TRUE(boundary.acceleration_valid);
-  EXPECT_NEAR(boundary.acceleration, -0.2, 1e-9);
-  EXPECT_NEAR(boundary.source_age, 0.1, 0.03);
-  EXPECT_NEAR(boundary.velocity.linear.x, 0.31, 1e-9);
+  ASSERT_TRUE(initial_motion.acceleration_valid);
+  EXPECT_NEAR(initial_motion.acceleration, -0.2, 1e-9);
+  EXPECT_NEAR(initial_motion.source_age, 0.1, 0.03);
+  EXPECT_NEAR(initial_motion.velocity.linear.x, 0.31, 1e-9);
 }
 
-TEST(SpeedPlanningBoundary, RejectsIncompatibleContinuity)
+TEST(InitialMotionState, RejectsIncompatibleContinuity)
 {
   auto controller = std::make_shared<ControllerShim>();
   const auto normal_path = makePath({{0.5, 0.0}, {1.0, 0.0}, {2.0, 0.0}});
@@ -320,7 +320,7 @@ TEST(SpeedPlanningBoundary, RejectsIncompatibleContinuity)
   EXPECT_FALSE(controller->boundaryFor(normal_path, 0.7).acceleration_valid);
 }
 
-TEST(SpeedPlanningBoundary, AcceptsOnlyConsumedTrackingTrajectoryAndResets)
+TEST(InitialMotionState, AcceptsOnlyConsumedTrackingTrajectoryAndResets)
 {
   auto controller = std::make_shared<ControllerShim>();
   const auto trajectory = makeTrajectory();
@@ -354,7 +354,7 @@ TEST(SpeedPlanningBoundary, AcceptsOnlyConsumedTrackingTrajectoryAndResets)
   EXPECT_FALSE(controller->continuityValid());
 }
 
-TEST(SpeedPlanningBoundary, SameGoalGeometryUpdatePreservesTerminalState)
+TEST(InitialMotionState, SameGoalGeometryUpdatePreservesTerminalState)
 {
   auto controller = std::make_shared<ControllerShim>();
   controller->seedAcceptedTrajectory(makeTrajectory(), 0.1, 0.31, -0.18);
@@ -379,7 +379,7 @@ TEST(SpeedPlanningBoundary, SameGoalGeometryUpdatePreservesTerminalState)
   EXPECT_TRUE(controller->boundaryFor(updated_path, 0.31).terminal_brake_latched);
 }
 
-TEST(SpeedPlanningBoundary, NewGoalPathResetsTerminalBookkeeping)
+TEST(InitialMotionState, NewGoalPathResetsTerminalBookkeeping)
 {
   auto controller = std::make_shared<ControllerShim>();
   controller->setTerminalStateForTest();
@@ -400,7 +400,7 @@ TEST(SpeedPlanningBoundary, NewGoalPathResetsTerminalBookkeeping)
   EXPECT_FALSE(controller->terminalBrakeLatched());
 }
 
-TEST(SpeedPlanningBoundary, TerminalInfeasibleOutsideDynamicGuardDoesNotLatch)
+TEST(InitialMotionState, TerminalInfeasibleOutsideDynamicGuardDoesNotLatch)
 {
   auto controller = std::make_shared<ControllerShim>();
   nav2_core::SpeedPlanningDiagnostics diagnostics;
@@ -414,7 +414,7 @@ TEST(SpeedPlanningBoundary, TerminalInfeasibleOutsideDynamicGuardDoesNotLatch)
   EXPECT_FALSE(controller->terminalBrakeLatched());
 }
 
-TEST(SpeedPlanningBoundary, StationaryTerminalConditionWaitsForLongitudinalContinuity)
+TEST(InitialMotionState, StationaryTerminalConditionWaitsForLongitudinalContinuity)
 {
   auto controller = std::make_shared<ControllerShim>();
   nav2_core::SpeedPlanningDiagnostics diagnostics;
@@ -429,7 +429,7 @@ TEST(SpeedPlanningBoundary, StationaryTerminalConditionWaitsForLongitudinalConti
   EXPECT_TRUE(controller->terminalBrakeLatched());
 }
 
-TEST(SpeedPlanningBoundary, MovingTerminalConditionLatchesWithoutPriorReceipt)
+TEST(InitialMotionState, MovingTerminalConditionLatchesWithoutPriorReceipt)
 {
   auto controller = std::make_shared<ControllerShim>();
   nav2_core::SpeedPlanningDiagnostics diagnostics;

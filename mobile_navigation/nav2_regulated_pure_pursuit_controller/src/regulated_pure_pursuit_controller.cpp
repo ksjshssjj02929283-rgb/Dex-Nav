@@ -1050,7 +1050,8 @@ double RegulatedPurePursuitController::trackLinearVelocity(
 
   // 前馈 + 反馈：反馈单独跟踪一个持续变化的斜坡目标存在稳态滞后（≈斜率/kp），
   // 前馈把"此刻规划期望的加速度"直接喂给控制器，反馈只需修正前馈之外的残差。
-  double accel_cmd = feedforward_accel + speed_pid_.Control(target_vel - measured_vel, dt);
+  const double feedback_accel = speed_pid_.Control(target_vel - measured_vel, dt);
+  double accel_cmd = feedforward_accel + feedback_accel;
   accel_cmd = std::clamp(accel_cmd, -max_linear_accel_, max_linear_accel_);
   double v_out = last_speed_cmd_ + accel_cmd * dt;
   // 输出界（符号感知）：上限=规划速度——逐点速度既是跟踪参考也是速度限幅
@@ -1060,6 +1061,20 @@ double RegulatedPurePursuitController::trackLinearVelocity(
   const double hi = std::min(std::max(0.0, target_vel), desired_linear_vel_);
   const double lo = std::max(std::min(0.0, target_vel), -desired_linear_vel_);
   v_out = std::clamp(v_out, lo, hi);
+
+  // 反死锁兜底（R49）：目标要求脱离零速，但指令被符号界钳在零上——此时前馈
+  // 与目标反号（采样点落在剖面峰值、拿到峰后制动段），而 0 又成为下一周期的
+  // 指令基准，逐周期自复现，机器人再也起不来。这种前馈描述的是与被跟踪目标
+  // 不同的工况，本周期退化为纯反馈。只在"输出贴零 + 目标非零"这一个几何下
+  // 触发：车还在跑时 v_out = last_speed_cmd_ + a·dt > 0，不会贴到零界，
+  // 正常制动权限不受影响。
+  if (std::fabs(v_out) <= 1e-9 && std::fabs(target_vel) > 1e-6 &&
+    feedforward_accel * target_vel < 0.0)
+  {
+    const double feedback_only = std::clamp(
+      feedback_accel, -max_linear_accel_, max_linear_accel_);
+    v_out = std::clamp(last_speed_cmd_ + feedback_only * dt, lo, hi);
+  }
   last_speed_cmd_ = v_out;
   return v_out;
 }

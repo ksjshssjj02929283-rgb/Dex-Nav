@@ -104,12 +104,16 @@ ControllerServer::ControllerServer(const rclcpp::NodeOptions & options)
   // ④ 速度规划：默认不启用（空列表 + 空选择器），YAML 显式配置后生效
   declare_parameter("speed_planner_plugins", std::vector<std::string>());
   declare_parameter("current_speed_planner", std::string(""));
-  declare_parameter("speed_planning_boundary.max_age", 0.5);
-  declare_parameter("speed_planning_boundary.max_spatial_error", 0.15);
-  declare_parameter("speed_planning_boundary.max_velocity_error", 0.25);
-  declare_parameter("speed_planning_boundary.goal_position_tolerance", 0.05);
-  declare_parameter("speed_planning_boundary.goal_yaw_tolerance", 0.2);
-  declare_parameter("speed_planning_boundary.branch_heading_tolerance", 0.7853981634);
+  declare_parameter("initial_motion.max_age", 0.5);
+  declare_parameter("initial_motion.max_spatial_error", 0.15);
+  // P1-2（重构方案 §2.3）：|实测-计划采样速度| 在此内继承计划速度，
+  // 否则重锚定到实测但仍保留加速度；旧名 max_velocity_error 的语义是
+  // "超出即整体拒绝"，已改行为，改名避免和旧默认值（0.25）混淆。
+  declare_parameter("initial_motion.replan_dev", 0.10);
+  declare_parameter("initial_motion.failsafe_deviation_cycles", 5);
+  declare_parameter("initial_motion.goal_position_tolerance", 0.05);
+  declare_parameter("initial_motion.goal_yaw_tolerance", 0.2);
+  declare_parameter("initial_motion.branch_heading_tolerance", 0.7853981634);
   // nav_monitor 任务回显：默认关闭，零开销
   declare_parameter("enable_nav_monitor_echo", false);
   declare_parameter("min_x_velocity_threshold", rclcpp::ParameterValue(0.0001));
@@ -253,24 +257,27 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
   std::string speed_limit_topic;
   get_parameter("speed_limit_topic", speed_limit_topic);
   get_parameter("failure_tolerance", failure_tolerance_);
-  nav2_speed_planner::SpeedPlanState::Config speed_plan_state_config;
-  get_parameter("speed_planning_boundary.max_age", speed_plan_state_config.max_age);
+  nav2_speed_planner::InitialMotionArbiter::Config speed_plan_state_config;
+  get_parameter("initial_motion.max_age", speed_plan_state_config.max_age);
   get_parameter(
-    "speed_planning_boundary.max_spatial_error",
+    "initial_motion.max_spatial_error",
     speed_plan_state_config.max_spatial_error);
   get_parameter(
-    "speed_planning_boundary.max_velocity_error",
-    speed_plan_state_config.max_velocity_error);
+    "initial_motion.replan_dev",
+    speed_plan_state_config.replan_dev);
   get_parameter(
-    "speed_planning_boundary.goal_position_tolerance",
+    "initial_motion.failsafe_deviation_cycles",
+    speed_plan_state_config.failsafe_deviation_cycles);
+  get_parameter(
+    "initial_motion.goal_position_tolerance",
     speed_plan_state_config.goal_position_tolerance);
   get_parameter(
-    "speed_planning_boundary.goal_yaw_tolerance",
+    "initial_motion.goal_yaw_tolerance",
     speed_plan_state_config.goal_yaw_tolerance);
   get_parameter(
-    "speed_planning_boundary.branch_heading_tolerance",
+    "initial_motion.branch_heading_tolerance",
     speed_plan_state_config.branch_heading_tolerance);
-  speed_plan_state_.configure(speed_plan_state_config);
+  initial_motion_arbiter_.configure(speed_plan_state_config);
   get_parameter("near_goal_progress.enabled", near_goal_progress_enabled_);
   get_parameter(
     "near_goal_progress.hold_position_when_goal_pose_reached",
@@ -1084,7 +1091,7 @@ void ControllerServer::commitPlannerPathState(
     RCLCPP_INFO(
       get_logger(),
       "同目标 path 仅替换几何：保留 controller phase=%s、goal/near-goal 状态和 "
-      "SpeedPlanState 已消费 (v,a) 连续性、terminal_brake_latched=%s。",
+      "InitialMotionArbiter 已消费 (v,a) 连续性、terminal_brake_latched=%s。",
       controllerPhaseName(controller_phase_), terminal_brake_latched_ ? "true" : "false");
   }
 
@@ -1138,25 +1145,25 @@ bool ControllerServer::computeLocalPath(
   return true;
 }
 
-nav2_core::SpeedPlanningBoundary ControllerServer::buildSpeedPlanningBoundary(
+nav2_core::InitialMotionState ControllerServer::buildInitialMotionState(
   const nav_msgs::msg::Path & path,
   const geometry_msgs::msg::Twist & measured_velocity)
 {
-  auto decision = speed_plan_state_.boundary(path, measured_velocity, now());
-  decision.boundary.terminal_brake_latched = terminal_brake_latched_;
+  auto decision = initial_motion_arbiter_.resolve(path, measured_velocity, now());
+  decision.state.terminal_brake_latched = terminal_brake_latched_;
   if (speed_plan_cycle_.active) {
-    speed_plan_cycle_.boundary = decision.boundary;
-    speed_plan_cycle_.boundary_computed = true;
-    speed_plan_cycle_.boundary_reason = decision.reason.has_value() ?
-      nav2_speed_planner::boundaryReasonName(*decision.reason) : "inherited";
+    speed_plan_cycle_.initial_motion = decision.state;
+    speed_plan_cycle_.initial_motion_valid = true;
+    speed_plan_cycle_.initial_motion_source = decision.reason.has_value() ?
+      nav2_speed_planner::initialMotionSourceName(*decision.reason) : "inherited";
   }
   if (decision.reason.has_value()) {
     RCLCPP_DEBUG_THROTTLE(
       get_logger(), *get_clock(), 1000,
-      "Speed planning boundary reseeded: reason=%s",
-      nav2_speed_planner::boundaryReasonName(*decision.reason));
+      "Speed planning initial_motion reseeded: reason=%s",
+      nav2_speed_planner::initialMotionSourceName(*decision.reason));
   }
-  return decision.boundary;
+  return decision.state;
 }
 
 void ControllerServer::updateTerminalBrakeLatch(
@@ -1211,13 +1218,13 @@ void ControllerServer::updateSpeedPlanningContinuityAfterControl(
     invalidateSpeedPlanningContinuity();
     return;
   }
-  speed_plan_state_.accept(
+  initial_motion_arbiter_.accept(
     current_trajectory_, consumed_target_velocity, consumed_target_acceleration, now());
 }
 
 void ControllerServer::invalidateSpeedPlanningContinuity()
 {
-  speed_plan_state_.reset();
+  initial_motion_arbiter_.reset();
 }
 
 bool ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
@@ -1371,19 +1378,50 @@ bool ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
   sp->second->setPlan(planning_path);
   speed_set_plan_ms = elapsed_ms(speed_set_plan_start, PipelineClock::now());
   const auto speed_compute_start = PipelineClock::now();
-  const auto planning_boundary = buildSpeedPlanningBoundary(planning_path, current_velocity);
-  current_trajectory_ = sp->second->computeSpeedPlan(planning_path, planning_boundary);
+  const auto initial_motion = buildInitialMotionState(planning_path, current_velocity);
+  current_trajectory_ = sp->second->computeSpeedPlan(planning_path, initial_motion);
   const auto planning_diagnostics = sp->second->getLastPlanningDiagnostics();
   speed_plan_cycle_.terminal = planning_diagnostics;
   speed_plan_cycle_.terminal_valid = true;
   updateTerminalBrakeLatch(
-    planning_diagnostics, planning_boundary.acceleration_valid);
+    planning_diagnostics, initial_motion.acceleration_valid);
   if (planning_diagnostics.terminal_infeasible) {
+    // 兜底剖面的目标速度就是 end_speed，因此一旦持续进入兜底，整条轨迹恒为
+    // end_speed（实机曾表现为全程 0.05 蠕行 53.6s 走 2.38m）。且机器人降速后
+    // v0 变低会让下一周期继续满足兜底条件——**自维持，出不来**。
+    // 原日志只说"进了兜底"，不说为什么进；下面这些量才是定位所需的最小集合。
+    static const char * kKind[] = {"feasible", "physical", "numerical"};
+    static const char * kReason[] = {
+      "none", "stable_segment_unreachable", "fallback_unreachable",
+      "duration_budget_invalid", "solver_error", "non_finite_output",
+      "iteration_exhausted"};
+    const auto & d = planning_diagnostics;
+    const int k = (d.terminal_infeasible_kind >= 0 && d.terminal_infeasible_kind < 3) ?
+      d.terminal_infeasible_kind : 0;
+    const int er = (d.terminal_entry_reason >= 0 && d.terminal_entry_reason < 7) ?
+      d.terminal_entry_reason : 0;
+    const int fr = (d.terminal_infeasible_reason >= 0 && d.terminal_infeasible_reason < 7) ?
+      d.terminal_infeasible_reason : 0;
     RCLCPP_WARN_THROTTLE(
       get_logger(), *get_clock(), 1000,
-      "Speed plan diagnostic: planner=%s terminal_infeasible=true; "
+      "Speed plan diagnostic: planner=%s terminal_infeasible=true kind=%s "
+      "entry=%s final=%s provenance=%s | anchor_s=%.3f available=%.3f braking=%.3f "
+      "reserve=%.3f latched_reserve=%.3f | v0=%.3f a0=%.3f latched=%d path_len=%.3f "
+      "points=%zu | branch=%s first_obs=%d@%.3f | solver: code=%d v0=%.4f a0=%.4f "
+      "vmax=%.4f target_v=%.4f dist=%.4f; "
       "using a continuous reachable braking profile.",
-      current_speed_planner_.c_str());
+      current_speed_planner_.c_str(), kKind[k], kReason[er], kReason[fr],
+      d.terminal_result_provenance ? "braking_fallback" : "normal",
+      d.terminal_anchor_s, d.terminal_distance_available, d.terminal_braking_distance,
+      d.terminal_execution_reserve, d.terminal_latched_reserve,
+      initial_motion.velocity.linear.x, initial_motion.acceleration,
+      initial_motion.terminal_brake_latched ? 1 : 0,
+      nav2_util::geometry_utils::calculate_path_length(planning_path),
+      planning_path.poses.size(),
+      d.terminal_branch == 1 ? "obstacle" : (d.terminal_branch == 2 ? "terminal" : "none"),
+      d.first_obstacle_index, d.first_obstacle_arc,
+      d.solver_code, d.solver_v0, d.solver_a0, d.solver_vmax,
+      d.solver_target_v, d.solver_distance);
   }
   speed_compute_ms = elapsed_ms(speed_compute_start, PipelineClock::now());
   if (current_trajectory_.points.empty()) {
@@ -1438,8 +1476,8 @@ bool ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
     "Speed plan dispatched: planner=%s points=%zu v_start=%.3f a_start=%.3f inherited=%s "
     "source_age=%.3f",
     current_speed_planner_.c_str(), current_trajectory_.points.size(),
-    current_velocity.linear.x, planning_boundary.acceleration,
-    planning_boundary.acceleration_valid ? "true" : "false", planning_boundary.source_age);
+    current_velocity.linear.x, initial_motion.acceleration,
+    initial_motion.acceleration_valid ? "true" : "false", initial_motion.source_age);
   return true;
 }
 
@@ -1675,19 +1713,19 @@ void ControllerServer::publishSpeedPlanDiagnostics(
   add_value("local_path_point_count", std::to_string(cycle.local_path_point_count));
   add_value("local_path_length", std::to_string(cycle.local_path_length));
   add_value("trajectory_point_count", std::to_string(current_trajectory_.points.size()));
-  add_value("boundary_computed", cycle.boundary_computed ? "true" : "false");
-  add_value("boundary_reason", cycle.boundary_reason);
-  if (cycle.boundary_computed) {
-    add_value("boundary_velocity", std::to_string(cycle.boundary.velocity.linear.x));
-    add_value("boundary_acceleration", std::to_string(cycle.boundary.acceleration));
+  add_value("boundary_computed", cycle.initial_motion_valid ? "true" : "false");
+  add_value("boundary_reason", cycle.initial_motion_source);
+  if (cycle.initial_motion_valid) {
+    add_value("boundary_velocity", std::to_string(cycle.initial_motion.velocity.linear.x));
+    add_value("boundary_acceleration", std::to_string(cycle.initial_motion.acceleration));
     add_value(
       "boundary_acceleration_valid",
-      cycle.boundary.acceleration_valid ? "true" : "false");
-    add_value("boundary_source_age", std::to_string(cycle.boundary.source_age));
+      cycle.initial_motion.acceleration_valid ? "true" : "false");
+    add_value("boundary_source_age", std::to_string(cycle.initial_motion.source_age));
     add_value(
-      "boundary_source_stamp_sec", std::to_string(cycle.boundary.source_stamp.sec));
+      "boundary_source_stamp_sec", std::to_string(cycle.initial_motion.source_stamp.sec));
     add_value(
-      "boundary_source_stamp_nanosec", std::to_string(cycle.boundary.source_stamp.nanosec));
+      "boundary_source_stamp_nanosec", std::to_string(cycle.initial_motion.source_stamp.nanosec));
   }
   add_value("terminal_valid", cycle.terminal_valid ? "true" : "false");
   add_value(

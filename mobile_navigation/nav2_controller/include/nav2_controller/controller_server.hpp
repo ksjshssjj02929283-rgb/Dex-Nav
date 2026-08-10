@@ -29,7 +29,7 @@
 #include "nav2_core/local_planner.hpp"
 #include "nav2_core/speed_planner.hpp"
 #include "nav2_costmap_2d/costmap_2d_ros.hpp"
-#include "nav2_speed_planner/speed_plan_state.hpp"
+#include "nav2_speed_planner/core/initial_motion.hpp"
 #include "nav_interfaces/msg/robot_trajectory.hpp"
 #include "nav_interfaces/msg/navigation_status.hpp"
 #include "tf2_ros/transform_listener.h"
@@ -217,11 +217,11 @@ protected:
    * @return 轨迹为空或 TF 不可用时 false。
    */
   bool nearestPlannedSpeed(const geometry_msgs::msg::PoseStamped & pose, double & desired_v);
-  nav2_core::SpeedPlanningBoundary buildSpeedPlanningBoundary(
+  nav2_core::InitialMotionState buildInitialMotionState(
     const nav_msgs::msg::Path & path,
     const geometry_msgs::msg::Twist & measured_velocity);
   /// Latch terminal braking only after the planner reaches the dynamic braking
-  /// boundary and the cycle has either longitudinal continuity or non-zero
+  /// initial_motion and the cycle has either longitudinal continuity or non-zero
   /// braking motion. A diagnostic-only infeasible result must not poison a
   /// stationary goal's ALIGN -> TRACK startup.
   void updateTerminalBrakeLatch(
@@ -489,7 +489,7 @@ protected:
   // 轨迹缓存：规划级产出、控制级消费；规划与控制同在 action 线程逐周期串行执行，
   // 无并发；将来拆独立规划线程时需加最小临界区保护
   nav_interfaces::msg::RobotTrajectory current_trajectory_;
-  nav2_speed_planner::SpeedPlanState speed_plan_state_;
+  nav2_speed_planner::InitialMotionArbiter initial_motion_arbiter_;
   // Goal-lifecycle state owned by ControllerServer. Same-goal geometry updates
   // preserve it; a new goal / successful completion resets it.
   bool terminal_brake_latched_{false};
@@ -503,9 +503,9 @@ protected:
     std::string planner_id;
     size_t local_path_point_count{0};
     double local_path_length{0.0};
-    nav2_core::SpeedPlanningBoundary boundary;
-    bool boundary_computed{false};
-    std::string boundary_reason{"not_computed"};
+    nav2_core::InitialMotionState initial_motion;
+    bool initial_motion_valid{false};
+    std::string initial_motion_source{"not_computed"};
     nav2_core::SpeedPlanningDiagnostics terminal;
     bool terminal_valid{false};
   };

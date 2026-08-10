@@ -94,6 +94,27 @@ TEST(PidSpeedLoop, feedforwardNotVetoedBySign)
   EXPECT_LT(cmd, 0.4);
 }
 
+// 反死锁（R49）：车已静止、目标要求前进，但前馈是负值（采样点配到了制动段）。
+// 此时 last_speed_cmd_ + ff·dt < 0 会被符号界钳回 0，而 0 又成为下一周期的
+// 指令基准——逐周期自复现，机器人永远起不来（实机末端 6cm 不可达）。
+// 前馈描述的工况与被跟踪的目标速度不一致时，本周期必须退化为纯反馈。
+TEST(PidSpeedLoop, standstillWithBrakingFeedforwardStillStarts)
+{
+  SpeedLoopPID pid;
+  double cmd = 0.0;
+  for (int i = 0; i < 5; ++i) {
+    cmd = pid.run(0.0, 0.0669, 0.119115, 0.119115, -0.4);
+    if (cmd > 0.0) {
+      break;
+    }
+  }
+  EXPECT_GT(cmd, 0.0);
+
+  // 但"已在跑 + 负前馈"仍必须正常制动，守卫不得把制动权限也一起吃掉。
+  SpeedLoopPID braking;
+  EXPECT_LT(braking.run(0.4, 1.0, 1.0, 0.42, -0.5), 0.4);
+}
+
 // 满停（限幅链全零）清速度环积分：饱和的积分器在停车后必须归零。
 TEST(PidSpeedLoop, fullStopClearsIntegral)
 {
@@ -399,7 +420,9 @@ TEST(ApproachStage, speedDecoupledFromLockedTargetIndex)
   EXPECT_LT(speed, 0.5);   // 明显低于巡航值——确实反映了减速段的连续下降
 }
 
-TEST(ApproachStage, speedAndAccelerationUseSamePreviewPoint)
+// 速度取窗口内极大点，加速度取"到达该点"的那一段——极大点之后的段必然是
+// 制动值，配到峰值速度上就是自相矛盾的 (v,a)，静止起步会被速度环符号界钳死。
+TEST(ApproachStage, accelerationComesFromSegmentArrivingAtPreviewPoint)
 {
   ApproachStagePID pid;
   pid.setTrajSpeedLookahead(0.11);
@@ -418,7 +441,7 @@ TEST(ApproachStage, speedAndAccelerationUseSamePreviewPoint)
   double speed = 0.0, accel = 0.0;
   ASSERT_TRUE(pid.nearestSpeedWrapper(makePose(0.0, 0.0), speed, accel));
   EXPECT_NEAR(speed, 0.25, 1e-9);
-  EXPECT_NEAR(accel, 0.35, 1e-9);
+  EXPECT_NEAR(accel, 0.1, 1e-9);   // traj[1]→traj[2] 这一段，不是 traj[2] 之后
 }
 
 TEST(ApproachStage, trajectorySpeedUsesTimeAlignedInterpolation)
