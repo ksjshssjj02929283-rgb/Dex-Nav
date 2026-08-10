@@ -10,8 +10,8 @@
 //     （receding-horizon，每周期从实际速度重算），对一切低速区出口生成再加速坡道。
 //   前后坡道相交即峰值（短路径三角形自动涌现）；顺序必须后向在前、前向在后。
 //   全部写入只降不升（保留包络更严约束）；index 0 为当前速度状态戳，不参与设置。
-#ifndef NAV2_SPEED_PLANNER__TRAPEZOIDAL_SPEED_PLANNER_HPP_
-#define NAV2_SPEED_PLANNER__TRAPEZOIDAL_SPEED_PLANNER_HPP_
+#ifndef NAV2_SPEED_PLANNER__BACKENDS__TRAPEZOIDAL_SPEED_PLANNER_HPP_
+#define NAV2_SPEED_PLANNER__BACKENDS__TRAPEZOIDAL_SPEED_PLANNER_HPP_
 
 #include <vector>
 
@@ -32,7 +32,7 @@ public:
 
 protected:
   /// Phase B：减速规划 → 起点状态戳 → 加速规划（见文件头说明）。
-  void assignVelocityProfile(
+  void generateProfile(
     std::vector<TrajPointWork> & work, double curr_vel, double curr_accel,
     double cruise_limit, bool terminal_brake_latched) override;
 
@@ -54,4 +54,4 @@ protected:
 
 }  // namespace nav2_speed_planner
 
-#endif  // NAV2_SPEED_PLANNER__TRAPEZOIDAL_SPEED_PLANNER_HPP_
+#endif  // NAV2_SPEED_PLANNER__BACKENDS__TRAPEZOIDAL_SPEED_PLANNER_HPP_

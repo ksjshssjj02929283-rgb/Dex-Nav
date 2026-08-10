@@ -1,4 +1,4 @@
-#include "nav2_speed_planner/speed_plan_state.hpp"
+#include "nav2_speed_planner/core/initial_motion.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -40,86 +40,94 @@ bool isFinite(const geometry_msgs::msg::Quaternion & orientation)
          std::isfinite(orientation.w);
 }
 
-BoundaryDecision reseed(
+InitialMotionDecision reseed(
   const geometry_msgs::msg::Twist & measured_velocity,
-  BoundaryReason reason)
+  InitialMotionSource reason)
 {
-  BoundaryDecision decision;
-  decision.boundary.velocity = measured_velocity;
+  InitialMotionDecision decision;
+  decision.state.velocity = measured_velocity;
   decision.reason = reason;
   return decision;
 }
 
 }  // namespace
 
-const char * boundaryReasonName(BoundaryReason reason)
+const char * initialMotionSourceName(InitialMotionSource reason)
 {
   switch (reason) {
-    case BoundaryReason::FIRST_CYCLE:
+    case InitialMotionSource::FIRST_CYCLE:
       return "first_cycle";
-    case BoundaryReason::EXPIRED:
+    case InitialMotionSource::EXPIRED:
       return "expired";
-    case BoundaryReason::FRAME_MISMATCH:
+    case InitialMotionSource::FRAME_MISMATCH:
       return "frame_mismatch";
-    case BoundaryReason::GOAL_MISMATCH:
+    case InitialMotionSource::GOAL_MISMATCH:
       return "goal_mismatch";
-    case BoundaryReason::BRANCH_MISMATCH:
+    case InitialMotionSource::BRANCH_MISMATCH:
       return "branch_mismatch";
-    case BoundaryReason::SPATIAL_MISMATCH:
+    case InitialMotionSource::SPATIAL_MISMATCH:
       return "spatial_mismatch";
-    case BoundaryReason::VELOCITY_MISMATCH:
+    case InitialMotionSource::VELOCITY_MISMATCH:
       return "velocity_mismatch";
-    case BoundaryReason::INVALID_NUMERIC:
+    case InitialMotionSource::VELOCITY_MISMATCH_FAILSAFE:
+      return "velocity_mismatch_failsafe";
+    case InitialMotionSource::INVALID_NUMERIC:
       return "invalid_numeric";
-    case BoundaryReason::EXPLICIT_INVALIDATION:
+    case InitialMotionSource::EXPLICIT_INVALIDATION:
       return "explicit_invalidation";
   }
   return "unknown";
 }
 
-SpeedPlanState::SpeedPlanState()
-: SpeedPlanState(Config())
+InitialMotionArbiter::InitialMotionArbiter()
+: InitialMotionArbiter(Config())
 {
 }
 
-SpeedPlanState::SpeedPlanState(const Config & config)
+InitialMotionArbiter::InitialMotionArbiter(const Config & config)
 : config_(config)
 {
 }
 
-void SpeedPlanState::configure(const Config & config)
+void InitialMotionArbiter::configure(const Config & config)
 {
   std::lock_guard<std::mutex> lock(mutex_);
   config_ = config;
-  resetUnlocked(BoundaryReason::FIRST_CYCLE);
+  resetUnlocked(InitialMotionSource::FIRST_CYCLE);
 }
 
-BoundaryDecision SpeedPlanState::boundary(
+InitialMotionDecision InitialMotionArbiter::resolve(
   const nav_msgs::msg::Path & path,
   const geometry_msgs::msg::Twist & measured_velocity,
   const rclcpp::Time & now) const
 {
   if (!isFinite(measured_velocity)) {
-    return reseed(measured_velocity, BoundaryReason::INVALID_NUMERIC);
+    return reseed(measured_velocity, InitialMotionSource::INVALID_NUMERIC);
   }
 
   std::lock_guard<std::mutex> lock(mutex_);
+  // 结构性 reseed（frame/goal/branch/spatial/…）说明当前上下文已经改变，
+  // 连续速度偏离计数不再有意义，随 reseed 一起清零。
+  const auto reseed_and_reset = [&](InitialMotionSource reason) {
+      consecutive_velocity_deviation_ = 0;
+      return reseed(measured_velocity, reason);
+    };
   if (!valid_) {
-    return reseed(measured_velocity, invalidation_reason_);
+    return reseed_and_reset(invalidation_reason_);
   }
   if (path.poses.size() < 2 || accepted_trajectory_.points.size() < 2) {
-    return reseed(measured_velocity, BoundaryReason::SPATIAL_MISMATCH);
+    return reseed_and_reset(InitialMotionSource::SPATIAL_MISMATCH);
   }
   if (now.get_clock_type() != accepted_trajectory_time_.get_clock_type()) {
-    return reseed(measured_velocity, BoundaryReason::INVALID_NUMERIC);
+    return reseed_and_reset(InitialMotionSource::INVALID_NUMERIC);
   }
 
   const double age = (now - accepted_trajectory_time_).seconds();
   if (!std::isfinite(age) || age < 0.0) {
-    return reseed(measured_velocity, BoundaryReason::INVALID_NUMERIC);
+    return reseed_and_reset(InitialMotionSource::INVALID_NUMERIC);
   }
   if (age > config_.max_age) {
-    return reseed(measured_velocity, BoundaryReason::EXPIRED);
+    return reseed_and_reset(InitialMotionSource::EXPIRED);
   }
 
   const auto path_frame = path.header.frame_id.empty() ?
@@ -128,7 +136,7 @@ BoundaryDecision SpeedPlanState::boundary(
     accepted_trajectory_.points.front().pose.header.frame_id :
     accepted_trajectory_.header.frame_id;
   if (path_frame.empty() || trajectory_frame != path_frame) {
-    return reseed(measured_velocity, BoundaryReason::FRAME_MISMATCH);
+    return reseed_and_reset(InitialMotionSource::FRAME_MISMATCH);
   }
 
   const auto & new_goal = path.poses.back().pose;
@@ -136,12 +144,12 @@ BoundaryDecision SpeedPlanState::boundary(
   if (!isFinite(new_goal.position) || !isFinite(old_goal.position) ||
     !isFinite(new_goal.orientation) || !isFinite(old_goal.orientation))
   {
-    return reseed(measured_velocity, BoundaryReason::INVALID_NUMERIC);
+    return reseed_and_reset(InitialMotionSource::INVALID_NUMERIC);
   }
   const double old_goal_yaw = tf2::getYaw(old_goal.orientation);
   const double new_goal_yaw = tf2::getYaw(new_goal.orientation);
   if (!std::isfinite(old_goal_yaw) || !std::isfinite(new_goal_yaw)) {
-    return reseed(measured_velocity, BoundaryReason::INVALID_NUMERIC);
+    return reseed_and_reset(InitialMotionSource::INVALID_NUMERIC);
   }
   const double goal_position_error = std::hypot(
     new_goal.position.x - old_goal.position.x,
@@ -151,13 +159,13 @@ BoundaryDecision SpeedPlanState::boundary(
   if (goal_position_error > config_.goal_position_tolerance ||
     goal_yaw_error > config_.goal_yaw_tolerance)
   {
-    return reseed(measured_velocity, BoundaryReason::GOAL_MISMATCH);
+    return reseed_and_reset(InitialMotionSource::GOAL_MISMATCH);
   }
 
   constexpr double kSegmentLengthSqEpsilon = 1e-12;
   const auto & origin = path.poses.front().pose.position;
   if (!isFinite(origin)) {
-    return reseed(measured_velocity, BoundaryReason::INVALID_NUMERIC);
+    return reseed_and_reset(InitialMotionSource::INVALID_NUMERIC);
   }
   double best_distance_sq = std::numeric_limits<double>::max();
   size_t best_segment = 0;
@@ -168,7 +176,7 @@ BoundaryDecision SpeedPlanState::boundary(
     const auto & first = accepted_trajectory_.points[index].pose.pose.position;
     const auto & second = accepted_trajectory_.points[index + 1].pose.pose.position;
     if (!isFinite(first) || !isFinite(second)) {
-      return reseed(measured_velocity, BoundaryReason::INVALID_NUMERIC);
+      return reseed_and_reset(InitialMotionSource::INVALID_NUMERIC);
     }
     const double segment_x = second.x - first.x;
     const double segment_y = second.y - first.y;
@@ -193,7 +201,7 @@ BoundaryDecision SpeedPlanState::boundary(
   if (!projection_valid ||
     std::sqrt(best_distance_sq) > config_.max_spatial_error)
   {
-    return reseed(measured_velocity, BoundaryReason::SPATIAL_MISMATCH);
+    return reseed_and_reset(InitialMotionSource::SPATIAL_MISMATCH);
   }
 
   double new_heading = 0.0;
@@ -201,7 +209,7 @@ BoundaryDecision SpeedPlanState::boundary(
   for (size_t index = 1; index < path.poses.size(); ++index) {
     const auto & point = path.poses[index].pose.position;
     if (!isFinite(point)) {
-      return reseed(measured_velocity, BoundaryReason::INVALID_NUMERIC);
+      return reseed_and_reset(InitialMotionSource::INVALID_NUMERIC);
     }
     const double delta_x = point.x - origin.x;
     const double delta_y = point.y - origin.y;
@@ -215,7 +223,7 @@ BoundaryDecision SpeedPlanState::boundary(
     std::fabs(angles::shortest_angular_distance(old_heading, new_heading)) >
     config_.branch_heading_tolerance)
   {
-    return reseed(measured_velocity, BoundaryReason::BRANCH_MISMATCH);
+    return reseed_and_reset(InitialMotionSource::BRANCH_MISMATCH);
   }
 
   const auto & first = accepted_trajectory_.points[best_segment];
@@ -225,32 +233,51 @@ BoundaryDecision SpeedPlanState::boundary(
     !std::isfinite(accepted_target_velocity_) ||
     !std::isfinite(accepted_target_acceleration_))
   {
-    return reseed(measured_velocity, BoundaryReason::INVALID_NUMERIC);
+    return reseed_and_reset(InitialMotionSource::INVALID_NUMERIC);
   }
   const double sampled_velocity = first.longitudinal_velocity + best_ratio *
     (second.longitudinal_velocity - first.longitudinal_velocity);
   if (!std::isfinite(sampled_velocity)) {
-    return reseed(measured_velocity, BoundaryReason::INVALID_NUMERIC);
-  }
-  if (std::fabs(measured_velocity.linear.x - sampled_velocity) >
-    config_.max_velocity_error)
-  {
-    return reseed(measured_velocity, BoundaryReason::VELOCITY_MISMATCH);
+    return reseed_and_reset(InitialMotionSource::INVALID_NUMERIC);
   }
 
-  BoundaryDecision decision;
-  decision.boundary.velocity = measured_velocity;
-  // Velocity is always re-anchored to the latest odometry. Acceleration must
-  // continue from the exact preview target consumed by the controller, not
-  // from a spatial resample at the next local path origin.
-  decision.boundary.acceleration = accepted_target_acceleration_;
-  decision.boundary.acceleration_valid = true;
-  decision.boundary.source_stamp = accepted_trajectory_time_;
-  decision.boundary.source_age = age;
+  // P1-2（重构方案 §2.3）：结构性连续性（frame/goal/branch/spatial）已经全部成立。
+  // 是否还要继承计划的速度值，取决于实测与计划采样值差多远：
+  //   在 replan_dev 内     -> 正常态，v0/a0 都继承计划（不再无条件重锚定速度）
+  //   超出但未达 failsafe  -> 保留加速度连续，但速度重锚定到实测（旧行为的折中）
+  //   连续 N 周期都超出    -> 计划已系统性脱离现实，完整 reseed（v0/a0 都不再继承）
+  const double velocity_deviation =
+    std::fabs(measured_velocity.linear.x - sampled_velocity);
+  if (velocity_deviation > config_.replan_dev) {
+    if (++consecutive_velocity_deviation_ >= config_.failsafe_deviation_cycles) {
+      return reseed_and_reset(InitialMotionSource::VELOCITY_MISMATCH_FAILSAFE);
+    }
+    InitialMotionDecision decision;
+    decision.state.velocity = measured_velocity;
+    decision.state.acceleration = accepted_target_acceleration_;
+    decision.state.acceleration_valid = true;
+    decision.state.source_stamp = accepted_trajectory_time_;
+    decision.state.source_age = age;
+    decision.velocity_inherited = false;
+    decision.reason = InitialMotionSource::VELOCITY_MISMATCH;
+    return decision;
+  }
+  consecutive_velocity_deviation_ = 0;
+
+  InitialMotionDecision decision;
+  decision.state.velocity = measured_velocity;
+  decision.state.velocity.linear.x = sampled_velocity;
+  // Acceleration continues from the exact preview target consumed by the
+  // controller, not from a spatial resample at the next local path origin.
+  decision.state.acceleration = accepted_target_acceleration_;
+  decision.state.acceleration_valid = true;
+  decision.state.source_stamp = accepted_trajectory_time_;
+  decision.state.source_age = age;
+  decision.velocity_inherited = true;
   return decision;
 }
 
-void SpeedPlanState::accept(
+void InitialMotionArbiter::accept(
   const nav_interfaces::msg::RobotTrajectory & trajectory,
   double consumed_target_velocity,
   double consumed_target_acceleration,
@@ -261,7 +288,7 @@ void SpeedPlanState::accept(
     !std::isfinite(consumed_target_velocity) ||
     !std::isfinite(consumed_target_acceleration))
   {
-    resetUnlocked(BoundaryReason::INVALID_NUMERIC);
+    resetUnlocked(InitialMotionSource::INVALID_NUMERIC);
     return;
   }
   accepted_trajectory_ = trajectory;
@@ -271,19 +298,19 @@ void SpeedPlanState::accept(
   valid_ = true;
 }
 
-void SpeedPlanState::reset(BoundaryReason reason)
+void InitialMotionArbiter::reset(InitialMotionSource reason)
 {
   std::lock_guard<std::mutex> lock(mutex_);
   resetUnlocked(reason);
 }
 
-bool SpeedPlanState::valid() const
+bool InitialMotionArbiter::valid() const
 {
   std::lock_guard<std::mutex> lock(mutex_);
   return valid_;
 }
 
-void SpeedPlanState::resetUnlocked(BoundaryReason reason)
+void InitialMotionArbiter::resetUnlocked(InitialMotionSource reason)
 {
   accepted_trajectory_ = nav_interfaces::msg::RobotTrajectory();
   accepted_target_velocity_ = 0.0;
@@ -291,6 +318,7 @@ void SpeedPlanState::resetUnlocked(BoundaryReason reason)
   accepted_trajectory_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
   valid_ = false;
   invalidation_reason_ = reason;
+  consecutive_velocity_deviation_ = 0;
 }
 
 }  // namespace nav2_speed_planner

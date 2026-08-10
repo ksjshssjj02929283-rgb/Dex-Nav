@@ -81,7 +81,7 @@ controller_server:
     progress_checker_plugins: ["progress_checker"] # progress_checker_plugin: "progress_checker" For Humble and older
     goal_checker_plugins: ["simple_goal_checker", "stopped_goal_checker", "position_goal_checker", "rotation_goal_checker", "longitudinal_goal_checker", "high_precision_goal_checker"] # goal_checker_plugin: "goal_checker" For Galactic and older
     controller_plugins: ["MPPIController", "DWBController", "RPPController", "GracefulController", "RotationShimController", "PIDController", "LatLonController", "PureRotationController", "StraightController"]
-    speed_planner_plugins: ["TrapezoidalSpeedPlanner", "SCurveSpeedPlanner"]
+    speed_planner_plugins: ["TrapezoidalSpeedPlanner", "SCurveSpeedPlanner", "ReachabilitySpeedPlanner"]
     current_goal_checker: "high_precision_goal_checker"
     current_controller: "RPPController"
     # ③ 局部路径裁剪（10Hz，与控制/速度规划同频）：从机器人在线段上的投影点保留到真实 goal
@@ -89,16 +89,21 @@ controller_server:
     current_local_planner: "PathPruningLocalPlanner"  # 置空 "" = global path 直通
     PathPruningLocalPlanner:
       plugin: "nav2_path_pruning_local_planner::PathPruningLocalPlanner"
-      max_search_distance: 5.0
+      # 投影搜索窗口上界，不是局部路径长度上限：局部规划器输出投影点到全局
+      # 终点的全部剩余路径，不截断（速度规划需看到终点才能规划终端制动）。
+      max_projection_search_distance: 5.0
       max_backtrack_distance: 0.5
       transform_tolerance: 0.2
     # ④ 速度规划（10Hz，从③输出起点和当前实测速度重算；置空 "" 即禁用/灰度回退）
     # 运动学上限与下游链路对齐：对齐 MPPI(vx_max/ax_max/ax_min) 与 velocity_smoother(max_velocity/max_accel)
-    current_speed_planner: "SCurveSpeedPlanner"  # 先验证 T 型；S 型待复测后切回
-    speed_planning_boundary:
+    current_speed_planner: "ReachabilitySpeedPlanner"  # 纯可达性滤波定可行域 + Ruckig 速度模式走曲线；无求解分支，不可行性经诊断上报而非掉兜底
+    # 规划起点的运动状态与其有效性门（继承上周期计划 vs 回到实测）。
+    # 原名 speed_planning_boundary——它不是"边界"，是初值状态。
+    initial_motion:
       max_age: 0.5
       max_spatial_error: 0.15
-      max_velocity_error: 0.25
+      replan_dev: 0.10
+      failsafe_deviation_cycles: 5
       goal_position_tolerance: 0.05
       goal_yaw_tolerance: 0.2
       branch_heading_tolerance: 0.7853981634
@@ -109,12 +114,29 @@ controller_server:
       accel: 0.5
       decel: -0.4
       end_speed: 0.05
-      stop_distance: 0.075
-      collision_stop_distance: 0.2
+      terminal_creep_distance: 0.075
+      obstacle_zero_buffer: 0.2
       obstacle_cost_threshold: 254   # 254=LETHAL：path 点在障碍格内才停障（253 内切区会误伤贴障碍路径）
       obstacle_start_exempt_distance: 0.25  # 起点豁免：贴墙停放时自身在内切区，无豁免整条剖面被置零
-      curve_compute_dist: 0.1
-      regulated_linear_scaling_min_radius: 1.2
+      # P0-3 障碍约束「无法评估」（TF 变换失败 / costmap 缺失）时的处置策略。
+      # fail_closed（默认，生产）：本周期输出空轨迹 → ControllerServer 发零速。
+      # fail_open：跳过障碍约束继续规划——即改动前的隐式行为，仅限仿真/明确灰度。
+      # ⚠️ 不含「路径点超出 costmap 覆盖」，那是 OUT_OF_RANGE，属正常情况不触发策略。
+      obstacle_unavailable_policy: "fail_closed"
+      curvature_stencil_arc: 0.1
+      # 曲率限速公式**已改为物理式** `v = √(max_lateral_accel / |κ|)`，
+      # 不再依赖巡航速度（旧式 v = cruise × radius / min_radius 会把同一半径的弯道
+      # 在不同巡航下限到不同速度，实测横向加速度 0.031→0.347 m/s² 漂移 3.3 倍）。
+      # 离线已验证：实测横向加速度恒为 0.300 = max_lateral_accel，零新增失败。
+      #
+      # ⚠ 开关**仍暂时关闭**，理由已不是公式错误，而是**分批上机**：R50 首拍 jerk
+      #    修复尚未实机验证，同一轮同时打开曲率会让两个变量混在一起无法归因。
+      #    R50 验完后单独开一轮把本开关改 true 即可（一行，无其它改动）。
+      # ⚠ 关闭期间 ④ 层没有横向加速度保护，仅靠 ⑤ RPP 的 carrot 弦曲率调速
+      #    （见下方 RPPController 段的 regulated_linear_scaling_min_radius: 1.5）。
+      enable_curvature_constraint: false
+      max_lateral_accel: 0.3                      # 允许的最大横向加速度 [m/s²]
+      regulated_linear_scaling_min_radius: 1.2    # 激活门：半径小于此值才视为弯道
       min_curvature_speed: 0.1
       curve_lead_in_distance: 0.3
       curve_lead_out_distance: 0.3
@@ -127,28 +149,100 @@ controller_server:
       accel: 0.5
       decel: -0.4
       end_speed: 0.05
-      stop_distance: 0.075
-      collision_stop_distance: 0.2
+      terminal_creep_distance: 0.075
+      obstacle_zero_buffer: 0.2
       obstacle_cost_threshold: 254   # 254=LETHAL：path 点在障碍格内才停障（253 内切区会误伤贴障碍路径）
       obstacle_start_exempt_distance: 0.25  # 起点豁免：贴墙停放时自身在内切区，无豁免整条剖面被置零
-      curve_compute_dist: 0.1
-      regulated_linear_scaling_min_radius: 0.01
+      # P0-3 障碍约束「无法评估」（TF 变换失败 / costmap 缺失）时的处置策略。
+      # fail_closed（默认，生产）：本周期输出空轨迹 → ControllerServer 发零速。
+      # fail_open：跳过障碍约束继续规划——即改动前的隐式行为，仅限仿真/明确灰度。
+      # ⚠️ 不含「路径点超出 costmap 覆盖」，那是 OUT_OF_RANGE，属正常情况不触发策略。
+      obstacle_unavailable_policy: "fail_closed"
+      curvature_stencil_arc: 0.1
+      # 2026-08-06：原为 0.01（1cm），而 A3 的判据是 `if (radius > min_rad) continue;`——
+      # 真实路径不可能出现 1cm 半径，曲率限速因此一次都没触发过（连带 curve_lead_in/out
+      # 也失效，它们依赖曲率限速点集非空）。恢复为与其余 yaml / 代码默认一致的 1.2。
+      # 曲率限速公式**已改为物理式** `v = √(max_lateral_accel / |κ|)`，
+      # 不再依赖巡航速度（旧式 v = cruise × radius / min_radius 会把同一半径的弯道
+      # 在不同巡航下限到不同速度，实测横向加速度 0.031→0.347 m/s² 漂移 3.3 倍）。
+      # 离线已验证：实测横向加速度恒为 0.300 = max_lateral_accel，零新增失败。
+      #
+      # ⚠ 开关**仍暂时关闭**，理由已不是公式错误，而是**分批上机**：R50 首拍 jerk
+      #    修复尚未实机验证，同一轮同时打开曲率会让两个变量混在一起无法归因。
+      #    R50 验完后单独开一轮把本开关改 true 即可（一行，无其它改动）。
+      # ⚠ 关闭期间 ④ 层没有横向加速度保护，仅靠 ⑤ RPP 的 carrot 弦曲率调速
+      #    （见下方 RPPController 段的 regulated_linear_scaling_min_radius: 1.5）。
+      enable_curvature_constraint: false
+      max_lateral_accel: 0.3                      # 允许的最大横向加速度 [m/s²]
+      regulated_linear_scaling_min_radius: 1.2    # 激活门：半径小于此值才视为弯道
       min_curvature_speed: 0.1
       curve_lead_in_distance: 0.3
       curve_lead_out_distance: 0.3
       constant_velocity_dist_threshold: 0.1
       enable_constant_velocity_while_turning: False
       max_jerk: 0.5
-      control_dt: 0.05
+      control_dt: 0.1
       # R41：现有 time preview 之外的 target→底盘执行延迟。
       # 本次现场出现一次 334ms 长周期，先取 0.35s 临时安全基线；它不是 p99，
       # 必须用实机批量 target/cmd/odom 数据重新标定。
-      terminal_execution_delay: 0.35
+      terminal_execution_delay: 0.20
       # 独立于 stop_distance：要求在 stop-zone 入口前额外稳定 5cm，吸收路径/odom 抖动。
       terminal_safety_margin: 0.05
+    # 纯可达性滤波后端：后向减速 + 前向加速 + 向下可达，均带 jerk 斜率限制。
+    # 每步取严/取松，无求解分支，故不存在无解与兜底。切换只需改
+    # current_speed_planner，回退亦然。
+    ReachabilitySpeedPlanner:
+      # ⚠ control_dt 未显式列出，取默认 0.1，**必须等于 1/controller_frequency**。
+      #   它是剖面首点加速度单周期允许变化的墙钟步长（首点每周期被下一版计划替换）。
+      #   改 controller_frequency 时必须在此显式覆写，否则起步会出现超 jerk 的加速度阶跃。
+      plugin: "nav2_speed_planner::ReachabilitySpeedPlanner"
+      max_speed: 0.6
+      min_speed: 0.05
+      accel: 0.5
+      decel: -0.4
+      end_speed: 0.05
+      terminal_creep_distance: 0.075
+      obstacle_zero_buffer: 0.2
+      obstacle_cost_threshold: 254   # 254=LETHAL：path 点在障碍格内才停障（253 内切区会误伤贴障碍路径）
+      obstacle_start_exempt_distance: 0.25  # 起点豁免：贴墙停放时自身在内切区，无豁免整条剖面被置零
+      # P0-3 障碍约束「无法评估」（TF 变换失败 / costmap 缺失）时的处置策略。
+      # fail_closed（默认，生产）：本周期输出空轨迹 → ControllerServer 发零速。
+      # fail_open：跳过障碍约束继续规划——即改动前的隐式行为，仅限仿真/明确灰度。
+      # ⚠️ 不含「路径点超出 costmap 覆盖」，那是 OUT_OF_RANGE，属正常情况不触发策略。
+      obstacle_unavailable_policy: "fail_closed"
+      curvature_stencil_arc: 0.1
+      # 2026-08-06：原为 0.01（1cm），而 A3 的判据是 `if (radius > min_rad) continue;`——
+      # 真实路径不可能出现 1cm 半径，曲率限速因此一次都没触发过（连带 curve_lead_in/out
+      # 也失效，它们依赖曲率限速点集非空）。恢复为与其余 yaml / 代码默认一致的 1.2。
+      # 曲率限速公式**已改为物理式** `v = √(max_lateral_accel / |κ|)`，
+      # 不再依赖巡航速度（旧式 v = cruise × radius / min_radius 会把同一半径的弯道
+      # 在不同巡航下限到不同速度，实测横向加速度 0.031→0.347 m/s² 漂移 3.3 倍）。
+      # 离线已验证：实测横向加速度恒为 0.300 = max_lateral_accel，零新增失败。
+      #
+      # ⚠ 开关**仍暂时关闭**，理由已不是公式错误，而是**分批上机**：R50 首拍 jerk
+      #    修复尚未实机验证，同一轮同时打开曲率会让两个变量混在一起无法归因。
+      #    R50 验完后单独开一轮把本开关改 true 即可（一行，无其它改动）。
+      # ⚠ 关闭期间 ④ 层没有横向加速度保护，仅靠 ⑤ RPP 的 carrot 弦曲率调速
+      #    （见下方 RPPController 段的 regulated_linear_scaling_min_radius: 1.5）。
+      enable_curvature_constraint: false
+      max_lateral_accel: 0.3                      # 允许的最大横向加速度 [m/s²]
+      regulated_linear_scaling_min_radius: 1.2    # 激活门：半径小于此值才视为弯道
+      min_curvature_speed: 0.1
+      curve_lead_in_distance: 0.3
+      curve_lead_out_distance: 0.3
+      constant_velocity_dist_threshold: 0.1
+      enable_constant_velocity_while_turning: False
+      max_jerk: 0.5
+      # R41：现有 time preview 之外的 target→底盘执行延迟。
+      # 本次现场出现一次 334ms 长周期，先取 0.35s 临时安全基线；它不是 p99，
+      # 必须用实机批量 target/cmd/odom 数据重新标定。
+      terminal_execution_delay: 0.20
+      # 独立于 stop_distance：要求在 stop-zone 入口前额外稳定 5cm，吸收路径/odom 抖动。
+      terminal_safety_margin: 0.05
+
     staged_control:
       enabled: True
-      track_controller: "MPPIController"
+      track_controller: "RPPController"        # 与实际运行一致（此前写 MPPI 但实机跑的是 RPP）
       approach_controller: "PIDController"
       approach_distance: 0.3
       align_heading_tolerance: 0.26  # 30 deg
@@ -463,7 +557,8 @@ controller_server:
       angular_gain: 1.2    # 角速度增益：>1 收紧转向补偿曲线跟踪滞后（横向误差大→上调，振荡→下调）
       near_curvature_check_dist: 0.3          # 近场固定距离曲率采样点（不随速度缩放）；③角速度饱和联动降速取远端/近场两点曲率中更尖锐者，避免前瞻越远曲率越被稀释而漏看近场路径突变
       traj_speed_lookahead: 0.1    # 轨迹速度目标=最近点之后前方窗内 max（不含状态戳）；静止起步靠前方坡道点破自引用环
-      traj_time_lookahead: 0.0     # 0=自动取至少一个 controller 周期；relative_time 无效时才回退上方空间窗
+      # 0 = 自动取一个控制周期。曾试 0.15 补偿执行延迟，实机实测不改善末端越点，改回 0。
+      traj_time_lookahead: 0.0
       # ── RPP 先验约束（applyConstraints，只降不升，基于静态几何/代价）──
       use_regulated_linear_velocity_scaling: True
       regulated_linear_scaling_min_radius: 1.5    # RPP 层曲率减速阈值（carrot 弦曲率）；④A3 层阈值见 speed planner 块（半径大于两者则两层都不减速）
@@ -546,7 +641,8 @@ controller_server:
       angular_cmd_reseed_error: 0.3    # 同上，角速度指令积分器版本
       final_target_lock_distance: 0.3    # 距终点小于此值直接锁定终点索引（消除末段最近点跳变）；须 ≥ staged_control.approach_distance
       traj_speed_lookahead: 0.1    # 速度参考与瞄准目标解耦：最近点之后前方窗内 max（不含最近点自身，避免状态戳自引用）
-      traj_time_lookahead: 0.0     # 0=自动取至少一个 controller 周期；relative_time 无效时才回退上方空间窗
+      # 0 = 自动取一个控制周期。曾试 0.15 补偿执行延迟，实机实测不改善末端越点，改回 0。
+      traj_time_lookahead: 0.0
       approach_rotation_budget_deg: 200.0    # 单次 approach/rotating 累计旋转量安全网，超此值强制停止（度）
       final_rotation_max_v: 0.05
       final_rotation_linear_deadband: 0.005

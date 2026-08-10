@@ -13,5 +13,13 @@
                 填充 acceleration/relative_time。参数 max_jerk / control_dt。
             </description>
         </class>
+        <class type="nav2_speed_planner::ReachabilitySpeedPlanner" base_class_type="nav2_core::SpeedPlanner">
+            <description>
+                纯可达性滤波规划器：后向减速 + 前向加速两遍遍历，均带 jerk 斜率限制。
+                每一步都是取严（min），故结果恒不超包络、恒可从前一点达到，
+                不存在无解分支，也就不需要兜底。减速/加速坡道由滤波自然产生。
+                初速作为前向遍历的种子，不写入包络数组。参数 max_jerk。
+            </description>
+        </class>
     </library>
 </class_libraries>

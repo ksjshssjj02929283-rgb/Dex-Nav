@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // S 型（jerk 限制速度曲线）规划器实现 —— 基于 Ruckig。
-#include "nav2_speed_planner/scurve_speed_planner.hpp"
+#include "nav2_speed_planner/backends/scurve_speed_planner.hpp"
 
 #include <algorithm>
 #include <array>
@@ -14,6 +14,7 @@
 #include <utility>
 #include <vector>
 
+#include "nav2_speed_planner/core/profile_derivatives.hpp"
 #include "nav2_util/node_utils.hpp"
 #include "pluginlib/class_list_macros.hpp"
 #include "ruckig/ruckig.hpp"
@@ -54,6 +55,121 @@ std::vector<SpeedTarget> extractDescentTargets(
     }
   }
   return targets;
+}
+
+/// jerk 限制下，从 v0 出发在 dist 内能增加的最大速度（首尾加速度均为 0）。
+/// 无闭式，二分求解；精度 1e-4 足够（点距约 2 cm）。时间反演后同样适用于减速：
+/// 「从 v0 减到 v1」与「从 v1 加到 v0」所需距离相同（限值取 d_max）。
+inline double reachableDeltaV(double v0, double dist, double a_max, double max_jerk)
+{
+  if (dist <= 1e-9) {return 0.0;}
+  auto travel = [&](double dv) {
+      const double a_p = std::min(std::sqrt(std::max(dv, 0.0) * max_jerk), a_max);
+      const double dv_tri = a_p * a_p / max_jerk;   // 三角加速度段能换到的 Δv
+      const double t = (dv <= dv_tri + 1e-12) ?
+        2.0 * std::sqrt(std::max(dv, 0.0) / max_jerk) :
+        2.0 * a_p / max_jerk + (dv - dv_tri) / a_p;
+      return v0 * t + 0.5 * dv * t;                 // 平均速度 ≈ v0 + dv/2
+    };
+  double lo = 0.0, hi = 5.0;
+  for (int k = 0; k < 60; ++k) {
+    const double mid = 0.5 * (lo + hi);
+    (travel(mid) <= dist) ? lo = mid : hi = mid;
+  }
+  return lo;
+}
+
+/// 让**包络本身**处处动力学可达——修包络，而不是事后修目标。
+///
+/// 梯形后端早就这么做（`computeDecelPlan` + 加速 pass，注释原文「对一切低速点
+/// 自动生成物理正确的进入坡道」），**所以它从不出现本类故障**。SCurve 此前跳过
+/// 这一步，把带**阶跃**的原始包络直接交给 Ruckig：曲率约束把点压到
+/// `min_curvature_speed`（`curve_lead_in/out` 只加宽井、井壁仍是阶跃）→
+/// `extractDescentTargets` 把每个谷底设成硬目标 → 相邻目标互不可达 → -110 →
+/// 兜底 → 输出恒 `end_speed` → 全程蠕行。
+///
+/// **必须用恒加速度公式 `v² = v_next² + 2·a·Δs`，不能用 jerk 完整循环。**
+/// 首次实现误把「加速度 0→a_p→0 的完整循环」套在每个 2 cm 点间隔上，而连续
+/// 剖面里加速度是跨点延续的、不会每点归零——逐点算出的可达 Δv 被严重低估，
+/// 实测导致包络过度压低：曲率井峰值 0.34~0.51 → 0.277、求解器失败 0 → 10、
+/// 既有 24 场景 10 个变化、4 个单测失败。
+///
+/// jerk 带来的额外距离需求由 `clampTargetsToReachable` 承担——目标之间确实
+/// 要求加速度首尾归零，那里用完整循环才是对的。两者分工互补：
+///   包络遍历（恒加速度）消除粗粒度阶跃 → 目标 clamp（jerk 完整循环）收尾。
+inline void applyEnvelopeReachability(
+  std::vector<double> & env, const std::vector<double> & arc_s, size_t stop_i,
+  double a_max, double d_max)
+{
+  if (env.size() < 2 || arc_s.size() != env.size()) {return;}
+  const size_t last = std::min(stop_i, env.size() - 1);
+
+  // 后向：保证能减速到下游约束（终点蠕行区 / 障碍零速 / 曲率谷底）
+  for (size_t i = last; i-- > 1; ) {
+    const double ds = arc_s[i + 1] - arc_s[i];
+    if (ds <= 1e-9) {continue;}
+    const double v_next = std::max(0.0, env[i + 1]);
+    env[i] = std::min(env[i], std::sqrt(v_next * v_next + 2.0 * d_max * ds));
+  }
+  // 前向：保证能从上游加速上来（削平曲率井出口阶跃，顺带修 C4 的边界凸起）。
+  // index 0 是机器人状态戳，不参与设置（同 backward pass 约定）。
+  for (size_t i = 1; i < last; ++i) {
+    const double ds = arc_s[i + 1] - arc_s[i];
+    if (ds <= 1e-9) {continue;}
+    const double v_prev = std::max(0.0, env[i]);
+    env[i + 1] = std::min(env[i + 1], std::sqrt(v_prev * v_prev + 2.0 * a_max * ds));
+  }
+}
+
+/// 把目标速度钳到「从上一目标出发、jerk 限制下确实到得了」的范围内。
+///
+/// 为什么必需：`extractDescentTargets` 把包络的**每个谷底**都设成硬目标
+/// （位置 + 速度 + 加速度归零）。曲率约束会造出多个深浅不一的"井"
+/// （lead_in/out 把井加宽，但井壁仍是阶跃），相邻谷底之间可能根本升不回去——
+/// 实机实测：v0=0.100 → target_v=0.4148、dist=0.3375 m，而 jerk 限制下
+/// 需要 0.41 m，Ruckig 返回 -110（ErrorExecutionTimeCalculation）。
+/// 一次求解失败就掉进制动兜底，输出恒为 end_speed → 全程蠕行。
+///
+/// **包络是上界，不是必须精确命中的轨迹。** 到不了就慢一点走，永远安全；
+/// 强行要求升速反而让整条计划不可行。本函数只降不升。
+///
+/// 升速可达性（首尾加速度均为 0 的 jerk 限制加速）：
+///   Δv ≤ a_p²/j 且 a_p ≤ a_max，位移 s = v0·t + Δv·t/2，t = 2·a_p/j
+/// 给定 s 反解 Δv 无闭式，用二分；精度 1e-4 足够（点距约 2 cm）。
+inline void clampTargetsToReachable(
+  std::vector<SpeedTarget> & targets, const std::vector<double> & arc_s,
+  double v_start, double a_max, double max_jerk)
+{
+  auto reachable_dv = [&](double v0, double dist) {
+      return reachableDeltaV(v0, dist, a_max, max_jerk);
+    };
+
+  // ① 前向：升速受限于「从上一目标能加到多少」
+  double prev_v = std::max(v_start, 0.0);
+  double prev_s = arc_s.empty() ? 0.0 : arc_s.front();
+  for (auto & tgt : targets) {
+    if (tgt.index >= arc_s.size()) {continue;}
+    const double s = arc_s[tgt.index];
+    if (tgt.velocity > prev_v) {
+      tgt.velocity = std::min(tgt.velocity, prev_v + reachable_dv(prev_v, s - prev_s));
+    }
+    prev_v = tgt.velocity;
+    prev_s = s;
+  }
+
+  // ② 后向：降速受限于「要减到下一目标，本目标最多能有多快」
+  //    实机 R48 第二形态：0.3899 → 0.050 仅 0.0652 m（需 0.187 m）。
+  //    只做前向必然漏掉这一向——单向补丁的教训。
+  for (size_t k = targets.size(); k-- > 1; ) {
+    if (targets[k].index >= arc_s.size() || targets[k - 1].index >= arc_s.size()) {
+      continue;
+    }
+    const double ds = arc_s[targets[k].index] - arc_s[targets[k - 1].index];
+    if (ds <= 1e-9) {continue;}
+    // 时间反演：从 v_prev 减到 v_next 所需距离 == 从 v_next 加到 v_prev（限值 d_max）
+    const double cap = targets[k].velocity + reachable_dv(targets[k].velocity, ds);
+    targets[k - 1].velocity = std::min(targets[k - 1].velocity, cap);
+  }
 }
 
 bool generateRuckigVelocityProfile(
@@ -343,8 +459,9 @@ size_t applyTerminalSpeedEnvelope(
         anchor.pose.pose.orientation =
           ratio < 0.5 ? work[lower_index].pose.pose.orientation :
           work[anchor_index].pose.pose.orientation;
-        anchor.speed_limit = std::min(
-          {work[lower_index].speed_limit, work[anchor_index].speed_limit, end_speed});
+        anchor.velocity_upper_bound = std::min(
+          {work[lower_index].velocity_upper_bound, work[anchor_index].velocity_upper_bound, end_speed});
+        anchor.constraint_source = ConstraintSource::kEndBoundary;
         anchor.curvature = std::max(
           std::fabs(work[lower_index].curvature), std::fabs(work[anchor_index].curvature));
         if (anchor.region_type.empty()) {
@@ -357,7 +474,7 @@ size_t applyTerminalSpeedEnvelope(
   }
 
   for (size_t index = anchor_index; index < work.size(); ++index) {
-    work[index].speed_limit = std::min(work[index].speed_limit, end_speed);
+    lowerBound(work[index], end_speed, ConstraintSource::kEndBoundary);
     if (work[index].region_type.empty()) {
       work[index].region_type = "terminal_reserve";
     }
@@ -581,7 +698,7 @@ void SCurveSpeedPlanner::configure(
     node->get_logger(),
     "%s effective terminal config: end_speed=%.3f m/s stop_distance=%.3f m "
     "execution_delay=%.3f s safety_margin=%.3f m",
-    plugin_name_.c_str(), end_speed_, stop_distance_,
+    plugin_name_.c_str(), end_speed_, terminal_creep_distance_,
     terminal_execution_delay_, terminal_safety_margin_);
 }
 
@@ -601,8 +718,8 @@ double SCurveSpeedPlanner::computeTerminalExecutionReserve(
 }
 
 // ===================== Ruckig 沿弧长生成 jerk 限制速度剖面 =====================
-bool SCurveSpeedPlanner::generateRuckigProfile(
-  const std::vector<double> & v_env,
+FeasibilityResult SCurveSpeedPlanner::generateRuckigProfile(
+  const std::vector<double> & v_env_in,
   const std::vector<double> & arc_s,
   double v_start,
   double a_start,
@@ -613,11 +730,15 @@ bool SCurveSpeedPlanner::generateRuckigProfile(
   std::vector<double> & t_out,
   double v_end)
 {
+  // 包络需就地可达化（见 applyEnvelopeReachability），故取可变副本；
+  // 后续全部逻辑都基于可达化后的包络，避免与目标提取口径不一致。
+  std::vector<double> v_env = v_env_in;
+
   const size_t n = v_env.size();
   v_out.assign(n, 0.0);
   a_out.assign(n, 0.0);
   t_out.assign(n, 0.0);
-  if (n == 0) {return false;}
+  if (n == 0) {return FeasibilityResult{};}   // 空输入：不判不可行（同归一前）
   a_max = std::max(1e-3, a_max);
   d_max = std::max(1e-3, d_max);
   max_jerk = std::max(1e-3, max_jerk);
@@ -626,7 +747,7 @@ bool SCurveSpeedPlanner::generateRuckigProfile(
   if (n == 1) {
     v_out[0] = std::clamp(v_start, 0.0, std::max(0.0, v_env[0]));
     a_out[0] = a_start;
-    return false;
+    return FeasibilityResult{};   // 单点：不判不可行（同归一前）
   }
 
   // 停止点：首个零包络点（障碍）否则终点。障碍停止时终点速度强制 0。
@@ -642,8 +763,12 @@ bool SCurveSpeedPlanner::generateRuckigProfile(
   // 逐目标分段规划："在谷底恰好降到谷速"由 target 硬保证；段内 max_velocity 取
   // 区间包络最大值（渐变段轻微越界由重采样钳位收尾），并抬到 ≥ 当前/目标速度
   // 保证输入合法。
+  // 先让包络处处可达（恒加速度口径），再提取目标——顺序不能反。
+  applyEnvelopeReachability(v_env, arc_s, stop_i, a_max, d_max);
   std::vector<SpeedTarget> targets = extractDescentTargets(v_env, stop_i);
   targets.push_back({stop_i, v_end});
+  // 硬目标必须彼此可达，否则一次求解失败就整条掉进兜底（实机 R48）。
+  clampTargetsToReachable(targets, arc_s, v_start, a_max, max_jerk);
 
   size_t terminal_start_i = stop_i;
   if (!stop_at_env_zero) {
@@ -668,7 +793,7 @@ bool SCurveSpeedPlanner::generateRuckigProfile(
   std::vector<double> rs{0.0}, rv{in.current_velocity[0]}, ra{a_start}, rt{0.0};
   double tnow = 0.0;
   bool failed = false;
-  bool terminal_infeasible = false;
+  FeasibilityResult feas;   // 归一：7 处赋值收敛到此，语义逐字保持
   for (const auto & tgt : targets) {
     const double s_t = arc_s[tgt.index];
     if (s_t <= in.current_position[0] + 1e-9) {
@@ -699,7 +824,7 @@ bool SCurveSpeedPlanner::generateRuckigProfile(
           seg_s, seg_v, seg_a, seg_t))
       {
         failed = true;
-        terminal_infeasible = true;
+        feas.mark(FeasibilityResult::Reason::kStableSegmentUnreachable, true);
         break;
       }
       const double segment_start_s = in.current_position[0];
@@ -724,7 +849,9 @@ bool SCurveSpeedPlanner::generateRuckigProfile(
       4.0 * seg_vmax / min_accel_limit + 4.0 * std::sqrt(seg_vmax / max_jerk);
     if (!std::isfinite(duration_budget) || duration_budget <= 0.0) {
       failed = true;
-      terminal_infeasible = !stop_at_env_zero && tgt.index >= terminal_start_i;
+      feas.mark(
+        FeasibilityResult::Reason::kDurationBudgetInvalid,
+        !stop_at_env_zero && tgt.index >= terminal_start_i);
       break;
     }
     constexpr double kMaxRuckigSteps = 200000.0;
@@ -735,15 +862,25 @@ bool SCurveSpeedPlanner::generateRuckigProfile(
     while (segment_steps_left-- > 0) {
       const ruckig::Result res = otg.update(in, out);
       if (res != ruckig::Result::Working && res != ruckig::Result::Finished) {
+        feas.solver_code = static_cast<int>(res);
+        feas.solver_v0 = in.current_velocity[0];
+        feas.solver_a0 = in.current_acceleration[0];
+        feas.solver_vmax = in.max_velocity[0];
+        feas.solver_target_v = in.target_velocity[0];
+        feas.solver_distance = in.target_position[0] - in.current_position[0];
         failed = true;
-        terminal_infeasible = !stop_at_env_zero && tgt.index >= terminal_start_i;
+        feas.mark(
+          FeasibilityResult::Reason::kSolverError,
+          !stop_at_env_zero && tgt.index >= terminal_start_i);
         break;
       }
       if (!std::isfinite(out.new_position[0]) || !std::isfinite(out.new_velocity[0]) ||
         !std::isfinite(out.new_acceleration[0]))
       {
         failed = true;
-        terminal_infeasible = !stop_at_env_zero && tgt.index >= terminal_start_i;
+        feas.mark(
+          FeasibilityResult::Reason::kNonFiniteOutput,
+          !stop_at_env_zero && tgt.index >= terminal_start_i);
         break;
       }
       tnow += ctrl_dt;
@@ -759,8 +896,9 @@ bool SCurveSpeedPlanner::generateRuckigProfile(
     }
     if (failed || !segment_finished) {
       failed = true;
-      terminal_infeasible = terminal_infeasible ||
-        (!stop_at_env_zero && tgt.index >= terminal_start_i);
+      feas.markOr(
+        FeasibilityResult::Reason::kIterationExhausted,
+        !stop_at_env_zero && tgt.index >= terminal_start_i);
       break;
     }
   }
@@ -768,10 +906,40 @@ bool SCurveSpeedPlanner::generateRuckigProfile(
   bool braking_fallback = false;
   bool stable_target_reachable = true;
   if (failed) {
+    feas.provenance = FeasibilityResult::Provenance::kBrakingFallback;
+    // ── 段级兜底（2026-08-08）──────────────────────────────────────────
+    //
+    // 旧实现从 **原始起点状态** 重新生成整条制动剖面
+    //（`generateReachableBrakingProfile(initial_velocity, initial_acceleration, …)`
+    // 内部 `position = {0.0}` 丢弃全部已算结果）。后果是
+    // **任何一段求解失败都会让整条计划塌成 end_speed**。
+    //
+    // 这是 2026-08-07 全部四种失败形态的共同放大器：曲率井 / 限速下调 /
+    // 末端 5 mm 数值退化 / 特定不等距配置——触发器各不相同，后果永远是
+    // "全程 end_speed 蠕行"。而实测证明触发器**追不完**：3 mm 点距比 10 mm
+    // 密得多却正常，说明是配置相关的求解器边界情况，不可穷举。
+    //
+    // 改为保留失败点之前**已成功生成的前缀**，只从失败点续接降级剖面：
+    // 前段正常速度得以保留，单次求解器边界情况不再是灾难。
+    // 失败发生在首段时前缀仅剩状态点，行为自动退化为旧的全局兜底。
+    const double resume_s = rs.empty() ? 0.0 : rs.back();
+    const double resume_t = rt.empty() ? 0.0 : rt.back();
+    const double resume_v = rv.empty() ? initial_velocity : rv.back();
+    const double resume_a = ra.empty() ? initial_acceleration : ra.back();
+
+    std::vector<double> fs, fv, fa, ft;
     braking_fallback = generateReachableBrakingProfile(
-      initial_velocity, initial_acceleration, a_max, d_max,
-      max_jerk, ctrl_dt, v_end, rs, rv, ra, rt,
+      resume_v, resume_a, a_max, d_max,
+      max_jerk, ctrl_dt, v_end, fs, fv, fa, ft,
       stable_target_reachable);
+    if (braking_fallback) {
+      for (size_t k = 1; k < fs.size(); ++k) {
+        rs.push_back(resume_s + fs[k]);
+        rv.push_back(fv[k]);
+        ra.push_back(fa[k]);
+        rt.push_back(resume_t + ft[k]);
+      }
+    }
     if (!braking_fallback) {
       rs = {0.0};
       rv = {initial_velocity};
@@ -804,10 +972,14 @@ bool SCurveSpeedPlanner::generateRuckigProfile(
       const double stable_position_tolerance =
         (std::max(initial_velocity, v_end) * kControllerPreviewSteps +
         v_end) * ctrl_dt;
-      terminal_infeasible =
+      // ⚠ **这是目前唯一能把 infeasible 清回 false 的地方**——制动兜底之后
+      //   的最终判定。它承担了"退出判据"的职责，但语义与"兜底成没成功"耦合，
+      //   没有独立的「已回到可行集」判断（doc8 §三 步 4 补）。
+      feas.resolve(
         !stable_target_reachable || undershot ||
         stable_s >
-        arc_s[terminal_start_i] + stable_position_tolerance + 1e-6;
+        arc_s[terminal_start_i] + stable_position_tolerance + 1e-6,
+        FeasibilityResult::Reason::kFallbackUnreachable);
     }
   }
 
@@ -837,11 +1009,11 @@ bool SCurveSpeedPlanner::generateRuckigProfile(
       v_out[i] = std::min(v_out[i], std::max(0.0, v_env[i]));
     }
   }
-  return terminal_infeasible;
+  return feas;
 }
 
 // ===================== 插件 hook：Phase B（Ruckig jerk 限制剖面）=====================
-void SCurveSpeedPlanner::assignVelocityProfile(
+void SCurveSpeedPlanner::generateProfile(
   std::vector<TrajPointWork> & work, double curr_vel, double curr_accel,
   double /*cruise_limit*/, bool terminal_brake_latched)
 {
@@ -864,7 +1036,7 @@ void SCurveSpeedPlanner::assignVelocityProfile(
   const auto initial_arc_s = computeCumulativeArcLengths(work);
   size_t hard_zero_index = work.size();
   for (size_t index = 1; index < work.size(); ++index) {
-    if (work[index].speed_limit < 1e-3) {
+    if (work[index].velocity_upper_bound < 1e-3) {
       hard_zero_index = index;
       break;
     }
@@ -880,6 +1052,7 @@ void SCurveSpeedPlanner::assignVelocityProfile(
     const double execution_reserve = computeTerminalExecutionReserve(
       curr_vel, curr_accel, terminal_execution_delay_, terminal_safety_margin_);
 
+    last_planning_diagnostics_.terminal_branch = 1;   // 障碍分支
     last_planning_diagnostics_.terminal_execution_reserve = execution_reserve;
     last_planning_diagnostics_.terminal_braking_distance = braking_distance;
     last_planning_diagnostics_.terminal_distance_available = obstacle_boundary_s;
@@ -891,8 +1064,8 @@ void SCurveSpeedPlanner::assignVelocityProfile(
       const double anchor_s = std::max(0.0, obstacle_boundary_s - execution_reserve);
       applyTerminalSpeedEnvelope(work, anchor_s, 0.0);
     }
-  } else if (end_speed_ >= 1e-3 && stop_distance_ > 0.0) {
-    const double terminal_boundary_s = std::max(0.0, initial_arc_s.back() - stop_distance_);
+  } else if (end_speed_ >= 1e-3 && terminal_creep_distance_ > 0.0) {
+    const double terminal_boundary_s = std::max(0.0, initial_arc_s.back() - terminal_creep_distance_);
     const double conservative_acceleration = std::max(0.0, curr_accel);
     const double braking_distance = computeStableBrakingDistance(
       std::max(0.0, curr_vel), conservative_acceleration,
@@ -903,6 +1076,7 @@ void SCurveSpeedPlanner::assignVelocityProfile(
     const double execution_reserve = computeTerminalExecutionReserve(
       curr_vel, curr_accel, terminal_execution_delay_, terminal_safety_margin_);
 
+    last_planning_diagnostics_.terminal_branch = 2;   // 终端(end_speed)分支
     last_planning_diagnostics_.terminal_execution_reserve = execution_reserve;
     last_planning_diagnostics_.terminal_braking_distance = braking_distance;
     last_planning_diagnostics_.terminal_distance_available = terminal_boundary_s;
@@ -910,16 +1084,37 @@ void SCurveSpeedPlanner::assignVelocityProfile(
       !std::isfinite(braking_distance) ||
       terminal_boundary_s <= braking_distance + execution_reserve + 1e-6;
 
-    double anchor_s = std::max(0.0, terminal_boundary_s - execution_reserve);
-    if (terminal_brake_latched && std::isfinite(continuity_braking_distance)) {
-      // Same-goal path replacement may temporarily lengthen the local path.
-      // Once braking is latched, the reserve has already selected the start
-      // cycle: from then on, target the current shortest reachable braking
-      // distance instead of subtracting the full reserve again every cycle.
-      // This prevents both re-acceleration on a lengthened path and a false
-      // infeasible result while the reserved distance is being consumed.
-      anchor_s = std::min(terminal_boundary_s, continuity_braking_distance);
+    // ── 制动锚点 ──────────────────────────────────────────────────────
+    // 裕度必须**贯穿整个制动过程**，而不只是决定"哪一周期开始刹"。
+    //
+    // 历史实现锁存后取 min(terminal_boundary_s, continuity_braking_distance)，
+    // 即**完全丢弃裕度**：滞后时 continuity_braking_distance ≥ 剩余距离，
+    // 于是锚点退回终点本身，制动全程零裕度——执行滞后每周期被重新宽恕。
+    // 实测吻合：裕度 0.6×0.35+0.05 = 0.26 m，而越点量约 26 cm。
+    //
+    // 但每周期按**当前速度**重算裕度同样不对：v 下降时裕度随之缩小
+    // （0.26→0.15→0.07），锚点滑向终点，裕度被逐周期蚕食；这也是历史注释里
+    // "false infeasible while the reserved distance is being consumed" 的来源。
+    //
+    // 正解是把裕度在 latch 沿**冻结一次**，之后锚点 = 剩余距离 − 冻结裕度，
+    // 等价于在世界坐标里钉死"终点前 0.26 m"这一个固定点，不随速度衰减、
+    // 也不随机器人前进而后退。仍与 continuity_braking_distance 取严，保留
+    // 原有的"路径被同目标替换而变长时不重新加速"保护。
+    if (terminal_brake_latched) {
+      if (latched_terminal_reserve_ < 0.0) {
+        latched_terminal_reserve_ = execution_reserve;   // 沿触发，冻结
+      }
+    } else {
+      latched_terminal_reserve_ = -1.0;                  // 未锁存则复位
     }
+    const double reserve_for_anchor = terminal_brake_latched ?
+      latched_terminal_reserve_ : execution_reserve;
+    double anchor_s = std::max(0.0, terminal_boundary_s - reserve_for_anchor);
+    if (terminal_brake_latched && std::isfinite(continuity_braking_distance)) {
+      anchor_s = std::min(anchor_s, continuity_braking_distance);
+    }
+    last_planning_diagnostics_.terminal_latched_reserve = latched_terminal_reserve_;
+    last_planning_diagnostics_.terminal_anchor_s = anchor_s;
     if (execution_reserve > 1e-9 || terminal_brake_latched) {
       applyTerminalSpeedEnvelope(work, anchor_s, end_speed_);
     }
@@ -929,29 +1124,45 @@ void SCurveSpeedPlanner::assignVelocityProfile(
   // 2) 累计弧长 + 包络（Phase A 已由基类完成：障碍/巡航/曲率/末端蠕行区，
   //    包络零点含障碍缓冲带，动态 reserve 已提前稳定蠕行边界）。
   std::vector<double> v_env(n, 0.0), arc_s(n, 0.0);
-  v_env[0] = std::max(0.0, work[0].speed_limit);
+  v_env[0] = std::max(0.0, work[0].velocity_upper_bound);
   for (size_t i = 1; i < n; ++i) {
     const double dx = work[i].pose.pose.position.x - work[i - 1].pose.pose.position.x;
     const double dy = work[i].pose.pose.position.y - work[i - 1].pose.pose.position.y;
     arc_s[i] = arc_s[i - 1] + std::hypot(dx, dy);
-    v_env[i] = std::max(0.0, work[i].speed_limit);
+    v_env[i] = std::max(0.0, work[i].velocity_upper_bound);
   }
 
   // 3) Ruckig 生成 jerk 限制剖面（非对称 a_max / d_max=|decel_|）。
   //    终点目标速度 = end_speed_（障碍停止时函数内部强制 0）。
   std::vector<double> v_out, a_out, t_out;
-  last_planning_diagnostics_.terminal_infeasible = generateRuckigProfile(
+  const FeasibilityResult terminal_feas = generateRuckigProfile(
     v_env, arc_s, curr_vel, curr_accel,
     accel_, std::fabs(decel_),
     max_jerk_, control_dt_,
     v_out, a_out, t_out, end_speed_);
+  last_planning_diagnostics_.terminal_infeasible = terminal_feas.infeasible();
+  last_planning_diagnostics_.terminal_infeasible_kind =
+    static_cast<int>(terminal_feas.kind);
+  last_planning_diagnostics_.terminal_infeasible_reason =
+    static_cast<int>(terminal_feas.reason);
+  last_planning_diagnostics_.terminal_result_provenance =
+    static_cast<int>(terminal_feas.provenance);
+  last_planning_diagnostics_.terminal_entry_reason =
+    static_cast<int>(terminal_feas.entry_reason);
+  last_planning_diagnostics_.solver_code = terminal_feas.solver_code;
+  last_planning_diagnostics_.solver_v0 = terminal_feas.solver_v0;
+  last_planning_diagnostics_.solver_a0 = terminal_feas.solver_a0;
+  last_planning_diagnostics_.solver_vmax = terminal_feas.solver_vmax;
+  last_planning_diagnostics_.solver_target_v = terminal_feas.solver_target_v;
+  last_planning_diagnostics_.solver_distance = terminal_feas.solver_distance;
 
   // 4) 回填 work（曲率已由 Phase A3 填好）。
   for (size_t i = 0; i < n; ++i) {
-    work[i].speed_limit = v_out[i];
+    work[i].velocity_upper_bound = v_out[i];
     work[i].accel = a_out[i];
     work[i].rel_time = t_out[i];
   }
+  fillJerkFromAccel(work);
 }
 
 }  // namespace nav2_speed_planner

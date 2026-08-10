@@ -9,7 +9,7 @@
 #include <cmath>
 #include <vector>
 
-#include "nav2_speed_planner/scurve_speed_planner.hpp"
+#include "nav2_speed_planner/backends/scurve_speed_planner.hpp"
 
 using nav2_speed_planner::SCurveSpeedPlanner;
 
@@ -243,7 +243,7 @@ TEST(SCurveRuckig, TerminalFallbackDoesNotUndershootOrRebound)
   std::vector<double> v, a, t;
 
   const bool terminal_infeasible = SCurveSpeedPlanner::generateRuckigProfile(
-    env, s, 0.6, 0.0, 0.5, 0.4, 0.5, 0.05, v, a, t, 0.05);
+    env, s, 0.6, 0.0, 0.5, 0.4, 0.5, 0.05, v, a, t, 0.05).infeasible();
 
   EXPECT_TRUE(terminal_infeasible);
   ASSERT_EQ(v.size(), n);
@@ -270,7 +270,7 @@ TEST(SCurveRuckig, LateNegativeAccelerationReleasesWithoutRebound)
   std::vector<double> v, a, t;
 
   const bool terminal_infeasible = SCurveSpeedPlanner::generateRuckigProfile(
-    env, s, 0.0583, -0.108, 0.5, 0.4, 0.5, 0.05, v, a, t, 0.05);
+    env, s, 0.0583, -0.108, 0.5, 0.4, 0.5, 0.05, v, a, t, 0.05).infeasible();
 
   EXPECT_TRUE(terminal_infeasible);
   ASSERT_EQ(v.size(), n);

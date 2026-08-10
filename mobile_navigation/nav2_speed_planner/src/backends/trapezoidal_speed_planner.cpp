@@ -2,18 +2,19 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 // T 型（梯形/恒加速度）速度规划器实现：前向加速 pass + 后向减速 pass。
-#include "nav2_speed_planner/trapezoidal_speed_planner.hpp"
+#include "nav2_speed_planner/backends/trapezoidal_speed_planner.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <vector>
 
+#include "nav2_speed_planner/core/profile_derivatives.hpp"
 #include "pluginlib/class_list_macros.hpp"
 
 namespace nav2_speed_planner
 {
 
-void TrapezoidalSpeedPlanner::assignVelocityProfile(
+void TrapezoidalSpeedPlanner::generateProfile(
   std::vector<TrajPointWork> & work, double curr_vel, double /*curr_accel*/,
   double cruise_limit, bool /*terminal_brake_latched*/)
 {
@@ -28,7 +29,7 @@ void TrapezoidalSpeedPlanner::assignVelocityProfile(
   // 硬停配置（end_speed < 1e-3，无 A4 蠕行区）：终点锚定为 0，
   // 后向 pass 从终点自动生成收敛坡道。
   if (end_speed_ < 1e-3) {
-    work.back().speed_limit = std::min(work.back().speed_limit, 0.0);
+    work.back().velocity_upper_bound = std::min(work.back().velocity_upper_bound, 0.0);
   }
 
   const std::vector<double> arc_s = computeCumulativeArcLengths(work);
@@ -48,25 +49,29 @@ void TrapezoidalSpeedPlanner::assignVelocityProfile(
   for (size_t i = 0; i + 1 < work.size(); ++i) {
     const double ds = arc_s[i + 1] - arc_s[i];
     if (ds > 1e-6) {
-      const double v0 = work[i].speed_limit;
-      const double v1 = work[i + 1].speed_limit;
+      const double v0 = work[i].velocity_upper_bound;
+      const double v1 = work[i + 1].velocity_upper_bound;
       work[i].accel = (v1 * v1 - v0 * v0) / (2.0 * ds);
     }
   }
   if (work.size() >= 2) {
     work.back().accel = work[work.size() - 2].accel;
   }
+  // 本后端不填 rel_time（恒加速度剖面无时间维产出），故此处算出的 jerk 恒 0。
+  // 保留调用是为了 rel_time 一旦补齐即自动生效；在此之前，任何针对本后端的
+  // jerk 断言都不成立——恒加速度剖面在段界本就是无穷 jerk，不该假装合规。
+  fillJerkFromAccel(work);
 }
 
 void TrapezoidalSpeedPlanner::enforceTerminalReachability(
   std::vector<TrajPointWork> & work, const std::vector<double> & arc_s) const
 {
-  if (decel_ >= -1e-6 || stop_distance_ <= 0.0 || end_speed_ < 1e-3) {
+  if (decel_ >= -1e-6 || terminal_creep_distance_ <= 0.0 || end_speed_ < 1e-3) {
     return;
   }
   for (size_t i = 0; i + 1 < work.size(); ++i) {
-    if (arc_s.back() - arc_s[i + 1] > stop_distance_ + 1e-6 ||
-      work[i + 1].speed_limit < 1e-3)
+    if (arc_s.back() - arc_s[i + 1] > terminal_creep_distance_ + 1e-6 ||
+      work[i + 1].velocity_upper_bound < 1e-3)
     {
       continue;
     }
@@ -74,10 +79,10 @@ void TrapezoidalSpeedPlanner::enforceTerminalReachability(
     if (ds <= 1e-9) {
       continue;
     }
-    const double v_prev = std::max(0.0, work[i].speed_limit);
+    const double v_prev = std::max(0.0, work[i].velocity_upper_bound);
     const double reachable_sq = v_prev * v_prev + 2.0 * decel_ * ds;
     const double v_min_reachable = reachable_sq > 0.0 ? std::sqrt(reachable_sq) : 0.0;
-    work[i + 1].speed_limit = std::max(work[i + 1].speed_limit, v_min_reachable);
+    work[i + 1].velocity_upper_bound = std::max(work[i + 1].velocity_upper_bound, v_min_reachable);
   }
 }
 
@@ -91,10 +96,10 @@ void TrapezoidalSpeedPlanner::computeDecelPlan(
   // 物理正确的进入坡道。index 0 为机器人当前速度（状态戳），不参与设置。
   for (size_t i = work.size() - 1; i-- > 1; ) {
     const double ds = arc_s[i + 1] - arc_s[i];
-    const double v_next = work[i + 1].speed_limit;
+    const double v_next = work[i + 1].velocity_upper_bound;
     const double v_reachable = std::sqrt(v_next * v_next - 2.0 * decel_ * ds);
-    if (work[i].speed_limit > v_reachable) {
-      work[i].speed_limit = v_reachable;
+    if (work[i].velocity_upper_bound > v_reachable) {
+      work[i].velocity_upper_bound = v_reachable;
     }
   }
 }
@@ -105,8 +110,8 @@ void TrapezoidalSpeedPlanner::stampStartVelocity(
   std::vector<TrajPointWork> & work, double curr_vel) const
 {
   // 安全置零绝对优先：起点被置零（阻塞）时不得抬升。
-  if (work[0].speed_limit >= 1e-3) {
-    work[0].speed_limit = curr_vel;
+  if (work[0].velocity_upper_bound >= 1e-3) {
+    work[0].velocity_upper_bound = curr_vel;
   }
 }
 
@@ -120,10 +125,10 @@ void TrapezoidalSpeedPlanner::computeAccelPlan(
   // 低速区出口（弯道出口/障碍豁免区边界等）自动生成再加速坡道。
   for (size_t i = 0; i + 1 < work.size(); ++i) {
     const double ds = arc_s[i + 1] - arc_s[i];
-    const double v_prev = work[i].speed_limit;
+    const double v_prev = work[i].velocity_upper_bound;
     const double v_reachable = std::sqrt(v_prev * v_prev + 2.0 * accel_ * ds);
-    if (work[i + 1].speed_limit > v_reachable) {
-      work[i + 1].speed_limit = v_reachable;
+    if (work[i + 1].velocity_upper_bound > v_reachable) {
+      work[i + 1].velocity_upper_bound = v_reachable;
     }
   }
 }

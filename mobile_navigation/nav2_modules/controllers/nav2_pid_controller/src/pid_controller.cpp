@@ -907,7 +907,8 @@ double PIDController::LinearSpeedControl(
   // 减速坡道起点等场景下前馈会合法地与瞬时速度误差反号（目标尚高于实测、
   // 但坡道已要求减速），因此不做"加速度必须与误差同向"的方向守卫，
   // 方向与幅值安全由下方符号感知输出界承担。
-  double acceleration_cmd = feedforward_accel + speed_nav2_pid_controller_.Control(speed_error, d_t_);
+  const double feedback_accel = speed_nav2_pid_controller_.Control(speed_error, d_t_);
+  double acceleration_cmd = feedforward_accel + feedback_accel;
   if (!std::isfinite(acceleration_cmd)) {
     acceleration_cmd = 0.0;
   }
@@ -929,6 +930,24 @@ double PIDController::LinearSpeedControl(
   const double bound_lo = std::max(std::min(0.0, target_vel), -linear_limit);
   v_output = std::clamp(v_output, bound_lo, bound_hi);
 
+  // 反死锁兜底：目标要求脱离零速，但指令被符号界钳在零上。此时前馈是负的
+  // （方向与目标相反），而 0 又会成为下一周期的指令基准 —— 逐周期自复现，
+  // 机器人永远起不来（R49：末端 6cm 静止 7s，指令恒 0）。这种前馈描述的是
+  // 与被跟踪目标不同的工况（采样点配错段），本周期退化为纯反馈。
+  // 只在"输出贴零 + 目标非零"这一个几何下触发，不影响正常制动权限：
+  // 车还在跑时 v_output = curr_vel + a·dt > 0，不会贴到零界。
+  double applied_accel_cmd = acceleration_cmd;
+  double applied_accel_limited = acceleration_cmd_limited;
+  if (std::fabs(v_output) <= 1e-9 && std::fabs(target_vel) > 1e-6 &&
+    feedforward_accel * target_vel < 0.0)
+  {
+    applied_accel_cmd = std::isfinite(feedback_accel) ? feedback_accel : 0.0;
+    applied_accel_limited =
+      std::clamp(applied_accel_cmd, -std::fabs(max_v_inc_), std::fabs(max_v_inc_));
+    v_output = std::clamp(
+      last_speed_cmd_ + applied_accel_limited * d_t_, bound_lo, bound_hi);
+  }
+
   if (min_v_ > 0.0 && std::fabs(v_output) > 0.0 && std::fabs(v_output) < min_v_) {
     v_output = std::copysign(min_v_, v_output);
   }
@@ -938,8 +957,8 @@ double PIDController::LinearSpeedControl(
   last_linear_position_cmd_ = position_cmd;
   last_linear_target_v_ = target_vel;
   last_linear_speed_error_ = speed_error;
-  last_linear_accel_cmd_ = acceleration_cmd;
-  last_linear_accel_limited_ = acceleration_cmd_limited;
+  last_linear_accel_cmd_ = applied_accel_cmd;
+  last_linear_accel_limited_ = applied_accel_limited;
   last_linear_limit_ = linear_limit;
 
   return v_output;

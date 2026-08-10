@@ -12,8 +12,8 @@
 //
 // 为什么不用 max_velocity 做提前减速：Ruckig 对"当前速度已超 max_velocity"的状态
 // 没有强制减速语义（只温和收加速度不刹车）——低速区必须用 target 硬约束。
-#ifndef NAV2_SPEED_PLANNER__SCURVE_SPEED_PLANNER_HPP_
-#define NAV2_SPEED_PLANNER__SCURVE_SPEED_PLANNER_HPP_
+#ifndef NAV2_SPEED_PLANNER__BACKENDS__SCURVE_SPEED_PLANNER_HPP_
+#define NAV2_SPEED_PLANNER__BACKENDS__SCURVE_SPEED_PLANNER_HPP_
 
 #include <memory>
 #include <string>
@@ -60,7 +60,7 @@ public:
    * @param v_end   路径终点目标速度：仅当停止点为路径终点时生效；
    *                停止点为障碍（零包络点）时内部强制 0
    */
-  static bool generateRuckigProfile(
+  static FeasibilityResult generateRuckigProfile(
     const std::vector<double> & v_env,
     const std::vector<double> & arc_s,
     double v_start,
@@ -87,12 +87,14 @@ public:
 protected:
   /// Phase B：基类 Phase A 包络（含末端蠕行区）→ Ruckig jerk 限制剖面 → 回填
   /// work（速度/加速度/相对时间）。
-  void assignVelocityProfile(
+  void generateProfile(
     std::vector<TrajPointWork> & work, double curr_vel, double curr_accel,
     double cruise_limit, bool terminal_brake_latched) override;
 
   // —— 参数 ——
   double max_jerk_{0.5};    ///< jerk 上限 (m/s^3)
+  /// latch 沿触发时冻结的执行裕度；-1 = 未锁存。见 .cpp 中 anchor_s 的说明。
+  double latched_terminal_reserve_{-1.0};
   double control_dt_{0.05};  ///< Ruckig 在线步进控制周期 (s)
   // Existing trajectory preview already compensates part of the control loop.
   // Configure this as the measured residual target->chassis p99 delay.
@@ -102,4 +104,4 @@ protected:
 
 }  // namespace nav2_speed_planner
 
-#endif  // NAV2_SPEED_PLANNER__SCURVE_SPEED_PLANNER_HPP_
+#endif  // NAV2_SPEED_PLANNER__BACKENDS__SCURVE_SPEED_PLANNER_HPP_

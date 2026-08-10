@@ -661,14 +661,16 @@ TEST(RegulatedPurePursuitTest, nearestTrajectorySpeedExcludesStateStamp)
   EXPECT_TRUE(ctrl->nearestTrajectorySpeedWrapper(pose, v, a));
   EXPECT_GT(v, 0.0);
 
-  // 场景 4：窗口最大速度不在首个前方点，accel 必须跟随最大速度索引。
+  // 场景 4：窗口最大速度不在首个前方点。accel 跟随最大速度索引，但取"到达
+  // 该点"的那一段（1→2），不取"离开该点"的段——极大点的离开段必然是制动值，
+  // 配到峰值速度上就是自相矛盾的 (v,a)，静止起步会被速度环符号界钳死（R49）。
   ctrl->setTrajSpeedPointsForTest(
     {{0.0, 0.0, 0.0, 0.0}, {0.05, 0.0, 0.1, 0.1}, {0.10, 0.0, 0.25, 0.35},
       {0.15, 0.0, 0.2, -0.1}},
     0.1);
   EXPECT_TRUE(ctrl->nearestTrajectorySpeedWrapper(pose, v, a));
   EXPECT_NEAR(v, 0.25, 1e-6);
-  EXPECT_NEAR(a, 0.35, 1e-6);
+  EXPECT_NEAR(a, 0.1, 1e-6);
 
   // 场景 5：已在末点——无前方点，回退用最近点自身
   ctrl->setTrajSpeedPointsForTest({{0.0, 0.0, 0.075, 0.0}}, 0.1);
@@ -775,6 +777,17 @@ TEST(RegulatedPurePursuitTest, trackLinearVelocityCommandIntegrator)
   }
   EXPECT_LE(max_cmd, 0.6 + 1e-9);
   EXPECT_GT(m6, 0.55);
+
+  // T7 反死锁（R49）：车已静止、目标要求前进，但前馈为负（采样点落在剖面峰值
+  // 拿到峰后制动段）。若照单全收，v_out=0+负·dt 被下界钳回 0，而 0 又是下一
+  // 周期的指令基准——逐周期自复现，机器人永远起不来（实机末端 6cm 不可达）。
+  auto ctrl7 = std::make_shared<BasicAPIRPP>();
+  ctrl7->configure(node, name, tf, costmap);
+  double c7 = 0.0;
+  for (int i = 0; i < 5 && c7 <= 0.0; ++i) {
+    c7 = ctrl7->trackLinearVelocityWrapper(0.119, 0.0, -0.4);
+  }
+  EXPECT_GT(c7, 0.0);
 }
 
 TEST(RegulatedPurePursuitTest, applyConstraints)
