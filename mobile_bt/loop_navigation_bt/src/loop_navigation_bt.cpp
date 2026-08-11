@@ -34,21 +34,20 @@ double normalize_angle(double a) {
     return a;
 }
 
-double circularMean(const std::vector<double>& angles) {
-    if (angles.empty()) {
+// 对样本排序后从两端剔除相同数量的极值，再对保留样本求平均。
+double trimmedMean(std::vector<double> values, std::size_t trim_count_per_side) {
+    if (values.empty()) {
         return 0.0;
     }
 
-    double sin_sum = 0.0;
-    double cos_sum = 0.0;
-    for (const double angle : angles) {
-        sin_sum += std::sin(angle);
-        cos_sum += std::cos(angle);
+    std::sort(values.begin(), values.end());
+    const std::size_t safe_trim_count =
+        std::min(trim_count_per_side, (values.size() - 1) / 2);
+    double sum = 0.0;
+    for (std::size_t i = safe_trim_count; i < values.size() - safe_trim_count; ++i) {
+        sum += values[i];
     }
-    if (std::hypot(sin_sum, cos_sum) < 1e-9) {
-        return angles.back();
-    }
-    return std::atan2(sin_sum, cos_sum);
+    return sum / static_cast<double>(values.size() - 2 * safe_trim_count);
 }
 
 float parseBatteryPercentage(const diagnostic_msgs::msg::DiagnosticArray& msg) {
@@ -133,6 +132,145 @@ struct AssetPointPose {
     double y = 0.0;
     double yaw = 0.0;
 };
+
+enum class TableAlignment {
+    LEFT,
+    CENTER,
+    RIGHT
+};
+
+using TableRow = std::vector<std::string>;
+
+// 日志使用 UTF-8；终端中中文通常占两列，不能直接用 std::setw() 的字节长度对齐。
+std::size_t terminalDisplayWidth(const std::string& text) {
+    std::size_t width = 0;
+    for (std::size_t i = 0; i < text.size();) {
+        const auto byte = static_cast<unsigned char>(text[i]);
+        if (byte < 0x80) {
+            ++width;
+            ++i;
+            continue;
+        }
+
+        std::size_t code_point_bytes = 1;
+        if ((byte & 0xE0) == 0xC0) {
+            code_point_bytes = 2;
+        } else if ((byte & 0xF0) == 0xE0) {
+            code_point_bytes = 3;
+        } else if ((byte & 0xF8) == 0xF0) {
+            code_point_bytes = 4;
+        }
+        i += std::min(code_point_bytes, text.size() - i);
+        width += 2;
+    }
+    return width;
+}
+
+std::string alignTableCell(const std::string& text, std::size_t width, TableAlignment alignment) {
+    const std::size_t text_width = terminalDisplayWidth(text);
+    if (text_width >= width) {
+        return text;
+    }
+
+    const std::size_t padding = width - text_width;
+    std::size_t left_padding = 0;
+    std::size_t right_padding = 0;
+    switch (alignment) {
+        case TableAlignment::RIGHT:
+            left_padding = padding;
+            break;
+        case TableAlignment::CENTER:
+            left_padding = padding / 2;
+            right_padding = padding - left_padding;
+            break;
+        case TableAlignment::LEFT:
+        default:
+            right_padding = padding;
+            break;
+    }
+    return std::string(left_padding, ' ') + text + std::string(right_padding, ' ');
+}
+
+std::vector<std::size_t> calculateTableWidths(const TableRow& header,
+                                              const std::vector<TableRow>& rows = {}) {
+    std::vector<std::size_t> widths;
+    widths.reserve(header.size());
+    for (const auto& cell : header) {
+        widths.push_back(terminalDisplayWidth(cell));
+    }
+    for (const auto& row : rows) {
+        const std::size_t count = std::min(row.size(), widths.size());
+        for (std::size_t i = 0; i < count; ++i) {
+            widths[i] = std::max(widths[i], terminalDisplayWidth(row[i]));
+        }
+    }
+    return widths;
+}
+
+void writeTableRow(std::ostream& output,
+                   const TableRow& row,
+                   const std::vector<std::size_t>& widths,
+                   const std::vector<TableAlignment>& alignments) {
+    const std::size_t count = std::min(row.size(), widths.size());
+    for (std::size_t i = 0; i < count; ++i) {
+        if (i > 0) {
+            output << " | ";
+        }
+        const TableAlignment alignment =
+            i < alignments.size() ? alignments[i] : TableAlignment::LEFT;
+        output << alignTableCell(row[i], widths[i], alignment);
+    }
+    output << "\n";
+}
+
+void writeTableSeparator(std::ostream& output, const std::vector<std::size_t>& widths) {
+    const std::size_t separator_width =
+        std::accumulate(widths.begin(), widths.end(), std::size_t{0}) +
+        (widths.empty() ? 0 : (widths.size() - 1) * 3);
+    output << std::string(separator_width, '-') << "\n";
+}
+
+void writeAlignedTable(std::ostream& output,
+                       const TableRow& header,
+                       const std::vector<TableRow>& rows,
+                       const std::vector<TableAlignment>& row_alignments) {
+    const auto widths = calculateTableWidths(header, rows);
+    writeTableRow(output, header, widths,
+                  std::vector<TableAlignment>(header.size(), TableAlignment::CENTER));
+    writeTableSeparator(output, widths);
+    for (const auto& row : rows) {
+        writeTableRow(output, row, widths, row_alignments);
+    }
+}
+
+std::string formatFixed(double value, int precision) {
+    std::ostringstream stream;
+    stream << std::fixed << std::setprecision(precision) << value;
+    return stream.str();
+}
+
+const TableRow& navigationTableHeader() {
+    static const TableRow header = {
+        "轮次", "点位", "结果", "导航耗时(秒)", "横向误差(厘米)",
+        "纵向误差(厘米)", "角度误差(度)", "本次行驶(米)", "累计行驶(米)"};
+    return header;
+}
+
+std::vector<std::size_t> navigationTableWidths(int total_rounds,
+                                               int completed_rounds,
+                                               const std::vector<std::string>& goal_ids) {
+    auto widths = calculateTableWidths(navigationTableHeader());
+    const int maximum_round = std::max({1, completed_rounds, total_rounds});
+    const std::string widest_round =
+        total_rounds > 0 ? std::to_string(maximum_round) + "/" + std::to_string(total_rounds)
+                         : std::to_string(maximum_round);
+    widths[0] = std::max({widths[0], terminalDisplayWidth(widest_round), std::size_t{9}});
+    widths[1] = std::max(widths[1], std::size_t{12});
+    for (const auto& goal_id : goal_ids) {
+        widths[1] = std::max(widths[1], terminalDisplayWidth(goal_id));
+    }
+    return widths;
+}
 
 bool readJsonFile(const std::string& path, const char* label, rclcpp::Logger logger, nlohmann::json& json) {
     std::ifstream file(path);
@@ -296,13 +434,17 @@ LoopNavigateFourPoints::LoopNavigateFourPoints(const std::string& name,
         node_->declare_parameter("navigation.odom_max_increment_m", odom_max_increment_m_);
     }
     if (!node_->has_parameter("goal_error_stats.desired_position_tolerance")) {
-        node_->declare_parameter("goal_error_stats.desired_position_tolerance", desired_position_tolerance_);
+        node_->declare_parameter("goal_error_stats.desired_position_tolerance", high_precision_tolerance_m_);
     }
     if (!node_->has_parameter("goal_error_stats.accept_position_tolerance")) {
-        node_->declare_parameter("goal_error_stats.accept_position_tolerance", accept_position_tolerance_);
+        node_->declare_parameter("goal_error_stats.accept_position_tolerance", acceptance_tolerance_m_);
     }
     if (!node_->has_parameter("goal_error_stats.sample_count")) {
         node_->declare_parameter("goal_error_stats.sample_count", static_cast<int>(pose_sample_count_));
+    }
+    if (!node_->has_parameter("goal_error_stats.trim_count_per_side")) {
+        node_->declare_parameter("goal_error_stats.trim_count_per_side",
+                                 static_cast<int>(pose_sample_trim_count_));
     }
     if (!node_->has_parameter("goal_error_stats.sample_interval_sec")) {
         node_->declare_parameter("goal_error_stats.sample_interval_sec", pose_sample_interval_sec_);
@@ -310,15 +452,21 @@ LoopNavigateFourPoints::LoopNavigateFourPoints(const std::string& name,
     if (!node_->has_parameter("goal_error_stats.use_goal_checker_error")) {
         node_->declare_parameter("goal_error_stats.use_goal_checker_error", use_goal_checker_error_);
     }
+    if (!node_->has_parameter("goal_error_stats.summary_interval_rounds")) {
+        node_->declare_parameter("goal_error_stats.summary_interval_rounds", stats_interval_rounds_);
+    }
     node_->get_parameter("navigation.action_server_wait_timeout_sec", action_server_wait_timeout_sec_);
     node_->get_parameter("navigation.odom_topic", odom_topic_);
     node_->get_parameter("navigation.odom_max_increment_m", odom_max_increment_m_);
-    node_->get_parameter("goal_error_stats.desired_position_tolerance", desired_position_tolerance_);
-    node_->get_parameter("goal_error_stats.accept_position_tolerance", accept_position_tolerance_);
+    node_->get_parameter("goal_error_stats.desired_position_tolerance", high_precision_tolerance_m_);
+    node_->get_parameter("goal_error_stats.accept_position_tolerance", acceptance_tolerance_m_);
     int pose_sample_count = static_cast<int>(pose_sample_count_);
+    int pose_sample_trim_count = static_cast<int>(pose_sample_trim_count_);
     node_->get_parameter("goal_error_stats.sample_count", pose_sample_count);
+    node_->get_parameter("goal_error_stats.trim_count_per_side", pose_sample_trim_count);
     node_->get_parameter("goal_error_stats.sample_interval_sec", pose_sample_interval_sec_);
     node_->get_parameter("goal_error_stats.use_goal_checker_error", use_goal_checker_error_);
+    node_->get_parameter("goal_error_stats.summary_interval_rounds", stats_interval_rounds_);
     if (action_server_wait_timeout_sec_ <= 0.0) {
         LOOP_RCLCPP_WARN(node_->get_logger(),
                     "navigation.action_server_wait_timeout_sec 必须大于 0，重置为 2.0 秒。");
@@ -338,9 +486,34 @@ LoopNavigateFourPoints::LoopNavigateFourPoints(const std::string& name,
         LOOP_RCLCPP_WARN(node_->get_logger(), "goal_error_stats.sample_count 必须为正数，保持默认值 %zu。",
                     pose_sample_count_);
     }
+    if (pose_sample_trim_count >= 0 &&
+        static_cast<std::size_t>(pose_sample_trim_count) * 2 < pose_sample_count_) {
+        pose_sample_trim_count_ = static_cast<std::size_t>(pose_sample_trim_count);
+    } else {
+        pose_sample_trim_count_ = std::min<std::size_t>(2, (pose_sample_count_ - 1) / 2);
+        LOOP_RCLCPP_WARN(node_->get_logger(),
+                    "goal_error_stats.trim_count_per_side 非法，重置为每端 %zu 个。",
+                    pose_sample_trim_count_);
+    }
     if (pose_sample_interval_sec_ < 0.0) {
         LOOP_RCLCPP_WARN(node_->get_logger(), "goal_error_stats.sample_interval_sec 不能为负数，重置为 0.1。");
         pose_sample_interval_sec_ = 0.1;
+    }
+    if (stats_interval_rounds_ <= 0) {
+        LOOP_RCLCPP_WARN(node_->get_logger(),
+                    "goal_error_stats.summary_interval_rounds 必须为正整数，重置为 5 轮。");
+        stats_interval_rounds_ = 5;
+    }
+    if (!std::isfinite(high_precision_tolerance_m_) || high_precision_tolerance_m_ <= 0.0) {
+        LOOP_RCLCPP_WARN(node_->get_logger(),
+                    "goal_error_stats.desired_position_tolerance 必须是正数，重置为 0.01 米。");
+        high_precision_tolerance_m_ = 0.01;
+    }
+    if (!std::isfinite(acceptance_tolerance_m_) || acceptance_tolerance_m_ < high_precision_tolerance_m_) {
+        LOOP_RCLCPP_WARN(node_->get_logger(),
+                    "goal_error_stats.accept_position_tolerance 不能小于高精度阈值，重置为 %.3f 米。",
+                    std::max(0.02, high_precision_tolerance_m_));
+        acceptance_tolerance_m_ = std::max(0.02, high_precision_tolerance_m_);
     }
     LOOP_RCLCPP_INFO(node_->get_logger(), "循环导航参数：Action server 超时 %.2f s。",
                      action_server_wait_timeout_sec_);
@@ -353,6 +526,16 @@ LoopNavigateFourPoints::LoopNavigateFourPoints(const std::string& name,
                 use_goal_checker_error_ ? "true" : "false",
                 use_goal_checker_error_ ? "优先读取 /navigation_goal_error，读取不到则回退 TF 采样。"
                                         : "禁用 /navigation_goal_error，直接使用 TF 窗口采样。");
+    LOOP_RCLCPP_INFO(node_->get_logger(),
+                "误差累计统计：每完成 %d 个完整轮次，输出一次截至当前轮次的累计结果。",
+                stats_interval_rounds_);
+    LOOP_RCLCPP_INFO(node_->get_logger(),
+                "精度判定：横向和纵向误差均不超过 %.2f cm 为高精度，均不超过 %.2f cm 为接收精度。",
+                high_precision_tolerance_m_ * 100.0, acceptance_tolerance_m_ * 100.0);
+    LOOP_RCLCPP_INFO(node_->get_logger(),
+                "TF 回退误差采样：尝试 %zu 次，每端去除 %zu 个，完整采样时保留 %zu 个求平均。",
+                pose_sample_count_, pose_sample_trim_count_,
+                pose_sample_count_ - 2 * pose_sample_trim_count_);
     if (use_goal_checker_error_) {
         goal_error_sub_ = node_->create_subscription<diagnostic_msgs::msg::DiagnosticArray>(
             "/navigation_goal_error", rclcpp::QoS(rclcpp::KeepLast(10)).reliable().transient_local(),
@@ -459,6 +642,17 @@ BT::PortsList LoopNavigateFourPoints::providedPorts() {
             BT::InputPort<std::string>("assets", "当前地图的 map_assets.json")};
 }
 
+void LoopNavigateFourPoints::writeNavigationTableHeader() {
+    if (!log_file_.is_open()) {
+        return;
+    }
+
+    const auto widths = navigationTableWidths(total_rounds_, completed_rounds_, goal_ids_);
+    writeTableRow(log_file_, navigationTableHeader(), widths,
+                  std::vector<TableAlignment>(navigationTableHeader().size(), TableAlignment::CENTER));
+    writeTableSeparator(log_file_, widths);
+}
+
 void LoopNavigateFourPoints::writeTestLogHeader() {
     if (!log_file_.is_open() || log_header_written_) {
         return;
@@ -474,10 +668,13 @@ void LoopNavigateFourPoints::writeTestLogHeader() {
         log_file_ << goal_ids_[i] << "（停留 " << std::fixed << std::setprecision(1)
                   << goal_wait_times_sec_[i] << " 秒）";
     }
-    log_file_ << "\n\n";
-    log_file_ << "轮次 | 点位 | 结果 | 导航耗时(秒) | 位置误差(厘米) | 角度误差(度) | "
-                 "本次行驶(米) | 累计行驶(米)\n";
-    log_file_ << "--------------------------------------------------------------------------------\n";
+    log_file_ << "\n";
+    log_file_ << "累计统计：每 " << stats_interval_rounds_
+              << " 个完整轮次输出一次截至当前轮次的结果\n";
+    log_file_ << "精度标准：高精度 " << std::fixed << std::setprecision(2)
+              << high_precision_tolerance_m_ * 100.0 << " 厘米，接收精度 "
+              << acceptance_tolerance_m_ * 100.0 << " 厘米（横向和纵向均需满足）\n\n";
+    writeNavigationTableHeader();
     log_file_.flush();
     log_header_written_ = true;
 }
@@ -535,10 +732,7 @@ BT::NodeStatus LoopNavigateFourPoints::onStart() {
             setTestEndState(TestEndState::FAILED, "导航计划或当前地图点位配置错误，请联系技术人员");
             return BT::NodeStatus::FAILURE;
         }
-        per_goal_stats_.resize(goals_.size());
-        for (std::size_t i = 0; i < per_goal_stats_.size(); ++i) {
-            per_goal_stats_[i].id = goal_ids_[i];
-        }
+        cumulative_per_goal_stats_.resize(goals_.size());
         writeTestLogHeader();
     }
 
@@ -719,9 +913,8 @@ BT::NodeStatus LoopNavigateFourPoints::onRunning() {
                                 "实际坐标：x=%.3f m，y=%.3f m，yaw=%.4f rad。",
                                 error_sample.current.x, error_sample.current.y, error_sample.current.yaw);
             LOOP_RCLCPP_INFO_AT(node_->get_logger(), arrival_time_text,
-                                "到点误差：纵向=%.4f m，横向=%.4f m，距离=%.4f m，角度=%.4f rad。",
-                                error_sample.lon_error, error_sample.lat_error,
-                                error_sample.dist_error, error_sample.yaw_error);
+                                "到点误差：纵向=%.4f m，横向=%.4f m，角度=%.4f rad。",
+                                error_sample.lon_error, error_sample.lat_error, error_sample.yaw_error);
         } else {
             LOOP_RCLCPP_WARN_AT(node_->get_logger(), arrival_time_text,
                                 "未获取到有效最终位姿，无法计算有效误差。");
@@ -749,6 +942,7 @@ BT::NodeStatus LoopNavigateFourPoints::onRunning() {
                 } catch (...) {
                 }
             }
+            writePeriodicSummaryIfNeeded();
             if (navigation_complete_) {
                 calculateAndLogStats();
             }
@@ -820,6 +1014,7 @@ BT::NodeStatus LoopNavigateFourPoints::onRunning() {
                 } catch (...) {
                 }
             }
+            writePeriodicSummaryIfNeeded();
             if (navigation_complete_) {
                 calculateAndLogStats();
             }
@@ -937,8 +1132,8 @@ LoopNavigateFourPoints::NavigationErrorSample LoopNavigateFourPoints::getNavigat
     }
     if (use_goal_checker_error_ && getLatestGoalCheckerErrorSample(goal, sample)) {
         LOOP_RCLCPP_INFO(node_->get_logger(),
-                    "使用 goal_checker 发布的最终误差写入导航统计：lon=%.4f, lat=%.4f, yaw=%.4f, dist=%.4f",
-                    sample.lon_error, sample.lat_error, sample.yaw_error, sample.dist_error);
+                    "使用 goal_checker 发布的最终误差写入导航统计：lon=%.4f, lat=%.4f, yaw=%.4f",
+                    sample.lon_error, sample.lat_error, sample.yaw_error);
         return sample;
     }
 
@@ -948,14 +1143,12 @@ LoopNavigateFourPoints::NavigationErrorSample LoopNavigateFourPoints::getNavigat
     std::vector<double> lon_errors;
     std::vector<double> lat_errors;
     std::vector<double> yaw_errors;
-    std::vector<double> dist_errors;
     xs.reserve(pose_sample_count_);
     ys.reserve(pose_sample_count_);
     yaws.reserve(pose_sample_count_);
     lon_errors.reserve(pose_sample_count_);
     lat_errors.reserve(pose_sample_count_);
     yaw_errors.reserve(pose_sample_count_);
-    dist_errors.reserve(pose_sample_count_);
 
     const double cos_yaw = std::cos(goal.yaw);
     const double sin_yaw = std::sin(goal.yaw);
@@ -985,7 +1178,6 @@ LoopNavigateFourPoints::NavigationErrorSample LoopNavigateFourPoints::getNavigat
             lon_errors.push_back(cos_yaw * dx + sin_yaw * dy);
             lat_errors.push_back(-sin_yaw * dx + cos_yaw * dy);
             yaw_errors.push_back(normalize_angle(yaw - goal.yaw));
-            dist_errors.push_back(std::hypot(dx, dy));
         } catch (const tf2::TransformException& ex) {
             LOOP_RCLCPP_WARN(node_->get_logger(), "误差统计获取机器人 TF 失败: %s，继续重试。", ex.what());
             spinNodeForDuration(0.5);
@@ -1001,17 +1193,26 @@ LoopNavigateFourPoints::NavigationErrorSample LoopNavigateFourPoints::getNavigat
         return sample;
     }
 
-    sample.current.x = std::accumulate(xs.begin(), xs.end(), 0.0) / xs.size();
-    sample.current.y = std::accumulate(ys.begin(), ys.end(), 0.0) / ys.size();
-    sample.current.yaw = circularMean(yaws);
-    sample.lon_error = std::accumulate(lon_errors.begin(), lon_errors.end(), 0.0) / lon_errors.size();
-    sample.lat_error = std::accumulate(lat_errors.begin(), lat_errors.end(), 0.0) / lat_errors.size();
-    sample.yaw_error = circularMean(yaw_errors);
-    sample.dist_error = std::accumulate(dist_errors.begin(), dist_errors.end(), 0.0) / dist_errors.size();
-    sample.within_desired_tolerance =
-        isWithinPositionTolerance(sample.lon_error, sample.lat_error, desired_position_tolerance_);
-    sample.within_accept_tolerance =
-        isWithinPositionTolerance(sample.lon_error, sample.lat_error, accept_position_tolerance_);
+    const std::size_t effective_trim_count =
+        std::min(pose_sample_trim_count_, (xs.size() - 1) / 2);
+    const std::size_t retained_sample_count = xs.size() - 2 * effective_trim_count;
+    if (xs.size() < pose_sample_count_) {
+        LOOP_RCLCPP_WARN(node_->get_logger(),
+                    "TF 误差采样仅成功 %zu/%zu 次，本次每端去除 %zu 个后使用 %zu 个样本。",
+                    xs.size(), pose_sample_count_, effective_trim_count, retained_sample_count);
+    }
+    if (effective_trim_count < pose_sample_trim_count_) {
+        LOOP_RCLCPP_WARN(node_->get_logger(),
+                    "有效样本不足以按配置每端去除 %zu 个，本次自动改为每端去除 %zu 个。",
+                    pose_sample_trim_count_, effective_trim_count);
+    }
+
+    sample.current.x = trimmedMean(xs, effective_trim_count);
+    sample.current.y = trimmedMean(ys, effective_trim_count);
+    sample.lon_error = trimmedMean(lon_errors, effective_trim_count);
+    sample.lat_error = trimmedMean(lat_errors, effective_trim_count);
+    sample.yaw_error = trimmedMean(yaw_errors, effective_trim_count);
+    sample.current.yaw = normalize_angle(goal.yaw + sample.yaw_error);
     sample.valid = true;
 
     std::ostringstream xs_stream;
@@ -1038,13 +1239,16 @@ LoopNavigateFourPoints::NavigationErrorSample LoopNavigateFourPoints::getNavigat
     }
 
     LOOP_RCLCPP_INFO(node_->get_logger(),
-                "误差统计TF采样: x=[%s], y=[%s], yaw=[%s]; TF平均值: x=%.4f, y=%.4f, yaw=%.4f",
-                xs_stream.str().c_str(), ys_stream.str().c_str(), yaws_stream.str().c_str(), sample.current.x,
-                sample.current.y, sample.current.yaw);
+                "误差统计TF采样: x=[%s], y=[%s], yaw=[%s]; 每端去除 %zu 个后保留 %zu 个，"
+                "平均位姿: x=%.4f, y=%.4f, yaw=%.4f",
+                xs_stream.str().c_str(), ys_stream.str().c_str(), yaws_stream.str().c_str(),
+                effective_trim_count, retained_sample_count, sample.current.x, sample.current.y,
+                sample.current.yaw);
     LOOP_RCLCPP_INFO(node_->get_logger(),
-                "误差统计窗口: lon=[%s], lat=[%s], yaw=[%s]; 平均误差: lon=%.4f, lat=%.4f, yaw=%.4f, dist=%.4f",
+                "误差统计窗口: lon=[%s], lat=[%s], yaw=[%s]; 去极值平均误差: "
+                "lon=%.4f, lat=%.4f, yaw=%.4f",
                 lon_stream.str().c_str(), lat_stream.str().c_str(), yaw_err_stream.str().c_str(), sample.lon_error,
-                sample.lat_error, sample.yaw_error, sample.dist_error);
+                sample.lat_error, sample.yaw_error);
     return sample;
 }
 
@@ -1086,15 +1290,6 @@ bool LoopNavigateFourPoints::getLatestGoalCheckerErrorSample(const Pose& goal, N
         }
         return true;
     };
-    auto get_bool = [&get_value](const std::string& key, bool& value) {
-        std::string text;
-        if (!get_value(key, text)) {
-            return false;
-        }
-        value = text == "true" || text == "1";
-        return true;
-    };
-
     const rclcpp::Time msg_time(msg.header.stamp);
     if (msg_time < goal_ros_start_time_) {
         LOOP_RCLCPP_WARN(node_->get_logger(), "goal_checker 误差消息属于旧目标，改用 TF 窗口统计。");
@@ -1119,7 +1314,7 @@ bool LoopNavigateFourPoints::getLatestGoalCheckerErrorSample(const Pose& goal, N
     const double goal_dx = msg_goal_x - goal.x;
     const double goal_dy = msg_goal_y - goal.y;
     const double goal_dyaw = normalize_angle(msg_goal_yaw - goal.yaw);
-    if (std::hypot(goal_dx, goal_dy) > accept_position_tolerance_ || std::abs(goal_dyaw) > 0.05) {
+    if (std::hypot(goal_dx, goal_dy) > acceptance_tolerance_m_ || std::abs(goal_dyaw) > 0.05) {
         LOOP_RCLCPP_WARN(node_->get_logger(),
                     "goal_checker 误差消息的 path 终点与原始目标点略有差异，仍采用 controller 最终误差："
                     "goal_delta=%.4f m, yaw_delta=%.4f rad",
@@ -1137,19 +1332,15 @@ bool LoopNavigateFourPoints::getLatestGoalCheckerErrorSample(const Pose& goal, N
         !get_double("current_yaw", sample.current.yaw) ||
         !get_double("longitudinal_error", sample.lon_error) ||
         !get_double("lateral_error", sample.lat_error) ||
-        !get_double("yaw_error", sample.yaw_error) ||
-        !get_double("distance_error", sample.dist_error) ||
-        !get_bool("within_desired_tolerance", sample.within_desired_tolerance) ||
-        !get_bool("within_accept_tolerance", sample.within_accept_tolerance)) {
+        !get_double("yaw_error", sample.yaw_error)) {
         LOOP_RCLCPP_WARN(node_->get_logger(), "goal_checker 误差消息字段不完整，改用 TF 窗口统计。");
         return false;
     }
 
-    sample.from_goal_checker = true;
     sample.valid = true;
     LOOP_RCLCPP_INFO(node_->get_logger(),
-                "采用 goal_checker 最终误差消息：result_type=%s, lon=%.4f, lat=%.4f, yaw=%.4f, dist=%.4f",
-                result_type.c_str(), sample.lon_error, sample.lat_error, sample.yaw_error, sample.dist_error);
+                "采用 goal_checker 最终误差消息：result_type=%s, lon=%.4f, lat=%.4f, yaw=%.4f",
+                result_type.c_str(), sample.lon_error, sample.lat_error, sample.yaw_error);
     return true;
 }
 
@@ -1165,93 +1356,37 @@ void LoopNavigateFourPoints::logNavigationError(const NavigationErrorSample& err
     const double err_lon = error_sample.lon_error;
     const double err_lat = error_sample.lat_error;
     const double err_yaw = error_sample.yaw_error;
-    const double err_dist = error_sample.dist_error;
     if (!error_sample.valid) {
         LOOP_RCLCPP_WARN(node_->get_logger(), "未获取到有效到点误差，本次导航仍记录结果，但不纳入误差统计。");
     }
     if (!distance_snapshot.valid) {
         ++missing_distance_count_;
     }
-    const bool within_1cm = error_sample.valid &&
-        (error_sample.from_goal_checker
-             ? error_sample.within_desired_tolerance
-             : isWithinPositionTolerance(err_lon, err_lat, desired_position_tolerance_));
-    const bool within_2cm = error_sample.valid &&
-        (error_sample.from_goal_checker
-             ? error_sample.within_accept_tolerance
-             : isWithinPositionTolerance(err_lon, err_lat, accept_position_tolerance_));
+    const bool within_high_precision = error_sample.valid &&
+        isWithinAxisTolerance(err_lon, err_lat, high_precision_tolerance_m_);
+    const bool within_acceptance = error_sample.valid &&
+        isWithinAxisTolerance(err_lon, err_lat, acceptance_tolerance_m_);
 
-    if (error_sample.valid) {
-        lon_errors_.push_back(err_lon);
-        lat_errors_.push_back(err_lat);
-        yaw_errors_.push_back(std::abs(err_yaw));
-        dist_errors_.push_back(err_dist);
-        if (within_1cm) {
-            within_1cm_count_++;
+    auto record_cumulative_stats = [&](CumulativeSummaryStats& stats) {
+        auto& result_stats = succeeded ? stats.success : stats.failure;
+        ++result_stats.count;
+        result_stats.elapsed_times.push_back(elapsed_sec);
+        if (!error_sample.valid) {
+            return;
         }
-        if (within_2cm) {
-            within_2cm_count_++;
+        result_stats.lon_errors.push_back(err_lon);
+        result_stats.lat_errors.push_back(err_lat);
+        result_stats.yaw_errors.push_back(std::abs(err_yaw));
+        if (within_high_precision) {
+            ++result_stats.high_precision_count;
         }
-
-        if (succeeded) {
-            success_lon_errors_.push_back(err_lon);
-            success_lat_errors_.push_back(err_lat);
-            success_yaw_errors_.push_back(std::abs(err_yaw));
-            success_dist_errors_.push_back(err_dist);
-            if (within_1cm) {
-                success_within_1cm_count_++;
-            }
-            if (within_2cm) {
-                success_within_2cm_count_++;
-            }
-        } else {
-            failed_lon_errors_.push_back(err_lon);
-            failed_lat_errors_.push_back(err_lat);
-            failed_yaw_errors_.push_back(std::abs(err_yaw));
-            failed_dist_errors_.push_back(err_dist);
-            if (within_1cm) {
-                failed_within_1cm_count_++;
-            }
-            if (within_2cm) {
-                failed_within_2cm_count_++;
-            }
+        if (within_acceptance) {
+            ++result_stats.acceptance_count;
         }
-    }
-
-    if (goal_index < per_goal_stats_.size()) {
-        auto& goal_stats = per_goal_stats_[goal_index];
-        goal_stats.elapsed_times.push_back(elapsed_sec);
-        if (succeeded) {
-            goal_stats.succeeded++;
-            goal_stats.success_elapsed_times.push_back(elapsed_sec);
-            if (error_sample.valid) {
-                goal_stats.success_lon_errors.push_back(err_lon);
-                goal_stats.success_lat_errors.push_back(err_lat);
-                goal_stats.success_yaw_errors.push_back(std::abs(err_yaw));
-                goal_stats.success_dist_errors.push_back(err_dist);
-                if (within_1cm) {
-                    goal_stats.success_within_1cm++;
-                }
-                if (within_2cm) {
-                    goal_stats.success_within_2cm++;
-                }
-            }
-        } else {
-            goal_stats.failed++;
-            goal_stats.failed_elapsed_times.push_back(elapsed_sec);
-            if (error_sample.valid) {
-                goal_stats.failed_lon_errors.push_back(err_lon);
-                goal_stats.failed_lat_errors.push_back(err_lat);
-                goal_stats.failed_yaw_errors.push_back(std::abs(err_yaw));
-                goal_stats.failed_dist_errors.push_back(err_dist);
-                if (within_1cm) {
-                    goal_stats.failed_within_1cm++;
-                }
-                if (within_2cm) {
-                    goal_stats.failed_within_2cm++;
-                }
-            }
-        }
+    };
+    record_cumulative_stats(cumulative_overall_stats_);
+    if (goal_index < cumulative_per_goal_stats_.size()) {
+        record_cumulative_stats(cumulative_per_goal_stats_[goal_index]);
     }
 
     if (log_file_.is_open()) {
@@ -1264,13 +1399,16 @@ void LoopNavigateFourPoints::logNavigationError(const NavigationErrorSample& err
             round_text += "/" + std::to_string(total_rounds_);
         }
 
-        std::ostringstream position_error;
+        std::ostringstream lateral_error;
+        std::ostringstream longitudinal_error;
         std::ostringstream yaw_error;
         if (error_sample.valid) {
-            position_error << std::fixed << std::setprecision(2) << err_dist * 100.0;
+            lateral_error << std::fixed << std::setprecision(2) << std::abs(err_lat) * 100.0;
+            longitudinal_error << std::fixed << std::setprecision(2) << std::abs(err_lon) * 100.0;
             yaw_error << std::fixed << std::setprecision(2) << std::abs(err_yaw) * 180.0 / M_PI;
         } else {
-            position_error << "未获取";
+            lateral_error << "未获取";
+            longitudinal_error << "未获取";
             yaw_error << "未获取";
         }
 
@@ -1285,14 +1423,27 @@ void LoopNavigateFourPoints::logNavigationError(const NavigationErrorSample& err
             cumulative_distance << "未获取";
         }
 
-        log_file_ << round_text << " | " << goal_id << " | " << (succeeded ? "成功" : "失败") << " | "
-                  << std::fixed << std::setprecision(2) << elapsed_sec << " | " << position_error.str() << " | "
-                  << yaw_error.str() << " | " << goal_distance.str() << " | " << cumulative_distance.str() << "\n";
+        const TableRow row = {
+            round_text,
+            goal_id,
+            succeeded ? "成功" : "失败",
+            formatFixed(elapsed_sec, 2),
+            lateral_error.str(),
+            longitudinal_error.str(),
+            yaw_error.str(),
+            goal_distance.str(),
+            cumulative_distance.str()};
+        const std::vector<TableAlignment> alignments = {
+            TableAlignment::RIGHT, TableAlignment::LEFT,  TableAlignment::CENTER,
+            TableAlignment::RIGHT, TableAlignment::RIGHT, TableAlignment::RIGHT,
+            TableAlignment::RIGHT, TableAlignment::RIGHT, TableAlignment::RIGHT};
+        writeTableRow(log_file_, row,
+                      navigationTableWidths(total_rounds_, completed_rounds_, goal_ids_), alignments);
         log_file_.flush();
     }
 }
 
-bool LoopNavigateFourPoints::isWithinPositionTolerance(double lon_error, double lat_error, double tolerance) const {
+bool LoopNavigateFourPoints::isWithinAxisTolerance(double lon_error, double lat_error, double tolerance) const {
     return std::abs(lon_error) <= tolerance && std::abs(lat_error) <= tolerance;
 }
 
@@ -1328,6 +1479,97 @@ LoopNavigateFourPoints::MetricStats LoopNavigateFourPoints::calculateMetricStats
     return stats;
 }
 
+void LoopNavigateFourPoints::writeSeparatedSummaryTables() {
+    if (!log_file_.is_open()) {
+        return;
+    }
+
+    auto format_tolerance_cm = [](double tolerance_m) {
+        std::ostringstream stream;
+        stream << std::defaultfloat << std::setprecision(6) << tolerance_m * 100.0;
+        return stream.str();
+    };
+    auto format_ratio = [](std::size_t count, std::size_t total) {
+        if (total == 0) {
+            return std::string("未获取");
+        }
+        std::ostringstream stream;
+        stream << count << "/" << total << "（" << std::fixed << std::setprecision(1)
+               << static_cast<double>(count) * 100.0 / static_cast<double>(total) << "%）";
+        return stream.str();
+    };
+    auto make_summary_row = [&](const std::string& label, const CumulativeSummaryStats& stats,
+                                bool write_success) {
+        const auto& result_stats = write_success ? stats.success : stats.failure;
+        const std::size_t total = static_cast<std::size_t>(stats.success.count + stats.failure.count);
+        const std::size_t result_count = static_cast<std::size_t>(result_stats.count);
+        const std::size_t valid_count = result_stats.lon_errors.size();
+
+        TableRow row = {label, format_ratio(result_count, total), "未获取", "未获取",
+                        "未获取", "未获取", "未获取", "未获取"};
+        if (!result_stats.elapsed_times.empty()) {
+            const double average_elapsed =
+                std::accumulate(result_stats.elapsed_times.begin(), result_stats.elapsed_times.end(), 0.0) /
+                static_cast<double>(result_stats.elapsed_times.size());
+            row[2] = formatFixed(average_elapsed, 2);
+        }
+
+        if (valid_count > 0) {
+            row[3] = formatFixed(calculateMetricStats(result_stats.lat_errors).mean * 100.0, 2);
+            row[4] = formatFixed(calculateMetricStats(result_stats.lon_errors).mean * 100.0, 2);
+            row[5] = formatFixed(
+                calculateMetricStats(result_stats.yaw_errors).mean * 180.0 / M_PI, 2);
+            row[6] = format_ratio(
+                static_cast<std::size_t>(result_stats.high_precision_count), valid_count);
+            row[7] = format_ratio(
+                static_cast<std::size_t>(result_stats.acceptance_count), valid_count);
+        }
+        return row;
+    };
+    auto write_summary_table = [&](const std::string& title, bool write_success) {
+        log_file_ << "\n" << title << "\n";
+        const TableRow header = {
+            "对象",
+            write_success ? "成功次数/总次数（成功率）" : "失败次数/总次数（失败占比）",
+            "平均耗时(秒)",
+            "平均横向误差(厘米)",
+            "平均纵向误差(厘米)",
+            "平均角度误差(度)",
+            "高精度（" + format_tolerance_cm(high_precision_tolerance_m_) + "cm）占比",
+            "接收精度（" + format_tolerance_cm(acceptance_tolerance_m_) + "cm）占比"};
+        std::vector<TableRow> rows;
+        rows.push_back(make_summary_row("总体", cumulative_overall_stats_, write_success));
+        for (std::size_t i = 0; i < cumulative_per_goal_stats_.size() && i < goal_ids_.size(); ++i) {
+            rows.push_back(make_summary_row(goal_ids_[i], cumulative_per_goal_stats_[i], write_success));
+        }
+        const std::vector<TableAlignment> alignments = {
+            TableAlignment::LEFT,  TableAlignment::RIGHT, TableAlignment::RIGHT, TableAlignment::RIGHT,
+            TableAlignment::RIGHT, TableAlignment::RIGHT, TableAlignment::RIGHT, TableAlignment::RIGHT};
+        writeAlignedTable(log_file_, header, rows, alignments);
+    };
+
+    write_summary_table("成功汇总", true);
+    write_summary_table("失败汇总", false);
+}
+
+void LoopNavigateFourPoints::writePeriodicSummaryIfNeeded() {
+    // 正常完成时由测试结束汇总输出分类表，避免同一份统计连续打印两次。
+    if (!log_file_.is_open() || navigation_complete_ || completed_rounds_ <= 0 ||
+        completed_rounds_ % stats_interval_rounds_ != 0) {
+        return;
+    }
+
+    log_file_ << "\n第 1-" << completed_rounds_ << " 轮累计汇总\n";
+    writeSeparatedSummaryTables();
+
+    const bool has_next_round = total_rounds_ == 0 || completed_rounds_ < total_rounds_;
+    if (has_next_round) {
+        log_file_ << "\n";
+        writeNavigationTableHeader();
+    }
+    log_file_.flush();
+}
+
 void LoopNavigateFourPoints::calculateAndLogStats() {
     const std::size_t total_nav = static_cast<std::size_t>(succeeded_nav_ + failed_nav_);
     if (summary_written_ || !log_file_.is_open()) {
@@ -1336,22 +1578,6 @@ void LoopNavigateFourPoints::calculateAndLogStats() {
 
     const double success_rate =
         total_nav > 0 ? static_cast<double>(succeeded_nav_) * 100.0 / static_cast<double>(total_nav) : 0.0;
-    auto percentage = [](int count, std::size_t total) {
-        return total > 0 ? static_cast<double>(count) * 100.0 / static_cast<double>(total) : 0.0;
-    };
-
-    auto calculate_average_elapsed = [](const std::vector<double>& elapsed_times) {
-        if (elapsed_times.empty()) {
-            return 0.0;
-        }
-        return std::accumulate(elapsed_times.begin(), elapsed_times.end(), 0.0) / elapsed_times.size();
-    };
-
-    std::vector<double> all_elapsed_times;
-    for (const auto& goal_stats : per_goal_stats_) {
-        all_elapsed_times.insert(all_elapsed_times.end(), goal_stats.elapsed_times.begin(),
-                                 goal_stats.elapsed_times.end());
-    }
 
     double cumulative_distance_m = 0.0;
     {
@@ -1371,63 +1597,12 @@ void LoopNavigateFourPoints::calculateAndLogStats() {
     log_file_ << "\n";
     log_file_ << "导航次数：" << total_nav << "（成功 " << succeeded_nav_ << "，失败 " << failed_nav_
               << "，成功率 " << std::fixed << std::setprecision(1) << success_rate << "%）\n";
-    if (!all_elapsed_times.empty()) {
-        log_file_ << "平均导航耗时：" << std::fixed << std::setprecision(2)
-                  << calculate_average_elapsed(all_elapsed_times) << " 秒\n";
-    } else {
-        log_file_ << "平均导航耗时：无有效记录\n";
-    }
     log_file_ << "累计导航距离：" << std::fixed << std::setprecision(2) << cumulative_distance_m << " 米";
     if (missing_distance_count_ > 0) {
         log_file_ << "（" << missing_distance_count_ << " 次未获取里程计，本数值不完整）";
     }
     log_file_ << "\n";
-    log_file_ << "有效误差记录：" << dist_errors_.size() << "/" << total_nav << "\n";
-
-    if (!dist_errors_.empty()) {
-        const MetricStats dist_stats = calculateMetricStats(dist_errors_);
-        const MetricStats yaw_stats = calculateMetricStats(yaw_errors_);
-        const double max_dist_error = *std::max_element(dist_errors_.begin(), dist_errors_.end());
-        const double max_yaw_error = *std::max_element(yaw_errors_.begin(), yaw_errors_.end());
-        log_file_ << "平均位置误差：" << std::fixed << std::setprecision(2) << dist_stats.mean * 100.0
-                  << " 厘米（最大 " << max_dist_error * 100.0 << " 厘米）\n";
-        log_file_ << "平均角度误差：" << std::fixed << std::setprecision(2)
-                  << yaw_stats.mean * 180.0 / M_PI << " 度（最大 " << max_yaw_error * 180.0 / M_PI
-                  << " 度）\n";
-        log_file_ << "位置误差不超过 " << desired_position_tolerance_ * 100.0 << " 厘米："
-                  << within_1cm_count_ << "/" << dist_errors_.size() << "（"
-                  << percentage(within_1cm_count_, dist_errors_.size()) << "%）\n";
-        log_file_ << "位置误差不超过 " << accept_position_tolerance_ * 100.0 << " 厘米："
-                  << within_2cm_count_ << "/" << dist_errors_.size() << "（"
-                  << percentage(within_2cm_count_, dist_errors_.size()) << "%）\n";
-    } else {
-        log_file_ << "到点误差：未获取，无法评价到点精度\n";
-    }
-
-    if (!per_goal_stats_.empty()) {
-        log_file_ << "\n各点结果：\n";
-        for (std::size_t i = 0; i < per_goal_stats_.size(); ++i) {
-            const auto& goal_stats = per_goal_stats_[i];
-            const int goal_total = goal_stats.succeeded + goal_stats.failed;
-            const double goal_success_rate =
-                goal_total > 0 ? static_cast<double>(goal_stats.succeeded) * 100.0 / goal_total : 0.0;
-            const std::string goal_id = goal_stats.id.empty() ? "goal_" + std::to_string(i) : goal_stats.id;
-            std::vector<double> goal_dist_errors = goal_stats.success_dist_errors;
-            goal_dist_errors.insert(goal_dist_errors.end(), goal_stats.failed_dist_errors.begin(),
-                                    goal_stats.failed_dist_errors.end());
-
-            log_file_ << "- " << goal_id << "：共 " << goal_total << " 次，成功 " << goal_stats.succeeded
-                      << "，失败 " << goal_stats.failed << "，成功率 " << std::fixed << std::setprecision(1)
-                      << goal_success_rate << "%，平均耗时 " << std::setprecision(2)
-                      << calculate_average_elapsed(goal_stats.elapsed_times) << " 秒";
-            if (!goal_dist_errors.empty()) {
-                log_file_ << "，平均位置误差 " << calculateMetricStats(goal_dist_errors).mean * 100.0 << " 厘米";
-            } else {
-                log_file_ << "，位置误差未获取";
-            }
-            log_file_ << "\n";
-        }
-    }
+    writeSeparatedSummaryTables();
 
     if (test_end_state_ == TestEndState::COMPLETED && failed_nav_ == 0) {
         log_file_ << "\n测试结果：计划已完成，全部导航成功\n";

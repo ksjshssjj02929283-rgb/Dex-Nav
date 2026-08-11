@@ -2,12 +2,12 @@
   "rounds": 100,
   "points": [
     {
-      "id": "point_1",
-      "wait_time_sec": 2.0
+      "id": "point_01",
+      "wait_time_sec": 1.0
     },
     {
-      "id": "point_2",
-      "wait_time_sec": 2.0
+      "id": "point_02",
+      "wait_time_sec": 1.0
     }
   ]
 }

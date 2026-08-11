@@ -85,10 +85,6 @@ private:
         double lon_error = 0.0;
         double lat_error = 0.0;
         double yaw_error = 0.0;
-        double dist_error = 0.0;
-        bool within_desired_tolerance = false;
-        bool within_accept_tolerance = false;
-        bool from_goal_checker = false;
         bool valid = false;
     };
 
@@ -99,25 +95,19 @@ private:
         bool valid = false;                  // 当前目标期间是否收到过有效里程计。
     };
 
-    struct GoalErrorStats {
-        std::string id;
-        int succeeded = 0;
-        int failed = 0;
+    struct ResultSummaryStats {
+        int count = 0;
         std::vector<double> elapsed_times;
-        std::vector<double> success_elapsed_times;
-        std::vector<double> failed_elapsed_times;
-        std::vector<double> success_dist_errors;
-        std::vector<double> success_lon_errors;
-        std::vector<double> success_lat_errors;
-        std::vector<double> success_yaw_errors;
-        std::vector<double> failed_dist_errors;
-        std::vector<double> failed_lon_errors;
-        std::vector<double> failed_lat_errors;
-        std::vector<double> failed_yaw_errors;
-        int success_within_1cm = 0;
-        int success_within_2cm = 0;
-        int failed_within_1cm = 0;
-        int failed_within_2cm = 0;
+        std::vector<double> lon_errors;
+        std::vector<double> lat_errors;
+        std::vector<double> yaw_errors;
+        int high_precision_count = 0;
+        int acceptance_count = 0;
+    };
+
+    struct CumulativeSummaryStats {
+        ResultSummaryStats success;
+        ResultSummaryStats failure;
     };
 
     NavigationErrorSample getNavigationErrorSample(const Pose& goal);
@@ -129,13 +119,16 @@ private:
     void handleMapState(std::uint64_t epoch, const std::string& map_folder, const std::string& map_name);
     void setTestEndState(TestEndState state, const std::string& reason);
     const char* testEndStateText() const;
+    void writeNavigationTableHeader();
     void writeTestLogHeader();
+    void writeSeparatedSummaryTables();
+    void writePeriodicSummaryIfNeeded();
     void logNavigationError(const NavigationErrorSample& error_sample,
                             const DistanceSnapshot& distance_snapshot,
                             double elapsed_sec,
                             bool succeeded,
                             std::size_t goal_index);
-    bool isWithinPositionTolerance(double lon_error, double lat_error, double tolerance) const;
+    bool isWithinAxisTolerance(double lon_error, double lat_error, double tolerance) const;
     MetricStats calculateMetricStats(const std::vector<double>& data) const;
     void calculateAndLogStats();
 
@@ -176,28 +169,13 @@ private:
     bool summary_written_ = false;
     TestEndState test_end_state_ = TestEndState::RUNNING;
     std::string test_end_reason_;
-    std::vector<double> dist_errors_;
-    std::vector<double> lon_errors_;
-    std::vector<double> lat_errors_;
-    std::vector<double> yaw_errors_;
-    std::vector<double> success_dist_errors_;
-    std::vector<double> success_lon_errors_;
-    std::vector<double> success_lat_errors_;
-    std::vector<double> success_yaw_errors_;
-    std::vector<double> failed_dist_errors_;
-    std::vector<double> failed_lon_errors_;
-    std::vector<double> failed_lat_errors_;
-    std::vector<double> failed_yaw_errors_;
-    int within_1cm_count_ = 0;
-    int within_2cm_count_ = 0;
-    int success_within_1cm_count_ = 0;
-    int success_within_2cm_count_ = 0;
-    int failed_within_1cm_count_ = 0;
-    int failed_within_2cm_count_ = 0;
-    std::vector<GoalErrorStats> per_goal_stats_;
-    // 位置误差统计阈值：默认对应 goal_checker 的期望精度和最终接受精度。
-    double desired_position_tolerance_ = 0.01;
-    double accept_position_tolerance_ = 0.02;
+    // 每完成指定数量的完整轮次，输出一次截至当前轮次的累计统计并重新打印明细表头。
+    int stats_interval_rounds_ = 5;
+    CumulativeSummaryStats cumulative_overall_stats_;
+    std::vector<CumulativeSummaryStats> cumulative_per_goal_stats_;
+    // 两档精度均要求横向和纵向误差分别不超过对应阈值。
+    double high_precision_tolerance_m_ = 0.01;
+    double acceptance_tolerance_m_ = 0.02;
 
     using NavigateToPose = nav2_msgs::action::NavigateToPose;
     using GoalHandleNavigateToPose = rclcpp_action::ClientGoalHandle<NavigateToPose>;
@@ -221,8 +199,9 @@ private:
     std::atomic<std::uint64_t> goal_generation_{0};
     // 等待 Nav2 Action server 上线的最长时间。
     double action_server_wait_timeout_sec_ = 2.0;
-    // 误差日志采样窗口：默认按 10Hz 连续采 10 次，对误差本身求平均。
-    std::size_t pose_sample_count_ = 10;
+    // TF 回退采样默认取 14 次，每端去掉 2 个极值后保留 10 个样本求平均。
+    std::size_t pose_sample_count_ = 14;
+    std::size_t pose_sample_trim_count_ = 2;
     double pose_sample_interval_sec_ = 0.1;
 };
 
