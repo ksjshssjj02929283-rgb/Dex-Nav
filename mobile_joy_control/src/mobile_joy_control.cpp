@@ -43,6 +43,14 @@ public:
         this->declare_parameter<double>("logitech.medium_angular_velocity", 1.0);
         this->declare_parameter<double>("logitech.acc_filter_param", 0.45);
         this->declare_parameter<double>("logitech.dec_filter_param", 0.05);
+        this->declare_parameter<bool>("logitech.smooth_stop_on_release", true);
+        this->declare_parameter<double>("logitech.release_linear_decel", 1.0);
+        this->declare_parameter<double>("logitech.release_angular_decel", 1.5);
+        this->declare_parameter<double>("logitech.release_stop_velocity_threshold", 0.01);
+        this->declare_parameter<double>("logitech.release_stop_timeout", 1.5);
+        this->declare_parameter<double>("logitech.init_stick_min_magnitude", 0.35);
+        this->declare_parameter<double>("logitech.init_stick_target_angle_deg", 45.0);
+        this->declare_parameter<double>("logitech.init_stick_angle_tolerance_deg", 30.0);
         this->declare_parameter<double>("logitech.inactive_timeout", 30.0);
         this->declare_parameter<int>("logitech.button_run_param_0", 0);
         this->declare_parameter<int>("logitech.button_run_param_1", 1);
@@ -72,6 +80,14 @@ public:
         this->declare_parameter<double>("beitong.medium_angular_velocity", 1.0);
         this->declare_parameter<double>("beitong.acc_filter_param", 0.45);
         this->declare_parameter<double>("beitong.dec_filter_param", 0.05);
+        this->declare_parameter<bool>("beitong.smooth_stop_on_release", true);
+        this->declare_parameter<double>("beitong.release_linear_decel", 1.0);
+        this->declare_parameter<double>("beitong.release_angular_decel", 1.5);
+        this->declare_parameter<double>("beitong.release_stop_velocity_threshold", 0.01);
+        this->declare_parameter<double>("beitong.release_stop_timeout", 1.5);
+        this->declare_parameter<double>("beitong.init_stick_min_magnitude", 0.35);
+        this->declare_parameter<double>("beitong.init_stick_target_angle_deg", 45.0);
+        this->declare_parameter<double>("beitong.init_stick_angle_tolerance_deg", 30.0);
         this->declare_parameter<double>("beitong.inactive_timeout", 30.0);
         this->declare_parameter<int>("beitong.button_run_param_0", 0);
         this->declare_parameter<int>("beitong.button_run_param_1", 1);
@@ -105,6 +121,37 @@ public:
     }
 
 private:
+    enum class RemoteControlState { DISABLED, ACTIVE, SOFT_STOPPING };
+
+    bool ownsRemoteControl() const {
+        return remote_state_ == RemoteControlState::ACTIVE ||
+               remote_state_ == RemoteControlState::SOFT_STOPPING;
+    }
+
+    static double approachZero(double value, double max_delta) {
+        if (value > 0.0) {
+            return std::max(0.0, value - max_delta);
+        }
+        if (value < 0.0) {
+            return std::min(0.0, value + max_delta);
+        }
+        return 0.0;
+    }
+
+    bool stickInInitAngleRange(double horizontal, double vertical, double expected_horizontal_sign) const {
+        const double magnitude = std::hypot(horizontal, vertical);
+        if (magnitude < init_stick_min_magnitude_ || vertical <= 0.0 ||
+            horizontal * expected_horizontal_sign <= 0.0) {
+            return false;
+        }
+
+        // 以正上方为 0 度、水平侧方为 90 度，判断是否落在目标角度扇区内。
+        constexpr double pi = 3.14159265358979323846;
+        constexpr double radians_to_degrees = 180.0 / pi;
+        const double angle_deg = std::atan2(std::fabs(horizontal), vertical) * radians_to_degrees;
+        return std::fabs(angle_deg - init_stick_target_angle_deg_) <= init_stick_angle_tolerance_deg_;
+    }
+
     // 加载参数
     void loadParameters() {
         if (parameters_loaded_) {
@@ -155,6 +202,14 @@ private:
         std::string medium_angular_velocity_param = param_prefix + "medium_angular_velocity";
         std::string acc_filter_param_param = param_prefix + "acc_filter_param";
         std::string dec_filter_param_param = param_prefix + "dec_filter_param";
+        std::string smooth_stop_on_release_param = param_prefix + "smooth_stop_on_release";
+        std::string release_linear_decel_param = param_prefix + "release_linear_decel";
+        std::string release_angular_decel_param = param_prefix + "release_angular_decel";
+        std::string release_stop_velocity_threshold_param = param_prefix + "release_stop_velocity_threshold";
+        std::string release_stop_timeout_param = param_prefix + "release_stop_timeout";
+        std::string init_stick_min_magnitude_param = param_prefix + "init_stick_min_magnitude";
+        std::string init_stick_target_angle_deg_param = param_prefix + "init_stick_target_angle_deg";
+        std::string init_stick_angle_tolerance_deg_param = param_prefix + "init_stick_angle_tolerance_deg";
         std::string inactive_timeout_param = param_prefix + "inactive_timeout";
         std::string button_run_param_0_param = param_prefix + "button_run_param_0";
         std::string button_run_param_1_param = param_prefix + "button_run_param_1";
@@ -186,7 +241,32 @@ private:
         this->get_parameter(medium_angular_velocity_param, medium_angular_velocity);
         this->get_parameter(acc_filter_param_param, acc_filter_param);
         this->get_parameter(dec_filter_param_param, dec_filter_param);
+        this->get_parameter(smooth_stop_on_release_param, smooth_stop_on_release_);
+        this->get_parameter(release_linear_decel_param, release_linear_decel_);
+        this->get_parameter(release_angular_decel_param, release_angular_decel_);
+        this->get_parameter(release_stop_velocity_threshold_param, release_stop_velocity_threshold_);
+        this->get_parameter(release_stop_timeout_param, release_stop_timeout_);
+        this->get_parameter(init_stick_min_magnitude_param, init_stick_min_magnitude_);
+        this->get_parameter(init_stick_target_angle_deg_param, init_stick_target_angle_deg_);
+        this->get_parameter(init_stick_angle_tolerance_deg_param, init_stick_angle_tolerance_deg_);
         this->get_parameter(inactive_timeout_param, inactive_timeout);
+
+        if (release_linear_decel_ <= 0.0 || release_angular_decel_ <= 0.0 ||
+            release_stop_velocity_threshold_ < 0.0 || release_stop_timeout_ <= 0.0) {
+            RCLCPP_WARN(this->get_logger(), "Invalid release soft-stop parameters; using safe defaults");
+            release_linear_decel_ = 1.0;
+            release_angular_decel_ = 1.5;
+            release_stop_velocity_threshold_ = 0.01;
+            release_stop_timeout_ = 1.5;
+        }
+        if (init_stick_min_magnitude_ <= 0.0 || init_stick_min_magnitude_ > std::sqrt(2.0) ||
+            init_stick_target_angle_deg_ < 0.0 || init_stick_target_angle_deg_ > 90.0 ||
+            init_stick_angle_tolerance_deg_ <= 0.0 || init_stick_angle_tolerance_deg_ > 90.0) {
+            RCLCPP_WARN(this->get_logger(), "Invalid joystick initialization angle parameters; using safe defaults");
+            init_stick_min_magnitude_ = 0.35;
+            init_stick_target_angle_deg_ = 45.0;
+            init_stick_angle_tolerance_deg_ = 30.0;
+        }
 
         // 获取脚本控制参数
         this->get_parameter(button_run_param_0_param, button_run_param_0);
@@ -239,6 +319,13 @@ private:
                     medium_angular_velocity);
         RCLCPP_INFO(this->get_logger(), "acc_filter_param is: %0.2f", acc_filter_param);
         RCLCPP_INFO(this->get_logger(), "dec_filter_param is: %0.2f", dec_filter_param);
+        RCLCPP_INFO(this->get_logger(),
+                    "Release soft stop: %s, linear decel=%.2f m/s^2, angular decel=%.2f rad/s^2, timeout=%.2f s",
+                    smooth_stop_on_release_ ? "enabled" : "disabled", release_linear_decel_,
+                    release_angular_decel_, release_stop_timeout_);
+        RCLCPP_INFO(this->get_logger(),
+                    "Initialization stick range: magnitude>=%.2f, angle=%.1f +/- %.1f deg",
+                    init_stick_min_magnitude_, init_stick_target_angle_deg_, init_stick_angle_tolerance_deg_);
         RCLCPP_INFO(this->get_logger(), "inactive_timeout is: %0.1f seconds", inactive_timeout);
     }
 
@@ -355,6 +442,74 @@ private:
         last_angular_z_ = 0.0;
     }
 
+    void publishCurrentCmd() {
+        if (is_omni_mode_) {
+            if (mobile_omni_control_pub_joy_) {
+                mobile_omni_control_pub_joy_->publish(mobile_diff_control_command);
+            }
+        } else if (mobile_diff_control_pub_joy_) {
+            mobile_diff_control_pub_joy_->publish(mobile_diff_control_command);
+        }
+    }
+
+    void startSoftStop() {
+        remote_state_ = RemoteControlState::SOFT_STOPPING;
+        soft_stop_start_time_ = std::chrono::steady_clock::now();
+        soft_stop_last_update_time_ = soft_stop_start_time_;
+        zero_pub_count_disabled_ = 0;
+        RCLCPP_INFO(this->get_logger(),
+                    "Enable button released: soft stop started from vx=%.3f, vy=%.3f, wz=%.3f",
+                    mobile_diff_control_command.linear.x, mobile_diff_control_command.linear.y,
+                    mobile_diff_control_command.angular.z);
+    }
+
+    void finishSoftStop(bool timed_out) {
+        publishZeroCmd();
+        remote_state_ = RemoteControlState::DISABLED;
+        joy_state = 0;
+        // 当前已经发布过一次精确零速度，再补发 4 次；之后停止发布，
+        // cmd_vel_mux 超时释放遥控源，原导航速度源即可恢复接管。
+        zero_pub_count_disabled_ = 4;
+        if (timed_out) {
+            RCLCPP_WARN(this->get_logger(), "Release soft stop timed out; forced zero velocity");
+        } else {
+            RCLCPP_INFO(this->get_logger(), "Release soft stop completed; navigation may resume after mux timeout");
+        }
+    }
+
+    void updateSoftStop() {
+        const auto now = std::chrono::steady_clock::now();
+        double dt = std::chrono::duration<double>(now - soft_stop_last_update_time_).count();
+        dt = std::clamp(dt, 0.0, 0.1);
+        soft_stop_last_update_time_ = now;
+
+        mobile_diff_control_command.linear.x =
+            approachZero(mobile_diff_control_command.linear.x, release_linear_decel_ * dt);
+        mobile_diff_control_command.linear.y = is_omni_mode_
+                                                   ? approachZero(mobile_diff_control_command.linear.y,
+                                                                  release_linear_decel_ * dt)
+                                                   : 0.0;
+        mobile_diff_control_command.angular.z =
+            approachZero(mobile_diff_control_command.angular.z, release_angular_decel_ * dt);
+
+        last_linear_x_ = mobile_diff_control_command.linear.x;
+        last_linear_y_ = mobile_diff_control_command.linear.y;
+        last_angular_z_ = mobile_diff_control_command.angular.z;
+
+        const bool stopped =
+            std::fabs(last_linear_x_) <= release_stop_velocity_threshold_ &&
+            std::fabs(last_linear_y_) <= release_stop_velocity_threshold_ &&
+            std::fabs(last_angular_z_) <= release_stop_velocity_threshold_;
+        const bool timed_out =
+            std::chrono::duration<double>(now - soft_stop_start_time_).count() >= release_stop_timeout_;
+
+        if (stopped || timed_out) {
+            finishSoftStop(timed_out && !stopped);
+            return;
+        }
+        publishCurrentCmd();
+    }
+
     // 执行脚本函数
     void runScript(const std::string& script_path, const std::string& param_path) {
         // 原子占位，避免同一帧多键触发的竞态
@@ -463,6 +618,9 @@ private:
             if (!prev_no_data_) {
                 zero_pub_count_no_data_ = 5;
                 prev_no_data_ = true;
+                remote_state_ = RemoteControlState::DISABLED;
+                // 遥控器断联属于故障场景，不执行软停车。
+                publishZeroCmd();
             }
             // 间隔1s打印一次没有收到的消息
             if ((now - last_pub_msg_time_).seconds() > 1.0) {
@@ -471,7 +629,7 @@ private:
             }
             // 热插拔防止串口有默认数据
             joy_init_flag = false;
-            remote_enabled = false;
+            remote_state_ = RemoteControlState::DISABLED;
             joy_state = -2;
             init_print_count_ = 0;
         } else {
@@ -484,45 +642,39 @@ private:
             // 检查长时间不活跃，需要重新初始化
             // 如果脚本正在运行或使能状态下，认为手柄是活跃状态，不应该判定为不活跃
             if (joy_init_flag && (now - last_activity_time_).seconds() > inactive_timeout && !script_running_.load() &&
-                !remote_enabled) {
+                !ownsRemoteControl()) {
                 RCLCPP_WARN(this->get_logger(), "手柄长时间不活跃，需要重新初始化");
                 joy_init_flag = false;
-                remote_enabled = false;
+                remote_state_ = RemoteControlState::DISABLED;
                 joy_state = -1;
                 init_print_count_ = 0;
             }
         }
 
-        if (!remote_enabled) {
-            if (!prev_not_enabled_) {
-                zero_pub_count_disabled_ = 5;
-                prev_not_enabled_ = true;
-            }
-            if (joy_init_flag) joy_state = 0;
-        } else {
-            if (prev_not_enabled_) {
-                zero_pub_count_disabled_ = 5;  // 恢复正常也发 5 次 0
-                RCLCPP_WARN(this->get_logger(), "Remote enabled, publish 0 cmd 5 times");
-            }
-            prev_not_enabled_ = false;
-        }
+        if (remote_state_ == RemoteControlState::DISABLED && joy_init_flag) joy_state = 0;
+        if (ownsRemoteControl()) joy_state = 1;
         joy_in.data = joy_state;
         pub_joy_in_->publish(joy_in);
 
-        if (zero_pub_count_disabled_ > 0) {
-            RCLCPP_INFO(this->get_logger(), "No enable, Pub zero velocity");
-            publishZeroCmd();
-            zero_pub_count_disabled_--;
-            return;
-        }
         if (zero_pub_count_no_data_ > 0) {
             publishZeroCmd();
             RCLCPP_INFO(this->get_logger(), "No Data, Pub zero velocity");
             zero_pub_count_no_data_--;
             return;
         }
+        if (zero_pub_count_disabled_ > 0) {
+            publishZeroCmd();
+            zero_pub_count_disabled_--;
+            return;
+        }
+
+        if (remote_state_ == RemoteControlState::SOFT_STOPPING) {
+            updateSoftStop();
+            return;
+        }
+
         // 脚本执行期间不允许运动，即使使能按键被按下
-        if (remote_enabled && isInitReady() && !script_running_.load()) {
+        if (remote_state_ == RemoteControlState::ACTIVE && isInitReady() && !script_running_.load()) {
             // 速度指令发布前限速（使用当前模式的速度限制）
             // 速度指令发布前限速
             mobile_diff_control_command.linear.x =
@@ -544,16 +696,7 @@ private:
                             mobile_diff_control_command.linear.x, mobile_diff_control_command.angular.z);
             }
 
-            // 根据当前模式选话题发布
-            if (is_omni_mode_) {
-                if (mobile_omni_control_pub_joy_) {
-                    mobile_omni_control_pub_joy_->publish(mobile_diff_control_command);
-                }
-            } else {
-                if (mobile_diff_control_pub_joy_) {
-                    mobile_diff_control_pub_joy_->publish(mobile_diff_control_command);
-                }
-            }
+            publishCurrentCmd();
 
             last_linear_x_ = mobile_diff_control_command.linear.x;
             last_linear_y_ = mobile_diff_control_command.linear.y;
@@ -574,9 +717,6 @@ private:
         }
 
         last_joy_time_ = this->now();
-        // 速度指令置0；
-        mobile_diff_control_command.linear.x = 0.0;
-        mobile_diff_control_command.angular.z = 0.0;
 
         // 打印所有按键和摇杆的原始值
         std::stringstream ss;
@@ -595,20 +735,38 @@ private:
         bool current_enable_button_state = (Joy->buttons[button_enable_remote] == 1);
         // 如果脚本正在运行，即使按下使能按键也不允许运动
         if (script_running_.load() && current_enable_button_state) {
-            remote_enabled = false;
+            remote_state_ = RemoteControlState::DISABLED;
+            zero_pub_count_disabled_ = 5;
             RCLCPP_WARN(this->get_logger(), "Script is running, remote control disabled for safety");
+        } else if (current_enable_button_state) {
+            if (remote_state_ == RemoteControlState::DISABLED) {
+                remote_state_ = RemoteControlState::ACTIVE;
+                // 接管 Mux 时先发送几帧零速度，避免从导航速度直接跳到遥控速度。
+                zero_pub_count_disabled_ = 5;
+                RCLCPP_INFO(this->get_logger(), "Remote enabled, publish 0 cmd 5 times before control");
+            } else if (remote_state_ == RemoteControlState::SOFT_STOPPING) {
+                remote_state_ = RemoteControlState::ACTIVE;
+                zero_pub_count_disabled_ = 0;
+                RCLCPP_INFO(this->get_logger(), "Enable button pressed again: release soft stop cancelled");
+            }
+            last_activity_time_ = this->now();
         } else {
-            remote_enabled = current_enable_button_state;  // 直接根据按键状态设置使能状态
-            // 使能状态下认为活跃，更新活跃时间
-            if (remote_enabled) {
-                last_activity_time_ = this->now();
+            if (last_enable_button_state_ && remote_state_ == RemoteControlState::ACTIVE) {
+                if (smooth_stop_on_release_) {
+                    startSoftStop();
+                } else {
+                    remote_state_ = RemoteControlState::DISABLED;
+                    publishZeroCmd();
+                    zero_pub_count_disabled_ = 4;
+                    RCLCPP_INFO(this->get_logger(), "Enable button released: immediate stop");
+                }
             }
-            // 使能按键状态变化时也认为是活跃（按键触发）
-            if (current_enable_button_state != last_enable_button_state_) {
-                last_activity_time_ = this->now();
-            }
-            last_enable_button_state_ = current_enable_button_state;
         }
+        // 使能按键状态变化时也认为是活跃（按键触发）
+        if (current_enable_button_state != last_enable_button_state_) {
+            last_activity_time_ = this->now();
+        }
+        last_enable_button_state_ = current_enable_button_state;
 
         // 检查中速模式按键状态
         bool current_medium_speed_state = (Joy->buttons[button_medium_speed] == 1);
@@ -627,7 +785,7 @@ private:
         if (current_script_0_button && !last_script_param_0_button_state_) {
             if (!isInitReady()) {
                 RCLCPP_WARN(this->get_logger(), "Button 0 pressed - Not initialized, please initialize first.");
-            } else if (remote_enabled) {
+            } else if (ownsRemoteControl()) {
                 RCLCPP_WARN(this->get_logger(),
                             "Button 0 pressed - Remote is enabled (robot is moving), cannot run script! Please disable "
                             "remote first.");
@@ -645,7 +803,7 @@ private:
         if (current_script_1_button && !last_script_param_1_button_state_) {
             if (!isInitReady()) {
                 RCLCPP_WARN(this->get_logger(), "Button 1 pressed - Not initialized, please initialize first.");
-            } else if (remote_enabled) {
+            } else if (ownsRemoteControl()) {
                 RCLCPP_WARN(this->get_logger(),
                             "Button 1 pressed - Remote is enabled (robot is moving), cannot run script! Please disable "
                             "remote first.");
@@ -669,7 +827,7 @@ private:
         if (current_script_action_0_button && !last_script_action_0_button_state_) {
             if (!isInitReady()) {
                 RCLCPP_WARN(this->get_logger(), "Action Button 0 pressed - Not initialized, please initialize first.");
-            } else if (remote_enabled) {
+            } else if (ownsRemoteControl()) {
                 RCLCPP_WARN(this->get_logger(),
                             "Action Button 0 pressed - Remote is enabled (robot is moving), cannot run script! Please "
                             "disable remote first.");
@@ -687,7 +845,7 @@ private:
         if (current_script_action_1_button && !last_script_action_1_button_state_) {
             if (!isInitReady()) {
                 RCLCPP_WARN(this->get_logger(), "Action Button 1 pressed - Not initialized, please initialize first.");
-            } else if (remote_enabled) {
+            } else if (ownsRemoteControl()) {
                 RCLCPP_WARN(this->get_logger(),
                             "Action Button 1 pressed - Remote is enabled (robot is moving), cannot run script! Please "
                             "disable remote first.");
@@ -701,8 +859,10 @@ private:
         }
         last_script_action_1_button_state_ = current_script_action_1_button;
 
-        if (remote_enabled) {
+        if (remote_state_ == RemoteControlState::ACTIVE) {
             RCLCPP_DEBUG(this->get_logger(), "Remote control enabled (button held)");
+        } else if (remote_state_ == RemoteControlState::SOFT_STOPPING) {
+            RCLCPP_DEBUG(this->get_logger(), "Remote control soft stopping (button released)");
         } else {
             RCLCPP_DEBUG(this->get_logger(), "Remote control disabled (button released)");
         }
@@ -739,10 +899,12 @@ private:
             // RCLCPP_INFO(this->get_logger(), "axis_0: %f, axis_1: %f, axis_2: %f, axis_3: %  f", axis_0, axis_1,
             // axis_2, axis_3);
 
-            // if(!init_pending_ && axis_0 < -0.85 && axis_2 > 0.85)
-            if (!init_pending_ && axis_0 < -0.25 && axis_1 > 0.25 && axis_2 > 0.25 && axis_3 > 0.25) {
+            const bool left_stick_in_range = stickInInitAngleRange(axis_0, axis_1, -1.0);
+            const bool right_stick_in_range = stickInInitAngleRange(axis_2, axis_3, 1.0);
+            if (!init_pending_ && left_stick_in_range && right_stick_in_range) {
                 init_pending_ = true;
-                RCLCPP_INFO(this->get_logger(), "检测到初始化拨动，请松开并将所有轴回零");
+                RCLCPP_INFO(this->get_logger(),
+                            "检测到初始化角度范围内的拨动，请松开并将所有轴回零");
             }
 
             // 阶段2：等待回零后再判定成功
@@ -809,9 +971,9 @@ private:
         }
 
         // 如果遥控器未启用，不处理任何输入,手柄接受为False
-        if (!remote_enabled) {
+        if (remote_state_ != RemoteControlState::ACTIVE) {
             RCLCPP_DEBUG(this->get_logger(), "Remote control is disabled, ignoring input");
-            joy_state = 0;
+            joy_state = remote_state_ == RemoteControlState::SOFT_STOPPING ? 1 : 0;
             return;
         }
 
@@ -915,7 +1077,7 @@ private:
     std::string joystick_type_ = "logitech";  // 手柄类型："logitech" 或 "beitong"
 
     // 运动模式相关变量
-    bool remote_enabled = false;  // 遥控器是否启用，默认为禁用状态
+    RemoteControlState remote_state_ = RemoteControlState::DISABLED;
 
     // 摇杆值
     double left_right_value = 0.0;        // 左推右推值
@@ -971,6 +1133,14 @@ private:
     // 用于一阶低通滤波
     double acc_filter_param = 0.45;
     double dec_filter_param = 0.05;
+    bool smooth_stop_on_release_ = true;
+    double release_linear_decel_ = 1.0;
+    double release_angular_decel_ = 1.5;
+    double release_stop_velocity_threshold_ = 0.01;
+    double release_stop_timeout_ = 1.5;
+    double init_stick_min_magnitude_ = 0.35;
+    double init_stick_target_angle_deg_ = 45.0;
+    double init_stick_angle_tolerance_deg_ = 30.0;
     double last_linear_x_ = 0.0;
     double last_linear_y_ = 0.0;  // Y轴速度历史值 (全向模式)
     double last_angular_z_ = 0.0;
@@ -990,8 +1160,10 @@ private:
 
     int zero_pub_count_no_data_ = 0;
     int zero_pub_count_disabled_ = 0;
-    bool prev_no_data_ = false;      // 上一次是否是 no_data
-    bool prev_not_enabled_ = false;  // 上一次是否是 not_enabled
+    bool prev_no_data_ = false;  // 上一次是否是 no_data
+
+    std::chrono::steady_clock::time_point soft_stop_start_time_;
+    std::chrono::steady_clock::time_point soft_stop_last_update_time_;
 
     // 类内成员变量
     double last_valid_lr_ = 0.0;
