@@ -56,8 +56,11 @@ BehaviorTreeEngine::run(
       onLoop();
 
       if (!loopRate.sleep()) {
-        RCLCPP_WARN(
+        static rclcpp::Clock steady_clock(RCL_STEADY_TIME);
+        RCLCPP_WARN_THROTTLE(
           rclcpp::get_logger("BehaviorTreeEngine"),
+          steady_clock,
+          5000,
           "Behavior Tree tick rate %0.2f was exceeded!",
           1.0 / (loopRate.period().count() * 1.0e-9));
       }
