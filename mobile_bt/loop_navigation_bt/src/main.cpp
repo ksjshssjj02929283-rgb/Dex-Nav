@@ -6,6 +6,8 @@
 // #include "ament_index_cpp/get_package_share_directory.hpp"
 #include <ament_index_cpp/get_package_share_directory.hpp>
 
+#include <cmath>
+
 #include "loop_navigation_bt/loop_charging_bt.hpp"
 #include "loop_navigation_bt/logging.hpp"
 #include "loop_navigation_bt/loop_navigation_bt.hpp"
@@ -30,13 +32,17 @@ int main(int argc, char** argv) {
     const double resume_battery_threshold = node->declare_parameter<double>("battery.resume_threshold", 80.0);
     const double undocking_duration = node->declare_parameter<double>("undocking.duration_sec", 4.0);
     const double undocking_linear_speed = node->declare_parameter<double>("undocking.linear_speed", 0.15);
+    const double map_state_wait_timeout_sec =
+        node->declare_parameter<double>("navigation.map_state_wait_timeout_sec", 5.0);
 
     if (tick_rate_hz <= 0.0 ||
         low_battery_threshold < 0.0 || low_battery_threshold > 100.0 ||
         resume_battery_threshold <= low_battery_threshold || resume_battery_threshold > 100.0 ||
-        undocking_duration < 0.0 || undocking_linear_speed < 0.0) {
+        undocking_duration < 0.0 || undocking_linear_speed < 0.0 ||
+        !std::isfinite(map_state_wait_timeout_sec) || map_state_wait_timeout_sec <= 0.0) {
         LOOP_RCLCPP_ERROR(node->get_logger(),
                      "循环回充参数非法：请检查 tick 频率、电量阈值和退桩参数。");
+        loop_navigation_bt::writeStartupFailureLog("启动参数错误，请联系技术人员");
         rclcpp::shutdown();
         return 1;
     }
@@ -60,17 +66,26 @@ int main(int argc, char** argv) {
     factory.registerBuilder<loop_navigation_bt::Undocking>("Undocking",
                                                            create_builder<loop_navigation_bt::Undocking>(node));
 
-    // 从安装目录加载行为树 XML 和导航点 JSON。
+    // 从安装目录加载行为树 XML 和导航计划，坐标文件由当前地图状态确定。
     std::string pkg_share_dir;
     try {
         pkg_share_dir = ament_index_cpp::get_package_share_directory("loop_navigation_bt");
     } catch (const std::exception& e) {
         LOOP_RCLCPP_ERROR(node->get_logger(), "Package 'loop_navigation_bt' not found. Cannot locate config files.");
+        loop_navigation_bt::writeStartupFailureLog("程序安装不完整，未找到循环导航配置");
+        rclcpp::shutdown();
         return 1;
     }
 
     std::string xml_file = pkg_share_dir + "/config/loop_navigate_bt.xml";
     std::string points_file = pkg_share_dir + "/config/navigation_points.json";
+    const auto map_context =
+        loop_navigation_bt::waitForCurrentMapAssets(node, map_state_wait_timeout_sec);
+    if (!map_context.valid()) {
+        loop_navigation_bt::writeStartupFailureLog("没有取得有效的当前地图或地图资产文件");
+        rclcpp::shutdown();
+        return 1;
+    }
 
     // std::string xml_file =
     //     "/home/dexforce/w1/dexe_mobile_application/mobile_bt/loop_navigation_bt/config/loop_navigate_bt.xml";
@@ -80,6 +95,11 @@ int main(int argc, char** argv) {
     // blackboard 保存跨节点共享的配置和流程状态。
     auto blackboard = BT::Blackboard::create();
     blackboard->set("navigation_points", points_file);
+    blackboard->set("map_assets_file", map_context.assets_file);
+    blackboard->set("map_epoch", map_context.epoch);
+    blackboard->set("map_changed", false);
+    blackboard->set("test_stop_reason", std::string());
+    blackboard->set("test_failure_reason", std::string());
     blackboard->set("low_battery_threshold", low_battery_threshold);
     blackboard->set("resume_battery_threshold", resume_battery_threshold);
     blackboard->set("undocking_duration", undocking_duration);
@@ -96,6 +116,8 @@ int main(int argc, char** argv) {
         tree = factory.createTreeFromFile(xml_file, blackboard);
     } catch (const std::exception& e) {
         LOOP_RCLCPP_ERROR(node->get_logger(), "Failed to load behavior tree: %s", e.what());
+        loop_navigation_bt::writeStartupFailureLog("行为树加载失败，请联系技术人员");
+        rclcpp::shutdown();
         return 1;
     }
 
@@ -111,6 +133,16 @@ int main(int argc, char** argv) {
         rclcpp::spin_some(node);
 
         try {
+            if (blackboard->get<bool>("map_changed")) {
+                LOOP_RCLCPP_ERROR(node->get_logger(), "检测到地图切换，立即停止当前行为树。");
+                tree.haltTree();
+                rclcpp::spin_some(node);
+                break;
+            }
+        } catch (...) {
+        }
+
+        try {
             if (blackboard->get<bool>("nav_loop_complete")) {
                 LOOP_RCLCPP_INFO(node->get_logger(), "Navigation loop completed. Shutting down program.");
                 break;
@@ -123,6 +155,13 @@ int main(int argc, char** argv) {
         // 行为树返回 FAILURE 表示导航、回充或参数链路出现不可恢复错误。
         if (status == BT::NodeStatus::FAILURE) {
             LOOP_RCLCPP_ERROR(node->get_logger(), "Behavior tree returned FAILURE. Shutting down.");
+            try {
+                if (blackboard->get<std::string>("test_failure_reason").empty() &&
+                    blackboard->get<std::string>("test_stop_reason").empty()) {
+                    blackboard->set("test_failure_reason", std::string("行为树执行失败"));
+                }
+            } catch (...) {
+            }
             break;
         }
 

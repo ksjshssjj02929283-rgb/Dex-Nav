@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.8)
 project(loop_navigation_bt)
 
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 # 依赖查找
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
@@ -10,6 +13,7 @@ find_package(diagnostic_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(nav2_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
+find_package(nav_interfaces REQUIRED)
 find_package(behaviortree_cpp_v3 REQUIRED)
 find_package(nlohmann_json REQUIRED)
 find_package(std_srvs REQUIRED)
@@ -35,6 +39,7 @@ ament_target_dependencies(loop_navigation_nodes
   geometry_msgs
   nav2_msgs
   nav_msgs
+  nav_interfaces
   behaviortree_cpp_v3
   nlohmann_json
   std_srvs
@@ -52,6 +57,7 @@ ament_target_dependencies(loop_navigation_bt_node
   geometry_msgs
   nav2_msgs
   nav_msgs
+  nav_interfaces
   behaviortree_cpp_v3
   nlohmann_json
   std_srvs
@@ -74,6 +80,7 @@ ament_target_dependencies(loop_nocharging_bt_node
   geometry_msgs
   nav2_msgs
   nav_msgs
+  nav_interfaces
   behaviortree_cpp_v3
   nlohmann_json
   std_srvs
@@ -97,11 +104,6 @@ install(TARGETS
   RUNTIME DESTINATION lib/${PROJECT_NAME}
 )
 
-install(PROGRAMS
-  scripts/set_navigation_points.py
-  DESTINATION lib/${PROJECT_NAME}
-)
-
 install(DIRECTORY include/
   DESTINATION include
 )
@@ -110,6 +112,11 @@ install(DIRECTORY
   launch
   config
   DESTINATION share/${PROJECT_NAME}
+)
+
+# 兼容旧版本的增量安装：CMake 不会自动删除已经取消安装的历史脚本。
+install(CODE
+  "file(REMOVE \"${CMAKE_INSTALL_PREFIX}/lib/${PROJECT_NAME}/set_navigation_points.py\")"
 )
 
 ament_package()

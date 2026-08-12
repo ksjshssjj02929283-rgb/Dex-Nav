@@ -17,6 +17,7 @@
   <build_depend>geometry_msgs</build_depend>
   <build_depend>nav2_msgs</build_depend>
   <build_depend>nav_msgs</build_depend>
+  <build_depend>nav_interfaces</build_depend>
   <build_depend>behaviortree_cpp_v3</build_depend>
   <build_depend>nlohmann_json</build_depend>
   <build_depend>std_srvs</build_depend>
@@ -25,7 +26,6 @@
   <!-- Exec dependencies -->
   <exec_depend>rclcpp</exec_depend>
   <exec_depend>rclcpp_action</exec_depend>
-  <exec_depend>rclpy</exec_depend>
   <exec_depend>python3-yaml</exec_depend>
 
   <exec_depend>sensor_msgs</exec_depend>
@@ -33,6 +33,7 @@
   <exec_depend>geometry_msgs</exec_depend>
   <exec_depend>nav2_msgs</exec_depend>
   <exec_depend>nav_msgs</exec_depend>
+  <exec_depend>nav_interfaces</exec_depend>
   <exec_depend>behaviortree_cpp_v3</exec_depend>
   <exec_depend>nlohmann_json</exec_depend>
   <exec_depend>std_srvs</exec_depend>
