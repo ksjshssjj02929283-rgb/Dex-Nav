@@ -1,0 +1,124 @@
+# 导航录包节点参数
+#
+# 只列真正会在现场调整的项。storage_id、writer_cache_size 等在代码里有默认值，
+# 需要时在本文件补一行即可 override。
+#
+# 节点名用 /** 通配，避免 launch 里改 name 后参数不生效。
+
+/**:
+  ros__parameters:
+    # 输出根目录。常态录制写入 <output_dir>/continuous/，事件录制写入 <output_dir>/event/
+    output_dir: "~/.dexe/navigation/bags"
+
+    continuous:
+      enabled: true
+      # 每段时长（秒）
+      segment_duration: 300
+      # rolling：录满后删最旧的段，永久运行
+      # limited：录满 max_segments 段后停止
+      mode: "rolling"
+      max_segments: 24
+      # 总容量上限（MB）。段大小随场景浮动，只靠段数控不住盘，两者同时生效
+      max_total_size_mb: 20480
+
+      # 录制话题清单。清单里尚未发布的话题不影响启动，上线后会自动补订阅。
+      topics:
+        # ---- 坐标与地图 ----
+        - /tf
+        - /tf_static
+        - /map
+        - /map_info
+        - /initialpose
+        - /goal_pose
+
+        # ---- 规划与路径 ----
+        - /plan
+        - /plan_smoothed
+        - /unsmoothed_plan
+        - /transformed_global_plan
+        - /tracked_path
+        - /route_plan
+        - /speed_limit
+
+        # ---- 控制与里程计 ----
+        - /cmd_vel_nav
+        - /control/cmd_vel
+        - /control/cmd_vel_nav
+        - /control/nav2_pose
+        - /feedback/odom
+        - /odometry/filtered
+
+        # ---- 代价地图 ----
+        - /local_costmap/costmap
+        - /local_costmap/costmap_updates
+        - /local_costmap/published_footprint
+
+        # ---- 任务与状态 ----
+        - /active
+        - /behavior_tree_log
+        - /command_board
+        - /navigate_to_pose/_action/status
+        - /navigate_to_pose/_action/feedback
+
+        # ---- 导航监控与诊断（0.5.x 新增，回放定位问题的主要依据）----
+        - /nav_monitor/goal_pose_echo
+        - /nav_monitor/goal_behavior_tree_echo
+        - /nav_monitor/current_global_path
+        - /nav_monitor/controller_phase
+        - /nav_monitor/desired_velocity
+        - /nav_monitor/controller_target
+        - /navigation/speed_plan
+        - /navigation/speed_plan_diagnostics
+        - /navigation_goal_error
+
+        # ---- 传感与定位（由 SLAM / 传感器侧发布，机型不同可能缺席）----
+        - /laser_scan/front
+        - /laser_scan/rear
+        - /loc_pose
+        - /scan_matched_points2
+        - /trajectories
+        - /trajectory_node_list
+        - /constraint_list
+        - /global_cloud_map
+        - /local_cloud_map
+        - /global_feature_map
+        - /local_feature_map
+        - /matched_feature
+        - /clock
+
+    event:
+      enabled: true
+      # 触发点之前保留多久（秒）。按时间戳裁剪，与数据率无关
+      pre_seconds: 60
+      # 触发之后继续录多久（秒）
+      post_seconds: 30
+      # 冷却期（秒）。设 0 会在连续失败时刷出大量重叠 bag
+      cooldown_seconds: 120
+      max_events: 50
+
+      # 事件流默认继承上面的常态清单
+      inherit_continuous_topics: true
+      # 从继承清单里排除的大流量话题——控制环形缓冲内存的主要旋钮。
+      # 排掉之后事件 bag 里就没有这些数据了，按要排查的故障类型权衡。
+      exclude_topics:
+        - /local_costmap/costmap
+        - /local_costmap/costmap_updates
+        - /global_cloud_map
+        - /local_cloud_map
+        - /global_feature_map
+        - /local_feature_map
+        - /scan_matched_points2
+      # 事件流额外补录的话题（优先级高于 exclude）
+      extra_topics: []
+
+    trigger:
+      # 导航 action 返回 ABORTED
+      on_nav_aborted: true
+      # CANCELED 多为人为取消，默认不触发
+      on_nav_canceled: false
+      # 行为树进入恢复类节点（预警级，误触发较多，默认关）
+      on_recovery_behavior: true
+      # /navigation/speed_plan_diagnostics 出现 ERROR
+      on_diagnostics_error: true
+      # 终点误差超过该值（米）触发；0 表示不判定
+      goal_error_threshold_m: 0.02
