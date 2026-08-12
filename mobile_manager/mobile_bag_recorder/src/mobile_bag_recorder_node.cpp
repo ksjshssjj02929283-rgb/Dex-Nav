@@ -22,6 +22,9 @@ MobileBagRecorderNode::~MobileBagRecorderNode()
   if (subscribers_) {
     subscribers_->stop();
   }
+  if (event_) {
+    event_->finish();
+  }
   if (continuous_) {
     continuous_->stop();
   }
@@ -41,6 +44,21 @@ void MobileBagRecorderNode::init()
     continuous_ = std::make_shared<ContinuousRecorder>(this, config_, output_root_);
     subscribers_->addSink(continuous_);
     continuous_->start();
+  }
+
+  if (config_.event.enabled) {
+    event_ = std::make_shared<EventRecorder>(this, config_, output_root_);
+    subscribers_->addSink(event_);
+    triggers_ = std::make_unique<TriggerMonitor>(
+      this, config_.trigger,
+      [this](const std::string & reason) {
+        const auto result = event_->trigger(reason, "auto");
+        if (!result.success) {
+          RCLCPP_INFO(
+            get_logger(), "Trigger from %s not taken: %s",
+            reason.c_str(), result.message.c_str());
+        }
+      });
   }
 
   subscribers_->start();
@@ -73,6 +91,42 @@ void MobileBagRecorderNode::init()
       continuous_->stop();
       response->success = true;
       response->message = "Continuous recording stopped";
+    });
+
+  // 需要 ack 与 bag 路径的调用方（人工 / 上位机 / mission_manager）走 service
+  trigger_srv_ = create_service<mobile_bag_recorder::srv::TriggerRecord>(
+    "~/trigger",
+    [this](
+      const std::shared_ptr<mobile_bag_recorder::srv::TriggerRecord::Request> request,
+      std::shared_ptr<mobile_bag_recorder::srv::TriggerRecord::Response> response) {
+      if (!event_) {
+        response->success = false;
+        response->message = "event recording is disabled (event.enabled=false)";
+        return;
+      }
+      const auto reason = request->reason.empty() ? std::string("manual") : request->reason;
+      const auto result = event_->trigger(
+        reason, request->source, request->pre_seconds, request->post_seconds);
+      response->success = result.success;
+      response->message = result.message;
+      response->bag_path = result.bag_path;
+    });
+
+  // 导航栈内各模块上报异常走 topic：发布不阻塞，控制回路里也能安全调用，
+  // 且调用方只需 std_msgs，不必依赖本包
+  trigger_event_sub_ = create_subscription<std_msgs::msg::String>(
+    "~/trigger_event", rclcpp::QoS(rclcpp::KeepLast(10)).reliable(),
+    [this](const std_msgs::msg::String::SharedPtr msg) {
+      if (!event_) {
+        return;
+      }
+      const auto reason = msg->data.empty() ? std::string("external") : msg->data;
+      const auto result = event_->trigger(reason, "topic");
+      if (!result.success) {
+        RCLCPP_INFO(
+          get_logger(), "Trigger from topic (%s) not taken: %s",
+          reason.c_str(), result.message.c_str());
+      }
     });
 
   // 话题上线有先后，启动即报缺失会有大量噪音；等一轮发现周期过去再报

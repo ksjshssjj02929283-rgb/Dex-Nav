@@ -95,6 +95,11 @@
       # 冷却期（秒）。设 0 会在连续失败时刷出大量重叠 bag
       cooldown_seconds: 120
       max_events: 50
+      # 事件目录总容量上限（MB），与 max_events 同时生效
+      max_total_size_mb: 5120
+      # 环形缓冲内存硬上限（MB）。时间窗口先到先裁，此项是防 OOM 的兜底：
+      # 数据率突增时宁可让 pre 窗口短于 pre_seconds，也不把内存吃穿（触发时会告警）
+      max_buffer_mb: 512
 
       # 事件流默认继承上面的常态清单
       inherit_continuous_topics: true
@@ -120,5 +125,19 @@
       on_recovery_behavior: true
       # /navigation/speed_plan_diagnostics 出现 ERROR
       on_diagnostics_error: true
-      # 终点误差超过该值（米）触发；0 表示不判定
-      goal_error_threshold_m: 0.02
+      # 终点误差超过该值（米）触发；0 表示不判定。
+      # 读的是 /navigation_goal_error 里 controller_server 发布的 distance_error 字段
+      goal_error_threshold_m: 0.0
+
+      # 导航卡住：任务进行中（action EXECUTING）且持续无实质推进。
+      # 覆盖「还在跑任务但走不动/反复绕」——这类问题没有终态信号，其他触发源抓不到
+      on_nav_stall: true
+      # 持续多久没推进算卡住（秒）
+      stall_timeout_s: 20.0
+      # 该时长内推进量低于此值（米）即视为卡住
+      stall_min_progress_m: 0.2
+      # 推进量来源：auto / feedback / odom
+      #   feedback = action 的 distance_remaining 减少量，能识别「在动但没接近目标」（绕圈）
+      #   odom     = 机器人相对基准点的位移，识别不了绕圈，但不依赖 nav2_msgs
+      #   auto     = 有 nav2_msgs 就用 feedback，否则回退 odom
+      stall_progress_source: "auto"2

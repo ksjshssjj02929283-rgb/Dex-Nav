@@ -42,6 +42,11 @@ struct EventConfig
   int cooldown_seconds{120};
   /// 事件 bag 保留个数，超限删最旧
   int max_events{50};
+  /// 事件目录总容量上限（MB），与 max_events 同时生效
+  int max_total_size_mb{5120};
+  /// 环形缓冲内存硬上限（MB）。时间窗口先到先裁，此项是防 OOM 的兜底：
+  /// 数据率突增时宁可让 pre 窗口短于 pre_seconds，也不能把内存吃穿
+  int max_buffer_mb{512};
   bool inherit_continuous_topics{true};
   /// 从继承清单里排除的大流量话题——控制环形缓冲内存的主要旋钮
   std::vector<std::string> exclude_topics;
@@ -56,6 +61,27 @@ struct TriggerConfig
   bool on_diagnostics_error{true};
   /// 终点误差触发阈值（米），<=0 表示不判定
   double goal_error_threshold_m{0.0};
+
+  /// 导航卡住检测：任务进行中（action EXECUTING）且持续无实质推进
+  bool on_nav_stall{true};
+  /// 判定卡住所需的持续时长（秒）
+  double stall_timeout_s{20.0};
+  /// 该时长内推进量低于此值（米）即视为卡住
+  double stall_min_progress_m{0.2};
+  /// 推进量来源：auto / feedback（action 的 distance_remaining）/ odom（机器人位移）。
+  /// auto = 有 nav2_msgs 时用 feedback（能识别"在动但没接近目标"），否则回退 odom
+  std::string stall_progress_source{"auto"};
+
+  /// 被视为"恢复行为"的行为树节点名，进入 RUNNING 即触发（仅 on_recovery_behavior 生效时）
+  std::vector<std::string> recovery_node_names{
+    "Spin", "BackUp", "Wait", "ClearEntireCostmap", "ClearCostmapExceptRegion"};
+
+  std::string nav_status_topic{"/navigate_to_pose/_action/status"};
+  std::string diagnostics_topic{"/navigation/speed_plan_diagnostics"};
+  std::string goal_error_topic{"/navigation_goal_error"};
+  std::string behavior_tree_log_topic{"/behavior_tree_log"};
+  std::string nav_feedback_topic{"/navigate_to_pose/_action/feedback"};
+  std::string odom_topic{"/feedback/odom"};
 };
 
 /// yaml → 强类型配置。声明、读取、校验都收在这里，其余各层只读结构体

@@ -7,11 +7,16 @@
 #include <string>
 
 #include "rclcpp/rclcpp.hpp"
+#include "std_msgs/msg/string.hpp"
 #include "std_srvs/srv/trigger.hpp"
 
+#include "mobile_bag_recorder/srv/trigger_record.hpp"
+
 #include "mobile_bag_recorder/continuous_recorder.hpp"
+#include "mobile_bag_recorder/event_recorder.hpp"
 #include "mobile_bag_recorder/recorder_config.hpp"
 #include "mobile_bag_recorder/topic_subscriber_set.hpp"
+#include "mobile_bag_recorder/trigger_monitor.hpp"
 
 namespace mobile_bag_recorder
 {
@@ -36,10 +41,14 @@ private:
   std::string output_root_;
 
   std::shared_ptr<ContinuousRecorder> continuous_;
+  std::shared_ptr<EventRecorder> event_;
   std::unique_ptr<TopicSubscriberSet> subscribers_;
+  std::unique_ptr<TriggerMonitor> triggers_;
 
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr start_continuous_srv_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr stop_continuous_srv_;
+  rclcpp::Service<mobile_bag_recorder::srv::TriggerRecord>::SharedPtr trigger_srv_;
+  rclcpp::Subscription<std_msgs::msg::String>::SharedPtr trigger_event_sub_;
   rclcpp::TimerBase::SharedPtr pending_report_timer_;
 };
 

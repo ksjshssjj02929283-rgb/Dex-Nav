@@ -72,6 +72,8 @@ RecorderConfig RecorderConfig::declareAndLoad(rclcpp::Node * node)
   cfg.event.post_seconds = declareCheckedInt(node, "event.post_seconds", 30, 0);
   cfg.event.cooldown_seconds = declareCheckedInt(node, "event.cooldown_seconds", 120, 0);
   cfg.event.max_events = declareCheckedInt(node, "event.max_events", 50, 1);
+  cfg.event.max_total_size_mb = declareCheckedInt(node, "event.max_total_size_mb", 5120, 1);
+  cfg.event.max_buffer_mb = declareCheckedInt(node, "event.max_buffer_mb", 512, 1);
   cfg.event.inherit_continuous_topics =
     node->declare_parameter("event.inherit_continuous_topics", true);
   cfg.event.exclude_topics = node->declare_parameter(
@@ -87,6 +89,28 @@ RecorderConfig RecorderConfig::declareAndLoad(rclcpp::Node * node)
     node->declare_parameter("trigger.on_diagnostics_error", true);
   cfg.trigger.goal_error_threshold_m =
     node->declare_parameter("trigger.goal_error_threshold_m", 0.0);
+  cfg.trigger.on_nav_stall = node->declare_parameter("trigger.on_nav_stall", true);
+  cfg.trigger.stall_timeout_s = node->declare_parameter("trigger.stall_timeout_s", 20.0);
+  cfg.trigger.stall_min_progress_m =
+    node->declare_parameter("trigger.stall_min_progress_m", 0.2);
+  cfg.trigger.stall_progress_source = node->declare_parameter(
+    "trigger.stall_progress_source", cfg.trigger.stall_progress_source);
+  cfg.trigger.recovery_node_names = node->declare_parameter(
+    "trigger.recovery_node_names", cfg.trigger.recovery_node_names);
+
+  // 话题名极少改动，只在代码里给默认值；确需重映射时 yaml 补一行即可
+  cfg.trigger.nav_status_topic = node->declare_parameter(
+    "trigger.nav_status_topic", cfg.trigger.nav_status_topic);
+  cfg.trigger.diagnostics_topic = node->declare_parameter(
+    "trigger.diagnostics_topic", cfg.trigger.diagnostics_topic);
+  cfg.trigger.goal_error_topic = node->declare_parameter(
+    "trigger.goal_error_topic", cfg.trigger.goal_error_topic);
+  cfg.trigger.behavior_tree_log_topic = node->declare_parameter(
+    "trigger.behavior_tree_log_topic", cfg.trigger.behavior_tree_log_topic);
+  cfg.trigger.nav_feedback_topic = node->declare_parameter(
+    "trigger.nav_feedback_topic", cfg.trigger.nav_feedback_topic);
+  cfg.trigger.odom_topic = node->declare_parameter(
+    "trigger.odom_topic", cfg.trigger.odom_topic);
 
   if (cfg.continuous.topics.empty()) {
     RCLCPP_WARN(
