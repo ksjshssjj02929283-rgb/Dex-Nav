@@ -52,8 +52,8 @@ ros2 launch mobile_perception mobile_control_action.launch.py
 3. 节点检测到 AprilTag 后发布 `apriltag_target_pose`。
 4. 上游编排节点或客户端读取目标位姿，并作为 `target_pose` 发送到
    `control/precise_control`。
-5. `mobile_control_action_node` 将目标转换到 `map`，再在控制循环中转换回
-   `base_link` 计算误差并发布 `control/cmd_vel`。
+5. `mobile_control_action_node` 将目标转换到配置的控制参考坐标系（默认 `odom`），
+   再在控制循环中转换回 `base_link` 计算误差并发布 `control/cmd_vel`。
 
 ### 二维码检测节点
 
@@ -118,13 +118,32 @@ ros2 service call /stop_apriltag_detection std_srvs/srv/Trigger {}
 `mobile_control_action_node` 提供 `control/precise_control`
 (`nav_interfaces/action/PreciseControl`)。Action goal 的 `target_pose` 是
 `geometry_msgs/msg/PoseStamped`，可直接使用 `apriltag_target_pose` 中的位姿，前提是
-TF 树能把该目标从其 `header.frame_id` 转换到 `map`。
+TF 树能把该目标从其 `header.frame_id` 转换到 `control_reference_frame`。
 
 控制行为：
 
-- 收到 goal 后先将目标转换到 `map`；转换失败会拒绝或 abort 该 goal。
-- 控制循环中持续查询 `base_link <- map` TF，把目标转回 `base_link` 计算位置和角度误差。
-- 默认根据目标输入判断 `STRAIGHT` 或 `ROTATE` 模式。
+- 收到 goal 后先将目标转换到 `control_reference_frame` 并锁存；该参数默认是
+  连续性更好的 `odom`，转换失败会拒绝或 abort 该 goal。
+- 控制循环中持续查询 `base_link <- control_reference_frame` TF，把锁存目标转回
+  `base_link` 计算位置和角度误差。
+- 根据目标输入只判断一次 `STRAIGHT` 或 `ROTATE` 模式，任务期间不会切换模式。
+- `ROTATE` 模式始终保持线速度为零；参考坐标系中的小幅位置漂移不再触发直线控制，
+  原地转向到位只检查角度误差、制动状态和 Odom 实测角速度。
+- `ROTATE` 模式会保存输入角度的正负号，并连续展开每周期角误差；精确 `+180°`
+  锁定为逆时针，精确 `-180°` 锁定为顺时针，不再由 `±π` 边界抖动选择方向。
+- 原地转向支持 `pure_rotation.velocity_curve` 选择 `step`（阶跃）或 `sine`
+  （正弦平滑）速度曲线。正弦模式只使用单向的起步和收尾包络，不使用会周期换向的完整正弦波。
+- 两种原地转向曲线都会根据剩余角度和
+  `rotate_to_heading_max_angular_decel` 计算制动速度上限；进入停止区后先减速至零，
+  停稳后误差仍超限才重新修正。只有角度到位且
+  Odom 实测角速度低于 `rotate_stop_angular_vel` 后，才进入停稳确认。
+- 直线控制支持 `straight.velocity_curve` 选择 `step` 或 `sine`。两种模式都会根据
+  剩余距离、`decel_x_max` 和 `straight.brake_safety_factor` 提前限制速度；
+  `sine` 还会在 `straight.sine_slowdown_distance` 范围内平滑收尾。
+- 目标容差外的直线速度不会低于 `min_v`，用于避免命令落入底盘低速死区后长时间
+  爬行；进入位置容差后仍按 `decel_x_max` 平滑降到零。
+- 进入位置容差后不再直接清零线速度，而是按 `decel_x_max` 继续减速；位置到位且
+  Odom 实测线速度低于 `straight.stop_linear_vel` 后，才进入停稳确认。
 - 发布 `control/cmd_vel`，并订阅 `feedback/odom` 用于限加速度和平滑停车。
 - feedback 的 `current_status` 包括 `IDLE`、`CONTROL`、`CANCELLING`、`SUCCEEDED`。
 - result 成功时 `success=true`、`message=SUCCEEDED`；取消完成时
@@ -148,7 +167,8 @@ ros2 action send_goal /control/precise_control nav_interfaces/action/PreciseCont
 
 - 不要同时运行 `mobile_control_node` 和 `mobile_control_action_node` 控制同一个
   `control/cmd_vel` 链路。
-- 使用二维码目标控制前，确认 `map`、`base_link`、`camera_link` TF 连通。
+- 使用二维码目标控制前，确认目标frame、`control_reference_frame`、`base_link`
+  和 `camera_link` TF 连通；默认至少需要 `odom -> base_link` 可用。
 - `apriltag_target_pose` 默认发布在 `base_link`，如果上游需要跨时间使用目标，建议客户端在接收后尽快发送 Action goal，或将 `target_frame` 配置为稳定的全局 frame。
 - 使用 Action cancel 时，节点不会立即断速度，而是按当前 `feedback/odom` 速度平滑停车后返回
   `CANCELLED`。
