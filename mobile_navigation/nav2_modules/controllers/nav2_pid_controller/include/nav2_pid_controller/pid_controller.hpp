@@ -17,6 +17,7 @@
 #define PID_CONTROLLER__PID_CONTROLLER_HPP_
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <deque>
 #include <limits>
@@ -24,6 +25,8 @@
 #include <mutex>
 #include <string>
 #include <vector>
+
+#include "rcl_interfaces/msg/set_parameters_result.hpp"
 
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_lifecycle/lifecycle_node.hpp"
@@ -329,9 +332,6 @@ protected:
   // 对机器人实际朝向变化量（非误差）逐周期积分；超预算强制停止。
   // 速度上限按朝向误差连续缩放只是阻尼，不能证明净旋转严格有界，
   // 这里独立兜底定位跳变等未预见场景。
-  double approach_rotation_budget_ = 3.490659;  // 200 deg in rad
-  double accumulated_rotation_ = 0.0;
-  double last_theta_rob_for_accum_ = 0.0;
 
   /**
    * @brief Continuous heading-based speed scale for the approach stage:
@@ -346,29 +346,16 @@ protected:
   }
 
   /**
-   * @brief Reset the rotation-budget watchdog at stage entry.
+   * @brief 动态参数回调，目前只处理 verbose —— 调试开关必须能在机器人跑着的
+   *        时候关掉/打开，否则要重启节点才能改，等于改不了。
    */
-  void resetRotationWatchdog(double theta_rob)
-  {
-    accumulated_rotation_ = 0.0;
-    last_theta_rob_for_accum_ = theta_rob;
-  }
+  rcl_interfaces::msg::SetParametersResult dynamicParametersCallback(
+    std::vector<rclcpp::Parameter> parameters);
 
-  /**
-   * @brief Integrate actual heading change (not error) since the last call;
-   *        returns true once the accumulated magnitude exceeds
-   *        approach_rotation_budget_. Independent of the smooth speed
-   *        coupling above -- defends against scenarios it does not cover
-   *        (localization jumps, TF glitches, unforeseen target flips).
-   */
-  bool updateRotationWatchdog(double theta_rob)
-  {
-    double dtheta = theta_rob - last_theta_rob_for_accum_;
-    regularizeAngle(dtheta);
-    accumulated_rotation_ += dtheta;
-    last_theta_rob_for_accum_ = theta_rob;
-    return std::fabs(accumulated_rotation_) > approach_rotation_budget_;
-  }
+  rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr dyn_params_handler_;
+  /// 0 = 静默；>=1 = 每周期打印紧凑诊断行（默认开）。
+  /// 控制循环读、参数回调写，故用 atomic。
+  std::atomic<int> verbose_{1};
 
   // ---- linear PID controllers ----
   nav2_controller_common::PIDController station_nav2_pid_controller_;
