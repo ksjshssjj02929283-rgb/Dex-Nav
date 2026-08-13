@@ -48,9 +48,9 @@ public:
 
   void halt() override {}
 
-  int getTickCount() const { return tick_count_; }
-  void resetCount() { tick_count_ = 0; }
-  void setReturnStatus(BT::NodeStatus status) { return_status_ = status; }
+  int getTickCount() const {return tick_count_;}
+  void resetCount() {tick_count_ = 0;}
+  void setReturnStatus(BT::NodeStatus status) {return_status_ = status;}
 
 private:
   int tick_count_;
@@ -131,6 +131,47 @@ TEST_F(AdaptiveReplanningTestFixture, test_rate_limiting)
   // 4. 第三次 tick：应该放行，子节点被重新 tick
   EXPECT_EQ(bt_node_->executeTick(), BT::NodeStatus::SUCCESS);
   EXPECT_EQ(dummy_node_->getTickCount(), 2); // 运行计数变为 2
+}
+
+TEST_F(AdaptiveReplanningTestFixture, test_timing_diagnostics)
+{
+  nav2_behavior_tree::BtTickTiming tick_timing;
+  config_->blackboard->set<nav2_behavior_tree::BtTickTiming *>(
+    "bt_tick_timing", &tick_timing);
+  bt_node_ = std::make_shared<nav2_behavior_tree::AdaptiveReplanning>(
+    "adaptive_replanning_with_timing", *config_);
+  bt_node_->setChild(dummy_node_.get());
+
+  geometry_msgs::msg::PoseStamped goal_pose;
+  goal_pose.header.frame_id = "map";
+  goal_pose.pose.position.x = 2.0;
+  config_->blackboard->set("goal", goal_pose);
+
+  nav_msgs::msg::Path path;
+  path.header.frame_id = "map";
+  path.poses.resize(2);
+  config_->blackboard->set("path", path);
+
+  // 首次规划用于验证child分段已接通。
+  EXPECT_EQ(bt_node_->executeTick(), BT::NodeStatus::SUCCESS);
+  EXPECT_TRUE(tick_timing.adaptive.valid);
+  EXPECT_GE(tick_timing.adaptive.total_ms, tick_timing.adaptive.child_ms);
+
+  bt_node_->halt();
+  tick_timing.reset();
+
+  // 第二轮会读取并扫描已有路径，用路径点数验证path_copy/path_scan分段已执行。
+  EXPECT_EQ(bt_node_->executeTick(), BT::NodeStatus::SUCCESS);
+  EXPECT_TRUE(tick_timing.adaptive.valid);
+  EXPECT_EQ(tick_timing.adaptive.path_poses, 2u);
+  const double known_ms =
+    tick_timing.adaptive.ports_ms + tick_timing.adaptive.goal_update_ms +
+    tick_timing.adaptive.tf_ms + tick_timing.adaptive.path_copy_ms +
+    tick_timing.adaptive.path_scan_ms + tick_timing.adaptive.decision_ms +
+    tick_timing.adaptive.child_ms;
+  EXPECT_NEAR(
+    tick_timing.adaptive.total_ms,
+    known_ms + tick_timing.adaptive.other_ms, 1e-6);
 }
 
 TEST_F(AdaptiveReplanningTestFixture, test_near_goal_skip)

@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <chrono>
 #include <cmath>
 #include <vector>
 #include <string>
@@ -190,22 +191,34 @@ NavigateToPoseNavigator::goalCompleted(
 void
 NavigateToPoseNavigator::onLoop()
 {
+  auto & loop_timing = bt_action_server_->getLoopTiming();
+  loop_timing.feedback_timing_valid = true;
+
   // action server feedback (pose, duration of task,
   // number of recoveries, and distance remaining to goal)
   auto feedback_msg = std::make_shared<ActionT::Feedback>();
 
   geometry_msgs::msg::PoseStamped current_pose;
+  const auto tf_start = std::chrono::steady_clock::now();
   nav2_util::getCurrentPose(
     current_pose, *feedback_utils_.tf,
     feedback_utils_.global_frame, feedback_utils_.robot_frame,
     feedback_utils_.transform_tolerance);
+  const auto tf_end = std::chrono::steady_clock::now();
+  loop_timing.feedback_tf_ms =
+    std::chrono::duration<double, std::milli>(tf_end - tf_start).count();
 
   auto blackboard = bt_action_server_->getBlackboard();
 
   try {
     // Get current path points
     nav_msgs::msg::Path current_path;
+    const auto path_copy_start = std::chrono::steady_clock::now();
     blackboard->get<nav_msgs::msg::Path>(path_blackboard_id_, current_path);
+    const auto path_copy_end = std::chrono::steady_clock::now();
+    loop_timing.feedback_path_copy_ms =
+      std::chrono::duration<double, std::milli>(path_copy_end - path_copy_start).count();
+    loop_timing.feedback_path_poses = current_path.poses.size();
 
     // Find the closest pose to current pose on global path
     auto find_closest_pose_idx =
@@ -224,13 +237,19 @@ NavigateToPoseNavigator::onLoop()
       };
 
     // Calculate distance on the path
+    const auto path_calculation_start = std::chrono::steady_clock::now();
     double distance_remaining =
       nav2_util::geometry_utils::calculate_path_length(current_path, find_closest_pose_idx());
+    const auto path_calculation_end = std::chrono::steady_clock::now();
+    loop_timing.feedback_path_calculation_ms =
+      std::chrono::duration<double, std::milli>(
+      path_calculation_end - path_calculation_start).count();
 
     // Default value for time remaining
     rclcpp::Duration estimated_time_remaining = rclcpp::Duration::from_seconds(0.0);
 
     // Get current speed
+    const auto odom_eta_start = std::chrono::steady_clock::now();
     geometry_msgs::msg::Twist current_odom = odom_smoother_->getTwist();
     double current_linear_speed = std::hypot(current_odom.linear.x, current_odom.linear.y);
 
@@ -243,17 +262,27 @@ NavigateToPoseNavigator::onLoop()
 
     feedback_msg->distance_remaining = distance_remaining;
     feedback_msg->estimated_time_remaining = estimated_time_remaining;
+    const auto odom_eta_end = std::chrono::steady_clock::now();
+    loop_timing.feedback_odom_eta_ms =
+      std::chrono::duration<double, std::milli>(odom_eta_end - odom_eta_start).count();
   } catch (...) {
     // Ignore
   }
 
+  const auto finalize_start = std::chrono::steady_clock::now();
   int recovery_count = 0;
   blackboard->get<int>("number_recoveries", recovery_count);
   feedback_msg->number_of_recoveries = recovery_count;
   feedback_msg->current_pose = current_pose;
   feedback_msg->navigation_time = clock_->now() - start_time_;
+  const auto finalize_end = std::chrono::steady_clock::now();
+  loop_timing.feedback_finalize_ms =
+    std::chrono::duration<double, std::milli>(finalize_end - finalize_start).count();
 
   bt_action_server_->publishFeedback(feedback_msg);
+  const auto publish_end = std::chrono::steady_clock::now();
+  loop_timing.feedback_publish_ms =
+    std::chrono::duration<double, std::milli>(publish_end - finalize_end).count();
 }
 
 void

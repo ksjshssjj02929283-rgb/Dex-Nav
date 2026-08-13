@@ -20,6 +20,7 @@
 #include <chrono>
 
 #include "behaviortree_cpp_v3/action_node.h"
+#include "nav2_behavior_tree/behavior_tree_engine.hpp"
 #include "nav2_util/node_utils.hpp"
 #include "rclcpp_action/rclcpp_action.hpp"
 #include "nav2_behavior_tree/bt_conversions.hpp"
@@ -58,6 +59,7 @@ public:
     // Get the required items from the blackboard
     server_timeout_ =
       config().blackboard->template get<std::chrono::milliseconds>("server_timeout");
+    config().blackboard->template get<BtTickTiming *>("bt_tick_timing", tick_timing_);
     getInput<std::chrono::milliseconds>("server_timeout", server_timeout_);
 
     std::string remapped_action_name;
@@ -135,6 +137,22 @@ public:
    */
   BT::NodeStatus tick() override
   {
+    BtScopedNodeTimer tick_timer(tick_timing_, name());
+    return tickImpl();
+  }
+
+protected:
+  /**
+   * @brief 执行通用取消节点逻辑，供已在外层计时的派生类避免重复统计
+   */
+  BT::NodeStatus tickCancelActionWithoutTiming()
+  {
+    return tickImpl();
+  }
+
+private:
+  BT::NodeStatus tickImpl()
+  {
     // setting the status to RUNNING to notify the BT Loggers (if any)
     setStatus(BT::NodeStatus::RUNNING);
 
@@ -180,6 +198,9 @@ protected:
   // The timeout value while waiting for response from a server when a
   // new action goal is canceled
   std::chrono::milliseconds server_timeout_;
+
+  // 单轮BT内部叶节点耗时诊断；常规外部调用未提供时为空
+  BtTickTiming * tick_timing_{nullptr};
 };
 
 }  // namespace nav2_behavior_tree

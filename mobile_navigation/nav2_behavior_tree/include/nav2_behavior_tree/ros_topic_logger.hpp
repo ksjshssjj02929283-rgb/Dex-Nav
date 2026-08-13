@@ -15,12 +15,14 @@
 #ifndef NAV2_BEHAVIOR_TREE__ROS_TOPIC_LOGGER_HPP_
 #define NAV2_BEHAVIOR_TREE__ROS_TOPIC_LOGGER_HPP_
 
+#include <chrono>
 #include <vector>
 #include <memory>
 #include <utility>
 
 #include "behaviortree_cpp_v3/loggers/abstract_logger.h"
 #include "rclcpp/rclcpp.hpp"
+#include "nav2_behavior_tree/behavior_tree_engine.hpp"
 #include "nav2_msgs/msg/behavior_tree_log.hpp"
 #include "nav2_msgs/msg/behavior_tree_status_change.h"
 #include "tf2_ros/buffer_interface.h"
@@ -39,8 +41,11 @@ public:
    * @param ros_node Weak pointer to parent rclcpp::Node
    * @param tree BT to monitor
    */
-  RosTopicLogger(const rclcpp::Node::WeakPtr & ros_node, const BT::Tree & tree)
-  : StatusChangeLogger(tree.rootNode())
+  RosTopicLogger(
+    const rclcpp::Node::WeakPtr & ros_node,
+    const BT::Tree & tree,
+    BtTickTiming * tick_timing = nullptr)
+  : StatusChangeLogger(tree.rootNode()), tick_timing_(tick_timing)
   {
     auto node = ros_node.lock();
     clock_ = node->get_clock();
@@ -63,6 +68,8 @@ public:
     BT::NodeStatus prev_status,
     BT::NodeStatus status) override
   {
+    const auto timing_start = tick_timing_ == nullptr ?
+      std::chrono::steady_clock::time_point{} : std::chrono::steady_clock::now();
     nav2_msgs::msg::BehaviorTreeStatusChange event;
 
     // BT timestamps are a duration since the epoch. Need to convert to a time_point
@@ -79,6 +86,12 @@ public:
       node.name().c_str(),
       toStr(prev_status, true).c_str(),
       toStr(status, true).c_str() );
+
+    if (tick_timing_ != nullptr) {
+      tick_timing_->status_event_ms += std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - timing_start).count();
+      ++tick_timing_->status_event_count;
+    }
   }
 
   /**
@@ -100,6 +113,7 @@ protected:
   rclcpp::Logger logger_{rclcpp::get_logger("bt_navigator")};
   rclcpp::Publisher<nav2_msgs::msg::BehaviorTreeLog>::SharedPtr log_pub_;
   std::vector<nav2_msgs::msg::BehaviorTreeStatusChange> event_log_;
+  BtTickTiming * tick_timing_{nullptr};
 };
 
 }   // namespace nav2_behavior_tree

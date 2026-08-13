@@ -22,6 +22,7 @@
 #include <vector>
 
 #include "behaviortree_cpp_v3/action_node.h"
+#include "nav2_behavior_tree/behavior_tree_engine.hpp"
 #include "nav2_util/node_utils.hpp"
 #include "rclcpp_action/rclcpp_action.hpp"
 #include "nav2_behavior_tree/bt_conversions.hpp"
@@ -60,6 +61,7 @@ public:
     // Get the required items from the blackboard
     bt_loop_duration_ =
       config().blackboard->template get<std::chrono::milliseconds>("bt_loop_duration");
+    config().blackboard->template get<BtTickTiming *>("bt_tick_timing", tick_timing_);
     server_timeout_ =
       config().blackboard->template get<std::chrono::milliseconds>("server_timeout");
     getInput<std::chrono::milliseconds>("server_timeout", server_timeout_);
@@ -187,6 +189,22 @@ public:
    */
   BT::NodeStatus tick() override
   {
+    BtScopedNodeTimer tick_timer(tick_timing_, name());
+    return tickImpl();
+  }
+
+protected:
+  /**
+   * @brief 执行通用Action节点逻辑，供已在外层计时的派生类避免重复统计
+   */
+  BT::NodeStatus tickActionWithoutTiming()
+  {
+    return tickImpl();
+  }
+
+private:
+  BT::NodeStatus tickImpl()
+  {
     if (goal_cleanup_active_) {
       return poll_goal_cleanup(bt_loop_duration_) ?
              BT::NodeStatus::FAILURE : BT::NodeStatus::RUNNING;
@@ -311,6 +329,7 @@ public:
     return status;
   }
 
+protected:
   /**
    * @brief The other (optional) override required by a BT action. In this case, we
    * make sure to cancel the ROS2 action if it is still running.
@@ -605,6 +624,9 @@ protected:
 
   // The timeout value for BT loop execution
   std::chrono::milliseconds bt_loop_duration_;
+
+  // 单轮BT内部叶节点耗时诊断；常规外部调用未提供时为空
+  BtTickTiming * tick_timing_{nullptr};
 
   // To track the action server acknowledgement when a new goal is sent
   std::shared_ptr<std::shared_future<typename rclcpp_action::ClientGoalHandle<ActionT>::SharedPtr>>

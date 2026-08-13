@@ -2631,6 +2631,7 @@ bool ControllerServer::nearestPlannedSpeed(
 void ControllerServer::computeAndPublishVelocity()
 {
   constexpr double kSlowTimingWarnMs = 100.0;
+  constexpr double kSlowProgressTimingWarnMs = 5.0;
   const auto publish_control_failure = [this](const std::string & result) {
       publishSpeedPlanDiagnostics(
         false, false, std::numeric_limits<double>::quiet_NaN(),
@@ -2747,9 +2748,30 @@ void ControllerServer::computeAndPublishVelocity()
   }
 
   auto t_progress_start = std::chrono::high_resolution_clock::now();
+  const char * progress_mode = "goal_accept_position_skip";
+  double progress_checker_ms = 0.0;
+  bool progress_checker_called = false;
+  const auto measure_progress_check = [&](const auto & check_function) {
+      const auto check_start = std::chrono::steady_clock::now();
+      const bool check_result = check_function();
+      progress_checker_ms = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - check_start).count();
+      progress_checker_called = true;
+      return check_result;
+    };
+  const auto log_failed_progress_check = [&]() {
+      const double progress_total_ms = std::chrono::duration<double, std::milli>(
+        std::chrono::high_resolution_clock::now() - t_progress_start).count();
+      RCLCPP_WARN(
+        get_logger(),
+        "Progress Checker检查失败耗时: mode=%s total=%.3fms checker=%.3fms",
+        progress_mode, progress_total_ms, progress_checker_ms);
+    };
   const bool in_goal_accept_position = isWithinGoalCheckerTolerance(pose, false, false);
   if (near_goal_progress_enabled_ && isNearGoal(pose)) {
-    if (!checkNearGoalProgress(pose)) {
+    progress_mode = "near_goal";
+    if (!measure_progress_check([&]() {return checkNearGoalProgress(pose);})) {
+      log_failed_progress_check();
       if (isWithinGoalCheckerTolerance(pose, true)) {
         publishZeroVelocity();
         publish_control_failure("goal_tolerance_zero_cmd");
@@ -2760,19 +2782,29 @@ void ControllerServer::computeAndPublishVelocity()
               "Failed to make near-goal progress. 接近目标点后长时间没有足够位移/转角，可能卡住或被约束。");
     }
   } else if (!in_goal_accept_position) {
+    progress_mode = "standard";
     if (in_near_goal_progress_mode_) {
       RCLCPP_INFO(get_logger(), "Leaving near-goal progress mode.");
       resetNearGoalProgress();
       progress_checker_->reset();
     }
-    if (!progress_checker_->check(pose)) {
+    if (!measure_progress_check([&]() {return progress_checker_->check(pose);})) {
+      log_failed_progress_check();
       publish_control_failure("progress_failed");
       throw nav2_core::PlannerException(
               "Failed to make progress. 进度检查失败，机器人在规定时间内没有有效前进，可能被障碍、空路径或控制失败卡住。");
     }
   }
   auto t_progress_end = std::chrono::high_resolution_clock::now();
-  auto progress_ms = std::chrono::duration<double, std::milli>(t_progress_end - t_progress_start).count();
+  auto progress_ms =
+    std::chrono::duration<double, std::milli>(t_progress_end - t_progress_start).count();
+  if (progress_ms >= kSlowProgressTimingWarnMs) {
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), *get_clock(), 1000,
+      "ControllerServer进度阶段慢: mode=%s total=%.3fms checker_called=%s checker=%.3fms",
+      progress_mode, progress_ms, progress_checker_called ? "true" : "false",
+      progress_checker_ms);
+  }
 
   auto t_odom_start = std::chrono::high_resolution_clock::now();
   nav_2d_msgs::msg::Twist2D twist = getThresholdedTwist(odom_sub_->getTwist());

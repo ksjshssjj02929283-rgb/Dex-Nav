@@ -15,6 +15,7 @@
 #ifndef NAV2_BEHAVIOR_TREE__BT_ACTION_SERVER_IMPL_HPP_
 #define NAV2_BEHAVIOR_TREE__BT_ACTION_SERVER_IMPL_HPP_
 
+#include <chrono>
 #include <memory>
 #include <string>
 #include <fstream>
@@ -123,6 +124,7 @@ bool BtActionServer<ActionT>::on_configure()
   blackboard_->set<rclcpp::Node::SharedPtr>("node", client_node_);  // NOLINT
   blackboard_->set<std::chrono::milliseconds>("server_timeout", default_server_timeout_);  // NOLINT
   blackboard_->set<std::chrono::milliseconds>("bt_loop_duration", bt_loop_duration_);  // NOLINT
+  blackboard_->set<BtTickTiming *>("bt_tick_timing", &tick_timing_);  // NOLINT
 
   return true;
 }
@@ -190,13 +192,14 @@ bool BtActionServer<ActionT>::loadBehaviorTree(const std::string & bt_xml_filena
       blackboard->set<rclcpp::Node::SharedPtr>("node", client_node_);
       blackboard->set<std::chrono::milliseconds>("server_timeout", default_server_timeout_);
       blackboard->set<std::chrono::milliseconds>("bt_loop_duration", bt_loop_duration_);
+      blackboard->set<BtTickTiming *>("bt_tick_timing", &tick_timing_);
     }
   } catch (const std::exception & e) {
     RCLCPP_ERROR(logger_, "Exception when loading BT: %s", e.what());
     return false;
   }
 
-  topic_logger_ = std::make_unique<RosTopicLogger>(client_node_, tree_);
+  topic_logger_ = std::make_unique<RosTopicLogger>(client_node_, tree_, &tick_timing_);
 
   current_bt_xml_filename_ = filename;
   return true;
@@ -223,15 +226,29 @@ void BtActionServer<ActionT>::executeCallback()
     };
 
   auto on_loop = [&]() {
+      loop_timing_ = BtLoopTiming{};
+      const auto preempt_start = std::chrono::steady_clock::now();
       if (action_server_->is_preempt_requested() && on_preempt_callback_) {
         on_preempt_callback_(action_server_->get_pending_goal());
       }
+      const auto preempt_end = std::chrono::steady_clock::now();
+      loop_timing_.preempt_ms =
+        std::chrono::duration<double, std::milli>(preempt_end - preempt_start).count();
+
       topic_logger_->flush();
+      const auto topic_logger_end = std::chrono::steady_clock::now();
+      loop_timing_.topic_logger_flush_ms =
+        std::chrono::duration<double, std::milli>(topic_logger_end - preempt_end).count();
+
       on_loop_callback_();
+      const auto navigator_end = std::chrono::steady_clock::now();
+      loop_timing_.navigator_on_loop_ms =
+        std::chrono::duration<double, std::milli>(navigator_end - topic_logger_end).count();
     };
 
   // Execute the BT that was previously created in the configure step
-  nav2_behavior_tree::BtStatus rc = bt_->run(&tree_, on_loop, is_canceling, bt_loop_duration_);
+  nav2_behavior_tree::BtStatus rc = bt_->run(
+    &tree_, on_loop, is_canceling, bt_loop_duration_, &loop_timing_, &tick_timing_);
 
   // Make sure that the Bt is not in a running state from a previous execution
   // note: if all the ControlNodes are implemented correctly, this is not needed.

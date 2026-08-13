@@ -175,6 +175,15 @@ public:
   }
 
   /**
+   * @brief 获取当前行为树循环的诊断耗时
+   * @return 仅由行为树执行线程读写的分段耗时
+   */
+  BtLoopTiming & getLoopTiming()
+  {
+    return loop_timing_;
+  }
+
+  /**
    * @brief Getter function for the current BT tree
    * @return BT::Tree Current behavior tree
    */
@@ -197,6 +206,12 @@ protected:
    * @brief Action server callback
    */
   void executeCallback();
+
+  // 单轮行为树回调的分段耗时，仅在超周期日志中使用
+  BtLoopTiming loop_timing_;
+
+  // 被行为树节点和状态日志持有指针，声明在tree_之前以保证析构时最后释放
+  BtTickTiming tick_timing_;
 
   // Action name
   std::string action_name_;

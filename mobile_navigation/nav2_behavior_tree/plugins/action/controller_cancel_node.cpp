@@ -32,12 +32,13 @@ ControllerCancel::ControllerCancel(
 
 BT::NodeStatus ControllerCancel::tick()
 {
+  BtScopedNodeTimer tick_timer(tick_timing_, name());
   RCLCPP_WARN(
     node_->get_logger(),
     "-------------------- [BT Recovery Action][CancelControl] -------------------- "
     "全局规划连续失败，取消当前 FollowPath，停止沿用旧路径继续局部控制；"
     "等待后续重规划成功再重新跟踪新路径");
-  return BtCancelActionNode<nav2_msgs::action::FollowPath>::tick();
+  return tickCancelActionWithoutTiming();
 }
 
 }  // namespace nav2_behavior_tree

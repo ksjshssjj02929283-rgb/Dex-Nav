@@ -42,6 +42,7 @@ void FollowPathAction::on_tick()
 
 BT::NodeStatus FollowPathAction::tick()
 {
+  BtScopedNodeTimer tick_timer(tick_timing_, name());
   nav_msgs::msg::Path path;
   getInput("path", path);
 
@@ -68,7 +69,7 @@ BT::NodeStatus FollowPathAction::tick()
     BtActionNode<nav2_msgs::action::FollowPath>::halt();
   }
 
-  return BtActionNode<nav2_msgs::action::FollowPath>::tick();
+  return tickActionWithoutTiming();
 }
 
 void FollowPathAction::on_wait_for_result(

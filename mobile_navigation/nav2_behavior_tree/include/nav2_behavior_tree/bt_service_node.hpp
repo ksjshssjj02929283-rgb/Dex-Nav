@@ -20,6 +20,7 @@
 #include <chrono>
 
 #include "behaviortree_cpp_v3/action_node.h"
+#include "nav2_behavior_tree/behavior_tree_engine.hpp"
 #include "nav2_util/node_utils.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "nav2_behavior_tree/bt_conversions.hpp"
@@ -59,6 +60,7 @@ public:
     // Get the required items from the blackboard
     bt_loop_duration_ =
       config().blackboard->template get<std::chrono::milliseconds>("bt_loop_duration");
+    config().blackboard->template get<BtTickTiming *>("bt_tick_timing", tick_timing_);
     server_timeout_ =
       config().blackboard->template get<std::chrono::milliseconds>("server_timeout");
     getInput<std::chrono::milliseconds>("server_timeout", server_timeout_);
@@ -130,6 +132,7 @@ public:
    */
   BT::NodeStatus tick() override
   {
+    BtScopedNodeTimer tick_timer(tick_timing_, name());
     if (request_timed_out_) {
       return drain_timed_out_request(bt_loop_duration_) ?
              BT::NodeStatus::FAILURE : BT::NodeStatus::RUNNING;
@@ -303,6 +306,9 @@ protected:
 
   // The timeout value for BT loop execution
   std::chrono::milliseconds bt_loop_duration_;
+
+  // 单轮BT内部叶节点耗时诊断；常规外部调用未提供时为空
+  BtTickTiming * tick_timing_{nullptr};
 
   // To track the server response when a new request is sent
   std::shared_future<typename ServiceT::Response::SharedPtr> future_result_;

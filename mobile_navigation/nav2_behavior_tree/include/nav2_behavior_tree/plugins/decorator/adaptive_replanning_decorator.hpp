@@ -19,6 +19,7 @@
 #include <string>
 
 #include "geometry_msgs/msg/pose_stamped.hpp"
+#include "nav2_behavior_tree/behavior_tree_engine.hpp"
 #include "nav_msgs/msg/path.hpp"
 #include "tf2_ros/buffer.h"
 #include "rclcpp/rclcpp.hpp"
@@ -83,6 +84,9 @@ private:
 
   std::string global_frame_;
   std::string robot_base_frame_;
+
+  // 单轮AdaptiveReplanning分段耗时诊断；常规外部调用未提供时为空
+  BtTickTiming * tick_timing_{nullptr};
 };
 
 }  // namespace nav2_behavior_tree
