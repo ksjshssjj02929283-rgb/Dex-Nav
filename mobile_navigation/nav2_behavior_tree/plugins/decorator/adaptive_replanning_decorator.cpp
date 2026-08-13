@@ -178,26 +178,34 @@ BT::NodeStatus AdaptiveReplanning::tick()
 
   if (should_plan) {
     if (plan_reason == "first_planning" || plan_reason == "has_not_planned_once_yet") {
-      RCLCPP_INFO(
+      RCLCPP_INFO_THROTTLE(
         node_->get_logger(),
+        *node_->get_clock(),
+        1000,
         "AdaptiveReplanning: Global replanning triggered: no valid initial path "
         "(reason=%s, dist_to_goal=%.3f m).",
         plan_reason.c_str(), dist);
     } else if (plan_reason == "path_deviation") {
-      RCLCPP_INFO(
+      RCLCPP_INFO_THROTTLE(
         node_->get_logger(),
+        *node_->get_clock(),
+        1000,
         "AdaptiveReplanning: Global replanning triggered: path deviation exceeded limit "
         "(deviation=%.3f m > limit=%.3f m, dist_to_goal=%.3f m).",
         min_dist, max_deviation, dist);
     } else if (plan_reason == "rate_limit_elapsed") {
-      RCLCPP_INFO(
+      RCLCPP_INFO_THROTTLE(
         node_->get_logger(),
+        *node_->get_clock(),
+        1000,
         "AdaptiveReplanning: Global replanning triggered: replanning period elapsed "
         "(elapsed=%.3f s >= period=%.3f s, hz=%.3f, dist_to_goal=%.3f m).",
         elapsed_sec, period, hz, dist);
     } else {
-      RCLCPP_INFO(
+      RCLCPP_INFO_THROTTLE(
         node_->get_logger(),
+        *node_->get_clock(),
+        1000,
         "AdaptiveReplanning: Global replanning triggered (reason=%s, dist_to_goal=%.3f m).",
         plan_reason.c_str(), dist);
     }

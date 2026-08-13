@@ -31,6 +31,16 @@ foreach(name IN LISTS TEST_NAMES)
 
 endforeach()
 
+# CUDA parity checks are feature-specific and intentionally do not alter the regular test setup.
+foreach(name IN ITEMS cuda_rollout_comparison_test cuda_critic_comparison_test)
+  ament_add_gtest(${name} ${name}.cpp)
+  ament_target_dependencies(${name} ${dependencies_pkgs})
+  target_link_libraries(${name} mppi_controller mppi_critics)
+  if(TARGET mppi_cuda_backend)
+    target_compile_definitions(${name} PRIVATE MPPI_CUDA_TESTING)
+  endif()
+endforeach()
+
 # This is a special case requiring linking against the critics library
 ament_add_gtest(critics_tests critics_tests.cpp)
 ament_target_dependencies(critics_tests ${dependencies_pkgs})

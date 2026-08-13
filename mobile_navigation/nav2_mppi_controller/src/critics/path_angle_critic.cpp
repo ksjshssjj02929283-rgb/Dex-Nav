@@ -17,6 +17,7 @@
 
 #include <algorithm>
 #include <math.h>
+#include <vector>
 
 #include "tf2/utils.h"
 
@@ -83,6 +84,24 @@ void PathAngleCritic::score(CriticData & data)
       data.state.pose.pose, goal_x, goal_y, forward_preference_) < max_angle_to_furthest_)
   {
     return;
+  }
+
+  if (data.use_cuda && data.cuda_optimizer != nullptr &&
+    data.cuda_optimizer->isCudaAvailable())
+  {
+    std::vector<float> gpu_costs;
+    const auto & current_pose = data.state.pose.pose;
+    const bool success = data.cuda_optimizer->evaluatePathAngleCosts(
+      goal_x, goal_y, reversing_allowed_, forward_preference_, direction_deadband_,
+      wrong_way_cost_ratio_, current_pose.position.x, current_pose.position.y,
+      tf2::getYaw(current_pose.orientation), data.state.speed.angular.z, weight_, power_,
+      gpu_costs, data.cuda_score_far_downsample, data.cuda_score_far_start_ratio,
+      data.cuda_score_far_stride);
+    if (success && gpu_costs.size() == static_cast<size_t>(data.costs.size())) {
+      data.costs += Eigen::Map<const Eigen::ArrayXf>(gpu_costs.data(), gpu_costs.size());
+      return;
+    }
+    RCLCPP_WARN(logger_, "CUDA path-angle critic failed; using CPU scoring for this iteration");
   }
 
   models::Matrix yaws_between_points =

@@ -24,6 +24,7 @@
 #include "nav2_mppi_controller/models/trajectories.hpp"
 #include "nav2_mppi_controller/models/path.hpp"
 #include "nav2_mppi_controller/motion_models.hpp"
+#include "nav2_mppi_controller/cuda/cuda_optimizer.hpp"
 
 
 namespace mppi
@@ -48,6 +49,11 @@ struct CriticData
   std::shared_ptr<MotionModel> motion_model;
   std::optional<std::vector<bool>> path_pts_valid;
   std::optional<size_t> furthest_reached_path_point;
+  cuda::CudaOptimizer * cuda_optimizer{nullptr};
+  bool use_cuda{false};
+  bool cuda_score_far_downsample{false};
+  float cuda_score_far_start_ratio{0.5f};
+  unsigned int cuda_score_far_stride{2};
 };
 
 }  // namespace mppi

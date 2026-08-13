@@ -70,7 +70,6 @@ void CriticManager::evalTrajectoriesScores(
   CriticData & data) const
 {
   constexpr double kSlowCriticWarnMs = 100.0;
-
   for (size_t q = 0; q < critics_.size(); q++) {
     if (data.fail_flag) {
       break;

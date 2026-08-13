@@ -23,6 +23,7 @@
 #include <cmath>
 
 #include "nav2_costmap_2d/costmap_filters/filter_values.hpp"
+#include "rclcpp/rclcpp.hpp"
 
 namespace mppi
 {
@@ -51,6 +52,7 @@ void Optimizer::initialize(
 
 void Optimizer::shutdown()
 {
+  cuda_optimizer_.shutdown();
   noise_generator_.shutdown();
 }
 
@@ -83,6 +85,18 @@ void Optimizer::getParams()
   getParam(s.sampling_std.wz, "wz_std", 0.4);
   getParam(s.retry_attempt_limit, "retry_attempt_limit", 1);
   getParam(s.open_loop, "open_loop", false);
+  getParam(s.use_cuda, "use_cuda", true);
+  getParam(s.cuda_score_far_downsample, "cuda_score_far_downsample", false);
+  getParam(s.cuda_score_far_start_ratio, "cuda_score_far_start_ratio", 0.5f);
+  int cuda_score_far_stride = 2;
+  getParam(cuda_score_far_stride, "cuda_score_far_stride", 2);
+  s.cuda_score_far_start_ratio = std::clamp(s.cuda_score_far_start_ratio, 0.0f, 1.0f);
+  s.cuda_score_far_stride = static_cast<unsigned int>(std::max(1, cuda_score_far_stride));
+  RCLCPP_INFO(logger_, "MPPI Optimizer use_cuda configuration set to: %s", s.use_cuda ? "ENABLED" : "DISABLED");
+  RCLCPP_INFO(
+    logger_, "MPPI CUDA far score downsampling: %s (start=%.2f, stride=%u)",
+    s.cuda_score_far_downsample ? "ENABLED" : "DISABLED",
+    s.cuda_score_far_start_ratio, s.cuda_score_far_stride);
 
   // 确保加速度参数符号正确
   s.base_constraints.ax_max = fabs(s.base_constraints.ax_max);
@@ -148,6 +162,12 @@ void Optimizer::reset()
 
   noise_generator_.reset(settings_, isHolonomic());
   motion_model_->initialize(settings_.constraints, settings_.model_dt);
+  cuda_optimizer_.shutdown();
+  if (settings_.use_cuda) {
+    const bool available = cuda_optimizer_.initialize(
+      settings_.batch_size, settings_.time_steps, settings_.model_dt, isHolonomic());
+    RCLCPP_INFO(logger_, "MPPI CUDA rollout/critic backend: %s", available ? "enabled" : "unavailable; using CPU");
+  }
   RCLCPP_INFO(logger_, "Optimizer reset");
 }
 
@@ -248,6 +268,11 @@ void Optimizer::prepare(
   critics_data_.motion_model = motion_model_;
   critics_data_.furthest_reached_path_point.reset();
   critics_data_.path_pts_valid.reset();
+  critics_data_.cuda_optimizer = &cuda_optimizer_;
+  critics_data_.use_cuda = settings_.use_cuda && cuda_optimizer_.isCudaAvailable();
+  critics_data_.cuda_score_far_downsample = settings_.cuda_score_far_downsample;
+  critics_data_.cuda_score_far_start_ratio = settings_.cuda_score_far_start_ratio;
+  critics_data_.cuda_score_far_stride = settings_.cuda_score_far_stride;
 }
 
 void Optimizer::shiftControlSequence()
@@ -270,6 +295,37 @@ void Optimizer::shiftControlSequence()
 
 void Optimizer::generateNoisedTrajectories()
 {
+  if (settings_.use_cuda && cuda_optimizer_.isCudaAvailable()) {
+    const cuda::CudaState initial_state{
+      static_cast<float>(state_.pose.pose.position.x),
+      static_cast<float>(state_.pose.pose.position.y),
+      static_cast<float>(tf2::getYaw(state_.pose.pose.orientation)),
+      static_cast<float>(state_.speed.linear.x),
+      static_cast<float>(state_.speed.linear.y),
+      static_cast<float>(state_.speed.angular.z)};
+    const std::vector<float> control_vx(
+      control_sequence_.vx.data(), control_sequence_.vx.data() + control_sequence_.vx.size());
+    const std::vector<float> control_wz(
+      control_sequence_.wz.data(), control_sequence_.wz.data() + control_sequence_.wz.size());
+    std::vector<float> control_vy;
+    if (isHolonomic()) {
+      control_vy.assign(
+        control_sequence_.vy.data(), control_sequence_.vy.data() + control_sequence_.vy.size());
+    }
+
+    if (cuda_optimizer_.generateNoisedTrajectories(
+        initial_state, control_vx, control_vy, control_wz,
+        settings_.constraints, settings_.sampling_std,
+        generated_trajectories_.x.data(), generated_trajectories_.y.data(),
+        generated_trajectories_.yaws.data(), state_.cvx.data(),
+        isHolonomic() ? state_.cvy.data() : nullptr, state_.cwz.data()))
+    {
+      rebuildStateVelocitiesFromControls(state_);
+      return;
+    }
+    RCLCPP_WARN(logger_, "MPPI CUDA rollout failed; falling back to CPU for this iteration");
+  }
+
   noise_generator_.setNoisedControls(state_, control_sequence_);
   noise_generator_.generateNextNoises();
   updateStateVelocities(state_);
@@ -367,6 +423,19 @@ void Optimizer::updateInitialStateVelocities(
 
   if (isHolonomic()) {
     state.vy.col(0).setConstant(state.speed.linear.y);
+  }
+}
+
+void Optimizer::rebuildStateVelocitiesFromControls(models::State & state) const
+{
+  updateInitialStateVelocities(state);
+  if (state.vx.cols() < 2) {
+    return;
+  }
+  state.vx.rightCols(state.vx.cols() - 1) = state.cvx.leftCols(state.cvx.cols() - 1);
+  state.wz.rightCols(state.wz.cols() - 1) = state.cwz.leftCols(state.cwz.cols() - 1);
+  if (isHolonomic()) {
+    state.vy.rightCols(state.vy.cols() - 1) = state.cvy.leftCols(state.cvy.cols() - 1);
   }
 }
 
