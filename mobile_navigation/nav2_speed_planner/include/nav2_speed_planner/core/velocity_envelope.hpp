@@ -22,10 +22,10 @@ namespace nav2_speed_planner
  * 速度包络是多条约束逐点取严的结果，此前"谁压低了这个点"只能靠通读全部
  * 约束代码反推。本枚举随 `lowerBound()` 写入，使归因成为可读字段。
  *
- * 语义是**当前生效者**（最后一次成功下压的约束），区别于 `region_type`
- * ——后者是"第一个下压者"（各处均为 `if (region_type.empty())` 才写）。
- * 两者在同一点可能不同：例如弯道与末端蠕行区重叠时，`region_type` 为
- * `curve`（先写），而实际生效的是蠕行区。
+ * 语义是**当前生效者**（最后一次成功下压的约束），区别于 `region_type`——
+ * 后者表达该点最先写入的几何/业务语义，不保证一定下压速度。两者在同一点可能
+ * 不同：例如 MPPI 绕障模式仍保留 `obstacle_clearance` 标注，但不产生障碍零速
+ * 上界；弯道与末端蠕行区重叠时，实际生效者也可能是后者。
  */
 enum class ConstraintSource
 {
@@ -34,12 +34,14 @@ enum class ConstraintSource
   kSpeedHint,       ///< 路径逐点限速（区域限速的数据通道）
   kExternalLimit,   ///< 外部 /speed_limit
   kObstacle,        ///< 障碍点本身（置零）
-  kObstacleBuffer,  ///< 障碍前置零缓冲带
+  kObstacleClearance,  ///< 硬障碍前的几何净空区（停障模式下置零）
+  kObstacleBuffer,  ///< 净空区之前的额外置零缓冲带
   kLateralAccel,    ///< 曲率 / 横向加速度限速
   kTerminalCreep,   ///< 末端蠕行区
   kEndBoundary,     ///< 末端速度边界点
   kKinematicBrake,  ///< 后向可达性：为减到下游约束而必须的限速
   kKinematicAccel,  ///< 前向可达性：从上游加不上来而形成的限速
+  kCount,           ///< 仅用于约束来源统计数组长度
 };
 
 /**

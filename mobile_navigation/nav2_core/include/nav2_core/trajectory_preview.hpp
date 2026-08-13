@@ -73,6 +73,43 @@ bool hasValidRelativeTime(const std::vector<PointT> & points)
   return points.back().relative_time > points.front().relative_time + 1e-9;
 }
 
+/// 按轨迹相对时间线性插值速度与加速度。超出时间范围时保持首/末状态。
+template<typename PointT>
+bool sampleTrajectoryAtTime(
+  const std::vector<PointT> & points, double sample_time,
+  TrajectoryPreview & preview)
+{
+  if (points.empty() || !std::isfinite(sample_time)) {
+    return false;
+  }
+  const auto upper = std::upper_bound(
+    points.begin(), points.end(), sample_time,
+    [](double value, const PointT & point) {return value < point.relative_time;});
+  if (upper == points.begin()) {
+    preview.velocity = points.front().speed_limit;
+    preview.acceleration = points.front().accel;
+    preview.relative_time = points.front().relative_time;
+  } else if (upper == points.end()) {
+    preview.velocity = points.back().speed_limit;
+    preview.acceleration = points.back().accel;
+    preview.relative_time = points.back().relative_time;
+  } else {
+    const auto & second = *upper;
+    const auto & first = *std::prev(upper);
+    const double duration = second.relative_time - first.relative_time;
+    const double ratio = duration > 1e-9 ?
+      std::clamp((sample_time - first.relative_time) / duration, 0.0, 1.0) : 1.0;
+    preview.velocity = first.speed_limit + ratio * (second.speed_limit - first.speed_limit);
+    preview.acceleration = first.accel + ratio * (second.accel - first.accel);
+    preview.relative_time = first.relative_time + ratio * duration;
+  }
+  if (!std::isfinite(preview.velocity) || !std::isfinite(preview.acceleration)) {
+    return false;
+  }
+  preview.mode = TrajectoryPreviewMode::TIME_ALIGNED;
+  return true;
+}
+
 template<typename PointT>
 bool sampleTrajectoryPreview(
   const std::vector<PointT> & points,
@@ -128,32 +165,7 @@ bool sampleTrajectoryPreview(
     }
 
     const double sample_time = projected_time + std::max(0.0, time_lookahead);
-    const auto upper = std::upper_bound(
-      points.begin(), points.end(), sample_time,
-      [](double value, const PointT & point) {return value < point.relative_time;});
-    if (upper == points.begin()) {
-      preview.velocity = points.front().speed_limit;
-      preview.acceleration = points.front().accel;
-      preview.relative_time = points.front().relative_time;
-    } else if (upper == points.end()) {
-      preview.velocity = points.back().speed_limit;
-      preview.acceleration = points.back().accel;
-      preview.relative_time = points.back().relative_time;
-    } else {
-      const auto & second = *upper;
-      const auto & first = *std::prev(upper);
-      const double duration = second.relative_time - first.relative_time;
-      const double ratio = duration > 1e-9 ?
-        std::clamp((sample_time - first.relative_time) / duration, 0.0, 1.0) : 1.0;
-      preview.velocity = first.speed_limit + ratio * (second.speed_limit - first.speed_limit);
-      preview.acceleration = first.accel + ratio * (second.accel - first.accel);
-      preview.relative_time = first.relative_time + ratio * duration;
-    }
-    if (!std::isfinite(preview.velocity) || !std::isfinite(preview.acceleration)) {
-      return false;
-    }
-    preview.mode = TrajectoryPreviewMode::TIME_ALIGNED;
-    return true;
+    return sampleTrajectoryAtTime(points, sample_time, preview);
   }
 
   size_t target = nearest_point;
