@@ -149,9 +149,6 @@ public:
   void setTerminalStateForTest()
   {
     controller_phase_ = ControllerPhase::APPROACH;
-    near_goal_progress_acceptance_reached_ = true;
-    near_goal_pose_hold_active_ = true;
-    near_goal_hold_outside_accept_count_ = 2;
   }
 
   void latchTerminalBrakeForTest()
@@ -179,9 +176,6 @@ public:
   }
 
   ControllerPhase phase() const {return controller_phase_;}
-  bool nearGoalAcceptanceReached() const {return near_goal_progress_acceptance_reached_;}
-  bool nearGoalPoseHoldActive() const {return near_goal_pose_hold_active_;}
-  size_t nearGoalOutsideCount() const {return near_goal_hold_outside_accept_count_;}
   size_t goalCheckerResetCount() const {return fake_goal_checker_->resetCount();}
   bool terminalBrakeLatched() const {return terminal_brake_latched_;}
 
@@ -370,9 +364,6 @@ TEST(InitialMotionState, SameGoalGeometryUpdatePreservesTerminalState)
     controller->phase(),
     nav2_controller::ControllerServer::ControllerPhase::APPROACH);
   EXPECT_TRUE(controller->continuityValid());
-  EXPECT_TRUE(controller->nearGoalAcceptanceReached());
-  EXPECT_TRUE(controller->nearGoalPoseHoldActive());
-  EXPECT_EQ(controller->nearGoalOutsideCount(), 2u);
   EXPECT_TRUE(controller->terminalBrakeLatched());
   EXPECT_NEAR(
     controller->boundaryFor(updated_path, 0.31).acceleration, -0.18, 1e-9);
@@ -393,9 +384,6 @@ TEST(InitialMotionState, NewGoalPathResetsTerminalBookkeeping)
   EXPECT_EQ(
     controller->phase(),
     nav2_controller::ControllerServer::ControllerPhase::TRACK);
-  EXPECT_FALSE(controller->nearGoalAcceptanceReached());
-  EXPECT_FALSE(controller->nearGoalPoseHoldActive());
-  EXPECT_EQ(controller->nearGoalOutsideCount(), 0u);
   EXPECT_EQ(controller->goalCheckerResetCount(), 1u);
   EXPECT_FALSE(controller->terminalBrakeLatched());
 }
