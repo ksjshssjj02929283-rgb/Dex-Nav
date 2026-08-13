@@ -216,10 +216,20 @@ protected:
    *        位姿与轨迹坐标系不同时按当周期 TF 对齐后再查询。
    * @return 轨迹为空或 TF 不可用时 false。
    */
-  bool nearestPlannedSpeed(const geometry_msgs::msg::PoseStamped & pose, double & desired_v);
+  bool nearestPlannedSpeed(
+    const geometry_msgs::msg::PoseStamped & pose, double & desired_v,
+    size_t * nearest_index = nullptr);
+  /// 仅当可行的障碍停车剖面已要求机器人保持静止时暂停进展检查。
+  bool shouldPauseProgressCheckForObstacleStop(
+    const geometry_msgs::msg::PoseStamped & pose);
+  bool checkProgress(geometry_msgs::msg::PoseStamped & pose);
+  /// 预测本周期将运行的控制器是否能自行绕开参考路径上的局部障碍。
+  bool activeControllerCanAvoidPathObstacles(
+    const geometry_msgs::msg::PoseStamped & pose);
   nav2_core::InitialMotionState buildInitialMotionState(
     const nav_msgs::msg::Path & path,
-    const geometry_msgs::msg::Twist & measured_velocity);
+    const geometry_msgs::msg::Twist & measured_velocity,
+    bool should_stop_for_path_obstacle = true);
   /// Latch terminal braking only after the planner reaches the dynamic braking
   /// initial_motion and the cycle has either longitudinal continuity or non-zero
   /// braking motion. A diagnostic-only infeasible result must not poison a
@@ -460,6 +470,7 @@ protected:
   // Goal-lifecycle state owned by ControllerServer. Same-goal geometry updates
   // preserve it; a new goal / successful completion resets it.
   bool terminal_brake_latched_{false};
+  bool is_progress_check_paused_for_obstacle_stop_{false};
   struct SpeedPlanCycleContext
   {
     bool active{false};

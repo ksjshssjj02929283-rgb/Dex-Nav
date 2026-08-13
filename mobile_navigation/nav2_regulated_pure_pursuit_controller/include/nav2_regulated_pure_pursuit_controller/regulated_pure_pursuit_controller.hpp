@@ -187,12 +187,15 @@ protected:
    * @param linear_vel linear velocity to forward project
    * @param angular_vel angular velocity to forward project
    * @param carrot_dist Distance to the carrot for PP
+   * @param use_trajectory_profile 是否按速度规划轨迹逐时刻积分
+   * @param trajectory_relative_time 碰撞投影起点对应的轨迹相对时间
    * @return Whether collision is imminent
    */
   bool isCollisionImminent(
     const geometry_msgs::msg::PoseStamped &,
     const double &, const double &,
-    const double &);
+    const double &, bool use_trajectory_profile = false,
+    double trajectory_relative_time = 0.0);
 
   /**
    * @brief checks for collision at projected pose
@@ -288,6 +291,10 @@ protected:
   /// 同一轨迹点的规划加速度，供速度环前馈使用。
   bool nearestTrajectorySpeed(
     const geometry_msgs::msg::PoseStamped & pose, double & traj_speed, double & traj_accel);
+
+  /// 取得完整轨迹前瞻结果，碰撞预测复用同一个relative_time。
+  bool trajectoryPreviewAtPose(
+    const geometry_msgs::msg::PoseStamped & pose, nav2_core::TrajectoryPreview & preview);
 
   /// 速度环：反馈（PID）+ 前馈（规划加速度）→ 限幅 → 积分 → 不越过目标。
   /// 纯反馈跟踪一个持续下降的斜坡目标时存在稳态滞后（≈斜率/kp）；前馈项

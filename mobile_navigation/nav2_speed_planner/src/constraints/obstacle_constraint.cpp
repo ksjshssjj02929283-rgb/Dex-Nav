@@ -31,7 +31,7 @@ namespace nav2_speed_planner
 {
 
 ObstacleConstraintOutcome SpeedPlannerBase::produceObstacleConstraint(
-  const std::vector<TrajPointWork> & path)
+  const std::vector<TrajPointWork> & path, bool should_stop_for_path_obstacle)
 {
   ObstacleConstraintOutcome outcome;
   outcome.constraint = VelocityConstraint(path.size());
@@ -43,8 +43,8 @@ ObstacleConstraintOutcome SpeedPlannerBase::produceObstacleConstraint(
         TimingClock::now() - total_start).count();
     };
 
-  // A1 障碍约束（安全置零绝对优先）：首个障碍点及其后全部置零，
-  // 障碍前 obstacle_zero_buffer_ 缓冲带置零（index 0 为机器人当前位置，不动）。
+  // A1 障碍约束：所有控制器共享同一套硬障碍和净空区语义；只有不能自行局部绕障
+  // 的控制器才把净空区及其前方零速缓冲转换成速度上界 0。
   if (path.empty()) {
     finish_timing();
     return outcome;  // 空路径：可评估，无障碍
@@ -109,11 +109,10 @@ ObstacleConstraintOutcome SpeedPlannerBase::produceObstacleConstraint(
 
   const auto scan_start = TimingClock::now();
   const std::vector<double> arc_s = computeCumulativeArcLengths(path);
-  // 全路径扫描并用 region_type 标记障碍语义（透传到 RobotTrajectory，供消费方与
-  // 剖面日志评判使用；M11 真语义接入后此处改为叠加标记而非独占）：
-  //   obstacle        — path 点真正落在障碍格内（触发停障）
-  //   obstacle_exempt — 起点豁免区内的障碍命中（仅标记不置零：贴墙停放防起步死锁）
-  //   obstacle_buffer — 首个障碍前的缓冲带（置零）
+  // 全路径扫描并用 region_type 标记障碍语义（透传到 RobotTrajectory）：
+  //   obstacle            — footprint 真正命中硬障碍
+  //   obstacle_clearance  — 硬障碍前的额外几何净空区
+  //   obstacle_stop_buffer— 仅停障控制器使用的额外零速保持区
   size_t first_obstacle_index = path.size();
   for (size_t i = 0; i < path.size(); ++i) {
     double wx = path[i].pose.pose.position.x;
@@ -137,17 +136,8 @@ ObstacleConstraintOutcome SpeedPlannerBase::produceObstacleConstraint(
     if (point_status == PointObstacleStatus::FREE) {
       continue;
     }
-    if (arc_s[i] <= obstacle_start_exempt_distance_) {
-      outcome.constraint.region_type[i] = "obstacle_exempt";
-      continue;
-    }
     outcome.constraint.region_type[i] = "obstacle";
-    last_planning_diagnostics_.first_obstacle_index =
-    (first_obstacle_index == path.size()) ? -1 : static_cast<int>(first_obstacle_index);
-  last_planning_diagnostics_.first_obstacle_arc =
-    (first_obstacle_index == path.size() || first_obstacle_index >= arc_s.size()) ?
-    -1.0 : arc_s[first_obstacle_index];
-  if (first_obstacle_index == path.size()) {
+    if (first_obstacle_index == path.size()) {
       first_obstacle_index = i;
     }
   }
@@ -157,24 +147,53 @@ ObstacleConstraintOutcome SpeedPlannerBase::produceObstacleConstraint(
     finish_timing();
     return outcome;  // 查过了，确实没有障碍
   }
+
+  outcome.has_obstacle = true;
+  last_planning_diagnostics_.first_obstacle_index =
+    static_cast<int>(first_obstacle_index);
+  last_planning_diagnostics_.first_obstacle_arc = arc_s[first_obstacle_index];
+
   const auto apply_start = TimingClock::now();
-  for (size_t i = first_obstacle_index; i < path.size(); ++i) {
-    outcome.constraint.set(i, 0.0, ConstraintSource::kObstacle);
-  }
-  const double buffer_start = arc_s[first_obstacle_index] - obstacle_zero_buffer_;
+  const double clearance_start = std::max(
+    0.0, arc_s[first_obstacle_index] - obstacle_clearance_distance_);
+  const double stop_anchor = std::max(0.0, clearance_start - obstacle_zero_buffer_);
+
+  // 即使控制器自行绕障，也保留净空区语义供诊断和后续消费者使用，但不能把
+  // 速度上界压到零，否则MPPI会收到 vx_max=0 并失去采样绕行能力。
   for (size_t j = first_obstacle_index; j-- > 1; ) {
-    if (arc_s[j] <= buffer_start) {
+    if (arc_s[j] + 1e-9 < clearance_start) {
       break;
     }
-    outcome.constraint.set(j, 0.0, ConstraintSource::kObstacleBuffer);
     if (outcome.constraint.region_type[j].empty()) {
-      outcome.constraint.region_type[j] = "obstacle_buffer";   // 障碍点本身的标注优先
+      outcome.constraint.region_type[j] = "obstacle_clearance";
+    }
+  }
+
+  if (should_stop_for_path_obstacle) {
+    last_planning_diagnostics_.terminal_branch =
+      nav2_core::SpeedPlanningTerminalBranch::PATH_OBSTACLE_STOP;
+    last_planning_diagnostics_.terminal_anchor_s = stop_anchor;
+    last_planning_diagnostics_.terminal_distance_available = stop_anchor;
+    for (size_t i = first_obstacle_index; i < path.size(); ++i) {
+      outcome.constraint.set(i, 0.0, ConstraintSource::kObstacle);
+    }
+    for (size_t j = first_obstacle_index; j-- > 1; ) {
+      if (arc_s[j] + 1e-9 < stop_anchor) {
+        break;
+      }
+      const bool in_clearance = arc_s[j] + 1e-9 >= clearance_start;
+      outcome.constraint.set(
+        j, 0.0,
+        in_clearance ? ConstraintSource::kObstacleClearance :
+        ConstraintSource::kObstacleBuffer);
+      if (!in_clearance && outcome.constraint.region_type[j].empty()) {
+        outcome.constraint.region_type[j] = "obstacle_stop_buffer";
+      }
     }
   }
   last_obstacle_timing_.apply_ms = std::chrono::duration<double, std::milli>(
     TimingClock::now() - apply_start).count();
   finish_timing();
-  outcome.has_obstacle = true;
   return outcome;
 }
 

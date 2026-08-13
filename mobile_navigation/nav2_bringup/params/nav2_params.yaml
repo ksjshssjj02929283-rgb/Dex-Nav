@@ -159,9 +159,9 @@ controller_server:
       decel: -0.35
       end_speed: 0.03
       terminal_creep_distance: 0.1
-      obstacle_zero_buffer: 0.2
+      obstacle_zero_buffer: 0.2  # 需停障的控制器在净空区前额外保持零速的距离 [m]
+      obstacle_clearance_distance: 0.25  # footprint硬障碍点前保留的公共几何净空 [m]
       obstacle_cost_threshold: 254   # 254=LETHAL：path 点在障碍格内才停障（253 内切区会误伤贴障碍路径）
-      obstacle_start_exempt_distance: 0.25  # 起点豁免：贴墙停放时自身在内切区，无豁免整条剖面被置零
       # P0-3 障碍约束「无法评估」（TF 变换失败 / costmap 缺失）时的处置策略。
       # fail_closed（默认，生产）：本周期输出空轨迹 → ControllerServer 发零速。
       # fail_open：跳过障碍约束继续规划——即改动前的隐式行为，仅限仿真/明确灰度。
@@ -194,9 +194,9 @@ controller_server:
       decel: -0.35
       end_speed: 0.03
       terminal_creep_distance: 0.1
-      obstacle_zero_buffer: 0.2
+      obstacle_zero_buffer: 0.2  # 需停障的控制器在净空区前额外保持零速的距离 [m]
+      obstacle_clearance_distance: 0.25  # footprint硬障碍点前保留的公共几何净空 [m]
       obstacle_cost_threshold: 254   # 254=LETHAL：path 点在障碍格内才停障（253 内切区会误伤贴障碍路径）
-      obstacle_start_exempt_distance: 0.25  # 起点豁免：贴墙停放时自身在内切区，无豁免整条剖面被置零
       # P0-3 障碍约束「无法评估」（TF 变换失败 / costmap 缺失）时的处置策略。
       # fail_closed（默认，生产）：本周期输出空轨迹 → ControllerServer 发零速。
       # fail_open：跳过障碍约束继续规划——即改动前的隐式行为，仅限仿真/明确灰度。
@@ -237,9 +237,9 @@ controller_server:
       decel: -0.35
       end_speed: 0.03
       terminal_creep_distance: 0.1
-      obstacle_zero_buffer: 0.2
+      obstacle_zero_buffer: 0.2  # 需停障的控制器在净空区前额外保持零速的距离 [m]
+      obstacle_clearance_distance: 0.25  # footprint硬障碍点前保留的公共几何净空 [m]
       obstacle_cost_threshold: 254   # 254=LETHAL：path 点在障碍格内才停障（253 内切区会误伤贴障碍路径）
-      obstacle_start_exempt_distance: 0.25  # 起点豁免：贴墙停放时自身在内切区，无豁免整条剖面被置零
       # P0-3 障碍约束「无法评估」（TF 变换失败 / costmap 缺失）时的处置策略。
       # fail_closed（默认，生产）：本周期输出空轨迹 → ControllerServer 发零速。
       # fail_open：跳过障碍约束继续规划——即改动前的隐式行为，仅限仿真/明确灰度。
@@ -854,7 +854,6 @@ planner_server:
       # 热切换：ros2 param set /planner_server RouteGridPlanner.enable_route_costmap_avoidance true
       enable_route_costmap_avoidance: false
       obstacle_cost_threshold: 220.0
-      obstacle_start_exempt_distance: 0.25  # 起点豁免：贴墙停放时自身在内切区，无豁免整条剖面被置零
       obstacle_margin_before_m: 0.5
       obstacle_margin_after_m: 0.5
       bypass_max_replan_length_m: 10.0

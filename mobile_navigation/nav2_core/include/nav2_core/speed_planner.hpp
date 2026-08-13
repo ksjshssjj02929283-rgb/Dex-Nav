@@ -24,12 +24,22 @@ struct InitialMotionState
   geometry_msgs::msg::Twist velocity;
   double acceleration{0.0};
   bool acceleration_valid{false};
+  // 默认要求速度规划停障。只有实际运行的控制器明确声明具备局部绕障能力时，
+  // ControllerServer 才会关闭路径障碍零速约束。
+  bool should_stop_for_path_obstacle{true};
   // ControllerServer owns the goal lifecycle. Once terminal braking starts,
   // same-goal geometry updates must not let a receding-horizon planner coast
   // or accelerate again because the refreshed path happened to become longer.
   bool terminal_brake_latched{false};
   builtin_interfaces::msg::Time source_stamp;
   double source_age{0.0};
+};
+
+enum class SpeedPlanningTerminalBranch
+{
+  NONE,
+  PATH_OBSTACLE_STOP,
+  GOAL_TERMINAL
 };
 
 struct SpeedPlanningDiagnostics
@@ -50,12 +60,8 @@ struct SpeedPlanningDiagnostics
   /// 进入兜底路径时的**首因**（FeasibilityResult::Reason）。最终 reason 会被
   /// 兜底后的判定覆写，只有它能回答"当初为什么进兜底"。
   int terminal_entry_reason{0};
-  /// 求解器失败时的原始返回码与输入快照。区分"距离不够、拒绝无解问题"（正常）
-  /// 与"本该有解却失败"（求解器/非对称限值局限）——两者响应完全不同。
-  /// 走的是哪条终端分支：0=未进入、1=障碍分支、2=终端(end_speed)分支。
-  /// 关键：两条分支写同一组 terminal_* 诊断字段，此前无法区分
-  /// "available=0 是因为路径到头" 还是 "因为机器人脚下就是障碍"。
-  int terminal_branch{0};
+  /// 当前停车约束来源，用于区分路径障碍停车与目标末端制动。
+  SpeedPlanningTerminalBranch terminal_branch{SpeedPlanningTerminalBranch::NONE};
   /// A1 检测到的首个障碍点索引与其弧长（-1 = 无障碍）。
   int first_obstacle_index{-1};
   double first_obstacle_arc{-1.0};

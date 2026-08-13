@@ -45,6 +45,25 @@ using std::placeholders::_1;
 namespace nav2_controller
 {
 
+namespace
+{
+
+const char * speedPlanningTerminalBranchName(
+  nav2_core::SpeedPlanningTerminalBranch branch)
+{
+  switch (branch) {
+    case nav2_core::SpeedPlanningTerminalBranch::PATH_OBSTACLE_STOP:
+      return "obstacle";
+    case nav2_core::SpeedPlanningTerminalBranch::GOAL_TERMINAL:
+      return "terminal";
+    case nav2_core::SpeedPlanningTerminalBranch::NONE:
+    default:
+      return "none";
+  }
+}
+
+}  // namespace
+
 ControllerServer::ControllerServer(const rclcpp::NodeOptions & options)
 : nav2_util::LifecycleNode("controller_server", "", options),
   progress_checker_loader_("nav2_core", "nav2_core::ProgressChecker"),
@@ -767,6 +786,7 @@ bool ControllerServer::findGoalCheckerId(
 void ControllerServer::computeControl()
 {
   std::lock_guard<std::mutex> lock(dynamic_params_lock_);
+  is_progress_check_paused_for_obstacle_stop_ = false;
 
   RCLCPP_INFO(get_logger(), "Received a goal, begin computing control effort.");
   if (odom_sub_) {
@@ -989,6 +1009,7 @@ void ControllerServer::commitPlannerPathState(
     goal_checkers_[current_goal_checker_]->reset();
     controller_phase_ = ControllerPhase::TRACK;
     terminal_brake_latched_ = false;
+    is_progress_check_paused_for_obstacle_stop_ = false;
   } else {
     RCLCPP_INFO(
       get_logger(),
@@ -1049,10 +1070,12 @@ bool ControllerServer::computeLocalPath(
 
 nav2_core::InitialMotionState ControllerServer::buildInitialMotionState(
   const nav_msgs::msg::Path & path,
-  const geometry_msgs::msg::Twist & measured_velocity)
+  const geometry_msgs::msg::Twist & measured_velocity,
+  bool should_stop_for_path_obstacle)
 {
   auto decision = initial_motion_arbiter_.resolve(path, measured_velocity, now());
   decision.state.terminal_brake_latched = terminal_brake_latched_;
+  decision.state.should_stop_for_path_obstacle = should_stop_for_path_obstacle;
   if (speed_plan_cycle_.active) {
     speed_plan_cycle_.initial_motion = decision.state;
     speed_plan_cycle_.initial_motion_valid = true;
@@ -1068,10 +1091,34 @@ nav2_core::InitialMotionState ControllerServer::buildInitialMotionState(
   return decision.state;
 }
 
+bool ControllerServer::activeControllerCanAvoidPathObstacles(
+  const geometry_msgs::msg::PoseStamped & pose)
+{
+  std::string controller_id = current_controller_;
+  if (staged_control_enabled_) {
+    const double distance_to_goal = getDistanceToGoal(pose);
+    controller_id = distance_to_goal <= approach_distance_ ?
+      approach_controller_ : track_controller_;
+  }
+  const auto controller = controllers_.find(controller_id);
+  if (controller == controllers_.end()) {
+    return false;
+  }
+  const auto * capability = dynamic_cast<const nav2_core::PathObstacleAvoidanceCapability *>(
+    controller->second.get());
+  return capability != nullptr && capability->canAvoidPathObstacles();
+}
+
 void ControllerServer::updateTerminalBrakeLatch(
   const nav2_core::SpeedPlanningDiagnostics & diagnostics,
   bool longitudinal_continuity_valid)
 {
+  // 障碍约束随costmap实时变化，不能污染同目标生命周期的末端制动锁存。
+  if (diagnostics.terminal_branch ==
+    nav2_core::SpeedPlanningTerminalBranch::PATH_OBSTACLE_STOP)
+  {
+    return;
+  }
   if (terminal_brake_latched_ || !diagnostics.terminal_brake_required) {
     return;
   }
@@ -1218,33 +1265,30 @@ bool ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
   current_velocity.linear.y = odom_twist.y;
   current_velocity.angular.z = odom_twist.theta;
 
+  geometry_msgs::msg::PoseStamped planning_pose;
+  const std::string planning_frame = path.header.frame_id.empty() ?
+    path.poses.front().header.frame_id : path.header.frame_id;
+  const auto pose_start = PipelineClock::now();
+  const bool pose_available = !planning_frame.empty() && nav2_util::getCurrentPose(
+    planning_pose, *costmap_ros_->getTfBuffer(), planning_frame,
+    costmap_ros_->getBaseFrameID(), costmap_ros_->getTransformTolerance());
+  pose_ms = elapsed_ms(pose_start, PipelineClock::now());
+  if (!pose_available) {
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), *get_clock(), 1000,
+      "Cannot get robot pose in path frame '%s' for planning; halting this control cycle.",
+      planning_frame.c_str());
+    speed_plan_cycle_.planning_result = "pose_lookup_failed";
+    publishSpeedPlanDiagnostics(
+      false, false, std::numeric_limits<double>::quiet_NaN(),
+      std::numeric_limits<double>::quiet_NaN(), "not_run");
+    log_pipeline_timing("pose_lookup_failed");
+    return false;
+  }
+
   if (!current_local_planner_.empty()) {
-    geometry_msgs::msg::PoseStamped pose;
-    const auto pose_start = PipelineClock::now();
-    const std::string planning_frame = path.header.frame_id.empty() ?
-      path.poses.front().header.frame_id : path.header.frame_id;
-    const bool pose_available = !planning_frame.empty() && nav2_util::getCurrentPose(
-      pose, *costmap_ros_->getTfBuffer(), planning_frame,
-      costmap_ros_->getBaseFrameID(), costmap_ros_->getTransformTolerance());
-    if (!pose_available) {
-      pose_ms = elapsed_ms(pose_start, PipelineClock::now());
-      RCLCPP_WARN_THROTTLE(
-        get_logger(), *get_clock(), 1000,
-        "Cannot get robot pose in path frame '%s' for local planning; "
-        "halting this control cycle.", planning_frame.c_str());
-      const auto visualization_start = PipelineClock::now();
-      publishSpeedPlan(current_trajectory_);
-      visualization_ms = elapsed_ms(visualization_start, PipelineClock::now());
-      speed_plan_cycle_.planning_result = "pose_lookup_failed";
-      publishSpeedPlanDiagnostics(
-        false, false, std::numeric_limits<double>::quiet_NaN(),
-        std::numeric_limits<double>::quiet_NaN(), "not_run");
-      log_pipeline_timing("pose_lookup_failed");
-      return false;
-    }
-    pose_ms = elapsed_ms(pose_start, PipelineClock::now());
     const auto local_planner_start = PipelineClock::now();
-    if (!computeLocalPath(path, pose, current_velocity, planning_path)) {
+    if (!computeLocalPath(path, planning_pose, current_velocity, planning_path)) {
       local_planner_ms = elapsed_ms(local_planner_start, PipelineClock::now());
       const auto visualization_start = PipelineClock::now();
       publishSpeedPlan(current_trajectory_);
@@ -1272,7 +1316,10 @@ bool ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
   sp->second->setPlan(planning_path);
   speed_set_plan_ms = elapsed_ms(speed_set_plan_start, PipelineClock::now());
   const auto speed_compute_start = PipelineClock::now();
-  const auto initial_motion = buildInitialMotionState(planning_path, current_velocity);
+  const bool should_stop_for_path_obstacle =
+    !activeControllerCanAvoidPathObstacles(planning_pose);
+  const auto initial_motion = buildInitialMotionState(
+    planning_path, current_velocity, should_stop_for_path_obstacle);
   current_trajectory_ = sp->second->computeSpeedPlan(planning_path, initial_motion);
   const auto planning_diagnostics = sp->second->getLastPlanningDiagnostics();
   speed_plan_cycle_.terminal = planning_diagnostics;
@@ -1312,7 +1359,7 @@ bool ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
       initial_motion.terminal_brake_latched ? 1 : 0,
       nav2_util::geometry_utils::calculate_path_length(planning_path),
       planning_path.poses.size(),
-      d.terminal_branch == 1 ? "obstacle" : (d.terminal_branch == 2 ? "terminal" : "none"),
+      speedPlanningTerminalBranchName(d.terminal_branch),
       d.first_obstacle_index, d.first_obstacle_arc,
       d.solver_code, d.solver_v0, d.solver_a0, d.solver_vmax,
       d.solver_target_v, d.solver_distance);
@@ -1466,15 +1513,18 @@ void ControllerServer::publishSpeedPlan(const nav_interfaces::msg::RobotTrajecto
   {
     struct Anchor {size_t idx; const char * label; float r, g, b;};
     std::vector<Anchor> anchors;
-    long first_obs = -1, last_obs = -1, first_buf = -1;
+    long first_obs = -1, last_obs = -1;
+    long first_clearance = -1, first_stop_buffer = -1;
     long first_curve = -1, last_curve = -1, first_creep = -1;
     for (size_t i = 0; i < trajectory.points.size(); ++i) {
       const auto & rt = trajectory.points[i].region_type;
       if (rt == "obstacle") {
         if (first_obs < 0) {first_obs = static_cast<long>(i);}
         last_obs = static_cast<long>(i);
-      } else if (rt == "obstacle_buffer") {
-        if (first_buf < 0) {first_buf = static_cast<long>(i);}
+      } else if (rt == "obstacle_clearance") {
+        if (first_clearance < 0) {first_clearance = static_cast<long>(i);}
+      } else if (rt == "obstacle_stop_buffer") {
+        if (first_stop_buffer < 0) {first_stop_buffer = static_cast<long>(i);}
       } else if (rt == "curve") {
         if (first_curve < 0) {first_curve = static_cast<long>(i);}
         last_curve = static_cast<long>(i);
@@ -1482,8 +1532,13 @@ void ControllerServer::publishSpeedPlan(const nav_interfaces::msg::RobotTrajecto
         if (first_creep < 0) {first_creep = static_cast<long>(i);}
       }
     }
-    if (first_buf >= 0) {
-      anchors.push_back({static_cast<size_t>(first_buf), "obs_stop", 1.0f, 0.5f, 0.0f});
+    if (first_stop_buffer >= 0) {
+      anchors.push_back(
+        {static_cast<size_t>(first_stop_buffer), "obs_stop", 1.0f, 0.5f, 0.0f});
+    }
+    if (first_clearance >= 0) {
+      anchors.push_back(
+        {static_cast<size_t>(first_clearance), "obs_clearance", 0.6f, 1.0f, 0.2f});
     }
     if (first_obs >= 0) {
       anchors.push_back({static_cast<size_t>(first_obs), "obs_start", 1.0f, 0.0f, 0.0f});
@@ -1577,7 +1632,9 @@ void ControllerServer::publishSpeedPlanDiagnostics(
   } else if (!control_succeeded) {
     status.message = control_result;
   } else if (cycle.terminal_valid && cycle.terminal.terminal_infeasible) {
-    status.message = "terminal_infeasible";
+    status.message = cycle.terminal.terminal_branch ==
+      nav2_core::SpeedPlanningTerminalBranch::PATH_OBSTACLE_STOP ?
+      "obstacle_braking_infeasible" : "terminal_infeasible";
   } else {
     status.message = "ok";
   }
@@ -1606,6 +1663,9 @@ void ControllerServer::publishSpeedPlanDiagnostics(
     add_value(
       "boundary_acceleration_valid",
       cycle.initial_motion.acceleration_valid ? "true" : "false");
+    add_value(
+      "boundary_should_stop_for_path_obstacle",
+      cycle.initial_motion.should_stop_for_path_obstacle ? "true" : "false");
     add_value("boundary_source_age", std::to_string(cycle.initial_motion.source_age));
     add_value(
       "boundary_source_stamp_sec", std::to_string(cycle.initial_motion.source_stamp.sec));
@@ -1620,7 +1680,17 @@ void ControllerServer::publishSpeedPlanDiagnostics(
     "terminal_brake_required",
     cycle.terminal_valid && cycle.terminal.terminal_brake_required ? "true" : "false");
   add_value("terminal_brake_latched", terminal_brake_latched_ ? "true" : "false");
+  add_value(
+    "progress_check_paused_for_obstacle_stop",
+    is_progress_check_paused_for_obstacle_stop_ ? "true" : "false");
   if (cycle.terminal_valid) {
+    add_value(
+      "terminal_branch", speedPlanningTerminalBranchName(cycle.terminal.terminal_branch));
+    add_value(
+      "first_obstacle_index", std::to_string(cycle.terminal.first_obstacle_index));
+    add_value(
+      "first_obstacle_arc", std::to_string(cycle.terminal.first_obstacle_arc));
+    add_value("terminal_anchor_s", std::to_string(cycle.terminal.terminal_anchor_s));
     add_value(
       "terminal_execution_reserve",
       std::to_string(cycle.terminal.terminal_execution_reserve));
@@ -2026,6 +2096,7 @@ void ControllerServer::resetStagedControlState()
   prepare_check_pending_ = true;
   align_done_ = false;
   terminal_brake_latched_ = false;
+  is_progress_check_paused_for_obstacle_stop_ = false;
   invalidateSpeedPlanningContinuity();
 }
 
@@ -2117,7 +2188,8 @@ geometry_msgs::msg::TwistStamped ControllerServer::computeStagedVelocity(
 }
 
 bool ControllerServer::nearestPlannedSpeed(
-  const geometry_msgs::msg::PoseStamped & pose, double & desired_v)
+  const geometry_msgs::msg::PoseStamped & pose, double & desired_v,
+  size_t * nearest_index)
 {
   const auto & pts = current_trajectory_.points;
   if (pts.empty()) {
@@ -2151,7 +2223,65 @@ bool ControllerServer::nearestPlannedSpeed(
     }
   }
   desired_v = pts[best_i].longitudinal_velocity;
+  if (nearest_index != nullptr) {
+    *nearest_index = best_i;
+  }
   return true;
+}
+
+bool ControllerServer::shouldPauseProgressCheckForObstacleStop(
+  const geometry_msgs::msg::PoseStamped & pose)
+{
+  constexpr double kPlannedStopVelocityEpsilon = 1e-3;
+  if (!speed_plan_cycle_.active || !speed_plan_cycle_.planning_succeeded ||
+    !speed_plan_cycle_.terminal_valid ||
+    speed_plan_cycle_.terminal.terminal_branch !=
+    nav2_core::SpeedPlanningTerminalBranch::PATH_OBSTACLE_STOP ||
+    speed_plan_cycle_.terminal.terminal_infeasible)
+  {
+    return false;
+  }
+
+  // 首点是当前实测状态，静止起步时也可能为零。只有当前位置之后整条轨迹
+  // 都保持零速，才说明这是“已完成计划停障”，而不是准备重新起步。
+  double planned_speed = 0.0;
+  size_t nearest_index = 0;
+  if (!nearestPlannedSpeed(pose, planned_speed, &nearest_index) ||
+    !std::isfinite(planned_speed))
+  {
+    return false;
+  }
+  for (size_t index = nearest_index; index < current_trajectory_.points.size(); ++index) {
+    const double speed = current_trajectory_.points[index].longitudinal_velocity;
+    if (!std::isfinite(speed) || std::fabs(speed) > kPlannedStopVelocityEpsilon) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool ControllerServer::checkProgress(geometry_msgs::msg::PoseStamped & pose)
+{
+  if (shouldPauseProgressCheckForObstacleStop(pose)) {
+    if (!is_progress_check_paused_for_obstacle_stop_) {
+      // 进入时清除旧基线，防止障碍解除后继承停障前已累计的超时时间。
+      progress_checker_->reset();
+      is_progress_check_paused_for_obstacle_stop_ = true;
+      RCLCPP_INFO(
+        get_logger(),
+        "速度规划已完成障碍前停车，暂停ProgressChecker：障碍弧长=%.3f m，"
+        "等待障碍解除或路径绕行。",
+        speed_plan_cycle_.terminal.first_obstacle_arc);
+    }
+    return true;
+  }
+
+  if (is_progress_check_paused_for_obstacle_stop_) {
+    progress_checker_->reset();
+    is_progress_check_paused_for_obstacle_stop_ = false;
+    RCLCPP_INFO(get_logger(), "停障条件解除，ProgressChecker重新建立进展基线。");
+  }
+  return progress_checker_->check(pose);
 }
 
 void ControllerServer::computeAndPublishVelocity()
@@ -2175,7 +2305,7 @@ void ControllerServer::computeAndPublishVelocity()
   auto pose_ms = std::chrono::duration<double, std::milli>(t_pose_end - t_pose_start).count();
 
   auto t_progress_start = std::chrono::high_resolution_clock::now();
-  if (!progress_checker_->check(pose)) {
+  if (!checkProgress(pose)) {
     publish_control_failure("progress_failed");
     throw nav2_core::PlannerException(
             "Failed to make progress. 进度检查失败，机器人在规定时间内没有有效前进，可能被障碍、空路径或控制失败卡住。");

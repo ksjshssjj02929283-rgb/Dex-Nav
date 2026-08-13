@@ -63,8 +63,8 @@ def load_csv_full(path):
 
 
 REGION_COLORS = {
-    "obstacle": "#ef9a9a", "obstacle_buffer": "#ffcc80",
-    "obstacle_exempt": "#c5e1a5", "curve": "#b39ddb", "stop_zone": "#90caf9",
+    "obstacle": "#ef9a9a", "obstacle_clearance": "#c5e1a5",
+    "obstacle_stop_buffer": "#ffcc80", "curve": "#b39ddb", "stop_zone": "#90caf9",
 }
 
 

@@ -83,9 +83,9 @@ void SpeedPlannerBase::configure(
   nav2_util::declare_parameter_if_not_declared(
     node, plugin_name_ + ".obstacle_zero_buffer", rclcpp::ParameterValue(0.2));
   nav2_util::declare_parameter_if_not_declared(
-    node, plugin_name_ + ".obstacle_cost_threshold", rclcpp::ParameterValue(254));
+    node, plugin_name_ + ".obstacle_clearance_distance", rclcpp::ParameterValue(0.25));
   nav2_util::declare_parameter_if_not_declared(
-    node, plugin_name_ + ".obstacle_start_exempt_distance", rclcpp::ParameterValue(0.25));
+    node, plugin_name_ + ".obstacle_cost_threshold", rclcpp::ParameterValue(254));
   nav2_util::declare_parameter_if_not_declared(
     node, plugin_name_ + ".obstacle_unavailable_policy", rclcpp::ParameterValue(
       std::string("fail_closed")));
@@ -113,11 +113,12 @@ void SpeedPlannerBase::configure(
   end_speed_ = std::max(end_speed_, 0.0);
   node->get_parameter(plugin_name_ + ".terminal_creep_distance", terminal_creep_distance_);
   node->get_parameter(plugin_name_ + ".obstacle_zero_buffer", obstacle_zero_buffer_);
+  obstacle_zero_buffer_ = std::max(obstacle_zero_buffer_, 0.0);
+  node->get_parameter(
+    plugin_name_ + ".obstacle_clearance_distance", obstacle_clearance_distance_);
+  obstacle_clearance_distance_ = std::max(obstacle_clearance_distance_, 0.0);
   node->get_parameter(plugin_name_ + ".obstacle_cost_threshold", obstacle_cost_threshold_);
   obstacle_cost_threshold_ = std::clamp(obstacle_cost_threshold_, 1, 254);
-  node->get_parameter(
-    plugin_name_ + ".obstacle_start_exempt_distance", obstacle_start_exempt_distance_);
-  obstacle_start_exempt_distance_ = std::max(obstacle_start_exempt_distance_, 0.0);
   std::string obstacle_unavailable_policy = "fail_closed";
   node->get_parameter(plugin_name_ + ".obstacle_unavailable_policy", obstacle_unavailable_policy);
   if (obstacle_unavailable_policy == "fail_open") {
@@ -345,7 +346,7 @@ nav_interfaces::msg::RobotTrajectory SpeedPlannerBase::computeSpeedPlan(
   // ====== Phase A 约束包络（逐点 min 叠加，安全置零绝对优先）======
   const auto obstacle_start = TimingClock::now();
   const ObstacleConstraintOutcome obstacle_outcome =
-    produceObstacleConstraint(work);  // A1 障碍 + 缓冲带置零
+    produceObstacleConstraint(work, boundary.should_stop_for_path_obstacle);
   applyConstraint(work, obstacle_outcome.constraint);
   obstacle_ms = std::chrono::duration<double, std::milli>(
     TimingClock::now() - obstacle_start).count();
@@ -409,7 +410,9 @@ nav_interfaces::msg::RobotTrajectory SpeedPlannerBase::computeSpeedPlan(
   // 这正是此前"为什么这段速度是这个值"只能靠通读全部约束反推的原因。
   {
     size_t unattributed = 0;
-    std::array<size_t, 9> by_source{};
+    constexpr size_t kConstraintSourceCount =
+      static_cast<size_t>(ConstraintSource::kCount);
+    std::array<size_t, kConstraintSourceCount> by_source{};
     for (const auto & p : work) {
       if (p.velocity_upper_bound < max_speed_ - 1e-9) {
         const auto idx = static_cast<size_t>(p.constraint_source);
@@ -431,10 +434,19 @@ nav_interfaces::msg::RobotTrajectory SpeedPlannerBase::computeSpeedPlan(
     RCLCPP_DEBUG(
       logger_,
       "[%s] envelope composition: max_speed=%zu hint=%zu external=%zu "
-      "obstacle=%zu buffer=%zu lateral_accel=%zu creep=%zu end_boundary=%zu "
+      "obstacle=%zu clearance=%zu buffer=%zu lateral_accel=%zu creep=%zu "
+      "end_boundary=%zu "
       "unattributed=%zu",
-      plugin_name_.c_str(), by_source[1], by_source[2], by_source[3],
-      by_source[4], by_source[5], by_source[6], by_source[7], by_source[8],
+      plugin_name_.c_str(),
+      by_source[static_cast<size_t>(ConstraintSource::kMaxSpeed)],
+      by_source[static_cast<size_t>(ConstraintSource::kSpeedHint)],
+      by_source[static_cast<size_t>(ConstraintSource::kExternalLimit)],
+      by_source[static_cast<size_t>(ConstraintSource::kObstacle)],
+      by_source[static_cast<size_t>(ConstraintSource::kObstacleClearance)],
+      by_source[static_cast<size_t>(ConstraintSource::kObstacleBuffer)],
+      by_source[static_cast<size_t>(ConstraintSource::kLateralAccel)],
+      by_source[static_cast<size_t>(ConstraintSource::kTerminalCreep)],
+      by_source[static_cast<size_t>(ConstraintSource::kEndBoundary)],
       unattributed);
   }
 

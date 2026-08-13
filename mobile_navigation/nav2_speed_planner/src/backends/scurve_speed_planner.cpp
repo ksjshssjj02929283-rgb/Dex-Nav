@@ -1052,7 +1052,8 @@ void SCurveSpeedPlanner::generateProfile(
     const double execution_reserve = computeTerminalExecutionReserve(
       curr_vel, curr_accel, terminal_execution_delay_, terminal_safety_margin_);
 
-    last_planning_diagnostics_.terminal_branch = 1;   // 障碍分支
+    last_planning_diagnostics_.terminal_branch =
+      nav2_core::SpeedPlanningTerminalBranch::PATH_OBSTACLE_STOP;
     last_planning_diagnostics_.terminal_execution_reserve = execution_reserve;
     last_planning_diagnostics_.terminal_braking_distance = braking_distance;
     last_planning_diagnostics_.terminal_distance_available = obstacle_boundary_s;
@@ -1060,8 +1061,9 @@ void SCurveSpeedPlanner::generateProfile(
       !std::isfinite(braking_distance) ||
       obstacle_boundary_s <= braking_distance + execution_reserve + 1e-6;
 
+    const double anchor_s = std::max(0.0, obstacle_boundary_s - execution_reserve);
+    last_planning_diagnostics_.terminal_anchor_s = anchor_s;
     if (execution_reserve > 1e-9) {
-      const double anchor_s = std::max(0.0, obstacle_boundary_s - execution_reserve);
       applyTerminalSpeedEnvelope(work, anchor_s, 0.0);
     }
   } else if (end_speed_ >= 1e-3 && terminal_creep_distance_ > 0.0) {
@@ -1076,7 +1078,8 @@ void SCurveSpeedPlanner::generateProfile(
     const double execution_reserve = computeTerminalExecutionReserve(
       curr_vel, curr_accel, terminal_execution_delay_, terminal_safety_margin_);
 
-    last_planning_diagnostics_.terminal_branch = 2;   // 终端(end_speed)分支
+    last_planning_diagnostics_.terminal_branch =
+      nav2_core::SpeedPlanningTerminalBranch::GOAL_TERMINAL;
     last_planning_diagnostics_.terminal_execution_reserve = execution_reserve;
     last_planning_diagnostics_.terminal_braking_distance = braking_distance;
     last_planning_diagnostics_.terminal_distance_available = terminal_boundary_s;

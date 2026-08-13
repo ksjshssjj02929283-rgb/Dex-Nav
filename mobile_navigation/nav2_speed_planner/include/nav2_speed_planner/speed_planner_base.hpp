@@ -106,10 +106,11 @@ protected:
   // Phase A 约束包络（共享，逐点 min 叠加；安全置零绝对优先，任何后续写入不得抬升）
   // ============================================================
 
-  /// A1 障碍约束：首个障碍点及其后全部置零，障碍前 obstacle_zero_buffer_ 缓冲带置零
-  /// （index 0 为机器人当前位置，不动）。
+  /// A1 障碍约束：始终检测并标记硬障碍及其净空区；控制器需要路径停障时，
+  /// 再从净空区前 obstacle_zero_buffer_ 开始置零。
   /// @return 见 ObstacleConstraintOutcome——**"没有障碍"与"没法查"是两件事**
-  ObstacleConstraintOutcome produceObstacleConstraint(const std::vector<TrajPointWork> & path);
+  ObstacleConstraintOutcome produceObstacleConstraint(
+    const std::vector<TrajPointWork> & path, bool should_stop_for_path_obstacle);
 
   /// A2 理想巡航上界（纯查询）：非零速点限速的最小值，clamp 到 [min_speed_, max_speed_]；
   /// 全部点被安全置零时返回 0。
@@ -257,14 +258,13 @@ protected:
   double end_speed_{0.03};
   double terminal_creep_distance_{0.2};
   double obstacle_zero_buffer_{0.2};
+  // 首个硬障碍 footprint 碰撞点之前保留的额外净空距离 [m]。
+  // 它是控制器无关的几何语义，不等同于固定制动距离。
+  double obstacle_clearance_distance_{0.25};
   // 障碍判定 cost 阈值（cost >= 即视为障碍；NO_INFORMATION 恒不算）。
   // 默认 254=LETHAL：只有 path 点真正落在障碍格内才触发停障——
   // 253 内切区是"机器人中心到此会碰撞"的膨胀带，会把贴障碍的合法路径误判停障。
   int obstacle_cost_threshold_{254};
-  // 起点豁免距离：距起点该弧长内的障碍点不触发置零——机器人贴墙停放时自身位置
-  // 在障碍内切区（cost>=253），无豁免会把整条剖面置零形成起步死锁；
-  // 近身避障由 prepare/控制器障碍代价负责，速度规划只管起步不被自己锁死。
-  double obstacle_start_exempt_distance_{0.25};
   // 障碍约束**无法评估**（TF 变换失败 / costmap 缺失）时的处置策略（调研 P0-3）。
   // 生产默认 FAIL_CLOSED：本周期输出空轨迹 → ControllerServer 发零速。
   // ⚠️ 不含"路径点出图"——那是 OUT_OF_RANGE，属正常情况，见 PointObstacleStatus。
