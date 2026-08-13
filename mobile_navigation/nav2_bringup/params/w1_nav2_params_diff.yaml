@@ -114,7 +114,7 @@ controller_server:
       accel: 0.5
       decel: -0.4
       end_speed: 0.05
-      terminal_creep_distance: 0.075
+      terminal_creep_distance: 0.05
       obstacle_zero_buffer: 0.2
       obstacle_cost_threshold: 254   # 254=LETHAL：path 点在障碍格内才停障（253 内切区会误伤贴障碍路径）
       obstacle_start_exempt_distance: 0.25  # 起点豁免：贴墙停放时自身在内切区，无豁免整条剖面被置零
@@ -149,7 +149,7 @@ controller_server:
       accel: 0.5
       decel: -0.4
       end_speed: 0.05
-      terminal_creep_distance: 0.075
+      terminal_creep_distance: 0.05
       obstacle_zero_buffer: 0.2
       obstacle_cost_threshold: 254   # 254=LETHAL：path 点在障碍格内才停障（253 内切区会误伤贴障碍路径）
       obstacle_start_exempt_distance: 0.25  # 起点豁免：贴墙停放时自身在内切区，无豁免整条剖面被置零
@@ -201,7 +201,7 @@ controller_server:
       accel: 0.5
       decel: -0.4
       end_speed: 0.05
-      terminal_creep_distance: 0.075
+      terminal_creep_distance: 0.05
       obstacle_zero_buffer: 0.2
       obstacle_cost_threshold: 254   # 254=LETHAL：path 点在障碍格内才停障（253 内切区会误伤贴障碍路径）
       obstacle_start_exempt_distance: 0.25  # 起点豁免：贴墙停放时自身在内切区，无豁免整条剖面被置零

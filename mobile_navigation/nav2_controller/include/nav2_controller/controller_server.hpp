@@ -306,42 +306,6 @@ protected:
    */
   std::string getGoalCheckerType(const std::string & goal_checker_id) const;
   /**
-   * @brief Reset the near-goal progress checker baseline
-   */
-  void resetNearGoalProgress();
-  /**
-   * @brief Check if the robot is close enough to use relaxed near-goal progress rules
-   * @param pose Current robot pose
-   * @return true if the robot is within the near-goal progress distance
-   */
-  bool isNearGoal(const geometry_msgs::msg::PoseStamped & pose);
-  /**
-   * @brief Check relaxed progress while close to the goal
-   * @param pose Current robot pose
-   * @return true if progress is acceptable
-   */
-  bool checkNearGoalProgress(const geometry_msgs::msg::PoseStamped & pose);
-  /**
-   * @brief Reset the near-goal lateral-error stagnation checker
-   */
-  void resetNearGoalLateralStall();
-  /**
-   * @brief 按当前 goal_checker 的接受容差判断近目标误差
-   * @param pose 当前机器人位姿
-   * @param mark_goal_reached_on_success 满足时是否标记为兜底到位成功
-   * @param check_yaw 是否同时检查角度容差；预检查位置窗口时可只看位置
-   * @return true 表示当前误差已满足接受容差
-   */
-  bool isWithinGoalCheckerTolerance(
-    const geometry_msgs::msg::PoseStamped & pose,
-    bool mark_goal_reached_on_success,
-    bool check_yaw = true);
-  /**
-   * @brief Check the current odometry against the active goal checker's stop tolerances
-   * @return true if translational and rotational velocities are both stopped
-   */
-  bool isRobotStoppedForGoalChecker();
-  /**
    * @brief 判断新 path 是否仍指向当前目标点
    * @param path 待更新的全局路径
    * @return true 表示新 path 终点与当前目标点基本一致
@@ -411,6 +375,9 @@ protected:
 
   // Dynamic parameters handler
   rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr dyn_params_handler_;
+  /// 本周期 current_trajectory_ 已分发给哪个 controller（空 = 尚未分发）。
+  /// 每周期由 runPlanningPipeline 清空，由 computeControllerVelocity 按需填充。
+  std::string trajectory_dispatched_to_;
   std::mutex dynamic_params_lock_;
 
   // The controller needs a costmap node
@@ -522,43 +489,6 @@ protected:
 
   double failure_tolerance_;
 
-  bool near_goal_progress_enabled_{true};
-  bool near_goal_hold_position_when_pose_reached_{false};
-  bool near_goal_pose_hold_active_{false};
-  // near-goal hold 进入门控：位姿满足容差且底盘实际速度已足够低时才允许 ControllerServer 接管，
-  // 避免在底盘仍有较大惯性时抢占 MPPI 的动态减速过程
-  double near_goal_hold_enter_vx_{0.01};
-  double near_goal_hold_enter_wz_{0.03};
-  // near-goal hold 释放迟滞：停稳后误差需超过更宽松的阈值才允许释放，避免边界抖动反复抢占
-  double near_goal_hold_release_lon_tolerance_{0.04};
-  double near_goal_hold_release_lat_tolerance_{0.04};
-  double near_goal_hold_release_yaw_tolerance_{0.04};
-  // hold 释放宽限计数：误差持续超出 accept 容差但未超 release 容差时，累计若干周期后释放，
-  // 避免在 0.03~0.04 区间永久卡死（GoalChecker 不成功且 hold 不释放）
-  size_t near_goal_hold_outside_accept_count_{0};
-  size_t near_goal_hold_outside_accept_cycles_{3};
-  double near_goal_progress_distance_{0.25};
-  double near_goal_progress_required_movement_radius_{0.01};
-  double near_goal_progress_required_movement_angle_{0.005};
-  rclcpp::Duration near_goal_progress_time_allowance_{
-    rclcpp::Duration::from_seconds(8.0)};
-  bool near_goal_lateral_stall_enabled_{false};
-  double near_goal_lateral_stall_lon_tolerance_{0.02};
-  double near_goal_lateral_stall_yaw_tolerance_{0.05};
-  double near_goal_lateral_stall_lat_tolerance_{0.02};
-  double near_goal_lateral_stall_min_improvement_{0.005};
-  rclcpp::Duration near_goal_lateral_stall_time_allowance_{
-    rclcpp::Duration::from_seconds(3.0)};
-  int near_goal_lateral_stall_entry_count_{0};
-  bool near_goal_lateral_stall_monitoring_{false};
-  double near_goal_lateral_stall_baseline_error_{0.0};
-  double near_goal_lateral_stall_best_error_{0.0};
-  rclcpp::Time near_goal_lateral_stall_start_time_;
-  bool near_goal_baseline_pose_set_{false};
-  bool in_near_goal_progress_mode_{false};
-  bool near_goal_progress_acceptance_reached_{false};
-  geometry_msgs::msg::PoseStamped near_goal_baseline_pose_;
-  rclcpp::Time near_goal_baseline_time_;
 
   bool staged_control_enabled_{true};
   ControllerPhase controller_phase_{ControllerPhase::TRACK};
