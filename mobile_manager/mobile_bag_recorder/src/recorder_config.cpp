@@ -2,6 +2,9 @@
 
 #include "mobile_bag_recorder/recorder_config.hpp"
 
+#include "rosbag2_cpp/writer.hpp"
+#include "rosbag2_storage/storage_options.hpp"
+
 #include <algorithm>
 #include <cstdlib>
 #include <filesystem>
@@ -43,6 +46,41 @@ ContinuousMode RecorderConfig::parseMode(const std::string & text, const rclcpp:
   return ContinuousMode::kRolling;
 }
 
+std::unordered_map<std::string, int64_t> RecorderConfig::parseThrottleRules(
+  const std::vector<std::string> & rules, const rclcpp::Logger & logger)
+{
+  std::unordered_map<std::string, int64_t> intervals;
+  for (const auto & rule : rules) {
+    // 话题名里没有冒号，取最后一个冒号分隔，话题名本身怎么写都不会被截断
+    const auto sep = rule.rfind(':');
+    if (sep == std::string::npos || sep == 0 || sep + 1 == rule.size()) {
+      RCLCPP_WARN(
+        logger, "Ignoring malformed throttle rule \"%s\", expected \"<topic>:<max_hz>\"",
+        rule.c_str());
+      continue;
+    }
+    const std::string topic = rule.substr(0, sep);
+    double hz = 0.0;
+    try {
+      hz = std::stod(rule.substr(sep + 1));
+    } catch (const std::exception &) {
+      RCLCPP_WARN(
+        logger, "Ignoring throttle rule \"%s\": \"%s\" is not a number",
+        rule.c_str(), rule.substr(sep + 1).c_str());
+      continue;
+    }
+    if (hz <= 0.0) {
+      // 0 会被理解成"完全不录"，但那应该靠从 topics 清单里删掉来表达，别在这里悄悄实现
+      RCLCPP_WARN(
+        logger, "Ignoring throttle rule \"%s\": rate must be > 0 "
+        "(remove the topic from the list instead of throttling it to 0)", rule.c_str());
+      continue;
+    }
+    intervals[topic] = static_cast<int64_t>(1e9 / hz);
+  }
+  return intervals;
+}
+
 RecorderConfig RecorderConfig::declareAndLoad(rclcpp::Node * node)
 {
   RecorderConfig cfg;
@@ -53,6 +91,8 @@ RecorderConfig RecorderConfig::declareAndLoad(rclcpp::Node * node)
 
   // 以下两项极少现场调整，故只在代码里给默认值，yaml 需要时再 override
   cfg.storage_id = node->declare_parameter("storage_id", std::string("sqlite3"));
+  cfg.storage_fallback_id = node->declare_parameter(
+    "storage_fallback_id", std::string("sqlite3"));
   cfg.writer_cache_size = node->declare_parameter(
     "writer_cache_size", static_cast<int64_t>(100 * 1024 * 1024));
 
@@ -66,6 +106,9 @@ RecorderConfig RecorderConfig::declareAndLoad(rclcpp::Node * node)
     declareCheckedInt(node, "continuous.max_total_size_mb", 20480, 1);
   cfg.continuous.topics = node->declare_parameter(
     "continuous.topics", std::vector<std::string>{});
+
+  // 限速是订阅层的行为（常态与事件共用一套订阅），故放在顶层而不是 continuous 下面
+  cfg.throttle = node->declare_parameter("throttle", std::vector<std::string>{});
 
   cfg.event.enabled = node->declare_parameter("event.enabled", true);
   cfg.event.pre_seconds = declareCheckedInt(node, "event.pre_seconds", 60, 1);
@@ -166,6 +209,79 @@ std::string prepareOutputDir(const std::string & raw_dir, const rclcpp::Logger &
     return {};
   }
   return expanded;
+}
+
+}  // namespace mobile_bag_recorder
+
+namespace
+{
+
+/// 试开一个临时 bag 再删掉。连插件可用性和目录写权限一起验了
+bool probeStorage(
+  const std::string & storage_id, const std::string & root, const rclcpp::Logger & logger)
+{
+  const std::string probe_uri = root + "/.storage_probe";
+  std::error_code ec;
+  std::filesystem::remove_all(probe_uri, ec);
+
+  rosbag2_storage::StorageOptions options;
+  options.uri = probe_uri;
+  options.storage_id = storage_id;
+
+  bool ok = false;
+  try {
+    rosbag2_cpp::Writer writer;
+    writer.open(options, rosbag2_cpp::ConverterOptions{"cdr", "cdr"});
+    writer.close();
+    ok = true;
+  } catch (const std::exception & e) {
+    RCLCPP_DEBUG(logger, "Storage probe for \"%s\" failed: %s", storage_id.c_str(), e.what());
+  }
+
+  std::filesystem::remove_all(probe_uri, ec);
+  return ok;
+}
+
+}  // namespace
+
+namespace mobile_bag_recorder
+{
+
+std::string resolveStorageId(
+  const std::string & preferred, const std::string & fallback,
+  const std::string & root, const rclcpp::Logger & logger)
+{
+  if (probeStorage(preferred, root, logger)) {
+    RCLCPP_INFO(logger, "Storage backend: %s", preferred.c_str());
+    return preferred;
+  }
+
+  if (fallback.empty() || fallback == preferred) {
+    RCLCPP_ERROR(
+      logger,
+      "Storage backend \"%s\" is unavailable and no fallback is configured. "
+      "Nothing would be recorded, so recording is not started. "
+      "Install the corresponding rosbag2 storage plugin or set storage_id to an available one.",
+      preferred.c_str());
+    return {};
+  }
+
+  if (probeStorage(fallback, root, logger)) {
+    // 用 ERROR 而不是 WARN：换了后端是需要被看见的事，别让它淹在 INFO 里
+    RCLCPP_ERROR(
+      logger,
+      "Storage backend \"%s\" is unavailable (plugin missing?), falling back to \"%s\". "
+      "Recording continues, but the bag format is not the configured one.",
+      preferred.c_str(), fallback.c_str());
+    return fallback;
+  }
+
+  RCLCPP_ERROR(
+    logger,
+    "Neither storage backend \"%s\" nor fallback \"%s\" could be initialized "
+    "(check the output directory is writable). Recording is not started.",
+    preferred.c_str(), fallback.c_str());
+  return {};
 }
 
 }  // namespace mobile_bag_recorder

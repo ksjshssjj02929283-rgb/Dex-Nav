@@ -111,6 +111,12 @@ reason 会写进事件 bag 的目录名，因此现场直接从文件名就能�
 判定都是**边沿触发**（异常出现的那一刻），持续异常不会反复刷 bag；再叠加
 `cooldown_seconds` 冷却与「录制中不重复触发」两道抑制。
 
+**事件流不受限速影响**：`throttle` 只压常态流。同一个 20 Hz 话题限到 5 Hz 时，常态段里
+是 5 Hz，触发产出的事件 bag 里仍是完整的 20 Hz（实测 120 条 / 5.95 s）。理由是两条流的
+成本结构完全不同——常态流 7×24 写盘，是磁盘与 CPU 的大头；事件流只在触发后几十秒内写盘，
+保留全分辨率的代价仅是环形缓冲多占一点内存。若事件流内存吃紧，应当用
+`event.exclude_topics` 排除大话题，而不是靠限速压它。
+
 ### 手工注入触发（联调用）
 
 ```bash
@@ -135,8 +141,23 @@ ros2 run mobile_bag_recorder inject_trigger.py nav_aborted        # 注入导航
 | `continuous.max_segments` | `24` | 磁盘上最多保留的段数（含正在写的那段）|
 | `continuous.max_total_size_mb` | `20480` | 总容量上限（MB）|
 | `continuous.topics` | 见 yaml | 录制话题清单 |
+| `storage_id` | `mcap` | 存储后端。真机实测 sqlite3 12.6% / mcap 6.6%（单核占比），落盘量相同 |
+| `throttle` | 见 yaml | 按话题限速，`"<话题>:<最大Hz>"`，常态与事件两条流一起生效 |
 
 **段数与容量两个上限同时生效**：段大小随场景浮动，只设段数控不住盘。
+
+## 降频录制
+
+`throttle` 按话题限制录制频率，写 `"<话题>:<最大Hz>"`，未列出的话题按原频率全录。限速发生在
+订阅回调里，所以常态与事件两条流一起生效，环形缓冲也只压降频后的消息。每个话题的第一条永远
+放行——`/map` 这类 transient_local 话题可能一辈子只发一次，丢掉它 bag 里就没有地图了。
+
+**它省什么、不省什么**：省写盘、内存和磁盘，**不省** DDS 收包与 executor 唤醒——消息照样被
+收上来，只是不写进 bag。真机实测录包节点的 CPU 里，主执行器线程（每条消息一次唤醒）和写盘
+线程各占一半，所以降频最多影响后者。要连前者一起省，只能把话题从 `continuous.topics` 里删掉。
+
+不需要限速时把整段注释掉，**不要写 `throttle: []`**——空序列会被 rcl 解析成 NOT_SET，
+`declare_parameter` 直接抛 `InvalidParameterValueException`，节点起不来。
 
 ## 设计要点
 
@@ -173,6 +194,27 @@ rosbag2 自带的 snapshot 缓冲（`CircularMessageCache`）以字节为上限�
 前者不编入（设 true 会明确告警）、后者自动回退 odom 模式，其余功能不受影响。
 注意：本包若用系统 `/opt/ros/humble` 的 nav2_msgs 编译、而运行时 source 的工作区里有 fork 过的
 nav2_msgs，需确认 `BehaviorTreeLog` 与 `NavigateToPose` 的定义一致，否则存在消息 ABI 风险。
+
+## 存储后端与启动自检
+
+默认配置用 `mcap`（写入 CPU 与文件体积均优于 sqlite3），需要额外安装：
+
+```bash
+sudo apt install ros-humble-rosbag2-storage-mcap
+```
+
+**节点启动时会自检存储后端**：在输出目录下试开一个临时 bag 再删掉，一次同时验证
+「插件是否可用」和「目录是否可写」。
+
+| 自检结果 | 行为 |
+|---|---|
+| 配置的后端可用 | `Storage backend: <id>`，正常录制 |
+| 不可用，且配了 `storage_fallback_id`（默认 `sqlite3`）| **ERROR 告警** + 回退该后端继续录制 |
+| 不可用，且 `storage_fallback_id: ""` | 三行 ERROR 说明原因，不启动录制（节点存活，不影响 launch 内其他节点）|
+
+自检存在的理由：storage 插件缺失时 rosbag2 只在**每次开段**时抛异常，而节点会继续
+「正常」运行——订阅建立、限速工作、切段定时器照跑，日志还打着 `ready`，唯独一个字节
+都没落盘。这种静默空转比启动失败危险得多，因为等到需要 bag 时才会发现没有。
 
 ## 测试
 

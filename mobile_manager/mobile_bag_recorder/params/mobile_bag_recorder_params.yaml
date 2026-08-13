@@ -10,6 +10,53 @@
     # 输出根目录。常态录制写入 <output_dir>/continuous/，事件录制写入 <output_dir>/event/
     output_dir: "~/.dexe/navigation/bags"
 
+    # 存储后端。mcap 的写入路径比 sqlite3 的逐条 INSERT 轻很多：
+    # 真机同话题集实测 60s，sqlite3 12.6% / mcap 6.6%（单核占比），落盘量基本相同。
+    # 录制端与回放端都需要 ros-humble-rosbag2-storage-mcap。
+    # 存储后端。mcap 写入 CPU 与文件体积都优于 sqlite3，但需要额外安装：
+    #   sudo apt install ros-humble-rosbag2-storage-mcap
+    # 启动时会自检该后端能否真的写入；不可用则以 ERROR 告警并回退到
+    # storage_fallback_id（默认 sqlite3）继续录制，不会静默空转。
+    # 把 storage_fallback_id 设为 "" 则不回退，自检失败就不录（宁可不录也不换格式）。
+    storage_id: "mcap"
+
+    # 按话题限制录制频率，格式 "<话题>:<最大Hz>"。未列出的话题按原频率全录。
+    # 限速发生在订阅回调里，常态与事件两条流一起生效（环形缓冲也只压降频后的消息）。
+    # 每个话题的第一条消息永远放行，避免丢掉 /map 这类可能一辈子只发一次的 transient_local 数据。
+    #
+    # 注意 1：降频省的是写盘、内存和磁盘，**省不掉** DDS 收包与 executor 唤醒——
+    # 消息还是会被收上来，只是不写进 bag。要连这部分一起省，只能把话题从 topics 清单里删掉。
+    #
+    # 注意 2：限速**只作用于常态流**。事件流（触发式录制）始终收全量——触发意味着
+    # 要排查故障，取证需要原始分辨率；且事件流只在触发后几十秒内写盘，代价仅是环形
+    # 缓冲多占一点内存。若事件流内存吃紧，用 event.exclude_topics 排除大话题，
+    # 而不是靠限速压它。
+    #
+    # 不需要限速时把整段注释掉，不要写成 throttle: []（空序列会被解析成 NOT_SET 让节点起不来）。
+    throttle:
+      # ---- 地图相关 → 2Hz ----
+      # 注意 /local_costmap/costmap_updates 刻意不在此列：
+      # costmap 发布端的逻辑是「always_send_full_costmap 为真、或分辨率/尺寸/原点变化
+      # → 发全量，否则发 update」。rolling 的 local costmap 原点跟着机器人走，于是
+      # always_send_full_costmap=False 时，机器人移动发全量、**静止时只发 update**。
+      # 而静止正是「卡住/被挡住/等避障」这类故障的现场，限速 update 会把那段地图变化丢掉。
+      # always_send_full_costmap=True 时该话题一条消息都不发，留着也是零开销。
+      - "/map:2.0"
+      - "/local_costmap/costmap:2.0"
+      - "/local_costmap/published_footprint:2.0"
+      # ---- 速度相关 → 10Hz ----
+      # 这几条都是几十字节的小消息，降频省不到多少 CPU/磁盘，留 10Hz 是为了控制类问题
+      # （速度抖动、急停、跟踪振荡）回放时还有足够的采样密度
+      - "/cmd_vel_nav:10.0"
+      - "/control/cmd_vel:10.0"
+      - "/control/cmd_vel_nav:10.0"
+      - "/speed_limit:10.0"
+      - "/navigation/speed_plan:10.0"
+      - "/nav_monitor/desired_velocity:10.0"
+      # ---- 里程计相关 → 20Hz ----
+      - "/feedback/odom:20.0"
+      - "/odometry/filtered:20.0"
+
     continuous:
       enabled: true
       # 每段时长（秒）
@@ -61,12 +108,6 @@
         - /navigate_to_pose/_action/feedback
 
         # ---- 导航监控与诊断（0.5.x 新增，回放定位问题的主要依据）----
-        - /nav_monitor/goal_pose_echo
-        - /nav_monitor/goal_behavior_tree_echo
-        - /nav_monitor/current_global_path
-        - /nav_monitor/controller_phase
-        - /nav_monitor/desired_velocity
-        - /nav_monitor/controller_target
         - /navigation/speed_plan
         - /navigation/speed_plan_diagnostics
         - /navigation_goal_error
@@ -76,14 +117,6 @@
         - /laser_scan/rear
         - /loc_pose
         - /scan_matched_points2
-        - /trajectories
-        - /trajectory_node_list
-        - /constraint_list
-        - /global_cloud_map
-        - /local_cloud_map
-        - /global_feature_map
-        - /local_feature_map
-        - /matched_feature
         - /clock
 
     event:
@@ -106,15 +139,14 @@
       # 从继承清单里排除的大流量话题——控制环形缓冲内存的主要旋钮。
       # 排掉之后事件 bag 里就没有这些数据了，按要排查的故障类型权衡。
       exclude_topics:
-        - /local_costmap/costmap
-        - /local_costmap/costmap_updates
-        - /global_cloud_map
-        - /local_cloud_map
-        - /global_feature_map
-        - /local_feature_map
         - /scan_matched_points2
-      # 事件流额外补录的话题（优先级高于 exclude）
-      extra_topics: []
+      # 事件流额外补录的话题（优先级高于 exclude）。
+      # 不要写成 extra_topics: []——rcl 的 yaml 解析器推不出空序列的元素类型，会把该参数
+      # 解析成 NOT_SET，declare_parameter 拿到 NOT_SET 的 override 直接抛
+      # InvalidParameterValueException("No parameter value set")，节点起不来。
+      # 不需要补录时整行注释掉即可，代码里的默认值就是空列表。
+      # extra_topics:
+      #   - /some/topic
 
     trigger:
       # 导航 action 返回 ABORTED
@@ -140,4 +172,4 @@
       #   feedback = action 的 distance_remaining 减少量，能识别「在动但没接近目标」（绕圈）
       #   odom     = 机器人相对基准点的位移，识别不了绕圈，但不依赖 nav2_msgs
       #   auto     = 有 nav2_msgs 就用 feedback，否则回退 odom
-      stall_progress_source: "auto"2
+      stall_progress_source: "auto"

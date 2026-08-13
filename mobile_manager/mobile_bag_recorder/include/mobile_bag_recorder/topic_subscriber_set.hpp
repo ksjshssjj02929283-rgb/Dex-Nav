@@ -31,6 +31,12 @@ public:
 
   /// 每条消息调用。同一条消息的序列化数据在各 sink 之间共享，不复制
   virtual void onMessage(const rosbag2_storage::SerializedBagMessageSharedPtr & message) = 0;
+
+  /// 该 sink 是否遵守限速。
+  /// 常态流遵守——它 7x24 写盘，是磁盘与 CPU 的大头；
+  /// 事件流不遵守——触发意味着要排查故障，取证需要原始分辨率，而它只在触发后
+  /// 几十秒内写盘，代价仅是环形缓冲多占一点内存。
+  virtual bool respectsThrottle() const {return true;}
 };
 
 /// 按配置清单订阅话题，把消息分发给各 sink。
@@ -38,7 +44,12 @@ public:
 class TopicSubscriberSet
 {
 public:
-  TopicSubscriberSet(rclcpp::Node * node, std::chrono::milliseconds poll_interval);
+  /// throttle_intervals_ns：topic -> 两条记录之间的最小间隔（纳秒），0 或缺省表示不限速。
+  /// 限速只对 respectsThrottle() 为真的 sink 生效（常态流）；事件流照收全量，
+  /// 因此环形缓冲里始终是原始分辨率的数据。
+  TopicSubscriberSet(
+    rclcpp::Node * node, std::chrono::milliseconds poll_interval,
+    std::unordered_map<std::string, int64_t> throttle_intervals_ns = {});
 
   /// 注册 sink。必须在 start() 之前调用
   void addSink(const std::shared_ptr<RecordingSink> & sink);
@@ -54,6 +65,9 @@ public:
   /// 配置清单里仍未出现的话题（用于启动后告警）
   std::vector<std::string> pendingTopics(const std::vector<std::string> & expected) const;
 
+  /// 因限速而未进入常态流的消息总数（事件流仍然收到了这些消息）
+  uint64_t throttledCount() const {return throttled_count_;}
+
 private:
   void pollOnce();
   void subscribeTopic(const std::string & topic, const std::string & type);
@@ -68,6 +82,9 @@ private:
   std::unordered_map<std::string, std::vector<std::shared_ptr<RecordingSink>>> topic_sinks_;
   /// 类型不可用等原因跳过的话题，只告警一次
   std::unordered_set<std::string> warned_topics_;
+  /// topic -> 最小录制间隔（纳秒）。订阅时查一次并捕进回调，不在每条消息上查表
+  std::unordered_map<std::string, int64_t> throttle_intervals_ns_;
+  uint64_t throttled_count_{0};
 };
 
 }  // namespace mobile_bag_recorder

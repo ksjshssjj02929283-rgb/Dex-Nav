@@ -4,6 +4,7 @@
 #define MOBILE_BAG_RECORDER__RECORDER_CONFIG_HPP_
 
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "rclcpp/rclcpp.hpp"
@@ -94,11 +95,23 @@ public:
   /// 事件流最终生效的话题清单（继承常态 - 排除 + 补录，去重）
   std::vector<std::string> resolveEventTopics() const;
 
+  /// 把 "话题:最大Hz" 规则解析成 topic -> 最小间隔（纳秒）。
+  /// 格式非法或频率 <=0 的条目跳过并告警，不让一条笔误废掉整份配置。
+  static std::unordered_map<std::string, int64_t> parseThrottleRules(
+    const std::vector<std::string> & rules, const rclcpp::Logger & logger);
+
+  /// 限速规则原文（"话题:最大Hz"）。**只作用于常态流**——事件流照收全量，
+  /// 因为触发即意味着要排查故障，取证需要原始分辨率
+  std::vector<std::string> throttle;
+
   std::string output_dir;
   /// 落盘缓存上限（字节）。>0 时 rosbag2 走 cache + consumer 线程，
   /// 写盘不阻塞订阅回调；设 0 会退化成回调里同步写盘
   int64_t writer_cache_size{100 * 1024 * 1024};
   std::string storage_id{"sqlite3"};
+  /// storage_id 不可用时的回退后端。留空表示不回退（启动即失败）。
+  /// 回退不是静默降级——会以 ERROR 级别告警说明换了后端及原因
+  std::string storage_fallback_id{"sqlite3"};
 
   ContinuousConfig continuous;
   EventConfig event;
@@ -110,6 +123,17 @@ private:
 
 /// 展开 output_dir 里的 "~"，并保证目录存在。失败返回空串
 std::string prepareOutputDir(const std::string & raw_dir, const rclcpp::Logger & logger);
+
+/// 启动自检：在 root 下试开一个临时 bag，确认存储后端可用且目录可写。
+///
+/// 存在的理由：storage 插件缺失时 rosbag2 只在每次开段时抛异常，节点却能继续
+/// "正常"运行——订阅、限速、切段定时器全都在跑，唯独一个字节都没落盘。这种静默
+/// 空转比启动失败危险得多，因为等到需要 bag 时才会发现。
+///
+/// 返回实际可用的 storage_id：优先 preferred，不行则 fallback；都不行返回空串。
+std::string resolveStorageId(
+  const std::string & preferred, const std::string & fallback,
+  const std::string & root, const rclcpp::Logger & logger);
 
 }  // namespace mobile_bag_recorder
 

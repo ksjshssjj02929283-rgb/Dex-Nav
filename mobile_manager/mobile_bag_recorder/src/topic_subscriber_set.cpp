@@ -13,8 +13,10 @@ namespace mobile_bag_recorder
 {
 
 TopicSubscriberSet::TopicSubscriberSet(
-  rclcpp::Node * node, std::chrono::milliseconds poll_interval)
-: node_(node), poll_interval_(poll_interval)
+  rclcpp::Node * node, std::chrono::milliseconds poll_interval,
+  std::unordered_map<std::string, int64_t> throttle_intervals_ns)
+: node_(node), poll_interval_(poll_interval),
+  throttle_intervals_ns_(std::move(throttle_intervals_ns))
 {
 }
 
@@ -102,14 +104,58 @@ void TopicSubscriberSet::subscribeTopic(const std::string & topic, const std::st
     }
   }
 
+  // 限速间隔在这里查一次并捕进回调，回调里不再查表
+  int64_t min_interval_ns = 0;
+  const auto throttle_it = throttle_intervals_ns_.find(topic);
+  if (throttle_it != throttle_intervals_ns_.end()) {
+    min_interval_ns = throttle_it->second;
+  }
+  // 上一条进入常态流的消息时间戳。回调都在同一条 executor 线程上串行执行，
+  // 无需加锁；用 shared_ptr 让状态与订阅同生命周期。
+  // 单独用 has_recorded 而不是拿 0 当哨兵：use_sim_time 且 /clock 尚未发布时
+  // node->now() 返回 0，用 0 作哨兵会让每条消息都被当成"第一条"而放行，
+  // 限速在仿真环境下静默失效
+  auto last_recorded_ns = std::make_shared<int64_t>(0);
+  auto has_recorded = std::make_shared<bool>(false);
+
+  // 该话题是否有"不遵守限速"的 sink（事件流）。订阅时算一次，
+  // 没有的话被限速的消息可以直接早退，连消息对象都不用构造
+  bool has_throttle_exempt = false;
+  for (const auto & sink : interested) {
+    if (!sink->respectsThrottle()) {
+      has_throttle_exempt = true;
+      break;
+    }
+  }
+
   rclcpp::GenericSubscription::SharedPtr subscription;
   try {
     subscription = node_->create_generic_subscription(
       topic, type, qos,
-      [this, topic](std::shared_ptr<rclcpp::SerializedMessage> serialized) {
+      [this, topic, min_interval_ns, last_recorded_ns, has_recorded, has_throttle_exempt](
+        std::shared_ptr<rclcpp::SerializedMessage> serialized) {
+        const int64_t now_ns = node_->now().nanoseconds();
+
+        // throttled 只决定"要不要进常态流"，事件流一律收全量
+        bool throttled = false;
+        if (min_interval_ns > 0) {
+          // 第一条永远放行：/map 这类 transient_local 话题可能一辈子只发一次，
+          // 丢掉它会让整个 bag 里没有地图
+          if (*has_recorded && now_ns - *last_recorded_ns < min_interval_ns) {
+            throttled = true;
+            ++throttled_count_;
+          } else {
+            *last_recorded_ns = now_ns;
+            *has_recorded = true;
+          }
+        }
+        if (throttled && !has_throttle_exempt) {
+          return;
+        }
+
         auto bag_message = std::make_shared<rosbag2_storage::SerializedBagMessage>();
         bag_message->topic_name = topic;
-        bag_message->time_stamp = node_->now().nanoseconds();
+        bag_message->time_stamp = now_ns;
         // 别名构造：各 sink 共享同一份序列化数据，由 shared_ptr 保证生命周期，
         // 不做任何拷贝
         bag_message->serialized_data = std::shared_ptr<rcutils_uint8_array_t>(
@@ -121,6 +167,9 @@ void TopicSubscriberSet::subscribeTopic(const std::string & topic, const std::st
           return;
         }
         for (const auto & sink : it->second) {
+          if (throttled && sink->respectsThrottle()) {
+            continue;
+          }
           sink->onMessage(bag_message);
         }
       });
@@ -139,7 +188,13 @@ void TopicSubscriberSet::subscribeTopic(const std::string & topic, const std::st
   topic_sinks_[topic] = std::move(interested);
   subscriptions_[topic] = subscription;
 
-  RCLCPP_INFO(node_->get_logger(), "Recording topic %s (%s)", topic.c_str(), type.c_str());
+  if (min_interval_ns > 0) {
+    RCLCPP_INFO(
+      node_->get_logger(), "Recording topic %s (%s) throttled to %.1f Hz",
+      topic.c_str(), type.c_str(), 1e9 / static_cast<double>(min_interval_ns));
+  } else {
+    RCLCPP_INFO(node_->get_logger(), "Recording topic %s (%s)", topic.c_str(), type.c_str());
+  }
 }
 
 }  // namespace mobile_bag_recorder

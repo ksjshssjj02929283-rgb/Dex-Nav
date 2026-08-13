@@ -123,6 +123,10 @@ if(BUILD_TESTING)
   ament_add_gtest(test_time_ring_buffer test/test_time_ring_buffer.cpp)
   target_link_libraries(test_time_ring_buffer ${PROJECT_NAME}_lib)
   ament_target_dependencies(test_time_ring_buffer ${dependencies})
+
+  ament_add_gtest(test_throttle_rules test/test_throttle_rules.cpp)
+  target_link_libraries(test_throttle_rules ${PROJECT_NAME}_lib)
+  ament_target_dependencies(test_throttle_rules ${dependencies})
 endif()
 
 ament_package()

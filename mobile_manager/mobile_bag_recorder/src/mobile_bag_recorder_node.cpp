@@ -38,7 +38,20 @@ void MobileBagRecorderNode::init()
     return;
   }
 
-  subscribers_ = std::make_unique<TopicSubscriberSet>(this, std::chrono::milliseconds(1000));
+  // 先确认存储后端真的能写：插件缺失时 rosbag2 只在每次开段时抛异常，节点却会继续
+  // "正常"运行——订阅、限速、切段全在跑，唯独一个字节都不落盘
+  const auto usable_storage = resolveStorageId(
+    config_.storage_id, config_.storage_fallback_id, output_root_, get_logger());
+  if (usable_storage.empty()) {
+    RCLCPP_ERROR(get_logger(), "Storage self-check failed, recording not started");
+    return;
+  }
+  config_.storage_id = usable_storage;
+
+  const auto throttle_intervals =
+    RecorderConfig::parseThrottleRules(config_.throttle, get_logger());
+  subscribers_ = std::make_unique<TopicSubscriberSet>(
+    this, std::chrono::milliseconds(1000), throttle_intervals);
 
   if (config_.continuous.enabled) {
     continuous_ = std::make_shared<ContinuousRecorder>(this, config_, output_root_);
@@ -143,8 +156,11 @@ void MobileBagRecorderNode::reportPendingTopics()
 
   const auto pending = subscribers_->pendingTopics(config_.continuous.topics);
   RCLCPP_INFO(
-    get_logger(), "Topic discovery: %zu subscribed, %zu still missing from the configured list",
-    subscribers_->subscribedCount(), pending.size());
+    get_logger(),
+    "Topic discovery: %zu subscribed, %zu still missing from the configured list, "
+    "%lu message(s) dropped by throttling so far",
+    subscribers_->subscribedCount(), pending.size(),
+    static_cast<unsigned long>(subscribers_->throttledCount()));
 
   if (pending.empty()) {
     return;

@@ -56,6 +56,9 @@ public:
   void onTopicDiscovered(const rosbag2_storage::TopicMetadata & metadata) override;
   void onMessage(const rosbag2_storage::SerializedBagMessageSharedPtr & message) override;
 
+  /// 事件录制不受限速影响：触发即意味着要排查故障，取证需要原始分辨率
+  bool respectsThrottle() const override {return false;}
+
 private:
   std::string makeEventUri(const std::string & reason) const;
   static std::string sanitize(const std::string & text);
