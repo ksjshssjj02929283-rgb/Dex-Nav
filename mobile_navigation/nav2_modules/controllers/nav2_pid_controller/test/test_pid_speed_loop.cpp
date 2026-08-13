@@ -291,7 +291,7 @@ TEST(AngularLoopPID_Test, deadbandZeroesAndReseeds)
 
 // approach 阶段单测：目标锁定 / 朝向-速度平滑耦合 / 旋转量安全网。
 // 不依赖 TF/costmap——getClosestWaypointID 直接吃 TrajPoint 向量，
-// headingSpeedScale/updateRotationWatchdog 是纯状态方法。
+// headingSpeedScale 是纯函数。
 class ApproachStagePID : public nav2_pid_controller::PIDController
 {
 public:
@@ -357,9 +357,6 @@ public:
   void setTrajSpeedLookahead(double v) {traj_speed_lookahead_ = v;}
   void setTrajTimeLookahead(double v) {traj_time_lookahead_ = v;}
   static double headingScale(double err_theta) {return headingSpeedScale(err_theta);}
-  void resetWatchdog(double theta_rob) {resetRotationWatchdog(theta_rob);}
-  bool tickWatchdog(double theta_rob) {return updateRotationWatchdog(theta_rob);}
-  void setRotationBudget(double rad) {approach_rotation_budget_ = rad;}
 };
 
 namespace
@@ -373,7 +370,6 @@ geometry_msgs::msg::PoseStamped makePose(double x, double y)
   return ps;
 }
 
-double wrapAngle(double a) {return std::atan2(std::sin(a), std::cos(a));}
 }  // namespace
 
 // 目标锁定：距终点 < final_target_lock_distance_ 时直接锁定终点索引，
@@ -490,41 +486,6 @@ TEST(ApproachStage, headingSpeedScaleIsSmoothAndBounded)
     EXPECT_LT(std::fabs(cur - prev), 0.02);  // 每度变化 < 0.02，无跳变
     prev = cur;
   }
-}
-
-// 旋转量安全网：持续单向旋转累计超预算后触发；未超时不触发。
-TEST(ApproachStage, rotationWatchdogTripsOnSustainedSpin)
-{
-  ApproachStagePID pid;
-  pid.setRotationBudget(200.0 * M_PI / 180.0);
-  pid.resetWatchdog(wrapAngle(0.0));
-
-  bool tripped = false;
-  int trip_step = -1;
-  for (int i = 1; i <= 60; ++i) {
-    tripped = pid.tickWatchdog(wrapAngle(i * 0.1));  // 持续 +0.1rad/步，跨越 ±pi 卷绕
-    if (tripped) {trip_step = i; break;}
-  }
-  ASSERT_TRUE(tripped);
-  // 200deg/0.1rad ≈ 35 步触发，允许小范围浮动
-  EXPECT_GE(trip_step, 33);
-  EXPECT_LE(trip_step, 37);
-}
-
-// 旋转量安全网：未持续单向旋转（收敛后停止）不应误触发。
-TEST(ApproachStage, rotationWatchdogNotTrippedOnConvergence)
-{
-  ApproachStagePID pid;
-  pid.setRotationBudget(200.0 * M_PI / 180.0);
-  pid.resetWatchdog(wrapAngle(1.5));  // 初始误差 ~86°
-
-  // 单调收敛到 0，总旋转量 = 初始误差 < 180° < 200° 预算
-  bool tripped = false;
-  for (int i = 0; i <= 30; ++i) {
-    const double theta = 1.5 * (1.0 - static_cast<double>(i) / 30.0);
-    tripped = pid.tickWatchdog(wrapAngle(theta)) || tripped;
-  }
-  EXPECT_FALSE(tripped);
 }
 
 int main(int argc, char ** argv)
