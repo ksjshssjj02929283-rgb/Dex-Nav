@@ -697,6 +697,21 @@ TEST(RegulatedPurePursuitTest, trajectorySpeedUsesTimeAlignedInterpolation)
   EXPECT_NEAR(acceleration, -0.35, 1e-9);
 }
 
+TEST(RegulatedPurePursuitTest, trajectoryTimeSamplingPreservesPlannedStop)
+{
+  const std::vector<nav2_core::TrajectoryPreviewPoint> points = {
+    {0.00, 0.0, 0.60, -0.20, 0.00},
+    {0.20, 0.0, 0.40, -0.40, 0.50},
+    {0.30, 0.0, 0.00, 0.00, 1.00}};
+  nav2_core::TrajectoryPreview preview;
+
+  ASSERT_TRUE(nav2_core::sampleTrajectoryAtTime(points, 0.75, preview));
+  EXPECT_EQ(preview.mode, nav2_core::TrajectoryPreviewMode::TIME_ALIGNED);
+  EXPECT_NEAR(preview.velocity, 0.20, 1e-9);
+  ASSERT_TRUE(nav2_core::sampleTrajectoryAtTime(points, 1.20, preview));
+  EXPECT_NEAR(preview.velocity, 0.0, 1e-9);
+}
+
 TEST(RegulatedPurePursuitTest, trackLinearVelocityCommandIntegrator)
 {
   auto ctrl = std::make_shared<BasicAPIRPP>();

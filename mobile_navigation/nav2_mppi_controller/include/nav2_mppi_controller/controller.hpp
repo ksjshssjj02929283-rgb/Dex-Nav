@@ -56,13 +56,18 @@ enum ApproachMode : size_t {
   APPROACH_POSITION_FIRST = 1
 };
 
-class MPPIController : public nav2_core::Controller
+class MPPIController
+  : public nav2_core::Controller,
+  public nav2_core::PathObstacleAvoidanceCapability
 {
 public:
   /**
     * @brief Constructor for mppi::MPPIController
     */
   MPPIController() = default;
+
+  /// MPPI通过障碍Critic采样局部绕行轨迹，不应被参考路径上的障碍零速帽锁死。
+  bool canAvoidPathObstacles() const override {return true;}
 
   /**
     * @brief Configure controller on bringup

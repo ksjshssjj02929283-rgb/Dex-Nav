@@ -15,6 +15,10 @@
 namespace
 {
 
+constexpr auto kNoTerminalBranch = nav2_core::SpeedPlanningTerminalBranch::NONE;
+constexpr auto kObstacleTerminalBranch =
+  nav2_core::SpeedPlanningTerminalBranch::PATH_OBSTACLE_STOP;
+
 class FakeLocalPlanner : public nav2_core::LocalPlanner
 {
 public:
@@ -45,6 +49,35 @@ private:
   bool success_;
   bool return_empty_;
   nav_msgs::msg::Path plan_;
+};
+
+class FakeController : public nav2_core::Controller
+{
+public:
+  void configure(
+    const rclcpp_lifecycle::LifecycleNode::WeakPtr &,
+    std::string, std::shared_ptr<tf2_ros::Buffer>,
+    std::shared_ptr<nav2_costmap_2d::Costmap2DROS>) override {}
+  void cleanup() override {}
+  void activate() override {}
+  void deactivate() override {}
+  void setPlan(const nav_msgs::msg::Path &) override {}
+  geometry_msgs::msg::TwistStamped computeVelocityCommands(
+    const geometry_msgs::msg::PoseStamped &,
+    const geometry_msgs::msg::Twist &,
+    nav2_core::GoalChecker *) override
+  {
+    return geometry_msgs::msg::TwistStamped();
+  }
+  void setSpeedLimit(const double &, const bool &) override {}
+};
+
+class FakeAvoidingController
+  : public FakeController,
+  public nav2_core::PathObstacleAvoidanceCapability
+{
+public:
+  bool canAvoidPathObstacles() const override {return true;}
 };
 
 class FakeGoalChecker : public nav2_core::GoalChecker
@@ -78,15 +111,41 @@ private:
   size_t reset_count_{0};
 };
 
+class FakeProgressChecker : public nav2_core::ProgressChecker
+{
+public:
+  void initialize(
+    const rclcpp_lifecycle::LifecycleNode::WeakPtr &,
+    const std::string &) override {}
+
+  bool check(geometry_msgs::msg::PoseStamped &) override
+  {
+    ++check_count_;
+    return check_result_;
+  }
+
+  void reset() override {++reset_count_;}
+  void setCheckResult(bool result) {check_result_ = result;}
+  size_t checkCount() const {return check_count_;}
+  size_t resetCount() const {return reset_count_;}
+
+private:
+  bool check_result_{true};
+  size_t check_count_{0};
+  size_t reset_count_{0};
+};
+
 class ControllerShim : public nav2_controller::ControllerServer
 {
 public:
   ControllerShim()
   : nav2_controller::ControllerServer(rclcpp::NodeOptions()),
-    fake_goal_checker_(std::make_shared<FakeGoalChecker>())
+    fake_goal_checker_(std::make_shared<FakeGoalChecker>()),
+    fake_progress_checker_(std::make_shared<FakeProgressChecker>())
   {
     current_goal_checker_ = "test_goal_checker";
     goal_checkers_.insert({current_goal_checker_, fake_goal_checker_});
+    progress_checker_ = fake_progress_checker_;
   }
 
   void disableLocalPlanner()
@@ -175,12 +234,60 @@ public:
     commitPlannerPathState(path, update_type);
   }
 
+  void setProgressPlanningContext(
+    const nav_interfaces::msg::RobotTrajectory & trajectory,
+    nav2_core::SpeedPlanningTerminalBranch terminal_branch,
+    bool terminal_infeasible = false)
+  {
+    current_trajectory_ = trajectory;
+    speed_plan_cycle_ = SpeedPlanCycleContext();
+    speed_plan_cycle_.active = true;
+    speed_plan_cycle_.planning_succeeded = true;
+    speed_plan_cycle_.terminal_valid = true;
+    speed_plan_cycle_.terminal.terminal_branch = terminal_branch;
+    speed_plan_cycle_.terminal.terminal_infeasible = terminal_infeasible;
+    speed_plan_cycle_.terminal.first_obstacle_arc = 1.0;
+  }
+
+  bool checkProgressForTest(geometry_msgs::msg::PoseStamped pose)
+  {
+    return checkProgress(pose);
+  }
+
+  void setProgressCheckResult(bool result)
+  {
+    fake_progress_checker_->setCheckResult(result);
+  }
+
+  void setControllerForObstaclePolicy(const nav2_core::Controller::Ptr & controller)
+  {
+    staged_control_enabled_ = false;
+    current_controller_ = "test_controller";
+    controllers_.clear();
+    controllers_.insert({current_controller_, controller});
+  }
+
+  bool activeControllerCanAvoidForTest()
+  {
+    geometry_msgs::msg::PoseStamped pose;
+    pose.header.frame_id = "map";
+    pose.pose.orientation.w = 1.0;
+    return activeControllerCanAvoidPathObstacles(pose);
+  }
+
   ControllerPhase phase() const {return controller_phase_;}
   size_t goalCheckerResetCount() const {return fake_goal_checker_->resetCount();}
   bool terminalBrakeLatched() const {return terminal_brake_latched_;}
+  bool isProgressCheckPaused() const
+  {
+    return is_progress_check_paused_for_obstacle_stop_;
+  }
+  size_t progressCheckCount() const {return fake_progress_checker_->checkCount();}
+  size_t progressResetCount() const {return fake_progress_checker_->resetCount();}
 
 private:
   std::shared_ptr<FakeGoalChecker> fake_goal_checker_;
+  std::shared_ptr<FakeProgressChecker> fake_progress_checker_;
 };
 
 struct RclcppFixture
@@ -234,6 +341,42 @@ nav_interfaces::msg::RobotTrajectory makeTrajectory()
     trajectory.points.push_back(point);
   }
   return trajectory;
+}
+
+nav_interfaces::msg::RobotTrajectory makeStoppedTrajectory()
+{
+  auto trajectory = makeTrajectory();
+  for (auto & point : trajectory.points) {
+    point.longitudinal_velocity = 0.0;
+    point.acceleration = 0.0;
+  }
+  return trajectory;
+}
+
+geometry_msgs::msg::PoseStamped makePose(double x = 0.0, double y = 0.0)
+{
+  geometry_msgs::msg::PoseStamped pose;
+  pose.header.frame_id = "map";
+  pose.pose.position.x = x;
+  pose.pose.position.y = y;
+  pose.pose.orientation.w = 1.0;
+  return pose;
+}
+
+TEST(ControllerObstaclePolicy, UnknownCapabilityDefaultsToStop)
+{
+  auto controller = std::make_shared<ControllerShim>();
+  controller->setControllerForObstaclePolicy(std::make_shared<FakeController>());
+
+  EXPECT_FALSE(controller->activeControllerCanAvoidForTest());
+}
+
+TEST(ControllerObstaclePolicy, ExplicitAvoidanceCapabilityDisablesPathStop)
+{
+  auto controller = std::make_shared<ControllerShim>();
+  controller->setControllerForObstaclePolicy(std::make_shared<FakeAvoidingController>());
+
+  EXPECT_TRUE(controller->activeControllerCanAvoidForTest());
 }
 
 TEST(LocalPlanningStage, DisabledPlannerPreservesGlobalPathPassthrough)
@@ -428,6 +571,76 @@ TEST(InitialMotionState, MovingTerminalConditionLatchesWithoutPriorReceipt)
   controller->updateTerminalBrakeForTest(diagnostics, false);
 
   EXPECT_TRUE(controller->terminalBrakeLatched());
+}
+
+TEST(InitialMotionState, ObstacleBrakeDoesNotLatchGoalTerminalState)
+{
+  auto controller = std::make_shared<ControllerShim>();
+  nav2_core::SpeedPlanningDiagnostics diagnostics;
+  diagnostics.terminal_branch = kObstacleTerminalBranch;
+  diagnostics.terminal_brake_required = true;
+  diagnostics.terminal_distance_available = 0.35;
+  diagnostics.terminal_braking_distance = 0.4;
+
+  controller->updateTerminalBrakeForTest(diagnostics, true);
+
+  EXPECT_FALSE(controller->terminalBrakeLatched());
+}
+
+TEST(ProgressCheckerObstacleStop, FeasiblePlannedStopPausesProgressCheck)
+{
+  auto controller = std::make_shared<ControllerShim>();
+  controller->setProgressPlanningContext(
+    makeStoppedTrajectory(), kObstacleTerminalBranch, false);
+  controller->setProgressCheckResult(false);
+
+  EXPECT_TRUE(controller->checkProgressForTest(makePose()));
+  EXPECT_TRUE(controller->isProgressCheckPaused());
+  EXPECT_EQ(controller->progressCheckCount(), 0u);
+  EXPECT_EQ(controller->progressResetCount(), 1u);
+
+  // 同一个停障事件不得重复reset或重复打印进入日志。
+  EXPECT_TRUE(controller->checkProgressForTest(makePose()));
+  EXPECT_EQ(controller->progressCheckCount(), 0u);
+  EXPECT_EQ(controller->progressResetCount(), 1u);
+}
+
+TEST(ProgressCheckerObstacleStop, MovingOrInfeasiblePlanDoesNotPause)
+{
+  auto moving_controller = std::make_shared<ControllerShim>();
+  auto accelerating_trajectory = makeTrajectory();
+  accelerating_trajectory.points.front().longitudinal_velocity = 0.0;
+  moving_controller->setProgressPlanningContext(
+    accelerating_trajectory, kObstacleTerminalBranch, false);
+  moving_controller->setProgressCheckResult(false);
+
+  EXPECT_FALSE(moving_controller->checkProgressForTest(makePose()));
+  EXPECT_FALSE(moving_controller->isProgressCheckPaused());
+  EXPECT_EQ(moving_controller->progressCheckCount(), 1u);
+
+  auto infeasible_controller = std::make_shared<ControllerShim>();
+  infeasible_controller->setProgressPlanningContext(
+    makeStoppedTrajectory(), kObstacleTerminalBranch, true);
+  infeasible_controller->setProgressCheckResult(false);
+
+  EXPECT_FALSE(infeasible_controller->checkProgressForTest(makePose()));
+  EXPECT_FALSE(infeasible_controller->isProgressCheckPaused());
+  EXPECT_EQ(infeasible_controller->progressCheckCount(), 1u);
+}
+
+TEST(ProgressCheckerObstacleStop, ObstacleClearResetsBaselineBeforeNormalCheck)
+{
+  auto controller = std::make_shared<ControllerShim>();
+  controller->setProgressPlanningContext(
+    makeStoppedTrajectory(), kObstacleTerminalBranch, false);
+  ASSERT_TRUE(controller->checkProgressForTest(makePose()));
+
+  controller->setProgressPlanningContext(makeTrajectory(), kNoTerminalBranch, false);
+  controller->setProgressCheckResult(true);
+  EXPECT_TRUE(controller->checkProgressForTest(makePose()));
+  EXPECT_FALSE(controller->isProgressCheckPaused());
+  EXPECT_EQ(controller->progressCheckCount(), 1u);
+  EXPECT_EQ(controller->progressResetCount(), 2u);
 }
 
 }  // namespace

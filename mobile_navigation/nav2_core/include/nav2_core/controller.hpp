@@ -55,6 +55,20 @@ namespace nav2_core
 {
 
 /**
+ * @class PathObstacleAvoidanceCapability
+ * @brief 控制器可选能力：能够绕开参考路径上的局部障碍，而不是要求速度规划停车。
+ *
+ * ControllerServer 通过 dynamic_cast 探测该能力。不实现本接口的控制器按安全默认值
+ * 处理：速度规划必须在路径障碍前停车，避免依赖具体插件名称判断控制器行为。
+ */
+class PathObstacleAvoidanceCapability
+{
+public:
+  virtual ~PathObstacleAvoidanceCapability() = default;
+  virtual bool canAvoidPathObstacles() const = 0;
+};
+
+/**
  * @class Controller
  * @brief controller interface that acts as a virtual base class for all controller plugins
  */
