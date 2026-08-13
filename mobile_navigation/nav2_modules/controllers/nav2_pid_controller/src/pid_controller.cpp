@@ -82,8 +82,11 @@ void PIDController::configure(
     node, p + ".traj_speed_lookahead", rclcpp::ParameterValue(0.1));
   declare_parameter_if_not_declared(
     node, p + ".traj_time_lookahead", rclcpp::ParameterValue(0.0));
-  declare_parameter_if_not_declared(
-    node, p + ".approach_rotation_budget_deg", rclcpp::ParameterValue(200.0));
+  declare_parameter_if_not_declared(node, p + ".verbose", rclcpp::ParameterValue(1));
+
+  int verbose = 1;
+  node->get_parameter(p + ".verbose", verbose);
+  verbose_ = std::max(0, verbose);
 
   node->get_parameter(p + ".long_precision", long_precision_);
   node->get_parameter(p + ".lat_precision", lat_precision_);
@@ -115,9 +118,6 @@ void PIDController::configure(
   node->get_parameter(p + ".traj_speed_lookahead", traj_speed_lookahead_);
   traj_speed_lookahead_ = std::fabs(traj_speed_lookahead_);
   node->get_parameter(p + ".traj_time_lookahead", traj_time_lookahead_);
-  double approach_rotation_budget_deg = 200.0;
-  node->get_parameter(p + ".approach_rotation_budget_deg", approach_rotation_budget_deg);
-  approach_rotation_budget_ = std::fabs(approach_rotation_budget_deg) * M_PI / 180.0;
 
   // ---- nested PID configs: name + ".<pid>.<field>" ----
   auto declare_pid = [&](const std::string & pid, nav2_controller_common::PidConf & conf,
@@ -161,8 +161,32 @@ void PIDController::configure(
   speed_nav2_pid_controller_.Init(low_speed_pid_conf_);
   angular_station_nav2_pid_controller_.Init(angular_station_pid_conf_);
 
+  dyn_params_handler_ = node->add_on_set_parameters_callback(
+    std::bind(&PIDController::dynamicParametersCallback, this, std::placeholders::_1));
+
   RCLCPP_INFO(logger_, "PID controller \"%s\" configured.", plugin_name_.c_str());
 }
+
+rcl_interfaces::msg::SetParametersResult PIDController::dynamicParametersCallback(
+  std::vector<rclcpp::Parameter> parameters)
+{
+  rcl_interfaces::msg::SetParametersResult result;
+  result.successful = true;
+  for (const auto & parameter : parameters) {
+    if (parameter.get_name() != plugin_name_ + ".verbose") {
+      continue;
+    }
+    if (parameter.get_type() != rclcpp::ParameterType::PARAMETER_INTEGER) {
+      result.successful = false;
+      result.reason = "verbose must be an integer (0 = quiet, >=1 = per-cycle diagnostics)";
+      continue;
+    }
+    verbose_ = static_cast<int>(std::max<int64_t>(0, parameter.as_int()));
+    RCLCPP_INFO(logger_, "PIDController verbose -> %d", verbose_.load());
+  }
+  return result;
+}
+
 
 void PIDController::activate()
 {
@@ -178,6 +202,7 @@ void PIDController::deactivate()
 
 void PIDController::cleanup()
 {
+  dyn_params_handler_.reset();
   RCLCPP_INFO(logger_, "Cleaning up PID controller \"%s\".", plugin_name_.c_str());
   std::unique_lock<std::mutex> lock(plan_mutex_);
   last_trajectory_tracking_target_valid_ = false;
@@ -657,7 +682,6 @@ geometry_msgs::msg::TwistStamped PIDController::computeVelocityCommands(
       speed_nav2_pid_controller_.Reset();
       last_speed_cmd_valid_ = false;
       last_angular_cmd_valid_ = false;
-      resetRotationWatchdog(theta_rob);
     }
     switch (curr_controller_stage_) {
       case FINISH:
@@ -674,20 +698,6 @@ geometry_msgs::msg::TwistStamped PIDController::computeVelocityCommands(
     }
   }
   prev_controller_stage_ = curr_controller_stage_;
-
-  // 旋转量安全网：对机器人实际朝向变化（非误差）逐周期积分，超预算强制停止。
-  // 下方速度上限按朝向误差连续缩放只是阻尼，不能证明净旋转严格有界，
-  // 这里独立兜底定位跳变/TF 抖动等未预见场景。
-  bool rotation_budget_exceeded = false;
-  if (curr_controller_stage_ == APPROACHING || curr_controller_stage_ == ROTATING_TO_GOAL) {
-    rotation_budget_exceeded = updateRotationWatchdog(theta_rob);
-    if (rotation_budget_exceeded) {
-      RCLCPP_WARN_THROTTLE(
-        logger_, *clock_, 1000,
-        "approach/rotating stage exceeded rotation budget (%.1f deg > %.1f deg), forcing stop",
-        accumulated_rotation_ * 180.0 / M_PI, approach_rotation_budget_ * 180.0 / M_PI);
-    }
-  }
 
   double angle_to_heading = 0.0;
   const char * active_branch = "unset";
@@ -760,10 +770,28 @@ geometry_msgs::msg::TwistStamped PIDController::computeVelocityCommands(
     }
   }
 
-  if (rotation_budget_exceeded) {
-    cmd_vel.twist.linear.x = 0.0;
-    cmd_vel.twist.angular.z = 0.0;
-    active_branch = "rotation_budget_exceeded_stop";
+  if (verbose_) {
+    constexpr double kRad2Deg = 180.0 / M_PI;
+    // 角度一律用度（写作 deg 而非 °，避免多字节符号在部分终端/日志管道乱码）；
+    // 误差标 lon/lat 而非 x/y——base_x/base_y 读起来像全局坐标，实为机体系投影。
+    RCLCPP_INFO_THROTTLE(
+      logger_, *clock_, 100,
+      "PIDController %s/%s | pose(%.3f, %.3f, %+.1fdeg) -> goal(%.3f, %.3f, %+.1fdeg) "
+      "straight %.4f | goal_err lon %+.4f lat %+.4f yaw %+.1fdeg | "
+      "aim[%d/%zu] lon %+.4f lat %+.4f heading_err %+.1fdeg aim_yaw %+.1fdeg | "
+      "speed desired %.3f measured %+.3f err %+.3f limit %.3f pos_loop %+.3f "
+      "accel %+.3f(lim %+.3f) | cmd vx %+.3f wz %+.3f",
+      controllerStageName(curr_controller_stage_), active_branch,
+      pose.pose.position.x, pose.pose.position.y, input_pose_yaw * kRad2Deg,
+      cached_goal_ps.pose.position.x, cached_goal_ps.pose.position.y,
+      goal_yaw_ * kRad2Deg, goal_dist_global,
+      goal_x_base, goal_y_base, goal_yaw_error_global * kRad2Deg,
+      plan_index_, controller_traj_.size(),
+      err_x, err_y, err_theta * kRad2Deg, target_yaw_for_log * kRad2Deg,
+      desired_linear_vel_, velocity.linear.x, last_linear_speed_error_,
+      last_linear_limit_, last_linear_position_cmd_,
+      last_linear_accel_cmd_, last_linear_accel_limited_,
+      cmd_vel.twist.linear.x, cmd_vel.twist.angular.z);
   }
 
   RCLCPP_DEBUG_THROTTLE(
