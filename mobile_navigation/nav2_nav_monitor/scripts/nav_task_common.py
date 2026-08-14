@@ -59,3 +59,60 @@ def resolve_data_dir(cli_arg=None, quiet=False):
     if not quiet:
         print(f"数据目录（内置默认）：{DEFAULT_DIR}")
     return os.path.expanduser(DEFAULT_DIR)
+
+
+# ---------------------------------------------------------------------------
+# 采样断档处理
+#
+# 采样话题在某些阶段会整段停发（典型：hard stop 后 BT 切到 recovery 行为，
+# controller_server 的 FollowPath 结束，规划管线随之停摆，desired_vel /
+# controller_target 可能几秒钟一个样本都没有）。matplotlib 的折线会把断档
+# 两端直接连成直线，看上去像一条平滑的衰减曲线——实测出现过 5.3 秒只有
+# 1 个样本、却被画成"从 0.600 线性降到 0"的情况，直接把排查引向错误的因果。
+#
+# 断档是**真实信息**（那段没有规划输出），必须让它在图上表现为断开而不是插值。
+# ---------------------------------------------------------------------------
+
+DEFAULT_GAP_FACTOR = 5.0
+DEFAULT_MIN_GAP = 0.30
+
+
+def detect_sample_gaps(times, gap_factor=DEFAULT_GAP_FACTOR,
+                       min_gap=DEFAULT_MIN_GAP):
+    """返回 [(gap_start, gap_end), ...]：相邻样本间隔异常大的区间.
+
+    判据取「gap_factor × 本序列间隔中位数」与 min_gap 的较大者，
+    这样既适应不同话题的固有频率（100Hz odom 与 10Hz 诊断阈值不同），
+    又不会因为个别抖动就把线打断。
+    """
+    if len(times) < 3:
+        return []
+    deltas = sorted(times[i] - times[i - 1] for i in range(1, len(times)))
+    median_dt = deltas[len(deltas) // 2]
+    threshold = max(gap_factor * median_dt, min_gap)
+    return [(times[i - 1], times[i])
+            for i in range(1, len(times))
+            if times[i] - times[i - 1] > threshold]
+
+
+def split_on_gaps(times, *series, gap_factor=DEFAULT_GAP_FACTOR,
+                  min_gap=DEFAULT_MIN_GAP):
+    """在断档处插入 NaN，使 matplotlib 断线而不是跨断档插值.
+
+    返回 (times, *series, gaps)；times/series 已插入断点，gaps 为断档区间列表，
+    供调用方额外标注（只断线不标注的话，读图人仍不知道那里是"没数据"）。
+    """
+    gaps = detect_sample_gaps(times, gap_factor, min_gap)
+    if not gaps:
+        return (list(times), *[list(s) for s in series], gaps)
+    gap_starts = {g[0] for g in gaps}
+    out_t, out_s = [], [[] for _ in series]
+    for index, t in enumerate(times):
+        out_t.append(t)
+        for slot, s in enumerate(series):
+            out_s[slot].append(s[index])
+        if t in gap_starts and index + 1 < len(times):
+            out_t.append(float("nan"))
+            for slot in range(len(series)):
+                out_s[slot].append(float("nan"))
+    return (out_t, *out_s, gaps)

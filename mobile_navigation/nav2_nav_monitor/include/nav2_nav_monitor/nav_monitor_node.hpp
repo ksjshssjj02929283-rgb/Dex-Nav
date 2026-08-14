@@ -47,6 +47,13 @@ struct SpeedPlanCycleSample
   bool boundary_computed{false};
   std::string boundary_reason;
   double boundary_velocity{std::numeric_limits<double>::quiet_NaN()};
+  // 初值裁决的两个输入与偏差 + 局部路径投影增量。boundary_velocity 只是裁决
+  // 结果，看不出 v0 跳变是"实测真的高"还是"计划采样点跳了"（R58）。
+  // 旧记录没有这些字段，解析为可选，缺失时保持 NaN。
+  double initial_motion_measured_v{std::numeric_limits<double>::quiet_NaN()};
+  double initial_motion_sampled_v{std::numeric_limits<double>::quiet_NaN()};
+  double initial_motion_deviation{std::numeric_limits<double>::quiet_NaN()};
+  double local_path_progress_delta{std::numeric_limits<double>::quiet_NaN()};
   double boundary_acceleration{std::numeric_limits<double>::quiet_NaN()};
   bool boundary_acceleration_valid{false};
   double boundary_source_age{std::numeric_limits<double>::quiet_NaN()};
