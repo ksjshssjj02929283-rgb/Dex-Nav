@@ -108,7 +108,7 @@ ControllerServer::ControllerServer(const rclcpp::NodeOptions & options)
   local_planner_loader_("nav2_core", "nav2_core::LocalPlanner"),
   speed_planner_loader_("nav2_core", "nav2_core::SpeedPlanner")
 {
-  RCLCPP_INFO(get_logger(), "Creating controller server");
+  RCLCPP_INFO(get_logger(), "Controller server created.");
 
   declare_parameter("controller_frequency", 20.0);
 
@@ -185,7 +185,7 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
 {
   auto node = shared_from_this();
 
-  RCLCPP_INFO(get_logger(), "Configuring controller interface");
+  RCLCPP_INFO(get_logger(), "Configuring controller server.");
 
   get_parameter("progress_checker_plugin", progress_checker_id_);
   if (progress_checker_id_ == default_progress_checker_id_) {
@@ -194,7 +194,6 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
       rclcpp::ParameterValue(default_progress_checker_type_));
   }
 
-  RCLCPP_INFO(get_logger(), "getting goal checker plugins..");
   get_parameter("goal_checker_plugins", goal_checker_ids_);
   if (goal_checker_ids_ == default_goal_checker_ids_) {
     for (size_t i = 0; i < default_goal_checker_ids_.size(); ++i) {
@@ -238,7 +237,7 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
   get_parameter("min_x_velocity_threshold", min_x_velocity_threshold_);
   get_parameter("min_y_velocity_threshold", min_y_velocity_threshold_);
   get_parameter("min_theta_velocity_threshold", min_theta_velocity_threshold_);
-  RCLCPP_INFO(get_logger(), "Controller frequency set to %.4fHz", controller_frequency_);
+  RCLCPP_INFO(get_logger(), "Controller frequency: %.4f Hz.", controller_frequency_);
 
   std::string speed_limit_topic;
   get_parameter("speed_limit_topic", speed_limit_topic);
@@ -290,13 +289,14 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
     progress_checker_type_ = nav2_util::get_plugin_type_param(node, progress_checker_id_);
     progress_checker_ = progress_checker_loader_.createUniqueInstance(progress_checker_type_);
     RCLCPP_INFO(
-      get_logger(), "Created progress_checker : %s of type %s",
+      get_logger(), "Progress checker loaded: id='%s', type='%s'.",
       progress_checker_id_.c_str(), progress_checker_type_.c_str());
     progress_checker_->initialize(node, progress_checker_id_);
   } catch (const pluginlib::PluginlibException & ex) {
     RCLCPP_FATAL(
       get_logger(),
-      "Failed to create progress_checker. Exception: %s", ex.what());
+      "Progress checker '%s' failed to load: %s",
+      progress_checker_id_.c_str(), ex.what());
     return nav2_util::CallbackReturn::FAILURE;
   }
 
@@ -306,14 +306,15 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
       nav2_core::GoalChecker::Ptr goal_checker =
         goal_checker_loader_.createUniqueInstance(goal_checker_types_[i]);
       RCLCPP_INFO(
-        get_logger(), "Created goal checker : %s of type %s",
+        get_logger(), "Goal checker loaded: id='%s', type='%s'.",
         goal_checker_ids_[i].c_str(), goal_checker_types_[i].c_str());
       goal_checker->initialize(node, goal_checker_ids_[i], costmap_ros_);
       goal_checkers_.insert({goal_checker_ids_[i], goal_checker});
     } catch (const pluginlib::PluginlibException & ex) {
       RCLCPP_FATAL(
         get_logger(),
-        "Failed to create goal checker. Exception: %s", ex.what());
+        "Goal checker '%s' failed to load: %s",
+        goal_checker_ids_[i].c_str(), ex.what());
       return nav2_util::CallbackReturn::FAILURE;
     }
   }
@@ -325,13 +326,13 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
 
   RCLCPP_INFO(
     get_logger(),
-    "Controller Server has %s goal checkers available.", goal_checker_ids_concat_.c_str());
+    "Goal checkers: %s", goal_checker_ids_concat_.c_str());
 
   get_parameter("current_goal_checker", default_goal_checker_);
   if (goal_checkers_.find(default_goal_checker_) == goal_checkers_.end()) {
     RCLCPP_FATAL(
       get_logger(),
-      "Configured current_goal_checker '%s' does not exist. Available goal checkers are: %s.",
+      "current_goal_checker '%s' not found. Available: %s",
       default_goal_checker_.c_str(), goal_checker_ids_concat_.c_str());
     return nav2_util::CallbackReturn::FAILURE;
   }
@@ -342,7 +343,7 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
       nav2_core::Controller::Ptr controller =
         lp_loader_.createUniqueInstance(controller_types_[i]);
       RCLCPP_INFO(
-        get_logger(), "Created controller : %s of type %s",
+        get_logger(), "Controller loaded: id='%s', type='%s'.",
         controller_ids_[i].c_str(), controller_types_[i].c_str());
       controller->configure(
         node, controller_ids_[i],
@@ -351,7 +352,8 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
     } catch (const pluginlib::PluginlibException & ex) {
       RCLCPP_FATAL(
         get_logger(),
-        "Failed to create controller. Exception: %s", ex.what());
+        "Controller '%s' failed to load: %s",
+        controller_ids_[i].c_str(), ex.what());
       return nav2_util::CallbackReturn::FAILURE;
     }
   }
@@ -363,13 +365,13 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
 
   RCLCPP_INFO(
     get_logger(),
-    "Controller Server has %s controllers available.", controller_ids_concat_.c_str());
+    "Controllers: %s", controller_ids_concat_.c_str());
 
   get_parameter("current_controller", default_controller_);
   if (controllers_.find(default_controller_) == controllers_.end()) {
     RCLCPP_FATAL(
       get_logger(),
-      "Configured current_controller '%s' does not exist. Available controllers are: %s.",
+      "current_controller '%s' not found. Available: %s",
       default_controller_.c_str(), controller_ids_concat_.c_str());
     return nav2_util::CallbackReturn::FAILURE;
   }
@@ -382,13 +384,15 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
       nav2_core::LocalPlanner::Ptr local_planner =
         local_planner_loader_.createUniqueInstance(local_planner_types_[i]);
       RCLCPP_INFO(
-        get_logger(), "Created local planner: %s of type %s",
+        get_logger(), "Local planner loaded: id='%s', type='%s'.",
         local_planner_ids_[i].c_str(), local_planner_types_[i].c_str());
       local_planner->configure(
         node, local_planner_ids_[i], costmap_ros_->getTfBuffer(), costmap_ros_);
       local_planners_.insert({local_planner_ids_[i], local_planner});
     } catch (const std::exception & ex) {
-      RCLCPP_FATAL(get_logger(), "Failed to create local planner. Exception: %s", ex.what());
+      RCLCPP_FATAL(
+        get_logger(), "Local planner '%s' failed to load: %s",
+        local_planner_ids_[i].c_str(), ex.what());
       return nav2_util::CallbackReturn::FAILURE;
     }
   }
@@ -402,16 +406,16 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
   if (current_local_planner_.empty()) {
     RCLCPP_INFO(
       get_logger(),
-      "Local planning disabled (current_local_planner is empty); global path passthrough enabled.");
+      "Local planning off. Using the global path.");
   } else if (local_planners_.find(current_local_planner_) == local_planners_.end()) {
     RCLCPP_FATAL(
       get_logger(),
-      "Configured current_local_planner '%s' does not exist. Available local planners are: %s.",
+      "current_local_planner '%s' not found. Available: %s",
       current_local_planner_.c_str(), local_planner_ids_concat_.c_str());
     return nav2_util::CallbackReturn::FAILURE;
   } else {
     RCLCPP_INFO(
-      get_logger(), "Controller Server has %s local planners available, current: %s.",
+      get_logger(), "Local planners: %s Selected: '%s'.",
       local_planner_ids_concat_.c_str(), current_local_planner_.c_str());
   }
 
@@ -423,7 +427,7 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
       nav2_core::SpeedPlanner::Ptr speed_planner =
         speed_planner_loader_.createUniqueInstance(speed_planner_types_[i]);
       RCLCPP_INFO(
-        get_logger(), "Created speed planner : %s of type %s",
+        get_logger(), "Speed planner loaded: id='%s', type='%s'.",
         speed_planner_ids_[i].c_str(), speed_planner_types_[i].c_str());
       speed_planner->configure(
         node, speed_planner_ids_[i],
@@ -432,7 +436,8 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
     } catch (const pluginlib::PluginlibException & ex) {
       RCLCPP_FATAL(
         get_logger(),
-        "Failed to create speed planner. Exception: %s", ex.what());
+        "Speed planner '%s' failed to load: %s",
+        speed_planner_ids_[i].c_str(), ex.what());
       return nav2_util::CallbackReturn::FAILURE;
     }
   }
@@ -446,18 +451,17 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
   if (current_speed_planner_.empty()) {
     RCLCPP_INFO(
       get_logger(),
-      "Speed planning disabled (current_speed_planner is empty); "
-      "controllers consume geometric paths only. 速度规划未启用，控制器仅消费几何路径。");
+      "Speed planning off. Controllers use paths without speed data.");
   } else if (speed_planners_.find(current_speed_planner_) == speed_planners_.end()) {
     RCLCPP_FATAL(
       get_logger(),
-      "Configured current_speed_planner '%s' does not exist. Available speed planners are: %s.",
+      "current_speed_planner '%s' not found. Available: %s",
       current_speed_planner_.c_str(), speed_planner_ids_concat_.c_str());
     return nav2_util::CallbackReturn::FAILURE;
   } else {
     RCLCPP_INFO(
       get_logger(),
-      "Controller Server has %s speed planners available, current: %s.",
+      "Speed planners: %s Selected: '%s'.",
       speed_planner_ids_concat_.c_str(), current_speed_planner_.c_str());
   }
 
@@ -465,23 +469,21 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
     if (controllers_.find(track_controller_) == controllers_.end()) {
       RCLCPP_FATAL(
         get_logger(),
-        "Configured staged_control.track_controller '%s' does not exist. "
-        "Available controllers are: %s.",
+        "staged_control.track_controller '%s' not found. Available: %s",
         track_controller_.c_str(), controller_ids_concat_.c_str());
       return nav2_util::CallbackReturn::FAILURE;
     }
     if (controllers_.find(approach_controller_) == controllers_.end()) {
       RCLCPP_FATAL(
         get_logger(),
-        "Configured staged_control.approach_controller '%s' does not exist. "
-        "Available controllers are: %s.",
+        "staged_control.approach_controller '%s' not found. Available: %s",
         approach_controller_.c_str(), controller_ids_concat_.c_str());
       return nav2_util::CallbackReturn::FAILURE;
     }
     RCLCPP_INFO(
       get_logger(),
-      "Staged control enabled: prepare=%s align_tolerance=%.3f rad track=%s "
-      "approach=%s approach_distance=%.3f m",
+      "Staged control on: prepare=%s, align_limit=%.3f rad, track='%s', "
+      "approach='%s', approach_distance=%.3f m.",
       prepare_enabled_ ? "true" : "false",
       align_heading_tolerance_,
       track_controller_.c_str(),
@@ -711,9 +713,7 @@ bool ControllerServer::findControllerId(
   if (c_name.empty()) {
     if (controllers_.find(default_controller_) != controllers_.end()) {
       RCLCPP_WARN_ONCE(
-        get_logger(), "No controller was specified in action call. "
-        "动作请求没有指定 controller，Server 将使用 current_controller 插件 %s。"
-        "This warning will appear once.",
+        get_logger(), "No controller set. Using current_controller '%s'.",
         default_controller_.c_str());
       current_controller = default_controller_;
       return true;
@@ -723,20 +723,17 @@ bool ControllerServer::findControllerId(
   if (controllers_.find(c_name) == controllers_.end()) {
     if (controllers_.size() == 1 && c_name.empty()) {
       RCLCPP_WARN_ONCE(
-        get_logger(), "No controller was specified in action call. "
-        "动作请求没有指定 controller，Server 将使用唯一已加载插件 %s。"
-        "This warning will appear once.",
+        get_logger(), "No controller set. Using the only loaded controller: %s",
         controller_ids_concat_.c_str());
       current_controller = controllers_.begin()->first;
     } else {
       RCLCPP_ERROR(
-        get_logger(), "FollowPath called with controller name %s, "
-        "which does not exist. 请求的 controller_id 不存在。Available controllers are: %s.",
+        get_logger(), "Controller '%s' not found. Available: %s",
         c_name.c_str(), controller_ids_concat_.c_str());
       return false;
     }
   } else {
-    RCLCPP_DEBUG(get_logger(), "Selected controller: %s.", c_name.c_str());
+    RCLCPP_DEBUG(get_logger(), "Controller selected: '%s'.", c_name.c_str());
     current_controller = c_name;
   }
 
@@ -750,9 +747,7 @@ bool ControllerServer::findGoalCheckerId(
   if (c_name.empty()) {
     if (goal_checkers_.find(default_goal_checker_) != goal_checkers_.end()) {
       RCLCPP_WARN_ONCE(
-        get_logger(), "No goal checker was specified in parameter 'current_goal_checker'."
-        " 动作请求没有指定 goal_checker，Server 将使用 current_goal_checker 插件 %s。"
-        "This warning will appear once.",
+        get_logger(), "No goal checker set. Using current_goal_checker '%s'.",
         default_goal_checker_.c_str());
       current_goal_checker = default_goal_checker_;
       return true;
@@ -762,21 +757,17 @@ bool ControllerServer::findGoalCheckerId(
   if (goal_checkers_.find(c_name) == goal_checkers_.end()) {
     if (goal_checkers_.size() == 1 && c_name.empty()) {
       RCLCPP_WARN_ONCE(
-        get_logger(), "No goal checker was specified in parameter 'current_goal_checker'."
-        " 动作请求没有指定 goal_checker，Server 将使用唯一已加载插件 %s。"
-        "This warning will appear once.",
+        get_logger(), "No goal checker set. Using the only loaded goal checker: %s",
         goal_checker_ids_concat_.c_str());
       current_goal_checker = goal_checkers_.begin()->first;
     } else {
       RCLCPP_ERROR(
-        get_logger(), "FollowPath called with goal_checker name %s in parameter"
-        " 'current_goal_checker', which does not exist. 请求的 goal_checker_id 不存在。"
-        "Available goal checkers are: %s.",
+        get_logger(), "Goal checker '%s' not found. Available: %s",
         c_name.c_str(), goal_checker_ids_concat_.c_str());
       return false;
     }
   } else {
-    RCLCPP_DEBUG(get_logger(), "Selected goal checker: %s.", c_name.c_str());
+    RCLCPP_DEBUG(get_logger(), "Goal checker selected: '%s'.", c_name.c_str());
     current_goal_checker = c_name;
   }
 
@@ -786,17 +777,17 @@ bool ControllerServer::findGoalCheckerId(
 void ControllerServer::computeControl()
 {
   std::lock_guard<std::mutex> lock(dynamic_params_lock_);
+  is_collision_stop_active_ = false;
   is_progress_check_paused_for_obstacle_stop_ = false;
 
-  RCLCPP_INFO(get_logger(), "Received a goal, begin computing control effort.");
   if (odom_sub_) {
     const auto start_twist = getThresholdedTwist(odom_sub_->getTwist());
     RCLCPP_INFO(
       get_logger(),
-      "[ControllerStopDebug] FollowPath started: actual odom velocity vx=%.3f m/s, "
-      "vy=%.3f m/s, wz=%.3f rad/s. If these values are not near zero immediately after a "
-      "previous stop request, BT recovery restarted control before the robot fully stopped.",
+      "FollowPath started: odom_vx=%.3f m/s, odom_vy=%.3f m/s, odom_wz=%.3f rad/s.",
       start_twist.x, start_twist.y, start_twist.theta);
+  } else {
+    RCLCPP_INFO(get_logger(), "FollowPath started.");
   }
 
   publishNavigationStatus(nav_interfaces::msg::NavigationStatus::NAVIGATING);
@@ -839,12 +830,12 @@ void ControllerServer::computeControl()
     // end
     while (rclcpp::ok()) {
       if (action_server_ == nullptr || !action_server_->is_server_active()) {
-        RCLCPP_DEBUG(get_logger(), "Action server unavailable or inactive. Stopping.");
+        RCLCPP_DEBUG(get_logger(), "Action server is not active. Control stopped.");
         return;
       }
 
       if (action_server_->is_cancel_requested()) {
-        RCLCPP_INFO(get_logger(), "Goal was canceled. Stopping the robot.");
+        RCLCPP_INFO(get_logger(), "Goal canceled. Stopping robot.");
         publishHardStopVelocity();
         publishNavigationStatus(nav_interfaces::msg::NavigationStatus::IDLE);
         // The FollowPath result is the controller-side stop acknowledgement used
@@ -859,7 +850,7 @@ void ControllerServer::computeControl()
         if (action_server_->is_cancel_requested()) {
           RCLCPP_INFO(
             get_logger(),
-            "Goal was canceled while waiting for the costmap. Stopping the robot.");
+            "Goal canceled while waiting for costmap. Stopping robot.");
           publishHardStopVelocity();
           publishNavigationStatus(nav_interfaces::msg::NavigationStatus::IDLE);
           action_server_->terminate_all();
@@ -873,7 +864,7 @@ void ControllerServer::computeControl()
       elapsed = end - start;
       if (elapsed.count() >= 100) {
         RCLCPP_WARN(
-          get_logger(), "Global path update cost: %.6f ms",
+          get_logger(), "Slow path update: %.3f ms.",
           elapsed.count());
       }
 
@@ -897,7 +888,7 @@ void ControllerServer::computeControl()
         if (!loop_rate.sleep()) {
           RCLCPP_WARN(
             get_logger(),
-            "Control loop missed its desired rate of %.4fHz after planning failure",
+            "Control loop late after planning failure: target=%.4f Hz.",
             controller_frequency_);
         }
         continue;
@@ -909,12 +900,12 @@ void ControllerServer::computeControl()
       elapsed = end - start;
       if (elapsed.count() >= 100) {
         RCLCPP_WARN(
-          get_logger(), "Local path update cost: %.6f ms",
+          get_logger(), "Slow control update: %.3f ms.",
           elapsed.count());
       }
 
       if (isGoalReached()) {
-        RCLCPP_INFO(get_logger(), "Reached the goal!");
+        RCLCPP_INFO(get_logger(), "Goal reached.");
         resetStagedControlState();
         break;
       }
@@ -924,7 +915,7 @@ void ControllerServer::computeControl()
 
       if (!loop_rate.sleep()) {
         RCLCPP_WARN(
-          get_logger(), "Control loop missed its desired rate of %.4fHz, the cost time is %.6f ms",
+          get_logger(), "Control loop late: target=%.4f Hz, control_time=%.3f ms.",
           controller_frequency_, elapsed.count());
       }
     }
@@ -936,14 +927,14 @@ void ControllerServer::computeControl()
     publishNavigationStatus(nav_interfaces::msg::NavigationStatus::IDLE);
     return;
   } catch (nav2_core::PlannerException & e) {
-    RCLCPP_ERROR(this->get_logger(), "%s", e.what());
+    RCLCPP_ERROR(this->get_logger(), "Control failed: %s", e.what());
     publishHardStopVelocity();
     publishNavigationStatus(nav_interfaces::msg::NavigationStatus::FAILED, e.what());
     action_server_->terminate_current();
     publishNavigationStatus(nav_interfaces::msg::NavigationStatus::IDLE);
     return;
   }catch (std::exception & e) {
-    RCLCPP_ERROR(this->get_logger(), "%s", e.what());
+    RCLCPP_ERROR(this->get_logger(), "Unexpected control error: %s", e.what());
     publishHardStopVelocity();
     publishNavigationStatus(nav_interfaces::msg::NavigationStatus::FAILED, e.what());
     std::shared_ptr<Action::Result> result = std::make_shared<Action::Result>();
@@ -951,7 +942,7 @@ void ControllerServer::computeControl()
     publishNavigationStatus(nav_interfaces::msg::NavigationStatus::IDLE);
     return;
   }
-  RCLCPP_DEBUG(get_logger(), "Controller succeeded, setting result");
+  RCLCPP_DEBUG(get_logger(), "FollowPath succeeded.");
 
   publishZeroVelocity();
 
@@ -967,10 +958,9 @@ void ControllerServer::setPlannerPath(
 {
   RCLCPP_DEBUG(
     get_logger(),
-    "Providing path to the controller %s", current_controller_.c_str());
+    "Set path: controller='%s'.", current_controller_.c_str());
   if (path.poses.empty()) {
-    throw nav2_core::PlannerException(
-            "Invalid path, Path is empty. 路径无效：path.poses 为空，通常表示 FollowPath 收到了空路径，无法进行局部控制。");
+    throw nav2_core::PlannerException("Path is empty. FollowPath cannot start.");
   }
   controllers_[current_controller_]->setPlan(path);
   if (staged_control_enabled_) {
@@ -1009,17 +999,18 @@ void ControllerServer::commitPlannerPathState(
     goal_checkers_[current_goal_checker_]->reset();
     controller_phase_ = ControllerPhase::TRACK;
     terminal_brake_latched_ = false;
+    is_collision_stop_active_ = false;
     is_progress_check_paused_for_obstacle_stop_ = false;
   } else {
-    RCLCPP_INFO(
-      get_logger(),
-      "同目标 path 仅替换几何：保留 end_pose_、controller phase=%s、goal 状态和 "
-      "InitialMotionArbiter 已消费 (v,a) 连续性、terminal_brake_latched=%s。",
-      controllerPhaseName(controller_phase_), terminal_brake_latched_ ? "true" : "false");
+    RCLCPP_DEBUG_THROTTLE(
+      get_logger(), *get_clock(), 1000,
+      "Same-goal path update: phase=%s, terminal_brake=%s, collision_stop=%s. State kept.",
+      controllerPhaseName(controller_phase_), terminal_brake_latched_ ? "true" : "false",
+      is_collision_stop_active_ ? "true" : "false");
   }
 
   RCLCPP_DEBUG(
-    get_logger(), "Path end point is (%.2f, %.2f)",
+    get_logger(), "Goal anchor: x=%.2f, y=%.2f.",
     end_pose_.pose.position.x, end_pose_.pose.position.y);
 
   current_path_ = path;
@@ -1048,7 +1039,7 @@ bool ControllerServer::computeLocalPath(
   if (local_planner == local_planners_.end()) {
     RCLCPP_ERROR_THROTTLE(
       get_logger(), *get_clock(), 1000,
-      "Configured local planner '%s' is unavailable; halting this control cycle.",
+      "Local planner '%s' is not loaded. No command this cycle.",
       current_local_planner_.c_str());
     local_path = nav_msgs::msg::Path();
     return false;
@@ -1060,7 +1051,7 @@ bool ControllerServer::computeLocalPath(
   {
     RCLCPP_WARN_THROTTLE(
       get_logger(), *get_clock(), 1000,
-      "Local planner '%s' failed or returned an empty path; halting this control cycle.",
+      "Local planner '%s' failed or gave an empty path. No command this cycle.",
       current_local_planner_.c_str());
     local_path = nav_msgs::msg::Path();
     return false;
@@ -1085,8 +1076,11 @@ nav2_core::InitialMotionState ControllerServer::buildInitialMotionState(
   if (decision.reason.has_value()) {
     RCLCPP_DEBUG_THROTTLE(
       get_logger(), *get_clock(), 1000,
-      "Speed planning initial_motion reseeded: reason=%s",
-      nav2_speed_planner::initialMotionSourceName(*decision.reason));
+      "Initial motion updated: reason=%s, velocity_inherited=%s, "
+      "acceleration_inherited=%s.",
+      nav2_speed_planner::initialMotionSourceName(*decision.reason),
+      decision.velocity_inherited ? "true" : "false",
+      decision.inherited() ? "true" : "false");
   }
   return decision.state;
 }
@@ -1136,8 +1130,8 @@ void ControllerServer::updateTerminalBrakeLatch(
   if (!longitudinal_continuity_valid && !motion_requires_braking) {
     RCLCPP_DEBUG_THROTTLE(
       get_logger(), *get_clock(), 1000,
-      "Terminal brake condition deferred: no longitudinal continuity and "
-      "braking distance is zero (available=%.3f m, infeasible=%s).",
+      "Terminal brake not set: no motion history, braking=0, available=%.3f m, "
+      "infeasible=%s.",
       diagnostics.terminal_distance_available,
       diagnostics.terminal_infeasible ? "true" : "false");
     return;
@@ -1146,8 +1140,8 @@ void ControllerServer::updateTerminalBrakeLatch(
   terminal_brake_latched_ = true;
   RCLCPP_WARN(
     get_logger(),
-    "Terminal brake latched: available=%.3f m braking=%.3f m reserve=%.3f m "
-    "infeasible=%s. Same-goal path updates may not re-arm cruise acceleration.",
+    "Terminal brake set: available=%.3f m, braking=%.3f m, reserve=%.3f m, "
+    "infeasible=%s.",
     diagnostics.terminal_distance_available,
     diagnostics.terminal_braking_distance,
     diagnostics.terminal_execution_reserve,
@@ -1201,11 +1195,12 @@ bool ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
       const size_t planning_points = planning_path.poses.size();
       const std::string & planning_frame = planning_path.header.frame_id;
       if (total_ms >= kSlowPlanningPipelineWarnMs) {
-        RCLCPP_WARN(
-          get_logger(),
-          "Planning pipeline timing (ms): result=%s total=%.3f odom=%.3f pose=%.3f "
-          "local=%.3f speed_set_plan=%.3f speed_compute=%.3f viz=%.3f "
-          "unaccounted=%.3f points=%zu->%zu->%zu frames=%s->%s",
+        RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 1000,
+          "Slow planning (ms): result=%s total=%.3f odom=%.3f pose=%.3f "
+          "local=%.3f speed_set_plan=%.3f speed_compute=%.3f viz=%.3f other=%.3f "
+          "input_points=%zu planning_points=%zu trajectory_points=%zu "
+          "input_frame='%s' planning_frame='%s'.",
           result, total_ms, odom_ms, pose_ms, local_planner_ms, speed_set_plan_ms,
           speed_compute_ms, visualization_ms, unaccounted_ms,
           path.poses.size(), planning_points, current_trajectory_.points.size(),
@@ -1213,9 +1208,10 @@ bool ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
       } else {
         RCLCPP_DEBUG_THROTTLE(
           get_logger(), *get_clock(), 1000,
-          "Planning pipeline timing (ms): result=%s total=%.3f odom=%.3f pose=%.3f "
-          "local=%.3f speed_set_plan=%.3f speed_compute=%.3f viz=%.3f "
-          "unaccounted=%.3f points=%zu->%zu->%zu frames=%s->%s",
+          "Planning (ms): result=%s total=%.3f odom=%.3f pose=%.3f "
+          "local=%.3f speed_set_plan=%.3f speed_compute=%.3f viz=%.3f other=%.3f "
+          "input_points=%zu planning_points=%zu trajectory_points=%zu "
+          "input_frame='%s' planning_frame='%s'.",
           result, total_ms, odom_ms, pose_ms, local_planner_ms, speed_set_plan_ms,
           speed_compute_ms, visualization_ms, unaccounted_ms,
           path.poses.size(), planning_points, current_trajectory_.points.size(),
@@ -1247,7 +1243,7 @@ bool ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
   if (sp == speed_planners_.end()) {
     RCLCPP_ERROR_THROTTLE(
       get_logger(), *get_clock(), 1000,
-      "Configured speed planner '%s' is unavailable; halting this control cycle.",
+      "Speed planner '%s' is not loaded. No command this cycle.",
       current_speed_planner_.c_str());
     speed_plan_cycle_.planning_result = "speed_planner_unavailable";
     publishSpeedPlanDiagnostics(
@@ -1276,7 +1272,7 @@ bool ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
   if (!pose_available) {
     RCLCPP_WARN_THROTTLE(
       get_logger(), *get_clock(), 1000,
-      "Cannot get robot pose in path frame '%s' for planning; halting this control cycle.",
+      "Robot pose not found in path frame '%s'. No command this cycle.",
       planning_frame.c_str());
     speed_plan_cycle_.planning_result = "pose_lookup_failed";
     publishSpeedPlanDiagnostics(
@@ -1345,12 +1341,11 @@ bool ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
       d.terminal_infeasible_reason : 0;
     RCLCPP_WARN_THROTTLE(
       get_logger(), *get_clock(), 1000,
-      "Speed plan diagnostic: planner=%s terminal_infeasible=true kind=%s "
-      "entry=%s final=%s provenance=%s | anchor_s=%.3f available=%.3f braking=%.3f "
-      "reserve=%.3f latched_reserve=%.3f | v0=%.3f a0=%.3f latched=%d path_len=%.3f "
-      "points=%zu | branch=%s first_obs=%d@%.3f | solver: code=%d v0=%.4f a0=%.4f "
-      "vmax=%.4f target_v=%.4f dist=%.4f; "
-      "using a continuous reachable braking profile.",
+      "Speed plan fallback: planner=%s kind=%s entry=%s reason=%s profile=%s "
+      "anchor=%.3f available=%.3f braking=%.3f reserve=%.3f latched_reserve=%.3f "
+      "initial_vx=%.3f initial_a=%.3f brake_latched=%d path_length=%.3f path_points=%zu "
+      "branch=%s obstacle_index=%d obstacle_arc=%.3f "
+      "solver=(code=%d v0=%.4f a0=%.4f vmax=%.4f target_v=%.4f distance=%.4f).",
       current_speed_planner_.c_str(), kKind[k], kReason[er], kReason[fr],
       d.terminal_result_provenance ? "braking_fallback" : "normal",
       d.terminal_anchor_s, d.terminal_distance_available, d.terminal_braking_distance,
@@ -1368,7 +1363,7 @@ bool ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
   if (current_trajectory_.points.empty()) {
     RCLCPP_WARN_THROTTLE(
       get_logger(), *get_clock(), 1000,
-      "Speed planner '%s' returned an empty trajectory; halting this control cycle.",
+      "Speed planner '%s' returned no points. No command this cycle.",
       current_speed_planner_.c_str());
     const auto visualization_start = PipelineClock::now();
     publishSpeedPlan(current_trajectory_);  // 清除 RViz 旧 marker
@@ -1405,10 +1400,10 @@ bool ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
 
   RCLCPP_DEBUG_THROTTLE(
     get_logger(), *get_clock(), 1000,
-    "Speed plan dispatched: planner=%s points=%zu v_start=%.3f a_start=%.3f inherited=%s "
-    "source_age=%.3f",
+    "Speed plan ready: planner=%s trajectory_points=%zu odom_vx=%.3f initial_vx=%.3f "
+    "initial_a=%.3f acceleration_inherited=%s source_age=%.3f s.",
     current_speed_planner_.c_str(), current_trajectory_.points.size(),
-    current_velocity.linear.x, initial_motion.acceleration,
+    current_velocity.linear.x, initial_motion.velocity.linear.x, initial_motion.acceleration,
     initial_motion.acceleration_valid ? "true" : "false", initial_motion.source_age);
   return true;
 }
@@ -1619,9 +1614,13 @@ void ControllerServer::publishSpeedPlanDiagnostics(
   diagnostic_msgs::msg::DiagnosticArray message;
   message.header.stamp = now();
   diagnostic_msgs::msg::DiagnosticStatus status;
-  if (!cycle.planning_succeeded || !control_succeeded) {
+  // 碰撞等待属于安全停车，不按控制失败上报。
+  const bool is_collision_stop_wait = control_result == "collision_stop_wait";
+  if (!cycle.planning_succeeded || (!control_succeeded && !is_collision_stop_wait)) {
     status.level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
-  } else if (cycle.terminal_valid && cycle.terminal.terminal_infeasible) {
+  } else if (is_collision_stop_wait ||
+    (cycle.terminal_valid && cycle.terminal.terminal_infeasible))
+  {
     status.level = diagnostic_msgs::msg::DiagnosticStatus::WARN;
   } else {
     status.level = diagnostic_msgs::msg::DiagnosticStatus::OK;
@@ -1629,6 +1628,8 @@ void ControllerServer::publishSpeedPlanDiagnostics(
   status.name = "navigation_speed_plan";
   if (!cycle.planning_succeeded) {
     status.message = cycle.planning_result;
+  } else if (is_collision_stop_wait) {
+    status.message = "collision_stop_wait";
   } else if (!control_succeeded) {
     status.message = control_result;
   } else if (cycle.terminal_valid && cycle.terminal.terminal_infeasible) {
@@ -1737,8 +1738,7 @@ bool ControllerServer::isSamePathGoal(const nav_msgs::msg::Path & path)
   } catch (const tf2::TransformException & ex) {
     RCLCPP_WARN_THROTTLE(
       get_logger(), *get_clock(), 5000,
-      "Unable to transform pending path end pose for same-goal check: %s. "
-      "无法转换待更新 path 的终点，按新路径处理。",
+      "Path end TF failed: %s. Treating path as a new goal.",
       ex.what());
     return false;
   }
@@ -1759,8 +1759,8 @@ bool ControllerServer::isSamePathGoal(const nav_msgs::msg::Path & path)
   if (!same_goal) {
     RCLCPP_INFO(
       get_logger(),
-      "近目标 path 更新未被视为同一目标：goal_delta=%.4f/%.4f m, "
-      "yaw_delta=%.4f/%.4f rad，将正常更新 path。",
+      "Path goal changed: position_delta=%.4f m (limit=%.4f), "
+      "yaw_delta=%.4f rad (limit=%.4f).",
       goal_delta, kSameGoalPositionTolerance, yaw_delta, kSameGoalYawTolerance);
   }
   return same_goal;
@@ -1798,7 +1798,7 @@ void ControllerServer::setControllerPhase(ControllerPhase phase, const std::stri
   }
   RCLCPP_INFO(
     get_logger(),
-    "Controller phase transition: %s -> %s (%s)",
+    "Control phase: %s -> %s, reason=%s.",
     controllerPhaseName(controller_phase_),
     controllerPhaseName(phase),
     reason.c_str());
@@ -1827,8 +1827,7 @@ double ControllerServer::getDistanceToGoal(const geometry_msgs::msg::PoseStamped
   } catch (const tf2::TransformException & ex) {
     RCLCPP_WARN_THROTTLE(
       get_logger(), *get_clock(), 5000,
-      "Unable to transform end pose for staged control: %s. "
-      "四阶段控制无法转换目标位姿，请检查 TF。",
+      "Goal pose TF failed in staged control: %s",
       ex.what());
     return std::numeric_limits<double>::infinity();
   }
@@ -1859,8 +1858,7 @@ bool ControllerServer::getTargetPointHeadingError(
   } catch (const tf2::TransformException & ex) {
     RCLCPP_WARN_THROTTLE(
       get_logger(), *get_clock(), 5000,
-      "Unable to transform robot pose for path heading alignment: %s. "
-      "四阶段 align 无法转换机器人位姿，请检查 TF。",
+      "Robot pose TF failed in align: %s",
       ex.what());
     return false;
   }
@@ -2036,7 +2034,7 @@ bool ControllerServer::shouldRunPrepareBackup()
     if (isRearObstacleDetected()) {
       prepare_backup_active_ = false;
       RCLCPP_WARN(
-        get_logger(), "Prepare backup aborted: obstacle detected behind the robot.");
+        get_logger(), "Prepare backup stopped: rear obstacle.");
       return false;
     }
     const double elapsed = (now() - prepare_backup_start_time_).seconds();
@@ -2064,7 +2062,7 @@ bool ControllerServer::shouldRunPrepareBackup()
   prepare_check_pending_ = false;
   if (!isObstacleNearFootprint()) {
     RCLCPP_INFO(
-      get_logger(), "Prepare phase checked once at navigation start: no obstacle near footprint.");
+      get_logger(), "Prepare check: no front or side obstacle.");
     return false;
   }
 
@@ -2073,7 +2071,7 @@ bool ControllerServer::shouldRunPrepareBackup()
   if (isRearObstacleDetected()) {
     RCLCPP_WARN(
       get_logger(),
-      "Prepare: front obstacle detected but rear is also blocked; skipping backup.");
+      "Prepare backup skipped: front and rear are blocked.");
     return false;
   }
 
@@ -2082,7 +2080,7 @@ bool ControllerServer::shouldRunPrepareBackup()
   getRobotPose(prepare_backup_start_pose_);
   RCLCPP_WARN(
     get_logger(),
-    "Prepare phase detected obstacle near footprint (front/side), backing up: speed=%.3f m/s %s",
+    "Prepare backup started: front or side obstacle, speed=%.3f m/s, %s.",
     prepare_backup_speed_,
     prepare_backup_use_distance_ ?
     ("distance=" + std::to_string(prepare_backup_distance_) + "m").c_str() :
@@ -2096,6 +2094,7 @@ void ControllerServer::resetStagedControlState()
   prepare_check_pending_ = true;
   align_done_ = false;
   terminal_brake_latched_ = false;
+  is_collision_stop_active_ = false;
   is_progress_check_paused_for_obstacle_stop_ = false;
   invalidateSpeedPlanningContinuity();
 }
@@ -2126,13 +2125,13 @@ geometry_msgs::msg::TwistStamped ControllerServer::computeStagedVelocity(
   cmd_vel.header.stamp = now();
 
   if (!staged_control_enabled_) {
-    setControllerPhase(ControllerPhase::TRACK, "staged_control disabled");
+    setControllerPhase(ControllerPhase::TRACK, "staged control off");
     active_controller_for_log_ = current_controller_;
     return computeControllerVelocity(current_controller_, pose, twist);
   }
 
   if (shouldRunPrepareBackup()) {
-    setControllerPhase(ControllerPhase::PREPARE, "front obstacle backup");
+    setControllerPhase(ControllerPhase::PREPARE, "front obstacle");
     active_controller_for_log_ = "direct_prepare_backup";
     cmd_vel.twist.linear.x = prepare_backup_speed_;
     return cmd_vel;
@@ -2143,10 +2142,9 @@ geometry_msgs::msg::TwistStamped ControllerServer::computeStagedVelocity(
   if (in_approach) {
     RCLCPP_DEBUG_THROTTLE(
       get_logger(), *get_clock(), 500,
-      "Staged control decision: approach has priority, distance_to_goal=%.3f <= "
-      "approach_distance=%.3f; using controller=%s",
+      "Control choice: approach, goal_distance=%.3f <= %.3f, controller='%s'.",
       distance_to_goal, approach_distance_, approach_controller_.c_str());
-    setControllerPhase(ControllerPhase::APPROACH, "within approach distance");
+    setControllerPhase(ControllerPhase::APPROACH, "near goal");
     active_controller_for_log_ = approach_controller_;
     return computeControllerVelocity(approach_controller_, pose, twist);
   }
@@ -2159,9 +2157,8 @@ geometry_msgs::msg::TwistStamped ControllerServer::computeStagedVelocity(
     const bool has_target_heading = getTargetPointHeadingError(pose, heading_error);
     RCLCPP_DEBUG_THROTTLE(
       get_logger(), *get_clock(), 500,
-      "Staged control decision: outside approach, distance_to_goal=%.3f > "
-      "approach_distance=%.3f; target_heading_available=%s heading_error=%.3f "
-      "align_tolerance=%.3f align_target_distance=%.3f",
+      "Control choice: goal_distance=%.3f > %.3f, heading_valid=%s, "
+      "heading_error=%.3f, align_limit=%.3f, target_distance=%.3f.",
       distance_to_goal,
       approach_distance_,
       has_target_heading ? "true" : "false",
@@ -2169,7 +2166,7 @@ geometry_msgs::msg::TwistStamped ControllerServer::computeStagedVelocity(
       align_heading_tolerance_,
       align_target_distance_);
     if (has_target_heading && std::fabs(heading_error) > align_heading_tolerance_) {
-      setControllerPhase(ControllerPhase::ALIGN, "target point heading error exceeds tolerance");
+      setControllerPhase(ControllerPhase::ALIGN, "heading error above limit");
       active_controller_for_log_ = "direct_align";
       const double abs_cmd = std::clamp(
         std::fabs(heading_error) * align_angular_kp_,
@@ -2182,7 +2179,7 @@ geometry_msgs::msg::TwistStamped ControllerServer::computeStagedVelocity(
     align_done_ = true;
   }
 
-  setControllerPhase(ControllerPhase::TRACK, "align phase done, tracking");
+  setControllerPhase(ControllerPhase::TRACK, "align done");
   active_controller_for_log_ = track_controller_;
   return computeControllerVelocity(track_controller_, pose, twist);
 }
@@ -2262,16 +2259,24 @@ bool ControllerServer::shouldPauseProgressCheckForObstacleStop(
 
 bool ControllerServer::checkProgress(geometry_msgs::msg::PoseStamped & pose)
 {
-  if (shouldPauseProgressCheckForObstacleStop(pose)) {
+  // 正常停障和碰撞急停都不应被误判为“没有进展”。
+  const bool is_planned_obstacle_stop =
+    !is_collision_stop_active_ && shouldPauseProgressCheckForObstacleStop(pose);
+  if (is_collision_stop_active_ || is_planned_obstacle_stop) {
     if (!is_progress_check_paused_for_obstacle_stop_) {
       // 进入时清除旧基线，防止障碍解除后继承停障前已累计的超时时间。
       progress_checker_->reset();
       is_progress_check_paused_for_obstacle_stop_ = true;
-      RCLCPP_INFO(
-        get_logger(),
-        "速度规划已完成障碍前停车，暂停ProgressChecker：障碍弧长=%.3f m，"
-        "等待障碍解除或路径绕行。",
-        speed_plan_cycle_.terminal.first_obstacle_arc);
+      if (is_collision_stop_active_) {
+        RCLCPP_INFO(
+          get_logger(),
+          "Hard stop active. Progress check paused.");
+      } else {
+        RCLCPP_INFO(
+          get_logger(),
+          "Planned obstacle stop. Progress check paused: obstacle_arc=%.3f m.",
+          speed_plan_cycle_.terminal.first_obstacle_arc);
+      }
     }
     return true;
   }
@@ -2279,7 +2284,7 @@ bool ControllerServer::checkProgress(geometry_msgs::msg::PoseStamped & pose)
   if (is_progress_check_paused_for_obstacle_stop_) {
     progress_checker_->reset();
     is_progress_check_paused_for_obstacle_stop_ = false;
-    RCLCPP_INFO(get_logger(), "停障条件解除，ProgressChecker重新建立进展基线。");
+    RCLCPP_INFO(get_logger(), "Obstacle stop ended. Progress check restarted.");
   }
   return progress_checker_->check(pose);
 }
@@ -2299,7 +2304,7 @@ void ControllerServer::computeAndPublishVelocity()
   if (!getRobotPose(pose)) {
     publish_control_failure("pose_lookup_failed");
     throw nav2_core::PlannerException(
-            "Failed to obtain robot pose. 获取机器人位姿失败，通常需要检查 TF、定位状态或 costmap frame。");
+            "Robot pose not found. Check TF, localization, and costmap frames.");
   }
   auto t_pose_end = std::chrono::high_resolution_clock::now();
   auto pose_ms = std::chrono::duration<double, std::milli>(t_pose_end - t_pose_start).count();
@@ -2308,7 +2313,7 @@ void ControllerServer::computeAndPublishVelocity()
   if (!checkProgress(pose)) {
     publish_control_failure("progress_failed");
     throw nav2_core::PlannerException(
-            "Failed to make progress. 进度检查失败，机器人在规定时间内没有有效前进，可能被障碍、空路径或控制失败卡住。");
+            "Progress check failed. Robot did not move enough in time.");
   }
   auto t_progress_end = std::chrono::high_resolution_clock::now();
   auto progress_ms = std::chrono::duration<double, std::milli>(t_progress_end - t_progress_start).count();
@@ -2322,6 +2327,8 @@ void ControllerServer::computeAndPublishVelocity()
   geometry_msgs::msg::TwistStamped cmd_vel_2d;
   bool control_succeeded = false;
   bool controller_target_valid = false;
+  // 标记本周期是否因碰撞保持零速，用于发布正确的诊断状态。
+  bool is_collision_stop_wait = false;
   double controller_target_v = std::numeric_limits<double>::quiet_NaN();
   double controller_target_a = std::numeric_limits<double>::quiet_NaN();
 
@@ -2330,14 +2337,32 @@ void ControllerServer::computeAndPublishVelocity()
     cmd_vel_2d = computeStagedVelocity(pose, twist);
     last_valid_cmd_time_ = now();
     control_succeeded = true;
-  } catch (nav2_core::CollisionException & e) {
-    publishHardStopVelocity();
-    publish_control_failure("collision_detected");
-    throw;
+    if (is_collision_stop_active_) {
+      is_collision_stop_active_ = false;
+      RCLCPP_INFO(
+        get_logger(),
+        "Collision risk cleared. Hard stop ended.");
+    }
+  } catch (const nav2_core::CollisionException &) {
+    // 碰撞属于可恢复的安全停车：保持 FollowPath，风险解除后继续控制。
+    invalidateSpeedPlanningContinuity();
+    is_collision_stop_wait = true;
+    if (!is_collision_stop_active_) {
+      is_collision_stop_active_ = true;
+      RCLCPP_WARN(
+        get_logger(),
+        "Collision ahead. Hard stop active.");
+      publishHardStopVelocity();
+    }
+    cmd_vel_2d = geometry_msgs::msg::TwistStamped();
+    cmd_vel_2d.header.frame_id = costmap_ros_->getBaseFrameID();
+    cmd_vel_2d.header.stamp = now();
   } catch (nav2_core::PlannerException & e) {
     invalidateSpeedPlanningContinuity();
     if (failure_tolerance_ > 0 || failure_tolerance_ == -1.0) {
-      RCLCPP_WARN(this->get_logger(), "%s", e.what());
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "Controller command failed: %s", e.what());
       cmd_vel_2d.twist.angular.x = 0;
       cmd_vel_2d.twist.angular.y = 0;
       cmd_vel_2d.twist.angular.z = 0;
@@ -2352,7 +2377,7 @@ void ControllerServer::computeAndPublishVelocity()
       {
         publish_control_failure("controller_patience_exceeded");
         throw nav2_core::PlannerException(
-                "Controller patience exceeded. 局部控制器在 failure_tolerance 时间内没有生成有效速度，控制耐心超时。");
+                "Controller timeout. No valid command within failure_tolerance.");
       }
     } else {
       publish_control_failure("controller_exception");
@@ -2377,7 +2402,8 @@ void ControllerServer::computeAndPublishVelocity()
     control_succeeded, controller_target_valid, controller_target_v, controller_target_a);
   publishSpeedPlanDiagnostics(
     control_succeeded, controller_target_valid, controller_target_v, controller_target_a,
-    control_succeeded ? "success" : "control_failed");
+    control_succeeded ? "success" :
+    (is_collision_stop_wait ? "collision_stop_wait" : "control_failed"));
   auto t_compute_end = std::chrono::high_resolution_clock::now();
   auto compute_ms = std::chrono::duration<double, std::milli>(t_compute_end - t_compute_start).count();
 
@@ -2435,19 +2461,15 @@ void ControllerServer::computeAndPublishVelocity()
 
   RCLCPP_DEBUG_THROTTLE(
     get_logger(), *get_clock(), 500,
-    "ControllerServer command: phase=%s controller=%s goal_checker=%s "
-    "cmd_vel.linear=(x=%.3f y=%.3f z=%.3f) cmd_vel.angular=(x=%.3f y=%.3f z=%.3f)",
+    "Control command: phase=%s, controller=%s, goal_checker=%s, "
+    "vx=%.3f, vy=%.3f, wz=%.3f.",
     controllerPhaseName(controller_phase_),
     active_controller_for_log_.c_str(),
     current_goal_checker_.c_str(),
     cmd_vel_2d.twist.linear.x,
     cmd_vel_2d.twist.linear.y,
-    cmd_vel_2d.twist.linear.z,
-    cmd_vel_2d.twist.angular.x,
-    cmd_vel_2d.twist.angular.y,
     cmd_vel_2d.twist.angular.z);
 
-  RCLCPP_DEBUG(get_logger(), "Publishing velocity at time %.2f", now().seconds());
   auto t_publish_start = std::chrono::high_resolution_clock::now();
   publishVelocity(cmd_vel_2d);
   auto t_publish_end = std::chrono::high_resolution_clock::now();
@@ -2461,7 +2483,7 @@ void ControllerServer::computeAndPublishVelocity()
   if (total_ms >= kSlowTimingWarnMs) {
     RCLCPP_WARN(
       get_logger(),
-      "ControllerServer timing (ms): total=%.3f getPose=%.3f progress=%.3f odom=%.3f "
+      "Slow control (ms): total=%.3f pose=%.3f progress=%.3f odom=%.3f "
       "compute=%.3f feedback=%.3f publish=%.3f unaccounted=%.3f",
       total_ms, pose_ms, progress_ms, odom_ms, compute_ms, feedback_ms, publish_ms,
       unaccounted_ms);
@@ -2475,7 +2497,7 @@ void ControllerServer::updateGlobalPath()
     std::string requested_controller;
     if (!findControllerId(goal->controller_id, requested_controller)) {
       RCLCPP_INFO(
-        get_logger(), "Terminating action, invalid controller %s requested. 终止导航：请求的 controller_id 无效。",
+        get_logger(), "FollowPath stopped: controller '%s' is not valid.",
         goal->controller_id.c_str());
       action_server_->terminate_current();
       return;
@@ -2484,7 +2506,7 @@ void ControllerServer::updateGlobalPath()
     std::string requested_goal_checker;
     if (!findGoalCheckerId(goal->goal_checker_id, requested_goal_checker)) {
       RCLCPP_INFO(
-        get_logger(), "Terminating action, invalid goal checker %s requested. 终止导航：请求的 goal_checker_id 无效。",
+        get_logger(), "FollowPath stopped: goal checker '%s' is not valid.",
         goal->goal_checker_id.c_str());
       action_server_->terminate_current();
       return;
@@ -2496,15 +2518,16 @@ void ControllerServer::updateGlobalPath()
     if (same_goal && (!same_controller || !same_goal_checker)) {
       RCLCPP_INFO(
         get_logger(),
-        "path 更新：目标点不变，但 controller 或 goal_checker 已变化，按新目标处理。"
-        "same_controller=%s, same_goal_checker=%s。",
+        "Path treated as a new goal: same_controller=%s, same_goal_checker=%s.",
         same_controller ? "true" : "false",
         same_goal_checker ? "true" : "false");
     }
 
     current_controller_ = requested_controller;
     current_goal_checker_ = requested_goal_checker;
-    RCLCPP_INFO(get_logger(), "Passing new path to controller.");
+    RCLCPP_DEBUG_THROTTLE(
+      get_logger(), *get_clock(), 1000,
+      "FollowPath update accepted.");
     const auto update_type =
       same_controller && same_goal_checker && same_goal ?
       PathUpdateType::SAME_GOAL_GEOMETRY : PathUpdateType::NEW_GOAL;
@@ -2537,11 +2560,10 @@ void ControllerServer::publishZeroVelocity()
     const auto actual_twist = getThresholdedTwist(odom_sub_->getTwist());
     const size_t subscriber_count = vel_publisher_ ?
       vel_publisher_->get_subscription_count() : 0;
-    RCLCPP_WARN(
-      get_logger(),
-      "[ControllerStopDebug] Publishing zero velocity: actual odom velocity vx=%.3f m/s, "
-      "vy=%.3f m/s, wz=%.3f rad/s, cmd_vel subscribers=%zu. This is a stop request; "
-      "the velocity smoother and chassis still need time to decelerate.",
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), *get_clock(), 1000,
+      "Zero speed requested: odom_vx=%.3f m/s, odom_vy=%.3f m/s, odom_wz=%.3f rad/s, "
+      "subscribers=%zu.",
       actual_twist.x, actual_twist.y, actual_twist.theta, subscriber_count);
   }
   publishVelocity(velocity);
@@ -2551,13 +2573,13 @@ void ControllerServer::publishHardStopVelocity()
 {
   if (hard_stop_publisher_ && hard_stop_publisher_->is_activated()) {
     hard_stop_publisher_->publish(std::make_unique<std_msgs::msg::Empty>());
-    RCLCPP_ERROR(
+    RCLCPP_INFO(
       get_logger(),
-      "Hard-stop request published on '%s' (subscribers=%zu).",
+      "Hard stop sent: topic='%s', subscribers=%zu.",
       hard_stop_topic_.c_str(), hard_stop_publisher_->get_subscription_count());
   } else {
     RCLCPP_ERROR(
-      get_logger(), "Hard-stop publisher is inactive; falling back to a zero cmd_vel request.");
+      get_logger(), "Hard stop publisher is off. Requesting zero speed.");
   }
   publishZeroVelocity();
 }
@@ -2581,7 +2603,7 @@ bool ControllerServer::isGoalReached()
   {
     RCLCPP_WARN_THROTTLE(
       get_logger(), *get_clock(), 5000,
-      "Unable to transform end pose for goal checker plugin result logging.");
+      "Goal pose TF failed in goal check.");
     return false;
   }
 
@@ -2606,12 +2628,12 @@ bool ControllerServer::isGoalReached()
 
   RCLCPP_DEBUG_THROTTLE(
     get_logger(), *get_clock(), 500,
-    "GoalChecker plugin result: id=%s type=%s result=%s "
+    "Goal check: id=%s type=%s reached=%s "
     "goal=(frame=%s x=%.3f y=%.3f yaw=%.3f) "
     "robot=(frame=%s x=%.3f y=%.3f yaw=%.3f) "
-    "errors=(lon=%.4f lat=%.4f yaw=%.4f dist=%.4f) "
-    "tolerances_available=%s tolerances=(lon=%.4f lat=%.4f yaw=%.4f "
-    "trans_vel=%.4f rot_vel=%.4f) velocity=(linear=%.4f angular=%.4f)",
+    "error=(lon=%.4f lat=%.4f yaw=%.4f dist=%.4f) "
+    "tolerance_valid=%s tolerance=(lon=%.4f lat=%.4f yaw=%.4f v=%.4f w=%.4f) "
+    "odom=(v=%.4f w=%.4f)",
     current_goal_checker_.c_str(), getGoalCheckerType(current_goal_checker_).c_str(),
     goal_reached ? "true" : "false",
     transformed_end_pose.header.frame_id.c_str(),
@@ -2683,10 +2705,10 @@ ControllerServer::dynamicParametersCallback(std::vector<rclcpp::Parameter> param
     if (!dynamic_params_lock_.try_lock()) {
       RCLCPP_WARN(
         get_logger(),
-        "Unable to dynamically change Parameters while the controller is currently running");
+        "Parameters cannot change while the controller is running.");
       result.successful = false;
       result.reason =
-        "Unable to dynamically change Parameters while the controller is currently running";
+        "Parameters cannot change while the controller is running.";
       return result;
     }
 
@@ -2728,7 +2750,7 @@ ControllerServer::dynamicParametersCallback(std::vector<rclcpp::Parameter> param
         if (controllers_.find(requested_controller) == controllers_.end()) {
           RCLCPP_WARN(
             get_logger(),
-            "Rejected current_controller '%s'. Available controllers are: %s.",
+            "Parameter rejected: current_controller='%s'. Available: %s",
             requested_controller.c_str(), controller_ids_concat_.c_str());
           dynamic_params_lock_.unlock();
           result.successful = false;
@@ -2741,7 +2763,7 @@ ControllerServer::dynamicParametersCallback(std::vector<rclcpp::Parameter> param
         if (goal_checkers_.find(requested_goal_checker) == goal_checkers_.end()) {
           RCLCPP_WARN(
             get_logger(),
-            "Rejected current_goal_checker '%s'. Available goal checkers are: %s.",
+            "Parameter rejected: current_goal_checker='%s'. Available: %s",
             requested_goal_checker.c_str(), goal_checker_ids_concat_.c_str());
           dynamic_params_lock_.unlock();
           result.successful = false;
@@ -2754,7 +2776,7 @@ ControllerServer::dynamicParametersCallback(std::vector<rclcpp::Parameter> param
         if (controllers_.find(requested_controller) == controllers_.end()) {
           RCLCPP_WARN(
             get_logger(),
-            "Rejected staged_control.track_controller '%s'. Available controllers are: %s.",
+            "Parameter rejected: staged_control.track_controller='%s'. Available: %s",
             requested_controller.c_str(), controller_ids_concat_.c_str());
           dynamic_params_lock_.unlock();
           result.successful = false;
@@ -2767,7 +2789,7 @@ ControllerServer::dynamicParametersCallback(std::vector<rclcpp::Parameter> param
         if (controllers_.find(requested_controller) == controllers_.end()) {
           RCLCPP_WARN(
             get_logger(),
-            "Rejected staged_control.approach_controller '%s'. Available controllers are: %s.",
+            "Parameter rejected: staged_control.approach_controller='%s'. Available: %s",
             requested_controller.c_str(), controller_ids_concat_.c_str());
           dynamic_params_lock_.unlock();
           result.successful = false;

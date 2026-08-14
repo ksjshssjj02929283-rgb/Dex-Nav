@@ -259,6 +259,12 @@ public:
     fake_progress_checker_->setCheckResult(result);
   }
 
+  // 设置碰撞等待状态，供状态转换测试使用。
+  void setCollisionStopActiveForTest(bool active)
+  {
+    is_collision_stop_active_ = active;
+  }
+
   void setControllerForObstaclePolicy(const nav2_core::Controller::Ptr & controller)
   {
     staged_control_enabled_ = false;
@@ -278,6 +284,8 @@ public:
   ControllerPhase phase() const {return controller_phase_;}
   size_t goalCheckerResetCount() const {return fake_goal_checker_->resetCount();}
   bool terminalBrakeLatched() const {return terminal_brake_latched_;}
+  // 读取碰撞等待状态，供测试断言使用。
+  bool isCollisionStopActive() const {return is_collision_stop_active_;}
   bool isProgressCheckPaused() const
   {
     return is_progress_check_paused_for_obstacle_stop_;
@@ -497,6 +505,7 @@ TEST(InitialMotionState, SameGoalGeometryUpdatePreservesTerminalState)
   controller->seedAcceptedTrajectory(makeTrajectory(), 0.1, 0.31, -0.18);
   controller->setTerminalStateForTest();
   controller->latchTerminalBrakeForTest();
+  controller->setCollisionStopActiveForTest(true);
 
   const auto updated_path = makePath({{0.5, 0.0}, {1.1, 0.05}, {2.0, 0.0}});
   controller->commitPathForTest(
@@ -508,6 +517,7 @@ TEST(InitialMotionState, SameGoalGeometryUpdatePreservesTerminalState)
     nav2_controller::ControllerServer::ControllerPhase::APPROACH);
   EXPECT_TRUE(controller->continuityValid());
   EXPECT_TRUE(controller->terminalBrakeLatched());
+  EXPECT_TRUE(controller->isCollisionStopActive());
   EXPECT_NEAR(
     controller->boundaryFor(updated_path, 0.31).acceleration, -0.18, 1e-9);
   EXPECT_TRUE(controller->boundaryFor(updated_path, 0.31).terminal_brake_latched);
@@ -518,6 +528,7 @@ TEST(InitialMotionState, NewGoalPathResetsTerminalBookkeeping)
   auto controller = std::make_shared<ControllerShim>();
   controller->setTerminalStateForTest();
   controller->latchTerminalBrakeForTest();
+  controller->setCollisionStopActiveForTest(true);
 
   const auto new_goal_path = makePath({{0.5, 0.0}, {1.5, 0.0}, {2.5, 0.0}});
   controller->commitPathForTest(
@@ -529,6 +540,7 @@ TEST(InitialMotionState, NewGoalPathResetsTerminalBookkeeping)
     nav2_controller::ControllerServer::ControllerPhase::TRACK);
   EXPECT_EQ(controller->goalCheckerResetCount(), 1u);
   EXPECT_FALSE(controller->terminalBrakeLatched());
+  EXPECT_FALSE(controller->isCollisionStopActive());
 }
 
 TEST(InitialMotionState, TerminalInfeasibleOutsideDynamicGuardDoesNotLatch)
@@ -641,6 +653,35 @@ TEST(ProgressCheckerObstacleStop, ObstacleClearResetsBaselineBeforeNormalCheck)
   EXPECT_FALSE(controller->isProgressCheckPaused());
   EXPECT_EQ(controller->progressCheckCount(), 1u);
   EXPECT_EQ(controller->progressResetCount(), 2u);
+}
+
+TEST(ProgressCheckerObstacleStop, HardStopWaitPausesUntilCollisionRiskClears)
+{
+  auto controller = std::make_shared<ControllerShim>();
+  controller->setProgressPlanningContext(makeTrajectory(), kNoTerminalBranch, false);
+  controller->setProgressCheckResult(false);
+  controller->setCollisionStopActiveForTest(true);
+
+  EXPECT_TRUE(controller->checkProgressForTest(makePose()));
+  EXPECT_TRUE(controller->isProgressCheckPaused());
+  EXPECT_EQ(controller->progressCheckCount(), 0u);
+  EXPECT_EQ(controller->progressResetCount(), 1u);
+
+  EXPECT_TRUE(controller->checkProgressForTest(makePose()));
+  EXPECT_EQ(controller->progressCheckCount(), 0u);
+  EXPECT_EQ(controller->progressResetCount(), 1u);
+
+  controller->setCollisionStopActiveForTest(false);
+  controller->setProgressCheckResult(true);
+  EXPECT_TRUE(controller->checkProgressForTest(makePose()));
+  EXPECT_FALSE(controller->isProgressCheckPaused());
+  EXPECT_EQ(controller->progressCheckCount(), 1u);
+  EXPECT_EQ(controller->progressResetCount(), 2u);
+
+  controller->setCollisionStopActiveForTest(true);
+  controller->resetStages();
+  EXPECT_FALSE(controller->isCollisionStopActive());
+  EXPECT_FALSE(controller->isProgressCheckPaused());
 }
 
 }  // namespace

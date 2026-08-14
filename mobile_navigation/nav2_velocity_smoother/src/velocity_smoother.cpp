@@ -217,7 +217,7 @@ void VelocitySmoother::inputCommandCallback(const geometry_msgs::msg::Twist::Sha
       if (*msg != geometry_msgs::msg::Twist()) {
         RCLCPP_WARN_THROTTLE(
           get_logger(), *get_clock(), 1000,
-          "Ignoring non-zero velocity during the hard-stop hold interval.");
+          "Hard stop hold active. Speed command ignored.");
       }
       return;
     }
@@ -247,9 +247,9 @@ void VelocitySmoother::hardStop()
   if (smoothed_cmd_pub_ && smoothed_cmd_pub_->is_activated()) {
     smoothed_cmd_pub_->publish(std::make_unique<geometry_msgs::msg::Twist>());
   }
-  RCLCPP_ERROR(
+  RCLCPP_WARN(
     get_logger(),
-    "Hard stop received: published zero immediately and holding zero for %.3f seconds.",
+    "Hard stop received. Zero speed held for %.3f s.",
     hard_stop_duration_);
 }
 
