@@ -129,12 +129,12 @@ def generate_launch_description():
     )
     uv_disparity_min_z_arg = DeclareLaunchArgument(
         'uv_disparity_min_z',
-        default_value='0.3',
+        default_value='0.15',
         description='双视差最小深度'
     )
     uv_disparity_max_z_arg = DeclareLaunchArgument(
         'uv_disparity_max_z',
-        default_value='3.0',
+        default_value='4.0',
         description='双视差最大深度'
     )
     uv_disparity_dz_arg = DeclareLaunchArgument(
@@ -151,6 +151,16 @@ def generate_launch_description():
         'uv_disparity_min_u_count',
         default_value='5',
         description='双视差U向噪声过滤阈值'
+    )
+    uv_disparity_ground_margin_h_arg = DeclareLaunchArgument(
+        'uv_disparity_ground_margin_h',
+        default_value='0.025',
+        description='双视差地面自适应物理高度Margin(米)'
+    )
+    stats_window_sec_arg = DeclareLaunchArgument(
+        'stats_window_sec',
+        default_value='5.0',
+        description='耗时对比阶段性统计时间窗口（秒）'
     )
 
     # 创建节点
@@ -184,6 +194,8 @@ def generate_launch_description():
             'uv_disparity_dz': LaunchConfiguration('uv_disparity_dz'),
             'uv_disparity_v_margin': LaunchConfiguration('uv_disparity_v_margin'),
             'uv_disparity_min_u_count': LaunchConfiguration('uv_disparity_min_u_count'),
+            'uv_disparity_ground_margin_h': LaunchConfiguration('uv_disparity_ground_margin_h'),
+            'stats_window_sec': LaunchConfiguration('stats_window_sec'),
         }],
         output='screen'
     )
@@ -214,5 +226,7 @@ def generate_launch_description():
         uv_disparity_dz_arg,
         uv_disparity_v_margin_arg,
         uv_disparity_min_u_count_arg,
+        uv_disparity_ground_margin_h_arg,
+        stats_window_sec_arg,
         rgbd_to_pointcloud_node,
     ])

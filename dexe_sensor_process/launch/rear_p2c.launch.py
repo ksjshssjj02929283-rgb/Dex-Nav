@@ -52,6 +52,32 @@ def generate_launch_description():
     division_mode_arg = DeclareLaunchArgument(
         'division_mode', default_value='true', description='是否处理一帧、跳过一帧；关闭时处理全部输入帧'
     )
+    obstacle_extraction_method_arg = DeclareLaunchArgument(
+        'obstacle_extraction_method', default_value='uv_disparity', description='障碍物提取方法：height_filter 或 uv_disparity'
+    )
+    uv_disparity_min_z_arg = DeclareLaunchArgument(
+        'uv_disparity_min_z', default_value='0.15', description='双视差最小深度'
+    )
+    uv_disparity_max_z_arg = DeclareLaunchArgument(
+        'uv_disparity_max_z', default_value='4.0', description='双视差最大深度'
+    )
+    uv_disparity_dz_arg = DeclareLaunchArgument(
+        'uv_disparity_dz', default_value='0.02', description='双视差深度分辨率'
+    )
+    uv_disparity_v_margin_arg = DeclareLaunchArgument(
+        'uv_disparity_v_margin', default_value='15', description='双视差地面V向容差'
+    )
+    uv_disparity_min_u_count_arg = DeclareLaunchArgument(
+        'uv_disparity_min_u_count', default_value='5', description='双视差U向噪声过滤阈值'
+    )
+    uv_disparity_ground_margin_h_arg = DeclareLaunchArgument(
+        'uv_disparity_ground_margin_h', default_value='0.025', description='双视差地面自适应物理高度Margin(米)'
+    )
+    stats_window_sec_arg = DeclareLaunchArgument(
+        'stats_window_sec', default_value='5.0', description='耗时对比阶段性统计时间窗口（秒）'
+    )
+
+
     step_u_arg = DeclareLaunchArgument(
         'step_u', default_value='2', description='深度图列采样步长'
     )
@@ -90,6 +116,14 @@ def generate_launch_description():
             'ground_filter_frame': LaunchConfiguration('ground_filter_frame'),
             'ground_filter_min_height': LaunchConfiguration('ground_filter_min_height'),
             'ground_filter_max_height': LaunchConfiguration('ground_filter_max_height'),
+            'obstacle_extraction_method': LaunchConfiguration('obstacle_extraction_method'),
+            'uv_disparity_min_z': LaunchConfiguration('uv_disparity_min_z'),
+            'uv_disparity_max_z': LaunchConfiguration('uv_disparity_max_z'),
+            'uv_disparity_dz': LaunchConfiguration('uv_disparity_dz'),
+            'uv_disparity_v_margin': LaunchConfiguration('uv_disparity_v_margin'),
+            'uv_disparity_min_u_count': LaunchConfiguration('uv_disparity_min_u_count'),
+            'uv_disparity_ground_margin_h': LaunchConfiguration('uv_disparity_ground_margin_h'),
+            'stats_window_sec': LaunchConfiguration('stats_window_sec'),
             
         }],
         output='screen',
@@ -116,6 +150,14 @@ def generate_launch_description():
         ground_filter_frame_arg,
         ground_filter_min_height_arg,
         ground_filter_max_height_arg,
+        obstacle_extraction_method_arg,
+        uv_disparity_min_z_arg,
+        uv_disparity_max_z_arg,
+        uv_disparity_dz_arg,
+        uv_disparity_v_margin_arg,
+        uv_disparity_min_u_count_arg,
+        uv_disparity_ground_margin_h_arg,
+        stats_window_sec_arg,
         # 单个节点
         rear_rgbd_node,
     ])
