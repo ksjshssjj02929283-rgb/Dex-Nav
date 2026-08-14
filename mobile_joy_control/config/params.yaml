@@ -41,6 +41,14 @@ mobile_joy_control:
       medium_angular_velocity: 1.0 # 中速角速度 (rad/s)
       acc_filter_param: 0.45     # 加速度滤波参数
       dec_filter_param: 0.05     # 减速度滤波参数
+      smooth_stop_on_release: true       # 松开使能键后先平滑减速，停稳后释放遥控优先级
+      release_linear_decel: 1.0          # 松开使能键后的线减速度上限 (m/s^2)
+      release_angular_decel: 1.5         # 松开使能键后的角减速度上限 (rad/s^2)
+      release_stop_velocity_threshold: 0.01 # 低于该速度时视为停稳并发布精确零速度
+      release_stop_timeout: 1.5          # 软停车最长持续时间，超时后强制清零 (s)
+      init_stick_min_magnitude: 0.35      # 初始化手势要求的单侧摇杆最小拨动幅值
+      init_stick_target_angle_deg: 45.0   # 初始化手势目标角度：正上方为0度，侧方为90度
+      init_stick_angle_tolerance_deg: 30.0 # 允许角度范围：当前为15~75度
       inactive_timeout: 30.0      # 不活跃超时时间（秒）
 
     # BEITONG手柄参数
@@ -80,4 +88,12 @@ mobile_joy_control:
       medium_angular_velocity: 1.0 # 中速角速度 (rad/s)
       acc_filter_param: 0.45     # 加速度滤波参数
       dec_filter_param: 0.05     # 减速度滤波参数
+      smooth_stop_on_release: true       # 松开使能键后先平滑减速，停稳后释放遥控优先级
+      release_linear_decel: 1.0          # 松开使能键后的线减速度上限 (m/s^2)
+      release_angular_decel: 1.5         # 松开使能键后的角减速度上限 (rad/s^2)
+      release_stop_velocity_threshold: 0.01 # 低于该速度时视为停稳并发布精确零速度
+      release_stop_timeout: 1.5          # 软停车最长持续时间，超时后强制清零 (s)
+      init_stick_min_magnitude: 0.35      # 初始化手势要求的单侧摇杆最小拨动幅值
+      init_stick_target_angle_deg: 45.0   # 初始化手势目标角度：正上方为0度，侧方为90度
+      init_stick_angle_tolerance_deg: 30.0 # 允许角度范围：当前为15~75度
       inactive_timeout: 30.0      # 不活跃超时时间（秒）
