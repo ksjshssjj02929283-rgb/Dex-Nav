@@ -199,6 +199,12 @@ bool parseSpeedPlanCycleStatus(
     return false;
   }
 
+  // 可选字段：旧记录没有，缺失时保持 NaN，不影响解析成功。
+  parseDouble(values, "initial_motion_measured_v", parsed.initial_motion_measured_v);
+  parseDouble(values, "initial_motion_sampled_v", parsed.initial_motion_sampled_v);
+  parseDouble(values, "initial_motion_deviation", parsed.initial_motion_deviation);
+  parseDouble(values, "local_path_progress_delta", parsed.local_path_progress_delta);
+
   if (parsed.boundary_computed &&
     (!parseDouble(values, "boundary_velocity", parsed.boundary_velocity) ||
     !parseDouble(values, "boundary_acceleration", parsed.boundary_acceleration) ||
@@ -712,10 +718,16 @@ void NavMonitorNode::finalizeAndWrite(const std::string & result)
       terminal_infeasible_count +=
         sample.terminal_valid && sample.terminal_infeasible ? 1U : 0U;
 
+      auto or_null = [](double v) -> nlohmann::json {
+          return std::isfinite(v) ? nlohmann::json(v) : nlohmann::json(nullptr);
+        };
       nlohmann::json boundary = {
         {"computed", sample.boundary_computed},
         {"reason", sample.boundary_reason},
-        {"acceleration_valid", sample.boundary_acceleration_valid}};
+        {"acceleration_valid", sample.boundary_acceleration_valid},
+        {"measured_velocity", or_null(sample.initial_motion_measured_v)},
+        {"sampled_velocity", or_null(sample.initial_motion_sampled_v)},
+        {"velocity_deviation", or_null(sample.initial_motion_deviation)}};
       if (sample.boundary_computed) {
         boundary["velocity"] = sample.boundary_velocity;
         boundary["acceleration"] = sample.boundary_acceleration;
@@ -755,7 +767,8 @@ void NavMonitorNode::finalizeAndWrite(const std::string & result)
           {"local_path",
             {
               {"point_count", sample.local_path_point_count},
-              {"length", sample.local_path_length}}},
+              {"length", sample.local_path_length},
+              {"progress_delta", or_null(sample.local_path_progress_delta)}}},
           {"trajectory_point_count", sample.trajectory_point_count},
           {"boundary", std::move(boundary)},
           {"terminal",

@@ -16,6 +16,7 @@
 #define NAV2_CONTROLLER__CONTROLLER_SERVER_HPP_
 
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <string>
 #include <thread>
@@ -488,9 +489,21 @@ protected:
     nav2_core::InitialMotionState initial_motion;
     bool initial_motion_valid{false};
     std::string initial_motion_source{"not_computed"};
+    // 初值裁决的两个输入与偏差（见 InitialMotionDecision 注释）：只记裁决结果
+    // 时，无法区分 v0 跳变是"实测真的高"还是"计划采样点跳了"。
+    double initial_motion_measured_v{std::numeric_limits<double>::quiet_NaN()};
+    double initial_motion_sampled_v{std::numeric_limits<double>::quiet_NaN()};
+    double initial_motion_deviation{std::numeric_limits<double>::quiet_NaN()};
+    // 局部路径投影这一拍前进了多少弧长。与 odom 位移对账即可判定"裁剪是否
+    // 超额消耗"——L 跳变与 v0 跳变是两个独立成因，必须能分开看。
+    double local_path_progress_delta{std::numeric_limits<double>::quiet_NaN()};
     nav2_core::SpeedPlanningDiagnostics terminal;
     bool terminal_valid{false};
   };
+  /// 上一拍的局部路径剩余长度与其 path_id，用于算 local_path_progress_delta。
+  /// path_id 变了（重规划）说明比较基准换了，delta 无意义，置 NaN。
+  double prev_local_path_length_{std::numeric_limits<double>::quiet_NaN()};
+  uint64_t prev_local_path_id_{0};
   uint64_t speed_plan_cycle_id_{0};
   uint64_t speed_plan_path_id_{0};
   SpeedPlanCycleContext speed_plan_cycle_;
