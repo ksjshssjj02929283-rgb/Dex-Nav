@@ -222,6 +222,7 @@ protected:
   /// 仅当可行的障碍停车剖面已要求机器人保持静止时暂停进展检查。
   bool shouldPauseProgressCheckForObstacleStop(
     const geometry_msgs::msg::PoseStamped & pose);
+  /// 停障等待时跳过进展检查，恢复后重新建立检查基线。
   bool checkProgress(geometry_msgs::msg::PoseStamped & pose);
   /// 预测本周期将运行的控制器是否能自行绕开参考路径上的局部障碍。
   bool activeControllerCanAvoidPathObstacles(
@@ -470,6 +471,9 @@ protected:
   // Goal-lifecycle state owned by ControllerServer. Same-goal geometry updates
   // preserve it; a new goal / successful completion resets it.
   bool terminal_brake_latched_{false};
+  // 控制器检测到碰撞后进入等待；等待期间保持零速并暂停进展检查。
+  // 控制恢复、新目标或控制状态重置时清零。
+  bool is_collision_stop_active_{false};
   bool is_progress_check_paused_for_obstacle_stop_{false};
   struct SpeedPlanCycleContext
   {
