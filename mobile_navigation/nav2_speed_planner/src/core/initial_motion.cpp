@@ -46,6 +46,7 @@ InitialMotionDecision reseed(
 {
   InitialMotionDecision decision;
   decision.state.velocity = measured_velocity;
+  decision.measured_velocity = measured_velocity.linear.x;
   decision.reason = reason;
   return decision;
 }
@@ -250,9 +251,16 @@ InitialMotionDecision InitialMotionArbiter::resolve(
     std::fabs(measured_velocity.linear.x - sampled_velocity);
   if (velocity_deviation > config_.replan_dev) {
     if (++consecutive_velocity_deviation_ >= config_.failsafe_deviation_cycles) {
-      return reseed_and_reset(InitialMotionSource::VELOCITY_MISMATCH_FAILSAFE);
+      auto failsafe = reseed_and_reset(InitialMotionSource::VELOCITY_MISMATCH_FAILSAFE);
+      failsafe.measured_velocity = measured_velocity.linear.x;
+      failsafe.sampled_velocity = sampled_velocity;
+      failsafe.velocity_deviation = velocity_deviation;
+      return failsafe;
     }
     InitialMotionDecision decision;
+    decision.measured_velocity = measured_velocity.linear.x;
+    decision.sampled_velocity = sampled_velocity;
+    decision.velocity_deviation = velocity_deviation;
     decision.state.velocity = measured_velocity;
     decision.state.acceleration = accepted_target_acceleration_;
     decision.state.acceleration_valid = true;
@@ -265,6 +273,9 @@ InitialMotionDecision InitialMotionArbiter::resolve(
   consecutive_velocity_deviation_ = 0;
 
   InitialMotionDecision decision;
+  decision.measured_velocity = measured_velocity.linear.x;
+  decision.sampled_velocity = sampled_velocity;
+  decision.velocity_deviation = velocity_deviation;
   decision.state.velocity = measured_velocity;
   decision.state.velocity.linear.x = sampled_velocity;
   // Acceleration continues from the exact preview target consumed by the

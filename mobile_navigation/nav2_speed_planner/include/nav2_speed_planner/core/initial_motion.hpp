@@ -1,6 +1,7 @@
 #ifndef NAV2_SPEED_PLANNER__SPEED_PLAN_STATE_HPP_
 #define NAV2_SPEED_PLANNER__SPEED_PLAN_STATE_HPP_
 
+#include <limits>
 #include <mutex>
 #include <optional>
 
@@ -39,6 +40,15 @@ struct InitialMotionDecision
   // 与 inherited()（=加速度是否继承）分开表达——VELOCITY_MISMATCH 时加速度仍继承，
   // 但速度已经重锚定到实测，两者不再总是同步。
   bool velocity_inherited{false};
+
+  // 裁决的两个**输入**及其偏差。只上报裁决结果（state.velocity）时，看不出
+  // v0 跳变到底是"实测真的高"还是"计划采样点跳了"——两者的根治方向完全不同
+  // （前者收紧 replan_dev，后者查局部路径裁剪），缺了这三个量只能靠猜。
+  // 结构性不连续（frame/goal/branch/spatial 等 reseed 路径）下无计划采样值，
+  // 保持 NaN。
+  double measured_velocity{std::numeric_limits<double>::quiet_NaN()};
+  double sampled_velocity{std::numeric_limits<double>::quiet_NaN()};
+  double velocity_deviation{std::numeric_limits<double>::quiet_NaN()};
 
   bool inherited() const
   {

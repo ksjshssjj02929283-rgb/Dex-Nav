@@ -1072,6 +1072,9 @@ nav2_core::InitialMotionState ControllerServer::buildInitialMotionState(
     speed_plan_cycle_.initial_motion_valid = true;
     speed_plan_cycle_.initial_motion_source = decision.reason.has_value() ?
       nav2_speed_planner::initialMotionSourceName(*decision.reason) : "inherited";
+    speed_plan_cycle_.initial_motion_measured_v = decision.measured_velocity;
+    speed_plan_cycle_.initial_motion_sampled_v = decision.sampled_velocity;
+    speed_plan_cycle_.initial_motion_deviation = decision.velocity_deviation;
   }
   if (decision.reason.has_value()) {
     RCLCPP_DEBUG_THROTTLE(
@@ -1307,6 +1310,17 @@ bool ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
     speed_plan_cycle_.local_path_length +=
       std::hypot(current.x - previous.x, current.y - previous.y);
   }
+  // 本拍投影前进的弧长 = 上一拍剩余 − 本拍剩余（同一条全局路径才有可比性）。
+  // 与 odom 位移对账即可判定裁剪是否"超额消耗"：两者应当相等，实测出现过
+  // 一拍多裁 36mm 而机器人只走了 25mm 的情况（R58）。
+  if (std::isfinite(prev_local_path_length_) &&
+    prev_local_path_id_ == speed_plan_cycle_.path_id)
+  {
+    speed_plan_cycle_.local_path_progress_delta =
+      prev_local_path_length_ - speed_plan_cycle_.local_path_length;
+  }
+  prev_local_path_length_ = speed_plan_cycle_.local_path_length;
+  prev_local_path_id_ = speed_plan_cycle_.path_id;
 
   const auto speed_set_plan_start = PipelineClock::now();
   sp->second->setPlan(planning_path);
@@ -1658,6 +1672,11 @@ void ControllerServer::publishSpeedPlanDiagnostics(
   add_value("trajectory_point_count", std::to_string(current_trajectory_.points.size()));
   add_value("boundary_computed", cycle.initial_motion_valid ? "true" : "false");
   add_value("boundary_reason", cycle.initial_motion_source);
+  // 裁决输入：boundary_velocity 是结果，这三个是它的来源。
+  add_value("initial_motion_measured_v", std::to_string(cycle.initial_motion_measured_v));
+  add_value("initial_motion_sampled_v", std::to_string(cycle.initial_motion_sampled_v));
+  add_value("initial_motion_deviation", std::to_string(cycle.initial_motion_deviation));
+  add_value("local_path_progress_delta", std::to_string(cycle.local_path_progress_delta));
   if (cycle.initial_motion_valid) {
     add_value("boundary_velocity", std::to_string(cycle.initial_motion.velocity.linear.x));
     add_value("boundary_acceleration", std::to_string(cycle.initial_motion.acceleration));
