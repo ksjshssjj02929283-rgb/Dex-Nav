@@ -395,6 +395,14 @@ bool FileManager::loadAllAssetsFromFile(const std::string& file_path,
                                 cp[0].get<float>(), cp[1].get<float>());
                         }
                     }
+                    e.backward = item.value("backward", false);
+                    if (item.contains("hold_direction") && item["hold_direction"].is_number()) {
+                        e.hold_direction = item["hold_direction"].get<float>();
+                    }
+                    if (item.contains("padding") && item["padding"].is_number()) {
+                        e.padding = item["padding"].get<float>();
+                    }
+                    e.mode = static_cast<uint8_t>(item.value("mode", 0));
                     edges.push_back(e);
                 }
             }
@@ -569,6 +577,18 @@ bool FileManager::saveAllAssetsToFile(const std::string& file_path,
             for (const auto& cp : e.control_points) {
                 item["control_points"].push_back({cp.first, cp.second});
             }
+            if (e.hold_direction) {
+                item["hold_direction"] = *e.hold_direction;
+            } else {
+                item["hold_direction"] = nullptr;
+            }
+            item["backward"] = e.backward;
+            if (e.padding) {
+                item["padding"] = *e.padding;
+            } else {
+                item["padding"] = nullptr;
+            }
+            item["mode"] = e.mode;
             rg["edges"].push_back(item);
         }
         j["route_graph"] = rg;

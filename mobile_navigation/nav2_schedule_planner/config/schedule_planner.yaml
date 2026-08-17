@@ -1,0 +1,44 @@
+# schedule_planner 参数配置
+schedule_planner_node:
+  ros__parameters:
+
+    # ---------------- action / 话题 / 服务 ----------------
+    action_name: "navigate_through_graph_points"   # 托管的 action 名（相对→/navigate_through_graph_points）
+    tracking_path_topic: "/tracking_path"      # 逐段离散轨迹发布（path_follower ~/tracking_path，携带段级跟踪参数）
+    navigation_status_topic: "/navigation_status" # 订阅 path_follower 跟踪状态
+    stop_service: "/stop"                     # 取消时调 path_follower ~/stop
+    cancel_service_name: "/schedule_planner/force_cancel"  # 终端测试用取消服务（std_srvs/Trigger），无 active goal 也会触发停车
+    resolve_service: "/map_asset_manager/resolve_nav_points"  # map_asset_manager 解析服务
+    # ---------------- 动态停障膨胀 ----------------
+    padding_service: "/collision_monitor/set_polygon_padding"  # collision_monitor 膨胀设置服务
+    stop_polygon_name: "PolygonStop"   # 只改停障检测器；减速区保持其 default_padding
+    padding_timeout: 2.0               # 膨胀服务等待/调用超时 s
+    require_padding_service: true      # true=服务失败则中止该段（停障距离未知，保守）
+                                       # false=只告警并沿用上一段 padding
+    default_mode: 1        # PathSegment 未显式指定 mode 时的默认跟踪方式：1=DIFF, 3=OMNI_TRANS_ROTATION
+
+    # ---------------- 几何 ----------------
+    frame_id: "map"        # 输出 Path 坐标系（需与 path_follower 的定位坐标系一致并有 TF）
+    resolution: 0.01      # 离散弧长间距 m（5mm）
+
+    # ---------------- 超时 ----------------
+    resolve_timeout: 5.0   # 解析服务等待/调用超时 s
+    segment_timeout: 300.0 # 单段跟踪超时 s（path_follower/controller_server 一直不回报完成则中止）
+    status_message_timeout: 0.3  # controller 模式下 FollowPath 失败后，再等 navigation_status
+                                 # 上的失败原因落地的上限 s（action 结果不带 message）
+
+    # ---------------- 故障录包 ----------------
+    # 段级失败（FollowPath 拒绝/接受超时/controller abort/段超时；independence 模式下
+    # path_follower 报 FAILED 或段超时）时，往这个话题发一条 std_msgs/String，
+    # 由 mobile_bag_recorder 留下失败点前后一段时间的 bag。设为 "" 则关闭上报。
+    bag_trigger_topic: "/mobile_bag_recorder_node/trigger_event"
+
+    # ---------------- 执行模式（启动时固定，不支持运行时热切换） ----------------
+    mode: "independence"   # "independence"=上面这套 /tracking_path→path_follower 流程（默认）
+                            # "controller"=改为发 FollowPath action 给 controller_server（走 RPP/SpeedPlanner），
+                            #   绕开 bt_navigator，没有 BT 的清 costmap/后退等恢复行为
+    # controller 模式专用（mode=independence 时忽略）：
+    follow_path_action_name: "/follow_path"
+    # controller_id: ""        # 留空则用 controller_server 的 current_controller 默认值
+    # goal_checker_id: ""      # 留空则用 controller_server 的 current_goal_checker 默认值
+    controller_resolution: 0.05  # 覆盖上面的 resolution（0.005m），默认 5cm

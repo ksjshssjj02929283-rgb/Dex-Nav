@@ -60,7 +60,9 @@ MapAssetManagerNode::MapAssetManagerNode()
 
     initialize();
 
-    RCLCPP_INFO(get_logger(), "MapAssetManagerNode constructed, waiting for map_manager/map_state...");
+    RCLCPP_INFO(get_logger(),
+                "MapAssetManagerNode constructed, waiting for map_manager/map_state "
+                "(fallback: legacy map_manager/map_folder + map_manager/map_name)...");
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -151,6 +153,16 @@ void MapAssetManagerNode::initialize() {
         "map_manager/map_state", qos,
         std::bind(&MapAssetManagerNode::onMapState, this, std::placeholders::_1));
 
+    // ── 【旧机器兼容】旧 map_manager 只发 map_folder / map_name 两个 String（同样 latched）──
+    // 新机器上这两个话题无人发布，订阅不会触发；一旦收到 map_state 就永久忽略它们。
+    legacy_map_folder_sub_ = create_subscription<std_msgs::msg::String>(
+        "map_manager/map_folder", qos,
+        [this](const std_msgs::msg::String::SharedPtr msg) { onLegacyMapContext(msg->data, ""); });
+
+    legacy_map_name_sub_ = create_subscription<std_msgs::msg::String>(
+        "map_manager/map_name", qos,
+        [this](const std_msgs::msg::String::SharedPtr msg) { onLegacyMapContext("", msg->data); });
+
     // ── EventBus 订阅 ──────────────────────────────────────────────
     registerEventHandlers();
 }
@@ -176,6 +188,7 @@ void MapAssetManagerNode::onMapState(const nav_interfaces::msg::MapState::Shared
                 current_map_name_.c_str(), msg->map_name.c_str(), msg->map_folder.c_str());
 
     last_epoch_ = msg->epoch;
+    map_state_seen_ = true;
     map_base_folder_ = msg->map_folder;
     current_map_name_ = msg->map_name;
 
@@ -183,12 +196,64 @@ void MapAssetManagerNode::onMapState(const nav_interfaces::msg::MapState::Shared
 }
 
 // ──────────────────────────────────────────────────────────────────────
+// onLegacyMapContext — 【旧机器兼容】老 map_manager 的 map_folder / map_name
+//   两个 String topic 各自到达，齐备且内容有变化才切图。
+//   无 epoch → 同名重载检测不到（老行为如此），仅用于旧机器临时运行。
+// ──────────────────────────────────────────────────────────────────────
+
+void MapAssetManagerNode::onLegacyMapContext(const std::string& folder,
+                                             const std::string& name) {
+    if (map_state_seen_) return;  // 新机器：map_state 是唯一真源
+
+    // 先各自暂存：两条 latched 消息各只发一次，先到的那条必须留下，
+    // 否则等第二条来时第一条的值已丢，永远凑不齐上下文（不会触发 loadData）。
+    if (!folder.empty()) legacy_folder_ = folder;
+    if (!name.empty())   legacy_name_   = name;
+
+    RCLCPP_INFO(get_logger(), "Legacy map context: folder='%s' name='%s'",
+                legacy_folder_.c_str(), legacy_name_.c_str());
+
+    if (legacy_folder_.empty() || legacy_name_.empty()) return;  // 上下文未齐备，等另一条
+    if (legacy_folder_ == map_base_folder_ && legacy_name_ == current_map_name_ &&
+        !assets_file_.empty())
+        return;  // 无变化
+
+    RCLCPP_WARN(get_logger(),
+                "Legacy map_manager detected (no map_state): map '%s' -> '%s' (folder '%s'), reloading assets",
+                current_map_name_.c_str(), legacy_name_.c_str(), legacy_folder_.c_str());
+
+    map_base_folder_ = legacy_folder_;
+    current_map_name_ = legacy_name_;
+
+    switchToMap(current_map_name_);
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// resolveAssetsFile — 布局自适应
+//   新机器：新 map_manager 在 LoadMap 前把地图迁到 <map>/slam + <map>/assets（DEC-007）
+//   旧机器：老 map_manager 无迁移，底图与资产都在 <map>/ 根下（扁平）
+// ──────────────────────────────────────────────────────────────────────
+
+std::string MapAssetManagerNode::resolveAssetsFile(const std::string& map_name) const {
+    const fs::path map_dir = fs::path(map_base_folder_) / map_name;
+    std::error_code ec;
+
+    const bool legacy_layout = !fs::exists(map_dir / "slam", ec) &&
+                               (fs::exists(map_dir / "map_assets.json", ec) ||
+                                fs::exists(map_dir / "map.yaml", ec));
+
+    return legacy_layout ? (map_dir / "map_assets.json").string()
+                         : (map_dir / "assets" / "map_assets.json").string();
+}
+
+// ──────────────────────────────────────────────────────────────────────
 // switchToMap
 // ──────────────────────────────────────────────────────────────────────
 
 void MapAssetManagerNode::switchToMap(const std::string& map_name) {
-    // 分层布局（DEC-007）：资产在 <map>/assets/ 子目录（与底图 <map>/slam/ 物理隔离）
-    assets_file_ = map_base_folder_ + "/" + map_name + "/assets/map_assets.json";
+    // 分层布局（DEC-007）：资产在 <map>/assets/ 子目录（与底图 <map>/slam/ 物理隔离）；
+    // 旧机器扁平布局自动退回 <map>/map_assets.json
+    assets_file_ = resolveAssetsFile(map_name);
 
     point_store_->clear();
     route_store_->clear();
@@ -519,8 +584,7 @@ void MapAssetManagerNode::transformAssetsCallback(
         } else {
             // ── 非当前地图：从文件加载 → 变换 → 写回 ─────────────────
 
-            const std::string file_path =
-                map_base_folder_ + "/" + req->map_name + "/assets/map_assets.json";
+            const std::string file_path = resolveAssetsFile(req->map_name);
 
             std::unordered_map<std::string, NavPoint> points;
             std::unordered_map<std::string, Route>    routes;

@@ -12,4 +12,8 @@ build_arm64
 install_arm64
 log_arm64
 
+/.idea
+__pycache__/
+compile_commands.json
+/data
 

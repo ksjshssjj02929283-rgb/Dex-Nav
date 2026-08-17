@@ -1,7 +1,12 @@
 #include "map_asset_manager/route_graph_manager/route_graph_manager.hpp"
 
+#include <algorithm>
 #include <cmath>
+#include <geometry_msgs/msg/transform_stamped.hpp>
+#include <limits>
+#include <tf2/exceptions.h>
 #include <unordered_set>
+#include <utility>
 #include <visualization_msgs/msg/marker.hpp>
 
 namespace map_asset_manager {
@@ -41,6 +46,10 @@ static nav_interfaces::msg::RouteEdge toMsg(const RouteEdge& e) {
         p.z = 0.0;
         msg.control_points.push_back(p);
     }
+    msg.hold_direction = e.hold_direction.value_or(std::numeric_limits<float>::quiet_NaN());
+    msg.backward = e.backward;
+    msg.padding = e.padding.value_or(std::numeric_limits<float>::quiet_NaN());
+    msg.mode = e.mode;
     return msg;
 }
 
@@ -73,6 +82,12 @@ static RouteEdge fromMsg(const nav_interfaces::msg::RouteEdge& msg) {
         e.control_points.emplace_back(static_cast<float>(cp.x),
                                       static_cast<float>(cp.y));
     }
+    e.hold_direction = std::isnan(msg.hold_direction)
+                           ? std::optional<float>{}
+                           : std::optional<float>(static_cast<float>(msg.hold_direction));
+    e.backward = msg.backward;
+    e.padding = std::isnan(msg.padding) ? std::optional<float>{} : std::optional<float>(msg.padding);
+    e.mode = msg.mode;
     return e;
 }
 
@@ -124,11 +139,22 @@ RouteGraphManager::RouteGraphManager(
         std::bind(&RouteGraphManager::getRouteGraphCallback, this,
                   std::placeholders::_1, std::placeholders::_2));
 
+    resolve_nav_points_srv_ = node->create_service<nav_interfaces::srv::ResolveNavPoints>(
+        "~/resolve_nav_points",
+        std::bind(&RouteGraphManager::resolveNavPointsCallback, this, std::placeholders::_1, std::placeholders::_2));
+
     auto qos = rclcpp::QoS(1).transient_local().reliable();
     marker_pub_ = node->create_publisher<visualization_msgs::msg::MarkerArray>(
         "~/route_graph_markers", qos);
 
-    RCLCPP_INFO(node->get_logger(), "RouteGraphManager initialized");
+    tf_buffer_   = std::make_unique<tf2_ros::Buffer>(node->get_clock());
+    tf_listener_ = std::make_unique<tf2_ros::TransformListener>(*tf_buffer_, node);
+
+    start_tolerance_ = node->declare_parameter<double>("route_start_tolerance", 0.1);
+
+    RCLCPP_INFO(node->get_logger(),
+                "RouteGraphManager initialized (route_start_tolerance=%.3fm)",
+                start_tolerance_);
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -643,6 +669,378 @@ void RouteGraphManager::snapEdgeEndpoints(RouteEdge& edge) const {
         edge.control_points.front() = from_position;
         edge.control_points.back() = to_position;
     }
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// ResolveNavPoints：nav_point_names → PathSegment[]
+// ──────────────────────────────────────────────────────────────────────
+
+std::optional<std::pair<float, float>> RouteGraphManager::endpointCoord(const RouteEndpoint& ep) const {
+    if (ep.type == "nav") {
+        const auto p = point_store_->getPoint(ep.id);
+        if (!p) return std::nullopt;
+        return std::make_pair(static_cast<float>(p->x), static_cast<float>(p->y));
+    }
+    if (ep.type == "junction") {
+        const auto j = junction_store_->get(ep.id);
+        if (!j) return std::nullopt;
+        return std::make_pair(j->x, j->y);
+    }
+    return std::nullopt;
+}
+
+std::optional<RouteEdge> RouteGraphManager::findDirectEdge(
+    const RouteEndpoint& a, const RouteEndpoint& b, bool& reversed) const {
+    reversed = false;
+    for (const auto& e : edge_store_->getAll()) {
+        // 正向：from=a, to=b
+        if (e.from.id == a.id && e.from.type == a.type &&
+            e.to.id == b.id && e.to.type == b.type) {
+            reversed = false;
+            return e;
+        }
+        // 反向：双向边 from=b, to=a
+        if (e.bidirectional &&
+            e.from.id == b.id && e.from.type == b.type &&
+            e.to.id == a.id && e.to.type == a.type) {
+            reversed = true;
+            return e;
+        }
+    }
+    return std::nullopt;
+}
+
+std::optional<RouteEdge> RouteGraphManager::findEdgeTo(
+    const RouteEndpoint& target, bool& reversed) const {
+    reversed = false;
+    for (const auto& e : edge_store_->getAll()) {
+        // 直达：to == target
+        if (e.to.id == target.id && e.to.type == target.type) {
+            reversed = false;
+            return e;
+        }
+        // 双向边反向：from == target，反向行进后终点为 target
+        if (e.bidirectional &&
+            e.from.id == target.id && e.from.type == target.type) {
+            reversed = true;
+            return e;
+        }
+    }
+    return std::nullopt;
+}
+
+std::optional<std::pair<double, double>> RouteGraphManager::robotXY() const {
+    geometry_msgs::msg::TransformStamped tf;
+    try {
+        tf = tf_buffer_->lookupTransform("map", "base_link", tf2::TimePointZero);
+    } catch (const tf2::TransformException& ex) {
+        RCLCPP_WARN(node_->get_logger(), "robotXY: TF lookup failed: %s", ex.what());
+        return std::nullopt;
+    }
+    return std::make_pair(tf.transform.translation.x, tf.transform.translation.y);
+}
+
+std::vector<std::pair<double, double>> RouteGraphManager::edgePolyline(const RouteEdge& e) const {
+    std::vector<std::pair<double, double>> poly;
+
+    if (e.edge_type == "BEZIER" && e.control_points.size() >= 2) {
+        // Bernstein 采样，段数与 publishMarkers() 保持一致（40 段，约 2.5cm 级精度）
+        const auto& cp   = e.control_points;
+        const int   n    = static_cast<int>(cp.size()) - 1;
+        const int   segs = 40;
+        auto binom = [](int nn, int k) -> double {
+            if (k == 0 || k == nn) return 1.0;
+            double v = 1.0;
+            for (int i = 0; i < k; ++i) v = v * (nn - i) / (i + 1);
+            return v;
+        };
+        poly.reserve(static_cast<std::size_t>(segs) + 1);
+        for (int s = 0; s <= segs; ++s) {
+            const double t = static_cast<double>(s) / segs;
+            double bx = 0.0, by = 0.0;
+            for (int i = 0; i <= n; ++i) {
+                const double b = binom(n, i) * std::pow(1.0 - t, n - i) * std::pow(t, i);
+                bx += b * static_cast<double>(cp[i].first);
+                by += b * static_cast<double>(cp[i].second);
+            }
+            poly.emplace_back(bx, by);
+        }
+        return poly;
+    }
+
+    const auto fc = endpointCoord(e.from);
+    const auto tc = endpointCoord(e.to);
+    if (!fc || !tc) return poly;  // 端点坐标缺失：无法算距离，交给调用方按 +inf 处理
+    poly.emplace_back(static_cast<double>(fc->first), static_cast<double>(fc->second));
+    poly.emplace_back(static_cast<double>(tc->first), static_cast<double>(tc->second));
+    return poly;
+}
+
+double RouteGraphManager::distanceToPolyline(
+    const std::pair<double, double>& p,
+    const std::vector<std::pair<double, double>>& poly) {
+    if (poly.empty()) return std::numeric_limits<double>::infinity();
+    if (poly.size() == 1) return std::hypot(p.first - poly[0].first, p.second - poly[0].second);
+
+    double best = std::numeric_limits<double>::infinity();
+    for (std::size_t i = 0; i + 1 < poly.size(); ++i) {
+        const double ax = poly[i].first,     ay = poly[i].second;
+        const double dx = poly[i + 1].first - ax, dy = poly[i + 1].second - ay;
+        const double len2 = dx * dx + dy * dy;
+        double d;
+        if (len2 < 1e-12) {
+            d = std::hypot(p.first - ax, p.second - ay);
+        } else {
+            double t = ((p.first - ax) * dx + (p.second - ay) * dy) / len2;
+            t = std::max(0.0, std::min(1.0, t));
+            d = std::hypot(p.first - (ax + t * dx), p.second - (ay + t * dy));
+        }
+        best = std::min(best, d);
+    }
+    return best;
+}
+
+std::optional<RouteEdge> RouteGraphManager::findNearestEdgeTo(
+    const RouteEndpoint& target, const std::pair<double, double>& robot,
+    bool& reversed, double& distance) const {
+    std::optional<RouteEdge> best;
+    reversed = false;
+    distance = std::numeric_limits<double>::infinity();
+
+    for (const auto& e : edge_store_->getAll()) {
+        bool rev = false;
+        if (e.to.id == target.id && e.to.type == target.type) {
+            rev = false;  // 直达：to == target
+        } else if (e.bidirectional &&
+                   e.from.id == target.id && e.from.type == target.type) {
+            rev = true;   // 双向边反向行进后终点为 target
+        } else {
+            continue;
+        }
+        const double d = distanceToPolyline(robot, edgePolyline(e));
+        if (d < distance) {
+            distance = d;
+            reversed = rev;
+            best     = e;
+        }
+    }
+    return best;
+}
+
+nav_interfaces::msg::PathSegment RouteGraphManager::edgeToSegment(const RouteEdge& e, bool reversed) const {
+    nav_interfaces::msg::PathSegment seg;
+
+    // 按行进方向序的控制点
+    std::vector<std::pair<float, float>> cps;
+    const bool is_bezier = (e.edge_type == "BEZIER" && e.control_points.size() >= 2);
+    if (is_bezier) {
+        cps = e.control_points;
+        if (reversed) std::reverse(cps.begin(), cps.end());
+    } else {
+        const auto fc = endpointCoord(e.from);
+        const auto tc = endpointCoord(e.to);
+        const std::pair<float, float> f = fc.value_or(std::make_pair(0.0f, 0.0f));
+        const std::pair<float, float> t = tc.value_or(std::make_pair(0.0f, 0.0f));
+        cps = reversed ? std::vector<std::pair<float, float>>{t, f}
+                       : std::vector<std::pair<float, float>>{f, t};
+    }
+
+    seg.type = is_bezier ? nav_interfaces::msg::PathSegment::BEZIER : nav_interfaces::msg::PathSegment::LINE;
+    seg.control_points.reserve(cps.size());
+    for (const auto& cp : cps) {
+        geometry_msgs::msg::Point p;
+        p.x = static_cast<double>(cp.first);
+        p.y = static_cast<double>(cp.second);
+        p.z = 0.0;
+        seg.control_points.push_back(p);
+    }
+
+    // target_yaw = 末点切向（倒数第二 → 末点）
+    if (cps.size() >= 2) {
+        const auto& a = cps[cps.size() - 2];
+        const auto& b = cps[cps.size() - 1];
+        seg.target_yaw = std::atan2(static_cast<double>(b.second - a.second),
+                                    static_cast<double>(b.first - a.first));
+    } else {
+        seg.target_yaw = 0.0;
+    }
+
+    // 逐段运动参数透传（v1 path_follower 暂未支持逐段覆盖，schedule_planner 接收但暂不生效）
+    seg.backward = e.backward;
+    seg.max_speed = e.max_speed;
+    seg.xy_tolerance = e.xy_tolerance;
+    seg.th_tolerance = e.th_tolerance;
+    seg.hold_direction = e.hold_direction.value_or(std::numeric_limits<float>::quiet_NaN());
+    seg.padding = e.padding.value_or(std::numeric_limits<float>::quiet_NaN());
+    seg.mode = e.mode;
+    return seg;
+}
+
+// 控制点被改写后重算段末朝向（算法与 edgeToSegment 一致：倒数第二点 → 末点切向）。
+static void refreshTargetYaw(nav_interfaces::msg::PathSegment& seg) {
+    const auto& cps = seg.control_points;
+    if (cps.size() < 2) return;
+    const auto& a = cps[cps.size() - 2];
+    const auto& b = cps[cps.size() - 1];
+    seg.target_yaw = std::atan2(b.y - a.y, b.x - a.x);
+}
+
+void RouteGraphManager::resolveNavPointsCallback(
+    const std::shared_ptr<nav_interfaces::srv::ResolveNavPoints::Request> req,
+    std::shared_ptr<nav_interfaces::srv::ResolveNavPoints::Response> res) {
+    const auto& names = req->nav_point_names;
+    if (names.empty()) {
+        res->success = false;
+        res->message = "need >=1 nav_point_names, got 0";
+        return;
+    }
+
+    // 校验所有导航点存在
+    for (const auto& id : names) {
+        if (!point_store_->hasPoint(id)) {
+            res->success = false;
+            res->message = "nav point not found: " + id;
+            return;
+        }
+    }
+
+    // ── 预查找 ────────────────────────────────────────────────────────
+    // 取列表首点 + 当前车体坐标，在所有"终点为首点"的边里挑几何上离车最近的一条作
+    // 参考输入边，并记下车体到它的最近距离；下面的分支据此决定起点吸附 / 先归位 / 原样下发。
+    // TF 拿不到时退化成旧行为（任意一条入边），距离视为未知（+inf），所有改造分支自动跳过。
+    const RouteEndpoint first_ep{names[0], "nav"};
+    const auto first_pt = point_store_->getPoint(names[0]);  // 上面已校验存在
+    const auto robot    = robotXY();
+
+    bool                     ref_reversed = false;
+    double                   ref_dist     = std::numeric_limits<double>::infinity();
+    std::optional<RouteEdge> ref_edge;
+    if (robot) {
+        ref_edge = findNearestEdgeTo(first_ep, *robot, ref_reversed, ref_dist);
+    } else {
+        RCLCPP_WARN(node_->get_logger(),
+                    "ResolveNavPoints: robot pose unavailable, falling back to "
+                    "first matching incoming edge without geometry adjustment.");
+        ref_edge = findEdgeTo(first_ep, ref_reversed);
+    }
+
+    const double robot_to_first =
+        (robot && first_pt)
+            ? std::hypot(robot->first - static_cast<double>(first_pt->x),
+                         robot->second - static_cast<double>(first_pt->y))
+            : std::numeric_limits<double>::infinity();
+
+    std::vector<nav_interfaces::msg::PathSegment> segments;
+    std::string decision;
+
+    if (names.size() == 1) {
+        // 单点：目标点即终点，路径就是那条参考输入边
+        if (!ref_edge) {
+            res->success = false;
+            res->message = "no edge ending at nav point " + names[0];
+            return;
+        }
+        auto seg = edgeToSegment(*ref_edge, ref_reversed);
+        if (robot_to_first < start_tolerance_) {
+            // 车已经压在目标点上：整条跑参考输入边等于先退回边起点再走一遍，
+            // 改成"车体当前位置 → 目标点"的短直线，段级参数（mode/backward/padding…）沿用该边。
+            geometry_msgs::msg::Point p0;
+            p0.x = robot->first;
+            p0.y = robot->second;
+            p0.z = 0.0;
+            geometry_msgs::msg::Point p1;
+            p1.x = static_cast<double>(first_pt->x);
+            p1.y = static_cast<double>(first_pt->y);
+            p1.z = 0.0;
+            seg.type           = nav_interfaces::msg::PathSegment::LINE;
+            seg.control_points = {p0, p1};
+            refreshTargetYaw(seg);
+            decision = "at goal (" + std::to_string(robot_to_first) + "m), rewrote edge " +
+                       ref_edge->id + " as short LINE from robot pose";
+        } else {
+            decision = "nearest incoming edge " + ref_edge->id + " (robot-edge dist " +
+                       std::to_string(ref_dist) + "m)";
+        }
+        segments.push_back(std::move(seg));
+    } else {
+        // 多点：相邻两点各取一条直接边，首段即规划起始边
+        std::optional<RouteEdge> start_edge;
+        for (std::size_t i = 0; i + 1 < names.size(); ++i) {
+            const RouteEndpoint a{names[i], "nav"};
+            const RouteEndpoint b{names[i + 1], "nav"};
+            bool reversed = false;
+            const auto edge = findDirectEdge(a, b, reversed);
+            if (!edge) {
+                res->success = false;
+                res->message = "no direct edge " + names[i] + " -> " + names[i + 1];
+                return;
+            }
+            if (i == 0) start_edge = edge;
+            segments.push_back(edgeToSegment(*edge, reversed));
+        }
+
+        // 车体到规划起始边（首段）的最近距离：车已经压在起始边上就不需要归位，
+        // 直接从当前位置切入原路径即可。
+        const double robot_to_start_edge =
+            (robot && start_edge)
+                ? distanceToPolyline(*robot, edgePolyline(*start_edge))
+                : std::numeric_limits<double>::infinity();
+
+        if (robot_to_first < start_tolerance_) {
+            // 车已在规划起点附近：起始边的起点挪到车体当前位置，免得起步先横切回起点。
+            // BEZIER 段只替换 P0，不强改直线（曲线形状由后面的控制点决定）。
+            // edgeToSegment() 恒给出 >=2 个控制点，故 front() 安全。
+            segments.front().control_points.front().x = robot->first;
+            segments.front().control_points.front().y = robot->second;
+            refreshTargetYaw(segments.front());
+            decision = "start point snapped to robot pose (" +
+                       std::to_string(robot_to_first) + "m)";
+        } else if (robot_to_start_edge < start_tolerance_) {
+            // 车没到起点，但已经压在规划起始边上：本来就在要走的边上，不必绕回参考输入边，
+            // 按原路径直接下发即可。
+            decision = "already on start edge (dist " + std::to_string(robot_to_start_edge) +
+                       "m), publishing planned path as-is";
+        } else if (ref_edge && ref_dist < start_tolerance_) {
+            // 车既没到起点、也不在起始边上，但还压在某条入边上：
+            // 先整条跑该参考输入边归位，再接原路径。
+            segments.insert(segments.begin(), edgeToSegment(*ref_edge, ref_reversed));
+            decision = "prepended homing edge " + ref_edge->id + " (robot-ref-edge dist " +
+                       std::to_string(ref_dist) + "m, robot-start dist " +
+                       std::to_string(robot_to_first) + "m, robot-start-edge dist " +
+                       std::to_string(robot_to_start_edge) + "m)";
+        } else {
+            // 车既不在起点也不在起始边/任何入边上：保持原行为，按原路径直接下发。
+            decision = "robot off graph (start dist " + std::to_string(robot_to_first) +
+                       "m, start-edge dist " + std::to_string(robot_to_start_edge) +
+                       "m, ref-edge dist " + std::to_string(ref_dist) +
+                       "m), publishing planned path as-is";
+        }
+    }
+
+    // 终点朝向优先取该 NavPoint 自身配置的 yaw，而不是 edgeToSegment() 算出的路径末段几何切向：
+    // 请求的真正终点是 names.back()，其 yaw 代表用户在该点显式配置的期望朝向（如充电桩/工作台
+    // 对接角度），可能与到达它的路径切向不一致；只有最后一段的 target_yaw 会被 schedule_planner
+    // 保留（其余段被置 NaN），故只需覆盖 segments.back()。
+    if (!segments.empty()) {
+        if (const auto dest = point_store_->getPoint(names.back())) {
+            segments.back().target_yaw = dest->yaw;
+        }
+    }
+
+    res->success = true;
+    res->message = "resolved " + std::to_string(names.size()) + " points -> " +
+                   std::to_string(segments.size()) + " segments; " + decision;
+    res->segments = std::move(segments);
+
+    // 拼装点位名称列表字符串
+    std::string names_str;
+    for (std::size_t i = 0; i < names.size(); ++i) {
+        if (i) names_str += " -> ";
+        names_str += names[i];
+    }
+
+    RCLCPP_INFO(node_->get_logger(), "ResolveNavPoints: %s", res->message.c_str());
+    RCLCPP_INFO(node_->get_logger(), "ResolveNavPoints points: %s", names_str.c_str());
 }
 
 }  // namespace map_asset_manager

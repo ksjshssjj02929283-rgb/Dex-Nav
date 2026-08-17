@@ -14,7 +14,10 @@
 
 #include "nav2_collision_monitor/collision_monitor_node.hpp"
 
+#include <chrono>
+#include <cmath>
 #include <exception>
+#include <string>
 #include <utility>
 #include <functional>
 
@@ -30,7 +33,9 @@ namespace nav2_collision_monitor
 CollisionMonitor::CollisionMonitor(const rclcpp::NodeOptions & options)
 : nav2_util::LifecycleNode("collision_monitor", "", options),
   process_active_(false), robot_action_prev_{DO_NOTHING, {-1.0, -1.0, -1.0}},
-  stop_stamp_{0, 0, get_clock()->get_clock_type()}, stop_pub_timeout_(1.0, 0.0)
+  stop_stamp_{0, 0, get_clock()->get_clock_type()}, stop_pub_timeout_(1.0, 0.0),
+  idle_keepalive_period_(0, 0), idle_keepalive_rate_(0.0),
+  last_cmd_vel_in_stamp_{0, 0, get_clock()->get_clock_type()}
 {
 }
 
@@ -61,11 +66,34 @@ CollisionMonitor::on_configure(const rclcpp_lifecycle::State & /*state*/)
     return nav2_util::CallbackReturn::FAILURE;
   }
 
+  auto node = shared_from_this();
+  nav2_util::declare_parameter_if_not_declared(
+    node, "obstacle_status_topic", rclcpp::ParameterValue("obstacle_status"));
+  const std::string obstacle_status_topic = get_parameter("obstacle_status_topic").as_string();
+
+  // Idle keep-alive rate: how often obstacle_status is refreshed while no cmd_vel_in flows.
+  // <= 0 disables the timer, restoring the "publish only on cmd_vel_in" behaviour.
+  nav2_util::declare_parameter_if_not_declared(
+    node, "obstacle_status_idle_rate", rclcpp::ParameterValue(2.0));
+  idle_keepalive_rate_ = get_parameter("obstacle_status_idle_rate").as_double();
+  if (idle_keepalive_rate_ > 0.0) {
+    idle_keepalive_period_ = rclcpp::Duration::from_seconds(1.0 / idle_keepalive_rate_);
+  }
+
   cmd_vel_in_sub_ = this->create_subscription<geometry_msgs::msg::Twist>(
     cmd_vel_in_topic, 1,
     std::bind(&CollisionMonitor::cmdVelInCallback, this, std::placeholders::_1));
   cmd_vel_out_pub_ = this->create_publisher<geometry_msgs::msg::Twist>(
     cmd_vel_out_topic, 1);
+  obstacle_status_pub_ = this->create_publisher<nav_interfaces::msg::ObstacleMonitorStatus>(
+    obstacle_status_topic, 1);
+
+  // 动态膨胀设置服务（本仓库相对上游 Nav2 的改动）
+  set_padding_srv_ = this->create_service<nav_interfaces::srv::SetPolygonPadding>(
+    "~/set_polygon_padding",
+    std::bind(
+      &CollisionMonitor::setPolygonPaddingCallback, this,
+      std::placeholders::_1, std::placeholders::_2));
 
   return nav2_util::CallbackReturn::SUCCESS;
 }
@@ -75,8 +103,9 @@ CollisionMonitor::on_activate(const rclcpp_lifecycle::State & /*state*/)
 {
   RCLCPP_INFO(get_logger(), "Activating");
 
-  // Activating lifecycle publisher
+  // Activating lifecycle publishers
   cmd_vel_out_pub_->on_activate();
+  obstacle_status_pub_->on_activate();
 
   // Activating polygons
   for (std::shared_ptr<Polygon> polygon : polygons_) {
@@ -90,6 +119,18 @@ CollisionMonitor::on_activate(const rclcpp_lifecycle::State & /*state*/)
   // Activating main worker
   process_active_ = true;
 
+  // Idle keep-alive timer: created on activate / destroyed on deactivate so it never runs
+  // outside the active state. Treat "no cmd_vel_in yet" as stale, so obstacle_status starts
+  // flowing right away instead of waiting for the first velocity command.
+  if (idle_keepalive_rate_ > 0.0) {
+    last_cmd_vel_in_stamp_ = this->now() - idle_keepalive_period_;
+    idle_keepalive_timer_ = this->create_wall_timer(
+      idle_keepalive_period_.to_chrono<std::chrono::nanoseconds>(),
+      std::bind(&CollisionMonitor::idleKeepaliveCallback, this));
+    RCLCPP_INFO(
+      get_logger(), "Obstacle status idle keep-alive enabled at %.2f Hz", idle_keepalive_rate_);
+  }
+
   // Creating bond connection
   createBond();
 
@@ -100,6 +141,9 @@ nav2_util::CallbackReturn
 CollisionMonitor::on_deactivate(const rclcpp_lifecycle::State & /*state*/)
 {
   RCLCPP_INFO(get_logger(), "Deactivating");
+
+  // Stop the idle keep-alive before the worker goes down
+  idle_keepalive_timer_.reset();
 
   // Deactivating main worker
   process_active_ = false;
@@ -114,6 +158,7 @@ CollisionMonitor::on_deactivate(const rclcpp_lifecycle::State & /*state*/)
 
   // Deactivating lifecycle publishers
   cmd_vel_out_pub_->on_deactivate();
+  obstacle_status_pub_->on_deactivate();
 
   // Destroying bond connection
   destroyBond();
@@ -126,8 +171,11 @@ CollisionMonitor::on_cleanup(const rclcpp_lifecycle::State & /*state*/)
 {
   RCLCPP_INFO(get_logger(), "Cleaning up");
 
+  idle_keepalive_timer_.reset();
   cmd_vel_in_sub_.reset();
   cmd_vel_out_pub_.reset();
+  obstacle_status_pub_.reset();
+  set_padding_srv_.reset();
 
   polygons_.clear();
   sources_.clear();
@@ -154,7 +202,25 @@ void CollisionMonitor::cmdVelInCallback(geometry_msgs::msg::Twist::ConstSharedPt
     return;
   }
 
+  last_cmd_vel_in_stamp_ = this->now();
   process({msg->linear.x, msg->linear.y, msg->angular.z});
+}
+
+void CollisionMonitor::idleKeepaliveCallback()
+{
+  if (!process_active_) {
+    return;
+  }
+
+  // Skip while cmd_vel_in is flowing: the main path already refreshes obstacle_status every
+  // command, so this must not duplicate that work nor perturb the gated cmd_vel output.
+  if (this->now() - last_cmd_vel_in_stamp_ < idle_keepalive_period_) {
+    return;
+  }
+
+  // Evaluate at zero velocity and suppress the cmd_vel publish: a monitor gates velocities,
+  // it must never originate them.
+  process({0.0, 0.0, 0.0}, false);
 }
 
 void CollisionMonitor::publishVelocity(const Action & robot_action)
@@ -180,6 +246,37 @@ void CollisionMonitor::publishVelocity(const Action & robot_action)
   cmd_vel_out_pub_->publish(std::move(cmd_vel_out_msg));
 }
 
+void CollisionMonitor::publishObstacleStatus(
+  const Action & robot_action, const std::shared_ptr<Polygon> action_polygon) const
+{
+  auto msg = std::make_unique<nav_interfaces::msg::ObstacleMonitorStatus>();
+  msg->header.stamp = this->now();
+  msg->header.frame_id = base_frame_id_;
+
+  switch (robot_action.action_type) {
+    case STOP:
+      msg->status = nav_interfaces::msg::ObstacleMonitorStatus::STOP;
+      msg->slowdown_ratio = 0.0f;
+      break;
+    case SLOWDOWN:
+      msg->status = nav_interfaces::msg::ObstacleMonitorStatus::SLOWDOWN;
+      msg->slowdown_ratio = static_cast<float>(action_polygon->getSlowdownRatio());
+      break;
+    case APPROACH:
+      // APPROACH 也是"降速不停止"的语义，并入 SLOWDOWN 三态模型
+      msg->status = nav_interfaces::msg::ObstacleMonitorStatus::SLOWDOWN;
+      msg->slowdown_ratio = 0.0f;
+      break;
+    default:  // DO_NOTHING
+      msg->status = nav_interfaces::msg::ObstacleMonitorStatus::FREE;
+      msg->slowdown_ratio = 0.0f;
+      break;
+  }
+  msg->zone_name = action_polygon ? action_polygon->getName() : "";
+
+  obstacle_status_pub_->publish(std::move(msg));
+}
+
 bool CollisionMonitor::getParameters(
   std::string & cmd_vel_in_topic,
   std::string & cmd_vel_out_topic)
@@ -200,6 +297,7 @@ bool CollisionMonitor::getParameters(
   nav2_util::declare_parameter_if_not_declared(
     node, "base_frame_id", rclcpp::ParameterValue("base_footprint"));
   base_frame_id = get_parameter("base_frame_id").as_string();
+  base_frame_id_ = base_frame_id;
   nav2_util::declare_parameter_if_not_declared(
     node, "odom_frame_id", rclcpp::ParameterValue("odom"));
   odom_frame_id = get_parameter("odom_frame_id").as_string();
@@ -340,7 +438,7 @@ bool CollisionMonitor::configureSources(
   return true;
 }
 
-void CollisionMonitor::process(const Velocity & cmd_vel_in)
+void CollisionMonitor::process(const Velocity & cmd_vel_in, bool publish_cmd_vel)
 {
   // Current timestamp for all inner routines prolongation
   rclcpp::Time curr_time = this->now();
@@ -388,13 +486,23 @@ void CollisionMonitor::process(const Velocity & cmd_vel_in)
     printAction(robot_action, action_polygon);
   }
 
-  // Publish required robot velocity
-  publishVelocity(robot_action);
+  // Publish real-time obstacle status every cycle (not just on state change)
+  publishObstacleStatus(robot_action, action_polygon);
 
   // Publish polygons for better visualization
   publishPolygons();
 
-  robot_action_prev_ = robot_action;
+  if (publish_cmd_vel) {
+    // Publish required robot velocity
+    publishVelocity(robot_action);
+    robot_action_prev_ = robot_action;
+  } else {
+    // Idle keep-alive: carry over the action type only, so a state change that happens while
+    // the robot is idle is still detected/printed once. req_vel belongs to the cmd_vel path -
+    // overwriting it here would make publishVelocity() miss the "robot just stopped" edge on
+    // the next real command and skip forwarding that stop.
+    robot_action_prev_.action_type = robot_action.action_type;
+  }
 }
 
 bool CollisionMonitor::processStopSlowdown(
@@ -483,6 +591,48 @@ void CollisionMonitor::publishPolygons() const
   for (std::shared_ptr<Polygon> polygon : polygons_) {
     polygon->publish();
   }
+}
+
+void CollisionMonitor::setPolygonPaddingCallback(
+  const std::shared_ptr<nav_interfaces::srv::SetPolygonPadding::Request> request,
+  std::shared_ptr<nav_interfaces::srv::SetPolygonPadding::Response> response)
+{
+  const bool all = request->polygon_name.empty();
+  const double requested = static_cast<double>(request->padding);
+  const bool to_default = std::isnan(requested) || requested < 0.0;
+
+  std::string summary;
+  for (std::shared_ptr<Polygon> polygon : polygons_) {
+    if (!all && polygon->getName() != request->polygon_name) {
+      continue;
+    }
+    const double before = polygon->getPadding();
+    polygon->setPadding(requested);
+    const double after = polygon->getPadding();
+
+    response->applied_names.push_back(polygon->getName());
+    response->applied_paddings.push_back(static_cast<float>(after));
+    summary += polygon->getName() + "=" + std::to_string(after) + " ";
+
+    RCLCPP_INFO(
+      get_logger(),
+      "[%s]: padding %.3f -> %.3f m%s",
+      polygon->getName().c_str(), before, after,
+      to_default ? " (restored to default)" : "");
+  }
+
+  if (response->applied_names.empty()) {
+    response->success = false;
+    response->message = "no polygon named '" + request->polygon_name + "'";
+    RCLCPP_WARN(get_logger(), "set_polygon_padding: %s", response->message.c_str());
+    return;
+  }
+
+  response->success = true;
+  response->message = summary;
+
+  // 立刻重发一次多边形，rviz 上能马上看到新的检测范围
+  publishPolygons();
 }
 
 }  // namespace nav2_collision_monitor
