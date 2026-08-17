@@ -106,8 +106,8 @@ protected:
   // Phase A 约束包络（共享，逐点 min 叠加；安全置零绝对优先，任何后续写入不得抬升）
   // ============================================================
 
-  /// A1 障碍约束：始终检测并标记硬障碍及其净空区；控制器需要路径停障时，
-  /// 再从净空区前 obstacle_zero_buffer_ 开始置零。
+  /// A1 障碍约束：始终检测并标记硬障碍及其安全余量区；控制器需要路径停障时，
+  /// 再将计划停车点前移 obstacle_stop_margin_，吸收控制延迟和停车过冲。
   /// @return 见 ObstacleConstraintOutcome——**"没有障碍"与"没法查"是两件事**
   ObstacleConstraintOutcome produceObstacleConstraint(
     const std::vector<TrajPointWork> & path, bool should_stop_for_path_obstacle);
@@ -257,10 +257,10 @@ protected:
   // <1e-3：无蠕行区，剖面在终点收敛到 0。
   double end_speed_{0.03};
   double terminal_creep_distance_{0.2};
-  double obstacle_zero_buffer_{0.2};
-  // 首个硬障碍 footprint 碰撞点之前保留的额外净空距离 [m]。
-  // 它是控制器无关的几何语义，不等同于固定制动距离。
-  double obstacle_clearance_distance_{0.25};
+  // Footprint 首次硬碰撞位置前定义的目标安全余量 [m]。
+  double obstacle_safety_margin_{0.25};
+  // 仅停障控制器使用：在安全余量外额外前移计划停车点的距离 [m]。
+  double obstacle_stop_margin_{0.2};
   // 障碍判定 cost 阈值（cost >= 即视为障碍；NO_INFORMATION 恒不算）。
   // 默认 254=LETHAL：只有 path 点真正落在障碍格内才触发停障——
   // 253 内切区是"机器人中心到此会碰撞"的膨胀带，会把贴障碍的合法路径误判停障。

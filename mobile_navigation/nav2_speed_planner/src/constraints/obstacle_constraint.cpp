@@ -110,9 +110,9 @@ ObstacleConstraintOutcome SpeedPlannerBase::produceObstacleConstraint(
   const auto scan_start = TimingClock::now();
   const std::vector<double> arc_s = computeCumulativeArcLengths(path);
   // 全路径扫描并用 region_type 标记障碍语义（透传到 RobotTrajectory）：
-  //   obstacle            — footprint 真正命中硬障碍
-  //   obstacle_clearance  — 硬障碍前的额外几何净空区
-  //   obstacle_stop_buffer— 仅停障控制器使用的额外零速保持区
+  //   obstacle               — Footprint 真正命中硬障碍
+  //   obstacle_safety_margin — 硬障碍前定义的目标安全余量区
+  //   obstacle_stop_margin   — 仅停障控制器使用的额外停车余量区
   size_t first_obstacle_index = path.size();
   for (size_t i = 0; i < path.size(); ++i) {
     double wx = path[i].pose.pose.position.x;
@@ -154,18 +154,18 @@ ObstacleConstraintOutcome SpeedPlannerBase::produceObstacleConstraint(
   last_planning_diagnostics_.first_obstacle_arc = arc_s[first_obstacle_index];
 
   const auto apply_start = TimingClock::now();
-  const double clearance_start = std::max(
-    0.0, arc_s[first_obstacle_index] - obstacle_clearance_distance_);
-  const double stop_anchor = std::max(0.0, clearance_start - obstacle_zero_buffer_);
+  const double safety_margin_start = std::max(
+    0.0, arc_s[first_obstacle_index] - obstacle_safety_margin_);
+  const double stop_anchor = std::max(0.0, safety_margin_start - obstacle_stop_margin_);
 
-  // 即使控制器自行绕障，也保留净空区语义供诊断和后续消费者使用，但不能把
+  // 即使控制器自行绕障，也保留安全余量区语义供诊断和后续消费者使用，但不能把
   // 速度上界压到零，否则MPPI会收到 vx_max=0 并失去采样绕行能力。
   for (size_t j = first_obstacle_index; j-- > 1; ) {
-    if (arc_s[j] + 1e-9 < clearance_start) {
+    if (arc_s[j] + 1e-9 < safety_margin_start) {
       break;
     }
     if (outcome.constraint.region_type[j].empty()) {
-      outcome.constraint.region_type[j] = "obstacle_clearance";
+      outcome.constraint.region_type[j] = "obstacle_safety_margin";
     }
   }
 
@@ -181,13 +181,13 @@ ObstacleConstraintOutcome SpeedPlannerBase::produceObstacleConstraint(
       if (arc_s[j] + 1e-9 < stop_anchor) {
         break;
       }
-      const bool in_clearance = arc_s[j] + 1e-9 >= clearance_start;
+      const bool in_safety_margin = arc_s[j] + 1e-9 >= safety_margin_start;
       outcome.constraint.set(
         j, 0.0,
-        in_clearance ? ConstraintSource::kObstacleClearance :
-        ConstraintSource::kObstacleBuffer);
-      if (!in_clearance && outcome.constraint.region_type[j].empty()) {
-        outcome.constraint.region_type[j] = "obstacle_stop_buffer";
+        in_safety_margin ? ConstraintSource::kObstacleSafetyMargin :
+        ConstraintSource::kObstacleStopMargin);
+      if (!in_safety_margin && outcome.constraint.region_type[j].empty()) {
+        outcome.constraint.region_type[j] = "obstacle_stop_margin";
       }
     }
   }

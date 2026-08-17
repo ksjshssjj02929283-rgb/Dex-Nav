@@ -24,7 +24,7 @@ namespace nav2_speed_planner
  *
  * 语义是**当前生效者**（最后一次成功下压的约束），区别于 `region_type`——
  * 后者表达该点最先写入的几何/业务语义，不保证一定下压速度。两者在同一点可能
- * 不同：例如 MPPI 绕障模式仍保留 `obstacle_clearance` 标注，但不产生障碍零速
+ * 不同：例如 MPPI 绕障模式仍保留 `obstacle_safety_margin` 标注，但不产生障碍零速
  * 上界；弯道与末端蠕行区重叠时，实际生效者也可能是后者。
  */
 enum class ConstraintSource
@@ -34,8 +34,8 @@ enum class ConstraintSource
   kSpeedHint,       ///< 路径逐点限速（区域限速的数据通道）
   kExternalLimit,   ///< 外部 /speed_limit
   kObstacle,        ///< 障碍点本身（置零）
-  kObstacleClearance,  ///< 硬障碍前的几何净空区（停障模式下置零）
-  kObstacleBuffer,  ///< 净空区之前的额外置零缓冲带
+  kObstacleSafetyMargin,  ///< 硬障碍前的目标安全余量区（停障模式下置零）
+  kObstacleStopMargin,  ///< 为控制延迟和停车过冲额外预留的置零区
   kLateralAccel,    ///< 曲率 / 横向加速度限速
   kTerminalCreep,   ///< 末端蠕行区
   kEndBoundary,     ///< 末端速度边界点
@@ -88,7 +88,7 @@ struct VelocityConstraint
 
   std::vector<double> upper_bound;         ///< kUnconstrained = 本约束不约束该点
   std::vector<std::string> region_type;    ///< 空串 = 不标注该点
-  std::vector<ConstraintSource> source;    ///< 逐点归因（同一约束内也可不同，如障碍点 vs 缓冲带）
+  std::vector<ConstraintSource> source;    ///< 逐点归因（同一约束内也可不同，如障碍点与停车余量）
 
   explicit VelocityConstraint(size_t n = 0)
   : upper_bound(n, kUnconstrained), region_type(n),
