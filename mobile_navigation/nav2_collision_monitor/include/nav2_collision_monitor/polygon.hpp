@@ -15,6 +15,7 @@
 #ifndef NAV2_COLLISION_MONITOR__POLYGON_HPP_
 #define NAV2_COLLISION_MONITOR__POLYGON_HPP_
 
+#include <atomic>
 #include <memory>
 #include <string>
 #include <vector>
@@ -111,6 +112,32 @@ public:
   virtual void getPolygon(std::vector<Point> & poly) const;
 
   /**
+   * @brief 取当前生效的形状（基础形状按 padding 向外膨胀后的轮廓）。
+   *
+   * 仅用于可视化发布。碰撞判定不走这里——判定在 isPointInside() 里用
+   * "到基础形状边界的距离 < padding" 实现，那是精确的 Minkowski 和，
+   * 对凹多边形同样正确；这里的顶点外推只是它的近似外轮廓。
+   * @param poly 输出膨胀后的多边形顶点
+   */
+  virtual void getEffectivePolygon(std::vector<Point> & poly) const;
+
+  /**
+   * @brief 设置膨胀大小（本仓库相对上游 Nav2 的改动：动态停障距离）
+   * @param padding 膨胀大小 m；NaN 或负数表示恢复 default_padding_
+   */
+  void setPadding(double padding);
+
+  /**
+   * @brief 取当前生效的膨胀大小
+   */
+  double getPadding() const;
+
+  /**
+   * @brief 取配置里的默认膨胀大小
+   */
+  double getDefaultPadding() const;
+
+  /**
    * @brief Updates polygon from footprint subscriber (if any)
    */
   void updatePolygon();
@@ -163,6 +190,13 @@ protected:
    */
   bool isPointInside(const Point & point) const;
 
+  /**
+   * @brief 点到基础多边形边界的最短距离（不区分内外，取各边线段距离的最小值）
+   * @param point 待测点
+   * @return 最短距离 m；poly_ 为空时返回 +inf
+   */
+  double distanceToBoundary(const Point & point) const;
+
   // ----- Variables -----
 
   /// @brief Collision Monitor node
@@ -202,8 +236,14 @@ protected:
   /// @brief Polygon publisher for visualization purposes
   rclcpp_lifecycle::LifecyclePublisher<geometry_msgs::msg::PolygonStamped>::SharedPtr polygon_pub_;
 
-  /// @brief Polygon points (vertices)
+  /// @brief Polygon points (vertices)。始终是"基础形状"，不含 padding
   std::vector<Point> poly_;
+
+  // 动态膨胀（本仓库相对上游 Nav2 的改动）
+  /// @brief 配置项 <name>.default_padding，收到 NaN 时回落到该值
+  double default_padding_{0.0};
+  /// @brief 当前生效的膨胀大小 m。service 线程写、process() 线程读，故用 atomic
+  std::atomic<double> padding_{0.0};
 };  // class Polygon
 
 }  // namespace nav2_collision_monitor

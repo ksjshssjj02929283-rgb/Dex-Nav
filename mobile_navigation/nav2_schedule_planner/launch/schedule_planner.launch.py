@@ -47,7 +47,7 @@ def generate_launch_description():
 
     return LaunchDescription([
         use_sim_time_arg,
-        # map_asset_manager_params_arg,
-        # map_asset_manager_node,
+        map_asset_manager_params_arg,
+        map_asset_manager_node,
         schedule_planner_node,
     ])

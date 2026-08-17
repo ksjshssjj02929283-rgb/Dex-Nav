@@ -21,6 +21,8 @@
 
 #include "rclcpp/rclcpp.hpp"
 #include "geometry_msgs/msg/twist.hpp"
+#include "nav_interfaces/msg/obstacle_monitor_status.hpp"
+#include "nav_interfaces/srv/set_polygon_padding.hpp"
 
 #include "tf2/time.h"
 #include "tf2_ros/buffer.h"
@@ -103,6 +105,15 @@ protected:
   void publishVelocity(const Action & robot_action);
 
   /**
+   * @brief Publishes real-time obstacle monitor status (FREE/SLOWDOWN/STOP).
+   * Called every process() cycle, regardless of whether the state changed.
+   * @param robot_action Robot action computed for the current cycle
+   * @param action_polygon Polygon causing robot_action (nullptr if DO_NOTHING)
+   */
+  void publishObstacleStatus(
+    const Action & robot_action, const std::shared_ptr<Polygon> action_polygon) const;
+
+  /**
    * @brief Supporting routine obtaining all ROS-parameters
    * @param cmd_vel_in_topic Output name of cmd_vel_in topic
    * @param cmd_vel_out_topic Output name of cmd_vel_out topic
@@ -142,8 +153,27 @@ protected:
   /**
    * @brief Main processing routine
    * @param cmd_vel_in Input desired robot velocity
+   * @param publish_cmd_vel Whether to publish the gated output cmd_vel. False for the idle
+   * keep-alive path (idleKeepaliveCallback), which only refreshes obstacle_status/polygons:
+   * the monitor must gate velocities, never originate them.
    */
-  void process(const Velocity & cmd_vel_in);
+  void process(const Velocity & cmd_vel_in, bool publish_cmd_vel = true);
+
+  /**
+   * @brief Idle keep-alive timer callback.
+   *
+   * obstacle_status is otherwise published only when cmd_vel_in arrives, which makes a safety
+   * signal's rate depend on a downstream consumer's output. Two consequences motivated this:
+   * a controller cannot distinguish "monitor died" from "monitor has nothing to react to"
+   * (so it cannot run a staleness watchdog), and an obstacle present before the robot ever
+   * moves stays unreported until the first non-zero velocity is published - too late.
+   *
+   * This fires only when no cmd_vel_in has arrived within the timer period, so the behaviour
+   * and latency of the cmd_vel path are untouched while the robot is being commanded.
+   * Evaluating with zero velocity is correct for STOP/SLOWDOWN polygons (their detection is
+   * purely geometric); APPROACH degenerates to no-op, which is its meaning at zero velocity.
+   */
+  void idleKeepaliveCallback();
 
   /**
    * @brief Processes the polygon of STOP and SLOWDOWN action type
@@ -186,6 +216,18 @@ protected:
    */
   void publishPolygons() const;
 
+  /**
+   * @brief 设置检测器膨胀大小的服务回调（本仓库相对上游 Nav2 的改动：动态停障距离）。
+   *
+   * 只写各 Polygon 的 padding_（atomic），不在这里改几何——形状在 process() 线程
+   * 按当前 padding 现算，避免与碰撞判定竞争。
+   * @param request 目标检测器名（空=全部）与 padding（NaN=恢复默认）
+   * @param response 生效结果
+   */
+  void setPolygonPaddingCallback(
+    const std::shared_ptr<nav_interfaces::srv::SetPolygonPadding::Request> request,
+    std::shared_ptr<nav_interfaces::srv::SetPolygonPadding::Response> response);
+
   // ----- Variables -----
 
   /// @brief TF buffer
@@ -204,16 +246,33 @@ protected:
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_in_sub_;
   /// @brief Output cmd_vel publisher
   rclcpp_lifecycle::LifecyclePublisher<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_out_pub_;
+  /// @brief Real-time obstacle monitor status publisher (FREE/SLOWDOWN/STOP)
+  rclcpp_lifecycle::LifecyclePublisher<
+    nav_interfaces::msg::ObstacleMonitorStatus>::SharedPtr obstacle_status_pub_;
+  /// @brief 动态膨胀设置服务（本仓库相对上游 Nav2 的改动）
+  rclcpp::Service<nav_interfaces::srv::SetPolygonPadding>::SharedPtr set_padding_srv_;
 
   /// @brief Whether main routine is active
   bool process_active_;
 
+  /// @brief Robot base frame ID, used as obstacle_status.header.frame_id
+  std::string base_frame_id_;
   /// @brief Previous robot action
   Action robot_action_prev_;
   /// @brief Latest timestamp when robot has 0-velocity
   rclcpp::Time stop_stamp_;
   /// @brief Timeout after which 0-velocity ceases to be published
   rclcpp::Duration stop_pub_timeout_;
+
+  // Idle keep-alive: keeps obstacle_status alive while no cmd_vel_in is flowing.
+  /// @brief Idle keep-alive timer (null when the feature is disabled)
+  rclcpp::TimerBase::SharedPtr idle_keepalive_timer_;
+  /// @brief Idle keep-alive period; also the "recent cmd_vel_in" threshold
+  rclcpp::Duration idle_keepalive_period_;
+  /// @brief Keep-alive rate Hz; <= 0 disables the timer entirely
+  double idle_keepalive_rate_;
+  /// @brief Latest timestamp when cmd_vel_in was received
+  rclcpp::Time last_cmd_vel_in_stamp_;
 };  // class CollisionMonitor
 
 }  // namespace nav2_collision_monitor

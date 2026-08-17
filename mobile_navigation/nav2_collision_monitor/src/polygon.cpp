@@ -14,7 +14,10 @@
 
 #include "nav2_collision_monitor/polygon.hpp"
 
+#include <algorithm>
+#include <cmath>
 #include <exception>
+#include <limits>
 #include <utility>
 
 #include "geometry_msgs/msg/point.hpp"
@@ -129,6 +132,100 @@ void Polygon::getPolygon(std::vector<Point> & poly) const
   poly = poly_;
 }
 
+void Polygon::setPadding(double padding)
+{
+  // NaN 或负数 → 恢复默认（NaN 与任何值比较都为 false，这里显式判）
+  const double applied = (std::isnan(padding) || padding < 0.0) ? default_padding_ : padding;
+  padding_.store(applied, std::memory_order_relaxed);
+}
+
+double Polygon::getPadding() const
+{
+  return padding_.load(std::memory_order_relaxed);
+}
+
+double Polygon::getDefaultPadding() const
+{
+  return default_padding_;
+}
+
+void Polygon::getEffectivePolygon(std::vector<Point> & poly) const
+{
+  const double padding = padding_.load(std::memory_order_relaxed);
+  const std::size_t n = poly_.size();
+  if (padding <= 0.0 || n < 3) {
+    poly = poly_;
+    return;
+  }
+
+  // 顶点沿相邻两边外法线的角平分线外推（凸角为精确 miter 接头）。
+  // 仅用于可视化，凹角处会略微失真，判定不依赖这里。
+  // 绕向：有向面积 > 0 为逆时针，外法线取 (dy, -dx)；顺时针则取 (-dy, dx)。
+  double area2 = 0.0;
+  for (std::size_t i = 0; i < n; i++) {
+    const Point & a = poly_[i];
+    const Point & b = poly_[(i + 1) % n];
+    area2 += a.x * b.y - b.x * a.y;
+  }
+  const double sign = (area2 >= 0.0) ? 1.0 : -1.0;
+
+  auto edge_normal = [sign](const Point & a, const Point & b) {
+      const double dx = b.x - a.x;
+      const double dy = b.y - a.y;
+      const double len = std::hypot(dx, dy);
+      if (len < 1e-9) {
+        return Point{0.0, 0.0};
+      }
+      return Point{sign * dy / len, -sign * dx / len};
+    };
+
+  poly.resize(n);
+  for (std::size_t i = 0; i < n; i++) {
+    const Point n1 = edge_normal(poly_[(i + n - 1) % n], poly_[i]);
+    const Point n2 = edge_normal(poly_[i], poly_[(i + 1) % n]);
+    double bx = n1.x + n2.x;
+    double by = n1.y + n2.y;
+    const double blen = std::hypot(bx, by);
+    if (blen < 1e-9) {
+      // 两边反向（退化的尖角），无法求角平分线，退回单边法线
+      poly[i] = {poly_[i].x + n2.x * padding, poly_[i].y + n2.y * padding};
+      continue;
+    }
+    bx /= blen;
+    by /= blen;
+    // miter 长度 = padding / cos(θ/2)，cos(θ/2) 即单位角平分线与边法线的夹角余弦
+    const double cos_half = bx * n1.x + by * n1.y;
+    // 夹角过尖时 miter 会飞出去，限幅到 5 倍 padding
+    const double scale = padding / std::max(cos_half, 0.2);
+    poly[i] = {poly_[i].x + bx * scale, poly_[i].y + by * scale};
+  }
+}
+
+double Polygon::distanceToBoundary(const Point & point) const
+{
+  const std::size_t n = poly_.size();
+  if (n == 0) {
+    return std::numeric_limits<double>::infinity();
+  }
+  double min_dist = std::numeric_limits<double>::infinity();
+  for (std::size_t i = 0; i < n; i++) {
+    const Point & a = poly_[i];
+    const Point & b = poly_[(i + 1) % n];
+    const double dx = b.x - a.x;
+    const double dy = b.y - a.y;
+    const double len_sq = dx * dx + dy * dy;
+    double t = 0.0;
+    if (len_sq > 1e-18) {
+      // 点在线段上的投影参数，夹到 [0,1] 即为线段最近点
+      t = ((point.x - a.x) * dx + (point.y - a.y) * dy) / len_sq;
+      t = std::max(0.0, std::min(1.0, t));
+    }
+    const double d = std::hypot(point.x - (a.x + t * dx), point.y - (a.y + t * dy));
+    min_dist = std::min(min_dist, d);
+  }
+  return min_dist;
+}
+
 void Polygon::updatePolygon()
 {
   if (footprint_sub_ != nullptr) {
@@ -208,7 +305,18 @@ void Polygon::publish() const
     std::make_unique<geometry_msgs::msg::PolygonStamped>();
   poly_s->header.stamp = node->now();
   poly_s->header.frame_id = base_frame_id_;
-  poly_s->polygon = polygon_;
+  // 每次发布都按当前 padding 现算轮廓，这样 rviz 里看到的就是实际生效的检测范围
+  // （本仓库相对上游 Nav2 的改动：上游直接发缓存的 polygon_）
+  std::vector<Point> effective_poly;
+  getEffectivePolygon(effective_poly);
+  poly_s->polygon.points.reserve(effective_poly.size());
+  for (const Point & p : effective_poly) {
+    geometry_msgs::msg::Point32 p_s;
+    p_s.x = p.x;
+    p_s.y = p.y;
+    // p_s.z will remain 0.0
+    poly_s->polygon.points.push_back(p_s);
+  }
 
   // Publish polygon
   polygon_pub_->publish(std::move(poly_s));
@@ -259,6 +367,20 @@ bool Polygon::getCommonParameters(std::string & polygon_pub_topic)
       simulation_time_step_ =
         node->get_parameter(polygon_name_ + ".simulation_time_step").as_double();
     }
+
+    // 动态膨胀默认值（本仓库相对上游 Nav2 的改动）。
+    // 基础形状（points / radius）配成底盘轮廓，padding 是其上的膨胀量；
+    // 运行时可经 ~/set_polygon_padding 修改，收到 NaN 时回落到这里。
+    nav2_util::declare_parameter_if_not_declared(
+      node, polygon_name_ + ".default_padding", rclcpp::ParameterValue(0.0));
+    default_padding_ = node->get_parameter(polygon_name_ + ".default_padding").as_double();
+    if (default_padding_ < 0.0) {
+      RCLCPP_WARN(
+        logger_, "[%s]: default_padding %.3f < 0, clamped to 0",
+        polygon_name_.c_str(), default_padding_);
+      default_padding_ = 0.0;
+    }
+    padding_.store(default_padding_, std::memory_order_relaxed);
 
     nav2_util::declare_parameter_if_not_declared(
       node, polygon_name_ + ".visualize", rclcpp::ParameterValue(false));
@@ -374,7 +496,18 @@ inline bool Polygon::isPointInside(const Point & point) const
     }
     i = j;
   }
-  return res;
+  if (res) {
+    return true;
+  }
+
+  // 动态膨胀（本仓库相对上游 Nav2 的改动）：点在基础形状外时，再看它到边界的距离。
+  // "在基础形状内 或 到边界距离 < padding" 精确等价于对基础形状做 padding 的
+  // Minkowski 膨胀，对凹多边形同样成立，且不需要真的把多边形做大。
+  const double padding = padding_.load(std::memory_order_relaxed);
+  if (padding <= 0.0) {
+    return false;
+  }
+  return distanceToBoundary(point) < padding;
 }
 
 }  // namespace nav2_collision_monitor

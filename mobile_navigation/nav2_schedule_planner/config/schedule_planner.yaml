@@ -34,7 +34,7 @@ schedule_planner_node:
     bag_trigger_topic: "/mobile_bag_recorder_node/trigger_event"
 
     # ---------------- 执行模式（启动时固定，不支持运行时热切换） ----------------
-    mode: "controller"   # "independence"=上面这套 /tracking_path→path_follower 流程（默认）
+    mode: "independence"   # "independence"=上面这套 /tracking_path→path_follower 流程（默认）
                             # "controller"=改为发 FollowPath action 给 controller_server（走 RPP/SpeedPlanner），
                             #   绕开 bt_navigator，没有 BT 的清 costmap/后退等恢复行为
     # controller 模式专用（mode=independence 时忽略）：
