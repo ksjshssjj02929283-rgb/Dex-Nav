@@ -41,6 +41,17 @@ Circle::~Circle()
 
 void Circle::getPolygon(std::vector<Point> & poly) const
 {
+  discretizeCircle(radius_, poly);
+}
+
+void Circle::getEffectivePolygon(std::vector<Point> & poly) const
+{
+  // 圆的膨胀就是半径相加，无需 miter 近似，直接给精确轮廓
+  discretizeCircle(radius_ + getPadding(), poly);
+}
+
+void Circle::discretizeCircle(double radius, std::vector<Point> & poly)
+{
   // Number of polygon points. More edges means better approximation.
   const double polygon_edges = 16;
   // Increment of angle during points position calculation
@@ -52,17 +63,22 @@ void Circle::getPolygon(std::vector<Point> & poly) const
   // Making new polygon looks like a circle
   Point p;
   for (double angle = 0.0; angle < 2 * M_PI; angle += angle_increment) {
-    p.x = radius_ * std::cos(angle);
-    p.y = radius_ * std::sin(angle);
+    p.x = radius * std::cos(angle);
+    p.y = radius * std::sin(angle);
     poly.push_back(p);
   }
 }
 
 int Circle::getPointsInside(const std::vector<Point> & points) const
 {
+  // 动态膨胀（本仓库相对上游 Nav2 的改动）：基础半径 + padding。
+  // 每次取一遍 padding 而不用缓存的 radius_squared_，保证 service 改完立刻生效。
+  const double effective_radius = radius_ + getPadding();
+  const double effective_radius_squared = effective_radius * effective_radius;
+
   int num = 0;
   for (Point point : points) {
-    if (point.x * point.x + point.y * point.y < radius_squared_) {
+    if (point.x * point.x + point.y * point.y < effective_radius_squared) {
       num++;
     }
   }
