@@ -13,6 +13,7 @@ find_package(rclcpp REQUIRED)
 find_package(rclcpp_action REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
 find_package(tf2_ros REQUIRED)
+find_package(nav2_map_server REQUIRED)
 
 nav2_package() #Calls the nav2_package.cmake file
 add_compile_options(-O3)
@@ -35,11 +36,17 @@ set(dependencies ament_cmake
   rclcpp_action
   rclcpp_lifecycle
   tf2_ros
+  nav2_map_server
 )
 
 
 add_library(${library_name} SHARED
   src/theta_star.cpp
+  src/node_theta_star.cpp
+  src/multi_layer_planner.cpp
+  src/omni_path_smoother.cpp
+  src/curve_path_smoother.cpp
+  src/l1_spline_path.cpp
   src/theta_star_planner.cpp
 )
 
@@ -61,6 +68,22 @@ install(DIRECTORY include/
 
 install(FILES theta_star_planner.xml
   DESTINATION share/${PROJECT_NAME}
+)
+
+install(
+  PROGRAMS
+    test/plan_from_rviz.py
+    test/run_map_plan_demo.sh
+  DESTINATION lib/${PROJECT_NAME}
+)
+
+install(
+  DIRECTORY test/
+  DESTINATION share/${PROJECT_NAME}/test
+  FILES_MATCHING
+  PATTERN "*.yaml"
+  PATTERN "*.rviz"
+  PATTERN "*.launch.py"
 )
 
 

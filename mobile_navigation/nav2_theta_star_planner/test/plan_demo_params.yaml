@@ -1,0 +1,69 @@
+# Offline map + planner demo (no Gazebo / no sensors).
+# Costmap is static + inflation only; the demo exercises NodeMap and path smoothing.
+
+map_server:
+  ros__parameters:
+    use_sim_time: false
+    yaml_filename: ""
+
+global_costmap:
+  global_costmap:
+    ros__parameters:
+      use_sim_time: false
+      update_frequency: 2.0
+      publish_frequency: 1.0
+      global_frame: map
+      robot_base_frame: base_link
+      footprint: "[[0.35, 0.29], [0.35, -0.29], [-0.35, -0.29], [-0.35, 0.29]]"
+      resolution: 0.05
+      track_unknown_space: false
+      plugins: ["static_layer", "inflation_layer"]
+      static_layer:
+        plugin: "nav2_costmap_2d::StaticLayer"
+        map_subscribe_transient_local: true
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        cost_scaling_factor: 10.0
+        inflation_radius: 0.40
+      always_send_full_costmap: true
+
+planner_server:
+  ros__parameters:
+    expected_planner_frequency: 1.0
+    use_sim_time: false
+    planner_plugins: ["GridBased"]
+    GridBased:
+      plugin: "nav2_theta_star_planner/ThetaStarPlanner"
+      how_many_corners: 8
+      w_euc_cost: 1.0
+      w_traversal_cost: 2.0
+      allow_unknown: false
+      use_final_approach_orientation: false
+      use_node_map: true
+      node_map_source_yaml: ""
+      node_map_yaml: ""
+      local_map_yaml: ""
+      raw_map_yaml: ""
+      distance_map_yaml: ""
+      smooth_path: true
+      # Plan E: L1 graph → collinear simplify → distance_map fillet → optional gradient polish
+      # Rollback: smooth_path_mode: legacy
+      smooth_path_mode: legacy #l1_spline
+      smooth_l1_clearance_radius_factor: 0.85
+      smooth_l1_corner_angle_rad: 0.25
+      smooth_l1_simplify_angle_rad: 0.10
+      smooth_l1_do_gradient: true
+      smooth_log_timing: true
+      smooth_curve_sample_step_m: 0.05
+      smooth_curve_fillet_max_leg_fraction: 0.45
+      smooth_string_pull_corner_angle_rad: 0.17
+      # legacy-only (ignored in l1_spline mode):
+      smooth_do_string_pull: true
+      smooth_do_gradient: true
+      smooth_do_curve_fit: false
+      smooth_max_iterations: 1000
+      smooth_w_data: 0.12
+      smooth_w_smooth: 0.45
+      smooth_tolerance: 1.0e-7
+      smooth_do_refinement: true
+      smooth_refinement_num: 3
