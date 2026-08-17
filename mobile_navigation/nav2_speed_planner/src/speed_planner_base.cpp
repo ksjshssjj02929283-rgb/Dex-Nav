@@ -81,9 +81,9 @@ void SpeedPlannerBase::configure(
   nav2_util::declare_parameter_if_not_declared(
     node, plugin_name_ + ".terminal_creep_distance", rclcpp::ParameterValue(0.2));
   nav2_util::declare_parameter_if_not_declared(
-    node, plugin_name_ + ".obstacle_zero_buffer", rclcpp::ParameterValue(0.2));
+    node, plugin_name_ + ".obstacle_safety_margin", rclcpp::ParameterValue(0.25));
   nav2_util::declare_parameter_if_not_declared(
-    node, plugin_name_ + ".obstacle_clearance_distance", rclcpp::ParameterValue(0.25));
+    node, plugin_name_ + ".obstacle_stop_margin", rclcpp::ParameterValue(0.2));
   nav2_util::declare_parameter_if_not_declared(
     node, plugin_name_ + ".obstacle_cost_threshold", rclcpp::ParameterValue(254));
   nav2_util::declare_parameter_if_not_declared(
@@ -112,11 +112,10 @@ void SpeedPlannerBase::configure(
   node->get_parameter(plugin_name_ + ".end_speed", end_speed_);
   end_speed_ = std::max(end_speed_, 0.0);
   node->get_parameter(plugin_name_ + ".terminal_creep_distance", terminal_creep_distance_);
-  node->get_parameter(plugin_name_ + ".obstacle_zero_buffer", obstacle_zero_buffer_);
-  obstacle_zero_buffer_ = std::max(obstacle_zero_buffer_, 0.0);
-  node->get_parameter(
-    plugin_name_ + ".obstacle_clearance_distance", obstacle_clearance_distance_);
-  obstacle_clearance_distance_ = std::max(obstacle_clearance_distance_, 0.0);
+  node->get_parameter(plugin_name_ + ".obstacle_safety_margin", obstacle_safety_margin_);
+  obstacle_safety_margin_ = std::max(obstacle_safety_margin_, 0.0);
+  node->get_parameter(plugin_name_ + ".obstacle_stop_margin", obstacle_stop_margin_);
+  obstacle_stop_margin_ = std::max(obstacle_stop_margin_, 0.0);
   node->get_parameter(plugin_name_ + ".obstacle_cost_threshold", obstacle_cost_threshold_);
   obstacle_cost_threshold_ = std::clamp(obstacle_cost_threshold_, 1, 254);
   std::string obstacle_unavailable_policy = "fail_closed";
@@ -434,7 +433,7 @@ nav_interfaces::msg::RobotTrajectory SpeedPlannerBase::computeSpeedPlan(
     RCLCPP_DEBUG(
       logger_,
       "[%s] envelope composition: max_speed=%zu hint=%zu external=%zu "
-      "obstacle=%zu clearance=%zu buffer=%zu lateral_accel=%zu creep=%zu "
+      "obstacle=%zu safety_margin=%zu stop_margin=%zu lateral_accel=%zu creep=%zu "
       "end_boundary=%zu "
       "unattributed=%zu",
       plugin_name_.c_str(),
@@ -442,8 +441,8 @@ nav_interfaces::msg::RobotTrajectory SpeedPlannerBase::computeSpeedPlan(
       by_source[static_cast<size_t>(ConstraintSource::kSpeedHint)],
       by_source[static_cast<size_t>(ConstraintSource::kExternalLimit)],
       by_source[static_cast<size_t>(ConstraintSource::kObstacle)],
-      by_source[static_cast<size_t>(ConstraintSource::kObstacleClearance)],
-      by_source[static_cast<size_t>(ConstraintSource::kObstacleBuffer)],
+      by_source[static_cast<size_t>(ConstraintSource::kObstacleSafetyMargin)],
+      by_source[static_cast<size_t>(ConstraintSource::kObstacleStopMargin)],
       by_source[static_cast<size_t>(ConstraintSource::kLateralAccel)],
       by_source[static_cast<size_t>(ConstraintSource::kTerminalCreep)],
       by_source[static_cast<size_t>(ConstraintSource::kEndBoundary)],

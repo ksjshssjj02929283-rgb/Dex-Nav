@@ -115,8 +115,8 @@ controller_server:
       decel: -0.4
       end_speed: 0.05
       terminal_creep_distance: 0.05
-      obstacle_zero_buffer: 0.2  # 需停障的控制器在净空区前额外保持零速的距离 [m]
-      obstacle_clearance_distance: 0.25  # footprint硬障碍点前保留的公共几何净空 [m]
+      obstacle_safety_margin: 0.25  # Footprint首次硬碰撞位置前保留的目标安全余量 [m]
+      obstacle_stop_margin: 0.2  # 仅停障控制器：在安全余量外额外前移计划停车点，吸收控制延迟和停车过冲 [m]
       obstacle_cost_threshold: 254   # 254=LETHAL：path 点在障碍格内才停障（253 内切区会误伤贴障碍路径）
       # P0-3 障碍约束「无法评估」（TF 变换失败 / costmap 缺失）时的处置策略。
       # fail_closed（默认，生产）：本周期输出空轨迹 → ControllerServer 发零速。
@@ -150,8 +150,8 @@ controller_server:
       decel: -0.4
       end_speed: 0.05
       terminal_creep_distance: 0.05
-      obstacle_zero_buffer: 0.2  # 需停障的控制器在净空区前额外保持零速的距离 [m]
-      obstacle_clearance_distance: 0.25  # footprint硬障碍点前保留的公共几何净空 [m]
+      obstacle_safety_margin: 0.25  # Footprint首次硬碰撞位置前保留的目标安全余量 [m]
+      obstacle_stop_margin: 0.2  # 仅停障控制器：在安全余量外额外前移计划停车点，吸收控制延迟和停车过冲 [m]
       obstacle_cost_threshold: 254   # 254=LETHAL：path 点在障碍格内才停障（253 内切区会误伤贴障碍路径）
       # P0-3 障碍约束「无法评估」（TF 变换失败 / costmap 缺失）时的处置策略。
       # fail_closed（默认，生产）：本周期输出空轨迹 → ControllerServer 发零速。
@@ -202,8 +202,8 @@ controller_server:
       decel: -0.4
       end_speed: 0.05
       terminal_creep_distance: 0.05
-      obstacle_zero_buffer: 0.2  # 需停障的控制器在净空区前额外保持零速的距离 [m]
-      obstacle_clearance_distance: 0.25  # footprint硬障碍点前保留的公共几何净空 [m]
+      obstacle_safety_margin: 0.25  # Footprint首次硬碰撞位置前保留的目标安全余量 [m]
+      obstacle_stop_margin: 0.2  # 仅停障控制器：在安全余量外额外前移计划停车点，吸收控制延迟和停车过冲 [m]
       obstacle_cost_threshold: 254   # 254=LETHAL：path 点在障碍格内才停障（253 内切区会误伤贴障碍路径）
       # P0-3 障碍约束「无法评估」（TF 变换失败 / costmap 缺失）时的处置策略。
       # fail_closed（默认，生产）：本周期输出空轨迹 → ControllerServer 发零速。
@@ -556,7 +556,7 @@ controller_server:
       heading_error_scaling_min_angle: 0.35   # 朝向误差减速起始阈值 (rad≈20°)；曲率随前瞻距离衰减，此项不受前瞻长度稀释
       heading_error_scaling_max_angle: 0.52   # 朝向误差达到约30°时降到 min_heading_speed_scale
       min_heading_speed_scale: 0.5            # 朝向误差达 heading_error_scaling_max_angle 时降到的下限比例
-      max_angular_vel: 1.5              # 角速度上限 (rad/s)：饱和时联动降 v 保持转弯半径
+      max_angular_vel: 0.75              # 角速度上限 (rad/s)：饱和时联动降 v 保持转弯半径
       # ── 速度环（trackLinearVelocity，恒生效）──
       desired_linear_vel: 0.8    # 三重角色：无轨迹时的回退目标 / 速度环输出界绝对兜底 / 区域限速(speedLimit)入口——必须 ≥ speed planner max_speed 并留余量，否则会钳低规划巡航速度
       max_linear_accel: 0.5    # 速度环加速度限幅 (m/s²)；调大≈目标直发
@@ -611,9 +611,9 @@ controller_server:
       max_v: 0.5
       min_v: 0.0
       max_v_inc: 0.5
-      max_w: 1.57
+      max_w: 0.75
       min_w: 0.02
-      max_w_inc: 1.57
+      max_w_inc: 1.0
       k_theta: 0.0
       switch_speed: 0.2
       default_desired_linear_vel: 0.15
@@ -684,9 +684,9 @@ controller_server:
       max_v: 0.5
       min_v: 0.0
       max_v_inc: 0.5
-      max_w: 1.57
+      max_w: 0.75
       min_w: 0.0
-      max_w_inc: 1.57
+      max_w_inc: 1.0
       k_theta: 0.0
       switch_speed: 0.1
       high_speed_station_pid_conf:
@@ -753,9 +753,9 @@ controller_server:
       max_v: 0.5
       min_v: 0.0
       max_v_inc: 0.5
-      max_w: 1.57
+      max_w: 0.75
       min_w: 0.0
-      max_w_inc: 1.57
+      max_w_inc: 1.0
       enable_lon_adjust: False
       station_pid_conf:
         integrator_enable: True
@@ -789,9 +789,9 @@ controller_server:
       max_v: 0.5
       min_v: 0.0
       max_v_inc: 0.5
-      max_w: 1.57
+      max_w: 0.75
       min_w: 0.0
-      max_w_inc: 1.57
+      max_w_inc: 1.0
       max_path_length: 0.5
       k_w_p: 1.0
       k_w_i: 0.01

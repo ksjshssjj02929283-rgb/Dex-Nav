@@ -139,8 +139,8 @@ public:
     this->decel_ = q.decel;
     this->end_speed_ = q.end_speed;
     this->terminal_creep_distance_ = q.stop_distance;
-    this->obstacle_zero_buffer_ = q.collision_stop_distance;
-    this->obstacle_clearance_distance_ = 0.25;
+    this->obstacle_safety_margin_ = q.obstacle_safety_margin;
+    this->obstacle_stop_margin_ = q.obstacle_stop_margin;
     if (q.min_curvature_radius > 0.0) {
       this->regulated_linear_scaling_min_radius_ = q.min_curvature_radius;
       this->min_curvature_speed_ = q.min_curvature_speed;

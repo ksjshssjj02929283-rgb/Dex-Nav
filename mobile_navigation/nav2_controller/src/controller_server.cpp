@@ -1523,17 +1523,17 @@ void ControllerServer::publishSpeedPlan(const nav_interfaces::msg::RobotTrajecto
     struct Anchor {size_t idx; const char * label; float r, g, b;};
     std::vector<Anchor> anchors;
     long first_obs = -1, last_obs = -1;
-    long first_clearance = -1, first_stop_buffer = -1;
+    long first_safety_margin = -1, first_stop_margin = -1;
     long first_curve = -1, last_curve = -1, first_creep = -1;
     for (size_t i = 0; i < trajectory.points.size(); ++i) {
       const auto & rt = trajectory.points[i].region_type;
       if (rt == "obstacle") {
         if (first_obs < 0) {first_obs = static_cast<long>(i);}
         last_obs = static_cast<long>(i);
-      } else if (rt == "obstacle_clearance") {
-        if (first_clearance < 0) {first_clearance = static_cast<long>(i);}
-      } else if (rt == "obstacle_stop_buffer") {
-        if (first_stop_buffer < 0) {first_stop_buffer = static_cast<long>(i);}
+      } else if (rt == "obstacle_safety_margin") {
+        if (first_safety_margin < 0) {first_safety_margin = static_cast<long>(i);}
+      } else if (rt == "obstacle_stop_margin") {
+        if (first_stop_margin < 0) {first_stop_margin = static_cast<long>(i);}
       } else if (rt == "curve") {
         if (first_curve < 0) {first_curve = static_cast<long>(i);}
         last_curve = static_cast<long>(i);
@@ -1541,13 +1541,13 @@ void ControllerServer::publishSpeedPlan(const nav_interfaces::msg::RobotTrajecto
         if (first_creep < 0) {first_creep = static_cast<long>(i);}
       }
     }
-    if (first_stop_buffer >= 0) {
+    if (first_stop_margin >= 0) {
       anchors.push_back(
-        {static_cast<size_t>(first_stop_buffer), "obs_stop", 1.0f, 0.5f, 0.0f});
+        {static_cast<size_t>(first_stop_margin), "obs_stop_margin", 1.0f, 0.5f, 0.0f});
     }
-    if (first_clearance >= 0) {
+    if (first_safety_margin >= 0) {
       anchors.push_back(
-        {static_cast<size_t>(first_clearance), "obs_clearance", 0.6f, 1.0f, 0.2f});
+        {static_cast<size_t>(first_safety_margin), "obs_safety_margin", 0.6f, 1.0f, 0.2f});
     }
     if (first_obs >= 0) {
       anchors.push_back({static_cast<size_t>(first_obs), "obs_start", 1.0f, 0.0f, 0.0f});

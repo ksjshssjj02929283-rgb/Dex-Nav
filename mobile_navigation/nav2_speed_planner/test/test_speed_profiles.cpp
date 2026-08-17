@@ -94,8 +94,8 @@ public:
     this->decel_ = kDecel;
     this->end_speed_ = kEndSpeed;
     this->terminal_creep_distance_ = kStopDistance;
-    this->obstacle_zero_buffer_ = 0.2;
-    this->obstacle_clearance_distance_ = 0.25;
+    this->obstacle_safety_margin_ = 0.25;
+    this->obstacle_stop_margin_ = 0.2;
     // 离线纯算法测试没有 costmap → A1 判定为「不可评估」。这里显式选 FAIL_OPEN，
     // 保持"跳过障碍约束、只验证剖面算法"的原有语义；FAIL_CLOSED 的行为另有专测。
     this->obstacle_unavailable_policy_ = nav2_speed_planner::ConstraintFailurePolicy::FAIL_OPEN;
@@ -772,7 +772,7 @@ public:
   bool isObstacleQueryAvailable() const override {return true;}
 };
 
-TEST(SpeedProfileObstacle, AvoidanceControllerKeepsClearanceSemanticWithoutZeroCap)
+TEST(SpeedProfileObstacle, AvoidanceControllerKeepsSafetyMarginSemanticWithoutZeroCap)
 {
   TWithObstacleAt3m planner;
   planner.setSharedParams();
@@ -782,14 +782,14 @@ TEST(SpeedProfileObstacle, AvoidanceControllerKeepsClearanceSemanticWithoutZeroC
   ASSERT_FALSE(traj.points.empty());
   EXPECT_NEAR(diagnostics.first_obstacle_arc, 3.0, kPointStep);
   EXPECT_EQ(diagnostics.terminal_branch, nav2_core::SpeedPlanningTerminalBranch::NONE);
-  bool has_clearance_region = false;
+  bool has_safety_margin_region = false;
   for (const auto & point : traj.points) {
-    if (point.region_type == "obstacle_clearance") {
-      has_clearance_region = true;
+    if (point.region_type == "obstacle_safety_margin") {
+      has_safety_margin_region = true;
       EXPECT_GT(point.longitudinal_velocity, 1e-3);
     }
   }
-  EXPECT_TRUE(has_clearance_region);
+  EXPECT_TRUE(has_safety_margin_region);
 }
 
 template<typename PlannerT>
@@ -798,15 +798,15 @@ void checkObstacleAt3m(PlannerT & planner, const std::string & tag)
   auto traj = planner.run(makeStraightPath(5.0), 0.0);
   dumpCsv(tag, 5.0, traj);
   double peak = 0.0;
-  double first_stop_buffer = std::numeric_limits<double>::infinity();
-  double first_clearance = std::numeric_limits<double>::infinity();
+  double first_stop_margin = std::numeric_limits<double>::infinity();
+  double first_safety_margin = std::numeric_limits<double>::infinity();
   for (const auto & p : traj.points) {
     const double x = p.pose.pose.position.x;
     peak = std::max(peak, p.longitudinal_velocity);
-    if (p.region_type == "obstacle_stop_buffer") {
-      first_stop_buffer = std::min(first_stop_buffer, x);
-    } else if (p.region_type == "obstacle_clearance") {
-      first_clearance = std::min(first_clearance, x);
+    if (p.region_type == "obstacle_stop_margin") {
+      first_stop_margin = std::min(first_stop_margin, x);
+    } else if (p.region_type == "obstacle_safety_margin") {
+      first_safety_margin = std::min(first_safety_margin, x);
     }
     if (x >= 2.56 - 1e-9) {  // 3.0 - 0.25 - 0.2，按2cm采样落在2.56m
       EXPECT_LT(p.longitudinal_velocity, 1e-6) << tag << " zero zone violated at x=" << x;
@@ -815,8 +815,8 @@ void checkObstacleAt3m(PlannerT & planner, const std::string & tag)
   // 长路径应到达巡航（accel 0.6 → 0.83m 加速距离，3m 内充分）
   EXPECT_GT(peak, 0.9) << tag << " should reach cruise before the obstacle";
   EXPECT_GT(traj.points[1].longitudinal_velocity, 1e-3);
-  EXPECT_NEAR(first_stop_buffer, 2.56, kPointStep);
-  EXPECT_NEAR(first_clearance, 2.76, kPointStep);
+  EXPECT_NEAR(first_stop_margin, 2.56, kPointStep);
+  EXPECT_NEAR(first_safety_margin, 2.76, kPointStep);
 }
 
 TEST(SpeedProfileObstacle, ObstacleAt3mOn5mPathTrapezoidal)
