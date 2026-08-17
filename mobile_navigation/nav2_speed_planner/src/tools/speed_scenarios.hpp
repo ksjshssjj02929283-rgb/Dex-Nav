@@ -57,7 +57,8 @@ struct Params
   double decel{kDecel};
   double end_speed{kEndSpeed};
   double stop_distance{kStopDistance};
-  double collision_stop_distance{0.2};
+  double obstacle_safety_margin{0.25};
+  double obstacle_stop_margin{0.2};
   double max_jerk{kMaxJerk};
   double control_dt{kControlDt};
   double min_curvature_radius{0.0};   // 0 = 不覆写（沿用实现默认）
@@ -75,7 +76,8 @@ struct Params
     p.decel = -0.4;
     p.end_speed = 0.05;
     p.stop_distance = 0.075;
-    p.collision_stop_distance = 0.2;
+    p.obstacle_safety_margin = 0.25;
+    p.obstacle_stop_margin = 0.2;
     p.max_jerk = 0.5;
     p.control_dt = 0.05;
     // ⚠ **此处与部署 yaml 有一处已知分歧，是刻意的。**
