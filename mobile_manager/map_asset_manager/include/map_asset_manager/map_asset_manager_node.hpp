@@ -59,8 +59,16 @@ private:
     // map_manager/map_state 回调：按 epoch 比对触发重载（不依赖名字，根治同名漏检）
     void onMapState(const nav_interfaces::msg::MapState::SharedPtr msg);
 
+    // 【旧机器兼容】旧 map_manager 无 map_state，只有 map_folder / map_name 两个 String topic。
+    // folder / name 各自到达一个，齐备且有变化时切图（无 epoch，退化为按名字比对，同名重载检测不到）。
+    void onLegacyMapContext(const std::string& folder, const std::string& name);
+
     // folder 和 name 都就绪后执行地图切换
     void switchToMap(const std::string& map_name);
+
+    // 资产文件路径解析：新分层布局 <map>/assets/map_assets.json；
+    // 旧机器扁平布局（无 slam/ 子目录）退回 <map>/map_assets.json
+    std::string resolveAssetsFile(const std::string& map_name) const;
 
     // EventBus 订阅
     void registerEventHandlers();
@@ -92,12 +100,18 @@ private:
     rclcpp::Service<nav_interfaces::srv::TransformAssets>::SharedPtr transform_assets_srv_;
     rclcpp::Publisher<std_msgs::msg::String>::SharedPtr status_pub_;
     rclcpp::Subscription<nav_interfaces::msg::MapState>::SharedPtr map_state_sub_;
+    // 【旧机器兼容】旧 map_manager 的两个 String topic；新机器上无人发布，订阅空转无副作用
+    rclcpp::Subscription<std_msgs::msg::String>::SharedPtr legacy_map_folder_sub_;
+    rclcpp::Subscription<std_msgs::msg::String>::SharedPtr legacy_map_name_sub_;
 
     // ── 状态 ─────────────────────────────────────────────
     std::string map_base_folder_;     // 地图根目录（来自 map_manager/map_state）
     std::string current_map_name_;    // 当前地图名称（来自 map_manager/map_state）
     std::string assets_file_;         // 当前 map_assets.json 完整路径
     uint64_t last_epoch_{0};          // 上次处理的 map_state epoch；比对它判断是否重载
+    bool map_state_seen_{false};      // 【旧机器兼容】收到过 map_state 后忽略 legacy topic，避免双源打架
+    std::string legacy_folder_;       // 【旧机器兼容】map_manager/map_folder 暂存（等 name 齐备）
+    std::string legacy_name_;         // 【旧机器兼容】map_manager/map_name 暂存（等 folder 齐备）
     bool auto_save_{true};
 };
 

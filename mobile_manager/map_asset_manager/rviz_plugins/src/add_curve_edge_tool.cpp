@@ -65,6 +65,7 @@ EdgeConfig showCurveConfigDialog(const EndpointInfo& from, const EndpointInfo& t
 
     form->addRow("边 ID:",    id_edit);
     form->addRow("",          bidir_cb);
+    auto opt_w = addOptionalEdgeFieldRows(form);
     form->addRow("最大速度:", speed_spin);
     form->addRow("XY 容差:",  xtol_spin);
     form->addRow("朝向容差:", ttol_spin);
@@ -87,6 +88,7 @@ EdgeConfig showCurveConfigDialog(const EndpointInfo& from, const EndpointInfo& t
         res.th_tolerance  = static_cast<float>(ttol_spin->value());
         res.lane_width    = static_cast<float>(width_spin->value());
         res.obs_policy    = policy_box->currentText().toStdString();
+        readOptionalEdgeFields(opt_w, res);
     }
     return res;
 }
@@ -318,6 +320,7 @@ void AddCurveEdgeTool::submitEdge(const EdgeConfig& cfg) {
     req->edge.th_tolerance   = cfg.th_tolerance;
     req->edge.lane_width     = cfg.lane_width;
     req->edge.obs_policy     = cfg.obs_policy;
+    applyOptionalEdgeFields(req->edge, cfg);  // 含 max_speed（0=系统默认）/hold_direction/padding/backward
 
     // 控制点序列：起点 + 中间控制点 + 终点
     auto addPt = [&](float x, float y) {

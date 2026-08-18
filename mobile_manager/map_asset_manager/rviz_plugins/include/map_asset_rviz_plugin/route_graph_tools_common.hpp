@@ -1,12 +1,21 @@
 #pragma once
 
+#include <chrono>
 #include <cmath>
 #include <chrono>
 #include <functional>
+#include <limits>
 #include <mutex>
 #include <string>
 #include <vector>
 #include <utility>
+
+#include <QCheckBox>
+#include <QDoubleSpinBox>
+#include <QFormLayout>
+#include <QHBoxLayout>
+#include <QObject>
+#include <QWidget>
 
 #include <OgreManualObject.h>
 #include <OgreRenderOperation.h>
@@ -14,6 +23,11 @@
 #include <rclcpp/rclcpp.hpp>
 #include <nav_interfaces/srv/get_all_nav_points.hpp>
 #include <nav_interfaces/srv/get_route_graph.hpp>
+#include <nav_interfaces/msg/route_edge.hpp>
+#include <nav_interfaces/srv/get_all_nav_points.hpp>
+#include <nav_interfaces/srv/get_route_graph.hpp>
+#include <optional>
+#include <rclcpp/rclcpp.hpp>
 
 namespace map_asset_rviz_plugin {
 
@@ -40,7 +54,103 @@ struct EdgeConfig {
     float       th_tolerance{0.5f};
     float       lane_width{0.0f};
     std::string obs_policy{"STOP"};
+    bool backward{false};                        ///< 差速移动车头反向（vx<0）
+    std::optional<float> hold_direction;         ///< 全向车平移朝向 rad；nullopt=差速方式
+    std::optional<float> padding;                ///< 车体膨胀大小 m；nullopt=系统默认
 };
+
+/// 弹框中四个运动参数控件（倒车 / 平移朝向 / 膨胀大小 / 最大速度）的句柄，供 AddEdgeTool/AddCurveEdgeTool 复用
+struct OptionalEdgeFieldWidgets {
+    QCheckBox* backward_cb{nullptr};
+    QCheckBox* hold_dir_cb{nullptr};
+    QDoubleSpinBox* hold_dir_spin{nullptr};
+    QCheckBox* padding_cb{nullptr};
+    QDoubleSpinBox* padding_spin{nullptr};
+    QCheckBox* max_speed_cb{nullptr};
+    QDoubleSpinBox* max_speed_spin{nullptr};
+};
+
+/// 在 form 的“单向通行”行之后追加四行：倒车、平移朝向（勾选启用，否则差速）、
+/// 膨胀大小（勾选启用，否则系统默认）、最大速度（勾选启用，否则系统默认）
+inline OptionalEdgeFieldWidgets addOptionalEdgeFieldRows(QFormLayout* form) {
+    OptionalEdgeFieldWidgets w;
+
+    w.backward_cb = new QCheckBox("倒车（backward）");
+
+    w.hold_dir_cb = new QCheckBox("平移朝向（holdDirection）");
+    w.hold_dir_spin = new QDoubleSpinBox();
+    w.hold_dir_spin->setRange(-6.2831853, 6.2831853);
+    w.hold_dir_spin->setDecimals(4);
+    w.hold_dir_spin->setValue(0.0);
+    w.hold_dir_spin->setSuffix(" rad");
+    w.hold_dir_spin->setEnabled(false);
+    QObject::connect(w.hold_dir_cb, &QCheckBox::toggled, w.hold_dir_spin, &QDoubleSpinBox::setEnabled);
+    auto* hold_dir_w = new QWidget;
+    auto* hold_dir_lay = new QHBoxLayout(hold_dir_w);
+    hold_dir_lay->setContentsMargins(0, 0, 0, 0);
+    hold_dir_lay->addWidget(w.hold_dir_cb);
+    hold_dir_lay->addWidget(w.hold_dir_spin);
+
+    w.padding_cb = new QCheckBox("膨胀大小（padding）");
+    w.padding_spin = new QDoubleSpinBox();
+    w.padding_spin->setRange(0.0, 5.0);
+    w.padding_spin->setDecimals(3);
+    w.padding_spin->setSingleStep(0.05);
+    w.padding_spin->setValue(0.1);
+    w.padding_spin->setSuffix(" m");
+    w.padding_spin->setEnabled(false);
+    QObject::connect(w.padding_cb, &QCheckBox::toggled, w.padding_spin, &QDoubleSpinBox::setEnabled);
+    auto* padding_w = new QWidget;
+    auto* padding_lay = new QHBoxLayout(padding_w);
+    padding_lay->setContentsMargins(0, 0, 0, 0);
+    padding_lay->addWidget(w.padding_cb);
+    padding_lay->addWidget(w.padding_spin);
+
+    w.max_speed_cb = new QCheckBox("最大速度（maxSpeed）");
+    w.max_speed_spin = new QDoubleSpinBox();
+    w.max_speed_spin->setRange(0.0, 10.0);
+    w.max_speed_spin->setDecimals(2);
+    w.max_speed_spin->setSingleStep(0.1);
+    w.max_speed_spin->setValue(0.5);
+    w.max_speed_spin->setSuffix(" m/s");
+    w.max_speed_spin->setEnabled(false);
+    QObject::connect(w.max_speed_cb, &QCheckBox::toggled, w.max_speed_spin, &QDoubleSpinBox::setEnabled);
+    auto* max_speed_w = new QWidget;
+    auto* max_speed_lay = new QHBoxLayout(max_speed_w);
+    max_speed_lay->setContentsMargins(0, 0, 0, 0);
+    max_speed_lay->addWidget(w.max_speed_cb);
+    max_speed_lay->addWidget(w.max_speed_spin);
+
+    form->addRow("", w.backward_cb);
+    form->addRow("", hold_dir_w);
+    form->addRow("", padding_w);
+    form->addRow("", max_speed_w);
+    return w;
+}
+
+/// 从弹框控件读取四个运动参数到 EdgeConfig
+inline void readOptionalEdgeFields(const OptionalEdgeFieldWidgets& w, EdgeConfig& cfg) {
+    cfg.backward = w.backward_cb->isChecked();
+    if (w.hold_dir_cb->isChecked()) {
+        cfg.hold_direction = static_cast<float>(w.hold_dir_spin->value());
+    }
+    if (w.padding_cb->isChecked()) {
+        cfg.padding = static_cast<float>(w.padding_spin->value());
+    }
+    // 未勾选保持 EdgeConfig::max_speed 的默认值 0.0f（=系统默认，与 Area/RouteEdge 持久化约定一致）
+    if (w.max_speed_cb->isChecked()) {
+        cfg.max_speed = static_cast<float>(w.max_speed_spin->value());
+    }
+}
+
+/// 把 EdgeConfig 的运动参数写入 RouteEdge 消息（hold_direction/padding：nullopt → NaN 哨兵；
+/// max_speed：EdgeConfig 本身已是 0=默认 语义，直接透传）
+inline void applyOptionalEdgeFields(nav_interfaces::msg::RouteEdge& edge, const EdgeConfig& cfg) {
+    edge.backward = cfg.backward;
+    edge.hold_direction = cfg.hold_direction.value_or(std::numeric_limits<float>::quiet_NaN());
+    edge.padding = cfg.padding.value_or(std::numeric_limits<float>::quiet_NaN());
+    edge.max_speed = cfg.max_speed;
+}
 
 /// Snap radius in meters
 static constexpr float kSnapRadius = 0.5f;
