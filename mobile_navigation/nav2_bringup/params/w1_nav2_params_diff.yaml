@@ -78,7 +78,6 @@ controller_server:
     # nav_monitor 全局路径/阶段回显：随 nav2_nav_monitor 记录使用，关闭则零开销
     enable_nav_monitor_echo: true
     controller_frequency: 10.0 # 控制器控制周期 # Related params: model_dt >= controller period; prediction horizon = time_steps * model_dt
-    progress_checker_plugins: ["progress_checker"] # progress_checker_plugin: "progress_checker" For Humble and older
     goal_checker_plugins: ["simple_goal_checker", "stopped_goal_checker", "position_goal_checker", "rotation_goal_checker", "longitudinal_goal_checker", "high_precision_goal_checker"] # goal_checker_plugin: "goal_checker" For Galactic and older
     controller_plugins: ["MPPIController", "DWBController", "RPPController", "GracefulController", "RotationShimController", "PIDController", "LatLonController", "PureRotationController", "StraightController"]
     speed_planner_plugins: ["TrapezoidalSpeedPlanner", "SCurveSpeedPlanner", "ReachabilitySpeedPlanner"]
@@ -233,12 +232,6 @@ controller_server:
       constant_velocity_dist_threshold: 0.1
       enable_constant_velocity_while_turning: False
       max_jerk: 0.5
-      # R41：现有 time preview 之外的 target→底盘执行延迟。
-      # 本次现场出现一次 334ms 长周期，先取 0.35s 临时安全基线；它不是 p99，
-      # 必须用实机批量 target/cmd/odom 数据重新标定。
-      terminal_execution_delay: 0.20
-      # 独立于 stop_distance：要求在 stop-zone 入口前额外稳定 5cm，吸收路径/odom 抖动。
-      terminal_safety_margin: 0.05
 
     staged_control:
       enabled: True
@@ -265,21 +258,6 @@ controller_server:
       required_movement_radius: 0.03 # 普通模式：判定有进展所需的移动距离，单位 m
       required_movement_angle: 0.03 # 普通模式：判定有进展所需的旋转角度，单位 rad
       movement_time_allowance: 5.0 # 普通模式：允许未达到足够进展的时间，单位 s
-    goal_checker:
-      plugin: "nav2_controller::PrecisionLongitudinalGoalChecker"
-      desired_lon_goal_tolerance: 0.01 # 优先追求的纵向精度，当前配置为 1cm
-      desired_lat_goal_tolerance: 0.01 # 优先追求的横向精度，当前配置为 1cm
-      accept_lon_goal_tolerance: 0.03 # 精调后允许接受的纵向精度，当前配置为 3cm
-      accept_lat_goal_tolerance: 0.03 # 精调后允许接受的横向精度，当前配置为 3cm
-      yaw_goal_tolerance: 0.03
-      enable_high_precision: false # true：先追求 1cm 高精度；false：只要求 2cm 接受精度
-      refine_cycles: 40 # controller_frequency=10Hz，对应进入 2cm 后继续精调约 4s
-      stable_window_size: 5 # controller_frequency=10Hz，对应最近约 0.5s 的高精度稳定窗口
-      check_stopped: true # 最终转向后必须停稳再报成功，避免带角速度越过目标姿态并放大位置误差
-      trans_stopped_velocity: 0.01 # check_stopped=true 时生效，线速度小于该值才认为已停稳，单位 m/s
-      rot_stopped_velocity: 0.02 # check_stopped=true 时生效，角速度小于该值才认为已停稳，单位 rad/s
-    FollowPath:
-      movement_time_allowance: 4.0 # 近目标模式：4 秒内没有足够进展就让 FollowPath 失败并进入恢复
     simple_goal_checker:
       plugin: "nav2_simple_goal_checker::SimpleGoalChecker"
       xy_goal_tolerance: 0.02
@@ -466,7 +444,6 @@ controller_server:
         consider_footprint: true
         collision_cost: 1000000.0
         near_goal_distance: 0.5
-        trajectory_point_step: 2
       # GoalLateralCritic / GoalLongitudinalCritic：无全局子参数（deadband 已废弃、threshold 距离门已移除）；
       # 权重由 stage_weights 矩阵管，cost_power/last_n_points 用 C++ 默认。
       LinearVelocityCritic: # 线速度大小软约束：speed_desired=min(当前阶段速度上限,√(2·ax_max·d))，不强制前进方向
@@ -1133,8 +1110,6 @@ planner_server:
       max_planning_time: 5.0
       analytic_expansion_ratio: 3.5
       analytic_expansion_max_length: 3.0
-      analytic_expansion_max_cost: 200.0
-      analytic_expansion_max_cost_override: false
       reverse_penalty: 2.0
       change_penalty: 0.05
       non_straight_penalty: 1.0
@@ -1169,7 +1144,6 @@ planner_server:
       allow_unknown: false
       # false=最终朝向用 goal 给定值（默认/我们期望）；true=用路径切线方向
       use_final_approach_orientation: false
-      terminal_checking_interval: 5000
 
   # ros__parameters:
   #   use_sim_time: False
