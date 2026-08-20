@@ -18,6 +18,19 @@ fi
 find "$CURDIR/install" -maxdepth 1 -type f -exec cp {} "$CURDIR/debian/$PACKAGE_NAME/home/dexforce/w1/$PACKAGE_NAME/" \;
 find "$CURDIR/install" -maxdepth 1 -mindepth 1 -type d -exec cp -r {} "$CURDIR/debian/$PACKAGE_NAME/home/dexforce/w1/install/" \;
 
+# --- 剔除 dexe_interfaces 接口包: 机上接口由 dexe-interfaces deb 铺设, 本包不重复发布 ---
+# 包名以 package.xml 的 <name> 为准, 目录名与包名可能不一致(dexe_interfaces_meta -> dexe_interfaces)。
+# colcon 的 install/setup.bash 动态枚举包目录, 删子目录不影响 source。
+if [ -d "$CURDIR/dexe_interfaces" ]; then
+    for xml in "$CURDIR"/dexe_interfaces/*/package.xml; do
+        [ -f "$xml" ] || continue
+        pkg=$(sed -n 's|.*<name>\([^<]*\)</name>.*|\1|p' "$xml" | head -n1)
+        [ -n "$pkg" ] || continue
+        echo "Excluding interface package from deb: $pkg"
+        rm -rf "$CURDIR/debian/$PACKAGE_NAME/home/dexforce/w1/install/$pkg"
+    done
+fi
+
 # --- 自动生成 postinst:整棵 /home/dexforce/w1 chown 回 dexforce ---
 DEBIAN_DIR="$CURDIR/debian/$PACKAGE_NAME/DEBIAN"
 mkdir -p "$DEBIAN_DIR"
