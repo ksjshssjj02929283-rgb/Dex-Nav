@@ -48,6 +48,8 @@ namespace nav2_controller
 namespace
 {
 
+constexpr int kEndLocalizationWarningThrottleMs = 1000;
+
 const char * speedPlanningTerminalBranchName(
   nav2_core::SpeedPlanningTerminalBranch branch)
 {
@@ -798,6 +800,7 @@ void ControllerServer::computeControl()
     if (findControllerId(c_name, current_controller)) {
       current_controller_ = current_controller;
     } else {
+      resetEndLocalizationCapabilities(goal_generation_);
       action_server_->terminate_current();
       return;
     }
@@ -807,6 +810,7 @@ void ControllerServer::computeControl()
     if (findGoalCheckerId(gc_name, current_goal_checker)) {
       current_goal_checker_ = current_goal_checker;
     } else {
+      resetEndLocalizationCapabilities(goal_generation_);
       action_server_->terminate_current();
       return;
     }
@@ -831,6 +835,7 @@ void ControllerServer::computeControl()
     while (rclcpp::ok()) {
       if (action_server_ == nullptr || !action_server_->is_server_active()) {
         RCLCPP_DEBUG(get_logger(), "Action server is not active. Control stopped.");
+        resetEndLocalizationCapabilities(goal_generation_);
         return;
       }
 
@@ -838,6 +843,7 @@ void ControllerServer::computeControl()
         RCLCPP_INFO(get_logger(), "Goal canceled. Stopping robot.");
         publishHardStopVelocity();
         publishNavigationStatus(nav_interfaces::msg::NavigationStatus::IDLE);
+        resetEndLocalizationCapabilities(goal_generation_);
         // The FollowPath result is the controller-side stop acknowledgement used
         // by BtActionNode cleanup. Publish zero before making that result visible.
         action_server_->terminate_all();
@@ -853,6 +859,7 @@ void ControllerServer::computeControl()
             "Goal canceled while waiting for costmap. Stopping robot.");
           publishHardStopVelocity();
           publishNavigationStatus(nav_interfaces::msg::NavigationStatus::IDLE);
+          resetEndLocalizationCapabilities(goal_generation_);
           action_server_->terminate_all();
           return;
         }
@@ -922,6 +929,7 @@ void ControllerServer::computeControl()
   } catch (nav2_core::CollisionException & e) {
     RCLCPP_ERROR(this->get_logger(), "Collision detected! %s", e.what());
     publishHardStopVelocity();
+    resetEndLocalizationCapabilities(goal_generation_);
     publishNavigationStatus(nav_interfaces::msg::NavigationStatus::FAILED, e.what());
     action_server_->terminate_current();
     publishNavigationStatus(nav_interfaces::msg::NavigationStatus::IDLE);
@@ -929,6 +937,7 @@ void ControllerServer::computeControl()
   } catch (nav2_core::PlannerException & e) {
     RCLCPP_ERROR(this->get_logger(), "Control failed: %s", e.what());
     publishHardStopVelocity();
+    resetEndLocalizationCapabilities(goal_generation_);
     publishNavigationStatus(nav_interfaces::msg::NavigationStatus::FAILED, e.what());
     action_server_->terminate_current();
     publishNavigationStatus(nav_interfaces::msg::NavigationStatus::IDLE);
@@ -936,6 +945,7 @@ void ControllerServer::computeControl()
   }catch (std::exception & e) {
     RCLCPP_ERROR(this->get_logger(), "Unexpected control error: %s", e.what());
     publishHardStopVelocity();
+    resetEndLocalizationCapabilities(goal_generation_);
     publishNavigationStatus(nav_interfaces::msg::NavigationStatus::FAILED, e.what());
     std::shared_ptr<Action::Result> result = std::make_shared<Action::Result>();
     action_server_->terminate_current(result);
@@ -996,6 +1006,8 @@ void ControllerServer::commitPlannerPathState(
     //    而永不触发 NEW_GOAL。锚定后比较基准固定，累计漂移超容差才换目标。
     end_pose_ = path.poses.back();
     end_pose_.header.frame_id = path.header.frame_id;
+    ++goal_generation_;
+    resetEndLocalizationCapabilities(goal_generation_);
     goal_checkers_[current_goal_checker_]->reset();
     controller_phase_ = ControllerPhase::TRACK;
     terminal_brake_latched_ = false;
@@ -2116,6 +2128,130 @@ void ControllerServer::resetStagedControlState()
   is_collision_stop_active_ = false;
   is_progress_check_paused_for_obstacle_stop_ = false;
   invalidateSpeedPlanningContinuity();
+  resetEndLocalizationCapabilities(goal_generation_);
+}
+
+nav2_core::EndLocalizationCapability * ControllerServer::getEndLocalizationCapability(
+  const std::string & controller_id)
+{
+  const auto controller = controllers_.find(controller_id);
+  if (controller == controllers_.end()) {
+    return nullptr;
+  }
+  return dynamic_cast<nav2_core::EndLocalizationCapability *>(controller->second.get());
+}
+
+void ControllerServer::resetEndLocalizationCapabilities(uint64_t goal_generation)
+{
+  for (auto & controller : controllers_) {
+    auto * capability = dynamic_cast<nav2_core::EndLocalizationCapability *>(
+      controller.second.get());
+    if (capability != nullptr) {
+      capability->resetEndLocalization(goal_generation);
+    }
+  }
+}
+
+void ControllerServer::updateEndLocalizationGoal(
+  const std::string & controller_id,
+  const geometry_msgs::msg::PoseStamped & pose)
+{
+  auto * capability = getEndLocalizationCapability(controller_id);
+  if (capability == nullptr) {
+    return;
+  }
+
+  const std::string control_frame = pose.header.frame_id.empty() ?
+    costmap_ros_->getGlobalFrameID() : pose.header.frame_id;
+  geometry_msgs::msg::PoseStamped source_goal = end_pose_;
+  source_goal.header.stamp = rclcpp::Time(0);
+  geometry_msgs::msg::PoseStamped live_goal;
+  rclcpp::Duration tolerance(
+    rclcpp::Duration::from_seconds(costmap_ros_->getTransformTolerance()));
+  try {
+    if (!nav_2d_utils::transformPose(
+        costmap_ros_->getTfBuffer(), control_frame, source_goal, live_goal, tolerance))
+    {
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), kEndLocalizationWarningThrottleMs,
+        "末端定位目标TF转换失败：controller=%s，source=%s，target=%s；"
+        "本周期保留上一份有效目标。",
+        controller_id.c_str(), source_goal.header.frame_id.c_str(), control_frame.c_str());
+      return;
+    }
+  } catch (const tf2::TransformException & ex) {
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), *get_clock(), kEndLocalizationWarningThrottleMs,
+      "末端定位目标TF异常：controller=%s，source=%s，target=%s，error=%s；"
+      "本周期保留上一份有效目标。",
+      controller_id.c_str(), source_goal.header.frame_id.c_str(), control_frame.c_str(),
+      ex.what());
+    return;
+  }
+
+  live_goal.header.frame_id = control_frame;
+  capability->setEndLocalizationGoal(live_goal, goal_generation_);
+}
+
+bool ControllerServer::getEndLocalizationSnapshot(
+  const std::string & controller_id,
+  nav2_core::EndLocalizationSnapshot & snapshot)
+{
+  auto * capability = getEndLocalizationCapability(controller_id);
+  if (capability == nullptr) {
+    return false;
+  }
+  snapshot = capability->getEndLocalizationSnapshot();
+  return snapshot.goal_generation == goal_generation_;
+}
+
+bool ControllerServer::shouldUseApproachController(
+  double distance_to_goal,
+  bool & position_reference_latched)
+{
+  nav2_core::EndLocalizationSnapshot end_localization_snapshot;
+  position_reference_latched = getEndLocalizationSnapshot(
+      approach_controller_, end_localization_snapshot) &&
+    end_localization_snapshot.position_goal_latched;
+  // 一旦位置参考已锁存在Odom，短时目标无效或map修正都不能切回路径跟踪器。
+  return position_reference_latched || distance_to_goal <= approach_distance_;
+}
+
+bool ControllerServer::applyEndLocalizationGoalToGoalChecker(
+  const std::string & controller_id,
+  geometry_msgs::msg::PoseStamped & goal_pose)
+{
+  nav2_core::EndLocalizationSnapshot end_localization_snapshot;
+  if (!getEndLocalizationSnapshot(controller_id, end_localization_snapshot) ||
+    !end_localization_snapshot.effective_goal_valid)
+  {
+    return false;
+  }
+
+  geometry_msgs::msg::PoseStamped effective_goal = end_localization_snapshot.effective_goal;
+  if (effective_goal.header.frame_id == goal_pose.header.frame_id) {
+    goal_pose.pose = effective_goal.pose;
+    return true;
+  }
+
+  effective_goal.header.stamp = rclcpp::Time(0);
+  geometry_msgs::msg::PoseStamped transformed_effective_goal;
+  rclcpp::Duration tolerance(
+    rclcpp::Duration::from_seconds(costmap_ros_->getTransformTolerance()));
+  if (nav_2d_utils::transformPose(
+      costmap_ros_->getTfBuffer(), goal_pose.header.frame_id,
+      effective_goal, transformed_effective_goal, tolerance))
+  {
+    goal_pose.pose = transformed_effective_goal.pose;
+    return true;
+  }
+
+  RCLCPP_WARN_THROTTLE(
+    get_logger(), *get_clock(), kEndLocalizationWarningThrottleMs,
+    "GoalChecker无法转换PID末端锁存目标：source=%s，target=%s；"
+    "本周期使用实时目标。",
+    effective_goal.header.frame_id.c_str(), goal_pose.header.frame_id.c_str());
+  return false;
 }
 
 geometry_msgs::msg::TwistStamped ControllerServer::computeControllerVelocity(
@@ -2129,6 +2265,7 @@ geometry_msgs::msg::TwistStamped ControllerServer::computeControllerVelocity(
     controllers_[controller_id]->setTrajectory(current_trajectory_);
     trajectory_dispatched_to_ = controller_id;
   }
+  updateEndLocalizationGoal(controller_id, pose);
   return controllers_[controller_id]->computeVelocityCommands(
     pose,
     nav_2d_utils::twist2Dto3D(twist),
@@ -2157,12 +2294,16 @@ geometry_msgs::msg::TwistStamped ControllerServer::computeStagedVelocity(
   }
 
   const double distance_to_goal = getDistanceToGoal(pose);
-  const bool in_approach = distance_to_goal <= approach_distance_;
+  bool position_reference_latched = false;
+  const bool in_approach = shouldUseApproachController(
+    distance_to_goal, position_reference_latched);
   if (in_approach) {
     RCLCPP_DEBUG_THROTTLE(
       get_logger(), *get_clock(), 500,
-      "Control choice: approach, goal_distance=%.3f <= %.3f, controller='%s'.",
-      distance_to_goal, approach_distance_, approach_controller_.c_str());
+      "Control choice: approach, goal_distance=%.3f, threshold=%.3f, "
+      "position_reference_latched=%s, controller='%s'.",
+      distance_to_goal, approach_distance_,
+      position_reference_latched ? "true" : "false", approach_controller_.c_str());
     setControllerPhase(ControllerPhase::APPROACH, "near goal");
     active_controller_for_log_ = approach_controller_;
     return computeControllerVelocity(approach_controller_, pose, twist);
@@ -2625,6 +2766,10 @@ bool ControllerServer::isGoalReached()
       "Goal pose TF failed in goal check.");
     return false;
   }
+
+  const std::string localization_controller = staged_control_enabled_ ?
+    approach_controller_ : current_controller_;
+  applyEndLocalizationGoalToGoalChecker(localization_controller, transformed_end_pose);
 
   const bool goal_reached = goal_checkers_[current_goal_checker_]->isGoalReached(
     pose.pose, transformed_end_pose.pose,

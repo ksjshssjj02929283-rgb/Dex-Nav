@@ -33,6 +33,7 @@
 #include "pluginlib/class_list_macros.hpp"
 
 #include "nav2_core/controller.hpp"
+#include "nav2_core/end_localization.hpp"
 #include "nav2_core/goal_checker.hpp"
 #include "nav2_core/trajectory_preview.hpp"
 #include "nav2_costmap_2d/costmap_2d_ros.hpp"
@@ -47,6 +48,7 @@
 #include "tf2_ros/buffer.h"
 
 #include "nav2_controller_common/pid_controller.h"
+#include "nav2_pid_controller/end_localization_lock.hpp"
 
 namespace nav2_pid_controller
 {
@@ -67,7 +69,9 @@ namespace nav2_pid_controller
  * nav2_core setTrajectory() extension; plain geometric paths are accepted
  * through setPlan() with a default desired speed.
  */
-class PIDController : public nav2_core::Controller
+class PIDController
+  : public nav2_core::Controller,
+  public nav2_core::EndLocalizationCapability
 {
 public:
   PIDController() = default;
@@ -144,6 +148,13 @@ public:
    */
   void setReverseEnabled(const bool enabled) {reverse_enabled_ = enabled;}
 
+  // nav2_core::EndLocalizationCapability：由ControllerServer传入权威终点并读取锁存结果。
+  void resetEndLocalization(uint64_t goal_generation) override;
+  void setEndLocalizationGoal(
+    const geometry_msgs::msg::PoseStamped & live_goal,
+    uint64_t goal_generation) override;
+  nav2_core::EndLocalizationSnapshot getEndLocalizationSnapshot() const override;
+
 protected:
   /**
    * @brief Single cached trajectory point: geometry + segment speed/curvature.
@@ -154,7 +165,8 @@ protected:
     double curvature = 0.0;    // path_kappa
   };
 
-  enum ControllerStage
+  /// PID内部互斥控制阶段；强类型枚举避免与整数或其他状态误比较。
+  enum class ControllerStage
   {
     FINISH,
     APPROACHING,
@@ -237,10 +249,23 @@ protected:
   const char * controllerStageName(ControllerStage stage) const;
 
   /**
+   * @brief 更新权威末端位置参考，并选择本周期控制目标。
+   *
+   * 权威目标暂时无效时允许轨迹终点作为控制回退值，但绝不写入锁存器。
+   */
+  nav2_core::EndLocalizationSnapshot selectEndLocalizationPositionReference(
+    const geometry_msgs::msg::PoseStamped & robot_pose,
+    const geometry_msgs::msg::PoseStamped & trajectory_fallback_goal,
+    geometry_msgs::msg::PoseStamped & effective_goal);
+
+  /**
    * @brief Build the cached trajectory from a geometric path (speed = 0),
    *        transforming each pose into the costmap global frame.
    */
   bool cachePathAsTrajectory(const nav_msgs::msg::Path & path);
+
+  /// 调用方必须持有plan_mutex_；任务切换时统一清理阶段、PID积分和指令基准。
+  void resetTaskControlStateLocked(uint64_t goal_generation);
 
   // ---- ROS2 plumbing ----
   rclcpp_lifecycle::LifecycleNode::WeakPtr node_;
@@ -259,8 +284,6 @@ protected:
   geometry_msgs::msg::PoseStamped target_ps_;
   geometry_msgs::msg::PoseStamped current_ps_;
 
-  double goal_x_ = 0.0, goal_y_ = 0.0, goal_yaw_ = 0.0;
-
   // ---- tolerances / limits ----
   double long_precision_ = 0.02, lat_precision_ = 0.04, o_precision_ = 0.5;
   double angular_error_deadband_ = 0.008;
@@ -275,6 +298,9 @@ protected:
   double desired_linear_vel_ = 0.0; // per-point desired velocity
   double final_rotation_max_v_ = 0.05;
   double final_rotation_linear_deadband_ = 0.005;
+  // 退出阈值可大于进入阈值形成迟滞；默认相等以保持未配置时的原行为。
+  double final_rotation_entry_distance_ = 0.03;
+  double final_rotation_exit_distance_ = 0.03;
   double acc_max_ = 0.5;
 
   // upper speed bound from setSpeedLimit (taken min with trajectory speed)
@@ -283,8 +309,8 @@ protected:
   bool reverse_enabled_ = false;
 
   // ---- state machine ----
-  ControllerStage curr_controller_stage_ = FINISH;
-  ControllerStage prev_controller_stage_ = FINISH;
+  ControllerStage curr_controller_stage_ = ControllerStage::FINISH;
+  ControllerStage prev_controller_stage_ = ControllerStage::FINISH;
 
   std::deque<double> theta_errors_;
   std::deque<double> longitude_errors_;
@@ -317,6 +343,15 @@ protected:
   // 对齐（该控制器只在此距离内被调用），使 approach 全程瞄准固定终点，
   // 不再随机器人平移在候选点间跳变。
   double final_target_lock_distance_ = 0.3;
+
+  // ---- terminal localization reference lock ----
+  // 位置和航向阈值分别控制Odom位置锁存与最终航向锁存；0表示关闭对应通道。
+  double end_localization_switch_distance_ = 0.0;
+  double end_localization_switch_angle_ = 0.0;
+  EndLocalizationLock end_localization_lock_;
+  uint64_t last_end_localization_revision_{0};
+  nav2_core::EndLocalizationStage last_end_localization_stage_{
+    nav2_core::EndLocalizationStage::INACTIVE};
 
   // ---- speed reference lookahead（与上方 target lock 解耦）----
   // nearestTrajectorySpeed 的前方窗长度：最近点之后前方窗内取 max（不含
