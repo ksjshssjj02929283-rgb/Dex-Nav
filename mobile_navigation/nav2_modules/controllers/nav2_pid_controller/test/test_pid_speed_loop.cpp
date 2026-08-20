@@ -1,8 +1,9 @@
 // Copyright 2026 DEXE Robot Engineer
 // SPDX-License-Identifier: Apache-2.0
 
-#include <cmath>
 #include <algorithm>
+#include <cmath>
+#include <cstdint>
 
 #include "gtest/gtest.h"
 #include "geometry_msgs/msg/twist.hpp"
@@ -287,6 +288,139 @@ TEST(AngularLoopPID_Test, deadbandZeroesAndReseeds)
 
   const double after = pid.run(0.0, 1.0, true);  // 退出 deadband，实测已归零
   EXPECT_LT(after, 0.1);  // 从 0 重新爬坡，不是贴着 deadband 前的旧指令
+}
+
+// 新任务重置单测：直接播种所有三路PID、阶段和上一周期指令基准，验证
+// ControllerServer调用resetEndLocalization后不会把旧任务状态带入新目标。
+class TaskResetPID : public nav2_pid_controller::PIDController
+{
+public:
+  TaskResetPID()
+  {
+    nav2_controller_common::PidConf config;
+    config.ki = 1.0;
+    config.integrator_enable = true;
+    config.integrator_saturation_level = 0.1;
+    station_nav2_pid_controller_.Init(config);
+    speed_nav2_pid_controller_.Init(config);
+    angular_station_nav2_pid_controller_.Init(config);
+  }
+
+  void seedPreviousTaskState()
+  {
+    curr_controller_stage_ = ControllerStage::ROTATING_TO_GOAL;
+    prev_controller_stage_ = ControllerStage::APPROACHING;
+    theta_errors_.push_back(0.2);
+    longitude_errors_.push_back(0.1);
+    station_nav2_pid_controller_.Control(1.0, 1.0);
+    speed_nav2_pid_controller_.Control(1.0, 1.0);
+    angular_station_nav2_pid_controller_.Control(1.0, 1.0);
+    last_speed_cmd_ = 0.25;
+    last_speed_cmd_valid_ = true;
+    last_angular_cmd_ = -0.4;
+    last_angular_cmd_valid_ = true;
+    last_trajectory_tracking_target_valid_ = true;
+    last_trajectory_tracking_target_v_ = 0.2;
+    last_trajectory_tracking_target_a_ = -0.1;
+  }
+
+  bool stagesAreFinished() const
+  {
+    return curr_controller_stage_ == ControllerStage::FINISH &&
+           prev_controller_stage_ == ControllerStage::FINISH;
+  }
+
+  bool errorWindowsAreEmpty() const
+  {
+    return theta_errors_.empty() && longitude_errors_.empty();
+  }
+
+  bool commandSeedsAreCleared() const
+  {
+    return !last_speed_cmd_valid_ && !last_angular_cmd_valid_ &&
+           last_speed_cmd_ == 0.0 && last_angular_cmd_ == 0.0;
+  }
+
+  bool trajectorySeedIsCleared() const
+  {
+    return !last_trajectory_tracking_target_valid_ &&
+           last_trajectory_tracking_target_v_ == 0.0 &&
+           last_trajectory_tracking_target_a_ == 0.0;
+  }
+
+  bool pidIntegralsAreSaturated() const
+  {
+    return station_nav2_pid_controller_.IntegratorSaturationStatus() != 0 &&
+           speed_nav2_pid_controller_.IntegratorSaturationStatus() != 0 &&
+           angular_station_nav2_pid_controller_.IntegratorSaturationStatus() != 0;
+  }
+
+  bool pidIntegralsAreCleared() const
+  {
+    return station_nav2_pid_controller_.IntegratorSaturationStatus() == 0 &&
+           speed_nav2_pid_controller_.IntegratorSaturationStatus() == 0 &&
+           angular_station_nav2_pid_controller_.IntegratorSaturationStatus() == 0;
+  }
+
+  void enableEndLocalizationLock(double switch_distance_m, uint64_t goal_generation)
+  {
+    nav2_pid_controller::EndLocalizationLockConfig config;
+    config.switch_distance_m = switch_distance_m;
+    end_localization_lock_.configure(config);
+    resetEndLocalization(goal_generation);
+  }
+
+  nav2_core::EndLocalizationSnapshot selectPositionReference(
+    const geometry_msgs::msg::PoseStamped & robot_pose,
+    const geometry_msgs::msg::PoseStamped & trajectory_fallback_goal,
+    geometry_msgs::msg::PoseStamped & effective_goal)
+  {
+    return selectEndLocalizationPositionReference(
+      robot_pose, trajectory_fallback_goal, effective_goal);
+  }
+};
+
+TEST(PidTaskReset, NewGoalClearsIntegralsStagesAndCommandSeeds)
+{
+  constexpr uint64_t kNewGoalGeneration = 7;
+  TaskResetPID pid;
+  pid.seedPreviousTaskState();
+  ASSERT_TRUE(pid.pidIntegralsAreSaturated());
+
+  pid.resetEndLocalization(kNewGoalGeneration);
+
+  EXPECT_TRUE(pid.pidIntegralsAreCleared());
+  EXPECT_TRUE(pid.stagesAreFinished());
+  EXPECT_TRUE(pid.errorWindowsAreEmpty());
+  EXPECT_TRUE(pid.commandSeedsAreCleared());
+  EXPECT_TRUE(pid.trajectorySeedIsCleared());
+  EXPECT_EQ(pid.getEndLocalizationSnapshot().goal_generation, kNewGoalGeneration);
+}
+
+TEST(PidEndLocalization, MissingAuthoritativeGoalCannotLatchTrajectoryEndpoint)
+{
+  constexpr uint64_t kGoalGeneration = 3;
+  constexpr double kSwitchDistanceM = 0.05;
+  TaskResetPID pid;
+  pid.enableEndLocalizationLock(kSwitchDistanceM, kGoalGeneration);
+
+  geometry_msgs::msg::PoseStamped robot_pose;
+  robot_pose.header.frame_id = "odom";
+  robot_pose.pose.orientation.w = 1.0;
+  geometry_msgs::msg::PoseStamped trajectory_endpoint = robot_pose;
+  trajectory_endpoint.pose.position.x = 1.0;
+  robot_pose.pose.position.x = trajectory_endpoint.pose.position.x;
+
+  geometry_msgs::msg::PoseStamped control_goal;
+  const auto snapshot = pid.selectPositionReference(
+    robot_pose, trajectory_endpoint, control_goal);
+
+  // TF失败时轨迹终点仍可供本周期控制，但锁存器必须保持无权威目标状态。
+  EXPECT_DOUBLE_EQ(control_goal.pose.position.x, trajectory_endpoint.pose.position.x);
+  EXPECT_FALSE(snapshot.live_goal_valid);
+  EXPECT_FALSE(snapshot.effective_goal_valid);
+  EXPECT_FALSE(snapshot.position_goal_latched);
+  EXPECT_EQ(snapshot.goal_generation, kGoalGeneration);
 }
 
 // approach 阶段单测：目标锁定 / 朝向-速度平滑耦合 / 旋转量安全网。
