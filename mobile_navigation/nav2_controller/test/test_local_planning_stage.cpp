@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <gtest/gtest.h>
 
+#include <cmath>
+#include <cstdint>
 #include <limits>
 #include <memory>
 #include <string>
@@ -78,6 +80,61 @@ class FakeAvoidingController
 {
 public:
   bool canAvoidPathObstacles() const override {return true;}
+};
+
+class FakeEndLocalizationController
+  : public FakeController,
+  public nav2_core::EndLocalizationCapability
+{
+public:
+  void resetEndLocalization(uint64_t goal_generation) override
+  {
+    snapshot_ = nav2_core::EndLocalizationSnapshot();
+    snapshot_.goal_generation = goal_generation;
+    ++reset_count_;
+  }
+
+  void setEndLocalizationGoal(
+    const geometry_msgs::msg::PoseStamped & live_goal,
+    uint64_t goal_generation) override
+  {
+    snapshot_.goal_generation = goal_generation;
+    snapshot_.live_goal = live_goal;
+    snapshot_.live_goal_valid = true;
+  }
+
+  nav2_core::EndLocalizationSnapshot getEndLocalizationSnapshot() const override
+  {
+    return snapshot_;
+  }
+
+  void seedPositionLatch(uint64_t goal_generation)
+  {
+    snapshot_.goal_generation = goal_generation;
+    snapshot_.enabled = true;
+    snapshot_.effective_goal_valid = true;
+    snapshot_.position_goal_latched = true;
+    snapshot_.stage = nav2_core::EndLocalizationStage::ODOM_POSITION;
+  }
+
+  void setEffectiveGoalValid(bool valid)
+  {
+    snapshot_.effective_goal_valid = valid;
+  }
+
+  void seedEffectiveGoal(
+    uint64_t goal_generation,
+    const geometry_msgs::msg::PoseStamped & effective_goal)
+  {
+    seedPositionLatch(goal_generation);
+    snapshot_.effective_goal = effective_goal;
+  }
+
+  size_t resetCount() const {return reset_count_;}
+
+private:
+  nav2_core::EndLocalizationSnapshot snapshot_;
+  size_t reset_count_{0};
 };
 
 class FakeGoalChecker : public nav2_core::GoalChecker
@@ -273,6 +330,26 @@ public:
     controllers_.insert({current_controller_, controller});
   }
 
+  void setEndLocalizationControllerForTest(
+    const std::shared_ptr<FakeEndLocalizationController> & controller)
+  {
+    controllers_.clear();
+    controllers_.insert({"PIDController", controller});
+    approach_controller_ = "PIDController";
+  }
+
+  bool shouldUseApproachForTest(
+    double distance_to_goal,
+    bool & position_reference_latched)
+  {
+    return shouldUseApproachController(distance_to_goal, position_reference_latched);
+  }
+
+  bool applyEndLocalizationGoalForTest(geometry_msgs::msg::PoseStamped & goal_pose)
+  {
+    return applyEndLocalizationGoalToGoalChecker(approach_controller_, goal_pose);
+  }
+
   bool activeControllerCanAvoidForTest()
   {
     geometry_msgs::msg::PoseStamped pose;
@@ -292,6 +369,7 @@ public:
   }
   size_t progressCheckCount() const {return fake_progress_checker_->checkCount();}
   size_t progressResetCount() const {return fake_progress_checker_->resetCount();}
+  uint64_t goalGeneration() const {return goal_generation_;}
 
 private:
   std::shared_ptr<FakeGoalChecker> fake_goal_checker_;
@@ -541,6 +619,70 @@ TEST(InitialMotionState, NewGoalPathResetsTerminalBookkeeping)
   EXPECT_EQ(controller->goalCheckerResetCount(), 1u);
   EXPECT_FALSE(controller->terminalBrakeLatched());
   EXPECT_FALSE(controller->isCollisionStopActive());
+}
+
+TEST(EndLocalizationBridge, SameGoalPreservesLatchAndLifecycleResetClearsIt)
+{
+  auto server = std::make_shared<ControllerShim>();
+  auto pid = std::make_shared<FakeEndLocalizationController>();
+  server->setEndLocalizationControllerForTest(pid);
+  pid->seedPositionLatch(server->goalGeneration());
+
+  const auto same_goal_path = makePath({{0.5, 0.0}, {1.0, 0.0}, {2.0, 0.0}});
+  server->commitPathForTest(
+    same_goal_path,
+    nav2_controller::ControllerServer::PathUpdateType::SAME_GOAL_GEOMETRY);
+  EXPECT_EQ(pid->resetCount(), 0u);
+  EXPECT_TRUE(pid->getEndLocalizationSnapshot().position_goal_latched);
+
+  const auto new_goal_path = makePath({{0.5, 0.0}, {1.5, 0.0}, {2.5, 0.0}});
+  server->commitPathForTest(
+    new_goal_path,
+    nav2_controller::ControllerServer::PathUpdateType::NEW_GOAL);
+  EXPECT_EQ(pid->resetCount(), 1u);
+  EXPECT_EQ(pid->getEndLocalizationSnapshot().goal_generation, server->goalGeneration());
+  EXPECT_FALSE(pid->getEndLocalizationSnapshot().position_goal_latched);
+
+  pid->seedPositionLatch(server->goalGeneration());
+  server->resetStages();
+  EXPECT_EQ(pid->resetCount(), 2u);
+  EXPECT_FALSE(pid->getEndLocalizationSnapshot().position_goal_latched);
+}
+
+TEST(EndLocalizationBridge, TemporaryInvalidGoalKeepsApproachAfterPositionLatch)
+{
+  auto server = std::make_shared<ControllerShim>();
+  auto pid = std::make_shared<FakeEndLocalizationController>();
+  server->setEndLocalizationControllerForTest(pid);
+  pid->seedPositionLatch(server->goalGeneration());
+  pid->setEffectiveGoalValid(false);
+
+  bool position_reference_latched = false;
+  const bool use_approach = server->shouldUseApproachForTest(
+    std::numeric_limits<double>::infinity(), position_reference_latched);
+
+  EXPECT_TRUE(position_reference_latched);
+  EXPECT_TRUE(use_approach);
+}
+
+TEST(EndLocalizationBridge, GoalCheckerUsesSameEffectiveLatchedGoal)
+{
+  auto server = std::make_shared<ControllerShim>();
+  auto pid = std::make_shared<FakeEndLocalizationController>();
+  server->setEndLocalizationControllerForTest(pid);
+
+  auto latched_goal = makePose(1.25, -0.35);
+  latched_goal.pose.orientation.z = 0.3;
+  latched_goal.pose.orientation.w = std::sqrt(1.0 - 0.3 * 0.3);
+  pid->seedEffectiveGoal(server->goalGeneration(), latched_goal);
+
+  auto goal_checker_target = makePose(9.0, 8.0);
+  ASSERT_TRUE(server->applyEndLocalizationGoalForTest(goal_checker_target));
+  EXPECT_EQ(goal_checker_target.header.frame_id, latched_goal.header.frame_id);
+  EXPECT_DOUBLE_EQ(goal_checker_target.pose.position.x, latched_goal.pose.position.x);
+  EXPECT_DOUBLE_EQ(goal_checker_target.pose.position.y, latched_goal.pose.position.y);
+  EXPECT_DOUBLE_EQ(goal_checker_target.pose.orientation.z, latched_goal.pose.orientation.z);
+  EXPECT_DOUBLE_EQ(goal_checker_target.pose.orientation.w, latched_goal.pose.orientation.w);
 }
 
 TEST(InitialMotionState, TerminalInfeasibleOutsideDynamicGuardDoesNotLatch)

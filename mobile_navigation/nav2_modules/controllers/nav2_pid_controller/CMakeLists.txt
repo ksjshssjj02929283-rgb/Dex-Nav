@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.5)
 project(nav2_pid_controller)
 
 find_package(ament_cmake REQUIRED)
+find_package(angles REQUIRED)
 find_package(nav2_common REQUIRED)
 find_package(nav2_core REQUIRED)
 find_package(nav2_costmap_2d REQUIRED)
@@ -25,6 +26,7 @@ include_directories(
 )
 
 set(dependencies
+  angles
   rclcpp
   rclcpp_lifecycle
   geometry_msgs
@@ -42,6 +44,7 @@ set(dependencies
 set(library_name nav2_pid_controller)
 
 add_library(${library_name} SHARED
+  src/end_localization_lock.cpp
   src/pid_controller.cpp)
 
 ament_target_dependencies(${library_name}
@@ -72,6 +75,10 @@ if(BUILD_TESTING)
   ament_add_gtest(test_pid_speed_loop test/test_pid_speed_loop.cpp)
   target_link_libraries(test_pid_speed_loop ${library_name})
   ament_target_dependencies(test_pid_speed_loop ${dependencies})
+
+  ament_add_gtest(test_end_localization_lock test/test_end_localization_lock.cpp)
+  target_link_libraries(test_end_localization_lock ${library_name})
+  ament_target_dependencies(test_end_localization_lock ${dependencies})
 endif()
 
 ament_export_include_directories(include)
