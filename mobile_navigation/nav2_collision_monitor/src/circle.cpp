@@ -77,7 +77,7 @@ int Circle::getPointsInside(const std::vector<Point> & points) const
   const double effective_radius_squared = effective_radius * effective_radius;
 
   int num = 0;
-  for (Point point : points) {
+  for (const Point & point : points) {
     if (point.x * point.x + point.y * point.y < effective_radius_squared) {
       num++;
     }
