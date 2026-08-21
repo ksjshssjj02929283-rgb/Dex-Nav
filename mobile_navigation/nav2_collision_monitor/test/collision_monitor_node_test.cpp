@@ -36,6 +36,7 @@
 
 #include "nav2_collision_monitor/types.hpp"
 #include "nav2_collision_monitor/collision_monitor_node.hpp"
+#include "nav_interfaces/msg/tracking_path.hpp"
 
 using namespace std::chrono_literals;
 
@@ -112,6 +113,20 @@ public:
       }
     }
     return false;
+  }
+
+  void receiveTrackingPath(const std::vector<nav2_collision_monitor::Point> & points)
+  {
+    auto msg = std::make_shared<nav_interfaces::msg::TrackingPath>();
+    msg->header.frame_id = BASE_FRAME_ID;
+    msg->header.stamp = now();
+    for (const auto & point : points) {
+      geometry_msgs::msg::Pose pose;
+      pose.position.x = point.x;
+      pose.position.y = point.y;
+      msg->poses.push_back(pose);
+    }
+    trackingPathCallback(msg);
   }
 };  // CollisionMonitorWrapper
 
@@ -599,6 +614,51 @@ TEST_F(Tester, testProcessStopSlowdown)
   ASSERT_NEAR(cmd_vel_out_->angular.z, 0.1, EPSILON);
 
   // Stop Collision Monitor node
+  cm_->stop();
+}
+
+TEST_F(Tester, testTrackingPathAheadStop)
+{
+  const rclcpp::Time curr_time = cm_->now();
+  setCommonParameters();
+  addPolygon("PolygonStop", CIRCLE, 0.2, "stop");
+  addSource(POINTCLOUD_NAME, POINTCLOUD);
+  setVectors({"PolygonStop"}, {POINTCLOUD_NAME});
+  cm_->declare_parameter("PolygonStop.path_stop_enabled", true);
+  cm_->declare_parameter("PolygonStop.path_stop_distance", 1.0);
+  cm_->declare_parameter("PolygonStop.path_stop_radius", 0.2);
+  cm_->declare_parameter("PolygonStop.path_point_interval", 0.10);
+  cm_->start();
+  sendTransforms(curr_time);
+
+  // Original route points spaced by more than 10 cm are selected. Two cloud points at x=0.8
+  // lie inside the translated PolygonStop circle and exceed its max_points threshold: STOP.
+  const std::vector<nav2_collision_monitor::Point> route{
+    {0.0, 0.0}, {0.4, 0.0}, {0.8, 0.0}, {1.2, 0.0}, {1.6, 0.0}, {2.0, 0.0}};
+  cm_->receiveTrackingPath(route);
+  publishPointCloud(0.8, curr_time);
+  ASSERT_TRUE(waitData(std::hypot(0.8, 0.01), 500ms, curr_time));
+  publishCmdVel(0.5, 0.0, 0.0);
+  ASSERT_TRUE(waitCmdVel(500ms));
+  EXPECT_NEAR(cmd_vel_out_->linear.x, 0.0, EPSILON);
+
+  // The same obstacle is outside a parallel route corridor: velocity is passed through.
+  cm_->receiveTrackingPath(
+  {
+    {0.0, 1.0}, {0.4, 1.0}, {0.8, 1.0},
+    {1.2, 1.0}, {1.6, 1.0}, {2.0, 1.0}});
+  publishCmdVel(0.5, 0.0, 0.0);
+  ASSERT_TRUE(waitCmdVel(500ms));
+  EXPECT_NEAR(cmd_vel_out_->linear.x, 0.5, EPSILON);
+
+  // x=1.6 is beyond the 1 m lookahead and the 0.2 m PolygonStop radius, so it must not stop.
+  cm_->receiveTrackingPath(route);
+  publishPointCloud(1.6, curr_time);
+  ASSERT_TRUE(waitData(std::hypot(1.6, 0.01), 500ms, curr_time));
+  publishCmdVel(0.5, 0.0, 0.0);
+  ASSERT_TRUE(waitCmdVel(500ms));
+  EXPECT_NEAR(cmd_vel_out_->linear.x, 0.5, EPSILON);
+
   cm_->stop();
 }
 

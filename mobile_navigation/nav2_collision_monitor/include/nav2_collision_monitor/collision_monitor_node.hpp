@@ -15,13 +15,18 @@
 #ifndef NAV2_COLLISION_MONITOR__COLLISION_MONITOR_NODE_HPP_
 #define NAV2_COLLISION_MONITOR__COLLISION_MONITOR_NODE_HPP_
 
+#include <chrono>
+#include <cstdint>
 #include <string>
 #include <vector>
 #include <memory>
+#include <mutex>
 
 #include "rclcpp/rclcpp.hpp"
 #include "geometry_msgs/msg/twist.hpp"
+#include "visualization_msgs/msg/marker_array.hpp"
 #include "nav_interfaces/msg/obstacle_monitor_status.hpp"
+#include "nav_interfaces/msg/tracking_path.hpp"
 #include "nav_interfaces/srv/set_polygon_padding.hpp"
 
 #include "tf2/time.h"
@@ -203,6 +208,35 @@ protected:
     const Velocity & velocity,
     Action & robot_action) const;
 
+  /** @brief Cache the latest graph tracking path published by schedule_planner. */
+  void trackingPathCallback(nav_interfaces::msg::TrackingPath::ConstSharedPtr msg);
+
+  /**
+   * @brief Check whether enough obstacle points lie in the path corridor ahead of the robot.
+   * @param collision_points Obstacle points in base_frame_id_.
+   * @return true when the configured path-stop threshold is exceeded.
+   */
+  bool hasObstacleOnPath(const std::vector<Point> & collision_points) const;
+
+  /** @brief Transform a tracking path into base_frame_id_ using the latest cached TF. */
+  bool transformTrackingPathToBase(
+    const nav_interfaces::msg::TrackingPath & path,
+    std::vector<Point> & points) const;
+
+  /** @brief Build corridor sample points from the closest path projection forward. */
+  std::vector<Point> makePathCheckPoints(const std::vector<Point> & path_points) const;
+
+  /** @brief Check whether obstacle hits in the sampled path corridor exceed the threshold. */
+  bool hasObstacleInPathCorridor(
+    const std::vector<Point> & collision_points,
+    const std::vector<Point> & check_points) const;
+
+  /** @brief Publish path-stop sample circles for RViz. */
+  void publishPathStopMarkers(const std::vector<Point> & check_points) const;
+
+  /** @brief Accumulate and periodically report path-stop execution timing. */
+  void recordPathStopTiming(const std::chrono::steady_clock::time_point & start_time);
+
   /**
    * @brief Prints robot action and polygon caused it (if it was)
    * @param robot_action Robot action to print
@@ -244,19 +278,42 @@ protected:
   // Input/output speed controls
   /// @beirf Input cmd_vel subscriber
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_in_sub_;
+  rclcpp::Subscription<nav_interfaces::msg::TrackingPath>::SharedPtr tracking_path_sub_;
   /// @brief Output cmd_vel publisher
   rclcpp_lifecycle::LifecyclePublisher<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_out_pub_;
   /// @brief Real-time obstacle monitor status publisher (FREE/SLOWDOWN/STOP)
   rclcpp_lifecycle::LifecyclePublisher<
     nav_interfaces::msg::ObstacleMonitorStatus>::SharedPtr obstacle_status_pub_;
+  rclcpp_lifecycle::LifecyclePublisher<
+    visualization_msgs::msg::MarkerArray>::SharedPtr path_stop_marker_pub_;
   /// @brief 动态膨胀设置服务（本仓库相对上游 Nav2 的改动）
   rclcpp::Service<nav_interfaces::srv::SetPolygonPadding>::SharedPtr set_padding_srv_;
+
+  // schedule_planner path-ahead stop detector
+  bool path_stop_enabled_{false};
+  std::string tracking_path_topic_{"/tracking_path"};
+  double path_stop_distance_{1.0};
+  double path_stop_radius_{0.36};
+  double path_point_interval_{0.10};
+  int path_stop_max_points_{3};
+  bool path_stop_visualize_{false};
+  bool path_stop_timing_enabled_{false};
+  std::string path_stop_marker_topic_{"path_stop_circles"};
+  mutable std::mutex tracking_path_mutex_;
+  std::mutex path_stop_timing_mutex_;
+  std::chrono::steady_clock::time_point path_stop_timing_window_start_;
+  std::uint64_t path_stop_timing_count_{0};
+  std::int64_t path_stop_timing_total_ns_{0};
+  std::int64_t path_stop_timing_max_ns_{0};
+  mutable rclcpp::Clock throttle_clock_{RCL_STEADY_TIME};
+  nav_interfaces::msg::TrackingPath::ConstSharedPtr tracking_path_;
 
   /// @brief Whether main routine is active
   bool process_active_;
 
   /// @brief Robot base frame ID, used as obstacle_status.header.frame_id
   std::string base_frame_id_;
+  tf2::Duration transform_tolerance_{tf2::durationFromSec(0.1)};
   /// @brief Previous robot action
   Action robot_action_prev_;
   /// @brief Latest timestamp when robot has 0-velocity
