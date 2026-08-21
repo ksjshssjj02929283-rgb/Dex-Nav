@@ -16,7 +16,7 @@ collision_monitor:
     odom_frame_id: "odom"
     cmd_vel_in_topic: "cmd_vel_raw"   # path_follower 重映射输出到这里
     cmd_vel_out_topic: "cmd_vel"      # 处理后真正发给底盘的速度
-    transform_tolerance: 0.5
+    transform_tolerance: 0.1
     source_timeout: 5.0              # 数据超过 5s 视为失效
     base_shift_correction: True     # 源时间戳->当前时间 TF 插值(更准)
     stop_pub_timeout: 2.0           # 停车 2s 后停止发布零速度(节能/防抖)
@@ -54,6 +54,17 @@ collision_monitor:
       polygon_pub_topic: "polygon_stop"
       enabled: True
 
+      # schedule_planner 路径前视停障：沿路径从机器人最近投影向前检查。
+      # 每个路径取点按 path_stop_radius 直接做距离判定，阈值复用 max_points。
+      path_stop_enabled: true
+      tracking_path_topic: "/tracking_path"
+      path_stop_distance: 1.0
+      path_stop_radius: 0.36    # 每个路径采样点的检测半径
+      path_point_interval: 0.10  # 与上一取点相距至少 10 cm 时取当前路径点
+      path_stop_visualize: false
+      path_stop_marker_topic: "path_stop_circles"
+      path_stop_timing_enabled: true  # 每秒输出检测频率及平均/最大耗时
+
     # 减速区: 底盘外接圆 + 0.4m 膨胀,速度衰减到 50%。
     PolygonSlow:
 #      type: "polygon"
@@ -84,7 +95,8 @@ collision_monitor:
       enabled: True
 
 #    observation_sources: ["scan"]  # linorobot2
-    observation_sources: ["scan_front", "scan_rear", "pointcloud_front", "pointcloud_rear"]
+    # observation_sources: ["scan_front", "scan_rear", "pointcloud_front", "pointcloud_rear", "rgbd_scan_front", "rgbd_scan_rear"]
+    observation_sources: ["scan_front", "scan_rear", "rgbd_scan_front", "rgbd_scan_rear"]
     scan:
       type: "scan"
       topic: "/scan"
@@ -97,16 +109,24 @@ collision_monitor:
       type: "scan"
       topic: "/laser_scan/rear"
       enabled: True
-    pointcloud_front:
-      type: "pointcloud"
-#      topic: "/camera/depth/color/points"  # linorobot2未生效
-      topic: "/orbbec/front/pointcloud2_filtered"
-      min_height: 0.05
-      max_height: 1.0
+#     pointcloud_front:
+#       type: "pointcloud"
+# #      topic: "/camera/depth/color/points"  # linorobot2未生效
+#       topic: "/orbbec/front/pointcloud2_filtered"
+#       min_height: 0.05
+#       max_height: 1.0
+#       enabled: True
+#     pointcloud_rear:
+#       type: "pointcloud"
+#       topic: "/orbbec/rear/pointcloud2_filtered"
+#       min_height: 0.05
+#       max_height: 1.0
+#       enabled: True
+    rgbd_scan_front:
+      type: "scan"
+      topic: "/orbbec/front/laser_scan"
       enabled: True
-    pointcloud_rear:
-      type: "pointcloud"
-      topic: "/orbbec/rear/pointcloud2_filtered"
-      min_height: 0.05
-      max_height: 1.0
+    rgbd_scan_rear:
+      type: "scan"
+      topic: "/orbbec/rear/laser_scan"
       enabled: True
