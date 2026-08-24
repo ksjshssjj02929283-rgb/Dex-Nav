@@ -90,8 +90,9 @@ install(DIRECTORY launch config
         DESTINATION share/${PROJECT_NAME}
 )
 
-# Python 脚本：贝塞尔轨迹生成器 / TrackingPath 轨迹生成器（测试用）
+# Python 脚本：贝塞尔轨迹生成器 / 拐角贝塞尔平滑生成器 / TrackingPath 轨迹生成器（测试用）
 install(PROGRAMS scripts/bezier_path_generator.py
+              scripts/corner_bezier_path_generator.py
               scripts/tracking_path_generator.py
         DESTINATION lib/${PROJECT_NAME}
 )

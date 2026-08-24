@@ -369,6 +369,9 @@ namespace path_follower
         planner_params_.min_angular_velocity = declare_parameter<double>("min_angular_velocity", 0.02);
         planner_params_.ruckig_control_dt = declare_parameter<double>("ruckig_control_dt", 0.02);
         planner_params_.curvature_deceleration = declare_parameter<bool>("curvature_deceleration", true);
+        planner_params_.curvature_dec_gain = declare_parameter<double>("curvature_dec_gain", 0.3);
+        planner_params_.curvature_dec_ratio_min = declare_parameter<double>("curvature_dec_ratio_min", 0.2);
+        planner_params_.acceleration_envelope = declare_parameter<bool>("acceleration_envelope", true);
         planner_params_.angle_resolution = declare_parameter<double>("angle_resolution", 0.0034906585);
         planner_params_.trajectory_resolution = trajectory_resolution_;
 
@@ -454,6 +457,9 @@ namespace path_follower
                 p.get_name().find("min_angular") != std::string::npos ||
                 p.get_name() == "ruckig_control_dt" ||
                 p.get_name() == "curvature_deceleration" ||
+                p.get_name() == "curvature_dec_gain" ||
+                p.get_name() == "curvature_dec_ratio_min" ||
+                p.get_name() == "acceleration_envelope" ||
                 p.get_name() == "trajectory_resolution" ||
                 p.get_name() == "angle_resolution")
             {
@@ -487,6 +493,19 @@ namespace path_follower
             {
                 result.successful = false;
                 result.reason = p.get_name() + " must be >= 0";
+            }
+            // 曲率减速软钳：gain 是分母加数，必须为正；ratio_min 超过 1 会把速度放大到
+            // Ruckig 规划值之上（越过全局速度上限），必须夹在 (0, 1]。
+            if (p.get_name() == "curvature_dec_gain" && p.as_double() <= 0.0)
+            {
+                result.successful = false;
+                result.reason = p.get_name() + " must be > 0";
+            }
+            if (p.get_name() == "curvature_dec_ratio_min" &&
+                (p.as_double() <= 0.0 || p.as_double() > 1.0))
+            {
+                result.successful = false;
+                result.reason = p.get_name() + " must be in (0, 1]";
             }
             // 障碍状态看门狗超时：<=0 表示关闭，允许；只拒绝 NaN。
             if (p.get_name() == "obstacle_status_timeout" && std::isnan(p.as_double()))
@@ -619,6 +638,9 @@ namespace path_follower
             planner_params_.min_angular_velocity = get_parameter("min_angular_velocity").as_double();
             planner_params_.ruckig_control_dt = get_parameter("ruckig_control_dt").as_double();
             planner_params_.curvature_deceleration = get_parameter("curvature_deceleration").as_bool();
+            planner_params_.curvature_dec_gain = get_parameter("curvature_dec_gain").as_double();
+            planner_params_.curvature_dec_ratio_min = get_parameter("curvature_dec_ratio_min").as_double();
+            planner_params_.acceleration_envelope = get_parameter("acceleration_envelope").as_bool();
             planner_params_.angle_resolution = get_parameter("angle_resolution").as_double();
             velocity_planner_.setParams(planner_params_);
         }

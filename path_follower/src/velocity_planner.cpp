@@ -118,20 +118,94 @@ namespace path_follower
 
     void VelocityPlanner::applyCurvatureDeceleration(Route& route, std::size_t from_index) const
     {
+        // gain 必须为正：它同时是分子和分母的加数，取 0 会让 dec_ratio 恒为 0（速度全被
+        // 压到 min_linear_velocity 兜底值），取负则分母可能过零、ratio 发散变号。
+        const double gain = std::max(params_.curvature_dec_gain, kEpsilon);
+        // ratio_min 夹在 (0, 1]：> 1 会把速度放大到 Ruckig 规划值之上，越过全局速度上限。
+        const double ratio_min = std::clamp(params_.curvature_dec_ratio_min, kEpsilon, 1.0);
+
         for (std::size_t i = from_index; i < route.points.size(); ++i)
         {
             auto& p = route.points[i];
             const double raw_w = p.linear_v * p.curvature;
-            const double dec_ratio = std::max(0.2, 0.2 / (raw_w * raw_w + 0.2));
+            const double dec_ratio = std::max(ratio_min, gain / (raw_w * raw_w + gain));
             p.linear_a *= dec_ratio; // 与被打折的 linear_v 保持数值自洽
-            // 打折后兜底到 min_linear_velocity：dec_ratio 下限 0.2 意味着最狠能把速度压到
-            // 原值的 1/5（0.02 -> 0.004），已经掉到底盘死区以下，发下去也走不动。
+            // 打折后兜底到 min_linear_velocity：dec_ratio 下限（curvature_dec_ratio_min，
+            // 默认 0.2）意味着最狠只能把速度压到原值的 1/5（0.02 -> 0.004），已经掉到底盘
+            // 死区以下，发下去也走不动。
             // 而曲率本身是三点外接圆算的，点距小时数值极敏感（5mm 点距下 0.5mm 的共线偏差
             // 就能算出 ~45rad/m），没有这道兜底时一段噪声就能把参考速度压成事实上的 0。
             p.linear_v = std::max(p.linear_v * dec_ratio, params_.min_linear_velocity);
             // 用兜底后的速度重算，保持 curvature_omega = linear_v * curvature 的自洽关系。
             p.curvature_omega = p.linear_v * p.curvature;
         }
+    }
+
+    void VelocityPlanner::applyAccelerationEnvelope(Route& route, std::size_t from_index) const
+    {
+        const std::size_t n = route.points.size();
+        if (n < 2 || from_index + 1 >= n)
+        {
+            return; // 少于两个点无从谈"沿弧长加减速"
+        }
+
+        const double a_max = std::max(params_.max_linear_acceleration, kEpsilon);
+        const double d_max = std::max(params_.max_linear_deceleration, kEpsilon);
+
+        // U = v²。a = v·dv/ds = ½·dU/ds，于是加减速约束在 U 空间是纯线性的斜率约束，
+        // 全程只有加减乘和一次开方，没有时间步进、没有迭代。
+        std::vector<double> u(n);
+        for (std::size_t i = from_index; i < n; ++i)
+        {
+            const double v = route.points[i].linear_v;
+            u[i] = v * v;
+        }
+
+        // 弧长间距。current_s 由 computeArcLengthAndHeading 累加 hypot 得到，单调不减；
+        // 仍取 max(0) 兜底，避免上游给出非单调 current_s 时把约束算成负的（反而放宽限制）。
+        auto span = [&route](std::size_t i)
+        {
+            return std::max(0.0, route.points[i].current_s - route.points[i - 1].current_s);
+        };
+
+        // 反向扫描：保证从每一点都能减速到它后面的所有限速点。
+        // 低谷（曲率压制段）的影响会沿路径向前传播 (v_before² - v_valley²)/(2·d_max) 米，
+        // "提前减速"这个行为就是由此自动产生的，不需要任何前视/低谷识别逻辑。
+        for (std::size_t i = n - 1; i > from_index; --i)
+        {
+            u[i - 1] = std::min(u[i - 1], u[i] + 2.0 * d_max * span(i));
+        }
+
+        // 正向扫描：保证每一点都能从它前面的速度加速上来（含起点速度这个边界条件）。
+        // 多个低谷靠得近时，两遍扫描会自然把它们连成一个连续低速段，不会出现
+        // "加速一半又要刹车"的抖动，也不需要处理低谷合并这类特例。
+        for (std::size_t i = from_index + 1; i < n; ++i)
+        {
+            u[i] = std::min(u[i], u[i - 1] + 2.0 * a_max * span(i));
+        }
+
+        // 回写速度，并保持 curvature_omega = linear_v * curvature 的自洽关系。
+        for (std::size_t i = from_index; i < n; ++i)
+        {
+            auto& p = route.points[i];
+            p.linear_v = std::sqrt(std::max(u[i], 0.0));
+            p.curvature_omega = p.linear_v * p.curvature;
+        }
+
+        // 参考加速度由 U 的前向差分直接给出：a = ½·dU/ds，与回写的 linear_v 严格自洽。
+        // 上面两条扫描不等式合起来正是 a ∈ [-d_max, +a_max]，这里的 clamp 只为削浮点毛刺。
+        // ds 退化（重复点）时无位移、加速度无定义，沿用上一段的值。
+        double last_a = 0.0;
+        for (std::size_t i = from_index; i + 1 < n; ++i)
+        {
+            const double ds = span(i + 1);
+            if (ds > kEpsilon)
+            {
+                last_a = std::clamp((u[i + 1] - u[i]) / (2.0 * ds), -d_max, a_max);
+            }
+            route.points[i].linear_a = last_a;
+        }
+        route.points[n - 1].linear_a = last_a;
     }
 
     void VelocityPlanner::fillPositionVelocityProfile(Route& route, const RuckigSeed& seed) const
@@ -181,6 +255,14 @@ namespace path_follower
             {
                 route.points[i].curvature_omega = route.points[i].linear_v * route.points[i].curvature;
             }
+        }
+
+        // 曲率限速之后再叠一层加减速包络。两个分支都要走：
+        // 曲率减速开着时，它负责把 dec_ratio 造成的速度断崖摊成可执行的减速段；
+        // 关掉时 Ruckig 的输出本就满足加减速约束，扫描退化为恒等操作，无副作用。
+        if (params_.acceleration_envelope)
+        {
+            applyAccelerationEnvelope(route, 0);
         }
     }
 

@@ -93,7 +93,14 @@ path_follower_node:
     max_angular_deceleration: 0.5  # 朝向角减速度 rad/s^2
     max_angular_jerk: 0.2          # 角速度 jerk 上限 rad/s^3
     ruckig_control_dt: 0.01        # Ruckig 在线步进控制周期 s
-    curvature_deceleration: true   # 曲率减速（dec_ratio = max(0.2, 0.2/(w^2+0.2))）
+    curvature_deceleration: true   # 曲率减速总开关
+    # 曲率减速软钳：dec_ratio = max(curvature_dec_ratio_min, gain/(w^2+gain))，w = linear_v * curvature
+    curvature_dec_gain: 0.3        # 软钳特征角速度平方：w=sqrt(gain) 处 ratio=0.5，打折后角速度峰值
+                                   # = sqrt(gain)/2（0.2 -> 0.224 rad/s，0.3 -> 0.274 rad/s）。调大 = 过弯更快
+    curvature_dec_ratio_min: 0.15   # 打折比例下限，(0,1]。0.2 = 最狠只压到原速的 1/5，
+                                   # 防止曲率噪声把参考速度压成事实上的 0
+    acceleration_envelope: true    # 曲率限速后的加减速包络：前后向双扫描，按 max_linear_acceleration/
+                                   # max_linear_deceleration 把逐点限速收敛成可达剖面（提前减速、逐步恢复）
     # 朝向轨迹（独立于位置，按角度离散 + Ruckig 角速度规划）
     angle_resolution: 0.0034906585 # 朝向离散角度间隔 rad（0.2°）
     kp_heading: 0.8                # 朝向比例纠偏增益（wz = 梯形前馈 + kp·err） 底盘角度不稳需要压制

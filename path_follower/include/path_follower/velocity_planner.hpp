@@ -23,6 +23,13 @@ namespace path_follower
         double min_angular_velocity{0.02}; // 规划起点/终点角速度 = 底盘角速度死区
         double ruckig_control_dt{0.02}; // Ruckig 在线步进周期 s
         bool curvature_deceleration{true};
+        // 曲率减速软钳：dec_ratio = max(ratio_min, gain / (w² + gain))，w = linear_v * curvature。
+        // gain 是软钳的特征角速度平方：w = sqrt(gain) 处 ratio 恰为 0.5，打折后的角速度
+        // 峰值为 sqrt(gain)/2（gain=0.2 -> 0.224 rad/s，gain=0.3 -> 0.274 rad/s），
+        // 调大 gain = 允许过弯更快。ratio_min 是打折比例的下限（见 applyCurvatureDeceleration）。
+        double curvature_dec_gain{0.3};
+        double curvature_dec_ratio_min{0.2};
+        bool acceleration_envelope{true}; // 曲率限速后的加减速包络（双扫描）
         double trajectory_resolution{0.005}; // 插值间距 m
         double angle_resolution{0.0034906585}; // 朝向离散角度间隔 rad（0.2°）
     };
@@ -76,13 +83,37 @@ namespace path_follower
         /// 计算每点曲率（三点圆法），写入 route。
         void computeCurvature(Route& route) const;
 
-        /// 曲率减速：dec_ratio = max(0.2, 0.2/(w^2+0.2))，仅缩放 [from_index, end) 的
+        /// 曲率减速：dec_ratio = max(curvature_dec_ratio_min,
+        ///           curvature_dec_gain / (w^2 + curvature_dec_gain))，仅缩放 [from_index, end) 的
         /// linear_v/curvature_omega/linear_a（linear_a 同比例缩放以保持与 linear_v 数值自洽，
         /// 供后续重规划取种子）。
         void applyCurvatureDeceleration(Route& route, std::size_t from_index) const;
 
+        /// 加减速包络（前后向双扫描）：把曲率限速产出的**逐点**速度上限，收敛成一条
+        /// 满足 max_linear_acceleration / max_linear_deceleration 的**可达**速度剖面。
+        ///
+        /// applyCurvatureDeceleration 只回答"这一点该多快"，不回答"到这一点之前该怎么减下来"：
+        /// 直线突然接大曲率时，参考速度会在一两个点内断崖式下跌，隐含的减速度远超底盘能力，
+        /// 车高速进弯刹不住；出弯同理，参考速度瞬间跳回高位，车又追不上。本函数在其之后补上
+        /// 这一层，让减速提前发生、加速逐步恢复。
+        ///
+        /// 做法：换到 U = v² 空间，因为 a = v·dv/ds = ½·dU/ds，加减速约束退化成对 U 的**斜率约束**，
+        /// 无需时间积分、无需迭代：
+        ///   反向扫描（保证刹得住）：U[i] <= U[i+1] + 2·d_max·ds
+        ///   正向扫描（保证加得起）：U[i] <= U[i-1] + 2·a_max·ds
+        /// 先反后正一遍即为最终解：正向扫描只会把 U 继续调低，而调低 U[i+1] 时同步满足
+        /// U[i] <= U[i+1] + 2·a_max·ds + 2·d_max·ds，反向约束不会被破坏，故无需迭代到收敛。
+        /// 两条不等式合起来恰好等价于 linear_a ∈ [-d_max, +a_max]，加速度天然在界内。
+        ///
+        /// 只降不升：两遍都是 min 操作，且输入各点已被 applyCurvatureDeceleration 兜底到
+        /// >= min_linear_velocity，min 的两个操作数因而都 >= min_linear_velocity²，
+        /// 所以包络不会把速度压进底盘死区，不需要额外兜底。
+        /// 副产物 linear_a 由 U 的差分直接给出，比"按 dec_ratio 同比例缩放"真正自洽。
+        void applyAccelerationEnvelope(Route& route, std::size_t from_index) const;
+
         /// 整段位置速度填充（planPosition 专用）：Ruckig 从 seed 规划到终点，写入所有点的
-        /// linear_v/linear_a，再按 curvature_deceleration 开关叠曲率减速 / 直接算 curvature_omega。
+        /// linear_v/linear_a，再按 curvature_deceleration 开关叠曲率减速 / 直接算 curvature_omega，
+        /// 最后按 acceleration_envelope 开关叠加减速包络（applyAccelerationEnvelope）。
         /// 只在路径下发时调用一次，故不需要 from_index/STOP 截断/参数覆盖这些中途重规划的概念。
         void fillPositionVelocityProfile(Route& route, const RuckigSeed& seed) const;
 
