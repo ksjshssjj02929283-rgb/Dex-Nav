@@ -38,6 +38,7 @@
 #include "nav2_mppi_controller/tools/noise_generator.hpp"
 #include "nav2_mppi_controller/tools/parameters_handler.hpp"
 #include "nav2_mppi_controller/tools/utils.hpp"
+#include "nav2_mppi_controller/cuda/cuda_optimizer.hpp"
 
 namespace mppi
 {
@@ -143,6 +144,12 @@ public:
   const models::ControlConstraints & getActiveConstraints() const {return settings_.constraints;}
 
   /**
+   * @brief Whether CUDA backend is enabled and available
+   * @return True if CUDA is enabled and available
+   */
+  bool isCudaAvailable() const { return settings_.use_cuda && cuda_optimizer_.isCudaAvailable(); }
+
+  /**
    * @brief Whether a speed limit from costmap filter is currently active
    * @return True if speed limit is active
    */
@@ -234,6 +241,11 @@ protected:
   void updateInitialStateVelocities(models::State & state) const;
 
   /**
+   * @brief Populate state velocities with the same column convention as MotionModel::predict
+   */
+  void rebuildStateVelocitiesFromControls(models::State & state) const;
+
+  /**
    * @brief predict velocities in state using model
    * for time horizon equal to timesteps
    * @param state fill state
@@ -321,6 +333,7 @@ protected:
   ParametersHandler * parameters_handler_;
   CriticManager critic_manager_;
   NoiseGenerator noise_generator_;
+  cuda::CudaOptimizer cuda_optimizer_;
 
   models::OptimizerSettings settings_;
   bool speed_limit_active_{false};
@@ -339,7 +352,7 @@ protected:
 
   CriticData critics_data_ =
   {state_, generated_trajectories_, path_, costs_, settings_.model_dt, false, nullptr, nullptr,
-    std::nullopt, std::nullopt};  /// Caution, keep references
+    std::nullopt, std::nullopt, nullptr, false};  /// Caution, keep references
 
   rclcpp::Logger logger_{rclcpp::get_logger("MPPIController")};
 };

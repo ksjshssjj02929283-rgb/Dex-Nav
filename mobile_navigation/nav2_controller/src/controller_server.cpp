@@ -2775,7 +2775,8 @@ void ControllerServer::computeAndPublishVelocity()
   auto progress_ms = std::chrono::duration<double, std::milli>(t_progress_end - t_progress_start).count();
 
   auto t_odom_start = std::chrono::high_resolution_clock::now();
-  nav_2d_msgs::msg::Twist2D twist = getThresholdedTwist(odom_sub_->getTwist());
+  const nav_2d_msgs::msg::Twist2D raw_twist = odom_sub_->getTwist();
+  nav_2d_msgs::msg::Twist2D twist = getThresholdedTwist(raw_twist);
   auto t_odom_end = std::chrono::high_resolution_clock::now();
   auto odom_ms = std::chrono::duration<double, std::milli>(t_odom_end - t_odom_start).count();
 
@@ -2885,9 +2886,11 @@ void ControllerServer::computeAndPublishVelocity()
       return closest_pose_idx;
     };
 
+  const size_t closest_pose_idx = find_closest_pose_idx();
   feedback->distance_to_goal =
-    nav2_util::geometry_utils::calculate_path_length(current_path_, find_closest_pose_idx());
+    nav2_util::geometry_utils::calculate_path_length(current_path_, closest_pose_idx);
   action_server_->publish_feedback(feedback);
+
   auto t_feedback_end = std::chrono::high_resolution_clock::now();
   auto feedback_ms = std::chrono::duration<double, std::milli>(t_feedback_end - t_feedback_start).count();
 

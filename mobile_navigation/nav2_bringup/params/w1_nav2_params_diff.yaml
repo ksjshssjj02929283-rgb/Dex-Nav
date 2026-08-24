@@ -272,9 +272,14 @@ controller_server:
       gamma: 0.015
       motion_model: "DiffDrive" #Ackermann, DiffDrive
       open_loop: false
-      visualize: true
+      visualize: false
       reset_period: 1.0 # (only in Humble)
       regenerate_noises: false
+      # CUDA critic 远端间隔降采样：近端全量评分，预测时域 50% 后每 2 点评分一次；末点始终保留
+      use_cuda: true
+      cuda_score_far_downsample: true
+      cuda_score_far_start_ratio: 0.5
+      cuda_score_far_stride: 2
 
       # ============================================================
       # 2. 三阶段切换参数

@@ -159,6 +159,42 @@ void CostCritic::score(CriticData & data)
   const bool near_goal = utils::withinPositionGoalTolerance(
     near_goal_distance_, data.state.pose.pose, data.path);
 
+  if (data.use_cuda && data.cuda_optimizer != nullptr &&
+    data.cuda_optimizer->isCudaAvailable() && weight_ > 0.0f)
+  {
+    std::vector<float> footprint_x;
+    std::vector<float> footprint_y;
+    if (consider_footprint_) {
+      const auto footprint = costmap_ros_->getRobotFootprint();
+      footprint_x.reserve(footprint.size());
+      footprint_y.reserve(footprint.size());
+      for (const auto & point : footprint) {
+        footprint_x.push_back(static_cast<float>(point.x));
+        footprint_y.push_back(static_cast<float>(point.y));
+      }
+    }
+    std::vector<float> gpu_costs;
+    const bool unknown_is_collision =
+      !costmap_ros_->getLayeredCostmap()->isTrackingUnknown();
+    const bool success = data.cuda_optimizer->evaluateCostCritic(
+      costmap_->getCharMap(), costmap_->getSizeInCellsX(), costmap_->getSizeInCellsY(),
+      costmap_->getResolution(), costmap_->getOriginX(), costmap_->getOriginY(),
+      critical_cost_, collision_cost_, weight_, near_goal, unknown_is_collision, power_,
+      gpu_costs, footprint_x, footprint_y, possibly_inscribed_cost_);
+    if (success && gpu_costs.size() == static_cast<size_t>(data.costs.size())) {
+      data.costs += Eigen::Map<const Eigen::ArrayXf>(gpu_costs.data(), gpu_costs.size());
+      const float collision_score = std::pow(
+        weight_ * collision_cost_ / static_cast<float>(data.trajectories.x.cols()), power_);
+      data.fail_flag = std::all_of(
+        gpu_costs.begin(), gpu_costs.end(), [collision_score](float value) {
+          return std::abs(value - collision_score) <=
+                 1e-4f * std::max(1.0f, std::abs(collision_score));
+        });
+      return;
+    }
+    RCLCPP_WARN(logger_, "CUDA CostCritic failed; using CPU scoring for this iteration");
+  }
+
   models::Vector repulsive_cost = models::Vector::Zero(data.costs.size());
 
   const size_t traj_len = data.trajectories.x.cols();
