@@ -18,9 +18,12 @@ ros2 launch w1_nav2 diff_sim_mapping.launch.py
 ros2 launch cartographer_ros dexe_slam_2d.launch.py use_sim_time:=true map_name:=sim_map
 ```
 
-`omni_sim.launch.py` 与 `diff_sim.launch.py` 统一支持：`use_sim_time`、`map`、
-`params_file`、`slam`、`x_pose`、`y_pose`、`gui` 和 `render`。其中 `params_file`
-默认值按底盘类型区分，其余参数含义一致。
+差速导航仿真不再在启动命令后追加独立参数，统一修改
+`w1_nav2/config/diff_sim.yaml`。该文件可配置前后 RGBD、前后激光雷达、IMU、Gazebo
+界面、渲染后端、机器人出生位置、地图、Nav2 参数文件和地图对齐量；RViz、仿真时钟
+以及独立 Nav2 进程模式属于固定启动行为。关闭某个 RGBD 时，也会停止对应点云转换节点。
+
+全向仿真入口仍支持原有 launch 参数，两种底盘使用的 `params_file` 默认值按底盘类型区分。
 
 四个导航/建图入口统一使用 `w1_nav2/rviz/diff_sim.rviz`，全向与差速不再维护
 两份 RViz 显示配置。`swerve_robot_description/rviz/omni_display.rviz` 只保留为

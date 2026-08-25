@@ -1,0 +1,39 @@
+# W1 差速导航仿真统一配置。
+# 修改本文件后需要重新构建 w1_nav2，install 目录中的配置才会更新。
+
+sensors:
+  # 前后 RGBD；关闭后同步停止对应点云转换。
+  rgbd_front: true
+  rgbd_rear: true
+
+  # 前后激光雷达；关闭后 Nav2 将缺少对应扫描数据。
+  lidar_front: true
+  lidar_rear: true
+
+  # 底盘 IMU。
+  imu: true
+
+gazebo:
+  # 是否启动 Gazebo 图形界面；gzserver 始终启动。
+  gui: true
+
+  # 渲染后端：auto（系统默认）、nvidia（独显）或 software（软件渲染）。
+  render: auto
+
+robot_spawn:
+  # 机器人在 Gazebo 世界坐标系中的出生位置，单位：m。
+  x_pose: 0.0
+  y_pose: 0.0
+
+navigation:
+  # true 时运行 SLAM；普通导航仿真保持 false。
+  slam: false
+
+  # 支持 package://包名/相对路径，也支持绝对路径。
+  map: package://aws_robomaker_small_warehouse_world/maps/sim_warehouse_v1/slam/map.yaml
+  params_file: package://nav2_bringup/params/w1_nav2_params_diff.yaml
+
+  # 默认地图相对于仿真 odom 的对齐量，平移单位：m，偏航单位：rad。
+  map_odom_x: 0.03143
+  map_odom_y: -0.01856
+  map_odom_yaw: 0.02040

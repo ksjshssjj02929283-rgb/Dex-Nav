@@ -34,7 +34,7 @@ def generate_launch_description():
 
     original_params_file = os.path.join(
         get_package_share_directory('nav2_bringup'), 'params',
-        'w1_nav2_params.yaml')
+        'w1_nav2_params_diff.yaml')
 
     # 用 RewrittenYaml 覆盖其中的参数
     configured_params = RewrittenYaml(

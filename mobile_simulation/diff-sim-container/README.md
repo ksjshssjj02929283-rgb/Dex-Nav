@@ -22,8 +22,11 @@ diff-sim-container/
 ## 运行
 
 一键入口：`ros2 launch w1_nav2 diff_sim.launch.py`（gzserver/gzclient + W1 + Nav2 + Rviz）。
+传感器及其他仿真选项统一在 `w1_nav2/config/diff_sim.yaml` 中配置；启动命令后不再追加
+独立的传感器参数。Gazebo 会在生成机器人实例时移除已关闭的传感器插件，关闭 RGBD
+也会同步停止对应点云转换节点，不需要维护不同传感器组合的 URDF 副本。
 全向对应 `ros2 launch w1_nav2 omni_sim.launch.py`。
-Nav2 参数：直接复用生产配置 `nav2_bringup/params/w1_nav2_params.yaml`。
+Nav2 参数：直接复用生产配置 `nav2_bringup/params/w1_nav2_params_diff.yaml`。
 导航模式的静态 `map→odom` 由 `nav2_bringup` 唯一发布；建图模式由 SLAM 发布。
 
 ## W1 模型更新同步
