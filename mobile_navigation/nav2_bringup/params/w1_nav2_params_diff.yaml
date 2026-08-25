@@ -101,8 +101,8 @@ controller_server:
     initial_motion:
       max_age: 0.5
       max_spatial_error: 0.15
-      replan_dev: 0.10
-      failsafe_deviation_cycles: 5
+      replan_dev: 0.05  # m/s；规划速度与实测速度偏差超过该值时改用实测速度，保留上一周期加速度
+      failsafe_deviation_cycles: 5   # 连续超限次数；达到后放弃上一周期加速度，根据实测速度重新规划
       goal_position_tolerance: 0.05
       goal_yaw_tolerance: 0.2
       branch_heading_tolerance: 0.7853981634

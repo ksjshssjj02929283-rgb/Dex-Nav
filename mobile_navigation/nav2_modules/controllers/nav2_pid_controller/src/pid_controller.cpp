@@ -30,6 +30,18 @@
 namespace nav2_pid_controller
 {
 
+namespace
+{
+
+// 轨迹速度小于该值时按明确停车处理，避免浮点插值残差重新触发运动。
+constexpr double kLinearStopVelocityEpsilonMps = 1e-6;
+// 判断速度命令是否仍贴在零边界，用于既有的负前馈反死锁保护。
+constexpr double kZeroVelocityCommandEpsilonMps = 1e-9;
+// 无效轨迹参考属于持续故障，节流日志避免控制周期内重复刷屏。
+constexpr int kInvalidTrajectoryWarningThrottleMs = 2000;
+
+}  // namespace
+
 void PIDController::configure(
   const rclcpp_lifecycle::LifecycleNode::WeakPtr & parent,
   std::string name, std::shared_ptr<tf2_ros::Buffer> tf,
@@ -888,30 +900,48 @@ geometry_msgs::msg::TwistStamped PIDController::computeVelocityCommands(
         }
       case ControllerStage::APPROACHING: {
           active_branch = "approaching_traj_speed";
-          // 期望速度 = 最近轨迹点的规划速度（速度环跟踪目标，方向由纵向误差决定）：
-          // 减速尾段/曲率限速/障碍零速已由速度规划层逐点编码，跟踪即可；
-          // desired_v=0（障碍置零点）时 LinearSpeedControl 直接输出 0。
-          // 末端停车精度由 ROTATING_TO_GOAL 入口的 final goal 容差门控接管。
-          // err_x < 0（参考点在机器人身后 = 越过目标）允许负速度倒回——
-          // 距离收敛优先于"只前进"；倒回上限不被末端蠕行速度钳死，
-          // 放宽到 final_rotation_max_v（与最终旋转段线性纠偏权限一致）。
-          const double desired_v = std::fabs(desired_linear_vel_);
-          const double raw_max_cmd_v = (err_x < 0.0) ?
-            std::max(desired_v, final_rotation_max_v_) : desired_v;
-          // 朝向-速度平滑耦合：速度上限连续按 cos(err_theta) 衰减（非离散置零，
-          // 无速度跳变）。err_theta=0 时不缩放；|err_theta|>=90° 时缩为 0。
-          // 机器人平移时瞄准点方位角会以 v·sin(Δθ)/d 的速率扫动（Δθ=朝向误差、
-          // d=到瞄准点距离），朝向误差越大越接近该点扫动越剧烈，形成"越转越追不上"
-          // 的正反馈——按 cos(Δθ) 缩放 v 后峰值扫动速率减半且从 90° 挪到 45°，
-          // 配合上方瞄准点已锁定终点（不再随机器人平移漂移）共同压住这个反馈。
-          const double heading_scale = headingSpeedScale(err_theta);
-          const double max_cmd_v = raw_max_cmd_v * heading_scale;
-          cmd_vel.twist.linear.x = LinearSpeedControl(
-            velocity, err_x, max_cmd_v, desired_v, 0.0, traj_ff_accel);
           if (have_traj_speed) {
+            // 连续性回执必须在零速提前停车前更新：有效的0速度也是规划器需要
+            // 继承的本周期参考，不能因为控制器提前停车而被误报为无效。
             last_trajectory_tracking_target_valid_ = true;
             last_trajectory_tracking_target_v_ = desired_linear_vel_;
             last_trajectory_tracking_target_a_ = traj_ff_accel;
+          }
+
+          if (!have_traj_speed) {
+            RCLCPP_WARN_THROTTLE(
+              logger_, *clock_, kInvalidTrajectoryWarningThrottleMs,
+              "APPROACHING未取得有效轨迹速度参考，线速度已归零");
+            cmd_vel.twist.linear.x = StopLinearControl();
+          } else if (std::fabs(traj_v) <= kLinearStopVelocityEpsilonMps) {
+            // SpeedPlanner明确给出0速度时停车优先，禁止越点倒回权限重新抬速。
+            cmd_vel.twist.linear.x = StopLinearControl();
+          } else {
+            // 正常接近时规划速度主导幅值；越过目标后继续保留现有倒回速度权限。
+            const double desired_v = std::fabs(desired_linear_vel_);
+            const double raw_max_cmd_v = (err_x < 0.0) ?
+              std::max(desired_v, final_rotation_max_v_) : desired_v;
+
+            // 保持原有计算顺序：先按航向缩放，再应用LinearSpeedControl中原有的
+            // speed_limit和max_v后置限制，避免本次修复改变非零速度控制特性。
+            const double heading_scale = headingSpeedScale(err_theta);
+            double allowed_speed = raw_max_cmd_v * heading_scale;
+            if (std::isfinite(speed_limit_)) {
+              allowed_speed = std::min(allowed_speed, std::fabs(speed_limit_));
+            }
+            allowed_speed = std::min(allowed_speed, std::fabs(max_v_));
+
+            if (!std::isfinite(allowed_speed) ||
+              allowed_speed <= kLinearStopVelocityEpsilonMps)
+            {
+              cmd_vel.twist.linear.x = StopLinearControl();
+            } else {
+              // APPROACHING仅使用err_x决定纠偏方向；速度大小由SpeedPlanner参考
+              // 和现有控制限制共同决定，不再经过位置PID或min_target_speed。
+              const double target_velocity = std::copysign(allowed_speed, err_x);
+              cmd_vel.twist.linear.x = TrackTargetSpeed(
+                velocity, target_velocity, allowed_speed, traj_ff_accel);
+            }
           }
           cmd_vel.twist.angular.z = AngularSpeedControl(velocity, err_theta);
           break;
@@ -1041,14 +1071,11 @@ double PIDController::LinearSpeedControl(
   double curr_vel = velocity.linear.x;
   if (reverse_enabled_) {
     station_nav2_pid_controller_.SetPID(reverse_station_pid_conf_);
-    speed_nav2_pid_controller_.SetPID(reverse_speed_pid_conf_);
   } else {
     if (std::fabs(curr_vel) < switch_speed_) {
       station_nav2_pid_controller_.SetPID(low_speed_station_pid_conf_);
-      speed_nav2_pid_controller_.SetPID(low_speed_pid_conf_);
     } else {
       station_nav2_pid_controller_.SetPID(high_speed_station_pid_conf_);
-      speed_nav2_pid_controller_.SetPID(high_speed_pid_conf_);
     }
   }
 
@@ -1062,11 +1089,7 @@ double PIDController::LinearSpeedControl(
   last_linear_deadband_ = std::fabs(position_deadband);
 
   if (std::fabs(e_dist) <= std::fabs(position_deadband)) {
-    station_nav2_pid_controller_.Reset();
-    speed_nav2_pid_controller_.Reset();
-    last_speed_cmd_ = 0.0;
-    last_speed_cmd_valid_ = true;
-    return 0.0;
+    return StopLinearControl();
   }
 
   double linear_limit = std::fabs(max_linear_speed);
@@ -1084,11 +1107,7 @@ double PIDController::LinearSpeedControl(
   if (!std::isfinite(linear_limit) || linear_limit <= 0.0) {
     // 满停（障碍零速/无有效限幅）：清两级积分并归零指令基准，
     // 避免停车期间的陈旧积分在恢复行驶时注入瞬态。
-    station_nav2_pid_controller_.Reset();
-    speed_nav2_pid_controller_.Reset();
-    last_speed_cmd_ = 0.0;
-    last_speed_cmd_valid_ = true;
-    return 0.0;
+    return StopLinearControl();
   }
 
   double position_cmd = station_nav2_pid_controller_.Control(e_dist, d_t_);
@@ -1107,7 +1126,26 @@ double PIDController::LinearSpeedControl(
   }
   target_vel = std::clamp(target_vel, -linear_limit, linear_limit);
 
-  const double speed_error = target_vel - curr_vel;
+  last_linear_position_cmd_ = position_cmd;
+  return TrackTargetSpeed(velocity, target_vel, linear_limit, feedforward_accel);
+}
+
+double PIDController::TrackTargetSpeed(
+  const geometry_msgs::msg::Twist & velocity,
+  double target_velocity,
+  double linear_limit,
+  double feedforward_accel)
+{
+  const double curr_vel = velocity.linear.x;
+  if (reverse_enabled_) {
+    speed_nav2_pid_controller_.SetPID(reverse_speed_pid_conf_);
+  } else if (std::fabs(curr_vel) < switch_speed_) {
+    speed_nav2_pid_controller_.SetPID(low_speed_pid_conf_);
+  } else {
+    speed_nav2_pid_controller_.SetPID(high_speed_pid_conf_);
+  }
+
+  const double speed_error = target_velocity - curr_vel;
   // 前馈 + 反馈：纯反馈跟踪持续下降的斜坡目标存在稳态滞后（≈斜率/kp），
   // 前馈把规划层已知的"此刻期望加速度"直接喂给控制器，反馈只需修正残差。
   // 减速坡道起点等场景下前馈会合法地与瞬时速度误差反号（目标尚高于实测、
@@ -1132,8 +1170,8 @@ double PIDController::LinearSpeedControl(
 
   // 符号感知输出界：目标速度既是跟踪参考也是上限（前向不越目标、不下穿零倒转，
   // 倒退目标对称）；制动权保留（可低于目标直至 0）。
-  const double bound_hi = std::min(std::max(0.0, target_vel), linear_limit);
-  const double bound_lo = std::max(std::min(0.0, target_vel), -linear_limit);
+  const double bound_hi = std::min(std::max(0.0, target_velocity), linear_limit);
+  const double bound_lo = std::max(std::min(0.0, target_velocity), -linear_limit);
   v_output = std::clamp(v_output, bound_lo, bound_hi);
 
   // 反死锁兜底：目标要求脱离零速，但指令被符号界钳在零上。此时前馈是负的
@@ -1144,8 +1182,9 @@ double PIDController::LinearSpeedControl(
   // 车还在跑时 v_output = curr_vel + a·dt > 0，不会贴到零界。
   double applied_accel_cmd = acceleration_cmd;
   double applied_accel_limited = acceleration_cmd_limited;
-  if (std::fabs(v_output) <= 1e-9 && std::fabs(target_vel) > 1e-6 &&
-    feedforward_accel * target_vel < 0.0)
+  if (std::fabs(v_output) <= kZeroVelocityCommandEpsilonMps &&
+    std::fabs(target_velocity) > kLinearStopVelocityEpsilonMps &&
+    feedforward_accel * target_velocity < 0.0)
   {
     applied_accel_cmd = std::isfinite(feedback_accel) ? feedback_accel : 0.0;
     applied_accel_limited =
@@ -1160,14 +1199,22 @@ double PIDController::LinearSpeedControl(
   v_output = std::clamp(v_output, -linear_limit, linear_limit);
   last_speed_cmd_ = v_output;
 
-  last_linear_position_cmd_ = position_cmd;
-  last_linear_target_v_ = target_vel;
+  last_linear_target_v_ = target_velocity;
   last_linear_speed_error_ = speed_error;
   last_linear_accel_cmd_ = applied_accel_cmd;
   last_linear_accel_limited_ = applied_accel_limited;
   last_linear_limit_ = linear_limit;
 
   return v_output;
+}
+
+double PIDController::StopLinearControl()
+{
+  station_nav2_pid_controller_.Reset();
+  speed_nav2_pid_controller_.Reset();
+  last_speed_cmd_ = 0.0;
+  last_speed_cmd_valid_ = true;
+  return 0.0;
 }
 
 double PIDController::AngularSpeedControl(

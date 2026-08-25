@@ -233,6 +233,23 @@ protected:
     double feedforward_accel = 0.0);
 
   /**
+   * @brief 跟踪调用方给出的目标线速度，统一维护速度PID、前馈和命令积分器。
+   * @param velocity 当前机器人速度（base坐标系）
+   * @param target_velocity 带方向的目标线速度
+   * @param linear_limit 本周期允许的最大线速度幅值
+   * @param feedforward_accel 轨迹规划加速度前馈
+   * @return 线速度命令
+   */
+  double TrackTargetSpeed(
+    const geometry_msgs::msg::Twist & velocity,
+    double target_velocity,
+    double linear_limit,
+    double feedforward_accel);
+
+  /// 将线速度PID和命令积分器恢复为确定的零状态，不影响角速度与控制阶段。
+  double StopLinearControl();
+
+  /**
    * @brief Angular PID control.
    * @param velocity current robot velocity (base frame)
    * @param e_theta heading error

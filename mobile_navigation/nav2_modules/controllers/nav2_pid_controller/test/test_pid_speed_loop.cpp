@@ -4,8 +4,10 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <memory>
 
 #include "gtest/gtest.h"
+#include "geometry_msgs/msg/transform_stamped.hpp"
 #include "geometry_msgs/msg/twist.hpp"
 #include "nav2_pid_controller/pid_controller.hpp"
 
@@ -49,8 +51,16 @@ public:
     return LinearSpeedControl(tw, e_dist, max_v, target, 0.0, ff);
   }
 
+  double runTarget(double measured, double target, double limit, double ff = 0.0)
+  {
+    geometry_msgs::msg::Twist tw;
+    tw.linear.x = measured;
+    return TrackTargetSpeed(tw, target, limit, ff);
+  }
+
   void setDesired(double v) {desired_linear_vel_ = v;}
   void setDefaultDesired(double v) {default_desired_linear_vel_ = v;}
+  void setReverse(bool enabled) {reverse_enabled_ = enabled;}
   void invalidateIntegrator() {last_speed_cmd_valid_ = false;}
   double lastCmd() const {return last_speed_cmd_;}
   int speedIntegratorSaturation() const
@@ -58,6 +68,39 @@ public:
     return speed_nav2_pid_controller_.IntegratorSaturationStatus();
   }
 };
+
+// 公共速度内环必须是机械搬迁：位置PID输出被min_target_speed固定后，
+// LinearSpeedControl与直接调用TrackTargetSpeed应得到完全相同的速度命令。
+TEST(PidSpeedLoop, extractedTargetTrackerPreservesExistingNumerics)
+{
+  constexpr double kTolerance = 1e-12;
+
+  {
+    SpeedLoopPID original_path;
+    SpeedLoopPID extracted_path;
+    const double original = original_path.run(0.1, 1.0, 0.6, 0.3, 0.2);
+    const double extracted = extracted_path.runTarget(0.1, 0.3, 0.6, 0.2);
+    EXPECT_NEAR(original, extracted, kTolerance);
+  }
+
+  {
+    SpeedLoopPID original_path;
+    SpeedLoopPID extracted_path;
+    const double original = original_path.run(0.4, 1.0, 0.8, 0.42, -0.5);
+    const double extracted = extracted_path.runTarget(0.4, 0.42, 0.8, -0.5);
+    EXPECT_NEAR(original, extracted, kTolerance);
+  }
+
+  {
+    SpeedLoopPID original_path;
+    SpeedLoopPID extracted_path;
+    original_path.setReverse(true);
+    extracted_path.setReverse(true);
+    const double original = original_path.run(0.0, -1.0, 0.2, 0.1);
+    const double extracted = extracted_path.runTarget(0.0, -0.1, 0.2);
+    EXPECT_NEAR(original, extracted, kTolerance);
+  }
+}
 
 // 指令积分器：滞后 plant 下指令能主动下探到目标（不被实测拖着走），
 // 且前向指令不下穿零。
@@ -493,6 +536,105 @@ public:
   static double headingScale(double err_theta) {return headingSpeedScale(err_theta);}
 };
 
+// 用真实computeVelocityCommands链路验证规划零速优先级和连续性回执顺序。
+// reverse_enabled让目标位于base_link后方时航向误差仍为0，从而单独覆盖
+// “err_x<0会启用倒回权限，但traj_v=0必须先停车”的边界。
+class ApproachingZeroSpeedPID : public nav2_pid_controller::PIDController
+{
+public:
+  ApproachingZeroSpeedPID()
+  {
+    constexpr double kControlPeriodS = 0.05;
+    constexpr double kMaxLinearVelocityMps = 1.0;
+    constexpr double kMaxLinearAccelerationMps2 = 0.5;
+    constexpr double kFinalCorrectionVelocityMps = 0.05;
+    constexpr double kFinalEntryToleranceM = 0.001;
+    constexpr double kSpeedFeedbackGain = 2.0;
+
+    d_t_ = kControlPeriodS;
+    max_v_ = kMaxLinearVelocityMps;
+    min_v_ = 0.0;
+    max_v_inc_ = kMaxLinearAccelerationMps2;
+    switch_speed_ = 0.0;
+    final_rotation_max_v_ = kFinalCorrectionVelocityMps;
+    long_precision_ = kFinalEntryToleranceM;
+    lat_precision_ = kFinalEntryToleranceM;
+    final_rotation_entry_distance_ = kFinalEntryToleranceM;
+    final_rotation_exit_distance_ = kFinalEntryToleranceM;
+    reverse_enabled_ = true;
+    verbose_ = 0;
+
+    nav2_controller_common::PidConf station;
+    nav2_controller_common::PidConf speed;
+    speed.kp = kSpeedFeedbackGain;
+    high_speed_station_pid_conf_ = station;
+    low_speed_station_pid_conf_ = station;
+    reverse_station_pid_conf_ = station;
+    high_speed_pid_conf_ = speed;
+    low_speed_pid_conf_ = speed;
+    reverse_speed_pid_conf_ = speed;
+    angular_station_pid_conf_ = station;
+    station_nav2_pid_controller_.Init(station);
+    speed_nav2_pid_controller_.Init(speed);
+    angular_station_nav2_pid_controller_.Init(station);
+
+    global_frame_ = "map";
+    base_frame_ = "base_link";
+    clock_ = std::make_shared<rclcpp::Clock>(RCL_SYSTEM_TIME);
+    tf_ = std::make_shared<tf2_ros::Buffer>(clock_);
+    tf_->setUsingDedicatedThread(true);
+    end_localization_lock_.configure(nav2_pid_controller::EndLocalizationLockConfig{});
+    curr_controller_stage_ = ControllerStage::APPROACHING;
+    prev_controller_stage_ = ControllerStage::APPROACHING;
+  }
+
+  bool configureZeroSpeedOvershootScenario(double trajectory_acceleration)
+  {
+    constexpr double kGoalXM = 1.0;
+    constexpr double kRobotOvershootM = 0.01;
+
+    geometry_msgs::msg::TransformStamped map_to_base;
+    map_to_base.header.stamp = rclcpp::Time(0);
+    map_to_base.header.frame_id = global_frame_;
+    map_to_base.child_frame_id = base_frame_;
+    map_to_base.transform.translation.x = kGoalXM + kRobotOvershootM;
+    map_to_base.transform.rotation.w = 1.0;
+    if (!tf_->setTransform(map_to_base, "pid_speed_loop_test", true)) {
+      return false;
+    }
+
+    TrajPoint goal;
+    goal.pose.header.frame_id = global_frame_;
+    goal.pose.pose.position.x = kGoalXM;
+    goal.pose.pose.orientation.w = 1.0;
+    goal.x = kGoalXM;
+    goal.y = 0.0;
+    goal.speed_limit = 0.0;
+    goal.accel = trajectory_acceleration;
+    controller_traj_ = {goal};
+    trajectory_time_valid_ = false;
+
+    robot_pose_.header.frame_id = global_frame_;
+    robot_pose_.pose.position.x = kGoalXM + kRobotOvershootM;
+    robot_pose_.pose.orientation.w = 1.0;
+    return true;
+  }
+
+  geometry_msgs::msg::TwistStamped run()
+  {
+    geometry_msgs::msg::Twist velocity;
+    return computeVelocityCommands(robot_pose_, velocity, nullptr);
+  }
+
+  bool getContinuityTarget(double & velocity, double & acceleration)
+  {
+    return getLastTrajectoryTrackingTarget(velocity, acceleration);
+  }
+
+private:
+  geometry_msgs::msg::PoseStamped robot_pose_;
+};
+
 namespace
 {
 geometry_msgs::msg::PoseStamped makePose(double x, double y)
@@ -620,6 +762,22 @@ TEST(ApproachStage, headingSpeedScaleIsSmoothAndBounded)
     EXPECT_LT(std::fabs(cur - prev), 0.02);  // 每度变化 < 0.02，无跳变
     prev = cur;
   }
+}
+
+TEST(ApproachStage, plannedZeroStopsBeforeOvershootReverseBoostAndUpdatesContinuity)
+{
+  constexpr double kTrajectoryAccelerationMps2 = -0.4;
+  ApproachingZeroSpeedPID pid;
+  ASSERT_TRUE(pid.configureZeroSpeedOvershootScenario(kTrajectoryAccelerationMps2));
+
+  const auto command = pid.run();
+  EXPECT_DOUBLE_EQ(command.twist.linear.x, 0.0);
+
+  double continuity_velocity = 1.0;
+  double continuity_acceleration = 0.0;
+  ASSERT_TRUE(pid.getContinuityTarget(continuity_velocity, continuity_acceleration));
+  EXPECT_DOUBLE_EQ(continuity_velocity, 0.0);
+  EXPECT_DOUBLE_EQ(continuity_acceleration, kTrajectoryAccelerationMps2);
 }
 
 int main(int argc, char ** argv)
