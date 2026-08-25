@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <string>
 #include <vector>
+#include <optional>
 
 namespace map_asset_manager {
 
@@ -243,6 +244,10 @@ struct RouteEdge {
     float         lane_width{0.0f};
     std::string   obs_policy{"STOP"};  // "STOP" | "DETOUR"
     std::vector<std::pair<float, float>> control_points;
+    std::optional<float> hold_direction;  // 全向车平移朝向 rad；nullopt=差速方式移动
+    bool backward{false};                 // 差速移动过程中车头反向（vx<0）
+    std::optional<float> padding;         // 车体四周膨胀大小 m；nullopt=系统默认
+    uint8_t mode{0};  // 跟踪方式（高级属性）；0=按 schedule_planner 默认逻辑自动选择，rviz 不暴露
 };
 
 }  // namespace map_asset_manager
