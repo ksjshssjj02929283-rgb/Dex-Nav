@@ -25,8 +25,9 @@ namespace nav2_core
 /**
  * @brief 末端定位参考所处阶段。
  *
- * 位置接近目标后先锁存Odom位置；最终转向先使用实时map航向做粗调，
- * 进入小角度范围后再锁存Odom航向做精调。
+ * 位置接近目标后可在Odom中锁存位置；最终转角按控制器配置保留锁存或跟随实时位置。
+ * 航向先使用实时map参考粗调，进入小角度范围后再锁存Odom航向做精调。
+ * ControllerServer同时用该阶段保持PID控制权；两个锁存布尔量只描述参考来源。
  */
 enum class EndLocalizationStage
 {
@@ -37,7 +38,7 @@ enum class EndLocalizationStage
 };
 
 /**
- * @brief 末端定位锁存的只读快照。
+ * @brief 末端定位参考的只读快照。
  */
 struct EndLocalizationSnapshot
 {
@@ -63,7 +64,7 @@ struct EndLocalizationSnapshot
 };
 
 /**
- * @brief 控制器可选能力：接收权威终点并维护末端Odom锁存。
+ * @brief 控制器可选能力：接收权威终点并维护末端定位参考。
  *
  * 独立接口避免修改Controller基类虚表。不支持该能力的控制器保持原行为。
  */

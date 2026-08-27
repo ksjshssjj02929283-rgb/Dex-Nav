@@ -635,6 +635,92 @@ private:
   geometry_msgs::msg::PoseStamped robot_pose_;
 };
 
+// 最终转角切换单测：构造“锁存位置已满足进入门限，但实时位置因map修正落在
+// 进入/退出迟滞区间”的场景，验证控制器按开关选择实时Map位置或Odom锁存位置。
+class FinalRotationTransitionPID : public ApproachingZeroSpeedPID
+{
+public:
+  bool configureLatchedEntryWithLiveOffset(bool should_keep_position_lock_in_final_yaw)
+  {
+    constexpr uint64_t kGoalGeneration = 9;
+    constexpr double kRobotXM = 0.99;
+    constexpr double kLatchedGoalXM = 1.0;
+    constexpr double kLiveGoalXM = 1.015;
+    constexpr double kGoalYawRad = 0.2;
+
+    reverse_enabled_ = false;
+    long_precision_ = 0.02;
+    lat_precision_ = 0.02;
+    final_rotation_entry_distance_ = 0.02;
+    final_rotation_exit_distance_ = 0.03;
+    final_rotation_linear_deadband_ = 0.01;
+
+    nav2_pid_controller::EndLocalizationLockConfig config;
+    config.switch_distance_m = 0.05;
+    config.switch_angle_rad = 0.075;
+    config.should_keep_position_lock_in_final_yaw = should_keep_position_lock_in_final_yaw;
+    end_localization_lock_.configure(config);
+    resetEndLocalization(kGoalGeneration);
+
+    robot_pose_.header.frame_id = global_frame_;
+    robot_pose_.pose.position.x = kRobotXM;
+    robot_pose_.pose.orientation.w = 1.0;
+
+    geometry_msgs::msg::TransformStamped map_to_base;
+    map_to_base.header.stamp = rclcpp::Time(0);
+    map_to_base.header.frame_id = global_frame_;
+    map_to_base.child_frame_id = base_frame_;
+    map_to_base.transform.translation.x = kRobotXM;
+    map_to_base.transform.rotation.w = 1.0;
+    if (!tf_->setTransform(map_to_base, "pid_final_rotation_test", true)) {
+      return false;
+    }
+
+    geometry_msgs::msg::PoseStamped locked_goal;
+    locked_goal.header.frame_id = global_frame_;
+    locked_goal.pose.position.x = kLatchedGoalXM;
+    locked_goal.pose.orientation.z = std::sin(kGoalYawRad * 0.5);
+    locked_goal.pose.orientation.w = std::cos(kGoalYawRad * 0.5);
+    setEndLocalizationGoal(locked_goal, kGoalGeneration);
+
+    geometry_msgs::msg::PoseStamped effective_goal;
+    const auto latched = selectEndLocalizationPositionReference(
+      robot_pose_, locked_goal, effective_goal);
+    if (!latched.position_goal_latched) {
+      return false;
+    }
+
+    auto live_goal = locked_goal;
+    live_goal.pose.position.x = kLiveGoalXM;
+    setEndLocalizationGoal(live_goal, kGoalGeneration);
+
+    TrajPoint endpoint;
+    endpoint.pose = locked_goal;
+    endpoint.x = kLatchedGoalXM;
+    endpoint.y = 0.0;
+    endpoint.speed_limit = final_rotation_max_v_;
+    controller_traj_ = {endpoint};
+    trajectory_time_valid_ = false;
+    curr_controller_stage_ = ControllerStage::APPROACHING;
+    prev_controller_stage_ = ControllerStage::APPROACHING;
+    return true;
+  }
+
+  geometry_msgs::msg::TwistStamped runFinalRotationCycle()
+  {
+    geometry_msgs::msg::Twist velocity;
+    return computeVelocityCommands(robot_pose_, velocity, nullptr);
+  }
+
+  bool isRotatingToGoal() const
+  {
+    return curr_controller_stage_ == ControllerStage::ROTATING_TO_GOAL;
+  }
+
+private:
+  geometry_msgs::msg::PoseStamped robot_pose_;
+};
+
 namespace
 {
 geometry_msgs::msg::PoseStamped makePose(double x, double y)
@@ -778,6 +864,48 @@ TEST(ApproachStage, plannedZeroStopsBeforeOvershootReverseBoostAndUpdatesContinu
   ASSERT_TRUE(pid.getContinuityTarget(continuity_velocity, continuity_acceleration));
   EXPECT_DOUBLE_EQ(continuity_velocity, 0.0);
   EXPECT_DOUBLE_EQ(continuity_acceleration, kTrajectoryAccelerationMps2);
+}
+
+TEST(ApproachStage, finalRotationEntersOnLatchedPositionThenTracksLivePosition)
+{
+  FinalRotationTransitionPID pid;
+  ASSERT_TRUE(pid.configureLatchedEntryWithLiveOffset(false));
+
+  const auto first_command = pid.runFinalRotationCycle();
+  ASSERT_TRUE(pid.isRotatingToGoal());
+  const auto first_snapshot = pid.getEndLocalizationSnapshot();
+  EXPECT_FALSE(first_snapshot.position_goal_latched);
+  EXPECT_EQ(first_snapshot.stage, nav2_core::EndLocalizationStage::MAP_YAW_COARSE);
+  EXPECT_NEAR(first_snapshot.effective_goal.pose.position.x, 1.015, 1e-9);
+  EXPECT_GT(first_command.twist.linear.x, 0.0);
+  EXPECT_LE(first_command.twist.linear.x, 0.05);
+
+  // 实时误差2.5cm位于2cm进入、3cm退出门限之间，下一周期应留在最终转角继续微调。
+  const auto second_command = pid.runFinalRotationCycle();
+  EXPECT_TRUE(pid.isRotatingToGoal());
+  EXPECT_FALSE(pid.getEndLocalizationSnapshot().position_goal_latched);
+  EXPECT_GT(second_command.twist.linear.x, 0.0);
+  EXPECT_LE(second_command.twist.linear.x, 0.05);
+}
+
+TEST(ApproachStage, finalRotationKeepsLatchedPositionWhenConfigured)
+{
+  FinalRotationTransitionPID pid;
+  ASSERT_TRUE(pid.configureLatchedEntryWithLiveOffset(true));
+
+  pid.runFinalRotationCycle();
+  ASSERT_TRUE(pid.isRotatingToGoal());
+  const auto first_snapshot = pid.getEndLocalizationSnapshot();
+  EXPECT_TRUE(first_snapshot.position_goal_latched);
+  EXPECT_EQ(first_snapshot.stage, nav2_core::EndLocalizationStage::MAP_YAW_COARSE);
+  EXPECT_NEAR(first_snapshot.live_goal.pose.position.x, 1.015, 1e-9);
+  EXPECT_NEAR(first_snapshot.effective_goal.pose.position.x, 1.0, 1e-9);
+
+  pid.runFinalRotationCycle();
+  EXPECT_TRUE(pid.isRotatingToGoal());
+  const auto second_snapshot = pid.getEndLocalizationSnapshot();
+  EXPECT_TRUE(second_snapshot.position_goal_latched);
+  EXPECT_NEAR(second_snapshot.effective_goal.pose.position.x, 1.0, 1e-9);
 }
 
 int main(int argc, char ** argv)

@@ -117,6 +117,17 @@ public:
     snapshot_.stage = nav2_core::EndLocalizationStage::ODOM_POSITION;
   }
 
+  void seedFinalYawStage(
+    uint64_t goal_generation,
+    nav2_core::EndLocalizationStage stage)
+  {
+    snapshot_.goal_generation = goal_generation;
+    snapshot_.enabled = true;
+    snapshot_.effective_goal_valid = true;
+    snapshot_.position_goal_latched = false;
+    snapshot_.stage = stage;
+  }
+
   void setEffectiveGoalValid(bool valid)
   {
     snapshot_.effective_goal_valid = valid;
@@ -340,9 +351,9 @@ public:
 
   bool shouldUseApproachForTest(
     double distance_to_goal,
-    bool & position_reference_latched)
+    bool & end_localization_active)
   {
-    return shouldUseApproachController(distance_to_goal, position_reference_latched);
+    return shouldUseApproachController(distance_to_goal, end_localization_active);
   }
 
   bool applyEndLocalizationGoalForTest(geometry_msgs::msg::PoseStamped & goal_pose)
@@ -657,12 +668,34 @@ TEST(EndLocalizationBridge, TemporaryInvalidGoalKeepsApproachAfterPositionLatch)
   pid->seedPositionLatch(server->goalGeneration());
   pid->setEffectiveGoalValid(false);
 
-  bool position_reference_latched = false;
+  bool end_localization_active = false;
   const bool use_approach = server->shouldUseApproachForTest(
-    std::numeric_limits<double>::infinity(), position_reference_latched);
+    std::numeric_limits<double>::infinity(), end_localization_active);
 
-  EXPECT_TRUE(position_reference_latched);
+  EXPECT_TRUE(end_localization_active);
   EXPECT_TRUE(use_approach);
+}
+
+TEST(EndLocalizationBridge, FinalYawStageKeepsApproachAfterPositionLatchReleased)
+{
+  auto server = std::make_shared<ControllerShim>();
+  auto pid = std::make_shared<FakeEndLocalizationController>();
+  server->setEndLocalizationControllerForTest(pid);
+
+  for (const auto stage : {
+      nav2_core::EndLocalizationStage::MAP_YAW_COARSE,
+      nav2_core::EndLocalizationStage::ODOM_YAW_FINE})
+  {
+    pid->seedFinalYawStage(server->goalGeneration(), stage);
+    pid->setEffectiveGoalValid(false);
+    bool end_localization_active = false;
+    const bool use_approach = server->shouldUseApproachForTest(
+      std::numeric_limits<double>::infinity(), end_localization_active);
+
+    EXPECT_TRUE(end_localization_active);
+    EXPECT_TRUE(use_approach);
+    EXPECT_FALSE(pid->getEndLocalizationSnapshot().position_goal_latched);
+  }
 }
 
 TEST(EndLocalizationBridge, GoalCheckerUsesSameEffectiveLatchedGoal)

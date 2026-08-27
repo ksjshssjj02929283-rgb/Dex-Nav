@@ -46,16 +46,25 @@ geometry_msgs::msg::PoseStamped makePose(
   return pose;
 }
 
-void configureEnabledLock(nav2_pid_controller::EndLocalizationLock & lock)
+void configureEnabledLock(
+  nav2_pid_controller::EndLocalizationLock & lock,
+  bool should_keep_position_lock_in_final_yaw = true)
 {
   nav2_pid_controller::EndLocalizationLockConfig config;
   config.switch_distance_m = kPositionSwitchDistance;
   config.switch_angle_rad = kYawSwitchAngle;
+  config.should_keep_position_lock_in_final_yaw = should_keep_position_lock_in_final_yaw;
   lock.configure(config);
   lock.reset(kFirstGoalGeneration);
 }
 
 }  // namespace
+
+TEST(EndLocalizationLockConfig, KeepsPositionLockInFinalYawByDefault)
+{
+  const nav2_pid_controller::EndLocalizationLockConfig config;
+  EXPECT_TRUE(config.should_keep_position_lock_in_final_yaw);
+}
 
 TEST(EndLocalizationLock, PositionLatchPreservesOdomTargetAcrossSameGoalUpdates)
 {
@@ -80,45 +89,91 @@ TEST(EndLocalizationLock, PositionLatchPreservesOdomTargetAcrossSameGoalUpdates)
   EXPECT_EQ(updated.revision, latched.revision);
 }
 
-TEST(EndLocalizationLock, FinalYawUsesLiveReferenceThenLatchesNearGoal)
+TEST(EndLocalizationLock, FinalYawUsesLivePositionAndLatchesOnlyYawNearGoal)
 {
   nav2_pid_controller::EndLocalizationLock lock;
-  configureEnabledLock(lock);
+  configureEnabledLock(lock, false);
   lock.setLiveGoal(makePose(1.0, 0.0, 0.2), kFirstGoalGeneration);
-  lock.updatePositionReference(makePose(0.96, 0.0, 0.0));
+  ASSERT_TRUE(
+    lock.updatePositionReference(makePose(0.96, 0.0, 0.0)).position_goal_latched);
 
   const auto coarse = lock.updateYawReference(makePose(0.96, 0.0, 0.0), true);
+  EXPECT_FALSE(coarse.position_goal_latched);
   ASSERT_FALSE(coarse.yaw_goal_latched);
   EXPECT_EQ(coarse.stage, nav2_core::EndLocalizationStage::MAP_YAW_COARSE);
+  EXPECT_NEAR(coarse.effective_goal.pose.position.x, 1.0, kTestTolerance);
   EXPECT_NEAR(tf2::getYaw(coarse.effective_goal.pose.orientation), 0.2, kTestTolerance);
+
+  // 最终转角的后续控制周期仍处于5 cm门限内，也不能重新锁存目标位置。
+  const auto next_cycle = lock.updatePositionReference(makePose(0.96, 0.0, 0.0));
+  EXPECT_FALSE(next_cycle.position_goal_latched);
+  EXPECT_EQ(next_cycle.stage, nav2_core::EndLocalizationStage::MAP_YAW_COARSE);
 
   lock.setLiveGoal(makePose(1.1, 0.0, 0.07), kFirstGoalGeneration);
   const auto fine = lock.updateYawReference(makePose(0.96, 0.0, 0.0), true);
+  EXPECT_FALSE(fine.position_goal_latched);
   ASSERT_TRUE(fine.yaw_goal_latched);
   EXPECT_EQ(fine.stage, nav2_core::EndLocalizationStage::ODOM_YAW_FINE);
+  EXPECT_NEAR(fine.effective_goal.pose.position.x, 1.1, kTestTolerance);
   EXPECT_NEAR(fine.effective_yaw_error, 0.07, kTestTolerance);
 
-  lock.setLiveGoal(makePose(1.1, 0.0, 0.16), kFirstGoalGeneration);
+  lock.setLiveGoal(makePose(1.2, 0.0, 0.16), kFirstGoalGeneration);
   const auto corrected = lock.updateYawReference(makePose(0.96, 0.0, 0.0), true);
+  EXPECT_FALSE(corrected.position_goal_latched);
+  EXPECT_NEAR(corrected.effective_goal.pose.position.x, 1.2, kTestTolerance);
   EXPECT_NEAR(tf2::getYaw(corrected.effective_goal.pose.orientation), 0.07, kTestTolerance);
   EXPECT_NEAR(corrected.yaw_correction_after_latch, 0.09, kTestTolerance);
 }
 
-TEST(EndLocalizationLock, LeavingFinalYawClearsOnlyYawLatch)
+TEST(EndLocalizationLock, FinalYawKeepsOdomPositionWhenConfigured)
 {
   nav2_pid_controller::EndLocalizationLock lock;
-  configureEnabledLock(lock);
+  configureEnabledLock(lock, true);
+  lock.setLiveGoal(makePose(1.0, 0.0, 0.2), kFirstGoalGeneration);
+  ASSERT_TRUE(
+    lock.updatePositionReference(makePose(0.96, 0.0, 0.0)).position_goal_latched);
+
+  // Map目标变化后进入最终转角，位置仍使用进入前锁存的Odom参考。
+  lock.setLiveGoal(makePose(1.1, 0.0, 0.2), kFirstGoalGeneration);
+  const auto coarse = lock.updateYawReference(makePose(0.96, 0.0, 0.0), true);
+  ASSERT_TRUE(coarse.position_goal_latched);
+  EXPECT_FALSE(coarse.yaw_goal_latched);
+  EXPECT_EQ(coarse.stage, nav2_core::EndLocalizationStage::MAP_YAW_COARSE);
+  EXPECT_NEAR(coarse.live_goal.pose.position.x, 1.1, kTestTolerance);
+  EXPECT_NEAR(coarse.effective_goal.pose.position.x, 1.0, kTestTolerance);
+
+  const auto next_cycle = lock.updatePositionReference(makePose(0.97, 0.0, 0.0));
+  ASSERT_TRUE(next_cycle.position_goal_latched);
+  EXPECT_NEAR(next_cycle.effective_goal.pose.position.x, 1.0, kTestTolerance);
+
+  lock.setLiveGoal(makePose(1.2, 0.0, 0.07), kFirstGoalGeneration);
+  const auto fine = lock.updateYawReference(makePose(0.97, 0.0, 0.0), true);
+  EXPECT_TRUE(fine.position_goal_latched);
+  EXPECT_TRUE(fine.yaw_goal_latched);
+  EXPECT_EQ(fine.stage, nav2_core::EndLocalizationStage::ODOM_YAW_FINE);
+  EXPECT_NEAR(fine.effective_goal.pose.position.x, 1.0, kTestTolerance);
+  EXPECT_NEAR(tf2::getYaw(fine.effective_goal.pose.orientation), 0.07, kTestTolerance);
+}
+
+TEST(EndLocalizationLock, LeavingFinalYawClearsYawThenPositionRelatchesNextCycle)
+{
+  nav2_pid_controller::EndLocalizationLock lock;
+  configureEnabledLock(lock, false);
   lock.setLiveGoal(makePose(1.0, 0.0, 0.07), kFirstGoalGeneration);
   lock.updatePositionReference(makePose(0.96, 0.0, 0.0));
   ASSERT_TRUE(lock.updateYawReference(makePose(0.96, 0.0, 0.0), true).yaw_goal_latched);
 
-  lock.setLiveGoal(makePose(1.1, 0.0, 0.15), kFirstGoalGeneration);
+  lock.setLiveGoal(makePose(1.0, 0.0, 0.15), kFirstGoalGeneration);
   const auto fallback = lock.updateYawReference(makePose(0.96, 0.0, 0.0), false);
-  EXPECT_TRUE(fallback.position_goal_latched);
+  EXPECT_FALSE(fallback.position_goal_latched);
   EXPECT_FALSE(fallback.yaw_goal_latched);
-  EXPECT_EQ(fallback.stage, nav2_core::EndLocalizationStage::ODOM_POSITION);
+  EXPECT_EQ(fallback.stage, nav2_core::EndLocalizationStage::INACTIVE);
   EXPECT_NEAR(fallback.effective_goal.pose.position.x, 1.0, kTestTolerance);
   EXPECT_NEAR(tf2::getYaw(fallback.effective_goal.pose.orientation), 0.15, kTestTolerance);
+
+  const auto approaching = lock.updatePositionReference(makePose(0.96, 0.0, 0.0));
+  EXPECT_TRUE(approaching.position_goal_latched);
+  EXPECT_EQ(approaching.stage, nav2_core::EndLocalizationStage::ODOM_POSITION);
 }
 
 TEST(EndLocalizationLock, NewGoalGenerationDropsPreviousLatch)

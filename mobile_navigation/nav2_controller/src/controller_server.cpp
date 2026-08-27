@@ -2174,16 +2174,14 @@ void ControllerServer::updateEndLocalizationGoal(
     {
       RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), kEndLocalizationWarningThrottleMs,
-        "末端定位目标TF转换失败：controller=%s，source=%s，target=%s；"
-        "本周期保留上一份有效目标。",
+        "End goal TF failed: controller=%s from=%s to=%s; goal unchanged.",
         controller_id.c_str(), source_goal.header.frame_id.c_str(), control_frame.c_str());
       return;
     }
   } catch (const tf2::TransformException & ex) {
     RCLCPP_WARN_THROTTLE(
       get_logger(), *get_clock(), kEndLocalizationWarningThrottleMs,
-      "末端定位目标TF异常：controller=%s，source=%s，target=%s，error=%s；"
-      "本周期保留上一份有效目标。",
+      "End goal TF error: controller=%s from=%s to=%s reason=%s; goal unchanged.",
       controller_id.c_str(), source_goal.header.frame_id.c_str(), control_frame.c_str(),
       ex.what());
     return;
@@ -2207,14 +2205,14 @@ bool ControllerServer::getEndLocalizationSnapshot(
 
 bool ControllerServer::shouldUseApproachController(
   double distance_to_goal,
-  bool & position_reference_latched)
+  bool & end_localization_active)
 {
   nav2_core::EndLocalizationSnapshot end_localization_snapshot;
-  position_reference_latched = getEndLocalizationSnapshot(
+  end_localization_active = getEndLocalizationSnapshot(
       approach_controller_, end_localization_snapshot) &&
-    end_localization_snapshot.position_goal_latched;
-  // 一旦位置参考已锁存在Odom，短时目标无效或map修正都不能切回路径跟踪器。
-  return position_reference_latched || distance_to_goal <= approach_distance_;
+    end_localization_snapshot.stage != nav2_core::EndLocalizationStage::INACTIVE;
+  // 目标距离负责首次选择PID；末端定位阶段激活后保持控制权，位置锁存只决定参考来源。
+  return end_localization_active || distance_to_goal <= approach_distance_;
 }
 
 bool ControllerServer::applyEndLocalizationGoalToGoalChecker(
@@ -2248,8 +2246,7 @@ bool ControllerServer::applyEndLocalizationGoalToGoalChecker(
 
   RCLCPP_WARN_THROTTLE(
     get_logger(), *get_clock(), kEndLocalizationWarningThrottleMs,
-    "GoalChecker无法转换PID末端锁存目标：source=%s，target=%s；"
-    "本周期使用实时目标。",
+    "Goal checker TF failed: from=%s to=%s; using original goal.",
     effective_goal.header.frame_id.c_str(), goal_pose.header.frame_id.c_str());
   return false;
 }
@@ -2294,16 +2291,16 @@ geometry_msgs::msg::TwistStamped ControllerServer::computeStagedVelocity(
   }
 
   const double distance_to_goal = getDistanceToGoal(pose);
-  bool position_reference_latched = false;
+  bool end_localization_active = false;
   const bool in_approach = shouldUseApproachController(
-    distance_to_goal, position_reference_latched);
+    distance_to_goal, end_localization_active);
   if (in_approach) {
     RCLCPP_DEBUG_THROTTLE(
       get_logger(), *get_clock(), 500,
       "Control choice: approach, goal_distance=%.3f, threshold=%.3f, "
-      "position_reference_latched=%s, controller='%s'.",
+      "end_localization_active=%s, controller='%s'.",
       distance_to_goal, approach_distance_,
-      position_reference_latched ? "true" : "false", approach_controller_.c_str());
+      end_localization_active ? "true" : "false", approach_controller_.c_str());
     setControllerPhase(ControllerPhase::APPROACH, "near goal");
     active_controller_for_log_ = approach_controller_;
     return computeControllerVelocity(approach_controller_, pose, twist);

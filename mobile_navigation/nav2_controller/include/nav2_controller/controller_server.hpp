@@ -269,32 +269,35 @@ protected:
     const geometry_msgs::msg::PoseStamped & pose,
     const nav_2d_msgs::msg::Twist2D & twist);
   /**
-   * @brief 获取控制器可选的末端定位锁存能力。
+   * @brief 获取控制器可选的末端定位参考能力。
    * @return 控制器不存在或不支持该能力时返回nullptr。
    */
   nav2_core::EndLocalizationCapability * getEndLocalizationCapability(
     const std::string & controller_id);
-  /// 新目标、取消、失败或成功时统一清理各控制器的旧锁存状态。
+  /// 新目标、取消、失败或成功时统一清理各控制器的旧末端参考状态。
   void resetEndLocalizationCapabilities(uint64_t goal_generation);
   /// 控制前把ControllerServer维护的权威终点转换到本周期控制坐标系。
   void updateEndLocalizationGoal(
     const std::string & controller_id,
     const geometry_msgs::msg::PoseStamped & pose);
-  /// 读取指定控制器的锁存快照并校验目标代次；调用方按用途检查目标有效性。
+  /// 读取指定控制器的末端参考快照并校验目标代次；调用方按用途检查目标有效性。
   bool getEndLocalizationSnapshot(
     const std::string & controller_id,
     nav2_core::EndLocalizationSnapshot & snapshot);
   /**
-   * @brief 判断是否进入末端接近控制，并返回是否由位置锁存强制保持。
+   * @brief 判断是否进入末端接近控制，并返回末端定位阶段是否已接管。
    *
-   * 位置锁存与effective_goal_valid分开判断：短时TF无效不能让控制权退回跟踪器。
+   * 目标距离负责首次选择PID；末端定位阶段激活后负责保持PID控制权，
+   * 位置锁存只决定参考来源。位置锁存释放或短时TF失败不会单独触发控制器切换。
    */
   bool shouldUseApproachController(
     double distance_to_goal,
-    bool & position_reference_latched);
+    bool & end_localization_active);
   /**
-   * @brief 用同代次的PID有效锁存目标覆盖GoalChecker目标。
-   * @return 成功使用锁存目标时返回true，否则保留调用方传入的实时目标。
+   * @brief 用同代次的PID有效末端目标更新GoalChecker目标。
+   *
+   * 有效末端目标可能包含实时位置，以及满足门限后锁存的Odom航向。
+   * @return 更新成功时返回true，否则保留调用方传入的原始目标。
    */
   bool applyEndLocalizationGoalToGoalChecker(
     const std::string & controller_id,

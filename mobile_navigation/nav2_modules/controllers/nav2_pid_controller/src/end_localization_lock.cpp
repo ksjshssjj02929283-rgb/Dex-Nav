@@ -88,6 +88,37 @@ bool EndLocalizationLock::inputValidLocked(
     std::isfinite(tf2::getYaw(robot.orientation));
 }
 
+void EndLocalizationLock::tryLatchPositionLocked(
+  const geometry_msgs::msg::PoseStamped & robot_pose)
+{
+  if (snapshot_.position_goal_latched || config_.switch_distance_m <= 0.0) {
+    return;
+  }
+
+  const double dx =
+    snapshot_.live_goal.pose.position.x - robot_pose.pose.position.x;
+  const double dy =
+    snapshot_.live_goal.pose.position.y - robot_pose.pose.position.y;
+  if (std::hypot(dx, dy) > config_.switch_distance_m) {
+    return;
+  }
+
+  snapshot_.position_goal_latched = true;
+  locked_position_ = snapshot_.live_goal.pose.position;
+  ++snapshot_.revision;
+}
+
+void EndLocalizationLock::releasePositionLatchLocked()
+{
+  if (!snapshot_.position_goal_latched) {
+    return;
+  }
+
+  snapshot_.position_goal_latched = false;
+  locked_position_ = geometry_msgs::msg::Point();
+  ++snapshot_.revision;
+}
+
 void EndLocalizationLock::rebuildEffectiveGoalLocked(
   const geometry_msgs::msg::PoseStamped & robot_pose)
 {
@@ -132,22 +163,21 @@ nav2_core::EndLocalizationSnapshot EndLocalizationLock::updatePositionReference(
     return snapshot_;
   }
 
-  const double dx =
-    snapshot_.live_goal.pose.position.x - robot_pose.pose.position.x;
-  const double dy =
-    snapshot_.live_goal.pose.position.y - robot_pose.pose.position.y;
-  const double live_distance = std::hypot(dx, dy);
-  if (!snapshot_.position_goal_latched && config_.switch_distance_m > 0.0 &&
-    live_distance <= config_.switch_distance_m)
-  {
-    snapshot_.position_goal_latched = true;
-    locked_position_ = snapshot_.live_goal.pose.position;
-    ++snapshot_.revision;
+  if (previous_final_yaw_control_) {
+    // 最终转角期间只保持进入阶段前已有的锁存，不在转角过程中重新触发位置锁存。
+    if (!config_.should_keep_position_lock_in_final_yaw) {
+      releasePositionLatchLocked();
+    }
+    snapshot_.stage = snapshot_.yaw_goal_latched ?
+      nav2_core::EndLocalizationStage::ODOM_YAW_FINE :
+      nav2_core::EndLocalizationStage::MAP_YAW_COARSE;
+  } else {
+    tryLatchPositionLocked(robot_pose);
+    snapshot_.stage = snapshot_.position_goal_latched ?
+      nav2_core::EndLocalizationStage::ODOM_POSITION :
+      nav2_core::EndLocalizationStage::INACTIVE;
   }
 
-  snapshot_.stage = snapshot_.position_goal_latched ?
-    nav2_core::EndLocalizationStage::ODOM_POSITION :
-    nav2_core::EndLocalizationStage::INACTIVE;
   rebuildEffectiveGoalLocked(robot_pose);
   return snapshot_;
 }
@@ -163,21 +193,28 @@ nav2_core::EndLocalizationSnapshot EndLocalizationLock::updateYawReference(
   }
 
   if (!final_yaw_control) {
-    // 从最终转向退回位置调整时重新以实时map航向粗调，防止沿用旧的精调锁存。
-    if (previous_final_yaw_control_ && snapshot_.yaw_goal_latched) {
+    const bool leaving_final_yaw = previous_final_yaw_control_;
+    // 从最终转角退回位置调整时重新以实时map航向粗调，防止沿用旧的精调锁存。
+    if (leaving_final_yaw && snapshot_.yaw_goal_latched) {
       snapshot_.yaw_goal_latched = false;
       locked_orientation_ = geometry_msgs::msg::Quaternion();
       ++snapshot_.revision;
     }
+    previous_final_yaw_control_ = false;
+    // 关闭保留开关时，退回位置调整后由下一周期按门限重新锁存；开启时沿用原锁存。
+    // 本周期不重新触发锁存，避免目标点和速度误差计算完成后再改变位置参考。
     snapshot_.stage = snapshot_.position_goal_latched ?
       nav2_core::EndLocalizationStage::ODOM_POSITION :
       nav2_core::EndLocalizationStage::INACTIVE;
-    previous_final_yaw_control_ = false;
     rebuildEffectiveGoalLocked(robot_pose);
     return snapshot_;
   }
 
   previous_final_yaw_control_ = true;
+  // 开关只决定已有位置锁存是否跨越最终转角；位置与航向锁存仍独立维护。
+  if (!config_.should_keep_position_lock_in_final_yaw) {
+    releasePositionLatchLocked();
+  }
   const double live_yaw_error = angles::shortest_angular_distance(
     tf2::getYaw(robot_pose.pose.orientation),
     tf2::getYaw(snapshot_.live_goal.pose.orientation));

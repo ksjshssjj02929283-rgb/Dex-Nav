@@ -29,10 +29,12 @@ struct EndLocalizationLockConfig
   // 0表示关闭对应锁存通道。
   double switch_distance_m{0.0};
   double switch_angle_rad{0.0};
+  // 开启后，最终转角继续使用进入该阶段前锁存的Odom位置。
+  bool should_keep_position_lock_in_final_yaw{true};
 };
 
 /**
- * @brief PID末端Odom锁存状态机。
+ * @brief PID末端参考锁存状态机。
  *
  * 类本身不查询TF、不订阅Odom，只消费同一控制周期的机器人位姿和权威终点，
  * 便于单元测试，也避免在控制热路径重复获取数据。
@@ -46,11 +48,11 @@ public:
     const geometry_msgs::msg::PoseStamped & live_goal,
     uint64_t goal_generation);
 
-  // 位置控制前调用：必要时锁存目标位置，并返回本周期有效目标。
+  // 接近阶段更新位置参考；必要时锁存，并返回带有效性标志的末端参考快照。
   nav2_core::EndLocalizationSnapshot updatePositionReference(
     const geometry_msgs::msg::PoseStamped & robot_pose);
 
-  // PID阶段确定后调用：粗调阶段使用实时航向，精调阶段锁存Odom航向。
+  // PID阶段确定后调用：最终转角按配置保留或释放位置，粗调使用实时航向，精调锁存Odom航向。
   nav2_core::EndLocalizationSnapshot updateYawReference(
     const geometry_msgs::msg::PoseStamped & robot_pose,
     bool final_yaw_control);
@@ -60,6 +62,8 @@ public:
 private:
   void resetLocked(uint64_t goal_generation);
   bool inputValidLocked(const geometry_msgs::msg::PoseStamped & robot_pose) const;
+  void tryLatchPositionLocked(const geometry_msgs::msg::PoseStamped & robot_pose);
+  void releasePositionLatchLocked();
   void rebuildEffectiveGoalLocked(const geometry_msgs::msg::PoseStamped & robot_pose);
 
   mutable std::mutex mutex_;

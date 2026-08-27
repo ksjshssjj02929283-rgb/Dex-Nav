@@ -13,8 +13,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef PID_CONTROLLER__PID_CONTROLLER_HPP_
-#define PID_CONTROLLER__PID_CONTROLLER_HPP_
+#ifndef NAV2_PID_CONTROLLER__PID_CONTROLLER_HPP_
+#define NAV2_PID_CONTROLLER__PID_CONTROLLER_HPP_
 
 #include <algorithm>
 #include <atomic>
@@ -57,14 +57,14 @@ namespace nav2_pid_controller
  * @class nav2_pid_controller::PIDController
  * @brief A nav2_core::Controller plugin implementing a PID local controller.
  *
- * Linear velocity: in APPROACHING the speed loop tracks the planned speed of
- * the closest trajectory point (sign from the longitudinal error) — decel
+ * Linear velocity: in APPROACHING the speed loop tracks the planned speed from
+ * the nearest-point lookahead window (sign from the longitudinal error) — decel
  * tails / curvature slowdowns / obstacle zeros are encoded per-point by the
  * speed planner; in the final-rotation stage a small signed compensation speed
  * is generated from the position error. A high/low-speed gain set is switched
  * at switch_speed_, plus a dedicated reverse gain set. Angular velocity is
- * controlled by a single station PID. A three-stage state machine
- * (APPROACHING -> ROTATING_TO_GOAL) governs the behavior. Trajectories (with
+ * controlled by a single station PID. Two active control stages
+ * (APPROACHING -> ROTATING_TO_GOAL) govern the behavior. Trajectories (with
  * per-point longitudinal_velocity / path_kappa) are consumed through the
  * nav2_core setTrajectory() extension; plain geometric paths are accepted
  * through setPlan() with a default desired speed.
@@ -101,7 +101,7 @@ public:
   void deactivate() override;
 
   /**
-   * @brief Set the geometric global plan (no speed information; uses default 0).
+   * @brief Set the geometric global plan using default_desired_linear_vel_.
    * @param path The global plan
    */
   void setPlan(const nav_msgs::msg::Path & path) override;
@@ -137,8 +137,8 @@ public:
   void setSpeedLimit(const double & speed_limit, const bool & percentage) override;
 
   /**
-   * @brief Check if the goal pose has been achieved
-   * @return True if achieved, false otherwise
+   * @brief Legacy stub; ControllerServer uses its configured GoalChecker.
+   * @return Always false
    */
   bool isGoalReached();
 
@@ -148,7 +148,7 @@ public:
    */
   void setReverseEnabled(const bool enabled) {reverse_enabled_ = enabled;}
 
-  // nav2_core::EndLocalizationCapability：由ControllerServer传入权威终点并读取锁存结果。
+  // nav2_core::EndLocalizationCapability：由ControllerServer传入权威终点并读取末端参考。
   void resetEndLocalization(uint64_t goal_generation) override;
   void setEndLocalizationGoal(
     const geometry_msgs::msg::PoseStamped & live_goal,
@@ -276,8 +276,8 @@ protected:
     geometry_msgs::msg::PoseStamped & effective_goal);
 
   /**
-   * @brief Build the cached trajectory from a geometric path (speed = 0),
-   *        transforming each pose into the costmap global frame.
+   * @brief Build the cached trajectory from a geometric path, using
+   *        default_desired_linear_vel_ and the costmap global frame.
    */
   bool cachePathAsTrajectory(const nav_msgs::msg::Path & path);
 
@@ -311,8 +311,8 @@ protected:
 
   double k_theta_ = 0.5;            // heading-weighting factor
   double switch_speed_ = 0.1;       // high/low speed switch threshold
-  double default_desired_linear_vel_ = 0.15; // fallback speed for geometric paths
-  double desired_linear_vel_ = 0.0; // per-point desired velocity
+  double default_desired_linear_vel_ = 0.15;  // fallback speed for geometric paths
+  double desired_linear_vel_ = 0.0;  // per-point desired velocity
   double final_rotation_max_v_ = 0.05;
   double final_rotation_linear_deadband_ = 0.005;
   // 退出阈值可大于进入阈值形成迟滞；默认相等以保持未配置时的原行为。
@@ -363,8 +363,10 @@ protected:
 
   // ---- terminal localization reference lock ----
   // 位置和航向阈值分别控制Odom位置锁存与最终航向锁存；0表示关闭对应通道。
+  // 最终转角是否保留位置锁存由独立开关控制；航向满足门限后才锁存。
   double end_localization_switch_distance_ = 0.0;
   double end_localization_switch_angle_ = 0.0;
+  bool should_keep_position_lock_in_final_yaw_ = true;
   EndLocalizationLock end_localization_lock_;
   uint64_t last_end_localization_revision_{0};
   nav2_core::EndLocalizationStage last_end_localization_stage_{
@@ -405,7 +407,7 @@ protected:
     std::vector<rclcpp::Parameter> parameters);
 
   rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr dyn_params_handler_;
-  /// 0 = 静默；>=1 = 每周期打印紧凑诊断行（默认开）。
+  /// 0 = 关闭周期INFO诊断；>=1 = 开启最多2 Hz的简要诊断（默认开）。
   /// 控制循环读、参数回调写，故用 atomic。
   std::atomic<int> verbose_{1};
 
@@ -427,4 +429,4 @@ protected:
 
 }  // namespace nav2_pid_controller
 
-#endif  // PID_CONTROLLER__PID_CONTROLLER_HPP_
+#endif  // NAV2_PID_CONTROLLER__PID_CONTROLLER_HPP_
