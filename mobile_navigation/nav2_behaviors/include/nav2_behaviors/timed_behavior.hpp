@@ -222,8 +222,7 @@ protected:
       // TODO(orduno) #868 Enable preempting a Behavior on-the-fly without stopping
       if (action_server_->is_preempt_requested()) {
         RCLCPP_ERROR(
-          logger_, "Received a preemption request for %s,"
-          " however feature is currently not implemented. Aborting and stopping.",
+          logger_, "Preemption unsupported: behavior='%s'; current goal stopped.",
           behavior_name_.c_str());
         stopRobot();
         result->total_elapsed_time = steady_clock_.now() - start_time;

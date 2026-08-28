@@ -55,6 +55,7 @@ BtNavigator::BtNavigator(rclcpp::NodeOptions options)
     "nav2_reinitialize_global_localization_service_bt_node",
     "nav2_rate_controller_bt_node",
     "nav2_adaptive_replanning_decorator_bt_node",
+    "nav2_request_and_wait_for_global_replan_action_bt_node",
     "nav2_distance_controller_bt_node",
     "nav2_speed_controller_bt_node",
     "nav2_truncate_path_action_bt_node",
@@ -195,7 +196,7 @@ BtNavigator::on_cleanup(const rclcpp_lifecycle::State & /*state*/)
   poses_navigator_.reset();
   pose_navigator_.reset();
 
-  RCLCPP_INFO(get_logger(), "Completed Cleaning up");
+  RCLCPP_INFO(get_logger(), "Cleanup complete");
   return nav2_util::CallbackReturn::SUCCESS;
 }
 

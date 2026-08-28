@@ -20,9 +20,10 @@ namespace nav2_behaviors
 Status BackUp::onRun(const std::shared_ptr<const BackUpAction::Goal> command)
 {
   if (command->target.y != 0.0 || command->target.z != 0.0) {
-    RCLCPP_INFO(
+    RCLCPP_ERROR(
       logger_,
-      "Backing up in Y and Z not supported, will only move in X.");
+      "BackUp rejected: target.y and target.z must be zero (y=%.3f m, z=%.3f m).",
+      command->target.y, command->target.z);
     return Status::FAILED;
   }
 
@@ -37,7 +38,7 @@ Status BackUp::onRun(const std::shared_ptr<const BackUpAction::Goal> command)
       initial_pose_, *tf_, global_frame_, robot_base_frame_,
       transform_tolerance_))
   {
-    RCLCPP_ERROR(logger_, "Initial robot pose is not available.");
+    RCLCPP_ERROR(logger_, "BackUp rejected: initial robot pose unavailable.");
     return Status::FAILED;
   }
 

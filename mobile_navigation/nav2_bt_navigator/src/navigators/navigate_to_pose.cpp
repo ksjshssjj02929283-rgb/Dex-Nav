@@ -71,7 +71,7 @@ NavigateToPoseNavigator::configure(
     rclcpp::SystemDefaultsQoS(),
     std::bind(&NavigateToPoseNavigator::onGoalPoseReceived, this, std::placeholders::_1));
 
-  // nav_monitor 任务回显（默认关闭，零开销）
+  // 默认关闭；关闭时不创建 nav_monitor 回显发布器。
   if (!node->has_parameter("enable_nav_monitor_echo")) {
     node->declare_parameter("enable_nav_monitor_echo", false);
   }
@@ -119,7 +119,7 @@ NavigateToPoseNavigator::cleanup()
 bool
 NavigateToPoseNavigator::activate()
 {
-  // LifecyclePublisher 必须显式激活，否则 publish 被静默丢弃
+  // LifecyclePublisher 必须显式激活，否则发布会被丢弃。
   if (goal_pose_echo_pub_) {
     goal_pose_echo_pub_->on_activate();
   }
@@ -148,7 +148,7 @@ NavigateToPoseNavigator::goalReceived(ActionT::Goal::ConstSharedPtr goal)
 
   if (!bt_action_server_->loadBehaviorTree(bt_xml_filename)) {
     RCLCPP_ERROR(
-      logger_, "BT file not found: %s. Navigation canceled.",
+      logger_, "Failed to load behavior tree: file='%s'; navigation rejected.",
       bt_xml_filename.c_str());
     return false;
   }
@@ -169,7 +169,8 @@ NavigateToPoseNavigator::goalCompleted(
 
   const auto goal = bt_action_server_->getCurrentGoal();
   if (!goal) {
-    RCLCPP_WARN(logger_, "导航成功，但无法获取最终执行目标，跳过到点日志");
+    RCLCPP_WARN(
+      logger_, "Navigation succeeded but goal data is unavailable; details skipped.");
     return;
   }
 
@@ -180,7 +181,7 @@ NavigateToPoseNavigator::goalCompleted(
 
   RCLCPP_INFO(
     logger_,
-    "导航到点: uuid=%s, frame=%s, target=(%.3f, %.3f, %.3f), "
+    "Navigation goal reached: uuid=%s, frame=%s, target=(%.3f, %.3f, %.3f), "
     "yaw=%.4f rad/%.2f deg",
     goal_uuid.c_str(), goal->pose.header.frame_id.c_str(),
     pose.position.x, pose.position.y, pose.position.z,
@@ -271,7 +272,7 @@ NavigateToPoseNavigator::onPreempt(ActionT::Goal::ConstSharedPtr goal)
     // 接受新目标时，SimpleActionServer 会将旧目标置为 ABORTED。
     const auto pending_goal = bt_action_server_->acceptPendingGoal();
     if (!pending_goal) {
-      RCLCPP_ERROR(logger_, "导航抢占失败：无法接受待处理的新目标");
+      RCLCPP_ERROR(logger_, "Preemption failed: pending navigation goal is unavailable.");
       return;
     }
 
@@ -280,15 +281,12 @@ NavigateToPoseNavigator::onPreempt(ActionT::Goal::ConstSharedPtr goal)
     blackboard->set<nav_msgs::msg::Path>(path_blackboard_id_, nav_msgs::msg::Path());
     initializeGoalPose(pending_goal);
 
-    RCLCPP_INFO(logger_, "新导航目标已覆盖旧目标：旧 FollowPath 已停止，旧路径已清空");
+    RCLCPP_INFO(
+      logger_, "Preemption accepted: previous FollowPath stopped and path cleared.");
   } else {
     RCLCPP_WARN(
       logger_,
-      "Preemption request was rejected since the requested BT XML file is not the same "
-      "as the one that the current goal is executing. Preemption with a new BT is invalid "
-      "since it would require cancellation of the previous goal instead of true preemption."
-      "\nCancel the current goal and send a new action request if you want to use a "
-      "different BT XML file. For now, continuing to track the last goal until completion.");
+      "Preemption rejected: new goal uses a different BT XML; cancel the current goal first.");
     bt_action_server_->terminatePendingGoal();
   }
 }
@@ -322,9 +320,8 @@ NavigateToPoseNavigator::initializeGoalPose(ActionT::Goal::ConstSharedPtr goal)
   // Update the goal pose on the blackboard
   blackboard->set<geometry_msgs::msg::PoseStamped>(goal_blackboard_id_, goal->pose);
 
-  // nav_monitor 任务回显：这里是"一次新导航开始"语义上唯一的落点——
-  // goalReceived() 与 onPreempt() 都收敛到这一个函数，抢占场景下重新触发也是正确语义
-  // （抢占即当前任务提前结束、新任务立即开始）
+  // goalReceived() 和 onPreempt() 都通过此函数初始化任务，因此在这里回显一次。
+  // 抢占会开始新任务，也需要重新发布目标。
   if (enable_nav_monitor_echo_) {
     geometry_msgs::msg::PoseStamped goal_echo = goal->pose;
     goal_echo.header.stamp = start_time_;

@@ -33,6 +33,7 @@ bt_navigator:
       - nav2_reinitialize_global_localization_service_bt_node
       - nav2_rate_controller_bt_node
       - nav2_adaptive_replanning_decorator_bt_node
+      - nav2_request_and_wait_for_global_replan_action_bt_node
       - nav2_distance_controller_bt_node
       - nav2_speed_controller_bt_node
       - nav2_truncate_path_action_bt_node
@@ -599,8 +600,7 @@ controller_server:
       final_target_lock_distance: 0.3    # 距终点小于此值直接锁定终点索引（消除末段最近点跳变）；须 ≥ staged_control.approach_distance
       end_localization_switch_distance: 0.05  # m；接近权威终点后锁存Odom位置，0表示关闭
       end_localization_switch_angle: 0.075    # rad；最终转向接近目标航向后锁存Odom航向，0表示关闭
-      # 启动时读取，修改后需重启controller_server；True=保留Odom位置，False=释放并跟随Map目标
-      keep_position_lock_in_final_yaw: True
+      keep_position_lock_in_final_yaw: True # True=保留最终转向时目标点Odom位置，False=释放并跟随Map目标
       traj_speed_lookahead: 0.1    # 速度参考与瞄准目标解耦：最近点之后前方窗内 max（不含最近点自身，避免状态戳自引用）
       # 0 = 自动取一个控制周期。曾试 0.15 补偿执行延迟，实机实测不改善末端越点，改回 0。
       traj_time_lookahead: 0.0

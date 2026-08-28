@@ -85,10 +85,9 @@ Status AssistedTeleop::onCycleUpdate()
   rclcpp::Duration time_remaining = end_time_ - steady_clock_.now();
   if (time_remaining.seconds() < 0.0 && command_time_allowance_.seconds() > 0.0) {
     stopRobot();
-    RCLCPP_WARN_STREAM(
-      logger_,
-      "Exceeded time allowance before reaching the " << behavior_name_.c_str() <<
-        "goal - Exiting " << behavior_name_.c_str());
+    RCLCPP_WARN(
+      logger_, "Behavior timed out: name='%s', allowance=%.3f s.",
+      behavior_name_.c_str(), command_time_allowance_.seconds());
     return Status::FAILED;
   }
 
@@ -103,10 +102,9 @@ Status AssistedTeleop::onCycleUpdate()
       current_pose, *tf_, global_frame_, robot_base_frame_,
       transform_tolerance_))
   {
-    RCLCPP_ERROR_STREAM(
-      logger_,
-      "Current robot pose is not available for " <<
-        behavior_name_.c_str());
+    RCLCPP_ERROR(
+      logger_, "Behavior stopped: name='%s', robot pose unavailable.",
+      behavior_name_.c_str());
     return Status::FAILED;
   }
   geometry_msgs::msg::Pose2D projected_pose;
@@ -122,22 +120,20 @@ Status AssistedTeleop::onCycleUpdate()
 
     if (!collision_checker_->isCollisionFree(projected_pose)) {
       if (time == simulation_time_step_) {
-        RCLCPP_DEBUG_STREAM_THROTTLE(
-          logger_,
-          steady_clock_,
-          1000,
-          behavior_name_.c_str() << " collided on first time step, setting velocity to zero");
+        RCLCPP_DEBUG_THROTTLE(
+          logger_, steady_clock_, 1000,
+          "Behavior command stopped: name='%s', collision_in=%.3f s.",
+          behavior_name_.c_str(), time);
         scaled_twist.linear.x = 0.0f;
         scaled_twist.linear.y = 0.0f;
         scaled_twist.angular.z = 0.0f;
         break;
       } else {
-        RCLCPP_DEBUG_STREAM_THROTTLE(
-          logger_,
-          steady_clock_,
-          1000,
-          behavior_name_.c_str() << " collision approaching in " << time << " seconds");
         double scale_factor = time / projection_time_;
+        RCLCPP_DEBUG_THROTTLE(
+          logger_, steady_clock_, 1000,
+          "Behavior command scaled: name='%s', collision_in=%.3f s, scale=%.3f.",
+          behavior_name_.c_str(), time, scale_factor);
         scaled_twist.linear.x *= scale_factor;
         scaled_twist.linear.y *= scale_factor;
         scaled_twist.angular.z *= scale_factor;

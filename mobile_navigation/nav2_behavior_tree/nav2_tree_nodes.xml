@@ -107,11 +107,15 @@
     </Action>
 
     <Action ID="FollowPath">
-      <input_port name="controller_id" default="MPPIController"/>
+      <input_port name="controller_id" default=""/>
       <input_port name="path">Path to follow</input_port>
       <input_port name="goal_checker_id">Goal checker</input_port>
       <input_port name="server_name">Server name</input_port>
       <input_port name="server_timeout">Server timeout</input_port>
+    </Action>
+
+    <Action ID="RequestAndWaitForGlobalReplan">
+      <input_port name="reason">Recovery reason: follow_path_failed or back_up_succeeded</input_port>
     </Action>
 
     <Action ID="NavigateToPose">
@@ -304,6 +308,7 @@
       <input_port name="path">Global path to check deviation</input_port>
       <input_port name="max_deviation">Max allowed deviation</input_port>
       <input_port name="hz">Replanning frequency</input_port>
+      <input_port name="recovery_replan_mode">Recovery replan mode: disabled, observe, or active</input_port>
     </Decorator>
 
   </TreeNodesModel>

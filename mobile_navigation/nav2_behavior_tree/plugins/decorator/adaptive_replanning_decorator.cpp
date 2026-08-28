@@ -12,9 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <string>
-#include <memory>
 #include <cmath>
+#include <cinttypes>
+#include <limits>
+#include <memory>
+#include <string>
 
 #include "nav2_util/robot_utils.hpp"
 #include "nav2_util/geometry_utils.hpp"
@@ -27,21 +29,107 @@
 namespace nav2_behavior_tree
 {
 
+namespace
+{
+
+constexpr double kGoalPositionChangeToleranceM = 1e-3;
+constexpr double kGoalOrientationChangeTolerance = 1e-3;
+constexpr int64_t kPlanningLogThrottleMs = 1000;
+constexpr int64_t kWarningLogThrottleMs = 5000;
+
+}  // namespace
+
 AdaptiveReplanning::AdaptiveReplanning(
   const std::string & name,
   const BT::NodeConfiguration & conf)
 : BT::DecoratorNode(name, conf),
-  is_first_planning_(true),
-  last_planning_failed_(false),
+  has_valid_plan_(false),
   has_last_goal_(false),
-  has_planned_once_(false),
+  planning_in_progress_(false),
   global_frame_("map"),
   robot_base_frame_("base_link")
 {
   node_ = config().blackboard->get<rclcpp::Node::SharedPtr>("node");
   tf_ = config().blackboard->get<std::shared_ptr<tf2_ros::Buffer>>("tf_buffer");
+  global_replan_context_ = getOrCreateGlobalReplanContext(config().blackboard);
 
   node_->get_parameter("transform_tolerance", transform_tolerance_);
+
+  std::string mode_value{"disabled"};
+  getInput("recovery_replan_mode", mode_value);
+  if (!parseGlobalReplanMode(mode_value, recovery_replan_mode_)) {
+    RCLCPP_WARN(
+      node_->get_logger(),
+      "AdaptiveReplanning: Invalid recovery_replan_mode='%s'; using disabled.",
+      mode_value.c_str());
+    recovery_replan_mode_ = GlobalReplanMode::DISABLED;
+  }
+  global_replan_context_->setMode(recovery_replan_mode_);
+  RCLCPP_INFO(
+    node_->get_logger(), "AdaptiveReplanning: Recovery replan mode=%s.",
+    nav2_behavior_tree::toString(recovery_replan_mode_));
+}
+
+void AdaptiveReplanning::beginPlanningAttempt()
+{
+  planning_in_progress_ = true;
+  active_replan_request_ = recovery_replan_mode_ == GlobalReplanMode::ACTIVE ?
+    global_replan_context_->latestPendingRequest() : std::nullopt;
+
+  if (active_replan_request_) {
+    const auto & request = *active_replan_request_;
+    RCLCPP_INFO(
+      node_->get_logger(),
+      "Global replan started: id=%" PRIu64 ", reason=%s.",
+      request.token.request_id,
+      nav2_behavior_tree::toString(request.reason));
+  }
+}
+
+BT::NodeStatus AdaptiveReplanning::tickPlanningChild()
+{
+  const BT::NodeStatus child_state = child_node_->executeTick();
+  if (child_state == BT::NodeStatus::RUNNING) {
+    return child_state;
+  }
+
+  planning_in_progress_ = false;
+
+  if (child_state == BT::NodeStatus::SUCCESS) {
+    has_valid_plan_ = true;
+    last_planning_time_ = std::chrono::steady_clock::now();
+
+    if (active_replan_request_ &&
+      global_replan_context_->complete(active_replan_request_->token))
+    {
+      nav_msgs::msg::Path path;
+      getInput("path", path);
+      RCLCPP_INFO(
+        node_->get_logger(),
+        "Global replan completed: id=%" PRIu64 ", poses=%zu.",
+        active_replan_request_->token.request_id,
+        path.poses.size());
+    }
+  } else if (child_state == BT::NodeStatus::FAILURE && active_replan_request_) {
+    RCLCPP_WARN(
+      node_->get_logger(),
+      "Global replan remains pending: id=%" PRIu64 ", planner failed.",
+      active_replan_request_->token.request_id);
+  }
+
+  active_replan_request_.reset();
+  return child_state;
+}
+
+void AdaptiveReplanning::halt()
+{
+  BT::DecoratorNode::halt();
+
+  // Behavior Tree 在任务结束、取消或抢占时会 halt；下次执行必须重新生成首条路径。
+  has_valid_plan_ = false;
+  has_last_goal_ = false;
+  planning_in_progress_ = false;
+  active_replan_request_.reset();
 }
 
 BT::NodeStatus AdaptiveReplanning::tick()
@@ -49,23 +137,47 @@ BT::NodeStatus AdaptiveReplanning::tick()
   // 1. Get current goal and check if goal has changed
   geometry_msgs::msg::PoseStamped current_goal;
   if (!getInput("goal", current_goal)) {
-    RCLCPP_WARN_THROTTLE(
-      node_->get_logger(), *node_->get_clock(), 5000,
-      "AdaptiveReplanning: Failed to get 'goal' from input port.");
-    return child_node_->executeTick();
+    if (!planning_in_progress_) {
+      RCLCPP_WARN_THROTTLE(
+        node_->get_logger(), *node_->get_clock(), kWarningLogThrottleMs,
+        "AdaptiveReplanning: Goal input unavailable; planning without gating.");
+      beginPlanningAttempt();
+    }
+    return tickPlanningChild();
   }
 
   getInput("global_frame", global_frame_);
   getInput("robot_base_frame", robot_base_frame_);
 
-  double distance_threshold = 0.5;
+  double distance_threshold = kDefaultDistanceThresholdM;
   getInput("distance_threshold", distance_threshold);
+  if (!std::isfinite(distance_threshold) || distance_threshold < 0.0) {
+    RCLCPP_WARN_THROTTLE(
+      node_->get_logger(), *node_->get_clock(), kWarningLogThrottleMs,
+      "AdaptiveReplanning: Invalid distance_threshold=%.3f; using %.3f m.",
+      distance_threshold, kDefaultDistanceThresholdM);
+    distance_threshold = kDefaultDistanceThresholdM;
+  }
 
-  double max_deviation = 0.5;
+  double max_deviation = kDefaultMaxDeviationM;
   getInput("max_deviation", max_deviation);
+  if (!std::isfinite(max_deviation) || max_deviation < 0.0) {
+    RCLCPP_WARN_THROTTLE(
+      node_->get_logger(), *node_->get_clock(), kWarningLogThrottleMs,
+      "AdaptiveReplanning: Invalid max_deviation=%.3f; using %.3f m.",
+      max_deviation, kDefaultMaxDeviationM);
+    max_deviation = kDefaultMaxDeviationM;
+  }
 
-  double hz = 0.02;
+  double hz = kDefaultReplanningFrequencyHz;
   getInput("hz", hz);
+  if (!std::isfinite(hz) || hz <= 0.0) {
+    RCLCPP_WARN_THROTTLE(
+      node_->get_logger(), *node_->get_clock(), kWarningLogThrottleMs,
+      "AdaptiveReplanning: Invalid hz=%.3f; using %.3f Hz.",
+      hz, kDefaultReplanningFrequencyHz);
+    hz = kDefaultReplanningFrequencyHz;
+  }
 
   // Check if target goal has changed
   bool goal_changed = false;
@@ -80,21 +192,37 @@ BT::NodeStatus AdaptiveReplanning::tick()
     double dqz = current_goal.pose.orientation.z - last_goal_.pose.orientation.z;
     double dqw = current_goal.pose.orientation.w - last_goal_.pose.orientation.w;
 
-    if (std::abs(dx) > 1e-3 || std::abs(dy) > 1e-3 || std::abs(dz) > 1e-3 ||
-        std::abs(dqx) > 1e-3 || std::abs(dqy) > 1e-3 || std::abs(dqz) > 1e-3 || std::abs(dqw) > 1e-3 ||
-        current_goal.header.frame_id != last_goal_.header.frame_id)
+    if (std::abs(dx) > kGoalPositionChangeToleranceM ||
+      std::abs(dy) > kGoalPositionChangeToleranceM ||
+      std::abs(dz) > kGoalPositionChangeToleranceM ||
+      std::abs(dqx) > kGoalOrientationChangeTolerance ||
+      std::abs(dqy) > kGoalOrientationChangeTolerance ||
+      std::abs(dqz) > kGoalOrientationChangeTolerance ||
+      std::abs(dqw) > kGoalOrientationChangeTolerance ||
+      current_goal.header.frame_id != last_goal_.header.frame_id)
     {
       goal_changed = true;
     }
   }
 
   if (goal_changed) {
-    RCLCPP_INFO(node_->get_logger(), "AdaptiveReplanning: New navigation goal received. Resetting planning status.");
-    is_first_planning_ = true;
-    last_planning_failed_ = false;
+    // 正在运行的规划仍绑定旧目标，先取消后再以新目标启动首次规划。
+    if (planning_in_progress_) {
+      haltChild();
+      planning_in_progress_ = false;
+      active_replan_request_.reset();
+    }
+    RCLCPP_INFO(
+      node_->get_logger(),
+      "AdaptiveReplanning: Goal changed; previous plan invalidated.");
+    has_valid_plan_ = false;
     last_goal_ = current_goal;
     has_last_goal_ = true;
-    has_planned_once_ = false;
+  }
+
+  // 一次规划进入 RUNNING 后必须持续 tick，不能被近目标或频率门控中途截断。
+  if (planning_in_progress_) {
+    return tickPlanningChild();
   }
 
   // 2. Get current robot pose
@@ -104,18 +232,10 @@ BT::NodeStatus AdaptiveReplanning::tick()
       transform_tolerance_))
   {
     RCLCPP_WARN_THROTTLE(
-      node_->get_logger(), *node_->get_clock(), 5000,
-      "AdaptiveReplanning: Current robot pose is not available. Proceeding with planning.");
-    const BT::NodeStatus child_state = child_node_->executeTick();
-    if (child_state == BT::NodeStatus::SUCCESS) {
-      is_first_planning_ = false;
-      last_planning_failed_ = false;
-      has_planned_once_ = true;
-      last_planning_time_ = std::chrono::steady_clock::now();
-    } else if (child_state == BT::NodeStatus::FAILURE) {
-      last_planning_failed_ = true;
-    }
-    return child_state;
+      node_->get_logger(), *node_->get_clock(), kWarningLogThrottleMs,
+      "AdaptiveReplanning: Robot pose unavailable; planning without pose gating.");
+    beginPlanningAttempt();
+    return tickPlanningChild();
   }
 
   // 3. Compute distance to goal
@@ -126,7 +246,7 @@ BT::NodeStatus AdaptiveReplanning::tick()
   bool deviated = false;
   nav_msgs::msg::Path path;
   double min_dist = 0.0;
-  if (!is_first_planning_ && getInput("path", path) && !path.poses.empty()) {
+  if (has_valid_plan_ && getInput("path", path) && !path.poses.empty()) {
     min_dist = std::numeric_limits<double>::max();
     for (const auto & pose : path.poses) {
       double d = nav2_util::geometry_utils::euclidean_distance(
@@ -140,92 +260,42 @@ BT::NodeStatus AdaptiveReplanning::tick()
     }
   }
 
-  // 5. Decision:
-  // - If it's the first planning, we must plan.
-  // - If robot has deviated, we must plan.
-  // - If distance to goal <= threshold, we skip replanning.
-  // - If distance > threshold: we apply the rate control (hz) using absolute time.
-  bool should_plan = false;
-  std::string plan_reason = "";
-  double elapsed_sec = 0.0;
-  double period = 1.0 / hz;
+  // 5. 恢复请求优先于近目标和频率门控，确保失败后一定能刷新旧路径。
+  const double period_sec = 1.0 / hz;
+  const bool has_recovery_request =
+    recovery_replan_mode_ == GlobalReplanMode::ACTIVE &&
+    static_cast<bool>(global_replan_context_->latestPendingRequest());
 
-  if (is_first_planning_) {
-    should_plan = true;
-    plan_reason = "first_planning";
+  if (!has_valid_plan_) {
+    RCLCPP_INFO_THROTTLE(
+      node_->get_logger(), *node_->get_clock(), kPlanningLogThrottleMs,
+      "AdaptiveReplanning: Planning initial path (dist_to_goal=%.3f m).", dist);
+  } else if (has_recovery_request) {
+    // 请求详情由beginPlanningAttempt()统一记录。
   } else if (dist <= distance_threshold) {
-    should_plan = false;
     return BT::NodeStatus::SUCCESS;
   } else if (deviated) {
-    should_plan = true;
-    plan_reason = "path_deviation";
+    RCLCPP_INFO_THROTTLE(
+      node_->get_logger(), *node_->get_clock(), kPlanningLogThrottleMs,
+      "AdaptiveReplanning: Path deviation requires replanning "
+      "(deviation=%.3f m, limit=%.3f m, dist_to_goal=%.3f m).",
+      min_dist, max_deviation, dist);
   } else {
-    // Apply frequency check
-    if (!has_planned_once_) {
-      should_plan = true;
-      plan_reason = "has_not_planned_once_yet";
-    } else {
-      auto now = std::chrono::steady_clock::now();
-      elapsed_sec = std::chrono::duration<double>(now - last_planning_time_).count();
-      if (elapsed_sec >= period) {
-        should_plan = true;
-        plan_reason = "rate_limit_elapsed";
-      } else {
-        should_plan = false;
-      }
+    const auto now = std::chrono::steady_clock::now();
+    const double elapsed_sec =
+      std::chrono::duration<double>(now - last_planning_time_).count();
+    if (elapsed_sec < period_sec) {
+      return BT::NodeStatus::SUCCESS;
     }
+    RCLCPP_INFO_THROTTLE(
+      node_->get_logger(), *node_->get_clock(), kPlanningLogThrottleMs,
+      "AdaptiveReplanning: Replanning period elapsed "
+      "(elapsed=%.3f s, period=%.3f s, dist_to_goal=%.3f m).",
+      elapsed_sec, period_sec, dist);
   }
 
-  if (should_plan) {
-    if (plan_reason == "first_planning" || plan_reason == "has_not_planned_once_yet") {
-      RCLCPP_INFO_THROTTLE(
-        node_->get_logger(),
-        *node_->get_clock(),
-        1000,
-        "AdaptiveReplanning: Global replanning triggered: no valid initial path "
-        "(reason=%s, dist_to_goal=%.3f m).",
-        plan_reason.c_str(), dist);
-    } else if (plan_reason == "path_deviation") {
-      RCLCPP_INFO_THROTTLE(
-        node_->get_logger(),
-        *node_->get_clock(),
-        1000,
-        "AdaptiveReplanning: Global replanning triggered: path deviation exceeded limit "
-        "(deviation=%.3f m > limit=%.3f m, dist_to_goal=%.3f m).",
-        min_dist, max_deviation, dist);
-    } else if (plan_reason == "rate_limit_elapsed") {
-      RCLCPP_INFO_THROTTLE(
-        node_->get_logger(),
-        *node_->get_clock(),
-        1000,
-        "AdaptiveReplanning: Global replanning triggered: replanning period elapsed "
-        "(elapsed=%.3f s >= period=%.3f s, hz=%.3f, dist_to_goal=%.3f m).",
-        elapsed_sec, period, hz, dist);
-    } else {
-      RCLCPP_INFO_THROTTLE(
-        node_->get_logger(),
-        *node_->get_clock(),
-        1000,
-        "AdaptiveReplanning: Global replanning triggered (reason=%s, dist_to_goal=%.3f m).",
-        plan_reason.c_str(), dist);
-    }
-
-    const BT::NodeStatus child_state = child_node_->executeTick();
-
-    if (child_state == BT::NodeStatus::SUCCESS) {
-      is_first_planning_ = false;
-      last_planning_failed_ = false;
-      has_planned_once_ = true;
-      last_planning_time_ = std::chrono::steady_clock::now();
-    } else if (child_state == BT::NodeStatus::FAILURE) {
-      last_planning_failed_ = true;
-      // "First planning" means that no valid initial path has been produced yet.
-      // Keep the flag set so recovery retries are not suppressed by the near-goal gate.
-    }
-    return child_state;
-  }
-
-  return BT::NodeStatus::SUCCESS;
+  beginPlanningAttempt();
+  return tickPlanningChild();
 }
 
 }  // namespace nav2_behavior_tree

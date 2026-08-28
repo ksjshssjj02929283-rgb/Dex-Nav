@@ -76,9 +76,8 @@ public:
     if (!current_navigator_.empty()) {
       RCLCPP_ERROR(
         rclcpp::get_logger("NavigatorMutex"),
-        "Major error! Navigation requested while another navigation"
-        " task is in progress! This likely occurred from an incorrect"
-        "implementation of a navigator plugin.");
+        "Navigator conflict: requested='%s', active='%s'.",
+        navigator_name.c_str(), current_navigator_.c_str());
     }
     current_navigator_ = navigator_name;
   }
@@ -93,9 +92,8 @@ public:
     if (current_navigator_ != navigator_name) {
       RCLCPP_ERROR(
         rclcpp::get_logger("NavigatorMutex"),
-        "Major error! Navigation stopped while another navigation"
-        " task is in progress! This likely occurred from an incorrect"
-        "implementation of a navigator plugin.");
+        "Navigator stop mismatch: requested='%s', active='%s'.",
+        navigator_name.c_str(), current_navigator_.c_str());
     } else {
       current_navigator_ = std::string("");
     }

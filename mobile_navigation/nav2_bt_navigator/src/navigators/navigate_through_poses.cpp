@@ -95,7 +95,7 @@ NavigateThroughPosesNavigator::goalReceived(ActionT::Goal::ConstSharedPtr goal)
 
   if (!bt_action_server_->loadBehaviorTree(bt_xml_filename)) {
     RCLCPP_ERROR(
-      logger_, "Error loading XML file: %s. Navigation canceled.",
+      logger_, "Failed to load behavior tree: file='%s'; navigation rejected.",
       bt_xml_filename.c_str());
     return false;
   }
@@ -116,7 +116,8 @@ NavigateThroughPosesNavigator::goalCompleted(
 
   const auto goal = bt_action_server_->getCurrentGoal();
   if (!goal || goal->poses.empty()) {
-    RCLCPP_WARN(logger_, "多点导航成功，但无法获取最终执行目标，跳过到点日志");
+    RCLCPP_WARN(
+      logger_, "Multi-pose navigation succeeded but goal data is unavailable; details skipped.");
     return;
   }
 
@@ -128,7 +129,8 @@ NavigateThroughPosesNavigator::goalCompleted(
 
   RCLCPP_INFO(
     logger_,
-    "多点导航到点: uuid=%s, frame=%s, target=(%.3f, %.3f, %.3f), "
+    "Multi-pose navigation goal reached: uuid=%s, frame=%s, "
+    "target=(%.3f, %.3f, %.3f), "
     "yaw=%.4f rad/%.2f deg, poses=%zu",
     goal_uuid.c_str(), final_goal.header.frame_id.c_str(),
     pose.position.x, pose.position.y, pose.position.z,
@@ -230,7 +232,8 @@ NavigateThroughPosesNavigator::onPreempt(ActionT::Goal::ConstSharedPtr goal)
     // 接受新目标时，SimpleActionServer 会将旧目标置为 ABORTED。
     const auto pending_goal = bt_action_server_->acceptPendingGoal();
     if (!pending_goal) {
-      RCLCPP_ERROR(logger_, "多点导航抢占失败：无法接受待处理的新目标");
+      RCLCPP_ERROR(
+        logger_, "Preemption failed: pending multi-pose navigation goal is unavailable.");
       return;
     }
 
@@ -239,15 +242,12 @@ NavigateThroughPosesNavigator::onPreempt(ActionT::Goal::ConstSharedPtr goal)
     blackboard->set<nav_msgs::msg::Path>(path_blackboard_id_, nav_msgs::msg::Path());
     initializeGoalPoses(pending_goal);
 
-    RCLCPP_INFO(logger_, "新多点导航目标已覆盖旧目标：旧 FollowPath 已停止，旧路径已清空");
+    RCLCPP_INFO(
+      logger_, "Preemption accepted: previous FollowPath stopped and path cleared.");
   } else {
     RCLCPP_WARN(
       logger_,
-      "Preemption request was rejected since the requested BT XML file is not the same "
-      "as the one that the current goal is executing. Preemption with a new BT is invalid "
-      "since it would require cancellation of the previous goal instead of true preemption."
-      "\nCancel the current goal and send a new action request if you want to use a "
-      "different BT XML file. For now, continuing to track the last goal until completion.");
+      "Preemption rejected: new goal uses a different BT XML; cancel the current goal first.");
     bt_action_server_->terminatePendingGoal();
   }
 }
