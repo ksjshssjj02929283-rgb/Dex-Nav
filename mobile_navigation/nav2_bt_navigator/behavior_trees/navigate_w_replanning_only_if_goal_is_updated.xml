@@ -8,7 +8,7 @@
       <GoalUpdatedController>
         <ComputePathToPose goal="{goal}" path="{path}" planner_id="SmacGridBased"/>
       </GoalUpdatedController>
-      <FollowPath path="{path}"  controller_id="MPPIController"/>
+      <FollowPath path="{path}"/>
     </PipelineSequence>
   </BehaviorTree>
 </root>

@@ -29,7 +29,7 @@ using SpinAction = nav2_msgs::action::Spin;
 
 /**
  * @class nav2_behaviors::Spin
- * @brief An action server behavior for spinning in
+ * @brief 原地旋转，并在执行前方时间窗内进行碰撞预测
  */
 class Spin : public TimedBehavior<SpinAction>
 {
@@ -60,11 +60,11 @@ public:
 
 protected:
   /**
-   * @brief Check if pose is collision free
-   * @param distance Distance to check forward
-   * @param cmd_vel current commanded velocity
-   * @param pose2d Current pose
-   * @return is collision free or not
+   * @brief 预测剩余旋转过程是否安全
+   * @param distance 当前已旋转角度，单位 rad
+   * @param cmd_vel 当前速度指令
+   * @param pose2d 当前机器人位姿
+   * @return 预测过程安全时返回 true
    */
   bool isCollisionFree(
     const double & distance,

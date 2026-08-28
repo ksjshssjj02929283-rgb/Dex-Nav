@@ -141,8 +141,8 @@ protected:
   // Odometry smoother object
   std::shared_ptr<nav2_util::OdomSmoother> odom_smoother_;
 
-  // nav_monitor 任务回显：Humble 被动订阅拿不到别的 client 发的 goal 内容，
-  // 只能在这里主动复述一次，供 nav2_nav_monitor 感知"一次新导航开始"
+  // ROS 2 Humble 没有可直接订阅的 Action goal 内容，因此在任务初始化时
+  // 向 nav_monitor 回显一次目标和 Behavior Tree 路径。
   bool enable_nav_monitor_echo_{false};
   rclcpp_lifecycle::LifecyclePublisher<geometry_msgs::msg::PoseStamped>::SharedPtr
     goal_pose_echo_pub_;

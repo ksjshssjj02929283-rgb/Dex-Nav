@@ -14,9 +14,12 @@
 // limitations under the License.
 
 #include <gtest/gtest.h>
+#include <atomic>
+#include <chrono>
 #include <memory>
 #include <set>
 #include <string>
+#include <thread>
 
 #include "nav_msgs/msg/path.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
@@ -33,6 +36,11 @@ public:
   : TestActionServer("compute_path_to_pose")
   {}
 
+  void setReturnEmptyPath(bool return_empty_path)
+  {
+    return_empty_path_ = return_empty_path;
+  }
+
 protected:
   void execute(
     const typename std::shared_ptr<
@@ -41,6 +49,10 @@ protected:
   {
     const auto goal = goal_handle->get_goal();
     auto result = std::make_shared<nav2_msgs::action::ComputePathToPose::Result>();
+    if (return_empty_path_) {
+      goal_handle->succeed(result);
+      return;
+    }
     result->path.poses.resize(2);
     result->path.poses[1].pose.position.x = goal->goal.pose.position.x;
     if (goal->use_start) {
@@ -50,6 +62,9 @@ protected:
     }
     goal_handle->succeed(result);
   }
+
+private:
+  std::atomic_bool return_empty_path_{false};
 };
 
 class ComputePathToPoseActionTestFixture : public ::testing::Test
@@ -98,6 +113,7 @@ public:
 
   void TearDown() override
   {
+    action_server_->setReturnEmptyPath(false);
     tree_.reset();
   }
 
@@ -242,6 +258,68 @@ TEST_F(ComputePathToPoseActionTestFixture, test_tick_use_start)
   EXPECT_EQ(path.poses.size(), 2u);
   EXPECT_EQ(path.poses[0].pose.position.x, -1.5);
   EXPECT_EQ(path.poses[1].pose.position.x, -2.5);
+}
+
+TEST_F(ComputePathToPoseActionTestFixture, test_empty_replan_clears_previous_path)
+{
+  const std::string xml_txt =
+    R"(
+      <root main_tree_to_execute = "MainTree" >
+        <BehaviorTree ID="MainTree">
+            <ComputePathToPose goal="{goal}" path="{path}" planner_id="GridBased"/>
+        </BehaviorTree>
+      </root>)";
+  tree_ = std::make_shared<BT::Tree>(factory_->createTreeFromText(xml_txt, config_->blackboard));
+
+  geometry_msgs::msg::PoseStamped goal;
+  goal.header.stamp = node_->now();
+  goal.pose.position.x = 1.0;
+  config_->blackboard->set("goal", goal);
+
+  // 首次规划先生成有效路径，模拟同一目标周期重规划时仍保留上一条路径。
+  for (int attempt = 0; attempt < 100; ++attempt) {
+    tree_->rootNode()->executeTick();
+    if (tree_->rootNode()->status() == BT::NodeStatus::SUCCESS) {
+      break;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  ASSERT_EQ(tree_->rootNode()->status(), BT::NodeStatus::SUCCESS);
+  nav_msgs::msg::Path path;
+  config_->blackboard->get<nav_msgs::msg::Path>("path", path);
+  ASSERT_FALSE(path.poses.empty());
+
+  tree_->rootNode()->halt();
+  action_server_->setReturnEmptyPath(true);
+
+  for (int attempt = 0; attempt < 100; ++attempt) {
+    tree_->rootNode()->executeTick();
+    if (tree_->rootNode()->status() == BT::NodeStatus::FAILURE) {
+      break;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+
+  EXPECT_EQ(tree_->rootNode()->status(), BT::NodeStatus::FAILURE);
+  config_->blackboard->get<nav_msgs::msg::Path>("path", path);
+  EXPECT_TRUE(path.poses.empty());
+}
+
+TEST_F(ComputePathToPoseActionTestFixture, test_cancelled_plan_returns_failure)
+{
+  const std::string xml_txt =
+    R"(
+      <root main_tree_to_execute = "MainTree" >
+        <BehaviorTree ID="MainTree">
+            <ComputePathToPose goal="{goal}" path="{path}" planner_id="GridBased"/>
+        </BehaviorTree>
+      </root>)";
+  tree_ = std::make_shared<BT::Tree>(factory_->createTreeFromText(xml_txt, config_->blackboard));
+
+  auto * action_node = dynamic_cast<nav2_behavior_tree::ComputePathToPoseAction *>(
+    tree_->rootNode());
+  ASSERT_NE(action_node, nullptr);
+  EXPECT_EQ(action_node->on_cancelled(), BT::NodeStatus::FAILURE);
 }
 
 int main(int argc, char ** argv)

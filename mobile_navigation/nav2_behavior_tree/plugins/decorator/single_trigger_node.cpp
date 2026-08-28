@@ -28,6 +28,13 @@ SingleTrigger::SingleTrigger(
 {
 }
 
+void SingleTrigger::halt()
+{
+  BT::DecoratorNode::halt();
+  // halt 表示本轮执行结束，下次执行应重新允许子节点触发一次。
+  first_time_ = true;
+}
+
 BT::NodeStatus SingleTrigger::tick()
 {
   if (status() == BT::NodeStatus::IDLE) {
