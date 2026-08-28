@@ -21,13 +21,15 @@ Action goal 中的 `target_pose` 使用 `geometry_msgs/msg/PoseStamped`。节点
 主要接口：
 
 - Action `control/precise_control` (`nav_interfaces/action/PreciseControl`)。
-- 订阅 `feedback/odom` (`nav_msgs/msg/Odometry`)。
+- 按任务订阅 `feedback/odom` (`nav_msgs/msg/Odometry`)。
 - 发布 `control/cmd_vel` (`geometry_msgs/msg/Twist`)。
 
 运行注意：
 
 - 不订阅 `control/ctrl_pose`。
 - 同一时间只接受一个 active goal。
+- 默认配置按任务创建 TF listener 和 Odom 订阅；空闲时释放，降低加密通信域中的常驻 CPU 开销。
+- 接收 goal 后先进入 `WARMING`，只有 TF 和本次任务首帧 Odom 均就绪才进入控制；等待超时会保持零速度并中止目标。
 - 客户端 cancel 后会平滑停车，完成后返回 `CANCELLED`。
 - 不应与 `mobile_control_node` 同时控制同一个 `control/cmd_vel` 链路。
 
@@ -40,6 +42,17 @@ ros2 launch mobile_perception mobile_control_action.launch.py
 默认参数文件：
 
 - `config/mobile_control_action_params.yaml`
+
+## 接口辅助节点的故障隔离
+
+- `pub_current_position.py` 使用 10 Hz ROS Timer 发布 `feedback/chassis_pose`，不再使用
+  `spin_once + sleep` 手写循环。每次先以零超时检查 `map <- base_link` TF，再执行零超时
+  查询；TF 长期缺失时查询周期从 0.1 秒逐级退避到 1 秒，恢复后自动回到 10 Hz。
+- `nav_goal_server.py` 对 `navigate_to_pose` 的首次等待上限为 10 秒。服务器未就绪时节点
+  继续处理回调并每 2 秒非阻塞重试，只保留最新待发目标。旧目标取消完成前不会发送
+  新目标，过期的反馈、取消和结果回调通过目标代次编号丢弃。目标响应等待上限为 10 秒，
+  取消完成等待上限为 15 秒；服务器已退出时复位旧状态并重连，端点仍存在但响应不确定时
+  不重复发送旧目标，取消阶段会重试取消请求。
 
 ## 当前二维码检测与 Action 精控链路
 
@@ -122,8 +135,10 @@ TF 树能把该目标从其 `header.frame_id` 转换到 `control_reference_frame
 
 控制行为：
 
-- 收到 goal 后先将目标转换到 `control_reference_frame` 并锁存；该参数默认是
-  连续性更好的 `odom`，转换失败会拒绝或 abort 该 goal。
+- 收到 goal 后按需创建 TF listener 和 Odom 订阅，进入 `WARMING`；TF 和首帧 Odom
+  就绪后才将目标转换到 `control_reference_frame` 并锁存。该参考系默认是连续性更好的
+  `odom`；等待超过 `input_ready_timeout_s` 会保持零速度并 abort 该 goal。按任务创建的
+  TF Buffer 不包含接单前的历史数据，因此懒加载模式使用资源就绪时的最新 TF 锁存目标。
 - 控制循环中持续查询 `base_link <- control_reference_frame` TF，把锁存目标转回
   `base_link` 计算位置和角度误差。
 - 根据目标输入只判断一次 `STRAIGHT` 或 `ROTATE` 模式，任务期间不会切换模式。
@@ -145,7 +160,8 @@ TF 树能把该目标从其 `header.frame_id` 转换到 `control_reference_frame
 - 进入位置容差后不再直接清零线速度，而是按 `decel_x_max` 继续减速；位置到位且
   Odom 实测线速度低于 `straight.stop_linear_vel` 后，才进入停稳确认。
 - 发布 `control/cmd_vel`，并订阅 `feedback/odom` 用于限加速度和平滑停车。
-- feedback 的 `current_status` 包括 `IDLE`、`CONTROL`、`CANCELLING`、`SUCCEEDED`。
+- feedback 的 `current_status` 包括 `WAITING_FOR_INPUTS`、`IDLE`、`CONTROL`、
+  `CANCELLING`、`SUCCEEDED`。
 - result 成功时 `success=true`、`message=SUCCEEDED`；取消完成时
   `success=false`、`message=CANCELLED`。
 
@@ -167,6 +183,8 @@ ros2 action send_goal /control/precise_control nav_interfaces/action/PreciseCont
 
 - 不要同时运行 `mobile_control_node` 和 `mobile_control_action_node` 控制同一个
   `control/cmd_vel` 链路。
+- `lazy_runtime_resources=true` 是 CE 配置的低 CPU 模式；如果现场发现动态 TF/Odom
+  端点无法在规定时间内就绪，可先改为 `false` 回退到原有常驻模式，再继续排查。
 - 使用二维码目标控制前，确认目标frame、`control_reference_frame`、`base_link`
   和 `camera_link` TF 连通；默认至少需要 `odom -> base_link` 可用。
 - `apriltag_target_pose` 默认发布在 `base_link`，如果上游需要跨时间使用目标，建议客户端在接收后尽快发送 Action goal，或将 `target_frame` 配置为稳定的全局 frame。

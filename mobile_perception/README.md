@@ -42,7 +42,7 @@ dexe_mobile_nav/mobile_perception/
 | 类型   | 名称                         | 说明                                                |
 | ------ | ---------------------------- | --------------------------------------------------- |
 | Action | `/control/precise_control` | 接收`nav_interfaces/action/PreciseControl` 目标。 |
-| 订阅   | `/feedback/odom`           | 获取底盘实际线速度和角速度。                        |
+| 订阅   | `/feedback/odom`           | 获取底盘实际线速度和角速度；CE配置下仅在任务期间订阅。 |
 | 发布   | `/control/cmd_vel`         | 输出底盘线速度和角速度。                            |
 | TF     | `odom -> base_link`        | 默认用于锁定目标并计算运动误差。                    |
 
@@ -58,7 +58,7 @@ dexe_mobile_nav/mobile_perception/config/mobile_control_action_params.yaml
 
 主要参数分为以下几类：
 
-- 公共参数：控制频率、参考坐标系、到位确认时间、速度和加减速度上限。
+- 公共参数：控制频率、参考坐标系、运行资源模式、输入就绪超时、到位确认时间、速度和加减速度上限。
 - 直线参数：速度曲线、升速时间、减速距离、停车速度阈值和直线 PID。
 - 原地转向参数：最大角速度、升速时间、减速角度范围和制动系数。
 - 到位参数：直线位置容差、航向容差和停稳速度阈值。
@@ -67,8 +67,26 @@ dexe_mobile_nav/mobile_perception/config/mobile_control_action_params.yaml
 
 ```bash
 ros2 param get /mobile_control_action_node control_reference_frame
+ros2 param get /mobile_control_action_node lazy_runtime_resources
 ros2 param get /mobile_control_action_node xy_tolerance
 ```
+
+`lazy_runtime_resources=true` 时，节点空闲期间不创建 TF listener，也不订阅
+`feedback/odom`。接收目标后节点先进入 `WARMING`，等待 TF 和本次任务的首帧 Odom；
+在 `input_ready_timeout_s` 内未就绪会保持零速度并中止目标。将该参数改为 `false`
+即可恢复原有常驻资源模式。由于按任务创建的 TF Buffer 不包含接单前的历史数据，
+该模式会在资源就绪时使用最新 TF 锁存目标。
+
+### 接口辅助节点
+
+- `pub_current_position.py` 使用 ROS Timer（定时器）以 10 Hz 可靠发布
+  `/feedback/chassis_pose`。TF 查询完全非阻塞；连续失败 50 次后逐级退避，最低查询
+  频率为 1 Hz，TF 恢复后自动回到 10 Hz。
+- `nav_goal_server.py` 启动时最多等待 `/navigate_to_pose` 10 秒，未就绪时仍会进入
+  ROS spin，并每 2 秒重试。等待期间只保存 `/control/nav2_pose` 的最新目标，连接恢复
+  后再发送，避免节点无声卡在构造函数中。目标响应等待超过 10 秒、取消完成等待超过
+  15 秒时会检查 Action 端点：服务器已退出则复位旧状态并重连；端点仍存在则禁止盲目
+  重发状态不确定的目标，取消阶段会安全重试取消请求。
 
 ## 使用方式
 

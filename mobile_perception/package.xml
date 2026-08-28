@@ -12,11 +12,13 @@
   <depend>rclcpp</depend>
   <depend>rclcpp_action</depend>
   <depend>rclpy</depend>
+  <depend>action_msgs</depend>
   <depend>cv_bridge</depend>
   <depend>apriltag_ros</depend>
   <depend>std_srvs</depend>
   <depend>geometry_msgs</depend>
   <depend>nav_msgs</depend>
+  <depend>nav2_msgs</depend>
   <depend>sensor_msgs</depend>
   <depend>std_msgs</depend>
   <depend>tf2</depend>

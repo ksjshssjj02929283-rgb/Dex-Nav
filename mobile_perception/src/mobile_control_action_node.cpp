@@ -18,6 +18,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <exception>
 #include <memory>
 #include <string>
 
@@ -63,10 +64,21 @@ public:
         SINE
     };
 
+    // 运行期资源只描述 TF/Odom 的生命周期，不改变原有控制状态机。
+    enum class RuntimeResourceState
+    {
+        INACTIVE,
+        STANDBY,
+        WARMING,
+        READY
+    };
+
     MobileControlActionNode() : Node("mobile_control_action_node")
     {
         this->declare_parameter("control_frequency", 20.0);
         this->declare_parameter("control_reference_frame", "odom");
+        this->declare_parameter("lazy_runtime_resources", false);
+        this->declare_parameter("input_ready_timeout_s", 5.0);
         this->declare_parameter("stop_confirm_duration", 0.2);
         this->declare_parameter("max_v", 0.35);
         this->declare_parameter("min_v", 0.03);
@@ -134,6 +146,21 @@ public:
             RCLCPP_WARN(
                 this->get_logger(),
                 "控制参考坐标系不能为空，本次回退为 odom。");
+        }
+        lazy_runtime_resources_ =
+            this->get_parameter("lazy_runtime_resources").as_bool();
+        input_ready_timeout_s_ =
+            this->get_parameter("input_ready_timeout_s").as_double();
+        if (
+            !std::isfinite(input_ready_timeout_s_) ||
+            input_ready_timeout_s_ < 0.5 || input_ready_timeout_s_ > 30.0)
+        {
+            RCLCPP_WARN(
+                this->get_logger(),
+                "输入就绪超时配置无效：input_ready_timeout_s=%.3f，"
+                "合法范围为[0.5, 30.0]秒，本次回退为5.0秒。",
+                input_ready_timeout_s_);
+            input_ready_timeout_s_ = 5.0;
         }
         stop_confirm_duration_ =
             std::max(0.0, this->get_parameter("stop_confirm_duration").as_double());
@@ -235,13 +262,14 @@ public:
         straight_angular_kd_ = this->get_parameter("straight.angular_pid.kd").as_double();
         straight_switch_speed_ = this->get_parameter("straight.switch_speed").as_double();
 
-        tf_buffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
-        tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
-
         cmd_vel_pub_ = this->create_publisher<geometry_msgs::msg::Twist>("control/cmd_vel", 10);
-        odom_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
-            "feedback/odom", 10,
-            std::bind(&MobileControlActionNode::odomCallback, this, std::placeholders::_1));
+
+        // 兼容模式保持原有常驻订阅；CE配置开启后改为接单时按需创建。
+        if (!lazy_runtime_resources_ && !activateRuntimeResources(false)) {
+            RCLCPP_ERROR(
+                this->get_logger(),
+                "常驻 TF/Odom 资源创建失败，节点保持运行但会拒绝控制目标。");
+        }
 
         action_server_ = rclcpp_action::create_server<PreciseControl>(
             this,
@@ -257,11 +285,14 @@ public:
         RCLCPP_INFO(
             this->get_logger(),
             "Action 控制参数：参考坐标系=%s，停稳确认=%.3fs（%d周期），控制频率=%.1fHz，"
+            "运行资源模式=%s，输入就绪超时=%.1fs，"
             "近目标减速距离=%.3fm，近目标最低速度比例=%.2f，"
             "直线曲线=%s，最低接近速度=%.3fm/s，线加/减速度=%.3f/%.3fm/s²，"
             "原地转向曲线=%s，最大角速度=%.3frad/s，最大角加/减速度=%.3f/%.3frad/s²",
             control_reference_frame_.c_str(),
             stop_confirm_duration_, stop_confirm_cycles_, control_frequency_,
+            lazy_runtime_resources_ ? "按任务懒加载" : "常驻兼容",
+            input_ready_timeout_s_,
             near_target_dist_, near_target_min_speed_scale_,
             straight_velocity_curve_ == StraightVelocityCurve::STEP ? "step" : "sine",
             min_v_, accel_x_max_, decel_x_max_,
@@ -270,6 +301,11 @@ public:
             rotate_to_heading_max_angular_decel_);
 
         resetControlState();
+    }
+
+    ~MobileControlActionNode() override
+    {
+        releaseRuntimeResources("节点析构");
     }
 
 private:
@@ -281,6 +317,12 @@ private:
 
     std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
     std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
+    RuntimeResourceState runtime_resource_state_{RuntimeResourceState::INACTIVE};
+    bool has_fresh_odom_{false};
+    bool has_pending_accept_{false};
+    geometry_msgs::msg::PoseStamped pending_target_pose_;
+    std::chrono::steady_clock::time_point resource_started_time_{};
+    std::string input_wait_reason_;
 
     geometry_msgs::msg::PoseStamped target_pose_control_frame_;
     geometry_msgs::msg::Twist pre_cmd_vel_;
@@ -296,6 +338,8 @@ private:
 
     double control_frequency_;
     std::string control_reference_frame_;
+    bool lazy_runtime_resources_{false};
+    double input_ready_timeout_s_{5.0};
     double stop_confirm_duration_;
     double max_v_;
     double min_v_;
@@ -350,6 +394,120 @@ private:
     double straight_switch_speed_;
     double straight_angular_error_prev_{0.0};
     double straight_angular_integral_{0.0};
+
+    const char * runtimeResourceStateName(RuntimeResourceState state) const
+    {
+        switch (state) {
+            case RuntimeResourceState::INACTIVE:
+                return "INACTIVE";
+            case RuntimeResourceState::STANDBY:
+                return "STANDBY";
+            case RuntimeResourceState::WARMING:
+                return "WARMING";
+            case RuntimeResourceState::READY:
+                return "READY";
+        }
+        return "INVALID";
+    }
+
+    bool activateRuntimeResources(bool for_active_goal)
+    {
+        if (tf_buffer_ && tf_listener_ && odom_sub_) {
+            runtime_resource_state_ = for_active_goal
+                ? RuntimeResourceState::WARMING
+                : RuntimeResourceState::STANDBY;
+            if (for_active_goal) {
+                has_fresh_odom_ = false;
+                pre_cmd_vel_ = geometry_msgs::msg::Twist{};
+                input_wait_reason_.clear();
+                resource_started_time_ = std::chrono::steady_clock::now();
+            }
+            return true;
+        }
+
+        // 清理可能存在的半初始化资源，保证重复调用仍然安全。
+        releaseRuntimeResources("重新创建前清理");
+        try {
+            tf_buffer_ = std::make_unique<tf2_ros::Buffer>(this->get_clock());
+            if (lazy_runtime_resources_) {
+                // 资源只在任务开始时创建；使用专用线程接收 TF，保证后续
+                // 带超时的 canTransform/transform 调用满足 tf2 的线程约束。
+                tf_listener_ = std::make_shared<tf2_ros::TransformListener>(
+                    *tf_buffer_, this, true);
+            } else {
+                // 兼容模式保留原有 TransformListener 行为。
+                tf_listener_ =
+                    std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
+            }
+            has_fresh_odom_ = false;
+            pre_cmd_vel_ = geometry_msgs::msg::Twist{};
+            odom_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
+                "feedback/odom", 10,
+                std::bind(
+                    &MobileControlActionNode::odomCallback,
+                    this, std::placeholders::_1));
+        } catch (const std::exception &ex) {
+            RCLCPP_ERROR(
+                this->get_logger(),
+                "TF/Odom 运行资源创建失败：%s。", ex.what());
+            releaseRuntimeResources("创建失败");
+            return false;
+        }
+
+        resource_started_time_ = std::chrono::steady_clock::now();
+        runtime_resource_state_ = for_active_goal
+            ? RuntimeResourceState::WARMING
+            : RuntimeResourceState::STANDBY;
+        RCLCPP_INFO(
+            this->get_logger(),
+            "运行资源已创建：状态=%s，模式=%s。",
+            runtimeResourceStateName(runtime_resource_state_),
+            lazy_runtime_resources_ ? "按任务懒加载" : "常驻兼容");
+        return true;
+    }
+
+    void releaseRuntimeResources(const std::string &reason)
+    {
+        const RuntimeResourceState previous_state = runtime_resource_state_;
+        odom_sub_.reset();
+        // Listener依赖Buffer，销毁顺序不能颠倒。
+        tf_listener_.reset();
+        tf_buffer_.reset();
+        has_fresh_odom_ = false;
+        pre_cmd_vel_ = geometry_msgs::msg::Twist{};
+        pending_target_pose_ = geometry_msgs::msg::PoseStamped{};
+        input_wait_reason_.clear();
+        runtime_resource_state_ = RuntimeResourceState::INACTIVE;
+
+        if (previous_state != RuntimeResourceState::INACTIVE) {
+            RCLCPP_INFO(
+                this->get_logger(),
+                "运行资源已释放：%s -> INACTIVE，原因=%s。",
+                runtimeResourceStateName(previous_state), reason.c_str());
+        }
+    }
+
+    void finishRuntimeResources(const std::string &reason)
+    {
+        has_pending_accept_ = false;
+        pending_target_pose_ = geometry_msgs::msg::PoseStamped{};
+        input_wait_reason_.clear();
+        if (lazy_runtime_resources_) {
+            releaseRuntimeResources(reason);
+        } else {
+            runtime_resource_state_ = RuntimeResourceState::STANDBY;
+        }
+    }
+
+    double resourceElapsedSeconds() const
+    {
+        if (runtime_resource_state_ != RuntimeResourceState::WARMING) {
+            return -1.0;
+        }
+        return std::chrono::duration<double>(
+                   std::chrono::steady_clock::now() - resource_started_time_)
+            .count();
+    }
 
     PidConfig loadPidConfig(const std::string &prefix, double default_integrator_saturation_level)
     {
@@ -477,21 +635,28 @@ private:
         return config.kp * error + config.ki * state.integral + config.kd * derivative;
     }
 
-    void odomCallback(const nav_msgs::msg::Odometry::SharedPtr msg)
+    void odomCallback(const nav_msgs::msg::Odometry::ConstSharedPtr msg)
     {
         pre_cmd_vel_.linear.x = msg->twist.twist.linear.x;
         pre_cmd_vel_.angular.z = msg->twist.twist.angular.z;
+        has_fresh_odom_ = true;
     }
 
     bool transformTargetToControlFrame(
         const geometry_msgs::msg::PoseStamped &target_pose,
         geometry_msgs::msg::PoseStamped &target_pose_control_frame,
-        std::string &error_msg)
+        std::string &error_msg,
+        double timeout_s = 0.1)
     {
+        if (!tf_buffer_) {
+            error_msg = "TF buffer is not initialized";
+            return false;
+        }
         try {
             if (target_pose.header.frame_id != control_reference_frame_) {
                 target_pose_control_frame = tf_buffer_->transform(
-                    target_pose, control_reference_frame_, tf2::durationFromSec(0.1));
+                    target_pose, control_reference_frame_,
+                    tf2::durationFromSec(std::max(0.0, timeout_s)));
             } else {
                 target_pose_control_frame = target_pose;
             }
@@ -537,27 +702,38 @@ private:
         const rclcpp_action::GoalUUID &,
         std::shared_ptr<const PreciseControl::Goal> goal)
     {
-        if (active_goal_handle_) {
+        if (active_goal_handle_ || has_pending_accept_) {
             RCLCPP_WARN(
                 this->get_logger(),
-                "[底盘直控目标被拒绝] 已有目标正在执行，当前任务已运行 %.3fs。",
+                "[底盘直控目标被拒绝] 已有目标正在执行或等待接收，"
+                "当前任务已运行 %.3fs。",
                 goalElapsedSeconds());
             return rclcpp_action::GoalResponse::REJECT;
         }
 
-        geometry_msgs::msg::PoseStamped target_pose_control_frame;
-        std::string error_msg;
-        if (!transformTargetToControlFrame(
-                goal->target_pose, target_pose_control_frame, error_msg))
-        {
+        if (goal->target_pose.header.frame_id.empty()) {
             RCLCPP_WARN(
                 this->get_logger(),
-                "[底盘直控目标被拒绝] 无法将目标从 %s 转换到 %s，原因=%s。",
-                goal->target_pose.header.frame_id.c_str(),
-                control_reference_frame_.c_str(), error_msg.c_str());
+                "[底盘直控目标被拒绝] 目标坐标系为空。");
             return rclcpp_action::GoalResponse::REJECT;
         }
 
+        if (!lazy_runtime_resources_) {
+            geometry_msgs::msg::PoseStamped target_pose_control_frame;
+            std::string error_msg;
+            if (!transformTargetToControlFrame(
+                    goal->target_pose, target_pose_control_frame, error_msg))
+            {
+                RCLCPP_WARN(
+                    this->get_logger(),
+                    "[底盘直控目标被拒绝] 无法将目标从 %s 转换到 %s，原因=%s。",
+                    goal->target_pose.header.frame_id.c_str(),
+                    control_reference_frame_.c_str(), error_msg.c_str());
+                return rclcpp_action::GoalResponse::REJECT;
+            }
+        }
+
+        has_pending_accept_ = true;
         return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
     }
 
@@ -572,31 +748,46 @@ private:
 
     void handleAccepted(const std::shared_ptr<GoalHandlePreciseControl> goal_handle)
     {
+        has_pending_accept_ = false;
         const auto goal = goal_handle->get_goal();
+        active_goal_handle_ = goal_handle;
+        goal_started_time_ = std::chrono::steady_clock::now();
+        goal_timer_started_ = true;
+
+        if (lazy_runtime_resources_) {
+            if (!activateRuntimeResources(true)) {
+                finishAborted("TF/Odom运行资源创建失败");
+                return;
+            }
+            pending_target_pose_ = goal->target_pose;
+            RCLCPP_INFO(
+                this->get_logger(),
+                "[底盘直控状态变化] IDLE -> WARMING，"
+                "等待TF和首帧Odom，超时=%.1fs，目标坐标系=%s。",
+                input_ready_timeout_s_,
+                goal->target_pose.header.frame_id.c_str());
+            return;
+        }
+
         geometry_msgs::msg::PoseStamped target_pose_control_frame;
         std::string error_msg;
         if (!transformTargetToControlFrame(
                 goal->target_pose, target_pose_control_frame, error_msg))
         {
-            auto result = std::make_shared<PreciseControl::Result>();
-            result->success = false;
-            result->message =
-                "Cannot transform goal to " + control_reference_frame_ + ": " + error_msg;
-            goal_handle->abort(result);
             RCLCPP_ERROR(
                 this->get_logger(),
                 "[底盘直控执行中止] goal 接受后再次转换 TF 失败，"
                 "目标坐标系=%s，控制参考坐标系=%s，原因=%s。",
                 goal->target_pose.header.frame_id.c_str(),
                 control_reference_frame_.c_str(), error_msg.c_str());
+            finishAborted(
+                "Cannot transform goal to " + control_reference_frame_ + ": " + error_msg);
             return;
         }
 
-        active_goal_handle_ = goal_handle;
-        goal_started_time_ = std::chrono::steady_clock::now();
-        goal_timer_started_ = true;
         setTarget(target_pose_control_frame);
         setGoalModeFromInput(goal->target_pose);
+        runtime_resource_state_ = RuntimeResourceState::READY;
         RCLCPP_INFO(
             this->get_logger(),
             "[底盘直控状态变化] IDLE -> CONTROL，模式=%s，"
@@ -609,6 +800,56 @@ private:
             goal->target_pose.header.frame_id.c_str());
     }
 
+    bool prepareControlTargetFromRuntimeInputs()
+    {
+        if (!has_fresh_odom_) {
+            input_wait_reason_ = "尚未收到本次任务的首帧Odom";
+            return false;
+        }
+        if (!tf_buffer_) {
+            input_wait_reason_ = "TF buffer未初始化";
+            return false;
+        }
+
+        std::string tf_error;
+        if (!tf_buffer_->canTransform(
+                "base_link", control_reference_frame_, tf2::TimePointZero,
+                tf2::durationFromSec(0.0), &tf_error))
+        {
+            input_wait_reason_ =
+                control_reference_frame_ + " -> base_link TF未就绪: " + tf_error;
+            return false;
+        }
+
+        // 懒加载的Buffer没有接单前的TF历史；等待期间本节点保持零速度，
+        // 因此资源就绪后用最新TF锁存目标，避免旧时间戳导致永久外推失败。
+        geometry_msgs::msg::PoseStamped target_pose_for_transform = pending_target_pose_;
+        target_pose_for_transform.header.stamp = rclcpp::Time(0);
+        geometry_msgs::msg::PoseStamped target_pose_control_frame;
+        if (!transformTargetToControlFrame(
+                target_pose_for_transform, target_pose_control_frame,
+                tf_error, 0.0))
+        {
+            input_wait_reason_ =
+                pending_target_pose_.header.frame_id + " -> " +
+                control_reference_frame_ + " TF未就绪: " + tf_error;
+            return false;
+        }
+
+        const double ready_elapsed_s = resourceElapsedSeconds();
+        setTarget(target_pose_control_frame);
+        setGoalModeFromInput(pending_target_pose_);
+        runtime_resource_state_ = RuntimeResourceState::READY;
+        input_wait_reason_.clear();
+        RCLCPP_INFO(
+            this->get_logger(),
+            "[底盘直控状态变化] WARMING -> CONTROL，"
+            "运行资源就绪，准备耗时=%.3fs，模式=%s。",
+            ready_elapsed_s,
+            goal_mode_ == GoalMode::STRAIGHT ? "直线" : "原地旋转");
+        return true;
+    }
+
     void publishFeedback(const std::string &status)
     {
         if (!active_goal_handle_) {
@@ -618,6 +859,32 @@ private:
         auto feedback = std::make_shared<PreciseControl::Feedback>();
         feedback->current_status = status;
         active_goal_handle_->publish_feedback(feedback);
+    }
+
+    void publishZeroVelocity()
+    {
+        geometry_msgs::msg::Twist cmd_vel;
+        cmd_vel_pub_->publish(cmd_vel);
+    }
+
+    void finishAborted(const std::string &reason)
+    {
+        publishZeroVelocity();
+        if (active_goal_handle_) {
+            auto result = std::make_shared<PreciseControl::Result>();
+            result->success = false;
+            result->message = reason;
+            RCLCPP_ERROR(
+                this->get_logger(),
+                "[底盘直控最终结果] -> ABORTED，原因=%s，"
+                "未发布非零控制指令，总耗时=%.3fs。",
+                reason.c_str(), goalElapsedSeconds());
+            active_goal_handle_->abort(result);
+            active_goal_handle_.reset();
+        }
+        has_pending_accept_ = false;
+        resetControlState();
+        finishRuntimeResources("ABORTED");
     }
 
     void finishSucceeded()
@@ -637,12 +904,14 @@ private:
         active_goal_handle_->succeed(result);
         active_goal_handle_.reset();
         resetControlState();
+        finishRuntimeResources("SUCCEEDED");
     }
 
     void finishCanceled()
     {
         if (!active_goal_handle_) {
             resetControlState();
+            finishRuntimeResources("CANCELLED");
             return;
         }
 
@@ -652,6 +921,7 @@ private:
         active_goal_handle_->canceled(result);
         active_goal_handle_.reset();
         resetControlState();
+        finishRuntimeResources("CANCELLED");
     }
 
     void startCancellation()
@@ -889,6 +1159,38 @@ private:
     void controlLoop()
     {
         if (!active_goal_handle_) {
+            return;
+        }
+
+        if (runtime_resource_state_ == RuntimeResourceState::WARMING) {
+            if (active_goal_handle_->is_canceling()) {
+                publishZeroVelocity();
+                RCLCPP_INFO(
+                    this->get_logger(),
+                    "[底盘直控最终结果] WARMING -> CANCELLED，"
+                    "控制尚未开始，本次未发布非零速度。");
+                finishCanceled();
+                return;
+            }
+
+            publishFeedback("WAITING_FOR_INPUTS");
+            if (prepareControlTargetFromRuntimeInputs()) {
+                // 本周期只完成资源准备，下一控制周期再开始输出速度。
+                return;
+            }
+
+            const double elapsed_s = resourceElapsedSeconds();
+            if (elapsed_s >= input_ready_timeout_s_) {
+                finishAborted(
+                    "TF/Odom输入在" + std::to_string(input_ready_timeout_s_) +
+                    "秒内未就绪: " + input_wait_reason_);
+                return;
+            }
+
+            RCLCPP_WARN_THROTTLE(
+                this->get_logger(), *this->get_clock(), 2000,
+                "[底盘直控等待输入] elapsed=%.3fs/%.3fs，原因=%s。",
+                elapsed_s, input_ready_timeout_s_, input_wait_reason_.c_str());
             return;
         }
 

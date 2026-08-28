@@ -2,6 +2,8 @@ mobile_control_action_node:  # 底盘精控Action节点
   ros__parameters:  # ROS 2节点参数
     control_frequency: 20.0  # 控制频率，Hz
     control_reference_frame: "odom"  # 目标锁存与误差计算参考系
+    lazy_runtime_resources: true  # CE机器启用：仅在精控任务期间订阅TF和Odom；设为false可恢复常驻模式
+    input_ready_timeout_s: 5.0  # 接单后等待TF和首帧Odom的最长时间，s；超时后不运动并中止任务
     stop_confirm_duration: 0.2  # 到位后连续停稳确认时间，s
     max_v: 0.40  # 直线最大速度，m/s
     min_v: 0.01  # 直线最低有效速度，m/s；过大会增加过冲
