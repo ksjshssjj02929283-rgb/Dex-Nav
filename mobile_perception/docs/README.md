@@ -45,9 +45,12 @@ ros2 launch mobile_perception mobile_control_action.launch.py
 
 ## 接口辅助节点的故障隔离
 
-- `pub_current_position.py` 使用 10 Hz ROS Timer 发布 `feedback/chassis_pose`，不再使用
-  `spin_once + sleep` 手写循环。每次先以零超时检查 `map <- base_link` TF，再执行零超时
-  查询；TF 长期缺失时查询周期从 0.1 秒逐级退避到 1 秒，恢复后自动回到 10 Hz。
+- `pub_current_position.py` 使用 10 Hz ROS Timer 发布 `feedback/chassis_pose`。默认由
+  `/localization/state` 门控 `/localization/odometry/filtered`：定位状态必须为
+  `LOC_SUCCESS`，且状态、Odom未超时，Odom必须表达 `map` 下的 `base_link` 或
+  `base_footprint` 二维位姿。定位失效、输入超时或坐标系不匹配时停止发布；定位重新成功后
+  必须收到新Odom才恢复。该模式不创建TF listener；设置
+  `--ros-args -p pose_source:=tf` 可回退到原有 `map <- base_link` TF查询与失败退避逻辑。
 - `nav_goal_server.py` 对 `navigate_to_pose` 的首次等待上限为 10 秒。服务器未就绪时节点
   继续处理回调并每 2 秒非阻塞重试，只保留最新待发目标。旧目标取消完成前不会发送
   新目标，过期的反馈、取消和结果回调通过目标代次编号丢弃。目标响应等待上限为 10 秒，

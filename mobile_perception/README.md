@@ -80,8 +80,10 @@ ros2 param get /mobile_control_action_node xy_tolerance
 ### 接口辅助节点
 
 - `pub_current_position.py` 使用 ROS Timer（定时器）以 10 Hz 可靠发布
-  `/feedback/chassis_pose`。TF 查询完全非阻塞；连续失败 50 次后逐级退避，最低查询
-  频率为 1 Hz，TF 恢复后自动回到 10 Hz。
+  `/feedback/chassis_pose`。默认订阅 `/localization/state` 和
+  `/localization/odometry/filtered`，仅在定位成功、状态与Odom均新鲜且输入坐标系
+  为 `map` 时发布，不再常驻订阅整条TF数据流。启动时设置
+  `--ros-args -p pose_source:=tf` 可恢复原TF查询模式。
 - `nav_goal_server.py` 启动时最多等待 `/navigate_to_pose` 10 秒，未就绪时仍会进入
   ROS spin，并每 2 秒重试。等待期间只保存 `/control/nav2_pose` 的最新目标，连接恢复
   后再发送，避免节点无声卡在构造函数中。目标响应等待超过 10 秒、取消完成等待超过
