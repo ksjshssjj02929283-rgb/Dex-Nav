@@ -15,6 +15,7 @@
 #ifndef NAV2_CONTROLLER__CONTROLLER_SERVER_HPP_
 #define NAV2_CONTROLLER__CONTROLLER_SERVER_HPP_
 
+#include <atomic>
 #include <cstdint>
 #include <limits>
 #include <memory>
@@ -42,6 +43,7 @@
 #include "visualization_msgs/msg/marker_array.hpp"
 #include "std_msgs/msg/string.hpp"
 #include "std_msgs/msg/empty.hpp"
+#include "std_msgs/msg/u_int64.hpp"
 #include "nav_2d_utils/odom_subscriber.hpp"
 #include "nav2_util/lifecycle_node.hpp"
 #include "nav2_util/simple_action_server.hpp"
@@ -66,6 +68,12 @@ public:
   using LocalPlannerMap = std::unordered_map<std::string, nav2_core::LocalPlanner::Ptr>;
   using SpeedPlannerMap = std::unordered_map<std::string, nav2_core::SpeedPlanner::Ptr>;
   enum class ControllerPhase { PREPARE, ALIGN, TRACK, APPROACH };
+  enum class PrepareState
+  {
+    CHECK_PENDING,
+    BACKING_UP,
+    DONE
+  };
   enum class PathUpdateType { NEW_GOAL, SAME_GOAL_GEOMETRY };
 
   /**
@@ -304,6 +312,17 @@ protected:
    * @return true when a reverse command should be used
    */
   bool shouldRunPrepareBackup();
+  /// 同步 bt_navigator 发布的任务代次；只有代次变化才重新允许执行一次 PREPARE。
+  void syncPrepareSession();
+  /// 新任务是唯一允许重新武装 PREPARE 的业务边界。
+  void armStagedControlForNewSession(uint64_t session_id);
+  /// PREPARE 结束后清理其运行状态，并发布非阻塞重规划信号。
+  void completePrepareAndRequestReplan(const char * reason);
+  /// 发布当前任务需要重规划的事实，不修改任何四阶段状态。
+  void publishReplanRequired(const char * reason);
+  /// FollowPath 取消或异常结束时锁存当前会话，防止同会话恢复重试再次后退。
+  void lockPrepareForCurrentSession(const char * reason);
+  const char * prepareStateName(PrepareState state) const;
   /**
    * @brief Check local costmap cells in a front rectangle of the robot
    * @return true when obstacle cost exceeds configured prepare threshold
@@ -433,6 +452,10 @@ protected:
   rclcpp_lifecycle::LifecyclePublisher<geometry_msgs::msg::Twist>::SharedPtr vel_publisher_;
   rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::Empty>::SharedPtr hard_stop_publisher_;
   std::string hard_stop_topic_{"cmd_vel_hard_stop"};
+  // PREPARE 与行为树之间只传递单调编号，不跨进程共享可变状态。
+  rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::UInt64>::SharedPtr
+    prepare_replan_request_pub_;
+  rclcpp::Subscription<std_msgs::msg::UInt64>::SharedPtr prepare_session_sub_;
   rclcpp_lifecycle::LifecyclePublisher<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr
     goal_error_publisher_;
   rclcpp_lifecycle::LifecyclePublisher<visualization_msgs::msg::MarkerArray>::SharedPtr
@@ -574,19 +597,20 @@ protected:
   // duration 兜底防跑飞）；false（默认）：按 duration 定时后退。
   bool prepare_backup_use_distance_{false};
   double prepare_backup_distance_{0.3};
-  bool prepare_backup_active_{false};
-  bool prepare_check_pending_{true};
-  // align 阶段状态机：本次导航是否已完成过 align（含"收敛"与"无法计算朝向,
-  // 视为跳过"两种终止方式）。仅到达目标时重置（同 prepare——
-  // computeControl() 会因 BT 恢复重试被多次重新进入，不能在入口重置）。
+  PrepareState prepare_state_{PrepareState::DONE};
+  // bt_navigator 每个导航任务发布一个新代次；同任务重规划和 FollowPath 恢复沿用该代次。
+  std::atomic<uint64_t> latest_prepare_session_id_{0};
+  uint64_t active_prepare_session_id_{0};
+  // align 阶段状态机：本次导航是否已完成过 align（含"收敛"与"无法计算朝向，
+  // 视为跳过"两种终止方式）。仅在导航任务会话变化或到达目标时重置；
+  // computeControl() 会因 BT 恢复重试被多次重新进入，不能在入口重置。
   // 一旦置真，本次导航剩余时间不再回退进 align——中途朝向误差变大交给
   // track 阶段的控制器自身处理（RPP/MPPI 均有各自的朝向纠偏机制）。
   bool align_done_{false};
   rclcpp::Time prepare_backup_start_time_;
   geometry_msgs::msg::PoseStamped prepare_backup_start_pose_;
 
-  /// 每次新导航开始（computeControl 入口）与到达目标时调用：阶段状态
-  /// 无条件回到阶段一，不依赖上次导航是到达/取消/异常哪种方式结束。
+  /// 安全清理各阶段运行状态并保持 PREPARE 为 DONE；只有新会话可重新武装。
   void resetStagedControlState();
   std::string active_controller_for_log_{"unset"};
 

@@ -18,13 +18,16 @@
 #include <memory>
 #include <set>
 #include <thread>
+#include <vector>
 
 #include "../../test_behavior_tree_fixture.hpp"
 #include "nav2_behavior_tree/plugins/action/request_and_wait_for_global_replan_action.hpp"
 #include "nav2_behavior_tree/plugins/control/pipeline_sequence.hpp"
 #include "nav2_behavior_tree/plugins/decorator/adaptive_replanning_decorator.hpp"
+#include "nav2_util/navigation_protocol.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "nav_msgs/msg/path.hpp"
+#include "std_msgs/msg/u_int64.hpp"
 
 using namespace std::chrono_literals;
 
@@ -70,6 +73,8 @@ public:
     config_->blackboard->set<rclcpp::Node::SharedPtr>("node", node_);
     config_->blackboard->set<std::shared_ptr<tf2_ros::Buffer>>(
       "tf_buffer", transform_handler_->getBuffer());
+    config_->blackboard->set<uint64_t>(
+      nav2_behavior_tree::kPrepareNavigationSessionKey, 1001);
 
     // 配置节点输入端口映射到 blackboard 变量
     config_->input_ports.insert(std::make_pair("goal", "{goal}"));
@@ -421,6 +426,153 @@ TEST_F(AdaptiveReplanningTestFixture, test_recovery_request_bypasses_near_goal_g
 
   EXPECT_EQ(dummy_node_->getTickCount(), 2);
   EXPECT_TRUE(global_replan_context_->isCompleted(token));
+}
+
+TEST_F(AdaptiveReplanningTestFixture, test_prepare_backup_requests_one_replan_per_goal_session)
+{
+  constexpr uint64_t kSessionId = 1001;
+
+  auto request_pub = node_->create_publisher<std_msgs::msg::UInt64>(
+    nav2_util::navigation_protocol::kPrepareReplanTopic,
+    nav2_util::navigation_protocol::stateTopicQoS());
+  ASSERT_NE(request_pub, nullptr);
+
+  geometry_msgs::msg::PoseStamped goal_pose;
+  goal_pose.header.frame_id = "map";
+  goal_pose.pose.position.x = 0.1;
+  config_->blackboard->set("goal", goal_pose);
+
+  nav_msgs::msg::Path path;
+  path.header.frame_id = "map";
+  path.poses.emplace_back();
+  config_->blackboard->set("path", path);
+
+  // 会话由顶层 Navigator 写入黑板；装饰器只消费与当前会话匹配的请求。
+  EXPECT_EQ(bt_node_->executeTick(), BT::NodeStatus::SUCCESS);
+  EXPECT_EQ(dummy_node_->getTickCount(), 1);
+
+  std_msgs::msg::UInt64 request;
+  request.data = kSessionId;
+  request_pub->publish(request);
+  ASSERT_TRUE(request_pub->wait_for_all_acked(1s));
+
+  // 只执行行为树 tick，不手动 spin BT node；装饰器必须自行处理订阅回调。
+  EXPECT_EQ(bt_node_->executeTick(), BT::NodeStatus::SUCCESS);
+  EXPECT_EQ(dummy_node_->getTickCount(), 2);
+
+  // 相同会话的重复事件不能造成重复规划。
+  request_pub->publish(request);
+  ASSERT_TRUE(request_pub->wait_for_all_acked(1s));
+  EXPECT_EQ(bt_node_->executeTick(), BT::NodeStatus::SUCCESS);
+  EXPECT_EQ(dummy_node_->getTickCount(), 2);
+}
+
+TEST_F(AdaptiveReplanningTestFixture, test_prepare_request_during_running_plan_needs_next_plan)
+{
+  constexpr uint64_t kSessionId = 1001;
+
+  auto request_pub = node_->create_publisher<std_msgs::msg::UInt64>(
+    nav2_util::navigation_protocol::kPrepareReplanTopic,
+    nav2_util::navigation_protocol::stateTopicQoS());
+  ASSERT_NE(request_pub, nullptr);
+
+  geometry_msgs::msg::PoseStamped goal_pose;
+  goal_pose.header.frame_id = "map";
+  goal_pose.pose.position.x = 2.0;
+  config_->blackboard->set("goal", goal_pose);
+
+  nav_msgs::msg::Path path;
+  path.header.frame_id = "map";
+  path.poses.emplace_back();
+  config_->blackboard->set("path", path);
+
+  EXPECT_EQ(bt_node_->executeTick(), BT::NodeStatus::SUCCESS);
+
+  // 先启动一轮普通异步规划，再让 PREPARE 请求在该规划运行期间到达。
+  path.poses.front().pose.position.x = 1.0;
+  config_->blackboard->set("path", path);
+  dummy_node_->setReturnStatus(BT::NodeStatus::RUNNING);
+  EXPECT_EQ(bt_node_->executeTick(), BT::NodeStatus::RUNNING);
+
+  std_msgs::msg::UInt64 request;
+  request.data = kSessionId;
+  request_pub->publish(request);
+  ASSERT_TRUE(request_pub->wait_for_all_acked(1s));
+
+  dummy_node_->setReturnStatus(BT::NodeStatus::SUCCESS);
+  EXPECT_EQ(bt_node_->executeTick(), BT::NodeStatus::SUCCESS);
+  EXPECT_EQ(dummy_node_->getTickCount(), 3);
+
+  // 运行中的旧规划不能满足后来到达的 PREPARE 请求，下一次 tick 必须再规划。
+  EXPECT_EQ(bt_node_->executeTick(), BT::NodeStatus::SUCCESS);
+  EXPECT_EQ(dummy_node_->getTickCount(), 4);
+}
+
+TEST_F(AdaptiveReplanningTestFixture, test_prepare_replan_supports_multi_pose_goal)
+{
+  constexpr uint64_t kSessionId = 1001;
+
+  bt_node_.reset();
+  config_->input_ports.erase("goal");
+  config_->input_ports.insert(std::make_pair("goals", "{goals}"));
+
+  std::vector<geometry_msgs::msg::PoseStamped> goals(2);
+  goals.back().header.frame_id = "map";
+  goals.back().pose.position.x = 2.0;
+  config_->blackboard->set("goals", goals);
+
+  nav_msgs::msg::Path path;
+  path.header.frame_id = "map";
+  path.poses.emplace_back();
+  config_->blackboard->set("path", path);
+
+  bt_node_ = std::make_shared<nav2_behavior_tree::AdaptiveReplanning>(
+    "adaptive_replanning_multi_pose", *config_);
+  bt_node_->setChild(dummy_node_.get());
+
+  EXPECT_EQ(bt_node_->executeTick(), BT::NodeStatus::SUCCESS);
+  EXPECT_EQ(dummy_node_->getTickCount(), 1);
+
+  auto request_pub = node_->create_publisher<std_msgs::msg::UInt64>(
+    nav2_util::navigation_protocol::kPrepareReplanTopic,
+    nav2_util::navigation_protocol::stateTopicQoS());
+  std_msgs::msg::UInt64 request;
+  request.data = kSessionId;
+  request_pub->publish(request);
+  ASSERT_TRUE(request_pub->wait_for_all_acked(1s));
+
+  EXPECT_EQ(bt_node_->executeTick(), BT::NodeStatus::SUCCESS);
+  EXPECT_EQ(dummy_node_->getTickCount(), 2);
+}
+
+TEST_F(AdaptiveReplanningTestFixture, test_new_session_replans_same_goal)
+{
+  bt_node_.reset();
+  config_->input_ports["hz"] = "0.001";
+
+  geometry_msgs::msg::PoseStamped goal_pose;
+  goal_pose.header.frame_id = "map";
+  goal_pose.pose.position.x = 2.0;
+  config_->blackboard->set("goal", goal_pose);
+
+  nav_msgs::msg::Path path;
+  path.header.frame_id = "map";
+  path.poses.emplace_back();
+  config_->blackboard->set("path", path);
+
+  bt_node_ = std::make_shared<nav2_behavior_tree::AdaptiveReplanning>(
+    "adaptive_replanning_new_session", *config_);
+  bt_node_->setChild(dummy_node_.get());
+
+  EXPECT_EQ(bt_node_->executeTick(), BT::NodeStatus::SUCCESS);
+  EXPECT_EQ(bt_node_->executeTick(), BT::NodeStatus::SUCCESS);
+  EXPECT_EQ(dummy_node_->getTickCount(), 1);
+
+  // 目标坐标相同也属于新导航任务，session 变化必须重新生成首条路径。
+  config_->blackboard->set<uint64_t>(
+    nav2_behavior_tree::kPrepareNavigationSessionKey, 1002);
+  EXPECT_EQ(bt_node_->executeTick(), BT::NodeStatus::SUCCESS);
+  EXPECT_EQ(dummy_node_->getTickCount(), 2);
 }
 
 TEST_F(AdaptiveReplanningTestFixture, test_failed_recovery_plan_keeps_request_pending)

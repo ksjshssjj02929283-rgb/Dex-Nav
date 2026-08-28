@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <gtest/gtest.h>
 
+#include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <functional>
 #include <limits>
 #include <memory>
 #include <string>
@@ -13,9 +15,12 @@
 #include "nav2_controller/controller_server.hpp"
 #include "nav2_core/local_planner.hpp"
 #include "rclcpp/rclcpp.hpp"
+#include "rclcpp_action/rclcpp_action.hpp"
 
 namespace
 {
+
+using namespace std::chrono_literals;
 
 constexpr auto kNoTerminalBranch = nav2_core::SpeedPlanningTerminalBranch::NONE;
 constexpr auto kObstacleTerminalBranch =
@@ -260,6 +265,57 @@ public:
   }
 
   void resetStages() {resetStagedControlState();}
+  void setPrepareEnabledForTest(bool enabled) {prepare_enabled_ = enabled;}
+  void setPrepareStateForTest(PrepareState state) {prepare_state_ = state;}
+  PrepareState prepareState() const {return prepare_state_;}
+  void receivePrepareSessionForTest(uint64_t session_id)
+  {
+    latest_prepare_session_id_.store(session_id);
+    syncPrepareSession();
+  }
+  void lockPrepareForTest(const char * reason) {lockPrepareForCurrentSession(reason);}
+  void completePrepareForTest(const char * reason)
+  {
+    completePrepareAndRequestReplan(reason);
+  }
+
+  void startFollowPathActionForTest(const std::string & action_name)
+  {
+    current_controller_ = "test_controller";
+    default_controller_ = current_controller_;
+    controllers_.clear();
+    controllers_.insert({current_controller_, std::make_shared<FakeController>()});
+    default_goal_checker_ = current_goal_checker_;
+    controller_frequency_ = 100.0;
+    // 本测试只验证 Action 取消与 PREPARE 锁存，不加载四阶段所需的其他控制器插件。
+    staged_control_enabled_ = false;
+
+    vel_publisher_ = create_publisher<geometry_msgs::msg::Twist>("test_cmd_vel", 1);
+    hard_stop_publisher_ = create_publisher<std_msgs::msg::Empty>(
+      "test_cmd_vel_hard_stop", 1);
+    vel_publisher_->on_activate();
+    hard_stop_publisher_->on_activate();
+
+    action_server_ = std::make_unique<ActionServer>(
+      shared_from_this(), action_name,
+      std::bind(&ControllerShim::runFollowPathActionForTest, this),
+      []() {}, 500ms, true);
+    action_server_->activate();
+  }
+
+  void stopFollowPathActionForTest()
+  {
+    if (action_server_) {
+      action_server_->deactivate();
+      action_server_.reset();
+    }
+    if (vel_publisher_) {
+      vel_publisher_->on_deactivate();
+    }
+    if (hard_stop_publisher_) {
+      hard_stop_publisher_->on_deactivate();
+    }
+  }
   bool continuityValid() const {return initial_motion_arbiter_.valid();}
 
   void setTerminalStateForTest()
@@ -372,6 +428,8 @@ public:
   uint64_t goalGeneration() const {return goal_generation_;}
 
 private:
+  void runFollowPathActionForTest() {computeControl();}
+
   std::shared_ptr<FakeGoalChecker> fake_goal_checker_;
   std::shared_ptr<FakeProgressChecker> fake_progress_checker_;
 };
@@ -599,6 +657,195 @@ TEST(InitialMotionState, SameGoalGeometryUpdatePreservesTerminalState)
   EXPECT_NEAR(
     controller->boundaryFor(updated_path, 0.31).acceleration, -0.18, 1e-9);
   EXPECT_TRUE(controller->boundaryFor(updated_path, 0.31).terminal_brake_latched);
+}
+
+TEST(PrepareSession, NewSessionArmsPrepareOnlyOnce)
+{
+  auto controller = std::make_shared<ControllerShim>();
+
+  controller->receivePrepareSessionForTest(1001);
+  EXPECT_EQ(
+    controller->prepareState(),
+    nav2_controller::ControllerServer::PrepareState::CHECK_PENDING);
+
+  controller->setPrepareStateForTest(
+    nav2_controller::ControllerServer::PrepareState::DONE);
+  controller->receivePrepareSessionForTest(1001);
+  EXPECT_EQ(
+    controller->prepareState(),
+    nav2_controller::ControllerServer::PrepareState::DONE);
+
+  controller->receivePrepareSessionForTest(1002);
+  EXPECT_EQ(
+    controller->prepareState(),
+    nav2_controller::ControllerServer::PrepareState::CHECK_PENDING);
+}
+
+TEST(PrepareSession, ResetCannotArmPrepare)
+{
+  auto controller = std::make_shared<ControllerShim>();
+  controller->receivePrepareSessionForTest(1101);
+  EXPECT_EQ(
+    controller->prepareState(),
+    nav2_controller::ControllerServer::PrepareState::CHECK_PENDING);
+
+  controller->resetStages();
+  EXPECT_EQ(
+    controller->prepareState(),
+    nav2_controller::ControllerServer::PrepareState::DONE);
+
+  // 相同Session不能通过同步或Reset重新武装PREPARE。
+  controller->receivePrepareSessionForTest(1101);
+  EXPECT_EQ(
+    controller->prepareState(),
+    nav2_controller::ControllerServer::PrepareState::DONE);
+
+  controller->receivePrepareSessionForTest(0);
+  EXPECT_EQ(
+    controller->prepareState(),
+    nav2_controller::ControllerServer::PrepareState::DONE);
+}
+
+TEST(PrepareSession, DisabledPrepareCannotBeArmed)
+{
+  auto controller = std::make_shared<ControllerShim>();
+  controller->setPrepareEnabledForTest(false);
+  controller->receivePrepareSessionForTest(1201);
+
+  EXPECT_EQ(
+    controller->prepareState(),
+    nav2_controller::ControllerServer::PrepareState::DONE);
+}
+
+TEST(PrepareReplanEvent, BackupFinishDoesNotWaitWithoutSession)
+{
+  auto controller = std::make_shared<ControllerShim>();
+  controller->setPrepareStateForTest(
+    nav2_controller::ControllerServer::PrepareState::BACKING_UP);
+  controller->completePrepareForTest("duration reached");
+
+  EXPECT_EQ(
+    controller->prepareState(),
+    nav2_controller::ControllerServer::PrepareState::DONE);
+}
+
+TEST(PrepareReplanEvent, BackupFinishKeepsCurrentSessionDone)
+{
+  auto controller = std::make_shared<ControllerShim>();
+  controller->receivePrepareSessionForTest(2501);
+  controller->setPrepareStateForTest(
+    nav2_controller::ControllerServer::PrepareState::BACKING_UP);
+
+  controller->completePrepareForTest("duration reached");
+  EXPECT_EQ(
+    controller->prepareState(),
+    nav2_controller::ControllerServer::PrepareState::DONE);
+
+  // 同一会话不能重新武装 PREPARE。
+  controller->receivePrepareSessionForTest(2501);
+  EXPECT_EQ(
+    controller->prepareState(),
+    nav2_controller::ControllerServer::PrepareState::DONE);
+}
+
+TEST(PrepareSession, CanceledSessionCannotRearmPrepare)
+{
+  auto controller = std::make_shared<ControllerShim>();
+  controller->receivePrepareSessionForTest(3001);
+  controller->setPrepareStateForTest(
+    nav2_controller::ControllerServer::PrepareState::BACKING_UP);
+
+  controller->lockPrepareForTest("goal canceled");
+  EXPECT_EQ(
+    controller->prepareState(),
+    nav2_controller::ControllerServer::PrepareState::DONE);
+
+  // 同一会话的 FollowPath 恢复重试不能重新允许后退。
+  controller->receivePrepareSessionForTest(3001);
+  EXPECT_EQ(
+    controller->prepareState(),
+    nav2_controller::ControllerServer::PrepareState::DONE);
+
+  // 只有新的导航会话才能重新武装 PREPARE。
+  controller->receivePrepareSessionForTest(3002);
+  EXPECT_EQ(
+    controller->prepareState(),
+    nav2_controller::ControllerServer::PrepareState::CHECK_PENDING);
+}
+
+TEST(PrepareReplanEvent, FollowPathActionCancelClosesPrepare)
+{
+  using FollowPath = nav2_msgs::action::FollowPath;
+
+  auto controller = std::make_shared<ControllerShim>();
+  controller->receivePrepareSessionForTest(5001);
+  controller->setPrepareStateForTest(
+    nav2_controller::ControllerServer::PrepareState::BACKING_UP);
+  controller->startFollowPathActionForTest("test_follow_path_cancel");
+
+  auto client_node = std::make_shared<rclcpp::Node>("test_follow_path_cancel_client");
+  auto client = rclcpp_action::create_client<FollowPath>(
+    client_node, "test_follow_path_cancel");
+  if (!client->wait_for_action_server(2s)) {
+    controller->stopFollowPathActionForTest();
+    FAIL() << "FollowPath test server did not start";
+    return;
+  }
+
+  FollowPath::Goal goal;
+  goal.path = makePath({{0.0, 0.0}, {1.0, 0.0}});
+  goal.controller_id = "test_controller";
+  goal.goal_checker_id = "test_goal_checker";
+
+  auto goal_future = client->async_send_goal(goal);
+  if (rclcpp::spin_until_future_complete(client_node, goal_future, 2s) !=
+    rclcpp::FutureReturnCode::SUCCESS)
+  {
+    controller->stopFollowPathActionForTest();
+    FAIL() << "FollowPath goal was not accepted in time";
+    return;
+  }
+  auto goal_handle = goal_future.get();
+  if (!goal_handle) {
+    controller->stopFollowPathActionForTest();
+    FAIL() << "FollowPath goal was rejected";
+    return;
+  }
+
+  auto cancel_future = client->async_cancel_goal(goal_handle);
+  if (rclcpp::spin_until_future_complete(client_node, cancel_future, 2s) !=
+    rclcpp::FutureReturnCode::SUCCESS)
+  {
+    controller->stopFollowPathActionForTest();
+    FAIL() << "FollowPath cancel request timed out";
+    return;
+  }
+
+  auto result_future = client->async_get_result(goal_handle);
+  if (rclcpp::spin_until_future_complete(client_node, result_future, 2s) !=
+    rclcpp::FutureReturnCode::SUCCESS)
+  {
+    controller->stopFollowPathActionForTest();
+    FAIL() << "FollowPath cancel result timed out";
+    return;
+  }
+
+  EXPECT_EQ(result_future.get().code, rclcpp_action::ResultCode::CANCELED);
+  EXPECT_EQ(
+    controller->prepareState(),
+    nav2_controller::ControllerServer::PrepareState::DONE);
+
+  // 同会话恢复不能重新后退；只有新会话才能重新武装 PREPARE。
+  controller->receivePrepareSessionForTest(5001);
+  EXPECT_EQ(
+    controller->prepareState(),
+    nav2_controller::ControllerServer::PrepareState::DONE);
+  controller->receivePrepareSessionForTest(5002);
+  EXPECT_EQ(
+    controller->prepareState(),
+    nav2_controller::ControllerServer::PrepareState::CHECK_PENDING);
+
+  controller->stopFollowPathActionForTest();
 }
 
 TEST(InitialMotionState, NewGoalPathResetsTerminalBookkeeping)

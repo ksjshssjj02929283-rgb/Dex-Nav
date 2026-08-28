@@ -29,10 +29,17 @@ namespace nav2_behavior_tree
 {
 
 inline constexpr char kGlobalReplanContextKey[] = "global_replan_context";
+// 顶层 Navigator 为每个已接受的导航任务写入唯一代次，行为树节点只读取该值。
+inline constexpr char kPrepareNavigationSessionKey[] = "prepare_navigation_session_id";
 
 enum class GlobalReplanMode { DISABLED, OBSERVE, ACTIVE };
 
-enum class GlobalReplanReason { FOLLOW_PATH_FAILED, BACK_UP_SUCCEEDED };
+enum class GlobalReplanReason
+{
+  FOLLOW_PATH_FAILED,
+  BACK_UP_SUCCEEDED,
+  PREPARE_BACKUP_FINISHED
+};
 
 enum class GlobalReplanRequestState { PENDING, COMPLETED, CANCELED };
 
@@ -96,6 +103,10 @@ inline bool parseGlobalReplanReason(const std::string & value, GlobalReplanReaso
     reason = GlobalReplanReason::BACK_UP_SUCCEEDED;
     return true;
   }
+  if (value == "prepare_backup_finished") {
+    reason = GlobalReplanReason::PREPARE_BACKUP_FINISHED;
+    return true;
+  }
   return false;
 }
 
@@ -119,6 +130,8 @@ inline const char * toString(GlobalReplanReason reason)
       return "follow_path_failed";
     case GlobalReplanReason::BACK_UP_SUCCEEDED:
       return "back_up_succeeded";
+    case GlobalReplanReason::PREPARE_BACKUP_FINISHED:
+      return "prepare_backup_finished";
   }
   return "invalid";
 }
