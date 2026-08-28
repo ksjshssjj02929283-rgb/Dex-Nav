@@ -20,6 +20,7 @@
 
 #include "nav2_util/robot_utils.hpp"
 #include "nav2_util/geometry_utils.hpp"
+#include "nav2_util/navigation_protocol.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "tf2_ros/buffer.h"
 
@@ -36,7 +37,6 @@ constexpr double kGoalPositionChangeToleranceM = 1e-3;
 constexpr double kGoalOrientationChangeTolerance = 1e-3;
 constexpr int64_t kPlanningLogThrottleMs = 1000;
 constexpr int64_t kWarningLogThrottleMs = 5000;
-
 }  // namespace
 
 AdaptiveReplanning::AdaptiveReplanning(
@@ -68,6 +68,85 @@ AdaptiveReplanning::AdaptiveReplanning(
   RCLCPP_INFO(
     node_->get_logger(), "AdaptiveReplanning: Recovery replan mode=%s.",
     nav2_behavior_tree::toString(recovery_replan_mode_));
+
+  if (recovery_replan_mode_ == GlobalReplanMode::ACTIVE) {
+    // Blackboard 中的 BT client node 不由全局 Executor 驱动，订阅必须使用
+    // 自己的回调组，并在 tick 中显式处理，避免只有 DDS 端点而回调不执行。
+    prepare_replan_callback_group_ = node_->create_callback_group(
+      rclcpp::CallbackGroupType::MutuallyExclusive, false);
+    prepare_replan_callback_executor_.add_callback_group(
+      prepare_replan_callback_group_, node_->get_node_base_interface());
+    rclcpp::SubscriptionOptions subscription_options;
+    subscription_options.callback_group = prepare_replan_callback_group_;
+    prepare_replan_request_sub_ = node_->create_subscription<std_msgs::msg::UInt64>(
+      nav2_util::navigation_protocol::kPrepareReplanTopic,
+      nav2_util::navigation_protocol::stateTopicQoS(),
+      [this](const std_msgs::msg::UInt64::SharedPtr msg) {
+        latest_prepare_replan_request_id_.store(msg->data);
+      },
+      subscription_options);
+  }
+}
+
+void AdaptiveReplanning::syncPrepareSession()
+{
+  uint64_t session_id = 0;
+  if (!config().blackboard->get(kPrepareNavigationSessionKey, session_id) ||
+    session_id == prepare_session_id_)
+  {
+    return;
+  }
+
+  // 新任务到来时旧任务请求不得继续影响当前规划。
+  if (planning_in_progress_) {
+    haltChild();
+  }
+  cancelPendingPrepareReplan();
+  prepare_session_id_ = session_id;
+  has_valid_plan_ = false;
+  has_last_goal_ = false;
+  planning_in_progress_ = false;
+  active_replan_request_.reset();
+}
+
+void AdaptiveReplanning::consumePrepareReplanRequest()
+{
+  if (recovery_replan_mode_ != GlobalReplanMode::ACTIVE) {
+    return;
+  }
+
+  const uint64_t request_id = latest_prepare_replan_request_id_.load();
+  if (request_id == 0 || request_id == last_consumed_prepare_replan_request_id_) {
+    return;
+  }
+
+  if (request_id != prepare_session_id_) {
+    RCLCPP_WARN_THROTTLE(
+      node_->get_logger(), *node_->get_clock(), kWarningLogThrottleMs,
+      "Ignoring stale PREPARE replan request: request=%" PRIu64
+      ", session=%" PRIu64 ".",
+      request_id, prepare_session_id_);
+    return;
+  }
+
+  cancelPendingPrepareReplan();
+  last_consumed_prepare_replan_request_id_ = request_id;
+  pending_prepare_replan_ =
+    global_replan_context_->request(GlobalReplanReason::PREPARE_BACKUP_FINISHED);
+  RCLCPP_INFO(
+    node_->get_logger(),
+    "PREPARE replan requested: session=%" PRIu64
+    ", context_request=%" PRIu64 ".",
+    request_id, pending_prepare_replan_->request_id);
+}
+
+void AdaptiveReplanning::cancelPendingPrepareReplan()
+{
+  if (!pending_prepare_replan_) {
+    return;
+  }
+  global_replan_context_->cancel(*pending_prepare_replan_);
+  pending_prepare_replan_.reset();
 }
 
 void AdaptiveReplanning::beginPlanningAttempt()
@@ -109,6 +188,14 @@ BT::NodeStatus AdaptiveReplanning::tickPlanningChild()
         "Global replan completed: id=%" PRIu64 ", poses=%zu.",
         active_replan_request_->token.request_id,
         path.poses.size());
+
+      // GlobalReplanContext 会用一条新路径完成规划开始前积累的全部请求。
+      // PREPARE 不再等待跨节点 ACK，完成后仅清理本地请求令牌。
+      if (pending_prepare_replan_ &&
+        global_replan_context_->isCompleted(*pending_prepare_replan_))
+      {
+        pending_prepare_replan_.reset();
+      }
     }
   } else if (child_state == BT::NodeStatus::FAILURE && active_replan_request_) {
     RCLCPP_WARN(
@@ -125,18 +212,35 @@ void AdaptiveReplanning::halt()
 {
   BT::DecoratorNode::halt();
 
+  cancelPendingPrepareReplan();
+
   // Behavior Tree 在任务结束、取消或抢占时会 halt；下次执行必须重新生成首条路径。
   has_valid_plan_ = false;
   has_last_goal_ = false;
   planning_in_progress_ = false;
   active_replan_request_.reset();
+  prepare_session_id_ = 0;
 }
 
 BT::NodeStatus AdaptiveReplanning::tick()
 {
+  syncPrepareSession();
+  if (prepare_replan_request_sub_) {
+    prepare_replan_callback_executor_.spin_some();
+  }
+
   // 1. Get current goal and check if goal has changed
   geometry_msgs::msg::PoseStamped current_goal;
-  if (!getInput("goal", current_goal)) {
+  bool has_goal = static_cast<bool>(getInput("goal", current_goal));
+  if (!has_goal) {
+    std::vector<geometry_msgs::msg::PoseStamped> current_goals;
+    if (getInput("goals", current_goals) && !current_goals.empty()) {
+      current_goal = current_goals.back();
+      has_goal = true;
+    }
+  }
+
+  if (!has_goal) {
     if (!planning_in_progress_) {
       RCLCPP_WARN_THROTTLE(
         node_->get_logger(), *node_->get_clock(), kWarningLogThrottleMs,
@@ -168,6 +272,9 @@ BT::NodeStatus AdaptiveReplanning::tick()
       max_deviation, kDefaultMaxDeviationM);
     max_deviation = kDefaultMaxDeviationM;
   }
+
+  bool enable_deviation_replanning = true;
+  getInput("enable_deviation_replanning", enable_deviation_replanning);
 
   double hz = kDefaultReplanningFrequencyHz;
   getInput("hz", hz);
@@ -212,6 +319,7 @@ BT::NodeStatus AdaptiveReplanning::tick()
       planning_in_progress_ = false;
       active_replan_request_.reset();
     }
+    cancelPendingPrepareReplan();
     RCLCPP_INFO(
       node_->get_logger(),
       "AdaptiveReplanning: Goal changed; previous plan invalidated.");
@@ -219,6 +327,8 @@ BT::NodeStatus AdaptiveReplanning::tick()
     last_goal_ = current_goal;
     has_last_goal_ = true;
   }
+
+  consumePrepareReplanRequest();
 
   // 一次规划进入 RUNNING 后必须持续 tick，不能被近目标或频率门控中途截断。
   if (planning_in_progress_) {
@@ -246,7 +356,9 @@ BT::NodeStatus AdaptiveReplanning::tick()
   bool deviated = false;
   nav_msgs::msg::Path path;
   double min_dist = 0.0;
-  if (has_valid_plan_ && getInput("path", path) && !path.poses.empty()) {
+  if (enable_deviation_replanning && has_valid_plan_ &&
+    getInput("path", path) && !path.poses.empty())
+  {
     min_dist = std::numeric_limits<double>::max();
     for (const auto & pose : path.poses) {
       double d = nav2_util::geometry_utils::euclidean_distance(

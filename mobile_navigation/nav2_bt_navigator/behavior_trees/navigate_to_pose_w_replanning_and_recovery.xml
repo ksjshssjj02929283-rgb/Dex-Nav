@@ -23,13 +23,20 @@
     invalid path.
   - The local recovery loop is bounded so an unrecoverable controller failure
     is reported to the caller instead of spinning indefinitely.
+
+  PREPARE 后退完成后的重规划：
+  - bt_navigator 为每个已接受的导航任务发布一个独立的会话编号。
+  - controller_server 在同一会话最多后退一次；后退结束后请求从机器人
+    新位置生成全局路径，但不等待跨节点确认，避免通信异常永久锁死控制。
+  - AdaptiveReplanning 将请求接入下方已有的全局重规划流程。
 -->
 
 <root main_tree_to_execute="MainTree">
   <BehaviorTree ID="MainTree">
     <PipelineSequence name="NavigateWithReplanning">
       <!-- 周期重规划频率为 0.02 Hz；距目标 0.5 m 内暂停，偏离路径超过 0.5 m 时立即触发。 -->
-      <!-- active：恢复分支可绕过近目标和周期门控请求新路径；disabled 仅关闭该恢复请求握手。 -->
+      <!-- active：恢复分支和 PREPARE 后退完成事件可绕过近目标、偏离量和周期门控请求新路径；
+           目标代次由 bt_navigator 统一发布，保证每个导航任务最多后退一次。 -->
       <AdaptiveReplanning goal="{goal}" path="{path}" distance_threshold="0.5" max_deviation="0.5"
         hz="0.02" recovery_replan_mode="active">
         <RecoveryNode number_of_retries="9999" name="ComputePathToPoseOuterRetry">

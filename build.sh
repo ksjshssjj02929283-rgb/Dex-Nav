@@ -11,6 +11,45 @@ TAR_PATH="${OUTPUT_DIR}/install.tar.gz"
 # === 添加：记录编译开始时间 ===
 BUILD_START=$(date +%s)
 
+# 只移除 colcon 安装空间注入的路径，保留 CUDA 等系统环境。
+# 仅 source /opt/ros 不会清除当前终端已加载的 w1、hp 等 Overlay。
+remove_colcon_install_paths() {
+    local variable_name="$1"
+    local original_value="${!variable_name:-}"
+    local filtered_value=""
+    local entry
+    local -a entries=()
+
+    IFS=':' read -r -a entries <<< "$original_value"
+    for entry in "${entries[@]}"; do
+        case "$entry" in
+            */install|*/install/*)
+                continue
+                ;;
+        esac
+
+        if [ -n "$entry" ]; then
+            if [ -n "$filtered_value" ]; then
+                filtered_value+=":"
+            fi
+            filtered_value+="$entry"
+        fi
+    done
+
+    printf -v "$variable_name" '%s' "$filtered_value"
+    export "$variable_name"
+}
+
+unset AMENT_PREFIX_PATH
+unset CMAKE_PREFIX_PATH
+unset COLCON_PREFIX_PATH
+unset ROS_PACKAGE_PATH
+
+for environment_variable in \
+    PATH LD_LIBRARY_PATH PYTHONPATH PKG_CONFIG_PATH CPATH CPLUS_INCLUDE_PATH LIBRARY_PATH; do
+    remove_colcon_install_paths "$environment_variable"
+done
+
 source /opt/ros/humble/setup.bash
 
 resolve_build_simulation() {
@@ -105,27 +144,34 @@ if [ ${#SIMULATION_PACKAGES[@]} -gt 0 ]; then
 fi
 
 # === 4. 确保 nav_interfaces 可用 ===
-if ros2 pkg list 2>/dev/null | grep -q "nav_interfaces"; then
+if ros2 pkg prefix nav_interfaces >/dev/null 2>&1; then
     echo "✅ 找到 nav_interfaces 包，跳过 dexe_interfaces 编译。"
 else
     echo "⚠️ 未找到 nav_interfaces，正在编译 dexe_interfaces..."
-    run_colcon_build --base-paths dexe_interfaces "${COLCON_BUILD_ARGS[@]}"
-    source "${INSTALL_DIR}/setup.bash"
+    run_colcon_build --base-paths "${SOURCE_ROOT}/dexe_interfaces" "${COLCON_BUILD_ARGS[@]}"
+    source "${INSTALL_DIR}/local_setup.bash"
     echo "✅ dexe_interfaces 编译完成。"
 fi
 
 # === 5. 编译 ===
 echo "⚙️ 开始 colcon build ..."
 
-run_colcon_build --packages-up-to nav2_graceful_controller "${COLCON_BUILD_ARGS[@]}"
+run_colcon_build \
+    --packages-up-to nav2_graceful_controller \
+    --cmake-clean-cache \
+    "${COLCON_BUILD_ARGS[@]}"
+source "${INSTALL_DIR}/local_setup.bash"
+
 run_colcon_build --packages-up-to nav2_bringup "${COLCON_BUILD_ARGS[@]}"
+source "${INSTALL_DIR}/local_setup.bash"
+
 run_colcon_build --packages-up-to dexe_sensor_process "${COLCON_BUILD_ARGS[@]}"
-source "${INSTALL_DIR}/setup.bash"
+source "${INSTALL_DIR}/local_setup.bash"
 
 if [ "$BUILD_SIMULATION_ENABLED" = "false" ]; then
     echo "⚙️ 0.4.6 ARM 过渡：显式编译包含真机入口的 w1_nav2 ..."
     run_colcon_build --packages-select w1_nav2 "${COLCON_BUILD_ARGS[@]}"
-    source "${INSTALL_DIR}/setup.bash"
+    source "${INSTALL_DIR}/local_setup.bash"
 fi
 
 # 最终全工作区增量构建不重复选择前面已经显式构建的 w1_nav2。

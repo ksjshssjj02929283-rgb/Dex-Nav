@@ -15,14 +15,18 @@
 #ifndef NAV2_BEHAVIOR_TREE__PLUGINS__DECORATOR__ADAPTIVE_REPLANNING_DECORATOR_HPP_
 #define NAV2_BEHAVIOR_TREE__PLUGINS__DECORATOR__ADAPTIVE_REPLANNING_DECORATOR_HPP_
 
+#include <atomic>
 #include <chrono>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "nav_msgs/msg/path.hpp"
 #include "rclcpp/rclcpp.hpp"
+#include "std_msgs/msg/u_int64.hpp"
 #include "tf2_ros/buffer.h"
 
 #include "behaviortree_cpp_v3/decorator_node.h"
@@ -57,6 +61,8 @@ public:
   {
     return {
       BT::InputPort<geometry_msgs::msg::PoseStamped>("goal", "Destination to check distance"),
+      BT::InputPort<std::vector<geometry_msgs::msg::PoseStamped>>(
+        "goals", "Destinations to check final distance"),
       BT::InputPort<double>(
         "distance_threshold", kDefaultDistanceThresholdM,
         "Distance threshold to skip replanning"),
@@ -66,6 +72,9 @@ public:
       BT::InputPort<double>(
         "max_deviation", kDefaultMaxDeviationM,
         "Max allowed deviation from path"),
+      BT::InputPort<bool>(
+        "enable_deviation_replanning", true,
+        "Whether path deviation can trigger replanning"),
       BT::InputPort<double>("hz", kDefaultReplanningFrequencyHz, "Replanning frequency"),
       BT::InputPort<std::string>(
         "recovery_replan_mode", std::string("disabled"),
@@ -87,6 +96,11 @@ private:
   // 规划开始时锁存当前请求，确保运行中的旧规划不能确认之后产生的新请求。
   void beginPlanningAttempt();
   BT::NodeStatus tickPlanningChild();
+  // 从顶层 Navigator 写入的黑板数据同步当前导航代次。
+  void syncPrepareSession();
+  // 将 controller_server 的后退完成事件接入现有全局重规划上下文。
+  void consumePrepareReplanRequest();
+  void cancelPendingPrepareReplan();
 
   rclcpp::Node::SharedPtr node_;
   std::shared_ptr<tf2_ros::Buffer> tf_;
@@ -102,6 +116,14 @@ private:
 
   bool planning_in_progress_;
   std::optional<GlobalReplanRequest> active_replan_request_;
+
+  rclcpp::CallbackGroup::SharedPtr prepare_replan_callback_group_;
+  rclcpp::executors::SingleThreadedExecutor prepare_replan_callback_executor_;
+  rclcpp::Subscription<std_msgs::msg::UInt64>::SharedPtr prepare_replan_request_sub_;
+  std::atomic<uint64_t> latest_prepare_replan_request_id_{0};
+  uint64_t prepare_session_id_{0};
+  uint64_t last_consumed_prepare_replan_request_id_{0};
+  std::optional<GlobalReplanToken> pending_prepare_replan_;
 
   std::string global_frame_;
   std::string robot_base_frame_;

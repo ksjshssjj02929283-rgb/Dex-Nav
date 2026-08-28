@@ -41,7 +41,8 @@ public:
   {
     return {BT::InputPort<std::string>(
         "reason",
-        "Recovery reason: follow_path_failed or back_up_succeeded")};
+        "Recovery reason: follow_path_failed, back_up_succeeded, or "
+        "prepare_backup_finished")};
   }
 
 private:
