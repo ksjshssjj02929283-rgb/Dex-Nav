@@ -78,7 +78,7 @@ Status Spin::onRun(const std::shared_ptr<const SpinAction::Goal> command)
       current_pose, *tf_, global_frame_, robot_base_frame_,
       transform_tolerance_))
   {
-    RCLCPP_ERROR(logger_, "Current robot pose is not available.");
+    RCLCPP_ERROR(logger_, "Spin rejected: initial robot pose unavailable.");
     return Status::FAILED;
   }
 
@@ -87,7 +87,7 @@ Status Spin::onRun(const std::shared_ptr<const SpinAction::Goal> command)
 
   cmd_yaw_ = command->target_yaw;
   RCLCPP_INFO(
-    logger_, "Turning %0.2f for spin behavior.",
+    logger_, "Spin started: target_yaw=%.3f rad.",
     cmd_yaw_);
 
   command_time_allowance_ = command->time_allowance;
@@ -103,7 +103,7 @@ Status Spin::onCycleUpdate()
     stopRobot();
     RCLCPP_WARN(
       logger_,
-      "Exceeded time allowance before reaching the Spin goal - Exiting Spin");
+      "Spin timed out: allowance=%.3f s.", command_time_allowance_.seconds());
     return Status::FAILED;
   }
 
@@ -112,7 +112,7 @@ Status Spin::onCycleUpdate()
       current_pose, *tf_, global_frame_, robot_base_frame_,
       transform_tolerance_))
   {
-    RCLCPP_ERROR(logger_, "Current robot pose is not available.");
+    RCLCPP_ERROR(logger_, "Spin stopped: robot pose unavailable.");
     return Status::FAILED;
   }
 
@@ -148,7 +148,7 @@ Status Spin::onCycleUpdate()
 
   if (!isCollisionFree(relative_yaw_, cmd_vel.get(), pose2d)) {
     stopRobot();
-    RCLCPP_WARN(logger_, "Collision Ahead - Exiting Spin");
+    RCLCPP_WARN(logger_, "Spin blocked: predicted pose is unsafe.");
     return Status::FAILED;
   }
 

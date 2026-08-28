@@ -39,6 +39,8 @@ public:
     const std::string & name,
     const BT::NodeConfiguration & conf);
 
+  void halt() override;
+
   /**
    * @brief Creates list of BT ports
    * @return BT::PortsList Containing node-specific ports

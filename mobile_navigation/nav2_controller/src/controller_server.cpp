@@ -29,6 +29,7 @@
 #include "nav_2d_utils/conversions.hpp"
 #include "nav_2d_utils/tf_help.hpp"
 #include "nav2_util/node_utils.hpp"
+#include "nav2_util/navigation_protocol.hpp"
 #include "nav2_util/geometry_utils.hpp"
 #include "nav2_util/robot_utils.hpp"
 #include "nav2_controller/controller_server.hpp"
@@ -49,7 +50,6 @@ namespace
 {
 
 constexpr int kEndLocalizationWarningThrottleMs = 1000;
-
 const char * speedPlanningTerminalBranchName(
   nav2_core::SpeedPlanningTerminalBranch branch)
 {
@@ -582,6 +582,15 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
   vel_publisher_ = create_publisher<geometry_msgs::msg::Twist>("cmd_vel", 1);
   hard_stop_publisher_ = create_publisher<std_msgs::msg::Empty>(
     hard_stop_topic_, rclcpp::QoS(1).reliable());
+  prepare_replan_request_pub_ = create_publisher<std_msgs::msg::UInt64>(
+    nav2_util::navigation_protocol::kPrepareReplanTopic,
+    nav2_util::navigation_protocol::stateTopicQoS());
+  prepare_session_sub_ = create_subscription<std_msgs::msg::UInt64>(
+    nav2_util::navigation_protocol::kPrepareSessionTopic,
+    nav2_util::navigation_protocol::stateTopicQoS(),
+    [this](const std_msgs::msg::UInt64::SharedPtr msg) {
+      latest_prepare_session_id_.store(msg->data);
+    });
   goal_error_publisher_ = create_publisher<diagnostic_msgs::msg::DiagnosticArray>(
     "/navigation_goal_error",
     rclcpp::QoS(rclcpp::KeepLast(10)).reliable().transient_local());
@@ -645,6 +654,7 @@ ControllerServer::on_activate(const rclcpp_lifecycle::State & /*state*/)
   }
   vel_publisher_->on_activate();
   hard_stop_publisher_->on_activate();
+  prepare_replan_request_pub_->on_activate();
   goal_error_publisher_->on_activate();
   speed_plan_publisher_->on_activate();
   speed_plan_diagnostics_publisher_->on_activate();
@@ -709,6 +719,10 @@ ControllerServer::on_deactivate(const rclcpp_lifecycle::State & /*state*/)
   }
 
   publishHardStopVelocity();
+  resetStagedControlState();
+  if (active_prepare_session_id_ != 0) {
+    publishReplanRequired("controller deactivated");
+  }
   nav_status_pub_->on_deactivate();
   goal_error_publisher_->on_deactivate();
   speed_plan_publisher_->on_deactivate();
@@ -727,6 +741,7 @@ ControllerServer::on_deactivate(const rclcpp_lifecycle::State & /*state*/)
   }
   vel_publisher_->on_deactivate();
   hard_stop_publisher_->on_deactivate();
+  prepare_replan_request_pub_->on_deactivate();
   dyn_params_handler_.reset();
 
   // destroy bond connection
@@ -782,6 +797,8 @@ ControllerServer::on_cleanup(const rclcpp_lifecycle::State & /*state*/)
   vel_publisher_.reset();
   nav_status_pub_.reset();
   hard_stop_publisher_.reset();
+  prepare_replan_request_pub_.reset();
+  prepare_session_sub_.reset();
   goal_error_publisher_.reset();
   speed_plan_publisher_.reset();
   speed_plan_diagnostics_publisher_.reset();
@@ -789,7 +806,9 @@ ControllerServer::on_cleanup(const rclcpp_lifecycle::State & /*state*/)
   phase_echo_pub_.reset();
   desired_vel_echo_pub_.reset();
   controller_target_echo_pub_.reset();
-  invalidateSpeedPlanningContinuity();
+  resetStagedControlState();
+  latest_prepare_session_id_.store(0);
+  active_prepare_session_id_ = 0;
   speed_limit_sub_.reset();
 
   return nav2_util::CallbackReturn::SUCCESS;
@@ -889,11 +908,15 @@ void ControllerServer::computeControl()
   publishNavigationStatus(nav_interfaces::msg::NavigationStatus::NAVIGATING);
 
   try {
+    // 尽早关联已经到达的导航任务会话，使入口异常或立即取消也能锁存正确会话。
+    syncPrepareSession();
+
     std::string c_name = action_server_->get_current_goal()->controller_id;
     std::string current_controller;
     if (findControllerId(c_name, current_controller)) {
       current_controller_ = current_controller;
     } else {
+      lockPrepareForCurrentSession("controller unavailable");
       resetEndLocalizationCapabilities(goal_generation_);
       action_server_->terminate_current();
       return;
@@ -904,6 +927,7 @@ void ControllerServer::computeControl()
     if (findGoalCheckerId(gc_name, current_goal_checker)) {
       current_goal_checker_ = current_goal_checker;
     } else {
+      lockPrepareForCurrentSession("goal checker unavailable");
       resetEndLocalizationCapabilities(goal_generation_);
       action_server_->terminate_current();
       return;
@@ -913,11 +937,9 @@ void ControllerServer::computeControl()
       action_server_->get_current_goal()->path,
       PathUpdateType::NEW_GOAL);
     progress_checker_->reset();
-    // 阶段状态只以“到达目标”为重置基准（isGoalReached 分支），不在此处重置：
-    // computeControl() 会在同一次导航内因 BT 恢复重试（前方受阻→异常→
-    // RecoveryNode 重发 FollowPath）被多次重新进入，入口重置会导致阶段一
-    // 反复重新武装、无限重试后退。“一次导航只走一次阶段一”只能靠到达信号
-    // 判定——没有可靠信号能区分“恢复重试”与“真正开始新导航”。
+    // 不在 FollowPath 入口重置阶段状态：同一次导航可能因 BT 恢复而多次重发
+    // FollowPath。bt_navigator 发布的导航会话代次才是新任务边界，控制
+    // 循环通过 syncPrepareSession() 只在代次变化时重新武装 PREPARE。
 
     last_valid_cmd_time_ = now();
     rclcpp::WallRate loop_rate(controller_frequency_);
@@ -929,6 +951,7 @@ void ControllerServer::computeControl()
     while (rclcpp::ok()) {
       if (action_server_ == nullptr || !action_server_->is_server_active()) {
         RCLCPP_DEBUG(get_logger(), "Action server is not active. Control stopped.");
+        lockPrepareForCurrentSession("action server inactive");
         resetEndLocalizationCapabilities(goal_generation_);
         return;
       }
@@ -937,6 +960,7 @@ void ControllerServer::computeControl()
         RCLCPP_INFO(get_logger(), "Goal canceled. Stopping robot.");
         publishHardStopVelocity();
         publishNavigationStatus(nav_interfaces::msg::NavigationStatus::IDLE);
+        lockPrepareForCurrentSession("goal canceled");
         resetEndLocalizationCapabilities(goal_generation_);
         // The FollowPath result is the controller-side stop acknowledgement used
         // by BtActionNode cleanup. Publish zero before making that result visible.
@@ -953,6 +977,7 @@ void ControllerServer::computeControl()
             "Goal canceled while waiting for costmap. Stopping robot.");
           publishHardStopVelocity();
           publishNavigationStatus(nav_interfaces::msg::NavigationStatus::IDLE);
+          lockPrepareForCurrentSession("goal canceled");
           resetEndLocalizationCapabilities(goal_generation_);
           action_server_->terminate_all();
           return;
@@ -961,6 +986,7 @@ void ControllerServer::computeControl()
       }
       start = std::chrono::steady_clock::now();
       updateGlobalPath();
+      syncPrepareSession();
       end = std::chrono::steady_clock::now();
       elapsed = end - start;
       if (elapsed.count() >= 100) {
@@ -1023,6 +1049,7 @@ void ControllerServer::computeControl()
   } catch (nav2_core::CollisionException & e) {
     RCLCPP_ERROR(this->get_logger(), "Collision detected! %s", e.what());
     publishHardStopVelocity();
+    lockPrepareForCurrentSession("collision");
     resetEndLocalizationCapabilities(goal_generation_);
     publishNavigationStatus(nav_interfaces::msg::NavigationStatus::FAILED, e.what());
     action_server_->terminate_current();
@@ -1031,6 +1058,7 @@ void ControllerServer::computeControl()
   } catch (nav2_core::PlannerException & e) {
     RCLCPP_ERROR(this->get_logger(), "Control failed: %s", e.what());
     publishHardStopVelocity();
+    lockPrepareForCurrentSession("planning failed");
     resetEndLocalizationCapabilities(goal_generation_);
     publishNavigationStatus(nav_interfaces::msg::NavigationStatus::FAILED, e.what());
     action_server_->terminate_current();
@@ -1039,6 +1067,7 @@ void ControllerServer::computeControl()
   }catch (std::exception & e) {
     RCLCPP_ERROR(this->get_logger(), "Unexpected control error: %s", e.what());
     publishHardStopVelocity();
+    lockPrepareForCurrentSession("control error");
     resetEndLocalizationCapabilities(goal_generation_);
     publishNavigationStatus(nav_interfaces::msg::NavigationStatus::FAILED, e.what());
     std::shared_ptr<Action::Result> result = std::make_shared<Action::Result>();
@@ -2486,19 +2515,18 @@ bool ControllerServer::isRearObstacleDetected()
 bool ControllerServer::shouldRunPrepareBackup()
 {
   if (!staged_control_enabled_ || !prepare_enabled_) {
-    prepare_backup_active_ = false;
-    prepare_check_pending_ = false;
+    prepare_state_ = PrepareState::DONE;
     return false;
   }
 
-  if (prepare_backup_active_) {
+  if (prepare_state_ == PrepareState::BACKING_UP) {
     // 每周期先查后方（参考 nav2_behaviors::DriveOnHeading 的运行时 costmap
     // 校验）：身后一旦出现障碍（他人/动态物体移动进来，或距离/半宽估计有
     // 误差），立即中止后退，不等定时/定距条件用完才停。
     if (isRearObstacleDetected()) {
-      prepare_backup_active_ = false;
       RCLCPP_WARN(
         get_logger(), "Prepare backup stopped: rear obstacle.");
+      completePrepareAndRequestReplan("rear obstacle");
       return false;
     }
     const double elapsed = (now() - prepare_backup_start_time_).seconds();
@@ -2516,30 +2544,32 @@ bool ControllerServer::shouldRunPrepareBackup()
     } else if (elapsed < prepare_backup_duration_) {
       return true;
     }
-    prepare_backup_active_ = false;
-  }
-
-  if (!prepare_check_pending_) {
+    completePrepareAndRequestReplan(
+      prepare_backup_use_distance_ ? "distance reached" : "duration reached");
     return false;
   }
 
-  prepare_check_pending_ = false;
+  if (prepare_state_ != PrepareState::CHECK_PENDING) {
+    return false;
+  }
+
   if (!isObstacleNearFootprint()) {
+    prepare_state_ = PrepareState::DONE;
     RCLCPP_INFO(
       get_logger(), "Prepare check: no front or side obstacle.");
     return false;
   }
 
-  // 启动前也查一次后方：前方受阻但后方同样无路可退时，不盲目后退，交给
-  // 后续 align/track 与全局避障处理（不是 prepare 的职责）。
+  // 启动前也查一次后方：前后均受阻时不盲目后退，直接请求全局重规划。
   if (isRearObstacleDetected()) {
     RCLCPP_WARN(
       get_logger(),
       "Prepare backup skipped: front and rear are blocked.");
+    completePrepareAndRequestReplan("front and rear blocked");
     return false;
   }
 
-  prepare_backup_active_ = true;
+  prepare_state_ = PrepareState::BACKING_UP;
   prepare_backup_start_time_ = now();
   getRobotPose(prepare_backup_start_pose_);
   RCLCPP_WARN(
@@ -2552,10 +2582,126 @@ bool ControllerServer::shouldRunPrepareBackup()
   return true;
 }
 
+void ControllerServer::syncPrepareSession()
+{
+  const uint64_t latest_session_id = latest_prepare_session_id_.load();
+  if (latest_session_id == active_prepare_session_id_) {
+    return;
+  }
+
+  if (latest_session_id == 0) {
+    active_prepare_session_id_ = 0;
+    resetStagedControlState();
+    return;
+  }
+
+  armStagedControlForNewSession(latest_session_id);
+}
+
+void ControllerServer::armStagedControlForNewSession(uint64_t session_id)
+{
+  active_prepare_session_id_ = session_id;
+  resetStagedControlState();
+
+  // transient-local Topic需要在任务边界清除旧请求，避免晚加入者读取上一任务状态。
+  if (prepare_replan_request_pub_ && prepare_replan_request_pub_->is_activated()) {
+    std_msgs::msg::UInt64 cleared_signal;
+    cleared_signal.data = 0;
+    prepare_replan_request_pub_->publish(cleared_signal);
+  }
+
+  const bool prepare_armed = staged_control_enabled_ && prepare_enabled_;
+  if (prepare_armed) {
+    prepare_state_ = PrepareState::CHECK_PENDING;
+  }
+
+  RCLCPP_INFO(
+    get_logger(),
+    "Navigation session synchronized: session=%" PRIu64 ", prepare_armed=%s.",
+    active_prepare_session_id_, prepare_armed ? "true" : "false");
+}
+
+void ControllerServer::completePrepareAndRequestReplan(const char * reason)
+{
+  if (prepare_state_ == PrepareState::DONE) {
+    return;
+  }
+
+  prepare_state_ = PrepareState::DONE;
+  invalidateSpeedPlanningContinuity();
+  if (progress_checker_) {
+    progress_checker_->reset();
+  }
+
+  publishReplanRequired(reason);
+}
+
+void ControllerServer::publishReplanRequired(const char * reason)
+{
+  if (active_prepare_session_id_ == 0 || !prepare_replan_request_pub_ ||
+    !prepare_replan_request_pub_->is_activated())
+  {
+    RCLCPP_WARN(
+      get_logger(),
+      "Replan signal unavailable: reason=%s, session=%" PRIu64 ".",
+      reason, active_prepare_session_id_);
+    return;
+  }
+
+  std_msgs::msg::UInt64 signal;
+  signal.data = active_prepare_session_id_;
+  prepare_replan_request_pub_->publish(signal);
+
+  if (prepare_replan_request_pub_->get_subscription_count() == 0) {
+    RCLCPP_WARN(
+      get_logger(),
+      "Replan signal published without consumer: reason=%s, session=%" PRIu64 ".",
+      reason, active_prepare_session_id_);
+  } else {
+    RCLCPP_INFO(
+      get_logger(),
+      "Replan signal published: reason=%s, session=%" PRIu64 ".",
+      reason, active_prepare_session_id_);
+  }
+}
+
+void ControllerServer::lockPrepareForCurrentSession(const char * reason)
+{
+  // 取消可能早于本周期常规会话同步；若消息已经到达，先把它归属为当前会话。
+  if (active_prepare_session_id_ == 0) {
+    active_prepare_session_id_ = latest_prepare_session_id_.load();
+  }
+
+  const bool state_changed = prepare_state_ != PrepareState::DONE;
+
+  prepare_state_ = PrepareState::DONE;
+  invalidateSpeedPlanningContinuity();
+
+  if (state_changed) {
+    RCLCPP_INFO(
+      get_logger(),
+      "PREPARE closed: reason=%s, session=%" PRIu64 ".",
+      reason, active_prepare_session_id_);
+  }
+}
+
+const char * ControllerServer::prepareStateName(PrepareState state) const
+{
+  switch (state) {
+    case PrepareState::CHECK_PENDING:
+      return "CHECK_PENDING";
+    case PrepareState::BACKING_UP:
+      return "BACKING_UP";
+    case PrepareState::DONE:
+      return "DONE";
+  }
+  return "INVALID";
+}
+
 void ControllerServer::resetStagedControlState()
 {
-  prepare_backup_active_ = false;
-  prepare_check_pending_ = true;
+  // Reset只负责安全清理，不能隐式开始新导航任务。
+  prepare_state_ = PrepareState::DONE;
   align_done_ = false;
   terminal_brake_latched_ = false;
   terminal_stall_consecutive_cycles_ = 0;
@@ -2727,7 +2873,6 @@ geometry_msgs::msg::TwistStamped ControllerServer::computeStagedVelocity(
     cmd_vel.twist.linear.x = prepare_backup_speed_;
     return cmd_vel;
   }
-
   const double distance_to_goal = getDistanceToGoal(pose);
   bool position_reference_latched = false;
   const bool in_approach = shouldUseApproachController(
@@ -3460,10 +3605,14 @@ ControllerServer::dynamicParametersCallback(std::vector<rclcpp::Parameter> param
     } else if (type == ParameterType::PARAMETER_BOOL) {
       if (name == "staged_control.enabled") {
         staged_control_enabled_ = parameter.as_bool();
-        prepare_backup_active_ = false;
+        if (!staged_control_enabled_) {
+          prepare_state_ = PrepareState::DONE;
+        }
       } else if (name == "staged_control.prepare.enabled") {
         prepare_enabled_ = parameter.as_bool();
-        prepare_backup_active_ = false;
+        if (!prepare_enabled_) {
+          prepare_state_ = PrepareState::DONE;
+        }
       } else if (name == "staged_control.prepare.backup_use_distance") {
         prepare_backup_use_distance_ = parameter.as_bool();
       }

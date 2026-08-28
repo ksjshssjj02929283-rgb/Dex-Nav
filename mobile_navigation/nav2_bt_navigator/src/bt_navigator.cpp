@@ -55,6 +55,7 @@ BtNavigator::BtNavigator(rclcpp::NodeOptions options)
     "nav2_reinitialize_global_localization_service_bt_node",
     "nav2_rate_controller_bt_node",
     "nav2_adaptive_replanning_decorator_bt_node",
+    "nav2_request_and_wait_for_global_replan_action_bt_node",
     "nav2_distance_controller_bt_node",
     "nav2_speed_controller_bt_node",
     "nav2_truncate_path_action_bt_node",
@@ -124,6 +125,8 @@ BtNavigator::on_configure(const rclcpp_lifecycle::State & /*state*/)
 
   pose_navigator_ = std::make_unique<nav2_bt_navigator::NavigateToPoseNavigator>();
   poses_navigator_ = std::make_unique<nav2_bt_navigator::NavigateThroughPosesNavigator>();
+  session_manager_ = std::make_shared<nav2_bt_navigator::NavigationSessionManager>(
+    shared_from_this());
 
   nav2_bt_navigator::FeedbackUtils feedback_utils;
   feedback_utils.tf = tf_;
@@ -135,13 +138,15 @@ BtNavigator::on_configure(const rclcpp_lifecycle::State & /*state*/)
   odom_smoother_ = std::make_shared<nav2_util::OdomSmoother>(shared_from_this(), 0.3, odom_topic_);
 
   if (!pose_navigator_->on_configure(
-      shared_from_this(), plugin_lib_names, feedback_utils, &plugin_muxer_, odom_smoother_))
+      shared_from_this(), plugin_lib_names, feedback_utils, &plugin_muxer_,
+      session_manager_, odom_smoother_))
   {
     return nav2_util::CallbackReturn::FAILURE;
   }
 
   if (!poses_navigator_->on_configure(
-      shared_from_this(), plugin_lib_names, feedback_utils, &plugin_muxer_, odom_smoother_))
+      shared_from_this(), plugin_lib_names, feedback_utils, &plugin_muxer_,
+      session_manager_, odom_smoother_))
   {
     return nav2_util::CallbackReturn::FAILURE;
   }
@@ -154,7 +159,19 @@ BtNavigator::on_activate(const rclcpp_lifecycle::State & /*state*/)
 {
   RCLCPP_INFO(get_logger(), "Activating");
 
-  if (!poses_navigator_->on_activate() || !pose_navigator_->on_activate()) {
+  if (!session_manager_) {
+    RCLCPP_ERROR(get_logger(), "Navigation session manager is unavailable.");
+    return nav2_util::CallbackReturn::FAILURE;
+  }
+
+  session_manager_->activate();
+  if (!poses_navigator_->on_activate()) {
+    session_manager_->deactivate();
+    return nav2_util::CallbackReturn::FAILURE;
+  }
+  if (!pose_navigator_->on_activate()) {
+    poses_navigator_->on_deactivate();
+    session_manager_->deactivate();
     return nav2_util::CallbackReturn::FAILURE;
   }
 
@@ -169,7 +186,13 @@ BtNavigator::on_deactivate(const rclcpp_lifecycle::State & /*state*/)
 {
   RCLCPP_INFO(get_logger(), "Deactivating");
 
-  if (!poses_navigator_->on_deactivate() || !pose_navigator_->on_deactivate()) {
+  const bool poses_deactivated = poses_navigator_->on_deactivate();
+  const bool pose_deactivated = pose_navigator_->on_deactivate();
+  if (session_manager_) {
+    session_manager_->endCurrentSession();
+    session_manager_->deactivate();
+  }
+  if (!poses_deactivated || !pose_deactivated) {
     return nav2_util::CallbackReturn::FAILURE;
   }
 
@@ -188,14 +211,21 @@ BtNavigator::on_cleanup(const rclcpp_lifecycle::State & /*state*/)
   tf_listener_.reset();
   tf_.reset();
 
-  if (!poses_navigator_->on_cleanup() || !pose_navigator_->on_cleanup()) {
+  const bool poses_cleaned = poses_navigator_->on_cleanup();
+  const bool pose_cleaned = pose_navigator_->on_cleanup();
+  if (session_manager_) {
+    session_manager_->endCurrentSession();
+    session_manager_->deactivate();
+  }
+  if (!poses_cleaned || !pose_cleaned) {
     return nav2_util::CallbackReturn::FAILURE;
   }
 
   poses_navigator_.reset();
   pose_navigator_.reset();
+  session_manager_.reset();
 
-  RCLCPP_INFO(get_logger(), "Completed Cleaning up");
+  RCLCPP_INFO(get_logger(), "Cleanup complete");
   return nav2_util::CallbackReturn::SUCCESS;
 }
 
@@ -203,6 +233,10 @@ nav2_util::CallbackReturn
 BtNavigator::on_shutdown(const rclcpp_lifecycle::State & /*state*/)
 {
   RCLCPP_INFO(get_logger(), "Shutting down");
+  if (session_manager_) {
+    session_manager_->endCurrentSession();
+    session_manager_->deactivate();
+  }
   return nav2_util::CallbackReturn::SUCCESS;
 }
 

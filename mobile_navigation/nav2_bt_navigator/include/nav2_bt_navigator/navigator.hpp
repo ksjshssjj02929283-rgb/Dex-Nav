@@ -15,10 +15,11 @@
 #ifndef NAV2_BT_NAVIGATOR__NAVIGATOR_HPP_
 #define NAV2_BT_NAVIGATOR__NAVIGATOR_HPP_
 
+#include <cstdint>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
-#include <mutex>
 
 #include "nav2_util/odometry_utils.hpp"
 #include "tf2_ros/buffer.h"
@@ -26,6 +27,7 @@
 #include "rclcpp_lifecycle/lifecycle_node.hpp"
 #include "pluginlib/class_loader.hpp"
 #include "nav2_behavior_tree/bt_action_server.hpp"
+#include "nav2_bt_navigator/navigation_session_manager.hpp"
 
 namespace nav2_bt_navigator
 {
@@ -76,9 +78,8 @@ public:
     if (!current_navigator_.empty()) {
       RCLCPP_ERROR(
         rclcpp::get_logger("NavigatorMutex"),
-        "Major error! Navigation requested while another navigation"
-        " task is in progress! This likely occurred from an incorrect"
-        "implementation of a navigator plugin.");
+        "Navigator conflict: requested='%s', active='%s'.",
+        navigator_name.c_str(), current_navigator_.c_str());
     }
     current_navigator_ = navigator_name;
   }
@@ -93,9 +94,8 @@ public:
     if (current_navigator_ != navigator_name) {
       RCLCPP_ERROR(
         rclcpp::get_logger("NavigatorMutex"),
-        "Major error! Navigation stopped while another navigation"
-        " task is in progress! This likely occurred from an incorrect"
-        "implementation of a navigator plugin.");
+        "Navigator stop mismatch: requested='%s', active='%s'.",
+        navigator_name.c_str(), current_navigator_.c_str());
     } else {
       current_navigator_ = std::string("");
     }
@@ -136,6 +136,7 @@ public:
    * @param feedback_utils Some utilities useful for navigators to have
    * @param plugin_muxer The muxing object to ensure only one navigator
    * can be active at a time
+   * @param session_manager Shared navigation task session owner
    * @param odom_smoother Object to get current smoothed robot's speed
    * @return bool If successful
    */
@@ -144,6 +145,7 @@ public:
     const std::vector<std::string> & plugin_lib_names,
     const FeedbackUtils & feedback_utils,
     nav2_bt_navigator::NavigatorMuxer * plugin_muxer,
+    const std::shared_ptr<nav2_bt_navigator::NavigationSessionManager> & session_manager,
     std::shared_ptr<nav2_util::OdomSmoother> odom_smoother)
   {
     auto node = parent_node.lock();
@@ -151,6 +153,7 @@ public:
     clock_ = node->get_clock();
     feedback_utils_ = feedback_utils;
     plugin_muxer_ = plugin_muxer;
+    session_manager_ = session_manager;
 
     // get the default behavior tree for this navigator
     std::string default_bt_xml_filename = getDefaultBTFilepath(parent_node);
@@ -163,7 +166,7 @@ public:
       default_bt_xml_filename,
       std::bind(&Navigator::onGoalReceived, this, std::placeholders::_1),
       std::bind(&Navigator::onLoop, this),
-      std::bind(&Navigator::onPreempt, this, std::placeholders::_1),
+      std::bind(&Navigator::onPreemptInternal, this, std::placeholders::_1),
       std::bind(&Navigator::onCompletion, this, std::placeholders::_1, std::placeholders::_2));
 
     bool ok = true;
@@ -205,6 +208,7 @@ public:
     if (!bt_action_server_->on_deactivate()) {
       ok = false;
     }
+    endNavigationSession();
 
     return deactivate() && ok;
   }
@@ -220,7 +224,9 @@ public:
       ok = false;
     }
 
+    endNavigationSession();
     bt_action_server_.reset();
+    session_manager_.reset();
 
     return cleanup() && ok;
   }
@@ -259,6 +265,7 @@ protected:
     bool goal_accepted = goalReceived(goal);
 
     if (goal_accepted) {
+      beginNavigationSession();
       plugin_muxer_->startNavigating(getName());
     }
 
@@ -272,8 +279,42 @@ protected:
     typename ActionT::Result::SharedPtr result,
     const nav2_behavior_tree::BtStatus final_bt_status)
   {
+    endNavigationSession();
     plugin_muxer_->stopNavigating(getName());
     goalCompleted(result, final_bt_status);
+  }
+
+  /**
+   * @brief 接受目标后由基类统一生成导航代次。
+   */
+  void beginNavigationSession()
+  {
+    if (!session_manager_ || !bt_action_server_) {
+      RCLCPP_ERROR(logger_, "Navigation session manager is unavailable.");
+      return;
+    }
+
+    navigation_session_id_ = session_manager_->beginSession(bt_action_server_->getBlackboard());
+  }
+
+  void endNavigationSession()
+  {
+    if (session_manager_ && navigation_session_id_ != 0) {
+      session_manager_->endSession(navigation_session_id_);
+    }
+    navigation_session_id_ = 0;
+  }
+
+  /**
+   * @brief 派生类成功接受抢占目标后，由基类统一创建新导航代次。
+   */
+  void onPreemptInternal(typename ActionT::Goal::ConstSharedPtr goal)
+  {
+    const auto previous_goal_id = bt_action_server_->getCurrentGoalId();
+    onPreempt(goal);
+    if (bt_action_server_->getCurrentGoalId() != previous_goal_id) {
+      beginNavigationSession();
+    }
   }
 
   /**
@@ -332,6 +373,8 @@ protected:
   rclcpp::Clock::SharedPtr clock_;
   FeedbackUtils feedback_utils_;
   NavigatorMuxer * plugin_muxer_;
+  std::shared_ptr<nav2_bt_navigator::NavigationSessionManager> session_manager_;
+  uint64_t navigation_session_id_{0};
 };
 
 }  // namespace nav2_bt_navigator
