@@ -102,6 +102,65 @@ TEST(SCurveRuckig, StartWithVelocity)
   checkBounds(env, v, a, t, 0.35, 0.15, 0.5);
 }
 
+TEST(SCurveRuckig, MidPathNegativeAccelerationCanRecoverBeforeTerminalLatch)
+{
+  const size_t n = 201;
+  std::vector<double> env(n, 0.6);
+  for (size_t i = n - 10; i < n; ++i) {
+    env[i] = 0.05;
+  }
+  const auto s = uniformArc(n, 0.02);
+  std::vector<double> v, a, t;
+
+  SCurveSpeedPlanner::generateRuckigProfile(
+    env, s, 0.2, -0.05, 0.5, 0.4, 0.5, 0.05, v, a, t, 0.05, false);
+
+  ASSERT_EQ(v.size(), n);
+  EXPECT_GT(*std::max_element(v.begin(), v.end()), 0.4)
+    << "ordinary negative acceleration must be released before re-acceleration";
+  EXPECT_TRUE(std::any_of(a.begin(), a.end(), [](double value) {return value > 0.05;}));
+}
+
+TEST(SCurveRuckig, LatchedGoalBrakeKeepsNegativeAccelerationMonotonic)
+{
+  const size_t n = 201;
+  std::vector<double> env(n, 0.6);
+  for (size_t i = n - 10; i < n; ++i) {
+    env[i] = 0.05;
+  }
+  const auto s = uniformArc(n, 0.02);
+  std::vector<double> v, a, t;
+
+  SCurveSpeedPlanner::generateRuckigProfile(
+    env, s, 0.2, -0.05, 0.5, 0.4, 0.5, 0.05, v, a, t, 0.05, true);
+
+  ASSERT_EQ(v.size(), n);
+  for (size_t i = 1; i < v.size(); ++i) {
+    EXPECT_LE(v[i], v[i - 1] + 1e-6);
+  }
+  EXPECT_TRUE(std::all_of(a.begin(), a.end(), [](double value) {return value <= 1e-6;}));
+  EXPECT_NEAR(v.back(), 0.05, 1e-6);
+}
+
+TEST(SCurveRuckig, ObstacleHardStopRemainsIndependentOfGoalLatch)
+{
+  const size_t n = 201;
+  std::vector<double> env(n, 0.6);
+  constexpr size_t obstacle_index = 150;
+  for (size_t i = obstacle_index; i < n; ++i) {
+    env[i] = 0.0;
+  }
+  const auto s = uniformArc(n, 0.02);
+  std::vector<double> v, a, t;
+
+  SCurveSpeedPlanner::generateRuckigProfile(
+    env, s, 0.25, -0.05, 0.5, 0.4, 0.5, 0.05, v, a, t, 0.05, false);
+
+  ASSERT_EQ(v.size(), n);
+  EXPECT_NEAR(v[obstacle_index], 0.0, 1e-6);
+  EXPECT_NEAR(v.back(), 0.0, 1e-6);
+}
+
 TEST(SCurveRuckig, PreservesAndClampsInitialAcceleration)
 {
   const size_t n = 200;
@@ -270,7 +329,8 @@ TEST(SCurveRuckig, LateNegativeAccelerationReleasesWithoutRebound)
   std::vector<double> v, a, t;
 
   const bool terminal_infeasible = SCurveSpeedPlanner::generateRuckigProfile(
-    env, s, 0.0583, -0.108, 0.5, 0.4, 0.5, 0.05, v, a, t, 0.05).infeasible();
+    env, s, 0.0583, -0.108, 0.5, 0.4, 0.5, 0.05, v, a, t, 0.05,
+    true).infeasible();
 
   EXPECT_TRUE(terminal_infeasible);
   ASSERT_EQ(v.size(), n);
@@ -284,5 +344,28 @@ TEST(SCurveRuckig, LateNegativeAccelerationReleasesWithoutRebound)
   }
   EXPECT_NEAR(min_velocity, 0.046636, 1e-3);
   EXPECT_NEAR(v.back(), min_velocity, 1e-6);
+  EXPECT_NEAR(a.back(), 0.0, 1e-6);
+}
+
+TEST(SCurveRuckig, LatchedZeroTerminalRecoveryIsBoundedByCreepSpeed)
+{
+  const size_t n = 21;
+  std::vector<double> env(n, 0.05);
+  env.back() = 0.0;
+  const auto s = uniformArc(n, 0.01);
+  std::vector<double> v, a, t;
+
+  SCurveSpeedPlanner::generateRuckigProfile(
+    env, s, 0.014, 0.0, 0.7, 0.6, 0.7, 0.1,
+    v, a, t, 0.0, true, 0.05);
+
+  ASSERT_EQ(v.size(), n);
+  EXPECT_NEAR(v.front(), 0.014, 1e-9);
+  EXPECT_GT(*std::max_element(v.begin(), v.end()), 0.014 + 1e-4);
+  for (size_t i = 1; i < v.size(); ++i) {
+    EXPECT_LE(v[i], 0.05 + 1e-6);
+    EXPECT_GE(v[i], -1e-9);
+  }
+  EXPECT_NEAR(v.back(), 0.0, 1e-6);
   EXPECT_NEAR(a.back(), 0.0, 1e-6);
 }

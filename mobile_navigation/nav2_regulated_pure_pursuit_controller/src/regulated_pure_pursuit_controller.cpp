@@ -192,6 +192,8 @@ void RegulatedPurePursuitController::configure(
   declare_parameter_if_not_declared(
     node, plugin_name_ + ".max_linear_accel", rclcpp::ParameterValue(0.5));
   declare_parameter_if_not_declared(
+    node, plugin_name_ + ".max_linear_decel", rclcpp::ParameterValue(0.5));
+  declare_parameter_if_not_declared(
     node, plugin_name_ + ".speed_loop_kp", rclcpp::ParameterValue(2.0));
   declare_parameter_if_not_declared(
     node, plugin_name_ + ".speed_loop_ki", rclcpp::ParameterValue(0.2));
@@ -205,6 +207,9 @@ void RegulatedPurePursuitController::configure(
   node->get_parameter(plugin_name_ + ".desired_linear_vel", desired_linear_vel_);
   base_desired_linear_vel_ = desired_linear_vel_;
   node->get_parameter(plugin_name_ + ".max_linear_accel", max_linear_accel_);
+  node->get_parameter(plugin_name_ + ".max_linear_decel", max_linear_decel_);
+  max_linear_accel_ = std::max(std::fabs(max_linear_accel_), 1e-3);
+  max_linear_decel_ = std::max(std::fabs(max_linear_decel_), 1e-3);
   nav2_controller_common::PidConf conf;
   node->get_parameter(plugin_name_ + ".speed_loop_kp", conf.kp);
   node->get_parameter(plugin_name_ + ".speed_loop_ki", conf.ki);
@@ -514,6 +519,7 @@ geometry_msgs::msg::TwistStamped RegulatedPurePursuitController::computeVelocity
       last_trajectory_tracking_target_valid_ = true;
       last_trajectory_tracking_target_v_ = traj_v;
       last_trajectory_tracking_target_a_ = traj_accel;
+      last_trajectory_tracking_target_t_ = trajectory_preview.relative_time;
     }
 
     // angular_gain > 1 收紧转向补偿曲线滞后；饱和 clamp 兜底（联动降速后
@@ -588,7 +594,7 @@ void RegulatedPurePursuitController::rotateToHeading(
 
   // 线速度按 max_linear_accel_ 逐周期减速到 0，不瞬间置零：track 段巡航时线速度
   // 可观，若在这里直接归零，会在跟踪速度环的加速度限幅之外单独制造一次阶跃指令。
-  const double decel_step = max_linear_accel_ * dt;
+  const double decel_step = max_linear_decel_ * dt;
   linear_vel = std::copysign(
     std::max(0.0, std::fabs(curr_speed.linear.x) - decel_step), curr_speed.linear.x);
 
@@ -1096,12 +1102,20 @@ bool RegulatedPurePursuitController::trajectoryPreviewAtPose(
 bool RegulatedPurePursuitController::getLastTrajectoryTrackingTarget(
   double & velocity, double & acceleration)
 {
+  double relative_time = 0.0;
+  return getLastTrajectoryTrackingReceipt(velocity, acceleration, relative_time);
+}
+
+bool RegulatedPurePursuitController::getLastTrajectoryTrackingReceipt(
+  double & velocity, double & acceleration, double & relative_time)
+{
   std::lock_guard<std::mutex> lock(traj_mutex_);
   if (!last_trajectory_tracking_target_valid_) {
     return false;
   }
   velocity = last_trajectory_tracking_target_v_;
   acceleration = last_trajectory_tracking_target_a_;
+  relative_time = last_trajectory_tracking_target_t_;
   return true;
 }
 
@@ -1133,7 +1147,7 @@ double RegulatedPurePursuitController::trackLinearVelocity(
   // 前馈把"此刻规划期望的加速度"直接喂给控制器，反馈只需修正前馈之外的残差。
   const double feedback_accel = speed_pid_.Control(target_vel - measured_vel, dt);
   double accel_cmd = feedforward_accel + feedback_accel;
-  accel_cmd = std::clamp(accel_cmd, -max_linear_accel_, max_linear_accel_);
+  accel_cmd = std::clamp(accel_cmd, -max_linear_decel_, max_linear_accel_);
   double v_out = last_speed_cmd_ + accel_cmd * dt;
   // 输出界（符号感知）：上限=规划速度——逐点速度既是跟踪参考也是速度限幅
   // （曲率/障碍/蠕行 cap 编码在内，指令超过即违反规划约束）；下界 0——前向
@@ -1153,7 +1167,7 @@ double RegulatedPurePursuitController::trackLinearVelocity(
     feedforward_accel * target_vel < 0.0)
   {
     const double feedback_only = std::clamp(
-      feedback_accel, -max_linear_accel_, max_linear_accel_);
+      feedback_accel, -max_linear_decel_, max_linear_accel_);
     v_out = std::clamp(last_speed_cmd_ + feedback_only * dt, lo, hi);
   }
   last_speed_cmd_ = v_out;

@@ -181,8 +181,7 @@ struct Scenario
   // 末端制动锁存态。离线此前从不置位 → latch 分支零覆盖，
   // 而制动裕度的存亡恰恰全发生在该分支里。
   bool terminal_brake_latched{false};
-  double terminal_execution_delay{0.0};   // 0 = 不启用裕度
-  double terminal_safety_margin{0.0};
+  double terminal_execution_delay{0.0};   // 仅用于0.05→0最终停车
 
   PathKind path_kind{PathKind::Generated};
   double lateral_offset{0.0};      // OffRouteStart：首点横向偏移量 [m]
@@ -538,8 +537,7 @@ inline std::vector<Scenario> buildScenarios()
       t.length = len;
       t.v0 = 0.6;
       t.terminal_brake_latched = (latched != 0);
-      t.terminal_execution_delay = 0.35;   // 与生产一致
-      t.terminal_safety_margin = 0.05;
+      t.terminal_execution_delay = 0.35;
       t.note = latched ? "已锁存：裕度须贯穿制动全程" : "未锁存对照";
       add(t);
     }
@@ -594,7 +592,6 @@ inline std::vector<Scenario> buildScenarios()
         t.length = len; t.v0 = 0.6;
         t.terminal_brake_latched = (latched != 0);
         t.terminal_execution_delay = 0.35;
-        t.terminal_safety_margin = 0.05;
         // 生产参数下 0.6 m/s 的制动距离实测 0.665 m（理论 0.676 m，
         // 由 jerk 0.5 + decel 0.4 必然导出）。短于它的路径**物理上停不住**，
         // 末点速度必然高于 end_speed——这不是缺陷，是场景在要求做不到的事。
@@ -916,7 +913,6 @@ inline std::vector<Scenario> buildScenarios()
         t.length = len; t.v0 = 0.6;
         t.terminal_brake_latched = (latched != 0);
         t.terminal_execution_delay = 0.35;
-        t.terminal_safety_margin = 0.05;
         t.note = latched ? "已锁存（本后端忽略该入参）" : "未锁存对照";
         add(t);
       }

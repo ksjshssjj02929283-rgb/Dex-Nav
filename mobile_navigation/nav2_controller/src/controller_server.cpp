@@ -14,14 +14,13 @@
 
 #include <algorithm>
 #include <chrono>
-#include <algorithm>
+#include <cmath>
 #include <cstdio>
-#include <vector>
+#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
-#include <limits>
-#include <cmath>
+#include <vector>
 
 #include "angles/angles.h"
 #include "lifecycle_msgs/msg/state.hpp"
@@ -131,10 +130,31 @@ ControllerServer::ControllerServer(const rclcpp::NodeOptions & options)
   // 否则重锚定到实测但仍保留加速度；旧名 max_velocity_error 的语义是
   // "超出即整体拒绝"，已改行为，改名避免和旧默认值（0.25）混淆。
   declare_parameter("initial_motion.replan_dev", 0.10);
+  declare_parameter("initial_motion.terminal_overspeed_replan_dev", 0.02);
   declare_parameter("initial_motion.failsafe_deviation_cycles", 5);
   declare_parameter("initial_motion.goal_position_tolerance", 0.05);
   declare_parameter("initial_motion.goal_yaw_tolerance", 0.2);
   declare_parameter("initial_motion.branch_heading_tolerance", 0.7853981634);
+  declare_parameter("initial_motion.stitching.horizon", 0.20);
+  declare_parameter("initial_motion.stitching.min_duration", 0.10);
+  declare_parameter("initial_motion.stitching.max_path_error", 0.05);
+  declare_parameter("initial_motion.stitching.max_time_error", 0.15);
+  declare_parameter(
+    "initial_motion.longitudinal_state_topic", longitudinal_state_topic_);
+  declare_parameter("initial_motion.longitudinal_state_max_age", 0.10);
+  declare_parameter("initial_motion.state_limits.min_acceleration", -0.40);
+  declare_parameter("initial_motion.state_limits.max_acceleration", 0.50);
+  declare_parameter("initial_motion.planned_correction.enabled", true);
+  declare_parameter("initial_motion.planned_correction.gain", 0.40);
+  declare_parameter("initial_motion.planned_correction.innovation_limit", 0.30);
+  declare_parameter("initial_motion.planned_correction.max_jerk", 0.30);
+  declare_parameter("initial_motion.terminal_stall_recovery.enabled", true);
+  declare_parameter("initial_motion.terminal_stall_recovery.duration", 0.5);
+  declare_parameter("initial_motion.terminal_stall_recovery.stopped_velocity", 0.01);
+  declare_parameter("initial_motion.terminal_stall_recovery.min_target_velocity", 0.03);
+  declare_parameter("initial_motion.terminal_stall_recovery.max_target_acceleration", -0.03);
+  declare_parameter("initial_motion.terminal_stall_recovery.max_progress_per_cycle", 0.005);
+  declare_parameter("initial_motion.terminal_stall_recovery.min_remaining_distance", 0.05);
   // nav_monitor 任务回显：默认关闭，零开销
   declare_parameter("enable_nav_monitor_echo", false);
   declare_parameter("min_x_velocity_threshold", rclcpp::ParameterValue(0.0001));
@@ -253,6 +273,9 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
     "initial_motion.replan_dev",
     speed_plan_state_config.replan_dev);
   get_parameter(
+    "initial_motion.terminal_overspeed_replan_dev",
+    speed_plan_state_config.terminal_overspeed_replan_dev);
+  get_parameter(
     "initial_motion.failsafe_deviation_cycles",
     speed_plan_state_config.failsafe_deviation_cycles);
   get_parameter(
@@ -264,7 +287,63 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
   get_parameter(
     "initial_motion.branch_heading_tolerance",
     speed_plan_state_config.branch_heading_tolerance);
+  get_parameter(
+    "initial_motion.stitching.horizon",
+    speed_plan_state_config.stitching_horizon);
+  get_parameter(
+    "initial_motion.stitching.min_duration",
+    speed_plan_state_config.stitching_min_duration);
+  get_parameter(
+    "initial_motion.stitching.max_time_error",
+    speed_plan_state_config.stitching_max_time_error);
+  get_parameter(
+    "initial_motion.stitching.max_path_error",
+    trajectory_stitching_max_path_error_);
+  trajectory_stitching_max_path_error_ = std::max(
+    0.0, trajectory_stitching_max_path_error_);
   initial_motion_arbiter_.configure(speed_plan_state_config);
+  get_parameter("initial_motion.longitudinal_state_topic", longitudinal_state_topic_);
+  get_parameter("initial_motion.longitudinal_state_max_age", longitudinal_state_max_age_);
+  get_parameter("initial_motion.state_limits.min_acceleration", state_acceleration_min_);
+  get_parameter("initial_motion.state_limits.max_acceleration", state_acceleration_max_);
+  get_parameter(
+    "initial_motion.planned_correction.enabled", planned_acceleration_correction_enabled_);
+  get_parameter(
+    "initial_motion.planned_correction.gain", planned_acceleration_correction_gain_);
+  get_parameter(
+    "initial_motion.planned_correction.innovation_limit",
+    planned_acceleration_innovation_limit_);
+  get_parameter(
+    "initial_motion.planned_correction.max_jerk",
+    planned_acceleration_correction_max_jerk_);
+  get_parameter(
+    "initial_motion.terminal_stall_recovery.enabled",
+    terminal_stall_recovery_enabled_);
+  get_parameter(
+    "initial_motion.terminal_stall_recovery.duration",
+    terminal_stall_recovery_duration_);
+  get_parameter(
+    "initial_motion.terminal_stall_recovery.stopped_velocity",
+    terminal_stall_stopped_velocity_);
+  get_parameter(
+    "initial_motion.terminal_stall_recovery.min_target_velocity",
+    terminal_stall_min_target_velocity_);
+  get_parameter(
+    "initial_motion.terminal_stall_recovery.max_target_acceleration",
+    terminal_stall_max_target_acceleration_);
+  get_parameter(
+    "initial_motion.terminal_stall_recovery.max_progress_per_cycle",
+    terminal_stall_max_progress_per_cycle_);
+  get_parameter(
+    "initial_motion.terminal_stall_recovery.min_remaining_distance",
+    terminal_stall_min_remaining_distance_);
+  terminal_stall_recovery_duration_ = std::max(0.0, terminal_stall_recovery_duration_);
+  terminal_stall_stopped_velocity_ = std::max(0.0, terminal_stall_stopped_velocity_);
+  terminal_stall_min_target_velocity_ = std::max(0.0, terminal_stall_min_target_velocity_);
+  terminal_stall_max_progress_per_cycle_ = std::max(
+    0.0, terminal_stall_max_progress_per_cycle_);
+  terminal_stall_min_remaining_distance_ = std::max(
+    0.0, terminal_stall_min_remaining_distance_);
   get_parameter("staged_control.enabled", staged_control_enabled_);
   get_parameter("staged_control.track_controller", track_controller_);
   get_parameter("staged_control.approach_controller", approach_controller_);
@@ -494,6 +573,10 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
   }
 
   odom_sub_ = std::make_unique<nav_2d_utils::OdomSubscriber>(node);
+  longitudinal_state_sub_ = create_subscription<
+    nav2_longitudinal_state_estimator::msg::LongitudinalState>(
+    longitudinal_state_topic_, rclcpp::SensorDataQoS(),
+    std::bind(&ControllerServer::longitudinalStateCallback, this, std::placeholders::_1));
   get_parameter("hard_stop_topic", hard_stop_topic_);
   vel_publisher_ = create_publisher<geometry_msgs::msg::Twist>("cmd_vel", 1);
   hard_stop_publisher_ = create_publisher<std_msgs::msg::Empty>(
@@ -684,6 +767,16 @@ ControllerServer::on_cleanup(const rclcpp_lifecycle::State & /*state*/)
   // Release any allocated resources
   action_server_.reset();
   odom_sub_.reset();
+  longitudinal_state_sub_.reset();
+  {
+    std::lock_guard<std::mutex> lock(longitudinal_state_mutex_);
+    has_longitudinal_state_ = false;
+    latest_longitudinal_state_ =
+      nav2_longitudinal_state_estimator::msg::LongitudinalState();
+  }
+  planned_acceleration_correction_ = 0.0;
+  planned_acceleration_correction_valid_ = false;
+  planned_acceleration_correction_stamp_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
   costmap_thread_.reset();
   vel_publisher_.reset();
   nav_status_pub_.reset();
@@ -1011,6 +1104,8 @@ void ControllerServer::commitPlannerPathState(
     goal_checkers_[current_goal_checker_]->reset();
     controller_phase_ = ControllerPhase::TRACK;
     terminal_brake_latched_ = false;
+    terminal_stall_consecutive_cycles_ = 0;
+    terminal_stall_recovery_count_ = 0;
     is_collision_stop_active_ = false;
     is_progress_check_paused_for_obstacle_stop_ = false;
   } else {
@@ -1076,9 +1171,104 @@ nav2_core::InitialMotionState ControllerServer::buildInitialMotionState(
   const geometry_msgs::msg::Twist & measured_velocity,
   bool should_stop_for_path_obstacle)
 {
-  auto decision = initial_motion_arbiter_.resolve(path, measured_velocity, now());
+  pending_stitching_prefix_ = nav_interfaces::msg::RobotTrajectory();
+  pending_stitching_boundary_ = nav2_core::InitialMotionState();
+  nav2_longitudinal_state_estimator::msg::LongitudinalState measured_state;
+  bool has_measured_state = false;
+  {
+    std::lock_guard<std::mutex> lock(longitudinal_state_mutex_);
+    has_measured_state = has_longitudinal_state_;
+    if (has_measured_state) {
+      measured_state = latest_longitudinal_state_;
+    }
+  }
+  double state_age = std::numeric_limits<double>::quiet_NaN();
+  if (has_measured_state) {
+    const rclcpp::Time state_stamp(measured_state.header.stamp, get_clock()->get_clock_type());
+    state_age = (now() - state_stamp).seconds();
+  }
+  const bool state_fresh = has_measured_state && std::isfinite(state_age) &&
+    state_age >= 0.0 && state_age <= longitudinal_state_max_age_;
+  const bool velocity_usable = state_fresh && measured_state.velocity_valid &&
+    std::isfinite(measured_state.velocity);
+  const bool acceleration_usable = state_fresh && measured_state.valid &&
+    measured_state.acceleration_valid && std::isfinite(measured_state.acceleration);
+
+  // Let the arbiter compare the accepted trajectory against robot_localization velocity.
+  // Normal stitching still inherits planned v/a; only an explicit mismatch re-anchors to
+  // this measured velocity. Raw /feedback/odom remains the automatic fallback.
+  geometry_msgs::msg::Twist arbiter_velocity = measured_velocity;
+  if (velocity_usable) {
+    arbiter_velocity.linear.x = measured_state.velocity;
+  }
+  auto decision = initial_motion_arbiter_.resolve(
+    path, arbiter_velocity, now(), terminal_brake_latched_);
+  const double planned_acceleration = decision.state.acceleration;
+  const bool planned_acceleration_valid = decision.state.acceleration_valid &&
+    std::isfinite(planned_acceleration);
+  std::string acceleration_source = "planned_continuity";
+
+  const bool longitudinal_tracking_phase =
+    controller_phase_ == ControllerPhase::TRACK ||
+    controller_phase_ == ControllerPhase::APPROACH;
+  const bool use_planned_correction = planned_acceleration_correction_enabled_ &&
+    planned_acceleration_valid && acceleration_usable && longitudinal_tracking_phase &&
+    (!velocity_usable || measured_state.velocity >= -0.01);
+  if (use_planned_correction) {
+    const double measured_acceleration = std::clamp(
+      measured_state.acceleration, state_acceleration_min_, state_acceleration_max_);
+    const double innovation = std::clamp(
+      measured_acceleration - planned_acceleration,
+      -std::max(planned_acceleration_innovation_limit_, 0.0),
+      std::max(planned_acceleration_innovation_limit_, 0.0));
+    const double target_correction =
+      std::clamp(planned_acceleration_correction_gain_, 0.0, 1.0) * innovation;
+
+    // Only the small measurement correction is rate-limited. The Ruckig planned
+    // acceleration remains the sole owner of the main cross-cycle jerk profile.
+    if (!planned_acceleration_correction_valid_) {
+      planned_acceleration_correction_ = target_correction;
+      planned_acceleration_correction_valid_ = true;
+    } else {
+      const double dt = std::clamp(
+        (now() - planned_acceleration_correction_stamp_).seconds(), 0.0, 0.5);
+      const double max_delta = std::max(
+        planned_acceleration_correction_max_jerk_, 0.0) * dt;
+      planned_acceleration_correction_ += std::clamp(
+        target_correction - planned_acceleration_correction_, -max_delta, max_delta);
+    }
+    planned_acceleration_correction_stamp_ = now();
+    decision.state.acceleration = std::clamp(
+      planned_acceleration + planned_acceleration_correction_,
+      state_acceleration_min_, state_acceleration_max_);
+    decision.state.acceleration_valid = true;
+    acceleration_source = "planned_robot_localization_correction";
+  } else if (acceleration_usable && !planned_acceleration_valid) {
+    decision.state.acceleration = std::clamp(
+      measured_state.acceleration, state_acceleration_min_, state_acceleration_max_);
+    decision.state.acceleration_valid = true;
+    acceleration_source = "robot_localization";
+    planned_acceleration_correction_valid_ = false;
+    planned_acceleration_correction_ = 0.0;
+  } else if (!acceleration_usable) {
+    planned_acceleration_correction_valid_ = false;
+    planned_acceleration_correction_ = 0.0;
+  }
+  if (state_fresh) {
+    decision.state.source_stamp = measured_state.header.stamp;
+    decision.state.source_age = state_age;
+  }
   decision.state.terminal_brake_latched = terminal_brake_latched_;
   decision.state.should_stop_for_path_obstacle = should_stop_for_path_obstacle;
+  if (decision.hasStitchingPrefix()) {
+    pending_stitching_prefix_ = decision.stitching_prefix;
+    pending_stitching_boundary_ = decision.stitching_boundary;
+    pending_stitching_boundary_.terminal_brake_latched = terminal_brake_latched_;
+    pending_stitching_boundary_.should_stop_for_path_obstacle =
+      should_stop_for_path_obstacle;
+    pending_stitching_boundary_.source_stamp = decision.state.source_stamp;
+    pending_stitching_boundary_.source_age = decision.state.source_age;
+  }
   if (speed_plan_cycle_.active) {
     speed_plan_cycle_.initial_motion = decision.state;
     speed_plan_cycle_.initial_motion_valid = true;
@@ -1087,17 +1277,47 @@ nav2_core::InitialMotionState ControllerServer::buildInitialMotionState(
     speed_plan_cycle_.initial_motion_measured_v = decision.measured_velocity;
     speed_plan_cycle_.initial_motion_sampled_v = decision.sampled_velocity;
     speed_plan_cycle_.initial_motion_deviation = decision.velocity_deviation;
+    speed_plan_cycle_.initial_motion_planned_a = planned_acceleration;
+    speed_plan_cycle_.initial_motion_acceleration_source = acceleration_source;
+    speed_plan_cycle_.initial_motion_state_velocity = measured_state.velocity;
+    speed_plan_cycle_.initial_motion_state_acceleration_raw =
+      measured_state.acceleration_raw;
+    speed_plan_cycle_.initial_motion_state_acceleration = measured_state.acceleration;
+    speed_plan_cycle_.initial_motion_state_correction =
+      planned_acceleration_correction_valid_ ? planned_acceleration_correction_ :
+      std::numeric_limits<double>::quiet_NaN();
+    speed_plan_cycle_.initial_motion_state_velocity_std = measured_state.velocity_std;
+    speed_plan_cycle_.initial_motion_state_acceleration_std =
+      measured_state.acceleration_std;
+    speed_plan_cycle_.initial_motion_state_velocity_age = measured_state.velocity_age;
+    speed_plan_cycle_.initial_motion_state_acceleration_age = measured_state.acceleration_age;
+    speed_plan_cycle_.initial_motion_state_stamp_skew = measured_state.stamp_skew;
+    speed_plan_cycle_.initial_motion_state_rejected_samples =
+      measured_state.rejected_samples;
+    speed_plan_cycle_.initial_motion_state_acceleration_clamps =
+      measured_state.acceleration_clamps;
+    speed_plan_cycle_.initial_motion_state_stationary = measured_state.stationary;
+    speed_plan_cycle_.initial_motion_state_valid =
+      state_fresh && measured_state.valid;
   }
   if (decision.reason.has_value()) {
     RCLCPP_DEBUG_THROTTLE(
       get_logger(), *get_clock(), 1000,
       "Initial motion updated: reason=%s, velocity_inherited=%s, "
-      "acceleration_inherited=%s.",
+      "acceleration_source=%s.",
       nav2_speed_planner::initialMotionSourceName(*decision.reason),
       decision.velocity_inherited ? "true" : "false",
-      decision.inherited() ? "true" : "false");
+      acceleration_source.c_str());
   }
   return decision.state;
+}
+
+void ControllerServer::longitudinalStateCallback(
+  const nav2_longitudinal_state_estimator::msg::LongitudinalState::SharedPtr msg)
+{
+  std::lock_guard<std::mutex> lock(longitudinal_state_mutex_);
+  latest_longitudinal_state_ = *msg;
+  has_longitudinal_state_ = true;
 }
 
 bool ControllerServer::activeControllerCanAvoidPathObstacles(
@@ -1165,7 +1385,8 @@ void ControllerServer::updateTerminalBrakeLatch(
 
 void ControllerServer::updateSpeedPlanningContinuityAfterControl(
   bool control_succeeded, bool trajectory_target_consumed,
-  double consumed_target_velocity, double consumed_target_acceleration)
+  double consumed_target_velocity, double consumed_target_acceleration,
+  double consumed_target_relative_time)
 {
   const bool longitudinal_tracking_phase =
     controller_phase_ == ControllerPhase::TRACK ||
@@ -1177,7 +1398,78 @@ void ControllerServer::updateSpeedPlanningContinuityAfterControl(
     return;
   }
   initial_motion_arbiter_.accept(
-    current_trajectory_, consumed_target_velocity, consumed_target_acceleration, now());
+    current_trajectory_, consumed_target_velocity, consumed_target_acceleration,
+    consumed_target_relative_time, now());
+}
+
+bool ControllerServer::updateTerminalStallRecovery(
+  const nav_2d_msgs::msg::Twist2D & measured_twist,
+  bool trajectory_target_consumed,
+  double consumed_target_velocity,
+  double consumed_target_acceleration)
+{
+  const bool progress_stalled =
+    std::isfinite(speed_plan_cycle_.local_path_progress_delta) &&
+    std::fabs(speed_plan_cycle_.local_path_progress_delta) <=
+    terminal_stall_max_progress_per_cycle_;
+  const bool frozen_terminal_brake = terminal_stall_recovery_enabled_ &&
+    terminal_stall_recovery_count_ == 0 &&
+    controller_phase_ == ControllerPhase::APPROACH &&
+    terminal_brake_latched_ &&
+    speed_plan_cycle_.terminal_valid &&
+    speed_plan_cycle_.terminal.terminal_branch ==
+    nav2_core::SpeedPlanningTerminalBranch::GOAL_TERMINAL &&
+    speed_plan_cycle_.local_path_length >= terminal_stall_min_remaining_distance_ &&
+    !is_collision_stop_active_ &&
+    trajectory_target_consumed &&
+    std::isfinite(consumed_target_velocity) &&
+    std::isfinite(consumed_target_acceleration) &&
+    consumed_target_velocity >= terminal_stall_min_target_velocity_ &&
+    consumed_target_acceleration <= terminal_stall_max_target_acceleration_ &&
+    std::fabs(measured_twist.x) <= terminal_stall_stopped_velocity_ &&
+    progress_stalled;
+
+  if (!frozen_terminal_brake) {
+    terminal_stall_consecutive_cycles_ = 0;
+    if (speed_plan_cycle_.active) {
+      speed_plan_cycle_.terminal_stall_consecutive_cycles = 0;
+      speed_plan_cycle_.terminal_stall_recovery_count = terminal_stall_recovery_count_;
+    }
+    return false;
+  }
+
+  ++terminal_stall_consecutive_cycles_;
+  const int required_cycles = std::max(
+    1, static_cast<int>(std::ceil(
+      terminal_stall_recovery_duration_ * std::max(controller_frequency_, 1.0))));
+  if (speed_plan_cycle_.active) {
+    speed_plan_cycle_.terminal_stall_consecutive_cycles =
+      terminal_stall_consecutive_cycles_;
+    speed_plan_cycle_.terminal_stall_recovery_count = terminal_stall_recovery_count_;
+  }
+  if (terminal_stall_consecutive_cycles_ < required_cycles) {
+    return false;
+  }
+
+  terminal_stall_consecutive_cycles_ = 0;
+  ++terminal_stall_recovery_count_;
+  // Critical: invalidate only the accepted trajectory prefix. Do not call
+  // resetStagedControlState() and do not clear terminal_brake_latched_. The
+  // next cycle therefore reseeds from measured standstill while the S-curve
+  // recovery remains capped by the terminal 0.05 m/s envelope.
+  invalidateSpeedPlanningContinuity();
+  if (speed_plan_cycle_.active) {
+    speed_plan_cycle_.terminal_stall_recovery_triggered = true;
+    speed_plan_cycle_.terminal_stall_consecutive_cycles = required_cycles;
+    speed_plan_cycle_.terminal_stall_recovery_count = terminal_stall_recovery_count_;
+  }
+  RCLCPP_WARN(
+    get_logger(),
+    "Terminal stall recovery: target=(v=%.3f,a=%.3f), odom_v=%.3f, "
+    "progress=%.4f, terminal latch preserved.",
+    consumed_target_velocity, consumed_target_acceleration, measured_twist.x,
+    speed_plan_cycle_.local_path_progress_delta);
+  return true;
 }
 
 void ControllerServer::invalidateSpeedPlanningContinuity()
@@ -1334,25 +1626,104 @@ bool ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
   prev_local_path_length_ = speed_plan_cycle_.local_path_length;
   prev_local_path_id_ = speed_plan_cycle_.path_id;
 
-  const auto speed_set_plan_start = PipelineClock::now();
-  sp->second->setPlan(planning_path);
-  speed_set_plan_ms = elapsed_ms(speed_set_plan_start, PipelineClock::now());
-  const auto speed_compute_start = PipelineClock::now();
   const bool should_stop_for_path_obstacle =
     !activeControllerCanAvoidPathObstacles(planning_pose);
   const auto initial_motion = buildInitialMotionState(
     planning_path, current_velocity, should_stop_for_path_obstacle);
-  current_trajectory_ = sp->second->computeSpeedPlan(planning_path, initial_motion);
+  nav_msgs::msg::Path speed_planning_path = planning_path;
+  nav2_core::InitialMotionState speed_planning_boundary = initial_motion;
+  nav2_speed_planner::TrajectoryStitchingPlan stitching_plan;
+  bool use_stitching_prefix = false;
+  if (pending_stitching_prefix_.points.size() >= 2) {
+    nav2_speed_planner::InitialMotionDecision stitching_decision;
+    stitching_decision.stitching_prefix = pending_stitching_prefix_;
+    stitching_decision.stitching_boundary = pending_stitching_boundary_;
+    std::string rejection_reason;
+    if (!nav2_speed_planner::prepareTrajectoryStitching(
+        planning_path, stitching_decision, trajectory_stitching_max_path_error_,
+        stitching_plan, &rejection_reason))
+    {
+      speed_plan_cycle_.stitching_result = rejection_reason;
+    } else if (!sp->second->isTrajectoryPrefixSafe(
+        stitching_plan.prefix, should_stop_for_path_obstacle))
+    {
+      speed_plan_cycle_.stitching_result = "prefix_safety_rejected";
+    } else {
+      use_stitching_prefix = true;
+      speed_planning_path = stitching_plan.suffix_path;
+      speed_planning_boundary = stitching_plan.suffix_boundary;
+      speed_plan_cycle_.stitching_result = "stitched";
+      speed_plan_cycle_.stitching_prefix_points = stitching_plan.prefix.points.size();
+      speed_plan_cycle_.stitching_prefix_duration = stitching_plan.prefix_duration;
+    }
+  } else {
+    speed_plan_cycle_.stitching_result = "prefix_unavailable";
+  }
+
+  const auto speed_set_plan_start = PipelineClock::now();
+  sp->second->setPlan(speed_planning_path);
+  speed_set_plan_ms = elapsed_ms(speed_set_plan_start, PipelineClock::now());
+  const auto speed_compute_start = PipelineClock::now();
+  auto planned_suffix = sp->second->computeSpeedPlan(
+    speed_planning_path, speed_planning_boundary);
+  const auto suffix_diagnostics = sp->second->getLastPlanningDiagnostics();
+  if (use_stitching_prefix && !planned_suffix.points.empty() &&
+    !suffix_diagnostics.terminal_infeasible)
+  {
+    current_trajectory_ = nav2_speed_planner::concatenateStitchedTrajectory(
+      stitching_plan.prefix, planned_suffix);
+    speed_plan_cycle_.trajectory_stitched = true;
+  } else if (use_stitching_prefix) {
+    // A suffix failure must not publish the old prefix by itself. Retry once
+    // through the established full-path state-inheritance route; if that also
+    // fails the existing empty-trajectory fail-safe stops this cycle.
+    speed_plan_cycle_.stitching_result = planned_suffix.points.empty() ?
+      "suffix_failed_full_replan" : "suffix_infeasible_full_replan";
+    speed_plan_cycle_.stitching_prefix_points = 0;
+    speed_plan_cycle_.stitching_prefix_duration = 0.0;
+    sp->second->setPlan(planning_path);
+    current_trajectory_ = sp->second->computeSpeedPlan(planning_path, initial_motion);
+  } else {
+    current_trajectory_ = std::move(planned_suffix);
+  }
+  // 同一导航任务的终点位姿只允许来自 NEW_GOAL 时冻结的 end_pose_。速度规划
+  // 每周期可以更新中间轨迹，但不得用局部路径尾点重新定义厘米级终点或最终角。
+  if (!current_trajectory_.points.empty()) {
+    geometry_msgs::msg::PoseStamped fixed_goal = end_pose_;
+    fixed_goal.header.stamp = rclcpp::Time(0);
+    bool fixed_goal_valid = true;
+    const std::string trajectory_frame = current_trajectory_.header.frame_id.empty() ?
+      planning_frame : current_trajectory_.header.frame_id;
+    if (!trajectory_frame.empty() && fixed_goal.header.frame_id != trajectory_frame) {
+      geometry_msgs::msg::PoseStamped transformed_goal;
+      rclcpp::Duration transform_tolerance(
+        rclcpp::Duration::from_seconds(costmap_ros_->getTransformTolerance()));
+      if (nav_2d_utils::transformPose(
+          costmap_ros_->getTfBuffer(), trajectory_frame, fixed_goal,
+          transformed_goal, transform_tolerance))
+      {
+        fixed_goal = transformed_goal;
+      } else {
+        fixed_goal_valid = false;
+        RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 1000,
+          "Cannot transform frozen goal from '%s' to trajectory frame '%s'; "
+          "keeping planner endpoint for this cycle.",
+          end_pose_.header.frame_id.c_str(), trajectory_frame.c_str());
+      }
+    }
+    if (fixed_goal_valid) {
+      current_trajectory_.points.back().pose = fixed_goal;
+    }
+  }
   const auto planning_diagnostics = sp->second->getLastPlanningDiagnostics();
   speed_plan_cycle_.terminal = planning_diagnostics;
   speed_plan_cycle_.terminal_valid = true;
   updateTerminalBrakeLatch(
     planning_diagnostics, initial_motion.acceleration_valid);
   if (planning_diagnostics.terminal_infeasible) {
-    // 兜底剖面的目标速度就是 end_speed，因此一旦持续进入兜底，整条轨迹恒为
-    // end_speed（实机曾表现为全程 0.05 蠕行 53.6s 走 2.38m）。且机器人降速后
-    // v0 变低会让下一周期继续满足兜底条件——**自维持，出不来**。
-    // 原日志只说"进了兜底"，不说为什么进；下面这些量才是定位所需的最小集合。
+    // 终点目标已是v=0，terminal_speed_cap只负责低速区上限。不可行时仍必须
+    // 完整记录入口/兜底原因，避免把物理停车距离不足与求解器错误混为一谈。
     static const char * kKind[] = {"feasible", "physical", "numerical"};
     static const char * kReason[] = {
       "none", "stable_segment_unreachable", "fallback_unreachable",
@@ -1682,12 +2053,67 @@ void ControllerServer::publishSpeedPlanDiagnostics(
   add_value("local_path_point_count", std::to_string(cycle.local_path_point_count));
   add_value("local_path_length", std::to_string(cycle.local_path_length));
   add_value("trajectory_point_count", std::to_string(current_trajectory_.points.size()));
+  add_value("trajectory_stitched", cycle.trajectory_stitched ? "true" : "false");
+  add_value("stitching_result", cycle.stitching_result);
+  add_value("stitching_prefix_points", std::to_string(cycle.stitching_prefix_points));
+  add_value(
+    "stitching_prefix_duration", std::to_string(cycle.stitching_prefix_duration));
+  add_value(
+    "terminal_stall_recovery_triggered",
+    cycle.terminal_stall_recovery_triggered ? "true" : "false");
+  add_value(
+    "terminal_stall_consecutive_cycles",
+    std::to_string(cycle.terminal_stall_consecutive_cycles));
+  add_value(
+    "terminal_stall_recovery_count",
+    std::to_string(cycle.terminal_stall_recovery_count));
   add_value("boundary_computed", cycle.initial_motion_valid ? "true" : "false");
   add_value("boundary_reason", cycle.initial_motion_source);
   // 裁决输入：boundary_velocity 是结果，这三个是它的来源。
   add_value("initial_motion_measured_v", std::to_string(cycle.initial_motion_measured_v));
   add_value("initial_motion_sampled_v", std::to_string(cycle.initial_motion_sampled_v));
   add_value("initial_motion_deviation", std::to_string(cycle.initial_motion_deviation));
+  add_value("initial_motion_acceleration_source", cycle.initial_motion_acceleration_source);
+  add_value("initial_motion_planned_a", std::to_string(cycle.initial_motion_planned_a));
+  add_value(
+    "initial_motion_state_velocity",
+    std::to_string(cycle.initial_motion_state_velocity));
+  add_value(
+    "initial_motion_state_acceleration_raw",
+    std::to_string(cycle.initial_motion_state_acceleration_raw));
+  add_value(
+    "initial_motion_state_acceleration",
+    std::to_string(cycle.initial_motion_state_acceleration));
+  add_value(
+    "initial_motion_state_correction",
+    std::to_string(cycle.initial_motion_state_correction));
+  add_value(
+    "initial_motion_state_velocity_std",
+    std::to_string(cycle.initial_motion_state_velocity_std));
+  add_value(
+    "initial_motion_state_acceleration_std",
+    std::to_string(cycle.initial_motion_state_acceleration_std));
+  add_value(
+    "initial_motion_state_velocity_age",
+    std::to_string(cycle.initial_motion_state_velocity_age));
+  add_value(
+    "initial_motion_state_acceleration_age",
+    std::to_string(cycle.initial_motion_state_acceleration_age));
+  add_value(
+    "initial_motion_state_stamp_skew",
+    std::to_string(cycle.initial_motion_state_stamp_skew));
+  add_value(
+    "initial_motion_state_rejected_samples",
+    std::to_string(cycle.initial_motion_state_rejected_samples));
+  add_value(
+    "initial_motion_state_acceleration_clamps",
+    std::to_string(cycle.initial_motion_state_acceleration_clamps));
+  add_value(
+    "initial_motion_state_stationary",
+    cycle.initial_motion_state_stationary ? "true" : "false");
+  add_value(
+    "initial_motion_state_valid",
+    cycle.initial_motion_state_valid ? "true" : "false");
   add_value("local_path_progress_delta", std::to_string(cycle.local_path_progress_delta));
   if (cycle.initial_motion_valid) {
     add_value("boundary_velocity", std::to_string(cycle.initial_motion.velocity.linear.x));
@@ -2125,6 +2551,8 @@ void ControllerServer::resetStagedControlState()
   prepare_check_pending_ = true;
   align_done_ = false;
   terminal_brake_latched_ = false;
+  terminal_stall_consecutive_cycles_ = 0;
+  terminal_stall_recovery_count_ = 0;
   is_collision_stop_active_ = false;
   is_progress_check_paused_for_obstacle_stop_ = false;
   invalidateSpeedPlanningContinuity();
@@ -2491,6 +2919,7 @@ void ControllerServer::computeAndPublishVelocity()
   bool is_collision_stop_wait = false;
   double controller_target_v = std::numeric_limits<double>::quiet_NaN();
   double controller_target_a = std::numeric_limits<double>::quiet_NaN();
+  double controller_target_t = std::numeric_limits<double>::quiet_NaN();
 
   auto t_compute_start = std::chrono::high_resolution_clock::now();
   try {
@@ -2554,12 +2983,24 @@ void ControllerServer::computeAndPublishVelocity()
   {
     const auto controller = controllers_.find(active_controller_for_log_);
     if (controller != controllers_.end()) {
-      controller_target_valid = controller->second->getLastTrajectoryTrackingTarget(
-        controller_target_v, controller_target_a);
+      auto * receipt_capability = dynamic_cast<
+        nav2_core::TrajectoryTrackingReceiptCapability *>(controller->second.get());
+      if (receipt_capability != nullptr) {
+        controller_target_valid = receipt_capability->getLastTrajectoryTrackingReceipt(
+          controller_target_v, controller_target_a, controller_target_t);
+      } else {
+        controller_target_valid = controller->second->getLastTrajectoryTrackingTarget(
+          controller_target_v, controller_target_a);
+      }
     }
   }
-  updateSpeedPlanningContinuityAfterControl(
-    control_succeeded, controller_target_valid, controller_target_v, controller_target_a);
+  const bool terminal_stall_recovery_triggered = updateTerminalStallRecovery(
+    twist, controller_target_valid, controller_target_v, controller_target_a);
+  if (!terminal_stall_recovery_triggered) {
+    updateSpeedPlanningContinuityAfterControl(
+      control_succeeded, controller_target_valid, controller_target_v, controller_target_a,
+      controller_target_t);
+  }
   publishSpeedPlanDiagnostics(
     control_succeeded, controller_target_valid, controller_target_v, controller_target_a,
     control_succeeded ? "success" :
@@ -2837,6 +3278,9 @@ bool ControllerServer::getRobotPose(geometry_msgs::msg::PoseStamped & pose)
 
 void ControllerServer::speedLimitCallback(const nav2_msgs::msg::SpeedLimit::SharedPtr msg)
 {
+  const bool speed_limit_changed = !external_speed_limit_valid_ ||
+    std::fabs(last_external_speed_limit_ - msg->speed_limit) > 1e-9 ||
+    last_external_speed_limit_percentage_ != msg->percentage;
   ControllerMap::iterator it;
   for (it = controllers_.begin(); it != controllers_.end(); ++it) {
     it->second->setSpeedLimit(msg->speed_limit, msg->percentage);
@@ -2848,6 +3292,16 @@ void ControllerServer::speedLimitCallback(const nav2_msgs::msg::SpeedLimit::Shar
   for (auto & sp : speed_planners_) {
     sp.second->setSpeedLimit(msg->speed_limit, msg->percentage);
   }
+  if (speed_limit_changed) {
+    // A preserved prefix was generated under the previous limit and cannot be
+    // retroactively lowered. Drop it so the very next cycle replans the complete
+    // remaining path under the new external speed envelope. Repeated messages
+    // with the same limit do not disable stitching continuously.
+    invalidateSpeedPlanningContinuity();
+  }
+  external_speed_limit_valid_ = true;
+  last_external_speed_limit_ = msg->speed_limit;
+  last_external_speed_limit_percentage_ = msg->percentage;
 }
 
 rcl_interfaces::msg::SetParametersResult

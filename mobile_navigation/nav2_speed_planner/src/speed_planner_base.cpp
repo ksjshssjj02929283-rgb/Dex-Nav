@@ -77,13 +77,19 @@ void SpeedPlannerBase::configure(
   nav2_util::declare_parameter_if_not_declared(
     node, plugin_name_ + ".max_lateral_accel", rclcpp::ParameterValue(0.3));
   nav2_util::declare_parameter_if_not_declared(
-    node, plugin_name_ + ".end_speed", rclcpp::ParameterValue(0.03));
+    node, plugin_name_ + ".end_speed", rclcpp::ParameterValue(0.05));
+  nav2_util::declare_parameter_if_not_declared(
+    node, plugin_name_ + ".terminal_speed_cap", rclcpp::ParameterValue(0.05));
   nav2_util::declare_parameter_if_not_declared(
     node, plugin_name_ + ".terminal_creep_distance", rclcpp::ParameterValue(0.2));
   nav2_util::declare_parameter_if_not_declared(
     node, plugin_name_ + ".obstacle_safety_margin", rclcpp::ParameterValue(0.25));
   nav2_util::declare_parameter_if_not_declared(
     node, plugin_name_ + ".obstacle_stop_margin", rclcpp::ParameterValue(0.2));
+  nav2_util::declare_parameter_if_not_declared(
+    node, plugin_name_ + ".approach_entry_distance", rclcpp::ParameterValue(0.0));
+  nav2_util::declare_parameter_if_not_declared(
+    node, plugin_name_ + ".approach_entry_speed", rclcpp::ParameterValue(0.0));
   nav2_util::declare_parameter_if_not_declared(
     node, plugin_name_ + ".obstacle_cost_threshold", rclcpp::ParameterValue(254));
   nav2_util::declare_parameter_if_not_declared(
@@ -111,11 +117,17 @@ void SpeedPlannerBase::configure(
   max_lateral_accel_ = std::max(max_lateral_accel_, 1e-3);
   node->get_parameter(plugin_name_ + ".end_speed", end_speed_);
   end_speed_ = std::max(end_speed_, 0.0);
+  node->get_parameter(plugin_name_ + ".terminal_speed_cap", terminal_speed_cap_);
+  terminal_speed_cap_ = std::clamp(terminal_speed_cap_, 0.0, max_speed_);
   node->get_parameter(plugin_name_ + ".terminal_creep_distance", terminal_creep_distance_);
   node->get_parameter(plugin_name_ + ".obstacle_safety_margin", obstacle_safety_margin_);
   obstacle_safety_margin_ = std::max(obstacle_safety_margin_, 0.0);
   node->get_parameter(plugin_name_ + ".obstacle_stop_margin", obstacle_stop_margin_);
   obstacle_stop_margin_ = std::max(obstacle_stop_margin_, 0.0);
+  node->get_parameter(plugin_name_ + ".approach_entry_distance", approach_entry_distance_);
+  node->get_parameter(plugin_name_ + ".approach_entry_speed", approach_entry_speed_);
+  approach_entry_distance_ = std::max(approach_entry_distance_, 0.0);
+  approach_entry_speed_ = std::clamp(approach_entry_speed_, 0.0, max_speed_);
   node->get_parameter(plugin_name_ + ".obstacle_cost_threshold", obstacle_cost_threshold_);
   obstacle_cost_threshold_ = std::clamp(obstacle_cost_threshold_, 1, 254);
   std::string obstacle_unavailable_policy = "fail_closed";
@@ -147,6 +159,19 @@ void SpeedPlannerBase::configure(
   }
   if (decel_ >= 0.0) {
     RCLCPP_WARN(logger_, "[%s] decel (%.3f) should be < 0.", plugin_name_.c_str(), decel_);
+  }
+
+  if ((approach_entry_distance_ > 0.0) != (approach_entry_speed_ > 0.0)) {
+    RCLCPP_WARN(
+      logger_,
+      "[%s] approach handoff requires both distance and speed > 0; constraint is disabled.",
+      plugin_name_.c_str());
+    approach_entry_distance_ = 0.0;
+    approach_entry_speed_ = 0.0;
+  } else if (approach_entry_distance_ > 0.0) {
+    RCLCPP_INFO(
+      logger_, "[%s] approach handoff: remaining_distance=%.3f m speed<=%.3f m/s.",
+      plugin_name_.c_str(), approach_entry_distance_, approach_entry_speed_);
   }
 
   RCLCPP_INFO(logger_, "Configured SpeedPlanner plugin: %s", plugin_name_.c_str());
@@ -183,6 +208,32 @@ void SpeedPlannerBase::setSpeedLimit(const double & speed_limit, const bool & pe
 {
   speed_limit_ = speed_limit;
   speed_limit_is_percentage_ = percentage;
+}
+
+bool SpeedPlannerBase::isTrajectoryPrefixSafe(
+  const nav_interfaces::msg::RobotTrajectory & prefix,
+  bool should_stop_for_path_obstacle)
+{
+  if (prefix.points.empty()) {
+    return false;
+  }
+  // A controller that explicitly owns local avoidance may keep the prefix;
+  // other controllers must revalidate it with exactly the same footprint and
+  // TF semantics as the normal A1 obstacle constraint.
+  if (!should_stop_for_path_obstacle) {
+    return true;
+  }
+  std::vector<TrajPointWork> work;
+  work.reserve(prefix.points.size());
+  for (const auto & trajectory_point : prefix.points) {
+    TrajPointWork point;
+    point.pose = trajectory_point.pose;
+    work.push_back(std::move(point));
+  }
+  path_frame_ = prefix.header.frame_id.empty() ?
+    prefix.points.front().pose.header.frame_id : prefix.header.frame_id;
+  const auto outcome = produceObstacleConstraint(work, true);
+  return outcome.evaluable && !outcome.has_obstacle;
 }
 
 // ============================ 模板方法入口 ============================
@@ -333,6 +384,7 @@ nav_interfaces::msg::RobotTrajectory SpeedPlannerBase::computeSpeedPlan(
   }
 
   insertEndSpeedBoundary(work);
+  insertApproachSpeedBoundary(work);
   work_points = work.size();
 
   points_interval_ = path_length / static_cast<double>(work.size() - 1);
@@ -398,7 +450,8 @@ nav_interfaces::msg::RobotTrajectory SpeedPlannerBase::computeSpeedPlan(
   curvature_ms = std::chrono::duration<double, std::milli>(
     TimingClock::now() - curvature_start).count();
   const auto end_constraint_start = TimingClock::now();
-  applyConstraint(work, produceTerminalConstraint(work));  // A4 末端蠕行区
+  applyConstraint(work, produceApproachConstraint(work));  // A4 精确控制器交接区
+  applyConstraint(work, produceTerminalConstraint(work));  // A5 末端蠕行区
   end_constraint_ms = std::chrono::duration<double, std::milli>(
     TimingClock::now() - end_constraint_start).count();
 
@@ -433,7 +486,8 @@ nav_interfaces::msg::RobotTrajectory SpeedPlannerBase::computeSpeedPlan(
     RCLCPP_DEBUG(
       logger_,
       "[%s] envelope composition: max_speed=%zu hint=%zu external=%zu "
-      "obstacle=%zu safety_margin=%zu stop_margin=%zu lateral_accel=%zu creep=%zu "
+      "obstacle=%zu safety_margin=%zu stop_margin=%zu lateral_accel=%zu approach=%zu "
+      "creep=%zu "
       "end_boundary=%zu "
       "unattributed=%zu",
       plugin_name_.c_str(),
@@ -444,6 +498,7 @@ nav_interfaces::msg::RobotTrajectory SpeedPlannerBase::computeSpeedPlan(
       by_source[static_cast<size_t>(ConstraintSource::kObstacleSafetyMargin)],
       by_source[static_cast<size_t>(ConstraintSource::kObstacleStopMargin)],
       by_source[static_cast<size_t>(ConstraintSource::kLateralAccel)],
+      by_source[static_cast<size_t>(ConstraintSource::kApproachHandoff)],
       by_source[static_cast<size_t>(ConstraintSource::kTerminalCreep)],
       by_source[static_cast<size_t>(ConstraintSource::kEndBoundary)],
       unattributed);

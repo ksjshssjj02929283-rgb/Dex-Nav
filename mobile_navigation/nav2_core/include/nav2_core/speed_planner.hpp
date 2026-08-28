@@ -131,6 +131,20 @@ public:
   }
 
   /**
+   * @brief Revalidate a short preserved trajectory prefix against the current
+   *        obstacle view before trajectory stitching.
+   *
+   * The conservative default rejects stitching. Speed planners that own the
+   * same costmap/footprint semantics as normal planning may override it.
+   */
+  virtual bool isTrajectoryPrefixSafe(
+    const nav_interfaces::msg::RobotTrajectory & /*prefix*/,
+    bool /*should_stop_for_path_obstacle*/)
+  {
+    return false;
+  }
+
+  /**
    * @brief 外部限速（区域/事件下发；与 path 内 speed_hint 取严）。
    * @param speed_limit 绝对值(m/s) 或占最大速度百分比
    * @param percentage  true=百分比，false=绝对值

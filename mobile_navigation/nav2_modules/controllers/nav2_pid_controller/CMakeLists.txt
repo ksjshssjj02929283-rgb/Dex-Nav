@@ -17,6 +17,7 @@ find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(nav2_controller_common REQUIRED)
+find_package(ruckig REQUIRED)
 
 nav2_package()
 set(CMAKE_CXX_STANDARD 17)
@@ -53,6 +54,7 @@ ament_target_dependencies(${library_name}
 
 target_link_libraries(${library_name}
   nav2_controller_common::nav2_controller_common
+  ruckig::ruckig
 )
 
 install(TARGETS ${library_name}
@@ -73,7 +75,7 @@ if(BUILD_TESTING)
 
   find_package(ament_cmake_gtest REQUIRED)
   ament_add_gtest(test_pid_speed_loop test/test_pid_speed_loop.cpp)
-  target_link_libraries(test_pid_speed_loop ${library_name})
+  target_link_libraries(test_pid_speed_loop ${library_name} ruckig::ruckig)
   ament_target_dependencies(test_pid_speed_loop ${dependencies})
 
   ament_add_gtest(test_end_localization_lock test/test_end_localization_lock.cpp)

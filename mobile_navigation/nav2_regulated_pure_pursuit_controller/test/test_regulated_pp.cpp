@@ -104,6 +104,7 @@ public:
     traj_time_lookahead_ = time_lookahead;
   }
 
+
   bool nearestTrajectorySpeedWrapper(
     const geometry_msgs::msg::PoseStamped & pose, double & v, double & a)
   {
@@ -696,6 +697,7 @@ TEST(RegulatedPurePursuitTest, trajectorySpeedUsesTimeAlignedInterpolation)
   EXPECT_NEAR(velocity, 0.475, 1e-9);
   EXPECT_NEAR(acceleration, -0.35, 1e-9);
 }
+
 
 TEST(RegulatedPurePursuitTest, trajectoryTimeSamplingPreservesPlannedStop)
 {

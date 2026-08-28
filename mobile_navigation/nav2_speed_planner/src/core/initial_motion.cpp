@@ -3,6 +3,9 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "angles/angles.h"
 #pragma GCC diagnostic push
@@ -38,6 +41,203 @@ bool isFinite(const geometry_msgs::msg::Quaternion & orientation)
          std::isfinite(orientation.y) &&
          std::isfinite(orientation.z) &&
          std::isfinite(orientation.w);
+}
+
+double durationSeconds(const builtin_interfaces::msg::Duration & duration)
+{
+  return static_cast<double>(duration.sec) + 1e-9 * static_cast<double>(duration.nanosec);
+}
+
+nav_interfaces::msg::TrajectoryPoint interpolateTrajectoryPoint(
+  const nav_interfaces::msg::TrajectoryPoint & first,
+  const nav_interfaces::msg::TrajectoryPoint & second,
+  double ratio)
+{
+  ratio = std::clamp(ratio, 0.0, 1.0);
+  nav_interfaces::msg::TrajectoryPoint point = ratio < 0.5 ? first : second;
+  const auto interpolate = [ratio](double first_value, double second_value) {
+      return first_value + ratio * (second_value - first_value);
+    };
+  point.pose.pose.position.x = interpolate(
+    first.pose.pose.position.x, second.pose.pose.position.x);
+  point.pose.pose.position.y = interpolate(
+    first.pose.pose.position.y, second.pose.pose.position.y);
+  point.pose.pose.position.z = interpolate(
+    first.pose.pose.position.z, second.pose.pose.position.z);
+  point.longitudinal_velocity = interpolate(
+    first.longitudinal_velocity, second.longitudinal_velocity);
+  point.angular_velocity = interpolate(first.angular_velocity, second.angular_velocity);
+  point.acceleration = interpolate(first.acceleration, second.acceleration);
+  point.jerk = interpolate(first.jerk, second.jerk);
+  point.path_kappa = interpolate(first.path_kappa, second.path_kappa);
+  const double relative_time = interpolate(
+    durationSeconds(first.relative_time), durationSeconds(second.relative_time));
+  point.relative_time = rclcpp::Duration::from_seconds(relative_time);
+  return point;
+}
+
+struct PathProjection
+{
+  bool valid{false};
+  size_t segment{0};
+  double ratio{0.0};
+  double distance{std::numeric_limits<double>::infinity()};
+  geometry_msgs::msg::PoseStamped pose;
+};
+
+PathProjection projectOntoPath(
+  const geometry_msgs::msg::Point & query,
+  const nav_msgs::msg::Path & path)
+{
+  PathProjection projection;
+  if (path.poses.size() < 2 || !isFinite(query)) {
+    return projection;
+  }
+  double best_distance_sq = std::numeric_limits<double>::infinity();
+  for (size_t index = 0; index + 1 < path.poses.size(); ++index) {
+    const auto & first = path.poses[index].pose.position;
+    const auto & second = path.poses[index + 1].pose.position;
+    const double dx = second.x - first.x;
+    const double dy = second.y - first.y;
+    const double length_sq = dx * dx + dy * dy;
+    if (length_sq <= 1e-12) {
+      continue;
+    }
+    const double ratio = std::clamp(
+      ((query.x - first.x) * dx + (query.y - first.y) * dy) / length_sq,
+      0.0, 1.0);
+    const double projected_x = first.x + ratio * dx;
+    const double projected_y = first.y + ratio * dy;
+    const double error_x = query.x - projected_x;
+    const double error_y = query.y - projected_y;
+    const double distance_sq = error_x * error_x + error_y * error_y;
+    if (distance_sq < best_distance_sq) {
+      best_distance_sq = distance_sq;
+      projection.valid = true;
+      projection.segment = index;
+      projection.ratio = ratio;
+      projection.pose = ratio < 0.5 ? path.poses[index] : path.poses[index + 1];
+      projection.pose.pose.position.x = projected_x;
+      projection.pose.pose.position.y = projected_y;
+      projection.pose.pose.position.z = first.z + ratio * (second.z - first.z);
+    }
+  }
+  if (projection.valid) {
+    projection.distance = std::sqrt(best_distance_sq);
+  }
+  return projection;
+}
+
+bool buildAcceptedPrefix(
+  const nav_interfaces::msg::RobotTrajectory & accepted,
+  const nav_msgs::msg::Path & path,
+  size_t best_segment,
+  double best_ratio,
+  double consumed_acceleration,
+  double consumed_relative_time,
+  const InitialMotionArbiter::Config & config,
+  InitialMotionDecision & decision)
+{
+  if (config.stitching_horizon <= 0.0 || accepted.points.size() < 2 ||
+    best_segment + 1 >= accepted.points.size())
+  {
+    return false;
+  }
+  const double first_time = durationSeconds(accepted.points[best_segment].relative_time);
+  const double second_time = durationSeconds(accepted.points[best_segment + 1].relative_time);
+  if (!std::isfinite(first_time) || !std::isfinite(second_time) ||
+    second_time <= first_time + 1e-9)
+  {
+    return false;
+  }
+  const double start_time = first_time + best_ratio * (second_time - first_time);
+  if (!std::isfinite(consumed_relative_time) ||
+    std::fabs(start_time - consumed_relative_time) > config.stitching_max_time_error)
+  {
+    return false;
+  }
+  const double requested_end_time = start_time + config.stitching_horizon;
+  const double available_end_time = durationSeconds(accepted.points.back().relative_time);
+  const double end_time = std::min(requested_end_time, available_end_time);
+  if (!std::isfinite(available_end_time) ||
+    end_time - start_time < config.stitching_min_duration - 1e-9)
+  {
+    return false;
+  }
+
+  auto first_point = interpolateTrajectoryPoint(
+    accepted.points[best_segment], accepted.points[best_segment + 1], best_ratio);
+  first_point.pose = path.poses.front();
+  first_point.acceleration = consumed_acceleration;
+  first_point.relative_time = rclcpp::Duration::from_seconds(0.0);
+  decision.stitching_prefix.header = accepted.header;
+  decision.stitching_prefix.header.stamp = path.header.stamp;
+  decision.stitching_prefix.points.push_back(std::move(first_point));
+
+  size_t end_segment = best_segment;
+  for (size_t index = best_segment + 1; index < accepted.points.size(); ++index) {
+    const double point_time = durationSeconds(accepted.points[index].relative_time);
+    if (!std::isfinite(point_time)) {
+      decision.stitching_prefix = nav_interfaces::msg::RobotTrajectory();
+      return false;
+    }
+    // Projection exactly on a segment endpoint already produced the prefix's
+    // t=0 interpolation point. Do not append that same accepted point again
+    // with another t=0, otherwise consumers see a zero-duration first segment.
+    if (point_time <= start_time + 1e-9) {
+      end_segment = index;
+      continue;
+    }
+    if (point_time >= end_time - 1e-9) {
+      end_segment = index - 1;
+      break;
+    }
+    auto point = accepted.points[index];
+    point.relative_time = rclcpp::Duration::from_seconds(point_time - start_time);
+    decision.stitching_prefix.points.push_back(std::move(point));
+    end_segment = index;
+  }
+
+  nav_interfaces::msg::TrajectoryPoint end_point;
+  if (end_time >= available_end_time - 1e-9) {
+    end_point = accepted.points.back();
+  } else {
+    while (end_segment + 1 < accepted.points.size() &&
+      durationSeconds(accepted.points[end_segment + 1].relative_time) < end_time - 1e-9)
+    {
+      ++end_segment;
+    }
+    if (end_segment + 1 >= accepted.points.size()) {
+      decision.stitching_prefix = nav_interfaces::msg::RobotTrajectory();
+      return false;
+    }
+    const double segment_start = durationSeconds(accepted.points[end_segment].relative_time);
+    const double segment_end = durationSeconds(accepted.points[end_segment + 1].relative_time);
+    if (segment_end <= segment_start + 1e-9) {
+      decision.stitching_prefix = nav_interfaces::msg::RobotTrajectory();
+      return false;
+    }
+    end_point = interpolateTrajectoryPoint(
+      accepted.points[end_segment], accepted.points[end_segment + 1],
+      (end_time - segment_start) / (segment_end - segment_start));
+  }
+  end_point.relative_time = rclcpp::Duration::from_seconds(end_time - start_time);
+  const double previous_time = durationSeconds(
+    decision.stitching_prefix.points.back().relative_time);
+  if (end_time - start_time > previous_time + 1e-9) {
+    decision.stitching_prefix.points.push_back(std::move(end_point));
+  } else {
+    decision.stitching_prefix.points.back() = std::move(end_point);
+  }
+  if (decision.stitching_prefix.points.size() < 2) {
+    decision.stitching_prefix = nav_interfaces::msg::RobotTrajectory();
+    return false;
+  }
+  const auto & tail = decision.stitching_prefix.points.back();
+  decision.stitching_boundary.velocity.linear.x = tail.longitudinal_velocity;
+  decision.stitching_boundary.acceleration = tail.acceleration;
+  decision.stitching_boundary.acceleration_valid = true;
+  return std::isfinite(tail.longitudinal_velocity) && std::isfinite(tail.acceleration);
 }
 
 InitialMotionDecision reseed(
@@ -94,13 +294,21 @@ void InitialMotionArbiter::configure(const Config & config)
 {
   std::lock_guard<std::mutex> lock(mutex_);
   config_ = config;
+  config_.stitching_horizon = std::max(0.0, config_.stitching_horizon);
+  config_.stitching_min_duration = std::clamp(
+    config_.stitching_min_duration, 0.0, config_.stitching_horizon);
+  config_.stitching_max_time_error = std::max(0.0, config_.stitching_max_time_error);
+  config_.replan_dev = std::max(0.0, config_.replan_dev);
+  config_.terminal_overspeed_replan_dev = std::max(
+    0.0, config_.terminal_overspeed_replan_dev);
   resetUnlocked(InitialMotionSource::FIRST_CYCLE);
 }
 
 InitialMotionDecision InitialMotionArbiter::resolve(
   const nav_msgs::msg::Path & path,
   const geometry_msgs::msg::Twist & measured_velocity,
-  const rclcpp::Time & now) const
+  const rclcpp::Time & now,
+  bool terminal_brake_latched) const
 {
   if (!isFinite(measured_velocity)) {
     return reseed(measured_velocity, InitialMotionSource::INVALID_NUMERIC);
@@ -232,7 +440,8 @@ InitialMotionDecision InitialMotionArbiter::resolve(
   if (!std::isfinite(first.longitudinal_velocity) ||
     !std::isfinite(second.longitudinal_velocity) ||
     !std::isfinite(accepted_target_velocity_) ||
-    !std::isfinite(accepted_target_acceleration_))
+    !std::isfinite(accepted_target_acceleration_) ||
+    !std::isfinite(accepted_target_relative_time_))
   {
     return reseed_and_reset(InitialMotionSource::INVALID_NUMERIC);
   }
@@ -249,7 +458,10 @@ InitialMotionDecision InitialMotionArbiter::resolve(
   //   连续 N 周期都超出    -> 计划已系统性脱离现实，完整 reseed（v0/a0 都不再继承）
   const double velocity_deviation =
     std::fabs(measured_velocity.linear.x - sampled_velocity);
-  if (velocity_deviation > config_.replan_dev) {
+  const double terminal_overspeed = measured_velocity.linear.x - sampled_velocity;
+  const bool terminal_overspeed_mismatch = terminal_brake_latched &&
+    terminal_overspeed > config_.terminal_overspeed_replan_dev;
+  if (velocity_deviation > config_.replan_dev || terminal_overspeed_mismatch) {
     if (++consecutive_velocity_deviation_ >= config_.failsafe_deviation_cycles) {
       auto failsafe = reseed_and_reset(InitialMotionSource::VELOCITY_MISMATCH_FAILSAFE);
       failsafe.measured_velocity = measured_velocity.linear.x;
@@ -285,19 +497,117 @@ InitialMotionDecision InitialMotionArbiter::resolve(
   decision.state.source_stamp = accepted_trajectory_time_;
   decision.state.source_age = age;
   decision.velocity_inherited = true;
+  buildAcceptedPrefix(
+    accepted_trajectory_, path, best_segment, best_ratio,
+    accepted_target_acceleration_, accepted_target_relative_time_, config_, decision);
   return decision;
+}
+
+bool prepareTrajectoryStitching(
+  const nav_msgs::msg::Path & path,
+  const InitialMotionDecision & decision,
+  double max_path_error,
+  TrajectoryStitchingPlan & plan,
+  std::string * rejection_reason)
+{
+  plan = TrajectoryStitchingPlan();
+  const auto reject = [&](const std::string & reason) {
+      if (rejection_reason != nullptr) {
+        *rejection_reason = reason;
+      }
+      return false;
+    };
+  if (!decision.hasStitchingPrefix() || path.poses.size() < 2) {
+    return reject("prefix_unavailable");
+  }
+  max_path_error = std::max(0.0, max_path_error);
+  double last_progress = -1.0;
+  PathProjection tail_projection;
+  for (const auto & point : decision.stitching_prefix.points) {
+    const auto projection = projectOntoPath(point.pose.pose.position, path);
+    if (!projection.valid || projection.distance > max_path_error) {
+      return reject("prefix_path_mismatch");
+    }
+    const double progress = static_cast<double>(projection.segment) + projection.ratio;
+    if (progress + 1e-6 < last_progress) {
+      return reject("prefix_backtracks_on_path");
+    }
+    last_progress = progress;
+    tail_projection = projection;
+  }
+  if (!tail_projection.valid || tail_projection.segment + 1 >= path.poses.size()) {
+    return reject("prefix_reaches_path_end");
+  }
+
+  plan.prefix = decision.stitching_prefix;
+  plan.prefix.header = path.header;
+  plan.prefix.points.front().pose = path.poses.front();
+  plan.prefix.points.back().pose = tail_projection.pose;
+  plan.prefix.points.back().pose.header = path.header;
+  plan.prefix_duration = durationSeconds(plan.prefix.points.back().relative_time);
+  if (!std::isfinite(plan.prefix_duration) || plan.prefix_duration <= 0.0) {
+    return reject("prefix_time_invalid");
+  }
+
+  plan.suffix_path.header = path.header;
+  plan.suffix_path.poses.push_back(tail_projection.pose);
+  plan.suffix_path.poses.back().header = path.header;
+  for (size_t index = tail_projection.segment + 1; index < path.poses.size(); ++index) {
+    const auto & previous = plan.suffix_path.poses.back().pose.position;
+    const auto & current = path.poses[index].pose.position;
+    if (std::hypot(current.x - previous.x, current.y - previous.y) > 1e-6 ||
+      index + 1 == path.poses.size())
+    {
+      plan.suffix_path.poses.push_back(path.poses[index]);
+    }
+  }
+  if (plan.suffix_path.poses.size() < 2) {
+    return reject("suffix_too_short");
+  }
+  plan.suffix_boundary = decision.stitching_boundary;
+  if (!std::isfinite(plan.suffix_boundary.velocity.linear.x) ||
+    !std::isfinite(plan.suffix_boundary.acceleration))
+  {
+    return reject("suffix_boundary_invalid");
+  }
+  return true;
+}
+
+nav_interfaces::msg::RobotTrajectory concatenateStitchedTrajectory(
+  const nav_interfaces::msg::RobotTrajectory & prefix,
+  const nav_interfaces::msg::RobotTrajectory & suffix)
+{
+  if (prefix.points.empty()) {
+    return suffix;
+  }
+  if (suffix.points.empty()) {
+    return prefix;
+  }
+  nav_interfaces::msg::RobotTrajectory result = prefix;
+  result.header = suffix.header;
+  result.plan_id = suffix.plan_id;
+  const double time_shift = durationSeconds(prefix.points.back().relative_time);
+  for (size_t index = 1; index < suffix.points.size(); ++index) {
+    auto point = suffix.points[index];
+    point.relative_time = rclcpp::Duration::from_seconds(
+      time_shift + durationSeconds(point.relative_time));
+    result.points.push_back(std::move(point));
+  }
+  return result;
 }
 
 void InitialMotionArbiter::accept(
   const nav_interfaces::msg::RobotTrajectory & trajectory,
   double consumed_target_velocity,
   double consumed_target_acceleration,
+  double consumed_target_relative_time,
   const rclcpp::Time & now)
 {
   std::lock_guard<std::mutex> lock(mutex_);
   if (trajectory.points.empty() ||
     !std::isfinite(consumed_target_velocity) ||
-    !std::isfinite(consumed_target_acceleration))
+    !std::isfinite(consumed_target_acceleration) ||
+    !std::isfinite(consumed_target_relative_time))
   {
     resetUnlocked(InitialMotionSource::INVALID_NUMERIC);
     return;
@@ -305,6 +615,7 @@ void InitialMotionArbiter::accept(
   accepted_trajectory_ = trajectory;
   accepted_target_velocity_ = consumed_target_velocity;
   accepted_target_acceleration_ = consumed_target_acceleration;
+  accepted_target_relative_time_ = consumed_target_relative_time;
   accepted_trajectory_time_ = now;
   valid_ = true;
 }
@@ -326,6 +637,7 @@ void InitialMotionArbiter::resetUnlocked(InitialMotionSource reason)
   accepted_trajectory_ = nav_interfaces::msg::RobotTrajectory();
   accepted_target_velocity_ = 0.0;
   accepted_target_acceleration_ = 0.0;
+  accepted_target_relative_time_ = 0.0;
   accepted_trajectory_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
   valid_ = false;
   invalidation_reason_ = reason;

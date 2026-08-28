@@ -37,6 +37,7 @@ enum class ConstraintSource
   kObstacleSafetyMargin,  ///< 硬障碍前的目标安全余量区（停障模式下置零）
   kObstacleStopMargin,  ///< 为控制延迟和停车过冲额外预留的置零区
   kLateralAccel,    ///< 曲率 / 横向加速度限速
+  kApproachHandoff,  ///< 进入末端精确控制器前的速度交接上限
   kTerminalCreep,   ///< 末端蠕行区
   kEndBoundary,     ///< 末端速度边界点
   kKinematicBrake,  ///< 后向可达性：为减到下游约束而必须的限速

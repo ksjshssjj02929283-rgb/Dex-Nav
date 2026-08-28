@@ -47,6 +47,38 @@ nav_interfaces::msg::RobotTrajectory makeTrajectory()
   return trajectory;
 }
 
+nav_interfaces::msg::RobotTrajectory makeTimedTrajectory()
+{
+  nav_interfaces::msg::RobotTrajectory trajectory;
+  trajectory.header.frame_id = "map";
+  for (size_t index = 0; index <= 10; ++index) {
+    nav_interfaces::msg::TrajectoryPoint point;
+    point.pose.header.frame_id = trajectory.header.frame_id;
+    point.pose.pose.position.x = 0.1 * static_cast<double>(index);
+    point.pose.pose.orientation.w = 1.0;
+    point.longitudinal_velocity = 0.3;
+    point.acceleration = -0.1;
+    point.relative_time = rclcpp::Duration::from_seconds(
+      0.1 * static_cast<double>(index));
+    trajectory.points.push_back(point);
+  }
+  return trajectory;
+}
+
+nav_msgs::msg::Path makeDensePath(double start = 0.2)
+{
+  nav_msgs::msg::Path path;
+  path.header.frame_id = "map";
+  for (double x = start; x <= 1.0 + 1e-9; x += 0.1) {
+    geometry_msgs::msg::PoseStamped pose;
+    pose.header.frame_id = path.header.frame_id;
+    pose.pose.position.x = x;
+    pose.pose.orientation.w = 1.0;
+    path.poses.push_back(pose);
+  }
+  return path;
+}
+
 geometry_msgs::msg::Twist makeVelocity(double longitudinal_velocity = 0.3)
 {
   geometry_msgs::msg::Twist velocity;
@@ -66,6 +98,7 @@ void acceptRecentTrajectory(
 {
   state.accept(
     makeTrajectory(), consumed_target_velocity, consumed_target_acceleration,
+    0.0,
     testTime() - rclcpp::Duration::from_seconds(0.1));
 }
 
@@ -101,6 +134,7 @@ TEST(InitialMotionArbiterTest, RejectsExpiredTrajectory)
   InitialMotionArbiter state;
   state.accept(
     makeTrajectory(), 0.35, -0.2,
+    0.0,
     testTime() - rclcpp::Duration::from_seconds(0.6));
 
   expectReason(
@@ -192,6 +226,32 @@ TEST(InitialMotionArbiterTest, InheritsPlannedVelocityWithinReplanDev)
   EXPECT_NEAR(decision.state.acceleration, -0.2, 1e-9);
 }
 
+// 174118 L3复现：终端真实0.125、旧轨迹采样约0.071，绝对偏差仍小于
+// 巡航replan_dev=0.10。终端制动不能继续继承偏低速度，否则会把制动距离
+// 估小；只重锚定速度到实测，计划加速度连续性仍保留。
+TEST(InitialMotionArbiterTest, TerminalOverspeedUsesTighterReplanThreshold)
+{
+  InitialMotionArbiter state;
+  InitialMotionArbiter::Config config;
+  config.replan_dev = 0.10;
+  config.terminal_overspeed_replan_dev = 0.02;
+  state.configure(config);
+  acceptRecentTrajectory(state);
+
+  // makePath起点x=0.5，对makeTrajectory的空间采样速度为0.3。
+  const auto normal = state.resolve(makePath(), makeVelocity(0.355), testTime(), false);
+  EXPECT_TRUE(normal.velocity_inherited);
+  EXPECT_NEAR(normal.state.velocity.linear.x, 0.3, 1e-9);
+
+  const auto terminal = state.resolve(makePath(), makeVelocity(0.355), testTime(), true);
+  ASSERT_TRUE(terminal.reason.has_value());
+  EXPECT_EQ(*terminal.reason, InitialMotionSource::VELOCITY_MISMATCH);
+  EXPECT_FALSE(terminal.velocity_inherited);
+  EXPECT_TRUE(terminal.inherited());
+  EXPECT_NEAR(terminal.state.velocity.linear.x, 0.355, 1e-9);
+  EXPECT_NEAR(terminal.state.acceleration, -0.2, 1e-9);
+}
+
 // 连续 failsafe_deviation_cycles 次都命中 VELOCITY_MISMATCH，第 N 次升级为
 // FAILSAFE：加速度也不再继承，防止计划持续脱离现实（打滑/卡阻）时被无限期原谅。
 TEST(InitialMotionArbiterTest, EscalatesToFailsafeAfterConsecutiveVelocityDeviation)
@@ -263,10 +323,124 @@ TEST(InitialMotionArbiterTest, InheritsConsumedTargetAccelerationForCompatiblePa
   EXPECT_NEAR(decision.state.velocity.linear.x, 0.3, 1e-9);
 }
 
+TEST(InitialMotionArbiterTest, PreservesTimedFutureTrajectoryPrefix)
+{
+  InitialMotionArbiter state;
+  InitialMotionArbiter::Config config;
+  config.stitching_horizon = 0.2;
+  config.stitching_min_duration = 0.1;
+  state.configure(config);
+  state.accept(makeTimedTrajectory(), 0.3, -0.1, 0.2, testTime());
+
+  const auto decision = state.resolve(makeDensePath(), makeVelocity(0.3), testTime());
+
+  ASSERT_TRUE(decision.hasStitchingPrefix());
+  ASSERT_GE(decision.stitching_prefix.points.size(), 3u);
+  EXPECT_NEAR(decision.stitching_prefix.points.front().pose.pose.position.x, 0.2, 1e-9);
+  EXPECT_NEAR(decision.stitching_prefix.points.front().acceleration, -0.1, 1e-9);
+  EXPECT_NEAR(
+    rclcpp::Duration(decision.stitching_prefix.points.front().relative_time).seconds(),
+    0.0, 1e-9);
+  EXPECT_NEAR(
+    rclcpp::Duration(decision.stitching_prefix.points.back().relative_time).seconds(),
+    0.2, 1e-9);
+  EXPECT_NEAR(decision.stitching_prefix.points.back().pose.pose.position.x, 0.4, 1e-9);
+  EXPECT_NEAR(decision.stitching_boundary.velocity.linear.x, 0.3, 1e-9);
+  EXPECT_NEAR(decision.stitching_boundary.acceleration, -0.1, 1e-9);
+}
+
+TEST(InitialMotionArbiterTest, BuildsSuffixPathAtPrefixTailAndConcatenatesTime)
+{
+  InitialMotionArbiter state;
+  state.accept(makeTimedTrajectory(), 0.3, -0.1, 0.2, testTime());
+  const auto path = makeDensePath();
+  const auto decision = state.resolve(path, makeVelocity(0.3), testTime());
+  ASSERT_TRUE(decision.hasStitchingPrefix());
+
+  nav2_speed_planner::TrajectoryStitchingPlan stitching;
+  std::string rejection_reason;
+  ASSERT_TRUE(
+    nav2_speed_planner::prepareTrajectoryStitching(
+      path, decision, 0.02, stitching, &rejection_reason)) << rejection_reason;
+  ASSERT_GE(stitching.suffix_path.poses.size(), 2u);
+  EXPECT_NEAR(stitching.suffix_path.poses.front().pose.position.x, 0.4, 1e-9);
+  EXPECT_NEAR(stitching.suffix_path.poses.back().pose.position.x, 1.0, 1e-9);
+
+  nav_interfaces::msg::RobotTrajectory suffix;
+  suffix.header.frame_id = "map";
+  for (size_t index = 0; index < 3; ++index) {
+    nav_interfaces::msg::TrajectoryPoint point;
+    point.pose.header.frame_id = "map";
+    point.pose.pose.position.x = 0.4 + 0.1 * static_cast<double>(index);
+    point.pose.pose.orientation.w = 1.0;
+    point.longitudinal_velocity = 0.3;
+    point.acceleration = -0.1;
+    point.relative_time = rclcpp::Duration::from_seconds(
+      0.1 * static_cast<double>(index));
+    suffix.points.push_back(point);
+  }
+  const auto combined = nav2_speed_planner::concatenateStitchedTrajectory(
+    stitching.prefix, suffix);
+  ASSERT_EQ(combined.points.size(), stitching.prefix.points.size() + 2u);
+  for (size_t index = 1; index < combined.points.size(); ++index) {
+    EXPECT_GT(
+      rclcpp::Duration(combined.points[index].relative_time).seconds(),
+      rclcpp::Duration(combined.points[index - 1].relative_time).seconds());
+  }
+  EXPECT_NEAR(
+    rclcpp::Duration(combined.points.back().relative_time).seconds(), 0.4, 1e-9);
+}
+
+TEST(InitialMotionArbiterTest, RejectsPrefixThatLeavesCurrentPath)
+{
+  InitialMotionArbiter state;
+  state.accept(makeTimedTrajectory(), 0.3, -0.1, 0.2, testTime());
+  const auto path = makeDensePath();
+  auto decision = state.resolve(path, makeVelocity(0.3), testTime());
+  ASSERT_TRUE(decision.hasStitchingPrefix());
+  decision.stitching_prefix.points.back().pose.pose.position.y = 0.2;
+
+  nav2_speed_planner::TrajectoryStitchingPlan stitching;
+  std::string rejection_reason;
+  EXPECT_FALSE(
+    nav2_speed_planner::prepareTrajectoryStitching(
+      path, decision, 0.05, stitching, &rejection_reason));
+  EXPECT_EQ(rejection_reason, "prefix_path_mismatch");
+}
+
+TEST(InitialMotionArbiterTest, VelocityMismatchDisablesTrajectoryPrefix)
+{
+  InitialMotionArbiter state;
+  state.accept(makeTimedTrajectory(), 0.3, -0.1, 0.2, testTime());
+
+  const auto decision = state.resolve(makeDensePath(), makeVelocity(0.6), testTime());
+
+  ASSERT_TRUE(decision.reason.has_value());
+  EXPECT_EQ(*decision.reason, InitialMotionSource::VELOCITY_MISMATCH);
+  EXPECT_FALSE(decision.hasStitchingPrefix());
+}
+
+TEST(InitialMotionArbiterTest, TimeMismatchDisablesTrajectoryPrefixButKeepsStateContinuity)
+{
+  InitialMotionArbiter state;
+  InitialMotionArbiter::Config config;
+  config.stitching_max_time_error = 0.05;
+  state.configure(config);
+  // Spatial projection is t=0.2, but the controller receipt claims it
+  // consumed t=0.6. Keep v/a inheritance, reject only the future prefix.
+  state.accept(makeTimedTrajectory(), 0.3, -0.1, 0.6, testTime());
+
+  const auto decision = state.resolve(makeDensePath(), makeVelocity(0.3), testTime());
+
+  EXPECT_TRUE(decision.velocity_inherited);
+  EXPECT_TRUE(decision.inherited());
+  EXPECT_FALSE(decision.hasStitchingPrefix());
+}
+
 TEST(InitialMotionArbiterTest, EmptyAcceptanceFailsClosed)
 {
   InitialMotionArbiter state;
-  state.accept(nav_interfaces::msg::RobotTrajectory(), 0.35, -0.2, testTime());
+  state.accept(nav_interfaces::msg::RobotTrajectory(), 0.35, -0.2, 0.0, testTime());
 
   EXPECT_FALSE(state.valid());
   expectReason(
@@ -278,7 +452,7 @@ TEST(InitialMotionArbiterTest, InvalidConsumedTargetFailsClosed)
 {
   InitialMotionArbiter state;
   state.accept(
-    makeTrajectory(), 0.35, std::numeric_limits<double>::quiet_NaN(), testTime());
+    makeTrajectory(), 0.35, std::numeric_limits<double>::quiet_NaN(), 0.0, testTime());
 
   EXPECT_FALSE(state.valid());
   expectReason(

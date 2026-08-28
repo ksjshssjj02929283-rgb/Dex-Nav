@@ -59,6 +59,9 @@ public:
    * @param t_out   输出逐点相对时间（单调增）
    * @param v_end   路径终点目标速度：仅当停止点为路径终点时生效；
    *                停止点为障碍（零包络点）时内部强制 0
+   * @param terminal_speed_cap low-speed-zone cap; distinct from the terminal target v_end
+   * @param terminal_brake_latched true only after ControllerServer commits to final-goal braking;
+   *                ordinary negative acceleration must remain free to recover and re-accelerate
    */
   static FeasibilityResult generateRuckigProfile(
     const std::vector<double> & v_env,
@@ -70,19 +73,9 @@ public:
     std::vector<double> & v_out,
     std::vector<double> & a_out,
     std::vector<double> & t_out,
-    double v_end = 0.0);
-
-  /**
-   * @brief Convert end-to-end command execution delay into distance consumed
-   *        before physical braking can be credited.
-   *
-   * Negative planned acceleration is deliberately not credited here: it is a
-   * continuity target, not proof that the chassis has established the same
-   * deceleration. Positive acceleration is retained conservatively.
-   */
-  static double computeTerminalExecutionReserve(
-    double velocity, double planned_acceleration,
-    double execution_delay, double safety_margin);
+    double v_end = 0.0,
+    bool terminal_brake_latched = false,
+    double terminal_speed_cap = 0.0);
 
 protected:
   /// Phase B：基类 Phase A 包络（含末端蠕行区）→ Ruckig jerk 限制剖面 → 回填
@@ -93,13 +86,15 @@ protected:
 
   // —— 参数 ——
   double max_jerk_{0.5};    ///< jerk 上限 (m/s^3)
-  /// latch 沿触发时冻结的执行裕度；-1 = 未锁存。见 .cpp 中 anchor_s 的说明。
-  double latched_terminal_reserve_{-1.0};
+  // TERMINAL_SPATIAL_STAGES_BEGIN
+  // 高速制动锁存只负责在固定蠕行入口达到0.05；最终0速由独立空间锁存控制。
+  bool final_stop_latched_{false};
+  // 仅冻结由terminal_execution_delay换算出的命令提前距离，不含额外安全距离。
+  double latched_creep_delay_distance_{-1.0};
+  // TERMINAL_SPATIAL_STAGES_END
   double control_dt_{0.05};  ///< Ruckig 在线步进控制周期 (s)
-  // Existing trajectory preview already compensates part of the control loop.
-  // Configure this as the measured residual target->chassis p99 delay.
+  // 仅用于0.05→0最终停车距离，不再前移蠕行入口或叠加到障碍距离。
   double terminal_execution_delay_{0.0};
-  double terminal_safety_margin_{0.0};
 };
 
 }  // namespace nav2_speed_planner

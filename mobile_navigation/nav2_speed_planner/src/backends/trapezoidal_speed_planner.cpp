@@ -66,13 +66,15 @@ void TrapezoidalSpeedPlanner::generateProfile(
 void TrapezoidalSpeedPlanner::enforceTerminalReachability(
   std::vector<TrajPointWork> & work, const std::vector<double> & arc_s) const
 {
-  if (decel_ >= -1e-6 || terminal_creep_distance_ <= 0.0 || end_speed_ < 1e-3) {
+  if (decel_ >= -1e-6) {
     return;
   }
   for (size_t i = 0; i + 1 < work.size(); ++i) {
-    if (arc_s.back() - arc_s[i + 1] > terminal_creep_distance_ + 1e-6 ||
-      work[i + 1].velocity_upper_bound < 1e-3)
-    {
+    const bool strict_terminal_stop = i + 1 == work.size() - 1 && end_speed_ < 1e-3;
+    const bool terminal_cap_point = terminal_creep_distance_ > 0.0 &&
+      arc_s.back() - arc_s[i + 1] <= terminal_creep_distance_ + 1e-6 &&
+      work[i + 1].velocity_upper_bound >= 1e-3;
+    if (!strict_terminal_stop && !terminal_cap_point) {
       continue;
     }
     const double ds = arc_s[i + 1] - arc_s[i];

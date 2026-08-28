@@ -27,7 +27,7 @@ constexpr double kMaxSpeed = 1.0;
 constexpr double kMinSpeed = 0.03;
 constexpr double kAccel = 0.6;
 constexpr double kDecel = -0.6;
-constexpr double kEndSpeed = 0.03;
+constexpr double kTerminalSpeedCap = 0.03;
 constexpr double kStopDistance = 0.2;
 constexpr double kPointStep = 0.02;  // 2cm 点距（贴近实机路径密度）
 
@@ -92,7 +92,8 @@ public:
     this->min_speed_ = kMinSpeed;
     this->accel_ = kAccel;
     this->decel_ = kDecel;
-    this->end_speed_ = kEndSpeed;
+    this->end_speed_ = kTerminalSpeedCap;
+    this->terminal_speed_cap_ = kTerminalSpeedCap;
     this->terminal_creep_distance_ = kStopDistance;
     this->obstacle_safety_margin_ = 0.25;
     this->obstacle_stop_margin_ = 0.2;
@@ -101,11 +102,16 @@ public:
     this->obstacle_unavailable_policy_ = nav2_speed_planner::ConstraintFailurePolicy::FAIL_OPEN;
     // costmap_ros_ 为空 → A1 判定为「不可评估」；测试壳统一设 fail_open 保持离线纯算法语义
   }
-  void setTerminalParams(double end_speed, double stop_distance, double decel = kDecel)
+  void setTerminalParams(double speed_cap, double stop_distance, double decel = kDecel)
   {
-    this->end_speed_ = end_speed;
+    this->end_speed_ = speed_cap;
+    this->terminal_speed_cap_ = speed_cap;
     this->terminal_creep_distance_ = stop_distance;
     this->decel_ = decel;
+  }
+  void setTerminalEndSpeed(double end_speed)
+  {
+    this->end_speed_ = end_speed;
   }
   void setUnavailablePolicy(nav2_speed_planner::ConstraintFailurePolicy policy)
   {
@@ -155,15 +161,19 @@ public:
 class TestableSCurve : public TestablePlanner<nav2_speed_planner::SCurveSpeedPlanner>
 {
 public:
-  void setSCurveParams()
+  void setSCurveParams(double max_jerk = 0.5, double control_dt = 0.05)
   {
-    max_jerk_ = 0.5;
-    control_dt_ = 0.05;
+    max_jerk_ = max_jerk;
+    control_dt_ = control_dt;
   }
-  void setTerminalReserve(double execution_delay, double safety_margin)
+  void setTerminalExecutionDelay(double execution_delay)
   {
     terminal_execution_delay_ = execution_delay;
-    terminal_safety_margin_ = safety_margin;
+  }
+  void setApproachEntry(double distance, double speed)
+  {
+    approach_entry_distance_ = distance;
+    approach_entry_speed_ = speed;
   }
 };
 
@@ -207,10 +217,10 @@ void checkProfile(
     EXPECT_GE(p.longitudinal_velocity, -1e-9);
   }
   // 核心断言：剖面非全零（全零 = 机器人不走）
-  EXPECT_GT(peak, kEndSpeed - 1e-6) << "profile is (near) all-zero!";
+  EXPECT_GT(peak, kTerminalSpeedCap - 1e-6) << "profile is (near) all-zero!";
   // 静止起步：首点=当前速度(0)，第二个点起必须有速度（否则消费侧无法起步）
   EXPECT_GT(traj.points[1].longitudinal_velocity, 1e-3) << "no speed right after start!";
-  // 蠕行区：距终点 stop_distance 内保持 ≈ end_speed（不高于 end_speed + 容差）
+  // 末端低速区只受速度帽约束，最后一点则是严格零速状态。
   double s_total = 0.0;
   std::vector<double> arc(traj.points.size(), 0.0);
   for (size_t i = 1; i < traj.points.size(); ++i) {
@@ -221,10 +231,11 @@ void checkProfile(
   }
   for (size_t i = 1; i < traj.points.size(); ++i) {
     if (s_total - arc[i] < kStopDistance - 1e-9) {
-      EXPECT_LE(traj.points[i].longitudinal_velocity, kEndSpeed + 1e-6)
+      EXPECT_LE(traj.points[i].longitudinal_velocity, kTerminalSpeedCap + 1e-6)
         << "creep zone exceeded at s=" << arc[i];
     }
   }
+  EXPECT_NEAR(traj.points.back().longitudinal_velocity, kTerminalSpeedCap, 1e-6);
 }
 
 }  // namespace
@@ -326,6 +337,39 @@ TEST(SpeedProfileTerminalPath, StopBoundaryIsInsertedAtExactDistance)
   EXPECT_EQ(traj.points.back().pose, path.poses.back());
 }
 
+TEST(SpeedProfileTerminalPath, SCurveReachesApproachHandoffSpeedAtExactDistance)
+{
+  TestableSCurve planner;
+  planner.setSharedParams();
+  planner.setSCurveParams(0.7, 0.1);
+  planner.setMotionLimits(0.6, 0.7);
+  planner.setTerminalParams(0.05, 0.05, -0.6);
+  planner.setApproachEntry(0.30, 0.25);
+  const auto path = makeStraightPathToExactGoal(2.0);
+  const auto traj = planner.run(path, 0.40, 0.0);
+
+  ASSERT_GE(traj.points.size(), 3u);
+  const auto boundary = std::find_if(
+    traj.points.begin(), traj.points.end(), [](const auto & point) {
+      return std::fabs(point.pose.pose.position.x - 1.70) < 1e-6;
+    });
+  ASSERT_NE(boundary, traj.points.end());
+  EXPECT_EQ(boundary->region_type, "approach_handoff");
+  EXPECT_LE(boundary->longitudinal_velocity, 0.25 + 1e-6);
+
+  bool had_faster_cruise_before_handoff = false;
+  for (const auto & point : traj.points) {
+    if (point.pose.pose.position.x < 1.65 && point.longitudinal_velocity > 0.26) {
+      had_faster_cruise_before_handoff = true;
+    }
+    if (point.pose.pose.position.x >= 1.70 - 1e-6) {
+      EXPECT_LE(point.longitudinal_velocity, 0.25 + 1e-6);
+    }
+  }
+  EXPECT_TRUE(had_faster_cruise_before_handoff);
+  EXPECT_NEAR(traj.points.back().longitudinal_velocity, 0.05, 1e-6);
+}
+
 TEST(SpeedProfileTerminalPath, TrapezoidalMovingStartUsesReachableBraking)
 {
   TestablePlanner<nav2_speed_planner::TrapezoidalSpeedPlanner> planner;
@@ -411,15 +455,21 @@ TEST(SpeedProfileRecedingHorizon, SCurveTenHertzTimePreviewReachesStopZoneSpeed)
   double position = 0.0;
   double velocity = 0.6;
   double acceleration = 0.0;
+  bool terminal_brake_latched = false;
   bool entered_stop_zone = false;
   double terminal_min_velocity = std::numeric_limits<double>::infinity();
 
   for (int cycle = 0; cycle < 100 && position < kGoal - 0.005; ++cycle) {
     const double remaining = kGoal - position;
     const auto traj = planner.run(
-      makeStraightPathToExactGoal(remaining), velocity, acceleration);
+      makeStraightPathToExactGoal(remaining), velocity, acceleration,
+      terminal_brake_latched);
     ASSERT_GE(traj.points.size(), 2u);
-    EXPECT_FALSE(planner.getLastPlanningDiagnostics().terminal_infeasible)
+    const auto diagnostics = planner.getLastPlanningDiagnostics();
+    if (diagnostics.terminal_brake_required) {
+      terminal_brake_latched = true;
+    }
+    EXPECT_FALSE(diagnostics.terminal_infeasible)
       << "normal long path became infeasible at cycle " << cycle <<
       " remaining=" << remaining << " input_v=" << velocity <<
       " input_a=" << acceleration;
@@ -447,7 +497,7 @@ TEST(SpeedProfileRecedingHorizon, SCurveTenHertzTimePreviewReachesStopZoneSpeed)
     if (next_position >= kGoal - 0.15) {
       terminal_min_velocity = std::min(terminal_min_velocity, preview.velocity);
       EXPECT_GE(preview.velocity, 0.049)
-        << "terminal velocity undershot stop_speed at cycle " << cycle <<
+        << "terminal velocity undershot handoff speed at cycle " << cycle <<
         " input_v=" << velocity << " input_a=" << acceleration <<
         " preview_a=" << preview.acceleration;
       if (preview.velocity <= 0.051) {
@@ -460,53 +510,123 @@ TEST(SpeedProfileRecedingHorizon, SCurveTenHertzTimePreviewReachesStopZoneSpeed)
     acceleration = preview.acceleration;
   }
   EXPECT_TRUE(entered_stop_zone);
+  EXPECT_TRUE(terminal_brake_latched);
   EXPECT_GE(terminal_min_velocity, 0.049);
 }
 
-TEST(SpeedProfileTerminalReserve, ReachesStableCreepBeforeReservedBoundary)
+TEST(SpeedProfileTerminalReserve, CommandLeadUsesDelayWithoutExtraSafetyDistance)
 {
   TestableSCurve planner;
   planner.setSharedParams();
   planner.setSCurveParams();
   planner.setMotionLimits(0.6, 0.5);
   planner.setTerminalParams(0.05, 0.075, -0.4);
-  planner.setTerminalReserve(0.35, 0.05);
+  planner.setTerminalEndSpeed(0.0);
+  planner.setTerminalExecutionDelay(0.35);
 
   constexpr double kGoal = 2.0;
   constexpr double kStartSpeed = 0.6;
+  constexpr double kExecutionDelay = 0.35;
   const auto traj = planner.run(
     makeStraightPathToExactGoal(kGoal), kStartSpeed, 0.0, false);
-  const double reserve = nav2_speed_planner::SCurveSpeedPlanner::
-    computeTerminalExecutionReserve(kStartSpeed, 0.0, 0.35, 0.05);
-  const double reserved_boundary = kGoal - 0.075 - reserve;
+  const double delay_distance = kStartSpeed * kExecutionDelay;
+  const double command_boundary = kGoal - 0.075 - delay_distance;
 
   bool stable_creep_found = false;
   for (const auto & point : traj.points) {
     if (point.longitudinal_velocity <= 0.051 && std::fabs(point.acceleration) <= 1e-3) {
       stable_creep_found = true;
-      EXPECT_LE(point.pose.pose.position.x, reserved_boundary + kPointStep + 1e-3)
-        << "stable creep boundary may shift by at most one path sample";
+      EXPECT_GE(point.pose.pose.position.x, command_boundary - 2.0 * kPointStep - 1e-3);
+      EXPECT_LE(point.pose.pose.position.x, command_boundary + 3.0 * kPointStep + 1e-3)
+        << "command lead must contain delay distance only, without old +5cm margin";
       break;
     }
   }
   EXPECT_TRUE(stable_creep_found);
   const auto diagnostics = planner.getLastPlanningDiagnostics();
-  EXPECT_NEAR(diagnostics.terminal_execution_reserve, reserve, 1e-9);
+  EXPECT_NEAR(diagnostics.terminal_execution_reserve, delay_distance, 1e-9);
+  EXPECT_NEAR(diagnostics.terminal_anchor_s, command_boundary, 1e-9);
   EXPECT_FALSE(diagnostics.terminal_infeasible);
 }
 
-TEST(SpeedProfileTerminalReserve, ScalesWithVelocityAndPositiveAcceleration)
+TEST(SpeedProfileTerminalReserve, FinalZeroActivatesOnlyInsideDynamicStopDistance)
 {
-  using nav2_speed_planner::SCurveSpeedPlanner;
-  EXPECT_NEAR(
-    SCurveSpeedPlanner::computeTerminalExecutionReserve(0.6, 0.2, 0.35, 0.05),
-    0.27225, 1e-9);
-  EXPECT_NEAR(
-    SCurveSpeedPlanner::computeTerminalExecutionReserve(0.6, -0.2, 0.35, 0.05),
-    0.26, 1e-9);
-  EXPECT_DOUBLE_EQ(
-    SCurveSpeedPlanner::computeTerminalExecutionReserve(-0.1, 0.0, -1.0, -0.2),
-    0.0);
+  TestableSCurve planner;
+  planner.setSharedParams();
+  planner.setSCurveParams(0.7, 0.1);
+  planner.setMotionLimits(0.6, 0.7);
+  planner.setTerminalParams(0.05, 0.05, -0.6);
+  planner.setTerminalEndSpeed(0.0);
+  planner.setTerminalExecutionDelay(0.2);
+
+  const auto outside = planner.run(
+    makeStraightPathToExactGoal(0.04), 0.05, 0.0, true);
+  ASSERT_GE(outside.points.size(), 2u);
+  EXPECT_NEAR(outside.points.back().longitudinal_velocity, 0.05, 1e-3);
+
+  const auto inside = planner.run(
+    makeStraightPathToExactGoal(0.02), 0.05, 0.0, true);
+  ASSERT_GE(inside.points.size(), 2u);
+  EXPECT_NEAR(inside.points.back().longitudinal_velocity, 0.0, 1e-6);
+  EXPECT_NEAR(inside.points.back().acceleration, 0.0, 1e-6);
+}
+
+TEST(SpeedProfileTerminalReserve, PlanningCycleGuardLatchesBeforeDiscreteOvershoot)
+{
+  TestableSCurve planner;
+  planner.setSharedParams();
+  planner.setSCurveParams(0.7, 0.1);
+  planner.setMotionLimits(0.6, 0.7);
+  planner.setTerminalParams(0.05, 0.05, -0.6);
+  planner.setTerminalExecutionDelay(0.2);
+
+  // terminal boundary=0.75 m：仍在物理制动距离外，但已进入执行延迟距离
+  // 加一个10Hz规划步长
+  // (~0.06m)的触发保护。该保护只提前锁存，不移动固定蠕行边界。
+  planner.run(makeStraightPathToExactGoal(0.80), 0.6, 0.0, false);
+  const auto diagnostics = planner.getLastPlanningDiagnostics();
+  ASSERT_TRUE(std::isfinite(diagnostics.terminal_braking_distance));
+  EXPECT_GT(diagnostics.terminal_distance_available, diagnostics.terminal_braking_distance);
+  EXPECT_NEAR(diagnostics.terminal_execution_reserve, 0.12, 1e-9);
+  EXPECT_TRUE(diagnostics.terminal_brake_required);
+  EXPECT_LE(
+    diagnostics.terminal_distance_available,
+    diagnostics.terminal_braking_distance + diagnostics.terminal_execution_reserve + 0.061);
+}
+
+TEST(SpeedProfileTerminalReserve, StableCreepSegmentRemainsSeparateFromFinalStop)
+{
+  TestableSCurve planner;
+  planner.setSharedParams();
+  planner.setSCurveParams(0.7, 0.1);
+  planner.setMotionLimits(0.6, 0.7);
+  planner.setTerminalParams(0.05, 0.05, -0.6);
+  planner.setTerminalEndSpeed(0.0);
+  planner.setTerminalExecutionDelay(0.2);
+
+  const auto trajectory = planner.run(
+    makeStraightPathToExactGoal(2.0), 0.6, 0.0, true);
+  ASSERT_GE(trajectory.points.size(), 3u);
+  EXPECT_NEAR(trajectory.points.back().longitudinal_velocity, 0.05, 1e-3);
+  EXPECT_NEAR(trajectory.points.back().acceleration, 0.0, 1e-6);
+
+  bool stable_creep_seen = false;
+  size_t stable_creep_index = trajectory.points.size();
+  for (size_t index = 1; index + 1 < trajectory.points.size(); ++index) {
+    const auto & point = trajectory.points[index];
+    if (std::fabs(point.longitudinal_velocity - 0.05) <= 1e-3 &&
+      std::fabs(point.acceleration) <= 1e-3)
+    {
+      stable_creep_seen = true;
+      stable_creep_index = index;
+      break;
+    }
+  }
+  ASSERT_TRUE(stable_creep_seen);
+  for (size_t index = stable_creep_index; index < trajectory.points.size(); ++index) {
+    EXPECT_LE(trajectory.points[index].longitudinal_velocity, 0.051);
+    EXPECT_GE(trajectory.points[index].longitudinal_velocity, 0.049);
+  }
 }
 
 TEST(SpeedProfileTerminalReserve, ColdStartLongPathDoesNotCollapseToEndSpeed)
@@ -519,7 +639,7 @@ TEST(SpeedProfileTerminalReserve, ColdStartLongPathDoesNotCollapseToEndSpeed)
   // Reproduce the field runtime where the new reserve parameters were not
   // loaded. A missing reserve must not turn a normal 3.24 m startup into a
   // terminal-infeasible all-creep profile.
-  planner.setTerminalReserve(0.0, 0.0);
+  planner.setTerminalExecutionDelay(0.0);
 
   const auto trajectory = planner.run(
     makeStraightPathToExactGoal(3.24), 0.0, 0.0, false);
@@ -543,7 +663,7 @@ TEST(SpeedProfileRecedingHorizon, DynamicReserveHandlesDelayedLaggedPlant)
   planner.setSCurveParams();
   planner.setMotionLimits(0.6, 0.5);
   planner.setTerminalParams(0.05, 0.075, -0.4);
-  planner.setTerminalReserve(0.35, 0.05);
+  planner.setTerminalExecutionDelay(0.35);
 
   constexpr double kControllerDt = 0.1;
   constexpr double kGoal = 3.0;
@@ -623,6 +743,73 @@ TEST(SpeedProfileRecedingHorizon, DynamicReserveHandlesDelayedLaggedPlant)
   EXPECT_TRUE(reached_creep_before_stop_zone);
 }
 
+TEST(SpeedProfileRecedingHorizon, StableCreepThenStopsAtGoalAcrossReplans)
+{
+  TestableSCurve planner;
+  planner.setSharedParams();
+  planner.setSCurveParams(0.7, 0.1);
+  planner.setMotionLimits(0.6, 0.7);
+  planner.setTerminalParams(0.05, 0.05, -0.6);
+  planner.setTerminalEndSpeed(0.0);
+  planner.setTerminalExecutionDelay(0.2);
+
+  constexpr double kControllerDt = 0.1;
+  constexpr double kGoal = 2.0;
+  double position = 0.0;
+  double velocity = 0.6;
+  double acceleration = 0.0;
+  bool terminal_brake_latched = false;
+  bool stable_creep_seen = false;
+  bool stopped = false;
+
+  for (int cycle = 0; cycle < 150 && position < kGoal + 0.02; ++cycle) {
+    const auto trajectory = planner.run(
+      makeStraightPathToExactGoal(std::max(0.0, kGoal - position)),
+      velocity, acceleration, terminal_brake_latched);
+    ASSERT_GE(trajectory.points.size(), 2u);
+    const auto diagnostics = planner.getLastPlanningDiagnostics();
+    if (diagnostics.terminal_brake_required) {
+      terminal_brake_latched = true;
+    }
+    EXPECT_FALSE(diagnostics.terminal_infeasible)
+      << "cycle=" << cycle << " remaining=" << kGoal - position <<
+      " velocity=" << velocity << " acceleration=" << acceleration;
+
+    std::vector<nav2_core::TrajectoryPreviewPoint> preview_points;
+    preview_points.reserve(trajectory.points.size());
+    for (const auto & point : trajectory.points) {
+      preview_points.push_back(
+      {
+        point.pose.pose.position.x, point.pose.pose.position.y,
+        point.longitudinal_velocity, point.acceleration,
+        nav2_core::durationToSeconds(point.relative_time)});
+    }
+    nav2_core::TrajectoryPreview preview;
+    ASSERT_TRUE(nav2_core::sampleTrajectoryPreview(
+        preview_points, 0.0, 0.0,
+        nav2_core::hasValidRelativeTime(preview_points),
+        kControllerDt, 0.1, preview));
+
+    stable_creep_seen = stable_creep_seen ||
+      (preview.velocity >= 0.045 && preview.velocity <= 0.055 &&
+      std::fabs(preview.acceleration) <= 0.02);
+    const double next_velocity = std::max(0.0, preview.velocity);
+    position += 0.5 * (velocity + next_velocity) * kControllerDt;
+    velocity = next_velocity;
+    acceleration = preview.acceleration;
+    if (velocity <= 0.005) {
+      stopped = true;
+      break;
+    }
+  }
+
+  EXPECT_TRUE(terminal_brake_latched);
+  EXPECT_TRUE(stable_creep_seen);
+  EXPECT_TRUE(stopped);
+  EXPECT_LE(position, kGoal + 0.005);
+  EXPECT_GE(position, kGoal - 0.03);
+}
+
 TEST(SpeedProfileTerminalReserve, LatchedBrakeDoesNotRearmCruiseOnLongerPath)
 {
   TestableSCurve planner;
@@ -630,7 +817,7 @@ TEST(SpeedProfileTerminalReserve, LatchedBrakeDoesNotRearmCruiseOnLongerPath)
   planner.setSCurveParams();
   planner.setMotionLimits(0.6, 0.5);
   planner.setTerminalParams(0.05, 0.075, -0.4);
-  planner.setTerminalReserve(0.35, 0.05);
+  planner.setTerminalExecutionDelay(0.35);
 
   constexpr double kMeasuredVelocity = 0.4;
   const auto traj = planner.run(
@@ -1074,7 +1261,7 @@ std::vector<nav2_speed_planner::TrajPointWork> makeWorkWithLimits(
 TEST(SpeedPlannerEnvelope, AggregationNeverRaisesAnyPoint)
 {
   //                             低于巡航  等于巡航  高值  安全置零
-  const std::vector<double> in = {0.20,    0.60,     1.50, 0.0};
+  const std::vector<double> in = {0.20, 0.60, 1.50, 0.0};
   auto work = makeWorkWithLimits(in);
 
   // 一条把所有点都试图抬到 0.6 的约束

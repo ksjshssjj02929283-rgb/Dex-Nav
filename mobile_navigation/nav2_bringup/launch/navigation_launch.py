@@ -40,7 +40,8 @@ def generate_launch_description():
     use_respawn = LaunchConfiguration('use_respawn')
     log_level = LaunchConfiguration('log_level')
 
-    lifecycle_nodes = ['controller_server',
+    lifecycle_nodes = ['longitudinal_state_estimator',
+                       'controller_server',
                        'planner_server',
                        'behavior_server',
                        'bt_navigator',
@@ -110,6 +111,16 @@ def generate_launch_description():
     load_nodes = GroupAction(
         condition=IfCondition(PythonExpression(['not ', use_composition])),
         actions=[
+            Node(
+                package='nav2_longitudinal_state_estimator',
+                executable='longitudinal_state_estimator',
+                name='longitudinal_state_estimator',
+                output='screen',
+                respawn=use_respawn,
+                respawn_delay=2.0,
+                parameters=[configured_params],
+                arguments=['--ros-args', '--log-level', log_level],
+                remappings=remappings),
             Node(
                 package='nav2_controller',
                 executable='controller_server',
@@ -198,6 +209,13 @@ def generate_launch_description():
         condition=IfCondition(use_composition),
         target_container=container_name_full,
         composable_node_descriptions=[
+            ComposableNode(
+                package='nav2_longitudinal_state_estimator',
+                plugin=('nav2_longitudinal_state_estimator::'
+                        'LongitudinalStateEstimatorNode'),
+                name='longitudinal_state_estimator',
+                parameters=[configured_params],
+                remappings=remappings),
             ComposableNode(
                 package='nav2_controller',
                 plugin='nav2_controller::ControllerServer',

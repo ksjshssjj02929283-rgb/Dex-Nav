@@ -20,7 +20,8 @@ public:
     d_t_ = 0.05;
     max_v_ = 1.0;
     min_v_ = 0.0;
-    max_v_inc_ = 0.5;
+    max_linear_accel_ = 0.5;
+    max_linear_decel_ = 0.5;
     switch_speed_ = 0.0;
     desired_linear_vel_ = 0.5;
     default_desired_linear_vel_ = 0.15;
@@ -51,6 +52,16 @@ public:
 
   void setDesired(double v) {desired_linear_vel_ = v;}
   void setDefaultDesired(double v) {default_desired_linear_vel_ = v;}
+  void setNegativeFeedforwardGuard(double error, double max_target_speed)
+  {
+    negative_ff_guard_error_ = error;
+    negative_ff_max_target_speed_ = max_target_speed;
+  }
+  void setOverspeedUndercut(double gain, double max_undercut)
+  {
+    negative_ff_overspeed_undercut_gain_ = gain;
+    negative_ff_max_target_undercut_ = max_undercut;
+  }
   void invalidateIntegrator() {last_speed_cmd_valid_ = false;}
   double lastCmd() const {return last_speed_cmd_;}
   int speedIntegratorSaturation() const
@@ -95,6 +106,16 @@ TEST(PidSpeedLoop, feedforwardNotVetoedBySign)
   EXPECT_LT(cmd, 0.4);
 }
 
+// 末端切入PID时，Ruckig速度既是上限也是本周期跟踪参考。即使位置环按
+// kp*distance只给出0.25 m/s，也不能把0.45 m/s规划参考一拍钳成0.25。
+TEST(PidSpeedLoop, plannedSpeedReferenceIsNotReducedByPositionLoop)
+{
+  SpeedLoopPID pid;
+  const double cmd = pid.run(0.47, 0.25, 0.45, 0.45, -0.2);
+  EXPECT_GT(cmd, 0.40);
+  EXPECT_LE(cmd, 0.45);
+}
+
 // 反死锁（R49）：车已静止、目标要求前进，但前馈是负值（采样点配到了制动段）。
 // 此时 last_speed_cmd_ + ff·dt < 0 会被符号界钳回 0，而 0 又成为下一周期的
 // 指令基准——逐周期自复现，机器人永远起不来（实机末端 6cm 不可达）。
@@ -126,7 +147,6 @@ TEST(PidSpeedLoop, fullStopClearsIntegral)
   EXPECT_EQ(pid.speedIntegratorSaturation(), 1);
 
   pid.setDesired(0.0);
-  pid.setDefaultDesired(0.0);
   const double stop_cmd = pid.run(0.3, 1.0, 0.0, 0.0);
   EXPECT_EQ(stop_cmd, 0.0);
   EXPECT_EQ(pid.speedIntegratorSaturation(), 0);
@@ -186,9 +206,94 @@ TEST(PidSpeedLoop, reseedOnDivergence)
   EXPECT_LT(after_jump, 0.15);
 }
 
-// 角速度环单测：直调 AngularSpeedControl（不依赖 ROS 运行时）。
-// final_rotation=true 分支为 kp*err_theta 纯 P，target 由 err_theta 直接给定，
-// 便于验证变化率限幅（镜像速度环 SpeedLoopPID 的测试结构）。
+// NEGATIVE_FF_CONSISTENCY_GUARD_BEGIN
+TEST(PidSpeedLoop, terminalGuardPreventsFurtherBrakingBelowNonzeroTarget)
+{
+  SpeedLoopPID guarded;
+  guarded.setNegativeFeedforwardGuard(0.01, 0.10);
+  guarded.run(0.01, 1.0, 0.01, 0.01, 0.0);  // 播种上一拍cmd=实测
+  const double guarded_cmd = guarded.run(0.01, 1.0, 0.035, 0.035, -0.20);
+
+  SpeedLoopPID unguarded;
+  // max_target_speed低于本用例目标，相当于关闭整个末段保护范围。
+  unguarded.setNegativeFeedforwardGuard(1.0, 0.001);
+  unguarded.run(0.01, 1.0, 0.01, 0.01, 0.0);
+  const double unguarded_cmd = unguarded.run(0.01, 1.0, 0.035, 0.035, -0.20);
+
+  EXPECT_GT(guarded_cmd, unguarded_cmd + 0.005);
+  EXPECT_GE(guarded_cmd, 0.01 - 1e-6);
+}
+
+// 当前指令仍在目标上方时，强负前馈最多把本拍制动到目标，不得直接穿过
+// 目标形成“规划0.05、cmd先到0.01”的下探。
+TEST(PidSpeedLoop, terminalGuardStopsAtCurrentNonzeroTarget)
+{
+  SpeedLoopPID pid;
+  pid.setNegativeFeedforwardGuard(0.01, 0.10);
+  pid.run(0.08, 1.0, 0.08, 0.08, 0.0);
+  const double cmd = pid.run(0.08, 1.0, 0.05, 0.05, -0.60);
+  EXPECT_NEAR(cmd, 0.05, 1e-9);
+}
+
+// 复现164655：cmd已经落后于0.072目标，但odom尚未响应、仍约等于目标。
+// 旧保护要等odom也落后才触发；一拍预测保护必须立即阻止cmd继续向零下降。
+TEST(PidSpeedLoop, terminalGuardDoesNotWaitForMeasuredVelocityToLag)
+{
+  SpeedLoopPID pid;
+  pid.setNegativeFeedforwardGuard(0.01, 0.10);
+  const double previous_cmd = pid.run(0.052, 1.0, 0.052, 0.052, 0.0);
+  const double guarded_cmd = pid.run(0.072, 1.0, 0.072, 0.072, -0.372);
+  EXPECT_NEAR(previous_cmd, 0.052, 1e-9);
+  EXPECT_GE(guarded_cmd, previous_cmd - 1e-9);
+}
+
+// 复现174118 L3：目标约0.0505但odom仍约0.125。此时必须允许有限低于
+// 目标补刹，同时由0.03m/s最大下探量保证不会重新掉到0.01附近。
+TEST(PidSpeedLoop, terminalGuardAllowsBoundedBrakingForMeasuredOverspeed)
+{
+  SpeedLoopPID pid;
+  pid.setNegativeFeedforwardGuard(0.01, 0.15);
+  pid.setOverspeedUndercut(0.50, 0.03);
+  pid.run(0.05, 1.0, 0.05, 0.05, 0.0);
+  const double cmd = pid.run(0.125, 1.0, 0.0505, 0.0505, -0.153);
+
+  EXPECT_LT(cmd, 0.0505);
+  EXPECT_GE(cmd, 0.0205 - 1e-9);
+}
+
+// 复现实机L3->L1：空间消费目标停在约0.08，cmd/odom已经落后，负前馈仍为
+// -0.148。守卫不能只把合成加速度钳到0并冻结低cmd，而应撤销矛盾前馈，保留
+// 正向速度反馈，让机器人重新获得空间进度并自然消费到后续0.05目标。
+TEST(PidSpeedLoop, terminalGuardRetainsPositiveRecoveryFeedbackAtObservedTarget)
+{
+  SpeedLoopPID pid;
+  pid.setNegativeFeedforwardGuard(0.01, 0.10);
+  const double previous_cmd = pid.run(0.03, 1.0, 0.03, 0.03, 0.0);
+  const double recovered_cmd = pid.run(0.04, 1.0, 0.0805, 0.0805, -0.148);
+
+  EXPECT_NEAR(previous_cmd, 0.03, 1e-9);
+  EXPECT_GT(recovered_cmd, previous_cmd);
+  EXPECT_LE(recovered_cmd, 0.0805 + 1e-9);
+}
+
+TEST(PidSpeedLoop, zeroTargetKeepsFullStopAuthority)
+{
+  SpeedLoopPID pid;
+  pid.setNegativeFeedforwardGuard(0.0, 0.10);
+  EXPECT_DOUBLE_EQ(pid.run(0.05, 1.0, 0.0, 0.0, -0.50), 0.0);
+}
+
+TEST(PidSpeedLoop, highSpeedBrakingIsUnchanged)
+{
+  SpeedLoopPID pid;
+  pid.setNegativeFeedforwardGuard(0.01, 0.10);
+  pid.run(0.18, 1.0, 0.18, 0.18, 0.0);
+  EXPECT_LT(pid.run(0.18, 1.0, 0.20, 0.20, -0.20), 0.18);
+}
+// NEGATIVE_FF_CONSISTENCY_GUARD_END
+
+// 角速度环单测：手动推进轨迹起始时刻来模拟稳定50ms控制周期，验证固定
+// 目标轨迹、实测偏差重规划和停止滞回，不依赖墙钟sleep。
 class AngularLoopPID : public nav2_pid_controller::PIDController
 {
 public:
@@ -200,6 +305,13 @@ public:
     max_w_inc_ = 1.0;
     angular_error_deadband_ = 0.008;
     angular_cmd_reseed_error_ = 0.3;
+    final_rotation_max_w_ = 0.5;
+    final_rotation_max_accel_ = 0.6;
+    final_rotation_max_decel_ = 0.28;
+    final_rotation_max_jerk_ = 1.2;
+    final_rotation_brake_delay_ = 0.10;
+    final_rotation_replan_cooldown_ = 0.0;
+    clock_ = std::make_shared<rclcpp::Clock>(RCL_STEADY_TIME);
 
     nav2_controller_common::PidConf station;
     station.kp = 1.0;
@@ -209,85 +321,120 @@ public:
 
   double run(double measured_w, double err_theta, bool final_rotation = true)
   {
+    if (final_rotation && final_angular_trajectory_valid_) {
+      final_angular_trajectory_start_ = final_angular_trajectory_start_ -
+        rclcpp::Duration::from_seconds(d_t_);
+    }
     geometry_msgs::msg::Twist tw;
     tw.angular.z = measured_w;
     return AngularSpeedControl(tw, err_theta, final_rotation);
   }
 
   double lastCmd() const {return last_angular_cmd_;}
+  double lastAccel() const {return last_angular_accel_;}
+  int replans() const {return final_angular_replan_count_;}
+  bool holding() const {return final_angular_hold_;}
 };
 
-// 变化率限幅：朝向误差远超 max_w/kp（目标饱和到 max_w）时，首拍指令不得
-// 直接砸到目标，须按 max_w_inc_ 逐周期爬升；多周期完美 plant 反馈后收敛到目标。
+// 固定90度目标：名义角S曲线必须单方向加速/减速并使用快速巡航；实测制动
+// 包络可优先于名义jerk，但最终命令始终受角速度和物理角加速度约束。
 TEST(AngularLoopPID_Test, rateLimitedOnLargeStepError)
 {
   AngularLoopPID pid;
-  const double cmd1 = pid.run(0.0, 2.0, true);  // target=clamp(1.0*2.0, ..., 1.57)=1.57(饱和)
+  double error = M_PI_2;
+  const double cmd1 = pid.run(0.0, error, true);
   EXPECT_GT(cmd1, 0.0);
-  EXPECT_LT(cmd1, 0.1);  // 远低于饱和目标 1.57——证明没有单周期直接跳变
+  EXPECT_LT(cmd1, 0.1);
 
   double cmd = cmd1;
   double measured = cmd1;
-  for (int i = 0; i < 60; ++i) {
-    cmd = pid.run(measured, 2.0, true);
+  double max_command = std::fabs(cmd1);
+  bool settled = false;
+  for (int i = 0; i < 300; ++i) {
+    error -= measured * 0.05;
+    cmd = pid.run(measured, error, true);
+    EXPECT_GE(cmd, -1e-6) << "fixed 90-degree target must not reverse";
+    max_command = std::max(max_command, std::fabs(cmd));
+    EXPECT_LE(std::fabs(cmd), 0.5 + 1e-6);
+    EXPECT_LE(std::fabs(pid.lastAccel()), 0.6 + 1e-6);
     measured = cmd;  // 完美 plant
+    if (std::fabs(error) < 0.02 && std::fabs(cmd) < 0.02) {
+      settled = true;
+      break;
+    }
   }
-  EXPECT_NEAR(cmd, 1.57, 0.05);
+  EXPECT_TRUE(settled);
+  EXPECT_GT(max_command, 0.45) << "90-degree rotation should use the fast 0.5rad/s cruise";
+  EXPECT_NEAR(cmd, 0.0, 0.02);
 }
 
-// 符号感知输出界：target_w 是跟踪参考也是上/下限，持续同向反馈不越过目标。
+// 正负固定目标必须镜像，且在到达前不能主动反向摆动。
 TEST(AngularLoopPID_Test, signAwareOutputBoundsAngular)
 {
-  AngularLoopPID up;
-  double measured = 0.0;
-  double max_cmd = -1e9;
-  for (int i = 0; i < 60; ++i) {
-    const double cmd = up.run(measured, 0.3, true);  // target=0.3（未饱和）
-    max_cmd = std::max(max_cmd, cmd);
-    measured = cmd;
+  for (double sign : {1.0, -1.0}) {
+    AngularLoopPID pid;
+    double error = sign * 0.3;
+    double measured = 0.0;
+    for (int i = 0; i < 200; ++i) {
+      error -= measured * 0.05;
+      const double cmd = pid.run(measured, error, true);
+      EXPECT_GE(cmd * sign, -1e-6);
+      measured = cmd;
+      if (std::fabs(error) < 0.02 && std::fabs(cmd) < 0.02) {
+        break;
+      }
+    }
+    EXPECT_NEAR(measured, 0.0, 0.02);
   }
-  EXPECT_LE(max_cmd, 0.3 + 1e-6);
-
-  AngularLoopPID down;
-  measured = 0.0;
-  double min_cmd = 1e9;
-  for (int i = 0; i < 60; ++i) {
-    const double cmd = down.run(measured, -0.3, true);
-    min_cmd = std::min(min_cmd, cmd);
-    measured = cmd;
-  }
-  EXPECT_GE(min_cmd, -0.3 - 1e-6);
 }
 
-// reseed：指令与实测脱节超阈值时对齐实测（同速度环 reseedOnDivergence）。
-TEST(AngularLoopPID_Test, reseedOnAngularDivergence)
+// 固定轨迹与实测角速度连续偏差两周期后，应从实测状态重规划。
+TEST(AngularLoopPID_Test, replansFromMeasuredAngularDivergence)
 {
   AngularLoopPID pid;
-  for (int i = 0; i < 5; ++i) {
-    pid.run(0.5, 0.5, true);
-  }
-  EXPECT_NEAR(pid.lastCmd(), 0.5, 0.05);
-
-  const double after_jump = pid.run(0.0, 0.5, true);  // 实测骤降到 0，脱节超 0.3 阈值
-  EXPECT_LT(after_jump, 0.15);  // 从 0 重新播种爬升，而非贴着旧指令 0.5
+  pid.run(0.0, 0.5, true);
+  pid.run(0.25, 0.48, true);
+  pid.run(0.25, 0.46, true);
+  EXPECT_GE(pid.replans(), 1);
 }
 
-// deadband 内清零并把指令积分器播种为 0：退出 deadband 后从 0 爬坡，
-// 不会贴着 deadband 前的陈旧指令继续（同速度环满停清积分的用意）。
-TEST(AngularLoopPID_Test, deadbandZeroesAndReseeds)
+// 进入1.09deg且停稳后锁零；hold出口不宽于GoalChecker的1.15deg，
+// 因而不会在“控制器锁零、GoalChecker又不接受”的死区停住。
+TEST(AngularLoopPID_Test, terminalYawHoldUsesHysteresis)
 {
   AngularLoopPID pid;
-  double measured = 0.0;
-  for (int i = 0; i < 10; ++i) {
-    measured = pid.run(measured, 1.0, true);  // 完美 plant，先爬升出一个非零指令基准
+  EXPECT_NEAR(pid.run(0.0, 0.01, true), 0.0, 1e-9);
+  EXPECT_NEAR(pid.run(0.0, 0.01, true), 0.0, 1e-9);
+  ASSERT_TRUE(pid.holding());
+  EXPECT_DOUBLE_EQ(pid.run(0.0, 0.019, true), 0.0);
+  EXPECT_TRUE(pid.holding());
+  pid.run(0.0, 0.025, true);
+  EXPECT_TRUE(pid.holding());
+  EXPECT_GT(pid.run(0.0, 0.025, true), 0.0);
+  EXPECT_FALSE(pid.holding());
+}
+
+// 一阶滞后底盘下按实测yaw/w偏差重规划；即使需要小幅校正，也必须在2deg
+// hold退出范围内完成，不能复现5~17deg的大幅主动反转。
+TEST(AngularLoopPID_Test, measuredStateReplanBoundsLaggedPlantOvershoot)
+{
+  AngularLoopPID pid;
+  double error = M_PI_2;
+  double measured_w = 0.0;
+  double max_overshoot = 0.0;
+  for (int index = 0; index < 500; ++index) {
+    const double cmd = pid.run(measured_w, error, true);
+    measured_w += 0.45 * (cmd - measured_w);
+    error -= measured_w * 0.05;
+    if (error < 0.0) {
+      max_overshoot = std::max(max_overshoot, -error);
+    }
+    if (pid.holding()) {
+      break;
+    }
   }
-  ASSERT_GT(pid.lastCmd(), 0.3);
-
-  const double cmd = pid.run(measured, 0.001, true);  // 落入 deadband(0.008)
-  EXPECT_EQ(cmd, 0.0);
-
-  const double after = pid.run(0.0, 1.0, true);  // 退出 deadband，实测已归零
-  EXPECT_LT(after, 0.1);  // 从 0 重新爬坡，不是贴着 deadband 前的旧指令
+  EXPECT_TRUE(pid.holding()) << "final error=" << error << " measured_w=" << measured_w;
+  EXPECT_LT(max_overshoot, 0.035);
 }
 
 // 新任务重置单测：直接播种所有三路PID、阶段和上一周期指令基准，验证
@@ -491,6 +638,37 @@ public:
   void setTrajSpeedLookahead(double v) {traj_speed_lookahead_ = v;}
   void setTrajTimeLookahead(double v) {traj_time_lookahead_ = v;}
   static double headingScale(double err_theta) {return headingSpeedScale(err_theta);}
+  static bool inPositionWindow(
+    double lon, double lat, double distance, double lon_tol, double lat_tol, double margin)
+  {
+    return isWithinPositionWindow(lon, lat, distance, lon_tol, lat_tol, margin);
+  }
+  static double retryHeading(
+    double current_yaw, double goal_yaw, double goal_dx, double goal_dy,
+    double lateral_tolerance, bool & reverse, bool & holds_goal_yaw)
+  {
+    return selectPositionRetryHeading(
+      current_yaw, goal_yaw, goal_dx, goal_dy,
+      lateral_tolerance, reverse, holds_goal_yaw);
+  }
+  void beginRetryCaptureTest()
+  {
+    curr_controller_stage_ = ControllerStage::RETRY_TRANSLATE;
+    retry_position_capture_cycles_ = 3;
+    retry_position_capture_count_ = 0;
+  }
+  bool confirmRetryPosition(bool in_tolerance, double velocity = 0.0)
+  {
+    return confirmPositionRetryCapture(in_tolerance, 0.0, velocity, 0.01);
+  }
+  bool retryStillActive() const
+  {
+    return curr_controller_stage_ == ControllerStage::RETRY_TRANSLATE;
+  }
+  bool rotatingToGoal() const
+  {
+    return curr_controller_stage_ == ControllerStage::ROTATING_TO_GOAL;
+  }
 };
 
 namespace
@@ -519,6 +697,91 @@ TEST(ApproachStage, targetLockPinsToGoalWithinLockDistance)
 
   const int unlocked = pid.closestWaypointWrapper(traj, pose, 0.1, true);
   EXPECT_NE(unlocked, static_cast<int>(traj.size()) - 1);
+}
+
+// 2 cm 是进入最终位置保持的真实精度；2 cm 滞回只扩大退出窗口到 4 cm，
+// 不能反过来把“到点精度”放宽成 4 cm。
+TEST(ApproachStage, positionHoldUsesTwoCentimeterEntryAndFourCentimeterExit)
+{
+  EXPECT_TRUE(ApproachStagePID::inPositionWindow(0.019, 0.0, 0.019, 0.02, 0.02, 0.0));
+  EXPECT_FALSE(ApproachStagePID::inPositionWindow(0.021, 0.0, 0.021, 0.02, 0.02, 0.0));
+
+  EXPECT_TRUE(ApproachStagePID::inPositionWindow(0.039, 0.0, 0.039, 0.02, 0.02, 0.02));
+  EXPECT_FALSE(ApproachStagePID::inPositionWindow(0.041, 0.0, 0.041, 0.02, 0.02, 0.02));
+}
+
+// L1复现：目标位于车后约179deg，但反向行驶只需约1deg转角。位置补偿
+// 应选择低速倒退，而不是前转180deg、补位置、再转180deg回最终姿态。
+TEST(ApproachStage, positionRetryChoosesReverseWhenGoalIsJustBehind)
+{
+  bool reverse = false;
+  bool holds_goal_yaw = false;
+  const double current_yaw = -2.0 * M_PI / 180.0;
+  const double goal_bearing = -179.0 * M_PI / 180.0;
+  const double heading = ApproachStagePID::retryHeading(
+    current_yaw, 0.0,
+    std::cos(goal_bearing), std::sin(goal_bearing), 0.02,
+    reverse, holds_goal_yaw);
+  double error = heading - current_yaw;
+  while (error > M_PI) {error -= 2.0 * M_PI;}
+  while (error < -M_PI) {error += 2.0 * M_PI;}
+
+  EXPECT_TRUE(reverse);
+  EXPECT_TRUE(holds_goal_yaw);
+  EXPECT_LT(std::fabs(error), 5.0 * M_PI / 180.0);
+}
+
+TEST(ApproachStage, positionRetryKeepsForwardWhenGoalIsAhead)
+{
+  bool reverse = true;
+  bool holds_goal_yaw = false;
+  const double heading = ApproachStagePID::retryHeading(
+    0.1, 0.0, 1.0, 0.0, 0.02, reverse, holds_goal_yaw);
+  EXPECT_FALSE(reverse);
+  EXPECT_TRUE(holds_goal_yaw);
+  EXPECT_NEAR(heading, 0.0, 1e-9);
+}
+
+// 复现172229的L3：最终朝向180deg，目标还在全局+x方向约2.4cm，
+// 即位于机器人最终朝向的正后方。必须保持180deg直接倒退，不能根据厘米级
+// atan2重新生成160--180deg之间不断变化的补偿角。
+TEST(ApproachStage, finalYawRetryKeepsGoalYawForSmallLateralError)
+{
+  bool reverse = false;
+  bool holds_goal_yaw = false;
+  const double heading = ApproachStagePID::retryHeading(
+    M_PI, M_PI, 0.024, -0.0004, 0.02, reverse, holds_goal_yaw);
+  EXPECT_TRUE(reverse);
+  EXPECT_TRUE(holds_goal_yaw);
+  EXPECT_NEAR(std::fabs(heading), M_PI, 1e-9);
+}
+
+TEST(ApproachStage, lateralMissFallsBackToPointBearingHeading)
+{
+  bool reverse = false;
+  bool holds_goal_yaw = true;
+  const double heading = ApproachStagePID::retryHeading(
+    M_PI, M_PI, 0.01, 0.03, 0.02, reverse, holds_goal_yaw);
+  EXPECT_FALSE(holds_goal_yaw);
+  EXPECT_TRUE(std::isfinite(heading));
+}
+
+TEST(ApproachStage, positionRetryRequiresThreeStableCaptureCycles)
+{
+  ApproachStagePID pid;
+  pid.beginRetryCaptureTest();
+
+  EXPECT_TRUE(pid.confirmRetryPosition(true));
+  EXPECT_TRUE(pid.retryStillActive());
+  // A single out-of-tolerance sample resets, rather than immediately toggling
+  // between translation and final rotation.
+  EXPECT_FALSE(pid.confirmRetryPosition(false));
+  EXPECT_TRUE(pid.retryStillActive());
+  EXPECT_TRUE(pid.confirmRetryPosition(true));
+  EXPECT_TRUE(pid.confirmRetryPosition(true));
+  EXPECT_TRUE(pid.retryStillActive());
+  EXPECT_TRUE(pid.confirmRetryPosition(true));
+  EXPECT_TRUE(pid.rotatingToGoal());
 }
 
 TEST(ApproachStage, singlePointTerminalTrajectoryIsAValidGoal)
@@ -602,6 +865,7 @@ TEST(ApproachStage, trajectorySpeedUsesTimeAlignedInterpolation)
   EXPECT_NEAR(velocity, 0.475, 1e-9);
   EXPECT_NEAR(acceleration, -0.35, 1e-9);
 }
+
 
 // 朝向-速度平滑耦合：连续、无跳变，err_theta=0 时不缩放，
 // |err_theta|>=90° 时缩为 0。

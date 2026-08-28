@@ -41,7 +41,9 @@ namespace nav2_regulated_pure_pursuit_controller
  * @class nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController
  * @brief Regulated pure pursuit controller plugin
  */
-class RegulatedPurePursuitController : public nav2_core::Controller
+class RegulatedPurePursuitController
+  : public nav2_core::Controller,
+  public nav2_core::TrajectoryTrackingReceiptCapability
 {
 public:
   /**
@@ -106,6 +108,8 @@ public:
 
   bool getLastTrajectoryTrackingTarget(
     double & velocity, double & acceleration) override;
+  bool getLastTrajectoryTrackingReceipt(
+    double & velocity, double & acceleration, double & relative_time) override;
 
   /**
    * @brief Limits the maximum linear speed of the robot.
@@ -352,6 +356,7 @@ protected:
   bool last_trajectory_tracking_target_valid_{false};
   double last_trajectory_tracking_target_v_{0.0};
   double last_trajectory_tracking_target_a_{0.0};
+  double last_trajectory_tracking_target_t_{0.0};
 
   // ---- RPP 先验约束（applyConstraints，只降不升，基于静态几何/代价）----
   bool use_regulated_linear_velocity_scaling_;
@@ -378,6 +383,7 @@ protected:
 
   // ---- 速度环（trackLinearVelocity，恒生效）----
   double max_linear_accel_{0.5};
+  double max_linear_decel_{0.5};
   nav2_controller_common::PIDController speed_pid_;
   rclcpp::Time last_speed_track_time_{0, 0, RCL_ROS_TIME};
   // 速度环指令积分器：锚定上一周期指令而非实测——实测只进误差项，

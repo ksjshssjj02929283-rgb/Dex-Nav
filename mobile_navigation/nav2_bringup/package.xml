@@ -30,6 +30,7 @@
   <exec_depend>nav2_position_goal_checker</exec_depend>
   <exec_depend>nav2_rotation_goal_checker</exec_depend>
   <exec_depend>nav2_longitudinal_goal_checker</exec_depend>
+  <exec_depend>nav2_longitudinal_state_estimator</exec_depend>
   <exec_depend>nav2_high_precision_goal_checker</exec_depend>
   <exec_depend>nav2_path_pruning_local_planner</exec_depend>
   <exec_depend>nav2_speed_planner</exec_depend>

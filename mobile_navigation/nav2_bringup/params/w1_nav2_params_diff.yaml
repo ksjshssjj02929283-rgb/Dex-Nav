@@ -71,6 +71,33 @@ bt_navigator_navigate_to_pose_rclcpp_node:
   ros__parameters:
     use_sim_time: False
 
+longitudinal_state_estimator:
+  ros__parameters:
+    use_sim_time: False
+    # robot_localization已经融合轮速、雷达Pose和IMU；这里仅做时间戳、方差、
+    # 坐标语义和物理范围检查，不再运行第二套EKF或重复融合相同传感器。
+    velocity_topic: /robot_localization/odometry/filtered
+    acceleration_topic: /robot_localization/accel/filtered
+    state_topic: /navigation/longitudinal_state
+    diagnostics_topic: /navigation/longitudinal_state_diagnostics
+    publish_frequency: 25.0
+    adapter:
+      enabled: true
+      # 实测P95消息年龄约12ms；60ms覆盖正常抖动，同时及时降级陈旧状态。
+      max_age: 0.06
+      max_stamp_skew: 0.01
+      # UKF报告的加速度方差明显过度乐观；经验下限来自本次743s实测RMSE。
+      velocity_std_floor: 0.02
+      acceleration_std_floor: 0.15
+      max_velocity_std: 0.10
+      max_acceleration_std: 0.60
+      min_acceleration: -0.60
+      max_acceleration: 0.70
+      stationary_max_abs_velocity: 0.01
+      stationary_max_abs_acceleration: 0.08
+      min_velocity_samples: 5
+      min_acceleration_samples: 5
+
 controller_server:
   ros__parameters:
     use_sim_time: False
@@ -93,19 +120,52 @@ controller_server:
       max_projection_search_distance: 5.0
       max_backtrack_distance: 0.5
       transform_tolerance: 0.2
-    # ④ 速度规划（10Hz，从③输出起点和当前实测速度重算；置空 "" 即禁用/灰度回退）
+    # ④ 速度规划（10Hz）：正常态从上一条已接受轨迹的空间匹配点继承v/a；
+    # 偏差超过initial_motion门限才回到实测状态重初始化。置空""即禁用。
     # 运动学上限与下游链路对齐：对齐 MPPI(vx_max/ax_max/ax_min) 与 velocity_smoother(max_velocity/max_accel)
-    current_speed_planner: "ReachabilitySpeedPlanner"  # 纯可达性滤波定可行域 + Ruckig 速度模式走曲线；无求解分支，不可行性经诊断上报而非掉兜底
+    current_speed_planner: "SCurveSpeedPlanner"  # IMU+odom初始加速度实车验证：使用jerk受限S型曲线
     # 规划起点的运动状态与其有效性门（继承上周期计划 vs 回到实测）。
     # 原名 speed_planning_boundary——它不是"边界"，是初值状态。
     initial_motion:
       max_age: 0.5
       max_spatial_error: 0.15
       replan_dev: 0.10
+      # 仅终端制动且实测比继承计划更快时使用；防止L3把真实0.125误当0.071规划。
+      terminal_overspeed_replan_dev: 0.02
       failsafe_deviation_cycles: 5
       goal_position_tolerance: 0.05
       goal_yaw_tolerance: 0.2
       branch_heading_tolerance: 0.7853981634
+      # Apollo式完整轨迹前缀拼接：保留上一周期未来0.2s的pose/v/a/t，
+      # 从前缀尾点生成新Ruckig后缀；不是只继承一个v/a初值。
+      stitching:
+        horizon: 0.20
+        min_duration: 0.10
+        max_path_error: 0.05
+        max_time_error: 0.15
+      longitudinal_state_topic: /navigation/longitudinal_state
+      longitudinal_state_max_age: 0.10
+      state_limits:
+        min_acceleration: -0.60
+        max_acceleration: 0.70
+      # 计划加速度保持Ruckig跨周期jerk连续；robot_localization加速度只形成
+      # 一个小修正项。仅对修正项做一次jerk限制，不再多层过滤整个加速度。
+      planned_correction:
+        enabled: true
+        gain: 0.15
+        innovation_limit: 0.30
+        max_jerk: 0.30
+      # 终端旧前缀死锁恢复：规划仍要求非零速度+负加速度，但实车与路径进度
+      # 已连续停住时，只丢弃stitching前缀并保留terminal latch；下一周期从
+      # 实测静止状态重规划，恢复速度仍受0.05m/s终端上限约束。同一目标仅一次。
+      terminal_stall_recovery:
+        enabled: true
+        duration: 0.50
+        stopped_velocity: 0.01
+        min_target_velocity: 0.03
+        max_target_acceleration: -0.03
+        max_progress_per_cycle: 0.005
+        min_remaining_distance: 0.05
     TrapezoidalSpeedPlanner:
       plugin: "nav2_speed_planner::TrapezoidalSpeedPlanner"
       max_speed: 0.6
@@ -113,6 +173,7 @@ controller_server:
       accel: 0.5
       decel: -0.4
       end_speed: 0.05
+      terminal_speed_cap: 0.05
       terminal_creep_distance: 0.05
       obstacle_safety_margin: 0.25  # Footprint首次硬碰撞位置前保留的目标安全余量 [m]
       obstacle_stop_margin: 0.2  # 仅停障控制器：在安全余量外额外前移计划停车点，吸收控制延迟和停车过冲 [m]
@@ -145,9 +206,13 @@ controller_server:
       plugin: "nav2_speed_planner::SCurveSpeedPlanner"
       max_speed: 0.6
       min_speed: 0.05
-      accel: 0.5
-      decel: -0.4
-      end_speed: 0.05
+      # 与Controller/RPP纵向限制统一：加速+0.7、减速-0.6 m/s²。
+      accel: 0.7
+      decel: -0.6
+      # 两段空间终端：高速段反推减速并让实车在终点前5cm达到0.05；只有进入
+      # 动态最终停车距离（约2~3cm）才锁存end_speed=0，避免提前规划到0再起步。
+      end_speed: 0.0
+      terminal_speed_cap: 0.05
       terminal_creep_distance: 0.05
       obstacle_safety_margin: 0.25  # Footprint首次硬碰撞位置前保留的目标安全余量 [m]
       obstacle_stop_margin: 0.2  # 仅停障控制器：在安全余量外额外前移计划停车点，吸收控制延迟和停车过冲 [m]
@@ -179,14 +244,10 @@ controller_server:
       curve_lead_out_distance: 0.3
       constant_velocity_dist_threshold: 0.1
       enable_constant_velocity_while_turning: False
-      max_jerk: 0.5
+      max_jerk: 0.7
       control_dt: 0.1
-      # R41：现有 time preview 之外的 target→底盘执行延迟。
-      # 本次现场出现一次 334ms 长周期，先取 0.35s 临时安全基线；它不是 p99，
-      # 必须用实机批量 target/cmd/odom 数据重新标定。
+      # 同时用于高速命令提前量与0.05→0最终停车距离；不再叠加额外距离margin。
       terminal_execution_delay: 0.20
-      # 独立于 stop_distance：要求在 stop-zone 入口前额外稳定 5cm，吸收路径/odom 抖动。
-      terminal_safety_margin: 0.05
     # 纯可达性滤波后端：后向减速 + 前向加速 + 向下可达，均带 jerk 斜率限制。
     # 每步取严/取松，无求解分支，故不存在无解与兜底。切换只需改
     # current_speed_planner，回退亦然。
@@ -200,6 +261,7 @@ controller_server:
       accel: 0.5
       decel: -0.4
       end_speed: 0.05
+      terminal_speed_cap: 0.05
       terminal_creep_distance: 0.05
       obstacle_safety_margin: 0.25  # Footprint首次硬碰撞位置前保留的目标安全余量 [m]
       obstacle_stop_margin: 0.2  # 仅停障控制器：在安全余量外额外前移计划停车点，吸收控制延迟和停车过冲 [m]
@@ -294,7 +356,8 @@ controller_server:
       yaw_goal_tolerance: 0.02
       trans_stopped_velocity: 0.01
       rot_stopped_velocity: 0.01
-      stateful: True
+      # 最终完成时持续复查当前位置，避免曾进入2cm后在4cm滞回带内漂移仍被判成功
+      stateful: False
     MPPIController:
       plugin: "nav2_mppi_controller::MPPIController"
       # ④ 轨迹速度帽前瞻窗（m）：帽允许领先计划加速坡的距离；减速段不受影响；需 >= 2 倍路径点距
@@ -536,7 +599,8 @@ controller_server:
       max_angular_vel: 0.75              # 角速度上限 (rad/s)：饱和时联动降 v 保持转弯半径
       # ── 速度环（trackLinearVelocity，恒生效）──
       desired_linear_vel: 0.8    # 三重角色：无轨迹时的回退目标 / 速度环输出界绝对兜底 / 区域限速(speedLimit)入口——必须 ≥ speed planner max_speed 并留余量，否则会钳低规划巡航速度
-      max_linear_accel: 0.5    # 速度环加速度限幅 (m/s²)；调大≈目标直发
+      max_linear_accel: 0.7    # 正向速度指令加速度上限 [m/s²]
+      max_linear_decel: 0.6    # 正向速度指令减速度幅值上限 [m/s²]
       speed_loop_kp: 2.0
       speed_loop_ki: 0.2
       speed_loop_kd: 0.0
@@ -582,31 +646,65 @@ controller_server:
     PIDController:
       plugin: "nav2_pid_controller::PIDController"
       long_precision: 0.02
-      lat_precision: 0.04
+      lat_precision: 0.02
       o_precision: 0.5
-      angular_error_deadband: 0.008
+      angular_error_deadband: 0.008 # 仅普通路径角PID使用；最终旋转由下方capture/hold参数控制
       max_v: 0.5
       min_v: 0.0
-      max_v_inc: 0.5
-      max_w: 0.75
+      max_linear_accel: 0.7
+      max_linear_decel: 0.6
+      max_w: 1.57
       min_w: 0.02
       max_w_inc: 1.0
       k_theta: 0.0
       switch_speed: 0.2
       default_desired_linear_vel: 0.15
       speed_loop_cmd_reseed_error: 0.3   # 指令积分器与实测偏差超此值时重新对齐（外力/急停兜底）
-      angular_cmd_reseed_error: 0.3    # 同上，角速度指令积分器版本
+      # 仅PID末端启用：落后目标时阻止继续下探；实测超速时开放有限补刹。
+      speed_loop_negative_ff_guard_error: 0.01
+      # 覆盖0.10附近的终端过渡，0.15以上仍保留完整主动制动行为。
+      speed_loop_negative_ff_max_target_speed: 0.15
+      # 终端实测超速时允许有限补刹；接近目标后下探量自动收回为0。
+      speed_loop_overspeed_undercut_gain: 0.50
+      speed_loop_max_target_undercut: 0.03
+      angular_cmd_reseed_error: 0.3    # 仅普通角PID使用；最终固定轨迹独立按实测偏差重规划
       final_target_lock_distance: 0.3    # 距终点小于此值直接锁定终点索引（消除末段最近点跳变）；须 ≥ staged_control.approach_distance
       end_localization_switch_distance: 0.05  # m；接近权威终点后锁存Odom位置，0表示关闭
       end_localization_switch_angle: 0.075    # rad；最终转向接近目标航向后锁存Odom航向，0表示关闭
       traj_speed_lookahead: 0.1    # 速度参考与瞄准目标解耦：最近点之后前方窗内 max（不含最近点自身，避免状态戳自引用）
       # 0 = 自动取一个控制周期。曾试 0.15 补偿执行延迟，实机实测不改善末端越点，改回 0。
       traj_time_lookahead: 0.0
-      final_rotation_max_v: 0.05
+      # 进入最终位置保持使用GoalChecker的2cm；退出增加2cm滞回，总退出距离4cm
+      position_hold_hysteresis: 0.02
+      # 最终固定目标角：进入旋转时生成一次绝对角Ruckig轨迹，按真实时间消费；
+      # 仅当实测yaw/w连续偏离计划时从实测状态重规划，不再每100ms以局部0重算。
+      # 快速起转、保守制动分开配置：正常段恢复0.5rad/s，朝目标加速可到
+      # 0.6rad/s²；制动按743s实测中位能力附近的0.28rad/s²提前计算。
+      final_rotation_max_w: 0.50
+      final_rotation_max_accel: 0.60
+      final_rotation_max_decel: 0.28
+      final_rotation_max_jerk: 1.20
+      final_rotation_brake_delay: 0.10
+      final_rotation_capture_yaw: 0.019      # 约1.09deg，留在GoalChecker 0.02rad容差内
+      final_rotation_capture_w: 0.02         # 同时满足低角速度才锁停
+      final_rotation_hold_exit_yaw: 0.02     # 不得宽于GoalChecker，否则形成控制器锁零死区
+      final_rotation_capture_cycles: 2
+      final_rotation_hold_exit_cycles: 2
+      # 远离目标允许正常执行偏差，避免误判后反复重规划；8.6deg内再收紧。
+      final_rotation_replan_near_yaw: 0.15
+      final_rotation_replan_far_yaw_error: 0.04
+      final_rotation_replan_far_w_error: 0.15
+      final_rotation_replan_near_yaw_error: 0.02
+      final_rotation_replan_near_w_error: 0.08
+      final_rotation_replan_error_cycles: 2
+      final_rotation_replan_cooldown: 0.20
+      # 仅Ruckig计算失败时短时兜底；不再因重规划次数把剩余几十度锁成0.08。
+      final_rotation_fallback_max_w: 0.12
+      # 只有停短/旋转后位置超差才进入显式位置重试；正常到点不触发。
+      retry_position_max_v: 0.04
+      retry_heading_tolerance: 0.03
+      retry_position_capture_cycles: 3  # 连续约0.3s进入2cm后才退出位置补偿
       verbose: 1
-      final_rotation_linear_deadband: 0.005
-      final_rotation_entry_distance: 0.03  # m；进入最终转向的位置门限
-      final_rotation_exit_distance: 0.03   # m；退出最终转向的迟滞门限，必须不小于进入门限
       high_speed_station_pid_conf:
         integrator_enable: True
         integrator_saturation_level: 0.3

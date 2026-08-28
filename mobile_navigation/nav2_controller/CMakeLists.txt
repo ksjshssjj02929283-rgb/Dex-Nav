@@ -4,6 +4,7 @@ project(nav2_controller)
 find_package(ament_cmake REQUIRED)
 find_package(nav2_core REQUIRED)
 find_package(nav2_speed_planner REQUIRED)
+find_package(nav2_longitudinal_state_estimator REQUIRED)
 find_package(nav2_common REQUIRED)
 find_package(angles REQUIRED)
 find_package(rclcpp REQUIRED)
@@ -54,6 +55,7 @@ set(dependencies
   nav2_util
   nav2_core
   nav2_speed_planner
+  nav2_longitudinal_state_estimator
   pluginlib
 )
 
@@ -94,6 +96,11 @@ install(TARGETS simple_progress_checker pose_progress_checker ${library_name}
 
 install(TARGETS ${executable_name}
   RUNTIME DESTINATION lib/${PROJECT_NAME}
+)
+
+install(PROGRAMS
+  scripts/scurve_before_after.py
+  DESTINATION lib/${PROJECT_NAME}
 )
 
 install(DIRECTORY include/

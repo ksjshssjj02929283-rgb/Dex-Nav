@@ -229,10 +229,12 @@ public:
   void seedAcceptedTrajectory(
     const nav_interfaces::msg::RobotTrajectory & trajectory, double age,
     double consumed_target_velocity = 0.35,
-    double consumed_target_acceleration = -0.2)
+    double consumed_target_acceleration = -0.2,
+    double consumed_target_relative_time = 0.1)
   {
     initial_motion_arbiter_.accept(
       trajectory, consumed_target_velocity, consumed_target_acceleration,
+      consumed_target_relative_time,
       now() - rclcpp::Duration::from_seconds(age));
   }
 
@@ -242,6 +244,30 @@ public:
     geometry_msgs::msg::Twist velocity;
     velocity.linear.x = measured_velocity;
     return buildInitialMotionState(path, velocity);
+  }
+
+  void seedLongitudinalState(double velocity, double acceleration, double /*bias*/)
+  {
+    auto state = std::make_shared<
+      nav2_longitudinal_state_estimator::msg::LongitudinalState>();
+    state->header.stamp = now();
+    state->valid = true;
+    state->velocity_valid = true;
+    state->acceleration_valid = true;
+    state->velocity = velocity;
+    state->acceleration_raw = acceleration;
+    state->acceleration = acceleration;
+    state->velocity_std = 0.02;
+    state->acceleration_std = 0.15;
+    state->velocity_age = 0.01;
+    state->acceleration_age = 0.01;
+    state->stamp_skew = 0.0;
+    longitudinalStateCallback(state);
+  }
+
+  void disablePlannedAccelerationCorrection()
+  {
+    planned_acceleration_correction_enabled_ = false;
   }
 
   void setCurrentTrajectory(const nav_interfaces::msg::RobotTrajectory & trajectory)
@@ -256,11 +282,15 @@ public:
   {
     controller_phase_ = phase;
     updateSpeedPlanningContinuityAfterControl(
-      succeeded, consumed, consumed_target_velocity, consumed_target_acceleration);
+      succeeded, consumed, consumed_target_velocity, consumed_target_acceleration, 0.1);
   }
 
   void resetStages() {resetStagedControlState();}
   bool continuityValid() const {return initial_motion_arbiter_.valid();}
+  size_t pendingStitchingPrefixPoints() const
+  {
+    return pending_stitching_prefix_.points.size();
+  }
 
   void setTerminalStateForTest()
   {
@@ -361,6 +391,31 @@ public:
   ControllerPhase phase() const {return controller_phase_;}
   size_t goalCheckerResetCount() const {return fake_goal_checker_->resetCount();}
   bool terminalBrakeLatched() const {return terminal_brake_latched_;}
+  void configureTerminalStallRecoveryForTest(double duration = 0.3)
+  {
+    controller_frequency_ = 10.0;
+    terminal_stall_recovery_enabled_ = true;
+    terminal_stall_recovery_duration_ = duration;
+    terminal_stall_stopped_velocity_ = 0.01;
+    terminal_stall_min_target_velocity_ = 0.03;
+    terminal_stall_max_target_acceleration_ = -0.03;
+    terminal_stall_max_progress_per_cycle_ = 0.005;
+    terminal_stall_min_remaining_distance_ = 0.05;
+    speed_plan_cycle_ = SpeedPlanCycleContext();
+    speed_plan_cycle_.active = true;
+    speed_plan_cycle_.terminal_valid = true;
+    speed_plan_cycle_.terminal.terminal_branch =
+      nav2_core::SpeedPlanningTerminalBranch::GOAL_TERMINAL;
+    speed_plan_cycle_.local_path_length = 0.25;
+    speed_plan_cycle_.local_path_progress_delta = 0.0;
+  }
+  bool terminalStallCycle(double odom_velocity, double target_v, double target_a)
+  {
+    nav_2d_msgs::msg::Twist2D measured;
+    measured.x = odom_velocity;
+    return updateTerminalStallRecovery(measured, true, target_v, target_a);
+  }
+  int terminalStallRecoveryCount() const {return terminal_stall_recovery_count_;}
   // 读取碰撞等待状态，供测试断言使用。
   bool isCollisionStopActive() const {return is_collision_stop_active_;}
   bool isProgressCheckPaused() const
@@ -439,6 +494,24 @@ nav_interfaces::msg::RobotTrajectory makeStoppedTrajectory()
   return trajectory;
 }
 
+nav_interfaces::msg::RobotTrajectory makeTimedTrajectory()
+{
+  nav_interfaces::msg::RobotTrajectory trajectory;
+  trajectory.header.frame_id = "map";
+  for (size_t index = 0; index <= 10; ++index) {
+    nav_interfaces::msg::TrajectoryPoint point;
+    point.pose.header.frame_id = trajectory.header.frame_id;
+    point.pose.pose.position.x = 0.1 * static_cast<double>(index);
+    point.pose.pose.orientation.w = 1.0;
+    point.longitudinal_velocity = 0.3;
+    point.acceleration = -0.1;
+    point.relative_time = rclcpp::Duration::from_seconds(
+      0.1 * static_cast<double>(index));
+    trajectory.points.push_back(point);
+  }
+  return trajectory;
+}
+
 geometry_msgs::msg::PoseStamped makePose(double x = 0.0, double y = 0.0)
 {
   geometry_msgs::msg::PoseStamped pose;
@@ -511,7 +584,76 @@ TEST(InitialMotionState, InheritsConsumedTrajectoryTargetState)
   ASSERT_TRUE(initial_motion.acceleration_valid);
   EXPECT_NEAR(initial_motion.acceleration, -0.2, 1e-9);
   EXPECT_NEAR(initial_motion.source_age, 0.1, 0.03);
-  EXPECT_NEAR(initial_motion.velocity.linear.x, 0.31, 1e-9);
+  // At path x=0.5 the accepted trajectory interpolates from 0.2 to 0.4 m/s.
+  EXPECT_NEAR(initial_motion.velocity.linear.x, 0.3, 1e-9);
+}
+
+TEST(InitialMotionState, PreparesFullTimedTrajectoryPrefixForPlanningPipeline)
+{
+  auto controller = std::make_shared<ControllerShim>();
+  controller->seedAcceptedTrajectory(
+    makeTimedTrajectory(), 0.1, 0.3, -0.1, 0.2);
+
+  controller->boundaryFor(
+    makePath({{0.2, 0.0}, {0.5, 0.0}, {1.0, 0.0}}), 0.3);
+
+  EXPECT_GE(controller->pendingStitchingPrefixPoints(), 2u);
+}
+
+TEST(InitialMotionState, AnchorsVelocityToRobotLocalizationState)
+{
+  auto controller = std::make_shared<ControllerShim>();
+  controller->seedLongitudinalState(0.3, 0.2, 0.05);
+
+  const auto initial_motion = controller->boundaryFor(
+    makePath({{0.5, 0.0}, {1.0, 0.0}, {2.0, 0.0}}), 0.7);
+
+  ASSERT_TRUE(initial_motion.acceleration_valid);
+  EXPECT_NEAR(initial_motion.velocity.linear.x, 0.3, 0.03);
+  EXPECT_NEAR(initial_motion.acceleration, 0.2, 0.04);
+}
+
+TEST(InitialMotionState, PreservesPlannedAccelerationWithBoundedStateCorrection)
+{
+  auto controller = std::make_shared<ControllerShim>();
+  controller->seedAcceptedTrajectory(makeTrajectory(), 0.1, 0.2, 0.3);
+  controller->seedLongitudinalState(0.2, 0.0, 0.0);
+
+  const auto initial_motion = controller->boundaryFor(
+    makePath({{0.5, 0.0}, {1.0, 0.0}, {2.0, 0.0}}), 0.2);
+
+  ASSERT_TRUE(initial_motion.acceleration_valid);
+  // innovation=-0.3, corrected plan=0.3 + 0.4*(-0.3)=0.18.
+  EXPECT_NEAR(initial_motion.acceleration, 0.18, 1e-9);
+}
+
+TEST(InitialMotionState, MeasurementOnlyAppliesBoundedCorrectionToPlannedBraking)
+{
+  auto controller = std::make_shared<ControllerShim>();
+  controller->seedAcceptedTrajectory(makeTrajectory(), 0.1, 0.2, -0.3);
+  controller->seedLongitudinalState(0.2, -0.05, 0.0);
+
+  const auto initial_motion = controller->boundaryFor(
+    makePath({{0.5, 0.0}, {1.0, 0.0}, {2.0, 0.0}}), 0.2);
+
+  ASSERT_TRUE(initial_motion.acceleration_valid);
+  // innovation=+0.25, corrected plan=-0.3 + 0.4*(+0.25)=-0.2.
+  // The measured state no longer replaces the jerk-continuous planned state.
+  EXPECT_NEAR(initial_motion.acceleration, -0.2, 1e-9);
+}
+
+TEST(InitialMotionState, DisablingCorrectionKeepsPurePlannedContinuity)
+{
+  auto controller = std::make_shared<ControllerShim>();
+  controller->disablePlannedAccelerationCorrection();
+  controller->seedAcceptedTrajectory(makeTrajectory(), 0.1, 0.2, 0.3);
+  controller->seedLongitudinalState(0.2, 0.0, 0.0);
+
+  const auto initial_motion = controller->boundaryFor(
+    makePath({{0.5, 0.0}, {1.0, 0.0}, {2.0, 0.0}}), 0.2);
+
+  ASSERT_TRUE(initial_motion.acceleration_valid);
+  EXPECT_NEAR(initial_motion.acceleration, 0.3, 1e-9);
 }
 
 TEST(InitialMotionState, RejectsIncompatibleContinuity)
@@ -540,7 +682,12 @@ TEST(InitialMotionState, RejectsIncompatibleContinuity)
   const auto spatial_mismatch = makePath({{0.5, 0.3}, {1.0, 0.3}, {2.0, 0.0}});
   EXPECT_FALSE(controller->boundaryFor(spatial_mismatch, 0.3).acceleration_valid);
 
-  EXPECT_FALSE(controller->boundaryFor(normal_path, 0.7).acceleration_valid);
+  // A velocity mismatch reanchors v0 to measurement but keeps a0 continuous until the
+  // configured consecutive-deviation failsafe is reached.
+  const auto velocity_mismatch = controller->boundaryFor(normal_path, 0.7);
+  EXPECT_TRUE(velocity_mismatch.acceleration_valid);
+  EXPECT_NEAR(velocity_mismatch.velocity.linear.x, 0.7, 1e-9);
+  EXPECT_NEAR(velocity_mismatch.acceleration, -0.2, 1e-9);
 }
 
 TEST(InitialMotionState, AcceptsOnlyConsumedTrackingTrajectoryAndResets)
@@ -739,6 +886,38 @@ TEST(InitialMotionState, ObstacleBrakeDoesNotLatchGoalTerminalState)
   controller->updateTerminalBrakeForTest(diagnostics, true);
 
   EXPECT_FALSE(controller->terminalBrakeLatched());
+}
+
+TEST(InitialMotionState, TerminalStallReseedsContinuityButPreservesBrakeLatch)
+{
+  auto controller = std::make_shared<ControllerShim>();
+  controller->seedAcceptedTrajectory(makeTrajectory(), 0.1, 0.07, -0.08);
+  ASSERT_TRUE(controller->continuityValid());
+  controller->setTerminalStateForTest();
+  controller->latchTerminalBrakeForTest();
+  controller->configureTerminalStallRecoveryForTest(0.3);  // 3 cycles at 10 Hz
+
+  EXPECT_FALSE(controller->terminalStallCycle(0.0, 0.072, -0.079));
+  EXPECT_FALSE(controller->terminalStallCycle(0.0, 0.072, -0.079));
+  EXPECT_TRUE(controller->terminalStallCycle(0.0, 0.072, -0.079));
+
+  EXPECT_FALSE(controller->continuityValid());
+  EXPECT_TRUE(controller->terminalBrakeLatched());
+  EXPECT_EQ(controller->terminalStallRecoveryCount(), 1);
+  // Same goal is one-shot: a second frozen sequence cannot repeatedly reset.
+  EXPECT_FALSE(controller->terminalStallCycle(0.0, 0.072, -0.079));
+}
+
+TEST(InitialMotionState, TerminalStallIgnoresNormalMotionAndReleasedAcceleration)
+{
+  auto controller = std::make_shared<ControllerShim>();
+  controller->setTerminalStateForTest();
+  controller->latchTerminalBrakeForTest();
+  controller->configureTerminalStallRecoveryForTest(0.2);
+
+  EXPECT_FALSE(controller->terminalStallCycle(0.02, 0.072, -0.079));
+  EXPECT_FALSE(controller->terminalStallCycle(0.0, 0.072, 0.0));
+  EXPECT_EQ(controller->terminalStallRecoveryCount(), 0);
 }
 
 TEST(ProgressCheckerObstacleStop, FeasiblePlannedStopPausesProgressCheck)

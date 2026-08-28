@@ -16,6 +16,7 @@
 #include "nav2_pid_controller/pid_controller.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <limits>
 #include <memory>
@@ -26,9 +27,95 @@
 #include "tf2/utils.h"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
 #include "tf2_ros/buffer.h"
+#include "ruckig/ruckig.hpp"
 
 namespace nav2_pid_controller
 {
+
+double PIDController::selectPositionRetryHeading(
+  double current_yaw, double goal_yaw, double goal_dx, double goal_dy,
+  double lateral_tolerance, bool & reverse, bool & holds_goal_yaw)
+{
+  const double goal_longitudinal_error =
+    std::cos(goal_yaw) * goal_dx + std::sin(goal_yaw) * goal_dy;
+  const double goal_lateral_error =
+    -std::sin(goal_yaw) * goal_dx + std::cos(goal_yaw) * goal_dy;
+  if (std::fabs(goal_lateral_error) <= std::fabs(lateral_tolerance)) {
+    // The final pose is reachable by translating along its own x axis. Keep
+    // the fixed final yaw, so millimetre-level lateral noise cannot turn a
+    // 2--3 cm correction into repeated 160--180 degree heading calibration.
+    reverse = goal_longitudinal_error < 0.0;
+    holds_goal_yaw = true;
+    double heading = goal_yaw;
+    regularizeAngle(heading);
+    return heading;
+  }
+
+  double forward_heading = std::atan2(goal_dy, goal_dx);
+  double reverse_heading = forward_heading + M_PI;
+  regularizeAngle(forward_heading);
+  regularizeAngle(reverse_heading);
+
+  double forward_error = forward_heading - current_yaw;
+  double reverse_error = reverse_heading - current_yaw;
+  regularizeAngle(forward_error);
+  regularizeAngle(reverse_error);
+
+  // Do not use the route-level reverse flag here. This is an independent,
+  // centimetre-level correction and its direction is frozen on state entry.
+  reverse = std::fabs(reverse_error) < std::fabs(forward_error);
+  holds_goal_yaw = false;
+  return reverse ? reverse_heading : forward_heading;
+}
+
+bool PIDController::confirmPositionRetryCapture(
+  bool position_in_tolerance, double goal_yaw,
+  double linear_velocity, double stopped_velocity)
+{
+  if (!position_in_tolerance) {
+    retry_position_capture_count_ = 0;
+    return false;
+  }
+
+  retry_heading_ = goal_yaw;
+  retry_heading_valid_ = true;
+  retry_reverse_ = false;
+  retry_holds_goal_yaw_ = true;
+  if (std::fabs(linear_velocity) <= stopped_velocity) {
+    ++retry_position_capture_count_;
+  } else {
+    retry_position_capture_count_ = 0;
+  }
+  if (retry_position_capture_count_ >= retry_position_capture_cycles_) {
+    curr_controller_stage_ = ControllerStage::ROTATING_TO_GOAL;
+    retry_heading_valid_ = false;
+    retry_reverse_ = false;
+    retry_holds_goal_yaw_ = false;
+    retry_position_capture_count_ = 0;
+    retry_position_outside_count_ = 0;
+  }
+  return true;
+}
+
+void PIDController::beginPositionRetry(
+  double current_yaw, double goal_yaw, double goal_dx, double goal_dy,
+  double goal_distance, double lateral_tolerance)
+{
+  if (goal_distance > 1e-6) {
+    retry_heading_ = selectPositionRetryHeading(
+      current_yaw, goal_yaw, goal_dx, goal_dy, lateral_tolerance,
+      retry_reverse_, retry_holds_goal_yaw_);
+  } else {
+    retry_heading_ = goal_yaw;
+    retry_reverse_ = false;
+    retry_holds_goal_yaw_ = true;
+  }
+  regularizeAngle(retry_heading_);
+  retry_heading_valid_ = true;
+  retry_position_capture_count_ = 0;
+  retry_position_outside_count_ = 0;
+  curr_controller_stage_ = ControllerStage::RETRY_ALIGN_TO_POSITION;
+}
 
 void PIDController::configure(
   const rclcpp_lifecycle::LifecycleNode::WeakPtr & parent,
@@ -58,7 +145,8 @@ void PIDController::configure(
 
   declare_parameter_if_not_declared(node, p + ".max_v", rclcpp::ParameterValue(0.5));
   declare_parameter_if_not_declared(node, p + ".min_v", rclcpp::ParameterValue(0.0));
-  declare_parameter_if_not_declared(node, p + ".max_v_inc", rclcpp::ParameterValue(0.5));
+  declare_parameter_if_not_declared(node, p + ".max_linear_accel", rclcpp::ParameterValue(0.5));
+  declare_parameter_if_not_declared(node, p + ".max_linear_decel", rclcpp::ParameterValue(0.5));
 
   declare_parameter_if_not_declared(node, p + ".max_w", rclcpp::ParameterValue(1.57));
   declare_parameter_if_not_declared(node, p + ".min_w", rclcpp::ParameterValue(0.0));
@@ -69,19 +157,65 @@ void PIDController::configure(
   declare_parameter_if_not_declared(
     node, p + ".default_desired_linear_vel", rclcpp::ParameterValue(0.15));
   declare_parameter_if_not_declared(
-    node, p + ".final_rotation_max_v", rclcpp::ParameterValue(0.05));
+    node, p + ".position_hold_hysteresis", rclcpp::ParameterValue(0.02));
   declare_parameter_if_not_declared(
-    node, p + ".final_rotation_linear_deadband", rclcpp::ParameterValue(0.005));
+    node, p + ".final_rotation_max_w", rclcpp::ParameterValue(0.5));
   declare_parameter_if_not_declared(
-    node, p + ".final_rotation_entry_distance", rclcpp::ParameterValue(0.03));
+    node, p + ".final_rotation_max_accel", rclcpp::ParameterValue(0.6));
   declare_parameter_if_not_declared(
-    node, p + ".final_rotation_exit_distance", rclcpp::ParameterValue(0.03));
+    node, p + ".final_rotation_max_decel", rclcpp::ParameterValue(0.28));
+  declare_parameter_if_not_declared(
+    node, p + ".final_rotation_max_jerk", rclcpp::ParameterValue(1.2));
+  declare_parameter_if_not_declared(
+    node, p + ".final_rotation_brake_delay", rclcpp::ParameterValue(0.10));
+  declare_parameter_if_not_declared(
+    node, p + ".final_rotation_capture_yaw", rclcpp::ParameterValue(0.019));
+  declare_parameter_if_not_declared(
+    node, p + ".final_rotation_capture_w", rclcpp::ParameterValue(0.02));
+  declare_parameter_if_not_declared(
+    node, p + ".final_rotation_hold_exit_yaw", rclcpp::ParameterValue(0.02));
+  declare_parameter_if_not_declared(
+    node, p + ".final_rotation_capture_cycles", rclcpp::ParameterValue(2));
+  declare_parameter_if_not_declared(
+    node, p + ".final_rotation_hold_exit_cycles", rclcpp::ParameterValue(2));
+  declare_parameter_if_not_declared(
+    node, p + ".final_rotation_replan_near_yaw", rclcpp::ParameterValue(0.15));
+  declare_parameter_if_not_declared(
+    node, p + ".final_rotation_replan_far_yaw_error", rclcpp::ParameterValue(0.04));
+  declare_parameter_if_not_declared(
+    node, p + ".final_rotation_replan_far_w_error", rclcpp::ParameterValue(0.15));
+  declare_parameter_if_not_declared(
+    node, p + ".final_rotation_replan_near_yaw_error", rclcpp::ParameterValue(0.02));
+  declare_parameter_if_not_declared(
+    node, p + ".final_rotation_replan_near_w_error", rclcpp::ParameterValue(0.08));
+  declare_parameter_if_not_declared(
+    node, p + ".final_rotation_replan_error_cycles", rclcpp::ParameterValue(2));
+  declare_parameter_if_not_declared(
+    node, p + ".final_rotation_replan_cooldown", rclcpp::ParameterValue(0.2));
+  declare_parameter_if_not_declared(
+    node, p + ".final_rotation_fallback_max_w", rclcpp::ParameterValue(0.12));
+  declare_parameter_if_not_declared(
+    node, p + ".retry_position_max_v", rclcpp::ParameterValue(0.04));
+  declare_parameter_if_not_declared(
+    node, p + ".retry_heading_tolerance", rclcpp::ParameterValue(0.03));
+  declare_parameter_if_not_declared(
+    node, p + ".retry_position_capture_cycles", rclcpp::ParameterValue(3));
   declare_parameter_if_not_declared(
     node, p + ".end_localization_switch_distance", rclcpp::ParameterValue(0.0));
   declare_parameter_if_not_declared(
     node, p + ".end_localization_switch_angle", rclcpp::ParameterValue(0.0));
   declare_parameter_if_not_declared(
     node, p + ".speed_loop_cmd_reseed_error", rclcpp::ParameterValue(0.3));
+  // NEGATIVE_FF_CONSISTENCY_GUARD_BEGIN
+  declare_parameter_if_not_declared(
+    node, p + ".speed_loop_negative_ff_guard_error", rclcpp::ParameterValue(0.01));
+  declare_parameter_if_not_declared(
+    node, p + ".speed_loop_negative_ff_max_target_speed", rclcpp::ParameterValue(0.10));
+  declare_parameter_if_not_declared(
+    node, p + ".speed_loop_overspeed_undercut_gain", rclcpp::ParameterValue(0.50));
+  declare_parameter_if_not_declared(
+    node, p + ".speed_loop_max_target_undercut", rclcpp::ParameterValue(0.03));
+  // NEGATIVE_FF_CONSISTENCY_GUARD_END
   declare_parameter_if_not_declared(
     node, p + ".angular_cmd_reseed_error", rclcpp::ParameterValue(0.3));
   declare_parameter_if_not_declared(
@@ -104,7 +238,10 @@ void PIDController::configure(
 
   node->get_parameter(p + ".max_v", max_v_);
   node->get_parameter(p + ".min_v", min_v_);
-  node->get_parameter(p + ".max_v_inc", max_v_inc_);
+  node->get_parameter(p + ".max_linear_accel", max_linear_accel_);
+  node->get_parameter(p + ".max_linear_decel", max_linear_decel_);
+  max_linear_accel_ = std::max(std::fabs(max_linear_accel_), 1e-3);
+  max_linear_decel_ = std::max(std::fabs(max_linear_decel_), 1e-3);
 
   node->get_parameter(p + ".max_w", max_w_);
   node->get_parameter(p + ".min_w", min_w_);
@@ -113,43 +250,99 @@ void PIDController::configure(
   node->get_parameter(p + ".k_theta", k_theta_);
   node->get_parameter(p + ".switch_speed", switch_speed_);
   node->get_parameter(p + ".default_desired_linear_vel", default_desired_linear_vel_);
-  node->get_parameter(p + ".final_rotation_max_v", final_rotation_max_v_);
-  node->get_parameter(p + ".final_rotation_linear_deadband", final_rotation_linear_deadband_);
-  node->get_parameter(p + ".final_rotation_entry_distance", final_rotation_entry_distance_);
-  node->get_parameter(p + ".final_rotation_exit_distance", final_rotation_exit_distance_);
+  node->get_parameter(p + ".position_hold_hysteresis", position_hold_hysteresis_);
+  position_hold_hysteresis_ = std::fabs(position_hold_hysteresis_);
+  node->get_parameter(p + ".final_rotation_max_w", final_rotation_max_w_);
+  node->get_parameter(p + ".final_rotation_max_accel", final_rotation_max_accel_);
+  node->get_parameter(p + ".final_rotation_max_decel", final_rotation_max_decel_);
+  node->get_parameter(p + ".final_rotation_max_jerk", final_rotation_max_jerk_);
+  node->get_parameter(p + ".final_rotation_brake_delay", final_rotation_brake_delay_);
+  node->get_parameter(p + ".final_rotation_capture_yaw", final_rotation_capture_yaw_);
+  node->get_parameter(p + ".final_rotation_capture_w", final_rotation_capture_w_);
+  node->get_parameter(
+    p + ".final_rotation_hold_exit_yaw", final_rotation_hold_exit_yaw_);
+  node->get_parameter(
+    p + ".final_rotation_capture_cycles", final_rotation_capture_cycles_);
+  node->get_parameter(
+    p + ".final_rotation_hold_exit_cycles", final_rotation_hold_exit_cycles_);
+  node->get_parameter(
+    p + ".final_rotation_replan_near_yaw", final_rotation_replan_near_yaw_);
+  node->get_parameter(
+    p + ".final_rotation_replan_far_yaw_error",
+    final_rotation_replan_far_yaw_error_);
+  node->get_parameter(
+    p + ".final_rotation_replan_far_w_error", final_rotation_replan_far_w_error_);
+  node->get_parameter(
+    p + ".final_rotation_replan_near_yaw_error",
+    final_rotation_replan_near_yaw_error_);
+  node->get_parameter(
+    p + ".final_rotation_replan_near_w_error", final_rotation_replan_near_w_error_);
+  node->get_parameter(
+    p + ".final_rotation_replan_error_cycles", final_rotation_replan_error_cycles_);
+  node->get_parameter(
+    p + ".final_rotation_replan_cooldown", final_rotation_replan_cooldown_);
+  node->get_parameter(
+    p + ".final_rotation_fallback_max_w", final_rotation_fallback_max_w_);
+  node->get_parameter(p + ".retry_position_max_v", retry_position_max_v_);
+  node->get_parameter(p + ".retry_heading_tolerance", retry_heading_tolerance_);
+  node->get_parameter(
+    p + ".retry_position_capture_cycles", retry_position_capture_cycles_);
+  final_rotation_max_w_ = std::max(std::fabs(final_rotation_max_w_), 1e-3);
+  final_rotation_max_accel_ = std::max(std::fabs(final_rotation_max_accel_), 1e-3);
+  final_rotation_max_decel_ = std::max(std::fabs(final_rotation_max_decel_), 1e-3);
+  final_rotation_max_jerk_ = std::max(std::fabs(final_rotation_max_jerk_), 1e-3);
+  final_rotation_brake_delay_ = std::max(final_rotation_brake_delay_, 0.0);
+  final_rotation_capture_yaw_ = std::max(std::fabs(final_rotation_capture_yaw_), 1e-4);
+  final_rotation_capture_w_ = std::max(std::fabs(final_rotation_capture_w_), 1e-4);
+  final_rotation_hold_exit_yaw_ = std::max(
+    std::fabs(final_rotation_hold_exit_yaw_), final_rotation_capture_yaw_);
+  final_rotation_capture_cycles_ = std::max(final_rotation_capture_cycles_, 1);
+  final_rotation_hold_exit_cycles_ = std::max(final_rotation_hold_exit_cycles_, 1);
+  final_rotation_replan_near_yaw_ = std::max(
+    std::fabs(final_rotation_replan_near_yaw_), final_rotation_capture_yaw_);
+  final_rotation_replan_far_yaw_error_ = std::max(
+    std::fabs(final_rotation_replan_far_yaw_error_), 1e-4);
+  final_rotation_replan_far_w_error_ = std::max(
+    std::fabs(final_rotation_replan_far_w_error_), 1e-4);
+  final_rotation_replan_near_yaw_error_ = std::max(
+    std::fabs(final_rotation_replan_near_yaw_error_), 1e-4);
+  final_rotation_replan_near_w_error_ = std::max(
+    std::fabs(final_rotation_replan_near_w_error_), 1e-4);
+  final_rotation_replan_error_cycles_ = std::max(final_rotation_replan_error_cycles_, 1);
+  final_rotation_replan_cooldown_ = std::max(final_rotation_replan_cooldown_, 0.0);
+  final_rotation_fallback_max_w_ = std::max(
+    std::fabs(final_rotation_fallback_max_w_), 1e-3);
+  retry_position_max_v_ = std::max(std::fabs(retry_position_max_v_), 1e-3);
+  retry_heading_tolerance_ = std::max(std::fabs(retry_heading_tolerance_), 1e-3);
+  retry_position_capture_cycles_ = std::max(retry_position_capture_cycles_, 1);
   node->get_parameter(
     p + ".end_localization_switch_distance", end_localization_switch_distance_);
   node->get_parameter(
     p + ".end_localization_switch_angle", end_localization_switch_angle_);
-  final_rotation_max_v_ = std::fabs(final_rotation_max_v_);
-  final_rotation_linear_deadband_ = std::fabs(final_rotation_linear_deadband_);
-  const auto sanitize_nonnegative = [this, &p](double value, const char * parameter_name) {
-      if (std::isfinite(value) && value >= 0.0) {
-        return value;
-      }
-      RCLCPP_WARN(
-        logger_, "%s.%s必须是有限非负值；已回退为0。",
-        p.c_str(), parameter_name);
-      return 0.0;
-    };
-  final_rotation_entry_distance_ = sanitize_nonnegative(
-    final_rotation_entry_distance_, "final_rotation_entry_distance");
-  final_rotation_exit_distance_ = sanitize_nonnegative(
-    final_rotation_exit_distance_, "final_rotation_exit_distance");
-  end_localization_switch_distance_ = sanitize_nonnegative(
-    end_localization_switch_distance_, "end_localization_switch_distance");
-  end_localization_switch_angle_ = sanitize_nonnegative(
-    end_localization_switch_angle_, "end_localization_switch_angle");
-  if (final_rotation_exit_distance_ < final_rotation_entry_distance_) {
-    RCLCPP_WARN(
-      logger_,
-      "%s.final_rotation_exit_distance=%.3f 小于进入阈值 %.3f；"
-      "已使用进入阈值作为退出阈值以保留阶段迟滞。",
-      p.c_str(), final_rotation_exit_distance_, final_rotation_entry_distance_);
-    final_rotation_exit_distance_ = final_rotation_entry_distance_;
-  }
+  end_localization_switch_distance_ = std::max(
+    std::isfinite(end_localization_switch_distance_) ?
+    end_localization_switch_distance_ : 0.0, 0.0);
+  end_localization_switch_angle_ = std::max(
+    std::isfinite(end_localization_switch_angle_) ?
+    end_localization_switch_angle_ : 0.0, 0.0);
   node->get_parameter(p + ".speed_loop_cmd_reseed_error", speed_cmd_reseed_error_);
   speed_cmd_reseed_error_ = std::fabs(speed_cmd_reseed_error_);
+  // NEGATIVE_FF_CONSISTENCY_GUARD_BEGIN
+  node->get_parameter(p + ".speed_loop_negative_ff_guard_error", negative_ff_guard_error_);
+  node->get_parameter(
+    p + ".speed_loop_negative_ff_max_target_speed", negative_ff_max_target_speed_);
+  node->get_parameter(
+    p + ".speed_loop_overspeed_undercut_gain", negative_ff_overspeed_undercut_gain_);
+  node->get_parameter(
+    p + ".speed_loop_max_target_undercut", negative_ff_max_target_undercut_);
+  negative_ff_guard_error_ = std::max(0.0, std::fabs(negative_ff_guard_error_));
+  negative_ff_max_target_speed_ = std::max(
+    1e-6, std::fabs(negative_ff_max_target_speed_));
+  negative_ff_overspeed_undercut_gain_ = std::clamp(
+    negative_ff_overspeed_undercut_gain_, 0.0, 1.0);
+  negative_ff_max_target_undercut_ = std::max(
+    0.0, std::fabs(negative_ff_max_target_undercut_));
+  // NEGATIVE_FF_CONSISTENCY_GUARD_END
   node->get_parameter(p + ".angular_cmd_reseed_error", angular_cmd_reseed_error_);
   angular_cmd_reseed_error_ = std::fabs(angular_cmd_reseed_error_);
   node->get_parameter(p + ".final_target_lock_distance", final_target_lock_distance_);
@@ -277,6 +470,12 @@ void PIDController::resetTaskControlStateLocked(uint64_t goal_generation)
   end_localization_lock_.reset(goal_generation);
   curr_controller_stage_ = ControllerStage::FINISH;
   prev_controller_stage_ = ControllerStage::FINISH;
+  retry_heading_ = 0.0;
+  retry_heading_valid_ = false;
+  retry_reverse_ = false;
+  retry_holds_goal_yaw_ = false;
+  retry_position_capture_count_ = 0;
+  retry_position_outside_count_ = 0;
   theta_errors_.clear();
   longitude_errors_.clear();
 
@@ -288,6 +487,7 @@ void PIDController::resetTaskControlStateLocked(uint64_t goal_generation)
   last_speed_cmd_valid_ = false;
   last_angular_cmd_ = 0.0;
   last_angular_cmd_valid_ = false;
+  resetAngularTrajectoryState();
   last_trajectory_tracking_target_valid_ = false;
   last_trajectory_tracking_target_v_ = 0.0;
   last_trajectory_tracking_target_a_ = 0.0;
@@ -367,7 +567,8 @@ bool PIDController::cachePathAsTrajectory(const nav_msgs::msg::Path & path)
     "global_frame=%s input_goal=(x=%.3f y=%.3f yaw=%.3f) "
     "cached_start=(x=%.3f y=%.3f yaw=%.3f) cached_goal=(x=%.3f y=%.3f yaw=%.3f)",
     plugin_name_.c_str(), transformed_traj.size(),
-    input_goal.header.frame_id.empty() ? path.header.frame_id.c_str() : input_goal.header.frame_id.c_str(),
+    input_goal.header.frame_id.empty() ?
+    path.header.frame_id.c_str() : input_goal.header.frame_id.c_str(),
     global_frame_.c_str(),
     input_goal.pose.position.x, input_goal.pose.position.y,
     tf2::getYaw(input_goal.pose.orientation),
@@ -443,6 +644,7 @@ void PIDController::setTrajectory(const nav_interfaces::msg::RobotTrajectory & t
     tp.speed_limit = pt.longitudinal_velocity;
     tp.curvature = pt.path_kappa;
     tp.accel = pt.acceleration;
+    tp.region_type = pt.region_type;
     tp.x = tp.pose.pose.position.x;
     tp.y = tp.pose.pose.position.y;
     tp.relative_time = nav2_core::durationToSeconds(pt.relative_time);
@@ -463,7 +665,8 @@ void PIDController::setTrajectory(const nav_interfaces::msg::RobotTrajectory & t
     "global_frame=%s input_goal=(x=%.3f y=%.3f yaw=%.3f) "
     "cached_start=(x=%.3f y=%.3f yaw=%.3f) cached_goal=(x=%.3f y=%.3f yaw=%.3f)",
     plugin_name_.c_str(), transformed_traj.size(),
-    input_goal.header.frame_id.empty() ? trajectory.header.frame_id.c_str() : input_goal.header.frame_id.c_str(),
+    input_goal.header.frame_id.empty() ?
+    trajectory.header.frame_id.c_str() : input_goal.header.frame_id.c_str(),
     global_frame_.c_str(),
     input_goal.pose.position.x, input_goal.pose.position.y,
     tf2::getYaw(input_goal.pose.orientation),
@@ -504,6 +707,10 @@ const char * PIDController::controllerStageName(ControllerStage stage) const
       return "APPROACHING";
     case ControllerStage::ROTATING_TO_GOAL:
       return "ROTATING_TO_GOAL";
+    case ControllerStage::RETRY_ALIGN_TO_POSITION:
+      return "RETRY_ALIGN_TO_POSITION";
+    case ControllerStage::RETRY_TRANSLATE:
+      return "RETRY_TRANSLATE";
     default:
       return "UNKNOWN";
   }
@@ -579,6 +786,7 @@ geometry_msgs::msg::TwistStamped PIDController::computeVelocityCommands(
   // 跳变到蠕行速度，而不是沿轨迹连续下降。这里单独做最近点搜索取速度。
   double traj_v = 0.0;
   double traj_ff_accel = 0.0;
+  last_trajectory_region_type_.clear();
   const bool have_traj_speed = nearestTrajectorySpeed(current_ps_, traj_v, traj_ff_accel);
   desired_linear_vel_ = have_traj_speed ? traj_v : controller_traj_[plan_index_].speed_limit;
   // clamp the per-point desired speed by the externally-imposed speed limit
@@ -589,14 +797,6 @@ geometry_msgs::msg::TwistStamped PIDController::computeVelocityCommands(
   if (reverse_enabled_) {
     desired_linear_vel_ = -std::fabs(desired_linear_vel_);
   }
-  if (end_localization_snapshot.position_goal_latched && final_rotation_max_v_ > 0.0) {
-    // 锁存后速度规划仍实时更新以保留停障能力，但末端速度上限固定为精调速度，
-    // 避免map修正让规划器误以为目标变远后重新抬速。
-    desired_linear_vel_ = std::copysign(
-      std::min(std::fabs(desired_linear_vel_), final_rotation_max_v_),
-      desired_linear_vel_);
-  }
-
   // 位置锁存后，瞄准点和最终位置误差统一使用Odom锁存目标；轨迹仍只负责速度参考。
   target_ps_ = end_localization_snapshot.position_goal_latched ?
     effective_goal_ps : controller_traj_[plan_index_].pose;
@@ -669,6 +869,8 @@ geometry_msgs::msg::TwistStamped PIDController::computeVelocityCommands(
 
   double goal_checker_long_precision = std::numeric_limits<double>::quiet_NaN();
   double goal_checker_lat_precision = std::numeric_limits<double>::quiet_NaN();
+  double goal_checker_yaw_precision = std::numeric_limits<double>::quiet_NaN();
+  double goal_checker_trans_stopped_velocity = std::numeric_limits<double>::quiet_NaN();
   bool goal_checker_tolerance_valid = false;
   if (goal_checker != nullptr) {
     geometry_msgs::msg::Pose pose_tolerance;
@@ -677,6 +879,8 @@ geometry_msgs::msg::TwistStamped PIDController::computeVelocityCommands(
     if (goal_checker_tolerance_valid) {
       goal_checker_long_precision = pose_tolerance.position.x;
       goal_checker_lat_precision = pose_tolerance.position.y;
+      goal_checker_yaw_precision = std::fabs(tf2::getYaw(pose_tolerance.orientation));
+      goal_checker_trans_stopped_velocity = std::fabs(velocity_tolerance.linear.x);
     }
   }
 
@@ -693,76 +897,158 @@ geometry_msgs::msg::TwistStamped PIDController::computeVelocityCommands(
     strict_positive_min(lat_precision_, goal_checker_lat_precision);
   const double final_goal_dist_precision =
     std::max(final_goal_long_precision, final_goal_lat_precision);
-  const double final_rotation_entry_long_precision =
-    std::max(final_goal_long_precision, final_rotation_entry_distance_);
-  const double final_rotation_entry_lat_precision =
-    std::max(final_goal_lat_precision, final_rotation_entry_distance_);
-  const double final_rotation_entry_dist_precision =
-    std::max(final_goal_dist_precision, final_rotation_entry_distance_);
-  const double final_rotation_exit_long_precision =
-    std::max(final_rotation_entry_long_precision, final_rotation_exit_distance_);
-  const double final_rotation_exit_lat_precision =
-    std::max(final_rotation_entry_lat_precision, final_rotation_exit_distance_);
-  const double final_rotation_exit_dist_precision =
-    std::max(final_rotation_entry_dist_precision, final_rotation_exit_distance_);
 
   const bool target_position_tolerance =
     std::fabs(err_x) < final_goal_long_precision &&
     std::fabs(err_y) < final_goal_lat_precision;
   const bool final_goal_error_valid =
     std::isfinite(goal_x_base) && std::isfinite(goal_y_base);
-  const bool final_goal_position_tolerance =
-    final_goal_error_valid &&
-    std::fabs(goal_x_base) < final_goal_long_precision &&
-    std::fabs(goal_y_base) < final_goal_lat_precision &&
-    goal_dist_global < final_goal_dist_precision;
-  const bool final_rotation_entry_position_tolerance =
-    final_goal_error_valid &&
-    std::fabs(goal_x_base) < final_rotation_entry_long_precision &&
-    std::fabs(goal_y_base) < final_rotation_entry_lat_precision &&
-    goal_dist_global < final_rotation_entry_dist_precision;
-  const bool final_rotation_exit_position_tolerance =
-    final_goal_error_valid &&
-    std::fabs(goal_x_base) < final_rotation_exit_long_precision &&
-    std::fabs(goal_y_base) < final_rotation_exit_lat_precision &&
-    goal_dist_global < final_rotation_exit_dist_precision;
-  const double final_rotation_linear_error =
-    final_goal_error_valid ? goal_x_base : err_x;
-  const char * final_rotation_linear_source =
-    final_goal_error_valid ? "goal_base_x" : "target_wp_base_x";
+  double effective_goal_yaw = tf2::getYaw(effective_goal_ps.pose.orientation);
+  // Position accuracy is defined in the fixed final-goal frame, not in the
+  // robot frame whose axes rotate during yaw calibration.
+  const double goal_longitudinal_error =
+    std::cos(effective_goal_yaw) * goal_dx_global +
+    std::sin(effective_goal_yaw) * goal_dy_global;
+  const double goal_lateral_error =
+    -std::sin(effective_goal_yaw) * goal_dx_global +
+    std::cos(effective_goal_yaw) * goal_dy_global;
+  const bool final_goal_position_tolerance = final_goal_error_valid &&
+    isWithinPositionWindow(
+    goal_longitudinal_error, goal_lateral_error, goal_dist_global,
+    final_goal_long_precision, final_goal_lat_precision);
+  const bool final_position_hold_tolerance = final_goal_error_valid &&
+    isWithinPositionWindow(
+    goal_longitudinal_error, goal_lateral_error, goal_dist_global,
+    final_goal_long_precision, final_goal_lat_precision,
+    position_hold_hysteresis_);
+  const double final_goal_yaw_precision =
+    std::isfinite(goal_checker_yaw_precision) && goal_checker_yaw_precision > 0.0 ?
+    goal_checker_yaw_precision : std::fabs(o_precision_);
+  active_goal_yaw_precision_ = std::max(final_goal_yaw_precision, 1e-4);
+  const double final_stop_linear_velocity =
+    std::isfinite(goal_checker_trans_stopped_velocity) &&
+    goal_checker_trans_stopped_velocity > 0.0 ?
+    goal_checker_trans_stopped_velocity : 0.01;
+  double goal_yaw_error_global = effective_goal_yaw - input_pose_yaw;
+  regularizeAngle(goal_yaw_error_global);
 
   double dist_to_target = std::hypot(
     target_ps_.pose.position.x - current_ps_.pose.position.x,
     target_ps_.pose.position.y - current_ps_.pose.position.y);
+  double theta_rob = tf2::getYaw(current_ps_.pose.orientation);  // [-pi, pi]
 
-  // 最终转向采用进入/退出迟滞，防止位置误差在同一阈值附近让两个阶段反复切换。
-  if (curr_controller_stage_ == ControllerStage::FINISH) {
+  const auto enter_position_retry = [&]() {
+      beginPositionRetry(
+        input_pose_yaw, effective_goal_yaw, goal_dx_global, goal_dy_global,
+        goal_dist_global, final_goal_lat_precision);
+    };
+
+  // Step: switch mode
+  if (goal_dist_global > 0.2 || curr_controller_stage_ == ControllerStage::FINISH) {
     curr_controller_stage_ = ControllerStage::APPROACHING;
-    theta_errors_.clear();
-    longitude_errors_.clear();
-  } else if (
-    curr_controller_stage_ == ControllerStage::ROTATING_TO_GOAL &&
-    !final_rotation_exit_position_tolerance)
-  {
-    curr_controller_stage_ = ControllerStage::APPROACHING;
+    retry_heading_valid_ = false;
+    retry_reverse_ = false;
+    retry_holds_goal_yaw_ = false;
+    retry_position_capture_count_ = 0;
+    retry_position_outside_count_ = 0;
     theta_errors_.clear();
     longitude_errors_.clear();
   }
 
-  if (
-    curr_controller_stage_ == ControllerStage::APPROACHING &&
-    final_rotation_entry_position_tolerance)
+  const bool terminal_stop_region =
+    last_trajectory_region_type_ == "terminal_reserve" ||
+    last_trajectory_region_type_ == "stop_zone" ||
+    last_trajectory_region_type_ == "terminal_stop" ||
+    last_trajectory_region_type_ == "terminal_handoff";
+  if (curr_controller_stage_ == ControllerStage::APPROACHING && goal_dist_global <= 0.2 &&
+    !final_goal_position_tolerance && terminal_stop_region &&
+    std::fabs(desired_linear_vel_) <= 0.003 &&
+    std::fabs(velocity.linear.x) <= final_stop_linear_velocity)
   {
-    curr_controller_stage_ = ControllerStage::ROTATING_TO_GOAL;
+    // 终端单调剖面已经低于底盘可执行死区、但位置仍未进入2cm：明确切换
+    // 到低速位置重试。障碍零速区没有 terminal region 标记，不会误触发。
+    enter_position_retry();
   }
 
+  if (curr_controller_stage_ == ControllerStage::ROTATING_TO_GOAL) {
+    // 超4cm立即补偿；2--4cm内只有角度已完成且位置连续超差数周期才补偿。
+    // 这样既保持2cm最终精度，也不会因单周期定位波动反复切换状态。
+    if (!final_position_hold_tolerance) {
+      enter_position_retry();
+    } else {
+      if (std::fabs(goal_yaw_error_global) <= final_goal_yaw_precision &&
+        !final_goal_position_tolerance)
+      {
+        if (++retry_position_outside_count_ >= retry_position_capture_cycles_) {
+          enter_position_retry();
+        }
+      } else {
+        retry_position_outside_count_ = 0;
+      }
+    }
+  }
+
+  const bool final_linear_motion_stopped =
+    std::fabs(desired_linear_vel_) <= final_stop_linear_velocity &&
+    std::fabs(velocity.linear.x) <= final_stop_linear_velocity;
+  const bool in_position_retry =
+    curr_controller_stage_ == ControllerStage::RETRY_ALIGN_TO_POSITION ||
+    curr_controller_stage_ == ControllerStage::RETRY_TRANSLATE;
+  if (in_position_retry) {
+    const bool confirming_position = confirmPositionRetryCapture(
+      final_goal_position_tolerance, effective_goal_yaw, velocity.linear.x,
+      final_stop_linear_velocity);
+    if (!confirming_position) {
+      if (retry_holds_goal_yaw_ &&
+        std::fabs(goal_lateral_error) > final_goal_lat_precision)
+      {
+        // A real lateral miss cannot be corrected by translating along
+        // goal_yaw. Require persistent lateral excess before falling back to
+        // a point-bearing correction heading; ignore one-cycle centimetre noise.
+        if (++retry_position_outside_count_ >= retry_position_capture_cycles_) {
+          enter_position_retry();
+        }
+      } else {
+        retry_position_outside_count_ = 0;
+      }
+    }
+  } else {
+    if (curr_controller_stage_ == ControllerStage::APPROACHING &&
+      final_goal_position_tolerance &&
+      final_linear_motion_stopped)
+    {
+      // 进入2cm位置窗口并不等于纵向运动已经完成。继续留在APPROACHING跟踪
+      // Ruckig最后一段0.05->0，只有规划与实测均停稳后才交给原地角度校准。
+      curr_controller_stage_ = ControllerStage::ROTATING_TO_GOAL;
+      retry_position_outside_count_ = 0;
+    }
+  }
+
+  if (curr_controller_stage_ == ControllerStage::RETRY_ALIGN_TO_POSITION &&
+    retry_heading_valid_ &&
+    !final_goal_position_tolerance)
+  {
+    double retry_error = retry_heading_ - input_pose_yaw;
+    regularizeAngle(retry_error);
+    if (std::fabs(retry_error) <= retry_heading_tolerance_ &&
+      std::fabs(velocity.angular.z) <= 0.02)
+    {
+      curr_controller_stage_ = ControllerStage::RETRY_TRANSLATE;
+    }
+  }
+
+  // The upstream end-localization lock supplies a stable authoritative pose.
+  // Keep its yaw latch, while the local retry state machine remains responsible
+  // for centimetre-level translation and final angular control.
   end_localization_snapshot = end_localization_lock_.updateYawReference(
     pose, curr_controller_stage_ == ControllerStage::ROTATING_TO_GOAL);
   if (end_localization_snapshot.effective_goal_valid) {
     effective_goal_ps = end_localization_snapshot.effective_goal;
+    effective_goal_yaw = tf2::getYaw(effective_goal_ps.pose.orientation);
+    goal_yaw_error_global = effective_goal_yaw - input_pose_yaw;
+    regularizeAngle(goal_yaw_error_global);
   }
-  if (
-    end_localization_snapshot.stage != last_end_localization_stage_ ||
+  if (end_localization_snapshot.stage != last_end_localization_stage_ ||
     end_localization_snapshot.revision != last_end_localization_revision_)
   {
     RCLCPP_INFO(
@@ -785,12 +1071,6 @@ geometry_msgs::msg::TwistStamped PIDController::computeVelocityCommands(
     last_end_localization_revision_ = end_localization_snapshot.revision;
   }
 
-  const double effective_goal_yaw = tf2::getYaw(effective_goal_ps.pose.orientation);
-  double goal_yaw_error_global = effective_goal_yaw - input_pose_yaw;
-  regularizeAngle(goal_yaw_error_global);
-
-  // current heading
-  double theta_rob = tf2::getYaw(current_ps_.pose.orientation);  // [-pi, pi]
   double target_yaw_for_log = theta_dir;
 
   if (curr_controller_stage_ == ControllerStage::ROTATING_TO_GOAL) {
@@ -801,8 +1081,22 @@ geometry_msgs::msg::TwistStamped PIDController::computeVelocityCommands(
     target_yaw_for_log = effective_goal_yaw;
     err_theta = std::fmod(effective_goal_yaw - theta_rob + M_PI, 2 * M_PI) - M_PI;
   } else {
-    target_yaw_for_log = theta_dir;
-    err_theta = std::fmod(theta_dir - theta_rob + M_PI, 2 * M_PI) - M_PI;
+    if ((curr_controller_stage_ == ControllerStage::RETRY_ALIGN_TO_POSITION ||
+      curr_controller_stage_ == ControllerStage::RETRY_TRANSLATE) && retry_heading_valid_)
+    {
+      // current_ps_ carries a virtual +pi yaw while normal route tracking is
+      // reversed. Retry headings are selected in the physical base yaw, so
+      // restore that same physical convention before comparing them.
+      if (reverse_enabled_) {
+        theta_rob -= M_PI;
+        regularizeAngle(theta_rob);
+      }
+      target_yaw_for_log = retry_heading_;
+      err_theta = std::fmod(retry_heading_ - theta_rob + M_PI, 2 * M_PI) - M_PI;
+    } else {
+      target_yaw_for_log = theta_dir;
+      err_theta = std::fmod(theta_dir - theta_rob + M_PI, 2 * M_PI) - M_PI;
+    }
   }
   regularizeAngle(target_yaw_for_log);
   regularizeAngle(err_theta);
@@ -832,11 +1126,16 @@ geometry_msgs::msg::TwistStamped PIDController::computeVelocityCommands(
   }
 
   if (curr_controller_stage_ != prev_controller_stage_) {
-    if (curr_controller_stage_ == ControllerStage::ROTATING_TO_GOAL) {
+    if (curr_controller_stage_ == ControllerStage::ROTATING_TO_GOAL ||
+      curr_controller_stage_ == ControllerStage::RETRY_ALIGN_TO_POSITION)
+    {
       angular_station_nav2_pid_controller_.Reset();
+      resetAngularTrajectoryState();
     }
     if (curr_controller_stage_ == ControllerStage::APPROACHING ||
-      curr_controller_stage_ == ControllerStage::ROTATING_TO_GOAL)
+      curr_controller_stage_ == ControllerStage::ROTATING_TO_GOAL ||
+      curr_controller_stage_ == ControllerStage::RETRY_ALIGN_TO_POSITION ||
+      curr_controller_stage_ == ControllerStage::RETRY_TRANSLATE)
     {
       // 阶段切换是控制权边界：上一段累积的积分与指令基准对新阶段是陈旧状态。
       // approach 分支 position_deadband=0，不能依赖 deadband 路径里的 Reset。
@@ -855,6 +1154,12 @@ geometry_msgs::msg::TwistStamped PIDController::computeVelocityCommands(
       case ControllerStage::ROTATING_TO_GOAL:
         RCLCPP_INFO(logger_, "controller stage: ROTATING_TO_GOAL");
         break;
+      case ControllerStage::RETRY_ALIGN_TO_POSITION:
+        RCLCPP_INFO(logger_, "controller stage: RETRY_ALIGN_TO_POSITION");
+        break;
+      case ControllerStage::RETRY_TRANSLATE:
+        RCLCPP_INFO(logger_, "controller stage: RETRY_TRANSLATE");
+        break;
       default:
         break;
     }
@@ -863,7 +1168,9 @@ geometry_msgs::msg::TwistStamped PIDController::computeVelocityCommands(
 
   double angle_to_heading = 0.0;
   const char * active_branch = "unset";
-  const bool final_rotation_control = curr_controller_stage_ == ControllerStage::ROTATING_TO_GOAL;
+  const bool final_rotation_control =
+    curr_controller_stage_ == ControllerStage::ROTATING_TO_GOAL ||
+    curr_controller_stage_ == ControllerStage::RETRY_ALIGN_TO_POSITION;
   last_linear_position_cmd_ = 0.0;
   last_linear_target_v_ = 0.0;
   last_linear_speed_error_ = 0.0;
@@ -892,12 +1199,11 @@ geometry_msgs::msg::TwistStamped PIDController::computeVelocityCommands(
           // 减速尾段/曲率限速/障碍零速已由速度规划层逐点编码，跟踪即可；
           // desired_v=0（障碍置零点）时 LinearSpeedControl 直接输出 0。
           // 末端停车精度由 ROTATING_TO_GOAL 入口的 final goal 容差门控接管。
-          // err_x < 0（参考点在机器人身后 = 越过目标）允许负速度倒回——
-          // 距离收敛优先于"只前进"；倒回上限不被末端蠕行速度钳死，
-          // 放宽到 final_rotation_max_v（与最终旋转段线性纠偏权限一致）。
+          // err_x < 0（参考点在机器人身后 = 越过目标）使方向反转。纵向速度
+          // 幅值由Ruckig唯一给定，位置环不再把0.47 m/s按剩余25 cm
+          // 瞬间钳成0.25 m/s；最后的0.05->0也由同一条轨迹完成。
           const double desired_v = std::fabs(desired_linear_vel_);
-          const double raw_max_cmd_v = (err_x < 0.0) ?
-            std::max(desired_v, final_rotation_max_v_) : desired_v;
+          const double raw_max_cmd_v = desired_v;
           // 朝向-速度平滑耦合：速度上限连续按 cos(err_theta) 衰减（非离散置零，
           // 无速度跳变）。err_theta=0 时不缩放；|err_theta|>=90° 时缩为 0。
           // 机器人平移时瞄准点方位角会以 v·sin(Δθ)/d 的速率扫动（Δθ=朝向误差、
@@ -907,20 +1213,65 @@ geometry_msgs::msg::TwistStamped PIDController::computeVelocityCommands(
           const double heading_scale = headingSpeedScale(err_theta);
           const double max_cmd_v = raw_max_cmd_v * heading_scale;
           cmd_vel.twist.linear.x = LinearSpeedControl(
-            velocity, err_x, max_cmd_v, desired_v, 0.0, traj_ff_accel);
+            velocity, err_x, max_cmd_v, max_cmd_v, 0.0, traj_ff_accel);
           if (have_traj_speed) {
             last_trajectory_tracking_target_valid_ = true;
             last_trajectory_tracking_target_v_ = desired_linear_vel_;
             last_trajectory_tracking_target_a_ = traj_ff_accel;
+            last_trajectory_tracking_target_t_ = sampled_trajectory_relative_time_;
           }
           cmd_vel.twist.angular.z = AngularSpeedControl(velocity, err_theta);
           break;
         }
       case ControllerStage::ROTATING_TO_GOAL: {
-          active_branch = "rotating_to_goal_signed_speed_pid";
-          cmd_vel.twist.linear.x = LinearSpeedControl(
-            velocity, final_rotation_linear_error, final_rotation_max_v_,
-            final_rotation_max_v_, final_rotation_linear_deadband_);
+          active_branch = "rotating_to_goal_linear_hold";
+          // Apollo full-stop 思路：最终角度校准期间不再运行普通线速度环。
+          // 持续清除位置/速度积分并锁住零指令，避免 0.05 m/s 末速或陈旧
+          // 积分在角度校准时重新推动底盘。
+          station_nav2_pid_controller_.Reset();
+          speed_nav2_pid_controller_.Reset();
+          last_speed_cmd_ = 0.0;
+          last_speed_cmd_valid_ = true;
+          cmd_vel.twist.linear.x = 0.0;
+
+          // 先停稳再转，避免底盘尚有纵向惯性时同时施加角速度。
+          if (std::fabs(velocity.linear.x) <= final_stop_linear_velocity) {
+            cmd_vel.twist.angular.z = AngularSpeedControl(velocity, err_theta, true);
+          } else {
+            cmd_vel.twist.angular.z = AngularSpeedControl(velocity, 0.0, true);
+          }
+          break;
+        }
+      case ControllerStage::RETRY_ALIGN_TO_POSITION: {
+          active_branch = "retry_align_fixed_heading";
+          station_nav2_pid_controller_.Reset();
+          speed_nav2_pid_controller_.Reset();
+          last_speed_cmd_ = 0.0;
+          last_speed_cmd_valid_ = true;
+          cmd_vel.twist.linear.x = 0.0;
+          cmd_vel.twist.angular.z = AngularSpeedControl(velocity, err_theta, true);
+          break;
+        }
+      case ControllerStage::RETRY_TRANSLATE: {
+          active_branch = "retry_translate_fixed_heading";
+          if (final_goal_position_tolerance) {
+            // Stability confirmation window: lock translation at zero while
+            // the angular channel holds the fixed final goal yaw.
+            station_nav2_pid_controller_.Reset();
+            speed_nav2_pid_controller_.Reset();
+            last_speed_cmd_ = 0.0;
+            last_speed_cmd_valid_ = true;
+            cmd_vel.twist.linear.x = 0.0;
+          } else {
+            // Preferred terminal retry: keep goal_yaw and use the signed
+            // longitudinal error in that fixed frame. Only a persistent real
+            // lateral miss uses the frozen point-bearing fallback.
+            const double signed_retry_distance = retry_holds_goal_yaw_ ?
+              goal_longitudinal_error :
+              std::copysign(goal_dist_global, retry_reverse_ ? -1.0 : 1.0);
+            cmd_vel.twist.linear.x = LinearSpeedControl(
+              velocity, signed_retry_distance, retry_position_max_v_, 0.0, 0.0, 0.0);
+          }
           cmd_vel.twist.angular.z = AngularSpeedControl(velocity, err_theta, true);
           break;
         }
@@ -968,17 +1319,15 @@ geometry_msgs::msg::TwistStamped PIDController::computeVelocityCommands(
     "stage_gate=(target_in_tol=%s final_in_tol=%s final_valid=%s "
     "pid_tol=(long=%.3f lat=%.3f) goal_checker_tol=(valid=%s long=%.3f lat=%.3f) "
     "effective_tol=(long=%.3f lat=%.3f dist=%.3f) "
-    "rotation_entry=%s rotation_entry_tol=(long=%.3f lat=%.3f dist=%.3f) "
-    "rotation_exit=%s rotation_exit_tol=(long=%.3f lat=%.3f dist=%.3f) "
+    "position_hold=(entry=%s hold=%s hysteresis=%.3f exit_dist=%.3f) "
     "end_localization=(stage=%s generation=%llu revision=%llu "
     "position_latched=%s yaw_latched=%s live_dist=%.3f effective_dist=%.3f "
     "live_yaw=%.3f effective_yaw=%.3f) "
-    "final_linear_source=%s final_linear_error=%.3f) "
     "errors=(x=%.3f y=%.3f theta=%.3f dist_target=%.3f "
     "long_mean=%.3f theta_mean=%.3f) "
     "angle=(current_yaw=%.3f target_yaw=%.3f error=%.3f cmd_wz=%.3f) "
     "linear_ctrl=(pos_cmd=%.3f target_v=%.3f speed_error=%.3f accel=%.3f accel_limited=%.3f "
-    "limit=%.3f min_target=%.3f deadband=%.3f max_v_inc=%.3f final_rotation=%s) "
+    "limit=%.3f min_target=%.3f deadband=%.3f accel/decel=%.3f/%.3f final_rotation=%s) "
     "angular_cfg=(deadband=%.3f min_w=%.3f max_w=%.3f kp=%.3f final_rotation=%s) "
     "heading=(theta_dir=%.3f angle_to_path=%.3f) odom=(vx=%.3f wz=%.3f) "
     "cmd_vel=(vx=%.3f wz=%.3f)",
@@ -999,12 +1348,9 @@ geometry_msgs::msg::TwistStamped PIDController::computeVelocityCommands(
     goal_checker_tolerance_valid ? "true" : "false",
     goal_checker_long_precision, goal_checker_lat_precision,
     final_goal_long_precision, final_goal_lat_precision, final_goal_dist_precision,
-    final_rotation_entry_position_tolerance ? "true" : "false",
-    final_rotation_entry_long_precision, final_rotation_entry_lat_precision,
-    final_rotation_entry_dist_precision,
-    final_rotation_exit_position_tolerance ? "true" : "false",
-    final_rotation_exit_long_precision, final_rotation_exit_lat_precision,
-    final_rotation_exit_dist_precision,
+    final_goal_position_tolerance ? "true" : "false",
+    final_position_hold_tolerance ? "true" : "false",
+    position_hold_hysteresis_, final_goal_dist_precision + position_hold_hysteresis_,
     nav2_core::toString(end_localization_snapshot.stage),
     static_cast<unsigned long long>(end_localization_snapshot.goal_generation),
     static_cast<unsigned long long>(end_localization_snapshot.revision),
@@ -1014,12 +1360,12 @@ geometry_msgs::msg::TwistStamped PIDController::computeVelocityCommands(
     end_localization_snapshot.effective_position_error,
     end_localization_snapshot.live_yaw_error,
     end_localization_snapshot.effective_yaw_error,
-    final_rotation_linear_source, final_rotation_linear_error,
     err_x, err_y, err_theta, dist_to_target, longitude_mean, theta_mean,
     theta_rob, target_yaw_for_log, err_theta, cmd_vel.twist.angular.z,
     last_linear_position_cmd_, last_linear_target_v_, last_linear_speed_error_,
     last_linear_accel_cmd_, last_linear_accel_limited_, last_linear_limit_,
-    last_linear_min_target_v_, last_linear_deadband_, max_v_inc_,
+    last_linear_min_target_v_, last_linear_deadband_,
+    max_linear_accel_, max_linear_decel_,
     final_rotation_control ? "true" : "false",
     angular_error_deadband_, min_w_, max_w_, angular_station_pid_conf_.kp,
     final_rotation_control ? "true" : "false",
@@ -1069,8 +1415,17 @@ double PIDController::LinearSpeedControl(
     return 0.0;
   }
 
+  // 有限的0是规划层明确下发的停车上限，不能退化到default speed；只有NaN
+  // 才表示调用方没有提供速度帽。
+  if (std::isfinite(max_linear_speed) && std::fabs(max_linear_speed) <= 1e-9) {
+    station_nav2_pid_controller_.Reset();
+    speed_nav2_pid_controller_.Reset();
+    last_speed_cmd_ = 0.0;
+    last_speed_cmd_valid_ = true;
+    return 0.0;
+  }
   double linear_limit = std::fabs(max_linear_speed);
-  if (!std::isfinite(linear_limit) || linear_limit <= 0.0) {
+  if (!std::isfinite(linear_limit)) {
     linear_limit = std::fabs(desired_linear_vel_) * 1.5;
   }
   if (!std::isfinite(linear_limit) || linear_limit <= 0.0) {
@@ -1114,12 +1469,36 @@ double PIDController::LinearSpeedControl(
   // 但坡道已要求减速），因此不做"加速度必须与误差同向"的方向守卫，
   // 方向与幅值安全由下方符号感知输出界承担。
   const double feedback_accel = speed_nav2_pid_controller_.Control(speed_error, d_t_);
-  double acceleration_cmd = feedforward_accel + feedback_accel;
+  // NEGATIVE_FF_CONSISTENCY_GUARD_BEGIN
+  // 正反向统一到目标运动方向。只有末端非零目标、实测与上一拍cmd都已经低于
+  // 目标，且规划前馈仍在制动时才保护；这正对应实机“空间目标仍为0.073、
+  // cmd/odom已接近0但旧前馈仍为-0.11”的异常。空间目标停在同一点是合理的，
+  // 但该点的计划减速度不能在执行已经落后时继续逐周期压低控制命令。
+  // 目标0、cmd尚高于目标、0.10m/s以上的正常减速均不触发。
+  const double motion_direction = target_vel < 0.0 ? -1.0 : 1.0;
+  const double directed_speed_error = speed_error * motion_direction;
+  const double directed_feedforward = feedforward_accel * motion_direction;
+  const double directed_command_error = last_speed_cmd_valid_ ?
+    (target_vel - last_speed_cmd_) * motion_direction : 0.0;
+  const bool low_nonzero_target =
+    std::fabs(target_vel) > 1e-6 &&
+    std::fabs(target_vel) <= negative_ff_max_target_speed_;
+  const bool measured_and_command_lag_target =
+    directed_speed_error > negative_ff_guard_error_ &&
+    directed_command_error > negative_ff_guard_error_;
+  const bool prevent_further_braking =
+    low_nonzero_target && directed_feedforward < 0.0 && measured_and_command_lag_target;
+  // 不把最终合成加速度简单钳成0：那只能冻结已经过低的cmd，无法恢复空间进度。
+  // 这里只撤销与当前跟踪误差矛盾的负前馈，保留PID正反馈，使速度在加速度/jerk
+  // 限制内重新靠近当前空间目标；一旦目标降到0或实测高于目标，完整制动权恢复。
+  const double effective_feedforward = prevent_further_braking ? 0.0 : feedforward_accel;
+  double acceleration_cmd = effective_feedforward + feedback_accel;
+  // NEGATIVE_FF_CONSISTENCY_GUARD_END
   if (!std::isfinite(acceleration_cmd)) {
     acceleration_cmd = 0.0;
   }
   const double acceleration_cmd_limited =
-    std::clamp(acceleration_cmd, -std::fabs(max_v_inc_), std::fabs(max_v_inc_));
+    std::clamp(acceleration_cmd, -max_linear_decel_, max_linear_accel_);
 
   // 指令积分器：输出锚定上一周期指令，实测只进误差项。
   if (!last_speed_cmd_valid_ ||
@@ -1129,6 +1508,32 @@ double PIDController::LinearSpeedControl(
     last_speed_cmd_valid_ = true;
   }
   double v_output = last_speed_cmd_ + acceleration_cmd_limited * d_t_;
+
+  // TERMINAL_TARGET_CROSSING_GUARD_BEGIN
+  // 上面的反馈使用实测速度，因此底盘尚未响应上一拍强制动时，反馈仍可能
+  // 与负前馈同向。纯粹禁止cmd低于目标虽能消除0.05->0.01下探，却也会在
+  // odom仍为0.11时剥夺必要补刹。这里按“实测超速量”开放有限下探：实测
+  // 接近/低于目标时下探量为0；实测明显更快时最多允许低于目标0.03m/s。
+  // 目标为0不进入保护，最终停车/障碍停车仍保留完整制动权。
+  if (low_nonzero_target && directed_feedforward < 0.0) {
+    const double directed_previous_command = last_speed_cmd_ * motion_direction;
+    const double directed_candidate = v_output * motion_direction;
+    const double directed_target = std::fabs(target_vel);
+    const double directed_measured = curr_vel * motion_direction;
+    const double measured_overspeed = std::max(
+      directed_measured - directed_target - negative_ff_guard_error_, 0.0);
+    const double allowed_target_undercut = std::min(
+      negative_ff_max_target_undercut_,
+      negative_ff_overspeed_undercut_gain_ * measured_overspeed);
+    const double target_floor = std::max(
+      directed_target - allowed_target_undercut, 0.0);
+    const double no_crossing_floor = std::max(
+      0.0, std::min(directed_previous_command, target_floor));
+    if (directed_candidate < no_crossing_floor) {
+      v_output = motion_direction * no_crossing_floor;
+    }
+  }
+  // TERMINAL_TARGET_CROSSING_GUARD_END
 
   // 符号感知输出界：目标速度既是跟踪参考也是上限（前向不越目标、不下穿零倒转，
   // 倒退目标对称）；制动权保留（可低于目标直至 0）。
@@ -1149,7 +1554,7 @@ double PIDController::LinearSpeedControl(
   {
     applied_accel_cmd = std::isfinite(feedback_accel) ? feedback_accel : 0.0;
     applied_accel_limited =
-      std::clamp(applied_accel_cmd, -std::fabs(max_v_inc_), std::fabs(max_v_inc_));
+      std::clamp(applied_accel_cmd, -max_linear_decel_, max_linear_accel_);
     v_output = std::clamp(
       last_speed_cmd_ + applied_accel_limited * d_t_, bound_lo, bound_hi);
   }
@@ -1170,10 +1575,258 @@ double PIDController::LinearSpeedControl(
   return v_output;
 }
 
+double PIDController::updateMeasuredAngularAcceleration(double angular_velocity)
+{
+  const auto stamp = clock_->now();
+  if (!measured_angular_state_valid_) {
+    measured_angular_state_valid_ = true;
+    last_measured_angular_velocity_ = angular_velocity;
+    last_measured_angular_stamp_ = stamp;
+    measured_angular_acceleration_ = 0.0;
+    return 0.0;
+  }
+  const double dt = (stamp - last_measured_angular_stamp_).seconds();
+  if (std::isfinite(dt) && dt > 1e-3 && dt <= 0.5) {
+    const double raw = (angular_velocity - last_measured_angular_velocity_) / dt;
+    // 0.10 s one-pole filtering suppresses encoder quantization while preserving
+    // the braking dynamics visible at the 10 Hz controller rate.
+    const double alpha = std::clamp(dt / (0.10 + dt), 0.0, 1.0);
+    measured_angular_acceleration_ += alpha * (raw - measured_angular_acceleration_);
+    measured_angular_acceleration_ = std::clamp(
+      measured_angular_acceleration_,
+      -final_rotation_max_accel_, final_rotation_max_accel_);
+  }
+  last_measured_angular_velocity_ = angular_velocity;
+  last_measured_angular_stamp_ = stamp;
+  return measured_angular_acceleration_;
+}
+
+bool PIDController::planFinalAngularTrajectory(
+  double error, double angular_velocity, double angular_acceleration,
+  bool count_replan)
+{
+  regularizeAngle(error);
+  ruckig::Ruckig<1> otg(d_t_);
+  ruckig::InputParameter<1> input;
+  const double effective_max_w = std::max(
+    final_rotation_max_w_, std::fabs(angular_velocity) + 1e-6);
+  const double target_direction = std::fabs(error) > 1e-9 ?
+    std::copysign(1.0, error) :
+    (std::fabs(angular_velocity) > 1e-9 ? std::copysign(1.0, angular_velocity) : 1.0);
+  // Accelerate briskly toward the goal, but plan braking with the lower,
+  // measured sustainable deceleration. Ruckig supports asymmetric min/max
+  // acceleration, so speed does not have to be sacrificed to brake earlier.
+  const double max_acceleration = target_direction > 0.0 ?
+    final_rotation_max_accel_ : final_rotation_max_decel_;
+  const double min_acceleration = target_direction > 0.0 ?
+    -final_rotation_max_decel_ : -final_rotation_max_accel_;
+  input.current_position = {0.0};
+  input.current_velocity = {angular_velocity};
+  input.current_acceleration = {std::clamp(
+      angular_acceleration, min_acceleration, max_acceleration)};
+  input.target_position = {error};
+  input.target_velocity = {0.0};
+  input.target_acceleration = {0.0};
+  input.max_velocity = {effective_max_w};
+  input.min_velocity = std::array<double, 1>{-effective_max_w};
+  input.max_acceleration = {max_acceleration};
+  input.min_acceleration = std::array<double, 1>{min_acceleration};
+  input.max_jerk = {final_rotation_max_jerk_};
+
+  const ruckig::Result result = otg.calculate(input, final_angular_trajectory_);
+  if (result != ruckig::Result::Working && result != ruckig::Result::Finished) {
+    RCLCPP_WARN_THROTTLE(
+      logger_, *clock_, 1000,
+      "Fixed final-yaw Ruckig failed: result=%d error=%.4f w=%.4f a=%.4f.",
+      static_cast<int>(result), error, angular_velocity, angular_acceleration);
+    final_angular_trajectory_valid_ = false;
+    return false;
+  }
+
+  const auto stamp = clock_->now();
+  final_angular_trajectory_start_ = stamp;
+  final_angular_last_replan_ = stamp;
+  final_angular_target_position_ = error;
+  final_angular_planned_position_ = 0.0;
+  final_angular_planned_velocity_ = angular_velocity;
+  final_angular_planned_acceleration_ = angular_acceleration;
+  final_angular_deviation_cycles_ = 0;
+  final_angular_trajectory_valid_ = true;
+  if (count_replan) {
+    ++final_angular_replan_count_;
+  }
+  last_angular_cmd_ = angular_velocity;
+  last_angular_cmd_valid_ = true;
+  last_angular_accel_ = angular_acceleration;
+  last_angular_accel_valid_ = true;
+  return true;
+}
+
+double PIDController::finalAngularFallbackCommand(double error)
+{
+  const double effective_capture_yaw = std::min(
+    final_rotation_capture_yaw_, active_goal_yaw_precision_);
+  double target = 0.0;
+  if (std::fabs(error) > effective_capture_yaw) {
+    const double magnitude = std::clamp(
+      std::fabs(error), std::max(min_w_, 0.02), final_rotation_fallback_max_w_);
+    target = std::copysign(magnitude, error);
+  }
+  if (!last_angular_cmd_valid_) {
+    last_angular_cmd_ = 0.0;
+    last_angular_cmd_valid_ = true;
+  }
+  const double max_delta = final_rotation_max_accel_ * d_t_;
+  const double delta = std::clamp(
+    target - last_angular_cmd_, -max_delta, max_delta);
+  last_angular_cmd_ += delta;
+  last_angular_accel_ = delta / std::max(d_t_, 1e-3);
+  last_angular_accel_valid_ = true;
+  return last_angular_cmd_;
+}
+
+double PIDController::sampleFinalAngularTrajectory(
+  double error, double angular_velocity, double angular_acceleration)
+{
+  regularizeAngle(error);
+
+  // GoalChecker owns task completion. Never hold zero in an angular band that
+  // GoalChecker itself still rejects; that old 1.15--2.0 degree dead zone made
+  // the controller appear settled until ProgressChecker timed out.
+  const double effective_capture_yaw = std::min(
+    final_rotation_capture_yaw_, active_goal_yaw_precision_);
+  const double effective_hold_exit_yaw = std::max(
+    effective_capture_yaw,
+    std::min(final_rotation_hold_exit_yaw_, active_goal_yaw_precision_));
+
+  if (final_angular_hold_) {
+    if (std::fabs(error) <= effective_hold_exit_yaw) {
+      final_angular_hold_exit_count_ = 0;
+      last_angular_cmd_ = 0.0;
+      last_angular_cmd_valid_ = true;
+      return 0.0;
+    }
+    if (++final_angular_hold_exit_count_ < final_rotation_hold_exit_cycles_) {
+      return 0.0;
+    }
+    // A persistent error outside the exit tolerance is real drift, not the
+    // sub-degree localization noise observed in the validation bag.
+    final_angular_hold_ = false;
+    final_angular_hold_exit_count_ = 0;
+    final_angular_capture_count_ = 0;
+    final_angular_trajectory_valid_ = false;
+    final_angular_replan_count_ = 0;
+  }
+
+  if (std::fabs(error) <= effective_capture_yaw &&
+    std::fabs(angular_velocity) <= final_rotation_capture_w_)
+  {
+    if (++final_angular_capture_count_ >= final_rotation_capture_cycles_) {
+      final_angular_hold_ = true;
+      final_angular_trajectory_valid_ = false;
+      angular_station_nav2_pid_controller_.Reset();
+      last_angular_cmd_ = 0.0;
+      last_angular_cmd_valid_ = true;
+      last_angular_accel_ = 0.0;
+      last_angular_accel_valid_ = true;
+      return 0.0;
+    }
+  } else {
+    final_angular_capture_count_ = 0;
+  }
+
+  if (!final_angular_trajectory_valid_ &&
+    !planFinalAngularTrajectory(error, angular_velocity, angular_acceleration, false))
+  {
+    return finalAngularFallbackCommand(error);
+  }
+
+  const auto stamp = clock_->now();
+  const double elapsed = std::max(
+    0.0, (stamp - final_angular_trajectory_start_).seconds());
+  std::array<double, 1> planned_position{};
+  std::array<double, 1> planned_velocity{};
+  std::array<double, 1> planned_acceleration{};
+  final_angular_trajectory_.at_time(
+    std::min(elapsed, final_angular_trajectory_.get_duration()),
+    planned_position, planned_velocity, planned_acceleration);
+  final_angular_planned_position_ = planned_position[0];
+  final_angular_planned_velocity_ = planned_velocity[0];
+  final_angular_planned_acceleration_ = planned_acceleration[0];
+
+  const double planned_remaining =
+    final_angular_target_position_ - final_angular_planned_position_;
+  double yaw_tracking_error = error - planned_remaining;
+  regularizeAngle(yaw_tracking_error);
+  const double velocity_tracking_error =
+    angular_velocity - final_angular_planned_velocity_;
+  const bool near_goal = std::fabs(error) <= final_rotation_replan_near_yaw_;
+  const double yaw_error_limit = near_goal ?
+    final_rotation_replan_near_yaw_error_ : final_rotation_replan_far_yaw_error_;
+  const double velocity_error_limit = near_goal ?
+    final_rotation_replan_near_w_error_ : final_rotation_replan_far_w_error_;
+  if (std::fabs(yaw_tracking_error) > yaw_error_limit ||
+    std::fabs(velocity_tracking_error) > velocity_error_limit)
+  {
+    ++final_angular_deviation_cycles_;
+  } else {
+    final_angular_deviation_cycles_ = 0;
+  }
+
+  const bool cooldown_elapsed =
+    (stamp - final_angular_last_replan_).seconds() >= final_rotation_replan_cooldown_;
+  if (final_angular_deviation_cycles_ >= final_rotation_replan_error_cycles_ &&
+    cooldown_elapsed)
+  {
+    // Replanning is rate-limited, not quota-limited. The former global quota
+    // forced tens of degrees to be completed at 0.08 rad/s after three normal
+    // tracking deviations. A successful replan always remains in normal mode.
+    if (!planFinalAngularTrajectory(error, angular_velocity, angular_acceleration, true)) {
+      final_angular_trajectory_valid_ = false;
+      return finalAngularFallbackCommand(error);
+    }
+  }
+
+  const double previous_command = last_angular_cmd_;
+  double command = std::clamp(
+    final_angular_planned_velocity_, -final_rotation_max_w_, final_rotation_max_w_);
+  // Independent measured-state braking envelope. The fixed trajectory is fast
+  // in the far field, while this cap reserves both the measured sustainable
+  // braking distance and one execution-delay interval near the target.
+  const double available_angle = std::max(
+    std::fabs(error) - effective_capture_yaw -
+    std::fabs(angular_velocity) * final_rotation_brake_delay_, 0.0);
+  const double safe_speed = std::min(
+    final_rotation_max_w_,
+    std::sqrt(2.0 * final_rotation_max_decel_ * available_angle));
+  if (command * error < 0.0) {
+    // Once the measured pose has crossed the goal, never actively command more
+    // motion in the old direction. Brake to zero; a subsequent replan may then
+    // generate a small correction in the new error direction.
+    command = 0.0;
+  } else {
+    command = std::copysign(std::min(std::fabs(command), safe_speed), command);
+  }
+  last_angular_cmd_ = command;
+  last_angular_cmd_valid_ = true;
+  last_angular_accel_ = std::clamp(
+    (last_angular_cmd_ - previous_command) / std::max(d_t_, 1e-3),
+    -final_rotation_max_accel_, final_rotation_max_accel_);
+  last_angular_accel_valid_ = true;
+  return last_angular_cmd_;
+}
+
 double PIDController::AngularSpeedControl(
   const geometry_msgs::msg::Twist & velocity, double err_theta, bool final_rotation)
 {
   regularizeAngle(err_theta);
+  double curr_w = velocity.angular.z;
+
+  if (final_rotation) {
+    const double measured_acceleration = updateMeasuredAngularAcceleration(curr_w);
+    return sampleFinalAngularTrajectory(err_theta, curr_w, measured_acceleration);
+  }
+
   if (std::fabs(err_theta) <= angular_error_deadband_) {
     angular_station_nav2_pid_controller_.Reset();
     last_angular_cmd_ = 0.0;
@@ -1182,11 +1835,7 @@ double PIDController::AngularSpeedControl(
   }
 
   double target_w = 0.0;
-  if (final_rotation) {
-    target_w = angular_station_pid_conf_.kp * err_theta;
-  } else {
-    target_w = angular_station_nav2_pid_controller_.Control(err_theta, d_t_);
-  }
+  target_w = angular_station_nav2_pid_controller_.Control(err_theta, d_t_);
 
   if (!std::isfinite(target_w)) {
     target_w = 0.0;
@@ -1213,7 +1862,6 @@ double PIDController::AngularSpeedControl(
   // 变化率限幅：镜像线速度通道的加速度积分器（指令锚定上一周期、实测只在
   // 重新播种时参与）——朝向误差突变（如切入 ROTATING_TO_GOAL）时角速度
   // 不再单周期直接砸到 target_w，而是按 max_w_inc_ 逐周期爬升/制动。
-  double curr_w = velocity.angular.z;
   if (!last_angular_cmd_valid_ ||
     std::fabs(last_angular_cmd_ - curr_w) > angular_cmd_reseed_error_)
   {
@@ -1232,6 +1880,28 @@ double PIDController::AngularSpeedControl(
 
   last_angular_cmd_ = w_output;
   return w_output;
+}
+
+void PIDController::resetAngularTrajectoryState()
+{
+  last_angular_accel_ = 0.0;
+  last_angular_accel_valid_ = false;
+  final_angular_trajectory_valid_ = false;
+  final_angular_trajectory_start_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
+  final_angular_last_replan_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
+  final_angular_target_position_ = 0.0;
+  final_angular_planned_position_ = 0.0;
+  final_angular_planned_velocity_ = 0.0;
+  final_angular_planned_acceleration_ = 0.0;
+  final_angular_deviation_cycles_ = 0;
+  final_angular_replan_count_ = 0;
+  final_angular_hold_ = false;
+  final_angular_capture_count_ = 0;
+  final_angular_hold_exit_count_ = 0;
+  measured_angular_state_valid_ = false;
+  last_measured_angular_velocity_ = 0.0;
+  measured_angular_acceleration_ = 0.0;
+  last_measured_angular_stamp_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
 }
 
 double PIDController::CalculateMean(const std::deque<double> & data)
@@ -1342,6 +2012,26 @@ bool PIDController::nearestTrajectorySpeed(
   if (controller_traj_.empty()) {
     return false;
   }
+  size_t nearest_index = 0;
+  double nearest_distance_sq = std::numeric_limits<double>::max();
+  for (size_t index = 0; index < controller_traj_.size(); ++index) {
+    const double dx = controller_traj_[index].x - pose.pose.position.x;
+    const double dy = controller_traj_[index].y - pose.pose.position.y;
+    const double distance_sq = dx * dx + dy * dy;
+    if (distance_sq < nearest_distance_sq) {
+      nearest_distance_sq = distance_sq;
+      nearest_index = index;
+    }
+  }
+  last_trajectory_region_type_ = controller_traj_[nearest_index].region_type;
+  if (last_trajectory_region_type_.empty()) {
+    for (size_t index = nearest_index + 1; index < controller_traj_.size(); ++index) {
+      if (!controller_traj_[index].region_type.empty()) {
+        last_trajectory_region_type_ = controller_traj_[index].region_type;
+        break;
+      }
+    }
+  }
   nav2_core::TrajectoryPreview preview;
   if (!nav2_core::sampleTrajectoryPreview(
       controller_traj_, pose.pose.position.x, pose.pose.position.y,
@@ -1351,11 +2041,19 @@ bool PIDController::nearestTrajectorySpeed(
   }
   traj_speed = preview.velocity;
   traj_accel = preview.acceleration;
+  sampled_trajectory_relative_time_ = preview.relative_time;
   return true;
 }
 
 bool PIDController::getLastTrajectoryTrackingTarget(
   double & velocity, double & acceleration)
+{
+  double relative_time = 0.0;
+  return getLastTrajectoryTrackingReceipt(velocity, acceleration, relative_time);
+}
+
+bool PIDController::getLastTrajectoryTrackingReceipt(
+  double & velocity, double & acceleration, double & relative_time)
 {
   std::unique_lock<std::mutex> lock(plan_mutex_);
   if (!last_trajectory_tracking_target_valid_) {
@@ -1363,6 +2061,7 @@ bool PIDController::getLastTrajectoryTrackingTarget(
   }
   velocity = last_trajectory_tracking_target_v_;
   acceleration = last_trajectory_tracking_target_a_;
+  relative_time = last_trajectory_tracking_target_t_;
   return true;
 }
 

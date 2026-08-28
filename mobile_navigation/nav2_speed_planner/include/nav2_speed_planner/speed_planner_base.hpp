@@ -8,7 +8,8 @@
 //     A1 applyObstacleConstraint（障碍 + 缓冲带置零）
 //     A2 computeCruiseLimit + setPlanSpeedLimit（理想巡航求解 + 回填）
 //     A3 applyCurvatureConstraint（曲率限速）
-//     A4 applyEndSpeedConstraint（末端蠕行区：距终点 stop_distance 内压到 end_speed）
+//     A4 approach handoff（进入精确控制器前压到交接速度）
+//     A5 applyEndSpeedConstraint（末端蠕行区：距终点 stop_distance 内压到 end_speed）
 //   Phase B 运动学可行化（派生类纯虚 generateProfile）：
 //     T 型 = 恒加速度前向/后向剖面；S 型 = Ruckig jerk 限制剖面。
 //
@@ -71,12 +72,16 @@ public:
   /**
    * @brief 模板方法：path + 当前速度 → 带速度的时空轨迹。
    *        固定流程：构建工作结构（相邻重复点去重）→ 初始限速取严（外部限速/速度提示）→
-   *        Phase A 约束包络（A1 障碍 → A2 巡航 → A3 曲率 → A4 末端蠕行）→
+   *        Phase A 约束包络（A1 障碍 → A2 巡航 → A3 曲率 → A4 交接 → A5 末端蠕行）→
    *        Phase B hook generateProfile → 组装 RobotTrajectory + 剖面可观测日志。
    */
   nav_interfaces::msg::RobotTrajectory computeSpeedPlan(
     const nav_msgs::msg::Path & path,
     const nav2_core::InitialMotionState & boundary) override;
+
+  bool isTrajectoryPrefixSafe(
+    const nav_interfaces::msg::RobotTrajectory & prefix,
+    bool should_stop_for_path_obstacle) override;
 
   nav2_core::SpeedPlanningDiagnostics getLastPlanningDiagnostics() const override;
 
@@ -136,7 +141,15 @@ protected:
   /// 在 goal 前 terminal_creep_distance_ 处插入精确 stop-zone 入口，避免入口依赖路径采样点距。
   void insertEndSpeedBoundary(std::vector<TrajPointWork> & path) const;
 
-  /// A4 末端蠕行区：未来点距终点 terminal_creep_distance_ 内包络压到 end_speed_；
+  /// 在 goal 前 approach_entry_distance_ 处插入精确控制器交接边界。
+  void insertApproachSpeedBoundary(std::vector<TrajPointWork> & path) const;
+
+  /// 交接边界后的速度上限；后续末端蠕行约束仍可继续下压到 end_speed_。
+  VelocityConstraint produceApproachConstraint(
+    const std::vector<TrajPointWork> & path) const;
+
+  /// A4 末端蠕行区：未来点距终点 terminal_creep_distance_ 内不超过
+  /// terminal_speed_cap_；最后一点再独立收敛到 end_speed_。
   /// index 0 是当前实测边界，不被未来包络覆盖。
   VelocityConstraint produceTerminalConstraint(
     const std::vector<TrajPointWork> & path) const;
@@ -253,14 +266,18 @@ protected:
   /// 二者满足 `√(max_lateral_accel × min_radius) ≈ max_speed` 时限速在门处连续；
   /// 默认 0.3 与 1.2 / 0.6 正好满足（0.6² / 1.2 = 0.30）。
   double max_lateral_accel_{0.3};
-  // 路径终点目标速度。>=1e-3：末端 terminal_creep_distance_ 内蠕行该速度；
-  // <1e-3：无蠕行区，剖面在终点收敛到 0。
-  double end_speed_{0.03};
+  // 通用终点速度配置；SCurve可在固定蠕行段与最终停车段之间动态切换。
+  double end_speed_{0.05};
+  // 末端低速区的速度上限，不是必须追踪的目标速度。
+  double terminal_speed_cap_{0.05};
   double terminal_creep_distance_{0.2};
   // Footprint 首次硬碰撞位置前定义的目标安全余量 [m]。
   double obstacle_safety_margin_{0.25};
   // 仅停障控制器使用：在安全余量外额外前移计划停车点的距离 [m]。
   double obstacle_stop_margin_{0.2};
+  /// <=0 disables the approach-controller handoff envelope.
+  double approach_entry_distance_{0.0};
+  double approach_entry_speed_{0.0};
   // 障碍判定 cost 阈值（cost >= 即视为障碍；NO_INFORMATION 恒不算）。
   // 默认 254=LETHAL：只有 path 点真正落在障碍格内才触发停障——
   // 253 内切区是"机器人中心到此会碰撞"的膨胀带，会把贴障碍的合法路径误判停障。

@@ -69,6 +69,22 @@ public:
 };
 
 /**
+ * @class TrajectoryTrackingReceiptCapability
+ * @brief Optional ABI-isolated capability returning the exact trajectory
+ *        state and relative time consumed by the latest command.
+ *
+ * Kept outside Controller so older controller plugins retain their existing
+ * vtable layout. ControllerServer discovers it with dynamic_cast.
+ */
+class TrajectoryTrackingReceiptCapability
+{
+public:
+  virtual ~TrajectoryTrackingReceiptCapability() = default;
+  virtual bool getLastTrajectoryTrackingReceipt(
+    double & velocity, double & acceleration, double & relative_time) = 0;
+};
+
+/**
  * @class Controller
  * @brief controller interface that acts as a virtual base class for all controller plugins
  */

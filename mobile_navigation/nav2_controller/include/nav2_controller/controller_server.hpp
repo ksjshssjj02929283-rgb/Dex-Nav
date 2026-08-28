@@ -31,6 +31,7 @@
 #include "nav2_core/local_planner.hpp"
 #include "nav2_core/speed_planner.hpp"
 #include "nav2_costmap_2d/costmap_2d_ros.hpp"
+#include "nav2_longitudinal_state_estimator/msg/longitudinal_state.hpp"
 #include "nav2_speed_planner/core/initial_motion.hpp"
 #include "nav_interfaces/msg/robot_trajectory.hpp"
 #include "nav_interfaces/msg/navigation_status.hpp"
@@ -233,6 +234,8 @@ protected:
     const nav_msgs::msg::Path & path,
     const geometry_msgs::msg::Twist & measured_velocity,
     bool should_stop_for_path_obstacle = true);
+  void longitudinalStateCallback(
+    const nav2_longitudinal_state_estimator::msg::LongitudinalState::SharedPtr msg);
   /// Latch terminal braking only after the planner reaches the dynamic braking
   /// initial_motion and the cycle has either longitudinal continuity or non-zero
   /// braking motion. A diagnostic-only infeasible result must not poison a
@@ -242,7 +245,17 @@ protected:
     bool longitudinal_continuity_valid);
   void updateSpeedPlanningContinuityAfterControl(
     bool control_succeeded, bool trajectory_target_consumed,
-    double consumed_target_velocity, double consumed_target_acceleration);
+    double consumed_target_velocity, double consumed_target_acceleration,
+    double consumed_target_relative_time);
+  /// Detect a frozen terminal braking prefix: the planner still requests a
+  /// non-zero speed with negative acceleration while the chassis and path
+  /// progress are already stopped. On the first sustained event, invalidate
+  /// only trajectory continuity and preserve the terminal brake latch.
+  bool updateTerminalStallRecovery(
+    const nav_2d_msgs::msg::Twist2D & measured_twist,
+    bool trajectory_target_consumed,
+    double consumed_target_velocity,
+    double consumed_target_acceleration);
   void invalidateSpeedPlanningContinuity();
   /**
    * @brief Calculates velocity and publishes to "cmd_vel" topic
@@ -430,6 +443,23 @@ protected:
 
   // Publishers and subscribers
   std::unique_ptr<nav_2d_utils::OdomSubscriber> odom_sub_;
+  rclcpp::Subscription<
+    nav2_longitudinal_state_estimator::msg::LongitudinalState>::SharedPtr
+    longitudinal_state_sub_;
+  std::mutex longitudinal_state_mutex_;
+  nav2_longitudinal_state_estimator::msg::LongitudinalState latest_longitudinal_state_;
+  bool has_longitudinal_state_{false};
+  std::string longitudinal_state_topic_{"/navigation/longitudinal_state"};
+  double longitudinal_state_max_age_{0.10};
+  double state_acceleration_min_{-0.60};
+  double state_acceleration_max_{0.70};
+  bool planned_acceleration_correction_enabled_{true};
+  double planned_acceleration_correction_gain_{0.40};
+  double planned_acceleration_innovation_limit_{0.30};
+  double planned_acceleration_correction_max_jerk_{0.30};
+  double planned_acceleration_correction_{0.0};
+  bool planned_acceleration_correction_valid_{false};
+  rclcpp::Time planned_acceleration_correction_stamp_{0, 0, RCL_ROS_TIME};
   rclcpp_lifecycle::LifecyclePublisher<geometry_msgs::msg::Twist>::SharedPtr vel_publisher_;
   rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::Empty>::SharedPtr hard_stop_publisher_;
   std::string hard_stop_topic_{"cmd_vel_hard_stop"};
@@ -501,9 +531,27 @@ protected:
   // 无并发；将来拆独立规划线程时需加最小临界区保护
   nav_interfaces::msg::RobotTrajectory current_trajectory_;
   nav2_speed_planner::InitialMotionArbiter initial_motion_arbiter_;
+  // Full trajectory-prefix stitching state prepared by buildInitialMotionState
+  // for the current planning cycle. It is consumed immediately by
+  // runPlanningPipeline; planning/control are serialized in the action loop.
+  nav_interfaces::msg::RobotTrajectory pending_stitching_prefix_;
+  nav2_core::InitialMotionState pending_stitching_boundary_;
+  double trajectory_stitching_max_path_error_{0.05};
+  bool external_speed_limit_valid_{false};
+  double last_external_speed_limit_{0.0};
+  bool last_external_speed_limit_percentage_{false};
   // Goal-lifecycle state owned by ControllerServer. Same-goal geometry updates
   // preserve it; a new goal / successful completion resets it.
   bool terminal_brake_latched_{false};
+  bool terminal_stall_recovery_enabled_{true};
+  double terminal_stall_recovery_duration_{0.5};
+  double terminal_stall_stopped_velocity_{0.01};
+  double terminal_stall_min_target_velocity_{0.03};
+  double terminal_stall_max_target_acceleration_{-0.03};
+  double terminal_stall_max_progress_per_cycle_{0.005};
+  double terminal_stall_min_remaining_distance_{0.05};
+  int terminal_stall_consecutive_cycles_{0};
+  int terminal_stall_recovery_count_{0};
   // 控制器检测到碰撞后进入等待；等待期间保持零速并暂停进展检查。
   // 控制恢复、新目标或控制状态重置时清零。
   bool is_collision_stop_active_{false};
@@ -521,11 +569,33 @@ protected:
     nav2_core::InitialMotionState initial_motion;
     bool initial_motion_valid{false};
     std::string initial_motion_source{"not_computed"};
+    bool trajectory_stitched{false};
+    size_t stitching_prefix_points{0};
+    double stitching_prefix_duration{0.0};
+    std::string stitching_result{"not_attempted"};
+    bool terminal_stall_recovery_triggered{false};
+    int terminal_stall_consecutive_cycles{0};
+    int terminal_stall_recovery_count{0};
     // 初值裁决的两个输入与偏差（见 InitialMotionDecision 注释）：只记裁决结果
     // 时，无法区分 v0 跳变是"实测真的高"还是"计划采样点跳了"。
     double initial_motion_measured_v{std::numeric_limits<double>::quiet_NaN()};
     double initial_motion_sampled_v{std::numeric_limits<double>::quiet_NaN()};
     double initial_motion_deviation{std::numeric_limits<double>::quiet_NaN()};
+    std::string initial_motion_acceleration_source{"planned_continuity"};
+    double initial_motion_planned_a{std::numeric_limits<double>::quiet_NaN()};
+    double initial_motion_state_velocity{std::numeric_limits<double>::quiet_NaN()};
+    double initial_motion_state_acceleration_raw{std::numeric_limits<double>::quiet_NaN()};
+    double initial_motion_state_acceleration{std::numeric_limits<double>::quiet_NaN()};
+    double initial_motion_state_correction{std::numeric_limits<double>::quiet_NaN()};
+    double initial_motion_state_velocity_std{std::numeric_limits<double>::quiet_NaN()};
+    double initial_motion_state_acceleration_std{std::numeric_limits<double>::quiet_NaN()};
+    double initial_motion_state_velocity_age{std::numeric_limits<double>::quiet_NaN()};
+    double initial_motion_state_acceleration_age{std::numeric_limits<double>::quiet_NaN()};
+    double initial_motion_state_stamp_skew{std::numeric_limits<double>::quiet_NaN()};
+    size_t initial_motion_state_rejected_samples{0};
+    size_t initial_motion_state_acceleration_clamps{0};
+    bool initial_motion_state_stationary{false};
+    bool initial_motion_state_valid{false};
     // 局部路径投影这一拍前进了多少弧长。与 odom 位移对账即可判定"裁剪是否
     // 超额消耗"——L 跳变与 v0 跳变是两个独立成因，必须能分开看。
     double local_path_progress_delta{std::numeric_limits<double>::quiet_NaN()};

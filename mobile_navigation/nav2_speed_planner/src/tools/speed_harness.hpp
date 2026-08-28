@@ -138,6 +138,7 @@ public:
     this->accel_ = q.accel;
     this->decel_ = q.decel;
     this->end_speed_ = q.end_speed;
+    this->terminal_speed_cap_ = q.end_speed;
     this->terminal_creep_distance_ = q.stop_distance;
     this->obstacle_safety_margin_ = q.obstacle_safety_margin;
     this->obstacle_stop_margin_ = q.obstacle_stop_margin;
@@ -147,7 +148,11 @@ public:
       this->max_lateral_accel_ = q.max_lateral_accel;
     }
   }
-  void setEndSpeed(double v) {this->end_speed_ = v;}   // 基类中为 protected
+  void setEndSpeed(double v)
+  {
+    this->end_speed_ = v;
+    this->terminal_speed_cap_ = v;
+  }
   void setPolicy(nav2_speed_planner::ConstraintFailurePolicy p)
   {
     this->obstacle_unavailable_policy_ = p;
@@ -204,10 +209,9 @@ public:
     max_jerk_ = q.max_jerk;
     control_dt_ = q.control_dt;
   }
-  void setTerminalReserve(double delay, double margin)
+  void setTerminalExecutionDelay(double delay)
   {
     terminal_execution_delay_ = delay;
-    terminal_safety_margin_ = margin;
   }
 };
 
@@ -257,7 +261,7 @@ inline nav_interfaces::msg::RobotTrajectory runScenario(
   HarnessS p;
   p.setSharedParams(sc.params);
   p.setSCurveParams(sc.params);
-  p.setTerminalReserve(sc.terminal_execution_delay, sc.terminal_safety_margin);
+  p.setTerminalExecutionDelay(sc.terminal_execution_delay);
   if (sc.override_end_speed) {p.setEndSpeed(sc.end_speed);}
   p.setPolicy(sc.unavailable_policy);
   p.bands_ = sc.obstacles;

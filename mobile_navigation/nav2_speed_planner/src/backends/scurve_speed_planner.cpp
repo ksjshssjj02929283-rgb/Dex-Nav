@@ -425,63 +425,6 @@ double computeStableBrakingDistance(
   return std::max(0.0, position.back());
 }
 
-size_t applyTerminalSpeedEnvelope(
-  std::vector<TrajPointWork> & work, double anchor_s, double end_speed)
-{
-  constexpr double kGeometryTolerance = 1e-6;
-  constexpr double kBoundaryTolerance = 1e-4;
-  std::vector<double> arc_s(work.size(), 0.0);
-  for (size_t index = 1; index < work.size(); ++index) {
-    const auto & previous = work[index - 1].pose.pose.position;
-    const auto & current = work[index].pose.pose.position;
-    arc_s[index] = arc_s[index - 1] +
-      std::hypot(current.x - previous.x, current.y - previous.y);
-  }
-  anchor_s = std::clamp(anchor_s, 0.0, arc_s.back());
-
-  size_t anchor_index = 1;
-  if (anchor_s > kGeometryTolerance) {
-    auto upper = std::lower_bound(arc_s.begin() + 1, arc_s.end(), anchor_s);
-    anchor_index = static_cast<size_t>(std::distance(arc_s.begin(), upper));
-    if (upper == arc_s.end()) {
-      anchor_index = work.size() - 1;
-    } else if (std::fabs(*upper - anchor_s) > kBoundaryTolerance) {
-      const size_t lower_index = anchor_index - 1;
-      const double segment_length = arc_s[anchor_index] - arc_s[lower_index];
-      if (segment_length > kGeometryTolerance) {
-        const double ratio = (anchor_s - arc_s[lower_index]) / segment_length;
-        TrajPointWork anchor = work[lower_index];
-        const auto & from = work[lower_index].pose.pose.position;
-        const auto & to = work[anchor_index].pose.pose.position;
-        anchor.pose.pose.position.x = from.x + ratio * (to.x - from.x);
-        anchor.pose.pose.position.y = from.y + ratio * (to.y - from.y);
-        anchor.pose.pose.position.z = from.z + ratio * (to.z - from.z);
-        anchor.pose.pose.orientation =
-          ratio < 0.5 ? work[lower_index].pose.pose.orientation :
-          work[anchor_index].pose.pose.orientation;
-        anchor.velocity_upper_bound = std::min(
-          {work[lower_index].velocity_upper_bound, work[anchor_index].velocity_upper_bound, end_speed});
-        anchor.constraint_source = ConstraintSource::kEndBoundary;
-        anchor.curvature = std::max(
-          std::fabs(work[lower_index].curvature), std::fabs(work[anchor_index].curvature));
-        if (anchor.region_type.empty()) {
-          anchor.region_type = "terminal_reserve";
-        }
-        work.insert(
-          work.begin() + static_cast<std::ptrdiff_t>(anchor_index), std::move(anchor));
-      }
-    }
-  }
-
-  for (size_t index = anchor_index; index < work.size(); ++index) {
-    lowerBound(work[index], end_speed, ConstraintSource::kEndBoundary);
-    if (work[index].region_type.empty()) {
-      work[index].region_type = "terminal_reserve";
-    }
-  }
-  return anchor_index;
-}
-
 // Build a stable terminal segment that reaches (distance, v_end, a=0)
 // without crossing v_end. Existing acceleration is first released to zero;
 // any remaining distance is spent coasting before a monotonic S-curve brake.
@@ -558,7 +501,9 @@ bool generateStableTerminalSegment(
     if (remaining_distance < -1e-6) {
       return false;
     }
-    if (remaining_distance <= release_reserve_distance + 1e-6) {
+    if (target_velocity > kNumericTolerance &&
+      remaining_distance <= release_reserve_distance + 1e-6)
+    {
       if (remaining_distance > kNumericTolerance) {
         direct_phases.push_back(
             {
@@ -684,37 +629,17 @@ void SCurveSpeedPlanner::configure(
     node, plugin_name_ + ".control_dt", rclcpp::ParameterValue(0.05));
   nav2_util::declare_parameter_if_not_declared(
     node, plugin_name_ + ".terminal_execution_delay", rclcpp::ParameterValue(0.0));
-  nav2_util::declare_parameter_if_not_declared(
-    node, plugin_name_ + ".terminal_safety_margin", rclcpp::ParameterValue(0.0));
   node->get_parameter(plugin_name_ + ".max_jerk", max_jerk_);
   node->get_parameter(plugin_name_ + ".control_dt", control_dt_);
   node->get_parameter(
     plugin_name_ + ".terminal_execution_delay", terminal_execution_delay_);
-  node->get_parameter(
-    plugin_name_ + ".terminal_safety_margin", terminal_safety_margin_);
   terminal_execution_delay_ = std::max(0.0, terminal_execution_delay_);
-  terminal_safety_margin_ = std::max(0.0, terminal_safety_margin_);
   RCLCPP_INFO(
     node->get_logger(),
-    "%s effective terminal config: end_speed=%.3f m/s stop_distance=%.3f m "
-    "execution_delay=%.3f s safety_margin=%.3f m",
-    plugin_name_.c_str(), end_speed_, terminal_creep_distance_,
-    terminal_execution_delay_, terminal_safety_margin_);
-}
-
-double SCurveSpeedPlanner::computeTerminalExecutionReserve(
-  double velocity, double planned_acceleration,
-  double execution_delay, double safety_margin)
-{
-  velocity = std::max(0.0, velocity);
-  execution_delay = std::max(0.0, execution_delay);
-  safety_margin = std::max(0.0, safety_margin);
-  // A negative consumed target acceleration preserves jerk continuity, but it
-  // does not prove that the smoother/chassis has established that braking.
-  const double conservative_acceleration = std::max(0.0, planned_acceleration);
-  return velocity * execution_delay +
-         0.5 * conservative_acceleration * execution_delay * execution_delay +
-         safety_margin;
+    "%s effective terminal config: end_speed=%.3f m/s speed_cap=%.3f m/s "
+    "creep_entry=%.3f m execution_delay=%.3f s",
+    plugin_name_.c_str(), end_speed_, terminal_speed_cap_, terminal_creep_distance_,
+    terminal_execution_delay_);
 }
 
 // ===================== Ruckig 沿弧长生成 jerk 限制速度剖面 =====================
@@ -728,7 +653,9 @@ FeasibilityResult SCurveSpeedPlanner::generateRuckigProfile(
   std::vector<double> & v_out,
   std::vector<double> & a_out,
   std::vector<double> & t_out,
-  double v_end)
+  double v_end,
+  bool terminal_brake_latched,
+  double terminal_speed_cap)
 {
   // 包络需就地可达化（见 applyEnvelopeReachability），故取可变副本；
   // 后续全部逻辑都基于可达化后的包络，避免与目标提取口径不一致。
@@ -752,12 +679,26 @@ FeasibilityResult SCurveSpeedPlanner::generateRuckigProfile(
 
   // 停止点：首个零包络点（障碍）否则终点。障碍停止时终点速度强制 0。
   size_t stop_i = n - 1;
-  bool stop_at_env_zero = false;
+  bool found_zero_envelope = false;
   for (size_t i = 0; i < n; ++i) {
-    if (v_env[i] < 1e-3) {stop_i = i; stop_at_env_zero = true; break;}
+    if (v_env[i] < 1e-3) {stop_i = i; found_zero_envelope = true; break;}
   }
+  // 最后一点的零速属于 goal terminal；只有终点之前的零速才是障碍硬停。
+  const bool stop_at_env_zero = found_zero_envelope && stop_i + 1 < n;
   v_end = stop_at_env_zero ? 0.0 : std::max(0.0, v_end);
   const double target = arc_s[stop_i];
+
+  if (terminal_brake_latched && !stop_at_env_zero) {
+    // 锁存后禁止回到巡航速度，但允许“低于蠕行值”的跟踪误差有限恢复到
+    // terminal_speed_cap。这样实测偶然掉到0.03时仍可回到0.05；恢复上限
+    // 始终是蠕行速度，最终v_end=0目标仍由剩余距离约束，不会重新加速到巡航。
+    const double monotonic_cap = std::max(
+      std::max(0.0, v_start), std::max(0.0, terminal_speed_cap));
+    for (size_t index = 1; index < v_env.size(); ++index) {
+      v_env[index] = std::min(v_env[index], monotonic_cap);
+    }
+    v_end = std::min(v_end, monotonic_cap);
+  }
 
   // 目标序列 = 包络下降沿谷底（蠕行区界/弯心/缓冲带起点）+ 最终停止点。
   // 逐目标分段规划："在谷底恰好降到谷速"由 target 硬保证；段内 max_velocity 取
@@ -772,8 +713,30 @@ FeasibilityResult SCurveSpeedPlanner::generateRuckigProfile(
 
   size_t terminal_start_i = stop_i;
   if (!stop_at_env_zero) {
-    while (terminal_start_i > 0 && v_env[terminal_start_i - 1] <= v_end + 1e-3) {
+    const double terminal_zone_cap = std::max(v_end, terminal_speed_cap);
+    while (terminal_start_i > 0 &&
+      v_env[terminal_start_i - 1] <= terminal_zone_cap + 1e-3)
+    {
       --terminal_start_i;
+    }
+    // 已经到达蠕行上限后，不再重复求解一个“保持同速且a=0”的中间硬目标。
+    // 当前若带极小负加速度（实测约-0.003 m/s²），为了回到完全相同的0.05
+    // 必然先轻微下穿再加速，单调终端段会正确拒绝，却形成无意义的
+    // terminal_infeasible。跳过该冗余目标后，直接用剩余距离规划0.05->0。
+    const double terminal_initial_velocity = std::max(0.0, v_start);
+    if (terminal_brake_latched && v_end + 1e-6 < terminal_zone_cap &&
+      terminal_initial_velocity <= terminal_zone_cap + 1e-3)
+    {
+      targets.erase(
+        std::remove_if(
+          targets.begin(), targets.end(),
+          [terminal_start_i, v_end, terminal_initial_velocity](
+            const SpeedTarget & speed_target) {
+            return speed_target.index >= terminal_start_i &&
+                   speed_target.velocity > v_end + 1e-6 &&
+                   speed_target.velocity >= terminal_initial_velocity - 1e-3;
+          }),
+        targets.end());
     }
   }
 
@@ -793,6 +756,10 @@ FeasibilityResult SCurveSpeedPlanner::generateRuckigProfile(
   std::vector<double> rs{0.0}, rv{in.current_velocity[0]}, ra{a_start}, rt{0.0};
   double tnow = 0.0;
   bool failed = false;
+  // 段级兜底必须继承“当前失败分段”的目标，而不是无条件跳到全局v_end。
+  // 两段终端轨迹中，蠕行入口目标是0.05、最终点目标才是0；若入口段失败
+  // 却直接兜底到0，滚动规划会在冻结执行余量边界（实测约终点前21cm）早停。
+  double fallback_target_velocity = v_end;
   FeasibilityResult feas;   // 归一：7 处赋值收敛到此，语义逐字保持
   for (const auto & tgt : targets) {
     const double s_t = arc_s[tgt.index];
@@ -810,17 +777,27 @@ FeasibilityResult SCurveSpeedPlanner::generateRuckigProfile(
     in.target_position = {s_t};
     in.target_velocity = {std::max(tgt.velocity, 0.0)};
     in.target_acceleration = {0.0};
+    const bool intermediate_terminal_handoff =
+      terminal_brake_latched && !stop_at_env_zero &&
+      terminal_speed_cap > v_end + 1e-6 &&
+      tgt.index >= terminal_start_i &&
+      in.target_velocity[0] > v_end + 1e-6;
+    fallback_target_velocity = intermediate_terminal_handoff ?
+      in.target_velocity[0] : v_end;
 
     const double segment_distance = s_t - in.current_position[0];
-    if (!stop_at_env_zero && v_end >= 1e-3 &&
+    // A negative acceleration is an instantaneous motion state, not proof that final-goal
+    // braking has started. Without the lifecycle latch this branch makes any mid-path slowdown
+    // sticky across receding-horizon replans and prevents recovery after a dynamic obstacle.
+    if (terminal_brake_latched && !stop_at_env_zero &&
       tgt.index >= terminal_start_i &&
       in.current_acceleration[0] < -1e-9 &&
-      in.current_velocity[0] >= v_end - 1e-9)
+      in.current_velocity[0] >= in.target_velocity[0] - 1e-9)
     {
       std::vector<double> seg_s, seg_v, seg_a, seg_t;
       if (!generateStableTerminalSegment(
           in.current_velocity[0], in.current_acceleration[0],
-          d_max, max_jerk, ctrl_dt, segment_distance, v_end,
+          d_max, max_jerk, ctrl_dt, segment_distance, in.target_velocity[0],
           seg_s, seg_v, seg_a, seg_t))
       {
         failed = true;
@@ -836,7 +813,7 @@ FeasibilityResult SCurveSpeedPlanner::generateRuckigProfile(
       }
       tnow += seg_t.back();
       in.current_position = {s_t};
-      in.current_velocity = {v_end};
+      in.current_velocity = {in.target_velocity[0]};
       in.current_acceleration = {0.0};
       continue;
     }
@@ -930,7 +907,7 @@ FeasibilityResult SCurveSpeedPlanner::generateRuckigProfile(
     std::vector<double> fs, fv, fa, ft;
     braking_fallback = generateReachableBrakingProfile(
       resume_v, resume_a, a_max, d_max,
-      max_jerk, ctrl_dt, v_end, fs, fv, fa, ft,
+      max_jerk, ctrl_dt, fallback_target_velocity, fs, fv, fa, ft,
       stable_target_reachable);
     if (braking_fallback) {
       for (size_t k = 1; k < fs.size(); ++k) {
@@ -950,12 +927,12 @@ FeasibilityResult SCurveSpeedPlanner::generateRuckigProfile(
       constexpr double kTerminalAccelerationTolerance = 1e-3;
       const bool undershot = std::any_of(
         rv.begin(), rv.end(),
-        [v_end](double velocity) {
-          return velocity < v_end - kTerminalSpeedTolerance;
+        [fallback_target_velocity](double velocity) {
+          return velocity < fallback_target_velocity - kTerminalSpeedTolerance;
         });
       size_t stable_index = rv.size();
       for (size_t index = 0; index < rv.size(); ++index) {
-        if (std::fabs(rv[index] - v_end) <= kTerminalSpeedTolerance &&
+        if (std::fabs(rv[index] - fallback_target_velocity) <= kTerminalSpeedTolerance &&
           std::fabs(ra[index]) <= kTerminalAccelerationTolerance)
         {
           stable_index = index;
@@ -970,8 +947,8 @@ FeasibilityResult SCurveSpeedPlanner::generateRuckigProfile(
       // Dynamic reserve is an execution-lag allowance and does not replace
       // this existing numeric/resampling tolerance.
       const double stable_position_tolerance =
-        (std::max(initial_velocity, v_end) * kControllerPreviewSteps +
-        v_end) * ctrl_dt;
+        (std::max(initial_velocity, fallback_target_velocity) * kControllerPreviewSteps +
+        fallback_target_velocity) * ctrl_dt;
       // ⚠ **这是目前唯一能把 infeasible 清回 false 的地方**——制动兜底之后
       //   的最终判定。它承担了"退出判据"的职责，但语义与"兜底成没成功"耦合，
       //   没有独立的「已回到可行集」判断（doc8 §三 步 4 补）。
@@ -1021,18 +998,12 @@ void SCurveSpeedPlanner::generateProfile(
     return;
   }
 
-  // 1) Dynamic execution-delay reserve. The regular stop_distance keeps its semantic
-  //    meaning; the reserve makes the profile reach stable creep speed earlier
-  //    and then coast through the reserved segment and stop zone.
-  //
-  // R47：以前这段只在 !obstacle_or_hard_stop（到达目标点）时生效——障碍触发的硬零速点
-  // （Phase A1 已经把 work[first_obstacle_index..end] 全部置零）完全没有 execution_reserve，
-  // 是零裕度的位置硬目标；即使 §isObstacleAt 已改为 footprint 检测能正确看到障碍，停车
-  // 目标本身仍然不会提前。现在障碍分支复用同一套 execution_reserve 计算，只是末速目标不同
-  // （障碍=0，到达目标=end_speed_），把"為障碍减速"和"为终点减速"统一成同一套有延迟余量
-  // 的设计。obstacle 分支暂不接 terminal_brake_latched 的锁存/续接语义（那是目标点专属的
-  // 生命周期状态机，障碍是否需要等价的锁存是后续 P2 typed-constraint 统一时再设计的问题，
-  // 这里先解决"完全没有余量"这个更基础的缺口）。
+  // TERMINAL_SPATIAL_STAGES_BEGIN
+  // 1) 终端距离只保留两条固定空间语义：
+  //    · goal-terminal：在 terminal_creep_distance_（生产=5cm）边界达到0.05；
+  //    · final-stop：进入动态0.05→0停车距离后才把终点速度切成0并锁存。
+  // 高速执行余量不再前移5cm边界；障碍已有 clearance + zero_buffer，也不叠加
+  // 另一套执行距离。这样减速可提前开始，但真正蠕行不会提前几十厘米。
   const auto initial_arc_s = computeCumulativeArcLengths(work);
   size_t hard_zero_index = work.size();
   for (size_t index = 1; index < work.size(); ++index) {
@@ -1041,7 +1012,9 @@ void SCurveSpeedPlanner::generateProfile(
       break;
     }
   }
-  const bool obstacle_or_hard_stop = hard_zero_index != work.size();
+  const bool obstacle_or_hard_stop =
+    hard_zero_index < work.size() - 1;
+  double active_end_speed = std::max(0.0, end_speed_);
 
   if (obstacle_or_hard_stop) {
     const double obstacle_boundary_s = initial_arc_s[hard_zero_index];
@@ -1049,83 +1022,112 @@ void SCurveSpeedPlanner::generateProfile(
     const double braking_distance = computeStableBrakingDistance(
       std::max(0.0, curr_vel), conservative_acceleration,
       accel_, std::fabs(decel_), max_jerk_, control_dt_, 0.0);
-    const double execution_reserve = computeTerminalExecutionReserve(
-      curr_vel, curr_accel, terminal_execution_delay_, terminal_safety_margin_);
-
     last_planning_diagnostics_.terminal_branch =
       nav2_core::SpeedPlanningTerminalBranch::PATH_OBSTACLE_STOP;
-    last_planning_diagnostics_.terminal_execution_reserve = execution_reserve;
+    last_planning_diagnostics_.terminal_execution_reserve = 0.0;
+    last_planning_diagnostics_.terminal_latched_reserve = 0.0;
     last_planning_diagnostics_.terminal_braking_distance = braking_distance;
     last_planning_diagnostics_.terminal_distance_available = obstacle_boundary_s;
+    const double planning_cycle_guard =
+      std::max(0.0, curr_vel) * control_dt_ +
+      0.5 * std::max(0.0, curr_accel) * control_dt_ * control_dt_;
     last_planning_diagnostics_.terminal_brake_required =
       !std::isfinite(braking_distance) ||
-      obstacle_boundary_s <= braking_distance + execution_reserve + 1e-6;
-
-    const double anchor_s = std::max(0.0, obstacle_boundary_s - execution_reserve);
-    last_planning_diagnostics_.terminal_anchor_s = anchor_s;
-    if (execution_reserve > 1e-9) {
-      applyTerminalSpeedEnvelope(work, anchor_s, 0.0);
+      obstacle_boundary_s <= braking_distance + planning_cycle_guard + 1e-6;
+    last_planning_diagnostics_.terminal_anchor_s = obstacle_boundary_s;
+    active_end_speed = 0.0;
+  } else if (terminal_speed_cap_ >= 1e-3 && terminal_creep_distance_ > 0.0) {
+    const bool two_stage_terminal = end_speed_ + 1e-6 < terminal_speed_cap_;
+    if (!terminal_brake_latched) {
+      final_stop_latched_ = false;
     }
-  } else if (end_speed_ >= 1e-3 && terminal_creep_distance_ > 0.0) {
-    const double terminal_boundary_s = std::max(0.0, initial_arc_s.back() - terminal_creep_distance_);
+    const double terminal_boundary_s =
+      std::max(0.0, initial_arc_s.back() - terminal_creep_distance_);
     const double conservative_acceleration = std::max(0.0, curr_accel);
     const double braking_distance = computeStableBrakingDistance(
       std::max(0.0, curr_vel), conservative_acceleration,
-      accel_, std::fabs(decel_), max_jerk_, control_dt_, end_speed_);
-    const double continuity_braking_distance = computeStableBrakingDistance(
-      std::max(0.0, curr_vel), curr_accel,
-      accel_, std::fabs(decel_), max_jerk_, control_dt_, end_speed_);
-    const double execution_reserve = computeTerminalExecutionReserve(
-      curr_vel, curr_accel, terminal_execution_delay_, terminal_safety_margin_);
+      accel_, std::fabs(decel_), max_jerk_, control_dt_, terminal_speed_cap_);
+    const double planning_cycle_guard =
+      std::max(0.0, curr_vel) * control_dt_ +
+      0.5 * std::max(0.0, curr_accel) * control_dt_ * control_dt_;
+    const double execution_delay_distance =
+      std::max(0.0, curr_vel) * terminal_execution_delay_ +
+      0.5 * std::max(0.0, curr_accel) *
+      terminal_execution_delay_ * terminal_execution_delay_;
+    if (terminal_brake_latched) {
+      if (latched_creep_delay_distance_ < 0.0) {
+        latched_creep_delay_distance_ = execution_delay_distance;
+      }
+    } else {
+      latched_creep_delay_distance_ = -1.0;
+    }
+    const double creep_delay_distance = terminal_brake_latched ?
+      latched_creep_delay_distance_ : execution_delay_distance;
 
     last_planning_diagnostics_.terminal_branch =
       nav2_core::SpeedPlanningTerminalBranch::GOAL_TERMINAL;
-    last_planning_diagnostics_.terminal_execution_reserve = execution_reserve;
+    last_planning_diagnostics_.terminal_execution_reserve = execution_delay_distance;
+    last_planning_diagnostics_.terminal_latched_reserve =
+      terminal_brake_latched ? latched_creep_delay_distance_ : -1.0;
     last_planning_diagnostics_.terminal_braking_distance = braking_distance;
     last_planning_diagnostics_.terminal_distance_available = terminal_boundary_s;
     last_planning_diagnostics_.terminal_brake_required = terminal_brake_latched ||
       !std::isfinite(braking_distance) ||
-      terminal_boundary_s <= braking_distance + execution_reserve + 1e-6;
+      terminal_boundary_s <=
+      braking_distance + execution_delay_distance + planning_cycle_guard + 1e-6;
+    const double creep_command_anchor = std::max(
+      0.0, terminal_boundary_s - std::max(0.0, creep_delay_distance));
+    last_planning_diagnostics_.terminal_anchor_s = creep_command_anchor;
 
-    // ── 制动锚点 ──────────────────────────────────────────────────────
-    // 裕度必须**贯穿整个制动过程**，而不只是决定"哪一周期开始刹"。
-    //
-    // 历史实现锁存后取 min(terminal_boundary_s, continuity_braking_distance)，
-    // 即**完全丢弃裕度**：滞后时 continuity_braking_distance ≥ 剩余距离，
-    // 于是锚点退回终点本身，制动全程零裕度——执行滞后每周期被重新宽恕。
-    // 实测吻合：裕度 0.6×0.35+0.05 = 0.26 m，而越点量约 26 cm。
-    //
-    // 但每周期按**当前速度**重算裕度同样不对：v 下降时裕度随之缩小
-    // （0.26→0.15→0.07），锚点滑向终点，裕度被逐周期蚕食；这也是历史注释里
-    // "false infeasible while the reserved distance is being consumed" 的来源。
-    //
-    // 正解是把裕度在 latch 沿**冻结一次**，之后锚点 = 剩余距离 − 冻结裕度，
-    // 等价于在世界坐标里钉死"终点前 0.26 m"这一个固定点，不随速度衰减、
-    // 也不随机器人前进而后退。仍与 continuity_braking_distance 取严，保留
-    // 原有的"路径被同目标替换而变长时不重新加速"保护。
-    if (terminal_brake_latched) {
-      if (latched_terminal_reserve_ < 0.0) {
-        latched_terminal_reserve_ = execution_reserve;   // 沿触发，冻结
+    // 控制命令必须提前一个执行延迟开始收敛，实际底盘才会在固定5cm边界达到0.05。
+    // 这里只有v×delay，没有旧版额外5cm safety margin；按现有路径采样点向后取整。
+    for (size_t index = 1; index < work.size(); ++index) {
+      if (initial_arc_s[index] + 1e-9 < creep_command_anchor) {
+        continue;
       }
-    } else {
-      latched_terminal_reserve_ = -1.0;                  // 未锁存则复位
+      lowerBound(work[index], terminal_speed_cap_, ConstraintSource::kTerminalCreep);
+      if (work[index].region_type.empty()) {
+        work[index].region_type = "terminal_reserve";
+      }
     }
-    const double reserve_for_anchor = terminal_brake_latched ?
-      latched_terminal_reserve_ : execution_reserve;
-    double anchor_s = std::max(0.0, terminal_boundary_s - reserve_for_anchor);
-    if (terminal_brake_latched && std::isfinite(continuity_braking_distance)) {
-      anchor_s = std::min(anchor_s, continuity_braking_distance);
+
+    if (two_stage_terminal) {
+      const double final_braking_distance = computeStableBrakingDistance(
+        std::max(std::max(0.0, curr_vel), terminal_speed_cap_), curr_accel,
+        accel_, std::fabs(decel_), max_jerk_, control_dt_, end_speed_);
+      const double delay_distance =
+        std::max(std::max(0.0, curr_vel), terminal_speed_cap_) *
+        terminal_execution_delay_;
+      const double required_final_stop_distance =
+        final_braking_distance + delay_distance;
+      const double final_stop_entry = std::min(
+        terminal_creep_distance_, required_final_stop_distance);
+      if (terminal_brake_latched &&
+        initial_arc_s.back() <= final_stop_entry + 1e-6)
+      {
+        final_stop_latched_ = true;
+      }
+      active_end_speed = final_stop_latched_ ?
+        std::max(0.0, end_speed_) : terminal_speed_cap_;
+
+      // Phase A把末点按end_speed_=0压低。最终停车尚未锁存时，只撤销这一条
+      // EndBoundary，不抬高障碍/曲率等更严格约束。
+      if (!final_stop_latched_ &&
+        work.back().constraint_source == ConstraintSource::kEndBoundary)
+      {
+        work.back().velocity_upper_bound = terminal_speed_cap_;
+        work.back().constraint_source = ConstraintSource::kTerminalCreep;
+      }
     }
-    last_planning_diagnostics_.terminal_latched_reserve = latched_terminal_reserve_;
-    last_planning_diagnostics_.terminal_anchor_s = anchor_s;
-    if (execution_reserve > 1e-9 || terminal_brake_latched) {
-      applyTerminalSpeedEnvelope(work, anchor_s, end_speed_);
-    }
+  } else if (!terminal_brake_latched) {
+    final_stop_latched_ = false;
+    latched_creep_delay_distance_ = -1.0;
   }
+  // TERMINAL_SPATIAL_STAGES_END
 
   const size_t n = work.size();
   // 2) 累计弧长 + 包络（Phase A 已由基类完成：障碍/巡航/曲率/末端蠕行区，
-  //    包络零点含障碍缓冲带，动态 reserve 已提前稳定蠕行边界）。
+  //    包络零点含障碍缓冲带，蠕行入口固定在终点前 terminal_creep_distance_）。
   std::vector<double> v_env(n, 0.0), arc_s(n, 0.0);
   v_env[0] = std::max(0.0, work[0].velocity_upper_bound);
   for (size_t i = 1; i < n; ++i) {
@@ -1136,13 +1138,24 @@ void SCurveSpeedPlanner::generateProfile(
   }
 
   // 3) Ruckig 生成 jerk 限制剖面（非对称 a_max / d_max=|decel_|）。
-  //    终点目标速度 = end_speed_（障碍停止时函数内部强制 0）。
+  //    终点目标速度由空间阶段决定；障碍停止时函数内部强制 0。
   std::vector<double> v_out, a_out, t_out;
+  // 已稳定进入蠕行阶段时，厘米级速度/加速度估计噪声不应被解释为必须先下穿
+  // 0.05再恢复的真实制动状态；最终停车锁存后则保留真实a继续规划0速。
+  double profile_start_acceleration = curr_accel;
+  if (!final_stop_latched_ &&
+    std::fabs(active_end_speed - terminal_speed_cap_) <= 1e-6 &&
+    std::fabs(curr_vel - terminal_speed_cap_) <= 0.005 &&
+    std::fabs(curr_accel) <= 0.05)
+  {
+    profile_start_acceleration = 0.0;
+  }
   const FeasibilityResult terminal_feas = generateRuckigProfile(
-    v_env, arc_s, curr_vel, curr_accel,
+    v_env, arc_s, curr_vel, profile_start_acceleration,
     accel_, std::fabs(decel_),
     max_jerk_, control_dt_,
-    v_out, a_out, t_out, end_speed_);
+    v_out, a_out, t_out, active_end_speed,
+    terminal_brake_latched, terminal_speed_cap_);
   last_planning_diagnostics_.terminal_infeasible = terminal_feas.infeasible();
   last_planning_diagnostics_.terminal_infeasible_kind =
     static_cast<int>(terminal_feas.kind);

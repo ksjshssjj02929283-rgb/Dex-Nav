@@ -13,8 +13,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef PID_CONTROLLER__PID_CONTROLLER_HPP_
-#define PID_CONTROLLER__PID_CONTROLLER_HPP_
+#ifndef NAV2_PID_CONTROLLER__PID_CONTROLLER_HPP_
+#define NAV2_PID_CONTROLLER__PID_CONTROLLER_HPP_
 
 #include <algorithm>
 #include <atomic>
@@ -27,6 +27,7 @@
 #include <vector>
 
 #include "rcl_interfaces/msg/set_parameters_result.hpp"
+#include "ruckig/ruckig.hpp"
 
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_lifecycle/lifecycle_node.hpp"
@@ -60,18 +61,22 @@ namespace nav2_pid_controller
  * Linear velocity: in APPROACHING the speed loop tracks the planned speed of
  * the closest trajectory point (sign from the longitudinal error) — decel
  * tails / curvature slowdowns / obstacle zeros are encoded per-point by the
- * speed planner; in the final-rotation stage a small signed compensation speed
- * is generated from the position error. A high/low-speed gain set is switched
+ * speed planner. Near the goal the position loop supplies direction while the
+ * Ruckig trajectory remains the sole velocity-magnitude reference, including
+ * the final creep-to-zero segment. During final rotation linear velocity is
+ * held at zero. A high/low-speed gain set is switched
  * at switch_speed_, plus a dedicated reverse gain set. Angular velocity is
- * controlled by a single station PID. A three-stage state machine
- * (APPROACHING -> ROTATING_TO_GOAL) governs the behavior. Trajectories (with
+ * controlled by a station PID while tracking and a jerk-limited angular
+ * trajectory at the fixed final pose. A terminal state machine
+ * (APPROACHING -> ROTATING_TO_GOAL, with explicit retry states) governs the behavior. Trajectories (with
  * per-point longitudinal_velocity / path_kappa) are consumed through the
  * nav2_core setTrajectory() extension; plain geometric paths are accepted
  * through setPlan() with a default desired speed.
  */
 class PIDController
   : public nav2_core::Controller,
-  public nav2_core::EndLocalizationCapability
+  public nav2_core::EndLocalizationCapability,
+  public nav2_core::TrajectoryTrackingReceiptCapability
 {
 public:
   PIDController() = default;
@@ -116,6 +121,8 @@ public:
 
   bool getLastTrajectoryTrackingTarget(
     double & velocity, double & acceleration) override;
+  bool getLastTrajectoryTrackingReceipt(
+    double & velocity, double & acceleration, double & relative_time) override;
 
   /**
    * @brief Compute the best command given the current pose and velocity
@@ -163,6 +170,7 @@ protected:
   {
     geometry_msgs::msg::PoseStamped pose;
     double curvature = 0.0;    // path_kappa
+    std::string region_type;
   };
 
   /// PID内部互斥控制阶段；强类型枚举避免与整数或其他状态误比较。
@@ -170,10 +178,12 @@ protected:
   {
     FINISH,
     APPROACHING,
-    ROTATING_TO_GOAL
+    ROTATING_TO_GOAL,
+    RETRY_ALIGN_TO_POSITION,
+    RETRY_TRANSLATE
   };
 
-  inline void regularizeAngle(double & angle)
+  static inline void regularizeAngle(double & angle)
   {
     angle = angle - 2.0 * M_PI * std::floor((angle + M_PI) / (2.0 * M_PI));
   }
@@ -233,6 +243,46 @@ protected:
     double feedforward_accel = 0.0);
 
   /**
+   * @brief Check the goal-relative longitudinal, lateral and radial errors
+   *        against one position window. margin expands the GoalChecker entry
+   *        tolerance only while final-position hold is already active.
+   */
+  static bool isWithinPositionWindow(
+    double longitudinal_error, double lateral_error, double radial_error,
+    double longitudinal_tolerance, double lateral_tolerance, double margin = 0.0)
+  {
+    const double safe_margin = std::max(0.0, margin);
+    const double longitudinal_limit = std::fabs(longitudinal_tolerance) + safe_margin;
+    const double lateral_limit = std::fabs(lateral_tolerance) + safe_margin;
+    const double radial_limit =
+      std::max(std::fabs(longitudinal_tolerance), std::fabs(lateral_tolerance)) + safe_margin;
+    return std::isfinite(longitudinal_error) && std::isfinite(lateral_error) &&
+           std::isfinite(radial_error) &&
+           std::fabs(longitudinal_error) < longitudinal_limit &&
+           std::fabs(lateral_error) < lateral_limit &&
+           std::fabs(radial_error) < radial_limit;
+  }
+
+  /**
+   * @brief Select a stable heading for centimetre-level final-position retry.
+   *
+   * If the lateral error in the final-goal frame is already acceptable, keep
+   * goal_yaw and correct only the signed longitudinal error. Otherwise select
+   * the forward/reverse point-bearing heading requiring less physical rotation.
+   */
+  static double selectPositionRetryHeading(
+    double current_yaw, double goal_yaw, double goal_dx, double goal_dy,
+    double lateral_tolerance, bool & reverse, bool & holds_goal_yaw);
+
+  bool confirmPositionRetryCapture(
+    bool position_in_tolerance, double goal_yaw,
+    double linear_velocity, double stopped_velocity);
+
+  void beginPositionRetry(
+    double current_yaw, double goal_yaw, double goal_dx, double goal_dy,
+    double goal_distance, double lateral_tolerance);
+
+  /**
    * @brief Angular PID control.
    * @param velocity current robot velocity (base frame)
    * @param e_theta heading error
@@ -242,6 +292,16 @@ protected:
     const geometry_msgs::msg::Twist & velocity,
     double e_theta,
     bool final_rotation = false);
+
+  bool planFinalAngularTrajectory(
+    double error, double angular_velocity, double angular_acceleration,
+    bool count_replan);
+  double sampleFinalAngularTrajectory(
+    double error, double angular_velocity, double angular_acceleration);
+  double updateMeasuredAngularAcceleration(double angular_velocity);
+  double finalAngularFallbackCommand(double error);
+
+  void resetAngularTrajectoryState();
 
   /**
    * @brief Human-readable name for controller stage logging.
@@ -285,22 +345,45 @@ protected:
   geometry_msgs::msg::PoseStamped current_ps_;
 
   // ---- tolerances / limits ----
-  double long_precision_ = 0.02, lat_precision_ = 0.04, o_precision_ = 0.5;
+  double long_precision_ = 0.02, lat_precision_ = 0.02, o_precision_ = 0.5;
   double angular_error_deadband_ = 0.008;
   double d_t_ = 0.05;  // control time step (1 / controller_frequency)
 
-  double max_v_ = 0.5, min_v_ = 0.0, max_v_inc_ = 0.5;  // linear velocity
+  double max_v_ = 0.5, min_v_ = 0.0;
+  double max_linear_accel_ = 0.5, max_linear_decel_ = 0.5;
   double max_w_ = 1.57, min_w_ = 0.0, max_w_inc_ = 1.57;  // angular velocity
 
   double k_theta_ = 0.5;            // heading-weighting factor
   double switch_speed_ = 0.1;       // high/low speed switch threshold
-  double default_desired_linear_vel_ = 0.15; // fallback speed for geometric paths
-  double desired_linear_vel_ = 0.0; // per-point desired velocity
-  double final_rotation_max_v_ = 0.05;
-  double final_rotation_linear_deadband_ = 0.005;
-  // 退出阈值可大于进入阈值形成迟滞；默认相等以保持未配置时的原行为。
-  double final_rotation_entry_distance_ = 0.03;
-  double final_rotation_exit_distance_ = 0.03;
+  double default_desired_linear_vel_ = 0.15;  // fallback speed for geometric paths
+  double desired_linear_vel_ = 0.0;  // per-point desired velocity
+  // 进入最终位置保持使用 GoalChecker 的到点容差；进入后只有误差超过
+  // “到点容差 + position_hold_hysteresis_”才退出，避免定位噪声反复切状态。
+  double position_hold_hysteresis_ = 0.02;
+  double final_rotation_max_w_ = 0.5;
+  double final_rotation_max_accel_ = 0.6;
+  double final_rotation_max_decel_ = 0.28;
+  double final_rotation_max_jerk_ = 1.2;
+  double final_rotation_brake_delay_ = 0.10;
+  double final_rotation_capture_yaw_ = 0.019;
+  double final_rotation_capture_w_ = 0.02;
+  double final_rotation_hold_exit_yaw_ = 0.02;
+  // Updated from the active GoalChecker on every control cycle. The angular
+  // hold exit must never be wider than the tolerance used to finish the task.
+  double active_goal_yaw_precision_ = std::numeric_limits<double>::infinity();
+  int final_rotation_capture_cycles_ = 2;
+  int final_rotation_hold_exit_cycles_ = 2;
+  double final_rotation_replan_near_yaw_ = 0.15;
+  double final_rotation_replan_far_yaw_error_ = 0.04;
+  double final_rotation_replan_far_w_error_ = 0.15;
+  double final_rotation_replan_near_yaw_error_ = 0.02;
+  double final_rotation_replan_near_w_error_ = 0.08;
+  int final_rotation_replan_error_cycles_ = 2;
+  double final_rotation_replan_cooldown_ = 0.2;
+  double final_rotation_fallback_max_w_ = 0.12;
+  double retry_position_max_v_ = 0.04;
+  double retry_heading_tolerance_ = 0.03;
+  int retry_position_capture_cycles_ = 3;
   double acc_max_ = 0.5;
 
   // upper speed bound from setSpeedLimit (taken min with trajectory speed)
@@ -311,6 +394,12 @@ protected:
   // ---- state machine ----
   ControllerStage curr_controller_stage_ = ControllerStage::FINISH;
   ControllerStage prev_controller_stage_ = ControllerStage::FINISH;
+  double retry_heading_ = 0.0;
+  bool retry_heading_valid_ = false;
+  bool retry_reverse_ = false;
+  bool retry_holds_goal_yaw_ = false;
+  int retry_position_capture_count_ = 0;
+  int retry_position_outside_count_ = 0;
 
   std::deque<double> theta_errors_;
   std::deque<double> longitude_errors_;
@@ -331,11 +420,43 @@ protected:
   bool last_speed_cmd_valid_ = false;
   double last_speed_cmd_ = 0.0;
   double speed_cmd_reseed_error_ = 0.3;
+  // NEGATIVE_FF_CONSISTENCY_GUARD_BEGIN
+  // PID末端低速保护：落后目标时撤销不一致负前馈；实测超速时开放有限
+  // 目标下探补刹。高速/RPP/目标0不受影响，保留完整主动制动权。
+  double negative_ff_guard_error_{0.01};
+  double negative_ff_max_target_speed_{0.10};
+  double negative_ff_overspeed_undercut_gain_{0.50};
+  double negative_ff_max_target_undercut_{0.03};
+  // NEGATIVE_FF_CONSISTENCY_GUARD_END
 
   // ---- angular-loop command integrator（同上速度环模式）----
   bool last_angular_cmd_valid_ = false;
   double last_angular_cmd_ = 0.0;
+  double last_angular_accel_ = 0.0;
+  bool last_angular_accel_valid_ = false;
   double angular_cmd_reseed_error_ = 0.3;
+
+  // ---- fixed-time final-yaw trajectory ----
+  // Unlike the former per-cycle local replan, this trajectory freezes the goal
+  // on entry and is sampled by real elapsed time. Actual yaw/rate deviations may
+  // trigger a bounded replan from the measured state.
+  ruckig::Trajectory<1> final_angular_trajectory_;
+  bool final_angular_trajectory_valid_ = false;
+  rclcpp::Time final_angular_trajectory_start_{0, 0, RCL_ROS_TIME};
+  rclcpp::Time final_angular_last_replan_{0, 0, RCL_ROS_TIME};
+  double final_angular_target_position_ = 0.0;
+  double final_angular_planned_position_ = 0.0;
+  double final_angular_planned_velocity_ = 0.0;
+  double final_angular_planned_acceleration_ = 0.0;
+  int final_angular_deviation_cycles_ = 0;
+  int final_angular_replan_count_ = 0;
+  bool final_angular_hold_ = false;
+  int final_angular_capture_count_ = 0;
+  int final_angular_hold_exit_count_ = 0;
+  bool measured_angular_state_valid_ = false;
+  double last_measured_angular_velocity_ = 0.0;
+  double measured_angular_acceleration_ = 0.0;
+  rclcpp::Time last_measured_angular_stamp_{0, 0, RCL_ROS_TIME};
 
   // ---- approach-stage target lock ----
   // getClosestWaypointID 的 ignore_dist：机器人与轨迹终点距离小于此值时直接
@@ -362,6 +483,9 @@ protected:
   bool last_trajectory_tracking_target_valid_ = false;
   double last_trajectory_tracking_target_v_ = 0.0;
   double last_trajectory_tracking_target_a_ = 0.0;
+  double last_trajectory_tracking_target_t_ = 0.0;
+  double sampled_trajectory_relative_time_ = 0.0;
+  std::string last_trajectory_region_type_;
 
   // ---- approach-stage rotation budget watchdog ----
   // 对机器人实际朝向变化量（非误差）逐周期积分；超预算强制停止。
@@ -410,4 +534,4 @@ protected:
 
 }  // namespace nav2_pid_controller
 
-#endif  // PID_CONTROLLER__PID_CONTROLLER_HPP_
+#endif  // NAV2_PID_CONTROLLER__PID_CONTROLLER_HPP_
