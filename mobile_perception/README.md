@@ -70,6 +70,12 @@ ros2 param get /mobile_control_action_node control_reference_frame
 ros2 param get /mobile_control_action_node xy_tolerance
 ```
 
+## 底盘位姿发布
+
+`pub_current_position.py` 订阅 `/localization/odometry/filtered`，每收到一帧有效
+Odom 就发布一帧 `/feedback/chassis_pose`，发布频率跟随融合 Odom（当前为 25 Hz），
+不再通过 TF 查询位姿。
+
 ## 使用方式
 
 ### 启动底盘直控

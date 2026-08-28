@@ -2,6 +2,8 @@
 
 本目录包含三个可独立运行的 Python 脚本，用于测试底盘速度响应，以及直线运动和原地转向的底盘直控效果。三个脚本彼此没有文件依赖，单独复制一个脚本也可以运行，但机器上必须具备对应的 ROS 2 接口和依赖。
 
+`test_pub_current_position.py` 是 `pub_current_position` 的单元测试，覆盖 Python 版本的有效 Odom 转换、非法坐标系过滤、QoS 配置、Odom 超时和日志 5 秒限频；同时对 C++ 版本的接口和日志契约进行静态检查。该测试使用测试替身，不需要启动 ROS 2 节点。
+
 ## 选择测试脚本
 
 | 想测试的内容 | 使用脚本 |
@@ -184,6 +186,23 @@ python3 chassis_test_common.py --help
 python3 precise_straight_action_test.py --help
 python3 precise_rotation_action_test.py --help
 ```
+
+## pub_current_position 单元测试
+
+在本目录执行：
+
+```bash
+python3 test_pub_current_position.py
+```
+
+测试重点：
+
+- 有效 `map -> base_link/base_footprint` Odom 能转换并发布到 `/feedback/chassis_pose`。
+- 非法坐标系 Odom 被丢弃并产生警告。
+- 没有有效 Odom 超过 2 秒会产生超时警告。
+- 同类问题日志最多每 5 秒打印一次。
+- 收到有效 Odom 后会打印恢复日志。
+- Python 和 C++ 的话题、QoS、二维位姿和日志配置保持一致。
 
 ## 注意事项
 

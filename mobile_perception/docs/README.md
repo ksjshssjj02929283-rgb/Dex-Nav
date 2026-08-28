@@ -41,6 +41,12 @@ ros2 launch mobile_perception mobile_control_action.launch.py
 
 - `config/mobile_control_action_params.yaml`
 
+## 底盘位姿发布
+
+`pub_current_position.py` 订阅 `/localization/odometry/filtered`，每收到一帧有效
+Odom 就发布一帧 `/feedback/chassis_pose`，发布频率跟随融合 Odom（当前为 25 Hz），
+不再通过 TF 查询位姿。
+
 ## 当前二维码检测与 Action 精控链路
 
 当前应用的二维码检测节点使用
