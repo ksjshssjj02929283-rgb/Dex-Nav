@@ -39,14 +39,15 @@ collision_monitor:
     #   运行时经 collision_monitor/set_polygon_padding 服务修改 padding，
     #   传 NaN 恢复到这里配的 default_padding。schedule_planner 只改 PolygonStop。
 
-    # 停车区: 底盘外接圆 + 0.2m 膨胀。max_points=3 容忍激光噪点。
+    # 停车区: 精确底盘轮廓 + 0.2m 膨胀。max_points=3 容忍激光噪点。
+    # tracking_path.padding=0 时进入贴边模式：仅左右膨胀 0.2m，前后不膨胀。
     # linorobot2: footprint 0.45×0.35, w1: footprint 0.70×0.58
     PolygonStop:
-#      type: "polygon"
+      type: "polygon"
 ##      points: [-0.3725, -0.25, -0.3725, 0.25, 0.3725, 0.25, 0.3725, -0.25]  # linorobot2
-#      points: [0.35, 0.29, 0.35, -0.29, -0.35, -0.29, -0.35, 0.29]  # w1: 精确 footprint
-      type: "circle"
-      radius: 0.46          # w1 底盘外接圆半径
+      points: [0.35, 0.29, 0.35, -0.29, -0.35, -0.29, -0.35, 0.29]  # w1: 精确 footprint
+      # type: "circle"
+      # radius: 0.46          # w1 底盘外接圆半径
       default_padding: 0.2  # 默认停障膨胀，等效于原来的 radius 0.66
       action_type: "stop"
       max_points: 3
