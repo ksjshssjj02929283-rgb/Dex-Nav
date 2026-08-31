@@ -33,7 +33,9 @@
   <BehaviorTree ID="MainTree">
     <PipelineSequence name="NavigateWithReplanning">
       <!--全局规划 距离目标0.5m内不进行全局规划 偏离0.5m进行重规划 规划频率0.02hz-->
-      <AdaptiveReplanning goal="{goal}" path="{path}" distance_threshold="0.5" max_deviation="0.5" hz="0.02">
+      <AdaptiveReplanning goal="{goal}" path="{path}" distance_threshold="0.5" max_deviation="0.5" hz="0.02"
+        path_obstacle_check_hz="2.0" invalid_path_confirmations="3" min_blocked_path_poses="3"
+        obstacle_replan_cooldown="2.5">
         <RecoveryNode number_of_retries="9999" name="ComputePathToPoseOuterRetry">
 
           <!-- 内层：规划失败后，依次尝试清 global 和 local，然后立即重规划 1 次 -->

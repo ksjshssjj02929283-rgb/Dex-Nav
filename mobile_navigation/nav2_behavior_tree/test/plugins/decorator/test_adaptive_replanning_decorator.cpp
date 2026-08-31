@@ -17,11 +17,15 @@
 #include <memory>
 #include <set>
 #include <thread>
+#include <utility>
+#include <vector>
 
 #include "../../test_behavior_tree_fixture.hpp"
 #include "nav2_behavior_tree/plugins/decorator/adaptive_replanning_decorator.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "nav_msgs/msg/path.hpp"
+#include "nav2_msgs/srv/is_path_valid.hpp"
+#include "nav2_util/node_thread.hpp"
 
 using namespace std::chrono_literals;
 
@@ -55,6 +59,32 @@ public:
 private:
   int tick_count_;
   BT::NodeStatus return_status_;
+};
+
+class PathValidityTestServer
+{
+public:
+  explicit PathValidityTestServer(std::vector<int32_t> invalid_indices)
+  : invalid_indices_(std::move(invalid_indices)),
+    node_(std::make_shared<rclcpp::Node>("adaptive_replanning_path_validity_server"))
+  {
+    service_ = node_->create_service<nav2_msgs::srv::IsPathValid>(
+      "is_path_valid",
+      [this](
+        const std::shared_ptr<nav2_msgs::srv::IsPathValid::Request>,
+        std::shared_ptr<nav2_msgs::srv::IsPathValid::Response> response)
+      {
+        response->invalid_pose_indices = invalid_indices_;
+        response->is_valid = invalid_indices_.empty();
+      });
+    thread_ = std::make_unique<nav2_util::NodeThread>(node_->get_node_base_interface());
+  }
+
+private:
+  std::vector<int32_t> invalid_indices_;
+  rclcpp::Node::SharedPtr node_;
+  rclcpp::Service<nav2_msgs::srv::IsPathValid>::SharedPtr service_;
+  std::unique_ptr<nav2_util::NodeThread> thread_;
 };
 
 class AdaptiveReplanningTestFixture : public nav2_behavior_tree::BehaviorTreeTestFixture
@@ -119,7 +149,7 @@ TEST_F(AdaptiveReplanningTestFixture, test_rate_limiting)
   // 在进行多次手动单步测试前，通过 halt() 将 Decorator 节点及其子节点重置为 IDLE 状态
   bt_node_->halt();
 
-  // 2. 紧接着第二次 tick (频限限制在 10Hz，即周期 0.1s)：应该被频限拦截，直接返回 SUCCESS 且不 tick 子节点
+  // 2. 频限等待期间返回 SUCCESS，让外层 ReactiveSequence 继续执行 FollowPath。
   EXPECT_EQ(bt_node_->executeTick(), BT::NodeStatus::SUCCESS);
   EXPECT_EQ(dummy_node_->getTickCount(), 1); // 运行计数依然是 1
 
@@ -389,6 +419,163 @@ TEST_F(AdaptiveReplanningTestFixture, test_empty_path_skip_deviation_check)
   // 2. 紧接着第二次 tick。虽然时间上未到频限限制，但因为路径为空，应该跳过偏离校验，走常规频限控制，被成功拦截
   EXPECT_EQ(bt_node_->executeTick(), BT::NodeStatus::SUCCESS);
   EXPECT_EQ(dummy_node_->getTickCount(), 1); // 计数依旧是 1，未因空路径产生异常崩溃
+}
+
+TEST_F(AdaptiveReplanningTestFixture, test_persistent_large_path_obstacle_triggers_once)
+{
+  PathValidityTestServer validity_server({2, 3, 4});
+  config_->input_ports["hz"] = "0.001";
+  config_->input_ports["path_obstacle_check_hz"] = "100.0";
+  config_->input_ports["invalid_path_confirmations"] = "2";
+  config_->input_ports["min_blocked_path_poses"] = "3";
+  bt_node_ = std::make_shared<nav2_behavior_tree::AdaptiveReplanning>(
+    "adaptive_replanning_large_obstacle", *config_);
+  bt_node_->setChild(dummy_node_.get());
+
+  geometry_msgs::msg::PoseStamped goal_pose;
+  goal_pose.header.frame_id = "map";
+  goal_pose.pose.position.x = 2.0;
+  config_->blackboard->set("goal", goal_pose);
+  nav_msgs::msg::Path path;
+  path.header.frame_id = "map";
+  for (int i = 0; i < 8; ++i) {
+    geometry_msgs::msg::PoseStamped pose;
+    pose.header.frame_id = "map";
+    pose.pose.position.x = 0.1 * i;
+    path.poses.push_back(pose);
+  }
+  config_->blackboard->set("path", path);
+
+  ASSERT_EQ(bt_node_->executeTick(), BT::NodeStatus::SUCCESS);
+  ASSERT_EQ(dummy_node_->getTickCount(), 1);
+  bt_node_->halt();
+
+  for (int i = 0; i < 30 && dummy_node_->getTickCount() < 2; ++i) {
+    std::this_thread::sleep_for(10ms);
+    EXPECT_NE(bt_node_->executeTick(), BT::NodeStatus::FAILURE);
+    bt_node_->halt();
+  }
+  EXPECT_EQ(dummy_node_->getTickCount(), 2)
+    << "Two confirmed checks of three consecutive blocked poses must trigger one replan";
+
+  // The successful replan clears the latch, so a following BT tick cannot retrigger immediately.
+  EXPECT_EQ(bt_node_->executeTick(), BT::NodeStatus::SUCCESS);
+  EXPECT_EQ(dummy_node_->getTickCount(), 2);
+}
+
+TEST_F(AdaptiveReplanningTestFixture, test_obstacle_replan_cooldown_delays_revalidation)
+{
+  PathValidityTestServer validity_server({2, 3, 4});
+  config_->input_ports["hz"] = "0.001";
+  config_->input_ports["path_obstacle_check_hz"] = "100.0";
+  config_->input_ports["invalid_path_confirmations"] = "1";
+  config_->input_ports["min_blocked_path_poses"] = "3";
+  config_->input_ports["obstacle_replan_cooldown"] = "0.15";
+  bt_node_ = std::make_shared<nav2_behavior_tree::AdaptiveReplanning>(
+    "adaptive_replanning_cooldown", *config_);
+  bt_node_->setChild(dummy_node_.get());
+
+  geometry_msgs::msg::PoseStamped goal_pose;
+  goal_pose.header.frame_id = "map";
+  goal_pose.pose.position.x = 2.0;
+  config_->blackboard->set("goal", goal_pose);
+  nav_msgs::msg::Path path;
+  path.header.frame_id = "map";
+  geometry_msgs::msg::PoseStamped pose;
+  pose.header.frame_id = "map";
+  path.poses.assign(8, pose);
+  config_->blackboard->set("path", path);
+
+  ASSERT_EQ(bt_node_->executeTick(), BT::NodeStatus::SUCCESS);
+  ASSERT_EQ(dummy_node_->getTickCount(), 1);
+
+  for (int i = 0; i < 30 && dummy_node_->getTickCount() < 2; ++i) {
+    std::this_thread::sleep_for(10ms);
+    EXPECT_NE(bt_node_->executeTick(), BT::NodeStatus::FAILURE);
+  }
+  ASSERT_EQ(dummy_node_->getTickCount(), 2);
+
+  // The obstacle remains present, but the replacement path must not be checked during cooldown.
+  for (int i = 0; i < 10; ++i) {
+    std::this_thread::sleep_for(10ms);
+    EXPECT_EQ(bt_node_->executeTick(), BT::NodeStatus::SUCCESS);
+  }
+  EXPECT_EQ(dummy_node_->getTickCount(), 2);
+
+  // Once cooldown expires, persistent blockage is eligible to trigger another replan.
+  for (int i = 0; i < 20 && dummy_node_->getTickCount() < 3; ++i) {
+    std::this_thread::sleep_for(10ms);
+    EXPECT_NE(bt_node_->executeTick(), BT::NodeStatus::FAILURE);
+  }
+  EXPECT_EQ(dummy_node_->getTickCount(), 3);
+}
+
+TEST_F(AdaptiveReplanningTestFixture, test_path_validity_keeps_polling_without_external_halt)
+{
+  PathValidityTestServer validity_server({3});
+  config_->input_ports["hz"] = "0.001";
+  config_->input_ports["path_obstacle_check_hz"] = "100.0";
+  config_->input_ports["invalid_path_confirmations"] = "2";
+  config_->input_ports["min_blocked_path_poses"] = "1";
+  bt_node_ = std::make_shared<nav2_behavior_tree::AdaptiveReplanning>(
+    "adaptive_replanning_continuous_poll", *config_);
+  bt_node_->setChild(dummy_node_.get());
+
+  geometry_msgs::msg::PoseStamped goal_pose;
+  goal_pose.header.frame_id = "map";
+  goal_pose.pose.position.x = 2.0;
+  config_->blackboard->set("goal", goal_pose);
+  nav_msgs::msg::Path path;
+  path.header.frame_id = "map";
+  geometry_msgs::msg::PoseStamped pose;
+  pose.header.frame_id = "map";
+  path.poses.assign(8, pose);
+  config_->blackboard->set("path", path);
+
+  ASSERT_EQ(bt_node_->executeTick(), BT::NodeStatus::SUCCESS);
+  ASSERT_EQ(dummy_node_->getTickCount(), 1);
+
+  // ReactiveSequence re-ticks this successful decorator while FollowPath is RUNNING;
+  // it does not halt the decorator between ticks. Reproduce that exact runtime pattern.
+  for (int i = 0; i < 40 && dummy_node_->getTickCount() < 2; ++i) {
+    std::this_thread::sleep_for(10ms);
+    EXPECT_NE(bt_node_->executeTick(), BT::NodeStatus::FAILURE);
+  }
+  EXPECT_EQ(dummy_node_->getTickCount(), 2)
+    << "Path validity polling must continue while the downstream controller is RUNNING";
+}
+
+TEST_F(AdaptiveReplanningTestFixture, test_single_blocked_path_pose_does_not_trigger)
+{
+  PathValidityTestServer validity_server({3});
+  config_->input_ports["hz"] = "0.001";
+  config_->input_ports["path_obstacle_check_hz"] = "100.0";
+  config_->input_ports["invalid_path_confirmations"] = "1";
+  config_->input_ports["min_blocked_path_poses"] = "3";
+  bt_node_ = std::make_shared<nav2_behavior_tree::AdaptiveReplanning>(
+    "adaptive_replanning_single_obstacle", *config_);
+  bt_node_->setChild(dummy_node_.get());
+
+  geometry_msgs::msg::PoseStamped goal_pose;
+  goal_pose.header.frame_id = "map";
+  goal_pose.pose.position.x = 2.0;
+  config_->blackboard->set("goal", goal_pose);
+  nav_msgs::msg::Path path;
+  path.header.frame_id = "map";
+  geometry_msgs::msg::PoseStamped pose;
+  pose.header.frame_id = "map";
+  path.poses.assign(8, pose);
+  config_->blackboard->set("path", path);
+
+  ASSERT_EQ(bt_node_->executeTick(), BT::NodeStatus::SUCCESS);
+  bt_node_->halt();
+  for (int i = 0; i < 10; ++i) {
+    std::this_thread::sleep_for(10ms);
+    EXPECT_EQ(bt_node_->executeTick(), BT::NodeStatus::SUCCESS);
+    bt_node_->halt();
+  }
+  EXPECT_EQ(dummy_node_->getTickCount(), 1)
+    << "A single occupied path pose is below the configured large-obstacle threshold";
 }
 
 TEST_F(AdaptiveReplanningTestFixture, test_missing_goal_falls_back_to_planning)

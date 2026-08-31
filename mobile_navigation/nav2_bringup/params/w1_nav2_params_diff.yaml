@@ -251,28 +251,37 @@ controller_server:
       # ============================================================
       # 1. MPPI 采样与运动学参数
       # ============================================================
-      time_steps: 40 # 56
-      model_dt: 0.1 # 0.05
-      batch_size: 1500
+      time_steps: 50 # 5.0 s prediction horizon at model_dt=0.1
+      model_dt: 0.15 # 0.05
+      batch_size: 1000
       vx_std: 0.25 # 0.2
       vy_std: 0.2
-      wz_std: 0.25 # 0.35 # 0.25 # 0.4
+      wz_std: 0.35 # 扩大转向采样，使 MPPI 能从贴边全局路径主动搜索更宽的局部绕行轨迹
       vx_max: 0.8 # 基础速度约束；运行时会被三阶段 profile 覆盖
       vx_min: -0.5 # 基础倒车约束；运行时会被三阶段 profile 覆盖
       vy_max: 0.5 # DiffDrive 下通常不生效
       wz_max: 0.75 # 基础角速度约束；运行时会被三阶段 profile 覆盖
       ax_max: 0.6
       ax_min: -0.6
-      az_max: 0.7
+      az_max: 0.5 # 平滑转向采样，减少角速度交替造成的折线
       jx_max: 1.0
-      jz_max: 1.5
+      jz_max: 1.0
       iteration_count: 1
       prune_distance: 2.5 # 3.7 # 1.7 (must )
-      temperature: 0.3
+      temperature: 3.0 # 防止 softmax 权重塌缩，保留有效高权重样本群
+      adaptive_temperature: true # 根据有效样本数 ESS 在线抑制权重塌缩
+      temperature_min: 1.0
+      temperature_max: 8.0
+      target_ess_ratio: 0.10 # 1000 条采样期望至少约 100 条有效轨迹
+      temperature_adaptation_gain: 0.35
       gamma: 0.015
       motion_model: "DiffDrive" #Ackermann, DiffDrive
       open_loop: false
       visualize: false
+      TrajectoryVisualizer:
+        trajectory_step: 5
+        time_step: 3
+        top_trajectories: 20
       reset_period: 1.0 # (only in Humble)
       regenerate_noises: false
       # CUDA critic 远端间隔降采样：近端全量评分，预测时域 50% 后每 2 点评分一次；末点始终保留
@@ -321,27 +330,29 @@ controller_server:
       # ── 权重矩阵：各 critic 三段权重统一调参入口 [align, track, approach] ──
       stage_weights:
         GoalCritic: [0.0, 0.0, 10.0] # 目标位置距离：趋近段推动轨迹收敛到目标点
-        GoalLateralCritic: [0.0, 10.0, 200.0] # 目标横向误差：减小目标相对车身的左右偏差
-        GoalLongitudinalCritic: [0.0, 0.0, 50.0] # 目标纵向误差：减小目标相对车身的前后偏差
+        GoalLateralCritic: [0.0, 0.0, 200.0] # 目标横向误差只用于approach；track开启会在曲线路径上提前横移并诱发掉头
+        GoalLongitudinalCritic: [0.0, 1.0, 50.0] # MPPI仅在外层切PID前的0.30~0.35m区间短暂使用approach；SCurve负责主要纵向减速，此处保留到位/越界约束并降权
         GoalAngleCritic: [0.0, 0.0, 100.0] # 目标朝向误差：降低一点抢角度倾向，减少final_yaw过冲抖动
-        PathAngleCritic: [18.0, 5.0, 2.0] # 路径朝向误差：使车头朝向前方路径点
-        PathAlignCritic: [5.0, 40.0, 10.0] # 路径贴合误差：使候选轨迹尽量贴合全局路径
-        PathFollowCritic: [0.0, 5.0, 2.0] # 路径推进：推动轨迹末端沿全局路径前进
+        PathAngleCritic: [18.0, 5.0, 10.0] # 路径朝向误差：使车头朝向前方路径点
+        PathAlignCritic: [5.0, 12.0, 2.0] # track 段降低路径吸附，让局部净空优先于贴合全局线
+        PathFollowCritic: [0.0, 6.0, 2.0] # track 平衡前向进展与横向绕行；过高会重新把轨迹拉回障碍物中心线
         PreferForwardCritic: [5.0, 10.0, 5.0] # 前进偏好：惩罚倒车运动，鼓励向前行驶
-        LinearVelocityCritic: [0.0, 10.0, 10.0]  # 线速度大小软约束：不偏置正/负方向，按当前阶段上限随剩余距离减速
+        LinearVelocityCritic: [0.0, 6.0, 10.0] # track 增强行驶收益，避免遇障时将停车当作优于绕行的局部最优；速度上界仍由SCurve速度帽约束
         AngularVelocityCritic: [0.0, 0.0, 12.0]      # 镜像线速度(朝向减速)+角速度平滑：approach 专用；提高第三阶段权重，让wz更跟随期望且更平滑
-        ObstaclesCritic: [5.0, 50.0, 0.0]   # 软斥力(repulsion)分段；致命 critical 全局常开
-        CostCritic: [5.0, 50.0, 0.0]      # 软代价分段；致命由 ObstaclesCritic 兜底
+        # 这里直接覆盖 ObstaclesCritic.repulsion_weight；数值过大会让停车压倒所有脱离轨迹。
+        ObstaclesCritic: [5.0, 4.0, 0.0] # track 小幅增强软净空梯度，促使轨迹在进入碰撞区前选择绕行侧
+        # CostCritic 内部还会除以 254，保持默认量级附近以避免与 ObstaclesCritic 双重放大。
+        CostCritic: [5.0, 5.0, 0.0]
 
       # ── 三段速度策略（per-stage 覆盖全局；只放速度，critic 子参数/权重不在此）──
-      stage_align:    # 对齐段：低 vx 专注转向、高 wz 快速对齐、允许小幅倒车机动
+      stage_align:    # 对齐段：倒车由显式 BackUp 恢复动作负责，MPPI 禁止正负速度反复切换
         vx_max: 0.5
-        vx_min: -0.2
+        vx_min: 0.0
         vy_max: 0.5
         wz_max: 0.75
       stage_track:    # 跟踪段：全速通行
         vx_max: 0.5
-        vx_min: -0.5
+        vx_min: 0.0 # 绕障跟踪禁止先倒车/原地掉头；approach 仍允许倒车修正
         vy_max: 0.5
         wz_max: 0.75
       stage_approach: # 趋近段：限制前后速度，减少厘米级停车时的越界和反复换向
@@ -367,6 +378,8 @@ controller_server:
         enabled: true
         cost_power: 1
         cost_weight: 4.0
+      GoalLongitudinalCritic:
+        overshoot_weight: 3.0 # 非对称终点代价，优先在目标容差内提前制动
       GoalAngleCritic:
         wrong_way_cost_ratio: 5.0 # 按当前真实最短角误差方向惩罚反向旋转，final_yaw 中仍然生效
         direction_deadband: 0.01 # 小于GoalChecker的0.02rad容差，避免“未到点但方向惩罚已关闭”的空档
@@ -376,14 +389,14 @@ controller_server:
       ObstaclesCritic:
         enabled: true
         cost_power: 1
-        repulsion_weight: 1.1 # 1.5
-        critical_weight: 20.0
+        repulsion_weight: 2.5
+        critical_weight: 25.0
         consider_footprint: true
         collision_cost: 100000.0
-        collision_margin_distance: 0.05 # 0.1
+        collision_margin_distance: 0.12
         near_goal_distance: 0.5
-        inflation_radius: 0.35 # 0.75 # 0.55 # 0.6 # (only in Humble)
-        cost_scaling_factor: 10.0 # (only in Humble)
+        inflation_radius: 0.75
+        cost_scaling_factor: 3.0
       CostCritic:
         enabled: true
         cost_power: 1
@@ -771,8 +784,9 @@ local_costmap:
       # plugins: ["obstacle_layer", "voxel_layer", "denoise_layer", "inflation_layer"]
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 10.0
-        inflation_radius: 0.35 # 0.75 # 0.55
+        # 0.70m 车体的 inscribed radius 约 0.35m；额外提供约 0.40m 的局部软净空带。
+        cost_scaling_factor: 3.0
+        inflation_radius: 0.35
       denoise_layer:
         plugin: "nav2_costmap_2d::DenoiseLayer"
         enabled: True

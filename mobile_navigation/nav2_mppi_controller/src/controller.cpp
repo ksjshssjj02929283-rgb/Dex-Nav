@@ -1427,7 +1427,9 @@ void MPPIController::updateProfileTransition()
 
 void MPPIController::visualize(nav_msgs::msg::Path transformed_plan)
 {
-  trajectory_visualizer_.add(optimizer_.getGeneratedTrajectories(), "Candidate Trajectories");
+  trajectory_visualizer_.addWeighted(
+    optimizer_.getGeneratedTrajectories(), optimizer_.getTrajectoryWeights(),
+    "High Weight Trajectories");
   trajectory_visualizer_.add(optimizer_.getOptimizedTrajectory(), "Optimal Trajectory");
   trajectory_visualizer_.visualize(std::move(transformed_plan));
 }

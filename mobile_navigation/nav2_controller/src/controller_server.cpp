@@ -862,6 +862,10 @@ void ControllerServer::computeControl()
 {
   std::lock_guard<std::mutex> lock(dynamic_params_lock_);
 
+  ++evaluation_run_seq_;
+  evaluation_travel_distance_ = 0.0;
+  evaluation_last_pose_valid_ = false;
+
   RCLCPP_INFO(get_logger(), "Received a goal, begin computing control effort.");
   if (odom_sub_) {
     const auto start_twist = getThresholdedTwist(odom_sub_->getTwist());
@@ -1073,6 +1077,11 @@ void ControllerServer::commitPlannerPathState(
 {
   end_pose_ = path.poses.back();
   end_pose_.header.frame_id = path.header.frame_id;
+  // The goal/path timestamp describes when planning completed, not the time at which every
+  // following control cycle should query TF. end_pose_ is retained for the whole FollowPath
+  // action, so a non-zero stamp quickly becomes older than map->odom and makes all staged-control
+  // and goal-check transforms fail. Time zero explicitly requests the latest available transform.
+  end_pose_.header.stamp = rclcpp::Time(0);
   if (update_type == PathUpdateType::NEW_GOAL) {
     goal_checkers_[current_goal_checker_]->reset();
     near_goal_progress_acceptance_reached_ = false;
@@ -2868,16 +2877,42 @@ void ControllerServer::computeAndPublishVelocity()
   feedback->speed = std::hypot(cmd_vel_2d.twist.linear.x, cmd_vel_2d.twist.linear.y);
 
   // noted by hz
-  // 找到最近的目标点，并计算到目标点的距离，然后作为feedback发布
-  // Find the closest pose to current pose on global path
+  // 找到最近的路径点，并计算剩余路径长度，然后作为 feedback 发布。
+  // getRobotPose() 返回的是 local costmap global frame（当前配置为 odom），而
+  // current_path_ 通常位于 map。最近点、XTE 和路径航向误差必须在同一坐标系计算，
+  // 否则会把路径末点误判为最近点，使 distance_to_goal 长期为 0。
   nav_msgs::msg::Path & current_path = current_path_;
+  geometry_msgs::msg::PoseStamped pose_in_path = pose;
+  bool pose_in_path_valid = true;
+  if (!current_path.header.frame_id.empty() &&
+    pose.header.frame_id != current_path.header.frame_id)
+  {
+    try {
+      rclcpp::Duration tolerance(
+        rclcpp::Duration::from_seconds(costmap_ros_->getTransformTolerance()));
+      // 评估日志不参与控制决策，显式使用 TF 队列中的最新变换，避免 pose 的采样时间戳
+      // 稍早于 map->odom 缓存区间时让整组统计值失效。
+      geometry_msgs::msg::PoseStamped latest_tf_pose = pose;
+      latest_tf_pose.header.stamp = rclcpp::Time(0);
+      pose_in_path_valid = nav_2d_utils::transformPose(
+        costmap_ros_->getTfBuffer(), current_path.header.frame_id,
+        latest_tf_pose, pose_in_path, tolerance);
+    } catch (const tf2::TransformException & ex) {
+      pose_in_path_valid = false;
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 5000,
+        "Unable to transform robot pose from '%s' to path frame '%s' for feedback metrics: %s",
+        pose.header.frame_id.c_str(), current_path.header.frame_id.c_str(), ex.what());
+    }
+  }
+
   auto find_closest_pose_idx =
-    [&pose, &current_path]() {
+    [&pose_in_path, &current_path]() {
       size_t closest_pose_idx = 0;
       double curr_min_dist = std::numeric_limits<double>::max();
       for (size_t curr_idx = 0; curr_idx < current_path.poses.size(); ++curr_idx) {
         double curr_dist = nav2_util::geometry_utils::euclidean_distance(
-          pose, current_path.poses[curr_idx]);
+          pose_in_path, current_path.poses[curr_idx]);
         if (curr_dist < curr_min_dist) {
           curr_min_dist = curr_dist;
           closest_pose_idx = curr_idx;
@@ -2886,9 +2921,11 @@ void ControllerServer::computeAndPublishVelocity()
       return closest_pose_idx;
     };
 
-  const size_t closest_pose_idx = find_closest_pose_idx();
-  feedback->distance_to_goal =
-    nav2_util::geometry_utils::calculate_path_length(current_path_, closest_pose_idx);
+  const size_t closest_pose_idx =
+    pose_in_path_valid && !current_path.poses.empty() ? find_closest_pose_idx() : 0u;
+  feedback->distance_to_goal = pose_in_path_valid ?
+    nav2_util::geometry_utils::calculate_path_length(current_path_, closest_pose_idx) :
+    std::numeric_limits<double>::quiet_NaN();
   action_server_->publish_feedback(feedback);
 
   auto t_feedback_end = std::chrono::high_resolution_clock::now();
@@ -2918,6 +2955,66 @@ void ControllerServer::computeAndPublishVelocity()
   auto total_ms = std::chrono::duration<double, std::milli>(t_total_end - t_total_start).count();
   auto measured_ms = pose_ms + progress_ms + odom_ms + compute_ms + feedback_ms + publish_ms;
   auto unaccounted_ms = total_ms - measured_ms;
+
+  if (evaluation_last_pose_valid_ &&
+    evaluation_last_pose_.header.frame_id == pose.header.frame_id)
+  {
+    evaluation_travel_distance_ += nav2_util::geometry_utils::euclidean_distance(
+      evaluation_last_pose_, pose);
+  }
+  evaluation_last_pose_ = pose;
+  evaluation_last_pose_valid_ = true;
+
+  double xte = 0.0;
+  double heading_error = 0.0;
+  if (pose_in_path_valid && !current_path.poses.empty()) {
+    const auto & reference = current_path.poses[closest_pose_idx].pose;
+    const double reference_yaw = tf2::getYaw(reference.orientation);
+    const double dx = pose_in_path.pose.position.x - reference.position.x;
+    const double dy = pose_in_path.pose.position.y - reference.position.y;
+    xte = -std::sin(reference_yaw) * dx + std::cos(reference_yaw) * dy;
+    heading_error = angles::shortest_angular_distance(
+      tf2::getYaw(pose_in_path.pose.orientation), reference_yaw);
+  }
+
+  double evaluation_goal_dist = std::numeric_limits<double>::quiet_NaN();
+  double goal_lon = 0.0;
+  double goal_lat = 0.0;
+  double goal_yaw_error = 0.0;
+  geometry_msgs::msg::PoseStamped transformed_goal;
+  try {
+    rclcpp::Duration tolerance(
+      rclcpp::Duration::from_seconds(costmap_ros_->getTransformTolerance()));
+    if (nav_2d_utils::transformPose(
+        costmap_ros_->getTfBuffer(), pose.header.frame_id, end_pose_,
+        transformed_goal, tolerance))
+    {
+      const double goal_yaw = tf2::getYaw(transformed_goal.pose.orientation);
+      const double dx = pose.pose.position.x - transformed_goal.pose.position.x;
+      const double dy = pose.pose.position.y - transformed_goal.pose.position.y;
+      goal_lon = std::cos(goal_yaw) * dx + std::sin(goal_yaw) * dy;
+      goal_lat = -std::sin(goal_yaw) * dx + std::cos(goal_yaw) * dy;
+      evaluation_goal_dist = std::hypot(dx, dy);
+      goal_yaw_error = angles::shortest_angular_distance(
+        tf2::getYaw(pose.pose.orientation), goal_yaw);
+    }
+  } catch (const tf2::TransformException &) {
+    // Evaluation telemetry never changes the control result.
+  }
+
+  RCLCPP_INFO_THROTTLE(
+    get_logger(), *get_clock(), 100,
+    "[CONTROL_EFFECT] time=%.6f goal_seq=%llu phase=%s controller=%s "
+    "xte=%.6f heading_err=%.6f goal_dist=%.6f goal_lon=%.6f goal_lat=%.6f "
+    "goal_yaw_err=%.6f cmd_vx=%.6f cmd_vy=%.6f cmd_wz=%.6f "
+    "odom_vx=%.6f odom_vy=%.6f odom_wz=%.6f travel_dist=%.6f "
+    "compute_ms=%.3f total_ms=%.3f",
+    now().seconds(), static_cast<unsigned long long>(evaluation_run_seq_),
+    controllerPhaseName(controller_phase_), active_controller_for_log_.c_str(),
+    xte, heading_error, evaluation_goal_dist, goal_lon, goal_lat, goal_yaw_error,
+    cmd_vel_2d.twist.linear.x, cmd_vel_2d.twist.linear.y, cmd_vel_2d.twist.angular.z,
+    raw_twist.x, raw_twist.y, raw_twist.theta,
+    evaluation_travel_distance_, compute_ms, total_ms);
 
   if (total_ms >= kSlowTimingWarnMs) {
     RCLCPP_WARN(

@@ -31,6 +31,11 @@ void NoiseGenerator::initialize(
 
   auto getParam = param_handler->getParamGetter(name);
   getParam(regenerate_noises_, "regenerate_noises", false);
+  int noise_seed = -1;
+  getParam(noise_seed, "noise_seed", -1);
+  if (noise_seed >= 0) {
+    generator_.seed(static_cast<std::mt19937::result_type>(noise_seed));
+  }
 
   if (regenerate_noises_) {
     noise_thread_ = std::thread(std::bind(&NoiseGenerator::noiseThread, this));
@@ -115,7 +120,6 @@ void NoiseGenerator::generateNoisedControls()
 {
   auto & s = settings_;
 
-  static thread_local std::mt19937 generator{std::random_device{}()};
   auto fillNormal = [&](models::Matrix & noises, float stddev) {
       noises.resize(s.batch_size, s.time_steps);
       if (stddev <= 0.0f) {
@@ -125,7 +129,7 @@ void NoiseGenerator::generateNoisedControls()
       std::normal_distribution<float> distribution(0.0f, stddev);
       for (Eigen::Index r = 0; r < noises.rows(); ++r) {
         for (Eigen::Index c = 0; c < noises.cols(); ++c) {
-          noises(r, c) = distribution(generator);
+          noises(r, c) = distribution(generator_);
         }
       }
     };

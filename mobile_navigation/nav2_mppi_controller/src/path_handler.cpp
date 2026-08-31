@@ -90,7 +90,9 @@ PathHandler::getGlobalPlanConsideringBoundsInCostmapFrame(
   if (!same_frame) {
     try {
       plan_to_costmap_tf = tf_buffer_->lookupTransform(
-        costmap_frame, plan_frame, global_pose.header.stamp,
+        // Local control needs the freshest map<->odom relation. Asking for the robot pose's
+        // exact (usually "now") stamp can block until the next TF sample on every cycle.
+        costmap_frame, plan_frame, tf2::TimePointZero,
         tf2::durationFromSec(transform_tolerance_));
     } catch (tf2::TransformException & ex) {
       RCLCPP_ERROR(
@@ -205,8 +207,12 @@ bool PathHandler::transformPose(
   }
 
   try {
+    geometry_msgs::msg::PoseStamped latest_pose = in_pose;
+    // Avoid waiting one complete TF publication period for an exact current-time transform.
+    // The latest available map<->odom transform is the correct control-time approximation.
+    latest_pose.header.stamp = rclcpp::Time(0);
     tf_buffer_->transform(
-      in_pose, out_pose, frame,
+      latest_pose, out_pose, frame,
       tf2::durationFromSec(transform_tolerance_));
     out_pose.header.frame_id = frame;
     return true;

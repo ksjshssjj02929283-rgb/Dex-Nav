@@ -599,6 +599,10 @@ protected:
   /// 无条件回到阶段一，不依赖上次导航是到达/取消/异常哪种方式结束。
   void resetStagedControlState();
   std::string active_controller_for_log_{"unset"};
+  uint64_t evaluation_run_seq_{0};
+  double evaluation_travel_distance_{0.0};
+  bool evaluation_last_pose_valid_{false};
+  geometry_msgs::msg::PoseStamped evaluation_last_pose_;
 
   // Whether we've published the single controller warning yet
   geometry_msgs::msg::PoseStamped end_pose_;
