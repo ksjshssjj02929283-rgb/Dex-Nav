@@ -47,6 +47,12 @@ public:
     control_dt_ = kControlDt;
   }
   using ReachabilitySpeedPlanner::generateProfile;
+  void setTwoStageTerminal(double execution_delay = 0.2)
+  {
+    end_speed_ = 0.0;
+    terminal_speed_cap_ = kEndSpeed;
+    terminal_execution_delay_ = execution_delay;
+  }
 };
 
 /// 直线路径 + 逐点包络上界。
@@ -63,6 +69,19 @@ std::vector<TrajPointWork> makeWork(const std::vector<double> & env)
 }
 
 std::vector<double> flatEnv(size_t n, double v) {return std::vector<double>(n, v);}
+
+void applyTwoStageTerminalEnvelope(std::vector<TrajPointWork> & work)
+{
+  const size_t creep_points = static_cast<size_t>(std::ceil(kStopDist / kStep));
+  for (size_t offset = 0; offset <= creep_points && offset < work.size(); ++offset) {
+    auto & point = work[work.size() - 1 - offset];
+    point.velocity_upper_bound = std::min(point.velocity_upper_bound, kEndSpeed);
+    point.constraint_source = ConstraintSource::kTerminalCreep;
+  }
+  work.back().velocity_upper_bound = 0.0;
+  work.back().constraint_source = ConstraintSource::kEndBoundary;
+  work.back().region_type = "terminal_handoff";
+}
 
 double maxAbsAccel(const std::vector<TrajPointWork> & w)
 {
@@ -286,4 +305,74 @@ TEST(ReachabilityProfile, BlockedStartIsNotLiftedByInitialVelocity)
   Backend b;
   b.generateProfile(w, 0.5, 0.0, 0.0, false);
   EXPECT_NEAR(w.front().velocity_upper_bound, 0.0, 1e-9);
+}
+
+// reach阶段1回归：未进入最终停车距离时不能把终点提前压成0，否则每周期重规划
+// 都可能在终点前过早刹停；此阶段必须稳定交接0.05。
+TEST(ReachabilityProfile, TwoStageTerminalKeepsCreepBeforeFinalStop)
+{
+  auto w = makeWork(flatEnv(60, kMaxSpeed));
+  applyTwoStageTerminalEnvelope(w);
+  Backend b;
+  b.setTwoStageTerminal();
+  b.generateProfile(w, kEndSpeed, 0.0, kMaxSpeed, true);
+
+  EXPECT_NEAR(w.back().velocity_upper_bound, kEndSpeed, 1e-9);
+  EXPECT_EQ(
+    b.getLastPlanningDiagnostics().terminal_branch,
+    nav2_core::SpeedPlanningTerminalBranch::GOAL_TERMINAL);
+}
+
+// ControllerServer 的终端锁存仍由“到0.05边界的剩余距离是否足够”触发。
+// 长路径不能提前锁存；距离不足时必须明确请求锁存，供后续动态0.05->0阶段使用。
+TEST(ReachabilityProfile, RequestsTerminalLatchFromJerkLimitedBrakingDistance)
+{
+  Backend b;
+  b.setTwoStageTerminal();
+
+  auto long_path = makeWork(flatEnv(200, kMaxSpeed));
+  applyTwoStageTerminalEnvelope(long_path);
+  b.generateProfile(long_path, kMaxSpeed, 0.0, kMaxSpeed, false);
+  EXPECT_FALSE(b.getLastPlanningDiagnostics().terminal_brake_required);
+
+  auto short_path = makeWork(flatEnv(30, kMaxSpeed));
+  applyTwoStageTerminalEnvelope(short_path);
+  b.generateProfile(short_path, kMaxSpeed, 0.0, kMaxSpeed, false);
+  EXPECT_TRUE(b.getLastPlanningDiagnostics().terminal_brake_required);
+}
+
+// 进入动态0.05->0停车距离后必须锁存零终点，使PID满足“规划与实测均停稳”
+// 的阶段门，避免停留在APPROACHING围绕厘米级位置点持续旋转。
+TEST(ReachabilityProfile, LatchedTerminalSwitchesEndpointToZero)
+{
+  Backend b;
+  b.setTwoStageTerminal();
+
+  auto before = makeWork(flatEnv(10, kMaxSpeed));  // 0.18m，尚未进入最终停车距离
+  applyTwoStageTerminalEnvelope(before);
+  b.generateProfile(before, kEndSpeed, 0.0, kMaxSpeed, true);
+  EXPECT_NEAR(before.back().velocity_upper_bound, kEndSpeed, 1e-9);
+
+  auto final = makeWork(flatEnv(2, kMaxSpeed));  // 0.02m，已进入动态停车距离
+  applyTwoStageTerminalEnvelope(final);
+  b.generateProfile(final, kEndSpeed, 0.0, kMaxSpeed, true);
+  EXPECT_NEAR(final.back().velocity_upper_bound, 0.0, 1e-9);
+}
+
+// 新目标会由ControllerServer清除terminal_brake_latched；Reachability内部的
+// final-stop锁存也必须同步复位，不能让下一段路径从一开始就瞄准零终点。
+TEST(ReachabilityProfile, NewGoalClearsFinalStopLatch)
+{
+  Backend b;
+  b.setTwoStageTerminal();
+
+  auto final = makeWork(flatEnv(2, kMaxSpeed));
+  applyTwoStageTerminalEnvelope(final);
+  b.generateProfile(final, kEndSpeed, 0.0, kMaxSpeed, true);
+  ASSERT_NEAR(final.back().velocity_upper_bound, 0.0, 1e-9);
+
+  auto next_goal = makeWork(flatEnv(60, kMaxSpeed));
+  applyTwoStageTerminalEnvelope(next_goal);
+  b.generateProfile(next_goal, 0.0, 0.0, kMaxSpeed, false);
+  EXPECT_NEAR(next_goal.back().velocity_upper_bound, kEndSpeed, 1e-9);
 }

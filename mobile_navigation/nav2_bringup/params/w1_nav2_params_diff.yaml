@@ -107,7 +107,7 @@ controller_server:
     controller_frequency: 10.0 # 控制器控制周期 # Related params: model_dt >= controller period; prediction horizon = time_steps * model_dt
     goal_checker_plugins: ["simple_goal_checker", "stopped_goal_checker", "position_goal_checker", "rotation_goal_checker", "longitudinal_goal_checker", "high_precision_goal_checker"] # goal_checker_plugin: "goal_checker" For Galactic and older
     controller_plugins: ["MPPIController", "DWBController", "RPPController", "GracefulController", "RotationShimController", "PIDController", "LatLonController", "PureRotationController", "StraightController"]
-    speed_planner_plugins: ["TrapezoidalSpeedPlanner", "SCurveSpeedPlanner", "ReachabilitySpeedPlanner"]
+    speed_planner_plugins: ["TrapezoidalSpeedPlanner", "ReachabilitySpeedPlanner"] # "SCurveSpeedPlanner"
     current_goal_checker: "high_precision_goal_checker"
     current_controller: "RPPController"
     # ③ 局部路径裁剪（10Hz，与控制/速度规划同频）：从机器人在线段上的投影点保留到真实 goal
@@ -123,7 +123,7 @@ controller_server:
     # ④ 速度规划（10Hz）：正常态从上一条已接受轨迹的空间匹配点继承v/a；
     # 偏差超过initial_motion门限才回到实测状态重初始化。置空""即禁用。
     # 运动学上限与下游链路对齐：对齐 MPPI(vx_max/ax_max/ax_min) 与 velocity_smoother(max_velocity/max_accel)
-    current_speed_planner: "SCurveSpeedPlanner"  # IMU+odom初始加速度实车验证：使用jerk受限S型曲线
+    current_speed_planner: "ReachabilitySpeedPlanner"  # IMU+odom初始加速度实车验证：使用jerk受限S型曲线
     # 规划起点的运动状态与其有效性门（继承上周期计划 vs 回到实测）。
     # 原名 speed_planning_boundary——它不是"边界"，是初值状态。
     initial_motion:
@@ -252,15 +252,15 @@ controller_server:
     # 每步取严/取松，无求解分支，故不存在无解与兜底。切换只需改
     # current_speed_planner，回退亦然。
     ReachabilitySpeedPlanner:
-      # ⚠ control_dt 未显式列出，取默认 0.1，**必须等于 1/controller_frequency**。
-      #   它是剖面首点加速度单周期允许变化的墙钟步长（首点每周期被下一版计划替换）。
-      #   改 controller_frequency 时必须在此显式覆写，否则起步会出现超 jerk 的加速度阶跃。
+      # control_dt必须等于1/controller_frequency。它是剖面首点加速度单周期允许
+      # 变化的墙钟步长（首点每周期被下一版计划替换）。
       plugin: "nav2_speed_planner::ReachabilitySpeedPlanner"
       max_speed: 0.6
       min_speed: 0.05
       accel: 0.5
       decel: -0.4
-      end_speed: 0.05
+      # Reachability两阶段终端：5cm区内先保持0.05，进入动态停车距离后锁存到0。
+      end_speed: 0.0
       terminal_speed_cap: 0.05
       terminal_creep_distance: 0.05
       obstacle_safety_margin: 0.25  # Footprint首次硬碰撞位置前保留的目标安全余量 [m]
@@ -294,6 +294,8 @@ controller_server:
       constant_velocity_dist_threshold: 0.1
       enable_constant_velocity_while_turning: False
       max_jerk: 0.5
+      control_dt: 0.1
+      terminal_execution_delay: 0.20
 
     staged_control:
       enabled: True

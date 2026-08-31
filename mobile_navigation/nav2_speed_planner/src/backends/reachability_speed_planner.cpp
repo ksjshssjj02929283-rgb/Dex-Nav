@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <limits>
 #include <memory>
 #include <string>
 #include <vector>
@@ -107,6 +108,66 @@ double segmentDuration(double v_a, double v_b, double ds)
   return ds / v_avg;
 }
 
+// REACH_TERMINAL_STAGE2_BEGIN
+/// 从 (v_start, a_start) 单调减速到 (v_end, 0) 所需的 jerk 受限距离。
+///
+/// 这里只计算终端状态机的空间触发距离，不生成速度剖面；真正的剖面仍完全由
+/// Reachability 的后向/前向滤波产生。三段加速度为：-jerk 建立制动、必要时
+/// 保持最大减速度、+jerk 释放到零。算法不包含也不链接 Ruckig。
+double computeJerkLimitedBrakingDistance(
+  double v_start, double a_start, double a_max, double d_max,
+  double max_jerk, double v_end)
+{
+  constexpr double kTolerance = 1e-9;
+  const double initial_velocity = std::max(v_start, 0.0);
+  const double target_velocity = std::max(v_end, 0.0);
+  if (initial_velocity <= target_velocity + kTolerance) {
+    return 0.0;
+  }
+
+  const double acceleration = std::clamp(a_start, -d_max, a_max);
+  const double velocity_loss = initial_velocity - target_velocity;
+  const double release_loss = acceleration < 0.0 ?
+    acceleration * acceleration / (2.0 * max_jerk) : 0.0;
+  if (velocity_loss + kTolerance < release_loss) {
+    // 当前负加速度即使立刻按 +jerk 释放也会越过目标速度，无法稳定单调到达。
+    return std::numeric_limits<double>::infinity();
+  }
+
+  const double peak_magnitude = std::sqrt(
+    std::max(0.0, max_jerk * velocity_loss + 0.5 * acceleration * acceleration));
+  const double peak_acceleration = -std::min(peak_magnitude, d_max);
+
+  double position = 0.0;
+  double velocity = initial_velocity;
+  double state_acceleration = acceleration;
+  const auto integrate = [&position, &velocity, &state_acceleration](
+    double duration, double jerk) {
+      if (duration <= kTolerance) {
+        return;
+      }
+      position += velocity * duration +
+        0.5 * state_acceleration * duration * duration +
+        jerk * duration * duration * duration / 6.0;
+      velocity += state_acceleration * duration +
+        0.5 * jerk * duration * duration;
+      state_acceleration += jerk * duration;
+    };
+
+  integrate((acceleration - peak_acceleration) / max_jerk, -max_jerk);
+  if (peak_magnitude > d_max + kTolerance) {
+    const double triangular_loss =
+      d_max * d_max / max_jerk -
+      acceleration * acceleration / (2.0 * max_jerk);
+    integrate(std::max(0.0, (velocity_loss - triangular_loss) / d_max), 0.0);
+  }
+  integrate(-peak_acceleration / max_jerk, max_jerk);
+
+  return std::isfinite(position) && position >= 0.0 ?
+         position : std::numeric_limits<double>::infinity();
+}
+// REACH_TERMINAL_STAGE2_END
+
 }  // namespace
 
 void ReachabilitySpeedPlanner::configure(
@@ -127,11 +188,18 @@ void ReachabilitySpeedPlanner::configure(
     node, plugin_name_ + ".control_dt", rclcpp::ParameterValue(0.1));
   node->get_parameter(plugin_name_ + ".control_dt", control_dt_);
   control_dt_ = std::max(control_dt_, 1e-3);
+  // REACH_TERMINAL_STAGE2_BEGIN
+  nav2_util::declare_parameter_if_not_declared(
+    node, plugin_name_ + ".terminal_execution_delay", rclcpp::ParameterValue(0.0));
+  node->get_parameter(
+    plugin_name_ + ".terminal_execution_delay", terminal_execution_delay_);
+  terminal_execution_delay_ = std::max(terminal_execution_delay_, 0.0);
+  // REACH_TERMINAL_STAGE2_END
 }
 
 void ReachabilitySpeedPlanner::generateProfile(
   std::vector<TrajPointWork> & work, double curr_vel, double curr_accel,
-  double cruise_limit, bool /*terminal_brake_latched*/)
+  double cruise_limit, bool terminal_brake_latched)
 {
   if (work.size() < 2) {
     return;
@@ -141,12 +209,103 @@ void ReachabilitySpeedPlanner::generateProfile(
     return;
   }
 
-  // 硬停配置（无末端蠕行区）：把终点锚成零，后向遍历自动生成收敛坡道。
-  if (end_speed_ < kZeroSpeed) {
-    lowerBound(work.back(), 0.0, ConstraintSource::kEndBoundary);
-  }
-
   const std::vector<double> arc_s = computeCumulativeArcLengths(work);
+
+  // REACH_TERMINAL_STAGE2_BEGIN
+  // 与 S 曲线保持同一终端状态契约，但仍由 Reachability 生成速度剖面：
+  //   1. 未进入最终停车距离：终点临时保持 terminal_speed_cap（生产为0.05）；
+  //   2. ControllerServer 已锁存终端制动，且进入动态停车距离：终点切为end_speed=0；
+  //   3. 障碍硬停独立处理，绝不被0.05蠕行阶段抬高。
+  size_t hard_zero_index = work.size();
+  for (size_t index = 1; index + 1 < work.size(); ++index) {
+    if (work[index].velocity_upper_bound < kZeroSpeed) {
+      hard_zero_index = index;
+      break;
+    }
+  }
+  const bool obstacle_or_hard_stop = hard_zero_index < work.size();
+  const bool two_stage_terminal = !obstacle_or_hard_stop &&
+    terminal_speed_cap_ >= kZeroSpeed && terminal_creep_distance_ > 0.0 &&
+    end_speed_ + 1e-6 < terminal_speed_cap_;
+  double active_end_speed = std::max(0.0, end_speed_);
+
+  if (obstacle_or_hard_stop) {
+    const double obstacle_boundary_s = arc_s[hard_zero_index];
+    const double braking_distance = computeJerkLimitedBrakingDistance(
+      std::max(curr_vel, 0.0), std::max(curr_accel, 0.0),
+      accel_, std::fabs(decel_), max_jerk_, 0.0);
+    const double planning_cycle_guard =
+      std::max(curr_vel, 0.0) * control_dt_ +
+      0.5 * std::max(curr_accel, 0.0) * control_dt_ * control_dt_;
+    last_planning_diagnostics_.terminal_branch =
+      nav2_core::SpeedPlanningTerminalBranch::PATH_OBSTACLE_STOP;
+    last_planning_diagnostics_.terminal_braking_distance = braking_distance;
+    last_planning_diagnostics_.terminal_distance_available = obstacle_boundary_s;
+    last_planning_diagnostics_.terminal_execution_reserve = 0.0;
+    last_planning_diagnostics_.terminal_anchor_s = obstacle_boundary_s;
+    last_planning_diagnostics_.terminal_brake_required =
+      !std::isfinite(braking_distance) ||
+      obstacle_boundary_s <= braking_distance + planning_cycle_guard + 1e-6;
+    active_end_speed = 0.0;
+  } else if (two_stage_terminal) {
+    if (!terminal_brake_latched) {
+      final_stop_latched_ = false;
+    }
+
+    const double terminal_boundary_s =
+      std::max(0.0, arc_s.back() - terminal_creep_distance_);
+    const double braking_distance = computeJerkLimitedBrakingDistance(
+      std::max(curr_vel, 0.0), std::max(curr_accel, 0.0),
+      accel_, std::fabs(decel_), max_jerk_, terminal_speed_cap_);
+    const double execution_delay_distance =
+      std::max(curr_vel, 0.0) * terminal_execution_delay_ +
+      0.5 * std::max(curr_accel, 0.0) *
+      terminal_execution_delay_ * terminal_execution_delay_;
+    const double planning_cycle_guard =
+      std::max(curr_vel, 0.0) * control_dt_ +
+      0.5 * std::max(curr_accel, 0.0) * control_dt_ * control_dt_;
+
+    last_planning_diagnostics_.terminal_branch =
+      nav2_core::SpeedPlanningTerminalBranch::GOAL_TERMINAL;
+    last_planning_diagnostics_.terminal_braking_distance = braking_distance;
+    last_planning_diagnostics_.terminal_distance_available = terminal_boundary_s;
+    last_planning_diagnostics_.terminal_execution_reserve = execution_delay_distance;
+    last_planning_diagnostics_.terminal_anchor_s = terminal_boundary_s;
+    last_planning_diagnostics_.terminal_brake_required = terminal_brake_latched ||
+      !std::isfinite(braking_distance) ||
+      terminal_boundary_s <= braking_distance + execution_delay_distance +
+      planning_cycle_guard + 1e-6;
+
+    const double final_braking_distance = computeJerkLimitedBrakingDistance(
+      std::max(std::max(curr_vel, 0.0), terminal_speed_cap_), curr_accel,
+      accel_, std::fabs(decel_), max_jerk_, end_speed_);
+    const double final_stop_entry = std::min(
+      terminal_creep_distance_,
+      final_braking_distance +
+      std::max(std::max(curr_vel, 0.0), terminal_speed_cap_) *
+      terminal_execution_delay_);
+    if (terminal_brake_latched && arc_s.back() <= final_stop_entry + 1e-6) {
+      final_stop_latched_ = true;
+    }
+    active_end_speed = final_stop_latched_ ? end_speed_ : terminal_speed_cap_;
+
+    // Phase A 已按 end_speed=0 压住末点。最终停车尚未锁存时，只撤销这条
+    // EndBoundary；障碍、曲率等更严格约束绝不抬高。
+    if (!final_stop_latched_ &&
+      work.back().constraint_source == ConstraintSource::kEndBoundary)
+    {
+      work.back().velocity_upper_bound = terminal_speed_cap_;
+      work.back().constraint_source = ConstraintSource::kTerminalCreep;
+    }
+  } else {
+    if (!terminal_brake_latched) {
+      final_stop_latched_ = false;
+    }
+    if (end_speed_ < kZeroSpeed) {
+      lowerBound(work.back(), 0.0, ConstraintSource::kEndBoundary);
+    }
+  }
+  // REACH_TERMINAL_STAGE2_END
 
   // 顺序：后向必须在前向之前。前向把 v[i+1] 压到可达值时结果仍不低于 v[i]，
   // 不会破坏已生成的减速坡道；反序则加速可行性无法保证。
@@ -168,13 +327,13 @@ void ReachabilitySpeedPlanner::generateProfile(
   // 形态二：终端距离物理上不够减到 end_speed。
   // 剖面已在满减速下尽力，这是**真实的物理不可行**，不是缺陷——
   // 与"求解器没算出来"分开表达，前者消费侧须响应，后者是开发者的事。
-  if (end_speed_ >= kZeroSpeed &&
-    work.back().velocity_upper_bound > end_speed_ + 1e-2)
+  if (active_end_speed >= kZeroSpeed &&
+    work.back().velocity_upper_bound > active_end_speed + 1e-2)
   {
     last_planning_diagnostics_.terminal_infeasible = true;
     last_planning_diagnostics_.terminal_infeasible_kind =
       static_cast<int>(FeasibilityResult::Kind::kPhysical);
-    last_planning_diagnostics_.solver_target_v = end_speed_;
+    last_planning_diagnostics_.solver_target_v = active_end_speed;
     last_planning_diagnostics_.solver_v0 = work.back().velocity_upper_bound;
     last_planning_diagnostics_.solver_distance = arc_s.back();
   }

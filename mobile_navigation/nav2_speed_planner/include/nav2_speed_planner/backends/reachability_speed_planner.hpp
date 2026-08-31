@@ -107,6 +107,15 @@ protected:
   /// 内部点之间用段通过时长 `Δs/v` 是对的（机器人确实要走那么久），但首点若也
   /// 用它，静止起步时 `Δs/v → ∞` 会让 jerk 约束形同虚设。
   double control_dt_{0.1};
+
+  // REACH_TERMINAL_STAGE2_BEGIN
+  // reach阶段1没有消费 terminal_brake_latched，end_speed=0.05 时控制器永远
+  // 等不到规划目标归零。这里只保存 Reachability 自己的两阶段终端状态：
+  // ControllerServer 的锁存表示已经进入单调终端过程；final_stop_latched_ 则
+  // 只在剩余距离进入动态 0.05->0 停车距离后置位。
+  double terminal_execution_delay_{0.0};
+  bool final_stop_latched_{false};
+  // REACH_TERMINAL_STAGE2_END
 };
 
 }  // namespace nav2_speed_planner

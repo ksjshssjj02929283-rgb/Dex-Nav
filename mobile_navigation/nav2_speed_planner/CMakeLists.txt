@@ -14,7 +14,7 @@ find_package(nav_msgs REQUIRED)
 find_package(nav_interfaces REQUIRED)
 find_package(pluginlib REQUIRED)
 find_package(tf2_ros REQUIRED)
-find_package(ruckig REQUIRED)  # jerk 限制轨迹生成（/usr/local，S 型速度曲线）
+# find_package(ruckig REQUIRED)  # jerk 限制轨迹生成（/usr/local，S 型速度曲线）
 
 nav2_package()
 set(CMAKE_CXX_STANDARD 17)
@@ -62,7 +62,7 @@ add_library(${library_name} SHARED
   src/constraints/terminal_constraint.cpp
   src/constraints/zone_constraint.cpp
   src/backends/trapezoidal_speed_planner.cpp
-  src/backends/scurve_speed_planner.cpp
+  # src/backends/scurve_speed_planner.cpp
   # 纯可达性滤波后端（无求解、无失败分支）
   src/backends/reachability_speed_planner.cpp)
 
@@ -70,15 +70,15 @@ ament_target_dependencies(${library_name}
   ${dependencies}
 )
 
-target_link_libraries(${library_name} ruckig::ruckig)
+# target_link_libraries(${library_name} ruckig::ruckig)
 
-add_executable(speed_profile_gen src/tools/speed_profile_gen.cpp)
-target_link_libraries(speed_profile_gen ${library_name} ruckig::ruckig)
-ament_target_dependencies(speed_profile_gen ${dependencies})
+# add_executable(speed_profile_gen src/tools/speed_profile_gen.cpp)
+# target_link_libraries(speed_profile_gen ${library_name} ruckig::ruckig)
+# ament_target_dependencies(speed_profile_gen ${dependencies})
 
-install(TARGETS speed_profile_gen
-  RUNTIME DESTINATION lib/${PROJECT_NAME}
-)
+# install(TARGETS speed_profile_gen
+#   RUNTIME DESTINATION lib/${PROJECT_NAME}
+# )
 
 install(PROGRAMS
   scripts/plot_speed_profiles.py
@@ -108,18 +108,18 @@ if(BUILD_TESTING)
   target_link_libraries(test_initial_motion_arbiter ${support_library_name})
   ament_target_dependencies(test_initial_motion_arbiter ${dependencies})
 
-  ament_add_gtest(test_scurve_profile test/test_scurve_profile.cpp)
-  target_link_libraries(test_scurve_profile ${library_name} ruckig::ruckig)
-  ament_target_dependencies(test_scurve_profile ${dependencies})
+  # ament_add_gtest(test_scurve_profile test/test_scurve_profile.cpp)
+  # target_link_libraries(test_scurve_profile ${library_name} ruckig::ruckig)
+  # ament_target_dependencies(test_scurve_profile ${dependencies})
 
   ament_add_gtest(test_reachability_profile test/test_reachability_profile.cpp)
-  target_link_libraries(test_reachability_profile ${library_name} ruckig::ruckig)
+  target_link_libraries(test_reachability_profile ${library_name})
   ament_target_dependencies(test_reachability_profile ${dependencies})
 
   # T/S 端到端剖面测试（0.3/0.5/0.75/1.0m 直线，静止起步；导出 CSV 供画图）。
-  ament_add_gtest(test_speed_profiles test/test_speed_profiles.cpp)
-  target_link_libraries(test_speed_profiles ${library_name} ruckig::ruckig)
-  ament_target_dependencies(test_speed_profiles ${dependencies})
+  # ament_add_gtest(test_speed_profiles test/test_speed_profiles.cpp)
+  # target_link_libraries(test_speed_profiles ${library_name} ruckig::ruckig)
+  # ament_target_dependencies(test_speed_profiles ${dependencies})
 endif()
 
 ament_export_include_directories(include)

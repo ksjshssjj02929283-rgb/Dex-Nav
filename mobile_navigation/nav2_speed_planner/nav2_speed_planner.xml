@@ -6,13 +6,13 @@
                 把局部几何路径升级为带速度的 RobotTrajectory（恒加速度参考内核）。
             </description>
         </class>
-        <class type="nav2_speed_planner::SCurveSpeedPlanner" base_class_type="nav2_core::SpeedPlanner">
+        <!--<class type="nav2_speed_planner::SCurveSpeedPlanner" base_class_type="nav2_core::SpeedPlanner">
             <description>
                 S 型（jerk 限制速度曲线）规划器：基于 Ruckig 在线生成，复用基类速度包络，
                 前瞻 vmax 使接近弯/障碍提前减速；jerk/加速度严格不超限、非对称加减速，
                 填充 acceleration/relative_time。参数 max_jerk / control_dt。
             </description>
-        </class>
+        </class>-->
         <class type="nav2_speed_planner::ReachabilitySpeedPlanner" base_class_type="nav2_core::SpeedPlanner">
             <description>
                 纯可达性滤波规划器：后向减速 + 前向加速两遍遍历，均带 jerk 斜率限制。
