@@ -587,7 +587,7 @@ controller_server:
       o_precision: 0.5
       angular_error_deadband: 0.008
       max_v: 0.5
-      min_v: 0.0
+      min_v: 0.01  # 位置PID非零输出下限[m/s]；速度规划上限更低或为0时以上限为准
       max_v_inc: 0.5
       max_w: 0.75
       min_w: 0.02

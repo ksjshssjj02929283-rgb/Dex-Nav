@@ -887,10 +887,10 @@ geometry_msgs::msg::TwistStamped PIDController::computeVelocityCommands(
           break;
         }
       case ControllerStage::APPROACHING: {
-          active_branch = "approaching_traj_speed";
-          // 期望速度 = 最近轨迹点的规划速度（速度环跟踪目标，方向由纵向误差决定）：
-          // 减速尾段/曲率限速/障碍零速已由速度规划层逐点编码，跟踪即可；
-          // desired_v=0（障碍置零点）时 LinearSpeedControl 直接输出 0。
+          active_branch = "approaching_position_pid";
+          // 规划速度只作为位置PID的速度上限；位置误差越小，位置PID给出的目标速度
+          // 越低，但非零目标不低于min_v_。减速尾段、曲率限速和障碍零速仍由
+          // 速度规划层逐点编码，其中desired_v=0是硬停车上限。
           // 末端停车精度由 ROTATING_TO_GOAL 入口的 final goal 容差门控接管。
           // err_x < 0（参考点在机器人身后 = 越过目标）允许负速度倒回——
           // 距离收敛优先于"只前进"；倒回上限不被末端蠕行速度钳死，
@@ -907,7 +907,7 @@ geometry_msgs::msg::TwistStamped PIDController::computeVelocityCommands(
           const double heading_scale = headingSpeedScale(err_theta);
           const double max_cmd_v = raw_max_cmd_v * heading_scale;
           cmd_vel.twist.linear.x = LinearSpeedControl(
-            velocity, err_x, max_cmd_v, desired_v, 0.0, traj_ff_accel);
+            velocity, err_x, max_cmd_v, min_v_, 0.0, traj_ff_accel);
           if (have_traj_speed) {
             last_trajectory_tracking_target_valid_ = true;
             last_trajectory_tracking_target_v_ = desired_linear_vel_;
@@ -920,7 +920,7 @@ geometry_msgs::msg::TwistStamped PIDController::computeVelocityCommands(
           active_branch = "rotating_to_goal_signed_speed_pid";
           cmd_vel.twist.linear.x = LinearSpeedControl(
             velocity, final_rotation_linear_error, final_rotation_max_v_,
-            final_rotation_max_v_, final_rotation_linear_deadband_);
+            min_v_, final_rotation_linear_deadband_);
           cmd_vel.twist.angular.z = AngularSpeedControl(velocity, err_theta, true);
           break;
         }
@@ -1069,12 +1069,16 @@ double PIDController::LinearSpeedControl(
     return 0.0;
   }
 
-  double linear_limit = std::fabs(max_linear_speed);
-  if (!std::isfinite(linear_limit) || linear_limit <= 0.0) {
+  // 调用方显式给出的有限上限（包括0）必须原样生效；NaN才表示没有显式上限。
+  // 这样速度规划的障碍零速不会被default_desired_linear_vel_重新抬高。
+  double linear_limit = std::numeric_limits<double>::quiet_NaN();
+  if (std::isfinite(max_linear_speed)) {
+    linear_limit = std::fabs(max_linear_speed);
+  } else {
     linear_limit = std::fabs(desired_linear_vel_) * 1.5;
-  }
-  if (!std::isfinite(linear_limit) || linear_limit <= 0.0) {
-    linear_limit = std::fabs(default_desired_linear_vel_);
+    if (!std::isfinite(linear_limit) || linear_limit <= 0.0) {
+      linear_limit = std::fabs(default_desired_linear_vel_);
+    }
   }
   if (std::isfinite(speed_limit_)) {
     linear_limit = std::min(linear_limit, std::fabs(speed_limit_));

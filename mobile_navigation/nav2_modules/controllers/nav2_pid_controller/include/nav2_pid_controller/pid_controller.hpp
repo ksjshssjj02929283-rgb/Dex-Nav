@@ -57,17 +57,13 @@ namespace nav2_pid_controller
  * @class nav2_pid_controller::PIDController
  * @brief A nav2_core::Controller plugin implementing a PID local controller.
  *
- * Linear velocity: in APPROACHING the speed loop tracks the planned speed of
- * the closest trajectory point (sign from the longitudinal error) — decel
- * tails / curvature slowdowns / obstacle zeros are encoded per-point by the
- * speed planner; in the final-rotation stage a small signed compensation speed
- * is generated from the position error. A high/low-speed gain set is switched
- * at switch_speed_, plus a dedicated reverse gain set. Angular velocity is
- * controlled by a single station PID. A three-stage state machine
- * (APPROACHING -> ROTATING_TO_GOAL) governs the behavior. Trajectories (with
- * per-point longitudinal_velocity / path_kappa) are consumed through the
- * nav2_core setTrajectory() extension; plain geometric paths are accepted
- * through setPlan() with a default desired speed.
+ * 线速度：APPROACHING阶段由位置环根据纵向误差生成带符号的目标速度，规划速度
+ * 作为硬上限，min_v_作为非零运动下限；速度环负责跟踪该目标。规划层编码的减速
+ * 尾段、曲率限速和障碍零速不会被位置环突破。最终转向阶段复用同一串级结构生成
+ * 小幅线性纠偏速度。控制器按switch_speed_切换高低速增益，倒退使用独立增益组。
+ * 角速度由单独的位置PID控制。控制阶段为APPROACHING -> ROTATING_TO_GOAL。
+ * 带longitudinal_velocity / path_kappa的轨迹通过nav2_core::setTrajectory()扩展传入；
+ * 普通几何路径通过setPlan()传入，并使用默认期望速度。
  */
 class PIDController
   : public nav2_core::Controller,

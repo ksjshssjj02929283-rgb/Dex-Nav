@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <utility>
 
 #include "gtest/gtest.h"
 #include "geometry_msgs/msg/twist.hpp"
@@ -51,8 +52,19 @@ public:
 
   void setDesired(double v) {desired_linear_vel_ = v;}
   void setDefaultDesired(double v) {default_desired_linear_vel_ = v;}
+  void setMinimumSpeed(double v) {min_v_ = v;}
+  void setPositionP(double kp)
+  {
+    nav2_controller_common::PidConf station;
+    station.kp = kp;
+    high_speed_station_pid_conf_ = station;
+    low_speed_station_pid_conf_ = station;
+    reverse_station_pid_conf_ = station;
+    station_nav2_pid_controller_.Init(station);
+  }
   void invalidateIntegrator() {last_speed_cmd_valid_ = false;}
   double lastCmd() const {return last_speed_cmd_;}
+  double lastTarget() const {return last_linear_target_v_;}
   int speedIntegratorSaturation() const
   {
     return speed_nav2_pid_controller_.IntegratorSaturationStatus();
@@ -131,6 +143,36 @@ TEST(PidSpeedLoop, fullStopClearsIntegral)
   EXPECT_EQ(stop_cmd, 0.0);
   EXPECT_EQ(pid.speedIntegratorSaturation(), 0);
   EXPECT_EQ(pid.lastCmd(), 0.0);
+}
+
+// 规划速度只提供上限：位置误差减小时，位置PID目标速度应随之下降；
+// min_v只托住非零目标，不能突破更低的规划上限或障碍零速。
+TEST(PidSpeedLoop, positionPidIsBoundedByPlanAndMinimumSpeed)
+{
+  auto target_for = [](double distance, double planned_limit) {
+      SpeedLoopPID pid;
+      pid.setPositionP(1.0);
+      pid.setMinimumSpeed(0.01);
+      const double cmd = pid.run(0.0, distance, planned_limit, 0.01);
+      return std::pair<double, double>{cmd, pid.lastTarget()};
+    };
+
+  const auto far = target_for(0.20, 0.05);
+  EXPECT_NEAR(far.second, 0.05, 1e-9);  // 位置PID输出0.20，被规划速度限到0.05
+
+  const auto near = target_for(0.03, 0.05);
+  EXPECT_NEAR(near.second, 0.03, 1e-9);  // 距离变近后，目标速度低于规划速度
+
+  const auto very_near = target_for(0.005, 0.05);
+  EXPECT_NEAR(very_near.second, 0.01, 1e-9);  // 非零目标由min_v托底
+
+  const auto tighter_plan = target_for(0.02, 0.008);
+  EXPECT_NEAR(tighter_plan.second, 0.008, 1e-9);  // 规划上限优先于min_v
+  EXPECT_LE(std::fabs(tighter_plan.first), 0.008 + 1e-9);
+
+  const auto obstacle_stop = target_for(0.20, 0.0);
+  EXPECT_EQ(obstacle_stop.first, 0.0);
+  EXPECT_EQ(obstacle_stop.second, 0.0);
 }
 
 // 符号感知输出界：前向目标是上限（持续正前馈不超目标）、
