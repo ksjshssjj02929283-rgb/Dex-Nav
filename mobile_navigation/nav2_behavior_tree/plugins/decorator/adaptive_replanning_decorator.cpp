@@ -40,12 +40,24 @@ AdaptiveReplanning::AdaptiveReplanning(
 {
   node_ = config().blackboard->get<rclcpp::Node::SharedPtr>("node");
   tf_ = config().blackboard->get<std::shared_ptr<tf2_ros::Buffer>>("tf_buffer");
+  // The BT tick itself runs inside bt_navigator's executor. A client attached to that same
+  // callback group cannot receive its response while the tick is active, leaving the first
+  // request permanently pending. Give path validation a private group which this node spins.
+  path_validity_callback_group_ = node_->create_callback_group(
+    rclcpp::CallbackGroupType::MutuallyExclusive, false);
+  path_validity_executor_.add_callback_group(
+    path_validity_callback_group_, node_->get_node_base_interface());
+  path_validity_client_ = node_->create_client<nav2_msgs::srv::IsPathValid>(
+    "is_path_valid", rmw_qos_profile_services_default, path_validity_callback_group_);
 
   node_->get_parameter("transform_tolerance", transform_tolerance_);
 }
 
 BT::NodeStatus AdaptiveReplanning::tick()
 {
+  // Consume completed IsPathValid responses without blocking navigation control.
+  path_validity_executor_.spin_some();
+
   // 1. Get current goal and check if goal has changed
   geometry_msgs::msg::PoseStamped current_goal;
   if (!getInput("goal", current_goal)) {
@@ -95,6 +107,11 @@ BT::NodeStatus AdaptiveReplanning::tick()
     last_goal_ = current_goal;
     has_last_goal_ = true;
     has_planned_once_ = false;
+    path_blocked_latched_ = false;
+    invalid_path_count_ = 0;
+    path_validity_request_pending_ = false;
+    pending_path_validity_ = {};
+    path_validation_cooldown_until_ = std::chrono::steady_clock::time_point{};
   }
 
   // 2. Get current robot pose
@@ -126,7 +143,8 @@ BT::NodeStatus AdaptiveReplanning::tick()
   bool deviated = false;
   nav_msgs::msg::Path path;
   double min_dist = 0.0;
-  if (!is_first_planning_ && getInput("path", path) && !path.poses.empty()) {
+  const bool has_path = getInput("path", path) && !path.poses.empty();
+  if (!is_first_planning_ && has_path) {
     min_dist = std::numeric_limits<double>::max();
     for (const auto & pose : path.poses) {
       double d = nav2_util::geometry_utils::euclidean_distance(
@@ -138,6 +156,75 @@ BT::NodeStatus AdaptiveReplanning::tick()
     if (min_dist > max_deviation) {
       deviated = true;
     }
+  }
+
+  // Poll planner_server's global-costmap validity service without blocking the BT loop.
+  double path_obstacle_check_hz = 2.0;
+  int invalid_path_confirmations = 4;
+  int min_blocked_path_poses = 3;
+  double obstacle_replan_cooldown = 2.5;
+  getInput("path_obstacle_check_hz", path_obstacle_check_hz);
+  getInput("invalid_path_confirmations", invalid_path_confirmations);
+  getInput("min_blocked_path_poses", min_blocked_path_poses);
+  getInput("obstacle_replan_cooldown", obstacle_replan_cooldown);
+  path_obstacle_check_hz = std::max(0.1, path_obstacle_check_hz);
+  invalid_path_confirmations = std::max(1, invalid_path_confirmations);
+  min_blocked_path_poses = std::max(1, min_blocked_path_poses);
+  obstacle_replan_cooldown = std::max(0.0, obstacle_replan_cooldown);
+  const auto path_check_now = std::chrono::steady_clock::now();
+  const bool path_validation_in_cooldown =
+    path_check_now < path_validation_cooldown_until_;
+
+  if (
+    path_validity_request_pending_ && pending_path_validity_.valid() &&
+    pending_path_validity_.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
+  {
+    const auto response = pending_path_validity_.get();
+    path_validity_request_pending_ = false;
+    int longest_blocked_run = 0;
+    int current_blocked_run = 0;
+    int previous_index = -2;
+    for (const int index : response->invalid_pose_indices) {
+      current_blocked_run = index == previous_index + 1 ? current_blocked_run + 1 : 1;
+      longest_blocked_run = std::max(longest_blocked_run, current_blocked_run);
+      previous_index = index;
+    }
+    const bool large_obstacle = !response->is_valid && longest_blocked_run >= min_blocked_path_poses;
+    invalid_path_count_ = large_obstacle ? invalid_path_count_ + 1 : 0;
+    if (!response->is_valid) {
+      RCLCPP_WARN(
+        node_->get_logger(),
+        "AdaptiveReplanning: Path validity check failed: invalid_poses=%zu, "
+        "longest_run=%d, required_run=%d, confirmation=%d/%d.",
+        response->invalid_pose_indices.size(), longest_blocked_run,
+        min_blocked_path_poses, invalid_path_count_, invalid_path_confirmations);
+    }
+    if (invalid_path_count_ >= invalid_path_confirmations) {
+      path_blocked_latched_ = true;
+    }
+  }
+
+  const double path_check_period = 1.0 / path_obstacle_check_hz;
+  const double since_path_check = std::chrono::duration<double>(
+    path_check_now - last_path_check_time_).count();
+  if (
+    has_path && !path_validation_in_cooldown && !path_validity_request_pending_ &&
+    since_path_check >= path_check_period && path_validity_client_->service_is_ready())
+  {
+    auto request = std::make_shared<nav2_msgs::srv::IsPathValid::Request>();
+    request->path = path;
+    auto future_and_request_id = path_validity_client_->async_send_request(request);
+    pending_path_validity_ = future_and_request_id.future.share();
+    path_validity_request_pending_ = true;
+    last_path_check_time_ = path_check_now;
+  } else if (
+    has_path && !path_validation_in_cooldown && !path_validity_request_pending_ &&
+    since_path_check >= path_check_period && !path_validity_client_->service_is_ready())
+  {
+    RCLCPP_WARN_THROTTLE(
+      node_->get_logger(), *node_->get_clock(), 5000,
+      "AdaptiveReplanning: is_path_valid service is unavailable; obstacle-triggered "
+      "global replanning is inactive.");
   }
 
   // 5. Decision:
@@ -153,6 +240,9 @@ BT::NodeStatus AdaptiveReplanning::tick()
   if (is_first_planning_) {
     should_plan = true;
     plan_reason = "first_planning";
+  } else if (path_blocked_latched_) {
+    should_plan = true;
+    plan_reason = "global_path_blocked";
   } else if (dist <= distance_threshold) {
     should_plan = false;
     return BT::NodeStatus::SUCCESS;
@@ -201,6 +291,14 @@ BT::NodeStatus AdaptiveReplanning::tick()
         "AdaptiveReplanning: Global replanning triggered: replanning period elapsed "
         "(elapsed=%.3f s >= period=%.3f s, hz=%.3f, dist_to_goal=%.3f m).",
         elapsed_sec, period, hz, dist);
+    } else if (plan_reason == "global_path_blocked") {
+      RCLCPP_INFO_THROTTLE(
+        node_->get_logger(),
+        *node_->get_clock(),
+        1000,
+        "AdaptiveReplanning: Global replanning triggered: a persistent large obstacle "
+        "blocks the current global path (confirmations=%d, dist_to_goal=%.3f m).",
+        invalid_path_count_, dist);
     } else {
       RCLCPP_INFO_THROTTLE(
         node_->get_logger(),
@@ -217,6 +315,23 @@ BT::NodeStatus AdaptiveReplanning::tick()
       last_planning_failed_ = false;
       has_planned_once_ = true;
       last_planning_time_ = std::chrono::steady_clock::now();
+      if (plan_reason == "global_path_blocked") {
+        path_blocked_latched_ = false;
+        invalid_path_count_ = 0;
+        path_validation_cooldown_until_ =
+          last_planning_time_ + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+          std::chrono::duration<double>(obstacle_replan_cooldown));
+        // The response which triggered this replan belongs to the old path. Do not let any
+        // outstanding bookkeeping immediately invalidate the replacement path.
+        path_validity_request_pending_ = false;
+        pending_path_validity_ = {};
+        last_path_check_time_ = last_planning_time_;
+        RCLCPP_INFO(
+          node_->get_logger(),
+          "AdaptiveReplanning: obstacle-triggered replan succeeded; suspending path-validity "
+          "checks for %.3f s so the replacement path can take effect.",
+          obstacle_replan_cooldown);
+      }
     } else if (child_state == BT::NodeStatus::FAILURE) {
       last_planning_failed_ = true;
       // "First planning" means that no valid initial path has been produced yet.

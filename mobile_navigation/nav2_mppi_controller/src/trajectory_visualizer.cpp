@@ -12,7 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <algorithm>
 #include <memory>
+#include <numeric>
+#include <vector>
 #include "nav2_mppi_controller/tools/trajectory_visualizer.hpp"
 
 namespace mppi
@@ -35,6 +38,7 @@ void TrajectoryVisualizer::on_configure(
 
   getParam(trajectory_step_, "trajectory_step", 5);
   getParam(time_step_, "time_step", 3);
+  getParam(top_trajectories_, "top_trajectories", 20);
 
   reset();
 }
@@ -123,6 +127,43 @@ void TrajectoryVisualizer::add(
         marker_id_++, pose, scale, color, frame_id_, marker_namespace);
 
       points_->markers.push_back(marker);
+    }
+  }
+}
+
+void TrajectoryVisualizer::addWeighted(
+  const models::Trajectories & trajectories, const models::Vector & weights,
+  const std::string & marker_namespace)
+{
+  const Eigen::Index rows = trajectories.x.rows();
+  const Eigen::Index cols = trajectories.x.cols();
+  if (rows == 0 || cols == 0 || weights.size() != rows || top_trajectories_ == 0) {
+    return;
+  }
+
+  std::vector<Eigen::Index> indices(static_cast<size_t>(rows));
+  std::iota(indices.begin(), indices.end(), Eigen::Index{0});
+  const size_t count = std::min(top_trajectories_, indices.size());
+  std::partial_sort(
+    indices.begin(), indices.begin() + count, indices.end(),
+    [&weights](Eigen::Index lhs, Eigen::Index rhs) {return weights(lhs) > weights(rhs);});
+
+  const float max_weight = std::max(weights(indices.front()), 1e-12f);
+  const Eigen::Index marker_stride = static_cast<Eigen::Index>(std::max<size_t>(1, time_step_));
+  for (size_t rank = 0; rank < count; ++rank) {
+    const Eigen::Index row = indices[rank];
+    const float relative_weight = std::clamp(weights(row) / max_weight, 0.0f, 1.0f);
+    for (Eigen::Index step = 0; step < cols; step += marker_stride) {
+      auto pose = utils::createPose(trajectories.x(row, step), trajectories.y(row, step), 0.05);
+      auto scale = utils::createScale(
+        0.025f + 0.055f * relative_weight,
+        0.025f + 0.055f * relative_weight, 0.05f);
+      // Highest weights are large, opaque yellow/red; lower Top-N weights are blue.
+      auto color = utils::createColor(
+        relative_weight, 0.25f + 0.75f * relative_weight,
+        1.0f - relative_weight, 0.25f + 0.75f * relative_weight);
+      points_->markers.push_back(utils::createMarker(
+        marker_id_++, pose, scale, color, frame_id_, marker_namespace));
     }
   }
 }

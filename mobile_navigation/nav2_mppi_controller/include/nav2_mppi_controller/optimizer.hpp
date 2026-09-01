@@ -117,6 +117,9 @@ public:
    */
   models::Matrix getOptimizedTrajectory();
 
+  /** @brief Normalized softmax weights of the last evaluated candidate trajectories. */
+  const models::Vector & getTrajectoryWeights() const {return trajectory_weights_;}
+
   /**
    * @brief Set the maximum speed based on the speed limits callback
    * @param speed_limit Limit of the speed for use
@@ -349,6 +352,14 @@ protected:
   models::Trajectories generated_trajectories_;
   models::Path path_;
   models::Vector costs_;
+  models::Vector trajectory_weights_;
+  bool adaptive_temperature_{false};
+  float temperature_min_{1.0f};
+  float temperature_max_{8.0f};
+  float target_ess_ratio_{0.1f};
+  float temperature_adaptation_gain_{0.35f};
+  float runtime_temperature_{0.3f};
+  float last_effective_sample_size_{0.0f};
 
   CriticData critics_data_ =
   {state_, generated_trajectories_, path_, costs_, settings_.model_dt, false, nullptr, nullptr,

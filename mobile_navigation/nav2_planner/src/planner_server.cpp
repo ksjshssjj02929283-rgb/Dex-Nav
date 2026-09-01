@@ -33,7 +33,6 @@
 
 #include "nav2_planner/planner_server.hpp"
 #include "nav2_costmap_2d/footprint_collision_checker.hpp"
-#include "nav2_costmap_2d/cost_values.hpp"
 #include "tf2/utils.h"
 // Generic planner-fallback interface: any planner implementing FallbackProvider
 // can ask the server to dispatch the configured fallback planner.
@@ -728,8 +727,8 @@ PlannerServer::getPlan(
   {
     auto * fb = dynamic_cast<nav2_route_planner::FallbackProvider *>(
       planners_[effective_id].get());
-    const auto reason = fb ? fb->lastFallbackReason()
-      : nav2_route_planner::FallbackReason::NONE;
+    const auto reason = fb ? fb->lastFallbackReason() :
+      nav2_route_planner::FallbackReason::NONE;
     if (reason != nav2_route_planner::FallbackReason::NONE) {
       RCLCPP_WARN(
         get_logger(),
@@ -911,20 +910,48 @@ void PlannerServer::isPathValid(
      * and may have become occupied
      */
     std::unique_lock<nav2_costmap_2d::Costmap2D::mutex_t> lock(*(costmap_->getMutex()));
+    nav2_costmap_2d::FootprintCollisionChecker<nav2_costmap_2d::Costmap2D *>
+    collision_checker(costmap_);
+    const auto robot_footprint = costmap_ros_->getRobotFootprint();
+    const double sample_step = std::max(0.5 * costmap_->getResolution(), 0.01);
     unsigned int mx = 0;
     unsigned int my = 0;
     for (unsigned int i = closest_point_index; i < request->path.poses.size(); ++i) {
-      costmap_->worldToMap(
-        request->path.poses[i].pose.position.x,
-        request->path.poses[i].pose.position.y, mx, my);
-      unsigned int cost = costmap_->getCost(mx, my);
-
-      if (cost == nav2_costmap_2d::LETHAL_OBSTACLE ||
-        cost == nav2_costmap_2d::INSCRIBED_INFLATED_OBSTACLE)
-      {
+      const auto & current = request->path.poses[i].pose;
+      const auto & previous = i > closest_point_index ?
+        request->path.poses[i - 1].pose : current;
+      const double dx = current.position.x - previous.position.x;
+      const double dy = current.position.y - previous.position.y;
+      const double segment_length = std::hypot(dx, dy);
+      const int samples = std::max(1, static_cast<int>(std::ceil(segment_length / sample_step)));
+      const double yaw = segment_length > 1e-6 ? std::atan2(dy, dx) :
+        tf2::getYaw(current.orientation);
+      bool blocked = false;
+      for (int sample = 1; sample <= samples && !blocked; ++sample) {
+        const double ratio = static_cast<double>(sample) / samples;
+        const double x = previous.position.x + ratio * dx;
+        const double y = previous.position.y + ratio * dy;
+        if (!costmap_->worldToMap(x, y, mx, my)) {
+          blocked = true;
+          break;
+        }
+        const unsigned int center_cost = costmap_->getCost(mx, my);
+        const double footprint_cost = collision_checker.footprintCostAtPose(
+          x, y, yaw, robot_footprint);
+        blocked = center_cost == nav2_costmap_2d::LETHAL_OBSTACLE ||
+          center_cost == nav2_costmap_2d::INSCRIBED_INFLATED_OBSTACLE ||
+          footprint_cost >= static_cast<double>(nav2_costmap_2d::LETHAL_OBSTACLE);
+      }
+      if (blocked) {
         response->is_valid = false;
+        response->invalid_pose_indices.push_back(static_cast<int32_t>(i));
       }
     }
+  } else {
+    response->is_valid = false;
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), *get_clock(), 5000,
+      "is_path_valid: robot pose unavailable; cannot validate the current global path.");
   }
 }
 

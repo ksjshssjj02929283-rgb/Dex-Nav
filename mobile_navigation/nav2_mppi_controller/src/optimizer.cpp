@@ -84,6 +84,16 @@ void Optimizer::getParams()
   getParam(s.sampling_std.vy, "vy_std", 0.2);
   getParam(s.sampling_std.wz, "wz_std", 0.4);
   getParam(s.retry_attempt_limit, "retry_attempt_limit", 1);
+  getParam(adaptive_temperature_, "adaptive_temperature", false);
+  getParam(temperature_min_, "temperature_min", 1.0f);
+  getParam(temperature_max_, "temperature_max", 8.0f);
+  getParam(target_ess_ratio_, "target_ess_ratio", 0.1f);
+  getParam(temperature_adaptation_gain_, "temperature_adaptation_gain", 0.35f);
+  temperature_min_ = std::max(1e-3f, temperature_min_);
+  temperature_max_ = std::max(temperature_min_, temperature_max_);
+  target_ess_ratio_ = std::clamp(target_ess_ratio_, 1e-3f, 1.0f);
+  temperature_adaptation_gain_ = std::clamp(temperature_adaptation_gain_, 0.0f, 1.0f);
+  runtime_temperature_ = std::clamp(s.temperature, temperature_min_, temperature_max_);
   getParam(s.open_loop, "open_loop", false);
   getParam(s.use_cuda, "use_cuda", true);
   getParam(s.cuda_score_far_downsample, "cuda_score_far_downsample", false);
@@ -158,6 +168,10 @@ void Optimizer::reset()
   }
 
   costs_ = models::Vector::Zero(settings_.batch_size);
+  trajectory_weights_ = models::Vector::Zero(settings_.batch_size);
+  runtime_temperature_ = std::clamp(
+    settings_.temperature, temperature_min_, temperature_max_);
+  last_effective_sample_size_ = static_cast<float>(settings_.batch_size);
   generated_trajectories_.reset(settings_.batch_size, settings_.time_steps);
 
   noise_generator_.reset(settings_, isHolonomic());
@@ -544,8 +558,25 @@ void Optimizer::updateControlSequence()
   }
 
   const auto costs_normalized = costs_ - costs_.minCoeff();
-  const auto exponents = (-1.0f / settings_.temperature * costs_normalized).exp();
-  const models::Vector softmaxes = exponents / exponents.sum();
+  const float temperature = adaptive_temperature_ ? runtime_temperature_ : settings_.temperature;
+  const auto exponents = (-1.0f / std::max(temperature, 1e-4f) * costs_normalized).exp();
+  const float exponent_sum = exponents.sum();
+  const models::Vector softmaxes =
+    std::isfinite(exponent_sum) && exponent_sum > 1e-12f ?
+    models::Vector(exponents / exponent_sum) :
+    models::Vector::Constant(exponents.size(), 1.0f / static_cast<float>(exponents.size()));
+  trajectory_weights_ = softmaxes;
+
+  const float squared_weight_sum = softmaxes.square().sum();
+  last_effective_sample_size_ = 1.0f / std::max(squared_weight_sum, 1e-12f);
+  if (adaptive_temperature_) {
+    const float target_ess = std::max(
+      1.0f, target_ess_ratio_ * static_cast<float>(softmaxes.size()));
+    const float log_error = std::log(target_ess / last_effective_sample_size_);
+    runtime_temperature_ = std::clamp(
+      runtime_temperature_ * std::exp(temperature_adaptation_gain_ * log_error),
+      temperature_min_, temperature_max_);
+  }
 
   for (Eigen::Index i = 0; i < state_.cvx.cols(); ++i) {
     control_sequence_.vx(i) = (state_.cvx.col(i) * softmaxes).sum();

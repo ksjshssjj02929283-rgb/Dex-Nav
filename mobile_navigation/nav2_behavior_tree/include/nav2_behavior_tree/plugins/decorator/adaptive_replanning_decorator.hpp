@@ -20,9 +20,11 @@
 
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "nav_msgs/msg/path.hpp"
+#include "nav2_msgs/srv/is_path_valid.hpp"
 #include "tf2_ros/buffer.h"
 #include "rclcpp/rclcpp.hpp"
 #include <chrono>
+#include <future>
 
 #include "behaviortree_cpp_v3/decorator_node.h"
 
@@ -58,7 +60,13 @@ public:
       BT::InputPort<std::string>("robot_base_frame", std::string("base_link"), "Robot base frame"),
       BT::InputPort<nav_msgs::msg::Path>("path", "Global path to check deviation from"),
       BT::InputPort<double>("max_deviation", 0.5, "Max allowed deviation from path"),
-      BT::InputPort<double>("hz", 0.333, "Replanning frequency")
+      BT::InputPort<double>("hz", 0.02, "Replanning frequency"),
+      BT::InputPort<double>("path_obstacle_check_hz", 2.0, "Global-path obstacle check frequency"),
+      BT::InputPort<int>("invalid_path_confirmations", 4, "Consecutive blocked checks before replanning"),
+      BT::InputPort<int>("min_blocked_path_poses", 3, "Minimum blocked path poses treated as a large obstacle"),
+      BT::InputPort<double>(
+        "obstacle_replan_cooldown", 2.5,
+        "Seconds to suspend path-validity checks after a successful obstacle-triggered replan")
     };
   }
 
@@ -80,6 +88,16 @@ private:
 
   std::chrono::steady_clock::time_point last_planning_time_;
   bool has_planned_once_;
+
+  rclcpp::Client<nav2_msgs::srv::IsPathValid>::SharedPtr path_validity_client_;
+  rclcpp::CallbackGroup::SharedPtr path_validity_callback_group_;
+  rclcpp::executors::SingleThreadedExecutor path_validity_executor_;
+  rclcpp::Client<nav2_msgs::srv::IsPathValid>::SharedFuture pending_path_validity_;
+  bool path_validity_request_pending_{false};
+  bool path_blocked_latched_{false};
+  int invalid_path_count_{0};
+  std::chrono::steady_clock::time_point last_path_check_time_;
+  std::chrono::steady_clock::time_point path_validation_cooldown_until_;
 
   std::string global_frame_;
   std::string robot_base_frame_;

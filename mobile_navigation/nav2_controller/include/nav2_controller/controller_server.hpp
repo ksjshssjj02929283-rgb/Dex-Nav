@@ -236,6 +236,15 @@ protected:
    */
   void computeAndPublishVelocity();
   /**
+   * @brief Find the path pose nearest to a robot pose expressed in the path frame
+   * @param pose_in_path Robot pose transformed into path.header.frame_id
+   * @param path Path whose poses are searched
+   * @return Index of the closest pose; returns 0 for an empty path
+   */
+  size_t findClosestPoseIndex(
+    const geometry_msgs::msg::PoseStamped & pose_in_path,
+    const nav_msgs::msg::Path & path) const;
+  /**
    * @brief Select and execute the current four-stage controller phase
    * @param pose Current robot pose
    * @param twist Current robot twist after velocity thresholding
