@@ -598,6 +598,33 @@ void CollisionMonitor::process(const Velocity & cmd_vel_in, bool publish_cmd_vel
 void CollisionMonitor::trackingPathCallback(
   nav_interfaces::msg::TrackingPath::ConstSharedPtr msg)
 {
+  // padding 接近 0 表示贴边模式：PolygonStop 使用默认安全余量，但只沿车体左右
+  // （base_link Y 方向）膨胀，前后保持基础轮廓。NaN/非零值均为正常模式，
+  // 具体 padding 继续由既有 set_polygon_padding service 链路负责设置。
+  constexpr float kEpsilon = 1e-6F;
+  const bool edging_mode = std::fabs(msg->padding) < kEpsilon;
+  for (const std::shared_ptr<Polygon> & polygon : polygons_) {
+    if (polygon->getName() != "PolygonStop") {
+      continue;
+    }
+    const bool mode_changed = polygon->isLateralPaddingOnly() != edging_mode;
+    if (edging_mode) {
+      // schedule_planner 在发布路径前会把 0 写入 service；贴边模式的左右余量
+      // 应使用配置的 default_padding，而不是该作为模式标志的 0。
+      polygon->setPadding(polygon->getDefaultPadding());
+    }
+    polygon->setLateralPaddingOnly(edging_mode);
+    if (mode_changed) {
+      RCLCPP_INFO_THROTTLE(
+        get_logger(), throttle_clock_, 1000,
+        "PolygonStop switched to %s mode (padding: front/rear=%s, lateral=%.3f m)",
+        edging_mode ? "edging" : "normal", edging_mode ? "0" : "uniform",
+        polygon->getPadding());
+      publishPolygons();
+    }
+    break;
+  }
+
   std::lock_guard<std::mutex> lock(tracking_path_mutex_);
   tracking_path_ = std::move(msg);
 }

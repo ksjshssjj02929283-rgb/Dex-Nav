@@ -149,12 +149,34 @@ double Polygon::getDefaultPadding() const
   return default_padding_;
 }
 
+void Polygon::setLateralPaddingOnly(bool enabled)
+{
+  lateral_padding_only_.store(enabled, std::memory_order_relaxed);
+}
+
+bool Polygon::isLateralPaddingOnly() const
+{
+  return lateral_padding_only_.load(std::memory_order_relaxed);
+}
+
 void Polygon::getEffectivePolygon(std::vector<Point> & poly) const
 {
   const double padding = padding_.load(std::memory_order_relaxed);
   const std::size_t n = poly_.size();
   if (padding <= 0.0 || n < 3) {
     poly = poly_;
+    return;
+  }
+
+  if (lateral_padding_only_.load(std::memory_order_relaxed)) {
+    poly = poly_;
+    for (Point & point : poly) {
+      if (point.y > 0.0) {
+        point.y += padding;
+      } else if (point.y < 0.0) {
+        point.y -= padding;
+      }
+    }
     return;
   }
 
@@ -474,7 +496,14 @@ inline bool Polygon::isPointInside(const Point & point) const
   // Implementation of ray crossings algorithm for point in polygon task solving.
   // Y coordinate is fixed. Moving the ray on X+ axis starting from given point.
   // Odd number of intersections with polygon boundaries means the point is inside polygon.
-  const int poly_size = poly_.size();
+  std::vector<Point> effective_poly;
+  const std::vector<Point> * checked_poly = &poly_;
+  const bool lateral_only = lateral_padding_only_.load(std::memory_order_relaxed);
+  if (lateral_only) {
+    getEffectivePolygon(effective_poly);
+    checked_poly = &effective_poly;
+  }
+  const int poly_size = checked_poly->size();
   int i, j;  // Polygon vertex iterators
   bool res = false;  // Final result, initialized with already inverted value
 
@@ -484,11 +513,12 @@ inline bool Polygon::isPointInside(const Point & point) const
     // Checking the edge only if given point is between edge boundaries by Y coordinates.
     // One of the condition should contain equality in order to exclude the edges
     // parallel to X+ ray.
-    if ((point.y <= poly_[i].y) == (point.y > poly_[j].y)) {
+    if ((point.y <= (*checked_poly)[i].y) == (point.y > (*checked_poly)[j].y)) {
       // Calculating the intersection coordinate of X+ ray
-      const double x_inter = poly_[i].x +
-        (point.y - poly_[i].y) * (poly_[j].x - poly_[i].x) /
-        (poly_[j].y - poly_[i].y);
+      const double x_inter = (*checked_poly)[i].x +
+        (point.y - (*checked_poly)[i].y) *
+        ((*checked_poly)[j].x - (*checked_poly)[i].x) /
+        ((*checked_poly)[j].y - (*checked_poly)[i].y);
       // If intersection with checked edge is greater than point.x coordinate, inverting the result
       if (x_inter > point.x) {
         res = !res;
@@ -498,6 +528,10 @@ inline bool Polygon::isPointInside(const Point & point) const
   }
   if (res) {
     return true;
+  }
+
+  if (lateral_only) {
+    return false;
   }
 
   // 动态膨胀（本仓库相对上游 Nav2 的改动）：点在基础形状外时，再看它到边界的距离。
