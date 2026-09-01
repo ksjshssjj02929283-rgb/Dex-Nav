@@ -9,9 +9,11 @@
   <buildtool_depend>ament_cmake</buildtool_depend>
   <build_depend>nav2_common</build_depend>
   <depend>angles</depend>
+  <depend>action_msgs</depend>
   <depend>rclcpp</depend>
   <depend>rclcpp_action</depend>
   <depend>geometry_msgs</depend>
+  <depend>lifecycle_msgs</depend>
   <depend>std_msgs</depend>
   <depend>diagnostic_msgs</depend>
   <depend>nav2_util</depend>
@@ -20,9 +22,13 @@
   <depend>nav_2d_msgs</depend>
   <depend>nav2_core</depend>
   <depend>nav2_speed_planner</depend>
+  <depend>nav2_longitudinal_state_estimator</depend>
   <depend>nav_interfaces</depend>
   <depend>visualization_msgs</depend>
   <depend>pluginlib</depend>
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>nav_msgs</exec_depend>
+  <exec_depend>tf2_ros</exec_depend>
 
   <test_depend>ament_lint_common</test_depend>
   <test_depend>ament_lint_auto</test_depend>

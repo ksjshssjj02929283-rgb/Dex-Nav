@@ -41,7 +41,9 @@ namespace nav2_regulated_pure_pursuit_controller
  * @class nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController
  * @brief Regulated pure pursuit controller plugin
  */
-class RegulatedPurePursuitController : public nav2_core::Controller
+class RegulatedPurePursuitController
+  : public nav2_core::Controller,
+  public nav2_core::TrajectoryTrackingReceiptCapability
 {
 public:
   /**
@@ -106,6 +108,8 @@ public:
 
   bool getLastTrajectoryTrackingTarget(
     double & velocity, double & acceleration) override;
+  bool getLastTrajectoryTrackingReceipt(
+    double & velocity, double & acceleration, double & relative_time) override;
 
   /**
    * @brief Limits the maximum linear speed of the robot.
@@ -187,12 +191,15 @@ protected:
    * @param linear_vel linear velocity to forward project
    * @param angular_vel angular velocity to forward project
    * @param carrot_dist Distance to the carrot for PP
+   * @param use_trajectory_profile 是否按速度规划轨迹逐时刻积分
+   * @param trajectory_relative_time 碰撞投影起点对应的轨迹相对时间
    * @return Whether collision is imminent
    */
   bool isCollisionImminent(
     const geometry_msgs::msg::PoseStamped &,
     const double &, const double &,
-    const double &);
+    const double &, bool use_trajectory_profile = false,
+    double trajectory_relative_time = 0.0);
 
   /**
    * @brief checks for collision at projected pose
@@ -289,6 +296,10 @@ protected:
   bool nearestTrajectorySpeed(
     const geometry_msgs::msg::PoseStamped & pose, double & traj_speed, double & traj_accel);
 
+  /// 取得完整轨迹前瞻结果，碰撞预测复用同一个relative_time。
+  bool trajectoryPreviewAtPose(
+    const geometry_msgs::msg::PoseStamped & pose, nav2_core::TrajectoryPreview & preview);
+
   /// 速度环：反馈（PID）+ 前馈（规划加速度）→ 限幅 → 积分 → 不越过目标。
   /// 纯反馈跟踪一个持续下降的斜坡目标时存在稳态滞后（≈斜率/kp）；前馈项
   /// 直接告诉控制器"此刻规划期望的加速度"，把滞后压到反馈只需修正的残差。
@@ -345,6 +356,7 @@ protected:
   bool last_trajectory_tracking_target_valid_{false};
   double last_trajectory_tracking_target_v_{0.0};
   double last_trajectory_tracking_target_a_{0.0};
+  double last_trajectory_tracking_target_t_{0.0};
 
   // ---- RPP 先验约束（applyConstraints，只降不升，基于静态几何/代价）----
   bool use_regulated_linear_velocity_scaling_;
@@ -371,6 +383,7 @@ protected:
 
   // ---- 速度环（trackLinearVelocity，恒生效）----
   double max_linear_accel_{0.5};
+  double max_linear_decel_{0.5};
   nav2_controller_common::PIDController speed_pid_;
   rclcpp::Time last_speed_track_time_{0, 0, RCL_ROS_TIME};
   // 速度环指令积分器：锚定上一周期指令而非实测——实测只进误差项，

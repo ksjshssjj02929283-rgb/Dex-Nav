@@ -38,7 +38,8 @@ matplotlib.rcParams["font.sans-serif"] = [
     "Noto Sans CJK SC", "WenQuanYi Micro Hei", "AR PL UMing CN", "DejaVu Sans"]
 matplotlib.rcParams["axes.unicode_minus"] = False
 
-from nav_task_common import resolve_data_dir  # noqa: E402
+from nav_task_common import (  # noqa: E402
+    DEFAULT_GAP_FACTOR, DEFAULT_MIN_GAP, resolve_data_dir, split_on_gaps)
 from motion_diagnostics import (  # noqa: E402
     DEFAULT_ACCEL_WINDOW_SEC,
     DEFAULT_JERK_WINDOW_SEC,
@@ -164,6 +165,11 @@ def main():
                     help="由速度估算加速度的局部回归窗口 s（默认 0.30）")
     ap.add_argument("--jerk-window", type=float, default=DEFAULT_JERK_WINDOW_SEC,
                     help="由加速度估算 jerk 的局部回归窗口 s（默认 0.30）")
+    ap.add_argument("--gap-factor", type=float, default=DEFAULT_GAP_FACTOR,
+                    help="采样间隔超过「本序列中位间隔 × 该系数」判为断档，"
+                         "断档处断线并标注（默认 5.0）")
+    ap.add_argument("--min-gap", type=float, default=DEFAULT_MIN_GAP,
+                    help="断档判定的绝对下限 s（默认 0.30）")
     args = ap.parse_args()
 
     jf = resolve_json(resolve_data_dir(args.json))
@@ -200,14 +206,19 @@ def main():
     phase_handles = [Patch(color=PHASE_COLORS.get(n, "#e0e0e0"), alpha=0.4, label=n)
                      for n in seen_phases]
 
+    all_gaps = {}
     for key, label, color, lw, ls, with_wz in SOURCES:
         block = d.get(key, {})
         samples = block.get("samples", [])
         if not samples:
             continue
-        t = [s[0] for s in samples]
-        vx = [s[1] for s in samples]
-        wz = [s[2] for s in samples]
+        # 断档处插 NaN 断线：整段停发（如 recovery 期间规划管线停摆）若被
+        # 折线跨接，会呈现出一条不存在的平滑衰减曲线，误导事后排查。
+        t, vx, wz, gaps = split_on_gaps(
+            [s[0] for s in samples], [s[1] for s in samples],
+            [s[2] for s in samples],
+            gap_factor=args.gap_factor, min_gap=args.min_gap)
+        all_gaps.setdefault(label, gaps)
         stat = (f"{label}（avg={block.get('avg_linear_speed', 0):.3f} "
                 f"max={block.get('max_linear_speed', 0):.3f}）")
         ax_vt.plot(t, vx, color=color, lw=lw, ls=ls, label=stat)
@@ -230,6 +241,10 @@ def main():
         target_a = target_dynamics["acceleration"]
         target_j = target_dynamics["jerk"]
         target_summary = summarize_dynamics(target_dynamics, limits)
+        target_t, target_v, target_a, target_gaps = split_on_gaps(
+            target_t, target_v, target_a,
+            gap_factor=args.gap_factor, min_gap=args.min_gap)
+        all_gaps.setdefault("控制器轨迹目标", target_gaps)
         ax_vt.plot(target_t, target_v, color="#7b1fa2", lw=1.6,
                    label="控制器轨迹目标")
         ax_at.plot(target_t, target_a, color="#7b1fa2", lw=1.4,
@@ -258,16 +273,23 @@ def main():
             samples, args.accel_window, args.jerk_window)
         accel_points = finite_xy(dynamics["time"], dynamics["acceleration"])
         jerk_points = finite_xy(dynamics["time"], dynamics["jerk"])
+        # 派生量同样要断线：它们由速度序列局部回归而来，源序列断档时回归会跨
+        # 断档拟合出一条不存在的斜线（实测 cmd_vel 断 5.12s，图 3/4 上表现为
+        # 从 -3.0 平滑爬回 0 的"缓慢恢复"，实际那段根本没有指令）。
         if accel_points:
-            ax_at.plot(
+            at_t, at_v, _ = split_on_gaps(
                 [point[0] for point in accel_points],
                 [point[1] for point in accel_points],
-                color=color, lw=lw, ls=ls, alpha=0.85, label=label)
+                gap_factor=args.gap_factor, min_gap=args.min_gap)
+            ax_at.plot(at_t, at_v, color=color, lw=lw, ls=ls, alpha=0.85,
+                       label=label)
         if jerk_points:
-            ax_jt.plot(
+            jt_t, jt_v, _ = split_on_gaps(
                 [point[0] for point in jerk_points],
                 [point[1] for point in jerk_points],
-                color=color, lw=lw, ls=ls, alpha=0.75, label=label)
+                gap_factor=args.gap_factor, min_gap=args.min_gap)
+            ax_jt.plot(jt_t, jt_v, color=color, lw=lw, ls=ls, alpha=0.75,
+                       label=label)
 
     ax_at.axhline(0.0, color="gray", lw=0.8)
     ax_jt.axhline(0.0, color="gray", lw=0.8)
@@ -308,6 +330,34 @@ def main():
             ax.text(0.5, 0.5, "passing_path 采样不足，跳过 V-S 图",
                     ha="center", va="center", transform=ax.transAxes)
             ax.set_axis_off()
+
+    # 断档在时间轴各子图上打阴影 + 标注：只断线不标注的话，读图人会把空白
+    # 当成"该处速度为零"或"曲线本来就到这里"，而不是"这段根本没有数据"。
+    merged_gaps = []
+    for spans in all_gaps.values():
+        merged_gaps.extend(spans)
+    merged_gaps.sort()
+    drawn_gaps = []
+    for start, end in merged_gaps:
+        if drawn_gaps and start <= drawn_gaps[-1][1] + 1e-9:
+            drawn_gaps[-1] = (drawn_gaps[-1][0], max(drawn_gaps[-1][1], end))
+        else:
+            drawn_gaps.append((start, end))
+    for ax in (ax_vt, ax_wt, ax_at, ax_jt):
+        for start, end in drawn_gaps:
+            ax.axvspan(start, end, color="#9e9e9e", alpha=0.30, lw=0, hatch="//",
+                       zorder=0)
+    if drawn_gaps and ax_vt.has_data():
+        total = sum(end - start for start, end in drawn_gaps)
+        ax_vt.text(
+            0.005, 0.02,
+            f"灰色斜纹 = 采样断档 {len(drawn_gaps)} 段 / 合计 {total:.1f}s（无数据，非零速）",
+            transform=ax_vt.transAxes, ha="left", va="bottom",
+            fontsize=8, color="#c62828",
+            bbox=dict(boxstyle="round,pad=0.25", fc="white", ec="#c62828",
+                      alpha=0.85, lw=0.8))
+        print(f"检测到采样断档 {len(drawn_gaps)} 段，合计 {total:.2f}s：" +
+              ", ".join(f"{a:.2f}~{b:.2f}s" for a, b in drawn_gaps))
 
     for ax in axes:
         if ax.has_data():

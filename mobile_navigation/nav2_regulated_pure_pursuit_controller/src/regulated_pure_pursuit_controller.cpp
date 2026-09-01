@@ -192,6 +192,8 @@ void RegulatedPurePursuitController::configure(
   declare_parameter_if_not_declared(
     node, plugin_name_ + ".max_linear_accel", rclcpp::ParameterValue(0.5));
   declare_parameter_if_not_declared(
+    node, plugin_name_ + ".max_linear_decel", rclcpp::ParameterValue(0.5));
+  declare_parameter_if_not_declared(
     node, plugin_name_ + ".speed_loop_kp", rclcpp::ParameterValue(2.0));
   declare_parameter_if_not_declared(
     node, plugin_name_ + ".speed_loop_ki", rclcpp::ParameterValue(0.2));
@@ -205,6 +207,9 @@ void RegulatedPurePursuitController::configure(
   node->get_parameter(plugin_name_ + ".desired_linear_vel", desired_linear_vel_);
   base_desired_linear_vel_ = desired_linear_vel_;
   node->get_parameter(plugin_name_ + ".max_linear_accel", max_linear_accel_);
+  node->get_parameter(plugin_name_ + ".max_linear_decel", max_linear_decel_);
+  max_linear_accel_ = std::max(std::fabs(max_linear_accel_), 1e-3);
+  max_linear_decel_ = std::max(std::fabs(max_linear_decel_), 1e-3);
   nav2_controller_common::PidConf conf;
   node->get_parameter(plugin_name_ + ".speed_loop_kp", conf.kp);
   node->get_parameter(plugin_name_ + ".speed_loop_ki", conf.ki);
@@ -460,6 +465,7 @@ geometry_msgs::msg::TwistStamped RegulatedPurePursuitController::computeVelocity
   // 控制器纯跟踪）；无轨迹（速度规划禁用的灰度模式）回退 desired_linear_vel。
   double traj_v = 0.0;
   double traj_accel = 0.0;
+  nav2_core::TrajectoryPreview trajectory_preview;
   bool trajectory_required = false;
   bool trajectory_valid = false;
   std::string trajectory_frame;
@@ -475,7 +481,11 @@ geometry_msgs::msg::TwistStamped RegulatedPurePursuitController::computeVelocity
     throw nav2_core::PlannerException(
             "Speed trajectory is unavailable or not in the controller plan frame");
   }
-  const bool have_traj = nearestTrajectorySpeed(robot_pose_in_plan, traj_v, traj_accel);
+  const bool have_traj = trajectoryPreviewAtPose(robot_pose_in_plan, trajectory_preview);
+  if (have_traj) {
+    traj_v = trajectory_preview.velocity;
+    traj_accel = trajectory_preview.acceleration;
+  }
   if (trajectory_required && !have_traj) {
     throw nav2_core::PlannerException("Speed trajectory has no usable points");
   }
@@ -509,6 +519,7 @@ geometry_msgs::msg::TwistStamped RegulatedPurePursuitController::computeVelocity
       last_trajectory_tracking_target_valid_ = true;
       last_trajectory_tracking_target_v_ = traj_v;
       last_trajectory_tracking_target_a_ = traj_accel;
+      last_trajectory_tracking_target_t_ = trajectory_preview.relative_time;
     }
 
     // angular_gain > 1 收紧转向补偿曲线滞后；饱和 clamp 兜底（联动降速后
@@ -519,7 +530,15 @@ geometry_msgs::msg::TwistStamped RegulatedPurePursuitController::computeVelocity
 
   // Collision checking on this velocity heading
   const double & carrot_dist = hypot(carrot_pose.pose.position.x, carrot_pose.pose.position.y);
-  if (use_collision_detection_ && isCollisionImminent(pose, linear_vel, angular_vel, carrot_dist)) {
+  const bool use_trajectory_collision_profile =
+    have_traj && trajectory_preview.mode == nav2_core::TrajectoryPreviewMode::TIME_ALIGNED;
+  // 控制目标已经按一个前瞻周期采样，碰撞预测需退回到当前轨迹投影时刻开始积分。
+  const double collision_trajectory_time = use_trajectory_collision_profile ?
+    std::max(0.0, trajectory_preview.relative_time - traj_time_lookahead_) : 0.0;
+  if (use_collision_detection_ && isCollisionImminent(
+      pose, linear_vel, angular_vel, carrot_dist,
+      use_trajectory_collision_profile, collision_trajectory_time))
+  {
     throw nav2_core::CollisionException(
             "RegulatedPurePursuitController detected collision ahead!");
   }
@@ -575,7 +594,7 @@ void RegulatedPurePursuitController::rotateToHeading(
 
   // 线速度按 max_linear_accel_ 逐周期减速到 0，不瞬间置零：track 段巡航时线速度
   // 可观，若在这里直接归零，会在跟踪速度环的加速度限幅之外单独制造一次阶跃指令。
-  const double decel_step = max_linear_accel_ * dt;
+  const double decel_step = max_linear_decel_ * dt;
   linear_vel = std::copysign(
     std::max(0.0, std::fabs(curr_speed.linear.x) - decel_step), curr_speed.linear.x);
 
@@ -662,7 +681,8 @@ geometry_msgs::msg::PoseStamped RegulatedPurePursuitController::getLookAheadPoin
 bool RegulatedPurePursuitController::isCollisionImminent(
   const geometry_msgs::msg::PoseStamped & robot_pose,
   const double & linear_vel, const double & angular_vel,
-  const double & carrot_dist)
+  const double & carrot_dist, bool use_trajectory_profile,
+  double trajectory_relative_time)
 {
   // Note(stevemacenski): This may be a bit unusual, but the robot_pose is in
   // odom frame and the carrot_pose is in robot base frame.
@@ -683,37 +703,95 @@ bool RegulatedPurePursuitController::isCollisionImminent(
   pose_msg.header.frame_id = arc_pts_msg.header.frame_id;
   pose_msg.header.stamp = arc_pts_msg.header.stamp;
 
-  double projection_time = 0.0;
-  if (fabs(linear_vel) < 0.01 && fabs(angular_vel) > 0.01) {
-    // rotating to heading at goal or toward path
-    // Equation finds the angular distance required for the largest
-    // part of the robot radius to move to another costmap cell:
-    // theta_min = 2.0 * sin ((res/2) / r_max)
-    // via isosceles triangle r_max-r_max-resolution,
-    // dividing by angular_velocity gives us a timestep.
-    double max_radius = costmap_ros_->getLayeredCostmap()->getCircumscribedRadius();
-    projection_time =
-      2.0 * sin((costmap_->getResolution() / 2) / max_radius) / fabs(angular_vel);
-  } else {
-    // Normal path tracking
-    projection_time = costmap_->getResolution() / fabs(linear_vel);
-  }
-
   const geometry_msgs::msg::Point & robot_xy = robot_pose.pose.position;
   geometry_msgs::msg::Pose2D curr_pose;
   curr_pose.x = robot_pose.pose.position.x;
   curr_pose.y = robot_pose.pose.position.y;
   curr_pose.theta = tf2::getYaw(robot_pose.pose.orientation);
 
-  // only forward simulate within time requested
-  int i = 1;
-  while (i * projection_time < max_allowed_time_to_collision_up_to_carrot_) {
-    i++;
+  std::unique_lock<std::mutex> trajectory_lock(traj_mutex_, std::defer_lock);
+  if (use_trajectory_profile) {
+    trajectory_lock.lock();
+    use_trajectory_profile = trajectory_time_valid_ && !traj_speed_points_.empty();
+  }
 
-    // apply velocity at curr_pose over distance
-    curr_pose.x += projection_time * (linear_vel * cos(curr_pose.theta));
-    curr_pose.y += projection_time * (linear_vel * sin(curr_pose.theta));
-    curr_pose.theta += projection_time * angular_vel;
+  const bool rotating_in_place = fabs(linear_vel) < 0.01 && fabs(angular_vel) > 0.01;
+  if (!use_trajectory_profile || rotating_in_place) {
+    // 无有效时间轨迹或原地旋转时，完整保留RPP原有的恒指令投影。
+    double projection_time = 0.0;
+    if (rotating_in_place) {
+      const double max_radius = costmap_ros_->getLayeredCostmap()->getCircumscribedRadius();
+      projection_time =
+        2.0 * sin((costmap_->getResolution() / 2) / max_radius) / fabs(angular_vel);
+    } else {
+      projection_time = costmap_->getResolution() / fabs(linear_vel);
+    }
+
+    int projection_index = 1;
+    while (projection_index * projection_time <
+      max_allowed_time_to_collision_up_to_carrot_)
+    {
+      ++projection_index;
+      curr_pose.x += projection_time * (linear_vel * cos(curr_pose.theta));
+      curr_pose.y += projection_time * (linear_vel * sin(curr_pose.theta));
+      curr_pose.theta += projection_time * angular_vel;
+      if (hypot(curr_pose.x - robot_xy.x, curr_pose.y - robot_xy.y) > carrot_dist) {
+        break;
+      }
+      pose_msg.pose.position.x = curr_pose.x;
+      pose_msg.pose.position.y = curr_pose.y;
+      pose_msg.pose.position.z = 0.01;
+      arc_pts_msg.poses.push_back(pose_msg);
+      if (inCollision(curr_pose.x, curr_pose.y, curr_pose.theta)) {
+        carrot_arc_pub_->publish(arc_pts_msg);
+        return true;
+      }
+    }
+    carrot_arc_pub_->publish(arc_pts_msg);
+    return false;
+  }
+
+  if (fabs(linear_vel) < 0.01) {
+    carrot_arc_pub_->publish(arc_pts_msg);
+    return false;
+  }
+
+  const double curvature = angular_vel / linear_vel;
+  const double direction = linear_vel < 0.0 ? -1.0 : 1.0;
+  double elapsed_time = 0.0;
+  while (elapsed_time < max_allowed_time_to_collision_up_to_carrot_) {
+    nav2_core::TrajectoryPreview now_preview;
+    if (!nav2_core::sampleTrajectoryAtTime(
+        traj_speed_points_, trajectory_relative_time + elapsed_time, now_preview))
+    {
+      carrot_arc_pub_->publish(arc_pts_msg);
+      return true;
+    }
+    if (fabs(now_preview.velocity) < 0.01) {
+      break;
+    }
+    double projection_time = costmap_->getResolution() / fabs(now_preview.velocity);
+    projection_time = std::min(
+      projection_time, max_allowed_time_to_collision_up_to_carrot_ - elapsed_time);
+    if (!std::isfinite(projection_time) || projection_time <= 0.0) {
+      break;
+    }
+    nav2_core::TrajectoryPreview next_preview;
+    if (!nav2_core::sampleTrajectoryAtTime(
+        traj_speed_points_, trajectory_relative_time + elapsed_time + projection_time,
+        next_preview))
+    {
+      carrot_arc_pub_->publish(arc_pts_msg);
+      return true;
+    }
+    const double projected_linear_velocity = direction * 0.5 *
+      (fabs(now_preview.velocity) + fabs(next_preview.velocity));
+    const double projected_angular_velocity = curvature * projected_linear_velocity;
+
+    curr_pose.x += projection_time * (projected_linear_velocity * cos(curr_pose.theta));
+    curr_pose.y += projection_time * (projected_linear_velocity * sin(curr_pose.theta));
+    curr_pose.theta += projection_time * projected_angular_velocity;
+    elapsed_time += projection_time;
 
     // check if past carrot pose, where no longer a thoughtfully valid command
     if (hypot(curr_pose.x - robot_xy.x, curr_pose.y - robot_xy.y) > carrot_dist) {
@@ -996,15 +1074,8 @@ void RegulatedPurePursuitController::setTrajectory(
 bool RegulatedPurePursuitController::nearestTrajectorySpeed(
   const geometry_msgs::msg::PoseStamped & pose, double & traj_speed, double & traj_accel)
 {
-  std::lock_guard<std::mutex> lock(traj_mutex_);
-  if (traj_speed_points_.empty()) {
-    return false;
-  }
   nav2_core::TrajectoryPreview preview;
-  if (!nav2_core::sampleTrajectoryPreview(
-      traj_speed_points_, pose.pose.position.x, pose.pose.position.y,
-      trajectory_time_valid_, traj_time_lookahead_, traj_speed_lookahead_, preview))
-  {
+  if (!trajectoryPreviewAtPose(pose, preview)) {
     return false;
   }
   traj_speed = preview.velocity;
@@ -1012,8 +1083,31 @@ bool RegulatedPurePursuitController::nearestTrajectorySpeed(
   return true;
 }
 
+bool RegulatedPurePursuitController::trajectoryPreviewAtPose(
+  const geometry_msgs::msg::PoseStamped & pose, nav2_core::TrajectoryPreview & preview)
+{
+  std::lock_guard<std::mutex> lock(traj_mutex_);
+  if (traj_speed_points_.empty()) {
+    return false;
+  }
+  if (!nav2_core::sampleTrajectoryPreview(
+      traj_speed_points_, pose.pose.position.x, pose.pose.position.y,
+      trajectory_time_valid_, traj_time_lookahead_, traj_speed_lookahead_, preview))
+  {
+    return false;
+  }
+  return true;
+}
+
 bool RegulatedPurePursuitController::getLastTrajectoryTrackingTarget(
   double & velocity, double & acceleration)
+{
+  double relative_time = 0.0;
+  return getLastTrajectoryTrackingReceipt(velocity, acceleration, relative_time);
+}
+
+bool RegulatedPurePursuitController::getLastTrajectoryTrackingReceipt(
+  double & velocity, double & acceleration, double & relative_time)
 {
   std::lock_guard<std::mutex> lock(traj_mutex_);
   if (!last_trajectory_tracking_target_valid_) {
@@ -1021,6 +1115,7 @@ bool RegulatedPurePursuitController::getLastTrajectoryTrackingTarget(
   }
   velocity = last_trajectory_tracking_target_v_;
   acceleration = last_trajectory_tracking_target_a_;
+  relative_time = last_trajectory_tracking_target_t_;
   return true;
 }
 
@@ -1050,8 +1145,9 @@ double RegulatedPurePursuitController::trackLinearVelocity(
 
   // 前馈 + 反馈：反馈单独跟踪一个持续变化的斜坡目标存在稳态滞后（≈斜率/kp），
   // 前馈把"此刻规划期望的加速度"直接喂给控制器，反馈只需修正前馈之外的残差。
-  double accel_cmd = feedforward_accel + speed_pid_.Control(target_vel - measured_vel, dt);
-  accel_cmd = std::clamp(accel_cmd, -max_linear_accel_, max_linear_accel_);
+  const double feedback_accel = speed_pid_.Control(target_vel - measured_vel, dt);
+  double accel_cmd = feedforward_accel + feedback_accel;
+  accel_cmd = std::clamp(accel_cmd, -max_linear_decel_, max_linear_accel_);
   double v_out = last_speed_cmd_ + accel_cmd * dt;
   // 输出界（符号感知）：上限=规划速度——逐点速度既是跟踪参考也是速度限幅
   // （曲率/障碍/蠕行 cap 编码在内，指令超过即违反规划约束）；下界 0——前向
@@ -1060,6 +1156,20 @@ double RegulatedPurePursuitController::trackLinearVelocity(
   const double hi = std::min(std::max(0.0, target_vel), desired_linear_vel_);
   const double lo = std::max(std::min(0.0, target_vel), -desired_linear_vel_);
   v_out = std::clamp(v_out, lo, hi);
+
+  // 反死锁兜底（R49）：目标要求脱离零速，但指令被符号界钳在零上——此时前馈
+  // 与目标反号（采样点落在剖面峰值、拿到峰后制动段），而 0 又成为下一周期的
+  // 指令基准，逐周期自复现，机器人再也起不来。这种前馈描述的是与被跟踪目标
+  // 不同的工况，本周期退化为纯反馈。只在"输出贴零 + 目标非零"这一个几何下
+  // 触发：车还在跑时 v_out = last_speed_cmd_ + a·dt > 0，不会贴到零界，
+  // 正常制动权限不受影响。
+  if (std::fabs(v_out) <= 1e-9 && std::fabs(target_vel) > 1e-6 &&
+    feedforward_accel * target_vel < 0.0)
+  {
+    const double feedback_only = std::clamp(
+      feedback_accel, -max_linear_decel_, max_linear_accel_);
+    v_out = std::clamp(last_speed_cmd_ + feedback_only * dt, lo, hi);
+  }
   last_speed_cmd_ = v_out;
   return v_out;
 }
