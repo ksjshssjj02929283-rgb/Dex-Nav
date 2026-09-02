@@ -304,7 +304,7 @@ controller_server:
       track_controller: "RPPController"        # 与实际运行一致（此前写 MPPI 但实机跑的是 RPP）
       approach_controller: "PIDController"
       approach_distance: 0.3
-      align_heading_tolerance: 0.26  # 30 deg
+      align_heading_tolerance: 0.13  # 10 deg
       align_angular_kp: 1.0
       align_max_angular_velocity: 0.75
       align_min_angular_velocity: 0.05

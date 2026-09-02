@@ -23,6 +23,9 @@ enum class InitialMotionSource
   GOAL_MISMATCH,
   BRANCH_MISMATCH,
   SPATIAL_MISMATCH,
+  // 低速起步时，旧轨迹的空间采样仍停在零速首点，但实测速度已经脱离零速。
+  // 该状态只用于非末端起步恢复，不代表一般速度偏差。
+  LOW_SPEED_STARTUP_RESEED,
   VELOCITY_MISMATCH,
   // P1-2（重构方案 §2.3）：连续 failsafe_deviation_cycles 周期都命中 VELOCITY_MISMATCH，
   // 说明计划已经系统性偏离现实（打滑/卡阻等），此时连加速度也不再继承，完整 reseed。

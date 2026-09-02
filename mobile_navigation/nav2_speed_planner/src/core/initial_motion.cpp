@@ -144,6 +144,7 @@ bool buildAcceptedPrefix(
   const nav_msgs::msg::Path & path,
   size_t best_segment,
   double best_ratio,
+  double prefix_start_velocity,
   double consumed_acceleration,
   double consumed_relative_time,
   const InitialMotionArbiter::Config & config,
@@ -190,6 +191,12 @@ bool buildAcceptedPrefix(
   auto first_point = interpolateTrajectoryPoint(
     accepted.points[best_segment], accepted.points[best_segment + 1], best_ratio);
   first_point.pose = path.poses.front();
+  // The prefix starts at the state consumed by the controller.  Spatial
+  // interpolation is still used for geometry, but its velocity can be the
+  // old trajectory's zero-speed state while the robot is already creeping.
+  // Keeping the explicitly selected state velocity prevents the next
+  // receding-horizon plan from restarting at v=0.
+  first_point.longitudinal_velocity = prefix_start_velocity;
   first_point.acceleration = consumed_acceleration;
   first_point.relative_time = rclcpp::Duration::from_seconds(0.0);
   decision.stitching_prefix.header = accepted.header;
@@ -290,6 +297,8 @@ const char * initialMotionSourceName(InitialMotionSource reason)
       return "branch_mismatch";
     case InitialMotionSource::SPATIAL_MISMATCH:
       return "spatial_mismatch";
+    case InitialMotionSource::LOW_SPEED_STARTUP_RESEED:
+      return "low_speed_startup_reseed";
     case InitialMotionSource::VELOCITY_MISMATCH:
       return "velocity_mismatch";
     case InitialMotionSource::VELOCITY_MISMATCH_FAILSAFE:
@@ -506,21 +515,47 @@ InitialMotionDecision InitialMotionArbiter::resolve(
   }
   consecutive_velocity_deviation_ = 0;
 
+  // The spatial sample is normally the safest cross-cycle velocity because it
+  // keeps the new plan tied to the robot's path position.  At a standstill
+  // startup, however, the robot can already be creeping while its pose is
+  // still nearest the old trajectory's zero-speed first point.  Reusing that
+  // zero creates a receding-horizon self-lock: every plan starts at v=0 and
+  // the time-aligned controller keeps consuming only the first tiny ramp.
+  // Use the measured velocity only in this bounded, non-terminal case.  Do
+  // not apply it near the goal or after terminal braking is latched, where
+  // preserving the conservative terminal profile is more important.
+  constexpr double kStartupSampledVelocityEpsilon = 0.01;
+  constexpr double kStartupMeasuredVelocityEpsilon = 0.001;
+  constexpr double kStartupMeasuredVelocityMax = 0.05;
+  constexpr double kStartupTerminalGuardDistance = 0.30;
+  const double measured_velocity_x = measured_velocity.linear.x;
+  const double remaining_path = pathLength(path);
+  const bool low_speed_startup =
+    !terminal_brake_latched &&
+    std::isfinite(remaining_path) && remaining_path > kStartupTerminalGuardDistance &&
+    std::fabs(sampled_velocity) <= kStartupSampledVelocityEpsilon &&
+    std::fabs(measured_velocity_x) > kStartupMeasuredVelocityEpsilon &&
+    std::fabs(measured_velocity_x) <= kStartupMeasuredVelocityMax;
+
   InitialMotionDecision decision;
   decision.measured_velocity = measured_velocity.linear.x;
   decision.sampled_velocity = sampled_velocity;
   decision.velocity_deviation = velocity_deviation;
   decision.state.velocity = measured_velocity;
-  decision.state.velocity.linear.x = sampled_velocity;
+  decision.state.velocity.linear.x = low_speed_startup ? measured_velocity_x : sampled_velocity;
   // Acceleration continues from the exact preview target consumed by the
   // controller, not from a spatial resample at the next local path origin.
   decision.state.acceleration = accepted_target_acceleration_;
   decision.state.acceleration_valid = true;
   decision.state.source_stamp = accepted_trajectory_time_;
   decision.state.source_age = age;
-  decision.velocity_inherited = true;
+  decision.velocity_inherited = !low_speed_startup;
+  if (low_speed_startup) {
+    decision.reason = InitialMotionSource::LOW_SPEED_STARTUP_RESEED;
+  }
   buildAcceptedPrefix(
     accepted_trajectory_, path, best_segment, best_ratio,
+    decision.state.velocity.linear.x,
     accepted_target_acceleration_, accepted_target_relative_time_, config_, decision);
   return decision;
 }

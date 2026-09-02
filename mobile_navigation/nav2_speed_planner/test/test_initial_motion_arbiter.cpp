@@ -65,6 +65,24 @@ nav_interfaces::msg::RobotTrajectory makeTimedTrajectory()
   return trajectory;
 }
 
+nav_interfaces::msg::RobotTrajectory makeStartupTrajectory()
+{
+  nav_interfaces::msg::RobotTrajectory trajectory;
+  trajectory.header.frame_id = "map";
+  const std::vector<double> speeds{0.0, 0.005, 0.03, 0.10};
+  for (size_t index = 0; index < speeds.size(); ++index) {
+    nav_interfaces::msg::TrajectoryPoint point;
+    point.pose.header.frame_id = trajectory.header.frame_id;
+    point.pose.pose.position.x = 0.2 * static_cast<double>(index);
+    point.pose.pose.orientation.w = 1.0;
+    point.longitudinal_velocity = speeds[index];
+    point.acceleration = 0.12;
+    point.relative_time = rclcpp::Duration::from_seconds(0.1 * static_cast<double>(index));
+    trajectory.points.push_back(point);
+  }
+  return trajectory;
+}
+
 nav_msgs::msg::Path makeDensePath(double start = 0.2)
 {
   nav_msgs::msg::Path path;
@@ -99,6 +117,13 @@ void acceptRecentTrajectory(
   state.accept(
     makeTrajectory(), consumed_target_velocity, consumed_target_acceleration,
     0.0,
+    testTime() - rclcpp::Duration::from_seconds(0.1));
+}
+
+void acceptStartupTrajectory(InitialMotionArbiter & state)
+{
+  state.accept(
+    makeStartupTrajectory(), 0.005, 0.12, 0.1,
     testTime() - rclcpp::Duration::from_seconds(0.1));
 }
 
@@ -321,6 +346,36 @@ TEST(InitialMotionArbiterTest, InheritsConsumedTargetAccelerationForCompatiblePa
   EXPECT_NEAR(decision.state.acceleration, -0.2, 1e-9);
   EXPECT_NEAR(decision.state.source_age, 0.1, 1e-9);
   EXPECT_NEAR(decision.state.velocity.linear.x, 0.3, 1e-9);
+}
+
+TEST(InitialMotionArbiterTest, LowSpeedStartupUsesMeasuredVelocityInsteadOfZeroSpatialSample)
+{
+  InitialMotionArbiter state;
+  acceptStartupTrajectory(state);
+
+  nav_msgs::msg::Path path = makePath({{0.0, 0.0}, {0.3, 0.0}, {0.6, 0.0}});
+  const auto decision = state.resolve(path, makeVelocity(0.005), testTime());
+
+  ASSERT_TRUE(decision.reason.has_value());
+  EXPECT_EQ(*decision.reason, InitialMotionSource::LOW_SPEED_STARTUP_RESEED);
+  EXPECT_FALSE(decision.velocity_inherited);
+  EXPECT_NEAR(decision.sampled_velocity, 0.0, 1e-9);
+  EXPECT_NEAR(decision.state.velocity.linear.x, 0.005, 1e-9);
+  EXPECT_TRUE(decision.hasStitchingPrefix());
+  EXPECT_NEAR(decision.stitching_prefix.points.front().longitudinal_velocity, 0.005, 1e-9);
+}
+
+TEST(InitialMotionArbiterTest, LowSpeedStartupRecoveryIsDisabledForTerminalBrake)
+{
+  InitialMotionArbiter state;
+  acceptStartupTrajectory(state);
+
+  nav_msgs::msg::Path path = makePath({{0.0, 0.0}, {0.3, 0.0}, {0.6, 0.0}});
+  const auto decision = state.resolve(path, makeVelocity(0.005), testTime(), true);
+
+  EXPECT_FALSE(decision.reason.has_value());
+  EXPECT_TRUE(decision.velocity_inherited);
+  EXPECT_NEAR(decision.state.velocity.linear.x, 0.0, 1e-9);
 }
 
 TEST(InitialMotionArbiterTest, PreservesTimedFutureTrajectoryPrefix)
