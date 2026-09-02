@@ -10,6 +10,7 @@ set(TEST_NAMES
   path_handler_test
   critic_manager_test
   optimizer_unit_tests
+  tuning_scenarios_test
 )
 
 foreach(name IN LISTS TEST_NAMES)
@@ -20,6 +21,11 @@ foreach(name IN LISTS TEST_NAMES)
   ament_target_dependencies(${name}
     ${dependencies_pkgs}
   )
+
+  if(name STREQUAL "tuning_scenarios_test")
+    target_compile_definitions(${name} PRIVATE
+      MPPI_TEST_W1_PARAMS_FILE="${CMAKE_CURRENT_SOURCE_DIR}/../../nav2_bringup/params/w1_nav2_params_diff.yaml")
+  endif()
 
   target_link_libraries(${name}
     mppi_controller

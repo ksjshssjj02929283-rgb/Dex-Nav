@@ -304,6 +304,10 @@
       <input_port name="path">Global path to check deviation</input_port>
       <input_port name="max_deviation">Max allowed deviation</input_port>
       <input_port name="hz">Replanning frequency</input_port>
+      <input_port name="path_obstacle_check_hz">Global-path obstacle check frequency</input_port>
+      <input_port name="invalid_path_confirmations">Consecutive blocked checks before replanning</input_port>
+      <input_port name="min_blocked_path_poses">Minimum consecutive blocked poses treated as a large obstacle</input_port>
+      <input_port name="obstacle_replan_cooldown">Seconds to suspend path-validity checks after a successful obstacle-triggered replan</input_port>
     </Decorator>
 
   </TreeNodesModel>

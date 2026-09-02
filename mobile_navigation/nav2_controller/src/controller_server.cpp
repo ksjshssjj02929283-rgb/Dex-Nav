@@ -1073,6 +1073,11 @@ void ControllerServer::commitPlannerPathState(
 {
   end_pose_ = path.poses.back();
   end_pose_.header.frame_id = path.header.frame_id;
+  // The goal/path timestamp describes when planning completed, not the time at which every
+  // following control cycle should query TF. end_pose_ is retained for the whole FollowPath
+  // action, so a non-zero stamp quickly becomes older than map->odom and makes all staged-control
+  // and goal-check transforms fail. Time zero explicitly requests the latest available transform.
+  end_pose_.header.stamp = rclcpp::Time(0);
   if (update_type == PathUpdateType::NEW_GOAL) {
     goal_checkers_[current_goal_checker_]->reset();
     near_goal_progress_acceptance_reached_ = false;
@@ -2628,6 +2633,23 @@ bool ControllerServer::nearestPlannedSpeed(
   return true;
 }
 
+size_t ControllerServer::findClosestPoseIndex(
+  const geometry_msgs::msg::PoseStamped & pose_in_path,
+  const nav_msgs::msg::Path & path) const
+{
+  size_t closest_pose_idx = 0;
+  double min_distance = std::numeric_limits<double>::max();
+  for (size_t pose_idx = 0; pose_idx < path.poses.size(); ++pose_idx) {
+    const double distance = nav2_util::geometry_utils::euclidean_distance(
+      pose_in_path, path.poses[pose_idx]);
+    if (distance < min_distance) {
+      min_distance = distance;
+      closest_pose_idx = pose_idx;
+    }
+  }
+  return closest_pose_idx;
+}
+
 void ControllerServer::computeAndPublishVelocity()
 {
   constexpr double kSlowTimingWarnMs = 100.0;
@@ -2868,27 +2890,40 @@ void ControllerServer::computeAndPublishVelocity()
   feedback->speed = std::hypot(cmd_vel_2d.twist.linear.x, cmd_vel_2d.twist.linear.y);
 
   // noted by hz
-  // 找到最近的目标点，并计算到目标点的距离，然后作为feedback发布
-  // Find the closest pose to current pose on global path
-  nav_msgs::msg::Path & current_path = current_path_;
-  auto find_closest_pose_idx =
-    [&pose, &current_path]() {
-      size_t closest_pose_idx = 0;
-      double curr_min_dist = std::numeric_limits<double>::max();
-      for (size_t curr_idx = 0; curr_idx < current_path.poses.size(); ++curr_idx) {
-        double curr_dist = nav2_util::geometry_utils::euclidean_distance(
-          pose, current_path.poses[curr_idx]);
-        if (curr_dist < curr_min_dist) {
-          curr_min_dist = curr_dist;
-          closest_pose_idx = curr_idx;
-        }
-      }
-      return closest_pose_idx;
-    };
+  // 找到最近的路径点，并计算剩余路径长度，然后作为 feedback 发布。
+  // getRobotPose() 返回的是 local costmap global frame（当前配置为 odom），而
+  // current_path_ 通常位于 map。最近点和剩余路径长度必须在同一坐标系计算，
+  // 否则会把路径末点误判为最近点，使 distance_to_goal 长期为 0。
+  geometry_msgs::msg::PoseStamped pose_in_path = pose;
+  bool pose_in_path_valid = true;
+  if (!current_path_.header.frame_id.empty() &&
+    pose.header.frame_id != current_path_.header.frame_id)
+  {
+    try {
+      rclcpp::Duration tolerance(
+        rclcpp::Duration::from_seconds(costmap_ros_->getTransformTolerance()));
+      // 使用 TF 队列中的最新变换，避免 pose 的采样时间戳稍早于 map->odom
+      // 缓存区间时使反馈距离失效。
+      geometry_msgs::msg::PoseStamped latest_tf_pose = pose;
+      latest_tf_pose.header.stamp = rclcpp::Time(0);
+      pose_in_path_valid = nav_2d_utils::transformPose(
+        costmap_ros_->getTfBuffer(), current_path_.header.frame_id,
+        latest_tf_pose, pose_in_path, tolerance);
+    } catch (const tf2::TransformException & ex) {
+      pose_in_path_valid = false;
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 5000,
+        "Unable to transform robot pose from '%s' to path frame '%s' for feedback metrics: %s",
+        pose.header.frame_id.c_str(), current_path_.header.frame_id.c_str(), ex.what());
+    }
+  }
 
-  const size_t closest_pose_idx = find_closest_pose_idx();
-  feedback->distance_to_goal =
-    nav2_util::geometry_utils::calculate_path_length(current_path_, closest_pose_idx);
+  const size_t closest_pose_idx =
+    pose_in_path_valid && !current_path_.poses.empty() ?
+    findClosestPoseIndex(pose_in_path, current_path_) : 0u;
+  feedback->distance_to_goal = pose_in_path_valid ?
+    nav2_util::geometry_utils::calculate_path_length(current_path_, closest_pose_idx) :
+    std::numeric_limits<double>::quiet_NaN();
   action_server_->publish_feedback(feedback);
 
   auto t_feedback_end = std::chrono::high_resolution_clock::now();

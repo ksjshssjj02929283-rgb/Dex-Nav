@@ -153,3 +153,39 @@ TEST(TrajectoryVisualizerTests, VisCandidateTrajectories)
   // 40 * 4, for 5 trajectory steps + 3 point steps
   EXPECT_EQ(recieved_msg.markers.size(), 160u);
 }
+
+TEST(TrajectoryVisualizerTests, VisOnlyHighestWeightTrajectories)
+{
+  std::vector<rclcpp::Parameter> params{
+    rclcpp::Parameter("my_name.TrajectoryVisualizer.top_trajectories", 2),
+    rclcpp::Parameter("my_name.TrajectoryVisualizer.time_step", 2)};
+  rclcpp::NodeOptions options;
+  options.parameter_overrides(params);
+  auto node = std::make_shared<rclcpp_lifecycle::LifecycleNode>("weighted_vis_node", options);
+  auto parameters_handler = std::make_unique<ParametersHandler>(node);
+
+  visualization_msgs::msg::MarkerArray received_msg;
+  auto subscription = node->create_subscription<visualization_msgs::msg::MarkerArray>(
+    "/trajectories", 10,
+    [&](const visualization_msgs::msg::MarkerArray msg) {received_msg = msg;});
+
+  models::Trajectories trajectories;
+  trajectories.reset(4, 6);
+  for (Eigen::Index row = 0; row < 4; ++row) {
+    trajectories.x.row(row).setConstant(static_cast<float>(row));
+  }
+  models::Vector weights(4);
+  weights << 0.1f, 0.6f, 0.2f, 0.9f;
+
+  TrajectoryVisualizer vis;
+  vis.on_configure(node, "my_name", "map", parameters_handler.get());
+  vis.on_activate();
+  vis.addWeighted(trajectories, weights, "High Weight Trajectories");
+  vis.visualize(nav_msgs::msg::Path{});
+  rclcpp::spin_some(node->get_node_base_interface());
+
+  ASSERT_EQ(received_msg.markers.size(), 6u);  // Top 2, three points each.
+  EXPECT_FLOAT_EQ(received_msg.markers[0].pose.position.x, 3.0);
+  EXPECT_FLOAT_EQ(received_msg.markers[3].pose.position.x, 1.0);
+  EXPECT_GT(received_msg.markers[0].color.r, received_msg.markers[3].color.r);
+}
