@@ -24,6 +24,7 @@
 #include <std_srvs/srv/trigger.hpp>
 
 #include "schedule_planner/path_segment_sampler.hpp"
+#include "schedule_planner/segment_merger.hpp"
 
 namespace schedule_planner
 {
@@ -90,11 +91,16 @@ namespace schedule_planner
         void abortGoalOnException(
             const std::shared_ptr<GoalHandleT>& goal_handle, const std::string& what);
 
-        /// 离散并发送一段，等待 path_follower 回报。返回：0=完成 1=失败 2=取消 3=超时 4=shutdown。
+        /// 发送一条（可能由多段合并而来的）轨迹，等待 path_follower 回报。
+        /// 返回：0=完成 1=失败 2=取消 3=超时 4=shutdown。
         /// out_msg 携带该结果的过程/失败信息（失败时来自 NavigationStatus.message），供
         /// execute() 拼进 action 结果，失败时不再是笼统的 "segment N failed"。
+        /// 离散与 target_yaw 的处理已上提到 executeGoal——合并后一组对应多段，
+        /// 「是不是末段」这个判断只有调用方知道。
+        /// @param seg_count 本组包含的原始段数，用于按比例放宽段超时。
         int runSegment(
-            const PathSegment& seg, std::size_t idx, std::size_t total,
+            nav_interfaces::msg::TrackingPath tp, std::size_t idx, std::size_t total,
+            std::size_t seg_count,
             const std::shared_ptr<GoalHandleT>& goal_handle, std::string& out_msg);
 
         /// controller 模式：离散一段后转 nav_msgs/Path，发 FollowPath goal 给 controller_server
@@ -210,6 +216,8 @@ namespace schedule_planner
         rclcpp::Publisher<std_msgs::msg::String>::SharedPtr bag_trigger_pub_;
 
         PathSegmentSampler sampler_;
+        /// 相邻段合并平滑的参数（见 segment_merger.hpp）。
+        MergeParams merge_params_;
 
         // ---------------- 参数 ----------------
         std::string action_name_{"navigate_through_graph_points"};

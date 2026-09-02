@@ -12,6 +12,8 @@ ros2 service call /map_asset_manager/resolve_nav_points nav_interfaces/srv/Resol
 
 ros2 service call /schedule_planner/force_cancel std_srvs/srv/Trigger {}
 
+ros2 run nav2_schedule_planner graph_nav.py recover
+
 ros2 action send_goal /steering_angle_control nav_interfaces/action/SteeringAngleControl '{
         target_steer_angles_rad: [0.2, -0.4, 1.0, -1.2],
         timeout_sec: 3.0,

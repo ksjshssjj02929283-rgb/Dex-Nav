@@ -83,16 +83,28 @@ path_follower_node:
     # 这条曲线只在收到路径时算一次，产出"弧长 -> 参考速度"映射并烤进轨迹，之后全程只读。
     # 障碍减速/停止/恢复不再重规划这条曲线，见下面的"两阶段速度步进模型"。
     max_linear_velocity: 0.7       # 最大线速度 m/s
-    min_linear_velocity: 0.01      # 规划起点/终点速度，也是发布前非零 vx/vy 的最小幅值（覆盖底盘死区）
+    min_linear_velocity: 0.015      # 规划起点/终点速度，也是发布前非零 vx/vy 的最小幅值（覆盖底盘死区）
     max_linear_acceleration: 0.5   # 最大线加速度 m/s^2
     max_linear_deceleration: 0.4   # 最大线减速度（正值，内部取负）m/s^2
     max_linear_jerk: 0.2           # 线速度 jerk 上限 m/s^3
     max_angular_velocity: 1.0      # 最大角速度 rad/s（曲率/朝向共用上限）
-    min_angular_velocity: 0.015     # 规划起点/终点角速度，也是发布前非零 wz 的最小幅值（覆盖底盘死区）
+    min_angular_velocity: 0.025     # 规划起点/终点角速度，也是发布前非零 wz 的最小幅值（覆盖底盘死区）
     max_angular_acceleration: 0.7  # 朝向角加速度 rad/s^2
     max_angular_deceleration: 0.5  # 朝向角减速度 rad/s^2
     max_angular_jerk: 0.2          # 角速度 jerk 上限 rad/s^3
     ruckig_control_dt: 0.01        # Ruckig 在线步进控制周期 s
+    # 速度包络模式：legacy = 曲率软钳 + 加减速双扫描（历史行为）；
+    #               toppra = 物理包络 v <= min(v_ruckig, max_angular_velocity/|kappa|, 角加速度上界)
+    #                        + 含角加速度约束的前后向扫描。
+    # 两种模式都以 Ruckig 的全局速度剖面为逐点上限，只会往下压。
+    # toppra 的角加速度约束依赖上游填入的解析切向（poses.orientation）；未填时该约束
+    # 自动关闭并告警——曲率此时只能由三点外接圆得到，再差分一次已是纯噪声。
+    velocity_profile_mode: toppra
+    # 角加速度约束的安全余量系数，作用于 max_angular_acceleration（仅 toppra 模式）。
+    # kappa' 在贝塞尔接入/接出点是跳变的，有限差分会把阶跃抹成一个 ds 宽的斜坡，
+    # 误差约为跳变幅度的一半且不随加密收敛。实测 1cm 离散下端到端角加速度峰值超限约 20%。
+    angular_accel_margin: 0.7
+    # ---- 以下三项仅 legacy 模式使用 ----
     curvature_deceleration: true   # 曲率减速总开关
     # 曲率减速软钳：dec_ratio = max(curvature_dec_ratio_min, gain/(w^2+gain))，w = linear_v * curvature
     curvature_dec_gain: 0.3        # 软钳特征角速度平方：w=sqrt(gain) 处 ratio=0.5，打折后角速度峰值

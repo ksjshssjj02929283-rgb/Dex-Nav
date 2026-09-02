@@ -51,6 +51,7 @@ set(THIS_PKG_DEPENDS
 add_library(${PROJECT_NAME} SHARED
         src/pid_controller.cpp
         src/velocity_planner.cpp
+        src/velocity_envelope.cpp
         src/ruckig_velocity_planner.cpp
         src/velocity_step_model.cpp
         src/path_follower.cpp

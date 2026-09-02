@@ -49,6 +49,13 @@ namespace path_follower
             return "unknown";
         }
 
+        /// inputHeadingUsable 用：判定"朝向是否为零"的阈值。
+        constexpr double kHeadingZeroEps = 1e-9;
+        /// inputHeadingUsable 用：朝向与弦向夹角的容差（rad），超过即视为上游填错。
+        constexpr double kHeadingConsistencyTol = 30.0 * M_PI / 180.0;
+        /// inputHeadingUsable 用：一致性校验的抽样点数。
+        constexpr std::size_t kHeadingCheckSamples = 16;
+
         /// 从四元数取偏航角（rad）。
         double yawFromQuaternion(const geometry_msgs::msg::Quaternion& q)
         {
@@ -372,6 +379,10 @@ namespace path_follower
         planner_params_.curvature_dec_gain = declare_parameter<double>("curvature_dec_gain", 0.3);
         planner_params_.curvature_dec_ratio_min = declare_parameter<double>("curvature_dec_ratio_min", 0.2);
         planner_params_.acceleration_envelope = declare_parameter<bool>("acceleration_envelope", true);
+        planner_params_.velocity_profile_mode =
+            declare_parameter<std::string>("velocity_profile_mode", "legacy");
+        planner_params_.angular_accel_margin =
+            declare_parameter<double>("angular_accel_margin", 0.8);
         planner_params_.angle_resolution = declare_parameter<double>("angle_resolution", 0.0034906585);
         planner_params_.trajectory_resolution = trajectory_resolution_;
 
@@ -460,6 +471,8 @@ namespace path_follower
                 p.get_name() == "curvature_dec_gain" ||
                 p.get_name() == "curvature_dec_ratio_min" ||
                 p.get_name() == "acceleration_envelope" ||
+                p.get_name() == "velocity_profile_mode" ||
+                p.get_name() == "angular_accel_margin" ||
                 p.get_name() == "trajectory_resolution" ||
                 p.get_name() == "angle_resolution")
             {
@@ -493,6 +506,19 @@ namespace path_follower
             {
                 result.successful = false;
                 result.reason = p.get_name() + " must be >= 0";
+            }
+            if (p.get_name() == "velocity_profile_mode" &&
+                p.as_string() != "legacy" && p.as_string() != "toppra")
+            {
+                result.successful = false;
+                result.reason = p.get_name() + " must be \"legacy\" or \"toppra\"";
+            }
+            // 角加速度余量：<=0 会把约束压成 0（车停住），>1 等于放大上限，都无意义。
+            if (p.get_name() == "angular_accel_margin" &&
+                (p.as_double() <= 0.0 || p.as_double() > 1.0))
+            {
+                result.successful = false;
+                result.reason = p.get_name() + " must be in (0, 1]";
             }
             // 曲率减速软钳：gain 是分母加数，必须为正；ratio_min 超过 1 会把速度放大到
             // Ruckig 规划值之上（越过全局速度上限），必须夹在 (0, 1]。
@@ -641,6 +667,10 @@ namespace path_follower
             planner_params_.curvature_dec_gain = get_parameter("curvature_dec_gain").as_double();
             planner_params_.curvature_dec_ratio_min = get_parameter("curvature_dec_ratio_min").as_double();
             planner_params_.acceleration_envelope = get_parameter("acceleration_envelope").as_bool();
+            planner_params_.velocity_profile_mode =
+                get_parameter("velocity_profile_mode").as_string();
+            planner_params_.angular_accel_margin =
+                get_parameter("angular_accel_margin").as_double();
             planner_params_.angle_resolution = get_parameter("angle_resolution").as_double();
             velocity_planner_.setParams(planner_params_);
         }
@@ -680,6 +710,9 @@ namespace path_follower
             TrajectoryPoint p;
             p.x = pose_stamped.pose.position.x;
             p.y = pose_stamped.pose.position.y;
+            // 上游若填了解析切向就带下来；未填时四元数是单位阵，yaw 恰为 0，
+            // 由 inputHeadingUsable 统一判定要不要采信。
+            p.heading_angle = yawFromQuaternion(pose_stamped.pose.orientation);
             pts.push_back(p);
         }
         return pts;
@@ -695,9 +728,72 @@ namespace path_follower
             TrajectoryPoint p;
             p.x = pose.position.x;
             p.y = pose.position.y;
+            p.heading_angle = yawFromQuaternion(pose.orientation);
             pts.push_back(p);
         }
         return pts;
+    }
+
+    bool PathFollowerNode::inputHeadingUsable(const std::vector<TrajectoryPoint>& pts) const
+    {
+        if (pts.size() < 2)
+        {
+            return false;
+        }
+
+        const bool any_nonzero = std::any_of(
+            pts.begin(), pts.end(),
+            [](const TrajectoryPoint& p) { return std::fabs(p.heading_angle) > kHeadingZeroEps; });
+        if (!any_nonzero)
+        {
+            RCLCPP_INFO(get_logger(),
+                        "Input path carries no orientation (all identity); "
+                        "heading/curvature will be derived from positions.");
+            return false;
+        }
+
+        // 抽样比较朝向与弦向。间距很小时弦向本身滞后半格（约 kappa*ds/2），
+        // 所以容差取得很松（默认 30 度），只用来抓"根本没对上"这类错误。
+        const std::size_t step =
+            std::max<std::size_t>(1, (pts.size() - 1) / kHeadingCheckSamples);
+        double worst = 0.0;
+        std::size_t worst_index = 0;
+        for (std::size_t i = 0; i + 1 < pts.size(); i += step)
+        {
+            const double dx = pts[i + 1].x - pts[i].x;
+            const double dy = pts[i + 1].y - pts[i].y;
+            if (std::hypot(dx, dy) < kHeadingZeroEps)
+            {
+                continue; // 重复点，弦向无定义
+            }
+            const double chord = std::atan2(dy, dx);
+            const double diff =
+                std::fabs(angles::shortest_angular_distance(pts[i].heading_angle, chord));
+            if (diff > worst)
+            {
+                worst = diff;
+                worst_index = i;
+            }
+        }
+
+        if (worst > kHeadingConsistencyTol)
+        {
+            RCLCPP_WARN(get_logger(),
+                        "Input orientation inconsistent with path geometry "
+                        "(max %.1f deg at point %zu > %.1f deg tolerance); "
+                        "falling back to self-computed heading. "
+                        "Check that the publisher fills the travel-direction tangent, "
+                        "not the vehicle yaw.",
+                        worst * 180.0 / M_PI, worst_index,
+                        kHeadingConsistencyTol * 180.0 / M_PI);
+            return false;
+        }
+
+        RCLCPP_INFO(get_logger(),
+                    "Using input orientation as path tangent "
+                    "(max chord deviation %.2f deg over %zu points).",
+                    worst * 180.0 / M_PI, pts.size());
+        return true;
     }
 
     void PathFollowerNode::onPath(const nav_msgs::msg::Path::SharedPtr msg)
@@ -893,7 +989,8 @@ namespace path_follower
         }
 
         PlannedRoute pr;
-        pr.position = velocity_planner_.planPosition(raw);
+        const bool trust_heading = inputHeadingUsable(raw);
+        pr.position = velocity_planner_.planPosition(raw, trust_heading);
         pr.goal_theta = goal_theta;
 
         // 轨迹首末切向（planPosition 已算好 heading_angle）。

@@ -133,6 +133,11 @@ def generate_launch_description():
                 'use_sim_time': sim,
                 'track_deviation_limit': 0.5,
                 'enable_steer_range_analysis': False,
+                # 仿真里关掉末端定位切换：该特性是为了规避真机上 map/TF 在到点阶段的
+                # 定位抖动，仿真的定位是干净的，切到 odom 递推反而引入一层与真值无关的
+                # 估计误差，干扰对跟踪精度本身的观察。两个阈值都置 0 即关闭。
+                'end_localization_switch_distance': 0.0,
+                'end_localization_switch_angle': 0.0,
             }],
             # 输出重映射到 /cmd_vel_raw，交给 collision_monitor 处理后再发 /cmd_vel。
             remappings=[

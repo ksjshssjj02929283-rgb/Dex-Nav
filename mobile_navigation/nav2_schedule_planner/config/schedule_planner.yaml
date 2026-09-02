@@ -19,7 +19,28 @@ schedule_planner_node:
 
     # ---------------- 几何 ----------------
     frame_id: "map"        # 输出 Path 坐标系（需与 path_follower 的定位坐标系一致并有 TF）
-    resolution: 0.01      # 离散弧长间距 m（5mm）
+    resolution: 0.01       # 离散弧长间距 m（1cm）
+
+    # ---------------- 相邻段合并平滑 ----------------
+    # 属性一致（backward / padding / 解析后的 mode）、长度够、转角不过急的连续 LINE 段，
+    # 合并成一条带四次贝塞尔倒角的轨迹一次下发，省掉组内每个途经点的「停车 + 原地旋转」。
+    # 长度门槛由 anchor_spacing 推导，不单独配置：
+    #   退让距离 d = (阶数-2) * anchor_spacing = 0.5 m
+    #   组内首/末段只服务一个拐角  -> 需 d + end_margin = 0.6 m
+    #   组内中间段被两个拐角共享    -> 需 2d = 1.0 m
+    # 长度落在 [0.6, 1.0) 的段只能收尾：它进组后下一轮的中间段门槛不过，组自动封口。
+    # map_asset 插入的归位段（段数 == 点数）永远单独成组，先跑完再开始合并。
+    # controller 模式（mode: "controller"）不参与合并。
+    merge_enable: true
+    merge_bezier_degree: 4        # 只支持 4（与 path_follower 侧锚点方案一致）
+    merge_anchor_spacing: 0.25    # 锚点间距 m；切角深度 = 0.75*anchor*sin(转角/2) <= 0.188m
+    merge_end_margin: 0.1         # 端段长度余量 m
+    # 转角上限：判定用两段**行进方向**的夹角余弦
+    #   dot(unit(前段方向), unit(后段方向)) > cos(merge_max_turn_angle_deg)
+    # 直行余弦=1，转60度=0.5，转90度=0，转120度=-0.5，掉头=-1。
+    # 默认 120 度（cos > -0.5），直角拐角在内；超过则不倒角、拆成两组各自停车转向。
+    # anchor=0.25 时 120 度拐角的 R_min≈0.12m、过弯约 0.12m/s，已经是可用性下限。
+    merge_max_turn_angle_deg: 120.0
 
     # ---------------- 超时 ----------------
     resolve_timeout: 5.0   # 解析服务等待/调用超时 s

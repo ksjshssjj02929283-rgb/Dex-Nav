@@ -257,12 +257,27 @@ namespace path_follower
             std::shared_ptr<std_srvs::srv::Trigger::Response> res);
 
         // ---------------- 工具 ----------------
-        /// 把 nav_msgs/Path 转为内部原始轨迹点。
+        /// 把 nav_msgs/Path 转为内部原始轨迹点（含每点朝向，写入 heading_angle）。
         std::vector<TrajectoryPoint> pathToTrajectoryPoints(
             const nav_msgs::msg::Path& path) const;
-        /// 把 TrackingPath.poses（geometry_msgs/Pose[]）转为内部原始轨迹点。
+        /// 把 TrackingPath.poses（geometry_msgs/Pose[]）转为内部原始轨迹点（含每点朝向）。
         std::vector<TrajectoryPoint> posesToTrajectoryPoints(
             const std::vector<geometry_msgs::msg::Pose>& poses) const;
+
+        /**
+         * @brief 判断输入轨迹点自带的朝向能否直接采信（决定曲率从朝向差分还是从 x,y 反推）。
+         *
+         * 判据一——是否填了：只要存在任一非零 heading_angle 即认为上游填了朝向。
+         *   未填时 geometry_msgs/Quaternion 默认是单位四元数（w=1），yaw 恰为 0；
+         *   唯一会误判的场景是"整段沿 +x 的直线"，而那种情况自行计算出来同样是 0，
+         *   两条路结果一致，误判无害。
+         *
+         * 判据二——填得对不对：抽样比较朝向与相邻点弦向的夹角，超过容差就整段回退自算。
+         *   挡住"部分点填了部分没填"和"填了车体朝向而非行进切向"这两类上游错误。
+         *
+         * @return true = 采信输入朝向；false = 由 VelocityPlanner 自行从位置计算
+         */
+        bool inputHeadingUsable(const std::vector<TrajectoryPoint>& pts) const;
 
         /**
          * @brief 公共规划入口：把离散原始轨迹点 + 段级参数构建成 PlannedRoute 并装载。

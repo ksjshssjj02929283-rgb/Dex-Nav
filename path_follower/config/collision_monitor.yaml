@@ -46,8 +46,8 @@ collision_monitor:
 ##      points: [-0.3725, -0.25, -0.3725, 0.25, 0.3725, 0.25, 0.3725, -0.25]  # linorobot2
 #      points: [0.35, 0.29, 0.35, -0.29, -0.35, -0.29, -0.35, 0.29]  # w1: 精确 footprint
       type: "circle"
-      radius: 0.46          # w1 底盘外接圆半径
-      default_padding: 0.2  # 默认停障膨胀，等效于原来的 radius 0.66
+      radius: 0.35          # w1 底盘内接圆半径
+      default_padding: 0.3  # 默认停障膨胀，等效于原来的 radius 0.66
       action_type: "stop"
       max_points: 3
       visualize: True
@@ -59,7 +59,7 @@ collision_monitor:
       path_stop_enabled: true
       tracking_path_topic: "/tracking_path"
       path_stop_distance: 1.0
-      path_stop_radius: 0.36    # 每个路径采样点的检测半径
+      path_stop_radius: 0.34    # 每个路径采样点的检测半径
       path_point_interval: 0.10  # 与上一取点相距至少 10 cm 时取当前路径点
       path_stop_visualize: false
       path_stop_marker_topic: "path_stop_circles"
@@ -71,8 +71,8 @@ collision_monitor:
 ##      points: [-0.7225, -0.6, -0.7225, 0.6, 0.7225, 0.6, 0.7225, -0.6]  # linorobot2
 #      points: [0.35, 0.29, 0.35, -0.29, -0.35, -0.29, -0.35, 0.29]  # w1: 精确 footprint
       type: "circle"
-      radius: 0.46          # w1 底盘外接圆半径
-      default_padding: 0.4  # 默认减速膨胀，等效于原来的 radius 0.86
+      radius: 0.35          # w1 底盘内接圆半径
+      default_padding: 0.5  # 默认减速膨胀，等效于原来的 radius 0.86
       action_type: "slowdown"
       max_points: 3
       slowdown_ratio: 0.5
@@ -95,8 +95,8 @@ collision_monitor:
       enabled: True
 
 #    observation_sources: ["scan"]  # linorobot2
-    # observation_sources: ["scan_front", "scan_rear", "pointcloud_front", "pointcloud_rear", "rgbd_scan_front", "rgbd_scan_rear"]
-    observation_sources: ["scan_front", "scan_rear", "rgbd_scan_front", "rgbd_scan_rear"]
+    observation_sources: ["scan_front", "scan_rear", "pointcloud_front", "pointcloud_rear", "rgbd_scan_front", "rgbd_scan_rear"]
+    # observation_sources: ["scan_front", "scan_rear", "rgbd_scan_front", "rgbd_scan_rear"]
     scan:
       type: "scan"
       topic: "/scan"
@@ -109,19 +109,19 @@ collision_monitor:
       type: "scan"
       topic: "/laser_scan/rear"
       enabled: True
-#     pointcloud_front:
-#       type: "pointcloud"
-# #      topic: "/camera/depth/color/points"  # linorobot2未生效
-#       topic: "/orbbec/front/pointcloud2_filtered"
-#       min_height: 0.05
-#       max_height: 1.0
-#       enabled: True
-#     pointcloud_rear:
-#       type: "pointcloud"
-#       topic: "/orbbec/rear/pointcloud2_filtered"
-#       min_height: 0.05
-#       max_height: 1.0
-#       enabled: True
+    pointcloud_front:
+      type: "pointcloud"
+ #     topic: "/camera/depth/color/points"  # linorobot2未生效
+      topic: "/orbbec/front/pointcloud2_filtered"
+      min_height: 0.05
+      max_height: 1.0
+      enabled: True
+    pointcloud_rear:
+      type: "pointcloud"
+      topic: "/orbbec/rear/pointcloud2_filtered"
+      min_height: 0.05
+      max_height: 1.0
+      enabled: True
     rgbd_scan_front:
       type: "scan"
       topic: "/orbbec/front/laser_scan"

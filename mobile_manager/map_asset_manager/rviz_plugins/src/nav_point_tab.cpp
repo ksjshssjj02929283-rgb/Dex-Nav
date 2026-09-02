@@ -138,7 +138,7 @@ void NavPointTab::rebuildClients() {
     add_client_     = node_->create_client<nav_interfaces::srv::AddNavPoint>(prefix_ + "/add_point");
     remove_client_  = node_->create_client<nav_interfaces::srv::RemoveNavPoint>(prefix_ + "/remove_point");
     sample_client_  = node_->create_client<nav_interfaces::srv::SampleNavPoint>(prefix_ + "/sample_point");
-    update_client_  = node_->create_client<nav_interfaces::srv::UpdateNavPoint>(prefix_ + "/update_nav_point");
+    update_client_  = node_->create_client<nav_interfaces::srv::UpdateNavPoint>(prefix_ + "/update_point");
     nav_client_     = rclcpp_action::create_client<NavigateToPointAction>(
         node_, prefix_ + "/navigate_to_point");
 }

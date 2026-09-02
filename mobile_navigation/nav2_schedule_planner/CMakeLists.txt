@@ -43,6 +43,7 @@ set(THIS_PKG_DEPENDS
 # ---------------------------------------------------------------------------
 add_library(${PROJECT_NAME} SHARED
         src/path_segment_sampler.cpp
+        src/segment_merger.cpp
         src/schedule_planner_node.cpp
 )
 
@@ -80,8 +81,16 @@ install(DIRECTORY launch config
 )
 
 install(PROGRAMS
+	    scripts/graph_nav.py
         scripts/random_navigate_through_graph_points.py
         scripts/plot_move_record.py
+        DESTINATION lib/${PROJECT_NAME}
+)
+
+# 路网同步工具：sync_roadnet.py 会按同目录找 map_convert_nav2tc.py，两个必须装在一起
+install(PROGRAMS
+        scripts/map_sync/sync_roadnet.py
+        scripts/map_sync/map_convert_nav2tc.py
         DESTINATION lib/${PROJECT_NAME}
 )
 

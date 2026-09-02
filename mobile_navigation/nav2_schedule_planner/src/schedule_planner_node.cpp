@@ -44,6 +44,15 @@ namespace schedule_planner
         // default_mode：PathSegment 未显式指定 mode 时的默认跟踪方式。1=DIFF, 3=OMNI_TRANS_ROTATION。
         default_mode_ = static_cast<uint8_t>(declare_parameter<int>("default_mode", 1));
 
+        // 相邻段合并平滑：属性一致、长度够的连续 LINE 段并成一条带拐角倒角的轨迹一次下发，
+        // 省掉组内每个途经点的「停车 + 原地旋转」。长度门槛由 anchor_spacing 推导，不单独配。
+        merge_params_.enable = declare_parameter<bool>("merge_enable", true);
+        merge_params_.bezier_degree = declare_parameter<int>("merge_bezier_degree", 4);
+        merge_params_.anchor_spacing = declare_parameter<double>("merge_anchor_spacing", 0.25);
+        merge_params_.end_margin = declare_parameter<double>("merge_end_margin", 0.1);
+        merge_params_.max_turn_angle_deg =
+            declare_parameter<double>("merge_max_turn_angle_deg", 120.0);
+
         // mode：节点启动时固定二选一，不支持运行时热切换。
         const std::string mode = declare_parameter<std::string>("mode", "independence");
         if (mode == "controller")
@@ -283,13 +292,36 @@ namespace schedule_planner
             return;
         }
 
-        // 2) 逐段执行
+        // 2) 分组：属性一致、长度够的连续 LINE 段合并成一条带倒角的轨迹一次下发。
         const std::size_t total = segments.size();
+        // map_asset 在车离起点太远时会在最前面插一条归位边，此时段数等于点数
+        // （正常是点数-1，见 route_graph_manager.cpp 的 "prepended homing edge"）。
+        // 归位段必须单独跑完再开始合并。单点请求也满足这个等式，但它只有一段，无所谓。
+        const std::size_t first_mergeable =
+            (goal->nav_point_names.size() >= 2 && total == goal->nav_point_names.size()) ? 1u : 0u;
+        MergeParams mp = merge_params_;
+        // controller 模式走的是 FollowPath + controller_server，离散分辨率与跟踪语义都不同，
+        // 合并暂不覆盖该模式。
+        mp.enable = mp.enable && !controller_mode_;
+        const auto groups = planMergeGroups(segments, first_mergeable, default_mode_, mp);
+        if (mp.enable)
+        {
+            RCLCPP_INFO(get_logger(),
+                        "Merge planning: %zu segments -> %zu groups (first_mergeable=%zu, "
+                        "d=%.2fm, min_end=%.2fm, min_interior=%.2fm, max_turn=%.0fdeg cos>%.3f)",
+                        total, groups.size(), first_mergeable, mp.retreat(),
+                        mp.minEndLength(), mp.minInteriorLength(), mp.max_turn_angle_deg,
+                        std::cos(mp.max_turn_angle_deg * M_PI / 180.0));
+        }
+
+        // 3) 逐组执行
         bool ok = true;
         bool canceled = false;
         std::string fail_msg;
-        for (std::size_t i = 0; i < total; ++i)
+        for (std::size_t gi = 0; gi < groups.size(); ++gi)
         {
+            const auto& g = groups[gi];
+            const std::size_t i = g.begin; // 进度/日志仍按原始段索引报，上层看到的编号不变
             if (shutting_down_.load())
             {
                 fail_msg = "shutdown";
@@ -300,13 +332,31 @@ namespace schedule_planner
                             "executing segment " + std::to_string(i) + "/" + std::to_string(total),
                             i, total);
             RCLCPP_INFO(get_logger(),
-                        "Segment %zu/%zu: type=%u cps=%zu target_yaw=%.3f backward=%d max_speed=%.2f",
-                        i, total, segments[i].type, segments[i].control_points.size(),
-                        segments[i].target_yaw, segments[i].backward, segments[i].max_speed);
+                        "Group %zu/%zu = segments [%zu,%zu): type=%u cps=%zu target_yaw=%.3f "
+                        "backward=%d max_speed=%.2f",
+                        gi + 1, groups.size(), g.begin, g.end, segments[i].type,
+                        segments[i].control_points.size(), segments[i].target_yaw,
+                        segments[i].backward, segments[i].max_speed);
             std::string seg_msg;
-            const int r = controller_mode_
-                ? runSegmentViaController(segments[i], i, total, goal_handle, seg_msg)
-                : runSegment(segments[i], i, total, goal_handle, seg_msg);
+            int r = 0;
+            if (controller_mode_)
+            {
+                r = runSegmentViaController(segments[i], i, total, goal_handle, seg_msg);
+            }
+            else
+            {
+                auto tp = (g.size() > 1)
+                    ? sampler_.discretizeGroup(segments, g.begin, g.end, resolution_,
+                                               mp.anchor_spacing, mp.bezier_degree,
+                                               frame_id_, default_mode_)
+                    : sampler_.discretize(segments[i], resolution_, frame_id_, default_mode_);
+                // 只有最后一组的末段保留 target_yaw，其余置 NaN（到点不做末段旋转）。
+                if (gi + 1 < groups.size())
+                {
+                    tp.target_yaw = std::numeric_limits<double>::quiet_NaN();
+                }
+                r = runSegment(std::move(tp), i, total, g.size(), goal_handle, seg_msg);
+            }
             if (r == 2)
             {
                 fail_msg = "canceled at segment " + std::to_string(i) + ": " + seg_msg;
@@ -397,18 +447,15 @@ namespace schedule_planner
     }
 
     int SchedulePlannerNode::runSegment(
-        const PathSegment& seg, std::size_t idx, std::size_t total,
+        nav_interfaces::msg::TrackingPath tp, std::size_t idx, std::size_t total,
+        std::size_t seg_count,
         const std::shared_ptr<GoalHandleT>& goal_handle, std::string& out_msg)
     {
-        auto tp = sampler_.discretize(seg, resolution_, frame_id_, default_mode_);
         if (tp.poses.empty())
         {
             out_msg = "segment discretized to empty path";
             RCLCPP_ERROR(get_logger(), "Segment discretized to empty path, aborting segment.");
             return 1;
-        }
-        if (idx < total - 1) {
-            tp.target_yaw = std::numeric_limits<double>::quiet_NaN(); // 非末段不指定 target_yaw
         }
         tp.header.stamp = now();
 
@@ -447,9 +494,11 @@ namespace schedule_planner
         }
         path_pub_->publish(tp);
 
+        // 合并后一条轨迹可能由多段拼成，超时按段数等比放宽，否则长路径会被误判超时。
+        const double group_timeout = segment_timeout_ * static_cast<double>(std::max<std::size_t>(1, seg_count));
         const auto deadline = std::chrono::steady_clock::now() +
                               std::chrono::duration_cast<std::chrono::steady_clock::duration>(
-                                  std::chrono::duration<double>(segment_timeout_));
+                                  std::chrono::duration<double>(group_timeout));
         while (rclcpp::ok())
         {
             if (goal_handle->is_canceling() || force_cancel_requested_.load())

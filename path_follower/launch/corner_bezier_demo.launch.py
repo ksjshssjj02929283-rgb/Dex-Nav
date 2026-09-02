@@ -43,7 +43,7 @@ DEFAULT_WAYPOINTS = [4.0, -2.0, 6.0, -2.0, 6.0, -4.0]
 # 拐角贝塞尔阶数：5 = 两边三等分点共 6 个锚点；4 = 两边中点 + 拐角点共 5 个锚点
 DEFAULT_BEZIER_DEGREE = 4
 # 贝塞尔锚点沿边间距 (m)：拐角前后各退让 (DEFAULT_BEZIER_DEGREE - 2) * 该值
-DEFAULT_ANCHOR_SPACING = 0.15
+DEFAULT_ANCHOR_SPACING = 0.25
 
 
 def _parse_float_list(raw: str, name: str):
@@ -142,13 +142,17 @@ def generate_launch_description():
                 'bezier_degree': bezier_degree,
                 'anchor_spacing': anchor_spacing,
                 'base_pose': base_pose,
-                'resolution': 0.005,
+                # 1cm 离散：与 path_follower 的 trajectory_resolution 默认值一致。
+                # 朝向由 corner_bezier_path_generator 按解析切向填入每个 pose，
+                # path_follower 采信后直接算 kappa = dtheta/ds（1cm 下曲率相对误差约 0.2%），
+                # 不再从 x,y 做二次差分。
+                'resolution': 0.01,
                 'yaw_mode': yaw_mode,
                 'start_yaw': 0.0,
                 'goal_yaw': 1.5707963267948966,
                 'frame_id': 'map',  # odom
                 'republish': True,
-                'period': 40.0,
+                'period': 30.0,
                 'alternate_direction': True,
                 'use_sim_time': sim,
             }],
@@ -167,6 +171,11 @@ def generate_launch_description():
                 'use_sim_time': sim,
                 'track_deviation_limit': 0.5,
                 'enable_steer_range_analysis': False,
+                # 仿真里关掉末端定位切换：该特性是为了规避真机上 map/TF 在到点阶段的
+                # 定位抖动，仿真的定位是干净的，切到 odom 递推反而引入一层与真值无关的
+                # 估计误差，干扰对跟踪精度本身的观察。两个阈值都置 0 即关闭。
+                'end_localization_switch_distance': 0.0,
+                'end_localization_switch_angle': 0.0,
             }],
             remappings=[
                 ('~/path', '/path'),

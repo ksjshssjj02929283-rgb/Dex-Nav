@@ -147,9 +147,25 @@ def build_smoothed_polyline(waypoints: np.ndarray,
                             anchor_spacing: float,
                             dense_step: float,
                             degree: int = 5) -> Tuple[np.ndarray, List[np.ndarray]]:
-    """折线 -> 拐角四次/五次贝塞尔平滑后的稠密折线。
+    """折线 -> 拐角四次/五次贝塞尔平滑后的稠密折线（不带朝向的旧接口）。"""
+    pts, _yaw, ctrl = build_smoothed_polyline_with_yaw(
+        waypoints, anchor_spacing, dense_step, degree)
+    return pts, ctrl
 
-    返回 (dense_points (N,2), 每个拐角的控制点列表)。
+
+def build_smoothed_polyline_with_yaw(waypoints: np.ndarray,
+                                     anchor_spacing: float,
+                                     dense_step: float,
+                                     degree: int = 5
+                                     ) -> Tuple[np.ndarray, np.ndarray, List[np.ndarray]]:
+    """折线 -> 拐角四次/五次贝塞尔平滑后的稠密折线 + 每点**解析切向角**。
+
+    切向不是相邻点差分出来的，而是解析求导：直线段取端点方向，贝塞尔段取
+    theta(u) = atan2(B'_y(u), B'_x(u))，B' 由控制点一次降阶（hodograph）得到。
+    差分求切向再差分求曲率，对位置扰动的放大系数是 4/ds^2（5mm 点距下约 1.6e5），
+    解析切向则完全没有这个问题——下游 path_follower 据此直接算 kappa = dtheta/ds。
+
+    返回 (dense_points (N,2), dense_yaw (N,) 已 unwrap, 每个拐角的控制点列表)。
     退让距离 d = (degree - 2) * anchor_spacing；若相邻边过短，按「每条边最多让出
     一半长度」收缩，保证相邻两个拐角的贝塞尔段不重叠（此时该角的锚点间距同比缩小）。
     """
@@ -171,6 +187,7 @@ def build_smoothed_polyline(waypoints: np.ndarray,
         offsets.append((d, d))
 
     dense: List[np.ndarray] = []
+    dense_yaw: List[np.ndarray] = []
     ctrl_list: List[np.ndarray] = []
     cursor = wps[0]  # 当前直线段的起点
 
@@ -180,19 +197,34 @@ def build_smoothed_polyline(waypoints: np.ndarray,
         ctrl_list.append(cp)
         a, b = cp[0], cp[-1]
 
-        dense.append(_dense_line(cursor, a, dense_step))
+        seg = _dense_line(cursor, a, dense_step)
+        dense.append(seg)
+        dense_yaw.append(np.full(len(seg), _line_yaw(cursor, a)))
+
         # 贝塞尔按 u 细分（后续统一按弧长重采样，这里只要足够密）
         chord = float(np.sum(np.linalg.norm(np.diff(cp, axis=0), axis=1)))
         m = max(64, int(math.ceil(chord / max(dense_step, 1e-6))) + 1)
-        dense.append(bezier_points(cp, np.linspace(0.0, 1.0, m)))
+        u = np.linspace(0.0, 1.0, m)
+        dense.append(bezier_points(cp, u))
+        d1 = bezier_points(bezier_derivative_cp(cp, 1), u)
+        dense_yaw.append(np.arctan2(d1[:, 1], d1[:, 0]))
         cursor = b
 
-    dense.append(_dense_line(cursor, wps[-1], dense_step))
+    seg = _dense_line(cursor, wps[-1], dense_step)
+    dense.append(seg)
+    dense_yaw.append(np.full(len(seg), _line_yaw(cursor, wps[-1])))
 
     pts = np.vstack(dense)
+    yaw = np.unwrap(np.concatenate(dense_yaw))
     # 去掉拼接处的重复点
     keep = np.concatenate(([True], np.linalg.norm(np.diff(pts, axis=0), axis=1) > 1e-9))
-    return pts[keep], ctrl_list
+    return pts[keep], yaw[keep], ctrl_list
+
+
+def _line_yaw(p0: np.ndarray, p1: np.ndarray) -> float:
+    """直线段切向角；两点重合时无定义，返回 0（调用方保证不会用到）。"""
+    d = p1 - p0
+    return float(np.arctan2(d[1], d[0])) if np.linalg.norm(d) > 1e-12 else 0.0
 
 
 def _dense_line(p0: np.ndarray, p1: np.ndarray, step: float) -> np.ndarray:
@@ -205,19 +237,27 @@ def _dense_line(p0: np.ndarray, p1: np.ndarray, step: float) -> np.ndarray:
     return p0 + t * (p1 - p0)
 
 
-def resample_by_arc_length(points: np.ndarray, resolution: float) -> np.ndarray:
-    """按弧长等距重采样（线性插值），保证相邻点间距 ≈ resolution。"""
+def resample_by_arc_length(points: np.ndarray, resolution: float,
+                           values: np.ndarray = None):
+    """按弧长等距重采样（线性插值），保证相邻点间距 ≈ resolution。
+
+    values 给出时（如已 unwrap 的切向角），在同一张弧长网格上一并插值并返回，
+    这样朝向和位置严格一一对应，不需要事后再从重采样点差分反推。
+    """
     pts = np.asarray(points, dtype=float)
     seg = np.linalg.norm(np.diff(pts, axis=0), axis=1)
     cum = np.concatenate(([0.0], np.cumsum(seg)))
     total = float(cum[-1])
     if total <= 0.0:
-        return pts[:1]
+        return pts[:1] if values is None else (pts[:1], np.asarray(values)[:1])
     m = max(2, int(math.ceil(total / max(resolution, 1e-6))) + 1)
     target = np.linspace(0.0, total, m)
     x = np.interp(target, cum, pts[:, 0])
     y = np.interp(target, cum, pts[:, 1])
-    return np.column_stack([x, y])
+    out = np.column_stack([x, y])
+    if values is None:
+        return out
+    return out, np.interp(target, cum, np.asarray(values, dtype=float))
 
 
 # ---------------------------------------------------------------------------
@@ -235,7 +275,12 @@ def yaw_to_quaternion(yaw: float) -> Quaternion:
 
 
 def tangent_yaws(points: np.ndarray) -> np.ndarray:
-    """按相邻点差分求切向角，并 unwrap 保证连续（拐角处平滑地转过 90°）。"""
+    """按相邻点差分求切向角，并 unwrap 保证连续（拐角处平滑地转过 90°）。
+
+    仅作为退化兜底保留：正常路径请用 build_smoothed_polyline_with_yaw 给出的解析切向，
+    差分版对位置扰动的放大系数是 1/ds，5mm 点距下会把亚毫米抖动放大成可见的朝向噪声，
+    再求一次曲率还要再放大一次。
+    """
     d = np.gradient(points, axis=0)
     return np.unwrap(np.arctan2(d[:, 1], d[:, 0]))
 
@@ -300,10 +345,12 @@ class CornerBezierPathGenerator(Node):
         self.alternate = bool(self.get_parameter('alternate_direction').value)
 
         # ---- 生成轨迹 ----
-        dense, ctrl_list = build_smoothed_polyline(
-            self.waypoints, self.anchor_spacing, max(self.resolution, 1e-3),
+        # 贝塞尔离散步长要明显细于重采样间距，否则折线化的曲线会给切向留下台阶。
+        dense, dense_yaw, ctrl_list = build_smoothed_polyline_with_yaw(
+            self.waypoints, self.anchor_spacing, min(self.resolution / 5.0, 1e-3),
             self.bezier_degree)
-        self.positions = resample_by_arc_length(dense, self.resolution)
+        self.positions, self.tangent_yaw = resample_by_arc_length(
+            dense, self.resolution, dense_yaw)
 
         # 发布者：latched，迟到的订阅者也能拿到轨迹
         qos = QoSProfile(depth=1)
@@ -339,7 +386,9 @@ class CornerBezierPathGenerator(Node):
         n = len(positions)
 
         if self.yaw_mode == 'tangent':
-            yaws = tangent_yaws(positions)
+            # 解析切向（随位置一起按弧长重采样，逐点对应）。反向发布时轨迹倒序，
+            # 行进方向随之反向，切向加 pi。
+            yaws = self.tangent_yaw[::-1] + math.pi if reverse else self.tangent_yaw
         elif reverse:
             yaws = linear_yaws(self.goal_yaw, self.start_yaw, n)
         else:
