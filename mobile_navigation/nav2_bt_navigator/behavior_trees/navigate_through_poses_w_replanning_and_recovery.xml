@@ -32,8 +32,9 @@
         <RemovePassedGoals input_goals="{goals}" output_goals="{goals}" radius="0.5"/>
       </RateController>
 
-      <!-- 0.333Hz 进行全局重规划，约每 3 秒规划一次 -->
-      <RateController hz="0.333">
+      <!-- 0.333Hz 进行全局重规划；PREPARE 后退完成事件可立即绕过周期门控。 -->
+      <AdaptiveReplanning goals="{goals}" path="{path}" distance_threshold="0.0"
+        enable_deviation_replanning="false" hz="0.333" recovery_replan_mode="active">
 
         <!-- 全局规划外层恢复：最多重复 6 轮 -->
         <RecoveryNode number_of_retries="6" name="ComputePathThroughPosesWithRepeatedRetry">
@@ -59,14 +60,16 @@
           </Sequence>
 
         </RecoveryNode>
-      </RateController>
+      </AdaptiveReplanning>
 
       <!-- 局部控制外层恢复：最多重复 6 轮 -->
       <RecoveryNode number_of_retries="6" name="FollowPathWithRepeatedRetry">
 
         <!-- 局部控制内层恢复：FollowPath 失败后尝试清局部代价地图，并立即重试 1 次 -->
         <RecoveryNode number_of_retries="1" name="FollowPathWithImmediateRetry">
-          <FollowPath path="{path}" controller_id="MPPIController"/>
+          <!-- 此树由差速和全向共用，不固定 Controller ID：
+               差速读取 RPPController，全向读取 FollowPath（MPPI 插件）。 -->
+          <FollowPath path="{path}"/>
 
           <ForceSuccess>
             <ClearEntireCostmap name="ClearLocalCostmap-Immediate"

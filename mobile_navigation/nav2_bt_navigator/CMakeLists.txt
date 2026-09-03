@@ -51,6 +51,7 @@ set(dependencies
 
 add_library(${library_name} SHARED
   src/bt_navigator.cpp
+  src/navigation_session_manager.cpp
   src/navigators/navigate_to_pose.cpp
   src/navigators/navigate_through_poses.cpp
 )
@@ -85,7 +86,16 @@ install(DIRECTORY behavior_trees DESTINATION share/${PROJECT_NAME})
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
+  find_package(ament_cmake_gtest REQUIRED)
   ament_lint_auto_find_test_dependencies()
+
+  ament_add_gtest(test_navigation_session_manager
+    test/test_navigation_session_manager.cpp
+  )
+  ament_target_dependencies(test_navigation_session_manager
+    ${dependencies}
+  )
+  target_link_libraries(test_navigation_session_manager ${library_name})
 endif()
 
 ament_export_include_directories(include)

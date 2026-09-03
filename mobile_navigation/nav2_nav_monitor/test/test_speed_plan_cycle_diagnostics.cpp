@@ -175,4 +175,40 @@ TEST(SpeedPlanCycleDiagnostics, RejectsUnsupportedOrIncompleteSchema)
 }
 
 }  // namespace
+// ---------------------------------------------------------------------------
+// 初值裁决输入观测量（R58）：boundary_velocity 只是**裁决结果**，
+// 看不出 v0 跳变是"实测真的高"还是"计划采样点跳了"——两者根治方向完全不同。
+// 这三个字段 + local_path_progress_delta 是那次排查缺失的观测量。
+// ---------------------------------------------------------------------------
+
+TEST(SpeedPlanCycleDiagnostics, ParsesInitialMotionDecisionInputs)
+{
+  auto status = makeStatus(true);
+  addValue(status, "initial_motion_measured_v", "0.503651");
+  addValue(status, "initial_motion_sampled_v", "0.401200");
+  addValue(status, "initial_motion_deviation", "0.102451");
+  addValue(status, "local_path_progress_delta", "0.060400");
+
+  SpeedPlanCycleSample sample;
+  ASSERT_TRUE(parseSpeedPlanCycleStatus(status, 1.0, sample));
+  EXPECT_NEAR(sample.initial_motion_measured_v, 0.503651, 1e-9);
+  EXPECT_NEAR(sample.initial_motion_sampled_v, 0.401200, 1e-9);
+  EXPECT_NEAR(sample.initial_motion_deviation, 0.102451, 1e-9);
+  EXPECT_NEAR(sample.local_path_progress_delta, 0.060400, 1e-9);
+}
+
+// 成对断言：这四个字段是**后加**的，旧记录里没有。缺失时必须解析成功并保持
+// NaN，而不是让整条 cycle 解析失败——否则升级监控就读不了历史数据。
+TEST(SpeedPlanCycleDiagnostics, AbsentDecisionInputsStayNaNWithoutFailing)
+{
+  const auto status = makeStatus(true);   // 不含这四个字段
+
+  SpeedPlanCycleSample sample;
+  ASSERT_TRUE(parseSpeedPlanCycleStatus(status, 1.0, sample));
+  EXPECT_TRUE(std::isnan(sample.initial_motion_measured_v));
+  EXPECT_TRUE(std::isnan(sample.initial_motion_sampled_v));
+  EXPECT_TRUE(std::isnan(sample.initial_motion_deviation));
+  EXPECT_TRUE(std::isnan(sample.local_path_progress_delta));
+}
+
 }  // namespace nav2_nav_monitor

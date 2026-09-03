@@ -63,9 +63,7 @@ void ComputePathToPoseAction::on_tick()
     setOutput("path", empty_path);
     RCLCPP_INFO(
       node_->get_logger(),
-      "[BT][Action:ComputePathToPose] 检测到新 goal，清空旧 path，"
-      "避免新目标误跟踪上一目标路径；"
-      "frame_id='%s'，goal=(%.3f, %.3f)",
+      "Global path cleared: reason=new_goal, frame='%s', goal=(%.3f, %.3f).",
       goal_.goal.header.frame_id.c_str(), goal_.goal.pose.position.x, goal_.goal.pose.position.y);
     last_goal_ = goal_.goal;
     have_last_goal_ = true;
@@ -73,7 +71,7 @@ void ComputePathToPoseAction::on_tick()
 
   RCLCPP_INFO(
     node_->get_logger(),
-    "[BT][Action:ComputePathToPose] 开始请求全局规划，planner_id='%s'，goal=(%.3f, %.3f)，use_start=%s",
+    "Global planning started: planner='%s', goal=(%.3f, %.3f), use_start=%s.",
     goal_.planner_id.c_str(), goal_.goal.pose.position.x, goal_.goal.pose.position.y,
     goal_.use_start ? "true" : "false");
 }
@@ -81,19 +79,19 @@ void ComputePathToPoseAction::on_tick()
 BT::NodeStatus ComputePathToPoseAction::on_success()
 {
   if (result_.result->path.poses.empty()) {
+    nav_msgs::msg::Path empty_path;
+    setOutput("path", empty_path);
     RCLCPP_WARN(
       node_->get_logger(),
-      "******************** [BT Action WARNING][ComputePathToPose] ******************** "
-      "全局规划 SUCCESS 但 path poses=0，本次不覆盖旧 path，返回 SUCCESS；"
-      "如果已有旧 path，FollowPath 将继续跟踪旧路径；"
-      "如果没有旧 path，FollowPath 将等待下一次重规划");
-    return BT::NodeStatus::SUCCESS;
+      "Global planning failed: planner='%s', reason=empty_path; path cleared.",
+      goal_.planner_id.c_str());
+    return BT::NodeStatus::FAILURE;
   }
 
   setOutput("path", result_.result->path);
   RCLCPP_INFO(
     node_->get_logger(),
-    "[BT][Action:ComputePathToPose] 全局规划 SUCCESS，planner_id='%s'，path poses=%zu",
+    "Global planning succeeded: planner='%s', poses=%zu.",
     goal_.planner_id.c_str(), result_.result->path.poses.size());
   return BT::NodeStatus::SUCCESS;
 }
@@ -104,9 +102,7 @@ BT::NodeStatus ComputePathToPoseAction::on_aborted()
   setOutput("path", empty_path);
   RCLCPP_WARN(
     node_->get_logger(),
-    "******************** [BT Action ABORTED][ComputePathToPose] ******************** "
-    "全局规划 ABORTED，planner_id='%s'，清空旧 path 并返回 FAILURE；"
-    "如果连续规划失败，CancelControl 会停止当前 FollowPath，机器人等待后续重规划生成新路径",
+    "Global planning aborted: planner='%s'; path cleared.",
     goal_.planner_id.c_str());
   return BT::NodeStatus::FAILURE;
 }
@@ -115,9 +111,9 @@ BT::NodeStatus ComputePathToPoseAction::on_cancelled()
 {
   RCLCPP_INFO(
     node_->get_logger(),
-    "[BT][Action:ComputePathToPose] 全局规划 CANCELED，planner_id='%s'，不覆盖旧 path，返回 SUCCESS",
+    "Global planning canceled: planner='%s'; previous path kept.",
     goal_.planner_id.c_str());
-  return BT::NodeStatus::SUCCESS;
+  return BT::NodeStatus::FAILURE;
 }
 
 void ComputePathToPoseAction::halt()

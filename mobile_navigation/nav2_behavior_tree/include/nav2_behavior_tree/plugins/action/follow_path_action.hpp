@@ -52,6 +52,11 @@ public:
   BT::NodeStatus tick() override;
 
   /**
+   * @brief 任务结束、取消或抢占时清理等待状态，避免影响下一次导航
+   */
+  void halt() override;
+
+  /**
    * @brief Function to perform some user-defined operation after a timeout
    * waiting for a result that hasn't been received yet
    * @param feedback shared_ptr to latest feedback message
@@ -90,6 +95,7 @@ public:
 
 private:
   bool waiting_for_valid_path_{false};
+  bool is_halting_{false};
 };
 
 }  // namespace nav2_behavior_tree

@@ -19,11 +19,14 @@
 namespace nav2_core
 {
 
-struct SpeedPlanningBoundary
+struct InitialMotionState
 {
   geometry_msgs::msg::Twist velocity;
   double acceleration{0.0};
   bool acceleration_valid{false};
+  // 默认要求速度规划停障。只有实际运行的控制器明确声明具备局部绕障能力时，
+  // ControllerServer 才会关闭路径障碍零速约束。
+  bool should_stop_for_path_obstacle{true};
   // ControllerServer owns the goal lifecycle. Once terminal braking starts,
   // same-goal geometry updates must not let a receding-horizon planner coast
   // or accelerate again because the refreshed path happened to become longer.
@@ -32,10 +35,43 @@ struct SpeedPlanningBoundary
   double source_age{0.0};
 };
 
+enum class SpeedPlanningTerminalBranch
+{
+  NONE,
+  PATH_OBSTACLE_STOP,
+  GOAL_TERMINAL
+};
+
 struct SpeedPlanningDiagnostics
 {
   bool terminal_infeasible{false};
   bool terminal_brake_required{false};
+  /// latch 时冻结的执行裕度 [m]；-1 表示未锁存。锁存后不再随实测速度衰减，
+  /// 否则制动目标会随速度下降而滑向终点，裕度被逐周期蚕食。
+  /// 末端不可行的**原因码**（SCurveSpeedPlanner::TerminalFeasibility::Reason）。
+  /// 归一前 7 处赋值只留下一个 bool，无法区分"稳定末段不可达"与"求解器失败"。
+  int terminal_infeasible_reason{0};
+  /// 不可行的**类别**（FeasibilityResult::Kind）：1=物理不可行（消费侧须响应）、
+  /// 2=求解失败（开发者定位）。此前只有一个 bool，两者分不开。
+  int terminal_infeasible_kind{0};
+  /// 结果来源（FeasibilityResult::Provenance）：0=正常求解、1=走了制动兜底。
+  /// 对应 Apollo「避免把 fallback 轨迹当正常优化结果分析」。
+  int terminal_result_provenance{0};
+  /// 进入兜底路径时的**首因**（FeasibilityResult::Reason）。最终 reason 会被
+  /// 兜底后的判定覆写，只有它能回答"当初为什么进兜底"。
+  int terminal_entry_reason{0};
+  /// 当前停车约束来源，用于区分路径障碍停车与目标末端制动。
+  SpeedPlanningTerminalBranch terminal_branch{SpeedPlanningTerminalBranch::NONE};
+  /// A1 检测到的首个障碍点索引与其弧长（-1 = 无障碍）。
+  int first_obstacle_index{-1};
+  double first_obstacle_arc{-1.0};
+  int solver_code{0};
+  double solver_v0{0.0}, solver_a0{0.0}, solver_vmax{0.0};
+  double solver_target_v{0.0}, solver_distance{0.0};
+  double terminal_latched_reserve{-1.0};
+  /// 本周期实际下发给 applyTerminalSpeedEnvelope 的制动锚点 [m]（距当前位置）。
+  /// 这是"裕度到底有没有作用到剖面上"的唯一直接证据，此前不可观测。
+  double terminal_anchor_s{-1.0};
   double terminal_execution_reserve{0.0};
   double terminal_braking_distance{0.0};
   double terminal_distance_available{0.0};
@@ -87,11 +123,25 @@ public:
    */
   virtual nav_interfaces::msg::RobotTrajectory computeSpeedPlan(
     const nav_msgs::msg::Path & path,
-    const SpeedPlanningBoundary & boundary) = 0;
+    const InitialMotionState & boundary) = 0;
 
   virtual SpeedPlanningDiagnostics getLastPlanningDiagnostics() const
   {
     return SpeedPlanningDiagnostics();
+  }
+
+  /**
+   * @brief Revalidate a short preserved trajectory prefix against the current
+   *        obstacle view before trajectory stitching.
+   *
+   * The conservative default rejects stitching. Speed planners that own the
+   * same costmap/footprint semantics as normal planning may override it.
+   */
+  virtual bool isTrajectoryPrefixSafe(
+    const nav_interfaces::msg::RobotTrajectory & /*prefix*/,
+    bool /*should_stop_for_path_obstacle*/)
+  {
+    return false;
   }
 
   /**

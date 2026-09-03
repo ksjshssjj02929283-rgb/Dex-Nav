@@ -30,7 +30,7 @@ namespace nav2_behaviors
 
 /**
  * @class nav2_behaviors::DriveOnHeading
- * @brief An action server Behavior for spinning in
+ * @brief 沿机器人当前朝向直线移动，BackUp 复用其周期控制和安全检查
  */
 template<typename ActionT = nav2_msgs::action::DriveOnHeading>
 class DriveOnHeading : public TimedBehavior<ActionT>
@@ -60,8 +60,9 @@ public:
     if (command->target.y != 0.0 || command->target.z != 0.0) {
       RCLCPP_INFO(
         this->logger_,
-        "DrivingOnHeading in Y and Z not supported, will only move in X. "
-        "DriveOnHeading 不支持 Y/Z 方向移动，只会沿 X 方向运动。");
+        "DriveOnHeading rejected: target.y and target.z must be zero "
+        "(y=%.3f m, z=%.3f m).",
+        command->target.y, command->target.z);
       return Status::FAILED;
     }
 
@@ -69,8 +70,9 @@ public:
     if (!((command->target.x > 0.0) == (command->speed > 0.0)) ) {
       RCLCPP_ERROR(
         this->logger_,
-        "Speed and command sign did not match. "
-        "速度方向和目标距离方向不一致，DriveOnHeading/BackUp 无法执行。");
+        "DriveOnHeading rejected: target and speed directions differ "
+        "(target=%.3f m, speed=%.3f m/s).",
+        command->target.x, command->speed);
       return Status::FAILED;
     }
 
@@ -86,8 +88,7 @@ public:
     {
       RCLCPP_ERROR(
         this->logger_,
-        "Initial robot pose is not available. "
-        "获取初始机器人位姿失败，DriveOnHeading/BackUp 无法开始。");
+        "DriveOnHeading rejected: initial robot pose unavailable.");
       return Status::FAILED;
     }
 
@@ -105,8 +106,8 @@ public:
       this->stopRobot();
       RCLCPP_WARN(
         this->logger_,
-        "Exceeded time allowance before reaching the DriveOnHeading goal - Exiting DriveOnHeading. "
-        "超出 time_allowance 仍未完成运动，停止 DriveOnHeading/BackUp。");
+        "Behavior timed out: name='%s', allowance=%.3f s.",
+        this->behavior_name_.c_str(), command_time_allowance_.seconds());
       return Status::FAILED;
     }
 
@@ -117,8 +118,8 @@ public:
     {
       RCLCPP_ERROR(
         this->logger_,
-        "Current robot pose is not available. "
-        "获取当前机器人位姿失败，DriveOnHeading/BackUp 无法继续。");
+        "Behavior stopped: name='%s', robot pose unavailable.",
+        this->behavior_name_.c_str());
       return Status::FAILED;
     }
 
@@ -148,8 +149,8 @@ public:
       this->stopRobot();
       RCLCPP_WARN(
         this->logger_,
-        "Collision Ahead - Exiting DriveOnHeading. "
-        "预测运动方向存在碰撞、高代价或越界风险，停止 DriveOnHeading/BackUp。");
+        "Behavior blocked: name='%s', predicted pose is unsafe.",
+        this->behavior_name_.c_str());
       return Status::FAILED;
     }
 
@@ -160,11 +161,11 @@ public:
 
 protected:
   /**
-   * @brief Check if pose is collision free
-   * @param distance Distance to check forward
-   * @param cmd_vel current commanded velocity
-   * @param pose2d Current pose
-   * @return is collision free or not
+   * @brief 预测剩余直线运动是否安全
+   * @param distance 当前已行驶距离，单位 m
+   * @param cmd_vel 当前速度指令
+   * @param pose2d 当前机器人位姿
+   * @return 预测路径安全时返回 true
    */
   bool isCollisionFree(
     const double & distance,

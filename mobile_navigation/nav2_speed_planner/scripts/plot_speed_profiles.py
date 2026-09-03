@@ -63,15 +63,18 @@ def load_csv_full(path):
 
 
 REGION_COLORS = {
-    "obstacle": "#ef9a9a", "obstacle_buffer": "#ffcc80",
-    "obstacle_exempt": "#c5e1a5", "curve": "#b39ddb", "stop_zone": "#90caf9",
+    "obstacle": "#ef9a9a", "obstacle_safety_margin": "#c5e1a5",
+    "obstacle_stop_margin": "#ffcc80", "curve": "#b39ddb", "stop_zone": "#90caf9",
 }
 
 
 def render_detail(csv_path, out_dir, accel=0.6, decel=-0.6):
+    """渲染单场景四联详图。空 CSV（期望失败的场景）直接跳过，返回 None。"""
     """单场景四联详图：v-s(区域底色) / a-s(限值线) / jerk-s / v-t。"""
     d = load_csv_full(csv_path)
     name = os.path.splitext(os.path.basename(csv_path))[0]
+    if not d["s"]:
+        return None   # 期望返回空计划的场景（D_empty_path / F_*_fail_closed）
     fig, axes = plt.subplots(4, 1, figsize=(10, 11), sharex=False)
     ax_v, ax_a, ax_j, ax_t = axes
 
@@ -138,6 +141,16 @@ def render_detail(csv_path, out_dir, accel=0.6, decel=-0.6):
     return out
 
 
+def find_csvs(root, pattern="*.csv"):
+    """递归收集 CSV。
+
+    剖面按后端分子目录存放（csv/{trapezoidal,scurve,reachability}/），
+    平铺三百多个文件时肉眼分不清是哪个规划器的产物。此处递归 glob，
+    同时兼容历史的平铺布局。
+    """
+    return sorted(glob.glob(os.path.join(root, "**", pattern), recursive=True))
+
+
 def main():
     ap = argparse.ArgumentParser()
     default_root = os.path.expanduser("~/.dexe/navigation/speed_planner")
@@ -151,34 +164,42 @@ def main():
     dist_files = {}      # {length: {planner: path}}
     obstacle_files = {}  # {tag: path}
     curve_files = {}     # {planner: path}（2m 处 0.5m 弧段场景，T/S 同面板对照）
-    for p in sorted(glob.glob(os.path.join(args.dir, "*.csv"))):
+    for p in find_csvs(args.dir):
         name = os.path.basename(p)
-        m = re.match(r"([TS])_(\d+\.\d+)m\.csv$", name)
+        # 场景 tag 形如 <场景描述>__<后端>_<长度>m.csv，后端 ∈ trapz/scurve/reach
+        # （scurve_prod 是生产参数版，不进总览对照面板，避免与离线参数版混画）
+        m = re.match(r"straight__(trapz|scurve|reach)_(\d+\.\d+)m\.csv$", name)
         if m:
             dist_files.setdefault(float(m.group(2)), {})[m.group(1)] = p
             continue
-        m = re.match(r"([TS])_curve2_(\d+\.\d+)m\.csv$", name)
+        m = re.match(r"curve__(trapz|scurve|reach)_(\d+\.\d+)m\.csv$", name)
         if m:
             curve_files[m.group(1)] = p
             continue
-        m = re.match(r"([TS]_(?:start_obstacle|mid_obstacle|obs3))_(\d+\.\d+)m\.csv$", name)
+        m = re.match(r"(obs_at_start|obs_mid|obs_far)__(trapz|scurve|reach)_(\d+\.\d+)m\.csv$", name)
         if m:
-            obstacle_files[m.group(1)] = p
+            obstacle_files[f"{m.group(1)}__{m.group(2)}"] = p
     if not dist_files:
-        raise SystemExit(f"no CSV found in {args.dir} — run test_speed_profiles first")
+        raise SystemExit(
+            f"{args.dir} 里没有匹配的场景 CSV。\n"
+            f"总览面板按 straight__<后端>_<长度>m.csv 命名匹配；"
+            f"若刚改过场景 tag，需同步更新本脚本的匹配式。\n"
+            f"先跑：ros2 run nav2_speed_planner speed_profile_gen {args.dir}")
 
     lengths = sorted(dist_files)
     n_cols = max(len(lengths), 5)
-    fig, axes = plt.subplots(2, n_cols, figsize=(3.9 * n_cols, 7.4), squeeze=False)
+    fig, axes = plt.subplots(3, n_cols, figsize=(3.9 * n_cols, 11.1), squeeze=False)
 
     # ---- 第 1 行：各距离 v-s（弧长域）----
     for col, length in enumerate(lengths):
         ax = axes[0][col]
-        for planner, style, color in (("T", "-o", "#1f77b4"), ("S", "-s", "#d62728")):
+        for planner, style, color in (
+            ("trapz", "-o", "#1f77b4"), ("scurve", "-s", "#d62728"),
+            ("reach", "-^", "#2ca02c")):
             if planner in dist_files[length]:
                 s, v = load_csv(dist_files[length][planner])
                 ax.plot(s, v, style, color=color, markersize=2.0, linewidth=1.1,
-                        label=f"{planner} 型")
+                        label=planner)
         ax.axvspan(max(length - STOP_DISTANCE, 0), length, alpha=0.12, color="orange",
                    label="蠕行区")
         ax.axhline(END_SPEED, color="gray", linewidth=0.8, linestyle="--")
@@ -195,13 +216,15 @@ def main():
     # 面板 1：v-t 时间域（取最长的常规距离）——恒加速度应为直线
     vt_len = lengths[-1]
     ax = axes[1][0]
-    for planner, style, color in (("T", "-o", "#1f77b4"), ("S", "-s", "#d62728")):
+    for planner, style, color in (
+            ("trapz", "-o", "#1f77b4"), ("scurve", "-s", "#d62728"),
+            ("reach", "-^", "#2ca02c")):
         if planner in dist_files[vt_len]:
             s, v = load_csv(dist_files[vt_len][planner])
             t = integrate_time(s, v)
             ax.plot(t, v, style, color=color, markersize=2.0, linewidth=1.1,
-                    label=f"{planner} 型")
-    ax.set_title(f"{vt_len:.2f} m（v-t 时间域）：T 型为直线三角/梯形", fontsize=10)
+                    label=planner)
+    ax.set_title(f"{vt_len:.2f} m（v-t 时间域）：trapz 为直线三角/梯形", fontsize=10)
     ax.set_xlabel("t (s)")
     ax.set_ylabel("v (m/s)")
     ax.grid(True, alpha=0.3)
@@ -209,10 +232,14 @@ def main():
     row2.append(0)
 
     panels = [
-        ("T_start_obstacle", "T：起点在障碍内切区（豁免起步）", [(0.0, 0.10, "障碍(豁免)")]),
-        ("T_mid_obstacle", "T：中途障碍 x≥0.70", [(0.5, 0.7, "缓冲带"), (0.7, 1.0, "障碍区")]),
-        ("T_obs3", "T：5m 路径、3m 处障碍", [(2.8, 3.0, "缓冲带"), (3.0, 5.0, "障碍区")]),
-        ("S_obs3", "S：5m 路径、3m 处障碍", [(2.8, 3.0, "缓冲带"), (3.0, 5.0, "障碍区")]),
+        ("obs_at_start__trapz", "trapz：起点在障碍内切区（豁免起步）",
+         [(0.0, 0.10, "障碍(豁免)")]),
+        ("obs_mid__trapz", "trapz：中途障碍 x≥0.70",
+         [(0.5, 0.7, "缓冲带"), (0.7, 1.0, "障碍区")]),
+        ("obs_far__trapz", "trapz：5m 路径、3m 处障碍",
+         [(2.8, 3.0, "缓冲带"), (3.0, 5.0, "障碍区")]),
+        ("obs_far__scurve", "scurve：5m 路径、3m 处障碍",
+         [(2.8, 3.0, "缓冲带"), (3.0, 5.0, "障碍区")]),
     ]
     col = 1
     for tag, title, spans in panels:
@@ -220,7 +247,7 @@ def main():
             continue
         ax = axes[1][col]
         s, v = load_csv(obstacle_files[tag])
-        color = "#2ca02c" if tag.startswith("T") else "#d62728"
+        color = "#2ca02c" if tag.endswith("__trapz") else "#d62728"
         ax.plot(s, v, "-o", color=color, markersize=2.0, linewidth=1.1)
         for x0, x1, lbl in spans:
             ax.axvspan(x0, min(x1, max(s)), alpha=0.15 if "缓冲" in lbl or "豁免" in lbl else 0.25,
@@ -235,11 +262,12 @@ def main():
     # 弯道面板：5m 路径、2m 处 0.5m 弧段（r=0.5），期望弯内 v = 1.0·0.5/1.2 ≈ 0.417
     if curve_files and col < n_cols:
         ax = axes[1][col]
-        for planner, color in (("T", "#1f77b4"), ("S", "#d62728")):
+        for planner, color in (
+                ("trapz", "#1f77b4"), ("scurve", "#d62728"), ("reach", "#2ca02c")):
             if planner in curve_files:
                 s, v = load_csv(curve_files[planner])
                 ax.plot(s, v, "-o", color=color, markersize=2.0, linewidth=1.1,
-                        label=f"{planner} 型")
+                        label=planner)
         ax.axvspan(2.0, 2.5, alpha=0.2, color="purple", label="弧段 r=0.5")
         ax.axhline(1.0 * 0.5 / 1.2, color="purple", linewidth=0.9, linestyle="--",
                    label="曲率限速 0.417")
@@ -255,15 +283,61 @@ def main():
     fig.suptitle("nav2_speed_planner 剖面测试（max_speed=1.0, accel=0.6, decel=-0.6, "
                  "end_speed=0.03, stop_distance=0.2）", fontsize=11)
     fig.tight_layout(rect=[0, 0, 1, 0.95])
+    # ---- 第 3 行：交叉约束场景（X_*）----
+    cross = [
+        ("X_T_obs_after_curve", "T：障碍紧随弯道（曲率×障碍）",
+         [(2.0, 2.5, "弯道"), (3.0, 5.0, "障碍区")]),
+        ("X_T_fast_near_obs", "T：v0=1.0 距障碍 0.5m（制动不可达）",
+         [(0.5, 5.0, "障碍区")]),
+        ("X_S_fast_near_obs", "S：v0=1.0 距障碍 0.5m（jerk 限制刹不住）",
+         [(0.5, 5.0, "障碍区")]),
+        ("X_T_two_obstacles", "T：双障碍段", [(1.5, 1.7, "障碍1"), (3.5, 5.0, "障碍2")]),
+        ("X_T_dense_all", "T：1m 内弯道+障碍+硬停",
+         [(0.3, 0.5, "弯道"), (0.8, 1.0, "障碍区")]),
+    ]
+    used3 = 0
+    for tag, title, spans in cross:
+        if used3 >= n_cols:
+            break
+        hits = find_csvs(args.dir, tag + "_*.csv")
+        if not hits:
+            continue
+        ax = axes[2][used3]
+        s, v = load_csv(sorted(hits)[0])
+        ax.plot(s, v, "-o", color="#2ca02c", markersize=2.0, linewidth=1.1)
+        for lo, hi, lab in spans:
+            ax.axvspan(lo, hi, alpha=0.13,
+                       color="orange" if "障碍" in lab else "#9467bd", label=lab)
+        ax.set_title(title, fontsize=9)
+        ax.set_xlabel("s (m)")
+        ax.set_ylabel("v (m/s)")
+        ax.grid(True, alpha=0.3)
+        ax.legend(fontsize=7)
+        used3 += 1
+    for c in range(used3, n_cols):
+        axes[2][c].axis("off")
+
     fig.savefig(args.out, dpi=105)
     print(f"saved: {args.out}")
 
     if not args.no_detail:
-        detail_dir = os.path.join(os.path.dirname(args.out), "detail")
-        os.makedirs(detail_dir, exist_ok=True)
-        outs = [render_detail(p, detail_dir)
-                for p in sorted(glob.glob(os.path.join(args.dir, "*.csv")))]
-        print(f"每场景详图 {len(outs)} 张 → {detail_dir}/")
+        detail_root = os.path.join(os.path.dirname(args.out), "detail")
+        csvs = find_csvs(args.dir)
+        outs, per_dir = [], {}
+        for c in csvs:
+            # 详图落在与 CSV 相同的后端子目录下，两边目录结构一一对应
+            sub = os.path.relpath(os.path.dirname(c), args.dir)
+            out_dir = detail_root if sub == "." else os.path.join(detail_root, sub)
+            os.makedirs(out_dir, exist_ok=True)
+            o = render_detail(c, out_dir)
+            if o:
+                outs.append(o)
+                per_dir[sub] = per_dir.get(sub, 0) + 1
+        skipped = len(csvs) - len(outs)
+        print(f"每场景详图 {len(outs)} 张 → {detail_root}/"
+              + (f"（跳过 {skipped} 个空计划场景）" if skipped else ""))
+        for sub in sorted(per_dir):
+            print(f"    {sub}/  {per_dir[sub]} 张")
 
 
 if __name__ == "__main__":

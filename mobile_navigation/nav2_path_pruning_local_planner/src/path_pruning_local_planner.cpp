@@ -41,7 +41,7 @@ bool orientationsEquivalent(
 void PathPruningLocalPlanner::configure(
   const rclcpp_lifecycle::LifecycleNode::WeakPtr & parent,
   std::string name, std::shared_ptr<tf2_ros::Buffer> tf,
-  std::shared_ptr<nav2_costmap_2d::Costmap2DROS>/*costmap_ros*/)
+  std::shared_ptr<nav2_costmap_2d::Costmap2DROS> costmap_ros)
 {
   auto node = parent.lock();
   if (!node) {
@@ -50,28 +50,37 @@ void PathPruningLocalPlanner::configure(
 
   node_ = parent;
   tf_ = std::move(tf);
+  // local costmap 由 controller server 传入，此处仅用于取其 global frame。
+  // frame 名可配置，不得硬编码。
+  costmap_ros_ = std::move(costmap_ros);
   plugin_name_ = std::move(name);
   logger_ = node->get_logger();
   clock_ = node->get_clock();
 
+  // max_projection_search_distance 只界定**投影搜索窗口**，不截断输出：
+  // 本插件输出「投影点 → 全局终点」的全部剩余路径。这样下游速度规划才能
+  // 看到终点并规划终端制动；截断到窗口会让终端约束失效。
   nav2_util::declare_parameter_if_not_declared(
-    node, plugin_name_ + ".max_search_distance", rclcpp::ParameterValue(5.0));
+    node, plugin_name_ + ".max_projection_search_distance", rclcpp::ParameterValue(5.0));
   nav2_util::declare_parameter_if_not_declared(
     node, plugin_name_ + ".max_backtrack_distance", rclcpp::ParameterValue(0.5));
   nav2_util::declare_parameter_if_not_declared(
     node, plugin_name_ + ".transform_tolerance", rclcpp::ParameterValue(0.2));
-  node->get_parameter(plugin_name_ + ".max_search_distance", max_search_distance_);
+  node->get_parameter(
+    plugin_name_ + ".max_projection_search_distance", max_projection_search_distance_);
   node->get_parameter(plugin_name_ + ".max_backtrack_distance", max_backtrack_distance_);
   node->get_parameter(plugin_name_ + ".transform_tolerance", transform_tolerance_);
 
-  max_search_distance_ = std::max(max_search_distance_, 0.01);
+  max_projection_search_distance_ = std::max(max_projection_search_distance_, 0.01);
   max_backtrack_distance_ = std::max(max_backtrack_distance_, 0.0);
   transform_tolerance_ = std::max(transform_tolerance_, 0.0);
 
   RCLCPP_INFO(
     logger_,
-    "Configured path-pruning local planner '%s': search=%.2f m backtrack=%.2f m",
-    plugin_name_.c_str(), max_search_distance_, max_backtrack_distance_);
+    "Configured path-pruning local planner '%s': projection_search=%.2f m backtrack=%.2f m "
+    "(output is NOT truncated to the search window) costmap_frame=%s",
+    plugin_name_.c_str(), max_projection_search_distance_, max_backtrack_distance_,
+    costmapFrame().empty() ? "<none>" : costmapFrame().c_str());
 }
 
 void PathPruningLocalPlanner::cleanup()
@@ -225,7 +234,7 @@ bool PathPruningLocalPlanner::computeLocalPlan(
   const double lower_arc = progress_initialized_ ?
     std::max(0.0, progress_arc_ - max_backtrack_distance_) : 0.0;
   const double upper_arc = progress_initialized_ ?
-    std::min(total_arc, progress_arc_ + max_search_distance_) : total_arc;
+    std::min(total_arc, progress_arc_ + max_projection_search_distance_) : total_arc;
   const auto projection_start = TimingClock::now();
   const Projection projection = projectOntoPlan(robot_in_plan, lower_arc, upper_arc);
   projection_ms = std::chrono::duration<double, std::milli>(
@@ -236,9 +245,16 @@ bool PathPruningLocalPlanner::computeLocalPlan(
     return false;
   }
 
+  // progress_arc_ 单调不减：防止自交路径或定位抖动使进度倒退。
+  // 注意它没有回退路径 —— 一旦某次投影把它推到接近终点，搜索窗口起点就停在
+  // 那里，局部路径只剩尾巴。当前唯一的复位是 setPlan（新全局路径）。
+  const double previous_progress_arc = progress_arc_;
   progress_arc_ = progress_initialized_ ?
     std::max(progress_arc_, projection.arc_length) : projection.arc_length;
   progress_initialized_ = true;
+  // pinned = 进度被钉在投影之前，说明它曾被推到更远处且回不来
+  const bool progress_pinned = progress_arc_ > projection.arc_length + kArcEpsilon;
+  const double remaining_arc = total_arc - progress_arc_;
 
   const auto output_start = TimingClock::now();
   size_t start_segment = 0;
@@ -277,11 +293,53 @@ bool PathPruningLocalPlanner::computeLocalPlan(
   if (local_path.poses.back() != true_goal) {
     local_path.poses.push_back(true_goal);
   }
+  // 输出保持在 plan 系。若要改为输出 local costmap 系，前提是控制器改为从轨迹
+  // 本身取几何、不再自持一份 plan —— Controller::setPlan 是「新计划」事件通道
+  // （实现中带有进度重置与一次性锁存），不能承载逐周期变化的局部路径。
+
   assembly_ms += std::chrono::duration<double, std::milli>(
     TimingClock::now() - output_start).count();
   const bool success = !local_path.poses.empty();
+  // 判读方式：out_len 应等于 remaining_arc（差值仅来自投影点插值与去重）。
+  // 明显更短即异常，此时看 pinned 是否为 1 —— progress_arc_ 被钉在投影之前，
+  // 说明它曾被推到更远处且不可回退。
+  {
+    double out_len = 0.0;
+    for (size_t i = 1; i < local_path.poses.size(); ++i) {
+      const auto & a = local_path.poses[i - 1].pose.position;
+      const auto & b = local_path.poses[i].pose.position;
+      out_len += std::hypot(b.x - a.x, b.y - a.y);
+    }
+    const double expected = remaining_arc;
+    // 输出系与 local costmap 系是否一致。两者不同时，下游需要再做一次变换。
+    const std::string costmap_frame = costmapFrame();
+    const bool frames_match = !costmap_frame.empty() &&
+      costmap_frame == local_path.header.frame_id;
+      costmap_frame == local_path.header.frame_id;
+    if (clock_) {
+      RCLCPP_WARN_THROTTLE(
+        logger_, *clock_, 1000,
+        "[%s] local path: progress_arc=%.3f (prev=%.3f proj=%.3f pinned=%d) "
+        "total_arc=%.3f remaining=%.3f window=[%.3f, %.3f] start_seg=%zu "
+        "out_len=%.3f expected=%.3f out_points=%zu proj_search=%.2f backtrack=%.2f "
+        "out_frame=%s costmap_frame=%s frames_match=%d",
+        plugin_name_.c_str(), progress_arc_, previous_progress_arc,
+        projection.arc_length, progress_pinned ? 1 : 0,
+        total_arc, remaining_arc, lower_arc, upper_arc, start_segment,
+        out_len, expected, local_path.poses.size(),
+        max_projection_search_distance_, max_backtrack_distance_,
+        local_path.header.frame_id.c_str(),
+        costmap_frame.empty() ? "<none>" : costmap_frame.c_str(),
+        frames_match ? 1 : 0);
+    }
+  }
   log_timing(success ? "success" : "empty_output");
   return success;
+}
+
+std::string PathPruningLocalPlanner::costmapFrame() const
+{
+  return costmap_ros_ ? costmap_ros_->getGlobalFrameID() : std::string();
 }
 
 void PathPruningLocalPlanner::rebuildArcLengths()

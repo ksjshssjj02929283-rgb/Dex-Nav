@@ -158,6 +158,36 @@ TEST_F(FollowPathActionTestFixture, test_tick)
   EXPECT_EQ(action_server_->getCurrentGoal()->path.poses[0].pose.position.x, -2.5);
 }
 
+TEST_F(FollowPathActionTestFixture, test_cancelled_with_valid_path_restarts)
+{
+  auto action_config = *config_;
+  action_config.input_ports["path"] = "{path}";
+  config_->blackboard->set<nav_msgs::msg::Path>("path", nav_msgs::msg::Path());
+  auto action_node = std::make_unique<nav2_behavior_tree::FollowPathAction>(
+    "FollowPath", "follow_path", action_config);
+
+  // 空路径使节点保持 RUNNING，模拟恢复重规划尚未给出新路径的阶段。
+  EXPECT_EQ(action_node->executeTick(), BT::NodeStatus::RUNNING);
+
+  nav_msgs::msg::Path path;
+  path.poses.resize(1);
+  path.poses.front().pose.position.x = 7.5;
+  config_->blackboard->set<nav_msgs::msg::Path>("path", path);
+
+  // 外部恢复取消 FollowPath 后，即使新路径已生成，也不能把取消误判为导航成功。
+  EXPECT_EQ(action_node->on_cancelled(), BT::NodeStatus::RUNNING);
+
+  // 下一次 tick 应先重置旧控制状态，再使用当前有效路径发送新的 FollowPath goal。
+  for (int i = 0; i < 100 && action_node->status() != BT::NodeStatus::SUCCESS; ++i) {
+    action_node->executeTick();
+  }
+
+  EXPECT_EQ(action_node->status(), BT::NodeStatus::SUCCESS);
+  ASSERT_NE(action_server_->getCurrentGoal(), nullptr);
+  ASSERT_EQ(action_server_->getCurrentGoal()->path.poses.size(), 1u);
+  EXPECT_EQ(action_server_->getCurrentGoal()->path.poses.front().pose.position.x, 7.5);
+}
+
 int main(int argc, char ** argv)
 {
   ::testing::InitGoogleTest(&argc, argv);

@@ -36,4 +36,12 @@ install(DIRECTORY
   DESTINATION share/${PROJECT_NAME}
 )
 
+# 仿真运行时轻量节点：路径可视化与底盘就绪检测。
+install(PROGRAMS
+  script/path_trace_visualizer.py
+  script/wait_for_gazebo_ready.py
+  script/wait_for_sim_ready.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
 ament_package()

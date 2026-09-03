@@ -8,7 +8,7 @@
       <RateController hz="1.0">
         <ComputePathToPose goal="{goal}" path="{path}" planner_id="SmacGridBased"/>
       </RateController>
-      <FollowPath path="{path}"  controller_id="MPPIController"/>
+      <FollowPath path="{path}"/>
     </PipelineSequence>
   </BehaviorTree>
 </root>
