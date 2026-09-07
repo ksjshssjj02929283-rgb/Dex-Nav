@@ -81,7 +81,6 @@ private:
         factory.registerNodeType<CheckCharging>("CheckCharging");
         factory.registerNodeType<CheckBatteryAboveThreshold>("CheckBatteryAboveThreshold");
         factory.registerNodeType<IsCharging>("IsCharging");
-        factory.registerNodeType<IsConnectedToCharger>("IsConnectedToCharger");
         factory.registerNodeType<Undocking>("Undocking");
         factory.registerNodeType<CounterCheck>("CounterCheck");
         factory.registerNodeType<IncrementCounter>("IncrementCounter");

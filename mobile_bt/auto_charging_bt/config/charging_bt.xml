@@ -4,14 +4,7 @@
       <!-- 已经处于充电状态：本次回充直接成功，不再导航/对接 -->
       <IsCharging />
 
-      <!-- 已插入/连接但未充电：先退桩，然后继续走下面统一的回充流程 -->
-      <Sequence name="UndockIfPlugged">
-        <IsConnectedToCharger />
-        <Undocking duration="2.0" />
-        <AlwaysFailure />
-      </Sequence>
-
-      <!-- 未插入且未充电：正常执行完整回充流程 -->
+      <!-- 未充电：正常执行完整回充流程 -->
       <Sequence name="ChargingFlow">
         <!-- 导航到回充点单独最多尝试3次 -->
         <RetryUntilSuccessful num_attempts="3">
