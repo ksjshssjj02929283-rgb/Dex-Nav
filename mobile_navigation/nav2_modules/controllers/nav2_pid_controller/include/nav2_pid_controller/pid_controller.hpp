@@ -55,22 +55,11 @@ namespace nav2_pid_controller
 
 /**
  * @class nav2_pid_controller::PIDController
- * @brief A nav2_core::Controller plugin implementing a PID local controller.
+ * @brief Nav2 PID 局部控制器。
  *
- * Linear velocity: in APPROACHING the speed loop tracks the planned speed of
- * the closest trajectory point (sign from the longitudinal error) — decel
- * tails / curvature slowdowns / obstacle zeros are encoded per-point by the
- * speed planner. Near the goal the position loop supplies direction while the
- * trajectory remains the sole velocity-magnitude reference, including the
- * final creep-to-zero segment. During final rotation a small position
- * correction may be retained when the current stage permits it. A high/low-speed
- * gain set is switched at switch_speed_, plus a dedicated reverse gain set.
- * Angular velocity is controlled by a station PID while tracking and at the
- * fixed final pose. A terminal state machine
- * (APPROACHING -> ROTATING_TO_GOAL, with explicit retry states) governs the behavior. Trajectories (with
- * per-point longitudinal_velocity / path_kappa) are consumed through the
- * nav2_core setTrajectory() extension; plain geometric paths are accepted
- * through setPlan() with a default desired speed.
+ * 接近阶段跟踪规划速度，末端依次执行可选横向优化、纵向微调和停稳。
+ * 到位标准由 GoalChecker 决定；同目标轨迹更新保留末端状态。
+ * setTrajectory() 接收带速度的轨迹，setPlan() 接收普通几何路径。
  */
 class PIDController
   : public nav2_core::Controller,
@@ -182,6 +171,38 @@ protected:
     RETRY_TRANSLATE
   };
 
+    /// 子阶段单向推进，避免软目标附近的噪声触发反复优化。
+    enum class FinalRotationPhase { LATERAL_REFINE, LONGITUDINAL_TRIM, SETTLING };
+
+    /// 本周期的控制动作。
+    enum class FinalRotationAction { HOLD_POSITION, TRANSLATE, RETRY_POSITION, INVALID };
+
+    /// 复用本周期输入，决策时不再查询 TF。
+    struct FinalRotationInput {
+        double longitudinal_error = 0.0;
+        double lateral_error = 0.0;
+        double yaw_error = 0.0;
+        double linear_velocity = 0.0;
+        double angular_velocity = 0.0;
+        double longitudinal_tolerance = 0.0;
+        double lateral_tolerance = 0.0;
+        double stopped_linear_velocity = 0.0;
+        bool is_goal_valid = false;
+        bool is_position_in_tolerance = false;
+        bool is_position_in_hold = false;
+    };
+
+    struct FinalRotationDecision {
+        FinalRotationAction action = FinalRotationAction::HOLD_POSITION;
+        double heading_error = 0.0;
+        double linear_error = 0.0;
+        double linear_deadband = 0.0;
+        bool should_use_point_heading = false;
+        const char* reason = "none";
+        // 仅诊断用，记录本周期结束横向优化的原因。
+        const char* refinement_exit_reason = "none";
+    };
+
   static inline void regularizeAngle(double & angle)
   {
     angle = angle - 2.0 * M_PI * std::floor((angle + M_PI) / (2.0 * M_PI));
@@ -189,6 +210,50 @@ protected:
 
   double CalculateMean(const std::deque<double> & data);
   double CalculateVariance(const std::deque<double> & data, double mean);
+
+    static const char* toString(FinalRotationPhase phase) {
+        switch (phase) {
+            case FinalRotationPhase::LATERAL_REFINE:
+                return "LATERAL_REFINE";
+            case FinalRotationPhase::LONGITUDINAL_TRIM:
+                return "LONGITUDINAL_TRIM";
+            case FinalRotationPhase::SETTLING:
+                return "SETTLING";
+            default:
+                return "UNKNOWN";
+        }
+    }
+
+    static const char* toString(FinalRotationAction action) {
+        switch (action) {
+            case FinalRotationAction::HOLD_POSITION:
+                return "HOLD_POSITION";
+            case FinalRotationAction::TRANSLATE:
+                return "TRANSLATE";
+            case FinalRotationAction::RETRY_POSITION:
+                return "RETRY_POSITION";
+            case FinalRotationAction::INVALID:
+                return "INVALID";
+            default:
+                return "UNKNOWN";
+        }
+    }
+
+    /// 小角度下预测纵向移动后的横向误差。
+    static double predictedFinalLateralError(double lateral_error, double longitudinal_travel, double yaw_error) {
+        return lateral_error + longitudinal_travel * std::tan(yaw_error);
+    }
+
+    /// 标量决策，不分配内存或查询 TF。
+    FinalRotationDecision decideFinalRotation(const FinalRotationInput& input);
+    void computeFinalRotationCommand(const FinalRotationInput& input,
+                                     const FinalRotationDecision& decision,
+                                     const geometry_msgs::msg::Twist& velocity,
+                                     geometry_msgs::msg::Twist& command);
+    /// 按减速度制动；无效输入立即归零。
+    double brakeFinalLinearControl(const geometry_msgs::msg::Twist& velocity);
+    /// 配置时校验软目标、死区和角度门槛。
+    void validateFinalRotationParameters();
 
   /**
    * @brief Find the closest waypoint id on the cached trajectory.
@@ -230,7 +295,7 @@ protected:
    * @brief Linear control: position error generates a signed target speed,
    *        then the speed PID tracks that target.
    * @param velocity current robot velocity (base frame)
-   * @param e_dist longitudinal position error in base frame
+   * @param e_dist signed longitudinal error used by the current control stage
    * @return linear velocity command
    */
   double LinearSpeedControl(
@@ -242,9 +307,7 @@ protected:
     double feedforward_accel = 0.0);
 
   /**
-   * @brief Check the goal-relative longitudinal, lateral and radial errors
-   *        against one position window. margin expands the GoalChecker entry
-   *        tolerance only while final-position hold is already active.
+   * @brief 检查目标系纵向、横向和径向误差；margin 仅用于保持窗口。
    */
   static bool isWithinPositionWindow(
     double longitudinal_error, double lateral_error, double radial_error,
@@ -263,15 +326,13 @@ protected:
   }
 
   /**
-   * @brief Select a stable heading for centimetre-level final-position retry.
-   *
-   * If the lateral error in the final-goal frame is already acceptable, keep
-   * goal_yaw and correct only the signed longitudinal error. Otherwise select
-   * the forward/reverse point-bearing heading requiring less physical rotation.
+   * @brief 横向合格时保持最终航向，否则选择转角较小的点位修正方向。
+   * @param should_use_point_heading 强制对准目标点，避免重试重复不可行的微调。
    */
   static double selectPositionRetryHeading(
     double current_yaw, double goal_yaw, double goal_dx, double goal_dy,
-    double lateral_tolerance, bool & reverse, bool & holds_goal_yaw);
+    double lateral_tolerance, bool & reverse, bool & holds_goal_yaw,
+    bool should_use_point_heading = false);
 
   bool confirmPositionRetryCapture(
     bool position_in_tolerance, double goal_yaw,
@@ -279,7 +340,11 @@ protected:
 
   void beginPositionRetry(
     double current_yaw, double goal_yaw, double goal_dx, double goal_dy,
-    double goal_distance, double lateral_tolerance);
+    double goal_distance, double lateral_tolerance,
+    bool should_use_point_heading = false);
+
+  /// 重置末端阶段和切入方向。
+  void resetFinalRotationPhase();
 
   /**
    * @brief Angular PID control.
@@ -350,9 +415,11 @@ protected:
   // “到点容差 + position_hold_hysteresis_”才退出，避免定位噪声反复切状态。
   double position_hold_hysteresis_ = 0.02;
   // PID末端旋转接近目标航向后，保留受限的纵向位置微调能力。
-  double final_rotation_max_v_ = 0.03;
+  double final_rotation_max_v_ = 0.05;
   double final_rotation_linear_deadband_ = 0.005;
-  double retry_position_max_v_ = 0.04;
+  // 横向软优化目标，单位 m；0关闭横向优化，仍保留纵向微调和位置重试。
+  double final_axis_lateral_tolerance_ = 0.010;
+  double retry_position_max_v_ = 0.05;
   double retry_heading_tolerance_ = 0.03;
   int retry_position_capture_cycles_ = 3;
   double acc_max_ = 0.5;
@@ -371,6 +438,13 @@ protected:
   bool retry_holds_goal_yaw_ = false;
   int retry_position_capture_count_ = 0;
   int retry_position_outside_count_ = 0;
+  FinalRotationPhase final_rotation_phase_ = FinalRotationPhase::LATERAL_REFINE;
+  bool has_final_refinement_heading_ = false;
+  bool is_final_refinement_reverse_ = false;
+  double final_refinement_heading_offset_ = 0.0;
+  // 位置闭环速度上限锁存：首次进入 5cm~2cm 用速度规划速度过渡，
+  // 一旦进入 2cm 内或过冲即锁存为固定 final_rotation_max_v_，避免规划已停后卡住。
+  bool approach_refine_limit_latched_ = false;
 
   std::deque<double> theta_errors_;
   std::deque<double> longitude_errors_;
@@ -417,6 +491,8 @@ protected:
   // 对齐（该控制器只在此距离内被调用），使 approach 全程瞄准固定终点，
   // 不再随机器人平移在候选点间跳变。
   double final_target_lock_distance_ = 0.3;
+  // 距终点小于此值切换到位置闭环精修（位置PID生效，速度上限见锁存规则）。
+  double final_refinement_distance_ = 0.05;
 
   // ---- terminal localization reference lock ----
   // 位置和航向阈值分别控制Odom位置锁存与最终航向锁存；0表示关闭对应通道。
@@ -465,8 +541,7 @@ protected:
     std::vector<rclcpp::Parameter> parameters);
 
   rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr dyn_params_handler_;
-  /// 0 = 静默；>=1 = 每周期打印紧凑诊断行（默认开）。
-  /// 控制循环读、参数回调写，故用 atomic。
+  /// 0 关闭周期 INFO 诊断；>=1 按 100 ms 节流。原子读写支持动态开关。
   std::atomic<int> verbose_{1};
 
   // ---- linear PID controllers ----

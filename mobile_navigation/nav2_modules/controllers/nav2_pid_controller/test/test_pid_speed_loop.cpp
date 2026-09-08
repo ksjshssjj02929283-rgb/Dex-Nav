@@ -562,6 +562,11 @@ public:
   void setTrajSpeedLookahead(double v) {traj_speed_lookahead_ = v;}
   void setTrajTimeLookahead(double v) {traj_time_lookahead_ = v;}
   static double headingScale(double err_theta) {return headingSpeedScale(err_theta);}
+  static double predictedLateralError(
+    double lateral_error, double longitudinal_error, double yaw_error)
+  {
+    return predictedFinalLateralError(lateral_error, longitudinal_error, yaw_error);
+  }
   static bool inPositionWindow(
     double lon, double lat, double distance, double lon_tol, double lat_tol, double margin)
   {
@@ -623,9 +628,8 @@ TEST(ApproachStage, targetLockPinsToGoalWithinLockDistance)
   EXPECT_NE(unlocked, static_cast<int>(traj.size()) - 1);
 }
 
-// 2 cm 是进入最终位置保持的真实精度；2 cm 滞回只扩大退出窗口到 4 cm，
-// 不能反过来把“到点精度”放宽成 4 cm。
-TEST(ApproachStage, positionHoldUsesTwoCentimeterEntryAndFourCentimeterExit)
+// 到点精度与保持滞回独立：滞回只扩大退出窗口，不能反过来放宽到点精度。
+TEST(ApproachStage, positionHoldExpandsEntryWindowByMargin)
 {
   EXPECT_TRUE(ApproachStagePID::inPositionWindow(0.019, 0.0, 0.019, 0.02, 0.02, 0.0));
   EXPECT_FALSE(ApproachStagePID::inPositionWindow(0.021, 0.0, 0.021, 0.02, 0.02, 0.0));
@@ -808,6 +812,400 @@ TEST(ApproachStage, headingSpeedScaleIsSmoothAndBounded)
     EXPECT_LT(std::fabs(cur - prev), 0.02);  // 每度变化 < 0.02，无跳变
     prev = cur;
   }
+}
+
+TEST(ApproachStage, predictedLateralErrorIncludesLongitudinalTrimCoupling)
+{
+  const double predicted = ApproachStagePID::predictedLateralError(
+    0.006, 0.03, 0.10);
+  EXPECT_NEAR(predicted, 0.006 + 0.03 * std::tan(0.10), 1e-12);
+  EXPECT_GT(predicted, 0.006);
+}
+
+// 直接测试生产决策与速度计算，不启动 ROS 节点。
+class FinalRotationPID : public nav2_pid_controller::PIDController {
+public:
+    using Input = FinalRotationInput;
+    using Decision = FinalRotationDecision;
+    using Action = FinalRotationAction;
+    using Phase = FinalRotationPhase;
+
+    FinalRotationPID() {
+        d_t_ = 0.1;
+        global_frame_ = "map";
+        position_hold_hysteresis_ = 0.01;
+        final_rotation_max_v_ = 0.05;
+        max_w_ = 0.75;
+        min_w_ = 0.02;
+        max_w_inc_ = 1.0;
+        nav2_controller_common::PidConf config;
+        config.kp = 1.0;
+        config.ki = 0.01;
+        config.kd = 0.1;
+        config.integrator_enable = true;
+        config.integrator_saturation_level = 0.3;
+        high_speed_station_pid_conf_ = low_speed_station_pid_conf_ = reverse_station_pid_conf_ = config;
+        high_speed_pid_conf_ = low_speed_pid_conf_ = reverse_speed_pid_conf_ = config;
+        angular_station_pid_conf_ = config;
+        station_nav2_pid_controller_.Init(config);
+        speed_nav2_pid_controller_.Init(config);
+        angular_station_nav2_pid_controller_.Init(config);
+    }
+
+    Input input(double lon, double lat, double yaw, double v = 0.0, double w = 0.0) const {
+        Input value;
+        value.longitudinal_error = lon;
+        value.lateral_error = lat;
+        value.yaw_error = yaw;
+        value.linear_velocity = v;
+        value.angular_velocity = w;
+        value.longitudinal_tolerance = 0.02;
+        value.lateral_tolerance = 0.02;
+        value.stopped_linear_velocity = 0.01;
+        value.is_goal_valid = true;
+        const double distance = std::hypot(lon, lat);
+        value.is_position_in_tolerance = isWithinPositionWindow(lon, lat, distance, 0.02, 0.02);
+        value.is_position_in_hold = isWithinPositionWindow(lon, lat, distance, 0.02, 0.02, position_hold_hysteresis_);
+        return value;
+    }
+
+    Decision decide(const Input& value) { return decideFinalRotation(value); }
+    geometry_msgs::msg::Twist command(const Input& value, const Decision& decision) {
+        geometry_msgs::msg::Twist velocity;
+        velocity.linear.x = value.linear_velocity;
+        velocity.angular.z = value.angular_velocity;
+        geometry_msgs::msg::Twist result;
+        computeFinalRotationCommand(value, decision, velocity, result);
+        return result;
+    }
+    Phase phase() const { return final_rotation_phase_; }
+    void setPhase(Phase value) { final_rotation_phase_ = value; }
+    void setSoftTolerance(double value) { final_axis_lateral_tolerance_ = value; }
+    void setLinearDeadband(double value) { final_rotation_linear_deadband_ = value; }
+    void setAngularGates(double deadband, double entry) {
+        angular_error_deadband_ = deadband;
+        retry_heading_tolerance_ = entry;
+    }
+    void validate() { validateFinalRotationParameters(); }
+    double softTolerance() const { return final_axis_lateral_tolerance_; }
+    double angularDeadband() const { return angular_error_deadband_; }
+    double angularEntry() const { return retry_heading_tolerance_; }
+    bool hasRefinementHeading() const { return has_final_refinement_heading_; }
+    int outsideCount() const { return retry_position_outside_count_; }
+    void seedLinearCommand(double command, double dt) {
+        last_speed_cmd_ = command;
+        last_speed_cmd_valid_ = true;
+        d_t_ = dt;
+    }
+    double brake(double measured) {
+        geometry_msgs::msg::Twist velocity;
+        velocity.linear.x = measured;
+        return brakeFinalLinearControl(velocity);
+    }
+    void startPointRetry(double lon, double lat, double yaw) {
+        beginPositionRetry(yaw, 0.0, lon, lat, std::hypot(lon, lat), 0.02, true);
+    }
+    bool retryHoldsGoalYaw() const { return retry_holds_goal_yaw_; }
+    double retryHeading() const { return retry_heading_; }
+    bool captureRetry(bool in_tolerance, double speed) {
+        return confirmPositionRetryCapture(in_tolerance, 0.0, speed, 0.01);
+    }
+};
+
+TEST(FinalRotation, AngularDeadbandDoesNotBlockSafeLongitudinalTrim) {
+    FinalRotationPID pid;
+    const auto input = pid.input(0.021, 0.0099, 0.006);
+    const auto decision = pid.decide(input);
+    ASSERT_EQ(decision.action, FinalRotationPID::Action::TRANSLATE);
+    EXPECT_EQ(pid.phase(), FinalRotationPID::Phase::LONGITUDINAL_TRIM);
+    const auto command = pid.command(input, decision);
+    EXPECT_GT(command.linear.x, 0.0);
+    EXPECT_DOUBLE_EQ(command.angular.z, 0.0);
+}
+
+TEST(FinalRotation, GoalCheckerToleratedNoTurnPoseStillTrimsLongitudinal) {
+    FinalRotationPID pid;
+    // 位置已满足GoalChecker，但纵向误差仍超5mm死区：继续纵向精修，
+    // 不能因位置已达标就跳过精修（回归：曾因提前返回导致纵向误差增大）。
+    // 航向误差在死区内，由AngularSpeedControl自行抑制旋转。
+    const auto input = pid.input(0.015, 0.0, 0.005);
+    const auto decision = pid.decide(input);
+    EXPECT_EQ(decision.action, FinalRotationPID::Action::TRANSLATE);
+    EXPECT_EQ(pid.phase(), FinalRotationPID::Phase::LONGITUDINAL_TRIM);
+    const auto command = pid.command(input, decision);
+    EXPECT_GT(command.linear.x, 0.0);
+    EXPECT_DOUBLE_EQ(command.angular.z, 0.0);
+}
+
+TEST(FinalRotation, PureLateralResidualSettlesWithoutDrivingAway) {
+    FinalRotationPID pid;
+    const auto input = pid.input(0.0, 0.015, 0.05);
+    int phase_changes = 0;
+    for (int cycle = 0; cycle < 50; ++cycle) {
+        const auto previous_phase = pid.phase();
+        const auto decision = pid.decide(input);
+        phase_changes += previous_phase != pid.phase() ? 1 : 0;
+        EXPECT_EQ(decision.action, FinalRotationPID::Action::HOLD_POSITION);
+        EXPECT_EQ(pid.phase(), FinalRotationPID::Phase::SETTLING);
+        EXPECT_DOUBLE_EQ(pid.command(input, decision).linear.x, 0.0);
+    }
+    // 相位不变时，不重复触发阶段日志。
+    EXPECT_EQ(phase_changes, 1);
+}
+
+TEST(FinalRotation, FeasibleLateralRefinementMirrorsForwardReverseAndSide) {
+    for (double direction : {-1.0, 1.0}) {
+        for (double side : {-1.0, 1.0}) {
+            FinalRotationPID pid;
+            const auto first = pid.decide(pid.input(direction * 0.017, side * 0.0105, 0.0));
+            ASSERT_EQ(first.action, FinalRotationPID::Action::HOLD_POSITION);
+            ASSERT_EQ(pid.phase(), FinalRotationPID::Phase::LATERAL_REFINE);
+            EXPECT_NEAR(std::fabs(first.heading_error), 5.0 * M_PI / 180.0, 1e-12);
+            const auto aligned = pid.input(direction * 0.017, side * 0.0105, -first.heading_error);
+            const auto decision = pid.decide(aligned);
+            ASSERT_EQ(decision.action, FinalRotationPID::Action::TRANSLATE);
+            EXPECT_GT(pid.command(aligned, decision).linear.x * direction, 0.0);
+            const double lateral_rate = direction * std::sin(aligned.yaw_error);
+            EXPECT_LT(lateral_rate * aligned.lateral_error, 0.0);
+        }
+    }
+}
+
+TEST(FinalRotation, RunningOutOfTravelPermanentlyEndsOptionalRefinement) {
+    FinalRotationPID pid;
+    pid.decide(pid.input(0.017, 0.0105, 0.0));
+    ASSERT_TRUE(pid.hasRefinementHeading());
+    pid.decide(pid.input(0.0052, 0.0105, -0.08));
+    ASSERT_EQ(pid.phase(), FinalRotationPID::Phase::LONGITUDINAL_TRIM);
+    // 定位波动不能重启已结束的横向优化。
+    for (double lat : {0.0099, 0.0101, 0.0105, 0.0098}) {
+        pid.decide(pid.input(0.017, lat, 0.0));
+        EXPECT_NE(pid.phase(), FinalRotationPID::Phase::LATERAL_REFINE);
+    }
+}
+
+TEST(FinalRotation, BrakingReserveCanVetoOptionalLateralMotion) {
+    FinalRotationPID pid;
+    pid.decide(pid.input(0.017, 0.0105, 0.0, 0.05));
+    EXPECT_EQ(pid.phase(), FinalRotationPID::Phase::LONGITUDINAL_TRIM);
+}
+
+TEST(FinalRotation, UnsafePredictionAtAngularDeadbandRequestsPointRetry) {
+    FinalRotationPID pid;
+    // 横向合格但预测径向超差，须改为点位重试。
+    const auto decision = pid.decide(pid.input(0.021, 0.0199, 0.006));
+    ASSERT_EQ(decision.action, FinalRotationPID::Action::RETRY_POSITION);
+    ASSERT_TRUE(decision.should_use_point_heading);
+    pid.startPointRetry(0.021, 0.0199, -0.006);
+    EXPECT_FALSE(pid.retryHoldsGoalYaw());
+    EXPECT_NEAR(pid.retryHeading(), std::atan2(0.0199, 0.021), 1e-12);
+}
+
+TEST(FinalRotation, RetryRecoveryDoesNotRestartLateralRefinement) {
+    FinalRotationPID pid;
+    pid.startPointRetry(0.021, 0.0199, 0.0);
+    EXPECT_TRUE(pid.captureRetry(true, 0.02));
+    EXPECT_TRUE(pid.captureRetry(true, 0.0));
+    EXPECT_FALSE(pid.captureRetry(false, 0.0));
+    for (int cycle = 0; cycle < 3; ++cycle) {
+        EXPECT_TRUE(pid.captureRetry(true, 0.0));
+    }
+    EXPECT_EQ(pid.phase(), FinalRotationPID::Phase::LONGITUDINAL_TRIM);
+    pid.decide(pid.input(0.017, 0.0105, 0.0));
+    EXPECT_FALSE(pid.hasRefinementHeading());
+}
+
+TEST(FinalRotation, SettlingRequiresPersistentPositionMissBeforeRetry) {
+    FinalRotationPID pid;
+    pid.setPhase(FinalRotationPID::Phase::SETTLING);
+    const auto outside = pid.input(0.021, 0.0, 0.0);
+    pid.decide(outside);
+    pid.decide(outside);
+    pid.decide(pid.input(0.019, 0.0, 0.0));
+    EXPECT_EQ(pid.outsideCount(), 0);
+    for (int cycle = 0; cycle < 2; ++cycle) {
+        EXPECT_EQ(pid.decide(outside).action, FinalRotationPID::Action::HOLD_POSITION);
+    }
+    EXPECT_EQ(pid.decide(outside).action, FinalRotationPID::Action::RETRY_POSITION);
+}
+
+TEST(FinalRotation, HoldWindowExitDoesNotWaitForConfirmation) {
+    FinalRotationPID pid;
+    pid.setPhase(FinalRotationPID::Phase::SETTLING);
+    EXPECT_EQ(pid.decide(pid.input(0.031, 0.0, 0.0)).action, FinalRotationPID::Action::RETRY_POSITION);
+}
+
+TEST(FinalRotation, NormalStoppingRespectsLinearDecelerationAndWaitsToTurn) {
+    for (double direction : {-1.0, 1.0}) {
+        FinalRotationPID pid;
+        pid.setPhase(FinalRotationPID::Phase::SETTLING);
+        pid.seedLinearCommand(direction * 0.05, 0.02);
+        double previous = direction * 0.05;
+        for (int cycle = 0; cycle < 6; ++cycle) {
+            const auto input = pid.input(0.0, 0.015, 0.3, previous);
+            const auto command = pid.command(input, pid.decide(input));
+            EXPECT_LE(std::fabs(command.linear.x - previous), 0.5 * 0.02 + 1e-12);
+            EXPECT_GE(command.linear.x * direction, 0.0);
+            if (std::fabs(previous) > 0.01) {
+                EXPECT_DOUBLE_EQ(command.angular.z, 0.0);
+            }
+            previous = command.linear.x;
+        }
+        EXPECT_NEAR(previous, 0.0, 1e-12);
+    }
+}
+
+TEST(FinalRotation, InvalidPoseOrVelocityProducesImmediateZero) {
+    for (int invalid_field = 0; invalid_field < 3; ++invalid_field) {
+        FinalRotationPID pid;
+        pid.seedLinearCommand(0.05, 0.1);
+        auto input = pid.input(0.01, 0.0, 0.1);
+        if (invalid_field == 0) {
+            input.is_goal_valid = false;
+        } else if (invalid_field == 1) {
+            input.linear_velocity = std::numeric_limits<double>::quiet_NaN();
+        } else {
+            input.lateral_error = std::numeric_limits<double>::infinity();
+        }
+        const auto decision = pid.decide(input);
+        ASSERT_EQ(decision.action, FinalRotationPID::Action::INVALID);
+        const auto command = pid.command(input, decision);
+        EXPECT_DOUBLE_EQ(command.linear.x, 0.0);
+        EXPECT_DOUBLE_EQ(command.angular.z, 0.0);
+    }
+}
+
+TEST(FinalRotation, DirectionReversalBrakesBeforeStartingOppositeMotion) {
+    FinalRotationPID pid;
+    pid.seedLinearCommand(0.04, 0.02);
+    const auto input = pid.input(-0.01, 0.0, 0.0, 0.04);
+    const auto decision = pid.decide(input);
+    ASSERT_EQ(decision.action, FinalRotationPID::Action::HOLD_POSITION);
+    const auto command = pid.command(input, decision);
+    EXPECT_NEAR(command.linear.x, 0.03, 1e-12);
+    const auto stopped = pid.input(-0.01, 0.0, 0.0);
+    EXPECT_EQ(pid.decide(stopped).action, FinalRotationPID::Action::TRANSLATE);
+}
+
+TEST(FinalRotation, RetryBrakingRejectsNonFiniteOdometry) {
+    FinalRotationPID pid;
+    pid.seedLinearCommand(0.05, 0.1);
+    EXPECT_DOUBLE_EQ(pid.brake(std::numeric_limits<double>::quiet_NaN()), 0.0);
+    EXPECT_DOUBLE_EQ(pid.brake(std::numeric_limits<double>::infinity()), 0.0);
+}
+
+TEST(FinalRotation, BrakingStillHonorsExternalSpeedLimit) {
+    FinalRotationPID pid;
+    pid.setPhase(FinalRotationPID::Phase::SETTLING);
+    pid.seedLinearCommand(0.05, 0.02);
+    pid.setSpeedLimit(0.01, false);
+    const auto input = pid.input(0.0, 0.015, 0.0, 0.05);
+    EXPECT_LE(std::fabs(pid.command(input, pid.decide(input)).linear.x), 0.01);
+}
+
+TEST(FinalRotation, DisabledSoftTargetKeepsTrimAndPositionRetry) {
+    FinalRotationPID pid;
+    pid.setSoftTolerance(0.0);
+    pid.validate();
+    EXPECT_DOUBLE_EQ(pid.softTolerance(), 0.0);
+    EXPECT_EQ(pid.decide(pid.input(0.017, 0.0105, 0.0)).action, FinalRotationPID::Action::TRANSLATE);
+    EXPECT_EQ(pid.phase(), FinalRotationPID::Phase::LONGITUDINAL_TRIM);
+    EXPECT_FALSE(pid.hasRefinementHeading());
+    EXPECT_EQ(pid.decide(pid.input(0.0, 0.025, 0.0)).action, FinalRotationPID::Action::RETRY_POSITION);
+}
+
+TEST(FinalRotation, InvalidParametersRestoreConsistentAngularGates) {
+    for (double invalid : {-0.01, std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::infinity()}) {
+        FinalRotationPID pid;
+        pid.setSoftTolerance(invalid);
+        pid.setLinearDeadband(invalid);
+        pid.setAngularGates(0.008, invalid);
+        pid.validate();
+        EXPECT_DOUBLE_EQ(pid.softTolerance(), 0.010);
+        EXPECT_DOUBLE_EQ(pid.angularDeadband(), 0.008);
+        EXPECT_DOUBLE_EQ(pid.angularEntry(), 0.03);
+        EXPECT_EQ(pid.decide(pid.input(0.021, 0.0099, 0.006)).action, FinalRotationPID::Action::TRANSLATE);
+    }
+    FinalRotationPID pid;
+    pid.setAngularGates(0.03, 0.03);
+    pid.validate();
+    EXPECT_LT(pid.angularDeadband(), pid.angularEntry());
+    pid.setAngularGates(0.008, 0.16);
+    pid.validate();
+    EXPECT_LE(pid.angularEntry(), 0.15);
+}
+
+TEST(FinalRotation, OversizedSoftTargetAndDeadbandRespectGoalCheckerTolerance) {
+    FinalRotationPID pid;
+    pid.setSoftTolerance(1.0);
+    pid.setLinearDeadband(1.0);
+    pid.validate();
+    const auto decision = pid.decide(pid.input(0.021, 0.0099, 0.006));
+    EXPECT_EQ(decision.action, FinalRotationPID::Action::TRANSLATE);
+    EXPECT_DOUBLE_EQ(decision.linear_deadband, 0.01);
+    EXPECT_EQ(pid.phase(), FinalRotationPID::Phase::LONGITUDINAL_TRIM);
+}
+
+TEST(FinalRotation, LongitudinalTrimConvergesWithLagAndYawWrap) {
+    for (double direction : {-1.0, 1.0}) {
+        FinalRotationPID pid;
+        double lon = direction * 0.021;
+        double lat = 0.0099;
+        const double goal_yaw = M_PI - 0.003;
+        double robot_yaw = -M_PI + 0.003;
+        double measured_v = 0.0;
+        double measured_w = 0.0;
+        bool has_settled = false;
+        for (int cycle = 0; cycle < 400; ++cycle) {
+            const double yaw_error = std::atan2(std::sin(goal_yaw - robot_yaw), std::cos(goal_yaw - robot_yaw));
+            const auto input = pid.input(lon, lat, yaw_error, measured_v, measured_w);
+            const auto decision = pid.decide(input);
+            ASSERT_NE(decision.action, FinalRotationPID::Action::RETRY_POSITION);
+            ASSERT_NE(decision.action, FinalRotationPID::Action::INVALID);
+            const auto command = pid.command(input, decision);
+            ASSERT_LE(std::fabs(command.linear.x), 0.05);
+            ASSERT_LE(std::fabs(command.angular.z), 0.75);
+            measured_v += 0.35 * (command.linear.x - measured_v);
+            measured_w += 0.35 * (command.angular.z - measured_w);
+            lon -= measured_v * std::cos(yaw_error) * 0.1;
+            lat += measured_v * std::sin(yaw_error) * 0.1;
+            robot_yaw += measured_w * 0.1;
+            if (pid.phase() == FinalRotationPID::Phase::SETTLING && std::fabs(measured_v) < 0.001 &&
+                std::fabs(measured_w) < 0.001) {
+                has_settled = true;
+                break;
+            }
+        }
+        EXPECT_TRUE(has_settled);
+        EXPECT_LT(std::hypot(lon, lat), 0.02);
+        EXPECT_LT(std::fabs(lat), 0.0102);
+    }
+}
+
+TEST(FinalRotation, SameGoalTrajectoryUpdateKeepsPhaseAndNewGoalResetsIt) {
+    FinalRotationPID pid;
+    pid.decide(pid.input(0.017, 0.0105, 0.0));
+    ASSERT_TRUE(pid.hasRefinementHeading());
+    pid.setPhase(FinalRotationPID::Phase::SETTLING);
+    pid.decide(pid.input(0.021, 0.0, 0.0));
+    nav_interfaces::msg::RobotTrajectory trajectory;
+    trajectory.header.frame_id = "map";
+    trajectory.points.resize(1);
+    trajectory.points.front().pose.pose.orientation.w = 1.0;
+    pid.setTrajectory(trajectory);
+    EXPECT_EQ(pid.phase(), FinalRotationPID::Phase::SETTLING);
+    EXPECT_EQ(pid.outsideCount(), 1);
+    pid.resetEndLocalization(42);
+    EXPECT_EQ(pid.phase(), FinalRotationPID::Phase::LATERAL_REFINE);
+    EXPECT_FALSE(pid.hasRefinementHeading());
+    EXPECT_EQ(pid.outsideCount(), 0);
+    // 生命周期清理须幂等。
+    pid.setPhase(FinalRotationPID::Phase::SETTLING);
+    pid.deactivate();
+    EXPECT_EQ(pid.phase(), FinalRotationPID::Phase::LATERAL_REFINE);
+    pid.cleanup();
+    pid.cleanup();
+    EXPECT_EQ(pid.phase(), FinalRotationPID::Phase::LATERAL_REFINE);
 }
 
 int main(int argc, char ** argv)

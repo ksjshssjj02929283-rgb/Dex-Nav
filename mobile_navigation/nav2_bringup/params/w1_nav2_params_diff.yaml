@@ -360,7 +360,7 @@ controller_server:
       yaw_goal_tolerance: 0.02
       trans_stopped_velocity: 0.01
       rot_stopped_velocity: 0.01
-      # 最终完成时持续复查当前位置，避免曾进入2cm后在4cm滞回带内漂移仍被判成功
+      # 最终完成时持续复查当前位置，避免曾进入2cm后在3cm保持窗口内漂移仍被判成功
       stateful: False
     MPPIController:
       plugin: "nav2_mppi_controller::MPPIController"
@@ -662,24 +662,26 @@ controller_server:
       simulate_ahead_time: 1.0
     PIDController:
       plugin: "nav2_pid_controller::PIDController"
-      long_precision: 0.02
-      lat_precision: 0.02
+      long_precision: 0.02 # 目标点坐标系下的纵向误差容许范围
+      lat_precision: 0.02 # 目标点坐标系下的横向误差容许范围
       o_precision: 0.5
-      angular_error_deadband: 0.008 # 仅普通路径角PID使用；最终旋转由下方capture/hold参数控制
+      angular_error_deadband: 0.008 # 共用角度死区，单位 rad；须小于 retry_heading_tolerance
       max_v: 0.5
       min_v: 0.0
       # 恢复初始Reach版本的速度环加减速上限，和RPP保持一致。
       max_linear_accel: 0.5
       max_linear_decel: 0.5
-      max_w: 1.57
+      max_w: 0.75
       min_w: 0.02
-      max_w_inc: 1.57
+      max_w_inc: 1.00
       k_theta: 0.0
       switch_speed: 0.2
       default_desired_linear_vel: 0.15
-      # PID_FINAL_POSITION_REFINEMENT_BEGIN：最终角度接近目标后保留小范围位置修正。
-      final_rotation_max_v: 0.03
-      final_rotation_linear_deadband: 0.005
+      # PID_FINAL_POSITION_REFINEMENT_BEGIN：借用剩余纵向行程，尝试一次横向优化。
+      final_rotation_max_v: 0.05 # 精修/旋转/过冲后退的统一速度上限，单位 m/s
+      final_rotation_linear_deadband: 0.005 # 纵向死区，单位 m，须>0；不超过纵向到位容差的一半
+      # 行程不足时按原到位容差完成，不强制追逐软目标。
+      final_axis_lateral_tolerance: 0.010 # 横向软目标，单位 m，须>=0；0 关闭横向优化
       # PID_FINAL_POSITION_REFINEMENT_END
       speed_loop_cmd_reseed_error: 0.3   # 指令积分器与实测偏差超此值时重新对齐（外力/急停兜底）
       # 仅PID末端启用：落后目标时阻止继续下探；实测超速时开放有限补刹。
@@ -691,6 +693,7 @@ controller_server:
       speed_loop_max_target_undercut: 0.03
       angular_cmd_reseed_error: 0.3    # 仅普通角PID使用；最终固定轨迹独立按实测偏差重规划
       final_target_lock_distance: 0.3    # 距终点小于此值直接锁定终点索引（消除末段最近点跳变）；须 ≥ staged_control.approach_distance
+      final_refinement_distance: 0.05    # 距终点小于此值切换到位置闭环精修（位置PID生效）；单位 m
       # PRECISION_RESTORE_BASELINE_BEGIN：初始Reach版本不在5cm处锁存目标。
       end_localization_switch_distance: 0.0
       end_localization_switch_angle: 0.0
@@ -698,12 +701,12 @@ controller_server:
       traj_speed_lookahead: 0.1    # 速度参考与瞄准目标解耦：最近点之后前方窗内 max（不含最近点自身，避免状态戳自引用）
       # 0 = 自动取一个控制周期。曾试 0.15 补偿执行延迟，实机实测不改善末端越点，改回 0。
       traj_time_lookahead: 0.0
-      # 进入最终位置保持使用GoalChecker的2cm；退出增加2cm滞回，总退出距离4cm
-      position_hold_hysteresis: 0.02
+      # 进入最终位置保持使用GoalChecker的2cm；当前增加1cm窗口，总距离约3cm
+      position_hold_hysteresis: 0.01
       # 最终固定目标角由角度PID直接控制；不使用独立角度轨迹生成器。
       # 只有停短/旋转后位置超差才进入显式位置重试；正常到点不触发。
-      retry_position_max_v: 0.04
-      retry_heading_tolerance: 0.03
+      retry_position_max_v: 0.05 # 位置重试平移速度上限，单位 m/s
+      retry_heading_tolerance: 0.03 # 平移航向门槛，单位 rad；angular_error_deadband<本值<=0.15
       retry_position_capture_cycles: 3  # 连续约0.3s进入2cm后才退出位置补偿
       verbose: 1
       high_speed_station_pid_conf:
