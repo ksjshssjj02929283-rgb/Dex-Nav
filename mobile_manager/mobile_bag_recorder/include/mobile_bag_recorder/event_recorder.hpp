@@ -3,6 +3,7 @@
 #ifndef MOBILE_BAG_RECORDER__EVENT_RECORDER_HPP_
 #define MOBILE_BAG_RECORDER__EVENT_RECORDER_HPP_
 
+#include <chrono>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -13,6 +14,7 @@
 #include "rclcpp/rclcpp.hpp"
 #include "rosbag2_cpp/writer.hpp"
 
+#include "mobile_bag_recorder/log_collector.hpp"
 #include "mobile_bag_recorder/recorder_config.hpp"
 #include "mobile_bag_recorder/retention_policy.hpp"
 #include "mobile_bag_recorder/time_ring_buffer.hpp"
@@ -74,6 +76,8 @@ private:
 
   std::unique_ptr<TimeRingBuffer> buffer_;
   std::unique_ptr<RetentionPolicy> retention_;
+  /// 触发时一并留存的系统日志快照；log_capture.enabled=false 时为空指针
+  std::unique_ptr<LogCollector> log_collector_;
 
   mutable std::mutex mutex_;
   std::unique_ptr<rosbag2_cpp::Writer> writer_;
@@ -82,6 +86,10 @@ private:
   int event_count_{0};
   rclcpp::Time last_trigger_time_;
   bool has_triggered_{false};
+  /// 本次触发的墙上时间与原因，留给日志快照定位窗口。用 system_clock 而不是
+  /// node->now()：journalctl 只认墙上时间，而 ROS 时间可能是 sim time
+  std::chrono::system_clock::time_point trigger_wall_time_;
+  std::string current_reason_;
 
   rclcpp::TimerBase::SharedPtr post_timer_;
 };

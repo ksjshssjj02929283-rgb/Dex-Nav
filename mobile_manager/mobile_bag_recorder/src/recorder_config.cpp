@@ -124,6 +124,14 @@ RecorderConfig RecorderConfig::declareAndLoad(rclcpp::Node * node)
   cfg.event.extra_topics = node->declare_parameter(
     "event.extra_topics", std::vector<std::string>{});
 
+  cfg.log_capture.enabled = node->declare_parameter("log_capture.enabled", true);
+  cfg.log_capture.pre_seconds = declareCheckedInt(node, "log_capture.pre_seconds", 300, 1);
+  cfg.log_capture.max_lines = declareCheckedInt(node, "log_capture.max_lines", 0, 0);
+  cfg.log_capture.timeout_seconds =
+    declareCheckedInt(node, "log_capture.timeout_seconds", 30, 1);
+  cfg.log_capture.identifiers = node->declare_parameter(
+    "log_capture.identifiers", std::vector<std::string>{});
+
   cfg.trigger.on_nav_aborted = node->declare_parameter("trigger.on_nav_aborted", true);
   cfg.trigger.on_nav_canceled = node->declare_parameter("trigger.on_nav_canceled", false);
   cfg.trigger.on_recovery_behavior =

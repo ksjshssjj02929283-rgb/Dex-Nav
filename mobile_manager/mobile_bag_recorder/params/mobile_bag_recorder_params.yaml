@@ -47,15 +47,15 @@
       # ---- 速度相关 → 10Hz ----
       # 这几条都是几十字节的小消息，降频省不到多少 CPU/磁盘，留 10Hz 是为了控制类问题
       # （速度抖动、急停、跟踪振荡）回放时还有足够的采样密度
-      - "/cmd_vel_nav:10.0"
-      - "/control/cmd_vel:10.0"
-      - "/control/cmd_vel_nav:10.0"
-      - "/speed_limit:10.0"
-      - "/navigation/speed_plan:10.0"
-      - "/nav_monitor/desired_velocity:10.0"
+      # - "/cmd_vel_nav:10.0"
+      # - "/control/cmd_vel:10.0"
+      # - "/control/cmd_vel_nav:10.0"
+      # - "/speed_limit:10.0"
+      # - "/navigation/speed_plan:10.0"
+      # - "/nav_monitor/desired_velocity:10.0"
       # ---- 里程计相关 → 20Hz ----
-      - "/feedback/odom:20.0"
-      - "/odometry/filtered:20.0"
+      # - "/feedback/odom:20.0"
+      # - "/odometry/filtered:20.0"
 
     continuous:
       enabled: true
@@ -94,6 +94,11 @@
         - /control/nav2_pose
         - /feedback/odom
         - /odometry/filtered
+        - /imu/chassis/refined
+
+        - /localization_node/loc_pose
+        - /localization_state
+        - /robot_localization/odometry/filtered
 
         # ---- 代价地图 ----
         - /local_costmap/costmap
@@ -118,6 +123,8 @@
         - /loc_pose
         - /scan_matched_points2
         - /clock
+
+        - /diagnostics_agg
 
     event:
       enabled: true
@@ -147,6 +154,35 @@
       # 不需要补录时整行注释掉即可，代码里的默认值就是空列表。
       # extra_topics:
       #   - /some/topic
+
+    # 事件触发时，把系统日志的同一段时间一并存进事件 bag 目录下的 logs/。
+    # 数据回放能看出机器人"做了什么"，日志才说得清各节点"当时在想什么/报了什么错"，
+    # 两者放一起才是一份能独立排查的现场。
+    #
+    # 日志取自 systemd journal（机器人上各节点由 auto_mode.sh 经 systemd-cat -t dexe_xxx
+    # 拉起，stdout/stderr 全进 journal），不是 ~/.ros/log —— 后者按每次 launch 一个目录
+    # 组织（实测机上已 6500+ 个），既切不出时间窗口，也没有 kernel/systemd 那部分信息。
+    log_capture:
+      enabled: true
+
+      # 触发点之前取多久的日志（秒）。可以比 event.pre_seconds 长得多：
+      # pc1 实测 5 min 日志 ≈ 300~540 KB，相对 bag 几乎是白送的
+      pre_seconds: 300
+
+      # journalctl --lines 上限，0 = 不限。日志跟事件 bag 一起被保留策略回收，
+      # 正常不用设，只在某个节点疯狂刷屏时兜底
+      max_lines: 0
+
+      # 单次采集超时（秒）。超时杀掉 journalctl，已写入的部分保留
+      timeout_seconds: 30
+
+      # 只收指定 syslog identifier（auto_mode.sh 里 systemd-cat -t 的那个名字），
+      # 多个之间是"或"。默认整段注释掉 = 全量：掉电、OOM、网卡抖动这类事件只在
+      # kernel/systemd 的日志里，恰恰是 ROS 侧一个字都看不到的部分。
+      # 同样不要写成 identifiers: []（空序列会被解析成 NOT_SET，节点起不来）。
+      # identifiers:
+      #   - dexe_path_follower
+      #   - dexe_schedule_planner
 
     trigger:
       # 导航 action 返回 ABORTED

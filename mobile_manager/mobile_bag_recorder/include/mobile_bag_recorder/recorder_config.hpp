@@ -54,6 +54,23 @@ struct EventConfig
   std::vector<std::string> extra_topics;
 };
 
+/// 事件触发时一并留存的系统日志快照（systemd journal）
+struct LogCaptureConfig
+{
+  bool enabled{true};
+  /// 触发点之前取多久的日志（秒）。与 event.pre_seconds 独立：日志比 bag 便宜得多
+  /// （pc1 实测 5 min ≈ 300~540 KB），窗口可以开得比数据窗口长
+  int pre_seconds{300};
+  /// journalctl --lines 上限，0 = 不限。日志跟着事件 bag 一起被保留策略回收，
+  /// 正常无需设，只在某个节点疯狂刷屏时用来兜底
+  int max_lines{0};
+  /// 单次采集超时（秒），超时杀掉 journalctl，已写入的部分保留
+  int timeout_seconds{30};
+  /// journalctl -t 过滤的 syslog identifier（auto_mode.sh 里 systemd-cat -t 的那个名字）。
+  /// 留空 = 全量，连 kernel / systemd 一起收——掉电、OOM、网卡抖动在 ROS 侧看不到
+  std::vector<std::string> identifiers;
+};
+
 struct TriggerConfig
 {
   bool on_nav_aborted{true};
@@ -115,6 +132,7 @@ public:
 
   ContinuousConfig continuous;
   EventConfig event;
+  LogCaptureConfig log_capture;
   TriggerConfig trigger;
 
 private:

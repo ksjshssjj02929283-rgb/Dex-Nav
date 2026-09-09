@@ -58,6 +58,7 @@ add_library(${PROJECT_NAME}_lib
   src/continuous_recorder.cpp
   src/retention_policy.cpp
   src/time_ring_buffer.cpp
+  src/log_collector.cpp
   src/event_recorder.cpp
   src/trigger_monitor.cpp
   src/trigger_sources/builtin.cpp
@@ -127,6 +128,10 @@ if(BUILD_TESTING)
   ament_add_gtest(test_throttle_rules test/test_throttle_rules.cpp)
   target_link_libraries(test_throttle_rules ${PROJECT_NAME}_lib)
   ament_target_dependencies(test_throttle_rules ${dependencies})
+
+  ament_add_gtest(test_log_collector test/test_log_collector.cpp)
+  target_link_libraries(test_log_collector ${PROJECT_NAME}_lib)
+  ament_target_dependencies(test_log_collector ${dependencies})
 endif()
 
 ament_package()

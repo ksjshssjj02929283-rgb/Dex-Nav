@@ -48,6 +48,15 @@ EventRecorder::EventRecorder(
     node_->get_logger(), event_root_, config_.max_events,
     static_cast<int64_t>(config_.max_total_size_mb) * 1024 * 1024);
 
+  if (config.log_capture.enabled) {
+    log_collector_ = std::make_unique<LogCollector>(node_->get_logger(), config.log_capture);
+    RCLCPP_INFO(
+      node_->get_logger(),
+      "Event log snapshot enabled: last %d s of the system journal before each trigger "
+      "will be written to <event bag>/logs/",
+      config.log_capture.pre_seconds);
+  }
+
   RCLCPP_INFO(
     node_->get_logger(),
     "Event recording armed: %zu topics, pre %d s / post %d s, cooldown %d s, "
@@ -191,6 +200,8 @@ TriggerResult EventRecorder::trigger(
     active_ = true;
     last_trigger_time_ = now;
     has_triggered_ = true;
+    trigger_wall_time_ = std::chrono::system_clock::now();
+    current_reason_ = reason;
   }
 
   post_timer_ = node_->create_wall_timer(
@@ -227,6 +238,8 @@ void EventRecorder::finish()
   }
 
   std::string closed_uri;
+  std::string closed_reason;
+  std::chrono::system_clock::time_point closed_trigger_time;
   {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!writer_ || !active_) {
@@ -241,10 +254,19 @@ void EventRecorder::finish()
     active_ = false;
     ++event_count_;
     closed_uri = current_uri_;
+    closed_reason = current_reason_;
+    closed_trigger_time = trigger_wall_time_;
     current_uri_.clear();
+    current_reason_.clear();
   }
 
   RCLCPP_INFO(node_->get_logger(), "Event bag closed: %s", closed_uri.c_str());
+
+  // 日志快照在 bag 关闭之后才采：这样窗口右端能盖住 post 段，
+  // 「触发之后又发生了什么」和数据是同一段时间。采集本身是异步的，不挡这里
+  if (log_collector_) {
+    log_collector_->capture(closed_uri, closed_reason, closed_trigger_time);
+  }
 
   const int removed = retention_->enforce();
   if (removed > 0) {

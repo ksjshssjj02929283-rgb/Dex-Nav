@@ -13,6 +13,7 @@
 | 触发式事件录制 | ✅ 可用 | 内存环形缓冲，产出覆盖「触发点前 N 秒 + 后 M 秒」的独立 bag |
 | 自动触发源 | ✅ 可用 | 导航 ABORTED / **卡住** / 诊断 ERROR / 终点误差 / 恢复行为 |
 | 统一触发接口 | ✅ 可用 | topic（模块上报，非阻塞）+ service（带 reason/窗口覆盖，返回 bag 路径）|
+| 事件日志快照 | ✅ 可用 | 触发时把同一段时间的系统日志（journal）一并存进事件 bag 的 `logs/` |
 
 ## 快速使用
 
@@ -37,6 +38,10 @@ ros2 run mobile_bag_recorder mobile_bag_recorder_node --ros-args \
 │   └── bag-20260812-142352/
 └── event/
     ├── event-20260812-145435-manual/           # 手动触发
+    │   ├── metadata.yaml
+    │   ├── event-20260812-145435-manual_0.mcap
+    │   └── logs/
+    │       └── system-journal.log              # 同一段时间的系统日志快照
     └── event-20260812-150245-goal_error_0_55m/ # 自动触发，名字带原因
 ```
 
@@ -117,6 +122,45 @@ reason 会写进事件 bag 的目录名，因此现场直接从文件名就能�
 保留全分辨率的代价仅是环形缓冲多占一点内存。若事件流内存吃紧，应当用
 `event.exclude_topics` 排除大话题，而不是靠限速压它。
 
+### 事件日志快照
+
+触发时除了数据，还把**同一段时间的系统日志**导出到事件 bag 目录下的
+`logs/system-journal.log`：数据回放能看出机器人「做了什么」，日志才说得清各节点
+「当时在报什么错」，两者在同一个文件夹里才是一份能独立排查的现场。
+
+```
+event-20260912-150012-schedule_seg0_failed/
+├── metadata.yaml
+├── event-...-_0.mcap
+└── logs/system-journal.log      # 文件头写明 bag 路径 / 触发原因 / 时间窗口 / 采集命令
+```
+
+| 取哪段 | `[触发点 - log_capture.pre_seconds] .. [事件 bag 关闭那一刻]` |
+|---|---|
+| 取自哪 | systemd journal（`journalctl`），**不是** `~/.ros/log/` |
+| 什么时候采 | 事件 bag 关闭之后，异步子进程，不占执行器线程 |
+| 多大 | pc1 实测 5 min ≈ 300~540 KB，相对 bag 可以忽略 |
+
+**为什么是 journal 而不是 `~/.ros/log/`**：机器人上的节点都由 `auto_mode.sh` 经
+`systemd-cat -t dexe_xxx` 拉起，stdout/stderr 全进系统 journal，那里才是「全系统一条
+时间线」——既有各 ROS 节点的输出，也有 kernel / systemd / 网络这些 ROS 侧看不到的事件
+（掉电、OOM、网卡抖动）。而 `~/.ros/log/` 按「每次 launch 一个目录」组织（实测机上已堆了
+6500+ 个），既切不出时间窗口，也拿不到 ROS 之外的信息。
+
+**日志窗口比数据窗口长**是有意的：`event.pre_seconds` 默认 60 s 受内存环形缓冲约束，
+而日志只在触发后才去 journal 里捞，几乎不要钱，所以 `log_capture.pre_seconds` 默认 300 s（5 min），
+可以看到故障之前更早的征兆。
+
+采集失败（没装 systemd / journal 无权限 / 超时）**只告警不影响录包**，journalctl 的
+stderr 会写进快照文件本身，一眼能看出为什么是空的。整机不走 journal 时设
+`log_capture.enabled: false` 关掉即可。
+
+采集命令等价于（文件头里写了当次的实际命令，可直接照着复现）：
+
+```bash
+journalctl --no-pager -o short-precise --since "2026-09-12 14:58:12"
+```
+
 ### 手工注入触发（联调用）
 
 ```bash
@@ -143,6 +187,9 @@ ros2 run mobile_bag_recorder inject_trigger.py nav_aborted        # 注入导航
 | `continuous.topics` | 见 yaml | 录制话题清单 |
 | `storage_id` | `mcap` | 存储后端。真机实测 sqlite3 12.6% / mcap 6.6%（单核占比），落盘量相同 |
 | `throttle` | 见 yaml | 按话题限速，`"<话题>:<最大Hz>"`，常态与事件两条流一起生效 |
+| `log_capture.enabled` | `true` | 触发时是否一并留存系统日志快照 |
+| `log_capture.pre_seconds` | `300` | 日志窗口向前取多久（秒），与 `event.pre_seconds` 独立 |
+| `log_capture.identifiers` | 空（全量）| 只收指定 `systemd-cat -t` 标识；留空连 kernel/systemd 一起收 |
 
 **段数与容量两个上限同时生效**：段大小随场景浮动，只设段数控不住盘。
 
