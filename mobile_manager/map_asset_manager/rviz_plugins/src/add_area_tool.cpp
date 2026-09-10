@@ -62,7 +62,7 @@ AddAreaTool::~AddAreaTool() {
 
 void AddAreaTool::onInitialize() {
     node_   = context_->getRosNodeAbstraction().lock()->get_raw_node();
-    client_ = node_->create_client<nav_interfaces::srv::AddAreaInfo>(service_name_);
+    client_ = node_->create_client<nav_interfaces::srv::SetArea>(service_name_);
 
     auto* scene = context_->getSceneManager();
     preview_line_ = scene->createManualObject("map_asset_area_preview");
@@ -306,7 +306,8 @@ void AddAreaTool::finishPolygon() {
         return;
     }
 
-    auto req = std::make_shared<nav_interfaces::srv::AddAreaInfo::Request>();
+    auto req = std::make_shared<nav_interfaces::srv::SetArea::Request>();
+    req->mode = nav_interfaces::srv::SetArea::Request::MODE_UPSERT;
     req->area_info.name              = area_name_;
     req->area_info.type              = area_type_;
     req->area_info.max_speed         = area_max_speed_;
@@ -322,7 +323,7 @@ void AddAreaTool::finishPolygon() {
 
     client_->async_send_request(
         req,
-        [this](rclcpp::Client<nav_interfaces::srv::AddAreaInfo>::SharedFuture fut) {
+        [this](rclcpp::Client<nav_interfaces::srv::SetArea>::SharedFuture fut) {
             try {
                 auto resp = fut.get();
                 setStatus(resp->success

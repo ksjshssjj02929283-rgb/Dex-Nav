@@ -25,148 +25,56 @@ AreaManager::AreaManager(rclcpp::Node* node,
         "~/areas", rclcpp::QoS(10).transient_local());
 
     // Services
-    add_area_srv_ = node_->create_service<nav_interfaces::srv::AddAreaInfo>(
-        "~/add_area",
-        [this](const std::shared_ptr<nav_interfaces::srv::AddAreaInfo::Request> req,
-               std::shared_ptr<nav_interfaces::srv::AddAreaInfo::Response> res) {
-            addAreaCallback(req, res);
+    set_area_srv_ = node_->create_service<nav_interfaces::srv::SetArea>(
+        "~/set_area",
+        [this](const std::shared_ptr<nav_interfaces::srv::SetArea::Request> req,
+               std::shared_ptr<nav_interfaces::srv::SetArea::Response> res) {
+            setAreaCallback(req, res);
         });
 
-    remove_area_srv_ = node_->create_service<nav_interfaces::srv::RemoveAreaInfo>(
-        "~/remove_area",
-        [this](const std::shared_ptr<nav_interfaces::srv::RemoveAreaInfo::Request> req,
-               std::shared_ptr<nav_interfaces::srv::RemoveAreaInfo::Response> res) {
-            removeAreaCallback(req, res);
-        });
-
-    update_area_srv_ = node_->create_service<nav_interfaces::srv::UpdateAreaInfo>(
-        "~/update_area",
-        [this](const std::shared_ptr<nav_interfaces::srv::UpdateAreaInfo::Request> req,
-               std::shared_ptr<nav_interfaces::srv::UpdateAreaInfo::Response> res) {
-            updateAreaCallback(req, res);
-        });
-
-    get_all_areas_srv_ = node_->create_service<nav_interfaces::srv::GetAllAreas>(
-        "~/get_all_areas",
-        [this](const std::shared_ptr<nav_interfaces::srv::GetAllAreas::Request> req,
-               std::shared_ptr<nav_interfaces::srv::GetAllAreas::Response> res) {
-            getAllAreasCallback(req, res);
-        });
-
-    RCLCPP_INFO(node_->get_logger(), "AreaManager: initialized (add/remove/list services, areas topic)");
+    RCLCPP_INFO(node_->get_logger(), "AreaManager: initialized (set_area service, areas topic)");
 }
 
 // ──────────────────────────────────────────────────────────────────────
 // Service 回调
 // ──────────────────────────────────────────────────────────────────────
 
-void AreaManager::addAreaCallback(
-    const std::shared_ptr<nav_interfaces::srv::AddAreaInfo::Request> req,
-    std::shared_ptr<nav_interfaces::srv::AddAreaInfo::Response> res) {
 
+void AreaManager::setAreaCallback(
+    const std::shared_ptr<nav_interfaces::srv::SetArea::Request> req,
+    std::shared_ptr<nav_interfaces::srv::SetArea::Response> res) {
+    using SA = nav_interfaces::srv::SetArea;
+    using ST = nav_interfaces::msg::AssetManagerState;
     const auto& msg = req->area_info;
-    if (msg.name.empty()) {
-        RCLCPP_WARN(node_->get_logger(), "add_area: empty name rejected");
-        res->success = false;
+    if (msg.name.empty()) { res->success = false; res->error_code = ST::E_ASSET_VALIDATION; res->message = "area name is empty"; return; }
+    if (req->mode > SA::Request::MODE_REMOVE) { res->success = false; res->error_code = ST::E_ASSET_MODE_INVALID; res->message = "invalid mode " + std::to_string(req->mode); return; }
+    const bool exists = area_store_->hasArea(msg.name);
+    if (req->mode == SA::Request::MODE_REMOVE) {
+        if (!exists) { res->success = false; res->error_code = ST::E_ASSET_NOT_FOUND; res->message = "area not found: " + msg.name; return; }
+        area_store_->removeArea(msg.name);
+        save_fn_();
+        publishMarkers();
+        publishAreas();
+        if (event_bus_) event_bus_->publish({AssetEventType::AREA_REMOVED, msg.name, ""});
+        RCLCPP_INFO(node_->get_logger(), "set_area: removed '%s'", msg.name.c_str());
+        res->success = true; res->error_code = ST::E_NONE;
+        res->message = "removed";
         return;
     }
-    if (area_store_->hasArea(msg.name)) {
-        RCLCPP_WARN(node_->get_logger(), "add_area: '%s' already exists, overwriting", msg.name.c_str());
-    }
-
+    if (req->mode == SA::Request::MODE_ADD_ONLY && exists)     { res->success = false; res->error_code = ST::E_ASSET_EXISTS;    res->message = "area already exists: " + msg.name; return; }
+    if (req->mode == SA::Request::MODE_UPDATE_ONLY && !exists) { res->success = false; res->error_code = ST::E_ASSET_NOT_FOUND; res->message = "area not found: " + msg.name; return; }
     Area area = fromMsg(msg);
-    const bool already_exists = area_store_->hasArea(area.name);
-    if (already_exists) {
-        area_store_->updateArea(area);
-    } else {
-        area_store_->addArea(area);
-    }
+    if (exists) area_store_->updateArea(area); else area_store_->addArea(area);
     save_fn_();
     publishMarkers();
     publishAreas();
-
-    if (event_bus_) {
-        event_bus_->publish({already_exists ? AssetEventType::AREA_UPDATED
-                                            : AssetEventType::AREA_ADDED,
-                             area.name, ""});
-    }
-
-    RCLCPP_INFO(node_->get_logger(), "add_area: %s '%s' type=%u vertices=%zu",
-                already_exists ? "updated" : "added",
-                area.name.c_str(), area.type, area.polygon.size());
-    res->success = true;
+    if (event_bus_) event_bus_->publish({exists ? AssetEventType::AREA_UPDATED : AssetEventType::AREA_ADDED, area.name, ""});
+    RCLCPP_INFO(node_->get_logger(), "set_area: %s '%s' type=%u vertices=%zu",
+                exists ? "updated" : "added", area.name.c_str(), area.type, area.polygon.size());
+    res->success = true; res->error_code = ST::E_NONE;
+    res->message = exists ? "updated" : "added";
 }
 
-void AreaManager::removeAreaCallback(
-    const std::shared_ptr<nav_interfaces::srv::RemoveAreaInfo::Request> req,
-    std::shared_ptr<nav_interfaces::srv::RemoveAreaInfo::Response> res) {
-
-    if (!area_store_->hasArea(req->name)) {
-        res->success = false;
-        res->message = "area not found: " + req->name;
-        RCLCPP_WARN(node_->get_logger(), "remove_area: '%s' not found", req->name.c_str());
-        return;
-    }
-
-    area_store_->removeArea(req->name);
-    save_fn_();
-    publishMarkers();
-    publishAreas();
-
-    if (event_bus_) {
-        event_bus_->publish({AssetEventType::AREA_REMOVED, req->name, ""});
-    }
-
-    RCLCPP_INFO(node_->get_logger(), "remove_area: removed '%s'", req->name.c_str());
-    res->success = true;
-    res->message = "ok";
-}
-
-void AreaManager::updateAreaCallback(
-    const std::shared_ptr<nav_interfaces::srv::UpdateAreaInfo::Request> req,
-    std::shared_ptr<nav_interfaces::srv::UpdateAreaInfo::Response> res) {
-
-    const auto& msg = req->area_info;
-    if (msg.name.empty()) {
-        RCLCPP_WARN(node_->get_logger(), "update_area: empty name rejected");
-        res->success = false;
-        res->message = "name is empty";
-        return;
-    }
-    if (!area_store_->hasArea(msg.name)) {
-        RCLCPP_WARN(node_->get_logger(), "update_area: '%s' not found", msg.name.c_str());
-        res->success = false;
-        res->message = "area not found: " + msg.name;
-        return;
-    }
-
-    Area area = fromMsg(msg);
-    area_store_->updateArea(area);
-    save_fn_();
-    publishMarkers();
-    publishAreas();
-
-    if (event_bus_) {
-        event_bus_->publish({AssetEventType::AREA_UPDATED, area.name, ""});
-    }
-
-    RCLCPP_INFO(node_->get_logger(), "update_area: '%s' type=%u vertices=%zu",
-                area.name.c_str(), area.type, area.polygon.size());
-    res->success = true;
-    res->message = "updated";
-}
-
-void AreaManager::getAllAreasCallback(
-    const std::shared_ptr<nav_interfaces::srv::GetAllAreas::Request> /*req*/,
-    std::shared_ptr<nav_interfaces::srv::GetAllAreas::Response> res) {
-
-    auto all_areas = area_store_->getAllAreas();
-    res->area_info_list.reserve(all_areas.size());
-    for (const auto& area : all_areas) {
-        res->area_info_list.push_back(toMsg(area));
-    }
-    res->success = true;
-}
 
 // ──────────────────────────────────────────────────────────────────────
 // 发布

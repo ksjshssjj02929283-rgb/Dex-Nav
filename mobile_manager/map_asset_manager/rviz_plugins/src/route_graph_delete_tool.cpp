@@ -13,8 +13,8 @@
 #include <OgreManualObject.h>
 #include <OgreSceneManager.h>
 
-#include <nav_interfaces/srv/remove_route_junction.hpp>
-#include <nav_interfaces/srv/remove_route_edge.hpp>
+#include <nav_interfaces/srv/set_route_junction.hpp>
+#include <nav_interfaces/srv/set_route_edge.hpp>
 #include <nav_interfaces/srv/get_route_graph.hpp>
 #include <nav_interfaces/srv/get_all_nav_points.hpp>
 #include <rviz_common/display_context.hpp>
@@ -283,15 +283,16 @@ void RouteGraphDeleteTool::doDelete() {
     const QString qid = QString::fromStdString(sel_id_);
 
     if (sel_type_ == SelType::JUNCTION) {
-        auto cli = node_->create_client<nav_interfaces::srv::RemoveRouteJunction>(
-            service_prefix_ + "/remove_route_junction");
-        auto req = std::make_shared<nav_interfaces::srv::RemoveRouteJunction::Request>();
-        req->id  = sel_id_;
+        auto cli = node_->create_client<nav_interfaces::srv::SetRouteJunction>(
+            service_prefix_ + "/set_route_junction");
+        auto req = std::make_shared<nav_interfaces::srv::SetRouteJunction::Request>();
+        req->mode = nav_interfaces::srv::SetRouteJunction::Request::MODE_REMOVE;
+        req->junction.id = sel_id_;
         sel_type_ = SelType::NONE;
         clearPreview();
         cli->async_send_request(req,
             [this, qid](
-                rclcpp::Client<nav_interfaces::srv::RemoveRouteJunction>::SharedFuture fut) {
+                rclcpp::Client<nav_interfaces::srv::SetRouteJunction>::SharedFuture fut) {
                 try {
                     auto resp = fut.get();
                     if (resp->success) {
@@ -306,15 +307,16 @@ void RouteGraphDeleteTool::doDelete() {
                 }
             });
     } else if (sel_type_ == SelType::EDGE) {
-        auto cli = node_->create_client<nav_interfaces::srv::RemoveRouteEdge>(
-            service_prefix_ + "/remove_route_edge");
-        auto req   = std::make_shared<nav_interfaces::srv::RemoveRouteEdge::Request>();
-        req->id = sel_id_;
+        auto cli = node_->create_client<nav_interfaces::srv::SetRouteEdge>(
+            service_prefix_ + "/set_route_edge");
+        auto req   = std::make_shared<nav_interfaces::srv::SetRouteEdge::Request>();
+        req->mode = nav_interfaces::srv::SetRouteEdge::Request::MODE_REMOVE;
+        req->edge.id = sel_id_;
         sel_type_ = SelType::NONE;
         clearPreview();
         cli->async_send_request(req,
             [this, qid](
-                rclcpp::Client<nav_interfaces::srv::RemoveRouteEdge>::SharedFuture fut) {
+                rclcpp::Client<nav_interfaces::srv::SetRouteEdge>::SharedFuture fut) {
                 try {
                     auto resp = fut.get();
                     if (resp->success) {

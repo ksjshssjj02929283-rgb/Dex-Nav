@@ -63,7 +63,7 @@ AddRoomTool::~AddRoomTool() {
 
 void AddRoomTool::onInitialize() {
     node_   = context_->getRosNodeAbstraction().lock()->get_raw_node();
-    client_ = node_->create_client<nav_interfaces::srv::AddRoom>(service_name_);
+    client_ = node_->create_client<nav_interfaces::srv::SetRoom>(service_name_);
 
     auto* scene = context_->getSceneManager();
     preview_line_ = scene->createManualObject("map_asset_room_preview");
@@ -300,7 +300,8 @@ void AddRoomTool::finishPolygon() {
         return;
     }
 
-    auto req = std::make_shared<nav_interfaces::srv::AddRoom::Request>();
+    auto req = std::make_shared<nav_interfaces::srv::SetRoom::Request>();
+    req->mode = nav_interfaces::srv::SetRoom::Request::MODE_UPSERT;
     req->room.name           = room_name_;
     req->room.type           = room_type_;
     req->room.semantic_label = room_semantic_label_;
@@ -324,7 +325,7 @@ void AddRoomTool::finishPolygon() {
 
     client_->async_send_request(
         req,
-        [this](rclcpp::Client<nav_interfaces::srv::AddRoom>::SharedFuture fut) {
+        [this](rclcpp::Client<nav_interfaces::srv::SetRoom>::SharedFuture fut) {
             try {
                 auto resp = fut.get();
                 setStatus(resp->success

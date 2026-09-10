@@ -63,78 +63,27 @@ MapManagerROS::MapManagerROS() : rclcpp::Node("map_manager") {
         std::bind(&MapManagerROS::GetCurrentMapDataCallback, this, std::placeholders::_1, std::placeholders::_2),
         rmw_qos_profile_services_default, callback_group_services_);
 
-    get_map_info_srv_ = this->create_service<nav_interfaces::srv::GetMapInfo>(
-        "~/get_current_map_info",
-        std::bind(&MapManagerROS::GetCurrentMapInfoCallback, this, std::placeholders::_1, std::placeholders::_2),
+    get_maps_srv_ = this->create_service<nav_interfaces::srv::GetMaps>(
+        "~/get_maps",
+        std::bind(&MapManagerROS::GetMapsCallback, this, std::placeholders::_1, std::placeholders::_2),
         rmw_qos_profile_services_default, callback_group_services_);
 
-    get_map_folder_srv_ = this->create_service<nav_interfaces::srv::GetString>(
-        "~/get_map_folder",
-        std::bind(&MapManagerROS::GetMapFolderCallback, this, std::placeholders::_1, std::placeholders::_2),
-        rmw_qos_profile_services_default, callback_group_services_);
-
-    get_map_name_srv_ = this->create_service<nav_interfaces::srv::GetString>(
-        "~/get_map_name",
-        std::bind(&MapManagerROS::GetMapNameCallback, this, std::placeholders::_1, std::placeholders::_2),
-        rmw_qos_profile_services_default, callback_group_services_);
-
-    get_all_maps_srv_ = this->create_service<nav_interfaces::srv::GetMapList>(
-        "~/get_map_list",
-        std::bind(&MapManagerROS::GetMapListCallback, this, std::placeholders::_1, std::placeholders::_2),
-        rmw_qos_profile_services_default, callback_group_services_);
-
-    load_map_srv_ = this->create_service<nav_interfaces::srv::LoadMap>(
-        "~/load_map",
-        std::bind(&MapManagerROS::LoadMapCallback, this, std::placeholders::_1, std::placeholders::_2),
-        rmw_qos_profile_services_default, callback_group_services_);
-
-    remove_map_srv_ = this->create_service<nav_interfaces::srv::DeleteMap>(
-        "~/remove_map",
-        std::bind(&MapManagerROS::RemoveMapCallback, this, std::placeholders::_1, std::placeholders::_2),
-        rmw_qos_profile_services_default, callback_group_services_);
-
-    rename_map_srv_ = this->create_service<nav_interfaces::srv::RenameMap>(
-        "~/rename_map",
-        std::bind(&MapManagerROS::RenameMapCallback, this, std::placeholders::_1, std::placeholders::_2),
+    map_command_srv_ = this->create_service<nav_interfaces::srv::MapManagerCommand>(
+        "~/map_command",
+        std::bind(&MapManagerROS::MapManagerCommandCallback, this, std::placeholders::_1, std::placeholders::_2),
         rmw_qos_profile_services_default, callback_group_services_);
 
     if (config_->IsUseDefaultMap()) {
         LoadDefaultMap();
     }
-}
-
-void MapManagerROS::GetMapListCallback(const std::shared_ptr<nav_interfaces::srv::GetMapList::Request> req,
-                                       std::shared_ptr<nav_interfaces::srv::GetMapList::Response> res) {
-    (void)req;
-    map_manager_->UpdateMapList();
-    res->map_list = map_manager_->GetMapList();
-    res->success = true;
-}
-
-void MapManagerROS::LoadMapCallback(const std::shared_ptr<nav_interfaces::srv::LoadMap::Request> req,
-                                    std::shared_ptr<nav_interfaces::srv::LoadMap::Response> res) {
-    bool load_success = map_manager_->LoadMap(req->map_name);
-    if (!load_success) {
-        res->success = false;
-        return;
+    // 未加载任何地图（含无默认图）时也发一次 map_state：latched 语义要求晚订阅者总能拿到 map_folder。
+    // epoch 仍为 0，消费方据此知道「尚未加载」。
+    if (map_manager_->GetEpoch() == 0) {
+        PublishMapAndNotify();
     }
-
-    // 更新 map_name 参数
-    this->set_parameter(rclcpp::Parameter("map_name", map_manager_->GetMapName()));
-    RCLCPP_INFO(this->get_logger(), "Updated map_name parameter to: %s", map_manager_->GetMapName().c_str());
-
-    PublishMapAndNotify();
-
-    // 如果启用了 use_default_map，则将当前加载的地图保存回配置文件
-    if (config_->IsUseDefaultMap()) {
-        RCLCPP_INFO(this->get_logger(), "use_default_map is enabled, saving current map name to config");
-        config_->SaveDefaultMapName(map_manager_->GetMapName());
-    }
-
-    // 地图加载本身成功，即返回 true
-    // 节点激活失败不影响地图加载结果
-    res->success = true;
 }
+
+
 
 void MapManagerROS::LoadDefaultMap() {
     const std::string default_map = config_->GetDefaultMapName();
@@ -165,6 +114,90 @@ void MapManagerROS::LoadDefaultMap() {
     PublishMapAndNotify();
 }
 
+void MapManagerROS::GetMapsCallback(const std::shared_ptr<nav_interfaces::srv::GetMaps::Request> req,
+                                    std::shared_ptr<nav_interfaces::srv::GetMaps::Response> res) {
+    (void)req;
+    using MS = nav_interfaces::msg::MapState;
+    // map_folder 来自配置，与是否加载地图无关，无条件返回（此前的 get_current_map_info 先判加载态再填 folder，
+    // 导致未加载时拿不到 folder，这也是 get_map_folder 一直删不掉的原因）。
+    res->map_folder = map_manager_->GetMapFolder();
+    res->current_map_name = map_manager_->GetMapName();   // 未加载为空
+    if (res->map_folder.empty()) {
+        res->success = false;
+        res->error_code = MS::E_MAP_FOLDER_MISSING;
+        res->message = "map_folder is not configured";
+        return;
+    }
+    for (const auto& e : map_manager_->ScanMapCatalog()) {
+        nav_interfaces::msg::MapInfo m;
+        m.name = e.name;
+        m.map_path = e.map_path;
+        m.total_area_m2 = static_cast<float>(e.total_area_m2);
+        m.effective_area_m2 = static_cast<float>(e.effective_area_m2);
+        m.updated_at.sec = static_cast<int32_t>(e.updated_at);
+        m.updated_at.nanosec = 0;
+        m.thumbnail = e.thumbnail;
+        res->maps.push_back(std::move(m));
+    }
+    res->success = true;
+    res->error_code = MS::E_NONE;
+    res->message = std::to_string(res->maps.size()) + " maps";
+}
+
+void MapManagerROS::MapManagerCommandCallback(const std::shared_ptr<nav_interfaces::srv::MapManagerCommand::Request> req,
+                                       std::shared_ptr<nav_interfaces::srv::MapManagerCommand::Response> res) {
+    using MC = nav_interfaces::srv::MapManagerCommand;
+    using MS = nav_interfaces::msg::MapState;
+    std::string message;
+    int32_t code = MS::E_NONE;
+
+    switch (req->op) {
+        case MC::Request::OP_LOAD: {
+            code = map_manager_->LoadMapEx(req->map_name, message);
+            if (code == MS::E_NONE) {
+                this->set_parameter(rclcpp::Parameter("map_name", map_manager_->GetMapName()));
+                PublishMapAndNotify();
+                if (config_->IsUseDefaultMap()) {
+                    config_->SaveDefaultMapName(map_manager_->GetMapName());
+                }
+            }
+            break;
+        }
+        case MC::Request::OP_REMOVE: {
+            code = map_manager_->RemoveMapEx(req->map_name, message);
+            break;
+        }
+        case MC::Request::OP_RENAME: {
+            const bool is_current = (req->map_name == map_manager_->GetMapName());
+            const std::string default_before = config_->GetDefaultMapName();
+            code = map_manager_->RenameMapEx(req->map_name, req->new_name, message);
+            if (code == MS::E_NONE) {
+                // 重命名当前图：epoch 递增并重新下发 map_state，下游据此重载（契约已声明）
+                if (is_current) PublishMapAndNotify();
+                if (config_->IsUseDefaultMap() && default_before == req->map_name) {
+                    config_->SaveDefaultMapName(req->new_name);
+                }
+            }
+            break;
+        }
+        default:
+            code = MS::E_MAP_OP_INVALID;
+            message = "invalid op " + std::to_string(req->op) +
+                      "; expected 1 (LOAD), 2 (REMOVE) or 3 (RENAME)";
+            break;
+    }
+
+    res->success = (code == MS::E_NONE);
+    res->error_code = code;
+    res->message = message;
+    if (!res->success) {
+        RCLCPP_ERROR(this->get_logger(), "map_command op=%u map='%s' failed (%d): %s",
+                     req->op, req->map_name.c_str(), code, message.c_str());
+    } else {
+        RCLCPP_INFO(this->get_logger(), "map_command op=%u: %s", req->op, message.c_str());
+    }
+}
+
 void MapManagerROS::PublishMapAndNotify() {
     auto map_ptr = map_manager_->GetMap();
     auto metadata_ptr = map_manager_->GetMapMetaData();
@@ -189,69 +222,6 @@ void MapManagerROS::PublishMapAndNotify() {
     map_manager_->ResetFlags();
 }
 
-void MapManagerROS::RemoveMapCallback(const std::shared_ptr<nav_interfaces::srv::DeleteMap::Request> req,
-                                      std::shared_ptr<nav_interfaces::srv::DeleteMap::Response> res) {
-    res->success = map_manager_->RemoveMap(req->map_name);
-}
-
-void MapManagerROS::RenameMapCallback(const std::shared_ptr<nav_interfaces::srv::RenameMap::Request> req,
-                                      std::shared_ptr<nav_interfaces::srv::RenameMap::Response> res) {
-    const bool is_current_map = (req->old_name == map_manager_->GetMapName());
-    const std::string default_map_before = config_->GetDefaultMapName();
-
-    std::string error_msg;
-    const bool ok = map_manager_->RenameMap(req->old_name, req->new_name, error_msg);
-    if (!ok) {
-        res->success = false;
-        res->message = error_msg;
-        RCLCPP_ERROR(this->get_logger(), "Rename map failed: %s", error_msg.c_str());
-        return;
-    }
-
-    // 当前加载的地图被改名 → epoch+1 + 重发 map_state（消费方据新名/路径重载）
-    if (is_current_map) {
-        PublishMapAndNotify();
-    }
-
-    // 默认地图的名字被改 → 同步配置文件
-    if (config_->IsUseDefaultMap() && default_map_before == req->old_name) {
-        RCLCPP_INFO(this->get_logger(), "Default map renamed, updating config: %s -> %s", req->old_name.c_str(),
-                    req->new_name.c_str());
-        config_->SaveDefaultMapName(req->new_name);
-    }
-
-    res->success = true;
-    res->message = "Rename success";
-}
-
-void MapManagerROS::GetCurrentMapInfoCallback(const std::shared_ptr<nav_interfaces::srv::GetMapInfo::Request> req,
-                                              std::shared_ptr<nav_interfaces::srv::GetMapInfo::Response> res) {
-    (void)req;
-    res->map_name = map_manager_->GetMapName();
-    if (res->map_name.empty()) {
-        res->success = false;
-        res->error_msg = "No map loaded";
-        RCLCPP_ERROR(this->get_logger(), "No map loaded");
-        return;
-    }
-    res->map_folder = map_manager_->GetMapFolder();
-    if (res->map_folder.empty()) {
-        res->success = false;
-        res->error_msg = "Map folder not set";
-        RCLCPP_ERROR(this->get_logger(), "Map folder not set");
-        return;
-    }
-    auto metadata_ptr = map_manager_->GetMapMetaData();
-    if (!metadata_ptr) {
-        res->success = false;
-        res->error_msg = "load map failed";
-        RCLCPP_ERROR(this->get_logger(), "load map failed");
-        return;
-    }
-    res->map_info = *metadata_ptr;
-    res->success = true;
-}
-
 void MapManagerROS::GetCurrentMapDataCallback(const std::shared_ptr<nav_msgs::srv::GetMap::Request> req,
                                               std::shared_ptr<nav_msgs::srv::GetMap::Response> res) {
     (void)req;
@@ -263,20 +233,6 @@ void MapManagerROS::GetCurrentMapDataCallback(const std::shared_ptr<nav_msgs::sr
     auto map_copy = *map_ptr;
     map_copy.header.stamp = this->get_clock()->now();
     res->map = map_copy;
-}
-
-void MapManagerROS::GetMapFolderCallback(const std::shared_ptr<nav_interfaces::srv::GetString::Request> req,
-                                         std::shared_ptr<nav_interfaces::srv::GetString::Response> res) {
-    (void)req;
-    res->data = map_manager_->GetMapFolder();
-    res->success = true;
-}
-
-void MapManagerROS::GetMapNameCallback(const std::shared_ptr<nav_interfaces::srv::GetString::Request> req,
-                                       std::shared_ptr<nav_interfaces::srv::GetString::Response> res) {
-    (void)req;
-    res->data = map_manager_->GetMapName();
-    res->success = true;
 }
 
 }  // namespace map_manager

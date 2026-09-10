@@ -22,7 +22,7 @@
 #include <nav_interfaces/msg/map_state.hpp>
 #include <nav_interfaces/srv/save_map.hpp>
 #include <nav_interfaces/srv/save_assets.hpp>
-#include <nav_interfaces/srv/load_map.hpp>
+#include <nav_interfaces/srv/map_manager_command.hpp>
 #include <nav_interfaces/srv/rollback_map.hpp>
 
 namespace command_board {

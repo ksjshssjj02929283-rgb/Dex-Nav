@@ -10,11 +10,10 @@
 #include <memory>
 #include <string>
 
-#include <nav_interfaces/srv/add_route.hpp>
+#include <nav_interfaces/srv/set_route.hpp>
 #include <nav_interfaces/srv/get_all_nav_points.hpp>
-#include <nav_interfaces/srv/get_all_routes.hpp>
+#include <nav_interfaces/srv/get_assets.hpp>
 #include <nav_interfaces/srv/get_route.hpp>
-#include <nav_interfaces/srv/remove_route.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 namespace map_asset_rviz_plugin {
@@ -68,10 +67,10 @@ private:
     rclcpp::Node::SharedPtr node_;
     std::string prefix_{"/map_asset_manager"};
 
-    rclcpp::Client<nav_interfaces::srv::AddRoute>::SharedPtr        add_client_;
-    rclcpp::Client<nav_interfaces::srv::RemoveRoute>::SharedPtr     remove_client_;
+    rclcpp::Client<nav_interfaces::srv::SetRoute>::SharedPtr        add_client_;
+    rclcpp::Client<nav_interfaces::srv::SetRoute>::SharedPtr     remove_client_;
     rclcpp::Client<nav_interfaces::srv::GetRoute>::SharedPtr        get_client_;
-    rclcpp::Client<nav_interfaces::srv::GetAllRoutes>::SharedPtr    get_all_routes_client_;
+    rclcpp::Client<nav_interfaces::srv::GetAssets>::SharedPtr    get_all_routes_client_;
     rclcpp::Client<nav_interfaces::srv::GetAllNavPoints>::SharedPtr get_points_client_;
 };
 

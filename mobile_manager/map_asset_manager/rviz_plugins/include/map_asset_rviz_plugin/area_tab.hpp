@@ -9,9 +9,8 @@
 #include <memory>
 #include <string>
 
-#include <nav_interfaces/srv/get_all_areas.hpp>
-#include <nav_interfaces/srv/remove_area_info.hpp>
-#include <nav_interfaces/srv/update_area_info.hpp>
+#include <nav_interfaces/srv/get_assets.hpp>
+#include <nav_interfaces/srv/set_area.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 namespace map_asset_rviz_plugin {
@@ -48,9 +47,9 @@ private:
     rclcpp::Node::SharedPtr node_;
     std::string prefix_{"/map_asset_manager"};
 
-    rclcpp::Client<nav_interfaces::srv::GetAllAreas>::SharedPtr     get_client_;
-    rclcpp::Client<nav_interfaces::srv::RemoveAreaInfo>::SharedPtr  remove_client_;
-    rclcpp::Client<nav_interfaces::srv::UpdateAreaInfo>::SharedPtr  update_client_;
+    rclcpp::Client<nav_interfaces::srv::GetAssets>::SharedPtr     get_client_;
+    rclcpp::Client<nav_interfaces::srv::SetArea>::SharedPtr  remove_client_;
+    rclcpp::Client<nav_interfaces::srv::SetArea>::SharedPtr  update_client_;
 };
 
 }  // namespace map_asset_rviz_plugin

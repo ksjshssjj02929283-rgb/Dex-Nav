@@ -27,235 +27,60 @@ RoomManager::RoomManager(rclcpp::Node* node,
         "~/rooms", rclcpp::QoS(10).transient_local());
 
     // Services
-    add_room_srv_ = node_->create_service<nav_interfaces::srv::AddRoom>(
-        "~/add_room",
-        [this](const std::shared_ptr<nav_interfaces::srv::AddRoom::Request> req,
-               std::shared_ptr<nav_interfaces::srv::AddRoom::Response> res) {
-            addRoomCallback(req, res);
-        });
-
-    remove_room_srv_ = node_->create_service<nav_interfaces::srv::RemoveRoom>(
-        "~/remove_room",
-        [this](const std::shared_ptr<nav_interfaces::srv::RemoveRoom::Request> req,
-               std::shared_ptr<nav_interfaces::srv::RemoveRoom::Response> res) {
-            removeRoomCallback(req, res);
-        });
-
-    update_room_srv_ = node_->create_service<nav_interfaces::srv::UpdateRoom>(
-        "~/update_room",
-        [this](const std::shared_ptr<nav_interfaces::srv::UpdateRoom::Request> req,
-               std::shared_ptr<nav_interfaces::srv::UpdateRoom::Response> res) {
-            updateRoomCallback(req, res);
-        });
-
-    get_all_rooms_srv_ = node_->create_service<nav_interfaces::srv::GetAllRooms>(
-        "~/get_all_rooms",
-        [this](const std::shared_ptr<nav_interfaces::srv::GetAllRooms::Request> req,
-               std::shared_ptr<nav_interfaces::srv::GetAllRooms::Response> res) {
-            getAllRoomsCallback(req, res);
-        });
-
-    get_room_by_name_srv_ = node_->create_service<nav_interfaces::srv::GetRoomByName>(
-        "~/get_room_by_name",
-        [this](const std::shared_ptr<nav_interfaces::srv::GetRoomByName::Request> req,
-               std::shared_ptr<nav_interfaces::srv::GetRoomByName::Response> res) {
-            getRoomByNameCallback(req, res);
-        });
-
-    get_room_at_pose_srv_ = node_->create_service<nav_interfaces::srv::GetRoomAtPose>(
-        "~/get_room_at_pose",
-        [this](const std::shared_ptr<nav_interfaces::srv::GetRoomAtPose::Request> req,
-               std::shared_ptr<nav_interfaces::srv::GetRoomAtPose::Response> res) {
-            getRoomAtPoseCallback(req, res);
+    set_room_srv_ = node_->create_service<nav_interfaces::srv::SetRoom>(
+        "~/set_room",
+        [this](const std::shared_ptr<nav_interfaces::srv::SetRoom::Request> req,
+               std::shared_ptr<nav_interfaces::srv::SetRoom::Response> res) {
+            setRoomCallback(req, res);
         });
 
     RCLCPP_INFO(node_->get_logger(),
-                "RoomManager: initialized (add/remove/list/get_by_name/get_at_pose services, rooms topic)");
+                "RoomManager: initialized (set_room service, rooms topic)");
 }
 
 // ──────────────────────────────────────────────────────────────────────
 // Service 回调
 // ──────────────────────────────────────────────────────────────────────
 
-void RoomManager::addRoomCallback(
-    const std::shared_ptr<nav_interfaces::srv::AddRoom::Request> req,
-    std::shared_ptr<nav_interfaces::srv::AddRoom::Response> res) {
 
+
+void RoomManager::setRoomCallback(
+    const std::shared_ptr<nav_interfaces::srv::SetRoom::Request> req,
+    std::shared_ptr<nav_interfaces::srv::SetRoom::Response> res) {
+    using SR = nav_interfaces::srv::SetRoom;
+    using ST = nav_interfaces::msg::AssetManagerState;
     const auto& msg = req->room;
-    if (msg.name.empty()) {
-        RCLCPP_WARN(node_->get_logger(), "add_room: empty name rejected");
-        res->success = false;
-        res->message = "name is empty";
-        return;
-    }
-    if (msg.polygon.size() < 3) {
-        RCLCPP_WARN(node_->get_logger(), "add_room: polygon has < 3 vertices for '%s'",
-                    msg.name.c_str());
-        res->success = false;
-        res->message = "polygon needs at least 3 vertices";
-        return;
-    }
-
+    if (msg.name.empty()) { res->success = false; res->error_code = ST::E_ASSET_VALIDATION; res->message = "room name is empty"; return; }
+    if (req->mode > SR::Request::MODE_REMOVE) { res->success = false; res->error_code = ST::E_ASSET_MODE_INVALID; res->message = "invalid mode " + std::to_string(req->mode); return; }
     const bool exists = room_store_->hasRoom(msg.name);
-    if (exists) {
-        RCLCPP_WARN(node_->get_logger(), "add_room: '%s' already exists, overwriting",
-                    msg.name.c_str());
+    if (req->mode == SR::Request::MODE_REMOVE) {
+        if (!exists) { res->success = false; res->error_code = ST::E_ASSET_NOT_FOUND; res->message = "room not found: " + msg.name; return; }
+        room_store_->removeRoom(msg.name);
+        save_fn_();
+        publishMarkers();
+        publishRooms();
+        if (event_bus_) event_bus_->publish({AssetEventType::ROOM_REMOVED, msg.name, ""});
+        RCLCPP_INFO(node_->get_logger(), "set_room: removed '%s'", msg.name.c_str());
+        res->success = true; res->error_code = ST::E_NONE;
+        res->message = "removed";
+        return;
     }
-
+    if (msg.polygon.size() < 3) { res->success = false; res->error_code = ST::E_ASSET_VALIDATION; res->message = "polygon needs at least 3 vertices"; return; }
+    if (req->mode == SR::Request::MODE_ADD_ONLY && exists)     { res->success = false; res->error_code = ST::E_ASSET_EXISTS;    res->message = "room already exists: " + msg.name; return; }
+    if (req->mode == SR::Request::MODE_UPDATE_ONLY && !exists) { res->success = false; res->error_code = ST::E_ASSET_NOT_FOUND; res->message = "room not found: " + msg.name; return; }
     Room room = fromMsg(msg);
-    // 强制重算 id / timestamps / bounding_box / pose（业务侧传的值视为提示，自动覆盖）
     const std::string src = room.source.empty() ? DSGSource::MANUAL : room.source;
     room.source = src;
     room = enrich(std::move(room), src, node_->now());
-
-    if (exists) {
-        room_store_->updateRoom(room);
-    } else {
-        room_store_->addRoom(room);
-    }
+    if (exists) room_store_->updateRoom(room); else room_store_->addRoom(room);
     save_fn_();
     publishMarkers();
     publishRooms();
-
-    if (event_bus_) {
-        event_bus_->publish({exists ? AssetEventType::ROOM_UPDATED
-                                    : AssetEventType::ROOM_ADDED,
-                             room.name, ""});
-    }
-
-    RCLCPP_INFO(node_->get_logger(),
-                "add_room: %s '%s' type=%u source=%s vertices=%zu id=%s",
-                exists ? "updated" : "added",
-                room.name.c_str(), room.type, room.source.c_str(),
-                room.polygon.size(), room.id.c_str());
-    res->success = true;
+    if (event_bus_) event_bus_->publish({exists ? AssetEventType::ROOM_UPDATED : AssetEventType::ROOM_ADDED, room.name, ""});
+    RCLCPP_INFO(node_->get_logger(), "set_room: %s '%s' type=%u source=%s vertices=%zu id=%s",
+                exists ? "updated" : "added", room.name.c_str(), room.type, room.source.c_str(), room.polygon.size(), room.id.c_str());
+    res->success = true; res->error_code = ST::E_NONE;
     res->message = exists ? "updated" : "added";
-}
-
-void RoomManager::updateRoomCallback(
-    const std::shared_ptr<nav_interfaces::srv::UpdateRoom::Request> req,
-    std::shared_ptr<nav_interfaces::srv::UpdateRoom::Response> res) {
-
-    const auto& msg = req->room;
-    if (msg.name.empty()) {
-        RCLCPP_WARN(node_->get_logger(), "update_room: empty name rejected");
-        res->success = false;
-        res->message = "name is empty";
-        return;
-    }
-    if (msg.polygon.size() < 3) {
-        RCLCPP_WARN(node_->get_logger(), "update_room: polygon has < 3 vertices for '%s'",
-                    msg.name.c_str());
-        res->success = false;
-        res->message = "polygon needs at least 3 vertices";
-        return;
-    }
-    if (!room_store_->hasRoom(msg.name)) {
-        RCLCPP_WARN(node_->get_logger(), "update_room: '%s' not found", msg.name.c_str());
-        res->success = false;
-        res->message = "room not found: " + msg.name;
-        return;
-    }
-
-    Room room = fromMsg(msg);
-    const std::string src = room.source.empty() ? DSGSource::MANUAL : room.source;
-    room.source = src;
-    room = enrich(std::move(room), src, node_->now());
-
-    room_store_->updateRoom(room);
-    save_fn_();
-    publishMarkers();
-    publishRooms();
-
-    if (event_bus_) {
-        event_bus_->publish({AssetEventType::ROOM_UPDATED, room.name, ""});
-    }
-
-    RCLCPP_INFO(node_->get_logger(),
-                "update_room: '%s' type=%u source=%s vertices=%zu id=%s",
-                room.name.c_str(), room.type, room.source.c_str(),
-                room.polygon.size(), room.id.c_str());
-    res->success = true;
-    res->message = "updated";
-}
-
-void RoomManager::removeRoomCallback(
-    const std::shared_ptr<nav_interfaces::srv::RemoveRoom::Request> req,
-    std::shared_ptr<nav_interfaces::srv::RemoveRoom::Response> res) {
-
-    if (!room_store_->hasRoom(req->name)) {
-        res->success = false;
-        res->message = "room not found: " + req->name;
-        RCLCPP_WARN(node_->get_logger(), "remove_room: '%s' not found", req->name.c_str());
-        return;
-    }
-
-    room_store_->removeRoom(req->name);
-    save_fn_();
-    publishMarkers();
-    publishRooms();
-
-    if (event_bus_) {
-        event_bus_->publish({AssetEventType::ROOM_REMOVED, req->name, ""});
-    }
-
-    RCLCPP_INFO(node_->get_logger(), "remove_room: removed '%s'", req->name.c_str());
-    res->success = true;
-    res->message = "ok";
-}
-
-void RoomManager::getAllRoomsCallback(
-    const std::shared_ptr<nav_interfaces::srv::GetAllRooms::Request> /*req*/,
-    std::shared_ptr<nav_interfaces::srv::GetAllRooms::Response> res) {
-
-    auto all_rooms = room_store_->getAllRooms();
-    res->rooms.reserve(all_rooms.size());
-    for (const auto& room : all_rooms) {
-        res->rooms.push_back(toMsg(room));
-    }
-    res->success = true;
-}
-
-void RoomManager::getRoomByNameCallback(
-    const std::shared_ptr<nav_interfaces::srv::GetRoomByName::Request> req,
-    std::shared_ptr<nav_interfaces::srv::GetRoomByName::Response> res) {
-
-    auto room_opt = room_store_->getRoom(req->name);
-    if (!room_opt) {
-        res->success = true;
-        res->found = false;
-        res->message = "room not found: " + req->name;
-        return;
-    }
-    res->success = true;
-    res->found = true;
-    res->room = toMsg(*room_opt);
-    res->message = "ok";
-}
-
-void RoomManager::getRoomAtPoseCallback(
-    const std::shared_ptr<nav_interfaces::srv::GetRoomAtPose::Request> req,
-    std::shared_ptr<nav_interfaces::srv::GetRoomAtPose::Response> res) {
-
-    auto all_rooms = room_store_->getAllRooms();
-    geometry_msgs::msg::Point pt;
-    pt.x = req->pose.x;
-    pt.y = req->pose.y;
-    pt.z = 0.0;
-
-    for (const auto& r : all_rooms) {
-        if (polygon_utils::isPointInPolygon(pt, r.polygon)) {
-            res->success = true;
-            res->found = true;
-            res->room = toMsg(r);
-            res->message = "matched: " + r.name;
-            return;
-        }
-    }
-
-    res->success = true;
-    res->found = false;
-    res->message = "no room contains pose";
 }
 
 // ──────────────────────────────────────────────────────────────────────

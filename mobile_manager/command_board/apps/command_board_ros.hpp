@@ -28,8 +28,8 @@
 #include "localization_sm.h"
 #include "nav_interfaces/msg/localization_state.hpp"
 #include "nav_interfaces/msg/map_state.hpp"
-#include "nav_interfaces/srv/load_map.hpp"
-#include "nav_interfaces/srv/set_pose.hpp"
+#include <nav_interfaces/srv/map_manager_command.hpp>
+#include "nav_interfaces/srv/relocalize.hpp"
 #include "nav_interfaces/srv/reset_map_origin_by_xy_yaw.hpp"
 #include "nav_interfaces/srv/transform_assets.hpp"
 #include "map_version_manager.hpp"
@@ -83,7 +83,7 @@ private:
     // 定位控制 & 地图管理服务客户端
     rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr stop_localization_cli_;
     rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr start_localization_cli_;
-    rclcpp::Client<nav_interfaces::srv::LoadMap>::SharedPtr load_map_cli_;
+    rclcpp::Client<nav_interfaces::srv::MapManagerCommand>::SharedPtr map_command_cli_;
     rclcpp::Client<nav_interfaces::srv::TransformAssets>::SharedPtr transform_assets_cli_;
 
     // 对外暴露的重置原点服务
@@ -136,8 +136,8 @@ private:
     float        latest_score_{0.0f};
     int          last_localization_status_{-999};
     std::string  last_alarm_;
-    rclcpp::Client<nav_interfaces::srv::SetPose>::SharedPtr relocalization_cli_;
-    rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr global_reloc_cli_;
+    // 重定位统一入口（mode 区分全局/局部）
+    rclcpp::Client<nav_interfaces::srv::Relocalize>::SharedPtr relocalization_cli_;
     rclcpp::TimerBase::SharedPtr recover_timer_;
     rclcpp::Publisher<std_msgs::msg::String>::SharedPtr alarm_pub_;
 };

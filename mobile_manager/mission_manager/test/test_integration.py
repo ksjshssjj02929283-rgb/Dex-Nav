@@ -11,7 +11,7 @@ import rclpy
 from rclpy.node import Node
 
 from std_srvs.srv import Trigger
-from nav_interfaces.srv import (LoadMap, GetString, GetMapInfo, AddNavPoint,
+from nav_interfaces.srv import (GetMaps, MapManagerCommand, SetNavPoint,
                                 GetAllNavPoints, SampleNavPoint, GetStatus,
                                 NavToPoint, AddTask)
 from nav_interfaces.msg import NavPoint as NavPointMsg, Task as TaskMsg
@@ -24,18 +24,17 @@ class IntegrationTester(Node):
         super().__init__('integration_tester')
 
         # Map Manager客户端
-        self.load_map_client = self.create_client(LoadMap,
-                                                  '/map_manager/load_map')
-        self.get_map_name_client = self.create_client(
-            GetString, '/map_manager/get_map_name')
-        self.get_map_info_client = self.create_client(
-            GetMapInfo, '/map_manager/get_current_map_info')
+        # 2026-09-09 接口收敛：load_map/get_map_name/get_current_map_info → map_command/get_maps
+        self.map_command_client = self.create_client(
+            MapManagerCommand, '/map_manager/map_command')
+        self.get_maps_client = self.create_client(
+            GetMaps, '/map_manager/get_maps')
 
         # Nav Point Manager客户端
         self.nav_set_map_client = self.create_client(
             Trigger, '/nav_point_manager_node/set_map_changed')
         self.add_nav_point_client = self.create_client(
-            AddNavPoint, '/nav_point_manager_node/add_point')
+            SetNavPoint, '/map_asset_manager/set_point')
         self.get_all_nav_points_client = self.create_client(
             GetAllNavPoints, '/nav_point_manager_node/get_all_nav_points')
         self.sample_nav_point_client = self.create_client(
@@ -99,7 +98,7 @@ class IntegrationTester(Node):
             get_status_service_name = '/mission_manager/get_mission_status'
 
         services = [
-            (self.load_map_client, '/map_manager/load_map'),
+            (self.map_command_client, '/map_manager/map_command'),
             (self.nav_set_map_client,
              '/nav_point_manager_node/set_map_changed'),
             (mission_set_map_client, mission_service_name),
@@ -136,9 +135,10 @@ class IntegrationTester(Node):
 
         # 1. 加载地图
         self.get_logger().info(f'1.1 加载地图: {map_name}')
-        load_req = LoadMap.Request()
+        load_req = MapManagerCommand.Request()
+        load_req.op = MapManagerCommand.Request.OP_LOAD
         load_req.map_name = map_name
-        load_res = self.call_service(self.load_map_client, load_req)
+        load_res = self.call_service(self.map_command_client, load_req)
 
         if load_res:
             self.get_logger().info(f'✅ 地图加载结果: success={load_res.success}')
@@ -149,11 +149,11 @@ class IntegrationTester(Node):
 
         # 2. 获取当前地图名称
         self.get_logger().info('1.2 获取当前地图名称')
-        get_name_req = GetString.Request()
-        get_name_res = self.call_service(self.get_map_name_client, get_name_req)
+        get_name_req = GetMaps.Request()
+        get_name_res = self.call_service(self.get_maps_client, get_name_req)
 
         if get_name_res:
-            self.get_logger().info(f'✅ 当前地图: {get_name_res.data}')
+            self.get_logger().info(f'✅ 当前地图: {get_name_res.current_map_name}')
         else:
             self.get_logger().warn('⚠️  获取地图名称失败')
 
@@ -197,7 +197,8 @@ class IntegrationTester(Node):
 
         # 3. 添加测试导航点（可选）
         self.get_logger().info('2.3 添加测试导航点')
-        add_req = AddNavPoint.Request()
+        add_req = SetNavPoint.Request()
+        add_req.mode = SetNavPoint.Request.MODE_UPSERT
         add_req.nav_point.name = 'test_point_integration'
         add_req.nav_point.x = 1.0
         add_req.nav_point.y = 2.0
