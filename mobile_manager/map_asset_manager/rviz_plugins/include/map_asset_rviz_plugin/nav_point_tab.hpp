@@ -16,11 +16,9 @@
 #include <string>
 
 #include <nav_interfaces/action/navigate_to_point.hpp>
-#include <nav_interfaces/srv/add_nav_point.hpp>
+#include <nav_interfaces/srv/set_nav_point.hpp>
 #include <nav_interfaces/srv/get_all_nav_points.hpp>
-#include <nav_interfaces/srv/remove_nav_point.hpp>
 #include <nav_interfaces/srv/sample_nav_point.hpp>
-#include <nav_interfaces/srv/update_nav_point.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp_action/rclcpp_action.hpp>
 
@@ -86,10 +84,10 @@ private:
     std::string prefix_{"/map_asset_manager"};
 
     rclcpp::Client<nav_interfaces::srv::GetAllNavPoints>::SharedPtr get_all_client_;
-    rclcpp::Client<nav_interfaces::srv::AddNavPoint>::SharedPtr     add_client_;
-    rclcpp::Client<nav_interfaces::srv::RemoveNavPoint>::SharedPtr  remove_client_;
+    rclcpp::Client<nav_interfaces::srv::SetNavPoint>::SharedPtr     add_client_;
+    rclcpp::Client<nav_interfaces::srv::SetNavPoint>::SharedPtr  remove_client_;
     rclcpp::Client<nav_interfaces::srv::SampleNavPoint>::SharedPtr  sample_client_;
-    rclcpp::Client<nav_interfaces::srv::UpdateNavPoint>::SharedPtr  update_client_;
+    rclcpp::Client<nav_interfaces::srv::SetNavPoint>::SharedPtr  update_client_;
     rclcpp_action::Client<NavigateToPointAction>::SharedPtr          nav_client_;
 
     std::mutex navigation_goal_mutex_;

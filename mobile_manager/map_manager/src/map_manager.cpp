@@ -297,4 +297,91 @@ bool MapManager::loadMapFromValues(std::string map_file_name,
     return true;
 }
 
+
+// ── 带错误码版本 + 目录扫描（MapManagerCommand / GetMaps 使用）──────────────────
+// 错误码与 nav_interfaces/msg/MapState.msg 的 14xx 常量保持一致；这里用字面量避免核心层依赖 ROS msg。
+namespace {
+constexpr int32_t kErrNone = 0;
+constexpr int32_t kErrNameInvalid = 1402;
+constexpr int32_t kErrNotFound = 1403;
+constexpr int32_t kErrInUse = 1404;
+constexpr int32_t kErrNameExists = 1405;
+constexpr int32_t kErrFolderMissing = 1406;
+constexpr int32_t kErrLoadFailed = 1407;
+constexpr int32_t kErrIoFailed = 1408;
+}  // namespace
+
+int32_t MapManager::LoadMapEx(const std::string& map_name, std::string& message) {
+    if (map_folder_.empty()) { message = "map_folder is not configured"; return kErrFolderMissing; }
+    if (map_name.empty())    { message = "map_name is empty"; return kErrNameInvalid; }
+    UpdateMapList();
+    if (std::find(map_list_.begin(), map_list_.end(), map_name) == map_list_.end()) {
+        message = "map not found: " + map_name; return kErrNotFound;
+    }
+    if (!LoadMap(map_name)) { message = "failed to load map files: " + map_name; return kErrLoadFailed; }
+    message = "map loaded: " + map_name;
+    return kErrNone;
+}
+
+int32_t MapManager::RemoveMapEx(const std::string& map_name, std::string& message) {
+    if (map_folder_.empty()) { message = "map_folder is not configured"; return kErrFolderMissing; }
+    if (map_name.empty())    { message = "map_name is empty"; return kErrNameInvalid; }
+    UpdateMapList();
+    if (std::find(map_list_.begin(), map_list_.end(), map_name) == map_list_.end()) {
+        message = "map not found: " + map_name; return kErrNotFound;
+    }
+    if (current_map_name_ == map_name) {
+        message = "cannot remove the currently loaded map: " + map_name; return kErrInUse;
+    }
+    const std::string dir = map_folder_ + "/" + map_name;
+    boost::system::error_code ec;
+    fs::remove_all(dir, ec);
+    if (ec) { message = "remove failed: " + ec.message(); return kErrIoFailed; }
+    UpdateMapList();
+    message = "map removed: " + map_name;
+    return kErrNone;
+}
+
+int32_t MapManager::RenameMapEx(const std::string& old_name, const std::string& new_name, std::string& message) {
+    if (map_folder_.empty()) { message = "map_folder is not configured"; return kErrFolderMissing; }
+    if (old_name.empty() || new_name.empty()) { message = "map_name or new_name is empty"; return kErrNameInvalid; }
+    UpdateMapList();
+    if (std::find(map_list_.begin(), map_list_.end(), old_name) == map_list_.end()) {
+        message = "map not found: " + old_name; return kErrNotFound;
+    }
+    if (std::find(map_list_.begin(), map_list_.end(), new_name) != map_list_.end()) {
+        message = "target name already exists: " + new_name; return kErrNameExists;
+    }
+    std::string err;
+    if (!RenameMap(old_name, new_name, err)) { message = err; return kErrIoFailed; }
+    message = "map renamed: " + old_name + " -> " + new_name;
+    return kErrNone;
+}
+
+std::vector<MapCatalogEntry> MapManager::ScanMapCatalog() {
+    std::vector<MapCatalogEntry> out;
+    UpdateMapList();
+    for (const auto& name : map_list_) {
+        MapCatalogEntry e;
+        e.name = name;
+        e.map_path = map_folder_ + "/" + name + "/slam";
+        e.thumbnail = e.map_path + "/map.png";
+        const std::string yaml_path = e.map_path + "/map.yaml";
+        boost::system::error_code ec;
+        if (fs::exists(yaml_path, ec) && !ec) {
+            e.updated_at = fs::last_write_time(yaml_path, ec);
+            if (ec) e.updated_at = 0;
+            try {
+                YAML::Node y = YAML::LoadFile(yaml_path);
+                if (y["total_area_m2"])     e.total_area_m2     = y["total_area_m2"].as<double>();
+                if (y["effective_area_m2"]) e.effective_area_m2 = y["effective_area_m2"].as<double>();
+            } catch (const std::exception& ex) {
+                LOG(WARNING) << "ScanMapCatalog: cannot parse " << yaml_path << ": " << ex.what();
+            }
+        }
+        out.push_back(std::move(e));
+    }
+    return out;
+}
+
 }  // namespace map_manager

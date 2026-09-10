@@ -135,10 +135,10 @@ void NavPointTab::rebuildClients() {
     applyNavigationActive(false);
 
     get_all_client_ = node_->create_client<nav_interfaces::srv::GetAllNavPoints>(prefix_ + "/get_all_nav_points");
-    add_client_     = node_->create_client<nav_interfaces::srv::AddNavPoint>(prefix_ + "/add_point");
-    remove_client_  = node_->create_client<nav_interfaces::srv::RemoveNavPoint>(prefix_ + "/remove_point");
+    add_client_     = node_->create_client<nav_interfaces::srv::SetNavPoint>(prefix_ + "/set_point");
+    remove_client_  = node_->create_client<nav_interfaces::srv::SetNavPoint>(prefix_ + "/set_point");
     sample_client_  = node_->create_client<nav_interfaces::srv::SampleNavPoint>(prefix_ + "/sample_point");
-    update_client_  = node_->create_client<nav_interfaces::srv::UpdateNavPoint>(prefix_ + "/update_nav_point");
+    update_client_  = node_->create_client<nav_interfaces::srv::SetNavPoint>(prefix_ + "/set_point");
     nav_client_     = rclcpp_action::create_client<NavigateToPointAction>(
         node_, prefix_ + "/navigate_to_point");
 }
@@ -212,7 +212,8 @@ void NavPointTab::onAdd() {
     const std::string name = name_edit_->text().trimmed().toStdString();
     if (name.empty()) { status_label_->setText("错误：请填写点位名称"); return; }
 
-    auto req = std::make_shared<nav_interfaces::srv::AddNavPoint::Request>();
+    auto req = std::make_shared<nav_interfaces::srv::SetNavPoint::Request>();
+    req->mode = nav_interfaces::srv::SetNavPoint::Request::MODE_UPSERT;
     req->point.name  = name;
     req->point.type  = type_combo_->currentText().toStdString();
     req->point.x     = static_cast<float>(x_spin_->value());
@@ -224,7 +225,7 @@ void NavPointTab::onAdd() {
 
     add_client_->async_send_request(
         req,
-        [this](rclcpp::Client<nav_interfaces::srv::AddNavPoint>::SharedFuture fut) {
+        [this](rclcpp::Client<nav_interfaces::srv::SetNavPoint>::SharedFuture fut) {
             try {
                 auto resp = fut.get();
                 Q_EMIT operationFinished(resp->success,
@@ -256,15 +257,16 @@ void NavPointTab::onRemove() {
         return;
     }
 
-    auto req = std::make_shared<nav_interfaces::srv::RemoveNavPoint::Request>();
-    req->name = name.toStdString();
+    auto req = std::make_shared<nav_interfaces::srv::SetNavPoint::Request>();
+    req->mode = nav_interfaces::srv::SetNavPoint::Request::MODE_REMOVE;
+    req->point.name = name.toStdString();
 
     remove_btn_->setEnabled(false);
     status_label_->setText("删除中...");
 
     remove_client_->async_send_request(
         req,
-        [this](rclcpp::Client<nav_interfaces::srv::RemoveNavPoint>::SharedFuture fut) {
+        [this](rclcpp::Client<nav_interfaces::srv::SetNavPoint>::SharedFuture fut) {
             try {
                 auto resp = fut.get();
                 Q_EMIT operationFinished(resp->success,
@@ -344,7 +346,8 @@ void NavPointTab::onEdit() {
 
     if (dlg.exec() != QDialog::Accepted) return;
 
-    auto req = std::make_shared<nav_interfaces::srv::UpdateNavPoint::Request>();
+    auto req = std::make_shared<nav_interfaces::srv::SetNavPoint::Request>();
+    req->mode = nav_interfaces::srv::SetNavPoint::Request::MODE_UPDATE_ONLY;
     req->point.name      = original_name.toStdString();
     req->point.type      = type_combo->currentText().toStdString();
     req->point.x         = static_cast<float>(x_spin->value());
@@ -357,7 +360,7 @@ void NavPointTab::onEdit() {
 
     update_client_->async_send_request(
         req,
-        [this, name = original_name](rclcpp::Client<nav_interfaces::srv::UpdateNavPoint>::SharedFuture fut) {
+        [this, name = original_name](rclcpp::Client<nav_interfaces::srv::SetNavPoint>::SharedFuture fut) {
             try {
                 auto resp = fut.get();
                 Q_EMIT operationFinished(resp->success,

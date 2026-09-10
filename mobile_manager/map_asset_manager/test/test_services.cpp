@@ -22,16 +22,12 @@
 #include "map_asset_manager/route_graph_manager/route_graph_manager.hpp"
 #include "map_asset_manager/route_manager/route_manager.hpp"
 #include "map_asset_manager/route_manager/route_store.hpp"
-#include "nav_interfaces/srv/add_route_edge.hpp"
-#include "nav_interfaces/srv/add_nav_point.hpp"
-#include "nav_interfaces/srv/add_route.hpp"
 #include "nav_interfaces/srv/get_all_nav_points.hpp"
 #include "nav_interfaces/srv/get_nav_point.hpp"
+#include <nav_interfaces/srv/set_nav_point.hpp>
+#include <nav_interfaces/srv/set_route.hpp>
+#include <nav_interfaces/srv/set_route_edge.hpp>
 #include "nav_interfaces/srv/get_route.hpp"
-#include "nav_interfaces/srv/remove_nav_point.hpp"
-#include "nav_interfaces/srv/remove_route.hpp"
-#include "nav_interfaces/srv/update_nav_point.hpp"
-#include "nav_interfaces/srv/update_route_edge.hpp"
 
 using namespace std::chrono_literals;
 
@@ -128,22 +124,22 @@ protected:
 // ── 新增导航点 ──────────────────────────────────────────────────────────
 
 TEST_F(NavPointManagerServiceTest, AddPoint_NewPoint_Success) {
-    auto req = std::make_shared<nav_interfaces::srv::AddNavPoint::Request>();
+    auto req = std::make_shared<nav_interfaces::srv::SetNavPoint::Request>();
     req->point = makeMsg("p1", "STATION", 1.0f, 2.0f);
 
-    auto res = call<nav_interfaces::srv::AddNavPoint>("/add_point", req);
+    auto res = call<nav_interfaces::srv::SetNavPoint>("/set_point", req);
     ASSERT_NE(res, nullptr);
     EXPECT_TRUE(res->success);
     EXPECT_EQ(save_called_, 1);
 }
 
 TEST_F(NavPointManagerServiceTest, AddPoint_DuplicateName_SuccessWithOverwrite) {
-    auto req = std::make_shared<nav_interfaces::srv::AddNavPoint::Request>();
+    auto req = std::make_shared<nav_interfaces::srv::SetNavPoint::Request>();
     req->point = makeMsg("p1");
-    call<nav_interfaces::srv::AddNavPoint>("/add_point", req);
+    call<nav_interfaces::srv::SetNavPoint>("/set_point", req);
 
     req->point = makeMsg("p1", "CHARGING");  // 同名不同类型
-    auto res = call<nav_interfaces::srv::AddNavPoint>("/add_point", req);
+    auto res = call<nav_interfaces::srv::SetNavPoint>("/set_point", req);
     ASSERT_NE(res, nullptr);
     EXPECT_TRUE(res->success);  // 覆盖视为成功
 
@@ -154,9 +150,9 @@ TEST_F(NavPointManagerServiceTest, AddPoint_DuplicateName_SuccessWithOverwrite) 
 // ── 查询导航点 ──────────────────────────────────────────────────────────
 
 TEST_F(NavPointManagerServiceTest, GetPoint_Exists_ReturnsData) {
-    auto add_req = std::make_shared<nav_interfaces::srv::AddNavPoint::Request>();
+    auto add_req = std::make_shared<nav_interfaces::srv::SetNavPoint::Request>();
     add_req->point = makeMsg("charging_1", "CHARGING", 3.0f, 4.0f, 1.57f);
-    call<nav_interfaces::srv::AddNavPoint>("/add_point", add_req);
+    call<nav_interfaces::srv::SetNavPoint>("/set_point", add_req);
 
     auto get_req = std::make_shared<nav_interfaces::srv::GetNavPoint::Request>();
     get_req->name = "charging_1";
@@ -180,9 +176,9 @@ TEST_F(NavPointManagerServiceTest, GetPoint_NotExists_ReturnsFailure) {
 
 TEST_F(NavPointManagerServiceTest, GetAllPoints_ReturnsAll) {
     for (const auto& name : {"p1", "p2", "p3"}) {
-        auto req = std::make_shared<nav_interfaces::srv::AddNavPoint::Request>();
+        auto req = std::make_shared<nav_interfaces::srv::SetNavPoint::Request>();
         req->point = makeMsg(name);
-        call<nav_interfaces::srv::AddNavPoint>("/add_point", req);
+        call<nav_interfaces::srv::SetNavPoint>("/set_point", req);
     }
 
     auto req = std::make_shared<nav_interfaces::srv::GetAllNavPoints::Request>();
@@ -195,13 +191,14 @@ TEST_F(NavPointManagerServiceTest, GetAllPoints_ReturnsAll) {
 // ── 更新导航点 ──────────────────────────────────────────────────────────
 
 TEST_F(NavPointManagerServiceTest, UpdatePoint_Exists_Success) {
-    auto add_req = std::make_shared<nav_interfaces::srv::AddNavPoint::Request>();
+    auto add_req = std::make_shared<nav_interfaces::srv::SetNavPoint::Request>();
     add_req->point = makeMsg("p1", "STATION", 1.0f, 2.0f);
-    call<nav_interfaces::srv::AddNavPoint>("/add_point", add_req);
+    call<nav_interfaces::srv::SetNavPoint>("/set_point", add_req);
 
-    auto upd_req = std::make_shared<nav_interfaces::srv::UpdateNavPoint::Request>();
+    auto upd_req = std::make_shared<nav_interfaces::srv::SetNavPoint::Request>();
+    upd_req->mode = nav_interfaces::srv::SetNavPoint::Request::MODE_UPDATE_ONLY;
     upd_req->point = makeMsg("p1", "DOORWAIT", 9.0f, 8.0f);
-    auto res = call<nav_interfaces::srv::UpdateNavPoint>("/update_point", upd_req);
+    auto res = call<nav_interfaces::srv::SetNavPoint>("/set_point", upd_req);
 
     ASSERT_NE(res, nullptr);
     EXPECT_TRUE(res->success);
@@ -209,9 +206,10 @@ TEST_F(NavPointManagerServiceTest, UpdatePoint_Exists_Success) {
 }
 
 TEST_F(NavPointManagerServiceTest, UpdatePoint_NotExists_Failure) {
-    auto req = std::make_shared<nav_interfaces::srv::UpdateNavPoint::Request>();
+    auto req = std::make_shared<nav_interfaces::srv::SetNavPoint::Request>();
+    req->mode = nav_interfaces::srv::SetNavPoint::Request::MODE_UPDATE_ONLY;
     req->point = makeMsg("ghost");
-    auto res = call<nav_interfaces::srv::UpdateNavPoint>("/update_point", req);
+    auto res = call<nav_interfaces::srv::SetNavPoint>("/set_point", req);
     ASSERT_NE(res, nullptr);
     EXPECT_FALSE(res->success);
 }
@@ -219,13 +217,14 @@ TEST_F(NavPointManagerServiceTest, UpdatePoint_NotExists_Failure) {
 // ── 删除导航点 ──────────────────────────────────────────────────────────
 
 TEST_F(NavPointManagerServiceTest, RemovePoint_Exists_Success) {
-    auto add_req = std::make_shared<nav_interfaces::srv::AddNavPoint::Request>();
+    auto add_req = std::make_shared<nav_interfaces::srv::SetNavPoint::Request>();
     add_req->point = makeMsg("p1");
-    call<nav_interfaces::srv::AddNavPoint>("/add_point", add_req);
+    call<nav_interfaces::srv::SetNavPoint>("/set_point", add_req);
 
-    auto rm_req = std::make_shared<nav_interfaces::srv::RemoveNavPoint::Request>();
-    rm_req->name = "p1";
-    auto res = call<nav_interfaces::srv::RemoveNavPoint>("/remove_point", rm_req);
+    auto rm_req = std::make_shared<nav_interfaces::srv::SetNavPoint::Request>();
+    rm_req->mode = nav_interfaces::srv::SetNavPoint::Request::MODE_REMOVE;
+    rm_req->point.name = "p1";
+    auto res = call<nav_interfaces::srv::SetNavPoint>("/set_point", rm_req);
 
     ASSERT_NE(res, nullptr);
     EXPECT_TRUE(res->success);
@@ -233,9 +232,10 @@ TEST_F(NavPointManagerServiceTest, RemovePoint_Exists_Success) {
 }
 
 TEST_F(NavPointManagerServiceTest, RemovePoint_NotExists_Failure) {
-    auto req = std::make_shared<nav_interfaces::srv::RemoveNavPoint::Request>();
-    req->name = "ghost";
-    auto res = call<nav_interfaces::srv::RemoveNavPoint>("/remove_point", req);
+    auto req = std::make_shared<nav_interfaces::srv::SetNavPoint::Request>();
+    req->mode = nav_interfaces::srv::SetNavPoint::Request::MODE_REMOVE;
+    req->point.name = "ghost";
+    auto res = call<nav_interfaces::srv::SetNavPoint>("/set_point", req);
     ASSERT_NE(res, nullptr);
     EXPECT_FALSE(res->success);
 }
@@ -245,9 +245,9 @@ TEST_F(NavPointManagerServiceTest, RemovePoint_NotExists_Failure) {
 TEST_F(NavPointManagerServiceTest, RemovePoint_TriggersCascadeViaEventBus) {
     // 添加点位
     for (const auto& name : {"p1", "p2", "p3"}) {
-        auto req = std::make_shared<nav_interfaces::srv::AddNavPoint::Request>();
+        auto req = std::make_shared<nav_interfaces::srv::SetNavPoint::Request>();
         req->point = makeMsg(name);
-        call<nav_interfaces::srv::AddNavPoint>("/add_point", req);
+        call<nav_interfaces::srv::SetNavPoint>("/set_point", req);
     }
 
     // 构造 RouteStore，加入一条 r1 路线
@@ -268,9 +268,10 @@ TEST_F(NavPointManagerServiceTest, RemovePoint_TriggersCascadeViaEventBus) {
         });
 
     // 删除 p2 → EventBus 通知 RouteManager → r1 的 p2 被移除
-    auto rm_req = std::make_shared<nav_interfaces::srv::RemoveNavPoint::Request>();
-    rm_req->name = "p2";
-    auto res = call<nav_interfaces::srv::RemoveNavPoint>("/remove_point", rm_req);
+    auto rm_req = std::make_shared<nav_interfaces::srv::SetNavPoint::Request>();
+    rm_req->mode = nav_interfaces::srv::SetNavPoint::Request::MODE_REMOVE;
+    rm_req->point.name = "p2";
+    auto res = call<nav_interfaces::srv::SetNavPoint>("/set_point", rm_req);
     ASSERT_NE(res, nullptr);
     EXPECT_TRUE(res->success);
 
@@ -342,44 +343,48 @@ protected:
 // ── 新增路线 ────────────────────────────────────────────────────────────
 
 TEST_F(RouteManagerServiceTest, AddRoute_New_Success) {
-    auto req = std::make_shared<nav_interfaces::srv::AddRoute::Request>();
-    req->name = "r1";
-    req->point_names = {"p1", "p2", "p3"};
+    auto req = std::make_shared<nav_interfaces::srv::SetRoute::Request>();
+    req->mode = nav_interfaces::srv::SetRoute::Request::MODE_ADD_ONLY;
+    req->route.name = "r1";
+    req->route.point_names = {"p1", "p2", "p3"};
 
-    auto res = call<nav_interfaces::srv::AddRoute>("/add_route", req);
+    auto res = call<nav_interfaces::srv::SetRoute>("/set_route", req);
     ASSERT_NE(res, nullptr);
     EXPECT_TRUE(res->success);
     EXPECT_EQ(save_called_, 1);
 }
 
 TEST_F(RouteManagerServiceTest, AddRoute_PointsNotExist_Failure) {
-    auto req = std::make_shared<nav_interfaces::srv::AddRoute::Request>();
-    req->name = "r1";
-    req->point_names = {"p1", "missing_point"};
+    auto req = std::make_shared<nav_interfaces::srv::SetRoute::Request>();
+    req->mode = nav_interfaces::srv::SetRoute::Request::MODE_ADD_ONLY;
+    req->route.name = "r1";
+    req->route.point_names = {"p1", "missing_point"};
 
-    auto res = call<nav_interfaces::srv::AddRoute>("/add_route", req);
+    auto res = call<nav_interfaces::srv::SetRoute>("/set_route", req);
     ASSERT_NE(res, nullptr);
     EXPECT_FALSE(res->success);
     EXPECT_FALSE(route_store_->hasRoute("r1"));
 }
 
 TEST_F(RouteManagerServiceTest, AddRoute_Duplicate_Failure) {
-    auto req = std::make_shared<nav_interfaces::srv::AddRoute::Request>();
-    req->name = "r1";
-    req->point_names = {"p1", "p2"};
-    call<nav_interfaces::srv::AddRoute>("/add_route", req);
+    auto req = std::make_shared<nav_interfaces::srv::SetRoute::Request>();
+    req->mode = nav_interfaces::srv::SetRoute::Request::MODE_ADD_ONLY;
+    req->route.name = "r1";
+    req->route.point_names = {"p1", "p2"};
+    call<nav_interfaces::srv::SetRoute>("/set_route", req);
 
-    auto res = call<nav_interfaces::srv::AddRoute>("/add_route", req);
+    auto res = call<nav_interfaces::srv::SetRoute>("/set_route", req);
     ASSERT_NE(res, nullptr);
     EXPECT_FALSE(res->success);
 }
 
 TEST_F(RouteManagerServiceTest, AddRoute_EmptyPointList_Failure) {
-    auto req = std::make_shared<nav_interfaces::srv::AddRoute::Request>();
-    req->name = "r_empty";
-    req->point_names = {};
+    auto req = std::make_shared<nav_interfaces::srv::SetRoute::Request>();
+    req->mode = nav_interfaces::srv::SetRoute::Request::MODE_ADD_ONLY;
+    req->route.name = "r_empty";
+    req->route.point_names = {};
 
-    auto res = call<nav_interfaces::srv::AddRoute>("/add_route", req);
+    auto res = call<nav_interfaces::srv::SetRoute>("/set_route", req);
     ASSERT_NE(res, nullptr);
     EXPECT_FALSE(res->success);
 }
@@ -414,9 +419,10 @@ TEST_F(RouteManagerServiceTest, GetRoute_NotExists_Failure) {
 TEST_F(RouteManagerServiceTest, RemoveRoute_Exists_Success) {
     route_store_->addRoute({"r1", {"p1", "p2"}});
 
-    auto req = std::make_shared<nav_interfaces::srv::RemoveRoute::Request>();
-    req->name = "r1";
-    auto res = call<nav_interfaces::srv::RemoveRoute>("/remove_route", req);
+    auto req = std::make_shared<nav_interfaces::srv::SetRoute::Request>();
+    req->mode = nav_interfaces::srv::SetRoute::Request::MODE_REMOVE;
+    req->route.name = "r1";
+    auto res = call<nav_interfaces::srv::SetRoute>("/set_route", req);
 
     ASSERT_NE(res, nullptr);
     EXPECT_TRUE(res->success);
@@ -425,9 +431,10 @@ TEST_F(RouteManagerServiceTest, RemoveRoute_Exists_Success) {
 }
 
 TEST_F(RouteManagerServiceTest, RemoveRoute_NotExists_Failure) {
-    auto req = std::make_shared<nav_interfaces::srv::RemoveRoute::Request>();
-    req->name = "ghost";
-    auto res = call<nav_interfaces::srv::RemoveRoute>("/remove_route", req);
+    auto req = std::make_shared<nav_interfaces::srv::SetRoute::Request>();
+    req->mode = nav_interfaces::srv::SetRoute::Request::MODE_REMOVE;
+    req->route.name = "ghost";
+    auto res = call<nav_interfaces::srv::SetRoute>("/set_route", req);
     ASSERT_NE(res, nullptr);
     EXPECT_FALSE(res->success);
 }
@@ -437,15 +444,17 @@ TEST_F(RouteManagerServiceTest, RemoveRoute_NotExists_Failure) {
 TEST_F(RouteManagerServiceTest, SaveIsTriggeredOnMutation) {
     EXPECT_EQ(save_called_, 0);
 
-    auto add_req = std::make_shared<nav_interfaces::srv::AddRoute::Request>();
-    add_req->name = "r1";
-    add_req->point_names = {"p1", "p2"};
-    call<nav_interfaces::srv::AddRoute>("/add_route", add_req);
+    auto add_req = std::make_shared<nav_interfaces::srv::SetRoute::Request>();
+    add_req->mode = nav_interfaces::srv::SetRoute::Request::MODE_ADD_ONLY;
+    add_req->route.name = "r1";
+    add_req->route.point_names = {"p1", "p2"};
+    call<nav_interfaces::srv::SetRoute>("/set_route", add_req);
     EXPECT_EQ(save_called_, 1);
 
-    auto rm_req = std::make_shared<nav_interfaces::srv::RemoveRoute::Request>();
-    rm_req->name = "r1";
-    call<nav_interfaces::srv::RemoveRoute>("/remove_route", rm_req);
+    auto rm_req = std::make_shared<nav_interfaces::srv::SetRoute::Request>();
+    rm_req->mode = nav_interfaces::srv::SetRoute::Request::MODE_REMOVE;
+    rm_req->route.name = "r1";
+    call<nav_interfaces::srv::SetRoute>("/set_route", rm_req);
     EXPECT_EQ(save_called_, 2);
 }
 
@@ -512,7 +521,7 @@ protected:
 };
 
 TEST_F(RouteGraphManagerServiceTest, AddAndUpdateBezier_SnapEndpointsToNavPoints) {
-    auto add_req = std::make_shared<nav_interfaces::srv::AddRouteEdge::Request>();
+    auto add_req = std::make_shared<nav_interfaces::srv::SetRouteEdge::Request>();
     add_req->edge.id = "curve";
     add_req->edge.from_ep.id = "p1";
     add_req->edge.from_ep.type = "nav";
@@ -522,8 +531,8 @@ TEST_F(RouteGraphManagerServiceTest, AddAndUpdateBezier_SnapEndpointsToNavPoints
     add_req->edge.control_points = {
         point(-100.0, -101.0), point(4.0, 5.0), point(100.0, 101.0)};
 
-    auto add_res = call<nav_interfaces::srv::AddRouteEdge>(
-        "/add_route_edge", add_req);
+    auto add_res = call<nav_interfaces::srv::SetRouteEdge>(
+        "/set_route_edge", add_req);
     ASSERT_NE(add_res, nullptr);
     ASSERT_TRUE(add_res->success);
 
@@ -537,12 +546,13 @@ TEST_F(RouteGraphManagerServiceTest, AddAndUpdateBezier_SnapEndpointsToNavPoints
     EXPECT_FLOAT_EQ(stored->control_points.back().first, 8.0f);
     EXPECT_FLOAT_EQ(stored->control_points.back().second, 9.0f);
 
-    auto update_req = std::make_shared<nav_interfaces::srv::UpdateRouteEdge::Request>();
+    auto update_req = std::make_shared<nav_interfaces::srv::SetRouteEdge::Request>();
+    update_req->mode = nav_interfaces::srv::SetRouteEdge::Request::MODE_UPDATE_ONLY;
     update_req->edge = add_req->edge;
     update_req->edge.control_points.front() = point(-200.0, -201.0);
     update_req->edge.control_points.back() = point(200.0, 201.0);
-    auto update_res = call<nav_interfaces::srv::UpdateRouteEdge>(
-        "/update_route_edge", update_req);
+    auto update_res = call<nav_interfaces::srv::SetRouteEdge>(
+        "/set_route_edge", update_req);
     ASSERT_NE(update_res, nullptr);
     ASSERT_TRUE(update_res->success);
 

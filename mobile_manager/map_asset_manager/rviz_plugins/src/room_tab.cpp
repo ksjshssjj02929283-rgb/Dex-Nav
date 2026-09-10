@@ -99,9 +99,9 @@ void RoomTab::setServicePrefix(const std::string& prefix) {
 }
 
 void RoomTab::rebuildClients() {
-    get_client_    = node_->create_client<nav_interfaces::srv::GetAllRooms>(prefix_ + "/get_all_rooms");
-    remove_client_ = node_->create_client<nav_interfaces::srv::RemoveRoom>(prefix_ + "/remove_room");
-    update_client_ = node_->create_client<nav_interfaces::srv::UpdateRoom>(prefix_ + "/update_room");
+    get_client_    = node_->create_client<nav_interfaces::srv::GetAssets>(prefix_ + "/get_assets");
+    remove_client_ = node_->create_client<nav_interfaces::srv::SetRoom>(prefix_ + "/set_room");
+    update_client_ = node_->create_client<nav_interfaces::srv::SetRoom>(prefix_ + "/set_room");
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -114,10 +114,11 @@ void RoomTab::onRefresh() {
     remove_btn_->setEnabled(false);
     status_label_->setText("刷新中...");
 
-    auto req = std::make_shared<nav_interfaces::srv::GetAllRooms::Request>();
+    auto req = std::make_shared<nav_interfaces::srv::GetAssets::Request>();
+    req->kinds = nav_interfaces::srv::GetAssets::Request::KIND_ROOMS;
     get_client_->async_send_request(
         req,
-        [this](rclcpp::Client<nav_interfaces::srv::GetAllRooms>::SharedFuture fut) {
+        [this](rclcpp::Client<nav_interfaces::srv::GetAssets>::SharedFuture fut) {
             try {
                 auto resp = fut.get();
                 QMetaObject::invokeMethod(this, [this, resp]() {
@@ -273,12 +274,13 @@ void RoomTab::onRemove() {
     remove_btn_->setEnabled(false);
     status_label_->setText("删除中...");
 
-    auto req = std::make_shared<nav_interfaces::srv::RemoveRoom::Request>();
-    req->name = room_name.toStdString();
+    auto req = std::make_shared<nav_interfaces::srv::SetRoom::Request>();
+    req->mode = nav_interfaces::srv::SetRoom::Request::MODE_REMOVE;
+    req->room.name = room_name.toStdString();
 
     remove_client_->async_send_request(
         req,
-        [this](rclcpp::Client<nav_interfaces::srv::RemoveRoom>::SharedFuture fut) {
+        [this](rclcpp::Client<nav_interfaces::srv::SetRoom>::SharedFuture fut) {
             try {
                 auto resp = fut.get();
                 if (resp->success) {
@@ -431,7 +433,8 @@ void RoomTab::onEdit() {
         }
     };
 
-    auto req = std::make_shared<nav_interfaces::srv::UpdateRoom::Request>();
+    auto req = std::make_shared<nav_interfaces::srv::SetRoom::Request>();
+    req->mode = nav_interfaces::srv::SetRoom::Request::MODE_UPDATE_ONLY;
     req->room.name           = name.toStdString();
     req->room.type           = type_combo->currentData().toUInt();
     req->room.semantic_label = semantic_edit->text().trimmed().toStdString();
@@ -464,7 +467,7 @@ void RoomTab::onEdit() {
 
     update_client_->async_send_request(
         req,
-        [this, name](rclcpp::Client<nav_interfaces::srv::UpdateRoom>::SharedFuture fut) {
+        [this, name](rclcpp::Client<nav_interfaces::srv::SetRoom>::SharedFuture fut) {
             try {
                 auto resp = fut.get();
                 if (resp->success) {
