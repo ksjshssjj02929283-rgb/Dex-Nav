@@ -21,7 +21,7 @@
 #include <OgreSceneManager.h>
 
 #include <nav_interfaces/msg/route_edge.hpp>
-#include <nav_interfaces/srv/add_route_edge.hpp>
+#include <nav_interfaces/srv/set_route_edge.hpp>
 #include <rviz_common/display_context.hpp>
 #include <rviz_common/interaction/view_picker_iface.hpp>
 #include <rviz_common/ros_integration/ros_node_abstraction_iface.hpp>
@@ -305,9 +305,10 @@ void AddCurveEdgeTool::clearPreview() {
 }
 
 void AddCurveEdgeTool::submitEdge(const EdgeConfig& cfg) {
-    auto client = node_->create_client<nav_interfaces::srv::AddRouteEdge>(
-        service_prefix_ + "/add_route_edge");
-    auto req                 = std::make_shared<nav_interfaces::srv::AddRouteEdge::Request>();
+    auto client = node_->create_client<nav_interfaces::srv::SetRouteEdge>(
+        service_prefix_ + "/set_route_edge");
+    auto req                 = std::make_shared<nav_interfaces::srv::SetRouteEdge::Request>();
+    req->mode                = nav_interfaces::srv::SetRouteEdge::Request::MODE_ADD_ONLY;
     req->edge.id             = cfg.edge_id;
     req->edge.from_ep.id     = from_ep_.id;
     req->edge.from_ep.type   = from_ep_.type;
@@ -334,7 +335,7 @@ void AddCurveEdgeTool::submitEdge(const EdgeConfig& cfg) {
 
     const QString eid = QString::fromStdString(cfg.edge_id);
     client->async_send_request(req,
-        [this, eid](rclcpp::Client<nav_interfaces::srv::AddRouteEdge>::SharedFuture fut) {
+        [this, eid](rclcpp::Client<nav_interfaces::srv::SetRouteEdge>::SharedFuture fut) {
             try {
                 auto resp = fut.get();
                 setStatus(resp->success

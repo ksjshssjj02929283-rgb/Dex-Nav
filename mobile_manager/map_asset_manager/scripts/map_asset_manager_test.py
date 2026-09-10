@@ -28,13 +28,9 @@ EXPECTED_COUNTS = {
     "edges": 2,
 }
 DATA_SERVICES = (
-    "get_all_nav_points", "get_point", "add_point", "update_point",
-    "remove_point", "get_all_routes", "get_route", "add_route",
-    "remove_route", "get_all_areas", "add_area", "update_area",
-    "remove_area", "get_all_rooms", "get_room_by_name", "get_room_at_pose",
-    "add_room", "update_room", "remove_room", "get_route_graph",
-    "add_route_junction", "remove_route_junction", "add_route_edge",
-    "update_route_edge", "remove_route_edge",
+    "get_all_nav_points", "get_point", "set_point",
+    "get_route", "set_route", "set_area", "set_room", "get_route_graph",
+    "set_route_junction", "set_route_edge", "get_assets", "set_assets",
 )
 MANAGEMENT_SERVICES = ("save_assets",)
 COVERED_SERVICES = DATA_SERVICES + MANAGEMENT_SERVICES
@@ -349,12 +345,9 @@ class AssetRunner:
         from geometry_msgs.msg import Point, Pose2D
         from nav_interfaces.msg import MapState
         from nav_interfaces.srv import (
-            AddAreaInfo, AddNavPoint, AddRoom, AddRoute, AddRouteEdge,
-            AddRouteJunction, GetAllAreas, GetAllNavPoints, GetAllRooms,
-            GetAllRoutes, GetNavPoint, GetRoomAtPose, GetRoomByName, GetRoute,
-            GetRouteGraph, RemoveAreaInfo, RemoveNavPoint, RemoveRoom,
-            RemoveRoute, RemoveRouteEdge, RemoveRouteJunction, UpdateAreaInfo,
-            UpdateNavPoint, UpdateRoom, UpdateRouteEdge, SaveAssets,
+            SetArea, SetNavPoint, SetRoom, SetRoute, SetRouteEdge,
+            SetRouteJunction, GetAssets, GetAllNavPoints, GetNavPoint,
+            GetRoute, GetRouteGraph, SaveAssets,
         )
         from std_msgs.msg import String
 
@@ -371,12 +364,9 @@ class AssetRunner:
         self.MapState = MapState
         self.String = String
         service_types = (
-            AddAreaInfo, AddNavPoint, AddRoom, AddRoute, AddRouteEdge,
-            AddRouteJunction, GetAllAreas, GetAllNavPoints, GetAllRooms,
-            GetAllRoutes, GetNavPoint, GetRoomAtPose, GetRoomByName, GetRoute,
-            GetRouteGraph, RemoveAreaInfo, RemoveNavPoint, RemoveRoom,
-            RemoveRoute, RemoveRouteEdge, RemoveRouteJunction, UpdateAreaInfo,
-            UpdateNavPoint, UpdateRoom, UpdateRouteEdge, SaveAssets,
+            SetArea, SetNavPoint, SetRoom, SetRoute, SetRouteEdge,
+            SetRouteJunction, GetAssets, GetAllNavPoints, GetNavPoint,
+            GetRoute, GetRouteGraph, SaveAssets,
         )
         for service_type in service_types:
             setattr(self, service_type.__name__, service_type)
@@ -387,6 +377,16 @@ class AssetRunner:
     @staticmethod
     def close(actual: float, expected: float) -> bool:
         return abs(float(actual) - float(expected)) <= 1e-5
+
+    def assets_req(self, kinds: int) -> Any:
+        """GetAssets 请求；kinds 位掩码：1 points / 2 areas / 4 rooms / 8 routes / 16 junctions / 32 edges，0 = 全部"""
+        req = self.GetAssets.Request()
+        req.kinds = kinds
+        return req
+
+    @staticmethod
+    def find_room(resp: Any, name: str) -> Any:
+        return next((room for room in resp.rooms if room.name == name), None)
 
     def service(self, name: str) -> str:
         return f"{self.prefix}/{name}"
@@ -474,27 +474,29 @@ class AssetRunner:
             ),
             f"names={sorted(names)}, point=({one.point.name},{one.point.type})",
         )
-        add = self.AddNavPoint.Request()
+        add = self.SetNavPoint.Request()
         add.point.name, add.point.type = "AUTO_TMP_POINT", "PARKING"
         add.point.x, add.point.y = 10.0, 11.0
         added = self.harness.call(
-            self.AddNavPoint, self.service("add_point"), add
+            self.SetNavPoint, self.service("set_point"), add
         )
-        update = self.UpdateNavPoint.Request()
+        update = self.SetNavPoint.Request()
+        update.mode = 2  # MODE_UPDATE_ONLY
         update.point.name, update.point.type = "AUTO_TMP_POINT", "DOORWAIT"
         update.point.x, update.point.y = 12.0, 13.0
         updated = self.harness.call(
-            self.UpdateNavPoint, self.service("update_point"), update
+            self.SetNavPoint, self.service("set_point"), update
         )
         query = self.GetNavPoint.Request()
         query.name = "AUTO_TMP_POINT"
         current = self.harness.call(
             self.GetNavPoint, self.service("get_point"), query
         )
-        remove = self.RemoveNavPoint.Request()
-        remove.name = "AUTO_TMP_POINT"
+        remove = self.SetNavPoint.Request()
+        remove.mode = 3  # MODE_REMOVE
+        remove.point.name = "AUTO_TMP_POINT"
         removed = self.harness.call(
-            self.RemoveNavPoint, self.service("remove_point"), remove
+            self.SetNavPoint, self.service("set_point"), remove
         )
         absent = self.harness.call(
             self.GetNavPoint, self.service("get_point"), query
@@ -515,8 +517,7 @@ class AssetRunner:
         tc = "TC-02"
         self.prepare(tc)
         all_result = self.harness.call(
-            self.GetAllRoutes, self.service("get_all_routes"),
-            self.GetAllRoutes.Request(),
+            self.GetAssets, self.service("get_assets"), self.assets_req(8),
         )
         route_request = self.GetRoute.Request()
         route_request.name = "AUTO_ASSET_ROUTE"
@@ -535,21 +536,23 @@ class AssetRunner:
             ),
             f"routes={len(all_result.routes)}, points={list(route.point_names)}",
         )
-        add = self.AddRoute.Request()
-        add.name = "AUTO_TMP_ROUTE"
-        add.point_names = ["AUTO_ASSET_POINT_A", "AUTO_ASSET_POINT_B"]
+        add = self.SetRoute.Request()
+        add.mode = 1  # MODE_ADD_ONLY
+        add.route.name = "AUTO_TMP_ROUTE"
+        add.route.point_names = ["AUTO_ASSET_POINT_A", "AUTO_ASSET_POINT_B"]
         added = self.harness.call(
-            self.AddRoute, self.service("add_route"), add
+            self.SetRoute, self.service("set_route"), add
         )
         temp = self.GetRoute.Request()
-        temp.name = add.name
+        temp.name = add.route.name
         found = self.harness.call(
             self.GetRoute, self.service("get_route"), temp
         )
-        remove = self.RemoveRoute.Request()
-        remove.name = add.name
+        remove = self.SetRoute.Request()
+        remove.mode = 3  # MODE_REMOVE
+        remove.route.name = add.route.name
         removed = self.harness.call(
-            self.RemoveRoute, self.service("remove_route"), remove
+            self.SetRoute, self.service("set_route"), remove
         )
         absent = self.harness.call(
             self.GetRoute, self.service("get_route"), temp
@@ -569,10 +572,9 @@ class AssetRunner:
         tc = "TC-03"
         self.prepare(tc)
         baseline = self.harness.call(
-            self.GetAllAreas, self.service("get_all_areas"),
-            self.GetAllAreas.Request(),
+            self.GetAssets, self.service("get_assets"), self.assets_req(2),
         )
-        area = baseline.area_info_list[0] if baseline.area_info_list else None
+        area = baseline.areas[0] if baseline.areas else None
         self.report.check(
             tc, "面积资产全量查询",
             (
@@ -581,10 +583,10 @@ class AssetRunner:
                 and self.close(area.max_speed, 0.35)
                 and len(area.polygon) == 4
             ),
-            f"count={len(baseline.area_info_list)}, "
+            f"count={len(baseline.areas)}, "
             f"name={getattr(area, 'name', None)}",
         )
-        add = self.AddAreaInfo.Request()
+        add = self.SetArea.Request()
         add.area_info.name = "AUTO_TMP_AREA"
         add.area_info.type = 3
         add.area_info.polygon = [
@@ -592,34 +594,34 @@ class AssetRunner:
             self.pose(22.0, 22.0), self.pose(20.0, 22.0),
         ]
         added = self.harness.call(
-            self.AddAreaInfo, self.service("add_area"), add
+            self.SetArea, self.service("set_area"), add
         )
-        update = self.UpdateAreaInfo.Request()
+        update = self.SetArea.Request()
+        update.mode = 2  # MODE_UPDATE_ONLY
         update.area_info.name = add.area_info.name
         update.area_info.type = 5
         update.area_info.stop_distance = 0.45
         update.area_info.polygon = list(add.area_info.polygon)
         updated = self.harness.call(
-            self.UpdateAreaInfo, self.service("update_area"), update
+            self.SetArea, self.service("set_area"), update
         )
         current_all = self.harness.call(
-            self.GetAllAreas, self.service("get_all_areas"),
-            self.GetAllAreas.Request(),
+            self.GetAssets, self.service("get_assets"), self.assets_req(2),
         )
         current = next(
-            (item for item in current_all.area_info_list
+            (item for item in current_all.areas
              if item.name == add.area_info.name), None
         )
-        remove = self.RemoveAreaInfo.Request()
-        remove.name = add.area_info.name
+        remove = self.SetArea.Request()
+        remove.mode = 3  # MODE_REMOVE
+        remove.area_info.name = add.area_info.name
         removed = self.harness.call(
-            self.RemoveAreaInfo, self.service("remove_area"), remove
+            self.SetArea, self.service("set_area"), remove
         )
         final_all = self.harness.call(
-            self.GetAllAreas, self.service("get_all_areas"),
-            self.GetAllAreas.Request(),
+            self.GetAssets, self.service("get_assets"), self.assets_req(2),
         )
-        final_names = {item.name for item in final_all.area_info_list}
+        final_names = {item.name for item in final_all.areas}
         self.report.check(
             tc, "面积资产新增/更新/删除闭环",
             (
@@ -636,34 +638,19 @@ class AssetRunner:
         tc = "TC-04"
         self.prepare(tc)
         baseline = self.harness.call(
-            self.GetAllRooms, self.service("get_all_rooms"),
-            self.GetAllRooms.Request(),
+            self.GetAssets, self.service("get_assets"), self.assets_req(4)
         )
-        by_name_request = self.GetRoomByName.Request()
-        by_name_request.name = "AUTO_ASSET_ROOM"
-        by_name = self.harness.call(
-            self.GetRoomByName, self.service("get_room_by_name"),
-            by_name_request,
-        )
-        by_pose_request = self.GetRoomAtPose.Request()
-        by_pose_request.pose = self.pose(0.0, 0.0)
-        by_pose = self.harness.call(
-            self.GetRoomAtPose, self.service("get_room_at_pose"),
-            by_pose_request,
-        )
+        by_name = self.find_room(baseline, "AUTO_ASSET_ROOM")
         self.report.check(
-            tc, "房间全量/名称/坐标查询",
+            tc, "房间全量查询（get_assets kinds=ROOMS）+ 本地按名过滤",
             (
                 baseline.success and len(baseline.rooms) == 1
-                and by_name.success and by_name.found
-                and by_name.room.name == "AUTO_ASSET_ROOM"
-                and by_pose.success and by_pose.found
-                and by_pose.room.name == "AUTO_ASSET_ROOM"
+                and by_name is not None and by_name.name == "AUTO_ASSET_ROOM"
+                and len(by_name.polygon) >= 3
             ),
-            f"count={len(baseline.rooms)}, by_name={by_name.found}, "
-            f"by_pose={by_pose.found}",
+            f"count={len(baseline.rooms)}, by_name={by_name is not None}",
         )
-        add = self.AddRoom.Request()
+        add = self.SetRoom.Request()
         add.room.name = "AUTO_TMP_ROOM"
         add.room.source = "manual"
         add.room.type = 5
@@ -672,42 +659,41 @@ class AssetRunner:
             self.pose(22.0, 22.0), self.pose(20.0, 22.0),
         ]
         added = self.harness.call(
-            self.AddRoom, self.service("add_room"), add
+            self.SetRoom, self.service("set_room"), add
         )
-        update = self.UpdateRoom.Request()
+        update = self.SetRoom.Request()
+        update.mode = 2  # MODE_UPDATE_ONLY
         update.room.name = add.room.name
         update.room.source = "manual"
         update.room.type = 8
         update.room.polygon = list(add.room.polygon)
         updated = self.harness.call(
-            self.UpdateRoom, self.service("update_room"), update
+            self.SetRoom, self.service("set_room"), update
         )
-        temp_pose = self.GetRoomAtPose.Request()
-        temp_pose.pose = self.pose(21.0, 21.0)
-        current = self.harness.call(
-            self.GetRoomAtPose, self.service("get_room_at_pose"), temp_pose
+        current_all = self.harness.call(
+            self.GetAssets, self.service("get_assets"), self.assets_req(4)
         )
-        remove = self.RemoveRoom.Request()
-        remove.name = add.room.name
+        current = self.find_room(current_all, add.room.name)
+        remove = self.SetRoom.Request()
+        remove.mode = 3  # MODE_REMOVE
+        remove.room.name = add.room.name
         removed = self.harness.call(
-            self.RemoveRoom, self.service("remove_room"), remove
+            self.SetRoom, self.service("set_room"), remove
         )
-        absent_request = self.GetRoomByName.Request()
-        absent_request.name = add.room.name
-        absent = self.harness.call(
-            self.GetRoomByName, self.service("get_room_by_name"),
-            absent_request,
+        final_all = self.harness.call(
+            self.GetAssets, self.service("get_assets"), self.assets_req(4)
         )
+        absent = self.find_room(final_all, add.room.name)
         self.report.check(
-            tc, "房间新增/更新/坐标查询/删除闭环",
+            tc, "房间新增/更新/按名查询/删除闭环",
             (
-                added.success and updated.success and current.success
-                and current.found and current.room.type == 8
-                and removed.success and absent.success and not absent.found
+                added.success and updated.success and current_all.success
+                and current is not None and current.type == 8
+                and removed.success and final_all.success and absent is None
             ),
             f"add={added.success}, update={updated.success}, "
-            f"at_pose={current.found}, remove={removed.success}, "
-            f"found_after_remove={absent.found}",
+            f"found={current is not None}, remove={removed.success}, "
+            f"found_after_remove={absent is not None}",
         )
 
     def tc05(self) -> None:
@@ -733,15 +719,15 @@ class AssetRunner:
             f"junctions={sorted(junctions)}, edges={sorted(edges)}, "
             f"nav_points={sorted(nav_points)}",
         )
-        add_junction = self.AddRouteJunction.Request()
+        add_junction = self.SetRouteJunction.Request()
         add_junction.junction.id = "AUTO_TMP_JUNCTION"
         add_junction.junction.x = 20.0
         add_junction.junction.y = 20.0
         junction_added = self.harness.call(
-            self.AddRouteJunction, self.service("add_route_junction"),
+            self.SetRouteJunction, self.service("set_route_junction"),
             add_junction,
         )
-        add_edge = self.AddRouteEdge.Request()
+        add_edge = self.SetRouteEdge.Request()
         add_edge.edge.id = "AUTO_TMP_EDGE"
         add_edge.edge.from_ep.id = "AUTO_ASSET_POINT_C"
         add_edge.edge.from_ep.type = "nav"
@@ -755,15 +741,16 @@ class AssetRunner:
             self.point(98.0, 99.0),
         ]
         edge_added = self.harness.call(
-            self.AddRouteEdge, self.service("add_route_edge"), add_edge
+            self.SetRouteEdge, self.service("set_route_edge"), add_edge
         )
-        update_edge = self.UpdateRouteEdge.Request()
+        update_edge = self.SetRouteEdge.Request()
+        update_edge.mode = 2  # MODE_UPDATE_ONLY
         update_edge.edge = add_edge.edge
         update_edge.edge.bidirectional = True
         update_edge.edge.max_speed = 0.15
         update_edge.edge.obs_policy = "DETOUR"
         edge_updated = self.harness.call(
-            self.UpdateRouteEdge, self.service("update_route_edge"),
+            self.SetRouteEdge, self.service("set_route_edge"),
             update_edge,
         )
         current_graph = self.harness.call(
@@ -778,15 +765,17 @@ class AssetRunner:
             [(point.x, point.y) for point in current_edge.control_points]
             if current_edge else []
         )
-        remove_edge = self.RemoveRouteEdge.Request()
-        remove_edge.id = "AUTO_TMP_EDGE"
+        remove_edge = self.SetRouteEdge.Request()
+        remove_edge.mode = 3  # MODE_REMOVE
+        remove_edge.edge.id = "AUTO_TMP_EDGE"
         edge_removed = self.harness.call(
-            self.RemoveRouteEdge, self.service("remove_route_edge"), remove_edge
+            self.SetRouteEdge, self.service("set_route_edge"), remove_edge
         )
-        remove_junction = self.RemoveRouteJunction.Request()
-        remove_junction.id = "AUTO_TMP_JUNCTION"
+        remove_junction = self.SetRouteJunction.Request()
+        remove_junction.mode = 3  # MODE_REMOVE
+        remove_junction.junction.id = "AUTO_TMP_JUNCTION"
         junction_removed = self.harness.call(
-            self.RemoveRouteJunction, self.service("remove_route_junction"),
+            self.SetRouteJunction, self.service("set_route_junction"),
             remove_junction,
         )
         final = self.harness.call(

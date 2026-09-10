@@ -20,8 +20,8 @@ void DeleteEdgeTool::onInitialize() {
     node_ = context_->getRosNodeAbstraction().lock()->get_raw_node();
     get_graph_client_   = node_->create_client<nav_interfaces::srv::GetRouteGraph>(
         service_prefix_ + "/get_route_graph");
-    remove_edge_client_ = node_->create_client<nav_interfaces::srv::RemoveRouteEdge>(
-        service_prefix_ + "/remove_route_edge");
+    remove_edge_client_ = node_->create_client<nav_interfaces::srv::SetRouteEdge>(
+        service_prefix_ + "/set_route_edge");
 }
 
 void DeleteEdgeTool::activate() {
@@ -71,10 +71,11 @@ int DeleteEdgeTool::processMouseEvent(rviz_common::ViewportMouseEvent& event) {
             return 0;
         }
 
-        auto del_req = std::make_shared<nav_interfaces::srv::RemoveRouteEdge::Request>();
-        del_req->id = edge_id.toStdString();
+        auto del_req = std::make_shared<nav_interfaces::srv::SetRouteEdge::Request>();
+        del_req->mode = nav_interfaces::srv::SetRouteEdge::Request::MODE_REMOVE;
+        del_req->edge.id = edge_id.toStdString();
         remove_edge_client_->async_send_request(del_req,
-            [this, edge_id](rclcpp::Client<nav_interfaces::srv::RemoveRouteEdge>::SharedFuture f) {
+            [this, edge_id](rclcpp::Client<nav_interfaces::srv::SetRouteEdge>::SharedFuture f) {
                 try {
                     auto r = f.get();
                     setStatus(r->success

@@ -149,7 +149,7 @@ def current_managed_map(timeout: float = 0.5) -> str | None:
     """Return the active managed map when a live map_manager is reachable."""
     try:
         from map_manager_auto_test import RosHarness
-        from nav_interfaces.srv import GetString
+        from nav_interfaces.srv import GetMaps
     except ImportError:
         return None
 
@@ -157,12 +157,12 @@ def current_managed_map(timeout: float = 0.5) -> str | None:
     try:
         harness = RosHarness(timeout)
         response = harness.call(
-            GetString,
-            "/map_manager/get_map_name",
-            GetString.Request(),
+            GetMaps,
+            "/map_manager/get_maps",
+            GetMaps.Request(),
         )
-        if response.success and response.data in MANAGED_MAP_NAMES:
-            return response.data
+        if response.success and response.current_map_name in MANAGED_MAP_NAMES:
+            return response.current_map_name
     except Exception:
         # An unavailable ROS graph is normal for local/offline self-tests.
         return None
