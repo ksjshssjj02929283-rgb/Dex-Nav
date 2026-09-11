@@ -26,20 +26,6 @@ RouteManager::RouteManager(rclcpp::Node* node,
     RCLCPP_INFO(node_->get_logger(), "RouteManager: services registered");
 }
 
-void RouteManager::initializeActionServers(rclcpp::Node::SharedPtr node,
-                                              std::shared_ptr<NavigationExecutor> nav_executor) {
-    nav_executor_ = nav_executor;
-
-    navigate_route_action_ = rclcpp_action::create_server<NavigateRouteAction>(
-        node, "~/navigate_route",
-        std::bind(&RouteManager::handleGoal, this,
-                  std::placeholders::_1, std::placeholders::_2),
-        std::bind(&RouteManager::handleCancel, this, std::placeholders::_1),
-        std::bind(&RouteManager::handleAccepted, this, std::placeholders::_1));
-
-    RCLCPP_INFO(node_->get_logger(), "RouteManager: action server registered");
-}
-
 // ──────────────────────────────────────────────────────────────────────
 // EventBus 响应
 // ──────────────────────────────────────────────────────────────────────
@@ -81,115 +67,6 @@ void RouteManager::getRouteCallback(
     } else {
         res->success = false;
         RCLCPP_WARN(node_->get_logger(), "Route not found: %s", req->name.c_str());
-    }
-}
-
-// ──────────────────────────────────────────────────────────────────────
-// Action 回调
-// ──────────────────────────────────────────────────────────────────────
-
-rclcpp_action::GoalResponse RouteManager::handleGoal(
-    const rclcpp_action::GoalUUID&,
-    std::shared_ptr<const NavigateRouteAction::Goal> goal) {
-    if (!route_store_->hasRoute(goal->route_name)) {
-        RCLCPP_WARN(node_->get_logger(), "navigate_route: route not found: %s",
-                    goal->route_name.c_str());
-        return rclcpp_action::GoalResponse::REJECT;
-    }
-    return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
-}
-
-rclcpp_action::CancelResponse RouteManager::handleCancel(
-    const std::shared_ptr<GoalHandleNavigateRoute>) {
-    nav_executor_->cancelNavigation();
-    return rclcpp_action::CancelResponse::ACCEPT;
-}
-
-void RouteManager::handleAccepted(const std::shared_ptr<GoalHandleNavigateRoute> goal_handle) {
-    std::thread{std::bind(&RouteManager::executeNavigateRoute, this, goal_handle)}.detach();
-}
-
-void RouteManager::executeNavigateRoute(const std::shared_ptr<GoalHandleNavigateRoute> goal_handle) {
-    const auto goal = goal_handle->get_goal();
-    auto feedback   = std::make_shared<NavigateRouteAction::Feedback>();
-    auto result     = std::make_shared<NavigateRouteAction::Result>();
-
-    auto route_opt = route_store_->getRoute(goal->route_name);
-    if (!route_opt) {
-        result->success = false;
-        result->message = "Route not found: " + goal->route_name;
-        goal_handle->abort(result);
-        return;
-    }
-
-    // ── 坐标解析（RouteManager 负责，NavigationExecutor 不查库）──
-    std::vector<geometry_msgs::msg::PoseStamped> poses;
-    std::vector<NavPoint> route_points;  // 用于可视化
-
-    for (const auto& name : route_opt->point_names) {
-        auto pt_opt = point_store_->getPoint(name);
-        if (!pt_opt) {
-            RCLCPP_ERROR(node_->get_logger(), "Route point '%s' not found", name.c_str());
-            result->success = false;
-            result->message = "Point not found: " + name;
-            goal_handle->abort(result);
-            return;
-        }
-        poses.push_back(nav_executor_->createPoseStamped(pt_opt->x, pt_opt->y, pt_opt->yaw));
-        route_points.push_back(*pt_opt);
-    }
-
-    // 发布路径可视化
-    publishRoutePath(route_points);
-
-    // 发送给 NavigationExecutor（接收 PoseStamped[]）
-    bool nav_started = nav_executor_->navigateThroughPoses(goal->route_name, poses);
-    if (!nav_started) {
-        result->success = false;
-        result->message = "Failed to start route navigation";
-        goal_handle->abort(result);
-        return;
-    }
-
-    rclcpp::Rate rate(2);
-    while (rclcpp::ok()) {
-        if (goal_handle->is_canceling()) {
-            nav_executor_->cancelNavigation();
-            result->success = false;
-            result->message = "Route navigation canceled";
-            goal_handle->canceled(result);
-            return;
-        }
-
-        auto state = nav_executor_->getCurrentState();
-        feedback->current_status = [state]() -> std::string {
-            switch (state) {
-                case NavState::NAVIGATING: return "NAVIGATING";
-                case NavState::SUCCESS:    return "SUCCESS";
-                case NavState::FAILED:     return "FAILED";
-                case NavState::CANCELED:   return "CANCELED";
-                default:                   return "IDLE";
-            }
-        }();
-        goal_handle->publish_feedback(feedback);
-
-        if (state == NavState::SUCCESS) {
-            result->success = true;
-            result->message = "Route navigation succeeded";
-            goal_handle->succeed(result);
-            return;
-        } else if (state == NavState::FAILED) {
-            result->success = false;
-            result->message = "Route navigation failed";
-            goal_handle->abort(result);
-            return;
-        } else if (state == NavState::CANCELED) {
-            result->success = false;
-            result->message = "Route navigation canceled";
-            goal_handle->canceled(result);
-            return;
-        }
-        rate.sleep();
     }
 }
 
@@ -290,69 +167,6 @@ void RouteManager::publishAllRouteMarkers() {
             text.lifetime = rclcpp::Duration::from_seconds(0);
             arr.markers.push_back(text);
         }
-    }
-
-    route_marker_pub_->publish(arr);
-}
-
-void RouteManager::publishRoutePath(const std::vector<NavPoint>& route_points) {
-    if (route_points.empty()) return;
-
-    visualization_msgs::msg::MarkerArray arr;
-    int id = 0;
-
-    for (size_t i = 0; i < route_points.size(); ++i) {
-        const auto& pt = route_points[i];
-        auto now = node_->now();
-
-        // 箭头：显示姿态
-        visualization_msgs::msg::Marker arrow;
-        arrow.header.frame_id = "map";
-        arrow.header.stamp    = now;
-        arrow.ns              = "route_arrows";
-        arrow.id              = id++;
-        arrow.type            = visualization_msgs::msg::Marker::ARROW;
-        arrow.action          = visualization_msgs::msg::Marker::ADD;
-        arrow.pose.position.x = pt.x;
-        arrow.pose.position.y = pt.y;
-        arrow.pose.position.z = 0.0;
-        {
-            double half_yaw = pt.yaw * 0.5;
-            arrow.pose.orientation.z = std::sin(half_yaw);
-            arrow.pose.orientation.w = std::cos(half_yaw);
-        }
-        arrow.scale.x = 0.5; arrow.scale.y = 0.1; arrow.scale.z = 0.1;
-        arrow.color.r = 0.0; arrow.color.g = 0.5; arrow.color.b = 1.0; arrow.color.a = 0.8;
-        arrow.lifetime = rclcpp::Duration::from_seconds(0);
-        arr.markers.push_back(arrow);
-
-        // 球体：路径点
-        auto sphere            = arrow;
-        sphere.ns              = "route_points";
-        sphere.id              = id++;
-        sphere.type            = visualization_msgs::msg::Marker::SPHERE;
-        sphere.pose.orientation = geometry_msgs::msg::Quaternion();
-        sphere.pose.orientation.w = 1.0;
-        sphere.scale.x = sphere.scale.y = sphere.scale.z = 0.3;
-        sphere.color.r = 1.0; sphere.color.g = 1.0; sphere.color.b = 0.0; sphere.color.a = 1.0;
-        arr.markers.push_back(sphere);
-
-        // 文字标签
-        visualization_msgs::msg::Marker text;
-        text.header            = arrow.header;
-        text.ns                = "route_labels";
-        text.id                = id++;
-        text.type              = visualization_msgs::msg::Marker::TEXT_VIEW_FACING;
-        text.action            = visualization_msgs::msg::Marker::ADD;
-        text.pose.position.x   = pt.x;
-        text.pose.position.y   = pt.y;
-        text.pose.position.z   = 0.6;
-        text.pose.orientation.w = 1.0;
-        text.text              = std::to_string(i + 1) + ". " + pt.name;
-        text.scale.z           = 0.3;
-        text.color.r = 0.1; text.color.g = 0.1; text.color.b = 0.1; text.color.a = 1.0;
-        text.lifetime          = rclcpp::Duration::from_seconds(0);
-        arr.markers.push_back(text);
     }
 
     route_marker_pub_->publish(arr);

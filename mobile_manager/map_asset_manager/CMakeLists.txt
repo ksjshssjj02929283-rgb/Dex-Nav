@@ -31,7 +31,6 @@ include_directories(include)
 add_library(${PROJECT_NAME}_lib
   src/data_event_bus.cpp
   src/file_manager.cpp
-  src/navigation_executor.cpp
   src/map_asset_manager_node.cpp
   src/polygon_utils.cpp
   src/spatial_indexer.cpp

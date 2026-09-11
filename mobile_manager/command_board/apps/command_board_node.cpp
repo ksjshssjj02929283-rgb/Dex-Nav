@@ -12,6 +12,7 @@
 #include <rclcpp/rclcpp.hpp>
 
 #include "command_board_ros.hpp"
+#include "navigation_facade.hpp"
 
 int main(int argc, char** argv) {
     rclcpp::init(argc, argv);
@@ -21,6 +22,9 @@ int main(int argc, char** argv) {
     rclcpp::executors::MultiThreadedExecutor executor;
     auto node = std::make_shared<command_board::CommandBoardManagerROS>();
     executor.add_node(node);
+    // 导航门面（节点名 navigation）与指令板同进程、独立节点（DEC-035：宿主 command_board）
+    auto navigation = std::make_shared<command_board::NavigationFacade>();
+    executor.add_node(navigation);
     executor.spin();
 
     rclcpp::shutdown();

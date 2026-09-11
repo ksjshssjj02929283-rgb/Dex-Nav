@@ -20,7 +20,6 @@
 #include "map_asset_manager/data_event_bus.hpp"
 #include "map_asset_manager/file_manager.hpp"
 #include "map_asset_manager/point_manager/nav_point_manager.hpp"
-#include "map_asset_manager/navigation_executor.hpp"
 #include "map_asset_manager/point_manager/point_store.hpp"
 #include "map_asset_manager/route_manager/route_store.hpp"
 #include "map_asset_manager/route_manager/route_manager.hpp"
@@ -92,7 +91,6 @@ private:
     std::shared_ptr<RoomStore>          room_store_;
     std::shared_ptr<JunctionStore>      junction_store_;
     std::shared_ptr<RouteEdgeStore>     edge_store_;
-    std::shared_ptr<NavigationExecutor> nav_executor_;
 
     // ── 子管理器 ─────────────────────────────────────────────────
     std::shared_ptr<NavPointManager>    point_mgr_;
