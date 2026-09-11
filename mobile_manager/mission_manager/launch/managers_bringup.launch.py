@@ -104,7 +104,7 @@ def generate_launch_description():
             'move_base_service':
                 '/move_base/set_map_changed',
             'localization_service':
-                '/localization_node/set_map_changed',
+                '/localization/set_map_changed',
         }],
         remappings=[
             ('/map', '/map'),

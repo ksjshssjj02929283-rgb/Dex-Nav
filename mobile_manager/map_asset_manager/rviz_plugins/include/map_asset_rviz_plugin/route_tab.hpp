@@ -10,7 +10,7 @@
 #include <memory>
 #include <string>
 
-#include <nav_interfaces/srv/set_route.hpp>
+#include <nav_interfaces/srv/set_assets.hpp>
 #include <nav_interfaces/srv/get_all_nav_points.hpp>
 #include <nav_interfaces/srv/get_assets.hpp>
 #include <nav_interfaces/srv/get_route.hpp>
@@ -67,8 +67,8 @@ private:
     rclcpp::Node::SharedPtr node_;
     std::string prefix_{"/map_asset_manager"};
 
-    rclcpp::Client<nav_interfaces::srv::SetRoute>::SharedPtr        add_client_;
-    rclcpp::Client<nav_interfaces::srv::SetRoute>::SharedPtr     remove_client_;
+    rclcpp::Client<nav_interfaces::srv::SetAssets>::SharedPtr        add_client_;
+    rclcpp::Client<nav_interfaces::srv::SetAssets>::SharedPtr     remove_client_;
     rclcpp::Client<nav_interfaces::srv::GetRoute>::SharedPtr        get_client_;
     rclcpp::Client<nav_interfaces::srv::GetAssets>::SharedPtr    get_all_routes_client_;
     rclcpp::Client<nav_interfaces::srv::GetAllNavPoints>::SharedPtr get_points_client_;

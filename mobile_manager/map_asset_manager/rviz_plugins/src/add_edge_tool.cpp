@@ -20,7 +20,7 @@
 #include <OgreManualObject.h>
 #include <OgreSceneManager.h>
 
-#include <nav_interfaces/srv/set_route_edge.hpp>
+#include <nav_interfaces/srv/set_assets.hpp>
 #include <rviz_common/display_context.hpp>
 #include <rviz_common/interaction/view_picker_iface.hpp>
 #include <rviz_common/ros_integration/ros_node_abstraction_iface.hpp>
@@ -287,27 +287,27 @@ void AddEdgeTool::clearPreview() {
 
 void AddEdgeTool::submitEdge(const EndpointInfo& from, const EndpointInfo& to,
                               const EdgeConfig& cfg) {
-    auto client = node_->create_client<nav_interfaces::srv::SetRouteEdge>(
-        service_prefix_ + "/set_route_edge");
-    auto req                 = std::make_shared<nav_interfaces::srv::SetRouteEdge::Request>();
-    req->mode                = nav_interfaces::srv::SetRouteEdge::Request::MODE_ADD_ONLY;
-    req->edge.id             = cfg.edge_id;
-    req->edge.from_ep.id     = from.id;
-    req->edge.from_ep.type   = from.type;
-    req->edge.to_ep.id       = to.id;
-    req->edge.to_ep.type     = to.type;
-    req->edge.edge_type      = "LINE";
-    req->edge.bidirectional  = cfg.bidirectional;
-    req->edge.max_speed      = cfg.max_speed;
-    req->edge.xy_tolerance   = cfg.xy_tolerance;
-    req->edge.th_tolerance   = cfg.th_tolerance;
-    req->edge.lane_width     = cfg.lane_width;
-    req->edge.obs_policy     = cfg.obs_policy;
-    applyOptionalEdgeFields(req->edge, cfg);  // 含 max_speed（0=系统默认）/hold_direction/padding/backward
+    auto client = node_->create_client<nav_interfaces::srv::SetAssets>(
+        service_prefix_ + "/set_assets");
+    auto req = std::make_shared<nav_interfaces::srv::SetAssets::Request>(); req->edges.resize(1);
+    req->mode                = nav_interfaces::srv::SetAssets::Request::MODE_ADD_ONLY;
+    req->edges[0].id             = cfg.edge_id;
+    req->edges[0].from_ep.id     = from.id;
+    req->edges[0].from_ep.type   = from.type;
+    req->edges[0].to_ep.id       = to.id;
+    req->edges[0].to_ep.type     = to.type;
+    req->edges[0].edge_type      = "LINE";
+    req->edges[0].bidirectional  = cfg.bidirectional;
+    req->edges[0].max_speed      = cfg.max_speed;
+    req->edges[0].xy_tolerance   = cfg.xy_tolerance;
+    req->edges[0].th_tolerance   = cfg.th_tolerance;
+    req->edges[0].lane_width     = cfg.lane_width;
+    req->edges[0].obs_policy     = cfg.obs_policy;
+    applyOptionalEdgeFields(req->edges[0], cfg);  // 含 max_speed（0=系统默认）/hold_direction/padding/backward
 
     const QString eid = QString::fromStdString(cfg.edge_id);
     client->async_send_request(req,
-        [this, eid](rclcpp::Client<nav_interfaces::srv::SetRouteEdge>::SharedFuture fut) {
+        [this, eid](rclcpp::Client<nav_interfaces::srv::SetAssets>::SharedFuture fut) {
             try {
                 auto resp = fut.get();
                 setStatus(resp->success

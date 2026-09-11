@@ -47,7 +47,7 @@ private Q_SLOTS:
     void onRollback();       // ~/rollback_map（确认）
     void onResetByPose();    // ~/reset_map_origin_by_robot_pose（确认）
     void onResetByXYYaw();   // ~/reset_map_origin_by_xyyaw（当前地图，确认）
-    void onGlobalReloc();    // /localization_node/trigger_global_relocalization（确认）
+    void onGlobalReloc();    // /localization/trigger_global_relocalization（确认）
 
 private:
     void setupUi();

@@ -78,8 +78,8 @@ longitudinal_state_estimator:
     use_sim_time: False
     # robot_localization已经融合轮速、雷达Pose和IMU；这里仅做时间戳、方差、
     # 坐标语义和物理范围检查，不再运行第二套EKF或重复融合相同传感器。
-    velocity_topic: /robot_localization/odometry/filtered
-    acceleration_topic: /robot_localization/accel/filtered
+    velocity_topic: /localization/odometry/filtered
+    acceleration_topic: /localization/accel/filtered
     state_topic: /navigation/longitudinal_state
     diagnostics_topic: /navigation/longitudinal_state_diagnostics
     publish_frequency: 25.0

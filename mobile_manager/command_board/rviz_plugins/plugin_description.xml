@@ -13,7 +13,7 @@
          base_class_type="rviz_common::Panel">
     <description>
       command_board 控制面板：保存导航地图 / 备份地图与资产 / 回退地图 / 重置地图原点
-      （当前位姿 + 指定 xyyaw）+ 全局重定位（localization_node）。危险操作二次确认。
+      （当前位姿 + 指定 xyyaw）+ 全局重定位（localization）。危险操作二次确认。
     </description>
   </class>
 </library>

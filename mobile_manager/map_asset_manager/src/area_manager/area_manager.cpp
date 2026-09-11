@@ -21,18 +21,9 @@ AreaManager::AreaManager(rclcpp::Node* node,
     // Publishers
     marker_pub_ = node_->create_publisher<visualization_msgs::msg::MarkerArray>(
         "~/area_markers", rclcpp::QoS(10).transient_local());
-    areas_pub_ = node_->create_publisher<nav_interfaces::msg::AreaInfoArray>(
-        "~/areas", rclcpp::QoS(10).transient_local());
 
     // Services
-    set_area_srv_ = node_->create_service<nav_interfaces::srv::SetArea>(
-        "~/set_area",
-        [this](const std::shared_ptr<nav_interfaces::srv::SetArea::Request> req,
-               std::shared_ptr<nav_interfaces::srv::SetArea::Response> res) {
-            setAreaCallback(req, res);
-        });
-
-    RCLCPP_INFO(node_->get_logger(), "AreaManager: initialized (set_area service, areas topic)");
+    RCLCPP_INFO(node_->get_logger(), "AreaManager: initialized (assets via set_assets)");
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -40,58 +31,10 @@ AreaManager::AreaManager(rclcpp::Node* node,
 // ──────────────────────────────────────────────────────────────────────
 
 
-void AreaManager::setAreaCallback(
-    const std::shared_ptr<nav_interfaces::srv::SetArea::Request> req,
-    std::shared_ptr<nav_interfaces::srv::SetArea::Response> res) {
-    using SA = nav_interfaces::srv::SetArea;
-    using ST = nav_interfaces::msg::AssetManagerState;
-    const auto& msg = req->area_info;
-    if (msg.name.empty()) { res->success = false; res->error_code = ST::E_ASSET_VALIDATION; res->message = "area name is empty"; return; }
-    if (req->mode > SA::Request::MODE_REMOVE) { res->success = false; res->error_code = ST::E_ASSET_MODE_INVALID; res->message = "invalid mode " + std::to_string(req->mode); return; }
-    const bool exists = area_store_->hasArea(msg.name);
-    if (req->mode == SA::Request::MODE_REMOVE) {
-        if (!exists) { res->success = false; res->error_code = ST::E_ASSET_NOT_FOUND; res->message = "area not found: " + msg.name; return; }
-        area_store_->removeArea(msg.name);
-        save_fn_();
-        publishMarkers();
-        publishAreas();
-        if (event_bus_) event_bus_->publish({AssetEventType::AREA_REMOVED, msg.name, ""});
-        RCLCPP_INFO(node_->get_logger(), "set_area: removed '%s'", msg.name.c_str());
-        res->success = true; res->error_code = ST::E_NONE;
-        res->message = "removed";
-        return;
-    }
-    if (req->mode == SA::Request::MODE_ADD_ONLY && exists)     { res->success = false; res->error_code = ST::E_ASSET_EXISTS;    res->message = "area already exists: " + msg.name; return; }
-    if (req->mode == SA::Request::MODE_UPDATE_ONLY && !exists) { res->success = false; res->error_code = ST::E_ASSET_NOT_FOUND; res->message = "area not found: " + msg.name; return; }
-    Area area = fromMsg(msg);
-    if (exists) area_store_->updateArea(area); else area_store_->addArea(area);
-    save_fn_();
-    publishMarkers();
-    publishAreas();
-    if (event_bus_) event_bus_->publish({exists ? AssetEventType::AREA_UPDATED : AssetEventType::AREA_ADDED, area.name, ""});
-    RCLCPP_INFO(node_->get_logger(), "set_area: %s '%s' type=%u vertices=%zu",
-                exists ? "updated" : "added", area.name.c_str(), area.type, area.polygon.size());
-    res->success = true; res->error_code = ST::E_NONE;
-    res->message = exists ? "updated" : "added";
-}
-
 
 // ──────────────────────────────────────────────────────────────────────
 // 发布
 // ──────────────────────────────────────────────────────────────────────
-
-void AreaManager::publishAreas() {
-    nav_interfaces::msg::AreaInfoArray arr;
-    arr.header.frame_id = "map";
-    arr.header.stamp = node_->now();
-
-    auto all_areas = area_store_->getAllAreas();
-    arr.areas.reserve(all_areas.size());
-    for (const auto& area : all_areas) {
-        arr.areas.push_back(toMsg(area));
-    }
-    areas_pub_->publish(arr);
-}
 
 void AreaManager::publishMarkers() {
     auto all_areas = area_store_->getAllAreas();

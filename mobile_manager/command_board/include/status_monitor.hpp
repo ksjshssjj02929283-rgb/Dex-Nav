@@ -46,7 +46,7 @@ public:
         bool                      is_estop_active = false;
         bool                      bumper_front_active = false;
         bool                      bumper_rear_active = false;
-        nav_interfaces::msg::LocalizationState localization;  // from /localization_node/state
+        nav_interfaces::msg::LocalizationState localization;  // from /localization/state
         bool                      localization_valid = false;
         std::string               task_status = "UNKNOWN";    // from mission_manager/status
         bool                      pose_valid = false;

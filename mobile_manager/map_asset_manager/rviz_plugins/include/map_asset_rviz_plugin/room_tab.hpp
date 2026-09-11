@@ -10,7 +10,7 @@
 #include <string>
 
 #include <nav_interfaces/srv/get_assets.hpp>
-#include <nav_interfaces/srv/set_room.hpp>
+#include <nav_interfaces/srv/set_assets.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 namespace map_asset_rviz_plugin {
@@ -48,8 +48,8 @@ private:
     std::string prefix_{"/map_asset_manager"};
 
     rclcpp::Client<nav_interfaces::srv::GetAssets>::SharedPtr  get_client_;
-    rclcpp::Client<nav_interfaces::srv::SetRoom>::SharedPtr   remove_client_;
-    rclcpp::Client<nav_interfaces::srv::SetRoom>::SharedPtr   update_client_;
+    rclcpp::Client<nav_interfaces::srv::SetAssets>::SharedPtr   remove_client_;
+    rclcpp::Client<nav_interfaces::srv::SetAssets>::SharedPtr   update_client_;
 };
 
 }  // namespace map_asset_rviz_plugin

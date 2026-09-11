@@ -26,11 +26,6 @@ NavPointManager::NavPointManager(rclcpp::Node* node,
         "~/nav_points_marker", rclcpp::QoS(10).transient_local());
 
     // ── services ─────────────────────────────────────────────────
-    set_point_srv_ = node_->create_service<nav_interfaces::srv::SetNavPoint>(
-        "~/set_point",
-        std::bind(&NavPointManager::setPointCallback, this,
-                  std::placeholders::_1, std::placeholders::_2));
-
     sample_point_srv_ = node_->create_service<nav_interfaces::srv::SampleNavPoint>(
         "~/sample_point",
         std::bind(&NavPointManager::samplePointCallback, this,
@@ -53,43 +48,6 @@ NavPointManager::NavPointManager(rclcpp::Node* node,
                   std::placeholders::_1, std::placeholders::_2));
 
     RCLCPP_INFO(node_->get_logger(), "NavPointManager: services registered");
-}
-
-void NavPointManager::setPointCallback(
-    const std::shared_ptr<nav_interfaces::srv::SetNavPoint::Request> req,
-    std::shared_ptr<nav_interfaces::srv::SetNavPoint::Response> res) {
-    using SP = nav_interfaces::srv::SetNavPoint;
-    using ST = nav_interfaces::msg::AssetManagerState;
-    const std::string& name = req->point.name;
-    if (name.empty()) { res->success = false; res->error_code = ST::E_ASSET_VALIDATION; res->message = "point name is empty"; return; }
-    if (req->mode > SP::Request::MODE_REMOVE) { res->success = false; res->error_code = ST::E_ASSET_MODE_INVALID; res->message = "invalid mode " + std::to_string(req->mode); return; }
-    const bool exists = point_store_->hasPoint(name);
-    if (req->mode == SP::Request::MODE_REMOVE) {
-        // 删除只看 name；路线剔点 / 路网边清理由 POINT_REMOVED 事件级联
-        if (!exists) { res->success = false; res->error_code = ST::E_ASSET_NOT_FOUND; res->message = "point not found: " + name; return; }
-        point_store_->removePoint(name);
-        saveToFile();
-        publishMarkers();
-        event_bus_->publish({AssetEventType::POINT_REMOVED, name, ""});
-        res->success = true; res->error_code = ST::E_NONE;
-        res->message = "point removed: " + name;
-        return;
-    }
-    if (req->mode == SP::Request::MODE_ADD_ONLY && exists)     { res->success = false; res->error_code = ST::E_ASSET_EXISTS;    res->message = "point already exists: " + name; return; }
-    if (req->mode == SP::Request::MODE_UPDATE_ONLY && !exists) { res->success = false; res->error_code = ST::E_ASSET_NOT_FOUND; res->message = "point not found: " + name; return; }
-    NavPoint pt;
-    pt.name      = name;
-    pt.type      = req->point.type;
-    pt.x         = req->point.x;
-    pt.y         = req->point.y;
-    pt.yaw       = req->point.theta;
-    pt.tolerance = req->point.tolerance;
-    if (exists) point_store_->updatePoint(pt); else point_store_->addPoint(pt);
-    saveToFile();
-    publishMarkers();
-    event_bus_->publish({exists ? AssetEventType::POINT_UPDATED : AssetEventType::POINT_ADDED, pt.name, ""});
-    res->success = true; res->error_code = ST::E_NONE;
-    res->message = std::string(exists ? "point updated: " : "point added: ") + pt.name;
 }
 
 void NavPointManager::initializeActionServers(rclcpp::Node::SharedPtr node,

@@ -30,16 +30,6 @@ RouteGraphManager::RouteGraphManager(
       event_bus_(event_bus),
       save_fn_(save_fn)
 {
-    set_junction_srv_ = node->create_service<nav_interfaces::srv::SetRouteJunction>(
-        "~/set_route_junction",
-        std::bind(&RouteGraphManager::setJunctionCallback, this,
-                  std::placeholders::_1, std::placeholders::_2));
-
-    set_edge_srv_ = node->create_service<nav_interfaces::srv::SetRouteEdge>(
-        "~/set_route_edge",
-        std::bind(&RouteGraphManager::setEdgeCallback, this,
-                  std::placeholders::_1, std::placeholders::_2));
-
 
     get_graph_srv_ = node->create_service<nav_interfaces::srv::GetRouteGraph>(
         "~/get_route_graph",
@@ -68,76 +58,6 @@ RouteGraphManager::RouteGraphManager(
 // Junction CRUD
 // ──────────────────────────────────────────────────────────────────────
 
-
-void RouteGraphManager::setJunctionCallback(
-    const std::shared_ptr<nav_interfaces::srv::SetRouteJunction::Request> req,
-    std::shared_ptr<nav_interfaces::srv::SetRouteJunction::Response> res)
-{
-    using SJ = nav_interfaces::srv::SetRouteJunction;
-    using ST = nav_interfaces::msg::AssetManagerState;
-    const std::string& id = req->junction.id;
-    if (id.empty()) { res->success = false; res->error_code = ST::E_ASSET_VALIDATION; res->message = "junction id must not be empty"; return; }
-    if (req->mode > SJ::Request::MODE_REMOVE) { res->success = false; res->error_code = ST::E_ASSET_MODE_INVALID; res->message = "invalid mode " + std::to_string(req->mode); return; }
-    const bool exists = junction_store_->has(id);
-    if (req->mode == SJ::Request::MODE_REMOVE) {
-        if (!exists) { res->success = false; res->error_code = ST::E_ASSET_NOT_FOUND; res->message = "junction not found: " + id; return; }
-        // 级联：删除所有以该节点为端点的路网边
-        auto removed_edges = edge_store_->removeEdgesContainingJunction(id);
-        junction_store_->remove(id);
-        save_fn_();
-        publishMarkers();
-        if (event_bus_) event_bus_->publish({AssetEventType::JUNCTION_REMOVED, id, ""});
-        res->success = true; res->error_code = ST::E_NONE;
-        res->message = "removed junction '" + id + "' and " + std::to_string(removed_edges.size()) + " edges";
-        RCLCPP_INFO(node_->get_logger(), "RouteGraph: removed junction '%s' + %zu edges", id.c_str(), removed_edges.size());
-        return;
-    }
-    auto jct = fromMsg(req->junction);
-    if (req->mode == SJ::Request::MODE_ADD_ONLY && exists)     { res->success = false; res->error_code = ST::E_ASSET_EXISTS;    res->message = "junction already exists: " + jct.id; return; }
-    if (req->mode == SJ::Request::MODE_UPDATE_ONLY && !exists) { res->success = false; res->error_code = ST::E_ASSET_NOT_FOUND; res->message = "junction not found: " + jct.id; return; }
-    if (exists) junction_store_->update(jct); else junction_store_->add(jct);
-    save_fn_();
-    publishMarkers();
-    if (event_bus_) event_bus_->publish({exists ? AssetEventType::JUNCTION_UPDATED : AssetEventType::JUNCTION_ADDED, jct.id, ""});
-    res->success = true; res->error_code = ST::E_NONE;
-    res->message = std::string(exists ? "updated junction '" : "added junction '") + jct.id + "'";
-    RCLCPP_INFO(node_->get_logger(), "RouteGraph: %s junction '%s'", exists ? "updated" : "added", jct.id.c_str());
-}
-
-void RouteGraphManager::setEdgeCallback(
-    const std::shared_ptr<nav_interfaces::srv::SetRouteEdge::Request> req,
-    std::shared_ptr<nav_interfaces::srv::SetRouteEdge::Response> res)
-{
-    using SE = nav_interfaces::srv::SetRouteEdge;
-    using ST = nav_interfaces::msg::AssetManagerState;
-    const std::string& id = req->edge.id;
-    if (id.empty()) { res->success = false; res->error_code = ST::E_ASSET_VALIDATION; res->message = "edge id must not be empty"; return; }
-    if (req->mode > SE::Request::MODE_REMOVE) { res->success = false; res->error_code = ST::E_ASSET_MODE_INVALID; res->message = "invalid mode " + std::to_string(req->mode); return; }
-    const bool exists = edge_store_->has(id);
-    if (req->mode == SE::Request::MODE_REMOVE) {
-        // 删除不校验端点（端点可能已先行删除）
-        if (!exists) { res->success = false; res->error_code = ST::E_ASSET_NOT_FOUND; res->message = "edge not found: " + id; return; }
-        edge_store_->remove(id);
-        save_fn_();
-        publishMarkers();
-        res->success = true; res->error_code = ST::E_NONE;
-        res->message = "removed edge '" + id + "'";
-        RCLCPP_INFO(node_->get_logger(), "RouteGraph: removed edge '%s'", id.c_str());
-        return;
-    }
-    auto edge = fromMsg(req->edge);
-    if (!endpointExists(edge.from)) { res->success = false; res->error_code = ST::E_ASSET_REF_UNRESOLVED; res->message = "edge 'from' endpoint not found: " + edge.from.type + ":" + edge.from.id; return; }
-    if (!endpointExists(edge.to))   { res->success = false; res->error_code = ST::E_ASSET_REF_UNRESOLVED; res->message = "edge 'to' endpoint not found: " + edge.to.type + ":" + edge.to.id; return; }
-    if (req->mode == SE::Request::MODE_ADD_ONLY && exists)     { res->success = false; res->error_code = ST::E_ASSET_EXISTS;    res->message = "edge already exists: " + edge.id; return; }
-    if (req->mode == SE::Request::MODE_UPDATE_ONLY && !exists) { res->success = false; res->error_code = ST::E_ASSET_NOT_FOUND; res->message = "edge not found: " + edge.id; return; }
-    snapEdgeEndpoints(edge);
-    if (exists) edge_store_->update(edge); else edge_store_->add(edge);
-    save_fn_();
-    publishMarkers();
-    res->success = true; res->error_code = ST::E_NONE;
-    res->message = std::string(exists ? "updated edge '" : "added edge '") + edge.id + "'";
-    RCLCPP_INFO(node_->get_logger(), "RouteGraph: %s edge '%s'", exists ? "updated" : "added", edge.id.c_str());
-}
 
 // ──────────────────────────────────────────────────────────────────────
 // Edge CRUD

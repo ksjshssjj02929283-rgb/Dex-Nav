@@ -84,7 +84,7 @@ void CommandBoardControlPanel::setupUi() {
                 &CommandBoardControlPanel::onResetByXYYaw);
     }
 
-    // 🌐 全局重定位（localization_node）
+    // 🌐 全局重定位（localization）
     {
         auto* global_btn = new QPushButton("🌐 全局重定位");
         root->addWidget(global_btn);
@@ -115,8 +115,8 @@ void CommandBoardControlPanel::makeClients() {
     rollback_cli_     = node_->create_client<nav_interfaces::srv::RollbackMap>(prefix + "/rollback_map");
     reset_pose_cli_   = node_->create_client<std_srvs::srv::Trigger>(prefix + "/reset_map_origin_by_robot_pose");
     reset_xyyaw_cli_  = node_->create_client<nav_interfaces::srv::ResetMapOriginByXYYaw>(prefix + "/reset_map_origin_by_xyyaw");
-    // 全局重定位是 localization_node 的服务（command_board 不暴露）。
-    global_reloc_cli_ = node_->create_client<std_srvs::srv::Trigger>("/localization_node/trigger_global_relocalization");
+    // 全局重定位是 localization 的服务（command_board 不暴露）。
+    global_reloc_cli_ = node_->create_client<std_srvs::srv::Trigger>("/localization/trigger_global_relocalization");
 }
 
 void CommandBoardControlPanel::subscribeStatus() {
@@ -273,7 +273,7 @@ void CommandBoardControlPanel::onResetByXYYaw() {
 
 void CommandBoardControlPanel::onGlobalReloc() {
     if (!global_reloc_cli_ || !global_reloc_cli_->service_is_ready()) {
-        storeOpResult("global_relocalization", false, "服务未就绪（/localization_node）");
+        storeOpResult("global_relocalization", false, "服务未就绪（/localization）");
         return;
     }
     if (QMessageBox::question(this, "确认全局重定位",

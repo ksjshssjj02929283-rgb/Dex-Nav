@@ -40,7 +40,7 @@ CommandBoardManagerROS::CommandBoardManagerROS() : rclcpp::Node("command_board_m
     react_to_estop_  = this->declare_parameter("react_to_estop", react_to_estop_);
     react_to_bumper_ = this->declare_parameter("react_to_bumper", react_to_bumper_);
 
-    // 单一状态源：/diagnostics_agg、/localization_node/state 由 StatusMonitor 唯一订阅聚合，
+    // 单一状态源：/diagnostics_agg、/localization/state 由 StatusMonitor 唯一订阅聚合，
     // 本节点不再重复订阅，改在 OnRecoverTimer 轮询 GetSnapshot 读取。
     callback_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
 
@@ -52,8 +52,8 @@ CommandBoardManagerROS::CommandBoardManagerROS() : rclcpp::Node("command_board_m
     tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
     // ── 服务客户端 ────────────────────────────────────────────────
-    stop_localization_cli_ = this->create_client<std_srvs::srv::Trigger>("/localization_node/stop_localization");
-    start_localization_cli_ = this->create_client<std_srvs::srv::Trigger>("/localization_node/start_localization");
+    stop_localization_cli_ = this->create_client<std_srvs::srv::Trigger>("/localization/stop_localization");
+    start_localization_cli_ = this->create_client<std_srvs::srv::Trigger>("/localization/start_localization");
     map_command_cli_ = this->create_client<nav_interfaces::srv::MapManagerCommand>("map_manager/map_command");
     transform_assets_cli_ =
         this->create_client<nav_interfaces::srv::TransformAssets>("/map_asset_manager/transform_assets");
@@ -100,7 +100,7 @@ CommandBoardManagerROS::CommandBoardManagerROS() : rclcpp::Node("command_board_m
     velocity_still_threshold_ =
         this->declare_parameter("still_velocity_threshold", velocity_still_threshold_);
     relocalization_cli_ = this->create_client<nav_interfaces::srv::Relocalize>(
-        "/localization_node/relocalization");
+        "/localization/relocalization");
     alarm_pub_ = this->create_publisher<std_msgs::msg::String>(
         "~/safety_alarm", rclcpp::QoS(1).transient_local());
     // OnRecoverTimer 始终运行（驱动定位状态机 + 急停响应 + 丢位恢复）；enable_loss_recovery_
@@ -415,7 +415,7 @@ bool CommandBoardManagerROS::RunResetMapOriginTool(
 // ──────────────────────────────────────────────────────────────────────
 
 // 单一状态源：所有上游由 StatusMonitor 订阅聚合，本节点 200ms 轮询 GetSnapshot
-// 驱动定位状态机 + 急停响应 + 丢位恢复（不再重复订阅 /diagnostics_agg、/localization_node/state）。
+// 驱动定位状态机 + 急停响应 + 丢位恢复（不再重复订阅 /diagnostics_agg、/localization/state）。
 void CommandBoardManagerROS::OnRecoverTimer() {
     if (!status_monitor_) return;
     const auto snap = status_monitor_->GetSnapshot();

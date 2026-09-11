@@ -17,4 +17,4 @@ services:
   nav_point_manager: "/nav_point_manager_node/set_map_changed"
   mission_manager: "/mission_manager/set_map_changed"
   move_base: "/move_base/set_map_changed"
-  localization: "/localization_node/set_map_changed"
+  localization: "/localization/set_map_changed"

@@ -12,8 +12,7 @@
 #include <visualization_msgs/msg/marker_array.hpp>
 
 #include "nav_interfaces/action/navigate_to_point.hpp"
-#include <nav_interfaces/srv/set_nav_point.hpp>
-#include <nav_interfaces/msg/asset_manager_state.hpp>
+#include <nav_interfaces/msg/asset_snapshot.hpp>
 #include "nav_interfaces/srv/get_all_nav_points.hpp"
 #include "nav_interfaces/srv/get_nav_point.hpp"
 #include "nav_interfaces/srv/get_status.hpp"
@@ -47,8 +46,6 @@ public:
 
 private:
     // Service 回调
-    void setPointCallback(const std::shared_ptr<nav_interfaces::srv::SetNavPoint::Request> req,
-                          std::shared_ptr<nav_interfaces::srv::SetNavPoint::Response> res);
     void samplePointCallback(const std::shared_ptr<nav_interfaces::srv::SampleNavPoint::Request> req,
                              std::shared_ptr<nav_interfaces::srv::SampleNavPoint::Response> res);
     void getPointCallback(const std::shared_ptr<nav_interfaces::srv::GetNavPoint::Request> req,
@@ -80,7 +77,6 @@ private:
     std::unique_ptr<tf2_ros::TransformListener> tf_listener_;
 
     // Services
-    rclcpp::Service<nav_interfaces::srv::SetNavPoint>::SharedPtr set_point_srv_;
     rclcpp::Service<nav_interfaces::srv::SampleNavPoint>::SharedPtr sample_point_srv_;
     rclcpp::Service<nav_interfaces::srv::GetNavPoint>::SharedPtr get_point_srv_;
     rclcpp::Service<nav_interfaces::srv::GetAllNavPoints>::SharedPtr get_all_points_srv_;
