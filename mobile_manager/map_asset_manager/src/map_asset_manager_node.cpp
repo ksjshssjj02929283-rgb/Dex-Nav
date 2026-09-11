@@ -316,14 +316,8 @@ void MapAssetManagerNode::saveAllAssets() {
 // ──────────────────────────────────────────────────────────────────────
 
 void MapAssetManagerNode::initializeActionServers() {
-    auto self = shared_from_this();
-
-    // NavigationExecutor 需要 shared_from_this()，在此创建
-    nav_executor_ = std::make_shared<NavigationExecutor>(self);
-
-    point_mgr_->initializeActionServers(self, nav_executor_);
-    route_mgr_->initializeActionServers(self, nav_executor_);
-    RCLCPP_INFO(get_logger(), "MapAssetManagerNode: action servers initialized");
+    // 导航执行已归 navigation 门面（DEC-041）：资产管理器不再提供 navigate_to_point / navigate_route / get_status。
+    RCLCPP_INFO(get_logger(), "MapAssetManagerNode: navigation actions are served by the navigation facade (/navigation/*)");
 }
 
 // ──────────────────────────────────────────────────────────────────────

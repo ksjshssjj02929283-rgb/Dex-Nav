@@ -140,7 +140,7 @@ void NavPointTab::rebuildClients() {
     sample_client_  = node_->create_client<nav_interfaces::srv::SampleNavPoint>(prefix_ + "/sample_point");
     update_client_  = node_->create_client<nav_interfaces::srv::SetAssets>(prefix_ + "/set_assets");
     nav_client_     = rclcpp_action::create_client<NavigateToPointAction>(
-        node_, prefix_ + "/navigate_to_point");
+        node_, "/navigation/navigate_to_point");   // 唯一导航入口：navigation 门面（DEC-041）
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -386,7 +386,7 @@ void NavPointTab::onNavTo() {
 
     if (!nav_client_->action_server_is_ready()) {
         status_label_->setText(
-            QString("导航 Action 未就绪：%1/navigate_to_point")
+            QString("导航 Action 未就绪：/navigation/navigate_to_point（%1）")
                 .arg(QString::fromStdString(prefix_)));
         return;
     }
