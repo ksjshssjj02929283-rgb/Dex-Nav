@@ -42,26 +42,7 @@ NavPointManager::NavPointManager(rclcpp::Node* node,
         std::bind(&NavPointManager::getAllPointsCallback, this,
                   std::placeholders::_1, std::placeholders::_2));
 
-    get_status_srv_ = node_->create_service<nav_interfaces::srv::GetStatus>(
-        "~/get_status",
-        std::bind(&NavPointManager::getStatusCallback, this,
-                  std::placeholders::_1, std::placeholders::_2));
-
     RCLCPP_INFO(node_->get_logger(), "NavPointManager: services registered");
-}
-
-void NavPointManager::initializeActionServers(rclcpp::Node::SharedPtr node,
-                                                 std::shared_ptr<NavigationExecutor> nav_executor) {
-    nav_executor_ = nav_executor;
-
-    navigate_to_point_action_ = rclcpp_action::create_server<NavigateToPointAction>(
-        node, "~/navigate_to_point",
-        std::bind(&NavPointManager::handleGoal, this,
-                  std::placeholders::_1, std::placeholders::_2),
-        std::bind(&NavPointManager::handleCancel, this, std::placeholders::_1),
-        std::bind(&NavPointManager::handleAccepted, this, std::placeholders::_1));
-
-    RCLCPP_INFO(node_->get_logger(), "NavPointManager: action server registered");
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -195,122 +176,6 @@ void NavPointManager::getAllPointsCallback(
         msg.theta     = pt.yaw;
         msg.tolerance = pt.tolerance;
         res->points.push_back(msg);
-    }
-}
-
-void NavPointManager::getStatusCallback(
-    const std::shared_ptr<nav_interfaces::srv::GetStatus::Request>,
-    std::shared_ptr<nav_interfaces::srv::GetStatus::Response> res) {
-    if (!nav_executor_) {
-        res->success = false;
-        return;
-    }
-    auto state  = nav_executor_->getCurrentState();
-    auto target = nav_executor_->getCurrentTarget();
-    res->success = true;
-    res->name    = target;
-    switch (state) {
-        case NavState::IDLE:       res->status = "IDLE";       break;
-        case NavState::NAVIGATING: res->status = "NAVIGATING"; break;
-        case NavState::SUCCESS:    res->status = "SUCCESS";    break;
-        case NavState::FAILED:     res->status = "FAILED";     break;
-        case NavState::CANCELED:   res->status = "CANCELED";   break;
-    }
-}
-
-// ──────────────────────────────────────────────────────────────────────
-// Action 回调
-// ──────────────────────────────────────────────────────────────────────
-
-rclcpp_action::GoalResponse NavPointManager::handleGoal(
-    const rclcpp_action::GoalUUID&,
-    std::shared_ptr<const NavigateToPointAction::Goal> goal) {
-    if (!goal->point_name.empty() && !point_store_->hasPoint(goal->point_name)) {
-        RCLCPP_WARN(node_->get_logger(), "navigate_to_point: point not found: %s",
-                    goal->point_name.c_str());
-        return rclcpp_action::GoalResponse::REJECT;
-    }
-    return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
-}
-
-rclcpp_action::CancelResponse NavPointManager::handleCancel(
-    const std::shared_ptr<GoalHandleNavigateToPoint>) {
-    nav_executor_->cancelNavigation();
-    return rclcpp_action::CancelResponse::ACCEPT;
-}
-
-void NavPointManager::handleAccepted(const std::shared_ptr<GoalHandleNavigateToPoint> goal_handle) {
-    std::thread{std::bind(&NavPointManager::executeNavigateToPoint, this, goal_handle)}.detach();
-}
-
-void NavPointManager::executeNavigateToPoint(
-    const std::shared_ptr<GoalHandleNavigateToPoint> goal_handle) {
-    const auto goal    = goal_handle->get_goal();
-    auto feedback      = std::make_shared<NavigateToPointAction::Feedback>();
-    auto result        = std::make_shared<NavigateToPointAction::Result>();
-
-    bool nav_started = false;
-    if (!goal->point_name.empty()) {
-        auto opt = point_store_->getPoint(goal->point_name);
-        if (!opt) {
-            result->success = false;
-            result->message = "Point not found: " + goal->point_name;
-            goal_handle->abort(result);
-            return;
-        }
-        auto pose = nav_executor_->createPoseStamped(opt->x, opt->y, opt->yaw);
-        double tol = opt->tolerance > 0.0 ? opt->tolerance : 0.05;
-        nav_started = nav_executor_->navigateToPose(goal->point_name, pose, tol);
-    } else if (goal->use_pose) {
-        nav_started = nav_executor_->navigateToPose("custom_pose", goal->pose, goal->tolerance);
-    }
-
-    if (!nav_started) {
-        result->success = false;
-        result->message = "Failed to start navigation";
-        goal_handle->abort(result);
-        return;
-    }
-
-    rclcpp::Rate rate(2);
-    while (rclcpp::ok()) {
-        if (goal_handle->is_canceling()) {
-            nav_executor_->cancelNavigation();
-            result->success = false;
-            result->message = "Navigation canceled";
-            goal_handle->canceled(result);
-            return;
-        }
-
-        auto state = nav_executor_->getCurrentState();
-        feedback->current_status = [state]() -> std::string {
-            switch (state) {
-                case NavState::NAVIGATING: return "NAVIGATING";
-                case NavState::SUCCESS:    return "SUCCESS";
-                case NavState::FAILED:     return "FAILED";
-                case NavState::CANCELED:   return "CANCELED";
-                default:                   return "IDLE";
-            }
-        }();
-        goal_handle->publish_feedback(feedback);
-
-        if (state == NavState::SUCCESS) {
-            result->success = true;
-            result->message = "Navigation succeeded";
-            goal_handle->succeed(result);
-            return;
-        } else if (state == NavState::FAILED) {
-            result->success = false;
-            result->message = "Navigation failed";
-            goal_handle->abort(result);
-            return;
-        } else if (state == NavState::CANCELED) {
-            result->success = false;
-            result->message = "Navigation canceled";
-            goal_handle->canceled(result);
-            return;
-        }
-        rate.sleep();
     }
 }
 
