@@ -107,7 +107,7 @@ bool MapVersionManager::CallSaveMap(std::string& out_ts, std::string& out_msg) {
     auto req = std::make_shared<nav_interfaces::srv::SaveMap::Request>();
     req->map_name = "";
     auto resp = CallService<nav_interfaces::srv::SaveMap>(
-        "/localization_node/save_map", req, service_timeout_sec_, out_msg);
+        "/localization/save_map", req, service_timeout_sec_, out_msg);
     if (!resp) return false;
     if (!resp->success) { out_msg = resp->message; return false; }
     out_ts = resp->backup_ts;

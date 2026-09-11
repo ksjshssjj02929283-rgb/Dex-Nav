@@ -13,9 +13,7 @@
 #include <vector>
 #include <visualization_msgs/msg/marker_array.hpp>
 
-#include <nav_interfaces/srv/set_route_junction.hpp>
-#include <nav_interfaces/msg/asset_manager_state.hpp>
-#include <nav_interfaces/srv/set_route_edge.hpp>
+#include <nav_interfaces/msg/asset_snapshot.hpp>
 #include "nav_interfaces/srv/get_route_graph.hpp"
 #include "nav_interfaces/msg/path_segment.hpp"
 #include "nav_interfaces/srv/resolve_nav_points.hpp"
@@ -47,14 +45,6 @@ public:
 
 private:
     // ── Service 回调 ──────────────────────────────────────────────
-    void setJunctionCallback(
-        const std::shared_ptr<nav_interfaces::srv::SetRouteJunction::Request> req,
-        std::shared_ptr<nav_interfaces::srv::SetRouteJunction::Response> res);
-
-    void setEdgeCallback(
-        const std::shared_ptr<nav_interfaces::srv::SetRouteEdge::Request> req,
-        std::shared_ptr<nav_interfaces::srv::SetRouteEdge::Response> res);
-
 
     void getRouteGraphCallback(
         const std::shared_ptr<nav_interfaces::srv::GetRouteGraph::Request> req,
@@ -118,8 +108,6 @@ private:
     std::function<void()>            save_fn_;
 
     // Services
-    rclcpp::Service<nav_interfaces::srv::SetRouteJunction>::SharedPtr    set_junction_srv_;
-    rclcpp::Service<nav_interfaces::srv::SetRouteEdge>::SharedPtr        set_edge_srv_;
     rclcpp::Service<nav_interfaces::srv::GetRouteGraph>::SharedPtr       get_graph_srv_;
     rclcpp::Service<nav_interfaces::srv::ResolveNavPoints>::SharedPtr    resolve_nav_points_srv_;
 

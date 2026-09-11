@@ -7,9 +7,7 @@
 #include <visualization_msgs/msg/marker_array.hpp>
 
 #include <nav_interfaces/msg/area_info.hpp>
-#include <nav_interfaces/msg/area_info_array.hpp>
-#include <nav_interfaces/srv/set_area.hpp>
-#include <nav_interfaces/msg/asset_manager_state.hpp>
+#include <nav_interfaces/msg/asset_snapshot.hpp>
 
 #include "map_asset_manager/area_manager/area_store.hpp"
 #include "map_asset_manager/data_event_bus.hpp"
@@ -27,13 +25,8 @@ public:
                 std::function<void()> save_fn);
 
     void publishMarkers();
-    void publishAreas();
 
 private:
-    void setAreaCallback(
-        const std::shared_ptr<nav_interfaces::srv::SetArea::Request> req,
-        std::shared_ptr<nav_interfaces::srv::SetArea::Response> res);
-
 
 
     struct Color { float r, g, b; };
@@ -44,10 +37,8 @@ private:
     std::shared_ptr<DataEventBus> event_bus_;
     std::function<void()> save_fn_;
 
-    rclcpp::Service<nav_interfaces::srv::SetArea>::SharedPtr        set_area_srv_;
 
     rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr marker_pub_;
-    rclcpp::Publisher<nav_interfaces::msg::AreaInfoArray>::SharedPtr   areas_pub_;
 
     int prev_marker_count_{0};
 };

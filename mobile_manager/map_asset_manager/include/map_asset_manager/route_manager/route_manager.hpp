@@ -9,8 +9,7 @@
 #include <visualization_msgs/msg/marker_array.hpp>
 
 #include "nav_interfaces/action/navigate_route.hpp"
-#include <nav_interfaces/srv/set_route.hpp>
-#include <nav_interfaces/msg/asset_manager_state.hpp>
+#include <nav_interfaces/msg/asset_snapshot.hpp>
 #include "nav_interfaces/msg/route.hpp"
 #include "nav_interfaces/srv/get_route.hpp"
 
@@ -51,8 +50,6 @@ public:
 
 private:
     // Service 回调
-    void setRouteCallback(const std::shared_ptr<nav_interfaces::srv::SetRoute::Request> req,
-                          std::shared_ptr<nav_interfaces::srv::SetRoute::Response> res);
     void getRouteCallback(const std::shared_ptr<nav_interfaces::srv::GetRoute::Request> req,
                           std::shared_ptr<nav_interfaces::srv::GetRoute::Response> res);
     // Action 回调
@@ -73,7 +70,6 @@ private:
     std::function<void()> save_fn_;
 
     // Services
-    rclcpp::Service<nav_interfaces::srv::SetRoute>::SharedPtr set_route_srv_;
     rclcpp::Service<nav_interfaces::srv::GetRoute>::SharedPtr get_route_srv_;
 
     // Action
