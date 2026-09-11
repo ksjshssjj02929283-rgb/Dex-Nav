@@ -22,9 +22,9 @@ LongitudinalStateEstimatorNode::LongitudinalStateEstimatorNode(
 : nav2_util::LifecycleNode("longitudinal_state_estimator", "", options)
 {
   declare_parameter(
-    "velocity_topic", std::string("/robot_localization/odometry/filtered"));
+    "velocity_topic", std::string("/localization/odometry/filtered"));
   declare_parameter(
-    "acceleration_topic", std::string("/robot_localization/accel/filtered"));
+    "acceleration_topic", std::string("/localization/accel/filtered"));
   declare_parameter("state_topic", state_topic_);
   declare_parameter("diagnostics_topic", diagnostics_topic_);
   declare_parameter("publish_frequency", publish_frequency_);

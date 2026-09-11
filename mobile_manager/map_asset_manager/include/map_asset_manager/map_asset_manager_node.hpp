@@ -7,7 +7,7 @@
 #include <std_msgs/msg/string.hpp>
 #include <nav_interfaces/msg/map_state.hpp>
 #include <nav_interfaces/msg/asset_snapshot.hpp>
-#include <nav_interfaces/msg/asset_manager_state.hpp>
+#include <nav_interfaces/msg/asset_snapshot.hpp>
 #include <nav_interfaces/srv/get_assets.hpp>
 #include <nav_interfaces/srv/set_assets.hpp>
 #include <nav_interfaces/srv/transform_assets.hpp>
@@ -48,7 +48,7 @@ public:
 private:
     void initialize();
     void loadData();
-    void publishStatus();          // 发 ~/state（AssetManagerState）+ ~/assets（AssetSnapshot）
+    void publishStatus();          // 发 ~/assets（AssetSnapshot：六类数组 + loaded + error_code，快照即状态，latched）
     void refreshAllOutputs();      // 各管理器 markers/arrays + status（set_assets / loadData 后统一调用）
     nav_interfaces::msg::AssetSnapshot buildSnapshot() const;
     // X-Wiz 批量接口
@@ -110,7 +110,6 @@ private:
     rclcpp::Service<nav_interfaces::srv::TransformAssets>::SharedPtr transform_assets_srv_;
     rclcpp::Service<nav_interfaces::srv::GetAssets>::SharedPtr get_assets_srv_;
     rclcpp::Service<nav_interfaces::srv::SetAssets>::SharedPtr set_assets_srv_;
-    rclcpp::Publisher<nav_interfaces::msg::AssetManagerState>::SharedPtr state_pub_;
     rclcpp::Publisher<nav_interfaces::msg::AssetSnapshot>::SharedPtr assets_pub_;
     int32_t last_error_code_{0};      // 最近一次 set_assets / save 结果，随 state 发布
     rclcpp::Subscription<nav_interfaces::msg::MapState>::SharedPtr map_state_sub_;

@@ -66,7 +66,7 @@ private:
     int         save_window_end_hour_ = 21;     // 0-23
     int         save_window_end_minute_ = 0;    // 0-59
     double      check_poll_interval_sec_ = 60.0;  // window poll cadence
-    std::string save_service_ = "/localization_node/save_map";
+    std::string save_service_ = "/localization/save_map";
     double      save_service_timeout_sec_ = 30.0;
     double      pose_change_threshold_m_ = 0.10;
     double      yaw_change_threshold_rad_ = 0.05;

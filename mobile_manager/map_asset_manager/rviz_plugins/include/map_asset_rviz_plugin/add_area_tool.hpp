@@ -9,7 +9,7 @@
 #include <OgreSceneNode.h>
 
 #include <geometry_msgs/msg/pose2_d.hpp>
-#include <nav_interfaces/srv/set_area.hpp>
+#include <nav_interfaces/srv/set_assets.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <rviz_common/tool.hpp>
 
@@ -45,8 +45,8 @@ private:
     static Color typeColor(uint32_t type);
 
     rclcpp::Node::SharedPtr node_;
-    rclcpp::Client<nav_interfaces::srv::SetArea>::SharedPtr client_;
-    std::string service_name_{"/map_asset_manager/set_area"};
+    rclcpp::Client<nav_interfaces::srv::SetAssets>::SharedPtr client_;
+    std::string service_name_{"/map_asset_manager/set_assets"};
 
     // 当前区域的预设属性（来自预弹窗）
     std::string area_name_;

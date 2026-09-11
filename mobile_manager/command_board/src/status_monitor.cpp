@@ -37,7 +37,7 @@ StatusMonitor::StatusMonitor(rclcpp::Node* node) : node_(node) {
     auto qos_reliable = rclcpp::QoS(rclcpp::KeepLast(1)).reliable();
 
     odom_sub_ = node_->create_subscription<nav_msgs::msg::Odometry>(
-        "/robot_localization/odometry/filtered", qos_reliable,
+        "/localization/odometry/filtered", qos_reliable,
         std::bind(&StatusMonitor::OnOdom, this, std::placeholders::_1));
 
     task_status_sub_ = node_->create_subscription<std_msgs::msg::String>(
@@ -49,7 +49,7 @@ StatusMonitor::StatusMonitor(rclcpp::Node* node) : node_(node) {
         std::bind(&StatusMonitor::OnDiagnosticsAgg, this, std::placeholders::_1));
 
     localization_sub_ = node_->create_subscription<nav_interfaces::msg::LocalizationState>(
-        "/localization_node/state", qos_reliable,
+        "/localization/state", qos_reliable,
         std::bind(&StatusMonitor::OnLocalizationState, this, std::placeholders::_1));
 
     map_state_sub_ = node_->create_subscription<nav_interfaces::msg::MapState>(
@@ -66,7 +66,7 @@ StatusMonitor::StatusMonitor(rclcpp::Node* node) : node_(node) {
 
     RCLCPP_INFO(node_->get_logger(),
                 "StatusMonitor ready. Subscribed: /feedback/odom, mission_manager/status, "
-                "/diagnostics_agg, /localization_node/state; pose via TF map->base_link. "
+                "/diagnostics_agg, /localization/state; pose via TF map->base_link. "
                 "Publishing: /battery_info, ~/nav_system_status (1 Hz).");
 }
 

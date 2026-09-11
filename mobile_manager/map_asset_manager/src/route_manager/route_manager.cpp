@@ -18,11 +18,6 @@ RouteManager::RouteManager(rclcpp::Node* node,
     route_marker_pub_ = node_->create_publisher<visualization_msgs::msg::MarkerArray>(
         "~/route_markers", rclcpp::QoS(10).transient_local());
 
-    set_route_srv_ = node_->create_service<nav_interfaces::srv::SetRoute>(
-        "~/set_route",
-        std::bind(&RouteManager::setRouteCallback, this,
-                  std::placeholders::_1, std::placeholders::_2));
-
     get_route_srv_ = node_->create_service<nav_interfaces::srv::GetRoute>(
         "~/get_route",
         std::bind(&RouteManager::getRouteCallback, this,
@@ -74,40 +69,6 @@ void RouteManager::onPointRenamed(const std::string& old_name, const std::string
 // ──────────────────────────────────────────────────────────────────────
 // Service 回调
 // ──────────────────────────────────────────────────────────────────────
-
-void RouteManager::setRouteCallback(
-    const std::shared_ptr<nav_interfaces::srv::SetRoute::Request> req,
-    std::shared_ptr<nav_interfaces::srv::SetRoute::Response> res) {
-    using SR = nav_interfaces::srv::SetRoute;
-    using ST = nav_interfaces::msg::AssetManagerState;
-    const std::string& name = req->route.name;
-    if (name.empty()) { res->success = false; res->error_code = ST::E_ASSET_VALIDATION; res->message = "route name is empty"; return; }
-    if (req->mode > SR::Request::MODE_REMOVE) { res->success = false; res->error_code = ST::E_ASSET_MODE_INVALID; res->message = "invalid mode " + std::to_string(req->mode); return; }
-    const bool exists = route_store_->hasRoute(name);
-    if (req->mode == SR::Request::MODE_REMOVE) {
-        if (!exists) { res->success = false; res->error_code = ST::E_ASSET_NOT_FOUND; res->message = "route not found: " + name; return; }
-        route_store_->removeRoute(name);
-        saveToFile();
-        publishAllRouteMarkers();
-        res->success = true; res->error_code = ST::E_NONE;
-        res->message = "route removed: " + name;
-        return;
-    }
-    if (req->mode == SR::Request::MODE_ADD_ONLY && exists)     { res->success = false; res->error_code = ST::E_ASSET_EXISTS;    res->message = "route already exists: " + name; return; }
-    if (req->mode == SR::Request::MODE_UPDATE_ONLY && !exists) { res->success = false; res->error_code = ST::E_ASSET_NOT_FOUND; res->message = "route not found: " + name; return; }
-    if (req->route.point_names.empty()) { res->success = false; res->error_code = ST::E_ASSET_VALIDATION; res->message = "point_names must not be empty"; return; }
-    for (const auto& pt_name : req->route.point_names) {
-        if (!point_store_->hasPoint(pt_name)) { res->success = false; res->error_code = ST::E_ASSET_REF_UNRESOLVED; res->message = "point not found: " + pt_name; return; }
-    }
-    Route route;
-    route.name        = name;
-    route.point_names = req->route.point_names;
-    if (exists) route_store_->updateRoute(route); else route_store_->addRoute(route);
-    saveToFile();
-    publishAllRouteMarkers();
-    res->success = true; res->error_code = ST::E_NONE;
-    res->message = std::string(exists ? "route updated: " : "route added: ") + name;
-}
 
 void RouteManager::getRouteCallback(
     const std::shared_ptr<nav_interfaces::srv::GetRoute::Request> req,

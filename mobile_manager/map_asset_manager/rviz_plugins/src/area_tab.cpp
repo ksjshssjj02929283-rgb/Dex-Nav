@@ -99,8 +99,8 @@ void AreaTab::setServicePrefix(const std::string& prefix) {
 
 void AreaTab::rebuildClients() {
     get_client_    = node_->create_client<nav_interfaces::srv::GetAssets>(prefix_ + "/get_assets");
-    remove_client_ = node_->create_client<nav_interfaces::srv::SetArea>(prefix_ + "/set_area");
-    update_client_ = node_->create_client<nav_interfaces::srv::SetArea>(prefix_ + "/set_area");
+    remove_client_ = node_->create_client<nav_interfaces::srv::SetAssets>(prefix_ + "/set_assets");
+    update_client_ = node_->create_client<nav_interfaces::srv::SetAssets>(prefix_ + "/set_assets");
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -234,13 +234,13 @@ void AreaTab::onRemove() {
     remove_btn_->setEnabled(false);
     status_label_->setText("删除中...");
 
-    auto req = std::make_shared<nav_interfaces::srv::SetArea::Request>();
-    req->mode = nav_interfaces::srv::SetArea::Request::MODE_REMOVE;
-    req->area_info.name = area_name.toStdString();
+    auto req = std::make_shared<nav_interfaces::srv::SetAssets::Request>(); req->areas.resize(1);
+    req->mode = nav_interfaces::srv::SetAssets::Request::MODE_REMOVE;
+    req->areas[0].name = area_name.toStdString();
 
     remove_client_->async_send_request(
         req,
-        [this](rclcpp::Client<nav_interfaces::srv::SetArea>::SharedFuture fut) {
+        [this](rclcpp::Client<nav_interfaces::srv::SetAssets>::SharedFuture fut) {
             try {
                 auto resp = fut.get();
                 if (resp->success) {
@@ -369,21 +369,21 @@ void AreaTab::onEdit() {
     if (dlg.exec() != QDialog::Accepted) return;
 
     // 组装 request：保留原 polygon + related_*（only-read），其它字段用 UI 值
-    auto req = std::make_shared<nav_interfaces::srv::SetArea::Request>();
-    req->mode = nav_interfaces::srv::SetArea::Request::MODE_UPDATE_ONLY;
-    req->area_info.name             = name.toStdString();
-    req->area_info.type             = type_combo->currentData().toUInt();
-    req->area_info.max_speed        = static_cast<float>(max_speed_spin->value());
-    req->area_info.stop_distance    = static_cast<float>(stop_dist_spin->value());
-    req->area_info.depth_min_height = static_cast<float>(depth_min_spin->value());
-    req->area_info.charger_type     = charger_combo->currentData().toString().toStdString();
-    req->area_info.attribute        = attribute_edit->text().trimmed().toStdString();
+    auto req = std::make_shared<nav_interfaces::srv::SetAssets::Request>(); req->areas.resize(1);
+    req->mode = nav_interfaces::srv::SetAssets::Request::MODE_UPDATE_ONLY;
+    req->areas[0].name             = name.toStdString();
+    req->areas[0].type             = type_combo->currentData().toUInt();
+    req->areas[0].max_speed        = static_cast<float>(max_speed_spin->value());
+    req->areas[0].stop_distance    = static_cast<float>(stop_dist_spin->value());
+    req->areas[0].depth_min_height = static_cast<float>(depth_min_spin->value());
+    req->areas[0].charger_type     = charger_combo->currentData().toString().toStdString();
+    req->areas[0].attribute        = attribute_edit->text().trimmed().toStdString();
 
     // 关联 NavPoint：逗号 / 分号分隔
     QStringList linked_parts = linked_edit->text().split(QRegExp("[,;，；]"), Qt::SkipEmptyParts);
     for (const auto& s : linked_parts) {
         QString trimmed = s.trimmed();
-        if (!trimmed.isEmpty()) req->area_info.manual_linked_point_names.push_back(trimmed.toStdString());
+        if (!trimmed.isEmpty()) req->areas[0].manual_linked_point_names.push_back(trimmed.toStdString());
     }
 
     // 保留原 polygon
@@ -394,7 +394,7 @@ void AreaTab::onEdit() {
         pose.x     = pm["x"].toDouble();
         pose.y     = pm["y"].toDouble();
         pose.theta = pm["theta"].toDouble();
-        req->area_info.polygon.push_back(pose);
+        req->areas[0].polygon.push_back(pose);
     }
 
     edit_btn_->setEnabled(false);
@@ -402,7 +402,7 @@ void AreaTab::onEdit() {
 
     update_client_->async_send_request(
         req,
-        [this, name](rclcpp::Client<nav_interfaces::srv::SetArea>::SharedFuture fut) {
+        [this, name](rclcpp::Client<nav_interfaces::srv::SetAssets>::SharedFuture fut) {
             try {
                 auto resp = fut.get();
                 if (resp->success) {

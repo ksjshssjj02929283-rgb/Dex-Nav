@@ -23,19 +23,10 @@ RoomManager::RoomManager(rclcpp::Node* node,
     // Publishers
     marker_pub_ = node_->create_publisher<visualization_msgs::msg::MarkerArray>(
         "~/room_markers", rclcpp::QoS(10).transient_local());
-    rooms_pub_ = node_->create_publisher<nav_interfaces::msg::RoomInfoArray>(
-        "~/rooms", rclcpp::QoS(10).transient_local());
 
     // Services
-    set_room_srv_ = node_->create_service<nav_interfaces::srv::SetRoom>(
-        "~/set_room",
-        [this](const std::shared_ptr<nav_interfaces::srv::SetRoom::Request> req,
-               std::shared_ptr<nav_interfaces::srv::SetRoom::Response> res) {
-            setRoomCallback(req, res);
-        });
-
     RCLCPP_INFO(node_->get_logger(),
-                "RoomManager: initialized (set_room service, rooms topic)");
+                "RoomManager: initialized (assets via set_assets)");
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -44,61 +35,9 @@ RoomManager::RoomManager(rclcpp::Node* node,
 
 
 
-void RoomManager::setRoomCallback(
-    const std::shared_ptr<nav_interfaces::srv::SetRoom::Request> req,
-    std::shared_ptr<nav_interfaces::srv::SetRoom::Response> res) {
-    using SR = nav_interfaces::srv::SetRoom;
-    using ST = nav_interfaces::msg::AssetManagerState;
-    const auto& msg = req->room;
-    if (msg.name.empty()) { res->success = false; res->error_code = ST::E_ASSET_VALIDATION; res->message = "room name is empty"; return; }
-    if (req->mode > SR::Request::MODE_REMOVE) { res->success = false; res->error_code = ST::E_ASSET_MODE_INVALID; res->message = "invalid mode " + std::to_string(req->mode); return; }
-    const bool exists = room_store_->hasRoom(msg.name);
-    if (req->mode == SR::Request::MODE_REMOVE) {
-        if (!exists) { res->success = false; res->error_code = ST::E_ASSET_NOT_FOUND; res->message = "room not found: " + msg.name; return; }
-        room_store_->removeRoom(msg.name);
-        save_fn_();
-        publishMarkers();
-        publishRooms();
-        if (event_bus_) event_bus_->publish({AssetEventType::ROOM_REMOVED, msg.name, ""});
-        RCLCPP_INFO(node_->get_logger(), "set_room: removed '%s'", msg.name.c_str());
-        res->success = true; res->error_code = ST::E_NONE;
-        res->message = "removed";
-        return;
-    }
-    if (msg.polygon.size() < 3) { res->success = false; res->error_code = ST::E_ASSET_VALIDATION; res->message = "polygon needs at least 3 vertices"; return; }
-    if (req->mode == SR::Request::MODE_ADD_ONLY && exists)     { res->success = false; res->error_code = ST::E_ASSET_EXISTS;    res->message = "room already exists: " + msg.name; return; }
-    if (req->mode == SR::Request::MODE_UPDATE_ONLY && !exists) { res->success = false; res->error_code = ST::E_ASSET_NOT_FOUND; res->message = "room not found: " + msg.name; return; }
-    Room room = fromMsg(msg);
-    const std::string src = room.source.empty() ? DSGSource::MANUAL : room.source;
-    room.source = src;
-    room = enrich(std::move(room), src, node_->now());
-    if (exists) room_store_->updateRoom(room); else room_store_->addRoom(room);
-    save_fn_();
-    publishMarkers();
-    publishRooms();
-    if (event_bus_) event_bus_->publish({exists ? AssetEventType::ROOM_UPDATED : AssetEventType::ROOM_ADDED, room.name, ""});
-    RCLCPP_INFO(node_->get_logger(), "set_room: %s '%s' type=%u source=%s vertices=%zu id=%s",
-                exists ? "updated" : "added", room.name.c_str(), room.type, room.source.c_str(), room.polygon.size(), room.id.c_str());
-    res->success = true; res->error_code = ST::E_NONE;
-    res->message = exists ? "updated" : "added";
-}
-
 // ──────────────────────────────────────────────────────────────────────
 // 发布
 // ──────────────────────────────────────────────────────────────────────
-
-void RoomManager::publishRooms() {
-    nav_interfaces::msg::RoomInfoArray arr;
-    arr.header.frame_id = "map";
-    arr.header.stamp = node_->now();
-
-    auto all_rooms = room_store_->getAllRooms();
-    arr.rooms.reserve(all_rooms.size());
-    for (const auto& room : all_rooms) {
-        arr.rooms.push_back(toMsg(room));
-    }
-    rooms_pub_->publish(arr);
-}
 
 void RoomManager::publishMarkers() {
     auto all_rooms = room_store_->getAllRooms();
