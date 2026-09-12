@@ -39,6 +39,10 @@ CommandBoardManagerROS::CommandBoardManagerROS() : rclcpp::Node("command_board_m
         this->declare_parameter("service_wait_timeout_sec", service_wait_timeout_sec_);
     react_to_estop_  = this->declare_parameter("react_to_estop", react_to_estop_);
     react_to_bumper_ = this->declare_parameter("react_to_bumper", react_to_bumper_);
+    cancel_schedule_planner_ =
+        this->declare_parameter("cancel_schedule_planner", cancel_schedule_planner_);
+    schedule_planner_cancel_service_ =
+        this->declare_parameter("schedule_planner_cancel_service", schedule_planner_cancel_service_);
 
     // 单一状态源：/diagnostics_agg、/localization_node/state 由 StatusMonitor 唯一订阅聚合，
     // 本节点不再重复订阅，改在 OnRecoverTimer 轮询 GetSnapshot 读取。
@@ -52,6 +56,8 @@ CommandBoardManagerROS::CommandBoardManagerROS() : rclcpp::Node("command_board_m
     tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
     // ── 服务客户端 ────────────────────────────────────────────────
+    schedule_planner_cancel_cli_ =
+        this->create_client<std_srvs::srv::Trigger>(schedule_planner_cancel_service_);
     stop_localization_cli_ = this->create_client<std_srvs::srv::Trigger>("/localization_node/stop_localization");
     start_localization_cli_ = this->create_client<std_srvs::srv::Trigger>("/localization_node/start_localization");
     load_map_cli_ = this->create_client<nav_interfaces::srv::LoadMap>("map_manager/load_map");
@@ -214,6 +220,8 @@ bool CommandBoardManagerROS::DoResetCurrentMapOrigin(double x, double y, double 
     // ── 步骤 ①：停止导航 ─────────────────────────────────────────
     RCLCPP_INFO(get_logger(), "[Reset] Step 1: cancel navigation");
     navigation_action_client_->async_cancel_all_goals();
+    // 地图原点马上要被挪，路网任务更不能留着：它跟的是旧原点下的一串点
+    CancelSchedulePlannerRoute("map origin reset");
     std::this_thread::sleep_for(300ms);
 
     // ── 步骤 ②：停止定位 ─────────────────────────────────────────
@@ -437,6 +445,8 @@ void CommandBoardManagerROS::OnRecoverTimer() {
                         (react_to_bumper_ && (snap.bumper_front_active || snap.bumper_rear_active));
     if (active && !safety_active_) {
         navigation_action_client_->async_cancel_all_goals();
+        // 路网任务跑在 NavigateThroughGraphPoints 上，上面那刀砍不到它
+        CancelSchedulePlannerRoute("safety active");
         localization_sm_->LocalizationFailed();
         RCLCPP_WARN(this->get_logger(),
                     "Safety active (estop=%d bumper=%d) — cancel navigation%s",
@@ -532,6 +542,30 @@ bool CommandBoardManagerROS::RobotIsStill() const {
     const double v = std::hypot(snap.velocity.linear.x, snap.velocity.linear.y);
     const double w = std::abs(snap.velocity.angular.z);
     return v < velocity_still_threshold_ && w < velocity_still_threshold_;
+}
+
+void CommandBoardManagerROS::CancelSchedulePlannerRoute(const std::string& why) {
+    if (!cancel_schedule_planner_ || !schedule_planner_cancel_cli_) return;
+
+    // 服务不在（schedule_planner 没起、或本来就不跑路网任务）是常态，不是错误；
+    // 但也不能默默跳过——真有任务在跑时这就是"没取消掉"，必须留痕
+    if (!schedule_planner_cancel_cli_->service_is_ready()) {
+        RCLCPP_WARN(get_logger(),
+                    "Route cancel skipped (%s): %s is not available; "
+                    "if a graph route task is running it will keep going",
+                    why.c_str(), schedule_planner_cancel_service_.c_str());
+        return;
+    }
+
+    // 带回调的单发：不阻塞调用点，同时把应答消费掉（丢弃 future 会让应答一直挂在客户端上）
+    schedule_planner_cancel_cli_->async_send_request(
+        std::make_shared<std_srvs::srv::Trigger::Request>(),
+        [this, why](rclcpp::Client<std_srvs::srv::Trigger>::SharedFuture future) {
+            const auto res = future.get();
+            RCLCPP_WARN(get_logger(), "Route cancel (%s) -> success=%d, %s",
+                        why.c_str(), res->success, res->message.c_str());
+        });
+    RCLCPP_WARN(get_logger(), "Cancelling schedule_planner route task (%s)", why.c_str());
 }
 
 void CommandBoardManagerROS::StopLocalization() {

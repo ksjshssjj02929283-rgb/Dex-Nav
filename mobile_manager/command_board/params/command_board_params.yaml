@@ -23,5 +23,14 @@
       battery_soc_skip_below: 10          # SOC < 此值则跳过；-1 = 禁用电量检查
       skip_when_task_not_idle: true
 
+    # ── 安全响应（代码默认值，需要时才在这里 override）──────────
+    # react_to_estop / react_to_bumper: true  —— 急停、防撞条触发时取消导航
+    # 急停时除了取消 /navigate_to_pose，还会调下面这个服务取消 schedule_planner 的
+    # 路网任务（NavigateThroughGraphPoints）。两者是两套 action，只砍前者的话急停后
+    # 路网 goal 仍是 active：车停了任务没结束，要等 segment_timeout（默认 300 s）才超时；
+    # 期间松开急停且定位恢复，path_follower 会接着原路径继续走。
+    # cancel_schedule_planner: true
+    # schedule_planner_cancel_service: "/schedule_planner/force_cancel"
+
     # ── Phase 3.4 预留（功能未实现，代码暂未 declare）──
     # initial_mode / auto_recover_from_emergency / localization_loss_grace_sec / topic_timeout_sec

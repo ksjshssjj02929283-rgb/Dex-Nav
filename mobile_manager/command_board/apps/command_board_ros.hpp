@@ -62,6 +62,16 @@ private:
     // 内部：完整重置流程（仅用于当前地图 + RobotPose 入口）
     bool DoResetCurrentMapOrigin(double x, double y, double yaw, std::string& out_msg);
 
+    /// 取消 schedule_planner 正在执行的路网任务（NavigateThroughGraphPoints）。
+    ///
+    /// 为什么需要单独一刀：navigation_action_client_ 只认 /navigate_to_pose，而路网任务
+    /// 跑在另一套 action 上，不取消的话急停后 goal 仍是 active——车停了、任务没结束，
+    /// 要等 schedule_planner 的 segment_timeout（默认 300 s）才超时收尾；期间松开急停
+    /// 且定位恢复的话，path_follower 的 route_ 还在，会直接接着原路径继续走。
+    ///
+    /// 异步单发、不等应答：调用点在 200 ms 定时器和重置流程里，都不能阻塞。
+    void CancelSchedulePlannerRoute(const std::string& why);
+
     // 内部：采样 TF map→base_link，返回 N 帧均值（循环等待最多 timeout_sec）
     bool SampleRobotPose(int n_frames, double timeout_sec, double& out_x, double& out_y, double& out_yaw);
 
@@ -75,12 +85,18 @@ private:
     double service_wait_timeout_sec_{3.0};
     bool   react_to_estop_{true};
     bool   react_to_bumper_{true};
+    /// 急停/碰撞（以及重置地图原点）时是否一并取消 schedule_planner 的路网任务。
+    /// 取消走它的 force_cancel 服务而不是 action cancel：该服务无论有没有 active goal
+    /// 都会兜底停车，且本节点不必 depend nav_interfaces 去拿 action 类型
+    bool   cancel_schedule_planner_{true};
+    std::string schedule_planner_cancel_service_{"/schedule_planner/force_cancel"};
 
     rclcpp::CallbackGroup::SharedPtr callback_group_;
 
     rclcpp_action::Client<nav2_msgs::action::NavigateToPose>::SharedPtr navigation_action_client_;
 
     // 定位控制 & 地图管理服务客户端
+    rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr schedule_planner_cancel_cli_;
     rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr stop_localization_cli_;
     rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr start_localization_cli_;
     rclcpp::Client<nav_interfaces::srv::LoadMap>::SharedPtr load_map_cli_;
