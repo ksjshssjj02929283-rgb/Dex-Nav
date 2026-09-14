@@ -37,6 +37,10 @@ struct OptimizerSettings
   unsigned int time_steps{0};
   unsigned int iteration_count{0};
   bool open_loop{false};
+  bool use_cuda{true};
+  bool cuda_score_far_downsample{false};
+  float cuda_score_far_start_ratio{0.5f};
+  unsigned int cuda_score_far_stride{2};
   bool shift_control_sequence{false};
   size_t retry_attempt_limit{0};
 };

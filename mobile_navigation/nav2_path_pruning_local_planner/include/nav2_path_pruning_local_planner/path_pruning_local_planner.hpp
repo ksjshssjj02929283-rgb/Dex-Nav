@@ -48,6 +48,10 @@ private:
     double distance_sq{0.0};
   };
 
+  /// local costmap 的 global frame。costmap_ros_ 为空时返回空串
+  /// —— 它是可选依赖，所有访问必须判空。
+  std::string costmapFrame() const;
+
   void rebuildArcLengths();
   Projection projectOntoPlan(
     const geometry_msgs::msg::PoseStamped & robot_pose,
@@ -59,6 +63,8 @@ private:
 
   rclcpp_lifecycle::LifecycleNode::WeakPtr node_;
   std::shared_ptr<tf2_ros::Buffer> tf_;
+  /// 由 controller server 传入的 local costmap；可为空，访问须判空。
+  std::shared_ptr<nav2_costmap_2d::Costmap2DROS> costmap_ros_;
   rclcpp::Logger logger_{rclcpp::get_logger("PathPruningLocalPlanner")};
   rclcpp::Clock::SharedPtr clock_;
   std::string plugin_name_;
@@ -69,7 +75,9 @@ private:
   bool progress_initialized_{false};
   double progress_arc_{0.0};
 
-  double max_search_distance_{5.0};
+  /// 投影搜索窗口上界，不是输出长度上限：输出始终是投影点到全局终点的
+  /// 全部剩余路径。
+  double max_projection_search_distance_{5.0};
   double max_backtrack_distance_{0.5};
   double transform_tolerance_{0.2};
   std::mutex mutex_;

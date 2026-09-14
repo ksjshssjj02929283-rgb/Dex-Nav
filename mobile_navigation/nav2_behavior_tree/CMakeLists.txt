@@ -141,6 +141,13 @@ list(APPEND plugin_libs nav2_reinitialize_global_localization_service_bt_node)
 add_library(nav2_rate_controller_bt_node SHARED plugins/decorator/rate_controller.cpp)
 list(APPEND plugin_libs nav2_rate_controller_bt_node)
 
+add_library(nav2_adaptive_replanning_decorator_bt_node SHARED plugins/decorator/adaptive_replanning_decorator.cpp)
+list(APPEND plugin_libs nav2_adaptive_replanning_decorator_bt_node)
+
+add_library(nav2_request_and_wait_for_global_replan_action_bt_node SHARED
+  plugins/action/request_and_wait_for_global_replan_action.cpp)
+list(APPEND plugin_libs nav2_request_and_wait_for_global_replan_action_bt_node)
+
 add_library(nav2_distance_controller_bt_node SHARED plugins/decorator/distance_controller.cpp)
 list(APPEND plugin_libs nav2_distance_controller_bt_node)
 

@@ -218,11 +218,12 @@ geometry_msgs::msg::TwistStamped MPPIController::computeVelocityCommands(
 {
   constexpr double kSlowTimingWarnMs = 100.0;  // 100.0
   auto t_total_start = std::chrono::high_resolution_clock::now();
+  auto now = clock_->now();
 
-  if (clock_->now() - last_time_called_ > rclcpp::Duration::from_seconds(reset_period_)) {
+  if (now - last_time_called_ > rclcpp::Duration::from_seconds(reset_period_)) {
     reset();
   }
-  last_time_called_ = clock_->now();
+  last_time_called_ = now;
 
   std::lock_guard<std::mutex> param_lock(*parameters_handler_->getLock());
 
@@ -324,7 +325,7 @@ geometry_msgs::msg::TwistStamped MPPIController::computeVelocityCommands(
       transform_ms, wait_lock_ms, optimize_ms, visualize_ms, total_ms);
   }
 
-  // ── 关键运行 log（节流 1Hz）：阶段 / 到目标距离 / 到点精度(lon/lat/yaw,目标系) / 本周期耗时 / 命令 vs 实际 ──
+  // 关键运行日志（1 Hz）：控制阶段、目标误差、周期耗时以及命令/实际速度。
   RCLCPP_INFO_THROTTLE(
     logger_, *clock_, 1000,
     "[MPPI] stage=%s mode=%s substage=%s goal_dist=%.3fm "
@@ -1426,7 +1427,9 @@ void MPPIController::updateProfileTransition()
 
 void MPPIController::visualize(nav_msgs::msg::Path transformed_plan)
 {
-  trajectory_visualizer_.add(optimizer_.getGeneratedTrajectories(), "Candidate Trajectories");
+  trajectory_visualizer_.addWeighted(
+    optimizer_.getGeneratedTrajectories(), optimizer_.getTrajectoryWeights(),
+    "High Weight Trajectories");
   trajectory_visualizer_.add(optimizer_.getOptimizedTrajectory(), "Optimal Trajectory");
   trajectory_visualizer_.visualize(std::move(transformed_plan));
 }

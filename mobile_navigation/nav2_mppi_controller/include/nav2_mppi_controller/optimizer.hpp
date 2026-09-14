@@ -38,6 +38,7 @@
 #include "nav2_mppi_controller/tools/noise_generator.hpp"
 #include "nav2_mppi_controller/tools/parameters_handler.hpp"
 #include "nav2_mppi_controller/tools/utils.hpp"
+#include "nav2_mppi_controller/cuda/cuda_optimizer.hpp"
 
 namespace mppi
 {
@@ -116,6 +117,9 @@ public:
    */
   models::Matrix getOptimizedTrajectory();
 
+  /** @brief Normalized softmax weights of the last evaluated candidate trajectories. */
+  const models::Vector & getTrajectoryWeights() const {return trajectory_weights_;}
+
   /**
    * @brief Set the maximum speed based on the speed limits callback
    * @param speed_limit Limit of the speed for use
@@ -141,6 +145,12 @@ public:
    * @return Active optimizer constraints used for sampling and output clipping
    */
   const models::ControlConstraints & getActiveConstraints() const {return settings_.constraints;}
+
+  /**
+   * @brief Whether CUDA backend is enabled and available
+   * @return True if CUDA is enabled and available
+   */
+  bool isCudaAvailable() const { return settings_.use_cuda && cuda_optimizer_.isCudaAvailable(); }
 
   /**
    * @brief Whether a speed limit from costmap filter is currently active
@@ -234,6 +244,11 @@ protected:
   void updateInitialStateVelocities(models::State & state) const;
 
   /**
+   * @brief Populate state velocities with the same column convention as MotionModel::predict
+   */
+  void rebuildStateVelocitiesFromControls(models::State & state) const;
+
+  /**
    * @brief predict velocities in state using model
    * for time horizon equal to timesteps
    * @param state fill state
@@ -321,6 +336,7 @@ protected:
   ParametersHandler * parameters_handler_;
   CriticManager critic_manager_;
   NoiseGenerator noise_generator_;
+  cuda::CudaOptimizer cuda_optimizer_;
 
   models::OptimizerSettings settings_;
   bool speed_limit_active_{false};
@@ -336,10 +352,18 @@ protected:
   models::Trajectories generated_trajectories_;
   models::Path path_;
   models::Vector costs_;
+  models::Vector trajectory_weights_;
+  bool adaptive_temperature_{false};
+  float temperature_min_{1.0f};
+  float temperature_max_{8.0f};
+  float target_ess_ratio_{0.1f};
+  float temperature_adaptation_gain_{0.35f};
+  float runtime_temperature_{0.3f};
+  float last_effective_sample_size_{0.0f};
 
   CriticData critics_data_ =
   {state_, generated_trajectories_, path_, costs_, settings_.model_dt, false, nullptr, nullptr,
-    std::nullopt, std::nullopt};  /// Caution, keep references
+    std::nullopt, std::nullopt, nullptr, false};  /// Caution, keep references
 
   rclcpp::Logger logger_{rclcpp::get_logger("MPPIController")};
 };

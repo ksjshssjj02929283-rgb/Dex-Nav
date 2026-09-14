@@ -23,6 +23,7 @@
 #include <cmath>
 
 #include "nav2_costmap_2d/costmap_filters/filter_values.hpp"
+#include "rclcpp/rclcpp.hpp"
 
 namespace mppi
 {
@@ -51,6 +52,7 @@ void Optimizer::initialize(
 
 void Optimizer::shutdown()
 {
+  cuda_optimizer_.shutdown();
   noise_generator_.shutdown();
 }
 
@@ -82,7 +84,29 @@ void Optimizer::getParams()
   getParam(s.sampling_std.vy, "vy_std", 0.2);
   getParam(s.sampling_std.wz, "wz_std", 0.4);
   getParam(s.retry_attempt_limit, "retry_attempt_limit", 1);
+  getParam(adaptive_temperature_, "adaptive_temperature", false);
+  getParam(temperature_min_, "temperature_min", 1.0f);
+  getParam(temperature_max_, "temperature_max", 8.0f);
+  getParam(target_ess_ratio_, "target_ess_ratio", 0.1f);
+  getParam(temperature_adaptation_gain_, "temperature_adaptation_gain", 0.35f);
+  temperature_min_ = std::max(1e-3f, temperature_min_);
+  temperature_max_ = std::max(temperature_min_, temperature_max_);
+  target_ess_ratio_ = std::clamp(target_ess_ratio_, 1e-3f, 1.0f);
+  temperature_adaptation_gain_ = std::clamp(temperature_adaptation_gain_, 0.0f, 1.0f);
+  runtime_temperature_ = std::clamp(s.temperature, temperature_min_, temperature_max_);
   getParam(s.open_loop, "open_loop", false);
+  getParam(s.use_cuda, "use_cuda", true);
+  getParam(s.cuda_score_far_downsample, "cuda_score_far_downsample", false);
+  getParam(s.cuda_score_far_start_ratio, "cuda_score_far_start_ratio", 0.5f);
+  int cuda_score_far_stride = 2;
+  getParam(cuda_score_far_stride, "cuda_score_far_stride", 2);
+  s.cuda_score_far_start_ratio = std::clamp(s.cuda_score_far_start_ratio, 0.0f, 1.0f);
+  s.cuda_score_far_stride = static_cast<unsigned int>(std::max(1, cuda_score_far_stride));
+  RCLCPP_INFO(logger_, "MPPI Optimizer use_cuda configuration set to: %s", s.use_cuda ? "ENABLED" : "DISABLED");
+  RCLCPP_INFO(
+    logger_, "MPPI CUDA far score downsampling: %s (start=%.2f, stride=%u)",
+    s.cuda_score_far_downsample ? "ENABLED" : "DISABLED",
+    s.cuda_score_far_start_ratio, s.cuda_score_far_stride);
 
   // 确保加速度参数符号正确
   s.base_constraints.ax_max = fabs(s.base_constraints.ax_max);
@@ -144,10 +168,20 @@ void Optimizer::reset()
   }
 
   costs_ = models::Vector::Zero(settings_.batch_size);
+  trajectory_weights_ = models::Vector::Zero(settings_.batch_size);
+  runtime_temperature_ = std::clamp(
+    settings_.temperature, temperature_min_, temperature_max_);
+  last_effective_sample_size_ = static_cast<float>(settings_.batch_size);
   generated_trajectories_.reset(settings_.batch_size, settings_.time_steps);
 
   noise_generator_.reset(settings_, isHolonomic());
   motion_model_->initialize(settings_.constraints, settings_.model_dt);
+  cuda_optimizer_.shutdown();
+  if (settings_.use_cuda) {
+    const bool available = cuda_optimizer_.initialize(
+      settings_.batch_size, settings_.time_steps, settings_.model_dt, isHolonomic());
+    RCLCPP_INFO(logger_, "MPPI CUDA rollout/critic backend: %s", available ? "enabled" : "unavailable; using CPU");
+  }
   RCLCPP_INFO(logger_, "Optimizer reset");
 }
 
@@ -248,6 +282,11 @@ void Optimizer::prepare(
   critics_data_.motion_model = motion_model_;
   critics_data_.furthest_reached_path_point.reset();
   critics_data_.path_pts_valid.reset();
+  critics_data_.cuda_optimizer = &cuda_optimizer_;
+  critics_data_.use_cuda = settings_.use_cuda && cuda_optimizer_.isCudaAvailable();
+  critics_data_.cuda_score_far_downsample = settings_.cuda_score_far_downsample;
+  critics_data_.cuda_score_far_start_ratio = settings_.cuda_score_far_start_ratio;
+  critics_data_.cuda_score_far_stride = settings_.cuda_score_far_stride;
 }
 
 void Optimizer::shiftControlSequence()
@@ -270,6 +309,37 @@ void Optimizer::shiftControlSequence()
 
 void Optimizer::generateNoisedTrajectories()
 {
+  if (settings_.use_cuda && cuda_optimizer_.isCudaAvailable()) {
+    const cuda::CudaState initial_state{
+      static_cast<float>(state_.pose.pose.position.x),
+      static_cast<float>(state_.pose.pose.position.y),
+      static_cast<float>(tf2::getYaw(state_.pose.pose.orientation)),
+      static_cast<float>(state_.speed.linear.x),
+      static_cast<float>(state_.speed.linear.y),
+      static_cast<float>(state_.speed.angular.z)};
+    const std::vector<float> control_vx(
+      control_sequence_.vx.data(), control_sequence_.vx.data() + control_sequence_.vx.size());
+    const std::vector<float> control_wz(
+      control_sequence_.wz.data(), control_sequence_.wz.data() + control_sequence_.wz.size());
+    std::vector<float> control_vy;
+    if (isHolonomic()) {
+      control_vy.assign(
+        control_sequence_.vy.data(), control_sequence_.vy.data() + control_sequence_.vy.size());
+    }
+
+    if (cuda_optimizer_.generateNoisedTrajectories(
+        initial_state, control_vx, control_vy, control_wz,
+        settings_.constraints, settings_.sampling_std,
+        generated_trajectories_.x.data(), generated_trajectories_.y.data(),
+        generated_trajectories_.yaws.data(), state_.cvx.data(),
+        isHolonomic() ? state_.cvy.data() : nullptr, state_.cwz.data()))
+    {
+      rebuildStateVelocitiesFromControls(state_);
+      return;
+    }
+    RCLCPP_WARN(logger_, "MPPI CUDA rollout failed; falling back to CPU for this iteration");
+  }
+
   noise_generator_.setNoisedControls(state_, control_sequence_);
   noise_generator_.generateNextNoises();
   updateStateVelocities(state_);
@@ -367,6 +437,19 @@ void Optimizer::updateInitialStateVelocities(
 
   if (isHolonomic()) {
     state.vy.col(0).setConstant(state.speed.linear.y);
+  }
+}
+
+void Optimizer::rebuildStateVelocitiesFromControls(models::State & state) const
+{
+  updateInitialStateVelocities(state);
+  if (state.vx.cols() < 2) {
+    return;
+  }
+  state.vx.rightCols(state.vx.cols() - 1) = state.cvx.leftCols(state.cvx.cols() - 1);
+  state.wz.rightCols(state.wz.cols() - 1) = state.cwz.leftCols(state.cwz.cols() - 1);
+  if (isHolonomic()) {
+    state.vy.rightCols(state.vy.cols() - 1) = state.cvy.leftCols(state.cvy.cols() - 1);
   }
 }
 
@@ -475,8 +558,25 @@ void Optimizer::updateControlSequence()
   }
 
   const auto costs_normalized = costs_ - costs_.minCoeff();
-  const auto exponents = (-1.0f / settings_.temperature * costs_normalized).exp();
-  const models::Vector softmaxes = exponents / exponents.sum();
+  const float temperature = adaptive_temperature_ ? runtime_temperature_ : settings_.temperature;
+  const auto exponents = (-1.0f / std::max(temperature, 1e-4f) * costs_normalized).exp();
+  const float exponent_sum = exponents.sum();
+  const models::Vector softmaxes =
+    std::isfinite(exponent_sum) && exponent_sum > 1e-12f ?
+    models::Vector(exponents / exponent_sum) :
+    models::Vector::Constant(exponents.size(), 1.0f / static_cast<float>(exponents.size()));
+  trajectory_weights_ = softmaxes;
+
+  const float squared_weight_sum = softmaxes.square().sum();
+  last_effective_sample_size_ = 1.0f / std::max(squared_weight_sum, 1e-12f);
+  if (adaptive_temperature_) {
+    const float target_ess = std::max(
+      1.0f, target_ess_ratio_ * static_cast<float>(softmaxes.size()));
+    const float log_error = std::log(target_ess / last_effective_sample_size_);
+    runtime_temperature_ = std::clamp(
+      runtime_temperature_ * std::exp(temperature_adaptation_gain_ * log_error),
+      temperature_min_, temperature_max_);
+  }
 
   for (Eigen::Index i = 0; i < state_.cvx.cols(); ++i) {
     control_sequence_.vx(i) = (state_.cvx.col(i) * softmaxes).sum();

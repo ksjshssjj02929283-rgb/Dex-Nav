@@ -15,7 +15,6 @@
 
 #include <memory>
 #include <string>
-#include <vector>
 
 // 前向声明
 class AutoChargingNode;
@@ -26,13 +25,12 @@ class ReverseDockingBtController;
 // ==================== ROS节点类 ====================
 class AutoChargingNode : public rclcpp::Node {
 public:
-    enum class ChargerState { UNKNOWN = 0, CHARGING = 1, CONNECTED_NOT_CHARGING = 2, DISCONNECTED = 3 };
+    enum class ChargerState { UNKNOWN = 0, CHARGING = 1, DISCONNECTED = 2 };
 
     AutoChargingNode();
 
     void cbDiagnostics(const diagnostic_msgs::msg::DiagnosticArray::SharedPtr msg);
     bool isCharging() const { return is_charging_; }
-    bool isConnectedToCharger() const { return is_connected_to_charger_; }
     double getBatteryPercentage() const { return battery_percentage_; }
     ChargerState confirmEntryChargerState();
     const char* chargerStateName(ChargerState state) const;
@@ -47,7 +45,6 @@ public:
     std::string isNavDone();
     void cancelNav();
     void publishTwist(double linear_x, double angular_z);
-    int runSubprocess(const std::vector<std::string>& cmd);
     void backward();
     void relieveDockingPressure();
     void undocking(double duration);
@@ -61,7 +58,6 @@ private:
     rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr start_detection_client_;
     rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr stop_detection_client_;
     bool is_charging_ = false;
-    bool is_connected_to_charger_ = false;
     bool apriltag_detection_running_ = false;
     double battery_percentage_ = -1.0;
 
@@ -142,13 +138,6 @@ public:
 class IsCharging : public BT::ConditionNode {
 public:
     IsCharging(const std::string& name, const BT::NodeConfiguration& config);
-    static BT::PortsList providedPorts();
-    BT::NodeStatus tick() override;
-};
-
-class IsConnectedToCharger : public BT::ConditionNode {
-public:
-    IsConnectedToCharger(const std::string& name, const BT::NodeConfiguration& config);
     static BT::PortsList providedPorts();
     BT::NodeStatus tick() override;
 };

@@ -15,7 +15,9 @@
 #ifndef NAV2_CONTROLLER__CONTROLLER_SERVER_HPP_
 #define NAV2_CONTROLLER__CONTROLLER_SERVER_HPP_
 
+#include <atomic>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <string>
 #include <thread>
@@ -24,13 +26,16 @@
 #include <mutex>
 
 #include "nav2_core/controller.hpp"
+#include "nav2_core/end_localization.hpp"
 #include "nav2_core/progress_checker.hpp"
 #include "nav2_core/goal_checker.hpp"
 #include "nav2_core/local_planner.hpp"
 #include "nav2_core/speed_planner.hpp"
 #include "nav2_costmap_2d/costmap_2d_ros.hpp"
-#include "nav2_speed_planner/speed_plan_state.hpp"
+#include "nav2_longitudinal_state_estimator/msg/longitudinal_state.hpp"
+#include "nav2_speed_planner/core/initial_motion.hpp"
 #include "nav_interfaces/msg/robot_trajectory.hpp"
+#include "nav_interfaces/msg/navigation_status.hpp"
 #include "tf2_ros/transform_listener.h"
 #include "nav2_msgs/action/follow_path.hpp"
 #include "nav2_msgs/msg/speed_limit.hpp"
@@ -39,6 +44,7 @@
 #include "visualization_msgs/msg/marker_array.hpp"
 #include "std_msgs/msg/string.hpp"
 #include "std_msgs/msg/empty.hpp"
+#include "std_msgs/msg/u_int64.hpp"
 #include "nav_2d_utils/odom_subscriber.hpp"
 #include "nav2_util/lifecycle_node.hpp"
 #include "nav2_util/simple_action_server.hpp"
@@ -63,6 +69,12 @@ public:
   using LocalPlannerMap = std::unordered_map<std::string, nav2_core::LocalPlanner::Ptr>;
   using SpeedPlannerMap = std::unordered_map<std::string, nav2_core::SpeedPlanner::Ptr>;
   enum class ControllerPhase { PREPARE, ALIGN, TRACK, APPROACH };
+  enum class PrepareState
+  {
+    CHECK_PENDING,
+    BACKING_UP,
+    DONE
+  };
   enum class PathUpdateType { NEW_GOAL, SAME_GOAL_GEOMETRY };
 
   /**
@@ -201,6 +213,8 @@ protected:
    * @param trajectory 速度规划输出轨迹
    */
   void publishSpeedPlan(const nav_interfaces::msg::RobotTrajectory & trajectory);
+
+  void publishNavigationStatus(int32_t status, const std::string & message = "");
   void publishSpeedPlanDiagnostics(
     bool control_succeeded,
     bool control_receipt_valid,
@@ -213,12 +227,25 @@ protected:
    *        位姿与轨迹坐标系不同时按当周期 TF 对齐后再查询。
    * @return 轨迹为空或 TF 不可用时 false。
    */
-  bool nearestPlannedSpeed(const geometry_msgs::msg::PoseStamped & pose, double & desired_v);
-  nav2_core::SpeedPlanningBoundary buildSpeedPlanningBoundary(
+  bool nearestPlannedSpeed(
+    const geometry_msgs::msg::PoseStamped & pose, double & desired_v,
+    size_t * nearest_index = nullptr);
+  /// 仅当可行的障碍停车剖面已要求机器人保持静止时暂停进展检查。
+  bool shouldPauseProgressCheckForObstacleStop(
+    const geometry_msgs::msg::PoseStamped & pose);
+  /// 停障等待时跳过进展检查，恢复后重新建立检查基线。
+  bool checkProgress(geometry_msgs::msg::PoseStamped & pose);
+  /// 预测本周期将运行的控制器是否能自行绕开参考路径上的局部障碍。
+  bool activeControllerCanAvoidPathObstacles(
+    const geometry_msgs::msg::PoseStamped & pose);
+  nav2_core::InitialMotionState buildInitialMotionState(
     const nav_msgs::msg::Path & path,
-    const geometry_msgs::msg::Twist & measured_velocity);
+    const geometry_msgs::msg::Twist & measured_velocity,
+    bool should_stop_for_path_obstacle = true);
+  void longitudinalStateCallback(
+    const nav2_longitudinal_state_estimator::msg::LongitudinalState::SharedPtr msg);
   /// Latch terminal braking only after the planner reaches the dynamic braking
-  /// boundary and the cycle has either longitudinal continuity or non-zero
+  /// initial_motion and the cycle has either longitudinal continuity or non-zero
   /// braking motion. A diagnostic-only infeasible result must not poison a
   /// stationary goal's ALIGN -> TRACK startup.
   void updateTerminalBrakeLatch(
@@ -226,12 +253,31 @@ protected:
     bool longitudinal_continuity_valid);
   void updateSpeedPlanningContinuityAfterControl(
     bool control_succeeded, bool trajectory_target_consumed,
-    double consumed_target_velocity, double consumed_target_acceleration);
+    double consumed_target_velocity, double consumed_target_acceleration,
+    double consumed_target_relative_time);
+  /// Detect a frozen terminal braking prefix: the planner still requests a
+  /// non-zero speed with negative acceleration while the chassis and path
+  /// progress are already stopped. On the first sustained event, invalidate
+  /// only trajectory continuity and preserve the terminal brake latch.
+  bool updateTerminalStallRecovery(
+    const nav_2d_msgs::msg::Twist2D & measured_twist,
+    bool trajectory_target_consumed,
+    double consumed_target_velocity,
+    double consumed_target_acceleration);
   void invalidateSpeedPlanningContinuity();
   /**
    * @brief Calculates velocity and publishes to "cmd_vel" topic
    */
   void computeAndPublishVelocity();
+  /**
+   * @brief Find the path pose nearest to a robot pose expressed in the path frame
+   * @param pose_in_path Robot pose transformed into path.header.frame_id
+   * @param path Path whose poses are searched
+   * @return Index of the closest pose; returns 0 for an empty path
+   */
+  size_t findClosestPoseIndex(
+    const geometry_msgs::msg::PoseStamped & pose_in_path,
+    const nav_msgs::msg::Path & path) const;
   /**
    * @brief Select and execute the current four-stage controller phase
    * @param pose Current robot pose
@@ -253,10 +299,52 @@ protected:
     const geometry_msgs::msg::PoseStamped & pose,
     const nav_2d_msgs::msg::Twist2D & twist);
   /**
+   * @brief 获取控制器可选的末端定位锁存能力。
+   * @return 控制器不存在或不支持该能力时返回nullptr。
+   */
+  nav2_core::EndLocalizationCapability * getEndLocalizationCapability(
+    const std::string & controller_id);
+  /// 新目标、取消、失败或成功时统一清理各控制器的旧锁存状态。
+  void resetEndLocalizationCapabilities(uint64_t goal_generation);
+  /// 控制前把ControllerServer维护的权威终点转换到本周期控制坐标系。
+  void updateEndLocalizationGoal(
+    const std::string & controller_id,
+    const geometry_msgs::msg::PoseStamped & pose);
+  /// 读取指定控制器的锁存快照并校验目标代次；调用方按用途检查目标有效性。
+  bool getEndLocalizationSnapshot(
+    const std::string & controller_id,
+    nav2_core::EndLocalizationSnapshot & snapshot);
+  /**
+   * @brief 判断是否进入末端接近控制，并返回是否由位置锁存强制保持。
+   *
+   * 位置锁存与effective_goal_valid分开判断：短时TF无效不能让控制权退回跟踪器。
+   */
+  bool shouldUseApproachController(
+    double distance_to_goal,
+    bool & position_reference_latched);
+  /**
+   * @brief 用同代次的PID有效锁存目标覆盖GoalChecker目标。
+   * @return 成功使用锁存目标时返回true，否则保留调用方传入的实时目标。
+   */
+  bool applyEndLocalizationGoalToGoalChecker(
+    const std::string & controller_id,
+    geometry_msgs::msg::PoseStamped & goal_pose);
+  /**
    * @brief Publish direct reverse command when prepare phase detects front obstacle
    * @return true when a reverse command should be used
    */
   bool shouldRunPrepareBackup();
+  /// 同步 bt_navigator 发布的任务代次；只有代次变化才重新允许执行一次 PREPARE。
+  void syncPrepareSession();
+  /// 新任务是唯一允许重新武装 PREPARE 的业务边界。
+  void armStagedControlForNewSession(uint64_t session_id);
+  /// PREPARE 结束后清理其运行状态，并发布非阻塞重规划信号。
+  void completePrepareAndRequestReplan(const char * reason);
+  /// 发布当前任务需要重规划的事实，不修改任何四阶段状态。
+  void publishReplanRequired(const char * reason);
+  /// FollowPath 取消或异常结束时锁存当前会话，防止同会话恢复重试再次后退。
+  void lockPrepareForCurrentSession(const char * reason);
+  const char * prepareStateName(PrepareState state) const;
   /**
    * @brief Check local costmap cells in a front rectangle of the robot
    * @return true when obstacle cost exceeds configured prepare threshold
@@ -302,42 +390,6 @@ protected:
    * @brief Return configured plugin type for a goal checker id
    */
   std::string getGoalCheckerType(const std::string & goal_checker_id) const;
-  /**
-   * @brief Reset the near-goal progress checker baseline
-   */
-  void resetNearGoalProgress();
-  /**
-   * @brief Check if the robot is close enough to use relaxed near-goal progress rules
-   * @param pose Current robot pose
-   * @return true if the robot is within the near-goal progress distance
-   */
-  bool isNearGoal(const geometry_msgs::msg::PoseStamped & pose);
-  /**
-   * @brief Check relaxed progress while close to the goal
-   * @param pose Current robot pose
-   * @return true if progress is acceptable
-   */
-  bool checkNearGoalProgress(const geometry_msgs::msg::PoseStamped & pose);
-  /**
-   * @brief Reset the near-goal lateral-error stagnation checker
-   */
-  void resetNearGoalLateralStall();
-  /**
-   * @brief 按当前 goal_checker 的接受容差判断近目标误差
-   * @param pose 当前机器人位姿
-   * @param mark_goal_reached_on_success 满足时是否标记为兜底到位成功
-   * @param check_yaw 是否同时检查角度容差；预检查位置窗口时可只看位置
-   * @return true 表示当前误差已满足接受容差
-   */
-  bool isWithinGoalCheckerTolerance(
-    const geometry_msgs::msg::PoseStamped & pose,
-    bool mark_goal_reached_on_success,
-    bool check_yaw = true);
-  /**
-   * @brief Check the current odometry against the active goal checker's stop tolerances
-   * @return true if translational and rotational velocities are both stopped
-   */
-  bool isRobotStoppedForGoalChecker();
   /**
    * @brief 判断新 path 是否仍指向当前目标点
    * @param path 待更新的全局路径
@@ -408,6 +460,9 @@ protected:
 
   // Dynamic parameters handler
   rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr dyn_params_handler_;
+  /// 本周期 current_trajectory_ 已分发给哪个 controller（空 = 尚未分发）。
+  /// 每周期由 runPlanningPipeline 清空，由 computeControllerVelocity 按需填充。
+  std::string trajectory_dispatched_to_;
   std::mutex dynamic_params_lock_;
 
   // The controller needs a costmap node
@@ -416,15 +471,40 @@ protected:
 
   // Publishers and subscribers
   std::unique_ptr<nav_2d_utils::OdomSubscriber> odom_sub_;
+  rclcpp::Subscription<
+    nav2_longitudinal_state_estimator::msg::LongitudinalState>::SharedPtr
+    longitudinal_state_sub_;
+  std::mutex longitudinal_state_mutex_;
+  nav2_longitudinal_state_estimator::msg::LongitudinalState latest_longitudinal_state_;
+  bool has_longitudinal_state_{false};
+  std::string longitudinal_state_topic_{"/navigation/longitudinal_state"};
+  double longitudinal_state_max_age_{0.10};
+  double state_acceleration_min_{-0.60};
+  double state_acceleration_max_{0.70};
+  bool planned_acceleration_correction_enabled_{true};
+  double planned_acceleration_correction_gain_{0.40};
+  double planned_acceleration_innovation_limit_{0.30};
+  double planned_acceleration_correction_max_jerk_{0.30};
+  double planned_acceleration_correction_{0.0};
+  bool planned_acceleration_correction_valid_{false};
+  rclcpp::Time planned_acceleration_correction_stamp_{0, 0, RCL_ROS_TIME};
   rclcpp_lifecycle::LifecyclePublisher<geometry_msgs::msg::Twist>::SharedPtr vel_publisher_;
   rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::Empty>::SharedPtr hard_stop_publisher_;
   std::string hard_stop_topic_{"cmd_vel_hard_stop"};
+  // PREPARE 与行为树之间只传递单调编号，不跨进程共享可变状态。
+  rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::UInt64>::SharedPtr
+    prepare_replan_request_pub_;
+  rclcpp::Subscription<std_msgs::msg::UInt64>::SharedPtr prepare_session_sub_;
   rclcpp_lifecycle::LifecyclePublisher<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr
     goal_error_publisher_;
   rclcpp_lifecycle::LifecyclePublisher<visualization_msgs::msg::MarkerArray>::SharedPtr
     speed_plan_publisher_;
   rclcpp_lifecycle::LifecyclePublisher<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr
     speed_plan_diagnostics_publisher_;
+  rclcpp_lifecycle::LifecyclePublisher<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr
+    near_goal_odom_publisher_;
+  rclcpp_lifecycle::LifecyclePublisher<nav_interfaces::msg::NavigationStatus>::SharedPtr
+    nav_status_pub_;
   rclcpp::Subscription<nav2_msgs::msg::SpeedLimit>::SharedPtr speed_limit_sub_;
 
   // nav_monitor 任务回显：setPlannerPath() 里每次真正生效的 global path 复述一份，
@@ -482,10 +562,32 @@ protected:
   // 轨迹缓存：规划级产出、控制级消费；规划与控制同在 action 线程逐周期串行执行，
   // 无并发；将来拆独立规划线程时需加最小临界区保护
   nav_interfaces::msg::RobotTrajectory current_trajectory_;
-  nav2_speed_planner::SpeedPlanState speed_plan_state_;
+  nav2_speed_planner::InitialMotionArbiter initial_motion_arbiter_;
+  // Full trajectory-prefix stitching state prepared by buildInitialMotionState
+  // for the current planning cycle. It is consumed immediately by
+  // runPlanningPipeline; planning/control are serialized in the action loop.
+  nav_interfaces::msg::RobotTrajectory pending_stitching_prefix_;
+  nav2_core::InitialMotionState pending_stitching_boundary_;
+  double trajectory_stitching_max_path_error_{0.05};
+  bool external_speed_limit_valid_{false};
+  double last_external_speed_limit_{0.0};
+  bool last_external_speed_limit_percentage_{false};
   // Goal-lifecycle state owned by ControllerServer. Same-goal geometry updates
   // preserve it; a new goal / successful completion resets it.
   bool terminal_brake_latched_{false};
+  bool terminal_stall_recovery_enabled_{true};
+  double terminal_stall_recovery_duration_{0.5};
+  double terminal_stall_stopped_velocity_{0.01};
+  double terminal_stall_min_target_velocity_{0.03};
+  double terminal_stall_max_target_acceleration_{-0.03};
+  double terminal_stall_max_progress_per_cycle_{0.005};
+  double terminal_stall_min_remaining_distance_{0.05};
+  int terminal_stall_consecutive_cycles_{0};
+  int terminal_stall_recovery_count_{0};
+  // 控制器检测到碰撞后进入等待；等待期间保持零速并暂停进展检查。
+  // 控制恢复、新目标或控制状态重置时清零。
+  bool is_collision_stop_active_{false};
+  bool is_progress_check_paused_for_obstacle_stop_{false};
   struct SpeedPlanCycleContext
   {
     bool active{false};
@@ -496,12 +598,46 @@ protected:
     std::string planner_id;
     size_t local_path_point_count{0};
     double local_path_length{0.0};
-    nav2_core::SpeedPlanningBoundary boundary;
-    bool boundary_computed{false};
-    std::string boundary_reason{"not_computed"};
+    nav2_core::InitialMotionState initial_motion;
+    bool initial_motion_valid{false};
+    std::string initial_motion_source{"not_computed"};
+    bool trajectory_stitched{false};
+    size_t stitching_prefix_points{0};
+    double stitching_prefix_duration{0.0};
+    std::string stitching_result{"not_attempted"};
+    bool terminal_stall_recovery_triggered{false};
+    int terminal_stall_consecutive_cycles{0};
+    int terminal_stall_recovery_count{0};
+    // 初值裁决的两个输入与偏差（见 InitialMotionDecision 注释）：只记裁决结果
+    // 时，无法区分 v0 跳变是"实测真的高"还是"计划采样点跳了"。
+    double initial_motion_measured_v{std::numeric_limits<double>::quiet_NaN()};
+    double initial_motion_sampled_v{std::numeric_limits<double>::quiet_NaN()};
+    double initial_motion_deviation{std::numeric_limits<double>::quiet_NaN()};
+    std::string initial_motion_acceleration_source{"planned_continuity"};
+    double initial_motion_planned_a{std::numeric_limits<double>::quiet_NaN()};
+    double initial_motion_state_velocity{std::numeric_limits<double>::quiet_NaN()};
+    double initial_motion_state_acceleration_raw{std::numeric_limits<double>::quiet_NaN()};
+    double initial_motion_state_acceleration{std::numeric_limits<double>::quiet_NaN()};
+    double initial_motion_state_correction{std::numeric_limits<double>::quiet_NaN()};
+    double initial_motion_state_velocity_std{std::numeric_limits<double>::quiet_NaN()};
+    double initial_motion_state_acceleration_std{std::numeric_limits<double>::quiet_NaN()};
+    double initial_motion_state_velocity_age{std::numeric_limits<double>::quiet_NaN()};
+    double initial_motion_state_acceleration_age{std::numeric_limits<double>::quiet_NaN()};
+    double initial_motion_state_stamp_skew{std::numeric_limits<double>::quiet_NaN()};
+    size_t initial_motion_state_rejected_samples{0};
+    size_t initial_motion_state_acceleration_clamps{0};
+    bool initial_motion_state_stationary{false};
+    bool initial_motion_state_valid{false};
+    // 局部路径投影这一拍前进了多少弧长。与 odom 位移对账即可判定"裁剪是否
+    // 超额消耗"——L 跳变与 v0 跳变是两个独立成因，必须能分开看。
+    double local_path_progress_delta{std::numeric_limits<double>::quiet_NaN()};
     nav2_core::SpeedPlanningDiagnostics terminal;
     bool terminal_valid{false};
   };
+  /// 上一拍的局部路径剩余长度与其 path_id，用于算 local_path_progress_delta。
+  /// path_id 变了（重规划）说明比较基准换了，delta 无意义，置 NaN。
+  double prev_local_path_length_{std::numeric_limits<double>::quiet_NaN()};
+  uint64_t prev_local_path_id_{0};
   uint64_t speed_plan_cycle_id_{0};
   uint64_t speed_plan_path_id_{0};
   SpeedPlanCycleContext speed_plan_cycle_;
@@ -515,43 +651,6 @@ protected:
 
   double failure_tolerance_;
 
-  bool near_goal_progress_enabled_{true};
-  bool near_goal_hold_position_when_pose_reached_{false};
-  bool near_goal_pose_hold_active_{false};
-  // near-goal hold 进入门控：位姿满足容差且底盘实际速度已足够低时才允许 ControllerServer 接管，
-  // 避免在底盘仍有较大惯性时抢占 MPPI 的动态减速过程
-  double near_goal_hold_enter_vx_{0.01};
-  double near_goal_hold_enter_wz_{0.03};
-  // near-goal hold 释放迟滞：停稳后误差需超过更宽松的阈值才允许释放，避免边界抖动反复抢占
-  double near_goal_hold_release_lon_tolerance_{0.04};
-  double near_goal_hold_release_lat_tolerance_{0.04};
-  double near_goal_hold_release_yaw_tolerance_{0.04};
-  // hold 释放宽限计数：误差持续超出 accept 容差但未超 release 容差时，累计若干周期后释放，
-  // 避免在 0.03~0.04 区间永久卡死（GoalChecker 不成功且 hold 不释放）
-  size_t near_goal_hold_outside_accept_count_{0};
-  size_t near_goal_hold_outside_accept_cycles_{3};
-  double near_goal_progress_distance_{0.25};
-  double near_goal_progress_required_movement_radius_{0.01};
-  double near_goal_progress_required_movement_angle_{0.005};
-  rclcpp::Duration near_goal_progress_time_allowance_{
-    rclcpp::Duration::from_seconds(8.0)};
-  bool near_goal_lateral_stall_enabled_{false};
-  double near_goal_lateral_stall_lon_tolerance_{0.02};
-  double near_goal_lateral_stall_yaw_tolerance_{0.05};
-  double near_goal_lateral_stall_lat_tolerance_{0.02};
-  double near_goal_lateral_stall_min_improvement_{0.005};
-  rclcpp::Duration near_goal_lateral_stall_time_allowance_{
-    rclcpp::Duration::from_seconds(3.0)};
-  int near_goal_lateral_stall_entry_count_{0};
-  bool near_goal_lateral_stall_monitoring_{false};
-  double near_goal_lateral_stall_baseline_error_{0.0};
-  double near_goal_lateral_stall_best_error_{0.0};
-  rclcpp::Time near_goal_lateral_stall_start_time_;
-  bool near_goal_baseline_pose_set_{false};
-  bool in_near_goal_progress_mode_{false};
-  bool near_goal_progress_acceptance_reached_{false};
-  geometry_msgs::msg::PoseStamped near_goal_baseline_pose_;
-  rclcpp::Time near_goal_baseline_time_;
 
   bool staged_control_enabled_{true};
   ControllerPhase controller_phase_{ControllerPhase::TRACK};
@@ -577,24 +676,27 @@ protected:
   // duration 兜底防跑飞）；false（默认）：按 duration 定时后退。
   bool prepare_backup_use_distance_{false};
   double prepare_backup_distance_{0.3};
-  bool prepare_backup_active_{false};
-  bool prepare_check_pending_{true};
-  // align 阶段状态机：本次导航是否已完成过 align（含"收敛"与"无法计算朝向,
-  // 视为跳过"两种终止方式）。仅到达目标时重置（同 prepare——
-  // computeControl() 会因 BT 恢复重试被多次重新进入，不能在入口重置）。
+  PrepareState prepare_state_{PrepareState::DONE};
+  // bt_navigator 每个导航任务发布一个新代次；同任务重规划和 FollowPath 恢复沿用该代次。
+  std::atomic<uint64_t> latest_prepare_session_id_{0};
+  uint64_t active_prepare_session_id_{0};
+  // align 阶段状态机：本次导航是否已完成过 align（含"收敛"与"无法计算朝向，
+  // 视为跳过"两种终止方式）。仅在导航任务会话变化或到达目标时重置；
+  // computeControl() 会因 BT 恢复重试被多次重新进入，不能在入口重置。
   // 一旦置真，本次导航剩余时间不再回退进 align——中途朝向误差变大交给
   // track 阶段的控制器自身处理（RPP/MPPI 均有各自的朝向纠偏机制）。
   bool align_done_{false};
   rclcpp::Time prepare_backup_start_time_;
   geometry_msgs::msg::PoseStamped prepare_backup_start_pose_;
 
-  /// 每次新导航开始（computeControl 入口）与到达目标时调用：阶段状态
-  /// 无条件回到阶段一，不依赖上次导航是到达/取消/异常哪种方式结束。
+  /// 安全清理各阶段运行状态并保持 PREPARE 为 DONE；只有新会话可重新武装。
   void resetStagedControlState();
   std::string active_controller_for_log_{"unset"};
 
   // Whether we've published the single controller warning yet
   geometry_msgs::msg::PoseStamped end_pose_;
+  // 每个新目标递增；同目标重规划保持不变，用于隔离上一任务的锁存数据。
+  uint64_t goal_generation_{0};
 
   // Last time the controller generated a valid command
   rclcpp::Time last_valid_cmd_time_;

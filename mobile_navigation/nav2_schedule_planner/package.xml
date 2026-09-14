@@ -1,0 +1,35 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd"
+        schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+    <name>nav2_schedule_planner</name>
+    <version>0.5.0</version>
+    <description>
+        多段路径执行器：托管 NavigateThroughGraphPoints action，调 map_asset_manager
+        解析 nav_point_ids 为 PathSegment[]，逐段离散成 5mm 轨迹交 path_follower 跟踪，
+        依据 path_follower 的 navigation_status 推进/中止，并支持取消。
+    </description>
+    <maintainer email="dev@example.com">nav2_schedule_planner</maintainer>
+    <license>Apache-2.0</license>
+
+    <buildtool_depend>ament_cmake</buildtool_depend>
+
+    <depend>rclcpp</depend>
+    <depend>rclcpp_components</depend>
+    <depend>rclcpp_action</depend>
+    <depend>nav_msgs</depend>
+    <depend>nav2_msgs</depend>
+    <depend>geometry_msgs</depend>
+    <depend>nav_interfaces</depend>
+    <!-- 段级失败时向 mobile_bag_recorder 的 ~/trigger_event 上报，只用 String，
+         不 depend 录包包本身 -->
+    <depend>std_msgs</depend>
+    <depend>std_srvs</depend>
+
+    <test_depend>ament_lint_auto</test_depend>
+    <test_depend>ament_lint_common</test_depend>
+
+    <export>
+        <build_type>ament_cmake</build_type>
+    </export>
+</package>

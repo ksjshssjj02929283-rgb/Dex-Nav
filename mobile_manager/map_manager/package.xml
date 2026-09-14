@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <package format="3">
   <name>map_manager</name>
-  <version>0.4.6</version>
+  <version>0.5.0</version>
   <description>ROS2 port of map_manager (minimal ROS1->ROS2 changes; nav_interfaces used)</description>
 
   <maintainer email="maintainer@example.com">Maintainer</maintainer>

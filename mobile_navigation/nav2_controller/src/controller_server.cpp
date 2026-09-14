@@ -14,14 +14,14 @@
 
 #include <algorithm>
 #include <chrono>
-#include <algorithm>
+#include <cinttypes>
+#include <cmath>
 #include <cstdio>
-#include <vector>
+#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
-#include <limits>
-#include <cmath>
+#include <vector>
 
 #include "angles/angles.h"
 #include "lifecycle_msgs/msg/state.hpp"
@@ -29,6 +29,7 @@
 #include "nav_2d_utils/conversions.hpp"
 #include "nav_2d_utils/tf_help.hpp"
 #include "nav2_util/node_utils.hpp"
+#include "nav2_util/navigation_protocol.hpp"
 #include "nav2_util/geometry_utils.hpp"
 #include "nav2_util/robot_utils.hpp"
 #include "nav2_controller/controller_server.hpp"
@@ -44,6 +45,26 @@ using std::placeholders::_1;
 
 namespace nav2_controller
 {
+
+namespace
+{
+
+constexpr int kEndLocalizationWarningThrottleMs = 1000;
+const char * speedPlanningTerminalBranchName(
+  nav2_core::SpeedPlanningTerminalBranch branch)
+{
+  switch (branch) {
+    case nav2_core::SpeedPlanningTerminalBranch::PATH_OBSTACLE_STOP:
+      return "obstacle";
+    case nav2_core::SpeedPlanningTerminalBranch::GOAL_TERMINAL:
+      return "terminal";
+    case nav2_core::SpeedPlanningTerminalBranch::NONE:
+    default:
+      return "none";
+  }
+}
+
+}  // namespace
 
 ControllerServer::ControllerServer(const rclcpp::NodeOptions & options)
 : nav2_util::LifecycleNode("controller_server", "", options),
@@ -89,7 +110,7 @@ ControllerServer::ControllerServer(const rclcpp::NodeOptions & options)
   local_planner_loader_("nav2_core", "nav2_core::LocalPlanner"),
   speed_planner_loader_("nav2_core", "nav2_core::SpeedPlanner")
 {
-  RCLCPP_INFO(get_logger(), "Creating controller server");
+  RCLCPP_INFO(get_logger(), "Controller server created.");
 
   declare_parameter("controller_frequency", 20.0);
 
@@ -104,12 +125,37 @@ ControllerServer::ControllerServer(const rclcpp::NodeOptions & options)
   // ④ 速度规划：默认不启用（空列表 + 空选择器），YAML 显式配置后生效
   declare_parameter("speed_planner_plugins", std::vector<std::string>());
   declare_parameter("current_speed_planner", std::string(""));
-  declare_parameter("speed_planning_boundary.max_age", 0.5);
-  declare_parameter("speed_planning_boundary.max_spatial_error", 0.15);
-  declare_parameter("speed_planning_boundary.max_velocity_error", 0.25);
-  declare_parameter("speed_planning_boundary.goal_position_tolerance", 0.05);
-  declare_parameter("speed_planning_boundary.goal_yaw_tolerance", 0.2);
-  declare_parameter("speed_planning_boundary.branch_heading_tolerance", 0.7853981634);
+  declare_parameter("initial_motion.max_age", 0.5);
+  declare_parameter("initial_motion.max_spatial_error", 0.15);
+  // P1-2（重构方案 §2.3）：|实测-计划采样速度| 在此内继承计划速度，
+  // 否则重锚定到实测但仍保留加速度；旧名 max_velocity_error 的语义是
+  // "超出即整体拒绝"，已改行为，改名避免和旧默认值（0.25）混淆。
+  declare_parameter("initial_motion.replan_dev", 0.10);
+  declare_parameter("initial_motion.terminal_overspeed_replan_dev", 0.02);
+  declare_parameter("initial_motion.failsafe_deviation_cycles", 5);
+  declare_parameter("initial_motion.goal_position_tolerance", 0.05);
+  declare_parameter("initial_motion.goal_yaw_tolerance", 0.2);
+  declare_parameter("initial_motion.branch_heading_tolerance", 0.7853981634);
+  declare_parameter("initial_motion.stitching.horizon", 0.20);
+  declare_parameter("initial_motion.stitching.min_duration", 0.10);
+  declare_parameter("initial_motion.stitching.max_path_error", 0.05);
+  declare_parameter("initial_motion.stitching.max_time_error", 0.15);
+  declare_parameter(
+    "initial_motion.longitudinal_state_topic", longitudinal_state_topic_);
+  declare_parameter("initial_motion.longitudinal_state_max_age", 0.10);
+  declare_parameter("initial_motion.state_limits.min_acceleration", -0.40);
+  declare_parameter("initial_motion.state_limits.max_acceleration", 0.50);
+  declare_parameter("initial_motion.planned_correction.enabled", true);
+  declare_parameter("initial_motion.planned_correction.gain", 0.40);
+  declare_parameter("initial_motion.planned_correction.innovation_limit", 0.30);
+  declare_parameter("initial_motion.planned_correction.max_jerk", 0.30);
+  declare_parameter("initial_motion.terminal_stall_recovery.enabled", true);
+  declare_parameter("initial_motion.terminal_stall_recovery.duration", 0.5);
+  declare_parameter("initial_motion.terminal_stall_recovery.stopped_velocity", 0.01);
+  declare_parameter("initial_motion.terminal_stall_recovery.min_target_velocity", 0.03);
+  declare_parameter("initial_motion.terminal_stall_recovery.max_target_acceleration", -0.03);
+  declare_parameter("initial_motion.terminal_stall_recovery.max_progress_per_cycle", 0.005);
+  declare_parameter("initial_motion.terminal_stall_recovery.min_remaining_distance", 0.05);
   // nav_monitor 任务回显：默认关闭，零开销
   declare_parameter("enable_nav_monitor_echo", false);
   declare_parameter("min_x_velocity_threshold", rclcpp::ParameterValue(0.0001));
@@ -120,39 +166,6 @@ ControllerServer::ControllerServer(const rclcpp::NodeOptions & options)
   declare_parameter("hard_stop_topic", rclcpp::ParameterValue("cmd_vel_hard_stop"));
 
   declare_parameter("failure_tolerance", rclcpp::ParameterValue(0.0));
-  declare_parameter("near_goal_progress.enabled", rclcpp::ParameterValue(true));
-  declare_parameter(
-    "near_goal_progress.hold_position_when_goal_pose_reached", rclcpp::ParameterValue(false));
-  declare_parameter("near_goal_progress.distance", rclcpp::ParameterValue(0.25));
-  declare_parameter(
-    "near_goal_progress.required_movement_radius", rclcpp::ParameterValue(0.01));
-  declare_parameter(
-    "near_goal_progress.required_movement_angle", rclcpp::ParameterValue(0.005));
-  declare_parameter(
-    "near_goal_progress.movement_time_allowance", rclcpp::ParameterValue(8.0));
-  declare_parameter(
-    "near_goal_progress.lateral_stall_enabled", rclcpp::ParameterValue(false));
-  declare_parameter(
-    "near_goal_progress.lateral_stall_lon_tolerance", rclcpp::ParameterValue(0.02));
-  declare_parameter(
-    "near_goal_progress.lateral_stall_yaw_tolerance", rclcpp::ParameterValue(0.05));
-  declare_parameter(
-    "near_goal_progress.lateral_stall_lat_tolerance", rclcpp::ParameterValue(0.02));
-  declare_parameter(
-    "near_goal_progress.lateral_stall_min_improvement", rclcpp::ParameterValue(0.005));
-  declare_parameter(
-    "near_goal_progress.lateral_stall_time_allowance", rclcpp::ParameterValue(3.0));
-  // near-goal hold 进入/释放门控：避免与 MPPI final_yaw 动态制动抢占控制权
-  declare_parameter(
-    "near_goal_progress.hold_enter_vx", rclcpp::ParameterValue(0.01));
-  declare_parameter(
-    "near_goal_progress.hold_enter_wz", rclcpp::ParameterValue(0.03));
-  declare_parameter(
-    "near_goal_progress.hold_release_lon_tolerance", rclcpp::ParameterValue(0.04));
-  declare_parameter(
-    "near_goal_progress.hold_release_lat_tolerance", rclcpp::ParameterValue(0.04));
-  declare_parameter(
-    "near_goal_progress.hold_release_yaw_tolerance", rclcpp::ParameterValue(0.04));
   declare_parameter("staged_control.enabled", rclcpp::ParameterValue(true));
   declare_parameter("staged_control.track_controller", rclcpp::ParameterValue("MPPIController"));
   declare_parameter("staged_control.approach_controller", rclcpp::ParameterValue("PIDController"));
@@ -195,7 +208,7 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
 {
   auto node = shared_from_this();
 
-  RCLCPP_INFO(get_logger(), "Configuring controller interface");
+  RCLCPP_INFO(get_logger(), "Configuring controller server.");
 
   get_parameter("progress_checker_plugin", progress_checker_id_);
   if (progress_checker_id_ == default_progress_checker_id_) {
@@ -204,7 +217,6 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
       rclcpp::ParameterValue(default_progress_checker_type_));
   }
 
-  RCLCPP_INFO(get_logger(), "getting goal checker plugins..");
   get_parameter("goal_checker_plugins", goal_checker_ids_);
   if (goal_checker_ids_ == default_goal_checker_ids_) {
     for (size_t i = 0; i < default_goal_checker_ids_.size(); ++i) {
@@ -248,77 +260,91 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
   get_parameter("min_x_velocity_threshold", min_x_velocity_threshold_);
   get_parameter("min_y_velocity_threshold", min_y_velocity_threshold_);
   get_parameter("min_theta_velocity_threshold", min_theta_velocity_threshold_);
-  RCLCPP_INFO(get_logger(), "Controller frequency set to %.4fHz", controller_frequency_);
+  RCLCPP_INFO(get_logger(), "Controller frequency: %.4f Hz.", controller_frequency_);
 
   std::string speed_limit_topic;
   get_parameter("speed_limit_topic", speed_limit_topic);
   get_parameter("failure_tolerance", failure_tolerance_);
-  nav2_speed_planner::SpeedPlanState::Config speed_plan_state_config;
-  get_parameter("speed_planning_boundary.max_age", speed_plan_state_config.max_age);
+  nav2_speed_planner::InitialMotionArbiter::Config speed_plan_state_config;
+  get_parameter("initial_motion.max_age", speed_plan_state_config.max_age);
   get_parameter(
-    "speed_planning_boundary.max_spatial_error",
+    "initial_motion.max_spatial_error",
     speed_plan_state_config.max_spatial_error);
   get_parameter(
-    "speed_planning_boundary.max_velocity_error",
-    speed_plan_state_config.max_velocity_error);
+    "initial_motion.replan_dev",
+    speed_plan_state_config.replan_dev);
   get_parameter(
-    "speed_planning_boundary.goal_position_tolerance",
+    "initial_motion.terminal_overspeed_replan_dev",
+    speed_plan_state_config.terminal_overspeed_replan_dev);
+  get_parameter(
+    "initial_motion.failsafe_deviation_cycles",
+    speed_plan_state_config.failsafe_deviation_cycles);
+  get_parameter(
+    "initial_motion.goal_position_tolerance",
     speed_plan_state_config.goal_position_tolerance);
   get_parameter(
-    "speed_planning_boundary.goal_yaw_tolerance",
+    "initial_motion.goal_yaw_tolerance",
     speed_plan_state_config.goal_yaw_tolerance);
   get_parameter(
-    "speed_planning_boundary.branch_heading_tolerance",
+    "initial_motion.branch_heading_tolerance",
     speed_plan_state_config.branch_heading_tolerance);
-  speed_plan_state_.configure(speed_plan_state_config);
-  get_parameter("near_goal_progress.enabled", near_goal_progress_enabled_);
   get_parameter(
-    "near_goal_progress.hold_position_when_goal_pose_reached",
-    near_goal_hold_position_when_pose_reached_);
-  get_parameter("near_goal_progress.distance", near_goal_progress_distance_);
+    "initial_motion.stitching.horizon",
+    speed_plan_state_config.stitching_horizon);
   get_parameter(
-    "near_goal_progress.required_movement_radius",
-    near_goal_progress_required_movement_radius_);
+    "initial_motion.stitching.min_duration",
+    speed_plan_state_config.stitching_min_duration);
   get_parameter(
-    "near_goal_progress.required_movement_angle",
-    near_goal_progress_required_movement_angle_);
-  double near_goal_progress_movement_time_allowance;
+    "initial_motion.stitching.max_time_error",
+    speed_plan_state_config.stitching_max_time_error);
   get_parameter(
-    "near_goal_progress.movement_time_allowance",
-    near_goal_progress_movement_time_allowance);
-  near_goal_progress_time_allowance_ =
-    rclcpp::Duration::from_seconds(near_goal_progress_movement_time_allowance);
+    "initial_motion.stitching.max_path_error",
+    trajectory_stitching_max_path_error_);
+  trajectory_stitching_max_path_error_ = std::max(
+    0.0, trajectory_stitching_max_path_error_);
+  initial_motion_arbiter_.configure(speed_plan_state_config);
+  get_parameter("initial_motion.longitudinal_state_topic", longitudinal_state_topic_);
+  get_parameter("initial_motion.longitudinal_state_max_age", longitudinal_state_max_age_);
+  get_parameter("initial_motion.state_limits.min_acceleration", state_acceleration_min_);
+  get_parameter("initial_motion.state_limits.max_acceleration", state_acceleration_max_);
   get_parameter(
-    "near_goal_progress.lateral_stall_enabled", near_goal_lateral_stall_enabled_);
+    "initial_motion.planned_correction.enabled", planned_acceleration_correction_enabled_);
   get_parameter(
-    "near_goal_progress.lateral_stall_lon_tolerance",
-    near_goal_lateral_stall_lon_tolerance_);
+    "initial_motion.planned_correction.gain", planned_acceleration_correction_gain_);
   get_parameter(
-    "near_goal_progress.lateral_stall_yaw_tolerance",
-    near_goal_lateral_stall_yaw_tolerance_);
+    "initial_motion.planned_correction.innovation_limit",
+    planned_acceleration_innovation_limit_);
   get_parameter(
-    "near_goal_progress.lateral_stall_lat_tolerance",
-    near_goal_lateral_stall_lat_tolerance_);
+    "initial_motion.planned_correction.max_jerk",
+    planned_acceleration_correction_max_jerk_);
   get_parameter(
-    "near_goal_progress.lateral_stall_min_improvement",
-    near_goal_lateral_stall_min_improvement_);
-  double near_goal_lateral_stall_time_allowance;
+    "initial_motion.terminal_stall_recovery.enabled",
+    terminal_stall_recovery_enabled_);
   get_parameter(
-    "near_goal_progress.lateral_stall_time_allowance",
-    near_goal_lateral_stall_time_allowance);
-  near_goal_lateral_stall_time_allowance_ =
-    rclcpp::Duration::from_seconds(near_goal_lateral_stall_time_allowance);
-  get_parameter("near_goal_progress.hold_enter_vx", near_goal_hold_enter_vx_);
-  get_parameter("near_goal_progress.hold_enter_wz", near_goal_hold_enter_wz_);
+    "initial_motion.terminal_stall_recovery.duration",
+    terminal_stall_recovery_duration_);
   get_parameter(
-    "near_goal_progress.hold_release_lon_tolerance",
-    near_goal_hold_release_lon_tolerance_);
+    "initial_motion.terminal_stall_recovery.stopped_velocity",
+    terminal_stall_stopped_velocity_);
   get_parameter(
-    "near_goal_progress.hold_release_lat_tolerance",
-    near_goal_hold_release_lat_tolerance_);
+    "initial_motion.terminal_stall_recovery.min_target_velocity",
+    terminal_stall_min_target_velocity_);
   get_parameter(
-    "near_goal_progress.hold_release_yaw_tolerance",
-    near_goal_hold_release_yaw_tolerance_);
+    "initial_motion.terminal_stall_recovery.max_target_acceleration",
+    terminal_stall_max_target_acceleration_);
+  get_parameter(
+    "initial_motion.terminal_stall_recovery.max_progress_per_cycle",
+    terminal_stall_max_progress_per_cycle_);
+  get_parameter(
+    "initial_motion.terminal_stall_recovery.min_remaining_distance",
+    terminal_stall_min_remaining_distance_);
+  terminal_stall_recovery_duration_ = std::max(0.0, terminal_stall_recovery_duration_);
+  terminal_stall_stopped_velocity_ = std::max(0.0, terminal_stall_stopped_velocity_);
+  terminal_stall_min_target_velocity_ = std::max(0.0, terminal_stall_min_target_velocity_);
+  terminal_stall_max_progress_per_cycle_ = std::max(
+    0.0, terminal_stall_max_progress_per_cycle_);
+  terminal_stall_min_remaining_distance_ = std::max(
+    0.0, terminal_stall_min_remaining_distance_);
   get_parameter("staged_control.enabled", staged_control_enabled_);
   get_parameter("staged_control.track_controller", track_controller_);
   get_parameter("staged_control.approach_controller", approach_controller_);
@@ -336,26 +362,6 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
   get_parameter("staged_control.prepare.backup_duration", prepare_backup_duration_);
   get_parameter("staged_control.prepare.backup_use_distance", prepare_backup_use_distance_);
   get_parameter("staged_control.prepare.backup_distance", prepare_backup_distance_);
-  RCLCPP_INFO(
-    get_logger(),
-    "Near-goal progress: enabled=%s hold_pose=%s distance=%.3f m movement=%.3f m "
-    "angle=%.3f rad allowance=%.3f s",
-    near_goal_progress_enabled_ ? "true" : "false",
-    near_goal_hold_position_when_pose_reached_ ? "true" : "false",
-    near_goal_progress_distance_,
-    near_goal_progress_required_movement_radius_,
-    near_goal_progress_required_movement_angle_,
-    near_goal_progress_time_allowance_.seconds());
-  RCLCPP_INFO(
-    get_logger(),
-    "Near-goal lateral stall: enabled=%s lon=%.3f m yaw=%.3f rad lat=%.3f m "
-    "min_improvement=%.3f m allowance=%.3f s",
-    near_goal_lateral_stall_enabled_ ? "true" : "false",
-    near_goal_lateral_stall_lon_tolerance_,
-    near_goal_lateral_stall_yaw_tolerance_,
-    near_goal_lateral_stall_lat_tolerance_,
-    near_goal_lateral_stall_min_improvement_,
-    near_goal_lateral_stall_time_allowance_.seconds());
 
   costmap_ros_->configure();
   // Launch a thread to run the costmap node
@@ -365,13 +371,14 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
     progress_checker_type_ = nav2_util::get_plugin_type_param(node, progress_checker_id_);
     progress_checker_ = progress_checker_loader_.createUniqueInstance(progress_checker_type_);
     RCLCPP_INFO(
-      get_logger(), "Created progress_checker : %s of type %s",
+      get_logger(), "Progress checker loaded: id='%s', type='%s'.",
       progress_checker_id_.c_str(), progress_checker_type_.c_str());
     progress_checker_->initialize(node, progress_checker_id_);
   } catch (const pluginlib::PluginlibException & ex) {
     RCLCPP_FATAL(
       get_logger(),
-      "Failed to create progress_checker. Exception: %s", ex.what());
+      "Progress checker '%s' failed to load: %s",
+      progress_checker_id_.c_str(), ex.what());
     return nav2_util::CallbackReturn::FAILURE;
   }
 
@@ -381,14 +388,15 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
       nav2_core::GoalChecker::Ptr goal_checker =
         goal_checker_loader_.createUniqueInstance(goal_checker_types_[i]);
       RCLCPP_INFO(
-        get_logger(), "Created goal checker : %s of type %s",
+        get_logger(), "Goal checker loaded: id='%s', type='%s'.",
         goal_checker_ids_[i].c_str(), goal_checker_types_[i].c_str());
       goal_checker->initialize(node, goal_checker_ids_[i], costmap_ros_);
       goal_checkers_.insert({goal_checker_ids_[i], goal_checker});
     } catch (const pluginlib::PluginlibException & ex) {
       RCLCPP_FATAL(
         get_logger(),
-        "Failed to create goal checker. Exception: %s", ex.what());
+        "Goal checker '%s' failed to load: %s",
+        goal_checker_ids_[i].c_str(), ex.what());
       return nav2_util::CallbackReturn::FAILURE;
     }
   }
@@ -400,13 +408,13 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
 
   RCLCPP_INFO(
     get_logger(),
-    "Controller Server has %s goal checkers available.", goal_checker_ids_concat_.c_str());
+    "Goal checkers: %s", goal_checker_ids_concat_.c_str());
 
   get_parameter("current_goal_checker", default_goal_checker_);
   if (goal_checkers_.find(default_goal_checker_) == goal_checkers_.end()) {
     RCLCPP_FATAL(
       get_logger(),
-      "Configured current_goal_checker '%s' does not exist. Available goal checkers are: %s.",
+      "current_goal_checker '%s' not found. Available: %s",
       default_goal_checker_.c_str(), goal_checker_ids_concat_.c_str());
     return nav2_util::CallbackReturn::FAILURE;
   }
@@ -417,7 +425,7 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
       nav2_core::Controller::Ptr controller =
         lp_loader_.createUniqueInstance(controller_types_[i]);
       RCLCPP_INFO(
-        get_logger(), "Created controller : %s of type %s",
+        get_logger(), "Controller loaded: id='%s', type='%s'.",
         controller_ids_[i].c_str(), controller_types_[i].c_str());
       controller->configure(
         node, controller_ids_[i],
@@ -426,7 +434,8 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
     } catch (const pluginlib::PluginlibException & ex) {
       RCLCPP_FATAL(
         get_logger(),
-        "Failed to create controller. Exception: %s", ex.what());
+        "Controller '%s' failed to load: %s",
+        controller_ids_[i].c_str(), ex.what());
       return nav2_util::CallbackReturn::FAILURE;
     }
   }
@@ -438,13 +447,13 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
 
   RCLCPP_INFO(
     get_logger(),
-    "Controller Server has %s controllers available.", controller_ids_concat_.c_str());
+    "Controllers: %s", controller_ids_concat_.c_str());
 
   get_parameter("current_controller", default_controller_);
   if (controllers_.find(default_controller_) == controllers_.end()) {
     RCLCPP_FATAL(
       get_logger(),
-      "Configured current_controller '%s' does not exist. Available controllers are: %s.",
+      "current_controller '%s' not found. Available: %s",
       default_controller_.c_str(), controller_ids_concat_.c_str());
     return nav2_util::CallbackReturn::FAILURE;
   }
@@ -457,13 +466,15 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
       nav2_core::LocalPlanner::Ptr local_planner =
         local_planner_loader_.createUniqueInstance(local_planner_types_[i]);
       RCLCPP_INFO(
-        get_logger(), "Created local planner: %s of type %s",
+        get_logger(), "Local planner loaded: id='%s', type='%s'.",
         local_planner_ids_[i].c_str(), local_planner_types_[i].c_str());
       local_planner->configure(
         node, local_planner_ids_[i], costmap_ros_->getTfBuffer(), costmap_ros_);
       local_planners_.insert({local_planner_ids_[i], local_planner});
     } catch (const std::exception & ex) {
-      RCLCPP_FATAL(get_logger(), "Failed to create local planner. Exception: %s", ex.what());
+      RCLCPP_FATAL(
+        get_logger(), "Local planner '%s' failed to load: %s",
+        local_planner_ids_[i].c_str(), ex.what());
       return nav2_util::CallbackReturn::FAILURE;
     }
   }
@@ -477,16 +488,16 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
   if (current_local_planner_.empty()) {
     RCLCPP_INFO(
       get_logger(),
-      "Local planning disabled (current_local_planner is empty); global path passthrough enabled.");
+      "Local planning off. Using the global path.");
   } else if (local_planners_.find(current_local_planner_) == local_planners_.end()) {
     RCLCPP_FATAL(
       get_logger(),
-      "Configured current_local_planner '%s' does not exist. Available local planners are: %s.",
+      "current_local_planner '%s' not found. Available: %s",
       current_local_planner_.c_str(), local_planner_ids_concat_.c_str());
     return nav2_util::CallbackReturn::FAILURE;
   } else {
     RCLCPP_INFO(
-      get_logger(), "Controller Server has %s local planners available, current: %s.",
+      get_logger(), "Local planners: %s Selected: '%s'.",
       local_planner_ids_concat_.c_str(), current_local_planner_.c_str());
   }
 
@@ -498,7 +509,7 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
       nav2_core::SpeedPlanner::Ptr speed_planner =
         speed_planner_loader_.createUniqueInstance(speed_planner_types_[i]);
       RCLCPP_INFO(
-        get_logger(), "Created speed planner : %s of type %s",
+        get_logger(), "Speed planner loaded: id='%s', type='%s'.",
         speed_planner_ids_[i].c_str(), speed_planner_types_[i].c_str());
       speed_planner->configure(
         node, speed_planner_ids_[i],
@@ -507,7 +518,8 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
     } catch (const pluginlib::PluginlibException & ex) {
       RCLCPP_FATAL(
         get_logger(),
-        "Failed to create speed planner. Exception: %s", ex.what());
+        "Speed planner '%s' failed to load: %s",
+        speed_planner_ids_[i].c_str(), ex.what());
       return nav2_util::CallbackReturn::FAILURE;
     }
   }
@@ -521,18 +533,17 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
   if (current_speed_planner_.empty()) {
     RCLCPP_INFO(
       get_logger(),
-      "Speed planning disabled (current_speed_planner is empty); "
-      "controllers consume geometric paths only. 速度规划未启用，控制器仅消费几何路径。");
+      "Speed planning off. Controllers use paths without speed data.");
   } else if (speed_planners_.find(current_speed_planner_) == speed_planners_.end()) {
     RCLCPP_FATAL(
       get_logger(),
-      "Configured current_speed_planner '%s' does not exist. Available speed planners are: %s.",
+      "current_speed_planner '%s' not found. Available: %s",
       current_speed_planner_.c_str(), speed_planner_ids_concat_.c_str());
     return nav2_util::CallbackReturn::FAILURE;
   } else {
     RCLCPP_INFO(
       get_logger(),
-      "Controller Server has %s speed planners available, current: %s.",
+      "Speed planners: %s Selected: '%s'.",
       speed_planner_ids_concat_.c_str(), current_speed_planner_.c_str());
   }
 
@@ -540,23 +551,21 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
     if (controllers_.find(track_controller_) == controllers_.end()) {
       RCLCPP_FATAL(
         get_logger(),
-        "Configured staged_control.track_controller '%s' does not exist. "
-        "Available controllers are: %s.",
+        "staged_control.track_controller '%s' not found. Available: %s",
         track_controller_.c_str(), controller_ids_concat_.c_str());
       return nav2_util::CallbackReturn::FAILURE;
     }
     if (controllers_.find(approach_controller_) == controllers_.end()) {
       RCLCPP_FATAL(
         get_logger(),
-        "Configured staged_control.approach_controller '%s' does not exist. "
-        "Available controllers are: %s.",
+        "staged_control.approach_controller '%s' not found. Available: %s",
         approach_controller_.c_str(), controller_ids_concat_.c_str());
       return nav2_util::CallbackReturn::FAILURE;
     }
     RCLCPP_INFO(
       get_logger(),
-      "Staged control enabled: prepare=%s align_tolerance=%.3f rad track=%s "
-      "approach=%s approach_distance=%.3f m",
+      "Staged control on: prepare=%s, align_limit=%.3f rad, track='%s', "
+      "approach='%s', approach_distance=%.3f m.",
       prepare_enabled_ ? "true" : "false",
       align_heading_tolerance_,
       track_controller_.c_str(),
@@ -565,10 +574,23 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
   }
 
   odom_sub_ = std::make_unique<nav_2d_utils::OdomSubscriber>(node);
+  longitudinal_state_sub_ = create_subscription<
+    nav2_longitudinal_state_estimator::msg::LongitudinalState>(
+    longitudinal_state_topic_, rclcpp::SensorDataQoS(),
+    std::bind(&ControllerServer::longitudinalStateCallback, this, std::placeholders::_1));
   get_parameter("hard_stop_topic", hard_stop_topic_);
   vel_publisher_ = create_publisher<geometry_msgs::msg::Twist>("cmd_vel", 1);
   hard_stop_publisher_ = create_publisher<std_msgs::msg::Empty>(
     hard_stop_topic_, rclcpp::QoS(1).reliable());
+  prepare_replan_request_pub_ = create_publisher<std_msgs::msg::UInt64>(
+    nav2_util::navigation_protocol::kPrepareReplanTopic,
+    nav2_util::navigation_protocol::stateTopicQoS());
+  prepare_session_sub_ = create_subscription<std_msgs::msg::UInt64>(
+    nav2_util::navigation_protocol::kPrepareSessionTopic,
+    nav2_util::navigation_protocol::stateTopicQoS(),
+    [this](const std_msgs::msg::UInt64::SharedPtr msg) {
+      latest_prepare_session_id_.store(msg->data);
+    });
   goal_error_publisher_ = create_publisher<diagnostic_msgs::msg::DiagnosticArray>(
     "/navigation_goal_error",
     rclcpp::QoS(rclcpp::KeepLast(10)).reliable().transient_local());
@@ -593,6 +615,9 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
       create_publisher<geometry_msgs::msg::Vector3Stamped>(
       "nav_monitor/controller_target", rclcpp::SystemDefaultsQoS());
   }
+
+  nav_status_pub_ = create_publisher<nav_interfaces::msg::NavigationStatus>(
+    "navigation_status", 10);
 
   // Create the action server that we implement with our followPath method
   action_server_ = std::make_unique<ActionServer>(
@@ -629,6 +654,7 @@ ControllerServer::on_activate(const rclcpp_lifecycle::State & /*state*/)
   }
   vel_publisher_->on_activate();
   hard_stop_publisher_->on_activate();
+  prepare_replan_request_pub_->on_activate();
   goal_error_publisher_->on_activate();
   speed_plan_publisher_->on_activate();
   speed_plan_diagnostics_publisher_->on_activate();
@@ -648,6 +674,7 @@ ControllerServer::on_activate(const rclcpp_lifecycle::State & /*state*/)
   speed_plan_cycle_id_ = 0;
   speed_plan_path_id_ = 0;
   speed_plan_cycle_ = SpeedPlanCycleContext();
+  nav_status_pub_->on_activate();
   action_server_->activate();
 
   auto node = shared_from_this();
@@ -692,6 +719,11 @@ ControllerServer::on_deactivate(const rclcpp_lifecycle::State & /*state*/)
   }
 
   publishHardStopVelocity();
+  resetStagedControlState();
+  if (active_prepare_session_id_ != 0) {
+    publishReplanRequired("controller deactivated");
+  }
+  nav_status_pub_->on_deactivate();
   goal_error_publisher_->on_deactivate();
   speed_plan_publisher_->on_deactivate();
   speed_plan_diagnostics_publisher_->on_deactivate();
@@ -709,6 +741,7 @@ ControllerServer::on_deactivate(const rclcpp_lifecycle::State & /*state*/)
   }
   vel_publisher_->on_deactivate();
   hard_stop_publisher_->on_deactivate();
+  prepare_replan_request_pub_->on_deactivate();
   dyn_params_handler_.reset();
 
   // destroy bond connection
@@ -750,9 +783,22 @@ ControllerServer::on_cleanup(const rclcpp_lifecycle::State & /*state*/)
   // Release any allocated resources
   action_server_.reset();
   odom_sub_.reset();
+  longitudinal_state_sub_.reset();
+  {
+    std::lock_guard<std::mutex> lock(longitudinal_state_mutex_);
+    has_longitudinal_state_ = false;
+    latest_longitudinal_state_ =
+      nav2_longitudinal_state_estimator::msg::LongitudinalState();
+  }
+  planned_acceleration_correction_ = 0.0;
+  planned_acceleration_correction_valid_ = false;
+  planned_acceleration_correction_stamp_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
   costmap_thread_.reset();
   vel_publisher_.reset();
+  nav_status_pub_.reset();
   hard_stop_publisher_.reset();
+  prepare_replan_request_pub_.reset();
+  prepare_session_sub_.reset();
   goal_error_publisher_.reset();
   speed_plan_publisher_.reset();
   speed_plan_diagnostics_publisher_.reset();
@@ -760,7 +806,9 @@ ControllerServer::on_cleanup(const rclcpp_lifecycle::State & /*state*/)
   phase_echo_pub_.reset();
   desired_vel_echo_pub_.reset();
   controller_target_echo_pub_.reset();
-  invalidateSpeedPlanningContinuity();
+  resetStagedControlState();
+  latest_prepare_session_id_.store(0);
+  active_prepare_session_id_ = 0;
   speed_limit_sub_.reset();
 
   return nav2_util::CallbackReturn::SUCCESS;
@@ -780,9 +828,7 @@ bool ControllerServer::findControllerId(
   if (c_name.empty()) {
     if (controllers_.find(default_controller_) != controllers_.end()) {
       RCLCPP_WARN_ONCE(
-        get_logger(), "No controller was specified in action call. "
-        "动作请求没有指定 controller，Server 将使用 current_controller 插件 %s。"
-        "This warning will appear once.",
+        get_logger(), "No controller set. Using current_controller '%s'.",
         default_controller_.c_str());
       current_controller = default_controller_;
       return true;
@@ -792,20 +838,17 @@ bool ControllerServer::findControllerId(
   if (controllers_.find(c_name) == controllers_.end()) {
     if (controllers_.size() == 1 && c_name.empty()) {
       RCLCPP_WARN_ONCE(
-        get_logger(), "No controller was specified in action call. "
-        "动作请求没有指定 controller，Server 将使用唯一已加载插件 %s。"
-        "This warning will appear once.",
+        get_logger(), "No controller set. Using the only loaded controller: %s",
         controller_ids_concat_.c_str());
       current_controller = controllers_.begin()->first;
     } else {
       RCLCPP_ERROR(
-        get_logger(), "FollowPath called with controller name %s, "
-        "which does not exist. 请求的 controller_id 不存在。Available controllers are: %s.",
+        get_logger(), "Controller '%s' not found. Available: %s",
         c_name.c_str(), controller_ids_concat_.c_str());
       return false;
     }
   } else {
-    RCLCPP_DEBUG(get_logger(), "Selected controller: %s.", c_name.c_str());
+    RCLCPP_DEBUG(get_logger(), "Controller selected: '%s'.", c_name.c_str());
     current_controller = c_name;
   }
 
@@ -819,9 +862,7 @@ bool ControllerServer::findGoalCheckerId(
   if (c_name.empty()) {
     if (goal_checkers_.find(default_goal_checker_) != goal_checkers_.end()) {
       RCLCPP_WARN_ONCE(
-        get_logger(), "No goal checker was specified in parameter 'current_goal_checker'."
-        " 动作请求没有指定 goal_checker，Server 将使用 current_goal_checker 插件 %s。"
-        "This warning will appear once.",
+        get_logger(), "No goal checker set. Using current_goal_checker '%s'.",
         default_goal_checker_.c_str());
       current_goal_checker = default_goal_checker_;
       return true;
@@ -831,21 +872,17 @@ bool ControllerServer::findGoalCheckerId(
   if (goal_checkers_.find(c_name) == goal_checkers_.end()) {
     if (goal_checkers_.size() == 1 && c_name.empty()) {
       RCLCPP_WARN_ONCE(
-        get_logger(), "No goal checker was specified in parameter 'current_goal_checker'."
-        " 动作请求没有指定 goal_checker，Server 将使用唯一已加载插件 %s。"
-        "This warning will appear once.",
+        get_logger(), "No goal checker set. Using the only loaded goal checker: %s",
         goal_checker_ids_concat_.c_str());
       current_goal_checker = goal_checkers_.begin()->first;
     } else {
       RCLCPP_ERROR(
-        get_logger(), "FollowPath called with goal_checker name %s in parameter"
-        " 'current_goal_checker', which does not exist. 请求的 goal_checker_id 不存在。"
-        "Available goal checkers are: %s.",
+        get_logger(), "Goal checker '%s' not found. Available: %s",
         c_name.c_str(), goal_checker_ids_concat_.c_str());
       return false;
     }
   } else {
-    RCLCPP_DEBUG(get_logger(), "Selected goal checker: %s.", c_name.c_str());
+    RCLCPP_DEBUG(get_logger(), "Goal checker selected: '%s'.", c_name.c_str());
     current_goal_checker = c_name;
   }
 
@@ -855,24 +892,32 @@ bool ControllerServer::findGoalCheckerId(
 void ControllerServer::computeControl()
 {
   std::lock_guard<std::mutex> lock(dynamic_params_lock_);
+  is_collision_stop_active_ = false;
+  is_progress_check_paused_for_obstacle_stop_ = false;
 
-  RCLCPP_INFO(get_logger(), "Received a goal, begin computing control effort.");
   if (odom_sub_) {
     const auto start_twist = getThresholdedTwist(odom_sub_->getTwist());
     RCLCPP_INFO(
       get_logger(),
-      "[ControllerStopDebug] FollowPath started: actual odom velocity vx=%.3f m/s, "
-      "vy=%.3f m/s, wz=%.3f rad/s. If these values are not near zero immediately after a "
-      "previous stop request, BT recovery restarted control before the robot fully stopped.",
+      "FollowPath started: odom_vx=%.3f m/s, odom_vy=%.3f m/s, odom_wz=%.3f rad/s.",
       start_twist.x, start_twist.y, start_twist.theta);
+  } else {
+    RCLCPP_INFO(get_logger(), "FollowPath started.");
   }
 
+  publishNavigationStatus(nav_interfaces::msg::NavigationStatus::NAVIGATING);
+
   try {
+    // 尽早关联已经到达的导航任务会话，使入口异常或立即取消也能锁存正确会话。
+    syncPrepareSession();
+
     std::string c_name = action_server_->get_current_goal()->controller_id;
     std::string current_controller;
     if (findControllerId(c_name, current_controller)) {
       current_controller_ = current_controller;
     } else {
+      lockPrepareForCurrentSession("controller unavailable");
+      resetEndLocalizationCapabilities(goal_generation_);
       action_server_->terminate_current();
       return;
     }
@@ -882,6 +927,8 @@ void ControllerServer::computeControl()
     if (findGoalCheckerId(gc_name, current_goal_checker)) {
       current_goal_checker_ = current_goal_checker;
     } else {
+      lockPrepareForCurrentSession("goal checker unavailable");
+      resetEndLocalizationCapabilities(goal_generation_);
       action_server_->terminate_current();
       return;
     }
@@ -890,12 +937,9 @@ void ControllerServer::computeControl()
       action_server_->get_current_goal()->path,
       PathUpdateType::NEW_GOAL);
     progress_checker_->reset();
-    resetNearGoalProgress();
-    // 阶段状态只以“到达目标”为重置基准（isGoalReached 分支），不在此处重置：
-    // computeControl() 会在同一次导航内因 BT 恢复重试（前方受阻→异常→
-    // RecoveryNode 重发 FollowPath）被多次重新进入，入口重置会导致阶段一
-    // 反复重新武装、无限重试后退。“一次导航只走一次阶段一”只能靠到达信号
-    // 判定——没有可靠信号能区分“恢复重试”与“真正开始新导航”。
+    // 不在 FollowPath 入口重置阶段状态：同一次导航可能因 BT 恢复而多次重发
+    // FollowPath。bt_navigator 发布的导航会话代次才是新任务边界，控制
+    // 循环通过 syncPrepareSession() 只在代次变化时重新武装 PREPARE。
 
     last_valid_cmd_time_ = now();
     rclcpp::WallRate loop_rate(controller_frequency_);
@@ -906,13 +950,18 @@ void ControllerServer::computeControl()
     // end
     while (rclcpp::ok()) {
       if (action_server_ == nullptr || !action_server_->is_server_active()) {
-        RCLCPP_DEBUG(get_logger(), "Action server unavailable or inactive. Stopping.");
+        RCLCPP_DEBUG(get_logger(), "Action server is not active. Control stopped.");
+        lockPrepareForCurrentSession("action server inactive");
+        resetEndLocalizationCapabilities(goal_generation_);
         return;
       }
 
       if (action_server_->is_cancel_requested()) {
-        RCLCPP_INFO(get_logger(), "Goal was canceled. Stopping the robot.");
+        RCLCPP_INFO(get_logger(), "Goal canceled. Stopping robot.");
         publishHardStopVelocity();
+        publishNavigationStatus(nav_interfaces::msg::NavigationStatus::IDLE);
+        lockPrepareForCurrentSession("goal canceled");
+        resetEndLocalizationCapabilities(goal_generation_);
         // The FollowPath result is the controller-side stop acknowledgement used
         // by BtActionNode cleanup. Publish zero before making that result visible.
         action_server_->terminate_all();
@@ -925,8 +974,11 @@ void ControllerServer::computeControl()
         if (action_server_->is_cancel_requested()) {
           RCLCPP_INFO(
             get_logger(),
-            "Goal was canceled while waiting for the costmap. Stopping the robot.");
+            "Goal canceled while waiting for costmap. Stopping robot.");
           publishHardStopVelocity();
+          publishNavigationStatus(nav_interfaces::msg::NavigationStatus::IDLE);
+          lockPrepareForCurrentSession("goal canceled");
+          resetEndLocalizationCapabilities(goal_generation_);
           action_server_->terminate_all();
           return;
         }
@@ -934,11 +986,12 @@ void ControllerServer::computeControl()
       }
       start = std::chrono::steady_clock::now();
       updateGlobalPath();
+      syncPrepareSession();
       end = std::chrono::steady_clock::now();
       elapsed = end - start;
       if (elapsed.count() >= 100) {
         RCLCPP_WARN(
-          get_logger(), "Global path update cost: %.6f ms",
+          get_logger(), "Slow path update: %.3f ms.",
           elapsed.count());
       }
 
@@ -962,7 +1015,7 @@ void ControllerServer::computeControl()
         if (!loop_rate.sleep()) {
           RCLCPP_WARN(
             get_logger(),
-            "Control loop missed its desired rate of %.4fHz after planning failure",
+            "Control loop late after planning failure: target=%.4f Hz.",
             controller_frequency_);
         }
         continue;
@@ -974,12 +1027,12 @@ void ControllerServer::computeControl()
       elapsed = end - start;
       if (elapsed.count() >= 100) {
         RCLCPP_WARN(
-          get_logger(), "Local path update cost: %.6f ms",
+          get_logger(), "Slow control update: %.3f ms.",
           elapsed.count());
       }
 
       if (isGoalReached()) {
-        RCLCPP_INFO(get_logger(), "Reached the goal!");
+        RCLCPP_INFO(get_logger(), "Goal reached.");
         resetStagedControlState();
         break;
       }
@@ -989,28 +1042,47 @@ void ControllerServer::computeControl()
 
       if (!loop_rate.sleep()) {
         RCLCPP_WARN(
-          get_logger(), "Control loop missed its desired rate of %.4fHz, the cost time is %.6f ms",
+          get_logger(), "Control loop late: target=%.4f Hz, control_time=%.3f ms.",
           controller_frequency_, elapsed.count());
       }
     }
-  } catch (nav2_core::PlannerException & e) {
-    RCLCPP_ERROR(this->get_logger(), "%s", e.what());
+  } catch (nav2_core::CollisionException & e) {
+    RCLCPP_ERROR(this->get_logger(), "Collision detected! %s", e.what());
     publishHardStopVelocity();
+    lockPrepareForCurrentSession("collision");
+    resetEndLocalizationCapabilities(goal_generation_);
+    publishNavigationStatus(nav_interfaces::msg::NavigationStatus::FAILED, e.what());
     action_server_->terminate_current();
+    publishNavigationStatus(nav_interfaces::msg::NavigationStatus::IDLE);
+    return;
+  } catch (nav2_core::PlannerException & e) {
+    RCLCPP_ERROR(this->get_logger(), "Control failed: %s", e.what());
+    publishHardStopVelocity();
+    lockPrepareForCurrentSession("planning failed");
+    resetEndLocalizationCapabilities(goal_generation_);
+    publishNavigationStatus(nav_interfaces::msg::NavigationStatus::FAILED, e.what());
+    action_server_->terminate_current();
+    publishNavigationStatus(nav_interfaces::msg::NavigationStatus::IDLE);
     return;
   }catch (std::exception & e) {
-    RCLCPP_ERROR(this->get_logger(), "%s", e.what());
+    RCLCPP_ERROR(this->get_logger(), "Unexpected control error: %s", e.what());
     publishHardStopVelocity();
+    lockPrepareForCurrentSession("control error");
+    resetEndLocalizationCapabilities(goal_generation_);
+    publishNavigationStatus(nav_interfaces::msg::NavigationStatus::FAILED, e.what());
     std::shared_ptr<Action::Result> result = std::make_shared<Action::Result>();
     action_server_->terminate_current(result);
+    publishNavigationStatus(nav_interfaces::msg::NavigationStatus::IDLE);
     return;
   }
-  RCLCPP_DEBUG(get_logger(), "Controller succeeded, setting result");
+  RCLCPP_DEBUG(get_logger(), "FollowPath succeeded.");
 
   publishZeroVelocity();
 
   // TODO(orduno) #861 Handle a pending preemption and set controller name
+  publishNavigationStatus(nav_interfaces::msg::NavigationStatus::FINISHED);
   action_server_->succeeded_current();
+  publishNavigationStatus(nav_interfaces::msg::NavigationStatus::IDLE);
 }
 
 void ControllerServer::setPlannerPath(
@@ -1019,10 +1091,9 @@ void ControllerServer::setPlannerPath(
 {
   RCLCPP_DEBUG(
     get_logger(),
-    "Providing path to the controller %s", current_controller_.c_str());
+    "Set path: controller='%s'.", current_controller_.c_str());
   if (path.poses.empty()) {
-    throw nav2_core::PlannerException(
-            "Invalid path, Path is empty. 路径无效：path.poses 为空，通常表示 FollowPath 收到了空路径，无法进行局部控制。");
+    throw nav2_core::PlannerException("Path is empty. FollowPath cannot start.");
   }
   controllers_[current_controller_]->setPlan(path);
   if (staged_control_enabled_) {
@@ -1048,25 +1119,41 @@ void ControllerServer::commitPlannerPathState(
   const nav_msgs::msg::Path & path,
   PathUpdateType update_type)
 {
-  end_pose_ = path.poses.back();
-  end_pose_.header.frame_id = path.header.frame_id;
   if (update_type == PathUpdateType::NEW_GOAL) {
+    // 只有新目标才换靶心。同目标时保持 end_pose_ 不动有两个作用：
+    // ① 近目标重规划做 position-only 插值，path 终点本就有厘米级抖动，而
+    //    GoalChecker 的接受窗同样是厘米级——靶心跟着抖，末端就是在追一个与
+    //    容差同量级的动靶，稳定窗永远凑不满。
+    // ② isSamePathGoal 拿新终点与 end_pose_ 比较。若 end_pose_ 每次都刷新，
+    //    比较基准跟着漂，每次漂一点点都判"同目标"，目标可棘轮式走掉任意远
+    //    而永不触发 NEW_GOAL。锚定后比较基准固定，累计漂移超容差才换目标。
+    end_pose_ = path.poses.back();
+    end_pose_.header.frame_id = path.header.frame_id;
+    // The goal/path timestamp describes when planning completed, not the time at which every
+    // following control cycle should query TF. end_pose_ is retained for the whole FollowPath
+    // action, so a non-zero stamp quickly becomes older than map->odom and makes all
+    // staged-control and goal-check transforms fail. Time zero explicitly requests the latest
+    // available transform.
+    end_pose_.header.stamp = rclcpp::Time(0);
+    ++goal_generation_;
+    resetEndLocalizationCapabilities(goal_generation_);
     goal_checkers_[current_goal_checker_]->reset();
-    near_goal_progress_acceptance_reached_ = false;
-    near_goal_pose_hold_active_ = false;
-    near_goal_hold_outside_accept_count_ = 0;
     controller_phase_ = ControllerPhase::TRACK;
     terminal_brake_latched_ = false;
+    terminal_stall_consecutive_cycles_ = 0;
+    terminal_stall_recovery_count_ = 0;
+    is_collision_stop_active_ = false;
+    is_progress_check_paused_for_obstacle_stop_ = false;
   } else {
-    RCLCPP_INFO(
-      get_logger(),
-      "同目标 path 仅替换几何：保留 controller phase=%s、goal/near-goal 状态和 "
-      "SpeedPlanState 已消费 (v,a) 连续性、terminal_brake_latched=%s。",
-      controllerPhaseName(controller_phase_), terminal_brake_latched_ ? "true" : "false");
+    RCLCPP_DEBUG_THROTTLE(
+      get_logger(), *get_clock(), 1000,
+      "Same-goal path update: phase=%s, terminal_brake=%s, collision_stop=%s. State kept.",
+      controllerPhaseName(controller_phase_), terminal_brake_latched_ ? "true" : "false",
+      is_collision_stop_active_ ? "true" : "false");
   }
 
   RCLCPP_DEBUG(
-    get_logger(), "Path end point is (%.2f, %.2f)",
+    get_logger(), "Goal anchor: x=%.2f, y=%.2f.",
     end_pose_.pose.position.x, end_pose_.pose.position.y);
 
   current_path_ = path;
@@ -1095,7 +1182,7 @@ bool ControllerServer::computeLocalPath(
   if (local_planner == local_planners_.end()) {
     RCLCPP_ERROR_THROTTLE(
       get_logger(), *get_clock(), 1000,
-      "Configured local planner '%s' is unavailable; halting this control cycle.",
+      "Local planner '%s' is not loaded. No command this cycle.",
       current_local_planner_.c_str());
     local_path = nav_msgs::msg::Path();
     return false;
@@ -1107,7 +1194,7 @@ bool ControllerServer::computeLocalPath(
   {
     RCLCPP_WARN_THROTTLE(
       get_logger(), *get_clock(), 1000,
-      "Local planner '%s' failed or returned an empty path; halting this control cycle.",
+      "Local planner '%s' failed or gave an empty path. No command this cycle.",
       current_local_planner_.c_str());
     local_path = nav_msgs::msg::Path();
     return false;
@@ -1115,31 +1202,188 @@ bool ControllerServer::computeLocalPath(
   return true;
 }
 
-nav2_core::SpeedPlanningBoundary ControllerServer::buildSpeedPlanningBoundary(
+nav2_core::InitialMotionState ControllerServer::buildInitialMotionState(
   const nav_msgs::msg::Path & path,
-  const geometry_msgs::msg::Twist & measured_velocity)
+  const geometry_msgs::msg::Twist & measured_velocity,
+  bool should_stop_for_path_obstacle)
 {
-  auto decision = speed_plan_state_.boundary(path, measured_velocity, now());
-  decision.boundary.terminal_brake_latched = terminal_brake_latched_;
+  pending_stitching_prefix_ = nav_interfaces::msg::RobotTrajectory();
+  pending_stitching_boundary_ = nav2_core::InitialMotionState();
+  nav2_longitudinal_state_estimator::msg::LongitudinalState measured_state;
+  bool has_measured_state = false;
+  {
+    std::lock_guard<std::mutex> lock(longitudinal_state_mutex_);
+    has_measured_state = has_longitudinal_state_;
+    if (has_measured_state) {
+      measured_state = latest_longitudinal_state_;
+    }
+  }
+  double state_age = std::numeric_limits<double>::quiet_NaN();
+  if (has_measured_state) {
+    const rclcpp::Time state_stamp(measured_state.header.stamp, get_clock()->get_clock_type());
+    state_age = (now() - state_stamp).seconds();
+  }
+  const bool state_fresh = has_measured_state && std::isfinite(state_age) &&
+    state_age >= 0.0 && state_age <= longitudinal_state_max_age_;
+  const bool velocity_usable = state_fresh && measured_state.velocity_valid &&
+    std::isfinite(measured_state.velocity);
+  const bool acceleration_usable = state_fresh && measured_state.valid &&
+    measured_state.acceleration_valid && std::isfinite(measured_state.acceleration);
+
+  // Let the arbiter compare the accepted trajectory against robot_localization velocity.
+  // Normal stitching still inherits planned v/a; only an explicit mismatch re-anchors to
+  // this measured velocity. Raw /feedback/odom remains the automatic fallback.
+  geometry_msgs::msg::Twist arbiter_velocity = measured_velocity;
+  if (velocity_usable) {
+    arbiter_velocity.linear.x = measured_state.velocity;
+  }
+  auto decision = initial_motion_arbiter_.resolve(
+    path, arbiter_velocity, now(), terminal_brake_latched_);
+  const double planned_acceleration = decision.state.acceleration;
+  const bool planned_acceleration_valid = decision.state.acceleration_valid &&
+    std::isfinite(planned_acceleration);
+  std::string acceleration_source = "planned_continuity";
+
+  const bool longitudinal_tracking_phase =
+    controller_phase_ == ControllerPhase::TRACK ||
+    controller_phase_ == ControllerPhase::APPROACH;
+  const bool use_planned_correction = planned_acceleration_correction_enabled_ &&
+    planned_acceleration_valid && acceleration_usable && longitudinal_tracking_phase &&
+    (!velocity_usable || measured_state.velocity >= -0.01);
+  if (use_planned_correction) {
+    const double measured_acceleration = std::clamp(
+      measured_state.acceleration, state_acceleration_min_, state_acceleration_max_);
+    const double innovation = std::clamp(
+      measured_acceleration - planned_acceleration,
+      -std::max(planned_acceleration_innovation_limit_, 0.0),
+      std::max(planned_acceleration_innovation_limit_, 0.0));
+    const double target_correction =
+      std::clamp(planned_acceleration_correction_gain_, 0.0, 1.0) * innovation;
+
+    // Only the small measurement correction is rate-limited. The Ruckig planned
+    // acceleration remains the sole owner of the main cross-cycle jerk profile.
+    if (!planned_acceleration_correction_valid_) {
+      planned_acceleration_correction_ = target_correction;
+      planned_acceleration_correction_valid_ = true;
+    } else {
+      const double dt = std::clamp(
+        (now() - planned_acceleration_correction_stamp_).seconds(), 0.0, 0.5);
+      const double max_delta = std::max(
+        planned_acceleration_correction_max_jerk_, 0.0) * dt;
+      planned_acceleration_correction_ += std::clamp(
+        target_correction - planned_acceleration_correction_, -max_delta, max_delta);
+    }
+    planned_acceleration_correction_stamp_ = now();
+    decision.state.acceleration = std::clamp(
+      planned_acceleration + planned_acceleration_correction_,
+      state_acceleration_min_, state_acceleration_max_);
+    decision.state.acceleration_valid = true;
+    acceleration_source = "planned_robot_localization_correction";
+  } else if (acceleration_usable && !planned_acceleration_valid) {
+    decision.state.acceleration = std::clamp(
+      measured_state.acceleration, state_acceleration_min_, state_acceleration_max_);
+    decision.state.acceleration_valid = true;
+    acceleration_source = "robot_localization";
+    planned_acceleration_correction_valid_ = false;
+    planned_acceleration_correction_ = 0.0;
+  } else if (!acceleration_usable) {
+    planned_acceleration_correction_valid_ = false;
+    planned_acceleration_correction_ = 0.0;
+  }
+  if (state_fresh) {
+    decision.state.source_stamp = measured_state.header.stamp;
+    decision.state.source_age = state_age;
+  }
+  decision.state.terminal_brake_latched = terminal_brake_latched_;
+  decision.state.should_stop_for_path_obstacle = should_stop_for_path_obstacle;
+  if (decision.hasStitchingPrefix()) {
+    pending_stitching_prefix_ = decision.stitching_prefix;
+    pending_stitching_boundary_ = decision.stitching_boundary;
+    pending_stitching_boundary_.terminal_brake_latched = terminal_brake_latched_;
+    pending_stitching_boundary_.should_stop_for_path_obstacle =
+      should_stop_for_path_obstacle;
+    pending_stitching_boundary_.source_stamp = decision.state.source_stamp;
+    pending_stitching_boundary_.source_age = decision.state.source_age;
+  }
   if (speed_plan_cycle_.active) {
-    speed_plan_cycle_.boundary = decision.boundary;
-    speed_plan_cycle_.boundary_computed = true;
-    speed_plan_cycle_.boundary_reason = decision.reason.has_value() ?
-      nav2_speed_planner::boundaryReasonName(*decision.reason) : "inherited";
+    speed_plan_cycle_.initial_motion = decision.state;
+    speed_plan_cycle_.initial_motion_valid = true;
+    speed_plan_cycle_.initial_motion_source = decision.reason.has_value() ?
+      nav2_speed_planner::initialMotionSourceName(*decision.reason) : "inherited";
+    speed_plan_cycle_.initial_motion_measured_v = decision.measured_velocity;
+    speed_plan_cycle_.initial_motion_sampled_v = decision.sampled_velocity;
+    speed_plan_cycle_.initial_motion_deviation = decision.velocity_deviation;
+    speed_plan_cycle_.initial_motion_planned_a = planned_acceleration;
+    speed_plan_cycle_.initial_motion_acceleration_source = acceleration_source;
+    speed_plan_cycle_.initial_motion_state_velocity = measured_state.velocity;
+    speed_plan_cycle_.initial_motion_state_acceleration_raw =
+      measured_state.acceleration_raw;
+    speed_plan_cycle_.initial_motion_state_acceleration = measured_state.acceleration;
+    speed_plan_cycle_.initial_motion_state_correction =
+      planned_acceleration_correction_valid_ ? planned_acceleration_correction_ :
+      std::numeric_limits<double>::quiet_NaN();
+    speed_plan_cycle_.initial_motion_state_velocity_std = measured_state.velocity_std;
+    speed_plan_cycle_.initial_motion_state_acceleration_std =
+      measured_state.acceleration_std;
+    speed_plan_cycle_.initial_motion_state_velocity_age = measured_state.velocity_age;
+    speed_plan_cycle_.initial_motion_state_acceleration_age = measured_state.acceleration_age;
+    speed_plan_cycle_.initial_motion_state_stamp_skew = measured_state.stamp_skew;
+    speed_plan_cycle_.initial_motion_state_rejected_samples =
+      measured_state.rejected_samples;
+    speed_plan_cycle_.initial_motion_state_acceleration_clamps =
+      measured_state.acceleration_clamps;
+    speed_plan_cycle_.initial_motion_state_stationary = measured_state.stationary;
+    speed_plan_cycle_.initial_motion_state_valid =
+      state_fresh && measured_state.valid;
   }
   if (decision.reason.has_value()) {
     RCLCPP_DEBUG_THROTTLE(
       get_logger(), *get_clock(), 1000,
-      "Speed planning boundary reseeded: reason=%s",
-      nav2_speed_planner::boundaryReasonName(*decision.reason));
+      "Initial motion updated: reason=%s, velocity_inherited=%s, "
+      "acceleration_source=%s.",
+      nav2_speed_planner::initialMotionSourceName(*decision.reason),
+      decision.velocity_inherited ? "true" : "false",
+      acceleration_source.c_str());
   }
-  return decision.boundary;
+  return decision.state;
+}
+
+void ControllerServer::longitudinalStateCallback(
+  const nav2_longitudinal_state_estimator::msg::LongitudinalState::SharedPtr msg)
+{
+  std::lock_guard<std::mutex> lock(longitudinal_state_mutex_);
+  latest_longitudinal_state_ = *msg;
+  has_longitudinal_state_ = true;
+}
+
+bool ControllerServer::activeControllerCanAvoidPathObstacles(
+  const geometry_msgs::msg::PoseStamped & pose)
+{
+  std::string controller_id = current_controller_;
+  if (staged_control_enabled_) {
+    const double distance_to_goal = getDistanceToGoal(pose);
+    controller_id = distance_to_goal <= approach_distance_ ?
+      approach_controller_ : track_controller_;
+  }
+  const auto controller = controllers_.find(controller_id);
+  if (controller == controllers_.end()) {
+    return false;
+  }
+  const auto * capability = dynamic_cast<const nav2_core::PathObstacleAvoidanceCapability *>(
+    controller->second.get());
+  return capability != nullptr && capability->canAvoidPathObstacles();
 }
 
 void ControllerServer::updateTerminalBrakeLatch(
   const nav2_core::SpeedPlanningDiagnostics & diagnostics,
   bool longitudinal_continuity_valid)
 {
+  // 障碍约束随costmap实时变化，不能污染同目标生命周期的末端制动锁存。
+  if (diagnostics.terminal_branch ==
+    nav2_core::SpeedPlanningTerminalBranch::PATH_OBSTACLE_STOP)
+  {
+    return;
+  }
   if (terminal_brake_latched_ || !diagnostics.terminal_brake_required) {
     return;
   }
@@ -1157,8 +1401,8 @@ void ControllerServer::updateTerminalBrakeLatch(
   if (!longitudinal_continuity_valid && !motion_requires_braking) {
     RCLCPP_DEBUG_THROTTLE(
       get_logger(), *get_clock(), 1000,
-      "Terminal brake condition deferred: no longitudinal continuity and "
-      "braking distance is zero (available=%.3f m, infeasible=%s).",
+      "Terminal brake not set: no motion history, braking=0, available=%.3f m, "
+      "infeasible=%s.",
       diagnostics.terminal_distance_available,
       diagnostics.terminal_infeasible ? "true" : "false");
     return;
@@ -1167,8 +1411,8 @@ void ControllerServer::updateTerminalBrakeLatch(
   terminal_brake_latched_ = true;
   RCLCPP_WARN(
     get_logger(),
-    "Terminal brake latched: available=%.3f m braking=%.3f m reserve=%.3f m "
-    "infeasible=%s. Same-goal path updates may not re-arm cruise acceleration.",
+    "Terminal brake set: available=%.3f m, braking=%.3f m, reserve=%.3f m, "
+    "infeasible=%s.",
     diagnostics.terminal_distance_available,
     diagnostics.terminal_braking_distance,
     diagnostics.terminal_execution_reserve,
@@ -1177,7 +1421,8 @@ void ControllerServer::updateTerminalBrakeLatch(
 
 void ControllerServer::updateSpeedPlanningContinuityAfterControl(
   bool control_succeeded, bool trajectory_target_consumed,
-  double consumed_target_velocity, double consumed_target_acceleration)
+  double consumed_target_velocity, double consumed_target_acceleration,
+  double consumed_target_relative_time)
 {
   const bool longitudinal_tracking_phase =
     controller_phase_ == ControllerPhase::TRACK ||
@@ -1188,13 +1433,84 @@ void ControllerServer::updateSpeedPlanningContinuityAfterControl(
     invalidateSpeedPlanningContinuity();
     return;
   }
-  speed_plan_state_.accept(
-    current_trajectory_, consumed_target_velocity, consumed_target_acceleration, now());
+  initial_motion_arbiter_.accept(
+    current_trajectory_, consumed_target_velocity, consumed_target_acceleration,
+    consumed_target_relative_time, now());
+}
+
+bool ControllerServer::updateTerminalStallRecovery(
+  const nav_2d_msgs::msg::Twist2D & measured_twist,
+  bool trajectory_target_consumed,
+  double consumed_target_velocity,
+  double consumed_target_acceleration)
+{
+  const bool progress_stalled =
+    std::isfinite(speed_plan_cycle_.local_path_progress_delta) &&
+    std::fabs(speed_plan_cycle_.local_path_progress_delta) <=
+    terminal_stall_max_progress_per_cycle_;
+  const bool frozen_terminal_brake = terminal_stall_recovery_enabled_ &&
+    terminal_stall_recovery_count_ == 0 &&
+    controller_phase_ == ControllerPhase::APPROACH &&
+    terminal_brake_latched_ &&
+    speed_plan_cycle_.terminal_valid &&
+    speed_plan_cycle_.terminal.terminal_branch ==
+    nav2_core::SpeedPlanningTerminalBranch::GOAL_TERMINAL &&
+    speed_plan_cycle_.local_path_length >= terminal_stall_min_remaining_distance_ &&
+    !is_collision_stop_active_ &&
+    trajectory_target_consumed &&
+    std::isfinite(consumed_target_velocity) &&
+    std::isfinite(consumed_target_acceleration) &&
+    consumed_target_velocity >= terminal_stall_min_target_velocity_ &&
+    consumed_target_acceleration <= terminal_stall_max_target_acceleration_ &&
+    std::fabs(measured_twist.x) <= terminal_stall_stopped_velocity_ &&
+    progress_stalled;
+
+  if (!frozen_terminal_brake) {
+    terminal_stall_consecutive_cycles_ = 0;
+    if (speed_plan_cycle_.active) {
+      speed_plan_cycle_.terminal_stall_consecutive_cycles = 0;
+      speed_plan_cycle_.terminal_stall_recovery_count = terminal_stall_recovery_count_;
+    }
+    return false;
+  }
+
+  ++terminal_stall_consecutive_cycles_;
+  const int required_cycles = std::max(
+    1, static_cast<int>(std::ceil(
+      terminal_stall_recovery_duration_ * std::max(controller_frequency_, 1.0))));
+  if (speed_plan_cycle_.active) {
+    speed_plan_cycle_.terminal_stall_consecutive_cycles =
+      terminal_stall_consecutive_cycles_;
+    speed_plan_cycle_.terminal_stall_recovery_count = terminal_stall_recovery_count_;
+  }
+  if (terminal_stall_consecutive_cycles_ < required_cycles) {
+    return false;
+  }
+
+  terminal_stall_consecutive_cycles_ = 0;
+  ++terminal_stall_recovery_count_;
+  // Critical: invalidate only the accepted trajectory prefix. Do not call
+  // resetStagedControlState() and do not clear terminal_brake_latched_. The
+  // next cycle therefore reseeds from measured standstill while the S-curve
+  // recovery remains capped by the terminal 0.05 m/s envelope.
+  invalidateSpeedPlanningContinuity();
+  if (speed_plan_cycle_.active) {
+    speed_plan_cycle_.terminal_stall_recovery_triggered = true;
+    speed_plan_cycle_.terminal_stall_consecutive_cycles = required_cycles;
+    speed_plan_cycle_.terminal_stall_recovery_count = terminal_stall_recovery_count_;
+  }
+  RCLCPP_WARN(
+    get_logger(),
+    "Terminal stall recovery: target=(v=%.3f,a=%.3f), odom_v=%.3f, "
+    "progress=%.4f, terminal latch preserved.",
+    consumed_target_velocity, consumed_target_acceleration, measured_twist.x,
+    speed_plan_cycle_.local_path_progress_delta);
+  return true;
 }
 
 void ControllerServer::invalidateSpeedPlanningContinuity()
 {
-  speed_plan_state_.reset();
+  initial_motion_arbiter_.reset();
 }
 
 bool ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
@@ -1207,10 +1523,6 @@ bool ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
   double local_planner_ms = 0.0;
   double speed_set_plan_ms = 0.0;
   double speed_compute_ms = 0.0;
-  double dispatch_ms = 0.0;
-  double current_dispatch_ms = 0.0;
-  double track_dispatch_ms = 0.0;
-  double approach_dispatch_ms = 0.0;
   double visualization_ms = 0.0;
   nav_msgs::msg::Path planning_path;
 
@@ -1221,32 +1533,30 @@ bool ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
       const double total_ms = elapsed_ms(pipeline_start, PipelineClock::now());
       const double measured_ms =
         odom_ms + pose_ms + local_planner_ms + speed_set_plan_ms + speed_compute_ms +
-        dispatch_ms + visualization_ms;
+        visualization_ms;
       const double unaccounted_ms = std::max(0.0, total_ms - measured_ms);
       const size_t planning_points = planning_path.poses.size();
       const std::string & planning_frame = planning_path.header.frame_id;
       if (total_ms >= kSlowPlanningPipelineWarnMs) {
-        RCLCPP_WARN(
-          get_logger(),
-          "Planning pipeline timing (ms): result=%s total=%.3f odom=%.3f pose=%.3f "
-          "local=%.3f speed_set_plan=%.3f speed_compute=%.3f dispatch=%.3f "
-          "(current=%.3f track=%.3f approach=%.3f) viz=%.3f "
-          "unaccounted=%.3f points=%zu->%zu->%zu frames=%s->%s",
+        RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 1000,
+          "Slow planning (ms): result=%s total=%.3f odom=%.3f pose=%.3f "
+          "local=%.3f speed_set_plan=%.3f speed_compute=%.3f viz=%.3f other=%.3f "
+          "input_points=%zu planning_points=%zu trajectory_points=%zu "
+          "input_frame='%s' planning_frame='%s'.",
           result, total_ms, odom_ms, pose_ms, local_planner_ms, speed_set_plan_ms,
-          speed_compute_ms, dispatch_ms, current_dispatch_ms, track_dispatch_ms,
-          approach_dispatch_ms, visualization_ms, unaccounted_ms,
+          speed_compute_ms, visualization_ms, unaccounted_ms,
           path.poses.size(), planning_points, current_trajectory_.points.size(),
           path.header.frame_id.c_str(), planning_frame.c_str());
       } else {
         RCLCPP_DEBUG_THROTTLE(
           get_logger(), *get_clock(), 1000,
-          "Planning pipeline timing (ms): result=%s total=%.3f odom=%.3f pose=%.3f "
-          "local=%.3f speed_set_plan=%.3f speed_compute=%.3f dispatch=%.3f "
-          "(current=%.3f track=%.3f approach=%.3f) viz=%.3f "
-          "unaccounted=%.3f points=%zu->%zu->%zu frames=%s->%s",
+          "Planning (ms): result=%s total=%.3f odom=%.3f pose=%.3f "
+          "local=%.3f speed_set_plan=%.3f speed_compute=%.3f viz=%.3f other=%.3f "
+          "input_points=%zu planning_points=%zu trajectory_points=%zu "
+          "input_frame='%s' planning_frame='%s'.",
           result, total_ms, odom_ms, pose_ms, local_planner_ms, speed_set_plan_ms,
-          speed_compute_ms, dispatch_ms, current_dispatch_ms, track_dispatch_ms,
-          approach_dispatch_ms, visualization_ms, unaccounted_ms,
+          speed_compute_ms, visualization_ms, unaccounted_ms,
           path.poses.size(), planning_points, current_trajectory_.points.size(),
           path.header.frame_id.c_str(), planning_frame.c_str());
       }
@@ -1276,7 +1586,7 @@ bool ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
   if (sp == speed_planners_.end()) {
     RCLCPP_ERROR_THROTTLE(
       get_logger(), *get_clock(), 1000,
-      "Configured speed planner '%s' is unavailable; halting this control cycle.",
+      "Speed planner '%s' is not loaded. No command this cycle.",
       current_speed_planner_.c_str());
     speed_plan_cycle_.planning_result = "speed_planner_unavailable";
     publishSpeedPlanDiagnostics(
@@ -1294,33 +1604,30 @@ bool ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
   current_velocity.linear.y = odom_twist.y;
   current_velocity.angular.z = odom_twist.theta;
 
+  geometry_msgs::msg::PoseStamped planning_pose;
+  const std::string planning_frame = path.header.frame_id.empty() ?
+    path.poses.front().header.frame_id : path.header.frame_id;
+  const auto pose_start = PipelineClock::now();
+  const bool pose_available = !planning_frame.empty() && nav2_util::getCurrentPose(
+    planning_pose, *costmap_ros_->getTfBuffer(), planning_frame,
+    costmap_ros_->getBaseFrameID(), costmap_ros_->getTransformTolerance());
+  pose_ms = elapsed_ms(pose_start, PipelineClock::now());
+  if (!pose_available) {
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), *get_clock(), 1000,
+      "Robot pose not found in path frame '%s'. No command this cycle.",
+      planning_frame.c_str());
+    speed_plan_cycle_.planning_result = "pose_lookup_failed";
+    publishSpeedPlanDiagnostics(
+      false, false, std::numeric_limits<double>::quiet_NaN(),
+      std::numeric_limits<double>::quiet_NaN(), "not_run");
+    log_pipeline_timing("pose_lookup_failed");
+    return false;
+  }
+
   if (!current_local_planner_.empty()) {
-    geometry_msgs::msg::PoseStamped pose;
-    const auto pose_start = PipelineClock::now();
-    const std::string planning_frame = path.header.frame_id.empty() ?
-      path.poses.front().header.frame_id : path.header.frame_id;
-    const bool pose_available = !planning_frame.empty() && nav2_util::getCurrentPose(
-      pose, *costmap_ros_->getTfBuffer(), planning_frame,
-      costmap_ros_->getBaseFrameID(), costmap_ros_->getTransformTolerance());
-    if (!pose_available) {
-      pose_ms = elapsed_ms(pose_start, PipelineClock::now());
-      RCLCPP_WARN_THROTTLE(
-        get_logger(), *get_clock(), 1000,
-        "Cannot get robot pose in path frame '%s' for local planning; "
-        "halting this control cycle.", planning_frame.c_str());
-      const auto visualization_start = PipelineClock::now();
-      publishSpeedPlan(current_trajectory_);
-      visualization_ms = elapsed_ms(visualization_start, PipelineClock::now());
-      speed_plan_cycle_.planning_result = "pose_lookup_failed";
-      publishSpeedPlanDiagnostics(
-        false, false, std::numeric_limits<double>::quiet_NaN(),
-        std::numeric_limits<double>::quiet_NaN(), "not_run");
-      log_pipeline_timing("pose_lookup_failed");
-      return false;
-    }
-    pose_ms = elapsed_ms(pose_start, PipelineClock::now());
     const auto local_planner_start = PipelineClock::now();
-    if (!computeLocalPath(path, pose, current_velocity, planning_path)) {
+    if (!computeLocalPath(path, planning_pose, current_velocity, planning_path)) {
       local_planner_ms = elapsed_ms(local_planner_start, PipelineClock::now());
       const auto visualization_start = PipelineClock::now();
       publishSpeedPlan(current_trajectory_);
@@ -1343,30 +1650,153 @@ bool ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
     speed_plan_cycle_.local_path_length +=
       std::hypot(current.x - previous.x, current.y - previous.y);
   }
+  // 本拍投影前进的弧长 = 上一拍剩余 − 本拍剩余（同一条全局路径才有可比性）。
+  // 与 odom 位移对账即可判定裁剪是否"超额消耗"：两者应当相等，实测出现过
+  // 一拍多裁 36mm 而机器人只走了 25mm 的情况（R58）。
+  if (std::isfinite(prev_local_path_length_) &&
+    prev_local_path_id_ == speed_plan_cycle_.path_id)
+  {
+    speed_plan_cycle_.local_path_progress_delta =
+      prev_local_path_length_ - speed_plan_cycle_.local_path_length;
+  }
+  prev_local_path_length_ = speed_plan_cycle_.local_path_length;
+  prev_local_path_id_ = speed_plan_cycle_.path_id;
+
+  const bool should_stop_for_path_obstacle =
+    !activeControllerCanAvoidPathObstacles(planning_pose);
+  const auto initial_motion = buildInitialMotionState(
+    planning_path, current_velocity, should_stop_for_path_obstacle);
+  nav_msgs::msg::Path speed_planning_path = planning_path;
+  nav2_core::InitialMotionState speed_planning_boundary = initial_motion;
+  nav2_speed_planner::TrajectoryStitchingPlan stitching_plan;
+  bool use_stitching_prefix = false;
+  if (pending_stitching_prefix_.points.size() >= 2) {
+    nav2_speed_planner::InitialMotionDecision stitching_decision;
+    stitching_decision.stitching_prefix = pending_stitching_prefix_;
+    stitching_decision.stitching_boundary = pending_stitching_boundary_;
+    std::string rejection_reason;
+    if (!nav2_speed_planner::prepareTrajectoryStitching(
+        planning_path, stitching_decision, trajectory_stitching_max_path_error_,
+        stitching_plan, &rejection_reason))
+    {
+      speed_plan_cycle_.stitching_result = rejection_reason;
+    } else if (!sp->second->isTrajectoryPrefixSafe(
+        stitching_plan.prefix, should_stop_for_path_obstacle))
+    {
+      speed_plan_cycle_.stitching_result = "prefix_safety_rejected";
+    } else {
+      use_stitching_prefix = true;
+      speed_planning_path = stitching_plan.suffix_path;
+      speed_planning_boundary = stitching_plan.suffix_boundary;
+      speed_plan_cycle_.stitching_result = "stitched";
+      speed_plan_cycle_.stitching_prefix_points = stitching_plan.prefix.points.size();
+      speed_plan_cycle_.stitching_prefix_duration = stitching_plan.prefix_duration;
+    }
+  } else {
+    speed_plan_cycle_.stitching_result = "prefix_unavailable";
+  }
 
   const auto speed_set_plan_start = PipelineClock::now();
-  sp->second->setPlan(planning_path);
+  sp->second->setPlan(speed_planning_path);
   speed_set_plan_ms = elapsed_ms(speed_set_plan_start, PipelineClock::now());
   const auto speed_compute_start = PipelineClock::now();
-  const auto planning_boundary = buildSpeedPlanningBoundary(planning_path, current_velocity);
-  current_trajectory_ = sp->second->computeSpeedPlan(planning_path, planning_boundary);
+  auto planned_suffix = sp->second->computeSpeedPlan(
+    speed_planning_path, speed_planning_boundary);
+  const auto suffix_diagnostics = sp->second->getLastPlanningDiagnostics();
+  if (use_stitching_prefix && !planned_suffix.points.empty() &&
+    !suffix_diagnostics.terminal_infeasible)
+  {
+    current_trajectory_ = nav2_speed_planner::concatenateStitchedTrajectory(
+      stitching_plan.prefix, planned_suffix);
+    speed_plan_cycle_.trajectory_stitched = true;
+  } else if (use_stitching_prefix) {
+    // A suffix failure must not publish the old prefix by itself. Retry once
+    // through the established full-path state-inheritance route; if that also
+    // fails the existing empty-trajectory fail-safe stops this cycle.
+    speed_plan_cycle_.stitching_result = planned_suffix.points.empty() ?
+      "suffix_failed_full_replan" : "suffix_infeasible_full_replan";
+    speed_plan_cycle_.stitching_prefix_points = 0;
+    speed_plan_cycle_.stitching_prefix_duration = 0.0;
+    sp->second->setPlan(planning_path);
+    current_trajectory_ = sp->second->computeSpeedPlan(planning_path, initial_motion);
+  } else {
+    current_trajectory_ = std::move(planned_suffix);
+  }
+  // 同一导航任务的终点位姿只允许来自 NEW_GOAL 时冻结的 end_pose_。速度规划
+  // 每周期可以更新中间轨迹，但不得用局部路径尾点重新定义厘米级终点或最终角。
+  if (!current_trajectory_.points.empty()) {
+    geometry_msgs::msg::PoseStamped fixed_goal = end_pose_;
+    fixed_goal.header.stamp = rclcpp::Time(0);
+    bool fixed_goal_valid = true;
+    const std::string trajectory_frame = current_trajectory_.header.frame_id.empty() ?
+      planning_frame : current_trajectory_.header.frame_id;
+    if (!trajectory_frame.empty() && fixed_goal.header.frame_id != trajectory_frame) {
+      geometry_msgs::msg::PoseStamped transformed_goal;
+      rclcpp::Duration transform_tolerance(
+        rclcpp::Duration::from_seconds(costmap_ros_->getTransformTolerance()));
+      if (nav_2d_utils::transformPose(
+          costmap_ros_->getTfBuffer(), trajectory_frame, fixed_goal,
+          transformed_goal, transform_tolerance))
+      {
+        fixed_goal = transformed_goal;
+      } else {
+        fixed_goal_valid = false;
+        RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 1000,
+          "Cannot transform frozen goal from '%s' to trajectory frame '%s'; "
+          "keeping planner endpoint for this cycle.",
+          end_pose_.header.frame_id.c_str(), trajectory_frame.c_str());
+      }
+    }
+    if (fixed_goal_valid) {
+      current_trajectory_.points.back().pose = fixed_goal;
+    }
+  }
   const auto planning_diagnostics = sp->second->getLastPlanningDiagnostics();
   speed_plan_cycle_.terminal = planning_diagnostics;
   speed_plan_cycle_.terminal_valid = true;
   updateTerminalBrakeLatch(
-    planning_diagnostics, planning_boundary.acceleration_valid);
+    planning_diagnostics, initial_motion.acceleration_valid);
   if (planning_diagnostics.terminal_infeasible) {
+    // 终点目标已是v=0，terminal_speed_cap只负责低速区上限。不可行时仍必须
+    // 完整记录入口/兜底原因，避免把物理停车距离不足与求解器错误混为一谈。
+    static const char * kKind[] = {"feasible", "physical", "numerical"};
+    static const char * kReason[] = {
+      "none", "stable_segment_unreachable", "fallback_unreachable",
+      "duration_budget_invalid", "solver_error", "non_finite_output",
+      "iteration_exhausted"};
+    const auto & d = planning_diagnostics;
+    const int k = (d.terminal_infeasible_kind >= 0 && d.terminal_infeasible_kind < 3) ?
+      d.terminal_infeasible_kind : 0;
+    const int er = (d.terminal_entry_reason >= 0 && d.terminal_entry_reason < 7) ?
+      d.terminal_entry_reason : 0;
+    const int fr = (d.terminal_infeasible_reason >= 0 && d.terminal_infeasible_reason < 7) ?
+      d.terminal_infeasible_reason : 0;
     RCLCPP_WARN_THROTTLE(
       get_logger(), *get_clock(), 1000,
-      "Speed plan diagnostic: planner=%s terminal_infeasible=true; "
-      "using a continuous reachable braking profile.",
-      current_speed_planner_.c_str());
+      "Speed plan fallback: planner=%s kind=%s entry=%s reason=%s profile=%s "
+      "anchor=%.3f available=%.3f braking=%.3f reserve=%.3f latched_reserve=%.3f "
+      "initial_vx=%.3f initial_a=%.3f brake_latched=%d path_length=%.3f path_points=%zu "
+      "branch=%s obstacle_index=%d obstacle_arc=%.3f "
+      "solver=(code=%d v0=%.4f a0=%.4f vmax=%.4f target_v=%.4f distance=%.4f).",
+      current_speed_planner_.c_str(), kKind[k], kReason[er], kReason[fr],
+      d.terminal_result_provenance ? "braking_fallback" : "normal",
+      d.terminal_anchor_s, d.terminal_distance_available, d.terminal_braking_distance,
+      d.terminal_execution_reserve, d.terminal_latched_reserve,
+      initial_motion.velocity.linear.x, initial_motion.acceleration,
+      initial_motion.terminal_brake_latched ? 1 : 0,
+      nav2_util::geometry_utils::calculate_path_length(planning_path),
+      planning_path.poses.size(),
+      speedPlanningTerminalBranchName(d.terminal_branch),
+      d.first_obstacle_index, d.first_obstacle_arc,
+      d.solver_code, d.solver_v0, d.solver_a0, d.solver_vmax,
+      d.solver_target_v, d.solver_distance);
   }
   speed_compute_ms = elapsed_ms(speed_compute_start, PipelineClock::now());
   if (current_trajectory_.points.empty()) {
     RCLCPP_WARN_THROTTLE(
       get_logger(), *get_clock(), 1000,
-      "Speed planner '%s' returned an empty trajectory; halting this control cycle.",
+      "Speed planner '%s' returned no points. No command this cycle.",
       current_speed_planner_.c_str());
     const auto visualization_start = PipelineClock::now();
     publishSpeedPlan(current_trajectory_);  // 清除 RViz 旧 marker
@@ -1379,21 +1809,12 @@ bool ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
     return false;
   }
 
-  const auto dispatch_trajectory = [&](const std::string & controller_id, double & stage_ms) {
-      const auto dispatch_start = PipelineClock::now();
-      controllers_[controller_id]->setTrajectory(current_trajectory_);
-      stage_ms = elapsed_ms(dispatch_start, PipelineClock::now());
-      dispatch_ms += stage_ms;
-    };
-  dispatch_trajectory(current_controller_, current_dispatch_ms);
-  if (staged_control_enabled_) {
-    if (track_controller_ != current_controller_) {
-      dispatch_trajectory(track_controller_, track_dispatch_ms);
-    }
-    if (approach_controller_ != current_controller_ && approach_controller_ != track_controller_) {
-      dispatch_trajectory(approach_controller_, approach_dispatch_ms);
-    }
-  }
+  // 轨迹按需分发：本周期跑哪个 controller 要到 computeStagedVelocity 才决定
+  // （它依赖 pose 与到目标距离），这里广播给全部 staged controller 等于替不会
+  // 跑的插件白做一次整条轨迹的 TF 变换。改为在 computeControllerVelocity 里
+  // 按实际选中的 controller 分发一次——同一周期内先 setTrajectory 再
+  // computeVelocityCommands，交棒那一拍拿到的仍是本周期轨迹，不引入陈旧。
+  trajectory_dispatched_to_.clear();
 
   // RViz 可视化节流（每周期重算但无需每周期重画）。
   const auto visualization_start = PipelineClock::now();
@@ -1412,12 +1833,23 @@ bool ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
 
   RCLCPP_DEBUG_THROTTLE(
     get_logger(), *get_clock(), 1000,
-    "Speed plan dispatched: planner=%s points=%zu v_start=%.3f a_start=%.3f inherited=%s "
-    "source_age=%.3f",
+    "Speed plan ready: planner=%s trajectory_points=%zu odom_vx=%.3f initial_vx=%.3f "
+    "initial_a=%.3f acceleration_inherited=%s source_age=%.3f s.",
     current_speed_planner_.c_str(), current_trajectory_.points.size(),
-    current_velocity.linear.x, planning_boundary.acceleration,
-    planning_boundary.acceleration_valid ? "true" : "false", planning_boundary.source_age);
+    current_velocity.linear.x, initial_motion.velocity.linear.x, initial_motion.acceleration,
+    initial_motion.acceleration_valid ? "true" : "false", initial_motion.source_age);
   return true;
+}
+
+void ControllerServer::publishNavigationStatus(int32_t status, const std::string & message)
+{
+  if (nav_status_pub_ && nav_status_pub_->is_activated()) {
+    auto msg = std::make_unique<nav_interfaces::msg::NavigationStatus>();
+    msg->status = status;
+    msg->message = message;
+    nav_status_pub_->publish(std::move(msg));
+    RCLCPP_INFO(get_logger(), "[PublishNavigationStatus] status: %d, message: %s", status, message.c_str());
+  }
 }
 
 void ControllerServer::publishSpeedPlan(const nav_interfaces::msg::RobotTrajectory & trajectory)
@@ -1509,15 +1941,18 @@ void ControllerServer::publishSpeedPlan(const nav_interfaces::msg::RobotTrajecto
   {
     struct Anchor {size_t idx; const char * label; float r, g, b;};
     std::vector<Anchor> anchors;
-    long first_obs = -1, last_obs = -1, first_buf = -1;
+    long first_obs = -1, last_obs = -1;
+    long first_safety_margin = -1, first_stop_margin = -1;
     long first_curve = -1, last_curve = -1, first_creep = -1;
     for (size_t i = 0; i < trajectory.points.size(); ++i) {
       const auto & rt = trajectory.points[i].region_type;
       if (rt == "obstacle") {
         if (first_obs < 0) {first_obs = static_cast<long>(i);}
         last_obs = static_cast<long>(i);
-      } else if (rt == "obstacle_buffer") {
-        if (first_buf < 0) {first_buf = static_cast<long>(i);}
+      } else if (rt == "obstacle_safety_margin") {
+        if (first_safety_margin < 0) {first_safety_margin = static_cast<long>(i);}
+      } else if (rt == "obstacle_stop_margin") {
+        if (first_stop_margin < 0) {first_stop_margin = static_cast<long>(i);}
       } else if (rt == "curve") {
         if (first_curve < 0) {first_curve = static_cast<long>(i);}
         last_curve = static_cast<long>(i);
@@ -1525,8 +1960,13 @@ void ControllerServer::publishSpeedPlan(const nav_interfaces::msg::RobotTrajecto
         if (first_creep < 0) {first_creep = static_cast<long>(i);}
       }
     }
-    if (first_buf >= 0) {
-      anchors.push_back({static_cast<size_t>(first_buf), "obs_stop", 1.0f, 0.5f, 0.0f});
+    if (first_stop_margin >= 0) {
+      anchors.push_back(
+        {static_cast<size_t>(first_stop_margin), "obs_stop_margin", 1.0f, 0.5f, 0.0f});
+    }
+    if (first_safety_margin >= 0) {
+      anchors.push_back(
+        {static_cast<size_t>(first_safety_margin), "obs_safety_margin", 0.6f, 1.0f, 0.2f});
     }
     if (first_obs >= 0) {
       anchors.push_back({static_cast<size_t>(first_obs), "obs_start", 1.0f, 0.0f, 0.0f});
@@ -1607,9 +2047,13 @@ void ControllerServer::publishSpeedPlanDiagnostics(
   diagnostic_msgs::msg::DiagnosticArray message;
   message.header.stamp = now();
   diagnostic_msgs::msg::DiagnosticStatus status;
-  if (!cycle.planning_succeeded || !control_succeeded) {
+  // 碰撞等待属于安全停车，不按控制失败上报。
+  const bool is_collision_stop_wait = control_result == "collision_stop_wait";
+  if (!cycle.planning_succeeded || (!control_succeeded && !is_collision_stop_wait)) {
     status.level = diagnostic_msgs::msg::DiagnosticStatus::ERROR;
-  } else if (cycle.terminal_valid && cycle.terminal.terminal_infeasible) {
+  } else if (is_collision_stop_wait ||
+    (cycle.terminal_valid && cycle.terminal.terminal_infeasible))
+  {
     status.level = diagnostic_msgs::msg::DiagnosticStatus::WARN;
   } else {
     status.level = diagnostic_msgs::msg::DiagnosticStatus::OK;
@@ -1617,10 +2061,14 @@ void ControllerServer::publishSpeedPlanDiagnostics(
   status.name = "navigation_speed_plan";
   if (!cycle.planning_succeeded) {
     status.message = cycle.planning_result;
+  } else if (is_collision_stop_wait) {
+    status.message = "collision_stop_wait";
   } else if (!control_succeeded) {
     status.message = control_result;
   } else if (cycle.terminal_valid && cycle.terminal.terminal_infeasible) {
-    status.message = "terminal_infeasible";
+    status.message = cycle.terminal.terminal_branch ==
+      nav2_core::SpeedPlanningTerminalBranch::PATH_OBSTACLE_STOP ?
+      "obstacle_braking_infeasible" : "terminal_infeasible";
   } else {
     status.message = "ok";
   }
@@ -1641,19 +2089,82 @@ void ControllerServer::publishSpeedPlanDiagnostics(
   add_value("local_path_point_count", std::to_string(cycle.local_path_point_count));
   add_value("local_path_length", std::to_string(cycle.local_path_length));
   add_value("trajectory_point_count", std::to_string(current_trajectory_.points.size()));
-  add_value("boundary_computed", cycle.boundary_computed ? "true" : "false");
-  add_value("boundary_reason", cycle.boundary_reason);
-  if (cycle.boundary_computed) {
-    add_value("boundary_velocity", std::to_string(cycle.boundary.velocity.linear.x));
-    add_value("boundary_acceleration", std::to_string(cycle.boundary.acceleration));
+  add_value("trajectory_stitched", cycle.trajectory_stitched ? "true" : "false");
+  add_value("stitching_result", cycle.stitching_result);
+  add_value("stitching_prefix_points", std::to_string(cycle.stitching_prefix_points));
+  add_value(
+    "stitching_prefix_duration", std::to_string(cycle.stitching_prefix_duration));
+  add_value(
+    "terminal_stall_recovery_triggered",
+    cycle.terminal_stall_recovery_triggered ? "true" : "false");
+  add_value(
+    "terminal_stall_consecutive_cycles",
+    std::to_string(cycle.terminal_stall_consecutive_cycles));
+  add_value(
+    "terminal_stall_recovery_count",
+    std::to_string(cycle.terminal_stall_recovery_count));
+  add_value("boundary_computed", cycle.initial_motion_valid ? "true" : "false");
+  add_value("boundary_reason", cycle.initial_motion_source);
+  // 裁决输入：boundary_velocity 是结果，这三个是它的来源。
+  add_value("initial_motion_measured_v", std::to_string(cycle.initial_motion_measured_v));
+  add_value("initial_motion_sampled_v", std::to_string(cycle.initial_motion_sampled_v));
+  add_value("initial_motion_deviation", std::to_string(cycle.initial_motion_deviation));
+  add_value("initial_motion_acceleration_source", cycle.initial_motion_acceleration_source);
+  add_value("initial_motion_planned_a", std::to_string(cycle.initial_motion_planned_a));
+  add_value(
+    "initial_motion_state_velocity",
+    std::to_string(cycle.initial_motion_state_velocity));
+  add_value(
+    "initial_motion_state_acceleration_raw",
+    std::to_string(cycle.initial_motion_state_acceleration_raw));
+  add_value(
+    "initial_motion_state_acceleration",
+    std::to_string(cycle.initial_motion_state_acceleration));
+  add_value(
+    "initial_motion_state_correction",
+    std::to_string(cycle.initial_motion_state_correction));
+  add_value(
+    "initial_motion_state_velocity_std",
+    std::to_string(cycle.initial_motion_state_velocity_std));
+  add_value(
+    "initial_motion_state_acceleration_std",
+    std::to_string(cycle.initial_motion_state_acceleration_std));
+  add_value(
+    "initial_motion_state_velocity_age",
+    std::to_string(cycle.initial_motion_state_velocity_age));
+  add_value(
+    "initial_motion_state_acceleration_age",
+    std::to_string(cycle.initial_motion_state_acceleration_age));
+  add_value(
+    "initial_motion_state_stamp_skew",
+    std::to_string(cycle.initial_motion_state_stamp_skew));
+  add_value(
+    "initial_motion_state_rejected_samples",
+    std::to_string(cycle.initial_motion_state_rejected_samples));
+  add_value(
+    "initial_motion_state_acceleration_clamps",
+    std::to_string(cycle.initial_motion_state_acceleration_clamps));
+  add_value(
+    "initial_motion_state_stationary",
+    cycle.initial_motion_state_stationary ? "true" : "false");
+  add_value(
+    "initial_motion_state_valid",
+    cycle.initial_motion_state_valid ? "true" : "false");
+  add_value("local_path_progress_delta", std::to_string(cycle.local_path_progress_delta));
+  if (cycle.initial_motion_valid) {
+    add_value("boundary_velocity", std::to_string(cycle.initial_motion.velocity.linear.x));
+    add_value("boundary_acceleration", std::to_string(cycle.initial_motion.acceleration));
     add_value(
       "boundary_acceleration_valid",
-      cycle.boundary.acceleration_valid ? "true" : "false");
-    add_value("boundary_source_age", std::to_string(cycle.boundary.source_age));
+      cycle.initial_motion.acceleration_valid ? "true" : "false");
     add_value(
-      "boundary_source_stamp_sec", std::to_string(cycle.boundary.source_stamp.sec));
+      "boundary_should_stop_for_path_obstacle",
+      cycle.initial_motion.should_stop_for_path_obstacle ? "true" : "false");
+    add_value("boundary_source_age", std::to_string(cycle.initial_motion.source_age));
     add_value(
-      "boundary_source_stamp_nanosec", std::to_string(cycle.boundary.source_stamp.nanosec));
+      "boundary_source_stamp_sec", std::to_string(cycle.initial_motion.source_stamp.sec));
+    add_value(
+      "boundary_source_stamp_nanosec", std::to_string(cycle.initial_motion.source_stamp.nanosec));
   }
   add_value("terminal_valid", cycle.terminal_valid ? "true" : "false");
   add_value(
@@ -1663,7 +2174,17 @@ void ControllerServer::publishSpeedPlanDiagnostics(
     "terminal_brake_required",
     cycle.terminal_valid && cycle.terminal.terminal_brake_required ? "true" : "false");
   add_value("terminal_brake_latched", terminal_brake_latched_ ? "true" : "false");
+  add_value(
+    "progress_check_paused_for_obstacle_stop",
+    is_progress_check_paused_for_obstacle_stop_ ? "true" : "false");
   if (cycle.terminal_valid) {
+    add_value(
+      "terminal_branch", speedPlanningTerminalBranchName(cycle.terminal.terminal_branch));
+    add_value(
+      "first_obstacle_index", std::to_string(cycle.terminal.first_obstacle_index));
+    add_value(
+      "first_obstacle_arc", std::to_string(cycle.terminal.first_obstacle_arc));
+    add_value("terminal_anchor_s", std::to_string(cycle.terminal.terminal_anchor_s));
     add_value(
       "terminal_execution_reserve",
       std::to_string(cycle.terminal.terminal_execution_reserve));
@@ -1689,408 +2210,6 @@ void ControllerServer::publishSpeedPlanDiagnostics(
   speed_plan_diagnostics_publisher_->publish(message);
 }
 
-void ControllerServer::resetNearGoalProgress()
-{
-  near_goal_baseline_pose_set_ = false;
-  in_near_goal_progress_mode_ = false;
-  resetNearGoalLateralStall();
-}
-
-void ControllerServer::resetNearGoalLateralStall()
-{
-  near_goal_lateral_stall_entry_count_ = 0;
-  near_goal_lateral_stall_monitoring_ = false;
-  near_goal_lateral_stall_baseline_error_ = 0.0;
-  near_goal_lateral_stall_best_error_ = 0.0;
-}
-
-bool ControllerServer::isNearGoal(const geometry_msgs::msg::PoseStamped & pose)
-{
-  geometry_msgs::msg::PoseStamped transformed_end_pose;
-  try {
-    rclcpp::Duration tolerance(
-      rclcpp::Duration::from_seconds(costmap_ros_->getTransformTolerance()));
-    if (!nav_2d_utils::transformPose(
-      costmap_ros_->getTfBuffer(), pose.header.frame_id,
-      end_pose_, transformed_end_pose, tolerance))
-    {
-      return false;
-    }
-  } catch (const tf2::TransformException & ex) {
-    RCLCPP_WARN_THROTTLE(
-      get_logger(), *get_clock(), 5000,
-      "Unable to transform end pose for near-goal progress check: %s. "
-      "近目标进度检查无法转换终点位姿，请检查 TF。",
-      ex.what());
-    return false;
-  }
-
-  const double dx = pose.pose.position.x - transformed_end_pose.pose.position.x;
-  const double dy = pose.pose.position.y - transformed_end_pose.pose.position.y;
-  return std::hypot(dx, dy) <= near_goal_progress_distance_;
-}
-
-bool ControllerServer::checkNearGoalProgress(const geometry_msgs::msg::PoseStamped & pose)
-{
-  constexpr int kLateralStallEntryCycles = 5;
-
-  if (!in_near_goal_progress_mode_) {
-    RCLCPP_INFO(
-      get_logger(),
-      "Entering near-goal progress mode: distance=%.3f m, required movement=%.3f m, "
-      "required angle=%.3f rad, allowance=%.3f s",
-      near_goal_progress_distance_,
-      near_goal_progress_required_movement_radius_,
-      near_goal_progress_required_movement_angle_,
-      near_goal_progress_time_allowance_.seconds());
-    in_near_goal_progress_mode_ = true;
-  }
-
-  if (near_goal_lateral_stall_enabled_) {
-    geometry_msgs::msg::PoseStamped transformed_end_pose;
-    try {
-      rclcpp::Duration tolerance(
-        rclcpp::Duration::from_seconds(costmap_ros_->getTransformTolerance()));
-      if (!nav_2d_utils::transformPose(
-        costmap_ros_->getTfBuffer(), pose.header.frame_id,
-        end_pose_, transformed_end_pose, tolerance))
-      {
-        resetNearGoalLateralStall();
-      } else {
-        const double goal_yaw = tf2::getYaw(transformed_end_pose.pose.orientation);
-        const double current_yaw = tf2::getYaw(pose.pose.orientation);
-        const double dx = pose.pose.position.x - transformed_end_pose.pose.position.x;
-        const double dy = pose.pose.position.y - transformed_end_pose.pose.position.y;
-        const double abs_lon_err = std::abs(std::cos(goal_yaw) * dx + std::sin(goal_yaw) * dy);
-        const double abs_lat_err = std::abs(-std::sin(goal_yaw) * dx + std::cos(goal_yaw) * dy);
-        const double abs_yaw_err = std::abs(
-          angles::shortest_angular_distance(goal_yaw, current_yaw));
-
-        const bool lat_outside_tolerance =
-          abs_lat_err > near_goal_lateral_stall_lat_tolerance_;
-        const bool entry_condition =
-          abs_lon_err <= near_goal_lateral_stall_lon_tolerance_ &&
-          abs_yaw_err <= near_goal_lateral_stall_yaw_tolerance_ &&
-          lat_outside_tolerance;
-        const bool left_monitoring_region =
-          abs_lon_err > 2.0 * near_goal_lateral_stall_lon_tolerance_ ||
-          abs_yaw_err > 2.0 * near_goal_lateral_stall_yaw_tolerance_;
-
-        if (near_goal_lateral_stall_monitoring_) {
-          if (!lat_outside_tolerance || left_monitoring_region) {
-            RCLCPP_INFO(
-              get_logger(),
-              "Leaving near-goal lateral-stall monitoring: lon=%.4f m lat=%.4f m "
-              "yaw=%.4f rad.",
-              abs_lon_err, abs_lat_err, abs_yaw_err);
-            resetNearGoalLateralStall();
-          } else {
-            near_goal_lateral_stall_best_error_ =
-              std::min(near_goal_lateral_stall_best_error_, abs_lat_err);
-            const double improvement =
-              near_goal_lateral_stall_baseline_error_ -
-              near_goal_lateral_stall_best_error_;
-
-            if (improvement >= near_goal_lateral_stall_min_improvement_) {
-              RCLCPP_INFO(
-                get_logger(),
-                "Near-goal lateral error improved: baseline=%.4f m best=%.4f m "
-                "improvement=%.4f/%.4f m, restarting stagnation timer.",
-                near_goal_lateral_stall_baseline_error_,
-                near_goal_lateral_stall_best_error_, improvement,
-                near_goal_lateral_stall_min_improvement_);
-              near_goal_lateral_stall_baseline_error_ =
-                near_goal_lateral_stall_best_error_;
-              near_goal_lateral_stall_start_time_ = now();
-            } else {
-              const auto elapsed = now() - near_goal_lateral_stall_start_time_;
-              if (elapsed > near_goal_lateral_stall_time_allowance_) {
-                RCLCPP_WARN(
-                  get_logger(),
-                  "Near-goal lateral progress stalled: elapsed=%.3f s, lon=%.4f m, "
-                  "lat=%.4f m, yaw=%.4f rad, baseline_lat=%.4f m, best_lat=%.4f m, "
-                  "improvement=%.4f/%.4f m. FollowPath will fail so the behavior "
-                  "tree can run local recovery.",
-                  elapsed.seconds(), abs_lon_err, abs_lat_err, abs_yaw_err,
-                  near_goal_lateral_stall_baseline_error_,
-                  near_goal_lateral_stall_best_error_, improvement,
-                  near_goal_lateral_stall_min_improvement_);
-                return false;
-              }
-            }
-          }
-        } else if (entry_condition) {
-          ++near_goal_lateral_stall_entry_count_;
-          if (near_goal_lateral_stall_entry_count_ >= kLateralStallEntryCycles) {
-            near_goal_lateral_stall_monitoring_ = true;
-            near_goal_lateral_stall_baseline_error_ = abs_lat_err;
-            near_goal_lateral_stall_best_error_ = abs_lat_err;
-            near_goal_lateral_stall_start_time_ = now();
-            RCLCPP_INFO(
-              get_logger(),
-              "Entering near-goal lateral-stall monitoring after %d cycles: "
-              "lon=%.4f m lat=%.4f m yaw=%.4f rad, required improvement=%.4f m "
-              "within %.3f s.",
-              kLateralStallEntryCycles, abs_lon_err, abs_lat_err, abs_yaw_err,
-              near_goal_lateral_stall_min_improvement_,
-              near_goal_lateral_stall_time_allowance_.seconds());
-          }
-        } else {
-          near_goal_lateral_stall_entry_count_ = 0;
-        }
-      }
-    } catch (const tf2::TransformException & ex) {
-      resetNearGoalLateralStall();
-      RCLCPP_WARN_THROTTLE(
-        get_logger(), *get_clock(), 5000,
-        "Unable to transform end pose for lateral-stall check: %s. "
-        "横向误差停滞检查无法转换终点位姿，请检查 TF。",
-        ex.what());
-    }
-  }
-
-  if (!near_goal_baseline_pose_set_) {
-    near_goal_baseline_pose_ = pose;
-    near_goal_baseline_time_ = now();
-    near_goal_baseline_pose_set_ = true;
-    return true;
-  }
-
-  const double dx = pose.pose.position.x - near_goal_baseline_pose_.pose.position.x;
-  const double dy = pose.pose.position.y - near_goal_baseline_pose_.pose.position.y;
-  const double moved_distance = std::hypot(dx, dy);
-  const double moved_angle = std::abs(
-    angles::shortest_angular_distance(
-      tf2::getYaw(near_goal_baseline_pose_.pose.orientation),
-      tf2::getYaw(pose.pose.orientation)));
-
-  if (moved_distance > near_goal_progress_required_movement_radius_ ||
-    moved_angle > near_goal_progress_required_movement_angle_)
-  {
-    near_goal_baseline_pose_ = pose;
-    near_goal_baseline_time_ = now();
-    return true;
-  }
-
-  const auto elapsed = now() - near_goal_baseline_time_;
-  if (elapsed <= near_goal_progress_time_allowance_) {
-    return true;
-  }
-
-  RCLCPP_WARN(
-    get_logger(),
-    "Near-goal progress timeout: elapsed=%.3f s, moved=%.4f m, rotated=%.4f rad, "
-    "required movement=%.4f m or angle=%.4f rad. "
-    "近目标区域进度超时：机器人接近目标后没有满足最小位移或转角要求。",
-    elapsed.seconds(), moved_distance, moved_angle,
-    near_goal_progress_required_movement_radius_,
-    near_goal_progress_required_movement_angle_);
-  return false;
-}
-
-bool ControllerServer::isWithinGoalCheckerTolerance(
-  const geometry_msgs::msg::PoseStamped & pose,
-  bool mark_goal_reached_on_success,
-  bool check_yaw)
-{
-  geometry_msgs::msg::Pose goal_tolerance;
-  geometry_msgs::msg::Twist vel_tolerance;
-  if (!goal_checkers_[current_goal_checker_]->getTolerances(goal_tolerance, vel_tolerance)) {
-    return false;
-  }
-
-  geometry_msgs::msg::PoseStamped transformed_end_pose;
-  try {
-    rclcpp::Duration tolerance(
-      rclcpp::Duration::from_seconds(costmap_ros_->getTransformTolerance()));
-    if (!nav_2d_utils::transformPose(
-      costmap_ros_->getTfBuffer(), pose.header.frame_id,
-      end_pose_, transformed_end_pose, tolerance))
-    {
-      return false;
-    }
-  } catch (const tf2::TransformException & ex) {
-    RCLCPP_WARN_THROTTLE(
-      get_logger(), *get_clock(), 5000,
-      "Unable to transform end pose for near-goal tolerance check: %s. "
-      "近目标兜底误差检查无法转换终点位姿，请检查 TF。",
-      ex.what());
-    return false;
-  }
-
-  const double goal_yaw = tf2::getYaw(transformed_end_pose.pose.orientation);
-  const double dx = pose.pose.position.x - transformed_end_pose.pose.position.x;
-  const double dy = pose.pose.position.y - transformed_end_pose.pose.position.y;
-  // 使用目标点坐标系投影，和纵向/横向 goal_checker 的误差定义保持一致。
-  const double lon_err = std::cos(goal_yaw) * dx + std::sin(goal_yaw) * dy;
-  const double lat_err = -std::sin(goal_yaw) * dx + std::cos(goal_yaw) * dy;
-  const double yaw_err = angles::shortest_angular_distance(
-    tf2::getYaw(pose.pose.orientation), goal_yaw);
-
-  const double invalid_field = std::numeric_limits<double>::lowest();
-  auto is_valid_tolerance = [invalid_field](double tolerance) {
-      return tolerance > invalid_field / 2.0;
-    };
-
-  const bool lon_ok =
-    !is_valid_tolerance(goal_tolerance.position.x) ||
-    std::fabs(lon_err) <= std::fabs(goal_tolerance.position.x);
-  const bool lat_ok =
-    !is_valid_tolerance(goal_tolerance.position.y) ||
-    std::fabs(lat_err) <= std::fabs(goal_tolerance.position.y);
-  const double yaw_tolerance = tf2::getYaw(goal_tolerance.orientation);
-  const bool yaw_ok =
-    !is_valid_tolerance(yaw_tolerance) ||
-    std::fabs(yaw_err) <= std::fabs(yaw_tolerance);
-
-  nav_2d_msgs::msg::Twist2D twist = getThresholdedTwist(odom_sub_->getTwist());
-  geometry_msgs::msg::Twist velocity = nav_2d_utils::twist2Dto3D(twist);
-  const bool trans_stopped_ok =
-    !is_valid_tolerance(vel_tolerance.linear.x) ||
-    std::hypot(velocity.linear.x, velocity.linear.y) <= std::fabs(vel_tolerance.linear.x);
-  const bool rot_stopped_ok =
-    !is_valid_tolerance(vel_tolerance.angular.z) ||
-    std::fabs(velocity.angular.z) <= std::fabs(vel_tolerance.angular.z);
-
-  const bool yaw_accept = !check_yaw || yaw_ok;
-  const bool stopped_accept = !mark_goal_reached_on_success ||
-    (trans_stopped_ok && rot_stopped_ok);
-  const bool tolerance_accept = lon_ok && lat_ok && yaw_accept && stopped_accept;
-
-  RCLCPP_DEBUG_THROTTLE(
-    get_logger(), *get_clock(), 500,
-    "GoalChecker tolerance: id=%s type=%s check_yaw=%s mark_reached=%s result=%s "
-    "goal=(frame=%s x=%.3f y=%.3f yaw=%.3f) "
-    "robot=(frame=%s x=%.3f y=%.3f yaw=%.3f) "
-    "errors=(lon=%.4f lat=%.4f yaw=%.4f dist=%.4f) "
-    "tolerances=(lon=%.4f lat=%.4f yaw=%.4f trans_vel=%.4f rot_vel=%.4f) "
-    "velocity=(linear=%.4f angular=%.4f) "
-    "checks=(lon=%s lat=%s yaw=%s trans_stopped=%s rot_stopped=%s)",
-    current_goal_checker_.c_str(), getGoalCheckerType(current_goal_checker_).c_str(),
-    check_yaw ? "true" : "false",
-    mark_goal_reached_on_success ? "true" : "false",
-    tolerance_accept ? "true" : "false",
-    transformed_end_pose.header.frame_id.c_str(),
-    transformed_end_pose.pose.position.x,
-    transformed_end_pose.pose.position.y,
-    goal_yaw,
-    pose.header.frame_id.c_str(),
-    pose.pose.position.x,
-    pose.pose.position.y,
-    tf2::getYaw(pose.pose.orientation),
-    lon_err, lat_err, yaw_err, std::hypot(lon_err, lat_err),
-    std::fabs(goal_tolerance.position.x),
-    std::fabs(goal_tolerance.position.y),
-    std::fabs(yaw_tolerance),
-    std::fabs(vel_tolerance.linear.x),
-    std::fabs(vel_tolerance.angular.z),
-    std::hypot(velocity.linear.x, velocity.linear.y),
-    std::fabs(velocity.angular.z),
-    lon_ok ? "true" : "false",
-    lat_ok ? "true" : "false",
-    yaw_accept ? "true" : "false",
-    trans_stopped_ok ? "true" : "false",
-    rot_stopped_ok ? "true" : "false");
-
-  if (tolerance_accept) {
-    if (mark_goal_reached_on_success) {
-      RCLCPP_WARN(
-        get_logger(),
-        "近目标进度检查超时，但当前误差已满足 goal_checker 接受容差，按到位成功处理："
-        "lon_err=%.4f/%.4f, lat_err=%.4f/%.4f, yaw_err=%.4f/%.4f, "
-        "linear_vel=%.4f, angular_vel=%.4f",
-        lon_err, std::fabs(goal_tolerance.position.x),
-        lat_err, std::fabs(goal_tolerance.position.y),
-        yaw_err, std::fabs(yaw_tolerance),
-        std::hypot(velocity.linear.x, velocity.linear.y),
-        std::fabs(velocity.angular.z));
-      if (goal_error_publisher_ && goal_error_publisher_->is_activated()) {
-        diagnostic_msgs::msg::DiagnosticArray msg;
-        msg.header.stamp = now();
-        msg.header.frame_id = pose.header.frame_id;
-        diagnostic_msgs::msg::DiagnosticStatus status;
-        status.level = diagnostic_msgs::msg::DiagnosticStatus::OK;
-        status.name = "navigation_goal_error";
-        status.message = "near_goal_progress_acceptance";
-        status.hardware_id = "nav2_controller";
-
-        auto add_value = [&status](const std::string & key, const std::string & value) {
-            diagnostic_msgs::msg::KeyValue item;
-            item.key = key;
-            item.value = value;
-            status.values.push_back(item);
-          };
-        auto add_double = [&add_value](const std::string & key, double value) {
-            add_value(key, std::to_string(value));
-          };
-        auto add_bool = [&add_value](const std::string & key, bool value) {
-            add_value(key, value ? "true" : "false");
-          };
-
-        add_value("result_type", "near_goal_progress_acceptance");
-        add_double("goal_x", transformed_end_pose.pose.position.x);
-        add_double("goal_y", transformed_end_pose.pose.position.y);
-        add_double("goal_yaw", tf2::getYaw(transformed_end_pose.pose.orientation));
-        add_double("current_x", pose.pose.position.x);
-        add_double("current_y", pose.pose.position.y);
-        add_double("current_yaw", tf2::getYaw(pose.pose.orientation));
-        add_double("longitudinal_error", lon_err);
-        add_double("lateral_error", lat_err);
-        add_double("distance_error", std::hypot(lon_err, lat_err));
-        add_double("yaw_error", yaw_err);
-        add_double("desired_longitudinal_tolerance", std::fabs(goal_tolerance.position.x));
-        add_double("desired_lateral_tolerance", std::fabs(goal_tolerance.position.y));
-        add_double("accept_longitudinal_tolerance", std::fabs(goal_tolerance.position.x));
-        add_double("accept_lateral_tolerance", std::fabs(goal_tolerance.position.y));
-        add_double("yaw_tolerance", std::fabs(yaw_tolerance));
-        add_bool("within_desired_tolerance", false);
-        add_bool("within_accept_tolerance", true);
-        add_bool("desired_window_stable", false);
-
-        msg.status.push_back(status);
-        goal_error_publisher_->publish(msg);
-      }
-      near_goal_progress_acceptance_reached_ = true;
-    }
-    return true;
-  }
-
-  if (!mark_goal_reached_on_success) {
-    return false;
-  }
-
-  RCLCPP_WARN(
-    get_logger(),
-    "近目标进度检查超时，且当前误差仍未满足 goal_checker 接受容差："
-    "lon_err=%.4f/%.4f, lat_err=%.4f/%.4f, yaw_err=%.4f/%.4f",
-    lon_err, std::fabs(goal_tolerance.position.x),
-    lat_err, std::fabs(goal_tolerance.position.y),
-    yaw_err, std::fabs(yaw_tolerance));
-  return false;
-}
-
-bool ControllerServer::isRobotStoppedForGoalChecker()
-{
-  geometry_msgs::msg::Pose goal_tolerance;
-  geometry_msgs::msg::Twist vel_tolerance;
-  if (!goal_checkers_[current_goal_checker_]->getTolerances(goal_tolerance, vel_tolerance)) {
-    return false;
-  }
-
-  const double invalid_field = std::numeric_limits<double>::lowest();
-  const auto is_valid_tolerance = [invalid_field](double tolerance) {
-      return tolerance > invalid_field / 2.0;
-    };
-  const auto velocity = getThresholdedTwist(odom_sub_->getTwist());
-  const bool trans_stopped =
-    !is_valid_tolerance(vel_tolerance.linear.x) ||
-    std::hypot(velocity.x, velocity.y) <= std::fabs(vel_tolerance.linear.x);
-  const bool rot_stopped =
-    !is_valid_tolerance(vel_tolerance.angular.z) ||
-    std::fabs(velocity.theta) <= std::fabs(vel_tolerance.angular.z);
-  return trans_stopped && rot_stopped;
-}
-
 bool ControllerServer::isSamePathGoal(const nav_msgs::msg::Path & path)
 {
   if (path.poses.empty() || current_path_.poses.empty()) {
@@ -2112,8 +2231,7 @@ bool ControllerServer::isSamePathGoal(const nav_msgs::msg::Path & path)
   } catch (const tf2::TransformException & ex) {
     RCLCPP_WARN_THROTTLE(
       get_logger(), *get_clock(), 5000,
-      "Unable to transform pending path end pose for same-goal check: %s. "
-      "无法转换待更新 path 的终点，按新路径处理。",
+      "Path end TF failed: %s. Treating path as a new goal.",
       ex.what());
     return false;
   }
@@ -2134,8 +2252,8 @@ bool ControllerServer::isSamePathGoal(const nav_msgs::msg::Path & path)
   if (!same_goal) {
     RCLCPP_INFO(
       get_logger(),
-      "近目标 path 更新未被视为同一目标：goal_delta=%.4f/%.4f m, "
-      "yaw_delta=%.4f/%.4f rad，将正常更新 path。",
+      "Path goal changed: position_delta=%.4f m (limit=%.4f), "
+      "yaw_delta=%.4f rad (limit=%.4f).",
       goal_delta, kSameGoalPositionTolerance, yaw_delta, kSameGoalYawTolerance);
   }
   return same_goal;
@@ -2173,7 +2291,7 @@ void ControllerServer::setControllerPhase(ControllerPhase phase, const std::stri
   }
   RCLCPP_INFO(
     get_logger(),
-    "Controller phase transition: %s -> %s (%s)",
+    "Control phase: %s -> %s, reason=%s.",
     controllerPhaseName(controller_phase_),
     controllerPhaseName(phase),
     reason.c_str());
@@ -2202,8 +2320,7 @@ double ControllerServer::getDistanceToGoal(const geometry_msgs::msg::PoseStamped
   } catch (const tf2::TransformException & ex) {
     RCLCPP_WARN_THROTTLE(
       get_logger(), *get_clock(), 5000,
-      "Unable to transform end pose for staged control: %s. "
-      "四阶段控制无法转换目标位姿，请检查 TF。",
+      "Goal pose TF failed in staged control: %s",
       ex.what());
     return std::numeric_limits<double>::infinity();
   }
@@ -2234,8 +2351,7 @@ bool ControllerServer::getTargetPointHeadingError(
   } catch (const tf2::TransformException & ex) {
     RCLCPP_WARN_THROTTLE(
       get_logger(), *get_clock(), 5000,
-      "Unable to transform robot pose for path heading alignment: %s. "
-      "四阶段 align 无法转换机器人位姿，请检查 TF。",
+      "Robot pose TF failed in align: %s",
       ex.what());
     return false;
   }
@@ -2399,19 +2515,18 @@ bool ControllerServer::isRearObstacleDetected()
 bool ControllerServer::shouldRunPrepareBackup()
 {
   if (!staged_control_enabled_ || !prepare_enabled_) {
-    prepare_backup_active_ = false;
-    prepare_check_pending_ = false;
+    prepare_state_ = PrepareState::DONE;
     return false;
   }
 
-  if (prepare_backup_active_) {
+  if (prepare_state_ == PrepareState::BACKING_UP) {
     // 每周期先查后方（参考 nav2_behaviors::DriveOnHeading 的运行时 costmap
     // 校验）：身后一旦出现障碍（他人/动态物体移动进来，或距离/半宽估计有
     // 误差），立即中止后退，不等定时/定距条件用完才停。
     if (isRearObstacleDetected()) {
-      prepare_backup_active_ = false;
       RCLCPP_WARN(
-        get_logger(), "Prepare backup aborted: obstacle detected behind the robot.");
+        get_logger(), "Prepare backup stopped: rear obstacle.");
+      completePrepareAndRequestReplan("rear obstacle");
       return false;
     }
     const double elapsed = (now() - prepare_backup_start_time_).seconds();
@@ -2429,35 +2544,37 @@ bool ControllerServer::shouldRunPrepareBackup()
     } else if (elapsed < prepare_backup_duration_) {
       return true;
     }
-    prepare_backup_active_ = false;
-  }
-
-  if (!prepare_check_pending_) {
+    completePrepareAndRequestReplan(
+      prepare_backup_use_distance_ ? "distance reached" : "duration reached");
     return false;
   }
 
-  prepare_check_pending_ = false;
+  if (prepare_state_ != PrepareState::CHECK_PENDING) {
+    return false;
+  }
+
   if (!isObstacleNearFootprint()) {
+    prepare_state_ = PrepareState::DONE;
     RCLCPP_INFO(
-      get_logger(), "Prepare phase checked once at navigation start: no obstacle near footprint.");
+      get_logger(), "Prepare check: no front or side obstacle.");
     return false;
   }
 
-  // 启动前也查一次后方：前方受阻但后方同样无路可退时，不盲目后退，交给
-  // 后续 align/track 与全局避障处理（不是 prepare 的职责）。
+  // 启动前也查一次后方：前后均受阻时不盲目后退，直接请求全局重规划。
   if (isRearObstacleDetected()) {
     RCLCPP_WARN(
       get_logger(),
-      "Prepare: front obstacle detected but rear is also blocked; skipping backup.");
+      "Prepare backup skipped: front and rear are blocked.");
+    completePrepareAndRequestReplan("front and rear blocked");
     return false;
   }
 
-  prepare_backup_active_ = true;
+  prepare_state_ = PrepareState::BACKING_UP;
   prepare_backup_start_time_ = now();
   getRobotPose(prepare_backup_start_pose_);
   RCLCPP_WARN(
     get_logger(),
-    "Prepare phase detected obstacle near footprint (front/side), backing up: speed=%.3f m/s %s",
+    "Prepare backup started: front or side obstacle, speed=%.3f m/s, %s.",
     prepare_backup_speed_,
     prepare_backup_use_distance_ ?
     ("distance=" + std::to_string(prepare_backup_distance_) + "m").c_str() :
@@ -2465,13 +2582,257 @@ bool ControllerServer::shouldRunPrepareBackup()
   return true;
 }
 
+void ControllerServer::syncPrepareSession()
+{
+  const uint64_t latest_session_id = latest_prepare_session_id_.load();
+  if (latest_session_id == active_prepare_session_id_) {
+    return;
+  }
+
+  if (latest_session_id == 0) {
+    active_prepare_session_id_ = 0;
+    resetStagedControlState();
+    return;
+  }
+
+  armStagedControlForNewSession(latest_session_id);
+}
+
+void ControllerServer::armStagedControlForNewSession(uint64_t session_id)
+{
+  active_prepare_session_id_ = session_id;
+  resetStagedControlState();
+
+  // transient-local Topic需要在任务边界清除旧请求，避免晚加入者读取上一任务状态。
+  if (prepare_replan_request_pub_ && prepare_replan_request_pub_->is_activated()) {
+    std_msgs::msg::UInt64 cleared_signal;
+    cleared_signal.data = 0;
+    prepare_replan_request_pub_->publish(cleared_signal);
+  }
+
+  const bool prepare_armed = staged_control_enabled_ && prepare_enabled_;
+  if (prepare_armed) {
+    prepare_state_ = PrepareState::CHECK_PENDING;
+  }
+
+  RCLCPP_INFO(
+    get_logger(),
+    "Navigation session synchronized: session=%" PRIu64 ", prepare_armed=%s.",
+    active_prepare_session_id_, prepare_armed ? "true" : "false");
+}
+
+void ControllerServer::completePrepareAndRequestReplan(const char * reason)
+{
+  if (prepare_state_ == PrepareState::DONE) {
+    return;
+  }
+
+  prepare_state_ = PrepareState::DONE;
+  invalidateSpeedPlanningContinuity();
+  if (progress_checker_) {
+    progress_checker_->reset();
+  }
+
+  publishReplanRequired(reason);
+}
+
+void ControllerServer::publishReplanRequired(const char * reason)
+{
+  if (active_prepare_session_id_ == 0 || !prepare_replan_request_pub_ ||
+    !prepare_replan_request_pub_->is_activated())
+  {
+    RCLCPP_WARN(
+      get_logger(),
+      "Replan signal unavailable: reason=%s, session=%" PRIu64 ".",
+      reason, active_prepare_session_id_);
+    return;
+  }
+
+  std_msgs::msg::UInt64 signal;
+  signal.data = active_prepare_session_id_;
+  prepare_replan_request_pub_->publish(signal);
+
+  if (prepare_replan_request_pub_->get_subscription_count() == 0) {
+    RCLCPP_WARN(
+      get_logger(),
+      "Replan signal published without consumer: reason=%s, session=%" PRIu64 ".",
+      reason, active_prepare_session_id_);
+  } else {
+    RCLCPP_INFO(
+      get_logger(),
+      "Replan signal published: reason=%s, session=%" PRIu64 ".",
+      reason, active_prepare_session_id_);
+  }
+}
+
+void ControllerServer::lockPrepareForCurrentSession(const char * reason)
+{
+  // 取消可能早于本周期常规会话同步；若消息已经到达，先把它归属为当前会话。
+  if (active_prepare_session_id_ == 0) {
+    active_prepare_session_id_ = latest_prepare_session_id_.load();
+  }
+
+  const bool state_changed = prepare_state_ != PrepareState::DONE;
+
+  prepare_state_ = PrepareState::DONE;
+  invalidateSpeedPlanningContinuity();
+
+  if (state_changed) {
+    RCLCPP_INFO(
+      get_logger(),
+      "PREPARE closed: reason=%s, session=%" PRIu64 ".",
+      reason, active_prepare_session_id_);
+  }
+}
+
+const char * ControllerServer::prepareStateName(PrepareState state) const
+{
+  switch (state) {
+    case PrepareState::CHECK_PENDING:
+      return "CHECK_PENDING";
+    case PrepareState::BACKING_UP:
+      return "BACKING_UP";
+    case PrepareState::DONE:
+      return "DONE";
+  }
+  return "INVALID";
+}
+
 void ControllerServer::resetStagedControlState()
 {
-  prepare_backup_active_ = false;
-  prepare_check_pending_ = true;
+  // Reset只负责安全清理，不能隐式开始新导航任务。
+  prepare_state_ = PrepareState::DONE;
   align_done_ = false;
   terminal_brake_latched_ = false;
+  terminal_stall_consecutive_cycles_ = 0;
+  terminal_stall_recovery_count_ = 0;
+  is_collision_stop_active_ = false;
+  is_progress_check_paused_for_obstacle_stop_ = false;
   invalidateSpeedPlanningContinuity();
+  resetEndLocalizationCapabilities(goal_generation_);
+}
+
+nav2_core::EndLocalizationCapability * ControllerServer::getEndLocalizationCapability(
+  const std::string & controller_id)
+{
+  const auto controller = controllers_.find(controller_id);
+  if (controller == controllers_.end()) {
+    return nullptr;
+  }
+  return dynamic_cast<nav2_core::EndLocalizationCapability *>(controller->second.get());
+}
+
+void ControllerServer::resetEndLocalizationCapabilities(uint64_t goal_generation)
+{
+  for (auto & controller : controllers_) {
+    auto * capability = dynamic_cast<nav2_core::EndLocalizationCapability *>(
+      controller.second.get());
+    if (capability != nullptr) {
+      capability->resetEndLocalization(goal_generation);
+    }
+  }
+}
+
+void ControllerServer::updateEndLocalizationGoal(
+  const std::string & controller_id,
+  const geometry_msgs::msg::PoseStamped & pose)
+{
+  auto * capability = getEndLocalizationCapability(controller_id);
+  if (capability == nullptr) {
+    return;
+  }
+
+  const std::string control_frame = pose.header.frame_id.empty() ?
+    costmap_ros_->getGlobalFrameID() : pose.header.frame_id;
+  geometry_msgs::msg::PoseStamped source_goal = end_pose_;
+  source_goal.header.stamp = rclcpp::Time(0);
+  geometry_msgs::msg::PoseStamped live_goal;
+  rclcpp::Duration tolerance(
+    rclcpp::Duration::from_seconds(costmap_ros_->getTransformTolerance()));
+  try {
+    if (!nav_2d_utils::transformPose(
+        costmap_ros_->getTfBuffer(), control_frame, source_goal, live_goal, tolerance))
+    {
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), kEndLocalizationWarningThrottleMs,
+        "末端定位目标TF转换失败：controller=%s，source=%s，target=%s；"
+        "本周期保留上一份有效目标。",
+        controller_id.c_str(), source_goal.header.frame_id.c_str(), control_frame.c_str());
+      return;
+    }
+  } catch (const tf2::TransformException & ex) {
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), *get_clock(), kEndLocalizationWarningThrottleMs,
+      "末端定位目标TF异常：controller=%s，source=%s，target=%s，error=%s；"
+      "本周期保留上一份有效目标。",
+      controller_id.c_str(), source_goal.header.frame_id.c_str(), control_frame.c_str(),
+      ex.what());
+    return;
+  }
+
+  live_goal.header.frame_id = control_frame;
+  capability->setEndLocalizationGoal(live_goal, goal_generation_);
+}
+
+bool ControllerServer::getEndLocalizationSnapshot(
+  const std::string & controller_id,
+  nav2_core::EndLocalizationSnapshot & snapshot)
+{
+  auto * capability = getEndLocalizationCapability(controller_id);
+  if (capability == nullptr) {
+    return false;
+  }
+  snapshot = capability->getEndLocalizationSnapshot();
+  return snapshot.goal_generation == goal_generation_;
+}
+
+bool ControllerServer::shouldUseApproachController(
+  double distance_to_goal,
+  bool & position_reference_latched)
+{
+  nav2_core::EndLocalizationSnapshot end_localization_snapshot;
+  position_reference_latched = getEndLocalizationSnapshot(
+      approach_controller_, end_localization_snapshot) &&
+    end_localization_snapshot.position_goal_latched;
+  // 一旦位置参考已锁存在Odom，短时目标无效或map修正都不能切回路径跟踪器。
+  return position_reference_latched || distance_to_goal <= approach_distance_;
+}
+
+bool ControllerServer::applyEndLocalizationGoalToGoalChecker(
+  const std::string & controller_id,
+  geometry_msgs::msg::PoseStamped & goal_pose)
+{
+  nav2_core::EndLocalizationSnapshot end_localization_snapshot;
+  if (!getEndLocalizationSnapshot(controller_id, end_localization_snapshot) ||
+    !end_localization_snapshot.effective_goal_valid)
+  {
+    return false;
+  }
+
+  geometry_msgs::msg::PoseStamped effective_goal = end_localization_snapshot.effective_goal;
+  if (effective_goal.header.frame_id == goal_pose.header.frame_id) {
+    goal_pose.pose = effective_goal.pose;
+    return true;
+  }
+
+  effective_goal.header.stamp = rclcpp::Time(0);
+  geometry_msgs::msg::PoseStamped transformed_effective_goal;
+  rclcpp::Duration tolerance(
+    rclcpp::Duration::from_seconds(costmap_ros_->getTransformTolerance()));
+  if (nav_2d_utils::transformPose(
+      costmap_ros_->getTfBuffer(), goal_pose.header.frame_id,
+      effective_goal, transformed_effective_goal, tolerance))
+  {
+    goal_pose.pose = transformed_effective_goal.pose;
+    return true;
+  }
+
+  RCLCPP_WARN_THROTTLE(
+    get_logger(), *get_clock(), kEndLocalizationWarningThrottleMs,
+    "GoalChecker无法转换PID末端锁存目标：source=%s，target=%s；"
+    "本周期使用实时目标。",
+    effective_goal.header.frame_id.c_str(), goal_pose.header.frame_id.c_str());
+  return false;
 }
 
 geometry_msgs::msg::TwistStamped ControllerServer::computeControllerVelocity(
@@ -2480,6 +2841,12 @@ geometry_msgs::msg::TwistStamped ControllerServer::computeControllerVelocity(
   const nav_2d_msgs::msg::Twist2D & twist)
 {
   active_controller_for_log_ = controller_id;
+  // 本周期轨迹只发给真正要跑的这个 controller（见 runPlanningPipeline 说明）。
+  if (trajectory_dispatched_to_ != controller_id && !current_trajectory_.points.empty()) {
+    controllers_[controller_id]->setTrajectory(current_trajectory_);
+    trajectory_dispatched_to_ = controller_id;
+  }
+  updateEndLocalizationGoal(controller_id, pose);
   return controllers_[controller_id]->computeVelocityCommands(
     pose,
     nav_2d_utils::twist2Dto3D(twist),
@@ -2495,27 +2862,29 @@ geometry_msgs::msg::TwistStamped ControllerServer::computeStagedVelocity(
   cmd_vel.header.stamp = now();
 
   if (!staged_control_enabled_) {
-    setControllerPhase(ControllerPhase::TRACK, "staged_control disabled");
+    setControllerPhase(ControllerPhase::TRACK, "staged control off");
     active_controller_for_log_ = current_controller_;
     return computeControllerVelocity(current_controller_, pose, twist);
   }
 
   if (shouldRunPrepareBackup()) {
-    setControllerPhase(ControllerPhase::PREPARE, "front obstacle backup");
+    setControllerPhase(ControllerPhase::PREPARE, "front obstacle");
     active_controller_for_log_ = "direct_prepare_backup";
     cmd_vel.twist.linear.x = prepare_backup_speed_;
     return cmd_vel;
   }
-
   const double distance_to_goal = getDistanceToGoal(pose);
-  const bool in_approach = distance_to_goal <= approach_distance_;
+  bool position_reference_latched = false;
+  const bool in_approach = shouldUseApproachController(
+    distance_to_goal, position_reference_latched);
   if (in_approach) {
     RCLCPP_DEBUG_THROTTLE(
       get_logger(), *get_clock(), 500,
-      "Staged control decision: approach has priority, distance_to_goal=%.3f <= "
-      "approach_distance=%.3f; using controller=%s",
-      distance_to_goal, approach_distance_, approach_controller_.c_str());
-    setControllerPhase(ControllerPhase::APPROACH, "within approach distance");
+      "Control choice: approach, goal_distance=%.3f, threshold=%.3f, "
+      "position_reference_latched=%s, controller='%s'.",
+      distance_to_goal, approach_distance_,
+      position_reference_latched ? "true" : "false", approach_controller_.c_str());
+    setControllerPhase(ControllerPhase::APPROACH, "near goal");
     active_controller_for_log_ = approach_controller_;
     return computeControllerVelocity(approach_controller_, pose, twist);
   }
@@ -2528,9 +2897,8 @@ geometry_msgs::msg::TwistStamped ControllerServer::computeStagedVelocity(
     const bool has_target_heading = getTargetPointHeadingError(pose, heading_error);
     RCLCPP_DEBUG_THROTTLE(
       get_logger(), *get_clock(), 500,
-      "Staged control decision: outside approach, distance_to_goal=%.3f > "
-      "approach_distance=%.3f; target_heading_available=%s heading_error=%.3f "
-      "align_tolerance=%.3f align_target_distance=%.3f",
+      "Control choice: goal_distance=%.3f > %.3f, heading_valid=%s, "
+      "heading_error=%.3f, align_limit=%.3f, target_distance=%.3f.",
       distance_to_goal,
       approach_distance_,
       has_target_heading ? "true" : "false",
@@ -2538,7 +2906,7 @@ geometry_msgs::msg::TwistStamped ControllerServer::computeStagedVelocity(
       align_heading_tolerance_,
       align_target_distance_);
     if (has_target_heading && std::fabs(heading_error) > align_heading_tolerance_) {
-      setControllerPhase(ControllerPhase::ALIGN, "target point heading error exceeds tolerance");
+      setControllerPhase(ControllerPhase::ALIGN, "heading error above limit");
       active_controller_for_log_ = "direct_align";
       const double abs_cmd = std::clamp(
         std::fabs(heading_error) * align_angular_kp_,
@@ -2551,13 +2919,14 @@ geometry_msgs::msg::TwistStamped ControllerServer::computeStagedVelocity(
     align_done_ = true;
   }
 
-  setControllerPhase(ControllerPhase::TRACK, "align phase done, tracking");
+  setControllerPhase(ControllerPhase::TRACK, "align done");
   active_controller_for_log_ = track_controller_;
   return computeControllerVelocity(track_controller_, pose, twist);
 }
 
 bool ControllerServer::nearestPlannedSpeed(
-  const geometry_msgs::msg::PoseStamped & pose, double & desired_v)
+  const geometry_msgs::msg::PoseStamped & pose, double & desired_v,
+  size_t * nearest_index)
 {
   const auto & pts = current_trajectory_.points;
   if (pts.empty()) {
@@ -2591,7 +2960,90 @@ bool ControllerServer::nearestPlannedSpeed(
     }
   }
   desired_v = pts[best_i].longitudinal_velocity;
+  if (nearest_index != nullptr) {
+    *nearest_index = best_i;
+  }
   return true;
+}
+
+size_t ControllerServer::findClosestPoseIndex(
+  const geometry_msgs::msg::PoseStamped & pose_in_path,
+  const nav_msgs::msg::Path & path) const
+{
+  size_t closest_pose_idx = 0;
+  double min_distance = std::numeric_limits<double>::max();
+  for (size_t pose_idx = 0; pose_idx < path.poses.size(); ++pose_idx) {
+    const double distance = nav2_util::geometry_utils::euclidean_distance(
+      pose_in_path, path.poses[pose_idx]);
+    if (distance < min_distance) {
+      min_distance = distance;
+      closest_pose_idx = pose_idx;
+    }
+  }
+  return closest_pose_idx;
+}
+
+bool ControllerServer::shouldPauseProgressCheckForObstacleStop(
+  const geometry_msgs::msg::PoseStamped & pose)
+{
+  constexpr double kPlannedStopVelocityEpsilon = 1e-3;
+  if (!speed_plan_cycle_.active || !speed_plan_cycle_.planning_succeeded ||
+    !speed_plan_cycle_.terminal_valid ||
+    speed_plan_cycle_.terminal.terminal_branch !=
+    nav2_core::SpeedPlanningTerminalBranch::PATH_OBSTACLE_STOP ||
+    speed_plan_cycle_.terminal.terminal_infeasible)
+  {
+    return false;
+  }
+
+  // 首点是当前实测状态，静止起步时也可能为零。只有当前位置之后整条轨迹
+  // 都保持零速，才说明这是“已完成计划停障”，而不是准备重新起步。
+  double planned_speed = 0.0;
+  size_t nearest_index = 0;
+  if (!nearestPlannedSpeed(pose, planned_speed, &nearest_index) ||
+    !std::isfinite(planned_speed))
+  {
+    return false;
+  }
+  for (size_t index = nearest_index; index < current_trajectory_.points.size(); ++index) {
+    const double speed = current_trajectory_.points[index].longitudinal_velocity;
+    if (!std::isfinite(speed) || std::fabs(speed) > kPlannedStopVelocityEpsilon) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool ControllerServer::checkProgress(geometry_msgs::msg::PoseStamped & pose)
+{
+  // 正常停障和碰撞急停都不应被误判为“没有进展”。
+  const bool is_planned_obstacle_stop =
+    !is_collision_stop_active_ && shouldPauseProgressCheckForObstacleStop(pose);
+  if (is_collision_stop_active_ || is_planned_obstacle_stop) {
+    if (!is_progress_check_paused_for_obstacle_stop_) {
+      // 进入时清除旧基线，防止障碍解除后继承停障前已累计的超时时间。
+      progress_checker_->reset();
+      is_progress_check_paused_for_obstacle_stop_ = true;
+      if (is_collision_stop_active_) {
+        RCLCPP_INFO(
+          get_logger(),
+          "Hard stop active. Progress check paused.");
+      } else {
+        RCLCPP_INFO(
+          get_logger(),
+          "Planned obstacle stop. Progress check paused: obstacle_arc=%.3f m.",
+          speed_plan_cycle_.terminal.first_obstacle_arc);
+      }
+    }
+    return true;
+  }
+
+  if (is_progress_check_paused_for_obstacle_stop_) {
+    progress_checker_->reset();
+    is_progress_check_paused_for_obstacle_stop_ = false;
+    RCLCPP_INFO(get_logger(), "Obstacle stop ended. Progress check restarted.");
+  }
+  return progress_checker_->check(pose);
 }
 
 void ControllerServer::computeAndPublishVelocity()
@@ -2609,161 +3061,66 @@ void ControllerServer::computeAndPublishVelocity()
   if (!getRobotPose(pose)) {
     publish_control_failure("pose_lookup_failed");
     throw nav2_core::PlannerException(
-            "Failed to obtain robot pose. 获取机器人位姿失败，通常需要检查 TF、定位状态或 costmap frame。");
+            "Robot pose not found. Check TF, localization, and costmap frames.");
   }
   auto t_pose_end = std::chrono::high_resolution_clock::now();
   auto pose_ms = std::chrono::duration<double, std::milli>(t_pose_end - t_pose_start).count();
 
-  if (near_goal_pose_hold_active_) {
-    publishZeroVelocity();
-    if (isRobotStoppedForGoalChecker()) {
-      // 停稳后检查误差状态：同时计算是否超出 release 容差、是否仍在 accept 容差内
-      geometry_msgs::msg::PoseStamped transformed_end_pose;
-      bool tf_ok = false;
-      double lon_err = 0.0, lat_err = 0.0, yaw_err = 0.0;
-      try {
-        rclcpp::Duration tf_tol(
-          rclcpp::Duration::from_seconds(costmap_ros_->getTransformTolerance()));
-        if (nav_2d_utils::transformPose(
-            costmap_ros_->getTfBuffer(), pose.header.frame_id,
-            end_pose_, transformed_end_pose, tf_tol))
-        {
-          const double gy = tf2::getYaw(transformed_end_pose.pose.orientation);
-          const double cy = tf2::getYaw(pose.pose.orientation);
-          const double dx = pose.pose.position.x - transformed_end_pose.pose.position.x;
-          const double dy = pose.pose.position.y - transformed_end_pose.pose.position.y;
-          lon_err = std::cos(gy) * dx + std::sin(gy) * dy;
-          lat_err = -std::sin(gy) * dx + std::cos(gy) * dy;
-          yaw_err = angles::shortest_angular_distance(cy, gy);
-          tf_ok = true;
-        }
-      } catch (const tf2::TransformException & ex) {
-        RCLCPP_WARN_THROTTLE(
-          get_logger(), *get_clock(), 5000,
-          "Near-goal hold release check TF failed: %s. 保持 hold 状态。", ex.what());
-      }
-
-      if (tf_ok) {
-        // 误差超出更宽松的 release 容差：立即释放，交回 MPPI 修正
-        const bool outside_release_tolerance =
-          std::fabs(lon_err) > near_goal_hold_release_lon_tolerance_ ||
-          std::fabs(lat_err) > near_goal_hold_release_lat_tolerance_ ||
-          std::fabs(yaw_err) > near_goal_hold_release_yaw_tolerance_;
-
-        // 误差是否仍在 GoalChecker accept 容差内：直接复用现有函数，
-        // 避免手动比较与自定义 GoalChecker（含精调/滑动窗口等）实际逻辑不一致
-        const bool within_accept =
-          isWithinGoalCheckerTolerance(pose, false, true);
-
-        // 宽限计数：误差超出 accept 但未超 release，累计周期数；连续超 accept 容差则释放
-        if (within_accept) {
-          near_goal_hold_outside_accept_count_ = 0;
-        } else {
-          ++near_goal_hold_outside_accept_count_;
-        }
-        const bool release_after_grace =
-          near_goal_hold_outside_accept_count_ >= near_goal_hold_outside_accept_cycles_;
-
-        if (outside_release_tolerance || release_after_grace) {
-          const size_t outside_accept_cycles = near_goal_hold_outside_accept_count_;
-          near_goal_pose_hold_active_ = false;
-          near_goal_hold_outside_accept_count_ = 0;
-          RCLCPP_INFO(
-            get_logger(),
-            "Near-goal pose hold released: outside_accept_cycles=%zu, outside_release=%s. "
-            "Returning control to MPPI.",
-            outside_accept_cycles,
-            outside_release_tolerance ? "true" : "false");
-        } else {
-          RCLCPP_INFO_THROTTLE(
-            get_logger(), *get_clock(), 1000,
-            "Near-goal pose hold: chassis is stopped, waiting for GoalChecker confirmation. "
-            "lon=%.4f lat=%.4f yaw=%.4f, outside_accept_count=%zu.",
-            lon_err, lat_err, yaw_err, near_goal_hold_outside_accept_count_);
-        }
-      }
-    }
-    return;
-  }
-
-  // near-goal hold 进入门控：位姿满足容差 AND 底盘实际速度已足够低，才允许 ControllerServer 接管。
-  // 否则把动态减速过程交给 MPPI final_yaw，避免在底盘仍有较大惯性时抢占造成卡顿。
-  // 注意：必须用原始 odom 速度，不能用 getThresholdedTwist()，后者会把小速度按 min_*_threshold 清零，
-  // 导致底盘仍有 0.02~0.03 rad/s 时被误判为已停稳而提前进入 hold。
-  if (near_goal_hold_position_when_pose_reached_ &&
-    isWithinGoalCheckerTolerance(pose, false, true))
-  {
-    const nav_2d_msgs::msg::Twist2D raw_odom_twist = odom_sub_->getTwist();
-    const bool speed_low_enough_for_hold =
-      std::fabs(raw_odom_twist.x) <= near_goal_hold_enter_vx_ &&
-      std::fabs(raw_odom_twist.theta) <= near_goal_hold_enter_wz_;
-    if (speed_low_enough_for_hold) {
-      near_goal_pose_hold_active_ = true;
-      near_goal_hold_outside_accept_count_ = 0;
-      RCLCPP_INFO(
-        get_logger(),
-        "Near-goal pose reached and chassis is slow (raw vx=%.4f wz=%.4f <= thresholds %.3f/%.3f): "
-        "holding zero velocity for final stop. GoalChecker will confirm success.",
-        raw_odom_twist.x, raw_odom_twist.theta,
-        near_goal_hold_enter_vx_, near_goal_hold_enter_wz_);
-      publishZeroVelocity();
-      return;
-    }
-    // 速度仍偏高：让 MPPI 继续完成动态减速，不抢占
-  }
-
   auto t_progress_start = std::chrono::high_resolution_clock::now();
-  const bool in_goal_accept_position = isWithinGoalCheckerTolerance(pose, false, false);
-  if (near_goal_progress_enabled_ && isNearGoal(pose)) {
-    if (!checkNearGoalProgress(pose)) {
-      if (isWithinGoalCheckerTolerance(pose, true)) {
-        publishZeroVelocity();
-        publish_control_failure("goal_tolerance_zero_cmd");
-        return;
-      }
-      publish_control_failure("near_goal_progress_failed");
-      throw nav2_core::PlannerException(
-              "Failed to make near-goal progress. 接近目标点后长时间没有足够位移/转角，可能卡住或被约束。");
-    }
-  } else if (!in_goal_accept_position) {
-    if (in_near_goal_progress_mode_) {
-      RCLCPP_INFO(get_logger(), "Leaving near-goal progress mode.");
-      resetNearGoalProgress();
-      progress_checker_->reset();
-    }
-    if (!progress_checker_->check(pose)) {
-      publish_control_failure("progress_failed");
-      throw nav2_core::PlannerException(
-              "Failed to make progress. 进度检查失败，机器人在规定时间内没有有效前进，可能被障碍、空路径或控制失败卡住。");
-    }
+  if (!checkProgress(pose)) {
+    publish_control_failure("progress_failed");
+    throw nav2_core::PlannerException(
+            "Progress check failed. Robot did not move enough in time.");
   }
   auto t_progress_end = std::chrono::high_resolution_clock::now();
   auto progress_ms = std::chrono::duration<double, std::milli>(t_progress_end - t_progress_start).count();
 
   auto t_odom_start = std::chrono::high_resolution_clock::now();
-  nav_2d_msgs::msg::Twist2D twist = getThresholdedTwist(odom_sub_->getTwist());
+  const nav_2d_msgs::msg::Twist2D raw_twist = odom_sub_->getTwist();
+  nav_2d_msgs::msg::Twist2D twist = getThresholdedTwist(raw_twist);
   auto t_odom_end = std::chrono::high_resolution_clock::now();
   auto odom_ms = std::chrono::duration<double, std::milli>(t_odom_end - t_odom_start).count();
 
   geometry_msgs::msg::TwistStamped cmd_vel_2d;
   bool control_succeeded = false;
   bool controller_target_valid = false;
+  // 标记本周期是否因碰撞保持零速，用于发布正确的诊断状态。
+  bool is_collision_stop_wait = false;
   double controller_target_v = std::numeric_limits<double>::quiet_NaN();
   double controller_target_a = std::numeric_limits<double>::quiet_NaN();
+  double controller_target_t = std::numeric_limits<double>::quiet_NaN();
 
   auto t_compute_start = std::chrono::high_resolution_clock::now();
   try {
     cmd_vel_2d = computeStagedVelocity(pose, twist);
     last_valid_cmd_time_ = now();
     control_succeeded = true;
-  } catch (nav2_core::CollisionException & e) {
-    publishHardStopVelocity();
-    publish_control_failure("collision_detected");
-    throw;
+    if (is_collision_stop_active_) {
+      is_collision_stop_active_ = false;
+      RCLCPP_INFO(
+        get_logger(),
+        "Collision risk cleared. Hard stop ended.");
+    }
+  } catch (const nav2_core::CollisionException &) {
+    // 碰撞属于可恢复的安全停车：保持 FollowPath，风险解除后继续控制。
+    invalidateSpeedPlanningContinuity();
+    is_collision_stop_wait = true;
+    if (!is_collision_stop_active_) {
+      is_collision_stop_active_ = true;
+      RCLCPP_WARN(
+        get_logger(),
+        "Collision ahead. Hard stop active.");
+      publishHardStopVelocity();
+    }
+    cmd_vel_2d = geometry_msgs::msg::TwistStamped();
+    cmd_vel_2d.header.frame_id = costmap_ros_->getBaseFrameID();
+    cmd_vel_2d.header.stamp = now();
   } catch (nav2_core::PlannerException & e) {
     invalidateSpeedPlanningContinuity();
     if (failure_tolerance_ > 0 || failure_tolerance_ == -1.0) {
-      RCLCPP_WARN(this->get_logger(), "%s", e.what());
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "Controller command failed: %s", e.what());
       cmd_vel_2d.twist.angular.x = 0;
       cmd_vel_2d.twist.angular.y = 0;
       cmd_vel_2d.twist.angular.z = 0;
@@ -2778,7 +3135,7 @@ void ControllerServer::computeAndPublishVelocity()
       {
         publish_control_failure("controller_patience_exceeded");
         throw nav2_core::PlannerException(
-                "Controller patience exceeded. 局部控制器在 failure_tolerance 时间内没有生成有效速度，控制耐心超时。");
+                "Controller timeout. No valid command within failure_tolerance.");
       }
     } else {
       publish_control_failure("controller_exception");
@@ -2795,15 +3152,28 @@ void ControllerServer::computeAndPublishVelocity()
   {
     const auto controller = controllers_.find(active_controller_for_log_);
     if (controller != controllers_.end()) {
-      controller_target_valid = controller->second->getLastTrajectoryTrackingTarget(
-        controller_target_v, controller_target_a);
+      auto * receipt_capability = dynamic_cast<
+        nav2_core::TrajectoryTrackingReceiptCapability *>(controller->second.get());
+      if (receipt_capability != nullptr) {
+        controller_target_valid = receipt_capability->getLastTrajectoryTrackingReceipt(
+          controller_target_v, controller_target_a, controller_target_t);
+      } else {
+        controller_target_valid = controller->second->getLastTrajectoryTrackingTarget(
+          controller_target_v, controller_target_a);
+      }
     }
   }
-  updateSpeedPlanningContinuityAfterControl(
-    control_succeeded, controller_target_valid, controller_target_v, controller_target_a);
+  const bool terminal_stall_recovery_triggered = updateTerminalStallRecovery(
+    twist, controller_target_valid, controller_target_v, controller_target_a);
+  if (!terminal_stall_recovery_triggered) {
+    updateSpeedPlanningContinuityAfterControl(
+      control_succeeded, controller_target_valid, controller_target_v, controller_target_a,
+      controller_target_t);
+  }
   publishSpeedPlanDiagnostics(
     control_succeeded, controller_target_valid, controller_target_v, controller_target_a,
-    control_succeeded ? "success" : "control_failed");
+    control_succeeded ? "success" :
+    (is_collision_stop_wait ? "collision_stop_wait" : "control_failed"));
   auto t_compute_end = std::chrono::high_resolution_clock::now();
   auto compute_ms = std::chrono::duration<double, std::milli>(t_compute_end - t_compute_start).count();
 
@@ -2833,45 +3203,56 @@ void ControllerServer::computeAndPublishVelocity()
   feedback->speed = std::hypot(cmd_vel_2d.twist.linear.x, cmd_vel_2d.twist.linear.y);
 
   // noted by hz
-  // 找到最近的目标点，并计算到目标点的距离，然后作为feedback发布
-  // Find the closest pose to current pose on global path
-  nav_msgs::msg::Path & current_path = current_path_;
-  auto find_closest_pose_idx =
-    [&pose, &current_path]() {
-      size_t closest_pose_idx = 0;
-      double curr_min_dist = std::numeric_limits<double>::max();
-      for (size_t curr_idx = 0; curr_idx < current_path.poses.size(); ++curr_idx) {
-        double curr_dist = nav2_util::geometry_utils::euclidean_distance(
-          pose, current_path.poses[curr_idx]);
-        if (curr_dist < curr_min_dist) {
-          curr_min_dist = curr_dist;
-          closest_pose_idx = curr_idx;
-        }
-      }
-      return closest_pose_idx;
-    };
+  // 找到最近的路径点，并计算剩余路径长度，然后作为 feedback 发布。
+  // getRobotPose() 返回的是 local costmap global frame（当前配置为 odom），而
+  // current_path_ 通常位于 map。最近点和剩余路径长度必须在同一坐标系计算，
+  // 否则会把路径末点误判为最近点，使 distance_to_goal 长期为 0。
+  geometry_msgs::msg::PoseStamped pose_in_path = pose;
+  bool pose_in_path_valid = true;
+  if (!current_path_.header.frame_id.empty() &&
+    pose.header.frame_id != current_path_.header.frame_id)
+  {
+    try {
+      rclcpp::Duration tolerance(
+        rclcpp::Duration::from_seconds(costmap_ros_->getTransformTolerance()));
+      // 使用 TF 队列中的最新变换，避免 pose 的采样时间戳稍早于 map->odom
+      // 缓存区间时使反馈距离失效。
+      geometry_msgs::msg::PoseStamped latest_tf_pose = pose;
+      latest_tf_pose.header.stamp = rclcpp::Time(0);
+      pose_in_path_valid = nav_2d_utils::transformPose(
+        costmap_ros_->getTfBuffer(), current_path_.header.frame_id,
+        latest_tf_pose, pose_in_path, tolerance);
+    } catch (const tf2::TransformException & ex) {
+      pose_in_path_valid = false;
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 5000,
+        "Unable to transform robot pose from '%s' to path frame '%s' for feedback metrics: %s",
+        pose.header.frame_id.c_str(), current_path_.header.frame_id.c_str(), ex.what());
+    }
+  }
 
-  feedback->distance_to_goal =
-    nav2_util::geometry_utils::calculate_path_length(current_path_, find_closest_pose_idx());
+  const size_t closest_pose_idx =
+    pose_in_path_valid && !current_path_.poses.empty() ?
+    findClosestPoseIndex(pose_in_path, current_path_) : 0u;
+  feedback->distance_to_goal = pose_in_path_valid ?
+    nav2_util::geometry_utils::calculate_path_length(current_path_, closest_pose_idx) :
+    std::numeric_limits<double>::quiet_NaN();
   action_server_->publish_feedback(feedback);
+
   auto t_feedback_end = std::chrono::high_resolution_clock::now();
   auto feedback_ms = std::chrono::duration<double, std::milli>(t_feedback_end - t_feedback_start).count();
 
   RCLCPP_DEBUG_THROTTLE(
     get_logger(), *get_clock(), 500,
-    "ControllerServer command: phase=%s controller=%s goal_checker=%s "
-    "cmd_vel.linear=(x=%.3f y=%.3f z=%.3f) cmd_vel.angular=(x=%.3f y=%.3f z=%.3f)",
+    "Control command: phase=%s, controller=%s, goal_checker=%s, "
+    "vx=%.3f, vy=%.3f, wz=%.3f.",
     controllerPhaseName(controller_phase_),
     active_controller_for_log_.c_str(),
     current_goal_checker_.c_str(),
     cmd_vel_2d.twist.linear.x,
     cmd_vel_2d.twist.linear.y,
-    cmd_vel_2d.twist.linear.z,
-    cmd_vel_2d.twist.angular.x,
-    cmd_vel_2d.twist.angular.y,
     cmd_vel_2d.twist.angular.z);
 
-  RCLCPP_DEBUG(get_logger(), "Publishing velocity at time %.2f", now().seconds());
   auto t_publish_start = std::chrono::high_resolution_clock::now();
   publishVelocity(cmd_vel_2d);
   auto t_publish_end = std::chrono::high_resolution_clock::now();
@@ -2885,7 +3266,7 @@ void ControllerServer::computeAndPublishVelocity()
   if (total_ms >= kSlowTimingWarnMs) {
     RCLCPP_WARN(
       get_logger(),
-      "ControllerServer timing (ms): total=%.3f getPose=%.3f progress=%.3f odom=%.3f "
+      "Slow control (ms): total=%.3f pose=%.3f progress=%.3f odom=%.3f "
       "compute=%.3f feedback=%.3f publish=%.3f unaccounted=%.3f",
       total_ms, pose_ms, progress_ms, odom_ms, compute_ms, feedback_ms, publish_ms,
       unaccounted_ms);
@@ -2899,7 +3280,7 @@ void ControllerServer::updateGlobalPath()
     std::string requested_controller;
     if (!findControllerId(goal->controller_id, requested_controller)) {
       RCLCPP_INFO(
-        get_logger(), "Terminating action, invalid controller %s requested. 终止导航：请求的 controller_id 无效。",
+        get_logger(), "FollowPath stopped: controller '%s' is not valid.",
         goal->controller_id.c_str());
       action_server_->terminate_current();
       return;
@@ -2908,52 +3289,28 @@ void ControllerServer::updateGlobalPath()
     std::string requested_goal_checker;
     if (!findGoalCheckerId(goal->goal_checker_id, requested_goal_checker)) {
       RCLCPP_INFO(
-        get_logger(), "Terminating action, invalid goal checker %s requested. 终止导航：请求的 goal_checker_id 无效。",
+        get_logger(), "FollowPath stopped: goal checker '%s' is not valid.",
         goal->goal_checker_id.c_str());
       action_server_->terminate_current();
       return;
     }
 
-    geometry_msgs::msg::PoseStamped pose;
     const bool same_controller = requested_controller == current_controller_;
     const bool same_goal_checker = requested_goal_checker == current_goal_checker_;
     const bool same_goal = isSamePathGoal(goal->path);
-    const bool got_pose = getRobotPose(pose);
-    const bool in_accept_position =
-      got_pose && isWithinGoalCheckerTolerance(pose, false, false);
-    if (same_controller && same_goal_checker && same_goal && in_accept_position)
-    {
+    if (same_goal && (!same_controller || !same_goal_checker)) {
       RCLCPP_INFO(
         get_logger(),
-        "忽略近目标 path 更新：目标点不变且当前位置已进入 goal_checker 2cm 接受窗口，"
-        "继续使用当前末端路径完成精调，避免重置 goal_checker 和 MPPI 末端状态。pending path poses=%zu",
-        goal->path.poses.size());
-      return;
-    }
-
-    if (same_goal && !in_accept_position) {
-      if (got_pose) {
-        RCLCPP_INFO(
-          get_logger(),
-          "近目标 path 更新未忽略：目标点不变，但当前位置尚未进入 goal_checker 2cm 接受窗口。");
-      } else {
-        RCLCPP_INFO(
-          get_logger(),
-          "近目标 path 更新未忽略：目标点不变，但当前无法获取机器人位姿，无法确认是否进入 "
-          "goal_checker 2cm 接受窗口。");
-      }
-    } else if (same_goal && (!same_controller || !same_goal_checker)) {
-      RCLCPP_INFO(
-        get_logger(),
-        "近目标 path 更新未忽略：目标点不变，但 controller 或 goal_checker 已变化，"
-        "same_controller=%s, same_goal_checker=%s。",
+        "Path treated as a new goal: same_controller=%s, same_goal_checker=%s.",
         same_controller ? "true" : "false",
         same_goal_checker ? "true" : "false");
     }
 
     current_controller_ = requested_controller;
     current_goal_checker_ = requested_goal_checker;
-    RCLCPP_INFO(get_logger(), "Passing new path to controller.");
+    RCLCPP_DEBUG_THROTTLE(
+      get_logger(), *get_clock(), 1000,
+      "FollowPath update accepted.");
     const auto update_type =
       same_controller && same_goal_checker && same_goal ?
       PathUpdateType::SAME_GOAL_GEOMETRY : PathUpdateType::NEW_GOAL;
@@ -2986,11 +3343,10 @@ void ControllerServer::publishZeroVelocity()
     const auto actual_twist = getThresholdedTwist(odom_sub_->getTwist());
     const size_t subscriber_count = vel_publisher_ ?
       vel_publisher_->get_subscription_count() : 0;
-    RCLCPP_WARN(
-      get_logger(),
-      "[ControllerStopDebug] Publishing zero velocity: actual odom velocity vx=%.3f m/s, "
-      "vy=%.3f m/s, wz=%.3f rad/s, cmd_vel subscribers=%zu. This is a stop request; "
-      "the velocity smoother and chassis still need time to decelerate.",
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), *get_clock(), 1000,
+      "Zero speed requested: odom_vx=%.3f m/s, odom_vy=%.3f m/s, odom_wz=%.3f rad/s, "
+      "subscribers=%zu.",
       actual_twist.x, actual_twist.y, actual_twist.theta, subscriber_count);
   }
   publishVelocity(velocity);
@@ -3000,27 +3356,19 @@ void ControllerServer::publishHardStopVelocity()
 {
   if (hard_stop_publisher_ && hard_stop_publisher_->is_activated()) {
     hard_stop_publisher_->publish(std::make_unique<std_msgs::msg::Empty>());
-    RCLCPP_ERROR(
+    RCLCPP_INFO(
       get_logger(),
-      "Hard-stop request published on '%s' (subscribers=%zu).",
+      "Hard stop sent: topic='%s', subscribers=%zu.",
       hard_stop_topic_.c_str(), hard_stop_publisher_->get_subscription_count());
   } else {
     RCLCPP_ERROR(
-      get_logger(), "Hard-stop publisher is inactive; falling back to a zero cmd_vel request.");
+      get_logger(), "Hard stop publisher is off. Requesting zero speed.");
   }
   publishZeroVelocity();
 }
 
 bool ControllerServer::isGoalReached()
 {
-  if (near_goal_progress_acceptance_reached_) {
-    RCLCPP_INFO(
-      get_logger(),
-      "Reached the goal by near-goal acceptance fallback. "
-      "近目标进度检查已确认误差满足接受容差，返回到位成功。");
-    return true;
-  }
-
   geometry_msgs::msg::PoseStamped pose;
 
   if (!getRobotPose(pose)) {
@@ -3038,9 +3386,13 @@ bool ControllerServer::isGoalReached()
   {
     RCLCPP_WARN_THROTTLE(
       get_logger(), *get_clock(), 5000,
-      "Unable to transform end pose for goal checker plugin result logging.");
+      "Goal pose TF failed in goal check.");
     return false;
   }
+
+  const std::string localization_controller = staged_control_enabled_ ?
+    approach_controller_ : current_controller_;
+  applyEndLocalizationGoalToGoalChecker(localization_controller, transformed_end_pose);
 
   const bool goal_reached = goal_checkers_[current_goal_checker_]->isGoalReached(
     pose.pose, transformed_end_pose.pose,
@@ -3063,12 +3415,12 @@ bool ControllerServer::isGoalReached()
 
   RCLCPP_DEBUG_THROTTLE(
     get_logger(), *get_clock(), 500,
-    "GoalChecker plugin result: id=%s type=%s result=%s "
+    "Goal check: id=%s type=%s reached=%s "
     "goal=(frame=%s x=%.3f y=%.3f yaw=%.3f) "
     "robot=(frame=%s x=%.3f y=%.3f yaw=%.3f) "
-    "errors=(lon=%.4f lat=%.4f yaw=%.4f dist=%.4f) "
-    "tolerances_available=%s tolerances=(lon=%.4f lat=%.4f yaw=%.4f "
-    "trans_vel=%.4f rot_vel=%.4f) velocity=(linear=%.4f angular=%.4f)",
+    "error=(lon=%.4f lat=%.4f yaw=%.4f dist=%.4f) "
+    "tolerance_valid=%s tolerance=(lon=%.4f lat=%.4f yaw=%.4f v=%.4f w=%.4f) "
+    "odom=(v=%.4f w=%.4f)",
     current_goal_checker_.c_str(), getGoalCheckerType(current_goal_checker_).c_str(),
     goal_reached ? "true" : "false",
     transformed_end_pose.header.frame_id.c_str(),
@@ -3108,6 +3460,9 @@ bool ControllerServer::getRobotPose(geometry_msgs::msg::PoseStamped & pose)
 
 void ControllerServer::speedLimitCallback(const nav2_msgs::msg::SpeedLimit::SharedPtr msg)
 {
+  const bool speed_limit_changed = !external_speed_limit_valid_ ||
+    std::fabs(last_external_speed_limit_ - msg->speed_limit) > 1e-9 ||
+    last_external_speed_limit_percentage_ != msg->percentage;
   ControllerMap::iterator it;
   for (it = controllers_.begin(); it != controllers_.end(); ++it) {
     it->second->setSpeedLimit(msg->speed_limit, msg->percentage);
@@ -3119,6 +3474,16 @@ void ControllerServer::speedLimitCallback(const nav2_msgs::msg::SpeedLimit::Shar
   for (auto & sp : speed_planners_) {
     sp.second->setSpeedLimit(msg->speed_limit, msg->percentage);
   }
+  if (speed_limit_changed) {
+    // A preserved prefix was generated under the previous limit and cannot be
+    // retroactively lowered. Drop it so the very next cycle replans the complete
+    // remaining path under the new external speed envelope. Repeated messages
+    // with the same limit do not disable stitching continuously.
+    invalidateSpeedPlanningContinuity();
+  }
+  external_speed_limit_valid_ = true;
+  last_external_speed_limit_ = msg->speed_limit;
+  last_external_speed_limit_percentage_ = msg->percentage;
 }
 
 rcl_interfaces::msg::SetParametersResult
@@ -3132,7 +3497,6 @@ ControllerServer::dynamicParametersCallback(std::vector<rclcpp::Parameter> param
 
     // Plugin parameters handle their own updates, but these namespaces belong to this server.
     if (name.find('.') != std::string::npos &&
-      name.rfind("near_goal_progress.", 0) != 0 &&
       name.rfind("staged_control.", 0) != 0)
     {
       continue;
@@ -3141,10 +3505,10 @@ ControllerServer::dynamicParametersCallback(std::vector<rclcpp::Parameter> param
     if (!dynamic_params_lock_.try_lock()) {
       RCLCPP_WARN(
         get_logger(),
-        "Unable to dynamically change Parameters while the controller is currently running");
+        "Parameters cannot change while the controller is running.");
       result.successful = false;
       result.reason =
-        "Unable to dynamically change Parameters while the controller is currently running";
+        "Parameters cannot change while the controller is running.";
       return result;
     }
 
@@ -3159,41 +3523,6 @@ ControllerServer::dynamicParametersCallback(std::vector<rclcpp::Parameter> param
         min_theta_velocity_threshold_ = parameter.as_double();
       } else if (name == "failure_tolerance") {
         failure_tolerance_ = parameter.as_double();
-      } else if (name == "near_goal_progress.distance") {
-        near_goal_progress_distance_ = parameter.as_double();
-      } else if (name == "near_goal_progress.required_movement_radius") {
-        near_goal_progress_required_movement_radius_ = parameter.as_double();
-      } else if (name == "near_goal_progress.required_movement_angle") {
-        near_goal_progress_required_movement_angle_ = parameter.as_double();
-      } else if (name == "near_goal_progress.movement_time_allowance") {
-        near_goal_progress_time_allowance_ =
-          rclcpp::Duration::from_seconds(parameter.as_double());
-      } else if (name == "near_goal_progress.lateral_stall_lon_tolerance") {
-        near_goal_lateral_stall_lon_tolerance_ = parameter.as_double();
-        resetNearGoalLateralStall();
-      } else if (name == "near_goal_progress.lateral_stall_yaw_tolerance") {
-        near_goal_lateral_stall_yaw_tolerance_ = parameter.as_double();
-        resetNearGoalLateralStall();
-      } else if (name == "near_goal_progress.lateral_stall_lat_tolerance") {
-        near_goal_lateral_stall_lat_tolerance_ = parameter.as_double();
-        resetNearGoalLateralStall();
-      } else if (name == "near_goal_progress.lateral_stall_min_improvement") {
-        near_goal_lateral_stall_min_improvement_ = parameter.as_double();
-        resetNearGoalLateralStall();
-      } else if (name == "near_goal_progress.lateral_stall_time_allowance") {
-        near_goal_lateral_stall_time_allowance_ =
-          rclcpp::Duration::from_seconds(parameter.as_double());
-        resetNearGoalLateralStall();
-      } else if (name == "near_goal_progress.hold_enter_vx") {
-        near_goal_hold_enter_vx_ = parameter.as_double();
-      } else if (name == "near_goal_progress.hold_enter_wz") {
-        near_goal_hold_enter_wz_ = parameter.as_double();
-      } else if (name == "near_goal_progress.hold_release_lon_tolerance") {
-        near_goal_hold_release_lon_tolerance_ = parameter.as_double();
-      } else if (name == "near_goal_progress.hold_release_lat_tolerance") {
-        near_goal_hold_release_lat_tolerance_ = parameter.as_double();
-      } else if (name == "near_goal_progress.hold_release_yaw_tolerance") {
-        near_goal_hold_release_yaw_tolerance_ = parameter.as_double();
       } else if (name == "staged_control.approach_distance") {
         approach_distance_ = parameter.as_double();
       } else if (name == "staged_control.align_heading_tolerance") {
@@ -3221,7 +3550,7 @@ ControllerServer::dynamicParametersCallback(std::vector<rclcpp::Parameter> param
         if (controllers_.find(requested_controller) == controllers_.end()) {
           RCLCPP_WARN(
             get_logger(),
-            "Rejected current_controller '%s'. Available controllers are: %s.",
+            "Parameter rejected: current_controller='%s'. Available: %s",
             requested_controller.c_str(), controller_ids_concat_.c_str());
           dynamic_params_lock_.unlock();
           result.successful = false;
@@ -3234,7 +3563,7 @@ ControllerServer::dynamicParametersCallback(std::vector<rclcpp::Parameter> param
         if (goal_checkers_.find(requested_goal_checker) == goal_checkers_.end()) {
           RCLCPP_WARN(
             get_logger(),
-            "Rejected current_goal_checker '%s'. Available goal checkers are: %s.",
+            "Parameter rejected: current_goal_checker='%s'. Available: %s",
             requested_goal_checker.c_str(), goal_checker_ids_concat_.c_str());
           dynamic_params_lock_.unlock();
           result.successful = false;
@@ -3247,7 +3576,7 @@ ControllerServer::dynamicParametersCallback(std::vector<rclcpp::Parameter> param
         if (controllers_.find(requested_controller) == controllers_.end()) {
           RCLCPP_WARN(
             get_logger(),
-            "Rejected staged_control.track_controller '%s'. Available controllers are: %s.",
+            "Parameter rejected: staged_control.track_controller='%s'. Available: %s",
             requested_controller.c_str(), controller_ids_concat_.c_str());
           dynamic_params_lock_.unlock();
           result.successful = false;
@@ -3260,7 +3589,7 @@ ControllerServer::dynamicParametersCallback(std::vector<rclcpp::Parameter> param
         if (controllers_.find(requested_controller) == controllers_.end()) {
           RCLCPP_WARN(
             get_logger(),
-            "Rejected staged_control.approach_controller '%s'. Available controllers are: %s.",
+            "Parameter rejected: staged_control.approach_controller='%s'. Available: %s",
             requested_controller.c_str(), controller_ids_concat_.c_str());
           dynamic_params_lock_.unlock();
           result.successful = false;
@@ -3274,22 +3603,16 @@ ControllerServer::dynamicParametersCallback(std::vector<rclcpp::Parameter> param
         prepare_obstacle_cost_threshold_ = static_cast<int>(parameter.as_int());
       }
     } else if (type == ParameterType::PARAMETER_BOOL) {
-      if (name == "near_goal_progress.enabled") {
-        near_goal_progress_enabled_ = parameter.as_bool();
-        resetNearGoalProgress();
-      } else if (name == "near_goal_progress.hold_position_when_goal_pose_reached") {
-        near_goal_hold_position_when_pose_reached_ = parameter.as_bool();
-        near_goal_pose_hold_active_ = false;
-        near_goal_hold_outside_accept_count_ = 0;
-      } else if (name == "near_goal_progress.lateral_stall_enabled") {
-        near_goal_lateral_stall_enabled_ = parameter.as_bool();
-        resetNearGoalLateralStall();
-      } else if (name == "staged_control.enabled") {
+      if (name == "staged_control.enabled") {
         staged_control_enabled_ = parameter.as_bool();
-        prepare_backup_active_ = false;
+        if (!staged_control_enabled_) {
+          prepare_state_ = PrepareState::DONE;
+        }
       } else if (name == "staged_control.prepare.enabled") {
         prepare_enabled_ = parameter.as_bool();
-        prepare_backup_active_ = false;
+        if (!prepare_enabled_) {
+          prepare_state_ = PrepareState::DONE;
+        }
       } else if (name == "staged_control.prepare.backup_use_distance") {
         prepare_backup_use_distance_ = parameter.as_bool();
       }

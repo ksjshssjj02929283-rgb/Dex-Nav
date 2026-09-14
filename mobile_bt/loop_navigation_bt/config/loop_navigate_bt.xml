@@ -24,8 +24,8 @@
         </Sequence>
       </Fallback>
 
-      <!-- 电量正常或完整回充退桩结束后，继续按 JSON 点位循环导航。 -->
-      <LoopNavigateFourPoints points="{navigation_points}"/>
+      <!-- 电量正常或完整回充退桩结束后，继续按导航计划顺序循环。 -->
+      <LoopNavigateFourPoints points="{navigation_points}" assets="{map_assets_file}"/>
 
     </ReactiveSequence>
   </BehaviorTree>

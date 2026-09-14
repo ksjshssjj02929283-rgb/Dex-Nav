@@ -14,28 +14,35 @@
     do not make the whole navigation action fail before a later replan succeeds.
 
   Local control recovery:
-  - If FollowPath fails, try clearing the local costmap.
-  - Even if clearing fails, the tree still retries FollowPath immediately.
-  - If the inner retry still fails, wait 1 second, clear the local costmap,
-    back up 0.30 m, and then retry local control.
-  - BackUp is treated as an optional recovery action: if backing up is blocked
-    or out of the local costmap, navigation keeps waiting/retrying instead of
-    failing the whole goal.
-  - Unlike the outer global-planning retry, this loop is bounded: an unbounded
-    local recovery loop can spin indefinitely on a position the robot cannot
-    escape, with no signal to the caller that anything is wrong. A bounded
-    count still gives many chances for transient obstacles to clear, but
-    eventually fails the goal so the caller (and any operator watching it)
-    finds out instead of waiting forever.
+  - If FollowPath fails, wait for the robot to stop, clear the local costmap,
+    and wait for a fresh global path before retrying control once.
+  - If that retry still fails, wait, clear the local costmap, and back up 0.30 m.
+  - A successful BackUp must be followed by another fresh global path because
+    the robot start pose has changed.
+  - A blocked or rejected BackUp propagates FAILURE instead of retrying the same
+    invalid path.
+  - The local recovery loop is bounded so an unrecoverable controller failure
+    is reported to the caller instead of spinning indefinitely.
+
+  PREPARE 后退完成后的重规划：
+  - bt_navigator 为每个已接受的导航任务发布一个独立的会话编号。
+  - controller_server 在同一会话最多后退一次；后退结束后请求从机器人
+    新位置生成全局路径，但不等待跨节点确认，避免通信异常永久锁死控制。
+  - AdaptiveReplanning 将请求接入下方已有的全局重规划流程。
 -->
 
 <root main_tree_to_execute="MainTree">
   <BehaviorTree ID="MainTree">
     <PipelineSequence name="NavigateWithReplanning">
-
-      <!-- 全局规划：每 3 秒重规划一次 -->
-      <RateController hz="0.02">
-        <RecoveryNode number_of_retries="9999" name="ComputePathToPoseOuterRetry">
+      <!-- 周期重规划频率为 0.02 Hz；距目标 0.5 m 内暂停，偏离路径超过 0.5 m 时立即触发。 -->
+      <!-- 全局路径障碍检测 2.0 Hz：连续 4 次确认、且至少 3 个连续路径点被阻塞才触发重规划；
+           重规划成功后暂停检测 2.5 s，让新路径生效。 -->
+      <!-- active：恢复分支和 PREPARE 后退完成事件可绕过近目标、偏离量和周期门控请求新路径；
+           目标代次由 bt_navigator 统一发布，保证每个导航任务最多后退一次。 -->
+      <AdaptiveReplanning goal="{goal}" path="{path}" distance_threshold="0.5" max_deviation="0.5"
+        hz="0.02" path_obstacle_check_hz="2.0" invalid_path_confirmations="4"
+        min_blocked_path_poses="3" obstacle_replan_cooldown="2.5" recovery_replan_mode="active">
+        <RecoveryNode number_of_retries="3" name="ComputePathToPoseOuterRetry">
 
           <!-- 内层：规划失败后，依次尝试清 global 和 local，然后立即重规划 1 次 -->
           <RecoveryNode number_of_retries="1" name="ComputePathToPoseInnerRetry">
@@ -74,18 +81,19 @@
           </Sequence>
 
         </RecoveryNode>
-      </RateController>
+      </AdaptiveReplanning>
 
 
       <!-- 局部控制 -->
       <RecoveryNode number_of_retries="1" name="FollowPathAfterBackUpRetry">
 
-        <!-- 内层：FollowPath 失败后，等机器人真正停稳、清 local，再重试 FollowPath 1 次。
-             R47：velocity_smoother 硬急停时承诺 hold zero 0.5s；此前这里是 ForceSuccess
-             零等待重试，33~46ms 后就带着未清零的速度重新下发控制，几乎必然复现同一次碰撞
-             （R44/R45/R47 三次实机记录同一模式）。0.5s 与 smoother 的 hold 承诺对齐。 -->
+        <!-- 内层：FollowPath 失败后等待 0.5 s，与 velocity_smoother 的急停保持时间一致；
+             随后清 local 并等待新全局路径，避免机器人未停稳时立即重试。 -->
         <RecoveryNode number_of_retries="1" name="FollowPathInnerRetry">
-          <FollowPath path="{path}" controller_id="MPPIController"/>
+          <!-- 此树由差速和全向共用，因此不固定 Controller ID，统一读取 current_controller：
+               差速为 RPPController（近目标由 staged control 切到 PIDController）；
+               全向为 FollowPath（MPPI 插件）。 -->
+          <FollowPath path="{path}"/>
 
           <Sequence name="WaitStopBeforeFollowPathRetry">
             <Wait wait_duration="0.5" server_name="wait_local"/>
@@ -93,10 +101,12 @@
               <ClearEntireCostmap name="ClearLocalCostmap-FirstRetry"
                 service_name="local_costmap/clear_entirely_local_costmap"/>
             </ForceSuccess>
+            <!-- 保持 RUNNING 直到 ComputePathToPose 成功，禁止立即重试旧路径。 -->
+            <RequestAndWaitForGlobalReplan reason="follow_path_failed"/>
           </Sequence>
         </RecoveryNode>
 
-        <!-- 如果立即重试仍失败，则等待、清 local、后退；仅在后退成功后再重试一次 -->
+        <!-- 如果第一次重试仍失败，则等待、清 local、后退；后退成功并取得新路径后再重试一次。 -->
         <Sequence name="WaitClearBackUpAfterFollowPathFailed">
           <Wait wait_duration="1" server_name="wait_local"/>
 
@@ -106,6 +116,8 @@
           </ForceSuccess>
           <!-- BackUp 被碰撞检查拒绝时必须向上传播 FAILURE，禁止吞掉失败后重启 FollowPath。 -->
           <BackUp name="BackUpAfterLocalRetries" backup_dist="0.30" backup_speed="0.08" time_allowance="5"/>
+          <!-- 后退改变了起点，必须先生成以当前位置为起点的新路径。 -->
+          <RequestAndWaitForGlobalReplan reason="back_up_succeeded"/>
         </Sequence>
 
       </RecoveryNode>

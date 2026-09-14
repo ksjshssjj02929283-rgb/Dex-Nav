@@ -19,7 +19,7 @@ progress_checker 负责判断机器人是否还在有效前进
 本仓库中的 `nav2_controller` 在上游 Nav2 基础上增加了若干本地改动，重点包括：
 
 ```text
-1. 近目标进展检查 near_goal_progress
+1. 速度规划完成障碍前停车时暂停进展检查
 2. 支持纵向/横向误差拆分的 goal_checker
 3. 支持 1cm 优先、2cm 退让接受的高精度 goal_checker
 ```
@@ -86,8 +86,7 @@ FollowPath action
 └── 控制循环 computeControl()
     ├── updateGlobalPath()
     ├── computeAndPublishVelocity()
-    │   ├── 检查 progress_checker
-    │   ├── 近目标时应用 near_goal_progress
+    │   ├── 检查 progress_checker（计划停障已完成时暂停）
     │   ├── 调用 controller 计算速度
     │   └── 发布 cmd_vel
     └── isGoalReached()
@@ -159,42 +158,7 @@ nav2_high_precision_goal_checker::HighPrecisionGoalChecker
 
 `nav2_controller` 只保留 progress checker 和 ControllerServer。
 
-## 4. near_goal_progress
-
-`near_goal_progress` 是本仓库对近目标阶段的进展检查增强。
-
-当前参数：
-
-```yaml
-near_goal_progress:
-  enabled: True
-  distance: 0.20
-  required_movement_radius: 0.01
-  required_movement_angle: 0.05
-  movement_time_allowance: 2.0
-```
-
-含义：
-
-```text
-当机器人距离目标点小于 distance 时，进入近目标进展检查模式。
-
-在近目标模式下：
-  如果一段时间内移动距离或旋转角度都不足，
-  controller_server 会认为 FollowPath 控制失败。
-```
-
-它的作用是防止机器人在目标附近长时间抖动、卡住或无效调整。
-
-注意：
-
-```text
-如果 goal_checker 的精调时间变长，
-near_goal_progress.movement_time_allowance 也需要匹配评估。
-否则可能 goal_checker 还在尝试 1cm 精调，progress_checker 已经先判失败。
-```
-
-## 6. 修改插件时需要同步的文件
+## 4. 修改插件时需要同步的文件
 
 新增或删除 controller 相关插件时，通常需要同步修改：
 
@@ -220,9 +184,9 @@ near_goal_progress.movement_time_allowance 也需要匹配评估。
 
 不要只新增 `.cpp` 文件而忘记 `plugins.xml` 或 `CMakeLists.txt`，否则插件不会被编译或无法被 pluginlib 加载。
 
-## 7. 常见日志与排查方向
+## 5. 常见日志与排查方向
 
-### 7.1 goal_checker_id 不存在
+### 5.1 goal_checker_id 不存在
 
 如果日志中出现类似：
 
@@ -239,18 +203,17 @@ requested goal_checker_id does not exist
 4. 是否已经重新构建并 source 了新的 install/setup.bash
 ```
 
-### 7.2 到目标附近但不成功
+### 5.2 到目标附近但不成功
 
 优先检查：
 
 ```text
 1. lon_err / lat_err 是否进入配置的 lon_goal_tolerance / lat_goal_tolerance
 2. yaw_err 是否小于 yaw_goal_tolerance
-3. near_goal_progress 是否先触发失败
-4. 如果使用 stopped/high_precision goal checker，速度阈值是否过严
+3. 如果使用 stopped/high_precision goal checker，速度阈值是否过严
 ```
 
-### 7.3 很快成功但精度不够
+### 5.3 很快成功但精度不够
 
 优先检查：
 
@@ -261,7 +224,7 @@ requested goal_checker_id does not exist
 4. action 请求中是否传入了非预期 goal_checker_id
 ```
 
-## 8. 测试与构建说明
+## 6. 测试与构建说明
 
 本工作区有特殊约束：
 
@@ -290,7 +253,7 @@ colcon test-result --verbose
 mobile_navigation/nav2_controller/plugins/test/goal_checker.cpp
 ```
 
-## 9. 开发注意事项
+## 7. 开发注意事项
 
 1. `goal_checker` 只负责判断是否到达目标，不负责生成速度。
 2. 如果要增强末端控制能力，应同时关注 MPPI 的末段 critic、速度限制和 goal_checker。单独改 goal_checker 只能延长精调时间，不能直接改变 MPPI 优化代价。

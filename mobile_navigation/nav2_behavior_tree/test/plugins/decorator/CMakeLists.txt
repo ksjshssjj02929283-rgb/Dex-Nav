@@ -25,3 +25,11 @@ ament_target_dependencies(test_goal_updated_controller ${dependencies})
 ament_add_gtest(test_decorator_path_longer_on_approach test_path_longer_on_approach.cpp)
 target_link_libraries(test_decorator_path_longer_on_approach nav2_path_longer_on_approach_bt_node)
 ament_target_dependencies(test_decorator_path_longer_on_approach ${dependencies})
+
+ament_add_gtest(test_decorator_adaptive_replanning test_adaptive_replanning_decorator.cpp)
+target_link_libraries(
+  test_decorator_adaptive_replanning
+  nav2_adaptive_replanning_decorator_bt_node
+  nav2_pipeline_sequence_bt_node
+  nav2_request_and_wait_for_global_replan_action_bt_node)
+ament_target_dependencies(test_decorator_adaptive_replanning ${dependencies})

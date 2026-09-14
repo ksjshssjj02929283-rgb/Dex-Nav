@@ -56,16 +56,19 @@ BehaviorTreeEngine::run(
       onLoop();
 
       if (!loopRate.sleep()) {
-        RCLCPP_WARN(
+        static rclcpp::Clock steady_clock(RCL_STEADY_TIME);
+        RCLCPP_WARN_THROTTLE(
           rclcpp::get_logger("BehaviorTreeEngine"),
-          "Behavior Tree tick rate %0.2f was exceeded!",
+          steady_clock,
+          5000,
+          "Behavior Tree tick overrun: target_rate=%.2f Hz.",
           1.0 / (loopRate.period().count() * 1.0e-9));
       }
     }
   } catch (const std::exception & ex) {
     RCLCPP_ERROR(
       rclcpp::get_logger("BehaviorTreeEngine"),
-      "Behavior tree threw exception: %s. Exiting with failure.", ex.what());
+      "Behavior Tree failed: exception='%s'.", ex.what());
     return BtStatus::FAILED;
   }
 

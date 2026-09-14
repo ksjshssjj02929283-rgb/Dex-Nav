@@ -12,7 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <algorithm>
 #include <memory>
+#include <numeric>
+#include <vector>
 #include "nav2_mppi_controller/tools/trajectory_visualizer.hpp"
 
 namespace mppi
@@ -28,12 +31,14 @@ void TrajectoryVisualizer::on_configure(
   trajectories_publisher_ =
     node->create_publisher<visualization_msgs::msg::MarkerArray>("/trajectories", 1);
   transformed_path_pub_ = node->create_publisher<nav_msgs::msg::Path>("transformed_global_plan", 1);
+  local_path_pub_ = node->create_publisher<nav_msgs::msg::Path>("local_plan", 1);
   parameters_handler_ = parameters_handler;
 
   auto getParam = parameters_handler->getParamGetter(name + ".TrajectoryVisualizer");
 
   getParam(trajectory_step_, "trajectory_step", 5);
   getParam(time_step_, "time_step", 3);
+  getParam(top_trajectories_, "top_trajectories", 20);
 
   reset();
 }
@@ -42,18 +47,21 @@ void TrajectoryVisualizer::on_cleanup()
 {
   trajectories_publisher_.reset();
   transformed_path_pub_.reset();
+  local_path_pub_.reset();
 }
 
 void TrajectoryVisualizer::on_activate()
 {
   trajectories_publisher_->on_activate();
   transformed_path_pub_->on_activate();
+  local_path_pub_->on_activate();
 }
 
 void TrajectoryVisualizer::on_deactivate()
 {
   trajectories_publisher_->on_deactivate();
   transformed_path_pub_->on_deactivate();
+  local_path_pub_->on_deactivate();
 }
 
 void TrajectoryVisualizer::add(
@@ -80,6 +88,21 @@ void TrajectoryVisualizer::add(
 
   for (Eigen::Index i = 0; i < size; i++) {
     add_marker(i);
+  }
+
+  if (marker_namespace == "Optimal Trajectory") {
+    optimal_path_ = std::make_shared<nav_msgs::msg::Path>();
+    optimal_path_->header.frame_id = frame_id_;
+    optimal_path_->poses.resize(size);
+    for (Eigen::Index i = 0; i < size; i++) {
+      geometry_msgs::msg::PoseStamped pose;
+      pose.header.frame_id = frame_id_;
+      pose.pose.position.x = trajectory(i, 0);
+      pose.pose.position.y = trajectory(i, 1);
+      pose.pose.position.z = 0.06;
+      pose.pose.orientation.w = 1.0;
+      optimal_path_->poses[i] = pose;
+    }
   }
 }
 
@@ -108,16 +131,59 @@ void TrajectoryVisualizer::add(
   }
 }
 
+void TrajectoryVisualizer::addWeighted(
+  const models::Trajectories & trajectories, const models::Vector & weights,
+  const std::string & marker_namespace)
+{
+  const Eigen::Index rows = trajectories.x.rows();
+  const Eigen::Index cols = trajectories.x.cols();
+  if (rows == 0 || cols == 0 || weights.size() != rows || top_trajectories_ == 0) {
+    return;
+  }
+
+  std::vector<Eigen::Index> indices(static_cast<size_t>(rows));
+  std::iota(indices.begin(), indices.end(), Eigen::Index{0});
+  const size_t count = std::min(top_trajectories_, indices.size());
+  std::partial_sort(
+    indices.begin(), indices.begin() + count, indices.end(),
+    [&weights](Eigen::Index lhs, Eigen::Index rhs) {return weights(lhs) > weights(rhs);});
+
+  const float max_weight = std::max(weights(indices.front()), 1e-12f);
+  const Eigen::Index marker_stride = static_cast<Eigen::Index>(std::max<size_t>(1, time_step_));
+  for (size_t rank = 0; rank < count; ++rank) {
+    const Eigen::Index row = indices[rank];
+    const float relative_weight = std::clamp(weights(row) / max_weight, 0.0f, 1.0f);
+    for (Eigen::Index step = 0; step < cols; step += marker_stride) {
+      auto pose = utils::createPose(trajectories.x(row, step), trajectories.y(row, step), 0.05);
+      auto scale = utils::createScale(
+        0.025f + 0.055f * relative_weight,
+        0.025f + 0.055f * relative_weight, 0.05f);
+      // Highest weights are large, opaque yellow/red; lower Top-N weights are blue.
+      auto color = utils::createColor(
+        relative_weight, 0.25f + 0.75f * relative_weight,
+        1.0f - relative_weight, 0.25f + 0.75f * relative_weight);
+      points_->markers.push_back(utils::createMarker(
+        marker_id_++, pose, scale, color, frame_id_, marker_namespace));
+    }
+  }
+}
+
 void TrajectoryVisualizer::reset()
 {
   marker_id_ = 0;
   points_ = std::make_unique<visualization_msgs::msg::MarkerArray>();
+  optimal_path_.reset();
 }
 
 void TrajectoryVisualizer::visualize(const nav_msgs::msg::Path & plan)
 {
   if (trajectories_publisher_->get_subscription_count() > 0) {
     trajectories_publisher_->publish(std::move(points_));
+  }
+
+  if (optimal_path_ && local_path_pub_->get_subscription_count() > 0) {
+    optimal_path_->header.stamp = plan.header.stamp;
+    local_path_pub_->publish(*optimal_path_);
   }
 
   reset();

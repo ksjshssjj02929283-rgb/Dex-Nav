@@ -2,7 +2,7 @@
   ros__parameters:
     loop.tick_rate_hz: 10.0  # 行为树主循环频率，单位：Hz。
 
-    navigation.wait_time_sec: 2.0  # 点位未单独配置时的等待时间；导航成功和失败共用，单位：秒。
+    navigation.map_state_wait_timeout_sec: 5.0  # 启动时等待当前地图状态的最长时间，单位：秒。
     navigation.action_server_wait_timeout_sec: 2.0  # 等待 Nav2 导航 Action server 的最长时间，单位：秒。
     navigation.odom_topic: /feedback/odom  # 用于累计实际移动距离的里程计话题。
     navigation.odom_max_increment_m: 0.5  # 单条里程计允许的最大位置增量，超过时视为跳变并忽略，单位：米。
@@ -18,8 +18,9 @@
     undocking.linear_speed: 0.15  # 退桩线速度，单位：m/s，正值表示向前驶离充电桩。
 
     goal_error_stats.use_goal_checker_error: true  # 是否优先使用 goal checker 发布的最终到点误差。
-    goal_error_stats.desired_position_tolerance: 0.01  # 期望位置误差阈值，单位：米。
-    goal_error_stats.accept_position_tolerance: 0.02  # 可接受位置误差阈值，单位：米。
-    goal_error_stats.sample_count: 10  # 回退到 TF 统计时连续采集的位姿样本数量。
+    goal_error_stats.summary_interval_rounds: 5  # 每完成多少个完整轮次输出一次截至当前轮次的累计统计并重印表头，必须为正整数。
+    goal_error_stats.desired_position_tolerance: 0.01  # 高精度阈值，横向和纵向误差必须分别不超过该值，单位：米。
+    goal_error_stats.accept_position_tolerance: 0.02  # 接收精度阈值，横向和纵向误差必须分别不超过该值，单位：米。
+    goal_error_stats.sample_count: 14  # 回退到 TF 统计时尝试采集的位姿样本数量。
+    goal_error_stats.trim_count_per_side: 2  # 每项误差排序后分别从最小端和最大端去除的样本数，剔除后必须至少保留1个。
     goal_error_stats.sample_interval_sec: 0.1  # TF 位姿样本之间的时间间隔，单位：秒。
-    goal_error_stats.stats_log_interval: 20  # 每累计多少个导航样本输出一次统计汇总。

@@ -25,9 +25,7 @@ constexpr const char* kNavStatusCancelled = "CANCELLED";  // 被取消
 AutoChargingNode::AutoChargingNode() : Node("AutoChargingNode") {
     // 末端压入参数
     this->declare_parameter<double>("backward.initial_speed", -0.01);
-    this->declare_parameter<double>("backward.connected_speed", -0.005);
     this->declare_parameter<double>("backward.max_distance", 0.015);
-    this->declare_parameter<double>("backward.stable_duration", 1.0);
     this->declare_parameter<double>("backward.max_duration", 2.0);
     this->declare_parameter<double>("backward.control_rate", 50.0);
     this->declare_parameter<double>("backward.max_dt", 0.1);
@@ -132,23 +130,9 @@ AutoChargingNode::AutoChargingNode() : Node("AutoChargingNode") {
 void AutoChargingNode::cbDiagnostics(const diagnostic_msgs::msg::DiagnosticArray::SharedPtr msg) {
     bool charging_key_found = false;
     bool percentage_key_found = false;
-    bool charger_connect_key_found = false;
-    bool status_powerboardsafety_name = false;
     bool status_powerboard_name = false;
     // 遍历所有诊断状态
     for (const auto& status : msg->status) {
-        if (status.name == "/Devices/System/PowerBoard/collector_node: PowerBoard Safety") {
-            status_powerboardsafety_name = true;
-            for (const auto& value : status.values) {
-                if (value.key == "charger_connect_state") {
-                    std::string val_lower = value.value;
-                    std::transform(val_lower.begin(), val_lower.end(), val_lower.begin(),
-                                   [](unsigned char c) { return std::tolower(c); });
-                    is_connected_to_charger_ = (val_lower == "true");
-                    charger_connect_key_found = true;
-                }
-            }
-        }
         // 找到电源板相关的诊断项
         if (status.name == "/Devices/System/PowerBoard/collector_node: PowerBoard") {
             status_powerboard_name = true;
@@ -170,19 +154,15 @@ void AutoChargingNode::cbDiagnostics(const diagnostic_msgs::msg::DiagnosticArray
             }
         }
 
-        if (status_powerboard_name && status_powerboardsafety_name) {
+        if (status_powerboard_name) {
             if (!charging_key_found) {
                 RCLCPP_WARN(this->get_logger(), "未找到battery_charging键");
             }
             if (!percentage_key_found) {
                 RCLCPP_WARN(this->get_logger(), "未找到battery_percentage键");
             }
-            if (!charger_connect_key_found) {
-                RCLCPP_WARN(this->get_logger(), "未找到charger_connect_state键");
-            }
-            RCLCPP_INFO(this->get_logger(), "充电状态: %s, 当前电量: %.2f, 连接到充电器: %s",
-                        is_charging_ ? "true" : "false", battery_percentage_,
-                        is_connected_to_charger_ ? "true" : "false");
+            RCLCPP_INFO(this->get_logger(), "充电状态: %s, 当前电量: %.2f",
+                        is_charging_ ? "true" : "false", battery_percentage_);
             return;
         }
     }
@@ -209,13 +189,7 @@ AutoChargingNode::ChargerState AutoChargingNode::confirmEntryChargerState() {
         rclcpp::spin_some(this->shared_from_this());
 
         const bool charging = isCharging();
-        const bool connected = isConnectedToCharger();
-        ChargerState current_state = ChargerState::DISCONNECTED;
-        if (charging) {
-            current_state = ChargerState::CHARGING;
-        } else if (connected) {
-            current_state = ChargerState::CONNECTED_NOT_CHARGING;
-        }
+        ChargerState current_state = charging ? ChargerState::CHARGING : ChargerState::DISCONNECTED;
 
         ++sample_count;
         if (current_state == last_state) {
@@ -226,8 +200,8 @@ AutoChargingNode::ChargerState AutoChargingNode::confirmEntryChargerState() {
         }
 
         RCLCPP_INFO(this->get_logger(),
-                    "入口状态确认: 第 %d 次, 充电=%s, 连接=%s, 当前状态=%s, 连续=%d/%d",
-                    sample_count, charging ? "true" : "false", connected ? "true" : "false",
+                    "入口状态确认: 第 %d 次, 充电=%s, 当前状态=%s, 连续=%d/%d",
+                    sample_count, charging ? "true" : "false",
                     chargerStateName(current_state), stable_count, required_stable_count);
 
         if (stable_count >= required_stable_count) {
@@ -243,7 +217,7 @@ AutoChargingNode::ChargerState AutoChargingNode::confirmEntryChargerState() {
         std::this_thread::sleep_for(std::chrono::duration<double>(sample_interval));
     }
 
-    RCLCPP_WARN(this->get_logger(), "入口状态 %.2f 秒内未稳定，按未连接未充电处理，进入正常回充流程",
+    RCLCPP_WARN(this->get_logger(), "入口状态 %.2f 秒内未稳定，按未充电处理，进入正常回充流程",
                 max_duration);
     return ChargerState::DISCONNECTED;
 }
@@ -252,10 +226,8 @@ const char* AutoChargingNode::chargerStateName(ChargerState state) const {
     switch (state) {
         case ChargerState::CHARGING:
             return "正在充电";
-        case ChargerState::CONNECTED_NOT_CHARGING:
-            return "已连接但未充电";
         case ChargerState::DISCONNECTED:
-            return "未连接且未充电";
+            return "未充电";
         case ChargerState::UNKNOWN:
         default:
             return "未知";
@@ -409,7 +381,7 @@ void AutoChargingNode::backward() {
 
     RCLCPP_INFO(this->get_logger(),
                 "末端后退开始: speed=%.3f m/s, max_distance=%.3f m, max_duration=%.1f s, "
-                "停止条件=检测到连接或正在充电",
+                "停止条件=检测到正在充电",
                 initial_speed, max_distance, max_backward_duration);
 
     double current_speed = initial_speed;
@@ -417,7 +389,6 @@ void AutoChargingNode::backward() {
     double total_time = 0.0;
     auto start_time = this->now();  // 后退开始时间
     auto last_time = start_time;
-    bool last_connected = false;
     bool last_charging = false;
     const char* stop_reason = "ROS停止或循环退出";
 
@@ -453,24 +424,21 @@ void AutoChargingNode::backward() {
             break;
         }
 
-        // 获取连接状态
+        // 获取充电状态
         rclcpp::spin_some(this->shared_from_this());
-        bool is_connected = isConnectedToCharger();
         bool is_charging = isCharging();
-        last_connected = is_connected;
         last_charging = is_charging;
 
-        if (is_charging || is_connected) {
-            stop_reason = is_charging ? "检测到正在充电" : "检测到充电器连接";
+        if (is_charging) {
+            stop_reason = "检测到正在充电";
             RCLCPP_INFO(this->get_logger(),
-                        "末端后退停止: connected=%s, charging=%s, distance=%.3f m, elapsed=%.2f s",
-                        is_connected ? "true" : "false", is_charging ? "true" : "false",
-                        total_distance, total_time);
+                        "末端后退停止: charging=%s, distance=%.3f m, elapsed=%.2f s",
+                        is_charging ? "true" : "false", total_distance, total_time);
             break;
         }
 
         RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 500,
-                             "末端后退中: connected=false, charging=false, speed=%.3f m/s, "
+                             "末端后退中: charging=false, speed=%.3f m/s, "
                              "distance=%.3f/%.3f m, elapsed=%.2f/%.2f s",
                              current_speed, total_distance, max_distance, total_time,
                              max_backward_duration);
@@ -486,9 +454,8 @@ void AutoChargingNode::backward() {
 
     cmd_pub_->publish(geometry_msgs::msg::Twist());
     RCLCPP_INFO(this->get_logger(),
-                "末端后退完成: reason=%s, final_connected=%s, final_charging=%s, distance=%.3f m, elapsed=%.2f s",
-                stop_reason, last_connected ? "true" : "false", last_charging ? "true" : "false",
-                total_distance, total_time);
+                "末端后退完成: reason=%s, final_charging=%s, distance=%.3f m, elapsed=%.2f s",
+                stop_reason, last_charging ? "true" : "false", total_distance, total_time);
 }
 
 void AutoChargingNode::relieveDockingPressure() {
@@ -795,9 +762,8 @@ BT::NodeStatus CheckCharging::onStart() {
     rclcpp::spin_some(charging_node_);
     RCLCPP_INFO(charging_node_->get_logger(),
                 "[ChargingCheck] 开始确认充电状态：超时上限=%.1f 秒，连续确认次数=%d，"
-                "初始连接=%s，初始充电=%s",
+                "初始充电=%s",
                 timeout_, required_stable_count,
-                charging_node_->isConnectedToCharger() ? "true" : "false",
                 charging_node_->isCharging() ? "true" : "false");
     return BT::NodeStatus::RUNNING;
 }
@@ -805,31 +771,23 @@ BT::NodeStatus CheckCharging::onStart() {
 BT::NodeStatus CheckCharging::onRunning() {
     double elapsed = (charging_node_->now() - start_time_).seconds();
 
-    // 处理诊断订阅队列，获取最新连接状态
+    // 处理诊断订阅队列，获取最新充电状态
     rclcpp::spin_some(charging_node_);
 
     const int required_stable_count =
         std::max(1, static_cast<int>(charging_node_->get_parameter("check_charging.required_stable_count").as_int()));
-    const bool connected = charging_node_->isConnectedToCharger();
     const bool charging = charging_node_->isCharging();
 
     consecutive_charging_ = charging ? (consecutive_charging_ + 1) : 0;
 
     RCLCPP_INFO_THROTTLE(charging_node_->get_logger(), *charging_node_->get_clock(), 1000,
-                         "[ChargingCheck] 充电=%s，连接=%s，连续确认=%d/%d，已等待=%.1f 秒",
-                         charging ? "true" : "false", connected ? "true" : "false",
+                         "[ChargingCheck] 充电=%s，连续确认=%d/%d，已等待=%.1f 秒",
+                         charging ? "true" : "false",
                          consecutive_charging_, required_stable_count, elapsed);
-
-    if (charging && !connected) {
-        RCLCPP_WARN_THROTTLE(charging_node_->get_logger(), *charging_node_->get_clock(), 2000,
-                             "检测到正在充电但连接状态为 false，按充电状态为准继续确认");
-    }
 
     if (consecutive_charging_ >= required_stable_count) {
         RCLCPP_INFO(charging_node_->get_logger(),
-                    "[DockSuccess] type=CHARGING_CONFIRMED，充电状态连续稳定，"
-                    "回充成功，最终连接状态=%s",
-                    connected ? "true" : "false");
+                    "[DockSuccess] type=CHARGING_CONFIRMED，充电状态连续稳定，回充成功");
         consecutive_charging_ = 0;
         charging_node_->relieveDockingPressure();
         return BT::NodeStatus::SUCCESS;
@@ -838,9 +796,9 @@ BT::NodeStatus CheckCharging::onRunning() {
     if (elapsed >= timeout_) {
         RCLCPP_ERROR(charging_node_->get_logger(),
                      "[DockFailure] type=CHARGING_NOT_CONFIRMED，视觉对接和末端压入已完成，"
-                     "但 %.1f 秒内未确认稳定充电；最后状态：连接=%s，充电=%s，连续确认=%d/%d；"
+                     "但 %.1f 秒内未确认稳定充电；最后状态：充电=%s，连续确认=%d/%d；"
                      "处置=返回失败，由行为树停止检测、退桩并决定是否重试",
-                     timeout_, connected ? "true" : "false", charging ? "true" : "false",
+                     timeout_, charging ? "true" : "false",
                      consecutive_charging_, required_stable_count);
         consecutive_charging_ = 0;
         return BT::NodeStatus::FAILURE;
@@ -898,39 +856,11 @@ BT::NodeStatus IsCharging::tick() {
     }
 
     const auto state = charging_node->confirmEntryChargerState();
-    config().blackboard->set("entry_charger_state", static_cast<int>(state));
     RCLCPP_INFO(charging_node->get_logger(), "行为树入口充电状态检查结果: %s",
                 charging_node->chargerStateName(state));
 
     return state == AutoChargingNode::ChargerState::CHARGING ? BT::NodeStatus::SUCCESS
                                                              : BT::NodeStatus::FAILURE;
-}
-
-// ==================== IsConnectedToCharger ====================
-IsConnectedToCharger::IsConnectedToCharger(const std::string& name, const BT::NodeConfiguration& config)
-    : BT::ConditionNode(name, config) {}
-
-BT::PortsList IsConnectedToCharger::providedPorts() { return {}; }
-
-BT::NodeStatus IsConnectedToCharger::tick() {
-    auto charging_node = config().blackboard->get<std::shared_ptr<AutoChargingNode>>("charging_node");
-    if (!charging_node) {
-        throw BT::RuntimeError("charging_node not set in blackboard");
-    }
-
-    AutoChargingNode::ChargerState state = AutoChargingNode::ChargerState::UNKNOWN;
-    try {
-        const int cached_state = config().blackboard->get<int>("entry_charger_state");
-        state = static_cast<AutoChargingNode::ChargerState>(cached_state);
-        RCLCPP_INFO(charging_node->get_logger(), "复用入口状态确认结果: %s",
-                    charging_node->chargerStateName(state));
-    } catch (const std::exception&) {
-        state = charging_node->confirmEntryChargerState();
-        config().blackboard->set("entry_charger_state", static_cast<int>(state));
-    }
-
-    return state == AutoChargingNode::ChargerState::CONNECTED_NOT_CHARGING ? BT::NodeStatus::SUCCESS
-                                                                           : BT::NodeStatus::FAILURE;
 }
 
 // ==================== Undocking ====================

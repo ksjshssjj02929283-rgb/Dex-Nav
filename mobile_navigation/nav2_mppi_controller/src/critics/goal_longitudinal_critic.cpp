@@ -26,6 +26,8 @@ void GoalLongitudinalCritic::initialize()
 
   getParam(power_, "cost_power", 2);
   getParam(weight_, "cost_weight", 5.0);
+  getParam(overshoot_weight_, "overshoot_weight", 1.0f);
+  overshoot_weight_ = std::max(1.0f, overshoot_weight_);
 
   RCLCPP_INFO(
     logger_,
@@ -62,7 +64,11 @@ void GoalLongitudinalCritic::score(CriticData & data)
     // 纵向轴与目标朝向一致，不随候选轨迹自身 yaw 变化。
     const auto dx = data.trajectories.x.col(p).array() - goal_x;
     const auto dy = data.trajectories.y.col(p).array() - goal_y;
-    const auto lon_err = (goal_cos * dx + goal_sin * dy).abs();
+    const auto signed_lon_err = goal_cos * dx + goal_sin * dy;
+    const auto lon_err = signed_lon_err.unaryExpr(
+      [this](float error) {
+        return std::abs(error) * (error > 0.0f ? overshoot_weight_ : 1.0f);
+      });
     cost += lon_err;
   }
 

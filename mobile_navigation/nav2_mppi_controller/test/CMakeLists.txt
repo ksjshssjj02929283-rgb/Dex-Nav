@@ -10,6 +10,7 @@ set(TEST_NAMES
   path_handler_test
   critic_manager_test
   optimizer_unit_tests
+  tuning_scenarios_test
 )
 
 foreach(name IN LISTS TEST_NAMES)
@@ -21,6 +22,11 @@ foreach(name IN LISTS TEST_NAMES)
     ${dependencies_pkgs}
   )
 
+  if(name STREQUAL "tuning_scenarios_test")
+    target_compile_definitions(${name} PRIVATE
+      MPPI_TEST_W1_PARAMS_FILE="${CMAKE_CURRENT_SOURCE_DIR}/../../nav2_bringup/params/w1_nav2_params_diff.yaml")
+  endif()
+
   target_link_libraries(${name}
     mppi_controller
   )
@@ -29,6 +35,16 @@ foreach(name IN LISTS TEST_NAMES)
     target_compile_definitions(${name} PUBLIC -DTEST_DEBUG_INFO)
   endif()
 
+endforeach()
+
+# CUDA parity checks are feature-specific and intentionally do not alter the regular test setup.
+foreach(name IN ITEMS cuda_rollout_comparison_test cuda_critic_comparison_test)
+  ament_add_gtest(${name} ${name}.cpp)
+  ament_target_dependencies(${name} ${dependencies_pkgs})
+  target_link_libraries(${name} mppi_controller mppi_critics)
+  if(TARGET mppi_cuda_backend)
+    target_compile_definitions(${name} PRIVATE MPPI_CUDA_TESTING)
+  endif()
 endforeach()
 
 # This is a special case requiring linking against the critics library

@@ -2,7 +2,7 @@
 
 `auto_charging_bt` 是 ROS 2 自动回充行为树包，负责依次完成：
 
-1. 判断机器人当前是否已连接或正在充电。
+1. 判断机器人当前是否正在充电。
 2. 使用 Nav2 导航到充电桩前置点。
 3. 根据 AprilTag 目标进行低速倒车对接。
 4. 末端低速压入，并确认是否开始充电。
@@ -119,8 +119,7 @@ cat /home/dexforce/w1/install/mobile_perception/lib/mobile_perception/charging_p
 自动回充
 ├── 1. 检查入口充电状态
 │   ├── 已经充电：直接返回成功
-│   ├── 已连接但未充电：先退桩，再执行正常回充
-│   └── 未连接且未充电：执行正常回充
+│   └── 未充电：执行正常回充
 │
 └── 2. 正常回充
     ├── 导航到充电前置点，最多尝试 3 次
@@ -157,7 +156,7 @@ cat /home/dexforce/w1/install/mobile_perception/lib/mobile_perception/charging_p
 4. `SECOND_APPROACH`：降低速度并使用更严格阈值继续靠近。
 5. `FINAL_SAMPLING`：最终采样；结果明显变差时进行有限次数重采样。
 6. `FINAL_APPROACH`：低速修正最终位置和姿态。
-7. `backward()`：视觉到位后进行末端低速压入；检测到连接或充电时立即停车。
+7. `backward()`：视觉到位后进行末端低速压入；检测到充电时立即停车。
 
 采样目标最初位于 `base_link`。控制器会把目标锁定到固定坐标系 `odom`，机器人运动时再把它转换回
 当前 `base_link`，因此控制误差会随机器人位置变化，而不是一直使用一份不变的相对坐标。
@@ -174,7 +173,7 @@ cat /home/dexforce/w1/install/mobile_perception/lib/mobile_perception/charging_p
 | `[DockStage]`                                 | 当前对接阶段                                |
 | `[DockSample]`                                | 采样开始、样本不足和样本丢弃                |
 | `[DockControl]`                               | 当前目标误差和速度指令                      |
-| `[ChargingCheck]`                             | 连接、充电和连续确认次数                    |
+| `[ChargingCheck]`                             | 充电和连续确认次数                          |
 | `[DockFailure]`                               | 统一失败分类、中文原因、处置和诊断计数      |
 | `[DockSuccess]`                               | 视觉对接、末端压入或充电确认成功            |
 
@@ -191,7 +190,7 @@ cat /home/dexforce/w1/install/mobile_perception/lib/mobile_perception/charging_p
 | `TF_TRACKING_FAILED`     | 运动时无法转换回`base_link`  | TF 连续性和时间戳                  |
 | `CONTROL_TIMEOUT`        | 有有效目标，但控制未按时到位   | 速度输出、底盘响应、到位阈值       |
 | `DETECTION_START_FAILED` | 启动检测服务失败               | 检测节点和服务状态                 |
-| `CHARGING_NOT_CONFIRMED` | 已完成压入，但没有确认稳定充电 | 触点、电源板诊断、连接和充电字段   |
+| `CHARGING_NOT_CONFIRMED` | 已完成压入，但没有确认稳定充电 | 触点、电源板诊断、充电字段       |
 
 典型失败日志：
 
@@ -219,11 +218,11 @@ config/auto_charging_bt_params.yaml
 
 | 参数组                | 作用                                      |
 | --------------------- | ----------------------------------------- |
-| `entry_state.*`     | 回充开始时对连接和充电状态去抖            |
+| `entry_state.*`     | 回充开始时对充电状态去抖                  |
 | `check_charging.*`  | 连续确认充电成功                          |
 | `dock.reverse.*`    | AprilTag 采样、三阶段阈值、速度和控制增益 |
 | `backward.*`        | 视觉到位后的末端低速压入                  |
-| `undocking.*`       | 已连接未充电或充电确认失败时退桩          |
+| `undocking.*`       | 充电确认失败时退桩                        |
 | `pressure_relief.*` | 确认充电后向前卸载顶桩压力                |
 
 当前关键值：
@@ -265,7 +264,7 @@ ros2 service call /auto_charging std_srvs/srv/Trigger "{}"
 | 名称                         | 类型                                    | 作用                       |
 | ---------------------------- | --------------------------------------- | -------------------------- |
 | `/navigate_to_pose`        | `nav2_msgs/action/NavigateToPose`     | 导航到充电前置点           |
-| `/diagnostics_agg`         | `diagnostic_msgs/msg/DiagnosticArray` | 获取连接、电量和充电状态   |
+| `/diagnostics_agg`         | `diagnostic_msgs/msg/DiagnosticArray` | 获取电量和充电状态     |
 | `apriltag_target_pose`     | `geometry_msgs/msg/PoseStamped`       | 近距离对接目标             |
 | `start_apriltag_detection` | `std_srvs/srv/Trigger`                | 启动 AprilTag 检测         |
 | `stop_apriltag_detection`  | `std_srvs/srv/Trigger`                | 停止 AprilTag 检测         |

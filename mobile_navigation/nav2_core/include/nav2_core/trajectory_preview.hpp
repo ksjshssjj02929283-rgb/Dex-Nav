@@ -73,6 +73,43 @@ bool hasValidRelativeTime(const std::vector<PointT> & points)
   return points.back().relative_time > points.front().relative_time + 1e-9;
 }
 
+/// 按轨迹相对时间线性插值速度与加速度。超出时间范围时保持首/末状态。
+template<typename PointT>
+bool sampleTrajectoryAtTime(
+  const std::vector<PointT> & points, double sample_time,
+  TrajectoryPreview & preview)
+{
+  if (points.empty() || !std::isfinite(sample_time)) {
+    return false;
+  }
+  const auto upper = std::upper_bound(
+    points.begin(), points.end(), sample_time,
+    [](double value, const PointT & point) {return value < point.relative_time;});
+  if (upper == points.begin()) {
+    preview.velocity = points.front().speed_limit;
+    preview.acceleration = points.front().accel;
+    preview.relative_time = points.front().relative_time;
+  } else if (upper == points.end()) {
+    preview.velocity = points.back().speed_limit;
+    preview.acceleration = points.back().accel;
+    preview.relative_time = points.back().relative_time;
+  } else {
+    const auto & second = *upper;
+    const auto & first = *std::prev(upper);
+    const double duration = second.relative_time - first.relative_time;
+    const double ratio = duration > 1e-9 ?
+      std::clamp((sample_time - first.relative_time) / duration, 0.0, 1.0) : 1.0;
+    preview.velocity = first.speed_limit + ratio * (second.speed_limit - first.speed_limit);
+    preview.acceleration = first.accel + ratio * (second.accel - first.accel);
+    preview.relative_time = first.relative_time + ratio * duration;
+  }
+  if (!std::isfinite(preview.velocity) || !std::isfinite(preview.acceleration)) {
+    return false;
+  }
+  preview.mode = TrajectoryPreviewMode::TIME_ALIGNED;
+  return true;
+}
+
 template<typename PointT>
 bool sampleTrajectoryPreview(
   const std::vector<PointT> & points,
@@ -128,32 +165,7 @@ bool sampleTrajectoryPreview(
     }
 
     const double sample_time = projected_time + std::max(0.0, time_lookahead);
-    const auto upper = std::upper_bound(
-      points.begin(), points.end(), sample_time,
-      [](double value, const PointT & point) {return value < point.relative_time;});
-    if (upper == points.begin()) {
-      preview.velocity = points.front().speed_limit;
-      preview.acceleration = points.front().accel;
-      preview.relative_time = points.front().relative_time;
-    } else if (upper == points.end()) {
-      preview.velocity = points.back().speed_limit;
-      preview.acceleration = points.back().accel;
-      preview.relative_time = points.back().relative_time;
-    } else {
-      const auto & second = *upper;
-      const auto & first = *std::prev(upper);
-      const double duration = second.relative_time - first.relative_time;
-      const double ratio = duration > 1e-9 ?
-        std::clamp((sample_time - first.relative_time) / duration, 0.0, 1.0) : 1.0;
-      preview.velocity = first.speed_limit + ratio * (second.speed_limit - first.speed_limit);
-      preview.acceleration = first.accel + ratio * (second.accel - first.accel);
-      preview.relative_time = first.relative_time + ratio * duration;
-    }
-    if (!std::isfinite(preview.velocity) || !std::isfinite(preview.acceleration)) {
-      return false;
-    }
-    preview.mode = TrajectoryPreviewMode::TIME_ALIGNED;
-    return true;
+    return sampleTrajectoryAtTime(points, sample_time, preview);
   }
 
   size_t target = nearest_point;
@@ -170,8 +182,20 @@ bool sampleTrajectoryPreview(
       }
     }
   }
+  // 逐点 accel 的语义是"离开该点"的段加速度。上面按速度极大挑出的采样点，
+  // 其"离开段"按定义就是峰后的制动段——把它当成采样点的加速度交出去，消费侧
+  // 拿到的 (v, a) 自相矛盾："保持峰值速度，同时以最大减速度制动"。车已静止时
+  // 该负前馈会被速度环的符号感知输出界钳成零指令，且零又成为下一周期的指令
+  // 基准，逐周期自复现——机器人再也起不来（R49 末端 6cm 不可达）。
+  // 与采样点速度自洽的是"到达该点"的那一段：要处在 v[target]，就该用把速度
+  // 抬/压到 v[target] 的那一段加速度做前馈。恒加速度剖面的匀速/制动段内相邻
+  // 两段取值相同，本改动只在段边界（峰值、制动起点）改变结果。
+  // 例外：index 0 是状态戳（速度=实测），段 0→1 的加速度含实测量，用作前馈
+  // 等于把反馈混进前馈（超速时会与速度环重复计一次制动）。因此 target==1 时
+  // 仍取该点自身的段加速度——此时若 target 恰为峰值，剩余风险由消费侧速度环
+  // 的反死锁兜底承担（见 PIDController/RPP::trackLinearVelocity）。
   preview.velocity = points[target].speed_limit;
-  preview.acceleration = points[target].accel;
+  preview.acceleration = points[target >= 2 ? target - 1 : target].accel;
   preview.relative_time = points[target].relative_time;
   preview.mode = TrajectoryPreviewMode::SPATIAL_FALLBACK;
   return std::isfinite(preview.velocity) && std::isfinite(preview.acceleration);

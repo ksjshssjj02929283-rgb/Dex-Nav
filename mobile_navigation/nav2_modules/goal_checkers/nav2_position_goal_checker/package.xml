@@ -2,7 +2,7 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>nav2_position_goal_checker</name>
-  <version>0.4.6</version>
+  <version>0.5.0</version>
   <description>Position Goal Checker (XY position tolerance only, ignores orientation) for Nav2</description>
   <maintainer email="dexforce@dexforce.com">dexforce</maintainer>
   <license>Apache-2.0</license>

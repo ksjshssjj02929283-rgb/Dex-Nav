@@ -80,6 +80,11 @@ public:
     */
   void add(const models::Trajectories & trajectories, const std::string & marker_namespace);
 
+  /** @brief Add only the highest-weight candidates, colored by normalized weight. */
+  void addWeighted(
+    const models::Trajectories & trajectories, const models::Vector & weights,
+    const std::string & marker_namespace);
+
   /**
     * @brief Visualize the plan
     * @param plan Plan to visualize
@@ -96,7 +101,9 @@ protected:
   std::shared_ptr<rclcpp_lifecycle::LifecyclePublisher<visualization_msgs::msg::MarkerArray>>
   trajectories_publisher_;
   std::shared_ptr<rclcpp_lifecycle::LifecyclePublisher<nav_msgs::msg::Path>> transformed_path_pub_;
+  std::shared_ptr<rclcpp_lifecycle::LifecyclePublisher<nav_msgs::msg::Path>> local_path_pub_;
 
+  std::shared_ptr<nav_msgs::msg::Path> optimal_path_;
   std::unique_ptr<visualization_msgs::msg::MarkerArray> points_;
   int marker_id_ = 0;
 
@@ -104,6 +111,7 @@ protected:
 
   size_t trajectory_step_{0};
   size_t time_step_{0};
+  size_t top_trajectories_{20};
 
   rclcpp::Logger logger_{rclcpp::get_logger("MPPIController")};
 };

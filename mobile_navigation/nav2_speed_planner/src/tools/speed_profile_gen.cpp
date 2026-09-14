@@ -1,140 +1,77 @@
 // Copyright 2026 DEXE Robot Engineer
 // SPDX-License-Identifier: Apache-2.0
 //
-// 离线速度剖面生成器（不依赖 ROS 运行时：costmap 为空/子类注入障碍）。
-// 覆盖场景：直线距离族（静止起步）、运动中起步、弯道（2m 处 0.5m 弧段）、
-// 起点障碍豁免、中途障碍、5m@3m 障碍、硬停（end_speed=0）。
-// 每场景 T/S 双 planner 各导一份 CSV（s,v,accel,jerk,rel_time,region），
-// 供 plot_speed_profiles.py / gen_speed_plan_charts.py 出图。
+// 离线速度剖面生成器 + 校验器（不依赖 ROS 运行时：障碍由子类注入）。
+// 本文件只做**编排与报告**，三块内容各自独立：
+//   speed_scenarios.hpp  场景定义与场景表（纯数据）
+//   speed_harness.hpp    路径构造 + 规划器注入 + 跑一个场景
+//   speed_checks.hpp     期望校验 + 不变量 + 单调性 + 跨场景检查
 //
 // 用法：ros2 run nav2_speed_planner speed_profile_gen [输出目录]
 //   缺省输出 $HOME/.dexe/navigation/speed_planner/csv/
+//   退出码：0 = 全部通过（XFAIL 不阻塞）；1 = 有 FAIL
+//
+// 每场景导一份 CSV（s,v,accel,jerk,rel_time,region），
+// plot_speed_profiles.py 按目录 glob 自动出四联详图——加场景无需改绘图代码。
 
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <map>
 #include <string>
 #include <sys/stat.h>
+#include <utility>
 #include <vector>
 
-#include "nav2_speed_planner/trapezoidal_speed_planner.hpp"
-#include "nav2_speed_planner/scurve_speed_planner.hpp"
+#include "speed_checks.hpp"
+#include "speed_harness.hpp"
+#include "speed_scenarios.hpp"
 
 namespace
 {
 
-constexpr double kMaxSpeed = 1.0;
-constexpr double kMinSpeed = 0.03;
-constexpr double kAccel = 0.6;
-constexpr double kDecel = -0.6;
-constexpr double kEndSpeed = 0.03;
-constexpr double kStopDistance = 0.2;
-constexpr double kPointStep = 0.02;
-
-constexpr double kCurveStart = 2.0;
-constexpr double kCurveLen = 0.5;
-constexpr double kCurveRadius = 0.5;
-
 std::string g_out_dir;
 
-nav_msgs::msg::Path makeStraightPath(double length)
+void mkdirP(const std::string & path)
 {
-  nav_msgs::msg::Path path;
-  path.header.frame_id = "map";
-  const int n = static_cast<int>(length / kPointStep) + 1;
-  for (int i = 0; i < n; ++i) {
-    geometry_msgs::msg::PoseStamped ps;
-    ps.header.frame_id = "map";
-    ps.pose.position.x = i * kPointStep;
-    ps.pose.orientation.w = 1.0;
-    path.poses.push_back(ps);
-  }
-  return path;
-}
-
-nav_msgs::msg::Path makePathWithArcAt2m(double length)
-{
-  nav_msgs::msg::Path path;
-  path.header.frame_id = "map";
-  double x = 0.0, y = 0.0, yaw = 0.0;
-  const int n = static_cast<int>(length / kPointStep) + 1;
-  for (int i = 0; i < n; ++i) {
-    geometry_msgs::msg::PoseStamped ps;
-    ps.header.frame_id = "map";
-    ps.pose.position.x = x;
-    ps.pose.position.y = y;
-    ps.pose.orientation.z = std::sin(yaw / 2.0);
-    ps.pose.orientation.w = std::cos(yaw / 2.0);
-    path.poses.push_back(ps);
-    const double s_next = (i + 1) * kPointStep;
-    if (s_next > kCurveStart && s_next <= kCurveStart + kCurveLen) {
-      yaw += kPointStep / kCurveRadius;
+  std::string acc;
+  for (size_t i = 0; i < path.size(); ++i) {
+    acc += path[i];
+    if (path[i] == '/' || i + 1 == path.size()) {
+      ::mkdir(acc.c_str(), 0755);
     }
-    x += kPointStep * std::cos(yaw);
-    y += kPointStep * std::sin(yaw);
   }
-  return path;
 }
 
-template<typename PlannerT>
-class TestablePlanner : public PlannerT
+/// CSV 按后端分子目录存放。tag 里虽已带 `__trapz`/`__scurve`/`__reach` 后缀，
+/// 但一个目录下平铺三百多个文件时肉眼仍难区分是哪个规划器的产物；
+/// 物理分开后可以直接整目录对比 / 整目录删。
+const char * backendDir(speed_offline::Backend b)
 {
-public:
-  void setSharedParams()
-  {
-    this->plugin_name_ = "offline";
-    this->max_speed_ = kMaxSpeed;
-    this->min_speed_ = kMinSpeed;
-    this->accel_ = kAccel;
-    this->decel_ = kDecel;
-    this->end_speed_ = kEndSpeed;
-    this->stop_distance_ = kStopDistance;
-    this->collision_stop_distance_ = 0.2;
+  switch (b) {
+    case speed_offline::Backend::Trapezoidal: return "trapezoidal";
+    case speed_offline::Backend::SCurve: return "scurve";
+    case speed_offline::Backend::Reachability: return "reachability";
   }
-  void setEndSpeed(double v) {this->end_speed_ = v;}
-  nav_interfaces::msg::RobotTrajectory run(const nav_msgs::msg::Path & path, double v0)
-  {
-    nav2_core::SpeedPlanningBoundary boundary;
-    boundary.velocity.linear.x = v0;
-    return this->computeSpeedPlan(path, boundary);
-  }
-};
+  return "other";
+}
 
-class TestableSCurve : public TestablePlanner<nav2_speed_planner::SCurveSpeedPlanner>
-{
-public:
-  void setSCurveParams()
-  {
-    max_jerk_ = 0.5;
-    control_dt_ = 0.05;
-  }
-};
-
-template<typename BaseT>
-class WithObstacleBand : public BaseT
-{
-public:
-  double obs_from_{1e9};
-  double obs_to_{1e9};
-  bool isObstacleAt(double x, double /*y*/, double /*theta*/) const override
-  {
-    return x >= obs_from_ && x <= obs_to_;
-  }
-};
-
-void dumpCsv(
-  const std::string & tag, double length,
+std::vector<double> dumpCsv(
+  const speed_offline::Scenario & sc,
   const nav_interfaces::msg::RobotTrajectory & traj)
 {
+  const std::string dir = g_out_dir + "/" + backendDir(sc.backend);
+  mkdirP(dir);
   char fn[512];
   std::snprintf(
-    fn, sizeof(fn), "%s/%s_%.2fm.csv", g_out_dir.c_str(), tag.c_str(), length);
+    fn, sizeof(fn), "%s/%s_%.2fm.csv", dir.c_str(), sc.tag.c_str(), sc.length);
   FILE * f = std::fopen(fn, "w");
   if (f == nullptr) {
     std::fprintf(stderr, "cannot open %s\n", fn);
     std::exit(1);
   }
-  std::fprintf(f, "s,v,accel,jerk,rel_time,region\n");
+  std::fprintf(f, "s,v,accel,jerk,rel_time,region,kappa\n");
+  std::vector<double> arc;
   double s = 0.0;
   for (size_t i = 0; i < traj.points.size(); ++i) {
     if (i > 0) {
@@ -142,125 +79,131 @@ void dumpCsv(
       const auto & b = traj.points[i].pose.pose.position;
       s += std::hypot(b.x - a.x, b.y - a.y);
     }
+    arc.push_back(s);
     const auto & p = traj.points[i];
+    // kappa 是步 0 的关键观测量：短跨度三点拟合是否算出虚假大曲率，
+    // 此前完全不可见——所有关于"不等距/短跨度致病"的判断都只能靠推理。
     std::fprintf(
-      f, "%.4f,%.5f,%.5f,%.5f,%.4f,%s\n", s, p.longitudinal_velocity,
+      f, "%.4f,%.5f,%.5f,%.5f,%.4f,%s,%.6f\n", s, p.longitudinal_velocity,
       p.acceleration, p.jerk,
       p.relative_time.sec + p.relative_time.nanosec * 1e-9,
-      p.region_type.c_str());
+      p.region_type.c_str(), p.path_kappa);
   }
   std::fclose(f);
-  std::printf("  %s\n", fn);
+  return arc;
 }
 
 }  // namespace
 
 int main(int argc, char ** argv)
 {
+  using speed_offline::Category;
+  using speed_offline::Expect;
+
   if (argc > 1) {
     g_out_dir = argv[1];
   } else {
     const char * home = std::getenv("HOME");
     g_out_dir = std::string(home ? home : ".") + "/.dexe/navigation/speed_planner/csv";
   }
-  // 逐级建目录
-  std::string acc;
-  for (size_t i = 0; i < g_out_dir.size(); ++i) {
-    acc += g_out_dir[i];
-    if (g_out_dir[i] == '/' || i + 1 == g_out_dir.size()) {
-      ::mkdir(acc.c_str(), 0755);
+  mkdirP(g_out_dir);
+  std::printf(
+    "速度剖面 CSV 输出目录：%s/{trapezoidal,scurve,reachability}/\n\n",
+    g_out_dir.c_str());
+
+  const auto scenarios = speed_offline::buildScenarios();
+  std::printf("== 1/2 生成剖面（%zu 个场景）==\n", scenarios.size());
+
+  bool first = true;
+  Category last = Category::Distance;
+  for (const auto & sc : scenarios) {
+    if (first || sc.category != last) {
+      first = false;
+      last = sc.category;
+      std::printf("\n  [%s]\n", speed_offline::categoryName(sc.category));
+    }
+    const auto path =
+      speed_offline::makePath(
+        sc.length, sc.arcs, sc.path_kind, sc.lateral_offset, sc.dense_spacing);
+    const auto traj = speed_offline::runScenario(sc, path);
+    const auto arc = dumpCsv(sc, traj);
+    std::printf(
+      "    %-28s %5zu 点  %s\n", sc.tag.c_str(), traj.points.size(),
+      sc.note.c_str());
+
+    // 不可行时打印归因——回答"卡在求解器还是卡在我们自己的判据"
+    {
+      const auto & d = speed_offline::lastDiagnostics();
+      if (d.terminal_infeasible) {
+        static const char * kReason[] = {
+          "-", "稳定末段生成失败[物理]", "兜底后仍不可达[物理]",
+          "duration budget 退化[数值]", "求解器报错[数值]",
+          "求解器输出非有限[数值]", "迭代预算耗尽[数值]"};
+        static const char * kKind[] = {"可行", "物理不可行", "求解失败"};
+        const int r = d.terminal_infeasible_reason;
+        std::printf(
+          "        ↳ %s / %s / %s\n",
+          kKind[d.terminal_infeasible_kind >= 0 && d.terminal_infeasible_kind < 3 ?
+          d.terminal_infeasible_kind : 0],
+          (r >= 0 && r < 7) ? kReason[r] : "?",
+          d.terminal_result_provenance ? "走了制动兜底" : "正常求解");
+        std::printf(
+          "          进兜底首因：%s\n",
+          (d.terminal_entry_reason >= 0 && d.terminal_entry_reason < 7) ?
+          kReason[d.terminal_entry_reason] : "?");
+      }
+    }
+    speed_offline::checkExpectation(sc, traj);
+    speed_offline::checkPeakSpeed(sc, traj);
+    if (sc.expect == Expect::Success || sc.expect == Expect::Degraded) {
+      speed_offline::checkInvariants(sc, traj, arc);
+      speed_offline::checkMonotonicity(sc, path);
+      speed_offline::collectCurveMin(sc, traj, arc);
     }
   }
-  std::printf("速度剖面 CSV 输出目录：%s\n", g_out_dir.c_str());
+  speed_offline::checkCurvatureInvariance();
 
-  // ── 直线距离族（静止起步，T/S）──
-  for (double len : {0.3, 0.5, 1.0, 2.5, 5.0}) {
-    TestablePlanner<nav2_speed_planner::TrapezoidalSpeedPlanner> t;
-    t.setSharedParams();
-    dumpCsv("T", len, t.run(makeStraightPath(len), 0.0));
+  // ── 校验报告 ──
+  std::printf("\n== 2/2 校验 ==\n");
+  size_t fails = 0, xfails = 0, passed = 0;
+  std::map<std::string, std::pair<size_t, size_t>> per_cat;
 
-    TestableSCurve s;
-    s.setSharedParams();
-    s.setSCurveParams();
-    dumpCsv("S", len, s.run(makeStraightPath(len), 0.0));
+  for (const auto & c : speed_offline::checks()) {
+    auto & e = per_cat[speed_offline::categoryName(c.category)];
+    ++e.second;
+    if (c.passed) {++e.first; ++passed;}
   }
 
-  // ── 运动中起步（receding-horizon 状态戳形态，2.5m）──
-  for (double v0 : {0.3, 0.6, 1.0}) {
-    TestablePlanner<nav2_speed_planner::TrapezoidalSpeedPlanner> t;
-    t.setSharedParams();
-    char tag[32];
-    std::snprintf(tag, sizeof(tag), "T_moving_v%.1f", v0);
-    dumpCsv(tag, 2.5, t.run(makeStraightPath(2.5), v0));
-
-    TestableSCurve s;
-    s.setSharedParams();
-    s.setSCurveParams();
-    std::snprintf(tag, sizeof(tag), "S_moving_v%.1f", v0);
-    dumpCsv(tag, 2.5, s.run(makeStraightPath(2.5), v0));
-  }
-
-  // ── 弯道（5m 路径 2m 处 0.5m 弧段 r=0.5，T/S）──
-  {
-    TestablePlanner<nav2_speed_planner::TrapezoidalSpeedPlanner> t;
-    t.setSharedParams();
-    dumpCsv("T_curve2", 5.0, t.run(makePathWithArcAt2m(5.0), 0.0));
-
-    TestableSCurve s;
-    s.setSharedParams();
-    s.setSCurveParams();
-    dumpCsv("S_curve2", 5.0, s.run(makePathWithArcAt2m(5.0), 0.0));
-  }
-
-  // ── 障碍场景 ──
-  {
-    // 起点在障碍内切区（豁免起步）
-    WithObstacleBand<TestablePlanner<nav2_speed_planner::TrapezoidalSpeedPlanner>> t;
-    t.setSharedParams();
-    t.obs_from_ = 0.0;
-    t.obs_to_ = 0.10;
-    dumpCsv("T_start_obstacle", 1.0, t.run(makeStraightPath(1.0), 0.0));
-  }
-  {
-    // 1m 路径中途障碍 x≥0.7
-    WithObstacleBand<TestablePlanner<nav2_speed_planner::TrapezoidalSpeedPlanner>> t;
-    t.setSharedParams();
-    t.obs_from_ = 0.7;
-    t.obs_to_ = 1.0;
-    dumpCsv("T_mid_obstacle", 1.0, t.run(makeStraightPath(1.0), 0.0));
-  }
-  for (int variant = 0; variant < 2; ++variant) {
-    // 5m 路径 3m 处障碍（T/S）
-    if (variant == 0) {
-      WithObstacleBand<TestablePlanner<nav2_speed_planner::TrapezoidalSpeedPlanner>> t;
-      t.setSharedParams();
-      t.obs_from_ = 3.0;
-      t.obs_to_ = 5.0;
-      dumpCsv("T_obs3", 5.0, t.run(makeStraightPath(5.0), 0.0));
-    } else {
-      WithObstacleBand<TestableSCurve> s;
-      s.setSharedParams();
-      s.setSCurveParams();
-      s.obs_from_ = 3.0;
-      s.obs_to_ = 5.0;
-      dumpCsv("S_obs3", 5.0, s.run(makeStraightPath(5.0), 0.0));
+  std::string cur;
+  for (const auto & c : speed_offline::checks()) {
+    if (c.passed || c.expected_fail) {continue;}
+    if (c.scenario != cur) {
+      cur = c.scenario;
+      std::printf("\n  ✗ %s\n", cur.c_str());
     }
+    std::printf("      %-30s %s\n", c.name.c_str(), c.detail.c_str());
+    ++fails;
+  }
+  cur.clear();
+  for (const auto & c : speed_offline::checks()) {
+    if (c.passed || !c.expected_fail) {continue;}
+    if (c.scenario != cur) {
+      cur = c.scenario;
+      std::printf("\n  ⚠ XFAIL %s（已知缺陷，不阻塞）\n", cur.c_str());
+    }
+    std::printf("      %-30s %s\n", c.name.c_str(), c.detail.c_str());
+    ++xfails;
   }
 
-  // ── 硬停（end_speed=0，1m）──
-  {
-    TestablePlanner<nav2_speed_planner::TrapezoidalSpeedPlanner> t;
-    t.setSharedParams();
-    t.setEndSpeed(0.0);
-    dumpCsv("T_hardstop", 1.0, t.run(makeStraightPath(1.0), 0.0));
-
-    TestableSCurve s;
-    s.setSharedParams();
-    s.setSCurveParams();
-    s.setEndSpeed(0.0);
-    dumpCsv("S_hardstop", 1.0, s.run(makeStraightPath(1.0), 0.0));
+  std::printf("\n  按类别：\n");
+  for (const auto & kv : per_cat) {
+    std::printf(
+      "    %-14s %3zu / %3zu 通过\n", kv.first.c_str(), kv.second.first,
+      kv.second.second);
   }
-
-  std::printf("完成。\n");
-  return 0;
+  std::printf(
+    "\n  合计 %zu 项：通过 %zu / 失败 %zu / 预期失败 %zu\n",
+    speed_offline::checks().size(), passed, fails, xfails);
+  std::printf(fails == 0 ? "\n完成：全部通过。\n" : "\n完成：存在失败项。\n");
+  return fails == 0 ? 0 : 1;
 }

@@ -51,17 +51,43 @@ public:
         ROTATE
     };
 
+    enum class RotationVelocityCurve
+    {
+        STEP,
+        SINE
+    };
+
+    enum class StraightVelocityCurve
+    {
+        STEP,
+        SINE
+    };
+
     MobileControlActionNode() : Node("mobile_control_action_node")
     {
         this->declare_parameter("control_frequency", 20.0);
+        this->declare_parameter("control_reference_frame", "odom");
         this->declare_parameter("stop_confirm_duration", 0.2);
         this->declare_parameter("max_v", 0.35);
-        this->declare_parameter("min_v", 0.0);
+        this->declare_parameter("min_v", 0.03);
         this->declare_parameter("max_w", 1.0);
         this->declare_parameter("accel_x_max", 0.5);
+        this->declare_parameter("decel_x_max", 0.25);
         this->declare_parameter("straight_max_w_inc", 1.57);
         this->declare_parameter("rotate_to_heading_max_angular_accel", 1.0);
+        this->declare_parameter("rotate_to_heading_max_angular_decel", 0.8);
         this->declare_parameter("rotate_stop_yaw_error", 0.02);
+        this->declare_parameter("rotate_stop_angular_vel", 0.03);
+        this->declare_parameter("pure_rotation.velocity_curve", "sine");
+        this->declare_parameter("pure_rotation.max_angular_vel", 0.6);
+        this->declare_parameter("pure_rotation.sine_ramp_duration", 0.8);
+        this->declare_parameter("pure_rotation.sine_slowdown_yaw_error", 0.7);
+        this->declare_parameter("pure_rotation.brake_safety_factor", 0.8);
+        this->declare_parameter("straight.velocity_curve", "sine");
+        this->declare_parameter("straight.sine_ramp_duration", 0.8);
+        this->declare_parameter("straight.sine_slowdown_distance", 0.6);
+        this->declare_parameter("straight.brake_safety_factor", 0.75);
+        this->declare_parameter("straight.stop_linear_vel", 0.03);
         this->declare_parameter("k_rho", 0.8);
         this->declare_parameter("near_target_dist", 0.3);
         this->declare_parameter("near_target_min_speed_scale", 0.5);
@@ -70,11 +96,6 @@ public:
         this->declare_parameter("xy_tolerance", 0.02);
         this->declare_parameter("yaw_tolerance", 0.04);
         this->declare_parameter("goal_mode_rotate_xy_threshold", 0.03);
-        this->declare_parameter("pure_rotation.angular_pid.integrator_enable", true);
-        this->declare_parameter("pure_rotation.angular_pid.integrator_saturation_level", 0.5);
-        this->declare_parameter("pure_rotation.angular_pid.kp", 1.0);
-        this->declare_parameter("pure_rotation.angular_pid.ki", 0.01);
-        this->declare_parameter("pure_rotation.angular_pid.kd", 0.10);
         this->declare_parameter("straight.station_pid.integrator_enable", true);
         this->declare_parameter("straight.station_pid.integrator_saturation_level", 0.3);
         this->declare_parameter("straight.station_pid.kp", 1.0);
@@ -106,28 +127,104 @@ public:
         this->declare_parameter("straight.switch_speed", 0.1);
 
         control_frequency_ = this->get_parameter("control_frequency").as_double();
+        control_reference_frame_ =
+            this->get_parameter("control_reference_frame").as_string();
+        if (control_reference_frame_.empty()) {
+            control_reference_frame_ = "odom";
+            RCLCPP_WARN(
+                this->get_logger(),
+                "控制参考坐标系不能为空，本次回退为 odom。");
+        }
         stop_confirm_duration_ =
             std::max(0.0, this->get_parameter("stop_confirm_duration").as_double());
         stop_confirm_cycles_ = std::max(
             1, static_cast<int>(std::ceil(stop_confirm_duration_ * control_frequency_)));
-        max_v_ = this->get_parameter("max_v").as_double();
-        min_v_ = this->get_parameter("min_v").as_double();
+        max_v_ = std::max(1e-3, this->get_parameter("max_v").as_double());
+        // 最低接近速度用于越过底盘低速死区；进入位置容差后仍会按减速度上限平滑停车。
+        min_v_ = std::clamp(
+            this->get_parameter("min_v").as_double(), 0.0, max_v_);
         max_w_ = this->get_parameter("max_w").as_double();
-        accel_x_max_ = this->get_parameter("accel_x_max").as_double();
+        accel_x_max_ =
+            std::max(1e-3, this->get_parameter("accel_x_max").as_double());
+        decel_x_max_ =
+            std::max(1e-3, this->get_parameter("decel_x_max").as_double());
         straight_max_w_inc_ = this->get_parameter("straight_max_w_inc").as_double();
         rotate_to_heading_max_angular_accel_ =
-            this->get_parameter("rotate_to_heading_max_angular_accel").as_double();
-        rotate_stop_yaw_error_ = this->get_parameter("rotate_stop_yaw_error").as_double();
+            std::max(
+                1e-3,
+                this->get_parameter("rotate_to_heading_max_angular_accel").as_double());
+        rotate_to_heading_max_angular_decel_ =
+            std::max(
+                1e-3,
+                this->get_parameter("rotate_to_heading_max_angular_decel").as_double());
+        rotate_stop_yaw_error_ =
+            std::max(0.0, this->get_parameter("rotate_stop_yaw_error").as_double());
+        rotate_stop_angular_vel_ =
+            std::max(0.0, this->get_parameter("rotate_stop_angular_vel").as_double());
+        const std::string rotation_velocity_curve =
+            this->get_parameter("pure_rotation.velocity_curve").as_string();
+        if (rotation_velocity_curve == "step") {
+            rotation_velocity_curve_ = RotationVelocityCurve::STEP;
+        } else if (rotation_velocity_curve == "sine") {
+            rotation_velocity_curve_ = RotationVelocityCurve::SINE;
+        } else {
+            rotation_velocity_curve_ = RotationVelocityCurve::SINE;
+            RCLCPP_WARN(
+                this->get_logger(),
+                "原地转向速度曲线配置无效：velocity_curve=%s，仅支持 step 或 sine，"
+                "本次使用 sine。",
+                rotation_velocity_curve.c_str());
+        }
+        rotation_max_w_ = std::clamp(
+            this->get_parameter("pure_rotation.max_angular_vel").as_double(),
+            1e-3, max_w_);
+        rotation_sine_ramp_duration_ =
+            std::max(
+                1e-3,
+                this->get_parameter("pure_rotation.sine_ramp_duration").as_double());
+        rotation_sine_slowdown_yaw_error_ =
+            std::max(
+                1e-3,
+                this->get_parameter("pure_rotation.sine_slowdown_yaw_error").as_double());
+        rotation_brake_safety_factor_ = std::clamp(
+            this->get_parameter("pure_rotation.brake_safety_factor").as_double(),
+            0.05, 1.0);
+        const std::string straight_velocity_curve =
+            this->get_parameter("straight.velocity_curve").as_string();
+        if (straight_velocity_curve == "step") {
+            straight_velocity_curve_ = StraightVelocityCurve::STEP;
+        } else if (straight_velocity_curve == "sine") {
+            straight_velocity_curve_ = StraightVelocityCurve::SINE;
+        } else {
+            straight_velocity_curve_ = StraightVelocityCurve::SINE;
+            RCLCPP_WARN(
+                this->get_logger(),
+                "直线速度曲线配置无效：velocity_curve=%s，仅支持 step 或 sine，"
+                "本次使用 sine。",
+                straight_velocity_curve.c_str());
+        }
+        straight_sine_ramp_duration_ = std::max(
+            1e-3,
+            this->get_parameter("straight.sine_ramp_duration").as_double());
+        straight_sine_slowdown_distance_ = std::max(
+            1e-3,
+            this->get_parameter("straight.sine_slowdown_distance").as_double());
+        straight_brake_safety_factor_ = std::clamp(
+            this->get_parameter("straight.brake_safety_factor").as_double(),
+            0.05, 1.0);
+        straight_stop_linear_vel_ = std::max(
+            0.0,
+            this->get_parameter("straight.stop_linear_vel").as_double());
         k_rho_ = this->get_parameter("k_rho").as_double();
         near_target_dist_ = this->get_parameter("near_target_dist").as_double();
         near_target_min_speed_scale_ = std::clamp(
             this->get_parameter("near_target_min_speed_scale").as_double(), 0.0, 1.0);
         filter_alpha_ = this->get_parameter("cmd_vel_filter_alpha").as_double();
-        min_angular_vel_ = this->get_parameter("min_angular_vel").as_double();
+        min_angular_vel_ = std::clamp(
+            this->get_parameter("min_angular_vel").as_double(), 0.0, max_w_);
         xy_tolerance_ = this->get_parameter("xy_tolerance").as_double();
         yaw_tolerance_ = this->get_parameter("yaw_tolerance").as_double();
         goal_mode_rotate_xy_threshold_ = this->get_parameter("goal_mode_rotate_xy_threshold").as_double();
-        pure_rotation_angular_pid_conf_ = loadPidConfig("pure_rotation.angular_pid", 0.5);
         straight_station_pid_conf_ = loadPidConfig("straight.station_pid", 0.3);
         straight_high_speed_pid_conf_ = loadPidConfig("straight.high_speed_pid", 0.3);
         straight_low_speed_pid_conf_ = loadPidConfig("straight.low_speed_pid", 0.3);
@@ -159,10 +256,18 @@ public:
 
         RCLCPP_INFO(
             this->get_logger(),
-            "Action 控制参数：停稳确认=%.3fs（%d周期），控制频率=%.1fHz，"
-            "近目标减速距离=%.3fm，近目标最低速度比例=%.2f",
+            "Action 控制参数：参考坐标系=%s，停稳确认=%.3fs（%d周期），控制频率=%.1fHz，"
+            "近目标减速距离=%.3fm，近目标最低速度比例=%.2f，"
+            "直线曲线=%s，最低接近速度=%.3fm/s，线加/减速度=%.3f/%.3fm/s²，"
+            "原地转向曲线=%s，最大角速度=%.3frad/s，最大角加/减速度=%.3f/%.3frad/s²",
+            control_reference_frame_.c_str(),
             stop_confirm_duration_, stop_confirm_cycles_, control_frequency_,
-            near_target_dist_, near_target_min_speed_scale_);
+            near_target_dist_, near_target_min_speed_scale_,
+            straight_velocity_curve_ == StraightVelocityCurve::STEP ? "step" : "sine",
+            min_v_, accel_x_max_, decel_x_max_,
+            rotation_velocity_curve_ == RotationVelocityCurve::STEP ? "step" : "sine",
+            rotation_max_w_, rotate_to_heading_max_angular_accel_,
+            rotate_to_heading_max_angular_decel_);
 
         resetControlState();
     }
@@ -177,10 +282,10 @@ private:
     std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
     std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
 
-    geometry_msgs::msg::PoseStamped target_pose_odom_;
+    geometry_msgs::msg::PoseStamped target_pose_control_frame_;
     geometry_msgs::msg::Twist pre_cmd_vel_;
     geometry_msgs::msg::Twist filtered_cmd_vel_;
-    bool get_map_pose_{false};
+    bool has_control_target_{false};
     bool is_goal_{false};
     bool is_cancelling_{false};
     std::chrono::steady_clock::time_point goal_started_time_{};
@@ -190,14 +295,37 @@ private:
     GoalMode goal_mode_{GoalMode::STRAIGHT};
 
     double control_frequency_;
+    std::string control_reference_frame_;
     double stop_confirm_duration_;
     double max_v_;
     double min_v_;
     double max_w_;
     double accel_x_max_;
+    double decel_x_max_;
     double straight_max_w_inc_;
     double rotate_to_heading_max_angular_accel_;
+    double rotate_to_heading_max_angular_decel_;
     double rotate_stop_yaw_error_;
+    double rotate_stop_angular_vel_;
+    RotationVelocityCurve rotation_velocity_curve_{RotationVelocityCurve::SINE};
+    double rotation_max_w_;
+    double rotation_sine_ramp_duration_;
+    double rotation_sine_slowdown_yaw_error_;
+    double rotation_brake_safety_factor_;
+    bool rotation_profile_started_{false};
+    bool rotation_settling_{false};
+    double requested_rotation_angle_{0.0};
+    double previous_raw_rotation_error_{0.0};
+    double continuous_rotation_error_{0.0};
+    bool rotation_error_initialized_{false};
+    std::chrono::steady_clock::time_point rotation_profile_started_time_{};
+    StraightVelocityCurve straight_velocity_curve_{StraightVelocityCurve::SINE};
+    double straight_sine_ramp_duration_;
+    double straight_sine_slowdown_distance_;
+    double straight_brake_safety_factor_;
+    double straight_stop_linear_vel_;
+    bool straight_profile_started_{false};
+    std::chrono::steady_clock::time_point straight_profile_started_time_{};
     double k_rho_;
     double near_target_dist_;
     double near_target_min_speed_scale_;
@@ -206,13 +334,11 @@ private:
     double xy_tolerance_;
     double yaw_tolerance_;
     double goal_mode_rotate_xy_threshold_;
-    PidConfig pure_rotation_angular_pid_conf_;
     PidConfig straight_station_pid_conf_;
     PidConfig straight_high_speed_pid_conf_;
     PidConfig straight_low_speed_pid_conf_;
     PidConfig straight_reverse_station_pid_conf_;
     PidConfig straight_reverse_speed_pid_conf_;
-    PidState pure_rotation_angular_pid_state_;
     PidState straight_station_pid_state_;
     PidState straight_high_speed_pid_state_;
     PidState straight_low_speed_pid_state_;
@@ -249,7 +375,6 @@ private:
 
     void resetPidStates()
     {
-        resetPidState(pure_rotation_angular_pid_state_);
         resetPidState(straight_station_pid_state_);
         resetPidState(straight_high_speed_pid_state_);
         resetPidState(straight_low_speed_pid_state_);
@@ -259,13 +384,55 @@ private:
         straight_angular_integral_ = 0.0;
     }
 
+    void resetRotationErrorTracking()
+    {
+        requested_rotation_angle_ = 0.0;
+        previous_raw_rotation_error_ = 0.0;
+        continuous_rotation_error_ = 0.0;
+        rotation_error_initialized_ = false;
+    }
+
+    double updateContinuousRotationError(double raw_rotation_error)
+    {
+        if (!rotation_error_initialized_) {
+            previous_raw_rotation_error_ = raw_rotation_error;
+            continuous_rotation_error_ = requested_rotation_angle_;
+            rotation_error_initialized_ = true;
+            return continuous_rotation_error_;
+        }
+
+        // 目标固定在控制参考系后，相邻周期的角误差变化量应连续且远小于pi。
+        // 对变化量做归一化，再累计到请求角度，可避开精确180度的正负边界。
+        const double error_delta = std::atan2(
+            std::sin(raw_rotation_error - previous_raw_rotation_error_),
+            std::cos(raw_rotation_error - previous_raw_rotation_error_));
+        continuous_rotation_error_ += error_delta;
+        previous_raw_rotation_error_ = raw_rotation_error;
+        return continuous_rotation_error_;
+    }
+
+    const char * rotationDirectionName() const
+    {
+        if (requested_rotation_angle_ > 0.0) {
+            return "逆时针";
+        }
+        if (requested_rotation_angle_ < 0.0) {
+            return "顺时针";
+        }
+        return "未设置";
+    }
+
     void resetControlState()
     {
-        get_map_pose_ = false;
+        has_control_target_ = false;
         is_goal_ = false;
         is_cancelling_ = false;
         stop_count_ = 0;
         goal_mode_ = GoalMode::STRAIGHT;
+        rotation_profile_started_ = false;
+        rotation_settling_ = false;
+        resetRotationErrorTracking();
+        straight_profile_started_ = false;
         filtered_cmd_vel_.linear.x = 0.0;
         filtered_cmd_vel_.angular.z = 0.0;
         pre_cmd_vel_.linear.x = 0.0;
@@ -316,16 +483,17 @@ private:
         pre_cmd_vel_.angular.z = msg->twist.twist.angular.z;
     }
 
-    bool transformTargetToMap(
+    bool transformTargetToControlFrame(
         const geometry_msgs::msg::PoseStamped &target_pose,
-        geometry_msgs::msg::PoseStamped &target_pose_map,
+        geometry_msgs::msg::PoseStamped &target_pose_control_frame,
         std::string &error_msg)
     {
         try {
-            if (target_pose.header.frame_id != "map") {
-                target_pose_map = tf_buffer_->transform(target_pose, "map", tf2::durationFromSec(0.1));
+            if (target_pose.header.frame_id != control_reference_frame_) {
+                target_pose_control_frame = tf_buffer_->transform(
+                    target_pose, control_reference_frame_, tf2::durationFromSec(0.1));
             } else {
-                target_pose_map = target_pose;
+                target_pose_control_frame = target_pose;
             }
         } catch (const tf2::TransformException &ex) {
             error_msg = ex.what();
@@ -336,11 +504,15 @@ private:
 
     void setTarget(const geometry_msgs::msg::PoseStamped &target_pose)
     {
-        target_pose_odom_ = target_pose;
-        get_map_pose_ = true;
+        target_pose_control_frame_ = target_pose;
+        has_control_target_ = true;
         is_goal_ = false;
         is_cancelling_ = false;
         stop_count_ = 0;
+        rotation_profile_started_ = false;
+        rotation_settling_ = false;
+        resetRotationErrorTracking();
+        straight_profile_started_ = false;
         filtered_cmd_vel_.linear.x = 0.0;
         filtered_cmd_vel_.angular.z = 0.0;
         resetPidStates();
@@ -355,6 +527,7 @@ private:
 
         if (input_dist < goal_mode_rotate_xy_threshold_ && std::fabs(input_yaw) >= yaw_tolerance_) {
             goal_mode_ = GoalMode::ROTATE;
+            requested_rotation_angle_ = input_yaw;
         } else {
             goal_mode_ = GoalMode::STRAIGHT;
         }
@@ -372,13 +545,16 @@ private:
             return rclcpp_action::GoalResponse::REJECT;
         }
 
-        geometry_msgs::msg::PoseStamped target_pose_map;
+        geometry_msgs::msg::PoseStamped target_pose_control_frame;
         std::string error_msg;
-        if (!transformTargetToMap(goal->target_pose, target_pose_map, error_msg)) {
+        if (!transformTargetToControlFrame(
+                goal->target_pose, target_pose_control_frame, error_msg))
+        {
             RCLCPP_WARN(
                 this->get_logger(),
-                "[底盘直控目标被拒绝] 无法将目标从 %s 转换到 map，原因=%s。",
-                goal->target_pose.header.frame_id.c_str(), error_msg.c_str());
+                "[底盘直控目标被拒绝] 无法将目标从 %s 转换到 %s，原因=%s。",
+                goal->target_pose.header.frame_id.c_str(),
+                control_reference_frame_.c_str(), error_msg.c_str());
             return rclcpp_action::GoalResponse::REJECT;
         }
 
@@ -397,33 +573,39 @@ private:
     void handleAccepted(const std::shared_ptr<GoalHandlePreciseControl> goal_handle)
     {
         const auto goal = goal_handle->get_goal();
-        geometry_msgs::msg::PoseStamped target_pose_map;
+        geometry_msgs::msg::PoseStamped target_pose_control_frame;
         std::string error_msg;
-        if (!transformTargetToMap(goal->target_pose, target_pose_map, error_msg)) {
+        if (!transformTargetToControlFrame(
+                goal->target_pose, target_pose_control_frame, error_msg))
+        {
             auto result = std::make_shared<PreciseControl::Result>();
             result->success = false;
-            result->message = "Cannot transform goal to map: " + error_msg;
+            result->message =
+                "Cannot transform goal to " + control_reference_frame_ + ": " + error_msg;
             goal_handle->abort(result);
             RCLCPP_ERROR(
                 this->get_logger(),
                 "[底盘直控执行中止] goal 接受后再次转换 TF 失败，"
-                "目标坐标系=%s，原因=%s。",
-                goal->target_pose.header.frame_id.c_str(), error_msg.c_str());
+                "目标坐标系=%s，控制参考坐标系=%s，原因=%s。",
+                goal->target_pose.header.frame_id.c_str(),
+                control_reference_frame_.c_str(), error_msg.c_str());
             return;
         }
 
         active_goal_handle_ = goal_handle;
         goal_started_time_ = std::chrono::steady_clock::now();
         goal_timer_started_ = true;
+        setTarget(target_pose_control_frame);
         setGoalModeFromInput(goal->target_pose);
-        setTarget(target_pose_map);
         RCLCPP_INFO(
             this->get_logger(),
             "[底盘直控状态变化] IDLE -> CONTROL，模式=%s，"
-            "输入目标=(x=%.3fm, y=%.3fm, yaw=%.3frad)，目标坐标系=%s。",
+            "输入目标=(x=%.3fm, y=%.3fm, yaw=%.3frad)，"
+            "锁定旋转方向=%s，目标坐标系=%s。",
             goal_mode_ == GoalMode::STRAIGHT ? "直线" : "原地旋转",
             goal->target_pose.pose.position.x, goal->target_pose.pose.position.y,
             tf2::getYaw(goal->target_pose.pose.orientation),
+            goal_mode_ == GoalMode::ROTATE ? rotationDirectionName() : "不适用",
             goal->target_pose.header.frame_id.c_str());
     }
 
@@ -476,7 +658,7 @@ private:
     {
         if (!is_cancelling_) {
             is_cancelling_ = true;
-            get_map_pose_ = false;
+            has_control_target_ = false;
             is_goal_ = false;
             stop_count_ = 0;
             resetPidStates();
@@ -493,19 +675,77 @@ private:
         geometry_msgs::msg::Twist cmd_vel;
         const double abs_error = std::fabs(yaw_error);
 
-        if (abs_error < rotate_stop_yaw_error_) {
-            resetPidState(pure_rotation_angular_pid_state_);
-            return cmd_vel;
+        if (!rotation_profile_started_) {
+            rotation_profile_started_ = true;
+            rotation_profile_started_time_ = std::chrono::steady_clock::now();
         }
 
-        double angular_vel = runPid(
-            pure_rotation_angular_pid_conf_, pure_rotation_angular_pid_state_, yaw_error, dt);
-        angular_vel = std::clamp(angular_vel, -max_w_, max_w_);
-        if (std::fabs(angular_vel) < min_angular_vel_) {
-            angular_vel = std::copysign(min_angular_vel_, yaw_error);
+        if (
+            rotation_settling_ &&
+            std::fabs(pre_cmd_vel_.angular.z) <= rotate_stop_angular_vel_ &&
+            abs_error > yaw_tolerance_)
+        {
+            // 完全停稳后误差仍超限才开始下一次修正，禁止运动中直接反向。
+            rotation_settling_ = false;
+            rotation_profile_started_time_ = std::chrono::steady_clock::now();
+        }
+        if (!rotation_settling_ && abs_error <= rotate_stop_yaw_error_) {
+            rotation_settling_ = true;
         }
 
-        cmd_vel.angular.z = angular_vel;
+        double target_angular_vel = 0.0;
+        if (!rotation_settling_) {
+            // 剩余角度越小，允许速度越低，给底盘预留制动距离以减少过冲。
+            const double braking_error =
+                std::max(0.0, abs_error - rotate_stop_yaw_error_);
+            const double braking_speed_limit =
+                rotation_brake_safety_factor_ *
+                std::sqrt(
+                    2.0 * rotate_to_heading_max_angular_decel_ * braking_error);
+
+            double curve_speed_limit = rotation_max_w_;
+            if (rotation_velocity_curve_ == RotationVelocityCurve::SINE) {
+                const double elapsed = std::chrono::duration<double>(
+                    std::chrono::steady_clock::now() - rotation_profile_started_time_)
+                                           .count();
+                const double ramp_ratio = std::clamp(
+                    elapsed / rotation_sine_ramp_duration_, 0.0, 1.0);
+                const double slowdown_ratio = std::clamp(
+                    braking_error / rotation_sine_slowdown_yaw_error_, 0.0, 1.0);
+                const double ramp_scale = std::sin(M_PI_2 * ramp_ratio);
+                const double slowdown_scale = std::sin(M_PI_2 * slowdown_ratio);
+                curve_speed_limit =
+                    rotation_max_w_ * std::min(ramp_scale, slowdown_scale);
+            }
+
+            double target_speed_abs = std::min(curve_speed_limit, braking_speed_limit);
+            // 仍在转动时允许命令平滑降到死区以下；确实停住且误差超限时，
+            // 才使用最小角速度重新起转，减少末端反复启停和过冲。
+            if (
+                target_speed_abs < min_angular_vel_ &&
+                std::fabs(pre_cmd_vel_.angular.z) <= rotate_stop_angular_vel_)
+            {
+                target_speed_abs = min_angular_vel_;
+            }
+            target_speed_abs = std::clamp(
+                target_speed_abs, 0.0, rotation_max_w_);
+            target_angular_vel = std::copysign(target_speed_abs, yaw_error);
+        }
+
+        const double previous_cmd = filtered_cmd_vel_.angular.z;
+        const bool is_accelerating =
+            target_angular_vel * previous_cmd >= 0.0 &&
+            std::fabs(target_angular_vel) > std::fabs(previous_cmd);
+        const double angular_rate_limit = is_accelerating
+            ? rotate_to_heading_max_angular_accel_
+            : rotate_to_heading_max_angular_decel_;
+        const double max_delta = angular_rate_limit * std::max(dt, 0.0);
+        const double delta = std::clamp(
+            target_angular_vel - previous_cmd, -max_delta, max_delta);
+        cmd_vel.angular.z = previous_cmd + delta;
+        if (!std::isfinite(cmd_vel.angular.z)) {
+            cmd_vel.angular.z = 0.0;
+        }
         return cmd_vel;
     }
 
@@ -520,20 +760,51 @@ private:
         const double raw_target_yaw_in_base = std::atan2(
             std::sin(tf2::getYaw(target_pose.orientation)),
             std::cos(tf2::getYaw(target_pose.orientation)));
-        (void)reverse_mode;
         const double yaw_error =
             std::fabs(raw_target_yaw_in_base) < yaw_tolerance_ ? 0.0 : raw_target_yaw_in_base;
 
         const double dist = std::fabs(err_x);
-        double desired_linear_vel = std::min(max_v_, k_rho_ * dist);
+        if (!straight_profile_started_) {
+            straight_profile_started_ = true;
+            straight_profile_started_time_ = std::chrono::steady_clock::now();
+        }
+
+        const double braking_distance =
+            std::max(0.0, dist - xy_tolerance_);
+        const double braking_speed_limit =
+            straight_brake_safety_factor_ *
+            std::sqrt(2.0 * decel_x_max_ * braking_distance);
+        double curve_speed_limit = max_v_;
+        if (straight_velocity_curve_ == StraightVelocityCurve::SINE) {
+            const double elapsed = std::chrono::duration<double>(
+                std::chrono::steady_clock::now() - straight_profile_started_time_)
+                                       .count();
+            const double ramp_ratio = std::clamp(
+                elapsed / straight_sine_ramp_duration_, 0.0, 1.0);
+            const double slowdown_ratio = std::clamp(
+                braking_distance / straight_sine_slowdown_distance_, 0.0, 1.0);
+            const double ramp_scale = std::sin(M_PI_2 * ramp_ratio);
+            const double slowdown_scale = std::sin(M_PI_2 * slowdown_ratio);
+            curve_speed_limit =
+                max_v_ * std::min(ramp_scale, slowdown_scale);
+        }
+
+        double desired_linear_speed_abs = std::min(
+            {max_v_, k_rho_ * dist, braking_speed_limit, curve_speed_limit});
         if (dist < near_target_dist_ && near_target_dist_ > 0.0) {
             const double distance_ratio = std::clamp(
                 dist / near_target_dist_, 0.0, 1.0);
             const double speed_scale = near_target_min_speed_scale_ +
                 (1.0 - near_target_min_speed_scale_) * distance_ratio;
-            desired_linear_vel *= speed_scale;
+            desired_linear_speed_abs *= speed_scale;
         }
-        desired_linear_vel = std::clamp(desired_linear_vel, min_v_, max_v_);
+        if (braking_distance > 0.0) {
+            desired_linear_speed_abs = std::clamp(
+                desired_linear_speed_abs, min_v_, max_v_);
+        } else {
+            desired_linear_speed_abs = 0.0;
+        }
+        double desired_linear_vel = desired_linear_speed_abs;
         if (reverse_mode) {
             desired_linear_vel = -desired_linear_vel;
         }
@@ -554,22 +825,35 @@ private:
         const double speed_offset = runPid(station_conf, station_state, err_x, dt);
         const double speed_controller_input = speed_offset + speed_error;
         double acceleration_cmd = runPid(speed_conf, speed_state, speed_controller_input, dt);
-        acceleration_cmd = std::clamp(acceleration_cmd, -accel_x_max_, accel_x_max_);
+        acceleration_cmd = std::clamp(
+            acceleration_cmd, -decel_x_max_, accel_x_max_);
 
-        double linear_output = current_velocity.linear.x + acceleration_cmd * dt;
-        if (!std::isfinite(linear_output)) {
-            linear_output = 0.0;
+        double pid_output = current_velocity.linear.x + acceleration_cmd * dt;
+        if (!std::isfinite(pid_output)) {
+            pid_output = 0.0;
         }
         if (!reverse_mode) {
-            linear_output = std::clamp(
-                linear_output, min_v_, std::max(min_v_, desired_linear_vel * 1.5));
+            pid_output = std::clamp(
+                pid_output, 0.0, desired_linear_speed_abs);
         } else {
-            linear_output = std::clamp(
-                linear_output, std::min(-min_v_, desired_linear_vel * 1.5), -min_v_);
+            pid_output = std::clamp(
+                pid_output, -desired_linear_speed_abs, 0.0);
         }
-        if (dist <= xy_tolerance_) {
-            linear_output = 0.0;
-        }
+
+        // 速度包络可能随剩余距离快速下降，最终发布命令仍需单独限制变化率，
+        // 不能再次出现进入容差后从较高速度直接清零。
+        const double previous_linear_cmd = filtered_cmd_vel_.linear.x;
+        const bool is_linear_accelerating =
+            pid_output * previous_linear_cmd >= 0.0 &&
+            std::fabs(pid_output) > std::fabs(previous_linear_cmd);
+        const double linear_rate_limit =
+            is_linear_accelerating ? accel_x_max_ : decel_x_max_;
+        const double max_linear_delta =
+            linear_rate_limit * std::max(dt, 0.0);
+        const double linear_output = previous_linear_cmd + std::clamp(
+            pid_output - previous_linear_cmd,
+            -max_linear_delta,
+            max_linear_delta);
 
         double desired_w = std::clamp(yaw_error / dt, -max_w_, max_w_);
         const double angular_error = desired_w - current_velocity.angular.z;
@@ -616,8 +900,9 @@ private:
             publishFeedback("CANCELLING");
             geometry_msgs::msg::Twist cmd_vel;
             const double dt = 1.0 / control_frequency_;
-            const double linear_decel = accel_x_max_ * dt;
-            const double angular_decel = rotate_to_heading_max_angular_accel_ * dt;
+            // 取消动作时沿用直线减速度上限，避免取消与正常到点采用不同的刹车强度。
+            const double linear_decel = decel_x_max_ * dt;
+            const double angular_decel = rotate_to_heading_max_angular_decel_ * dt;
 
             if (pre_cmd_vel_.linear.x > 0.0) {
                 cmd_vel.linear.x = std::max(0.0, pre_cmd_vel_.linear.x - linear_decel);
@@ -654,7 +939,7 @@ private:
             return;
         }
 
-        if (!get_map_pose_) {
+        if (!has_control_target_) {
             publishFeedback("IDLE");
             return;
         }
@@ -664,46 +949,65 @@ private:
         geometry_msgs::msg::PoseStamped target_pose_in_base;
         try {
             const geometry_msgs::msg::TransformStamped transform = tf_buffer_->lookupTransform(
-                "base_link", "map", tf2::TimePointZero);
-            tf2::doTransform(target_pose_odom_, target_pose_in_base, transform);
+                "base_link", control_reference_frame_, tf2::TimePointZero);
+            tf2::doTransform(target_pose_control_frame_, target_pose_in_base, transform);
         } catch (const tf2::TransformException &ex) {
             RCLCPP_WARN_THROTTLE(
                 this->get_logger(), *this->get_clock(), 2000,
-                "[底盘直控等待 TF] map -> base_link 转换失败，"
+                "[底盘直控等待 TF] %s -> base_link 转换失败，"
                 "任务耗时=%.3fs，控制指令暂不更新，原因=%s。",
-                goalElapsedSeconds(), ex.what());
+                control_reference_frame_.c_str(), goalElapsedSeconds(), ex.what());
             return;
         }
 
         const double dist = std::hypot(
             target_pose_in_base.pose.position.x, target_pose_in_base.pose.position.y);
         const double x_error = target_pose_in_base.pose.position.x;
-        const double yaw_error = tf2::getYaw(target_pose_in_base.pose.orientation);
+        const double raw_yaw_error = tf2::getYaw(target_pose_in_base.pose.orientation);
+        const double yaw_error = goal_mode_ == GoalMode::ROTATE
+            ? updateContinuousRotationError(raw_yaw_error)
+            : raw_yaw_error;
         const double dt = 1.0 / control_frequency_;
         const bool is_reverse_mode =
             target_pose_in_base.pose.position.x < 0.0 &&
             std::fabs(target_pose_in_base.pose.position.y) < 0.5;
 
         geometry_msgs::msg::Twist cmd_vel;
-        if (goal_mode_ == GoalMode::ROTATE && std::fabs(dist) < xy_tolerance_) {
+        // 模式只在接受目标时判定一次。原地转向期间即使参考坐标系出现
+        // 小幅位置漂移，也保持线速度为零，禁止中途切换到直线控制器。
+        if (goal_mode_ == GoalMode::ROTATE) {
             cmd_vel = computeRotateToHeadingCommand(yaw_error, dt);
+            cmd_vel.linear.x = 0.0;
         } else {
             cmd_vel = computeStraightPidCommand(
                 target_pose_in_base.pose, pre_cmd_vel_, dt, is_reverse_mode);
         }
 
-        filtered_cmd_vel_.linear.x =
-            filter_alpha_ * cmd_vel.linear.x + (1.0 - filter_alpha_) * filtered_cmd_vel_.linear.x;
-        filtered_cmd_vel_.angular.z =
-            filter_alpha_ * cmd_vel.angular.z + (1.0 - filter_alpha_) * filtered_cmd_vel_.angular.z;
-
-        if (goal_mode_ == GoalMode::STRAIGHT) {
-            if (std::fabs(x_error) < xy_tolerance_ && std::fabs(yaw_error) < yaw_tolerance_) {
-                is_goal_ = true;
-            }
-        } else if (std::fabs(dist) < xy_tolerance_ && std::fabs(yaw_error) < yaw_tolerance_) {
-            is_goal_ = true;
+        if (goal_mode_ == GoalMode::ROTATE) {
+            // 原地转向已由速度曲线和角加速度统一约束，不再叠加低通滤波延迟。
+            filtered_cmd_vel_ = cmd_vel;
+        } else {
+            // 直线命令已经经过正弦包络和加减速度限制，不再叠加低通延迟。
+            filtered_cmd_vel_.linear.x = cmd_vel.linear.x;
+            filtered_cmd_vel_.angular.z =
+                filter_alpha_ * cmd_vel.angular.z +
+                (1.0 - filter_alpha_) * filtered_cmd_vel_.angular.z;
         }
+
+        bool reached_goal = false;
+        if (goal_mode_ == GoalMode::STRAIGHT) {
+            reached_goal =
+                std::fabs(x_error) < xy_tolerance_ &&
+                std::fabs(yaw_error) < yaw_tolerance_ &&
+                std::fabs(pre_cmd_vel_.linear.x) <= straight_stop_linear_vel_;
+        } else {
+            reached_goal =
+                std::fabs(yaw_error) <= yaw_tolerance_ &&
+                rotation_settling_ &&
+                std::fabs(pre_cmd_vel_.angular.z) <= rotate_stop_angular_vel_;
+        }
+        // 停稳确认期间每周期重新判断，误差重新超限时继续控制，不能锁存成功状态。
+        is_goal_ = reached_goal;
 
         if (is_goal_) {
             resetPidStates();
