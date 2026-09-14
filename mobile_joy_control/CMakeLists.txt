@@ -18,6 +18,7 @@ endif()
 # find dependencies
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(rclcpp_action REQUIRED)
 find_package(rclpy REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
@@ -25,6 +26,7 @@ find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(chassis_interfaces REQUIRED)
+find_package(nav_interfaces REQUIRED)
 
 # Find SDL2
 find_package(PkgConfig QUIET)
@@ -79,6 +81,10 @@ add_executable(mobile_cmd_omni
   src/mobile_cmd_omni.cpp
 )
 
+add_executable(omni_start_coordinator
+  src/omni_start_coordinator.cpp
+)
+
 ament_target_dependencies(mobile_joy_control
   rclcpp
   geometry_msgs
@@ -100,9 +106,25 @@ ament_target_dependencies(mobile_cmd_omni
   chassis_interfaces
 )
 
+ament_target_dependencies(mobile_cmd_omni
+  rclcpp_action
+  nav_interfaces
+)
+
+ament_target_dependencies(omni_start_coordinator
+  rclcpp
+  rclcpp_action
+  geometry_msgs
+  nav_msgs
+  std_msgs
+  chassis_interfaces
+  nav_interfaces
+)
+
 install(TARGETS
   mobile_joy_control
   mobile_cmd_omni
+  omni_start_coordinator
   DESTINATION lib/${PROJECT_NAME}
 )
 
