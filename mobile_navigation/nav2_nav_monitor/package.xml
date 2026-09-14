@@ -2,7 +2,7 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>nav2_nav_monitor</name>
-  <version>0.4.6</version>
+  <version>0.5.0</version>
   <description>
     导航任务级监控：以 /navigate_to_pose 为任务边界，被动订阅 action 状态/反馈
     + goal/路径/阶段回显，每次导航任务结束落盘一份任务级摘要+轨迹 JSON，用于回溯。

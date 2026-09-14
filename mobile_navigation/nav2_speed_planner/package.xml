@@ -2,7 +2,7 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>nav2_speed_planner</name>
-  <version>0.4.6</version>
+  <version>0.5.0</version>
   <description>
     速度规划器插件库（nav2_core::SpeedPlanner 实现，五层架构 ④速度规划层）。
     抽象基类 SpeedPlannerBase 实现 7 个冻结接口 + 恒加速度参考内核（assignConstantAccelProfile），

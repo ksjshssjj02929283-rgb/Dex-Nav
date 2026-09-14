@@ -2,7 +2,7 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>w1_diff_gazebo</name>
-  <version>0.4.6</version>
+  <version>0.5.0</version>
   <description>W1 双轮差速底盘 Gazebo 仿真（自包含：内置 DexforceW1V020 URDF 快照 + Visual meshes，不依赖 dexe_mobile_application；仿真 URDF 由 scripts/gen_w1_diff_sim_urdf.py 生成）</description>
   <maintainer email="linfeng.guo@dexforce.com">linfeng.guo</maintainer>
   <license>Proprietary</license>

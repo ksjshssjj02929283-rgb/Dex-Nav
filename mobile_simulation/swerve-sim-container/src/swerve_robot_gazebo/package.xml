@@ -2,7 +2,7 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>swerve_robot_gazebo</name>
-  <version>0.4.6</version>
+  <version>0.5.0</version>
   <description>Gazebo simulation for swerve robot</description>
   <maintainer email="robotics@freshconsulting.com">Robotics @ Fresh Consulting</maintainer>
   <author email="robotics@freshconsulting.com">Robotics @ Fresh Consulting</author>
