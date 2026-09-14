@@ -53,7 +53,7 @@ def generate_launch_description():
         'division_mode', default_value='true', description='是否处理一帧、跳过一帧；关闭时处理全部输入帧'
     )
     obstacle_extraction_method_arg = DeclareLaunchArgument(
-        'obstacle_extraction_method', default_value='uv_disparity', description='障碍物提取方法：height_filter 或 uv_disparity'
+        'obstacle_extraction_method', default_value='height_filter', description='障碍物提取方法：height_filter 或 uv_disparity'
     )
     uv_disparity_min_z_arg = DeclareLaunchArgument(
         'uv_disparity_min_z', default_value='0.15', description='双视差最小深度'
