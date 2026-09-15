@@ -34,6 +34,8 @@
 #include <tf2_sensor_msgs/tf2_sensor_msgs.hpp>
 
 #include "rgbd_processing_state.hpp"
+#include "hardware_obstacle_method.hpp"
+#include "camera_extrinsics.hpp"
 
 class RgbdToPointCloud : public rclcpp::Node {
 public:
@@ -47,7 +49,8 @@ public:
         this->declare_parameter<double>("depth_max_range", 3.0);
 
         // 障碍物提取方式与双视差参数
-        this->declare_parameter<std::string>("obstacle_extraction_method", "height_filter");
+        this->declare_parameter<std::string>("obstacle_extraction_method", "auto");
+        this->declare_parameter<std::string>("hardware_path", "/etc/dexe_robot/hardware.yaml");
         this->declare_parameter<double>("uv_disparity_min_z", 0.15);
         this->declare_parameter<double>("uv_disparity_max_z", 4.0);
         this->declare_parameter<double>("uv_disparity_dz", 0.02);
@@ -121,7 +124,18 @@ public:
         ground_filter_min_height_ = this->get_parameter("ground_filter_min_height").as_double();
         ground_filter_max_height_ = this->get_parameter("ground_filter_max_height").as_double();
 
-        obstacle_extraction_method_ = this->get_parameter("obstacle_extraction_method").as_string();
+        // auto 在启动时依据整机硬件选择算法；显式指定算法仍可用于回放和调试。
+        const std::string hardware_path = this->get_parameter("hardware_path").as_string();
+        const auto selection = dexe_sensor_process::selectObstacleMethod(
+            this->get_parameter("obstacle_extraction_method").as_string(), hardware_path);
+        obstacle_extraction_method_ = selection.method;
+        if (!selection.error.empty()) {
+            RCLCPP_WARN(get_logger(), "读取硬件版本失败 (%s)，回退到高度法: %s",
+                        hardware_path.c_str(), selection.error.c_str());
+        } else if (!selection.revision.empty()) {
+            RCLCPP_INFO(get_logger(), "硬件版本 %s，自动选择障碍物提取方法: %s",
+                        selection.revision.c_str(), obstacle_extraction_method_.c_str());
+        }
         uv_disparity_min_z_ = this->get_parameter("uv_disparity_min_z").as_double();
         uv_disparity_max_z_ = this->get_parameter("uv_disparity_max_z").as_double();
         uv_disparity_dz_ = this->get_parameter("uv_disparity_dz").as_double();
@@ -297,44 +311,27 @@ private:
         }
     }
 
-    double getCameraYawInBaseLink(const std::string& camera_frame, tf2_ros::Buffer& tf_buffer) {
-        // 1. 若已经成功获取并缓存过静态外参 Yaw 角，直接返回缓存值，免除每帧 TF 查询开销
-        if (has_cached_camera_yaw_) {
-            return cached_camera_yaw_;
+    // 成功后跨帧复用完整外参；源坐标系改变时重新获取，失败时不使用旧坐标系缓存。
+    // 假设相机与 base_link 相对位姿固定，安装标定更新后需重启节点。
+    bool cacheCameraExtrinsics(const std::string& camera_frame, tf2_ros::Buffer& tf_buffer) {
+        if (camera_extrinsics_.matches(camera_frame)) {
+            return true;
         }
-
-        // 根据相机名称（front/rear）设定初值/回退值
-        double default_yaw = (camera_name_ == "rear") ? M_PI : 0.0;
-
-        geometry_msgs::msg::Vector3Stamped v_cam, v_base;
-        v_cam.header.frame_id = camera_frame;
-        v_cam.header.stamp = rclcpp::Time(0);
-
-        // 相机光轴（相机正前方向量 (0,0,1)）
-        v_cam.vector.x = 0.0;
-        v_cam.vector.y = 0.0;
-        v_cam.vector.z = 1.0;
-
+        if (camera_frame.empty() || !rclcpp::ok()) {
+            return false;
+        }
         try {
-            if (!rclcpp::ok() || !tf_buffer.canTransform("base_link", camera_frame, rclcpp::Time(0),
-                                                        rclcpp::Duration::from_seconds(0.05))) {
-                RCLCPP_WARN_THROTTLE(rclcpp::get_logger("rgbd_to_pointcloud"), *this->get_clock(), 5000,
-                                     "等待 base_link -> %s 变换超时或节点正在退出（使用 %s 相机默认 Yaw 角: %.2f rad）",
-                                     camera_frame.c_str(), camera_name_.c_str(), default_yaw);
-                return default_yaw;
-            }
-
-            tf_buffer.transform(v_cam, v_base, "base_link");
-            cached_camera_yaw_ = std::atan2(v_base.vector.y, v_base.vector.x);
-            has_cached_camera_yaw_ = true;
-            RCLCPP_INFO(get_logger(), "成功获取并缓存相机 [%s] (%s) 在 base_link 下的姿态 Yaw 角: %.3f rad (%.1f deg)",
-                        camera_name_.c_str(), camera_frame.c_str(), cached_camera_yaw_,
-                        cached_camera_yaw_ * 180.0 / M_PI);
-            return cached_camera_yaw_;
+            const auto transform = tf_buffer.lookupTransform(
+                "base_link", camera_frame, tf2::TimePointZero, tf2::durationFromSec(0.05));
+            camera_extrinsics_.set(transform);
+            RCLCPP_INFO(get_logger(), "缓存相机完整外参 (base_link <- %s)，光轴 yaw: %.3f rad",
+                        camera_frame.c_str(), camera_extrinsics_.opticalAxisYaw());
+            return true;
         } catch (const tf2::TransformException& ex) {
-            RCLCPP_WARN_THROTTLE(rclcpp::get_logger("rgbd_to_pointcloud"), *this->get_clock(), 5000,
-                                 "无法获取变换: %s（使用默认 Yaw 角: %.2f rad）", ex.what(), default_yaw);
-            return default_yaw;
+            RCLCPP_WARN_THROTTLE(get_logger(), *this->get_clock(), 5000,
+                                "相机外参未就绪 (base_link <- %s)，跳过本帧转换并重试: %s",
+                                camera_frame.c_str(), ex.what());
+            return false;
         }
     }
 
@@ -345,7 +342,13 @@ private:
         if (!cloud_msg || cloud_msg->width == 0 || cloud_msg->height == 0) {
             return nullptr;
         }
-        double center_yaw = getCameraYawInBaseLink(cloud_msg->header.frame_id, *tf_buffer);
+        const bool already_in_base_link = cloud_msg->header.frame_id == "base_link";
+        if (!already_in_base_link && !cacheCameraExtrinsics(cloud_msg->header.frame_id, *tf_buffer)) {
+            return nullptr;
+        }
+        // 已在机身系的点云无需转换，其坐标轴不能再视为相机光轴。
+        const double center_yaw = already_in_base_link
+            ? (camera_name_ == "rear" ? M_PI : 0.0) : camera_extrinsics_.opticalAxisYaw();
         // ================= 参数（写死） =================
         constexpr double DEG2RAD = M_PI / 180.0;
         constexpr double HFOV = 86.0 * DEG2RAD;
@@ -392,7 +395,8 @@ private:
                 return nullptr;
             }
             try {
-                tf_buffer->transform(*cloud_msg, cloud_bl, scan->header.frame_id, tf2::durationFromSec(0.05));
+                // 复用完整旋转和平移，避免每帧查询 TF；点云时间戳保持不变。
+                camera_extrinsics_.transformCloud(*cloud_msg, cloud_bl);
             } catch (tf2::TransformException& ex) {
                 RCLCPP_WARN(logger, "点云转换到 base_link 失败，无法生成 LaserScan: %s", ex.what());
                 return nullptr;
@@ -536,8 +540,18 @@ private:
                 if (!rclcpp::ok()) {
                     return nullptr;
                 }
-                tf_buffer_->transform(sensor_msg_after_voxel, filter_frame_msg, ground_filter_frame_,
-                                      tf2::durationFromSec(0.05));
+                if (ground_filter_frame_ == "base_link") {
+                    // 高度过滤与 LaserScan 共用完整静态外参，由先执行的阶段初始化。
+                    // 即使关闭 LaserScan，也可在此独立初始化；保留点云采样时间戳。
+                    if (!cacheCameraExtrinsics(sensor_msg_after_voxel.header.frame_id, *tf_buffer_)) {
+                        return nullptr;
+                    }
+                    camera_extrinsics_.transformCloud(sensor_msg_after_voxel, filter_frame_msg);
+                } else {
+                    // 自定义目标系可能相对机身运动，不能套用相机到 base_link 的静态外参。
+                    tf_buffer_->transform(sensor_msg_after_voxel, filter_frame_msg, ground_filter_frame_,
+                                          tf2::durationFromSec(0.05));
+                }
             } else {
                 filter_frame_msg = sensor_msg_after_voxel;
             }
@@ -1163,10 +1177,9 @@ private:
     // RANSAC 随机数生成器（持久化成员变量，固定种子，避免每帧随机重新初始化导致拟合结果逐帧抖动）
     std::mt19937 rng_{42};
 
-    // 相机名称与 TF Yaw 角缓存（避免每帧查询 TF，区分 front/rear）
+    // 相机名称与相机到 base_link 的完整静态外参缓存
     std::string camera_name_ = "rear";
-    double cached_camera_yaw_ = 0.0;
-    bool has_cached_camera_yaw_ = false;
+    dexe_sensor_process::CameraExtrinsics camera_extrinsics_;
 
     // 堆内存重用缓冲区（避免高频分配/销毁导致内存碎片化与内存高波动）
     std::vector<float> buf_raw_;

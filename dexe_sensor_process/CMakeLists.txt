@@ -11,6 +11,7 @@ endif()
 
 # find dependencies
 find_package(ament_cmake REQUIRED)
+find_package(yaml-cpp REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
@@ -49,6 +50,7 @@ target_link_directories(rgbd_to_pointcloud PUBLIC
 )
 
 target_link_libraries(rgbd_to_pointcloud
+  yaml-cpp
   ${PCL_LIBRARIES}
 )
 
@@ -63,8 +65,23 @@ install(DIRECTORY
   DESTINATION share/${PROJECT_NAME}/launch
 )
 
+install(DIRECTORY config/ DESTINATION share/${PROJECT_NAME}/config)
+
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
+
+  ament_add_gtest(test_camera_extrinsics test/test_camera_extrinsics.cpp)
+  target_include_directories(test_camera_extrinsics PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+  ament_target_dependencies(test_camera_extrinsics
+    sensor_msgs geometry_msgs tf2_geometry_msgs tf2_sensor_msgs)
+
+  ament_add_gtest(test_hardware_obstacle_method test/test_hardware_obstacle_method.cpp)
+  target_include_directories(test_hardware_obstacle_method PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+  target_link_libraries(test_hardware_obstacle_method yaml-cpp)
+  # 固定样例路径，允许从任意构建目录运行测试。
+  target_compile_definitions(test_hardware_obstacle_method PRIVATE
+    HARDWARE_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/test/data"
+  )
 
   ament_add_gtest(test_rgbd_processing_state
     test/test_rgbd_processing_state.cpp
