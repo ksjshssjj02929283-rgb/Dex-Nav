@@ -1,3 +1,4 @@
+#include <algorithm>
 #include "map_manager/map_manager.hpp"
 
 #include <glog/logging.h>
@@ -21,12 +22,25 @@ bool MapManager::UpdateMapList() {
 
     map_list_.clear();
     for (const auto& entry : fs::directory_iterator(map_folder_)) {
-        if (fs::is_directory(entry)) {
-            map_list_.push_back(entry.path().filename().string());
+        if (!fs::is_directory(entry)) continue;
+        const std::string name = entry.path().filename().string();
+        if (!IsLoadableMapDir(name)) {
+            // 建图被中断留下的空 slam/、只有 pbstream 的目录等：不是地图，不进目录列表
+            LOG(INFO) << "Skipping non-loadable map directory (no slam/map.yaml or map.yaml): " << name;
+            continue;
         }
+        map_list_.push_back(name);
     }
+    std::sort(map_list_.begin(), map_list_.end());
 
     return true;
+}
+
+bool MapManager::IsLoadableMapDir(const std::string& map_name) const {
+    const fs::path dir = fs::path(map_folder_) / map_name;
+    boost::system::error_code ec;
+    if (!fs::is_directory(dir, ec) || ec) return false;
+    return fs::exists(dir / "slam" / "map.yaml", ec) || fs::exists(dir / "map.yaml", ec);
 }
 
 bool MapManager::LoadMap(const std::string& map_name) {
@@ -326,15 +340,15 @@ int32_t MapManager::LoadMapEx(const std::string& map_name, std::string& message)
 int32_t MapManager::RemoveMapEx(const std::string& map_name, std::string& message) {
     if (map_folder_.empty()) { message = "map_folder is not configured"; return kErrFolderMissing; }
     if (map_name.empty())    { message = "map_name is empty"; return kErrNameInvalid; }
-    UpdateMapList();
-    if (std::find(map_list_.begin(), map_list_.end(), map_name) == map_list_.end()) {
+    // 按目录存在性判断而不是按可加载列表：建图中断留下的残留目录也允许用 REMOVE 清掉
+    const std::string dir = map_folder_ + "/" + map_name;
+    boost::system::error_code ec;
+    if (!fs::is_directory(dir, ec) || ec) {
         message = "map not found: " + map_name; return kErrNotFound;
     }
     if (current_map_name_ == map_name) {
         message = "cannot remove the currently loaded map: " + map_name; return kErrInUse;
     }
-    const std::string dir = map_folder_ + "/" + map_name;
-    boost::system::error_code ec;
     fs::remove_all(dir, ec);
     if (ec) { message = "remove failed: " + ec.message(); return kErrIoFailed; }
     UpdateMapList();
@@ -345,11 +359,11 @@ int32_t MapManager::RemoveMapEx(const std::string& map_name, std::string& messag
 int32_t MapManager::RenameMapEx(const std::string& old_name, const std::string& new_name, std::string& message) {
     if (map_folder_.empty()) { message = "map_folder is not configured"; return kErrFolderMissing; }
     if (old_name.empty() || new_name.empty()) { message = "map_name or new_name is empty"; return kErrNameInvalid; }
-    UpdateMapList();
-    if (std::find(map_list_.begin(), map_list_.end(), old_name) == map_list_.end()) {
+    boost::system::error_code ec;
+    if (!fs::is_directory(map_folder_ + "/" + old_name, ec) || ec) {
         message = "map not found: " + old_name; return kErrNotFound;
     }
-    if (std::find(map_list_.begin(), map_list_.end(), new_name) != map_list_.end()) {
+    if (fs::exists(map_folder_ + "/" + new_name, ec)) {
         message = "target name already exists: " + new_name; return kErrNameExists;
     }
     std::string err;
@@ -375,6 +389,7 @@ std::vector<MapCatalogEntry> MapManager::ScanMapCatalog() {
                 YAML::Node y = YAML::LoadFile(yaml_path);
                 if (y["total_area_m2"])     e.total_area_m2     = y["total_area_m2"].as<double>();
                 if (y["effective_area_m2"]) e.effective_area_m2 = y["effective_area_m2"].as<double>();
+                if (y["created_at"])        e.created_at        = y["created_at"].as<std::string>();
             } catch (const std::exception& ex) {
                 LOG(WARNING) << "ScanMapCatalog: cannot parse " << yaml_path << ": " << ex.what();
             }
