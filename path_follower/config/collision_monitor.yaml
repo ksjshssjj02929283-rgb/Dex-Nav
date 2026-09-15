@@ -1,8 +1,5 @@
 # nav2_collision_monitor 配置
-# 拓扑: 本节点是挂在速度链上的旁路探头, 不是串联闸门。
-#   path_follower ──/cmd_vel_nav──┬──► velocity_smoother ──► 底盘
-#                                 └──► collision_monitor ──/cmd_vel_nav1──► (悬空丢弃)
-#                                            └──► /obstacle_status ──► path_follower
+# 自由导航串联，调度导航由 path_follower 直连 velocity_smoother，collision_monitor 旁路观察。
 # 订阅 cmd_vel_in 只是为了触发一次障碍评估(上游 Nav2 的设计是收到 cmd_vel 才评估);
 # 真正被消费的产出是 obstacle_status, 减速/停车由 path_follower 的 VelocityTrackMode
 # 状态机执行。cmd_vel_out 刻意无订阅者 —— 接回速度链会导致同一障碍被两处各刹一次。
@@ -14,8 +11,18 @@ collision_monitor:
     use_sim_time: false
     base_frame_id: "base_link"
     odom_frame_id: "odom"
-    cmd_vel_in_topic: "cmd_vel_raw"   # path_follower 重映射输出到这里
-    cmd_vel_out_topic: "cmd_vel"      # 处理后真正发给底盘的速度
+    cmd_vel_in_topic: "cmd_vel_collision"
+    cmd_vel_out_topic: "cmd_vel_nav"
+    schedule_cmd_vel_topic: "cmd_vel_nav"
+    free_navigation_path_topic: "plan"
+    control_frequency: 100.0
+    cmd_vel_timeout: 0.3
+    idle_grace_period: 5.0
+    approach_enabled: true           # 启用 APPROACH 速度轨迹预测
+    # 基础轮廓同步到 costmap；相对话题名跟随节点 namespace，空列表可关闭。
+    costmap_footprint_topics: ["local_costmap/footprint", "global_costmap/footprint"]
+    normal_footprint: [0.35, 0.29, 0.35, -0.29, -0.35, -0.29, -0.35, 0.29]
+    loaded_footprint: [0.50, 0.40, 0.50, -0.40, -0.50, -0.40, -0.50, 0.40]
     transform_tolerance: 0.1
     source_timeout: 5.0              # 数据超过 5s 视为失效
     base_shift_correction: True     # 源时间戳->当前时间 TF 插值(更准)
@@ -28,7 +35,6 @@ collision_monitor:
     # 该定时器只在"最近一个周期内没有 cmd_vel_in 流入"时才补一次评估（零速评估，
     # 只刷新 obstacle_status/polygons，不发 cmd_vel），运动中的行为与延迟完全不受影响。
     # <=0 关闭，恢复上游"仅随 cmd_vel 发布"的行为。
-    obstacle_status_idle_rate: 2.0
 
     # 保护区: STOP/SLOWDOWN 为机器人周围的缓冲多边形,
     # APPROACH 为机器人本体 footprint(用于碰撞时间仿真)。
@@ -39,15 +45,18 @@ collision_monitor:
     #   运行时经 collision_monitor/set_polygon_padding 服务修改 padding，
     #   传 NaN 恢复到这里配的 default_padding。schedule_planner 只改 PolygonStop。
 
-    # 停车区: 底盘外接圆 + 0.2m 膨胀。max_points=3 容忍激光噪点。
+    # 停车区: 精确底盘轮廓 + 0.2m 膨胀。max_points=3 容忍激光噪点。
+    # tracking_path.padding=0 时进入贴边模式：仅左右膨胀 0.2m，前后不膨胀。
     # linorobot2: footprint 0.45×0.35, w1: footprint 0.70×0.58
     PolygonStop:
-#      type: "polygon"
+      type: "polygon"
+      use_footprint_topic: false
 ##      points: [-0.3725, -0.25, -0.3725, 0.25, 0.3725, 0.25, 0.3725, -0.25]  # linorobot2
-#      points: [0.35, 0.29, 0.35, -0.29, -0.35, -0.29, -0.35, 0.29]  # w1: 精确 footprint
-      type: "circle"
-      radius: 0.46          # w1 底盘外接圆半径
+      points: [0.35, 0.29, 0.35, -0.29, -0.35, -0.29, -0.35, 0.29]  # w1: 精确 footprint
+      # type: "circle"
+      # radius: 0.46          # w1 底盘外接圆半径
       default_padding: 0.2  # 默认停障膨胀，等效于原来的 radius 0.66
+      automonous_navigation_padding: 0.1
       action_type: "stop"
       max_points: 3
       visualize: True
@@ -57,7 +66,7 @@ collision_monitor:
       # schedule_planner 路径前视停障：沿路径从机器人最近投影向前检查。
       # 每个路径取点按 path_stop_radius 直接做距离判定，阈值复用 max_points。
       path_stop_enabled: true
-      tracking_path_topic: "/tracking_path"
+      tracking_path_topic: "tracking_path"
       path_stop_distance: 1.0
       path_stop_radius: 0.36    # 每个路径采样点的检测半径
       path_point_interval: 0.10  # 与上一取点相距至少 10 cm 时取当前路径点
@@ -83,6 +92,7 @@ collision_monitor:
     # 趋近区: 精确底盘 footprint,碰撞时间仿真减速。
     FootprintApproach:
       type: "polygon"
+      use_footprint_topic: false
 #      points: [-0.2225, -0.1, -0.2225, 0.1, 0.2225, 0.1, 0.2225, -0.1]  # linorobot2
       points: [0.35, 0.29, 0.35, -0.29, -0.35, -0.29, -0.35, 0.29]  # w1: 精确 footprint
       default_padding: 0.0   # 趋近区用精确本体，默认不膨胀

@@ -1,19 +1,17 @@
 """完整 bringup: path_follower + collision_monitor + velocity_smoother。
 
-拓扑 —— 速度链是两级串联, collision_monitor 是挂在速度链上的**旁路探头**:
+调度导航中 path_follower 直连 smoother，collision_monitor 旁路观察并发布障碍状态:
 
     path_follower ──/cmd_vel_nav──┬──► velocity_smoother ──/control/cmd_vel_nav──► 底盘
                                   │
-                                  └──► collision_monitor ──/cmd_vel_nav1──► (无订阅者, 丢弃)
+                                  └──► collision_monitor (调度模式不发布速度)
                                              │
                                              └──► /obstacle_status ──► path_follower
 
-关键: collision_monitor **不在**速度链上, 它订阅 /cmd_vel_nav 纯粹是为了触发一次
-障碍评估(上游 Nav2 的设计是"收到 cmd_vel 才评估"), 评估结果走 obstacle_status 回到
+collision_monitor 以 100 Hz 主循环旁路评估 /cmd_vel_nav，结果走 obstacle_status 回到
 path_follower, 由 path_follower 自己的 VelocityTrackMode 状态机(kSlowdown/kStop +
-迟滞 + 两段式速度台阶模型)执行减速与停车。它自己那路限速后的 cmd_vel 输出
-(/cmd_vel_nav1) 是刻意悬空的 —— 若把它接回速度链, 等于同一个障碍被 collision_monitor
-和 path_follower 各刹一次, 会和速度模型互相打架。
+迟滞 + 两段式速度台阶模型)执行减速与停车。自由导航时 collision_monitor 才会把
+/cmd_vel_collision 过滤后发布到 /cmd_vel_nav。
 
 各级话题的来源:
   - path_follower 的 ~/cmd_vel : 本文件 remapping -> /cmd_vel_nav
@@ -52,11 +50,12 @@ from launch_ros.actions import Node
 
 # path_follower 的输出话题。velocity_smoother 与 collision_monitor 都订阅它:
 # 前者是速度链的下一级, 后者只是拿它当障碍评估的触发信号。
-FOLLOWER_OUT_TOPIC = "/cmd_vel_nav"
-# collision_monitor 限速后的 cmd_vel 输出, 刻意无订阅者(见文件头说明)。
-MONITOR_SINK_TOPIC = "/cmd_vel_nav1"
+FOLLOWER_OUT_TOPIC = "cmd_vel_nav"
+# collision_monitor 自由导航原始速度入口及安全速度出口。
+MONITOR_INPUT_TOPIC = "cmd_vel_collision"
+MONITOR_OUTPUT_TOPIC = "cmd_vel_nav"
 # 速度平滑器的输出, 直接进底盘。
-CHASSIS_TOPIC = "/control/cmd_vel_nav"
+CHASSIS_TOPIC = "control/cmd_vel_nav"
 
 
 def generate_launch_description():
@@ -100,13 +99,13 @@ def generate_launch_description():
         output="screen",
         parameters=[follower_params, {"use_sim_time": use_sim_time}],
         remappings=[
-            ("~/path", "/path"),
-            ("~/tracking_path", "/tracking_path"),
-            # ("~/odom", "/odom"),
-            ("~/odom", "/feedback/odom"),  # w1
+            ("~/path", "path"),
+            ("~/tracking_path", "tracking_path"),
+            # ("~/odom", "odom"),
+            ("~/odom", "feedback/odom"),  # w1
             ("~/cmd_vel", FOLLOWER_OUT_TOPIC),  # -> velocity_smoother (+ collision_monitor 旁路)
-            ("~/navigation_status", "/navigation_status"),
-            ("~/stop", "/stop"),
+            ("~/navigation_status", "navigation_status"),
+            ("~/stop", "stop"),
         ],
     )
 
@@ -120,8 +119,7 @@ def generate_launch_description():
     # scoped=True 让子 launch 的声明在退出 group 时弹掉; forwarding=True(默认)保证父作用域
     # 的值仍可见。下面同时显式传 params_file, 双保险且一眼看清各自吃的哪份 yaml。
 
-    # 旁路探头: 碰撞监控(含生命周期管理器)。产出 obstacle_status 供 path_follower 用,
-    # 其 cmd_vel 输出丢弃。
+    # 调度模式旁路发布 obstacle_status；自由模式串联输出安全速度。
     collision_monitor = GroupAction(
         [
             IncludeLaunchDescription(
@@ -131,8 +129,8 @@ def generate_launch_description():
                     "params_file": collision_params,
                     "autostart": autostart,
                     "bond_timeout": bond_timeout,
-                    "cmd_vel_in_topic": FOLLOWER_OUT_TOPIC,
-                    "cmd_vel_out_topic": MONITOR_SINK_TOPIC,
+                    "cmd_vel_in_topic": MONITOR_INPUT_TOPIC,
+                    "cmd_vel_out_topic": MONITOR_OUTPUT_TOPIC,
                 }.items(),
             )
         ],

@@ -8,6 +8,8 @@ find_package(rclcpp REQUIRED)
 find_package(rclcpp_components REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
+find_package(nav_msgs REQUIRED)
+find_package(std_srvs REQUIRED)
 find_package(visualization_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(nav_interfaces REQUIRED)
@@ -33,6 +35,8 @@ set(dependencies
   rclcpp_components
   sensor_msgs
   geometry_msgs
+  nav_msgs
+  std_srvs
   visualization_msgs
   std_msgs
   nav_interfaces
