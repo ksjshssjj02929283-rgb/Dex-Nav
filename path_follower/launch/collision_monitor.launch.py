@@ -57,7 +57,7 @@ def generate_launch_description():
     # 话题做成参数, 便于上层 bringup 显式写出接线; 默认值即当前部署的接法。
     cmd_vel_in_topic_arg = DeclareLaunchArgument(
         "cmd_vel_in_topic",
-        default_value="/cmd_vel_nav",
+        default_value="cmd_vel_collision",
         description=(
             "collision_monitor 的输入速度话题, 即 path_follower 的输出。"
             "本部署里订阅它只是为了触发障碍评估(上游 Nav2 的设计是收到 cmd_vel 才评估), "
@@ -66,7 +66,7 @@ def generate_launch_description():
     )
     cmd_vel_out_topic_arg = DeclareLaunchArgument(
         "cmd_vel_out_topic",
-        default_value="/cmd_vel_nav1",
+        default_value="cmd_vel_nav",
         description=(
             "collision_monitor 限速后的 cmd_vel 输出。本部署刻意悬空(无订阅者): "
             "减速/停车由 path_follower 自己的 VelocityTrackMode 状态机按 obstacle_status "

@@ -1,50 +1,93 @@
+# nav2_collision_monitor 配置
+# 自由导航串联，调度导航由 path_follower 直连 velocity_smoother，collision_monitor 旁路观察。
+# 底盘: 全向(omni), base_link, 尺寸 0.70×0.58 (半长 ±0.35, 半宽 ±0.29)
+# 数据源: 前后双激光 + 前后 RGBD 转换 LaserScan
 collision_monitor:
   ros__parameters:
-    use_sim_time: True
-    base_frame_id: "base_footprint"
+    use_sim_time: false
+    base_frame_id: "base_link"
     odom_frame_id: "odom"
-    cmd_vel_in_topic: "cmd_vel_raw"
-    cmd_vel_out_topic: "cmd_vel"
-    obstacle_status_topic: "obstacle_status"
-    transform_tolerance: 0.5
+    cmd_vel_in_topic: "cmd_vel_collision"
+    cmd_vel_out_topic: "cmd_vel_nav"
+    schedule_cmd_vel_topic: "cmd_vel_nav"
+    free_navigation_path_topic: "plan"
+    control_frequency: 100.0
+    cmd_vel_timeout: 0.3
+    idle_grace_period: 5.0
+    approach_enabled: true
+    # 基础轮廓同步到 costmap；相对话题名跟随节点 namespace，空列表可关闭。
+    costmap_footprint_topics: ["local_costmap/footprint", "global_costmap/footprint"]
+    normal_footprint: [0.35, 0.29, 0.35, -0.29, -0.35, -0.29, -0.35, 0.29]
+    loaded_footprint: [0.50, 0.40, 0.50, -0.40, -0.50, -0.40, -0.50, 0.40]
+    transform_tolerance: 0.1
     source_timeout: 5.0
     base_shift_correction: True
     stop_pub_timeout: 2.0
-    # Polygons represent zone around the robot for "stop" and "slowdown" action types,
-    # and robot footprint for "approach" action type.
-    # Footprint could be "polygon" type with dynamically set footprint from footprint_topic
-    # or "circle" type with static footprint set by radius. "footprint_topic" parameter
-    # to be ignored in circular case.
-    polygons: ["PolygonStop"]
+
+    polygons: ["PolygonStop", "PolygonSlow", "FootprintApproach"]
+
     PolygonStop:
       type: "polygon"
-      points: [0.3, 0.3, 0.3, -0.3, 0.0, -0.3, 0.0, 0.3]
+      use_footprint_topic: false
+      points: [0.35, 0.29, 0.35, -0.29, -0.35, -0.29, -0.35, 0.29]
+      default_padding: 0.2
+      automonous_navigation_padding: 0.1
       action_type: "stop"
       max_points: 3
       visualize: True
       polygon_pub_topic: "polygon_stop"
+      enabled: True
+      path_stop_enabled: true
+      tracking_path_topic: "tracking_path"
+      path_stop_distance: 1.0
+      path_stop_radius: 0.36
+      path_point_interval: 0.10
+      path_stop_visualize: false
+      path_stop_marker_topic: "path_stop_circles"
+      path_stop_timing_enabled: true
+
     PolygonSlow:
-      type: "polygon"
-      points: [0.4, 0.4, 0.4, -0.4, -0.4, -0.4, -0.4, 0.4]
+      type: "circle"
+      radius: 0.46
+      default_padding: 0.4
       action_type: "slowdown"
       max_points: 3
-      slowdown_ratio: 0.3
+      slowdown_ratio: 0.5
       visualize: True
       polygon_pub_topic: "polygon_slowdown"
+      enabled: True
+
     FootprintApproach:
       type: "polygon"
+      use_footprint_topic: false
+      points: [0.35, 0.29, 0.35, -0.29, -0.35, -0.29, -0.35, 0.29]
+      default_padding: 0.0
       action_type: "approach"
-      footprint_topic: "/local_costmap/published_footprint"
       time_before_collision: 2.0
       simulation_time_step: 0.1
       max_points: 5
-      visualize: False
-    observation_sources: ["scan"]
+      visualize: True
+      polygon_pub_topic: "polygon_approach"
+      enabled: True
+
+    observation_sources: ["scan_front", "scan_rear", "rgbd_scan_front", "rgbd_scan_rear"]
     scan:
       type: "scan"
       topic: "/scan"
-    pointcloud:
-      type: "pointcloud"
-      topic: "/intel_realsense_r200_depth/points"
-      min_height: 0.1
-      max_height: 0.5
+      enabled: True
+    scan_front:
+      type: "scan"
+      topic: "/laser_scan/front"
+      enabled: True
+    scan_rear:
+      type: "scan"
+      topic: "/laser_scan/rear"
+      enabled: True
+    rgbd_scan_front:
+      type: "scan"
+      topic: "/orbbec/front/laser_scan"
+      enabled: True
+    rgbd_scan_rear:
+      type: "scan"
+      topic: "/orbbec/rear/laser_scan"
+      enabled: True

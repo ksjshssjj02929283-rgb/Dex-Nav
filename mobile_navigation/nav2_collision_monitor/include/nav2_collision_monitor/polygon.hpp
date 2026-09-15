@@ -111,6 +111,9 @@ public:
    */
   virtual void getPolygon(std::vector<Point> & poly) const;
 
+  /** @brief Replace the internally owned base polygon (without padding). */
+  virtual void setPolygon(const geometry_msgs::msg::Polygon & polygon);
+
   /**
    * @brief 取当前生效的形状（基础形状按 padding 向外膨胀后的轮廓）。
    *
@@ -136,6 +139,12 @@ public:
    * @brief 取配置里的默认膨胀大小
    */
   double getDefaultPadding() const;
+
+  /** @brief 切换仅横向膨胀模式（Y/左右膨胀，X/前后不膨胀）。 */
+  void setLateralPaddingOnly(bool enabled);
+
+  /** @brief 当前是否仅做横向膨胀。 */
+  bool isLateralPaddingOnly() const;
 
   /**
    * @brief Updates polygon from footprint subscriber (if any)
@@ -244,6 +253,8 @@ protected:
   double default_padding_{0.0};
   /// @brief 当前生效的膨胀大小 m。service 线程写、process() 线程读，故用 atomic
   std::atomic<double> padding_{0.0};
+  /// @brief true 时 padding 仅作用于 base_link 的 Y 方向
+  std::atomic<bool> lateral_padding_only_{false};
 };  // class Polygon
 
 }  // namespace nav2_collision_monitor

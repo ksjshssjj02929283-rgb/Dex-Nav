@@ -21,9 +21,13 @@
 #include <vector>
 #include <memory>
 #include <mutex>
+#include <optional>
 
 #include "rclcpp/rclcpp.hpp"
 #include "geometry_msgs/msg/twist.hpp"
+#include "geometry_msgs/msg/polygon.hpp"
+#include "nav_msgs/msg/path.hpp"
+#include "std_srvs/srv/set_bool.hpp"
 #include "visualization_msgs/msg/marker_array.hpp"
 #include "nav_interfaces/msg/obstacle_monitor_status.hpp"
 #include "nav_interfaces/msg/tracking_path.hpp"
@@ -53,6 +57,21 @@ namespace nav2_collision_monitor
 class CollisionMonitor : public nav2_util::LifecycleNode
 {
 public:
+  enum class NavigationMode
+  {
+    IDLE,
+    AUTOMONOUS_NAVIGATION,
+    SCHEDULE_NAVIGATION,
+    SCHEDULE_EDGING
+  };
+
+  enum class NavigationType
+  {
+    UNSET,
+    AUTOMONOUS,
+    SCHEDULE
+  };
+
   /**
    * @brief Constructor for the nav2_collision_safery::CollisionMonitor
    * @param options Additional options to control creation of the node.
@@ -102,6 +121,9 @@ protected:
    * @param msg Input cmd_vel message
    */
   void cmdVelInCallback(geometry_msgs::msg::Twist::ConstSharedPtr msg);
+  void scheduleCmdVelCallback(geometry_msgs::msg::Twist::ConstSharedPtr msg);
+  void freeNavigationPathCallback(nav_msgs::msg::Path::ConstSharedPtr msg);
+  void controlLoopCallback();
   /**
    * @brief Publishes output cmd_vel. If robot was stopped more than stop_pub_timeout_ seconds,
    * quit to publish 0-velocity.
@@ -162,23 +184,9 @@ protected:
    * keep-alive path (idleKeepaliveCallback), which only refreshes obstacle_status/polygons:
    * the monitor must gate velocities, never originate them.
    */
-  void process(const Velocity & cmd_vel_in, bool publish_cmd_vel = true);
-
-  /**
-   * @brief Idle keep-alive timer callback.
-   *
-   * obstacle_status is otherwise published only when cmd_vel_in arrives, which makes a safety
-   * signal's rate depend on a downstream consumer's output. Two consequences motivated this:
-   * a controller cannot distinguish "monitor died" from "monitor has nothing to react to"
-   * (so it cannot run a staleness watchdog), and an obstacle present before the robot ever
-   * moves stays unreported until the first non-zero velocity is published - too late.
-   *
-   * This fires only when no cmd_vel_in has arrived within the timer period, so the behaviour
-   * and latency of the cmd_vel path are untouched while the robot is being commanded.
-   * Evaluating with zero velocity is correct for STOP/SLOWDOWN polygons (their detection is
-   * purely geometric); APPROACH degenerates to no-op, which is its meaning at zero velocity.
-   */
-  void idleKeepaliveCallback();
+  void process(
+    const Velocity & cmd_vel_in, bool publish_cmd_vel = true,
+    bool idle_polygon_only = false, bool command_updated = true);
 
   /**
    * @brief Processes the polygon of STOP and SLOWDOWN action type
@@ -262,6 +270,15 @@ protected:
     const std::shared_ptr<nav_interfaces::srv::SetPolygonPadding::Request> request,
     std::shared_ptr<nav_interfaces::srv::SetPolygonPadding::Response> response);
 
+  void setLoadedFootprintCallback(
+    const std::shared_ptr<std_srvs::srv::SetBool::Request> request,
+    std::shared_ptr<std_srvs::srv::SetBool::Response> response);
+  geometry_msgs::msg::Polygon readFootprintParameter(
+    const std::string & name, const std::vector<double> & defaults);
+  void applyInternalFootprint(bool loaded);
+  void applyNavigationPadding(NavigationMode mode);
+  void enterIdle(const char * reason);
+
   // ----- Variables -----
 
   /// @brief TF buffer
@@ -278,7 +295,9 @@ protected:
   // Input/output speed controls
   /// @beirf Input cmd_vel subscriber
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_in_sub_;
+  rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr schedule_cmd_vel_sub_;
   rclcpp::Subscription<nav_interfaces::msg::TrackingPath>::SharedPtr tracking_path_sub_;
+  rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr free_navigation_path_sub_;
   /// @brief Output cmd_vel publisher
   rclcpp_lifecycle::LifecyclePublisher<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_out_pub_;
   /// @brief Real-time obstacle monitor status publisher (FREE/SLOWDOWN/STOP)
@@ -288,10 +307,14 @@ protected:
     visualization_msgs::msg::MarkerArray>::SharedPtr path_stop_marker_pub_;
   /// @brief 动态膨胀设置服务（本仓库相对上游 Nav2 的改动）
   rclcpp::Service<nav_interfaces::srv::SetPolygonPadding>::SharedPtr set_padding_srv_;
+  rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr set_loaded_footprint_srv_;
+
+  std::vector<rclcpp_lifecycle::LifecyclePublisher<geometry_msgs::msg::Polygon>::SharedPtr>
+    costmap_footprint_pubs_;
 
   // schedule_planner path-ahead stop detector
   bool path_stop_enabled_{false};
-  std::string tracking_path_topic_{"/tracking_path"};
+  std::string tracking_path_topic_{"tracking_path"};
   double path_stop_distance_{1.0};
   double path_stop_radius_{0.36};
   double path_point_interval_{0.10};
@@ -308,6 +331,43 @@ protected:
   mutable rclcpp::Clock throttle_clock_{RCL_STEADY_TIME};
   nav_interfaces::msg::TrackingPath::ConstSharedPtr tracking_path_;
 
+  struct VelocityMailbox
+  {
+    geometry_msgs::msg::Twist::ConstSharedPtr message;
+    rclcpp::Time stamp{0, 0, RCL_ROS_TIME};
+    std::uint64_t sequence{0};
+  };
+
+  mutable std::mutex mailbox_mutex_;
+  VelocityMailbox free_cmd_mailbox_;
+  VelocityMailbox schedule_cmd_mailbox_;
+  nav_msgs::msg::Path::ConstSharedPtr pending_free_path_;
+  nav_interfaces::msg::TrackingPath::ConstSharedPtr pending_tracking_path_;
+  std::uint64_t free_path_sequence_{0};
+  std::uint64_t tracking_path_sequence_{0};
+  std::uint64_t consumed_free_path_sequence_{0};
+  std::uint64_t consumed_tracking_path_sequence_{0};
+  std::uint64_t consumed_free_cmd_sequence_{0};
+  std::uint64_t consumed_schedule_cmd_sequence_{0};
+  std::optional<bool> pending_loaded_footprint_;
+
+  rclcpp::TimerBase::SharedPtr control_loop_timer_;
+  rclcpp::CallbackGroup::SharedPtr io_callback_group_;
+  rclcpp::CallbackGroup::SharedPtr control_callback_group_;
+  double control_frequency_{100.0};
+  rclcpp::Duration cmd_vel_timeout_{0, 300000000};
+  rclcpp::Duration idle_grace_period_{5, 0};
+  NavigationMode navigation_mode_{NavigationMode::IDLE};
+  NavigationType lifecycle_navigation_type_{NavigationType::UNSET};
+  rclcpp::Time mode_last_cmd_stamp_{0, 0, RCL_ROS_TIME};
+  std::string schedule_cmd_vel_topic_{"cmd_vel_nav"};
+  std::string free_navigation_path_topic_{"plan"};
+  double automonous_navigation_padding_{0.1};
+  bool approach_enabled_{true};
+  geometry_msgs::msg::Polygon normal_footprint_;
+  geometry_msgs::msg::Polygon loaded_footprint_;
+  bool loaded_mode_{false};
+
   /// @brief Whether main routine is active
   bool process_active_;
 
@@ -321,15 +381,6 @@ protected:
   /// @brief Timeout after which 0-velocity ceases to be published
   rclcpp::Duration stop_pub_timeout_;
 
-  // Idle keep-alive: keeps obstacle_status alive while no cmd_vel_in is flowing.
-  /// @brief Idle keep-alive timer (null when the feature is disabled)
-  rclcpp::TimerBase::SharedPtr idle_keepalive_timer_;
-  /// @brief Idle keep-alive period; also the "recent cmd_vel_in" threshold
-  rclcpp::Duration idle_keepalive_period_;
-  /// @brief Keep-alive rate Hz; <= 0 disables the timer entirely
-  double idle_keepalive_rate_;
-  /// @brief Latest timestamp when cmd_vel_in was received
-  rclcpp::Time last_cmd_vel_in_stamp_;
 };  // class CollisionMonitor
 
 }  // namespace nav2_collision_monitor
