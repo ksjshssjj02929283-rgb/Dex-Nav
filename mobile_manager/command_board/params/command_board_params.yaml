@@ -133,5 +133,5 @@ navigation:
     progress_timeout_sec: 0.0       # >0 启用进度看门狗（1309）
     local_path_rate_hz: 5.0         # local_path 节流
     local_path_source_topic: /local_plan   # 控制器局部路径源（当前 MPPI；换控制器改这里）
-    set_goal_tolerance: true        # 单点导航前按点位 tolerance 设 goal_checker.lon/lat_goal_tolerance（原资产管理器 NavigationExecutor 的功能）
-    default_goal_tolerance: 0.05    # 点位与 goal 都未指定时的容差 m
+    # speed_limit_topic: /speed_limit      # 与 nav2 controller_server 的 speed_limit_topic 一致时不用改
+    # estop_topic: /emergency_stop         # 急停位（std_msgs/Bool）；生效时 state=BLOCKED(1312)

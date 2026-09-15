@@ -13,7 +13,6 @@ find_package(nav_interfaces REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
-find_package(rcl_interfaces REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
@@ -70,7 +69,6 @@ ament_target_dependencies(command_board_node
   tf2_geometry_msgs
   geometry_msgs
   nav_msgs
-  rcl_interfaces
 )
 
 target_link_libraries(command_board_node
