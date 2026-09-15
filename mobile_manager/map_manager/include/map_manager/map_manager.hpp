@@ -32,6 +32,7 @@ struct MapCatalogEntry {
     double total_area_m2 = 0.0;
     double effective_area_m2 = 0.0;
     std::time_t updated_at = 0;     // map.yaml mtime
+    std::string created_at;         // map.yaml created_at（本地时间 ISO 8601，建图完成时刻）；无此键为空
     std::string thumbnail;          // <map_path>/map.png
 };
 
@@ -76,6 +77,9 @@ public:
 private:
     // 探测旧扁平格式地图并迁移到 slam/assets 分层（DEC-007 新格式）；LoadMap 前置调用，幂等。
     bool MigrateLegacyMapLayout(const std::string& map_name);
+    // 目录是否为可加载地图：新布局 slam/map.yaml 或旧扁平布局 map.yaml（可迁移）。
+    // 只有 slam/ 空目录（建图被中断的残留）或只有 pbstream 的目录都不算，get_maps 不列出，load 报 1403 而不是 1407。
+    bool IsLoadableMapDir(const std::string& map_name) const;
 
     std::string map_folder_ = "";
     std::vector<std::string> map_list_;

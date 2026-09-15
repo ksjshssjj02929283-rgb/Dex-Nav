@@ -136,6 +136,7 @@ void MapManagerROS::GetMapsCallback(const std::shared_ptr<nav_interfaces::srv::G
         m.effective_area_m2 = static_cast<float>(e.effective_area_m2);
         m.updated_at.sec = static_cast<int32_t>(e.updated_at);
         m.updated_at.nanosec = 0;
+        m.created_at = e.created_at;
         m.thumbnail = e.thumbnail;
         res->maps.push_back(std::move(m));
     }
