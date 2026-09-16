@@ -17,6 +17,8 @@
 #include <math.h>
 #include <cmath>
 #include <chrono>
+#include <atomic>
+#include <thread>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -165,6 +167,7 @@ private:
 class ScanWrapper : public nav2_collision_monitor::Scan
 {
 public:
+  using nav2_collision_monitor::Scan::dataCallback;
   ScanWrapper(
     const nav2_util::LifecycleNode::WeakPtr & node,
     const std::string & source_name,
@@ -181,13 +184,14 @@ public:
 
   bool dataReceived() const
   {
-    return data_ != nullptr;
+    return std::atomic_load(&data_) != nullptr;
   }
 };  // ScanWrapper
 
 class PointCloudWrapper : public nav2_collision_monitor::PointCloud
 {
 public:
+  using nav2_collision_monitor::PointCloud::dataCallback;
   PointCloudWrapper(
     const nav2_util::LifecycleNode::WeakPtr & node,
     const std::string & source_name,
@@ -204,13 +208,14 @@ public:
 
   bool dataReceived() const
   {
-    return data_ != nullptr;
+    return std::atomic_load(&data_) != nullptr;
   }
 };  // PointCloudWrapper
 
 class RangeWrapper : public nav2_collision_monitor::Range
 {
 public:
+  using nav2_collision_monitor::Range::dataCallback;
   RangeWrapper(
     const nav2_util::LifecycleNode::WeakPtr & node,
     const std::string & source_name,
@@ -227,7 +232,7 @@ public:
 
   bool dataReceived() const
   {
-    return data_ != nullptr;
+    return std::atomic_load(&data_) != nullptr;
   }
 };  // RangeWrapper
 
@@ -456,6 +461,114 @@ void Tester::checkRange(const std::vector<nav2_collision_monitor::Point> & data)
   angle = M_PI / (10 * 2);
   ASSERT_NEAR(data[i].x, 1.0 * std::cos(angle) + 0.1, EPSILON);
   ASSERT_NEAR(data[i].y, 1.0 * std::sin(angle) + 0.1, EPSILON);
+}
+
+// Alternate different-sized frames while converting points. Every returned batch must
+// belong to one complete frame, including its metadata and backing storage.
+template<typename SourceT, typename MessageT>
+void checkConcurrentSnapshots(
+  SourceT & source, const std::shared_ptr<MessageT> & first,
+  const std::shared_ptr<MessageT> & second, const rclcpp::Time & stamp,
+  std::size_t first_size, std::size_t second_size)
+{
+  source.dataCallback(first);
+  std::atomic<bool> started{false};
+  std::atomic<bool> stop{false};
+  std::thread writer([&]() {
+      source.dataCallback(second);
+      started.store(true);
+      while (!stop.load()) {
+        source.dataCallback(first);
+        source.dataCallback(second);
+        std::this_thread::yield();
+      }
+    });
+  while (!started.load()) {
+    std::this_thread::yield();
+  }
+  bool consistent = true;
+  for (int iteration = 0; iteration < 2000; ++iteration) {
+    std::vector<nav2_collision_monitor::Point> points;
+    source.getData(stamp, points);
+    if (points.empty()) {
+      consistent = false;
+      break;
+    }
+    const double radius = std::hypot(points.front().x, points.front().y);
+    const bool is_first = std::fabs(radius - 0.5) < 1e-5;
+    const bool is_second = std::fabs(radius - 1.0) < 1e-5;
+    consistent &= (is_first || is_second) &&
+      points.size() == (is_first ? first_size : second_size);
+    for (const auto & point : points) {
+      consistent &= std::fabs(std::hypot(point.x, point.y) - radius) < 1e-5;
+    }
+  }
+  stop.store(true);
+  writer.join();
+  EXPECT_TRUE(consistent);
+}
+
+TEST_F(Tester, testConcurrentScanSnapshots)
+{
+  createSources(false);
+  const auto stamp = test_node_->now();
+  auto first = std::make_shared<sensor_msgs::msg::LaserScan>();
+  first->header.frame_id = BASE_FRAME_ID;
+  first->header.stamp = stamp;
+  first->range_min = 0.1;
+  first->range_max = 2.0;
+  first->angle_increment = 0.01;
+  first->ranges.assign(8, 0.5F);
+  auto second = std::make_shared<sensor_msgs::msg::LaserScan>(*first);
+  second->ranges.assign(128, 1.0F);
+  second->angle_increment = 0.02;
+  checkConcurrentSnapshots(*scan_, first, second, stamp, 8, 128);
+}
+
+TEST_F(Tester, testConcurrentPointCloudSnapshots)
+{
+  createSources(false);
+  const auto stamp = test_node_->now();
+  const auto make_cloud = [&](std::size_t count, float x) {
+      auto msg = std::make_shared<sensor_msgs::msg::PointCloud2>();
+      msg->header.frame_id = BASE_FRAME_ID;
+      msg->header.stamp = stamp;
+      sensor_msgs::PointCloud2Modifier modifier(*msg);
+      modifier.setPointCloud2FieldsByString(1, "xyz");
+      modifier.resize(count);
+      sensor_msgs::PointCloud2Iterator<float> px(*msg, "x");
+      sensor_msgs::PointCloud2Iterator<float> py(*msg, "y");
+      sensor_msgs::PointCloud2Iterator<float> pz(*msg, "z");
+      for (std::size_t i = 0; i < count; ++i, ++px, ++py, ++pz) {
+        *px = x;
+        *py = 0.0F;
+        *pz = 0.2F;
+      }
+      return msg;
+    };
+  checkConcurrentSnapshots(*pointcloud_, make_cloud(8, 0.5F), make_cloud(128, 1.0F),
+    stamp, 8, 128);
+}
+
+TEST_F(Tester, testConcurrentRangeSnapshots)
+{
+  createSources(false);
+  const auto stamp = test_node_->now();
+  auto first = std::make_shared<sensor_msgs::msg::Range>();
+  first->header.frame_id = BASE_FRAME_ID;
+  first->header.stamp = stamp;
+  first->min_range = 0.1;
+  first->max_range = 2.0;
+  first->range = 0.5;
+  first->field_of_view = 0.0;
+  auto second = std::make_shared<sensor_msgs::msg::Range>(*first);
+  second->range = 1.0;
+  second->field_of_view = 0.1;
+  range_->dataCallback(second);
+  std::vector<nav2_collision_monitor::Point> expected;
+  range_->getData(stamp, expected);
+  ASSERT_GT(expected.size(), 1u);
+  checkConcurrentSnapshots(*range_, first, second, stamp, 1, expected.size());
 }
 
 TEST_F(Tester, testGetData)

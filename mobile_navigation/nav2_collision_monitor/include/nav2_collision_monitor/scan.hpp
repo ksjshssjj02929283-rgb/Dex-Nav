@@ -88,6 +88,7 @@ protected:
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr data_sub_;
 
   /// @brief Latest data obtained from laser scanner
+  // Access only through std::atomic_load/store; readers retain an immutable snapshot.
   sensor_msgs::msg::LaserScan::ConstSharedPtr data_;
 };  // class Scan
 
