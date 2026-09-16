@@ -17,6 +17,23 @@ schedule_planner_node:
                                        # false=只告警并沿用上一段 padding
     default_mode: 1        # PathSegment 未显式指定 mode 时的默认跟踪方式：1=DIFF, 3=OMNI_TRANS_ROTATION
 
+    # 底盘运动能力，对应 path_follower 的 base_type。决定生成路径段时允许下发的跟踪方式：
+    #   1 = 只能差速。所有段强制 MODE_DIFF，hold_direction 一律清 NaN（该字段在 DIFF 下无意义，
+    #       留着会让下游排查时误判）。backward 保留——差速车支持倒车，那是另一个维度。
+    #   2 = 只用全向平移。所有段强制 MODE_OMNI_TRANSLATION；段若没给 hold_direction，会被
+    #       resolveMode 按既有规则降级为 DIFF 并告警（全向底盘本就能做差速运动，差速是其子集，
+    #       所以这个降级可接受；而 1 那一档是物理硬约束，不存在降级）。
+    #   3 = 全能力，三种模式都允许，按段自身 mode 走（默认，等同于引入该参数之前的行为）。
+    #
+    # 与 default_mode 的区别：default_mode 只在 PathSegment.mode==0 时兜底，段里显式写了
+    # mode=2/3 会绕过它；move_mode 是能力上限，无条件覆盖。因此 move_mode 取 1/2 时
+    # default_mode 自动失效（段 mode 已被归一成具体值），启动时会打一条告警提示。
+    #
+    # 实现上是在 resolveSegments 出口对 segments 就地归一（唯一入口），
+    # path_segment_sampler 与 segment_merger 完全不感知该参数。
+    # 注意：取 1/2 时所有段模式一致，segment_merger 的 mode 一致性判定恒真，段间更容易被合并。
+    move_mode: 1           # 1=DIFF / 2=OMNI_TRANSLATION / 3=不约束
+
     # ---------------- 几何 ----------------
     frame_id: "map"        # 输出 Path 坐标系（需与 path_follower 的定位坐标系一致并有 TF）
     resolution: 0.01       # 离散弧长间距 m（1cm）

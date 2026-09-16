@@ -145,6 +145,19 @@ namespace schedule_planner
         bool resolveSegments(
             const std::vector<std::string>& nav_point_names,
             std::vector<PathSegment>& segments, std::string& err);
+
+        /// 按 move_mode_ 表达的底盘能力，就地归一化段级 mode / hold_direction。
+        ///
+        /// 与 default_mode_ 的区别：default_mode_ 只在 PathSegment.mode==0 时兜底，段里显式
+        /// 写了 mode=2/3 会**绕过**它；move_mode_ 是能力上限，无条件覆盖。
+        ///
+        /// 放在输入端归一而不是塞进 PathSegmentSampler::resolveMode，是因为后者是 static 且被
+        /// sampler(x2) 与 segment_merger(x1) 共用，加一个参数会让签名一路扩散到 5 个文件；
+        /// 在这里归一之后，resolveMode / 合并判定 / 离散全部自然走对应分支，那两个类一行不用改。
+        ///
+        /// 由 resolveSegments 在拿到结果后立即调用——那里是 segments 的唯一入口，
+        /// 后续 planMergeGroups / discretize / discretizeGroup / runSegmentViaController 都取自它。
+        void applyMoveModeConstraint(std::vector<PathSegment>& segments);
         /// 调 path_follower ~/stop 停车（阻塞等响应，仅供 exec_thread_ 上的调用点使用：
         /// 该线程独立于节点 executor，阻塞等待不会自锁死）。
         void callStop();
@@ -245,6 +258,14 @@ namespace schedule_planner
         /// 默认跟踪方式：PathSegment 未显式指定 mode 时使用。
         /// 1=MODE_DIFF（差速），3=MODE_OMNI_TRANS_ROTATION（全向平移+旋转）。
         uint8_t default_mode_{1};
+
+        /// 底盘运动能力（对应 path_follower 的 base_type），决定生成路径段时允许的跟踪方式：
+        ///   1 = MODE_DIFF：只能差速。所有段强制 DIFF，hold_direction 一律清 NaN。
+        ///   2 = MODE_OMNI_TRANSLATION：所有段强制全向平移（保持朝向）。
+        ///   3 = MODE_OMNI_TRANS_ROTATION：全能力，三种模式都允许，按段自身 mode 走（默认）。
+        /// 与 default_mode_ 的关系见 applyMoveModeConstraint。取 1/2 时 default_mode_ 自动失效
+        /// （段 mode 已被归一为具体值，resolveMode 不再走兜底分支）。
+        uint8_t move_mode_{3};
 
         /// true = controller 模式（发 FollowPath 给 controller_server），
         /// false = independence 模式（v1 原有 /tracking_path 流程）。节点启动时由

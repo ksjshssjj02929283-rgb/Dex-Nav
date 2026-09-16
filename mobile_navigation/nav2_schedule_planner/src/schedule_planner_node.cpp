@@ -44,6 +44,35 @@ namespace schedule_planner
         // default_mode：PathSegment 未显式指定 mode 时的默认跟踪方式。1=DIFF, 3=OMNI_TRANS_ROTATION。
         default_mode_ = static_cast<uint8_t>(declare_parameter<int>("default_mode", 1));
 
+        // move_mode：底盘运动能力（对应 path_follower 的 base_type），决定允许下发的跟踪方式。
+        // 与 default_mode 不同——后者只在段没写 mode 时兜底，前者无条件覆盖。默认 3 = 不约束，
+        // 保持引入该参数之前的行为；具体车型在 yaml 里显式指定。
+        {
+            const int mm = declare_parameter<int>("move_mode", 3);
+            if (mm == nav_interfaces::msg::TrackingPath::MODE_DIFF ||
+                mm == nav_interfaces::msg::TrackingPath::MODE_OMNI_TRANSLATION ||
+                mm == nav_interfaces::msg::TrackingPath::MODE_OMNI_TRANS_ROTATION)
+            {
+                move_mode_ = static_cast<uint8_t>(mm);
+            }
+            else
+            {
+                move_mode_ = nav_interfaces::msg::TrackingPath::MODE_OMNI_TRANS_ROTATION;
+                RCLCPP_WARN(get_logger(),
+                            "Invalid move_mode=%d (expect 1/2/3), falling back to 3 (no constraint).",
+                            mm);
+            }
+            // 取 1/2 时段 mode 会被归一成具体值，resolveMode 不再走兜底分支，default_mode 失效。
+            if (move_mode_ != nav_interfaces::msg::TrackingPath::MODE_OMNI_TRANS_ROTATION &&
+                default_mode_ != move_mode_)
+            {
+                RCLCPP_WARN(get_logger(),
+                            "move_mode=%u overrides every segment mode, so default_mode=%u "
+                            "will never take effect.",
+                            move_mode_, default_mode_);
+            }
+        }
+
         // 相邻段合并平滑：属性一致、长度够的连续 LINE 段并成一条带拐角倒角的轨迹一次下发，
         // 省掉组内每个途经点的「停车 + 原地旋转」。长度门槛由 anchor_spacing 推导，不单独配。
         merge_params_.enable = declare_parameter<bool>("merge_enable", true);
@@ -124,11 +153,12 @@ namespace schedule_planner
         RCLCPP_INFO(get_logger(),
                     "schedule_planner ready: action=%s mode=%s tracking_path=%s status=%s stop=%s "
                     "cancel=%s resolve=%s frame=%s resolution=%.4fm seg_timeout=%.0fs default_mode=%d "
-                    "bag_trigger=%s%s",
+                    "move_mode=%d bag_trigger=%s%s",
                     action_name_.c_str(), controller_mode_ ? "controller" : "independence",
                     tracking_path_topic_.c_str(), navigation_status_topic_.c_str(),
                     stop_service_.c_str(), cancel_service_name_.c_str(), resolve_service_.c_str(),
                     frame_id_.c_str(), resolution_, segment_timeout_, static_cast<int>(default_mode_),
+                    static_cast<int>(move_mode_),
                     bag_trigger_pub_ ? bag_trigger_topic_.c_str() : "(disabled)",
                     controller_suffix.c_str());
     }
@@ -929,7 +959,56 @@ namespace schedule_planner
             return false;
         }
         segments = std::move(resp->segments);
+        // 这里是 segments 的唯一入口，后续 planMergeGroups / discretize / discretizeGroup /
+        // runSegmentViaController 全部取自它，所以底盘能力约束在这里归一一次就够。
+        applyMoveModeConstraint(segments);
         return true;
+    }
+
+    void SchedulePlannerNode::applyMoveModeConstraint(std::vector<PathSegment>& segments)
+    {
+        using TP = nav_interfaces::msg::TrackingPath;
+        using PS = nav_interfaces::msg::PathSegment;
+
+        if (move_mode_ == TP::MODE_OMNI_TRANS_ROTATION)
+        {
+            return; // 3 = 全能力，三种模式都允许，按段自身的 mode 走（等同于引入该参数之前）
+        }
+
+        const bool to_diff = (move_mode_ == TP::MODE_DIFF);
+        for (auto& s : segments)
+        {
+            const uint8_t before = s.mode;
+            if (to_diff)
+            {
+                s.mode = PS::MODE_DIFF;
+                // 清成 NaN 而不是留着不管：sampler 会把它原样透传进 TrackingPath.hold_direction，
+                // 而该字段在 MODE_DIFF 下无意义，留着只会让下游排查时误判成"还想保向平移"。
+                // backward 保留——差速车支持倒车，那是另一个维度。
+                s.hold_direction = std::numeric_limits<float>::quiet_NaN();
+            }
+            else
+            {
+                s.mode = PS::MODE_OMNI_TRANSLATION;
+                if (std::isnan(s.hold_direction))
+                {
+                    // 全向平移必须有保持朝向，缺了只能由 resolveMode 降级为 DIFF。这不违背
+                    // move_mode=2 的前提：全向底盘本就能做差速运动（差速是全向的子集）；而
+                    // move_mode=1 的差速车不能平移，那才是物理上的硬约束，所以上面那支是强制的。
+                    RCLCPP_WARN_THROTTLE(
+                        get_logger(), *get_clock(), 5000,
+                        "move_mode=2 but segment hold_direction is NaN: this segment will be "
+                        "downgraded to MODE_DIFF by resolveMode.");
+                }
+            }
+            // before==0 是"段未显式指定 mode"，被归一属于预期，不值得告警。
+            if (before != 0 && before != s.mode)
+            {
+                RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
+                                     "move_mode=%u overrides segment mode %u -> %u.",
+                                     move_mode_, before, s.mode);
+            }
+        }
     }
 
     void SchedulePlannerNode::callStop()
