@@ -250,6 +250,11 @@ CollisionMonitor::on_activate(const rclcpp_lifecycle::State & /*state*/)
   // 不再考虑另一套输入，避免在主循环中处理双速度源/双路径源冲突。
   navigation_mode_ = NavigationMode::IDLE;
   lifecycle_navigation_type_ = NavigationType::UNSET;
+  logged_velocity_state_ = -1;
+  ignored_chain_logged_ = false;
+  RCLCPP_INFO(
+    get_logger(), "[FSM] activate: mode=IDLE type=UNSET cmd_timeout=%.3fs idle_timeout=%.3fs",
+    cmd_vel_timeout_.seconds(), idle_grace_period_.seconds());
   mode_last_cmd_stamp_ = this->now();
   {
     std::lock_guard<std::mutex> lock(mailbox_mutex_);
@@ -434,11 +439,27 @@ void CollisionMonitor::controlLoopCallback()
   if (lifecycle_navigation_type_ == NavigationType::UNSET) {
     if ((new_free_path && free_path && !free_path->poses.empty()) || free_fresh) {
       lifecycle_navigation_type_ = NavigationType::AUTOMONOUS;
+      RCLCPP_INFO(
+        get_logger(), "[FSM] type locked: AUTOMONOUS free_fresh=%d schedule_fresh=%d",
+        free_fresh, schedule_fresh);
     } else if ((new_tracking_path && tracking_path && !tracking_path->poses.empty()) ||
       schedule_fresh)
     {
       lifecycle_navigation_type_ = NavigationType::SCHEDULE;
+      RCLCPP_INFO(get_logger(), "[FSM] type locked: SCHEDULE schedule_fresh=%d", schedule_fresh);
     }
+  }
+
+  if (lifecycle_navigation_type_ != NavigationType::UNSET && !ignored_chain_logged_ &&
+    ((lifecycle_navigation_type_ == NavigationType::AUTOMONOUS &&
+    (schedule_fresh || (new_tracking_path && tracking_path && !tracking_path->poses.empty()))) ||
+    (lifecycle_navigation_type_ == NavigationType::SCHEDULE &&
+    (free_fresh || (new_free_path && free_path && !free_path->poses.empty())))))
+  {
+    RCLCPP_INFO(
+      get_logger(), "[FSM] ignoring inactive chain: locked_type=%s (once per activation)",
+      lifecycle_navigation_type_ == NavigationType::AUTOMONOUS ? "AUTOMONOUS" : "SCHEDULE");
+    ignored_chain_logged_ = true;
   }
 
   // 只消费当前生命周期所属链路的路径。调度普通/贴边是同一种导航类型内部的状态，
@@ -446,7 +467,7 @@ void CollisionMonitor::controlLoopCallback()
   switch (lifecycle_navigation_type_) {
     case NavigationType::AUTOMONOUS:
       if (new_free_path && free_path && !free_path->poses.empty()) {
-        navigation_mode_ = NavigationMode::AUTOMONOUS_NAVIGATION;
+        changeNavigationMode(NavigationMode::AUTOMONOUS_NAVIGATION, "new automatic path");
         mode_last_cmd_stamp_ = now;
         applyNavigationPadding(navigation_mode_);
         std::lock_guard<std::mutex> lock(tracking_path_mutex_);
@@ -456,8 +477,10 @@ void CollisionMonitor::controlLoopCallback()
     case NavigationType::SCHEDULE:
       if (new_tracking_path && tracking_path && !tracking_path->poses.empty()) {
         const bool finite_padding = std::isfinite(tracking_path->padding);
-        navigation_mode_ = finite_padding && std::fabs(tracking_path->padding) < 1e-6F ?
-          NavigationMode::SCHEDULE_EDGING : NavigationMode::SCHEDULE_NAVIGATION;
+        changeNavigationMode(
+          finite_padding && std::fabs(tracking_path->padding) < 1e-6F ?
+          NavigationMode::SCHEDULE_EDGING : NavigationMode::SCHEDULE_NAVIGATION,
+          "new tracking path");
         mode_last_cmd_stamp_ = now;
         applyNavigationPadding(navigation_mode_);
         if (navigation_mode_ == NavigationMode::SCHEDULE_NAVIGATION) {
@@ -482,11 +505,11 @@ void CollisionMonitor::controlLoopCallback()
   switch (navigation_mode_) {
     case NavigationMode::IDLE:
       if (lifecycle_navigation_type_ == NavigationType::AUTOMONOUS && free_fresh) {
-        navigation_mode_ = NavigationMode::AUTOMONOUS_NAVIGATION;
+        changeNavigationMode(NavigationMode::AUTOMONOUS_NAVIGATION, "fresh automatic velocity");
         mode_last_cmd_stamp_ = free_cmd.stamp;
         applyNavigationPadding(navigation_mode_);
       } else if (lifecycle_navigation_type_ == NavigationType::SCHEDULE && schedule_fresh) {
-        navigation_mode_ = NavigationMode::SCHEDULE_NAVIGATION;
+        changeNavigationMode(NavigationMode::SCHEDULE_NAVIGATION, "fresh schedule velocity");
         mode_last_cmd_stamp_ = schedule_cmd.stamp;
         applyNavigationPadding(navigation_mode_);
       }
@@ -513,6 +536,23 @@ void CollisionMonitor::controlLoopCallback()
     case NavigationMode::IDLE:
       // IDLE 没有活动速度源，继续执行末尾的车身 STOP Polygon 检测。
       break;
+  }
+
+  // Emit only on freshness-state changes, never once per command or timer tick.
+  const double velocity_age = active_cmd ?
+    (now - (active_cmd->message ? active_cmd->stamp : mode_last_cmd_stamp_)).seconds() : 0.0;
+  const int velocity_state = !active_cmd ? 0 : !active_cmd->message ? 1 :
+    velocity_age <= cmd_vel_timeout_.seconds() ? 2 : 3;
+  if (velocity_state != logged_velocity_state_) {
+    const char * states[] = {"IDLE", "WAITING_FIRST", "FRESH", "STALE"};
+    RCLCPP_INFO(
+      get_logger(),
+      "[FSM] velocity=%s mode=%s age=%.3fs sequence=%llu stamp=%.6f output=%s",
+      states[velocity_state], navigationModeName(navigation_mode_), velocity_age,
+      static_cast<unsigned long long>(active_cmd ? active_cmd->sequence : 0),
+      active_cmd && active_cmd->message ? active_cmd->stamp.seconds() : 0.0,
+      velocity_state == 2 ? (publish_cmd ? "filtered_velocity" : "status_only") : "status_only");
+    logged_velocity_state_ = velocity_state;
   }
 
   if (active_cmd && active_cmd->message) {
@@ -544,6 +584,8 @@ void CollisionMonitor::controlLoopCallback()
     // 期间恢复速度可继续原任务；连续 idle_grace_period_（设计值 5 s）未更新才进入 IDLE。
     // 实际超时阈值由对应参数配置决定。
     if (age >= idle_grace_period_) {
+      RCLCPP_INFO(get_logger(), "[FSM] idle timeout: age=%.3fs limit=%.3fs",
+        age.seconds(), idle_grace_period_.seconds());
       enterIdle("no velocity after task");
     }
   }
@@ -553,6 +595,8 @@ void CollisionMonitor::controlLoopCallback()
   if (active_cmd && !active_cmd->message) {
     const rclcpp::Duration age = now - mode_last_cmd_stamp_;
     if (age >= idle_grace_period_) {
+      RCLCPP_INFO(get_logger(), "[FSM] first velocity timeout: age=%.3fs limit=%.3fs",
+        age.seconds(), idle_grace_period_.seconds());
       enterIdle("task did not produce velocity");
     }
   }
@@ -1090,8 +1134,8 @@ void CollisionMonitor::recordPathStopTiming(
     finish_time - start_time).count();
   constexpr std::int64_t slow_detection_threshold_ns = 10'000'000;
   if (elapsed_ns > slow_detection_threshold_ns) {
-    RCLCPP_WARN(
-      get_logger(), "Path-stop slow detection: elapsed=%.3f ms, threshold=10.000 ms",
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), throttle_clock_, 5000, "Path-stop slow detection: elapsed=%.3f ms, threshold=10.000 ms",
       elapsed_ns / 1.0e6);
   }
 
@@ -1342,8 +1386,8 @@ void CollisionMonitor::applyInternalFootprint(bool loaded)
   }
   publishPolygons();
   RCLCPP_INFO(
-    get_logger(), "%s internal footprint applied, points=%zu",
-    loaded ? "Loaded" : "Normal", footprint.points.size());
+    get_logger(), "[FSM] footprint applied: loaded=%d points=%zu costmap_publishers=%zu",
+    loaded, footprint.points.size(), costmap_footprint_pubs_.size());
 }
 
 void CollisionMonitor::applyNavigationPadding(NavigationMode mode)
@@ -1366,14 +1410,35 @@ void CollisionMonitor::applyNavigationPadding(NavigationMode mode)
   }
 }
 
+const char * CollisionMonitor::navigationModeName(NavigationMode mode)
+{
+  switch (mode) {
+    case NavigationMode::IDLE: return "IDLE";
+    case NavigationMode::AUTOMONOUS_NAVIGATION: return "AUTOMONOUS_NAVIGATION";
+    case NavigationMode::SCHEDULE_NAVIGATION: return "SCHEDULE_NAVIGATION";
+    case NavigationMode::SCHEDULE_EDGING: return "SCHEDULE_EDGING";
+  }
+  return "UNKNOWN";
+}
+
+void CollisionMonitor::changeNavigationMode(NavigationMode mode, const char * reason)
+{
+  if (navigation_mode_ == mode) {
+    return;
+  }
+  RCLCPP_INFO(
+    get_logger(), "[FSM] mode %s -> %s reason=%s loaded=%d corridor=%d",
+    navigationModeName(navigation_mode_), navigationModeName(mode), reason, loaded_mode_,
+    mode == NavigationMode::SCHEDULE_EDGING && path_stop_enabled_);
+  navigation_mode_ = mode;
+}
+
 void CollisionMonitor::enterIdle(const char * reason)
 {
-  if (navigation_mode_ != NavigationMode::IDLE) {
-    RCLCPP_INFO(get_logger(), "Navigation mode -> IDLE: %s", reason);
-  }
-  navigation_mode_ = NavigationMode::IDLE;
+  changeNavigationMode(NavigationMode::IDLE, reason);
   if (cmd_vel_out_pub_ && cmd_vel_out_pub_->is_activated()) {
     cmd_vel_out_pub_->publish(std::make_unique<geometry_msgs::msg::Twist>());
+    RCLCPP_INFO(get_logger(), "[FSM] idle zero published: reason=%s", reason);
   }
 }
 

@@ -293,6 +293,45 @@ TEST_F(Tester, testFootprintPublishedToBothCostmaps)
   cm_->stop();
 }
 
+TEST_F(Tester, testStateLogsDoNotRepeatForUnchangedInputs)
+{
+  setCommonParameters();
+  cm_->declare_parameter("cmd_vel_timeout", 0.02);
+  addPolygon("PolygonStop", POLYGON, 1.0, "stop");
+  setVectors({"PolygonStop"}, {});
+  cm_->startManualControlLoop();
+  testing::internal::CaptureStderr();
+  for (int i = 0; i < 100; ++i) {
+    cm_->receiveFreePath();
+    cm_->receiveFreeVelocity(0.4);
+    cm_->receiveScheduleVelocity(0.3);
+    cm_->runControlLoop();
+  }
+  std::this_thread::sleep_for(30ms);
+  for (int i = 0; i < 100; ++i) {
+    cm_->runControlLoop();
+  }
+  cm_->receiveFreeVelocity(0.4);
+  cm_->runControlLoop();
+  const auto logs = testing::internal::GetCapturedStderr();
+  const auto count = [&](const std::string & text) {
+      std::size_t total = 0;
+      for (auto pos = logs.find(text); pos != std::string::npos;
+        pos = logs.find(text, pos + text.size()))
+      {
+        ++total;
+      }
+      return total;
+    };
+  EXPECT_EQ(count("[FSM] type locked:"), 1u);
+  EXPECT_EQ(count("[FSM] ignoring inactive chain:"), 1u);
+  EXPECT_EQ(count("[FSM] mode IDLE -> AUTOMONOUS_NAVIGATION"), 1u);
+  EXPECT_EQ(count("[FSM] velocity=FRESH"), 2u);
+  EXPECT_EQ(count("[FSM] velocity=STALE"), 1u);
+  EXPECT_EQ(count("[FSM] idle zero published:"), 0u);
+  cm_->stop();
+}
+
 int main(int argc, char ** argv)
 {
   // Initialize the system
