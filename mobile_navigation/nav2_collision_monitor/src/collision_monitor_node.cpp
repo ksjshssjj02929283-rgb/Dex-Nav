@@ -793,8 +793,9 @@ void CollisionMonitor::process(
   // Points array collected from different data sources in a robot base frame
   std::vector<Point> collision_points;
 
-  // Fill collision_points array from different data sources
-  for (std::shared_ptr<Source> source : sources_) {
+  // Each source takes an atomic snapshot of its latest immutable message.
+  // Point conversion runs outside cache synchronization; this local vector has one writer.
+  for (const auto & source : sources_) {
     source->getData(curr_time, collision_points);
   }
 

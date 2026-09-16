@@ -16,6 +16,7 @@
 
 #include <cmath>
 #include <functional>
+#include <utility>
 
 namespace nav2_collision_monitor
 {
@@ -65,12 +66,15 @@ void Scan::getData(
   const rclcpp::Time & curr_time,
   std::vector<Point> & data) const
 {
+  // Keep one immutable message alive throughout TF lookup and point conversion.
+  const auto snapshot = std::atomic_load(&data_);
+
   // Ignore data from the source if it is not being published yet or
   // not being published for a long time
-  if (data_ == nullptr) {
+  if (snapshot == nullptr) {
     return;
   }
-  if (!sourceValid(data_->header.stamp, curr_time)) {
+  if (!sourceValid(snapshot->header.stamp, curr_time)) {
     return;
   }
 
@@ -80,7 +84,7 @@ void Scan::getData(
     // to the base frame and current time
     if (
       !nav2_util::getTransform(
-        data_->header.frame_id, data_->header.stamp,
+        snapshot->header.frame_id, snapshot->header.stamp,
         base_frame_id_, curr_time, global_frame_id_,
         transform_tolerance_, tf_buffer_, tf_transform))
     {
@@ -92,7 +96,7 @@ void Scan::getData(
     // frames.
     if (
       !nav2_util::getTransform(
-        data_->header.frame_id, base_frame_id_,
+        snapshot->header.frame_id, base_frame_id_,
         transform_tolerance_, tf_buffer_, tf_transform))
     {
       return;
@@ -100,26 +104,26 @@ void Scan::getData(
   }
 
   // Calculate poses and refill data array
-  float angle = data_->angle_min;
-  for (size_t i = 0; i < data_->ranges.size(); i++) {
-    if (data_->ranges[i] >= data_->range_min && data_->ranges[i] <= data_->range_max) {
+  float angle = snapshot->angle_min;
+  for (size_t i = 0; i < snapshot->ranges.size(); i++) {
+    if (snapshot->ranges[i] >= snapshot->range_min && snapshot->ranges[i] <= snapshot->range_max) {
       // Transform point coordinates from source frame -> to base frame
       tf2::Vector3 p_v3_s(
-        data_->ranges[i] * std::cos(angle),
-        data_->ranges[i] * std::sin(angle),
+        snapshot->ranges[i] * std::cos(angle),
+        snapshot->ranges[i] * std::sin(angle),
         0.0);
       tf2::Vector3 p_v3_b = tf_transform * p_v3_s;
 
       // Refill data array
       data.push_back({p_v3_b.x(), p_v3_b.y()});
     }
-    angle += data_->angle_increment;
+    angle += snapshot->angle_increment;
   }
 }
 
 void Scan::dataCallback(sensor_msgs::msg::LaserScan::ConstSharedPtr msg)
 {
-  data_ = msg;
+  std::atomic_store(&data_, std::move(msg));
 }
 
 }  // namespace nav2_collision_monitor
