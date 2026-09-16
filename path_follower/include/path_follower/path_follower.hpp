@@ -145,11 +145,33 @@ namespace path_follower
         double obstacleStatusAge() const;
 
         /// 把 [block_begin, now] 这段"执行器被同步等待独占、自己的订阅回调压根跑不到"的
-        /// 窗口从障碍状态看门狗的时间轴上剪掉（三个状态时间戳整体后移该时长），避免自阻塞
-        /// 被误判成障碍检测链路静默。必须在阻塞结束、回到事件循环之前调用。详见实现处注释。
-        /// reason 仅用于日志。
-        void excludeBlockedWindowFromObstacleWatchdog(
+        /// 窗口从各看门狗的时间轴上剪掉（相关时间戳整体后移该时长），避免自阻塞被误判成
+        /// 链路静默。覆盖障碍状态看门狗与 odom 接收年龄看门狗——两者基准都是"本地接收
+        /// 时刻"，自阻塞对它们的污染方式完全一样。
+        /// 必须在阻塞结束、回到事件循环之前调用。详见实现处注释。reason 仅用于日志。
+        void excludeBlockedWindowFromWatchdogs(
             const rclcpp::Time& block_begin, const char* reason);
+
+        /// odom 接收年龄看门狗（控制环每帧第一件事）。
+        ///
+        /// 判的是"距上一帧 odom 到达已经过去多久"，而不是相邻两帧的间隔——间隔只有等下一帧
+        /// 真正到达才算得出来，那时车已经用过期位姿跑完了整个盲区，是事后补救而非拦截。
+        ///
+        /// 超限时不进 getCurrentState / PID / 坐标变换（位姿本来就过期了，拿它纠偏只会算出
+        /// 错误的修正量），而是把上一帧真正发出去的**车体系**指令按两阶段步进模型等比衰减：
+        /// 方向与转弯半径保持不变，模长按可用减速度收敛到 0。等比缩放而不是各维独立衰减，
+        /// 是因为全向底盘直线运动时 vy 可能才是主分量，单独归零会让车横向甩一下。
+        ///
+        /// @return true 表示本帧已处理完毕（已发指令），控制环应直接返回
+        bool guardOdomStale();
+
+        /// 查 path_frame -> odom_frame 变换（定位跳变判据的旁路输入）。
+        /// 与主路取位姿的 path_frame -> base_link 查询相互独立：判据支路将来整体摘除时，
+        /// 主路一行都不用动。
+        /// @param[out] map_odom 查得的变换（失败时其值无意义）
+        /// @param[out] stamp 该变换的时间戳，用于定位链路静默看门狗
+        /// @return 本帧是否查到
+        bool lookupMapToOdom(Pose2D& map_odom, rclcpp::Time& stamp);
 
         // ---------------- 控制环子步骤 ----------------
         /// 从最新里程计/TF 取位姿/速度（线程安全）。
@@ -166,35 +188,45 @@ namespace path_follower
         /// propagateFromAnchor 的末端定位切换特化：锚定对取 odom_anchor_*。
         Pose2D applyOdomAnchor(const Pose2D& odom_now) const;
 
-        /// 定位跳变兜底：比对 TF 位姿与 odom 递推位姿，决定本帧交给控制的位姿。
+        /// 定位跳变兜底：判定 map 定位是否发生跳变，并决定本帧交给控制的位姿。
         ///
-        /// 正常时每帧滚动刷新锚定对并直接返回 map 位姿；一旦两者偏差超过阈值，判定 map 定位
-        /// 发生跳变，冻结跳变前那一帧的锚定对并改用 odom 递推位姿，使控制输入保持连续
-        /// （跳变不会污染 last_index_ / 航向误差 / 横向折叠 / 到点判定）。此后分两级：
-        ///   一级：冻结窗口 hold_duration（车照常走）。窗口内不做任何判定、也不续期，
-        ///         到期判一次——恢复则交还 map，全程对速度无影响；
-        ///   二级：未恢复则升级为强制停车等待 stop_wait_duration（控制环只发 0 速）。
-        ///         等满为止，期间恢复与否一概不管；等满后判一次——恢复则置
-        ///         jump_resume_pending_ 让控制环走 kResume 复速，否则置 jump_abort_pending_
-        ///         判导航失败。
+        /// 判据（旁路）——把 map->odom 的变化量投影到车当前位置：
+        ///   pose_cur = T_cur * odom_pose , pose_ref = T_ref * odom_pose
+        ///   disagree = hypot(位置差, 归一化朝向差) > threshold  =>  跳变
+        /// 两项乘的是**同一帧 odom**，车的真实运动被完全抵消（T_cur==T_ref 时 disagree 恒为 0，
+        /// 无论车在哪、跑多快），odom 话题的传输延迟同样被完全抵消——这正是换掉"TF 位姿 vs
+        /// odom 递推位姿"老判据的原因：那两项分别走 TF 树和 /odom 话题两条独立通路，话题堵
+        /// 200ms 就会凭空造出 v*0.2 的假偏差，0.35m/s 下恰好顶穿 0.07 阈值。
         ///
-        /// 二级窗口敢开到几十秒，前提是车已经停住：odom 增量归零后递推位姿退化成"跳变前
-        /// 的那个固定点"，等待期内不再累积递推漂移，恢复判据不会因为等得久而失效。
+        /// 位置与朝向都要判、且同权合成（1 rad 记作 1 m）：投影项 (R(dphi)-I)*p 只覆盖"旋转
+        /// 导致的位置跳变"，车恰好在 odom 原点附近时 ||p||~0，纯旋转跳变的位移趋近于 0，
+        /// 位置分量看不见——而朝向确实跳了，它会直接进 delta_theta 前馈和航向对准。
+        /// 朝向差必须先归一化到 (-pi, pi]：两个估计各自累积，完全可能一个 +3.13 一个 -3.13，
+        /// 裸相减得到 6.26 的假跳变。
         ///
-        /// 判据用"两个独立估计之差"而非"相邻两帧 map 位姿之差"：前者把车的真实运动抵消掉了，
-        /// 因此不依赖控制周期、不依赖最大速度，控制环抖动也不会误判。
-        /// 偏差 = hypot(位置差, 归一化朝向差)，位置与朝向同权；朝向差必须先归一化到 (-pi, pi]。
+        /// 位姿（主路）——正常时每帧滚动刷新锚定对并直接返回 map 位姿；一旦判定跳变，冻结
+        /// 跳变前那一帧的锚定对并改用 odom 递推位姿，使控制输入保持连续（跳变不会污染
+        /// last_index_ / 航向误差 / 横向折叠 / 到点判定）。递推位姿刻意取自主路锚定对而不是
+        /// 旁路的 T_ref：两者来源不同（TF 插值 vs odom 话题），混用会在交还时多叠一层来源差。
+        /// 两套基准在同一帧一起刷新、一起冻结。
         ///
-        /// @param map_pose TF 查得的 map 位姿；have_map_pose=false 时其值无意义
-        /// @param have_map_pose 本帧 TF 是否可用（冻结期内 TF 失败可容忍，继续递推）
+        /// 触发后直接进强制停车等待 stop_wait_duration（控制环只发 0 速），不设一级冻结窗口：
+        /// 那个窗口原本是为了给老判据争取"等车停稳再判"的时间（递推项在刹车过程中持续累积
+        /// 漂移，判据不可信），新判据与车动不动无关，从触发那一刻起就一直有效。
+        /// 等满为止，期间恢复与否一概不管——刻意不做提前退出，避免"刚停下就走、走两步又跳"
+        /// 的反复横跳，也让上层看到的行为是确定的。等满后判一次：恢复则置 jump_resume_pending_
+        /// 让控制环走 kResume 复速，否则置 jump_abort_pending_ 判导航失败。
+        ///
+        /// @param map_pose 主路 TF 查得的 map 位姿；have_map_pose=false 时其值无意义
+        /// @param have_map_pose 本帧主路 TF 是否可用（可用递推撑住若干帧，见 tf_fail_count_）
         /// @param odom_pose 当前 odom 位姿
         /// @return 本帧供控制使用的位姿
         Pose2D guardLocalizationJump(
             const Pose2D& map_pose, bool have_map_pose, const Pose2D& odom_pose);
 
         /// 清空定位跳变兜底状态（新路线、stop 服务、以及切到不经过 TF 的取位姿分支时）。
-        /// 必须清 jump_hold_active_/jump_stop_active_：否则下次回到 TF 分支时会带着上次的
-        /// 截止时刻，可能立刻撞上判定点而误判导航失败。
+        /// 必须清 jump_stop_active_：否则下次回到 TF 分支时会带着上次的截止时刻，
+        /// 可能立刻撞上判定点而误判导航失败。
         void resetLocalizationJumpGuard();
 
         /// 窗口搜索最近点索引（禁后退）。
@@ -419,8 +451,17 @@ namespace path_follower
 
         mutable std::mutex odom_mutex_;
         nav_msgs::msg::Odometry latest_odom_;
-        rclcpp::Time last_odom_time_;
+        rclcpp::Time last_odom_time_;   // 上一帧 odom 的本地接收时刻（年龄看门狗基准）
+        rclcpp::Time last_odom_stamp_;  // 上一帧 odom 的 msg->header.stamp（诊断用）
         bool have_odom_{false};
+        // odom 接收年龄超限而正在强制停车。必须是独立标志，不能只看 vel_track_mode_==kStop
+        // ——那个也可能是障碍触发的，混用会把障碍停车错误地当成 odom 恢复而提前复速。
+        bool odom_stale_stop_active_{false};
+        // 强制停车截止时刻，触发那一帧设定，之后不续期。复速要求"窗口已满"且"odom 已新鲜"。
+        rclcpp::Time odom_stale_stop_deadline_;
+        // 上一帧真正发布出去的车体系指令。odom 卡顿时的平滑刹停要从它等比衰减，
+        // 因为那条路径上没有位姿、做不了轨迹系->车体系的旋转。
+        Velocity last_published_cmd_{};
 
         rclcpp::Time last_path_time_;
         std::chrono::steady_clock::time_point last_control_update_time_;
@@ -433,24 +474,41 @@ namespace path_follower
         Pose2D odom_anchor_odom_pose_{}; // 切换时刻的 odom 位姿
 
         // 定位跳变兜底状态（同样只在控制环内使用；随每条新路线重置）。
-        bool jump_anchor_valid_{false};   // 滚动锚定对是否已建立
-        Pose2D jump_anchor_map_pose_{};   // 锚定时刻的 map(TF) 位姿
-        Pose2D jump_anchor_odom_pose_{};  // 锚定时刻的 odom 位姿
-        bool jump_hold_active_{false};    // 是否处于跳变冻结窗口（用 odom 递推，车照常走）
-        rclcpp::Time jump_hold_start_;    // 本次冻结的起始时刻，仅用于日志
-        rclcpp::Time jump_hold_deadline_; // 冻结窗口截止时刻，到期做唯一一次判定（不续期）
+        // 两套基准，同一帧一起刷新、一起冻结：
+        //   旁路 jump_ref_map_odom_ 只参与判据；主路锚定对只参与位姿递推。
+        bool jump_ref_valid_{false};      // 两套基准是否已建立
+        Pose2D jump_ref_map_odom_{};      // 基准时刻的 path_frame->odom 变换（判据用）
+        Pose2D jump_anchor_map_pose_{};   // 基准时刻的 map(TF) 位姿（递推用）
+        Pose2D jump_anchor_odom_pose_{};  // 基准时刻的 odom 位姿（递推用）
+        rclcpp::Time last_map_odom_stamp_; // 最近一次查到的 map->odom 变换时间戳（静默看门狗）
         bool jump_stop_active_{false};    // 是否处于跳变强制停车等待期（控制环只发 0 速）
         rclcpp::Time jump_stop_deadline_; // 强制停车的截止时刻，等满为止，期间不提前退出
+        // 主路 TF 连续失败帧数。5ms 超时下偶发失败是常态，靠锚定对递推撑住几帧即可，
+        // 撑久了递推会漂，所以超过上限仍按原有行为放弃本帧。
+        int tf_fail_count_{0};
         // 下面两个是跨函数的一次性事件，由 guardLocalizationJump 置位、控制环消费。
         // 之所以不在 guardLocalizationJump 里就地处理：它跑在取位姿的路径上，而
         // buildAndLoadRoute 也会调 getCurrentState，在那里反手去动 route_ 锁序上不安全。
         bool jump_abort_pending_{false};  // 停车等满仍未恢复 -> 判导航失败
         bool jump_resume_pending_{false}; // 停车等满且已恢复 -> 控制环走 kResume 复速
 
-        bool enable_localization_jump_recovery_{true};      // 功能总开关
-        double localization_jump_threshold_{0.05};          // 跳变判据 m，恢复判据复用同一阈值
-        double localization_jump_hold_duration_{0.1};       // 冻结窗口时长 s（期间车照常走）
+        bool enable_localization_jump_recovery_{true};      // 功能总开关（关闭=完全恢复原行为）
+        double localization_jump_threshold_{0.07};          // 跳变判据 m
+        // 恢复判据相对触发判据的放宽倍数。小范围跳变多半是系统噪声，等满窗口后允许继续走。
+        // 约束：threshold * recover_scale <= track_deviation_limit_——恢复时控制位姿从递推值
+        // 切回 map 位姿，台阶就等于 disagree，会原样进 checkTrackDeviation。超出的话落在
+        // 两者之间的跳变会"判恢复之后下一帧被跟踪偏差打掉"，等于换了种方式失败。
+        double localization_jump_recover_scale_{2.0};
         double localization_jump_stop_wait_duration_{30.0}; // 强制停车等待时长 s
+        double map_to_odom_timeout_{1.0};                   // map->odom 静默告警阈值 s，<=0 关闭
+        int max_tf_fallback_frames_{5};                     // 主路 TF 连续失败时允许递推撑住的帧数
+
+        // odom 接收看门狗。停车与日志用两个阈值：想只看诊断不改变车的运动时，
+        // 把 odom_stale_stop_timeout 设 0 关掉停车、留着日志即可。
+        double odom_stale_stop_timeout_{0.2};       // 接收年龄超过该值触发强制停车 s，<=0 关闭
+        double odom_stale_stop_hold_duration_{5.0}; // 强制停车最短保持时长 s
+        double odom_gap_log_threshold_{0.2};        // 相邻两帧接收间隔超过该值打印诊断 s，<=0 关闭
+        double tf_lookup_timeout_{0.005};      // TF lookup 等待上限 s
     };
 } // namespace path_follower
 

@@ -247,8 +247,11 @@ namespace path_follower
         last_obstacle_stop_time_ = get_clock()->now();
         last_obstacle_slowdown_time_ = last_obstacle_stop_time_;
         last_obstacle_status_time_ = last_obstacle_stop_time_;
-        jump_hold_start_ = last_obstacle_stop_time_;
-        jump_hold_deadline_ = last_obstacle_stop_time_;
+        jump_stop_deadline_ = last_obstacle_stop_time_;
+        last_map_odom_stamp_ = last_obstacle_stop_time_;
+        last_odom_time_ = last_obstacle_stop_time_;
+        last_odom_stamp_ = last_obstacle_stop_time_;
+        odom_stale_stop_deadline_ = last_obstacle_stop_time_;
 
         path_sub_ = create_subscription<nav_msgs::msg::Path>(
             path_topic_, rclcpp::QoS(1),
@@ -352,15 +355,24 @@ namespace path_follower
         end_localization_switch_distance_ = declare_parameter<double>("end_localization_switch_distance", 0.1);
         end_localization_switch_angle_ = declare_parameter<double>("end_localization_switch_angle", 0.15);
 
-        // 定位跳变兜底：map 位姿相对 odom 递推位姿突变时，改用 odom 递推位姿供控制使用。
+        // 定位跳变兜底：map->odom 变化投影到车当前位置超阈值时判跳变，改用 odom 递推位姿供控制使用。
         enable_localization_jump_recovery_ =
             declare_parameter<bool>("enable_localization_jump_recovery", true);
         localization_jump_threshold_ =
-            declare_parameter<double>("localization_jump_threshold", 0.05);
-        localization_jump_hold_duration_ =
-            declare_parameter<double>("localization_jump_hold_duration", 0.1);
+            declare_parameter<double>("localization_jump_threshold", 0.07);
+        localization_jump_recover_scale_ =
+            declare_parameter<double>("localization_jump_recover_scale", 2.0);
         localization_jump_stop_wait_duration_ =
             declare_parameter<double>("localization_jump_stop_wait_duration", 30.0);
+        map_to_odom_timeout_ = declare_parameter<double>("map_to_odom_timeout", 1.0);
+        max_tf_fallback_frames_ = declare_parameter<int>("max_tf_fallback_frames", 5);
+        tf_lookup_timeout_ = declare_parameter<double>("tf_lookup_timeout", 0.005);
+
+        // odom 接收看门狗（DDS 阻塞检测）
+        odom_stale_stop_timeout_ = declare_parameter<double>("odom_stale_stop_timeout", 0.2);
+        odom_stale_stop_hold_duration_ =
+            declare_parameter<double>("odom_stale_stop_hold_duration", 5.0);
+        odom_gap_log_threshold_ = declare_parameter<double>("odom_gap_log_threshold", 0.2);
 
         // 速度规划（Ruckig jerk 限制曲线，路径下发时一次性整段规划）
         planner_params_.max_linear_velocity = declare_parameter<double>("max_linear_velocity", 1.2);
@@ -604,10 +616,26 @@ namespace path_follower
             }
         }
 
+        // add_on_set_parameters_callback 在参数真正提交**之前**被调用（它的职责是校验），
+        // 此时 get_parameter() 拿到的仍然是旧值。直接拿它刷新缓存会让每次在线调参都滞后
+        // 一拍：本次改动读不到，要等下一次任意参数变更才生效（实测 param set 把阈值改了，
+        // 节点里用的还是上上次的值）。所以优先从本次传入的 parameters 里取新值。
+        const auto pval = [&parameters, this](const std::string& name) -> rclcpp::Parameter
+        {
+            for (const auto& p : parameters)
+            {
+                if (p.get_name() == name)
+                {
+                    return p;
+                }
+            }
+            return get_parameter(name);
+        };
+
         // 重新加载增益表与规划参数
         auto read_gain = [&](const std::string& name, std::array<double, kGainLevelCount>& arr)
         {
-            const auto v = get_parameter(name).as_double_array();
+            const auto v = pval(name).as_double_array();
             for (std::size_t i = 0; i < kGainLevelCount && i < v.size(); ++i) arr[i] = v[i];
         };
         read_gain("kp_x", x_gains_.kp);
@@ -619,59 +647,65 @@ namespace path_follower
         read_gain("kp_theta", theta_gains_.kp);
         read_gain("ki_theta", theta_gains_.ki);
         read_gain("kd_theta", theta_gains_.kd);
-        max_correct_vy_ = get_parameter("max_correct_vy").as_double();
-        max_correct_w_ = get_parameter("max_correct_w").as_double();
-        max_percentage_vy_to_vx_ = get_parameter("max_percentage_vy_to_vx").as_double();
-        diff_lateral_gain_ = get_parameter("diff_lateral_gain").as_double();
-        kp_heading_ = get_parameter("kp_heading").as_double();
-        enable_heading_lock_ = get_parameter("enable_heading_lock").as_bool();
-        heading_lock_distance_ = get_parameter("heading_lock_distance").as_double();
-        enable_path_truncate_ = get_parameter("enable_path_truncate").as_bool();
-        enable_track_deviation_check_ = get_parameter("enable_track_deviation_check").as_bool();
-        track_deviation_limit_ = get_parameter("track_deviation_limit").as_double();
-        enable_reverse_ = get_parameter("enable_reverse").as_bool();
-        enable_steer_range_analysis_ = get_parameter("enable_steer_range_analysis").as_bool();
-        experimental_steer_limit_deg_ = get_parameter("experimental_steer_limit_deg").as_double();
-        end_localization_switch_distance_ = get_parameter("end_localization_switch_distance").as_double();
-        end_localization_switch_angle_ = get_parameter("end_localization_switch_angle").as_double();
-        enable_localization_jump_recovery_ = get_parameter("enable_localization_jump_recovery").as_bool();
-        localization_jump_threshold_ = get_parameter("localization_jump_threshold").as_double();
-        localization_jump_hold_duration_ = get_parameter("localization_jump_hold_duration").as_double();
+        max_correct_vy_ = pval("max_correct_vy").as_double();
+        max_correct_w_ = pval("max_correct_w").as_double();
+        max_percentage_vy_to_vx_ = pval("max_percentage_vy_to_vx").as_double();
+        diff_lateral_gain_ = pval("diff_lateral_gain").as_double();
+        kp_heading_ = pval("kp_heading").as_double();
+        enable_heading_lock_ = pval("enable_heading_lock").as_bool();
+        heading_lock_distance_ = pval("heading_lock_distance").as_double();
+        enable_path_truncate_ = pval("enable_path_truncate").as_bool();
+        enable_track_deviation_check_ = pval("enable_track_deviation_check").as_bool();
+        track_deviation_limit_ = pval("track_deviation_limit").as_double();
+        enable_reverse_ = pval("enable_reverse").as_bool();
+        enable_steer_range_analysis_ = pval("enable_steer_range_analysis").as_bool();
+        experimental_steer_limit_deg_ = pval("experimental_steer_limit_deg").as_double();
+        end_localization_switch_distance_ = pval("end_localization_switch_distance").as_double();
+        end_localization_switch_angle_ = pval("end_localization_switch_angle").as_double();
+        enable_localization_jump_recovery_ = pval("enable_localization_jump_recovery").as_bool();
+        localization_jump_threshold_ = pval("localization_jump_threshold").as_double();
+        localization_jump_recover_scale_ = pval("localization_jump_recover_scale").as_double();
         localization_jump_stop_wait_duration_ =
-            get_parameter("localization_jump_stop_wait_duration").as_double();
-        linear_accel_decay_time_ = get_parameter("linear_accel_decay_time").as_double();
-        angular_accel_decay_time_ = get_parameter("angular_accel_decay_time").as_double();
-        resume_converge_linear_velocity_ = get_parameter("resume_converge_linear_velocity").as_double();
-        slowdown_decel_scale_ = get_parameter("slowdown_decel_scale").as_double();
-        stop_decel_scale_ = get_parameter("stop_decel_scale").as_double();
-        obstacle_status_timeout_ = get_parameter("obstacle_status_timeout").as_double();
+            pval("localization_jump_stop_wait_duration").as_double();
+        map_to_odom_timeout_ = pval("map_to_odom_timeout").as_double();
+        max_tf_fallback_frames_ = pval("max_tf_fallback_frames").as_int();
+        tf_lookup_timeout_ = pval("tf_lookup_timeout").as_double();
+        odom_stale_stop_timeout_ = pval("odom_stale_stop_timeout").as_double();
+        odom_stale_stop_hold_duration_ = pval("odom_stale_stop_hold_duration").as_double();
+        odom_gap_log_threshold_ = pval("odom_gap_log_threshold").as_double();
+        linear_accel_decay_time_ = pval("linear_accel_decay_time").as_double();
+        angular_accel_decay_time_ = pval("angular_accel_decay_time").as_double();
+        resume_converge_linear_velocity_ = pval("resume_converge_linear_velocity").as_double();
+        slowdown_decel_scale_ = pval("slowdown_decel_scale").as_double();
+        stop_decel_scale_ = pval("stop_decel_scale").as_double();
+        obstacle_status_timeout_ = pval("obstacle_status_timeout").as_double();
 
-        const auto levels = get_parameter("vel_levels").as_double_array();
+        const auto levels = pval("vel_levels").as_double_array();
         for (std::size_t i = 0; i < kGainLevelCount && i < levels.size(); ++i) vel_levels_[i] = levels[i];
 
         applyPidConfig();
         if (planner_changed)
         {
-            planner_params_.max_linear_velocity = get_parameter("max_linear_velocity").as_double();
-            planner_params_.max_linear_acceleration = get_parameter("max_linear_acceleration").as_double();
-            planner_params_.max_linear_deceleration = get_parameter("max_linear_deceleration").as_double();
-            planner_params_.max_linear_jerk = get_parameter("max_linear_jerk").as_double();
-            planner_params_.max_angular_velocity = get_parameter("max_angular_velocity").as_double();
-            planner_params_.max_angular_acceleration = get_parameter("max_angular_acceleration").as_double();
-            planner_params_.max_angular_deceleration = get_parameter("max_angular_deceleration").as_double();
-            planner_params_.max_angular_jerk = get_parameter("max_angular_jerk").as_double();
-            planner_params_.min_linear_velocity = get_parameter("min_linear_velocity").as_double();
-            planner_params_.min_angular_velocity = get_parameter("min_angular_velocity").as_double();
-            planner_params_.ruckig_control_dt = get_parameter("ruckig_control_dt").as_double();
-            planner_params_.curvature_deceleration = get_parameter("curvature_deceleration").as_bool();
-            planner_params_.curvature_dec_gain = get_parameter("curvature_dec_gain").as_double();
-            planner_params_.curvature_dec_ratio_min = get_parameter("curvature_dec_ratio_min").as_double();
-            planner_params_.acceleration_envelope = get_parameter("acceleration_envelope").as_bool();
+            planner_params_.max_linear_velocity = pval("max_linear_velocity").as_double();
+            planner_params_.max_linear_acceleration = pval("max_linear_acceleration").as_double();
+            planner_params_.max_linear_deceleration = pval("max_linear_deceleration").as_double();
+            planner_params_.max_linear_jerk = pval("max_linear_jerk").as_double();
+            planner_params_.max_angular_velocity = pval("max_angular_velocity").as_double();
+            planner_params_.max_angular_acceleration = pval("max_angular_acceleration").as_double();
+            planner_params_.max_angular_deceleration = pval("max_angular_deceleration").as_double();
+            planner_params_.max_angular_jerk = pval("max_angular_jerk").as_double();
+            planner_params_.min_linear_velocity = pval("min_linear_velocity").as_double();
+            planner_params_.min_angular_velocity = pval("min_angular_velocity").as_double();
+            planner_params_.ruckig_control_dt = pval("ruckig_control_dt").as_double();
+            planner_params_.curvature_deceleration = pval("curvature_deceleration").as_bool();
+            planner_params_.curvature_dec_gain = pval("curvature_dec_gain").as_double();
+            planner_params_.curvature_dec_ratio_min = pval("curvature_dec_ratio_min").as_double();
+            planner_params_.acceleration_envelope = pval("acceleration_envelope").as_bool();
             planner_params_.velocity_profile_mode =
-                get_parameter("velocity_profile_mode").as_string();
+                pval("velocity_profile_mode").as_string();
             planner_params_.angular_accel_margin =
-                get_parameter("angular_accel_margin").as_double();
-            planner_params_.angle_resolution = get_parameter("angle_resolution").as_double();
+                pval("angular_accel_margin").as_double();
+            planner_params_.angle_resolution = pval("angle_resolution").as_double();
             velocity_planner_.setParams(planner_params_);
         }
 
@@ -934,6 +968,8 @@ namespace path_follower
         odom_anchor_active_ = false;
         // 定位跳变兜底同理：滚动锚定/冻结计时都不应跨路线沿用。
         resetLocalizationJumpGuard();
+        // odom 强制停车状态同理：换了新路线就重新计时，否则会带着上一条路线的截止时刻。
+        odom_stale_stop_active_ = false;
 
         // 起点朝向 = 当前车在参考坐标系（map/odom）下的实时朝向。
         // allow_localization_switch=false：此处仅为取新路线起点朝向，route_ 还是旧路线，
@@ -1096,7 +1132,7 @@ namespace path_follower
                             // 超时/被拒绝/执行失败都视为本次移动失败，直接报 FAILED 并终止本次路由加载。
                             // 同步等待期间本节点的单线程执行器被独占（spin 的是 steer_helper_node_），
                             // 自己的订阅回调一次都执行不到，需要记录这段被独占的时长，等待结束后从
-                            // 障碍状态看门狗里扣掉，见下方 excludeBlockedWindowFromObstacleWatchdog。
+                            // 看门狗里扣掉，见下方 excludeBlockedWindowFromWatchdogs。
                             const rclcpp::Time steer_block_begin = now();
                             const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
                             auto remaining = [&deadline]() {
@@ -1146,8 +1182,8 @@ namespace path_follower
 
                             // 预摆窗口不计入看门狗：上面所有分支（成功/超时/被拒/失败）都汇到这里，
                             // 统一在此扣除，避免遗漏某条退出路径。
-                            excludeBlockedWindowFromObstacleWatchdog(steer_block_begin,
-                                                                     "steering pre-rotate");
+                            excludeBlockedWindowFromWatchdogs(steer_block_begin,
+                                                             "steering pre-rotate");
 
                             if (!steer_fail_reason.empty())
                             {
@@ -1232,9 +1268,38 @@ namespace path_follower
 
     void PathFollowerNode::onOdom(const nav_msgs::msg::Odometry::SharedPtr msg)
     {
+        const rclcpp::Time recv_time = now();
+        // 显式带上节点时钟的 clock type：默认构造出来的是 RCL_ROS_TIME，与 now() 不一致时相减会抛。
+        const rclcpp::Time msg_stamp(msg->header.stamp, recv_time.get_clock_type());
+
         std::lock_guard<std::mutex> lock(odom_mutex_);
+
+        // 相邻两帧的接收间隔诊断。这里是唯一能同时拿到"上一帧与当前帧 msg 时间戳"的地方
+        // ——控制环里的年龄看门狗触发时当前帧压根还没到，只能打上一帧。两处日志分工互补。
+        if (have_odom_ && odom_gap_log_threshold_ > 0.0)
+        {
+            const double recv_dt = (recv_time - last_odom_time_).seconds();
+            if (recv_dt > odom_gap_log_threshold_)
+            {
+                const double stamp_dt = (msg_stamp - last_odom_stamp_).seconds();
+                const double latency = (recv_time - msg_stamp).seconds();
+                // 三个量组合才能把病因分开：
+                //   stamp_dt 也大            -> 发布端自己卡了，是里程计模块的问题；
+                //   stamp_dt 正常而 recv_dt 大 -> 传输/执行器阻塞，消息在 DDS 队列里积压；
+                //   latency 持续偏大          -> 吞吐跟不上，而不是偶发卡顿；
+                //   1 次大间隔后紧跟几帧 ~0   -> 本节点自阻塞，积压帧被连续派发（见
+                //                               excludeBlockedWindowFromWatchdogs）。
+                RCLCPP_ERROR(get_logger(),
+                             "[odom-gap] recv_dt=%.3fs > %.3fs (stamp_dt=%.3fs latency=%.3fs): "
+                             "prev_stamp=%.6f cur_stamp=%.6f",
+                             recv_dt, odom_gap_log_threshold_, stamp_dt, latency,
+                             last_odom_stamp_.seconds(), msg_stamp.seconds());
+            }
+        }
+
         latest_odom_ = *msg;
-        last_odom_time_ = now();
+        last_odom_time_ = recv_time;
+        last_odom_stamp_ = msg_stamp;
         have_odom_ = true;
     }
 
@@ -1259,7 +1324,7 @@ namespace path_follower
         }
     }
 
-    void PathFollowerNode::excludeBlockedWindowFromObstacleWatchdog(
+    void PathFollowerNode::excludeBlockedWindowFromWatchdogs(
         const rclcpp::Time& block_begin, const char* reason)
     {
         // 本节点是单线程执行器（main 里 rclcpp::spin(node)），一旦在某个回调里同步等待，
@@ -1281,14 +1346,27 @@ namespace path_follower
         }
         const rclcpp::Duration blocked = block_end - block_begin;
 
-        std::lock_guard<std::mutex> lock(obstacle_status_mutex_);
-        // 阻塞期间回调跑不了，这三个时间戳必然都 <= block_begin，后移之后不会越过 now()。
-        last_obstacle_status_time_ = last_obstacle_status_time_ + blocked;
-        last_obstacle_stop_time_ = last_obstacle_stop_time_ + blocked;
-        last_obstacle_slowdown_time_ = last_obstacle_slowdown_time_ + blocked;
+        {
+            std::lock_guard<std::mutex> lock(obstacle_status_mutex_);
+            // 阻塞期间回调跑不了，这三个时间戳必然都 <= block_begin，后移之后不会越过 now()。
+            last_obstacle_status_time_ = last_obstacle_status_time_ + blocked;
+            last_obstacle_stop_time_ = last_obstacle_stop_time_ + blocked;
+            last_obstacle_slowdown_time_ = last_obstacle_slowdown_time_ + blocked;
+        }
+
+        {
+            // odom 接收年龄看门狗同理：基准也是"本地接收时刻"，自阻塞期间 onOdom 一次都跑不到，
+            // 不剪窗的话阻塞一解除，控制定时器第一拍就会拿着旧时间戳判 stale 并刹停——而积压的
+            // odom 就排在这一拍后面。两个锁分开加，不嵌套。
+            std::lock_guard<std::mutex> lock(odom_mutex_);
+            if (have_odom_)
+            {
+                last_odom_time_ = last_odom_time_ + blocked;
+            }
+        }
 
         RCLCPP_INFO(get_logger(),
-                    "Obstacle watchdog: excluded %.3fs blocked window (%s) from staleness.",
+                    "Watchdogs: excluded %.3fs blocked window (%s) from staleness.",
                     blocked.seconds(), reason);
     }
 
@@ -1555,11 +1633,33 @@ namespace path_follower
 
     void PathFollowerNode::resetLocalizationJumpGuard()
     {
-        jump_anchor_valid_ = false;
-        jump_hold_active_ = false;
+        jump_ref_valid_ = false;
         jump_stop_active_ = false;
         jump_abort_pending_ = false;
         jump_resume_pending_ = false;
+        tf_fail_count_ = 0;
+    }
+
+    bool PathFollowerNode::lookupMapToOdom(Pose2D& map_odom, rclcpp::Time& stamp)
+    {
+        try
+        {
+            const auto tf = tf_buffer_->lookupTransform(
+                path_frame_, odom_frame_, tf2::TimePointZero,
+                tf2::durationFromSec(tf_lookup_timeout_));
+            map_odom.x = tf.transform.translation.x;
+            map_odom.y = tf.transform.translation.y;
+            map_odom.theta = yawFromQuaternion(tf.transform.rotation);
+            stamp = rclcpp::Time(tf.header.stamp, now().get_clock_type());
+            return true;
+        }
+        catch (const tf2::TransformException& ex)
+        {
+            RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
+                                 "[loc-jump] TF lookup %s->%s failed: %s",
+                                 path_frame_.c_str(), odom_frame_.c_str(), ex.what());
+            return false;
+        }
     }
 
     Pose2D PathFollowerNode::guardLocalizationJump(
@@ -1567,141 +1667,168 @@ namespace path_follower
     {
         const auto now_t = now();
 
-        // 首帧/重置后：还没有可比对的基准，只能信任 map 并就地建立锚定对。
-        if (!jump_anchor_valid_)
+        // ---- 旁路：取 path_frame->odom 变换（判据的唯一输入）----
+        Pose2D map_odom;
+        rclcpp::Time map_odom_stamp;
+        const bool have_map_odom = lookupMapToOdom(map_odom, map_odom_stamp);
+        if (have_map_odom)
         {
-            jump_anchor_map_pose_ = map_pose;
-            jump_anchor_odom_pose_ = odom_pose;
-            jump_anchor_valid_ = true;
+            last_map_odom_stamp_ = map_odom_stamp;
+        }
+        // 新鲜度看门狗：定位模块停发时 lookupTransform 依然会成功——TimePointZero 取的是
+        // 最新可用那条，于是 T_cur 冻结、帧间差恒为 0、判据永远静默，而这恰恰是最该报的
+        // 一种故障。所以必须按 stamp 年龄单独判。（AMCL 会把 stamp 按 transform_tolerance
+        // 推到未来，正常时这个年龄是负的。）
+        if (map_to_odom_timeout_ > 0.0)
+        {
+            const double tf_age = (now_t - last_map_odom_stamp_).seconds();
+            if (tf_age > map_to_odom_timeout_)
+            {
+                RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 2000,
+                                      "[loc-jump] %s->%s stale for %.2fs > %.2fs: "
+                                      "localization link silent?",
+                                      path_frame_.c_str(), odom_frame_.c_str(),
+                                      tf_age, map_to_odom_timeout_);
+            }
+        }
+
+        // ---- 首帧 / 重置后：两套基准一起建立 ----
+        if (!jump_ref_valid_)
+        {
+            // 两路都到齐才建基准，否则本帧还谈不上判定，直接透传主路位姿。
+            // （基准未建立时 getCurrentState 的 can_fallback 必为 false，走不到这里还没有
+            //   主路位姿的情况；这里的 have_map_pose 判断只是防御，避免透传一个全零位姿。）
+            if (have_map_pose && have_map_odom)
+            {
+                jump_ref_map_odom_ = map_odom;
+                jump_anchor_map_pose_ = map_pose;
+                jump_anchor_odom_pose_ = odom_pose;
+                jump_ref_valid_ = true;
+            }
             return map_pose;
         }
 
-        // 锚定对递推出的"我们认为车在哪"。非冻结期锚定对是上一帧的，此时该值 =
-        // 上一帧 map 位姿 + 这一帧 odom 增量，即"按里程计推算 map 位姿应该走到哪"；
-        // 冻结期锚定对停在跳变前那一帧，该值就是控制真正在用的连续位姿。
+        // 锚定对递推出的"我们认为车在哪"。非冻结期锚定对是上一帧的，此时该值 = 上一帧 map
+        // 位姿 + 这一帧 odom 增量；冻结期锚定对停在跳变前那一帧，该值就是控制真正在用的连续位姿。
         const Pose2D dr_pose =
             propagateFromAnchor(jump_anchor_map_pose_, jump_anchor_odom_pose_, odom_pose);
 
-        if (!have_map_pose)
+        // ---- 判据：把 map->odom 的变化量投影到车当前位置 ----
+        // propagateFromAnchor(T, {}, p) 就是刚体复合 T * p：锚定 odom 位姿取零位时，公式退化成
+        // "把 p 用 T 变换到 map 系"。两次投影乘的是**同一帧 odom_pose**，车的真实运动被完全
+        // 抵消（T_cur==T_ref 时 disagree 恒为 0，无论车在哪、跑多快），odom 话题的传输延迟
+        // 同样被完全抵消——这正是换掉老判据的原因，见头文件注释。
+        double d_xy = 0.0;
+        double d_theta = 0.0;
+        double disagree = 0.0;
+        if (have_map_odom)
         {
-            // 仅冻结期可能走到这里（非冻结期 TF 失败由调用方直接放弃本帧）：继续递推。
-            return dr_pose;
+            const Pose2D pose_from_cur = propagateFromAnchor(map_odom, Pose2D{}, odom_pose);
+            const Pose2D pose_from_ref =
+                propagateFromAnchor(jump_ref_map_odom_, Pose2D{}, odom_pose);
+            d_xy = std::hypot(pose_from_cur.x - pose_from_ref.x,
+                              pose_from_cur.y - pose_from_ref.y);
+            // 朝向差必须先归一化到 (-pi, pi]：两个估计各自累积，完全可能一个在 +3.13、另一个
+            // 在 -3.13，裸相减得到 6.26 的假跳变。归一化后同样的情形只有 0.02。
+            d_theta = angles::normalize_angle(pose_from_cur.theta - pose_from_ref.theta);
+            // 位置(m)与朝向(rad)同权合成：1 rad 记作 1 m。位置分量来自投影项 (R(dphi)-I)*p，
+            // 它只覆盖"旋转导致的位置跳变"——车恰好在 odom 原点附近时 ||p||~0，纯旋转跳变的
+            // 位移趋近于 0，这时全靠朝向分量兜住；而朝向本身也会直接进 delta_theta 前馈和
+            // 航向对准，本来就该独立判。
+            disagree = std::hypot(d_xy, d_theta);
         }
 
-        // 朝向分量必须先归一化到 (-pi, pi]：map 与递推位姿各自独立累积，θ 完全可能一个在
-        // +3.13、另一个在 -3.13，裸相减得到 6.26 的假跳变。归一化后同样的情形只有 0.02。
-        const double d_theta =
-            angles::normalize_angle(map_pose.theta - dr_pose.theta);
-        // 位置(m)与朝向(rad)同权合成：1 rad 记作 1 m，所以 5cm 的阈值单看朝向相当于
-        // 0.05 rad(≈2.9°)。这是刻意的——两者都会直接污染控制（位置进横向折叠/到点判定，
-        // 朝向进 delta_theta 前馈），量级上也匹配：车体半宽约 0.3m，0.05 rad 的朝向跳变在
-        // 车体边缘就是 1.5cm 的位移，和 5cm 位置阈值处于同一数量级。
-        const double d_xy = std::hypot(map_pose.x - dr_pose.x, map_pose.y - dr_pose.y);
-        const double disagree = std::hypot(d_xy, d_theta);
-
-        if (!jump_hold_active_)
-        {
-            if (disagree <= localization_jump_threshold_)
-            {
-                // 正常：滚动刷新锚定对，直接用 map 位姿。
-                jump_anchor_map_pose_ = map_pose;
-                jump_anchor_odom_pose_ = odom_pose;
-                return map_pose;
-            }
-
-            // 触发跳变：锚定对**不刷新**，就此冻结在跳变前的最后一帧，从这里开始纯 odom 递推。
-            jump_hold_active_ = true;
-            jump_hold_start_ = now_t;
-            jump_hold_deadline_ =
-                now_t + rclcpp::Duration::from_seconds(localization_jump_hold_duration_);
-            RCLCPP_ERROR(get_logger(),
-                         "[loc-jump] %s localization jump %.4f > %.4f "
-                         "(d_xy=%.4fm d_theta=%.4frad): hold odom dead-reckoning for %.2fs. "
-                         "map=(%.3f,%.3f,%.3f) dr=(%.3f,%.3f,%.3f)",
-                         path_frame_.c_str(), disagree, localization_jump_threshold_,
-                         d_xy, d_theta, localization_jump_hold_duration_,
-                         map_pose.x, map_pose.y, map_pose.theta,
-                         dr_pose.x, dr_pose.y, dr_pose.theta);
-            return dr_pose;
-        }
-
-        // ---- 二级：强制停车等待期 ----
-        // 等满为止，期间定位恢复与否一概不管——刻意不做提前退出，避免"刚停下就走、走两步
-        // 又跳"的反复横跳，也让上层看到的行为是确定的（要么等满复速，要么等满失败）。
+        // ---- 强制停车等待期 ----
         if (jump_stop_active_)
         {
             if (now_t < jump_stop_deadline_)
             {
+                // have_map_odom 一并打出来：旁路查不到时 disagree 恒为 0，不标出来会被
+                // 误读成"已经恢复了"。
                 RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
                                      "[loc-jump] stop-and-wait, %.1fs remaining "
                                      "(current disagreement %.4f vs thr %.4f, "
-                                     "d_xy=%.4fm d_theta=%.4frad).",
+                                     "d_xy=%.4fm d_theta=%.4frad, have_map_odom=%d).",
                                      (jump_stop_deadline_ - now_t).seconds(),
-                                     disagree, localization_jump_threshold_, d_xy, d_theta);
+                                     disagree, localization_jump_threshold_, d_xy, d_theta,
+                                     static_cast<int>(have_map_odom));
                 return dr_pose;
             }
 
-            // 等满，做唯一一次判定。
-            if (disagree > localization_jump_threshold_)
+            // 等满，做唯一一次判定。任一路 TF 不可用都无从判定，按未恢复处理：
+            // 定位链路本身有问题时，继续跑比停下更危险。
+            // 恢复判据比触发判据放宽 recover_scale 倍：小范围跳变多半是系统噪声，停下来
+            // 观望满一个窗口之后允许继续走，不必因为一次噪声就判导航失败。
+            const double recover_threshold =
+                localization_jump_threshold_ * localization_jump_recover_scale_;
+            if (!have_map_odom || !have_map_pose || disagree > recover_threshold)
             {
                 RCLCPP_ERROR(get_logger(),
                              "[loc-jump] localization NOT recovered after %.1fs stop-and-wait: "
-                             "disagreement %.4f > %.4f (d_xy=%.4fm d_theta=%.4frad). "
-                             "Aborting trajectory.",
+                             "disagreement %.4f > %.4f (d_xy=%.4fm d_theta=%.4frad, "
+                             "have_map_odom=%d have_map_pose=%d). Aborting trajectory.",
                              localization_jump_stop_wait_duration_, disagree,
-                             localization_jump_threshold_, d_xy, d_theta);
+                             recover_threshold, d_xy, d_theta,
+                             static_cast<int>(have_map_odom), static_cast<int>(have_map_pose));
                 jump_abort_pending_ = true;
                 return dr_pose;
             }
 
-            // 已恢复：交还 map，并让控制环从 0 速走 kResume 复速（细节见 update()）。
-            // 此时偏差 <= 阈值，交还带来的位姿台阶最多一个阈值，不会立刻再次触发判据。
-            jump_hold_active_ = false;
+            // 已恢复：两套基准一起重建，并让控制环从 0 速走 kResume 复速（细节见 update()）。
+            // 恢复判据比触发判据放宽一倍：小范围跳变多半是系统噪声，停下来观望满一个窗口
+            // 之后允许继续走。代价是交还带来的位姿台阶最多到 2 倍阈值（而不是一倍）——
+            // 基准在这里一并重建，disagree 归零，不会立刻再次触发判据；但这个台阶会原样
+            // 进到 checkTrackDeviation，所以 2*threshold 必须 <= track_deviation_limit，
+            // 否则落在两者之间的跳变会"判恢复之后下一帧被跟踪偏差打掉"。
             jump_stop_active_ = false;
             jump_resume_pending_ = true;
+            jump_ref_map_odom_ = map_odom;
             jump_anchor_map_pose_ = map_pose;
             jump_anchor_odom_pose_ = odom_pose;
             RCLCPP_INFO(get_logger(),
                         "[loc-jump] localization recovered after %.1fs stop-and-wait "
                         "(%.4f <= %.4f, d_xy=%.4fm d_theta=%.4frad): back to %s localization.",
                         localization_jump_stop_wait_duration_, disagree,
-                        localization_jump_threshold_, d_xy, d_theta, path_frame_.c_str());
+                        recover_threshold, d_xy, d_theta, path_frame_.c_str());
             return map_pose;
         }
 
-        // ---- 一级：冻结窗口内 ----
-        // 窗口内一律递推，不做判定、更不续期（续期会让窗口永远到不了期，二级就永远进不去）。
-        // 这段时间车照常走，跳变对速度完全无感——瞬时抖一下就回来的场景到此为止。
-        if (now_t < jump_hold_deadline_)
+        // ---- 正常期 ----
+        if (!have_map_odom)
         {
-            return dr_pose;
+            // 旁路本帧不可用：无从判定。基准保持不变——绝不能拿旧基准配新位姿去刷新，那等于
+            // 把一帧还没判过的数据偷偷洗成"正常"。链路真静默了由上面的新鲜度看门狗来报。
+            return have_map_pose ? map_pose : dr_pose;
         }
 
-        // 窗口到期，判一次。
         if (disagree <= localization_jump_threshold_)
         {
-            jump_hold_active_ = false;
-            jump_anchor_map_pose_ = map_pose;
-            jump_anchor_odom_pose_ = odom_pose;
-            RCLCPP_INFO(get_logger(),
-                        "[loc-jump] converged within hold window (%.4f <= %.4f, "
-                        "d_xy=%.4fm d_theta=%.4frad, after %.2fs): back to %s localization.",
-                        disagree, localization_jump_threshold_, d_xy, d_theta,
-                        (now_t - jump_hold_start_).seconds(), path_frame_.c_str());
-            return map_pose;
+            // 正常：两套基准一起滚动刷新。主路 TF 本帧失败时只刷新旁路基准，锚定对留在上一帧
+            // ——递推撑住这几帧靠的正是它。
+            jump_ref_map_odom_ = map_odom;
+            if (have_map_pose)
+            {
+                jump_anchor_map_pose_ = map_pose;
+                jump_anchor_odom_pose_ = odom_pose;
+            }
+            return have_map_pose ? map_pose : dr_pose;
         }
 
-        // 未恢复：升级为强制停车等待。锚定对继续冻结在跳变前那一帧——车停住后 odom 增量
-        // 归零，递推位姿就退化成"跳变前的那个固定点"，等待期内不再累积递推漂移，这正是
-        // 这个窗口敢开到几十秒、而一级窗口只能是零点几秒的原因。
+        // 触发跳变：两套基准**都不刷新**，就此冻结在跳变前的最后一帧，从这里开始纯 odom 递推。
+        // 直接进强制停车等待，不设一级冻结窗口——那个窗口原本是为了给老判据争取"等车停稳再判"
+        // 的时间（递推项会在刹车过程中持续累积漂移，判据不可信），新判据与车动不动无关，
+        // 从触发那一刻起就一直有效。
         jump_stop_active_ = true;
         jump_stop_deadline_ =
             now_t + rclcpp::Duration::from_seconds(localization_jump_stop_wait_duration_);
         RCLCPP_ERROR(get_logger(),
-                     "[loc-jump] not recovered after %.2fs hold (disagreement %.4f > %.4f, "
-                     "d_xy=%.4fm d_theta=%.4frad): stop and wait %.1fs before deciding.",
-                     localization_jump_hold_duration_, disagree, localization_jump_threshold_,
-                     d_xy, d_theta, localization_jump_stop_wait_duration_);
+                     "[loc-jump] %s localization jump %.4f > %.4f "
+                     "(d_xy=%.4fm d_theta=%.4frad): stop and wait %.1fs before deciding. "
+                     "map->odom now=(%.3f,%.3f,%.3f) ref=(%.3f,%.3f,%.3f)",
+                     path_frame_.c_str(), disagree, localization_jump_threshold_,
+                     d_xy, d_theta, localization_jump_stop_wait_duration_,
+                     map_odom.x, map_odom.y, map_odom.theta,
+                     jump_ref_map_odom_.x, jump_ref_map_odom_.y, jump_ref_map_odom_.theta);
         return dr_pose;
     }
 
@@ -1713,6 +1840,9 @@ namespace path_follower
             RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000, "No odometry received yet.");
             return std::nullopt;
         }
+        // 注意：控制环里 guardOdomStale 用 odom_stale_stop_timeout_（默认 0.2s）先一步早退，
+        // 所以从 update() 进来时这条 1.0s 的判定实际已经够不着了，留着是给 buildAndLoadRoute
+        // 那条调用路径（allow_localization_switch=false）兜底——它不经过 guardOdomStale。
         const auto dt = (now() - last_odom_time_).seconds();
         if (dt > update_timeout_)
         {
@@ -1748,34 +1878,45 @@ namespace path_follower
         }
         else
         {
-            // map 闭环：通过 TF 获取 path_frame → base_link 变换
+            // map 闭环：通过 TF 获取 path_frame → base_link 变换（主路，控制位姿来源）。
+            // 定位跳变判据走的是另一条独立的 path_frame → odom 查询（旁路，见
+            // guardLocalizationJump）。两条分开是刻意的：将来定位跳变问题从根上解决后，
+            // 整条判据支路可以直接摘掉，主路这段一行都不用动。
             Pose2D map_pose;
             bool have_map_pose = false;
             try
             {
                 const auto tf = tf_buffer_->lookupTransform(
                     path_frame_, base_frame_, tf2::TimePointZero,
-                    tf2::durationFromSec(0.015));  // 真机实测系统负载较高时，tf容易阻塞
+                    tf2::durationFromSec(tf_lookup_timeout_));
                 map_pose.x = tf.transform.translation.x;
                 map_pose.y = tf.transform.translation.y;
                 map_pose.theta = yawFromQuaternion(tf.transform.rotation);
                 have_map_pose = true;
+                tf_fail_count_ = 0;
             }
             catch (const tf2::TransformException& ex)
             {
-                // 跳变冻结期内本来就在用 odom 递推，TF 短暂不可用不影响出力，可以容忍；
-                // 其余情况没有位姿可用，放弃本帧。
-                if (!(enable_localization_jump_recovery_ && jump_hold_active_))
+                ++tf_fail_count_;
+                // 超时压到 5ms 之后偶发失败是常态，一失败就放弃本帧会让 update() 发出一帧
+                // 零速、造成速度断续抖动。锚定对已建立时可以用 odom 递推撑住几帧（跳变期
+                // 本来就在这么做），但撑久了递推会漂，所以限帧。
+                // 停车等待期不限帧：车已经停住，odom 增量归零，递推位姿退化成"跳变前的那个
+                // 固定点"，撑多久都不会漂。
+                const bool can_fallback =
+                    enable_localization_jump_recovery_ && jump_ref_valid_ &&
+                    (jump_stop_active_ || tf_fail_count_ <= max_tf_fallback_frames_);
+                if (!can_fallback)
                 {
                     RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 1000,
-                        "TF lookup %s->%s failed: %s",
-                        path_frame_.c_str(), base_frame_.c_str(), ex.what());
+                        "TF lookup %s->%s failed (%d consecutive): %s",
+                        path_frame_.c_str(), base_frame_.c_str(), tf_fail_count_, ex.what());
                     return std::nullopt;
                 }
-                RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 1000,
-                    "TF lookup %s->%s failed during localization-jump hold, "
-                    "keep dead-reckoning: %s",
-                    path_frame_.c_str(), base_frame_.c_str(), ex.what());
+                RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
+                    "TF lookup %s->%s failed (%d/%d), keep dead-reckoning: %s",
+                    path_frame_.c_str(), base_frame_.c_str(),
+                    tf_fail_count_, max_tf_fallback_frames_, ex.what());
             }
 
             if (!enable_localization_jump_recovery_)
@@ -2125,6 +2266,9 @@ namespace path_follower
         twist.linear.y = v.vy;
         twist.angular.z = v.wz;
         cmd_vel_pub_->publish(twist);
+        // odom 卡顿时的平滑刹停要从"上一帧真正发出去的车体系指令"等比衰减：那条路径上没有
+        // 位姿，做不了轨迹系->车体系的旋转，只能拿已经旋好的这一帧来缩放。见 guardOdomStale。
+        last_published_cmd_ = v;
     }
 
     void PathFollowerNode::applyMinCommandFloor(Velocity& v) const
@@ -2222,10 +2366,108 @@ namespace path_follower
         }
         odom_anchor_active_ = false;
         resetLocalizationJumpGuard();
+        odom_stale_stop_active_ = false;
         publishCmdVel(Velocity{});
         publishNavigationStatus(nav_interfaces::msg::NavigationStatus::IDLE, "stopped via ~/stop service");
         res->success = true;
         res->message = "stopped";
+    }
+
+    bool PathFollowerNode::guardOdomStale()
+    {
+        if (odom_stale_stop_timeout_ <= 0.0)
+        {
+            return false;
+        }
+
+        rclcpp::Time odom_recv;
+        rclcpp::Time odom_stamp;
+        {
+            std::lock_guard<std::mutex> lock(odom_mutex_);
+            odom_recv = last_odom_time_;
+            odom_stamp = last_odom_stamp_;
+        }
+        const auto now_t = now();
+        const double age = (now_t - odom_recv).seconds();
+        const bool odom_ok = (age <= odom_stale_stop_timeout_);
+
+        // ---- 触发：只在从正常态跨进超时的那一帧设截止时刻，之后不续期 ----
+        if (!odom_ok && !odom_stale_stop_active_)
+        {
+            odom_stale_stop_active_ = true;
+            odom_stale_stop_deadline_ =
+                now_t + rclcpp::Duration::from_seconds(odom_stale_stop_hold_duration_);
+            // 注意这里打不出"当前帧"的时间戳——当前帧压根还没到，那正是年龄看门狗要判的事；
+            // 两帧 stamp 的对比在 onOdom 里打（[odom-gap]）。两处日志分工互补。
+            RCLCPP_ERROR(get_logger(),
+                         "[odom-stale] no odom for %.3fs > %.3fs: braking and holding %.1fs. "
+                         "last_msg_stamp=%.6f last_cmd=(vx=%.3f vy=%.3f wz=%.3f)",
+                         age, odom_stale_stop_timeout_, odom_stale_stop_hold_duration_,
+                         odom_stamp.seconds(), last_published_cmd_.vx,
+                         last_published_cmd_.vy, last_published_cmd_.wz);
+        }
+
+        if (!odom_stale_stop_active_)
+        {
+            return false;
+        }
+
+        // ---- 恢复：必须同时满足"停够了"和"odom 已经新鲜" ----
+        // 前者保证强制停车时长（卡顿往往成串出现，立刻复速会走走停停）；后者保证复速那一刻
+        // 手里的位姿是新的。odom 迟迟不恢复时窗口早已过期，此时复速条件就退化成"等 odom"，
+        // 一恢复即走，不会再白等一个完整窗口。
+        if (now_t >= odom_stale_stop_deadline_ && odom_ok)
+        {
+            odom_stale_stop_active_ = false;
+            // 这里不需要显式清零 last_track_*：强制停车窗口内每帧都在递推，到这一刻它们
+            // 已经收敛到 0 附近，kResume 自然从 0 起步。（定位跳变那边必须手动清零，因为
+            // 它的停车分支是直接发 0 速、根本没维护过 last_track_*。）
+            vel_track_mode_ = VelocityTrackMode::kResume;
+            // 卡顿期间误差已经变了，增量式 PID 的累积量必须清。
+            is_need_reset_ = true;
+            // 早退期间 last_control_update_time_ 没有维护，不复位会误报一条"控制频率过低"。
+            have_control_update_time_ = false;
+            RCLCPP_INFO(get_logger(),
+                        "[odom-stale] hold finished and odom fresh (age=%.3fs): "
+                        "resume from v=%.3f w=%.3f.",
+                        age, last_track_linear_v_, last_track_angular_w_);
+            return false;
+        }
+
+        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
+                             "[odom-stale] holding, %.1fs remaining (odom age=%.3fs, fresh=%d).",
+                             std::max(0.0, (odom_stale_stop_deadline_ - now_t).seconds()),
+                             age, static_cast<int>(odom_ok));
+
+        // 平滑刹停。刻意不进 getCurrentState/PID/坐标变换：位姿已经过期，拿它算纠偏
+        // 只会得到错误的修正量。做法是把上一帧真正发出去的车体系指令按两阶段步进模型
+        // 衰减到 0——线速度和角速度各走各的通道，与正常控制路径一致。
+        //
+        // vx/vy 共用线速度通道的比值而不是各自归零：全向底盘直线运动时 vy 可能才是主
+        // 分量，单独归零会让车横向甩一下；共用比值则平移方向保持不变，只是模长收敛。
+        // wz 必须用角速度通道自己的比值——原地旋转阶段线速度本来就是 0，套用线速度比值
+        // 会让角速度一步归零，平滑刹停退化成硬停（实测验证过）。
+        //
+        // cap 传上一帧输出而不是 0：stepTracked*Velocity 末尾会用 route_ref 给结果封顶，
+        // 传 0 会把递推值直接砍成 0，同样退化成硬停。
+        const double v_prev = last_track_linear_v_;
+        const double w_prev = last_track_angular_w_;
+        vel_track_mode_ = VelocityTrackMode::kStop;
+        const double v_new = stepTrackedLinearVelocity(v_prev);
+        const double w_new = stepTrackedAngularVelocity(w_prev);
+        const double lin_scale = (std::fabs(v_prev) > kEpsilon)
+                                     ? std::clamp(v_new / v_prev, 0.0, 1.0)
+                                     : 0.0;
+        const double ang_scale = (std::fabs(w_prev) > kEpsilon)
+                                     ? std::clamp(w_new / w_prev, 0.0, 1.0)
+                                     : 0.0;
+
+        Velocity v = last_published_cmd_;
+        v.vx *= lin_scale;
+        v.vy *= lin_scale;
+        v.wz *= ang_scale;
+        publishCmdVel(v);
+        return true;
     }
 
     void PathFollowerNode::update()
@@ -2234,6 +2476,13 @@ namespace path_follower
         {
             // 无轨迹或无里程计 -> 停车
             // publishCmdVel(Velocity{});
+            return;
+        }
+
+        // odom 接收年龄看门狗：位姿已经过期时先把车刹住，不必再去查 TF、跑判据和 PID。
+        // 放在 route_ 检查之后——没路线本来就不动，不需要刹车。
+        if (guardOdomStale())
+        {
             return;
         }
 
@@ -2280,6 +2529,7 @@ namespace path_follower
             // 上面那条早退跳过了 last_track_* 的维护，它们还停在跳变那一刻的值。这里必须
             // 清零，否则 kResume 第一帧就 stepVelocityTowards(跳变前速度, ref)，输出直接
             // 是原速——车从静止一步蹦回去，比不做恢复更糟。
+            // （与 guardOdomStale 的恢复分支正好相反：那边车还在动，清零才是制造跳变。）
             // 也不能图省事调 resetVelocityTrack()：它会把模式设成 kFollowRef，那是直接输出
             // 参考速度，同样是一步跳变，只是换了个姿势。
             last_track_linear_v_ = 0.0;
