@@ -278,6 +278,8 @@ protected:
   void applyInternalFootprint(bool loaded);
   void applyNavigationPadding(NavigationMode mode);
   void enterIdle(const char * reason);
+  static const char * navigationModeName(NavigationMode mode);
+  void changeNavigationMode(NavigationMode mode, const char * reason);
 
   // ----- Variables -----
 
@@ -359,6 +361,8 @@ protected:
   rclcpp::Duration idle_grace_period_{5, 0};
   NavigationMode navigation_mode_{NavigationMode::IDLE};
   NavigationType lifecycle_navigation_type_{NavigationType::UNSET};
+  int logged_velocity_state_{-1};
+  bool ignored_chain_logged_{false};
   rclcpp::Time mode_last_cmd_stamp_{0, 0, RCL_ROS_TIME};
   std::string schedule_cmd_vel_topic_{"cmd_vel_nav"};
   std::string free_navigation_path_topic_{"plan"};
