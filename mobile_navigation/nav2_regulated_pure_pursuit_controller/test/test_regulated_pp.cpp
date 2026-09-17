@@ -52,6 +52,13 @@ public:
   }
 
   void setVelocityScaledLookAhead() {use_velocity_scaled_lookahead_dist_ = true;}
+  void setUseRotateToPath(bool enabled) {use_rotate_to_path_ = enabled;}
+  void setMinTrackLinearVel(double v) {min_track_linear_vel_ = v;}
+  void resetRotateCommandState()
+  {
+    last_rotate_cmd_valid_ = false;
+    last_rotate_cmd_ = 0.0;
+  }
   void setCostRegulationScaling() {use_cost_regulated_linear_velocity_scaling_ = true;}
   void resetVelocityRegulationScaling() {use_regulated_linear_velocity_scaling_ = false;}
 
@@ -116,6 +123,12 @@ public:
     return trackLinearVelocity(target, measured, ff);
   }
 
+  void enforceTrackMinimumLinearVelocityWrapper(
+    double & linear_vel, double traj_v, double sign)
+  {
+    return enforceTrackMinimumLinearVelocity(linear_vel, traj_v, sign);
+  }
+
   void applyConstraintsWrapper(
     const double & curvature, const geometry_msgs::msg::Twist & curr_speed,
     const double & pose_cost, const nav_msgs::msg::Path & path, bool have_traj,
@@ -168,6 +181,7 @@ TEST(RegulatedPurePursuitTest, basicAPI)
   auto ctrl = std::make_shared<BasicAPIRPP>();
   costmap->on_configure(rclcpp_lifecycle::State());
   ctrl->configure(node, name, tf, costmap);
+  ctrl->setUseRotateToPath(true);
   ctrl->activate();
   ctrl->deactivate();
   ctrl->cleanup();
@@ -450,6 +464,7 @@ TEST(RegulatedPurePursuitTest, rotateTests)
   rclcpp_lifecycle::State state;
   costmap->on_configure(state);
   ctrl->configure(node, name, tf, costmap);
+  ctrl->setUseRotateToPath(true);
 
   // shouldRotateToPath
   geometry_msgs::msg::PoseStamped carrot;
@@ -493,12 +508,16 @@ TEST(RegulatedPurePursuitTest, rotateTests)
   EXPECT_NEAR(ang_v, 1.59, 0.01);  // 目标 0.4 低于可行下限(1.75-0.16)，钳到下限
 
   // negative direction
+  // 这是独立测试场景，先清空上一场景留下的角速度指令状态。
+  ctrl->resetRotateCommandState();
   angle_to_path = -0.4;
   curr_speed.angular.z = -1.75;
   ctrl->rotateToHeadingWrapper(lin_v, ang_v, angle_to_path, curr_speed, 1.8, 1.0);
   EXPECT_NEAR(ang_v, -1.59, 0.01);
 
   // kinematic clamping, no speed, some speed accelerating, some speed decelerating
+  // 从静止开始的场景也必须独立，否则新的指令积分状态会继承上面的负角速度。
+  ctrl->resetRotateCommandState();
   angle_to_path = 0.4;
   curr_speed.angular.z = 0.0;
   ctrl->rotateToHeadingWrapper(lin_v, ang_v, angle_to_path, curr_speed, 1.8, 1.0);
@@ -511,7 +530,9 @@ TEST(RegulatedPurePursuitTest, rotateTests)
   angle_to_path = -0.4;
   curr_speed.angular.z = 1.0;
   ctrl->rotateToHeadingWrapper(lin_v, ang_v, angle_to_path, curr_speed, 1.8, 1.0);
-  EXPECT_NEAR(ang_v, 0.84, 0.01);  // 目标 -0.4 更低于可行下限(0.84)，同样钳到下限
+  // 与上一拍指令 0.84 的偏差未超过 reseed 阈值，按指令状态继续减速：
+  // 0.84 - max_angular_accel * dt = 0.68。
+  EXPECT_NEAR(ang_v, 0.68, 0.01);
 }
 
 // rotateToHeading 线速度连续减速：巡航速度进入 rotate 分支时不再瞬间
@@ -588,6 +609,73 @@ TEST(RegulatedPurePursuitTest, rotateToHeadingAngularProportional)
   EXPECT_NEAR(v_double, 0.2, 0.01);
   EXPECT_NEAR(v_double, 2.0 * v_small, 0.02);  // 双倍角度 -> 双倍角速度，验证线性比例
   EXPECT_NEAR(v_large, 1.8, 0.01);             // 饱和封顶于 angular_vel_max
+}
+
+// odom 角速度反馈滞后时，角速度限幅仍应沿上一拍 cmd_vel 继续爬升，不能每拍
+// 重新从 0 开始。否则 max_angular_accel=3.2、20 Hz 时会永久卡在 0.16 rad/s。
+TEST(RegulatedPurePursuitTest, rotateToHeadingAngularRampWithDelayedOdom)
+{
+  auto ctrl = std::make_shared<BasicAPIRPP>();
+  auto node = std::make_shared<rclcpp_lifecycle::LifecycleNode>("testRPP");
+  std::string name = "PathFollower";
+  auto tf = std::make_shared<tf2_ros::Buffer>(node->get_clock());
+  auto costmap = std::make_shared<nav2_costmap_2d::Costmap2DROS>("fake_costmap");
+  costmap->on_configure(rclcpp_lifecycle::State());
+  ctrl->configure(node, name, tf, costmap);
+
+  geometry_msgs::msg::Twist delayed_odom;
+  double linear = 0.0;
+  double angular = 0.0;
+  for (int i = 0; i < 6; ++i) {
+    ctrl->rotateToHeadingWrapper(linear, angular, 1.0, delayed_odom, 1.8, 1.0);
+  }
+  EXPECT_GT(angular, 0.3);
+}
+
+// track 段最低线速度兜底：输出低于下限时抬回，但不得超过速度规划速度；
+// 规划器要求停车(traj_v≈0)时不抬；关闭(0)时完全不动。
+TEST(RegulatedPurePursuitTest, trackMinimumLinearVelocity)
+{
+  auto ctrl = std::make_shared<BasicAPIRPP>();
+  auto node = std::make_shared<rclcpp_lifecycle::LifecycleNode>("testRPP");
+  std::string name = "PathFollower";
+  auto tf = std::make_shared<tf2_ros::Buffer>(node->get_clock());
+  auto costmap = std::make_shared<nav2_costmap_2d::Costmap2DROS>("fake_costmap");
+  costmap->on_configure(rclcpp_lifecycle::State());
+  ctrl->configure(node, name, tf, costmap);
+
+  // 代码默认值 0.005：低于下限的输出被抬回
+  double v = 0.003;
+  ctrl->enforceTrackMinimumLinearVelocityWrapper(v, 0.005, 1.0);
+  EXPECT_NEAR(v, 0.005, 1e-6);
+
+  // 关闭(0)：不改动原输出
+  ctrl->setMinTrackLinearVel(0.0);
+  v = 0.003;
+  ctrl->enforceTrackMinimumLinearVelocityWrapper(v, 0.005, 1.0);
+  EXPECT_NEAR(v, 0.003, 1e-6);
+
+  ctrl->setMinTrackLinearVel(0.005);
+  // 低于下限且规划速度足够 → 抬到下限，保留前进方向
+  v = 0.003;
+  ctrl->enforceTrackMinimumLinearVelocityWrapper(v, 0.005, 1.0);
+  EXPECT_NEAR(v, 0.005, 1e-6);
+  // 倒车方向保留
+  v = -0.003;
+  ctrl->enforceTrackMinimumLinearVelocityWrapper(v, 0.005, -1.0);
+  EXPECT_NEAR(v, -0.005, 1e-6);
+  // 规划速度本身低于下限 → 以规划速度为上限，不越过
+  v = 0.001;
+  ctrl->enforceTrackMinimumLinearVelocityWrapper(v, 0.002, 1.0);
+  EXPECT_NEAR(v, 0.002, 1e-6);
+  // 规划器要求停车 → 不抬
+  v = 0.0;
+  ctrl->enforceTrackMinimumLinearVelocityWrapper(v, 0.0, 1.0);
+  EXPECT_NEAR(v, 0.0, 1e-6);
+  // 已高于下限 → 不动
+  v = 0.01;
+  ctrl->enforceTrackMinimumLinearVelocityWrapper(v, 0.02, 1.0);
+  EXPECT_NEAR(v, 0.01, 1e-6);
 }
 
 // rotate_to_path 与 rotate_to_goal 的角速度/角度参数完全独立：同一个
@@ -782,7 +870,7 @@ TEST(RegulatedPurePursuitTest, trackLinearVelocityCommandIntegrator)
   EXPECT_GE(min_cmd, 0.0);   // 不穿零
   EXPECT_LT(m5, 0.10);       // 仍能把 plant 带到目标附近
 
-  // T6 上限：指令不得超过瞬时规划速度（巡航目标 0.6，plant 完美跟随）
+  // T6 上限：前馈为 0 时，指令不得超过瞬时规划速度（巡航目标 0.6，plant 完美跟随）
   auto ctrl6 = std::make_shared<BasicAPIRPP>();
   ctrl6->configure(node, name, tf, costmap);
   double m6 = 0.0;
@@ -805,6 +893,57 @@ TEST(RegulatedPurePursuitTest, trackLinearVelocityCommandIntegrator)
     c7 = ctrl7->trackLinearVelocityWrapper(0.119, 0.0, -0.4);
   }
   EXPECT_GT(c7, 0.0);
+}
+
+// 输出上限 = 用规划加速度外推的"下一拍规划速度"(target_vel + a·dt)：
+// 慢速起步时 target_vel 被钉在实测上，若仍以 target_vel 封顶，规划给出的
+// 正加速度前馈会被输出界整项钳掉，指令永远升不上去（实测起步长时间停 0.01）。
+// 允许一个控制周期的领先量后，前馈必须能推动指令上行。
+TEST(RegulatedPurePursuitTest, trackLinearVelocityFeedforwardLead)
+{
+  auto ctrl = std::make_shared<BasicAPIRPP>();
+  auto node = std::make_shared<rclcpp_lifecycle::LifecycleNode>("testRPPSpeedLoopFF");
+  std::string name = "PathFollower";
+  auto tf = std::make_shared<tf2_ros::Buffer>(node->get_clock());
+  auto costmap = std::make_shared<nav2_costmap_2d::Costmap2DROS>("fake_costmap_ff");
+  costmap->on_configure(rclcpp_lifecycle::State());
+  nav2_util::declare_parameter_if_not_declared(
+    node, name + ".desired_linear_vel", rclcpp::ParameterValue(1.0));
+  ctrl->configure(node, name, tf, costmap);
+
+  // 目标速度钉在 0.01（模拟起步自锁），规划加速度 0.1，plant 理想跟随：
+  // 旧上限(=target_vel=0.01)会把指令钳死在 0.01；新上限=0.01+0.1*dt 应能上行。
+  double measured = 0.01;
+  double cmd = measured;
+  for (int i = 0; i < 10; ++i) {
+    cmd = ctrl->trackLinearVelocityWrapper(0.01, measured, 0.1);
+    measured = cmd;
+  }
+  EXPECT_GT(cmd, 0.01);
+
+  // 前馈为负且目标很小时，上限同样外推（本例 a·dt 把上限压到 0 附近），
+  // 指令不得穿零变负。
+  auto ctrl_neg = std::make_shared<BasicAPIRPP>();
+  ctrl_neg->configure(node, name, tf, costmap);
+  double cmd_neg = 0.2;
+  for (int i = 0; i < 20; ++i) {
+    cmd_neg = ctrl_neg->trackLinearVelocityWrapper(0.05, cmd_neg, -0.5);
+  }
+  EXPECT_GE(cmd_neg, 0.0);
+
+  // 倒车加速必须与前进对称：目标速度钉在 -0.01、规划加速度为 -0.1 时，
+  // 下一拍速度下界应允许到 -0.01 + (-0.1) * dt，不能仍被当前目标 -0.01 钳住。
+  auto ctrl_reverse = std::make_shared<BasicAPIRPP>();
+  ctrl_reverse->configure(node, name, tf, costmap);
+  double measured_reverse = -0.01;
+  double cmd_reverse = measured_reverse;
+  for (int i = 0; i < 10; ++i) {
+    cmd_reverse = ctrl_reverse->trackLinearVelocityWrapper(
+      -0.01, measured_reverse, -0.1);
+    measured_reverse = cmd_reverse;
+  }
+  EXPECT_LT(cmd_reverse, -0.01);
+  EXPECT_GE(cmd_reverse, -1.0);
 }
 
 TEST(RegulatedPurePursuitTest, applyConstraints)
@@ -1000,6 +1139,7 @@ TEST(RegulatedPurePursuitTest, shouldRotateToPathHysteresis)
   rclcpp_lifecycle::State state;
   costmap->on_configure(state);
   ctrl->configure(node, name, tf, costmap);
+  ctrl->setUseRotateToPath(true);
 
   auto carrotAt = [](double angle) {
       geometry_msgs::msg::PoseStamped p;

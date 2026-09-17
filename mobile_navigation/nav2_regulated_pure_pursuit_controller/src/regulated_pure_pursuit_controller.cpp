@@ -203,6 +203,8 @@ void RegulatedPurePursuitController::configure(
     node, plugin_name_ + ".speed_loop_integrator_saturation", rclcpp::ParameterValue(0.3));
   declare_parameter_if_not_declared(
     node, plugin_name_ + ".speed_loop_cmd_reseed_error", rclcpp::ParameterValue(0.3));
+  declare_parameter_if_not_declared(
+    node, plugin_name_ + ".min_track_linear_vel", rclcpp::ParameterValue(0.005));
 
   node->get_parameter(plugin_name_ + ".desired_linear_vel", desired_linear_vel_);
   base_desired_linear_vel_ = desired_linear_vel_;
@@ -218,12 +220,16 @@ void RegulatedPurePursuitController::configure(
     plugin_name_ + ".speed_loop_integrator_saturation", conf.integrator_saturation_level);
   node->get_parameter(
     plugin_name_ + ".speed_loop_cmd_reseed_error", speed_cmd_reseed_error_);
+  node->get_parameter(plugin_name_ + ".min_track_linear_vel", min_track_linear_vel_);
+  min_track_linear_vel_ = std::max(0.0, min_track_linear_vel_);
   conf.integrator_enable = true;
   speed_pid_.Init(conf);
 
   // ---- 离散转向模式：rotate_to_path 与 rotate_to_goal 参数各自独立 ----
   declare_parameter_if_not_declared(
     node, plugin_name_ + ".use_rotate_to_heading", rclcpp::ParameterValue(true));
+  declare_parameter_if_not_declared(
+    node, plugin_name_ + ".use_rotate_to_path", rclcpp::ParameterValue(false));
   declare_parameter_if_not_declared(
     node, plugin_name_ + ".max_angular_accel", rclcpp::ParameterValue(3.2));
   declare_parameter_if_not_declared(
@@ -239,9 +245,12 @@ void RegulatedPurePursuitController::configure(
   declare_parameter_if_not_declared(
     node, plugin_name_ + ".rotate_to_goal_angular_kp", rclcpp::ParameterValue(1.0));
   declare_parameter_if_not_declared(
+    node, plugin_name_ + ".rotate_cmd_reseed_error", rclcpp::ParameterValue(0.3));
+  declare_parameter_if_not_declared(
     node, plugin_name_ + ".allow_reversing", rclcpp::ParameterValue(false));
 
   node->get_parameter(plugin_name_ + ".use_rotate_to_heading", use_rotate_to_heading_);
+  node->get_parameter(plugin_name_ + ".use_rotate_to_path", use_rotate_to_path_);
   node->get_parameter(plugin_name_ + ".max_angular_accel", max_angular_accel_);
   node->get_parameter(plugin_name_ + ".rotate_to_path_entry_angle", rotate_to_path_entry_angle_);
   node->get_parameter(plugin_name_ + ".rotate_to_path_exit_angle", rotate_to_path_exit_angle_);
@@ -249,6 +258,8 @@ void RegulatedPurePursuitController::configure(
   node->get_parameter(plugin_name_ + ".rotate_to_path_angular_kp", rotate_to_path_angular_kp_);
   node->get_parameter(plugin_name_ + ".rotate_to_goal_angular_vel", rotate_to_goal_angular_vel_);
   node->get_parameter(plugin_name_ + ".rotate_to_goal_angular_kp", rotate_to_goal_angular_kp_);
+  node->get_parameter(plugin_name_ + ".rotate_cmd_reseed_error", rotate_cmd_reseed_error_);
+  rotate_cmd_reseed_error_ = std::max(0.0, rotate_cmd_reseed_error_);
   node->get_parameter(plugin_name_ + ".allow_reversing", allow_reversing_);
 
   // 参数耦合校验：这两个约束都以角度阈值划定生效区间，若配置成上下界颠倒
@@ -334,6 +345,8 @@ void RegulatedPurePursuitController::activate()
   carrot_pub_->on_activate();
   carrot_arc_pub_->on_activate();
   last_speed_cmd_valid_ = false;  // 新一轮运行以实测重新播种指令积分器
+  last_rotate_cmd_valid_ = false;
+  last_rotate_cmd_ = 0.0;
   was_rotating_to_path_ = false;  // 新一轮运行不带上一次的转向滞回状态
   // Add callback for dynamic parameters
   auto node = node_.lock();
@@ -493,16 +506,22 @@ geometry_msgs::msg::TwistStamped RegulatedPurePursuitController::computeVelocity
 
   // Make sure we're in compliance with basic constraints
   double angle_to_heading;
+  const char * control_mode = "track";
   if (shouldRotateToGoalHeading(carrot_pose)) {
+    control_mode = "rotate_goal";
     double angle_to_goal = tf2::getYaw(transformed_plan.poses.back().pose.orientation);
     rotateToHeading(
       linear_vel, angular_vel, angle_to_goal, speed,
       rotate_to_goal_angular_vel_, rotate_to_goal_angular_kp_);
   } else if (shouldRotateToPath(carrot_pose, angle_to_heading)) {
+    control_mode = "rotate_path";
     rotateToHeading(
       linear_vel, angular_vel, angle_to_heading, speed,
       rotate_to_path_angular_vel_, rotate_to_path_angular_kp_);
   } else {
+    // 下一次进入原地转向时从当前实测角速度重新起步，不继承上一次已经
+    // 退出的旋转段的指令状态。
+    last_rotate_cmd_valid_ = false;
     applyConstraints(
       curvature, speed,
       costAtPose(pose.pose.position.x, pose.pose.position.y), transformed_plan, have_traj,
@@ -514,6 +533,12 @@ geometry_msgs::msg::TwistStamped RegulatedPurePursuitController::computeVelocity
       linear_vel, cross_track_error);
 
     linear_vel = trackLinearVelocity(linear_vel, speed.linear.x, have_traj ? traj_accel : 0.0);
+
+    // track 段最低线速度兜底：低速指令若落到下游 velocity_smoother 死区以内会被
+    // 抹成 0，机器人不动又使规划剖面从零速起点重算，形成自锁。这里在不超过规划
+    // 速度的前提下把输出抬回 min_track_linear_vel_（见函数注释）。
+    enforceTrackMinimumLinearVelocity(linear_vel, traj_v, sign);
+
     if (have_traj) {
       std::lock_guard<std::mutex> trajectory_lock(traj_mutex_);
       last_trajectory_tracking_target_valid_ = true;
@@ -545,8 +570,9 @@ geometry_msgs::msg::TwistStamped RegulatedPurePursuitController::computeVelocity
 
   RCLCPP_INFO_THROTTLE(
     logger_, *clock_, 200,
-    "RPP: lookahead_dist=%.3f carrot=(%.3f, %.3f) carrot_dist=%.3f xte=%.3f "
+    "RPP: mode=%s lookahead_dist=%.3f carrot=(%.3f, %.3f) carrot_dist=%.3f xte=%.3f "
     "curvature=%.3f radius=%.2f | traj_v=%.3f v_out=%.3f wz=%.3f | measured_v=%.3f",
+    control_mode,
     lookahead_dist, carrot_pose.pose.position.x, carrot_pose.pose.position.y,
     carrot_dist, cross_track_error,
     curvature, curvature != 0.0 ? std::fabs(1.0 / curvature) : 999.0,
@@ -572,7 +598,8 @@ bool RegulatedPurePursuitController::shouldRotateToPath(
   const double exit_angle = std::min(
     rotate_to_path_exit_angle_, rotate_to_path_entry_angle_);
   const double threshold = was_rotating_to_path_ ? exit_angle : rotate_to_path_entry_angle_;
-  const bool rotating = use_rotate_to_heading_ && fabs(angle_to_path) > threshold;
+  const bool rotating = use_rotate_to_heading_ && use_rotate_to_path_ &&
+    fabs(angle_to_path) > threshold;
   was_rotating_to_path_ = rotating;
   return rotating;
 }
@@ -605,9 +632,25 @@ void RegulatedPurePursuitController::rotateToHeading(
   // 由调用方传入（rotate_to_path 与 rotate_to_goal 各自独立，互不影响）。
   angular_vel = std::clamp(angular_kp * angle_to_path, -angular_vel_max, angular_vel_max);
 
-  const double min_feasible_angular_speed = curr_speed.angular.z - max_angular_accel_ * dt;
-  const double max_feasible_angular_speed = curr_speed.angular.z + max_angular_accel_ * dt;
+  // 角速度限幅必须以“上一拍已经发出的指令”为基准，而不是每拍重新以
+  // odom 角速度为基准。真实底盘的角速度反馈通常晚于 cmd_vel 一个或多个
+  // 控制周期；若使用 curr_speed，反馈仍为 0 时每一拍都只能发 ±0.16 rad/s
+  // （3.2 * 0.05），原地转向会被人为拉长，表现为起步/直角处长时间停顿。
+  // 只有在首次进入旋转，或指令与实测已明显脱节时才重新锚定实测值。
+  // odom 仍为零时不能触发重播种：这正是执行延迟场景，若此时按误差重置，
+  // 指令一旦超过 reseed 阈值就会再次回到 0，角速度斜坡仍会卡在低值。
+  // 只有已有明显角速度反馈且与指令脱节时，才认为发生了外力/急停并重锚定。
+  if (!last_rotate_cmd_valid_ ||
+    (std::fabs(curr_speed.angular.z) > 0.05 &&
+    std::fabs(last_rotate_cmd_ - curr_speed.angular.z) > rotate_cmd_reseed_error_))
+  {
+    last_rotate_cmd_ = curr_speed.angular.z;
+    last_rotate_cmd_valid_ = true;
+  }
+  const double min_feasible_angular_speed = last_rotate_cmd_ - max_angular_accel_ * dt;
+  const double max_feasible_angular_speed = last_rotate_cmd_ + max_angular_accel_ * dt;
   angular_vel = std::clamp(angular_vel, min_feasible_angular_speed, max_feasible_angular_speed);
+  last_rotate_cmd_ = angular_vel;
 }
 
 geometry_msgs::msg::Point RegulatedPurePursuitController::circleSegmentIntersection(
@@ -1149,12 +1192,23 @@ double RegulatedPurePursuitController::trackLinearVelocity(
   double accel_cmd = feedforward_accel + feedback_accel;
   accel_cmd = std::clamp(accel_cmd, -max_linear_decel_, max_linear_accel_);
   double v_out = last_speed_cmd_ + accel_cmd * dt;
-  // 输出界（符号感知）：上限=规划速度——逐点速度既是跟踪参考也是速度限幅
-  // （曲率/障碍/蠕行 cap 编码在内，指令超过即违反规划约束）；下界 0——前向
-  // 减速允许下探到 0 主动制动（保留制动权），但不得穿零倒转；倒车段对称。
-  // desired_linear_vel 作绝对兜底（无轨迹灰度模式/剖面异常时）。
-  const double hi = std::min(std::max(0.0, target_vel), desired_linear_vel_);
-  const double lo = std::max(std::min(0.0, target_vel), -desired_linear_vel_);
+  // 输出界（符号感知）：上限 = 用规划加速度外推的"下一拍规划速度"
+  // （target_vel + a·dt），而不是当前 target_vel。
+  // 原因：慢速起步时 target_vel 会被钉在实测速度上（规划剖面首点=实测），此时
+  // 若仍以 target_vel 封顶，规划给出的加速度前馈 a 会被输出界整项钳掉——前馈
+  // 再大也推不动指令，表现为"规划给了加速度、实际速度长时间起不来"。允许领先
+  // 一个控制周期（≈计划在下一拍位置上的速度）后，前馈才能真正转化为指令爬升。
+  // 前进时只放宽正向上界，倒车时只放宽负向下界；两种方向都允许按规划加速度
+  // 领先一个控制周期，但不得穿零改变运动方向。target_vel=0 时上下界都保持为 0，
+  // 保留规划器的停车权。desired_linear_vel 作绝对兜底（无轨迹灰度模式/剖面异常时）。
+  const double next_target_vel = target_vel + feedforward_accel * dt;
+  double lo = 0.0;
+  double hi = 0.0;
+  if (target_vel > 0.0) {
+    hi = std::min(std::max(0.0, next_target_vel), desired_linear_vel_);
+  } else if (target_vel < 0.0) {
+    lo = std::max(std::min(0.0, next_target_vel), -desired_linear_vel_);
+  }
   v_out = std::clamp(v_out, lo, hi);
 
   // 反死锁兜底（R49）：目标要求脱离零速，但指令被符号界钳在零上——此时前馈
@@ -1172,6 +1226,26 @@ double RegulatedPurePursuitController::trackLinearVelocity(
   }
   last_speed_cmd_ = v_out;
   return v_out;
+}
+
+void RegulatedPurePursuitController::enforceTrackMinimumLinearVelocity(
+  double & linear_vel, const double traj_v, const double sign)
+{
+  // 关闭态：不改动，保持原行为。
+  if (min_track_linear_vel_ <= 0.0) {
+    return;
+  }
+
+  // 上限取规划速度 |traj_v|：无论怎么抬都不允许超过速度规划器给的目标。
+  // 规划器要求停车时 traj_v≈0，floor 随之为 0，本兜底自动失效，制动权不受影响。
+  const double floor = std::min(min_track_linear_vel_, std::fabs(traj_v));
+  if (floor <= 0.0 || std::fabs(linear_vel) >= floor) {
+    return;
+  }
+
+  // 保留运动方向：优先沿用当前输出符号；输出为零时回退到倒车符号 sign。
+  const double dir = std::fabs(linear_vel) > 1e-9 ? linear_vel : sign;
+  linear_vel = std::copysign(floor, dir);
 }
 
 void RegulatedPurePursuitController::setSpeedLimit(
@@ -1387,6 +1461,10 @@ RegulatedPurePursuitController::dynamicParametersCallback(
         regulated_linear_scaling_min_speed_ = parameter.as_double();
       } else if (name == plugin_name_ + ".max_angular_accel") {
         max_angular_accel_ = parameter.as_double();
+      } else if (name == plugin_name_ + ".rotate_cmd_reseed_error") {
+        rotate_cmd_reseed_error_ = std::max(0.0, parameter.as_double());
+      } else if (name == plugin_name_ + ".min_track_linear_vel") {
+        min_track_linear_vel_ = std::max(0.0, parameter.as_double());
       } else if (name == plugin_name_ + ".rotate_to_path_entry_angle") {
         rotate_to_path_entry_angle_ = parameter.as_double();
       }
@@ -1405,6 +1483,8 @@ RegulatedPurePursuitController::dynamicParametersCallback(
           continue;
         }
         use_rotate_to_heading_ = parameter.as_bool();
+      } else if (name == plugin_name_ + ".use_rotate_to_path") {
+        use_rotate_to_path_ = parameter.as_bool();
       } else if (name == plugin_name_ + ".allow_reversing") {
         if (use_rotate_to_heading_ && parameter.as_bool()) {
           RCLCPP_WARN(

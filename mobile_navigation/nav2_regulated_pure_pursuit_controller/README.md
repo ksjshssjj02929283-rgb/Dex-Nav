@@ -61,6 +61,7 @@ Note: The maximum allowed time to collision is thresholded by the lookahead poin
 | `transform_tolerance` | The TF transform tolerance | 
 | `use_velocity_scaled_lookahead_dist` | Whether to use the velocity scaled lookahead distances or constant `lookahead_distance` | 
 | `min_approach_linear_velocity` | The minimum velocity threshold to apply when approaching the goal | 
+| `min_track_linear_vel` | Track-phase minimum linear velocity. When the computed command is below this value, it is raised to the lower of this value and the speed-planner velocity `traj_v` (direction preserved), so a low command is not erased by the downstream velocity smoother deadband. Set to 0 to disable. | 
 | `approach_velocity_scaling_dist` | Integrated distance from end of transformed path at which to start applying velocity scaling. This defaults to the forward extent of the costmap minus one costmap cell length. | 
 | `use_collision_detection` | Whether to enable collision detection. |
 | `max_allowed_time_to_collision_up_to_carrot` | The time to project a velocity command to check for collisions when `use_collision_detection` is `true`. It is limited to maximum distance of lookahead distance selected. |
@@ -72,12 +73,14 @@ Note: The maximum allowed time to collision is thresholded by the lookahead poin
 | `regulated_linear_scaling_min_radius` | The turning radius for which the regulation features are triggered. Remember, sharper turns have smaller radii | 
 | `regulated_linear_scaling_min_speed` | The minimum speed for which the regulated features can send, to ensure process is still achievable even in high cost spaces with high curvature. | 
 | `use_rotate_to_heading` | Whether to enable rotating to rough heading and goal orientation when using holonomic planners. Recommended on for all robot types except ackermann, which cannot rotate in place. | 
+| `use_rotate_to_path` | Whether to stop the linear motion and rotate in place for a large mid-path carrot angle. Keep `false` when staged control or curvature regulation handles path turns, otherwise sharp curves can create a second stop. |
 | `rotate_to_path_entry_angle` | The difference in the path orientation and the starting robot orientation to trigger a rotate in place, if `use_rotate_to_heading` is enabled. | 
 | `rotate_to_path_exit_angle` | Hysteresis exit threshold for the rotate-in-place mode entered via `rotate_to_path_entry_angle`; must be smaller than the entry angle. | 
 | `rotate_to_path_angular_kp` | Proportional gain for the rotate-to-path angular velocity command: `angular_vel = clamp(kp * angle_to_path, -rotate_to_path_angular_vel, rotate_to_path_angular_vel)`. Independent from `rotate_to_goal_angular_kp`. | 
 | `rotate_to_goal_angular_vel` | Angular velocity used when rotating in place to align with the final goal orientation (`shouldRotateToGoalHeading`). Independent from `rotate_to_path_angular_vel`. | 
 | `rotate_to_goal_angular_kp` | Proportional gain for the rotate-to-goal angular velocity command, same formula as `rotate_to_path_angular_kp`. Independent from `rotate_to_path_angular_kp`. | 
 | `max_angular_accel` | Maximum allowable angular acceleration while rotating to heading, if enabled | 
+| `rotate_cmd_reseed_error` | Difference between measured and previously commanded angular velocity above which the rotation command ramp is re-anchored to odometry. |
 | `max_robot_pose_search_dist` | Maximum integrated distance along the path to bound the search for the closest pose to the robot. This is set by default to the maximum costmap extent, so it shouldn't be set manually unless there are loops within the local costmap. | 
 | `use_interpolation` | Enables interpolation between poses on the path for lookahead point selection. Helps sparse paths to avoid inducing discontinuous commanded velocities. Set this to false for a potential performance boost, at the expense of smooth control. | 
 
