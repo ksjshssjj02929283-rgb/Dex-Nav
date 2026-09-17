@@ -117,9 +117,15 @@ CollisionMonitor::on_configure(const rclcpp_lifecycle::State & /*state*/)
   cmd_vel_in_sub_ = this->create_subscription<geometry_msgs::msg::Twist>(
     cmd_vel_in_topic, 1,
     std::bind(&CollisionMonitor::cmdVelInCallback, this, std::placeholders::_1), io_options);
+
+  // schedule_cmd_vel_topic may intentionally be the same as cmd_vel_out_topic. Ignore this
+  // node's own output so an IDLE zero command cannot be consumed as a fresh schedule command.
+  rclcpp::SubscriptionOptions schedule_options = io_options;
+  schedule_options.ignore_local_publications = true;
   schedule_cmd_vel_sub_ = this->create_subscription<geometry_msgs::msg::Twist>(
     schedule_cmd_vel_topic_, 1,
-    std::bind(&CollisionMonitor::scheduleCmdVelCallback, this, std::placeholders::_1), io_options);
+    std::bind(&CollisionMonitor::scheduleCmdVelCallback, this, std::placeholders::_1),
+    schedule_options);
   tracking_path_sub_ = this->create_subscription<nav_interfaces::msg::TrackingPath>(
     tracking_path_topic_, rclcpp::QoS(1),
     std::bind(&CollisionMonitor::trackingPathCallback, this, std::placeholders::_1), io_options);

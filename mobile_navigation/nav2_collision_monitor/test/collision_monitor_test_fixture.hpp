@@ -103,10 +103,12 @@ public:
     cmdVelInCallback(msg);
   }
 
-  void receiveScheduleVelocity(double x)
+  void receiveScheduleVelocity(double x, double y = 0.0, double tw = 0.0)
   {
     auto msg = std::make_shared<geometry_msgs::msg::Twist>();
     msg->linear.x = x;
+    msg->linear.y = y;
+    msg->angular.z = tw;
     scheduleCmdVelCallback(msg);
   }
 
@@ -270,7 +272,6 @@ protected:
 
   // Working with cmd_vel_in/cmd_vel_out
   rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_in_pub_;
-  rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr schedule_cmd_vel_pub_;
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_out_sub_;
   rclcpp::Subscription<nav_interfaces::msg::ObstacleMonitorStatus>::SharedPtr
     obstacle_status_sub_;

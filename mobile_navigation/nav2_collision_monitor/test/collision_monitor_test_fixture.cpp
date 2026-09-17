@@ -30,8 +30,6 @@ Tester::Tester()
 
   cmd_vel_in_pub_ = cm_->create_publisher<geometry_msgs::msg::Twist>(
     CMD_VEL_IN_TOPIC, rclcpp::QoS(rclcpp::KeepLast(1)).transient_local().reliable());
-  schedule_cmd_vel_pub_ = cm_->create_publisher<geometry_msgs::msg::Twist>(
-    SCHEDULE_CMD_VEL_TOPIC, rclcpp::QoS(1));
   cmd_vel_out_sub_ = cm_->create_subscription<geometry_msgs::msg::Twist>(
     CMD_VEL_OUT_TOPIC, rclcpp::SystemDefaultsQoS(),
     std::bind(&Tester::cmdVelOutCallback, this, std::placeholders::_1));
@@ -49,7 +47,6 @@ Tester::~Tester()
   range_pub_.reset();
 
   cmd_vel_in_pub_.reset();
-  schedule_cmd_vel_pub_.reset();
   cmd_vel_out_sub_.reset();
   obstacle_status_sub_.reset();
 
@@ -370,11 +367,9 @@ void Tester::publishCmdVel(const double x, const double y, const double tw)
 
 void Tester::publishScheduleCmdVel(const double x, const double y, const double tw)
 {
-  auto msg = std::make_unique<geometry_msgs::msg::Twist>();
-  msg->linear.x = x;
-  msg->linear.y = y;
-  msg->angular.z = tw;
-  schedule_cmd_vel_pub_->publish(std::move(msg));
+  // The production publisher is a separate process. Inject the callback directly here because
+  // ignore_local_publications intentionally filters publishers in this test process.
+  cm_->receiveScheduleVelocity(x, y, tw);
 }
 
 bool Tester::waitData(
@@ -431,4 +426,3 @@ void Tester::obstacleStatusCallback(
 {
   obstacle_status_ = std::move(msg);
 }
-
