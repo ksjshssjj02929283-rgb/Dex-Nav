@@ -1,0 +1,61 @@
+# command_board 参数文件
+# 运行时节点名为 command_board_manager（launch 内 name 覆盖为 command_board）
+# 顶层用 /** 通配，匹配任意运行时节点名，确保参数注入
+/**:
+  ros__parameters:
+    # ────────────────────────────────────────────────────────────
+    # 急停丢位自动恢复参数（基于 V0.4.5）
+    # ────────────────────────────────────────────────────────────
+
+    # 主开关：启用/禁用急停丢位恢复功能
+    enable_loss_recovery: true
+
+    # 恢复时序参数
+    recover_settle_sec: 1.0              # 急停解除后等待机器人静止的时长（秒）
+    reloc_wait_sec: 2.0                  # 重定位后等待评估定位分数的时长（秒）
+
+    # 速度阈值：判断机器人是否静止
+    still_velocity_threshold: 0.05        # 线速度和角速度阈值（m/s, rad/s）
+
+    # 定位分数阈值
+    reloc_score_good: 0.8                # 高分阈值：≥ 此值视为重定位成功
+    reloc_score_bad: 0.5                 # 低分阈值：< 此值降级到全局重定位
+    pose_cache_min_score: 0.6            # 位姿缓存最低分数：仅缓存高于此分数的位姿
+
+    # 话题名（按部署环境覆盖）
+    # localization_node 内部以 "~/state" 发布，节点名 localization_node
+    localization_state_topic: "/localization_node/state"
+    # 实测里程计（robot_localization 融合输出），用于判断机器人是否静止
+    odom_topic: "/robot_localization/odometry/filtered"
+
+    # ────────────────────────────────────────────────────────────
+    # 使用说明
+    # ────────────────────────────────────────────────────────────
+    #
+    # 恢复流程：
+    # 1. 检测到急停/碰撞 → 停止导航和定位 → 进入 SafeStop 状态
+    # 2. 急停解除 → 等待 recover_settle_sec 秒确认机器人静止
+    # 3. 启动定位 → 使用缓存位姿进行局部重定位 → 进入 Relocating 状态
+    # 4. 等待 reloc_wait_sec 秒评估结果：
+    #    - score ≥ reloc_score_good：成功，返回 Normal 状态
+    #    - score < reloc_score_bad：失败，降级到 GlobalReloc 状态
+    #    - 介于两者之间：继续等待一轮
+    # 5. 全局重定位等待 reloc_wait_sec * 2 秒：
+    #    - score ≥ reloc_score_good：成功，返回 Normal 状态
+    #    - score < reloc_score_good：失败，进入 Alarm 状态，需人工干预
+    # 6. Alarm 状态：持续监控，人工通过 RViz 2D Pose Estimate 恢复后自动回到 Normal
+    #
+    # 禁用恢复功能：
+    # enable_loss_recovery: false
+    #
+    # 调整恢复灵敏度：
+    # - 提高 reloc_score_good：要求更高的定位质量才视为成功
+    # - 降低 reloc_score_bad：更容易触发全局重定位
+    # - 增加 reloc_wait_sec：给定位更多时间收敛
+    # - 增加 recover_settle_sec：等待更长时间确认机器人完全静止
+    #
+    # 位姿缓存策略：
+    # - 仅在 Normal 状态下缓存位姿
+    # - 仅缓存 score ≥ pose_cache_min_score 的位姿
+    # - 使用 TF (map→base_link) 实时快照
+    # - 每次更新覆盖上一次（保留最新高分位姿）

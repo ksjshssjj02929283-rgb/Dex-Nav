@@ -5,6 +5,7 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_action REQUIRED)
 find_package(nav2_msgs REQUIRED)
+find_package(nav_msgs REQUIRED)
 find_package(action_msgs REQUIRED)
 find_package(std_srvs REQUIRED)
 find_package(std_msgs REQUIRED)
@@ -50,6 +51,7 @@ add_executable(command_board_node
 ament_target_dependencies(command_board_node
   rclcpp
   nav2_msgs
+  nav_msgs
   action_msgs
   rclcpp_action
   diagnostic_msgs
@@ -77,6 +79,10 @@ install(DIRECTORY include/
 )
 
 install(DIRECTORY launch
+  DESTINATION share/${PROJECT_NAME}
+)
+
+install(DIRECTORY params
   DESTINATION share/${PROJECT_NAME}
 )
 

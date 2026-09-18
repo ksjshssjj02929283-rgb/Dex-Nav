@@ -37,8 +37,12 @@ CommandBoardManagerROS::CommandBoardManagerROS() : rclcpp::Node("command_board_m
     auto sub_opt = rclcpp::SubscriptionOptions();
     sub_opt.callback_group = callback_group_;
 
+    // 定位状态话题：localization_node 内部以 "~/state" 发布，节点名为 localization_node，
+    // 故实际话题为 /localization_node/state。声明为参数便于按部署环境覆盖。
+    localization_state_topic_ =
+        this->declare_parameter("localization_state_topic", localization_state_topic_);
     localization_state_sub_ = this->create_subscription<nav_interfaces::msg::LocalizationState>(
-        "/localization_state", qos,
+        localization_state_topic_, qos,
         std::bind(&CommandBoardManagerROS::OnLocalizationState, this, std::placeholders::_1), sub_opt);
 
     diagnostics_agg_sub_ = this->create_subscription<diagnostic_msgs::msg::DiagnosticArray>(
@@ -65,6 +69,41 @@ CommandBoardManagerROS::CommandBoardManagerROS() : rclcpp::Node("command_board_m
         "map_manager/map_name", map_name_qos,
         [this](const std_msgs::msg::String::SharedPtr msg) { current_map_name_ = msg->data; });
 
+    // ── 急停丢位恢复参数声明 ──────────────────────────────────────
+    enable_loss_recovery_ = this->declare_parameter("enable_loss_recovery", enable_loss_recovery_);
+    recover_settle_sec_ = this->declare_parameter("recover_settle_sec", recover_settle_sec_);
+    reloc_wait_sec_ = this->declare_parameter("reloc_wait_sec", reloc_wait_sec_);
+    score_good_ = this->declare_parameter("reloc_score_good", score_good_);
+    score_bad_ = this->declare_parameter("reloc_score_bad", score_bad_);
+    pose_cache_min_score_ = this->declare_parameter("pose_cache_min_score", pose_cache_min_score_);
+    velocity_still_threshold_ = this->declare_parameter("still_velocity_threshold", velocity_still_threshold_);
+    odom_topic_ = this->declare_parameter("odom_topic", odom_topic_);
+
+    // ── 急停丢位恢复服务客户端 ────────────────────────────────────
+    relocalization_cli_ = this->create_client<nav_interfaces::srv::SetPose>(
+        "/localization_node/relocalization");
+    global_reloc_cli_ = this->create_client<std_srvs::srv::Trigger>(
+        "/localization_node/trigger_global_relocalization");
+
+    // ── 告警发布器 ────────────────────────────────────────────────
+    alarm_pub_ = this->create_publisher<std_msgs::msg::String>(
+        "~/safety_alarm", rclcpp::QoS(1).transient_local());
+
+    // ── 订阅实测里程计速度（用于判断机器人是否静止）────────────────────────
+    // 注意：不用 /cmd_vel 指令速度，因为急停时指令恒为零但机器人可能仍在滑行
+    odom_sub_ = this->create_subscription<nav_msgs::msg::Odometry>(
+        odom_topic_, qos,
+        [this](const nav_msgs::msg::Odometry::SharedPtr msg) {
+            latest_velocity_ = msg->twist.twist;
+            velocity_valid_ = true;
+        }, sub_opt);
+
+    // ── 恢复定时器（200ms 周期驱动状态机）───────────────────────
+    recover_timer_ = this->create_wall_timer(
+        std::chrono::milliseconds(200),
+        std::bind(&CommandBoardManagerROS::OnRecoverTimer, this),
+        callback_group_);
+
     // ── 对外服务 ──────────────────────────────────────────────────
     reset_origin_xyyaw_srv_ = this->create_service<nav_interfaces::srv::ResetMapOriginByXYYaw>(
         "~/reset_map_origin_by_xyyaw",
@@ -80,7 +119,8 @@ CommandBoardManagerROS::CommandBoardManagerROS() : rclcpp::Node("command_board_m
 
     RCLCPP_INFO(get_logger(),
                 "CommandBoardManagerROS initialized. "
-                "Services: ~/reset_map_origin_by_xyyaw, ~/reset_map_origin_by_robot_pose");
+                "Services: ~/reset_map_origin_by_xyyaw, ~/reset_map_origin_by_robot_pose. "
+                "Loss recovery: %s", enable_loss_recovery_ ? "enabled" : "disabled");
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -382,6 +422,8 @@ bool CommandBoardManagerROS::RunResetMapOriginTool(
 
 void CommandBoardManagerROS::OnLocalizationState(const nav_interfaces::msg::LocalizationState::SharedPtr msg) {
     RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 5000, "Received localization state: %d", msg->status);
+
+    // ── 原有逻辑：驱动定位状态机 ──────────────────────────────────
     if (msg->status == nav_interfaces::msg::LocalizationState::LOC_SUCCESS) {
         RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 5000, "Localization successful.");
         localization_sm_->LocalizationSuccess();
@@ -389,9 +431,23 @@ void CommandBoardManagerROS::OnLocalizationState(const nav_interfaces::msg::Loca
         RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000, "Localization not successful.");
         localization_sm_->LocalizationFailed();
     }
+
+    // ── 新增：急停丢位恢复支持 ────────────────────────────────────
+    if (!enable_loss_recovery_) return;
+
+    // 更新定位分数
+    latest_score_ = msg->score;
+
+    // 在正常状态下，缓存高分位姿
+    if (recover_state_ == RecoverState::kNormal && latest_score_ >= pose_cache_min_score_) {
+        SnapshotGoodPose();
+    }
 }
 
 void CommandBoardManagerROS::OnDiagnosticsAgg(const diagnostic_msgs::msg::DiagnosticArray::SharedPtr msg) {
+    bool estop_detected = false;
+    bool bumper_detected = false;
+
     for (const auto& status : msg->status) {
         if (status.name == "/Devices/System/PowerBoard/collector_node: PowerBoard Safety") {
             for (const auto& kv : status.values) {
@@ -407,6 +463,7 @@ void CommandBoardManagerROS::OnDiagnosticsAgg(const diagnostic_msgs::msg::Diagno
                             localization_sm_->LocalizationFailed();
                             RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 5000,
                                                  "Emergency stop activated!");
+                            estop_detected = true;
                         }
                     } catch (...) {
                         RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 5000,
@@ -426,6 +483,7 @@ void CommandBoardManagerROS::OnDiagnosticsAgg(const diagnostic_msgs::msg::Diagno
                             localization_sm_->LocalizationFailed();
                             RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 5000,
                                                  "bumper_strip_front_state stop activated!");
+                            bumper_detected = true;
                         }
                     } catch (...) {
                         RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 5000,
@@ -444,6 +502,7 @@ void CommandBoardManagerROS::OnDiagnosticsAgg(const diagnostic_msgs::msg::Diagno
                             localization_sm_->LocalizationFailed();
                             RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 5000,
                                                  "bumper_strip_rear_state stop activated!");
+                            bumper_detected = true;
                         }
                     } catch (...) {
                         RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 5000,
@@ -454,6 +513,29 @@ void CommandBoardManagerROS::OnDiagnosticsAgg(const diagnostic_msgs::msg::Diagno
             break;
         }
     }
+
+    // ── 新增：急停状态变化检测和恢复触发 ──────────────────────────
+    if (!enable_loss_recovery_) return;
+
+    bool active_now = estop_detected || bumper_detected;
+
+    // 上升沿：从正常到急停/碰撞
+    if (active_now && !safety_active_) {
+        RCLCPP_WARN(this->get_logger(),
+                    "Safety active (estop=%d, bumper=%d) — stopping localization for recovery",
+                    estop_detected, bumper_detected);
+        navigation_action_client_->async_cancel_all_goals();
+        StopLocalization();
+        recover_state_ = RecoverState::kSafeStop;
+    }
+    // 下降沿：从急停/碰撞到正常
+    else if (!active_now && safety_active_) {
+        RCLCPP_INFO(this->get_logger(),
+                    "Safety released — awaiting settle for relocalization");
+        settle_start_ = this->now();
+    }
+
+    safety_active_ = active_now;
 }
 
 // 实现接口方法
@@ -471,6 +553,206 @@ void CommandBoardManagerROS::HandleLocalizationSuccess() {
 void CommandBoardManagerROS::StopRobotMovement() {
     // 创建并调用停止运动的服务客户端
     navigation_action_client_->async_cancel_all_goals();
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// 急停丢位恢复状态机实现
+// ──────────────────────────────────────────────────────────────────────
+
+void CommandBoardManagerROS::OnRecoverTimer() {
+    if (!enable_loss_recovery_) return;
+
+    const auto now = this->now();
+
+    switch (recover_state_) {
+        case RecoverState::kNormal:
+            // 正常状态，无操作（位姿缓存在 OnLocalizationState 中）
+            break;
+
+        case RecoverState::kSafeStop:
+            // 等待急停解除
+            if (safety_active_) break;
+
+            // 等待机器人静止
+            if (!RobotIsStill()) {
+                settle_start_ = now;
+                break;
+            }
+
+            // 等待稳定时间
+            if ((now - settle_start_).seconds() < recover_settle_sec_) break;
+
+            // 启动定位并尝试重定位
+            StartLocalization();
+
+            if (last_known_pose_valid_) {
+                Relocalize(last_known_pose_);
+                recover_state_ = RecoverState::kRelocating;
+                RCLCPP_INFO(this->get_logger(),
+                           "Attempting local relocalization from cached pose");
+            } else {
+                RCLCPP_WARN(this->get_logger(),
+                           "No cached pose — escalating to global relocalization");
+                GlobalRelocalize();
+                recover_state_ = RecoverState::kGlobalReloc;
+            }
+            reloc_start_ = now;
+            break;
+
+        case RecoverState::kRelocating:
+            // 等待局部重定位结果
+            if ((now - reloc_start_).seconds() < reloc_wait_sec_) break;
+
+            if (latest_score_ >= score_good_) {
+                RCLCPP_INFO(this->get_logger(),
+                           "Relocalized OK from last pose (score=%.2f)", latest_score_);
+                recover_state_ = RecoverState::kNormal;
+            } else if (latest_score_ < score_bad_) {
+                RCLCPP_WARN(this->get_logger(),
+                           "Local relocalization weak (score=%.2f) — global fallback",
+                           latest_score_);
+                GlobalRelocalize();
+                reloc_start_ = now;
+                recover_state_ = RecoverState::kGlobalReloc;
+            } else {
+                // 中间档分数，再等一轮
+                reloc_start_ = now;
+            }
+            break;
+
+        case RecoverState::kGlobalReloc:
+            // 等待全局重定位结果（等待时间加倍）
+            if ((now - reloc_start_).seconds() < reloc_wait_sec_ * 2.0) break;
+
+            if (latest_score_ >= score_good_) {
+                RCLCPP_INFO(this->get_logger(),
+                           "Global relocalization OK (score=%.2f)", latest_score_);
+                recover_state_ = RecoverState::kNormal;
+            } else {
+                RaiseAlarm("Global relocalization failed — manual RViz 2D Pose Estimate needed");
+                recover_state_ = RecoverState::kAlarm;
+            }
+            break;
+
+        case RecoverState::kAlarm:
+            // 告警状态，等待人工重定位
+            if (latest_score_ >= score_good_) {
+                RCLCPP_INFO(this->get_logger(),
+                           "Recovered from alarm (manual relocalization, score=%.2f)",
+                           latest_score_);
+                recover_state_ = RecoverState::kNormal;
+            }
+            break;
+    }
+}
+
+void CommandBoardManagerROS::SnapshotGoodPose() {
+    try {
+        auto tf = tf_buffer_->lookupTransform("map", "base_link", tf2::TimePointZero);
+        last_known_pose_.x = tf.transform.translation.x;
+        last_known_pose_.y = tf.transform.translation.y;
+        tf2::Quaternion q;
+        tf2::fromMsg(tf.transform.rotation, q);
+        last_known_pose_.theta = tf2::getYaw(q);
+        last_known_pose_valid_ = true;
+
+        RCLCPP_DEBUG(this->get_logger(),
+                    "Cached good pose: (%.2f, %.2f, %.3f) with score %.2f",
+                    last_known_pose_.x, last_known_pose_.y, last_known_pose_.theta,
+                    latest_score_);
+    } catch (const tf2::TransformException& ex) {
+        // TF 不可用时静默忽略
+    }
+}
+
+bool CommandBoardManagerROS::RobotIsStill() const {
+    if (!velocity_valid_) {
+        // 如果没有速度数据，假设静止
+        return true;
+    }
+
+    const double v = std::hypot(latest_velocity_.linear.x, latest_velocity_.linear.y);
+    const double w = std::abs(latest_velocity_.angular.z);
+    return v < velocity_still_threshold_ && w < velocity_still_threshold_;
+}
+
+void CommandBoardManagerROS::StopLocalization() {
+    if (stop_localization_cli_->service_is_ready()) {
+        stop_localization_cli_->async_send_request(
+            std::make_shared<std_srvs::srv::Trigger::Request>());
+        RCLCPP_INFO(this->get_logger(), "Stopping localization");
+    } else {
+        RCLCPP_WARN(this->get_logger(), "stop_localization service not ready");
+    }
+}
+
+void CommandBoardManagerROS::StartLocalization() {
+    if (start_localization_cli_->service_is_ready()) {
+        start_localization_cli_->async_send_request(
+            std::make_shared<std_srvs::srv::Trigger::Request>());
+        RCLCPP_INFO(this->get_logger(), "Starting localization");
+    } else {
+        RCLCPP_WARN(this->get_logger(), "start_localization service not ready");
+    }
+}
+
+void CommandBoardManagerROS::Relocalize(const geometry_msgs::msg::Pose2D& pose) {
+    if (!relocalization_cli_->service_is_ready()) {
+        RCLCPP_WARN(this->get_logger(), "relocalization service not ready");
+        return;
+    }
+
+    auto req = std::make_shared<nav_interfaces::srv::SetPose::Request>();
+    req->pose.header.frame_id = "map";
+    req->pose.header.stamp = this->now();
+    req->pose.pose.pose.position.x = pose.x;
+    req->pose.pose.pose.position.y = pose.y;
+    req->pose.pose.pose.position.z = 0.0;
+
+    tf2::Quaternion q;
+    q.setRPY(0.0, 0.0, pose.theta);
+    req->pose.pose.pose.orientation = tf2::toMsg(q);
+
+    // 设置协方差矩阵（6x6，行主序）
+    req->pose.pose.covariance[0]  = 0.25;   // x variance
+    req->pose.pose.covariance[7]  = 0.25;   // y variance
+    req->pose.pose.covariance[35] = 0.07;   // yaw variance
+
+    relocalization_cli_->async_send_request(req);
+    RCLCPP_INFO(this->get_logger(),
+                "Local relocalize from cached pose (%.2f, %.2f, %.3f)",
+                pose.x, pose.y, pose.theta);
+}
+
+void CommandBoardManagerROS::GlobalRelocalize() {
+    if (global_reloc_cli_->service_is_ready()) {
+        global_reloc_cli_->async_send_request(
+            std::make_shared<std_srvs::srv::Trigger::Request>());
+        RCLCPP_INFO(this->get_logger(), "Triggered global relocalization");
+    } else {
+        RCLCPP_WARN(this->get_logger(), "global relocalization service not ready");
+    }
+}
+
+void CommandBoardManagerROS::RaiseAlarm(const std::string& reason) {
+    last_alarm_ = reason;
+    std_msgs::msg::String m;
+    m.data = reason;
+    if (alarm_pub_) {
+        alarm_pub_->publish(m);
+    }
+    RCLCPP_ERROR(this->get_logger(), "[SafetyReactor ALARM] %s", reason.c_str());
+}
+
+const char* CommandBoardManagerROS::RecoverStateToString(RecoverState s) {
+    switch (s) {
+        case RecoverState::kNormal:      return "NORMAL";
+        case RecoverState::kSafeStop:    return "SAFE_STOP";
+        case RecoverState::kRelocating:  return "RELOCATING";
+        case RecoverState::kGlobalReloc: return "GLOBAL_RELOC";
+        case RecoverState::kAlarm:       return "ALARM";
+    }
+    return "UNKNOWN";
 }
 
 }  // namespace command_board
