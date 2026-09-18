@@ -324,11 +324,15 @@ namespace schedule_planner
 
         // 2) 分组：属性一致、长度够的连续 LINE 段合并成一条带倒角的轨迹一次下发。
         const std::size_t total = segments.size();
-        // map_asset 在车离起点太远时会在最前面插一条归位边，此时段数等于点数
-        // （正常是点数-1，见 route_graph_manager.cpp 的 "prepended homing edge"）。
-        // 归位段必须单独跑完再开始合并。单点请求也满足这个等式，但它只有一段，无所谓。
+        // 首段是不是「必须单独跑完才能开始合并」的引导段。两种来源：
+        //   1) 车离起点太远时 map_asset 在最前面插的归位边，此时段数等于点数
+        //      （正常是点数-1，见 route_graph_manager.cpp 的 "prepended homing edge"）；
+        //   2) 窄道点位的单点请求，1 个点解析出 2 段（倒车退出 + 正向开回，
+        //      见 route_graph_manager.cpp 的 "narrow turnaround"）——这两段方向相反，
+        //      本来就过不了 sameTrackingAttributes/转角判据，这里只是把意图写明。
+        const std::size_t n_names = goal->nav_point_names.size();
         const std::size_t first_mergeable =
-            (goal->nav_point_names.size() >= 2 && total == goal->nav_point_names.size()) ? 1u : 0u;
+            ((n_names >= 2 && total == n_names) || (n_names == 1 && total == 2)) ? 1u : 0u;
         MergeParams mp = merge_params_;
         // controller 模式走的是 FollowPath + controller_server，离散分辨率与跟踪语义都不同，
         // 合并暂不覆盖该模式。

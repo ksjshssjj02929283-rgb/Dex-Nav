@@ -151,10 +151,13 @@ RouteGraphManager::RouteGraphManager(
     tf_listener_ = std::make_unique<tf2_ros::TransformListener>(*tf_buffer_, node);
 
     start_tolerance_ = node->declare_parameter<double>("route_start_tolerance", 0.1);
+    narrow_turnaround_tolerance_ =
+        node->declare_parameter<double>("narrow_turnaround_tolerance", 0.3);
 
     RCLCPP_INFO(node->get_logger(),
-                "RouteGraphManager initialized (route_start_tolerance=%.3fm)",
-                start_tolerance_);
+                "RouteGraphManager initialized (route_start_tolerance=%.3fm, "
+                "narrow_turnaround_tolerance=%.3fm)",
+                start_tolerance_, narrow_turnaround_tolerance_);
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -827,6 +830,44 @@ std::optional<RouteEdge> RouteGraphManager::findNearestEdgeTo(
     return best;
 }
 
+std::optional<std::pair<RouteEdge, RouteEdge>> RouteGraphManager::findNarrowTurnaround(
+    const RouteEndpoint& p) const {
+    // 先收 P 的全部关联边（无向意义上"挂在 P 上"的边），用来卡死「恰好两条」这个前提。
+    // 窄道端点就该只有一进一出；多于两条说明它是个普通路口，退出方向不唯一，不能替上层做主。
+    std::vector<RouteEdge> incident;
+    for (const auto& e : edge_store_->getAll()) {
+        const bool from_p = (e.from.id == p.id && e.from.type == p.type);
+        const bool to_p   = (e.to.id == p.id && e.to.type == p.type);
+        if (from_p || to_p) incident.push_back(e);
+    }
+    if (incident.size() != 2) {
+        if (incident.size() > 2) {
+            RCLCPP_WARN(node_->get_logger(),
+                        "ResolveNavPoints: nav point '%s' has %zu incident edges (>2), "
+                        "not a narrow turnaround point; falling back to the normal "
+                        "single-point path.",
+                        p.id.c_str(), incident.size());
+        }
+        return std::nullopt;
+    }
+
+    // 两条边里试着配出 out/in（两种配法都试，路网里的存储顺序不作数）：
+    //   out：单向、from==P、backward==true            —— 倒车退出去的那条
+    //   in ：单向、to==P、from==out.to                —— 正向开进来的那条
+    // 最后一条是关键：退出去的终点必须正好是进来那条的起点，否则退出去以后接不回原路。
+    for (int i = 0; i < 2; ++i) {
+        const RouteEdge& out = incident[i];
+        const RouteEdge& in  = incident[1 - i];
+        if (out.bidirectional || !out.backward) continue;
+        if (!(out.from.id == p.id && out.from.type == p.type)) continue;
+        if (in.bidirectional) continue;
+        if (!(in.to.id == p.id && in.to.type == p.type)) continue;
+        if (!(in.from.id == out.to.id && in.from.type == out.to.type)) continue;
+        return std::make_pair(out, in);
+    }
+    return std::nullopt;
+}
+
 nav_interfaces::msg::PathSegment RouteGraphManager::edgeToSegment(const RouteEdge& e, bool reversed) const {
     nav_interfaces::msg::PathSegment seg;
 
@@ -940,28 +981,52 @@ void RouteGraphManager::resolveNavPointsCallback(
             res->message = "no edge ending at nav point " + names[0];
             return;
         }
-        auto seg = edgeToSegment(*ref_edge, ref_reversed);
-        if (robot_to_first < start_tolerance_) {
-            // 车已经压在目标点上：整条跑参考输入边等于先退回边起点再走一遍，
-            // 改成"车体当前位置 → 目标点"的短直线，段级参数（mode/backward/padding…）沿用该边。
-            geometry_msgs::msg::Point p0;
-            p0.x = robot->first;
-            p0.y = robot->second;
-            p0.z = 0.0;
-            geometry_msgs::msg::Point p1;
-            p1.x = static_cast<double>(first_pt->x);
-            p1.y = static_cast<double>(first_pt->y);
-            p1.z = 0.0;
-            seg.type           = nav_interfaces::msg::PathSegment::LINE;
-            seg.control_points = {p0, p1};
-            refreshTargetYaw(seg);
-            decision = "at goal (" + std::to_string(robot_to_first) + "m), rewrote edge " +
-                       ref_edge->id + " as short LINE from robot pose";
-        } else {
-            decision = "nearest incoming edge " + ref_edge->id + " (robot-edge dist " +
-                       std::to_string(ref_dist) + "m)";
+        // ── 窄道点位优先 ──────────────────────────────────────────────
+        // 车已经停在只能倒车退出的死胡同端点上时，不管它对得准不准，都必须
+        // 「先沿倒车边退到 Q，再沿入边正向开回 P」：就地重新对准会让差速车原地旋转，
+        // 而这个点位之所以被配成一进一出 + 出去那条是倒车，就是因为那儿没有旋转空间。
+        // 只在车确实压在 P 上（< narrow_turnaround_tolerance_）时才成立——车还在别处时
+        // 下发一条起点在 P 的路径没有意义。TF 拿不到时 robot_to_first = +inf，自动跳过。
+        std::optional<std::pair<RouteEdge, RouteEdge>> narrow;
+        if (robot_to_first < narrow_turnaround_tolerance_) {
+            narrow = findNarrowTurnaround(first_ep);
         }
-        segments.push_back(std::move(seg));
+
+        if (narrow) {
+            // 两段都按边自身方向下发（out: P→Q 倒车，in: Q→P 正向），不做任何起点吸附：
+            // 车头在整个过程里始终指向 Q→P，两段的 phase1 对准误差都是 0。
+            const RouteEdge& out_edge = narrow->first;
+            const RouteEdge& in_edge  = narrow->second;
+            segments.push_back(edgeToSegment(out_edge, /*reversed=*/false));
+            segments.push_back(edgeToSegment(in_edge, /*reversed=*/false));
+            decision = "narrow turnaround at " + names[0] + " (robot dist " +
+                       std::to_string(robot_to_first) + "m < " +
+                       std::to_string(narrow_turnaround_tolerance_) + "m): reverse out via " +
+                       out_edge.id + ", then re-enter via " + in_edge.id;
+        } else {
+            auto seg = edgeToSegment(*ref_edge, ref_reversed);
+            if (robot_to_first < start_tolerance_) {
+                // 车已经压在目标点上：整条跑参考输入边等于先退回边起点再走一遍，
+                // 改成"车体当前位置 → 目标点"的短直线，段级参数（mode/backward/padding…）沿用该边。
+                geometry_msgs::msg::Point p0;
+                p0.x = robot->first;
+                p0.y = robot->second;
+                p0.z = 0.0;
+                geometry_msgs::msg::Point p1;
+                p1.x = static_cast<double>(first_pt->x);
+                p1.y = static_cast<double>(first_pt->y);
+                p1.z = 0.0;
+                seg.type           = nav_interfaces::msg::PathSegment::LINE;
+                seg.control_points = {p0, p1};
+                refreshTargetYaw(seg);
+                decision = "at goal (" + std::to_string(robot_to_first) + "m), rewrote edge " +
+                           ref_edge->id + " as short LINE from robot pose";
+            } else {
+                decision = "nearest incoming edge " + ref_edge->id + " (robot-edge dist " +
+                           std::to_string(ref_dist) + "m)";
+            }
+            segments.push_back(std::move(seg));
+        }
     } else {
         // 多点：相邻两点各取一条直接边，首段即规划起始边
         std::optional<RouteEdge> start_edge;
