@@ -2778,6 +2778,11 @@ namespace path_follower
         if (vel_track_mode_ == VelocityTrackMode::kStop && std::fabs(ref_v) <= kEpsilon)
         {
             out = Velocity{};
+            // 抗积分饱和：输出整体被否决了，横向纠偏 PID 就不能再把这份消不掉的
+            // 误差往积分里堆。否则长时间避障停车后，攒下的 vy 会在恢复行驶时被
+            // Vy/Vx 占比限幅按上限释放，把车横推出 track_deviation_limit 直接 abort。
+            // 实测 2026-09-18 W1-217：停 65 s 攒到 0.209 m/s，恢复 2 s 后横推 0.146 m。
+            pid_.reset();
         }
 
         applyMinCommandFloor(out);
@@ -2991,6 +2996,11 @@ namespace path_follower
         if (vel_track_mode_ == VelocityTrackMode::kStop && std::fabs(ref_v) <= kEpsilon)
         {
             out = Velocity{};
+            // 抗积分饱和：输出整体被否决了，横向纠偏 PID 就不能再把这份消不掉的
+            // 误差往积分里堆。否则长时间避障停车后，攒下的 vy 会在恢复行驶时被
+            // Vy/Vx 占比限幅按上限释放，把车横推出 track_deviation_limit 直接 abort。
+            // 实测 2026-09-18 W1-217：停 65 s 攒到 0.209 m/s，恢复 2 s 后横推 0.146 m。
+            pid_.reset();
         }
 
         // 9) 到点判定：位置到 + 朝向已对准 hold_direction
