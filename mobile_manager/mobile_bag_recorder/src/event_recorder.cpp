@@ -85,7 +85,11 @@ bool EventRecorder::wantsTopic(const std::string & topic) const
 void EventRecorder::onTopicDiscovered(const rosbag2_storage::TopicMetadata & metadata)
 {
   std::lock_guard<std::mutex> lock(mutex_);
-  known_topics_[metadata.name] = metadata;
+  // 幂等：话题登记现在先于建订阅，订阅失败后下一轮 poll 会再次登记同一话题，
+  // 不能对当前 writer 重复 create_topic
+  if (!known_topics_.emplace(metadata.name, metadata).second) {
+    return;
+  }
   if (writer_ && active_) {
     writer_->create_topic(metadata);
   }

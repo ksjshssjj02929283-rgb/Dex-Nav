@@ -177,6 +177,18 @@ void TopicSubscriberSet::subscribeTopic(const std::string & topic, const std::st
   rclcpp::SubscriptionOptions sub_options;
   sub_options.callback_group = group;
 
+  // ⚠️ 顺序契约：必须先让各 sink 登记话题（create_topic），再建订阅。
+  // 订阅一建立就在自己的回调组里活跃；对 TRANSIENT_LOCAL（latched）话题，DDS 会把
+  // 保留样本立刻投递，多线程 executor 下另一条线程可能在本函数返回前就跑 onMessage
+  // → writer->write()。若此时该话题还没 create_topic，rosbag2 抛 runtime_error，
+  // 回调里无人接 → std::terminate。实机（load 26）首次启动即中招，/active 由
+  // cmd_vel_mux latched 发布。rosbag2 上游 RecorderImpl::subscribe_topic 同样先
+  // create_topic 再订阅，理由相同。单线程 executor 下这个顺序曾"天然"成立，
+  // 改多线程时被打破——这就是把架构假设埋进局部代码的代价。
+  for (const auto & sink : interested) {
+    sink->onTopicDiscovered(metadata);
+  }
+
   rclcpp::GenericSubscription::SharedPtr subscription;
   try {
     subscription = node_->create_generic_subscription(
@@ -223,7 +235,19 @@ void TopicSubscriberSet::subscribeTopic(const std::string & topic, const std::st
           if (throttled && sink->respectsThrottle()) {
             continue;
           }
-          sink->onMessage(bag_message);
+          // 取证工具绝不能因一次写入失败把自己杀掉（磁盘满、话题未登记、存储层异常）。
+          // 订阅回调里抛出的异常 rclcpp 不接，会直接 std::terminate——实机 217 就是
+          // 这么死的（exit -6，之后完全没有录包）。这里兜住：计数 + 限频 ERROR，
+          // 其它话题照录。根因（登记顺序）已在 subscribeTopic 修掉，这是第二道防线
+          try {
+            sink->onMessage(bag_message);
+          } catch (const std::exception & e) {
+            const auto n = write_failures_.fetch_add(1, std::memory_order_relaxed) + 1;
+            RCLCPP_ERROR_THROTTLE(
+              node_->get_logger(), *node_->get_clock(), 5000,
+              "Sink write failed on %s (%lu failure(s) so far), message dropped: %s",
+              topic.c_str(), static_cast<unsigned long>(n), e.what());
+          }
         }
       },
       sub_options);
@@ -236,9 +260,6 @@ void TopicSubscriberSet::subscribeTopic(const std::string & topic, const std::st
     return;
   }
 
-  for (const auto & sink : interested) {
-    sink->onTopicDiscovered(metadata);
-  }
   callback_groups_[topic] = group;
   subscriptions_[topic] = subscription;
 

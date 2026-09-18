@@ -81,6 +81,10 @@ public:
     return clock_regression_count_.load(std::memory_order_relaxed);
   }
 
+  /// sink 写入失败（异常已兜住、该条消息已丢）的累计次数。正常应恒为 0；
+  /// 非 0 说明存储层出了问题（磁盘满 / 话题未登记 / 后端异常），bag 不完整
+  uint64_t writeFailures() const {return write_failures_.load(std::memory_order_relaxed);}
+
 private:
   void pollOnce();
   void subscribeTopic(const std::string & topic, const std::string & type);
@@ -109,6 +113,8 @@ private:
   /// 多线程 executor 下由多个话题回调并发自增，必须是原子的
   std::atomic<uint64_t> throttled_count_{0};
   std::atomic<uint64_t> clock_regression_count_{0};
+  /// sink 写入抛异常的次数（已兜住、消息已丢）。正常应恒为 0
+  std::atomic<uint64_t> write_failures_{0};
   /// 上一条写入 bag 的时间戳，用于全局单调钳位
   std::atomic<int64_t> last_stamp_ns_{0};
   /// 派发序锁：保证「取时间戳」与「交给各 sink」是一个原子步骤。

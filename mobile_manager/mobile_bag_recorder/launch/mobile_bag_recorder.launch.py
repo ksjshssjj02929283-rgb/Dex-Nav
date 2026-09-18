@@ -32,5 +32,9 @@ def generate_launch_description():
             output='screen',
             parameters=[params_file],
             arguments=['--ros-args', '--log-level', log_level],
+            # 录包器是取证工具，挂了就没有证据。任何原因退出都拉起来，
+            # 而不是让机器人在"以为在录"的状态下跑一整天
+            respawn=True,
+            respawn_delay=2.0,
         ),
     ])
