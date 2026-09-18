@@ -53,6 +53,7 @@ else()
 endif()
 
 add_library(${PROJECT_NAME}_lib
+  src/job_queue.cpp
   src/recorder_config.cpp
   src/topic_subscriber_set.cpp
   src/continuous_recorder.cpp
@@ -116,6 +117,10 @@ install(PROGRAMS
 
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
+
+  ament_add_gtest(test_job_queue test/test_job_queue.cpp)
+  target_link_libraries(test_job_queue ${PROJECT_NAME}_lib)
+  ament_target_dependencies(test_job_queue ${dependencies})
 
   ament_add_gtest(test_retention_policy test/test_retention_policy.cpp)
   target_link_libraries(test_retention_policy ${PROJECT_NAME}_lib)

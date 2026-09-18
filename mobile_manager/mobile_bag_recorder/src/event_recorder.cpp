@@ -57,6 +57,9 @@ EventRecorder::EventRecorder(
       config.log_capture.pre_seconds);
   }
 
+  staging_limit_ = static_cast<size_t>(config_.staging_limit);
+  jobs_ = std::make_unique<JobQueue>("event_recorder");
+
   RCLCPP_INFO(
     node_->get_logger(),
     "Event recording armed: %zu topics, pre %d s / post %d s, cooldown %d s, "
@@ -68,6 +71,10 @@ EventRecorder::EventRecorder(
 EventRecorder::~EventRecorder()
 {
   finish();
+  // 关 bag、日志快照、回收都是异步的，必须等它们跑完再让成员开始析构
+  if (jobs_) {
+    jobs_->drain();
+  }
 }
 
 bool EventRecorder::wantsTopic(const std::string & topic) const
@@ -93,7 +100,21 @@ void EventRecorder::onMessage(const rosbag2_storage::SerializedBagMessageSharedP
   std::lock_guard<std::mutex> lock(mutex_);
   if (writer_ && active_) {
     writer_->write(message);
+  } else if (opening_) {
+    // 开包任务正在后台倒 pre 窗口，此刻到达的实时消息先攒着，
+    // 由开包任务在装上 writer 之前一并倒进去，bag 内时间才连续
+    if (staging_.size() < staging_limit_) {
+      staging_.push_back(message);
+    } else {
+      ++staging_dropped_;
+    }
   }
+}
+
+uint64_t EventRecorder::stagingDropped() const
+{
+  std::lock_guard<std::mutex> lock(mutex_);
+  return staging_dropped_;
 }
 
 std::string EventRecorder::sanitize(const std::string & text)
@@ -167,65 +188,130 @@ TriggerResult EventRecorder::trigger(
     static_cast<double>(pending.back()->time_stamp - pending.front()->time_stamp) / 1e9;
   const int post_seconds = post_override > 0 ? post_override : config_.post_seconds;
 
-  rosbag2_storage::StorageOptions storage_options;
-  storage_options.uri = makeEventUri(reason);
-  storage_options.storage_id = storage_id_;
-  storage_options.max_cache_size = static_cast<uint64_t>(writer_cache_size_);
-  storage_options.max_bagfile_duration = 0;
-  storage_options.max_bagfile_size = 0;
+  const std::string uri = makeEventUri(reason);
 
-  auto writer = std::make_unique<rosbag2_cpp::Writer>();
-  try {
-    writer->open(storage_options, rosbag2_cpp::ConverterOptions{"cdr", "cdr"});
-  } catch (const std::exception & e) {
-    RCLCPP_ERROR(
-      node_->get_logger(), "Failed to open event bag: %s (%s)",
-      storage_options.uri.c_str(), e.what());
-    result.message = std::string("failed to open event bag: ") + e.what();
-    return result;
-  }
-
+  uint64_t session = 0;
   {
     std::lock_guard<std::mutex> lock(mutex_);
-    for (const auto & [name, metadata] : known_topics_) {
-      (void)name;
-      writer->create_topic(metadata);
-    }
-    // 先把历史窗口倒进去，再放行实时消息，保证 bag 内时间连续
-    for (const auto & buffered : pending) {
-      writer->write(buffered);
-    }
-    writer_ = std::move(writer);
-    current_uri_ = storage_options.uri;
+    // 先占住状态：active_ 立刻置真，重复触发会被前面的检查挡掉；
+    // writer_ 仍为空、opening_ 为真，实时消息进 staging_ 等开包任务来倒
     active_ = true;
+    opening_ = true;
+    staging_.clear();
+    staging_dropped_ = 0;
+    current_uri_ = uri;
     last_trigger_time_ = now;
     has_triggered_ = true;
     trigger_wall_time_ = std::chrono::system_clock::now();
     current_reason_ = reason;
+    session = ++session_id_;
   }
 
   post_timer_ = node_->create_wall_timer(
     std::chrono::seconds(post_seconds), [this]() {finish();});
 
-  RCLCPP_INFO(
-    node_->get_logger(),
-    "Event triggered (%s%s): dumped %zu buffered messages spanning %.1f s, "
-    "recording %d s more into %s",
-    reason.c_str(), source.empty() ? "" : (" from " + source).c_str(),
-    pending.size(), span, post_seconds, storage_options.uri.c_str());
+  // 开包是重活：倒 60 s 的 pre 窗口实测几十 MB，再加建文件与 create_topic，
+  // 合计几百毫秒。留在 executor 线程上会让所有订阅回调同时停摆——出事那一瞬间
+  // 的数据恰恰就这么丢掉的，所以整段挪到后台线程。
+  jobs_->post(
+    [this, uri, session, pending = std::move(pending), reason, source, span, post_seconds]() {
+      rosbag2_storage::StorageOptions storage_options;
+      storage_options.uri = uri;
+      storage_options.storage_id = storage_id_;
+      storage_options.max_cache_size = static_cast<uint64_t>(writer_cache_size_);
+      storage_options.max_bagfile_duration = 0;
+      storage_options.max_bagfile_size = 0;
 
-  const uint64_t dropped = buffer_->droppedByCapacity();
-  if (dropped > 0) {
-    RCLCPP_WARN(
-      node_->get_logger(),
-      "Ring buffer hit its %d MB cap and dropped %lu message(s) so far; "
-      "the pre-trigger window may be shorter than %d s (raise event.max_buffer_mb "
-      "or add heavy topics to event.exclude_topics)",
-      config_.max_buffer_mb, static_cast<unsigned long>(dropped), config_.pre_seconds);
-  }
+      auto writer = std::make_unique<rosbag2_cpp::Writer>();
+      try {
+        writer->open(storage_options, rosbag2_cpp::ConverterOptions{"cdr", "cdr"});
+      } catch (const std::exception & e) {
+        RCLCPP_ERROR(
+          node_->get_logger(), "Failed to open event bag: %s (%s)", uri.c_str(), e.what());
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (session_id_ == session) {
+          active_ = false;
+          opening_ = false;
+          staging_.clear();
+          current_uri_.clear();
+          current_reason_.clear();
+        }
+        return;
+      }
+
+      // create_topic 必须先于任何 write。这里先按开包时刻的已知话题登记一遍，
+      // 开包期间新发现的话题在装 writer 前再补登记（registered 去重）
+      std::unordered_set<std::string> registered;
+      {
+        std::lock_guard<std::mutex> lock(mutex_);
+        for (const auto & [name, metadata] : known_topics_) {
+          writer->create_topic(metadata);
+          registered.insert(name);
+        }
+      }
+
+      // 倒 pre 窗口。刻意不持锁：这是最耗时的一段，持锁会把 onMessage 一起堵住
+      for (const auto & buffered : pending) {
+        writer->write(buffered);
+      }
+
+      size_t staged = 0;
+      {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (session_id_ != session || !active_) {
+          // 开包期间已被 finish/新触发作废，丢弃这个 writer，别装回去
+          try {
+            writer->close();
+          } catch (const std::exception & e) {
+            RCLCPP_WARN(
+              node_->get_logger(), "Exception while discarding stale event bag: %s", e.what());
+          }
+          return;
+        }
+        for (const auto & [name, metadata] : known_topics_) {
+          if (registered.insert(name).second) {
+            writer->create_topic(metadata);
+          }
+        }
+        // 开包期间到达的实时消息补进去，接在 pre 窗口之后，bag 内时间连续
+        for (const auto & staged_msg : staging_) {
+          writer->write(staged_msg);
+        }
+        staged = staging_.size();
+        staging_.clear();
+        writer_ = std::move(writer);
+        opening_ = false;
+      }
+
+      RCLCPP_INFO(
+        node_->get_logger(),
+        "Event triggered (%s%s): dumped %zu buffered messages spanning %.1f s "
+        "(+%zu staged while opening), recording %d s more into %s",
+        reason.c_str(), source.empty() ? "" : (" from " + source).c_str(),
+        pending.size(), span, staged, post_seconds, uri.c_str());
+
+      const uint64_t dropped_staging = stagingDropped();
+      if (dropped_staging > 0) {
+        RCLCPP_WARN(
+          node_->get_logger(),
+          "Dropped %lu live message(s) while opening the event bag (disk too slow); "
+          "the first moments after the trigger are incomplete",
+          static_cast<unsigned long>(dropped_staging));
+      }
+
+      const uint64_t dropped = buffer_->droppedByCapacity();
+      if (dropped > 0) {
+        RCLCPP_WARN(
+          node_->get_logger(),
+          "Ring buffer hit its %d MB cap and dropped %lu message(s) so far; "
+          "the pre-trigger window may be shorter than %d s (raise event.max_buffer_mb "
+          "or add heavy topics to event.exclude_topics)",
+          config_.max_buffer_mb, static_cast<unsigned long>(dropped), config_.pre_seconds);
+      }
+    });
 
   result.success = true;
-  result.bag_path = storage_options.uri;
+  result.bag_path = uri;
   result.message = "event recording started";
   return result;
 }
@@ -237,21 +323,22 @@ void EventRecorder::finish()
     post_timer_.reset();
   }
 
+  std::unique_ptr<rosbag2_cpp::Writer> writer;
   std::string closed_uri;
   std::string closed_reason;
   std::chrono::system_clock::time_point closed_trigger_time;
   {
     std::lock_guard<std::mutex> lock(mutex_);
-    if (!writer_ || !active_) {
+    if (!active_) {
       return;
     }
-    try {
-      writer_->close();
-    } catch (const std::exception & e) {
-      RCLCPP_WARN(node_->get_logger(), "Exception while closing event bag: %s", e.what());
-    }
-    writer_.reset();
+    // session_id_ 前进一格：若开包任务还在跑，它装 writer 前会发现 session 不匹配，
+    // 自行把那个 writer 关掉丢弃，不会装到一个已经结束的会话上
+    ++session_id_;
+    writer = std::move(writer_);
     active_ = false;
+    opening_ = false;
+    staging_.clear();
     ++event_count_;
     closed_uri = current_uri_;
     closed_reason = current_reason_;
@@ -260,18 +347,34 @@ void EventRecorder::finish()
     current_reason_.clear();
   }
 
-  RCLCPP_INFO(node_->get_logger(), "Event bag closed: %s", closed_uri.c_str());
+  // 关 bag 要把 cache 刷到盘上、写 metadata；日志快照要调 journalctl；回收要递归
+  // 扫目录算大小再删文件。三件加起来几百毫秒，留在 executor 线程上会让所有订阅
+  // 回调同时停摆，于是事件 bag 收尾的那一刻反而丢数据
+  // 转成 shared_ptr 再捕获：JobQueue 用 std::function 承载任务，而 std::function
+  // 要求目标可拷贝，捕获 unique_ptr 的 lambda 是 move-only，编不过
+  std::shared_ptr<rosbag2_cpp::Writer> closing_writer(std::move(writer));
+  jobs_->post(
+    [this, closing_writer, closed_uri, closed_reason, closed_trigger_time]() {
+      if (closing_writer) {
+        try {
+          closing_writer->close();
+        } catch (const std::exception & e) {
+          RCLCPP_WARN(node_->get_logger(), "Exception while closing event bag: %s", e.what());
+        }
+      }
+      RCLCPP_INFO(node_->get_logger(), "Event bag closed: %s", closed_uri.c_str());
 
-  // 日志快照在 bag 关闭之后才采：这样窗口右端能盖住 post 段，
-  // 「触发之后又发生了什么」和数据是同一段时间。采集本身是异步的，不挡这里
-  if (log_collector_) {
-    log_collector_->capture(closed_uri, closed_reason, closed_trigger_time);
-  }
+      // 日志快照在 bag 关闭之后才采：这样窗口右端能盖住 post 段，
+      // 「触发之后又发生了什么」和数据是同一段时间
+      if (log_collector_) {
+        log_collector_->capture(closed_uri, closed_reason, closed_trigger_time);
+      }
 
-  const int removed = retention_->enforce();
-  if (removed > 0) {
-    RCLCPP_INFO(node_->get_logger(), "Reclaimed %d old event bag(s)", removed);
-  }
+      const int removed = retention_->enforce();
+      if (removed > 0) {
+        RCLCPP_INFO(node_->get_logger(), "Reclaimed %d old event bag(s)", removed);
+      }
+    });
 }
 
 bool EventRecorder::isActive() const

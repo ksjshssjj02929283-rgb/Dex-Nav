@@ -39,11 +39,17 @@ ContinuousRecorder::ContinuousRecorder(
   retention_ = std::make_unique<RetentionPolicy>(
     node_->get_logger(), segment_root_, config_.max_segments,
     static_cast<int64_t>(config_.max_total_size_mb) * 1024 * 1024);
+
+  jobs_ = std::make_unique<JobQueue>("continuous_recorder");
 }
 
 ContinuousRecorder::~ContinuousRecorder()
 {
   stop();
+  // 关段与 metadata 落盘是异步的，必须等它跑完再让成员开始析构
+  if (jobs_) {
+    jobs_->drain();
+  }
 }
 
 bool ContinuousRecorder::wantsTopic(const std::string & topic) const
@@ -88,8 +94,11 @@ void ContinuousRecorder::start()
   if (config_.mode == ContinuousMode::kRolling) {
     retention_->enforce();
   }
+  // 定时器只负责投递，切段本身在后台线程跑：关段要刷 cache 落盘、回收要递归扫目录
+  // 再删文件，实测合起来几百毫秒。留在 executor 线程上会让所有订阅回调同时停摆
   roll_timer_ = node_->create_wall_timer(
-    std::chrono::seconds(config_.segment_duration), [this]() {rollSegment();});
+    std::chrono::seconds(config_.segment_duration),
+    [this]() {jobs_->post([this]() {rollSegment();});});
 
   RCLCPP_INFO(
     node_->get_logger(),
@@ -105,6 +114,10 @@ void ContinuousRecorder::stop()
   if (roll_timer_) {
     roll_timer_->cancel();
     roll_timer_.reset();
+  }
+  // 可能还有已投递未执行的切段任务，先排空再关，避免关完又被开出一段
+  if (jobs_) {
+    jobs_->drain();
   }
   closeSegment();
 }
@@ -135,8 +148,8 @@ std::string ContinuousRecorder::makeSegmentUri() const
 
 void ContinuousRecorder::openSegment()
 {
-  std::lock_guard<std::mutex> lock(writer_mutex_);
-
+  // 建文件是磁盘操作，刻意不持 writer_mutex_：onMessage 也要拿这把锁，
+  // 持锁做 I/O 会把所有订阅回调一起堵住（本包要消除的正是这类阻塞）
   rosbag2_storage::StorageOptions storage_options;
   storage_options.uri = makeSegmentUri();
   storage_options.storage_id = storage_id_;
@@ -156,37 +169,43 @@ void ContinuousRecorder::openSegment()
     return;
   }
 
-  for (const auto & [name, metadata] : known_topics_) {
-    (void)name;
-    writer->create_topic(metadata);
+  {
+    std::lock_guard<std::mutex> lock(writer_mutex_);
+    for (const auto & [name, metadata] : known_topics_) {
+      (void)name;
+      writer->create_topic(metadata);
+    }
+    writer_ = std::move(writer);
+    current_uri_ = storage_options.uri;
+    recording_ = true;
   }
-
-  writer_ = std::move(writer);
-  current_uri_ = storage_options.uri;
-  recording_ = true;
-  RCLCPP_INFO(node_->get_logger(), "Opened new segment: %s", current_uri_.c_str());
+  RCLCPP_INFO(node_->get_logger(), "Opened new segment: %s", storage_options.uri.c_str());
 }
 
 void ContinuousRecorder::closeSegment()
 {
   std::string closed_uri;
+  std::unique_ptr<rosbag2_cpp::Writer> closing;
   {
     std::lock_guard<std::mutex> lock(writer_mutex_);
     if (!writer_) {
       return;
     }
-    try {
-      writer_->close();
-    } catch (const std::exception & e) {
-      RCLCPP_WARN(
-        node_->get_logger(), "Exception while closing recording segment: %s", e.what());
-    }
-    writer_.reset();
+    // 先把 writer 摘下来再关：close() 要把 cache 刷到盘上并写 metadata，
+    // 持锁做这件事会把所有订阅回调堵住几百毫秒
+    closing = std::move(writer_);
     recording_ = false;
     ++completed_segments_;
     closed_uri = current_uri_;
     current_uri_.clear();
   }
+  try {
+    closing->close();
+  } catch (const std::exception & e) {
+    RCLCPP_WARN(
+      node_->get_logger(), "Exception while closing recording segment: %s", e.what());
+  }
+  closing.reset();
   RCLCPP_INFO(node_->get_logger(), "Closed segment: %s", closed_uri.c_str());
 }
 

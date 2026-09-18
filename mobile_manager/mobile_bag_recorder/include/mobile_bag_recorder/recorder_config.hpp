@@ -48,6 +48,9 @@ struct EventConfig
   /// 环形缓冲内存硬上限（MB）。时间窗口先到先裁，此项是防 OOM 的兜底：
   /// 数据率突增时宁可让 pre 窗口短于 pre_seconds，也不能把内存吃穿
   int max_buffer_mb{512};
+  /// 开事件 bag 期间实时消息的暂存上限（条）。开包在后台线程进行，期间到达的消息
+  /// 先攒着、开好后补进 bag；磁盘异常缓慢时这里是防 OOM 的兜底
+  int staging_limit{100000};
   bool inherit_continuous_topics{true};
   /// 从继承清单里排除的大流量话题——控制环形缓冲内存的主要旋钮
   std::vector<std::string> exclude_topics;
@@ -129,6 +132,13 @@ public:
   /// storage_id 不可用时的回退后端。留空表示不回退（启动即失败）。
   /// 回退不是静默降级——会以 ERROR 级别告警说明换了后端及原因
   std::string storage_fallback_id{"sqlite3"};
+  /// executor 线程数。必须 >1：录包节点的订阅回调与「开关 bag / 倒 pre 窗口 / 回收旧包」
+  /// 这类重活同属一个节点，单线程 executor 下重活一跑，所有订阅回调同时停摆，
+  /// bag 里会出现全话题同时缺数据的空洞（实测 177–365 ms）
+  int executor_threads{4};
+  /// 订阅队列深度。默认 10 对 100 Hz 话题只有 100 ms 缓冲，executor 稍有抖动就整批丢；
+  /// 录包器是纯消费者，加大队列只占内存不影响实时性
+  int subscription_queue_depth{200};
 
   ContinuousConfig continuous;
   EventConfig event;

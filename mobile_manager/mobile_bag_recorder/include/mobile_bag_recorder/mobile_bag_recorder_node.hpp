@@ -34,6 +34,9 @@ public:
   /// 构造后调用，完成目录准备、sink 装配与订阅启动
   void init();
 
+  /// 供 main() 决定 executor 线程数。参数在构造函数里就已加载完毕
+  const RecorderConfig & config() const {return config_;}
+
 private:
   void reportPendingTopics();
 

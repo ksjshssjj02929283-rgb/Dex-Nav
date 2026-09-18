@@ -13,6 +13,7 @@
 #include "rclcpp/rclcpp.hpp"
 #include "rosbag2_cpp/writer.hpp"
 
+#include "mobile_bag_recorder/job_queue.hpp"
 #include "mobile_bag_recorder/recorder_config.hpp"
 #include "mobile_bag_recorder/retention_policy.hpp"
 #include "mobile_bag_recorder/topic_subscriber_set.hpp"
@@ -72,6 +73,10 @@ private:
 
   rclcpp::TimerBase::SharedPtr roll_timer_;
   std::unique_ptr<RetentionPolicy> retention_;
+
+  /// 切段（关段刷盘 + 开新段 + 回收旧段）全部在这条线程上跑。
+  /// 放在最后声明：析构时最先销毁，join 掉工作线程后其它成员才开始析构
+  std::unique_ptr<JobQueue> jobs_;
 };
 
 }  // namespace mobile_bag_recorder

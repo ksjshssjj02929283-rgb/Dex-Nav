@@ -95,6 +95,9 @@ RecorderConfig RecorderConfig::declareAndLoad(rclcpp::Node * node)
     "storage_fallback_id", std::string("sqlite3"));
   cfg.writer_cache_size = node->declare_parameter(
     "writer_cache_size", static_cast<int64_t>(100 * 1024 * 1024));
+  cfg.executor_threads = declareCheckedInt(node, "executor_threads", 4, 2);
+  cfg.subscription_queue_depth =
+    declareCheckedInt(node, "subscription_queue_depth", 200, 1);
 
   cfg.continuous.enabled = node->declare_parameter("continuous.enabled", true);
   cfg.continuous.segment_duration =
@@ -117,6 +120,7 @@ RecorderConfig RecorderConfig::declareAndLoad(rclcpp::Node * node)
   cfg.event.max_events = declareCheckedInt(node, "event.max_events", 50, 1);
   cfg.event.max_total_size_mb = declareCheckedInt(node, "event.max_total_size_mb", 5120, 1);
   cfg.event.max_buffer_mb = declareCheckedInt(node, "event.max_buffer_mb", 512, 1);
+  cfg.event.staging_limit = declareCheckedInt(node, "event.staging_limit", 100000, 1);
   cfg.event.inherit_continuous_topics =
     node->declare_parameter("event.inherit_continuous_topics", true);
   cfg.event.exclude_topics = node->declare_parameter(

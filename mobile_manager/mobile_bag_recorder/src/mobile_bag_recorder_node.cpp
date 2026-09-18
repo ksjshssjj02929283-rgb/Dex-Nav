@@ -51,7 +51,8 @@ void MobileBagRecorderNode::init()
   const auto throttle_intervals =
     RecorderConfig::parseThrottleRules(config_.throttle, get_logger());
   subscribers_ = std::make_unique<TopicSubscriberSet>(
-    this, std::chrono::milliseconds(1000), throttle_intervals);
+    this, std::chrono::milliseconds(1000), throttle_intervals,
+    config_.subscription_queue_depth);
 
   if (config_.continuous.enabled) {
     continuous_ = std::make_shared<ContinuousRecorder>(this, config_, output_root_);

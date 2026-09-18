@@ -14,10 +14,44 @@ namespace mobile_bag_recorder
 
 TopicSubscriberSet::TopicSubscriberSet(
   rclcpp::Node * node, std::chrono::milliseconds poll_interval,
-  std::unordered_map<std::string, int64_t> throttle_intervals_ns)
+  std::unordered_map<std::string, int64_t> throttle_intervals_ns, int queue_depth)
 : node_(node), poll_interval_(poll_interval),
-  throttle_intervals_ns_(std::move(throttle_intervals_ns))
+  throttle_intervals_ns_(std::move(throttle_intervals_ns)),
+  queue_depth_(queue_depth > 0 ? queue_depth : 1)
 {
+}
+
+int64_t TopicSubscriberSet::nextStamp()
+{
+  const int64_t now_ns = node_->now().nanoseconds();
+  int64_t last = last_stamp_ns_.load(std::memory_order_relaxed);
+  for (;;) {
+    if (now_ns > last) {
+      if (last_stamp_ns_.compare_exchange_weak(
+          last, now_ns, std::memory_order_relaxed, std::memory_order_relaxed))
+      {
+        return now_ns;
+      }
+      continue;
+    }
+    // 时钟没前进：可能是并发线程刚取过同一时刻（无害），也可能是系统时钟被回拨。
+    // 只有明显倒退才计数告警，避免把同刻并发误报成时钟问题
+    if (last - now_ns > 1000000) {  // 1 ms
+      clock_regression_count_.fetch_add(1, std::memory_order_relaxed);
+      RCLCPP_WARN_THROTTLE(
+        node_->get_logger(), *node_->get_clock(), 5000,
+        "System clock went backwards by %.3f s while recording; bag timestamps are clamped "
+        "to stay monotonic but absolute time is no longer trustworthy "
+        "(check NTP/PTP: systemd-timesyncd and ptp4l must not both discipline the clock)",
+        static_cast<double>(last - now_ns) / 1e9);
+    }
+    const int64_t clamped = last + 1;
+    if (last_stamp_ns_.compare_exchange_weak(
+        last, clamped, std::memory_order_relaxed, std::memory_order_relaxed))
+    {
+      return clamped;
+    }
+  }
 }
 
 void TopicSubscriberSet::addSink(const std::shared_ptr<RecordingSink> & sink)
@@ -38,7 +72,7 @@ void TopicSubscriberSet::stop()
     poll_timer_.reset();
   }
   subscriptions_.clear();
-  topic_sinks_.clear();
+  callback_groups_.clear();
 }
 
 size_t TopicSubscriberSet::subscribedCount() const
@@ -89,7 +123,14 @@ void TopicSubscriberSet::subscribeTopic(const std::string & topic, const std::st
   // QoS 必须按发布端的实际 offer 适配：/map 是 transient_local、部分雷达话题是
   // best_effort，写死 QoS 常量会导致静默收不到数据。
   const auto endpoints = node_->get_publishers_info_by_topic(topic);
-  const auto qos = rosbag2_transport::Rosbag2QoS::adapt_request_to_offers(topic, endpoints);
+  auto qos = rosbag2_transport::Rosbag2QoS::adapt_request_to_offers(topic, endpoints);
+  // 只放大深度，保留适配得到的 reliability/durability。
+  // rosbag2 默认深度 10：100 Hz 话题仅 100 ms 缓冲，executor 抖动一下就整批丢
+  if (qos.get_rmw_qos_profile().history == RMW_QOS_POLICY_HISTORY_KEEP_LAST &&
+    static_cast<int>(qos.get_rmw_qos_profile().depth) < queue_depth_)
+  {
+    qos.keep_last(static_cast<size_t>(queue_depth_));
+  }
 
   rosbag2_storage::TopicMetadata metadata;
   metadata.name = topic;
@@ -110,8 +151,8 @@ void TopicSubscriberSet::subscribeTopic(const std::string & topic, const std::st
   if (throttle_it != throttle_intervals_ns_.end()) {
     min_interval_ns = throttle_it->second;
   }
-  // 上一条进入常态流的消息时间戳。回调都在同一条 executor 线程上串行执行，
-  // 无需加锁；用 shared_ptr 让状态与订阅同生命周期。
+  // 上一条进入常态流的消息时间戳。本话题独占一个 MutuallyExclusive 回调组，
+  // 同一话题的回调仍在同一时刻只跑一个，故无需加锁；用 shared_ptr 让状态与订阅同生命周期。
   // 单独用 has_recorded 而不是拿 0 当哨兵：use_sim_time 且 /clock 尚未发布时
   // node->now() 返回 0，用 0 作哨兵会让每条消息都被当成"第一条"而放行，
   // 限速在仿真环境下静默失效
@@ -128,13 +169,29 @@ void TopicSubscriberSet::subscribeTopic(const std::string & topic, const std::st
     }
   }
 
+  // 每话题独占一个 MutuallyExclusive 回调组。
+  // 这是把订阅与重活解耦的关键：多线程 executor 下，切段/触发/回收这些几百毫秒的活
+  // 跑在默认组里，不会再挡住任何一路订阅；而同一话题的回调依然串行，
+  // 限速状态保持无锁。
+  auto group = node_->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+  rclcpp::SubscriptionOptions sub_options;
+  sub_options.callback_group = group;
+
   rclcpp::GenericSubscription::SharedPtr subscription;
   try {
     subscription = node_->create_generic_subscription(
       topic, type, qos,
-      [this, topic, min_interval_ns, last_recorded_ns, has_recorded, has_throttle_exempt](
-        std::shared_ptr<rclcpp::SerializedMessage> serialized) {
-        const int64_t now_ns = node_->now().nanoseconds();
+      // interested 按值捕获：回调里不再查 topic_sinks_ 映射表，
+      // 既省一次哈希查找，也避免多线程 executor 下读写同一张表
+      [this, topic, min_interval_ns, last_recorded_ns, has_recorded, has_throttle_exempt,
+      interested](std::shared_ptr<rclcpp::SerializedMessage> serialized) {
+        // 打戳与派发必须是一个原子步骤，否则并发的两路话题会以与时间戳相反的顺序
+        // 进入 bag（实测 16–22 µs 逆序）。锁内只有打戳和入 cache，微秒级
+        std::lock_guard<std::mutex> order_lock(dispatch_mutex_);
+
+        // 用单调钳位后的时间戳，而不是裸 node->now()：系统时钟被回拨时，
+        // 裸时间会让 bag 时间轴倒退，也会让限速判据 now - last 变成负数而永久限速
+        const int64_t now_ns = nextStamp();
 
         // throttled 只决定"要不要进常态流"，事件流一律收全量
         bool throttled = false;
@@ -143,7 +200,7 @@ void TopicSubscriberSet::subscribeTopic(const std::string & topic, const std::st
           // 丢掉它会让整个 bag 里没有地图
           if (*has_recorded && now_ns - *last_recorded_ns < min_interval_ns) {
             throttled = true;
-            ++throttled_count_;
+            throttled_count_.fetch_add(1, std::memory_order_relaxed);
           } else {
             *last_recorded_ns = now_ns;
             *has_recorded = true;
@@ -162,17 +219,14 @@ void TopicSubscriberSet::subscribeTopic(const std::string & topic, const std::st
           serialized,
           const_cast<rcutils_uint8_array_t *>(&serialized->get_rcl_serialized_message()));
 
-        auto it = topic_sinks_.find(topic);
-        if (it == topic_sinks_.end()) {
-          return;
-        }
-        for (const auto & sink : it->second) {
+        for (const auto & sink : interested) {
           if (throttled && sink->respectsThrottle()) {
             continue;
           }
           sink->onMessage(bag_message);
         }
-      });
+      },
+      sub_options);
   } catch (const std::exception & e) {
     if (warned_topics_.insert(topic).second) {
       RCLCPP_WARN(
@@ -185,7 +239,7 @@ void TopicSubscriberSet::subscribeTopic(const std::string & topic, const std::st
   for (const auto & sink : interested) {
     sink->onTopicDiscovered(metadata);
   }
-  topic_sinks_[topic] = std::move(interested);
+  callback_groups_[topic] = group;
   subscriptions_[topic] = subscription;
 
   if (min_interval_ns > 0) {

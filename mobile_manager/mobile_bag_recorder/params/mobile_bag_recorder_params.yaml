@@ -3,6 +3,14 @@
 # 只列真正会在现场调整的项。storage_id、writer_cache_size 等在代码里有默认值，
 # 需要时在本文件补一行即可 override。
 #
+# 并发相关的三项同样只有代码默认值，正常不需要动：
+#   executor_threads（默认 4，最小 2）——订阅回调与「开关 bag / 倒 pre 窗口 / 回收旧包」
+#     分处不同回调组，必须多线程才能互不阻塞。调到 1 会退回「重活一跑、全话题同时丢数据」
+#   subscription_queue_depth（默认 200）——订阅队列深度。rosbag2 默认 10 对 100 Hz 话题
+#     只有 100 ms 缓冲，executor 稍有抖动就整批丢
+#   event.staging_limit（默认 100000）——开事件 bag 期间实时消息的暂存上限（条），
+#     磁盘异常缓慢时的防 OOM 兜底
+#
 # 节点名用 /** 通配，避免 launch 里改 name 后参数不生效。
 
 /**:

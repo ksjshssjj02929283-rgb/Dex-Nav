@@ -4,6 +4,8 @@
 #define MOBILE_BAG_RECORDER__EVENT_RECORDER_HPP_
 
 #include <chrono>
+#include <cstdint>
+#include <deque>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -14,6 +16,7 @@
 #include "rclcpp/rclcpp.hpp"
 #include "rosbag2_cpp/writer.hpp"
 
+#include "mobile_bag_recorder/job_queue.hpp"
 #include "mobile_bag_recorder/log_collector.hpp"
 #include "mobile_bag_recorder/recorder_config.hpp"
 #include "mobile_bag_recorder/retention_policy.hpp"
@@ -52,6 +55,10 @@ public:
 
   bool isActive() const;
   int eventCount() const;
+
+  /// 开 bag 期间因暂存队列满而丢弃的实时消息数。正常应为 0；
+  /// 非 0 说明开 bag 太慢（磁盘忙）或 event.staging_limit 太小
+  uint64_t stagingDropped() const;
   const TimeRingBuffer & buffer() const {return *buffer_;}
 
   bool wantsTopic(const std::string & topic) const override;
@@ -83,6 +90,16 @@ private:
   std::unique_ptr<rosbag2_cpp::Writer> writer_;
   std::string current_uri_;
   bool active_{false};
+  /// writer 正在后台打开中：此时 active_ 已为真但 writer_ 还是空，
+  /// 实时消息先进 staging_，由开包任务倒进去后再放行，保证 bag 内时间连续
+  bool opening_{false};
+  std::deque<rosbag2_storage::SerializedBagMessageSharedPtr> staging_;
+  /// 暂存上限（条）。开包期间磁盘若异常缓慢，宁可丢实时消息也不能把内存吃穿
+  size_t staging_limit_{100000};
+  uint64_t staging_dropped_{0};
+  /// 每次触发 +1。开包任务完成时比对，避免"开包还没完成就被 finish"时
+  /// 把已作废的 writer 装回去
+  uint64_t session_id_{0};
   int event_count_{0};
   rclcpp::Time last_trigger_time_;
   bool has_triggered_{false};
@@ -92,6 +109,10 @@ private:
   std::string current_reason_;
 
   rclcpp::TimerBase::SharedPtr post_timer_;
+
+  /// 开 bag（倒 pre 窗口，实测几十 MB）、关 bag（刷 cache 落盘）、日志快照、回收旧包
+  /// 全在这条线程上跑。放在最后声明：析构时最先销毁，join 掉工作线程后其它成员才析构
+  std::unique_ptr<JobQueue> jobs_;
 };
 
 }  // namespace mobile_bag_recorder
