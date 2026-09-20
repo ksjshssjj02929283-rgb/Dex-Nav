@@ -1,0 +1,4 @@
+hardware_revision: "v0.25" # 整机硬件版本；<= v0.24 使用高度法，否则使用 UV 图
+components:
+  camera:
+    type: "v0.99" # 组件版本不参与算法选择
