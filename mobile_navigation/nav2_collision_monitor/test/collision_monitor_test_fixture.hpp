@@ -133,6 +133,11 @@ public:
     controlLoopCallback();
   }
 
+  std::size_t processSampleCount() const
+  {
+    return process_samples_ms_.size();
+  }
+
   NavigationMode mode() const
   {
     return navigation_mode_;

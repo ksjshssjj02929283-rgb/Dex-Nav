@@ -245,6 +245,22 @@ protected:
   /** @brief Accumulate and periodically report path-stop execution timing. */
   void recordPathStopTiming(const std::chrono::steady_clock::time_point & start_time);
 
+  /** @brief Record one performance duration sample in milliseconds. */
+  void recordPerformanceDuration(
+    std::vector<double> & samples,
+    const std::chrono::steady_clock::time_point & start_time) const;
+
+  /** @brief Record callback period/execution time and emit a complete statistics window. */
+  void recordControlLoopTiming(const std::chrono::steady_clock::time_point & start_time);
+
+  /** @brief Log P50/P95/P99/max and deadline misses for one metric. */
+  void reportPerformanceMetric(
+    const char * metric, const std::vector<double> & samples,
+    double window_seconds) const;
+
+  /** @brief Clear all samples at lifecycle activation or after a report. */
+  void resetPerformanceTiming();
+
   /**
    * @brief Prints robot action and polygon caused it (if it was)
    * @param robot_action Robot action to print
@@ -312,7 +328,7 @@ protected:
   rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr set_loaded_footprint_srv_;
 
   std::vector<rclcpp_lifecycle::LifecyclePublisher<geometry_msgs::msg::Polygon>::SharedPtr>
-    costmap_footprint_pubs_;
+  costmap_footprint_pubs_;
 
   // schedule_planner path-ahead stop detector
   bool path_stop_enabled_{false};
@@ -330,6 +346,16 @@ protected:
   std::uint64_t path_stop_timing_count_{0};
   std::int64_t path_stop_timing_total_ns_{0};
   std::int64_t path_stop_timing_max_ns_{0};
+  bool performance_timing_enabled_{false};
+  double performance_report_interval_{60.0};
+  std::chrono::steady_clock::time_point performance_window_start_;
+  std::chrono::steady_clock::time_point last_control_loop_start_;
+  bool have_last_control_loop_start_{false};
+  mutable std::vector<double> control_period_samples_ms_;
+  mutable std::vector<double> control_execution_samples_ms_;
+  mutable std::vector<double> process_samples_ms_;
+  mutable std::vector<double> approach_samples_ms_;
+  mutable std::vector<double> path_corridor_samples_ms_;
   mutable rclcpp::Clock throttle_clock_{RCL_STEADY_TIME};
   nav_interfaces::msg::TrackingPath::ConstSharedPtr tracking_path_;
 
@@ -351,6 +377,9 @@ protected:
   std::uint64_t consumed_tracking_path_sequence_{0};
   std::uint64_t consumed_free_cmd_sequence_{0};
   std::uint64_t consumed_schedule_cmd_sequence_{0};
+  std::uint64_t observed_free_cmd_sequence_{0};
+  std::uint64_t observed_schedule_cmd_sequence_{0};
+  std::vector<std::uint64_t> observed_source_sequences_;
   std::optional<bool> pending_loaded_footprint_;
 
   rclcpp::TimerBase::SharedPtr control_loop_timer_;
@@ -360,6 +389,10 @@ protected:
   rclcpp::Duration cmd_vel_timeout_{0, 300000000};
   rclcpp::Duration idle_grace_period_{5, 0};
   NavigationMode navigation_mode_{NavigationMode::IDLE};
+  // Last sub-mode selected by TrackingPath.padding.  IDLE is a transient safety state
+  // (velocity timeout, footprint switch, etc.), so it must not erase whether the active
+  // schedule path is normal navigation or edging.
+  NavigationMode schedule_navigation_mode_{NavigationMode::SCHEDULE_NAVIGATION};
   NavigationType lifecycle_navigation_type_{NavigationType::UNSET};
   int logged_velocity_state_{-1};
   bool ignored_chain_logged_{false};
@@ -368,6 +401,8 @@ protected:
   std::string free_navigation_path_topic_{"plan"};
   double automonous_navigation_padding_{0.1};
   bool approach_enabled_{true};
+  // Reused by the single control callback to avoid allocating thousands of points at 100 Hz.
+  std::vector<Point> collision_points_buffer_;
   geometry_msgs::msg::Polygon normal_footprint_;
   geometry_msgs::msg::Polygon loaded_footprint_;
   bool loaded_mode_{false};

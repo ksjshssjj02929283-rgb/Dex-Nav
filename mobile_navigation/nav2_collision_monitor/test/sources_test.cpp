@@ -525,6 +525,32 @@ TEST_F(Tester, testConcurrentScanSnapshots)
   checkConcurrentSnapshots(*scan_, first, second, stamp, 8, 128);
 }
 
+TEST_F(Tester, testScanTransformFailureInvalidatesProcessedCache)
+{
+  createSources(false);
+  const auto stamp = test_node_->now();
+  auto scan = std::make_shared<sensor_msgs::msg::LaserScan>();
+  scan->header.frame_id = BASE_FRAME_ID;
+  scan->header.stamp = stamp;
+  scan->range_min = 0.1F;
+  scan->range_max = 2.0F;
+  scan->angle_increment = 0.01F;
+  scan->ranges.assign(8, 0.5F);
+
+  scan_->dataCallback(scan);
+  std::vector<nav2_collision_monitor::Point> points;
+  scan_->getData(stamp, points);
+  ASSERT_EQ(points.size(), 8u);
+
+  // A newer frame with broken TF must not leave the previous valid obstacle set active.
+  auto invalid_scan = std::make_shared<sensor_msgs::msg::LaserScan>(*scan);
+  invalid_scan->header.frame_id = "missing_sensor_frame";
+  scan_->dataCallback(invalid_scan);
+  points.clear();
+  scan_->getData(stamp, points);
+  EXPECT_TRUE(points.empty());
+}
+
 TEST_F(Tester, testConcurrentPointCloudSnapshots)
 {
   createSources(false);

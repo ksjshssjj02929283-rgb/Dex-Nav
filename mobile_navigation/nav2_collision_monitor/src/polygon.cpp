@@ -323,7 +323,9 @@ double Polygon::getCollisionTime(
 
 void Polygon::publish() const
 {
-  if (!visualize_) {
+  // Visualization must not consume the 100 Hz safety-loop budget when RViz is not connected.
+  // A newly connected subscriber receives the next periodically generated polygon.
+  if (!visualize_ || polygon_pub_->get_subscription_count() == 0) {
     return;
   }
 

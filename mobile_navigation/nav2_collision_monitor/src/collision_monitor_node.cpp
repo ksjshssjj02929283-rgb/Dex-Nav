@@ -105,6 +105,16 @@ CollisionMonitor::on_configure(const rclcpp_lifecycle::State & /*state*/)
   nav2_util::declare_parameter_if_not_declared(
     node, "approach_enabled", rclcpp::ParameterValue(true));
   approach_enabled_ = get_parameter("approach_enabled").as_bool();
+  nav2_util::declare_parameter_if_not_declared(
+    node, "performance_timing_enabled", rclcpp::ParameterValue(false));
+  performance_timing_enabled_ = get_parameter("performance_timing_enabled").as_bool();
+  nav2_util::declare_parameter_if_not_declared(
+    node, "performance_report_interval", rclcpp::ParameterValue(60.0));
+  performance_report_interval_ = get_parameter("performance_report_interval").as_double();
+  if (performance_report_interval_ <= 0.0) {
+    RCLCPP_ERROR(get_logger(), "performance_report_interval must be greater than zero");
+    return nav2_util::CallbackReturn::FAILURE;
+  }
 
   // IO 组允许速度、路径和服务回调并行接收；它们只写 mailbox。控制组中只有
   // 100 Hz timer，可以保证模式、路径、Polygon 和速度输出只有一个写入者。
@@ -204,8 +214,9 @@ CollisionMonitor::on_configure(const rclcpp_lifecycle::State & /*state*/)
   const auto costmap_footprint_topics =
     get_parameter("costmap_footprint_topics").as_string_array();
   for (const auto & topic : costmap_footprint_topics) {
-    costmap_footprint_pubs_.push_back(create_publisher<geometry_msgs::msg::Polygon>(
-      topic, rclcpp::QoS(1).reliable().transient_local()));
+    costmap_footprint_pubs_.push_back(
+      create_publisher<geometry_msgs::msg::Polygon>(
+        topic, rclcpp::QoS(1).reliable().transient_local()));
   }
   set_loaded_footprint_srv_ = this->create_service<std_srvs::srv::SetBool>(
     "~/set_loaded_footprint",
@@ -250,11 +261,13 @@ CollisionMonitor::on_activate(const rclcpp_lifecycle::State & /*state*/)
     path_stop_timing_max_ns_ = 0;
     path_stop_timing_window_start_ = std::chrono::steady_clock::now();
   }
+  resetPerformanceTiming();
 
   // 每次 lifecycle activate 都从安全的 IDLE 起步，并清除上个生命周期的输入。
   // 首个有效路径或速度会锁定本生命周期为 FREE 或 SCHEDULE；在 deactivate 前
   // 不再考虑另一套输入，避免在主循环中处理双速度源/双路径源冲突。
   navigation_mode_ = NavigationMode::IDLE;
+  schedule_navigation_mode_ = NavigationMode::SCHEDULE_NAVIGATION;
   lifecycle_navigation_type_ = NavigationType::UNSET;
   logged_velocity_state_ = -1;
   ignored_chain_logged_ = false;
@@ -274,7 +287,14 @@ CollisionMonitor::on_activate(const rclcpp_lifecycle::State & /*state*/)
     consumed_tracking_path_sequence_ = 0;
     consumed_free_cmd_sequence_ = 0;
     consumed_schedule_cmd_sequence_ = 0;
+    observed_free_cmd_sequence_ = 0;
+    observed_schedule_cmd_sequence_ = 0;
     pending_loaded_footprint_.reset();
+  }
+  observed_source_sequences_.clear();
+  observed_source_sequences_.reserve(sources_.size());
+  for (const auto & source : sources_) {
+    observed_source_sequences_.push_back(source->getDataSequence());
   }
   applyInternalFootprint(loaded_mode_);
   const auto period = std::chrono::duration<double>(1.0 / control_frequency_);
@@ -404,6 +424,7 @@ void CollisionMonitor::controlLoopCallback()
   if (!process_active_) {
     return;
   }
+  const auto control_loop_start = std::chrono::steady_clock::now();
 
   // 锁内只复制 shared_ptr、时间戳和 sequence。TF、几何计算及 publish 全部在锁外，
   // 避免 100 Hz 检测阻塞高频传感器/速度回调。
@@ -425,6 +446,26 @@ void CollisionMonitor::controlLoopCallback()
     consumed_free_path_sequence_ = free_path_sequence_;
     consumed_tracking_path_sequence_ = tracking_path_sequence_;
     footprint_request.swap(pending_loaded_footprint_);
+  }
+
+  bool input_updated = new_free_path || new_tracking_path || footprint_request.has_value();
+  if (free_cmd.sequence != observed_free_cmd_sequence_) {
+    observed_free_cmd_sequence_ = free_cmd.sequence;
+    input_updated = true;
+  }
+  if (schedule_cmd.sequence != observed_schedule_cmd_sequence_) {
+    observed_schedule_cmd_sequence_ = schedule_cmd.sequence;
+    input_updated = true;
+  }
+  if (observed_source_sequences_.size() != sources_.size()) {
+    observed_source_sequences_.resize(sources_.size(), 0);
+  }
+  for (std::size_t i = 0; i < sources_.size(); ++i) {
+    const std::uint64_t sequence = sources_[i]->getDataSequence();
+    if (sequence != observed_source_sequences_[i]) {
+      observed_source_sequences_[i] = sequence;
+      input_updated = true;
+    }
   }
 
   // footprint 属于几何状态变更：先切到 IDLE 并发一次强制零速，再替换内部
@@ -483,10 +524,10 @@ void CollisionMonitor::controlLoopCallback()
     case NavigationType::SCHEDULE:
       if (new_tracking_path && tracking_path && !tracking_path->poses.empty()) {
         const bool finite_padding = std::isfinite(tracking_path->padding);
-        changeNavigationMode(
+        schedule_navigation_mode_ =
           finite_padding && std::fabs(tracking_path->padding) < 1e-6F ?
-          NavigationMode::SCHEDULE_EDGING : NavigationMode::SCHEDULE_NAVIGATION,
-          "new tracking path");
+          NavigationMode::SCHEDULE_EDGING : NavigationMode::SCHEDULE_NAVIGATION;
+        changeNavigationMode(schedule_navigation_mode_, "new tracking path");
         mode_last_cmd_stamp_ = now;
         applyNavigationPadding(navigation_mode_);
         if (navigation_mode_ == NavigationMode::SCHEDULE_NAVIGATION) {
@@ -515,7 +556,10 @@ void CollisionMonitor::controlLoopCallback()
         mode_last_cmd_stamp_ = free_cmd.stamp;
         applyNavigationPadding(navigation_mode_);
       } else if (lifecycle_navigation_type_ == NavigationType::SCHEDULE && schedule_fresh) {
-        changeNavigationMode(NavigationMode::SCHEDULE_NAVIGATION, "fresh schedule velocity");
+        // IDLE is also entered while switching loaded/normal footprints.  Resume the
+        // sub-mode selected by the latest TrackingPath instead of silently converting
+        // an edging task into ordinary schedule navigation.
+        changeNavigationMode(schedule_navigation_mode_, "fresh schedule velocity");
         mode_last_cmd_stamp_ = schedule_cmd.stamp;
         applyNavigationPadding(navigation_mode_);
       }
@@ -581,16 +625,20 @@ void CollisionMonitor::controlLoopCallback()
         case NavigationMode::IDLE:
           break;
       }
-      process(
-        {msg.linear.x, msg.linear.y, msg.angular.z}, publish_cmd, false,
-        command_updated);
+      if (input_updated) {
+        process(
+          {msg.linear.x, msg.linear.y, msg.angular.z}, publish_cmd, false,
+          command_updated);
+      }
+      recordControlLoopTiming(control_loop_start);
       return;
     }
     // 超过 cmd_vel_timeout_（设计值 0.3 s）后不再使用旧速度检测，仅检查车身 STOP Polygon。
     // 期间恢复速度可继续原任务；连续 idle_grace_period_（设计值 5 s）未更新才进入 IDLE。
     // 实际超时阈值由对应参数配置决定。
     if (age >= idle_grace_period_) {
-      RCLCPP_INFO(get_logger(), "[FSM] idle timeout: age=%.3fs limit=%.3fs",
+      RCLCPP_INFO(
+        get_logger(), "[FSM] idle timeout: age=%.3fs limit=%.3fs",
         age.seconds(), idle_grace_period_.seconds());
       enterIdle("no velocity after task");
     }
@@ -601,7 +649,8 @@ void CollisionMonitor::controlLoopCallback()
   if (active_cmd && !active_cmd->message) {
     const rclcpp::Duration age = now - mode_last_cmd_stamp_;
     if (age >= idle_grace_period_) {
-      RCLCPP_INFO(get_logger(), "[FSM] first velocity timeout: age=%.3fs limit=%.3fs",
+      RCLCPP_INFO(
+        get_logger(), "[FSM] first velocity timeout: age=%.3fs limit=%.3fs",
         age.seconds(), idle_grace_period_.seconds());
       enterIdle("task did not produce velocity");
     }
@@ -609,7 +658,10 @@ void CollisionMonitor::controlLoopCallback()
 
   // IDLE 或等待下一任务期间仍以 100 Hz 检查车身周围 STOP Polygon；零速度
   // 仅用于几何检测上下文，不会从 collision monitor 生成新的运动指令。
-  process({0.0, 0.0, 0.0}, false, true);
+  if (input_updated) {
+    process({0.0, 0.0, 0.0}, false, true);
+  }
+  recordControlLoopTiming(control_loop_start);
 }
 
 void CollisionMonitor::publishVelocity(const Action & robot_action)
@@ -839,9 +891,13 @@ void CollisionMonitor::process(
   if (!process_active_) {
     return;
   }
+  const auto process_start = std::chrono::steady_clock::now();
 
-  // Points array collected from different data sources in a robot base frame
-  std::vector<Point> collision_points;
+  // Points array collected from different data sources in a robot base frame. The control
+  // callback is mutually exclusive, so retaining capacity here is safe and avoids a large
+  // allocation/free cycle on every 100 Hz tick.
+  collision_points_buffer_.clear();
+  std::vector<Point> & collision_points = collision_points_buffer_;
 
   // Each source takes an atomic snapshot of its latest immutable message.
   // Point conversion runs outside cache synchronization; this local vector has one writer.
@@ -876,9 +932,13 @@ void CollisionMonitor::process(
         action_polygon = polygon;
       }
     } else if (at == APPROACH) {
+      const auto approach_start = std::chrono::steady_clock::now();
       // Process APPROACH for the selected polygon
       if (processApproach(polygon, collision_points, cmd_vel_in, robot_action)) {
         action_polygon = polygon;
+      }
+      if (performance_timing_enabled_) {
+        recordPerformanceDuration(approach_samples_ms_, approach_start);
       }
     }
   }
@@ -896,6 +956,9 @@ void CollisionMonitor::process(
     }
     if (path_stop_timing_enabled_) {
       recordPathStopTiming(path_stop_start);
+    }
+    if (performance_timing_enabled_) {
+      recordPerformanceDuration(path_corridor_samples_ms_, path_stop_start);
     }
   }
 
@@ -934,6 +997,93 @@ void CollisionMonitor::process(
   } else {
     robot_action_prev_ = robot_action;
   }
+  if (performance_timing_enabled_) {
+    recordPerformanceDuration(process_samples_ms_, process_start);
+  }
+}
+
+void CollisionMonitor::recordPerformanceDuration(
+  std::vector<double> & samples,
+  const std::chrono::steady_clock::time_point & start_time) const
+{
+  const double elapsed_ms = std::chrono::duration<double, std::milli>(
+    std::chrono::steady_clock::now() - start_time).count();
+  samples.push_back(elapsed_ms);
+}
+
+void CollisionMonitor::reportPerformanceMetric(
+  const char * metric, const std::vector<double> & samples,
+  double window_seconds) const
+{
+  if (samples.empty()) {
+    RCLCPP_INFO(
+      get_logger(),
+      "[PERF] mode=%s metric=%s window=%.3fs samples=0",
+      navigationModeName(navigation_mode_), metric, window_seconds);
+    return;
+  }
+
+  std::vector<double> sorted(samples);
+  std::sort(sorted.begin(), sorted.end());
+  const auto percentile = [&sorted](double ratio) {
+      const auto rank = static_cast<std::size_t>(
+        std::ceil(ratio * static_cast<double>(sorted.size())));
+      return sorted[std::min(sorted.size() - 1, std::max<std::size_t>(1, rank) - 1)];
+    };
+  const auto over_10ms = static_cast<std::size_t>(std::count_if(
+      samples.begin(), samples.end(), [](double value) {return value > 10.0;}));
+  const double frequency_hz = std::string(metric) == "control_period" && window_seconds > 0.0 ?
+    static_cast<double>(samples.size()) / window_seconds : 0.0;
+
+  RCLCPP_INFO(
+    get_logger(),
+    "[PERF] mode=%s metric=%s window=%.3fs samples=%zu frequency=%.3fHz "
+    "p50=%.3fms p95=%.3fms p99=%.3fms max=%.3fms over_10ms=%zu",
+    navigationModeName(navigation_mode_), metric, window_seconds, samples.size(), frequency_hz,
+    percentile(0.50), percentile(0.95), percentile(0.99), sorted.back(), over_10ms);
+}
+
+void CollisionMonitor::resetPerformanceTiming()
+{
+  performance_window_start_ = std::chrono::steady_clock::now();
+  last_control_loop_start_ = {};
+  have_last_control_loop_start_ = false;
+  control_period_samples_ms_.clear();
+  control_execution_samples_ms_.clear();
+  process_samples_ms_.clear();
+  approach_samples_ms_.clear();
+  path_corridor_samples_ms_.clear();
+}
+
+void CollisionMonitor::recordControlLoopTiming(
+  const std::chrono::steady_clock::time_point & start_time)
+{
+  if (!performance_timing_enabled_) {
+    return;
+  }
+
+  if (have_last_control_loop_start_) {
+    const double period_ms = std::chrono::duration<double, std::milli>(
+      start_time - last_control_loop_start_).count();
+    control_period_samples_ms_.push_back(period_ms);
+  }
+  last_control_loop_start_ = start_time;
+  have_last_control_loop_start_ = true;
+  recordPerformanceDuration(control_execution_samples_ms_, start_time);
+
+  const auto finish_time = std::chrono::steady_clock::now();
+  const double window_seconds = std::chrono::duration<double>(
+    finish_time - performance_window_start_).count();
+  if (window_seconds < performance_report_interval_) {
+    return;
+  }
+
+  reportPerformanceMetric("control_period", control_period_samples_ms_, window_seconds);
+  reportPerformanceMetric("control_execution", control_execution_samples_ms_, window_seconds);
+  reportPerformanceMetric("process", process_samples_ms_, window_seconds);
+  reportPerformanceMetric("approach", approach_samples_ms_, window_seconds);
+  reportPerformanceMetric("path_corridor", path_corridor_samples_ms_, window_seconds);
+  resetPerformanceTiming();
 }
 
 void CollisionMonitor::trackingPathCallback(

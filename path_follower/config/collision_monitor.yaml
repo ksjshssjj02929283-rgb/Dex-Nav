@@ -70,7 +70,7 @@ collision_monitor:
       path_stop_distance: 1.0
       path_stop_radius: 0.36    # 每个路径采样点的检测半径
       path_point_interval: 0.10  # 与上一取点相距至少 10 cm 时取当前路径点
-      path_stop_visualize: false
+      path_stop_visualize: true
       path_stop_marker_topic: "path_stop_circles"
       path_stop_timing_enabled: true  # 每秒输出检测频率及平均/最大耗时
 

@@ -14,7 +14,11 @@ collision_monitor:
     control_frequency: 100.0
     cmd_vel_timeout: 0.3
     idle_grace_period: 5.0
-    approach_enabled: true
+    # 项目当前关闭 APPROACH；STOP、SLOWDOWN 和贴边路径走廊检测仍启用。
+    approach_enabled: false
+    # PERF 验收埋点：每个窗口输出主循环及各处理阶段的分位数统计。
+    performance_timing_enabled: true
+    performance_report_interval: 60.0
     # 基础轮廓同步到 costmap；相对话题名跟随节点 namespace，空列表可关闭。
     costmap_footprint_topics: ["local_costmap/footprint", "global_costmap/footprint"]
     normal_footprint: [0.35, 0.29, 0.35, -0.29, -0.35, -0.29, -0.35, 0.29]
@@ -24,7 +28,7 @@ collision_monitor:
     base_shift_correction: True
     stop_pub_timeout: 2.0
 
-    polygons: ["PolygonStop", "PolygonSlow", "FootprintApproach"]
+    polygons: ["PolygonStop", "PolygonSlow"]
 
     PolygonStop:
       type: "polygon"

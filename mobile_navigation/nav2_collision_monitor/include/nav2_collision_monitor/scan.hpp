@@ -87,9 +87,32 @@ protected:
   /// @brief Laser scanner data subscriber
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr data_sub_;
 
-  /// @brief Latest data obtained from laser scanner
-  // Access only through std::atomic_load/store; readers retain an immutable snapshot.
+  // Retain the latest raw message for diagnostics and source-level compatibility. Detection uses
+  // processed_data_; readers of data_ must use atomic shared_ptr operations.
   sensor_msgs::msg::LaserScan::ConstSharedPtr data_;
+
+  struct ProcessedScan
+  {
+    rclcpp::Time source_stamp;
+    std::vector<Point> points;
+    bool transform_valid{false};
+  };
+
+  // A callback builds the complete base-frame point set and publishes it atomically. The
+  // 100 Hz safety loop therefore never observes a partially converted scan and never performs TF.
+  std::shared_ptr<const ProcessedScan> processed_data_;
+
+  struct DirectionCache
+  {
+    float angle_min;
+    float angle_increment;
+    std::size_t size;
+    std::vector<Point> unit_vectors;
+  };
+
+  // Immutable beam directions keyed by LaserScan geometry. Access through atomic shared_ptr
+  // operations so concurrent snapshot tests and executor callbacks never observe a partial cache.
+  std::shared_ptr<const DirectionCache> direction_cache_;
 };  // class Scan
 
 }  // namespace nav2_collision_monitor

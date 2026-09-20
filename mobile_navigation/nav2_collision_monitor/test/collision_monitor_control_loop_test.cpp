@@ -40,6 +40,30 @@ TEST_F(Tester, testControlLoopConsumesFreeNavigationMailboxes)
   cm_->stop();
 }
 
+TEST_F(Tester, testControlLoopSkipsProcessWithoutInputUpdate)
+{
+  setCommonParameters();
+  cm_->declare_parameter("performance_timing_enabled", true);
+  addPolygon("PolygonStop", POLYGON, 1.0, "stop");
+  setVectors({"PolygonStop"}, {});
+  cm_->startManualControlLoop();
+
+  cm_->receiveFreePath();
+  cm_->receiveFreeVelocity(0.2);
+  cm_->runControlLoop();
+  ASSERT_EQ(cm_->processSampleCount(), 1u);
+
+  // The timer still runs the FSM, but unchanged mailboxes and sources do not repeat geometry.
+  cm_->runControlLoop();
+  EXPECT_EQ(cm_->processSampleCount(), 1u);
+
+  // An identical-valued message is still a new input event and must trigger detection.
+  cm_->receiveFreeVelocity(0.2);
+  cm_->runControlLoop();
+  EXPECT_EQ(cm_->processSampleCount(), 2u);
+  cm_->stop();
+}
+
 TEST_F(Tester, testControlLoopKeepsNavigationTypeForLifecycle)
 {
   setCommonParameters();
@@ -90,6 +114,44 @@ TEST_F(Tester, testControlLoopScheduleBypassAndEdgingMode)
   EXPECT_EQ(cm_->mode(), CollisionMonitorWrapper::NavigationMode::SCHEDULE_NAVIGATION);
   EXPECT_FALSE(cm_->polygonLateralPaddingOnly("PolygonStop"));
   EXPECT_FALSE(cmd_vel_out_);
+
+  cm_->stop();
+}
+
+TEST_F(Tester, testFootprintSwitchPreservesScheduleEdgingMode)
+{
+  setCommonParameters();
+  addPolygon("PolygonStop", POLYGON, 1.0, "stop");
+  cm_->declare_parameter("PolygonStop.default_padding", 0.2);
+  setVectors({"PolygonStop"}, {});
+  cm_->startManualControlLoop();
+
+  const std::vector<nav2_collision_monitor::Point> route{{0.0, 0.0}, {1.0, 0.0}};
+  cm_->receiveTrackingPath(route, 0.0F);
+  cm_->receiveScheduleVelocity(0.3);
+  cm_->runControlLoop();
+  ASSERT_EQ(cm_->mode(), CollisionMonitorWrapper::NavigationMode::SCHEDULE_EDGING);
+  ASSERT_TRUE(cm_->polygonLateralPaddingOnly("PolygonStop"));
+
+  // A footprint change intentionally publishes one zero command and enters IDLE
+  // transiently, but a fresh command must resume the sub-mode selected by the path.
+  cm_->requestLoadedFootprint(true);
+  cm_->runControlLoop();
+  EXPECT_EQ(cm_->mode(), CollisionMonitorWrapper::NavigationMode::SCHEDULE_EDGING);
+  EXPECT_TRUE(cm_->polygonLateralPaddingOnly("PolygonStop"));
+  EXPECT_NEAR(cm_->polygonPadding("PolygonStop"), 0.2, EPSILON);
+  ASSERT_TRUE(waitCmdVel(200ms));
+  EXPECT_DOUBLE_EQ(cmd_vel_out_->linear.x, 0.0);
+
+  cmd_vel_out_.reset();
+  cm_->requestLoadedFootprint(false);
+  cm_->receiveScheduleVelocity(0.3);
+  cm_->runControlLoop();
+  EXPECT_EQ(cm_->mode(), CollisionMonitorWrapper::NavigationMode::SCHEDULE_EDGING);
+  EXPECT_TRUE(cm_->polygonLateralPaddingOnly("PolygonStop"));
+  EXPECT_NEAR(cm_->polygonPadding("PolygonStop"), 0.2, EPSILON);
+  ASSERT_TRUE(waitCmdVel(200ms));
+  EXPECT_DOUBLE_EQ(cmd_vel_out_->linear.x, 0.0);
 
   cm_->stop();
 }

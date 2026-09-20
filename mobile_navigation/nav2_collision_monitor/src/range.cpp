@@ -163,6 +163,7 @@ void Range::getParameters(std::string & source_topic)
 void Range::dataCallback(sensor_msgs::msg::Range::ConstSharedPtr msg)
 {
   std::atomic_store(&data_, std::move(msg));
+  data_sequence_.fetch_add(1, std::memory_order_release);
 }
 
 }  // namespace nav2_collision_monitor
