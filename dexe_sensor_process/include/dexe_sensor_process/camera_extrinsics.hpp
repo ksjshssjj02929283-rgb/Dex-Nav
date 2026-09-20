@@ -7,6 +7,7 @@
 #include <geometry_msgs/msg/transform_stamped.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <tf2/LinearMath/Matrix3x3.h>
+#include <tf2/LinearMath/Transform.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <tf2_sensor_msgs/tf2_sensor_msgs.hpp>
 
@@ -26,6 +27,11 @@ public:
         const auto axis = tf2::Matrix3x3(rotation).getColumn(2);
         const double yaw = std::atan2(axis.y(), axis.x());
         transform_ = transform;
+        cached_transform_.setOrigin(tf2::Vector3(
+            transform.transform.translation.x,
+            transform.transform.translation.y,
+            transform.transform.translation.z));
+        cached_transform_.setRotation(rotation);
         optical_axis_yaw_ = yaw;
     }
 
@@ -45,8 +51,16 @@ public:
         output.header.stamp = input.header.stamp;
     }
 
+    tf2::Vector3 transformPoint(float x, float y, float z) const {
+        if (!transform_) {
+            throw std::bad_optional_access();
+        }
+        return cached_transform_ * tf2::Vector3(x, y, z);
+    }
+
 private:
     std::optional<geometry_msgs::msg::TransformStamped> transform_;
+    tf2::Transform cached_transform_;
     std::optional<double> optical_axis_yaw_;
 };
 

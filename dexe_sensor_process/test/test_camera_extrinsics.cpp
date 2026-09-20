@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 #include <sensor_msgs/point_cloud2_iterator.hpp>
-#include "camera_extrinsics.hpp"
+#include "dexe_sensor_process/camera_extrinsics.hpp"
 
 namespace {
 geometry_msgs::msg::TransformStamped makeTransform() {

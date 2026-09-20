@@ -90,18 +90,9 @@ def generate_launch_description() -> LaunchDescription:
         }.items(),
     )
 
-    front_rgbd = IncludeLaunchDescription(
+    rgbd = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
-            os.path.join(rgbd_launch_dir, 'front_p2c.launch.py')),
-        launch_arguments={
-            'use_sim_time': use_sim_time,
-            'depth_max_range': '5.0',
-            'ground_filter_min_height': '0.05',
-        }.items())
-
-    rear_rgbd = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            os.path.join(rgbd_launch_dir, 'rear_p2c.launch.py')),
+            os.path.join(rgbd_launch_dir, 'multi_camera.launch.py')),
         launch_arguments={
             'use_sim_time': use_sim_time,
             'depth_max_range': '5.0',
@@ -153,8 +144,7 @@ def generate_launch_description() -> LaunchDescription:
         declare_map_odom_y,
         declare_map_odom_yaw,
         sim_launch,
-        front_rgbd,
-        rear_rgbd,
+        rgbd,
         delayed_nav2,
         delayed_rviz,
     ])
