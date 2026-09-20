@@ -16,6 +16,7 @@
 
 #include <cmath>
 #include <functional>
+#include <utility>
 
 namespace nav2_collision_monitor
 {
@@ -32,7 +33,7 @@ Scan::Scan(
 : Source(
     node, source_name, tf_buffer, base_frame_id, global_frame_id,
     transform_tolerance, source_timeout, base_shift_correction),
-  data_(nullptr)
+  data_(nullptr), processed_data_(nullptr)
 {
   RCLCPP_INFO(logger_, "[%s]: Creating Scan", source_name_.c_str());
 }
@@ -65,61 +66,114 @@ void Scan::getData(
   const rclcpp::Time & curr_time,
   std::vector<Point> & data) const
 {
-  // Ignore data from the source if it is not being published yet or
-  // not being published for a long time
-  if (data_ == nullptr) {
+  const auto snapshot = std::atomic_load(&processed_data_);
+
+  // A failed transform invalidates the entire newly received frame. In particular, do not keep
+  // returning an older valid frame while TF for newer sensor data is broken.
+  if (snapshot == nullptr || !snapshot->transform_valid) {
     return;
   }
-  if (!sourceValid(data_->header.stamp, curr_time)) {
+  if (!sourceValid(snapshot->source_stamp, curr_time)) {
     return;
   }
 
-  tf2::Transform tf_transform;
-  if (base_shift_correction_) {
-    // Obtaining the transform to get data from source frame and time where it was received
-    // to the base frame and current time
-    if (
-      !nav2_util::getTransform(
-        data_->header.frame_id, data_->header.stamp,
-        base_frame_id_, curr_time, global_frame_id_,
-        transform_tolerance_, tf_buffer_, tf_transform))
-    {
-      return;
-    }
-  } else {
-    // Obtaining the transform to get data from source frame to base frame without time shift
-    // considered. Less accurate but much more faster option not dependent on state estimation
-    // frames.
-    if (
-      !nav2_util::getTransform(
-        data_->header.frame_id, base_frame_id_,
-        transform_tolerance_, tf_buffer_, tf_transform))
-    {
-      return;
-    }
-  }
-
-  // Calculate poses and refill data array
-  float angle = data_->angle_min;
-  for (size_t i = 0; i < data_->ranges.size(); i++) {
-    if (data_->ranges[i] >= data_->range_min && data_->ranges[i] <= data_->range_max) {
-      // Transform point coordinates from source frame -> to base frame
-      tf2::Vector3 p_v3_s(
-        data_->ranges[i] * std::cos(angle),
-        data_->ranges[i] * std::sin(angle),
-        0.0);
-      tf2::Vector3 p_v3_b = tf_transform * p_v3_s;
-
-      // Refill data array
-      data.push_back({p_v3_b.x(), p_v3_b.y()});
-    }
-    angle += data_->angle_increment;
-  }
+  data.insert(data.end(), snapshot->points.begin(), snapshot->points.end());
 }
 
 void Scan::dataCallback(sensor_msgs::msg::LaserScan::ConstSharedPtr msg)
 {
-  data_ = msg;
+  std::atomic_store(&data_, msg);
+  auto processed = std::make_shared<ProcessedScan>();
+  processed->source_stamp = msg->header.stamp;
+
+  auto node = node_.lock();
+  if (!node) {
+    std::atomic_store(&processed_data_, std::shared_ptr<const ProcessedScan>(processed));
+    data_sequence_.fetch_add(1, std::memory_order_release);
+    return;
+  }
+
+  // Perform timestamp-aware TF once per incoming sensor frame, rather than once per 100 Hz
+  // control tick. The resulting immutable points are expressed in base_frame_id_ at receipt time.
+  tf2::Transform tf_transform;
+  if (base_shift_correction_) {
+    const rclcpp::Time receipt_time = node->now();
+    // Odometry TF commonly trails the sensor callback by a few milliseconds. Prefer correction
+    // up to receipt time, but do not reject an otherwise transformable scan only because that
+    // newest odometry sample has not arrived yet. The fallback remains timestamp-correct at the
+    // sensor acquisition time and is reported as a degraded compensation mode.
+    rclcpp::Time target_time = receipt_time;
+    if (!tf_buffer_->canTransform(
+        base_frame_id_, receipt_time, msg->header.frame_id, msg->header.stamp,
+        global_frame_id_, rclcpp::Duration::from_nanoseconds(0)))
+    {
+      target_time = msg->header.stamp;
+      RCLCPP_WARN_THROTTLE(
+        logger_, *node->get_clock(), 5000,
+        "[%s]: TF not available at scan receipt time; using acquisition-time compensation",
+        source_name_.c_str());
+    }
+    if (
+      !nav2_util::getTransform(
+        msg->header.frame_id, msg->header.stamp,
+        base_frame_id_, target_time, global_frame_id_,
+        transform_tolerance_, tf_buffer_, tf_transform))
+    {
+      std::atomic_store(&processed_data_, std::shared_ptr<const ProcessedScan>(processed));
+      data_sequence_.fetch_add(1, std::memory_order_release);
+      return;
+    }
+  } else {
+    if (
+      !nav2_util::getTransform(
+        msg->header.frame_id, base_frame_id_,
+        transform_tolerance_, tf_buffer_, tf_transform))
+    {
+      std::atomic_store(&processed_data_, std::shared_ptr<const ProcessedScan>(processed));
+      data_sequence_.fetch_add(1, std::memory_order_release);
+      return;
+    }
+  }
+
+  // Beam geometry normally remains constant for the lifetime of a scanner. Cache the exact
+  // directions produced by the original float-angle algorithm, avoiding thousands of repeated
+  // sin/cos calls on geometry-stable scans without changing their numerical result.
+  auto directions = std::atomic_load(&direction_cache_);
+  if (!directions || directions->angle_min != msg->angle_min ||
+    directions->angle_increment != msg->angle_increment ||
+    directions->size != msg->ranges.size())
+  {
+    auto updated = std::make_shared<DirectionCache>();
+    updated->angle_min = msg->angle_min;
+    updated->angle_increment = msg->angle_increment;
+    updated->size = msg->ranges.size();
+    updated->unit_vectors.reserve(updated->size);
+    float angle = msg->angle_min;
+    for (std::size_t i = 0; i < updated->size; ++i) {
+      updated->unit_vectors.push_back({std::cos(angle), std::sin(angle)});
+      angle += msg->angle_increment;
+    }
+    directions = updated;
+    std::atomic_store(&direction_cache_, std::shared_ptr<const DirectionCache>(updated));
+  }
+
+  processed->points.reserve(msg->ranges.size());
+  for (size_t i = 0; i < msg->ranges.size(); i++) {
+    if (msg->ranges[i] >= msg->range_min && msg->ranges[i] <= msg->range_max) {
+      // Transform point coordinates from source frame -> to base frame
+      tf2::Vector3 p_v3_s(
+        msg->ranges[i] * directions->unit_vectors[i].x,
+        msg->ranges[i] * directions->unit_vectors[i].y,
+        0.0);
+      tf2::Vector3 p_v3_b = tf_transform * p_v3_s;
+
+      // Refill data array
+      processed->points.push_back({p_v3_b.x(), p_v3_b.y()});
+    }
+  }
+  processed->transform_valid = true;
+  std::atomic_store(&processed_data_, std::shared_ptr<const ProcessedScan>(processed));
+  data_sequence_.fetch_add(1, std::memory_order_release);
 }
 
 }  // namespace nav2_collision_monitor

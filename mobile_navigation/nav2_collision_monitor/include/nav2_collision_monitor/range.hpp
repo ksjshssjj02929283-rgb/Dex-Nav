@@ -97,6 +97,7 @@ protected:
   double obstacles_angle_;
 
   /// @brief Latest data obtained from range sensor
+  // Access only through std::atomic_load/store; readers retain an immutable snapshot.
   sensor_msgs::msg::Range::ConstSharedPtr data_;
 };  // class Range
 

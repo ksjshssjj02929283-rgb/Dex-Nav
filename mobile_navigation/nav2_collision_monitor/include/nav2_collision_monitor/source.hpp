@@ -15,6 +15,8 @@
 #ifndef NAV2_COLLISION_MONITOR__SOURCE_HPP_
 #define NAV2_COLLISION_MONITOR__SOURCE_HPP_
 
+#include <atomic>
+#include <cstdint>
 #include <memory>
 #include <vector>
 #include <string>
@@ -74,6 +76,12 @@ public:
     const rclcpp::Time & curr_time,
     std::vector<Point> & data) const = 0;
 
+  /** @brief Monotonic sequence incremented after every received source message. */
+  std::uint64_t getDataSequence() const
+  {
+    return data_sequence_.load(std::memory_order_acquire);
+  }
+
 protected:
   /**
    * @brief Supporting routine obtaining ROS-parameters common for all data sources
@@ -116,6 +124,9 @@ protected:
   /// @brief Whether to correct source data towards to base frame movement,
   /// considering the difference between current time and latest source time
   bool base_shift_correction_;
+
+  /// @brief Lets the control loop skip geometry work until a source receives a new message.
+  std::atomic<std::uint64_t> data_sequence_{0};
 };  // class Source
 
 }  // namespace nav2_collision_monitor

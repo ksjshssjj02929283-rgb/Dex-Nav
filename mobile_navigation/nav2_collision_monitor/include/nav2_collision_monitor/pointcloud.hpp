@@ -97,6 +97,7 @@ protected:
   double min_height_, max_height_;
 
   /// @brief Latest data obtained from pointcloud
+  // Access only through std::atomic_load/store; readers retain an immutable snapshot.
   sensor_msgs::msg::PointCloud2::ConstSharedPtr data_;
 };  // class PointCloud
 
