@@ -1,0 +1,9 @@
+# 请求一次事件录制。产出的 bag 覆盖「触发时刻前 pre_seconds 秒 + 后 post_seconds 秒」。
+string reason           # 触发原因，会写进 bag 目录名，例如 "controller_stuck"
+string source           # 触发方标识（模块名），写入 bag 元信息便于追溯
+int32 pre_seconds       # <=0 表示沿用节点配置
+int32 post_seconds      # <=0 表示沿用节点配置
+---
+bool success            # 是否真的开始录制（冷却中/录制中/未启用时为 false）
+string message          # 成功说明或拒绝原因
+string bag_path         # 成功时为事件 bag 路径，失败时为空

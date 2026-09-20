@@ -1,0 +1,5 @@
+nav_interfaces/Task task
+---
+bool success
+string task_group_id          # ⭐ DEC-018：内部包装为单 Task 的 TaskGroup，返回其 task_group_id（客户端用此跟踪 ~/task_progress topic）
+string message                # 失败时具体原因（成功时可为空）

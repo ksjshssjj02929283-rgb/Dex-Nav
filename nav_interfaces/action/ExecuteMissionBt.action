@@ -1,0 +1,20 @@
+# ExecuteMissionBt — Mission Manager 统一 BT 执行接口
+#
+# 落地决策：DEC-008 (4 支柱) / DEC-011 (双→三包) / DEC-012 (mission_manager 单一职责) / DEC-014 (命名修订)
+# Action Server：mobile_bt/mission_bt_executor 包内 BtExecutorServer
+# Action 路径：/mission/execute_bt
+# 调用方：mission_manager 包 BtDispatcher（task_type 非 Nav2 直连时转发到本 Action）
+
+# Goal
+string task_type             # 必填，对应 bt_registry.yaml 中 task_types 的 key（charging / docking / patrol_loop / 等）
+string bt_xml_path           # 可选，覆盖 registry 默认 BT XML 绝对路径；空时按 task_type 查 registry
+string bt_params_json        # 可选，注入 BT blackboard 的 JSON 字符串（字段对应 required_blackboard schema）
+---
+# Result
+bool success                 # BT tickRoot 返回 SUCCESS 为 true，FAILURE/异常/超时为 false
+string message               # 成功时 "ok"，失败时具体原因（missing field / plugin missing / timeout / BT FAILURE / ...）
+---
+# Feedback
+string current_node          # 当前 tick 活跃 BT 节点名（可选填）
+float32 elapsed_sec          # 已执行秒数
+int32 retry_count            # blackboard 中 retry_count（可选）

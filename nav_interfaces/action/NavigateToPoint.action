@@ -1,0 +1,12 @@
+# Goal
+string point_name
+bool use_pose
+geometry_msgs/PoseStamped pose
+float64 tolerance
+---
+# Result
+bool success
+string message
+---
+# Feedback
+string current_status

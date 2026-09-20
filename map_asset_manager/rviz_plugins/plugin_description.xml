@@ -1,0 +1,90 @@
+<library path="map_asset_rviz_plugin">
+
+  <!-- ── Panel ─────────────────────────────────────────────────── -->
+  <class name="map_asset_rviz_plugin/MapAssetPanel"
+         type="map_asset_rviz_plugin::MapAssetPanel"
+         base_class_type="rviz_common::Panel">
+    <description>
+      地图资产管理面板：导航点、路线、区域的增删查操作（对接 map_asset_manager 服务）
+    </description>
+  </class>
+
+  <!-- ── Tools ─────────────────────────────────────────────────── -->
+  <class name="map_asset_rviz_plugin/AddNavPointTool"
+         type="map_asset_rviz_plugin::AddNavPointTool"
+         base_class_type="rviz_common::Tool">
+    <description>
+      在地图上单击添加导航点（调用 map_asset_manager/add_point 服务）
+    </description>
+  </class>
+
+  <class name="map_asset_rviz_plugin/AddAreaTool"
+         type="map_asset_rviz_plugin::AddAreaTool"
+         base_class_type="rviz_common::Tool">
+    <description>
+      在地图上依次单击多边形顶点，双击完成区域绘制（调用 map_asset_manager/add_area 服务）
+    </description>
+  </class>
+
+  <class name="map_asset_rviz_plugin/AddRoomTool"
+         type="map_asset_rviz_plugin::AddRoomTool"
+         base_class_type="rviz_common::Tool">
+    <description>
+      DSG ROOMS 层节点绘制工具（默认多边形）：先填写名称/类型/语义标签/关联 NavPoint，
+      再在地图左键添加顶点，右键完成（调用 map_asset_manager/add_room 服务）。
+      快捷键 M。
+    </description>
+  </class>
+
+  <class name="map_asset_rviz_plugin/AddJunctionTool"
+         type="map_asset_rviz_plugin::AddJunctionTool"
+         base_class_type="rviz_common::Tool">
+    <description>
+      在地图上左键点击放置路网 Junction 节点（无需朝向），右键退出。
+      快捷键 J。连续放置，每次弹窗输入 ID。
+    </description>
+  </class>
+
+  <class name="map_asset_rviz_plugin/AddEdgeTool"
+         type="map_asset_rviz_plugin::AddEdgeTool"
+         base_class_type="rviz_common::Tool">
+    <description>
+      直线路网边工具：左键选起点 → 左键选终点（snap 到 NavPoint/Junction），弹出配置框后提交。
+      快捷键 L。
+    </description>
+  </class>
+
+  <class name="map_asset_rviz_plugin/AddCurveEdgeTool"
+         type="map_asset_rviz_plugin::AddCurveEdgeTool"
+         base_class_type="rviz_common::Tool">
+    <description>
+      贝塞尔曲线路网边工具：选起点 → 选终点 → 左键依次添加控制点（实时预览曲线），右键完成。
+      快捷键 B。
+    </description>
+  </class>
+
+  <class name="map_asset_rviz_plugin/RouteGraphDeleteTool"
+         type="map_asset_rviz_plugin::RouteGraphDeleteTool"
+         base_class_type="rviz_common::Tool">
+    <description>
+      统一路网删除工具（快捷键 D）：左键点击高亮最近 Junction 或 Edge，Del 键确认删除，右键退出。
+    </description>
+  </class>
+
+  <class name="map_asset_rviz_plugin/RouteGraphStartTool"
+         type="map_asset_rviz_plugin::RouteGraphStartTool"
+         base_class_type="rviz_common::Tool">
+    <description>
+      路网开始编辑工具（快捷键 R）：激活时立即调用 reload_data 服务，从文件重新加载路网，丢弃未保存的内存修改。
+    </description>
+  </class>
+
+  <class name="map_asset_rviz_plugin/RouteGraphSaveTool"
+         type="map_asset_rviz_plugin::RouteGraphSaveTool"
+         base_class_type="rviz_common::Tool">
+    <description>
+      路网保存工具（快捷键 S）：激活时立即调用 save_assets 服务，将内存中的路网持久化到文件。
+    </description>
+  </class>
+
+</library>

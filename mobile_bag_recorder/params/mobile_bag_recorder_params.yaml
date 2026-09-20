@@ -1,0 +1,210 @@
+# 导航录包节点参数
+#
+# 只列真正会在现场调整的项。storage_id、writer_cache_size 等在代码里有默认值，
+# 需要时在本文件补一行即可 override。
+#
+# 节点名用 /** 通配，避免 launch 里改 name 后参数不生效。
+
+/**:
+  ros__parameters:
+    # 输出根目录。常态录制写入 <output_dir>/continuous/，事件录制写入 <output_dir>/event/
+    output_dir: "~/.dexe/navigation/bags"
+
+    # 存储后端。mcap 的写入路径比 sqlite3 的逐条 INSERT 轻很多：
+    # 真机同话题集实测 60s，sqlite3 12.6% / mcap 6.6%（单核占比），落盘量基本相同。
+    # 录制端与回放端都需要 ros-humble-rosbag2-storage-mcap。
+    # 存储后端。mcap 写入 CPU 与文件体积都优于 sqlite3，但需要额外安装：
+    #   sudo apt install ros-humble-rosbag2-storage-mcap
+    # 启动时会自检该后端能否真的写入；不可用则以 ERROR 告警并回退到
+    # storage_fallback_id（默认 sqlite3）继续录制，不会静默空转。
+    # 把 storage_fallback_id 设为 "" 则不回退，自检失败就不录（宁可不录也不换格式）。
+    storage_id: "mcap"
+
+    # 按话题限制录制频率，格式 "<话题>:<最大Hz>"。未列出的话题按原频率全录。
+    # 限速发生在订阅回调里，常态与事件两条流一起生效（环形缓冲也只压降频后的消息）。
+    # 每个话题的第一条消息永远放行，避免丢掉 /map 这类可能一辈子只发一次的 transient_local 数据。
+    #
+    # 注意 1：降频省的是写盘、内存和磁盘，**省不掉** DDS 收包与 executor 唤醒——
+    # 消息还是会被收上来，只是不写进 bag。要连这部分一起省，只能把话题从 topics 清单里删掉。
+    #
+    # 注意 2：限速**只作用于常态流**。事件流（触发式录制）始终收全量——触发意味着
+    # 要排查故障，取证需要原始分辨率；且事件流只在触发后几十秒内写盘，代价仅是环形
+    # 缓冲多占一点内存。若事件流内存吃紧，用 event.exclude_topics 排除大话题，
+    # 而不是靠限速压它。
+    #
+    # 不需要限速时把整段注释掉，不要写成 throttle: []（空序列会被解析成 NOT_SET 让节点起不来）。
+    throttle:
+      # ---- 地图相关 → 2Hz ----
+      # 注意 /local_costmap/costmap_updates 刻意不在此列：
+      # costmap 发布端的逻辑是「always_send_full_costmap 为真、或分辨率/尺寸/原点变化
+      # → 发全量，否则发 update」。rolling 的 local costmap 原点跟着机器人走，于是
+      # always_send_full_costmap=False 时，机器人移动发全量、**静止时只发 update**。
+      # 而静止正是「卡住/被挡住/等避障」这类故障的现场，限速 update 会把那段地图变化丢掉。
+      # always_send_full_costmap=True 时该话题一条消息都不发，留着也是零开销。
+      - "/map:2.0"
+      - "/local_costmap/costmap:2.0"
+      - "/local_costmap/published_footprint:2.0"
+      # ---- 速度相关 → 10Hz ----
+      # 这几条都是几十字节的小消息，降频省不到多少 CPU/磁盘，留 10Hz 是为了控制类问题
+      # （速度抖动、急停、跟踪振荡）回放时还有足够的采样密度
+      - "/cmd_vel_nav:10.0"
+      - "/control/cmd_vel:10.0"
+      - "/control/cmd_vel_nav:10.0"
+      - "/speed_limit:10.0"
+      - "/navigation/speed_plan:10.0"
+      - "/nav_monitor/desired_velocity:10.0"
+      # ---- 里程计相关 → 20Hz ----
+      # - "/feedback/odom:20.0"
+      # - "/odometry/filtered:20.0"
+
+    continuous:
+      enabled: true
+      # 每段时长（秒）
+      segment_duration: 300
+      # rolling：录满后删最旧的段，永久运行
+      # limited：录满 max_segments 段后停止
+      mode: "rolling"
+      max_segments: 24
+      # 总容量上限（MB）。段大小随场景浮动，只靠段数控不住盘，两者同时生效
+      max_total_size_mb: 20480
+
+      # 录制话题清单。清单里尚未发布的话题不影响启动，上线后会自动补订阅。
+      topics:
+        # ---- 坐标与地图 ----
+        - /tf
+        - /tf_static
+        - /map
+        - /map_info
+        - /initialpose
+        - /goal_pose
+
+        # ---- 规划与路径 ----
+        - /plan
+        - /plan_smoothed
+        - /unsmoothed_plan
+        - /transformed_global_plan
+        - /tracked_path
+        - /route_plan
+        - /speed_limit
+
+        # ---- 控制与里程计 ----
+        - /cmd_vel_nav
+        - /control/cmd_vel
+        - /control/cmd_vel_nav
+        - /control/nav2_pose
+        - /feedback/odom
+        - /odometry/filtered
+
+        - /localization_node/loc_pose
+        - /localization_state
+        - /robot_localization/odometry/filtered
+
+        # ---- 代价地图 ----
+        - /local_costmap/costmap
+        - /local_costmap/costmap_updates
+        - /local_costmap/published_footprint
+
+        # ---- 任务与状态 ----
+        - /active
+        - /behavior_tree_log
+        - /command_board
+        - /navigate_to_pose/_action/status
+        - /navigate_to_pose/_action/feedback
+
+        # ---- 导航监控与诊断（0.5.x 新增，回放定位问题的主要依据）----
+        - /navigation/speed_plan
+        - /navigation/speed_plan_diagnostics
+        - /navigation_goal_error
+
+        # ---- 传感与定位（由 SLAM / 传感器侧发布，机型不同可能缺席）----
+        - /laser_scan/front
+        - /laser_scan/rear
+        - /loc_pose
+        - /scan_matched_points2
+        - /clock
+
+        - /diagnostics_agg
+
+    event:
+      enabled: true
+      # 触发点之前保留多久（秒）。按时间戳裁剪，与数据率无关
+      pre_seconds: 60
+      # 触发之后继续录多久（秒）
+      post_seconds: 30
+      # 冷却期（秒）。设 0 会在连续失败时刷出大量重叠 bag
+      cooldown_seconds: 120
+      max_events: 50
+      # 事件目录总容量上限（MB），与 max_events 同时生效
+      max_total_size_mb: 5120
+      # 环形缓冲内存硬上限（MB）。时间窗口先到先裁，此项是防 OOM 的兜底：
+      # 数据率突增时宁可让 pre 窗口短于 pre_seconds，也不把内存吃穿（触发时会告警）
+      max_buffer_mb: 512
+
+      # 事件流默认继承上面的常态清单
+      inherit_continuous_topics: true
+      # 从继承清单里排除的大流量话题——控制环形缓冲内存的主要旋钮。
+      # 排掉之后事件 bag 里就没有这些数据了，按要排查的故障类型权衡。
+      exclude_topics:
+        - /scan_matched_points2
+      # 事件流额外补录的话题（优先级高于 exclude）。
+      # 不要写成 extra_topics: []——rcl 的 yaml 解析器推不出空序列的元素类型，会把该参数
+      # 解析成 NOT_SET，declare_parameter 拿到 NOT_SET 的 override 直接抛
+      # InvalidParameterValueException("No parameter value set")，节点起不来。
+      # 不需要补录时整行注释掉即可，代码里的默认值就是空列表。
+      # extra_topics:
+      #   - /some/topic
+
+    # 事件触发时，把系统日志的同一段时间一并存进事件 bag 目录下的 logs/。
+    # 数据回放能看出机器人"做了什么"，日志才说得清各节点"当时在想什么/报了什么错"，
+    # 两者放一起才是一份能独立排查的现场。
+    #
+    # 日志取自 systemd journal（机器人上各节点由 auto_mode.sh 经 systemd-cat -t dexe_xxx
+    # 拉起，stdout/stderr 全进 journal），不是 ~/.ros/log —— 后者按每次 launch 一个目录
+    # 组织（实测机上已 6500+ 个），既切不出时间窗口，也没有 kernel/systemd 那部分信息。
+    log_capture:
+      enabled: true
+
+      # 触发点之前取多久的日志（秒）。可以比 event.pre_seconds 长得多：
+      # pc1 实测 5 min 日志 ≈ 300~540 KB，相对 bag 几乎是白送的
+      pre_seconds: 300
+
+      # journalctl --lines 上限，0 = 不限。日志跟事件 bag 一起被保留策略回收，
+      # 正常不用设，只在某个节点疯狂刷屏时兜底
+      max_lines: 0
+
+      # 单次采集超时（秒）。超时杀掉 journalctl，已写入的部分保留
+      timeout_seconds: 30
+
+      # 只收指定 syslog identifier（auto_mode.sh 里 systemd-cat -t 的那个名字），
+      # 多个之间是"或"。默认整段注释掉 = 全量：掉电、OOM、网卡抖动这类事件只在
+      # kernel/systemd 的日志里，恰恰是 ROS 侧一个字都看不到的部分。
+      # 同样不要写成 identifiers: []（空序列会被解析成 NOT_SET，节点起不来）。
+      # identifiers:
+      #   - dexe_path_follower
+      #   - dexe_schedule_planner
+
+    trigger:
+      # 导航 action 返回 ABORTED
+      on_nav_aborted: true
+      # CANCELED 多为人为取消，默认不触发
+      on_nav_canceled: false
+      # 行为树进入恢复类节点（预警级，误触发较多，默认关）
+      on_recovery_behavior: true
+      # /navigation/speed_plan_diagnostics 出现 ERROR
+      on_diagnostics_error: true
+      # 终点误差超过该值（米）触发；0 表示不判定。
+      # 读的是 /navigation_goal_error 里 controller_server 发布的 distance_error 字段
+      goal_error_threshold_m: 0.0
+
+      # 导航卡住：任务进行中（action EXECUTING）且持续无实质推进。
+      # 覆盖「还在跑任务但走不动/反复绕」——这类问题没有终态信号，其他触发源抓不到
+      on_nav_stall: true
+      # 持续多久没推进算卡住（秒）
+      stall_timeout_s: 20.0
+      # 该时长内推进量低于此值（米）即视为卡住
+      stall_min_progress_m: 0.2
+      # 推进量来源：auto / feedback / odom
+      #   feedback = action 的 distance_remaining 减少量，能识别「在动但没接近目标」（绕圈）
+      #   odom     = 机器人相对基准点的位移，识别不了绕圈，但不依赖 nav2_msgs
+      #   auto     = 有 nav2_msgs 就用 feedback，否则回退 odom
+      stall_progress_source: "auto"

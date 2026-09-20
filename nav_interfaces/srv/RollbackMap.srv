@@ -1,0 +1,10 @@
+# 回退地图到指定版本（command_board 唯一回退入口，DEC-009）。
+# 底图/资产版本号各自独立指定 = 任意组合；皆空 = 各取对应 ring 最新一次。
+# command_board 直接从 slam/backups + assets/backups 原子恢复文件，再触发 map_manager 重下发。
+string map_version_ts      # 空 = 底图 ring 最新（slam/backups/backup.<ts>）
+string assets_version_ts   # 空 = 资产 ring 最新（assets/backups/map_assets.<ts>.json）
+---
+bool   success
+string message
+string map_version_ts      # 实际回退到的底图版本
+string assets_version_ts   # 实际回退到的资产版本

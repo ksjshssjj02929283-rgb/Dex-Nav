@@ -1,0 +1,12 @@
+# 目标地图名；空字符串表示当前加载中的地图（RobotPose 重置专用）
+string  map_name
+# 新原点在旧地图坐标系中的位姿
+float64 x    # (m)
+float64 y    # (m)
+float64 yaw  # (rad)
+---
+bool   success
+string message
+int32  transformed_points     # 变换的导航点数
+int32  transformed_areas      # 变换的区域数（含多边形顶点）
+int32  transformed_junctions  # 变换的路网节点数（含图中 NavPoint）

@@ -1,0 +1,14 @@
+string name
+uint32 point_type
+
+uint8 FREE_GOAL = 0 # 自由目标点
+uint8 STATION = 1   # 导航点
+uint8 CHARGING = 2  # 充电点
+uint8 PARKING = 3   # 停车点
+uint8 DOORWAIT = 4  # 等待开门点
+uint8 LIFT = 5      # 电梯点
+---
+bool    success
+float32 x
+float32 y
+float32 theta    # yaw (rad)

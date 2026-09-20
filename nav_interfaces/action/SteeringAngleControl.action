@@ -1,0 +1,24 @@
+# [SteeringAngleControl] 全向舵轮驻车：四轮可独立设置目标舵角，轮速保持为 0。
+# Server: mobile_cmd_omni (/steering_angle_control)
+# Client: BT 节点 ParkWheels（nav2_behavior_tree）
+
+#goal definition
+# 四轮目标舵角（rad），顺序：FL、FR、RL、RR。
+#ros2 action send_goal /steering_angle_control
+#    nav_interfaces/action/SteeringAngleControl
+#    "{target_steer_angles_rad: [0.2, -0.4, 1.0, -1.2],
+#      timeout_sec: 3.0,
+#      settle_tolerance_rad: 0.08}"
+#    --feedback
+float32[4] target_steer_angles_rad
+float32 timeout_sec
+float32 settle_tolerance_rad
+---
+#result definition
+builtin_interfaces/Duration total_elapsed_time
+bool success
+string message
+---
+#feedback definition
+float32 max_steer_error
+builtin_interfaces/Duration time_left

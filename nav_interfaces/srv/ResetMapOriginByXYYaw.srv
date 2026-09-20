@@ -1,0 +1,11 @@
+string  map_name  # 目标地图名（必填，可以是任意地图，不限于当前使用中的地图）
+# 新原点在旧地图坐标系中的位姿
+float64 x    # (m)
+float64 y    # (m)
+float64 yaw  # (rad)
+---
+bool    success
+string  message
+float64 applied_x    # 实际使用的 x（by_robot_pose 模式下返回采样均值）
+float64 applied_y
+float64 applied_yaw

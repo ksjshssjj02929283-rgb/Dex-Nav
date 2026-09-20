@@ -1,0 +1,5 @@
+string name
+string[] point_names
+---
+bool success
+string message

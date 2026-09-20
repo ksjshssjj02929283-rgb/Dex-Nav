@@ -1,0 +1,4 @@
+nav_interfaces/RouteJunction junction
+---
+bool   success
+string message

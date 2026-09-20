@@ -1,0 +1,19 @@
+string cmd_type
+string cmd_value
+
+# int32 CMD_SPEED_GEAR = 0
+# int32 CMD_CONTROL_MODE = 1
+# int32 CMD_NAVIGATION_MODE = 2
+
+# int32 SPEED_GEAR_LOW = 0
+# int32 SPEED_GEAR_MIDDLE = 1
+# int32 SPEED_GEAR_HIGH = 2
+
+# int32 CONTROL_MODE_AUTO = 0
+# int32 CONTROL_MODE_MANUAL = 1
+
+# int32 NAVI_FREE_GOAL = 0
+# int32 NAVI_TOPO_MAP = 1
+
+---
+bool success

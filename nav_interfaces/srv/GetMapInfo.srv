@@ -1,0 +1,6 @@
+---
+bool success
+string error_msg
+string map_name
+string map_folder
+nav_msgs/MapMetaData map_info

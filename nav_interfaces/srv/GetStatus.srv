@@ -1,0 +1,6 @@
+
+---
+bool success
+
+string name    # 该状态对应的名称
+string status  # 获取的状态，通过string的形式返回

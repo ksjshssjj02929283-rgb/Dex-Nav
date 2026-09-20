@@ -1,0 +1,7 @@
+# 保存/更新底图（localization 与 mapping 共用）。只存底图（map.pgm/yaml/pbstream），不碰 map asset。
+string map_name      # 空 = 用当前已加载地图名；非空 = 指定地图名
+---
+bool   success
+string map_path      # 实际保存的地图目录绝对路径
+string backup_ts     # 本次归档产生的历史 backup 时间戳（无则空）
+string message       # 失败原因 / 提示

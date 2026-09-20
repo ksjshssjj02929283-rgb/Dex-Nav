@@ -1,0 +1,8 @@
+# 保存/更新地图资产（map_asset_manager）。只存 map_assets.json，不碰底图。
+# 显式调用（手动 / command_board 统一备份触发）会产一份资产 ring 版本（DEC-006/007）。
+string map_name      # 空 = 用当前已加载地图；非空 = 指定地图名
+---
+bool   success
+string assets_path   # 实际保存的资产文件绝对路径
+string backup_ts     # 本次产生的资产 ring 版本时间戳（无则空）
+string message       # 失败原因 / 提示

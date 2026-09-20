@@ -1,0 +1,13 @@
+# 把有序导航点 id 列表解析成可执行的多段几何路径。
+# 由 map_asset_manager 提供：依据路由图反查相邻两点间的 RouteEdge，
+# 解析出显式坐标、段末朝向、是否倒车等，产出 PathSegment 列表。
+#
+# 请求：有序导航点 id（相邻两点构成一段路径，至少 1 个点；
+#       仅 1 个点时取一条终点为该点的边）。
+string[] nav_point_ids
+string[] nav_point_names
+---
+# 响应：解析失败时 success=false、message 给原因、segments 为空。
+bool success
+string message
+nav_interfaces/PathSegment[] segments

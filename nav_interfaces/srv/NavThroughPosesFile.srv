@@ -1,0 +1,4 @@
+string filename   # config 目录下的 json 文件名，例如 "route_a.json"
+---
+bool success
+string message    # 失败时返回具体原因

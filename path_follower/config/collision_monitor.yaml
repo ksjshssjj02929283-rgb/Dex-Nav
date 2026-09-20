@@ -1,0 +1,132 @@
+# nav2_collision_monitor 配置
+# 拓扑: 本节点是挂在速度链上的旁路探头, 不是串联闸门。
+#   path_follower ──/cmd_vel_nav──┬──► velocity_smoother ──► 底盘
+#                                 └──► collision_monitor ──/cmd_vel_nav1──► (悬空丢弃)
+#                                            └──► /obstacle_status ──► path_follower
+# 订阅 cmd_vel_in 只是为了触发一次障碍评估(上游 Nav2 的设计是收到 cmd_vel 才评估);
+# 真正被消费的产出是 obstacle_status, 减速/停车由 path_follower 的 VelocityTrackMode
+# 状态机执行。cmd_vel_out 刻意无订阅者 —— 接回速度链会导致同一障碍被两处各刹一次。
+# 实际话题名由 launch 的 cmd_vel_in_topic / cmd_vel_out_topic 参数 remap 决定。
+# 底盘: 全向(omni),base_link,尺寸 0.70×0.58 (半长 ±0.35, 半宽 ±0.29)
+# 数据源: 前后双激光 + 深度相机点云
+collision_monitor:
+  ros__parameters:
+    use_sim_time: false
+    base_frame_id: "base_link"
+    odom_frame_id: "odom"
+    cmd_vel_in_topic: "cmd_vel_raw"   # path_follower 重映射输出到这里
+    cmd_vel_out_topic: "cmd_vel"      # 处理后真正发给底盘的速度
+    transform_tolerance: 0.1
+    source_timeout: 5.0              # 数据超过 5s 视为失效
+    base_shift_correction: True     # 源时间戳->当前时间 TF 插值(更准)
+    stop_pub_timeout: 2.0           # 停车 2s 后停止发布零速度(节能/防抖)
+
+    # 障碍状态空闲保活频率 Hz（本仓库相对上游 Nav2 的改动）。
+    # 上游只在收到 cmd_vel_in 时才发布 obstacle_status，导致：
+    #   1) 下游无法区分"监控挂了"和"监控没话说"，做不了状态超时看门狗；
+    #   2) 车还没动就存在的障碍，要等第一帧非零速度发出去才被上报，已经晚了。
+    # 该定时器只在"最近一个周期内没有 cmd_vel_in 流入"时才补一次评估（零速评估，
+    # 只刷新 obstacle_status/polygons，不发 cmd_vel），运动中的行为与延迟完全不受影响。
+    # <=0 关闭，恢复上游"仅随 cmd_vel 发布"的行为。
+    obstacle_status_idle_rate: 2.0
+
+    # 保护区: STOP/SLOWDOWN 为机器人周围的缓冲多边形,
+    # APPROACH 为机器人本体 footprint(用于碰撞时间仿真)。
+    polygons: ["PolygonStop", "PolygonSlow", "FootprintApproach"]
+
+    # 动态膨胀（相对上游 Nav2 的改动）：
+    #   基础形状(points / radius) 固定为底盘轮廓，default_padding 是其上的膨胀量。
+    #   运行时经 collision_monitor/set_polygon_padding 服务修改 padding，
+    #   传 NaN 恢复到这里配的 default_padding。schedule_planner 只改 PolygonStop。
+
+    # 停车区: 底盘外接圆 + 0.2m 膨胀。max_points=3 容忍激光噪点。
+    # linorobot2: footprint 0.45×0.35, w1: footprint 0.70×0.58
+    PolygonStop:
+#      type: "polygon"
+##      points: [-0.3725, -0.25, -0.3725, 0.25, 0.3725, 0.25, 0.3725, -0.25]  # linorobot2
+#      points: [0.35, 0.29, 0.35, -0.29, -0.35, -0.29, -0.35, 0.29]  # w1: 精确 footprint
+      type: "circle"
+      radius: 0.35          # w1 底盘内接圆半径
+      default_padding: 0.3  # 默认停障膨胀，等效于原来的 radius 0.66
+      action_type: "stop"
+      max_points: 3
+      visualize: True
+      polygon_pub_topic: "polygon_stop"
+      enabled: True
+
+      # schedule_planner 路径前视停障：沿路径从机器人最近投影向前检查。
+      # 每个路径取点按 path_stop_radius 直接做距离判定，阈值复用 max_points。
+      path_stop_enabled: true
+      tracking_path_topic: "/tracking_path"
+      path_stop_distance: 1.0
+      path_stop_radius: 0.34    # 每个路径采样点的检测半径
+      path_point_interval: 0.10  # 与上一取点相距至少 10 cm 时取当前路径点
+      path_stop_visualize: false
+      path_stop_marker_topic: "path_stop_circles"
+      path_stop_timing_enabled: true  # 每秒输出检测频率及平均/最大耗时
+
+    # 减速区: 底盘外接圆 + 0.4m 膨胀,速度衰减到 50%。
+    PolygonSlow:
+#      type: "polygon"
+##      points: [-0.7225, -0.6, -0.7225, 0.6, 0.7225, 0.6, 0.7225, -0.6]  # linorobot2
+#      points: [0.35, 0.29, 0.35, -0.29, -0.35, -0.29, -0.35, 0.29]  # w1: 精确 footprint
+      type: "circle"
+      radius: 0.35          # w1 底盘内接圆半径
+      default_padding: 0.5  # 默认减速膨胀，等效于原来的 radius 0.86
+      action_type: "slowdown"
+      max_points: 3
+      slowdown_ratio: 0.5
+      visualize: True
+      polygon_pub_topic: "polygon_slowdown"
+      enabled: True
+
+    # 趋近区: 精确底盘 footprint,碰撞时间仿真减速。
+    FootprintApproach:
+      type: "polygon"
+#      points: [-0.2225, -0.1, -0.2225, 0.1, 0.2225, 0.1, 0.2225, -0.1]  # linorobot2
+      points: [0.35, 0.29, 0.35, -0.29, -0.35, -0.29, -0.35, 0.29]  # w1: 精确 footprint
+      default_padding: 0.0   # 趋近区用精确本体，默认不膨胀
+      action_type: "approach"
+      time_before_collision: 2.0      # 预期碰撞前 2s 开始减速
+      simulation_time_step: 0.1      # 仿真步长 s
+      max_points: 5
+      visualize: True
+      polygon_pub_topic: "polygon_approach"
+      enabled: True
+
+#    observation_sources: ["scan"]  # linorobot2
+    observation_sources: ["scan_front", "scan_rear", "pointcloud_front", "pointcloud_rear", "rgbd_scan_front", "rgbd_scan_rear"]
+    # observation_sources: ["scan_front", "scan_rear", "rgbd_scan_front", "rgbd_scan_rear"]
+    scan:
+      type: "scan"
+      topic: "/scan"
+      enabled: True
+    scan_front:
+      type: "scan"
+      topic: "/laser_scan/front"
+      enabled: True
+    scan_rear:
+      type: "scan"
+      topic: "/laser_scan/rear"
+      enabled: True
+    pointcloud_front:
+      type: "pointcloud"
+ #     topic: "/camera/depth/color/points"  # linorobot2未生效
+      topic: "/orbbec/front/pointcloud2_filtered"
+      min_height: 0.05
+      max_height: 1.0
+      enabled: True
+    pointcloud_rear:
+      type: "pointcloud"
+      topic: "/orbbec/rear/pointcloud2_filtered"
+      min_height: 0.05
+      max_height: 1.0
+      enabled: True
+    rgbd_scan_front:
+      type: "scan"
+      topic: "/orbbec/front/laser_scan"
+      enabled: True
+    rgbd_scan_rear:
+      type: "scan"
+      topic: "/orbbec/rear/laser_scan"
+      enabled: True

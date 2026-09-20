@@ -1,0 +1,4 @@
+nav_interfaces/RoomInfo room
+---
+bool success
+string message

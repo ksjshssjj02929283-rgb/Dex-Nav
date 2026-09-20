@@ -1,0 +1,28 @@
+# ROS 2 and colcon generated files
+build/
+install/
+log/
+graphify-out/
+.colcon_install_layout
+COLCON_IGNORE
+setup.bash
+setup.sh
+setup.zsh
+setup.ps1
+local_setup.bash
+local_setup.sh
+local_setup.zsh
+local_setup.ps1
+_local_setup_util_*.py
+
+# Python generated files
+__pycache__/
+*.py[cod]
+
+# Runtime and build artifacts
+*.bag
+*.db
+*.sqlite
+*.o
+*.a
+*.so

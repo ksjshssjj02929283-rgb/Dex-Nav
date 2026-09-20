@@ -1,0 +1,6 @@
+---
+bool success
+nav_interfaces/Task current_task         # 当前执行的任务
+nav_interfaces/Task[] current_task_list  # 剩余的任务列表
+nav_interfaces/TaskGroup current_task_group # 当前执行的任务组
+uint32 execution_left   # 任务组剩余的执行次数

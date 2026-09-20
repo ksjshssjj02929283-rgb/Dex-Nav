@@ -1,0 +1,6 @@
+string name
+---
+bool success
+bool found
+nav_interfaces/RoomInfo room
+string message

@@ -1,0 +1,18 @@
+# 运行时切换导航后端（不用改 yaml、不用重启 auto 服务）。
+#
+# 两套后端都随 launch 常驻且都以 autostart:=false 起（停在 unconfigured/inactive），
+# 本服务负责：取消在跑的导航 -> PAUSE 旧后端 -> STARTUP 新后端；新后端起不来则回滚到旧的。
+# 切换期间机器人不接新任务；调用方拿到 success=true 时新后端已经 active。
+#
+# 与参数 navigation_backend 的关系：那个参数是**开机默认值**，只在启动期读一次；
+# 运行中改它不生效（会被明确拒绝并提示用本服务）。本服务切换后不回写 yaml，
+# 重启后仍按 yaml 的值启动。
+#
+# 服务端：command_board 的 ~/set_navigation_backend。
+
+string backend      # "nav2" | "path_navigation"
+bool force          # true = 即使当前已经是该后端也重做一遍（卡在中间态时用）
+---
+bool success
+string message
+string active_backend   # 本次调用结束时实际生效的后端（失败回滚时即原来那套）

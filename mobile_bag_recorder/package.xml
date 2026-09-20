@@ -1,0 +1,39 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>mobile_bag_recorder</name>
+  <version>0.4.6</version>
+  <description>
+    导航数据录包节点：常态分段录制（按时长切段，limited/rolling 两种收尾策略 +
+    磁盘总量上限）与触发式事件录制（内存环形缓冲取触发点前后一段时间）。
+    录制话题与全部策略参数由 yaml 配置，取代 record_rosbag.sh。
+  </description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>Apache License 2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>rosbag2_cpp</depend>
+  <depend>rosbag2_storage</depend>
+  <depend>rosbag2_transport</depend>
+  <depend>std_srvs</depend>
+  <depend>std_msgs</depend>
+  <depend>nav_msgs</depend>
+
+  <buildtool_depend>rosidl_default_generators</buildtool_depend>
+  <exec_depend>rosidl_default_runtime</exec_depend>
+  <member_of_group>rosidl_interface_packages</member_of_group>
+  <depend>action_msgs</depend>
+  <depend>diagnostic_msgs</depend>
+  <!-- 可选：仅「恢复行为」触发源需要（trigger.on_recovery_behavior，默认关闭）。
+       缺失时该触发源不编入，其余功能不受影响。 -->
+  <exec_depend>nav2_msgs</exec_depend>
+
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_cmake_gtest</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

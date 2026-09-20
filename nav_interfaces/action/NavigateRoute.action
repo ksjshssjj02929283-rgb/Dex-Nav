@@ -1,0 +1,11 @@
+# Goal
+string route_name
+---
+# Result
+bool success
+string message
+---
+# Feedback
+string current_status
+uint32 current_point_index
+uint32 total_points

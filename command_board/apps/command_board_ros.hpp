@@ -1,0 +1,161 @@
+
+// ----------------------------------------------------------------------------
+//
+// Copyright (c) 2021-2026 DexForce Technology Co., Ltd.
+//
+// All Rights Reserved.
+//
+//    Authors: Li Yao <liyao2@dexforce.top>
+//
+// ----------------------------------------------------------------------------
+
+#pragma once
+
+#include <tf2_ros/buffer.h>
+#include <tf2_ros/transform_listener.h>
+
+#include <diagnostic_msgs/msg/diagnostic_array.hpp>
+#include <iostream>
+#include <memory>
+#include <nav2_msgs/action/navigate_to_pose.hpp>
+#include <rclcpp/rclcpp.hpp>
+#include <rclcpp_action/rclcpp_action.hpp>
+#include <std_msgs/msg/string.hpp>
+#include <std_srvs/srv/trigger.hpp>
+#include <string>
+#include <vector>
+
+#include "localization_sm.h"
+#include "nav_interfaces/msg/localization_state.hpp"
+#include "nav_interfaces/msg/map_state.hpp"
+#include "nav_interfaces/srv/load_map.hpp"
+#include "nav_interfaces/srv/set_pose.hpp"
+#include "nav_interfaces/srv/reset_map_origin_by_xy_yaw.hpp"
+#include "nav_interfaces/srv/transform_assets.hpp"
+#include "map_version_manager.hpp"
+#include "status_monitor.hpp"
+#include "auto_map_saver.hpp"
+
+namespace command_board {
+
+class CommandBoardManagerROS : public rclcpp::Node {
+public:
+    CommandBoardManagerROS();
+    ~CommandBoardManagerROS() = default;
+
+    void StopRobotMovement();
+
+    void HandleLocalizationFailed();
+
+    void HandleLocalizationSuccess();
+
+private:
+    // ── 重置地图原点编排 ────────────────────────────────────────────
+    // 入口①：按指定 x/y/yaw 重置任意地图（不停定位，不重载地图）
+    void ResetMapOriginByXYYawCallback(const std::shared_ptr<nav_interfaces::srv::ResetMapOriginByXYYaw::Request> req,
+                                       std::shared_ptr<nav_interfaces::srv::ResetMapOriginByXYYaw::Response> res);
+
+    // 入口②：采样当前机器人位姿，只操作当前加载地图，完整流程（停定位→工具→重载→启定位）
+    void ResetMapOriginByRobotPoseCallback(const std::shared_ptr<std_srvs::srv::Trigger::Request> req,
+                                           std::shared_ptr<std_srvs::srv::Trigger::Response> res);
+
+    // 内部：完整重置流程（仅用于当前地图 + RobotPose 入口）
+    bool DoResetCurrentMapOrigin(double x, double y, double yaw, std::string& out_msg);
+
+    /// 取消 schedule_planner 正在执行的路网任务（NavigateThroughGraphPoints）。
+    ///
+    /// 为什么需要单独一刀：navigation_action_client_ 只认 /navigate_to_pose，而路网任务
+    /// 跑在另一套 action 上，不取消的话急停后 goal 仍是 active——车停了、任务没结束，
+    /// 要等 schedule_planner 的 segment_timeout（默认 300 s）才超时收尾；期间松开急停
+    /// 且定位恢复的话，path_follower 的 route_ 还在，会直接接着原路径继续走。
+    ///
+    /// 异步单发、不等应答：调用点在 200 ms 定时器和重置流程里，都不能阻塞。
+    void CancelSchedulePlannerRoute(const std::string& why);
+
+    // 内部：采样 TF map→base_link，返回 N 帧均值（循环等待最多 timeout_sec）
+    bool SampleRobotPose(int n_frames, double timeout_sec, double& out_x, double& out_y, double& out_yaw);
+
+    // 内部：调用子进程 reset_map_origin_tool
+    bool RunResetMapOriginTool(const std::string& map_name, double x, double y, double yaw, std::string& out_log);
+
+    // Tunable parameters (declared in ctor).
+    int    reset_origin_sample_frames_{11};
+    double reset_origin_sample_timeout_sec_{5.0};
+    double service_call_timeout_sec_{15.0};
+    double service_wait_timeout_sec_{3.0};
+    bool   react_to_estop_{true};
+    bool   react_to_bumper_{true};
+    /// 急停/碰撞（以及重置地图原点）时是否一并取消 schedule_planner 的路网任务。
+    /// 取消走它的 force_cancel 服务而不是 action cancel：该服务无论有没有 active goal
+    /// 都会兜底停车，且本节点不必 depend nav_interfaces 去拿 action 类型
+    bool   cancel_schedule_planner_{true};
+    std::string schedule_planner_cancel_service_{"/schedule_planner/force_cancel"};
+
+    rclcpp::CallbackGroup::SharedPtr callback_group_;
+
+    rclcpp_action::Client<nav2_msgs::action::NavigateToPose>::SharedPtr navigation_action_client_;
+
+    // 定位控制 & 地图管理服务客户端
+    rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr schedule_planner_cancel_cli_;
+    rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr stop_localization_cli_;
+    rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr start_localization_cli_;
+    rclcpp::Client<nav_interfaces::srv::LoadMap>::SharedPtr load_map_cli_;
+    rclcpp::Client<nav_interfaces::srv::TransformAssets>::SharedPtr transform_assets_cli_;
+
+    // 对外暴露的重置原点服务
+    rclcpp::Service<nav_interfaces::srv::ResetMapOriginByXYYaw>::SharedPtr reset_origin_xyyaw_srv_;
+    rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr reset_origin_robot_pose_srv_;
+
+    // TF buffer（用于采样机器人位姿）
+    std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
+    std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
+
+    // 当前地图名称（从 map_manager/map_state 话题获取）
+    std::string current_map_name_;
+    rclcpp::Subscription<nav_interfaces::msg::MapState>::SharedPtr map_state_sub_;
+
+    std::unique_ptr<Localization_SM> localization_sm_;
+
+    // 地图版本备份 + 回退单入口（移植自 nav2_command_board）
+    std::unique_ptr<MapVersionManager> map_version_manager_;
+
+    // 状态聚合 + 条件自动保存地图（移植自 nav2_command_board）
+    std::unique_ptr<StatusMonitor> status_monitor_;
+    std::unique_ptr<AutoMapSaver>  auto_map_saver_;
+
+    // ── 急停丢位恢复（estop 断里程计会丢位，激光雷达照常工作）──────────
+    enum class RecoverState { kNormal, kSafeStop, kRelocating, kGlobalReloc, kAlarm };
+    void OnRecoverTimer();
+    void SnapshotGoodPose();
+    bool RobotIsStill() const;
+    void StopLocalization();
+    void StartLocalization();
+    void Relocalize(const geometry_msgs::msg::Pose2D& pose);
+    void GlobalRelocalize();
+    void RaiseAlarm(const std::string& reason);
+    void PushRecoverStatus();
+    static const char* RecoverStateToString(RecoverState s);
+
+    bool   enable_loss_recovery_{true};
+    double recover_settle_sec_{1.0};
+    double reloc_wait_sec_{2.0};
+    double score_good_{0.8};
+    double score_bad_{0.5};
+    double pose_cache_min_score_{0.6};
+    double velocity_still_threshold_{0.05};
+    RecoverState recover_state_{RecoverState::kNormal};
+    bool         safety_active_{false};
+    geometry_msgs::msg::Pose2D last_known_pose_{};
+    bool         last_known_pose_valid_{false};
+    rclcpp::Time settle_start_;
+    rclcpp::Time reloc_start_;
+    float        latest_score_{0.0f};
+    int          last_localization_status_{-999};
+    std::string  last_alarm_;
+    rclcpp::Client<nav_interfaces::srv::SetPose>::SharedPtr relocalization_cli_;
+    rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr global_reloc_cli_;
+    rclcpp::TimerBase::SharedPtr recover_timer_;
+    rclcpp::Publisher<std_msgs::msg::String>::SharedPtr alarm_pub_;
+};
+
+}  // namespace command_board

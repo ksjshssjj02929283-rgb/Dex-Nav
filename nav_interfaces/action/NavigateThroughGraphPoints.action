@@ -1,0 +1,14 @@
+# Goal
+string[] nav_point_ids
+string[] nav_point_names
+geometry_msgs/Pose2D pose
+float64 target_yaw
+---
+# Result
+bool success
+string message
+---
+# Feedback
+string current_status
+uint32 current_point_index
+uint32 total_points

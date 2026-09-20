@@ -1,0 +1,11 @@
+# 设置 collision_monitor 各检测器（多边形 / 圆形）的膨胀大小 padding。
+#
+# 基础形状（polygon 的 points / circle 的 radius）在参数里固定为底盘轮廓，
+# padding 是在其之上向外膨胀的量，运行时可改，用于动态停障距离。
+string  polygon_name    # 检测器名（如 "PolygonStop"）；空字符串 = 所有检测器
+float32 padding         # 膨胀大小 m，>=0 生效；NaN = 恢复该检测器的 default_padding
+---
+bool     success
+string   message                # 失败原因；成功时为生效摘要，便于日志排查
+string[] applied_names          # 实际生效的检测器名
+float32[] applied_paddings      # 与 applied_names 一一对应的生效 padding

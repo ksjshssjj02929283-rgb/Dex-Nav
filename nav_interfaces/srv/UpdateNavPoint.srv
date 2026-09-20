@@ -1,0 +1,4 @@
+nav_interfaces/NavPoint point
+---
+bool success
+string message

@@ -1,0 +1,5 @@
+nav_interfaces/TaskGroup task_group
+---
+bool success
+string task_group_id          # ⭐ DEC-018：返回最终 task_group_id（客户端传空则此处返回服务端生成的 UUID）
+string message                # 失败时具体原因（成功时可为空）
