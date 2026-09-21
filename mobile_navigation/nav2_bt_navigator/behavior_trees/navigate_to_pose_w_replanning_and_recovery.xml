@@ -34,12 +34,15 @@
 <root main_tree_to_execute="MainTree">
   <BehaviorTree ID="MainTree">
     <PipelineSequence name="NavigateWithReplanning">
+      <!-- NavigateToPose 全局重规划总开关。true（默认）启用周期、偏离、路径障碍和恢复触发；
+           false 时仅保留首次规划与目标变化规划。 -->
       <!-- 周期重规划频率为 0.02 Hz；距目标 0.5 m 内暂停，偏离路径超过 0.5 m 时立即触发。 -->
       <!-- 全局路径障碍检测 2.0 Hz：连续 4 次确认、且至少 3 个连续路径点被阻塞才触发重规划；
            重规划成功后暂停检测 2.5 s，让新路径生效。 -->
       <!-- active：恢复分支和 PREPARE 后退完成事件可绕过近目标、偏离量和周期门控请求新路径；
            目标代次由 bt_navigator 统一发布，保证每个导航任务最多后退一次。 -->
-      <AdaptiveReplanning goal="{goal}" path="{path}" distance_threshold="0.5" max_deviation="0.5"
+      <AdaptiveReplanning goal="{goal}" path="{path}" enable_global_replanning="true"
+        distance_threshold="0.5" max_deviation="0.5"
         hz="0.02" path_obstacle_check_hz="2.0" invalid_path_confirmations="4"
         min_blocked_path_poses="3" obstacle_replan_cooldown="2.5" recovery_replan_mode="active">
         <RecoveryNode number_of_retries="3" name="ComputePathToPoseOuterRetry">

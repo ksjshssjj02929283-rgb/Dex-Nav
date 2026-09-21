@@ -46,6 +46,48 @@ Source::~Source()
 {
 }
 
+bool Source::getLatestTransform(
+  const std::string & source_frame, const rclcpp::Time & source_stamp,
+  tf2::Transform & tf_transform) const
+{
+  auto node = node_.lock();
+  if (!node) {
+    return false;
+  }
+  try {
+    if (base_shift_correction_) {
+      const auto latest_base = tf_buffer_->lookupTransform(
+        global_frame_id_, base_frame_id_, tf2::TimePointZero);
+      const rclcpp::Time target_time(latest_base.header.stamp);
+      // A zero stamp denotes an all-static chain. Dynamic TF must still be recent;
+      // transform_tolerance is an age bound here, never a blocking wait budget.
+      if (target_time.nanoseconds() != 0 &&
+        (node->now() - target_time).seconds() > tf2::durationToSec(transform_tolerance_))
+      {
+        throw tf2::ExtrapolationException("Latest base TF exceeds transform_tolerance age bound");
+      }
+      const auto source_in_fixed = tf_buffer_->lookupTransform(
+        global_frame_id_, source_frame, source_stamp,
+        rclcpp::Duration::from_nanoseconds(0));
+      tf2::Transform fixed_from_base;
+      tf2::Transform fixed_from_source;
+      tf2::fromMsg(latest_base.transform, fixed_from_base);
+      tf2::fromMsg(source_in_fixed.transform, fixed_from_source);
+      tf_transform = fixed_from_base.inverse() * fixed_from_source;
+    } else {
+      const auto transform = tf_buffer_->lookupTransform(
+        base_frame_id_, source_frame, tf2::TimePointZero);
+      tf2::fromMsg(transform.transform, tf_transform);
+    }
+    return true;
+  } catch (const tf2::TransformException & ex) {
+    RCLCPP_WARN_THROTTLE(
+      logger_, *node->get_clock(), 5000,
+      "[%s]: Nonblocking source TF unavailable: %s", source_name_.c_str(), ex.what());
+    return false;
+  }
+}
+
 void Source::getCommonParameters(std::string & source_topic)
 {
   auto node = node_.lock();

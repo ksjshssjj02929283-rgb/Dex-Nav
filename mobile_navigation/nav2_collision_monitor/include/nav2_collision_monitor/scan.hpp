@@ -40,10 +40,10 @@ public:
    * @param tf_buffer Shared pointer to a TF buffer
    * @param base_frame_id Robot base frame ID. The output data will be transformed into this frame.
    * @param global_frame_id Global frame ID for correct transform calculation
-   * @param transform_tolerance Transform tolerance
+   * @param transform_tolerance Maximum age of the latest dynamic base TF (no waiting)
    * @param source_timeout Maximum time interval in which data is considered valid
    * @param base_shift_correction Whether to correct source data towards to base frame movement,
-   * considering the difference between current time and latest source time
+   * from sensor acquisition time to the latest available base TF time
    */
   Scan(
     const nav2_util::LifecycleNode::WeakPtr & node,
@@ -69,7 +69,7 @@ public:
    * @brief Adds latest data from laser scanner to the data array.
    * @param curr_time Current node time for data interpolation
    * @param data Array where the data from source to be added.
-   * Added data is transformed to base_frame_id_ coordinate system at curr_time.
+   * Added data is cached in base_frame_id_ at the latest TF time at scan processing.
    */
   void getData(
     const rclcpp::Time & curr_time,

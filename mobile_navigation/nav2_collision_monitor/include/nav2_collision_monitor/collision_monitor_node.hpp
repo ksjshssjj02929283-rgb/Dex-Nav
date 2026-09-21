@@ -394,6 +394,7 @@ protected:
   // schedule path is normal navigation or edging.
   NavigationMode schedule_navigation_mode_{NavigationMode::SCHEDULE_NAVIGATION};
   NavigationType lifecycle_navigation_type_{NavigationType::UNSET};
+  int logged_velocity_state_{-1};
   bool ignored_chain_logged_{false};
   rclcpp::Time mode_last_cmd_stamp_{0, 0, RCL_ROS_TIME};
   std::string schedule_cmd_vel_topic_{"cmd_vel_nav"};

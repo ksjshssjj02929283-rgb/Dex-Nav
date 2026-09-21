@@ -269,6 +269,7 @@ CollisionMonitor::on_activate(const rclcpp_lifecycle::State & /*state*/)
   navigation_mode_ = NavigationMode::IDLE;
   schedule_navigation_mode_ = NavigationMode::SCHEDULE_NAVIGATION;
   lifecycle_navigation_type_ = NavigationType::UNSET;
+  logged_velocity_state_ = -1;
   ignored_chain_logged_ = false;
   RCLCPP_INFO(
     get_logger(), "[FSM] activate: mode=IDLE type=UNSET cmd_timeout=%.3fs idle_timeout=%.3fs",
@@ -585,6 +586,23 @@ void CollisionMonitor::controlLoopCallback()
     case NavigationMode::IDLE:
       // IDLE 没有活动速度源，继续执行末尾的车身 STOP Polygon 检测。
       break;
+  }
+
+  // Emit only on freshness-state changes, never once per command or timer tick.
+  const double velocity_age = active_cmd ?
+    (now - (active_cmd->message ? active_cmd->stamp : mode_last_cmd_stamp_)).seconds() : 0.0;
+  const int velocity_state = !active_cmd ? 0 : !active_cmd->message ? 1 :
+    velocity_age <= cmd_vel_timeout_.seconds() ? 2 : 3;
+  if (velocity_state != logged_velocity_state_) {
+    const char * states[] = {"IDLE", "WAITING_FIRST", "FRESH", "STALE"};
+    RCLCPP_INFO(
+      get_logger(),
+      "[FSM] velocity=%s mode=%s age=%.3fs sequence=%llu stamp=%.6f output=%s",
+      states[velocity_state], navigationModeName(navigation_mode_), velocity_age,
+      static_cast<unsigned long long>(active_cmd ? active_cmd->sequence : 0),
+      active_cmd && active_cmd->message ? active_cmd->stamp.seconds() : 0.0,
+      velocity_state == 2 ? (publish_cmd ? "filtered_velocity" : "status_only") : "status_only");
+    logged_velocity_state_ = velocity_state;
   }
 
   if (active_cmd && active_cmd->message) {
@@ -1324,6 +1342,14 @@ bool CollisionMonitor::hasObstacleInPathCorridor(
     }
     // 与 PolygonStop 本身语义一致：max_points 是允许的噪点数量。
     if (inside && ++hits > path_stop_max_points_) {
+      RCLCPP_INFO_THROTTLE(
+        get_logger(), throttle_clock_, 1000,
+        "Path-stop obstacle hit: hits=%d threshold=%d, source_points=%zu, "
+        "obstacle_relative=(x=%.3fm, y=%.3fm), "
+        "lookahead=%.2fm sample_interval=%.3fm path_stop_radius=%.3fm",
+        hits, path_stop_max_points_, collision_points.size(),
+        obstacle.x, obstacle.y,
+        path_stop_distance_, path_point_interval_, path_stop_radius_);
       return true;
     }
   }

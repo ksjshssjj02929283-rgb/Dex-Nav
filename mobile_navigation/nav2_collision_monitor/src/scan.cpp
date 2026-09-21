@@ -93,46 +93,13 @@ void Scan::dataCallback(sensor_msgs::msg::LaserScan::ConstSharedPtr msg)
     return;
   }
 
-  // Perform timestamp-aware TF once per incoming sensor frame, rather than once per 100 Hz
-  // control tick. The resulting immutable points are expressed in base_frame_id_ at receipt time.
+  // Transform once per sensor frame. The 100 Hz control loop only reads cached points.
+  // Keep the acquisition timestamp on the source leg; only the target base pose is latest.
   tf2::Transform tf_transform;
-  if (base_shift_correction_) {
-    const rclcpp::Time receipt_time = node->now();
-    // Odometry TF commonly trails the sensor callback by a few milliseconds. Prefer correction
-    // up to receipt time, but do not reject an otherwise transformable scan only because that
-    // newest odometry sample has not arrived yet. The fallback remains timestamp-correct at the
-    // sensor acquisition time and is reported as a degraded compensation mode.
-    rclcpp::Time target_time = receipt_time;
-    if (!tf_buffer_->canTransform(
-        base_frame_id_, receipt_time, msg->header.frame_id, msg->header.stamp,
-        global_frame_id_, rclcpp::Duration::from_nanoseconds(0)))
-    {
-      target_time = msg->header.stamp;
-      RCLCPP_WARN_THROTTLE(
-        logger_, *node->get_clock(), 5000,
-        "[%s]: TF not available at scan receipt time; using acquisition-time compensation",
-        source_name_.c_str());
-    }
-    if (
-      !nav2_util::getTransform(
-        msg->header.frame_id, msg->header.stamp,
-        base_frame_id_, target_time, global_frame_id_,
-        transform_tolerance_, tf_buffer_, tf_transform))
-    {
-      std::atomic_store(&processed_data_, std::shared_ptr<const ProcessedScan>(processed));
-      data_sequence_.fetch_add(1, std::memory_order_release);
-      return;
-    }
-  } else {
-    if (
-      !nav2_util::getTransform(
-        msg->header.frame_id, base_frame_id_,
-        transform_tolerance_, tf_buffer_, tf_transform))
-    {
-      std::atomic_store(&processed_data_, std::shared_ptr<const ProcessedScan>(processed));
-      data_sequence_.fetch_add(1, std::memory_order_release);
-      return;
-    }
+  if (!getLatestTransform(msg->header.frame_id, rclcpp::Time(msg->header.stamp), tf_transform)) {
+    std::atomic_store(&processed_data_, std::shared_ptr<const ProcessedScan>(processed));
+    data_sequence_.fetch_add(1, std::memory_order_release);
+    return;
   }
 
   // Beam geometry normally remains constant for the lifetime of a scanner. Cache the exact

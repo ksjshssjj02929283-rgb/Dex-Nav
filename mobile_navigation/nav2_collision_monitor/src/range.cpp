@@ -90,28 +90,10 @@ void Range::getData(
   }
 
   tf2::Transform tf_transform;
-  if (base_shift_correction_) {
-    // Obtaining the transform to get data from source frame and time where it was received
-    // to the base frame and current time
-    if (
-      !nav2_util::getTransform(
-        snapshot->header.frame_id, snapshot->header.stamp,
-        base_frame_id_, curr_time, global_frame_id_,
-        transform_tolerance_, tf_buffer_, tf_transform))
-    {
-      return;
-    }
-  } else {
-    // Obtaining the transform to get data from source frame to base frame without time shift
-    // considered. Less accurate but much more faster option not dependent on state estimation
-    // frames.
-    if (
-      !nav2_util::getTransform(
-        snapshot->header.frame_id, base_frame_id_,
-        transform_tolerance_, tf_buffer_, tf_transform))
-    {
-      return;
-    }
+  if (!getLatestTransform(
+      snapshot->header.frame_id, rclcpp::Time(snapshot->header.stamp), tf_transform))
+  {
+    return;
   }
 
   // Calculate poses and refill data array

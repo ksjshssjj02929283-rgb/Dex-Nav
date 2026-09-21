@@ -389,6 +389,8 @@ TEST_F(Tester, testStateLogsDoNotRepeatForUnchangedInputs)
   EXPECT_EQ(count("[FSM] type locked:"), 1u);
   EXPECT_EQ(count("[FSM] ignoring inactive chain:"), 1u);
   EXPECT_EQ(count("[FSM] mode IDLE -> AUTOMONOUS_NAVIGATION"), 1u);
+  EXPECT_EQ(count("[FSM] velocity=FRESH"), 2u);
+  EXPECT_EQ(count("[FSM] velocity=STALE"), 1u);
   EXPECT_EQ(count("[FSM] idle zero published:"), 0u);
   cm_->stop();
 }

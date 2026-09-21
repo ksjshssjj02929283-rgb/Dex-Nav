@@ -262,8 +262,9 @@ protected:
   std::shared_ptr<PointCloudWrapper> pointcloud_;
   std::shared_ptr<RangeWrapper> range_;
 
-private:
   std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
+
+private:
   std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
 };  // Tester
 
@@ -549,6 +550,142 @@ TEST_F(Tester, testScanTransformFailureInvalidatesProcessedCache)
   points.clear();
   scan_->getData(stamp, points);
   EXPECT_TRUE(points.empty());
+}
+
+// A delayed TF must still compensate translation and rotation, rather than silently
+// falling back to the acquisition pose or using latest TF for both legs.
+TEST_F(Tester, testScanLatestBasePreservesAcquisitionTime)
+{
+  createSources(true);
+  const auto now = test_node_->now();
+  const auto acquired = now - rclcpp::Duration::from_seconds(0.08);
+  geometry_msgs::msg::TransformStamped tf;
+  tf.header.frame_id = GLOBAL_FRAME_ID;
+  tf.child_frame_id = BASE_FRAME_ID;
+  tf.header.stamp = acquired;
+  tf.transform.rotation.w = 1.0;
+  ASSERT_TRUE(tf_buffer_->setTransform(tf, "test", false));
+  tf.header.stamp = now - rclcpp::Duration::from_seconds(0.01);
+  tf.transform.translation.x = 0.1;
+  tf.transform.rotation.z = std::sqrt(0.5);
+  tf.transform.rotation.w = std::sqrt(0.5);
+  ASSERT_TRUE(tf_buffer_->setTransform(tf, "test", false));
+  auto scan = std::make_shared<sensor_msgs::msg::LaserScan>();
+  scan->header.frame_id = BASE_FRAME_ID;
+  scan->header.stamp = acquired;
+  scan->range_min = 0.01F;
+  scan->range_max = 5.0F;
+  scan->angle_increment = 0.1F;
+  scan->ranges = {1.0F};
+  scan_->dataCallback(scan);
+  std::vector<nav2_collision_monitor::Point> points;
+  scan_->getData(now, points);
+  ASSERT_EQ(points.size(), 1u);
+  EXPECT_NEAR(points[0].x, 0.0, 1e-6);
+  EXPECT_NEAR(points[0].y, -0.9, 1e-6);
+
+  // Missing source-time history must invalidate the old cache, without waiting
+  // for the configured 100 ms transform tolerance.
+  scan->header.stamp = now + rclcpp::Duration::from_seconds(1.0);
+  const auto start = std::chrono::steady_clock::now();
+  scan_->dataCallback(scan);
+  EXPECT_LT(std::chrono::steady_clock::now() - start, 50ms);
+  points.clear();
+  scan_->getData(now, points);
+  EXPECT_TRUE(points.empty());
+}
+
+TEST_F(Tester, testScanRejectsStaleLatestBase)
+{
+  createSources(true);
+  const auto now = test_node_->now();
+  geometry_msgs::msg::TransformStamped tf;
+  tf.header.frame_id = GLOBAL_FRAME_ID;
+  tf.child_frame_id = BASE_FRAME_ID;
+  tf.header.stamp = now - rclcpp::Duration::from_seconds(1.0);
+  tf.transform.rotation.w = 1.0;
+  ASSERT_TRUE(tf_buffer_->setTransform(tf, "test", false));
+  auto scan = std::make_shared<sensor_msgs::msg::LaserScan>();
+  scan->header.frame_id = BASE_FRAME_ID;
+  scan->header.stamp = tf.header.stamp;
+  scan->range_min = 0.01F;
+  scan->range_max = 5.0F;
+  scan->ranges = {1.0F};
+  scan_->dataCallback(scan);
+  std::vector<nav2_collision_monitor::Point> points;
+  scan_->getData(now, points);
+  EXPECT_TRUE(points.empty());
+}
+
+TEST_F(Tester, testPointCloudAndRangeLatestMotionCompensation)
+{
+  createSources(true);
+  const auto now = test_node_->now();
+  const auto acquired = now - rclcpp::Duration::from_seconds(0.08);
+  geometry_msgs::msg::TransformStamped tf;
+  tf.header.frame_id = GLOBAL_FRAME_ID;
+  tf.child_frame_id = BASE_FRAME_ID;
+  tf.header.stamp = acquired;
+  tf.transform.rotation.w = 1.0;
+  ASSERT_TRUE(tf_buffer_->setTransform(tf, "test", false));
+  tf.header.stamp = now - rclcpp::Duration::from_seconds(0.01);
+  tf.transform.translation.x = 0.1;
+  tf.transform.rotation.z = std::sqrt(0.5);
+  tf.transform.rotation.w = std::sqrt(0.5);
+  ASSERT_TRUE(tf_buffer_->setTransform(tf, "test", false));
+
+  auto cloud = std::make_shared<sensor_msgs::msg::PointCloud2>();
+  cloud->header.frame_id = BASE_FRAME_ID;
+  cloud->header.stamp = acquired;
+  sensor_msgs::PointCloud2Modifier modifier(*cloud);
+  modifier.setPointCloud2FieldsByString(1, "xyz");
+  modifier.resize(1);
+  *sensor_msgs::PointCloud2Iterator<float>(*cloud, "x") = 1.0F;
+  *sensor_msgs::PointCloud2Iterator<float>(*cloud, "y") = 0.0F;
+  *sensor_msgs::PointCloud2Iterator<float>(*cloud, "z") = 0.2F;
+  auto range = std::make_shared<sensor_msgs::msg::Range>();
+  range->header = cloud->header;
+  range->min_range = 0.01F;
+  range->max_range = 5.0F;
+  range->range = 1.0F;
+  range->field_of_view = 0.0F;
+  pointcloud_->dataCallback(cloud);
+  range_->dataCallback(range);
+  const std::vector<nav2_collision_monitor::Source *> sources = {
+    pointcloud_.get(), range_.get()};
+  for (auto * source : sources) {
+    std::vector<nav2_collision_monitor::Point> points;
+    source->getData(now, points);
+    ASSERT_EQ(points.size(), 1u);
+    EXPECT_NEAR(points[0].x, 0.0, 1e-6);
+    EXPECT_NEAR(points[0].y, -0.9, 1e-6);
+  }
+
+  // A source timestamp newer than all TF must not block or reuse the old points.
+  cloud->header.stamp = now + rclcpp::Duration::from_seconds(1.0);
+  range->header.stamp = cloud->header.stamp;
+  pointcloud_->dataCallback(cloud);
+  range_->dataCallback(range);
+  for (auto * source : sources) {
+    std::vector<nav2_collision_monitor::Point> points;
+    const auto start = std::chrono::steady_clock::now();
+    source->getData(now, points);
+    EXPECT_LT(std::chrono::steady_clock::now() - start, 50ms);
+    EXPECT_TRUE(points.empty());
+  }
+
+  tf_buffer_->clear();
+  tf.header.stamp = now - rclcpp::Duration::from_seconds(1.0);
+  ASSERT_TRUE(tf_buffer_->setTransform(tf, "test", false));
+  cloud->header.stamp = tf.header.stamp;
+  range->header.stamp = tf.header.stamp;
+  pointcloud_->dataCallback(cloud);
+  range_->dataCallback(range);
+  for (auto * source : sources) {
+    std::vector<nav2_collision_monitor::Point> points;
+    source->getData(now, points);
+    EXPECT_TRUE(points.empty());
+  }
 }
 
 TEST_F(Tester, testConcurrentPointCloudSnapshots)
