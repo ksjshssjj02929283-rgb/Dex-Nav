@@ -307,6 +307,7 @@
       <input_port name="global_frame">Global frame</input_port>
       <input_port name="robot_base_frame">Robot base frame</input_port>
       <input_port name="path">Global path to check deviation</input_port>
+      <input_port name="enable_global_replanning">Enable all replanning after the initial path</input_port>
       <input_port name="max_deviation">Max allowed deviation</input_port>
       <input_port name="enable_deviation_replanning">Whether path deviation can trigger replanning</input_port>
       <input_port name="hz">Replanning frequency</input_port>

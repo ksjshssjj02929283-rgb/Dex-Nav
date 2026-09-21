@@ -67,6 +67,8 @@ AdaptiveReplanning::AdaptiveReplanning(
 
   node_->get_parameter("transform_tolerance", transform_tolerance_);
 
+  getInput("enable_global_replanning", global_replanning_enabled_);
+
   std::string mode_value{"disabled"};
   getInput("recovery_replan_mode", mode_value);
   if (!parseGlobalReplanMode(mode_value, recovery_replan_mode_)) {
@@ -76,12 +78,15 @@ AdaptiveReplanning::AdaptiveReplanning(
       mode_value.c_str());
     recovery_replan_mode_ = GlobalReplanMode::DISABLED;
   }
-  global_replan_context_->setMode(recovery_replan_mode_);
+  global_replan_context_->setMode(
+    global_replanning_enabled_ ? recovery_replan_mode_ : GlobalReplanMode::DISABLED);
   RCLCPP_INFO(
-    node_->get_logger(), "AdaptiveReplanning: Recovery replan mode=%s.",
-    nav2_behavior_tree::toString(recovery_replan_mode_));
+    node_->get_logger(), "AdaptiveReplanning: Global replanning=%s, recovery mode=%s.",
+    global_replanning_enabled_ ? "enabled" : "disabled",
+    nav2_behavior_tree::toString(
+      global_replanning_enabled_ ? recovery_replan_mode_ : GlobalReplanMode::DISABLED));
 
-  if (recovery_replan_mode_ == GlobalReplanMode::ACTIVE) {
+  if (global_replanning_enabled_ && recovery_replan_mode_ == GlobalReplanMode::ACTIVE) {
     // Blackboard 中的 BT client node 不由全局 Executor 驱动，订阅必须使用
     // 自己的回调组，并在 tick 中显式处理，避免只有 DDS 端点而回调不执行。
     prepare_replan_callback_group_ = node_->create_callback_group(
@@ -124,7 +129,7 @@ void AdaptiveReplanning::syncPrepareSession()
 
 void AdaptiveReplanning::consumePrepareReplanRequest()
 {
-  if (recovery_replan_mode_ != GlobalReplanMode::ACTIVE) {
+  if (!global_replanning_enabled_ || recovery_replan_mode_ != GlobalReplanMode::ACTIVE) {
     return;
   }
 
@@ -247,7 +252,8 @@ void AdaptiveReplanning::beginPlanningAttempt()
   planning_in_progress_ = true;
   // 锁存的阻塞判定属于当前旧路径；本次规划成功后必须清除它并进入检测冷却。
   planning_for_blocked_path_ = path_blocked_latched_;
-  active_replan_request_ = recovery_replan_mode_ == GlobalReplanMode::ACTIVE ?
+  active_replan_request_ = global_replanning_enabled_ &&
+    recovery_replan_mode_ == GlobalReplanMode::ACTIVE ?
     global_replan_context_->latestPendingRequest() : std::nullopt;
 
   if (active_replan_request_) {
@@ -346,8 +352,10 @@ BT::NodeStatus AdaptiveReplanning::tick()
   if (prepare_replan_request_sub_) {
     prepare_replan_callback_executor_.spin_some();
   }
-  // Consume completed IsPathValid responses without blocking navigation control.
-  path_validity_executor_.spin_some();
+  if (global_replanning_enabled_) {
+    // Consume completed IsPathValid responses without blocking navigation control.
+    path_validity_executor_.spin_some();
+  }
 
   // 1. Get current goal and check if goal has changed
   geometry_msgs::msg::PoseStamped current_goal;
@@ -456,6 +464,12 @@ BT::NodeStatus AdaptiveReplanning::tick()
     return tickPlanningChild();
   }
 
+  // The switch only suppresses replanning after a valid path has been produced. Initial
+  // planning and planning for an updated goal must always remain available.
+  if (!global_replanning_enabled_ && has_valid_plan_) {
+    return BT::NodeStatus::SUCCESS;
+  }
+
   // 2. Get current robot pose
   geometry_msgs::msg::PoseStamped current_pose;
   if (!nav2_util::getCurrentPose(
@@ -478,7 +492,7 @@ BT::NodeStatus AdaptiveReplanning::tick()
   nav_msgs::msg::Path path;
   double min_dist = 0.0;
   const bool has_path = getInput("path", path) && !path.poses.empty();
-  if (enable_deviation_replanning && has_valid_plan_ && has_path) {
+  if (global_replanning_enabled_ && enable_deviation_replanning && has_valid_plan_ && has_path) {
     min_dist = std::numeric_limits<double>::max();
     for (const auto & pose : path.poses) {
       double d = nav2_util::geometry_utils::euclidean_distance(
@@ -493,12 +507,14 @@ BT::NodeStatus AdaptiveReplanning::tick()
   }
 
   // 全局路径障碍检测独立于偏离判定，近目标时也持续轮询。
-  pollPathValidity(path, has_path);
+  if (global_replanning_enabled_) {
+    pollPathValidity(path, has_path);
+  }
 
   // 5. 恢复请求优先于近目标和频率门控，确保失败后一定能刷新旧路径。
   const double period_sec = 1.0 / hz;
   const bool has_recovery_request =
-    recovery_replan_mode_ == GlobalReplanMode::ACTIVE &&
+    global_replanning_enabled_ && recovery_replan_mode_ == GlobalReplanMode::ACTIVE &&
     static_cast<bool>(global_replan_context_->latestPendingRequest());
 
   if (!has_valid_plan_) {
