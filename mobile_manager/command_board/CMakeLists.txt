@@ -4,6 +4,7 @@ project(command_board)
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_action REQUIRED)
+find_package(rclcpp_components REQUIRED)
 find_package(nav2_msgs REQUIRED)
 find_package(action_msgs REQUIRED)
 find_package(std_srvs REQUIRED)
@@ -45,6 +46,29 @@ target_link_libraries(command_board_core
   yaml-cpp
 )
 
+# 导航门面：独立共享库 + rclcpp_components 组件。宿主可选：command_board 进程（当前，下面直接链接）、
+# 独立可执行 navigation_node（组件宏自动生成）、或任意容器 / mission_manager 进程按组件加载；接口名不随宿主变。
+add_library(navigation_facade SHARED
+  src/navigation_facade.cpp
+)
+ament_target_dependencies(navigation_facade
+  rclcpp
+  rclcpp_action
+  rclcpp_components
+  nav2_msgs
+  diagnostic_msgs
+  std_msgs
+  nav_interfaces
+  tf2
+  tf2_geometry_msgs
+  geometry_msgs
+  nav_msgs
+)
+rclcpp_components_register_node(navigation_facade
+  PLUGIN "command_board::NavigationFacade"
+  EXECUTABLE navigation_node
+)
+
 add_executable(command_board_node
   apps/command_board_node.cpp
   apps/command_board_ros.cpp
@@ -52,7 +76,6 @@ add_executable(command_board_node
   src/status_monitor.cpp
   src/sensor_monitor.cpp
   src/auto_map_saver.cpp
-  src/navigation_facade.cpp
 )
 
 ament_target_dependencies(command_board_node
@@ -73,7 +96,14 @@ ament_target_dependencies(command_board_node
 
 target_link_libraries(command_board_node
   command_board_core
+  navigation_facade
   nlohmann_json::nlohmann_json
+)
+
+install(TARGETS navigation_facade
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin
 )
 
 install(TARGETS
