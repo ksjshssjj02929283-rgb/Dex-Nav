@@ -188,6 +188,9 @@ ControllerServer::ControllerServer(const rclcpp::NodeOptions & options)
   declare_parameter(
     "staged_control.prepare.backup_use_distance", rclcpp::ParameterValue(false));
   declare_parameter("staged_control.prepare.backup_distance", rclcpp::ParameterValue(0.3));
+  declare_parameter(
+    "staged_control.prepare.settling_velocity_threshold", rclcpp::ParameterValue(0.01));
+  declare_parameter("staged_control.prepare.settling_cycles", rclcpp::ParameterValue(3));
 
   // The costmap node is used in the implementation of the controller
   costmap_ros_ = std::make_shared<nav2_costmap_2d::Costmap2DROS>(
@@ -362,6 +365,12 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
   get_parameter("staged_control.prepare.backup_duration", prepare_backup_duration_);
   get_parameter("staged_control.prepare.backup_use_distance", prepare_backup_use_distance_);
   get_parameter("staged_control.prepare.backup_distance", prepare_backup_distance_);
+  get_parameter(
+    "staged_control.prepare.settling_velocity_threshold",
+    prepare_settling_velocity_threshold_);
+  get_parameter("staged_control.prepare.settling_cycles", prepare_settling_cycles_required_);
+  prepare_settling_velocity_threshold_ = std::max(0.0, prepare_settling_velocity_threshold_);
+  prepare_settling_cycles_required_ = std::max(1, prepare_settling_cycles_required_);
 
   costmap_ros_->configure();
   // Launch a thread to run the costmap node
@@ -2525,9 +2534,11 @@ bool ControllerServer::shouldRunPrepareBackup()
     // 误差），立即中止后退，不等定时/定距条件用完才停。
     if (isRearObstacleDetected()) {
       RCLCPP_WARN(
-        get_logger(), "Prepare backup stopped: rear obstacle.");
-      completePrepareAndRequestReplan("rear obstacle");
-      return false;
+        get_logger(), "Prepare backup stopped; rear obstacle. Waiting for replan.");
+      // 本周期输出零速，停稳后再重规划，避免使用制动前的起点。
+      prepare_state_ = PrepareState::SETTLING;
+      prepare_settling_cycles_ = 0;
+      return true;
     }
     const double elapsed = (now() - prepare_backup_start_time_).seconds();
     if (prepare_backup_use_distance_) {
@@ -2544,9 +2555,32 @@ bool ControllerServer::shouldRunPrepareBackup()
     } else if (elapsed < prepare_backup_duration_) {
       return true;
     }
-    completePrepareAndRequestReplan(
-      prepare_backup_use_distance_ ? "distance reached" : "duration reached");
-    return false;
+    prepare_state_ = PrepareState::SETTLING;
+    prepare_settling_cycles_ = 0;
+    RCLCPP_INFO(
+      get_logger(),
+      "Prepare backup complete; waiting for replan.");
+    return true;
+  }
+
+  if (prepare_state_ == PrepareState::SETTLING) {
+    const auto twist = getThresholdedTwist(odom_sub_->getTwist());
+    const double speed = std::hypot(twist.x, twist.y);
+    if (std::isfinite(speed) && std::isfinite(twist.theta) &&
+      speed <= prepare_settling_velocity_threshold_ &&
+      std::fabs(twist.theta) <= prepare_settling_velocity_threshold_)
+    {
+      ++prepare_settling_cycles_;
+    } else {
+      prepare_settling_cycles_ = 0;
+    }
+
+    if (prepare_settling_cycles_ < prepare_settling_cycles_required_) {
+      return true;
+    }
+
+    completePrepareAndRequestReplan("backup settled");
+    return true;
   }
 
   if (prepare_state_ != PrepareState::CHECK_PENDING) {
@@ -2570,6 +2604,7 @@ bool ControllerServer::shouldRunPrepareBackup()
   }
 
   prepare_state_ = PrepareState::BACKING_UP;
+  prepare_settling_cycles_ = 0;
   prepare_backup_start_time_ = now();
   getRobotPose(prepare_backup_start_pose_);
   RCLCPP_WARN(
@@ -2643,7 +2678,7 @@ void ControllerServer::publishReplanRequired(const char * reason)
   {
     RCLCPP_WARN(
       get_logger(),
-      "Replan signal unavailable: reason=%s, session=%" PRIu64 ".",
+      "Prepare %s; replan signal unavailable (session %" PRIu64 ").",
       reason, active_prepare_session_id_);
     return;
   }
@@ -2655,12 +2690,12 @@ void ControllerServer::publishReplanRequired(const char * reason)
   if (prepare_replan_request_pub_->get_subscription_count() == 0) {
     RCLCPP_WARN(
       get_logger(),
-      "Replan signal published without consumer: reason=%s, session=%" PRIu64 ".",
+      "Prepare %s; replan requested without a subscriber (session %" PRIu64 ").",
       reason, active_prepare_session_id_);
   } else {
     RCLCPP_INFO(
       get_logger(),
-      "Replan signal published: reason=%s, session=%" PRIu64 ".",
+      "Prepare %s; replan requested (session %" PRIu64 ").",
       reason, active_prepare_session_id_);
   }
 }
@@ -2692,6 +2727,8 @@ const char * ControllerServer::prepareStateName(PrepareState state) const
       return "CHECK_PENDING";
     case PrepareState::BACKING_UP:
       return "BACKING_UP";
+    case PrepareState::SETTLING:
+      return "SETTLING";
     case PrepareState::DONE:
       return "DONE";
   }
@@ -2702,6 +2739,7 @@ void ControllerServer::resetStagedControlState()
 {
   // Reset只负责安全清理，不能隐式开始新导航任务。
   prepare_state_ = PrepareState::DONE;
+  prepare_settling_cycles_ = 0;
   align_done_ = false;
   terminal_brake_latched_ = false;
   terminal_stall_consecutive_cycles_ = 0;
@@ -2867,10 +2905,16 @@ geometry_msgs::msg::TwistStamped ControllerServer::computeStagedVelocity(
     return computeControllerVelocity(current_controller_, pose, twist);
   }
 
+  const PrepareState prepare_state_before = prepare_state_;
   if (shouldRunPrepareBackup()) {
     setControllerPhase(ControllerPhase::PREPARE, "front obstacle");
     active_controller_for_log_ = "direct_prepare_backup";
-    cmd_vel.twist.linear.x = prepare_backup_speed_;
+    // 停稳等待及请求重规划的当周期保持零速，避免立即恢复运动。
+    // 此处不等待规划完成；新路径由后续 FollowPath 更新接入。
+    cmd_vel.twist.linear.x =
+      (prepare_state_before == PrepareState::SETTLING ||
+      prepare_state_ == PrepareState::SETTLING) ?
+      0.0 : prepare_backup_speed_;
     return cmd_vel;
   }
   const double distance_to_goal = getDistanceToGoal(pose);
@@ -3541,6 +3585,8 @@ ControllerServer::dynamicParametersCallback(std::vector<rclcpp::Parameter> param
         prepare_backup_speed_ = parameter.as_double();
       } else if (name == "staged_control.prepare.backup_duration") {
         prepare_backup_duration_ = parameter.as_double();
+      } else if (name == "staged_control.prepare.settling_velocity_threshold") {
+        prepare_settling_velocity_threshold_ = std::max(0.0, parameter.as_double());
       } else if (name == "staged_control.prepare.backup_distance") {
         prepare_backup_distance_ = parameter.as_double();
       }
@@ -3601,6 +3647,8 @@ ControllerServer::dynamicParametersCallback(std::vector<rclcpp::Parameter> param
     } else if (type == ParameterType::PARAMETER_INTEGER) {
       if (name == "staged_control.prepare.obstacle_cost_threshold") {
         prepare_obstacle_cost_threshold_ = static_cast<int>(parameter.as_int());
+      } else if (name == "staged_control.prepare.settling_cycles") {
+        prepare_settling_cycles_required_ = std::max(1, static_cast<int>(parameter.as_int()));
       }
     } else if (type == ParameterType::PARAMETER_BOOL) {
       if (name == "staged_control.enabled") {

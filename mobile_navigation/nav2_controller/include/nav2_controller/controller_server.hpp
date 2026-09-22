@@ -73,6 +73,7 @@ public:
   {
     CHECK_PENDING,
     BACKING_UP,
+    SETTLING,
     DONE
   };
   enum class PathUpdateType { NEW_GOAL, SAME_GOAL_GEOMETRY };
@@ -676,6 +677,10 @@ protected:
   // duration 兜底防跑飞）；false（默认）：按 duration 定时后退。
   bool prepare_backup_use_distance_{false};
   double prepare_backup_distance_{0.3};
+  // 后退结束后需连续满足低速条件若干控制周期，才发布重规划请求。
+  double prepare_settling_velocity_threshold_{0.01};
+  int prepare_settling_cycles_required_{3};
+  int prepare_settling_cycles_{0};
   PrepareState prepare_state_{PrepareState::DONE};
   // bt_navigator 每个导航任务发布一个新代次；同任务重规划和 FollowPath 恢复沿用该代次。
   std::atomic<uint64_t> latest_prepare_session_id_{0};

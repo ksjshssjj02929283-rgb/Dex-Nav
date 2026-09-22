@@ -172,6 +172,8 @@ void RegulatedPurePursuitController::configure(
   declare_parameter_if_not_declared(
     node, plugin_name_ + ".heading_error_scaling_max_angle", rclcpp::ParameterValue(0.785));
   declare_parameter_if_not_declared(
+    node, plugin_name_ + ".use_heading_speed_scaling", rclcpp::ParameterValue(true));
+  declare_parameter_if_not_declared(
     node, plugin_name_ + ".min_heading_speed_scale", rclcpp::ParameterValue(0.3));
   declare_parameter_if_not_declared(
     node, plugin_name_ + ".max_angular_vel", rclcpp::ParameterValue(1.5));
@@ -183,6 +185,8 @@ void RegulatedPurePursuitController::configure(
     plugin_name_ + ".heading_error_scaling_min_angle", heading_error_scaling_min_angle_);
   node->get_parameter(
     plugin_name_ + ".heading_error_scaling_max_angle", heading_error_scaling_max_angle_);
+  node->get_parameter(
+    plugin_name_ + ".use_heading_speed_scaling", use_heading_speed_scaling_);
   node->get_parameter(plugin_name_ + ".min_heading_speed_scale", min_heading_speed_scale_);
   node->get_parameter(plugin_name_ + ".max_angular_vel", max_angular_vel_);
 
@@ -519,8 +523,7 @@ geometry_msgs::msg::TwistStamped RegulatedPurePursuitController::computeVelocity
       linear_vel, angular_vel, angle_to_heading, speed,
       rotate_to_path_angular_vel_, rotate_to_path_angular_kp_);
   } else {
-    // 下一次进入原地转向时从当前实测角速度重新起步，不继承上一次已经
-    // 退出的旋转段的指令状态。
+    // 退出旋转后清除指令状态，下次旋转从实测角速度起步。
     last_rotate_cmd_valid_ = false;
     applyConstraints(
       curvature, speed,
@@ -534,9 +537,7 @@ geometry_msgs::msg::TwistStamped RegulatedPurePursuitController::computeVelocity
 
     linear_vel = trackLinearVelocity(linear_vel, speed.linear.x, have_traj ? traj_accel : 0.0);
 
-    // track 段最低线速度兜底：低速指令若落到下游 velocity_smoother 死区以内会被
-    // 抹成 0，机器人不动又使规划剖面从零速起点重算，形成自锁。这里在不超过规划
-    // 速度的前提下把输出抬回 min_track_linear_vel_（见函数注释）。
+    // 有意抬高低速输出以避开下游死区；抬升上限为 |traj_v|，见函数说明。
     enforceTrackMinimumLinearVelocity(linear_vel, traj_v, sign);
 
     if (have_traj) {
@@ -632,14 +633,9 @@ void RegulatedPurePursuitController::rotateToHeading(
   // 由调用方传入（rotate_to_path 与 rotate_to_goal 各自独立，互不影响）。
   angular_vel = std::clamp(angular_kp * angle_to_path, -angular_vel_max, angular_vel_max);
 
-  // 角速度限幅必须以“上一拍已经发出的指令”为基准，而不是每拍重新以
-  // odom 角速度为基准。真实底盘的角速度反馈通常晚于 cmd_vel 一个或多个
-  // 控制周期；若使用 curr_speed，反馈仍为 0 时每一拍都只能发 ±0.16 rad/s
-  // （3.2 * 0.05），原地转向会被人为拉长，表现为起步/直角处长时间停顿。
-  // 只有在首次进入旋转，或指令与实测已明显脱节时才重新锚定实测值。
-  // odom 仍为零时不能触发重播种：这正是执行延迟场景，若此时按误差重置，
-  // 指令一旦超过 reseed 阈值就会再次回到 0，角速度斜坡仍会卡在低值。
-  // 只有已有明显角速度反馈且与指令脱节时，才认为发生了外力/急停并重锚定。
+  // 基于上一拍指令限制角加速度，避免反馈延迟使速度斜坡反复从零开始。
+  // 首次旋转或已有角速度反馈且偏差过大时，重新对齐实测值；
+  // 零反馈时不按偏差重置，以容忍执行延迟，但此条件不能区分延迟与底盘未执行。
   if (!last_rotate_cmd_valid_ ||
     (std::fabs(curr_speed.angular.z) > 0.05 &&
     std::fabs(last_rotate_cmd_ - curr_speed.angular.z) > rotate_cmd_reseed_error_))
@@ -1044,14 +1040,16 @@ void RegulatedPurePursuitController::applyTrackingFeedbackConstraints(
   //    heading_error_scaling_max_angle_ 线性衰减到 min_scale）。角度是距离
   //    无关量，不受前瞻长度稀释——③已用近远双点曲率兜住了稀释问题的主体，
   //    这一层作为独立冗余保留（不同的量、同一个失效模式），不是唯一防线。
-  const double abs_angle = std::fabs(angle_to_heading);
-  if (abs_angle > heading_error_scaling_min_angle_) {
-    const double span = std::max(
-      heading_error_scaling_max_angle_ - heading_error_scaling_min_angle_, 1e-3);
-    const double f = (abs_angle - heading_error_scaling_min_angle_) / span;
-    const double scale = std::max(
-      min_heading_speed_scale_, 1.0 - (1.0 - min_heading_speed_scale_) * f);
-    linear_vel *= scale;
+  if (use_heading_speed_scaling_) {
+    const double abs_angle = std::fabs(angle_to_heading);
+    if (abs_angle > heading_error_scaling_min_angle_) {
+      const double span = std::max(
+        heading_error_scaling_max_angle_ - heading_error_scaling_min_angle_, 1e-3);
+      const double f = (abs_angle - heading_error_scaling_min_angle_) / span;
+      const double scale = std::max(
+        min_heading_speed_scale_, 1.0 - (1.0 - min_heading_speed_scale_) * f);
+      linear_vel *= scale;
+    }
   }
 
   // ③ 角速度饱和联动降速：wz = gain·v·κ 超上限时，降 v 保持转弯半径 R=1/(gain·κ)
@@ -1192,15 +1190,8 @@ double RegulatedPurePursuitController::trackLinearVelocity(
   double accel_cmd = feedforward_accel + feedback_accel;
   accel_cmd = std::clamp(accel_cmd, -max_linear_decel_, max_linear_accel_);
   double v_out = last_speed_cmd_ + accel_cmd * dt;
-  // 输出界（符号感知）：上限 = 用规划加速度外推的"下一拍规划速度"
-  // （target_vel + a·dt），而不是当前 target_vel。
-  // 原因：慢速起步时 target_vel 会被钉在实测速度上（规划剖面首点=实测），此时
-  // 若仍以 target_vel 封顶，规划给出的加速度前馈 a 会被输出界整项钳掉——前馈
-  // 再大也推不动指令，表现为"规划给了加速度、实际速度长时间起不来"。允许领先
-  // 一个控制周期（≈计划在下一拍位置上的速度）后，前馈才能真正转化为指令爬升。
-  // 前进时只放宽正向上界，倒车时只放宽负向下界；两种方向都允许按规划加速度
-  // 领先一个控制周期，但不得穿零改变运动方向。target_vel=0 时上下界都保持为 0，
-  // 保留规划器的停车权。desired_linear_vel 作绝对兜底（无轨迹灰度模式/剖面异常时）。
+  // 用 target_vel + a*dt 限制输出，避免当前目标速度封顶抵消起步加速度前馈。
+  // 保持目标方向，零目标仍输出零；desired_linear_vel_ 提供绝对速度上限。
   const double next_target_vel = target_vel + feedforward_accel * dt;
   double lo = 0.0;
   double hi = 0.0;
@@ -1231,13 +1222,14 @@ double RegulatedPurePursuitController::trackLinearVelocity(
 void RegulatedPurePursuitController::enforceTrackMinimumLinearVelocity(
   double & linear_vel, const double traj_v, const double sign)
 {
-  // 关闭态：不改动，保持原行为。
+  // 参数为零时关闭死区补偿。
   if (min_track_linear_vel_ <= 0.0) {
     return;
   }
 
-  // 上限取规划速度 |traj_v|：无论怎么抬都不允许超过速度规划器给的目标。
-  // 规划器要求停车时 traj_v≈0，floor 随之为 0，本兜底自动失效，制动权不受影响。
+  // 有意抬高约束后的低速输出，避免被 velocity_smoother 死区清零而无法起步。
+  // 只抬到 min(min_track_linear_vel_, |traj_v|)；traj_v 为零时不抬升。
+  // 若规划速度本身低于死区，仍尊重规划速度，不能保证消除死区影响。
   const double floor = std::min(min_track_linear_vel_, std::fabs(traj_v));
   if (floor <= 0.0 || std::fabs(linear_vel) >= floor) {
     return;
@@ -1473,6 +1465,8 @@ RegulatedPurePursuitController::dynamicParametersCallback(
         use_velocity_scaled_lookahead_dist_ = parameter.as_bool();
       } else if (name == plugin_name_ + ".use_regulated_linear_velocity_scaling") {
         use_regulated_linear_velocity_scaling_ = parameter.as_bool();
+      } else if (name == plugin_name_ + ".use_heading_speed_scaling") {
+        use_heading_speed_scaling_ = parameter.as_bool();
       } else if (name == plugin_name_ + ".use_cost_regulated_linear_velocity_scaling") {
         use_cost_regulated_linear_velocity_scaling_ = parameter.as_bool();
       } else if (name == plugin_name_ + ".use_rotate_to_heading") {

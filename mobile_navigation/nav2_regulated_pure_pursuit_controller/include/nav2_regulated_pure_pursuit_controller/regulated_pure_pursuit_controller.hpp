@@ -315,10 +315,8 @@ protected:
     const nav_msgs::msg::Path & transformed_plan, double curvature, double near_curvature,
     double angle_to_heading, double & linear_vel, double & cross_track_error);
 
-  /// track 段最低线速度兜底：仅在"不超过速度规划速度 traj_v"的前提下，把低于
-  /// min_track_linear_vel_ 的输出抬回该值（保留运动方向）。用于规避低速指令落到
-  /// 下游 velocity_smoother 死区以内被抹成 0，进而"机器人不动 → 规划剖面起不来"
-  /// 的自锁。规划器要求停车（traj_v≈0）时不抬，保留制动权。
+  /// track 死区补偿：有意抬高约束后的低速输出，避免下游清零导致起步自锁。
+  /// 保留方向，抬升上限为 min(min_track_linear_vel_, |traj_v|)；零规划速度不抬升。
   void enforceTrackMinimumLinearVelocity(double & linear_vel, double traj_v, double sign);
 
   // ---- 管线基础设施 ----
@@ -384,6 +382,7 @@ protected:
   // （前者是"减速衰减到头"的角度，后者是"进入原地转模式"的角度），复用
   // 同一个值会让调其中一个时意外改变另一个的生效范围。
   double heading_error_scaling_max_angle_{0.785};
+  bool use_heading_speed_scaling_{true};
   double min_heading_speed_scale_{0.3};
   double max_angular_vel_{1.5};
 
@@ -411,9 +410,7 @@ protected:
   // entry_angle 只管 shouldRotateToPath 的进入/退出判定，不再兼作 P 控制
   // 的参考角，两件事彻底分开。
   bool use_rotate_to_heading_;
-  // 轨迹中途原地转向会把线速度强制降到 0。速度规划器已经提供了曲率
-  // 限速，staged control 也负责起步对齐，因此默认关闭这条会造成二次停顿
-  // 的路径旋转分支；终点旋转仍由 use_rotate_to_heading_ 控制。
+  // 默认关闭中途原地转向，避免与分阶段起步对齐重复停车；终点旋转不受此开关影响。
   bool use_rotate_to_path_{false};
   double max_angular_accel_;  // 两者共用：机器人角加速度物理上限，非行为调参
   double goal_dist_tol_;      // 不是声明参数，每周期从 goal_checker 容差读取
@@ -427,9 +424,7 @@ protected:
   double rotate_to_goal_angular_vel_{1.8};  // 角速度饱和上限，与 rotate_to_path 独立
   double rotate_to_goal_angular_kp_{1.0};   // P 控制增益，与 rotate_to_path 独立
 
-  // rotateToHeading 的角速度加速度限幅使用上一拍的输出指令作为状态。
-  // 只看 odom 角速度时，底盘存在执行/反馈延迟会让每一拍都从 0 开始限幅，
-  // 结果是目标角速度长期被钳在 max_angular_accel * control_duration。
+  // 保存上一拍旋转指令，避免反馈延迟使角速度斜坡反复重置。
   bool last_rotate_cmd_valid_{false};
   double last_rotate_cmd_{0.0};
   double rotate_cmd_reseed_error_{0.3};
