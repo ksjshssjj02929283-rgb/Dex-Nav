@@ -67,14 +67,8 @@ def launch_setup(context, *args, **kwargs):
                             remappings=cmd_vel_remapping)
     nodes.append(cmd_vel_mux_node)
 
-    # 驻车 Action 节点可用于全向底盘；它不订阅 Twist，不参与普通导航解算。
+    # 🔧 STEERING_ACTION_DIRECT: ChassisNode 提供 SteeringAngleControl Action Server；本包只保留导航起步协调客户端。
     if robot_type == "omni":
-        print(f"[INFO] Starting mobile_cmd_omni Action node...")
-        cmd_omni_vel_node = Node(package='mobile_joy_control',
-                                 executable='mobile_cmd_omni',
-                                 name='mobile_cmd_omni',
-                                 output='screen')
-        nodes.append(cmd_omni_vel_node)
         start_coordinator_node = Node(
             package='mobile_joy_control',
             executable='omni_start_coordinator',
