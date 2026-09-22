@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include "rgbd_processing_state.hpp"
+#include "dexe_sensor_process/rgbd_processing_state.hpp"
 
 namespace dexe_sensor_process {
 

@@ -189,21 +189,12 @@ def generate_launch_description():
             },
         }.items())
 
-    front_rgbd_cmd = IncludeLaunchDescription(
+    rgbd_cmd = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
-            os.path.join(rgbd_launch_dir, 'front_p2c.launch.py')),
-        condition=IfCondition(_bool_text(sensors['rgbd_front'])),
+            os.path.join(rgbd_launch_dir, 'multi_camera.launch.py')),
         launch_arguments={
-            'use_sim_time': use_sim_time,
-            'depth_max_range': '4.9',
-            'ground_filter_min_height': '0.05',
-        }.items())
-
-    rear_rgbd_cmd = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            os.path.join(rgbd_launch_dir, 'rear_p2c.launch.py')),
-        condition=IfCondition(_bool_text(sensors['rgbd_rear'])),
-        launch_arguments={
+            'enable_front': _bool_text(sensors['rgbd_front']),
+            'enable_rear': _bool_text(sensors['rgbd_rear']),
             'use_sim_time': use_sim_time,
             'depth_max_range': '4.9',
             'ground_filter_min_height': '0.05',
@@ -270,8 +261,7 @@ def generate_launch_description():
             on_exit=_readiness_exit_handler(
                 [
                     spawn_w1_diff_cmd,
-                    front_rgbd_cmd,
-                    rear_rgbd_cmd,
+                    rgbd_cmd,
                     sim_ready_cmd,
                 ],
                 'Gazebo 未就绪')))

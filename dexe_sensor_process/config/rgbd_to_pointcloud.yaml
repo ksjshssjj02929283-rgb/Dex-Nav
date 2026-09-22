@@ -1,6 +1,9 @@
 # 前后相机共用参数；通过 launch 的 params_file 指定其他配置文件。
 /**:
   ros__parameters:
+    # multi_camera.launch.py 设置 cameras: [front, rear]，在一个节点内处理两路相机。
+    # 多相机话题覆盖使用 front.input_topic / rear.input_topic 等带相机前缀的参数。
+    # 不在公共配置设置 cameras，保留单相机 launch 的兼容性。
     # auto 模式读取整机硬件版本，<= v0.24 使用高度法，否则使用 UV 图。
     hardware_path: "/etc/dexe_robot/hardware.yaml"
 

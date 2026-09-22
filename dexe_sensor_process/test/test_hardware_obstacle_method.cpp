@@ -2,7 +2,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <utility>
-#include "hardware_obstacle_method.hpp"
+#include "dexe_sensor_process/hardware_obstacle_method.hpp"
 
 using dexe_sensor_process::obstacleMethodForHardware;
 

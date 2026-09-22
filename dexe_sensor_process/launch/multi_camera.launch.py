@@ -1,49 +1,52 @@
-# 公共算法参数集中在 config/rgbd_to_pointcloud.yaml。
-from ament_index_python.packages import get_package_share_directory
+"""Run front/rear processing pipelines in one ROS node."""
 import os
+
+from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
+from launch.actions import DeclareLaunchArgument, OpaqueFunction
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 
+def _camera_node(context):
+    cameras = [name for name in ('front', 'rear')
+               if LaunchConfiguration('enable_' + name).perform(context).lower()
+               in ('true', '1')]
+    if not cameras:
+        return []
+    overrides = {'cameras': cameras}
+    # Empty arguments retain the values in params_file.
+    for name, convert in (
+        ('use_sim_time', lambda value: value.lower() in ('true', '1')),
+        ('depth_max_range', float),
+        ('ground_filter_min_height', float),
+    ):
+        value = LaunchConfiguration(name).perform(context)
+        if value:
+            overrides[name] = convert(value)
+    return [Node(
+        package='dexe_sensor_process',
+        executable='rgbd_to_pointcloud',
+        name='rgbd_to_pointcloud',
+        parameters=[LaunchConfiguration('params_file'), overrides],
+        output='screen',
+    )]
+
+
 def generate_launch_description():
-    params_file_arg = DeclareLaunchArgument(
-        'params_file',
-        default_value=os.path.join(get_package_share_directory('dexe_sensor_process'), 'config', 'rgbd_to_pointcloud.yaml'),
-        description='公共 ROS 参数配置文件',
-    )
-
-    front_rgbd_node = Node(
-        package='dexe_sensor_process',
-        executable='rgbd_to_pointcloud',
-        name='front_rgbd_to_pointcloud',
-        parameters=[LaunchConfiguration('params_file'), {
-            'camera_name': 'front',
-            'input_topic': '/orbbec/front',
-            'output_topic_raw': '/orbbec/front/pointcloud2_raw',
-            'output_topic_filtered': '/orbbec/front/pointcloud2_filtered',
-            'output_topic_laserscan': '/orbbec/front/laser_scan',
-        }],
-        output='screen',
-    )
-
-    rear_rgbd_node = Node(
-        package='dexe_sensor_process',
-        executable='rgbd_to_pointcloud',
-        name='rear_rgbd_to_pointcloud',
-        parameters=[LaunchConfiguration('params_file'), {
-            'camera_name': 'rear',
-            'input_topic': '/orbbec/rear',
-            'output_topic_raw': '/orbbec/rear/pointcloud2_raw',
-            'output_topic_filtered': '/orbbec/rear/pointcloud2_filtered',
-            'output_topic_laserscan': '/orbbec/rear/laser_scan',
-        }],
-        output='screen',
-    )
-
     return LaunchDescription([
-        params_file_arg,
-        front_rgbd_node,
-        rear_rgbd_node,
+        DeclareLaunchArgument(
+            'params_file',
+            default_value=os.path.join(
+                get_package_share_directory('dexe_sensor_process'),
+                'config', 'rgbd_to_pointcloud.yaml'),
+            description='公共 ROS 参数配置文件'),
+        DeclareLaunchArgument('enable_front', default_value='true',
+                              choices=['true', 'false', 'True', 'False', '1', '0']),
+        DeclareLaunchArgument('enable_rear', default_value='true',
+                              choices=['true', 'false', 'True', 'False', '1', '0']),
+        DeclareLaunchArgument('use_sim_time', default_value=''),
+        DeclareLaunchArgument('depth_max_range', default_value=''),
+        DeclareLaunchArgument('ground_filter_min_height', default_value=''),
+        OpaqueFunction(function=_camera_node),
     ])
