@@ -29,11 +29,11 @@
 # 导航门面（节点名 navigation，与 command_board 同进程；M5 DEC-035）
 navigation:
   ros__parameters:
-    require_localization: true      # 定位非 LOC_SUCCESS 时拒绝受理（1304）
+    require_localization: true      # 定位非 LOC_SUCCESS 时拒绝受理（2201042）
     preempt_on_new_goal: true       # 新任务抢占当前任务（PRD：即时导航 / 选点导航互相打断）
     blocked_hold_sec: 3.0           # 停障等待持续多久判 BLOCKED
-    progress_timeout_sec: 0.0       # >0 启用进度看门狗（1309）
+    progress_timeout_sec: 0.0       # >0 启用进度看门狗（2201091）
     local_path_rate_hz: 5.0         # local_path 节流
     local_path_source_topic: /local_plan   # 控制器局部路径源（当前 MPPI；换控制器改这里）
     # speed_limit_topic: /speed_limit      # 与 nav2 controller_server 的 speed_limit_topic 一致时不用改
-    # estop_topic: /emergency_stop         # 急停位（std_msgs/Bool）；生效时 state=BLOCKED(1312)
+    # estop_topic: /emergency_stop         # 急停位（std_msgs/Bool）；生效时 state=BLOCKED(2201123)

@@ -23,14 +23,24 @@ geometry_msgs::msg::PoseStamped makePose(const std::string& frame, double x, dou
     return p;
 }
 std::string codeMsg(int32_t code, const std::string& text) { return "E" + std::to_string(code) + ": " + text; }
+// 节点名守卫：launch 的 Node(name=...) 会以全局 __node:= 重映射改掉同进程里所有节点的名字（曾把本节点变成 command_board，
+// 契约话题随之变成 /command_board/state）。rcl 解析节点名时本地参数优先于全局参数，这里给本节点补一条本地 __node:=navigation；
+// 若宿主（如组件容器）已显式给了 __node:=，则尊重它。
+rclcpp::NodeOptions withNodeNameGuard(rclcpp::NodeOptions options) {
+    for (const auto& a : options.arguments()) if (a.rfind("__node:=", 0) == 0) return options;
+    auto args = options.arguments();
+    args.insert(args.end(), {"--ros-args", "-r", "__node:=navigation"});
+    options.arguments(args);
+    return options;
+}
 const char* stateName(uint8_t s) {
     static const char* kNames[] = {"IDLE", "PENDING", "RUNNING", "PAUSED", "BLOCKED", "SUCCEEDED", "FAILED", "CANCELLED"};
     return s < 8 ? kNames[s] : "UNKNOWN";
 }
 }  // namespace
 
-NavigationFacade::NavigationFacade()
-    : rclcpp::Node("navigation"), last_local_pub_(0, 0, RCL_ROS_TIME) {
+NavigationFacade::NavigationFacade(const rclcpp::NodeOptions& options)
+    : rclcpp::Node("navigation", withNodeNameGuard(options)), last_local_pub_(0, 0, RCL_ROS_TIME) {
     // ── 参数（全部有默认值，yaml 只覆盖需要现场调的）──
     global_frame_          = declare_parameter<std::string>("global_frame", "map");
     require_localization_  = declare_parameter<bool>("require_localization", true);
@@ -155,12 +165,12 @@ void NavigationFacade::onNavAccepted(const std::shared_ptr<GHNav> gh) {
         case NavAct::Goal::TARGET_POINT: t.target_type = State::TARGET_POINT; t.target_name = goal->point_name; break;
         case NavAct::Goal::TARGET_POSE:  t.target_type = State::TARGET_POSE;  t.waypoints = {goal->pose}; break;
         case NavAct::Goal::TARGET_ROUTE: t.target_type = State::TARGET_ROUTE; t.target_name = goal->route_name; break;
-        default: break;   // TARGET_NONE → resolveTargetLocked 报 1301
+        default: break;   // TARGET_NONE → resolveTargetLocked 报 2201010
     }
     admitLocked(std::move(t));
 }
 
-// 受理尾段：忙 → 只 abort 该 goal（不动当前任务）；目标解析失败 → 以 FAILED(1301) 记入 state；否则启动
+// 受理尾段：忙 → 只 abort 该 goal（不动当前任务）；目标解析失败 → 以 FAILED(2201010) 记入 state；否则启动
 void NavigationFacade::admitLocked(Task&& t) {
     std::string why;
     if (!preemptOrRejectLocked(why)) { finalizeHandlesLocked(t, false, State::E_NAV_BUSY, codeMsg(State::E_NAV_BUSY, why)); return; }
@@ -545,3 +555,6 @@ void NavigationFacade::publishEmptyPathLocked() {
 }
 
 }  // namespace command_board
+
+#include <rclcpp_components/register_node_macro.hpp>
+RCLCPP_COMPONENTS_REGISTER_NODE(command_board::NavigationFacade)

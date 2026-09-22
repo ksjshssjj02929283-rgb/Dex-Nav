@@ -1,7 +1,8 @@
 // 导航门面节点（节点名 navigation，宿主进程 command_board，DEC-035/DEC-037 命名规则）。
 // 对外 L1：~/navigate（统一 action，DEC-042）+ 过渡期保留的 ~/navigate_to_point、~/navigate_route；~/state、~/global_path、~/local_path、~/nav_command。
-// 附：nav_command SET_SPEED_LIMIT 透传 nav2 speed_limit；订阅急停位 → BLOCKED(1312)；CHECK_REACHABLE 预留（1311）。
+// 附：nav_command SET_SPEED_LIMIT 透传 nav2 speed_limit；订阅急停位 → BLOCKED(2201123)；CHECK_REACHABLE 预留（2201110）。
 // 只做契约面：受理 / 目标解析（订阅 map_asset_manager/assets）/ 转发 nav2 / 统一状态机 / 路径转发；不做规划与控制。
+// 形态：独立共享库 navigation_facade + rclcpp_components 组件，宿主可以是 command_board 进程（当前）、mission_manager 进程或任意容器，接口名不随宿主变。
 #pragma once
 
 #include <memory>
@@ -34,7 +35,8 @@ namespace command_board {
 
 class NavigationFacade : public rclcpp::Node {
 public:
-    NavigationFacade();
+    // options 供 rclcpp_components 容器加载；无论宿主进程用 launch 的 name= 怎么改名，本节点名固定为 navigation（见 .cpp 守卫）
+    explicit NavigationFacade(const rclcpp::NodeOptions& options = rclcpp::NodeOptions());
 
 private:
     using NavToPoint = nav_interfaces::action::NavigateToPoint;

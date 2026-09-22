@@ -9,6 +9,8 @@
 
 #include "command_board_ros.hpp"
 
+#include "nav_interfaces/msg/nav_system_status.hpp"
+
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2/utils.h>
 
