@@ -74,7 +74,11 @@ if ! BUILD_SIMULATION_ENABLED=$(resolve_build_simulation "$BUILD_SIMULATION_MODE
     exit 2
 fi
 
-COLCON_COMMON_BUILD_ARGS=(--parallel-workers 8)
+COLCON_COMMON_BUILD_ARGS=(
+    --parallel-workers 8
+    --cmake-args
+    -DCMAKE_BUILD_TYPE=Release
+)
 COLCON_BUILD_ARGS=("${COLCON_COMMON_BUILD_ARGS[@]}")
 SIMULATION_PACKAGES=()
 
