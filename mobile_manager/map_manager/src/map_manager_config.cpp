@@ -125,7 +125,7 @@ void MapManagerConfig::SetDefaults() {
     nav_point_manager_service_ = "/nav_point_manager_node/set_map_changed";
     mission_manager_service_ = "/mission_manager/set_map_changed";
     move_base_service_ = "/move_base/set_map_changed";
-    localization_service_ = "/localization_node/set_map_changed";
+    localization_service_ = "/localization/set_map_changed";
 }
 
 std::string MapManagerConfig::ExpandHomePath(const std::string& path) {

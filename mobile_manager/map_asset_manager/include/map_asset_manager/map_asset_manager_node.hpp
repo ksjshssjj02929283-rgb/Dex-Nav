@@ -6,6 +6,10 @@
 #include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/string.hpp>
 #include <nav_interfaces/msg/map_state.hpp>
+#include <nav_interfaces/msg/asset_snapshot.hpp>
+#include <nav_interfaces/msg/asset_snapshot.hpp>
+#include <nav_interfaces/srv/get_assets.hpp>
+#include <nav_interfaces/srv/set_assets.hpp>
 #include <nav_interfaces/srv/transform_assets.hpp>
 #include <nav_interfaces/srv/save_assets.hpp>
 #include <std_srvs/srv/trigger.hpp>
@@ -44,7 +48,14 @@ public:
 private:
     void initialize();
     void loadData();
-    void publishStatus();
+    void publishStatus();          // 发 ~/assets（AssetSnapshot：六类数组 + loaded + error_code，快照即状态，latched）
+    void refreshAllOutputs();      // 各管理器 markers/arrays + status（set_assets / loadData 后统一调用）
+    nav_interfaces::msg::AssetSnapshot buildSnapshot() const;
+    // X-Wiz 批量接口
+    void getAssetsCallback(const std::shared_ptr<nav_interfaces::srv::GetAssets::Request> req,
+                           std::shared_ptr<nav_interfaces::srv::GetAssets::Response> res);
+    void setAssetsCallback(const std::shared_ptr<nav_interfaces::srv::SetAssets::Request> req,
+                           std::shared_ptr<nav_interfaces::srv::SetAssets::Response> res);
 
     // 全局通用服务回调
     void reloadDataCallback(const std::shared_ptr<std_srvs::srv::Trigger::Request> req,
@@ -61,7 +72,6 @@ private:
 
     // 【旧机器兼容】旧 map_manager 无 map_state，只有 map_folder / map_name 两个 String topic。
     // folder / name 各自到达一个，齐备且有变化时切图（无 epoch，退化为按名字比对，同名重载检测不到）。
-    void onLegacyMapContext(const std::string& folder, const std::string& name);
 
     // folder 和 name 都就绪后执行地图切换
     void switchToMap(const std::string& map_name);
@@ -98,18 +108,17 @@ private:
     rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr reload_data_srv_;
     rclcpp::Service<nav_interfaces::srv::SaveAssets>::SharedPtr save_assets_srv_;
     rclcpp::Service<nav_interfaces::srv::TransformAssets>::SharedPtr transform_assets_srv_;
-    rclcpp::Publisher<std_msgs::msg::String>::SharedPtr status_pub_;
+    rclcpp::Service<nav_interfaces::srv::GetAssets>::SharedPtr get_assets_srv_;
+    rclcpp::Service<nav_interfaces::srv::SetAssets>::SharedPtr set_assets_srv_;
+    rclcpp::Publisher<nav_interfaces::msg::AssetSnapshot>::SharedPtr assets_pub_;
+    int32_t last_error_code_{0};      // 最近一次 set_assets / save 结果，随 state 发布
     rclcpp::Subscription<nav_interfaces::msg::MapState>::SharedPtr map_state_sub_;
-    // 【旧机器兼容】旧 map_manager 的两个 String topic；新机器上无人发布，订阅空转无副作用
-    rclcpp::Subscription<std_msgs::msg::String>::SharedPtr legacy_map_folder_sub_;
-    rclcpp::Subscription<std_msgs::msg::String>::SharedPtr legacy_map_name_sub_;
 
     // ── 状态 ─────────────────────────────────────────────
     std::string map_base_folder_;     // 地图根目录（来自 map_manager/map_state）
     std::string current_map_name_;    // 当前地图名称（来自 map_manager/map_state）
     std::string assets_file_;         // 当前 map_assets.json 完整路径
     uint64_t last_epoch_{0};          // 上次处理的 map_state epoch；比对它判断是否重载
-    bool map_state_seen_{false};      // 【旧机器兼容】收到过 map_state 后忽略 legacy topic，避免双源打架
     std::string legacy_folder_;       // 【旧机器兼容】map_manager/map_folder 暂存（等 name 齐备）
     std::string legacy_name_;         // 【旧机器兼容】map_manager/map_name 暂存（等 folder 齐备）
     bool auto_save_{true};

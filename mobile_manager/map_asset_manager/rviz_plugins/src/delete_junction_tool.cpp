@@ -8,7 +8,7 @@
 #include <OgreManualObject.h>
 #include <OgreSceneManager.h>
 
-#include <nav_interfaces/srv/remove_route_junction.hpp>
+#include <nav_interfaces/srv/set_assets.hpp>
 #include <rviz_common/display_context.hpp>
 #include <rviz_common/interaction/view_picker_iface.hpp>
 #include <rviz_common/ros_integration/ros_node_abstraction_iface.hpp>
@@ -145,15 +145,16 @@ void DeleteJunctionTool::clearPreview() {
 }
 
 void DeleteJunctionTool::doDelete(const EndpointInfo& ep) {
-    auto client = node_->create_client<nav_interfaces::srv::RemoveRouteJunction>(
-        service_prefix_ + "/remove_route_junction");
-    auto req     = std::make_shared<nav_interfaces::srv::RemoveRouteJunction::Request>();
-    req->id = ep.id;
+    auto client = node_->create_client<nav_interfaces::srv::SetAssets>(
+        service_prefix_ + "/set_assets");
+    auto req = std::make_shared<nav_interfaces::srv::SetAssets::Request>(); req->junctions.resize(1);
+    req->mode = nav_interfaces::srv::SetAssets::Request::MODE_REMOVE;
+    req->junctions[0].id = ep.id;
 
     const QString display_id = QString::fromStdString(ep.id);
     client->async_send_request(req,
         [this, display_id](
-            rclcpp::Client<nav_interfaces::srv::RemoveRouteJunction>::SharedFuture fut) {
+            rclcpp::Client<nav_interfaces::srv::SetAssets>::SharedFuture fut) {
             try {
                 auto resp = fut.get();
                 setStatus(resp->success

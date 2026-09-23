@@ -13,11 +13,7 @@
 #include <vector>
 #include <visualization_msgs/msg/marker_array.hpp>
 
-#include "nav_interfaces/srv/add_route_junction.hpp"
-#include "nav_interfaces/srv/remove_route_junction.hpp"
-#include "nav_interfaces/srv/add_route_edge.hpp"
-#include "nav_interfaces/srv/remove_route_edge.hpp"
-#include "nav_interfaces/srv/update_route_edge.hpp"
+#include <nav_interfaces/msg/asset_snapshot.hpp>
 #include "nav_interfaces/srv/get_route_graph.hpp"
 #include "nav_interfaces/msg/path_segment.hpp"
 #include "nav_interfaces/srv/resolve_nav_points.hpp"
@@ -49,25 +45,6 @@ public:
 
 private:
     // ── Service 回调 ──────────────────────────────────────────────
-    void addJunctionCallback(
-        const std::shared_ptr<nav_interfaces::srv::AddRouteJunction::Request> req,
-        std::shared_ptr<nav_interfaces::srv::AddRouteJunction::Response> res);
-
-    void removeJunctionCallback(
-        const std::shared_ptr<nav_interfaces::srv::RemoveRouteJunction::Request> req,
-        std::shared_ptr<nav_interfaces::srv::RemoveRouteJunction::Response> res);
-
-    void addEdgeCallback(
-        const std::shared_ptr<nav_interfaces::srv::AddRouteEdge::Request> req,
-        std::shared_ptr<nav_interfaces::srv::AddRouteEdge::Response> res);
-
-    void removeEdgeCallback(
-        const std::shared_ptr<nav_interfaces::srv::RemoveRouteEdge::Request> req,
-        std::shared_ptr<nav_interfaces::srv::RemoveRouteEdge::Response> res);
-
-    void updateEdgeCallback(
-        const std::shared_ptr<nav_interfaces::srv::UpdateRouteEdge::Request> req,
-        std::shared_ptr<nav_interfaces::srv::UpdateRouteEdge::Response> res);
 
     void getRouteGraphCallback(
         const std::shared_ptr<nav_interfaces::srv::GetRouteGraph::Request> req,
@@ -131,11 +108,6 @@ private:
     std::function<void()>            save_fn_;
 
     // Services
-    rclcpp::Service<nav_interfaces::srv::AddRouteJunction>::SharedPtr    add_junction_srv_;
-    rclcpp::Service<nav_interfaces::srv::RemoveRouteJunction>::SharedPtr remove_junction_srv_;
-    rclcpp::Service<nav_interfaces::srv::AddRouteEdge>::SharedPtr        add_edge_srv_;
-    rclcpp::Service<nav_interfaces::srv::RemoveRouteEdge>::SharedPtr     remove_edge_srv_;
-    rclcpp::Service<nav_interfaces::srv::UpdateRouteEdge>::SharedPtr     update_edge_srv_;
     rclcpp::Service<nav_interfaces::srv::GetRouteGraph>::SharedPtr       get_graph_srv_;
     rclcpp::Service<nav_interfaces::srv::ResolveNavPoints>::SharedPtr    resolve_nav_points_srv_;
 

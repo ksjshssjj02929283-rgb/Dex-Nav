@@ -10,8 +10,7 @@
 #include <string>
 
 #include <nav_interfaces/srv/get_route_graph.hpp>
-#include <nav_interfaces/srv/remove_route_edge.hpp>
-#include <nav_interfaces/srv/remove_route_junction.hpp>
+#include <nav_interfaces/srv/set_assets.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 namespace map_asset_rviz_plugin {
@@ -49,8 +48,8 @@ private:
     std::string prefix_{"/map_asset_manager"};
 
     rclcpp::Client<nav_interfaces::srv::GetRouteGraph>::SharedPtr      get_graph_client_;
-    rclcpp::Client<nav_interfaces::srv::RemoveRouteEdge>::SharedPtr    remove_edge_client_;
-    rclcpp::Client<nav_interfaces::srv::RemoveRouteJunction>::SharedPtr remove_junction_client_;
+    rclcpp::Client<nav_interfaces::srv::SetAssets>::SharedPtr    remove_edge_client_;
+    rclcpp::Client<nav_interfaces::srv::SetAssets>::SharedPtr remove_junction_client_;
 };
 
 }  // namespace map_asset_rviz_plugin

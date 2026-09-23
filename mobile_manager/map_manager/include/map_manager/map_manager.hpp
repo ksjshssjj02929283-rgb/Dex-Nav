@@ -8,6 +8,7 @@
 #include <nav_msgs/msg/occupancy_grid.hpp>
 #include <string>
 #include <vector>
+#include <ctime>
 
 #include "map_manager/image_loader.hpp"
 
@@ -24,6 +25,16 @@ struct MapInfo {
     double height;
 };
 
+// get_maps 返回的目录条目（只读 yaml，不加载地图）
+struct MapCatalogEntry {
+    std::string name;
+    std::string map_path;           // <map_folder>/<name>/slam
+    double total_area_m2 = 0.0;
+    double effective_area_m2 = 0.0;
+    std::time_t updated_at = 0;     // map.yaml mtime
+    std::string thumbnail;          // <map_path>/map.png
+};
+
 class MapManager {
 public:
     explicit MapManager(const std::string& default_map_folder);
@@ -33,6 +44,12 @@ public:
     bool LoadMap(const std::string& map_name);
     bool RemoveMap(const std::string& map_name);
     bool RenameMap(const std::string& old_name, const std::string& new_name, std::string& error_msg);
+    // 带错误码版本（供 ROS 层 MapManagerCommand 使用）。返回 0 成功，否则为 MapState 内的 14xx 常量。
+    int32_t LoadMapEx(const std::string& map_name, std::string& message);
+    int32_t RemoveMapEx(const std::string& map_name, std::string& message);
+    int32_t RenameMapEx(const std::string& old_name, const std::string& new_name, std::string& message);
+    // 扫描 map_folder 下各地图的 slam/map.yaml，生成目录条目（不加载地图）
+    std::vector<MapCatalogEntry> ScanMapCatalog();
 
     bool loadMapFromYaml(std::string path_to_yaml);
     bool loadMapFromValues(std::string map_file_name,

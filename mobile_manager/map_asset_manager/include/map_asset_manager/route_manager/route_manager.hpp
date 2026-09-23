@@ -9,11 +9,9 @@
 #include <visualization_msgs/msg/marker_array.hpp>
 
 #include "nav_interfaces/action/navigate_route.hpp"
-#include "nav_interfaces/srv/add_route.hpp"
+#include <nav_interfaces/msg/asset_snapshot.hpp>
 #include "nav_interfaces/msg/route.hpp"
-#include "nav_interfaces/srv/get_all_routes.hpp"
 #include "nav_interfaces/srv/get_route.hpp"
-#include "nav_interfaces/srv/remove_route.hpp"
 
 #include "map_asset_manager/data_event_bus.hpp"
 #include "map_asset_manager/navigation_executor.hpp"
@@ -43,7 +41,7 @@ public:
     // 供主节点访问：发布路径可视化（在执行路径导航时调用）
     void publishRoutePath(const std::vector<NavPoint>& route_points);
 
-    // 发布所有路线的持久化 marker（add/remove route 后调用）
+    // 发布所有路线的持久化 marker（set_route 后调用）
     void publishAllRouteMarkers();
 
     // EventBus 响应接口（由 MapAssetManagerNode 通过订阅事件调用）
@@ -52,15 +50,8 @@ public:
 
 private:
     // Service 回调
-    void addRouteCallback(const std::shared_ptr<nav_interfaces::srv::AddRoute::Request> req,
-                          std::shared_ptr<nav_interfaces::srv::AddRoute::Response> res);
-    void removeRouteCallback(const std::shared_ptr<nav_interfaces::srv::RemoveRoute::Request> req,
-                             std::shared_ptr<nav_interfaces::srv::RemoveRoute::Response> res);
     void getRouteCallback(const std::shared_ptr<nav_interfaces::srv::GetRoute::Request> req,
                           std::shared_ptr<nav_interfaces::srv::GetRoute::Response> res);
-    void getAllRoutesCallback(const std::shared_ptr<nav_interfaces::srv::GetAllRoutes::Request> req,
-                             std::shared_ptr<nav_interfaces::srv::GetAllRoutes::Response> res);
-
     // Action 回调
     rclcpp_action::GoalResponse handleGoal(const rclcpp_action::GoalUUID& uuid,
                                            std::shared_ptr<const NavigateRouteAction::Goal> goal);
@@ -79,10 +70,7 @@ private:
     std::function<void()> save_fn_;
 
     // Services
-    rclcpp::Service<nav_interfaces::srv::AddRoute>::SharedPtr add_route_srv_;
-    rclcpp::Service<nav_interfaces::srv::RemoveRoute>::SharedPtr remove_route_srv_;
     rclcpp::Service<nav_interfaces::srv::GetRoute>::SharedPtr get_route_srv_;
-    rclcpp::Service<nav_interfaces::srv::GetAllRoutes>::SharedPtr get_all_routes_srv_;
 
     // Action
     rclcpp_action::Server<NavigateRouteAction>::SharedPtr navigate_route_action_;

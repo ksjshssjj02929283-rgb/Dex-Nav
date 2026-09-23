@@ -22,7 +22,7 @@
     initial_map:=factory_floor
 
   # 加载地图后手动添加导航点
-  ros2 service call /nav_point_manager_node/add_point nav_interfaces/srv/AddNavPoint \
+  ros2 service call /map_asset_manager/set_point nav_interfaces/srv/SetNavPoint \
     "{nav_point: {name: 'point_1', x: 1.0, y: 2.0, theta: 0.0}}"
 
   # 发送导航任务
@@ -104,7 +104,7 @@ def generate_launch_description():
             'move_base_service':
                 '/move_base/set_map_changed',
             'localization_service':
-                '/localization_node/set_map_changed',
+                '/localization/set_map_changed',
         }],
         remappings=[
             ('/map', '/map'),

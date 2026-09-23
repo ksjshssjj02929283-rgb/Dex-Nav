@@ -107,7 +107,7 @@ bool MapVersionManager::CallSaveMap(std::string& out_ts, std::string& out_msg) {
     auto req = std::make_shared<nav_interfaces::srv::SaveMap::Request>();
     req->map_name = "";
     auto resp = CallService<nav_interfaces::srv::SaveMap>(
-        "/localization_node/save_map", req, service_timeout_sec_, out_msg);
+        "/localization/save_map", req, service_timeout_sec_, out_msg);
     if (!resp) return false;
     if (!resp->success) { out_msg = resp->message; return false; }
     out_ts = resp->backup_ts;
@@ -126,12 +126,13 @@ bool MapVersionManager::CallSaveAssets(std::string& out_ts, std::string& out_msg
 }
 
 bool MapVersionManager::TriggerRedeploy(std::string& out_msg) {
-    auto req = std::make_shared<nav_interfaces::srv::LoadMap::Request>();
+    auto req = std::make_shared<nav_interfaces::srv::MapManagerCommand::Request>();
+    req->op = nav_interfaces::srv::MapManagerCommand::Request::OP_LOAD;
     req->map_name = map_name_;
-    auto resp = CallService<nav_interfaces::srv::LoadMap>(
-        "map_manager/load_map", req, service_timeout_sec_, out_msg);
+    auto resp = CallService<nav_interfaces::srv::MapManagerCommand>(
+        "map_manager/map_command", req, service_timeout_sec_, out_msg);
     if (!resp) return false;
-    if (!resp->success) { out_msg = "LoadMap returned false"; return false; }
+    if (!resp->success) { out_msg = "map_command(LOAD) failed: " + resp->message; return false; }
     return true;
 }
 

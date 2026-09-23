@@ -1,4 +1,5 @@
 #include "map_asset_manager/route_graph_manager/route_graph_manager.hpp"
+#include "map_asset_manager/asset_codec.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -10,86 +11,6 @@
 #include <visualization_msgs/msg/marker.hpp>
 
 namespace map_asset_manager {
-
-static nav_interfaces::msg::RouteEndpoint toMsg(const RouteEndpoint& ep) {
-    nav_interfaces::msg::RouteEndpoint msg;
-    msg.id   = ep.id;
-    msg.type = ep.type;
-    return msg;
-}
-
-static nav_interfaces::msg::RouteJunction toMsg(const RouteJunction& jct) {
-    nav_interfaces::msg::RouteJunction msg;
-    msg.id  = jct.id;
-    msg.x   = jct.x;
-    msg.y   = jct.y;
-    msg.yaw = jct.yaw;
-    return msg;
-}
-
-static nav_interfaces::msg::RouteEdge toMsg(const RouteEdge& e) {
-    nav_interfaces::msg::RouteEdge msg;
-    msg.id            = e.id;
-    msg.from_ep       = toMsg(e.from);
-    msg.to_ep         = toMsg(e.to);
-    msg.edge_type     = e.edge_type;
-    msg.bidirectional = e.bidirectional;
-    msg.max_speed     = e.max_speed;
-    msg.xy_tolerance  = e.xy_tolerance;
-    msg.th_tolerance  = e.th_tolerance;
-    msg.lane_width    = e.lane_width;
-    msg.obs_policy    = e.obs_policy;
-    for (const auto& cp : e.control_points) {
-        geometry_msgs::msg::Point p;
-        p.x = cp.first;
-        p.y = cp.second;
-        p.z = 0.0;
-        msg.control_points.push_back(p);
-    }
-    msg.hold_direction = e.hold_direction.value_or(std::numeric_limits<float>::quiet_NaN());
-    msg.backward = e.backward;
-    msg.padding = e.padding.value_or(std::numeric_limits<float>::quiet_NaN());
-    msg.mode = e.mode;
-    return msg;
-}
-
-static RouteEndpoint fromMsg(const nav_interfaces::msg::RouteEndpoint& msg) {
-    return {msg.id, msg.type};
-}
-
-static RouteJunction fromMsg(const nav_interfaces::msg::RouteJunction& msg) {
-    RouteJunction jct;
-    jct.id  = msg.id;
-    jct.x   = msg.x;
-    jct.y   = msg.y;
-    jct.yaw = msg.yaw;
-    return jct;
-}
-
-static RouteEdge fromMsg(const nav_interfaces::msg::RouteEdge& msg) {
-    RouteEdge e;
-    e.id           = msg.id;
-    e.from         = fromMsg(msg.from_ep);
-    e.to           = fromMsg(msg.to_ep);
-    e.edge_type    = msg.edge_type;
-    e.bidirectional= msg.bidirectional;
-    e.max_speed    = msg.max_speed;
-    e.xy_tolerance = msg.xy_tolerance;
-    e.th_tolerance = msg.th_tolerance;
-    e.lane_width   = msg.lane_width;
-    e.obs_policy   = msg.obs_policy;
-    for (const auto& cp : msg.control_points) {
-        e.control_points.emplace_back(static_cast<float>(cp.x),
-                                      static_cast<float>(cp.y));
-    }
-    e.hold_direction = std::isnan(msg.hold_direction)
-                           ? std::optional<float>{}
-                           : std::optional<float>(static_cast<float>(msg.hold_direction));
-    e.backward = msg.backward;
-    e.padding = std::isnan(msg.padding) ? std::optional<float>{} : std::optional<float>(msg.padding);
-    e.mode = msg.mode;
-    return e;
-}
 
 // ──────────────────────────────────────────────────────────────────────
 // Constructor
@@ -109,30 +30,6 @@ RouteGraphManager::RouteGraphManager(
       event_bus_(event_bus),
       save_fn_(save_fn)
 {
-    add_junction_srv_ = node->create_service<nav_interfaces::srv::AddRouteJunction>(
-        "~/add_route_junction",
-        std::bind(&RouteGraphManager::addJunctionCallback, this,
-                  std::placeholders::_1, std::placeholders::_2));
-
-    remove_junction_srv_ = node->create_service<nav_interfaces::srv::RemoveRouteJunction>(
-        "~/remove_route_junction",
-        std::bind(&RouteGraphManager::removeJunctionCallback, this,
-                  std::placeholders::_1, std::placeholders::_2));
-
-    add_edge_srv_ = node->create_service<nav_interfaces::srv::AddRouteEdge>(
-        "~/add_route_edge",
-        std::bind(&RouteGraphManager::addEdgeCallback, this,
-                  std::placeholders::_1, std::placeholders::_2));
-
-    remove_edge_srv_ = node->create_service<nav_interfaces::srv::RemoveRouteEdge>(
-        "~/remove_route_edge",
-        std::bind(&RouteGraphManager::removeEdgeCallback, this,
-                  std::placeholders::_1, std::placeholders::_2));
-
-    update_edge_srv_ = node->create_service<nav_interfaces::srv::UpdateRouteEdge>(
-        "~/update_route_edge",
-        std::bind(&RouteGraphManager::updateEdgeCallback, this,
-                  std::placeholders::_1, std::placeholders::_2));
 
     get_graph_srv_ = node->create_service<nav_interfaces::srv::GetRouteGraph>(
         "~/get_route_graph",
@@ -161,136 +58,12 @@ RouteGraphManager::RouteGraphManager(
 // Junction CRUD
 // ──────────────────────────────────────────────────────────────────────
 
-void RouteGraphManager::addJunctionCallback(
-    const std::shared_ptr<nav_interfaces::srv::AddRouteJunction::Request> req,
-    std::shared_ptr<nav_interfaces::srv::AddRouteJunction::Response> res)
-{
-    if (req->junction.id.empty()) {
-        res->success = false;
-        res->message = "Junction id must not be empty";
-        return;
-    }
-    auto jct = fromMsg(req->junction);
-    if (!junction_store_->add(jct)) {
-        res->success = false;
-        res->message = "Junction id '" + jct.id + "' already exists";
-        return;
-    }
-    save_fn_();
-    publishMarkers();
-
-    if (event_bus_) {
-        event_bus_->publish({AssetEventType::JUNCTION_ADDED, jct.id, ""});
-    }
-
-    res->success = true;
-    res->message = "Added junction '" + jct.id + "'";
-    RCLCPP_INFO(node_->get_logger(), "RouteGraph: added junction '%s'", jct.id.c_str());
-}
-
-void RouteGraphManager::removeJunctionCallback(
-    const std::shared_ptr<nav_interfaces::srv::RemoveRouteJunction::Request> req,
-    std::shared_ptr<nav_interfaces::srv::RemoveRouteJunction::Response> res)
-{
-    if (!junction_store_->has(req->id)) {
-        res->success = false;
-        res->message = "Junction '" + req->id + "' not found";
-        return;
-    }
-    auto removed_edges = edge_store_->removeEdgesContainingJunction(req->id);
-    junction_store_->remove(req->id);
-    save_fn_();
-    publishMarkers();
-
-    if (event_bus_) {
-        event_bus_->publish({AssetEventType::JUNCTION_REMOVED, req->id, ""});
-    }
-
-    res->success = true;
-    res->message = "Removed junction '" + req->id + "' and " +
-                   std::to_string(removed_edges.size()) + " edges";
-    RCLCPP_INFO(node_->get_logger(), "RouteGraph: removed junction '%s' + %zu edges",
-                req->id.c_str(), removed_edges.size());
-}
 
 // ──────────────────────────────────────────────────────────────────────
 // Edge CRUD
 // ──────────────────────────────────────────────────────────────────────
 
-void RouteGraphManager::addEdgeCallback(
-    const std::shared_ptr<nav_interfaces::srv::AddRouteEdge::Request> req,
-    std::shared_ptr<nav_interfaces::srv::AddRouteEdge::Response> res)
-{
-    auto edge = fromMsg(req->edge);
-    if (edge.id.empty()) {
-        res->success = false;
-        res->message = "Edge id must not be empty";
-        return;
-    }
-    if (!endpointExists(edge.from)) {
-        res->success = false;
-        res->message = "Edge 'from' endpoint not found: " + edge.from.type + ":" + edge.from.id;
-        return;
-    }
-    if (!endpointExists(edge.to)) {
-        res->success = false;
-        res->message = "Edge 'to' endpoint not found: " + edge.to.type + ":" + edge.to.id;
-        return;
-    }
-    snapEdgeEndpoints(edge);
-    if (!edge_store_->add(edge)) {
-        res->success = false;
-        res->message = "Edge id '" + edge.id + "' already exists";
-        return;
-    }
-    save_fn_();
-    publishMarkers();
-    res->success = true;
-    res->message = "Added edge '" + edge.id + "'";
-    RCLCPP_INFO(node_->get_logger(), "RouteGraph: added edge '%s'", edge.id.c_str());
-}
 
-void RouteGraphManager::removeEdgeCallback(
-    const std::shared_ptr<nav_interfaces::srv::RemoveRouteEdge::Request> req,
-    std::shared_ptr<nav_interfaces::srv::RemoveRouteEdge::Response> res)
-{
-    if (!edge_store_->remove(req->id)) {
-        res->success = false;
-        res->message = "Edge '" + req->id + "' not found";
-        return;
-    }
-    save_fn_();
-    publishMarkers();
-    res->success = true;
-    res->message = "Removed edge '" + req->id + "'";
-}
-
-void RouteGraphManager::updateEdgeCallback(
-    const std::shared_ptr<nav_interfaces::srv::UpdateRouteEdge::Request> req,
-    std::shared_ptr<nav_interfaces::srv::UpdateRouteEdge::Response> res)
-{
-    auto edge = fromMsg(req->edge);
-    if (!endpointExists(edge.from)) {
-        res->success = false;
-        res->message = "Edge 'from' endpoint not found: " + edge.from.type + ":" + edge.from.id;
-        return;
-    }
-    if (!endpointExists(edge.to)) {
-        res->success = false;
-        res->message = "Edge 'to' endpoint not found: " + edge.to.type + ":" + edge.to.id;
-        return;
-    }
-    snapEdgeEndpoints(edge);
-    if (!edge_store_->update(edge)) {
-        res->success = false;
-        res->message = "Edge '" + edge.id + "' not found";
-        return;
-    }
-    save_fn_();
-    publishMarkers();
-    res->success = true;
-    res->message = "Updated edge '" + edge.id + "'";
-}
 
 void RouteGraphManager::getRouteGraphCallback(
     const std::shared_ptr<nav_interfaces::srv::GetRouteGraph::Request> /*req*/,

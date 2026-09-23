@@ -1,4 +1,6 @@
 #include "map_asset_manager/map_asset_manager_node.hpp"
+#include "map_asset_manager/asset_codec.hpp"
+#include <unordered_set>
 
 #include <algorithm>
 #include <chrono>
@@ -110,7 +112,6 @@ void MapAssetManagerNode::initialize() {
         /*on_areas_changed=*/ [this]() {
             if (area_mgr_) {
                 area_mgr_->publishMarkers();
-                area_mgr_->publishAreas();
             }
             // 持久化 related_* 字段（SpatialIndexer 重算结果写回 JSON）
             saveAllAssets();
@@ -118,7 +119,6 @@ void MapAssetManagerNode::initialize() {
         /*on_rooms_changed=*/ [this]() {
             if (room_mgr_) {
                 room_mgr_->publishMarkers();
-                room_mgr_->publishRooms();
             }
             saveAllAssets();
         });
@@ -139,9 +139,18 @@ void MapAssetManagerNode::initialize() {
         std::bind(&MapAssetManagerNode::transformAssetsCallback, this,
                   std::placeholders::_1, std::placeholders::_2));
 
-    // status 用 transient_local：后启动订阅者自动收到最近一次状态（latched）
-    status_pub_ = create_publisher<std_msgs::msg::String>(
-        "~/status", rclcpp::QoS(1).transient_local());
+    // X-Wiz 批量接口（M4-3 §3.3）：整体读 / 整体提交
+    get_assets_srv_ = create_service<nav_interfaces::srv::GetAssets>(
+        "~/get_assets",
+        std::bind(&MapAssetManagerNode::getAssetsCallback, this,
+                  std::placeholders::_1, std::placeholders::_2));
+    set_assets_srv_ = create_service<nav_interfaces::srv::SetAssets>(
+        "~/set_assets",
+        std::bind(&MapAssetManagerNode::setAssetsCallback, this,
+                  std::placeholders::_1, std::placeholders::_2));
+    // state / assets 均 transient_local：后启动订阅者自动收到最近一次（latched）
+    assets_pub_ = create_publisher<nav_interfaces::msg::AssetSnapshot>(
+        "~/assets", rclcpp::QoS(1).transient_local());
 
     // 注：markers 与 status 均改为事件驱动（数据变化时由 saveAllAssets / loadData 触发），
     // 不再周期重发；配合各 publisher 的 transient_local QoS，rviz 重启也能收到最新。
@@ -153,18 +162,10 @@ void MapAssetManagerNode::initialize() {
         "map_manager/map_state", qos,
         std::bind(&MapAssetManagerNode::onMapState, this, std::placeholders::_1));
 
-    // ── 【旧机器兼容】旧 map_manager 只发 map_folder / map_name 两个 String（同样 latched）──
-    // 新机器上这两个话题无人发布，订阅不会触发；一旦收到 map_state 就永久忽略它们。
-    legacy_map_folder_sub_ = create_subscription<std_msgs::msg::String>(
-        "map_manager/map_folder", qos,
-        [this](const std_msgs::msg::String::SharedPtr msg) { onLegacyMapContext(msg->data, ""); });
-
-    legacy_map_name_sub_ = create_subscription<std_msgs::msg::String>(
-        "map_manager/map_name", qos,
-        [this](const std_msgs::msg::String::SharedPtr msg) { onLegacyMapContext("", msg->data); });
-
     // ── EventBus 订阅 ──────────────────────────────────────────────
     registerEventHandlers();
+    // 启动即发一次 state（loaded=false）：latched 语义下晚订阅者总能拿到状态，不必等首次加载
+    publishStatus();
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -188,45 +189,12 @@ void MapAssetManagerNode::onMapState(const nav_interfaces::msg::MapState::Shared
                 current_map_name_.c_str(), msg->map_name.c_str(), msg->map_folder.c_str());
 
     last_epoch_ = msg->epoch;
-    map_state_seen_ = true;
     map_base_folder_ = msg->map_folder;
     current_map_name_ = msg->map_name;
 
     switchToMap(current_map_name_);
 }
 
-// ──────────────────────────────────────────────────────────────────────
-// onLegacyMapContext — 【旧机器兼容】老 map_manager 的 map_folder / map_name
-//   两个 String topic 各自到达，齐备且内容有变化才切图。
-//   无 epoch → 同名重载检测不到（老行为如此），仅用于旧机器临时运行。
-// ──────────────────────────────────────────────────────────────────────
-
-void MapAssetManagerNode::onLegacyMapContext(const std::string& folder,
-                                             const std::string& name) {
-    if (map_state_seen_) return;  // 新机器：map_state 是唯一真源
-
-    // 先各自暂存：两条 latched 消息各只发一次，先到的那条必须留下，
-    // 否则等第二条来时第一条的值已丢，永远凑不齐上下文（不会触发 loadData）。
-    if (!folder.empty()) legacy_folder_ = folder;
-    if (!name.empty())   legacy_name_   = name;
-
-    RCLCPP_INFO(get_logger(), "Legacy map context: folder='%s' name='%s'",
-                legacy_folder_.c_str(), legacy_name_.c_str());
-
-    if (legacy_folder_.empty() || legacy_name_.empty()) return;  // 上下文未齐备，等另一条
-    if (legacy_folder_ == map_base_folder_ && legacy_name_ == current_map_name_ &&
-        !assets_file_.empty())
-        return;  // 无变化
-
-    RCLCPP_WARN(get_logger(),
-                "Legacy map_manager detected (no map_state): map '%s' -> '%s' (folder '%s'), reloading assets",
-                current_map_name_.c_str(), legacy_name_.c_str(), legacy_folder_.c_str());
-
-    map_base_folder_ = legacy_folder_;
-    current_map_name_ = legacy_name_;
-
-    switchToMap(current_map_name_);
-}
 
 // ──────────────────────────────────────────────────────────────────────
 // resolveAssetsFile — 布局自适应
@@ -311,9 +279,7 @@ void MapAssetManagerNode::loadData() {
 
     point_mgr_->publishMarkers();
     area_mgr_->publishMarkers();
-    area_mgr_->publishAreas();
     room_mgr_->publishMarkers();
-    room_mgr_->publishRooms();
     route_mgr_->publishAllRouteMarkers();
     route_graph_mgr_->publishMarkers();
 
@@ -420,14 +386,284 @@ void MapAssetManagerNode::reloadDataCallback(
 }
 
 void MapAssetManagerNode::publishStatus() {
-    std_msgs::msg::String msg;
-    msg.data =
-        "map=" + current_map_name_ +
-        " points=" + std::to_string(point_store_->getPointsMap().size()) +
-        " routes=" + std::to_string(route_store_->getRoutesMap().size()) +
-        " areas="  + std::to_string(area_store_->getAreasMap().size()) +
-        " rooms="  + std::to_string(room_store_->getRoomsMap().size());
-    status_pub_->publish(msg);
+    // 单一话题：资产快照即状态（loaded / error_code / 六类数组），latched；
+    // 任何一次资产变更（含 RViz 侧单条编辑）经 saveAllAssets → 这里推送
+    auto snap = buildSnapshot();
+    snap.loaded     = !current_map_name_.empty();
+    snap.error_code = last_error_code_;
+    assets_pub_->publish(snap);
+}
+
+nav_interfaces::msg::AssetSnapshot MapAssetManagerNode::buildSnapshot() const {
+    nav_interfaces::msg::AssetSnapshot snap;
+    snap.header.stamp = now();
+    snap.map_name     = current_map_name_;
+    snap.map_epoch    = last_epoch_;
+    for (const auto& kv : point_store_->getPointsMap()) snap.points.push_back(toMsg(kv.second));
+    for (const auto& kv : area_store_->getAreasMap())   snap.areas.push_back(AreaManager::toMsg(kv.second));
+    for (const auto& kv : room_store_->getRoomsMap())   snap.rooms.push_back(RoomManager::toMsg(kv.second));
+    for (const auto& kv : route_store_->getRoutesMap()) snap.routes.push_back(toMsg(kv.second));
+    for (const auto& j  : junction_store_->getList())   snap.junctions.push_back(toMsg(j));
+    for (const auto& e  : edge_store_->getAll())        snap.edges.push_back(toMsg(e));
+    return snap;
+}
+
+void MapAssetManagerNode::refreshAllOutputs() {
+    point_mgr_->publishMarkers();
+    area_mgr_->publishMarkers();
+    room_mgr_->publishMarkers();
+    route_mgr_->publishAllRouteMarkers();
+    route_graph_mgr_->publishMarkers();
+    publishStatus();
+}
+
+void MapAssetManagerNode::getAssetsCallback(
+    const std::shared_ptr<nav_interfaces::srv::GetAssets::Request> req,
+    std::shared_ptr<nav_interfaces::srv::GetAssets::Response> res) {
+    using ST = nav_interfaces::msg::AssetSnapshot;
+    if (current_map_name_.empty()) {
+        res->success = false;
+        res->error_code = ST::E_ASSET_NO_MAP;
+        res->message = "no map loaded yet (waiting for map_manager/map_state)";
+        return;
+    }
+    using GA = nav_interfaces::srv::GetAssets;
+    // kinds 位掩码：0 视为全部；只装配被请求的类型，避免运行时消费方为查一类而拉全量
+    const uint8_t k = (req->kinds == 0) ? GA::Request::KIND_ALL : req->kinds;
+    res->map_name  = current_map_name_;
+    res->map_epoch = last_epoch_;
+    if (k & GA::Request::KIND_POINTS)    for (const auto& kv : point_store_->getPointsMap()) res->points.push_back(toMsg(kv.second));
+    if (k & GA::Request::KIND_AREAS)     for (const auto& kv : area_store_->getAreasMap())   res->areas.push_back(AreaManager::toMsg(kv.second));
+    if (k & GA::Request::KIND_ROOMS)     for (const auto& kv : room_store_->getRoomsMap())   res->rooms.push_back(RoomManager::toMsg(kv.second));
+    if (k & GA::Request::KIND_ROUTES)    for (const auto& kv : route_store_->getRoutesMap()) res->routes.push_back(toMsg(kv.second));
+    if (k & GA::Request::KIND_JUNCTIONS) for (const auto& j  : junction_store_->getList())   res->junctions.push_back(toMsg(j));
+    if (k & GA::Request::KIND_EDGES)     for (const auto& e  : edge_store_->getAll())        res->edges.push_back(toMsg(e));
+    res->success = true;
+    res->error_code = ST::E_NONE;
+    res->message = "ok (kinds=" + std::to_string(k) + ")";
+}
+
+void MapAssetManagerNode::setAssetsCallback(
+    const std::shared_ptr<nav_interfaces::srv::SetAssets::Request> req,
+    std::shared_ptr<nav_interfaces::srv::SetAssets::Response> res) {
+    using SA = nav_interfaces::srv::SetAssets;
+    using ST = nav_interfaces::msg::AssetSnapshot;
+    auto fail = [&](int32_t code, const std::string& msg) {
+        res->success = false; res->error_code = code; res->message = msg;
+        last_error_code_ = code;
+        RCLCPP_ERROR(get_logger(), "set_assets rejected (%d): %s%s", code, msg.c_str(),
+                     res->rejected.empty() ? "" : (" [" + std::to_string(res->rejected.size()) + " items]").c_str());
+        publishStatus();
+    };
+    // ── 前置校验 ──
+    if (req->mode > SA::Request::MODE_REMOVE) {
+        fail(ST::E_ASSET_MODE_INVALID, "invalid mode " + std::to_string(req->mode) + "; expected 0 REPLACE / 1 MERGE / 2 ADD_ONLY / 3 UPDATE_ONLY / 4 REMOVE"); return;
+    }
+    if (current_map_name_.empty()) { fail(ST::E_ASSET_NO_MAP, "no map loaded yet"); return; }
+    // expected_epoch = 0 表示不校验（本地编辑器用）；X-Wiz 必须传 get_assets 返回的 map_epoch
+    if (req->expected_epoch != 0 && req->expected_epoch != last_epoch_) {
+        fail(ST::E_ASSET_EPOCH_MISMATCH, "expected_epoch " + std::to_string(req->expected_epoch) +
+             " != current map epoch " + std::to_string(last_epoch_) + "; map changed during editing, re-fetch get_assets");
+        return;
+    }
+    // ── 组装目标集合 ──
+    // REPLACE：kinds 列出的类型从空开始（请求缺席即删），未列出的类型保持当前不变；kinds=0 视为全部。
+    //          与 GetAssets.kinds 对称——按类型读、编辑、按同类型 REPLACE 提交，不会误清其它类型。
+    // MERGE / ADD_ONLY / UPDATE_ONLY / REMOVE：六类都从当前开始，按 name/id 逐项处理（原六个单条 set_* 接口的语义）。
+    const bool replace     = (req->mode == SA::Request::MODE_REPLACE);
+    const bool add_only    = (req->mode == SA::Request::MODE_ADD_ONLY);
+    const bool update_only = (req->mode == SA::Request::MODE_UPDATE_ONLY);
+    const bool remove      = (req->mode == SA::Request::MODE_REMOVE);
+    const uint8_t k = (req->kinds == 0) ? SA::Request::KIND_ALL : req->kinds;
+    auto keep = [&](uint8_t bit) { return !replace || !(k & bit); };
+    std::unordered_map<std::string, NavPoint> points = keep(SA::Request::KIND_POINTS) ? point_store_->getPointsMap() : std::unordered_map<std::string, NavPoint>{};
+    std::unordered_map<std::string, Route>    routes = keep(SA::Request::KIND_ROUTES) ? route_store_->getRoutesMap() : std::unordered_map<std::string, Route>{};
+    std::unordered_map<std::string, Area>     areas  = keep(SA::Request::KIND_AREAS)  ? area_store_->getAreasMap()   : std::unordered_map<std::string, Area>{};
+    std::unordered_map<std::string, Room>     rooms  = keep(SA::Request::KIND_ROOMS)  ? room_store_->getRoomsMap()   : std::unordered_map<std::string, Room>{};
+    std::unordered_map<std::string, RouteJunction> jcts;
+    std::unordered_map<std::string, RouteEdge>     edges;
+    if (keep(SA::Request::KIND_JUNCTIONS)) for (const auto& j : junction_store_->getList()) jcts[j.id] = j;
+    if (keep(SA::Request::KIND_EDGES))     for (const auto& e : edge_store_->getAll())      edges[e.id] = e;
+    std::vector<std::string>& rej = res->rejected;
+    bool guard_hit = false;
+    // 单条模式守卫：ADD_ONLY 已存在 → 1508；UPDATE_ONLY / REMOVE 不存在 → 1507（按当前集合查主键）
+    auto guard = [&](const std::string& kind, const std::string& key, bool exists) -> bool {
+        if (add_only && exists)                  { rej.push_back(kind + ":" + key + ":exists");    guard_hit = true; return false; }
+        if ((update_only || remove) && !exists)  { rej.push_back(kind + ":" + key + ":not_found"); guard_hit = true; return false; }
+        return true;
+    };
+    if (remove) {
+        std::unordered_set<std::string> rm_pts, rm_jcts;
+        for (const auto& m : req->points)    { if (m.name.empty()) { rej.push_back("point::name is empty"); continue; } if (guard("point", m.name, points.count(m.name) > 0))    { points.erase(m.name); rm_pts.insert(m.name); } }
+        for (const auto& m : req->areas)     { if (m.name.empty()) { rej.push_back("area::name is empty"); continue; }  if (guard("area", m.name, areas.count(m.name) > 0))      areas.erase(m.name); }
+        for (const auto& m : req->rooms)     { if (m.name.empty()) { rej.push_back("room::name is empty"); continue; }  if (guard("room", m.name, rooms.count(m.name) > 0))      rooms.erase(m.name); }
+        for (const auto& m : req->routes)    { if (m.name.empty()) { rej.push_back("route::name is empty"); continue; } if (guard("route", m.name, routes.count(m.name) > 0))    routes.erase(m.name); }
+        for (const auto& m : req->junctions) { if (m.id.empty())   { rej.push_back("junction::id is empty"); continue; } if (guard("junction", m.id, jcts.count(m.id) > 0))    { jcts.erase(m.id); rm_jcts.insert(m.id); } }
+        for (const auto& m : req->edges)     { if (m.id.empty())   { rej.push_back("edge::id is empty"); continue; }   if (guard("edge", m.id, edges.count(m.id) > 0))         edges.erase(m.id); }
+        if (!rej.empty()) { fail(guard_hit ? ST::E_ASSET_NOT_FOUND : ST::E_ASSET_VALIDATION, "remove rejected; nothing applied"); return; }
+        // 级联（与原单条路径一致）：删点 → 路线剔点、清引用它的边、区域/房间关联剔除；删节点 → 清引用它的边
+        auto ep_removed = [&](const RouteEndpoint& ep) { return (ep.type == "nav" && rm_pts.count(ep.id) > 0) || (ep.type == "junction" && rm_jcts.count(ep.id) > 0); };
+        for (auto it = edges.begin(); it != edges.end();) { if (ep_removed(it->second.from) || ep_removed(it->second.to)) it = edges.erase(it); else ++it; }
+        auto strip = [](std::vector<std::string>& v, const std::unordered_set<std::string>& gone) {
+            v.erase(std::remove_if(v.begin(), v.end(), [&](const std::string& n) { return gone.count(n) > 0; }), v.end()); };
+        for (auto& kv : routes) strip(kv.second.point_names, rm_pts);
+        for (auto& kv : areas)  { strip(kv.second.related_nav_point_names, rm_pts); strip(kv.second.manual_linked_point_names, rm_pts); strip(kv.second.related_junction_ids, rm_jcts); }
+        for (auto& kv : rooms)  { strip(kv.second.related_nav_point_names, rm_pts); strip(kv.second.manual_anchor_point_names, rm_pts); strip(kv.second.related_junction_ids, rm_jcts); }
+    } else {
+        // 字段校验（同批内重复也算失败）+ ADD_ONLY / UPDATE_ONLY 守卫
+        {
+            std::unordered_set<std::string> seen;
+            for (const auto& m : req->points) {
+                if (m.name.empty()) { rej.push_back("point::name is empty"); continue; }
+                if (!seen.insert(m.name).second) { rej.push_back("point:" + m.name + ":duplicate in request"); continue; }
+                if (!guard("point", m.name, points.count(m.name) > 0)) continue;
+                points[m.name] = fromMsg(m);
+            }
+        }
+        {
+            std::unordered_set<std::string> seen;
+            for (const auto& m : req->areas) {
+                if (m.name.empty()) { rej.push_back("area::name is empty"); continue; }
+                if (!seen.insert(m.name).second) { rej.push_back("area:" + m.name + ":duplicate in request"); continue; }
+                if (m.type < nav_interfaces::msg::AreaInfo::VIRTUAL_WALL || m.type > nav_interfaces::msg::AreaInfo::BUMPY_AREA) { rej.push_back("area:" + m.name + ":type out of range"); continue; }
+                if (m.polygon.size() < 3) { rej.push_back("area:" + m.name + ":polygon needs >= 3 points"); continue; }
+                if (!guard("area", m.name, areas.count(m.name) > 0)) continue;
+                areas[m.name] = AreaManager::fromMsg(m);
+            }
+        }
+        {
+            std::unordered_set<std::string> seen;
+            for (const auto& m : req->rooms) {
+                if (m.name.empty()) { rej.push_back("room::name is empty"); continue; }
+                if (!seen.insert(m.name).second) { rej.push_back("room:" + m.name + ":duplicate in request"); continue; }
+                if (m.type > nav_interfaces::msg::RoomInfo::STORAGE) { rej.push_back("room:" + m.name + ":type out of range"); continue; }
+                if (m.polygon.size() < 3) { rej.push_back("room:" + m.name + ":polygon needs >= 3 points"); continue; }
+                if (!guard("room", m.name, rooms.count(m.name) > 0)) continue;
+                Room room = RoomManager::fromMsg(m);
+                const std::string src = room.source.empty() ? std::string(DSGSource::MANUAL) : room.source;
+                rooms[m.name] = RoomManager::enrich(std::move(room), src, now());
+            }
+        }
+        {
+            std::unordered_set<std::string> seen;
+            for (const auto& m : req->routes) {
+                if (m.name.empty()) { rej.push_back("route::name is empty"); continue; }
+                if (!seen.insert(m.name).second) { rej.push_back("route:" + m.name + ":duplicate in request"); continue; }
+                if (m.point_names.empty()) { rej.push_back("route:" + m.name + ":point_names is empty"); continue; }
+                if (!guard("route", m.name, routes.count(m.name) > 0)) continue;
+                routes[m.name] = fromMsg(m);
+            }
+        }
+        {
+            std::unordered_set<std::string> seen;
+            for (const auto& m : req->junctions) {
+                if (m.id.empty()) { rej.push_back("junction::id is empty"); continue; }
+                if (!seen.insert(m.id).second) { rej.push_back("junction:" + m.id + ":duplicate in request"); continue; }
+                if (!guard("junction", m.id, jcts.count(m.id) > 0)) continue;
+                jcts[m.id] = fromMsg(m);
+            }
+        }
+        {
+            std::unordered_set<std::string> seen;
+            for (const auto& m : req->edges) {
+                if (m.id.empty()) { rej.push_back("edge::id is empty"); continue; }
+                if (!seen.insert(m.id).second) { rej.push_back("edge:" + m.id + ":duplicate in request"); continue; }
+                if (!guard("edge", m.id, edges.count(m.id) > 0)) continue;
+                edges[m.id] = fromMsg(m);
+            }
+        }
+        if (!rej.empty()) { fail(guard_hit ? (add_only ? ST::E_ASSET_EXISTS : ST::E_ASSET_NOT_FOUND) : ST::E_ASSET_VALIDATION, "validation failed; nothing applied"); return; }
+    }
+    // 引用校验：所有引用必须在「应用后」的集合中可解析
+    auto has_point = [&](const std::string& n) { return points.count(n) > 0; };
+    auto has_jct   = [&](const std::string& i) { return jcts.count(i) > 0; };
+    auto check_ep  = [&](const std::string& ekind, const std::string& eid, const RouteEndpoint& ep, const char* side) {
+        if (ep.type == "nav")           { if (!has_point(ep.id)) rej.push_back(ekind + ":" + eid + ":" + side + " nav point '" + ep.id + "' not found"); }
+        else if (ep.type == "junction") { if (!has_jct(ep.id))   rej.push_back(ekind + ":" + eid + ":" + side + " junction '" + ep.id + "' not found"); }
+        else rej.push_back(ekind + ":" + eid + ":" + side + " endpoint type '" + ep.type + "' must be nav|junction");
+    };
+    for (const auto& kv : edges) { check_ep("edge", kv.first, kv.second.from, "from"); check_ep("edge", kv.first, kv.second.to, "to"); }
+    for (const auto& kv : routes) for (const auto& n : kv.second.point_names) if (!has_point(n)) rej.push_back("route:" + kv.first + ":point '" + n + "' not found");
+    for (const auto& kv : areas) {
+        for (const auto& n : kv.second.related_nav_point_names)  if (!has_point(n)) rej.push_back("area:" + kv.first + ":related nav point '" + n + "' not found");
+        for (const auto& n : kv.second.manual_linked_point_names) if (!has_point(n)) rej.push_back("area:" + kv.first + ":linked nav point '" + n + "' not found");
+        for (const auto& i : kv.second.related_junction_ids)     if (!has_jct(i))   rej.push_back("area:" + kv.first + ":related junction '" + i + "' not found");
+    }
+    for (const auto& kv : rooms) {
+        for (const auto& n : kv.second.related_nav_point_names)   if (!has_point(n)) rej.push_back("room:" + kv.first + ":related nav point '" + n + "' not found");
+        for (const auto& n : kv.second.manual_anchor_point_names) if (!has_point(n)) rej.push_back("room:" + kv.first + ":anchor nav point '" + n + "' not found");
+        for (const auto& i : kv.second.related_junction_ids)      if (!has_jct(i))   rej.push_back("room:" + kv.first + ":related junction '" + i + "' not found");
+    }
+    if (!rej.empty()) { fail(ST::E_ASSET_REF_UNRESOLVED, "unresolved references; nothing applied"); return; }
+    // 贝塞尔边端点吸附到端点坐标（原单条 set_route_edge 的 snapEdgeEndpoints；按应用后的集合取坐标）
+    {
+        auto ep_pos = [&](const RouteEndpoint& ep, std::pair<float, float>& out) -> bool {
+            if (ep.type == "nav")      { auto it = points.find(ep.id); if (it == points.end()) return false; out = {static_cast<float>(it->second.x), static_cast<float>(it->second.y)}; return true; }
+            if (ep.type == "junction") { auto it = jcts.find(ep.id);   if (it == jcts.end())   return false; out = {it->second.x, it->second.y}; return true; }
+            return false;
+        };
+        for (const auto& m : req->edges) {
+            if (remove) break;
+            auto it = edges.find(m.id); if (it == edges.end() || it->second.edge_type != "BEZIER") continue;
+            std::pair<float, float> a, b; if (!ep_pos(it->second.from, a) || !ep_pos(it->second.to, b)) continue;
+            auto& cp = it->second.control_points;
+            if (cp.empty()) cp = {a, b};
+            else if (cp.size() == 1) { const auto mid = cp.front(); cp = {a, mid, b}; }
+            else { cp.front() = a; cp.back() = b; }
+        }
+    }
+    // ── 应用（六个 store 整体替换）──
+    point_store_->setPoints(points);
+    route_store_->setRoutes(routes);
+    area_store_->setAreas(areas);
+    room_store_->setRooms(rooms);
+    { std::vector<RouteJunction> v; v.reserve(jcts.size());  for (auto& kv : jcts)  v.push_back(kv.second); junction_store_->set(v); }
+    { std::vector<RouteEdge> v;     v.reserve(edges.size()); for (auto& kv : edges) v.push_back(kv.second); edge_store_->set(v); }
+    // 批量路径不经事件总线，空间归属索引（Area/Room 的 related_*）要显式重算，
+    // 否则与单条 set_* 路径行为不一致（X-Wiz 批量写后 related_* 停留在提交值）。
+    // rebuildAll 会经 on_*_changed 钩子发布 areas/rooms 并按 auto_save 参数落盘。
+    if (spatial_indexer_) spatial_indexer_->rebuildAll();
+    res->points_count    = static_cast<uint32_t>(points.size());
+    res->areas_count     = static_cast<uint32_t>(areas.size());
+    res->rooms_count     = static_cast<uint32_t>(rooms.size());
+    res->routes_count    = static_cast<uint32_t>(routes.size());
+    res->junctions_count = static_cast<uint32_t>(jcts.size());
+    res->edges_count     = static_cast<uint32_t>(edges.size());
+    last_error_code_ = ST::E_NONE;
+    // ── 可选落盘（等价于 save_assets：原子写 + 产一份版本）──
+    std::string saved;
+    if (req->save) {
+        if (assets_file_.empty()) {
+            last_error_code_ = ST::E_ASSET_SAVE_FAILED;
+            refreshAllOutputs();
+            res->success = false; res->error_code = last_error_code_;
+            res->message = "applied in memory but assets_file_ is not set; cannot save";
+            return;
+        }
+        try {
+            // 从 store 取（含索引重算后的 related_*），不能用应用前的局部副本
+            file_manager_->saveAllAssetsToFile(assets_file_, point_store_->getPointsMap(), route_store_->getRoutesMap(),
+                                               area_store_->getAreasMap(), junction_store_->getList(),
+                                               edge_store_->getAll(), room_store_->getRoomsMap());
+            const std::string ts = MakeAssetRingBackup(assets_file_, get_logger());
+            saved = " saved" + (ts.empty() ? std::string("") : " (version " + ts + ")");
+        } catch (const std::exception& ex) {
+            last_error_code_ = ST::E_ASSET_SAVE_FAILED;
+            refreshAllOutputs();
+            res->success = false; res->error_code = last_error_code_;
+            res->message = std::string("applied in memory but save failed: ") + ex.what();
+            return;
+        }
+    }
+    refreshAllOutputs();
+    res->success = true;
+    res->error_code = ST::E_NONE;
+    static const char* kModeName[] = {"replaced", "merged", "added", "updated", "removed"};
+    res->message = std::string(kModeName[req->mode]) + (replace ? "(kinds=" + std::to_string(k) + ")" : "") + ": " +
+                   std::to_string(points.size()) + " points, " + std::to_string(areas.size()) + " areas, " +
+                   std::to_string(rooms.size()) + " rooms, " + std::to_string(routes.size()) + " routes, " +
+                   std::to_string(jcts.size()) + " junctions, " + std::to_string(edges.size()) + " edges" + saved;
+    RCLCPP_INFO(get_logger(), "set_assets %s", res->message.c_str());
 }
 
 void MapAssetManagerNode::saveAssetsCallback(
@@ -574,7 +810,6 @@ void MapAssetManagerNode::transformAssetsCallback(
             // 6. 重新发布 markers
             point_mgr_->publishMarkers();
             area_mgr_->publishMarkers();
-            area_mgr_->publishAreas();
             route_graph_mgr_->publishMarkers();
 
             RCLCPP_INFO(get_logger(),

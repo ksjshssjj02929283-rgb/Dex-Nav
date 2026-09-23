@@ -135,10 +135,10 @@ void NavPointTab::rebuildClients() {
     applyNavigationActive(false);
 
     get_all_client_ = node_->create_client<nav_interfaces::srv::GetAllNavPoints>(prefix_ + "/get_all_nav_points");
-    add_client_     = node_->create_client<nav_interfaces::srv::AddNavPoint>(prefix_ + "/add_point");
-    remove_client_  = node_->create_client<nav_interfaces::srv::RemoveNavPoint>(prefix_ + "/remove_point");
+    add_client_     = node_->create_client<nav_interfaces::srv::SetAssets>(prefix_ + "/set_assets");
+    remove_client_  = node_->create_client<nav_interfaces::srv::SetAssets>(prefix_ + "/set_assets");
     sample_client_  = node_->create_client<nav_interfaces::srv::SampleNavPoint>(prefix_ + "/sample_point");
-    update_client_  = node_->create_client<nav_interfaces::srv::UpdateNavPoint>(prefix_ + "/update_nav_point");
+    update_client_  = node_->create_client<nav_interfaces::srv::SetAssets>(prefix_ + "/set_assets");
     nav_client_     = rclcpp_action::create_client<NavigateToPointAction>(
         node_, prefix_ + "/navigate_to_point");
 }
@@ -212,19 +212,20 @@ void NavPointTab::onAdd() {
     const std::string name = name_edit_->text().trimmed().toStdString();
     if (name.empty()) { status_label_->setText("错误：请填写点位名称"); return; }
 
-    auto req = std::make_shared<nav_interfaces::srv::AddNavPoint::Request>();
-    req->point.name  = name;
-    req->point.type  = type_combo_->currentText().toStdString();
-    req->point.x     = static_cast<float>(x_spin_->value());
-    req->point.y     = static_cast<float>(y_spin_->value());
-    req->point.theta = static_cast<float>(theta_spin_->value());
+    auto req = std::make_shared<nav_interfaces::srv::SetAssets::Request>(); req->points.resize(1);
+    req->mode = nav_interfaces::srv::SetAssets::Request::MODE_MERGE;
+    req->points[0].name  = name;
+    req->points[0].type  = type_combo_->currentText().toStdString();
+    req->points[0].x     = static_cast<float>(x_spin_->value());
+    req->points[0].y     = static_cast<float>(y_spin_->value());
+    req->points[0].theta = static_cast<float>(theta_spin_->value());
 
     add_btn_->setEnabled(false);
     status_label_->setText("添加中...");
 
     add_client_->async_send_request(
         req,
-        [this](rclcpp::Client<nav_interfaces::srv::AddNavPoint>::SharedFuture fut) {
+        [this](rclcpp::Client<nav_interfaces::srv::SetAssets>::SharedFuture fut) {
             try {
                 auto resp = fut.get();
                 Q_EMIT operationFinished(resp->success,
@@ -256,15 +257,16 @@ void NavPointTab::onRemove() {
         return;
     }
 
-    auto req = std::make_shared<nav_interfaces::srv::RemoveNavPoint::Request>();
-    req->name = name.toStdString();
+    auto req = std::make_shared<nav_interfaces::srv::SetAssets::Request>(); req->points.resize(1);
+    req->mode = nav_interfaces::srv::SetAssets::Request::MODE_REMOVE;
+    req->points[0].name = name.toStdString();
 
     remove_btn_->setEnabled(false);
     status_label_->setText("删除中...");
 
     remove_client_->async_send_request(
         req,
-        [this](rclcpp::Client<nav_interfaces::srv::RemoveNavPoint>::SharedFuture fut) {
+        [this](rclcpp::Client<nav_interfaces::srv::SetAssets>::SharedFuture fut) {
             try {
                 auto resp = fut.get();
                 Q_EMIT operationFinished(resp->success,
@@ -344,20 +346,21 @@ void NavPointTab::onEdit() {
 
     if (dlg.exec() != QDialog::Accepted) return;
 
-    auto req = std::make_shared<nav_interfaces::srv::UpdateNavPoint::Request>();
-    req->point.name      = original_name.toStdString();
-    req->point.type      = type_combo->currentText().toStdString();
-    req->point.x         = static_cast<float>(x_spin->value());
-    req->point.y         = static_cast<float>(y_spin->value());
-    req->point.theta     = static_cast<float>(theta_spin->value());
-    req->point.tolerance = static_cast<float>(tol_spin->value());
+    auto req = std::make_shared<nav_interfaces::srv::SetAssets::Request>(); req->points.resize(1);
+    req->mode = nav_interfaces::srv::SetAssets::Request::MODE_UPDATE_ONLY;
+    req->points[0].name      = original_name.toStdString();
+    req->points[0].type      = type_combo->currentText().toStdString();
+    req->points[0].x         = static_cast<float>(x_spin->value());
+    req->points[0].y         = static_cast<float>(y_spin->value());
+    req->points[0].theta     = static_cast<float>(theta_spin->value());
+    req->points[0].tolerance = static_cast<float>(tol_spin->value());
 
     edit_btn_->setEnabled(false);
     status_label_->setText(QString("更新点位 %1 中...").arg(original_name));
 
     update_client_->async_send_request(
         req,
-        [this, name = original_name](rclcpp::Client<nav_interfaces::srv::UpdateNavPoint>::SharedFuture fut) {
+        [this, name = original_name](rclcpp::Client<nav_interfaces::srv::SetAssets>::SharedFuture fut) {
             try {
                 auto resp = fut.get();
                 Q_EMIT operationFinished(resp->success,

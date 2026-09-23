@@ -40,7 +40,7 @@ CommandBoardManagerROS::CommandBoardManagerROS() : rclcpp::Node("command_board_m
     react_to_estop_  = this->declare_parameter("react_to_estop", react_to_estop_);
     react_to_bumper_ = this->declare_parameter("react_to_bumper", react_to_bumper_);
 
-    // 单一状态源：/diagnostics_agg、/localization_node/state 由 StatusMonitor 唯一订阅聚合，
+    // 单一状态源：/diagnostics_agg、/localization/state 由 StatusMonitor 唯一订阅聚合，
     // 本节点不再重复订阅，改在 OnRecoverTimer 轮询 GetSnapshot 读取。
     callback_group_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
 
@@ -52,9 +52,9 @@ CommandBoardManagerROS::CommandBoardManagerROS() : rclcpp::Node("command_board_m
     tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
     // ── 服务客户端 ────────────────────────────────────────────────
-    stop_localization_cli_ = this->create_client<std_srvs::srv::Trigger>("/localization_node/stop_localization");
-    start_localization_cli_ = this->create_client<std_srvs::srv::Trigger>("/localization_node/start_localization");
-    load_map_cli_ = this->create_client<nav_interfaces::srv::LoadMap>("map_manager/load_map");
+    stop_localization_cli_ = this->create_client<std_srvs::srv::Trigger>("/localization/stop_localization");
+    start_localization_cli_ = this->create_client<std_srvs::srv::Trigger>("/localization/start_localization");
+    map_command_cli_ = this->create_client<nav_interfaces::srv::MapManagerCommand>("map_manager/map_command");
     transform_assets_cli_ =
         this->create_client<nav_interfaces::srv::TransformAssets>("/map_asset_manager/transform_assets");
 
@@ -88,15 +88,19 @@ CommandBoardManagerROS::CommandBoardManagerROS() : rclcpp::Node("command_board_m
     enable_loss_recovery_ = this->declare_parameter("enable_loss_recovery", enable_loss_recovery_);
     recover_settle_sec_   = this->declare_parameter("recover_settle_sec", recover_settle_sec_);
     reloc_wait_sec_       = this->declare_parameter("reloc_wait_sec", reloc_wait_sec_);
-    score_good_           = this->declare_parameter("reloc_score_good", score_good_);
-    score_bad_            = this->declare_parameter("reloc_score_bad", score_bad_);
+    // 默认值取自契约 LocalizationState 常量（唯一真值源），现场仍可用参数 override。
+    // 不在此处另写字面量，避免与契约形成双真值源。
+    score_good_           = this->declare_parameter(
+        "reloc_score_good",
+        static_cast<double>(nav_interfaces::msg::LocalizationState::SCORE_THRESHOLD_GOOD));
+    score_bad_            = this->declare_parameter(
+        "reloc_score_bad",
+        static_cast<double>(nav_interfaces::msg::LocalizationState::SCORE_THRESHOLD_BAD));
     pose_cache_min_score_ = this->declare_parameter("pose_cache_min_score", pose_cache_min_score_);
     velocity_still_threshold_ =
         this->declare_parameter("still_velocity_threshold", velocity_still_threshold_);
-    relocalization_cli_ = this->create_client<nav_interfaces::srv::SetPose>(
-        "/localization_node/relocalization");
-    global_reloc_cli_   = this->create_client<std_srvs::srv::Trigger>(
-        "/localization_node/trigger_global_relocalization");
+    relocalization_cli_ = this->create_client<nav_interfaces::srv::Relocalize>(
+        "/localization/relocalization");
     alarm_pub_ = this->create_publisher<std_msgs::msg::String>(
         "~/safety_alarm", rclcpp::QoS(1).transient_local());
     // OnRecoverTimer 始终运行（驱动定位状态机 + 急停响应 + 丢位恢复）；enable_loss_recovery_
@@ -292,19 +296,20 @@ bool CommandBoardManagerROS::DoResetCurrentMapOrigin(double x, double y, double 
 
     // ── 步骤 ⑤：重载地图（触发 map_manager 发布新 png/yaml + 通知各节点）
     RCLCPP_INFO(get_logger(), "[Reset] Step 5: reload map '%s'", current_map_name_.c_str());
-    if (load_map_cli_->service_is_ready()) {
-        auto req = std::make_shared<nav_interfaces::srv::LoadMap::Request>();
+    if (map_command_cli_->service_is_ready()) {
+        auto req = std::make_shared<nav_interfaces::srv::MapManagerCommand::Request>();
+        req->op = nav_interfaces::srv::MapManagerCommand::Request::OP_LOAD;
         req->map_name = current_map_name_;
-        auto fut = load_map_cli_->async_send_request(req);
+        auto fut = map_command_cli_->async_send_request(req);
         if (fut.wait_for(std::chrono::duration<double>(service_call_timeout_sec_)) != std::future_status::ready) {
-            RCLCPP_WARN(get_logger(), "[Reset] Timeout waiting for load_map, continuing");
+            RCLCPP_WARN(get_logger(), "[Reset] Timeout waiting for map_command(LOAD), continuing");
         } else if (!fut.get()->success) {
-            RCLCPP_WARN(get_logger(), "[Reset] load_map returned false");
+            RCLCPP_WARN(get_logger(), "[Reset] map_command(LOAD) returned false");
         } else {
-            RCLCPP_INFO(get_logger(), "[Reset] load_map OK");
+            RCLCPP_INFO(get_logger(), "[Reset] map_command(LOAD) OK");
         }
     } else {
-        RCLCPP_WARN(get_logger(), "[Reset] load_map service not ready, skipping");
+        RCLCPP_WARN(get_logger(), "[Reset] map_command service not ready, skipping");
     }
 
     // ── 步骤 ⑥：重启定位（自动触发 relocalization）────────────────
@@ -410,7 +415,7 @@ bool CommandBoardManagerROS::RunResetMapOriginTool(
 // ──────────────────────────────────────────────────────────────────────
 
 // 单一状态源：所有上游由 StatusMonitor 订阅聚合，本节点 200ms 轮询 GetSnapshot
-// 驱动定位状态机 + 急停响应 + 丢位恢复（不再重复订阅 /diagnostics_agg、/localization_node/state）。
+// 驱动定位状态机 + 急停响应 + 丢位恢复（不再重复订阅 /diagnostics_agg、/localization/state）。
 void CommandBoardManagerROS::OnRecoverTimer() {
     if (!status_monitor_) return;
     const auto snap = status_monitor_->GetSnapshot();
@@ -553,7 +558,8 @@ void CommandBoardManagerROS::Relocalize(const geometry_msgs::msg::Pose2D& pose) 
         RCLCPP_WARN(this->get_logger(), "relocalization service not ready.");
         return;
     }
-    auto req = std::make_shared<nav_interfaces::srv::SetPose::Request>();
+    auto req = std::make_shared<nav_interfaces::srv::Relocalize::Request>();
+    req->mode = nav_interfaces::srv::Relocalize::Request::MODE_LOCAL;
     req->pose.header.frame_id = "map";
     req->pose.header.stamp = this->now();
     req->pose.pose.pose.position.x = pose.x;
@@ -571,12 +577,13 @@ void CommandBoardManagerROS::Relocalize(const geometry_msgs::msg::Pose2D& pose) 
 }
 
 void CommandBoardManagerROS::GlobalRelocalize() {
-    if (global_reloc_cli_->service_is_ready()) {
-        global_reloc_cli_->async_send_request(
-            std::make_shared<std_srvs::srv::Trigger::Request>());
+    if (relocalization_cli_->service_is_ready()) {
+        auto req = std::make_shared<nav_interfaces::srv::Relocalize::Request>();
+        req->mode = nav_interfaces::srv::Relocalize::Request::MODE_GLOBAL;
+        relocalization_cli_->async_send_request(req);
         RCLCPP_INFO(this->get_logger(), "Triggered global relocalization.");
     } else {
-        RCLCPP_WARN(this->get_logger(), "global relocalization service not ready.");
+        RCLCPP_WARN(this->get_logger(), "relocalization service not ready.");
     }
 }
 

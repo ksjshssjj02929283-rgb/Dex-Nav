@@ -62,7 +62,7 @@ AddAreaTool::~AddAreaTool() {
 
 void AddAreaTool::onInitialize() {
     node_   = context_->getRosNodeAbstraction().lock()->get_raw_node();
-    client_ = node_->create_client<nav_interfaces::srv::AddAreaInfo>(service_name_);
+    client_ = node_->create_client<nav_interfaces::srv::SetAssets>(service_name_);
 
     auto* scene = context_->getSceneManager();
     preview_line_ = scene->createManualObject("map_asset_area_preview");
@@ -306,23 +306,24 @@ void AddAreaTool::finishPolygon() {
         return;
     }
 
-    auto req = std::make_shared<nav_interfaces::srv::AddAreaInfo::Request>();
-    req->area_info.name              = area_name_;
-    req->area_info.type              = area_type_;
-    req->area_info.max_speed         = area_max_speed_;
-    req->area_info.stop_distance     = area_stop_distance_;
+    auto req = std::make_shared<nav_interfaces::srv::SetAssets::Request>(); req->areas.resize(1);
+    req->mode = nav_interfaces::srv::SetAssets::Request::MODE_MERGE;
+    req->areas[0].name              = area_name_;
+    req->areas[0].type              = area_type_;
+    req->areas[0].max_speed         = area_max_speed_;
+    req->areas[0].stop_distance     = area_stop_distance_;
     if (!area_linked_point_.empty()) {
-        req->area_info.manual_linked_point_names.push_back(area_linked_point_);
+        req->areas[0].manual_linked_point_names.push_back(area_linked_point_);
     }
-    req->area_info.charger_type      = area_charger_type_;
-    req->area_info.depth_min_height  = area_depth_min_height_;
-    req->area_info.polygon           = verts;
+    req->areas[0].charger_type      = area_charger_type_;
+    req->areas[0].depth_min_height  = area_depth_min_height_;
+    req->areas[0].polygon           = verts;
 
     setStatus(QString("正在添加区域 【%1】...").arg(QString::fromStdString(area_name_)));
 
     client_->async_send_request(
         req,
-        [this](rclcpp::Client<nav_interfaces::srv::AddAreaInfo>::SharedFuture fut) {
+        [this](rclcpp::Client<nav_interfaces::srv::SetAssets>::SharedFuture fut) {
             try {
                 auto resp = fut.get();
                 setStatus(resp->success

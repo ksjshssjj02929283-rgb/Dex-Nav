@@ -26,25 +26,11 @@ NavPointManager::NavPointManager(rclcpp::Node* node,
         "~/nav_points_marker", rclcpp::QoS(10).transient_local());
 
     // ── services ─────────────────────────────────────────────────
-    add_point_srv_ = node_->create_service<nav_interfaces::srv::AddNavPoint>(
-        "~/add_point",
-        std::bind(&NavPointManager::addPointCallback, this,
-                  std::placeholders::_1, std::placeholders::_2));
-
     sample_point_srv_ = node_->create_service<nav_interfaces::srv::SampleNavPoint>(
         "~/sample_point",
         std::bind(&NavPointManager::samplePointCallback, this,
                   std::placeholders::_1, std::placeholders::_2));
 
-    remove_point_srv_ = node_->create_service<nav_interfaces::srv::RemoveNavPoint>(
-        "~/remove_point",
-        std::bind(&NavPointManager::removePointCallback, this,
-                  std::placeholders::_1, std::placeholders::_2));
-
-    update_point_srv_ = node_->create_service<nav_interfaces::srv::UpdateNavPoint>(
-        "~/update_point",
-        std::bind(&NavPointManager::updatePointCallback, this,
-                  std::placeholders::_1, std::placeholders::_2));
 
     get_point_srv_ = node_->create_service<nav_interfaces::srv::GetNavPoint>(
         "~/get_point",
@@ -82,29 +68,6 @@ void NavPointManager::initializeActionServers(rclcpp::Node::SharedPtr node,
 // Service 回调
 // ──────────────────────────────────────────────────────────────────────
 
-void NavPointManager::addPointCallback(
-    const std::shared_ptr<nav_interfaces::srv::AddNavPoint::Request> req,
-    std::shared_ptr<nav_interfaces::srv::AddNavPoint::Response> res) {
-    NavPoint pt;
-    pt.name      = req->point.name;
-    pt.type      = req->point.type;
-    pt.x         = req->point.x;
-    pt.y         = req->point.y;
-    pt.yaw       = req->point.theta;
-    pt.tolerance = req->point.tolerance;
-
-    int result = point_store_->addPoint(pt);
-    if (result > 0) {
-        res->success = true;
-        res->message = (result == 1 ? "Point added: " : "Point overwritten: ") + pt.name;
-        saveToFile();
-        publishMarkers();
-        event_bus_->publish({AssetEventType::POINT_ADDED, pt.name, ""});
-    } else {
-        res->success = false;
-        res->message = "Failed to add point: " + pt.name;
-    }
-}
 
 std::string NavPointManager::pointTypeToString(uint32_t type) {
     using Req = nav_interfaces::srv::SampleNavPoint::Request;
@@ -199,46 +162,6 @@ void NavPointManager::samplePointCallback(
     }
 }
 
-void NavPointManager::removePointCallback(
-    const std::shared_ptr<nav_interfaces::srv::RemoveNavPoint::Request> req,
-    std::shared_ptr<nav_interfaces::srv::RemoveNavPoint::Response> res) {
-    if (point_store_->removePoint(req->name)) {
-        res->success = true;
-        res->message = "Point removed: " + req->name;
-        saveToFile();
-        publishMarkers();
-        // 通知 RouteManager 联动更新
-        event_bus_->publish({AssetEventType::POINT_REMOVED, req->name, ""});
-    } else {
-        res->success = false;
-        res->message = "Point not found: " + req->name;
-    }
-}
-
-void NavPointManager::updatePointCallback(
-    const std::shared_ptr<nav_interfaces::srv::UpdateNavPoint::Request> req,
-    std::shared_ptr<nav_interfaces::srv::UpdateNavPoint::Response> res) {
-    NavPoint pt;
-    pt.name      = req->point.name;
-    pt.type      = req->point.type;
-    pt.x         = req->point.x;
-    pt.y         = req->point.y;
-    pt.yaw       = req->point.theta;
-    pt.tolerance = req->point.tolerance;
-
-    // 判断是否为重命名（通过 request 中 old_name 字段，若接口没有则留空）
-    // 目前 nav_interfaces::srv::UpdateNavPoint 按现有接口处理（无 old_name 字段）
-    if (point_store_->updatePoint(pt)) {
-        res->success = true;
-        res->message = "Point updated: " + pt.name;
-        saveToFile();
-        publishMarkers();
-        event_bus_->publish({AssetEventType::POINT_UPDATED, pt.name, ""});
-    } else {
-        res->success = false;
-        res->message = "Point not found: " + pt.name;
-    }
-}
 
 void NavPointManager::getPointCallback(
     const std::shared_ptr<nav_interfaces::srv::GetNavPoint::Request> req,

@@ -146,10 +146,10 @@ void RouteTab::setAvailablePoints(const QStringList& names) {
 }
 
 void RouteTab::rebuildClients() {
-    add_client_              = node_->create_client<nav_interfaces::srv::AddRoute>(prefix_ + "/add_route");
-    remove_client_           = node_->create_client<nav_interfaces::srv::RemoveRoute>(prefix_ + "/remove_route");
+    add_client_              = node_->create_client<nav_interfaces::srv::SetAssets>(prefix_ + "/set_assets");
+    remove_client_           = node_->create_client<nav_interfaces::srv::SetAssets>(prefix_ + "/set_assets");
     get_client_              = node_->create_client<nav_interfaces::srv::GetRoute>(prefix_ + "/get_route");
-    get_all_routes_client_   = node_->create_client<nav_interfaces::srv::GetAllRoutes>(prefix_ + "/get_all_routes");
+    get_all_routes_client_   = node_->create_client<nav_interfaces::srv::GetAssets>(prefix_ + "/get_assets");
     get_points_client_       = node_->create_client<nav_interfaces::srv::GetAllNavPoints>(prefix_ + "/get_all_nav_points");
 }
 
@@ -160,10 +160,11 @@ void RouteTab::onRefreshRoutes() {
     refresh_routes_btn_->setEnabled(false);
     status_label_->setText("刷新路线...");
 
-    auto req = std::make_shared<nav_interfaces::srv::GetAllRoutes::Request>();
+    auto req = std::make_shared<nav_interfaces::srv::GetAssets::Request>();
+    req->kinds = nav_interfaces::srv::GetAssets::Request::KIND_ROUTES;
     get_all_routes_client_->async_send_request(
         req,
-        [this](rclcpp::Client<nav_interfaces::srv::GetAllRoutes>::SharedFuture fut) {
+        [this](rclcpp::Client<nav_interfaces::srv::GetAssets>::SharedFuture fut) {
             try {
                 auto resp = fut.get();
                 QStringList items;
@@ -210,10 +211,11 @@ void RouteTab::onCreate() {
     if (name.empty()) { status_label_->setText("错误：请填写路线名称"); return; }
     if (selected_list_->count() == 0) { status_label_->setText("错误：请至少选择一个点位"); return; }
 
-    auto req = std::make_shared<nav_interfaces::srv::AddRoute::Request>();
-    req->name = name;
+    auto req = std::make_shared<nav_interfaces::srv::SetAssets::Request>(); req->routes.resize(1);
+    req->mode = nav_interfaces::srv::SetAssets::Request::MODE_ADD_ONLY;
+    req->routes[0].name = name;
     for (int i = 0; i < selected_list_->count(); ++i) {
-        req->point_names.push_back(selected_list_->item(i)->text().toStdString());
+        req->routes[0].point_names.push_back(selected_list_->item(i)->text().toStdString());
     }
 
     create_btn_->setEnabled(false);
@@ -221,7 +223,7 @@ void RouteTab::onCreate() {
 
     add_client_->async_send_request(
         req,
-        [this](rclcpp::Client<nav_interfaces::srv::AddRoute>::SharedFuture fut) {
+        [this](rclcpp::Client<nav_interfaces::srv::SetAssets>::SharedFuture fut) {
             try {
                 auto resp = fut.get();
                 Q_EMIT operationFinished(resp->success,
@@ -249,15 +251,16 @@ void RouteTab::onRemove() {
         return;
     }
 
-    auto req = std::make_shared<nav_interfaces::srv::RemoveRoute::Request>();
-    req->name = name.toStdString();
+    auto req = std::make_shared<nav_interfaces::srv::SetAssets::Request>(); req->routes.resize(1);
+    req->mode = nav_interfaces::srv::SetAssets::Request::MODE_REMOVE;
+    req->routes[0].name = name.toStdString();
 
     remove_route_btn_->setEnabled(false);
     status_label_->setText("删除路线中...");
 
     remove_client_->async_send_request(
         req,
-        [this](rclcpp::Client<nav_interfaces::srv::RemoveRoute>::SharedFuture fut) {
+        [this](rclcpp::Client<nav_interfaces::srv::SetAssets>::SharedFuture fut) {
             try {
                 auto resp = fut.get();
                 Q_EMIT operationFinished(resp->success,

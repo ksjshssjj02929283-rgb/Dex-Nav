@@ -14,7 +14,7 @@
       save_window_end_minute: 0           # 0-59
       check_poll_interval_sec: 60.0       # 窗内轮询周期
       # DEC-017：幂等真值源 = 底图 backup 目录（<map>/slam/backups/backup.<今天>），不再用独立状态文件
-      save_service: "/localization_node/save_map"
+      save_service: "/localization/save_map"
       save_service_timeout_sec: 30.0
       pose_change_threshold_m: 0.10       # skip if no displacement above this
       yaw_change_threshold_rad: 0.05

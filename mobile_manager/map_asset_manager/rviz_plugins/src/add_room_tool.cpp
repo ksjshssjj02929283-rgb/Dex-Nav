@@ -63,7 +63,7 @@ AddRoomTool::~AddRoomTool() {
 
 void AddRoomTool::onInitialize() {
     node_   = context_->getRosNodeAbstraction().lock()->get_raw_node();
-    client_ = node_->create_client<nav_interfaces::srv::AddRoom>(service_name_);
+    client_ = node_->create_client<nav_interfaces::srv::SetAssets>(service_name_);
 
     auto* scene = context_->getSceneManager();
     preview_line_ = scene->createManualObject("map_asset_room_preview");
@@ -300,23 +300,24 @@ void AddRoomTool::finishPolygon() {
         return;
     }
 
-    auto req = std::make_shared<nav_interfaces::srv::AddRoom::Request>();
-    req->room.name           = room_name_;
-    req->room.type           = room_type_;
-    req->room.semantic_label = room_semantic_label_;
-    req->room.display_label  = room_display_label_;
-    req->room.polygon        = verts;
+    auto req = std::make_shared<nav_interfaces::srv::SetAssets::Request>(); req->rooms.resize(1);
+    req->mode = nav_interfaces::srv::SetAssets::Request::MODE_MERGE;
+    req->rooms[0].name           = room_name_;
+    req->rooms[0].type           = room_type_;
+    req->rooms[0].semantic_label = room_semantic_label_;
+    req->rooms[0].display_label  = room_display_label_;
+    req->rooms[0].polygon        = verts;
     // source 留空 → 后端默认 manual
-    req->room.manual_anchor_point_names.assign(room_anchor_point_names_.begin(),
+    req->rooms[0].manual_anchor_point_names.assign(room_anchor_point_names_.begin(),
                                         room_anchor_point_names_.end());
 
     // 区域属性（RoomBehavior，方案 D 内嵌约束子集）
-    req->room.behavior.max_speed_m_s      = behavior_max_speed_m_s_;
-    req->room.behavior.restricted         = behavior_restricted_;
-    req->room.behavior.detour_enabled     = behavior_detour_enabled_;
-    req->room.behavior.stop_distance_m    = behavior_stop_distance_m_;
-    req->room.behavior.depth_min_height_m = behavior_depth_min_height_m_;
-    req->room.behavior.additional_area_names.assign(
+    req->rooms[0].behavior.max_speed_m_s      = behavior_max_speed_m_s_;
+    req->rooms[0].behavior.restricted         = behavior_restricted_;
+    req->rooms[0].behavior.detour_enabled     = behavior_detour_enabled_;
+    req->rooms[0].behavior.stop_distance_m    = behavior_stop_distance_m_;
+    req->rooms[0].behavior.depth_min_height_m = behavior_depth_min_height_m_;
+    req->rooms[0].behavior.additional_area_names.assign(
         behavior_additional_area_names_.begin(),
         behavior_additional_area_names_.end());
 
@@ -324,7 +325,7 @@ void AddRoomTool::finishPolygon() {
 
     client_->async_send_request(
         req,
-        [this](rclcpp::Client<nav_interfaces::srv::AddRoom>::SharedFuture fut) {
+        [this](rclcpp::Client<nav_interfaces::srv::SetAssets>::SharedFuture fut) {
             try {
                 auto resp = fut.get();
                 setStatus(resp->success

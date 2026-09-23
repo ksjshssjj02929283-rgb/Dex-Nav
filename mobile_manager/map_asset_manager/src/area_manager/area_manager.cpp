@@ -21,169 +21,20 @@ AreaManager::AreaManager(rclcpp::Node* node,
     // Publishers
     marker_pub_ = node_->create_publisher<visualization_msgs::msg::MarkerArray>(
         "~/area_markers", rclcpp::QoS(10).transient_local());
-    areas_pub_ = node_->create_publisher<nav_interfaces::msg::AreaInfoArray>(
-        "~/areas", rclcpp::QoS(10).transient_local());
 
     // Services
-    add_area_srv_ = node_->create_service<nav_interfaces::srv::AddAreaInfo>(
-        "~/add_area",
-        [this](const std::shared_ptr<nav_interfaces::srv::AddAreaInfo::Request> req,
-               std::shared_ptr<nav_interfaces::srv::AddAreaInfo::Response> res) {
-            addAreaCallback(req, res);
-        });
-
-    remove_area_srv_ = node_->create_service<nav_interfaces::srv::RemoveAreaInfo>(
-        "~/remove_area",
-        [this](const std::shared_ptr<nav_interfaces::srv::RemoveAreaInfo::Request> req,
-               std::shared_ptr<nav_interfaces::srv::RemoveAreaInfo::Response> res) {
-            removeAreaCallback(req, res);
-        });
-
-    update_area_srv_ = node_->create_service<nav_interfaces::srv::UpdateAreaInfo>(
-        "~/update_area",
-        [this](const std::shared_ptr<nav_interfaces::srv::UpdateAreaInfo::Request> req,
-               std::shared_ptr<nav_interfaces::srv::UpdateAreaInfo::Response> res) {
-            updateAreaCallback(req, res);
-        });
-
-    get_all_areas_srv_ = node_->create_service<nav_interfaces::srv::GetAllAreas>(
-        "~/get_all_areas",
-        [this](const std::shared_ptr<nav_interfaces::srv::GetAllAreas::Request> req,
-               std::shared_ptr<nav_interfaces::srv::GetAllAreas::Response> res) {
-            getAllAreasCallback(req, res);
-        });
-
-    RCLCPP_INFO(node_->get_logger(), "AreaManager: initialized (add/remove/list services, areas topic)");
+    RCLCPP_INFO(node_->get_logger(), "AreaManager: initialized (assets via set_assets)");
 }
 
 // ──────────────────────────────────────────────────────────────────────
 // Service 回调
 // ──────────────────────────────────────────────────────────────────────
 
-void AreaManager::addAreaCallback(
-    const std::shared_ptr<nav_interfaces::srv::AddAreaInfo::Request> req,
-    std::shared_ptr<nav_interfaces::srv::AddAreaInfo::Response> res) {
 
-    const auto& msg = req->area_info;
-    if (msg.name.empty()) {
-        RCLCPP_WARN(node_->get_logger(), "add_area: empty name rejected");
-        res->success = false;
-        return;
-    }
-    if (area_store_->hasArea(msg.name)) {
-        RCLCPP_WARN(node_->get_logger(), "add_area: '%s' already exists, overwriting", msg.name.c_str());
-    }
-
-    Area area = fromMsg(msg);
-    const bool already_exists = area_store_->hasArea(area.name);
-    if (already_exists) {
-        area_store_->updateArea(area);
-    } else {
-        area_store_->addArea(area);
-    }
-    save_fn_();
-    publishMarkers();
-    publishAreas();
-
-    if (event_bus_) {
-        event_bus_->publish({already_exists ? AssetEventType::AREA_UPDATED
-                                            : AssetEventType::AREA_ADDED,
-                             area.name, ""});
-    }
-
-    RCLCPP_INFO(node_->get_logger(), "add_area: %s '%s' type=%u vertices=%zu",
-                already_exists ? "updated" : "added",
-                area.name.c_str(), area.type, area.polygon.size());
-    res->success = true;
-}
-
-void AreaManager::removeAreaCallback(
-    const std::shared_ptr<nav_interfaces::srv::RemoveAreaInfo::Request> req,
-    std::shared_ptr<nav_interfaces::srv::RemoveAreaInfo::Response> res) {
-
-    if (!area_store_->hasArea(req->name)) {
-        res->success = false;
-        res->message = "area not found: " + req->name;
-        RCLCPP_WARN(node_->get_logger(), "remove_area: '%s' not found", req->name.c_str());
-        return;
-    }
-
-    area_store_->removeArea(req->name);
-    save_fn_();
-    publishMarkers();
-    publishAreas();
-
-    if (event_bus_) {
-        event_bus_->publish({AssetEventType::AREA_REMOVED, req->name, ""});
-    }
-
-    RCLCPP_INFO(node_->get_logger(), "remove_area: removed '%s'", req->name.c_str());
-    res->success = true;
-    res->message = "ok";
-}
-
-void AreaManager::updateAreaCallback(
-    const std::shared_ptr<nav_interfaces::srv::UpdateAreaInfo::Request> req,
-    std::shared_ptr<nav_interfaces::srv::UpdateAreaInfo::Response> res) {
-
-    const auto& msg = req->area_info;
-    if (msg.name.empty()) {
-        RCLCPP_WARN(node_->get_logger(), "update_area: empty name rejected");
-        res->success = false;
-        res->message = "name is empty";
-        return;
-    }
-    if (!area_store_->hasArea(msg.name)) {
-        RCLCPP_WARN(node_->get_logger(), "update_area: '%s' not found", msg.name.c_str());
-        res->success = false;
-        res->message = "area not found: " + msg.name;
-        return;
-    }
-
-    Area area = fromMsg(msg);
-    area_store_->updateArea(area);
-    save_fn_();
-    publishMarkers();
-    publishAreas();
-
-    if (event_bus_) {
-        event_bus_->publish({AssetEventType::AREA_UPDATED, area.name, ""});
-    }
-
-    RCLCPP_INFO(node_->get_logger(), "update_area: '%s' type=%u vertices=%zu",
-                area.name.c_str(), area.type, area.polygon.size());
-    res->success = true;
-    res->message = "updated";
-}
-
-void AreaManager::getAllAreasCallback(
-    const std::shared_ptr<nav_interfaces::srv::GetAllAreas::Request> /*req*/,
-    std::shared_ptr<nav_interfaces::srv::GetAllAreas::Response> res) {
-
-    auto all_areas = area_store_->getAllAreas();
-    res->area_info_list.reserve(all_areas.size());
-    for (const auto& area : all_areas) {
-        res->area_info_list.push_back(toMsg(area));
-    }
-    res->success = true;
-}
 
 // ──────────────────────────────────────────────────────────────────────
 // 发布
 // ──────────────────────────────────────────────────────────────────────
-
-void AreaManager::publishAreas() {
-    nav_interfaces::msg::AreaInfoArray arr;
-    arr.header.frame_id = "map";
-    arr.header.stamp = node_->now();
-
-    auto all_areas = area_store_->getAllAreas();
-    arr.areas.reserve(all_areas.size());
-    for (const auto& area : all_areas) {
-        arr.areas.push_back(toMsg(area));
-    }
-    areas_pub_->publish(arr);
-}
 
 void AreaManager::publishMarkers() {
     auto all_areas = area_store_->getAllAreas();

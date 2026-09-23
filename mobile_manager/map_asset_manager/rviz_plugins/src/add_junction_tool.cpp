@@ -7,7 +7,7 @@
 #include <OgreManualObject.h>
 #include <OgreSceneManager.h>
 
-#include <nav_interfaces/srv/add_route_junction.hpp>
+#include <nav_interfaces/srv/set_assets.hpp>
 #include <rviz_common/display_context.hpp>
 #include <rviz_common/interaction/view_picker_iface.hpp>
 #include <rviz_common/ros_integration/ros_node_abstraction_iface.hpp>
@@ -77,17 +77,18 @@ int AddJunctionTool::processMouseEvent(rviz_common::ViewportMouseEvent& event) {
         const float py = pos.y;
         const std::string auto_id = "jct_" + std::to_string(junction_counter_++);
 
-        auto client = node_->create_client<nav_interfaces::srv::AddRouteJunction>(
-            service_prefix_ + "/add_route_junction");
-        auto req          = std::make_shared<nav_interfaces::srv::AddRouteJunction::Request>();
-        req->junction.id  = auto_id;
-        req->junction.x   = px;
-        req->junction.y   = py;
-        req->junction.yaw = 0.0f;
+        auto client = node_->create_client<nav_interfaces::srv::SetAssets>(
+            service_prefix_ + "/set_assets");
+        auto req = std::make_shared<nav_interfaces::srv::SetAssets::Request>(); req->junctions.resize(1);
+        req->mode         = nav_interfaces::srv::SetAssets::Request::MODE_ADD_ONLY;
+        req->junctions[0].id  = auto_id;
+        req->junctions[0].x   = px;
+        req->junctions[0].y   = py;
+        req->junctions[0].yaw = 0.0f;
 
         const QString qid = QString::fromStdString(auto_id);
         client->async_send_request(req,
-            [this, qid](rclcpp::Client<nav_interfaces::srv::AddRouteJunction>::SharedFuture fut) {
+            [this, qid](rclcpp::Client<nav_interfaces::srv::SetAssets>::SharedFuture fut) {
                 try {
                     auto resp = fut.get();
                     setStatus(resp->success
