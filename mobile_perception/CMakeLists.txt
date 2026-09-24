@@ -36,6 +36,14 @@ find_package(nlohmann_json REQUIRED)
 find_package(std_srvs REQUIRED)
 find_package(nav_interfaces REQUIRED)
 
+if(BUILD_TESTING)
+  find_package(ament_cmake_pytest REQUIRED)
+  ament_add_pytest_test(
+    test_pub_current_position
+    test/test_pub_current_position.py
+  )
+endif()
+
 add_executable(charging_pose_service_node src/charging_pose_service.cpp)
 ament_target_dependencies(charging_pose_service_node
   rclcpp std_srvs tf2_ros geometry_msgs tf2_geometry_msgs nlohmann_json
@@ -102,6 +110,13 @@ add_executable(mobile_control_node src/mobile_control_node.cpp)
 ament_target_dependencies(mobile_control_node rclcpp tf2 tf2_ros tf2_geometry_msgs geometry_msgs nav_msgs std_srvs)
 install(TARGETS
   mobile_control_node
+  DESTINATION lib/${PROJECT_NAME})
+
+# pub_current_position
+add_executable(pub_current_position src/pub_current_position.cpp)
+ament_target_dependencies(pub_current_position rclcpp geometry_msgs nav_msgs)
+install(TARGETS
+  pub_current_position
   DESTINATION lib/${PROJECT_NAME})
 
 # mobile_control_action_node
