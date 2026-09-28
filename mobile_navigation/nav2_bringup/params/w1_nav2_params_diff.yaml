@@ -108,8 +108,6 @@ controller_server:
     enable_nav_monitor_echo: true
     planning_frequency: 10.0
     planning_result_max_age: 0.3
-    required_scan_topics: ["/laser_scan/front", "/laser_scan/rear", "/orbbec/front/laser_scan", "/orbbec/rear/laser_scan"]
-    sensor_timeout: 0.5
     controller_frequency: 25.0 # 控制器控制周期 # Related params: model_dt >= controller period; prediction horizon = time_steps * model_dt
     goal_checker_plugins: ["simple_goal_checker", "stopped_goal_checker", "position_goal_checker", "rotation_goal_checker", "longitudinal_goal_checker", "high_precision_goal_checker"] # goal_checker_plugin: "goal_checker" For Galactic and older
     controller_plugins: ["MPPIController", "DWBController", "RPPController", "GracefulController", "RotationShimController", "PIDController", "LatLonController", "PureRotationController", "StraightController"]

@@ -67,6 +67,9 @@ public:
     const geometry_msgs::msg::Twist & velocity,
     nav_msgs::msg::Path & local_path) = 0;
 
+  /** Request cooperative cancellation of an in-flight planning call. */
+  virtual void requestCancel() {}
+
   /**
    * @brief 限速透传（与 goal_checker 协同；默认无操作）。
    */

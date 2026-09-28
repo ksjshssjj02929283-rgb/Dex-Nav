@@ -125,6 +125,9 @@ public:
     const nav_msgs::msg::Path & path,
     const InitialMotionState & boundary) = 0;
 
+  /** Request cooperative cancellation of an in-flight planning call. */
+  virtual void requestCancel() {}
+
   virtual SpeedPlanningDiagnostics getLastPlanningDiagnostics() const
   {
     return SpeedPlanningDiagnostics();

@@ -3049,8 +3049,7 @@ ControllerServer::dynamicParametersCallback(std::vector<rclcpp::Parameter> param
   for (const auto & parameter : parameters) {
     const auto & name = parameter.get_name();
     if (name == "planning_frequency" || name == "controller_frequency" ||
-      name == "planning_result_max_age" || name == "sensor_timeout" ||
-      name == "required_scan_topics") {
+      name == "planning_result_max_age") {
       result.successful = false;
       result.reason = "Snapshot scheduling and sensor parameters require lifecycle reconfiguration";
       return result;

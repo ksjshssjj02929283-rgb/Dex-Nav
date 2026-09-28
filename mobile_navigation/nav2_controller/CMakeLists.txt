@@ -12,7 +12,6 @@ find_package(rclcpp_action REQUIRED)
 find_package(rclcpp_components REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
-find_package(sensor_msgs REQUIRED)
 find_package(diagnostic_msgs REQUIRED)
 find_package(nav2_util REQUIRED)
 find_package(nav2_msgs REQUIRED)
@@ -48,7 +47,6 @@ set(dependencies
   rclcpp_components
   geometry_msgs
   std_msgs
-  sensor_msgs
   diagnostic_msgs
   nav2_msgs
   nav_2d_utils

@@ -200,7 +200,6 @@ protected:
   std::shared_ptr<SnapshotRuntime> snapshot_runtime_;
   void configureSnapshotControl();
   void startSnapshotWorker();
-  bool snapshotSensorsHealthy();
   bool snapshotMotionAllowed();
   void snapshotControlFeedback(bool valid, double acceleration);
   void stopSnapshotWorker();
