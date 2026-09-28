@@ -266,6 +266,11 @@ void Polygon::updatePolygon()
     std_msgs::msg::Header footprint_header;
     footprint_sub_->getFootprintInRobotFrame(footprint_vec, footprint_header);
 
+    // Keep the configured fallback until costmap publishes a valid footprint.
+    if (footprint_vec.size() < 3) {
+      return;
+    }
+
     std::size_t new_size = footprint_vec.size();
     poly_.resize(new_size);
     polygon_.points.resize(new_size);

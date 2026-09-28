@@ -82,6 +82,12 @@ void Scan::getData(
 
 void Scan::dataCallback(sensor_msgs::msg::LaserScan::ConstSharedPtr msg)
 {
+  last_source_stamp_ns_.store(
+    rclcpp::Time(msg->header.stamp).nanoseconds(), std::memory_order_release);
+  const auto receipt = std::chrono::steady_clock::now().time_since_epoch();
+  last_received_steady_ns_.store(
+    std::chrono::duration_cast<std::chrono::nanoseconds>(receipt).count(),
+    std::memory_order_release);
   std::atomic_store(&data_, msg);
   auto processed = std::make_shared<ProcessedScan>();
   processed->source_stamp = msg->header.stamp;

@@ -90,11 +90,19 @@ CollisionMonitor::on_configure(const rclcpp_lifecycle::State & /*state*/)
     return nav2_util::CallbackReturn::FAILURE;
   }
 
-  // 双导航使用两个互不替代的速度入口：自由导航速度经过本节点串联输出，
-  // path_follower 的调度速度仅用于计算 obstacle_status，本节点不转发该速度。
   nav2_util::declare_parameter_if_not_declared(
-    node, "schedule_cmd_vel_topic", rclcpp::ParameterValue("cmd_vel_nav"));
-  schedule_cmd_vel_topic_ = get_parameter("schedule_cmd_vel_topic").as_string();
+    node, "navigation_type", rclcpp::ParameterValue("auto"));
+  const auto navigation_type = get_parameter("navigation_type").as_string();
+  if (navigation_type == "auto") {
+    configured_navigation_type_ = NavigationType::AUTOMONOUS;
+  } else if (navigation_type == "schedule") {
+    configured_navigation_type_ = NavigationType::SCHEDULE;
+  } else {
+    RCLCPP_ERROR(get_logger(), "navigation_type must be 'auto' or 'schedule'");
+    return nav2_util::CallbackReturn::FAILURE;
+  }
+
+  // 模式由参数固定；两种模式均使用 cmd_vel_in_topic 输入并输出安全速度。
   nav2_util::declare_parameter_if_not_declared(
     node, "free_navigation_path_topic", rclcpp::ParameterValue("plan"));
   free_navigation_path_topic_ = get_parameter("free_navigation_path_topic").as_string();
@@ -128,14 +136,6 @@ CollisionMonitor::on_configure(const rclcpp_lifecycle::State & /*state*/)
     cmd_vel_in_topic, 1,
     std::bind(&CollisionMonitor::cmdVelInCallback, this, std::placeholders::_1), io_options);
 
-  // schedule_cmd_vel_topic may intentionally be the same as cmd_vel_out_topic. Ignore this
-  // node's own output so an IDLE zero command cannot be consumed as a fresh schedule command.
-  rclcpp::SubscriptionOptions schedule_options = io_options;
-  schedule_options.ignore_local_publications = true;
-  schedule_cmd_vel_sub_ = this->create_subscription<geometry_msgs::msg::Twist>(
-    schedule_cmd_vel_topic_, 1,
-    std::bind(&CollisionMonitor::scheduleCmdVelCallback, this, std::placeholders::_1),
-    schedule_options);
   tracking_path_sub_ = this->create_subscription<nav_interfaces::msg::TrackingPath>(
     tracking_path_topic_, rclcpp::QoS(1),
     std::bind(&CollisionMonitor::trackingPathCallback, this, std::placeholders::_1), io_options);
@@ -199,32 +199,6 @@ CollisionMonitor::on_configure(const rclcpp_lifecycle::State & /*state*/)
       std::placeholders::_1, std::placeholders::_2),
     rmw_qos_profile_services_default, io_callback_group_);
 
-  try {
-    normal_footprint_ = readFootprintParameter(
-      "normal_footprint", {0.35, 0.29, 0.35, -0.29, -0.35, -0.29, -0.35, 0.29});
-    loaded_footprint_ = readFootprintParameter(
-      "loaded_footprint", {0.50, 0.40, 0.50, -0.40, -0.50, -0.40, -0.50, 0.40});
-  } catch (const std::exception & ex) {
-    RCLCPP_ERROR(get_logger(), "Invalid internal footprint: %s", ex.what());
-    return nav2_util::CallbackReturn::FAILURE;
-  }
-  nav2_util::declare_parameter_if_not_declared(
-    node, "costmap_footprint_topics", rclcpp::ParameterValue(
-      std::vector<std::string>{"local_costmap/footprint", "global_costmap/footprint"}));
-  const auto costmap_footprint_topics =
-    get_parameter("costmap_footprint_topics").as_string_array();
-  for (const auto & topic : costmap_footprint_topics) {
-    costmap_footprint_pubs_.push_back(
-      create_publisher<geometry_msgs::msg::Polygon>(
-        topic, rclcpp::QoS(1).reliable().transient_local()));
-  }
-  set_loaded_footprint_srv_ = this->create_service<std_srvs::srv::SetBool>(
-    "~/set_loaded_footprint",
-    std::bind(
-      &CollisionMonitor::setLoadedFootprintCallback, this,
-      std::placeholders::_1, std::placeholders::_2),
-    rmw_qos_profile_services_default, io_callback_group_);
-
   return nav2_util::CallbackReturn::SUCCESS;
 }
 
@@ -234,9 +208,6 @@ CollisionMonitor::on_activate(const rclcpp_lifecycle::State & /*state*/)
   RCLCPP_INFO(get_logger(), "Activating");
 
   // Activating lifecycle publishers
-  for (const auto & publisher : costmap_footprint_pubs_) {
-    publisher->on_activate();
-  }
   cmd_vel_out_pub_->on_activate();
   obstacle_status_pub_->on_activate();
   if (path_stop_marker_pub_) {
@@ -268,35 +239,32 @@ CollisionMonitor::on_activate(const rclcpp_lifecycle::State & /*state*/)
   // 不再考虑另一套输入，避免在主循环中处理双速度源/双路径源冲突。
   navigation_mode_ = NavigationMode::IDLE;
   schedule_navigation_mode_ = NavigationMode::SCHEDULE_NAVIGATION;
-  lifecycle_navigation_type_ = NavigationType::UNSET;
+  lifecycle_navigation_type_ = configured_navigation_type_;
   logged_velocity_state_ = -1;
-  ignored_chain_logged_ = false;
   RCLCPP_INFO(
-    get_logger(), "[FSM] activate: mode=IDLE type=UNSET cmd_timeout=%.3fs idle_timeout=%.3fs",
+    get_logger(), "[FSM] activate: mode=IDLE type=%s cmd_timeout=%.3fs idle_timeout=%.3fs",
+    configured_navigation_type_ == NavigationType::AUTOMONOUS ? "auto" : "schedule",
     cmd_vel_timeout_.seconds(), idle_grace_period_.seconds());
   mode_last_cmd_stamp_ = this->now();
   {
     std::lock_guard<std::mutex> lock(mailbox_mutex_);
-    free_cmd_mailbox_ = VelocityMailbox{};
-    schedule_cmd_mailbox_ = VelocityMailbox{};
+    cmd_mailbox_ = VelocityMailbox{};
+    control_input_ = ControlInput{};
     pending_free_path_.reset();
     pending_tracking_path_.reset();
     free_path_sequence_ = 0;
     tracking_path_sequence_ = 0;
     consumed_free_path_sequence_ = 0;
     consumed_tracking_path_sequence_ = 0;
-    consumed_free_cmd_sequence_ = 0;
-    consumed_schedule_cmd_sequence_ = 0;
-    observed_free_cmd_sequence_ = 0;
-    observed_schedule_cmd_sequence_ = 0;
-    pending_loaded_footprint_.reset();
+    consumed_cmd_sequence_ = 0;
+    observed_cmd_sequence_ = 0;
   }
   observed_source_sequences_.clear();
   observed_source_sequences_.reserve(sources_.size());
   for (const auto & source : sources_) {
     observed_source_sequences_.push_back(source->getDataSequence());
   }
-  applyInternalFootprint(loaded_mode_);
+  source_start_time_ns_ = steadyNowNs();
   const auto period = std::chrono::duration<double>(1.0 / control_frequency_);
   control_loop_timer_ = this->create_wall_timer(
     std::chrono::duration_cast<std::chrono::nanoseconds>(period),
@@ -328,9 +296,6 @@ CollisionMonitor::on_deactivate(const rclcpp_lifecycle::State & /*state*/)
   }
 
   // Deactivating lifecycle publishers
-  for (const auto & publisher : costmap_footprint_pubs_) {
-    publisher->on_deactivate();
-  }
   cmd_vel_out_pub_->on_deactivate();
   obstacle_status_pub_->on_deactivate();
   if (path_stop_marker_pub_) {
@@ -350,15 +315,12 @@ CollisionMonitor::on_cleanup(const rclcpp_lifecycle::State & /*state*/)
 
   control_loop_timer_.reset();
   cmd_vel_in_sub_.reset();
-  schedule_cmd_vel_sub_.reset();
   tracking_path_sub_.reset();
   free_navigation_path_sub_.reset();
   cmd_vel_out_pub_.reset();
   obstacle_status_pub_.reset();
   path_stop_marker_pub_.reset();
   set_padding_srv_.reset();
-  set_loaded_footprint_srv_.reset();
-  costmap_footprint_pubs_.clear();
   io_callback_group_.reset();
   control_callback_group_.reset();
 
@@ -393,22 +355,9 @@ void CollisionMonitor::cmdVelInCallback(geometry_msgs::msg::Twist::ConstSharedPt
 
   // 回调线程不执行碰撞计算；保留最新一帧和接收时间，由控制周期统一消费。
   std::lock_guard<std::mutex> lock(mailbox_mutex_);
-  free_cmd_mailbox_.message = std::move(msg);
-  free_cmd_mailbox_.stamp = this->now();
-  ++free_cmd_mailbox_.sequence;
-}
-
-void CollisionMonitor::scheduleCmdVelCallback(geometry_msgs::msg::Twist::ConstSharedPtr msg)
-{
-  if (!nav2_util::validateTwist(*msg)) {
-    RCLCPP_ERROR(get_logger(), "Schedule velocity contains NaNs or Infs; ignoring it");
-    return;
-  }
-  // 调度速度只作为检测方向/速度参考，SCHEDULE 模式不会从本节点发布该速度。
-  std::lock_guard<std::mutex> lock(mailbox_mutex_);
-  schedule_cmd_mailbox_.message = std::move(msg);
-  schedule_cmd_mailbox_.stamp = this->now();
-  ++schedule_cmd_mailbox_.sequence;
+  cmd_mailbox_.message = std::move(msg);
+  cmd_mailbox_.stamp = this->now();
+  ++cmd_mailbox_.sequence;
 }
 
 void CollisionMonitor::freeNavigationPathCallback(nav_msgs::msg::Path::ConstSharedPtr msg)
@@ -425,36 +374,40 @@ void CollisionMonitor::controlLoopCallback()
     return;
   }
   const auto control_loop_start = std::chrono::steady_clock::now();
+  const auto & input = readControlInput();
+  const bool input_updated = hasUpdatedInput(input);
+  const rclcpp::Time now = this->now();
+  // scan 故障会发布停车，本周期不再处理导航模式和速度。
+  if (checkScanTimeout(now)) {
+    updateNavigationMode(input, now);
+    processVelocityInput(input.cmd, input_updated, now);
+  }
+  recordControlLoopTiming(control_loop_start);
+}
 
+const CollisionMonitor::ControlInput & CollisionMonitor::readControlInput()
+{
   // 锁内只复制 shared_ptr、时间戳和 sequence。TF、几何计算及 publish 全部在锁外，
   // 避免 100 Hz 检测阻塞高频传感器/速度回调。
-  VelocityMailbox free_cmd;
-  VelocityMailbox schedule_cmd;
-  nav_msgs::msg::Path::ConstSharedPtr free_path;
-  nav_interfaces::msg::TrackingPath::ConstSharedPtr tracking_path;
-  std::optional<bool> footprint_request;
-  bool new_free_path = false;
-  bool new_tracking_path = false;
   {
     std::lock_guard<std::mutex> lock(mailbox_mutex_);
-    free_cmd = free_cmd_mailbox_;
-    schedule_cmd = schedule_cmd_mailbox_;
-    free_path = pending_free_path_;
-    tracking_path = pending_tracking_path_;
-    new_free_path = free_path_sequence_ != consumed_free_path_sequence_;
-    new_tracking_path = tracking_path_sequence_ != consumed_tracking_path_sequence_;
+    control_input_.cmd = cmd_mailbox_;
+    control_input_.free_path = pending_free_path_;
+    control_input_.tracking_path = pending_tracking_path_;
+    control_input_.new_free_path = free_path_sequence_ != consumed_free_path_sequence_;
+    control_input_.new_tracking_path = tracking_path_sequence_ != consumed_tracking_path_sequence_;
     consumed_free_path_sequence_ = free_path_sequence_;
     consumed_tracking_path_sequence_ = tracking_path_sequence_;
-    footprint_request.swap(pending_loaded_footprint_);
   }
+  return control_input_;
+}
 
-  bool input_updated = new_free_path || new_tracking_path || footprint_request.has_value();
-  if (free_cmd.sequence != observed_free_cmd_sequence_) {
-    observed_free_cmd_sequence_ = free_cmd.sequence;
-    input_updated = true;
-  }
-  if (schedule_cmd.sequence != observed_schedule_cmd_sequence_) {
-    observed_schedule_cmd_sequence_ = schedule_cmd.sequence;
+bool CollisionMonitor::hasUpdatedInput(const ControlInput & input)
+{
+  // 追踪路径、速度和传感器更新，避免对相同输入重复执行碰撞检测。
+  bool input_updated = input.new_free_path || input.new_tracking_path;
+  if (input.cmd.sequence != observed_cmd_sequence_) {
+    observed_cmd_sequence_ = input.cmd.sequence;
     input_updated = true;
   }
   if (observed_source_sequences_.size() != sources_.size()) {
@@ -467,128 +420,74 @@ void CollisionMonitor::controlLoopCallback()
       input_updated = true;
     }
   }
+  return input_updated;
+}
 
-  // footprint 属于几何状态变更：先切到 IDLE 并发一次强制零速，再替换内部
-  // normal/loaded 基础轮廓。collision monitor 不等待 costmap footprint 回传。
-  if (footprint_request.has_value()) {
-    loaded_mode_ = *footprint_request;
-    enterIdle("footprint switch");
-    applyInternalFootprint(loaded_mode_);
-  }
-
-  const rclcpp::Time now = this->now();
-  const bool free_fresh = free_cmd.message && now - free_cmd.stamp <= cmd_vel_timeout_;
-  const bool schedule_fresh =
-    schedule_cmd.message && now - schedule_cmd.stamp <= cmd_vel_timeout_;
-
-  // 生命周期内只选择一次导航类型。部署约束保证同一生命周期只启动一种导航链路，
-  // 因此无需处理双速度或双路径同时到达；路径优先，速度用于兼容先出速度的启动顺序。
-  if (lifecycle_navigation_type_ == NavigationType::UNSET) {
-    if ((new_free_path && free_path && !free_path->poses.empty()) || free_fresh) {
-      lifecycle_navigation_type_ = NavigationType::AUTOMONOUS;
-      RCLCPP_INFO(
-        get_logger(), "[FSM] type locked: AUTOMONOUS free_fresh=%d schedule_fresh=%d",
-        free_fresh, schedule_fresh);
-    } else if ((new_tracking_path && tracking_path && !tracking_path->poses.empty()) ||
-      schedule_fresh)
-    {
-      lifecycle_navigation_type_ = NavigationType::SCHEDULE;
-      RCLCPP_INFO(get_logger(), "[FSM] type locked: SCHEDULE schedule_fresh=%d", schedule_fresh);
+bool CollisionMonitor::checkScanTimeout(const rclcpp::Time & now)
+{
+  // 单调时钟检测未收到或停止到达的 scan；消息时间戳检测延迟到达的旧数据。
+  // 从未收到的 scan 从 source_start_time_ns_ 开始计时。
+  const auto steady_now = steadyNowNs();
+  std::string stale_scan;
+  for (const auto & source : sources_) {
+    if (std::dynamic_pointer_cast<Scan>(source)) {
+      const auto last = source->getLastReceivedSteadyNs();
+      const auto since = std::max(last, source_start_time_ns_);
+      const auto stamp = source->getLastSourceStampNs();
+      if (steady_now - since >= scan_fault_timeout_ns_ ||
+        (last != 0 && now.nanoseconds() - stamp >= scan_fault_timeout_ns_))
+      {
+        stale_scan = source->getName();
+        break;
+      }
     }
   }
-
-  if (lifecycle_navigation_type_ != NavigationType::UNSET && !ignored_chain_logged_ &&
-    ((lifecycle_navigation_type_ == NavigationType::AUTOMONOUS &&
-    (schedule_fresh || (new_tracking_path && tracking_path && !tracking_path->poses.empty()))) ||
-    (lifecycle_navigation_type_ == NavigationType::SCHEDULE &&
-    (free_fresh || (new_free_path && free_path && !free_path->poses.empty())))))
-  {
-    RCLCPP_INFO(
-      get_logger(), "[FSM] ignoring inactive chain: locked_type=%s (once per activation)",
-      lifecycle_navigation_type_ == NavigationType::AUTOMONOUS ? "AUTOMONOUS" : "SCHEDULE");
-    ignored_chain_logged_ = true;
+  if (!stale_scan.empty()) {
+    // 任一必需 scan 超时时，持续发布零速和 STOP 状态。
+    if (!sensor_fault_active_) {
+      RCLCPP_ERROR(get_logger(), "Scan %s timed out; stopping", stale_scan.c_str());
+    }
+    sensor_fault_active_ = true;
+    auto zero = std::make_unique<geometry_msgs::msg::Twist>();
+    cmd_vel_out_pub_->publish(std::move(zero));
+    publishObstacleStatus({STOP, {0.0, 0.0, 0.0}}, nullptr);
+    robot_action_prev_ = {STOP, {0.0, 0.0, 0.0}};
+    return false;
   }
+  if (sensor_fault_active_) {
+    RCLCPP_INFO(get_logger(), "All required scans recovered");
+    sensor_fault_active_ = false;
+  }
+  return true;
+}
 
-  // 只消费当前生命周期所属链路的路径。调度普通/贴边是同一种导航类型内部的状态，
-  // 可随 TrackingPath.padding 调整；AUTOMONOUS 与 SCHEDULE 之间不再相互切换。
+void CollisionMonitor::updateNavigationMode(
+  const ControlInput & input, const rclcpp::Time & now)
+{
+  const bool cmd_fresh = input.cmd.message && now - input.cmd.stamp <= cmd_vel_timeout_;
+  // 只执行配置导航类型的路径和状态检查。
   switch (lifecycle_navigation_type_) {
     case NavigationType::AUTOMONOUS:
-      if (new_free_path && free_path && !free_path->poses.empty()) {
-        changeNavigationMode(NavigationMode::AUTOMONOUS_NAVIGATION, "new automatic path");
-        mode_last_cmd_stamp_ = now;
-        applyNavigationPadding(navigation_mode_);
-        std::lock_guard<std::mutex> lock(tracking_path_mutex_);
-        tracking_path_.reset();
-      }
+      checkAutonomousNavigation(
+        input.free_path, input.new_free_path, cmd_fresh, input.cmd.stamp, now);
       break;
     case NavigationType::SCHEDULE:
-      if (new_tracking_path && tracking_path && !tracking_path->poses.empty()) {
-        const bool finite_padding = std::isfinite(tracking_path->padding);
-        schedule_navigation_mode_ =
-          finite_padding && std::fabs(tracking_path->padding) < 1e-6F ?
-          NavigationMode::SCHEDULE_EDGING : NavigationMode::SCHEDULE_NAVIGATION;
-        changeNavigationMode(schedule_navigation_mode_, "new tracking path");
-        mode_last_cmd_stamp_ = now;
-        applyNavigationPadding(navigation_mode_);
-        if (navigation_mode_ == NavigationMode::SCHEDULE_NAVIGATION) {
-          for (const auto & polygon : polygons_) {
-            if (polygon->getName() == "PolygonStop") {
-              polygon->setPadding(
-                finite_padding ? tracking_path->padding : polygon->getDefaultPadding());
-              break;
-            }
-          }
-        }
-        std::lock_guard<std::mutex> lock(tracking_path_mutex_);
-        tracking_path_ = tracking_path;
-      }
+      checkScheduleNavigation(
+        input.tracking_path, input.new_tracking_path, cmd_fresh, input.cmd.stamp, now);
       break;
     case NavigationType::UNSET:
       break;
   }
+}
 
-  // 状态更新：IDLE 只允许本生命周期已经锁定的速度源恢复任务状态。
-  // 与下面的模式执行分开，确保恢复后在同一周期选择速度源并执行检测。
-  switch (navigation_mode_) {
-    case NavigationMode::IDLE:
-      if (lifecycle_navigation_type_ == NavigationType::AUTOMONOUS && free_fresh) {
-        changeNavigationMode(NavigationMode::AUTOMONOUS_NAVIGATION, "fresh automatic velocity");
-        mode_last_cmd_stamp_ = free_cmd.stamp;
-        applyNavigationPadding(navigation_mode_);
-      } else if (lifecycle_navigation_type_ == NavigationType::SCHEDULE && schedule_fresh) {
-        // IDLE is also entered while switching loaded/normal footprints.  Resume the
-        // sub-mode selected by the latest TrackingPath instead of silently converting
-        // an edging task into ordinary schedule navigation.
-        changeNavigationMode(schedule_navigation_mode_, "fresh schedule velocity");
-        mode_last_cmd_stamp_ = schedule_cmd.stamp;
-        applyNavigationPadding(navigation_mode_);
-      }
-      break;
-    case NavigationMode::AUTOMONOUS_NAVIGATION:
-    case NavigationMode::SCHEDULE_NAVIGATION:
-    case NavigationMode::SCHEDULE_EDGING:
-      break;
-  }
+void CollisionMonitor::processVelocityInput(
+  const VelocityMailbox & cmd, bool input_updated, const rclcpp::Time & now)
+{
+  // IDLE 没有活动速度源；两种导航类型共用同一条速度安全处理链路。
+  const VelocityMailbox * active_cmd =
+    navigation_mode_ == NavigationMode::IDLE ? nullptr : &cmd;
 
-  // 只选择当前模式对应的 mailbox。FREE 允许发布安全速度；SCHEDULE/EDGING
-  // 只旁路计算 obstacle_status，最终减速/停车仍由 path_follower 执行。
-  const VelocityMailbox * active_cmd = nullptr;
-  bool publish_cmd = false;
-  switch (navigation_mode_) {
-    case NavigationMode::AUTOMONOUS_NAVIGATION:
-      active_cmd = &free_cmd;
-      publish_cmd = true;
-      break;
-    case NavigationMode::SCHEDULE_NAVIGATION:
-    case NavigationMode::SCHEDULE_EDGING:
-      active_cmd = &schedule_cmd;
-      break;
-    case NavigationMode::IDLE:
-      // IDLE 没有活动速度源，继续执行末尾的车身 STOP Polygon 检测。
-      break;
-  }
-
-  // Emit only on freshness-state changes, never once per command or timer tick.
+  // 只在速度新鲜度状态变化时记录日志，避免每个定时周期重复打印。
   const double velocity_age = active_cmd ?
     (now - (active_cmd->message ? active_cmd->stamp : mode_last_cmd_stamp_)).seconds() : 0.0;
   const int velocity_state = !active_cmd ? 0 : !active_cmd->message ? 1 :
@@ -601,36 +500,22 @@ void CollisionMonitor::controlLoopCallback()
       states[velocity_state], navigationModeName(navigation_mode_), velocity_age,
       static_cast<unsigned long long>(active_cmd ? active_cmd->sequence : 0),
       active_cmd && active_cmd->message ? active_cmd->stamp.seconds() : 0.0,
-      velocity_state == 2 ? (publish_cmd ? "filtered_velocity" : "status_only") : "status_only");
+      velocity_state == 2 ? "filtered_velocity" : "status_only");
     logged_velocity_state_ = velocity_state;
   }
 
   if (active_cmd && active_cmd->message) {
     const rclcpp::Duration age = now - active_cmd->stamp;
-    // 命令仍新鲜时每个 100 Hz 周期都重新读取传感器并检测。只有收到新速度，或
-    // 障碍 Action 类型或安全速度发生变化时才发布 AUTOMONOUS 输出，避免无意义地重发同一条 Twist。
+    // 新鲜速度仅在输入更新时进入障碍检测；process() 决定是否需要发布安全速度。
     if (age <= cmd_vel_timeout_) {
       const auto & msg = *active_cmd->message;
-      bool command_updated = false;
-      switch (navigation_mode_) {
-        case NavigationMode::AUTOMONOUS_NAVIGATION:
-          command_updated = active_cmd->sequence != consumed_free_cmd_sequence_;
-          consumed_free_cmd_sequence_ = active_cmd->sequence;
-          break;
-        case NavigationMode::SCHEDULE_NAVIGATION:
-        case NavigationMode::SCHEDULE_EDGING:
-          command_updated = active_cmd->sequence != consumed_schedule_cmd_sequence_;
-          consumed_schedule_cmd_sequence_ = active_cmd->sequence;
-          break;
-        case NavigationMode::IDLE:
-          break;
-      }
+      const bool command_updated = active_cmd->sequence != consumed_cmd_sequence_;
+      consumed_cmd_sequence_ = active_cmd->sequence;
       if (input_updated) {
         process(
-          {msg.linear.x, msg.linear.y, msg.angular.z}, publish_cmd, false,
+          {msg.linear.x, msg.linear.y, msg.angular.z}, true, false,
           command_updated);
       }
-      recordControlLoopTiming(control_loop_start);
       return;
     }
     // 超过 cmd_vel_timeout_（设计值 0.3 s）后不再使用旧速度检测，仅检查车身 STOP Polygon。
@@ -661,7 +546,60 @@ void CollisionMonitor::controlLoopCallback()
   if (input_updated) {
     process({0.0, 0.0, 0.0}, false, true);
   }
-  recordControlLoopTiming(control_loop_start);
+}
+
+void CollisionMonitor::checkAutonomousNavigation(
+  const nav_msgs::msg::Path::ConstSharedPtr & path, bool new_path,
+  bool cmd_fresh, const rclcpp::Time & cmd_stamp, const rclcpp::Time & now)
+{
+  // 只有非空的新自由导航路径才能通过路径输入激活自动导航。
+  if (new_path && path && !path->poses.empty()) {
+    changeNavigationMode(NavigationMode::AUTOMONOUS_NAVIGATION, "new automatic path");
+    mode_last_cmd_stamp_ = now;
+    applyNavigationPadding(navigation_mode_);
+    std::lock_guard<std::mutex> lock(tracking_path_mutex_);
+    tracking_path_.reset();
+  }
+
+  // 超时进入 IDLE 后，新鲜速度可恢复已配置的自动导航模式。
+  if (navigation_mode_ == NavigationMode::IDLE && cmd_fresh) {
+    changeNavigationMode(NavigationMode::AUTOMONOUS_NAVIGATION, "fresh automatic velocity");
+    mode_last_cmd_stamp_ = cmd_stamp;
+    applyNavigationPadding(navigation_mode_);
+  }
+}
+
+void CollisionMonitor::checkScheduleNavigation(
+  const nav_interfaces::msg::TrackingPath::ConstSharedPtr & path, bool new_path,
+  bool cmd_fresh, const rclcpp::Time & cmd_stamp, const rclcpp::Time & now)
+{
+  // 有限且接近零的 padding 选择贴边模式；其他值选择普通调度模式。
+  if (new_path && path && !path->poses.empty()) {
+    const bool finite_padding = std::isfinite(path->padding);
+    schedule_navigation_mode_ =
+      finite_padding && std::fabs(path->padding) < 1e-6F ?
+      NavigationMode::SCHEDULE_EDGING : NavigationMode::SCHEDULE_NAVIGATION;
+    changeNavigationMode(schedule_navigation_mode_, "new tracking path");
+    mode_last_cmd_stamp_ = now;
+    applyNavigationPadding(navigation_mode_);
+    if (navigation_mode_ == NavigationMode::SCHEDULE_NAVIGATION) {
+      for (const auto & polygon : polygons_) {
+        if (polygon->getName() == "PolygonStop") {
+          polygon->setPadding(finite_padding ? path->padding : polygon->getDefaultPadding());
+          break;
+        }
+      }
+    }
+    std::lock_guard<std::mutex> lock(tracking_path_mutex_);
+    tracking_path_ = path;
+  }
+
+  // 新鲜速度从 IDLE 恢复时，沿用上次选择的调度子模式。
+  if (navigation_mode_ == NavigationMode::IDLE && cmd_fresh) {
+    changeNavigationMode(schedule_navigation_mode_, "fresh schedule velocity");
+    mode_last_cmd_stamp_ = cmd_stamp;
+    applyNavigationPadding(navigation_mode_);
+  }
 }
 
 void CollisionMonitor::publishVelocity(const Action & robot_action)
@@ -751,6 +689,14 @@ bool CollisionMonitor::getParameters(
     node, "source_timeout", rclcpp::ParameterValue(2.0));
   source_timeout =
     rclcpp::Duration::from_seconds(get_parameter("source_timeout").as_double());
+  nav2_util::declare_parameter_if_not_declared(
+    node, "scan_fault_timeout", rclcpp::ParameterValue(5.0));
+  const double scan_fault_timeout = get_parameter("scan_fault_timeout").as_double();
+  if (!std::isfinite(scan_fault_timeout) || scan_fault_timeout <= 0.0) {
+    RCLCPP_ERROR(get_logger(), "scan_fault_timeout must be positive and finite");
+    return false;
+  }
+  scan_fault_timeout_ns_ = static_cast<std::int64_t>(scan_fault_timeout * 1e9);
   nav2_util::declare_parameter_if_not_declared(
     node, "base_shift_correction", rclcpp::ParameterValue(true));
   const bool base_shift_correction =
@@ -905,6 +851,16 @@ void CollisionMonitor::process(
     source->getData(curr_time, collision_points);
   }
 
+  for (const auto & polygon : polygons_) {
+    polygon->updatePolygon();
+    if (polygon->missingFootprint()) {
+      cmd_vel_out_pub_->publish(std::make_unique<geometry_msgs::msg::Twist>());
+      publishObstacleStatus({STOP, {0.0, 0.0, 0.0}}, nullptr);
+      robot_action_prev_ = {STOP, {0.0, 0.0, 0.0}};
+      return;
+    }
+  }
+
   // By default - there is no action
   Action robot_action{DO_NOTHING, cmd_vel_in};
   // Polygon causing robot action (if any)
@@ -991,8 +947,8 @@ void CollisionMonitor::process(
     publishVelocity(robot_action);
     robot_action_prev_ = robot_action;
   } else if (!publish_cmd_vel) {
-    // 调度旁路和 IDLE 只更新 Action 类型，用于状态变化日志；不能用它们的零速度
-    // 覆盖上一条串联速度，否则 FREE 再次进入时会丢失“刚停车”的边沿判断。
+    // IDLE 只更新 Action 类型；不能用零速度覆盖上一条运动速度，
+    // 否则再次进入导航模式时会丢失“刚停车”的边沿判断。
     robot_action_prev_.action_type = robot_action.action_type;
   } else {
     robot_action_prev_ = robot_action;
@@ -1486,66 +1442,6 @@ void CollisionMonitor::setPolygonPaddingCallback(
   publishPolygons();
 }
 
-geometry_msgs::msg::Polygon CollisionMonitor::readFootprintParameter(
-  const std::string & name, const std::vector<double> & defaults)
-{
-  // 参数格式为 [x1, y1, x2, y2, ...]，描述 base_frame 下不含安全余量的本体包络。
-  nav2_util::declare_parameter_if_not_declared(
-    shared_from_this(), name, rclcpp::ParameterValue(defaults));
-  const auto values = get_parameter(name).as_double_array();
-  if (values.size() < 6 || values.size() % 2 != 0) {
-    throw std::runtime_error(name + " must contain at least three x/y pairs");
-  }
-  geometry_msgs::msg::Polygon polygon;
-  polygon.points.reserve(values.size() / 2);
-  for (std::size_t i = 0; i < values.size(); i += 2) {
-    geometry_msgs::msg::Point32 point;
-    point.x = values[i];
-    point.y = values[i + 1];
-    polygon.points.push_back(point);
-  }
-  return polygon;
-}
-
-void CollisionMonitor::setLoadedFootprintCallback(
-  const std::shared_ptr<std_srvs::srv::SetBool::Request> request,
-  std::shared_ptr<std_srvs::srv::SetBool::Response> response)
-{
-  // 第一版采用异步 queued 语义，避免服务回调等待 100 Hz timer 而在单线程
-  // component container 中形成死锁；实际应用发生在下一次 controlLoopCallback。
-  {
-    std::lock_guard<std::mutex> lock(mailbox_mutex_);
-    pending_loaded_footprint_ = request->data;
-  }
-  response->success = true;
-  response->message = request->data ?
-    "loaded footprint queued for control loop" :
-    "normal footprint queued for control loop";
-}
-
-void CollisionMonitor::applyInternalFootprint(bool loaded)
-{
-  // 只替换代表车体的 STOP/APPROACH 基础多边形。PolygonSlow 若配置为圆形，
-  // 继续使用自身半径；导航安全余量由 applyNavigationPadding 独立叠加。
-  const auto & footprint = loaded ? loaded_footprint_ : normal_footprint_;
-  for (const auto & polygon : polygons_) {
-    if (polygon->getName() == "PolygonStop" ||
-      polygon->getName() == "FootprintApproach")
-    {
-      polygon->setPolygon(footprint);
-    }
-  }
-  applyNavigationPadding(navigation_mode_);
-  // 向 costmap 同步真实车身/货物包络，不包含 collision monitor 的检测 padding。
-  for (const auto & publisher : costmap_footprint_pubs_) {
-    publisher->publish(footprint);
-  }
-  publishPolygons();
-  RCLCPP_INFO(
-    get_logger(), "[FSM] footprint applied: loaded=%d points=%zu costmap_publishers=%zu",
-    loaded, footprint.points.size(), costmap_footprint_pubs_.size());
-}
-
 void CollisionMonitor::applyNavigationPadding(NavigationMode mode)
 {
   // footprint 表示真实车身/货物包络，padding 表示模式安全距离，两者不能互相替代。
@@ -1583,8 +1479,8 @@ void CollisionMonitor::changeNavigationMode(NavigationMode mode, const char * re
     return;
   }
   RCLCPP_INFO(
-    get_logger(), "[FSM] mode %s -> %s reason=%s loaded=%d corridor=%d",
-    navigationModeName(navigation_mode_), navigationModeName(mode), reason, loaded_mode_,
+    get_logger(), "[FSM] mode %s -> %s reason=%s corridor=%d",
+    navigationModeName(navigation_mode_), navigationModeName(mode), reason,
     mode == NavigationMode::SCHEDULE_EDGING && path_stop_enabled_);
   navigation_mode_ = mode;
 }

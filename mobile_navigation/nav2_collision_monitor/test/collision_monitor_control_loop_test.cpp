@@ -87,9 +87,10 @@ TEST_F(Tester, testControlLoopKeepsNavigationTypeForLifecycle)
   cm_->stop();
 }
 
-TEST_F(Tester, testControlLoopScheduleBypassAndEdgingMode)
+TEST_F(Tester, testControlLoopScheduleFiltersVelocityAndEdgingMode)
 {
   setCommonParameters();
+  cm_->declare_parameter("navigation_type", "schedule");
   addPolygon("PolygonStop", POLYGON, 1.0, "stop");
   cm_->declare_parameter("PolygonStop.default_padding", 0.2);
   setVectors({"PolygonStop"}, {});
@@ -104,54 +105,21 @@ TEST_F(Tester, testControlLoopScheduleBypassAndEdgingMode)
   EXPECT_NEAR(cm_->polygonPadding("PolygonStop"), 0.2, EPSILON);
   EXPECT_TRUE(cm_->polygonLateralPaddingOnly("PolygonStop"));
   EXPECT_TRUE(waitObstacleStatus(nav_interfaces::msg::ObstacleMonitorStatus::FREE, 200ms));
-  // Schedule navigation is a passive consumer: path_follower receives obstacle_status and
-  // remains the only component allowed to send velocity to velocity_smoother.
-  EXPECT_FALSE(cmd_vel_out_);
+  ASSERT_TRUE(waitCmdVel(200ms));
+  EXPECT_NEAR(cmd_vel_out_->linear.x, 0.3, EPSILON);
+
+  // A free-navigation path belongs to the inactive chain and cannot leave schedule edging.
+  cm_->receiveFreePath();
+  cm_->runControlLoop();
+  EXPECT_EQ(cm_->mode(), CollisionMonitorWrapper::NavigationMode::SCHEDULE_EDGING);
+  EXPECT_TRUE(cm_->polygonLateralPaddingOnly("PolygonStop"));
 
   cm_->receiveTrackingPath(route, 0.15F);
   cm_->receiveScheduleVelocity(0.3);
   cm_->runControlLoop();
   EXPECT_EQ(cm_->mode(), CollisionMonitorWrapper::NavigationMode::SCHEDULE_NAVIGATION);
   EXPECT_FALSE(cm_->polygonLateralPaddingOnly("PolygonStop"));
-  EXPECT_FALSE(cmd_vel_out_);
-
-  cm_->stop();
-}
-
-TEST_F(Tester, testFootprintSwitchPreservesScheduleEdgingMode)
-{
-  setCommonParameters();
-  addPolygon("PolygonStop", POLYGON, 1.0, "stop");
-  cm_->declare_parameter("PolygonStop.default_padding", 0.2);
-  setVectors({"PolygonStop"}, {});
-  cm_->startManualControlLoop();
-
-  const std::vector<nav2_collision_monitor::Point> route{{0.0, 0.0}, {1.0, 0.0}};
-  cm_->receiveTrackingPath(route, 0.0F);
-  cm_->receiveScheduleVelocity(0.3);
-  cm_->runControlLoop();
-  ASSERT_EQ(cm_->mode(), CollisionMonitorWrapper::NavigationMode::SCHEDULE_EDGING);
-  ASSERT_TRUE(cm_->polygonLateralPaddingOnly("PolygonStop"));
-
-  // A footprint change intentionally publishes one zero command and enters IDLE
-  // transiently, but a fresh command must resume the sub-mode selected by the path.
-  cm_->requestLoadedFootprint(true);
-  cm_->runControlLoop();
-  EXPECT_EQ(cm_->mode(), CollisionMonitorWrapper::NavigationMode::SCHEDULE_EDGING);
-  EXPECT_TRUE(cm_->polygonLateralPaddingOnly("PolygonStop"));
-  EXPECT_NEAR(cm_->polygonPadding("PolygonStop"), 0.2, EPSILON);
   ASSERT_TRUE(waitCmdVel(200ms));
-  EXPECT_DOUBLE_EQ(cmd_vel_out_->linear.x, 0.0);
-
-  cmd_vel_out_.reset();
-  cm_->requestLoadedFootprint(false);
-  cm_->receiveScheduleVelocity(0.3);
-  cm_->runControlLoop();
-  EXPECT_EQ(cm_->mode(), CollisionMonitorWrapper::NavigationMode::SCHEDULE_EDGING);
-  EXPECT_TRUE(cm_->polygonLateralPaddingOnly("PolygonStop"));
-  EXPECT_NEAR(cm_->polygonPadding("PolygonStop"), 0.2, EPSILON);
-  ASSERT_TRUE(waitCmdVel(200ms));
-  EXPECT_DOUBLE_EQ(cmd_vel_out_->linear.x, 0.0);
 
   cm_->stop();
 }
@@ -159,6 +127,7 @@ TEST_F(Tester, testFootprintSwitchPreservesScheduleEdgingMode)
 TEST_F(Tester, testTrackingPathNonFinitePaddingUsesDefault)
 {
   setCommonParameters();
+  cm_->declare_parameter("navigation_type", "schedule");
   addPolygon("PolygonStop", POLYGON, 1.0, "stop");
   cm_->declare_parameter("PolygonStop.default_padding", 0.2);
   setVectors({"PolygonStop"}, {});
@@ -254,106 +223,178 @@ TEST_F(Tester, testPathWithoutVelocityPublishesStopOnlyOnIdle)
   cm_->stop();
 }
 
-TEST_F(Tester, testControlLoopAppliesQueuedLoadedFootprint)
+TEST_F(Tester, testAnyOfFourScansTimingOutStopsAndRecovers)
 {
   setCommonParameters();
+  cm_->declare_parameter("scan_fault_timeout", 0.2);
   addPolygon("PolygonStop", POLYGON, 1.0, "stop");
-  setVectors({"PolygonStop"}, {});
+  const std::vector<std::string> names{"scan_a", "scan_b", "scan_c", "scan_d"};
+  for (const auto & name : names) {
+    addSource(name, SCAN);
+  }
+  setVectors({"PolygonStop"}, names);
   cm_->startManualControlLoop();
 
-  auto points = cm_->polygonPoints("PolygonStop");
-  ASSERT_EQ(points.size(), 4u);
-  EXPECT_NEAR(points.front().x, 0.35, EPSILON);
-  EXPECT_NEAR(points.front().y, 0.29, EPSILON);
-
-  // The service callback acknowledges and queues the request; geometry is replaced only
-  // in the control thread so polygon readers always observe a complete footprint.
-  cm_->requestLoadedFootprint(true);
-  points = cm_->polygonPoints("PolygonStop");
-  EXPECT_NEAR(points.front().x, 0.35, EPSILON);
-
-  cm_->runControlLoop();
-  points = cm_->polygonPoints("PolygonStop");
-  ASSERT_EQ(points.size(), 4u);
-  EXPECT_NEAR(points.front().x, 0.50, EPSILON);
-  EXPECT_NEAR(points.front().y, 0.40, EPSILON);
-  EXPECT_EQ(cm_->mode(), CollisionMonitorWrapper::NavigationMode::IDLE);
-
-  cm_->requestLoadedFootprint(false);
-  cm_->runControlLoop();
-  points = cm_->polygonPoints("PolygonStop");
-  ASSERT_EQ(points.size(), 4u);
-  EXPECT_NEAR(points.front().x, 0.35, EPSILON);
-  EXPECT_NEAR(points.front().y, 0.29, EPSILON);
-
-  cm_->stop();
-}
-
-TEST_F(Tester, testFootprintPublishedToBothCostmaps)
-{
-  setCommonParameters();
-  addPolygon("PolygonStop", POLYGON, 1.0, "stop");
-  setVectors({"PolygonStop"}, {});
-  const std::vector<std::string> topics{
-    "test_local_costmap/footprint", "test_global_costmap/footprint"};
-  cm_->declare_parameter("costmap_footprint_topics", topics);
-  std::vector<geometry_msgs::msg::Polygon::SharedPtr> received(2);
-  std::vector<rclcpp::Subscription<geometry_msgs::msg::Polygon>::SharedPtr> subscriptions;
-  for (std::size_t i = 0; i < topics.size(); ++i) {
-    subscriptions.push_back(
-      cm_->create_subscription<geometry_msgs::msg::Polygon>(
-        topics[i], rclcpp::SystemDefaultsQoS(),
-        [&, i](geometry_msgs::msg::Polygon::SharedPtr msg) {received[i] = msg;}));
+  std::vector<rclcpp::Publisher<sensor_msgs::msg::LaserScan>::SharedPtr> publishers;
+  for (const auto & name : names) {
+    publishers.push_back(
+      cm_->create_publisher<sensor_msgs::msg::LaserScan>(
+        name, rclcpp::SensorDataQoS()));
   }
-  const auto wait_footprints = [&]() {
+  const auto send_scan = [&](std::size_t index) {
+      sensor_msgs::msg::LaserScan scan;
+      scan.header.frame_id = SOURCE_FRAME_ID;
+      scan.header.stamp = cm_->now();
+      scan.range_min = 0.1F;
+      scan.range_max = 10.0F;
+      scan.ranges = {5.0F};
+      publishers[index]->publish(scan);
+    };
+  const auto wait_receipt = [&](std::size_t index, std::int64_t previous) {
       const auto deadline = std::chrono::steady_clock::now() + 500ms;
       while (std::chrono::steady_clock::now() < deadline) {
         rclcpp::spin_some(cm_->get_node_base_interface());
-        if (received[0] && received[1]) {
+        if (cm_->scanReceiptNs(names[index]) > previous) {
           return true;
         }
-        std::this_thread::sleep_for(10ms);
+        std::this_thread::sleep_for(5ms);
       }
       return false;
     };
-  const auto check_footprints = [&](double x, double y) {
-      for (const auto & footprint : received) {
-        ASSERT_NE(footprint, nullptr);
-        ASSERT_EQ(footprint->points.size(), 4u);
-        EXPECT_NEAR(footprint->points[0].x, x, EPSILON);
-        EXPECT_NEAR(footprint->points[0].y, y, EPSILON);
-        EXPECT_NEAR(footprint->points[1].x, x, EPSILON);
-        EXPECT_NEAR(footprint->points[1].y, -y, EPSILON);
-        EXPECT_NEAR(footprint->points[2].x, -x, EPSILON);
-        EXPECT_NEAR(footprint->points[2].y, -y, EPSILON);
-        EXPECT_NEAR(footprint->points[3].x, -x, EPSILON);
-        EXPECT_NEAR(footprint->points[3].y, y, EPSILON);
+  for (std::size_t i = 0; i < names.size(); ++i) {
+    send_scan(i);
+    ASSERT_TRUE(wait_receipt(i, 0));
+  }
+
+  for (std::size_t stale = 0; stale < names.size(); ++stale) {
+    // Establish a fresh baseline before letting exactly one of the four scans expire.
+    for (std::size_t i = 0; i < names.size(); ++i) {
+      const auto previous = cm_->scanReceiptNs(names[i]);
+      send_scan(i);
+      ASSERT_TRUE(wait_receipt(i, previous));
+    }
+    cmd_vel_out_.reset();
+    cm_->receiveFreeVelocity(0.3);
+    cm_->runControlLoop();
+    ASSERT_TRUE(waitCmdVel(200ms));
+    EXPECT_NEAR(cmd_vel_out_->linear.x, 0.3, EPSILON);
+
+    std::this_thread::sleep_for(220ms);
+    for (std::size_t i = 0; i < names.size(); ++i) {
+      if (i == stale) {
+        continue;
       }
-    };
+      const auto previous = cm_->scanReceiptNs(names[i]);
+      send_scan(i);
+      ASSERT_TRUE(wait_receipt(i, previous));
+    }
+    cmd_vel_out_.reset();
+    obstacle_status_.reset();
+    cm_->runControlLoop();
+    ASSERT_TRUE(waitCmdVel(200ms));
+    EXPECT_DOUBLE_EQ(cmd_vel_out_->linear.x, 0.0);
+    ASSERT_NE(obstacle_status_, nullptr);
+    EXPECT_EQ(obstacle_status_->status, nav_interfaces::msg::ObstacleMonitorStatus::STOP);
 
-  cm_->startManualControlLoop();
-  ASSERT_TRUE(wait_footprints());
-  check_footprints(0.35, 0.29);
-
-  // FREE mode applies detection padding, which must not reach the costmaps.
-  cm_->receiveFreeVelocity(0.4);
-  cm_->runControlLoop();
-  EXPECT_GT(cm_->polygonPadding("PolygonStop"), 0.0);
-  received.assign(2, nullptr);
-  cm_->requestLoadedFootprint(true);
-  rclcpp::spin_some(cm_->get_node_base_interface());
-  EXPECT_FALSE(received[0]);
-  EXPECT_FALSE(received[1]);
-  cm_->runControlLoop();
-  ASSERT_TRUE(wait_footprints());
-  check_footprints(0.50, 0.40);
-
-  received.assign(2, nullptr);
-  cm_->requestLoadedFootprint(false);
-  cm_->runControlLoop();
-  ASSERT_TRUE(wait_footprints());
-  check_footprints(0.35, 0.29);
+    const auto previous = cm_->scanReceiptNs(names[stale]);
+    send_scan(stale);
+    ASSERT_TRUE(wait_receipt(stale, previous));
+    cmd_vel_out_.reset();
+    cm_->receiveFreeVelocity(0.3);
+    cm_->runControlLoop();
+    ASSERT_TRUE(waitCmdVel(200ms));
+    EXPECT_NEAR(cmd_vel_out_->linear.x, 0.3, EPSILON);
+  }
   cm_->stop();
+}
+
+TEST_F(Tester, testScanNeverReceivedTimesOutAndStops)
+{
+  setCommonParameters();
+  cm_->declare_parameter("scan_fault_timeout", 0.1);
+  addPolygon("PolygonStop", POLYGON, 1.0, "stop");
+  addSource(SCAN_NAME, SCAN);
+  setVectors({"PolygonStop"}, {SCAN_NAME});
+  cm_->startManualControlLoop();
+
+  cm_->receiveFreeVelocity(0.3);
+  cm_->runControlLoop();
+  ASSERT_TRUE(waitCmdVel(200ms));
+  EXPECT_NEAR(cmd_vel_out_->linear.x, 0.3, EPSILON);
+
+  std::this_thread::sleep_for(120ms);
+  cmd_vel_out_.reset();
+  obstacle_status_.reset();
+  cm_->runControlLoop();
+  ASSERT_TRUE(waitCmdVel(200ms));
+  EXPECT_DOUBLE_EQ(cmd_vel_out_->linear.x, 0.0);
+  ASSERT_NE(obstacle_status_, nullptr);
+  EXPECT_EQ(obstacle_status_->status, nav_interfaces::msg::ObstacleMonitorStatus::STOP);
+  cm_->stop();
+}
+
+TEST_F(Tester, testCostmapFootprintIsConsumedBeforeMotion)
+{
+  setCommonParameters();
+  addPolygon("PolygonStop", POLYGON, 1.0, "stop");
+  cm_->declare_parameter("PolygonStop.use_footprint_topic", true);
+  cm_->declare_parameter("PolygonStop.footprint_topic", FOOTPRINT_TOPIC);
+  setVectors({"PolygonStop"}, {});
+  cm_->startManualControlLoop();
+
+  cm_->receiveFreeVelocity(0.3);
+  cm_->runControlLoop();
+  ASSERT_TRUE(waitCmdVel(200ms));
+  EXPECT_DOUBLE_EQ(cmd_vel_out_->linear.x, 0.0);
+
+  const auto stamp = cm_->now();
+  publishFootprint(0.5, stamp);
+  const auto deadline = std::chrono::steady_clock::now() + 500ms;
+  bool updated = false;
+  while (std::chrono::steady_clock::now() < deadline) {
+    rclcpp::spin_some(cm_->get_node_base_interface());
+    cm_->receiveFreeVelocity(0.3);
+    cm_->runControlLoop();
+    const auto points = cm_->polygonPoints("PolygonStop");
+    if (points.size() == 4 && std::fabs(points.front().x - 0.5) < EPSILON) {
+      updated = true;
+      break;
+    }
+    std::this_thread::sleep_for(10ms);
+  }
+  ASSERT_TRUE(updated);
+  cmd_vel_out_.reset();
+  cm_->receiveFreeVelocity(0.3);
+  cm_->runControlLoop();
+  ASSERT_TRUE(waitCmdVel(200ms));
+  EXPECT_NEAR(cmd_vel_out_->linear.x, 0.3, EPSILON);
+
+  // A later costmap footprint update must replace the previous geometry as well.
+  publishFootprint(0.6, cm_->now());
+  updated = false;
+  const auto second_deadline = std::chrono::steady_clock::now() + 500ms;
+  while (std::chrono::steady_clock::now() < second_deadline) {
+    rclcpp::spin_some(cm_->get_node_base_interface());
+    cm_->receiveFreeVelocity(0.3);
+    cm_->runControlLoop();
+    const auto points = cm_->polygonPoints("PolygonStop");
+    if (points.size() == 4 && std::fabs(points.front().x - 0.6) < EPSILON) {
+      updated = true;
+      break;
+    }
+    std::this_thread::sleep_for(10ms);
+  }
+  EXPECT_TRUE(updated);
+  cm_->stop();
+}
+
+TEST_F(Tester, testInvalidNavigationTypeIsRejected)
+{
+  setCommonParameters();
+  cm_->declare_parameter("navigation_type", "unknown");
+  addPolygon("PolygonStop", POLYGON, 1.0, "stop");
+  setVectors({"PolygonStop"}, {});
+  cm_->cant_configure();
 }
 
 TEST_F(Tester, testStateLogsDoNotRepeatForUnchangedInputs)
@@ -386,8 +427,8 @@ TEST_F(Tester, testStateLogsDoNotRepeatForUnchangedInputs)
       }
       return total;
     };
-  EXPECT_EQ(count("[FSM] type locked:"), 1u);
-  EXPECT_EQ(count("[FSM] ignoring inactive chain:"), 1u);
+  EXPECT_EQ(count("[FSM] type locked:"), 0u);
+  EXPECT_EQ(count("[FSM] ignoring inactive chain:"), 0u);
   EXPECT_EQ(count("[FSM] mode IDLE -> AUTOMONOUS_NAVIGATION"), 1u);
   EXPECT_EQ(count("[FSM] velocity=FRESH"), 2u);
   EXPECT_EQ(count("[FSM] velocity=STALE"), 1u);

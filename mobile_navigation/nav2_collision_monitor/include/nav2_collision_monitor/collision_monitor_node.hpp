@@ -25,9 +25,7 @@
 
 #include "rclcpp/rclcpp.hpp"
 #include "geometry_msgs/msg/twist.hpp"
-#include "geometry_msgs/msg/polygon.hpp"
 #include "nav_msgs/msg/path.hpp"
-#include "std_srvs/srv/set_bool.hpp"
 #include "visualization_msgs/msg/marker_array.hpp"
 #include "nav_interfaces/msg/obstacle_monitor_status.hpp"
 #include "nav_interfaces/msg/tracking_path.hpp"
@@ -121,9 +119,47 @@ protected:
    * @param msg Input cmd_vel message
    */
   void cmdVelInCallback(geometry_msgs::msg::Twist::ConstSharedPtr msg);
-  void scheduleCmdVelCallback(geometry_msgs::msg::Twist::ConstSharedPtr msg);
   void freeNavigationPathCallback(nav_msgs::msg::Path::ConstSharedPtr msg);
+
+  /// 速度回调写入的最新消息、接收时间与序号。
+  struct VelocityMailbox
+  {
+    geometry_msgs::msg::Twist::ConstSharedPtr message;
+    rclcpp::Time stamp{0, 0, RCL_ROS_TIME};
+    std::uint64_t sequence{0};
+  };
+
+  /// 单次控制周期的输入快照；new_* 表示尚未消费的路径更新。
+  struct ControlInput
+  {
+    VelocityMailbox cmd;
+    nav_msgs::msg::Path::ConstSharedPtr free_path;
+    nav_interfaces::msg::TrackingPath::ConstSharedPtr tracking_path;
+    bool new_free_path{false};
+    bool new_tracking_path{false};
+  };
+
+  /// 串行执行单次控制周期；scan 安全检查先于导航和速度处理。
   void controlLoopCallback();
+  /// 在邮箱锁内更新缓存并消费路径序号；返回引用仅供当前串行控制周期使用。
+  const ControlInput & readControlInput();
+  /// 更新已观察的序号；路径、速度或传感器数据变化时返回 true。
+  bool hasUpdatedInput(const ControlInput & input);
+  /// scan 缺失或超时时发布 STOP；仅在本周期可继续处理时返回 true。
+  bool checkScanTimeout(const rclcpp::Time & now);
+  /// 根据配置的导航类型执行路径检查与 IDLE 恢复检查。
+  void updateNavigationMode(const ControlInput & input, const rclcpp::Time & now);
+  /// 处理速度新鲜度、IDLE 超时，以及活动或空闲状态下的碰撞检测。
+  void processVelocityInput(
+    const VelocityMailbox & cmd, bool input_updated, const rclcpp::Time & now);
+  /// 接收新的自由导航路径，或由新鲜速度从 IDLE 恢复自动导航。
+  void checkAutonomousNavigation(
+    const nav_msgs::msg::Path::ConstSharedPtr & path, bool new_path,
+    bool cmd_fresh, const rclcpp::Time & cmd_stamp, const rclcpp::Time & now);
+  /// 根据路径 padding 选择普通/贴边调度，或从 IDLE 恢复上次的调度子模式。
+  void checkScheduleNavigation(
+    const nav_interfaces::msg::TrackingPath::ConstSharedPtr & path, bool new_path,
+    bool cmd_fresh, const rclcpp::Time & cmd_stamp, const rclcpp::Time & now);
   /**
    * @brief Publishes output cmd_vel. If robot was stopped more than stop_pub_timeout_ seconds,
    * quit to publish 0-velocity.
@@ -286,16 +322,15 @@ protected:
     const std::shared_ptr<nav_interfaces::srv::SetPolygonPadding::Request> request,
     std::shared_ptr<nav_interfaces::srv::SetPolygonPadding::Response> response);
 
-  void setLoadedFootprintCallback(
-    const std::shared_ptr<std_srvs::srv::SetBool::Request> request,
-    std::shared_ptr<std_srvs::srv::SetBool::Response> response);
-  geometry_msgs::msg::Polygon readFootprintParameter(
-    const std::string & name, const std::vector<double> & defaults);
-  void applyInternalFootprint(bool loaded);
   void applyNavigationPadding(NavigationMode mode);
   void enterIdle(const char * reason);
   static const char * navigationModeName(NavigationMode mode);
   void changeNavigationMode(NavigationMode mode, const char * reason);
+  static std::int64_t steadyNowNs()
+  {
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(
+      std::chrono::steady_clock::now().time_since_epoch()).count();
+  }
 
   // ----- Variables -----
 
@@ -313,7 +348,6 @@ protected:
   // Input/output speed controls
   /// @beirf Input cmd_vel subscriber
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_in_sub_;
-  rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr schedule_cmd_vel_sub_;
   rclcpp::Subscription<nav_interfaces::msg::TrackingPath>::SharedPtr tracking_path_sub_;
   rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr free_navigation_path_sub_;
   /// @brief Output cmd_vel publisher
@@ -325,10 +359,6 @@ protected:
     visualization_msgs::msg::MarkerArray>::SharedPtr path_stop_marker_pub_;
   /// @brief 动态膨胀设置服务（本仓库相对上游 Nav2 的改动）
   rclcpp::Service<nav_interfaces::srv::SetPolygonPadding>::SharedPtr set_padding_srv_;
-  rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr set_loaded_footprint_srv_;
-
-  std::vector<rclcpp_lifecycle::LifecyclePublisher<geometry_msgs::msg::Polygon>::SharedPtr>
-  costmap_footprint_pubs_;
 
   // schedule_planner path-ahead stop detector
   bool path_stop_enabled_{false};
@@ -359,28 +389,18 @@ protected:
   mutable rclcpp::Clock throttle_clock_{RCL_STEADY_TIME};
   nav_interfaces::msg::TrackingPath::ConstSharedPtr tracking_path_;
 
-  struct VelocityMailbox
-  {
-    geometry_msgs::msg::Twist::ConstSharedPtr message;
-    rclcpp::Time stamp{0, 0, RCL_ROS_TIME};
-    std::uint64_t sequence{0};
-  };
-
   mutable std::mutex mailbox_mutex_;
-  VelocityMailbox free_cmd_mailbox_;
-  VelocityMailbox schedule_cmd_mailbox_;
+  VelocityMailbox cmd_mailbox_;
+  ControlInput control_input_;
   nav_msgs::msg::Path::ConstSharedPtr pending_free_path_;
   nav_interfaces::msg::TrackingPath::ConstSharedPtr pending_tracking_path_;
   std::uint64_t free_path_sequence_{0};
   std::uint64_t tracking_path_sequence_{0};
   std::uint64_t consumed_free_path_sequence_{0};
   std::uint64_t consumed_tracking_path_sequence_{0};
-  std::uint64_t consumed_free_cmd_sequence_{0};
-  std::uint64_t consumed_schedule_cmd_sequence_{0};
-  std::uint64_t observed_free_cmd_sequence_{0};
-  std::uint64_t observed_schedule_cmd_sequence_{0};
+  std::uint64_t consumed_cmd_sequence_{0};
+  std::uint64_t observed_cmd_sequence_{0};
   std::vector<std::uint64_t> observed_source_sequences_;
-  std::optional<bool> pending_loaded_footprint_;
 
   rclcpp::TimerBase::SharedPtr control_loop_timer_;
   rclcpp::CallbackGroup::SharedPtr io_callback_group_;
@@ -394,18 +414,17 @@ protected:
   // schedule path is normal navigation or edging.
   NavigationMode schedule_navigation_mode_{NavigationMode::SCHEDULE_NAVIGATION};
   NavigationType lifecycle_navigation_type_{NavigationType::UNSET};
+  NavigationType configured_navigation_type_{NavigationType::AUTOMONOUS};
+  std::int64_t source_start_time_ns_{0};
+  std::int64_t scan_fault_timeout_ns_{5000000000LL};
+  bool sensor_fault_active_{false};
   int logged_velocity_state_{-1};
-  bool ignored_chain_logged_{false};
   rclcpp::Time mode_last_cmd_stamp_{0, 0, RCL_ROS_TIME};
-  std::string schedule_cmd_vel_topic_{"cmd_vel_nav"};
   std::string free_navigation_path_topic_{"plan"};
   double automonous_navigation_padding_{0.1};
   bool approach_enabled_{true};
   // Reused by the single control callback to avoid allocating thousands of points at 100 Hz.
   std::vector<Point> collision_points_buffer_;
-  geometry_msgs::msg::Polygon normal_footprint_;
-  geometry_msgs::msg::Polygon loaded_footprint_;
-  bool loaded_mode_{false};
 
   /// @brief Whether main routine is active
   bool process_active_;

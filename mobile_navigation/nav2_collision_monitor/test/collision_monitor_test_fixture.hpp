@@ -51,7 +51,6 @@ static const char SOURCE_FRAME_ID[]{"base_source"};
 static const char ODOM_FRAME_ID[]{"odom"};
 static const char CMD_VEL_IN_TOPIC[]{"cmd_vel_in"};
 static const char CMD_VEL_OUT_TOPIC[]{"cmd_vel_out"};
-static const char SCHEDULE_CMD_VEL_TOPIC[]{"schedule_cmd_vel"};
 static const char OBSTACLE_STATUS_TOPIC[]{"obstacle_status"};
 static const char FOOTPRINT_TOPIC[]{"footprint"};
 static const char SCAN_NAME[]{"Scan"};
@@ -109,7 +108,7 @@ public:
     msg->linear.x = x;
     msg->linear.y = y;
     msg->angular.z = tw;
-    scheduleCmdVelCallback(msg);
+    cmdVelInCallback(msg);
   }
 
   void receiveFreePath()
@@ -117,15 +116,6 @@ public:
     auto msg = std::make_shared<nav_msgs::msg::Path>();
     msg->poses.emplace_back();
     freeNavigationPathCallback(msg);
-  }
-
-  void requestLoadedFootprint(bool loaded)
-  {
-    auto request = std::make_shared<std_srvs::srv::SetBool::Request>();
-    auto response = std::make_shared<std_srvs::srv::SetBool::Response>();
-    request->data = loaded;
-    setLoadedFootprintCallback(request, response);
-    ASSERT_TRUE(response->success);
   }
 
   void runControlLoop()
@@ -136,6 +126,16 @@ public:
   std::size_t processSampleCount() const
   {
     return process_samples_ms_.size();
+  }
+
+  std::int64_t scanReceiptNs(const std::string & name) const
+  {
+    for (const auto & source : sources_) {
+      if (source->getName() == name) {
+        return source->getLastReceivedSteadyNs();
+      }
+    }
+    return 0;
   }
 
   NavigationMode mode() const
@@ -207,6 +207,13 @@ public:
     return false;
   }
 
+  bool sourceTransformReady(const rclcpp::Time & stamp) const
+  {
+    return tf_buffer_ &&
+           tf_buffer_->canTransform(ODOM_FRAME_ID, BASE_FRAME_ID, tf2::TimePointZero) &&
+           tf_buffer_->canTransform(ODOM_FRAME_ID, SOURCE_FRAME_ID, stamp);
+  }
+
   void receiveTrackingPath(
     const std::vector<nav2_collision_monitor::Point> & points, float padding = 0.0F)
   {
@@ -266,6 +273,7 @@ protected:
 
   // CollisionMonitor node
   std::shared_ptr<CollisionMonitorWrapper> cm_;
+  std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
 
   // Footprint publisher
   rclcpp::Publisher<geometry_msgs::msg::PolygonStamped>::SharedPtr footprint_pub_;

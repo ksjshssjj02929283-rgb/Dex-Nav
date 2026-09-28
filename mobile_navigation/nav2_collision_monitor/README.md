@@ -29,7 +29,7 @@ The zones around the robot can take the following shapes:
 
 * Arbitrary user-defined polygon relative to the robot base frame.
 * Circle: is made for the best performance and could be used in the cases where the zone or robot could be approximated by round shape.
-* Robot footprint polygon, which is used in the approach behavior model only. Will use the footprint topic to allow it to be dynamically adjusted over time.
+* Robot footprint polygon, which can be used by the stop and approach models. It can follow a costmap footprint topic.
 
 The data may be obtained from different data sources:
 
@@ -42,7 +42,7 @@ The data may be obtained from different data sources:
 The Collision Monitor is designed to operate below Nav2 as an independent safety node.
 This acts as a filter on the `cmd_vel` topic coming out of the Controller Server. If no such zone is triggered, then the Controller's `cmd_vel` is used. Else, it is scaled or set to stop as appropriate.
 
-The following diagram is showing the high-level design of Collision Monitor module. All shapes (Polygons and Circles) are derived from base `Polygon` class, so without loss of generality we can call them as polygons. Subscribed footprint is also having the same properties as other polygons, but it is being obtained a footprint topic for the Approach Model.
+The following diagram shows the high-level design of Collision Monitor. All shapes derive from the base `Polygon` class. A polygon can consume a footprint topic when configured to do so.
 ![HDL.png](doc/HLD.png)
 
 ## Configuration
@@ -68,40 +68,14 @@ The following notes could be made:
 
 ---
 
-## 本仓库相对上游 Nav2 的改动 (Local divergence from upstream)
+## 本项目的速度与安全链路
 
-本包不是上游 Nav2 的纯净拷贝，以下为本项目的本地增改。修改本包或从上游同步时请先看这一节。
+生产配置见 [`params/collision_monitor_params.yaml`](params/collision_monitor_params.yaml)。
 
-### 1. `obstacle_status` 话题（新增）
+- `navigation_type` 在启动前配置为 `auto` 或 `schedule`，不再根据首个速度/路径消息猜测模式。`schedule` 的 `TrackingPath.padding == 0` 仍启用贴边路径走廊检测。
+- 两种模式都订阅 `cmd_vel_nav`，对每帧新速度和传感器变化做 STOP/SLOWDOWN 检测，并将结果发布到 `cmd_vel_safe`。`velocity_smoother` 在启用 Collision Monitor 时订阅 `cmd_vel_safe`，再输出 `control/cmd_vel_nav` 给 mux。关闭 Collision Monitor 时 smoother 直接订阅 `cmd_vel_nav`。
+- CM 是 footprint 消费方。`PolygonStop` 和启用时的 `FootprintApproach` 订阅 `local_costmap/published_footprint`；基础 footprint 由 costmap 侧维护，CM 不提供载货/空载切换服务，也不向 costmap 发布 footprint。首次收到有效 footprint 前，CM 对速度输出零值并上报 STOP。
+- `observation_sources` 中的每一路 LaserScan 都受 `scan_fault_timeout` 监测。任意一路超过阈值（默认 5 秒）没有收到消息，包括启动后一直没有首帧，CM 持续输出零速度并上报 STOP；所有路恢复后，仍须有新鲜速度输入才会恢复运动。`source_timeout` 继续约束扫描消息的采样时间有效性。
+- `obstacle_status` 继续发布 FREE/SLOWDOWN/STOP，供任务层观察。调度模式的速度安全门控由 CM 执行，不能绕过 `cmd_vel_safe` 直接连接 smoother。
 
-在 `cmd_vel` 门控之外，额外发布 `nav_interfaces/ObstacleMonitorStatus`（FREE / SLOWDOWN / STOP
-三态 + `slowdown_ratio` + `zone_name`），供 `path_follower` 做速度跟踪状态机使用
-（见 `path_follower` 的 `VelocityTrackMode`）。相关参数：`obstacle_status_topic`。
-
-上游的 `APPROACH` 动作在这里并入 `SLOWDOWN` 上报——两者对下游都是"降速不停止"的语义。
-
-### 2. `obstacle_status` 空闲保活定时器（新增）
-
-**上游行为**：`process()` 只由 `cmdVelInCallback` 驱动，因此 `obstacle_status` 只在有
-`cmd_vel_in` 流入时才发布。
-
-**问题**：这让一个安全信号的发布节奏依赖于下游消费者的输出（依赖倒置），带来两个后果：
-
-1. 下游无法区分"监控节点挂了"和"监控节点没有可反应的输入"——因此无法实现状态超时看门狗。
-   `path_follower` 的 `obstacle_status_timeout` 看门狗正是依赖本改动才有意义。
-2. 车还没开始动就已存在的障碍，要等第一帧非零速度发布出去才会被上报，此时往往已经晚了。
-
-**改动**：新增 `obstacle_status_idle_rate`（默认 2.0 Hz，`<=0` 关闭）驱动的保活定时器
-`idleKeepaliveCallback()`，仅在"最近一个定时周期内没有 `cmd_vel_in` 流入"时才触发一次评估。
-
-设计约束（同步上游时必须保持）：
-
-- **不改动 `cmd_vel` 主通路**。运动中定时器直接跳过，`cmdVelInCallback` → `process()` 的
-  行为与延迟特性与上游完全一致。
-- **保活路径不发布 `cmd_vel`**：`process()` 新增 `publish_cmd_vel` 参数，保活时传 `false`。
-  监控器只应门控速度，绝不能自己产生速度。
-- **保活路径只继承 `robot_action_prev_.action_type`，不写 `req_vel`**。`req_vel` 属于
-  `cmd_vel` 通路的状态，若被保活路径覆盖成零，`publishVelocity()` 会漏掉下一次真实指令的
-  "机器人刚刚停下"边沿，从而不转发那一帧停车指令。
-- 保活用零速评估：STOP/SLOWDOWN 多边形的判定是纯几何的（点是否落在多边形内），零速下结果
-  完全正确；`APPROACH` 会退化为不触发，而这正是它在零速下应有的语义（无运动即无预期碰撞）。
+切换 `navigation_type` 或速度话题后需要重新启动导航节点。部署前应在底盘禁动状态下确认四路扫描、footprint、两个速度话题和异常停车，再进行低速验证。

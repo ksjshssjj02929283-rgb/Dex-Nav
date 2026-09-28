@@ -52,8 +52,14 @@ def _launch_setup(context):
                        'velocity_smoother']
     if use_collision_monitor:
         lifecycle_nodes.insert(0, 'collision_monitor')
-    controller_cmd_vel = 'cmd_vel_collision' if use_collision_monitor else 'cmd_vel_nav'
-    behavior_remappings = [('cmd_vel', 'cmd_vel_collision')] if use_collision_monitor else []
+    controller_cmd_vel = 'cmd_vel_nav'
+    # TimedBehavior in this project publishes control/cmd_vel_nav directly.
+    # Route recovery commands through CM as well as plugins using cmd_vel.
+    behavior_remappings = [
+        ('cmd_vel', 'cmd_vel_nav'),
+        ('control/cmd_vel_nav', 'cmd_vel_nav'),
+    ] if use_collision_monitor else []
+    smoother_cmd_vel = 'cmd_vel_safe' if use_collision_monitor else 'cmd_vel_nav'
 
     # Map fully qualified names to relative ones so the node's namespace can be prepended.
     # In case of the transforms (tf), currently, there doesn't seem to be a better alternative
@@ -192,10 +198,10 @@ def _launch_setup(context):
                 output='screen',
                 respawn=use_respawn,
                 respawn_delay=2.0,
-                parameters=[configured_params],
+                parameters=[configured_params, {'input_topic': smoother_cmd_vel}],
                 arguments=['--ros-args', '--log-level', log_level],
                 remappings=remappings +
-                [('cmd_vel', 'cmd_vel_nav'), ('cmd_vel_smoothed', 'cmd_vel')]),
+                [('cmd_vel', smoother_cmd_vel), ('cmd_vel_smoothed', 'cmd_vel')]),
             Node(
                 package='nav2_lifecycle_manager',
                 executable='lifecycle_manager',
@@ -265,9 +271,9 @@ def _launch_setup(context):
                 package='nav2_velocity_smoother',
                 plugin='nav2_velocity_smoother::VelocitySmoother',
                 name='velocity_smoother',
-                parameters=[configured_params],
+                parameters=[configured_params, {'input_topic': smoother_cmd_vel}],
                 remappings=remappings +
-                [('cmd_vel', 'cmd_vel_nav'), ('cmd_vel_smoothed', 'cmd_vel')]),
+                [('cmd_vel', smoother_cmd_vel), ('cmd_vel_smoothed', 'cmd_vel')]),
             ComposableNode(
                 package='nav2_lifecycle_manager',
                 plugin='nav2_lifecycle_manager::LifecycleManager',

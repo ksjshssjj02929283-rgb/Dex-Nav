@@ -16,6 +16,7 @@
 #define NAV2_COLLISION_MONITOR__SOURCE_HPP_
 
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <memory>
 #include <vector>
@@ -82,6 +83,15 @@ public:
   {
     return data_sequence_.load(std::memory_order_acquire);
   }
+  const std::string & getName() const {return source_name_;}
+  std::int64_t getLastReceivedSteadyNs() const
+  {
+    return last_received_steady_ns_.load(std::memory_order_acquire);
+  }
+  std::int64_t getLastSourceStampNs() const
+  {
+    return last_source_stamp_ns_.load(std::memory_order_acquire);
+  }
 
 protected:
   /**
@@ -134,6 +144,8 @@ protected:
 
   /// @brief Lets the control loop skip geometry work until a source receives a new message.
   std::atomic<std::uint64_t> data_sequence_{0};
+  std::atomic<std::int64_t> last_received_steady_ns_{0};
+  std::atomic<std::int64_t> last_source_stamp_ns_{0};
 };  // class Source
 
 }  // namespace nav2_collision_monitor

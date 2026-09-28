@@ -17,6 +17,7 @@
 Tester::Tester()
 {
   cm_ = std::make_shared<CollisionMonitorWrapper>();
+  tf_broadcaster_ = std::make_shared<tf2_ros::TransformBroadcaster>(cm_);
 
   footprint_pub_ = cm_->create_publisher<geometry_msgs::msg::PolygonStamped>(
     FOOTPRINT_TOPIC, rclcpp::QoS(rclcpp::KeepLast(1)).transient_local().reliable());
@@ -40,6 +41,7 @@ Tester::Tester()
 
 Tester::~Tester()
 {
+  tf_broadcaster_.reset();
   footprint_pub_.reset();
 
   scan_pub_.reset();
@@ -63,10 +65,6 @@ void Tester::setCommonParameters()
     "cmd_vel_out_topic", rclcpp::ParameterValue(CMD_VEL_OUT_TOPIC));
   cm_->set_parameter(
     rclcpp::Parameter("cmd_vel_out_topic", CMD_VEL_OUT_TOPIC));
-  cm_->declare_parameter(
-    "schedule_cmd_vel_topic", rclcpp::ParameterValue(SCHEDULE_CMD_VEL_TOPIC));
-  cm_->set_parameter(
-    rclcpp::Parameter("schedule_cmd_vel_topic", SCHEDULE_CMD_VEL_TOPIC));
   cm_->declare_parameter(
     "obstacle_status_topic", rclcpp::ParameterValue(OBSTACLE_STATUS_TOPIC));
 
@@ -228,30 +226,34 @@ void Tester::setVectors(
 
 void Tester::sendTransforms(const rclcpp::Time & stamp)
 {
-  std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster =
-    std::make_shared<tf2_ros::TransformBroadcaster>(cm_);
-
   geometry_msgs::msg::TransformStamped transform;
   transform.transform.rotation.x = 0.0;
   transform.transform.rotation.y = 0.0;
   transform.transform.rotation.z = 0.0;
   transform.transform.rotation.w = 1.0;
 
-  // Fill TF buffer ahead for future transform usage in CollisionMonitor::process()
-  const rclcpp::Duration ahead = 1000ms;
-  for (rclcpp::Time t = stamp; t <= stamp + ahead; t += rclcpp::Duration(50ms)) {
-    transform.header.stamp = t;
+  // Keep the broadcaster alive for the test and wait until the listener has received the
+  // transform before publishing sensor data; otherwise the first scan can be discarded.
+  const auto publish_transforms = [&]() {
+      const rclcpp::Duration ahead = 1000ms;
+      for (rclcpp::Time t = stamp; t <= stamp + ahead; t += rclcpp::Duration(50ms)) {
+        transform.header.stamp = t;
+        transform.header.frame_id = BASE_FRAME_ID;
+        transform.child_frame_id = SOURCE_FRAME_ID;
+        tf_broadcaster_->sendTransform(transform);
 
-    // base_frame -> source_frame transform
-    transform.header.frame_id = BASE_FRAME_ID;
-    transform.child_frame_id = SOURCE_FRAME_ID;
-    tf_broadcaster->sendTransform(transform);
-
-    // odom_frame -> base_frame transform
-    transform.header.frame_id = ODOM_FRAME_ID;
-    transform.child_frame_id = BASE_FRAME_ID;
-    tf_broadcaster->sendTransform(transform);
+        transform.header.frame_id = ODOM_FRAME_ID;
+        transform.child_frame_id = BASE_FRAME_ID;
+        tf_broadcaster_->sendTransform(transform);
+      }
+    };
+  const auto deadline = std::chrono::steady_clock::now() + 500ms;
+  while (!cm_->sourceTransformReady(stamp) && std::chrono::steady_clock::now() < deadline) {
+    publish_transforms();
+    rclcpp::spin_some(cm_->get_node_base_interface());
+    std::this_thread::sleep_for(10ms);
   }
+  EXPECT_TRUE(cm_->sourceTransformReady(stamp));
 }
 
 void Tester::publishFootprint(const double radius, const rclcpp::Time & stamp)

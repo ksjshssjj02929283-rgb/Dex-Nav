@@ -150,6 +150,7 @@ public:
    * @brief Updates polygon from footprint subscriber (if any)
    */
   void updatePolygon();
+  bool missingFootprint() const {return footprint_sub_ != nullptr && poly_.size() < 3;}
 
   /**
    * @brief Gets number of points inside given polygon

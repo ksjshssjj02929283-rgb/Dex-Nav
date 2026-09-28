@@ -1,5 +1,5 @@
 # nav2_collision_monitor 配置
-# 自由导航串联，调度导航由 path_follower 直连 velocity_smoother，collision_monitor 旁路观察。
+# navigation_type 选择 auto 或 schedule；两者均由 CM 输出安全速度。
 # 底盘: 全向(omni), base_link, 尺寸 0.70×0.58 (半长 ±0.35, 半宽 ±0.29)
 # 数据源: 前后双激光 + 前后 RGBD 转换 LaserScan
 collision_monitor:
@@ -7,9 +7,9 @@ collision_monitor:
     use_sim_time: false
     base_frame_id: "base_link"
     odom_frame_id: "odom"
-    cmd_vel_in_topic: "cmd_vel_collision"
-    cmd_vel_out_topic: "cmd_vel_nav"
-    schedule_cmd_vel_topic: "cmd_vel_nav"
+    navigation_type: "auto"  # 调度部署改为 "schedule"
+    cmd_vel_in_topic: "cmd_vel_nav"
+    cmd_vel_out_topic: "cmd_vel_safe"
     free_navigation_path_topic: "plan"
     control_frequency: 100.0
     cmd_vel_timeout: 0.3
@@ -19,12 +19,10 @@ collision_monitor:
     # PERF 验收埋点：每个窗口输出主循环及各处理阶段的分位数统计。
     performance_timing_enabled: true
     performance_report_interval: 60.0
-    # 基础轮廓同步到 costmap；相对话题名跟随节点 namespace，空列表可关闭。
-    costmap_footprint_topics: ["local_costmap/footprint", "global_costmap/footprint"]
-    normal_footprint: [0.35, 0.29, 0.35, -0.29, -0.35, -0.29, -0.35, 0.29]
-    loaded_footprint: [0.50, 0.40, 0.50, -0.40, -0.50, -0.40, -0.50, 0.40]
+    # footprint 由 costmap 维护并发布，CM 只订阅 published_footprint。
     transform_tolerance: 0.1
     source_timeout: 5.0
+    scan_fault_timeout: 5.0
     base_shift_correction: True
     stop_pub_timeout: 2.0
 
@@ -32,7 +30,8 @@ collision_monitor:
 
     PolygonStop:
       type: "polygon"
-      use_footprint_topic: false
+      use_footprint_topic: true
+      footprint_topic: "local_costmap/published_footprint"
       points: [0.35, 0.29, 0.35, -0.29, -0.35, -0.29, -0.35, 0.29]
       default_padding: 0.2
       automonous_navigation_padding: 0.1
@@ -63,7 +62,8 @@ collision_monitor:
 
     FootprintApproach:
       type: "polygon"
-      use_footprint_topic: false
+      use_footprint_topic: true
+      footprint_topic: "local_costmap/published_footprint"
       points: [0.35, 0.29, 0.35, -0.29, -0.35, -0.29, -0.35, 0.29]
       default_padding: 0.0
       action_type: "approach"

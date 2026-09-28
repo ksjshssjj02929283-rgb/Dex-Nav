@@ -76,6 +76,7 @@ TEST_F(Tester, testTrackingPathAheadStop)
 {
   const rclcpp::Time curr_time = cm_->now();
   setCommonParameters();
+  cm_->declare_parameter("navigation_type", "schedule");
   addPolygon("PolygonStop", CIRCLE, 0.2, "stop");
   addSource(POINTCLOUD_NAME, POINTCLOUD);
   setVectors({"PolygonStop"}, {POINTCLOUD_NAME});
@@ -93,40 +94,40 @@ TEST_F(Tester, testTrackingPathAheadStop)
   cm_->receiveTrackingPath(route);
   publishPointCloud(0.8, curr_time);
   ASSERT_TRUE(waitData(std::hypot(0.8, 0.01), 500ms, curr_time));
-  publishScheduleCmdVel(0.5, 0.0, 0.0);
+  publishCmdVel(0.5, 0.0, 0.0);
   ASSERT_TRUE(waitObstacleStatus(nav_interfaces::msg::ObstacleMonitorStatus::STOP, 500ms));
-  EXPECT_FALSE(cmd_vel_out_);
+  ASSERT_TRUE(waitCmdVel(500ms));
 
   // Ordinary schedule navigation must ignore the corridor obstacle at the same position.
   cm_->receiveTrackingPath(route, 0.15F);
-  publishScheduleCmdVel(0.5, 0.0, 0.0);
+  publishCmdVel(0.5, 0.0, 0.0);
   ASSERT_TRUE(waitObstacleStatus(nav_interfaces::msg::ObstacleMonitorStatus::FREE, 500ms));
   EXPECT_EQ(cm_->mode(), CollisionMonitorWrapper::NavigationMode::SCHEDULE_NAVIGATION);
-  EXPECT_FALSE(cmd_vel_out_);
+  ASSERT_TRUE(waitCmdVel(500ms));
 
   // Returning to edging enables corridor detection again.
   cm_->receiveTrackingPath(route, 0.0F);
-  publishScheduleCmdVel(0.5, 0.0, 0.0);
+  publishCmdVel(0.5, 0.0, 0.0);
   ASSERT_TRUE(waitObstacleStatus(nav_interfaces::msg::ObstacleMonitorStatus::STOP, 500ms));
   EXPECT_EQ(cm_->mode(), CollisionMonitorWrapper::NavigationMode::SCHEDULE_EDGING);
-  EXPECT_FALSE(cmd_vel_out_);
+  ASSERT_TRUE(waitCmdVel(500ms));
 
   // The same obstacle is outside a parallel route corridor: velocity is passed through.
   cm_->receiveTrackingPath(
   {
     {0.0, 1.0}, {0.4, 1.0}, {0.8, 1.0},
     {1.2, 1.0}, {1.6, 1.0}, {2.0, 1.0}});
-  publishScheduleCmdVel(0.5, 0.0, 0.0);
+  publishCmdVel(0.5, 0.0, 0.0);
   ASSERT_TRUE(waitObstacleStatus(nav_interfaces::msg::ObstacleMonitorStatus::FREE, 500ms));
-  EXPECT_FALSE(cmd_vel_out_);
+  ASSERT_TRUE(waitCmdVel(500ms));
 
   // x=1.6 is beyond the 1 m lookahead and the 0.2 m PolygonStop radius, so it must not stop.
   cm_->receiveTrackingPath(route);
   publishPointCloud(1.6, curr_time);
   ASSERT_TRUE(waitData(std::hypot(1.6, 0.01), 500ms, curr_time));
-  publishScheduleCmdVel(0.5, 0.0, 0.0);
+  publishCmdVel(0.5, 0.0, 0.0);
   ASSERT_TRUE(waitObstacleStatus(nav_interfaces::msg::ObstacleMonitorStatus::FREE, 500ms));
-  EXPECT_FALSE(cmd_vel_out_);
+  ASSERT_TRUE(waitCmdVel(500ms));
 
   cm_->stop();
 }
