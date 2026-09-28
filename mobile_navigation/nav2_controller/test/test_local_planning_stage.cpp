@@ -292,6 +292,7 @@ public:
 
   void resetStages() {resetStagedControlState();}
   void setPrepareEnabledForTest(bool enabled) {prepare_enabled_ = enabled;}
+  void setStagedControlEnabledForTest(bool enabled) {staged_control_enabled_ = enabled;}
   void setPrepareStateForTest(PrepareState state) {prepare_state_ = state;}
   PrepareState prepareState() const {return prepare_state_;}
   void receivePrepareSessionForTest(uint64_t session_id)
@@ -326,6 +327,8 @@ public:
       shared_from_this(), action_name,
       std::bind(&ControllerShim::runFollowPathActionForTest, this),
       []() {}, 500ms, true);
+    configureSnapshotControl();
+    startSnapshotWorker();
     action_server_->activate();
   }
 
@@ -335,6 +338,7 @@ public:
       action_server_->deactivate();
       action_server_.reset();
     }
+    stopSnapshotWorker();
     if (vel_publisher_) {
       vel_publisher_->on_deactivate();
     }
@@ -987,6 +991,8 @@ TEST(PrepareReplanEvent, FollowPathActionCancelClosesPrepare)
   EXPECT_EQ(
     controller->prepareState(),
     nav2_controller::ControllerServer::PrepareState::DONE);
+  // The action fixture disables staged control; re-enable it before testing re-arming.
+  controller->setStagedControlEnabledForTest(true);
   controller->receivePrepareSessionForTest(5002);
   EXPECT_EQ(
     controller->prepareState(),

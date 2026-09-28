@@ -21,6 +21,7 @@
   <depend>nav_2d_utils</depend>
   <depend>nav_2d_msgs</depend>
   <depend>nav2_core</depend>
+  <depend>sensor_msgs</depend>
   <depend>nav2_speed_planner</depend>
   <depend>nav2_longitudinal_state_estimator</depend>
   <depend>nav_interfaces</depend>

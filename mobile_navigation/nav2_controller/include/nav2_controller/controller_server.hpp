@@ -196,7 +196,17 @@ protected:
    * @param path 规划级输入路径（global path）
    * @return true 表示可继续执行本控制周期；false 表示规划失败，本周期必须零速闭环
    */
-  bool runPlanningPipeline(const nav_msgs::msg::Path & path);
+  struct SnapshotRuntime;
+  std::shared_ptr<SnapshotRuntime> snapshot_runtime_;
+  void configureSnapshotControl();
+  void startSnapshotWorker();
+  bool snapshotSensorsHealthy();
+  bool snapshotMotionAllowed();
+  void snapshotControlFeedback(bool valid, double acceleration);
+  void stopSnapshotWorker();
+  bool computeControlSnapshot();
+  void queueSnapshotSpeedLimit(const nav2_msgs::msg::SpeedLimit & limit);
+
   /**
    * @brief 执行可选的 ③ LocalPlanner。未配置时保持输入路径直通。
    * @return false 表示已配置插件失败或输出空路径，调用方不得继续消费旧轨迹

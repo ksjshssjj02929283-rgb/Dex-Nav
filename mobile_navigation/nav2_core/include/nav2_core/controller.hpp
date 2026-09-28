@@ -37,6 +37,7 @@
 #define NAV2_CORE__CONTROLLER_HPP_
 
 #include <memory>
+#include <stdexcept>
 #include <string>
 
 #include "nav2_costmap_2d/costmap_2d_ros.hpp"
@@ -133,10 +134,13 @@ public:
    * @brief 设置带速度的时空轨迹（五层架构 ④SpeedPlanner 输出，项目 32 / DEC-011）。
    *
    * 轨迹跟踪型 controller override 此方法，消费 per-point longitudinal_velocity / path_kappa
-   * 等做纯跟踪（不再自行决速）。默认空实现，保持对现有几何路径型 controller 向后兼容。
+   * 等做纯跟踪（不再自行决速）。未实现时拒绝运行，防止静默忽略速度轨迹。
    * @param trajectory 带速度 / 加速度 / 时间 / 段语义的轨迹（来自 SpeedPlanner）
    */
-  virtual void setTrajectory(const nav_interfaces::msg::RobotTrajectory & /*trajectory*/) {}
+  virtual void setTrajectory(const nav_interfaces::msg::RobotTrajectory & /*trajectory*/)
+  {
+    throw std::runtime_error("Controller must implement RobotTrajectory tracking");
+  }
 
   /**
    * @brief Return the trajectory state used by the most recent longitudinal

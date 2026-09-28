@@ -12,6 +12,7 @@ find_package(rclcpp_action REQUIRED)
 find_package(rclcpp_components REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(sensor_msgs REQUIRED)
 find_package(diagnostic_msgs REQUIRED)
 find_package(nav2_util REQUIRED)
 find_package(nav2_msgs REQUIRED)
@@ -37,6 +38,7 @@ set(library_name ${executable_name}_core)
 
 add_library(${library_name} SHARED
   src/controller_server.cpp
+  src/snapshot_control.cpp
 )
 
 set(dependencies
@@ -46,6 +48,7 @@ set(dependencies
   rclcpp_components
   geometry_msgs
   std_msgs
+  sensor_msgs
   diagnostic_msgs
   nav2_msgs
   nav_2d_utils
@@ -77,6 +80,10 @@ if(BUILD_TESTING)
   ament_lint_auto_find_test_dependencies()
 
   find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(snapshot_validation_test test/snapshot_validation_test.cpp)
+  ament_add_gtest(snapshot_worker_test test/snapshot_worker_test.cpp)
+  target_link_libraries(snapshot_worker_test ${library_name})
+  ament_target_dependencies(snapshot_worker_test ${dependencies})
   add_subdirectory(plugins/test)
 endif()
 
