@@ -1,5 +1,14 @@
 /**:
   ros__parameters:
+    # 等待 command_board 当前导航后端的最长时间，单位 s；超时或值非法时回充在运动前失败。
+    charging.navigation_backend_wait_timeout_sec: 5.0
+    # 仅在 navigation_backend=nav2 时等待当前地图状态的最长时间，单位 s。
+    charging.map_state_wait_timeout_sec: 5.0
+    # 仅停车采样阶段生效：连续未收到有效二维码目标的最长时间，单位 s；有效目标会刷新计时。
+    charging.qr_detection_timeout_sec: 5.0
+    # Dock 整个阶段的总超时时间，覆盖二维码采样、倒车对接和阶段切换，单位 s。
+    charging.dock_timeout_sec: 60.0
+
     # 回充入口状态去抖：避免单帧诊断误判。
     entry_state:
       max_duration: 0.5          # 最长采样时间，单位 s。
@@ -27,7 +36,7 @@
     # 充电确认失败时退桩，重新尝试对接。
     undocking:
       speed: 0.10                # 退桩速度，单位 m/s。
-      duration: 2.0              # 退桩时间，单位 s。
+      duration: 3.0              # 退桩时间，单位 s。
 
     dock:
       reverse:

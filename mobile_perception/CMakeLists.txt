@@ -44,15 +44,6 @@ if(BUILD_TESTING)
   )
 endif()
 
-add_executable(charging_pose_service_node src/charging_pose_service.cpp)
-ament_target_dependencies(charging_pose_service_node
-  rclcpp std_srvs tf2_ros geometry_msgs tf2_geometry_msgs nlohmann_json
-)
-install( TARGETS
-    charging_pose_service_node
-    DESTINATION lib/${PROJECT_NAME}) 
-
-
 add_executable(apriltag_detection_node
   src/apriltag_detection_node.cpp
 )
@@ -158,8 +149,6 @@ install(PROGRAMS
   scripts/detect_apriltag_nostop.py
   scripts/detect_apriltags_service.py
   scripts/control_robot.py
-  scripts/nav_then_precise.py
-  scripts/nav_then_precise_bt.py
   scripts/goal_controller.py
   scripts/stop_robot.py
   scripts/spin_robot.py
@@ -170,8 +159,6 @@ install(PROGRAMS
   scripts/nav_goal_publisher_loop.py
   scripts/pub_current_position.py
   scripts/pub_goal_loop_office.py
-  scripts/create_charging_pose.py
-  scripts/nav_then_precise_bt.py
   scripts/nav_goal_server.py
   DESTINATION lib/${PROJECT_NAME})
 

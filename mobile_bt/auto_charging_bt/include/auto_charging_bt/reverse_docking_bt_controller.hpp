@@ -37,9 +37,11 @@ public:
     void stop();
     /// 最终对接阶段完成后返回 true。
     bool done() const { return controller_done_; }
+    /// 仅在停车采样阶段返回连续未收到有效二维码目标的时间；运动阶段返回空值。
+    std::optional<double> samplingTargetMissingDuration() const;
     /// 返回稳定的失败分类码，便于日志检索和现场统计。
     std::string failureReasonCode() const;
-    /// 根据本次对接统计生成面向现场排查的中文失败原因。
+    /// 根据本次对接统计生成面向现场排查的失败原因。
     std::string failureReasonSummary() const;
     /// 生成超时日志使用的单行状态摘要。
     std::string diagnosticSummary() const;
@@ -98,6 +100,8 @@ private:
     double currentSamplingMaxDistance() const;
     int currentMinValidSampleCount() const;
     void startSampling(double duration);
+    // 进入或重启停车采样阶段，并从进入时刻重新启动二维码看门狗。
+    void enterSamplingStage(Stage stage);
     // 输入样本检查。过期、时间戳超前或距离超限的样本不会参与平均。
     bool isSampleFresh(const geometry_msgs::msg::PoseStamped& msg);
     bool isSampleDistanceValid(const geometry_msgs::msg::Pose& pose) const;
@@ -193,6 +197,7 @@ private:
 
     // 当前采样窗口状态，每次进入新的采样阶段都会重新计时和清零计数。
     rclcpp::Time sample_start_time_;
+    std::optional<rclcpp::Time> sampling_watchdog_start_time_;
     std::optional<rclcpp::Time> last_valid_target_time_;
     uint64_t sampling_received_count_ = 0;
     std::vector<geometry_msgs::msg::Pose> target_samples_;

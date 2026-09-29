@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.8)
 project(auto_charging_bt)
 
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 # 依赖查找
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
@@ -8,6 +11,8 @@ find_package(rclcpp_action REQUIRED)
 find_package(diagnostic_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(nav2_msgs REQUIRED)
+find_package(nav_interfaces REQUIRED)
+find_package(std_msgs REQUIRED)
 find_package(behaviortree_cpp_v3 REQUIRED)
 find_package(nlohmann_json REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
@@ -34,6 +39,8 @@ ament_target_dependencies(charging_nodes
   diagnostic_msgs
   geometry_msgs
   nav2_msgs
+  nav_interfaces
+  std_msgs
   behaviortree_cpp_v3
   nlohmann_json
   std_srvs
@@ -62,6 +69,8 @@ ament_target_dependencies(auto_charging_service_node
   rclcpp_action
   behaviortree_cpp_v3
   ament_index_cpp
+  nav_interfaces
+  std_msgs
   std_srvs
 )
 target_link_libraries(auto_charging_service_node
@@ -74,6 +83,8 @@ ament_target_dependencies(auto_charging_action_server_node
   rclcpp_action
   behaviortree_cpp_v3
   ament_index_cpp
+  nav_interfaces
+  std_msgs
   chassis_interfaces
 )
 target_link_libraries(auto_charging_action_server_node
@@ -81,18 +92,6 @@ target_link_libraries(auto_charging_action_server_node
 )
 
 # ==================== 测试节点（非单元测试，用于独立跑控制器） ====================
-add_executable(test_docking_controller test/test_docking_controller.cpp)
-ament_target_dependencies(test_docking_controller
-  rclcpp
-  geometry_msgs
-  nlohmann_json
-  ament_index_cpp
-)
-# 依赖 docking_controller 实现（避免重复编译同一份源码）
-target_link_libraries(test_docking_controller
-  charging_nodes
-)
-
 add_executable(test_odom_docking_controller test/test_odom_docking_controller.cpp)
 ament_target_dependencies(test_odom_docking_controller
   rclcpp
@@ -122,7 +121,6 @@ install(TARGETS
   # auto_charging_bt_node
   auto_charging_service_node
   auto_charging_action_server_node
-  test_docking_controller
   test_odom_docking_controller
   test_reverse_docking_controller
   ARCHIVE DESTINATION lib

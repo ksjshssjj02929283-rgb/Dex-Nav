@@ -4,25 +4,27 @@
 #include <cctype>
 #include <chrono>
 #include <cmath>
+#include <filesystem>
 #include <fstream>
 #include <nlohmann/json.hpp>
+#include <sstream>
+#include <stdexcept>
+#include <system_error>
 #include <thread>
+#include <utility>
+#include <vector>
 
 #include "auto_charging_bt/reverse_docking_bt_controller.hpp"
 
 // 充电节点实例由行为树黑板传递，各行为节点共用同一实例。
 
-// 异步导航状态字符串，与 navigation_client.py 的 Action 状态约定保持一致。
-// 集中定义避免魔法字符串散落各处，便于统一修改和排查。
-namespace {
-constexpr const char* kNavStatusRunning   = "RUNNING";    // 进行中
-constexpr const char* kNavStatusSucceeded = "SUCCEEDED";  // 成功
-constexpr const char* kNavStatusFailed    = "FAILED";     // 失败
-constexpr const char* kNavStatusCancelled = "CANCELLED";  // 被取消
-}  // namespace
-
 // ==================== AutoChargingNode 实现 ====================
 AutoChargingNode::AutoChargingNode() : Node("AutoChargingNode") {
+    this->declare_parameter<double>("charging.navigation_backend_wait_timeout_sec", 5.0);
+    this->declare_parameter<double>("charging.map_state_wait_timeout_sec", 5.0);
+    this->declare_parameter<double>("charging.qr_detection_timeout_sec", 5.0);
+    this->declare_parameter<double>("charging.dock_timeout_sec", 60.0);
+
     // 末端压入参数
     this->declare_parameter<double>("backward.initial_speed", -0.01);
     this->declare_parameter<double>("backward.max_distance", 0.015);
@@ -122,14 +124,81 @@ AutoChargingNode::AutoChargingNode() : Node("AutoChargingNode") {
     sub_diagnostics_ = this->create_subscription<diagnostic_msgs::msg::DiagnosticArray>(
         "/diagnostics_agg", qos, std::bind(&AutoChargingNode::cbDiagnostics, this, std::placeholders::_1));
 
+    // 导航后端是回充流程选择的唯一真值源，使用 latched QoS 获取 command_board 的当前值。
+    navigation_backend_sub_ = this->create_subscription<std_msgs::msg::String>(
+        "/command_board/navigation_backend",
+        rclcpp::QoS(rclcpp::KeepLast(1)).transient_local().reliable(),
+        std::bind(&AutoChargingNode::cbNavigationBackend, this, std::placeholders::_1));
+
     // AprilTag检测服务客户端
     start_detection_client_ = this->create_client<std_srvs::srv::Trigger>("start_apriltag_detection");
     stop_detection_client_ = this->create_client<std_srvs::srv::Trigger>("stop_apriltag_detection");
 }
 
+void AutoChargingNode::cbNavigationBackend(const std_msgs::msg::String::SharedPtr msg) {
+    const bool changed = navigation_backend_name_ != msg->data;
+    navigation_backend_name_ = msg->data;
+    if (changed) {
+        ++navigation_backend_revision_;
+    }
+}
+
+AutoChargingNode::NavigationBackendSnapshot AutoChargingNode::waitForNavigationBackend(
+    double timeout_sec) {
+    if (!std::isfinite(timeout_sec) || timeout_sec <= 0.0) {
+        throw std::runtime_error(
+            "Navigation backend unavailable; charging.navigation_backend_wait_timeout_sec must be positive.");
+    }
+
+    const auto deadline = std::chrono::steady_clock::now() +
+                          std::chrono::duration<double>(timeout_sec);
+
+    // 节点仅在回充任务中主动 spin；开始新任务时先处理队列中的 latched/切换消息，
+    // 避免沿用上一次任务缓存的旧后端。
+    rclcpp::spin_some(this->shared_from_this());
+    while (rclcpp::ok() && navigation_backend_name_.empty() &&
+           std::chrono::steady_clock::now() < deadline) {
+        rclcpp::sleep_for(std::chrono::milliseconds(50));
+        rclcpp::spin_some(this->shared_from_this());
+    }
+
+    if (navigation_backend_name_.empty()) {
+        std::ostringstream message;
+        message << "Navigation backend unavailable; topic=/command_board/navigation_backend, "
+                << "timeout=" << timeout_sec << " s.";
+        throw std::runtime_error(message.str());
+    }
+    if (navigation_backend_name_ != kNavigationBackendNav2 &&
+        navigation_backend_name_ != kNavigationBackendPathNavigation) {
+        throw std::runtime_error(
+            "Unsupported navigation backend; value='" + navigation_backend_name_ +
+            "', expected nav2 or path_navigation.");
+    }
+
+    return {navigation_backend_name_, navigation_backend_revision_};
+}
+
+bool AutoChargingNode::navigationBackendChanged(
+    const NavigationBackendSnapshot& expected) const {
+    // revision 只记录状态值实际变化，因此既忽略同值重复发布，也能识别切换后又切回的情况。
+    return navigation_backend_revision_ != expected.revision ||
+           navigation_backend_name_ != expected.name;
+}
+
+void AutoChargingNode::setTaskInterruptionCheck(std::function<bool()> check) {
+    task_interruption_check_ = std::move(check);
+}
+
+void AutoChargingNode::clearTaskInterruptionCheck() {
+    task_interruption_check_ = {};
+}
+
+bool AutoChargingNode::taskInterruptionRequested() const {
+    return task_interruption_check_ && task_interruption_check_();
+}
+
 void AutoChargingNode::cbDiagnostics(const diagnostic_msgs::msg::DiagnosticArray::SharedPtr msg) {
     bool charging_key_found = false;
-    bool percentage_key_found = false;
     bool status_powerboard_name = false;
     // 遍历所有诊断状态
     for (const auto& status : msg->status) {
@@ -145,10 +214,11 @@ void AutoChargingNode::cbDiagnostics(const diagnostic_msgs::msg::DiagnosticArray
                 } else if (value.key == "battery_percentage") {
                     try {
                         battery_percentage_ = std::stod(value.value);
-                        percentage_key_found = true;
                     } catch (const std::exception& e) {
                         battery_percentage_ = -1.0;
-                        RCLCPP_WARN(this->get_logger(), "解析电量失败: %s", e.what());
+                        RCLCPP_DEBUG_THROTTLE(
+                            this->get_logger(), *this->get_clock(), 30000,
+                            "Battery percentage parsing failed; error=%s.", e.what());
                     }
                 }
             }
@@ -156,19 +226,18 @@ void AutoChargingNode::cbDiagnostics(const diagnostic_msgs::msg::DiagnosticArray
 
         if (status_powerboard_name) {
             if (!charging_key_found) {
-                RCLCPP_WARN(this->get_logger(), "未找到battery_charging键");
+                RCLCPP_WARN_THROTTLE(
+                    this->get_logger(), *this->get_clock(), 30000,
+                    "Charging state unavailable; PowerBoard diagnostics missing "
+                    "battery_charging.");
             }
-            if (!percentage_key_found) {
-                RCLCPP_WARN(this->get_logger(), "未找到battery_percentage键");
-            }
-            RCLCPP_INFO(this->get_logger(), "充电状态: %s, 当前电量: %.2f",
-                        is_charging_ ? "true" : "false", battery_percentage_);
             return;
         }
     }
 
     // 如果没有找到电源板诊断项
-    RCLCPP_WARN(this->get_logger(), "未找到PowerBoard诊断信息");
+    RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 30000,
+                         "PowerBoard diagnostics unavailable.");
 }
 
 AutoChargingNode::ChargerState AutoChargingNode::confirmEntryChargerState() {
@@ -177,12 +246,8 @@ AutoChargingNode::ChargerState AutoChargingNode::confirmEntryChargerState() {
     const int required_stable_count =
         std::max(1, static_cast<int>(this->get_parameter("entry_state.required_stable_count").as_int()));
 
-    RCLCPP_INFO(this->get_logger(), "入口状态确认开始: 最长 %.2f 秒, 间隔 %.2f 秒, 连续 %d 次一致",
-                max_duration, sample_interval, required_stable_count);
-
     ChargerState last_state = ChargerState::UNKNOWN;
     int stable_count = 0;
-    int sample_count = 0;
     auto start_time = this->now();
 
     while (rclcpp::ok()) {
@@ -191,7 +256,6 @@ AutoChargingNode::ChargerState AutoChargingNode::confirmEntryChargerState() {
         const bool charging = isCharging();
         ChargerState current_state = charging ? ChargerState::CHARGING : ChargerState::DISCONNECTED;
 
-        ++sample_count;
         if (current_state == last_state) {
             ++stable_count;
         } else {
@@ -199,13 +263,7 @@ AutoChargingNode::ChargerState AutoChargingNode::confirmEntryChargerState() {
             stable_count = 1;
         }
 
-        RCLCPP_INFO(this->get_logger(),
-                    "入口状态确认: 第 %d 次, 充电=%s, 当前状态=%s, 连续=%d/%d",
-                    sample_count, charging ? "true" : "false",
-                    chargerStateName(current_state), stable_count, required_stable_count);
-
         if (stable_count >= required_stable_count) {
-            RCLCPP_INFO(this->get_logger(), "入口状态确认完成: %s", chargerStateName(current_state));
             return current_state;
         }
 
@@ -217,61 +275,51 @@ AutoChargingNode::ChargerState AutoChargingNode::confirmEntryChargerState() {
         std::this_thread::sleep_for(std::chrono::duration<double>(sample_interval));
     }
 
-    RCLCPP_WARN(this->get_logger(), "入口状态 %.2f 秒内未稳定，按未充电处理，进入正常回充流程",
+    RCLCPP_WARN(this->get_logger(),
+                "Entry charging state unstable; timeout=%.2f s, continue docking.",
                 max_duration);
     return ChargerState::DISCONNECTED;
 }
 
-const char* AutoChargingNode::chargerStateName(ChargerState state) const {
-    switch (state) {
-        case ChargerState::CHARGING:
-            return "正在充电";
-        case ChargerState::DISCONNECTED:
-            return "未充电";
-        case ChargerState::UNKNOWN:
-        default:
-            return "未知";
-    }
-}
-
 bool AutoChargingNode::navToPose(const geometry_msgs::msg::PoseStamped& goal_pose) {
-    RCLCPP_INFO(this->get_logger(), "等待 nav2 服务器...");
+    RCLCPP_INFO(this->get_logger(), "Waiting for Nav2 action server.");
     nav_client_->wait_for_action_server();
 
     nav2_msgs::action::NavigateToPose::Goal goal_msg;
     goal_msg.pose = goal_pose;
 
-    RCLCPP_INFO(this->get_logger(), "发送导航目标...");
+    RCLCPP_INFO(this->get_logger(), "Sending Nav2 goal.");
     auto send_goal_future = nav_client_->async_send_goal(goal_msg);
 
     if (rclcpp::spin_until_future_complete(this->get_node_base_interface(), send_goal_future) !=
         rclcpp::FutureReturnCode::SUCCESS) {
-        RCLCPP_ERROR(this->get_logger(), "发送导航目标失败！");
+        RCLCPP_ERROR(this->get_logger(), "Nav2 goal sending failed.");
         return false;
     }
 
     auto goal_handle = send_goal_future.get();
     if (!goal_handle) {
-        RCLCPP_ERROR(this->get_logger(), "导航目标被拒绝！");
+        RCLCPP_ERROR(this->get_logger(), "Nav2 goal rejected.");
         return false;
     }
 
-    RCLCPP_INFO(this->get_logger(), "导航目标已接受，导航中...");
+    RCLCPP_INFO(this->get_logger(), "Nav2 goal accepted; navigation started.");
     auto result_future = nav_client_->async_get_result(goal_handle);
 
     if (rclcpp::spin_until_future_complete(this->get_node_base_interface(), result_future) !=
         rclcpp::FutureReturnCode::SUCCESS) {
-        RCLCPP_ERROR(this->get_logger(), "获取导航结果失败！");
+        RCLCPP_ERROR(this->get_logger(), "Nav2 result unavailable.");
         return false;
     }
 
     auto result = result_future.get();
 
     if (result.code == rclcpp_action::ResultCode::SUCCEEDED) {
-        RCLCPP_INFO(this->get_logger(), "导航完成！");
+        RCLCPP_INFO(this->get_logger(), "Nav2 navigation succeeded.");
         return true;
     } else {
-        RCLCPP_ERROR(this->get_logger(), "导航失败，状态码: %d", static_cast<int>(result.code));
+        RCLCPP_ERROR(this->get_logger(), "Nav2 navigation failed; code=%d.",
+                     static_cast<int>(result.code));
         return false;
     }
 }
@@ -284,46 +332,66 @@ bool AutoChargingNode::navToPose(const geometry_msgs::msg::PoseStamped& goal_pos
 bool AutoChargingNode::sendNavGoal(const geometry_msgs::msg::PoseStamped& goal_pose) {
     // 复位上一次导航的残留状态
     nav_goal_sent_ = false;
+    nav_cancel_state_ = NavCancelState::IDLE;
+    nav_cancel_future_ = {};
     nav_goal_handle_ = nullptr;
     nav_result_status_ = kNavStatusRunning;
     nav_result_ready_ = false;
-    nav_send_options_ = std::make_shared<
-        rclcpp_action::Client<nav2_msgs::action::NavigateToPose>::SendGoalOptions>();
+    const std::uint64_t goal_generation = ++nav_goal_generation_;
+    nav_send_options_ = std::make_shared<NavClient::SendGoalOptions>();
 
     // goal_response 回调：记录 goal_handle，若被拒绝则直接置失败。
     nav_send_options_->goal_response_callback =
-        [this](std::shared_ptr<rclcpp_action::ClientGoalHandle<nav2_msgs::action::NavigateToPose>> handle) {
+        [this, goal_generation](std::shared_ptr<NavGoalHandle> handle) {
+            if (goal_generation != nav_goal_generation_) {
+                return;
+            }
             if (!handle) {
-                RCLCPP_ERROR(this->get_logger(), "[NavigateToCharging] Nav2 拒绝了导航目标");
+                RCLCPP_ERROR(this->get_logger(), "Nav2 goal rejected.");
                 nav_result_status_ = kNavStatusFailed;
                 nav_result_ready_ = true;
+                if (nav_cancel_state_ == NavCancelState::WAITING_FOR_GOAL_RESPONSE) {
+                    nav_cancel_state_ = NavCancelState::CONFIRMED;
+                }
                 return;
             }
             nav_goal_handle_ = handle;
-            RCLCPP_INFO(this->get_logger(), "[NavigateToCharging] Nav2 已接受导航目标，导航中...");
+            RCLCPP_INFO(this->get_logger(), "Nav2 goal accepted; navigation started.");
+            if (nav_cancel_state_ == NavCancelState::WAITING_FOR_GOAL_RESPONSE) {
+                RCLCPP_INFO(this->get_logger(), "Nav2 goal accepted after cancel; canceling it now.");
+                requestNavCancellation(handle);
+            }
         };
 
     // result 回调：记录最终状态字符串，置 nav_result_ready_。
     nav_send_options_->result_callback =
-        [this](const rclcpp_action::ClientGoalHandle<nav2_msgs::action::NavigateToPose>::WrappedResult& result) {
+        [this, goal_generation](const NavGoalHandle::WrappedResult& result) {
+            if (goal_generation != nav_goal_generation_) {
+                return;
+            }
             nav_result_ready_ = true;
             if (result.code == rclcpp_action::ResultCode::SUCCEEDED) {
-                RCLCPP_INFO(this->get_logger(), "[NavigateToCharging] 导航完成");
+                RCLCPP_INFO(this->get_logger(), "Nav2 navigation succeeded.");
                 nav_result_status_ = kNavStatusSucceeded;
             } else if (result.code == rclcpp_action::ResultCode::CANCELED) {
-                RCLCPP_WARN(this->get_logger(), "[NavigateToCharging] 导航被取消");
+                RCLCPP_INFO(this->get_logger(), "Nav2 navigation canceled.");
                 nav_result_status_ = kNavStatusCancelled;
             } else {
                 RCLCPP_ERROR(this->get_logger(),
-                             "[NavigateToCharging] 导航失败，状态码: %d",
+                             "Nav2 navigation failed; code=%d.",
                              static_cast<int>(result.code));
                 nav_result_status_ = kNavStatusFailed;
             }
             nav_goal_handle_ = nullptr;
+            if (nav_cancel_state_ == NavCancelState::WAITING_FOR_GOAL_RESPONSE ||
+                nav_cancel_state_ == NavCancelState::WAITING_FOR_CANCEL_RESPONSE ||
+                nav_cancel_state_ == NavCancelState::WAITING_FOR_TERMINAL_RESULT) {
+                nav_cancel_state_ = NavCancelState::CONFIRMED;
+            }
         };
 
     if (!nav_client_->wait_for_action_server(std::chrono::seconds(5))) {
-        RCLCPP_ERROR(this->get_logger(), "[NavigateToCharging] 等待 Nav2 服务超时，未发送 goal");
+        RCLCPP_ERROR(this->get_logger(), "Nav2 action server unavailable; timeout=5.0 s.");
         return false;
     }
 
@@ -331,7 +399,7 @@ bool AutoChargingNode::sendNavGoal(const geometry_msgs::msg::PoseStamped& goal_p
     goal_msg.pose = goal_pose;
     nav_client_->async_send_goal(goal_msg, *nav_send_options_);
     nav_goal_sent_ = true;
-    RCLCPP_INFO(this->get_logger(), "[NavigateToCharging] 已异步发送 Nav2 goal");
+    RCLCPP_INFO(this->get_logger(), "Nav2 goal sent.");
     return true;
 }
 
@@ -347,21 +415,95 @@ void AutoChargingNode::cancelNav() {
     if (!nav_goal_sent_) {
         return;
     }
+    if (nav_cancel_state_ == NavCancelState::WAITING_FOR_GOAL_RESPONSE ||
+        nav_cancel_state_ == NavCancelState::WAITING_FOR_CANCEL_RESPONSE ||
+        nav_cancel_state_ == NavCancelState::WAITING_FOR_TERMINAL_RESULT ||
+        nav_cancel_state_ == NavCancelState::CONFIRMED ||
+        nav_cancel_state_ == NavCancelState::FAILED) {
+        return;
+    }
+    if (nav_result_ready_ && !nav_goal_handle_) {
+        nav_cancel_state_ = NavCancelState::CONFIRMED;
+        return;
+    }
     if (nav_goal_handle_) {
-        RCLCPP_INFO(this->get_logger(), "[NavigateToCharging] onHalted，取消 Nav2 goal");
-        nav_client_->async_cancel_goal(nav_goal_handle_);
-        nav_goal_handle_ = nullptr;
+        RCLCPP_INFO(this->get_logger(), "Nav2 goal cancel requested; behavior halted.");
+        requestNavCancellation(nav_goal_handle_);
     } else {
-        // goal 已发出但 goal_response 回调还没回来，拿不到 goal_handle。
-        // 用 async_cancel_all_goals 兜底：取消该 client 上所有待处理 goal，
-        // 确保正在执行的 Nav2 导航被停止，避免机器人继续向回充点移动。
-        RCLCPP_WARN(this->get_logger(),
-                    "[NavigateToCharging] onHalted 时 goal_handle 尚未就绪，"
-                    "改用 async_cancel_all_goals 取消所有 Nav2 goal");
-        nav_client_->async_cancel_all_goals();
+        // 句柄返回前不能定向取消；任务退出前会继续 spin，拿到本次句柄后再取消。
+        nav_cancel_state_ = NavCancelState::WAITING_FOR_GOAL_RESPONSE;
+        RCLCPP_INFO(this->get_logger(), "Nav2 goal handle pending; waiting to cancel this goal.");
     }
     nav_result_status_ = kNavStatusCancelled;
     nav_result_ready_ = true;
+}
+
+void AutoChargingNode::requestNavCancellation(const std::shared_ptr<NavGoalHandle>& goal_handle) {
+    try {
+        nav_cancel_future_ = nav_client_->async_cancel_goal(goal_handle);
+        nav_cancel_state_ = NavCancelState::WAITING_FOR_CANCEL_RESPONSE;
+    } catch (const std::exception& error) {
+        nav_cancel_state_ = NavCancelState::FAILED;
+        RCLCPP_ERROR(this->get_logger(), "Nav2 goal cancel request failed; error=%s.",
+                     error.what());
+    }
+}
+
+bool AutoChargingNode::waitForNavCancellation(double timeout_sec) {
+    if (nav_cancel_state_ == NavCancelState::IDLE ||
+        nav_cancel_state_ == NavCancelState::CONFIRMED) {
+        return true;
+    }
+    if (nav_cancel_state_ == NavCancelState::FAILED ||
+        !std::isfinite(timeout_sec) || timeout_sec <= 0.0) {
+        return false;
+    }
+
+    const auto deadline = std::chrono::steady_clock::now() +
+                          std::chrono::duration<double>(timeout_sec);
+    while (rclcpp::ok() && std::chrono::steady_clock::now() < deadline) {
+        rclcpp::spin_some(this->shared_from_this());
+
+        if (nav_cancel_state_ == NavCancelState::CONFIRMED) {
+            return true;
+        }
+        if (nav_cancel_state_ == NavCancelState::FAILED) {
+            return false;
+        }
+        if (nav_cancel_state_ == NavCancelState::WAITING_FOR_CANCEL_RESPONSE &&
+            nav_cancel_future_.valid() &&
+            nav_cancel_future_.wait_for(std::chrono::milliseconds(0)) == std::future_status::ready) {
+            const auto response = nav_cancel_future_.get();
+            nav_cancel_future_ = {};
+            if (response && response->return_code == NavCancelResponse::ERROR_NONE) {
+                // CancelGoal 成功只表示服务端接受了请求；继续等待 result_callback
+                // 收到终态，避免目标仍处于 CANCELING 时提前结束回充任务。
+                nav_cancel_state_ = NavCancelState::WAITING_FOR_TERMINAL_RESULT;
+                RCLCPP_INFO(this->get_logger(),
+                            "Nav2 goal cancel accepted; waiting for terminal result.");
+                continue;
+            }
+            if (response &&
+                (response->return_code == NavCancelResponse::ERROR_UNKNOWN_GOAL_ID ||
+                 response->return_code == NavCancelResponse::ERROR_GOAL_TERMINATED)) {
+                nav_cancel_state_ = NavCancelState::CONFIRMED;
+                RCLCPP_INFO(this->get_logger(), "Nav2 goal is already terminal.");
+                return true;
+            }
+
+            nav_cancel_state_ = NavCancelState::FAILED;
+            const int return_code = response ? response->return_code : -1;
+            RCLCPP_ERROR(this->get_logger(), "Nav2 goal cancel rejected; code=%d.", return_code);
+            return false;
+        }
+
+        rclcpp::sleep_for(std::chrono::milliseconds(10));
+    }
+
+    nav_cancel_state_ = NavCancelState::FAILED;
+    RCLCPP_ERROR(this->get_logger(), "Nav2 goal cancel confirmation timed out; timeout=%.1f s.",
+                 timeout_sec);
+    return false;
 }
 
 void AutoChargingNode::publishTwist(double linear_x, double angular_z) {
@@ -371,7 +513,7 @@ void AutoChargingNode::publishTwist(double linear_x, double angular_z) {
     cmd_pub_->publish(twist);
 }
 
-void AutoChargingNode::backward() {
+bool AutoChargingNode::backward() {
     // 从参数服务器获取配置参数
     const double initial_speed = this->get_parameter("backward.initial_speed").as_double();
     const double max_distance = this->get_parameter("backward.max_distance").as_double();
@@ -380,8 +522,8 @@ void AutoChargingNode::backward() {
     const double max_dt = this->get_parameter("backward.max_dt").as_double();
 
     RCLCPP_INFO(this->get_logger(),
-                "末端后退开始: speed=%.3f m/s, max_distance=%.3f m, max_duration=%.1f s, "
-                "停止条件=检测到正在充电",
+                "Final reverse started; speed=%.3f m/s, max_distance=%.3f m, "
+                "max_duration=%.1f s.",
                 initial_speed, max_distance, max_backward_duration);
 
     double current_speed = initial_speed;
@@ -390,17 +532,29 @@ void AutoChargingNode::backward() {
     auto start_time = this->now();  // 后退开始时间
     auto last_time = start_time;
     bool last_charging = false;
-    const char* stop_reason = "ROS停止或循环退出";
+    bool task_interrupted = false;
+    const char* stop_reason = "ROS shutdown";
 
     rclcpp::Rate rate(control_rate);
 
     while (rclcpp::ok()) {
+        // 阻塞运动期间主动派发监控回调，并在每次速度输出前检查任务是否应终止。
+        rclcpp::spin_some(this->shared_from_this());
+        if (taskInterruptionRequested()) {
+            task_interrupted = true;
+            stop_reason = "task interrupted";
+            break;
+        }
+
         auto current_time = this->now();
         double dt = (current_time - last_time).seconds();
 
         // 防止异常dt值
         if (dt > max_dt) {
-            RCLCPP_WARN(this->get_logger(), "异常时间步长 %.3f秒，限制为 %.3f秒", dt, max_dt);
+            RCLCPP_WARN_THROTTLE(
+                this->get_logger(), *this->get_clock(), 3000,
+                "Final reverse time step limited; actual=%.3f s, limit=%.3f s.", dt,
+                max_dt);
             dt = max_dt;
         }
 
@@ -410,36 +564,28 @@ void AutoChargingNode::backward() {
 
         // 检查最大距离
         if (total_distance >= max_distance) {
-            stop_reason = "达到最大后退距离";
-            RCLCPP_WARN(this->get_logger(), "末端后退停止: 达到最大后退距离 %.3f/%.3f m", total_distance,
-                        max_distance);
+            stop_reason = "maximum distance reached";
             break;
         }
 
         // 检查后退总时长
         if (total_time >= max_backward_duration) {
-            stop_reason = "达到最大后退时间";
-            RCLCPP_WARN(this->get_logger(), "末端后退停止: 达到最大后退时间 %.2f/%.2f s", total_time,
-                        max_backward_duration);
+            stop_reason = "maximum duration reached";
             break;
         }
 
         // 获取充电状态
-        rclcpp::spin_some(this->shared_from_this());
         bool is_charging = isCharging();
         last_charging = is_charging;
 
         if (is_charging) {
-            stop_reason = "检测到正在充电";
-            RCLCPP_INFO(this->get_logger(),
-                        "末端后退停止: charging=%s, distance=%.3f m, elapsed=%.2f s",
-                        is_charging ? "true" : "false", total_distance, total_time);
+            stop_reason = "charging detected";
             break;
         }
 
-        RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 500,
-                             "末端后退中: charging=false, speed=%.3f m/s, "
-                             "distance=%.3f/%.3f m, elapsed=%.2f/%.2f s",
+        RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 1000,
+                             "Final reverse running; charging=false, speed=%.3f m/s, "
+                             "distance=%.3f/%.3f m, elapsed=%.2f/%.2f s.",
                              current_speed, total_distance, max_distance, total_time,
                              max_backward_duration);
 
@@ -453,49 +599,81 @@ void AutoChargingNode::backward() {
     }
 
     cmd_pub_->publish(geometry_msgs::msg::Twist());
-    RCLCPP_INFO(this->get_logger(),
-                "末端后退完成: reason=%s, final_charging=%s, distance=%.3f m, elapsed=%.2f s",
-                stop_reason, last_charging ? "true" : "false", total_distance, total_time);
+    if (last_charging) {
+        RCLCPP_INFO(this->get_logger(),
+                    "Final reverse stopped; charging detected, distance=%.3f m, elapsed=%.2f s.",
+                    total_distance, total_time);
+    } else {
+        RCLCPP_WARN(this->get_logger(),
+                    "Final reverse stopped; %s, distance=%.3f m, elapsed=%.2f s.",
+                    stop_reason, total_distance, total_time);
+    }
+    return !task_interrupted && rclcpp::ok();
 }
 
-void AutoChargingNode::relieveDockingPressure() {
+bool AutoChargingNode::relieveDockingPressure() {
     const double speed = this->get_parameter("pressure_relief.speed").as_double();
     const double duration = this->get_parameter("pressure_relief.duration").as_double();
     const double control_rate = this->get_parameter("pressure_relief.control_rate").as_double();
 
     if (duration <= 0.0 || control_rate <= 0.0) {
         RCLCPP_WARN(this->get_logger(),
-                    "充电桩压力释放参数无效，跳过前进动作: duration=%.3f s, control_rate=%.3f Hz",
+                    "Pressure relief skipped; duration=%.3f s, control_rate=%.3f Hz.",
                     duration, control_rate);
         publishTwist(0.0, 0.0);
-        return;
+        return true;
     }
 
     RCLCPP_INFO(this->get_logger(),
-                "充电状态已确认，开始短时前进减小顶桩压力: speed=%.3f m/s, duration=%.3f s",
-                speed, duration);
+                "Pressure relief started; speed=%.3f m/s, duration=%.3f s.", speed,
+                duration);
 
     const auto start_time = this->now();
     rclcpp::Rate rate(control_rate);
+    bool task_interrupted = false;
     while (rclcpp::ok() && (this->now() - start_time).seconds() < duration) {
+        rclcpp::spin_some(this->shared_from_this());
+        if (taskInterruptionRequested()) {
+            task_interrupted = true;
+            RCLCPP_WARN(this->get_logger(), "Pressure relief stopped; task interrupted.");
+            break;
+        }
         publishTwist(speed, 0.0);
         rate.sleep();
     }
 
     publishTwist(0.0, 0.0);
-    RCLCPP_INFO(this->get_logger(), "短时前进完成，已发布零速度");
+    if (task_interrupted) {
+        return false;
+    }
+    if (!rclcpp::ok()) {
+        RCLCPP_WARN(this->get_logger(), "Pressure relief stopped; ROS is shutting down.");
+        return false;
+    }
+
+    RCLCPP_INFO(this->get_logger(), "Pressure relief complete; robot stopped.");
+    return true;
 }
 
-void AutoChargingNode::undocking(double duration) {
+bool AutoChargingNode::undocking(double duration) {
     double speed;
 
     this->get_parameter("undocking.speed", speed);
-    RCLCPP_INFO(this->get_logger(), "Undocking 前进 %.1f秒 (速度=%.2f m/s)...", duration, speed);
+    RCLCPP_INFO(this->get_logger(), "Undocking started; speed=%.2f m/s, duration=%.1f s.",
+                speed, duration);
 
     auto start_time = this->now();
     rclcpp::Rate rate(50);
+    bool task_interrupted = false;
 
     while (rclcpp::ok()) {
+        rclcpp::spin_some(this->shared_from_this());
+        if (taskInterruptionRequested()) {
+            task_interrupted = true;
+            RCLCPP_WARN(this->get_logger(), "Undocking stopped; task interrupted.");
+            break;
+        }
+
         auto elapsed = (this->now() - start_time).seconds();
         if (elapsed >= duration) break;
 
@@ -508,18 +686,27 @@ void AutoChargingNode::undocking(double duration) {
     }
 
     cmd_pub_->publish(geometry_msgs::msg::Twist());
-    RCLCPP_INFO(this->get_logger(), "Undocking 完成，已停止");
+    if (task_interrupted) {
+        return false;
+    }
+    if (!rclcpp::ok()) {
+        RCLCPP_WARN(this->get_logger(), "Undocking stopped; ROS is shutting down.");
+        return false;
+    }
+
+    RCLCPP_INFO(this->get_logger(), "Undocking complete; robot stopped.");
+    return true;
 }
 
 bool AutoChargingNode::startDetection() {
     if (apriltag_detection_running_) {
-        RCLCPP_INFO(this->get_logger(), "AprilTag 检测已处于启动状态，重复启动按成功处理");
         return true;
     }
 
-    RCLCPP_INFO(this->get_logger(), "等待 AprilTag 检测服务...");
     if (!start_detection_client_->wait_for_service(std::chrono::seconds(5))) {
-        RCLCPP_ERROR(this->get_logger(), "AprilTag 检测服务不可用！");
+        RCLCPP_ERROR(this->get_logger(),
+                     "AprilTag detection start failed; type=DETECTION_START_FAILED, "
+                     "service unavailable.");
         return false;
     }
 
@@ -528,14 +715,16 @@ bool AutoChargingNode::startDetection() {
 
     if (rclcpp::spin_until_future_complete(this->get_node_base_interface(), future) !=
         rclcpp::FutureReturnCode::SUCCESS) {
-        RCLCPP_ERROR(this->get_logger(), "调用启动检测服务失败！");
+        RCLCPP_ERROR(this->get_logger(),
+                     "AprilTag detection start failed; type=DETECTION_START_FAILED, "
+                     "request did not complete.");
         return false;
     }
 
     auto response = future.get();
     if (response->success) {
         apriltag_detection_running_ = true;
-        RCLCPP_INFO(this->get_logger(), "✅ AprilTag 检测已启动: %s", response->message.c_str());
+        RCLCPP_INFO(this->get_logger(), "AprilTag detection started.");
         return true;
     } else {
         std::string message_lower = response->message;
@@ -544,24 +733,23 @@ bool AutoChargingNode::startDetection() {
         if (message_lower.find("already") != std::string::npos ||
             response->message.find("已") != std::string::npos) {
             apriltag_detection_running_ = true;
-            RCLCPP_WARN(this->get_logger(), "AprilTag 检测服务返回已启动状态，按成功处理: %s",
-                        response->message.c_str());
             return true;
         }
-        RCLCPP_ERROR(this->get_logger(), "❌ 启动检测失败: %s", response->message.c_str());
+        RCLCPP_ERROR(this->get_logger(),
+                     "AprilTag detection start failed; type=DETECTION_START_FAILED, message=%s.",
+                     response->message.c_str());
         return false;
     }
 }
 
 bool AutoChargingNode::stopDetection() {
     if (!apriltag_detection_running_) {
-        RCLCPP_INFO(this->get_logger(), "AprilTag 检测已处于停止状态，重复停止按成功处理");
         return true;
     }
 
-    RCLCPP_INFO(this->get_logger(), "等待 AprilTag 检测服务...");
     if (!stop_detection_client_->wait_for_service(std::chrono::seconds(5))) {
-        RCLCPP_ERROR(this->get_logger(), "AprilTag 检测服务不可用！");
+        RCLCPP_ERROR(this->get_logger(),
+                     "AprilTag detection stop failed; service unavailable.");
         return false;
     }
 
@@ -570,14 +758,15 @@ bool AutoChargingNode::stopDetection() {
 
     if (rclcpp::spin_until_future_complete(this->get_node_base_interface(), future) !=
         rclcpp::FutureReturnCode::SUCCESS) {
-        RCLCPP_ERROR(this->get_logger(), "调用停止检测服务失败！");
+        RCLCPP_ERROR(this->get_logger(),
+                     "AprilTag detection stop failed; request did not complete.");
         return false;
     }
 
     auto response = future.get();
     if (response->success) {
         apriltag_detection_running_ = false;
-        RCLCPP_INFO(this->get_logger(), "✅ AprilTag 检测已停止: %s", response->message.c_str());
+        RCLCPP_INFO(this->get_logger(), "AprilTag detection stopped.");
         return true;
     } else {
         std::string message_lower = response->message;
@@ -588,36 +777,141 @@ bool AutoChargingNode::stopDetection() {
             response->message.find("已") != std::string::npos ||
             response->message.find("未启动") != std::string::npos) {
             apriltag_detection_running_ = false;
-            RCLCPP_WARN(this->get_logger(), "AprilTag 检测服务返回已停止状态，按成功处理: %s",
-                        response->message.c_str());
             return true;
         }
-        RCLCPP_ERROR(this->get_logger(), "❌ 停止检测失败: %s", response->message.c_str());
+        RCLCPP_ERROR(this->get_logger(), "AprilTag detection stop failed; message=%s.",
+                     response->message.c_str());
         return false;
     }
 }
 
-// ==================== 工具函数 ====================
-geometry_msgs::msg::PoseStamped readChargingPose(const std::string& json_path) {
-    geometry_msgs::msg::PoseStamped pose;
-
-    std::ifstream f(json_path);
-    if (!f.is_open()) {
-        throw std::runtime_error("无法打开充电点配置文件: " + json_path);
+// ==================== 地图回充点读取 ====================
+ChargingPointAsset readChargingPointFromCurrentMap(
+    const std::shared_ptr<AutoChargingNode>& charging_node, double wait_timeout_sec) {
+    if (!charging_node) {
+        throw std::runtime_error("Charging point loading failed; AutoChargingNode is null.");
+    }
+    if (!std::isfinite(wait_timeout_sec) || wait_timeout_sec <= 0.0) {
+        throw std::runtime_error(
+            "Charging point loading failed; charging.map_state_wait_timeout_sec must be positive.");
     }
 
-    nlohmann::json data = nlohmann::json::parse(f);
+    nav_interfaces::msg::MapState::SharedPtr current_map_state;
+    const auto qos = rclcpp::QoS(rclcpp::KeepLast(1)).transient_local().reliable();
+    auto subscription = charging_node->create_subscription<nav_interfaces::msg::MapState>(
+        "/map_manager/map_state", qos,
+        [&current_map_state](const nav_interfaces::msg::MapState::SharedPtr msg) {
+            current_map_state = msg;
+        });
+    (void)subscription;  // 保持订阅对象存活到等待结束。
 
-    pose.header.frame_id = data.value("frame_id", "map");
-    pose.pose.position.x = data["position"]["x"];
-    pose.pose.position.y = data["position"]["y"];
-    pose.pose.position.z = data["position"]["z"];
-    pose.pose.orientation.x = data["orientation"]["x"];
-    pose.pose.orientation.y = data["orientation"]["y"];
-    pose.pose.orientation.z = data["orientation"]["z"];
-    pose.pose.orientation.w = data["orientation"]["w"];
+    const auto deadline = std::chrono::steady_clock::now() +
+                          std::chrono::duration<double>(wait_timeout_sec);
+    while (rclcpp::ok() && !current_map_state && std::chrono::steady_clock::now() < deadline) {
+        rclcpp::spin_some(charging_node);
+        rclcpp::sleep_for(std::chrono::milliseconds(50));
+    }
 
-    return pose;
+    if (!current_map_state) {
+        std::ostringstream message;
+        message << "Charging point loading failed; topic=/map_manager/map_state, timeout="
+                << wait_timeout_sec << " s.";
+        throw std::runtime_error(message.str());
+    }
+    if (current_map_state->epoch == 0 || current_map_state->map_folder.empty() ||
+        current_map_state->map_name.empty()) {
+        throw std::runtime_error("Charging point loading failed; map state is invalid.");
+    }
+
+    const std::filesystem::path assets_file =
+        std::filesystem::path(current_map_state->map_folder) /
+        current_map_state->map_name / "assets" / "map_assets.json";
+    std::error_code error;
+    if (!std::filesystem::is_regular_file(assets_file, error)) {
+        throw std::runtime_error("Charging point loading failed; map asset file unavailable: " +
+                                 assets_file.string());
+    }
+
+    std::ifstream file(assets_file);
+    if (!file.is_open()) {
+        throw std::runtime_error("Charging point loading failed; cannot open map asset file: " +
+                                 assets_file.string());
+    }
+
+    nlohmann::json assets;
+    try {
+        file >> assets;
+    } catch (const std::exception& error) {
+        throw std::runtime_error("Charging point loading failed; invalid map asset file: " +
+                                 assets_file.string() + "; " + error.what());
+    }
+    if (!assets.is_object() || !assets.contains("points") || !assets["points"].is_array()) {
+        throw std::runtime_error("Charging point loading failed; points array missing: " +
+                                 assets_file.string());
+    }
+
+    std::vector<std::pair<std::string, nlohmann::json>> charging_points;
+    for (const auto& item : assets["points"]) {
+        if (!item.is_object() || !item.contains("name") || !item["name"].is_string() ||
+            !item.contains("type") || !item["type"].is_string()) {
+            throw std::runtime_error(
+                "Charging point loading failed; map point missing name or type.");
+        }
+        if (item["type"].get<std::string>() == "CHARGING") {
+            const auto name = item["name"].get<std::string>();
+            if (name.empty()) {
+                throw std::runtime_error(
+                    "Charging point loading failed; CHARGING point name is empty.");
+            }
+            charging_points.emplace_back(name, item);
+        }
+    }
+
+    if (charging_points.empty()) {
+        throw std::runtime_error(
+            "Charging point loading failed; no type=CHARGING point in map_assets.json.");
+    }
+    if (charging_points.size() > 1) {
+        std::ostringstream message;
+        message << "Charging point loading failed; multiple CHARGING points: ";
+        for (std::size_t i = 0; i < charging_points.size(); ++i) {
+            if (i > 0) message << ", ";
+            message << charging_points[i].first;
+        }
+        throw std::runtime_error(message.str());
+    }
+
+    const auto& point = charging_points.front().second;
+    if (!point.contains("pose") || !point["pose"].is_object() ||
+        !point["pose"].contains("x") || !point["pose"]["x"].is_number() ||
+        !point["pose"].contains("y") || !point["pose"]["y"].is_number() ||
+        !point["pose"].contains("yaw") || !point["pose"]["yaw"].is_number()) {
+        throw std::runtime_error(
+            "Charging point loading failed; invalid pose for CHARGING point: " +
+            charging_points.front().first);
+    }
+
+    const double x = point["pose"]["x"].get<double>();
+    const double y = point["pose"]["y"].get<double>();
+    const double yaw = point["pose"]["yaw"].get<double>();
+    if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(yaw)) {
+        throw std::runtime_error(
+            "Charging point loading failed; non-finite pose for CHARGING point: " +
+            charging_points.front().first);
+    }
+
+    ChargingPointAsset result;
+    result.name = charging_points.front().first;
+    result.assets_file = assets_file.lexically_normal().string();
+    result.map_folder = current_map_state->map_folder;
+    result.map_name = current_map_state->map_name;
+    result.map_epoch = current_map_state->epoch;
+    result.pose.header.frame_id = "map";
+    result.pose.pose.position.x = x;
+    result.pose.pose.position.y = y;
+    result.pose.pose.orientation.z = std::sin(yaw * 0.5);
+    result.pose.pose.orientation.w = std::cos(yaw * 0.5);
+    return result;
 }
 
 // ==================== NavigateToCharging ====================
@@ -644,9 +938,16 @@ BT::NodeStatus NavigateToCharging::onStart() {
     }
     charging_node_ = charging_node;
 
-    if (!charging_node_->sendNavGoal(goal.value())) {
-        RCLCPP_ERROR(charging_node_->get_logger(),
-                     "[NavigateToCharging] 发送 Nav2 goal 失败，返回 FAILURE");
+    if (charging_node_->taskInterruptionRequested()) {
+        charging_node_->publishTwist(0.0, 0.0);
+        RCLCPP_WARN(charging_node_->get_logger(),
+                    "Navigate to charging paused; task interruption requested.");
+        return BT::NodeStatus::RUNNING;
+    }
+
+    auto goal_pose = goal.value();
+    goal_pose.header.stamp = charging_node_->now();
+    if (!charging_node_->sendNavGoal(goal_pose)) {
         return BT::NodeStatus::FAILURE;
     }
     return BT::NodeStatus::RUNNING;
@@ -654,10 +955,10 @@ BT::NodeStatus NavigateToCharging::onStart() {
 
 BT::NodeStatus NavigateToCharging::onRunning() {
     const std::string status = charging_node_->isNavDone();
-    if (status == kNavStatusRunning) {
+    if (status == AutoChargingNode::kNavStatusRunning) {
         return BT::NodeStatus::RUNNING;     // 仍在导航中
     }
-    if (status == kNavStatusSucceeded) {
+    if (status == AutoChargingNode::kNavStatusSucceeded) {
         return BT::NodeStatus::SUCCESS;     // Nav2 返回 SUCCEEDED
     }
     return BT::NodeStatus::FAILURE;          // FAILED / CANCELLED / 其他
@@ -676,6 +977,8 @@ Dock::~Dock() = default;
 
 BT::PortsList Dock::providedPorts() {
     return {BT::InputPort<double>("timeout", 120.0, "超时时间(秒)"),
+            BT::InputPort<double>("qr_detection_timeout", 5.0,
+                                  "停车采样阶段连续无有效二维码目标超时时间(秒)"),
             BT::OutputPort<int>("result", "执行结果 0=成功 1=失败")};
 }
 
@@ -686,14 +989,40 @@ BT::NodeStatus Dock::onStart() {
     }
     charging_node_ = charging_node;
 
+    if (charging_node_->taskInterruptionRequested()) {
+        charging_node_->publishTwist(0.0, 0.0);
+        RCLCPP_WARN(charging_node_->get_logger(),
+                    "Dock start paused; task interruption requested.");
+        return BT::NodeStatus::RUNNING;
+    }
+
     // 读取超时参数
     if (auto t = getInput<double>("timeout")) timeout_ = t.value();
+    if (auto t = getInput<double>("qr_detection_timeout")) qr_detection_timeout_ = t.value();
+
+    if (!std::isfinite(timeout_) || timeout_ <= 0.0) {
+        RCLCPP_ERROR(charging_node_->get_logger(),
+                     "Docking failed; type=INVALID_DOCK_TIMEOUT, timeout=%.3f s.", timeout_);
+        return BT::NodeStatus::FAILURE;
+    }
+    if (!std::isfinite(qr_detection_timeout_) || qr_detection_timeout_ <= 0.0) {
+        RCLCPP_ERROR(charging_node_->get_logger(),
+                     "Docking failed; type=INVALID_QR_DETECTION_TIMEOUT, timeout=%.3f s.",
+                     qr_detection_timeout_);
+        return BT::NodeStatus::FAILURE;
+    }
+    if (qr_detection_timeout_ > timeout_) {
+        RCLCPP_ERROR(charging_node_->get_logger(),
+                     "Docking failed; type=INVALID_TIMEOUT_ORDER, detection_timeout=%.3f s, "
+                     "dock_timeout=%.3f s.",
+                     qr_detection_timeout_, timeout_);
+        return BT::NodeStatus::FAILURE;
+    }
 
     start_time_ = charging_node_->now();
     reverse_docking_ = std::make_unique<ReverseDockingBtController>(charging_node_);
     reverse_docking_->start();
-    RCLCPP_INFO(charging_node_->get_logger(),
-                "[DockAttempt] 开始二维码视觉对接，本次超时上限 %.1f 秒", timeout_);
+    RCLCPP_INFO(charging_node_->get_logger(), "Docking started; timeout=%.1f s.", timeout_);
 
     return BT::NodeStatus::RUNNING;
 }
@@ -701,17 +1030,31 @@ BT::NodeStatus Dock::onStart() {
 BT::NodeStatus Dock::onRunning() {
     // 超时检测
     double elapsed = (charging_node_->now() - start_time_).seconds();
+
+    // 二维码看门狗只覆盖停车采样；运动阶段依赖锁定到 odom 的目标继续控制。
+    if (reverse_docking_) {
+        const auto no_target_elapsed = reverse_docking_->samplingTargetMissingDuration();
+        if (no_target_elapsed && no_target_elapsed.value() > qr_detection_timeout_) {
+            RCLCPP_ERROR(charging_node_->get_logger(),
+                         "Docking failed; type=QR_DETECTION_TIMEOUT, missing=%.1f s, "
+                         "limit=%.1f s.",
+                         no_target_elapsed.value(), qr_detection_timeout_);
+            reverse_docking_->stop();
+            charging_node_->publishTwist(0.0, 0.0);
+            setOutput("result", 1);
+            return BT::NodeStatus::FAILURE;
+        }
+    }
+
     if (elapsed > timeout_) {
         const std::string reason_code = reverse_docking_ ?
             reverse_docking_->failureReasonCode() : "CONTROLLER_NOT_CREATED";
         const std::string reason = reverse_docking_ ?
-            reverse_docking_->failureReasonSummary() : "倒车对接控制器未创建";
+            reverse_docking_->failureReasonSummary() : "Reverse docking controller unavailable.";
         const std::string details = reverse_docking_ ?
-            reverse_docking_->diagnosticSummary() : "倒车对接控制器未创建";
+            reverse_docking_->diagnosticSummary() : "controller=unavailable";
         RCLCPP_ERROR(charging_node_->get_logger(),
-                     "[DockFailure] type=%s，二维码检测或视觉对接超时，"
-                     "实际等待 %.1f 秒（上限 %.1f 秒）；原因=%s；"
-                     "处置=停止检测、不退桩，由外层行为树决定是否重试；诊断=%s",
+                     "Docking failed; type=%s, elapsed=%.1f/%.1f s, reason=%s, details=%s.",
                      reason_code.c_str(), elapsed, timeout_, reason.c_str(), details.c_str());
         if (reverse_docking_) reverse_docking_->stop();
         charging_node_->publishTwist(0.0, 0.0);
@@ -722,11 +1065,10 @@ BT::NodeStatus Dock::onRunning() {
     if (reverse_docking_ && reverse_docking_->done()) {
         reverse_docking_->stop();
         charging_node_->publishTwist(0.0, 0.0);
-        RCLCPP_INFO(charging_node_->get_logger(),
-                    "[DockSuccess] 二维码视觉对接完成，开始执行末端后退压入");
-        charging_node_->backward();
-        RCLCPP_INFO(charging_node_->get_logger(),
-                    "[DockSuccess] 末端后退压入完成，Dock 返回成功，下一步检查充电状态");
+        if (!charging_node_->backward()) {
+            setOutput("result", 1);
+            return BT::NodeStatus::RUNNING;
+        }
         setOutput("result", 0);
         return BT::NodeStatus::SUCCESS;
     }
@@ -761,10 +1103,8 @@ BT::NodeStatus CheckCharging::onStart() {
         std::max(1, static_cast<int>(charging_node_->get_parameter("check_charging.required_stable_count").as_int()));
     rclcpp::spin_some(charging_node_);
     RCLCPP_INFO(charging_node_->get_logger(),
-                "[ChargingCheck] 开始确认充电状态：超时上限=%.1f 秒，连续确认次数=%d，"
-                "初始充电=%s",
-                timeout_, required_stable_count,
-                charging_node_->isCharging() ? "true" : "false");
+                "Charging check started; timeout=%.1f s, required=%d consecutive samples.",
+                timeout_, required_stable_count);
     return BT::NodeStatus::RUNNING;
 }
 
@@ -780,24 +1120,26 @@ BT::NodeStatus CheckCharging::onRunning() {
 
     consecutive_charging_ = charging ? (consecutive_charging_ + 1) : 0;
 
-    RCLCPP_INFO_THROTTLE(charging_node_->get_logger(), *charging_node_->get_clock(), 1000,
-                         "[ChargingCheck] 充电=%s，连续确认=%d/%d，已等待=%.1f 秒",
+    RCLCPP_INFO_THROTTLE(charging_node_->get_logger(), *charging_node_->get_clock(), 2000,
+                         "Charging check running; charging=%s, stable=%d/%d, elapsed=%.1f s.",
                          charging ? "true" : "false",
                          consecutive_charging_, required_stable_count, elapsed);
 
     if (consecutive_charging_ >= required_stable_count) {
         RCLCPP_INFO(charging_node_->get_logger(),
-                    "[DockSuccess] type=CHARGING_CONFIRMED，充电状态连续稳定，回充成功");
+                    "Charging confirmed; stable=%d/%d.", consecutive_charging_,
+                    required_stable_count);
         consecutive_charging_ = 0;
-        charging_node_->relieveDockingPressure();
+        if (!charging_node_->relieveDockingPressure()) {
+            return BT::NodeStatus::RUNNING;
+        }
         return BT::NodeStatus::SUCCESS;
     }
 
     if (elapsed >= timeout_) {
         RCLCPP_ERROR(charging_node_->get_logger(),
-                     "[DockFailure] type=CHARGING_NOT_CONFIRMED，视觉对接和末端压入已完成，"
-                     "但 %.1f 秒内未确认稳定充电；最后状态：充电=%s，连续确认=%d/%d；"
-                     "处置=返回失败，由行为树停止检测、退桩并决定是否重试",
+                     "Charging check failed; type=CHARGING_NOT_CONFIRMED, timeout=%.1f s, "
+                     "charging=%s, stable=%d/%d.",
                      timeout_, charging ? "true" : "false",
                      consecutive_charging_, required_stable_count);
         consecutive_charging_ = 0;
@@ -825,7 +1167,7 @@ BT::NodeStatus CheckBatteryAboveThreshold::tick() {
 
     auto threshold = getInput<double>("threshold");
     if (!threshold) {
-        RCLCPP_ERROR(charging_node->get_logger(), "缺少阈值输入 threshold");
+        RCLCPP_ERROR(charging_node->get_logger(), "Battery check failed; threshold missing.");
         return BT::NodeStatus::FAILURE;
     }
 
@@ -834,11 +1176,12 @@ BT::NodeStatus CheckBatteryAboveThreshold::tick() {
 
     double battery = charging_node->getBatteryPercentage();
     if (battery < 0.0) {
-        RCLCPP_WARN(charging_node->get_logger(), "尚未获取到有效电量信息");
+        RCLCPP_WARN(charging_node->get_logger(), "Battery check skipped; value unavailable.");
         return BT::NodeStatus::FAILURE;
     }
 
-    RCLCPP_INFO(charging_node->get_logger(), "电量检测: 当前 %.2f 对比阈值 %.2f", battery, threshold.value());
+    RCLCPP_INFO(charging_node->get_logger(), "Battery check; value=%.2f, threshold=%.2f.",
+                battery, threshold.value());
 
     return battery >= threshold.value() ? BT::NodeStatus::SUCCESS : BT::NodeStatus::FAILURE;
 }
@@ -856,11 +1199,26 @@ BT::NodeStatus IsCharging::tick() {
     }
 
     const auto state = charging_node->confirmEntryChargerState();
-    RCLCPP_INFO(charging_node->get_logger(), "行为树入口充电状态检查结果: %s",
-                charging_node->chargerStateName(state));
 
     return state == AutoChargingNode::ChargerState::CHARGING ? BT::NodeStatus::SUCCESS
                                                              : BT::NodeStatus::FAILURE;
+}
+
+// ==================== IsChargingNavigationEnabled ====================
+IsChargingNavigationEnabled::IsChargingNavigationEnabled(
+    const std::string& name, const BT::NodeConfiguration& config)
+    : BT::ConditionNode(name, config) {}
+
+BT::PortsList IsChargingNavigationEnabled::providedPorts() {
+    return {BT::InputPort<bool>("enabled")};
+}
+
+BT::NodeStatus IsChargingNavigationEnabled::tick() {
+    const auto enabled = getInput<bool>("enabled");
+    if (!enabled) {
+        throw BT::RuntimeError("IsChargingNavigationEnabled missing enabled input");
+    }
+    return enabled.value() ? BT::NodeStatus::SUCCESS : BT::NodeStatus::FAILURE;
 }
 
 // ==================== Undocking ====================
@@ -879,11 +1237,12 @@ BT::NodeStatus Undocking::tick() {
     if (auto d = getInput<double>("duration")) {
         duration = d.value();
     } else {
-        RCLCPP_WARN(charging_node->get_logger(), "未提供Undocking持续时间，使用默认值 %.2f 秒", duration);
+        RCLCPP_WARN(charging_node->get_logger(),
+                    "Undocking duration missing; default=%.2f s.", duration);
     }
 
-    charging_node->undocking(duration);
-    return BT::NodeStatus::SUCCESS;
+    return charging_node->undocking(duration) ? BT::NodeStatus::SUCCESS
+                                               : BT::NodeStatus::FAILURE;
 }
 
 // ==================== CounterCheck ====================
@@ -904,11 +1263,12 @@ BT::NodeStatus CounterCheck::tick() {
     int count = blackboard->get<int>("retry_count");
 
     if (count >= max_retries_) {
-        RCLCPP_ERROR(charging_node->get_logger(), "❌ 已达到最大重试次数 %d", max_retries_);
+        RCLCPP_ERROR(charging_node->get_logger(), "Retry limit reached; limit=%d.", max_retries_);
         return BT::NodeStatus::FAILURE;
     }
 
-    RCLCPP_INFO(charging_node->get_logger(), "📊 当前重试次数: %d/%d", count, max_retries_);
+    RCLCPP_INFO(charging_node->get_logger(), "Retry count; count=%d/%d.", count,
+                max_retries_);
     return BT::NodeStatus::SUCCESS;
 }
 
@@ -925,7 +1285,8 @@ BT::NodeStatus IncrementCounter::tick() {
     auto blackboard = config().blackboard;
     int count = blackboard->get<int>("retry_count");
     blackboard->set("retry_count", count + 1);
-    RCLCPP_INFO(charging_node->get_logger(), "➕ 重试计数器增加: %d -> %d", count, count + 1);
+    RCLCPP_INFO(charging_node->get_logger(), "Retry count updated; count=%d->%d.", count,
+                count + 1);
     return BT::NodeStatus::SUCCESS;
 }
 
@@ -966,12 +1327,12 @@ BT::NodeStatus AttemptLogger::tick() {
     const char* attempt_tag = is_dock_attempt ? "[DockAttempt]" : "[NavigationAttempt]";
     const char* retry_tag = is_dock_attempt ? "[DockRetry]" : "[NavigationRetry]";
     if (count == 1) {
-        RCLCPP_INFO(charging_node->get_logger(), "%s %s开始第 %d/%d 次尝试",
-                    attempt_tag, label.value().c_str(), count, total.value());
+        RCLCPP_INFO(charging_node->get_logger(), "%s Started; attempt=%d/%d.",
+                    attempt_tag, count, total.value());
     } else {
         RCLCPP_WARN(charging_node->get_logger(),
-                    "%s %s上一次尝试失败，开始第 %d/%d 次尝试（第 %d 次重试）",
-                    retry_tag, label.value().c_str(), count, total.value(), count - 1);
+                    "%s Retrying; attempt=%d/%d, retry=%d.",
+                    retry_tag, count, total.value(), count - 1);
     }
     return BT::NodeStatus::SUCCESS;
 }
@@ -987,12 +1348,7 @@ BT::NodeStatus StartDetection::tick() {
     if (!charging_node) {
         throw BT::RuntimeError("charging_node not set in blackboard");
     }
-    bool ok = charging_node->startDetection();
-    if (!ok) {
-        RCLCPP_ERROR(charging_node->get_logger(),
-                     "[DockFailure] type=DETECTION_START_FAILED，启动二维码检测失败；"
-                     "本次回充对接尝试结束，由外层行为树决定是否重试");
-    }
+    const bool ok = charging_node->startDetection();
     return ok ? BT::NodeStatus::SUCCESS : BT::NodeStatus::FAILURE;
 }
 
