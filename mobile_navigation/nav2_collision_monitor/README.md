@@ -65,3 +65,43 @@ The following notes could be made:
 
  * Due to sheer speed, circle shapes are preferred for the approach behavior models if you can approximately model your robot as circular.
  * More points mean lower performance. Pointclouds could be culled or filtered before the Collision Monitor to improve performance.
+
+---
+
+## 本仓库相对上游 Nav2 的改动 (Local divergence from upstream)
+
+本包不是上游 Nav2 的纯净拷贝，以下为本项目的本地增改。修改本包或从上游同步时请先看这一节。
+
+### 1. `obstacle_status` 话题（新增）
+
+在 `cmd_vel` 门控之外，额外发布 `nav_interfaces/ObstacleMonitorStatus`（FREE / SLOWDOWN / STOP
+三态 + `slowdown_ratio` + `zone_name`），供 `path_follower` 做速度跟踪状态机使用
+（见 `path_follower` 的 `VelocityTrackMode`）。相关参数：`obstacle_status_topic`。
+
+上游的 `APPROACH` 动作在这里并入 `SLOWDOWN` 上报——两者对下游都是"降速不停止"的语义。
+
+### 2. `obstacle_status` 空闲保活定时器（新增）
+
+**上游行为**：`process()` 只由 `cmdVelInCallback` 驱动，因此 `obstacle_status` 只在有
+`cmd_vel_in` 流入时才发布。
+
+**问题**：这让一个安全信号的发布节奏依赖于下游消费者的输出（依赖倒置），带来两个后果：
+
+1. 下游无法区分"监控节点挂了"和"监控节点没有可反应的输入"——因此无法实现状态超时看门狗。
+   `path_follower` 的 `obstacle_status_timeout` 看门狗正是依赖本改动才有意义。
+2. 车还没开始动就已存在的障碍，要等第一帧非零速度发布出去才会被上报，此时往往已经晚了。
+
+**改动**：新增 `obstacle_status_idle_rate`（默认 2.0 Hz，`<=0` 关闭）驱动的保活定时器
+`idleKeepaliveCallback()`，仅在"最近一个定时周期内没有 `cmd_vel_in` 流入"时才触发一次评估。
+
+设计约束（同步上游时必须保持）：
+
+- **不改动 `cmd_vel` 主通路**。运动中定时器直接跳过，`cmdVelInCallback` → `process()` 的
+  行为与延迟特性与上游完全一致。
+- **保活路径不发布 `cmd_vel`**：`process()` 新增 `publish_cmd_vel` 参数，保活时传 `false`。
+  监控器只应门控速度，绝不能自己产生速度。
+- **保活路径只继承 `robot_action_prev_.action_type`，不写 `req_vel`**。`req_vel` 属于
+  `cmd_vel` 通路的状态，若被保活路径覆盖成零，`publishVelocity()` 会漏掉下一次真实指令的
+  "机器人刚刚停下"边沿，从而不转发那一帧停车指令。
+- 保活用零速评估：STOP/SLOWDOWN 多边形的判定是纯几何的（点是否落在多边形内），零速下结果
+  完全正确；`APPROACH` 会退化为不触发，而这正是它在零速下应有的语义（无运动即无预期碰撞）。

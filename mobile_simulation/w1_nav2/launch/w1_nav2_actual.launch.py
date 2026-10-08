@@ -15,6 +15,11 @@ import json
 def generate_launch_description():
 
     use_sim_time = LaunchConfiguration('use_sim_time')
+    # autostart 做成参数：两套导航后端（本栈 与 path_navigation）要能同时常驻、
+    # 靠 lifecycle 状态互斥选用哪套时，本栈必须能起来但停在 unconfigured，
+    # 等 command_board 按 navigation_backend 调 /lifecycle_manager_navigation 的 STARTUP。
+    # 默认保持 True：单独起本 launch（仿真、调试）时行为与以前完全一致。
+    autostart = LaunchConfiguration('autostart')
 
     lattice_file_package = get_package_share_directory('nav2_smac_planner')
     lattice_file = os.path.join(lattice_file_package, 'sample_primitives',
@@ -41,7 +46,7 @@ def generate_launch_description():
         launch_arguments={
             'use_sim_time': use_sim_time,
             'params_file': configured_params,
-            'autostart': 'True',
+            'autostart': autostart,
         }.items())
 
     ld = LaunchDescription()
@@ -50,6 +55,14 @@ def generate_launch_description():
         'use_sim_time',
         default_value='false',
         description='Use simulation clock; keep false on the physical robot'))
+    ld.add_action(DeclareLaunchArgument(
+        'autostart',
+        default_value='True',
+        description=(
+            'True = nav2 自带的 lifecycle_manager_navigation 启动即把整套 nav2 拉到 active；'
+            'False = 全部停在 unconfigured，等 command_board 按 navigation_backend 选中本后端后'
+            '调 manage_nodes 的 STARTUP。两套后端同时常驻时，本栈必须用 False，'
+            '否则它会自激活，两套都出速度、都落到 cmd_vel_mux 的 control/cmd_vel_nav。')))
     ld.add_action(nav2_bringup_cmd)
 
     return ld

@@ -528,6 +528,31 @@ TEST_F(Tester, testPolygonGetPointsInside)
   ASSERT_EQ(polygon_->getPointsInside(points), 1);
 }
 
+TEST_F(Tester, testPolygonLateralPaddingOnly)
+{
+  createPolygon("stop");
+  polygon_->setPadding(0.2);
+  polygon_->setLateralPaddingOnly(true);
+
+  // 基础轮廓是 [-0.5, 0.5]²：左右扩到 0.7，前后仍停在 0.5。
+  const std::vector<nav2_collision_monitor::Point> points {
+    {0.0, 0.6},    // 左右 padding 内
+    {0.6, 0.0},    // 前方，不应 padding
+    {-0.6, 0.0},   // 后方，不应 padding
+    {0.6, 0.6}};   // 前方角落，不应 padding
+  EXPECT_EQ(polygon_->getPointsInside(points), 1);
+
+  std::vector<nav2_collision_monitor::Point> effective_polygon;
+  polygon_->getEffectivePolygon(effective_polygon);
+  ASSERT_EQ(effective_polygon.size(), 4u);
+  EXPECT_NEAR(effective_polygon[0].x, 0.5, EPSILON);
+  EXPECT_NEAR(effective_polygon[0].y, 0.7, EPSILON);
+
+  // 切回正常模式后，前方同样获得 padding。
+  polygon_->setLateralPaddingOnly(false);
+  EXPECT_EQ(polygon_->getPointsInside(points), 4);
+}
+
 TEST_F(Tester, testPolygonGetPointsInsideEdge)
 {
   // Test for checking edge cases in raytracing algorithm.

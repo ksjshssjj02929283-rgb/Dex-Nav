@@ -1,0 +1,30 @@
+# nav2_velocity_smoother 参数
+# 顶层用 /** 通配而不是写死节点名：本栈的节点名是 launch 的 node_name 参数
+# （默认 velocity_smoother_path，与 Nav2 栈的 velocity_smoother 区分），
+# 写死 key 的话一改名参数就一个都进不去，而且**不报任何错**——节点照常起来，
+# 全用默认值跑（真机上这类静默失效已经踩过一次）。
+/**:
+  ros__parameters:
+    use_sim_time: True
+    smoothing_frequency: 30.0
+    scale_velocities: True
+    feedback: "OPEN_LOOP"
+    # 话题改用 launch remapping 指定，不在这里配，见 launch/velocity_smoother.launch.py 的
+    # cmd_vel_in_topic / cmd_vel_out_topic 参数。原因是这两个 yaml key 有两种"静默失效"的
+    # 方式，出问题时都不报错、只表现为节点默默挂到默认的 /cmd_vel 和 /cmd_vel_smoothed 上：
+    #   1) 本节点被喂了别的参数文件（launch 作用域串了 params_file，真机踩过一次）；
+    #   2) overlay 里没编出 nav2_velocity_smoother，回落到 /opt/ros 的上游二进制 ——
+    #      上游 Humble 把话题硬编码，压根没有 input_topic / output_topic 这两个参数。
+    # remapping 作用在 rcl 层，上面两种情况都照样生效。
+    # input_topic: "cmd_vel_nav"
+    # output_topic: "control/cmd_vel_nav"
+    max_velocity: [0.8, 0.8, 1.1]
+    min_velocity: [-0.8, -0.8, -1.1]
+    max_accel: [0.6, 0.6, 0.8]
+    max_decel: [-0.9, -0.9, -1.1]
+    odom_topic: "feedback/odom"
+#    odom_topic: "odom"
+    odom_duration: 0.01
+    deadband_velocity: [0.005, 0.005, 0.008]
+    velocity_timeout: 1.0
+

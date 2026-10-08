@@ -95,6 +95,21 @@ private:
         const std::pair<double, double>& p,
         const std::vector<std::pair<double, double>>& poly);
 
+    /// 识别「窄道点位」：目标点 P 是一条单向路径的终点，同时又是一条**倒车**单向路径的起点，
+    /// 且那条倒车路径的终点正是进来那条路径的起点 Q。也就是 P 处只有一进一出、且出去靠倒车：
+    ///
+    ///     Q ──(in : from=Q, to=P, 单向)──▶ P
+    ///     Q ◀──(out: from=P, to=Q, 单向, backward=true)── P
+    ///
+    /// 这样配路网本身就说明 P 附近没有原地掉头的空间，所以车停在 P 上再被要求去 P 时，
+    /// 正确的做法是「先沿 out 倒车退到 Q，再沿 in 正向开回 P」，而不是就地转向。
+    /// 命中返回 {out, in}（即该按顺序下发的两段）；不命中返回 nullopt。
+    ///
+    /// 硬性前提：P 关联的边**恰好只有这两条**。多于两条说明 P 不是死胡同端点，
+    /// 退出方向不唯一，此时打 WARN 并返回 nullopt，交回常规逻辑。
+    std::optional<std::pair<RouteEdge, RouteEdge>> findNarrowTurnaround(
+        const RouteEndpoint& p) const;
+
     /// 单条边 → PathSegment（按行进方向序给 control_points，末点切向作 target_yaw 缺省值；
     /// 请求的最终目标点会在 resolveNavPointsCallback 中改用其自身配置的 yaw 覆盖，见该函数注释）。
     nav_interfaces::msg::PathSegment edgeToSegment(const RouteEdge& e, bool reversed) const;
@@ -121,6 +136,12 @@ private:
     /// 起点吸附/归位判定阈值 m：车体离规划起点小于它就把起点挪到车体位置；
     /// 车体离参考输入边小于它就先跑一段参考输入边归位（参数 route_start_tolerance）。
     double start_tolerance_{0.1};
+
+    /// 窄道点位「倒车退出再开回」判定的距离阈值 m（参数 narrow_turnaround_tolerance）：
+    /// 只有车体离目标点小于它，才认为车确实停在窄道端点上、需要这一进一出。
+    /// 与 start_tolerance_ 分开配：后者是起点吸附的几何容差（cm 级），
+    /// 这里要覆盖的是「车停在 P」的实际停靠误差（dm 级），两者量纲不同。
+    double narrow_turnaround_tolerance_{0.3};
 };
 
 }  // namespace map_asset_manager
