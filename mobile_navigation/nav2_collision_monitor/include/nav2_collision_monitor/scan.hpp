@@ -40,10 +40,10 @@ public:
    * @param tf_buffer Shared pointer to a TF buffer
    * @param base_frame_id Robot base frame ID. The output data will be transformed into this frame.
    * @param global_frame_id Global frame ID for correct transform calculation
-   * @param transform_tolerance Transform tolerance
+   * @param transform_tolerance Maximum age of the latest dynamic base TF (no waiting)
    * @param source_timeout Maximum time interval in which data is considered valid
    * @param base_shift_correction Whether to correct source data towards to base frame movement,
-   * considering the difference between current time and latest source time
+   * from sensor acquisition time to the latest available base TF time
    */
   Scan(
     const nav2_util::LifecycleNode::WeakPtr & node,
@@ -69,7 +69,7 @@ public:
    * @brief Adds latest data from laser scanner to the data array.
    * @param curr_time Current node time for data interpolation
    * @param data Array where the data from source to be added.
-   * Added data is transformed to base_frame_id_ coordinate system at curr_time.
+   * Added data is cached in base_frame_id_ at the latest TF time at scan processing.
    */
   void getData(
     const rclcpp::Time & curr_time,
@@ -87,8 +87,32 @@ protected:
   /// @brief Laser scanner data subscriber
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr data_sub_;
 
-  /// @brief Latest data obtained from laser scanner
+  // Retain the latest raw message for diagnostics and source-level compatibility. Detection uses
+  // processed_data_; readers of data_ must use atomic shared_ptr operations.
   sensor_msgs::msg::LaserScan::ConstSharedPtr data_;
+
+  struct ProcessedScan
+  {
+    rclcpp::Time source_stamp;
+    std::vector<Point> points;
+    bool transform_valid{false};
+  };
+
+  // A callback builds the complete base-frame point set and publishes it atomically. The
+  // 100 Hz safety loop therefore never observes a partially converted scan and never performs TF.
+  std::shared_ptr<const ProcessedScan> processed_data_;
+
+  struct DirectionCache
+  {
+    float angle_min;
+    float angle_increment;
+    std::size_t size;
+    std::vector<Point> unit_vectors;
+  };
+
+  // Immutable beam directions keyed by LaserScan geometry. Access through atomic shared_ptr
+  // operations so concurrent snapshot tests and executor callbacks never observe a partial cache.
+  std::shared_ptr<const DirectionCache> direction_cache_;
 };  // class Scan
 
 }  // namespace nav2_collision_monitor

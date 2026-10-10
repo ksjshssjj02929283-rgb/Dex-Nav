@@ -15,6 +15,7 @@
 #include "nav2_collision_monitor/pointcloud.hpp"
 
 #include <functional>
+#include <utility>
 
 #include "sensor_msgs/point_cloud2_iterator.hpp"
 
@@ -67,43 +68,28 @@ void PointCloud::getData(
   const rclcpp::Time & curr_time,
   std::vector<Point> & data) const
 {
+  // Keep one immutable message alive throughout TF lookup and point conversion.
+  const auto snapshot = std::atomic_load(&data_);
+
   // Ignore data from the source if it is not being published yet or
   // not published for a long time
-  if (data_ == nullptr) {
+  if (snapshot == nullptr) {
     return;
   }
-  if (!sourceValid(data_->header.stamp, curr_time)) {
+  if (!sourceValid(snapshot->header.stamp, curr_time)) {
     return;
   }
 
   tf2::Transform tf_transform;
-  if (base_shift_correction_) {
-    // Obtaining the transform to get data from source frame and time where it was received
-    // to the base frame and current time
-    if (
-      !nav2_util::getTransform(
-        data_->header.frame_id, data_->header.stamp,
-        base_frame_id_, curr_time, global_frame_id_,
-        transform_tolerance_, tf_buffer_, tf_transform))
-    {
-      return;
-    }
-  } else {
-    // Obtaining the transform to get data from source frame to base frame without time shift
-    // considered. Less accurate but much more faster option not dependent on state estimation
-    // frames.
-    if (
-      !nav2_util::getTransform(
-        data_->header.frame_id, base_frame_id_,
-        transform_tolerance_, tf_buffer_, tf_transform))
-    {
-      return;
-    }
+  if (!getLatestTransform(
+      snapshot->header.frame_id, rclcpp::Time(snapshot->header.stamp), tf_transform))
+  {
+    return;
   }
 
-  sensor_msgs::PointCloud2ConstIterator<float> iter_x(*data_, "x");
-  sensor_msgs::PointCloud2ConstIterator<float> iter_y(*data_, "y");
-  sensor_msgs::PointCloud2ConstIterator<float> iter_z(*data_, "z");
+  sensor_msgs::PointCloud2ConstIterator<float> iter_x(*snapshot, "x");
+  sensor_msgs::PointCloud2ConstIterator<float> iter_y(*snapshot, "y");
+  sensor_msgs::PointCloud2ConstIterator<float> iter_z(*snapshot, "z");
 
   // Refill data array with PointCloud points in base frame
   for (; iter_x != iter_x.end(); ++iter_x, ++iter_y, ++iter_z) {
@@ -137,7 +123,8 @@ void PointCloud::getParameters(std::string & source_topic)
 
 void PointCloud::dataCallback(sensor_msgs::msg::PointCloud2::ConstSharedPtr msg)
 {
-  data_ = msg;
+  std::atomic_store(&data_, std::move(msg));
+  data_sequence_.fetch_add(1, std::memory_order_release);
 }
 
 }  // namespace nav2_collision_monitor

@@ -71,6 +71,9 @@ public:
       BT::InputPort<std::string>("global_frame", std::string("map"), "Global frame"),
       BT::InputPort<std::string>("robot_base_frame", std::string("base_link"), "Robot base frame"),
       BT::InputPort<nav_msgs::msg::Path>("path", "Global path to check deviation from"),
+      BT::InputPort<bool>(
+        "enable_global_replanning", true,
+        "Enable periodic, deviation, obstacle, and recovery-triggered global replanning"),
       BT::InputPort<double>(
         "max_deviation", kDefaultMaxDeviationM,
         "Max allowed deviation from path"),
@@ -126,6 +129,7 @@ private:
   rclcpp::Node::SharedPtr node_;
   std::shared_ptr<tf2_ros::Buffer> tf_;
   std::shared_ptr<GlobalReplanContext> global_replan_context_;
+  bool global_replanning_enabled_{true};
   GlobalReplanMode recovery_replan_mode_{GlobalReplanMode::DISABLED};
   double transform_tolerance_;
 

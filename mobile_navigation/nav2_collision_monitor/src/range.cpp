@@ -17,6 +17,7 @@
 #include <math.h>
 #include <cmath>
 #include <functional>
+#include <utility>
 
 #include "nav2_util/node_utils.hpp"
 
@@ -67,60 +68,45 @@ void Range::getData(
   const rclcpp::Time & curr_time,
   std::vector<Point> & data) const
 {
+  // Keep one immutable message alive throughout TF lookup and point conversion.
+  const auto snapshot = std::atomic_load(&data_);
+
   // Ignore data from the source if it is not being published yet or
   // not being published for a long time
-  if (data_ == nullptr) {
+  if (snapshot == nullptr) {
     return;
   }
-  if (!sourceValid(data_->header.stamp, curr_time)) {
+  if (!sourceValid(snapshot->header.stamp, curr_time)) {
     return;
   }
 
   // Ignore data, if its range is out of scope of range sensor abilities
-  if (data_->range < data_->min_range || data_->range > data_->max_range) {
+  if (snapshot->range < snapshot->min_range || snapshot->range > snapshot->max_range) {
     RCLCPP_DEBUG(
       logger_,
       "[%s]: Data range %fm is out of {%f..%f} sensor span. Ignoring...",
-      source_name_.c_str(), data_->range, data_->min_range, data_->max_range);
+      source_name_.c_str(), snapshot->range, snapshot->min_range, snapshot->max_range);
     return;
   }
 
   tf2::Transform tf_transform;
-  if (base_shift_correction_) {
-    // Obtaining the transform to get data from source frame and time where it was received
-    // to the base frame and current time
-    if (
-      !nav2_util::getTransform(
-        data_->header.frame_id, data_->header.stamp,
-        base_frame_id_, curr_time, global_frame_id_,
-        transform_tolerance_, tf_buffer_, tf_transform))
-    {
-      return;
-    }
-  } else {
-    // Obtaining the transform to get data from source frame to base frame without time shift
-    // considered. Less accurate but much more faster option not dependent on state estimation
-    // frames.
-    if (
-      !nav2_util::getTransform(
-        data_->header.frame_id, base_frame_id_,
-        transform_tolerance_, tf_buffer_, tf_transform))
-    {
-      return;
-    }
+  if (!getLatestTransform(
+      snapshot->header.frame_id, rclcpp::Time(snapshot->header.stamp), tf_transform))
+  {
+    return;
   }
 
   // Calculate poses and refill data array
   float angle;
   for (
-    angle = -data_->field_of_view / 2;
-    angle < data_->field_of_view / 2;
+    angle = -snapshot->field_of_view / 2;
+    angle < snapshot->field_of_view / 2;
     angle += obstacles_angle_)
   {
     // Transform point coordinates from source frame -> to base frame
     tf2::Vector3 p_v3_s(
-      data_->range * std::cos(angle),
-      data_->range * std::sin(angle),
+      snapshot->range * std::cos(angle),
+      snapshot->range * std::sin(angle),
       0.0);
     tf2::Vector3 p_v3_b = tf_transform * p_v3_s;
 
@@ -129,12 +115,12 @@ void Range::getData(
   }
 
   // Make sure that last (field_of_view / 2) point will be in the data array
-  angle = data_->field_of_view / 2;
+  angle = snapshot->field_of_view / 2;
 
   // Transform point coordinates from source frame -> to base frame
   tf2::Vector3 p_v3_s(
-    data_->range * std::cos(angle),
-    data_->range * std::sin(angle),
+    snapshot->range * std::cos(angle),
+    snapshot->range * std::sin(angle),
     0.0);
   tf2::Vector3 p_v3_b = tf_transform * p_v3_s;
 
@@ -158,7 +144,8 @@ void Range::getParameters(std::string & source_topic)
 
 void Range::dataCallback(sensor_msgs::msg::Range::ConstSharedPtr msg)
 {
-  data_ = msg;
+  std::atomic_store(&data_, std::move(msg));
+  data_sequence_.fetch_add(1, std::memory_order_release);
 }
 
 }  // namespace nav2_collision_monitor

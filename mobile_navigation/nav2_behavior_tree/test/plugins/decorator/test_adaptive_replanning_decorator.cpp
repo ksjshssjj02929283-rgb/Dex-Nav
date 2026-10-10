@@ -171,6 +171,44 @@ TEST_F(AdaptiveReplanningTestFixture, test_rate_limiting)
   EXPECT_EQ(dummy_node_->getTickCount(), 2);  // 运行计数变为 2
 }
 
+TEST_F(AdaptiveReplanningTestFixture, test_global_replanning_disabled_keeps_initial_and_goal_plans)
+{
+  geometry_msgs::msg::PoseStamped goal_pose;
+  goal_pose.header.frame_id = "map";
+  goal_pose.pose.position.x = 2.0;
+  config_->blackboard->set("goal", goal_pose);
+
+  nav_msgs::msg::Path path;
+  path.header.frame_id = "map";
+  path.poses.emplace_back();
+  config_->blackboard->set("path", path);
+
+  bt_node_.reset();
+  config_->input_ports["enable_global_replanning"] = "false";
+  bt_node_ = std::make_shared<nav2_behavior_tree::AdaptiveReplanning>(
+    "adaptive_replanning_disabled", *config_);
+  bt_node_->setChild(dummy_node_.get());
+
+  EXPECT_EQ(global_replan_context_->mode(), nav2_behavior_tree::GlobalReplanMode::DISABLED);
+
+  // Initial planning is always required, even with replanning disabled.
+  EXPECT_EQ(bt_node_->executeTick(), BT::NodeStatus::SUCCESS);
+  EXPECT_EQ(dummy_node_->getTickCount(), 1);
+
+  // Periodic and deviation replanning remain disabled after the first valid path.
+  std::this_thread::sleep_for(120ms);
+  path.poses.front().pose.position.x = 10.0;
+  config_->blackboard->set("path", path);
+  EXPECT_EQ(bt_node_->executeTick(), BT::NodeStatus::SUCCESS);
+  EXPECT_EQ(dummy_node_->getTickCount(), 1);
+
+  // A changed goal invalidates the old path and must still be planned once.
+  goal_pose.pose.position.x = 3.0;
+  config_->blackboard->set("goal", goal_pose);
+  EXPECT_EQ(bt_node_->executeTick(), BT::NodeStatus::SUCCESS);
+  EXPECT_EQ(dummy_node_->getTickCount(), 2);
+}
+
 TEST_F(AdaptiveReplanningTestFixture, test_near_goal_skip)
 {
   // 准备近终点目标点 (0.1m，小于距离阈值 0.3m)

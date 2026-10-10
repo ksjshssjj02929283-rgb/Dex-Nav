@@ -40,10 +40,10 @@ public:
    * @param tf_buffer Shared pointer to a TF buffer
    * @param base_frame_id Robot base frame ID. The output data will be transformed into this frame.
    * @param global_frame_id Global frame ID for correct transform calculation
-   * @param transform_tolerance Transform tolerance
+   * @param transform_tolerance Maximum age of latest dynamic base TF (zero-wait lookup)
    * @param source_timeout Maximum time interval in which data is considered valid
    * @param base_shift_correction Whether to correct source data towards to base frame movement,
-   * considering the difference between current time and latest source time
+   * from source acquisition time to latest available base TF time
    */
   Range(
     const nav2_util::LifecycleNode::WeakPtr & node,
@@ -97,6 +97,7 @@ protected:
   double obstacles_angle_;
 
   /// @brief Latest data obtained from range sensor
+  // Access only through std::atomic_load/store; readers retain an immutable snapshot.
   sensor_msgs::msg::Range::ConstSharedPtr data_;
 };  // class Range
 

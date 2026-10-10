@@ -17,7 +17,7 @@ import os
 from ament_index_python.packages import get_package_share_directory
 
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, GroupAction, SetEnvironmentVariable
+from launch.actions import DeclareLaunchArgument, GroupAction, OpaqueFunction, SetEnvironmentVariable
 from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import LoadComposableNodes
@@ -26,14 +26,18 @@ from launch_ros.descriptions import ComposableNode, ParameterFile
 from nav2_common.launch import RewrittenYaml
 
 
-def generate_launch_description():
+def _launch_setup(context):
+    use_collision_monitor = IfCondition(LaunchConfiguration('use_collision_monitor')).evaluate(context)
     # Get the launch directory
     bringup_dir = get_package_share_directory('nav2_bringup')
+    collision_monitor_dir = (
+        get_package_share_directory('nav2_collision_monitor') if use_collision_monitor else '')
 
     namespace = LaunchConfiguration('namespace')
     use_sim_time = LaunchConfiguration('use_sim_time')
     autostart = LaunchConfiguration('autostart')
     params_file = LaunchConfiguration('params_file')
+    collision_monitor_params_file = LaunchConfiguration('collision_monitor_params_file')
     use_composition = LaunchConfiguration('use_composition')
     container_name = LaunchConfiguration('container_name')
     container_name_full = (namespace, '/', container_name)
@@ -46,6 +50,16 @@ def generate_launch_description():
                        'bt_navigator',
                        'waypoint_follower',
                        'velocity_smoother']
+    if use_collision_monitor:
+        lifecycle_nodes.insert(0, 'collision_monitor')
+    controller_cmd_vel = 'cmd_vel_nav'
+    # TimedBehavior in this project publishes control/cmd_vel_nav directly.
+    # Route recovery commands through CM as well as plugins using cmd_vel.
+    behavior_remappings = [
+        ('cmd_vel', 'cmd_vel_nav'),
+        ('control/cmd_vel_nav', 'cmd_vel_nav'),
+    ] if use_collision_monitor else []
+    smoother_cmd_vel = 'cmd_vel_safe' if use_collision_monitor else 'cmd_vel_nav'
 
     # Map fully qualified names to relative ones so the node's namespace can be prepended.
     # In case of the transforms (tf), currently, there doesn't seem to be a better alternative
@@ -87,6 +101,12 @@ def generate_launch_description():
         default_value=os.path.join(bringup_dir, 'params', 'nav2_params.yaml'),
         description='Full path to the ROS2 parameters file to use for all launched nodes')
 
+    declare_collision_monitor_params_file_cmd = DeclareLaunchArgument(
+        'collision_monitor_params_file',
+        default_value=os.path.join(
+            collision_monitor_dir, 'params', 'collision_monitor_params.yaml'),
+        description='Collision monitor parameters file')
+
     declare_autostart_cmd = DeclareLaunchArgument(
         'autostart', default_value='true',
         description='Automatically startup the nav2 stack')
@@ -111,6 +131,18 @@ def generate_launch_description():
         condition=IfCondition(PythonExpression(['not ', use_composition])),
         actions=[
             Node(
+                condition=IfCondition(LaunchConfiguration('use_collision_monitor')),
+                package='nav2_collision_monitor',
+                executable='collision_monitor',
+                name='collision_monitor',
+                output='screen',
+                respawn=use_respawn,
+                respawn_delay=2.0,
+                parameters=[collision_monitor_params_file,
+                            {'use_sim_time': use_sim_time}],
+                arguments=['--ros-args', '--log-level', log_level],
+                remappings=remappings),
+            Node(
                 package='nav2_controller',
                 executable='controller_server',
                 output='screen',
@@ -118,7 +150,7 @@ def generate_launch_description():
                 respawn_delay=2.0,
                 parameters=[configured_params],
                 arguments=['--ros-args', '--log-level', log_level],
-                remappings=remappings + [('cmd_vel', 'cmd_vel_nav')]),
+                remappings=remappings + [('cmd_vel', controller_cmd_vel)]),
             Node(
                 package='nav2_planner',
                 executable='planner_server',
@@ -128,7 +160,7 @@ def generate_launch_description():
                 respawn_delay=2.0,
                 parameters=[configured_params],
                 arguments=['--ros-args', '--log-level', log_level],
-                remappings=remappings),
+                remappings=remappings + [('plan', 'plan')]),
             Node(
                 package='nav2_behaviors',
                 executable='behavior_server',
@@ -138,7 +170,7 @@ def generate_launch_description():
                 respawn_delay=2.0,
                 parameters=[configured_params],
                 arguments=['--ros-args', '--log-level', log_level],
-                remappings=remappings),
+                remappings=remappings + behavior_remappings),
             Node(
                 package='nav2_bt_navigator',
                 executable='bt_navigator',
@@ -166,10 +198,10 @@ def generate_launch_description():
                 output='screen',
                 respawn=use_respawn,
                 respawn_delay=2.0,
-                parameters=[configured_params],
+                parameters=[configured_params, {'input_topic': smoother_cmd_vel}],
                 arguments=['--ros-args', '--log-level', log_level],
                 remappings=remappings +
-                [('cmd_vel', 'cmd_vel_nav'), ('cmd_vel_smoothed', 'cmd_vel')]),
+                [('cmd_vel', smoother_cmd_vel), ('cmd_vel_smoothed', 'cmd_vel')]),
             Node(
                 package='nav2_lifecycle_manager',
                 executable='lifecycle_manager',
@@ -198,24 +230,31 @@ def generate_launch_description():
         condition=IfCondition(use_composition),
         target_container=container_name_full,
         composable_node_descriptions=[
+            *([ComposableNode(
+                package='nav2_collision_monitor',
+                plugin='nav2_collision_monitor::CollisionMonitor',
+                name='collision_monitor',
+                parameters=[collision_monitor_params_file,
+                            {'use_sim_time': use_sim_time}],
+                remappings=remappings)] if use_collision_monitor else []),
             ComposableNode(
                 package='nav2_controller',
                 plugin='nav2_controller::ControllerServer',
                 name='controller_server',
                 parameters=[configured_params],
-                remappings=remappings + [('cmd_vel', 'cmd_vel_nav')]),
+                remappings=remappings + [('cmd_vel', controller_cmd_vel)]),
             ComposableNode(
                 package='nav2_planner',
                 plugin='nav2_planner::PlannerServer',
                 name='planner_server',
                 parameters=[configured_params],
-                remappings=remappings),
+                remappings=remappings + [('plan', 'plan')]),
             ComposableNode(
                 package='nav2_behaviors',
                 plugin='behavior_server::BehaviorServer',
                 name='behavior_server',
                 parameters=[configured_params],
-                remappings=remappings),
+                remappings=remappings + behavior_remappings),
             ComposableNode(
                 package='nav2_bt_navigator',
                 plugin='nav2_bt_navigator::BtNavigator',
@@ -232,9 +271,9 @@ def generate_launch_description():
                 package='nav2_velocity_smoother',
                 plugin='nav2_velocity_smoother::VelocitySmoother',
                 name='velocity_smoother',
-                parameters=[configured_params],
+                parameters=[configured_params, {'input_topic': smoother_cmd_vel}],
                 remappings=remappings +
-                [('cmd_vel', 'cmd_vel_nav'), ('cmd_vel_smoothed', 'cmd_vel')]),
+                [('cmd_vel', smoother_cmd_vel), ('cmd_vel_smoothed', 'cmd_vel')]),
             ComposableNode(
                 package='nav2_lifecycle_manager',
                 plugin='nav2_lifecycle_manager::LifecycleManager',
@@ -255,6 +294,7 @@ def generate_launch_description():
     ld.add_action(declare_namespace_cmd)
     ld.add_action(declare_use_sim_time_cmd)
     ld.add_action(declare_params_file_cmd)
+    ld.add_action(declare_collision_monitor_params_file_cmd)
     ld.add_action(declare_autostart_cmd)
     ld.add_action(declare_use_composition_cmd)
     ld.add_action(declare_container_name_cmd)
@@ -264,4 +304,13 @@ def generate_launch_description():
     ld.add_action(load_nodes)
     ld.add_action(load_composable_nodes)
 
-    return ld
+    return [ld]
+
+
+def generate_launch_description():
+    return LaunchDescription([
+        DeclareLaunchArgument(
+            'use_collision_monitor', default_value='false',
+            description='Enable collision monitor and route navigation velocity through it'),
+        OpaqueFunction(function=_launch_setup),
+    ])
