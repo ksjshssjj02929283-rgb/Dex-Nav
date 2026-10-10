@@ -266,7 +266,7 @@ void Polygon::updatePolygon()
     std_msgs::msg::Header footprint_header;
     footprint_sub_->getFootprintInRobotFrame(footprint_vec, footprint_header);
 
-    // Keep the configured fallback until costmap publishes a valid footprint.
+    // 尚未收到有效 footprint：保持空轮廓，CollisionMonitor 据此输出零速并上报 STOP。
     if (footprint_vec.size() < 3) {
       return;
     }

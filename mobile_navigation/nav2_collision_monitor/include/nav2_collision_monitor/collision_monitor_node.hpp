@@ -25,6 +25,7 @@
 
 #include "rclcpp/rclcpp.hpp"
 #include "geometry_msgs/msg/twist.hpp"
+#include "std_msgs/msg/empty.hpp"
 #include "nav_msgs/msg/path.hpp"
 #include "visualization_msgs/msg/marker_array.hpp"
 #include "nav_interfaces/msg/obstacle_monitor_status.hpp"
@@ -65,7 +66,6 @@ public:
 
   enum class NavigationType
   {
-    UNSET,
     AUTOMONOUS,
     SCHEDULE
   };
@@ -324,6 +324,8 @@ protected:
 
   void applyNavigationPadding(NavigationMode mode);
   void enterIdle(const char * reason);
+  /// 进入 STOP 的上升沿通知 velocity_smoother 立即清零；须在更新 robot_action_prev_ 之前调用。
+  void publishHardStopOnStopEdge(const char * reason);
   static const char * navigationModeName(NavigationMode mode);
   void changeNavigationMode(NavigationMode mode, const char * reason);
   static std::int64_t steadyNowNs()
@@ -357,7 +359,9 @@ protected:
     nav_interfaces::msg::ObstacleMonitorStatus>::SharedPtr obstacle_status_pub_;
   rclcpp_lifecycle::LifecyclePublisher<
     visualization_msgs::msg::MarkerArray>::SharedPtr path_stop_marker_pub_;
-  /// @brief 动态膨胀设置服务（本仓库相对上游 Nav2 的改动）
+  /// @brief velocity_smoother 的硬停输入，CM 进入 STOP 时发布一次
+  rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::Empty>::SharedPtr hard_stop_pub_;
+  /// @brief 动态膨胀设置服务（本仓库相对上游 Nav2 的改动），仅 schedule 模式创建
   rclcpp::Service<nav_interfaces::srv::SetPolygonPadding>::SharedPtr set_padding_srv_;
 
   // schedule_planner path-ahead stop detector
@@ -413,10 +417,9 @@ protected:
   // (velocity timeout, footprint switch, etc.), so it must not erase whether the active
   // schedule path is normal navigation or edging.
   NavigationMode schedule_navigation_mode_{NavigationMode::SCHEDULE_NAVIGATION};
-  NavigationType lifecycle_navigation_type_{NavigationType::UNSET};
   NavigationType configured_navigation_type_{NavigationType::AUTOMONOUS};
   std::int64_t source_start_time_ns_{0};
-  std::int64_t scan_fault_timeout_ns_{5000000000LL};
+  std::int64_t scan_fault_timeout_ns_{500000000LL};
   bool sensor_fault_active_{false};
   int logged_velocity_state_{-1};
   rclcpp::Time mode_last_cmd_stamp_{0, 0, RCL_ROS_TIME};

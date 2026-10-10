@@ -37,6 +37,9 @@ Tester::Tester()
   obstacle_status_sub_ = cm_->create_subscription<nav_interfaces::msg::ObstacleMonitorStatus>(
     OBSTACLE_STATUS_TOPIC, rclcpp::QoS(1),
     std::bind(&Tester::obstacleStatusCallback, this, std::placeholders::_1));
+  hard_stop_sub_ = cm_->create_subscription<std_msgs::msg::Empty>(
+    HARD_STOP_TOPIC, rclcpp::QoS(10).reliable(),
+    [this](std_msgs::msg::Empty::SharedPtr) {++hard_stop_count_;});
 }
 
 Tester::~Tester()
@@ -51,6 +54,7 @@ Tester::~Tester()
   cmd_vel_in_pub_.reset();
   cmd_vel_out_sub_.reset();
   obstacle_status_sub_.reset();
+  hard_stop_sub_.reset();
 
   cm_.reset();
 }
@@ -85,6 +89,8 @@ void Tester::setCommonParameters()
     "source_timeout", rclcpp::ParameterValue(SOURCE_TIMEOUT));
   cm_->set_parameter(
     rclcpp::Parameter("source_timeout", SOURCE_TIMEOUT));
+  cm_->declare_parameter(
+    "scan_fault_timeout", rclcpp::ParameterValue(SCAN_FAULT_TIMEOUT));
 
   cm_->declare_parameter(
     "stop_pub_timeout", rclcpp::ParameterValue(STOP_PUB_TIMEOUT));
@@ -401,6 +407,16 @@ bool Tester::waitCmdVel(const std::chrono::nanoseconds & timeout)
     std::this_thread::sleep_for(10ms);
   }
   return false;
+}
+
+int Tester::spinHardStops(const std::chrono::nanoseconds & timeout)
+{
+  const auto deadline = std::chrono::steady_clock::now() + timeout;
+  while (rclcpp::ok() && std::chrono::steady_clock::now() < deadline) {
+    rclcpp::spin_some(cm_->get_node_base_interface());
+    std::this_thread::sleep_for(5ms);
+  }
+  return hard_stop_count_;
 }
 
 bool Tester::waitObstacleStatus(

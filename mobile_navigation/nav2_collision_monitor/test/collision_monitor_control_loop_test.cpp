@@ -226,7 +226,7 @@ TEST_F(Tester, testPathWithoutVelocityPublishesStopOnlyOnIdle)
 TEST_F(Tester, testAnyOfFourScansTimingOutStopsAndRecovers)
 {
   setCommonParameters();
-  cm_->declare_parameter("scan_fault_timeout", 0.2);
+  cm_->set_parameter(rclcpp::Parameter("scan_fault_timeout", 0.2));
   addPolygon("PolygonStop", POLYGON, 1.0, "stop");
   const std::vector<std::string> names{"scan_a", "scan_b", "scan_c", "scan_d"};
   for (const auto & name : names) {
@@ -311,7 +311,7 @@ TEST_F(Tester, testAnyOfFourScansTimingOutStopsAndRecovers)
 TEST_F(Tester, testScanNeverReceivedTimesOutAndStops)
 {
   setCommonParameters();
-  cm_->declare_parameter("scan_fault_timeout", 0.1);
+  cm_->set_parameter(rclcpp::Parameter("scan_fault_timeout", 0.1));
   addPolygon("PolygonStop", POLYGON, 1.0, "stop");
   addSource(SCAN_NAME, SCAN);
   setVectors({"PolygonStop"}, {SCAN_NAME});
@@ -434,6 +434,89 @@ TEST_F(Tester, testStateLogsDoNotRepeatForUnchangedInputs)
   EXPECT_EQ(count("[FSM] velocity=STALE"), 1u);
   EXPECT_EQ(count("[FSM] idle zero published:"), 0u);
   cm_->stop();
+}
+
+TEST_F(Tester, testHardStopPublishedOncePerStopEdge)
+{
+  setCommonParameters();
+  cm_->set_parameter(rclcpp::Parameter("scan_fault_timeout", 0.1));
+  addPolygon("PolygonStop", POLYGON, 1.0, "stop");
+  addSource(SCAN_NAME, SCAN);
+  setVectors({"PolygonStop"}, {SCAN_NAME});
+  cm_->startManualControlLoop();
+
+  cm_->receiveFreeVelocity(0.3);
+  cm_->runControlLoop();
+  EXPECT_EQ(spinHardStops(50ms), 0);
+
+  // scan 从未到达而超时：进入 STOP 发一次，STOP 持续期间不重复发。
+  std::this_thread::sleep_for(120ms);
+  for (int i = 0; i < 5; ++i) {
+    cm_->runControlLoop();
+  }
+  EXPECT_EQ(spinHardStops(100ms), 1);
+
+  // scan 恢复且有新鲜速度后解除 STOP。
+  publishScan(5.0, cm_->now());
+  const auto deadline = std::chrono::steady_clock::now() + 500ms;
+  while (cm_->scanReceiptNs(SCAN_NAME) == 0 && std::chrono::steady_clock::now() < deadline) {
+    rclcpp::spin_some(cm_->get_node_base_interface());
+    std::this_thread::sleep_for(5ms);
+  }
+  ASSERT_NE(cm_->scanReceiptNs(SCAN_NAME), 0);
+  cmd_vel_out_.reset();
+  cm_->receiveFreeVelocity(0.3);
+  cm_->runControlLoop();
+  ASSERT_TRUE(waitCmdVel(200ms));
+  EXPECT_NEAR(cmd_vel_out_->linear.x, 0.3, EPSILON);
+  EXPECT_EQ(spinHardStops(50ms), 1);
+
+  // 再次进入 STOP 时重新发布。
+  std::this_thread::sleep_for(120ms);
+  cm_->runControlLoop();
+  cm_->runControlLoop();
+  EXPECT_EQ(spinHardStops(100ms), 2);
+  cm_->stop();
+}
+
+TEST_F(Tester, testHardStopPublishedWhenFootprintMissing)
+{
+  setCommonParameters();
+  addPolygon("PolygonStop", POLYGON, 1.0, "stop");
+  cm_->declare_parameter("PolygonStop.use_footprint_topic", true);
+  cm_->declare_parameter("PolygonStop.footprint_topic", FOOTPRINT_TOPIC);
+  setVectors({"PolygonStop"}, {});
+  cm_->startManualControlLoop();
+
+  for (int i = 0; i < 5; ++i) {
+    cm_->receiveFreeVelocity(0.3);
+    cm_->runControlLoop();
+  }
+  EXPECT_EQ(spinHardStops(100ms), 1);
+  cm_->stop();
+}
+
+TEST_F(Tester, testAutoModeExposesNoScheduleInterfaces)
+{
+  setCommonParameters();
+  addPolygon("PolygonStop", POLYGON, 1.0, "stop");
+  setVectors({"PolygonStop"}, {});
+  cm_->configure();
+  EXPECT_FALSE(cm_->hasPaddingService());
+  EXPECT_FALSE(cm_->hasTrackingPathSubscription());
+  EXPECT_TRUE(cm_->hasFreePathSubscription());
+}
+
+TEST_F(Tester, testScheduleModeExposesOnlyScheduleInterfaces)
+{
+  setCommonParameters();
+  cm_->declare_parameter("navigation_type", "schedule");
+  addPolygon("PolygonStop", POLYGON, 1.0, "stop");
+  setVectors({"PolygonStop"}, {});
+  cm_->configure();
+  EXPECT_TRUE(cm_->hasPaddingService());
+  EXPECT_TRUE(cm_->hasTrackingPathSubscription());
+  EXPECT_FALSE(cm_->hasFreePathSubscription());
 }
 
 int main(int argc, char ** argv)

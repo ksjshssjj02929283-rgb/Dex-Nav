@@ -21,8 +21,11 @@ collision_monitor:
     performance_report_interval: 60.0
     # footprint 由 costmap 维护并发布，CM 只订阅 published_footprint。
     transform_tolerance: 0.1
-    source_timeout: 5.0
-    scan_fault_timeout: 5.0
+    # 任一路 scan 超过该时间未到达或时间戳过旧即停车；source_timeout 取同值，失效判定后不再使用旧点。
+    source_timeout: 0.5
+    scan_fault_timeout: 0.5
+    # 进入 STOP 时通知 velocity_smoother 立即清零（与 controller_server 共用该话题）。
+    hard_stop_topic: "cmd_vel_hard_stop"
     base_shift_correction: True
     stop_pub_timeout: 2.0
 
@@ -32,6 +35,7 @@ collision_monitor:
       type: "polygon"
       use_footprint_topic: true
       footprint_topic: "local_costmap/published_footprint"
+      # use_footprint_topic 为 true 时不读取 points，仅在关闭订阅时作为固定轮廓。
       points: [0.35, 0.29, 0.35, -0.29, -0.35, -0.29, -0.35, 0.29]
       default_padding: 0.2
       automonous_navigation_padding: 0.1
@@ -40,6 +44,7 @@ collision_monitor:
       visualize: True
       polygon_pub_topic: "polygon_stop"
       enabled: True
+      # 路径走廊只在 schedule 模式下生效。
       path_stop_enabled: true
       tracking_path_topic: "tracking_path"
       path_stop_distance: 1.0
@@ -64,6 +69,7 @@ collision_monitor:
       type: "polygon"
       use_footprint_topic: true
       footprint_topic: "local_costmap/published_footprint"
+      # use_footprint_topic 为 true 时不读取 points，仅在关闭订阅时作为固定轮廓。
       points: [0.35, 0.29, 0.35, -0.29, -0.35, -0.29, -0.35, 0.29]
       default_padding: 0.0
       action_type: "approach"

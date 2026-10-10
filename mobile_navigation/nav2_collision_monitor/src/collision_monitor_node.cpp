@@ -72,6 +72,10 @@ CollisionMonitor::on_configure(const rclcpp_lifecycle::State & /*state*/)
   nav2_util::declare_parameter_if_not_declared(
     node, "obstacle_status_topic", rclcpp::ParameterValue("obstacle_status"));
   const std::string obstacle_status_topic = get_parameter("obstacle_status_topic").as_string();
+  // 与 controller_server 共用 velocity_smoother 的硬停输入；空字符串表示不发布。
+  nav2_util::declare_parameter_if_not_declared(
+    node, "hard_stop_topic", rclcpp::ParameterValue("cmd_vel_hard_stop"));
+  const std::string hard_stop_topic = get_parameter("hard_stop_topic").as_string();
 
   nav2_util::declare_parameter_if_not_declared(
     node, "control_frequency", rclcpp::ParameterValue(100.0));
@@ -136,21 +140,32 @@ CollisionMonitor::on_configure(const rclcpp_lifecycle::State & /*state*/)
     cmd_vel_in_topic, 1,
     std::bind(&CollisionMonitor::cmdVelInCallback, this, std::placeholders::_1), io_options);
 
-  tracking_path_sub_ = this->create_subscription<nav_interfaces::msg::TrackingPath>(
-    tracking_path_topic_, rclcpp::QoS(1),
-    std::bind(&CollisionMonitor::trackingPathCallback, this, std::placeholders::_1), io_options);
-  free_navigation_path_sub_ = this->create_subscription<nav_msgs::msg::Path>(
-    free_navigation_path_topic_, rclcpp::QoS(1),
-    std::bind(&CollisionMonitor::freeNavigationPathCallback, this, std::placeholders::_1),
-    io_options);
+  // 每种模式只订阅自己的路径输入。
+  if (configured_navigation_type_ == NavigationType::SCHEDULE) {
+    tracking_path_sub_ = this->create_subscription<nav_interfaces::msg::TrackingPath>(
+      tracking_path_topic_, rclcpp::QoS(1),
+      std::bind(&CollisionMonitor::trackingPathCallback, this, std::placeholders::_1),
+      io_options);
+  } else {
+    free_navigation_path_sub_ = this->create_subscription<nav_msgs::msg::Path>(
+      free_navigation_path_topic_, rclcpp::QoS(1),
+      std::bind(&CollisionMonitor::freeNavigationPathCallback, this, std::placeholders::_1),
+      io_options);
+  }
   cmd_vel_out_pub_ = this->create_publisher<geometry_msgs::msg::Twist>(
     cmd_vel_out_topic, 1);
   obstacle_status_pub_ = this->create_publisher<nav_interfaces::msg::ObstacleMonitorStatus>(
     obstacle_status_topic, 1);
+  if (!hard_stop_topic.empty()) {
+    hard_stop_pub_ = this->create_publisher<std_msgs::msg::Empty>(
+      hard_stop_topic, rclcpp::QoS(1).reliable());
+  }
 
   nav2_util::declare_parameter_if_not_declared(
     node, "PolygonStop.path_stop_enabled", rclcpp::ParameterValue(false));
-  path_stop_enabled_ = get_parameter("PolygonStop.path_stop_enabled").as_bool();
+  // 路径走廊只用于调度贴边模式。
+  path_stop_enabled_ = get_parameter("PolygonStop.path_stop_enabled").as_bool() &&
+    configured_navigation_type_ == NavigationType::SCHEDULE;
   nav2_util::declare_parameter_if_not_declared(
     node, "PolygonStop.tracking_path_topic", rclcpp::ParameterValue("tracking_path"));
   tracking_path_topic_ = get_parameter("PolygonStop.tracking_path_topic").as_string();
@@ -191,13 +206,16 @@ CollisionMonitor::on_configure(const rclcpp_lifecycle::State & /*state*/)
     }
   }
 
-  // 动态膨胀设置服务（本仓库相对上游 Nav2 的改动）
-  set_padding_srv_ = this->create_service<nav_interfaces::srv::SetPolygonPadding>(
-    "~/set_polygon_padding",
-    std::bind(
-      &CollisionMonitor::setPolygonPaddingCallback, this,
-      std::placeholders::_1, std::placeholders::_2),
-    rmw_qos_profile_services_default, io_callback_group_);
+  // 动态膨胀设置服务（本仓库相对上游 Nav2 的改动）。auto 模式的停止区固定，
+  // 不提供运行时修改入口。
+  if (configured_navigation_type_ == NavigationType::SCHEDULE) {
+    set_padding_srv_ = this->create_service<nav_interfaces::srv::SetPolygonPadding>(
+      "~/set_polygon_padding",
+      std::bind(
+        &CollisionMonitor::setPolygonPaddingCallback, this,
+        std::placeholders::_1, std::placeholders::_2),
+      rmw_qos_profile_services_default, io_callback_group_);
+  }
 
   return nav2_util::CallbackReturn::SUCCESS;
 }
@@ -210,6 +228,9 @@ CollisionMonitor::on_activate(const rclcpp_lifecycle::State & /*state*/)
   // Activating lifecycle publishers
   cmd_vel_out_pub_->on_activate();
   obstacle_status_pub_->on_activate();
+  if (hard_stop_pub_) {
+    hard_stop_pub_->on_activate();
+  }
   if (path_stop_marker_pub_) {
     path_stop_marker_pub_->on_activate();
   }
@@ -235,11 +256,9 @@ CollisionMonitor::on_activate(const rclcpp_lifecycle::State & /*state*/)
   resetPerformanceTiming();
 
   // 每次 lifecycle activate 都从安全的 IDLE 起步，并清除上个生命周期的输入。
-  // 首个有效路径或速度会锁定本生命周期为 FREE 或 SCHEDULE；在 deactivate 前
-  // 不再考虑另一套输入，避免在主循环中处理双速度源/双路径源冲突。
+  // 导航类型由 navigation_type 参数固定，只处理该类型的路径输入。
   navigation_mode_ = NavigationMode::IDLE;
   schedule_navigation_mode_ = NavigationMode::SCHEDULE_NAVIGATION;
-  lifecycle_navigation_type_ = configured_navigation_type_;
   logged_velocity_state_ = -1;
   RCLCPP_INFO(
     get_logger(), "[FSM] activate: mode=IDLE type=%s cmd_timeout=%.3fs idle_timeout=%.3fs",
@@ -298,6 +317,9 @@ CollisionMonitor::on_deactivate(const rclcpp_lifecycle::State & /*state*/)
   // Deactivating lifecycle publishers
   cmd_vel_out_pub_->on_deactivate();
   obstacle_status_pub_->on_deactivate();
+  if (hard_stop_pub_) {
+    hard_stop_pub_->on_deactivate();
+  }
   if (path_stop_marker_pub_) {
     path_stop_marker_pub_->on_deactivate();
   }
@@ -319,6 +341,7 @@ CollisionMonitor::on_cleanup(const rclcpp_lifecycle::State & /*state*/)
   free_navigation_path_sub_.reset();
   cmd_vel_out_pub_.reset();
   obstacle_status_pub_.reset();
+  hard_stop_pub_.reset();
   path_stop_marker_pub_.reset();
   set_padding_srv_.reset();
   io_callback_group_.reset();
@@ -448,6 +471,7 @@ bool CollisionMonitor::checkScanTimeout(const rclcpp::Time & now)
       RCLCPP_ERROR(get_logger(), "Scan %s timed out; stopping", stale_scan.c_str());
     }
     sensor_fault_active_ = true;
+    publishHardStopOnStopEdge("scan timeout");
     auto zero = std::make_unique<geometry_msgs::msg::Twist>();
     cmd_vel_out_pub_->publish(std::move(zero));
     publishObstacleStatus({STOP, {0.0, 0.0, 0.0}}, nullptr);
@@ -466,7 +490,7 @@ void CollisionMonitor::updateNavigationMode(
 {
   const bool cmd_fresh = input.cmd.message && now - input.cmd.stamp <= cmd_vel_timeout_;
   // 只执行配置导航类型的路径和状态检查。
-  switch (lifecycle_navigation_type_) {
+  switch (configured_navigation_type_) {
     case NavigationType::AUTOMONOUS:
       checkAutonomousNavigation(
         input.free_path, input.new_free_path, cmd_fresh, input.cmd.stamp, now);
@@ -474,8 +498,6 @@ void CollisionMonitor::updateNavigationMode(
     case NavigationType::SCHEDULE:
       checkScheduleNavigation(
         input.tracking_path, input.new_tracking_path, cmd_fresh, input.cmd.stamp, now);
-      break;
-    case NavigationType::UNSET:
       break;
   }
 }
@@ -690,7 +712,7 @@ bool CollisionMonitor::getParameters(
   source_timeout =
     rclcpp::Duration::from_seconds(get_parameter("source_timeout").as_double());
   nav2_util::declare_parameter_if_not_declared(
-    node, "scan_fault_timeout", rclcpp::ParameterValue(5.0));
+    node, "scan_fault_timeout", rclcpp::ParameterValue(0.5));
   const double scan_fault_timeout = get_parameter("scan_fault_timeout").as_double();
   if (!std::isfinite(scan_fault_timeout) || scan_fault_timeout <= 0.0) {
     RCLCPP_ERROR(get_logger(), "scan_fault_timeout must be positive and finite");
@@ -854,6 +876,7 @@ void CollisionMonitor::process(
   for (const auto & polygon : polygons_) {
     polygon->updatePolygon();
     if (polygon->missingFootprint()) {
+      publishHardStopOnStopEdge("footprint missing");
       cmd_vel_out_pub_->publish(std::make_unique<geometry_msgs::msg::Twist>());
       publishObstacleStatus({STOP, {0.0, 0.0, 0.0}}, nullptr);
       robot_action_prev_ = {STOP, {0.0, 0.0, 0.0}};
@@ -919,6 +942,9 @@ void CollisionMonitor::process(
   }
 
   const bool action_changed = robot_action.action_type != robot_action_prev_.action_type;
+  if (robot_action.action_type == STOP) {
+    publishHardStopOnStopEdge(path_stop ? "obstacle on tracking path" : "obstacle in stop zone");
+  }
   if (action_changed) {
     // Report changed robot behavior
     if (path_stop) {
@@ -1483,6 +1509,19 @@ void CollisionMonitor::changeNavigationMode(NavigationMode mode, const char * re
     navigationModeName(navigation_mode_), navigationModeName(mode), reason,
     mode == NavigationMode::SCHEDULE_EDGING && path_stop_enabled_);
   navigation_mode_ = mode;
+}
+
+void CollisionMonitor::publishHardStopOnStopEdge(const char * reason)
+{
+  // 平滑器收到后立即输出零速并清除内部速度，停车不受其减速度限制；
+  // STOP 持续期间只发一次，解除后再次进入 STOP 会重新发布。
+  if (robot_action_prev_.action_type == STOP) {
+    return;
+  }
+  if (hard_stop_pub_ && hard_stop_pub_->is_activated()) {
+    hard_stop_pub_->publish(std::make_unique<std_msgs::msg::Empty>());
+    RCLCPP_WARN(get_logger(), "Hard stop published: %s", reason);
+  }
 }
 
 void CollisionMonitor::enterIdle(const char * reason)

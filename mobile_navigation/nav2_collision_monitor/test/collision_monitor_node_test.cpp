@@ -58,6 +58,8 @@ TEST_F(Tester, testProcessStopSlowdown)
   ASSERT_NEAR(cmd_vel_out_->linear.x, 0.0, EPSILON);
   ASSERT_NEAR(cmd_vel_out_->linear.y, 0.0, EPSILON);
   ASSERT_NEAR(cmd_vel_out_->angular.z, 0.0, EPSILON);
+  // 进入停止区时通知平滑器硬停一次
+  EXPECT_EQ(spinHardStops(100ms), 1);
 
   // 4. Restoring back normal operation
   publishScan(3.0, curr_time);
@@ -67,6 +69,8 @@ TEST_F(Tester, testProcessStopSlowdown)
   ASSERT_NEAR(cmd_vel_out_->linear.x, 0.5, EPSILON);
   ASSERT_NEAR(cmd_vel_out_->linear.y, 0.2, EPSILON);
   ASSERT_NEAR(cmd_vel_out_->angular.z, 0.1, EPSILON);
+  // 离开停止区不再发硬停
+  EXPECT_EQ(spinHardStops(50ms), 1);
 
   // Stop Collision Monitor node
   cm_->stop();

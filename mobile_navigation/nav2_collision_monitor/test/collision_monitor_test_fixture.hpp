@@ -34,6 +34,7 @@
 #include "sensor_msgs/point_cloud2_iterator.hpp"
 #include "geometry_msgs/msg/twist.hpp"
 #include "geometry_msgs/msg/polygon_stamped.hpp"
+#include "std_msgs/msg/empty.hpp"
 
 #include "tf2_ros/transform_broadcaster.h"
 
@@ -62,6 +63,9 @@ static const double TIME_BEFORE_COLLISION{1.0};
 static const double SIMULATION_TIME_STEP{0.01};
 static const double TRANSFORM_TOLERANCE{0.5};
 static const double SOURCE_TIMEOUT{5.0};
+// 多数用例只发一帧 scan 并持续数秒；失效检测由专门用例覆盖。
+static const double SCAN_FAULT_TIMEOUT{5.0};
+static const char HARD_STOP_TOPIC[]{"cmd_vel_hard_stop"};
 static const double STOP_PUB_TIMEOUT{0.1};
 
 enum PolygonType
@@ -229,6 +233,10 @@ public:
     }
     trackingPathCallback(msg);
   }
+
+  bool hasPaddingService() const {return set_padding_srv_ != nullptr;}
+  bool hasTrackingPathSubscription() const {return tracking_path_sub_ != nullptr;}
+  bool hasFreePathSubscription() const {return free_navigation_path_sub_ != nullptr;}
 };  // CollisionMonitorWrapper
 
 class Tester : public ::testing::Test
@@ -266,6 +274,8 @@ public:
   bool waitCmdVel(const std::chrono::nanoseconds & timeout);
   bool waitObstacleStatus(
     const std::uint8_t expected_status, const std::chrono::nanoseconds & timeout);
+  /// 在 timeout 内持续处理回调，返回累计收到的 hard stop 次数。
+  int spinHardStops(const std::chrono::nanoseconds & timeout);
 
 protected:
   void cmdVelOutCallback(geometry_msgs::msg::Twist::SharedPtr msg);
@@ -289,8 +299,11 @@ protected:
   rclcpp::Subscription<nav_interfaces::msg::ObstacleMonitorStatus>::SharedPtr
     obstacle_status_sub_;
 
+  rclcpp::Subscription<std_msgs::msg::Empty>::SharedPtr hard_stop_sub_;
+
   geometry_msgs::msg::Twist::SharedPtr cmd_vel_out_;
   nav_interfaces::msg::ObstacleMonitorStatus::SharedPtr obstacle_status_;
+  int hard_stop_count_{0};
 };  // Tester
 
 #endif  // COLLISION_MONITOR_TEST_FIXTURE_HPP_
