@@ -36,7 +36,6 @@
 #include "nav_interfaces/srv/align_map.hpp"
 #include "nav_interfaces/srv/replace_map.hpp"
 #include "nav_interfaces/srv/reset_map_origin_by_xy_yaw.hpp"
-#include "nav_interfaces/srv/transform_assets.hpp"
 #include "map_version_manager.hpp"
 #include "status_monitor.hpp"
 #include "sensor_monitor.hpp"
@@ -106,16 +105,19 @@ private:
     // 内部：采样 TF map→base_link，返回 N 帧均值（循环等待最多 timeout_sec）
     bool SampleRobotPose(int n_frames, double timeout_sec, double& out_x, double& out_y, double& out_yaw);
 
+    // 内部：重设原点的文件部分（底图工具 → 资产工具，串行，任一失败回滚底图）
+    bool ResetOriginFiles(const std::string& map_name, double x, double y, double yaw, std::string& out_msg);
+
     // 内部：调用子进程 reset_map_origin_tool
     bool RunResetMapOriginTool(const std::string& map_name, double x, double y, double yaw, std::string& out_log);
 
     // ── 地图对齐编排────────────────────────────────────────
     // 与 reset_map_origin 同一条链路（出服务 → popen 调 SLAM tool →
-    // 调 transform_assets），差别只在角度由工具自动估出而非调用方给定。
+    // popen 调 transform_assets_tool），差别只在角度由工具自动估出而非调用方给定。
     // 两处刻意偏离 reset_map_origin 的既有实现：
     //   ① 串行而非并行——assets 是毫秒级、tool 是秒级，并行收益近零，
     //      而并行 + 失败不回滚会造成「底图转了资产没转」且无任何标记；
-    //   ② 失败必须回滚——底图从 slam/backups/ 恢复，资产从 assets_backups/ 恢复。
+    //   ② 失败必须回滚——底图委托 map_manager 回滚到本次存的版本；资产工具原子写回，失败时未改动。
     void AlignMapCallback(const std::shared_ptr<nav_interfaces::srv::AlignMap::Request> req,
                           std::shared_ptr<nav_interfaces::srv::AlignMap::Response> res);
 
@@ -146,20 +148,36 @@ private:
     // 调 align_map_tool，把结果整体作为返回值带回。dry_run=true 时只估角不改文件。
     AlignToolResult RunAlignMapTool(const std::string& map_name, bool dry_run);
 
-    // 资产备份 / 恢复：transform_assets 自身没有备份能力，回滚要靠这层。
-    // 备份到 <map_folder>/<map>/assets_backups/backup_<ts>/，与 SLAM 侧
-    // slam/backups/ 对称（同为下划线前缀，不与建图节点的 backup.<ts> 轮换冲突）。
-    bool BackupMapAssets(const std::string& map_name, std::string& out_backup_dir,
-                         std::string& out_msg);
-    bool RestoreMapAssets(const std::string& backup_dir, const std::string& map_name,
-                          std::string& out_msg);
+    // transform_assets_tool 一次运行的结果（stdout 的 [TRANSFORM_ASSETS_RESULT] 行还原）。
+    // 资产换算走离线工具而非 map_asset_manager 服务：不依赖资产节点在线，任意地图都能转；
+    // 改的是当前地图时，调用方随后重新加载地图，资产节点按 epoch 变化从文件重载。
+    struct AssetsToolResult {
+        bool ok = false;
+        bool no_assets = false;     // 这张图没有资产文件，视为成功
+        std::string reason;
+        std::string message;
+        std::string version_ts;     // 变换前存下的资产版本
+        int points = 0;
+        int areas = 0;
+        int junctions = 0;
+        int edges = 0;
+        int rooms = 0;
+        std::string log;
+        std::string Summary() const { return ok ? message : reason + ": " + message; }
+    };
+    // (x, y, yaw) 与 reset_map_origin_tool 同义：新原点在旧坐标系下的位姿；对齐传 x=y=0
+    AssetsToolResult RunTransformAssetsTool(const std::string& map_name, double x, double y, double yaw);
+
     // 底图回滚：把 <map>/slam/backups/<最新 backup_*>/ 的文件拷回 slam/
     bool RestoreSlamBackup(const std::string& map_name, std::string& out_msg);
     // 底图回滚（指定备份目录）：只拷回本次操作自己创建的那份备份，
     // 避免工具在创建备份前就失败时误用更早一次操作的备份。
     bool RestoreSlamFromBackupDir(const std::string& map_name, const std::string& backup_dir,
                                   std::string& out_msg);
-    // <map>/slam/backups/ 下现有的 backup_* 目录名。工具失败时，用执行前后的差集
+    // 把任意一张地图的底图恢复到某个版本：委托 map_manager map_command OP_ROLLBACK
+    bool RollbackBaseMapVersion(const std::string& map_name, const std::string& version_ts,
+                                std::string& out_msg);
+    // <map>/slam/backups/ 下现有的底图版本目录名（backup.<ts>，与 map_manager 同一序列）。工具失败时，用执行前后的差集
     // 判断本次是否已经创建了备份（即是否可能已经改了文件），不依赖工具的结果行。
     std::set<std::string> ListSlamBackupDirs(const std::string& map_name) const;
     // 工具失败后的底图回滚。优先用工具结果行报告的 backup_dir，否则取执行前后
@@ -278,7 +296,6 @@ private:
     rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr stop_localization_cli_;
     rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr start_localization_cli_;
     rclcpp::Client<nav_interfaces::srv::MapManagerCommand>::SharedPtr map_command_cli_;
-    rclcpp::Client<nav_interfaces::srv::TransformAssets>::SharedPtr transform_assets_cli_;
 
     // 对外暴露的重置原点服务
     rclcpp::Service<nav_interfaces::srv::ResetMapOriginByXYYaw>::SharedPtr reset_origin_xyyaw_srv_;
@@ -348,6 +365,7 @@ private:
     // 重定位统一入口（mode 区分全局/局部）
     rclcpp::Client<nav_interfaces::srv::Relocalize>::SharedPtr relocalization_cli_;
     rclcpp::TimerBase::SharedPtr recover_timer_;
+    rclcpp::TimerBase::SharedPtr single_instance_timer_;
     rclcpp::Publisher<std_msgs::msg::String>::SharedPtr alarm_pub_;
 };
 

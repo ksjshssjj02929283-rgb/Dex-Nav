@@ -22,6 +22,7 @@
 #include <ctime>
 #include <filesystem>
 #include <stdexcept>
+#include <algorithm>
 #include <string>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <thread>
@@ -88,8 +89,6 @@ CommandBoardManagerROS::CommandBoardManagerROS() : rclcpp::Node("command_board_m
     stop_localization_cli_ = this->create_client<std_srvs::srv::Trigger>("/localization/stop_localization");
     start_localization_cli_ = this->create_client<std_srvs::srv::Trigger>("/localization/start_localization");
     map_command_cli_ = this->create_client<nav_interfaces::srv::MapManagerCommand>("map_manager/map_command");
-    transform_assets_cli_ =
-        this->create_client<nav_interfaces::srv::TransformAssets>("/map_asset_manager/transform_assets");
 
     // ── 订阅当前地图状态（map_state，folder+name+epoch 原子下发）──────────
     auto map_state_qos = rclcpp::QoS(1).transient_local().reliable();
@@ -250,6 +249,23 @@ CommandBoardManagerROS::CommandBoardManagerROS() : rclcpp::Node("command_board_m
                 "CommandBoardManagerROS initialized. "
                 "Services: ~/reset_map_origin_by_xyyaw, ~/reset_map_origin_by_robot_pose, "
                 "~/align_map, ~/replace_map, ~/backup_unified, ~/rollback_map");
+
+    // 同名实例保护：同一个服务名被多个进程同时提供时，一次请求会被每个实例各执行一遍
+    // （例如重复 ros2 run 留在后台的旧进程，会同时改写同一张地图）。启动后查一次 ROS 图，
+    // 已有同名节点就退出。只在启动时查：先起来的实例不受影响，退出的总是后来者。
+    single_instance_timer_ = this->create_wall_timer(std::chrono::seconds(2), [this]() {
+        single_instance_timer_->cancel();
+        const std::string me = this->get_fully_qualified_name();
+        const auto names = this->get_node_names();
+        const auto count = std::count(names.begin(), names.end(), me);
+        if (count > 1) {
+            RCLCPP_FATAL(this->get_logger(),
+                         "Another instance of node '%s' is already running (%ld found); exiting so that "
+                         "requests are not executed twice. Stop the old instance first.",
+                         me.c_str(), static_cast<long>(count));
+            rclcpp::shutdown();
+        }
+    });
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -259,8 +275,8 @@ CommandBoardManagerROS::CommandBoardManagerROS() : rclcpp::Node("command_board_m
 // 入口①：按 xyyaw 重置任意地图
 //   - 传入 map_name（必填），不限于当前使用中的地图
 //   - 只做：① subprocess 修改 pbstream/png/yaml
-//            ② transform_assets 修改地图资产文件
-//   - 不停/启定位，不重载地图
+//            ② subprocess transform_assets_tool 修改地图资产文件
+//   - 非当前地图：不停/启定位，不重载地图；当前地图：转入 DoResetCurrentMapOrigin 完整流程
 void CommandBoardManagerROS::ResetMapOriginByXYYawCallback(
     const std::shared_ptr<nav_interfaces::srv::ResetMapOriginByXYYaw::Request> req,
     std::shared_ptr<nav_interfaces::srv::ResetMapOriginByXYYaw::Response> res) {
@@ -274,52 +290,60 @@ void CommandBoardManagerROS::ResetMapOriginByXYYawCallback(
     RCLCPP_INFO(get_logger(), "[XYYaw] reset map='%s' x=%.3f y=%.3f yaw=%.4f", req->map_name.c_str(), req->x, req->y,
                 req->yaw);
 
-    // ── 步骤①：subprocess 修改 pbstream/png/yaml ─────────────────
-    std::string tool_log;
-    if (!RunResetMapOriginTool(req->map_name, req->x, req->y, req->yaw, tool_log)) {
-        res->success = false;
-        res->message = "reset_map_origin_tool failed: " + tool_log;
-        RCLCPP_ERROR(get_logger(), "[XYYaw] %s", res->message.c_str());
+    // 当前地图：资产节点与定位都持有旧坐标的内存副本，只改文件会被后续自动保存覆盖，
+    // 走完整流程（停定位 → 两个工具 → 重新加载地图 → 启定位）
+    if (req->map_name == current_map_name_) {
+        RCLCPP_INFO(get_logger(), "[XYYaw] '%s' is the current map, using the full reset flow",
+                    req->map_name.c_str());
+        std::string msg;
+        res->success = DoResetCurrentMapOrigin(req->x, req->y, req->yaw, msg);
+        res->message = msg;
+        res->applied_x = req->x;
+        res->applied_y = req->y;
+        res->applied_yaw = req->yaw;
         return;
     }
-    RCLCPP_INFO(get_logger(), "[XYYaw] reset_map_origin_tool OK");
 
-    // ── 步骤②：transform_assets 修改地图资产文件 ─────────────────
-    // 需在子线程中发送请求，避免单线程执行器死锁
-    bool assets_ok = false;
-    std::string assets_msg;
-    std::thread t([&]() {
-        if (!transform_assets_cli_->wait_for_service(std::chrono::duration<double>(service_wait_timeout_sec_))) {
-            assets_msg = "transform_assets service not available";
-            return;
-        }
-        auto ta_req = std::make_shared<nav_interfaces::srv::TransformAssets::Request>();
-        ta_req->map_name = req->map_name;
-        ta_req->x = req->x;
-        ta_req->y = req->y;
-        ta_req->yaw = req->yaw;
-        auto fut = transform_assets_cli_->async_send_request(ta_req);
-        if (fut.wait_for(std::chrono::duration<double>(service_call_timeout_sec_)) != std::future_status::ready) {
-            assets_msg = "Timeout waiting for transform_assets";
-            return;
-        }
-        auto resp = fut.get();
-        assets_ok = resp->success;
-        assets_msg = resp->message;
-    });
-    t.join();
-
-    res->success = assets_ok;
-    res->message = assets_ok ? "OK: " + assets_msg : "transform_assets failed: " + assets_msg;
+    // ── 底图 + 资产两个离线工具串行，任一失败回滚底图 ─────────────
+    std::string msg;
+    const bool ok = ResetOriginFiles(req->map_name, req->x, req->y, req->yaw, msg);
+    res->success = ok;
+    res->message = msg;
     res->applied_x = req->x;
     res->applied_y = req->y;
     res->applied_yaw = req->yaw;
 
-    if (assets_ok) {
+    if (ok) {
         RCLCPP_INFO(get_logger(), "[XYYaw] Done: %s", res->message.c_str());
     } else {
         RCLCPP_ERROR(get_logger(), "[XYYaw] %s", res->message.c_str());
     }
+}
+
+// 重设原点的文件部分：reset_map_origin_tool（底图）→ transform_assets_tool（资产），串行。
+// 底图工具改前会存一份 reset_origin 版本；任一步失败都回滚到该版本，底图与资产始终一致。
+bool CommandBoardManagerROS::ResetOriginFiles(const std::string& map_name, double x, double y, double yaw,
+                                              std::string& out_msg) {
+    const std::set<std::string> backups_before = ListSlamBackupDirs(map_name);
+    std::string tool_log;
+    if (!RunResetMapOriginTool(map_name, x, y, yaw, tool_log)) {
+        std::string rb_msg;
+        const int rb = RollbackSlamAfterToolFailure(map_name, backups_before, "", rb_msg);
+        out_msg = "reset_map_origin_tool failed: " + tool_log + "; " +
+                  (rb < 0 ? "ROLLBACK FAILED (" + rb_msg + "), manual recovery required" : rb_msg);
+        return false;
+    }
+    const AssetsToolResult assets = RunTransformAssetsTool(map_name, x, y, yaw);
+    if (!assets.ok) {
+        std::string rb_msg;
+        const int rb = RollbackSlamAfterToolFailure(map_name, backups_before, "", rb_msg);
+        out_msg = "transform_assets failed: " + assets.Summary() + "; " +
+                  (rb < 0 ? "base map ROLLBACK FAILED (" + rb_msg + "), base map and assets are INCONSISTENT"
+                          : "base map rolled back: " + rb_msg);
+        return false;
+    }
+    out_msg = "OK: " + assets.Summary();
+    return true;
 }
 
 // 入口②：按当前机器人位姿重置（仅当前地图，完整流程）
@@ -342,7 +366,7 @@ void CommandBoardManagerROS::ResetMapOriginByRobotPoseCallback(const std::shared
 
 // ──────────────────────────────────────────────────────────────────────
 // 核心编排：完整重置流程（当前地图，RobotPose 入口专用）
-// 步骤：停导航 → 停定位 → 并行(tool + transform_assets) → 重载地图 → 启定位
+// 步骤：停导航 → 停定位 → 底图工具 → 资产工具（失败回滚底图）→ 重载地图 → 启定位
 // ──────────────────────────────────────────────────────────────────────
 
 bool CommandBoardManagerROS::DoResetCurrentMapOrigin(double x, double y, double yaw, std::string& out_msg) {
@@ -376,61 +400,15 @@ bool CommandBoardManagerROS::DoResetCurrentMapOrigin(double x, double y, double 
         RCLCPP_WARN(get_logger(), "stop_localization service not ready, skipping");
     }
 
-    // ── 步骤 ③④：并行执行 ────────────────────────────────────────
-    //   ③ subprocess: reset_map_origin_tool（修改 pbstream/png/yaml）
-    //   ④ transform_assets（修改内存坐标 + 持久化）
-    RCLCPP_INFO(get_logger(), "[Reset] Steps 3+4 (parallel): tool + transform_assets");
-
-    std::string tool_log;
-    bool tool_ok = false;
-    bool assets_ok = false;
-    std::string assets_msg;
-
-    // 线程 A：reset_map_origin_tool
-    std::thread tool_thread([&]() { tool_ok = RunResetMapOriginTool(current_map_name_, x, y, yaw, tool_log); });
-
-    // 线程 B：transform_assets 服务调用
-    std::thread assets_thread([&]() {
-        if (!transform_assets_cli_->service_is_ready()) {
-            // 等最多 3s
-            if (!transform_assets_cli_->wait_for_service(std::chrono::duration<double>(service_wait_timeout_sec_))) {
-                assets_msg = "transform_assets service not available";
-                assets_ok = false;
-                return;
-            }
-        }
-        auto req = std::make_shared<nav_interfaces::srv::TransformAssets::Request>();
-        req->map_name = current_map_name_;
-        req->x = x;
-        req->y = y;
-        req->yaw = yaw;
-        auto fut = transform_assets_cli_->async_send_request(req);
-        if (fut.wait_for(std::chrono::duration<double>(service_call_timeout_sec_)) != std::future_status::ready) {
-            assets_msg = "Timeout waiting for transform_assets";
-            assets_ok = false;
-            return;
-        }
-        auto resp = fut.get();
-        assets_ok = resp->success;
-        assets_msg = resp->message;
-    });
-
-    tool_thread.join();
-    assets_thread.join();
-
-    if (!tool_ok) {
-        RCLCPP_ERROR(get_logger(), "[Reset] reset_map_origin_tool failed: %s", tool_log.c_str());
-        // 工具失败仍继续（assets 已变换），记录警告后重启定位
+    // ── 步骤 ③④：底图工具 → 资产工具（串行，任一失败回滚底图）────
+    RCLCPP_INFO(get_logger(), "[Reset] Steps 3+4: reset_map_origin_tool -> transform_assets_tool");
+    std::string files_msg;
+    const bool files_ok = ResetOriginFiles(current_map_name_, x, y, yaw, files_msg);
+    if (files_ok) {
+        RCLCPP_INFO(get_logger(), "[Reset] files updated: %s", files_msg.c_str());
     } else {
-        RCLCPP_INFO(get_logger(), "[Reset] reset_map_origin_tool OK");
-    }
-    if (!assets_ok) {
-        out_msg = "transform_assets failed: " + assets_msg;
-        RCLCPP_ERROR(get_logger(), "[Reset] %s", out_msg.c_str());
-        // assets 变换失败是硬错误，但仍需重启定位
-        // 此处不提前 return，继续走重载地图流程以保持系统可用
-    } else {
-        RCLCPP_INFO(get_logger(), "[Reset] transform_assets OK: %s", assets_msg.c_str());
+        RCLCPP_ERROR(get_logger(), "[Reset] %s", files_msg.c_str());
+        // 失败也继续重载与启定位，保持系统可用（底图已回滚到重设前）
     }
 
     // ── 步骤 ⑤：重载地图（触发 map_manager 发布新 png/yaml + 通知各节点）
@@ -465,9 +443,8 @@ bool CommandBoardManagerROS::DoResetCurrentMapOrigin(double x, double y, double 
         RCLCPP_WARN(get_logger(), "[Reset] start_localization service not ready, skipping");
     }
 
-    if (!tool_ok || !assets_ok) {
-        out_msg = "Partial failure — tool_ok=" + std::to_string(tool_ok) + " assets_ok=" + std::to_string(assets_ok) +
-                  " tool_log=[" + tool_log + "] assets=[" + assets_msg + "]";
+    if (!files_ok) {
+        out_msg = "Reset map origin failed: " + files_msg;
         return false;
     }
 
@@ -1087,7 +1064,7 @@ CommandBoardManagerROS::AlignToolResult CommandBoardManagerROS::RunAlignMapTool(
                   " --i_know_assets_will_break"
                   " 2>&1",
                   map_dir.c_str(), dry_run ? " --dry_run" : "");
-    // --i_know_assets_will_break：本编排随后会调 transform_assets 把资产一起转，
+    // --i_know_assets_will_break：本编排随后会调 transform_assets_tool 把资产一起转，
     // 所以这里是「正确路径」，工具那道确认门不该拦我们。裸跑 tool 仍会被拦。
     RCLCPP_INFO(get_logger(), "RunAlignMapTool: %s", cmd);
 
@@ -1138,133 +1115,114 @@ CommandBoardManagerROS::AlignToolResult CommandBoardManagerROS::RunAlignMapTool(
     return out;
 }
 
-bool CommandBoardManagerROS::BackupMapAssets(const std::string& map_name,
-                                             std::string& out_backup_dir,
-                                             std::string& out_msg) {
+CommandBoardManagerROS::AssetsToolResult CommandBoardManagerROS::RunTransformAssetsTool(
+    const std::string& map_name, double x, double y, double yaw) {
+    AssetsToolResult out;
     const std::string map_dir = ResolveMapDir(map_name);
     if (map_dir.empty()) {
-        out_msg = "cannot resolve map directory";
-        return false;
+        out.reason = "map_dir_unresolved";
+        out.message = "cannot resolve map directory for '" + map_name + "'";
+        return out;
     }
-    std::error_code ec;
-    // 只备份实际存在的资产目录；都不存在时视为成功（无资产可丢）。
-    std::vector<std::string> subs;
-    for (const char* s : {"assets", "versions"}) {
-        const cbfs::path p = cbfs::path(map_dir) / s;
-        if (cbfs::is_directory(p, ec) && !ec) subs.push_back(s);
-    }
-    if (subs.empty()) {
-        out_backup_dir.clear();
-        out_msg = "no assets to backup";
-        return true;
-    }
-    // 下划线前缀，与 SLAM 侧 slam/backups/backup_<ts>/ 对称；
-    // 建图节点的 AtomicDirSwap 只认点号前缀 backup.<ts>，两者互不干扰。
-    const cbfs::path backup_root = cbfs::path(map_dir) / "assets_backups";
-    const cbfs::path backup_dir = backup_root / ("backup_" + MakeStamp());
-    cbfs::create_directories(backup_dir, ec);
-    if (ec) {
-        out_msg = "failed to create " + backup_dir.string() + ": " + ec.message();
-        return false;
-    }
-    for (const auto& s : subs) {
-        // copy 而非 move：备份期间资产仍要能被 transform_assets 正常读写。
-        cbfs::copy(cbfs::path(map_dir) / s, backup_dir / s,
-                   cbfs::copy_options::recursive, ec);
-        if (ec) {
-            out_msg = "failed to backup " + s + ": " + ec.message();
-            return false;
-        }
-    }
-    out_backup_dir = backup_dir.string();
-    out_msg = "assets backed up to " + out_backup_dir;
-    RCLCPP_INFO(get_logger(), "%s", out_msg.c_str());
-    return true;
-}
 
-bool CommandBoardManagerROS::RestoreMapAssets(const std::string& backup_dir,
-                                              const std::string& map_name,
-                                              std::string& out_msg) {
-    if (backup_dir.empty()) {
-        out_msg = "no assets backup to restore";
-        return true;  // 本就没备份 = 没东西要恢复
+    char cmd[2048];
+    std::snprintf(cmd, sizeof(cmd),
+                  "ros2 run map_asset_manager transform_assets_tool"
+                  " --map_dir \"%s\" --x %.9f --y %.9f --yaw %.9f"
+                  " 2>&1",
+                  map_dir.c_str(), x, y, yaw);
+    RCLCPP_INFO(get_logger(), "RunTransformAssetsTool: %s", cmd);
+
+    FILE* pipe = popen(cmd, "r");
+    if (pipe == nullptr) {
+        out.reason = "popen_failed";
+        out.message = "popen failed";
+        return out;
     }
-    const std::string map_dir = ResolveMapDir(map_name);
-    std::error_code ec;
-    for (const char* s : {"assets", "versions"}) {
-        const cbfs::path src = cbfs::path(backup_dir) / s;
-        if (!cbfs::is_directory(src, ec) || ec) continue;
-        const cbfs::path dst = cbfs::path(map_dir) / s;
-        cbfs::remove_all(dst, ec);
-        cbfs::copy(src, dst, cbfs::copy_options::recursive, ec);
-        if (ec) {
-            out_msg = "failed to restore " + std::string(s) + ": " + ec.message();
-            return false;
-        }
+    char buf[256];
+    while (fgets(buf, sizeof(buf), pipe) != nullptr) out.log += buf;
+    const int rc = pclose(pipe);
+
+    // 取最后一条结果行；进程非零退出时结果行里的 reason / message 就是要回给调用方的原因
+    constexpr const char* kMarker = "[TRANSFORM_ASSETS_RESULT]";
+    const size_t marker_pos = out.log.rfind(kMarker);
+    if (marker_pos == std::string::npos) {
+        out.reason = "no_result_line";
+        out.message = "transform_assets_tool exited with code " + std::to_string(rc) +
+                      " and printed no result line";
+        RCLCPP_ERROR(get_logger(), "%s\n%s", out.message.c_str(), out.log.c_str());
+        return out;
     }
-    out_msg = "assets restored from " + backup_dir;
-    RCLCPP_WARN(get_logger(), "%s", out_msg.c_str());
-    return true;
+    const size_t line_end = out.log.find('\n', marker_pos);
+    const std::string json = out.log.substr(
+        marker_pos, line_end == std::string::npos ? std::string::npos : line_end - marker_pos);
+    JsonGetBool(json, "ok", &out.ok);
+    JsonGetBool(json, "no_assets", &out.no_assets);
+    JsonGetString(json, "reason", &out.reason);
+    JsonGetString(json, "message", &out.message);
+    JsonGetString(json, "version_ts", &out.version_ts);
+    JsonGetInt(json, "points", &out.points);
+    JsonGetInt(json, "areas", &out.areas);
+    JsonGetInt(json, "junctions", &out.junctions);
+    JsonGetInt(json, "edges", &out.edges);
+    JsonGetInt(json, "rooms", &out.rooms);
+    if (rc != 0) out.ok = false;
+
+    if (out.ok) {
+        RCLCPP_INFO(get_logger(), "transform_assets_tool OK: %s", out.message.c_str());
+    } else {
+        RCLCPP_ERROR(get_logger(), "transform_assets_tool failed (code %d): %s\n%s", rc,
+                     out.Summary().c_str(), out.log.c_str());
+    }
+    return out;
 }
 
 bool CommandBoardManagerROS::RestoreSlamBackup(const std::string& map_name,
                                                std::string& out_msg) {
-    const std::string map_dir = ResolveMapDir(map_name);
-    const cbfs::path slam_dir = cbfs::path(map_dir) / "slam";
-    const cbfs::path backups = slam_dir / "backups";
-    std::error_code ec;
-    if (!cbfs::is_directory(backups, ec) || ec) {
-        out_msg = "no slam/backups directory; cannot roll back base map";
+    // 底图版本序列与 map_manager / 离线工具 / 定位侧保存统一：backups/backup.<ts>/，名字即时间。
+    // 取最新一份（刚执行的工具在改动前存下的那份）。
+    const auto names = ListSlamBackupDirs(map_name);
+    if (names.empty()) {
+        out_msg = "slam/backups has no backup.* version; cannot roll back base map";
         return false;
     }
-    // align_map_tool 每次执行都新建 backup_<ts>/，取最新的一份。
-    cbfs::path latest;
-    std::filesystem::file_time_type latest_time{};
-    for (const auto& e : cbfs::directory_iterator(backups, ec)) {
-        if (ec) break;
-        if (!e.is_directory()) continue;
-        if (e.path().filename().string().rfind("backup_", 0) != 0) continue;
-        std::error_code t_ec;
-        const auto t = cbfs::last_write_time(e.path(), t_ec);
-        if (t_ec) continue;
-        if (latest.empty() || t > latest_time) {
-            latest = e.path();
-            latest_time = t;
-        }
-    }
-    if (latest.empty()) {
-        out_msg = "slam/backups has no backup_* entry; cannot roll back";
-        return false;
-    }
-    return RestoreSlamFromBackupDir(map_name, latest.string(), out_msg);
+    const cbfs::path dir = cbfs::path(ResolveMapDir(map_name)) / "slam" / "backups" / *names.rbegin();
+    return RestoreSlamFromBackupDir(map_name, dir.string(), out_msg);
 }
 
 bool CommandBoardManagerROS::RestoreSlamFromBackupDir(const std::string& map_name,
                                                       const std::string& backup_dir,
                                                       std::string& out_msg) {
-    const cbfs::path slam_dir = cbfs::path(ResolveMapDir(map_name)) / "slam";
-    std::error_code ec;
-    if (backup_dir.empty() || !cbfs::is_directory(backup_dir, ec) || ec) {
-        out_msg = "backup directory not found: " + backup_dir;
+    // 文件恢复统一交给 map_manager（map_command OP_ROLLBACK）：锁、校验、恢复前快照只有一份实现。
+    const std::string name = cbfs::path(backup_dir).filename().string();
+    if (name.rfind("backup.", 0) != 0) {
+        out_msg = "not a map version directory: " + backup_dir;
         return false;
     }
-    int restored = 0;
-    for (const auto& f : cbfs::directory_iterator(backup_dir, ec)) {
-        if (ec) break;
-        if (!f.is_regular_file()) continue;
-        cbfs::copy_file(f.path(), slam_dir / f.path().filename(),
-                        cbfs::copy_options::overwrite_existing, ec);
-        if (ec) {
-            out_msg = "failed to restore " + f.path().filename().string() + ": " +
-                      ec.message();
-            return false;
-        }
-        ++restored;
+    return RollbackBaseMapVersion(map_name, name.substr(std::string("backup.").size()), out_msg);
+}
+
+bool CommandBoardManagerROS::RollbackBaseMapVersion(const std::string& map_name,
+                                                    const std::string& version_ts,
+                                                    std::string& out_msg) {
+    if (!map_command_cli_->service_is_ready() &&
+        !map_command_cli_->wait_for_service(std::chrono::seconds(2))) {
+        out_msg = "map_manager map_command not available";
+        return false;
     }
-    out_msg = "base map restored from " + backup_dir + " (" +
-              std::to_string(restored) + " files)";
-    RCLCPP_WARN(get_logger(), "%s", out_msg.c_str());
-    return true;
+    auto mc = std::make_shared<nav_interfaces::srv::MapManagerCommand::Request>();
+    mc->op = nav_interfaces::srv::MapManagerCommand::Request::OP_ROLLBACK;
+    mc->map_name = map_name;
+    mc->version_ts = version_ts;
+    auto fut = map_command_cli_->async_send_request(mc);
+    if (fut.wait_for(std::chrono::duration<double>(service_call_timeout_sec_)) != std::future_status::ready) {
+        out_msg = "map_manager rollback timed out";
+        return false;
+    }
+    const auto r = fut.get();
+    out_msg = "base map restored to version " + version_ts + ": " + r->message;
+    if (r->success) RCLCPP_WARN(get_logger(), "%s", out_msg.c_str());
+    return r->success;
 }
 
 std::set<std::string> CommandBoardManagerROS::ListSlamBackupDirs(
@@ -1277,7 +1235,7 @@ std::set<std::string> CommandBoardManagerROS::ListSlamBackupDirs(
         if (ec) break;
         if (!e.is_directory()) continue;
         const std::string name = e.path().filename().string();
-        if (name.rfind("backup_", 0) == 0) out.insert(name);
+        if (name.rfind("backup.", 0) == 0) out.insert(name);
     }
     return out;
 }
@@ -1289,22 +1247,14 @@ int CommandBoardManagerROS::RollbackSlamAfterToolFailure(
     std::error_code ec;
     if (backup_dir.empty() || !cbfs::is_directory(backup_dir, ec) || ec) {
         backup_dir.clear();
-        // 工具可能异常退出、没打结果行：以执行前后 backups/ 的差集为准。
+        // 工具可能异常退出、没打结果行：以执行前后版本序列的差集为准，取其中最新的（名字即时间）。
         const cbfs::path root = cbfs::path(ResolveMapDir(map_name)) / "slam" / "backups";
-        std::filesystem::file_time_type newest{};
         for (const auto& name : ListSlamBackupDirs(map_name)) {
-            if (backups_before.count(name)) continue;
-            std::error_code t_ec;
-            const auto t = cbfs::last_write_time(root / name, t_ec);
-            if (t_ec) continue;
-            if (backup_dir.empty() || t > newest) {
-                backup_dir = (root / name).string();
-                newest = t;
-            }
+            if (!backups_before.count(name)) backup_dir = (root / name).string();
         }
     }
     if (backup_dir.empty()) {
-        // 工具先备份、后写文件；没有新备份 = 失败发生在备份之前，底图未被改动。
+        // 工具先存版本、后写文件；没有新版本 = 失败发生在存版本之前，底图未被改动。
         out_msg = "no backup was created, base map was not modified";
         return 0;
     }
@@ -1422,16 +1372,6 @@ void CommandBoardManagerROS::AlignMapCallback(
         }
     };
 
-    // ── 步骤 ④：备份资产（transform_assets 自身没有备份能力）─────
-    std::string assets_backup_dir, backup_msg;
-    if (!req->skip_assets && !BackupMapAssets(map_name, assets_backup_dir, backup_msg)) {
-        res->error_code = NS::E_CB_ALIGN_BACKUP_FAILED;
-        res->message = "assets backup failed: " + backup_msg + "; no file modified";
-        RCLCPP_ERROR(get_logger(), "[Align] %s", res->message.c_str());
-        restart_localization();
-        return;
-    }
-
     // ── 步骤 ⑤：align_map_tool 正式执行（串行，不与 assets 并行）──
     //    并行收益近零：assets 改几百个坐标是毫秒级，tool 重建栅格+点云是秒级。
     const std::set<std::string> backups_before = ListSlamBackupDirs(map_name);
@@ -1460,41 +1400,21 @@ void CommandBoardManagerROS::AlignMapCallback(
     RCLCPP_INFO(get_logger(), "[Align] tool applied, residual=%.4f deg",
                 applied.residual_yaw_deg);
 
-    // ── 步骤 ⑥：transform_assets（同一角度，纯旋转 ⇒ x=y=0）──────
+    // ── 步骤 ⑥：transform_assets_tool（同一角度，纯旋转 ⇒ x=y=0）──
     if (!req->skip_assets) {
-        bool assets_ok = false;
-        std::string assets_msg;
-        if (!transform_assets_cli_->service_is_ready() &&
-            !transform_assets_cli_->wait_for_service(
-                std::chrono::duration<double>(service_wait_timeout_sec_))) {
-            assets_msg = "transform_assets service not available";
-        } else {
-            auto ta_req = std::make_shared<nav_interfaces::srv::TransformAssets::Request>();
-            ta_req->map_name = map_name;
-            ta_req->x = 0.0;   // 对齐是绕原点纯旋转，原点位置不变
-            ta_req->y = 0.0;
-            ta_req->yaw = est.yaw_rad;
-            auto fut = transform_assets_cli_->async_send_request(ta_req);
-            if (fut.wait_for(std::chrono::duration<double>(service_call_timeout_sec_)) !=
-                std::future_status::ready) {
-                assets_msg = "timeout waiting for transform_assets";
-            } else {
-                auto resp = fut.get();
-                assets_ok = resp->success;
-                assets_msg = resp->message;
-                res->transformed_points = resp->transformed_points;
-                res->transformed_areas = resp->transformed_areas;
-                res->transformed_junctions = resp->transformed_junctions;
-            }
-        }
+        const AssetsToolResult assets = RunTransformAssetsTool(map_name, 0.0, 0.0, est.yaw_rad);
+        const bool assets_ok = assets.ok;
+        const std::string assets_msg = assets.Summary();
+        res->transformed_points = assets.points;
+        res->transformed_areas = assets.areas;
+        res->transformed_junctions = assets.junctions;
 
         // ── 步骤 ⑦：资产失败 → 回滚底图，保证两者始终一致 ─────────
+        //    资产工具原子写回，失败时资产文件未动，只需回滚底图
         if (!assets_ok) {
-            std::string rb_map_msg, rb_assets_msg;
+            std::string rb_map_msg;
             const bool rb_map = RestoreSlamBackup(map_name, rb_map_msg);
-            const bool rb_assets =
-                RestoreMapAssets(assets_backup_dir, map_name, rb_assets_msg);
-            if (rb_map && rb_assets) {
+            if (rb_map) {
                 res->error_code = NS::E_CB_ALIGN_ASSETS_FAILED;
                 res->message = "transform_assets failed (" + assets_msg +
                                "); rolled back: " + rb_map_msg;
@@ -1503,7 +1423,6 @@ void CommandBoardManagerROS::AlignMapCallback(
                 res->error_code = NS::E_CB_ALIGN_ROLLBACK_FAILED;
                 res->message = "transform_assets failed (" + assets_msg +
                                ") AND rollback failed [map: " + rb_map_msg +
-                               "] [assets: " + rb_assets_msg +
                                "]. Base map and assets may be INCONSISTENT; "
                                "manual recovery required.";
                 RCLCPP_FATAL(get_logger(), "[Align] %s", res->message.c_str());
