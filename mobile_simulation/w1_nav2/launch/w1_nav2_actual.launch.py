@@ -51,5 +51,11 @@ def generate_launch_description():
         default_value='false',
         description='Use simulation clock; keep false on the physical robot'))
     ld.add_action(nav2_bringup_cmd)
+    # 与 Nav2 一同启动底盘位姿发布节点，复用本次启动的时钟配置。
+    ld.add_action(Node(
+        package='mobile_perception',
+        executable='pub_current_position',
+        parameters=[{'use_sim_time': use_sim_time}],
+        output='screen'))
 
     return ld
