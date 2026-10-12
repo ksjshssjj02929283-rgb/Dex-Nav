@@ -116,11 +116,6 @@ void MapAssetManagerNode::initialize() {
         std::bind(&MapAssetManagerNode::saveAssetsCallback, this,
                   std::placeholders::_1, std::placeholders::_2));
 
-    transform_assets_srv_ = create_service<nav_interfaces::srv::TransformAssets>(
-        "~/transform_assets",
-        std::bind(&MapAssetManagerNode::transformAssetsCallback, this,
-                  std::placeholders::_1, std::placeholders::_2));
-
     // X-Wiz 批量接口（M4-3 §3.3）：整体读 / 整体提交
     get_assets_srv_ = create_service<nav_interfaces::srv::GetAssets>(
         "~/get_assets",
@@ -785,66 +780,6 @@ void MapAssetManagerNode::rollbackAssetsCallback(
                    (t.is_current ? "; reloaded" : "");
     RCLCPP_INFO(get_logger(), "rollback_assets: %s", res->message.c_str());
     publishChange(t.map_name, t.is_current, "rollback", ts, res->revision);
-}
-
-// ──────────────────────────────────────────────────────────────────────
-// transformAssetsCallback — 资产坐标随地图原点变换
-//
-// 换算统一走 TransformAssetsFile（与离线工具 transform_assets_tool 同一实现）：
-//   非当前地图：直接改文件，不触碰内存
-//   当前地图：先把内存落盘（不受 auto_save 影响，避免未保存的编辑丢失），
-//            再改文件，最后从文件重载内存并重新发布
-// ──────────────────────────────────────────────────────────────────────
-
-void MapAssetManagerNode::transformAssetsCallback(
-    const std::shared_ptr<nav_interfaces::srv::TransformAssets::Request> req,
-    std::shared_ptr<nav_interfaces::srv::TransformAssets::Response> res)
-{
-    // 与其它按图寻址的服务同一套目标解析：地图名非法或目录不存在时拒绝，不会把「没找到」当成「没有资产、变换成功」
-    Target target;
-    int32_t code = 0;
-    std::string msg;
-    if (!resolveTarget(req->map_name, target, code, msg)) {
-        res->success = false;
-        res->message = msg;
-        return;
-    }
-    const bool is_current = target.is_current;
-
-    try {
-        const std::string file_path = target.assets_file;
-
-        if (is_current && !persistCurrent()) {
-            res->success = false;
-            res->message = "failed to persist current assets before transform: " + file_path;
-            RCLCPP_ERROR(get_logger(), "transform_assets: %s", res->message.c_str());
-            return;
-        }
-
-        const OriginChange t{req->x, req->y, req->yaw};
-        const AssetFileTransformResult r = TransformAssetsFile(file_path, t, *file_manager_, get_logger());
-
-        if (is_current) reloadCurrentFromFile();
-
-        res->success = r.ok;
-        res->transformed_points    = r.stats.points;
-        res->transformed_areas     = r.stats.areas;
-        res->transformed_junctions = r.stats.junctions;
-        res->message = std::string(is_current ? "current map" : ("map='" + req->map_name + "'")) +
-                       " " + r.message;
-        if (r.ok) {
-            publishChange(target.map_name, is_current, "transform", r.version_ts);
-            RCLCPP_INFO(get_logger(), "transform_assets [%s]: x=%.3f y=%.3f yaw=%.4f, %s",
-                        target.map_name.c_str(),
-                        req->x, req->y, req->yaw, r.message.c_str());
-        } else {
-            RCLCPP_ERROR(get_logger(), "transform_assets: %s", res->message.c_str());
-        }
-    } catch (const std::exception& ex) {
-        res->success = false;
-        res->message = std::string("Transform failed: ") + ex.what();
-        RCLCPP_ERROR(get_logger(), "transform_assets: %s", ex.what());
-    }
 }
 
 }  // namespace map_asset_manager

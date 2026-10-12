@@ -14,7 +14,6 @@
 #include <visualization_msgs/msg/marker_array.hpp>
 
 #include <nav_interfaces/msg/asset_snapshot.hpp>
-#include "nav_interfaces/srv/get_route_graph.hpp"
 #include "nav_interfaces/msg/path_segment.hpp"
 #include "nav_interfaces/srv/resolve_nav_points.hpp"
 
@@ -45,10 +44,6 @@ public:
 
 private:
     // ── Service 回调 ──────────────────────────────────────────────
-
-    void getRouteGraphCallback(
-        const std::shared_ptr<nav_interfaces::srv::GetRouteGraph::Request> req,
-        std::shared_ptr<nav_interfaces::srv::GetRouteGraph::Response> res);
 
     // nav_point_ids → PathSegment[]：逐对在路网图上求最短路，每条边离散成一段
     void resolveNavPointsCallback(
@@ -123,7 +118,6 @@ private:
     std::function<void()>            save_fn_;
 
     // Services
-    rclcpp::Service<nav_interfaces::srv::GetRouteGraph>::SharedPtr       get_graph_srv_;
     rclcpp::Service<nav_interfaces::srv::ResolveNavPoints>::SharedPtr    resolve_nav_points_srv_;
 
     // Publisher

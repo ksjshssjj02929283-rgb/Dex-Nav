@@ -31,11 +31,7 @@ RouteGraphManager::RouteGraphManager(
       save_fn_(save_fn)
 {
 
-    get_graph_srv_ = node->create_service<nav_interfaces::srv::GetRouteGraph>(
-        "~/get_route_graph",
-        std::bind(&RouteGraphManager::getRouteGraphCallback, this,
-                  std::placeholders::_1, std::placeholders::_2));
-
+    // 路网数据的读取统一走 get_assets；这里只保留路径解析这一计算服务
     resolve_nav_points_srv_ = node->create_service<nav_interfaces::srv::ResolveNavPoints>(
         "~/resolve_nav_points",
         std::bind(&RouteGraphManager::resolveNavPointsCallback, this, std::placeholders::_1, std::placeholders::_2));
@@ -65,52 +61,6 @@ RouteGraphManager::RouteGraphManager(
 // ──────────────────────────────────────────────────────────────────────
 // Edge CRUD
 // ──────────────────────────────────────────────────────────────────────
-
-
-
-void RouteGraphManager::getRouteGraphCallback(
-    const std::shared_ptr<nav_interfaces::srv::GetRouteGraph::Request> /*req*/,
-    std::shared_ptr<nav_interfaces::srv::GetRouteGraph::Response> res)
-{
-    for (const auto& jct : junction_store_->getAll()) {
-        res->junctions.push_back(toMsg(jct));
-    }
-
-    // ── D034: 收集被边引用的 NavPoint 名称（去重）──
-    // 边响应只存端点 id（不冗余坐标，避免 NavPoint 移动后边内坐标失效）；
-    // 此处一次性把被引用的 NavPoint 坐标补到 nav_points[]，消费方一次请求即可建图。
-    std::unordered_set<std::string> referenced_nav_names;
-    const auto all_edges = edge_store_->getAll();
-    for (const auto& e : all_edges) {
-        res->edges.push_back(toMsg(e));
-        if (e.from.type == "nav") referenced_nav_names.insert(e.from.id);
-        if (e.to.type   == "nav") referenced_nav_names.insert(e.to.id);
-    }
-
-    // ── D034: 从 PointStore 查坐标，按 nav_interfaces/NavPoint 组装 nav_points ──
-    for (const auto& name : referenced_nav_names) {
-        auto pt_opt = point_store_->getPoint(name);
-        if (!pt_opt.has_value()) {
-            // 被边引用但 NavPoint 已不存在：理论上 EventBus POINT_REMOVED 级联会清掉，
-            // 此处仅作防御；不阻塞响应，但日志记录便于排查脏数据
-            RCLCPP_WARN(node_->get_logger(),
-                        "GetRouteGraph: edge references missing NavPoint '%s' (skipped)",
-                        name.c_str());
-            continue;
-        }
-        nav_interfaces::msg::NavPoint np;
-        np.name      = pt_opt->name;
-        np.type      = pt_opt->type;
-        np.x         = pt_opt->x;
-        np.y         = pt_opt->y;
-        np.theta     = pt_opt->yaw;
-        np.tolerance = pt_opt->tolerance;
-        // np.id 在 PointStore 中无对应字段；msg.id 为可选展示用字段，保持默认 0
-        res->nav_points.push_back(np);
-    }
-
-    res->success = true;
-}
 
 // ──────────────────────────────────────────────────────────────────────
 // EventBus 响应

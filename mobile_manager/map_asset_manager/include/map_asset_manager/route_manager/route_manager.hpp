@@ -9,7 +9,6 @@
 
 #include <nav_interfaces/msg/asset_snapshot.hpp>
 #include "nav_interfaces/msg/route.hpp"
-#include "nav_interfaces/srv/get_route.hpp"
 
 #include "map_asset_manager/data_event_bus.hpp"
 #include "map_asset_manager/point_manager/point_store.hpp"
@@ -37,9 +36,6 @@ public:
     void onPointRenamed(const std::string& old_name, const std::string& new_name);
 
 private:
-    // Service 回调
-    void getRouteCallback(const std::shared_ptr<nav_interfaces::srv::GetRoute::Request> req,
-                          std::shared_ptr<nav_interfaces::srv::GetRoute::Response> res);
     // 辅助
     void saveToFile();
 
@@ -50,7 +46,6 @@ private:
     std::function<void()> save_fn_;
 
     // Services
-    rclcpp::Service<nav_interfaces::srv::GetRoute>::SharedPtr get_route_srv_;
 
     // Publisher
     rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr route_marker_pub_;

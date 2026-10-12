@@ -6,14 +6,10 @@
 #include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/string.hpp>
 #include <string>
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
 #include <visualization_msgs/msg/marker_array.hpp>
 
 #include <nav_interfaces/msg/asset_snapshot.hpp>
 #include "nav_interfaces/srv/get_all_nav_points.hpp"
-#include "nav_interfaces/srv/get_nav_point.hpp"
-#include "nav_interfaces/srv/sample_nav_point.hpp"
 
 #include "map_asset_manager/data_event_bus.hpp"
 #include "map_asset_manager/point_manager/point_store.hpp"
@@ -21,7 +17,7 @@
 
 namespace map_asset_manager {
 
-// 导航点子管理器：注册 NavPoint 相关的 Service（导航 action 已归 navigation 门面，DEC-041）
+// 导航点子管理器：发布点位可视化（读写统一走 get_assets / set_assets，导航由 navigation 门面负责）
 class NavPointManager {
 public:
 
@@ -35,31 +31,19 @@ public:
     void publishMarkers();
 
 private:
-    // Service 回调
-    void samplePointCallback(const std::shared_ptr<nav_interfaces::srv::SampleNavPoint::Request> req,
-                             std::shared_ptr<nav_interfaces::srv::SampleNavPoint::Response> res);
-    void getPointCallback(const std::shared_ptr<nav_interfaces::srv::GetNavPoint::Request> req,
-                          std::shared_ptr<nav_interfaces::srv::GetNavPoint::Response> res);
+    // 兼容 dexe_robot_client 的导航客户端：只读全部点位（新调用方用 get_assets）
     void getAllPointsCallback(const std::shared_ptr<nav_interfaces::srv::GetAllNavPoints::Request> req,
                               std::shared_ptr<nav_interfaces::srv::GetAllNavPoints::Response> res);
 
     // 辅助
-    void saveToFile();
     visualization_msgs::msg::Marker createPointMarker(const NavPoint& point, int id);
     std_msgs::msg::ColorRGBA getColorForType(const std::string& type);
-    static std::string pointTypeToString(uint32_t type);
 
     rclcpp::Node* node_;
     std::shared_ptr<PointStore> point_store_;
     std::shared_ptr<DataEventBus> event_bus_;
     std::function<void()> save_fn_;
 
-    std::unique_ptr<tf2_ros::Buffer> tf_buffer_;
-    std::unique_ptr<tf2_ros::TransformListener> tf_listener_;
-
-    // Services
-    rclcpp::Service<nav_interfaces::srv::SampleNavPoint>::SharedPtr sample_point_srv_;
-    rclcpp::Service<nav_interfaces::srv::GetNavPoint>::SharedPtr get_point_srv_;
     rclcpp::Service<nav_interfaces::srv::GetAllNavPoints>::SharedPtr get_all_points_srv_;
 
     // Publisher

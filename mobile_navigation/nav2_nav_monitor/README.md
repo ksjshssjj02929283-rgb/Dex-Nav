@@ -138,5 +138,5 @@ nav_monitor 不按多个异步话题的到达时间猜测关联。
   导航是否真正到达终态（SUCCEEDED/ABORTED/CANCELED 都会落盘）。
 - **阶段时间全在"其他"？** `controller_server` 的 `enable_nav_monitor_echo`
   未开，或 staged_control 未启用（无阶段切换事件）。
-- **goal 名字是坐标不是站点名？** NavPoint 名字增强未落地（数据源在
-  mobile_manager/navigation_adapter，属跨 workspace 依赖，待定）。
+- **goal 名字是坐标不是站点名？** NavPoint 名字增强未落地（点位数据源为
+  `/map_asset_manager/get_assets` 或 `assets` 快照话题，待定）。

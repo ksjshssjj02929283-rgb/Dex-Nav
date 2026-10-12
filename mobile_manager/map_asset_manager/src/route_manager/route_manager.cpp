@@ -18,12 +18,7 @@ RouteManager::RouteManager(rclcpp::Node* node,
     route_marker_pub_ = node_->create_publisher<visualization_msgs::msg::MarkerArray>(
         "~/route_markers", rclcpp::QoS(10).transient_local());
 
-    get_route_srv_ = node_->create_service<nav_interfaces::srv::GetRoute>(
-        "~/get_route",
-        std::bind(&RouteManager::getRouteCallback, this,
-                  std::placeholders::_1, std::placeholders::_2));
-
-    RCLCPP_INFO(node_->get_logger(), "RouteManager: services registered");
+    // 路线的读写统一走 get_assets / set_assets，本管理器只负责可视化与级联
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -55,20 +50,6 @@ void RouteManager::onPointRenamed(const std::string& old_name, const std::string
 // ──────────────────────────────────────────────────────────────────────
 // Service 回调
 // ──────────────────────────────────────────────────────────────────────
-
-void RouteManager::getRouteCallback(
-    const std::shared_ptr<nav_interfaces::srv::GetRoute::Request> req,
-    std::shared_ptr<nav_interfaces::srv::GetRoute::Response> res) {
-    auto opt = route_store_->getRoute(req->name);
-    if (opt) {
-        res->success     = true;
-        res->name        = opt->name;
-        res->point_names = opt->point_names;
-    } else {
-        res->success = false;
-        RCLCPP_WARN(node_->get_logger(), "Route not found: %s", req->name.c_str());
-    }
-}
 
 // ──────────────────────────────────────────────────────────────────────
 // 辅助

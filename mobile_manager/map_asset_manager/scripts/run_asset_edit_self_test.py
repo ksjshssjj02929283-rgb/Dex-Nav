@@ -125,7 +125,7 @@ def main():
     from ament_index_python.packages import get_package_prefix, get_package_share_directory
     from geometry_msgs.msg import Point, Pose2D
     from nav_interfaces.msg import AreaInfo, AssetChange, AssetSnapshot, GridStroke, NavPoint, RouteEdge, RouteEndpoint
-    from nav_interfaces.srv import GetAssets, GetMaps, MapManagerCommand, RollbackAssets, SaveAssets, SetAssets, TransformAssets
+    from nav_interfaces.srv import GetAssets, GetMaps, MapManagerCommand, RollbackAssets, SaveAssets, SetAssets
     from nav_msgs.msg import OccupancyGrid
     from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 
@@ -176,8 +176,7 @@ def main():
         rb = node.create_client(RollbackAssets, "/map_asset_manager/rollback_assets")
         mc = node.create_client(MapManagerCommand, "/map_manager/map_command")
         gm = node.create_client(GetMaps, "/map_manager/get_maps")
-        ta = node.create_client(TransformAssets, "/map_asset_manager/transform_assets")
-        for c in (ga, sa, sv, rb, mc, gm, ta):
+        for c in (ga, sa, sv, rb, mc, gm):
             if not c.wait_for_service(timeout_sec=20.0):
                 sys.exit(f"service not available: {c.srv_name} (logs in {tmp})")
 
@@ -330,9 +329,12 @@ def main():
         rep.check("C-11", "two-point restricted area is rejected (polygons need 3 points)",
                   not r.success and any("needs >= 3" in x for x in r.rejected), str(list(r.rejected)))
         setr(other_name, mode=SetAssets.Request.MODE_REMOVE, areas=[area("W_LINE", [])])
-        tr = call(ta, TransformAssets.Request(map_name="no_such_map", x=1.0, y=0.0, yaw=0.0))
-        rep.check("T-0", "transform_assets on a missing map is rejected (not reported as success)",
-                  not tr.success, tr.message)
+        tool = Path(get_package_prefix("map_asset_manager")) / "lib/map_asset_manager/transform_assets_tool"
+        tr = subprocess.run([str(tool), "--map_name", "no_such_map", "--maps_root", str(maps),
+                             "--x", "1.0", "--y", "0", "--yaw", "0"], env=env, capture_output=True, text=True)
+        rep.check("T-0", "transform_assets_tool on a missing map fails (not reported as success)",
+                  tr.returncode != 0, (tr.stdout + tr.stderr).strip().splitlines()[-1:] and
+                  (tr.stdout + tr.stderr).strip().splitlines()[-1])
 
         print("▶ 失效清单")
         r = setr(other_name, areas=[area("R_MID", sq)])

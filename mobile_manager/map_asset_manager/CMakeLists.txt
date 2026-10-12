@@ -149,19 +149,7 @@ if(BUILD_TESTING)
     geometry_msgs
   )
 
-  # ── 集成测试：NavPointManager / RouteManager Service 调用 ─────────
-  ament_add_gtest(test_services
-    test/test_services.cpp
-  )
-  target_include_directories(test_services PRIVATE include)
-  target_link_libraries(test_services
-    ${PROJECT_NAME}_lib
-  )
-  ament_target_dependencies(test_services
-    rclcpp
-    nav_interfaces
-    geometry_msgs
-  )
+  # 服务级行为（get_assets / set_assets 等）由 scripts/run_asset_edit_self_test.py 覆盖
 endif()
 
 # ── RViz2 插件（map_asset_rviz_plugin）────────────────────────────────
@@ -222,6 +210,8 @@ if(rviz_common_FOUND AND Qt5_FOUND AND pluginlib_FOUND)
     nav_msgs
     visualization_msgs
     std_srvs
+    tf2
+    tf2_ros
     rviz_common
     rviz_rendering
     pluginlib

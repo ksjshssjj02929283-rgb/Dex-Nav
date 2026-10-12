@@ -1,5 +1,11 @@
 # map_asset_manager
 
+> **当前对外接口（2026-10-12）**：读 `~/get_assets`、写 `~/set_assets`、存版本 `~/save_assets`、回滚 `~/rollback_assets`、
+> 变更事件 `~/asset_changes`、当前图快照 `~/assets`（`AssetSnapshot`，含区域与房间）、路径解析 `~/resolve_nav_points`；
+> `~/get_all_nav_points` 仅为机器人本机客户端兼容保留。资产坐标变换用离线工具 `transform_assets_tool`。
+> 已删除：`get_point` / `get_route` / `get_route_graph` / `sample_point` / `transform_assets` 服务，
+> `~/areas` / `~/rooms` 话题及 `AreaInfoArray` / `RoomInfoArray` 消息。下文涉及这些的章节为历史记录，以本段为准。
+
 ## 1. 功能定位
 
 `map_asset_manager` 是“当前地图资产”管理节点，职责边界应收口为地图资产真值源，而不是运行时导航执行节点。

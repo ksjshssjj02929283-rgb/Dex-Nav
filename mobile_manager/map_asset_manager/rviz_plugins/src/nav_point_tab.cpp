@@ -12,6 +12,8 @@
 #include <QMessageBox>
 #include <QVBoxLayout>
 
+#include <cmath>
+
 namespace map_asset_rviz_plugin {
 
 static constexpr struct { const char* label; uint32_t value; } kTypes[] = {
@@ -138,7 +140,10 @@ void NavPointTab::rebuildClients() {
     get_all_client_ = node_->create_client<nav_interfaces::srv::GetAssets>(prefix_ + "/get_assets");
     add_client_     = node_->create_client<nav_interfaces::srv::SetAssets>(prefix_ + "/set_assets");
     remove_client_  = node_->create_client<nav_interfaces::srv::SetAssets>(prefix_ + "/set_assets");
-    sample_client_  = node_->create_client<nav_interfaces::srv::SampleNavPoint>(prefix_ + "/sample_point");
+    if (!tf_buffer_) {
+        tf_buffer_ = std::make_shared<tf2_ros::Buffer>(node_->get_clock());
+        tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
+    }
     update_client_  = node_->create_client<nav_interfaces::srv::SetAssets>(prefix_ + "/set_assets");
     nav_client_     = rclcpp_action::create_client<NavigateToPointAction>(
         node_, "/navigation/navigate_to_point");   // 唯一导航入口：navigation 门面（DEC-041）
@@ -179,39 +184,46 @@ void NavPointTab::onRefresh() {
 }
 
 void NavPointTab::onSample() {
-    if (!sample_client_) { status_label_->setText("节点未初始化"); return; }
+    if (!tf_buffer_) { status_label_->setText("节点未初始化"); return; }
     // 采样的是机器人当前位姿，只对当前已加载地图有意义
     if (!AssetTarget::isCurrent()) {
         status_label_->setText(QString("编辑目标是非当前地图 %1，不能录制机器人位姿").arg(QString::fromStdString(AssetTarget::label())));
         return;
     }
 
-    if (!sample_client_->service_is_ready()) {
-        status_label_->setText("等待采样服务...");
+    // 在面板本地读 TF（map → base_link）：连续 11 次、间隔 50 ms 取平均，朝向按圆周平均，避免 ±π 处跳变。
+    // 用 GUI 线程的定时器逐次采样，面板关闭时定时器随之销毁，不会有悬空回调
+    if (!sample_timer_) {
+        sample_timer_ = new QTimer(this);
+        sample_timer_->setInterval(50);
+        connect(sample_timer_, &QTimer::timeout, this, &NavPointTab::onSampleTick);
     }
-
-    // 空 name = 仅采样坐标，不保存；坐标填入 UI 后由用户填写名称再点「添加点位」
-    auto req = std::make_shared<nav_interfaces::srv::SampleNavPoint::Request>();
-    req->name       = "";
-    req->point_type = 0;
-
+    sample_count_ = 0;
+    sample_x_ = sample_y_ = sample_sin_ = sample_cos_ = 0.0;
     sample_btn_->setEnabled(false);
     status_label_->setText("采样中（11次，约550ms）...");
+    sample_timer_->start();
+}
 
-    sample_client_->async_send_request(
-        req,
-        [this](rclcpp::Client<nav_interfaces::srv::SampleNavPoint>::SharedFuture fut) {
-            try {
-                auto resp = fut.get();
-                if (resp->success) {
-                    Q_EMIT poseFilled(resp->x, resp->y, resp->theta);
-                } else {
-                    Q_EMIT operationFinished(false, "采样失败（TF 不可用）");
-                }
-            } catch (const std::exception& ex) {
-                Q_EMIT operationFinished(false, QString("采样异常: %1").arg(ex.what()));
-            }
-        });
+void NavPointTab::onSampleTick() {
+    constexpr int kSamples = 11;
+    geometry_msgs::msg::TransformStamped tf;
+    try {
+        tf = tf_buffer_->lookupTransform("map", "base_link", tf2::TimePointZero);
+    } catch (const tf2::TransformException& ex) {
+        sample_timer_->stop();
+        applyOperationResult(false, QString("采样失败（TF 不可用）: %1").arg(ex.what()));
+        return;
+    }
+    const auto& q = tf.transform.rotation;
+    const double yaw = std::atan2(2.0 * (q.w * q.z + q.x * q.y), 1.0 - 2.0 * (q.y * q.y + q.z * q.z));
+    sample_x_ += tf.transform.translation.x;
+    sample_y_ += tf.transform.translation.y;
+    sample_sin_ += std::sin(yaw);
+    sample_cos_ += std::cos(yaw);
+    if (++sample_count_ < kSamples) return;
+    sample_timer_->stop();
+    applyPoseFilled(sample_x_ / kSamples, sample_y_ / kSamples, std::atan2(sample_sin_, sample_cos_));
 }
 
 void NavPointTab::onAdd() {

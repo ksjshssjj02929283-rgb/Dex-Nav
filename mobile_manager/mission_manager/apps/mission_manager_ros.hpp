@@ -28,7 +28,7 @@
 #include "nav_interfaces/msg/task.hpp"
 #include "nav_interfaces/srv/add_task.hpp"
 #include "nav_interfaces/srv/add_task_group.hpp"
-#include "nav_interfaces/srv/get_all_nav_points.hpp"
+#include "nav_interfaces/srv/get_assets.hpp"
 #include "nav_interfaces/srv/get_current_task_info.hpp"
 #include "nav_interfaces/srv/get_status.hpp"
 #include "nav_interfaces/srv/nav_to_point.hpp"
@@ -140,7 +140,7 @@ private:
     std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
     std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
 
-    rclcpp::Client<nav_interfaces::srv::GetAllNavPoints>::SharedPtr get_all_nav_points_client_;  // 请求所有导航点
+    rclcpp::Client<nav_interfaces::srv::GetAssets>::SharedPtr get_all_nav_points_client_;  // 请求所有导航点（get_assets，只取点位）
     rclcpp::Client<nav_interfaces::srv::NavToPoint>::SharedPtr
         start_navigation_client_;                                               // 请求move base 导航到指定点位
     rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr stop_navigation_client_;  //  请求move base 停止导航

@@ -1,10 +1,6 @@
 #include "map_asset_manager/point_manager/nav_point_manager.hpp"
 
-#include <chrono>
 #include <cmath>
-#include <tf2/utils.h>
-#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
-#include <thread>
 
 namespace map_asset_manager {
 
@@ -17,157 +13,22 @@ NavPointManager::NavPointManager(rclcpp::Node* node,
       event_bus_(event_bus),
       save_fn_(std::move(save_fn)) {
 
-    // ── TF ────────────────────────────────────────────────────────
-    tf_buffer_   = std::make_unique<tf2_ros::Buffer>(node_->get_clock());
-    tf_listener_ = std::make_unique<tf2_ros::TransformListener>(*tf_buffer_, node_);
-
     // ── publishers ────────────────────────────────────────────────
     marker_pub_ = node_->create_publisher<visualization_msgs::msg::MarkerArray>(
         "~/nav_points_marker", rclcpp::QoS(10).transient_local());
 
-    // ── services ─────────────────────────────────────────────────
-    sample_point_srv_ = node_->create_service<nav_interfaces::srv::SampleNavPoint>(
-        "~/sample_point",
-        std::bind(&NavPointManager::samplePointCallback, this,
-                  std::placeholders::_1, std::placeholders::_2));
-
-
-    get_point_srv_ = node_->create_service<nav_interfaces::srv::GetNavPoint>(
-        "~/get_point",
-        std::bind(&NavPointManager::getPointCallback, this,
-                  std::placeholders::_1, std::placeholders::_2));
-
+    // 点位的读写统一走 get_assets / set_assets；get_all_nav_points 只为 dexe_robot_client 兼容保留
     get_all_points_srv_ = node_->create_service<nav_interfaces::srv::GetAllNavPoints>(
         "~/get_all_nav_points",
         std::bind(&NavPointManager::getAllPointsCallback, this,
                   std::placeholders::_1, std::placeholders::_2));
-
-    RCLCPP_INFO(node_->get_logger(), "NavPointManager: services registered");
-}
-
-// ──────────────────────────────────────────────────────────────────────
-// Service 回调
-// ──────────────────────────────────────────────────────────────────────
-
-
-std::string NavPointManager::pointTypeToString(uint32_t type) {
-    using Req = nav_interfaces::srv::SampleNavPoint::Request;
-    switch (type) {
-        case Req::STATION:  return "STATION";
-        case Req::CHARGING: return "CHARGING";
-        case Req::PARKING:  return "PARKING";
-        case Req::DOORWAIT: return "DOORWAIT";
-        case Req::LIFT:     return "LIFT";
-        default:            return "";
-    }
-}
-
-void NavPointManager::samplePointCallback(
-    const std::shared_ptr<nav_interfaces::srv::SampleNavPoint::Request> req,
-    std::shared_ptr<nav_interfaces::srv::SampleNavPoint::Response> res) {
-    // name 为空 = 仅采样返回坐标，不保存（UI 预填模式）
-    const bool save_mode = !req->name.empty();
-
-    if (save_mode) {
-        using Req = nav_interfaces::srv::SampleNavPoint::Request;
-        if (req->point_type == Req::FREE_GOAL) {
-            RCLCPP_ERROR(node_->get_logger(), "sample_point: FREE_GOAL is not supported");
-            res->success = false;
-            return;
-        }
-        std::string type_str = pointTypeToString(req->point_type);
-        if (type_str.empty()) {
-            RCLCPP_ERROR(node_->get_logger(), "sample_point: invalid point_type %u", req->point_type);
-            res->success = false;
-            return;
-        }
-    }
-
-    // 采样 11 次 base_link → map 变换，取平均
-    constexpr int kSamples = 11;
-    double sum_x = 0.0, sum_y = 0.0, sum_theta = 0.0;
-
-    for (int i = 0; i < kSamples; ++i) {
-        geometry_msgs::msg::TransformStamped tf;
-        try {
-            tf = tf_buffer_->lookupTransform("map", "base_link", tf2::TimePointZero);
-        } catch (const tf2::TransformException& ex) {
-            RCLCPP_ERROR(node_->get_logger(), "sample_point: TF lookup failed: %s", ex.what());
-            res->success = false;
-            return;
-        }
-        tf2::Quaternion q;
-        tf2::fromMsg(tf.transform.rotation, q);
-
-        sum_x     += tf.transform.translation.x;
-        sum_y     += tf.transform.translation.y;
-        sum_theta += tf2::getYaw(q) + M_PI * 2.0;
-
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    }
-
-    const double x   = sum_x     / kSamples;
-    const double y   = sum_y     / kSamples;
-    const double yaw = sum_theta / kSamples - M_PI * 2.0;
-
-    res->x     = static_cast<float>(x);
-    res->y     = static_cast<float>(y);
-    res->theta = static_cast<float>(yaw);
-
-    if (!save_mode) {
-        // 仅采样，不保存
-        res->success = true;
-        RCLCPP_INFO(node_->get_logger(), "sample_point (preview): (%.3f, %.3f, %.3f°)", x, y, yaw * 180.0 / M_PI);
-        return;
-    }
-
-    std::string type_str = pointTypeToString(req->point_type);
-    NavPoint pt;
-    pt.name  = req->name;
-    pt.type  = type_str;
-    pt.x     = x;
-    pt.y     = y;
-    pt.yaw   = yaw;
-
-    int result = point_store_->addPoint(pt);
-    if (result > 0) {
-        res->success = true;
-        saveToFile();
-        publishMarkers();
-        event_bus_->publish({AssetEventType::POINT_ADDED, pt.name, ""});
-        RCLCPP_INFO(node_->get_logger(), "sample_point: added '%s' (%.3f, %.3f, %.3f°)",
-                    pt.name.c_str(), pt.x, pt.y, pt.yaw * 180.0 / M_PI);
-    } else {
-        res->success = false;
-        RCLCPP_ERROR(node_->get_logger(), "sample_point: failed to add '%s'", pt.name.c_str());
-    }
-}
-
-
-void NavPointManager::getPointCallback(
-    const std::shared_ptr<nav_interfaces::srv::GetNavPoint::Request> req,
-    std::shared_ptr<nav_interfaces::srv::GetNavPoint::Response> res) {
-    auto opt = point_store_->getPoint(req->name);
-    if (opt) {
-        res->success       = true;
-        res->point.name    = opt->name;
-        res->point.type    = opt->type;
-        res->point.x       = opt->x;
-        res->point.y       = opt->y;
-        res->point.theta   = opt->yaw;
-        res->point.tolerance = opt->tolerance;
-    } else {
-        res->success = false;
-        RCLCPP_WARN(node_->get_logger(), "Point not found: %s", req->name.c_str());
-    }
 }
 
 void NavPointManager::getAllPointsCallback(
     const std::shared_ptr<nav_interfaces::srv::GetAllNavPoints::Request>,
     std::shared_ptr<nav_interfaces::srv::GetAllNavPoints::Response> res) {
-    auto points = point_store_->getAllPoints();
     res->success = true;
-    for (const auto& pt : points) {
+    for (const auto& pt : point_store_->getAllPoints()) {
         nav_interfaces::msg::NavPoint msg;
         msg.name      = pt.name;
         msg.type      = pt.type;
@@ -182,10 +43,6 @@ void NavPointManager::getAllPointsCallback(
 // ──────────────────────────────────────────────────────────────────────
 // 辅助
 // ──────────────────────────────────────────────────────────────────────
-
-void NavPointManager::saveToFile() {
-    if (save_fn_) save_fn_();
-}
 
 void NavPointManager::publishMarkers() {
     auto points = point_store_->getAllPoints();

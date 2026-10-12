@@ -2,7 +2,7 @@
 #include <rclcpp/rclcpp.hpp>
 
 #include "nav_interfaces/msg/nav_point.hpp"
-#include "nav_interfaces/srv/get_all_nav_points.hpp"
+#include "nav_interfaces/srv/get_assets.hpp"
 // #include "nav_interfaces/msg/docking_base_action_goal.hpp"
 
 #include "mission_manager/mission_manager_param.hpp"
@@ -194,9 +194,9 @@ void MissionManagerROS::Initialize() {
     start_navigation_client_ = this->create_client<nav_interfaces::srv::NavToPoint>(
         "/nav_adapter_node/start_navigation", rmw_qos_profile_services_default, callback_group_clients_);
 
-    // get_all_nav_points 客户端使用独立的 callback group
-    get_all_nav_points_client_ = this->create_client<nav_interfaces::srv::GetAllNavPoints>(
-        "/nav_point_manager_node/get_all_nav_points", rmw_qos_profile_services_default, callback_group_clients_);
+    // 点位从资产节点的 get_assets 读取（只取点位），客户端使用独立的 callback group
+    get_all_nav_points_client_ = this->create_client<nav_interfaces::srv::GetAssets>(
+        "/map_asset_manager/get_assets", rmw_qos_profile_services_default, callback_group_clients_);
 
     stop_navigation_client_ = this->create_client<std_srvs::srv::Trigger>("/nav_adapter_node/cancel_navigation");
 
@@ -964,11 +964,12 @@ std::shared_ptr<TaskInterface> MissionManagerROS::CreateTaskFromMsg(nav_interfac
 bool MissionManagerROS::GetAllNavPointsFromClient() {
     nav_point_msg_umap_.clear();
 
-    auto srv = std::make_shared<nav_interfaces::srv::GetAllNavPoints::Request>();
+    auto srv = std::make_shared<nav_interfaces::srv::GetAssets::Request>();
+    srv->kinds = nav_interfaces::srv::GetAssets::Request::KIND_POINTS;  // map_name 空 = 当前已加载地图
 
     // 等待服务 2s（应该很快，因为 nav_point_manager 已经通过话题加载了导航点）
     if (!get_all_nav_points_client_->wait_for_service(std::chrono::seconds(2))) {
-        RCLCPP_ERROR(this->get_logger(), "GetAllNavPoints service not available");
+        RCLCPP_ERROR(this->get_logger(), "get_assets service not available");
         return false;
     }
 
@@ -982,13 +983,14 @@ bool MissionManagerROS::GetAllNavPointsFromClient() {
     // 减少超时时间到3秒，因为 nav_point_manager 应该已经加载完成
     auto status = result_future.wait_for(std::chrono::seconds(3));
     if (status != std::future_status::ready) {
-        RCLCPP_ERROR(this->get_logger(), "GetAllNavPoints service call timed out");
+        RCLCPP_ERROR(this->get_logger(), "get_assets service call timed out");
         return false;
     }
 
     auto result = result_future.get();
-    if (!result) {
-        RCLCPP_ERROR(this->get_logger(), "GetAllNavPoints service call failed");
+    if (!result || !result->success) {
+        RCLCPP_ERROR(this->get_logger(), "get_assets service call failed: %s",
+                     result ? result->message.c_str() : "no response");
         return false;
     }
 

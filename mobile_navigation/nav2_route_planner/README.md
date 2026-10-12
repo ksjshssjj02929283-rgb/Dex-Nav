@@ -23,8 +23,8 @@ Junctions + Edges) served by `map_asset_manager`. It outputs the standard
 
 ## Topics & services
 
-* Subscribes (via clients): `/map_asset_manager/get_route_graph`,
-  `/map_asset_manager/get_all_nav_points`
+* Subscribes (via clients): `/map_asset_manager/get_assets`
+  (kinds = points | junctions | edges, current map)
 * Publishes:
   - `nav_msgs/Path` via standard Nav2 `~/plan` (PlannerServer hosts this)
   - `nav_interfaces/RoutePlan` on `~/<planner_id>/route_plan`

@@ -11,7 +11,6 @@
 #include <nav_interfaces/msg/asset_snapshot.hpp>
 #include <nav_interfaces/srv/get_assets.hpp>
 #include <nav_interfaces/srv/set_assets.hpp>
-#include <nav_interfaces/srv/transform_assets.hpp>
 #include <nav_interfaces/srv/save_assets.hpp>
 #include <nav_interfaces/srv/rollback_assets.hpp>
 #include <nav_interfaces/msg/map_version.hpp>
@@ -70,9 +69,6 @@ private:
     // 任意地图的资产回滚；command_board 的 rollback_map 资产部分委托这里
     void rollbackAssetsCallback(const std::shared_ptr<nav_interfaces::srv::RollbackAssets::Request> req,
                                 std::shared_ptr<nav_interfaces::srv::RollbackAssets::Response> res);
-    void transformAssetsCallback(
-        const std::shared_ptr<nav_interfaces::srv::TransformAssets::Request> req,
-        std::shared_ptr<nav_interfaces::srv::TransformAssets::Response> res);
 
     // map_manager/map_state 回调：按 epoch 比对触发重载（不依赖名字，根治同名漏检）
     void onMapState(const nav_interfaces::msg::MapState::SharedPtr msg);
@@ -134,7 +130,6 @@ private:
     // ── ROS 接口 ─────────────────────────────────────────────────
     rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr reload_data_srv_;
     rclcpp::Service<nav_interfaces::srv::SaveAssets>::SharedPtr save_assets_srv_;
-    rclcpp::Service<nav_interfaces::srv::TransformAssets>::SharedPtr transform_assets_srv_;
     rclcpp::Service<nav_interfaces::srv::GetAssets>::SharedPtr get_assets_srv_;
     rclcpp::Service<nav_interfaces::srv::SetAssets>::SharedPtr set_assets_srv_;
     rclcpp::Service<nav_interfaces::srv::RollbackAssets>::SharedPtr rollback_assets_srv_;
