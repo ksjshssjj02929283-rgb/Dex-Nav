@@ -59,6 +59,7 @@ private:
 
     // Callback group for services (separate from default)
     rclcpp::CallbackGroup::SharedPtr callback_group_services_;
+    rclcpp::TimerBase::SharedPtr single_instance_timer_;
 };
 
 }  // namespace map_manager

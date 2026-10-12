@@ -10,6 +10,7 @@
 #include <vector>
 #include <ctime>
 
+#include "map_manager/grid_edit.hpp"
 #include "map_manager/image_loader.hpp"
 
 namespace map_manager {
@@ -25,6 +26,14 @@ struct MapInfo {
     double height;
 };
 
+// 一个底图版本（slam/backups/backup.<ts>/）。只取读目录即可得到的信息，保证列表查询轻量。
+struct MapVersionEntry {
+    std::string version_ts;
+    std::time_t saved_at = 0;
+    std::string source;          // localization_save / grid_edit / rollback / unknown
+    bool complete = false;       // 三件套齐全
+};
+
 // get_maps 返回的目录条目（只读 yaml，不加载地图）
 struct MapCatalogEntry {
     std::string name;
@@ -37,6 +46,14 @@ struct MapCatalogEntry {
     // "legacy"（0.3.0 之前的旧版）；无此键为空，表示未知（yaml 由旧版本程序写出）
     std::string data_version;
     std::string thumbnail;          // <map_path>/map.png
+    // 底图内容指纹：map.png 文件内容 + map.yaml 的 resolution / origin。
+    // 供 OP_EDIT_GRID 乐观锁，编辑、回滚、替换、对齐之后都会变；display_yaw 与面积不参与。
+    std::string grid_revision;
+    double display_yaw = 0.0;       // map.yaml display_yaw（弧度）；无此键为 0
+    // 底图最后编辑时间：map.yaml last_edited_at（底图编辑 / 回滚 / 对齐 / 替换 / 重设原点 / 定位侧保存时写入）；
+    // 旧图无此键时退回 map.png、map.yaml mtime 的较大值。不含资产（资产时间见 get_assets）
+    std::time_t last_edited_at = 0;
+    std::vector<MapVersionEntry> versions;  // 底图版本，新的在前
 };
 
 // get_trashed_maps 返回的回收站条目。
@@ -62,6 +79,34 @@ public:
     int32_t LoadMapEx(const std::string& map_name, std::string& message);
     int32_t RemoveMapEx(const std::string& map_name, std::string& message);
     int32_t RenameMapEx(const std::string& old_name, const std::string& new_name, std::string& message);
+    // 设置任意一张地图的显示朝向（不要求已加载）：只改 map.yaml 的 display_yaw 一行，
+    // 归一化到 (-π, π]，其余行逐字节保留；与 SLAM 侧写 map.yaml 用同一把目录锁。
+    // 只是显示元数据，坐标、底图、定位都不变，因此不重新下发地图。
+    int32_t SetDisplayYawEx(const std::string& map_name, double display_yaw, std::string& message);
+
+    // 底图笔画编辑（不要求已加载）。依次：
+    //   ① 校验笔画 → ② expected_revision 非空时与当前底图指纹比对 → ③ 栅格化（像素规则见 grid_edit.hpp）
+    //   ④ 有像素变化才落盘：先把 map.pbstream / map.png / map.yaml 三件备份为
+    //      slam/backups/backup.<YYYYMMDD-HHMMSS>/（rollback_map 按此回退，超出保留份数的最旧版本删除），
+    //      再原子写 map.png、合并写 map.yaml 的两个面积键（其余键原样保留）
+    // 图像宽高、origin、map.pbstream 都不变，定位不受影响。没有像素变化时返回成功但不备份不写盘。
+    struct GridEditResult {
+        std::string revision;      // 编辑后的底图指纹
+        std::string backup_ts;     // 本次产生的版本；无像素变化时为空
+        bool requires_reload = false;  // 编辑的是当前已加载地图
+        int changed_pixels = 0;
+    };
+    int32_t EditGridEx(const std::string& map_name, const std::vector<GridStrokeSpec>& strokes,
+                       const std::string& expected_revision, GridEditResult* result, std::string& message);
+
+    // 把任意一张地图的底图三件套恢复到某个版本（version_ts 空 = 最新）。恢复前先把当前三件套
+    // 存成新版本（source = rollback）写入 result->backup_ts，回滚到它即可撤销；目标版本不参与这次轮换。
+    // 回滚当前地图只恢复文件、requires_reload = true，是否重新下发由调用方（command_board）决定。
+    int32_t RollbackMapEx(const std::string& map_name, const std::string& version_ts,
+                          GridEditResult* result, std::string& message);
+
+    // 底图版本保留份数（与 SLAM 侧 map_backup_keep_count 同义，默认 50）。
+    void SetMapBackupKeepCount(int n) { map_backup_keep_count_ = n < 0 ? 0 : n; }
     // 扫描 map_folder 下各地图的 slam/map.yaml，生成目录条目（不加载地图）
     std::vector<MapCatalogEntry> ScanMapCatalog();
 
@@ -158,6 +203,7 @@ private:
     uint64_t map_epoch_ = 0;
 
     MapTrashOptions trash_options_;
+    int map_backup_keep_count_ = 50;
 };
 
 }  // namespace map_manager

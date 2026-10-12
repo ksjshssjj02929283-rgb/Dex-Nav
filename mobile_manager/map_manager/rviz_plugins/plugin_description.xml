@@ -1,0 +1,16 @@
+<library path="map_manager_rviz_plugin">
+  <class name="map_manager_rviz_plugin/MapManagerPanel"
+         type="map_manager_rviz_plugin::MapManagerPanel"
+         base_class_type="rviz_common::Panel">
+    <description>
+      地图管理面板：地图列表、加载 / 重命名 / 回收站 / 删除、显示朝向、底图版本回滚、底图编辑（墙体 / 擦除 / 未知区域）
+    </description>
+  </class>
+  <class name="map_manager_rviz_plugin/MapEditTool"
+         type="map_manager_rviz_plugin::MapEditTool"
+         base_class_type="rviz_common::Tool">
+    <description>
+      底图编辑画笔：按住左键拖动绘制，松开结束一笔，右键退出；笔画由 Map Manager 面板统一保存
+    </description>
+  </class>
+</library>

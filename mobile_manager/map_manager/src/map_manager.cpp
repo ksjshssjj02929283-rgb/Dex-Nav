@@ -1,6 +1,18 @@
 #include <algorithm>
+#include <cmath>
+#include <cstdio>
 #include <ctime>
+#include <fstream>
+#include <mutex>
+#include <sstream>
+#include <optional>
+#include <unordered_map>
+
+#include <sys/stat.h>
 #include "map_manager/map_manager.hpp"
+#include "map_manager/map_yaml_doc.hpp"
+
+#include <opencv2/imgcodecs.hpp>
 
 #include <glog/logging.h>
 
@@ -66,8 +78,17 @@ bool MapManager::LoadMap(const std::string& map_name) {
         return false;
     }
     if (current_map_name_ == map_name) {
-        LOG(INFO) << "Current map is already loaded: " << current_map_name_;
-        LOG(WARNING) << "Reloading current map.";
+        LOG(WARNING) << "Reloading current map from disk: " << current_map_name_;
+        // 同名重载必须重读文件：底图编辑、回滚、对齐、替换、重设原点改的都是磁盘上的文件，
+        // 只递增 epoch 的话 /map 发布的仍是内存里的旧栅格。重读失败保留原来的栅格。
+        const auto previous_map = current_map_;
+        const auto previous_meta = meta_data_message_;
+        if (!loadMapFromYaml(map_yaml_path)) {
+            current_map_ = previous_map;
+            meta_data_message_ = previous_meta;
+            LOG(ERROR) << "Failed to reload current map, keeping the previous grid: " << map_name;
+            return false;
+        }
         has_map_changed_ = true;
         ++map_epoch_;  // 同名重载/回退也递增 epoch，消费方据此重载（根治同名漏检）
         return true;
@@ -336,6 +357,13 @@ constexpr int32_t kErrFolderMissing = 2202062;  // 等级 2
 constexpr int32_t kErrLoadFailed = 2202072;     // 等级 2
 constexpr int32_t kErrIoFailed = 2202082;       // 等级 2
 constexpr int32_t kErrTrashDisabled = 2202090;  // 等级 0
+constexpr int32_t kErrEditInvalid = 2202100;    // 等级 0
+constexpr int32_t kErrGridRevisionMismatch = 2202110;  // 等级 0
+constexpr int32_t kErrVersionNotFound = 2202120;       // 等级 0
+// 底图版本序列（与定位侧保存、SLAM 离线工具同一约定）：<slam>/backups/backup.<YYYYMMDD-HHMMSS>[-N]/
+//   必备三件（回滚要求齐全）+ 存在即一并保存的附带文件 + .source（来源）
+constexpr const char* kTripleFiles[] = {"map.pbstream", "map.png", "map.yaml"};
+constexpr const char* kVersionExtraFiles[] = {"map.pcd", "map_highlight.pcd", "map_line_map.json", "map_origin.png"};
 }  // namespace
 
 int32_t MapManager::LoadMapEx(const std::string& map_name, std::string& message) {
@@ -382,6 +410,40 @@ int32_t MapManager::RenameMapEx(const std::string& old_name, const std::string& 
     std::string err;
     if (!RenameMap(old_name, new_name, err)) { message = err; return kErrIoFailed; }
     message = "map renamed: " + old_name + " -> " + new_name;
+    return kErrNone;
+}
+
+int32_t MapManager::SetDisplayYawEx(const std::string& map_name, const double display_yaw,
+                                    std::string& message) {
+    if (map_folder_.empty()) { message = "map_folder is not configured"; return kErrFolderMissing; }
+    if (map_name.empty())    { message = "map_name is empty"; return kErrNameInvalid; }
+    if (!std::isfinite(display_yaw)) { message = "display_yaw must be a finite number"; return kErrEditInvalid; }
+    if (!IsLoadableMapDir(map_name)) { message = "map not found: " + map_name; return kErrNotFound; }
+    // 旧扁平布局先迁成 slam/ 分层（幂等），否则 slam/map.yaml 不存在
+    if (!MigrateLegacyMapLayout(map_name)) {
+        message = "failed to migrate legacy map layout: " + map_name; return kErrIoFailed;
+    }
+    const std::string slam_dir = map_folder_ + "/" + map_name + "/slam";
+    const std::string yaml_path = slam_dir + "/map.yaml";
+    boost::system::error_code ec;
+    if (!fs::exists(yaml_path, ec) || ec) {  // 只改已有文件，绝不凭空造一份 map.yaml
+        message = "map.yaml not found: " + yaml_path; return kErrNotFound;
+    }
+    const double yaw = NormalizeAngle(display_yaw);
+
+    MapYamlDirLock lock(slam_dir);
+    MapYamlDoc yaml = MapYamlDoc::Load(yaml_path);
+    if (yaml.Get("display_yaw") == FormatAngle(yaw)) {  // 值没变不算编辑，不写盘也不推进 last_edited_at
+        message = "display_yaw unchanged: " + map_name + " = " + FormatAngle(yaw) + " rad";
+        return kErrNone;
+    }
+    yaml.Set("display_yaw", FormatAngle(yaw));
+    yaml.Set("last_edited_at", LocalTimeIso8601());
+    std::string error;
+    if (!WriteFileAtomically(yaml_path, yaml.ToString(), &error)) {
+        message = error; return kErrIoFailed;
+    }
+    message = "display_yaw set: " + map_name + " -> " + FormatAngle(yaw) + " rad";
     return kErrNone;
 }
 
@@ -511,6 +573,120 @@ int MapManager::PruneMapTrash() {
 
 // ── 回收站：查询与恢复 ──────────────────────────────────────────────────
 
+namespace {
+
+// FNV-1a 64：跨进程、跨版本稳定（std::hash 不保证），够做乐观锁指纹。
+uint64_t Fnv1a(const std::string& data, uint64_t h = 1469598103934665603ULL) {
+    for (const unsigned char c : data) {
+        h ^= c;
+        h *= 1099511628211ULL;
+    }
+    return h;
+}
+
+// 底图指纹 = map.png 文件内容 + resolution + origin 文本。
+// 只认 png 字节而不解码像素：map.png 全由我方写出，同内容同字节；回滚恢复的也是原字节。
+// get_maps 会对每张图算一次，按 (inode, 大小, 纳秒 mtime) 缓存，文件不变就不重读。
+// 带上 inode：原子 rename 写入每次都换 inode，同一秒内改两次、大小又恰好相同也不会命中旧缓存。
+std::string GridRevision(const std::string& map_path, const MapYamlDoc& yaml) {
+    const std::string png = map_path + "/map.png";
+    struct stat st {};
+    if (::stat(png.c_str(), &st) != 0) return "";
+
+    struct Cached { ino_t ino; off_t size; timespec mtime; uint64_t hash; };
+    static std::mutex mutex;
+    static std::unordered_map<std::string, Cached> cache;
+    std::optional<uint64_t> png_hash;
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        const auto it = cache.find(png);
+        if (it != cache.end() && it->second.ino == st.st_ino && it->second.size == st.st_size &&
+            it->second.mtime.tv_sec == st.st_mtim.tv_sec && it->second.mtime.tv_nsec == st.st_mtim.tv_nsec) {
+            png_hash = it->second.hash;
+        }
+    }
+    if (!png_hash.has_value()) {
+        std::ifstream in(png, std::ios::binary);
+        const std::string bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        png_hash = Fnv1a(bytes);
+        std::lock_guard<std::mutex> lock(mutex);
+        cache[png] = {st.st_ino, st.st_size, st.st_mtim, *png_hash};
+    }
+    const uint64_t h = Fnv1a(yaml.Get("resolution").value_or("") + "|" + yaml.Get("origin").value_or(""),
+                             *png_hash);
+    char buf[24];
+    std::snprintf(buf, sizeof(buf), "%016llx", static_cast<unsigned long long>(h));
+    return buf;
+}
+
+std::time_t MtimeOr0(const std::string& path) {
+    boost::system::error_code ec;
+    if (!fs::exists(path, ec) || ec) return 0;
+    const std::time_t t = fs::last_write_time(path, ec);
+    return ec ? 0 : t;
+}
+
+}  // namespace
+
+namespace {
+
+// "20261009-122600" / "20261009-122600-1" → 本地时间；失败返回 0。
+std::time_t ParseVersionTs(const std::string& ts) {
+    struct tm tm_buf {};
+    if (ts.size() < 15 || ::strptime(ts.substr(0, 15).c_str(), "%Y%m%d-%H%M%S", &tm_buf) == nullptr) return 0;
+    tm_buf.tm_isdst = -1;
+    return std::mktime(&tm_buf);
+}
+
+std::string VersionSource(const fs::path& dir) {
+    std::ifstream in((dir / ".source").string());
+    std::string s;
+    if (in && std::getline(in, s) && !s.empty()) return s;
+    if (fs::exists(dir / ".complete")) return "localization_save";  // 定位侧保存的版本带 .complete
+    return "unknown";
+}
+
+bool TripleComplete(const fs::path& dir) {
+    for (const char* f : kTripleFiles) {
+        if (!fs::is_regular_file(dir / f)) return false;
+    }
+    return true;
+}
+
+// backups/ 下全部 backup.* 目录名（不含前缀），字典序 = 时间序（旧在前）。
+std::vector<std::string> ListBackupTs(const fs::path& slam_dir) {
+    std::vector<std::string> out;
+    boost::system::error_code ec;
+    for (fs::directory_iterator it(slam_dir / "backups", ec), end; !ec && it != end; it.increment(ec)) {
+        const std::string name = it->path().filename().string();
+        if (name.rfind("backup.", 0) == 0 && fs::is_directory(it->path())) out.push_back(name.substr(7));
+    }
+    std::sort(out.begin(), out.end());
+    return out;
+}
+
+// 一张地图（slam 目录）的全部底图版本，新的在前。
+std::vector<MapVersionEntry> ScanVersions(const fs::path& slam_dir) {
+    std::vector<MapVersionEntry> out;
+    const std::vector<std::string> all = ListBackupTs(slam_dir);
+    for (auto it = all.rbegin(); it != all.rend(); ++it) {
+        const fs::path dir = slam_dir / "backups" / ("backup." + *it);
+        MapVersionEntry v;
+        v.version_ts = *it;
+        v.saved_at = ParseVersionTs(*it);
+        if (v.saved_at == 0) {
+            boost::system::error_code ec;
+            v.saved_at = fs::last_write_time(dir, ec);
+        }
+        v.source = VersionSource(dir);
+        v.complete = TripleComplete(dir);
+        out.push_back(std::move(v));
+    }
+    return out;
+}
+
+}  // namespace
+
 void MapManager::FillEntryFromYaml(const std::string& map_path, MapCatalogEntry* entry) {
     const std::string yaml_path = map_path + "/map.yaml";
     boost::system::error_code ec;
@@ -525,9 +701,287 @@ void MapManager::FillEntryFromYaml(const std::string& map_path, MapCatalogEntry*
         if (y["data_version"]) {
             entry->data_version = y["data_version"].as<std::string>();
         }
+        if (y["display_yaw"])       entry->display_yaw       = y["display_yaw"].as<double>();
     } catch (const std::exception& ex) {
         LOG(WARNING) << "FillEntryFromYaml: cannot parse " << yaml_path << ": " << ex.what();
     }
+    const MapYamlDoc doc = MapYamlDoc::Load(yaml_path);
+    entry->grid_revision = GridRevision(map_path, doc);
+    // 底图最后编辑时间只认 map.yaml 的 last_edited_at（编辑操作写入，加载 / 读取不动它）；
+    // 资产的编辑时间由 map_asset_manager 自己管，这里不看。
+    // 旧图没有该键时退回 map.png / map.yaml 的 mtime。
+    entry->last_edited_at = ParseLocalIso8601(doc.Get("last_edited_at").value_or(""));
+    if (entry->last_edited_at == 0) {
+        entry->last_edited_at = std::max(MtimeOr0(map_path + "/map.png"), MtimeOr0(yaml_path));
+    }
+    entry->versions = ScanVersions(map_path);
+}
+
+namespace {
+
+// "[x, y, yaw]" → 三个数；格式不对返回 false。
+bool ParseOrigin(const std::string& text, double* x, double* y, double* yaw) {
+    std::string s = text;
+    std::replace(s.begin(), s.end(), '[', ' ');
+    std::replace(s.begin(), s.end(), ']', ' ');
+    std::replace(s.begin(), s.end(), ',', ' ');
+    std::istringstream in(s);
+    return static_cast<bool>(in >> *x >> *y >> *yaw);
+}
+
+// 与 SLAM 侧写面积的格式一致（6 位有效数字）。
+std::string FormatArea(double v) {
+    char buf[32];
+    std::snprintf(buf, sizeof(buf), "%g", v);
+    return buf;
+}
+
+std::string LocalBackupTimestamp() {
+    const std::time_t now = std::time(nullptr);
+    struct tm tm_buf;
+    ::localtime_r(&now, &tm_buf);
+    char buf[32];
+    std::strftime(buf, sizeof(buf), "%Y%m%d-%H%M%S", &tm_buf);
+    return buf;
+}
+
+// 把三件套备份成 <slam>/backups/backup.<ts>[-N]/（与定位侧保存、rollback_map 同一约定），
+// 并写 .source 标明版本来源。先写到隐藏的临时目录再 rename，避免留下不完整的版本被回滚选中。
+bool BackupSlamTriple(const fs::path& slam_dir, const std::string& source, std::string* out_ts,
+                      std::string* error) {
+    const fs::path backups = slam_dir / "backups";
+    boost::system::error_code ec;
+    fs::create_directories(backups, ec);
+    if (ec) { *error = "create " + backups.string() + " failed: " + ec.message(); return false; }
+    const std::string base_ts = LocalBackupTimestamp();
+    std::string ts = base_ts;
+    for (int n = 1; fs::exists(backups / ("backup." + ts)); ++n) ts = base_ts + "-" + std::to_string(n);
+
+    const fs::path staging = backups / (".backup." + ts + ".tmp");
+    fs::remove_all(staging, ec);
+    fs::create_directories(staging, ec);
+    if (ec) { *error = "create " + staging.string() + " failed: " + ec.message(); return false; }
+    for (const char* f : kTripleFiles) {
+        fs::copy_file(slam_dir / f, staging / f, fs::copy_options::overwrite_existing, ec);
+        if (ec) {
+            *error = std::string("backup ") + f + " failed: " + ec.message();
+            fs::remove_all(staging, ec);
+            return false;
+        }
+    }
+    for (const char* f : kVersionExtraFiles) {  // 附带文件：存在才存
+        if (!fs::exists(slam_dir / f)) continue;
+        fs::copy_file(slam_dir / f, staging / f, fs::copy_options::overwrite_existing, ec);
+        if (ec) {
+            *error = std::string("backup ") + f + " failed: " + ec.message();
+            fs::remove_all(staging, ec);
+            return false;
+        }
+    }
+    std::ofstream(( staging / ".source").string()) << source << "\n";
+    fs::rename(staging, backups / ("backup." + ts), ec);
+    if (ec) {
+        *error = "finalize backup failed: " + ec.message();
+        fs::remove_all(staging, ec);
+        return false;
+    }
+    *out_ts = ts;
+    return true;
+}
+
+// 只保留最新的 keep 份 backup.*（名字即时间，字典序 = 时间序），protect 指定的版本不删。删除失败只告警。
+void PruneSlamBackups(const fs::path& slam_dir, int keep, const std::string& protect = "") {
+    const fs::path backups = slam_dir / "backups";
+    boost::system::error_code ec;
+    std::vector<fs::path> dirs;
+    for (fs::directory_iterator it(backups, ec), end; !ec && it != end; it.increment(ec)) {
+        const std::string name = it->path().filename().string();
+        if (name.rfind("backup.", 0) == 0 && fs::is_directory(it->path())) dirs.push_back(it->path());
+    }
+    std::sort(dirs.begin(), dirs.end());
+    for (size_t i = 0; i + keep < dirs.size(); ++i) {
+        if (!protect.empty() && dirs[i].filename().string() == "backup." + protect) continue;
+        fs::remove_all(dirs[i], ec);
+        if (ec) LOG(WARNING) << "prune backup failed: " << dirs[i].string() << ": " << ec.message();
+    }
+}
+
+}  // namespace
+
+int32_t MapManager::EditGridEx(const std::string& map_name, const std::vector<GridStrokeSpec>& strokes,
+                               const std::string& expected_revision, GridEditResult* result,
+                               std::string& message) {
+    *result = GridEditResult{};
+    if (map_folder_.empty()) { message = "map_folder is not configured"; return kErrFolderMissing; }
+    if (map_name.empty())    { message = "map_name is empty"; return kErrNameInvalid; }
+    const std::string invalid = ValidateStrokes(strokes);
+    if (!invalid.empty()) { message = invalid; return kErrEditInvalid; }
+    if (!IsLoadableMapDir(map_name)) { message = "map not found: " + map_name; return kErrNotFound; }
+    if (!MigrateLegacyMapLayout(map_name)) {
+        message = "failed to migrate legacy map layout: " + map_name; return kErrIoFailed;
+    }
+    const fs::path slam_dir = fs::path(map_folder_) / map_name / "slam";
+    for (const char* f : {"map.yaml", "map.png", "map.pbstream"}) {
+        if (!fs::exists(slam_dir / f)) {  // 三件缺一就无法产生可回退的版本
+            message = std::string(f) + " not found in " + slam_dir.string(); return kErrLoadFailed;
+        }
+    }
+    const std::string yaml_path = (slam_dir / "map.yaml").string();
+    const std::string png_path = (slam_dir / "map.png").string();
+
+    MapOpLock op_lock(slam_dir.string());  // 与对齐 / 替换 / 重设原点互斥
+    if (!op_lock.acquired()) {
+        message = "map is being modified by another operation (align / replace / reset origin); retry later";
+        return kErrIoFailed;
+    }
+    MapYamlDirLock lock(slam_dir.string());
+    MapYamlDoc yaml = MapYamlDoc::Load(yaml_path);
+
+    // 1. 乐观锁：编辑期间底图被别人改过（编辑、回滚、替换、对齐）就拒绝，不做自动合并
+    const std::string current_revision = GridRevision(slam_dir.string(), yaml);
+    if (!expected_revision.empty() && expected_revision != current_revision) {
+        message = "grid revision mismatch (expected " + expected_revision + ", current " +
+                  current_revision + "); reload the map and edit again";
+        return kErrGridRevisionMismatch;
+    }
+
+    // 2. 栅格几何与阈值取自这张图自己的 map.yaml
+    GridGeometry geo;
+    GridThresholds th;
+    double origin_yaw = 0.0;
+    geo.resolution = yaml.GetDouble("resolution").value_or(0.0);
+    th.occupied_thresh = yaml.GetDouble("occupied_thresh").value_or(-1.0);
+    th.free_thresh = yaml.GetDouble("free_thresh").value_or(-1.0);
+    if (!(geo.resolution > 0.0) ||
+        !ParseOrigin(yaml.Get("origin").value_or(""), &geo.origin_x, &geo.origin_y, &origin_yaw)) {
+        message = "map.yaml has invalid resolution or origin"; return kErrLoadFailed;
+    }
+    if (std::abs(origin_yaw) > 1e-9 || yaml.GetDouble("negate").value_or(0.0) != 0.0) {
+        message = "map.yaml with rotated origin or negate != 0 is not supported for editing";
+        return kErrLoadFailed;
+    }
+    if (!ValidThresholds(th)) { message = "map.yaml has invalid occupied/free thresholds"; return kErrLoadFailed; }
+
+    cv::Mat gray = cv::imread(png_path, cv::IMREAD_UNCHANGED);
+    if (gray.empty() || gray.type() != CV_8UC1) {
+        message = "map.png is missing or not an 8-bit grayscale image"; return kErrLoadFailed;
+    }
+    geo.width = gray.cols;
+    geo.height = gray.rows;
+
+    // 3. 栅格化；没有像素变化就不备份、不写盘
+    result->changed_pixels = ApplyStrokes(&gray, geo, th, strokes);
+    result->requires_reload = false;
+    if (result->changed_pixels == 0) {
+        result->revision = current_revision;
+        message = "no pixel changed: " + map_name;
+        return kErrNone;
+    }
+
+    // 4. 先备份三件套成一个可回退的版本，再写盘
+    std::string error;
+    if (!BackupSlamTriple(slam_dir, "grid_edit", &result->backup_ts, &error)) { message = error; return kErrIoFailed; }
+    PruneSlamBackups(slam_dir, map_backup_keep_count_);
+
+    std::vector<uchar> png_bytes;
+    if (!cv::imencode(".png", gray, png_bytes)) { message = "encode map.png failed"; return kErrIoFailed; }
+    if (!WriteFileAtomically(png_path, std::string(png_bytes.begin(), png_bytes.end()), &error)) {
+        message = error; return kErrIoFailed;
+    }
+
+    // 5. 底图像素变了 ⇒ 面积必须重算（口径同建图侧：自由像素 > (int)(255·(1−free_thresh))）；其余键原样保留
+    const int free_pixel_thresh = static_cast<int>(255.0 * (1.0 - th.free_thresh));
+    const double cell_area = geo.resolution * geo.resolution;
+    yaml.Set("total_area_m2", FormatArea(static_cast<double>(geo.width) * geo.height * cell_area));
+    yaml.Set("effective_area_m2", FormatArea(cv::countNonZero(gray > free_pixel_thresh) * cell_area));
+    yaml.Set("last_edited_at", LocalTimeIso8601());
+    if (!WriteFileAtomically(yaml_path, yaml.ToString(), &error)) {
+        message = error + " (map.png already written; roll back with backup " + result->backup_ts + ")";
+        return kErrIoFailed;
+    }
+
+    result->revision = GridRevision(slam_dir.string(), yaml);
+    result->requires_reload = (map_name == current_map_name_);
+    message = "grid edited: " + map_name + ", " + std::to_string(result->changed_pixels) +
+              " pixels changed, backup " + result->backup_ts +
+              (result->requires_reload ? "; reload the map to apply" : "");
+    return kErrNone;
+}
+
+
+int32_t MapManager::RollbackMapEx(const std::string& map_name, const std::string& version_ts,
+                                  GridEditResult* result, std::string& message) {
+    *result = GridEditResult{};
+    if (map_folder_.empty()) { message = "map_folder is not configured"; return kErrFolderMissing; }
+    if (map_name.empty())    { message = "map_name is empty"; return kErrNameInvalid; }
+    if (version_ts.find('/') != std::string::npos || version_ts == "." || version_ts == "..") {
+        message = "invalid version_ts: " + version_ts; return kErrVersionNotFound;
+    }
+    if (!IsLoadableMapDir(map_name)) { message = "map not found: " + map_name; return kErrNotFound; }
+    if (!MigrateLegacyMapLayout(map_name)) {
+        message = "failed to migrate legacy map layout: " + map_name; return kErrIoFailed;
+    }
+    const fs::path slam_dir = fs::path(map_folder_) / map_name / "slam";
+    MapOpLock op_lock(slam_dir.string());  // 与对齐 / 替换 / 重设原点互斥
+    if (!op_lock.acquired()) {
+        message = "map is being modified by another operation (align / replace / reset origin); retry later";
+        return kErrIoFailed;
+    }
+    MapYamlDirLock lock(slam_dir.string());
+
+    // 1. 确定目标版本（在快照之前定，否则「最新」会变成刚存的快照）
+    std::string target = version_ts;
+    if (target.empty()) {
+        const auto all = ListBackupTs(slam_dir);
+        if (all.empty()) { message = "no version to roll back to: " + map_name; return kErrVersionNotFound; }
+        target = all.back();
+    }
+    const fs::path target_dir = slam_dir / "backups" / ("backup." + target);
+    if (!fs::is_directory(target_dir) || !TripleComplete(target_dir)) {
+        message = "version not found or incomplete: " + target; return kErrVersionNotFound;
+    }
+
+    // 2. 先把当前状态存成一个版本，回滚到它即可撤销；当前三件不齐（地图已损坏）就跳过快照
+    std::string error;
+    if (TripleComplete(slam_dir)) {
+        if (!BackupSlamTriple(slam_dir, "rollback", &result->backup_ts, &error)) { message = error; return kErrIoFailed; }
+        PruneSlamBackups(slam_dir, map_backup_keep_count_, target);
+    } else {
+        LOG(WARNING) << "current base map of '" << map_name << "' is incomplete; rollback without snapshot";
+    }
+
+    // 3. 逐个原子恢复：必备三件 + 版本里存在的附带文件（点云、线特征等与底图同一坐标系，必须一起回去）
+    std::vector<std::string> files(std::begin(kTripleFiles), std::end(kTripleFiles));
+    for (const char* f : kVersionExtraFiles) {
+        if (fs::exists(target_dir / f)) files.emplace_back(f);
+    }
+    for (const auto& f : files) {
+        const fs::path tmp = slam_dir / (f + ".rbtmp");
+        boost::system::error_code ec;
+        fs::copy_file(target_dir / f, tmp, fs::copy_options::overwrite_existing, ec);
+        if (!ec) fs::rename(tmp, slam_dir / f, ec);
+        if (ec) {
+            fs::remove(tmp, ec);
+            message = "restore " + f + " failed: " + ec.message() +
+                      (result->backup_ts.empty() ? "" : " (state before rollback saved as " + result->backup_ts + ")");
+            return kErrIoFailed;
+        }
+    }
+
+    // 4. 回滚本身也是一次底图编辑：恢复出来的是旧版本的 last_edited_at，改成现在
+    const std::string yaml_path = (slam_dir / "map.yaml").string();
+    MapYamlDoc yaml = MapYamlDoc::Load(yaml_path);
+    yaml.Set("last_edited_at", LocalTimeIso8601());
+    if (!WriteFileAtomically(yaml_path, yaml.ToString(), &error)) {
+        LOG(WARNING) << "rollback of '" << map_name << "' restored, but stamping last_edited_at failed: " << error;
+    }
+
+    result->revision = GridRevision(slam_dir.string(), yaml);
+    result->requires_reload = (map_name == current_map_name_);
+    message = "base map of " + map_name + " rolled back to " + target +
+              (result->backup_ts.empty() ? "" : "; previous state saved as " + result->backup_ts) +
+              (result->requires_reload ? "; reload the map to apply" : "");
+    return kErrNone;
 }
 
 std::string MapManager::ParseOriginalName(const std::string& entry_name) {

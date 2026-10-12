@@ -1,5 +1,10 @@
 #include "map_manager_ros.hpp"
 
+#include <algorithm>
+#include <chrono>
+
+#include <cmath>
+
 #include <tf2_ros/buffer.h>
 
 #include <chrono>
@@ -22,6 +27,8 @@ MapManagerROS::MapManagerROS() : rclcpp::Node("map_manager") {
     this->declare_parameter<std::string>("map_trash_dirname", ".map_trash");
     this->declare_parameter<int>("map_trash_max_entries", 50);
     this->declare_parameter<double>("map_trash_max_total_gib", 10.0);
+    // 底图编辑产生的版本（slam/backups/backup.<ts>）保留份数，与 SLAM 侧 map_backup_keep_count 同义
+    this->declare_parameter<int>("map_backup_keep_count", 50);
 
     // 创建并加载配置
     config_ = std::make_unique<MapManagerConfig>(this->get_logger());
@@ -55,6 +62,8 @@ MapManagerROS::MapManagerROS() : rclcpp::Node("map_manager") {
         trash_opts.max_entries = this->get_parameter("map_trash_max_entries").as_int();
         trash_opts.max_total_gib = this->get_parameter("map_trash_max_total_gib").as_double();
         map_manager_->SetMapTrashOptions(trash_opts);
+        map_manager_->SetMapBackupKeepCount(
+            static_cast<int>(this->get_parameter("map_backup_keep_count").as_int()));
         RCLCPP_INFO(this->get_logger(),
                     "Map trash: %s, dir=%s, max_entries=%d, max_total=%.1f GiB",
                     trash_opts.enable ? "enabled" : "disabled",
@@ -99,7 +108,6 @@ MapManagerROS::MapManagerROS() : rclcpp::Node("map_manager") {
         "~/get_trashed_maps",
         std::bind(&MapManagerROS::GetTrashedMapsCallback, this, std::placeholders::_1, std::placeholders::_2),
         rmw_qos_profile_services_default, callback_group_services_);
-
     if (config_->IsUseDefaultMap()) {
         LoadDefaultMap();
     }
@@ -108,6 +116,23 @@ MapManagerROS::MapManagerROS() : rclcpp::Node("map_manager") {
     if (map_manager_->GetEpoch() == 0) {
         PublishMapAndNotify();
     }
+
+    // 同名实例保护：同一个服务名被多个进程同时提供时，一次请求会被每个实例各执行一遍
+    // （例如重复 ros2 run 留在后台的旧进程，会同时改写同一张地图）。启动后查一次 ROS 图，
+    // 已有同名节点就退出。只在启动时查：先起来的实例不受影响，退出的总是后来者。
+    single_instance_timer_ = this->create_wall_timer(std::chrono::seconds(2), [this]() {
+        single_instance_timer_->cancel();
+        const std::string me = this->get_fully_qualified_name();
+        const auto names = this->get_node_names();
+        const auto count = std::count(names.begin(), names.end(), me);
+        if (count > 1) {
+            RCLCPP_FATAL(this->get_logger(),
+                         "Another instance of node '%s' is already running (%ld found); exiting so that "
+                         "requests are not executed twice. Stop the old instance first.",
+                         me.c_str(), static_cast<long>(count));
+            rclcpp::shutdown();
+        }
+    });
 }
 
 
@@ -141,6 +166,37 @@ void MapManagerROS::LoadDefaultMap() {
     PublishMapAndNotify();
 }
 
+namespace {
+
+nav_interfaces::msg::MapInfo ToMsg(const MapCatalogEntry& e) {
+    nav_interfaces::msg::MapInfo m;
+    m.name = e.name;
+    m.map_path = e.map_path;
+    m.total_area_m2 = static_cast<float>(e.total_area_m2);
+    m.effective_area_m2 = static_cast<float>(e.effective_area_m2);
+    m.updated_at.sec = static_cast<int32_t>(e.updated_at);
+    m.updated_at.nanosec = 0;
+    m.created_at = e.created_at;
+    m.data_version = e.data_version;
+    m.thumbnail = e.thumbnail;
+    m.grid_revision = e.grid_revision;
+    m.display_yaw = static_cast<float>(e.display_yaw);
+    m.last_edited_at.sec = static_cast<int32_t>(e.last_edited_at);
+    m.last_edited_at.nanosec = 0;
+    for (const auto& v : e.versions) {
+        nav_interfaces::msg::MapVersion mv;
+        mv.version_ts = v.version_ts;
+        mv.saved_at.sec = static_cast<int32_t>(v.saved_at);
+        mv.saved_at.nanosec = 0;
+        mv.source = v.source;
+        mv.complete = v.complete;
+        m.versions.push_back(std::move(mv));
+    }
+    return m;
+}
+
+}  // namespace
+
 void MapManagerROS::GetMapsCallback(const std::shared_ptr<nav_interfaces::srv::GetMaps::Request> req,
                                     std::shared_ptr<nav_interfaces::srv::GetMaps::Response> res) {
     (void)req;
@@ -156,17 +212,7 @@ void MapManagerROS::GetMapsCallback(const std::shared_ptr<nav_interfaces::srv::G
         return;
     }
     for (const auto& e : map_manager_->ScanMapCatalog()) {
-        nav_interfaces::msg::MapInfo m;
-        m.name = e.name;
-        m.map_path = e.map_path;
-        m.total_area_m2 = static_cast<float>(e.total_area_m2);
-        m.effective_area_m2 = static_cast<float>(e.effective_area_m2);
-        m.updated_at.sec = static_cast<int32_t>(e.updated_at);
-        m.updated_at.nanosec = 0;
-        m.created_at = e.created_at;
-        m.data_version = e.data_version;
-        m.thumbnail = e.thumbnail;
-        res->maps.push_back(std::move(m));
+        res->maps.push_back(ToMsg(e));
     }
     res->success = true;
     res->error_code = MS::E_NONE;
@@ -199,15 +245,7 @@ void MapManagerROS::GetTrashedMapsCallback(
         t.archived_at.sec = static_cast<int32_t>(e.archived_at);
         t.archived_at.nanosec = 0;
         // 元数据与正常地图同口径（归档保留完整 slam/map.yaml）
-        t.map_info.name = e.map_info.name;
-        t.map_info.map_path = e.map_info.map_path;
-        t.map_info.total_area_m2 = static_cast<float>(e.map_info.total_area_m2);
-        t.map_info.effective_area_m2 = static_cast<float>(e.map_info.effective_area_m2);
-        t.map_info.updated_at.sec = static_cast<int32_t>(e.map_info.updated_at);
-        t.map_info.updated_at.nanosec = 0;
-        t.map_info.created_at = e.map_info.created_at;
-        t.map_info.data_version = e.map_info.data_version;
-        t.map_info.thumbnail = e.map_info.thumbnail;
+        t.map_info = ToMsg(e.map_info);
         res->entries.push_back(std::move(t));
     }
     res->success = true;
@@ -272,10 +310,46 @@ void MapManagerROS::MapManagerCommandCallback(const std::shared_ptr<nav_interfac
             code = map_manager_->TrashMapEx(req->map_name, message, entry);
             break;
         }
+        case MC::Request::OP_EDIT_GRID: {
+            std::vector<GridStrokeSpec> strokes;
+            strokes.reserve(req->strokes.size());
+            for (const auto& s : req->strokes) {
+                GridStrokeSpec spec;
+                spec.tool = s.tool;
+                spec.shape = s.shape;
+                // width_m 在消息里是 float32：0.45 会变成 0.449999988…，半径偏小，落在覆盖边界上的格
+                // 就会与前端（按十进制宽度计算）判得不一样。按 1 微米取整还原成前端给的十进制值。
+                spec.width_m = std::round(static_cast<double>(s.width_m) * 1e6) / 1e6;
+                for (const auto& p : s.points) spec.points.emplace_back(p.x, p.y);
+                strokes.push_back(std::move(spec));
+            }
+            MapManager::GridEditResult result;
+            code = map_manager_->EditGridEx(req->map_name, strokes, req->expected_revision, &result, message);
+            res->revision = result.revision;
+            res->backup_ts = result.backup_ts;
+            // 当前图不自动重发：导航仍用旧底图，由用户确认后重新加载生效
+            res->requires_reload = result.requires_reload;
+            break;
+        }
+        case MC::Request::OP_ROLLBACK: {
+            // 只恢复文件；回滚当前图不自动重新下发——要生效走 command_board rollback_map（会重新下发）
+            MapManager::GridEditResult result;
+            code = map_manager_->RollbackMapEx(req->map_name, req->version_ts, &result, message);
+            res->revision = result.revision;
+            res->backup_ts = result.backup_ts;
+            res->requires_reload = result.requires_reload;
+            break;
+        }
+        case MC::Request::OP_SET_DISPLAY_YAW: {
+            // 只是显示元数据：坐标、底图、定位都不变，当前图也不需要重新下发
+            code = map_manager_->SetDisplayYawEx(req->map_name, req->display_yaw, message);
+            break;
+        }
         default:
             code = MS::E_MAP_OP_INVALID;
             message = "invalid op " + std::to_string(req->op) +
-                      "; expected 1 (LOAD), 2 (REMOVE), 3 (RENAME), 4 (RESTORE) or 5 (TRASH)";
+                      "; expected 1 (LOAD), 2 (REMOVE), 3 (RENAME), 4 (RESTORE), 5 (TRASH), "
+                      "6 (EDIT_GRID), 7 (SET_DISPLAY_YAW) or 8 (ROLLBACK)";
             break;
     }
 
