@@ -480,7 +480,7 @@ void MapAssetManagerNode::setAssetsCallback(
     if (keep(SA::Request::KIND_EDGES))     for (const auto& e : edge_store_->getAll())      edges[e.id] = e;
     std::vector<std::string>& rej = res->rejected;
     bool guard_hit = false;
-    // 单条模式守卫：ADD_ONLY 已存在 → 1508；UPDATE_ONLY / REMOVE 不存在 → 1507（按当前集合查主键）
+    // 单条模式守卫：ADD_ONLY 已存在 → 2203080；UPDATE_ONLY / REMOVE 不存在 → 2203070（按当前集合查主键）
     auto guard = [&](const std::string& kind, const std::string& key, bool exists) -> bool {
         if (add_only && exists)                  { rej.push_back(kind + ":" + key + ":exists");    guard_hit = true; return false; }
         if ((update_only || remove) && !exists)  { rej.push_back(kind + ":" + key + ":not_found"); guard_hit = true; return false; }

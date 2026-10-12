@@ -373,19 +373,11 @@ def main() -> int:
 
     try:
         from nav_interfaces.msg import MapState
-        from nav_interfaces.srv import (
-            DeleteMap,
-            GetMapInfo,
-            GetMapList,
-            GetString,
-            LoadMap,
-            RenameMap,
-            RollbackMap,
-        )
+        # v1.11（DEC-029）：查询合并 GetMaps，写操作合并 MapManagerCommand；旧 DeleteMap/GetMapInfo/GetMapList/GetString/LoadMap/RenameMap 已删
+        from nav_interfaces.srv import GetMaps, MapManagerCommand, RollbackMap
         from nav_msgs.srv import GetMap
 
-        del DeleteMap, GetMapInfo, GetMapList, GetString
-        del LoadMap, RenameMap, RollbackMap, GetMap
+        del GetMaps, MapManagerCommand, RollbackMap, GetMap
         actual_fields = MapState.get_fields_and_field_types()
         expected_fields = {
             "header": "std_msgs/Header",

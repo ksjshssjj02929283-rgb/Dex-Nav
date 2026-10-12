@@ -15,6 +15,13 @@ MapManagerROS::MapManagerROS() : rclcpp::Node("map_manager") {
     // 声明 ROS 参数
     this->declare_parameter<std::string>("map_folder", "");
     this->declare_parameter<std::string>("map_name", "");
+    // 地图回收站：建图 overwrite 时旧地图目录整体 rename 到
+    // <map_folder>/<map_trash_dirname>/<name>_<ts>/，不再硬删。
+    // 保留 50 份为主判据，总容量上限为副判据（兜底极端大图）。
+    this->declare_parameter<bool>("map_trash_enable", true);
+    this->declare_parameter<std::string>("map_trash_dirname", ".map_trash");
+    this->declare_parameter<int>("map_trash_max_entries", 50);
+    this->declare_parameter<double>("map_trash_max_total_gib", 10.0);
 
     // 创建并加载配置
     config_ = std::make_unique<MapManagerConfig>(this->get_logger());
@@ -41,6 +48,22 @@ MapManagerROS::MapManagerROS() : rclcpp::Node("map_manager") {
 
     // 使用配置初始化 MapManager
     map_manager_ = std::make_unique<MapManager>(config_->GetMapFolder());
+    {
+        MapManager::MapTrashOptions trash_opts;
+        trash_opts.enable = this->get_parameter("map_trash_enable").as_bool();
+        trash_opts.dirname = this->get_parameter("map_trash_dirname").as_string();
+        trash_opts.max_entries = this->get_parameter("map_trash_max_entries").as_int();
+        trash_opts.max_total_gib = this->get_parameter("map_trash_max_total_gib").as_double();
+        map_manager_->SetMapTrashOptions(trash_opts);
+        RCLCPP_INFO(this->get_logger(),
+                    "Map trash: %s, dir=%s, max_entries=%d, max_total=%.1f GiB",
+                    trash_opts.enable ? "enabled" : "disabled",
+                    trash_opts.dirname.c_str(), trash_opts.max_entries,
+                    trash_opts.max_total_gib);
+        // 构造函数里已跑过一次 UpdateMapList（彼时 options 还是默认值），
+        // 这里按实际配置补一次扫描与轮换。
+        map_manager_->UpdateMapList();
+    }
 
     RCLCPP_INFO(this->get_logger(), "Map folder: %s", config_->GetMapFolder().c_str());
     RCLCPP_INFO(this->get_logger(), "Default map name: %s", config_->GetDefaultMapName().c_str());
@@ -71,6 +94,10 @@ MapManagerROS::MapManagerROS() : rclcpp::Node("map_manager") {
     map_command_srv_ = this->create_service<nav_interfaces::srv::MapManagerCommand>(
         "~/map_command",
         std::bind(&MapManagerROS::MapManagerCommandCallback, this, std::placeholders::_1, std::placeholders::_2),
+        rmw_qos_profile_services_default, callback_group_services_);
+    get_trashed_maps_srv_ = this->create_service<nav_interfaces::srv::GetTrashedMaps>(
+        "~/get_trashed_maps",
+        std::bind(&MapManagerROS::GetTrashedMapsCallback, this, std::placeholders::_1, std::placeholders::_2),
         rmw_qos_profile_services_default, callback_group_services_);
 
     if (config_->IsUseDefaultMap()) {
@@ -137,12 +164,56 @@ void MapManagerROS::GetMapsCallback(const std::shared_ptr<nav_interfaces::srv::G
         m.updated_at.sec = static_cast<int32_t>(e.updated_at);
         m.updated_at.nanosec = 0;
         m.created_at = e.created_at;
+        m.data_version = e.data_version;
         m.thumbnail = e.thumbnail;
         res->maps.push_back(std::move(m));
     }
     res->success = true;
     res->error_code = MS::E_NONE;
     res->message = std::to_string(res->maps.size()) + " maps";
+}
+
+void MapManagerROS::GetTrashedMapsCallback(
+    const std::shared_ptr<nav_interfaces::srv::GetTrashedMaps::Request> req,
+    std::shared_ptr<nav_interfaces::srv::GetTrashedMaps::Response> res) {
+    (void)req;
+    using MS = nav_interfaces::msg::MapState;
+    if (map_manager_->GetMapFolder().empty()) {
+        res->success = false;
+        res->error_code = MS::E_MAP_FOLDER_MISSING;
+        res->message = "map_folder is not configured";
+        return;
+    }
+    const auto& opts = map_manager_->GetMapTrashOptions();
+    if (!opts.enable) {
+        res->success = false;
+        res->error_code = MS::E_MAP_TRASH_DISABLED;
+        res->message = "map trash is disabled (map_trash_enable=false)";
+        return;
+    }
+    res->trash_folder = map_manager_->GetMapTrashDir();
+    for (const auto& e : map_manager_->ScanTrashCatalog()) {
+        nav_interfaces::msg::TrashedMapInfo t;
+        t.entry_name = e.entry_name;
+        t.original_name = e.original_name;
+        t.archived_at.sec = static_cast<int32_t>(e.archived_at);
+        t.archived_at.nanosec = 0;
+        // 元数据与正常地图同口径（归档保留完整 slam/map.yaml）
+        t.map_info.name = e.map_info.name;
+        t.map_info.map_path = e.map_info.map_path;
+        t.map_info.total_area_m2 = static_cast<float>(e.map_info.total_area_m2);
+        t.map_info.effective_area_m2 = static_cast<float>(e.map_info.effective_area_m2);
+        t.map_info.updated_at.sec = static_cast<int32_t>(e.map_info.updated_at);
+        t.map_info.updated_at.nanosec = 0;
+        t.map_info.created_at = e.map_info.created_at;
+        t.map_info.data_version = e.map_info.data_version;
+        t.map_info.thumbnail = e.map_info.thumbnail;
+        res->entries.push_back(std::move(t));
+    }
+    res->success = true;
+    res->error_code = MS::E_NONE;
+    res->message = std::to_string(res->entries.size()) + " trashed maps (kept up to " +
+                   std::to_string(opts.max_entries) + ")";
 }
 
 void MapManagerROS::MapManagerCommandCallback(const std::shared_ptr<nav_interfaces::srv::MapManagerCommand::Request> req,
@@ -181,10 +252,30 @@ void MapManagerROS::MapManagerCommandCallback(const std::shared_ptr<nav_interfac
             }
             break;
         }
+        case MC::Request::OP_RESTORE: {
+            // 从回收站取回：整目录 rename 回 map_folder。护栏在核心层
+            // （绝不覆盖 / 不动当前图 / move 非 copy），此处只做副作用处理。
+            std::string restored;
+            code = map_manager_->RestoreMapEx(req->map_name, req->new_name, message, restored);
+            if (code == MS::E_NONE) {
+                // 恢复出的是一张「新出现的地图」，不改变当前加载图，
+                // 因此不 PublishMapAndNotify、不动 default_map —— 要用得再显式 OP_LOAD。
+                RCLCPP_WARN(this->get_logger(), "Map restored from trash: %s -> %s",
+                            req->map_name.c_str(), restored.c_str());
+            }
+            break;
+        }
+        case MC::Request::OP_TRASH: {
+            // 整目录移入回收站（可恢复的删除）。护栏在核心层：不动当前图、
+            // 回收站未启用时拒绝而不是退化为硬删。
+            std::string entry;
+            code = map_manager_->TrashMapEx(req->map_name, message, entry);
+            break;
+        }
         default:
             code = MS::E_MAP_OP_INVALID;
             message = "invalid op " + std::to_string(req->op) +
-                      "; expected 1 (LOAD), 2 (REMOVE) or 3 (RENAME)";
+                      "; expected 1 (LOAD), 2 (REMOVE), 3 (RENAME), 4 (RESTORE) or 5 (TRASH)";
             break;
     }
 

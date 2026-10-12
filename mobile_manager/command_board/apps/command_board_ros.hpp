@@ -11,6 +11,7 @@
 
 #pragma once
 
+#include <set>
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
 
@@ -32,6 +33,8 @@
 #include "nav_interfaces/msg/map_state.hpp"
 #include <nav_interfaces/srv/map_manager_command.hpp>
 #include "nav_interfaces/srv/relocalize.hpp"
+#include "nav_interfaces/srv/align_map.hpp"
+#include "nav_interfaces/srv/replace_map.hpp"
 #include "nav_interfaces/srv/reset_map_origin_by_xy_yaw.hpp"
 #include "nav_interfaces/srv/transform_assets.hpp"
 #include "map_version_manager.hpp"
@@ -105,6 +108,105 @@ private:
 
     // 内部：调用子进程 reset_map_origin_tool
     bool RunResetMapOriginTool(const std::string& map_name, double x, double y, double yaw, std::string& out_log);
+
+    // ── 地图对齐编排────────────────────────────────────────
+    // 与 reset_map_origin 同一条链路（出服务 → popen 调 SLAM tool →
+    // 调 transform_assets），差别只在角度由工具自动估出而非调用方给定。
+    // 两处刻意偏离 reset_map_origin 的既有实现：
+    //   ① 串行而非并行——assets 是毫秒级、tool 是秒级，并行收益近零，
+    //      而并行 + 失败不回滚会造成「底图转了资产没转」且无任何标记；
+    //   ② 失败必须回滚——底图从 slam/backups/ 恢复，资产从 assets_backups/ 恢复。
+    void AlignMapCallback(const std::shared_ptr<nav_interfaces::srv::AlignMap::Request> req,
+                          std::shared_ptr<nav_interfaces::srv::AlignMap::Response> res);
+
+    // align_map_tool 一次运行的完整结果。
+    // 跨进程拿不到 C++ 对象——工具是 popen 起的独立进程，只能靠 stdout 的
+    // [ALIGN_RESULT] 标记行传回。本结构体是那一行在编排侧的还原，
+    // 字段与 nav_interfaces/srv/AlignMap.srv 的响应一一对应。
+    // 若将来把 SLAM 侧改成常驻 ROS service（§9 ① 的方案 B），
+    // 本结构体可直接换成 service 响应，调用点签名不变。
+    struct AlignToolResult {
+        // 工具自报的业务结果（来自标记行）
+        bool ok = false;
+        std::string reason;
+        double yaw_rad = 0.0;
+        double yaw_deg = 0.0;
+        double orthogonality_error_deg = 0.0;
+        double rms_axis_residual_deg = 0.0;
+        int candidate_lines = 0;
+        bool applied = false;
+        double residual_yaw_deg = 0.0;
+
+        // 进程层结果（与业务结果分开：进程起不来 / 没打标记行时 ok 无意义）
+        bool process_ok = false;   // 子进程退出码为 0
+        std::string log;           // 合并捕获的 stdout+stderr，失败时用于报错
+        // 两者都成立才算这次调用真的可用
+        bool usable() const { return process_ok && ok; }
+    };
+    // 调 align_map_tool，把结果整体作为返回值带回。dry_run=true 时只估角不改文件。
+    AlignToolResult RunAlignMapTool(const std::string& map_name, bool dry_run);
+
+    // 资产备份 / 恢复：transform_assets 自身没有备份能力，回滚要靠这层。
+    // 备份到 <map_folder>/<map>/assets_backups/backup_<ts>/，与 SLAM 侧
+    // slam/backups/ 对称（同为下划线前缀，不与建图节点的 backup.<ts> 轮换冲突）。
+    bool BackupMapAssets(const std::string& map_name, std::string& out_backup_dir,
+                         std::string& out_msg);
+    bool RestoreMapAssets(const std::string& backup_dir, const std::string& map_name,
+                          std::string& out_msg);
+    // 底图回滚：把 <map>/slam/backups/<最新 backup_*>/ 的文件拷回 slam/
+    bool RestoreSlamBackup(const std::string& map_name, std::string& out_msg);
+    // 底图回滚（指定备份目录）：只拷回本次操作自己创建的那份备份，
+    // 避免工具在创建备份前就失败时误用更早一次操作的备份。
+    bool RestoreSlamFromBackupDir(const std::string& map_name, const std::string& backup_dir,
+                                  std::string& out_msg);
+    // <map>/slam/backups/ 下现有的 backup_* 目录名。工具失败时，用执行前后的差集
+    // 判断本次是否已经创建了备份（即是否可能已经改了文件），不依赖工具的结果行。
+    std::set<std::string> ListSlamBackupDirs(const std::string& map_name) const;
+    // 工具失败后的底图回滚。优先用工具结果行报告的 backup_dir，否则取执行前后
+    // 差集里最新的一份；两者都没有 = 工具在备份之前就失败了，未改任何文件。
+    // 返回值：0 = 未改文件，无需回滚；1 = 已回滚；-1 = 需要回滚但回滚失败。
+    int RollbackSlamAfterToolFailure(const std::string& map_name,
+                                     const std::set<std::string>& backups_before,
+                                     const std::string& reported_backup_dir,
+                                     std::string& out_msg);
+
+    // ── 地图替换编排────────────────────────────────────────
+    // 与对齐同一套串行编排与回滚，差别：
+    //   ① 坐标系沿用 target，资产坐标不动，不调 transform_assets、不备份资产；
+    //   ② 正式执行时把 dry_run 求出的变换以 manual 模式传给工具——执行的就是
+    //      调用方看到并认可的那个变换，而不是重新匹配出的另一个结果；
+    //   ③ 成功后 source 地图移入回收站（可 OP_RESTORE 取回）。
+    void ReplaceMapCallback(const std::shared_ptr<nav_interfaces::srv::ReplaceMap::Request> req,
+                            std::shared_ptr<nav_interfaces::srv::ReplaceMap::Response> res);
+
+    // replace_map_tool 一次运行的完整结果，来自 stdout 的 [REPLACE_RESULT] 标记行。
+    struct ReplaceToolResult {
+        bool ok = false;
+        std::string reason;
+        double x = 0.0, y = 0.0, yaw_rad = 0.0, yaw_deg = 0.0;
+        int inliers = 0;
+        bool converged = false, degraded = false;
+        std::string stop_reason;
+        double inlier_rms_xy_m = 0.0, inlier_rms_yaw_deg = 0.0;
+        double src_known_area_m2 = 0.0, tgt_known_area_m2 = 0.0;
+        bool coverage_warning = false;
+        double total_area_m2 = 0.0, effective_area_m2 = 0.0;
+        std::string data_version;
+        bool align_evaluated = false;
+        double align_residual_yaw_deg = 0.0;
+        std::string backup_dir;     // 工具本次创建的底图备份；空 = 未创建（未改文件）
+        bool applied = false;
+
+        bool process_ok = false;    // 子进程退出码为 0
+        std::string log;
+        bool usable() const { return process_ok && ok; }
+    };
+    // manual=false：自动匹配；manual=true：使用给定的 (x, y, yaw_rad)。
+    ReplaceToolResult RunReplaceMapTool(const std::string& target_map, const std::string& source_map,
+                                        bool dry_run, bool manual, double x, double y,
+                                        double yaw_rad);
+    // 解析地图目录：优先 map_folder_（来自 map_state），退回 ~/.dexe/data/maps
+    std::string ResolveMapDir(const std::string& map_name) const;
 
     // Tunable parameters (declared in ctor).
     int    reset_origin_sample_frames_{11};
@@ -181,6 +283,14 @@ private:
     // 对外暴露的重置原点服务
     rclcpp::Service<nav_interfaces::srv::ResetMapOriginByXYYaw>::SharedPtr reset_origin_xyyaw_srv_;
     rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr reset_origin_robot_pose_srv_;
+    rclcpp::Service<nav_interfaces::srv::AlignMap>::SharedPtr align_map_srv_;
+    rclcpp::Service<nav_interfaces::srv::ReplaceMap>::SharedPtr replace_map_srv_;
+
+    // 对齐 / 替换 / 重置原点互斥：三者都会改地图文件，不允许并发
+    std::atomic<bool> map_transform_busy_{false};
+    // 对齐默认跳过阈值（度）。与 pbstream_check ALIGN-01 的 --align_tolerance_deg
+    // 同源，避免「工具说已对齐、编排说还要再转」的两套标准。
+    double align_min_yaw_deg_{1.0};
 
     // TF buffer（用于采样机器人位姿）
     std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
@@ -188,6 +298,7 @@ private:
 
     // 当前地图名称（从 map_manager/map_state 话题获取）
     std::string current_map_name_;
+    std::string current_map_folder_;
     rclcpp::Subscription<nav_interfaces::msg::MapState>::SharedPtr map_state_sub_;
 
     std::unique_ptr<Localization_SM> localization_sm_;

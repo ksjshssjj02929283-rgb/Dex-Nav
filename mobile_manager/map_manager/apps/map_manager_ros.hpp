@@ -4,7 +4,9 @@
 #include <iostream>
 #include <memory>
 #include <nav_interfaces/msg/map_state.hpp>
+#include <nav_interfaces/msg/trashed_map_info.hpp>
 #include <nav_interfaces/srv/get_maps.hpp>
+#include <nav_interfaces/srv/get_trashed_maps.hpp>
 #include <nav_interfaces/srv/map_manager_command.hpp>
 #include <nav_msgs/msg/map_meta_data.hpp>
 #include <nav_msgs/msg/occupancy_grid.hpp>
@@ -32,6 +34,10 @@ private:
 
     void GetMapsCallback(const std::shared_ptr<nav_interfaces::srv::GetMaps::Request> req,
                          std::shared_ptr<nav_interfaces::srv::GetMaps::Response> res);
+    // 地图回收站查询：列出可恢复的归档条目。不可见的回收站等于慢一点的删除。
+    void GetTrashedMapsCallback(const std::shared_ptr<nav_interfaces::srv::GetTrashedMaps::Request> req,
+                                std::shared_ptr<nav_interfaces::srv::GetTrashedMaps::Response> res);
+
     void MapManagerCommandCallback(const std::shared_ptr<nav_interfaces::srv::MapManagerCommand::Request> req,
                             std::shared_ptr<nav_interfaces::srv::MapManagerCommand::Response> res);
     void GetCurrentMapDataCallback(const std::shared_ptr<nav_msgs::srv::GetMap::Request> req,
@@ -46,6 +52,7 @@ private:
     rclcpp::Service<nav_msgs::srv::GetMap>::SharedPtr get_map_data_srv_;
     rclcpp::Service<nav_interfaces::srv::GetMaps>::SharedPtr get_maps_srv_;
     rclcpp::Service<nav_interfaces::srv::MapManagerCommand>::SharedPtr map_command_srv_;
+    rclcpp::Service<nav_interfaces::srv::GetTrashedMaps>::SharedPtr get_trashed_maps_srv_;
 
     std::unique_ptr<MapManager> map_manager_;
     std::unique_ptr<MapManagerConfig> config_;

@@ -18,6 +18,9 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
+#include <ctime>
+#include <filesystem>
 #include <stdexcept>
 #include <string>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
@@ -92,7 +95,10 @@ CommandBoardManagerROS::CommandBoardManagerROS() : rclcpp::Node("command_board_m
     auto map_state_qos = rclcpp::QoS(1).transient_local().reliable();
     map_state_sub_ = this->create_subscription<nav_interfaces::msg::MapState>(
         "map_manager/map_state", map_state_qos,
-        [this](const nav_interfaces::msg::MapState::SharedPtr msg) { current_map_name_ = msg->map_name; });
+        [this](const nav_interfaces::msg::MapState::SharedPtr msg) {
+            current_map_name_ = msg->map_name;
+            current_map_folder_ = msg->map_folder;  // 对齐编排解析地图目录要用
+        });
 
     // ── 对外服务 ──────────────────────────────────────────────────
     reset_origin_xyyaw_srv_ = this->create_service<nav_interfaces::srv::ResetMapOriginByXYYaw>(
@@ -104,6 +110,19 @@ CommandBoardManagerROS::CommandBoardManagerROS() : rclcpp::Node("command_board_m
     reset_origin_robot_pose_srv_ = this->create_service<std_srvs::srv::Trigger>(
         "~/reset_map_origin_by_robot_pose",
         std::bind(&CommandBoardManagerROS::ResetMapOriginByRobotPoseCallback, this, std::placeholders::_1,
+                  std::placeholders::_2),
+        rmw_qos_profile_services_default, callback_group_);
+
+    align_min_yaw_deg_ = this->declare_parameter("align_min_yaw_deg", align_min_yaw_deg_);
+    align_map_srv_ = this->create_service<nav_interfaces::srv::AlignMap>(
+        "~/align_map",
+        std::bind(&CommandBoardManagerROS::AlignMapCallback, this, std::placeholders::_1,
+                  std::placeholders::_2),
+        rmw_qos_profile_services_default, callback_group_);
+
+    replace_map_srv_ = this->create_service<nav_interfaces::srv::ReplaceMap>(
+        "~/replace_map",
+        std::bind(&CommandBoardManagerROS::ReplaceMapCallback, this, std::placeholders::_1,
                   std::placeholders::_2),
         rmw_qos_profile_services_default, callback_group_);
 
@@ -230,7 +249,7 @@ CommandBoardManagerROS::CommandBoardManagerROS() : rclcpp::Node("command_board_m
     RCLCPP_INFO(get_logger(),
                 "CommandBoardManagerROS initialized. "
                 "Services: ~/reset_map_origin_by_xyyaw, ~/reset_map_origin_by_robot_pose, "
-                "~/backup_unified, ~/rollback_map");
+                "~/align_map, ~/replace_map, ~/backup_unified, ~/rollback_map");
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -957,6 +976,908 @@ void CommandBoardManagerROS::HandleLocalizationSuccess() {
 void CommandBoardManagerROS::StopRobotMovement() {
     // 创建并调用停止运动的服务客户端
     navigation_action_client_->async_cancel_all_goals();
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// 地图对齐编排
+// 与 reset_map_origin 同一条链路，差别只在角度由工具自动估出。
+// 两处刻意偏离既有实现：串行代替并行、失败必须回滚（见 hpp 注释）。
+// ══════════════════════════════════════════════════════════════════════
+
+namespace {
+
+namespace cbfs = std::filesystem;
+
+// 极简 JSON 取值器。只用于解析**本编排自己调起的** align_map_tool 的
+// --emit_json 输出：单行、扁平、键已知，不需要通用解析器。
+// 找不到键时返回 false，调用方保留默认值。
+bool JsonFindRaw(const std::string& json, const std::string& key,
+                 std::string& out_raw) {
+    const std::string pattern = "\"" + key + "\"";
+    const size_t k = json.find(pattern);
+    if (k == std::string::npos) return false;
+    size_t c = json.find(':', k + pattern.size());
+    if (c == std::string::npos) return false;
+    ++c;
+    while (c < json.size() && (json[c] == ' ' || json[c] == '\t')) ++c;
+    size_t e = c;
+    if (e < json.size() && json[e] == '"') {  // 字符串值
+        ++e;
+        const size_t start = e;
+        while (e < json.size() && json[e] != '"') ++e;
+        out_raw = json.substr(start, e - start);
+        return true;
+    }
+    while (e < json.size() && json[e] != ',' && json[e] != '}') ++e;
+    out_raw = json.substr(c, e - c);
+    // 去尾空白
+    while (!out_raw.empty() && (out_raw.back() == ' ' || out_raw.back() == '\n' ||
+                                out_raw.back() == '\r' || out_raw.back() == '\t')) {
+        out_raw.pop_back();
+    }
+    return !out_raw.empty();
+}
+
+bool JsonGetDouble(const std::string& json, const std::string& key, double* out) {
+    std::string raw;
+    if (!JsonFindRaw(json, key, raw)) return false;
+    try {
+        *out = std::stod(raw);
+    } catch (const std::exception&) {
+        return false;
+    }
+    return true;
+}
+
+bool JsonGetInt(const std::string& json, const std::string& key, int* out) {
+    double d = 0.0;
+    if (!JsonGetDouble(json, key, &d)) return false;
+    *out = static_cast<int>(d);
+    return true;
+}
+
+bool JsonGetBool(const std::string& json, const std::string& key, bool* out) {
+    std::string raw;
+    if (!JsonFindRaw(json, key, raw)) return false;
+    *out = (raw == "true" || raw == "1");
+    return true;
+}
+
+bool JsonGetString(const std::string& json, const std::string& key,
+                   std::string* out) {
+    return JsonFindRaw(json, key, *out);
+}
+
+std::string MakeStamp() {
+    const std::time_t now = std::time(nullptr);
+    std::tm tm_buf{};
+    localtime_r(&now, &tm_buf);
+    char ts[32];
+    std::strftime(ts, sizeof(ts), "%Y%m%d_%H%M%S", &tm_buf);
+    return std::string(ts);
+}
+
+}  // namespace
+
+std::string CommandBoardManagerROS::ResolveMapDir(const std::string& map_name) const {
+    if (map_name.empty()) return "";
+    if (!current_map_folder_.empty()) {
+        return (cbfs::path(current_map_folder_) / map_name).string();
+    }
+    const char* home = std::getenv("HOME");
+    if (home == nullptr) return "";
+    return (cbfs::path(home) / ".dexe" / "data" / "maps" / map_name).string();
+}
+
+CommandBoardManagerROS::AlignToolResult CommandBoardManagerROS::RunAlignMapTool(
+    const std::string& map_name, const bool dry_run) {
+    AlignToolResult out;
+    const std::string map_dir = ResolveMapDir(map_name);
+    if (map_dir.empty()) {
+        out.reason = "map_dir_unresolved";
+        out.log = "cannot resolve map directory for '" + map_name + "'";
+        return out;
+    }
+
+    char cmd[2048];
+    std::snprintf(cmd, sizeof(cmd),
+                  "ros2 run cartographer_ros align_map_tool"
+                  " --map_dir \"%s\""
+                  "%s"
+                  " --i_know_assets_will_break"
+                  " 2>&1",
+                  map_dir.c_str(), dry_run ? " --dry_run" : "");
+    // --i_know_assets_will_break：本编排随后会调 transform_assets 把资产一起转，
+    // 所以这里是「正确路径」，工具那道确认门不该拦我们。裸跑 tool 仍会被拦。
+    RCLCPP_INFO(get_logger(), "RunAlignMapTool: %s", cmd);
+
+    FILE* pipe = popen(cmd, "r");
+    if (pipe == nullptr) {
+        out.reason = "popen_failed";
+        out.log = "popen failed";
+        return out;
+    }
+    char buf[256];
+    while (fgets(buf, sizeof(buf), pipe) != nullptr) out.log += buf;
+    const int rc = pclose(pipe);
+    out.process_ok = (rc == 0);
+
+    // 从捕获的 stdout 里取**最后一条** [ALIGN_RESULT] 标记行。
+    // 取最后一条而不是第一条：glog 的 alsologtostderr 与工具日志混在同一个流里，
+    // 而工具在失败路径会先打结果行再 LOG(FATAL)，正常路径也只打一条——
+    // 取最后一条对两种情况都正确，且不受前面任何日志文本影响。
+    // 无论退出码如何都要解析：估角失败时工具非零退出，但结果行里带着 reason
+    // （no_line_features / no_reliable_orthogonal_structure），那正是要回给调用方的。
+    constexpr const char* kMarker = "[ALIGN_RESULT]";
+    const size_t marker_pos = out.log.rfind(kMarker);
+    if (marker_pos != std::string::npos) {
+        const size_t line_end = out.log.find('\n', marker_pos);
+        const std::string json = out.log.substr(
+            marker_pos, line_end == std::string::npos ? std::string::npos
+                                                      : line_end - marker_pos);
+        JsonGetBool(json, "ok", &out.ok);
+        JsonGetString(json, "reason", &out.reason);
+        JsonGetDouble(json, "yaw_rad", &out.yaw_rad);
+        JsonGetDouble(json, "yaw_deg", &out.yaw_deg);
+        JsonGetDouble(json, "orthogonality_error_deg", &out.orthogonality_error_deg);
+        JsonGetDouble(json, "rms_axis_residual_deg", &out.rms_axis_residual_deg);
+        JsonGetInt(json, "candidate_lines", &out.candidate_lines);
+        JsonGetBool(json, "applied", &out.applied);
+        JsonGetDouble(json, "residual_yaw_deg", &out.residual_yaw_deg);
+    } else {
+        out.reason = "no_result_line";
+        RCLCPP_ERROR(get_logger(),
+                     "align_map_tool printed no %s line; tool version mismatch?",
+                     kMarker);
+    }
+
+    if (!out.process_ok) {
+        RCLCPP_ERROR(get_logger(), "align_map_tool exited with code %d (reason=%s)",
+                     rc, out.reason.c_str());
+    }
+    return out;
+}
+
+bool CommandBoardManagerROS::BackupMapAssets(const std::string& map_name,
+                                             std::string& out_backup_dir,
+                                             std::string& out_msg) {
+    const std::string map_dir = ResolveMapDir(map_name);
+    if (map_dir.empty()) {
+        out_msg = "cannot resolve map directory";
+        return false;
+    }
+    std::error_code ec;
+    // 只备份实际存在的资产目录；都不存在时视为成功（无资产可丢）。
+    std::vector<std::string> subs;
+    for (const char* s : {"assets", "versions"}) {
+        const cbfs::path p = cbfs::path(map_dir) / s;
+        if (cbfs::is_directory(p, ec) && !ec) subs.push_back(s);
+    }
+    if (subs.empty()) {
+        out_backup_dir.clear();
+        out_msg = "no assets to backup";
+        return true;
+    }
+    // 下划线前缀，与 SLAM 侧 slam/backups/backup_<ts>/ 对称；
+    // 建图节点的 AtomicDirSwap 只认点号前缀 backup.<ts>，两者互不干扰。
+    const cbfs::path backup_root = cbfs::path(map_dir) / "assets_backups";
+    const cbfs::path backup_dir = backup_root / ("backup_" + MakeStamp());
+    cbfs::create_directories(backup_dir, ec);
+    if (ec) {
+        out_msg = "failed to create " + backup_dir.string() + ": " + ec.message();
+        return false;
+    }
+    for (const auto& s : subs) {
+        // copy 而非 move：备份期间资产仍要能被 transform_assets 正常读写。
+        cbfs::copy(cbfs::path(map_dir) / s, backup_dir / s,
+                   cbfs::copy_options::recursive, ec);
+        if (ec) {
+            out_msg = "failed to backup " + s + ": " + ec.message();
+            return false;
+        }
+    }
+    out_backup_dir = backup_dir.string();
+    out_msg = "assets backed up to " + out_backup_dir;
+    RCLCPP_INFO(get_logger(), "%s", out_msg.c_str());
+    return true;
+}
+
+bool CommandBoardManagerROS::RestoreMapAssets(const std::string& backup_dir,
+                                              const std::string& map_name,
+                                              std::string& out_msg) {
+    if (backup_dir.empty()) {
+        out_msg = "no assets backup to restore";
+        return true;  // 本就没备份 = 没东西要恢复
+    }
+    const std::string map_dir = ResolveMapDir(map_name);
+    std::error_code ec;
+    for (const char* s : {"assets", "versions"}) {
+        const cbfs::path src = cbfs::path(backup_dir) / s;
+        if (!cbfs::is_directory(src, ec) || ec) continue;
+        const cbfs::path dst = cbfs::path(map_dir) / s;
+        cbfs::remove_all(dst, ec);
+        cbfs::copy(src, dst, cbfs::copy_options::recursive, ec);
+        if (ec) {
+            out_msg = "failed to restore " + std::string(s) + ": " + ec.message();
+            return false;
+        }
+    }
+    out_msg = "assets restored from " + backup_dir;
+    RCLCPP_WARN(get_logger(), "%s", out_msg.c_str());
+    return true;
+}
+
+bool CommandBoardManagerROS::RestoreSlamBackup(const std::string& map_name,
+                                               std::string& out_msg) {
+    const std::string map_dir = ResolveMapDir(map_name);
+    const cbfs::path slam_dir = cbfs::path(map_dir) / "slam";
+    const cbfs::path backups = slam_dir / "backups";
+    std::error_code ec;
+    if (!cbfs::is_directory(backups, ec) || ec) {
+        out_msg = "no slam/backups directory; cannot roll back base map";
+        return false;
+    }
+    // align_map_tool 每次执行都新建 backup_<ts>/，取最新的一份。
+    cbfs::path latest;
+    std::filesystem::file_time_type latest_time{};
+    for (const auto& e : cbfs::directory_iterator(backups, ec)) {
+        if (ec) break;
+        if (!e.is_directory()) continue;
+        if (e.path().filename().string().rfind("backup_", 0) != 0) continue;
+        std::error_code t_ec;
+        const auto t = cbfs::last_write_time(e.path(), t_ec);
+        if (t_ec) continue;
+        if (latest.empty() || t > latest_time) {
+            latest = e.path();
+            latest_time = t;
+        }
+    }
+    if (latest.empty()) {
+        out_msg = "slam/backups has no backup_* entry; cannot roll back";
+        return false;
+    }
+    return RestoreSlamFromBackupDir(map_name, latest.string(), out_msg);
+}
+
+bool CommandBoardManagerROS::RestoreSlamFromBackupDir(const std::string& map_name,
+                                                      const std::string& backup_dir,
+                                                      std::string& out_msg) {
+    const cbfs::path slam_dir = cbfs::path(ResolveMapDir(map_name)) / "slam";
+    std::error_code ec;
+    if (backup_dir.empty() || !cbfs::is_directory(backup_dir, ec) || ec) {
+        out_msg = "backup directory not found: " + backup_dir;
+        return false;
+    }
+    int restored = 0;
+    for (const auto& f : cbfs::directory_iterator(backup_dir, ec)) {
+        if (ec) break;
+        if (!f.is_regular_file()) continue;
+        cbfs::copy_file(f.path(), slam_dir / f.path().filename(),
+                        cbfs::copy_options::overwrite_existing, ec);
+        if (ec) {
+            out_msg = "failed to restore " + f.path().filename().string() + ": " +
+                      ec.message();
+            return false;
+        }
+        ++restored;
+    }
+    out_msg = "base map restored from " + backup_dir + " (" +
+              std::to_string(restored) + " files)";
+    RCLCPP_WARN(get_logger(), "%s", out_msg.c_str());
+    return true;
+}
+
+std::set<std::string> CommandBoardManagerROS::ListSlamBackupDirs(
+    const std::string& map_name) const {
+    std::set<std::string> out;
+    const cbfs::path backups = cbfs::path(ResolveMapDir(map_name)) / "slam" / "backups";
+    std::error_code ec;
+    if (!cbfs::is_directory(backups, ec) || ec) return out;
+    for (const auto& e : cbfs::directory_iterator(backups, ec)) {
+        if (ec) break;
+        if (!e.is_directory()) continue;
+        const std::string name = e.path().filename().string();
+        if (name.rfind("backup_", 0) == 0) out.insert(name);
+    }
+    return out;
+}
+
+int CommandBoardManagerROS::RollbackSlamAfterToolFailure(
+    const std::string& map_name, const std::set<std::string>& backups_before,
+    const std::string& reported_backup_dir, std::string& out_msg) {
+    std::string backup_dir = reported_backup_dir;
+    std::error_code ec;
+    if (backup_dir.empty() || !cbfs::is_directory(backup_dir, ec) || ec) {
+        backup_dir.clear();
+        // 工具可能异常退出、没打结果行：以执行前后 backups/ 的差集为准。
+        const cbfs::path root = cbfs::path(ResolveMapDir(map_name)) / "slam" / "backups";
+        std::filesystem::file_time_type newest{};
+        for (const auto& name : ListSlamBackupDirs(map_name)) {
+            if (backups_before.count(name)) continue;
+            std::error_code t_ec;
+            const auto t = cbfs::last_write_time(root / name, t_ec);
+            if (t_ec) continue;
+            if (backup_dir.empty() || t > newest) {
+                backup_dir = (root / name).string();
+                newest = t;
+            }
+        }
+    }
+    if (backup_dir.empty()) {
+        // 工具先备份、后写文件；没有新备份 = 失败发生在备份之前，底图未被改动。
+        out_msg = "no backup was created, base map was not modified";
+        return 0;
+    }
+    return RestoreSlamFromBackupDir(map_name, backup_dir, out_msg) ? 1 : -1;
+}
+
+void CommandBoardManagerROS::AlignMapCallback(
+    const std::shared_ptr<nav_interfaces::srv::AlignMap::Request> req,
+    std::shared_ptr<nav_interfaces::srv::AlignMap::Response> res) {
+    using NS = nav_interfaces::msg::NavSystemStatus;
+
+    res->success = false;
+    res->error_code = NS::E_CB_NONE;
+    res->applied = false;
+
+    // ── 互斥：对齐与重置原点都改地图文件，不允许并发 ──────────────
+    bool expected = false;
+    if (!map_transform_busy_.compare_exchange_strong(expected, true)) {
+        res->error_code = NS::E_CB_ALIGN_BUSY;
+        res->message = "another map transform task is running";
+        return;
+    }
+    struct BusyGuard {
+        std::atomic<bool>* flag;
+        ~BusyGuard() { flag->store(false); }
+    } guard{&map_transform_busy_};
+
+    const std::string map_name = req->map_name.empty() ? current_map_name_ : req->map_name;
+    if (map_name.empty()) {
+        res->error_code = NS::E_CB_ALIGN_MAP_NOT_FOUND;
+        res->message = "map_name is empty and no map is currently loaded";
+        return;
+    }
+    if (req->min_yaw_deg < 0.0) {
+        res->error_code = NS::E_CB_ALIGN_ARG_INVALID;
+        res->message = "min_yaw_deg must not be negative";
+        return;
+    }
+    const std::string map_dir = ResolveMapDir(map_name);
+    std::error_code fs_ec;
+    if (map_dir.empty() || !cbfs::is_directory(map_dir, fs_ec) || fs_ec) {
+        res->error_code = NS::E_CB_ALIGN_MAP_NOT_FOUND;
+        res->message = "map directory not found: " + map_dir;
+        return;
+    }
+    const double min_yaw_deg =
+        req->min_yaw_deg > 0.0 ? req->min_yaw_deg : align_min_yaw_deg_;
+    const bool is_current = (map_name == current_map_name_);
+
+    RCLCPP_INFO(get_logger(),
+                "[Align] map='%s' (current=%s) dry_run=%d min_yaw=%.2f deg",
+                map_name.c_str(), is_current ? "yes" : "no",
+                static_cast<int>(req->dry_run), min_yaw_deg);
+
+    // ── 步骤 ①：dry_run 估角（零文件改动）────────────────────────
+    const AlignToolResult est = RunAlignMapTool(map_name, /*dry_run=*/true);
+    res->estimated_yaw_deg = est.yaw_deg;
+    res->orthogonality_error_deg = est.orthogonality_error_deg;
+    res->rms_axis_residual_deg = est.rms_axis_residual_deg;
+    res->residual_yaw_deg = est.yaw_deg;
+    if (!est.usable()) {
+        res->error_code = NS::E_CB_ALIGN_ESTIMATE_FAILED;
+        res->message = "estimate failed (" +
+                       (est.reason.empty() ? std::string("unknown") : est.reason) +
+                       "); no file was modified";
+        RCLCPP_ERROR(get_logger(), "[Align] %s", res->message.c_str());
+        return;
+    }
+    RCLCPP_INFO(get_logger(),
+                "[Align] estimated yaw=%.4f deg (delta=%.4f, rms=%.4f, lines=%d)",
+                est.yaw_deg, est.orthogonality_error_deg,
+                est.rms_axis_residual_deg, est.candidate_lines);
+
+    // ── 步骤 ②：阈值校验 / dry_run 出口 ─────────────────────────
+    if (req->dry_run) {
+        res->success = true;
+        res->message = "dry run: estimated only, no file modified";
+        return;
+    }
+    if (std::abs(est.yaw_deg) < min_yaw_deg) {
+        res->success = true;
+        res->message = "already aligned (|yaw|=" + std::to_string(std::abs(est.yaw_deg)) +
+                       " deg < " + std::to_string(min_yaw_deg) +
+                       " deg); no file modified";
+        RCLCPP_INFO(get_logger(), "[Align] %s", res->message.c_str());
+        return;
+    }
+
+    // ── 步骤 ③：当前地图才需要停导航 / 停定位 ────────────────────
+    if (is_current) {
+        RCLCPP_INFO(get_logger(), "[Align] Step 3: cancel navigation + stop localization");
+        navigation_action_client_->async_cancel_all_goals();
+        std::this_thread::sleep_for(300ms);
+        if (stop_localization_cli_->service_is_ready()) {
+            auto stop_req = std::make_shared<std_srvs::srv::Trigger::Request>();
+            auto fut = stop_localization_cli_->async_send_request(stop_req);
+            if (fut.wait_for(std::chrono::duration<double>(service_call_timeout_sec_)) !=
+                std::future_status::ready) {
+                res->error_code = NS::E_CB_LOC_STOP_TIMEOUT;
+                res->message = "timeout waiting for stop_localization; no file modified";
+                RCLCPP_ERROR(get_logger(), "[Align] %s", res->message.c_str());
+                return;
+            }
+        } else {
+            RCLCPP_WARN(get_logger(), "[Align] stop_localization not ready, skipping");
+        }
+    }
+
+    // 从这里开始会改文件；任何失败都要走回滚。
+    const auto restart_localization = [&]() {
+        if (!is_current) return;
+        if (start_localization_cli_->service_is_ready()) {
+            auto r = std::make_shared<std_srvs::srv::Trigger::Request>();
+            start_localization_cli_->async_send_request(r);
+        }
+    };
+
+    // ── 步骤 ④：备份资产（transform_assets 自身没有备份能力）─────
+    std::string assets_backup_dir, backup_msg;
+    if (!req->skip_assets && !BackupMapAssets(map_name, assets_backup_dir, backup_msg)) {
+        res->error_code = NS::E_CB_ALIGN_BACKUP_FAILED;
+        res->message = "assets backup failed: " + backup_msg + "; no file modified";
+        RCLCPP_ERROR(get_logger(), "[Align] %s", res->message.c_str());
+        restart_localization();
+        return;
+    }
+
+    // ── 步骤 ⑤：align_map_tool 正式执行（串行，不与 assets 并行）──
+    //    并行收益近零：assets 改几百个坐标是毫秒级，tool 重建栅格+点云是秒级。
+    const std::set<std::string> backups_before = ListSlamBackupDirs(map_name);
+    const AlignToolResult applied = RunAlignMapTool(map_name, /*dry_run=*/false);
+    if (!applied.usable()) {
+        // 工具可能在写文件途中失败：按本次新建的备份回滚底图，资产此时尚未改动。
+        std::string rb_msg;
+        const int rb = RollbackSlamAfterToolFailure(map_name, backups_before, "", rb_msg);
+        const std::string reason =
+            applied.reason.empty() ? std::string("unknown") : applied.reason;
+        if (rb < 0) {
+            res->error_code = NS::E_CB_ALIGN_ROLLBACK_FAILED;
+            res->message = "align_map_tool failed (" + reason + ") AND rollback failed (" +
+                           rb_msg + "); manual recovery required";
+            RCLCPP_FATAL(get_logger(), "[Align] %s", res->message.c_str());
+        } else {
+            res->error_code = NS::E_CB_ALIGN_TOOL_FAILED;
+            res->message = "align_map_tool failed (" + reason + "); " + rb_msg;
+        }
+        RCLCPP_ERROR(get_logger(), "[Align] %s\n%s", res->message.c_str(),
+                     applied.log.c_str());
+        restart_localization();
+        return;
+    }
+    res->residual_yaw_deg = applied.residual_yaw_deg;
+    RCLCPP_INFO(get_logger(), "[Align] tool applied, residual=%.4f deg",
+                applied.residual_yaw_deg);
+
+    // ── 步骤 ⑥：transform_assets（同一角度，纯旋转 ⇒ x=y=0）──────
+    if (!req->skip_assets) {
+        bool assets_ok = false;
+        std::string assets_msg;
+        if (!transform_assets_cli_->service_is_ready() &&
+            !transform_assets_cli_->wait_for_service(
+                std::chrono::duration<double>(service_wait_timeout_sec_))) {
+            assets_msg = "transform_assets service not available";
+        } else {
+            auto ta_req = std::make_shared<nav_interfaces::srv::TransformAssets::Request>();
+            ta_req->map_name = map_name;
+            ta_req->x = 0.0;   // 对齐是绕原点纯旋转，原点位置不变
+            ta_req->y = 0.0;
+            ta_req->yaw = est.yaw_rad;
+            auto fut = transform_assets_cli_->async_send_request(ta_req);
+            if (fut.wait_for(std::chrono::duration<double>(service_call_timeout_sec_)) !=
+                std::future_status::ready) {
+                assets_msg = "timeout waiting for transform_assets";
+            } else {
+                auto resp = fut.get();
+                assets_ok = resp->success;
+                assets_msg = resp->message;
+                res->transformed_points = resp->transformed_points;
+                res->transformed_areas = resp->transformed_areas;
+                res->transformed_junctions = resp->transformed_junctions;
+            }
+        }
+
+        // ── 步骤 ⑦：资产失败 → 回滚底图，保证两者始终一致 ─────────
+        if (!assets_ok) {
+            std::string rb_map_msg, rb_assets_msg;
+            const bool rb_map = RestoreSlamBackup(map_name, rb_map_msg);
+            const bool rb_assets =
+                RestoreMapAssets(assets_backup_dir, map_name, rb_assets_msg);
+            if (rb_map && rb_assets) {
+                res->error_code = NS::E_CB_ALIGN_ASSETS_FAILED;
+                res->message = "transform_assets failed (" + assets_msg +
+                               "); rolled back: " + rb_map_msg;
+                RCLCPP_ERROR(get_logger(), "[Align] %s", res->message.c_str());
+            } else {
+                res->error_code = NS::E_CB_ALIGN_ROLLBACK_FAILED;
+                res->message = "transform_assets failed (" + assets_msg +
+                               ") AND rollback failed [map: " + rb_map_msg +
+                               "] [assets: " + rb_assets_msg +
+                               "]. Base map and assets may be INCONSISTENT; "
+                               "manual recovery required.";
+                RCLCPP_FATAL(get_logger(), "[Align] %s", res->message.c_str());
+            }
+            restart_localization();
+            return;
+        }
+        RCLCPP_INFO(get_logger(), "[Align] transform_assets OK: %s", assets_msg.c_str());
+    } else {
+        RCLCPP_WARN(get_logger(),
+                    "[Align] skip_assets=true: base map rotated but assets left in "
+                    "the OLD frame. They are now INCONSISTENT.");
+    }
+
+    // ── 步骤 ⑧：当前地图 → 重载 + 启定位 ────────────────────────
+    res->applied = true;
+    res->success = true;
+    res->message = "aligned by " + std::to_string(est.yaw_deg) +
+                   " deg, residual " + std::to_string(applied.residual_yaw_deg) +
+                   " deg";
+    if (is_current) {
+        if (map_command_cli_->service_is_ready()) {
+            auto mc = std::make_shared<nav_interfaces::srv::MapManagerCommand::Request>();
+            mc->op = nav_interfaces::srv::MapManagerCommand::Request::OP_LOAD;
+            mc->map_name = map_name;
+            auto fut = map_command_cli_->async_send_request(mc);
+            if (fut.wait_for(std::chrono::duration<double>(service_call_timeout_sec_)) !=
+                std::future_status::ready) {
+                // 数据已一致，只是没重载成功：降级为一级故障，不算失败。
+                res->error_code = NS::E_CB_MAP_RELOAD_TIMEOUT;
+                res->message += " (map reload timed out; reload manually)";
+                RCLCPP_WARN(get_logger(), "[Align] map reload timed out");
+            }
+        }
+        restart_localization();
+    }
+    RCLCPP_INFO(get_logger(), "[Align] done: %s", res->message.c_str());
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// 地图替换编排
+// 与对齐同一套串行编排与回滚；坐标系沿用 target，资产不动（见 hpp 注释）。
+// ══════════════════════════════════════════════════════════════════════
+
+CommandBoardManagerROS::ReplaceToolResult CommandBoardManagerROS::RunReplaceMapTool(
+    const std::string& target_map, const std::string& source_map, const bool dry_run,
+    const bool manual, const double x, const double y, const double yaw_rad) {
+    ReplaceToolResult out;
+    const std::string tgt_dir = ResolveMapDir(target_map);
+    const std::string src_dir = ResolveMapDir(source_map);
+    if (tgt_dir.empty() || src_dir.empty()) {
+        out.reason = "map_dir_unresolved";
+        out.log = "cannot resolve map directory";
+        return out;
+    }
+
+    char transform_args[256] = "";
+    if (manual) {
+        std::snprintf(transform_args, sizeof(transform_args),
+                      " --transform_mode manual --src_in_tgt_x %.10f"
+                      " --src_in_tgt_y %.10f --src_in_tgt_yaw %.10f",
+                      x, y, yaw_rad);
+    } else {
+        std::snprintf(transform_args, sizeof(transform_args), " --transform_mode auto");
+    }
+    char cmd[2048];
+    std::snprintf(cmd, sizeof(cmd),
+                  "ros2 run cartographer_ros replace_map_tool"
+                  " --map_target \"%s/slam\" --map_source \"%s/slam\"%s%s 2>&1",
+                  tgt_dir.c_str(), src_dir.c_str(), transform_args,
+                  dry_run ? " --dry_run" : "");
+    RCLCPP_INFO(get_logger(), "RunReplaceMapTool: %s", cmd);
+
+    FILE* pipe = popen(cmd, "r");
+    if (pipe == nullptr) {
+        out.reason = "popen_failed";
+        out.log = "popen failed";
+        return out;
+    }
+    char buf[256];
+    while (fgets(buf, sizeof(buf), pipe) != nullptr) out.log += buf;
+    const int rc = pclose(pipe);
+    out.process_ok = (rc == 0);
+
+    // 取最后一条 [REPLACE_RESULT]：工具在失败路径会先打结果行再 LOG(FATAL)，
+    // 与对齐同一约定（见 RunAlignMapTool）。
+    constexpr const char* kMarker = "[REPLACE_RESULT]";
+    const size_t marker_pos = out.log.rfind(kMarker);
+    if (marker_pos != std::string::npos) {
+        const size_t line_end = out.log.find('\n', marker_pos);
+        const std::string json = out.log.substr(
+            marker_pos, line_end == std::string::npos ? std::string::npos
+                                                      : line_end - marker_pos);
+        JsonGetBool(json, "ok", &out.ok);
+        JsonGetString(json, "reason", &out.reason);
+        JsonGetDouble(json, "x", &out.x);
+        JsonGetDouble(json, "y", &out.y);
+        JsonGetDouble(json, "yaw_rad", &out.yaw_rad);
+        JsonGetDouble(json, "yaw_deg", &out.yaw_deg);
+        JsonGetInt(json, "inliers", &out.inliers);
+        JsonGetBool(json, "converged", &out.converged);
+        JsonGetBool(json, "degraded", &out.degraded);
+        JsonGetString(json, "stop_reason", &out.stop_reason);
+        JsonGetDouble(json, "inlier_rms_xy_m", &out.inlier_rms_xy_m);
+        JsonGetDouble(json, "inlier_rms_yaw_deg", &out.inlier_rms_yaw_deg);
+        JsonGetDouble(json, "src_known_area_m2", &out.src_known_area_m2);
+        JsonGetDouble(json, "tgt_known_area_m2", &out.tgt_known_area_m2);
+        JsonGetBool(json, "coverage_warning", &out.coverage_warning);
+        JsonGetDouble(json, "total_area_m2", &out.total_area_m2);
+        JsonGetDouble(json, "effective_area_m2", &out.effective_area_m2);
+        JsonGetString(json, "data_version", &out.data_version);
+        JsonGetBool(json, "align_evaluated", &out.align_evaluated);
+        JsonGetDouble(json, "align_residual_yaw_deg", &out.align_residual_yaw_deg);
+        JsonGetString(json, "backup_dir", &out.backup_dir);
+        JsonGetBool(json, "applied", &out.applied);
+    } else {
+        out.reason = "no_result_line";
+        RCLCPP_ERROR(get_logger(),
+                     "replace_map_tool printed no %s line; tool version mismatch?", kMarker);
+    }
+    if (!out.process_ok) {
+        RCLCPP_ERROR(get_logger(), "replace_map_tool exited with code %d (reason=%s)", rc,
+                     out.reason.c_str());
+    }
+    return out;
+}
+
+void CommandBoardManagerROS::ReplaceMapCallback(
+    const std::shared_ptr<nav_interfaces::srv::ReplaceMap::Request> req,
+    std::shared_ptr<nav_interfaces::srv::ReplaceMap::Response> res) {
+    using NS = nav_interfaces::msg::NavSystemStatus;
+
+    res->success = false;
+    res->error_code = NS::E_CB_NONE;
+    res->applied = false;
+
+    // ── 互斥：与对齐 / 重置原点共用一把锁 ─────────────────────────
+    bool expected = false;
+    if (!map_transform_busy_.compare_exchange_strong(expected, true)) {
+        res->error_code = NS::E_CB_ALIGN_BUSY;
+        res->message = "another map transform task is running";
+        return;
+    }
+    struct BusyGuard {
+        std::atomic<bool>* flag;
+        ~BusyGuard() { flag->store(false); }
+    } guard{&map_transform_busy_};
+
+    // ── 入参校验（零文件改动）────────────────────────────────────
+    const std::string target =
+        req->target_map_name.empty() ? current_map_name_ : req->target_map_name;
+    const std::string source = req->source_map_name;
+    if (target.empty()) {
+        res->error_code = NS::E_CB_REPLACE_MAP_NOT_FOUND;
+        res->message = "target_map_name is empty and no map is currently loaded";
+        return;
+    }
+    if (source.empty()) {
+        res->error_code = NS::E_CB_REPLACE_ARG_INVALID;
+        res->message = "source_map_name is required";
+        return;
+    }
+    if (source == target) {
+        res->error_code = NS::E_CB_REPLACE_ARG_INVALID;
+        res->message = "source_map_name must differ from target_map_name";
+        return;
+    }
+    for (const auto& name : {target, source}) {
+        const std::string pb = ResolveMapDir(name) + "/slam/map.pbstream";
+        std::error_code fs_ec;
+        if (ResolveMapDir(name).empty() || !cbfs::is_regular_file(pb, fs_ec) || fs_ec) {
+            res->error_code = NS::E_CB_REPLACE_MAP_NOT_FOUND;
+            res->message = "map not found (no slam/map.pbstream): " + name;
+            return;
+        }
+    }
+    const bool target_is_current = (target == current_map_name_);
+    const bool source_is_current = (source == current_map_name_);
+    const bool manual = req->use_manual_transform;
+    RCLCPP_INFO(get_logger(),
+                "[Replace] target='%s' (current=%s) source='%s' dry_run=%d manual=%d",
+                target.c_str(), target_is_current ? "yes" : "no", source.c_str(),
+                static_cast<int>(req->dry_run), static_cast<int>(manual));
+
+    // ── 步骤 ①：dry_run 求变换（零文件改动）──────────────────────
+    const ReplaceToolResult est = RunReplaceMapTool(target, source, /*dry_run=*/true, manual,
+                                                    req->manual_x, req->manual_y,
+                                                    req->manual_yaw);
+    res->x = est.x;
+    res->y = est.y;
+    res->yaw_deg = est.yaw_deg;
+    res->inliers = est.inliers;
+    res->converged = est.converged;
+    res->degraded = est.degraded;
+    res->stop_reason = est.stop_reason;
+    res->inlier_rms_xy_m = est.inlier_rms_xy_m;
+    res->inlier_rms_yaw_deg = est.inlier_rms_yaw_deg;
+    res->src_known_area_m2 = est.src_known_area_m2;
+    res->tgt_known_area_m2 = est.tgt_known_area_m2;
+    res->coverage_warning = est.coverage_warning;
+    res->data_version = est.data_version;
+    if (!est.usable()) {
+        res->error_code = NS::E_CB_REPLACE_MATCH_FAILED;
+        res->message = "transform estimation failed (" +
+                       (est.reason.empty() ? std::string("unknown") : est.reason) +
+                       "); no file was modified";
+        RCLCPP_ERROR(get_logger(), "[Replace] %s", res->message.c_str());
+        return;
+    }
+    RCLCPP_INFO(get_logger(),
+                "[Replace] T_src_in_tgt=(%.4f, %.4f, %.4f deg) inliers=%d converged=%d "
+                "degraded=%d rms=(%.4f m, %.4f deg) coverage_warning=%d",
+                est.x, est.y, est.yaw_deg, est.inliers, static_cast<int>(est.converged),
+                static_cast<int>(est.degraded), est.inlier_rms_xy_m, est.inlier_rms_yaw_deg,
+                static_cast<int>(est.coverage_warning));
+
+    // ── 步骤 ②：质量校验 / dry_run 出口 ─────────────────────────
+    std::string notes;
+    if (est.coverage_warning) {
+        notes += "; WARNING: source covers much less area than target, the site may not "
+                 "have been fully re-walked";
+    }
+    if (!manual && est.degraded && !req->accept_degraded) {
+        res->error_code = NS::E_CB_REPLACE_MATCH_DEGRADED;
+        res->message = "match did not converge (stop_reason=" + est.stop_reason +
+                       "); set accept_degraded=true to apply anyway; no file was modified" +
+                       notes;
+        RCLCPP_WARN(get_logger(), "[Replace] %s", res->message.c_str());
+        return;
+    }
+    if (req->dry_run) {
+        res->success = true;
+        res->message = "dry run: transform estimated only, no file modified" + notes;
+        return;
+    }
+
+    // ── 步骤 ③：target 为当前地图才需要停导航 / 停定位 ──────────
+    if (target_is_current) {
+        RCLCPP_INFO(get_logger(), "[Replace] Step 3: cancel navigation + stop localization");
+        navigation_action_client_->async_cancel_all_goals();
+        std::this_thread::sleep_for(300ms);
+        if (stop_localization_cli_->service_is_ready()) {
+            auto stop_req = std::make_shared<std_srvs::srv::Trigger::Request>();
+            auto fut = stop_localization_cli_->async_send_request(stop_req);
+            if (fut.wait_for(std::chrono::duration<double>(service_call_timeout_sec_)) !=
+                std::future_status::ready) {
+                res->error_code = NS::E_CB_LOC_STOP_TIMEOUT;
+                res->message = "timeout waiting for stop_localization; no file modified";
+                RCLCPP_ERROR(get_logger(), "[Replace] %s", res->message.c_str());
+                return;
+            }
+        } else {
+            RCLCPP_WARN(get_logger(), "[Replace] stop_localization not ready, skipping");
+        }
+    }
+    const auto restart_localization = [&]() {
+        if (!target_is_current) return;
+        if (start_localization_cli_->service_is_ready()) {
+            auto r = std::make_shared<std_srvs::srv::Trigger::Request>();
+            start_localization_cli_->async_send_request(r);
+        }
+    };
+
+    // ── 步骤 ④：正式执行。把 dry_run 的变换以 manual 模式传入，执行的就是
+    //    调用方看到并认可的那个变换，不再重新匹配。工具先把 target 底图
+    //    备份到 slam/backups/backup_<ts>/ 再写入。
+    const std::set<std::string> backups_before = ListSlamBackupDirs(target);
+    const ReplaceToolResult applied =
+        RunReplaceMapTool(target, source, /*dry_run=*/false, /*manual=*/true, est.x, est.y,
+                          est.yaw_rad);
+
+    // ── 步骤 ⑤：失败 → 用本次创建的备份回滚底图 ─────────────────
+    //    不能只看结果行里的 backup_dir：工具异常退出时可能没有结果行，
+    //    但文件已经写了一半。以执行前后 backups/ 的差集兜底。
+    if (!applied.usable()) {
+        const std::string reason =
+            applied.reason.empty() ? std::string("unknown") : applied.reason;
+        std::string rb_msg;
+        const int rb =
+            RollbackSlamAfterToolFailure(target, backups_before, applied.backup_dir, rb_msg);
+        if (rb < 0) {
+            res->error_code = NS::E_CB_REPLACE_ROLLBACK_FAILED;
+            res->message = "replace_map_tool failed (" + reason + ") AND rollback failed (" +
+                           rb_msg + "). Target base map may be incomplete; restore it "
+                           "manually from slam/backups/";
+            RCLCPP_FATAL(get_logger(), "[Replace] %s", res->message.c_str());
+        } else {
+            res->error_code = NS::E_CB_REPLACE_TOOL_FAILED;
+            res->message = "replace_map_tool failed (" + reason + "); " +
+                           (rb == 1 ? "rolled back: " : "") + rb_msg;
+        }
+        RCLCPP_ERROR(get_logger(), "[Replace] %s\n%s", res->message.c_str(),
+                     applied.log.c_str());
+        restart_localization();
+        return;
+    }
+
+    res->applied = true;
+    res->success = true;
+    res->total_area_m2 = applied.total_area_m2;
+    res->effective_area_m2 = applied.effective_area_m2;
+    if (!applied.data_version.empty()) res->data_version = applied.data_version;
+    res->align_evaluated = applied.align_evaluated;
+    res->align_residual_yaw_deg = applied.align_residual_yaw_deg;
+    // 替换不触发对齐：残余角大说明 target 坐标系本身没对齐，交由人决定是否单独 ~/align_map。
+    res->align_warning =
+        applied.align_evaluated && std::abs(applied.align_residual_yaw_deg) > align_min_yaw_deg_;
+    if (res->align_warning) {
+        notes += "; NOTE: ALIGN-01 residual " + std::to_string(applied.align_residual_yaw_deg) +
+                 " deg exceeds " + std::to_string(align_min_yaw_deg_) +
+                 " deg, the target frame is not aligned; call ~/align_map if needed";
+    }
+    res->message = "replaced '" + target + "' with content of '" + source + "'";
+    RCLCPP_INFO(get_logger(), "[Replace] tool applied: effective area %.3f m2, data_version %s",
+                applied.effective_area_m2, res->data_version.c_str());
+
+    // ── 步骤 ⑥：target 为当前地图 → 重载 + 启定位 ───────────────
+    if (target_is_current) {
+        if (map_command_cli_->service_is_ready()) {
+            auto mc = std::make_shared<nav_interfaces::srv::MapManagerCommand::Request>();
+            mc->op = nav_interfaces::srv::MapManagerCommand::Request::OP_LOAD;
+            mc->map_name = target;
+            auto fut = map_command_cli_->async_send_request(mc);
+            if (fut.wait_for(std::chrono::duration<double>(service_call_timeout_sec_)) !=
+                std::future_status::ready) {
+                res->error_code = NS::E_CB_MAP_RELOAD_TIMEOUT;
+                notes += "; map reload timed out, reload manually";
+                RCLCPP_WARN(get_logger(), "[Replace] map reload timed out");
+            }
+        }
+        restart_localization();
+    }
+
+    // ── 步骤 ⑦：source 移入回收站 ───────────────────────────────
+    if (req->keep_source) {
+        notes += "; source kept";
+    } else if (source_is_current) {
+        notes += "; source not trashed because it is the currently loaded map";
+    } else {
+        std::string trash_msg;
+        bool trashed = false;
+        if (map_command_cli_->service_is_ready()) {
+            auto mc = std::make_shared<nav_interfaces::srv::MapManagerCommand::Request>();
+            mc->op = nav_interfaces::srv::MapManagerCommand::Request::OP_TRASH;
+            mc->map_name = source;
+            auto fut = map_command_cli_->async_send_request(mc);
+            if (fut.wait_for(std::chrono::duration<double>(service_call_timeout_sec_)) ==
+                std::future_status::ready) {
+                const auto r = fut.get();
+                trashed = r->success;
+                trash_msg = r->message;
+            } else {
+                trash_msg = "timeout waiting for map_command";
+            }
+        } else {
+            trash_msg = "map_command service not available";
+        }
+        if (trashed) {
+            // map_manager 的成功消息形如 "map trashed: <name> -> <entry>"
+            const size_t arrow = trash_msg.rfind("-> ");
+            res->source_trashed_to =
+                arrow == std::string::npos ? std::string() : trash_msg.substr(arrow + 3);
+            notes += "; source moved to trash as '" + res->source_trashed_to + "'";
+        } else {
+            // 替换本身已成功，只把 source 的去向降级为一级故障。
+            if (res->error_code == NS::E_CB_NONE) {
+                res->error_code = NS::E_CB_REPLACE_SOURCE_TRASH_FAILED;
+            }
+            notes += "; failed to move source to trash (" + trash_msg + ")";
+            RCLCPP_WARN(get_logger(), "[Replace] trash source failed: %s", trash_msg.c_str());
+        }
+    }
+    res->message += notes;
+    RCLCPP_INFO(get_logger(), "[Replace] done: %s", res->message.c_str());
 }
 
 }  // namespace command_board

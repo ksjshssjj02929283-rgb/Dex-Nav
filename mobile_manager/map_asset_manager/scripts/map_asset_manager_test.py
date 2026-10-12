@@ -343,6 +343,7 @@ class AssetRunner:
     ) -> None:
         from geometry_msgs.msg import Point, Pose2D
         from nav_interfaces.msg import (
+            AssetSnapshot,
             MapState, NavPoint, AreaInfo, RoomInfo, Route, RouteEdge, RouteJunction,
         )
         from nav_interfaces.srv import (
@@ -357,7 +358,8 @@ class AssetRunner:
         self.fixture = fixture
         self.prefix = f"{NAMESPACE}/map_asset_manager"
         self.state_topic = f"{NAMESPACE}/map_manager/map_state"
-        self.status_topic = f"{self.prefix}/status"
+        self.status_topic = f"{self.prefix}/assets"   # DEC-038：资产域唯一发布 AssetSnapshot（原 status String 已并入）
+        self.AssetSnapshot = AssetSnapshot
         self.epoch = 0
         self.Pose2D = Pose2D
         self.Point = Point
@@ -435,17 +437,22 @@ class AssetRunner:
         self.publisher.publish(state)
 
         def ready(message: Any) -> bool:
-            fields = self.status_fields(message.data)
             return (
-                fields.get("map") == MAP_NAME
-                and fields.get("points") == "3"
-                and fields.get("routes") == "1"
-                and fields.get("areas") == "1"
-                and fields.get("rooms") == "1"
+                bool(message.loaded)
+                and message.map_name == MAP_NAME
+                and len(message.points) == 3
+                and len(message.routes) == 1
+                and len(message.areas) == 1
+                and len(message.rooms) == 1
             )
 
-        status = self.harness.wait_message(self.String, self.status_topic, ready)
-        self.report.check(tc, "标准资产装载完成", True, status.data)
+        status = self.harness.wait_message(self.AssetSnapshot, self.status_topic, ready)
+        self.report.check(
+            tc, "标准资产装载完成", True,
+            f"map={status.map_name} epoch={status.map_epoch} loaded={status.loaded} "
+            f"points={len(status.points)} routes={len(status.routes)} areas={len(status.areas)} "
+            f"rooms={len(status.rooms)} junctions={len(status.junctions)} edges={len(status.edges)}",
+        )
 
     def tc01(self) -> None:
         tc = "TC-01"
@@ -572,7 +579,7 @@ class AssetRunner:
             tc, "路线新增/查询/删除闭环",
             (
                 added.success and found.success
-                and list(found.point_names) == list(add.point_names)
+                and list(found.point_names) == list(add.routes[0].point_names)
                 and removed.success and not absent.success
             ),
             f"add={added.success}, get={found.success}, "
