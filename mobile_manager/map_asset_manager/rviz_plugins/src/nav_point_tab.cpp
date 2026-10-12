@@ -1,4 +1,5 @@
 #include "map_asset_rviz_plugin/nav_point_tab.hpp"
+#include "map_asset_rviz_plugin/asset_target.hpp"
 #include "map_asset_rviz_plugin/nav_point_draft_bridge.hpp"
 
 #include <QDialog>
@@ -134,7 +135,7 @@ void NavPointTab::rebuildClients() {
     }
     applyNavigationActive(false);
 
-    get_all_client_ = node_->create_client<nav_interfaces::srv::GetAllNavPoints>(prefix_ + "/get_all_nav_points");
+    get_all_client_ = node_->create_client<nav_interfaces::srv::GetAssets>(prefix_ + "/get_assets");
     add_client_     = node_->create_client<nav_interfaces::srv::SetAssets>(prefix_ + "/set_assets");
     remove_client_  = node_->create_client<nav_interfaces::srv::SetAssets>(prefix_ + "/set_assets");
     sample_client_  = node_->create_client<nav_interfaces::srv::SampleNavPoint>(prefix_ + "/sample_point");
@@ -152,10 +153,11 @@ void NavPointTab::onRefresh() {
     status_label_->setText("刷新中...");
     refresh_btn_->setEnabled(false);
 
-    auto req = std::make_shared<nav_interfaces::srv::GetAllNavPoints::Request>();
+    auto req = std::make_shared<nav_interfaces::srv::GetAssets::Request>(); applyTarget(req);
+    req->kinds = nav_interfaces::srv::GetAssets::Request::KIND_POINTS;
     get_all_client_->async_send_request(
         req,
-        [this](rclcpp::Client<nav_interfaces::srv::GetAllNavPoints>::SharedFuture fut) {
+        [this](rclcpp::Client<nav_interfaces::srv::GetAssets>::SharedFuture fut) {
             try {
                 auto resp = fut.get();
                 QVariantList points;
@@ -178,6 +180,11 @@ void NavPointTab::onRefresh() {
 
 void NavPointTab::onSample() {
     if (!sample_client_) { status_label_->setText("节点未初始化"); return; }
+    // 采样的是机器人当前位姿，只对当前已加载地图有意义
+    if (!AssetTarget::isCurrent()) {
+        status_label_->setText(QString("编辑目标是非当前地图 %1，不能录制机器人位姿").arg(QString::fromStdString(AssetTarget::label())));
+        return;
+    }
 
     if (!sample_client_->service_is_ready()) {
         status_label_->setText("等待采样服务...");
@@ -212,7 +219,7 @@ void NavPointTab::onAdd() {
     const std::string name = name_edit_->text().trimmed().toStdString();
     if (name.empty()) { status_label_->setText("错误：请填写点位名称"); return; }
 
-    auto req = std::make_shared<nav_interfaces::srv::SetAssets::Request>(); req->points.resize(1);
+    auto req = std::make_shared<nav_interfaces::srv::SetAssets::Request>(); applyTarget(req); req->points.resize(1);
     req->mode = nav_interfaces::srv::SetAssets::Request::MODE_MERGE;
     req->points[0].name  = name;
     req->points[0].type  = type_combo_->currentText().toStdString();
@@ -230,7 +237,7 @@ void NavPointTab::onAdd() {
                 auto resp = fut.get();
                 Q_EMIT operationFinished(resp->success,
                     resp->success ? "添加成功" : QString("添加失败: %1").arg(
-                        QString::fromStdString(resp->message)));
+                        assetMessage(*resp)));
             } catch (const std::exception& ex) {
                 Q_EMIT operationFinished(false, QString("添加异常: %1").arg(ex.what()));
             }
@@ -257,7 +264,7 @@ void NavPointTab::onRemove() {
         return;
     }
 
-    auto req = std::make_shared<nav_interfaces::srv::SetAssets::Request>(); req->points.resize(1);
+    auto req = std::make_shared<nav_interfaces::srv::SetAssets::Request>(); applyTarget(req); req->points.resize(1);
     req->mode = nav_interfaces::srv::SetAssets::Request::MODE_REMOVE;
     req->points[0].name = name.toStdString();
 
@@ -271,7 +278,7 @@ void NavPointTab::onRemove() {
                 auto resp = fut.get();
                 Q_EMIT operationFinished(resp->success,
                     resp->success ? "删除成功" : QString("删除失败: %1").arg(
-                        QString::fromStdString(resp->message)));
+                        assetMessage(*resp)));
             } catch (const std::exception& ex) {
                 Q_EMIT operationFinished(false, QString("删除异常: %1").arg(ex.what()));
             }
@@ -346,7 +353,7 @@ void NavPointTab::onEdit() {
 
     if (dlg.exec() != QDialog::Accepted) return;
 
-    auto req = std::make_shared<nav_interfaces::srv::SetAssets::Request>(); req->points.resize(1);
+    auto req = std::make_shared<nav_interfaces::srv::SetAssets::Request>(); applyTarget(req); req->points.resize(1);
     req->mode = nav_interfaces::srv::SetAssets::Request::MODE_UPDATE_ONLY;
     req->points[0].name      = original_name.toStdString();
     req->points[0].type      = type_combo->currentText().toStdString();
@@ -365,7 +372,7 @@ void NavPointTab::onEdit() {
                 auto resp = fut.get();
                 Q_EMIT operationFinished(resp->success,
                     resp->success ? QString("点位 %1 修改成功").arg(name)
-                                  : QString("修改失败: %1").arg(QString::fromStdString(resp->message)));
+                                  : QString("修改失败: %1").arg(assetMessage(*resp)));
             } catch (const std::exception& ex) {
                 Q_EMIT operationFinished(false, QString("更新异常: %1").arg(ex.what()));
             }

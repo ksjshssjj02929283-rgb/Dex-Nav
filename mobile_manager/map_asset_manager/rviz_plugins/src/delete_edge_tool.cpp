@@ -1,4 +1,5 @@
 #include "map_asset_rviz_plugin/delete_edge_tool.hpp"
+#include "map_asset_rviz_plugin/asset_target.hpp"
 
 #include <QInputDialog>
 #include <QMessageBox>
@@ -18,8 +19,8 @@ DeleteEdgeTool::DeleteEdgeTool() {
 
 void DeleteEdgeTool::onInitialize() {
     node_ = context_->getRosNodeAbstraction().lock()->get_raw_node();
-    get_graph_client_   = node_->create_client<nav_interfaces::srv::GetRouteGraph>(
-        service_prefix_ + "/get_route_graph");
+    get_graph_client_   = node_->create_client<nav_interfaces::srv::GetAssets>(
+        service_prefix_ + "/get_assets");
     remove_edge_client_ = node_->create_client<nav_interfaces::srv::SetAssets>(
         service_prefix_ + "/set_assets");
 }
@@ -37,7 +38,7 @@ int DeleteEdgeTool::processMouseEvent(rviz_common::ViewportMouseEvent& event) {
             setStatus("路网服务不可用");
             return 0;
         }
-        auto req = std::make_shared<nav_interfaces::srv::GetRouteGraph::Request>();
+        auto req = targetAssetsRequest(nav_interfaces::srv::GetAssets::Request::KIND_POINTS | nav_interfaces::srv::GetAssets::Request::KIND_JUNCTIONS | nav_interfaces::srv::GetAssets::Request::KIND_EDGES);
         auto fut = get_graph_client_->async_send_request(req);
         if (fut.wait_for(std::chrono::seconds(3)) != std::future_status::ready) {
             setStatus("获取路网超时");
@@ -71,13 +72,14 @@ int DeleteEdgeTool::processMouseEvent(rviz_common::ViewportMouseEvent& event) {
             return 0;
         }
 
-        auto del_req = std::make_shared<nav_interfaces::srv::SetAssets::Request>(); del_req->edges.resize(1);
+        auto del_req = std::make_shared<nav_interfaces::srv::SetAssets::Request>(); applyTarget(del_req); del_req->edges.resize(1);
         del_req->mode = nav_interfaces::srv::SetAssets::Request::MODE_REMOVE;
         del_req->edges[0].id = edge_id.toStdString();
         remove_edge_client_->async_send_request(del_req,
             [this, edge_id](rclcpp::Client<nav_interfaces::srv::SetAssets>::SharedFuture f) {
                 try {
                     auto r = f.get();
+                    reportResult(*r, "删除路网边");
                     setStatus(r->success
                         ? QString("边 '%1' 删除成功").arg(edge_id)
                         : QString("删除失败: %1").arg(QString::fromStdString(r->message)));

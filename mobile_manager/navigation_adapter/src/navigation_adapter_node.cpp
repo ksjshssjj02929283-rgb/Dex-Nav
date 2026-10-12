@@ -12,8 +12,7 @@ NavigationAdapterNode::NavigationAdapterNode() : rclcpp::Node("navigation_adapte
 }
 
 void NavigationAdapterNode::initialize() {
-    // 两个模块共享同一个 ROS node，对外只暴露 /navigation_adapter_node。
-    area_filter_adapter_ = std::make_shared<AreaFilterAdapter>(this);
+    // 区域 → costmap filter 掩膜已移到 map_asset_manager（资产节点自己持有区域与底图）
     asset_navigation_adapter_ = std::make_shared<AssetNavigationAdapter>(this);
 }
 

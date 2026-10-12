@@ -1,4 +1,5 @@
 #include "map_asset_rviz_plugin/area_tab.hpp"
+#include "map_asset_rviz_plugin/asset_target.hpp"
 
 #include <QComboBox>
 #include <QDialog>
@@ -113,7 +114,7 @@ void AreaTab::onRefresh() {
     remove_btn_->setEnabled(false);
     status_label_->setText("刷新中...");
 
-    auto req = std::make_shared<nav_interfaces::srv::GetAssets::Request>();
+    auto req = std::make_shared<nav_interfaces::srv::GetAssets::Request>(); applyTarget(req);
     req->kinds = nav_interfaces::srv::GetAssets::Request::KIND_AREAS;
     get_client_->async_send_request(
         req,
@@ -234,7 +235,7 @@ void AreaTab::onRemove() {
     remove_btn_->setEnabled(false);
     status_label_->setText("删除中...");
 
-    auto req = std::make_shared<nav_interfaces::srv::SetAssets::Request>(); req->areas.resize(1);
+    auto req = std::make_shared<nav_interfaces::srv::SetAssets::Request>(); applyTarget(req); req->areas.resize(1);
     req->mode = nav_interfaces::srv::SetAssets::Request::MODE_REMOVE;
     req->areas[0].name = area_name.toStdString();
 
@@ -248,7 +249,7 @@ void AreaTab::onRemove() {
                     QMetaObject::invokeMethod(this, &AreaTab::onRefresh, Qt::QueuedConnection);
                 } else {
                     Q_EMIT operationFinished(false,
-                        QString("删除失败: %1").arg(QString::fromStdString(resp->message)));
+                        QString("删除失败: %1").arg(assetMessage(*resp)));
                 }
             } catch (const std::exception& ex) {
                 Q_EMIT operationFinished(false, QString("删除异常: %1").arg(ex.what()));
@@ -369,7 +370,7 @@ void AreaTab::onEdit() {
     if (dlg.exec() != QDialog::Accepted) return;
 
     // 组装 request：保留原 polygon + related_*（only-read），其它字段用 UI 值
-    auto req = std::make_shared<nav_interfaces::srv::SetAssets::Request>(); req->areas.resize(1);
+    auto req = std::make_shared<nav_interfaces::srv::SetAssets::Request>(); applyTarget(req); req->areas.resize(1);
     req->mode = nav_interfaces::srv::SetAssets::Request::MODE_UPDATE_ONLY;
     req->areas[0].name             = name.toStdString();
     req->areas[0].type             = type_combo->currentData().toUInt();
@@ -410,7 +411,7 @@ void AreaTab::onEdit() {
                     QMetaObject::invokeMethod(this, &AreaTab::onRefresh, Qt::QueuedConnection);
                 } else {
                     Q_EMIT operationFinished(false,
-                        QString("修改失败: %1").arg(QString::fromStdString(resp->message)));
+                        QString("修改失败: %1").arg(assetMessage(*resp)));
                 }
             } catch (const std::exception& ex) {
                 Q_EMIT operationFinished(false, QString("更新异常: %1").arg(ex.what()));

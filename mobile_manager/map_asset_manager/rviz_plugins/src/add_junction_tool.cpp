@@ -2,6 +2,7 @@
 // 左键立即放置（无对话框，自动命名 jct_N），鼠标移动实时预览圆，右键退出
 
 #include "map_asset_rviz_plugin/add_junction_tool.hpp"
+#include "map_asset_rviz_plugin/asset_target.hpp"
 #include "map_asset_rviz_plugin/route_graph_tools_common.hpp"
 
 #include <OgreManualObject.h>
@@ -47,7 +48,21 @@ void AddJunctionTool::activate() {
         setStatus("请先点击「开始修改路网 [R]」再操作");
         return;
     }
+    reloadIds();
     setStatus("左键放置 Junction（自动命名），右键退出");
+}
+
+void AddJunctionTool::reloadIds() {
+    loaded_gen_ = AssetTarget::generation();
+    used_ids_.clear();
+    for (const auto& j : loadJunctions(node_, service_prefix_)) used_ids_.insert(j.id);
+}
+
+std::string AddJunctionTool::nextId() {
+    for (int n = 0;; ++n) {
+        const std::string id = "jct_" + std::to_string(n);
+        if (!used_ids_.count(id)) return id;
+    }
 }
 
 void AddJunctionTool::deactivate() {
@@ -75,11 +90,13 @@ int AddJunctionTool::processMouseEvent(rviz_common::ViewportMouseEvent& event) {
 
         const float px = pos.x;
         const float py = pos.y;
-        const std::string auto_id = "jct_" + std::to_string(junction_counter_++);
+        if (loaded_gen_ != AssetTarget::generation()) reloadIds();
+        const std::string auto_id = nextId();
+        used_ids_.insert(auto_id);
 
         auto client = node_->create_client<nav_interfaces::srv::SetAssets>(
             service_prefix_ + "/set_assets");
-        auto req = std::make_shared<nav_interfaces::srv::SetAssets::Request>(); req->junctions.resize(1);
+        auto req = std::make_shared<nav_interfaces::srv::SetAssets::Request>(); applyTarget(req); req->junctions.resize(1);
         req->mode         = nav_interfaces::srv::SetAssets::Request::MODE_ADD_ONLY;
         req->junctions[0].id  = auto_id;
         req->junctions[0].x   = px;
@@ -91,9 +108,10 @@ int AddJunctionTool::processMouseEvent(rviz_common::ViewportMouseEvent& event) {
             [this, qid](rclcpp::Client<nav_interfaces::srv::SetAssets>::SharedFuture fut) {
                 try {
                     auto resp = fut.get();
+                    reportResult(*resp, "添加路网节点");
                     setStatus(resp->success
                         ? QString("Junction '%1' 已添加，继续点击放置").arg(qid)
-                        : QString("添加失败: %1").arg(QString::fromStdString(resp->message)));
+                        : QString("添加失败: %1").arg(assetMessage(*resp)));
                 } catch (const std::exception& ex) {
                     setStatus(QString("异常: %1").arg(ex.what()));
                 }

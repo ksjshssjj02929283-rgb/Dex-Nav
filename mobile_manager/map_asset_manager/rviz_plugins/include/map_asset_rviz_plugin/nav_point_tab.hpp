@@ -17,7 +17,7 @@
 
 #include <nav_interfaces/action/navigate_to_point.hpp>
 #include <nav_interfaces/srv/set_assets.hpp>
-#include <nav_interfaces/srv/get_all_nav_points.hpp>
+#include <nav_interfaces/srv/get_assets.hpp>
 #include <nav_interfaces/srv/sample_nav_point.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp_action/rclcpp_action.hpp>
@@ -83,7 +83,7 @@ private:
     rclcpp::Node::SharedPtr node_;
     std::string prefix_{"/map_asset_manager"};
 
-    rclcpp::Client<nav_interfaces::srv::GetAllNavPoints>::SharedPtr get_all_client_;
+    rclcpp::Client<nav_interfaces::srv::GetAssets>::SharedPtr get_all_client_;
     rclcpp::Client<nav_interfaces::srv::SetAssets>::SharedPtr     add_client_;
     rclcpp::Client<nav_interfaces::srv::SetAssets>::SharedPtr  remove_client_;
     rclcpp::Client<nav_interfaces::srv::SampleNavPoint>::SharedPtr  sample_client_;

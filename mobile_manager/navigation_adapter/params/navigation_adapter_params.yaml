@@ -1,16 +1,5 @@
 navigation_adapter_node:
   ros__parameters:
-    map_topic: "/map"
-    areas_topic: "/map_asset_manager/areas"
-    map_state_topic: "map_manager/map_state"
-    keepout_mask_topic: "/keepout_filter_mask"
-    speed_mask_topic: "/speed_filter_mask"
-    keepout_filter_info_topic: "/keepout_costmap_filter_info"
-    speed_filter_info_topic: "/speed_costmap_filter_info"
-    speed_base: 0.0
-    speed_multiplier: 0.01
-    virtual_wall_width: 0.10
-    publish_status_period_sec: 5.0
 
     get_point_service: "/map_asset_manager/get_point"
     get_all_points_service: "/map_asset_manager/get_all_nav_points"

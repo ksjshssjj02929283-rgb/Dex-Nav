@@ -1,4 +1,5 @@
 #include "map_asset_rviz_plugin/add_room_tool.hpp"
+#include "map_asset_rviz_plugin/asset_target.hpp"
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -300,7 +301,7 @@ void AddRoomTool::finishPolygon() {
         return;
     }
 
-    auto req = std::make_shared<nav_interfaces::srv::SetAssets::Request>(); req->rooms.resize(1);
+    auto req = std::make_shared<nav_interfaces::srv::SetAssets::Request>(); applyTarget(req); req->rooms.resize(1);
     req->mode = nav_interfaces::srv::SetAssets::Request::MODE_MERGE;
     req->rooms[0].name           = room_name_;
     req->rooms[0].type           = room_type_;
@@ -328,12 +329,13 @@ void AddRoomTool::finishPolygon() {
         [this](rclcpp::Client<nav_interfaces::srv::SetAssets>::SharedFuture fut) {
             try {
                 auto resp = fut.get();
+                reportResult(*resp, "添加房间");
                 setStatus(resp->success
                               ? QString("房间 【%1】 添加成功")
                                     .arg(QString::fromStdString(room_name_))
                               : QString("房间 【%1】 添加失败: %2")
                                     .arg(QString::fromStdString(room_name_))
-                                    .arg(QString::fromStdString(resp->message)));
+                                    .arg(assetMessage(*resp)));
             } catch (const std::exception& ex) {
                 setStatus(QString("添加异常: %1").arg(ex.what()));
             }

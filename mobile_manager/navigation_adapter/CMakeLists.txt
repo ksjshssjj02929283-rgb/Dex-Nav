@@ -21,7 +21,6 @@ include_directories(include)
 
 add_library(${PROJECT_NAME}_lib
   src/navigation_adapter_node.cpp
-  src/area_filter_adapter/area_filter_adapter.cpp
   src/asset_navigation_adapter/asset_navigation_adapter.cpp
 )
 

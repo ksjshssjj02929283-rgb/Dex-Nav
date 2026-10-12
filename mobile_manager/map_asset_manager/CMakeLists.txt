@@ -24,11 +24,18 @@ find_package(nav2_msgs REQUIRED)
 find_package(nav_interfaces REQUIRED)
 find_package(rcl_interfaces REQUIRED)
 find_package(nlohmann_json REQUIRED)
+find_package(OpenCV REQUIRED COMPONENTS core imgproc imgcodecs)
 
 include_directories(include)
 
 # ── 库目标 ────────────────────────────────────────────────────────────
 add_library(${PROJECT_NAME}_lib
+  src/area_filter_publisher.cpp
+  src/asset_editor.cpp
+  src/asset_geometry.cpp
+  src/asset_set.cpp
+  src/asset_transform.cpp
+  src/asset_versions.cpp
   src/data_event_bus.cpp
   src/file_manager.cpp
   src/map_asset_manager_node.cpp
@@ -63,8 +70,10 @@ ament_target_dependencies(${PROJECT_NAME}_lib
   rcl_interfaces
 )
 
+target_include_directories(${PROJECT_NAME}_lib PUBLIC ${OpenCV_INCLUDE_DIRS})
 target_link_libraries(${PROJECT_NAME}_lib
   nlohmann_json::nlohmann_json
+  ${OpenCV_LIBS}
 )
 
 # ── 可执行文件 ────────────────────────────────────────────────────────
@@ -80,9 +89,20 @@ ament_target_dependencies(map_asset_manager_node
   rclcpp
 )
 
+# 离线资产坐标变换工具：不依赖节点，供 command_board 在重设原点 / 对齐后调用
+add_executable(transform_assets_tool
+  apps/transform_assets_tool.cpp
+)
+
+target_link_libraries(transform_assets_tool
+  ${PROJECT_NAME}_lib
+  nlohmann_json::nlohmann_json
+)
+
 # ── 安装 ──────────────────────────────────────────────────────────────
 install(TARGETS
   map_asset_manager_node
+  transform_assets_tool
   ${PROJECT_NAME}_lib
   DESTINATION lib/${PROJECT_NAME}
 )
@@ -101,6 +121,7 @@ install(DIRECTORY include/
 install(PROGRAMS
   scripts/debug/debug_map_asset_manager.sh
   scripts/map_asset_manager_test.py
+  scripts/run_asset_edit_self_test.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
@@ -154,7 +175,7 @@ if(rviz_common_FOUND AND Qt5_FOUND AND pluginlib_FOUND)
 
   add_library(map_asset_rviz_plugin SHARED
     # 源文件
-    rviz_plugins/src/map_asset_panel.cpp
+    rviz_plugins/src/map_asset_manager_panel.cpp
     rviz_plugins/src/nav_point_tab.cpp
     rviz_plugins/src/nav_point_draft_bridge.cpp
     rviz_plugins/src/route_tab.cpp
@@ -170,7 +191,8 @@ if(rviz_common_FOUND AND Qt5_FOUND AND pluginlib_FOUND)
     rviz_plugins/src/route_graph_delete_tool.cpp
     rviz_plugins/src/route_graph_start_save_tool.cpp
     # 头文件须显式列出，否则 AUTOMOC 不会扫描独立 include 目录下的 Q_OBJECT 宏
-    rviz_plugins/include/map_asset_rviz_plugin/map_asset_panel.hpp
+    rviz_plugins/include/map_asset_rviz_plugin/map_asset_manager_panel.hpp
+    rviz_plugins/include/map_asset_rviz_plugin/asset_target.hpp
     rviz_plugins/include/map_asset_rviz_plugin/nav_point_tab.hpp
     rviz_plugins/include/map_asset_rviz_plugin/nav_point_draft_bridge.hpp
     rviz_plugins/include/map_asset_rviz_plugin/route_tab.hpp
@@ -197,6 +219,8 @@ if(rviz_common_FOUND AND Qt5_FOUND AND pluginlib_FOUND)
     rclcpp_action
     nav_interfaces
     geometry_msgs
+    nav_msgs
+    visualization_msgs
     std_srvs
     rviz_common
     rviz_rendering

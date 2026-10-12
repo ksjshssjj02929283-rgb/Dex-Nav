@@ -1,4 +1,5 @@
 #include "map_asset_rviz_plugin/add_area_tool.hpp"
+#include "map_asset_rviz_plugin/asset_target.hpp"
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -306,7 +307,7 @@ void AddAreaTool::finishPolygon() {
         return;
     }
 
-    auto req = std::make_shared<nav_interfaces::srv::SetAssets::Request>(); req->areas.resize(1);
+    auto req = std::make_shared<nav_interfaces::srv::SetAssets::Request>(); applyTarget(req); req->areas.resize(1);
     req->mode = nav_interfaces::srv::SetAssets::Request::MODE_MERGE;
     req->areas[0].name              = area_name_;
     req->areas[0].type              = area_type_;
@@ -326,6 +327,7 @@ void AddAreaTool::finishPolygon() {
         [this](rclcpp::Client<nav_interfaces::srv::SetAssets>::SharedFuture fut) {
             try {
                 auto resp = fut.get();
+                reportResult(*resp, "添加区域");
                 setStatus(resp->success
                               ? QString("区域 【%1】 添加成功").arg(QString::fromStdString(area_name_))
                               : QString("区域 【%1】 添加失败").arg(QString::fromStdString(area_name_)));

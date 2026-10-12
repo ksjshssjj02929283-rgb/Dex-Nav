@@ -533,7 +533,7 @@ ros2 service call /map_asset_manager_node/get_all_areas nav_interfaces/srv/GetAl
 
 如果当前环境编译到了 RViz 相关依赖，会生成插件库 `map_asset_rviz_plugin`，包含：
 
-- Panel：`map_asset_rviz_plugin/MapAssetPanel`
+- Panel：`map_asset_rviz_plugin/MapAssetManagerPanel`
 - Tool：`map_asset_rviz_plugin/AddNavPointTool`
 - Tool：`map_asset_rviz_plugin/AddAreaTool`
 

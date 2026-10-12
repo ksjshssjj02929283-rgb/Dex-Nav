@@ -1,5 +1,8 @@
 #include "map_asset_rviz_plugin/route_tab.hpp"
 
+#include <algorithm>
+#include "map_asset_rviz_plugin/asset_target.hpp"
+
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -148,9 +151,9 @@ void RouteTab::setAvailablePoints(const QStringList& names) {
 void RouteTab::rebuildClients() {
     add_client_              = node_->create_client<nav_interfaces::srv::SetAssets>(prefix_ + "/set_assets");
     remove_client_           = node_->create_client<nav_interfaces::srv::SetAssets>(prefix_ + "/set_assets");
-    get_client_              = node_->create_client<nav_interfaces::srv::GetRoute>(prefix_ + "/get_route");
+    get_client_              = node_->create_client<nav_interfaces::srv::GetAssets>(prefix_ + "/get_assets");
     get_all_routes_client_   = node_->create_client<nav_interfaces::srv::GetAssets>(prefix_ + "/get_assets");
-    get_points_client_       = node_->create_client<nav_interfaces::srv::GetAllNavPoints>(prefix_ + "/get_all_nav_points");
+    get_points_client_       = node_->create_client<nav_interfaces::srv::GetAssets>(prefix_ + "/get_assets");
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -160,7 +163,7 @@ void RouteTab::onRefreshRoutes() {
     refresh_routes_btn_->setEnabled(false);
     status_label_->setText("刷新路线...");
 
-    auto req = std::make_shared<nav_interfaces::srv::GetAssets::Request>();
+    auto req = std::make_shared<nav_interfaces::srv::GetAssets::Request>(); applyTarget(req);
     req->kinds = nav_interfaces::srv::GetAssets::Request::KIND_ROUTES;
     get_all_routes_client_->async_send_request(
         req,
@@ -188,10 +191,11 @@ void RouteTab::onRefreshRoutes() {
 void RouteTab::onRefreshPoints() {
     if (!get_points_client_) { status_label_->setText("节点未初始化"); return; }
     status_label_->setText("刷新点位...");
-    auto req = std::make_shared<nav_interfaces::srv::GetAllNavPoints::Request>();
+    auto req = std::make_shared<nav_interfaces::srv::GetAssets::Request>(); applyTarget(req);
+    req->kinds = nav_interfaces::srv::GetAssets::Request::KIND_POINTS;
     get_points_client_->async_send_request(
         req,
-        [this](rclcpp::Client<nav_interfaces::srv::GetAllNavPoints>::SharedFuture fut) {
+        [this](rclcpp::Client<nav_interfaces::srv::GetAssets>::SharedFuture fut) {
             try {
                 auto resp = fut.get();
                 QStringList names;
@@ -211,7 +215,7 @@ void RouteTab::onCreate() {
     if (name.empty()) { status_label_->setText("错误：请填写路线名称"); return; }
     if (selected_list_->count() == 0) { status_label_->setText("错误：请至少选择一个点位"); return; }
 
-    auto req = std::make_shared<nav_interfaces::srv::SetAssets::Request>(); req->routes.resize(1);
+    auto req = std::make_shared<nav_interfaces::srv::SetAssets::Request>(); applyTarget(req); req->routes.resize(1);
     req->mode = nav_interfaces::srv::SetAssets::Request::MODE_ADD_ONLY;
     req->routes[0].name = name;
     for (int i = 0; i < selected_list_->count(); ++i) {
@@ -228,7 +232,7 @@ void RouteTab::onCreate() {
                 auto resp = fut.get();
                 Q_EMIT operationFinished(resp->success,
                     resp->success ? "路线创建成功" : QString("路线创建失败: %1").arg(
-                        QString::fromStdString(resp->message)));
+                        assetMessage(*resp)));
             } catch (const std::exception& ex) {
                 Q_EMIT operationFinished(false, QString("创建异常: %1").arg(ex.what()));
             }
@@ -251,7 +255,7 @@ void RouteTab::onRemove() {
         return;
     }
 
-    auto req = std::make_shared<nav_interfaces::srv::SetAssets::Request>(); req->routes.resize(1);
+    auto req = std::make_shared<nav_interfaces::srv::SetAssets::Request>(); applyTarget(req); req->routes.resize(1);
     req->mode = nav_interfaces::srv::SetAssets::Request::MODE_REMOVE;
     req->routes[0].name = name.toStdString();
 
@@ -265,7 +269,7 @@ void RouteTab::onRemove() {
                 auto resp = fut.get();
                 Q_EMIT operationFinished(resp->success,
                     resp->success ? "路线删除成功" : QString("路线删除失败: %1").arg(
-                        QString::fromStdString(resp->message)));
+                        assetMessage(*resp)));
             } catch (const std::exception& ex) {
                 Q_EMIT operationFinished(false, QString("删除异常: %1").arg(ex.what()));
             }
@@ -279,17 +283,19 @@ void RouteTab::onRouteSelected(QListWidgetItem* item) {
     const int sep = full_text.indexOf("  [");
     const QString name = (sep >= 0) ? full_text.left(sep) : full_text;
 
-    auto req = std::make_shared<nav_interfaces::srv::GetRoute::Request>();
-    req->name = name.toStdString();
+    auto req = std::make_shared<nav_interfaces::srv::GetAssets::Request>(); applyTarget(req);
+    req->kinds = nav_interfaces::srv::GetAssets::Request::KIND_ROUTES;
 
     get_client_->async_send_request(
         req,
-        [this](rclcpp::Client<nav_interfaces::srv::GetRoute>::SharedFuture fut) {
+        [this, route = name.toStdString()](rclcpp::Client<nav_interfaces::srv::GetAssets>::SharedFuture fut) {
             try {
                 auto resp = fut.get();
-                if (resp->success) {
+                const auto it = std::find_if(resp->routes.begin(), resp->routes.end(),
+                                             [&](const auto& r) { return r.name == route; });
+                if (resp->success && it != resp->routes.end()) {
                     QStringList pts;
-                    for (const auto& p : resp->point_names) {
+                    for (const auto& p : it->point_names) {
                         pts << QString::fromStdString(p);
                     }
                     QString detail = QString("路线点位: %1").arg(pts.join(" → "));

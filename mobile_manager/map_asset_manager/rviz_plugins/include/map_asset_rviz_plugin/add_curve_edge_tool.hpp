@@ -37,12 +37,14 @@ public:
 private:
     void updatePreview(double mx, double my);
     void clearPreview();
+    void reloadEndpoints();  // 按编辑目标异步加载端点（点位 + 路网节点），记下当时的数据代数
     void submitEdge(const EdgeConfig& cfg);
 
     rclcpp::Node::SharedPtr              node_;
     std::string                          service_prefix_{"/map_asset_manager"};
     std::vector<EndpointInfo>            endpoints_;
     bool                                 loading_{false};  ///< 正在异步加载端点列表
+    uint64_t loaded_gen_{0};
     double                               last_mx_{0.0};
     double                               last_my_{0.0};
 

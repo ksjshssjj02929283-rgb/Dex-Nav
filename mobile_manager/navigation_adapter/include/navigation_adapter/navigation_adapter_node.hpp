@@ -4,7 +4,6 @@
 #include <memory>
 #include <rclcpp/rclcpp.hpp>
 
-#include "navigation_adapter/area_filter_adapter.hpp"
 #include "navigation_adapter/asset_navigation_adapter.hpp"
 
 namespace navigation_adapter {
@@ -17,7 +16,6 @@ private:
     void initialize();
 
     // ── 子模块 ───────────────────────────────────────────────────
-    std::shared_ptr<AreaFilterAdapter> area_filter_adapter_;
     std::shared_ptr<AssetNavigationAdapter> asset_navigation_adapter_;
 };
 

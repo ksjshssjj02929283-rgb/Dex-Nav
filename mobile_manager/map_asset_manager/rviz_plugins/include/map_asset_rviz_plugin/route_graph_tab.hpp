@@ -9,9 +9,10 @@
 #include <memory>
 #include <string>
 
-#include <nav_interfaces/srv/get_route_graph.hpp>
+#include <nav_interfaces/srv/get_assets.hpp>
 #include <nav_interfaces/srv/set_assets.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include "map_asset_rviz_plugin/asset_target.hpp"
 
 namespace map_asset_rviz_plugin {
 
@@ -47,7 +48,7 @@ private:
     rclcpp::Node::SharedPtr node_;
     std::string prefix_{"/map_asset_manager"};
 
-    rclcpp::Client<nav_interfaces::srv::GetRouteGraph>::SharedPtr      get_graph_client_;
+    rclcpp::Client<nav_interfaces::srv::GetAssets>::SharedPtr      get_graph_client_;
     rclcpp::Client<nav_interfaces::srv::SetAssets>::SharedPtr    remove_edge_client_;
     rclcpp::Client<nav_interfaces::srv::SetAssets>::SharedPtr remove_junction_client_;
 };
