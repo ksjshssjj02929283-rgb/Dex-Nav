@@ -58,6 +58,7 @@ add_library(${library_name} SHARED
   src/scan.cpp
   src/pointcloud.cpp
   src/range.cpp
+  src/range_filter.cpp
   src/kinematics.cpp
 )
 

@@ -14,6 +14,7 @@
 
 #include "nav2_collision_monitor/pointcloud.hpp"
 
+#include <chrono>
 #include <functional>
 #include <utility>
 
@@ -123,6 +124,12 @@ void PointCloud::getParameters(std::string & source_topic)
 
 void PointCloud::dataCallback(sensor_msgs::msg::PointCloud2::ConstSharedPtr msg)
 {
+  last_source_stamp_ns_.store(
+    rclcpp::Time(msg->header.stamp).nanoseconds(), std::memory_order_release);
+  const auto receipt = std::chrono::steady_clock::now().time_since_epoch();
+  last_received_steady_ns_.store(
+    std::chrono::duration_cast<std::chrono::nanoseconds>(receipt).count(),
+    std::memory_order_release);
   std::atomic_store(&data_, std::move(msg));
   data_sequence_.fetch_add(1, std::memory_order_release);
 }

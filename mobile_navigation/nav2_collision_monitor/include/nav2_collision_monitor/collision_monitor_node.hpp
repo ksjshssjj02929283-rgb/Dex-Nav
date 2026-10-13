@@ -25,6 +25,7 @@
 
 #include "rclcpp/rclcpp.hpp"
 #include "geometry_msgs/msg/twist.hpp"
+#include "sensor_msgs/msg/point_cloud2.hpp"
 #include "std_msgs/msg/empty.hpp"
 #include "nav_msgs/msg/path.hpp"
 #include "visualization_msgs/msg/marker_array.hpp"
@@ -145,8 +146,8 @@ protected:
   const ControlInput & readControlInput();
   /// 更新已观察的序号；路径、速度或传感器数据变化时返回 true。
   bool hasUpdatedInput(const ControlInput & input);
-  /// scan 缺失或超时时发布 STOP；仅在本周期可继续处理时返回 true。
-  bool checkScanTimeout(const rclcpp::Time & now);
+  /// 传感器（激光或超声波等）缺失或超时时发布 STOP；仅在本周期可继续处理时返回 true。
+  bool checkSensorTimeout(const rclcpp::Time & now);
   /// 根据配置的导航类型执行路径检查与 IDLE 恢复检查。
   void updateNavigationMode(const ControlInput & input, const rclcpp::Time & now);
   /// 处理速度新鲜度、IDLE 超时，以及活动或空闲状态下的碰撞检测。
@@ -175,6 +176,16 @@ protected:
    */
   void publishObstacleStatus(
     const Action & robot_action, const std::shared_ptr<Polygon> action_polygon) const;
+
+  /**
+   * @brief Publishes ultrasonic points as PointCloud2 if there are active subscribers.
+   * Does nothing and allocates nothing if subscription count is 0.
+   * @param curr_time Current stamp for PointCloud2 header
+   * @param points Ultrasonic points in base frame
+   */
+  void publishUltrasonicPointCloud(
+    const rclcpp::Time & curr_time,
+    const std::vector<Point> & points) const;
 
   /**
    * @brief Supporting routine obtaining all ROS-parameters
@@ -361,12 +372,17 @@ protected:
     visualization_msgs::msg::MarkerArray>::SharedPtr path_stop_marker_pub_;
   /// @brief velocity_smoother 的硬停输入，CM 进入 STOP 时发布一次
   rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::Empty>::SharedPtr hard_stop_pub_;
+  /// @brief 超声波点云发布者（仅在有订阅时发布）
+  rclcpp_lifecycle::LifecyclePublisher<sensor_msgs::msg::PointCloud2>::SharedPtr
+    ultrasonic_points_pub_;
   /// @brief 动态膨胀设置服务（本仓库相对上游 Nav2 的改动），仅 schedule 模式创建
   rclcpp::Service<nav_interfaces::srv::SetPolygonPadding>::SharedPtr set_padding_srv_;
 
   // schedule_planner path-ahead stop detector
   bool path_stop_enabled_{false};
   std::string tracking_path_topic_{"tracking_path"};
+  std::string ultrasonic_points_topic_{"ultrasonic_points"};
+  bool enable_range_slowdown_{false};
   double path_stop_distance_{1.0};
   double path_stop_radius_{0.36};
   double path_point_interval_{0.10};
@@ -419,7 +435,7 @@ protected:
   NavigationMode schedule_navigation_mode_{NavigationMode::SCHEDULE_NAVIGATION};
   NavigationType configured_navigation_type_{NavigationType::AUTOMONOUS};
   std::int64_t source_start_time_ns_{0};
-  std::int64_t scan_fault_timeout_ns_{500000000LL};
+  std::int64_t sensor_fault_timeout_ns_{500000000LL};
   bool sensor_fault_active_{false};
   int logged_velocity_state_{-1};
   rclcpp::Time mode_last_cmd_stamp_{0, 0, RCL_ROS_TIME};
@@ -427,7 +443,12 @@ protected:
   double automonous_navigation_padding_{0.1};
   bool approach_enabled_{true};
   // Reused by the single control callback to avoid allocating thousands of points at 100 Hz.
-  std::vector<Point> collision_points_buffer_;
+  std::vector<Point> raw_points_buffer_;
+  std::vector<Point> range_slow_buffer_;
+  std::vector<Point> range_stop_only_buffer_;
+  std::vector<Point> ultrasonic_points_buffer_;
+  std::vector<Point> slowdown_points_buffer_;
+  std::vector<Point> all_stop_points_buffer_;
 
   /// @brief Whether main routine is active
   bool process_active_;
@@ -441,6 +462,12 @@ protected:
   rclcpp::Time stop_stamp_;
   /// @brief Timeout after which 0-velocity ceases to be published
   rclcpp::Duration stop_pub_timeout_;
+  /// @brief STOP 触发后至少保持的时长；0 表示关闭停车保持
+  rclcpp::Duration stop_hold_time_{2, 0};
+  /// @brief 进入停车保持的时间戳
+  rclcpp::Time stop_hold_stamp_;
+  /// @brief 是否正处于停车保持期
+  bool stop_hold_active_{false};
 
 };  // class CollisionMonitor
 

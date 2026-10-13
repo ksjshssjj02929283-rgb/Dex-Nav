@@ -24,6 +24,7 @@
 #include <limits>
 #include <vector>
 
+#include "sensor_msgs/point_cloud2_iterator.hpp"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
 #include "tf2_ros/create_timer_ros.h"
 
@@ -37,7 +38,8 @@ namespace nav2_collision_monitor
 CollisionMonitor::CollisionMonitor(const rclcpp::NodeOptions & options)
 : nav2_util::LifecycleNode("collision_monitor", "", options),
   process_active_(false), robot_action_prev_{DO_NOTHING, {-1.0, -1.0, -1.0}},
-  stop_stamp_{0, 0, get_clock()->get_clock_type()}, stop_pub_timeout_(1.0, 0.0)
+  stop_stamp_{0, 0, get_clock()->get_clock_type()}, stop_pub_timeout_(1.0, 0.0),
+  stop_hold_stamp_{0, 0, get_clock()->get_clock_type()}
 {
 }
 
@@ -106,7 +108,9 @@ CollisionMonitor::on_configure(const rclcpp_lifecycle::State & /*state*/)
     return nav2_util::CallbackReturn::FAILURE;
   }
 
-  // 模式由参数固定；两种模式均使用 cmd_vel_in_topic 输入并输出安全速度。
+  // 模式由参数固定：auto 链路本节点串联在速度链中并输出安全速度；schedule 链路
+  // path_follower 直连 velocity_smoother，本节点仅旁路观察速度做障碍检测，不下发速度。
+  // 两种模式共用 cmd_vel_in_topic 作为速度输入。
   nav2_util::declare_parameter_if_not_declared(
     node, "free_navigation_path_topic", rclcpp::ParameterValue("plan"));
   free_navigation_path_topic_ = get_parameter("free_navigation_path_topic").as_string();
@@ -136,9 +140,23 @@ CollisionMonitor::on_configure(const rclcpp_lifecycle::State & /*state*/)
   rclcpp::SubscriptionOptions io_options;
   io_options.callback_group = io_callback_group_;
 
+  // 只有当速度输入话题与本节点输出话题同名时才需要屏蔽本进程发布的消息：此时若不做处理，
+  // cmd_vel_in_sub_ 会订阅到自己发布的 cmd_vel（IDLE enterIdle 的零速、传感器超时零速或
+  // auto 安全速度），被当作新指令回灌，形成自激/自锁。ignore_local_publications 只屏蔽
+  // 本进程发出的消息，path_follower 等同名话题的其它发布者不受影响；输入与输出不同名时
+  // 保持默认行为，避免误伤同进程的其它速度发布者。
+  rclcpp::SubscriptionOptions cmd_vel_in_options = io_options;
+  if (cmd_vel_in_topic == cmd_vel_out_topic) {
+    cmd_vel_in_options.ignore_local_publications = true;
+    RCLCPP_WARN(
+      get_logger(),
+      "cmd_vel_in_topic == cmd_vel_out_topic ('%s')；已启用 ignore_local_publications，"
+      "本节点不会消费自己发布的 cmd_vel", cmd_vel_in_topic.c_str());
+  }
   cmd_vel_in_sub_ = this->create_subscription<geometry_msgs::msg::Twist>(
     cmd_vel_in_topic, 1,
-    std::bind(&CollisionMonitor::cmdVelInCallback, this, std::placeholders::_1), io_options);
+    std::bind(&CollisionMonitor::cmdVelInCallback, this, std::placeholders::_1),
+    cmd_vel_in_options);
 
   // 每种模式只订阅自己的路径输入。
   if (configured_navigation_type_ == NavigationType::SCHEDULE) {
@@ -160,6 +178,18 @@ CollisionMonitor::on_configure(const rclcpp_lifecycle::State & /*state*/)
     hard_stop_pub_ = this->create_publisher<std_msgs::msg::Empty>(
       hard_stop_topic, rclcpp::QoS(1).reliable());
   }
+
+  nav2_util::declare_parameter_if_not_declared(
+    node, "ultrasonic_points_topic", rclcpp::ParameterValue("ultrasonic_points"));
+  ultrasonic_points_topic_ = get_parameter("ultrasonic_points_topic").as_string();
+  if (!ultrasonic_points_topic_.empty()) {
+    ultrasonic_points_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>(
+      ultrasonic_points_topic_, 1);
+  }
+
+  nav2_util::declare_parameter_if_not_declared(
+    node, "enable_range_slowdown", rclcpp::ParameterValue(false));
+  enable_range_slowdown_ = get_parameter("enable_range_slowdown").as_bool();
 
   nav2_util::declare_parameter_if_not_declared(
     node, "PolygonStop.path_stop_enabled", rclcpp::ParameterValue(false));
@@ -234,6 +264,9 @@ CollisionMonitor::on_activate(const rclcpp_lifecycle::State & /*state*/)
   if (path_stop_marker_pub_) {
     path_stop_marker_pub_->on_activate();
   }
+  if (ultrasonic_points_pub_) {
+    ultrasonic_points_pub_->on_activate();
+  }
 
   // Activating polygons
   for (std::shared_ptr<Polygon> polygon : polygons_) {
@@ -260,6 +293,7 @@ CollisionMonitor::on_activate(const rclcpp_lifecycle::State & /*state*/)
   navigation_mode_ = NavigationMode::IDLE;
   schedule_navigation_mode_ = NavigationMode::SCHEDULE_NAVIGATION;
   logged_velocity_state_ = -1;
+  stop_hold_active_ = false;
   RCLCPP_INFO(
     get_logger(), "[FSM] activate: mode=IDLE type=%s cmd_timeout=%.3fs idle_timeout=%.3fs",
     configured_navigation_type_ == NavigationType::AUTOMONOUS ? "auto" : "schedule",
@@ -308,6 +342,7 @@ CollisionMonitor::on_deactivate(const rclcpp_lifecycle::State & /*state*/)
 
   // Reset action type to default after worker deactivating
   robot_action_prev_ = {DO_NOTHING, {-1.0, -1.0, -1.0}};
+  stop_hold_active_ = false;
 
   // Deactivating polygons
   for (std::shared_ptr<Polygon> polygon : polygons_) {
@@ -322,6 +357,9 @@ CollisionMonitor::on_deactivate(const rclcpp_lifecycle::State & /*state*/)
   }
   if (path_stop_marker_pub_) {
     path_stop_marker_pub_->on_deactivate();
+  }
+  if (ultrasonic_points_pub_) {
+    ultrasonic_points_pub_->on_deactivate();
   }
 
   // Destroying bond connection
@@ -343,6 +381,7 @@ CollisionMonitor::on_cleanup(const rclcpp_lifecycle::State & /*state*/)
   obstacle_status_pub_.reset();
   hard_stop_pub_.reset();
   path_stop_marker_pub_.reset();
+  ultrasonic_points_pub_.reset();
   set_padding_srv_.reset();
   io_callback_group_.reset();
   control_callback_group_.reset();
@@ -400,8 +439,8 @@ void CollisionMonitor::controlLoopCallback()
   const auto & input = readControlInput();
   const bool input_updated = hasUpdatedInput(input);
   const rclcpp::Time now = this->now();
-  // scan 故障会发布停车，本周期不再处理导航模式和速度。
-  if (checkScanTimeout(now)) {
+  // 传感器故障会发布停车，本周期不再处理导航模式和速度。
+  if (checkSensorTimeout(now)) {
     updateNavigationMode(input, now);
     processVelocityInput(input.cmd, input_updated, now);
   }
@@ -446,29 +485,28 @@ bool CollisionMonitor::hasUpdatedInput(const ControlInput & input)
   return input_updated;
 }
 
-bool CollisionMonitor::checkScanTimeout(const rclcpp::Time & now)
+bool CollisionMonitor::checkSensorTimeout(const rclcpp::Time & now)
 {
-  // 单调时钟检测未收到或停止到达的 scan；消息时间戳检测延迟到达的旧数据。
-  // 从未收到的 scan 从 source_start_time_ns_ 开始计时。
+  // 单调时钟检测任一观测源未收到或停止到达的数据；消息时间戳检测延迟到达的旧数据。
+  // 从未收到的传感器从 source_start_time_ns_ 开始计时。所有启用的观测源
+  // （scan / range / pointcloud）超时都会触发停车，不再只监测激光雷达。
   const auto steady_now = steadyNowNs();
-  std::string stale_scan;
+  std::string stale_sensor;
   for (const auto & source : sources_) {
-    if (std::dynamic_pointer_cast<Scan>(source)) {
-      const auto last = source->getLastReceivedSteadyNs();
-      const auto since = std::max(last, source_start_time_ns_);
-      const auto stamp = source->getLastSourceStampNs();
-      if (steady_now - since >= scan_fault_timeout_ns_ ||
-        (last != 0 && now.nanoseconds() - stamp >= scan_fault_timeout_ns_))
-      {
-        stale_scan = source->getName();
-        break;
-      }
+    const auto last = source->getLastReceivedSteadyNs();
+    const auto since = std::max(last, source_start_time_ns_);
+    const auto stamp = source->getLastSourceStampNs();
+    if (steady_now - since >= sensor_fault_timeout_ns_ ||
+      (last != 0 && now.nanoseconds() - stamp >= sensor_fault_timeout_ns_))
+    {
+      stale_sensor = source->getName();
+      break;
     }
   }
-  if (!stale_scan.empty()) {
-    // 任一必需 scan 超时时，持续发布零速和 STOP 状态。
+  if (!stale_sensor.empty()) {
+    // 任一必需观测源超时时，持续发布零速和 STOP 状态。
     if (!sensor_fault_active_) {
-      RCLCPP_ERROR(get_logger(), "Scan %s timed out; stopping", stale_scan.c_str());
+      RCLCPP_ERROR(get_logger(), "%s timed out; stopping", stale_sensor.c_str());
     }
     sensor_fault_active_ = true;
     publishHardStopOnStopEdge("scan timeout");
@@ -479,7 +517,7 @@ bool CollisionMonitor::checkScanTimeout(const rclcpp::Time & now)
     return false;
   }
   if (sensor_fault_active_) {
-    RCLCPP_INFO(get_logger(), "All required scans recovered");
+    RCLCPP_INFO(get_logger(), "All required sensors recovered");
     sensor_fault_active_ = false;
   }
   return true;
@@ -522,7 +560,8 @@ void CollisionMonitor::processVelocityInput(
       states[velocity_state], navigationModeName(navigation_mode_), velocity_age,
       static_cast<unsigned long long>(active_cmd ? active_cmd->sequence : 0),
       active_cmd && active_cmd->message ? active_cmd->stamp.seconds() : 0.0,
-      velocity_state == 2 ? "filtered_velocity" : "status_only");
+      velocity_state == 2 && configured_navigation_type_ == NavigationType::AUTOMONOUS ?
+      "filtered_velocity" : "status_only");
     logged_velocity_state_ = velocity_state;
   }
 
@@ -534,8 +573,16 @@ void CollisionMonitor::processVelocityInput(
       const bool command_updated = active_cmd->sequence != consumed_cmd_sequence_;
       consumed_cmd_sequence_ = active_cmd->sequence;
       if (input_updated) {
+        // 速度下发按导航链路区分：
+        // - auto：本节点串联在速度链里，输出过滤/限速后的安全速度。
+        // - schedule：path_follower 直连 velocity_smoother，本节点只把该速度当作
+        //   障碍检测的几何上下文（旁路观察），减速/停车由 path_follower 依据
+        //   obstacle_status 执行。这里 publish_cmd_vel=false，避免同一障碍被两处
+        //   各刹一次，也不把调度速度回灌进速度链。
+        const bool publish_gated_velocity =
+          configured_navigation_type_ == NavigationType::AUTOMONOUS;
         process(
-          {msg.linear.x, msg.linear.y, msg.angular.z}, true, false,
+          {msg.linear.x, msg.linear.y, msg.angular.z}, publish_gated_velocity, false,
           command_updated);
       }
       return;
@@ -711,14 +758,26 @@ bool CollisionMonitor::getParameters(
     node, "source_timeout", rclcpp::ParameterValue(2.0));
   source_timeout =
     rclcpp::Duration::from_seconds(get_parameter("source_timeout").as_double());
+  // 优先读取 sensor_fault_timeout；向后兼容旧名称 scan_fault_timeout
+  nav2_util::declare_parameter_if_not_declared(
+    node, "sensor_fault_timeout", rclcpp::ParameterValue(0.5));
   nav2_util::declare_parameter_if_not_declared(
     node, "scan_fault_timeout", rclcpp::ParameterValue(0.5));
-  const double scan_fault_timeout = get_parameter("scan_fault_timeout").as_double();
-  if (!std::isfinite(scan_fault_timeout) || scan_fault_timeout <= 0.0) {
-    RCLCPP_ERROR(get_logger(), "scan_fault_timeout must be positive and finite");
+
+  double sensor_fault_timeout = get_parameter("sensor_fault_timeout").as_double();
+  if (node->has_parameter("scan_fault_timeout") && sensor_fault_timeout == 0.5) {
+    const double scan_timeout_val = get_parameter("scan_fault_timeout").as_double();
+    if (scan_timeout_val != 0.5) {
+      sensor_fault_timeout = scan_timeout_val;
+    }
+  }
+
+  if (!std::isfinite(sensor_fault_timeout) || sensor_fault_timeout <= 0.0) {
+    RCLCPP_ERROR(get_logger(), "sensor_fault_timeout must be positive and finite");
     return false;
   }
-  scan_fault_timeout_ns_ = static_cast<std::int64_t>(scan_fault_timeout * 1e9);
+  sensor_fault_timeout_ns_ = static_cast<std::int64_t>(sensor_fault_timeout * 1e9);
+
   nav2_util::declare_parameter_if_not_declared(
     node, "base_shift_correction", rclcpp::ParameterValue(true));
   const bool base_shift_correction =
@@ -728,6 +787,16 @@ bool CollisionMonitor::getParameters(
     node, "stop_pub_timeout", rclcpp::ParameterValue(1.0));
   stop_pub_timeout_ =
     rclcpp::Duration::from_seconds(get_parameter("stop_pub_timeout").as_double());
+
+  // 停车保持：STOP 触发后至少保持该时长再允许恢复；<=0 关闭。
+  nav2_util::declare_parameter_if_not_declared(
+    node, "stop_hold_time", rclcpp::ParameterValue(2.0));
+  stop_hold_time_ =
+    rclcpp::Duration::from_seconds(get_parameter("stop_hold_time").as_double());
+  if (stop_hold_time_.seconds() < 0.0) {
+    RCLCPP_ERROR(get_logger(), "stop_hold_time must be non-negative");
+    return false;
+  }
 
   if (!configurePolygons(base_frame_id, transform_tolerance)) {
     return false;
@@ -863,15 +932,66 @@ void CollisionMonitor::process(
 
   // Points array collected from different data sources in a robot base frame. The control
   // callback is mutually exclusive, so retaining capacity here is safe and avoids a large
-  // allocation/free cycle on every 100 Hz tick.
-  collision_points_buffer_.clear();
-  std::vector<Point> & collision_points = collision_points_buffer_;
+  raw_points_buffer_.clear();
+  range_slow_buffer_.clear();
+  range_stop_only_buffer_.clear();
+  ultrasonic_points_buffer_.clear();
+  slowdown_points_buffer_.clear();
+  all_stop_points_buffer_.clear();
 
   // Each source takes an atomic snapshot of its latest immutable message.
   // Point conversion runs outside cache synchronization; this local vector has one writer.
   for (const auto & source : sources_) {
-    source->getData(curr_time, collision_points);
+    if (std::dynamic_pointer_cast<Range>(source)) {
+      const size_t prev_size = ultrasonic_points_buffer_.size();
+      source->getData(curr_time, ultrasonic_points_buffer_);
+      const size_t new_pts = ultrasonic_points_buffer_.size() - prev_size;
+      if (new_pts > 0) {
+        if (source->isStopOnly()) {
+          range_stop_only_buffer_.insert(
+            range_stop_only_buffer_.end(),
+            ultrasonic_points_buffer_.begin() + prev_size,
+            ultrasonic_points_buffer_.end());
+        } else {
+          range_slow_buffer_.insert(
+            range_slow_buffer_.end(),
+            ultrasonic_points_buffer_.begin() + prev_size,
+            ultrasonic_points_buffer_.end());
+        }
+      }
+    } else {
+      source->getData(curr_time, raw_points_buffer_);
+    }
   }
+
+  // 没有订阅者时不发布超声波点云；有订阅者时发布
+  if (ultrasonic_points_pub_ && ultrasonic_points_pub_->get_subscription_count() > 0) {
+    publishUltrasonicPointCloud(curr_time, ultrasonic_points_buffer_);
+  }
+
+  // SLOWDOWN 多边形消费点：激光雷达点 + 允许减速的超声波点
+  slowdown_points_buffer_.reserve(
+    raw_points_buffer_.size() + range_slow_buffer_.size());
+  slowdown_points_buffer_.insert(
+    slowdown_points_buffer_.end(),
+    raw_points_buffer_.begin(), raw_points_buffer_.end());
+  slowdown_points_buffer_.insert(
+    slowdown_points_buffer_.end(),
+    range_slow_buffer_.begin(), range_slow_buffer_.end());
+
+  // STOP 多边形消费点：所有点（通用雷达点 + 允许减速的超声波点 + 仅停障的超声波点）
+  all_stop_points_buffer_.reserve(
+    slowdown_points_buffer_.size() + range_stop_only_buffer_.size());
+  all_stop_points_buffer_.insert(
+    all_stop_points_buffer_.end(),
+    slowdown_points_buffer_.begin(), slowdown_points_buffer_.end());
+  all_stop_points_buffer_.insert(
+    all_stop_points_buffer_.end(),
+    range_stop_only_buffer_.begin(), range_stop_only_buffer_.end());
+
+  std::vector<Point> & collision_points = raw_points_buffer_;
+  std::vector<Point> & slowdown_points = slowdown_points_buffer_;
+  std::vector<Point> & all_stop_points = all_stop_points_buffer_;
 
   for (const auto & polygon : polygons_) {
     polygon->updatePolygon();
@@ -905,14 +1025,19 @@ void CollisionMonitor::process(
     if (!approach_enabled_ && at == APPROACH) {
       continue;
     }
-    if (at == STOP || at == SLOWDOWN) {
-      // Process STOP/SLOWDOWN for the selected polygon
-      if (processStopSlowdown(polygon, collision_points, cmd_vel_in, robot_action)) {
+    if (at == STOP) {
+      // STOP 多边形同时使用雷达与超声波点（若连续3帧检测到则触发停车）
+      if (processStopSlowdown(polygon, all_stop_points, cmd_vel_in, robot_action)) {
+        action_polygon = polygon;
+      }
+    } else if (at == SLOWDOWN) {
+      // SLOWDOWN 多边形使用雷达点与可配置进入减速的超声波点
+      if (processStopSlowdown(polygon, slowdown_points, cmd_vel_in, robot_action)) {
         action_polygon = polygon;
       }
     } else if (at == APPROACH) {
       const auto approach_start = std::chrono::steady_clock::now();
-      // Process APPROACH for the selected polygon
+      // APPROACH 速度轨迹预测仅使用雷达点（超声波不做减速监测）
       if (processApproach(polygon, collision_points, cmd_vel_in, robot_action)) {
         action_polygon = polygon;
       }
@@ -938,6 +1063,24 @@ void CollisionMonitor::process(
     }
     if (performance_timing_enabled_) {
       recordPerformanceDuration(path_corridor_samples_ms_, path_stop_start);
+    }
+  }
+
+  // 停车保持（stop_hold_time_）：一旦进入 STOP 就至少保持该时长；期间即使障碍消失也维持
+  // STOP，到时后再按最新检测结果恢复，避免抖动/漏检造成反复启停。该逻辑对 auto（下发零速）
+  // 与 schedule（上报 STOP 状态）两条链路一致生效，IDLE 的车身检测不受影响。
+  if (!idle_polygon_only && stop_hold_time_.seconds() > 0.0) {
+    if (robot_action.action_type == STOP) {
+      if (!stop_hold_active_) {
+        stop_hold_active_ = true;
+        stop_hold_stamp_ = curr_time;
+      }
+    } else if (stop_hold_active_) {
+      if (curr_time - stop_hold_stamp_ < stop_hold_time_) {
+        robot_action = {STOP, {0.0, 0.0, 0.0}};
+      } else {
+        stop_hold_active_ = false;
+      }
     }
   }
 
@@ -1344,7 +1487,17 @@ bool CollisionMonitor::processStopSlowdown(
   const Velocity & velocity,
   Action & robot_action) const
 {
-  if (polygon->getPointsInside(collision_points) > polygon->getMaxPoints()) {
+  const int points_inside = polygon->getPointsInside(collision_points);
+  const int max_points = polygon->getMaxPoints();
+  if (points_inside > 0 && polygon->getActionType() == STOP) {
+    RCLCPP_DEBUG(
+      get_logger(),
+      "[%s]: STOP check: points_inside=%d, max_points_threshold=%d -> triggered=%s",
+      polygon->getName().c_str(), points_inside, max_points,
+      (points_inside > max_points ? "YES" : "NO"));
+  }
+
+  if (points_inside > max_points) {
     if (polygon->getActionType() == STOP) {
       // Setting up zero velocity for STOP model
       robot_action.action_type = STOP;
@@ -1397,16 +1550,59 @@ void CollisionMonitor::printAction(
   const Action & robot_action, const std::shared_ptr<Polygon> action_polygon) const
 {
   if (robot_action.action_type == STOP) {
-    RCLCPP_INFO(
-      get_logger(),
-      "Robot to stop due to %s polygon",
-      action_polygon->getName().c_str());
+    if (action_polygon) {
+      // 统计障碍点来源（雷达 vs 超声波）
+      const int laser_pts_inside = action_polygon->getPointsInside(raw_points_buffer_);
+      const int all_pts_inside = action_polygon->getPointsInside(all_stop_points_buffer_);
+      const int range_pts_inside = all_pts_inside - laser_pts_inside;
+
+      std::string source_details;
+      if (range_pts_inside > 0 && laser_pts_inside > 0) {
+        source_details = " (laser=" + std::to_string(laser_pts_inside) +
+          " pts, ultrasonic=" + std::to_string(range_pts_inside) + " pts)";
+      } else if (range_pts_inside > 0) {
+        source_details = " (caused by ultrasonic, pts=" + std::to_string(range_pts_inside) + ")";
+      } else {
+        source_details = " (caused by laser/depth, pts=" + std::to_string(laser_pts_inside) + ")";
+      }
+
+      RCLCPP_INFO(
+        get_logger(),
+        "Robot to stop due to %s polygon [points_inside=%d, max_points=%d]%s",
+        action_polygon->getName().c_str(), all_pts_inside, action_polygon->getMaxPoints(),
+        source_details.c_str());
+    } else {
+      RCLCPP_INFO(
+        get_logger(),
+        "Robot to stop due to unknown/path-stop action");
+    }
   } else if (robot_action.action_type == SLOWDOWN) {
-    RCLCPP_INFO(
-      get_logger(),
-      "Robot to slowdown for %f percents due to %s polygon",
-      action_polygon->getSlowdownRatio() * 100,
-      action_polygon->getName().c_str());
+    if (action_polygon) {
+      const int laser_pts_inside = action_polygon->getPointsInside(raw_points_buffer_);
+      const int slow_pts_inside = action_polygon->getPointsInside(slowdown_points_buffer_);
+      const int range_pts_inside = slow_pts_inside - laser_pts_inside;
+
+      std::string source_details;
+      if (range_pts_inside > 0 && laser_pts_inside > 0) {
+        source_details = " (laser=" + std::to_string(laser_pts_inside) +
+          " pts, ultrasonic=" + std::to_string(range_pts_inside) + " pts)";
+      } else if (range_pts_inside > 0) {
+        source_details = " (caused by ultrasonic, pts=" + std::to_string(range_pts_inside) + ")";
+      } else {
+        source_details = " (caused by laser/depth, pts=" + std::to_string(laser_pts_inside) + ")";
+      }
+
+      RCLCPP_INFO(
+        get_logger(),
+        "Robot to slowdown for %f percents due to %s polygon [points_inside=%d, max_points=%d]%s",
+        action_polygon->getSlowdownRatio() * 100,
+        action_polygon->getName().c_str(), slow_pts_inside, action_polygon->getMaxPoints(),
+        source_details.c_str());
+    } else {
+      RCLCPP_INFO(
+        get_logger(),
+        "Robot to slowdown due to unknown polygon");
+    }
   } else if (robot_action.action_type == APPROACH) {
     RCLCPP_INFO(
       get_logger(),
@@ -1417,6 +1613,42 @@ void CollisionMonitor::printAction(
       get_logger(),
       "Robot to continue normal operation");
   }
+}
+
+void CollisionMonitor::publishUltrasonicPointCloud(
+  const rclcpp::Time & curr_time,
+  const std::vector<Point> & points) const
+{
+  if (!ultrasonic_points_pub_ || ultrasonic_points_pub_->get_subscription_count() == 0) {
+    return;
+  }
+
+  auto msg = std::make_unique<sensor_msgs::msg::PointCloud2>();
+  msg->header.stamp = curr_time;
+  msg->header.frame_id = base_frame_id_;
+
+  sensor_msgs::PointCloud2Modifier modifier(*msg);
+  modifier.setPointCloud2Fields(
+    3,
+    "x", 1, sensor_msgs::msg::PointField::FLOAT32,
+    "y", 1, sensor_msgs::msg::PointField::FLOAT32,
+    "z", 1, sensor_msgs::msg::PointField::FLOAT32);
+  modifier.resize(points.size());
+
+  sensor_msgs::PointCloud2Iterator<float> iter_x(*msg, "x");
+  sensor_msgs::PointCloud2Iterator<float> iter_y(*msg, "y");
+  sensor_msgs::PointCloud2Iterator<float> iter_z(*msg, "z");
+
+  for (const auto & p : points) {
+    *iter_x = static_cast<float>(p.x);
+    *iter_y = static_cast<float>(p.y);
+    *iter_z = 0.0f;
+    ++iter_x;
+    ++iter_y;
+    ++iter_z;
+  }
+
+  ultrasonic_points_pub_->publish(std::move(msg));
 }
 
 void CollisionMonitor::publishPolygons() const

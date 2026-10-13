@@ -1,5 +1,9 @@
 # nav2_collision_monitor 配置
-# navigation_type 选择 auto 或 schedule；两者均由 CM 输出安全速度。
+# navigation_type 选择速度下发链路：
+#   auto     —— CM 串联在速度链里，输出过滤后的安全速度（cmd_vel_out_topic）。
+#   schedule —— CM 只旁路观察 cmd_vel_in_topic 做障碍检测并发布 obstacle_status，
+#               减速/停车由 path_follower 执行，CM 不下发调度速度。
+# 两种模式共用 cmd_vel_in_topic 作为速度输入。
 # 底盘: 全向(omni), base_link, 尺寸 0.70×0.58 (半长 ±0.35, 半宽 ±0.29)
 # 数据源: 前后双激光 + 前后 RGBD 转换 LaserScan
 collision_monitor:
@@ -23,11 +27,17 @@ collision_monitor:
     transform_tolerance: 0.1
     # 任一路 scan 超过该时间未到达或时间戳过旧即停车；source_timeout 取同值，失效判定后不再使用旧点。
     source_timeout: 0.5
-    scan_fault_timeout: 0.5
+    sensor_fault_timeout: 0.5
     # 进入 STOP 时通知 velocity_smoother 立即清零（与 controller_server 共用该话题）。
     hard_stop_topic: "cmd_vel_hard_stop"
     base_shift_correction: True
     stop_pub_timeout: 2.0
+    # 停车保持：STOP 触发后至少保持该时长再允许恢复，避免抖动/漏检造成反复启停；0 关闭。
+    stop_hold_time: 2.0
+    # 超声波点云发布话题（当有外部订阅时发布 PointCloud2，无订阅时不发布）
+    ultrasonic_points_topic: "ultrasonic_points"
+    # 超声波全局减速测试开关；设为 true 时所有超声波探头点均进入 SLOWDOWN 减速多边形
+    enable_range_slowdown: false
 
     polygons: ["PolygonStop", "PolygonSlow"]
 
@@ -38,7 +48,7 @@ collision_monitor:
       # use_footprint_topic 为 true 时不读取 points，仅在关闭订阅时作为固定轮廓。
       points: [0.35, 0.29, 0.35, -0.29, -0.35, -0.29, -0.35, 0.29]
       default_padding: 0.2
-      automonous_navigation_padding: 0.1
+      automonous_navigation_padding: 0.2
       action_type: "stop"
       max_points: 3
       visualize: True
@@ -80,7 +90,7 @@ collision_monitor:
       polygon_pub_topic: "polygon_approach"
       enabled: True
 
-    observation_sources: ["scan_front", "scan_rear", "rgbd_scan_front", "rgbd_scan_rear"]
+    observation_sources: ["scan_front", "scan_rear", "rgbd_scan_front", "rgbd_scan_rear", "range_e8", "range_ea", "range_ec", "range_ee"]
     scan:
       type: "scan"
       topic: "/scan"
@@ -101,3 +111,43 @@ collision_monitor:
       type: "scan"
       topic: "/orbbec/rear/laser_scan"
       enabled: True
+    range_e8:
+      type: "range"
+      topic: "/feedback/ks203_range_e8"
+      enabled: False
+      obstacles_angle: 0.035
+      max_detection_range: 0.5
+      filter_outliers: true          # 启用离群点滑动中值滤波（滤除假回波及脉冲跳变）
+      outlier_filter_window_size: 5
+      max_jump_distance: 0.3
+      stop_only: false  # 设为 false 可让该探头单独进入减速模块进行测试
+    range_ea:
+      type: "range"
+      topic: "/feedback/ks203_range_ea"
+      enabled: True
+      obstacles_angle: 0.035
+      max_detection_range: 0.5
+      filter_outliers: true          # 启用离群点滑动中值滤波（滤除假回波及脉冲跳变）
+      outlier_filter_window_size: 5
+      max_jump_distance: 0.3
+      stop_only: false  # 设为 false 可让该探头单独进入减速模块进行测试
+    range_ec:
+      type: "range"
+      topic: "/feedback/ks203_range_ec"
+      enabled: True
+      obstacles_angle: 0.035
+      max_detection_range: 0.5
+      filter_outliers: true          # 启用离群点滑动中值滤波（滤除假回波及脉冲跳变）
+      outlier_filter_window_size: 5
+      max_jump_distance: 0.3
+      stop_only: false  # 设为 false 可让该探头单独进入减速模块进行测试
+    range_ee:
+      type: "range"
+      topic: "/feedback/ks203_range_ee"
+      enabled: True
+      obstacles_angle: 0.035
+      max_detection_range: 0.5
+      filter_outliers: true          # 启用离群点滑动中值滤波（滤除假回波及脉冲跳变）
+      outlier_filter_window_size: 5
+      max_jump_distance: 0.3
+      stop_only: false  # 设为 false 可让该探头单独进入减速模块进行测试

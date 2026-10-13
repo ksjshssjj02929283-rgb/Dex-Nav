@@ -17,12 +17,15 @@
 
 #include <memory>
 #include <vector>
+#include <deque>
+#include <mutex>
 #include <string>
 
 #include "sensor_msgs/msg/range.hpp"
 #include "nav2_util/robot_utils.hpp"
 
 #include "nav2_collision_monitor/source.hpp"
+#include "nav2_collision_monitor/range_filter.hpp"
 
 namespace nav2_collision_monitor
 {
@@ -73,7 +76,10 @@ public:
    */
   void getData(
     const rclcpp::Time & curr_time,
-    std::vector<Point> & data) const;
+    std::vector<Point> & data) const override;
+
+  bool isStopOnly() const override {return stop_only_;}
+  void setStopOnly(bool stop_only) {stop_only_ = stop_only;}
 
 protected:
   /**
@@ -95,6 +101,24 @@ protected:
 
   /// @brief Angle increment (in rad) between two obstacle points at the range arc
   double obstacles_angle_;
+
+  /// @brief Optional maximum distance (in m) beyond which range readings are ignored (0.0 to disable)
+  double max_detection_range_{0.0};
+
+  /// @brief Whether outlier filtering (sliding median) is enabled
+  bool filter_outliers_{true};
+
+  /// @brief Sliding window size for outlier median filter
+  int outlier_filter_window_size_{5};
+
+  /// @brief Maximum jump distance allowed per frame to reject spike outliers (0.0 to disable)
+  double max_jump_distance_{0.30};
+
+  /// @brief Whether range readings only trigger STOP actions (skip slowdown/approach)
+  bool stop_only_{true};
+
+  /// @brief Outlier filter instance for sliding median and spike rejection
+  std::unique_ptr<RangeFilter> outlier_filter_;
 
   /// @brief Latest data obtained from range sensor
   // Access only through std::atomic_load/store; readers retain an immutable snapshot.

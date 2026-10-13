@@ -87,7 +87,7 @@ TEST_F(Tester, testControlLoopKeepsNavigationTypeForLifecycle)
   cm_->stop();
 }
 
-TEST_F(Tester, testControlLoopScheduleFiltersVelocityAndEdgingMode)
+TEST_F(Tester, testControlLoopScheduleBypassAndEdgingMode)
 {
   setCommonParameters();
   cm_->declare_parameter("navigation_type", "schedule");
@@ -105,8 +105,9 @@ TEST_F(Tester, testControlLoopScheduleFiltersVelocityAndEdgingMode)
   EXPECT_NEAR(cm_->polygonPadding("PolygonStop"), 0.2, EPSILON);
   EXPECT_TRUE(cm_->polygonLateralPaddingOnly("PolygonStop"));
   EXPECT_TRUE(waitObstacleStatus(nav_interfaces::msg::ObstacleMonitorStatus::FREE, 200ms));
-  ASSERT_TRUE(waitCmdVel(200ms));
-  EXPECT_NEAR(cmd_vel_out_->linear.x, 0.3, EPSILON);
+  // Schedule navigation is a passive consumer: path_follower receives obstacle_status and
+  // remains the only component allowed to send velocity to velocity_smoother.
+  EXPECT_FALSE(cmd_vel_out_);
 
   // A free-navigation path belongs to the inactive chain and cannot leave schedule edging.
   cm_->receiveFreePath();
@@ -119,7 +120,7 @@ TEST_F(Tester, testControlLoopScheduleFiltersVelocityAndEdgingMode)
   cm_->runControlLoop();
   EXPECT_EQ(cm_->mode(), CollisionMonitorWrapper::NavigationMode::SCHEDULE_NAVIGATION);
   EXPECT_FALSE(cm_->polygonLateralPaddingOnly("PolygonStop"));
-  ASSERT_TRUE(waitCmdVel(200ms));
+  EXPECT_FALSE(cmd_vel_out_);
 
   cm_->stop();
 }
@@ -517,6 +518,70 @@ TEST_F(Tester, testScheduleModeExposesOnlyScheduleInterfaces)
   EXPECT_TRUE(cm_->hasPaddingService());
   EXPECT_TRUE(cm_->hasTrackingPathSubscription());
   EXPECT_FALSE(cm_->hasFreePathSubscription());
+}
+
+TEST_F(Tester, testStopHoldLatchesBeforeResuming)
+{
+  setCommonParameters();
+  cm_->declare_parameter("stop_hold_time", rclcpp::ParameterValue(0.3));
+  addPolygon("PolygonStop", POLYGON, 1.0, "stop");
+  addSource(SCAN_NAME, SCAN);
+  setVectors({"PolygonStop"}, {SCAN_NAME});
+  cm_->startManualControlLoop();
+
+  // Geometry sources need the source->base transform before points can be converted.
+  const rclcpp::Time curr_time = cm_->now();
+  sendTransforms(curr_time);
+
+  // An obstacle inside the stop polygon must latch STOP.
+  publishScan(0.5, curr_time);
+  {
+    const auto deadline = std::chrono::steady_clock::now() + 500ms;
+    while (cm_->scanReceiptNs(SCAN_NAME) == 0 && std::chrono::steady_clock::now() < deadline) {
+      rclcpp::spin_some(cm_->get_node_base_interface());
+      std::this_thread::sleep_for(5ms);
+    }
+  }
+  ASSERT_NE(cm_->scanReceiptNs(SCAN_NAME), 0);
+  cm_->receiveFreeVelocity(0.3);
+  cm_->runControlLoop();
+  ASSERT_TRUE(waitObstacleStatus(nav_interfaces::msg::ObstacleMonitorStatus::STOP, 200ms));
+  ASSERT_TRUE(waitCmdVel(200ms));
+  EXPECT_DOUBLE_EQ(cmd_vel_out_->linear.x, 0.0);
+
+  // Obstacle clears, but the stop is held for stop_hold_time before resuming.
+  const std::int64_t previous_receipt = cm_->scanReceiptNs(SCAN_NAME);
+  publishScan(5.0, cm_->now());
+  {
+    const auto deadline = std::chrono::steady_clock::now() + 500ms;
+    while (cm_->scanReceiptNs(SCAN_NAME) == previous_receipt &&
+      std::chrono::steady_clock::now() < deadline)
+    {
+      rclcpp::spin_some(cm_->get_node_base_interface());
+      std::this_thread::sleep_for(5ms);
+    }
+  }
+  ASSERT_NE(cm_->scanReceiptNs(SCAN_NAME), previous_receipt);
+  cmd_vel_out_.reset();
+  cm_->receiveFreeVelocity(0.3);
+  cm_->runControlLoop();
+  EXPECT_TRUE(waitObstacleStatus(nav_interfaces::msg::ObstacleMonitorStatus::STOP, 150ms));
+  // In auto mode the hold keeps commanding zero velocity; it must not resume the input.
+  if (cmd_vel_out_) {
+    EXPECT_DOUBLE_EQ(cmd_vel_out_->linear.x, 0.0);
+    EXPECT_DOUBLE_EQ(cmd_vel_out_->angular.z, 0.0);
+  }
+
+  // After the hold window the monitor resumes with the latest command.
+  std::this_thread::sleep_for(400ms);
+  cmd_vel_out_.reset();
+  cm_->receiveFreeVelocity(0.3);
+  cm_->runControlLoop();
+  EXPECT_TRUE(waitObstacleStatus(nav_interfaces::msg::ObstacleMonitorStatus::FREE, 200ms));
+  ASSERT_TRUE(waitCmdVel(200ms));
+  EXPECT_NEAR(cmd_vel_out_->linear.x, 0.3, EPSILON);
+
+  cm_->stop();
 }
 
 int main(int argc, char ** argv)

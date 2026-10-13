@@ -84,6 +84,7 @@ public:
     return data_sequence_.load(std::memory_order_acquire);
   }
   const std::string & getName() const {return source_name_;}
+  virtual bool isStopOnly() const {return false;}
   std::int64_t getLastReceivedSteadyNs() const
   {
     return last_received_steady_ns_.load(std::memory_order_acquire);
