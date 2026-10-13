@@ -39,6 +39,7 @@ class StatusMonitor {
 public:
     struct Snapshot {
         rclcpp::Time              stamp;
+        rclcpp::Time              robot_status_stamp;
         geometry_msgs::msg::Pose2D pose;            // map -> base_link via TF (AutoMapSaver 位移检测)
         geometry_msgs::msg::Twist velocity;         // from /feedback/odom
         geometry_msgs::msg::Pose  odom_pose;        // from /feedback/odom (NavSystemStatus)
@@ -57,6 +58,8 @@ public:
         bool                      velocity_valid = false;
         bool                      odom_pose_valid = false;
         bool                      task_status_valid = false;
+        std::string               robot_statusword = "UNKNOWN";
+        bool                      robot_status_valid = false;
         std::string               recover_state = "NORMAL";  // SafetyReactor 急停丢位恢复状态机
         std::string               safety_alarm;              // SafetyReactor 告警（ALARM 时非空）
         std::string               current_map_name;          // from map_manager/map_state
@@ -96,6 +99,7 @@ private:
     void OnDiagnosticsAgg(diagnostic_msgs::msg::DiagnosticArray::SharedPtr msg);
     void OnLocalizationState(nav_interfaces::msg::LocalizationState::SharedPtr msg);
     void OnMapState(nav_interfaces::msg::MapState::SharedPtr msg);
+    void OnRobotServerState(std_msgs::msg::String::SharedPtr msg);
     void UpdatePoseFromTF();   // called whenever GetSnapshot() reads; cheap lookup
     void PublishNavStatus();   // 1 Hz timer
 
@@ -111,9 +115,11 @@ private:
     rclcpp::Subscription<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr diagnostics_sub_;
     rclcpp::Subscription<nav_interfaces::msg::LocalizationState>::SharedPtr localization_sub_;
     rclcpp::Subscription<nav_interfaces::msg::MapState>::SharedPtr map_state_sub_;
+    rclcpp::Subscription<std_msgs::msg::String>::SharedPtr robot_state_sub_;
 
     rclcpp::Publisher<nav_interfaces::msg::BatteryInfo>::SharedPtr battery_pub_;
     rclcpp::Publisher<nav_interfaces::msg::NavSystemStatus>::SharedPtr nav_status_pub_;
+
     rclcpp::TimerBase::SharedPtr nav_status_timer_;
 };
 

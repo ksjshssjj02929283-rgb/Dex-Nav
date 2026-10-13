@@ -111,6 +111,7 @@ private:
     double reset_origin_sample_timeout_sec_{5.0};
     double service_call_timeout_sec_{15.0};
     double service_wait_timeout_sec_{3.0};
+    double robot_status_timeout_sec_{1.0};
     bool   react_to_estop_{true};
     bool   react_to_bumper_{true};
     /// 急停/碰撞（以及重置地图原点）时是否一并取消 schedule_planner 的路网任务。
@@ -166,6 +167,7 @@ private:
     std::atomic<bool> backend_startup_inflight_{false};
     /// 参数回调句柄：用来拒绝运行时改 navigation_backend（改了也不生效，必须明确告诉人）
     rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr backend_param_cb_;
+    bool   react_to_robot_status_{true};
 
     rclcpp::CallbackGroup::SharedPtr callback_group_;
 
