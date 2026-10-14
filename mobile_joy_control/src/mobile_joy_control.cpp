@@ -1,20 +1,23 @@
 #include <algorithm>
-#include <ament_index_cpp/get_package_share_directory.hpp>
 #include <atomic>
+#include <cctype>
 #include <chrono>
 #include <cmath>
+#include <cstddef>
+#include <cstdint>
 #include <cstdlib>
-#include <iostream>
+#include <functional>
 #include <mutex>
+#include <sstream>
 #include <string>
 #include <thread>
 
 #include "geometry_msgs/msg/twist.hpp"
+#include "mobile_joy_control/stop_command_handler.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "sensor_msgs/msg/joy.hpp"
-#include "std_msgs/msg/bool.hpp"
-#include "std_msgs/msg/float64.hpp"
 #include "std_msgs/msg/int16.hpp"
+#include "supervisor_interfaces/msg/system_command.hpp"
 #ifdef HAVE_SDL2
 #include <SDL2/SDL.h>
 #endif
@@ -103,6 +106,13 @@ public:
         this->declare_parameter<int>("beitong.axis_linear_y", 0);
         this->declare_parameter<int>("beitong.axis_angular_z", 2);
 
+        // 急停映射默认关闭，由设备参数组明确启用。
+        for (const std::string prefix : {"logitech.", "beitong."}) {
+            this->declare_parameter<int>(prefix + "stop_enable_button", -1);
+            this->declare_parameter<int>(prefix + "quick_stop_button", -1);
+            this->declare_parameter<int>(prefix + "emergency_stop_button", -1);
+        }
+
         // 接收手柄话题
         sub = this->create_subscription<sensor_msgs::msg::Joy>("/joy", 1,
                                                                std::bind(&mobile_joy_log_control::callback, this, _1));
@@ -110,6 +120,9 @@ public:
         mobile_omni_control_pub_joy_ =
             this->create_publisher<geometry_msgs::msg::Twist>("/control/cmd_vel_omni_joy", 1);
         pub_joy_in_ = this->create_publisher<std_msgs::msg::Int16>("control/joy_in", 1);
+        // 命令仅发给当前订阅者，避免新订阅者收到历史急停请求。
+        system_command_pub_ = this->create_publisher<supervisor_interfaces::msg::SystemCommand>(
+            "/supervisor/system_command", rclcpp::QoS(1).reliable().durability_volatile());
         // 定时发布机器人速度话题
         pub_timer_ = this->create_wall_timer(20ms, std::bind(&mobile_joy_log_control::pub_timer_callback, this));
 
@@ -230,6 +243,20 @@ private:
         // 获取参数
         this->get_parameter(button_enable_remote_param, button_enable_remote);
         this->get_parameter(button_medium_speed_param, button_medium_speed);
+        int stop_enable_button = -1;
+        int quick_stop_button = -1;
+        int emergency_stop_button = -1;
+        this->get_parameter(param_prefix + "stop_enable_button", stop_enable_button);
+        this->get_parameter(param_prefix + "quick_stop_button", quick_stop_button);
+        this->get_parameter(param_prefix + "emergency_stop_button", emergency_stop_button);
+        if (!stop_command_handler_.configure(stop_enable_button, quick_stop_button, emergency_stop_button)) {
+            RCLCPP_ERROR(this->get_logger(),
+                         "Invalid stop button mapping: enable=%d, quick=%d, emergency=%d; stop combinations disabled.",
+                         stop_enable_button, quick_stop_button, emergency_stop_button);
+        } else {
+            RCLCPP_INFO(this->get_logger(), "Stop button mapping: enable=%d, quick=%d, emergency=%d.",
+                        stop_enable_button, quick_stop_button, emergency_stop_button);
+        }
         this->get_parameter(axis_left_right_param, axis_left_right);
         this->get_parameter(axis_forward_backward_param, axis_forward_backward);
         this->get_parameter(axis_fixed_speed_param, axis_fixed_speed);
@@ -452,6 +479,49 @@ private:
         }
     }
 
+    // 仅发布系统停止请求，实际停止与恢复由接收模块处理。
+    void publish_stop_command(mobile_joy_control::StopCommand command) {
+        using SystemCommand = supervisor_interfaces::msg::SystemCommand;
+        // 按约定发送5和6，不依赖接口版本中的常量名称。
+        constexpr std::uint8_t quick_stop_command = 5;
+        constexpr std::uint8_t emergency_stop_command = 6;
+        SystemCommand msg;
+        const char* command_name = nullptr;
+        switch (command) {
+            case mobile_joy_control::StopCommand::QUICK_STOP:
+                msg.command = quick_stop_command;
+                command_name = "QUICKSTOP";
+                break;
+            case mobile_joy_control::StopCommand::EMERGENCY_STOP:
+                msg.command = emergency_stop_command;
+                command_name = "EMERGENCY_STOP";
+                break;
+            case mobile_joy_control::StopCommand::NONE:
+                return;
+        }
+
+        system_command_pub_->publish(msg);
+        RCLCPP_INFO(this->get_logger(), "%s requested; command=%u.", command_name,
+                    static_cast<unsigned int>(msg.command));
+        if (system_command_pub_->get_subscription_count() == 0) {
+            RCLCPP_ERROR(this->get_logger(), "No system command subscriber; stop request is unconfirmed.");
+        }
+    }
+
+    // 急停先于普通输入校验；短消息仍可携带有效的急停组合。
+    bool has_valid_control_input(const sensor_msgs::msg::Joy& joy) const {
+        const auto has_button = [&joy](int index) {
+            return index >= 0 && static_cast<std::size_t>(index) < joy.buttons.size();
+        };
+        const auto has_axis = [&joy](int index) {
+            return index >= 0 && static_cast<std::size_t>(index) < joy.axes.size();
+        };
+        return stop_command_handler_.has_valid_input(joy.buttons) && joy.axes.size() >= 4 &&
+               has_button(button_enable_remote) && has_button(button_medium_speed) && has_axis(axis_left_right) &&
+               has_axis(axis_forward_backward) && has_axis(axis_fixed_speed) && has_axis(axis_fixed_angular) &&
+               (!is_omni_mode_ || (has_axis(axis_linear_y) && has_axis(axis_angular_z)));
+    }
+
     void startSoftStop() {
         remote_state_ = RemoteControlState::SOFT_STOPPING;
         soft_stop_start_time_ = std::chrono::steady_clock::now();
@@ -510,6 +580,12 @@ private:
         publishCurrentCmd();
     }
 
+    // 工作线程只报告完成事件，共享活跃时间由ROS回调统一更新。
+    void notify_script_finished() {
+        has_script_finished_.store(true);
+        script_running_.store(false);
+    }
+
     // 执行脚本函数
     void runScript(const std::string& script_path, const std::string& param_path) {
         // 原子占位，避免同一帧多键触发的竞态
@@ -519,7 +595,8 @@ private:
             return;
         }
 
-        std::thread([this, script_path, param_path]() {
+        // 线程持有节点所有权，避免退出时访问已析构成员。
+        std::thread([this, node = shared_from_this(), script_path, param_path]() {
             {
                 std::lock_guard<std::mutex> lg(script_mutex_);
                 RCLCPP_INFO(this->get_logger(), "========== 脚本开始执行 ==========");
@@ -540,11 +617,7 @@ private:
                 RCLCPP_INFO(this->get_logger(), "=====================================");
             }
 
-            // 脚本执行完成后更新活跃时间，避免长时间执行导致被判定为不活跃
-            // 注意：由于我们在不活跃检查中已经增加了对script_running_的检查，
-            // 脚本运行期间不会被判定为不活跃，所以这里只需要更新时间即可
-            last_activity_time_ = this->now();
-            script_running_.store(false);
+            notify_script_finished();
         }).detach();
     }
 
@@ -557,7 +630,8 @@ private:
             return;
         }
 
-        std::thread([this, action_script_path, action_param_path]() {
+        // 线程持有节点所有权，避免退出时访问已析构成员。
+        std::thread([this, node = shared_from_this(), action_script_path, action_param_path]() {
             // 第一步：先执行standby脚本
             {
                 std::lock_guard<std::mutex> lg(script_mutex_);
@@ -581,8 +655,7 @@ private:
             if (standby_result != 0) {
                 std::lock_guard<std::mutex> lg(script_mutex_);
                 RCLCPP_ERROR(this->get_logger(), "Standby脚本执行失败，取消后续动作执行");
-                last_activity_time_ = this->now();
-                script_running_.store(false);
+                notify_script_finished();
                 return;
             }
 
@@ -607,13 +680,17 @@ private:
                 RCLCPP_INFO(this->get_logger(), "=========================================");
             }
 
-            last_activity_time_ = this->now();
-            script_running_.store(false);
+            notify_script_finished();
         }).detach();
     }
 
     void pub_timer_callback() {
         rclcpp::Time now = this->now();
+        // 先读取运行状态，再消费完成事件，避免脚本刚结束时误判为长期闲置。
+        const bool is_script_running = script_running_.load();
+        if (has_script_finished_.exchange(false)) {
+            last_activity_time_ = now;
+        }
         if ((now - last_joy_time_).seconds() > 0.5) {
             if (!prev_no_data_) {
                 zero_pub_count_no_data_ = 5;
@@ -641,7 +718,7 @@ private:
 
             // 检查长时间不活跃，需要重新初始化
             // 如果脚本正在运行或使能状态下，认为手柄是活跃状态，不应该判定为不活跃
-            if (joy_init_flag && (now - last_activity_time_).seconds() > inactive_timeout && !script_running_.load() &&
+            if (joy_init_flag && (now - last_activity_time_).seconds() > inactive_timeout && !is_script_running &&
                 !ownsRemoteControl()) {
                 RCLCPP_WARN(this->get_logger(), "手柄长时间不活跃，需要重新初始化");
                 joy_init_flag = false;
@@ -718,6 +795,25 @@ private:
 
         last_joy_time_ = this->now();
 
+        // 无需摇杆初始化或遥控使能，脚本运行期间也可请求急停。
+        const auto stop_command = stop_command_handler_.process(Joy->buttons);
+        if (stop_command != mobile_joy_control::StopCommand::NONE) {
+            publish_stop_command(stop_command);
+        }
+        if (!has_valid_control_input(*Joy)) {
+            remote_state_ = RemoteControlState::DISABLED;
+            joy_init_flag = false;
+            init_pending_ = false;
+            last_enable_button_state_ = false;
+            zero_pub_count_disabled_ = 5;
+            joy_state = -1;
+            publishZeroCmd();
+            RCLCPP_ERROR_THROTTLE(this->get_logger(), *this->get_clock(), 1000,
+                                  "Invalid joy input: buttons=%zu, axes=%zu; control stopped.", Joy->buttons.size(),
+                                  Joy->axes.size());
+            return;
+        }
+
         // 打印所有按键和摇杆的原始值
         std::stringstream ss;
         ss << "Raw Joy Data - Buttons: [";
@@ -733,12 +829,14 @@ private:
 
         // 检查遥控器启用/禁用按键的状态（长按使能）
         bool current_enable_button_state = (Joy->buttons[button_enable_remote] == 1);
+        // 初始化和保护期完成后才处理使能，避免未就绪时补发零速度抢占Mux。
+        const bool is_init_ready = isInitReady();
         // 如果脚本正在运行，即使按下使能按键也不允许运动
-        if (script_running_.load() && current_enable_button_state) {
+        if (script_running_.load() && current_enable_button_state && is_init_ready) {
             remote_state_ = RemoteControlState::DISABLED;
             zero_pub_count_disabled_ = 5;
             RCLCPP_WARN(this->get_logger(), "Script is running, remote control disabled for safety");
-        } else if (current_enable_button_state) {
+        } else if (current_enable_button_state && is_init_ready) {
             if (remote_state_ == RemoteControlState::DISABLED) {
                 remote_state_ = RemoteControlState::ACTIVE;
                 // 接管 Mux 时先发送几帧零速度，避免从导航速度直接跳到遥控速度。
@@ -769,7 +867,8 @@ private:
         last_enable_button_state_ = current_enable_button_state;
 
         // 检查中速模式按键状态
-        bool current_medium_speed_state = (Joy->buttons[button_medium_speed] == 1);
+        const bool current_medium_speed_state = Joy->buttons[button_medium_speed] == 1 &&
+                                                !stop_command_handler_.is_quick_stop_combination_pressed(Joy->buttons);
         // 中速模式按键状态变化时认为是活跃（按键触发）
         if (current_medium_speed_state) {
             last_activity_time_ = this->now();
@@ -777,9 +876,11 @@ private:
 
         // 检查脚本运行按键（需要在未使能状态下才能执行，使能状态下机器人运动时不能执行脚本）
         bool current_script_0_button =
-            (Joy->buttons.size() > button_run_param_0 && Joy->buttons[button_run_param_0] == 1);
+            (button_run_param_0 >= 0 && static_cast<std::size_t>(button_run_param_0) < Joy->buttons.size() &&
+             Joy->buttons[button_run_param_0] == 1);
         bool current_script_1_button =
-            (Joy->buttons.size() > button_run_param_1 && Joy->buttons[button_run_param_1] == 1);
+            (button_run_param_1 >= 0 && static_cast<std::size_t>(button_run_param_1) < Joy->buttons.size() &&
+             Joy->buttons[button_run_param_1] == 1);
 
         // 按键0边缘触发检测（需要已初始化，且未使能状态下才能执行）
         if (current_script_0_button && !last_script_param_0_button_state_) {
@@ -819,9 +920,11 @@ private:
 
         // 检查动作脚本运行按键（需要在未使能状态下才能执行，使能状态下机器人运动时不能执行脚本）
         bool current_script_action_0_button =
-            (Joy->buttons.size() > button_run_action_0 && Joy->buttons[button_run_action_0] == 1);
+            (button_run_action_0 >= 0 && static_cast<std::size_t>(button_run_action_0) < Joy->buttons.size() &&
+             Joy->buttons[button_run_action_0] == 1);
         bool current_script_action_1_button =
-            (Joy->buttons.size() > button_run_action_1 && Joy->buttons[button_run_action_1] == 1);
+            (button_run_action_1 >= 0 && static_cast<std::size_t>(button_run_action_1) < Joy->buttons.size() &&
+             Joy->buttons[button_run_action_1] == 1);
 
         // 动作按键0边缘触发检测（需要已初始化，且未使能状态下才能执行）
         if (current_script_action_0_button && !last_script_action_0_button_state_) {
@@ -876,7 +979,7 @@ private:
         double raw_lr = Joy->axes[axis_left_right];
         double raw_fb = Joy->axes[axis_forward_backward];
 
-        auto isValid = [&](double raw, double last_valid) {
+        auto isValid = [&](double raw) {
             // 1. 合法范围 [-1, 1]
             if (!std::isfinite(raw) || raw < -1.01 || raw > 1.01) {
                 return false;
@@ -953,7 +1056,7 @@ private:
             return;
         }
         // 左右轴
-        if (isValid(raw_lr, last_valid_lr_)) {
+        if (isValid(raw_lr)) {
             left_right_value = applyDeadzone(raw_lr);
             last_valid_lr_ = left_right_value;
         } else {
@@ -962,7 +1065,7 @@ private:
         }
 
         // 前后轴
-        if (isValid(raw_fb, last_valid_fb_)) {
+        if (isValid(raw_fb)) {
             forward_backward_value = applyDeadzone(raw_fb);
             last_valid_fb_ = forward_backward_value;
         } else {
@@ -1068,6 +1171,8 @@ private:
     rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr mobile_diff_control_pub_joy_;
     rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr mobile_omni_control_pub_joy_;
     rclcpp::Publisher<std_msgs::msg::Int16>::SharedPtr pub_joy_in_;
+    rclcpp::Publisher<supervisor_interfaces::msg::SystemCommand>::SharedPtr system_command_pub_;
+    mobile_joy_control::StopCommandHandler stop_command_handler_;
 
     // 是否进入手柄话题
     std_msgs::msg::Int16 joy_in;
@@ -1113,6 +1218,7 @@ private:
     // 脚本运行状态
     std::atomic<bool> script_running_ = {false};
     std::mutex script_mutex_;
+    std::atomic<bool> has_script_finished_{false};
 
     // 按键状态
     bool last_script_param_0_button_state_ = false;
@@ -1128,8 +1234,6 @@ private:
     double medium_angular_velocity = 1.0;  // 中速角速度
     double current_max_linear = 0.4;       // 当前最大线速度
     double current_max_angular = 0.75;     // 当前最大角速度
-    double max_linear_acc_ = 1.0;
-    double max_angular_acc_ = 1.0;
     // 用于一阶低通滤波
     double acc_filter_param = 0.45;
     double dec_filter_param = 0.05;
@@ -1148,7 +1252,6 @@ private:
     // 摇杆死区参数
     double joystick_deadzone = 0.1;  // 摇杆死区值，默认为0.1
     double inactive_timeout = 30.0;  // 不活跃超时时间（秒）
-    bool get_joy_data = false;
     bool joy_init_flag = false;
     bool parameters_loaded_ = false;  // 参数是否已加载
     rclcpp::TimerBase::SharedPtr pub_timer_;
@@ -1169,7 +1272,6 @@ private:
     double last_valid_lr_ = 0.0;
     double last_valid_fb_ = 0.0;
     bool last_enable_button_state_ = false;        // 上次使能按键状态
-    const double MAX_JUMP = 0.75;                  // 单帧允许的最大变化幅度（可调）
     bool init_pending_ = false;                    // 是否处于初始化待回零阶段
     rclcpp::Time init_complete_time_;              // 初始化完成时间（用于保护期检查）
     const double init_protection_duration_ = 0.5;  // 初始化保护期（秒）
@@ -1185,7 +1287,6 @@ private:
 
 int main(int argc, char* argv[]) {
     rclcpp::init(argc, argv);
-    printf("mobile_joy_log_control\n");
     auto node = std::make_shared<mobile_joy_log_control>();
     rclcpp::spin(node);
     rclcpp::shutdown();

@@ -19,14 +19,13 @@ endif()
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_action REQUIRED)
-find_package(rclpy REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
-find_package(tf2_ros REQUIRED)
-find_package(tf2_geometry_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(chassis_interfaces REQUIRED)
 find_package(nav_interfaces REQUIRED)
+find_package(std_msgs REQUIRED)
+find_package(supervisor_interfaces REQUIRED)
 
 # Find SDL2
 find_package(PkgConfig QUIET)
@@ -63,6 +62,11 @@ if(NOT SDL2_FOUND)
 endif()
 
 if(BUILD_TESTING)
+  find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(test_stop_command_handler test/test_stop_command_handler.cpp)
+  if(TARGET test_stop_command_handler)
+    target_include_directories(test_stop_command_handler PRIVATE include)
+  endif()
   find_package(ament_lint_auto REQUIRED)
   # the following line skips the linter which checks for copyrights
   # uncomment the line when a copyright and license is not present in all source files
@@ -76,16 +80,21 @@ endif()
 add_executable(mobile_joy_control
   src/mobile_joy_control.cpp
 )
+target_include_directories(mobile_joy_control PRIVATE include)
+target_compile_features(mobile_joy_control PRIVATE cxx_std_17)
 
 # 🔧 STEERING_ACTION_DIRECT: mobile_joy_control keeps the Action client only; Server is in ChassisNode.
 add_executable(omni_start_coordinator
   src/omni_start_coordinator.cpp
 )
+target_compile_features(omni_start_coordinator PRIVATE cxx_std_17)
 
 ament_target_dependencies(mobile_joy_control
   rclcpp
   geometry_msgs
   sensor_msgs
+  std_msgs
+  supervisor_interfaces
 )
 
 if(SDL2_FOUND)
