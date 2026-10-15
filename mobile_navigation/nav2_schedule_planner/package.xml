@@ -25,6 +25,12 @@
          不 depend 录包包本身 -->
     <depend>std_msgs</depend>
     <depend>std_srvs</depend>
+    <!-- 生命周期化：nav2_util::LifecycleNode（带 bond 心跳，受 nav2_lifecycle_manager 编排） -->
+    <depend>nav2_util</depend>
+    <!-- path_navigation_bringup.launch.py 用到：整栈 launch 要 include path_follower 的
+         bringup，并起一个 nav2_lifecycle_manager 编排两个 Server -->
+    <exec_depend>path_follower</exec_depend>
+    <exec_depend>nav2_lifecycle_manager</exec_depend>
 
     <test_depend>ament_lint_auto</test_depend>
     <test_depend>ament_lint_common</test_depend>

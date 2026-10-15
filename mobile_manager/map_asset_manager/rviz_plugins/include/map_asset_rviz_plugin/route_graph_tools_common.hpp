@@ -2,6 +2,8 @@
 
 #include <chrono>
 #include <cmath>
+#include <chrono>
+#include <cmath>
 #include <functional>
 #include <limits>
 #include <mutex>
@@ -23,7 +25,10 @@
 #include <nav_interfaces/srv/get_all_nav_points.hpp>
 #include <nav_interfaces/srv/get_route_graph.hpp>
 #include <nav_interfaces/msg/route_edge.hpp>
+#include <nav_interfaces/srv/get_all_nav_points.hpp>
+#include <nav_interfaces/srv/get_route_graph.hpp>
 #include <optional>
+#include <rclcpp/rclcpp.hpp>
 
 namespace map_asset_rviz_plugin {
 

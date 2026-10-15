@@ -12,6 +12,7 @@
 
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp_action/rclcpp_action.hpp>
+#include <nav2_util/lifecycle_node.hpp>
 #include <nav2_msgs/action/follow_path.hpp>
 #include <nav_interfaces/action/navigate_through_graph_points.hpp>
 #include <nav_interfaces/msg/navigation_status.hpp>
@@ -24,6 +25,7 @@
 #include <std_srvs/srv/trigger.hpp>
 
 #include "schedule_planner/path_segment_sampler.hpp"
+#include "schedule_planner/segment_merger.hpp"
 
 namespace schedule_planner
 {
@@ -57,13 +59,27 @@ namespace schedule_planner
      *     兜底。失败原因同样取自 navigation_status（两种模式下 status_sub_ 都订阅），
      *     因为 FollowPath 的 action 结果只有状态码、没有 message。
      */
-    class SchedulePlannerNode : public rclcpp::Node
+    class SchedulePlannerNode : public nav2_util::LifecycleNode
     {
     public:
         explicit SchedulePlannerNode(const rclcpp::NodeOptions& options = rclcpp::NodeOptions());
         ~SchedulePlannerNode() override;
 
+    protected:
+        // ---------------- 生命周期 ----------------
+        // 分工：构造函数只声明/读取参数（声明只能做一次，放这里 cleanup->configure 往返才安全）；
+        // on_configure 建全部 ROS 接口；on_activate 开门收 goal；on_deactivate 关门 + 收口在跑的
+        // 任务 + 停车；on_cleanup 释放接口。
+        nav2_util::CallbackReturn on_configure(const rclcpp_lifecycle::State& state) override;
+        nav2_util::CallbackReturn on_activate(const rclcpp_lifecycle::State& state) override;
+        nav2_util::CallbackReturn on_deactivate(const rclcpp_lifecycle::State& state) override;
+        nav2_util::CallbackReturn on_cleanup(const rclcpp_lifecycle::State& state) override;
+        nav2_util::CallbackReturn on_shutdown(const rclcpp_lifecycle::State& state) override;
+
     private:
+        /// 请求取消正在跑的 goal 并等执行线程退出。
+        /// 返回 false = 超时未退出（此时**不允许**继续 cleanup 去释放它还在访问的资源）。
+        bool stopActiveGoalAndJoin(double timeout_s);
         using NavigateThroughGraphPoints = nav_interfaces::action::NavigateThroughGraphPoints;
         using GoalHandleT = rclcpp_action::ServerGoalHandle<NavigateThroughGraphPoints>;
         using PathSegment = nav_interfaces::msg::PathSegment;
@@ -90,11 +106,16 @@ namespace schedule_planner
         void abortGoalOnException(
             const std::shared_ptr<GoalHandleT>& goal_handle, const std::string& what);
 
-        /// 离散并发送一段，等待 path_follower 回报。返回：0=完成 1=失败 2=取消 3=超时 4=shutdown。
+        /// 发送一条（可能由多段合并而来的）轨迹，等待 path_follower 回报。
+        /// 返回：0=完成 1=失败 2=取消 3=超时 4=shutdown。
         /// out_msg 携带该结果的过程/失败信息（失败时来自 NavigationStatus.message），供
         /// execute() 拼进 action 结果，失败时不再是笼统的 "segment N failed"。
+        /// 离散与 target_yaw 的处理已上提到 executeGoal——合并后一组对应多段，
+        /// 「是不是末段」这个判断只有调用方知道。
+        /// @param seg_count 本组包含的原始段数，用于按比例放宽段超时。
         int runSegment(
-            const PathSegment& seg, std::size_t idx, std::size_t total,
+            nav_interfaces::msg::TrackingPath tp, std::size_t idx, std::size_t total,
+            std::size_t seg_count,
             const std::shared_ptr<GoalHandleT>& goal_handle, std::string& out_msg);
 
         /// controller 模式：离散一段后转 nav_msgs/Path，发 FollowPath goal 给 controller_server
@@ -139,6 +160,19 @@ namespace schedule_planner
         bool resolveSegments(
             const std::vector<std::string>& nav_point_names,
             std::vector<PathSegment>& segments, std::string& err);
+
+        /// 按 move_mode_ 表达的底盘能力，就地归一化段级 mode / hold_direction。
+        ///
+        /// 与 default_mode_ 的区别：default_mode_ 只在 PathSegment.mode==0 时兜底，段里显式
+        /// 写了 mode=2/3 会**绕过**它；move_mode_ 是能力上限，无条件覆盖。
+        ///
+        /// 放在输入端归一而不是塞进 PathSegmentSampler::resolveMode，是因为后者是 static 且被
+        /// sampler(x2) 与 segment_merger(x1) 共用，加一个参数会让签名一路扩散到 5 个文件；
+        /// 在这里归一之后，resolveMode / 合并判定 / 离散全部自然走对应分支，那两个类一行不用改。
+        ///
+        /// 由 resolveSegments 在拿到结果后立即调用——那里是 segments 的唯一入口，
+        /// 后续 planMergeGroups / discretize / discretizeGroup / runSegmentViaController 都取自它。
+        void applyMoveModeConstraint(std::vector<PathSegment>& segments);
         /// 调 path_follower ~/stop 停车（阻塞等响应，仅供 exec_thread_ 上的调用点使用：
         /// 该线程独立于节点 executor，阻塞等待不会自锁死）。
         void callStop();
@@ -193,13 +227,16 @@ namespace schedule_planner
         std::shared_ptr<GoalHandleT> current_goal_;
         std::thread exec_thread_;
         std::atomic<bool> shutting_down_{false};
+        /// active 门：非 active 时 handleGoal 一律拒绝。用 atomic 是因为 action 回调与
+        /// 生命周期回调可能在不同执行器线程上
+        std::atomic<bool> active_{false};
         /// 终端 /schedule_planner/force_cancel 服务触发的取消请求；execute() 每次新 goal 开始时复位，
         /// runSegment()/runSegmentViaController() 的等待循环与 is_canceling() 并列判断。
         std::atomic<bool> force_cancel_requested_{false};
 
         // ---------------- ROS 接口 ----------------
         rclcpp_action::Server<NavigateThroughGraphPoints>::SharedPtr action_server_;
-        rclcpp::Publisher<nav_interfaces::msg::TrackingPath>::SharedPtr path_pub_;
+        rclcpp_lifecycle::LifecyclePublisher<nav_interfaces::msg::TrackingPath>::SharedPtr path_pub_;
         rclcpp::Subscription<nav_interfaces::msg::NavigationStatus>::SharedPtr status_sub_;
         rclcpp::Client<ResolveNavPoints>::SharedPtr resolve_client_;
         rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr stop_client_;
@@ -207,9 +244,11 @@ namespace schedule_planner
         rclcpp_action::Client<FollowPath>::SharedPtr follow_path_client_;
         rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr cancel_service_;
         /// 段级失败时向录包节点上报的话题；bag_trigger_topic_ 为空时不创建（=关闭该功能）
-        rclcpp::Publisher<std_msgs::msg::String>::SharedPtr bag_trigger_pub_;
+        rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::String>::SharedPtr bag_trigger_pub_;
 
         PathSegmentSampler sampler_;
+        /// 相邻段合并平滑的参数（见 segment_merger.hpp）。
+        MergeParams merge_params_;
 
         // ---------------- 参数 ----------------
         std::string action_name_{"navigate_through_graph_points"};
@@ -219,7 +258,9 @@ namespace schedule_planner
         std::string resolve_service_{"/map_asset_manager/resolve_nav_points"};
         std::string cancel_service_name_{"/schedule_planner/force_cancel"};
         /// collision_monitor 的膨胀设置服务
-        std::string padding_service_{"/collision_monitor/set_polygon_padding"};
+        /// 节点名带 _path 后缀：路径导航栈的 collision_monitor 与 Nav2 栈错开命名，
+        /// 服务挂在节点名下，跟着一起变（见 path_follower 的 collision_monitor.launch.py）
+        std::string padding_service_{"/collision_monitor_path/set_polygon_padding"};
         /// 停障检测器名（只改这一个，减速区保持配置里的 default_padding）
         std::string stop_polygon_name_{"PolygonStop"};
         double padding_timeout_{2.0};
@@ -230,6 +271,8 @@ namespace schedule_planner
         double resolution_{0.005};
         double resolve_timeout_{5.0};
         double segment_timeout_{300.0};
+        /// on_deactivate 等执行线程退出的上限（秒），超时则转换失败
+        double deactivate_timeout_{5.0};
         /// controller 模式下 FollowPath 失败后，等 navigation_status 上的失败原因落地的上限 s。
         double status_message_timeout_{0.3};
         /// mobile_bag_recorder 的触发话题；设为空串则完全不上报（不创建 publisher）
@@ -237,6 +280,14 @@ namespace schedule_planner
         /// 默认跟踪方式：PathSegment 未显式指定 mode 时使用。
         /// 1=MODE_DIFF（差速），3=MODE_OMNI_TRANS_ROTATION（全向平移+旋转）。
         uint8_t default_mode_{1};
+
+        /// 底盘运动能力（对应 path_follower 的 base_type），决定生成路径段时允许的跟踪方式：
+        ///   1 = MODE_DIFF：只能差速。所有段强制 DIFF，hold_direction 一律清 NaN。
+        ///   2 = MODE_OMNI_TRANSLATION：所有段强制全向平移（保持朝向）。
+        ///   3 = MODE_OMNI_TRANS_ROTATION：全能力，三种模式都允许，按段自身 mode 走（默认）。
+        /// 与 default_mode_ 的关系见 applyMoveModeConstraint。取 1/2 时 default_mode_ 自动失效
+        /// （段 mode 已被归一为具体值，resolveMode 不再走兜底分支）。
+        uint8_t move_mode_{3};
 
         /// true = controller 模式（发 FollowPath 给 controller_server），
         /// false = independence 模式（v1 原有 /tracking_path 流程）。节点启动时由

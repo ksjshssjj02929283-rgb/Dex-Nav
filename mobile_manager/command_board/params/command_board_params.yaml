@@ -23,5 +23,51 @@
       battery_soc_skip_below: 10          # SOC < 此值则跳过；-1 = 禁用电量检查
       skip_when_task_not_idle: true
 
+    # ── 安全响应（代码默认值，需要时才在这里 override）──────────
+    # react_to_estop / react_to_bumper: true  —— 急停、防撞条触发时取消导航
+    # 急停时除了取消 /navigate_to_pose，还会调下面这个服务取消 schedule_planner 的
+    # 路网任务（NavigateThroughGraphPoints）。两者是两套 action，只砍前者的话急停后
+    # 路网 goal 仍是 active：车停了任务没结束，要等 segment_timeout（默认 300 s）才超时；
+    # 期间松开急停且定位恢复，path_follower 会接着原路径继续走。
+    # cancel_schedule_planner: true
+    # schedule_planner_cancel_service: "/schedule_planner/force_cancel"
+
+    # ── 导航后端选择 ────────────────────────────────────────────
+    # 完整说明（切换时序、排查清单、三处配对）见 docs/navigation_backend.md
+    # "nav2"            = 原 Nav2 bringup + /navigate_to_pose（默认）
+    # "path_navigation" = schedule_planner + path_follower 那套；command_board 会在
+    #                     依赖就绪后调 lifecycle_manager_path_navigation 的 STARTUP
+    # 两套 Server 都建议随 launch 常驻，未选中的那套停在 unconfigured：不接任务、不出速度。
+    # 运行中改这个参数**不会**切后端（切换涉及任务取消/零速/速度源互斥/失败回滚）。
+    # **这是开机默认值。** 两套后端都随 auto_mode.sh 常驻（且都以 autostart:=false 起，
+    # 停在 unconfigured），由本节点在启动期把选中的那套 STARTUP 起来；没选中的那套不接任务、
+    # 不出速度。
+    #
+    # 切后端：改本参数后重启 auto 服务。运行中 `ros2 param set` 会被明确拒绝。
+    # 当前版本不提供运行时切换服务。当前生效的后端发布在 /command_board/navigation_backend（latched）。
+    navigation_backend: "nav2"   # "nav2" | "path_navigation"；默认开自主导航
+
+    path_navigation:
+      # 被 navigation_backend 选中时是否自动 STARTUP。两套都留 true：这样切后端只动上面那一行。
+      autostart: true
+      lifecycle_manager_service: "/lifecycle_manager_path_navigation/manage_nodes"
+      # 等该管理器服务出现的上限（秒）。超时只报 ERROR 不重试——那说明对应的 launch 根本没起
+      startup_timeout_sec: 60.0
+      # true = 等 MapState 有地图名再 STARTUP（路网任务要靠 map_asset_manager 解析点名）。
+      # 默认 false：有的机型压根不发 MapState，等下去等于永远不激活
+      require_map_ready: false
+
+    nav2:
+      autostart: true
+      lifecycle_manager_service: "/lifecycle_manager_navigation/manage_nodes"
+      startup_timeout_sec: 60.0
+
+    # ⚠ 三处必须配对，少一处就会两套同时出速度（都落到 cmd_vel_mux 的 control/cmd_vel_nav）：
+    #   auto_mode.sh:  w1_nav2_actual.launch.py           autostart:=false
+    #                  path_navigation_bringup.launch.py  autostart:=false
+    #   本文件:        navigation_backend 选中的那套 autostart: true
+    # 某套 launch 若还带着 autostart:=true，它自己的 lifecycle_manager 会把自己拉到 active，
+    # 本节点管不着。
+
     # ── Phase 3.4 预留（功能未实现，代码暂未 declare）──
     # initial_mode / auto_recover_from_emergency / localization_loss_grace_sec / topic_timeout_sec

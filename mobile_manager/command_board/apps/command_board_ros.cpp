@@ -39,6 +39,32 @@ CommandBoardManagerROS::CommandBoardManagerROS() : rclcpp::Node("command_board_m
         this->declare_parameter("service_wait_timeout_sec", service_wait_timeout_sec_);
     react_to_estop_  = this->declare_parameter("react_to_estop", react_to_estop_);
     react_to_bumper_ = this->declare_parameter("react_to_bumper", react_to_bumper_);
+    cancel_schedule_planner_ =
+        this->declare_parameter("cancel_schedule_planner", cancel_schedule_planner_);
+    schedule_planner_cancel_service_ =
+        this->declare_parameter("schedule_planner_cancel_service", schedule_planner_cancel_service_);
+
+    // ── 导航后端选择（唯一真值源，仅启动期读取）──────────────────
+    navigation_backend_ = this->declare_parameter("navigation_backend", navigation_backend_);
+    path_nav_autostart_ = this->declare_parameter("path_navigation.autostart", path_nav_autostart_);
+    path_nav_manager_service_ =
+        this->declare_parameter("path_navigation.lifecycle_manager_service", path_nav_manager_service_);
+    path_nav_startup_timeout_sec_ =
+        this->declare_parameter("path_navigation.startup_timeout_sec", path_nav_startup_timeout_sec_);
+    path_nav_require_map_ready_ =
+        this->declare_parameter("path_navigation.require_map_ready", path_nav_require_map_ready_);
+    nav2_autostart_ = this->declare_parameter("nav2.autostart", nav2_autostart_);
+    nav2_manager_service_ =
+        this->declare_parameter("nav2.lifecycle_manager_service", nav2_manager_service_);
+    nav2_startup_timeout_sec_ =
+        this->declare_parameter("nav2.startup_timeout_sec", nav2_startup_timeout_sec_);
+    if (navigation_backend_ != "nav2" && navigation_backend_ != "path_navigation") {
+        RCLCPP_ERROR(get_logger(),
+                     "Unknown navigation_backend '%s' (expected \"nav2\" or \"path_navigation\"), "
+                     "falling back to nav2. The path_navigation servers will stay unconfigured.",
+                     navigation_backend_.c_str());
+        navigation_backend_ = "nav2";
+    }
 
     // 单一状态源：/diagnostics_agg、/localization/state 由 StatusMonitor 唯一订阅聚合，
     // 本节点不再重复订阅，改在 OnRecoverTimer 轮询 GetSnapshot 读取。
@@ -52,6 +78,8 @@ CommandBoardManagerROS::CommandBoardManagerROS() : rclcpp::Node("command_board_m
     tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
     // ── 服务客户端 ────────────────────────────────────────────────
+    schedule_planner_cancel_cli_ =
+        this->create_client<std_srvs::srv::Trigger>(schedule_planner_cancel_service_);
     stop_localization_cli_ = this->create_client<std_srvs::srv::Trigger>("/localization/stop_localization");
     start_localization_cli_ = this->create_client<std_srvs::srv::Trigger>("/localization/start_localization");
     map_command_cli_ = this->create_client<nav_interfaces::srv::MapManagerCommand>("map_manager/map_command");
@@ -108,6 +136,66 @@ CommandBoardManagerROS::CommandBoardManagerROS() : rclcpp::Node("command_board_m
     recover_timer_ = this->create_wall_timer(
         std::chrono::milliseconds(200),
         std::bind(&CommandBoardManagerROS::OnRecoverTimer, this), callback_group_);
+
+    // 后端编排：只碰**被选中**那套的生命周期管理器，另一套原样留在它自己的状态
+    // （两套同时常驻时，未选中那套的 launch 必须用 autostart:=false 起，
+    //  否则它自己的管理器会把自己拉到 active，本节点管不着——这是唯一需要现场配对的地方）。
+    if (navigation_backend_ == "path_navigation" && path_nav_autostart_) {
+        backend_manager_service_ = path_nav_manager_service_;
+        backend_startup_timeout_sec_ = path_nav_startup_timeout_sec_;
+        backend_require_map_ready_ = path_nav_require_map_ready_;
+    } else if (navigation_backend_ == "nav2" && nav2_autostart_) {
+        backend_manager_service_ = nav2_manager_service_;
+        backend_startup_timeout_sec_ = nav2_startup_timeout_sec_;
+        backend_require_map_ready_ = false;  // nav2 自己有地图服务器，不卡在 MapState 上
+    }
+
+    // 两套管理器的客户端都建：运行时切换要同时 PAUSE 旧的、STARTUP 新的。
+    // 放在 Reentrant 组里——切换服务会同步等这些应答，同组必须能并行处理，否则自锁。
+    switch_group_ = this->create_callback_group(rclcpp::CallbackGroupType::Reentrant);
+    path_nav_manager_cli_ = this->create_client<nav2_msgs::srv::ManageLifecycleNodes>(
+        path_nav_manager_service_, rmw_qos_profile_services_default, switch_group_);
+    nav2_manager_cli_ = this->create_client<nav2_msgs::srv::ManageLifecycleNodes>(
+        nav2_manager_service_, rmw_qos_profile_services_default, switch_group_);
+
+    backend_state_pub_ = this->create_publisher<std_msgs::msg::String>(
+        "~/navigation_backend", rclcpp::QoS(1).transient_local());
+    PublishBackendState();
+
+    // navigation_backend 是开机默认值，运行中改它不生效。不拦的话现场会以为 param set
+    // 生效了、实际速度源没换，比报错危险得多
+    backend_param_cb_ = this->add_on_set_parameters_callback(
+        [this](const std::vector<rclcpp::Parameter>& params) {
+            rcl_interfaces::msg::SetParametersResult result;
+            result.successful = true;
+            for (const auto& p : params) {
+                if (p.get_name() == "navigation_backend" &&
+                    p.as_string() != navigation_backend_) {
+                    result.successful = false;
+                    result.reason =
+                        "navigation_backend is the boot-time default only; change it in "
+                        "command_board_params.yaml and restart the auto service.";
+                }
+            }
+            return result;
+        });
+
+    if (!backend_manager_service_.empty()) {
+        backend_startup_begin_ = this->now();
+        backend_startup_timer_ = this->create_wall_timer(
+            std::chrono::seconds(1),
+            std::bind(&CommandBoardManagerROS::OnBackendStartupTimer, this), callback_group_);
+        RCLCPP_INFO(get_logger(),
+                    "navigation_backend=%s: waiting for %s to bring that backend up (timeout %.0fs)",
+                    navigation_backend_.c_str(), backend_manager_service_.c_str(),
+                    backend_startup_timeout_sec_);
+    } else {
+        RCLCPP_INFO(get_logger(),
+                    "navigation_backend=%s, autostart disabled for it - not touching any "
+                    "lifecycle manager (the selected backend is expected to start itself, "
+                    "the other one must be launched with autostart:=false)",
+                    navigation_backend_.c_str());
+    }
 
     RCLCPP_INFO(get_logger(),
                 "CommandBoardManagerROS initialized. "
@@ -218,6 +306,8 @@ bool CommandBoardManagerROS::DoResetCurrentMapOrigin(double x, double y, double 
     // ── 步骤 ①：停止导航 ─────────────────────────────────────────
     RCLCPP_INFO(get_logger(), "[Reset] Step 1: cancel navigation");
     navigation_action_client_->async_cancel_all_goals();
+    // 地图原点马上要被挪，路网任务更不能留着：它跟的是旧原点下的一串点
+    CancelSchedulePlannerRoute("map origin reset");
     std::this_thread::sleep_for(300ms);
 
     // ── 步骤 ②：停止定位 ─────────────────────────────────────────
@@ -442,6 +532,8 @@ void CommandBoardManagerROS::OnRecoverTimer() {
                         (react_to_bumper_ && (snap.bumper_front_active || snap.bumper_rear_active));
     if (active && !safety_active_) {
         navigation_action_client_->async_cancel_all_goals();
+        // 路网任务跑在 NavigateThroughGraphPoints 上，上面那刀砍不到它
+        CancelSchedulePlannerRoute("safety active");
         localization_sm_->LocalizationFailed();
         RCLCPP_WARN(this->get_logger(),
                     "Safety active (estop=%d bumper=%d) — cancel navigation%s",
@@ -537,6 +629,213 @@ bool CommandBoardManagerROS::RobotIsStill() const {
     const double v = std::hypot(snap.velocity.linear.x, snap.velocity.linear.y);
     const double w = std::abs(snap.velocity.angular.z);
     return v < velocity_still_threshold_ && w < velocity_still_threshold_;
+}
+
+
+rclcpp::Client<nav2_msgs::srv::ManageLifecycleNodes>::SharedPtr
+CommandBoardManagerROS::ManagerFor(const std::string& backend) const {
+    if (backend == "path_navigation") return path_nav_manager_cli_;
+    if (backend == "nav2") return nav2_manager_cli_;
+    return nullptr;
+}
+
+void CommandBoardManagerROS::PublishBackendState() {
+    if (!backend_state_pub_) return;
+    std_msgs::msg::String msg;
+    msg.data = navigation_backend_;
+    backend_state_pub_->publish(msg);
+}
+
+bool CommandBoardManagerROS::CallBackendManager(
+    const std::string& backend, uint8_t command, std::string& err) {
+    const auto cli = ManagerFor(backend);
+    if (!cli) {
+        err = "unknown backend '" + backend + "'";
+        return false;
+    }
+    if (!cli->service_is_ready()) {
+        err = "lifecycle manager of '" + backend + "' is not available "
+              "(is its launch running?)";
+        return false;
+    }
+
+    auto req = std::make_shared<nav2_msgs::srv::ManageLifecycleNodes::Request>();
+    req->command = command;
+    auto future = cli->async_send_request(req);
+    // 同步等：本函数只在 switch_group_（Reentrant）里跑，应答由组内另一个线程投递，
+    // 不会自锁。超时不当成功——宁可报失败让上层重试，也不能在状态不明时继续往下走
+    if (future.wait_for(std::chrono::duration<double>(backend_switch_timeout_sec_)) !=
+        std::future_status::ready) {
+        err = "timeout (" + std::to_string(static_cast<int>(backend_switch_timeout_sec_)) +
+              "s) waiting for the lifecycle manager of '" + backend + "'";
+        return false;
+    }
+    if (!future.get()->success) {
+        err = "lifecycle manager of '" + backend + "' returned failure "
+              "(check which node refused the transition in its log)";
+        return false;
+    }
+    return true;
+}
+
+bool CommandBoardManagerROS::SwitchNavigationBackend(
+    const std::string& target, bool force, std::string& msg) {
+    const std::string from = navigation_backend_;
+    // 只有"确实已经 active"才走短路。开机 STARTUP 失败/超时时 backend_active_ 仍是 false，
+    // 这时再调本服务要真去把它拉起来，而不是回一句"已经是这个后端了"把人挡回去
+    if (target == from && !force && backend_active_.load()) {
+        msg = "already on '" + target + "' and active (pass force=true to redo the transition)";
+        return true;
+    }
+
+    RCLCPP_WARN(get_logger(), "Switching navigation backend: %s -> %s%s",
+                from.c_str(), target.c_str(), force ? " (forced)" : "");
+
+    // ① 先把在跑的导航停掉再动生命周期：直接 PAUSE 会让正在执行的任务以"节点被拔掉"的
+    //    方式死掉，上层拿不到明确终态。这两刀分别打两套后端，都不在时是无副作用的空调用
+    navigation_action_client_->async_cancel_all_goals();
+    CancelSchedulePlannerRoute("navigation backend switch");
+
+    // ② PAUSE 旧后端（deactivate 但保留 configured，切回来时快）。
+    //    旧后端的管理器不在（比如那套 launch 压根没起）时不算失败——本来就没东西在输出速度
+    std::string err;
+    if (!from.empty() && ManagerFor(from) && ManagerFor(from)->service_is_ready()) {
+        if (!CallBackendManager(from, nav2_msgs::srv::ManageLifecycleNodes::Request::PAUSE, err)) {
+            msg = "failed to pause the current backend '" + from + "': " + err +
+                  "; nothing was switched";
+            RCLCPP_ERROR(get_logger(), "%s", msg.c_str());
+            return false;
+        }
+        backend_active_.store(false);
+    } else {
+        RCLCPP_WARN(get_logger(),
+                    "Current backend '%s' has no reachable lifecycle manager, "
+                    "skipping its PAUSE (it cannot be producing velocity anyway)",
+                    from.c_str());
+    }
+
+    // ③ STARTUP 新后端
+    if (!CallBackendManager(target, nav2_msgs::srv::ManageLifecycleNodes::Request::STARTUP, err)) {
+        // 回滚：新的起不来就把旧的拉回来，否则两套都是停的 = 机器人彻底不能导航
+        std::string rollback_err;
+        const bool rolled_back = CallBackendManager(
+            from, nav2_msgs::srv::ManageLifecycleNodes::Request::STARTUP, rollback_err);
+        backend_active_.store(rolled_back);
+        msg = "failed to start '" + target + "': " + err +
+              (rolled_back ? "; rolled back to '" + from + "'"
+                           : "; rollback to '" + from + "' ALSO FAILED: " + rollback_err +
+                             " -- no navigation backend is active");
+        RCLCPP_ERROR(get_logger(), "%s", msg.c_str());
+        return false;
+    }
+
+    navigation_backend_ = target;
+    backend_active_.store(true);
+    PublishBackendState();
+    msg = "switched to '" + target + "'";
+    RCLCPP_WARN(get_logger(), "Navigation backend is now '%s'", target.c_str());
+    return true;
+}
+
+void CommandBoardManagerROS::OnBackendStartupTimer() {
+    const double waited = (this->now() - backend_startup_begin_).seconds();
+    const bool expired = waited > backend_startup_timeout_sec_;
+
+    // 上一发 STARTUP 还没回来就不要再发：管理器的 STARTUP 会一直阻塞到它名下的节点出现
+    // （nav2_util::LifecycleServiceClient 的构造函数就在死等 get_state 服务），
+    // 所以"很久没回应答"是正常现象，不是丢了
+    if (backend_startup_inflight_.load()) {
+        return;
+    }
+
+    const auto manager = ManagerFor(navigation_backend_);
+    if (!manager || !manager->service_is_ready()) {
+        if (expired) {
+            RCLCPP_ERROR(get_logger(),
+                         "navigation_backend=%s but %s never appeared within %.0fs. "
+                         "That backend stays unconfigured (no navigation available). "
+                         "Check that its launch is actually running, then restart the "
+                         "auto service.",
+                         navigation_backend_.c_str(), backend_manager_service_.c_str(),
+                         backend_startup_timeout_sec_);
+            backend_startup_timer_->cancel();
+        }
+        return;
+    }
+
+    // 路网任务要靠 map_asset_manager 把点名解析成坐标，没地图时激活了也跑不了任务。
+    // 默认不等：有的机型压根不发 MapState，等下去等于永远不激活。
+    if (backend_require_map_ready_ && current_map_name_.empty()) {
+        if (expired) {
+            RCLCPP_ERROR(get_logger(),
+                         "%s startup gave up: no map after %.0fs "
+                         "(require_map_ready=true). Servers stay unconfigured.",
+                         navigation_backend_.c_str(), backend_startup_timeout_sec_);
+            backend_startup_timer_->cancel();
+        }
+        return;
+    }
+
+    if (expired) {
+        // 服务在、但 STARTUP 一直失败（典型：那套里有节点拒绝转换）。到点就别再刷了
+        RCLCPP_ERROR(get_logger(),
+                     "%s backend could not be started within %.0fs. No navigation available; "
+                     "restart the auto service once the cause is fixed.",
+                     navigation_backend_.c_str(), backend_startup_timeout_sec_);
+        backend_startup_timer_->cancel();
+        return;
+    }
+
+    backend_startup_inflight_.store(true);
+    auto req = std::make_shared<nav2_msgs::srv::ManageLifecycleNodes::Request>();
+    req->command = nav2_msgs::srv::ManageLifecycleNodes::Request::STARTUP;
+    manager->async_send_request(
+        req,
+        [this](rclcpp::Client<nav2_msgs::srv::ManageLifecycleNodes>::SharedFuture future) {
+            const auto res = future.get();
+            backend_startup_inflight_.store(false);
+            if (res->success) {
+                backend_active_.store(true);
+                PublishBackendState();
+                backend_startup_timer_->cancel();
+                RCLCPP_INFO(get_logger(), "%s backend is up (STARTUP acknowledged by %s)",
+                            navigation_backend_.c_str(), backend_manager_service_.c_str());
+            } else {
+                // 失败不收摊：定时器继续跑，在 startup_timeout_sec 预算内每秒重试一次。
+                // 常见原因是那套的某个节点还没起全，等一会儿就好了
+                RCLCPP_WARN(get_logger(),
+                            "STARTUP of the %s backend returned failure (%s); will retry. "
+                            "If it keeps failing, check which node refused the transition "
+                            "in that manager's log.",
+                            navigation_backend_.c_str(), backend_manager_service_.c_str());
+            }
+        });
+    RCLCPP_INFO(get_logger(), "Requested STARTUP of the %s backend after %.1fs wait",
+                navigation_backend_.c_str(), waited);
+}
+
+void CommandBoardManagerROS::CancelSchedulePlannerRoute(const std::string& why) {
+    if (!cancel_schedule_planner_ || !schedule_planner_cancel_cli_) return;
+
+    // 服务不在（schedule_planner 没起、或本来就不跑路网任务）是常态，不是错误；
+    // 但也不能默默跳过——真有任务在跑时这就是"没取消掉"，必须留痕
+    if (!schedule_planner_cancel_cli_->service_is_ready()) {
+        RCLCPP_WARN(get_logger(),
+                    "Route cancel skipped (%s): %s is not available; "
+                    "if a graph route task is running it will keep going",
+                    why.c_str(), schedule_planner_cancel_service_.c_str());
+        return;
+    }
+
+    // 带回调的单发：不阻塞调用点，同时把应答消费掉（丢弃 future 会让应答一直挂在客户端上）
+    schedule_planner_cancel_cli_->async_send_request(
+        std::make_shared<std_srvs::srv::Trigger::Request>(),
+        [this, why](rclcpp::Client<std_srvs::srv::Trigger>::SharedFuture future) {
+            const auto res = future.get();
+            RCLCPP_WARN(get_logger(), "Route cancel (%s) -> success=%d, %s",
+                        why.c_str(), res->success, res->message.c_str());
+        });
+    RCLCPP_WARN(get_logger(), "Cancelling schedule_planner route task (%s)", why.c_str());
 }
 
 void CommandBoardManagerROS::StopLocalization() {
