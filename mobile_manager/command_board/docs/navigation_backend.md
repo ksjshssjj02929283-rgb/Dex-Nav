@@ -38,8 +38,7 @@ auto_mode.sh
 | `nav2_schedule_planner` | `schedule_planner_node` 改为 LifecycleNode；inactive 时 `handleGoal` 直接 REJECT；新增 `path_navigation_bringup.launch.py` 整栈入口 |
 | `path_navigation_bringup` | 一个管理器按序托管 `[path_follower_node, schedule_planner_node]`：Follower 先起后停，任一 bond 断整组停。collision_monitor_path / velocity_smoother_path 保留独立管理器（`support_autostart`，默认自启），避免单节点卡死拖垮速度链 |
 | `w1_nav2_actual.launch.py` | 支持 `autostart:=false` |
-| `command_board` | 开机按参数拉起默认后端；提供运行时切换服务；发布当前后端 |
-| `nav_interfaces` | 新增 `srv/SetNavigationBackend.srv` |
+| `command_board` | 开机按参数拉起默认后端；发布当前后端（本版本不提供运行时切换服务） |
 
 ## 4. 接口
 
@@ -47,22 +46,9 @@ auto_mode.sh
 # 开机默认（只在启动期读一次，ros2 param set 会被拒绝）
 navigation_backend: "nav2"     # "nav2" | "path_navigation"；默认开自主导航
 
-# 运行时切换（同步，success=true 即新后端已 active）
-/command_board/set_navigation_backend   nav_interfaces/srv/SetNavigationBackend
-  req : string backend, bool force
-  resp: bool success, string message, string active_backend
-
 # 当前生效后端（std_msgs/String，transient_local latched）
 /command_board/navigation_backend
 ```
-
-| 字段 | 含义 |
-|---|---|
-| `backend` | `"nav2"` 或 `"path_navigation"`，其它值直接拒绝 |
-| `force` | `true` = 当前已经是该后端也重做一遍（卡在中间态时用） |
-| `success` | `true` 时**新后端已经 active**（服务是同步的，返回即生效） |
-| `message` | 失败原因；成功时是 `switched to 'x'` 或 `already on 'x'` |
-| `active_backend` | 本次调用结束时实际生效的后端；失败回滚时即原来那套 |
 
 ---
 
@@ -102,59 +88,32 @@ nav2:
 实测（开发机）：command_board 先起、**20 s 后**才起导航栈 → 它在第 27.0 s 发出 STARTUP，
 0.24 s 后拿到 ack，两个 Server 变 active。
 
-超时后放弃只打 ERROR，不会让节点退出；原因修好后随时可以用
-`~/set_navigation_backend` 服务把它拉起来（此时不需要 `force:true`——启动没成功过时
-不会走"already on"短路）。真机冷启动如果发现 60 s 不够（一堆传感器同时起会拖慢
+超时后放弃只打 ERROR，不会让节点退出；原因修好后重启 auto 服务即可。真机冷启动如果发现 60 s 不够（一堆传感器同时起会拖慢
 `ros2 launch`），调大 `startup_timeout_sec` 即可。
 
-**服务切换不回写 yaml**：重启后仍按 yaml 里的值启动。要改开机默认值就改 yaml。
+要改开机默认后端就改 yaml 并重启 auto 服务。
 
 ---
 
-## 6. 运行时切换：`~/set_navigation_backend` 服务
+## 6. 切换后端（本版本不提供运行时切换服务）
 
-改 yaml 要重启整个 auto 服务，太重。运行中切换走服务：
+`SetNavigationBackend.srv` 暂不对外开放，本版本**没有** `~/set_navigation_backend` 服务。
+切后端的方法：改 `command_board_params.yaml` 的 `navigation_backend`，重启 auto 服务。
 
 ```bash
-# 切到 Nav2 自主导航
-ros2 service call /command_board/set_navigation_backend \
-    nav_interfaces/srv/SetNavigationBackend "{backend: 'nav2'}"
-
-# 切回路径导航
-ros2 service call /command_board/set_navigation_backend \
-    nav_interfaces/srv/SetNavigationBackend "{backend: 'path_navigation'}"
-
-# 卡在中间态时重做一遍（当前已经是该后端也照做）
-ros2 service call /command_board/set_navigation_backend \
-    nav_interfaces/srv/SetNavigationBackend "{backend: 'nav2', force: true}"
-
 # 查当前生效的后端（UI 直接订阅即可）
 ros2 topic echo --once /command_board/navigation_backend
 ```
 
-### 切换时做了什么
-
-```text
-1. 取消在跑的导航   /navigate_to_pose cancel_all
-                    + /schedule_planner/force_cancel
-                    （两刀都发，对不在的那套是无副作用的空调用）
-2. PAUSE 旧后端     manage_nodes command=1 → 旧后端 deactivate（保留 configured，切回来快）
-3. STARTUP 新后端   manage_nodes command=0
-4. 失败回滚         第 3 步失败 → 重新 STARTUP 旧后端，避免两套都停着 = 彻底不能导航
-```
-
-- 先取消再动生命周期是有意的：直接 PAUSE 会让正在执行的任务以「节点被拔掉」的方式死掉，
-  上层拿不到明确终态。
-- 实测一次切换约 **1.6 s**（路径导航侧 `schedule_planner` 收口约 1.5 s 是主要耗时）。
-- 单次管理器调用的超时是 `backend_switch_timeout_sec`（默认 20 s）；同一时刻只允许一个切换在跑，
-  并发请求会被拒。
+`command_board_ros.cpp` 里的 `SwitchNavigationBackend`（取消导航 → PAUSE 旧后端 → STARTUP 新后端，
+失败回滚）作为内部函数保留，暂无调用者，将来要开放服务时在此挂入口即可。
 
 ### 不要用 `ros2 param set` 切
 
 ```console
 $ ros2 param set /command_board navigation_backend nav2
-Setting parameter failed: navigation_backend is the boot-time default only; switching at
-runtime must go through the ~/set_navigation_backend service (...)
+Setting parameter failed: navigation_backend is the boot-time default only; change it in
+command_board_params.yaml and restart the auto service.
 ```
 
 `navigation_backend` 只在启动期读一次。参数回调会**明确拒绝**运行时修改——不拦的话现场
@@ -242,4 +201,3 @@ ros2 lifecycle get /bt_navigator
 
 - 生命周期编排与两套栈的资源隔离：`mobile_navigation/nav2_schedule_planner/launch/path_navigation_bringup.launch.py`
   与 `path_follower/launch/path_follower_with_collision_and_smoother.launch.py` 的文件头
-- 接口定义：`nav_interfaces/srv/SetNavigationBackend.srv`

@@ -160,11 +160,6 @@ CommandBoardManagerROS::CommandBoardManagerROS() : rclcpp::Node("command_board_m
 
     backend_state_pub_ = this->create_publisher<std_msgs::msg::String>(
         "~/navigation_backend", rclcpp::QoS(1).transient_local());
-    set_backend_srv_ = this->create_service<nav_interfaces::srv::SetNavigationBackend>(
-        "~/set_navigation_backend",
-        std::bind(&CommandBoardManagerROS::OnSetNavigationBackend, this,
-                  std::placeholders::_1, std::placeholders::_2),
-        rmw_qos_profile_services_default, switch_group_);
     PublishBackendState();
 
     // navigation_backend 是开机默认值，运行中改它不生效。不拦的话现场会以为 param set
@@ -178,9 +173,8 @@ CommandBoardManagerROS::CommandBoardManagerROS() : rclcpp::Node("command_board_m
                     p.as_string() != navigation_backend_) {
                     result.successful = false;
                     result.reason =
-                        "navigation_backend is the boot-time default only; switching at runtime "
-                        "must go through the ~/set_navigation_backend service (it cancels the "
-                        "running task, pauses the old backend and starts the new one).";
+                        "navigation_backend is the boot-time default only; change it in "
+                        "command_board_params.yaml and restart the auto service.";
                 }
             }
             return result;
@@ -743,34 +737,6 @@ bool CommandBoardManagerROS::SwitchNavigationBackend(
     return true;
 }
 
-void CommandBoardManagerROS::OnSetNavigationBackend(
-    const std::shared_ptr<nav_interfaces::srv::SetNavigationBackend::Request> req,
-    std::shared_ptr<nav_interfaces::srv::SetNavigationBackend::Response> res) {
-    res->active_backend = navigation_backend_;
-
-    if (req->backend != "nav2" && req->backend != "path_navigation") {
-        res->success = false;
-        res->message = "unknown backend '" + req->backend +
-                       "' (expected \"nav2\" or \"path_navigation\")";
-        RCLCPP_WARN(get_logger(), "%s", res->message.c_str());
-        return;
-    }
-
-    // 一次只允许一个切换在跑：并发两个请求会让 PAUSE/STARTUP 交错，状态不可预测
-    bool expected = false;
-    if (!backend_switch_busy_.compare_exchange_strong(expected, true)) {
-        res->success = false;
-        res->message = "another backend switch is already in progress";
-        return;
-    }
-
-    std::string msg;
-    res->success = SwitchNavigationBackend(req->backend, req->force, msg);
-    res->message = msg;
-    res->active_backend = navigation_backend_;
-    backend_switch_busy_.store(false);
-}
-
 void CommandBoardManagerROS::OnBackendStartupTimer() {
     const double waited = (this->now() - backend_startup_begin_).seconds();
     const bool expired = waited > backend_startup_timeout_sec_;
@@ -788,8 +754,8 @@ void CommandBoardManagerROS::OnBackendStartupTimer() {
             RCLCPP_ERROR(get_logger(),
                          "navigation_backend=%s but %s never appeared within %.0fs. "
                          "That backend stays unconfigured (no navigation available). "
-                         "Check that its launch is actually running; you can bring it up later "
-                         "with the ~/set_navigation_backend service.",
+                         "Check that its launch is actually running, then restart the "
+                         "auto service.",
                          navigation_backend_.c_str(), backend_manager_service_.c_str(),
                          backend_startup_timeout_sec_);
             backend_startup_timer_->cancel();
@@ -814,7 +780,7 @@ void CommandBoardManagerROS::OnBackendStartupTimer() {
         // 服务在、但 STARTUP 一直失败（典型：那套里有节点拒绝转换）。到点就别再刷了
         RCLCPP_ERROR(get_logger(),
                      "%s backend could not be started within %.0fs. No navigation available; "
-                     "retry with the ~/set_navigation_backend service once the cause is fixed.",
+                     "restart the auto service once the cause is fixed.",
                      navigation_backend_.c_str(), backend_startup_timeout_sec_);
         backend_startup_timer_->cancel();
         return;

@@ -43,12 +43,8 @@
     # 停在 unconfigured），由本节点在启动期把选中的那套 STARTUP 起来；没选中的那套不接任务、
     # 不出速度。
     #
-    # 运行中要切后端**不要改这里、也不要 ros2 param set**（param set 会被明确拒绝），
-    # 调服务，它会按「取消导航 → PAUSE 旧后端 → STARTUP 新后端，失败回滚」走完整流程：
-    #   ros2 service call /command_board/set_navigation_backend \
-    #       nav_interfaces/srv/SetNavigationBackend "{backend: 'nav2'}"
-    # 当前生效的后端发布在 /command_board/navigation_backend（latched）。
-    # 服务切换不回写本文件，重启后仍按这里的值启动。
+    # 切后端：改本参数后重启 auto 服务。运行中 `ros2 param set` 会被明确拒绝。
+    # 当前版本不提供运行时切换服务。当前生效的后端发布在 /command_board/navigation_backend（latched）。
     navigation_backend: "nav2"   # "nav2" | "path_navigation"；默认开自主导航
 
     path_navigation:

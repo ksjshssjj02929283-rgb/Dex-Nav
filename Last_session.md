@@ -186,7 +186,7 @@ localization/chassis/nav 全 `taskset -c 3-4`，那两个核本来就是热点�
 collision_monitor_path + velocity_smoother_path 仍在跑（车上 4.8%+1.6%），而 Nav2 那套
 自己不带 collision_monitor——选 nav2 时应给路径导航那行加 `support_autostart:=false`。
 
-### 运行时切后端：`~/set_navigation_backend` 服务（不用改 yaml、不用重启 auto）
+### 运行时切后端：`~/set_navigation_backend` 服务（**本版本未开放**：srv 未提交、服务已从 command_board 移除，下面是历史记录；`SwitchNavigationBackend` 函数保留，srv 备份在 dexe_interfaces 本地分支 `backup/xmk051-backend-srv`）
 接口 **`nav_interfaces/srv/SetNavigationBackend`**（按要求放在 submodule，不在 command_board）：
 `string backend` + `bool force` → `bool success, string message, string active_backend`。
 

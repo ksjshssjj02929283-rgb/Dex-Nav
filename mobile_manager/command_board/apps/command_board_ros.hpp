@@ -22,7 +22,6 @@
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp_action/rclcpp_action.hpp>
 #include <nav2_msgs/srv/manage_lifecycle_nodes.hpp>
-#include <nav_interfaces/srv/set_navigation_backend.hpp>
 #include <std_msgs/msg/string.hpp>
 #include <std_srvs/srv/trigger.hpp>
 #include <string>
@@ -65,11 +64,7 @@ private:
     // 内部：完整重置流程（仅用于当前地图 + RobotPose 入口）
     bool DoResetCurrentMapOrigin(double x, double y, double yaw, std::string& out_msg);
 
-    /// 运行时切换导航后端的服务入口（~/set_navigation_backend）。
-    void OnSetNavigationBackend(
-        const std::shared_ptr<nav_interfaces::srv::SetNavigationBackend::Request> req,
-        std::shared_ptr<nav_interfaces::srv::SetNavigationBackend::Response> res);
-
+    /// 当前版本不对外提供运行时切换入口（SetNavigationBackend 服务未开放），本函数暂无调用者，保留备用。
     /// 执行一次后端切换：取消导航 → PAUSE 旧后端 → STARTUP 新后端，失败回滚。
     /// 同步执行（调用方拿到应答时新后端已 active），故只能跑在 switch_group_ 这个
     /// Reentrant 回调组里——阻塞等管理器应答期间，应答本身也要有线程去处理
@@ -161,10 +156,7 @@ private:
     rclcpp::Client<nav2_msgs::srv::ManageLifecycleNodes>::SharedPtr nav2_manager_cli_;
     /// 切换服务与两个管理器客户端共用的 Reentrant 组（见 SwitchNavigationBackend 注释）
     rclcpp::CallbackGroup::SharedPtr switch_group_;
-    rclcpp::Service<nav_interfaces::srv::SetNavigationBackend>::SharedPtr set_backend_srv_;
     rclcpp::Publisher<std_msgs::msg::String>::SharedPtr backend_state_pub_;
-    /// 同一时刻只允许一次切换在跑
-    std::atomic<bool> backend_switch_busy_{false};
     /// 被选中的后端**当前确实是 active**（STARTUP 成功过且之后没切走）。
     /// 启动 STARTUP 失败/超时时仍是 false —— 这样之后再调切换服务会真去重试，
     /// 而不是被"已经是这个后端了"挡回去
