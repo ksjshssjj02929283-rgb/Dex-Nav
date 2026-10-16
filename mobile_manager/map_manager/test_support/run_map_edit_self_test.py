@@ -46,17 +46,16 @@ E_MAP_VERSION_NOT_FOUND = 2202120
 # ── 栅格化参考实现（与 map_manager grid_edit.cpp 规则一致，独立编写用于交叉核对）──────────────
 
 def classify(p, occ, free):
+    # 与 map_manager 发布 /map 的 TRINARY 转换同口径：中间灰度里只有 126~128 是未知，其余是概率灰
     if p > 255.0 * (1.0 - free):
         return "free"
     if p < 255.0 * (1.0 - occ):
         return "occ"
-    return "unknown"
+    return "unknown" if 126 <= p <= 128 else "graded"
 
 
 def unknown_gray(occ, free):
-    lo = math.ceil(255.0 * (1.0 - occ))
-    hi = math.floor(255.0 * (1.0 - free))
-    return 205 if lo <= 205 <= hi else (lo + hi) // 2
+    return 128
 
 
 def dist_to_segment(px, py, ax, ay, bx, by):
@@ -82,7 +81,7 @@ def rasterize(img, geo, occ, free, strokes):
         cls = classify(int(img[r, c]), occ, free)
         if tool == TOOL_WALL and cls != "occ":
             img[r, c] = 0
-        elif tool == TOOL_ERASE and cls == "occ":
+        elif tool == TOOL_ERASE and cls in ("occ", "graded"):
             img[r, c] = 255
         elif tool == TOOL_UNKNOWN and cls != "unknown":
             img[r, c] = ugray
@@ -347,10 +346,12 @@ def main():
         rev1 = r.revision
         rep.check("G-01", "new revision returned and visible", rev1 and rev1 != rev0 and info(other_name).grid_revision == rev1)
 
-        # G-02 擦除：只把障碍变自由，未知保持未知
+        # G-02 擦除：障碍与概率灰变自由，未知（126~128）保持未知
         print("▶ G-02 erase keeps unknown")
+        free_px = img1 > 255 * (1 - free)
         occ_px = img1 < 255 * (1 - occ)
-        unk_px = (img1 >= 255 * (1 - occ)) & (img1 <= 255 * (1 - free))
+        unk_px = (img1 >= 126) & (img1 <= 128) & ~free_px & ~occ_px
+        graded_px = ~free_px & ~occ_px & ~unk_px
         k = 9
         found = None
         for rr in range(k, h - k, 3):
@@ -375,8 +376,8 @@ def main():
                       f"{int((img2 != expect).sum())} pixels differ: " +
                       diff_detail(img2, expect, img1, geo, as_tuples(erase)) + f"; stroke={erase}")
             changed = img2 != img1
-            rep.check("G-02", "only obstacle pixels changed, all to 255",
-                      changed.any() and occ_px[changed].all() and (img2[changed] == 255).all())
+            rep.check("G-02", "only obstacle / graded pixels changed, all to 255",
+                      changed.any() and (occ_px | graded_px)[changed].all() and (img2[changed] == 255).all())
             rep.check("G-02", "unknown pixels untouched", np.array_equal(img2[unk_px], img1[unk_px]))
             rev1 = r.revision or rev1
 

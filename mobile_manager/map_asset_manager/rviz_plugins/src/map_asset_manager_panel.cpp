@@ -32,6 +32,7 @@
 #include "map_asset_rviz_plugin/asset_target.hpp"
 #include "map_asset_rviz_plugin/nav_point_tab.hpp"
 #include "map_asset_rviz_plugin/room_tab.hpp"
+#include "map_asset_manager/types.hpp"
 #include "map_asset_rviz_plugin/route_graph_tab.hpp"
 #include "map_asset_rviz_plugin/route_tab.hpp"
 
@@ -621,20 +622,40 @@ void MapAssetManagerPanel::publishPreview(const nav_interfaces::srv::GetAssets::
         }
         arr.markers.push_back(m);
     }
-    auto polygon = [&](const char* ns, const std::vector<geometry_msgs::msg::Pose2D>& poly, std_msgs::msg::ColorRGBA c) {
+    // 轮廓 + 名称标签（与当前地图上 map_asset_manager 发布的区域 / 房间标签同格式：名称换行类型）
+    auto polygon = [&](const char* ns, const char* label_ns, const std::vector<geometry_msgs::msg::Pose2D>& poly,
+                       std_msgs::msg::ColorRGBA c, bool closed, const std::string& label, double label_z) {
         if (poly.size() < 2) return;
         auto m = base(ns, visualization_msgs::msg::Marker::LINE_STRIP);
         m.scale.x = 0.05;
         m.color = c;
-        for (const auto& v : poly) m.points.push_back(P(v.x, v.y, 0.03));
-        m.points.push_back(P(poly.front().x, poly.front().y, 0.03));
+        double cx = 0.0, cy = 0.0;
+        for (const auto& v : poly) {
+            m.points.push_back(P(v.x, v.y, 0.03));
+            cx += v.x;
+            cy += v.y;
+        }
+        if (closed) m.points.push_back(P(poly.front().x, poly.front().y, 0.03));
         arr.markers.push_back(m);
+        auto t = base(label_ns, visualization_msgs::msg::Marker::TEXT_VIEW_FACING);
+        t.pose.position = P(cx / poly.size(), cy / poly.size(), label_z);
+        t.scale.z = 0.25;
+        t.color = c;
+        t.color.a = 1.0f;
+        t.text = label;
+        arr.markers.push_back(t);
     };
     for (const auto& a : r.areas) {
-        polygon("areas", a.polygon, a.type == nav_interfaces::msg::AreaInfo::RESTRICTED_AREA ? Color(0.9f, 0.1f, 0.1f)
-                                                                                            : Color(0.2f, 0.6f, 1.0f));
+        polygon("areas", "area_names", a.polygon,
+                a.type == nav_interfaces::msg::AreaInfo::RESTRICTED_AREA ? Color(0.9f, 0.1f, 0.1f) : Color(0.2f, 0.6f, 1.0f),
+                a.type != nav_interfaces::msg::AreaInfo::VIRTUAL_WALL,  // 虚拟墙是折线，不闭合
+                a.name + "\n" + map_asset_manager::AreaType::toString(a.type), 0.3);
     }
-    for (const auto& rm : r.rooms) polygon("rooms", rm.polygon, Color(0.6f, 0.3f, 0.9f));
+    for (const auto& rm : r.rooms) {
+        polygon("rooms", "room_names", rm.polygon, Color(0.6f, 0.3f, 0.9f), true,
+                (rm.display_label.empty() ? rm.name : rm.display_label) + "\n" +
+                    map_asset_manager::RoomType::toString(rm.type), 0.5);
+    }
     preview_assets_pub_->publish(arr);
 }
 

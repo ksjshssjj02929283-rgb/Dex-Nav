@@ -10,7 +10,7 @@
 //   E4 落盘副作用：无 .tmp 残留，锁文件落在 slam/
 //   E5 ScanMapCatalog：display_yaw 读回；grid_revision 稳定、改底图即变、改显示朝向不变；
 //      last_edited_at 只认 map.yaml 的 last_edited_at 键（无键退回 png / yaml mtime），资产文件不参与
-//   G1 三值判定与「未知」灰度（free_thresh=0.2 的图上不能写 205）
+//   G1 像素判定与「未知」灰度（与 image_loader 同口径：只有 126~128 是未知，写回 128）
 //   G2 栅格化固定用例：单点、胶囊、擦除只动障碍、墙体不重写障碍、笔画顺序、越界裁剪、矩形未知
 //      （前后端一致性基准：前端用同一组笔画逐格比对）
 //   G3 笔画参数校验
@@ -223,18 +223,24 @@ static GridStrokeSpec Stroke(uint8_t tool, uint8_t shape, std::vector<std::pair<
     return s;
 }
 
-// G1 三值判定与「未知」灰度
+// G1 像素判定与「未知」灰度（与 image_loader TRINARY 同口径）
 void TestG1_Classify() {
     std::cout << "▶ G1 classify / unknown gray\n";
+    using map_manager::CellClass;
+    using map_manager::ClassifyPixel;
     const GridThresholds def{0.65, 0.196};
     const GridThresholds robot{0.6, 0.2};   // 本体现有地图的阈值
-    EXPECT(map_manager::UnknownGray(def) == 205, "default thresholds use 205");
-    EXPECT(map_manager::ClassifyPixel(205, robot) == map_manager::CellClass::kFree, "205 is free when free_thresh=0.2");
-    const int g = map_manager::UnknownGray(robot);
-    EXPECT(g == 153, "robot thresholds use mid of [102, 204]: " + std::to_string(g));
-    EXPECT(map_manager::ClassifyPixel(static_cast<uint8_t>(g), robot) == map_manager::CellClass::kUnknown,
-           "unknown gray classifies as unknown");
+    EXPECT(map_manager::UnknownGray(def) == 128 && map_manager::UnknownGray(robot) == 128, "unknown gray is 128");
+    EXPECT(ClassifyPixel(126, def) == CellClass::kUnknown && ClassifyPixel(128, def) == CellClass::kUnknown,
+           "126..128 are unknown");
+    EXPECT(ClassifyPixel(125, def) == CellClass::kGraded && ClassifyPixel(129, def) == CellClass::kGraded,
+           "other mid grays are graded");
+    EXPECT(ClassifyPixel(205, def) == CellClass::kGraded, "205 is graded, not unknown, under default thresholds");
+    EXPECT(ClassifyPixel(205, robot) == CellClass::kFree, "205 is free when free_thresh=0.2");
+    EXPECT(ClassifyPixel(89, def) == CellClass::kOccupied && ClassifyPixel(90, def) == CellClass::kGraded,
+           "occupied bound 255*(1-0.65)=89.25");
     EXPECT(!map_manager::ValidThresholds({0.2, 0.6}), "free >= occupied is invalid");
+    EXPECT(!map_manager::ValidThresholds({0.4, 0.55}), "128 must fall in the mid band");
 }
 
 // G2 栅格化固定用例（前后端一致性基准）：10×10，分辨率 0.1 m，原点 (0, 0)
@@ -259,13 +265,14 @@ void TestG2_Rasterize() {
     EXPECT(map_manager::ApplyStrokes(&m, geo, th, {Stroke(kToolWall, kShapePolyline, {{0.05, 0.55}, {0.95, 0.55}}, 0.1)}) == 30,
            "capsule covers 3 rows x 10 cols");
 
-    // 擦除只动障碍：0 → 255；未知 150 与中间灰度的自由 230 都不变
-    m.setTo(150);
+    // 擦除：障碍 0 与概率灰 150 → 255；未知 128 与已是自由的 230 不变
+    m.setTo(128);
     m.at<uint8_t>(5, 5) = 0;
     m.at<uint8_t>(5, 6) = 230;
+    m.at<uint8_t>(5, 7) = 150;
     const int erased = map_manager::ApplyStrokes(&m, geo, th, {Stroke(kToolErase, kShapePolyline, {{0.0, 0.0}, {1.0, 1.0}, {0.0, 1.0}, {1.0, 0.0}}, 3.0)});
-    EXPECT(erased == 1 && m.at<uint8_t>(5, 5) == 255, "erase turns only obstacle into free");
-    EXPECT(m.at<uint8_t>(0, 0) == 150 && m.at<uint8_t>(5, 6) == 230, "unknown and mid-gray free untouched");
+    EXPECT(erased == 2 && m.at<uint8_t>(5, 5) == 255 && m.at<uint8_t>(5, 7) == 255, "erase turns obstacle and graded into free");
+    EXPECT(m.at<uint8_t>(0, 0) == 128 && m.at<uint8_t>(5, 6) == 230, "unknown and free untouched");
 
     // 墙体不重写已是障碍的像素（灰度 30 保持 30）
     m.setTo(150);
@@ -290,11 +297,17 @@ void TestG2_Rasterize() {
     EXPECT(map_manager::ApplyStrokes(&m, geo, th, {Stroke(kToolWall, kShapePolyline, {{-1.0, 0.05}, {0.15, 0.05}}, 0.01)}) == 2,
            "stroke crossing border is clipped");
 
-    // 矩形未知：中心落在矩形内的格 → 205
+    // 矩形未知：中心落在矩形内的格 → 128；自由、障碍、概率灰一笔都变未知，已是未知的不动
     m.setTo(255);
-    EXPECT(map_manager::ApplyStrokes(&m, geo, th, {Stroke(kToolUnknown, kShapeRect, {{0.0, 0.0}, {0.3, 0.2}}, 0.0)}) == 6,
-           "rect covers 3 cols x 2 rows");
-    EXPECT(m.at<uint8_t>(9, 0) == 205, "unknown gray written");
+    m.at<uint8_t>(9, 1) = 0;
+    m.at<uint8_t>(8, 0) = 150;
+    m.at<uint8_t>(8, 1) = 127;
+    EXPECT(map_manager::ApplyStrokes(&m, geo, th, {Stroke(kToolUnknown, kShapeRect, {{0.0, 0.0}, {0.3, 0.2}}, 0.0)}) == 5,
+           "rect covers 3 cols x 2 rows, the 127 cell is already unknown");
+    EXPECT(m.at<uint8_t>(9, 0) == 128 && m.at<uint8_t>(9, 1) == 128 && m.at<uint8_t>(8, 0) == 128 && m.at<uint8_t>(8, 1) == 127,
+           "unknown gray written in one pass");
+    EXPECT(map_manager::ApplyStrokes(&m, geo, th, {Stroke(kToolUnknown, kShapeRect, {{0.0, 0.0}, {0.3, 0.2}}, 0.0)}) == 0,
+           "second pass changes nothing");
 }
 
 // G3 参数校验
@@ -328,7 +341,7 @@ static void MakeEditMap(const fs::path& maps, const std::string& name) {
     const fs::path slam = maps / name / "slam";
     fs::create_directories(slam);
     cv::Mat img(20, 20, CV_8UC1, cv::Scalar(255));
-    img(cv::Rect(0, 0, 20, 5)).setTo(205);   // 上面 5 行未知
+    img(cv::Rect(0, 0, 20, 5)).setTo(128);   // 上面 5 行未知
     img.at<uint8_t>(10, 10) = 0;              // 一个噪点
     cv::imwrite((slam / "map.png").string(), img);
     WriteText(slam / "map.yaml", kEditYaml);
@@ -374,7 +387,7 @@ void TestG4_EditGrid(const fs::path& maps) {
     const cv::Mat after = cv::imread((slam / "map.png").string(), cv::IMREAD_UNCHANGED);
     EXPECT(after.cols == 20 && after.rows == 20 && after.type() == CV_8UC1, "size and type unchanged");
     EXPECT(after.at<uint8_t>(19, 0) == 0 && after.at<uint8_t>(19, 19) == 0, "bottom row is obstacle");
-    EXPECT(after.at<uint8_t>(10, 10) == 0 && after.at<uint8_t>(0, 0) == 205, "other pixels untouched");
+    EXPECT(after.at<uint8_t>(10, 10) == 0 && after.at<uint8_t>(0, 0) == 128, "other pixels untouched");
 
     const auto ls = Lines(ReadText(slam / "map.yaml"));
     const auto before = Lines(kEditYaml);

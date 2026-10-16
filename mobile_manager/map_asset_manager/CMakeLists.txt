@@ -199,6 +199,7 @@ if(rviz_common_FOUND AND Qt5_FOUND AND pluginlib_FOUND)
 
   target_include_directories(map_asset_rviz_plugin PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/rviz_plugins/include>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
   )
 

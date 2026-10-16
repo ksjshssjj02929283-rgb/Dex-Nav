@@ -11,6 +11,12 @@
 #include <cstring>
 #include <ctime>
 #include <fstream>
+#include <iterator>
+#include <mutex>
+#include <optional>
+#include <unordered_map>
+
+#include <sys/stat.h>
 
 #include <glog/logging.h>
 
@@ -169,6 +175,54 @@ std::time_t ParseLocalIso8601(const std::string& text) {
     tm_buf.tm_isdst = -1;
     const std::time_t t = std::mktime(&tm_buf);
     return t < 0 ? 0 : t;
+}
+
+namespace {
+
+// FNV-1a 64：跨进程、跨版本稳定（std::hash 不保证），够做乐观锁指纹。
+uint64_t Fnv1a(const std::string& data, uint64_t h = 1469598103934665603ULL) {
+    for (const unsigned char c : data) {
+        h ^= c;
+        h *= 1099511628211ULL;
+    }
+    return h;
+}
+
+}  // namespace
+
+// 底图指纹 = map.png 文件内容 + resolution + origin 文本。
+// 只认 png 字节而不解码像素：map.png 全由我方写出，同内容同字节；回滚恢复的也是原字节。
+// get_maps 会对每张图算一次，按 (inode, 大小, 纳秒 mtime) 缓存，文件不变就不重读。
+// 带上 inode：原子 rename 写入每次都换 inode，同一秒内改两次、大小又恰好相同也不会命中旧缓存。
+std::string GridRevision(const std::string& map_path, const MapYamlDoc& yaml) {
+    const std::string png = map_path + "/map.png";
+    struct stat st {};
+    if (::stat(png.c_str(), &st) != 0) return "";
+
+    struct Cached { ino_t ino; off_t size; timespec mtime; uint64_t hash; };
+    static std::mutex mutex;
+    static std::unordered_map<std::string, Cached> cache;
+    std::optional<uint64_t> png_hash;
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        const auto it = cache.find(png);
+        if (it != cache.end() && it->second.ino == st.st_ino && it->second.size == st.st_size &&
+            it->second.mtime.tv_sec == st.st_mtim.tv_sec && it->second.mtime.tv_nsec == st.st_mtim.tv_nsec) {
+            png_hash = it->second.hash;
+        }
+    }
+    if (!png_hash.has_value()) {
+        std::ifstream in(png, std::ios::binary);
+        const std::string bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        png_hash = Fnv1a(bytes);
+        std::lock_guard<std::mutex> lock(mutex);
+        cache[png] = {st.st_ino, st.st_size, st.st_mtim, *png_hash};
+    }
+    const uint64_t h = Fnv1a(yaml.Get("resolution").value_or("") + "|" + yaml.Get("origin").value_or(""),
+                             *png_hash);
+    char buf[24];
+    std::snprintf(buf, sizeof(buf), "%016llx", static_cast<unsigned long long>(h));
+    return buf;
 }
 
 }  // namespace map_manager

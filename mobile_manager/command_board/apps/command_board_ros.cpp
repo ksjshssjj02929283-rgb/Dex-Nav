@@ -15,10 +15,16 @@
 #include <tf2/utils.h>
 
 #include <array>
+#include <spawn.h>
+#include <sys/wait.h>
+#include <unistd.h>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <cerrno>
 #include <cstdlib>
+#include <cstring>
+#include <fcntl.h>
 #include <ctime>
 #include <filesystem>
 #include <stdexcept>
@@ -26,6 +32,9 @@
 #include <string>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <thread>
+#include <vector>
+
+extern char** environ;
 
 namespace command_board {
 
@@ -492,33 +501,86 @@ bool CommandBoardManagerROS::SampleRobotPose(
     return true;
 }
 
+namespace {
+
+// 以参数列表启动子进程（posix_spawnp，不经 shell），stdout 与 stderr 合并读回。
+// 地图名、路径原样作为单个参数传入：名字里的引号、$、反引号、空格都不会被 shell 解释或拆开。
+// 返回退出码；启动失败返回 -1，被信号终止返回 128 + 信号号。
+int RunProcessCapture(const std::vector<std::string>& args, std::string* output) {
+    int fds[2];
+    if (::pipe2(fds, O_CLOEXEC) != 0) {
+        *output = std::string("pipe failed: ") + std::strerror(errno);
+        return -1;
+    }
+    posix_spawn_file_actions_t actions;
+    posix_spawn_file_actions_init(&actions);
+    posix_spawn_file_actions_adddup2(&actions, fds[1], STDOUT_FILENO);
+    posix_spawn_file_actions_adddup2(&actions, fds[1], STDERR_FILENO);
+    std::vector<char*> argv;
+    for (const auto& a : args) argv.push_back(const_cast<char*>(a.c_str()));
+    argv.push_back(nullptr);
+    pid_t pid = 0;
+    const int rc = posix_spawnp(&pid, argv[0], &actions, nullptr, argv.data(), environ);
+    posix_spawn_file_actions_destroy(&actions);
+    ::close(fds[1]);
+    if (rc != 0) {
+        ::close(fds[0]);
+        *output = "spawn " + args[0] + " failed: " + std::strerror(rc);
+        return -1;
+    }
+    char buf[4096];
+    for (;;) {
+        const ssize_t n = ::read(fds[0], buf, sizeof(buf));
+        if (n > 0) { output->append(buf, static_cast<size_t>(n)); continue; }
+        if (n < 0 && errno == EINTR) continue;
+        break;
+    }
+    ::close(fds[0]);
+    int status = 0;
+    while (::waitpid(pid, &status, 0) < 0 && errno == EINTR) {}
+    if (WIFEXITED(status)) return WEXITSTATUS(status);
+    if (WIFSIGNALED(status)) return 128 + WTERMSIG(status);
+    return -1;
+}
+
+std::string FormatFixed(double v, int digits) {
+    char buf[64];
+    std::snprintf(buf, sizeof(buf), "%.*f", digits, v);
+    return buf;
+}
+
+// 只用于日志显示：参数里有空白或引号时加单引号
+std::string CommandLineForLog(const std::vector<std::string>& args) {
+    std::string out;
+    for (const auto& a : args) {
+        if (!out.empty()) out += ' ';
+        if (a.find_first_of(" \t'\"$`\\") == std::string::npos && !a.empty()) {
+            out += a;
+        } else {
+            out += '\'';
+            for (const char c : a) out += (c == '\'' ? std::string("'\\''") : std::string(1, c));
+            out += '\'';
+        }
+    }
+    return out;
+}
+
+}  // namespace
+
 // ──────────────────────────────────────────────────────────────────────
 // 子进程调用 reset_map_origin_tool
 // ──────────────────────────────────────────────────────────────────────
 
 bool CommandBoardManagerROS::RunResetMapOriginTool(
     const std::string& map_name, double x, double y, double yaw, std::string& out_log) {
-    // 构造命令（依赖 source install/setup.bash 后 PATH 含工具）
-    char cmd[1024];
-    std::snprintf(cmd, sizeof(cmd),
-                  "ros2 run cartographer_ros reset_map_origin_tool"
-                  " --map_name \"%s\""
-                  " --new_x %.6f --new_y %.6f --new_yaw %.6f"
-                  " 2>&1",
-                  map_name.c_str(), x, y, yaw);
+    // 依赖 source install/setup.bash 后 PATH 含 ros2
+    const std::vector<std::string> args = {
+        "ros2", "run", "cartographer_ros", "reset_map_origin_tool",
+        "--map_name", map_name,
+        "--new_x", FormatFixed(x, 6), "--new_y", FormatFixed(y, 6), "--new_yaw", FormatFixed(yaw, 6)};
+    RCLCPP_INFO(get_logger(), "RunResetMapOriginTool: %s", CommandLineForLog(args).c_str());
 
-    RCLCPP_INFO(get_logger(), "RunResetMapOriginTool: %s", cmd);
-
-    FILE* pipe = popen(cmd, "r");
-    if (!pipe) {
-        out_log = "popen failed";
-        return false;
-    }
-    char buf[256];
-    while (fgets(buf, sizeof(buf), pipe)) {
-        out_log += buf;
-    }
-    const int rc = pclose(pipe);
+    const int rc = RunProcessCapture(args, &out_log);
     if (rc != 0) {
         RCLCPP_ERROR(get_logger(), "reset_map_origin_tool exited with code %d\n%s", rc, out_log.c_str());
         return false;
@@ -1056,27 +1118,18 @@ CommandBoardManagerROS::AlignToolResult CommandBoardManagerROS::RunAlignMapTool(
         return out;
     }
 
-    char cmd[2048];
-    std::snprintf(cmd, sizeof(cmd),
-                  "ros2 run cartographer_ros align_map_tool"
-                  " --map_dir \"%s\""
-                  "%s"
-                  " --i_know_assets_will_break"
-                  " 2>&1",
-                  map_dir.c_str(), dry_run ? " --dry_run" : "");
+    std::vector<std::string> args = {"ros2", "run", "cartographer_ros", "align_map_tool", "--map_dir", map_dir};
+    if (dry_run) args.push_back("--dry_run");
     // --i_know_assets_will_break：本编排随后会调 transform_assets_tool 把资产一起转，
     // 所以这里是「正确路径」，工具那道确认门不该拦我们。裸跑 tool 仍会被拦。
-    RCLCPP_INFO(get_logger(), "RunAlignMapTool: %s", cmd);
+    args.push_back("--i_know_assets_will_break");
+    RCLCPP_INFO(get_logger(), "RunAlignMapTool: %s", CommandLineForLog(args).c_str());
 
-    FILE* pipe = popen(cmd, "r");
-    if (pipe == nullptr) {
-        out.reason = "popen_failed";
-        out.log = "popen failed";
+    const int rc = RunProcessCapture(args, &out.log);
+    if (rc < 0) {
+        out.reason = "spawn_failed";
         return out;
     }
-    char buf[256];
-    while (fgets(buf, sizeof(buf), pipe) != nullptr) out.log += buf;
-    const int rc = pclose(pipe);
     out.process_ok = (rc == 0);
 
     // 从捕获的 stdout 里取**最后一条** [ALIGN_RESULT] 标记行。
@@ -1125,23 +1178,17 @@ CommandBoardManagerROS::AssetsToolResult CommandBoardManagerROS::RunTransformAss
         return out;
     }
 
-    char cmd[2048];
-    std::snprintf(cmd, sizeof(cmd),
-                  "ros2 run map_asset_manager transform_assets_tool"
-                  " --map_dir \"%s\" --x %.9f --y %.9f --yaw %.9f"
-                  " 2>&1",
-                  map_dir.c_str(), x, y, yaw);
-    RCLCPP_INFO(get_logger(), "RunTransformAssetsTool: %s", cmd);
+    const std::vector<std::string> args = {
+        "ros2", "run", "map_asset_manager", "transform_assets_tool", "--map_dir", map_dir,
+        "--x", FormatFixed(x, 9), "--y", FormatFixed(y, 9), "--yaw", FormatFixed(yaw, 9)};
+    RCLCPP_INFO(get_logger(), "RunTransformAssetsTool: %s", CommandLineForLog(args).c_str());
 
-    FILE* pipe = popen(cmd, "r");
-    if (pipe == nullptr) {
-        out.reason = "popen_failed";
-        out.message = "popen failed";
+    const int rc = RunProcessCapture(args, &out.log);
+    if (rc < 0) {
+        out.reason = "spawn_failed";
+        out.message = out.log;
         return out;
     }
-    char buf[256];
-    while (fgets(buf, sizeof(buf), pipe) != nullptr) out.log += buf;
-    const int rc = pclose(pipe);
 
     // 取最后一条结果行；进程非零退出时结果行里的 reason / message 就是要回给调用方的原因
     constexpr const char* kMarker = "[TRANSFORM_ASSETS_RESULT]";
@@ -1479,32 +1526,27 @@ CommandBoardManagerROS::ReplaceToolResult CommandBoardManagerROS::RunReplaceMapT
         return out;
     }
 
-    char transform_args[256] = "";
+    std::vector<std::string> args = {"ros2", "run", "cartographer_ros", "replace_map_tool",
+                                     "--map_target", tgt_dir + "/slam", "--map_source", src_dir + "/slam"};
     if (manual) {
-        std::snprintf(transform_args, sizeof(transform_args),
-                      " --transform_mode manual --src_in_tgt_x %.10f"
-                      " --src_in_tgt_y %.10f --src_in_tgt_yaw %.10f",
-                      x, y, yaw_rad);
+        for (const auto& a : {std::string("--transform_mode"), std::string("manual"),
+                              std::string("--src_in_tgt_x"), FormatFixed(x, 10),
+                              std::string("--src_in_tgt_y"), FormatFixed(y, 10),
+                              std::string("--src_in_tgt_yaw"), FormatFixed(yaw_rad, 10)}) {
+            args.push_back(a);
+        }
     } else {
-        std::snprintf(transform_args, sizeof(transform_args), " --transform_mode auto");
+        args.push_back("--transform_mode");
+        args.push_back("auto");
     }
-    char cmd[2048];
-    std::snprintf(cmd, sizeof(cmd),
-                  "ros2 run cartographer_ros replace_map_tool"
-                  " --map_target \"%s/slam\" --map_source \"%s/slam\"%s%s 2>&1",
-                  tgt_dir.c_str(), src_dir.c_str(), transform_args,
-                  dry_run ? " --dry_run" : "");
-    RCLCPP_INFO(get_logger(), "RunReplaceMapTool: %s", cmd);
+    if (dry_run) args.push_back("--dry_run");
+    RCLCPP_INFO(get_logger(), "RunReplaceMapTool: %s", CommandLineForLog(args).c_str());
 
-    FILE* pipe = popen(cmd, "r");
-    if (pipe == nullptr) {
-        out.reason = "popen_failed";
-        out.log = "popen failed";
+    const int rc = RunProcessCapture(args, &out.log);
+    if (rc < 0) {
+        out.reason = "spawn_failed";
         return out;
     }
-    char buf[256];
-    while (fgets(buf, sizeof(buf), pipe) != nullptr) out.log += buf;
-    const int rc = pclose(pipe);
     out.process_ok = (rc == 0);
 
     // 取最后一条 [REPLACE_RESULT]：工具在失败路径会先打结果行再 LOG(FATAL)，

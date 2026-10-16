@@ -83,6 +83,10 @@ std::string LocalTimeIso8601();
 // 解析上面的格式（允许带引号）；失败返回 0。
 std::time_t ParseLocalIso8601(const std::string& text);
 
+// 底图内容指纹：FNV-1a 64(map.png 文件字节) 再叠加 map.yaml 的 resolution / origin 原文，16 位十六进制。
+// map_path 为 slam 目录；map.png 不存在时返回空串。get_maps、底图编辑乐观锁、导出清单共用这一个实现。
+std::string GridRevision(const std::string& map_path, const MapYamlDoc& yaml);
+
 }  // namespace map_manager
 
 #endif  // MAP_MANAGER_MAP_YAML_DOC_HPP_

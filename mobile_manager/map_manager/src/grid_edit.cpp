@@ -11,6 +11,10 @@ constexpr double kMaxBrushWidthM = 10.0;   // 前端范围 0.05~3.00 m，后端�
 constexpr size_t kMaxStrokes = 10000;
 constexpr size_t kMaxTotalPoints = 200000;
 constexpr double kEps = 1e-9;
+// image_loader TRINARY 只把 126~128 当未知；写回取 128（cartographer 底图的未知值）
+constexpr uint8_t kUnknownGrayLo = 126;
+constexpr uint8_t kUnknownGrayHi = 128;
+constexpr uint8_t kUnknownGray = 128;
 
 double OccPixelBound(const GridThresholds& th) { return 255.0 * (1.0 - th.occupied_thresh); }
 double FreePixelBound(const GridThresholds& th) { return 255.0 * (1.0 - th.free_thresh); }
@@ -39,7 +43,7 @@ void ApplyPixel(uint8_t* p, uint8_t tool, const GridThresholds& th, uint8_t unkn
     const CellClass c = ClassifyPixel(*p, th);
     switch (tool) {
         case kToolWall:    if (c != CellClass::kOccupied) *p = 0; break;
-        case kToolErase:   if (c == CellClass::kOccupied) *p = 255; break;
+        case kToolErase:   if (c == CellClass::kOccupied || c == CellClass::kGraded) *p = 255; break;
         case kToolUnknown: if (c != CellClass::kUnknown) *p = unknown_gray; break;
         default: break;
     }
@@ -66,7 +70,8 @@ void ForCellsInBox(cv::Mat* gray, const GridGeometry& g, double xmin, double xma
 CellClass ClassifyPixel(const uint8_t p, const GridThresholds& th) {
     if (p > FreePixelBound(th)) return CellClass::kFree;
     if (p < OccPixelBound(th)) return CellClass::kOccupied;
-    return CellClass::kUnknown;
+    if (p >= kUnknownGrayLo && p <= kUnknownGrayHi) return CellClass::kUnknown;
+    return CellClass::kGraded;
 }
 
 bool ValidThresholds(const GridThresholds& th) {
@@ -77,11 +82,7 @@ bool ValidThresholds(const GridThresholds& th) {
 }
 
 int UnknownGray(const GridThresholds& th) {
-    const int lo = static_cast<int>(std::ceil(OccPixelBound(th)));    // 最小的「非障碍」灰度
-    const int hi = static_cast<int>(std::floor(FreePixelBound(th)));  // 最大的「非自由」灰度
-    if (lo > hi || lo < 0 || hi > 255) return -1;
-    if (205 >= lo && 205 <= hi) return 205;
-    return (lo + hi) / 2;
+    return ClassifyPixel(kUnknownGray, th) == CellClass::kUnknown ? kUnknownGray : -1;
 }
 
 std::string ValidateStrokes(const std::vector<GridStrokeSpec>& strokes) {

@@ -23,6 +23,10 @@
   <depend>glog</depend>
   <depend>boost</depend>
   <depend>libopencv-dev</depend>
+  <!-- 地图导入导出（zip 包、sha256、清单） -->
+  <depend>libarchive-dev</depend>
+  <depend>libssl-dev</depend>
+  <depend>nlohmann-json-dev</depend>
 
   <!-- RViz2 插件依赖（可选；无 RViz 环境时 CMake QUIET 跳过） -->
   <depend>rviz_common</depend>

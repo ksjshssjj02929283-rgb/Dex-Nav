@@ -10,6 +10,7 @@
 
 #include <sys/stat.h>
 #include "map_manager/map_manager.hpp"
+#include "map_manager/map_package.hpp"
 #include "map_manager/map_yaml_doc.hpp"
 
 #include <opencv2/imgcodecs.hpp>
@@ -381,6 +382,10 @@ int32_t MapManager::LoadMapEx(const std::string& map_name, std::string& message)
 int32_t MapManager::RemoveMapEx(const std::string& map_name, std::string& message) {
     if (map_folder_.empty()) { message = "map_folder is not configured"; return kErrFolderMissing; }
     if (map_name.empty())    { message = "map_name is empty"; return kErrNameInvalid; }
+    // 硬删按名字拼路径：. / .. / 含 / / 隐藏目录一律拒绝，否则 remove_all 会删到地图目录之外
+    if (map_name == "." || map_name == ".." || map_name.find('/') != std::string::npos || map_name[0] == '.') {
+        message = "invalid map name: " + map_name; return kErrNameInvalid;
+    }
     // 按目录存在性判断而不是按可加载列表：建图中断留下的残留目录也允许用 REMOVE 清掉
     const std::string dir = map_folder_ + "/" + map_name;
     boost::system::error_code ec;
@@ -400,6 +405,11 @@ int32_t MapManager::RemoveMapEx(const std::string& map_name, std::string& messag
 int32_t MapManager::RenameMapEx(const std::string& old_name, const std::string& new_name, std::string& message) {
     if (map_folder_.empty()) { message = "map_folder is not configured"; return kErrFolderMissing; }
     if (old_name.empty() || new_name.empty()) { message = "map_name or new_name is empty"; return kErrNameInvalid; }
+    // 新名字按统一规则校验（UTF-8、字节上限、禁用字符），与建图、导入同一套
+    std::string name_error;
+    if (!map_package::ValidateNewMapName(new_name, &name_error)) {
+        message = "invalid new_name: " + name_error; return kErrNameInvalid;
+    }
     boost::system::error_code ec;
     if (!fs::is_directory(map_folder_ + "/" + old_name, ec) || ec) {
         message = "map not found: " + old_name; return kErrNotFound;
@@ -574,50 +584,6 @@ int MapManager::PruneMapTrash() {
 // ── 回收站：查询与恢复 ──────────────────────────────────────────────────
 
 namespace {
-
-// FNV-1a 64：跨进程、跨版本稳定（std::hash 不保证），够做乐观锁指纹。
-uint64_t Fnv1a(const std::string& data, uint64_t h = 1469598103934665603ULL) {
-    for (const unsigned char c : data) {
-        h ^= c;
-        h *= 1099511628211ULL;
-    }
-    return h;
-}
-
-// 底图指纹 = map.png 文件内容 + resolution + origin 文本。
-// 只认 png 字节而不解码像素：map.png 全由我方写出，同内容同字节；回滚恢复的也是原字节。
-// get_maps 会对每张图算一次，按 (inode, 大小, 纳秒 mtime) 缓存，文件不变就不重读。
-// 带上 inode：原子 rename 写入每次都换 inode，同一秒内改两次、大小又恰好相同也不会命中旧缓存。
-std::string GridRevision(const std::string& map_path, const MapYamlDoc& yaml) {
-    const std::string png = map_path + "/map.png";
-    struct stat st {};
-    if (::stat(png.c_str(), &st) != 0) return "";
-
-    struct Cached { ino_t ino; off_t size; timespec mtime; uint64_t hash; };
-    static std::mutex mutex;
-    static std::unordered_map<std::string, Cached> cache;
-    std::optional<uint64_t> png_hash;
-    {
-        std::lock_guard<std::mutex> lock(mutex);
-        const auto it = cache.find(png);
-        if (it != cache.end() && it->second.ino == st.st_ino && it->second.size == st.st_size &&
-            it->second.mtime.tv_sec == st.st_mtim.tv_sec && it->second.mtime.tv_nsec == st.st_mtim.tv_nsec) {
-            png_hash = it->second.hash;
-        }
-    }
-    if (!png_hash.has_value()) {
-        std::ifstream in(png, std::ios::binary);
-        const std::string bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-        png_hash = Fnv1a(bytes);
-        std::lock_guard<std::mutex> lock(mutex);
-        cache[png] = {st.st_ino, st.st_size, st.st_mtim, *png_hash};
-    }
-    const uint64_t h = Fnv1a(yaml.Get("resolution").value_or("") + "|" + yaml.Get("origin").value_or(""),
-                             *png_hash);
-    char buf[24];
-    std::snprintf(buf, sizeof(buf), "%016llx", static_cast<unsigned long long>(h));
-    return buf;
-}
 
 std::time_t MtimeOr0(const std::string& path) {
     boost::system::error_code ec;
@@ -1076,6 +1042,10 @@ int32_t MapManager::RestoreMapEx(const std::string& entry_name, const std::strin
         return kErrTrashDisabled;
     }
     if (entry_name.empty()) { message = "entry_name is empty"; return kErrNameInvalid; }
+    // 条目名只能是回收站里的一层目录名，不能借 ../ 挪走回收站外的目录
+    if (entry_name == "." || entry_name == ".." || entry_name.find('/') != std::string::npos) {
+        message = "invalid trashed entry name: " + entry_name; return kErrNameInvalid;
+    }
 
     const std::string trash = GetMapTrashDir();
     boost::system::error_code ec;
@@ -1089,6 +1059,12 @@ int32_t MapManager::RestoreMapEx(const std::string& entry_name, const std::strin
     const std::string target = new_name.empty() ? ParseOriginalName(entry_name) : new_name;
     if (target.empty() || target.find('/') != std::string::npos || target == "." || target == "..") {
         message = "invalid restore target name: " + target;
+        return kErrNameInvalid;
+    }
+    // 显式给的新名字按统一规则校验；用原名恢复时不套新规则（旧图的名字可能早于规则）
+    std::string name_error;
+    if (!new_name.empty() && !map_package::ValidateNewMapName(new_name, &name_error)) {
+        message = "invalid new_name: " + name_error;
         return kErrNameInvalid;
     }
 
@@ -1145,27 +1121,12 @@ int32_t MapManager::TrashMapEx(const std::string& map_name, std::string& message
         return kErrInUse;
     }
 
-    const fs::path trash = GetMapTrashDir();
-    fs::create_directories(trash, ec);
-    if (ec) {
-        message = "failed to create trash dir " + trash.string() + ": " + ec.message();
-        return kErrIoFailed;
-    }
-    // 命名与建图侧 ResetMapDirectory 一致：<name>_<YYYYMMDD_HHMMSS>，同秒追加 _<N>。
-    const std::time_t now = std::time(nullptr);
-    std::tm tm_buf{};
-    localtime_r(&now, &tm_buf);
-    char ts[32];
-    std::strftime(ts, sizeof(ts), "%Y%m%d_%H%M%S", &tm_buf);
-    std::string entry = map_name + "_" + ts;
-    for (int n = 2; fs::exists(trash / entry, ec); ++n) {
-        entry = map_name + "_" + ts + "_" + std::to_string(n);
-    }
-
-    // move 不是 copy：同挂载点 rename 原子，与 RestoreMapEx 互为逆操作。
-    fs::rename(src, trash / entry, ec);
-    if (ec) {
-        message = "failed to trash " + map_name + ": " + ec.message();
+    // 命名与建图侧 ResetMapDirectory 一致：<name>_<YYYYMMDD_HHMMSS>，同秒追加 _<N>；
+    // move 不是 copy：同挂载点 rename 原子，与 RestoreMapEx 互为逆操作。与导入覆盖共用同一实现。
+    std::string entry;
+    std::string error;
+    if (!map_package::MoveMapToTrash(map_folder_, trash_options_.dirname, map_name, &entry, &error)) {
+        message = error;
         return kErrIoFailed;
     }
     out_entry_name = entry;
