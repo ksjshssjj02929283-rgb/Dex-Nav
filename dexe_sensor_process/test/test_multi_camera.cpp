@@ -2,6 +2,7 @@
 #include "rgbd_to_pointcloud.cpp"
 #include <gtest/gtest.h>
 #include <chrono>
+#include <cmath>
 #include <tf2_ros/static_transform_broadcaster.h>
 #include <thread>
 
@@ -141,6 +142,101 @@ TEST_P(MultiCameraTest, InterleavedFramesKeepCameraStateIndependent) {
     if (GetParam() == "uv_disparity") {
         EXPECT_EQ(io[0].filtered.back().width, 0u);
         EXPECT_EQ(io[1].filtered.back().width, 0u);
+    }
+}
+
+// 遮挡场景：原始数据都没有（全 0），不发出 LaserScan 且打印警告；
+// 视野正常但无障碍物场景：原始点云有数据但过滤后点云为空，正常发出全 inf 的 LaserScan。
+TEST_P(MultiCameraTest, OccludedSceneDoesNotPublishAndEmptyFilteredWithRawPublishesInf) {
+    rclcpp::NodeOptions options;
+    options.parameter_overrides({
+        rclcpp::Parameter("camera_name", "rear"),
+        rclcpp::Parameter("input_topic", "/orbbec/rear"),
+        rclcpp::Parameter("output_topic_laserscan", "/orbbec/rear/laser_scan"),
+        rclcpp::Parameter("obstacle_extraction_method", GetParam()),
+        rclcpp::Parameter("enable_laserscan", true),
+        rclcpp::Parameter("division_mode", false),
+        rclcpp::Parameter("flag_voxel_filter", false),
+        rclcpp::Parameter("step_u", 1), rclcpp::Parameter("step_v", 1),
+    });
+    auto node = std::make_shared<RgbdToPointCloud>(options);
+    auto peer = std::make_shared<rclcpp::Node>("scene_publish_test_peer");
+    rclcpp::executors::SingleThreadedExecutor executor;
+    executor.add_node(node);
+    executor.add_node(peer);
+
+    tf2_ros::StaticTransformBroadcaster broadcaster(peer);
+    geometry_msgs::msg::TransformStamped transform;
+    transform.header.frame_id = "base_link";
+    transform.child_frame_id = "rear_optical";
+    transform.transform.rotation.w = 1.0;
+    broadcaster.sendTransform(transform);
+
+    std::vector<sensor_msgs::msg::LaserScan> scans;
+    auto scan_sub = peer->create_subscription<sensor_msgs::msg::LaserScan>(
+        "/orbbec/rear/laser_scan", rclcpp::SensorDataQoS(),
+        [&](sensor_msgs::msg::LaserScan::ConstSharedPtr msg) { scans.push_back(*msg); });
+    auto info_pub = peer->create_publisher<sensor_msgs::msg::CameraInfo>("/orbbec/rear/camera_info", 10);
+    auto depth_pub = peer->create_publisher<sensor_msgs::msg::Image>(
+        "/orbbec/rear/depth", rclcpp::SensorDataQoS());
+
+    ASSERT_TRUE(waitFor(executor, [&] {
+        return info_pub->get_subscription_count() > 0 && depth_pub->get_subscription_count() > 0 &&
+               node->count_subscribers("/orbbec/rear/laser_scan") > 0;
+    }));
+
+    sensor_msgs::msg::CameraInfo info;
+    info.header.frame_id = "rear_optical";
+    info.k = {100.0, 0, 16.0, 0, 100, 12.0, 0, 0, 1};
+    info_pub->publish(info);
+    const auto info_ready = std::chrono::steady_clock::now() + 100ms;
+    ASSERT_TRUE(waitFor(executor, [&] { return std::chrono::steady_clock::now() > info_ready; }));
+
+    // 1. 全 0 的 16UC1 深度图 = 视野被遮挡/无有效深度，不应发出 LaserScan
+    sensor_msgs::msg::Image occluded_depth;
+    occluded_depth.header.frame_id = "rear_optical";
+    occluded_depth.header.stamp.sec = 42;
+    occluded_depth.header.stamp.nanosec = 100000000u;
+    occluded_depth.width = 32; occluded_depth.height = 24;
+    occluded_depth.encoding = "16UC1";
+    occluded_depth.step = occluded_depth.width * sizeof(uint16_t);
+    occluded_depth.data.resize(occluded_depth.step * occluded_depth.height, 0);
+    depth_pub->publish(occluded_depth);
+
+    const auto occlusion_wait = std::chrono::steady_clock::now() + 200ms;
+    waitFor(executor, [&] { return std::chrono::steady_clock::now() > occlusion_wait; });
+    EXPECT_TRUE(scans.empty()) << "遮挡无原始点云时不应发出 LaserScan";
+
+    // 2. 原始点云有数据，但过滤/高度裁剪后无障碍物点（例如点在地面以下或上方高处，或距离超出 range_max）：
+    // 应发出全 inf LaserScan
+    sensor_msgs::msg::Image ground_depth;
+    ground_depth.header.frame_id = "rear_optical";
+    ground_depth.header.stamp.sec = 43;
+    ground_depth.header.stamp.nanosec = 200000000u;
+    ground_depth.width = 32; ground_depth.height = 24;
+    ground_depth.encoding = "16UC1";
+    ground_depth.step = ground_depth.width * sizeof(uint16_t);
+    ground_depth.data.resize(ground_depth.step * ground_depth.height, 0);
+    auto* raw_pixels = reinterpret_cast<uint16_t*>(ground_depth.data.data());
+    // 填充有效深度：2500 mm (2.5m)，且 y 在底部 (v > 12)，在 base_link 下 z 为负（地面以下），
+    // 使得高度滤波提取出 0 点，或者 uv_disparity 判定为纯地面无障碍物点
+    for (int v = 0; v < 24; ++v) {
+        for (int u = 0; u < 32; ++u) {
+            // 只在图像下半部分（地面区域）填充深度，确保不产生高于地面的障碍物
+            if (v >= 16) {
+                raw_pixels[v * 32 + u] = 2500; // 2.5 m
+            }
+        }
+    }
+    depth_pub->publish(ground_depth);
+
+    ASSERT_TRUE(waitFor(executor, [&] { return !scans.empty(); }));
+    EXPECT_EQ(scans.back().header.stamp.sec, 43);
+    EXPECT_EQ(scans.back().header.stamp.nanosec, 200000000u);
+    EXPECT_EQ(scans.back().header.frame_id, "base_link");
+    ASSERT_FALSE(scans.back().ranges.empty());
+    for (const float range : scans.back().ranges) {
+        EXPECT_TRUE(std::isinf(range)) << "过滤后点云为空且原始点云有数据时 LaserScan 应为全 inf：" << range;
     }
 }
 

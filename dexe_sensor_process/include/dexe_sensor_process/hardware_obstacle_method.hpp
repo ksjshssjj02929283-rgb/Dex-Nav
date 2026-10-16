@@ -14,7 +14,7 @@ inline std::string obstacleMethodForHardware(const YAML::Node& hardware) {
     static const std::regex pattern(R"(^v([0-9]+)\.([0-9]+)$)");
     std::smatch match;
     if (!std::regex_match(revision, match, pattern)) {
-        throw std::invalid_argument("非法 hardware_revision: " + revision);
+        throw std::invalid_argument("Invalid hardware_revision: " + revision);
     }
     const auto major = std::stoull(match[1].str());
     const auto minor = std::stoull(match[2].str());

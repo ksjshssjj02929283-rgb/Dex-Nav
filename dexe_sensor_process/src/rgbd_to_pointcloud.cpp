@@ -51,9 +51,9 @@ public:
             get_parameter("obstacle_extraction_method").as_string(),
             get_parameter("hardware_path").as_string());
         if (!selection.error.empty()) {
-            RCLCPP_WARN(get_logger(), "读取硬件版本失败，回退到高度法: %s", selection.error.c_str());
+            RCLCPP_WARN(get_logger(), "Failed to read hardware version; falling back to height filter: %s", selection.error.c_str());
         }
-        RCLCPP_INFO(get_logger(), "障碍物提取方法: %s，硬件版本: %s",
+        RCLCPP_INFO(get_logger(), "Obstacle extraction method: %s, hardware revision: %s",
                     selection.method.c_str(), selection.revision.c_str());
         tf_buffer_ = std::make_shared<tf2_ros::Buffer>(get_clock(), tf2::durationFromSec(10.0));
         // Same ROS node, dedicated TF callback thread so timed lookups can receive transforms.
@@ -97,7 +97,7 @@ int main(int argc, char const* argv[]) {
     rclcpp::executors::MultiThreadedExecutor executor(
         rclcpp::ExecutorOptions(), thread_count);
     executor.add_node(node);
-    RCLCPP_INFO(node->get_logger(), "相机处理线程数: %zu", thread_count);
+    RCLCPP_INFO(node->get_logger(), "Camera processing thread count: %zu", thread_count);
     executor.spin();
     rclcpp::shutdown();
     return 0;

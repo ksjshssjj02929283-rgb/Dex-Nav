@@ -27,6 +27,8 @@ sensor_msgs::msg::PointCloud2::SharedPtr HeightFilterExtractor::extract(
     const sensor_msgs::msg::PointCloud2::SharedPtr&) {
     const std::string source_frame = !camera_info_msg->header.frame_id.empty()
         ? camera_info_msg->header.frame_id : depth_msg->header.frame_id;
+    // 原始点云数据量 = 反投影得到的有效点数；供“空视野是否发全 inf 空帧”判定使用。
+    camera.frame_valid_point_count_ = camera.buf_raw_.size() / 3;
     if (camera.buf_raw_.empty()) {
         auto output_header = depth_msg->header;
         output_header.frame_id = source_frame;
@@ -80,7 +82,8 @@ sensor_msgs::msg::PointCloud2::SharedPtr HeightFilterExtractor::extract(
         }
     } catch (const tf2::TransformException& ex) {
         RCLCPP_WARN_THROTTLE(camera.get_logger(), *camera.get_clock(), 2000,
-                             "点云无法转换到 %s 做地面过滤，本帧不发布 filtered 点云: %s",
+                             "Cannot transform point cloud into %s for ground filtering; "
+                             "filtered point cloud is not published for this frame: %s",
                              camera.ground_filter_frame_.c_str(), ex.what());
         return nullptr;
     }
@@ -129,8 +132,9 @@ sensor_msgs::msg::PointCloud2::SharedPtr UVDisparityExtractor::extract(
     const sensor_msgs::msg::PointCloud2::SharedPtr&) {
     const int width = depth_msg->width;
     const int height = depth_msg->height;
+    camera.frame_valid_point_count_ = 0;
     if (width <= 0 || height <= 0) {
-        RCLCPP_WARN(camera.get_logger(), "深度图尺寸非法: %dx%d", width, height);
+        RCLCPP_WARN(camera.get_logger(), "Invalid depth image size: %dx%d", width, height);
         return nullptr;
     }
 
@@ -139,7 +143,7 @@ sensor_msgs::msg::PointCloud2::SharedPtr UVDisparityExtractor::extract(
     const auto cx = camera_info_msg->k[2];
     const auto cy = camera_info_msg->k[5];
     if (fx <= 0.f || fy <= 0.f) {
-        RCLCPP_WARN(camera.get_logger(), "相机内参非法 fx=%.3f fy=%.3f", fx, fy);
+        RCLCPP_WARN(camera.get_logger(), "Invalid camera intrinsics fx=%.3f fy=%.3f", fx, fy);
         return nullptr;
     }
 
@@ -147,11 +151,11 @@ sensor_msgs::msg::PointCloud2::SharedPtr UVDisparityExtractor::extract(
                                  depth_msg->encoding == sensor_msgs::image_encodings::MONO16;
     const bool is_float32_depth = depth_msg->encoding == sensor_msgs::image_encodings::TYPE_32FC1;
     if (!is_uint16_depth && !is_float32_depth) {
-        RCLCPP_WARN(camera.get_logger(), "双视差不支持深度图编码: %s", depth_msg->encoding.c_str());
+        RCLCPP_WARN(camera.get_logger(), "UV disparity does not support depth image encoding: %s", depth_msg->encoding.c_str());
         return nullptr;
     }
     if (depth_msg->is_bigendian) {
-        RCLCPP_WARN(camera.get_logger(), "双视差暂不支持大端序深度图");
+        RCLCPP_WARN(camera.get_logger(), "UV disparity does not support big-endian depth images yet");
         return nullptr;
     }
 
@@ -159,7 +163,7 @@ sensor_msgs::msg::PointCloud2::SharedPtr UVDisparityExtractor::extract(
     const size_t minimum_step = static_cast<size_t>(width) * bytes_per_pixel;
     const size_t expected_size = static_cast<size_t>(depth_msg->step) * height;
     if (depth_msg->step < minimum_step || depth_msg->data.size() < expected_size) {
-        RCLCPP_WARN(camera.get_logger(), "双视差深度数据布局非法: step=%u, 最小step=%zu, data=%zu, 期望=%zu",
+        RCLCPP_WARN(camera.get_logger(), "Invalid UV disparity depth layout: step=%u, min_step=%zu, data=%zu, expected=%zu",
                     depth_msg->step, minimum_step, depth_msg->data.size(), expected_size);
         return nullptr;
     }
@@ -195,6 +199,7 @@ sensor_msgs::msg::PointCloud2::SharedPtr UVDisparityExtractor::extract(
     }
 
     // ── ① 扁平 V-Depth 直方图（复用 vdepth_buf_，消除嵌套 vector 每帧堆分配）──
+    std::size_t valid_depth_samples = 0;
     const size_t vdepth_size = static_cast<size_t>(height) * N_z;
     if (vdepth_buf_.size() < vdepth_size) vdepth_buf_.resize(vdepth_size);
     std::fill(vdepth_buf_.begin(), vdepth_buf_.begin() + vdepth_size, 0);
@@ -228,6 +233,7 @@ sensor_msgs::msg::PointCloud2::SharedPtr UVDisparityExtractor::extract(
                 const int z_idx = lut_z_idx_[raw];
                 if (z_idx >= 0 && static_cast<unsigned>(z_idx) < static_cast<unsigned>(N_z)) {
                     vrow[z_idx]++;
+                    ++valid_depth_samples;
                 }
             }
         }
@@ -244,10 +250,15 @@ sensor_msgs::msg::PointCloud2::SharedPtr UVDisparityExtractor::extract(
                 const float z = row[u];
                 if (!std::isfinite(z) || z < min_z || z > max_z) continue;
                 const int z_idx = static_cast<int>((z - min_z) * inv_dz);
-                if (static_cast<unsigned>(z_idx) < static_cast<unsigned>(N_z)) vrow[z_idx]++;
+                if (static_cast<unsigned>(z_idx) < static_cast<unsigned>(N_z)) {
+                    vrow[z_idx]++;
+                    ++valid_depth_samples;
+                }
             }
         }
     }
+
+    camera.frame_valid_point_count_ = valid_depth_samples;
 
     // ── ② 提取地面候选点（复用 sample_buf_）──
     sample_buf_.clear();

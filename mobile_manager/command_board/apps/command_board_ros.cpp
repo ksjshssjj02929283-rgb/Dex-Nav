@@ -84,6 +84,34 @@ CommandBoardManagerROS::CommandBoardManagerROS() : rclcpp::Node("command_board_m
     status_monitor_ = std::make_unique<StatusMonitor>(this);
     auto_map_saver_ = std::make_unique<AutoMapSaver>(this, status_monitor_.get());
 
+    // ── 传感器监测初始化 ──────────────────────────────────────────
+    // 参数不合法（缺 topic/type、超时非法、check_period 过大、名称重复）→ 启动失败。
+    {
+        SensorMonitor::Config sensor_config;
+        std::string sensor_err;
+        if (!LoadSensorMonitorConfig(this, sensor_config, sensor_err)) {
+            RCLCPP_ERROR(get_logger(), "Invalid sensor_monitor parameters: %s", sensor_err.c_str());
+            throw std::runtime_error("invalid sensor_monitor parameters: " + sensor_err);
+        }
+        SensorMonitor::Hooks hooks;
+        hooks.cancel_navigation = [this]() {
+            if (navigation_action_client_) {
+                navigation_action_client_->async_cancel_all_goals();
+            }
+        };
+        hooks.is_estop_active = [this]() { return status_monitor_->IsEstopActive(); };
+        hooks.publish_now = [this]() { status_monitor_->PublishNow(); };
+        hooks.set_nav_fault =
+            [this](const int32_t code, const std::string& detail,
+                   const std::vector<nav_interfaces::msg::SensorState>& sensors) {
+                status_monitor_->SetNavFault(code, detail, sensors);
+            };
+        sensor_monitor_ = std::make_unique<SensorMonitor>(sensor_config, std::move(hooks));
+        sensor_monitor_callback_group_ =
+            this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+        sensor_monitor_->AttachToNode(this, sensor_monitor_callback_group_);
+    }
+
     // ── 急停丢位恢复初始化 ────────────────────────────────────────
     enable_loss_recovery_ = this->declare_parameter("enable_loss_recovery", enable_loss_recovery_);
     recover_settle_sec_   = this->declare_parameter("recover_settle_sec", recover_settle_sec_);

@@ -12,6 +12,7 @@ find_package(diagnostic_msgs REQUIRED)
 find_package(nav_interfaces REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
+find_package(sensor_msgs REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
@@ -49,6 +50,7 @@ add_executable(command_board_node
   apps/command_board_ros.cpp
   src/map_version_manager.cpp
   src/status_monitor.cpp
+  src/sensor_monitor.cpp
   src/auto_map_saver.cpp
 )
 
@@ -86,6 +88,23 @@ install(DIRECTORY include/
 install(DIRECTORY launch params
   DESTINATION share/${PROJECT_NAME}
 )
+
+# ── 单元测试（SensorMonitor）──────────────────────────────────────────
+if(BUILD_TESTING)
+  find_package(ament_cmake_gtest REQUIRED)
+
+  ament_add_gtest(sensor_monitor_test
+    test/sensor_monitor_test.cpp
+    src/sensor_monitor.cpp)
+
+  ament_target_dependencies(sensor_monitor_test
+    rclcpp
+    nav_interfaces
+    nav_msgs
+    sensor_msgs)
+
+  target_include_directories(sensor_monitor_test PRIVATE include)
+endif()
 
 # ── RViz2 状态显示面板（command_board_rviz_plugins）──────────────────
 # 订阅 ~/nav_system_status + ~/auto_map_saver_status，分区卡片可视化。
