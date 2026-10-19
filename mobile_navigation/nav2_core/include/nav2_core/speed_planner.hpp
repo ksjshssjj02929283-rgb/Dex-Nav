@@ -125,6 +125,18 @@ public:
     const nav_msgs::msg::Path & path,
     const InitialMotionState & boundary) = 0;
 
+  /**
+   * @brief 请求对正在执行的速度规划进行协作式取消（Cooperative Cancellation）。
+   *
+   * 并发与线程安全契约（Concurrency Contract）：
+   * 1. 本接口可由控制线程在与后台规划线程（执行 computeSpeedPlan）并发时异步调用；
+   * 2. 插件实现必须保证 requestCancel() 具备非阻塞（Non-blocking）与线程安全（Thread-safe）语义；
+   * 3. 插件实现内部应通过原子取消标志（如 SpeedPlannerBase 中的 cancel_requested_）实现快速退出；
+   * 4. 插件的其余方法（configure, setPlan, computeSpeedPlan, cleanup 等）在调用生命周期内
+   *    由上层保证串行化，插件自身无需在这些业务接口内部实现重型互斥锁。
+   */
+  virtual void requestCancel() {}
+
   virtual SpeedPlanningDiagnostics getLastPlanningDiagnostics() const
   {
     return SpeedPlanningDiagnostics();

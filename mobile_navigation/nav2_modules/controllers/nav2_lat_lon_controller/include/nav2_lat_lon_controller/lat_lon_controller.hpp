@@ -68,6 +68,8 @@ public:
    * @brief 带速度时空轨迹输入（五层架构 ④SpeedPlanner 输出）。
    *        消费 per-point longitudinal_velocity 作为期望速度、path_kappa 作为曲率。
    */
+  bool supportsTrajectoryTracking() const override {return true;}
+
   void setTrajectory(const nav_interfaces::msg::RobotTrajectory & trajectory) override;
 
   /**

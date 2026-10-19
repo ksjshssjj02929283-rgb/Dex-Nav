@@ -106,7 +106,9 @@ controller_server:
     failure_tolerance: 0.25  # transient controller/TF miss: publish zero cmd, abort after 250 ms
     # nav_monitor 全局路径/阶段回显：随 nav2_nav_monitor 记录使用，关闭则零开销
     enable_nav_monitor_echo: true
-    controller_frequency: 10.0 # 控制器控制周期 # Related params: model_dt >= controller period; prediction horizon = time_steps * model_dt
+    planning_frequency: 10.0
+    planning_result_max_age: 0.5
+    controller_frequency: 25.0 # 控制器控制周期 # Related params: model_dt >= controller period; prediction horizon = time_steps * model_dt
     goal_checker_plugins: ["simple_goal_checker", "stopped_goal_checker", "position_goal_checker", "rotation_goal_checker", "longitudinal_goal_checker", "high_precision_goal_checker"] # goal_checker_plugin: "goal_checker" For Galactic and older
     controller_plugins: ["MPPIController", "DWBController", "RPPController", "GracefulController", "RotationShimController", "PIDController", "LatLonController", "PureRotationController", "StraightController"]
     speed_planner_plugins: ["TrapezoidalSpeedPlanner", "ReachabilitySpeedPlanner"] # "SCurveSpeedPlanner"
@@ -247,7 +249,7 @@ controller_server:
       constant_velocity_dist_threshold: 0.1
       enable_constant_velocity_while_turning: False
       max_jerk: 0.7
-      control_dt: 0.1
+      control_dt: 0.04
       # 同时用于高速命令提前量与0.05→0最终停车距离；不再叠加额外距离margin。
       terminal_execution_delay: 0.20
     # 纯可达性滤波后端：后向减速 + 前向加速 + 向下可达，均带 jerk 斜率限制。
@@ -296,7 +298,7 @@ controller_server:
       constant_velocity_dist_threshold: 0.1
       enable_constant_velocity_while_turning: False
       max_jerk: 0.5
-      control_dt: 0.1
+      control_dt: 0.04
       terminal_execution_delay: 0.20
 
     staged_control:
@@ -718,7 +720,10 @@ controller_server:
         integrator_saturation_level: 0.3
         kp: 1.0
         ki: 0.01
-        kd: 0.1
+        # 25Hz 控制周期(dt=0.04s)下，相邻两拍位置误差的离散差分噪声较
+        # 10Hz(dt=0.1s)放大约 2.5x。kd 0.1->0.05 仅抑制该高频抖振，
+        # kp/ki 为连续域归一化增益，与控制频率无关，保持不变。
+        kd: 0.05
         kaw: 0.0
       high_speed_pid_conf:
         integrator_enable: True
@@ -732,7 +737,8 @@ controller_server:
         integrator_saturation_level: 0.3
         kp: 1.0
         ki: 0.01
-        kd: 0.1
+        # 同上：25Hz 下速度误差差分(近似加速度反馈)噪声被放大，kd 0.1->0.05。
+        kd: 0.05
         kaw: 0.0
       reverse_station_pid_conf:
         integrator_enable: True
@@ -753,7 +759,8 @@ controller_server:
         integrator_saturation_level: 0.5
         kp: 1.0
         ki: 0.01
-        kd: 0.1
+        # 末端朝向环：25Hz 下 yaw 误差差分噪声放大约 2.5x，kd 0.1->0.05 抑制角度抖振。
+        kd: 0.05
         kaw: 0.0
     LatLonController:
       plugin: "nav2_lat_lon_controller::LatLonController"

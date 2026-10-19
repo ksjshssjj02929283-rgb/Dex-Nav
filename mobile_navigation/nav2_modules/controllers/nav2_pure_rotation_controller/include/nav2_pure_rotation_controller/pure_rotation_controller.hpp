@@ -70,6 +70,8 @@ public:
    * @brief 带速度时空轨迹入口。
    *        消费 per-point longitudinal_velocity（期望速度）/ path_kappa（曲率）/ pose（几何）。
    */
+  bool supportsTrajectoryTracking() const override {return true;}
+
   void setTrajectory(const nav_interfaces::msg::RobotTrajectory & trajectory) override;
 
   /**

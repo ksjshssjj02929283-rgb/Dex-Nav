@@ -22,6 +22,7 @@
 #ifndef NAV2_SPEED_PLANNER__SPEED_PLANNER_BASE_HPP_
 #define NAV2_SPEED_PLANNER__SPEED_PLANNER_BASE_HPP_
 
+#include <atomic>
 #include <limits>
 #include <memory>
 #include <string>
@@ -78,6 +79,8 @@ public:
   nav_interfaces::msg::RobotTrajectory computeSpeedPlan(
     const nav_msgs::msg::Path & path,
     const nav2_core::InitialMotionState & boundary) override;
+
+  void requestCancel() override;
 
   bool isTrajectoryPrefixSafe(
     const nav_interfaces::msg::RobotTrajectory & prefix,
@@ -298,6 +301,7 @@ protected:
   std::string path_frame_;
   ObstacleConstraintTiming last_obstacle_timing_;
   nav2_core::SpeedPlanningDiagnostics last_planning_diagnostics_;
+  std::atomic<uint64_t> cancellation_generation_{0};
 };
 
 }  // namespace nav2_speed_planner
