@@ -116,6 +116,8 @@ public:
    *        curvature, caching geometry + speed for computeVelocityCommands.
    * @param trajectory The robot trajectory
    */
+  bool supportsTrajectoryTracking() const override {return true;}
+
   void setTrajectory(const nav_interfaces::msg::RobotTrajectory & trajectory) override;
 
   bool getLastTrajectoryTrackingTarget(

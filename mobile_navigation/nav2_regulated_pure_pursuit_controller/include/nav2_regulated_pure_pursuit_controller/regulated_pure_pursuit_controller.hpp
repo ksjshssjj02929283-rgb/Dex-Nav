@@ -287,6 +287,7 @@ protected:
   dynamicParametersCallback(std::vector<rclcpp::Parameter> parameters);
 
   rclcpp_lifecycle::LifecycleNode::WeakPtr node_;
+  bool supportsTrajectoryTracking() const override {return true;}
   /// 缓存速度规划轨迹（保留原始 plan frame；每控制周期重新下发，陈旧窗 ≤1 周期）。
   void setTrajectory(const nav_interfaces::msg::RobotTrajectory & trajectory) override;
 

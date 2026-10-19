@@ -68,6 +68,12 @@ public:
     nav_msgs::msg::Path & local_path) = 0;
 
   /**
+   * @brief 可选接口：请求对正在执行的局部几何规划进行协作式取消（Cooperative Cancellation）。
+   * 默认空实现；若插件计算极轻量（<1ms），无需专门重写。
+   */
+  virtual void requestCancel() {}
+
+  /**
    * @brief 限速透传（与 goal_checker 协同；默认无操作）。
    */
   virtual void setSpeedLimit(const double & /*speed_limit*/, const bool & /*percentage*/) {}

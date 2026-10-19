@@ -37,6 +37,7 @@ set(library_name ${executable_name}_core)
 
 add_library(${library_name} SHARED
   src/controller_server.cpp
+  src/snapshot_control.cpp
 )
 
 set(dependencies
@@ -77,6 +78,10 @@ if(BUILD_TESTING)
   ament_lint_auto_find_test_dependencies()
 
   find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(snapshot_validation_test test/test_snapshot_validation.cpp)
+  ament_add_gtest(snapshot_worker_test test/test_snapshot_worker.cpp)
+  target_link_libraries(snapshot_worker_test ${library_name})
+  ament_target_dependencies(snapshot_worker_test ${dependencies})
   add_subdirectory(plugins/test)
 endif()
 

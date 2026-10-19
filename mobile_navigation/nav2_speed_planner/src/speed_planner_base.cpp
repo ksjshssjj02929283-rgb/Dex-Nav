@@ -243,6 +243,12 @@ nav_interfaces::msg::RobotTrajectory SpeedPlannerBase::computeSpeedPlan(
   const nav_msgs::msg::Path & path,
   const nav2_core::InitialMotionState & boundary)
 {
+  const uint64_t cancellation_generation =
+    cancellation_generation_.load(std::memory_order_acquire);
+  const auto cancelled = [this, cancellation_generation]() {
+      return cancellation_generation_.load(std::memory_order_acquire) !=
+             cancellation_generation;
+    };
   last_planning_diagnostics_ = nav2_core::SpeedPlanningDiagnostics();
   using TimingClock = std::chrono::steady_clock;
   constexpr double kSlowSpeedPlannerWarnMs = 20.0;
@@ -308,6 +314,7 @@ nav_interfaces::msg::RobotTrajectory SpeedPlannerBase::computeSpeedPlan(
   std::vector<TrajPointWork> work;
   work.reserve(path.poses.size());
   for (size_t i = 0; i < path.poses.size(); ++i) {
+    if (cancelled()) {return nav_interfaces::msg::RobotTrajectory();}
     const auto & ps = path.poses[i];
     TrajPointWork p;
     p.pose = ps;
@@ -398,6 +405,7 @@ nav_interfaces::msg::RobotTrajectory SpeedPlannerBase::computeSpeedPlan(
   const auto obstacle_start = TimingClock::now();
   const ObstacleConstraintOutcome obstacle_outcome =
     produceObstacleConstraint(work, boundary.should_stop_for_path_obstacle);
+  if (cancelled()) {return nav_interfaces::msg::RobotTrajectory();}
   applyConstraint(work, obstacle_outcome.constraint);
   obstacle_ms = std::chrono::duration<double, std::milli>(
     TimingClock::now() - obstacle_start).count();
@@ -508,6 +516,7 @@ nav_interfaces::msg::RobotTrajectory SpeedPlannerBase::computeSpeedPlan(
   const auto profile_start = TimingClock::now();
   generateProfile(
     work, curr_vel, curr_accel, cruise, boundary.terminal_brake_latched);
+  if (cancelled()) {return nav_interfaces::msg::RobotTrajectory();}
   profile_ms = std::chrono::duration<double, std::milli>(
     TimingClock::now() - profile_start).count();
 
@@ -549,6 +558,11 @@ nav_interfaces::msg::RobotTrajectory SpeedPlannerBase::computeSpeedPlan(
 
   log_timing("success");
   return traj;
+}
+
+void SpeedPlannerBase::requestCancel()
+{
+  cancellation_generation_.fetch_add(1, std::memory_order_acq_rel);
 }
 
 
