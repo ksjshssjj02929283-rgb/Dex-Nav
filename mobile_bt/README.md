@@ -2,43 +2,23 @@
 
 本目录主要包含以下两个 Behavior Tree（行为树）功能包：
 
-- `auto_charging_bt`：导航到充电桩前置点，并通过 AprilTag 完成倒车对接和充电确认。
+- `auto_charging_bt`：可选导航到地图中的唯一回充点，并通过 AprilTag 完成倒车对接和充电确认。
 - `loop_navigation_bt`：按照 JSON 中配置的点位和轮数执行循环导航测试，可选择是否检测低电量。
 
 以下命令默认在机器人 ROS 2、Nav2、定位和相关节点已经启动，并且当前终端已经 `source` 对应工作空间的情况下执行。
 
 ## 一、自动回充
 
-### 1. 设置充电桩前面的回充导航点
+### 1. 设置地图回充点
 
-先把机器人遥控到充电桩正前方约 `0.5 m` 的位置，并调整好机器人朝向。这里保存的是 Nav2 使用的“充电前置导航点”，不是 AprilTag 近距离对接目标。
+在当前地图的 `assets/map_assets.json` 中配置唯一一个 `type=CHARGING` 的点位，坐标格式为
+`pose.x`、`pose.y` 和 `pose.yaw`。可以使用 `map_asset_manager` 服务或 RViz 地图资产工具配置，
+不再使用 `/save_charging_pose` 或独立的 `charging_pose.json`。
 
-然后调用：
+回充流程以 `/command_board/navigation_backend` 为唯一选择来源：
 
-```bash
-ros2 service call /save_charging_pose std_srvs/srv/Trigger "{}"
-```
-
-该服务由 `mobile_perception` 包中的 `charging_pose_service_node` 提供。当前源码把采样得到的 `map -> base_link` 位姿硬编码保存到：
-
-```text
-/home/dexforce/w1/install/mobile_perception/lib/mobile_perception/charging_pose.json
-```
-
-相关源码：
-
-```text
-dexe_mobile_nav/mobile_perception/src/charging_pose_service.cpp
-```
-
-`auto_charging_bt` 的 Action 和 Service 入口也从上述 JSON 文件读取回充导航目标。因此，调用服务后应检查返回值是否为 `success=true`，并确认该文件已生成且当前运行用户具有写权限。
-
-注意：
-
-- 保存点位时必须保证定位正常，并且 `map -> base_link` TF 可用。
-- “约 `0.5 m`”是现场布置要求，不是程序自动校验的距离。
-- 源码目录中的 `auto_charging_bt/config/charging_pose.json` 主要供旧对接测试节点使用，不是当前正式回充流程读取的前置导航点。
-- 正式流程近距离对接时使用 `mobile_perception` 发布的 `apriltag_target_pose`，不要把它和上述导航点 JSON 混淆。
+- `data: nav2`：校验唯一回充点并先执行 Nav2 导航。
+- `data: path_navigation`：调度侧负责前置移动，回充直接进入二维码精确对接。
 
 ### 2. 执行一次回充
 
@@ -61,7 +41,7 @@ ros2 action send_goal /auto_charging chassis_interfaces/action/AutoCharging "{fo
 ├── 已在充电：直接成功
 ├── 已连接但未充电：先退桩
 └── 未连接：继续正常回充
-    └── 导航到 charging_pose.json 中的充电前置点
+    └── 按 navigation_backend 选择是否导航到唯一 CHARGING 点
         └── 启动 AprilTag 检测
             └── 根据 apriltag_target_pose 倒车对接
                 └── 检查充电状态并结束
@@ -81,9 +61,11 @@ loop_navigation_bt/config/navigation_points.json
 
 文件中的主要字段为：
 
-- `frame_id`：导航目标所在坐标系，通常为 `map`。
 - `rounds`：循环轮数。
-- `points`：按顺序执行的导航点，每个点包含 `id`、位置和姿态。
+- `points`：按顺序执行的导航计划，每个点包含 `id` 和 `wait_time_sec`。
+
+导航点的坐标和姿态不写在该 JSON 中，而是根据 `id` 从当前地图的
+`assets/map_assets.json` 读取；坐标统一使用 `map` 坐标系。
 
 如果运行的是已安装工作空间，程序实际读取的是安装目录下的：
 
@@ -120,7 +102,9 @@ ros2 launch loop_navigation_bt loop_nocharging.launch.py check_battery:=true
 nav_error_log.txt
 ```
 
-它记录每次导航的结果、耗时、点位编号和 ID、目标/实际位姿、纵向误差、横向误差、航向误差、距离误差，以及误差是否落入期望阈值和接受阈值。程序正常结束或收到 ROS shutdown 时，还会在文件末尾写入统计结果。
+它记录每次导航的结果、耗时、点位编号和 ID、纵向误差、横向误差、航向误差、
+本次行驶距离、累计行驶距离，以及误差是否落入期望阈值和接受阈值。程序正常结束或收到
+ROS shutdown 时，还会在文件末尾写入统计结果。
 
 注意：该文件使用相对路径创建，所以实际位置取决于启动进程的工作目录。可以在启动前进入希望保存日志的目录，例如：
 
@@ -141,14 +125,11 @@ less nav_error_log.txt
 
 ```bash
 # 检查回充相关服务和 Action
-ros2 service list | grep save_charging_pose
 ros2 action list | grep auto_charging
 
 # 检查 Nav2 导航 Action
 ros2 action list | grep navigate_to_pose
 
-# 检查回充前置点文件
-cat /home/dexforce/w1/install/mobile_perception/lib/mobile_perception/charging_pose.json
 ```
 
-如果 `/save_charging_pose` 不存在，请确认 `mobile_perception` 的 `charging_pose_service_node` 是否已启动；如果 `/auto_charging` 不存在，请确认 `auto_charging_bt` 的 Action launch 是否已启动。
+如果 `/auto_charging` 不存在，请确认 `auto_charging_bt` 的 Action launch 是否已启动。

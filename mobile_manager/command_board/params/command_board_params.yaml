@@ -52,7 +52,7 @@
       autostart: true
       lifecycle_manager_service: "/lifecycle_manager_path_navigation/manage_nodes"
       # 等该管理器服务出现的上限（秒）。超时只报 ERROR 不重试——那说明对应的 launch 根本没起
-      startup_timeout_sec: 60.0
+      startup_timeout_sec: 300.0
       # true = 等 MapState 有地图名再 STARTUP（路网任务要靠 map_asset_manager 解析点名）。
       # 默认 false：有的机型压根不发 MapState，等下去等于永远不激活
       require_map_ready: false

@@ -251,8 +251,8 @@ std::string formatFixed(double value, int precision) {
 
 const TableRow& navigationTableHeader() {
     static const TableRow header = {
-        "轮次", "点位", "结果", "导航耗时(秒)", "横向误差(厘米)",
-        "纵向误差(厘米)", "角度误差(度)", "本次行驶(米)", "累计行驶(米)"};
+        "轮次", "点位", "结果", "导航耗时(秒)", "纵向误差(厘米)",
+        "横向误差(厘米)", "角度误差(度)", "本次行驶(米)", "累计行驶(米)"};
     return header;
 }
 
@@ -1428,8 +1428,8 @@ void LoopNavigateFourPoints::logNavigationError(const NavigationErrorSample& err
             goal_id,
             succeeded ? "成功" : "失败",
             formatFixed(elapsed_sec, 2),
-            lateral_error.str(),
             longitudinal_error.str(),
+            lateral_error.str(),
             yaw_error.str(),
             goal_distance.str(),
             cumulative_distance.str()};
@@ -1515,8 +1515,8 @@ void LoopNavigateFourPoints::writeSeparatedSummaryTables() {
         }
 
         if (valid_count > 0) {
-            row[3] = formatFixed(calculateMetricStats(result_stats.lat_errors).mean * 100.0, 2);
-            row[4] = formatFixed(calculateMetricStats(result_stats.lon_errors).mean * 100.0, 2);
+            row[3] = formatFixed(calculateMetricStats(result_stats.lon_errors).mean * 100.0, 2);
+            row[4] = formatFixed(calculateMetricStats(result_stats.lat_errors).mean * 100.0, 2);
             row[5] = formatFixed(
                 calculateMetricStats(result_stats.yaw_errors).mean * 180.0 / M_PI, 2);
             row[6] = format_ratio(
@@ -1532,8 +1532,8 @@ void LoopNavigateFourPoints::writeSeparatedSummaryTables() {
             "对象",
             write_success ? "成功次数/总次数（成功率）" : "失败次数/总次数（失败占比）",
             "平均耗时(秒)",
-            "平均横向误差(厘米)",
             "平均纵向误差(厘米)",
+            "平均横向误差(厘米)",
             "平均角度误差(度)",
             "高精度（" + format_tolerance_cm(high_precision_tolerance_m_) + "cm）占比",
             "接收精度（" + format_tolerance_cm(acceptance_tolerance_m_) + "cm）占比"};
