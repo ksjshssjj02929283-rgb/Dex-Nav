@@ -86,6 +86,24 @@ void StatusMonitor::SetRecoverStatus(const std::string& state, const std::string
     snapshot_.safety_alarm  = alarm;
 }
 
+void StatusMonitor::SetNavFault(
+    const int32_t code, const std::string& detail,
+    const std::vector<nav_interfaces::msg::SensorState>& sensors) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    snapshot_.nav_fault_code   = code;
+    snapshot_.nav_fault_detail = detail;
+    snapshot_.sensors          = sensors;
+}
+
+void StatusMonitor::PublishNow() {
+    PublishNavStatus();
+}
+
+bool StatusMonitor::IsEstopActive() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return snapshot_.is_estop_active;
+}
+
 void StatusMonitor::OnMapState(nav_interfaces::msg::MapState::SharedPtr msg) {
     std::lock_guard<std::mutex> lock(mutex_);
     snapshot_.current_map_name = msg->map_name;
@@ -205,6 +223,10 @@ void StatusMonitor::PublishNavStatus() {
 
     msg.recover_state = snap.recover_state;
     msg.safety_alarm  = snap.safety_alarm;
+
+    msg.nav_fault_code   = snap.nav_fault_code;
+    msg.nav_fault_detail = snap.nav_fault_detail;
+    msg.sensors          = snap.sensors;
 
     nav_status_pub_->publish(msg);
 }

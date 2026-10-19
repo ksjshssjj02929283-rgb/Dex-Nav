@@ -44,7 +44,7 @@ public:
     void transformCloud(const sensor_msgs::msg::PointCloud2& input,
                         sensor_msgs::msg::PointCloud2& output) const {
         if (!matches(input.header.frame_id)) {
-            throw std::invalid_argument("相机外参缓存与点云坐标系不匹配");
+            throw std::invalid_argument("Cached camera extrinsics do not match the point cloud frame");
         }
         // doTransform 计算 P_base = R * P_camera + t；静态 TF 时间不能替代采样时间。
         tf2::doTransform(input, output, transform_.value());

@@ -71,3 +71,55 @@
 
     # ── Phase 3.4 预留（功能未实现，代码暂未 declare）──
     # initial_mode / auto_recover_from_emergency / localization_loss_grace_sec / topic_timeout_sec
+
+    # ── SensorMonitor：导航必要传感器判活（CE「避免危险碰撞」）──────────
+    # 判活依据是话题是否按时到达（接收时刻用单调时钟，不看消息时间戳）。
+    # 停车由 collision_monitor（0.5 s）负责；本模块约 1.0 s 取消任务，
+    # 因此超时先统一 1.0 s，避免高负载下的接收缺口造成误取消。
+    sensor_monitor:
+      enable: true
+      check_period_sec: 0.1
+      startup_grace_sec: 15.0
+      recover_hold_sec: 2.0
+      cancel_repeat_sec: 1.0
+      estop_release_grace_sec: 3.0
+      stats_window_sec: 2.0
+      sensors: ["imu", "odom", "lidar_front", "lidar_rear", "rgbd_front", "rgbd_rear"]
+      imu:
+        topic: "/imu/chassis"
+        type: "sensor_msgs/msg/Imu"
+        timeout_sec: 1.0
+        required: true
+        suppress_on_estop: true
+      odom:
+        # 底盘原始里程计（非 EKF 输出 /localization/odometry/filtered）
+        topic: "/feedback/odom"
+        type: "nav_msgs/msg/Odometry"
+        timeout_sec: 1.0
+        required: true
+        suppress_on_estop: true
+      lidar_front:
+        topic: "/laser_scan/front"
+        type: "sensor_msgs/msg/LaserScan"
+        timeout_sec: 1.0
+        required: true
+        suppress_on_estop: false
+      lidar_rear:
+        topic: "/laser_scan/rear"
+        type: "sensor_msgs/msg/LaserScan"
+        timeout_sec: 1.0
+        required: true
+        suppress_on_estop: false
+      rgbd_front:
+        # 订阅转换后的 laser_scan（导航与 CM 实际使用的输入），不订深度图
+        topic: "/orbbec/front/laser_scan"
+        type: "sensor_msgs/msg/LaserScan"
+        timeout_sec: 1.0
+        required: true
+        suppress_on_estop: false
+      rgbd_rear:
+        topic: "/orbbec/rear/laser_scan"
+        type: "sensor_msgs/msg/LaserScan"
+        timeout_sec: 1.0
+        required: true
+        suppress_on_estop: false

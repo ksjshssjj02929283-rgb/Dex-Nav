@@ -14,6 +14,9 @@
 #include <mutex>
 #include <string>
 
+#include <cstdint>
+#include <vector>
+
 #include <rclcpp/rclcpp.hpp>
 #include <geometry_msgs/msg/pose2_d.hpp>
 #include <geometry_msgs/msg/pose.hpp>
@@ -28,6 +31,7 @@
 #include "nav_interfaces/msg/battery_info.hpp"
 #include "nav_interfaces/msg/localization_state.hpp"
 #include "nav_interfaces/msg/nav_system_status.hpp"
+#include "nav_interfaces/msg/sensor_state.hpp"
 
 namespace command_board {
 
@@ -56,6 +60,11 @@ public:
         std::string               recover_state = "NORMAL";  // SafetyReactor 急停丢位恢复状态机
         std::string               safety_alarm;              // SafetyReactor 告警（ALARM 时非空）
         std::string               current_map_name;          // from map_manager/map_state
+
+        // ── 导航故障（SensorMonitor 判定，随 NavSystemStatus 上报）──
+        int32_t                   nav_fault_code = 0;         // 0 = 无故障
+        std::string               nav_fault_detail;           // 无故障时为空
+        std::vector<nav_interfaces::msg::SensorState> sensors;  // 传感器监测快照
     };
 
     explicit StatusMonitor(rclcpp::Node* node);
@@ -70,6 +79,16 @@ public:
     // Thread-safe setter — SafetyReactor pushes its recovery state / alarm into
     // the aggregated NavSystemStatus.
     void SetRecoverStatus(const std::string& state, const std::string& alarm);
+
+    // Thread-safe setter — SensorMonitor 推送导航故障码 / 说明 / 传感器状态快照。
+    void SetNavFault(const int32_t code, const std::string& detail,
+                     const std::vector<nav_interfaces::msg::SensorState>& sensors);
+
+    // 立即补发一次 NavSystemStatus（故障边沿 / 解除时不等 1 Hz 周期）。
+    void PublishNow();
+
+    // 轻量急停查询：只读聚合快照，不做 TF 查询（10 Hz 判定周期用）。
+    bool IsEstopActive() const;
 
 private:
     void OnOdom(nav_msgs::msg::Odometry::SharedPtr msg);

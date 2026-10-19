@@ -47,7 +47,7 @@ public:
         extractor_ = makeObstacleExtractor(method, node_);
         depth_max_range_ = node_.get_parameter("depth_max_range").as_double();
         if (!std::isfinite(depth_max_range_) || depth_max_range_ <= 0.0) {
-            RCLCPP_WARN(get_logger(), "depth_max_range 非法: %.3f m，回退为 3.0 m", depth_max_range_);
+            RCLCPP_WARN(get_logger(), "Invalid depth_max_range: %.3f m; falling back to 3.0 m", depth_max_range_);
             depth_max_range_ = 3.0;
         }
 
@@ -113,26 +113,28 @@ public:
         m_laserscan_publisher_ =
             node_.create_publisher<sensor_msgs::msg::LaserScan>(output_topic_laserscan, output_qos);
 
-        RCLCPP_INFO(get_logger(), "RGBD 点云转换节点启动，相机名称: %s", camera_name.c_str());
-        RCLCPP_INFO(get_logger(), "输入模式: Depth + CameraInfo 重建");
-        RCLCPP_INFO(get_logger(), "订阅深度图话题: %s/depth", input_topic.c_str());
-        RCLCPP_INFO(get_logger(), "订阅相机参数话题: %s/camera_info", input_topic.c_str());
-        RCLCPP_INFO(get_logger(), "发布原始点云话题: %s", output_topic_raw.c_str());
-        RCLCPP_INFO(get_logger(), "发布过滤点云话题: %s", output_topic_filtered.c_str());
-        RCLCPP_INFO(get_logger(), "点云最大深度: %.3f m", depth_max_range_);
-        RCLCPP_INFO(get_logger(), "输入帧二分频模式: %s", division_mode_ ? "开启（处理一帧、跳过一帧）" : "关闭");
-        RCLCPP_INFO(get_logger(), "LaserScan 话题: %s（enable_laserscan=true 时发布）", output_topic_laserscan.c_str());
-        RCLCPP_INFO(get_logger(), "预处理参数 - 降采样: %s, MLS: %s, 统计滤波: %s",
-                    flag_voxel_filter_ ? "启用" : "禁用", flag_mls_filter_ ? "启用" : "禁用",
-                    flag_sor_filter_ ? "启用" : "禁用");
-        RCLCPP_INFO(get_logger(), "地面过滤参数 - 判断坐标系: %s, 最低保留高度: %.3f m, 最高保留高度: %.3f m",
+        RCLCPP_INFO(get_logger(), "RGBD point cloud conversion node started, camera name: %s", camera_name.c_str());
+        RCLCPP_INFO(get_logger(), "Input mode: Depth + CameraInfo reconstruction");
+        RCLCPP_INFO(get_logger(), "Subscribing to depth topic: %s/depth", input_topic.c_str());
+        RCLCPP_INFO(get_logger(), "Subscribing to camera info topic: %s/camera_info", input_topic.c_str());
+        RCLCPP_INFO(get_logger(), "Publishing raw point cloud topic: %s", output_topic_raw.c_str());
+        RCLCPP_INFO(get_logger(), "Publishing filtered point cloud topic: %s", output_topic_filtered.c_str());
+        RCLCPP_INFO(get_logger(), "Point cloud max depth: %.3f m", depth_max_range_);
+        RCLCPP_INFO(get_logger(), "Input frame decimation mode: %s",
+                    division_mode_ ? "enabled (process one frame, skip one frame)" : "disabled");
+        RCLCPP_INFO(get_logger(), "LaserScan topic: %s (published when enable_laserscan=true)", output_topic_laserscan.c_str());
+        RCLCPP_INFO(get_logger(), "Preprocessing - downsample: %s, MLS: %s, statistical outlier removal: %s",
+                    flag_voxel_filter_ ? "enabled" : "disabled", flag_mls_filter_ ? "enabled" : "disabled",
+                    flag_sor_filter_ ? "enabled" : "disabled");
+        RCLCPP_INFO(get_logger(), "Ground filter - reference frame: %s, min kept height: %.3f m, max kept height: %.3f m",
                     ground_filter_frame_.c_str(), ground_filter_min_height_, ground_filter_max_height_);
         RCLCPP_INFO(get_logger(),
-                    "地面过滤流程: 点云会临时转换到 %s 按 z 高度过滤，最终发布仍保持 CameraInfo 的光学坐标系，便于 "
-                    "Nav2 costmap 正确做 marking/clearing",
+                    "Ground filter pipeline: points are temporarily transformed into %s and filtered by z height; "
+                    "the published cloud keeps the CameraInfo optical frame so the Nav2 costmap can do "
+                    "marking/clearing correctly",
                     ground_filter_frame_.c_str());
 
-        RCLCPP_INFO(get_logger(), "障碍物提取方法: %s", obstacle_extraction_method_.c_str());
+        RCLCPP_INFO(get_logger(), "Obstacle extraction method: %s", obstacle_extraction_method_.c_str());
     }
 
 private:
@@ -145,7 +147,7 @@ private:
         // 相机内参固定：首次收到后缓存并销毁订阅，避免继续接收重复 CameraInfo。
         last_camera_info_ = camera_info_msg;
         RCLCPP_INFO(get_logger(),
-                    "已缓存 CameraInfo 并停止订阅，相机参数坐标系: %s, fx=%.3f, fy=%.3f, cx=%.3f, cy=%.3f",
+                    "Cached CameraInfo and stopped subscribing; camera info frame: %s, fx=%.3f, fy=%.3f, cx=%.3f, cy=%.3f",
                     camera_info_msg->header.frame_id.c_str(), camera_info_msg->k[0], camera_info_msg->k[4],
                     camera_info_msg->k[2], camera_info_msg->k[5]);
         camera_info_sub_.reset();
@@ -169,7 +171,8 @@ private:
         // 使用最近一次收到的 CameraInfo
         auto camera_info_msg = last_camera_info_;
         if (!camera_info_msg) {
-            RCLCPP_WARN_THROTTLE(get_logger(), *this->get_clock(), 2000, "尚未收到 CameraInfo，无法将深度图转换为点云");
+            RCLCPP_WARN_THROTTLE(get_logger(), *this->get_clock(), 2000,
+                                 "CameraInfo not received yet; cannot convert depth image to point cloud");
             return;
         }
 
@@ -178,12 +181,12 @@ private:
 
         // 基本有效性检查
         if (width <= 0 || height <= 0) {
-            RCLCPP_WARN(get_logger(), "收到的图像尺寸非法: %dx%d", width, height);
+            RCLCPP_WARN(get_logger(), "Received invalid image size: %dx%d", width, height);
             return;
         }
         const size_t expected_size = static_cast<size_t>(depth_msg->step) * height;
         if (depth_msg->step == 0 || depth_msg->data.size() < expected_size) {
-            RCLCPP_WARN(get_logger(), "深度图数据长度不足: %zu < %zu", depth_msg->data.size(), expected_size);
+            RCLCPP_WARN(get_logger(), "Insufficient depth image data: %zu < %zu", depth_msg->data.size(), expected_size);
             return;
         }
 
@@ -193,12 +196,18 @@ private:
         sensor_msgs::msg::PointCloud2::SharedPtr msg_raw;
         if (need_projected_points) {
             if (!computePointClouds(depth_msg, camera_info_msg, sub_count_raw > 0, msg_raw)) {
-                RCLCPP_WARN(get_logger(), "深度图转换原始点云失败");
+                RCLCPP_WARN(get_logger(), "Failed to convert depth image to raw point cloud");
                 return;
             }
         }
 
+        frame_valid_point_count_ = 0;
         auto msg_filtered = extractor_->extract(*this, depth_msg, camera_info_msg, msg_raw);
+
+        // 本帧原始点云数据量：优先用已重建的原始点云点数；否则用提取器统计到的有效深度点数。
+        const size_t raw_point_count = msg_raw
+            ? static_cast<size_t>(msg_raw->width) * msg_raw->height
+            : frame_valid_point_count_;
 
         // 如果订阅者需要原始点云且计算成功，则发布
         if (sub_count_raw > 0 && msg_raw) {
@@ -206,38 +215,48 @@ private:
         }
 
         if (!msg_filtered) {
-            size_t raw_points = msg_raw ? static_cast<size_t>(msg_raw->width) * msg_raw->height : 0;
             RCLCPP_WARN_THROTTLE(get_logger(), *this->get_clock(), 5000,
-                                 "本帧 filtered 点云未发布：原始点云有 %zu 点，但过滤算法未能成功提取障碍物，"
-                                 "或地面过滤所需 TF 暂时不可用。", raw_points);
+                                 "Filtered point cloud not published for this frame: raw data has %zu points, "
+                                 "but the filter extracted no obstacles, or the TF required for ground "
+                                 "filtering is temporarily unavailable.", raw_point_count);
             return;
         }
 
         if (enable_laserscan_) {
-            auto laser_scan_msg = pointCloudToLaserScanBaseLink(msg_filtered, tf_buffer_, get_logger());
-            if (laser_scan_msg) {
-                m_laserscan_publisher_->publish(*laser_scan_msg);
+            // 过滤后点云为空时：只要本帧原始深度仍有有效数据（看得到场景、只是没有障碍），
+            // 就照常发布一帧 ranges 全 inf 的空 LaserScan；若原始数据也为空（遮挡/无有效
+            // 深度），则不发布，交由下游按数据源中断处理，并打印告警。
+            if (msg_filtered->width == 0 && raw_point_count == 0) {
+                RCLCPP_WARN_THROTTLE(
+                    get_logger(), *this->get_clock(), 5000,
+                    "No valid raw depth points in this frame (possible occlusion); "
+                    "LaserScan is not published");
+            } else {
+                auto laser_scan_msg = pointCloudToLaserScanBaseLink(msg_filtered, tf_buffer_, get_logger());
+                if (laser_scan_msg) {
+                    m_laserscan_publisher_->publish(*laser_scan_msg);
+                }
             }
-        }
-        else {
+        } else {
             m_pointcloud_publisher_filtered->publish(*msg_filtered);
         }
 
-        const size_t raw_points = need_projected_points ? buf_raw_.size() / 3 : 0;
         const char* raw_frame = msg_raw ? msg_raw->header.frame_id.c_str() : "N/A";
         RCLCPP_INFO_THROTTLE(get_logger(), *this->get_clock(), 5000,
-                             "点云发布状态 - 原始点云: %zu 点, 坐标系=%s; 过滤点云: %zu 点, 坐标系=%s; "
-                             "当前提取方法=%s, 地面过滤判断坐标系=%s, 保留高度范围=(%.3f, %.3f] m",
-                             raw_points, raw_frame,
+                             "Point cloud publish status - raw: %zu points, frame=%s; filtered: %zu points, frame=%s; "
+                             "extraction method=%s, ground filter frame=%s, kept height range=(%.3f, %.3f] m",
+                             raw_point_count, raw_frame,
                              static_cast<size_t>(msg_filtered->width) * msg_filtered->height,
                              msg_filtered->header.frame_id.c_str(), obstacle_extraction_method_.c_str(),
                              ground_filter_frame_.c_str(), ground_filter_min_height_, ground_filter_max_height_);
 
-        if (msg_raw && msg_raw->width > 0 && msg_filtered->width == 0) {
+        if (raw_point_count > 0 && msg_filtered->width == 0) {
             RCLCPP_WARN_THROTTLE(get_logger(), *this->get_clock(), 5000,
-                                 "过滤后点云为空：raw 有 %zu 点，但 filtered 为 0 "
-                                 "点。可能原因：过滤算法参数过严，或当前视野内没有满足条件的障碍点",
-                                 raw_points);
+                                 "Filtered point cloud is empty: raw data has %zu points but filtered has 0; "
+                                 "publishing an all-inf LaserScan for this empty view. "
+                                 "Possible causes: filter parameters are too strict, or there are no obstacle "
+                                 "points satisfying the conditions in the current view.",
+                                 raw_point_count);
         }
     }
 
@@ -254,12 +273,12 @@ private:
             const auto transform = tf_buffer.lookupTransform(
                 "base_link", camera_frame, tf2::TimePointZero, tf2::durationFromSec(0.05));
             camera_extrinsics_.set(transform);
-            RCLCPP_INFO(get_logger(), "缓存相机完整外参 (base_link <- %s)，光轴 yaw: %.3f rad",
+            RCLCPP_INFO(get_logger(), "Cached full camera extrinsics (base_link <- %s), optical axis yaw: %.3f rad",
                         camera_frame.c_str(), camera_extrinsics_.opticalAxisYaw());
             return true;
         } catch (const tf2::TransformException& ex) {
             RCLCPP_WARN_THROTTLE(get_logger(), *this->get_clock(), 5000,
-                                "相机外参未就绪 (base_link <- %s)，跳过本帧转换并重试: %s",
+                                "Camera extrinsics not ready (base_link <- %s); skipping this frame and retrying: %s",
                                 camera_frame.c_str(), ex.what());
             return false;
         }
@@ -269,7 +288,11 @@ private:
         sensor_msgs::msg::PointCloud2::ConstSharedPtr cloud_msg,
         const std::shared_ptr<tf2_ros::Buffer>& tf_buffer,
         const rclcpp::Logger& logger) {
-        if (!cloud_msg || cloud_msg->width == 0 || cloud_msg->height == 0) {
+        // 空旷场景（视野内没有障碍）会得到 0 点的过滤点云，这仍是一帧有效的“无障碍”观测。
+        // 必须照常发布全 inf 的 LaserScan，否则下游（collision_monitor、传感器监测）会把
+        // “看不到障碍”误判成话题停更，进而报 “timestamps differ / Ignoring the source”，
+        // 甚至按数据源失效停车。仅在点云消息本身无效时才放弃本帧。
+        if (!cloud_msg) {
             return nullptr;
         }
         const bool already_in_base_link = cloud_msg->header.frame_id == "base_link";
@@ -328,7 +351,7 @@ private:
                 // 复用完整旋转和平移，避免每帧查询 TF；点云时间戳保持不变。
                 camera_extrinsics_.transformCloud(*cloud_msg, cloud_bl);
             } catch (tf2::TransformException& ex) {
-                RCLCPP_WARN(logger, "点云转换到 base_link 失败，无法生成 LaserScan: %s", ex.what());
+                RCLCPP_WARN(logger, "Failed to transform point cloud to base_link; cannot generate LaserScan: %s", ex.what());
                 return nullptr;
             }
         } else {
@@ -445,7 +468,7 @@ private:
         const int width = depth_msg->width;
         const int height = depth_msg->height;
         if (width <= 0 || height <= 0) {
-            RCLCPP_WARN(get_logger(), "深度图尺寸非法: %dx%d", width, height);
+            RCLCPP_WARN(get_logger(), "Invalid depth image size: %dx%d", width, height);
             return false;
         }
 
@@ -453,24 +476,24 @@ private:
                                      depth_msg->encoding == sensor_msgs::image_encodings::MONO16;
         const bool is_float32_depth = depth_msg->encoding == sensor_msgs::image_encodings::TYPE_32FC1;
         if (!is_uint16_depth && !is_float32_depth) {
-            RCLCPP_WARN(get_logger(), "不支持的深度图编码: %s（仅支持 16UC1/mono16 和 32FC1）",
+            RCLCPP_WARN(get_logger(), "Unsupported depth image encoding: %s (only 16UC1/mono16 and 32FC1 are supported)",
                         depth_msg->encoding.c_str());
             return false;
         }
         if (depth_msg->is_bigendian) {
-            RCLCPP_WARN(get_logger(), "暂不支持大端序深度图");
+            RCLCPP_WARN(get_logger(), "Big-endian depth images are not supported yet");
             return false;
         }
 
         const size_t bytes_per_pixel = is_uint16_depth ? sizeof(uint16_t) : sizeof(float);
         const size_t minimum_step = static_cast<size_t>(width) * bytes_per_pixel;
         if (depth_msg->step < minimum_step) {
-            RCLCPP_WARN(get_logger(), "深度图行跨度不足: %u < %zu", depth_msg->step, minimum_step);
+            RCLCPP_WARN(get_logger(), "Depth image row step too small: %u < %zu", depth_msg->step, minimum_step);
             return false;
         }
         const size_t expected_size = static_cast<size_t>(depth_msg->step) * height;
         if (depth_msg->data.size() < expected_size) {
-            RCLCPP_WARN(get_logger(), "深度数据长度不足: %zu < %zu", depth_msg->data.size(), expected_size);
+            RCLCPP_WARN(get_logger(), "Insufficient depth data: %zu < %zu", depth_msg->data.size(), expected_size);
             return false;
         }
 
@@ -479,14 +502,15 @@ private:
         const auto cx = camera_info_msg->k[2];
         const auto cy = camera_info_msg->k[5];
         if (fx <= 0.f || fy <= 0.f) {
-            RCLCPP_WARN(get_logger(), "相机内参非法 fx=%.3f fy=%.3f", fx, fy);
+            RCLCPP_WARN(get_logger(), "Invalid camera intrinsics fx=%.3f fy=%.3f", fx, fy);
             return false;
         }
 
         if (!depth_msg->header.frame_id.empty() && !camera_info_msg->header.frame_id.empty() &&
             depth_msg->header.frame_id != camera_info_msg->header.frame_id) {
             RCLCPP_WARN_THROTTLE(get_logger(), *this->get_clock(), 50000,
-                                 "Depth frame (%s) 与 CameraInfo 光学 frame (%s) 不一致；重建点云使用 CameraInfo frame",
+                                 "Depth frame (%s) differs from the CameraInfo optical frame (%s); "
+                                 "the reconstructed point cloud uses the CameraInfo frame",
                                  depth_msg->header.frame_id.c_str(), camera_info_msg->header.frame_id.c_str());
         }
 
@@ -582,5 +606,9 @@ private:
 
     // 堆内存重用缓冲区（避免高频分配/销毁导致内存碎片化与内存高波动）
     std::vector<float> buf_raw_;
+
+    // 本帧统计到的有效原始深度数据量：高度法=buf_raw_ 点数，UV 视差=有效深度采样数。
+    // 用于“过滤后点云为空时是否仍可发布全 inf 空 LaserScan”的判定。
+    std::size_t frame_valid_point_count_ = 0;
 };
 }  // namespace dexe_sensor_process
