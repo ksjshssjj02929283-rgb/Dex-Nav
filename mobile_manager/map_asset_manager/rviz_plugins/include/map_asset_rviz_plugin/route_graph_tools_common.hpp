@@ -27,7 +27,6 @@
 #include <nav_interfaces/srv/get_assets.hpp>
 #include <nav_interfaces/msg/route_edge.hpp>
 #include <nav_interfaces/srv/get_all_nav_points.hpp>
-#include <nav_interfaces/srv/get_route_graph.hpp>
 #include <optional>
 #include <rclcpp/rclcpp.hpp>
 
