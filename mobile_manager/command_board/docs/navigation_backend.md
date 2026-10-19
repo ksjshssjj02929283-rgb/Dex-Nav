@@ -55,18 +55,18 @@ navigation_backend: "nav2"     # "nav2" | "path_navigation"；默认开自主导
 ## 5. 开机默认值：`command_board_params.yaml`
 
 ```yaml
-navigation_backend: "nav2"   # "nav2" | "path_navigation"；默认开自主导航
-
-path_navigation:
-  autostart: true
-  lifecycle_manager_service: "/lifecycle_manager_path_navigation/manage_nodes"
-  startup_timeout_sec: 60.0
-  require_map_ready: false   # true = 等 MapState 有地图名再 STARTUP
-
-nav2:
-  autostart: true
-  lifecycle_manager_service: "/lifecycle_manager_navigation/manage_nodes"
-  startup_timeout_sec: 60.0
+/**:
+  ros__parameters:
+    navigation_backend: "nav2"
+    path_navigation:
+      autostart: true
+      startup_timeout_sec: 300.0     # 路径导航的外层启动等待、重试预算，秒。
+      lifecycle_manager_service: "/lifecycle_manager_path_navigation/manage_nodes"
+      require_map_ready: false
+    nav2:
+      autostart: true
+      startup_timeout_sec: 60.0      # 自主导航的外层启动等待、重试预算，秒。
+      lifecycle_manager_service: "/lifecycle_manager_navigation/manage_nodes"
 ```
 
 `autostart` 的含义是「**被 `navigation_backend` 选中时**是否自动 STARTUP」，所以两套都留
@@ -78,18 +78,44 @@ nav2:
 `sleep 5`）。这不影响激活，三层机制兜着：
 
 1. `command_board` 启动后以 **1 Hz 轮询**等对应管理器的服务出现，最长等
-   `startup_timeout_sec`（默认 60 s），期间只是安静地等。
+   所选后端的 `startup_timeout_sec`（自主导航默认 60 s，路径导航默认 300 s），期间只是安静地等。
 2. 就算它在管理器服务刚出现的瞬间就发 STARTUP，也不会误判失败——管理器侧的
    `nav2_util::LifecycleServiceClient` 构造函数**会死等**每个托管节点的 `get_state`
    服务，即 STARTUP 会一直阻塞到那套节点齐了才往下走。
-3. 万一 STARTUP 返回失败（典型：那套里有节点还没起全），在 60 s 预算内**每秒重试**，
+3. 万一 STARTUP 返回失败，在所选后端的启动预算内**每秒重试**，
    不是一次失败就收摊。
 
 实测（开发机）：command_board 先起、**20 s 后**才起导航栈 → 它在第 27.0 s 发出 STARTUP，
 0.24 s 后拿到 ack，两个 Server 变 active。
 
-超时后放弃只打 ERROR，不会让节点退出；原因修好后重启 auto 服务即可。真机冷启动如果发现 60 s 不够（一堆传感器同时起会拖慢
-`ros2 launch`），调大 `startup_timeout_sec` 即可。
+该参数是外层等待就绪和决定是否继续重试的预算，不是单次 STARTUP 的执行时限。
+已发出的请求不会在启动预算耗尽时被强制取消；请求返回失败后，预算已耗尽就停止重试并记录 ERROR。
+停止重试不会让节点进程退出；原因修好后可重启 auto 服务。
+
+当前两套正式入口的时间配置：
+
+| 用途 | 自主导航 | 路径导航 |
+|---|---:|---:|
+| 首次 bond 建连等待及运行期心跳失联阈值 `bond_timeout` | 4 秒 | 10 秒 |
+| 外层启动等待、重试预算 `startup_timeout_sec` | 60 秒 | 300 秒 |
+| 运行后断线重连观察窗口 `bond_respawn_max_duration` | 300 秒 | 300 秒 |
+
+参数分别配置，不共用 YAML 参数：
+
+- 外层启动预算：`command_board/params/command_board_params.yaml` 中分别配置
+  `nav2.startup_timeout_sec` 为 60 秒、`path_navigation.startup_timeout_sec` 为 300 秒。
+- 自主导航 bond 窗口：lifecycle manager 的 C++ 默认值为 4 秒。
+- 路径导航 bond 窗口：`path_navigation_bringup.launch.py` 的 `bond_timeout` 参数默认 10 秒，
+  可通过 `bond_timeout:=...` 覆盖。
+- 运行后断线重连观察窗口：每个管理器分别读取自身的 `bond_respawn_max_duration`，
+  C++ 默认值为 300 秒。
+
+运行期约每秒检查一次节点服务。
+节点重新就绪后就尝试启动，不必等满 300 秒；节点进程的重新拉起需要外部机制负责。
+窗口及查询、转换请求的耗时相互独立，300 秒不代表整个恢复流程必然在该时间内完成。
+
+两套导航 launch 不读取 `command_board_params.yaml`；该文件仍由 `command_board` 自身加载。
+参数在启动时读取，修改配置后需重启相关程序。
 
 要改开机默认后端就改 yaml 并重启 auto 服务。
 

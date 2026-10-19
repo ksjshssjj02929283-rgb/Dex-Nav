@@ -47,6 +47,11 @@ public:
   /// Trigger a state change, returning result
   bool change_state(std::uint8_t transition);
 
+  // 仅供需要有界等待的调用方使用，不改变已有接口的等待方式。
+  bool change_state_with_timeout(
+    std::uint8_t transition, std::chrono::nanoseconds timeout);
+  uint8_t get_state_with_timeout(std::chrono::nanoseconds timeout);
+
   /// Get the current state as a lifecycle_msgs::msg::State id value
   /**
    * Throws std::runtime_error on failure

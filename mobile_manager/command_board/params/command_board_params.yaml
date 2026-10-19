@@ -55,7 +55,7 @@
       # 被 navigation_backend 选中时是否自动 STARTUP。两套都留 true：这样切后端只动上面那一行。
       autostart: true
       lifecycle_manager_service: "/lifecycle_manager_path_navigation/manage_nodes"
-      # 等该管理器服务出现的上限（秒）。超时只报 ERROR 不重试——那说明对应的 launch 根本没起
+      # 本后端等待服务就绪及启动重试的预算，秒；不取消已发出的请求。
       startup_timeout_sec: 300.0
       # true = 等 MapState 有地图名再 STARTUP（路网任务要靠 map_asset_manager 解析点名）。
       # 默认 false：有的机型压根不发 MapState，等下去等于永远不激活
@@ -64,6 +64,7 @@
     nav2:
       autostart: true
       lifecycle_manager_service: "/lifecycle_manager_navigation/manage_nodes"
+      # 本后端等待服务就绪及启动重试的预算，秒；不取消已发出的请求。
       startup_timeout_sec: 60.0
 
     # ⚠ 三处必须配对，少一处就会两套同时出速度（都落到 cmd_vel_mux 的 control/cmd_vel_nav）：
