@@ -61,14 +61,14 @@ namespace nav2_pid_controller
  * the closest trajectory point (sign from the longitudinal error) — decel
  * tails / curvature slowdowns / obstacle zeros are encoded per-point by the
  * speed planner. Near the goal the position loop supplies direction while the
- * trajectory remains the sole velocity-magnitude reference, including the
- * final creep-to-zero segment. During final rotation a small position
+ * trajectory remains the velocity-magnitude reference until position capture.
+ * Captured positions first request a measured stop before final yaw. During final rotation a small position
  * correction may be retained when the current stage permits it. A high/low-speed
  * gain set is switched at switch_speed_, plus a dedicated reverse gain set.
  * Angular velocity is controlled by a station PID while tracking and at the
  * fixed final pose. A terminal state machine
- * (APPROACHING -> ROTATING_TO_GOAL, with explicit retry states) governs the behavior. Trajectories (with
- * per-point longitudinal_velocity / path_kappa) are consumed through the
+ * (APPROACHING -> BRAKING_FOR_GOAL -> ROTATING_TO_GOAL, with explicit retry states)
+ * governs the behavior. Trajectories (with per-point longitudinal_velocity / path_kappa) are consumed through the
  * nav2_core setTrajectory() extension; plain geometric paths are accepted
  * through setPlan() with a default desired speed.
  */
@@ -179,7 +179,8 @@ protected:
     APPROACHING,
     ROTATING_TO_GOAL,
     RETRY_ALIGN_TO_POSITION,
-    RETRY_TRANSLATE
+    RETRY_TRANSLATE,
+    BRAKING_FOR_GOAL  // 位置捕获后先请求零速，实测连续停稳后才交给最终角度控制。
   };
 
   static inline void regularizeAngle(double & angle)
@@ -371,6 +372,7 @@ protected:
   bool retry_holds_goal_yaw_ = false;
   int retry_position_capture_count_ = 0;
   int retry_position_outside_count_ = 0;
+  int goal_stop_capture_count_ = 0;  // 复用位置捕获确认周期，任务重置或速度超限时清零。
 
   std::deque<double> theta_errors_;
   std::deque<double> longitude_errors_;

@@ -310,7 +310,7 @@ controller_server:
       align_min_angular_velocity: 0.05
       align_target_distance: 0.3    # align 朝向对齐的目标点距离——盯路径前方该距离的目标点方位角（同 RPP carrot 取向），而非局部路径切向
       prepare:
-        enabled: True
+        enabled: False
         obstacle_check_distance: 0.2    # footprint 前沿 + 该距离内检测（宽度取 footprint 实际半宽）
         side_check_distance: 0.15    # 左右检测：footprint 全长两侧各外扩该距离（对称，<=0 关闭）
         obstacle_cost_threshold: 253
@@ -692,8 +692,8 @@ controller_server:
       angular_cmd_reseed_error: 0.3    # 仅普通角PID使用；最终固定轨迹独立按实测偏差重规划
       final_target_lock_distance: 0.3    # 距终点小于此值直接锁定终点索引（消除末段最近点跳变）；须 ≥ staged_control.approach_distance
       # PRECISION_RESTORE_BASELINE_BEGIN：初始Reach版本不在5cm处锁存目标。
-      end_localization_switch_distance: 0.0
-      end_localization_switch_angle: 0.0
+      end_localization_switch_distance: 0.05
+      end_localization_switch_angle: 0.05
       # PRECISION_RESTORE_BASELINE_END
       traj_speed_lookahead: 0.1    # 速度参考与瞄准目标解耦：最近点之后前方窗内 max（不含最近点自身，避免状态戳自引用）
       # 0 = 自动取一个控制周期。曾试 0.15 补偿执行延迟，实机实测不改善末端越点，改回 0。
@@ -704,7 +704,7 @@ controller_server:
       # 只有停短/旋转后位置超差才进入显式位置重试；正常到点不触发。
       retry_position_max_v: 0.04
       retry_heading_tolerance: 0.03
-      retry_position_capture_cycles: 3  # 连续约0.3s进入2cm后才退出位置补偿
+      retry_position_capture_cycles: 3  # 到位制动及位置补偿共用停稳确认周期；10Hz下3次约0.3s
       verbose: 1
       high_speed_station_pid_conf:
         integrator_enable: True

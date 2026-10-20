@@ -50,6 +50,56 @@ namespace
 {
 
 constexpr int kEndLocalizationWarningThrottleMs = 1000;
+
+// 锁存目标可能落在实时尾段的中间；先截掉越点部分，避免仅改末点形成折返。
+bool truncateTailAtLockedGoal(nav_msgs::msg::Path &path, const geometry_msgs::msg::Point &goal) {
+    if (path.poses.empty() || !std::isfinite(goal.x) || !std::isfinite(goal.y) || !std::isfinite(goal.z)) {
+        return false;
+    }
+    for (const auto &point : path.poses) {
+        const auto &position = point.pose.position;
+        if (!std::isfinite(position.x) || !std::isfinite(position.y) || !std::isfinite(position.z)) {
+            return false;
+        }
+    }
+    if (path.poses.size() > 1) {
+        double best_distance_sq = std::numeric_limits<double>::infinity();
+        size_t terminal_segment = path.poses.size() - 2;
+        for (size_t index = 0; index + 1 < path.poses.size(); ++index) {
+            const auto &start = path.poses[index].pose.position;
+            const auto &end = path.poses[index + 1].pose.position;
+            const double dx = end.x - start.x;
+            const double dy = end.y - start.y;
+            const double length_sq = dx * dx + dy * dy;
+            if (!std::isfinite(length_sq)) {
+                return false;
+            }
+            if (length_sq <= 1e-12) {
+                continue;
+            }
+            const double ratio = std::clamp(((goal.x - start.x) * dx + (goal.y - start.y) * dy) / length_sq, 0.0, 1.0);
+            const double error_x = goal.x - start.x - ratio * dx;
+            const double error_y = goal.y - start.y - ratio * dy;
+            const double distance_sq = error_x * error_x + error_y * error_y;
+            if (!std::isfinite(distance_sq)) {
+                return false;
+            }
+            // 等距离时保留更靠近原终点的分支，不截掉原路径中有意义的回环。
+            if (distance_sq <= best_distance_sq) {
+                best_distance_sq = distance_sq;
+                terminal_segment = index;
+            }
+        }
+        auto endpoint = path.poses.back();
+        endpoint.pose.position = goal;
+        path.poses.resize(terminal_segment + 2);
+        path.poses.back() = endpoint;
+    } else {
+        path.poses.back().pose.position = goal;
+    }
+    return true;
+}
+
 const char * speedPlanningTerminalBranchName(
   nav2_core::SpeedPlanningTerminalBranch branch)
 {
@@ -1001,8 +1051,14 @@ void ControllerServer::computeControl()
       bool planning_succeeded = false;
       try {
         planning_succeeded = runPlanningPipeline(current_path_);
-      } catch (const std::exception &) {
+      } catch (const std::exception & ex) {
         if (speed_plan_cycle_.active) {
+          RCLCPP_ERROR(
+            get_logger(),
+            "Planning exception: stage=%s, input_points=%zu, local_points=%zu, "
+            "trajectory_points=%zu; %s.",
+            speed_plan_cycle_.planning_result.c_str(), current_path_.poses.size(),
+            speed_plan_cycle_.local_path_point_count, current_trajectory_.points.size(), ex.what());
           speed_plan_cycle_.planning_result = "planning_exception";
           publishSpeedPlanDiagnostics(
             false, false, std::numeric_limits<double>::quiet_NaN(),
@@ -1065,7 +1121,10 @@ void ControllerServer::computeControl()
     publishNavigationStatus(nav_interfaces::msg::NavigationStatus::IDLE);
     return;
   }catch (std::exception & e) {
-    RCLCPP_ERROR(this->get_logger(), "Unexpected control error: %s", e.what());
+    RCLCPP_ERROR(
+      get_logger(), "Unexpected control error: %s; planning_succeeded=%s, controller='%s'.",
+      e.what(), speed_plan_cycle_.planning_succeeded ? "true" : "false",
+      active_controller_for_log_.c_str());
     publishHardStopVelocity();
     lockPrepareForCurrentSession("control error");
     resetEndLocalizationCapabilities(goal_generation_);
@@ -1106,7 +1165,10 @@ void ControllerServer::setPlannerPath(
   }
 
   for (auto & lp : local_planners_) {
-    lp.second->setPlan(path);
+    // 同目标重规划不能把已经冻结的停车尾段重新切回实时map参考。
+    const bool keep_locked_tail = update_type == PathUpdateType::SAME_GOAL_GEOMETRY &&
+      !locked_planning_path_.poses.empty() && lp.first == current_local_planner_;
+    if (!keep_locked_tail) {lp.second->setPlan(path);}
   }
 
   // ③④ 规划级不在此触发：setPlan 只更新插件输入与重置裁剪进度；局部路径和
@@ -1157,6 +1219,9 @@ void ControllerServer::commitPlannerPathState(
     end_pose_.pose.position.x, end_pose_.pose.position.y);
 
   current_path_ = path;
+  if (update_type == PathUpdateType::NEW_GOAL) {
+    locked_planning_path_ = nav_msgs::msg::Path();
+  }
   ++speed_plan_path_id_;
 
   // nav_monitor 任务回显：这里是"一条 path 真正生效"语义上唯一的落点
@@ -1513,6 +1578,63 @@ void ControllerServer::invalidateSpeedPlanningContinuity()
   initial_motion_arbiter_.reset();
 }
 
+bool ControllerServer::lockEndLocalizationPlanningPath(nav_msgs::msg::Path & path)
+{
+  if (!locked_planning_path_.poses.empty()) {return true;}
+  nav2_core::EndLocalizationSnapshot snapshot;
+  if (!getEndLocalizationSnapshot(
+      staged_control_enabled_ ? approach_controller_ : current_controller_, snapshot) ||
+    !snapshot.position_goal_latched || !snapshot.effective_goal_valid)
+  {
+    return true;
+  }
+  const auto & goal = snapshot.effective_goal;
+  if (path.poses.empty() || goal.header.frame_id.empty()) {return false;}
+  // 输入已按旧进度裁剪，只冻结未走完的尾段，避免重新搜索已走路段。
+  auto frozen = path;
+  const auto frame = frozen.header.frame_id.empty() ?
+    frozen.poses.front().header.frame_id : frozen.header.frame_id;
+  if (frame.empty()) {return false;}
+  try {
+    const bool need_transform = frame != goal.header.frame_id;
+    geometry_msgs::msg::TransformStamped transform;
+    if (need_transform) {
+      transform = costmap_ros_->getTfBuffer()->lookupTransform(
+        goal.header.frame_id, frame, tf2::TimePointZero);
+    }
+    for (auto & point : frozen.poses) {
+      if (!point.header.frame_id.empty() && point.header.frame_id != frame) {return false;}
+      // 整段使用同一次TF查询结果，不受逐点转换期间的map修正影响。
+      if (need_transform) {tf2::doTransform(point, point, transform);}
+      point.header.frame_id = goal.header.frame_id;
+    }
+    frozen.header.frame_id = goal.header.frame_id;
+    if (!truncateTailAtLockedGoal(frozen, goal.pose.position)) {
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), kEndLocalizationWarningThrottleMs,
+        "Planning path lock rejected; invalid terminal geometry.");
+      return false;
+    }
+    if (!current_local_planner_.empty()) {
+      // 旧进度编码在尾段起点中，后续从该点按相对弧长继续裁剪。
+      local_planners_.at(current_local_planner_)->setPlan(frozen);
+    }
+    locked_planning_path_ = frozen;
+    path = std::move(frozen);
+    invalidateSpeedPlanningContinuity();
+    prev_local_path_length_ = std::numeric_limits<double>::quiet_NaN();
+    RCLCPP_INFO(
+      get_logger(), "Planning path locked in '%s'; replanning from measured motion.",
+      goal.header.frame_id.c_str());
+    return true;
+  } catch (const tf2::TransformException & ex) {
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), *get_clock(), 2000,
+      "Planning path transform failed; waiting for locked position frame: %s", ex.what());
+    return false;
+  }
+}
+
 bool ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
 {
   using PipelineClock = std::chrono::steady_clock;
@@ -1605,8 +1727,9 @@ bool ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
   current_velocity.angular.z = odom_twist.theta;
 
   geometry_msgs::msg::PoseStamped planning_pose;
-  const std::string planning_frame = path.header.frame_id.empty() ?
-    path.poses.front().header.frame_id : path.header.frame_id;
+  const auto & active_path = locked_planning_path_.poses.empty() ? path : locked_planning_path_;
+  const std::string planning_frame = active_path.header.frame_id.empty() ?
+    active_path.poses.front().header.frame_id : active_path.header.frame_id;
   const auto pose_start = PipelineClock::now();
   const bool pose_available = !planning_frame.empty() && nav2_util::getCurrentPose(
     planning_pose, *costmap_ros_->getTfBuffer(), planning_frame,
@@ -1625,9 +1748,11 @@ bool ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
     return false;
   }
 
+  // 仅记录异常前的执行阶段，原有返回分支仍负责设置最终规划结果。
+  speed_plan_cycle_.planning_result = "local_path";
   if (!current_local_planner_.empty()) {
     const auto local_planner_start = PipelineClock::now();
-    if (!computeLocalPath(path, planning_pose, current_velocity, planning_path)) {
+    if (!computeLocalPath(active_path, planning_pose, current_velocity, planning_path)) {
       local_planner_ms = elapsed_ms(local_planner_start, PipelineClock::now());
       const auto visualization_start = PipelineClock::now();
       publishSpeedPlan(current_trajectory_);
@@ -1641,7 +1766,16 @@ bool ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
     }
     local_planner_ms = elapsed_ms(local_planner_start, PipelineClock::now());
   } else {
-    planning_path = path;
+    planning_path = active_path;
+  }
+  speed_plan_cycle_.planning_result = "path_lock";
+  if (!lockEndLocalizationPlanningPath(planning_path)) {
+    speed_plan_cycle_.planning_result = "terminal_path_lock_failed";
+    publishSpeedPlanDiagnostics(
+      false, false, std::numeric_limits<double>::quiet_NaN(),
+      std::numeric_limits<double>::quiet_NaN(), "not_run");
+    log_pipeline_timing("terminal_path_lock_failed");
+    return false;
   }
   speed_plan_cycle_.local_path_point_count = planning_path.poses.size();
   for (size_t index = 1; index < planning_path.poses.size(); ++index) {
@@ -1662,10 +1796,12 @@ bool ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
   prev_local_path_length_ = speed_plan_cycle_.local_path_length;
   prev_local_path_id_ = speed_plan_cycle_.path_id;
 
+  speed_plan_cycle_.planning_result = "initial_motion";
   const bool should_stop_for_path_obstacle =
     !activeControllerCanAvoidPathObstacles(planning_pose);
   const auto initial_motion = buildInitialMotionState(
     planning_path, current_velocity, should_stop_for_path_obstacle);
+  speed_plan_cycle_.planning_result = "stitching";
   nav_msgs::msg::Path speed_planning_path = planning_path;
   nav2_core::InitialMotionState speed_planning_boundary = initial_motion;
   nav2_speed_planner::TrajectoryStitchingPlan stitching_plan;
@@ -1696,6 +1832,7 @@ bool ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
     speed_plan_cycle_.stitching_result = "prefix_unavailable";
   }
 
+  speed_plan_cycle_.planning_result = "speed_profile";
   const auto speed_set_plan_start = PipelineClock::now();
   sp->second->setPlan(speed_planning_path);
   speed_set_plan_ms = elapsed_ms(speed_set_plan_start, PipelineClock::now());
@@ -1722,10 +1859,13 @@ bool ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
   } else {
     current_trajectory_ = std::move(planned_suffix);
   }
-  // 同一导航任务的终点位姿只允许来自 NEW_GOAL 时冻结的 end_pose_。速度规划
-  // 每周期可以更新中间轨迹，但不得用局部路径尾点重新定义厘米级终点或最终角。
+  speed_plan_cycle_.planning_result = "terminal_goal";
+  // 末点使用权威导航目标；位置锁存后沿用同步冻结的odom尾段终点，
+  // 不能让每周期速度规划或实时map修正重新定义厘米级停车位置。
   if (!current_trajectory_.points.empty()) {
-    geometry_msgs::msg::PoseStamped fixed_goal = end_pose_;
+    // 位置锁存后不能再把实时map终点写回odom轨迹，否则会重新引入目标漂移。
+    geometry_msgs::msg::PoseStamped fixed_goal = locked_planning_path_.poses.empty() ?
+      end_pose_ : locked_planning_path_.poses.back();
     fixed_goal.header.stamp = rclcpp::Time(0);
     bool fixed_goal_valid = true;
     const std::string trajectory_frame = current_trajectory_.header.frame_id.empty() ?
@@ -1816,6 +1956,7 @@ bool ControllerServer::runPlanningPipeline(const nav_msgs::msg::Path & path)
   // computeVelocityCommands，交棒那一拍拿到的仍是本周期轨迹，不引入陈旧。
   trajectory_dispatched_to_.clear();
 
+  speed_plan_cycle_.planning_result = "visualization";
   // RViz 可视化节流（每周期重算但无需每周期重画）。
   const auto visualization_start = PipelineClock::now();
   const rclcpp::Time viz_now = now();
@@ -1874,7 +2015,8 @@ void ControllerServer::publishSpeedPlan(const nav_interfaces::msg::RobotTrajecto
   if (header.frame_id.empty()) {
     header.frame_id = trajectory.points.front().pose.header.frame_id;
   }
-  header.stamp = now();
+  // 仅显示用 Marker 使用最新可用 TF，避免发布时间略超前导致 RViz 外推失败。
+  header.stamp = rclcpp::Time(0);
 
   double v_peak = 1e-3;
   for (const auto & pt : trajectory.points) {
@@ -2700,6 +2842,11 @@ const char * ControllerServer::prepareStateName(PrepareState state) const
 
 void ControllerServer::resetStagedControlState()
 {
+  if (!locked_planning_path_.poses.empty() && !current_path_.poses.empty()) {
+    // 会话重置同时恢复局部规划器的输入参考，不能只清空odom尾段缓存。
+    for (auto & planner : local_planners_) {planner.second->setPlan(current_path_);}
+  }
+  locked_planning_path_ = nav_msgs::msg::Path();
   // Reset只负责安全清理，不能隐式开始新导航任务。
   prepare_state_ = PrepareState::DONE;
   align_done_ = false;
@@ -3379,20 +3526,23 @@ bool ControllerServer::isGoalReached()
   geometry_msgs::msg::Twist velocity = nav_2d_utils::twist2Dto3D(twist);
 
   geometry_msgs::msg::PoseStamped transformed_end_pose;
-  rclcpp::Duration tolerance(rclcpp::Duration::from_seconds(costmap_ros_->getTransformTolerance()));
-  if (!nav_2d_utils::transformPose(
-      costmap_ros_->getTfBuffer(), costmap_ros_->getGlobalFrameID(),
-      end_pose_, transformed_end_pose, tolerance))
-  {
-    RCLCPP_WARN_THROTTLE(
-      get_logger(), *get_clock(), 5000,
-      "Goal pose TF failed in goal check.");
-    return false;
-  }
-
+  transformed_end_pose.header.frame_id = costmap_ros_->getGlobalFrameID();
   const std::string localization_controller = staged_control_enabled_ ?
     approach_controller_ : current_controller_;
-  applyEndLocalizationGoalToGoalChecker(localization_controller, transformed_end_pose);
+  // 优先使用有效锁存目标，避免odom到达判定额外依赖实时map目标变换。
+  if (!applyEndLocalizationGoalToGoalChecker(localization_controller, transformed_end_pose))
+  {
+    rclcpp::Duration tolerance(rclcpp::Duration::from_seconds(costmap_ros_->getTransformTolerance()));
+    if (!nav_2d_utils::transformPose(
+        costmap_ros_->getTfBuffer(), costmap_ros_->getGlobalFrameID(),
+        end_pose_, transformed_end_pose, tolerance))
+    {
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 5000,
+        "Goal pose TF failed in goal check.");
+      return false;
+    }
+  }
 
   const bool goal_reached = goal_checkers_[current_goal_checker_]->isGoalReached(
     pose.pose, transformed_end_pose.pose,

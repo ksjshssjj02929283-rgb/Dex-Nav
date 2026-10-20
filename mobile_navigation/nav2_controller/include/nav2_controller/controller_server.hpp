@@ -197,6 +197,7 @@ protected:
    * @return true 表示可继续执行本控制周期；false 表示规划失败，本周期必须零速闭环
    */
   bool runPlanningPipeline(const nav_msgs::msg::Path & path);
+  bool lockEndLocalizationPlanningPath(nav_msgs::msg::Path & path);
   /**
    * @brief 执行可选的 ③ LocalPlanner。未配置时保持输入路径直通。
    * @return false 表示已配置插件失败或输出空路径，调用方不得继续消费旧轨迹
@@ -640,6 +641,8 @@ protected:
   uint64_t prev_local_path_id_{0};
   uint64_t speed_plan_cycle_id_{0};
   uint64_t speed_plan_path_id_{0};
+  // 位置锁存后保存未走完的odom尾段，供几何裁剪和速度规划共同使用。
+  nav_msgs::msg::Path locked_planning_path_;
   SpeedPlanCycleContext speed_plan_cycle_;
   // RViz 可视化节流（速度剖面每周期重算，但只以 ~2Hz 重画）
   rclcpp::Time last_speed_plan_viz_time_{0, 0, RCL_ROS_TIME};

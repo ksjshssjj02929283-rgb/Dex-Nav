@@ -436,6 +436,26 @@ public:
     return applyEndLocalizationGoalToGoalChecker(approach_controller_, goal_pose);
   }
 
+  bool lockPlanningPathForTest(nav_msgs::msg::Path & path)
+  {
+    staged_control_enabled_ = true;
+    return lockEndLocalizationPlanningPath(path);
+  }
+
+  const nav_msgs::msg::Path & lockedPlanningPathForTest() const
+  {
+    return locked_planning_path_;
+  }
+
+  void updateEndLocalizationPathForTest(
+    const nav_msgs::msg::Path & path, PathUpdateType update_type)
+  {
+    staged_control_enabled_ = true;
+    current_controller_ = approach_controller_;
+    track_controller_ = approach_controller_;
+    setPlannerPath(path, update_type);
+  }
+
   bool activeControllerCanAvoidForTest()
   {
     geometry_msgs::msg::PoseStamped pose;
@@ -1077,6 +1097,138 @@ TEST(EndLocalizationBridge, GoalCheckerUsesSameEffectiveLatchedGoal)
   EXPECT_DOUBLE_EQ(goal_checker_target.pose.position.y, latched_goal.pose.position.y);
   EXPECT_DOUBLE_EQ(goal_checker_target.pose.orientation.z, latched_goal.pose.orientation.z);
   EXPECT_DOUBLE_EQ(goal_checker_target.pose.orientation.w, latched_goal.pose.orientation.w);
+}
+
+TEST(EndLocalizationBridge, PlanningLocksOnlyRemainingTailAndResetsForNewGoal)
+{
+  auto server = std::make_shared<ControllerShim>();
+  auto pid = std::make_shared<FakeEndLocalizationController>();
+  server->setEndLocalizationControllerForTest(pid);
+  server->setLocalPlanner(std::make_shared<FakeLocalPlanner>(true));
+  auto tail = makePath({{2.0, 0.0}, {3.0, 0.0}});
+  tail.header.frame_id = "odom";
+  for (auto & point : tail.poses) {point.header.frame_id = "odom";}
+  auto goal = tail.poses.back();
+  goal.pose.position.x = 3.01;
+  pid->seedEffectiveGoal(server->goalGeneration(), goal);
+  ASSERT_TRUE(server->lockPlanningPathForTest(tail));
+  ASSERT_EQ(tail.poses.size(), 2u);
+  EXPECT_DOUBLE_EQ(tail.poses.front().pose.position.x, 2.0);
+  EXPECT_DOUBLE_EQ(tail.poses.back().pose.position.x, 3.01);
+  nav_msgs::msg::Path output;
+  ASSERT_TRUE(server->runLocalStage(tail, output));
+  ASSERT_EQ(output.poses.size(), 2u);
+  EXPECT_DOUBLE_EQ(output.poses.back().pose.position.x, 3.01);
+  // 下一拍不应把剩余尾段恢复成已走过的完整路径。
+  ASSERT_TRUE(server->lockPlanningPathForTest(output));
+  EXPECT_EQ(server->lockedPlanningPathForTest().poses.size(), 2u);
+  server->commitPathForTest(
+    makePath({{0.0, 0.0}, {4.0, 0.0}}),
+    nav2_controller::ControllerServer::PathUpdateType::NEW_GOAL);
+  EXPECT_TRUE(server->lockedPlanningPathForTest().poses.empty());
+}
+
+// 终点后移越过中间点时，不能保留“先越点再折返”的速度规划尾段。
+TEST(EndLocalizationBridge, LockedGoalTrimsPointsBeyondParkingPosition)
+{
+  auto server = std::make_shared<ControllerShim>();
+  auto pid = std::make_shared<FakeEndLocalizationController>();
+  server->setEndLocalizationControllerForTest(pid);
+  server->setLocalPlanner(std::make_shared<FakeLocalPlanner>(true));
+  auto tail = makePath({{0.0, 0.0}, {0.02, 0.0}, {0.04, 0.0}});
+  tail.header.frame_id = "odom";
+  for (auto & point : tail.poses) {point.header.frame_id = "odom";}
+  auto goal = tail.poses.back();
+  goal.pose.position.x = 0.015;
+  pid->seedEffectiveGoal(server->goalGeneration(), goal);
+
+  ASSERT_TRUE(server->lockPlanningPathForTest(tail));
+  ASSERT_EQ(tail.poses.size(), 2u);
+  EXPECT_DOUBLE_EQ(tail.poses.front().pose.position.x, 0.0);
+  EXPECT_DOUBLE_EQ(tail.poses.back().pose.position.x, 0.015);
+  nav_msgs::msg::Path output;
+  ASSERT_TRUE(server->runLocalStage(tail, output));
+  EXPECT_EQ(output, tail);
+}
+
+TEST(EndLocalizationBridge, SameGoalUpdatePreservesFrozenTailAndPlannerInput)
+{
+  auto server = std::make_shared<ControllerShim>();
+  auto pid = std::make_shared<FakeEndLocalizationController>();
+  server->setEndLocalizationControllerForTest(pid);
+  server->setLocalPlanner(std::make_shared<FakeLocalPlanner>(true));
+  auto tail = makePath({{0.0, 0.0}, {0.02, 0.0}, {0.04, 0.0}});
+  tail.header.frame_id = "odom";
+  for (auto & point : tail.poses) {point.header.frame_id = "odom";}
+  auto goal = tail.poses.back();
+  goal.pose.position.x = 0.015;
+  pid->seedEffectiveGoal(server->goalGeneration(), goal);
+  ASSERT_TRUE(server->lockPlanningPathForTest(tail));
+  const auto frozen = server->lockedPlanningPathForTest();
+
+  server->updateEndLocalizationPathForTest(
+    makePath({{0.0, 0.0}, {0.02, 0.0}, {0.05, 0.0}}),
+    nav2_controller::ControllerServer::PathUpdateType::SAME_GOAL_GEOMETRY);
+  EXPECT_EQ(server->lockedPlanningPathForTest(), frozen);
+  nav_msgs::msg::Path output;
+  ASSERT_TRUE(server->runLocalStage(tail, output));
+  EXPECT_EQ(output, frozen);
+}
+
+TEST(EndLocalizationBridge, InvalidLockedGoalDoesNotCommitPlanningTail)
+{
+  auto server = std::make_shared<ControllerShim>();
+  auto pid = std::make_shared<FakeEndLocalizationController>();
+  server->setEndLocalizationControllerForTest(pid);
+  auto tail = makePath({{0.0, 0.0}, {0.02, 0.0}});
+  tail.header.frame_id = "odom";
+  for (auto & point : tail.poses) {point.header.frame_id = "odom";}
+  auto goal = tail.poses.back();
+  goal.pose.position.x = std::numeric_limits<double>::quiet_NaN();
+  pid->seedEffectiveGoal(server->goalGeneration(), goal);
+  const auto input = tail;
+
+  EXPECT_FALSE(server->lockPlanningPathForTest(tail));
+  EXPECT_TRUE(server->lockedPlanningPathForTest().poses.empty());
+  EXPECT_EQ(tail, input);
+}
+
+TEST(EndLocalizationBridge, TrimmingPreservesBendAndHandlesBothTravelDirections)
+{
+  for (double sign : {1.0, -1.0}) {
+    auto server = std::make_shared<ControllerShim>();
+    auto pid = std::make_shared<FakeEndLocalizationController>();
+    server->setEndLocalizationControllerForTest(pid);
+    auto tail = makePath({
+      {0.0, 0.0}, {sign * 0.02, 0.0}, {sign * 0.02, 0.02},
+      {sign * 0.02, 0.04}});
+    tail.header.frame_id = "odom";
+    for (auto & point : tail.poses) {point.header.frame_id = "odom";}
+    auto goal = tail.poses.back();
+    goal.pose.position.y = 0.015;
+    pid->seedEffectiveGoal(server->goalGeneration(), goal);
+
+    ASSERT_TRUE(server->lockPlanningPathForTest(tail));
+    ASSERT_EQ(tail.poses.size(), 3u);
+    EXPECT_DOUBLE_EQ(tail.poses[1].pose.position.x, sign * 0.02);
+    EXPECT_DOUBLE_EQ(tail.poses[1].pose.position.y, 0.0);
+    EXPECT_DOUBLE_EQ(tail.poses.back().pose.position.y, 0.015);
+  }
+}
+
+TEST(EndLocalizationBridge, CoincidentStartAndGoalKeepTerminalPoseRoles)
+{
+  auto server = std::make_shared<ControllerShim>();
+  auto pid = std::make_shared<FakeEndLocalizationController>();
+  server->setEndLocalizationControllerForTest(pid);
+  auto tail = makePath({{0.0, 0.0}, {0.0, 0.0}});
+  tail.header.frame_id = "odom";
+  for (auto & point : tail.poses) {point.header.frame_id = "odom";}
+  pid->seedEffectiveGoal(server->goalGeneration(), tail.poses.back());
+
+  ASSERT_TRUE(server->lockPlanningPathForTest(tail));
+  EXPECT_EQ(tail.poses.size(), 2u);
+  EXPECT_DOUBLE_EQ(tail.poses.back().pose.position.x, 0.0);
 }
 
 TEST(InitialMotionState, TerminalInfeasibleOutsideDynamicGuardDoesNotLatch)

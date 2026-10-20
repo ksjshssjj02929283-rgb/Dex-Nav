@@ -76,6 +76,10 @@ if(BUILD_TESTING)
   target_link_libraries(test_pid_speed_loop ${library_name})
   ament_target_dependencies(test_pid_speed_loop ${dependencies})
 
+  ament_add_gtest(test_pid_terminal_capture test/test_pid_terminal_capture.cpp)
+  target_link_libraries(test_pid_terminal_capture ${library_name})
+  ament_target_dependencies(test_pid_terminal_capture ${dependencies})
+
   ament_add_gtest(test_end_localization_lock test/test_end_localization_lock.cpp)
   target_link_libraries(test_end_localization_lock ${library_name})
   ament_target_dependencies(test_end_localization_lock ${dependencies})

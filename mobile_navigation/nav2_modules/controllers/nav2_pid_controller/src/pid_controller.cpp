@@ -399,6 +399,7 @@ void PIDController::resetTaskControlStateLocked(uint64_t goal_generation)
   retry_position_outside_count_ = 0;
   theta_errors_.clear();
   longitude_errors_.clear();
+  goal_stop_capture_count_ = 0;
 
   station_nav2_pid_controller_.Reset();
   speed_nav2_pid_controller_.Reset();
@@ -631,6 +632,8 @@ const char * PIDController::controllerStageName(ControllerStage stage) const
       return "RETRY_ALIGN_TO_POSITION";
     case ControllerStage::RETRY_TRANSLATE:
       return "RETRY_TRANSLATE";
+    case ControllerStage::BRAKING_FOR_GOAL:
+      return "BRAKING_FOR_GOAL";
     default:
       return "UNKNOWN";
   }
@@ -662,11 +665,22 @@ geometry_msgs::msg::TwistStamped PIDController::computeVelocityCommands(
   last_trajectory_tracking_target_valid_ = false;
 
   if (controller_traj_.empty()) {
+    goal_stop_capture_count_ = 0;
     RCLCPP_WARN_THROTTLE(logger_, *clock_, 2000, "computeVelocityCommands: no plan set");
     return cmd_vel;
   }
 
   const double input_pose_yaw = tf2::getYaw(pose.pose.orientation);
+  if (!std::isfinite(input_pose_yaw) ||
+    !std::isfinite(pose.pose.position.x) || !std::isfinite(pose.pose.position.y) ||
+    !std::isfinite(velocity.linear.x) || !std::isfinite(velocity.linear.y) ||
+    !std::isfinite(velocity.angular.z))
+  {
+    goal_stop_capture_count_ = 0;
+    RCLCPP_WARN_THROTTLE(
+      logger_, *clock_, 1000, "PID control stopped; invalid pose or measured velocity.");
+    return cmd_vel;
+  }
 
   // current pose is provided by nav2 in the global frame
   current_ps_ = pose;
@@ -697,6 +711,7 @@ geometry_msgs::msg::TwistStamped PIDController::computeVelocityCommands(
   plan_index_ = getClosestWaypointID(
     controller_traj_, current_ps_, final_target_lock_distance_, true);
   if (plan_index_ < 0) {
+    goal_stop_capture_count_ = 0;
     RCLCPP_WARN(logger_, "computeVelocityCommands: failed to get closest waypoint");
     return cmd_vel;
   }
@@ -761,6 +776,7 @@ geometry_msgs::msg::TwistStamped PIDController::computeVelocityCommands(
     RCLCPP_WARN(
       logger_, "computeVelocityCommands: TF transform to %s failed: %s",
       base_frame_.c_str(), ex.what());
+    goal_stop_capture_count_ = 0;
     return cmd_vel;
   }
   // for reverse, target_in_base.x is negative, so the computed speed is negative too
@@ -823,7 +839,17 @@ geometry_msgs::msg::TwistStamped PIDController::computeVelocityCommands(
     std::fabs(err_y) < final_goal_lat_precision;
   const bool final_goal_error_valid =
     std::isfinite(goal_x_base) && std::isfinite(goal_y_base);
+  if (!final_goal_error_valid) {
+    goal_stop_capture_count_ = 0;
+    return cmd_vel;
+  }
   double effective_goal_yaw = tf2::getYaw(effective_goal_ps.pose.orientation);
+  if (!std::isfinite(goal_dist_global) || !std::isfinite(effective_goal_yaw)) {
+    goal_stop_capture_count_ = 0;
+    RCLCPP_WARN_THROTTLE(
+      logger_, *clock_, 1000, "PID control stopped; invalid goal.");
+    return cmd_vel;
+  }
   // Position accuracy is defined in the fixed final-goal frame, not in the
   // robot frame whose axes rotate during yaw calibration.
   const double goal_longitudinal_error =
@@ -865,7 +891,10 @@ geometry_msgs::msg::TwistStamped PIDController::computeVelocityCommands(
     };
 
   // Step: switch mode
-  if (goal_dist_global > 0.2 || curr_controller_stage_ == ControllerStage::FINISH) {
+  if ((goal_dist_global > 0.2 &&
+    curr_controller_stage_ != ControllerStage::BRAKING_FOR_GOAL) ||
+    curr_controller_stage_ == ControllerStage::FINISH)
+  {
     curr_controller_stage_ = ControllerStage::APPROACHING;
     retry_heading_valid_ = false;
     retry_reverse_ = false;
@@ -874,6 +903,7 @@ geometry_msgs::msg::TwistStamped PIDController::computeVelocityCommands(
     retry_position_outside_count_ = 0;
     theta_errors_.clear();
     longitude_errors_.clear();
+    goal_stop_capture_count_ = 0;
   }
 
   const bool terminal_stop_region =
@@ -891,7 +921,32 @@ geometry_msgs::msg::TwistStamped PIDController::computeVelocityCommands(
     enter_position_retry();
   }
 
-  if (curr_controller_stage_ == ControllerStage::ROTATING_TO_GOAL) {
+  const bool final_linear_motion_stopped =
+    std::hypot(velocity.linear.x, velocity.linear.y) <= final_stop_linear_velocity;
+  if (curr_controller_stage_ == ControllerStage::APPROACHING &&
+    final_goal_position_tolerance)
+  {
+    // 位置到位就收回普通追点控制权，不能继续等待残留规划速度归零。
+    curr_controller_stage_ = ControllerStage::BRAKING_FOR_GOAL;
+    goal_stop_capture_count_ = 0;
+  }
+  if (curr_controller_stage_ == ControllerStage::BRAKING_FOR_GOAL) {
+    if (!final_linear_motion_stopped) {
+      goal_stop_capture_count_ = 0;
+    } else if (++goal_stop_capture_count_ >= retry_position_capture_cycles_) {
+      goal_stop_capture_count_ = 0;
+      if (final_position_hold_tolerance) {
+        curr_controller_stage_ = ControllerStage::ROTATING_TO_GOAL;
+        retry_position_outside_count_ = 0;
+      } else {
+        // 制动期间越点时先停稳，再走已有的固定朝向位置补偿。
+        enter_position_retry();
+      }
+    }
+  }
+  if (curr_controller_stage_ == ControllerStage::ROTATING_TO_GOAL &&
+    final_linear_motion_stopped)
+  {
     // 超4cm立即补偿；2--4cm内只有角度已完成且位置连续超差数周期才补偿。
     // 这样既保持2cm最终精度，也不会因单周期定位波动反复切换状态。
     if (!final_position_hold_tolerance) {
@@ -909,9 +964,6 @@ geometry_msgs::msg::TwistStamped PIDController::computeVelocityCommands(
     }
   }
 
-  const bool final_linear_motion_stopped =
-    std::fabs(desired_linear_vel_) <= final_stop_linear_velocity &&
-    std::fabs(velocity.linear.x) <= final_stop_linear_velocity;
   const bool in_position_retry =
     curr_controller_stage_ == ControllerStage::RETRY_ALIGN_TO_POSITION ||
     curr_controller_stage_ == ControllerStage::RETRY_TRANSLATE;
@@ -932,16 +984,6 @@ geometry_msgs::msg::TwistStamped PIDController::computeVelocityCommands(
       } else {
         retry_position_outside_count_ = 0;
       }
-    }
-  } else {
-    if (curr_controller_stage_ == ControllerStage::APPROACHING &&
-      final_goal_position_tolerance &&
-      final_linear_motion_stopped)
-    {
-      // 进入2cm位置窗口并不等于纵向运动已经完成。继续留在APPROACHING跟踪
-      // 终端轨迹最后一段只有规划与实测均停稳后才交给原地角度校准。
-      curr_controller_stage_ = ControllerStage::ROTATING_TO_GOAL;
-      retry_position_outside_count_ = 0;
     }
   }
 
@@ -994,7 +1036,10 @@ geometry_msgs::msg::TwistStamped PIDController::computeVelocityCommands(
 
   double target_yaw_for_log = theta_dir;
 
-  if (curr_controller_stage_ == ControllerStage::ROTATING_TO_GOAL) {
+  if (curr_controller_stage_ == ControllerStage::BRAKING_FOR_GOAL) {
+    target_yaw_for_log = input_pose_yaw;
+    err_theta = 0.0;
+  } else if (curr_controller_stage_ == ControllerStage::ROTATING_TO_GOAL) {
     if (reverse_enabled_) {
       theta_rob -= M_PI;
       regularizeAngle(theta_rob);
@@ -1048,11 +1093,13 @@ geometry_msgs::msg::TwistStamped PIDController::computeVelocityCommands(
 
   if (curr_controller_stage_ != prev_controller_stage_) {
     if (curr_controller_stage_ == ControllerStage::ROTATING_TO_GOAL ||
+      curr_controller_stage_ == ControllerStage::BRAKING_FOR_GOAL ||
       curr_controller_stage_ == ControllerStage::RETRY_ALIGN_TO_POSITION)
     {
       angular_station_nav2_pid_controller_.Reset();
     }
     if (curr_controller_stage_ == ControllerStage::APPROACHING ||
+      curr_controller_stage_ == ControllerStage::BRAKING_FOR_GOAL ||
       curr_controller_stage_ == ControllerStage::ROTATING_TO_GOAL ||
       curr_controller_stage_ == ControllerStage::RETRY_ALIGN_TO_POSITION ||
       curr_controller_stage_ == ControllerStage::RETRY_TRANSLATE)
@@ -1080,6 +1127,9 @@ geometry_msgs::msg::TwistStamped PIDController::computeVelocityCommands(
       case ControllerStage::RETRY_TRANSLATE:
         RCLCPP_INFO(logger_, "controller stage: RETRY_TRANSLATE");
         break;
+      case ControllerStage::BRAKING_FOR_GOAL:
+        RCLCPP_INFO(logger_, "controller stage: BRAKING_FOR_GOAL.");
+        break;
       default:
         break;
     }
@@ -1089,6 +1139,7 @@ geometry_msgs::msg::TwistStamped PIDController::computeVelocityCommands(
   double angle_to_heading = 0.0;
   const char * active_branch = "unset";
   const bool final_rotation_control =
+    curr_controller_stage_ == ControllerStage::BRAKING_FOR_GOAL ||
     curr_controller_stage_ == ControllerStage::ROTATING_TO_GOAL ||
     curr_controller_stage_ == ControllerStage::RETRY_ALIGN_TO_POSITION;
   last_linear_position_cmd_ = 0.0;
@@ -1142,6 +1193,17 @@ geometry_msgs::msg::TwistStamped PIDController::computeVelocityCommands(
           cmd_vel.twist.angular.z = AngularSpeedControl(velocity, err_theta);
           break;
         }
+      case ControllerStage::BRAKING_FOR_GOAL: {
+          active_branch = "braking_for_goal_zero";
+          station_nav2_pid_controller_.Reset();
+          speed_nav2_pid_controller_.Reset();
+          last_speed_cmd_ = 0.0;
+          last_speed_cmd_valid_ = true;
+          cmd_vel.twist.linear.x = 0.0;
+          // 零指令由下游速度平滑器执行减速，制动期间不再跟随点方位角。
+          cmd_vel.twist.angular.z = AngularSpeedControl(velocity, 0.0, true);
+          break;
+        }
       case ControllerStage::ROTATING_TO_GOAL: {
           // PID_FINAL_POSITION_REFINEMENT_BEGIN
           // 进入最终旋转后不再允许普通巡航；但当航向已经接近目标且横向误差
@@ -1168,7 +1230,7 @@ geometry_msgs::msg::TwistStamped PIDController::computeVelocityCommands(
           // PID_FINAL_POSITION_REFINEMENT_END
 
           // 先停稳再转，避免底盘尚有纵向惯性时同时施加角速度。
-          if (std::fabs(velocity.linear.x) <= final_stop_linear_velocity) {
+          if (final_linear_motion_stopped) {
             cmd_vel.twist.angular.z = AngularSpeedControl(velocity, err_theta, true);
           } else {
             cmd_vel.twist.angular.z = AngularSpeedControl(velocity, 0.0, true);
