@@ -207,19 +207,17 @@ void StatusMonitor::OnDiagnosticsAgg(diagnostic_msgs::msg::DiagnosticArray::Shar
 void StatusMonitor::OnRobotServerState(std_msgs::msg::String::SharedPtr msg) {
     // —— 机器人状态 ——
     try {
-        const auto data = nlohmann::json::parse(msg->data);
+        // 空消息也表示一次明确的非就绪状态，不能作为无效数据跳过安全判断。
+        const auto data = msg->data.find_first_not_of(" \t\r\n") == std::string::npos
+            ? nlohmann::json::object()
+            : nlohmann::json::parse(msg->data);
 
         const std::string statusword =
             data.value("robot_statusword", "");
 
-        if (statusword.empty()) {
-            std::lock_guard<std::mutex> lock(mutex_);
-            snapshot_.robot_status_valid = false;
-            return;
-        }
-
         std::lock_guard<std::mutex> lock(mutex_);
-        snapshot_.robot_statusword = statusword;
+        // 空字段（包括缺失字段）按 NOT_READY 处理，复用现有故障/恢复流程。
+        snapshot_.robot_statusword = statusword.empty() ? "NOT_READY" : statusword;
         snapshot_.robot_status_valid = true;
         snapshot_.robot_status_stamp = node_->now();
 
