@@ -21,7 +21,8 @@ struct ControllerServer::SnapshotRuntime
   {
     uint64_t session{}, revision{};                    ///< 导航任务代次 session 与路径/限速变更版本 revision
     std::shared_ptr<const nav_msgs::msg::Path> path;   ///< 全局路径只读共享指针（仅在路径变化时在锁外构建）
-    geometry_msgs::msg::PoseStamped pose;              ///< 当前机器人在全局路径参考系下的位姿
+    geometry_msgs::msg::PoseStamped pose;              ///< 当前机器人位姿；位置锁存后使用锁存参考系
+    geometry_msgs::msg::PoseStamped locked_position_goal;  ///< 非空时要求规划尾段使用PID的位置锁存参考
     geometry_msgs::msg::Twist velocity;                ///< 当前底盘里程计速度
     nav2_msgs::msg::SpeedLimit limit;                  ///< 当前活动限速指令
     bool has_limit{};                                  ///< 是否处于限速状态

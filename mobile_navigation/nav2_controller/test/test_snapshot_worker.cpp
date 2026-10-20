@@ -8,6 +8,13 @@ class FakeSpeed : public nav2_core::SpeedPlanner
 public:
   std::atomic<int> calls{0};
   std::atomic<bool> block{false}, fail{false};
+  std::mutex input_mutex;
+  nav_msgs::msg::Path last_input;
+  nav_msgs::msg::Path inputPath()
+  {
+    std::lock_guard<std::mutex> lock(input_mutex);
+    return last_input;
+  }
   void configure(
     const rclcpp_lifecycle::LifecycleNode::WeakPtr &, std::string,
     std::shared_ptr<tf2_ros::Buffer>, std::shared_ptr<nav2_costmap_2d::Costmap2DROS>) override {}
@@ -20,11 +27,12 @@ public:
     const nav_msgs::msg::Path & path,
     const nav2_core::InitialMotionState &) override
   {
+    {std::lock_guard<std::mutex> lock(input_mutex); last_input = path;}
     ++calls;
     while (block.load()) {std::this_thread::sleep_for(1ms);}
     nav_interfaces::msg::RobotTrajectory t;
     if (!fail.load()) {
-      t.header.frame_id = "map";
+      t.header.frame_id = path.header.frame_id;
       nav_interfaces::msg::TrajectoryPoint p; p.pose = path.poses.front();
       t.points.push_back(p);
     }
@@ -32,6 +40,38 @@ public:
   }
   void requestCancel() override {block = false;}
 };
+
+// 模拟已经走过重复路段的裁剪器；setPlan会清空进度，与真实插件的契约一致。
+class TailLocalPlanner : public nav2_core::LocalPlanner
+{
+public:
+  std::atomic<int> set_plan_calls{0};
+  void configure(
+    const rclcpp_lifecycle::LifecycleNode::WeakPtr &, std::string,
+    std::shared_ptr<tf2_ros::Buffer>, std::shared_ptr<nav2_costmap_2d::Costmap2DROS>) override {}
+  void cleanup() override {}
+  void activate() override {}
+  void deactivate() override {}
+  void setPlan(const nav_msgs::msg::Path & path) override
+  {
+    plan_ = path;
+    ++set_plan_calls;
+  }
+  bool computeLocalPlan(
+    const geometry_msgs::msg::PoseStamped &, const geometry_msgs::msg::Twist &,
+    nav_msgs::msg::Path & local) override
+  {
+    local = plan_;
+    // 首条路径已有三个点被消费；重设完整路径会丢失这段进度。
+    if (set_plan_calls == 1 && local.poses.size() > 3) {
+      local.poses.erase(local.poses.begin(), local.poses.begin() + 3);
+    }
+    return !local.poses.empty();
+  }
+private:
+  nav_msgs::msg::Path plan_;
+};
+
 class ProbeServer : public nav2_controller::ControllerServer
 {
 public:
@@ -43,14 +83,26 @@ public:
     startSnapshotWorker();
   }
   void stop() {stopSnapshotWorker();}
-  void request(uint64_t session, uint64_t revision)
+  void useLocalPlanner(const std::shared_ptr<TailLocalPlanner> & local)
+  {
+    current_local_planner_ = "tail";
+    local_planners_["tail"] = local;
+  }
+  void request(
+    uint64_t session, uint64_t revision,
+    std::shared_ptr<const nav_msgs::msg::Path> path = nullptr,
+    geometry_msgs::msg::PoseStamped locked_goal = {})
   {
     SnapshotRuntime::Request q;
     q.session = session; q.revision = revision;
-    auto path = std::make_shared<nav_msgs::msg::Path>();
-    path->header.frame_id = "map";
-    geometry_msgs::msg::PoseStamped p; p.header.frame_id = "map";p.pose.orientation.w = 1;
-    path->poses.push_back(p); q.path = path;
+    if (!path) {
+      auto default_path = std::make_shared<nav_msgs::msg::Path>();
+      default_path->header.frame_id = "map";
+      geometry_msgs::msg::PoseStamped p; p.header.frame_id = "map";p.pose.orientation.w = 1;
+      default_path->poses.push_back(p); path = default_path;
+    }
+    q.path = path;
+    q.locked_position_goal = locked_goal;
     std::lock_guard<std::mutex> l(snapshot_runtime_->mutex);
     snapshot_runtime_->request = q; snapshot_runtime_->has_request = true;
     snapshot_runtime_->wake.notify_all();
@@ -78,6 +130,11 @@ public:
   {
     std::lock_guard<std::mutex> l(snapshot_runtime_->mutex);
     return snapshot_runtime_->result ? snapshot_runtime_->result->session : 0;
+  }
+  uint64_t resultRevision()
+  {
+    std::lock_guard<std::mutex> l(snapshot_runtime_->mutex);
+    return snapshot_runtime_->result ? snapshot_runtime_->result->revision : 0;
   }
   bool success()
   {
@@ -152,6 +209,53 @@ TEST(PersistentPlanner, GoalCancellationInvalidatesActiveTrajectoryAndBlocksLate
 
   // 验证此时前台仍然无有效结果 (迟到结果被 Worker 丢弃，没有赋给 result)
   EXPECT_NE(n->resultSession(), 1u);
+}
+
+TEST(PersistentPlanner, PositionLatchKeepsUnconsumedTailAcrossRevisionChanges)
+{
+  auto n = std::make_shared<ProbeServer>();
+  auto local = std::make_shared<TailLocalPlanner>();
+  n->start();
+  auto cleanup = std::shared_ptr<void>(nullptr, [n](void *) {n->stop();});
+  // 工作线程尚无请求，可以安全安装测试裁剪器。
+  n->useLocalPlanner(local);
+  auto path = std::make_shared<nav_msgs::msg::Path>();
+  path->header.frame_id = "odom";
+  for (double x : {0.0, 1.0, 0.0, 2.0, 3.0}) {
+    geometry_msgs::msg::PoseStamped point;
+    point.header.frame_id = "odom";
+    point.pose.position.x = x;
+    point.pose.orientation.w = 1.0;
+    path->poses.push_back(point);
+  }
+  n->request(1, 1, path);
+  ASSERT_TRUE(waitFor([&] {return n->resultRevision() == 1;}));
+  ASSERT_EQ(n->fake->inputPath().poses.size(), 2u);
+  EXPECT_EQ(local->set_plan_calls, 1);
+
+  auto goal = path->poses.back();
+  goal.pose.position.x = 3.01;
+  n->request(1, 2, path, goal);
+  ASSERT_TRUE(waitFor([&] {return n->resultRevision() == 2;}));
+  auto tail = n->fake->inputPath();
+  ASSERT_EQ(tail.poses.size(), 2u);
+  EXPECT_DOUBLE_EQ(tail.poses.front().pose.position.x, 2.0);
+  EXPECT_DOUBLE_EQ(tail.poses.back().pose.position.x, 3.01);
+  EXPECT_EQ(local->set_plan_calls, 2);
+
+  // 限速等revision变化不能再次setPlan，或恢复已走过的重复路段。
+  n->request(1, 3, path, goal);
+  ASSERT_TRUE(waitFor([&] {return n->resultRevision() == 3;}));
+  EXPECT_EQ(local->set_plan_calls, 2);
+  EXPECT_EQ(n->fake->inputPath().poses.size(), 2u);
+
+  // 新任务即使复用同一份路径指针，也必须丢弃上一任务的锁存尾段。
+  n->request(2, 4, path);
+  ASSERT_TRUE(waitFor([&] {return n->resultRevision() == 4;}));
+  EXPECT_EQ(local->set_plan_calls, 3);
+  tail = n->fake->inputPath();
+  ASSERT_EQ(tail.poses.size(), 5u);
+  EXPECT_DOUBLE_EQ(tail.poses.back().pose.position.x, 3.0);
 }
 int main(int argc, char ** argv)
 {

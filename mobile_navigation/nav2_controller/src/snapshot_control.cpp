@@ -3,6 +3,7 @@
 #include "nav2_controller/controller_server.hpp"
 #include "nav2_controller/snapshot_validation.hpp"
 #include "nav2_controller/snapshot_runtime.hpp"
+#include "nav_2d_utils/tf_help.hpp"
 #include <chrono>
 #include <condition_variable>
 #include <functional>
@@ -54,8 +55,11 @@ void ControllerServer::startSnapshotWorker()
   r->publisher->on_activate();
   r->worker = std::thread(
     [this, r]() {
-      uint64_t last_session = 0, last_revision = 0, sequence = 0;
+      uint64_t last_session = 0, last_revision = 0, sequence = 0, path_session = 0;
       bool terminal_latched = false;
+      bool position_latched = false;
+      std::shared_ptr<const nav_msgs::msg::Path> source_path;
+      nav_msgs::msg::Path planning_path;
       auto next = SnapshotClock::now();
       while (true) {
         SnapshotRuntime::Request request;
@@ -79,7 +83,8 @@ void ControllerServer::startSnapshotWorker()
         result->session = request.session; result->revision = request.revision;
         result->sequence = ++sequence;
         const bool new_session = request.session != last_session;
-        const bool new_path = new_session || request.revision != last_revision;
+        // revision也会因限速/位置锁存变化而增加；仅新几何路径才清空裁剪进度。
+        const bool new_path = request.session != path_session || request.path != source_path;
         last_session = request.session; last_revision = request.revision;
         try {
           if (new_session) {terminal_latched = false;}
@@ -88,6 +93,10 @@ void ControllerServer::startSnapshotWorker()
             for (auto & p : local_planners_) {
               p.second->setPlan(*request.path);
             }
+            planning_path = *request.path;
+            source_path = request.path;
+            path_session = request.session;
+            position_latched = false;
           }
           // 2. 限速参数分发
           if (request.has_limit) {
@@ -99,7 +108,7 @@ void ControllerServer::startSnapshotWorker()
             }
           }
           // 3. 执行 LocalPlanner 几何规划（局部路径剪裁与避障搜索）
-          nav_msgs::msg::Path local = *request.path;
+          nav_msgs::msg::Path local = planning_path;
           if (!current_local_planner_.empty() &&
           !local_planners_.at(current_local_planner_)->computeLocalPlan(
             request.pose, request.velocity, local))
@@ -108,6 +117,37 @@ void ControllerServer::startSnapshotWorker()
           }
           if (local.poses.empty() || current_speed_planner_.empty()) {
             throw std::runtime_error("a speed planner and nonempty local path are required");
+          }
+
+          if (!request.locked_position_goal.header.frame_id.empty() && !position_latched) {
+            // 先按旧进度裁剪，再冻结剩余尾段；不把已走路段重新交给投影搜索。
+            const auto & goal = request.locked_position_goal;
+            const auto frame = local.header.frame_id.empty() ?
+              local.poses.front().header.frame_id : local.header.frame_id;
+            if (frame.empty()) {throw std::runtime_error("terminal path frame is empty");}
+            const bool transform_required = frame != goal.header.frame_id;
+            geometry_msgs::msg::TransformStamped transform;
+            if (transform_required) {
+              // 整条尾段共用这一次查询，避免map修正把路径点变换到不同时刻。
+              transform = costmap_ros_->getTfBuffer()->lookupTransform(
+                goal.header.frame_id, frame, tf2::TimePointZero);
+            }
+            for (auto & point : local.poses) {
+              if (!point.header.frame_id.empty() && point.header.frame_id != frame) {
+                throw std::runtime_error("terminal path contains mixed frames");
+              }
+              if (transform_required) {tf2::doTransform(point, point, transform);}
+              point.header.frame_id = goal.header.frame_id;
+            }
+            local.header.frame_id = goal.header.frame_id;
+            // 只同步位置；最终朝向仍由PID的粗调/精调锁存流程负责。
+            local.poses.back().pose.position = goal.pose.position;
+            if (!current_local_planner_.empty()) {
+              // 原进度已编码在尾段起点中；重设后从该点按相对弧长继续，已走前缀不再参与搜索。
+              local_planners_.at(current_local_planner_)->setPlan(local);
+            }
+            planning_path = local;
+            position_latched = true;
           }
 
           // 4. 构建 SpeedPlanner 起点运动边界条件（InitialMotionState）
@@ -237,6 +277,8 @@ bool ControllerServer::computeControlSnapshot()
   uint64_t path_id = std::numeric_limits<uint64_t>::max(), limit_id = 0, accepted = 0;
   std::shared_ptr<const nav_msgs::msg::Path> shared_path;
   uint64_t observed_goal = goal_generation_;
+  bool planning_position_latched = false;
+  geometry_msgs::msg::PoseStamped planning_goal;
   rclcpp::WallRate rate(controller_frequency_);
   while (rclcpp::ok()) {
     // 1. 检查 Action 状态与取消请求
@@ -262,11 +304,29 @@ bool ControllerServer::computeControlSnapshot()
       rate.sleep(); continue;
     }
 
-    // 3. 获取机器人当前在全局路径坐标系下的位姿
+    // 控制线程只传递锁存目标，尾段裁剪和坐标切换由持有进度的规划线程完成。
+    const bool goal_changed = observed_goal != goal_generation_;
+    nav2_core::EndLocalizationSnapshot end_snapshot;
+    const bool latch_planning_position =
+      getEndLocalizationSnapshot(
+      staged_control_enabled_ ? approach_controller_ : current_controller_, end_snapshot) &&
+      end_snapshot.position_goal_latched && end_snapshot.effective_goal_valid &&
+      (!planning_position_latched || goal_changed);
+    const bool planning_path_changed = path_id != speed_plan_path_id_ || goal_changed;
+    if (planning_path_changed) {
+      shared_path = std::make_shared<const nav_msgs::msg::Path>(current_path_);
+    }
+    const bool use_locked_position = latch_planning_position ||
+      (planning_position_latched && !goal_changed);
+    const auto locked_goal = latch_planning_position ?
+      end_snapshot.effective_goal : planning_goal;
+
+    // 3. 锁存后直接读取锁存参考系下的位姿，后续规划不再依赖map位姿修正。
     SnapshotRuntime::Request request;
     if (!nav2_util::getCurrentPose(
         request.pose, *costmap_ros_->getTfBuffer(),
-        current_path_.header.frame_id, costmap_ros_->getBaseFrameID(),
+        use_locked_position ? locked_goal.header.frame_id : shared_path->header.frame_id,
+        costmap_ros_->getBaseFrameID(),
         costmap_ros_->getTransformTolerance()))
     {
       {std::lock_guard<std::mutex> lock(r->mutex); ++r->revision; r->has_request = false;
@@ -278,10 +338,7 @@ bool ControllerServer::computeControlSnapshot()
     request.velocity.linear.x = twist.x; request.velocity.linear.y = twist.y;
     request.velocity.angular.z = twist.theta;
     std::shared_ptr<const SnapshotRuntime::Result> result;
-    // 5. 路径几何变更时在锁外预构造不可变对象，避免持锁进行 Path 深拷贝与堆分配
-    if (path_id != speed_plan_path_id_) {
-      shared_path = std::make_shared<const nav_msgs::msg::Path>(current_path_);
-    }
+    // 5. 路径/位置参考切换使旧规划结果失效，防止跨坐标系消费。
     bool limit_changed = false;
     {
       std::lock_guard<std::mutex> lock(r->mutex);
@@ -290,11 +347,19 @@ bool ControllerServer::computeControlSnapshot()
         observed_goal = goal_generation_;
       }
       limit_changed = limit_id != r->limit_revision;
-      if (path_id != speed_plan_path_id_ || limit_changed) {
+      if (planning_path_changed || limit_changed || latch_planning_position) {
         ++r->revision; r->result.reset();
         path_id = speed_plan_path_id_; limit_id = r->limit_revision;
       }
+      if (goal_changed) {planning_position_latched = false;}
+      if (latch_planning_position) {
+        // 新参考下从实测状态重规划，不把旧map尾段的非零目标速度带过来。
+        planning_position_latched = true;
+        planning_goal = end_snapshot.effective_goal;
+        r->feedback_valid = false;
+      }
       request.path = shared_path;
+      if (use_locked_position) {request.locked_position_goal = locked_goal;}
       request.session = r->session; request.revision = r->revision;
       request.limit = r->limit; request.has_limit = r->has_limit;
       request.acceleration = r->feedback_acceleration;
@@ -307,6 +372,13 @@ bool ControllerServer::computeControlSnapshot()
       r->request = request; r->has_request = true; result = r->result;
     }
     r->wake.notify_one();
+    if (latch_planning_position) {
+      RCLCPP_INFO(
+        get_logger(),
+        "Planning position lock requested in '%s' at (%.3f, %.3f); replanning from measured motion.",
+        planning_goal.header.frame_id.c_str(),
+        planning_goal.pose.position.x, planning_goal.pose.position.y);
+    }
     if (limit_changed) {
       for (auto & c : controllers_) {
         c.second->setSpeedLimit(request.limit.speed_limit, request.limit.percentage);
