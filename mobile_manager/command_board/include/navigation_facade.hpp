@@ -1,12 +1,14 @@
 // 导航门面节点（节点名 navigation，宿主进程 command_board，DEC-035/DEC-037 命名规则）。
 // 对外 L1：~/navigate（统一 action，DEC-042）+ 过渡期保留的 ~/navigate_to_point、~/navigate_route；~/state、~/global_path、~/local_path、~/nav_command。
-// 附：nav_command SET_SPEED_LIMIT 透传 nav2 speed_limit；订阅急停位 → BLOCKED(2201123)；CHECK_REACHABLE 预留（2201110）。
+// 附：nav_command SET_SPEED_LIMIT 与减速区限速取严后发 nav2 speed_limit（门面是该话题唯一发布者）；订阅急停位 → BLOCKED(2201123)；CHECK_REACHABLE 预留（2201110）。
 // 只做契约面：受理 / 目标解析（订阅 map_asset_manager/assets）/ 转发 nav2 / 统一状态机 / 路径转发；不做规划与控制。
 // 形态：独立共享库 navigation_facade + rclcpp_components 组件，宿主可以是 command_board 进程（当前）、mission_manager 进程或任意容器，接口名不随宿主变。
 #pragma once
 
+#include <chrono>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -30,6 +32,8 @@
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp_action/rclcpp_action.hpp>
 #include <std_msgs/msg/bool.hpp>
+
+#include "speed_limit_arbiter.hpp"
 
 namespace command_board {
 
@@ -104,6 +108,8 @@ private:
     void finishLocked(uint8_t state, int32_t code, const std::string& msg);
     void publishStateLocked();
     void publishEmptyPathLocked();
+    void publishSpeedLimitLocked();          // X-Wiz 限速与减速区限速取严，变化时发 speed_limit
+    void refreshSpeedReferenceLocked();      // 异步读 controller_server 当前速度规划器的 max_speed（百分比换算基准）
     bool localizationReady(std::string& why) const;
     std::string newTaskId();
     static bool taskActive(uint8_t s) { return s == State::PENDING || s == State::RUNNING || s == State::PAUSED || s == State::BLOCKED; }
@@ -127,6 +133,7 @@ private:
     void onNavStatus(const nav_interfaces::msg::NavigationStatus::SharedPtr);
     void onDiag(const diagnostic_msgs::msg::DiagnosticArray::SharedPtr);
     void onEstop(const std_msgs::msg::Bool::SharedPtr);
+    void onAreaSpeedLimit(const nav2_msgs::msg::SpeedLimit::SharedPtr);
     void onNavCommand(const std::shared_ptr<nav_interfaces::srv::NavCommand::Request>, std::shared_ptr<nav_interfaces::srv::NavCommand::Response>);
     void onTimer();
 
@@ -140,8 +147,13 @@ private:
     nav_interfaces::msg::LocalizationState loc_state_;
     bool loc_state_seen_{false};
     bool estop_active_{false};
-    float speed_limit_{0.f};
+    float speed_limit_{0.f};                          // X-Wiz 设定的全局限速（state 回显它）
     bool speed_percentage_{false};
+    SpeedLimitValue area_limit_;                      // 减速区限速（SpeedFilter 进出区时发）
+    std::optional<SpeedLimitValue> published_limit_;  // 最近一次发出的仲裁结果，用于去重
+    double speed_ref_max_{0.0};                       // 百分比换算基准；0 = 未知
+    bool speed_ref_pending_{false};
+    std::chrono::steady_clock::time_point speed_ref_requested_at_;
     rclcpp::Time last_local_pub_;
 
     // 参数
@@ -171,6 +183,8 @@ private:
     rclcpp::Subscription<nav_interfaces::msg::NavigationStatus>::SharedPtr nav_status_sub_;
     rclcpp::Subscription<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr diag_sub_;
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr estop_sub_;
+    rclcpp::Subscription<nav2_msgs::msg::SpeedLimit>::SharedPtr area_limit_sub_;
+    std::shared_ptr<rclcpp::AsyncParametersClient> controller_params_;
     rclcpp::Service<nav_interfaces::srv::NavCommand>::SharedPtr cmd_srv_;
     rclcpp::TimerBase::SharedPtr timer_;
 };

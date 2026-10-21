@@ -135,6 +135,10 @@ if(BUILD_TESTING)
     sensor_msgs)
 
   target_include_directories(sensor_monitor_test PRIVATE include)
+
+  # 导航门面限速仲裁（纯函数）
+  ament_add_gtest(speed_limit_arbiter_test test/speed_limit_arbiter_test.cpp)
+  target_include_directories(speed_limit_arbiter_test PRIVATE include)
 endif()
 
 # ── RViz2 状态显示面板（command_board_rviz_plugins）──────────────────

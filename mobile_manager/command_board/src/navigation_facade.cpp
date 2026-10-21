@@ -59,7 +59,9 @@ NavigationFacade::NavigationFacade(const rclcpp::NodeOptions& options)
     const auto nav_status_topic  = declare_parameter<std::string>("nav2_status_topic", "/navigation_status");
     const auto diag_topic        = declare_parameter<std::string>("speed_plan_diag_topic", "/navigation/speed_plan_diagnostics");
     const auto speed_limit_topic = declare_parameter<std::string>("speed_limit_topic", "/speed_limit");       // nav2 controller_server speed_limit_topic
-    const auto estop_topic       = declare_parameter<std::string>("estop_topic", "/emergency_stop");         // std_msgs/Bool 急停位
+    const auto area_limit_topic  = declare_parameter<std::string>("area_speed_limit_topic", "/area_speed_limit");   // 减速区限速输入 = costmap SpeedFilter 的 speed_limit_topic
+    const auto controller_node   = declare_parameter<std::string>("controller_server_node", "controller_server");  // 读当前速度规划器 max_speed 作百分比换算基准
+    const auto estop_topic      = declare_parameter<std::string>("estop_topic", "/emergency_stop");         // std_msgs/Bool 急停位
     const double heartbeat_hz    = declare_parameter<double>("heartbeat_hz", 1.0);
 
     cb_group_ = create_callback_group(rclcpp::CallbackGroupType::Reentrant);
@@ -79,6 +81,8 @@ NavigationFacade::NavigationFacade(const rclcpp::NodeOptions& options)
     nav_status_sub_ = create_subscription<nav_interfaces::msg::NavigationStatus>(nav_status_topic, rclcpp::QoS(10), std::bind(&NavigationFacade::onNavStatus, this, std::placeholders::_1), so);
     diag_sub_       = create_subscription<diagnostic_msgs::msg::DiagnosticArray>(diag_topic, rclcpp::QoS(10), std::bind(&NavigationFacade::onDiag, this, std::placeholders::_1), so);
     estop_sub_      = create_subscription<std_msgs::msg::Bool>(estop_topic, rclcpp::QoS(10), std::bind(&NavigationFacade::onEstop, this, std::placeholders::_1), so);
+    area_limit_sub_ = create_subscription<nav2_msgs::msg::SpeedLimit>(area_limit_topic, rclcpp::QoS(10), std::bind(&NavigationFacade::onAreaSpeedLimit, this, std::placeholders::_1), so);
+    controller_params_ = std::make_shared<rclcpp::AsyncParametersClient>(this, controller_node, rmw_qos_profile_parameters, cb_group_);
 
     n2_pose_client_  = rclcpp_action::create_client<N2Pose>(this, nav2_pose_action, cb_group_);
     n2_poses_client_ = rclcpp_action::create_client<N2Poses>(this, nav2_poses_action, cb_group_);
@@ -511,9 +515,9 @@ void NavigationFacade::onNavCommand(const std::shared_ptr<nav_interfaces::srv::N
             ok("cancel requested for " + task_.id); return;
         case Cmd::Request::OP_SET_SPEED_LIMIT: {
             if (!std::isfinite(req->speed_limit) || req->speed_limit < 0.f || (req->percentage && req->speed_limit > 100.f)) { fail(State::E_NAV_OP_INVALID, "invalid speed_limit (m/s >= 0, or 0~100 when percentage)"); return; }
-            nav2_msgs::msg::SpeedLimit m; m.header.stamp = now(); m.percentage = req->percentage; m.speed_limit = req->speed_limit;   // 0 = nav2 NO_SPEED_LIMIT，控制器恢复默认
-            speed_limit_pub_->publish(m);
-            speed_limit_ = req->speed_limit; speed_percentage_ = req->percentage; publishStateLocked();
+            speed_limit_ = req->speed_limit; speed_percentage_ = req->percentage;   // 0 = 解除；实际下发值与减速区取严
+            if (needsSpeedReference({speed_limit_, speed_percentage_}, area_limit_)) refreshSpeedReferenceLocked();
+            publishSpeedLimitLocked(); publishStateLocked();
             ok(req->speed_limit <= 0.f ? "speed limit cleared" : ("speed limit set to " + std::to_string(req->speed_limit) + (req->percentage ? " %" : " m/s"))); return;
         }
         case Cmd::Request::OP_CHECK_REACHABLE:
@@ -528,7 +532,54 @@ void NavigationFacade::onTimer() {
         RCLCPP_WARN(get_logger(), "task %s: no nav2 feedback for %.1f s, cancelling", task_.id.c_str(), progress_timeout_sec_);
         cancelNav2Locked(CancelReason::TIMEOUT);
     }
+    // 单位不同期间持续刷新换算基准：controller 晚起、运行中切换速度规划器都能跟上
+    if (needsSpeedReference({speed_limit_, speed_percentage_}, area_limit_)) refreshSpeedReferenceLocked();
     publishStateLocked();   // 1 Hz 心跳
+}
+
+void NavigationFacade::onAreaSpeedLimit(const nav2_msgs::msg::SpeedLimit::SharedPtr msg) {
+    if (!std::isfinite(msg->speed_limit) || msg->speed_limit < 0.0) return;
+    std::lock_guard<std::recursive_mutex> lk(mu_);
+    area_limit_ = {msg->speed_limit, static_cast<bool>(msg->percentage)};
+    if (needsSpeedReference({speed_limit_, speed_percentage_}, area_limit_)) refreshSpeedReferenceLocked();
+    publishSpeedLimitLocked();
+}
+
+void NavigationFacade::refreshSpeedReferenceLocked() {
+    constexpr auto kRetryAfter = std::chrono::seconds(2);   // 应答丢失时允许重发
+    const auto t = std::chrono::steady_clock::now();
+    if (speed_ref_pending_ && t - speed_ref_requested_at_ < kRetryAfter) return;
+    if (!controller_params_->service_is_ready()) return;
+    speed_ref_pending_ = true;
+    speed_ref_requested_at_ = t;
+
+    auto apply = [this](double ref) {
+        std::lock_guard<std::recursive_mutex> lk(mu_);
+        speed_ref_pending_ = false;
+        if (ref == speed_ref_max_) return;
+        RCLCPP_INFO(get_logger(), "speed limit percentage reference: %.3f m/s", ref);
+        speed_ref_max_ = ref;
+        publishSpeedLimitLocked();
+    };
+    controller_params_->get_parameters({"current_speed_planner"},
+        [this, apply](std::shared_future<std::vector<rclcpp::Parameter>> f) {
+            std::string planner;
+            try {
+                const auto p = f.get();
+                if (!p.empty() && p[0].get_type() == rclcpp::ParameterType::PARAMETER_STRING) planner = p[0].as_string();
+            } catch (const std::exception&) {}
+            if (planner.empty()) { apply(0.0); return; }   // 速度规划关闭或读不到：按基准未知处理
+            controller_params_->get_parameters({planner + ".max_speed"},
+                [apply](std::shared_future<std::vector<rclcpp::Parameter>> f2) {
+                    double ref = 0.0;
+                    try {
+                        const auto p = f2.get();
+                        if (!p.empty() && p[0].get_type() == rclcpp::ParameterType::PARAMETER_DOUBLE) ref = p[0].as_double();
+                        if (!p.empty() && p[0].get_type() == rclcpp::ParameterType::PARAMETER_INTEGER) ref = static_cast<double>(p[0].as_int());
+                    } catch (const std::exception&) {}
+                    apply(ref > 0.0 ? ref : 0.0);
+                });
+        });
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -545,6 +596,19 @@ void NavigationFacade::publishStateLocked() {
     s.speed_limit = speed_limit_; s.speed_percentage = speed_percentage_;
     state_pub_->publish(s);
     publishActionFeedbackLocked();
+}
+
+void NavigationFacade::publishSpeedLimitLocked() {
+    const SpeedLimitValue global{speed_limit_, speed_percentage_};
+    const auto eff = arbitrateSpeedLimit(global, area_limit_, speed_ref_max_);
+    if (published_limit_ && *published_limit_ == eff) return;
+    nav2_msgs::msg::SpeedLimit m;
+    m.header.stamp = now(); m.percentage = eff.percentage; m.speed_limit = eff.value;   // 0 = nav2 NO_SPEED_LIMIT，控制器恢复默认
+    speed_limit_pub_->publish(m);
+    published_limit_ = eff;
+    RCLCPP_INFO(get_logger(), "speed limit -> %.3f %s (global %.3f %s, area %.3f %s)",
+                eff.value, eff.percentage ? "%" : "m/s", global.value, global.percentage ? "%" : "m/s",
+                area_limit_.value, area_limit_.percentage ? "%" : "m/s");
 }
 
 void NavigationFacade::publishEmptyPathLocked() {
