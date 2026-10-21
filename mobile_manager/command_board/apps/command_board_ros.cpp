@@ -37,6 +37,9 @@ CommandBoardManagerROS::CommandBoardManagerROS() : rclcpp::Node("command_board_m
         this->declare_parameter("service_call_timeout_sec", service_call_timeout_sec_);
     service_wait_timeout_sec_ =
         this->declare_parameter("service_wait_timeout_sec", service_wait_timeout_sec_);
+    robot_status_timeout_sec_ = 
+        this->declare_parameter("robot_status_timeout_sec", robot_status_timeout_sec_);
+    
     react_to_estop_  = this->declare_parameter("react_to_estop", react_to_estop_);
     react_to_bumper_ = this->declare_parameter("react_to_bumper", react_to_bumper_);
     cancel_schedule_planner_ =
@@ -65,6 +68,7 @@ CommandBoardManagerROS::CommandBoardManagerROS() : rclcpp::Node("command_board_m
                      navigation_backend_.c_str());
         navigation_backend_ = "nav2";
     }
+    react_to_robot_status_ = this->declare_parameter("react_to_robot_status", react_to_robot_status_);
 
     // 单一状态源：/diagnostics_agg、/localization/state 由 StatusMonitor 唯一订阅聚合，
     // 本节点不再重复订阅，改在 OnRecoverTimer 轮询 GetSnapshot 读取。
@@ -555,9 +559,23 @@ void CommandBoardManagerROS::OnRecoverTimer() {
         }
     }
 
-    // 3. 急停/碰撞翻转检测（从 StatusMonitor 聚合的安全状态读）。
+    // 3. 急停/碰撞翻转/掉op检测（从 StatusMonitor 聚合的安全状态读）。
+    const bool robot_status_stale =
+        snap.robot_status_valid &&
+        (now - snap.robot_status_stamp).seconds() >
+            robot_status_timeout_sec_;
+
+    const bool robot_not_ready =
+        snap.robot_status_valid &&
+        snap.robot_statusword != "READY" &&
+        snap.robot_statusword != "ENABLED";
+
+    const bool robot_status_fault =
+        react_to_robot_status_ &&
+        (robot_not_ready || robot_status_stale);
     const bool active = (react_to_estop_ && snap.is_estop_active) ||
-                        (react_to_bumper_ && (snap.bumper_front_active || snap.bumper_rear_active));
+                        (react_to_bumper_ && (snap.bumper_front_active || snap.bumper_rear_active)) ||
+                        robot_status_fault;
     if (active && !safety_active_) {
         navigation_action_client_->async_cancel_all_goals();
         // 路网任务跑在 NavigateThroughGraphPoints 上，上面那刀砍不到它
