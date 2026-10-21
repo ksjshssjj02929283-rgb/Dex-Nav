@@ -147,6 +147,8 @@ void KeepoutFilter::maskCallback(
   mask_costmap_ = std::make_unique<Costmap2D>(*msg);
   mask_frame_ = msg->header.frame_id;
   maskReceived();
+  // 新掩膜可能增加或删除禁行区，整张 costmap 重算一次才能全图生效
+  requestFullUpdate();
 }
 
 void KeepoutFilter::process(

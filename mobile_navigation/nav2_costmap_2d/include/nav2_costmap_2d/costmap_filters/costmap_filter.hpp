@@ -43,6 +43,7 @@
 
 #include <string>
 #include <mutex>
+#include <atomic>
 
 #include "geometry_msgs/msg/pose2_d.hpp"
 #include "std_srvs/srv/set_bool.hpp"
@@ -187,6 +188,14 @@ protected:
   void resetMaskWarningState();
 
   /**
+   * @brief 请求下一轮 updateBounds 把更新范围扩到整张 costmap 一次。
+   * 过滤器自身不上报更新范围，掩膜变化后只有其它图层本轮更新的窗口会重算；
+   * 掩膜内容会改变 costmap 的过滤器（如 keepout）在收到新掩膜时调用，使新增、删除的区域全图生效。
+   * 可在任意线程调用。
+   */
+  void requestFullUpdate();
+
+  /**
    * @brief:  Transforms robot pose from current layer frame to mask frame
    * @param:  global_frame Costmap frame to transform from
    * @param:  global_pose Robot pose in costmap frame
@@ -263,6 +272,11 @@ private:
    * @brief: Tracks whether the "mask was not received" warning has already been emitted.
    */
   bool mask_not_received_warned_;
+
+  /**
+   * @brief: 是否在下一轮 updateBounds 扩到整张 costmap（requestFullUpdate 置位，消费后清除）
+   */
+  std::atomic<bool> full_update_requested_{false};
 };
 
 }  // namespace nav2_costmap_2d

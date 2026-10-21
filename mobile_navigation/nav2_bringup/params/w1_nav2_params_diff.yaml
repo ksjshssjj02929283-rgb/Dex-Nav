@@ -931,6 +931,7 @@ local_costmap:
       # footprint: "[ [0.55, 0.35], [0.55, -0.35], [-0.55, -0.35], [-0.55, 0.35] ]" # 带 padding 的保守选项（1.10×0.70）
       # plugins: ["voxel_layer", "denoise_layer", "inflation_layer"]  output_topic: "control/cmd_vel_nav"
       plugins: ["static_layer", "obstacle_layer", "denoise_layer", "inflation_layer"]   
+      filters: ["keepout_filter"]   # 禁行区 / 虚拟墙：订阅资产节点发布的 /keepout_filter_mask
       # plugins: ["obstacle_layer", "voxel_layer", "denoise_layer", "inflation_layer"]
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
@@ -1031,6 +1032,8 @@ global_costmap:
       # plugins: ["static_layer", "obstacle_layer",  "denoise_layer", "inflation_layer"]
       # plugins: ["static_layer", "voxel_layer", "denoise_layer", "inflation_layer"]
       plugins: ["static_layer", "obstacle_layer", "denoise_layer", "inflation_layer"]
+      filters: ["keepout_filter"]   # 禁行区 / 虚拟墙：订阅资产节点发布的 /keepout_filter_mask
+      # speed_filter 暂不加入：它与导航门面同发 /speed_limit，进出减速区会覆盖 X-Wiz 设置的全局限速
       denoise_layer:
         plugin: "nav2_costmap_2d::DenoiseLayer"
         enabled: True
