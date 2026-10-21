@@ -3,6 +3,10 @@
 # 顶层用 /** 通配，匹配任意运行时节点名，确保参数注入。
 /**:
   ros__parameters:
+    # CommandBoardManager 运行时参数
+    pose_cache_min_score: 0.55  # 缓存位姿：score >= 此值
+    reloc_score_good: 0.6      # 恢复成功、解除恢复告警：score >= 此值
+
     # ── AutoMapSaver (DEC-005 + DEC-006 daily trigger) ───────────
     # 自动保存是唯一需运营调整的参数组（日触发时刻 + 6 保存条件阈值），显式暴露。
     auto_map_saver:
