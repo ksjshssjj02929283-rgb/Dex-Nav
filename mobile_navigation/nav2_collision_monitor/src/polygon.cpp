@@ -90,6 +90,7 @@ bool Polygon::configure()
 
 void Polygon::activate()
 {
+  front_padding_.store(default_front_padding_, std::memory_order_relaxed);
   if (visualize_) {
     polygon_pub_->on_activate();
   }
@@ -97,6 +98,7 @@ void Polygon::activate()
 
 void Polygon::deactivate()
 {
+  front_padding_.store(default_front_padding_, std::memory_order_relaxed);
   if (visualize_) {
     polygon_pub_->on_deactivate();
   }
@@ -140,6 +142,7 @@ void Polygon::setPolygon(const geometry_msgs::msg::Polygon & polygon)
     poly_.push_back({point.x, point.y});
   }
   polygon_ = polygon;
+  updateBoundingBox();
 }
 
 void Polygon::setPadding(double padding)
@@ -154,9 +157,43 @@ double Polygon::getPadding() const
   return padding_.load(std::memory_order_relaxed);
 }
 
+void Polygon::setFrontPadding(const double front_padding)
+{
+  // NaN 或负数 → 置 0
+  const double applied = (std::isnan(front_padding) || front_padding < 0.0) ? 0.0 : front_padding;
+  front_padding_.store(applied, std::memory_order_relaxed);
+}
+
+double Polygon::getFrontPadding() const
+{
+  return front_padding_.load(std::memory_order_relaxed);
+}
+
+void Polygon::setRearPadding(const double rear_padding)
+{
+  // NaN 或负数 → 置 0
+  const double applied = (std::isnan(rear_padding) || rear_padding < 0.0) ? 0.0 : rear_padding;
+  rear_padding_.store(applied, std::memory_order_relaxed);
+}
+
+double Polygon::getRearPadding() const
+{
+  return rear_padding_.load(std::memory_order_relaxed);
+}
+
 double Polygon::getDefaultPadding() const
 {
   return default_padding_;
+}
+
+double Polygon::getDefaultFrontPadding() const
+{
+  return default_front_padding_;
+}
+
+double Polygon::getDefaultRearPadding() const
+{
+  return default_rear_padding_;
 }
 
 void Polygon::setLateralPaddingOnly(bool enabled)
@@ -172,64 +209,104 @@ bool Polygon::isLateralPaddingOnly() const
 void Polygon::getEffectivePolygon(std::vector<Point> & poly) const
 {
   const double padding = padding_.load(std::memory_order_relaxed);
+  const double front_padding = front_padding_.load(std::memory_order_relaxed);
   const std::size_t n = poly_.size();
-  if (padding <= 0.0 || n < 3) {
+  if (n < 3) {
     poly = poly_;
     return;
   }
 
   if (lateral_padding_only_.load(std::memory_order_relaxed)) {
     poly = poly_;
-    for (Point & point : poly) {
-      if (point.y > 0.0) {
-        point.y += padding;
-      } else if (point.y < 0.0) {
-        point.y -= padding;
+    if (padding > 0.0) {
+      for (Point & point : poly) {
+        if (point.y > 0.0) {
+          point.y += padding;
+        } else if (point.y < 0.0) {
+          point.y -= padding;
+        }
       }
     }
     return;
   }
 
-  // 顶点沿相邻两边外法线的角平分线外推（凸角为精确 miter 接头）。
-  // 仅用于可视化，凹角处会略微失真，判定不依赖这里。
-  // 绕向：有向面积 > 0 为逆时针，外法线取 (dy, -dx)；顺时针则取 (-dy, dx)。
-  double area2 = 0.0;
-  for (std::size_t i = 0; i < n; i++) {
-    const Point & a = poly_[i];
-    const Point & b = poly_[(i + 1) % n];
-    area2 += a.x * b.y - b.x * a.y;
-  }
-  const double sign = (area2 >= 0.0) ? 1.0 : -1.0;
-
-  auto edge_normal = [sign](const Point & a, const Point & b) {
-      const double dx = b.x - a.x;
-      const double dy = b.y - a.y;
-      const double len = std::hypot(dx, dy);
-      if (len < 1e-9) {
-        return Point{0.0, 0.0};
-      }
-      return Point{sign * dy / len, -sign * dx / len};
-    };
-
-  poly.resize(n);
-  for (std::size_t i = 0; i < n; i++) {
-    const Point n1 = edge_normal(poly_[(i + n - 1) % n], poly_[i]);
-    const Point n2 = edge_normal(poly_[i], poly_[(i + 1) % n]);
-    double bx = n1.x + n2.x;
-    double by = n1.y + n2.y;
-    const double blen = std::hypot(bx, by);
-    if (blen < 1e-9) {
-      // 两边反向（退化的尖角），无法求角平分线，退回单边法线
-      poly[i] = {poly_[i].x + n2.x * padding, poly_[i].y + n2.y * padding};
-      continue;
+  if (padding <= 0.0) {
+    poly = poly_;
+  } else {
+    // 顶点沿相邻两边外法线的角平分线外推（凸角为精确 miter 接头）。
+    // 仅用于可视化，凹角处会略微失真，判定不依赖这里。
+    // 绕向：有向面积 > 0 为逆时针，外法线取 (dy, -dx)；顺时针则取 (-dy, dx)。
+    double area2 = 0.0;
+    for (std::size_t i = 0; i < n; i++) {
+      const Point & a = poly_[i];
+      const Point & b = poly_[(i + 1) % n];
+      area2 += a.x * b.y - b.x * a.y;
     }
-    bx /= blen;
-    by /= blen;
-    // miter 长度 = padding / cos(θ/2)，cos(θ/2) 即单位角平分线与边法线的夹角余弦
-    const double cos_half = bx * n1.x + by * n1.y;
-    // 夹角过尖时 miter 会飞出去，限幅到 5 倍 padding
-    const double scale = padding / std::max(cos_half, 0.2);
-    poly[i] = {poly_[i].x + bx * scale, poly_[i].y + by * scale};
+    const double sign = (area2 >= 0.0) ? 1.0 : -1.0;
+
+    auto edge_normal = [sign](const Point & a, const Point & b) {
+        const double dx = b.x - a.x;
+        const double dy = b.y - a.y;
+        const double len = std::hypot(dx, dy);
+        if (len < 1e-9) {
+          return Point{0.0, 0.0};
+        }
+        return Point{sign * dy / len, -sign * dx / len};
+      };
+
+    poly.resize(n);
+    for (std::size_t i = 0; i < n; i++) {
+      const Point n1 = edge_normal(poly_[(i + n - 1) % n], poly_[i]);
+      const Point n2 = edge_normal(poly_[i], poly_[(i + 1) % n]);
+      double bx = n1.x + n2.x;
+      double by = n1.y + n2.y;
+      const double blen = std::hypot(bx, by);
+      if (blen < 1e-9) {
+        // 两边反向（退化的尖角），无法求角平分线，退回单边法线
+        poly[i] = {poly_[i].x + n2.x * padding, poly_[i].y + n2.y * padding};
+        continue;
+      }
+      bx /= blen;
+      by /= blen;
+      // miter 长度 = padding / cos(θ/2)，cos(θ/2) 即单位角平分线与边法线的夹角余弦
+      const double cos_half = bx * n1.x + by * n1.y;
+      // 夹角过尖时 miter 会飞出去，限幅到 5 倍 padding
+      const double scale = padding / std::max(cos_half, 0.2);
+      poly[i] = {poly_[i].x + bx * scale, poly_[i].y + by * scale};
+    }
+  }
+
+  // 前向额外外扩（仅在 front_padding > padding 时生效）：
+  // 将基础轮廓中位于最前端（x 近似等于 x_max）的顶点推移到 x_max + front_padding
+  if (front_padding > padding) {
+    double base_max_x = -std::numeric_limits<double>::infinity();
+    for (const Point & p : poly_) {
+      if (p.x > base_max_x) {
+        base_max_x = p.x;
+      }
+    }
+    for (std::size_t i = 0; i < n; ++i) {
+      if (std::abs(poly_[i].x - base_max_x) < 1e-4) {
+        poly[i].x = base_max_x + front_padding;
+      }
+    }
+  }
+
+  // 后向额外外扩（仅在 rear_padding > padding 时生效）：
+  // 将基础轮廓中位于最尾端（x 近似等于 x_min）的顶点推移到 x_min - rear_padding
+  const double rear_padding = rear_padding_.load(std::memory_order_relaxed);
+  if (rear_padding > padding) {
+    double base_min_x = std::numeric_limits<double>::infinity();
+    for (const Point & p : poly_) {
+      if (p.x < base_min_x) {
+        base_min_x = p.x;
+      }
+    }
+    for (std::size_t i = 0; i < n; ++i) {
+      if (std::abs(poly_[i].x - base_min_x) < 1e-4) {
+        poly[i].x = base_min_x - rear_padding;
+      }
+    }
   }
 }
 
@@ -258,6 +335,27 @@ double Polygon::distanceToBoundary(const Point & point) const
   return min_dist;
 }
 
+void Polygon::updateBoundingBox()
+{
+  if (poly_.empty()) {
+    base_min_x_ = 0.0;
+    base_max_x_ = 0.0;
+    base_min_y_ = 0.0;
+    base_max_y_ = 0.0;
+    return;
+  }
+  base_min_x_ = std::numeric_limits<double>::infinity();
+  base_max_x_ = -std::numeric_limits<double>::infinity();
+  base_min_y_ = std::numeric_limits<double>::infinity();
+  base_max_y_ = -std::numeric_limits<double>::infinity();
+  for (const Point & p : poly_) {
+    base_min_x_ = std::min(base_min_x_, p.x);
+    base_max_x_ = std::max(base_max_x_, p.x);
+    base_min_y_ = std::min(base_min_y_, p.y);
+    base_max_y_ = std::max(base_max_y_, p.y);
+  }
+}
+
 void Polygon::updatePolygon()
 {
   if (footprint_sub_ != nullptr) {
@@ -282,15 +380,57 @@ void Polygon::updatePolygon()
       p_s.y = footprint_vec[i].y;
       polygon_.points[i] = p_s;
     }
+    updateBoundingBox();
   }
 }
 
-int Polygon::getPointsInside(const std::vector<Point> & points) const
+int Polygon::getPointsInside(
+  const std::vector<Point> & points,
+  int early_exit_threshold) const
 {
+  return getPointsInside(std::vector<const std::vector<Point> *>{&points}, early_exit_threshold);
+}
+
+int Polygon::getPointsInside(
+  const std::vector<const std::vector<Point> *> & point_buffers,
+  int early_exit_threshold) const
+{
+  if (poly_.empty()) {
+    return 0;
+  }
+
+  // 批量计算当前生效的整体 AABB 包围盒（每个控制周期各多边形只算一次）
+  const double padding = padding_.load(std::memory_order_relaxed);
+  const double front_padding = front_padding_.load(std::memory_order_relaxed);
+  const double rear_padding = rear_padding_.load(std::memory_order_relaxed);
+  const double eff_pad = std::max(0.0, padding);
+  const double eff_front = std::max(eff_pad, front_padding);
+  const double eff_rear = std::max(eff_pad, rear_padding);
+
+  const double aabb_min_x = base_min_x_ - eff_rear;
+  const double aabb_max_x = base_max_x_ + eff_front;
+  const double aabb_min_y = base_min_y_ - eff_pad;
+  const double aabb_max_y = base_max_y_ + eff_pad;
+
   int num = 0;
-  for (const Point & point : points) {
-    if (isPointInside(point)) {
-      num++;
+  for (const auto * buf : point_buffers) {
+    if (!buf) {
+      continue;
+    }
+    for (const Point & point : *buf) {
+      // 快速 AABB 粗筛：瞬间剔除 90%~95% 以上在保护区外的远端点（无需射线计算与开方）
+      if (point.x < aabb_min_x || point.x > aabb_max_x ||
+          point.y < aabb_min_y || point.y > aabb_max_y)
+      {
+        continue;
+      }
+      if (isPointInside(point)) {
+        num++;
+        // 提前终止（Early-Exit）：达到触发阈值立即返回，跳过后续全部点
+        if (early_exit_threshold > 0 && num >= early_exit_threshold) {
+          return num;
+        }
+      }
     }
   }
   return num;
@@ -339,10 +479,18 @@ void Polygon::publish() const
     throw std::runtime_error{"Failed to lock node"};
   }
 
+  const rclcpp::Time now = node->now();
+  // 限制可视化多边形发布频率不超过 5 Hz (200ms)，大幅降低 DDS 序列化与下游 rosbridge 负载
+  const double elapsed = (now - last_publish_time_).seconds();
+  if (elapsed < 0.2 && elapsed >= 0.0) {
+    return;
+  }
+  last_publish_time_ = now;
+
   // Fill PolygonStamped struct
   std::unique_ptr<geometry_msgs::msg::PolygonStamped> poly_s =
     std::make_unique<geometry_msgs::msg::PolygonStamped>();
-  poly_s->header.stamp = node->now();
+  poly_s->header.stamp = now;
   poly_s->header.frame_id = base_frame_id_;
   // 每次发布都按当前 padding 现算轮廓，这样 rviz 里看到的就是实际生效的检测范围
   // （本仓库相对上游 Nav2 的改动：上游直接发缓存的 polygon_）
@@ -422,6 +570,28 @@ bool Polygon::getCommonParameters(std::string & polygon_pub_topic)
     padding_.store(default_padding_, std::memory_order_relaxed);
 
     nav2_util::declare_parameter_if_not_declared(
+      node, polygon_name_ + ".front_padding", rclcpp::ParameterValue(0.0));
+    default_front_padding_ = node->get_parameter(polygon_name_ + ".front_padding").as_double();
+    if (default_front_padding_ < 0.0) {
+      RCLCPP_WARN(
+        logger_, "[%s]: front_padding %.3f < 0, clamped to 0",
+        polygon_name_.c_str(), default_front_padding_);
+      default_front_padding_ = 0.0;
+    }
+    front_padding_.store(default_front_padding_, std::memory_order_relaxed);
+
+    nav2_util::declare_parameter_if_not_declared(
+      node, polygon_name_ + ".rear_padding", rclcpp::ParameterValue(0.0));
+    default_rear_padding_ = node->get_parameter(polygon_name_ + ".rear_padding").as_double();
+    if (default_rear_padding_ < 0.0) {
+      RCLCPP_WARN(
+        logger_, "[%s]: rear_padding %.3f < 0, clamped to 0",
+        polygon_name_.c_str(), default_rear_padding_);
+      default_rear_padding_ = 0.0;
+    }
+    rear_padding_.store(default_rear_padding_, std::memory_order_relaxed);
+
+    nav2_util::declare_parameter_if_not_declared(
       node, polygon_name_ + ".visualize", rclcpp::ParameterValue(false));
     visualize_ = node->get_parameter(polygon_name_ + ".visualize").as_bool();
     if (visualize_) {
@@ -495,6 +665,7 @@ bool Polygon::getParameters(std::string & polygon_pub_topic, std::string & footp
       }
       first = !first;
     }
+    updateBoundingBox();
   } catch (const std::exception & ex) {
     RCLCPP_ERROR(
       logger_,
@@ -508,6 +679,24 @@ bool Polygon::getParameters(std::string & polygon_pub_topic, std::string & footp
 
 inline bool Polygon::isPointInside(const Point & point) const
 {
+  if (poly_.empty()) {
+    return false;
+  }
+
+  // ── AABB 快速粗筛 ──
+  const double padding = padding_.load(std::memory_order_relaxed);
+  const double front_padding = front_padding_.load(std::memory_order_relaxed);
+  const double rear_padding = rear_padding_.load(std::memory_order_relaxed);
+  const double eff_pad = std::max(0.0, padding);
+  const double eff_front = std::max(eff_pad, front_padding);
+  const double eff_rear = std::max(eff_pad, rear_padding);
+
+  if (point.x < (base_min_x_ - eff_rear) || point.x > (base_max_x_ + eff_front) ||
+      point.y < (base_min_y_ - eff_pad) || point.y > (base_max_y_ + eff_pad))
+  {
+    return false;
+  }
+
   // Adaptation of Shimrat, Moshe. "Algorithm 112: position of point relative to polygon."
   // Communications of the ACM 5.8 (1962): 434.
   // Implementation of ray crossings algorithm for point in polygon task solving.
@@ -551,14 +740,47 @@ inline bool Polygon::isPointInside(const Point & point) const
     return false;
   }
 
-  // 动态膨胀（本仓库相对上游 Nav2 的改动）：点在基础形状外时，再看它到边界的距离。
-  // "在基础形状内 或 到边界距离 < padding" 精确等价于对基础形状做 padding 的
-  // Minkowski 膨胀，对凹多边形同样成立，且不需要真的把多边形做大。
-  const double padding = padding_.load(std::memory_order_relaxed);
-  if (padding <= 0.0) {
-    return false;
+  // ── 基础多边形膨胀判定 ──
+  // "在基础形状内 或 到边界距离 < padding" 等价于对基础形状做 Minkowski 膨胀，
+  // 保证后向与两侧维持固定的基础外扩保护（默认 0.10m）
+  if (padding > 0.0 && distanceToBoundary(point) < padding) {
+    return true;
   }
-  return distanceToBoundary(point) < padding;
+
+  // ── 速度分档前向/后向额外外扩判定（A8 规范及倒车扩充）──
+  // 仅在非“仅横向模式”且有多边形轮廓时生效：
+  // 采用“沿运动方向单向速度扩展”：
+  // 前向：在基础轮廓前沿增加外接矩形区：x ∈ [x_max, x_max + front_padding]，y ∈ [y_min - padding, y_max + padding]；
+  // 后向：在基础轮廓后沿增加外接矩形区：x ∈ [x_min - rear_padding, x_min]，y ∈ [y_min - padding, y_max + padding]；
+  // 判定为真即表示障碍物已进入当前运动方向和速度档位对应的停止距离保护区内。
+  const bool check_front = (front_padding > padding && !poly_.empty());
+  const bool check_rear = (rear_padding > padding && !poly_.empty());
+
+  if (check_front || check_rear) {
+    const double min_x = base_min_x_;
+    const double max_x = base_max_x_;
+    const double min_y = base_min_y_;
+    const double max_y = base_max_y_;
+    const double effective_padding = eff_pad;
+
+    // 前向扩展区命中判定
+    if (check_front &&
+      point.x >= max_x && point.x <= (max_x + front_padding) &&
+      point.y >= (min_y - effective_padding) && point.y <= (max_y + effective_padding))
+    {
+      return true;
+    }
+
+    // 后向扩展区命中判定（倒车工况）
+    if (check_rear &&
+      point.x <= min_x && point.x >= (min_x - rear_padding) &&
+      point.y >= (min_y - effective_padding) && point.y <= (max_y + effective_padding))
+    {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 }  // namespace nav2_collision_monitor

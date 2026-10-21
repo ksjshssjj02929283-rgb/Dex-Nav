@@ -52,12 +52,14 @@ set(library_name ${executable_name}_core)
 
 add_library(${library_name} SHARED
   src/collision_monitor_node.cpp
+  src/collision_monitor_node_visualization.cpp
   src/polygon.cpp
   src/circle.cpp
   src/source.cpp
   src/scan.cpp
   src/pointcloud.cpp
   src/range.cpp
+  src/range_filter.cpp
   src/kinematics.cpp
 )
 

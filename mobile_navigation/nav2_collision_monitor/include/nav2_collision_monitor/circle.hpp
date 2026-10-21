@@ -67,10 +67,23 @@ public:
   /**
    * @brief Gets number of points inside circle
    * @param points Input array of points to be checked
+   * @param early_exit_threshold If > 0, stops counting and returns immediately when points reach this threshold
    * @return Number of points inside circle. If there are no points,
    * returns zero value.
    */
-  int getPointsInside(const std::vector<Point> & points) const override;
+  int getPointsInside(
+    const std::vector<Point> & points,
+    int early_exit_threshold = -1) const override;
+
+  /**
+   * @brief Gets number of points inside circle across multiple point buffers
+   * @param point_buffers Vector of pointers to point cloud buffers
+   * @param early_exit_threshold If > 0, stops counting and returns immediately when points reach this threshold
+   * @return Number of points inside circle.
+   */
+  int getPointsInside(
+    const std::vector<const std::vector<Point> *> & point_buffers,
+    int early_exit_threshold = -1) const override;
 
 protected:
   /**

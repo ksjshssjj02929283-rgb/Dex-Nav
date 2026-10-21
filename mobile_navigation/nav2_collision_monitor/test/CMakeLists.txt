@@ -48,3 +48,14 @@ ament_target_dependencies(collision_monitor_control_loop_test
 target_link_libraries(collision_monitor_control_loop_test
   ${library_name}
 )
+
+# Range filter standalone unit test
+ament_add_gtest(range_filter_test
+  range_filter_test.cpp
+)
+ament_target_dependencies(range_filter_test
+  ${dependencies}
+)
+target_link_libraries(range_filter_test
+  ${library_name}
+)

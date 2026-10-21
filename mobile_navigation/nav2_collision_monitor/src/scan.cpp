@@ -85,9 +85,9 @@ void Scan::dataCallback(sensor_msgs::msg::LaserScan::ConstSharedPtr msg)
   last_source_stamp_ns_.store(
     rclcpp::Time(msg->header.stamp).nanoseconds(), std::memory_order_release);
   const auto receipt = std::chrono::steady_clock::now().time_since_epoch();
-  last_received_steady_ns_.store(
-    std::chrono::duration_cast<std::chrono::nanoseconds>(receipt).count(),
-    std::memory_order_release);
+  const auto receipt_ns =
+    std::chrono::duration_cast<std::chrono::nanoseconds>(receipt).count();
+  last_received_steady_ns_.store(receipt_ns, std::memory_order_release);
   std::atomic_store(&data_, msg);
   auto processed = std::make_shared<ProcessedScan>();
   processed->source_stamp = msg->header.stamp;
@@ -101,12 +101,19 @@ void Scan::dataCallback(sensor_msgs::msg::LaserScan::ConstSharedPtr msg)
 
   // Transform once per sensor frame. The 100 Hz control loop only reads cached points.
   // Keep the acquisition timestamp on the source leg; only the target base pose is latest.
+  // ── A3 规范：TF 坐标转换有效性判定 ──
+  // 必须在 TF 坐标转换成功后，才将当前帧标记为有效并更新 last_valid_frame_steady_ns_。
+  // 若 TF 转换失败，此时间戳不刷新，下游 checkSensorTimeout 连续超时后将判定为 SENSOR_FAULT，
+  // 彻底根除“看得见但转不出坐标被当成没有障碍放行”的安全隐患。
   tf2::Transform tf_transform;
   if (!getLatestTransform(msg->header.frame_id, rclcpp::Time(msg->header.stamp), tf_transform)) {
     std::atomic_store(&processed_data_, std::shared_ptr<const ProcessedScan>(processed));
     data_sequence_.fetch_add(1, std::memory_order_release);
     return;
   }
+
+  // 坐标转换成功，记录有效帧单调时间戳
+  last_valid_frame_steady_ns_.store(receipt_ns, std::memory_order_release);
 
   // Beam geometry normally remains constant for the lifetime of a scanner. Cache the exact
   // directions produced by the original float-angle algorithm, avoiding thousands of repeated
@@ -139,9 +146,13 @@ void Scan::dataCallback(sensor_msgs::msg::LaserScan::ConstSharedPtr msg)
         msg->ranges[i] * directions->unit_vectors[i].y,
         0.0);
       tf2::Vector3 p_v3_b = tf_transform * p_v3_s;
+      const double px = p_v3_b.x();
+      const double py = p_v3_b.y();
 
-      // Refill data array
-      processed->points.push_back({p_v3_b.x(), p_v3_b.y()});
+      // 距离绝对剪枝：超出 max_obstacle_distance_sq_ 的远端点直接剔除
+      if (px * px + py * py <= max_obstacle_distance_sq_) {
+        processed->points.push_back({px, py});
+      }
     }
   }
   processed->transform_valid = true;

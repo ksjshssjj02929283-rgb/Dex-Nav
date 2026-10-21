@@ -896,6 +896,69 @@ TEST_F(Tester, testIgnoreTimeShift)
   checkRange(data);
 }
 
+// 9.3.5 UT-FILTER-05: 探测范围截断断言（0.7m 内有效生成点云，超出 0.8m 被截断过滤）
+TEST_F(Tester, testRangeMaxDetectionRangeTruncation)
+{
+  createSources();
+
+  // 1. 设置 max_detection_range = 0.8m
+  test_node_->set_parameter(
+    rclcpp::Parameter(std::string(RANGE_NAME) + ".max_detection_range", 0.8));
+  range_->configure();
+
+  // 2. 输入 0.70m: 位于量程内，应成功输出障碍点（带基坐标系 0.1m TF 偏移后约 0.80m）
+  const auto stamp1 = test_node_->now();
+  sendTransforms(stamp1);
+  test_node_->publishRange(stamp1, 0.70);
+  ASSERT_TRUE(waitRange(500ms));
+  std::vector<nav2_collision_monitor::Point> data;
+  range_->getData(stamp1, data);
+  EXPECT_FALSE(data.empty());
+  for (const auto & p : data) {
+    EXPECT_NEAR(std::hypot(p.x, p.y), 0.80, 0.05);
+  }
+
+  // 3. 构造 0.90m 消息直接调用 dataCallback: 超出 0.8m 量程，内部应截断忽略
+  const auto stamp2 = test_node_->now();
+  sendTransforms(stamp2);
+  auto out_of_range_msg = std::make_shared<sensor_msgs::msg::Range>();
+  out_of_range_msg->header.frame_id = SOURCE_FRAME_ID;
+  out_of_range_msg->header.stamp = stamp2;
+  out_of_range_msg->radiation_type = 0;
+  out_of_range_msg->field_of_view = M_PI / 10;
+  out_of_range_msg->min_range = 0.1;
+  out_of_range_msg->max_range = 1.1;
+  out_of_range_msg->range = 0.90;
+  range_->dataCallback(out_of_range_msg);
+
+  data.clear();
+  range_->getData(stamp2, data);
+  EXPECT_TRUE(data.empty());
+}
+
+TEST_F(Tester, testMaxObstacleDistanceBoundingPruning)
+{
+  test_node_->declare_parameter(std::string(SCAN_NAME) + ".max_obstacle_distance", 2.0);
+  createSources(false);
+
+  // 1. 注入激光扫描雷达点（0.5m 和 3.0m）
+  const auto stamp = test_node_->now();
+  sendTransforms(stamp);
+  auto scan_msg = std::make_shared<sensor_msgs::msg::LaserScan>();
+  scan_msg->header.frame_id = SOURCE_FRAME_ID;
+  scan_msg->header.stamp = stamp;
+  scan_msg->range_min = 0.1;
+  scan_msg->range_max = 5.0;
+  scan_msg->angle_increment = 0.1;
+  scan_msg->ranges = {0.5F, 3.0F};  // 0.5m 应保留，3.0m 应被 2.0m 阈值剪除
+  scan_->dataCallback(scan_msg);
+
+  std::vector<nav2_collision_monitor::Point> data;
+  scan_->getData(stamp, data);
+  ASSERT_EQ(data.size(), 1u);
+  EXPECT_NEAR(std::hypot(data[0].x, data[0].y), 0.5, 0.15);
+}
+
 int main(int argc, char ** argv)
 {
   // Initialize the system

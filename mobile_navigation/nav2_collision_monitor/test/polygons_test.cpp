@@ -707,6 +707,150 @@ TEST_F(Tester, testPolygonDefaultVisualize)
   ASSERT_EQ(test_node_->waitPolygonReceived(100ms), nullptr);
 }
 
+TEST_F(Tester, testPolygonFrontPaddingGeometry)
+{
+  createPolygon("stop");
+  polygon_->setPadding(0.1);
+  polygon_->setFrontPadding(0.3);
+
+  // 基础轮廓是 [-0.5, 0.5]²：前向额外外扩至 x ∈ [0.5, 0.8]，y ∈ [-0.6, 0.6]
+  // 1. 前方矩形区内点
+  EXPECT_EQ(polygon_->getPointsInside({{0.7, 0.0}}), 1);
+  EXPECT_EQ(polygon_->getPointsInside({{0.75, 0.55}}), 1);
+
+  // 2. 超出前向外扩点
+  EXPECT_EQ(polygon_->getPointsInside({{0.85, 0.0}}), 0);
+
+  // 3. 侧向超出外扩矩形点（y 超出 0.6）
+  EXPECT_EQ(polygon_->getPointsInside({{0.7, 0.65}}), 0);
+
+  // 4. 后方与侧方只按均匀外扩 (0.1)
+  EXPECT_EQ(polygon_->getPointsInside({{-0.55, 0.0}}), 1);
+  EXPECT_EQ(polygon_->getPointsInside({{-0.65, 0.0}}), 0);
+  EXPECT_EQ(polygon_->getPointsInside({{0.0, 0.55}}), 1);
+  EXPECT_EQ(polygon_->getPointsInside({{0.0, 0.65}}), 0);
+
+  // 5. 可视化前沿推移
+  std::vector<nav2_collision_monitor::Point> effective_polygon;
+  polygon_->getEffectivePolygon(effective_polygon);
+  ASSERT_EQ(effective_polygon.size(), 4u);
+  double max_x = -std::numeric_limits<double>::infinity();
+  for (const auto & p : effective_polygon) {
+    max_x = std::max(max_x, p.x);
+  }
+  EXPECT_NEAR(max_x, 0.8, EPSILON);
+
+  // 6. 不大于均匀外扩不起作用
+  polygon_->setFrontPadding(0.05);
+  EXPECT_EQ(polygon_->getPointsInside({{0.7, 0.0}}), 0);
+
+  // 7. NaN / 负数截断为 0
+  polygon_->setFrontPadding(-0.2);
+  EXPECT_EQ(polygon_->getFrontPadding(), 0.0);
+  polygon_->setFrontPadding(std::numeric_limits<double>::quiet_NaN());
+  EXPECT_EQ(polygon_->getFrontPadding(), 0.0);
+
+  // 8. 仅横向模式不生效
+  polygon_->setFrontPadding(0.3);
+  polygon_->setLateralPaddingOnly(true);
+  EXPECT_EQ(polygon_->getPointsInside({{0.7, 0.0}}), 0);
+}
+
+TEST_F(Tester, testPolygonRearPaddingGeometry)
+{
+  createPolygon("stop");
+  polygon_->setPadding(0.1);
+  polygon_->setRearPadding(0.3);
+
+  // 基础轮廓是 [-0.5, 0.5]²：后向额外外扩至 x ∈ [-0.8, -0.5]，y ∈ [-0.6, 0.6]
+  // 1. 后方矩形区内点
+  EXPECT_EQ(polygon_->getPointsInside({{-0.7, 0.0}}), 1);
+  EXPECT_EQ(polygon_->getPointsInside({{-0.75, 0.55}}), 1);
+
+  // 2. 超出后向外扩点
+  EXPECT_EQ(polygon_->getPointsInside({{-0.85, 0.0}}), 0);
+
+  // 3. 侧向超出外扩矩形点（y 超出 0.6）
+  EXPECT_EQ(polygon_->getPointsInside({{-0.7, 0.65}}), 0);
+
+  // 4. 前方和侧方只按均匀外扩（0.1），不按 0.3 外扩
+  EXPECT_EQ(polygon_->getPointsInside({{0.7, 0.0}}), 0);
+  EXPECT_EQ(polygon_->getPointsInside({{0.0, 0.7}}), 0);
+
+  // 5. 可视化多边形后沿拉伸验证
+  std::vector<nav2_collision_monitor::Point> effective_polygon;
+  polygon_->getEffectivePolygon(effective_polygon);
+  ASSERT_EQ(effective_polygon.size(), 4u);
+  double min_x = std::numeric_limits<double>::infinity();
+  for (const auto & p : effective_polygon) {
+    min_x = std::min(min_x, p.x);
+  }
+  EXPECT_NEAR(min_x, -0.8, EPSILON);
+
+  // 6. 不大于均匀外扩不起作用
+  polygon_->setRearPadding(0.05);
+  EXPECT_EQ(polygon_->getPointsInside({{-0.7, 0.0}}), 0);
+
+  // 7. NaN / 负数截断为 0
+  polygon_->setRearPadding(-0.2);
+  EXPECT_EQ(polygon_->getRearPadding(), 0.0);
+  polygon_->setRearPadding(std::numeric_limits<double>::quiet_NaN());
+  EXPECT_EQ(polygon_->getRearPadding(), 0.0);
+
+  // 8. 仅横向模式不生效
+  polygon_->setRearPadding(0.3);
+  polygon_->setLateralPaddingOnly(true);
+  EXPECT_EQ(polygon_->getPointsInside({{-0.7, 0.0}}), 0);
+}
+
+TEST_F(Tester, testPolygonMaxPointsThreshold)
+{
+  setCommonParameters(POLYGON_NAME, "stop");
+  test_node_->set_parameter(
+    rclcpp::Parameter(std::string(POLYGON_NAME) + ".max_points", 3));
+  setPolygonParameters(SQUARE_POLYGON);
+
+  polygon_ = std::make_shared<PolygonWrapper>(
+    test_node_, POLYGON_NAME,
+    tf_buffer_, BASE_FRAME_ID, TRANSFORM_TOLERANCE);
+  ASSERT_TRUE(polygon_->configure());
+  polygon_->activate();
+
+  EXPECT_EQ(polygon_->getMaxPoints(), 3);
+
+  // 3 点在区内：不触发（getPointsInside() <= max_points_）
+  const std::vector<nav2_collision_monitor::Point> three_points {
+    {0.0, 0.0}, {0.1, 0.1}, {-0.1, -0.1}};
+  EXPECT_EQ(polygon_->getPointsInside(three_points), 3);
+
+  // 4 点在区内：触发（getPointsInside() > max_points_）
+  const std::vector<nav2_collision_monitor::Point> four_points {
+    {0.0, 0.0}, {0.1, 0.1}, {-0.1, -0.1}, {0.2, -0.2}};
+  EXPECT_EQ(polygon_->getPointsInside(four_points), 4);
+}
+
+TEST_F(Tester, testPolygonAndCircleEarlyExitOptimization)
+{
+  createPolygon("stop");
+  createCircle("stop");
+
+  // 构造 100 个全落在区内的障碍点
+  std::vector<nav2_collision_monitor::Point> hundred_points;
+  hundred_points.reserve(100);
+  for (int i = 0; i < 100; ++i) {
+    hundred_points.push_back({0.01 * (i % 10), 0.01 * (i / 10)});
+  }
+
+  // 1. 无阈值时，Polygon 全量返回 100
+  EXPECT_EQ(polygon_->getPointsInside(hundred_points), 100);
+  // 带提前退出阈值 4 时，达到 4 即刻返回，避免后续 96 次无谓判断
+  EXPECT_EQ(polygon_->getPointsInside(hundred_points, 4), 4);
+
+  // 2. Circle 同样支持提前退出优化
+  EXPECT_EQ(circle_->getPointsInside(hundred_points), 100);
+  EXPECT_EQ(circle_->getPointsInside(hundred_points, 5), 5);
+}
+
 int main(int argc, char ** argv)
 {
   // Initialize the system

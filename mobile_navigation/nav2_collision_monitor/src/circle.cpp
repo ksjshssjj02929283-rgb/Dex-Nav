@@ -69,7 +69,16 @@ void Circle::discretizeCircle(double radius, std::vector<Point> & poly)
   }
 }
 
-int Circle::getPointsInside(const std::vector<Point> & points) const
+int Circle::getPointsInside(
+  const std::vector<Point> & points,
+  int early_exit_threshold) const
+{
+  return getPointsInside(std::vector<const std::vector<Point> *>{&points}, early_exit_threshold);
+}
+
+int Circle::getPointsInside(
+  const std::vector<const std::vector<Point> *> & point_buffers,
+  int early_exit_threshold) const
 {
   // 动态膨胀（本仓库相对上游 Nav2 的改动）：基础半径 + padding。
   // 每次取一遍 padding 而不用缓存的 radius_squared_，保证 service 改完立刻生效。
@@ -77,9 +86,22 @@ int Circle::getPointsInside(const std::vector<Point> & points) const
   const double effective_radius_squared = effective_radius * effective_radius;
 
   int num = 0;
-  for (const Point & point : points) {
-    if (point.x * point.x + point.y * point.y < effective_radius_squared) {
-      num++;
+  for (const auto * buf : point_buffers) {
+    if (!buf) {
+      continue;
+    }
+    for (const Point & point : *buf) {
+      // 快速 AABB 粗筛
+      if (std::abs(point.x) > effective_radius || std::abs(point.y) > effective_radius) {
+        continue;
+      }
+      if (point.x * point.x + point.y * point.y < effective_radius_squared) {
+        num++;
+        // 提前终止（Early-Exit）：达到触发阈值立即返回，跳过后续全部点
+        if (early_exit_threshold > 0 && num >= early_exit_threshold) {
+          return num;
+        }
+      }
     }
   }
 
