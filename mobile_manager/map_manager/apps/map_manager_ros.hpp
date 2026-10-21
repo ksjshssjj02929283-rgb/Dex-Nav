@@ -35,6 +35,10 @@ private:
 
     void PublishMapAndNotify();
 
+    // 只重发底图（/map、/map_metadata）并更新 grid_revision，不发 map_state、不递增 epoch
+
+    void PublishGridOnly();
+
     void GetMapsCallback(const std::shared_ptr<nav_interfaces::srv::GetMaps::Request> req,
                          std::shared_ptr<nav_interfaces::srv::GetMaps::Response> res);
     // 地图回收站查询：列出可恢复的归档条目。不可见的回收站等于慢一点的删除。

@@ -16,7 +16,7 @@
 //   G3 笔画参数校验
 //   G4 EditGridEx：指纹不符拒绝且不动文件、三件套备份、像素 / 面积 / 其余 yaml 行、新指纹、无变化不备份、缺 pbstream
 //   G5 版本轮换与同秒命名
-//   G6 编辑当前图 → requires_reload；同名重新加载从磁盘重读（失败保留原栅格）
+//   G6 编辑当前图 → 保存即生效（内存栅格换新、epoch 不变、已生效指纹跟随）；同名重新加载从磁盘重读并递增 epoch（失败保留原栅格）
 //   V1 （回滚推进 last_edited_at）版本列表随 ScanMapCatalog 返回（顺序 / 来源 / 三件不齐）、回滚、回滚可撤销、空版本号 = 最新、各类拒绝
 //   V2 回滚当前图 → requires_reload；轮换时目标版本受保护
 //   V3 附带文件（点云 / 线特征）随版本保存、随回滚恢复
@@ -438,9 +438,9 @@ void TestG5_Prune(const fs::path& maps) {
            "oldest pruned");
 }
 
-// G6 编辑当前已加载地图 → requires_reload
+// G6 编辑当前已加载地图 → 保存即生效：重读底图、epoch 不变；同名重新加载仍递增 epoch
 void TestG6_Current(const fs::path& maps) {
-    std::cout << "▶ G6 current map requires reload\n";
+    std::cout << "▶ G6 current map edit applied on save\n";
     MakeEditMap(maps, "g6");
     MapManager mm(maps.string());
     if (!mm.LoadMap("g6")) { std::cout << "  (skip: LoadMap unavailable in this env)\n"; return; }
@@ -449,19 +449,33 @@ void TestG6_Current(const fs::path& maps) {
     // 点放在格中心（0.05, 0.05）：落在四格公共角点上的极细笔一格都不覆盖，这是规则本身的结果
     const auto before = mm.GetMap();
     const std::vector<int8_t> grid_before = before ? before->data : std::vector<int8_t>{};
-    EXPECT(mm.EditGridEx("g6", {Stroke(map_manager::kToolWall, map_manager::kShapePolyline, {{0.05, 0.05}}, 0.01)},
-                         "", &r, msg) == 0 && r.requires_reload, "current map edit requires reload: " + msg);
-    // 同名重新加载必须从磁盘重读：内存栅格变成编辑后的内容，epoch 递增
     const uint64_t epoch_before = mm.GetEpoch();
+    const std::string applied_before = mm.GetAppliedGridRevision();
+    EXPECT(!applied_before.empty(), "applied revision recorded on load");
+    EXPECT(mm.EditGridEx("g6", {Stroke(map_manager::kToolWall, map_manager::kShapePolyline, {{0.05, 0.05}}, 0.01)},
+                         "", &r, msg) == 0 && r.applied && !r.requires_reload, "current map edit applied: " + msg);
+    const auto after_edit = mm.GetMap();
+    EXPECT(after_edit && after_edit->data != grid_before, "edit re-reads the edited map.png into memory");
+    EXPECT(mm.GetEpoch() == epoch_before, "applying a grid edit keeps epoch (localization not reloaded)");
+    EXPECT(mm.GetAppliedGridRevision() == r.revision && r.revision != applied_before,
+           "applied revision follows the edit");
+    // 无像素变化：不重读、不算生效
+    MapManager::GridEditResult r2;
+    EXPECT(mm.EditGridEx("g6", {Stroke(map_manager::kToolWall, map_manager::kShapePolyline, {{0.05, 0.05}}, 0.01)},
+                         "", &r2, msg) == 0 && !r2.applied && !r2.requires_reload && r2.changed_pixels == 0,
+           "no-op edit is neither applied nor pending");
+    // 同名重新加载仍从磁盘重读，epoch 递增
     EXPECT(mm.LoadMap("g6"), "reload current map");
     const auto after = mm.GetMap();
-    EXPECT(after && after->data != grid_before, "reload re-reads the edited map.png");
+    EXPECT(after && after->data == after_edit->data, "reload reads the same edited map.png");
     EXPECT(mm.GetEpoch() == epoch_before + 1, "reload bumps epoch");
     // 重读失败（yaml 坏掉）保留原栅格，返回失败
     const fs::path yaml = maps / "g6" / "slam" / "map.yaml";
     const std::string yaml_text = ReadText(yaml);
     WriteText(yaml, "image: missing.png\nresolution: 0.1\norigin: [0, 0, 0]\n");
     EXPECT(!mm.LoadMap("g6") && mm.GetMap() == after, "failed reload keeps the previous grid");
+    std::string err;
+    EXPECT(!mm.RefreshCurrentGrid(&err) && mm.GetMap() == after, "failed grid refresh keeps the previous grid");
     WriteText(yaml, yaml_text);
 }
 

@@ -93,7 +93,8 @@ public:
     struct GridEditResult {
         std::string revision;      // 编辑后的底图指纹
         std::string backup_ts;     // 本次产生的版本；无像素变化时为空
-        bool requires_reload = false;  // 编辑的是当前已加载地图
+        bool requires_reload = false;  // 当前图改了文件但导航尚未用上（回滚、或编辑后重读失败）
+        bool applied = false;          // 当前图：已重读底图，随 /map 重发对导航生效，epoch 不变
         int changed_pixels = 0;
     };
     int32_t EditGridEx(const std::string& map_name, const std::vector<GridStrokeSpec>& strokes,
@@ -125,6 +126,14 @@ public:
     const std::string GetMapName() const { return current_map_name_; }
     const std::string GetMapFolder() const { return map_folder_; }
     const bool HasMapChanged() const { return has_map_changed_; }
+
+    // 重读当前地图的底图（map.yaml / map.png）替换内存栅格，不递增 epoch。
+    // 只用于底图像素变化而 map.pbstream 不变的情况：定位不需要重载，导航随 /map 重发即可用上新底图。
+    // 重读失败保留原栅格并返回 false。
+    bool RefreshCurrentGrid(std::string* error);
+
+    // 导航当前使用的底图指纹（加载或重读底图时更新）；与 get_maps 的文件指纹不同 = 有未生效的修改
+    std::string GetAppliedGridRevision() const { return applied_grid_revision_; }
 
     // 地图加载 epoch：每次成功 LoadMap（含同名重载/回退）单调 +1。
     // 消费方比对 epoch 判断是否需要重载，不依赖名字变化。
@@ -198,6 +207,9 @@ private:
     std::shared_ptr<nav_msgs::msg::OccupancyGrid> current_map_;
 
     bool has_map_changed_ = false;
+
+    std::string applied_grid_revision_;
+    void UpdateAppliedGridRevision();
 
     // 单调递增的地图加载版本号；0 = 尚未加载任何地图。不持久化。
     uint64_t map_epoch_ = 0;

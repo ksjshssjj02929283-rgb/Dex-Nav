@@ -123,7 +123,8 @@ private:
     void onMapStateChanged(const std::string& name, uint64_t epoch);
     void resetEdit(const QString& reason);
     void rebuildPreview();
-    void updateReloadState();  // 当前地图文件指纹与加载时不同 → 「重新加载使其生效」可用
+    void updateReloadState();  // 当前地图文件指纹与导航正在用的不同 → 「重新加载使其生效」可用
+    void requestAppliedRevision();  // 读 map_manager 参数 grid_revision（导航正在用的底图指纹）
     void fillMapOpsTarget();  // 对齐 / 替换 / 原点页：目标地图说明与替换源图候选
     void fillEditTarget();    // 底图编辑页：编辑对象下拉框与说明（与「地图」页选中同步）
     void selectMapInTable(const std::string& name);  // 程序内选中「地图」页某行（空 = 清除选择）
@@ -207,7 +208,9 @@ private:
     std::map<rviz_common::Display*, bool> focus_hidden_;  // 编辑非当前图时隐藏的显示及其原启用状态
     std::string loaded_map_;      // 下面两项对应的地图
     uint64_t loaded_epoch_ = 0;   // 记录 loaded_revision_ 时的 map_state epoch
-    std::string loaded_revision_; // 当前地图加载后第一次取到的底图指纹（近似「导航正在用的那份」）
+    std::string loaded_revision_; // 当前地图加载后第一次取到的底图指纹（map_manager 不提供 grid_revision 时的近似）
+    std::string applied_revision_;  // map_manager 参数 grid_revision；空 = 未取到，退回 loaded_revision_
+    std::shared_ptr<rclcpp::AsyncParametersClient> mm_param_cli_;
 
     // ROS
     rclcpp::Node::SharedPtr node_;

@@ -227,7 +227,9 @@ def main():
     env = dict(os.environ, HOME=str(home))
     procs = [subprocess.Popen([str(mm_bin), "--ros-args", "-r", "__node:=map_manager"], env=env,
                               stdout=open(tmp / "map_manager.log", "w"), stderr=subprocess.STDOUT),
-             subprocess.Popen([str(cb_bin), "--ros-args", "-r", "__node:=command_board"], env=env,
+             # 沙箱里没有传感器话题：关掉传感器监测（启用但不配传感器列表时节点按设计拒绝启动）
+             subprocess.Popen([str(cb_bin), "--ros-args", "-r", "__node:=command_board",
+                               "-p", "sensor_monitor.enable:=false"], env=env,
                               stdout=open(tmp / "command_board.log", "w"), stderr=subprocess.STDOUT),
              # command_board 的资产回滚委托 map_asset_manager rollback_assets
              subprocess.Popen([str(Path(get_package_prefix("map_asset_manager")) /
@@ -399,12 +401,47 @@ def main():
         r = edit("map_edit_test_missing", wall, "")
         rep.check("INVALID", "missing map -> E_MAP_NOT_FOUND", r.error_code == E_MAP_NOT_FOUND, r.message)
 
-        # G-04 编辑当前图：需要重新加载
-        print("▶ G-04 edit current map")
+        # G-04 编辑当前图：保存即对导航生效——重发 /map、map_state epoch 不变、grid_revision 跟随新底图
+        print("▶ G-04 edit current map (applied on save)")
+        from nav_msgs.msg import OccupancyGrid
+        from nav_interfaces.msg import MapState
+        from rcl_interfaces.srv import GetParameters
+        from rclpy.qos import QoSProfile, DurabilityPolicy, ReliabilityPolicy
+        latched = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL,
+                             reliability=ReliabilityPolicy.RELIABLE)
+        seen = {}
+        map_sub = node.create_subscription(OccupancyGrid, "/map", lambda m: seen.__setitem__("map", m), latched)
+        state_sub = node.create_subscription(MapState, "/map_manager/map_state",
+                                             lambda m: seen.__setitem__("state", m), latched)
+        params = node.create_client(GetParameters, "/map_manager/get_parameters")
+
+        def spin_until(cond, timeout):
+            end = time.time() + timeout
+            while time.time() < end:
+                rclpy.spin_once(node, timeout_sec=0.1)
+                if cond():
+                    return True
+            return cond()
+
+        spin_until(lambda: "map" in seen and "state" in seen, 5.0)
+        map0 = bytes(seen["map"].data) if "map" in seen else b""
+        epoch0 = seen["state"].epoch if "state" in seen else None
         cur_png0 = (cur_slam / "map.png").read_bytes()
         r = edit(cur_name, wall, info(cur_name).grid_revision)
-        rep.check("G-04", "edit current map -> requires_reload", r.success and r.requires_reload, r.message)
+        rep.check("G-04", "edit current map -> applied, no reload needed", r.success and not r.requires_reload,
+                  r.message)
         cur_backup = r.backup_ts
+        rep.check("G-04", "/map republished with the edited grid",
+                  spin_until(lambda: "map" in seen and bytes(seen["map"].data) != map0, 5.0))
+        epoch1 = seen["state"].epoch if "state" in seen else None
+        rep.check("G-04", "map_state epoch unchanged (localization not reloaded)",
+                  epoch0 is not None and epoch1 == epoch0, f"{epoch0} -> {epoch1}")
+        pv = call(params, GetParameters.Request(names=["grid_revision"])).values
+        rep.check("G-04", "map_manager grid_revision = edited file revision",
+                  bool(pv) and pv[0].string_value == r.revision == info(cur_name).grid_revision,
+                  f"{pv[0].string_value if pv else None} / {r.revision}")
+        node.destroy_subscription(map_sub)
+        node.destroy_subscription(state_sub)
 
         # VERS 版本列表随 get_maps 的 MapInfo.versions 返回：底图编辑前的状态以 grid_edit 来源出现
         print("▶ VERS map versions (MapInfo.versions)")

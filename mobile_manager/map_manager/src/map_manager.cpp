@@ -92,6 +92,7 @@ bool MapManager::LoadMap(const std::string& map_name) {
         }
         has_map_changed_ = true;
         ++map_epoch_;  // 同名重载/回退也递增 epoch，消费方据此重载（根治同名漏检）
+        UpdateAppliedGridRevision();
         return true;
     }
 
@@ -110,9 +111,34 @@ bool MapManager::LoadMap(const std::string& map_name) {
     current_map_name_ = map_name;
     has_map_changed_ = true;
     ++map_epoch_;  // 切换到不同地图，epoch 递增
+    UpdateAppliedGridRevision();
 
     LOG(INFO) << "Load Map success. Current map: " << current_map_name_;
     return true;
+}
+
+bool MapManager::RefreshCurrentGrid(std::string* error) {
+    if (current_map_name_.empty()) {
+        if (error) *error = "no map loaded";
+        return false;
+    }
+    const std::string yaml_path = map_folder_ + "/" + current_map_name_ + "/slam/map.yaml";
+    const auto previous_map = current_map_;
+    const auto previous_meta = meta_data_message_;
+    if (!loadMapFromYaml(yaml_path)) {
+        current_map_ = previous_map;
+        meta_data_message_ = previous_meta;
+        if (error) *error = "failed to re-read " + yaml_path;
+        return false;
+    }
+    has_map_changed_ = true;
+    UpdateAppliedGridRevision();
+    return true;
+}
+
+void MapManager::UpdateAppliedGridRevision() {
+    const fs::path slam_dir = fs::path(map_folder_) / current_map_name_ / "slam";
+    applied_grid_revision_ = GridRevision(slam_dir.string(), MapYamlDoc::Load((slam_dir / "map.yaml").string()));
 }
 
 // 探测旧扁平格式（map.yaml/map.pgm/*.pbstream/map_assets.json 都在 <map>/ 根），迁移到
@@ -867,10 +893,16 @@ int32_t MapManager::EditGridEx(const std::string& map_name, const std::vector<Gr
     }
 
     result->revision = GridRevision(slam_dir.string(), yaml);
-    result->requires_reload = (map_name == current_map_name_);
+    if (map_name == current_map_name_) {
+        // 当前图：底图编辑不改 map.pbstream，定位不需要重载；重读底图后随 /map 重发即对导航生效
+        std::string refresh_error;
+        result->applied = RefreshCurrentGrid(&refresh_error);
+        result->requires_reload = !result->applied;
+        if (!result->applied) LOG(ERROR) << "Grid saved but not applied: " << refresh_error;
+    }
     message = "grid edited: " + map_name + ", " + std::to_string(result->changed_pixels) +
               " pixels changed, backup " + result->backup_ts +
-              (result->requires_reload ? "; reload the map to apply" : "");
+              (result->applied ? "; applied to navigation" : (result->requires_reload ? "; reload the map to apply" : ""));
     return kErrNone;
 }
 

@@ -517,6 +517,8 @@ void MapManagerPanel::recreateClients() {
     replace_cli_ = node_->create_client<ReplaceMap>(cb + "/replace_map");
     reset_xyyaw_cli_ = node_->create_client<ResetXYYaw>(cb + "/reset_map_origin_by_xyyaw");
     package_cli_ = node_->create_client<MapPackage>(mm + "/map_package");
+    mm_param_cli_ = std::make_shared<rclcpp::AsyncParametersClient>(node_, mm);
+    applied_revision_.clear();
     QPointer<MapManagerPanel> guard(this);
     map_state_sub_ = node_->create_subscription<nav_interfaces::msg::MapState>(
         mm + "/map_state", rclcpp::QoS(1).transient_local().reliable(),
@@ -773,6 +775,7 @@ void MapManagerPanel::refreshMaps() {
         fillMapOpsTarget();
         fillEditTarget();
         updateReloadState();
+        requestAppliedRevision();
     });
 }
 
@@ -806,7 +809,7 @@ void MapManagerPanel::fillEditTarget() {
     if (target.empty()) {
         edit_target_label_->setText("未选地图：在上面的下拉框或「地图」页选中一张");
     } else if (target == current_map_) {
-        edit_target_label_->setText(editing ? "当前地图，编辑中" : "当前地图；保存后需「重新加载使其生效」");
+        edit_target_label_->setText(editing ? "当前地图，编辑中" : "当前地图；保存即对导航生效");
     } else {
         edit_target_label_->setText(editing ? "未加载地图，编辑中：RViz 显示的是它的预览，当前地图的显示已暂时隐藏"
                                             : "未加载地图；编辑时显示它的预览，保存只改文件，加载这张图时生效");
@@ -1246,8 +1249,9 @@ void MapManagerPanel::saveEdit() {
             QString("已保存：%1\n编辑前的底图存为版本 %2（可在「地图」页版本列表回滚）%3")
                 .arg(QString::fromStdString(r->message))
                 .arg(r->backup_ts.empty() ? "无（没有像素变化）" : QString::fromStdString(r->backup_ts))
-                .arg(r->requires_reload ? "\n这是当前地图，需「重新加载使其生效」导航才会用新底图"
-                                        : (edit_is_current_ ? "" : "\n未加载地图：只改了文件，加载这张图时生效")));
+                .arg(r->requires_reload ? "\n这是当前地图，但未能对导航生效，请「重新加载使其生效」"
+                                        : (edit_is_current_ ? "\n这是当前地图，已对导航生效"
+                                                            : "\n未加载地图：只改了文件，加载这张图时生效")));
         setStatus("保存成功");
         refreshMaps();
     });
@@ -1376,9 +1380,32 @@ void MapManagerPanel::applyEditFocus(bool focus) {
     if (preview) preview->setEnabled(focus);
 }
 
-// 「重新加载使其生效」是否可用以文件为准：记下当前地图加载时（map_state epoch 变化后第一次取到）的底图指纹，
-// 之后当前地图文件的指纹与它不同 = 有已保存但未生效的修改。不跟编辑会话走，取消 / 重新开始编辑、
-// 空保存、别的客户端改了当前图都不影响判断；面板启动前就存在的未生效修改无从得知。
+// 「重新加载使其生效」是否可用以文件为准：当前地图文件的指纹与导航正在用的不同 = 有已保存但未生效的修改
+// （当前图底图编辑保存即生效，剩下的主要是回滚只恢复了文件）。导航正在用的指纹取 map_manager 参数
+// grid_revision；取不到（旧版 map_manager）时退回近似：map_state epoch 变化后第一次取到的文件指纹。
+void MapManagerPanel::requestAppliedRevision() {
+    if (!mm_param_cli_ || !mm_param_cli_->service_is_ready()) return;
+    QPointer<MapManagerPanel> guard(this);
+    mm_param_cli_->get_parameters(
+        {"grid_revision"}, [guard](std::shared_future<std::vector<rclcpp::Parameter>> fut) {
+            std::string rev;
+            try {
+                const auto params = fut.get();
+                if (!params.empty() && params[0].get_type() == rclcpp::ParameterType::PARAMETER_STRING) {
+                    rev = params[0].as_string();
+                }
+            } catch (const std::exception&) {
+                return;
+            }
+            if (!guard) return;
+            QMetaObject::invokeMethod(guard.data(), [guard, rev]() {
+                if (!guard) return;
+                guard->applied_revision_ = rev;
+                guard->updateReloadState();
+            }, Qt::QueuedConnection);
+        });
+}
+
 void MapManagerPanel::updateReloadState() {
     std::string file_revision;
     for (const auto& m : maps_) {
@@ -1393,7 +1420,8 @@ void MapManagerPanel::updateReloadState() {
         loaded_epoch_ = map_epoch_;
         loaded_revision_ = file_revision;
     }
-    const bool pending = (file_revision != loaded_revision_);
+    const std::string& in_use = applied_revision_.empty() ? loaded_revision_ : applied_revision_;
+    const bool pending = (file_revision != in_use);
     reload_btn_->setEnabled(pending);
     reload_btn_->setText(pending ? "重新加载使其生效（有未生效的修改）" : "重新加载使其生效");
 }

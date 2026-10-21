@@ -20,6 +20,8 @@ MapManagerROS::MapManagerROS() : rclcpp::Node("map_manager") {
     // 声明 ROS 参数
     this->declare_parameter<std::string>("map_folder", "");
     this->declare_parameter<std::string>("map_name", "");
+    // 导航当前使用的底图指纹（随 /map 发布更新）；客户端与 get_maps 的文件指纹比对，判断磁盘上的修改是否已生效
+    this->declare_parameter<std::string>("grid_revision", "");
     // 地图回收站：建图 overwrite 时旧地图目录整体 rename 到
     // <map_folder>/<map_trash_dirname>/<name>_<ts>/，不再硬删。
     // 保留 50 份为主判据，总容量上限为副判据（兜底极端大图）。
@@ -356,7 +358,8 @@ void MapManagerROS::MapManagerCommandCallback(const std::shared_ptr<nav_interfac
             code = map_manager_->EditGridEx(req->map_name, strokes, req->expected_revision, &result, message);
             res->revision = result.revision;
             res->backup_ts = result.backup_ts;
-            // 当前图不自动重发：导航仍用旧底图，由用户确认后重新加载生效
+            // 当前图保存后已重读底图：只重发 /map，定位用 pbstream 不受影响，不需要整图重载
+            if (result.applied) PublishGridOnly();
             res->requires_reload = result.requires_reload;
             break;
         }
@@ -412,8 +415,21 @@ void MapManagerROS::PublishMapAndNotify() {
     map_state_pub_->publish(map_state_msg);
 
     this->set_parameter(rclcpp::Parameter("map_name", map_manager_->GetMapName()));
+    this->set_parameter(rclcpp::Parameter("grid_revision", map_manager_->GetAppliedGridRevision()));
 
     // 自动生效走 latched map_state（epoch）：消费方自动重载，无需主动 push。
+    map_manager_->ResetFlags();
+}
+
+void MapManagerROS::PublishGridOnly() {
+    auto map_ptr = map_manager_->GetMap();
+    auto metadata_ptr = map_manager_->GetMapMetaData();
+    if (map_ptr && metadata_ptr) {
+        map_ptr->header.stamp = this->get_clock()->now();
+        map_metadata_pub_->publish(*metadata_ptr);
+        map_pub_->publish(*map_ptr);
+    }
+    this->set_parameter(rclcpp::Parameter("grid_revision", map_manager_->GetAppliedGridRevision()));
     map_manager_->ResetFlags();
 }
 
