@@ -6,10 +6,10 @@
 //   - ~/backup_unified（Trigger）：触发 localization.save_map + map_asset_manager.save_assets
 //       → 各自产引擎本地 ring 版本 → 写 <map>/versions/<unified_ts>.json manifest（只记两版本号，不拷数据）。
 //       提交点 = manifest 写成功；任一 save 失败则不写。
-//   - ~/rollback_map(map_version_ts, assets_version_ts)：回退唯一入口（引擎不提供 rollback，DEC-009）。
-//       各自可独立指定 = 任意组合；皆空 = 各取对应 ring 最新。直接从
-//       <map>/slam/backups/backup.<map_ts>/ + <map>/assets/backups/map_assets.<assets_ts>.json
-//       原子恢复（tmp+rename）到当前 → 触发 map_manager 重下发让运行节点重载。
+//   - ~/rollback_map(map_name, map_version_ts, assets_version_ts)：回退任意一张地图的底图 + 资产（编排层）。
+//       底图委托 map_manager OP_ROLLBACK；资产委托 map_asset_manager rollback_assets；
+//       目标是当前地图且底图有回滚时再让 map_manager 重新下发。map_name 空 = 当前地图；版本号空 = 最新，"none" = 不回退该部分。
+//       两部分版本号各自独立指定 = 任意组合。
 
 #pragma once
 
@@ -24,6 +24,7 @@
 #include <nav_interfaces/srv/save_assets.hpp>
 #include <nav_interfaces/srv/map_manager_command.hpp>
 #include <nav_interfaces/srv/rollback_map.hpp>
+#include <nav_interfaces/srv/rollback_assets.hpp>
 
 namespace command_board {
 

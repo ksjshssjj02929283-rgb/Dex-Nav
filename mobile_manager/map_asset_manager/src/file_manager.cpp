@@ -1,5 +1,8 @@
 #include "map_asset_manager/file_manager.hpp"
 
+#include <sys/stat.h>
+
+#include <ctime>
 #include <filesystem>
 #include <fstream>
 #include <nlohmann/json.hpp>
@@ -490,177 +493,224 @@ bool FileManager::loadAllAssetsFromFile(const std::string& file_path,
     }
 }
 
+json FileManager::buildAssetsJson(const std::unordered_map<std::string, NavPoint>& points,
+                                  const std::unordered_map<std::string, Route>& routes,
+                                  const std::unordered_map<std::string, Area>& areas,
+                                  const std::vector<RouteJunction>& junctions,
+                                  const std::vector<RouteEdge>& edges,
+                                  const std::unordered_map<std::string, Room>& rooms) {
+    json j;
+
+    // ── points ──────────────────────────────────────────────
+    j["points"] = json::array();
+    for (const auto& [name, pt] : points) {
+        json item;
+        item["name"]        = pt.name;
+        item["type"]        = pt.type;
+        item["tolerance"]   = pt.tolerance;
+        item["pose"]["x"]   = pt.x;
+        item["pose"]["y"]   = pt.y;
+        item["pose"]["yaw"] = pt.yaw;
+        j["points"].push_back(item);
+    }
+
+    // ── routes ──────────────────────────────────────────────
+    j["routes"] = json::array();
+    for (const auto& [name, r] : routes) {
+        json item;
+        item["name"]   = r.name;
+        item["points"] = r.point_names;
+        j["routes"].push_back(item);
+    }
+
+    // ── areas ───────────────────────────────────────────────
+    j["areas"] = json::array();
+    for (const auto& [name, a] : areas) {
+        json item;
+        item["name"]               = a.name;
+        item["type"]               = AreaType::toString(a.type);
+        item["max_speed"]          = a.max_speed;
+        item["stop_distance"]      = a.stop_distance;
+        item["manual_linked_point_names"] = a.manual_linked_point_names;
+        item["charger_type"]       = a.charger_type;
+        item["attribute"]          = a.attribute;
+        item["polygon"]            = json::array();
+        for (const auto& pt : a.polygon) {
+            json p;
+            p["x"] = pt.x;
+            p["y"] = pt.y;
+            item["polygon"].push_back(p);
+        }
+        // 自动空间归属（SpatialIndexer 维护）
+        item["related_nav_point_names"] = a.related_nav_point_names;
+        item["related_junction_ids"]    = a.related_junction_ids;
+        j["areas"].push_back(item);
+    }
+
+    // ── route_graph ──────────────────────────────────────────
+    json rg;
+    rg["junctions"] = json::array();
+    for (const auto& jct : junctions) {
+        json item;
+        item["id"]  = jct.id;
+        item["x"]   = jct.x;
+        item["y"]   = jct.y;
+        item["yaw"] = jct.yaw;
+        rg["junctions"].push_back(item);
+    }
+    rg["edges"] = json::array();
+    for (const auto& e : edges) {
+        json item;
+        item["id"]            = e.id;
+        item["from"]["id"]    = e.from.id;
+        item["from"]["type"]  = e.from.type;
+        item["to"]["id"]      = e.to.id;
+        item["to"]["type"]    = e.to.type;
+        item["edge_type"]     = e.edge_type;
+        item["bidirectional"] = e.bidirectional;
+        item["max_speed"]     = e.max_speed;
+        item["xy_tolerance"]  = e.xy_tolerance;
+        item["th_tolerance"]  = e.th_tolerance;
+        item["lane_width"]    = e.lane_width;
+        item["obs_policy"]    = e.obs_policy;
+        item["control_points"] = json::array();
+        for (const auto& cp : e.control_points) {
+            item["control_points"].push_back({cp.first, cp.second});
+        }
+        if (e.hold_direction) {
+            item["hold_direction"] = *e.hold_direction;
+        } else {
+            item["hold_direction"] = nullptr;
+        }
+        item["backward"] = e.backward;
+        if (e.padding) {
+            item["padding"] = *e.padding;
+        } else {
+            item["padding"] = nullptr;
+        }
+        item["mode"] = e.mode;
+        rg["edges"].push_back(item);
+    }
+    j["route_graph"] = rg;
+
+    // ── dsg.layers.ROOMS（v2.0 新增）────────────────────────────
+    json dsg;
+    dsg["metadata"] = {
+        {"version", "1.0"},
+        {"name", "dexe_dsg"},
+        {"schema_compatible_with", "spark_dsg/1.2"}
+    };
+    json layers;
+    json rooms_arr = json::array();
+    for (const auto& [name, r] : rooms) {
+        json item;
+        item["id"]                   = r.id;
+        item["source"]               = r.source;
+        item["created_at_ns"]        = r.created_at_ns;
+        item["updated_at_ns"]        = r.updated_at_ns;
+        item["name"]                 = r.name;
+        item["type"]                 = RoomType::toString(r.type);
+        item["semantic_label"]       = r.semantic_label;
+        item["display_label"]        = r.display_label;
+        item["manual_anchor_point_names"]   = r.manual_anchor_point_names;
+        // 行为约束（内嵌约束子集，方案 D）
+        item["behavior"] = json{
+            {"max_speed_m_s",         r.behavior.max_speed_m_s},
+            {"restricted",            r.behavior.restricted},
+            {"detour_enabled",        r.behavior.detour_enabled},
+            {"stop_distance_m",       r.behavior.stop_distance_m},
+            {"depth_min_height_m",    r.behavior.depth_min_height_m},
+            {"additional_area_names", r.behavior.additional_area_names}
+        };
+        item["attribute"]            = r.attribute;
+        item["external_dsg_node_id"] = r.external_dsg_node_id;
+
+        json pose;
+        pose["position"]    = { {"x", r.pose.position.x},
+                                {"y", r.pose.position.y},
+                                {"z", r.pose.position.z} };
+        pose["orientation"] = { {"x", r.pose.orientation.x},
+                                {"y", r.pose.orientation.y},
+                                {"z", r.pose.orientation.z},
+                                {"w", r.pose.orientation.w} };
+        item["pose"] = pose;
+
+        json polygon = json::array();
+        for (const auto& pt : r.polygon) {
+            polygon.push_back({ {"x", pt.x}, {"y", pt.y} });
+        }
+        item["polygon"] = polygon;
+
+        item["bounding_box"] = { r.bounding_box[0], r.bounding_box[1], r.bounding_box[2],
+                                 r.bounding_box[3], r.bounding_box[4], r.bounding_box[5] };
+
+        // 自动空间归属（SpatialIndexer 维护）
+        item["related_nav_point_names"] = r.related_nav_point_names;
+        item["related_junction_ids"]    = r.related_junction_ids;
+
+        rooms_arr.push_back(item);
+    }
+    layers["ROOMS"]     = rooms_arr;
+    layers["PLACES"]    = json::array();  // Phase 2 填
+    layers["FLOORS"]    = json::array();  // Phase N
+    layers["OBJECTS"]   = json::array();
+    layers["BUILDINGS"] = json::array();
+    dsg["layers"] = layers;
+    dsg["edges"]  = json::array();        // Phase 2 填
+    j["dsg"] = dsg;
+
+    j["schema_version"]          = "2.0";
+    j["schema_compatible_with"]  = "spark_dsg/1.2";
+    return j;
+}
+
+std::string LocalTimeIso8601() {
+    const std::time_t now = std::time(nullptr);
+    struct tm tm_buf {};
+    localtime_r(&now, &tm_buf);
+    char buf[32];
+    std::strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%S", &tm_buf);
+    return buf;
+}
+
+std::time_t AssetsLastEditedAt(const std::string& assets_file) {
+    std::error_code ec;
+    if (!std::filesystem::exists(assets_file, ec)) return 0;
+    try {
+        std::ifstream in(assets_file);
+        const json j = json::parse(in);
+        if (j.contains("last_edited_at") && j["last_edited_at"].is_string()) {
+            struct tm tm_buf {};
+            const std::string s = j["last_edited_at"].get<std::string>();
+            if (::strptime(s.c_str(), "%Y-%m-%dT%H:%M:%S", &tm_buf) != nullptr) {
+                tm_buf.tm_isdst = -1;
+                const std::time_t t = std::mktime(&tm_buf);
+                if (t > 0) return t;
+            }
+        }
+    } catch (const std::exception&) {
+        // 读不出就退回文件时间
+    }
+    // 旧文件没有该键：退回文件修改时间
+    struct stat st {};
+    return ::stat(assets_file.c_str(), &st) == 0 ? st.st_mtime : 0;
+}
+
 bool FileManager::saveAllAssetsToFile(const std::string& file_path,
                                       const std::unordered_map<std::string, NavPoint>& points,
                                       const std::unordered_map<std::string, Route>& routes,
                                       const std::unordered_map<std::string, Area>& areas,
                                       const std::vector<RouteJunction>& junctions,
                                       const std::vector<RouteEdge>& edges,
-                                      const std::unordered_map<std::string, Room>& rooms) {
+                                      const std::unordered_map<std::string, Room>& rooms,
+                                      const std::string& last_edited_at) {
     std::lock_guard<std::mutex> lock(file_mutex_);
     try {
-        json j;
-
-        // ── points ──────────────────────────────────────────────
-        j["points"] = json::array();
-        for (const auto& [name, pt] : points) {
-            json item;
-            item["name"]        = pt.name;
-            item["type"]        = pt.type;
-            item["tolerance"]   = pt.tolerance;
-            item["pose"]["x"]   = pt.x;
-            item["pose"]["y"]   = pt.y;
-            item["pose"]["yaw"] = pt.yaw;
-            j["points"].push_back(item);
-        }
-
-        // ── routes ──────────────────────────────────────────────
-        j["routes"] = json::array();
-        for (const auto& [name, r] : routes) {
-            json item;
-            item["name"]   = r.name;
-            item["points"] = r.point_names;
-            j["routes"].push_back(item);
-        }
-
-        // ── areas ───────────────────────────────────────────────
-        j["areas"] = json::array();
-        for (const auto& [name, a] : areas) {
-            json item;
-            item["name"]               = a.name;
-            item["type"]               = AreaType::toString(a.type);
-            item["max_speed"]          = a.max_speed;
-            item["stop_distance"]      = a.stop_distance;
-            item["manual_linked_point_names"] = a.manual_linked_point_names;
-            item["charger_type"]       = a.charger_type;
-            item["attribute"]          = a.attribute;
-            item["polygon"]            = json::array();
-            for (const auto& pt : a.polygon) {
-                json p;
-                p["x"] = pt.x;
-                p["y"] = pt.y;
-                item["polygon"].push_back(p);
-            }
-            // 自动空间归属（SpatialIndexer 维护）
-            item["related_nav_point_names"] = a.related_nav_point_names;
-            item["related_junction_ids"]    = a.related_junction_ids;
-            j["areas"].push_back(item);
-        }
-
-        // ── route_graph ──────────────────────────────────────────
-        json rg;
-        rg["junctions"] = json::array();
-        for (const auto& jct : junctions) {
-            json item;
-            item["id"]  = jct.id;
-            item["x"]   = jct.x;
-            item["y"]   = jct.y;
-            item["yaw"] = jct.yaw;
-            rg["junctions"].push_back(item);
-        }
-        rg["edges"] = json::array();
-        for (const auto& e : edges) {
-            json item;
-            item["id"]            = e.id;
-            item["from"]["id"]    = e.from.id;
-            item["from"]["type"]  = e.from.type;
-            item["to"]["id"]      = e.to.id;
-            item["to"]["type"]    = e.to.type;
-            item["edge_type"]     = e.edge_type;
-            item["bidirectional"] = e.bidirectional;
-            item["max_speed"]     = e.max_speed;
-            item["xy_tolerance"]  = e.xy_tolerance;
-            item["th_tolerance"]  = e.th_tolerance;
-            item["lane_width"]    = e.lane_width;
-            item["obs_policy"]    = e.obs_policy;
-            item["control_points"] = json::array();
-            for (const auto& cp : e.control_points) {
-                item["control_points"].push_back({cp.first, cp.second});
-            }
-            if (e.hold_direction) {
-                item["hold_direction"] = *e.hold_direction;
-            } else {
-                item["hold_direction"] = nullptr;
-            }
-            item["backward"] = e.backward;
-            if (e.padding) {
-                item["padding"] = *e.padding;
-            } else {
-                item["padding"] = nullptr;
-            }
-            item["mode"] = e.mode;
-            rg["edges"].push_back(item);
-        }
-        j["route_graph"] = rg;
-
-        // ── dsg.layers.ROOMS（v2.0 新增）────────────────────────────
-        json dsg;
-        dsg["metadata"] = {
-            {"version", "1.0"},
-            {"name", "dexe_dsg"},
-            {"schema_compatible_with", "spark_dsg/1.2"}
-        };
-        json layers;
-        json rooms_arr = json::array();
-        for (const auto& [name, r] : rooms) {
-            json item;
-            item["id"]                   = r.id;
-            item["source"]               = r.source;
-            item["created_at_ns"]        = r.created_at_ns;
-            item["updated_at_ns"]        = r.updated_at_ns;
-            item["name"]                 = r.name;
-            item["type"]                 = RoomType::toString(r.type);
-            item["semantic_label"]       = r.semantic_label;
-            item["display_label"]        = r.display_label;
-            item["manual_anchor_point_names"]   = r.manual_anchor_point_names;
-            // 行为约束（内嵌约束子集，方案 D）
-            item["behavior"] = json{
-                {"max_speed_m_s",         r.behavior.max_speed_m_s},
-                {"restricted",            r.behavior.restricted},
-                {"detour_enabled",        r.behavior.detour_enabled},
-                {"stop_distance_m",       r.behavior.stop_distance_m},
-                {"depth_min_height_m",    r.behavior.depth_min_height_m},
-                {"additional_area_names", r.behavior.additional_area_names}
-            };
-            item["attribute"]            = r.attribute;
-            item["external_dsg_node_id"] = r.external_dsg_node_id;
-
-            json pose;
-            pose["position"]    = { {"x", r.pose.position.x},
-                                    {"y", r.pose.position.y},
-                                    {"z", r.pose.position.z} };
-            pose["orientation"] = { {"x", r.pose.orientation.x},
-                                    {"y", r.pose.orientation.y},
-                                    {"z", r.pose.orientation.z},
-                                    {"w", r.pose.orientation.w} };
-            item["pose"] = pose;
-
-            json polygon = json::array();
-            for (const auto& pt : r.polygon) {
-                polygon.push_back({ {"x", pt.x}, {"y", pt.y} });
-            }
-            item["polygon"] = polygon;
-
-            item["bounding_box"] = { r.bounding_box[0], r.bounding_box[1], r.bounding_box[2],
-                                     r.bounding_box[3], r.bounding_box[4], r.bounding_box[5] };
-
-            // 自动空间归属（SpatialIndexer 维护）
-            item["related_nav_point_names"] = r.related_nav_point_names;
-            item["related_junction_ids"]    = r.related_junction_ids;
-
-            rooms_arr.push_back(item);
-        }
-        layers["ROOMS"]     = rooms_arr;
-        layers["PLACES"]    = json::array();  // Phase 2 填
-        layers["FLOORS"]    = json::array();  // Phase N
-        layers["OBJECTS"]   = json::array();
-        layers["BUILDINGS"] = json::array();
-        dsg["layers"] = layers;
-        dsg["edges"]  = json::array();        // Phase 2 填
-        j["dsg"] = dsg;
-
-        j["schema_version"]          = "2.0";
-        j["schema_compatible_with"]  = "spark_dsg/1.2";
+        json j = buildAssetsJson(points, routes, areas, junctions, edges, rooms);
+        j["last_edited_at"] = last_edited_at.empty() ? LocalTimeIso8601() : last_edited_at;
+        // 首次写一张没有资产的图时 assets/ 目录还不存在
+        std::error_code dir_ec;
+        std::filesystem::create_directories(std::filesystem::path(file_path).parent_path(), dir_ec);
 
         // 原子写（DEC-004 资产引擎原子安全）：先写 <file>.tmp，再同卷 rename 覆盖（POSIX 原子），
         // 避免崩溃中途留下半写/损坏的 map_assets.json。

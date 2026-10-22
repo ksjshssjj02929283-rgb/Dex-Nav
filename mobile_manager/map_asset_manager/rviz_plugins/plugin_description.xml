@@ -1,11 +1,11 @@
 <library path="map_asset_rviz_plugin">
 
   <!-- ── Panel ─────────────────────────────────────────────────── -->
-  <class name="map_asset_rviz_plugin/MapAssetPanel"
-         type="map_asset_rviz_plugin::MapAssetPanel"
+  <class name="map_asset_rviz_plugin/MapAssetManagerPanel"
+         type="map_asset_rviz_plugin::MapAssetManagerPanel"
          base_class_type="rviz_common::Panel">
     <description>
-      地图资产管理面板：导航点、路线、区域的增删查操作（对接 map_asset_manager 服务）
+      地图资产管理面板：选编辑目标（当前地图或任意地图），资产增删改、版本回滚、失效清单（对接 map_asset_manager 服务）
     </description>
   </class>
 

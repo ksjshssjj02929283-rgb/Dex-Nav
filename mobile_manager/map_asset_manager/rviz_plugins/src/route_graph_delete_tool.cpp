@@ -5,6 +5,7 @@
 //   右键：退出工具
 
 #include "map_asset_rviz_plugin/route_graph_delete_tool.hpp"
+#include "map_asset_rviz_plugin/asset_target.hpp"
 #include "map_asset_rviz_plugin/route_graph_tools_common.hpp"
 
 #include <QKeyEvent>
@@ -14,8 +15,8 @@
 #include <OgreSceneManager.h>
 
 #include <nav_interfaces/srv/set_assets.hpp>
-#include <nav_interfaces/srv/get_route_graph.hpp>
-#include <nav_interfaces/srv/get_all_nav_points.hpp>
+#include <nav_interfaces/srv/get_assets.hpp>
+#include <nav_interfaces/srv/get_assets.hpp>
 #include <rviz_common/display_context.hpp>
 #include <rviz_common/interaction/view_picker_iface.hpp>
 #include <rviz_common/render_panel.hpp>
@@ -70,6 +71,7 @@ void RouteGraphDeleteTool::deactivate() {
 }
 
 int RouteGraphDeleteTool::processMouseEvent(rviz_common::ViewportMouseEvent& event) {
+    if (loaded_gen_ != AssetTarget::generation()) reloadGraph();  // 编辑目标或数据变了
     if (!s_route_graph_editing) return Render;
 
     Ogre::Vector3 pos;
@@ -118,24 +120,25 @@ int RouteGraphDeleteTool::processKeyEvent(QKeyEvent* event,
 // ---------------------------------------------------------------------------
 
 void RouteGraphDeleteTool::reloadGraph() {
+    loaded_gen_ = AssetTarget::generation();
     // 使用 loadEndpointsAsync 并行获取 nav 点 + junction（含坐标），
     // 再异步获取边列表 — 修复 nav 端坐标为 0 的问题
     setStatus("正在加载路网…");
 
     loadEndpointsAsync(node_, service_prefix_,
         [this](std::vector<EndpointInfo> eps) {
-            auto cli = node_->create_client<nav_interfaces::srv::GetRouteGraph>(
-                service_prefix_ + "/get_route_graph");
+            auto cli = node_->create_client<nav_interfaces::srv::GetAssets>(
+                service_prefix_ + "/get_assets");
             if (!cli->service_is_ready()) {
                 QMetaObject::invokeMethod(this, [this]() {
                     setStatus("路网服务不可用");
                 }, Qt::QueuedConnection);
                 return;
             }
-            auto req = std::make_shared<nav_interfaces::srv::GetRouteGraph::Request>();
+            auto req = targetAssetsRequest(nav_interfaces::srv::GetAssets::Request::KIND_POINTS | nav_interfaces::srv::GetAssets::Request::KIND_JUNCTIONS | nav_interfaces::srv::GetAssets::Request::KIND_EDGES);
             cli->async_send_request(req,
                 [this, cli, eps](
-                    rclcpp::Client<nav_interfaces::srv::GetRouteGraph>::SharedFuture fut) {
+                    rclcpp::Client<nav_interfaces::srv::GetAssets>::SharedFuture fut) {
                     try {
                         auto resp = fut.get();
 
@@ -284,7 +287,7 @@ void RouteGraphDeleteTool::doDelete() {
     if (sel_type_ == SelType::JUNCTION) {
         auto cli = node_->create_client<nav_interfaces::srv::SetAssets>(
             service_prefix_ + "/set_assets");
-        auto req = std::make_shared<nav_interfaces::srv::SetAssets::Request>(); req->junctions.resize(1);
+        auto req = std::make_shared<nav_interfaces::srv::SetAssets::Request>(); applyTarget(req); req->junctions.resize(1);
         req->mode = nav_interfaces::srv::SetAssets::Request::MODE_REMOVE;
         req->junctions[0].id = sel_id_;
         sel_type_ = SelType::NONE;
@@ -294,12 +297,13 @@ void RouteGraphDeleteTool::doDelete() {
                 rclcpp::Client<nav_interfaces::srv::SetAssets>::SharedFuture fut) {
                 try {
                     auto resp = fut.get();
+                    reportResult(*resp, "删除路网元素");
                     if (resp->success) {
                         reloadGraph();
                         setStatus(QString("节点 '%1' 已删除，继续点击或右键退出").arg(qid));
                     } else {
                         setStatus(QString("删除失败: %1").arg(
-                            QString::fromStdString(resp->message)));
+                            assetMessage(*resp)));
                     }
                 } catch (const std::exception& ex) {
                     setStatus(QString("异常: %1").arg(ex.what()));
@@ -308,7 +312,7 @@ void RouteGraphDeleteTool::doDelete() {
     } else if (sel_type_ == SelType::EDGE) {
         auto cli = node_->create_client<nav_interfaces::srv::SetAssets>(
             service_prefix_ + "/set_assets");
-        auto req = std::make_shared<nav_interfaces::srv::SetAssets::Request>(); req->edges.resize(1);
+        auto req = std::make_shared<nav_interfaces::srv::SetAssets::Request>(); applyTarget(req); req->edges.resize(1);
         req->mode = nav_interfaces::srv::SetAssets::Request::MODE_REMOVE;
         req->edges[0].id = sel_id_;
         sel_type_ = SelType::NONE;
@@ -318,12 +322,13 @@ void RouteGraphDeleteTool::doDelete() {
                 rclcpp::Client<nav_interfaces::srv::SetAssets>::SharedFuture fut) {
                 try {
                     auto resp = fut.get();
+                    reportResult(*resp, "删除路网元素");
                     if (resp->success) {
                         reloadGraph();
                         setStatus(QString("边 '%1' 已删除，继续点击或右键退出").arg(qid));
                     } else {
                         setStatus(QString("删除失败: %1").arg(
-                            QString::fromStdString(resp->message)));
+                            assetMessage(*resp)));
                     }
                 } catch (const std::exception& ex) {
                     setStatus(QString("异常: %1").arg(ex.what()));

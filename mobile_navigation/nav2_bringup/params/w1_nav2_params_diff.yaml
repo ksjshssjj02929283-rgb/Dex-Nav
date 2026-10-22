@@ -931,6 +931,7 @@ local_costmap:
       # footprint: "[ [0.55, 0.35], [0.55, -0.35], [-0.55, -0.35], [-0.55, 0.35] ]" # 带 padding 的保守选项（1.10×0.70）
       # plugins: ["voxel_layer", "denoise_layer", "inflation_layer"]  output_topic: "control/cmd_vel_nav"
       plugins: ["static_layer", "obstacle_layer", "denoise_layer", "inflation_layer"]   
+      filters: ["keepout_filter", "speed_filter"]   # 禁行区 / 虚拟墙 + 减速区：订阅资产节点发布的 keepout / speed 掩膜
       # plugins: ["obstacle_layer", "voxel_layer", "denoise_layer", "inflation_layer"]
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
@@ -1011,9 +1012,9 @@ local_costmap:
         inflation_radius: 0.35
       speed_filter:
         plugin: "nav2_costmap_2d::SpeedFilter"
-        enabled: False
+        enabled: True
         filter_info_topic: "/speed_costmap_filter_info"
-        speed_limit_topic: "/speed_limit"
+        speed_limit_topic: "/area_speed_limit"   # 只发给导航门面，由门面与 X-Wiz 全局限速取严后统一发 /speed_limit
       always_send_full_costmap: False # True -> False：只发增量更新，减 publish 序列化开销（rolling 下收益有限但无害）
 
 global_costmap:
@@ -1031,6 +1032,8 @@ global_costmap:
       # plugins: ["static_layer", "obstacle_layer",  "denoise_layer", "inflation_layer"]
       # plugins: ["static_layer", "voxel_layer", "denoise_layer", "inflation_layer"]
       plugins: ["static_layer", "obstacle_layer", "denoise_layer", "inflation_layer"]
+      filters: ["keepout_filter"]   # 禁行区 / 虚拟墙：订阅资产节点发布的 /keepout_filter_mask
+      # speed_filter 只放局部 costmap：局部 14 Hz、全局 1 Hz，进出减速区响应更快；两处同开会重复发限速
       denoise_layer:
         plugin: "nav2_costmap_2d::DenoiseLayer"
         enabled: True
@@ -1112,9 +1115,9 @@ global_costmap:
         inflation_radius: 0.35
       speed_filter:
         plugin: "nav2_costmap_2d::SpeedFilter"
-        enabled: True
+        enabled: False
         filter_info_topic: "/speed_costmap_filter_info"
-        speed_limit_topic: "/speed_limit"
+        speed_limit_topic: "/area_speed_limit"
       always_send_full_costmap: True
 
 map_server:

@@ -2,6 +2,8 @@
 #define MAP_ASSET_MANAGER__FILE_MANAGER_HPP_
 
 #include <mutex>
+#include <ctime>
+#include <nlohmann/json.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <string>
 #include <unordered_map>
@@ -38,13 +40,24 @@ public:
                                std::vector<RouteJunction>& junctions,
                                std::vector<RouteEdge>& edges,
                                std::unordered_map<std::string, Room>& rooms);
+    // 顶层写 last_edited_at（资产最后编辑时间，本地时间 ISO 8601）；空 = 当前时间。
+    // 调用方只在内容真的变了时才调用（见 SaveAssetSet），时间因此只随编辑推进
     bool saveAllAssetsToFile(const std::string& file_path,
                              const std::unordered_map<std::string, NavPoint>& points,
                              const std::unordered_map<std::string, Route>& routes,
                              const std::unordered_map<std::string, Area>& areas,
                              const std::vector<RouteJunction>& junctions,
                              const std::vector<RouteEdge>& edges,
-                             const std::unordered_map<std::string, Room>& rooms);
+                             const std::unordered_map<std::string, Room>& rooms,
+                             const std::string& last_edited_at = "");
+
+    // 与 saveAllAssetsToFile 同一份 JSON（不落盘），供内容指纹使用；不含 last_edited_at（元数据不参与指纹）
+    static nlohmann::json buildAssetsJson(const std::unordered_map<std::string, NavPoint>& points,
+                                          const std::unordered_map<std::string, Route>& routes,
+                                          const std::unordered_map<std::string, Area>& areas,
+                                          const std::vector<RouteJunction>& junctions,
+                                          const std::vector<RouteEdge>& edges,
+                                          const std::unordered_map<std::string, Room>& rooms);
 
     // ── 地图文件夹加载（旧接口，保留兼容）──────────────────────────
     bool loadMapFolder(const std::string& base_path,
@@ -57,6 +70,13 @@ private:
     rclcpp::Logger logger_;
     std::mutex file_mutex_;
 };
+
+// 本地时间 ISO 8601、无时区后缀（如 2026-10-10T20:51:03），与 map.yaml 的时间键同格式
+std::string LocalTimeIso8601();
+
+// 资产最后编辑时间：map_assets.json 顶层 last_edited_at。只反映资产，与底图（map.yaml last_edited_at）互不相干。
+// 旧文件没有该键时退回文件修改时间；文件不存在返回 0
+std::time_t AssetsLastEditedAt(const std::string& assets_file);
 
 }  // namespace map_asset_manager
 

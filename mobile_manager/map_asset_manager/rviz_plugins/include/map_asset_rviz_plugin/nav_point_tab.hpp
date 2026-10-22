@@ -7,6 +7,7 @@
 #include <QLineEdit>
 #include <QListWidget>
 #include <QPushButton>
+#include <QTimer>
 #include <QVariantList>
 #include <QWidget>
 
@@ -17,10 +18,11 @@
 
 #include <nav_interfaces/action/navigate_to_point.hpp>
 #include <nav_interfaces/srv/set_assets.hpp>
-#include <nav_interfaces/srv/get_all_nav_points.hpp>
-#include <nav_interfaces/srv/sample_nav_point.hpp>
+#include <nav_interfaces/srv/get_assets.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <rclcpp_action/rclcpp_action.hpp>
+#include <tf2_ros/buffer.h>
+#include <tf2_ros/transform_listener.h>
 
 namespace map_asset_rviz_plugin {
 
@@ -48,6 +50,7 @@ Q_SIGNALS:
 private Q_SLOTS:
     void onRefresh();
     void onSample();
+    void onSampleTick();
     void onAdd();
     void onRemove();
     void onEdit();
@@ -83,10 +86,15 @@ private:
     rclcpp::Node::SharedPtr node_;
     std::string prefix_{"/map_asset_manager"};
 
-    rclcpp::Client<nav_interfaces::srv::GetAllNavPoints>::SharedPtr get_all_client_;
+    rclcpp::Client<nav_interfaces::srv::GetAssets>::SharedPtr get_all_client_;
     rclcpp::Client<nav_interfaces::srv::SetAssets>::SharedPtr     add_client_;
     rclcpp::Client<nav_interfaces::srv::SetAssets>::SharedPtr  remove_client_;
-    rclcpp::Client<nav_interfaces::srv::SampleNavPoint>::SharedPtr  sample_client_;
+    // 采样机器人当前位姿（map → base_link）用的 TF，随节点创建一次
+    std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
+    std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
+    QTimer* sample_timer_{nullptr};
+    int sample_count_{0};
+    double sample_x_{0.0}, sample_y_{0.0}, sample_sin_{0.0}, sample_cos_{0.0};
     rclcpp::Client<nav_interfaces::srv::SetAssets>::SharedPtr  update_client_;
     rclcpp_action::Client<NavigateToPointAction>::SharedPtr          nav_client_;
 

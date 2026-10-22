@@ -15,16 +15,16 @@
 #include "rclcpp/executors/single_threaded_executor.hpp"
 #include "rclcpp_lifecycle/lifecycle_node.hpp"
 
-#include "nav_interfaces/srv/get_route_graph.hpp"
+#include "nav_interfaces/srv/get_assets.hpp"
 
 #include "nav2_route_planner/topo_graph.hpp"
 
 namespace nav2_route_planner
 {
 
-/// Pulls RouteGraph (junctions + edges + nav_points) from `map_asset_manager`
-/// over a single ROS2 service (GetRouteGraph) and rebuilds the in-memory
-/// TopoGraph.
+/// Pulls the route graph (junctions + edges + the nav points they reference)
+/// from `map_asset_manager` over a single `get_assets` call (kinds = points |
+/// junctions | edges, current map) and rebuilds the in-memory TopoGraph.
 ///
 /// IMPORTANT — fully asynchronous design:
 ///   `planner_server` uses a SingleThreadedExecutor. Any synchronous wait on
@@ -84,10 +84,11 @@ public:
   LoadResult syncLoad(std::chrono::milliseconds timeout = std::chrono::seconds(2));
 
 private:
-  using GetRouteGraph = nav_interfaces::srv::GetRouteGraph;
+  using GetRouteGraph = nav_interfaces::srv::GetAssets;
 
   void onTimer();
   void onGraphResponse(rclcpp::Client<GetRouteGraph>::SharedFuture future);
+  std::shared_ptr<GetRouteGraph::Request> makeGraphRequest();
   void rebuild(const GetRouteGraph::Response & resp);
 
   rclcpp_lifecycle::LifecycleNode::WeakPtr parent_;

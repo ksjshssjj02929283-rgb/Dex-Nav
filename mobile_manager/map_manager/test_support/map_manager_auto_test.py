@@ -368,7 +368,7 @@ def topic_endpoint_details(
 
 def run_preflight(harness: RosHarness, report: Report) -> Any:
     from nav_interfaces.msg import MapState
-    from nav_interfaces.srv import GetMapInfo, GetMapList, GetString
+    from nav_interfaces.srv import GetMaps
     from nav_msgs.srv import GetMap
 
     def tc01() -> None:
@@ -422,12 +422,16 @@ def run_preflight(harness: RosHarness, report: Report) -> Any:
             ),
         )
 
-        report.action("TC-01", "读取 map_manager 服务图", "核对 8 个保留服务")
+        report.action("TC-01", "读取 map_manager 服务图", "核对 3 个保留服务（v1.11：get_maps / map_command / get_current_map_data）+ 旧服务已删")
         services = {
             name: types for name, types in harness.node.get_service_names_and_types()
         }
         expected_services = {
             "/map_manager/get_current_map_data",
+            "/map_manager/get_maps",
+            "/map_manager/map_command",
+        }
+        retired_services = {
             "/map_manager/get_current_map_info",
             "/map_manager/get_map_folder",
             "/map_manager/get_map_name",
@@ -437,11 +441,12 @@ def run_preflight(harness: RosHarness, report: Report) -> Any:
             "/map_manager/rename_map",
         }
         missing_services = sorted(expected_services - services.keys())
+        leftover_services = sorted(retired_services & services.keys())
         report.add(
             "TC-01",
-            "8 个 map_manager 服务",
-            not missing_services,
-            f"missing={missing_services}",
+            "3 个 map_manager 服务且旧服务已删",
+            not missing_services and not leftover_services,
+            f"missing={missing_services}, leftover={leftover_services}",
         )
 
     execute_case(report, "TC-01", "MapState、topic 与服务契约", tc01)
@@ -489,33 +494,19 @@ def run_preflight(harness: RosHarness, report: Report) -> Any:
             )
         report.action(
             "TC-03",
-            "调用 5 个查询服务",
-            "get_current_map_info/folder/name/list/data",
+            "调用 2 个查询服务",
+            "get_maps（folder / current / list）+ get_current_map_data",
         )
-        info = harness.call(
-            GetMapInfo,
-            "/map_manager/get_current_map_info",
-            GetMapInfo.Request(),
-        )
-        folder = harness.call(
-            GetString, "/map_manager/get_map_folder", GetString.Request()
-        )
-        name = harness.call(
-            GetString, "/map_manager/get_map_name", GetString.Request()
-        )
-        maps = harness.call(
-            GetMapList, "/map_manager/get_map_list", GetMapList.Request()
-        )
+        info = harness.call(GetMaps, "/map_manager/get_maps", GetMaps.Request())
         grid = harness.call(
             GetMap, "/map_manager/get_current_map_data", GetMap.Request()
         )
+        names = [item.name for item in info.maps]
         query_ok = (
             info.success
-            and folder.success
-            and name.success
-            and maps.success
-            and info.map_folder == current.map_folder == folder.data
-            and info.map_name == current.map_name == name.data
+            and info.map_folder == current.map_folder
+            and info.current_map_name == current.map_name
+            and current.map_name in names
             and grid.map.info.width > 0
             and grid.map.info.height > 0
             and len(grid.map.data)
@@ -526,8 +517,8 @@ def run_preflight(harness: RosHarness, report: Report) -> Any:
             "查询服务与 MapState 一致",
             query_ok,
             (
-                f"name={name.data}, folder={folder.data}, "
-                f"maps={len(maps.map_list)}, "
+                f"name={info.current_map_name}, folder={info.map_folder}, "
+                f"maps={len(info.maps)}, "
                 f"grid={grid.map.info.width}x{grid.map.info.height}"
             ),
         )
@@ -565,7 +556,7 @@ def run_same_map_smoke(
     harness: RosHarness, report: Report, current_state: Any, map_name: str
 ) -> None:
     from nav_interfaces.msg import MapState
-    from nav_interfaces.srv import LoadMap
+    from nav_interfaces.srv import MapManagerCommand
 
     target = map_name or current_state.map_name
     report.action(
@@ -578,15 +569,16 @@ def run_same_map_smoke(
             "safe smoke mode only permits the current map; "
             f"current={current_state.map_name}, requested={target}"
         )
-    request = LoadMap.Request()
+    request = MapManagerCommand.Request()
+    request.op = MapManagerCommand.Request.OP_LOAD
     request.map_name = target
     report.action(
         "TC-08-A",
-        "调用 load_map",
-        f"service=/map_manager/load_map, map_name={target}",
+        "调用 map_command{op: LOAD}",
+        f"service=/map_manager/map_command, op=1, map_name={target}",
     )
     started = time.monotonic()
-    response = harness.call(LoadMap, "/map_manager/load_map", request)
+    response = harness.call(MapManagerCommand, "/map_manager/map_command", request)
     elapsed = time.monotonic() - started
     report.action(
         "TC-08-A",

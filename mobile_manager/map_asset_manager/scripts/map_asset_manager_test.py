@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from types import SimpleNamespace
 import json
 import os
 import shutil
@@ -27,10 +28,7 @@ EXPECTED_COUNTS = {
     "junctions": 1,
     "edges": 2,
 }
-DATA_SERVICES = (
-    "get_all_nav_points", "get_point", "get_route", "get_route_graph",
-    "get_assets", "set_assets",
-)
+DATA_SERVICES = ("get_assets", "set_assets")
 MANAGEMENT_SERVICES = ("save_assets",)
 COVERED_SERVICES = DATA_SERVICES + MANAGEMENT_SERVICES
 
@@ -343,12 +341,10 @@ class AssetRunner:
     ) -> None:
         from geometry_msgs.msg import Point, Pose2D
         from nav_interfaces.msg import (
+            AssetSnapshot,
             MapState, NavPoint, AreaInfo, RoomInfo, Route, RouteEdge, RouteJunction,
         )
-        from nav_interfaces.srv import (
-            SetAssets, GetAssets, GetAllNavPoints, GetNavPoint,
-            GetRoute, GetRouteGraph, SaveAssets,
-        )
+        from nav_interfaces.srv import SetAssets, GetAssets, SaveAssets
         from std_msgs.msg import String
 
         self.harness = harness
@@ -357,7 +353,8 @@ class AssetRunner:
         self.fixture = fixture
         self.prefix = f"{NAMESPACE}/map_asset_manager"
         self.state_topic = f"{NAMESPACE}/map_manager/map_state"
-        self.status_topic = f"{self.prefix}/status"
+        self.status_topic = f"{self.prefix}/assets"   # DEC-038：资产域唯一发布 AssetSnapshot（原 status String 已并入）
+        self.AssetSnapshot = AssetSnapshot
         self.epoch = 0
         self.Pose2D = Pose2D
         self.Point = Point
@@ -365,10 +362,7 @@ class AssetRunner:
         self.NavPoint, self.AreaInfo, self.RoomInfo = NavPoint, AreaInfo, RoomInfo
         self.Route, self.RouteEdge, self.RouteJunction = Route, RouteEdge, RouteJunction
         self.String = String
-        service_types = (
-            SetAssets, GetAssets, GetAllNavPoints, GetNavPoint,
-            GetRoute, GetRouteGraph, SaveAssets,
-        )
+        service_types = (SetAssets, GetAssets, SaveAssets)
         for service_type in service_types:
             setattr(self, service_type.__name__, service_type)
         self.publisher = harness.node.create_publisher(
@@ -384,6 +378,27 @@ class AssetRunner:
         req = self.GetAssets.Request()
         req.kinds = kinds
         return req
+
+    # 单项读取统一经 get_assets 再按主键筛选（原 get_point / get_route / get_route_graph 已删除）
+    def get_points(self) -> Any:
+        return self.harness.call(self.GetAssets, self.service("get_assets"), self.assets_req(1))
+
+    def get_point(self, name: str) -> Any:
+        resp = self.get_points()
+        hit = next((p for p in resp.points if p.name == name), None)
+        return SimpleNamespace(success=bool(resp.success and hit is not None), point=hit or self.NavPoint())
+
+    def get_route(self, name: str) -> Any:
+        resp = self.harness.call(self.GetAssets, self.service("get_assets"), self.assets_req(8))
+        hit = next((r for r in resp.routes if r.name == name), None)
+        return SimpleNamespace(success=bool(resp.success and hit is not None),
+                               point_names=list(hit.point_names) if hit else [])
+
+    def get_graph(self) -> Any:
+        resp = self.harness.call(self.GetAssets, self.service("get_assets"), self.assets_req(1 | 16 | 32))
+        referenced = {ep.id for e in resp.edges for ep in (e.from_ep, e.to_ep) if ep.type == "nav"}
+        return SimpleNamespace(success=resp.success, junctions=list(resp.junctions), edges=list(resp.edges),
+                               nav_points=[p for p in resp.points if p.name in referenced])
 
     @staticmethod
     def find_room(resp: Any, name: str) -> Any:
@@ -435,31 +450,29 @@ class AssetRunner:
         self.publisher.publish(state)
 
         def ready(message: Any) -> bool:
-            fields = self.status_fields(message.data)
             return (
-                fields.get("map") == MAP_NAME
-                and fields.get("points") == "3"
-                and fields.get("routes") == "1"
-                and fields.get("areas") == "1"
-                and fields.get("rooms") == "1"
+                bool(message.loaded)
+                and message.map_name == MAP_NAME
+                and len(message.points) == 3
+                and len(message.routes) == 1
+                and len(message.areas) == 1
+                and len(message.rooms) == 1
             )
 
-        status = self.harness.wait_message(self.String, self.status_topic, ready)
-        self.report.check(tc, "标准资产装载完成", True, status.data)
+        status = self.harness.wait_message(self.AssetSnapshot, self.status_topic, ready)
+        self.report.check(
+            tc, "标准资产装载完成", True,
+            f"map={status.map_name} epoch={status.map_epoch} loaded={status.loaded} "
+            f"points={len(status.points)} routes={len(status.routes)} areas={len(status.areas)} "
+            f"rooms={len(status.rooms)} junctions={len(status.junctions)} edges={len(status.edges)}",
+        )
 
     def tc01(self) -> None:
         tc = "TC-01"
         self.prepare(tc)
-        all_result = self.harness.call(
-            self.GetAllNavPoints, self.service("get_all_nav_points"),
-            self.GetAllNavPoints.Request(),
-        )
+        all_result = self.get_points()
         names = {item.name for item in all_result.points}
-        get_request = self.GetNavPoint.Request()
-        get_request.name = "AUTO_ASSET_POINT_A"
-        one = self.harness.call(
-            self.GetNavPoint, self.service("get_point"), get_request
-        )
+        one = self.get_point("AUTO_ASSET_POINT_A")
         self.report.check(
             tc, "导航点全量与单点查询",
             (
@@ -492,11 +505,7 @@ class AssetRunner:
         updated = self.harness.call(
             self.SetAssets, self.service("set_assets"), update
         )
-        query = self.GetNavPoint.Request()
-        query.name = "AUTO_TMP_POINT"
-        current = self.harness.call(
-            self.GetNavPoint, self.service("get_point"), query
-        )
+        current = self.get_point("AUTO_TMP_POINT")
         remove = self.SetAssets.Request()
         remove.mode = 1  # MODE_MERGE（默认）
         remove.points.append(self.NavPoint())
@@ -505,9 +514,7 @@ class AssetRunner:
         removed = self.harness.call(
             self.SetAssets, self.service("set_assets"), remove
         )
-        absent = self.harness.call(
-            self.GetNavPoint, self.service("get_point"), query
-        )
+        absent = self.get_point("AUTO_TMP_POINT")
         self.report.check(
             tc, "导航点新增/更新/删除闭环",
             (
@@ -526,11 +533,7 @@ class AssetRunner:
         all_result = self.harness.call(
             self.GetAssets, self.service("get_assets"), self.assets_req(8),
         )
-        route_request = self.GetRoute.Request()
-        route_request.name = "AUTO_ASSET_ROUTE"
-        route = self.harness.call(
-            self.GetRoute, self.service("get_route"), route_request
-        )
+        route = self.get_route("AUTO_ASSET_ROUTE")
         self.report.check(
             tc, "路线全量与单条查询",
             (
@@ -552,11 +555,7 @@ class AssetRunner:
         added = self.harness.call(
             self.SetAssets, self.service("set_assets"), add
         )
-        temp = self.GetRoute.Request()
-        temp.name = add.routes[0].name
-        found = self.harness.call(
-            self.GetRoute, self.service("get_route"), temp
-        )
+        found = self.get_route(add.routes[0].name)
         remove = self.SetAssets.Request()
         remove.mode = 1  # MODE_MERGE（默认）
         remove.routes.append(self.Route())
@@ -565,14 +564,12 @@ class AssetRunner:
         removed = self.harness.call(
             self.SetAssets, self.service("set_assets"), remove
         )
-        absent = self.harness.call(
-            self.GetRoute, self.service("get_route"), temp
-        )
+        absent = self.get_route(add.routes[0].name)
         self.report.check(
             tc, "路线新增/查询/删除闭环",
             (
                 added.success and found.success
-                and list(found.point_names) == list(add.point_names)
+                and list(found.point_names) == list(add.routes[0].point_names)
                 and removed.success and not absent.success
             ),
             f"add={added.success}, get={found.success}, "
@@ -722,10 +719,7 @@ class AssetRunner:
     def tc05(self) -> None:
         tc = "TC-05"
         self.prepare(tc)
-        baseline = self.harness.call(
-            self.GetRouteGraph, self.service("get_route_graph"),
-            self.GetRouteGraph.Request(),
-        )
+        baseline = self.get_graph()
         junctions = {item.id for item in baseline.junctions}
         edges = {item.id for item in baseline.edges}
         nav_points = {item.name for item in baseline.nav_points}
@@ -782,10 +776,7 @@ class AssetRunner:
             self.SetAssets, self.service("set_assets"),
             update_edge,
         )
-        current_graph = self.harness.call(
-            self.GetRouteGraph, self.service("get_route_graph"),
-            self.GetRouteGraph.Request(),
-        )
+        current_graph = self.get_graph()
         current_edge = next(
             (item for item in current_graph.edges if item.id == "AUTO_TMP_EDGE"),
             None,
@@ -811,10 +802,7 @@ class AssetRunner:
             self.SetAssets, self.service("set_assets"),
             remove_junction,
         )
-        final = self.harness.call(
-            self.GetRouteGraph, self.service("get_route_graph"),
-            self.GetRouteGraph.Request(),
-        )
+        final = self.get_graph()
         self.report.check(
             tc, "路网节点与边新增/更新/删除闭环",
             (

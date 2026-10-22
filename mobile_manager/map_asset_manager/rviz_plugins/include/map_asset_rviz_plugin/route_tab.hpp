@@ -11,9 +11,7 @@
 #include <string>
 
 #include <nav_interfaces/srv/set_assets.hpp>
-#include <nav_interfaces/srv/get_all_nav_points.hpp>
 #include <nav_interfaces/srv/get_assets.hpp>
-#include <nav_interfaces/srv/get_route.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 namespace map_asset_rviz_plugin {
@@ -69,9 +67,9 @@ private:
 
     rclcpp::Client<nav_interfaces::srv::SetAssets>::SharedPtr        add_client_;
     rclcpp::Client<nav_interfaces::srv::SetAssets>::SharedPtr     remove_client_;
-    rclcpp::Client<nav_interfaces::srv::GetRoute>::SharedPtr        get_client_;
+    rclcpp::Client<nav_interfaces::srv::GetAssets>::SharedPtr       get_client_;
     rclcpp::Client<nav_interfaces::srv::GetAssets>::SharedPtr    get_all_routes_client_;
-    rclcpp::Client<nav_interfaces::srv::GetAllNavPoints>::SharedPtr get_points_client_;
+    rclcpp::Client<nav_interfaces::srv::GetAssets>::SharedPtr       get_points_client_;
 };
 
 }  // namespace map_asset_rviz_plugin

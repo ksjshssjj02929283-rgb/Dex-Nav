@@ -19,6 +19,7 @@
 #include <chrono>
 #include <vector>
 #include <functional>
+#include <limits>
 
 #include "rclcpp/rclcpp.hpp"
 #include "nav2_util/lifecycle_node.hpp"
@@ -461,6 +462,37 @@ TEST_F(TestNode, testDifferentFrames)
   testFramesScenario(nav2_costmap_2d::FREE_SPACE, nav2_costmap_2d::LETHAL_OBSTACLE);
 
   // Clean-up
+  keepout_filter_->resetFilter();
+  reset();
+}
+
+// 新掩膜到达后，下一轮 updateBounds 扩到整张 costmap 一次，之后恢复原范围
+TEST_F(TestNode, testNewMaskRequestsOneFullUpdate)
+{
+  createMaps(nav2_costmap_2d::FREE_SPACE, nav2_util::OCC_GRID_OCCUPIED, "map");
+  publishMaps();
+  createKeepoutFilter("map");
+
+  auto bounds_after_update = [this]() {
+      double b[4] = {1.0, 1.0, 2.0, 2.0};
+      keepout_filter_->updateBounds(0.0, 0.0, 0.0, &b[0], &b[1], &b[2], &b[3]);
+      return std::vector<double>(b, b + 4);
+    };
+  const std::vector<double> full = {
+    std::numeric_limits<double>::lowest(), std::numeric_limits<double>::lowest(),
+    std::numeric_limits<double>::max(), std::numeric_limits<double>::max()};
+  const std::vector<double> unchanged = {1.0, 1.0, 2.0, 2.0};
+
+  // 首份掩膜：扩一次
+  EXPECT_EQ(bounds_after_update(), full);
+  // 请求已消费：范围不变
+  EXPECT_EQ(bounds_after_update(), unchanged);
+
+  // 掩膜更新（如运行中增删禁行区）：再扩一次
+  rePublishMask();
+  EXPECT_EQ(bounds_after_update(), full);
+  EXPECT_EQ(bounds_after_update(), unchanged);
+
   keepout_filter_->resetFilter();
   reset();
 }

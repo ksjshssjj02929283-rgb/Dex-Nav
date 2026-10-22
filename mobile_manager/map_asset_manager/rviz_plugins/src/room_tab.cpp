@@ -1,4 +1,5 @@
 #include "map_asset_rviz_plugin/room_tab.hpp"
+#include "map_asset_rviz_plugin/asset_target.hpp"
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -114,7 +115,7 @@ void RoomTab::onRefresh() {
     remove_btn_->setEnabled(false);
     status_label_->setText("刷新中...");
 
-    auto req = std::make_shared<nav_interfaces::srv::GetAssets::Request>();
+    auto req = std::make_shared<nav_interfaces::srv::GetAssets::Request>(); applyTarget(req);
     req->kinds = nav_interfaces::srv::GetAssets::Request::KIND_ROOMS;
     get_client_->async_send_request(
         req,
@@ -274,7 +275,7 @@ void RoomTab::onRemove() {
     remove_btn_->setEnabled(false);
     status_label_->setText("删除中...");
 
-    auto req = std::make_shared<nav_interfaces::srv::SetAssets::Request>(); req->rooms.resize(1);
+    auto req = std::make_shared<nav_interfaces::srv::SetAssets::Request>(); applyTarget(req); req->rooms.resize(1);
     req->mode = nav_interfaces::srv::SetAssets::Request::MODE_REMOVE;
     req->rooms[0].name = room_name.toStdString();
 
@@ -288,7 +289,7 @@ void RoomTab::onRemove() {
                     QMetaObject::invokeMethod(this, &RoomTab::onRefresh, Qt::QueuedConnection);
                 } else {
                     Q_EMIT operationFinished(false,
-                        QString("删除失败: %1").arg(QString::fromStdString(resp->message)));
+                        QString("删除失败: %1").arg(assetMessage(*resp)));
                 }
             } catch (const std::exception& ex) {
                 Q_EMIT operationFinished(false, QString("删除异常: %1").arg(ex.what()));
@@ -433,7 +434,7 @@ void RoomTab::onEdit() {
         }
     };
 
-    auto req = std::make_shared<nav_interfaces::srv::SetAssets::Request>(); req->rooms.resize(1);
+    auto req = std::make_shared<nav_interfaces::srv::SetAssets::Request>(); applyTarget(req); req->rooms.resize(1);
     req->mode = nav_interfaces::srv::SetAssets::Request::MODE_UPDATE_ONLY;
     req->rooms[0].name           = name.toStdString();
     req->rooms[0].type           = type_combo->currentData().toUInt();
@@ -475,7 +476,7 @@ void RoomTab::onEdit() {
                     QMetaObject::invokeMethod(this, &RoomTab::onRefresh, Qt::QueuedConnection);
                 } else {
                     Q_EMIT operationFinished(false,
-                        QString("修改失败: %1").arg(QString::fromStdString(resp->message)));
+                        QString("修改失败: %1").arg(assetMessage(*resp)));
                 }
             } catch (const std::exception& ex) {
                 Q_EMIT operationFinished(false, QString("更新异常: %1").arg(ex.what()));

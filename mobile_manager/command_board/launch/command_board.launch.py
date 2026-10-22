@@ -50,29 +50,10 @@ def generate_launch_description():
         parameters=[LaunchConfiguration('map_asset_manager_params_file')],
     )
 
-    navigation_adapter_params_arg = DeclareLaunchArgument(
-        'navigation_adapter_params_file',
-        default_value=PathJoinSubstitution([
-            FindPackageShare('navigation_adapter'), 'params',
-            'navigation_adapter_params.yaml'
-        ]),
-        description='Full path to the navigation_adapter parameters file',
-    )
-
-    navigation_adapter_node = Node(
-        package='navigation_adapter',
-        executable='navigation_adapter_node',
-        name='navigation_adapter_node',
-        output='screen',
-        parameters=[LaunchConfiguration('navigation_adapter_params_file')],
-    )
-
     return LaunchDescription([
         command_board_params_arg,
         map_asset_manager_params_arg,
-        navigation_adapter_params_arg,
         command_board_node,
         map_manager_node,
         map_asset_manager_node,
-        navigation_adapter_node,
     ])

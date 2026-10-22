@@ -2,6 +2,7 @@
 // 悬停时红色高亮最近的 Junction；左键确认删除；右键退出。
 
 #include "map_asset_rviz_plugin/delete_junction_tool.hpp"
+#include "map_asset_rviz_plugin/asset_target.hpp"
 
 #include <QMessageBox>
 
@@ -57,6 +58,7 @@ void DeleteJunctionTool::deactivate() {
 }
 
 int DeleteJunctionTool::processMouseEvent(rviz_common::ViewportMouseEvent& event) {
+    if (loaded_gen_ != AssetTarget::generation()) reloadJunctions();  // 编辑目标或数据变了
     Ogre::Vector3 pos;
 
     // ----- 鼠标移动：高亮最近 Junction -----
@@ -114,6 +116,7 @@ int DeleteJunctionTool::processMouseEvent(rviz_common::ViewportMouseEvent& event
 // ---------------------------------------------------------------------------
 
 void DeleteJunctionTool::reloadJunctions() {
+    loaded_gen_ = AssetTarget::generation();
     junctions_ = loadJunctions(node_, service_prefix_);
 }
 
@@ -147,7 +150,7 @@ void DeleteJunctionTool::clearPreview() {
 void DeleteJunctionTool::doDelete(const EndpointInfo& ep) {
     auto client = node_->create_client<nav_interfaces::srv::SetAssets>(
         service_prefix_ + "/set_assets");
-    auto req = std::make_shared<nav_interfaces::srv::SetAssets::Request>(); req->junctions.resize(1);
+    auto req = std::make_shared<nav_interfaces::srv::SetAssets::Request>(); applyTarget(req); req->junctions.resize(1);
     req->mode = nav_interfaces::srv::SetAssets::Request::MODE_REMOVE;
     req->junctions[0].id = ep.id;
 
@@ -157,10 +160,11 @@ void DeleteJunctionTool::doDelete(const EndpointInfo& ep) {
             rclcpp::Client<nav_interfaces::srv::SetAssets>::SharedFuture fut) {
             try {
                 auto resp = fut.get();
+                reportResult(*resp, "删除路网节点");
                 setStatus(resp->success
                     ? QString("Junction '%1' 已删除").arg(display_id)
                     : QString("删除失败: %1").arg(
-                          QString::fromStdString(resp->message)));
+                          assetMessage(*resp)));
             } catch (const std::exception& ex) {
                 setStatus(QString("异常: %1").arg(ex.what()));
             }
