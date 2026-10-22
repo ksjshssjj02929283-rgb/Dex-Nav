@@ -20,8 +20,9 @@ public:
     CloudiaTeleopManager(const CloudiaTeleopManager&) = delete;
     CloudiaTeleopManager& operator=(const CloudiaTeleopManager&) = delete;
 
-    // Called by the existing safety monitor; a missing/stale heartbeat also stops.
+    //安全状态上报
     void UpdateSafety(bool fault);
+    //停车信号上报
     void RequestStop(const std::string& reason);
 
 private:

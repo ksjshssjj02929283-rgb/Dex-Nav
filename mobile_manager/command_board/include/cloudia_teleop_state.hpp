@@ -20,7 +20,8 @@ public:
         bool stopped{false};
         double received{-1.0};
         int64_t task_id{0};
-        bool navigation_blocked{false};  // ordinary NAV_STOP, not a hardware fault
+        bool navigation_blocked{false};  // 是否因为导航停障停车，为了后续细分底盘停车情况避免所有停车都进入故障处理
+        bool control_unavailable{false};  // 初始化或充电：不是故障，但不允许遥控
     };
     struct Config {
         double input_timeout{0.5};
@@ -38,8 +39,7 @@ public:
     void OnJoy(int16_t value, double now) {
         joy_ = value;
         joy_time_ = now;
-        if (value != 1) obstacle_release_required_ = false;
-        // joy_in=1 deliberately includes the existing SOFT_STOPPING phase.
+        // joy_in=1 包括松开使能后的平滑停止
         if (value != 1 && phase_ == Phase::Teleop) {
             Enter(Phase::Releasing, now, "joystick released");
         }
@@ -65,12 +65,11 @@ public:
     }
 
     void RequestStop(double now, const std::string& reason) {
-        // A generic command_board stop cannot clear an existing safety latch.
+        // 普通停车请求不能解除已有故障.
         if (phase_ != Phase::Fault && phase_ != Phase::Error) {
             Enter(Phase::Releasing, now, reason);
         }
-        // Even in an existing fault/release phase, a newly queued HTTP stop must
-        // settle before an older "stopped" snapshot can release the stop phase.
+        //废除之前的旧状态，重新查询当前底盘所处状态用于判断是否已经停稳
         InvalidateRemote();
     }
 
@@ -90,15 +89,13 @@ public:
         return remote_.valid && now - remote_.received <= config_.remote_timeout;
     }
     bool Quiescent(double now) const {
-        return RemoteFresh(now) && !remote_.fault && remote_.ready &&
-               !remote_.navigation_blocked && !remote_.running && remote_.stopped;
-    }
-    bool CanReleaseControl(double now) const {
-        // Releasing an owned zero-speed channel is different from granting
-        // teleop: NAV_STOP may stay asserted until navigation regains control.
-        return RemoteFresh(now) && !remote_.fault &&
+        //普通导航停障不会阻止遥控接管
+        return RemoteFresh(now) && !remote_.fault && !remote_.control_unavailable &&
                (remote_.ready || remote_.navigation_blocked) &&
                !remote_.running && remote_.stopped;
+    }
+    bool CanReleaseControl(double now) const {
+        return Quiescent(now);
     }
     Output Tick(double now) {
         if (safety_seen_ && !SafetyOK(now) && phase_ != Phase::Fault) {
@@ -107,21 +104,18 @@ public:
         if (RemoteFresh(now) && remote_.fault && phase_ != Phase::Fault) {
             Enter(Phase::Fault, now, "Cloudia reports fault");
         }
+        // 待命时只等待；已经开始接管或遥控时，失去控制条件必须保护停车。
+        if (RemoteFresh(now) && remote_.control_unavailable &&
+            (phase_ == Phase::StoppingTask || phase_ == Phase::Teleop)) {
+            Fail(now, "Cloudia initializing or charging during control");
+        }
 
         const bool joy_fresh = joy_time_ >= 0.0 && now - joy_time_ <= config_.input_timeout;
         const bool raw_fresh = velocity_time_ >= 0.0 && now - velocity_time_ <= config_.input_timeout;
         const bool wants_control = joy_fresh && joy_ == 1;
-        const bool navigation_blocked = RemoteFresh(now) && remote_.navigation_blocked;
-        if (navigation_blocked && wants_control) obstacle_release_required_ = true;
-
-        // An idle observer must not acquire the calibration channel just because
-        // native navigation is obstacle-stopped. A blocked request needs release.
         if (phase_ == Phase::Idle && wants_control && SafetyOK(now) &&
-            !navigation_blocked && !obstacle_release_required_) {
+            RemoteFresh(now) && !remote_.fault && !remote_.control_unavailable) {
             Enter(Phase::StoppingTask, now, "teleop requested");
-        }
-        if (phase_ == Phase::StoppingTask && navigation_blocked) {
-            Enter(Phase::Releasing, now, "navigation obstacle stop; release joystick to rearm");
         }
         if (phase_ == Phase::StoppingTask && now - phase_begin_ > config_.takeover_timeout) {
             Fail(now, "teleop takeover timeout");
@@ -139,17 +133,11 @@ public:
                 Fail(now, "joystick input lost");
             } else if (!RemoteFresh(now) || remote_.running || remote_.fault || !SafetyOK(now)) {
                 Fail(now, "Cloudia state stale, task restarted, or safety active");
-            } else if (navigation_blocked) {
-                // We already own the channel: stop first, then release only
-                // after fresh stationary feedback and an explicit key release.
-                Enter(Phase::Releasing, now, "navigation obstacle stop; release joystick to rearm");
             } else if (joy_ != 1) {
                 Enter(Phase::Releasing, now, "joystick released");
             }
         }
 
-        // On release/error/fault, return to idle only after the robot has
-        // settled and the key is released. A held key cannot rearm a fault.
         if ((phase_ == Phase::Releasing || phase_ == Phase::Fault || phase_ == Phase::Error) &&
             SafetyOK(now) && CanReleaseControl(now) && joy_ != 1) {
             EnterIdle(now);
@@ -158,7 +146,7 @@ public:
         Output output;
         output.publish = phase_ != Phase::Idle || zero_tail_ > 0;
         if (zero_tail_ > 0) --zero_tail_;
-        // Never replay a pre-grant velocity, even if its receipt was recent.
+        // 永远接收最新的遥控指令，不会执行停止时缓存的旧遥控信息，避免一开始发送高速信息底盘缓存但因为某些原因没响应，后续链路通了突然开始高速行驶的情况
         if (phase_ == Phase::Teleop && raw_fresh && velocity_time_ > activated_at_ && wants_control) {
             output.velocity = velocity_;
         }
@@ -192,8 +180,6 @@ private:
         phase_begin_ = now;
         reason_ = reason;
         ++revision_;
-        // Require a state read made AFTER this transition, especially while
-        // switching from idle to takeover or handling a new stop request.
         if (phase != Phase::Teleop && phase != Phase::Idle) remote_.valid = false;
     }
     void EnterIdle(double now) {
@@ -211,7 +197,6 @@ private:
     double joy_time_{-1.0}, velocity_time_{-1.0}, safety_time_{-1.0};
     double phase_begin_{0.0}, activated_at_{0.0};
     bool safety_seen_{false}, safety_fault_{false};
-    bool obstacle_release_required_{false};
     uint64_t revision_{0};
     int zero_tail_{0};
     std::string reason_{"waiting for safety/remote state"};

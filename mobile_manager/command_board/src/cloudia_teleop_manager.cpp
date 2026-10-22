@@ -69,7 +69,6 @@ CloudiaTeleopManager::CloudiaTeleopManager(rclcpp::Node* node)
     : node_(node), state_(ReadPolicy(node)) {
     host_ = node_->declare_parameter("cloudia.host", Env("CLOUDIA_HOST"));
     if (host_.empty()) host_ = Env("CLOUDIA_HOST");
-    // Keep credentials out of YAML/logs. HTTP requests never print headers.
     const auto token_env = node_->declare_parameter<std::string>("cloudia.token_env", "CLOUDIA_TOKEN");
     token_ = Env(token_env.c_str());
     task_port_ = node_->declare_parameter("cloudia.task_port", 8002);
@@ -181,8 +180,7 @@ void CloudiaTeleopManager::Tick() {
         message.linear.x = output.velocity.x;
         message.linear.y = output.velocity.y;
         message.angular.z = output.velocity.yaw;
-        // Serialize with safety callbacks so an old nonzero output cannot be
-        // published after a newer zero safety command.
+        //避免旧的非零速度晚于新的安全零速发布
         velocity_pub_->publish(message);
     }
 }
@@ -261,20 +259,25 @@ CloudiaTeleopState::Remote CloudiaTeleopManager::ReadRemote() {
     }
     const bool emergency = TrueFlag(information, "emergency");
     const bool collision = TrueFlag(information, "collision");
-    // The two HTTP snapshots are not atomic: either may observe NAV_STOP first.
+    // 迦智提供两个状态接口，都能查到障碍状态，对两个接口都进行查询并合并结果
     const bool obstacle = TrueFlag(robot, "obstacleStop") || TrueFlag(information, "obstacleStop");
     const auto navigation_state = [](int value) { return value >= 1 && value <= 3; };
+    const auto unavailable_state = [](int value) { return value == 0 || value == 5; };
+    // 初始化、充电只表示暂不可控制；ERROR、未知状态及非停障告警仍按故障保护。
+    const auto non_fault_state = [obstacle, &unavailable_state](int value) {
+        return unavailable_state(value) || value == 1 || value == 2 ||
+               (value == 3 && obstacle);
+    };
     CloudiaTeleopState::Remote result;
     result.valid = true;
     result.running = running;
+    result.control_unavailable = unavailable_state(info) || unavailable_state(realtime_info);
     result.navigation_blocked = obstacle && navigation_state(info) && navigation_state(realtime_info) &&
                                 !emergency && !collision;
     result.ready = info == 1 && realtime_info == 1 && !result.navigation_blocked;
-    // Only ordinary navigation stops are exempted. Error, emergency, collision,
-    // initialization, charging and unknown states retain the existing protection.
-    result.fault = !result.navigation_blocked &&
-                   ((info != 1 && info != 2) || (realtime_info != 1 && realtime_info != 2) ||
-                    emergency || collision || obstacle);
+    // 将当前底盘的急停、碰撞、ERROR、未知状态及非停障告警归入故障保护。
+    // 任一接口的故障不能被另一接口的初始化、充电或停障状态掩盖。
+    result.fault = emergency || collision || !non_fault_state(info) || !non_fault_state(realtime_info);
     result.stopped = std::hypot(x, y) <= linear_still_ && std::abs(yaw) <= angular_still_;
     result.received = Now();
     result.task_id = task_id;
@@ -295,8 +298,6 @@ void CloudiaTeleopManager::Worker() {
             urgent_stop_ = false;
             revision = state_.revision();
         }
-        // Fault stop is immediate. If a later query exposes a running gateway
-        // task, keep requesting stop while the safety latch is held.
         if (urgent) {
             try { StopTask(); } catch (const std::exception& error) {
                 RCLCPP_WARN_THROTTLE(node_->get_logger(), *node_->get_clock(), 3000,
@@ -312,7 +313,7 @@ void CloudiaTeleopManager::Worker() {
                 if (revision != state_.revision()) continue;
                 if (remote.navigation_blocked != state_.remote().navigation_blocked) {
                     RCLCPP_INFO(node_->get_logger(), "Cloudia ordinary navigation-stop state %s",
-                                remote.navigation_blocked ? "active; nonzero teleop inhibited" : "inactive");
+                                remote.navigation_blocked ? "active; teleop safety checks unchanged" : "inactive");
                 }
                 state_.SetRemote(remote);
                 stop = state_.NeedsTaskStop() && remote.running && Now() - last_stop >= stop_repeat_;
@@ -321,8 +322,6 @@ void CloudiaTeleopManager::Worker() {
             if (stop) {
                 last_stop = Now();
                 StopTask();
-                // A successful POST means accepted, NOT stopped; the next GET
-                // must prove that no task is running and velocity is zero.
             }
         } catch (const std::exception& error) {
             std::lock_guard<std::mutex> lock(mutex_);
