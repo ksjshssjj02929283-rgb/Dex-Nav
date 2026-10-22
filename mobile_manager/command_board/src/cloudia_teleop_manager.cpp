@@ -1,20 +1,9 @@
 #include "cloudia_teleop_manager.hpp"
 
 #include <curl/curl.h>
-#include <fcntl.h>
-#include <sys/file.h>
-#include <unistd.h>
 
-#include <algorithm>
-#include <cerrno>
-#include <cctype>
 #include <chrono>
 #include <cstdlib>
-#include <filesystem>
-#include <fstream>
-#include <iomanip>
-#include <random>
-#include <sstream>
 #include <stdexcept>
 
 namespace command_board {
@@ -42,21 +31,6 @@ CloudiaTeleopState::Config ReadPolicy(rclcpp::Node* node) {
     Positive(config.remote_timeout, "cloudia.state_timeout_sec");
     Positive(config.takeover_timeout, "cloudia.takeover_timeout_sec");
     return config;
-}
-
-std::string NewId() {
-    std::random_device random;
-    std::ostringstream stream;
-    stream << std::hex << std::setfill('0');
-    for (int i = 0; i < 4; ++i) stream << std::setw(8) << random();
-    return stream.str();
-}
-
-bool ValidId(const std::string& id) {
-    return !id.empty() && id.size() <= 128 &&
-        std::all_of(id.begin(), id.end(), [](unsigned char c) {
-            return std::isalnum(c) || c == '-' || c == '_';
-        });
 }
 
 size_t ReceiveBody(char* data, size_t size, size_t count, void* target) {
@@ -92,7 +66,7 @@ double CloudiaTeleopManager::Now() {
 }
 
 CloudiaTeleopManager::CloudiaTeleopManager(rclcpp::Node* node)
-    : node_(node), state_(ReadPolicy(node)), coordinator_id_(NewId()) {
+    : node_(node), state_(ReadPolicy(node)) {
     host_ = node_->declare_parameter("cloudia.host", Env("CLOUDIA_HOST"));
     if (host_.empty()) host_ = Env("CLOUDIA_HOST");
     // Keep credentials out of YAML/logs. HTTP requests never print headers.
@@ -102,13 +76,11 @@ CloudiaTeleopManager::CloudiaTeleopManager(rclcpp::Node* node)
     state_port_ = node_->declare_parameter("cloudia.state_port", 8852);
     http_timeout_ = node_->declare_parameter("cloudia.http_timeout_sec", 1.0);
     poll_period_ = node_->declare_parameter("cloudia.poll_period_sec", 0.2);
-    submission_timeout_ = node_->declare_parameter("cloudia.submission_timeout_sec", 10.0);
     stop_repeat_ = node_->declare_parameter("cloudia.stop_repeat_sec", 0.5);
     linear_still_ = node_->declare_parameter("cloudia.linear_still_threshold", 0.02);
     angular_still_ = node_->declare_parameter("cloudia.angular_still_threshold", 0.02);
     Positive(http_timeout_, "cloudia.http_timeout_sec");
     Positive(poll_period_, "cloudia.poll_period_sec");
-    Positive(submission_timeout_, "cloudia.submission_timeout_sec");
     Positive(stop_repeat_, "cloudia.stop_repeat_sec");
     Positive(linear_still_, "cloudia.linear_still_threshold");
     Positive(angular_still_, "cloudia.angular_still_threshold");
@@ -124,61 +96,35 @@ CloudiaTeleopManager::CloudiaTeleopManager(rclcpp::Node* node)
         "cloudia.velocity_topic", "/control/cmd_vel_cloudia_joy");
     const auto joy_topic = node_->declare_parameter<std::string>("cloudia.joy_state_topic", "/control/joy_in");
     if (raw_topic == output_topic) throw std::invalid_argument("Cloudia input/output topics must differ");
-    const auto acquire_name = node_->declare_parameter<std::string>(
-        "cloudia.request_submission_service", "/command_board/cloudia/request_task_submission");
-    const auto report_name = node_->declare_parameter<std::string>(
-        "cloudia.report_submission_service", "/command_board/cloudia/report_task_submission");
-    journal_path_ = node_->declare_parameter(
-        "cloudia.submission_journal",
-        Env("HOME", "/tmp") + "/.ros/cloudia_task_submissions.json");
-    if (journal_path_.empty() || journal_path_.front() != '/') {
-        throw std::invalid_argument("cloudia.submission_journal must be an absolute path");
-    }
-
     static std::once_flag curl_init;
     std::call_once(curl_init, []() {
         if (curl_global_init(CURL_GLOBAL_DEFAULT) != CURLE_OK) {
             throw std::runtime_error("curl_global_init failed");
         }
     });
-    try {
-        LoadJournal();
-        callback_group_ = node_->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
-        rclcpp::SubscriptionOptions options;
-        options.callback_group = callback_group_;
-        const auto qos = rclcpp::QoS(1).reliable();
-        velocity_pub_ = node_->create_publisher<geometry_msgs::msg::Twist>(output_topic, qos);
-        velocity_sub_ = node_->create_subscription<geometry_msgs::msg::Twist>(
-            raw_topic, qos,
-            [this](geometry_msgs::msg::Twist::ConstSharedPtr msg) {
-                std::lock_guard<std::mutex> lock(mutex_);
-                state_.OnVelocity({msg->linear.x, msg->linear.y, msg->angular.z}, Now());
-            }, options);
-        joy_sub_ = node_->create_subscription<std_msgs::msg::Int16>(
-            joy_topic, qos,
-            [this](std_msgs::msg::Int16::ConstSharedPtr msg) {
-                std::lock_guard<std::mutex> lock(mutex_);
-                state_.OnJoy(msg->data, Now());
-            }, options);
-        acquire_service_ = node_->create_service<Acquire>(
-            acquire_name, std::bind(&CloudiaTeleopManager::OnAcquire, this,
-                                   std::placeholders::_1, std::placeholders::_2),
-            rmw_qos_profile_services_default, callback_group_);
-        report_service_ = node_->create_service<Report>(
-            report_name, std::bind(&CloudiaTeleopManager::OnReport, this,
-                                  std::placeholders::_1, std::placeholders::_2),
-            rmw_qos_profile_services_default, callback_group_);
-        timer_ = node_->create_wall_timer(
-            std::chrono::milliseconds(20), std::bind(&CloudiaTeleopManager::Tick, this), callback_group_);
-        worker_ = std::thread(&CloudiaTeleopManager::Worker, this);
-    } catch (...) {
-        if (journal_lock_fd_ >= 0) ::close(journal_lock_fd_);
-        journal_lock_fd_ = -1;
-        throw;
-    }
+    callback_group_ = node_->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+    rclcpp::SubscriptionOptions options;
+    options.callback_group = callback_group_;
+    const auto qos = rclcpp::QoS(1).reliable();
+    velocity_pub_ = node_->create_publisher<geometry_msgs::msg::Twist>(output_topic, qos);
+    velocity_sub_ = node_->create_subscription<geometry_msgs::msg::Twist>(
+        raw_topic, qos,
+        [this](geometry_msgs::msg::Twist::ConstSharedPtr msg) {
+            std::lock_guard<std::mutex> lock(mutex_);
+            state_.OnVelocity({msg->linear.x, msg->linear.y, msg->angular.z}, Now());
+        }, options);
+    joy_sub_ = node_->create_subscription<std_msgs::msg::Int16>(
+        joy_topic, qos,
+        [this](std_msgs::msg::Int16::ConstSharedPtr msg) {
+            std::lock_guard<std::mutex> lock(mutex_);
+            state_.OnJoy(msg->data, Now());
+        }, options);
+    timer_ = node_->create_wall_timer(
+        std::chrono::milliseconds(20), std::bind(&CloudiaTeleopManager::Tick, this), callback_group_);
+    worker_ = std::thread(&CloudiaTeleopManager::Worker, this);
     RCLCPP_INFO(node_->get_logger(),
-                "Cloudia takeover: %s -> %s; pending submissions=%zu; awaiting safety and remote state",
-                raw_topic.c_str(), output_topic.c_str(), pending_.size());
+                "Cloudia takeover: %s -> %s; awaiting safety and remote state",
+                raw_topic.c_str(), output_topic.c_str());
 }
 
 CloudiaTeleopManager::~CloudiaTeleopManager() {
@@ -192,7 +138,6 @@ CloudiaTeleopManager::~CloudiaTeleopManager() {
     }
     wake_.notify_all();
     if (worker_.joinable()) worker_.join();
-    if (journal_lock_fd_ >= 0) ::close(journal_lock_fd_);
 }
 
 void CloudiaTeleopManager::PublishZeroLocked() {
@@ -218,122 +163,11 @@ void CloudiaTeleopManager::RequestStop(const std::string& reason) {
     wake_.notify_all();
 }
 
-bool CloudiaTeleopManager::SubmissionUncertainLocked(double now) const {
-    for (const auto& entry : pending_) {
-        if ((entry.second.reported && entry.second.outcome == Report::Request::UNCERTAIN) ||
-            now - entry.second.created > submission_timeout_) return true;
-    }
-    return journal_fault_;
-}
-
-void CloudiaTeleopManager::OnAcquire(
-    const Acquire::Request::SharedPtr request, Acquire::Response::SharedPtr response) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    response->allowed = false;
-    response->coordinator_id = coordinator_id_;
-    if (!ValidId(request->request_id)) {
-        response->message = "invalid request_id";
-        return;
-    }
-    if (pending_.count(request->request_id) || completed_.contains(request->request_id)) {
-        // Never issue a second grant for an old UUID, including a delayed request
-        // whose NOT_SENT report arrived first.
-        response->message = "request_id already registered; use a new UUID only for a new submission";
-        return;
-    }
-    const double now = Now();
-    // Run policy at the submission boundary, not just at the next 20 ms tick.
-    state_.Tick(now, !pending_.empty(), SubmissionUncertainLocked(now));
-    if (!state_.CanSubmit(now, !pending_.empty()) || journal_fault_ || urgent_stop_) {
-        response->message = std::string("submission blocked: ") +
-                            CloudiaTeleopState::Name(state_.phase()) + "; " + state_.reason();
-        return;
-    }
-    Submission item;
-    item.coordinator_id = coordinator_id_;
-    item.created = now;
-    pending_.emplace(request->request_id, item);
-    state_.InvalidateRemote();
-    // Durably register BEFORE returning a grant. A coordinator restart may never
-    // silently forget a request that a different process is still submitting.
-    if (!PersistLocked()) {
-        response->message = "cannot persist submission registration";
-        return;
-    }
-    response->allowed = true;
-    response->message = "registered; report HTTP outcome using this request_id";
-}
-
-void CloudiaTeleopManager::OnReport(
-    const Report::Request::SharedPtr request, Report::Response::SharedPtr response) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    response->recorded = false;
-    if (!ValidId(request->request_id) || request->outcome > Report::Request::NOT_SENT ||
-        (request->outcome == Report::Request::ACCEPTED && request->task_id <= 0)) {
-        response->message = "invalid report";
-        return;
-    }
-    const auto done = completed_.find(request->request_id);
-    if (done != completed_.end()) {
-        response->recorded = !journal_fault_ && done->at("outcome") == request->outcome &&
-                             done->at("task_id") == request->task_id &&
-                             (request->outcome == Report::Request::NOT_SENT ||
-                              done->at("coordinator_id") == request->coordinator_id);
-        response->message = response->recorded ? "already recorded" : "conflicting final report";
-        return;
-    }
-    auto found = pending_.find(request->request_id);
-    if (found == pending_.end() && request->outcome != Report::Request::NOT_SENT) {
-        // An unregistered HTTP result may represent a task started outside the
-        // contract. Stop and require investigation rather than guessing ownership.
-        journal_fault_ = true;
-        state_.Fail(Now(), "result for unregistered task submission");
-        urgent_stop_ = true;
-        PublishZeroLocked();
-        wake_.notify_all();
-        response->message = "unregistered submission; control blocked";
-        return;
-    }
-    if (found != pending_.end() &&
-        !(request->outcome == Report::Request::NOT_SENT && request->coordinator_id.empty()) &&
-        request->coordinator_id != found->second.coordinator_id) {
-        response->message = "coordinator_id mismatch";
-        return;
-    }
-    if (request->outcome == Report::Request::UNCERTAIN) {
-        found->second.reported = true;
-        found->second.outcome = request->outcome;
-        state_.Fail(Now(), "HTTP submission outcome uncertain");
-        urgent_stop_ = true;
-    } else {
-        if (found != pending_.end()) pending_.erase(found);
-        if (request->outcome == Report::Request::ACCEPTED) awaiting_task_id_ = request->task_id;
-        completed_[request->request_id] = {
-            {"coordinator_id", request->coordinator_id},
-            {"outcome", request->outcome}, {"task_id", request->task_id}, {"finished", Now()}};
-        // Retain recent final reports for idempotent acknowledgement retries.
-        while (completed_.size() > 2048) {
-            auto oldest = std::min_element(completed_.begin(), completed_.end(),
-                [](const nlohmann::json& a, const nlohmann::json& b) {
-                    return a.value("finished", 0.0) < b.value("finished", 0.0);
-                });
-            completed_.erase(oldest);
-        }
-        state_.InvalidateRemote();
-    }
-    response->recorded = PersistLocked();
-    response->message = response->recorded
-        ? (request->outcome == Report::Request::UNCERTAIN
-            ? "uncertainty retained; no new task or teleop grant" : "recorded")
-        : "cannot persist report";
-    wake_.notify_all();
-}
-
 void CloudiaTeleopManager::Tick() {
     std::lock_guard<std::mutex> lock(mutex_);
     const double now = Now();
     const auto before = state_.phase();
-    const auto output = state_.Tick(now, !pending_.empty(), SubmissionUncertainLocked(now));
+    const auto output = state_.Tick(now);
     if (state_.phase() != before) {
         RCLCPP_INFO(node_->get_logger(), "Cloudia control %s -> %s: %s",
                     CloudiaTeleopState::Name(before), CloudiaTeleopState::Name(state_.phase()),
@@ -418,12 +252,29 @@ CloudiaTeleopState::Remote CloudiaTeleopManager::ReadRemote() {
     const auto& velocity = realtime.at("state").at("velocity");
     const double x = Number(velocity, "vx"), y = Number(velocity, "vy"), yaw = Number(velocity, "omega");
     const auto& information = realtime.at("information");
+    int realtime_info = info;
+    if (information.contains("informationType")) {
+        if (!information.at("informationType").is_number_integer()) {
+            throw std::runtime_error("invalid Cloudia realtime robot state");
+        }
+        realtime_info = information.at("informationType").get<int>();
+    }
+    const bool emergency = TrueFlag(information, "emergency");
+    const bool collision = TrueFlag(information, "collision");
+    // The two HTTP snapshots are not atomic: either may observe NAV_STOP first.
+    const bool obstacle = TrueFlag(robot, "obstacleStop") || TrueFlag(information, "obstacleStop");
+    const auto navigation_state = [](int value) { return value >= 1 && value <= 3; };
     CloudiaTeleopState::Remote result;
     result.valid = true;
     result.running = running;
-    result.ready = info == 1;
-    result.fault = (info != 1 && info != 2) || TrueFlag(information, "emergency") ||
-                   TrueFlag(information, "collision") || TrueFlag(information, "obstacleStop");
+    result.navigation_blocked = obstacle && navigation_state(info) && navigation_state(realtime_info) &&
+                                !emergency && !collision;
+    result.ready = info == 1 && realtime_info == 1 && !result.navigation_blocked;
+    // Only ordinary navigation stops are exempted. Error, emergency, collision,
+    // initialization, charging and unknown states retain the existing protection.
+    result.fault = !result.navigation_blocked &&
+                   ((info != 1 && info != 2) || (realtime_info != 1 && realtime_info != 2) ||
+                    emergency || collision || obstacle);
     result.stopped = std::hypot(x, y) <= linear_still_ && std::abs(yaw) <= angular_still_;
     result.received = Now();
     result.task_id = task_id;
@@ -444,8 +295,8 @@ void CloudiaTeleopManager::Worker() {
             urgent_stop_ = false;
             revision = state_.revision();
         }
-        // Fault stop is immediate, even with in-flight task submissions. A later
-        // query/report can expose another task; repeat stop until it is settled.
+        // Fault stop is immediate. If a later query exposes a running gateway
+        // task, keep requesting stop while the safety latch is held.
         if (urgent) {
             try { StopTask(); } catch (const std::exception& error) {
                 RCLCPP_WARN_THROTTLE(node_->get_logger(), *node_->get_clock(), 3000,
@@ -459,15 +310,9 @@ void CloudiaTeleopManager::Worker() {
             {
                 std::lock_guard<std::mutex> lock(mutex_);
                 if (revision != state_.revision()) continue;
-                // Do not mistake a previous terminal task for the task just
-                // accepted. Wait until the accepted ID appears in global state.
-                if (awaiting_task_id_ != 0) {
-                    if (remote.task_id == awaiting_task_id_) {
-                        awaiting_task_id_ = 0;
-                        PersistLocked();
-                    } else {
-                        remote.valid = false;
-                    }
+                if (remote.navigation_blocked != state_.remote().navigation_blocked) {
+                    RCLCPP_INFO(node_->get_logger(), "Cloudia ordinary navigation-stop state %s",
+                                remote.navigation_blocked ? "active; nonzero teleop inhibited" : "inactive");
                 }
                 state_.SetRemote(remote);
                 stop = state_.NeedsTaskStop() && remote.running && Now() - last_stop >= stop_repeat_;
@@ -486,75 +331,6 @@ void CloudiaTeleopManager::Worker() {
                                 "Cloudia state/stop unavailable: %s", error.what());
         }
     }
-}
-
-void CloudiaTeleopManager::LoadJournal() {
-    namespace fs = std::filesystem;
-    fs::create_directories(fs::path(journal_path_).parent_path());
-    journal_lock_fd_ = ::open((journal_path_ + ".lock").c_str(), O_CREAT | O_RDWR | O_CLOEXEC, 0600);
-    if (journal_lock_fd_ < 0 || ::flock(journal_lock_fd_, LOCK_EX | LOCK_NB) != 0) {
-        throw std::runtime_error("cannot lock Cloudia submission journal; another coordinator may be running");
-    }
-    if (!fs::exists(journal_path_)) return;
-    std::ifstream input(journal_path_);
-    const auto journal = nlohmann::json::parse(input);
-    if (journal.at("version") != 1) throw std::runtime_error("unknown Cloudia submission journal version");
-    completed_ = journal.at("completed");
-    awaiting_task_id_ = journal.value("awaiting_task_id", int64_t{0});
-    if (!completed_.is_object() || !journal.at("pending").is_object() || awaiting_task_id_ < 0) {
-        throw std::runtime_error("invalid Cloudia submission journal");
-    }
-    for (auto& entry : completed_.items()) entry.value()["finished"] = 0.0;
-    for (const auto& entry : journal.at("pending").items()) {
-        if (!ValidId(entry.key()) || completed_.contains(entry.key())) {
-            throw std::runtime_error("invalid/conflicting Cloudia pending request ID");
-        }
-        Submission item;
-        item.coordinator_id = entry.value().at("coordinator_id").get<std::string>();
-        if (item.coordinator_id.empty()) throw std::runtime_error("pending submission has no coordinator ID");
-        item.reported = true;
-        item.outcome = Report::Request::UNCERTAIN;
-        item.created = Now();
-        pending_.emplace(entry.key(), std::move(item));
-    }
-}
-
-bool CloudiaTeleopManager::PersistLocked() {
-    nlohmann::json records = nlohmann::json::object();
-    for (const auto& entry : pending_) {
-        records[entry.first] = {{"coordinator_id", entry.second.coordinator_id}};
-    }
-    const std::string bytes = nlohmann::json{
-        {"version", 1}, {"pending", records}, {"completed", completed_},
-        {"awaiting_task_id", awaiting_task_id_}}.dump();
-    const std::string temporary = journal_path_ + ".tmp";
-    int fd = ::open(temporary.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
-    bool ok = fd >= 0;
-    size_t offset = 0;
-    while (ok && offset < bytes.size()) {
-        const auto written = ::write(fd, bytes.data() + offset, bytes.size() - offset);
-        if (written < 0 && errno == EINTR) continue;
-        if (written <= 0) { ok = false; break; }
-        offset += static_cast<size_t>(written);
-    }
-    if (ok) ok = ::fsync(fd) == 0;
-    if (fd >= 0 && ::close(fd) != 0) ok = false;
-    if (ok) ok = ::rename(temporary.c_str(), journal_path_.c_str()) == 0;
-    if (ok) {
-        const auto parent = std::filesystem::path(journal_path_).parent_path().string();
-        int directory = ::open(parent.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC);
-        ok = directory >= 0 && ::fsync(directory) == 0;
-        if (directory >= 0) ::close(directory);
-    }
-    if (!ok) {
-        journal_fault_ = true;
-        state_.Fail(Now(), "submission journal write failed");
-        urgent_stop_ = true;
-        PublishZeroLocked();
-        wake_.notify_all();
-        RCLCPP_ERROR(node_->get_logger(), "Cloudia submission journal failed; motion/submission blocked");
-    }
-    return ok;
 }
 
 }  // namespace command_board

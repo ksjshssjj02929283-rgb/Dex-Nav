@@ -10,7 +10,7 @@ namespace command_board {
 // The joystick remains responsible for speed generation and soft stopping.
 class CloudiaTeleopState {
 public:
-    enum class Phase { Idle, WaitingSubmissions, StoppingTask, Teleop, Releasing, Fault, Error };
+    enum class Phase { Idle, StoppingTask, Teleop, Releasing, Fault, Error };
     struct Velocity { double x{0.0}, y{0.0}, yaw{0.0}; };
     struct Remote {
         bool valid{false};
@@ -20,6 +20,7 @@ public:
         bool stopped{false};
         double received{-1.0};
         int64_t task_id{0};
+        bool navigation_blocked{false};  // ordinary NAV_STOP, not a hardware fault
     };
     struct Config {
         double input_timeout{0.5};
@@ -37,6 +38,7 @@ public:
     void OnJoy(int16_t value, double now) {
         joy_ = value;
         joy_time_ = now;
+        if (value != 1) obstacle_release_required_ = false;
         // joy_in=1 deliberately includes the existing SOFT_STOPPING phase.
         if (value != 1 && phase_ == Phase::Teleop) {
             Enter(Phase::Releasing, now, "joystick released");
@@ -68,7 +70,7 @@ public:
             Enter(Phase::Releasing, now, reason);
         }
         // Even in an existing fault/release phase, a newly queued HTTP stop must
-        // settle before an older "stopped" snapshot can reopen submission.
+        // settle before an older "stopped" snapshot can release the stop phase.
         InvalidateRemote();
     }
 
@@ -89,42 +91,42 @@ public:
     }
     bool Quiescent(double now) const {
         return RemoteFresh(now) && !remote_.fault && remote_.ready &&
+               !remote_.navigation_blocked && !remote_.running && remote_.stopped;
+    }
+    bool CanReleaseControl(double now) const {
+        // Releasing an owned zero-speed channel is different from granting
+        // teleop: NAV_STOP may stay asserted until navigation regains control.
+        return RemoteFresh(now) && !remote_.fault &&
+               (remote_.ready || remote_.navigation_blocked) &&
                !remote_.running && remote_.stopped;
     }
-    bool CanSubmit(double now, bool pending) const {
-        return phase_ == Phase::Idle && joy_ != 1 && !pending &&
-               SafetyOK(now) && Quiescent(now);
-    }
-
-    Output Tick(double now, bool pending, bool submission_uncertain) {
+    Output Tick(double now) {
         if (safety_seen_ && !SafetyOK(now) && phase_ != Phase::Fault) {
             Enter(Phase::Fault, now, "robot safety state stale or faulty");
         }
         if (RemoteFresh(now) && remote_.fault && phase_ != Phase::Fault) {
             Enter(Phase::Fault, now, "Cloudia reports fault");
         }
-        if (submission_uncertain && phase_ != Phase::Fault) {
-            Fail(now, "task submission outcome uncertain; awaiting definitive report");
-        }
 
         const bool joy_fresh = joy_time_ >= 0.0 && now - joy_time_ <= config_.input_timeout;
         const bool raw_fresh = velocity_time_ >= 0.0 && now - velocity_time_ <= config_.input_timeout;
         const bool wants_control = joy_fresh && joy_ == 1;
+        const bool navigation_blocked = RemoteFresh(now) && remote_.navigation_blocked;
+        if (navigation_blocked && wants_control) obstacle_release_required_ = true;
 
-        if (phase_ == Phase::Idle && wants_control && SafetyOK(now) && !submission_uncertain) {
-            Enter(Phase::WaitingSubmissions, now, "teleop requested");
+        // An idle observer must not acquire the calibration channel just because
+        // native navigation is obstacle-stopped. A blocked request needs release.
+        if (phase_ == Phase::Idle && wants_control && SafetyOK(now) &&
+            !navigation_blocked && !obstacle_release_required_) {
+            Enter(Phase::StoppingTask, now, "teleop requested");
         }
-        if (phase_ == Phase::WaitingSubmissions && !pending) {
-            // Retain the original deadline; waiting for submission is part of takeover.
-            const double started = phase_begin_;
-            Enter(Phase::StoppingTask, now, "submissions settled");
-            phase_begin_ = started;
+        if (phase_ == Phase::StoppingTask && navigation_blocked) {
+            Enter(Phase::Releasing, now, "navigation obstacle stop; release joystick to rearm");
         }
-        if ((phase_ == Phase::WaitingSubmissions || phase_ == Phase::StoppingTask) &&
-            now - phase_begin_ > config_.takeover_timeout) {
+        if (phase_ == Phase::StoppingTask && now - phase_begin_ > config_.takeover_timeout) {
             Fail(now, "teleop takeover timeout");
         }
-        if (phase_ == Phase::StoppingTask && !pending && Quiescent(now) && SafetyOK(now)) {
+        if (phase_ == Phase::StoppingTask && Quiescent(now) && SafetyOK(now)) {
             if (wants_control) {
                 Enter(Phase::Teleop, now, "Cloudia stopped; teleop granted");
                 activated_at_ = now;
@@ -137,15 +139,19 @@ public:
                 Fail(now, "joystick input lost");
             } else if (!RemoteFresh(now) || remote_.running || remote_.fault || !SafetyOK(now)) {
                 Fail(now, "Cloudia state stale, task restarted, or safety active");
+            } else if (navigation_blocked) {
+                // We already own the channel: stop first, then release only
+                // after fresh stationary feedback and an explicit key release.
+                Enter(Phase::Releasing, now, "navigation obstacle stop; release joystick to rearm");
             } else if (joy_ != 1) {
                 Enter(Phase::Releasing, now, "joystick released");
             }
         }
 
-        // On release/error/fault, do not reopen task submission until both the
-        // controller and the robot have settled. A held key cannot rearm a fault.
+        // On release/error/fault, return to idle only after the robot has
+        // settled and the key is released. A held key cannot rearm a fault.
         if ((phase_ == Phase::Releasing || phase_ == Phase::Fault || phase_ == Phase::Error) &&
-            !pending && !submission_uncertain && SafetyOK(now) && Quiescent(now) && joy_ != 1) {
+            SafetyOK(now) && CanReleaseControl(now) && joy_ != 1) {
             EnterIdle(now);
         }
 
@@ -170,7 +176,6 @@ public:
     static const char* Name(Phase phase) {
         switch (phase) {
             case Phase::Idle: return "IDLE";
-            case Phase::WaitingSubmissions: return "WAITING_SUBMISSIONS";
             case Phase::StoppingTask: return "STOPPING_TASK";
             case Phase::Teleop: return "TELEOP";
             case Phase::Releasing: return "RELEASING";
@@ -187,8 +192,8 @@ private:
         phase_begin_ = now;
         reason_ = reason;
         ++revision_;
-        // Require a state read made AFTER this transition, especially after a
-        // late task-start response or while switching from idle to takeover.
+        // Require a state read made AFTER this transition, especially while
+        // switching from idle to takeover or handling a new stop request.
         if (phase != Phase::Teleop && phase != Phase::Idle) remote_.valid = false;
     }
     void EnterIdle(double now) {
@@ -206,6 +211,7 @@ private:
     double joy_time_{-1.0}, velocity_time_{-1.0}, safety_time_{-1.0};
     double phase_begin_{0.0}, activated_at_{0.0};
     bool safety_seen_{false}, safety_fault_{false};
+    bool obstacle_release_required_{false};
     uint64_t revision_{0};
     int zero_tail_{0};
     std::string reason_{"waiting for safety/remote state"};

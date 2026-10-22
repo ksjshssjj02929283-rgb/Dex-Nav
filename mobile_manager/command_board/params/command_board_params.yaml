@@ -20,16 +20,12 @@
       safety_timeout_sec: 1.0
       state_timeout_sec: 1.5
       takeover_timeout_sec: 8.0
-      submission_timeout_sec: 10.0  # 超时保持不确定，不自动释放登记
       stop_repeat_sec: 0.5
       linear_still_threshold: 0.02
       angular_still_threshold: 0.02
       raw_velocity_topic: /control/cmd_vel_cloudia_joy_raw
       velocity_topic: /control/cmd_vel_cloudia_joy
       joy_state_topic: /control/joy_in
-      request_submission_service: /command_board/cloudia/request_task_submission
-      report_submission_service: /command_board/cloudia/report_task_submission
-      # submission_journal 默认 ~/.ros/cloudia_task_submissions.json
     # ── AutoMapSaver (DEC-005 + DEC-006 daily trigger) ───────────
     # 自动保存是唯一需运营调整的参数组（日触发时刻 + 6 保存条件阈值），显式暴露。
     auto_map_saver:

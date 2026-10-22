@@ -23,7 +23,6 @@ find_package(PkgConfig REQUIRED)
 find_package(glog REQUIRED)
 find_package(nlohmann_json REQUIRED)
 find_package(CURL REQUIRED)
-find_package(cloudia_control_interfaces REQUIRED)
 
 include_directories(
   include
@@ -73,7 +72,7 @@ rclcpp_components_register_node(navigation_facade
 add_library(command_board_cloudia STATIC src/cloudia_teleop_manager.cpp)
 target_compile_features(command_board_cloudia PUBLIC cxx_std_17)
 ament_target_dependencies(command_board_cloudia
-  rclcpp geometry_msgs std_msgs cloudia_control_interfaces)
+  rclcpp geometry_msgs std_msgs)
 target_link_libraries(command_board_cloudia
   CURL::libcurl nlohmann_json::nlohmann_json)
 
@@ -101,7 +100,6 @@ ament_target_dependencies(command_board_node
   tf2_geometry_msgs
   geometry_msgs
   nav_msgs
-  cloudia_control_interfaces
 )
 
 target_link_libraries(command_board_node
