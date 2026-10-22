@@ -7,6 +7,29 @@
     pose_cache_min_score: 0.55  # 缓存位姿：score >= 此值
     reloc_score_good: 0.6      # 恢复成功、解除恢复告警：score >= 此值
 
+    chassis_backend: dexe  # launch 参数/DEXE_CHASSIS_BACKEND 可选择 cloudia
+    cloudia:
+      # 仅 chassis_backend=cloudia 时读取；留空 host 使用 CLOUDIA_HOST。
+      # 不将 Token 写进配置：从 token_env 指定的环境变量读取。
+      token_env: CLOUDIA_TOKEN
+      task_port: 8002
+      state_port: 8852
+      http_timeout_sec: 1.0
+      poll_period_sec: 0.2
+      input_timeout_sec: 0.5
+      safety_timeout_sec: 1.0
+      state_timeout_sec: 1.5
+      takeover_timeout_sec: 8.0
+      submission_timeout_sec: 10.0  # 超时保持不确定，不自动释放登记
+      stop_repeat_sec: 0.5
+      linear_still_threshold: 0.02
+      angular_still_threshold: 0.02
+      raw_velocity_topic: /control/cmd_vel_cloudia_joy_raw
+      velocity_topic: /control/cmd_vel_cloudia_joy
+      joy_state_topic: /control/joy_in
+      request_submission_service: /command_board/cloudia/request_task_submission
+      report_submission_service: /command_board/cloudia/report_task_submission
+      # submission_journal 默认 ~/.ros/cloudia_task_submissions.json
     # ── AutoMapSaver (DEC-005 + DEC-006 daily trigger) ───────────
     # 自动保存是唯一需运营调整的参数组（日触发时刻 + 6 保存条件阈值），显式暴露。
     auto_map_saver:

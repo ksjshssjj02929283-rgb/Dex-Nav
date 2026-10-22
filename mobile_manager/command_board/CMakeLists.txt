@@ -22,6 +22,8 @@ find_package(Boost REQUIRED COMPONENTS filesystem)
 find_package(PkgConfig REQUIRED)
 find_package(glog REQUIRED)
 find_package(nlohmann_json REQUIRED)
+find_package(CURL REQUIRED)
+find_package(cloudia_control_interfaces REQUIRED)
 
 include_directories(
   include
@@ -68,6 +70,12 @@ rclcpp_components_register_node(navigation_facade
   PLUGIN "command_board::NavigationFacade"
   EXECUTABLE navigation_node
 )
+add_library(command_board_cloudia STATIC src/cloudia_teleop_manager.cpp)
+target_compile_features(command_board_cloudia PUBLIC cxx_std_17)
+ament_target_dependencies(command_board_cloudia
+  rclcpp geometry_msgs std_msgs cloudia_control_interfaces)
+target_link_libraries(command_board_cloudia
+  CURL::libcurl nlohmann_json::nlohmann_json)
 
 add_executable(command_board_node
   apps/command_board_node.cpp
@@ -77,6 +85,7 @@ add_executable(command_board_node
   src/sensor_monitor.cpp
   src/auto_map_saver.cpp
 )
+target_compile_features(command_board_node PRIVATE cxx_std_17)
 
 ament_target_dependencies(command_board_node
   rclcpp
@@ -92,12 +101,15 @@ ament_target_dependencies(command_board_node
   tf2_geometry_msgs
   geometry_msgs
   nav_msgs
+  cloudia_control_interfaces
 )
 
 target_link_libraries(command_board_node
   command_board_core
   navigation_facade
+  command_board_cloudia
   nlohmann_json::nlohmann_json
+  CURL::libcurl
 )
 
 install(TARGETS navigation_facade
@@ -139,6 +151,11 @@ if(BUILD_TESTING)
   # 导航门面限速仲裁（纯函数）
   ament_add_gtest(speed_limit_arbiter_test test/speed_limit_arbiter_test.cpp)
   target_include_directories(speed_limit_arbiter_test PRIVATE include)
+  ament_add_gtest(cloudia_teleop_state_test test/cloudia_teleop_state_test.cpp)
+  target_include_directories(cloudia_teleop_state_test PRIVATE include)
+
+  ament_add_gtest(cloudia_teleop_manager_test test/cloudia_teleop_manager_test.cpp)
+  target_link_libraries(cloudia_teleop_manager_test command_board_cloudia)
 endif()
 
 # ── RViz2 状态显示面板（command_board_rviz_plugins）──────────────────

@@ -40,6 +40,7 @@
 #include "status_monitor.hpp"
 #include "sensor_monitor.hpp"
 #include "auto_map_saver.hpp"
+#include "cloudia_teleop_manager.hpp"
 
 namespace command_board {
 
@@ -328,6 +329,8 @@ private:
     // 状态聚合 + 条件自动保存地图（移植自 nav2_command_board）
     std::unique_ptr<StatusMonitor> status_monitor_;
     std::unique_ptr<AutoMapSaver>  auto_map_saver_;
+    // Cloudia control stays in this node; HTTP work runs outside ROS callbacks.
+    std::unique_ptr<CloudiaTeleopManager> cloudia_teleop_manager_;
 
     // ── 传感器监测（CE：导航必要传感器失效 → 取消导航 + 故障码）──────
     // 独立回调组 + 独立定时器：不与 OnRecoverTimer / 重置原点服务共用的

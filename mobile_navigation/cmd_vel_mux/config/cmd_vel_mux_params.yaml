@@ -35,6 +35,11 @@ cmd_vel_mux:
           timeout:     0.1
           priority:    9
           short_desc:  "Remote control"
+        cloudia_remote_control:
+          topic:       "control/cmd_vel_cloudia_joy"
+          timeout:     0.1
+          priority:    10
+          short_desc:  "Cloudia approved teleop / safety stop"
         web_application:
           topic:       "input/webapp"
           timeout:     0.3

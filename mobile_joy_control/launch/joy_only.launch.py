@@ -13,6 +13,9 @@ def launch_setup(context, *args, **kwargs):
     # 获取启动参数
     joy_dev = LaunchConfiguration('joy_dev').perform(context)
     config_file = LaunchConfiguration('config_file').perform(context)
+    chassis_backend = LaunchConfiguration('chassis_backend').perform(context)
+    if chassis_backend not in ('dexe', 'cloudia'):
+        raise ValueError('chassis_backend must be dexe or cloudia')
     chassis_config_file = LaunchConfiguration('chassis_config_file').perform(
         context)
 
@@ -52,7 +55,8 @@ def launch_setup(context, *args, **kwargs):
     mobile_joy_control_node = Node(package='mobile_joy_control',
                                    executable='mobile_joy_control',
                                    name='mobile_joy_control',
-                                   parameters=[config_file],
+                                   parameters=[config_file,
+                                               {'chassis_backend': chassis_backend}],
                                    output='screen')
     nodes.append(mobile_joy_control_node)
 
@@ -68,7 +72,7 @@ def launch_setup(context, *args, **kwargs):
     nodes.append(cmd_vel_mux_node)
 
     # 🔧 STEERING_ACTION_DIRECT: ChassisNode 提供 SteeringAngleControl Action Server；本包只保留导航起步协调客户端。
-    if robot_type == "omni":
+    if robot_type == "omni" and chassis_backend == "dexe":
         start_coordinator_node = Node(
             package='mobile_joy_control',
             executable='omni_start_coordinator',
@@ -109,6 +113,10 @@ def generate_launch_description():
     opaque_function = OpaqueFunction(function=launch_setup)
 
     return LaunchDescription([
+        DeclareLaunchArgument(
+            'chassis_backend',
+            default_value=os.environ.get('DEXE_CHASSIS_BACKEND', 'dexe'),
+            description='dexe or cloudia; motion/joystick parameters are unchanged'),
         joy_dev_arg,
         config_file_arg,
         chassis_config_file_arg,

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import os
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
@@ -23,7 +24,8 @@ def generate_launch_description():
         executable='command_board_node',
         name='command_board',
         output='screen',
-        parameters=[LaunchConfiguration('command_board_params_file')],
+        parameters=[LaunchConfiguration('command_board_params_file'),
+                    {'chassis_backend': LaunchConfiguration('chassis_backend')}],
     )
 
     map_manager_node = Node(
@@ -51,6 +53,10 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
+        DeclareLaunchArgument(
+            'chassis_backend',
+            default_value=os.environ.get('DEXE_CHASSIS_BACKEND', 'dexe'),
+            description='dexe or cloudia; must match joy and RobotServer'),
         command_board_params_arg,
         map_asset_manager_params_arg,
         command_board_node,
