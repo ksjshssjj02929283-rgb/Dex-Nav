@@ -142,6 +142,16 @@ public:
     return 0;
   }
 
+  std::int64_t scanValidNs(const std::string & name) const
+  {
+    for (const auto & source : sources_) {
+      if (source->getName() == name) {
+        return source->getLastValidFrameSteadyNs();
+      }
+    }
+    return 0;
+  }
+
   NavigationMode mode() const
   {
     return navigation_mode_;
@@ -179,6 +189,68 @@ public:
     return false;
   }
 
+  void receiveOdom(const double vx)
+  {
+    auto msg = std::make_shared<nav_msgs::msg::Odometry>();
+    msg->twist.twist.linear.x = vx;
+    odomCallback(msg);
+  }
+
+  double polygonFrontPadding(const std::string & name) const
+  {
+    for (const auto & polygon : polygons_) {
+      if (polygon->getName() == name) {
+        return polygon->getFrontPadding();
+      }
+    }
+    return -1.0;
+  }
+
+  double polygonRearPadding(const std::string & name) const
+  {
+    for (const auto & polygon : polygons_) {
+      if (polygon->getName() == name) {
+        return polygon->getRearPadding();
+      }
+    }
+    return -1.0;
+  }
+
+  bool isReverse() const
+  {
+    return current_is_reverse_;
+  }
+
+  std::size_t currentSpeedTier() const
+  {
+    return current_speed_tier_;
+  }
+
+  bool isOdomSubActive() const
+  {
+    return odom_sub_ != nullptr;
+  }
+
+  double slowdownHoldTime() const
+  {
+    return slowdown_hold_time_;
+  }
+
+  std::int64_t lastSlowdownNs() const
+  {
+    return last_slowdown_condition_steady_ns_;
+  }
+
+  void setLastSlowdownNs(std::int64_t ns)
+  {
+    last_slowdown_condition_steady_ns_ = ns;
+  }
+
+  nav2_collision_monitor::Action prevAction() const
+  {
+    return robot_action_prev_;
+  }
+
   void stop()
   {
     ASSERT_EQ(on_deactivate(get_current_state()), nav2_util::CallbackReturn::SUCCESS);
@@ -189,6 +261,16 @@ public:
   void configure()
   {
     ASSERT_EQ(on_configure(get_current_state()), nav2_util::CallbackReturn::SUCCESS);
+  }
+
+  void activate()
+  {
+    ASSERT_EQ(on_activate(get_current_state()), nav2_util::CallbackReturn::SUCCESS);
+  }
+
+  void deactivate()
+  {
+    ASSERT_EQ(on_deactivate(get_current_state()), nav2_util::CallbackReturn::SUCCESS);
   }
 
   void cant_configure()

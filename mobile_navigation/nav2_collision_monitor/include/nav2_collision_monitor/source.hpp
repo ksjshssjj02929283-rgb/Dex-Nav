@@ -84,6 +84,7 @@ public:
     return data_sequence_.load(std::memory_order_acquire);
   }
   const std::string & getName() const {return source_name_;}
+  virtual bool isStopOnly() const {return false;}
   std::int64_t getLastReceivedSteadyNs() const
   {
     return last_received_steady_ns_.load(std::memory_order_acquire);
@@ -91,6 +92,18 @@ public:
   std::int64_t getLastSourceStampNs() const
   {
     return last_source_stamp_ns_.load(std::memory_order_acquire);
+  }
+  std::int64_t getLastValidFrameSteadyNs() const
+  {
+    return last_valid_frame_steady_ns_.load(std::memory_order_acquire);
+  }
+  std::int64_t getSensorFaultTimeoutNs() const
+  {
+    return sensor_fault_timeout_ns_;
+  }
+  double getMaxObstacleDistanceSq() const
+  {
+    return max_obstacle_distance_sq_;
   }
 
 protected:
@@ -138,14 +151,23 @@ protected:
   tf2::Duration transform_tolerance_;
   /// @brief Maximum time interval in which data is considered valid
   rclcpp::Duration source_timeout_;
+  /// @brief Timeout threshold for sensor fault detection (ns)
+  std::int64_t sensor_fault_timeout_ns_{500000000LL};
   /// @brief Whether to correct source data towards to base frame movement,
   /// from source acquisition time to latest available base TF time
   bool base_shift_correction_;
+  /// @brief 方案 AB 结合：动态位移校正容差阈值 (秒)，默认 0.030s (30ms)
+  double base_shift_tolerance_{0.030};
+  /// @brief 距离绝对剪枝阈值 (米)，默认 0.0 (不限制)；配置大于 0 时生效 (如生产环境 2.5m)
+  double max_obstacle_distance_{0.0};
+  /// @brief 距离绝对剪枝平方值 (m^2)
+  double max_obstacle_distance_sq_{std::numeric_limits<double>::infinity()};
 
   /// @brief Lets the control loop skip geometry work until a source receives a new message.
   std::atomic<std::uint64_t> data_sequence_{0};
   std::atomic<std::int64_t> last_received_steady_ns_{0};
   std::atomic<std::int64_t> last_source_stamp_ns_{0};
+  std::atomic<std::int64_t> last_valid_frame_steady_ns_{0};
 };  // class Source
 
 }  // namespace nav2_collision_monitor

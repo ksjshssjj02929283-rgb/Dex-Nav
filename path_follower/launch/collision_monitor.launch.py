@@ -18,6 +18,7 @@ import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
+from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
@@ -33,6 +34,7 @@ def generate_launch_description():
     cmd_vel_in_topic = LaunchConfiguration("cmd_vel_in_topic")
     cmd_vel_out_topic = LaunchConfiguration("cmd_vel_out_topic")
     node_name = LaunchConfiguration("node_name")
+    use_lifecycle_manager = LaunchConfiguration("use_lifecycle_manager")
 
     use_sim_time_arg = DeclareLaunchArgument(
         "use_sim_time",
@@ -59,6 +61,16 @@ def generate_launch_description():
             "bond 心跳看门狗超时(s)。托管节点 activate 后以 10Hz 向管理器发心跳，"
             "超过此值没心跳，管理器判定节点卡死，会把该管理器名下的节点整组 deactivate。"
             "设为 0.0 关闭该看门狗。"
+        ),
+    )
+    use_lifecycle_manager_arg = DeclareLaunchArgument(
+        "use_lifecycle_manager",
+        default_value="true",
+        description=(
+            "true = 起本文件自带的 lifecycle_manager_<node_name>（单独运行时用）；"
+            "false = 不起，节点交给上层管理器编排（path_navigation_bringup 把它并进 "
+            "lifecycle_manager_path_navigation，随导航后端一起 STARTUP/PAUSE）。"
+            "此时 autostart / bond_timeout 不起作用。"
         ),
     )
     node_name_arg = DeclareLaunchArgument(
@@ -106,12 +118,13 @@ def generate_launch_description():
         ],
     )
 
-    # 生命周期管理器: 自动把 collision_monitor 拉到 active。
+    # 生命周期管理器: 自动把 collision_monitor 拉到 active。use_lifecycle_manager=false 时不起(交给上层)。
     lifecycle_manager_node = Node(
         package="nav2_lifecycle_manager",
         executable="lifecycle_manager",
         name=["lifecycle_manager_", node_name],
         output="screen",
+        condition=IfCondition(use_lifecycle_manager),
         parameters=[
             {"use_sim_time": use_sim_time},
             {"autostart": autostart},
@@ -131,6 +144,7 @@ def generate_launch_description():
             cmd_vel_in_topic_arg,
             cmd_vel_out_topic_arg,
             node_name_arg,
+            use_lifecycle_manager_arg,
             collision_monitor_node,
             lifecycle_manager_node,
         ]

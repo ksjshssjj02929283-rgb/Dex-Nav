@@ -91,7 +91,21 @@ void Tester::setCommonParameters()
     rclcpp::Parameter("source_timeout", SOURCE_TIMEOUT));
   cm_->declare_parameter(
     "scan_fault_timeout", rclcpp::ParameterValue(SCAN_FAULT_TIMEOUT));
+  cm_->set_parameter(
+    rclcpp::Parameter("scan_fault_timeout", SCAN_FAULT_TIMEOUT));
+  cm_->declare_parameter(
+    "sensor_fault_timeout", rclcpp::ParameterValue(SCAN_FAULT_TIMEOUT));
+  cm_->set_parameter(
+    rclcpp::Parameter("sensor_fault_timeout", SCAN_FAULT_TIMEOUT));
 
+  cm_->declare_parameter(
+    "clear_hold_time", rclcpp::ParameterValue(0.0));
+  cm_->set_parameter(
+    rclcpp::Parameter("clear_hold_time", 0.0));
+  cm_->declare_parameter(
+    "slowdown_hold_time", rclcpp::ParameterValue(0.0));
+  cm_->set_parameter(
+    rclcpp::Parameter("slowdown_hold_time", 0.0));
   cm_->declare_parameter(
     "stop_pub_timeout", rclcpp::ParameterValue(STOP_PUB_TIMEOUT));
   cm_->set_parameter(

@@ -48,6 +48,9 @@ path_follower, 由 path_follower 自己的 VelocityTrackMode 状态机(kSlowdown
   生命周期管理器(各自 include 自带), 而不是合并成一个: 合并后任一节点 bond 心跳断
   bond_timeout 秒, 管理器会把名下节点**整组** deactivate, 等于一个节点卡死拖垮另一个。
   autostart / bond_timeout 两个开关同时透传给两级, 详见 collision_monitor.launch.py。
+  use_own_lifecycle_managers:=false 时两个自带管理器都不起, 两级交给上层管理器编排 ——
+  path_navigation_bringup.launch.py 就是这么用的: 把它们和 Follower/Schedule 并成一组,
+  随导航后端一起 STARTUP/PAUSE, 未选中路径导航时整条速度链停在 unconfigured。
 
 运行:
   ros2 launch path_follower path_follower_with_collision_and_smoother.launch.py
@@ -90,6 +93,7 @@ def generate_launch_description():
     use_sim_time = LaunchConfiguration("use_sim_time")
     autostart = LaunchConfiguration("autostart")
     bond_timeout = LaunchConfiguration("bond_timeout")
+    use_own_lifecycle_managers = LaunchConfiguration("use_own_lifecycle_managers")
 
     use_sim_time_arg = DeclareLaunchArgument(
         "use_sim_time",
@@ -109,6 +113,16 @@ def generate_launch_description():
         description=(
             "两级托管节点的 bond 心跳看门狗超时(s)，0.0 关闭。"
             "详见 collision_monitor.launch.py。"
+        ),
+    )
+
+    use_own_lifecycle_managers_arg = DeclareLaunchArgument(
+        "use_own_lifecycle_managers",
+        default_value="true",
+        description=(
+            "true = 两级各起自带的 lifecycle_manager_<node_name>（单独运行本文件时用）；"
+            "false = 都不起, 交给上层管理器（path_navigation_bringup）。"
+            "false 时 autostart / bond_timeout 不起作用。"
         ),
     )
 
@@ -151,6 +165,7 @@ def generate_launch_description():
                     "params_file": collision_params,
                     "autostart": autostart,
                     "bond_timeout": bond_timeout,
+                    "use_lifecycle_manager": use_own_lifecycle_managers,
                     "cmd_vel_in_topic": FOLLOWER_OUT_TOPIC,
                     "cmd_vel_out_topic": MONITOR_SINK_TOPIC,
                     "node_name": MONITOR_NODE_NAME,
@@ -170,6 +185,7 @@ def generate_launch_description():
                     "params_file": smoother_params,
                     "autostart": autostart,
                     "bond_timeout": bond_timeout,
+                    "use_lifecycle_manager": use_own_lifecycle_managers,
                     "cmd_vel_in_topic": FOLLOWER_OUT_TOPIC,
                     "cmd_vel_out_topic": CHASSIS_TOPIC,
                     "node_name": SMOOTHER_NODE_NAME,
@@ -184,6 +200,7 @@ def generate_launch_description():
             use_sim_time_arg,
             autostart_arg,
             bond_timeout_arg,
+            use_own_lifecycle_managers_arg,
             path_follower_node,
             collision_monitor,
             velocity_smoother,

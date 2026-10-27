@@ -310,7 +310,7 @@ def _launch_setup(context):
 def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument(
-            'use_collision_monitor', default_value='false',
+            'use_collision_monitor', default_value='true',
             description='Enable collision monitor and route navigation velocity through it'),
         OpaqueFunction(function=_launch_setup),
     ])
