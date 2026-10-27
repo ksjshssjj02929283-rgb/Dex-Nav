@@ -71,6 +71,10 @@ const std::vector<ParamHandler> & paramTable()
       [](const P & p) {return rclcpp::ParameterValue(p.projection_edge_threshold_m);},
       [](P & p, const rclcpp::Parameter & v) {p.projection_edge_threshold_m = v.as_double();},
       false},
+    {"node_snap_threshold_m",
+      [](const P & p) {return rclcpp::ParameterValue(p.node_snap_threshold_m);},
+      [](P & p, const rclcpp::Parameter & v) {p.node_snap_threshold_m = v.as_double();},
+      false},
 
     // ── Same-side shortcut ──────────────────────────────────────────
     {"shortcut_max_proj_distance_m",
@@ -212,6 +216,7 @@ void NavRouteGraphPlanner::configure(
   proj_p.node_threshold_m = params_.projection_node_threshold_m;
   proj_p.edge_threshold_m = params_.projection_edge_threshold_m;
   proj_p.bezier_samples_per_edge = params_.bezier_samples_per_edge;
+  proj_p.node_snap_threshold_m = params_.node_snap_threshold_m;
   projector_ = std::make_shared<StartGoalProjector>(proj_p);
   searcher_ = std::make_shared<AStarSearcher>();
   PathInterpolator::Params interp_p;
