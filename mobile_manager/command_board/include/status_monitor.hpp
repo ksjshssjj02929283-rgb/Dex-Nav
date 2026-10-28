@@ -56,6 +56,14 @@ public:
         std::string               task_status = "UNKNOWN";    // from mission_manager/status
         bool                      pose_valid = false;
         bool                      velocity_valid = false;
+        std::chrono::steady_clock::time_point odom_received_at{};
+
+        // 接收新鲜度独立于 ROS 时间及消息时间戳，仅用于恢复前的静止判断。
+        bool HasFreshVelocity(std::chrono::steady_clock::time_point now) const {
+            return velocity_valid && now >= odom_received_at &&
+                   now - odom_received_at <= std::chrono::seconds(1);
+        }
+
         bool                      odom_pose_valid = false;
         bool                      task_status_valid = false;
         std::string               robot_statusword = "UNKNOWN";

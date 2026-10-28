@@ -745,9 +745,9 @@ void CommandBoardManagerROS::SnapshotGoodPose() {
 }
 
 bool CommandBoardManagerROS::RobotIsStill() const {
-    if (!status_monitor_) return true;
+    if (!status_monitor_) return false;
     const auto snap = status_monitor_->GetSnapshot();
-    if (!snap.velocity_valid) return true;
+    if (!snap.HasFreshVelocity(std::chrono::steady_clock::now())) return false;
     const double v = std::hypot(snap.velocity.linear.x, snap.velocity.linear.y);
     const double w = std::abs(snap.velocity.angular.z);
     return v < velocity_still_threshold_ && w < velocity_still_threshold_;
