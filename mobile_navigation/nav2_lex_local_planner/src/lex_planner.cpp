@@ -387,7 +387,9 @@ float LexPlanner::distance(state_t * state_from, state_t * state_to)
 bool LexPlanner::isInCollision(float x, float y)
 {
   unsigned int mx, my;
-  local_costmap_->worldToMap(x, y, mx, my);
+  if (!local_costmap_->worldToMap(x, y, mx, my)) {
+    return true;
+  }
   if (mx >= local_costmap_->getSizeInCellsX() ||
       my >= local_costmap_->getSizeInCellsY())
   {
@@ -396,13 +398,11 @@ bool LexPlanner::isInCollision(float x, float y)
 
   unsigned char cost = local_costmap_->getCost(mx, my);
   if (cost == nav2_costmap_2d::LETHAL_OBSTACLE ||
-      cost == nav2_costmap_2d::INSCRIBED_INFLATED_OBSTACLE ||
-      cost == nav2_costmap_2d::NO_INFORMATION)
+      cost == nav2_costmap_2d::INSCRIBED_INFLATED_OBSTACLE)
   {
     return true;
-  } else {
-    return false;
   }
+  return false;
 }
 
 

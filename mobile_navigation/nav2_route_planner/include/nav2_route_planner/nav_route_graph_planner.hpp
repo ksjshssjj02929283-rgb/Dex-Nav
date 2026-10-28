@@ -75,6 +75,7 @@ public:
     // globally-nearest NODE/EDGE); these thresholds only drive INFO logs.
     double projection_node_threshold_m{0.5};
     double projection_edge_threshold_m{1.0};
+    double node_snap_threshold_m{0.4};
 
     // "Same-side shortcut": when avoidance is enabled and start/goal
     // projections sit within this distance, skip graph routing and use

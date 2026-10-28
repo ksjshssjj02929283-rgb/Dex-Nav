@@ -287,6 +287,27 @@ TEST(ProjectorUnlimitedTest, GoalAtSharedNodePrefersNodeOnTie)
   EXPECT_NEAR(goal_semantics.distance, 0.0, 1e-9);
 }
 
+TEST(ProjectorUnlimitedTest, ProjectPreferEdgeSnapsToNodeWhenClose)
+{
+  auto g = buildSimple();
+  auto lock = g->lockShared();
+  StartGoalProjector::Params pr;
+  pr.node_snap_threshold_m = 0.4;
+  StartGoalProjector proj(pr);
+
+  // 1. 距离节点 A 仅 0.2m (小于 0.4m 阈值) -> 优先吸附为 ON_NODE (A)
+  const auto near_a = pose(0.2, 0.0);
+  const auto snap_res = proj.projectPreferEdge(near_a, *g);
+  EXPECT_EQ(snap_res.type, StartGoalProjector::ResultType::ON_NODE);
+  EXPECT_EQ(snap_res.id, "A");
+
+  // 2. 距离节点 A 1.0m (大于 0.4m 阈值) -> 正常吸附到边 e (ON_EDGE)
+  const auto mid_edge = pose(1.0, 0.0);
+  const auto edge_res = proj.projectPreferEdge(mid_edge, *g);
+  EXPECT_EQ(edge_res.type, StartGoalProjector::ResultType::ON_EDGE);
+  EXPECT_EQ(edge_res.id, "e");
+}
+
 int main(int argc, char ** argv)
 {
   ::testing::InitGoogleTest(&argc, argv);

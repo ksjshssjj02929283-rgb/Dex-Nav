@@ -98,12 +98,9 @@ void ControllerServer::startSnapshotWorker()
               p.second->setSpeedLimit(request.limit.speed_limit, request.limit.percentage);
             }
           }
-          // 3. 执行 LocalPlanner 几何规划（局部路径剪裁与避障搜索）
+          // 3. 执行 LocalPlanner 几何规划与绕障状态机控制
           nav_msgs::msg::Path local = *request.path;
-          if (!current_local_planner_.empty() &&
-          !local_planners_.at(current_local_planner_)->computeLocalPlan(
-            request.pose, request.velocity, local))
-          {
+          if (!computeLocalPath(*request.path, request.pose, request.velocity, local)) {
             throw std::runtime_error("local planning failed");
           }
           if (local.poses.empty() || current_speed_planner_.empty()) {

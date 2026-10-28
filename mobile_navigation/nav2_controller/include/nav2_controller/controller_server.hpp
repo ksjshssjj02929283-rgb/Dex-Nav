@@ -562,6 +562,29 @@ protected:
   std::vector<std::string> local_planner_types_;
   std::string local_planner_ids_concat_, current_local_planner_;
 
+  // 可选局部动态绕障状态机配置 (未配置/置空时自动回退为纯 current_local_planner: PathPruningLocalPlanner)
+  std::string avoidance_local_planner_;
+  double avoidance_obstacle_trigger_distance_{2.80};
+  double avoidance_rejoin_lateral_threshold_{0.12};
+  int avoidance_obstacle_cost_threshold_{253};
+  bool avoidance_emergency_stop_on_no_path_{true};
+  double avoidance_robot_collision_radius_{0.42};
+
+  enum class AvoidanceFSMState {
+    NORMAL_TRACK,
+    AVOIDING_OBSTACLE,
+    OBSTACLE_BLOCKED
+  };
+  AvoidanceFSMState avoidance_state_{AvoidanceFSMState::NORMAL_TRACK};
+
+  rclcpp::Subscription<std_msgs::msg::String>::SharedPtr set_avoid_planner_sub_;
+  rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::String>::SharedPtr avoidance_fsm_state_pub_;
+
+  bool isReferencePathBlockedAhead(
+    const nav_msgs::msg::Path & path,
+    const geometry_msgs::msg::PoseStamped & pose,
+    double & current_lateral_offset) const;
+
   // Speed Planner Plugins（④ 规划级；current_speed_planner 为空 = 禁用/灰度回退）
   pluginlib::ClassLoader<nav2_core::SpeedPlanner> speed_planner_loader_;
   SpeedPlannerMap speed_planners_;

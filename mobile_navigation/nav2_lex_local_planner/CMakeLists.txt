@@ -9,6 +9,7 @@ find_package(nav2_util REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
 find_package(geometry_msgs REQUIRED)
+find_package(visualization_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(nav_interfaces REQUIRED)
 find_package(pluginlib REQUIRED)
@@ -27,6 +28,7 @@ set(dependencies
   rclcpp
   rclcpp_lifecycle
   geometry_msgs
+  visualization_msgs
   nav_msgs
   nav_interfaces
   nav2_costmap_2d

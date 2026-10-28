@@ -21,6 +21,7 @@
 #include "geometry_msgs/msg/twist.hpp"
 #include "geometry_msgs/msg/transform_stamped.hpp"
 #include "nav_msgs/msg/path.hpp"
+#include "visualization_msgs/msg/marker_array.hpp"
 #include "tf2_ros/buffer.h"
 
 #include "nav2_core/local_planner.hpp"
@@ -88,6 +89,16 @@ private:
   std::vector<nav2_lex_local_planner::WayPoint> global_waypoints_;
   std::unique_ptr<nav2_lex_local_planner::RolloutGenerator> rollout_generator_;
   std::unique_ptr<nav2_lex_local_planner::LexPlanner> lex_planner_;
+
+  bool visualize_candidate_trajectories_{false};
+  int max_visualized_candidates_{80};
+  std::string candidate_paths_topic_{"/frenet_rpp_controller/candidate_paths"};
+  std::string rollouts_topic_{"/controller_server/frenet_rollouts"};
+
+  rclcpp_lifecycle::LifecyclePublisher<visualization_msgs::msg::MarkerArray>::SharedPtr
+    candidate_paths_pub_;
+  rclcpp_lifecycle::LifecyclePublisher<visualization_msgs::msg::MarkerArray>::SharedPtr
+    rollouts_pub_;
 
   std::mutex mtx_;
 };

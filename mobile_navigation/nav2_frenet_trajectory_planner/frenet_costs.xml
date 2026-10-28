@@ -1,0 +1,29 @@
+<class_libraries>
+  <library path="nav2_frenet_local_planner">
+    <class name="nav2_frenet_ilqr_controller::costs::LateralDistanceCost"
+           type="nav2_frenet_ilqr_controller::costs::LateralDistanceCost"
+           base_class_type="nav2_frenet_ilqr_controller::costs::RclcppNodeCost">
+      <description>Integrate absolute lateral distance along a Frenet trajectory.</description>
+    </class>
+    <class name="nav2_frenet_ilqr_controller::costs::LongitudinalVelocityCost"
+           type="nav2_frenet_ilqr_controller::costs::LongitudinalVelocityCost"
+           base_class_type="nav2_frenet_ilqr_controller::costs::RclcppNodeCost">
+      <description>Track desired longitudinal velocity with approach-speed handoff.</description>
+    </class>
+    <class name="nav2_frenet_ilqr_controller::costs::LongtitutalVelocityCost"
+           type="nav2_frenet_ilqr_controller::costs::LongtitutalVelocityCost"
+           base_class_type="nav2_frenet_ilqr_controller::costs::RclcppNodeCost">
+      <description>Upstream-compatible alias for LongitudinalVelocityCost.</description>
+    </class>
+    <class name="nav2_frenet_ilqr_controller::costs::LatLonBalanceCost"
+           type="nav2_frenet_ilqr_controller::costs::LatLonBalanceCost"
+           base_class_type="nav2_frenet_ilqr_controller::costs::RclcppNodeCost">
+      <description>Penalize simultaneous longitudinal speed and lateral motion.</description>
+    </class>
+    <class name="nav2_frenet_ilqr_controller::costs::ObstacleCost"
+           type="nav2_frenet_ilqr_controller::costs::ObstacleCost"
+           base_class_type="nav2_frenet_ilqr_controller::costs::RclcppNodeCost">
+      <description>Accumulate normalized costmap cost along a candidate trajectory.</description>
+    </class>
+  </library>
+</class_libraries>

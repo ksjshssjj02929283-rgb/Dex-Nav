@@ -503,6 +503,50 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
       local_planner_ids_concat_.c_str(), current_local_planner_.c_str());
   }
 
+  nav2_util::declare_parameter_if_not_declared(
+    node, "avoidance_local_planner", rclcpp::ParameterValue(std::string("")));
+  get_parameter("avoidance_local_planner", avoidance_local_planner_);
+
+  nav2_util::declare_parameter_if_not_declared(
+    node, "avoidance_state_machine.obstacle_trigger_distance", rclcpp::ParameterValue(2.80));
+  get_parameter("avoidance_state_machine.obstacle_trigger_distance", avoidance_obstacle_trigger_distance_);
+
+  nav2_util::declare_parameter_if_not_declared(
+    node, "avoidance_state_machine.rejoin_lateral_threshold", rclcpp::ParameterValue(0.12));
+  get_parameter("avoidance_state_machine.rejoin_lateral_threshold", avoidance_rejoin_lateral_threshold_);
+
+  nav2_util::declare_parameter_if_not_declared(
+    node, "avoidance_state_machine.obstacle_cost_threshold", rclcpp::ParameterValue(253));
+  get_parameter("avoidance_state_machine.obstacle_cost_threshold", avoidance_obstacle_cost_threshold_);
+
+  nav2_util::declare_parameter_if_not_declared(
+    node, "avoidance_state_machine.emergency_stop_on_no_path", rclcpp::ParameterValue(true));
+  get_parameter("avoidance_state_machine.emergency_stop_on_no_path", avoidance_emergency_stop_on_no_path_);
+
+  nav2_util::declare_parameter_if_not_declared(
+    node, "avoidance_state_machine.robot_collision_radius", rclcpp::ParameterValue(0.42));
+  get_parameter("avoidance_state_machine.robot_collision_radius", avoidance_robot_collision_radius_);
+
+  if (avoidance_local_planner_.empty() || avoidance_local_planner_ == "none" ||
+      avoidance_local_planner_ == "None" || avoidance_local_planner_ == "off")
+  {
+    avoidance_local_planner_ = "";
+    RCLCPP_INFO(
+      get_logger(),
+      "Avoidance local planning off. System will operate in pure '%s' + Controller mode.",
+      current_local_planner_.c_str());
+  } else if (local_planners_.find(avoidance_local_planner_) == local_planners_.end()) {
+    RCLCPP_WARN(
+      get_logger(),
+      "avoidance_local_planner '%s' not found in local_planner_plugins (%s). Fallback to '%s'.",
+      avoidance_local_planner_.c_str(), local_planner_ids_concat_.c_str(), current_local_planner_.c_str());
+    avoidance_local_planner_ = "";
+  } else {
+    RCLCPP_INFO(
+      get_logger(), "Avoidance local planner loaded: '%s'.",
+      avoidance_local_planner_.c_str());
+  }
+
   get_parameter("speed_planner_plugins", speed_planner_ids_);
   speed_planner_types_.resize(speed_planner_ids_.size());
   for (size_t i = 0; i != speed_planner_ids_.size(); i++) {
@@ -623,6 +667,32 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
   nav_status_pub_ = create_publisher<nav_interfaces::msg::NavigationStatus>(
     "navigation_status", 10);
 
+  avoidance_fsm_state_pub_ = create_publisher<std_msgs::msg::String>(
+    "/controller_server/avoidance_mode", 10);
+
+  set_avoid_planner_sub_ = create_subscription<std_msgs::msg::String>(
+    "/controller_server/set_avoidance_planner", 10,
+    [this](const std_msgs::msg::String::SharedPtr msg) {
+      if (msg->data.empty() || msg->data == "none" || msg->data == "None" || msg->data == "off") {
+        avoidance_local_planner_ = "";
+        RCLCPP_INFO(
+          get_logger(),
+          "🔀 [controller_server] 绕障已关闭，回退到纯 '%s' + Controller 直通模式",
+          current_local_planner_.c_str());
+      } else if (local_planners_.count(msg->data)) {
+        avoidance_local_planner_ = msg->data;
+        RCLCPP_INFO(
+          get_logger(),
+          "🔀 [controller_server] 局部绕障规划器已动态切换为: '%s'",
+          avoidance_local_planner_.c_str());
+      } else {
+        RCLCPP_WARN(
+          get_logger(),
+          "⚠️ 未找到绕障规划器 '%s'，已加载列表: %s (传 'none' 或 '' 可关闭)",
+          msg->data.c_str(), local_planner_ids_concat_.c_str());
+      }
+    });
+
   // Create the action server that we implement with our followPath method
   action_server_ = std::make_unique<ActionServer>(
     shared_from_this(),
@@ -678,6 +748,9 @@ ControllerServer::on_activate(const rclcpp_lifecycle::State & /*state*/)
   speed_plan_path_id_ = 0;
   speed_plan_cycle_ = SpeedPlanCycleContext();
   nav_status_pub_->on_activate();
+  if (avoidance_fsm_state_pub_) {
+    avoidance_fsm_state_pub_->on_activate();
+  }
   startSnapshotWorker();
   action_server_->activate();
 
@@ -729,6 +802,9 @@ ControllerServer::on_deactivate(const rclcpp_lifecycle::State & /*state*/)
     publishReplanRequired("controller deactivated");
   }
   nav_status_pub_->on_deactivate();
+  if (avoidance_fsm_state_pub_) {
+    avoidance_fsm_state_pub_->on_deactivate();
+  }
   goal_error_publisher_->on_deactivate();
   speed_plan_publisher_->on_deactivate();
   speed_plan_diagnostics_publisher_->on_deactivate();
@@ -801,6 +877,8 @@ ControllerServer::on_cleanup(const rclcpp_lifecycle::State & /*state*/)
   costmap_thread_.reset();
   vel_publisher_.reset();
   nav_status_pub_.reset();
+  avoidance_fsm_state_pub_.reset();
+  set_avoid_planner_sub_.reset();
   hard_stop_publisher_.reset();
   prepare_replan_request_pub_.reset();
   prepare_session_sub_.reset();
@@ -1035,6 +1113,7 @@ void ControllerServer::commitPlannerPathState(
   const nav_msgs::msg::Path & path,
   PathUpdateType update_type)
 {
+  avoidance_state_ = AvoidanceFSMState::NORMAL_TRACK;
   if (update_type == PathUpdateType::NEW_GOAL) {
     // 只有新目标才换靶心。同目标时保持 end_pose_ 不动有两个作用：
     // ① 近目标重规划做 position-only 插值，path 终点本就有厘米级抖动，而
@@ -1085,6 +1164,92 @@ void ControllerServer::commitPlannerPathState(
   }
 }
 
+bool ControllerServer::isReferencePathBlockedAhead(
+  const nav_msgs::msg::Path & path,
+  const geometry_msgs::msg::PoseStamped & pose,
+  double & current_lateral_offset) const
+{
+  if (!costmap_ros_ || !costmap_ros_->getCostmap() || path.poses.size() < 2) {
+    return false;
+  }
+
+  // 1. 若底层控制器已报告碰撞停障 (Hard stop active)，无条件允许状态机介入寻找局部绕障解
+  if (is_collision_stop_active_) {
+    return true;
+  }
+
+  auto * cm = costmap_ros_->getCostmap();
+  std::unique_lock<nav2_costmap_2d::Costmap2D::mutex_t> lock(*(cm->getMutex()));
+
+  const size_t nearest_idx = findClosestPoseIndex(pose, path);
+  const auto & pref = path.poses[nearest_idx].pose;
+  const double rx = pose.pose.position.x;
+  const double ry = pose.pose.position.y;
+
+  double yaw = 0.0;
+  if (nearest_idx + 1 < path.poses.size()) {
+    yaw = std::atan2(
+      path.poses[nearest_idx + 1].pose.position.y - pref.position.y,
+      path.poses[nearest_idx + 1].pose.position.x - pref.position.x);
+  } else if (nearest_idx > 0) {
+    yaw = std::atan2(
+      pref.position.y - path.poses[nearest_idx - 1].pose.position.y,
+      pref.position.x - path.poses[nearest_idx - 1].pose.position.x);
+  }
+
+  const double nx = -std::sin(yaw);
+  const double ny = std::cos(yaw);
+  current_lateral_offset = (rx - pref.position.x) * nx + (ry - pref.position.y) * ny;
+
+  double accum_s = 0.0;
+  const double half_width = std::max(0.20, avoidance_robot_collision_radius_ * 0.70);
+  for (size_t i = nearest_idx; i < path.poses.size(); ++i) {
+    if (i > nearest_idx) {
+      accum_s += std::hypot(
+        path.poses[i].pose.position.x - path.poses[i - 1].pose.position.x,
+        path.poses[i].pose.position.y - path.poses[i - 1].pose.position.y);
+    }
+    if (accum_s > avoidance_obstacle_trigger_distance_) {
+      break;
+    }
+
+    const double px = path.poses[i].pose.position.x;
+    const double py = path.poses[i].pose.position.y;
+    double pt_yaw = yaw;
+    if (i + 1 < path.poses.size()) {
+      pt_yaw = std::atan2(
+        path.poses[i + 1].pose.position.y - py,
+        path.poses[i + 1].pose.position.x - px);
+    }
+    const double p_nx = -std::sin(pt_yaw);
+    const double p_ny = std::cos(pt_yaw);
+
+    // 在参考路径中心点及左右车体包络宽度范围内采样
+    const double check_offsets[] = {0.0, half_width, -half_width};
+    for (double offset : check_offsets) {
+      unsigned int mx = 0, my = 0;
+      if (cm->worldToMap(px + offset * p_nx, py + offset * p_ny, mx, my)) {
+        const unsigned char c = cm->getCost(mx, my);
+        if (c >= static_cast<unsigned char>(avoidance_obstacle_cost_threshold_) ||
+            c == nav2_costmap_2d::LETHAL_OBSTACLE ||
+            c == nav2_costmap_2d::INSCRIBED_INFLATED_OBSTACLE)
+        {
+          return true;
+        }
+      }
+    }
+  }
+
+  // 若当前已在绕障状态中且横向偏差尚未归零 (|d| > rejoin_lateral_threshold)，保持绕障
+  if (avoidance_state_ == AvoidanceFSMState::AVOIDING_OBSTACLE &&
+      std::abs(current_lateral_offset) > avoidance_rejoin_lateral_threshold_)
+  {
+    return true;
+  }
+
+  return false;
+}
+
 bool ControllerServer::computeLocalPath(
   const nav_msgs::msg::Path & global_path,
   const geometry_msgs::msg::PoseStamped & pose,
@@ -1096,27 +1261,106 @@ bool ControllerServer::computeLocalPath(
     return true;
   }
 
-  const auto local_planner = local_planners_.find(current_local_planner_);
-  if (local_planner == local_planners_.end()) {
-    RCLCPP_ERROR_THROTTLE(
-      get_logger(), *get_clock(), 1000,
-      "Local planner '%s' is not loaded. No command this cycle.",
-      current_local_planner_.c_str());
-    local_path = nav_msgs::msg::Path();
-    return false;
+  // 1. 判断是否能够且需要进行局部动态绕障
+  double current_d = 0.0;
+  const bool can_avoid = !avoidance_local_planner_.empty() &&
+    (local_planners_.find(avoidance_local_planner_) != local_planners_.end());
+  const bool need_avoidance = can_avoid && isReferencePathBlockedAhead(global_path, pose, current_d);
+
+  bool avoidance_succeeded = false;
+  if (need_avoidance) {
+    avoidance_state_ = AvoidanceFSMState::AVOIDING_OBSTACLE;
+    auto avoid_it = local_planners_.find(avoidance_local_planner_);
+    if (avoid_it != local_planners_.end()) {
+      nav_msgs::msg::Path avoid_path;
+      if (avoid_it->second->computeLocalPlan(pose, velocity, avoid_path) && !avoid_path.poses.empty()) {
+        // 绕障插件在 costmap 坐标系（通常是 odom）下生成路径，而全局路径/RPP
+        // 期望的坐标系是 map。即使 map->odom 数值上是单位变换，RPP 也会按
+        // frame_id 字符串校验并拒绝轨迹，因此这里统一转回全局路径坐标系。
+        const std::string target_frame = global_path.header.frame_id.empty() ?
+          (global_path.poses.empty() ? std::string() : global_path.poses.front().header.frame_id) :
+          global_path.header.frame_id;
+        const std::string source_frame = avoid_path.header.frame_id.empty() ?
+          (avoid_path.poses.empty() ? std::string() : avoid_path.poses.front().header.frame_id) :
+          avoid_path.header.frame_id;
+        bool frame_ok = true;
+        if (!target_frame.empty() && !source_frame.empty() && source_frame != target_frame) {
+          nav_msgs::msg::Path transformed;
+          transformed.header.frame_id = target_frame;
+          transformed.header.stamp = avoid_path.header.stamp;
+          rclcpp::Duration tolerance(
+            rclcpp::Duration::from_seconds(costmap_ros_->getTransformTolerance()));
+          for (const auto & avoid_pose : avoid_path.poses) {
+            geometry_msgs::msg::PoseStamped transformed_pose;
+            if (!nav_2d_utils::transformPose(
+                costmap_ros_->getTfBuffer(), target_frame, avoid_pose,
+                transformed_pose, tolerance))
+            {
+              frame_ok = false;
+              break;
+            }
+            transformed.poses.push_back(transformed_pose);
+          }
+          if (frame_ok) {
+            transformed.header.stamp = this->now();
+            avoid_path = std::move(transformed);
+          }
+        }
+        if (frame_ok) {
+          local_path = avoid_path;
+          avoidance_succeeded = true;
+        }
+      }
+    }
+    if (!avoidance_succeeded && avoidance_emergency_stop_on_no_path_) {
+      avoidance_state_ = AvoidanceFSMState::OBSTACLE_BLOCKED;
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "All candidate avoidance paths blocked in '%s', triggering emergency stop.",
+        avoidance_local_planner_.c_str());
+      local_path = nav_msgs::msg::Path();
+      return false;
+    }
   }
 
-  local_path = nav_msgs::msg::Path();
-  if (!local_planner->second->computeLocalPlan(pose, velocity, local_path) ||
-    local_path.poses.empty())
-  {
-    RCLCPP_WARN_THROTTLE(
-      get_logger(), *get_clock(), 1000,
-      "Local planner '%s' failed or gave an empty path. No command this cycle.",
-      current_local_planner_.c_str());
+  // 2. 如果状态机不是绕障碍状态（无障碍阻断、障碍解除、或未配置绕障），则回退到 current_local_planner_ (PathPruningLocalPlanner)
+  if (!avoidance_succeeded) {
+    avoidance_state_ = AvoidanceFSMState::NORMAL_TRACK;
+    const auto local_planner = local_planners_.find(current_local_planner_);
+    if (local_planner == local_planners_.end()) {
+      RCLCPP_ERROR_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "Local planner '%s' is not loaded. No command this cycle.",
+        current_local_planner_.c_str());
+      local_path = nav_msgs::msg::Path();
+      return false;
+    }
+
     local_path = nav_msgs::msg::Path();
-    return false;
+    if (!local_planner->second->computeLocalPlan(pose, velocity, local_path) ||
+      local_path.poses.empty())
+    {
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "Local planner '%s' failed or gave an empty path. No command this cycle.",
+        current_local_planner_.c_str());
+      local_path = nav_msgs::msg::Path();
+      return false;
+    }
   }
+
+  if (avoidance_fsm_state_pub_ && avoidance_fsm_state_pub_->is_activated()) {
+    std_msgs::msg::String state_msg;
+    if (avoidance_state_ == AvoidanceFSMState::AVOIDING_OBSTACLE) {
+      state_msg.data = "AVOIDING_" + avoidance_local_planner_;
+    } else if (avoidance_state_ == AvoidanceFSMState::OBSTACLE_BLOCKED || is_collision_stop_active_) {
+      state_msg.data = "OBSTACLE_STOP";
+    } else {
+      state_msg.data = "PATH_FOLLOW_RPP";
+    }
+    avoidance_fsm_state_pub_->publish(state_msg);
+  }
+
   return true;
 }
 
@@ -2711,6 +2955,7 @@ void ControllerServer::computeAndPublishVelocity()
     cmd_vel_2d = geometry_msgs::msg::TwistStamped();
     cmd_vel_2d.header.frame_id = costmap_ros_->getBaseFrameID();
     cmd_vel_2d.header.stamp = now();
+    last_valid_cmd_time_ = now();
   } catch (nav2_core::PlannerException & e) {
     invalidateSpeedPlanningContinuity();
     if (failure_tolerance_ > 0 || failure_tolerance_ == -1.0) {
@@ -2726,7 +2971,12 @@ void ControllerServer::computeAndPublishVelocity()
       cmd_vel_2d.header.frame_id = costmap_ros_->getBaseFrameID();
       cmd_vel_2d.header.stamp = now();
       active_controller_for_log_ = "failure_tolerance_zero_cmd";
-      if ((now() - last_valid_cmd_time_).seconds() > failure_tolerance_ &&
+
+      // 处于主动碰撞停障状态时，控制器无速度输出属于正常的安全等待，持续刷新时间戳，防止 250ms 误杀
+      if (is_collision_stop_active_) {
+        last_valid_cmd_time_ = now();
+        is_collision_stop_wait = true;
+      } else if ((now() - last_valid_cmd_time_).seconds() > failure_tolerance_ &&
         failure_tolerance_ != -1.0)
       {
         publish_control_failure("controller_patience_exceeded");

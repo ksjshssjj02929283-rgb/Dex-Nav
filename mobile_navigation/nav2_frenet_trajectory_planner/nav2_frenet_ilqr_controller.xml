@@ -1,0 +1,14 @@
+<class_libraries>
+    <library path="nav2_frenet_local_planner">
+        <class name="nav2_frenet_ilqr_controller::FrenetLocalPlanner" type="nav2_frenet_ilqr_controller::FrenetLocalPlanner" base_class_type="nav2_core::LocalPlanner">
+            <description>
+                Upstream-aligned Frenet sampling planner (quartic longitudinal, quintic lateral, Policy/Cost selection, no iLQR)
+            </description>
+        </class>
+        <class name="FrenetLocalPlanner" type="nav2_frenet_ilqr_controller::FrenetLocalPlanner" base_class_type="nav2_core::LocalPlanner">
+            <description>
+                Alias for FrenetLocalPlanner
+            </description>
+        </class>
+    </library>
+</class_libraries>

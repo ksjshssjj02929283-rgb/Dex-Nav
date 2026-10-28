@@ -1,0 +1,108 @@
+<!--
+  =============================================================================
+  RouteGridPlanner 路网导航专用行为树 (NavigateToPoseWithRouteAndRecovery)
+  
+  设计说明与继承逻辑：
+  1. 继承基础：
+     完全沿用 navigate_to_pose_w_replanning_and_recovery.xml 的分层故障恢复、
+     内外层代价地图清理（ClearEntireCostmap）、自适应重规划（AdaptiveReplanning）
+     以及 PREPARE 后退防死锁机制。
+  2. 路网导航特性定制：
+     - planner_id 显式绑定为 "RouteGridPlanner"（支持从路网拓扑图选路与贝塞尔曲线插值）；
+     - 调优 AdaptiveReplanning 门限：路网拓扑导航中，周期性全图重算频率调低（0.01 Hz），
+       主要依赖偏离路网（max_deviation="0.6m"）或路网被障碍物阻塞（path_obstacle_check_hz="2.0"）
+       时才触发局部/全局重规划，极大节省车载计算资源（CPU 占用极低）；
+     - 恢复机制保持鲁棒：规划失败时依次清除全局与局部代价地图重试，控制受阻时执行短距安全后退。
+  =============================================================================
+-->
+
+<root main_tree_to_execute="MainTree">
+  <BehaviorTree ID="MainTree">
+    <PipelineSequence name="NavigateWithRouteReplanning">
+      
+      <!-- AdaptiveReplanning: 自适应路网重规划门控 -->
+      <!-- 偏离路网大于 0.6m 时或检测到前方路网被动态障碍物阻塞时触发重规划 -->
+      <AdaptiveReplanning goal="{goal}" path="{path}" enable_global_replanning="true"
+        distance_threshold="0.5" max_deviation="0.6"
+        hz="0.01" path_obstacle_check_hz="2.0" invalid_path_confirmations="4"
+        min_blocked_path_poses="3" obstacle_replan_cooldown="2.5" recovery_replan_mode="active">
+        
+        <RecoveryNode number_of_retries="3" name="ComputePathToPoseOuterRetry">
+
+          <!-- 内层：路网规划失败后，依次尝试清 global 和 local costmap，然后立即重试 1 次 -->
+          <RecoveryNode number_of_retries="1" name="ComputePathToPoseInnerRetry">
+            <ComputePathToPose goal="{goal}" path="{path}" planner_id="RouteGridPlanner"/>
+
+            <Sequence name="ClearBothCostmaps-FirstRetry">
+              <ForceSuccess>
+                <ClearEntireCostmap name="ClearGlobalCostmap-FirstRetry"
+                  service_name="global_costmap/clear_entirely_global_costmap"/>
+              </ForceSuccess>
+
+              <ForceSuccess>
+                <ClearEntireCostmap name="ClearLocalCostmap-FirstPlanningRetry"
+                  service_name="local_costmap/clear_entirely_local_costmap"/>
+              </ForceSuccess>
+            </Sequence>
+          </RecoveryNode>
+
+          <!-- 外层：如果内层仍失败，停稳并等待后依次尝试清 global 和 local，然后进入下一轮重试 -->
+          <Sequence name="WaitClearBothCostmapsAndRetry">
+            <ForceSuccess>
+              <CancelControl name="CancelFollowPathOnRepeatedGlobalPlanFailure"/>
+            </ForceSuccess>
+
+            <Wait wait_duration="1" server_name="wait_global"/>
+
+            <ForceSuccess>
+              <ClearEntireCostmap name="ClearGlobalCostmap-OuterRetry"
+                service_name="global_costmap/clear_entirely_global_costmap"/>
+            </ForceSuccess>
+
+            <ForceSuccess>
+              <ClearEntireCostmap name="ClearLocalCostmap-OuterPlanningRetry"
+                service_name="local_costmap/clear_entirely_local_costmap"/>
+            </ForceSuccess>
+          </Sequence>
+
+        </RecoveryNode>
+      </AdaptiveReplanning>
+
+      <!-- 局部控制与跟踪恢复分支 -->
+      <RecoveryNode number_of_retries="1" name="FollowPathAfterBackUpRetry">
+
+        <!-- 内层：FollowPath 失败后等待 0.5 s 停稳，清 local costmap 并等待新全局路径 -->
+        <RecoveryNode number_of_retries="1" name="FollowPathInnerRetry">
+          <!-- 采用当前配置的局部控制器（如 RPPController、FrenetILQRController 或 MPPIController） -->
+          <FollowPath path="{path}"/>
+
+          <Sequence name="WaitStopBeforeFollowPathRetry">
+            <Wait wait_duration="0.5" server_name="wait_local"/>
+            <ForceSuccess>
+              <ClearEntireCostmap name="ClearLocalCostmap-FirstRetry"
+                service_name="local_costmap/clear_entirely_local_costmap"/>
+            </ForceSuccess>
+            <!-- 保持 RUNNING 直到 ComputePathToPose 成功，禁止立即盲目重试旧路径 -->
+            <RequestAndWaitForGlobalReplan reason="follow_path_failed"/>
+          </Sequence>
+        </RecoveryNode>
+
+        <!-- 外层：若第一次重试仍失败，等待、清 local、后退 0.3m；后退成功并重新取得路网新路径后再重试 -->
+        <Sequence name="WaitClearBackUpAfterFollowPathFailed">
+          <Wait wait_duration="1" server_name="wait_local"/>
+
+          <ForceSuccess>
+            <ClearEntireCostmap name="ClearLocalCostmap-BeforeBackUp"
+              service_name="local_costmap/clear_entirely_local_costmap"/>
+          </ForceSuccess>
+          <!-- BackUp 受到安全监控；被拒绝时向上传播 FAILURE -->
+          <BackUp name="BackUpAfterLocalRetries" backup_dist="0.30" backup_speed="0.08" time_allowance="5"/>
+          <!-- 后退改变了机器人物理位置，必须先以当前新位置为起点生成新路径 -->
+          <RequestAndWaitForGlobalReplan reason="back_up_succeeded"/>
+        </Sequence>
+
+      </RecoveryNode>
+
+    </PipelineSequence>
+  </BehaviorTree>
+</root>

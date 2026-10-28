@@ -68,7 +68,11 @@ target_compile_definitions(${library_name} PUBLIC "PLUGINLIB_DISABLE_BOOST_FUNCT
 
 pluginlib_export_plugin_description_file(nav2_core nav2_route_planner.xml)
 
-install(TARGETS ${library_name}
+add_executable(nav_route_native_planner src/native_planner_main.cpp)
+ament_target_dependencies(nav_route_native_planner ${dependencies})
+target_link_libraries(nav_route_native_planner ${library_name})
+
+install(TARGETS ${library_name} nav_route_native_planner
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION lib/${PROJECT_NAME}

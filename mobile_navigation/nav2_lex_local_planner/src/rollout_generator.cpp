@@ -227,7 +227,7 @@ void RolloutGenerator::calculateRollInTrajectories(const nav2_lex_local_planner:
   }
 
   // steps 是第二阶段的步数
-  int nSteps = end_index - smoothing_start_index;
+  int nSteps = std::max(1, static_cast<int>(end_index) - static_cast<int>(smoothing_start_index));
 
   rollInPaths.clear();
   std::vector<double> inc_list;  // 每个横向点的增量
@@ -425,7 +425,7 @@ void RolloutGenerator::extractPartFromTrajectory(const std::vector<nav2_lex_loca
   // close_index -> 0
   for (int i = close_index; i >= 0; i--) {
     extractedPath.insert(extractedPath.begin(), originalPath[i]);
-    if (i < static_cast<int>(originalPath.size()))
+    if (i < static_cast<int>(originalPath.size()) - 1)
       dis += hypot(originalPath[i].pos.y - originalPath[i + 1].pos.y, originalPath[i].pos.x - originalPath[i + 1].pos.x);
     if (dis > 2)
       break;
@@ -436,7 +436,7 @@ void RolloutGenerator::extractPartFromTrajectory(const std::vector<nav2_lex_loca
   for (int i = close_index + 1; i < static_cast<int>(originalPath.size()); i++) {
     extractedPath.push_back(originalPath[i]);
     if (i > 0)
-      dis += hypot(originalPath[i].pos.y - originalPath[i + 1].pos.y, originalPath[i].pos.x - originalPath[i + 1].pos.x);
+      dis += hypot(originalPath[i].pos.y - originalPath[i - 1].pos.y, originalPath[i].pos.x - originalPath[i - 1].pos.x);
     if (dis > minDistance)
       break;
   }

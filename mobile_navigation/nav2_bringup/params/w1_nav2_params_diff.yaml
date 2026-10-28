@@ -115,8 +115,18 @@ controller_server:
     current_goal_checker: "high_precision_goal_checker"
     current_controller: "RPPController"
     # ③ 局部路径裁剪（10Hz，与控制/速度规划同频）：从机器人在线段上的投影点保留到真实 goal
-    local_planner_plugins: ["PathPruningLocalPlanner"]
+    local_planner_plugins: ["PathPruningLocalPlanner", "FrenetLocalPlanner", "LexLocalPlanner"]
     current_local_planner: "PathPruningLocalPlanner"  # 置空 "" = global path 直通
+    avoidance_local_planner: "FrenetLocalPlanner"     # 避障局部规划插件：使用五次多项式 FrenetLocalPlanner
+    avoidance_state_machine:
+      obstacle_trigger_distance: 2.80   # 前方参考线障碍物触发绕障检测距离 [m]
+      rejoin_lateral_threshold: 0.12    # 绕障后切回直通 RPP 的横向偏差阈值 [m]
+      obstacle_cost_threshold: 253      # Costmap 触发绕障阈值 (253=INSCRIBED, 254=LETHAL)
+      emergency_stop_on_no_path: true   # 所有候选绕障轨迹均碰撞时强制驻车急停，严禁穿障
+      robot_collision_radius: 0.42      # 车体碰撞包络半径 (对齐 w1_diff_sim.urdf 0.70x0.50m) [m]
+      obstacle_inflation_radius: 0.90   # 障碍物代价膨胀半径 [m]
+      goal_xy_tolerance: 0.18           # 终点位置容差 [m]
+      goal_yaw_tolerance: 0.08          # 终点朝向容差 [rad]
     PathPruningLocalPlanner:
       plugin: "nav2_path_pruning_local_planner::PathPruningLocalPlanner"
       # 投影搜索窗口上界，不是局部路径长度上限：局部规划器输出投影点到全局
@@ -124,6 +134,92 @@ controller_server:
       max_projection_search_distance: 5.0
       max_backtrack_distance: 0.5
       transform_tolerance: 0.2
+    FrenetLocalPlanner:
+      plugin: "nav2_frenet_ilqr_controller::FrenetLocalPlanner"
+      lateral_sample_min: -1.5          # 最右侧采样偏移 (m)
+      lateral_sample_max: 1.5           # 最左侧采样偏移 (m)
+      lateral_sample_step: 0.25         # 横向采样步长 (m) -> 覆盖左右多条平滑绕行路径
+      transition_length: 1.80           # 五次多项式横向过渡段前瞻弧长 (m)
+      rollout_window_distance: 3.80     # 局部绕障重规划窗口弧长 (m) -> 扩大到 3.8m，避免在障碍物处急促回正碰撞
+      path_step_s: 0.08                 # 纵向弧长离散分辨率 (m)
+      obstacle_cost_threshold: 253      # 碰撞判定阈值
+      weight_lateral_offset: 2.0        # 偏离全局中心线代价权重
+      weight_smoothness: 1.0            # 连续帧横向跳变平滑权重
+      weight_obstacle_clearance: 0.15   # 障碍物膨胀区净空排斥权重
+      # ===== 与上游 frenet_trajectory_planner 对齐的规划参数 =====
+      # 上游论文：Werling, Optimal Trajectory Generation for Dynamic Street Scenarios in a Frenet Frame
+      # 纵向四次多项式 + 横向五次多项式，时间/纵向速度/横向偏移三向采样；
+      # 先执行 Policy 可行性过滤，再由 Cost 累加选优。本插件不含 iLQR。
+      time_discretization: 0.05         # 轨迹时间离散步长 (s)
+      frenet_trajectory_planner:
+        min_lateral_distance: -1.5      # 横向偏移下界 (m)
+        max_lateral_distance: 1.5       # 横向偏移上界 (m)
+        step_lateral_distance: 0.25     # 横向偏移采样步长 (m)
+        min_longitudinal_velocity: 0.0  # 纵向目标速度下界 (m/s)
+        max_longitudinal_velocity: 0.8  # 纵向目标速度上界 (m/s)
+        step_longitudinal_velocity: 0.20
+        min_time_interval: 2.0          # 规划时域下界 (s)
+        max_time_interval: 8.0          # 规划时域上界 (s)，覆盖 2.8m 触发距离后的绕障段
+        step_time_interval: 1.0
+        max_state_in_trajectory: 180    # 单次最多输出状态数 (180 * 0.05 = 9s 上限)
+      waypoint_resolution: 0.20         # 进入 Frenet 坐标前参考点最小间距 (m)
+      projection_search_distance: 5.0   # 当前投影点向前的搜索窗口 (m)
+      max_backtrack_distance: 0.5       # 允许向后回看的投影距离 (m)
+      transform_tolerance: 0.2
+      tail_rejoin_distance: 1.5         # 规划窗口后回并全局参考线的横向恢复距离 (m)
+      visualize_candidate_trajectories: false   # true 时才创建可视化 publisher
+      max_visualized_candidates: 80              # 单帧最多发布的候选轨迹数
+      candidate_paths_topic: "/frenet_rpp_controller/candidate_paths"
+      rollouts_topic: "/controller_server/frenet_rollouts"
+      policy_plugins: ["ObstaclePolicy", "ConstraintsPolicy"]
+      ObstaclePolicy:
+        plugin: "nav2_frenet_ilqr_controller::policies::ObstaclePolicy"
+        obstacle_cost_threshold: 253
+      ConstraintsPolicy:
+        plugin: "nav2_frenet_ilqr_controller::policies::ConstraintsPolicy"
+        max_speed: 0.8
+        max_acceleration: 2.5
+      cost_checker_plugins: ["LateralDistanceCostChecker", "LongitudinalVelocityCostChecker", "LatLonBalanceCostChecker"]
+      LateralDistanceCostChecker:
+        plugin: "nav2_frenet_ilqr_controller::costs::LateralDistanceCost"
+        K_lateral_distance: 5.0
+      LongitudinalVelocityCostChecker:
+        plugin: "nav2_frenet_ilqr_controller::costs::LongitudinalVelocityCost"
+        K_longitudinal_velocity: 5.0
+        desired_velocity: 0.5
+        distance_to_approach: 0.8
+        desired_velocity_to_approach: 0.1
+      LatLonBalanceCostChecker:
+        plugin: "nav2_frenet_ilqr_controller::costs::LatLonBalanceCost"
+        K_latlon_balance: 15.0
+    LexLocalPlanner:
+      plugin: "nav2_lex_local_planner::LexLocalPlanner"
+      max_speed: 0.8
+      min_speed: 0.05
+      planning_distance: 10.0
+      micro_plan_distance: 3.60         # 局部截取重规划窗口长度 (m)
+      car_tip_margin: 0.30              # 车头平滑过渡前探余量 (m)
+      roll_in_margin: 1.20              # 横向发散过渡段长度 (m)
+      roll_in_speed_factor: 0.25
+      path_density: 0.10                # 纵向采样点间距 (m)
+      roll_out_density: 0.20            # 横向相邻候选轨迹间距 (m)
+      roll_out_number: 10               # 横向候选轨迹数 10+1=11 条 (覆盖 [-1.0, 1.0]m)
+      horizon_distance: 6.0
+      min_following_distance: 2.0
+      min_distance_to_avoid: 1.5
+      max_distance_to_avoid: 0.5
+      lateral_skip_distance: 1.0
+      speed_profile_factor: 1.0
+      smoothing_data_weight: 0.45
+      smoothing_smooth_weight: 0.30
+      smoothing_tolerance_error: 0.05
+      enable_align_centerline: True
+      enable_swerving: True
+      enable_lane_change: True
+      visualize_candidate_trajectories: false   # true 时才创建可视化 publisher
+      max_visualized_candidates: 80              # 单帧最多发布的候选轨迹数
+      candidate_paths_topic: "/frenet_rpp_controller/candidate_paths"
+      rollouts_topic: "/controller_server/frenet_rollouts"
     # ④ 速度规划（10Hz）：正常态从上一条已接受轨迹的空间匹配点继承v/a；
     # 偏差超过initial_motion门限才回到实测状态重初始化。置空""即禁用。
     # 运动学上限与下游链路对齐：对齐 MPPI(vx_max/ax_max/ax_min) 与 velocity_smoother(max_velocity/max_accel)

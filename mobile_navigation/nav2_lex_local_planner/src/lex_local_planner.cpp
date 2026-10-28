@@ -56,9 +56,35 @@ void LexLocalPlanner::configure(
   planning_params_->declareAndLoad(node, name_);
   planning_params_->print(logger_);
 
+  nav2_util::declare_parameter_if_not_declared(
+    node, name_ + ".visualize_candidate_trajectories", rclcpp::ParameterValue(false));
+  nav2_util::declare_parameter_if_not_declared(
+    node, name_ + ".max_visualized_candidates", rclcpp::ParameterValue(80));
+  nav2_util::declare_parameter_if_not_declared(
+    node, name_ + ".candidate_paths_topic",
+    rclcpp::ParameterValue(std::string("/frenet_rpp_controller/candidate_paths")));
+  nav2_util::declare_parameter_if_not_declared(
+    node, name_ + ".rollouts_topic",
+    rclcpp::ParameterValue(std::string("/controller_server/frenet_rollouts")));
+  node->get_parameter(
+    name_ + ".visualize_candidate_trajectories", visualize_candidate_trajectories_);
+  node->get_parameter(name_ + ".max_visualized_candidates", max_visualized_candidates_);
+  node->get_parameter(name_ + ".candidate_paths_topic", candidate_paths_topic_);
+  node->get_parameter(name_ + ".rollouts_topic", rollouts_topic_);
+  max_visualized_candidates_ = std::max(0, max_visualized_candidates_);
+
   // Step: 2. 构造规划核心（LexPlanner 用 nav2_costmap_2d::Costmap2D*）
   rollout_generator_ = std::make_unique<RolloutGenerator>(planning_params_);
   lex_planner_ = std::make_unique<LexPlanner>(costmap_, planning_params_);
+
+  if (visualize_candidate_trajectories_ && !candidate_paths_topic_.empty()) {
+    candidate_paths_pub_ = node->create_publisher<visualization_msgs::msg::MarkerArray>(
+      candidate_paths_topic_, rclcpp::SystemDefaultsQoS());
+  }
+  if (visualize_candidate_trajectories_ && !rollouts_topic_.empty()) {
+    rollouts_pub_ = node->create_publisher<visualization_msgs::msg::MarkerArray>(
+      rollouts_topic_, rclcpp::SystemDefaultsQoS());
+  }
 
   RCLCPP_INFO(logger_, "nav2_lex_local_planner plugin configured: %s", name_.c_str());
 }
@@ -69,16 +95,22 @@ void LexLocalPlanner::cleanup()
   rollout_generator_.reset();
   lex_planner_.reset();
   planning_params_.reset();
+  candidate_paths_pub_.reset();
+  rollouts_pub_.reset();
 }
 
 void LexLocalPlanner::activate()
 {
   RCLCPP_INFO(logger_, "Activating nav2_lex_local_planner: %s", name_.c_str());
+  if (candidate_paths_pub_) candidate_paths_pub_->on_activate();
+  if (rollouts_pub_) rollouts_pub_->on_activate();
 }
 
 void LexLocalPlanner::deactivate()
 {
   RCLCPP_INFO(logger_, "Deactivating nav2_lex_local_planner: %s", name_.c_str());
+  if (candidate_paths_pub_) candidate_paths_pub_->on_deactivate();
+  if (rollouts_pub_) rollouts_pub_->on_deactivate();
 }
 
 void LexLocalPlanner::setPlan(const nav_msgs::msg::Path & path)
@@ -154,6 +186,89 @@ bool LexLocalPlanner::computeLocalPlan(
   std::vector<nav2_lex_local_planner::WayPoint> final_path;
   lex_planner_->findPath(alternative_paths, final_path);
 
+  // 仅在启用可视化且至少一个话题存在订阅者时构造 MarkerArray。
+  const bool publish_candidates =
+    candidate_paths_pub_ && candidate_paths_pub_->is_activated() &&
+    (candidate_paths_pub_->get_subscription_count() > 0U ||
+    candidate_paths_pub_->get_intra_process_subscription_count() > 0U);
+  const bool publish_rollouts =
+    rollouts_pub_ && rollouts_pub_->is_activated() &&
+    (rollouts_pub_->get_subscription_count() > 0U ||
+    rollouts_pub_->get_intra_process_subscription_count() > 0U);
+  if (visualize_candidate_trajectories_ && max_visualized_candidates_ > 0 &&
+      (publish_candidates || publish_rollouts))
+  {
+    visualization_msgs::msg::MarkerArray marker_array;
+    const std::size_t marker_limit = std::min(
+      alternative_paths.size(), static_cast<std::size_t>(max_visualized_candidates_));
+    for (std::size_t r_idx = 0; r_idx < marker_limit; ++r_idx) {
+      const auto & cand = alternative_paths[r_idx];
+      bool collided = false;
+      if (costmap_) {
+        for (const auto & wp : cand) {
+          unsigned int mx = 0, my = 0;
+          if (!costmap_->worldToMap(wp.pos.x, wp.pos.y, mx, my)) {
+            collided = true;
+            break;
+          }
+          unsigned char c = costmap_->getCost(mx, my);
+          if (c == nav2_costmap_2d::LETHAL_OBSTACLE ||
+              c == nav2_costmap_2d::INSCRIBED_INFLATED_OBSTACLE)
+          {
+            collided = true;
+            break;
+          }
+        }
+      }
+      visualization_msgs::msg::Marker m;
+      m.header = local_path.header;
+      m.ns = "lex_rollouts";
+      m.id = static_cast<int>(r_idx);
+      m.type = visualization_msgs::msg::Marker::LINE_STRIP;
+      m.action = visualization_msgs::msg::Marker::ADD;
+      m.scale.x = 0.025;
+      m.color.a = 0.85f;
+      if (collided) {
+        m.color.r = 0.94f; m.color.g = 0.27f; m.color.b = 0.27f;
+      } else {
+        m.color.r = 0.22f; m.color.g = 0.74f; m.color.b = 0.97f;
+      }
+      for (const auto & wp : cand) {
+        geometry_msgs::msg::Point pt_msg;
+        pt_msg.x = wp.pos.x;
+        pt_msg.y = wp.pos.y;
+        pt_msg.z = 0.05;
+        m.points.push_back(pt_msg);
+      }
+      marker_array.markers.push_back(m);
+    }
+    if (!final_path.empty()) {
+      visualization_msgs::msg::Marker best_m;
+      best_m.header = local_path.header;
+      best_m.ns = "lex_best_path";
+      best_m.id = 999;
+      best_m.type = visualization_msgs::msg::Marker::LINE_STRIP;
+      best_m.action = visualization_msgs::msg::Marker::ADD;
+      best_m.scale.x = 0.055;
+      best_m.color.a = 0.95f;
+      best_m.color.r = 0.06f; best_m.color.g = 0.73f; best_m.color.b = 0.51f;
+      for (const auto & wp : final_path) {
+        geometry_msgs::msg::Point pt_msg;
+        pt_msg.x = wp.pos.x;
+        pt_msg.y = wp.pos.y;
+        pt_msg.z = 0.06;
+        best_m.points.push_back(pt_msg);
+      }
+      marker_array.markers.push_back(best_m);
+    }
+    if (publish_candidates) {
+      candidate_paths_pub_->publish(marker_array);
+    }
+    if (publish_rollouts) {
+      rollouts_pub_->publish(marker_array);
+    }
+  }
+
   if (final_path.empty()) {
     RCLCPP_WARN(logger_, "The lex planner cannot get a valid path.");
     return false;
@@ -164,6 +279,13 @@ bool LexLocalPlanner::computeLocalPlan(
   local_path.poses = local_poses;
 
   if (goal_idx >= static_cast<int>(global_plan_.size()) - 1) {
+    local_path.poses.back() = global_goal;
+  } else {
+    for (int idx = goal_idx + 1; idx < static_cast<int>(global_plan_.size()); ++idx) {
+      geometry_msgs::msg::PoseStamped p_tf;
+      tf2::doTransform(global_plan_[idx], p_tf, tf_plan_to_global);
+      local_path.poses.push_back(p_tf);
+    }
     local_path.poses.back() = global_goal;
   }
 
@@ -195,10 +317,10 @@ bool LexLocalPlanner::transformGlobalPlan(
       plan_pose.header.frame_id, tf2::durationFromSec(0.5));
 
     // let's get the pose of the robot in the frame of the plan
+    geometry_msgs::msg::PoseStamped latest_global_pose = global_pose;
+    latest_global_pose.header.stamp = rclcpp::Time(0);
     geometry_msgs::msg::PoseStamped robot_pose;
-    tf_->transform(global_pose, robot_pose, plan_pose.header.frame_id);
-
-    transformed_plan.push_back(robot_pose);
+    tf_->transform(latest_global_pose, robot_pose, plan_pose.header.frame_id);
 
     int i = 0;
     double sq_dist = 1e10;

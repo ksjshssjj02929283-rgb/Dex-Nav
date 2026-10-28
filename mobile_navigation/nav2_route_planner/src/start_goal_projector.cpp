@@ -302,12 +302,38 @@ StartGoalProjector::Result StartGoalProjector::projectPreferEdge(
   const geometry_msgs::msg::PoseStamped & pose,
   const TopoGraph & graph) const
 {
+  Result r = scanGraph(pose, graph, false, false);
+
+  // 【优化策略】：当位姿距离某个节点极近时 (d < node_snap_threshold_m，如 <0.4m)，
+  // 优先判定为 ON_NODE 吸附到该节点！
+  // 彻底避免机器人在工位或交叉口作业停靠时，被微小垂足误差强行吸附到单向出向车道导致逆行锁死绕远路。
+  if (p_.node_snap_threshold_m > 0.0 && r.best_node_distance < p_.node_snap_threshold_m) {
+    const double px = pose.pose.position.x;
+    const double py = pose.pose.position.y;
+    double best_d = p_.node_snap_threshold_m;
+    std::string snap_id;
+    for (const auto & [id, n] : graph.nodes()) {
+      const double d = std::hypot(n.x - px, n.y - py);
+      if (d < best_d) {
+        best_d = d;
+        snap_id = id;
+      }
+    }
+    if (!snap_id.empty()) {
+      r.type = ResultType::ON_NODE;
+      r.id = snap_id;
+      r.distance = best_d;
+      const auto & n = graph.nodes().at(snap_id);
+      r.projected_xy = {n.x, n.y};
+      return r;
+    }
+  }
+
   // Start from the unlimited scan (NODE + EDGE both populated). If the
   // graph has any enabled edge, force the result to ON_EDGE regardless
   // of which side won the fair distance race — keeps the plan glued to
   // the road geometry. Only fall back to ON_NODE when there is no
   // enabled edge at all (graph is just isolated nodes / junctions).
-  Result r = scanGraph(pose, graph, false, false);
   if (r.type == ResultType::ON_EDGE ||
       !std::isfinite(r.best_edge_distance))
   {

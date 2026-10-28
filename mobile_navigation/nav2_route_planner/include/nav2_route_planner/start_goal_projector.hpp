@@ -61,6 +61,7 @@ public:
     double node_threshold_m{0.5};
     double edge_threshold_m{1.0};
     int bezier_samples_per_edge{40};
+    double node_snap_threshold_m{0.0};
   };
 
   explicit StartGoalProjector(Params p) : p_(p) {}

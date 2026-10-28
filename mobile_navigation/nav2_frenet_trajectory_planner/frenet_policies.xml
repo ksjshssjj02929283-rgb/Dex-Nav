@@ -1,0 +1,19 @@
+<class_libraries>
+  <library path="nav2_frenet_local_planner">
+    <class name="nav2_frenet_ilqr_controller::policies::ObstaclePolicy"
+           type="nav2_frenet_ilqr_controller::policies::ObstaclePolicy"
+           base_class_type="nav2_frenet_ilqr_controller::policies::RclcppNodePolicy">
+      <description>Reject Frenet candidates intersecting inscribed/lethal costmap cells.</description>
+    </class>
+    <class name="nav2_frenet_ilqr_controller::policies::ConstraintsPolicy"
+           type="nav2_frenet_ilqr_controller::policies::ConstraintsPolicy"
+           base_class_type="nav2_frenet_ilqr_controller::policies::RclcppNodePolicy">
+      <description>Reject Frenet candidates exceeding speed or acceleration limits.</description>
+    </class>
+    <class name="nav2_frenet_ilqr_controller::policies::AccelerationPolicy"
+           type="nav2_frenet_ilqr_controller::policies::AccelerationPolicy"
+           base_class_type="nav2_frenet_ilqr_controller::policies::RclcppNodePolicy">
+      <description>Reject Frenet candidates outside acceleration limits.</description>
+    </class>
+  </library>
+</class_libraries>
