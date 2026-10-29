@@ -1,0 +1,245 @@
+{
+ "version": 1,
+ "serve_version": "0.1.0",
+ "time": "2026-10-26 16:03:16.400",
+ "tiles": {
+  "backend": {
+   "backend": "nav2",
+   "_age": 336.5
+  },
+  "nav": {
+   "state": "7 CANCELLED",
+   "task_id": "task_5",
+   "error_code": 2201070,
+   "target": "1 TARGET_POINT LONG",
+   "current_index": 0,
+   "recoveries": 0,
+   "speed_limit": "0.3",
+   "distance_remaining": "0.0",
+   "_age": 313.0
+  },
+  "loc": {
+   "status": "3 LOC_RELOCALIZING",
+   "match_level": "1 MATCH_GOOD",
+   "error_code": 0,
+   "score": "0.81",
+   "_age": 0.1
+  },
+  "obs": {
+   "status": "0 FREE",
+   "zone": "",
+   "slowdown_ratio": "0.00",
+   "_age": 0.1
+  },
+  "sys": {
+   "estop": false,
+   "bumper_front": false,
+   "bumper_rear": false,
+   "recover_state": "NORMAL",
+   "safety_alarm": "",
+   "nav_fault_code": 0,
+   "nav_fault_detail": "",
+   "map": "office_5f",
+   "task_status": "",
+   "charging": false,
+   "battery": 80,
+   "sensor:lidar_front": "OK",
+   "sensor:imu": "OK",
+   "_age": 0.1,
+   "_sensors": [
+    {
+     "name": "lidar_front",
+     "state": 1,
+     "required": true,
+     "rate_hz": 10.0,
+     "age_sec": 0.0
+    },
+    {
+     "name": "imu",
+     "state": 1,
+     "required": true,
+     "rate_hz": 100.0,
+     "age_sec": 0.0
+    }
+   ]
+  },
+  "safety": {
+   "estop_state": "false",
+   "bumper_strip_front_state": "false",
+   "bumper_strip_rear_state": "false",
+   "_age": 0.5
+  }
+ },
+ "assets": {
+  "map": "office_5f",
+  "loaded": true,
+  "points": [
+   "P1",
+   "P2"
+  ],
+  "routes": [
+   "R1"
+  ]
+ },
+ "preflight": {
+  "time": "2026-10-26 16:03:11.501",
+  "items": [
+   {
+    "key": "localization",
+    "level": "fail",
+    "detail": "status=3 match_level=1 score=0.81"
+   },
+   {
+    "key": "clock",
+    "level": "ok",
+    "detail": "skew=0.01s"
+   },
+   {
+    "key": "backend",
+    "level": "ok",
+    "detail": "nav2"
+   },
+   {
+    "key": "map",
+    "level": "ok",
+    "detail": "office_5f"
+   },
+   {
+    "key": "safety",
+    "level": "ok",
+    "detail": "estop and bumpers released"
+   },
+   {
+    "key": "sensors",
+    "level": "ok",
+    "detail": "2 sensors ok"
+   },
+   {
+    "key": "battery",
+    "level": "ok",
+    "detail": "80%"
+   },
+   {
+    "key": "obstacle",
+    "level": "ok",
+    "detail": "0 FREE"
+   },
+   {
+    "key": "assets",
+    "level": "ok",
+    "detail": "points=2 routes=1"
+   },
+   {
+    "key": "nav_server",
+    "level": "ok",
+    "detail": "/navigation/navigate"
+   },
+   {
+    "key": "disk",
+    "level": "ok",
+    "detail": "57.2 GB free"
+   },
+   {
+    "key": "versions",
+    "level": "ok",
+    "detail": "nbt 0.1.0 / dexe-mobile-nav ?"
+   }
+  ]
+ },
+ "session": null,
+ "task": {
+  "running": false,
+  "kind": "point",
+  "targets": [
+   "LONG"
+  ],
+  "index": 1,
+  "total": 1,
+  "current": "",
+  "state": "",
+  "distance": null,
+  "rows": [
+   {
+    "start": "2026-10-26 15:57:51.901",
+    "end": "2026-10-26 15:57:53.508",
+    "kind": "point",
+    "target": "P1",
+    "accepted": true,
+    "success": true,
+    "error_code": 0,
+    "error_text": "0",
+    "message": "reached",
+    "elapsed_s": "1.61",
+    "task_id": "task_1"
+   },
+   {
+    "start": "2026-10-26 15:57:53.809",
+    "end": "2026-10-26 15:57:55.416",
+    "kind": "point",
+    "target": "P2",
+    "accepted": true,
+    "success": true,
+    "error_code": 0,
+    "error_text": "0",
+    "message": "reached",
+    "elapsed_s": "1.61",
+    "task_id": "task_2"
+   },
+   {
+    "start": "2026-10-26 15:57:55.716",
+    "end": "2026-10-26 15:57:57.323",
+    "kind": "point",
+    "target": "P1",
+    "accepted": true,
+    "success": true,
+    "error_code": 0,
+    "error_text": "0",
+    "message": "reached",
+    "elapsed_s": "1.61",
+    "task_id": "task_3"
+   },
+   {
+    "start": "2026-10-26 15:57:57.624",
+    "end": "2026-10-26 15:57:59.230",
+    "kind": "point",
+    "target": "P2",
+    "accepted": true,
+    "success": true,
+    "error_code": 0,
+    "error_text": "0",
+    "message": "reached",
+    "elapsed_s": "1.61",
+    "task_id": "task_4"
+   },
+   {
+    "start": "2026-10-26 15:58:00.152",
+    "end": "2026-10-26 15:58:03.363",
+    "kind": "point",
+    "target": "LONG",
+    "accepted": true,
+    "success": false,
+    "error_code": 2201070,
+    "error_text": "2201070 E_NAV_CANCELLED（被取消（nav_command CANCEL / 新任务抢占 / 客户端取消）（等级 0））",
+    "message": "cancelled",
+    "elapsed_s": "3.21",
+    "task_id": "task_5"
+   }
+  ],
+  "stats": {
+   "total": 5,
+   "ok": 4,
+   "fail": 1,
+   "min": 1.61,
+   "avg": 1.61,
+   "max": 1.61
+  }
+ },
+ "ack": {
+  "id": "cap1",
+  "op": "preflight",
+  "ok": false,
+  "message": "failed: localization",
+  "time": "2026-10-26 16:03:11.516"
+ },
+ "nav_ready": true
+}

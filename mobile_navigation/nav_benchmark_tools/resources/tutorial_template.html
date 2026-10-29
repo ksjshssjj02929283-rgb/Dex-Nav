@@ -1,0 +1,1106 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>nbt 操作模拟教程——W1 PRO 速度测试</title>
+<meta name="nbt-course" content="recommend">
+<!-- 两门课：推荐速度（场景 id="scene"）、直线最大速度（场景 id="scene_max"）。nbt pathnav plan --tutorial 生成时按计划档位替换对应课程的场景 JSON，并把 nbt-course 设成这门课；默认内嵌两门课的示例场景 -->
+<style>
+  :root{
+    --paper:#f4f2ec; --panel:#fbfaf7; --ink:#1f2428; --sub:#5b636b; --line:#d9d5cc;
+    --orange:#d9480f; --orange-soft:#fff0e6; --green:#2b8a3e; --green-soft:#e9f5ec;
+    --red:#c92a2a; --red-soft:#fdecec; --amber:#b7791f; --blue:#1c5d99;
+    --term:#121619; --term-ink:#d7dee3; --term-dim:#7d8a94; --term-green:#7fd38b; --term-amber:#f2c14e; --term-red:#ff7b72; --term-cyan:#8ecae6;
+    --mono:"JetBrains Mono","SFMono-Regular",Menlo,Consolas,"Noto Sans Mono CJK SC","Source Han Mono SC",monospace;
+    --sans:"PingFang SC","Noto Sans CJK SC","Source Han Sans SC","Microsoft YaHei",system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:14px}
+  header{display:flex;align-items:center;gap:18px;padding:10px 18px;border-bottom:2px solid var(--ink);background:var(--panel)}
+  header h1{font-size:17px;margin:0;font-weight:700;letter-spacing:.5px}
+  header .tag{font-family:var(--mono);font-size:11px;background:var(--ink);color:var(--paper);padding:2px 6px}
+  header .note{color:var(--sub);font-size:12px}
+  header .grow{flex:1}
+  header label{font-size:12px;color:var(--sub)}
+  header select,header button{font:inherit;font-size:12px;border:1px solid var(--ink);background:var(--panel);padding:3px 8px;cursor:pointer}
+  #progress{height:4px;background:var(--line)}
+  #progress>div{height:100%;width:0;background:var(--orange);transition:width .3s}
+  main{display:grid;grid-template-columns:380px 1fr;height:calc(100% - 52px)}
+  aside{border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0;background:var(--panel)}
+  #steps{list-style:none;margin:0;padding:8px 0;border-bottom:1px solid var(--line);max-height:38%;overflow:auto}
+  #steps li{display:flex;gap:10px;align-items:baseline;padding:5px 16px;cursor:pointer;color:var(--sub);font-size:13px}
+  #steps li .n{font-family:var(--mono);font-size:11px;width:22px;flex:none}
+  #steps li.cur{background:var(--orange-soft);color:var(--ink);font-weight:600;border-left:3px solid var(--orange);padding-left:13px}
+  #steps li.done span:last-child::after{content:" ✓";color:var(--green);font-weight:700}
+  #steps li.skipped span:last-child::after{content:" ↷ 已跳过";color:var(--sub);font-weight:400;font-size:11px}
+  #steps li.locked{cursor:not-allowed;opacity:.5}
+  #card{flex:1;overflow:auto;padding:14px 18px 18px}
+  #card h2{font-size:16px;margin:2px 0 4px}
+  #card .kicker{font-family:var(--mono);font-size:11px;color:var(--orange);letter-spacing:1px}
+  #card p{line-height:1.65;margin:6px 0}
+  #card .blk{border-left:3px solid var(--line);padding:4px 0 4px 10px;margin:10px 0}
+  #card .blk b{display:block;font-size:12px;color:var(--sub);margin-bottom:2px}
+  #card .blk.do{border-color:var(--orange)} #card .blk.see{border-color:var(--blue)} #card .blk.bad{border-color:var(--red)}
+  #card code,.mono{font-family:var(--mono);font-size:12px;background:#ece8df;padding:1px 4px}
+  #card .cmdline{display:block;font-family:var(--mono);font-size:12px;background:var(--term);color:var(--term-green);padding:7px 9px;margin:6px 0;white-space:pre-wrap;word-break:break-all}
+  #card .actions{display:flex;gap:8px;margin-top:14px}
+  .btn{font:inherit;font-size:13px;padding:6px 14px;border:1.5px solid var(--ink);background:var(--panel);cursor:pointer}
+  .btn.primary{background:var(--ink);color:var(--paper)}
+  .btn:disabled{opacity:.35;cursor:not-allowed}
+  .btn.small{font-size:12px;padding:3px 9px}
+  #stage{display:grid;grid-template-columns:minmax(420px,44%) 1fr;grid-template-rows:100%;min-height:0;min-width:0}
+  #mapwrap{position:relative;min-height:0;border-right:2px solid var(--ink);background:#fff;overflow:hidden;display:flex;flex-direction:column}
+  #map{width:100%;flex:1;min-height:0;display:block}
+  #hud{border-top:1.5px solid var(--ink);background:var(--panel);padding:8px 12px;font-size:12px;display:grid;grid-template-columns:1fr 1fr;column-gap:18px}
+  #hud .full{grid-column:1 / span 2}
+  #hud .row{display:flex;justify-content:space-between;margin:2px 0}
+  #hud .lbl{color:var(--sub)}
+  #hud .val{font-family:var(--mono)}
+  #speedbar{position:relative;height:14px;background:#ece8df;margin:6px 0 2px;border:1px solid var(--line)}
+  #speedbar .band{position:absolute;top:0;bottom:0;background:rgba(43,138,62,.25);border-left:1px dashed var(--green);border-right:1px dashed var(--green)}
+  #speedbar .fill{position:absolute;left:0;top:0;bottom:0;background:var(--orange);width:0}
+  #speedbar .scale{position:absolute;top:15px;font-family:var(--mono);font-size:9px;color:var(--sub)}
+  #chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+  .chip{font-size:11px;padding:1px 6px;border:1px solid var(--line);color:var(--sub)}
+  .chip.on{border-color:var(--orange);color:var(--orange);background:var(--orange-soft)}
+  .chip.ok{border-color:var(--green);color:var(--green);background:var(--green-soft)}
+  .chip.bad{border-color:var(--red);color:var(--red);background:var(--red-soft)}
+  #legend{font-size:11px;color:var(--sub);margin-top:6px;line-height:1.5}
+  #termwrap{display:flex;flex-direction:column;min-height:0;background:var(--term)}
+  #term{flex:1;overflow:auto;padding:10px 14px;font-family:var(--mono);font-size:12.5px;line-height:1.55;color:var(--term-ink);white-space:pre-wrap;word-break:break-word}
+  #term .cmd{color:#fff} #term .cmd .ps{color:var(--term-green)}
+  #term .dim{color:var(--term-dim)} #term .ok{color:var(--term-green)} #term .warn{color:var(--term-amber)}
+  #term .err{color:var(--term-red)} #term .hl{color:var(--term-cyan)} #term .ask{color:var(--term-amber)}
+  #term .ans{color:#fff;background:#2a3036}
+  #term .sys{color:#9aa5ad;font-style:italic}
+  #quick{display:flex;gap:6px;flex-wrap:wrap;padding:6px 14px;border-top:1px solid #2a3036;min-height:36px;align-items:center}
+  #quick .q{font-family:var(--mono);font-size:12px;background:#1d2328;color:var(--term-ink);border:1px solid #3a434b;padding:3px 9px;cursor:pointer}
+  #quick .q.warn{border-color:#7a5b1c;color:var(--term-amber)}
+  #quick .q.red{border-color:#7a2d2a;color:var(--term-red)}
+  #quick .hint{color:var(--term-dim);font-size:12px}
+  #inform{display:flex;align-items:center;gap:8px;padding:8px 14px;border-top:1px solid #2a3036}
+  #inform .ps{font-family:var(--mono);color:var(--term-green);font-size:12.5px;flex:none}
+  #in{flex:1;background:transparent;border:none;outline:none;color:#fff;font-family:var(--mono);font-size:12.5px}
+  #in::placeholder{color:#55606a}
+  #modal{position:fixed;inset:0;background:rgba(20,22,25,.55);display:none;align-items:center;justify-content:center;z-index:20}
+  #modal .box{background:var(--panel);width:min(1100px,94vw);max-height:88vh;overflow:auto;border:2px solid var(--ink);padding:18px 22px}
+  #modal h3{margin:0 0 8px;font-size:16px}
+  #modal h4{margin:16px 0 6px;font-size:14px}
+  #modal table{border-collapse:collapse;font-size:12px;margin:6px 0;width:100%}
+  #modal th,#modal td{border:1px solid var(--line);padding:4px 6px;text-align:left;vertical-align:top}
+  #modal th{background:#ece8df;font-weight:600}
+  #modal td.num{font-family:var(--mono);text-align:right}
+  #modal td:first-child,#modal th:first-child{white-space:nowrap}
+  #card table td:first-child{white-space:nowrap;padding-right:10px}
+  #modal .close{float:right}
+  #modal pre{font-family:var(--mono);font-size:12px;background:var(--term);color:var(--term-ink);padding:10px;white-space:pre-wrap}
+  .callout{border:1.5px solid var(--orange);background:var(--orange-soft);padding:8px 10px;margin:10px 0;font-size:13px;line-height:1.6}
+  .callout.green{border-color:var(--green);background:var(--green-soft)}
+  .callout.red{border-color:var(--red);background:var(--red-soft)}
+  .quiz{border:1px solid var(--line);padding:9px 10px;margin:10px 0;background:#fff}
+  .quiz .qt{font-weight:600;margin-bottom:6px;line-height:1.55}
+  .quiz button{display:block;width:100%;text-align:left;font:inherit;font-size:13px;border:1px solid var(--line);background:var(--panel);padding:5px 8px;margin:4px 0;cursor:pointer;line-height:1.5}
+  .quiz button.right{border-color:var(--green);background:var(--green-soft)}
+  .quiz button.wrong{border-color:var(--red);background:var(--red-soft)}
+  .quiz .fb{font-size:12.5px;line-height:1.6;margin-top:4px;display:none}
+  .toggle{display:flex;gap:8px;align-items:center;font-size:13px;margin:8px 0}
+  @media (max-width:1200px){#stage{grid-template-columns:1fr;grid-template-rows:55% 45%} #mapwrap{border-right:none;border-bottom:2px solid var(--ink)}}
+  @media (max-width:900px){main{grid-template-columns:1fr;height:auto} aside{max-height:none} #stage{height:1100px}}
+</style>
+
+</head>
+<body>
+<header>
+  <span class="tag">SIM</span>
+  <h1 id="h1">nbt 操作模拟教程</h1>
+  <span class="note" id="srcNote"></span>
+  <span class="grow"></span>
+  <label>课程 <select id="course"><option value="recommend">推荐速度 0.75</option><option value="max">直线最大速度 1.0 / 1.2</option></select></label>
+  <label>动画倍速 <select id="mult"><option value="3">3×</option><option value="6" selected>6×</option><option value="12">12×</option><option value="24">24×</option></select></label>
+  <button id="resetBtn">重新开始</button>
+</header>
+<div id="progress"><div></div></div>
+<main>
+  <aside>
+    <ol id="steps"></ol>
+    <section id="card"></section>
+  </aside>
+  <section id="stage">
+    <div id="mapwrap">
+      <svg id="map" preserveAspectRatio="xMidYMid meet"></svg>
+      <div id="hud">
+        <div class="row"><span class="lbl">任务</span><span class="val" id="hTask">—</span></div>
+        <div class="row"><span class="lbl">跟踪器上限</span><span class="val" id="hGear">0.70 m/s</span></div>
+        <div class="row"><span class="lbl">里程计速度</span><span class="val" id="hV">0.000 m/s</span></div>
+        <div class="row"><span class="lbl">平滑器前进上限</span><span class="val" id="hSm">0.80 m/s</span></div>
+        <div class="row"><span class="lbl">模拟时钟</span><span class="val" id="hClock">0.0 s</span></div>
+        <div class="row"><span class="lbl">档位 ±5% 最长连续</span><span class="val" id="hBand">0.0 s</span></div>
+        <div class="full"><div id="speedbar"><div class="band"></div><div class="fill"></div>
+          <span class="scale" style="left:0">0</span><span class="scale" id="sMid" style="left:48%">0.5</span><span class="scale" id="sMax" style="right:0">1.0 m/s（绿带 = 档位 ±5%）</span></div></div>
+        <div class="full" id="chips" style="margin-top:16px"><span class="chip" id="cRec">录包</span><span class="chip" id="cRun">运行中</span><span class="chip" id="cRep">上报成功</span><span class="chip" id="cStill">停稳</span><span class="chip" id="cObs">停障</span><span class="chip" id="cBand">±5% ≥ 2 s</span></div>
+        <div class="full" id="legend"></div>
+      </div>
+    </div>
+    <div id="termwrap">
+      <div id="term"></div>
+      <div id="quick"></div>
+      <form id="inform" autocomplete="off"><span class="ps">dexforce@w1:~$</span><input id="in" spellcheck="false"></form>
+    </div>
+  </section>
+</main>
+<div id="modal"><div class="box" id="modalBox"></div></div>
+
+<script id="scene" type="application/json">{"course": "recommend", "title": "蓝思 tray 示例场景（按路网图手绘，坐标为示意）", "source": "示例：按《基于蓝思 Tray盘搬运场景的功能需求》路网图手绘，不是现场地图；现场用 nbt pathnav plan --tutorial 生成", "map_name": "lansi_tray_example", "revision": 1, "batch": "E075", "target_speed": 0.75, "start": "导航点1", "keys": ["导航点2", "放料点", "导航点5", "取盘点"], "points": {"导航点1": {"x": 10.8, "y": 2.7, "theta": 0.0, "type": "FREE_GOAL", "used": true}, "导航点2": {"x": 5.4, "y": 5.35, "theta": 1.5707963267948966, "type": "FREE_GOAL", "used": true}, "导航点3": {"x": 9.68, "y": 5.35, "theta": 1.5707963267948966, "type": "FREE_GOAL", "used": true}, "导航点4": {"x": 9.68, "y": 17.9, "theta": 1.5707963267948966, "type": "FREE_GOAL", "used": true}, "导航点5": {"x": 5.35, "y": 17.9, "theta": -1.5707963267948966, "type": "FREE_GOAL", "used": true}, "导航点6": {"x": 10.88, "y": 8.5, "theta": 0.0, "type": "FREE_GOAL", "used": true}, "放料点": {"x": 5.38, "y": 8.35, "theta": 1.5707963267948966, "type": "STATION", "used": true}, "取盘点": {"x": 5.35, "y": 15.75, "theta": -1.5707963267948966, "type": "STATION", "used": true}, "放盘点": {"x": 14.32, "y": 8.5, "theta": 0.0, "type": "STATION", "used": false}, "取料点": {"x": 14.38, "y": 2.7, "theta": 0.0, "type": "STATION", "used": false}, "充电点1": {"x": 2.22, "y": 5.35, "theta": -1.5707963267948966, "type": "CHARGING", "used": false}}, "edges": [{"poly": [[10.8, 2.7], [10.8, 2.37], [5.0, 2.37], [5.0, 5.35], [5.4, 5.35]], "bi": false, "nav": true, "back": false}, {"poly": [[5.0, 5.6], [5.0, 8.1]], "bi": false, "nav": true, "back": false}, {"poly": [[5.68, 8.1], [5.68, 5.6]], "bi": false, "nav": true, "back": true}, {"poly": [[5.65, 5.35], [9.43, 5.35]], "bi": false, "nav": true, "back": false}, {"poly": [[9.4, 5.6], [9.4, 17.65]], "bi": false, "nav": true, "back": false}, {"poly": [[9.43, 17.9], [5.6, 17.9]], "bi": false, "nav": true, "back": false}, {"poly": [[5.96, 17.65], [5.96, 16.0]], "bi": false, "nav": true, "back": false}, {"poly": [[4.95, 16.0], [4.95, 17.65]], "bi": false, "nav": true, "back": true}, {"poly": [[5.65, 18.38], [10.4, 18.38], [10.4, 8.5], [10.63, 8.5]], "bi": false, "nav": true, "back": false}, {"poly": [[11.13, 8.74], [14.07, 8.74]], "bi": false, "nav": true, "back": false}, {"poly": [[14.07, 8.26], [11.13, 8.26]], "bi": false, "nav": true, "back": true}, {"poly": [[11.15, 8.25], [11.15, 2.95]], "bi": false, "nav": true, "back": false}, {"poly": [[11.05, 2.96], [14.13, 2.96]], "bi": false, "nav": true, "back": false}, {"poly": [[14.13, 2.44], [11.05, 2.44]], "bi": false, "nav": true, "back": true}, {"poly": [[3.93, 6.52], [2.52, 5.98]], "bi": false, "nav": false, "free": true}], "areas": [], "decor": [{"kind": "rect", "label": "取盘位", "polygon": [[4.2, 14.95], [6.6, 14.95], [6.6, 12.75], [4.2, 12.75]]}, {"kind": "rect", "label": "放料位", "polygon": [[4.2, 10.85], [6.6, 10.85], [6.6, 8.65], [4.2, 8.65]]}, {"kind": "rect", "label": "放盘位", "polygon": [[14.85, 9.42], [17.25, 9.42], [17.25, 7.24], [14.85, 7.24]]}, {"kind": "rect", "label": "取料位(满料)", "polygon": [[14.85, 3.8], [17.25, 3.8], [17.25, 1.6], [14.85, 1.6]]}, {"kind": "rect", "label": "充电桩", "polygon": [[1.05, 3.47], [3.45, 3.47], [3.45, 1.29], [1.05, 1.29]]}, {"kind": "bar", "label": "磨料机", "polygon": [[2.0, 1.15], [17.65, 1.15], [17.65, 0.3], [2.0, 0.3]]}, {"kind": "zone", "label": "人员工作区域（清场）", "polygon": [[2.25, 19.0], [17.9, 19.0], [17.9, 15.5], [2.25, 15.5]]}], "tasks": [{"id": "T1", "points": ["导航点1", "导航点2"], "len": 8.05, "back": 0, "segs": 1, "groups": [{"rev": false, "poly": [[10.8, 2.7], [5.4, 2.7], [5.4, 5.35]]}]}, {"id": "T2", "points": ["导航点2", "放料点"], "len": 3.0, "back": 0, "segs": 1, "groups": [{"rev": false, "poly": [[5.4, 5.35], [5.38, 8.35]]}]}, {"id": "T3", "points": ["放料点", "导航点2", "导航点3", "导航点4", "导航点5"], "len": 24.16, "back": 1, "segs": 4, "groups": [{"rev": true, "poly": [[5.38, 8.35], [5.4, 5.35]]}, {"rev": false, "poly": [[5.4, 5.35], [9.68, 5.35], [9.68, 17.9], [5.35, 17.9]]}]}, {"id": "T4", "points": ["导航点5", "取盘点"], "len": 2.15, "back": 0, "segs": 1, "groups": [{"rev": false, "poly": [[5.35, 17.9], [5.35, 15.75]]}]}, {"id": "T5", "points": ["取盘点", "导航点5", "导航点6", "导航点1"], "len": 24.5, "back": 1, "segs": 3, "groups": [{"rev": true, "poly": [[5.35, 15.75], [5.35, 17.9]]}, {"rev": false, "poly": [[5.35, 17.9], [5.35, 18.4], [10.4, 18.4], [10.4, 8.5], [10.88, 8.5], [11.15, 8.5], [11.15, 2.7], [10.8, 2.7]]}]}], "segment": {"from": "导航点3", "to": "导航点4", "len": 12.55, "steady": 14.09503393228939, "via": ["导航点3", "导航点4"], "auto": false}, "segment_candidates": [{"task": "T3", "from": "导航点3", "to": "导航点4", "via": ["导航点3", "导航点4"], "len": 12.55, "v_in": 0.35, "v_out": 0.35, "steady": 14.095, "reach": true}, {"task": "T5", "from": "导航点5", "to": "导航点6", "via": ["导航点5", "导航点6"], "len": 10.906, "v_in": 0.0, "v_out": 0.35, "steady": 11.286, "reach": true}, {"task": "T5", "from": "导航点6", "to": "导航点1", "via": ["导航点6", "导航点1"], "len": 5.801, "v_in": 0.35, "v_out": 0.0, "steady": 4.478, "reach": true}, {"task": "T1", "from": "导航点1", "to": "导航点2", "via": ["导航点1", "导航点2"], "len": 6.015, "v_in": 0.0, "v_out": 0.0, "steady": 4.147, "reach": true}, {"task": "T3", "from": "导航点4", "to": "导航点5", "via": ["导航点4", "导航点5"], "len": 4.33, "v_in": 0.35, "v_out": 0.0, "steady": 2.518, "reach": true}, {"task": "T3", "from": "导航点2", "to": "导航点3", "via": ["导航点2", "导航点3"], "len": 4.28, "v_in": 0.0, "v_out": 0.35, "steady": 2.451, "reach": true}], "segment_runs": [{"task": "T3", "from": "导航点3", "to": "导航点4", "via": ["导航点3", "导航点4"], "len": 12.55, "v_in": 0.35, "v_out": 0.35, "steady": 14.095, "reach": true}, {"task": "T5", "from": "导航点5", "to": "导航点6", "via": ["导航点5", "导航点6"], "len": 10.906, "v_in": 0.0, "v_out": 0.35, "steady": 11.286, "reach": true}, {"task": "T5", "from": "导航点6", "to": "导航点1", "via": ["导航点6", "导航点1"], "len": 5.801, "v_in": 0.35, "v_out": 0.0, "steady": 4.478, "reach": true}, {"task": "T1", "from": "导航点1", "to": "导航点2", "via": ["导航点1", "导航点2"], "len": 6.015, "v_in": 0.0, "v_out": 0.0, "steady": 4.147, "reach": true}, {"task": "T3", "from": "导航点4", "to": "导航点5", "via": ["导航点4", "导航点5"], "len": 4.33, "v_in": 0.35, "v_out": 0.0, "steady": 2.518, "reach": true}, {"task": "T3", "from": "导航点2", "to": "导航点3", "via": ["导航点2", "导航点3"], "len": 4.28, "v_in": 0.0, "v_out": 0.35, "steady": 2.451, "reach": true}, {"task": "T2", "from": "导航点2", "to": "放料点", "via": ["导航点2", "放料点"], "len": 3.0, "v_in": 0.0, "v_out": 0.0, "steady": 0.127, "reach": true}, {"task": "T4", "from": "导航点5", "to": "取盘点", "via": ["导航点5", "取盘点"], "len": 2.15, "v_in": 0.0, "v_out": 0.0, "steady": 0.0, "reach": false}], "plan_yaml": "# 由 nbt pathnav plan 生成：地图 lansi_tray_example（revision 1），2026-10-28 21:22:12\n# 起点 导航点1；关键点位按顺序 导航点2 → 放料点 → 导航点5 → 取盘点；最后回到起点\n# 相邻两点之间都是路网里直接相连的边；地图或路网改过之后要重新生成\nbatch: E075\ntarget_speed: 0.75\nkey_points: [导航点2, 放料点, 导航点5, 取盘点]\nsegment: [导航点3, 导航点4]   # 指定，12.55 m，预计 0.75 m/s 保持 14.1 s\ntasks:\n  - {id: T1, points: [导航点1, 导航点2]}   # 8.05 m\n  - {id: T2, points: [导航点2, 放料点]}   # 3.00 m\n  - {id: T3, points: [放料点, 导航点2, 导航点3, 导航点4, 导航点5]}   # 24.16 m，倒车段 1\n  - {id: T4, points: [导航点5, 取盘点]}   # 2.15 m\n  - {id: T5, points: [取盘点, 导航点5, 导航点6, 导航点1]}   # 24.50 m，倒车段 1\n"}</script>
+<script id="scene_max" type="application/json">{"course": "max", "title": "长直通道示例场景（坐标为示意）", "source": "示例：12.5 m 长直通道，不是现场地图；现场场地定下来后用 nbt pathnav plan --start A --key B,A --segment A,B --target-speed 1.0 --tutorial 生成", "map_name": "line_example", "revision": 1, "batch": "E100", "target_speed": 1.0, "start": "A", "keys": ["B", "A"], "points": {"A": {"x": 2.5, "y": 4.0, "theta": 3.141592653589793, "type": "FREE_GOAL", "used": true}, "B": {"x": 15.0, "y": 4.0, "theta": 0.0, "type": "FREE_GOAL", "used": true}}, "edges": [{"poly": [[2.5, 4.0], [15.0, 4.0]], "bi": true, "nav": true}], "areas": [], "decor": [{"kind": "rect", "label": "货架", "polygon": [[1.0, 6.0], [16.5, 6.0], [16.5, 7.2], [1.0, 7.2]]}, {"kind": "rect", "label": "货架", "polygon": [[1.0, 0.8], [16.5, 0.8], [16.5, 2.0], [1.0, 2.0]]}, {"kind": "zone", "label": "停车余量", "polygon": [[0.3, 2.6], [1.9000000000000001, 2.6], [1.9000000000000001, 5.4], [0.3, 5.4]]}, {"kind": "zone", "label": "停车余量", "polygon": [[15.6, 2.6], [17.2, 2.6], [17.2, 5.4], [15.6, 5.4]]}], "tasks": [{"id": "T1", "points": ["A", "B"], "len": 12.5, "back": 0, "segs": 1, "groups": [{"rev": false, "poly": [[2.5, 4.0], [15.0, 4.0]]}]}, {"id": "T2", "points": ["B", "A"], "len": 12.5, "back": 0, "segs": 1, "groups": [{"rev": false, "poly": [[15.0, 4.0], [2.5, 4.0]]}]}], "segment": {"from": "A", "to": "B", "len": 12.5, "steady": 8.01393202250021, "via": ["A", "B"], "auto": false}, "segment_candidates": [{"task": "T1", "from": "A", "to": "B", "via": ["A", "B"], "len": 12.5, "v_in": 0.0, "v_out": 0.0, "steady": 8.014, "reach": true}, {"task": "T2", "from": "B", "to": "A", "via": ["B", "A"], "len": 12.5, "v_in": 0.0, "v_out": 0.0, "steady": 8.014, "reach": true}], "segment_runs": [{"task": "T1", "from": "A", "to": "B", "via": ["A", "B"], "len": 12.5, "v_in": 0.0, "v_out": 0.0, "steady": 8.014, "reach": true}, {"task": "T2", "from": "B", "to": "A", "via": ["B", "A"], "len": 12.5, "v_in": 0.0, "v_out": 0.0, "steady": 8.014, "reach": true}], "plan_yaml": "# 由 nbt pathnav plan 生成：地图 line_example（revision 1），2026-10-28 21:22:12\n# 起点 A；关键点位按顺序 B → A；最后回到起点\n# 相邻两点之间都是路网里直接相连的边；地图或路网改过之后要重新生成\nbatch: E100\ntarget_speed: 1\nkey_points: [B, A]\nsegment: [A, B]   # 指定，12.50 m，预计 1 m/s 保持 8.0 s\ntasks:\n  - {id: T1, points: [A, B]}   # 12.50 m\n  - {id: T2, points: [B, A]}   # 12.50 m\n"}</script>
+<script>
+"use strict";
+/* ---------------------------------------------------------------- 基础 */
+const $ = s => document.querySelector(s);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+function rng(seed){ return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function gauss(r){ let u = 0, v = 0; while (!u) u = r(); while (!v) v = r(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); }
+const f = (v, n = 1) => (v === null || v === undefined || Number.isNaN(v)) ? "—" : Number(v).toFixed(n);
+const pv = v => Number.isInteger(v) ? v.toFixed(1) : String(v);          // 参数值按 Python 浮点打印：1 → 1.0
+const esc = s => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+const HOME = "/home/dexforce";
+const DAY = "20261105";
+
+/* ---------------------------------------------------------------- 场景（地图坐标 m → 画布 cm，y 翻转） */
+/* 两门课：推荐速度（id="scene"）、直线最大速度（id="scene_max"）；地址栏 #max / #recommend 选课，没写时取 nbt-course */
+const COURSE = (() => { const h = location.hash.slice(1); if (h === "max" || h === "recommend") return h;
+  const m = document.querySelector('meta[name="nbt-course"]'); return m && m.content === "max" ? "max" : "recommend"; })();
+const MAXC = COURSE === "max";
+const SCENE = JSON.parse(document.getElementById(MAXC ? "scene_max" : "scene").textContent);
+const PX = 0.01;
+const BB = (() => { const xs = [], ys = []; const add = p => { xs.push(p[0]); ys.push(p[1]); };
+  Object.values(SCENE.points).forEach(p => add([p.x, p.y])); SCENE.edges.forEach(e => e.poly.forEach(add));
+  (SCENE.areas || []).forEach(a => a.polygon.forEach(add)); (SCENE.decor || []).forEach(d => d.polygon.forEach(add));
+  SCENE.tasks.forEach(t => t.groups.forEach(g => g.poly.forEach(add)));
+  const m = 1.0; return {x0: Math.min(...xs) - m, x1: Math.max(...xs) + m, y0: Math.min(...ys) - m, y1: Math.max(...ys) + m}; })();
+const toX = x => (x - BB.x0) * 100, toY = y => (BB.y1 - y) * 100;
+const VW = (BB.x1 - BB.x0) * 100, VH = (BB.y1 - BB.y0) * 100, K = Math.max(0.8, Math.max(VW, VH) / 2000);
+const P = {}; for (const [n, p] of Object.entries(SCENE.points)) P[n] = {x: toX(p.x), y: toY(p.y), h: -p.theta * 180 / Math.PI,
+  st: /STATION/i.test(p.type || ""), unused: p.used === false, mx: p.x, my: p.y, theta: p.theta, type: p.type || ""};
+const KEY = SCENE.keys, START = SCENE.start, BATCH = SCENE.batch || "E075", SBATCH = BATCH + "S";
+let TARGET = Number(SCENE.target_speed || 0.75);
+const TASKS = SCENE.tasks.map(t => ({id: t.id, pts: t.points, len: t.len, segs: t.segs, back: t.back,
+  groups: t.groups.map(g => ({rev: g.rev, path: g.poly.map(([x, y]) => [toX(x), toY(y)])}))}));
+let SEG = Object.assign({}, SCENE.segment);               // 可被「指定关键路段」一步改掉
+let PLAN_YAML = SCENE.plan_yaml || "";
+const AUTO_SEG = Object.assign({}, SCENE.segment), AUTO_YAML = PLAN_YAML;
+const NEEDS_SMOOTHER = TARGET > 0.8 + 1e-9;
+const endOf = t => t.pts[t.pts.length - 1];
+function ramp(v, a, j){ return v <= a * a / j ? v * Math.sqrt(v / j) : v / 2 * (v / a + a / j); }
+/* 速度：跟踪器做 jerk 受限规划；这里用等效加速度近似（目标速度加速所需距离不变），拐角处限 0.35 m/s。
+   直线最大速度课程中途换档，用 setTarget 重算 */
+let RAMP_UP, RAMP_DN, A_EFF, SHORT, SEG_NEED; const V_CORNER = 0.35;
+function setTarget(v){ TARGET = v; RAMP_UP = ramp(v, 0.5, 0.2); RAMP_DN = ramp(v, 0.4, 0.2); A_EFF = v * v / (RAMP_UP + RAMP_DN);
+  SHORT = 2 * Math.max(RAMP_UP, RAMP_DN); SEG_NEED = RAMP_UP + RAMP_DN + 2 * v; }
+setTarget(TARGET);
+const PLAN_CMD = `nbt pathnav plan --start ${START} --key ${KEY.join(",")} -o ~/plan.yaml`;
+function findSegTask(sg){ const inOrder = (t, a, b) => { const i = t.pts.indexOf(a); return i >= 0 && t.pts.indexOf(b, i + 1) > i; };
+  return TASKS.find(t => inOrder(t, sg.from, sg.to)) || TASKS.find(t => inOrder(t, sg.to, sg.from)); }
+let SEG_TASK = findSegTask(SEG);
+const SEG_ALT = (SCENE.segment_candidates || []).find(c => !(c.from === AUTO_SEG.from && c.to === AUTO_SEG.to)) || null;
+const SEG_CMD = `nbt pathnav plan --start ${START} --key ${KEY.join(",")} --segment ${(SEG_ALT || AUTO_SEG).from},${(SEG_ALT || AUTO_SEG).to} -o ~/plan.yaml`;
+
+/* ---------------------------------------------------------------- 地图绘制 */
+const svg = $("#map"); const NS = "http://www.w3.org/2000/svg";
+svg.setAttribute("viewBox", `0 0 ${VW.toFixed(0)} ${VH.toFixed(0)}`);
+function el(tag, attrs, parent = svg){ const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); parent.appendChild(e); return e; }
+const pts2 = poly => poly.map(([x, y]) => `${toX(x).toFixed(1)},${toY(y).toFixed(1)}`).join(" ");
+function drawMap(){
+  svg.innerHTML = "";
+  const defs = el("defs", {});
+  const m = el("marker", {id:"arr", viewBox:"0 0 10 10", refX:"9", refY:"5", markerWidth:"6", markerHeight:"6", orient:"auto-start-reverse"}, defs);
+  el("path", {d:"M0,0 L10,5 L0,10 z", fill:"#d9a3a3"}, m);
+  const pat = el("pattern", {id:"grid", width:"100", height:"100", patternUnits:"userSpaceOnUse"}, defs);
+  el("path", {d:"M100 0 L0 0 0 100", fill:"none", stroke:"#eef0f2", "stroke-width": 2 * Math.max(1, K * .6)}, pat);
+  el("rect", {x:0, y:0, width:VW, height:VH, fill:"url(#grid)"});
+  for (const a of SCENE.areas || []) { el("polygon", {points: pts2(a.polygon), fill: a.color || "#868e96", "fill-opacity": .12, stroke: a.color || "#868e96", "stroke-width": 3 * K});
+    const c = a.polygon.reduce((s, p) => [s[0] + p[0] / a.polygon.length, s[1] + p[1] / a.polygon.length], [0, 0]);
+    el("text", {x: toX(c[0]), y: toY(c[1]), "text-anchor":"middle", "font-size": 26 * K, fill: a.color || "#495057"}).textContent = a.name || a.label || ""; }
+  for (const d of SCENE.decor || []) {
+    const xs = d.polygon.map(p => toX(p[0])), ys = d.polygon.map(p => toY(p[1]));
+    const x = Math.min(...xs), y = Math.min(...ys), w = Math.max(...xs) - x, h = Math.max(...ys) - y;
+    if (d.kind === "zone") { el("rect", {x, y, width:w, height:h, fill:"#f6d3d3", stroke:"#c98f8f", "stroke-width":3 * K});
+      el("text", {x: x + w - 20 * K, y: y + h - 20 * K, "text-anchor":"end", "font-size": 34 * K, fill:"#a35b5b"}).textContent = d.label; }
+    else if (d.kind === "bar") { el("rect", {x, y, width:w, height:h, fill:"#d9534f"}); el("text", {x: x + w / 2, y: y + h / 2 + 18 * K, "text-anchor":"middle", "font-size": 50 * K, fill:"#fff"}).textContent = d.label; }
+    else { el("rect", {x, y, width:w, height:h, fill:"#eef2fb", stroke:"#2b2f33", "stroke-width":3 * K}); el("text", {x: x + w / 2, y: y + h / 2 + 11 * K, "text-anchor":"middle", "font-size": 30 * K, fill:"#2b2f33"}).textContent = d.label; }
+  }
+  for (const e of SCENE.edges) { const a = {points: pts2(e.poly), fill:"none", stroke: e.free ? "#9775fa" : (e.nav ? "#e8b4b4" : "#ced4da"), "stroke-width": 6 * K, "marker-end":"url(#arr)"};
+    if (e.bi) a["marker-start"] = "url(#arr)"; if (!e.nav || e.free) a["stroke-dasharray"] = `${14 * K} ${9 * K}`; el("polyline", a); }
+  el("polyline", {id:"active", points:"", fill:"none", stroke:"#d9480f", "stroke-width":14 * K, "stroke-opacity":.55, "stroke-linejoin":"round"});
+  for (const [n, p] of Object.entries(P)) {
+    const isKey = KEY.includes(n);
+    if (isKey) el("circle", {cx:p.x, cy:p.y, r:44 * K, fill:"none", stroke:"#d9480f", "stroke-width":7 * K, "stroke-dasharray":`${14 * K} ${8 * K}`});
+    el("circle", {cx:p.x, cy:p.y, r:24 * K, fill:p.st ? "#e3b94f" : "#4f9a62", stroke:"#1f2428", "stroke-width":3 * K, opacity:p.unused ? .45 : 1});
+    if (!p.st) { const r = p.h * Math.PI / 180; el("line", {x1:p.x - 14*K*Math.cos(r), y1:p.y - 14*K*Math.sin(r), x2:p.x + 16*K*Math.cos(r), y2:p.y + 16*K*Math.sin(r), stroke:"#1f2428", "stroke-width":4 * K}); }
+    el("text", {x:p.x, y:p.y + 66 * K, "text-anchor":"middle", "font-size":30 * K, fill:p.unused ? "#9aa1a8" : "#1f2428", "font-weight":(isKey || n === START) ? 700 : 400}).textContent = n;
+  }
+  const person = el("g", {id:"person", opacity:0});
+  el("circle", {cx:0, cy:-34 * K, r:14 * K, fill:"#c92a2a"}, person);
+  el("rect", {x:-14 * K, y:-18 * K, width:28 * K, height:44 * K, fill:"#c92a2a"}, person);
+  el("text", {x:22 * K, y:0, "font-size":28 * K, fill:"#c92a2a"}, person).textContent = "有人误入";
+  const rs = Math.max(1, K * .8);
+  const g = el("g", {id:"robot"}); const gi = el("g", {transform:`scale(${rs})`}, g);
+  el("rect", {x:-40, y:-28, width:80, height:56, rx:6, fill:"#1f2428", stroke:"#fff", "stroke-width":3}, gi);
+  el("path", {d:"M40,-16 L60,0 L40,16 z", fill:"#d9480f"}, gi);
+}
+
+/* ---------------------------------------------------------------- 机器人仿真 */
+const sim = { x:0, y:0, h:0, v:0, t:0, gear:0.70, smoother:0.80, bandRun:0, bandBest:0, task:null, abort:false, abortAtPrompt:false, intrude:false };
+const VBAR = MAXC ? 1.5 : 1.0;                            // 速度条满刻度 m/s
+function placeAt(name){ const p = P[name]; sim.x = p.x; sim.y = p.y; sim.h = p.h; hud(); }
+function multV(){ return Number($("#mult").value); }
+function setChip(id, cls){ const c = $(id); c.className = "chip" + (cls ? " " + cls : ""); }
+function hud(){
+  $("#robot").setAttribute("transform", `translate(${sim.x},${sim.y}) rotate(${sim.h})`);
+  $("#hV").textContent = `${Math.abs(sim.v).toFixed(3)} m/s`;
+  $("#speedbar .fill").style.width = `${Math.min(1, Math.abs(sim.v) / VBAR) * 100}%`;
+  $("#hGear").textContent = `${sim.gear.toFixed(2)} m/s`; $("#hSm").textContent = `${sim.smoother.toFixed(2)} m/s`;
+  $("#hClock").textContent = `${sim.t.toFixed(1)} s`; $("#hBand").textContent = `${sim.bandBest.toFixed(1)} s`;
+  setChip("#cBand", sim.bandBest >= 2 ? "ok" : (sim.bandRun > 0 ? "on" : ""));
+  const b = $("#speedbar .band"); b.style.left = `${Math.min(1, sim.gear * 0.95 / VBAR) * 100}%`; b.style.width = `${sim.gear * 0.1 / VBAR * 100}%`;
+}
+function frame(){ return new Promise(r => requestAnimationFrame(r)); }
+async function simWait(sec){ let left = sec; let last = performance.now(); while (left > 0) { await frame(); const now = performance.now(); const d = Math.min(.05, (now - last) / 1000) * multV(); last = now; left -= d; sim.t += d; hud(); if (sim.abort) throw new Error("abort"); } }
+function angNorm(a){ while (a > 180) a -= 360; while (a < -180) a += 360; return a; }
+async function rotateTo(h){
+  let last = performance.now();
+  while (Math.abs(angNorm(h - sim.h)) > 0.5) {
+    await frame(); const now = performance.now(); const d = Math.min(.05, (now - last) / 1000) * multV(); last = now; sim.t += d;
+    const diff = angNorm(h - sim.h); sim.h += Math.sign(diff) * Math.min(Math.abs(diff), 60 * d); sim.v = 0; hud();
+    if (sim.abort) throw new Error("abort");
+  }
+  sim.h = h; hud();
+}
+async function driveGroup(g, onObs){
+  const pts = g.path; const cum = [0];
+  for (let i = 1; i < pts.length; i++) cum.push(cum[i-1] + Math.hypot(pts[i][0]-pts[i-1][0], pts[i][1]-pts[i-1][1]) * PX);
+  const L = cum[cum.length - 1];
+  const corners = cum.slice(1, -1).filter((c, i) => { const a = pts[i], b = pts[i+1], d = pts[i+2]; const h1 = Math.atan2(b[1]-a[1], b[0]-a[0]), h2 = Math.atan2(d[1]-b[1], d[0]-b[0]); return Math.abs(angNorm((h2 - h1) * 180 / Math.PI)) > 20; });
+  const head = i => { const a = Math.atan2(pts[i+1][1]-pts[i][1], pts[i+1][0]-pts[i][0]) * 180 / Math.PI; return g.rev ? angNorm(a + 180) : a; };
+  if (L < 1e-3) return;
+  await rotateTo(head(0));
+  const vlim = s => { let v = Math.min(sim.gear, Math.sqrt(2*A_EFF*Math.max(s, 0)) + 0.02, Math.sqrt(2*A_EFF*Math.max(L - s, 0)) + 0.01);
+    for (const c of corners) v = Math.min(v, Math.sqrt(V_CORNER*V_CORNER + 2*A_EFF*Math.abs(s - c))); return v; };
+  let s = 0, v = 0, last = performance.now(), obsDone = false;
+  while (s < L - 1e-4) {
+    await frame(); const now = performance.now(); const d = Math.min(.05, (now - last) / 1000) * multV(); last = now; sim.t += d;
+    if (sim.abort) throw new Error("abort");
+    if (onObs && !obsDone && sim.intrude && s > 0.6 && L - s > 1.5) { obsDone = true; sim.intrude = false; await onObs(v); v = 0; last = performance.now(); }
+    v = Math.min(v + A_EFF * d, vlim(s + v * d));
+    if (Math.abs(v - sim.gear) <= sim.gear * 0.05) { sim.bandRun += d; sim.bandBest = Math.max(sim.bandBest, sim.bandRun); } else sim.bandRun = 0;
+    s = Math.min(L, s + v * d);
+    let i = 0; while (i < cum.length - 2 && s > cum[i+1]) i++;
+    const k = (s - cum[i]) / ((cum[i+1] - cum[i]) || 1);
+    sim.x = pts[i][0] + (pts[i+1][0] - pts[i][0]) * k; sim.y = pts[i][1] + (pts[i+1][1] - pts[i][1]) * k;
+    const diff = angNorm(head(i) - sim.h); sim.h += Math.sign(diff) * Math.min(Math.abs(diff), 240 * d);
+    sim.v = g.rev ? -v : v; hud();
+  }
+  sim.v = 0; sim.bandRun = 0; hud();
+}
+
+/* ---------------------------------------------------------------- 终端 */
+const term = $("#term"), input = $("#in"), quick = $("#quick");
+let mode = "idle", promptResolve = null, lastAskLine = null;
+function print(text = "", cls = ""){ const d = document.createElement("div"); if (cls) d.className = cls; d.textContent = text; term.appendChild(d); term.scrollTop = term.scrollHeight; return d; }
+function printCmd(c){ const d = document.createElement("div"); d.className = "cmd"; const s = document.createElement("span"); s.className = "ps"; s.textContent = "dexforce@w1:~$ "; d.appendChild(s); d.appendChild(document.createTextNode(c)); term.appendChild(d); term.scrollTop = term.scrollHeight; }
+async function out(lines, gap = 70){ for (const l of lines) { if (Array.isArray(l)) print(l[0], l[1]); else print(l); await sleep(gap); } }
+function setQuick(items){ quick.innerHTML = ""; for (const it of items) { if (it.hint) { const s = document.createElement("span"); s.className = "hint"; s.textContent = it.hint; quick.appendChild(s); continue; } const b = document.createElement("button"); b.type = "button"; b.className = "q" + (it.cls ? " " + it.cls : ""); b.textContent = it.label; b.onclick = it.fn; quick.appendChild(b); } }
+function ask(text, buttons){ lastAskLine = print(text, "ask"); mode = "prompt"; input.placeholder = "在这里输入后回车"; input.focus(); setQuick(buttons || []); return new Promise(r => { promptResolve = r; }); }
+function answer(v){ if (mode !== "prompt" || !promptResolve) return; const s = document.createElement("span"); s.className = "ans"; s.textContent = v === "" ? "⏎" : v; lastAskLine.appendChild(s); const r = promptResolve; promptResolve = null; mode = "busy"; setQuick(runQuick()); r(v); }
+const norm = s => s.trim().replace(/\s+/g, " ");
+$("#inform").addEventListener("submit", async e => {
+  e.preventDefault(); const v = input.value; input.value = "";
+  if (mode === "prompt") { answer(v.trim()); return; }
+  if (mode !== "cmd") return;
+  const st = STEPS[cur]; const typed = v.trim() || st.cmd;
+  printCmd(typed);
+  let args = null;
+  if (st.match) { args = st.match(typed); if (!args) { print(`模拟环境里这一步请输入带 --segment 的 plan 命令，例如：${st.cmd}（直接回车会自动填入）`, "sys"); return; } }
+  else if (norm(typed) !== norm(st.cmd)) { print(`模拟环境里这一步请输入：${st.cmd}（直接回车会自动填入）`, "sys"); return; }
+  mode = "busy"; input.placeholder = ""; setQuick(runQuick());
+  try { await st.run(args); if (!st.noAutoDone) completeStep(); }
+  catch (err) { if (err.message !== "abort") { print("模拟出错：" + err.message, "err"); console.error(err); } }
+  if (mode === "busy") armCmd();
+});
+function runQuick(){ const st = STEPS[cur]; if (st && st.running && st.quick) return st.quick(); return st && st.running ? [{label:"模拟 Ctrl-C", cls:"red", fn: ctrlC}, {label:"模拟人员误入（下一个去关键点位的任务）", cls:"warn", fn: () => { sim.intrude = true; print("（模拟：已安排一名人员在车驶向下一个关键点位时走到车前）", "sys"); }}] : [{hint:"运行中…"}]; }
+function armCmd(){ const st = STEPS[cur]; if (!st || !st.cmd || (st.done && !st.skipped)) { mode = "idle"; input.placeholder = st && st.done ? "这一步已完成，点左侧「下一步」" : ""; setQuick([]); return; }
+  mode = "cmd"; input.placeholder = st.cmd + "   ← 直接回车自动填入"; setQuick([{label:"填入命令", fn: () => { input.value = st.cmd; input.focus(); }}]); }
+
+/* ---------------------------------------------------------------- 数据 */
+const R = rng(20261105);
+const data = { screen: [], formal: [], injectFail: false, seq: {}, runs: 0 };
+function runId(batch){ data.seq[batch] = (data.seq[batch] || 0) + 1; return `${batch}-${DAY}-${String(data.seq[batch]).padStart(3, "0")}`; }
+const BIAS = [[1.2,-0.8],[2.1,0.6],[0.9,-1.9],[1.6,1.1],[0.4,1.5],[1.8,-1.2]];
+function navErr(point, r = R){ const i = KEY.indexOf(point); const b = i >= 0 ? BIAS[i % BIAS.length] : [0.5, 0];
+  return {lon: b[0] + gauss(r)*2.2, lat: b[1] + gauss(r)*3.0, yaw: 0.04 + gauss(r)*0.14, settle: Math.max(.45, 0.82 + gauss(r)*0.14)}; }
+
+/* ---------------------------------------------------------------- 一个任务 */
+let ctrlCArmed = false;
+function ctrlC(){ if (!STEPS[cur].running || ctrlCArmed) return; ctrlCArmed = true; print("^C", "warn"); sim.abort = true;
+  if (mode === "prompt" && promptResolve) { sim.abortAtPrompt = true; const r = promptResolve; promptResolve = null; mode = "busy"; r(""); } }
+async function runTask(t, lap, idx, total, batch, prompt, photo){
+  const rid = runId(batch); sim.task = t; sim.bandRun = 0; sim.bandBest = 0;
+  print(`\n[${idx}/${total}] 第 ${lap} 圈 ${t.id} ${t.pts.join(" → ")}  运行号 ${rid}`, "hl");
+  $("#hTask").textContent = `${t.id}  第 ${lap} 圈`; setChip("#cRun", "on"); setChip("#cRep"); setChip("#cStill");
+  $("#active").setAttribute("points", t.groups.flatMap(g => g.path.map(p => p.join(","))).join(" "));
+  const t0 = sim.t; let k = 0; let disturbed = false;
+  const onObs = async (v) => {
+    const p = $("#person"); const hr = sim.h * Math.PI / 180; const off = 150 * Math.max(1, K * .8);
+    p.setAttribute("transform", `translate(${sim.x + off*Math.cos(hr)},${sim.y + off*Math.sin(hr)})`); p.setAttribute("opacity", 1);
+    setChip("#cObs", "bad"); let vv = v; while (vv > 0) { await frame(); vv = Math.max(0, vv - 1.2 * 0.016 * multV()); sim.v = vv; sim.t += 0.016 * multV(); hud(); }
+    await simWait(3.0); p.setAttribute("opacity", 0); setChip("#cObs"); disturbed = true;
+  };
+  const end = endOf(t);
+  for (const g of t.groups) { k++; print(`    ${(sim.t - t0).toFixed(2).padStart(6)}s  tracking ${Math.min(k, t.segs)}/${t.segs + 1}`, "dim"); await driveGroup(g, KEY.includes(end) ? onObs : null); }
+  await rotateTo(P[end].h);
+  setChip("#cRep", "on");
+  const e = navErr(end);
+  const tr = sim.t; sim.v = 0.015; await simWait(0.3); sim.v = 0; hud(); await simWait(e.settle - 0.3);
+  setChip("#cStill", "ok"); setChip("#cRun");
+  const row = {run_id: rid, batch, lap, task: t.id, end, len: t.len, dur: sim.t - t0, settle: e.settle, lon: e.lon, lat: e.lat, yaw: e.yaw, mark: "", note: "", disturbed};
+  const fb = `导航反馈 纵 ${f(e.lon)} mm  横 ${f(e.lat)} mm  朝向 ${f(e.yaw, 3)}°（上报→停稳 ${f(e.settle, 2)} s）`;
+  if (KEY.includes(end) && prompt) {
+    print(`  ▶ 关键点位 ${end}：${fb}`, "hl");
+    if (photo) print("    📷 单圈运行：拍一张俯视照片留存（标记点和划线框都要拍清）", "warn");
+    if (disturbed) print("  （模拟提示：刚才有人误入触发停障，这一次应该记「受干扰」）", "sys");
+    let m;
+    while (true) {
+      m = await ask("    划线判定 [y 合格 / n 不合格 / x 受干扰 / 回车跳过]：", [
+        {label:"y 合格", fn: () => answer("y")}, {label:"n 不合格", fn: () => answer("n")}, {label:"x 受干扰", fn: () => answer("x")}, {label:"回车跳过", fn: () => answer("")}]);
+      if (sim.abort) throw new Error("abort");
+      m = m.toLowerCase(); if (["y","n","x",""].includes(m)) break; print("    只能输入 y / n / x 或直接回车");
+    }
+    row.mark = {y:"合格", n:"不合格", x:"受干扰", "":""}[m];
+  } else {
+    print(`  ✓ 停在 ${end}：${fb}`, "ok");
+    if (KEY.includes(end)) row.mark = disturbed ? "受干扰" : "合格";
+  }
+  return row;
+}
+
+/* ---------------------------------------------------------------- 分析 */
+function stats(vals){ if (!vals.length) return {mean:null,p95:null,max:null,std:null,range:null};
+  const ab = vals.map(Math.abs).sort((a,b) => a-b); const k = (ab.length - 1) * .95, lo = Math.floor(k), hi = Math.ceil(k);
+  const m = vals.reduce((a,b) => a+b, 0) / vals.length; const sd = vals.length > 1 ? Math.sqrt(vals.reduce((a,b) => a + (b-m)**2, 0) / (vals.length - 1)) : null;
+  return {mean:m, p95: ab[lo] + (ab[hi]-ab[lo]) * (k-lo), max: ab[ab.length-1], std: sd, range: Math.max(...vals) - Math.min(...vals)}; }
+const KEY_DIST = KEY[Math.min(2, KEY.length - 1)], KEY_FAIL = KEY[KEY.length - 1];
+function taskTime(t){ const l = t.len; const move = l >= SHORT ? l / TARGET + TARGET / A_EFF : 2 * Math.sqrt(l / A_EFF); return move + 2.5 * t.groups.length; }
+function taskMaxV(t){ return t.len >= SHORT ? TARGET - 0.002 : TARGET * Math.sqrt(t.len / SHORT); }
+function buildFormal(){
+  const r = rng(77); const rows = []; data.seq[BATCH] = 0;
+  for (let lap = 1; lap <= 30; lap++) for (const t of TASKS) {
+    const end = endOf(t); const e = navErr(end, r);
+    let mark = KEY.includes(end) ? "合格" : "", note = "";
+    if (lap === 12 && end === KEY_DIST) { mark = "受干扰"; e.lon = 14.2; e.lat = -21.7; note = "人员误入触发停障"; }
+    if (data.injectFail && lap === 21 && end === KEY_FAIL) { mark = "不合格"; e.lon = 4.1; e.lat = 23.4; note = "横向超出划线框"; }
+    const dur = taskTime(t) + gauss(r) * .35 + e.settle;
+    rows.push({run_id: runId(BATCH), batch: BATCH, lap, task: t.id, end, len: t.len, dur, settle: e.settle, lon: e.lon, lat: e.lat, yaw: e.yaw, mark, note,
+      maxv: taskMaxV(t) + gauss(r) * .002, acc: 0.20 + gauss(r) * .01, dec: 0.20 + gauss(r) * .01, jerk: 0.19 + gauss(r) * .02});
+  }
+  data.formal = rows;
+}
+function pointRows(rows){ return KEY.map(kp => { const rs = rows.filter(x => x.end === kp); const valid = rs.filter(x => x.mark !== "受干扰");
+  return {kp, n: rs.length, pass: rs.filter(x => x.mark === "合格").length, fail: rs.filter(x => x.mark === "不合格").length, dist: rs.filter(x => x.mark === "受干扰").length, un: rs.filter(x => !x.mark).length,
+    lon: stats(valid.map(x => x.lon)), lat: stats(valid.map(x => x.lat)), yaw: stats(valid.map(x => x.yaw))}; }); }
+function segRows(){ if (!SEG_TASK) return []; const r = rng(5); const L = SEG.len; const accel = Math.max(0, (TARGET*TARGET - V_CORNER*V_CORNER) / (2*A_EFF));
+  const steadyLen = Math.max(0, L - 2 * accel); const reach = L >= 2 * accel;
+  return Array.from({length: 30}, (_, i) => ({run_id: data.formal.find(x => x.lap === i + 1 && x.task === SEG_TASK.id).run_id, lap: i + 1,
+    dt: (L / (reach ? TARGET * 0.93 : TARGET * 0.7)) + gauss(r) * .1, maxv: (reach ? TARGET - 0.001 : V_CORNER + (TARGET - V_CORNER) * L / (2 * accel)) + gauss(r) * .0015,
+    steady: reach ? steadyLen / TARGET + gauss(r) * .15 : 0, inband: reach ? steadyLen / TARGET + 0.3 + gauss(r) * .15 : 0})); }
+/* 模拟：每圈一条速度曲线（与 speed_curves.html 同样的读法） */
+function taskTrack(t){ const pts = []; let base = 0;
+  for (const g of t.groups) { const p = g.path; let c = 0; pts.push([p[0][0], p[0][1], base]);
+    for (let i = 1; i < p.length; i++) { c += Math.hypot(p[i][0]-p[i-1][0], p[i][1]-p[i-1][1]) * PX; pts.push([p[i][0], p[i][1], base + c]); }
+    base += c; } return pts; }
+function sAt(track, name){ const q = P[name]; let best = null, bd = Infinity;
+  for (let i = 1; i < track.length; i++) { const [x1, y1, s1] = track[i-1], [x2, y2, s2] = track[i]; const L2 = (x2-x1)**2 + (y2-y1)**2 || 1;
+    const u = Math.max(0, Math.min(1, ((q.x-x1)*(x2-x1) + (q.y-y1)*(y2-y1)) / L2)); const d = Math.hypot(x1 + u*(x2-x1) - q.x, y1 + u*(y2-y1) - q.y);
+    if (d < bd - 1e-6) { bd = d; best = s1 + u * (s2 - s1); } } return best; }
+function simCurves(t, laps = 30, seed = 11){ const r = rng(seed); const out = [];
+  for (let k = 0; k < laps; k++) { const vmax = TARGET * (1 - 0.025 * r()) * (k === 16 ? 0.92 : 1), a = A_EFF * (0.9 + 0.2 * r()); const pts = []; let base = 0;
+    for (const g of t.groups) { const p = g.path; const cum = [0]; for (let i = 1; i < p.length; i++) cum.push(cum[i-1] + Math.hypot(p[i][0]-p[i-1][0], p[i][1]-p[i-1][1]) * PX);
+      const L = cum[cum.length - 1]; const cs = cum.slice(1, -1).filter((c, i) => { const A = p[i], B = p[i+1], C = p[i+2]; return Math.abs(angNorm((Math.atan2(C[1]-B[1], C[0]-B[0]) - Math.atan2(B[1]-A[1], B[0]-A[0])) * 180 / Math.PI)) > 20; });
+      for (let s = 0; s <= L + 1e-9; s += Math.max(0.05, L / 300)) { let v = Math.min(vmax, Math.sqrt(2*a*s), Math.sqrt(2*a*Math.max(L - s, 0))); for (const c of cs) v = Math.min(v, Math.sqrt(V_CORNER**2 + 2*a*Math.abs(s - c))); pts.push([base + s, v]); }
+      base += L; }
+    out.push(pts); } return out; }
+function curveSVG(curves, seg, tgt = TARGET){ const W = 900, H = 260, ml = 46, mr = 10, mt = 10, mb = 32; const xmax = Math.max(...curves.map(c => c[c.length-1][0])) || 1, ymax = Math.max(0.3, tgt * 1.15);
+  const sx = x => ml + x / xmax * (W - ml - mr), sy = v => H - mb - v / ymax * (H - mt - mb); const col = (k, n) => `hsl(${205 - 185 * k / Math.max(1, n - 1)},70%,${55 - 15 * k / Math.max(1, n - 1)}%)`;
+  let g = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;background:#fff;border:1px solid var(--line)">`;
+  if (seg) g += `<rect x="${sx(seg[0])}" y="${mt}" width="${sx(seg[1]) - sx(seg[0])}" height="${H - mt - mb}" fill="rgba(250,176,5,.12)"/><text x="${sx(seg[0]) + 4}" y="${mt + 12}" font-size="11" fill="#b7791f">关键路段</text>`;
+  g += `<rect x="${ml}" y="${sy(tgt * 1.05)}" width="${W - ml - mr}" height="${sy(tgt * 0.95) - sy(tgt * 1.05)}" fill="rgba(43,138,62,.14)"/>`;
+  for (let v = 0; v <= ymax; v += 0.2) g += `<text x="${ml - 5}" y="${sy(v) + 4}" font-size="10" text-anchor="end" fill="#666">${v.toFixed(1)}</text><line x1="${ml}" x2="${W - mr}" y1="${sy(v)}" y2="${sy(v)}" stroke="#eee"/>`;
+  const xs = [1, 2, 5, 10].find(s => xmax / s <= 12) || 20; for (let x = 0; x <= xmax; x += xs) g += `<text x="${sx(x)}" y="${H - mb + 14}" font-size="10" text-anchor="middle" fill="#666">${x}</text>`;
+  g += `<text x="${(W + ml) / 2}" y="${H - 4}" font-size="11" text-anchor="middle" fill="#444">路程 (m)</text>`;
+  curves.forEach((c, k) => { g += `<polyline points="${c.map(([x, v]) => `${sx(x).toFixed(1)},${sy(v).toFixed(1)}`).join(" ")}" fill="none" stroke="${col(k, curves.length)}" stroke-width="1.2" stroke-opacity=".7"/>`; });
+  return g + "</svg>"; }
+function simLegs(){ const rows = {};
+  TASKS.forEach((t, ti) => { const tr = taskTrack(t); const pos = t.pts.map(n => sAt(tr, n)); simCurves(t, 30, 100 + ti).forEach(c => {
+    for (let i = 0; i + 1 < t.pts.length; i++) { const a = pos[i], b = pos[i + 1]; if (a === null || b === null || b <= a) continue; let mv = 0, best = 0, run = 0;
+      for (let j = 1; j < c.length; j++) { const [x, v] = c[j]; if (x < a || x > b) continue; mv = Math.max(mv, v); const dt = (x - c[j-1][0]) / Math.max(v, 0.05);
+        if (Math.abs(v - TARGET) <= TARGET * 0.05) { run += dt; best = Math.max(best, run); } else run = 0; }
+      const key = `${t.pts[i]} → ${t.pts[i + 1]}`; (rows[key] = rows[key] || []).push([mv, best]); } }); });
+  return Object.entries(rows).map(([k, v]) => ({k, n: v.length, mv: v.reduce((s, x) => s + x[0], 0) / v.length, mvmin: Math.min(...v.map(x => x[0])), st: v.reduce((s, x) => s + x[1], 0) / v.length,
+    stmin: Math.min(...v.map(x => x[1])), reach: v.filter(x => x[0] >= TARGET * 0.95).length, hold: v.filter(x => x[1] >= 2).length})).sort((a, b) => b.st - a.st); }
+function table(head, rows){ return `<table><tr>${head.map(h => `<th>${esc(h)}</th>`).join("")}</tr>${rows.map(r => `<tr>${r.map(c => `<td>${esc(c)}</td>`).join("")}</tr>`).join("")}</table>`; }
+function summaryHTML(){
+  const pr = pointRows(data.formal); const seg = segRows(); const anyFail = pr.some(p => p.fail > 0);
+  const yourLap = data.screen.filter(x => KEY.includes(x.end)); const nTask = 30 * TASKS.length, nStop = pr.reduce((a, p) => a + p.n, 0);
+  const shortT = TASKS.filter(t => t.len < SHORT);
+  let h = `<button class="btn small close" onclick="closeModal()">关闭</button><h3>analysis/summary.md（模拟）</h3>
+  <p class="mono" style="background:none">~/nbt_eval/capability/${esc(BATCH)}/analysis/summary.md</p>
+  <ul style="line-height:1.7;font-size:13px"><li>目标速度：${TARGET} m/s；停稳判据：线速度 &lt; 0.01 m/s 且角速度 &lt; 0.02 rad/s 持续 0.5 s，导航反馈取停稳后 1.0 s 平均</li>
+  <li>加速度窗 0.3 s、jerk 窗 0.3 s（里程计）；IMU 0.2 s 滑动平均；受干扰的停靠不进统计</li><li>任务 ${nTask} 个（成功 ${nTask}），关键点位停靠 ${nStop} 次</li></ul>
+  <h4>关键点位汇总</h4>` + table(["点位","停靠","划线 合格 / 不合格 / 受干扰 / 未录","纵 mean / P95 / max (mm)","横 mean / P95 / max (mm)","朝向 mean / P95 / max (°)","重复：纵 σ / 横 σ (mm)、朝向 σ (°)","极差 纵 / 横 (mm)"],
+    pr.map(p => [p.kp, p.n, `${p.pass} / ${p.fail} / ${p.dist} / ${p.un}`, `${f(p.lon.mean)} / ${f(p.lon.p95)} / ${f(p.lon.max)}`, `${f(p.lat.mean)} / ${f(p.lat.p95)} / ${f(p.lat.max)}`,
+      `${f(p.yaw.mean,2)} / ${f(p.yaw.p95,2)} / ${f(p.yaw.max,2)}`, `${f(p.lon.std)} / ${f(p.lat.std)}、${f(p.yaw.std,2)}`, `${f(p.lon.range)} / ${f(p.lat.range)}`]));
+  h += `<div class="callout ${anyFail ? "red" : "green"}">${anyFail
+    ? `怎么判：有关键点位出现划线「不合格」，按推荐速度方案第 7 节，${TARGET} 判不满足；不要直接降档，按 6.4 先排查：看超差方向和点位 → 对照导航反馈区分控制问题还是定位偏差 → 看关键路段速度和限制环节 → 交研发、产品再定。`
+    : `怎么判：${KEY.length} 个关键点位全部样本都在划线区域内（受干扰的 1 次单列，不进统计），${TARGET} 满足推荐速度判据。30 次全合格只能说明合格率 ≥ 90%（零失败 1 − 3/n），结论里写明样本数。`}</div>`;
+  h += `<h4>表 1　关键点位（每次停靠，节选）</h4>` + table(["运行号","批次","圈","点位","划线合格","导航反馈 Δ纵 / Δ横 (mm)","导航反馈 Δθ (°)","上报成功 → 停稳 (s)","备注"],
+    data.formal.filter(x => KEY.includes(x.end)).filter((x, i) => i < 8 || x.mark !== "合格").slice(0, 12).map(x => [x.run_id, x.batch, x.lap, x.end, x.mark || "（未录）", `${f(x.lon)} / ${f(x.lat)}`, f(x.yaw, 2), f(x.settle, 2), x.note]));
+  h += `<h4>表 2　任务速度（第 1 圈）</h4>` + table(["运行号","批次","任务","点序列","段时间 (s)","路线长 (m)","平均 / 最大速度 (m/s)","峰值加 / 减速度 (m/s²)","jerk (m/s³)","限制环节"],
+    data.formal.filter(x => x.lap === 1).map(x => { const t = TASKS.find(q => q.id === x.task); return [x.run_id, x.batch, x.task, t.pts.join(" → "), f(x.dur, 2), f(x.len, 2), `${f(x.len / x.dur, 3)} / ${f(x.maxv, 3)}`, `${f(x.acc, 2)} / ${f(x.dec, 2)}`, f(x.jerk, 2), x.maxv < TARGET * 0.95 ? "跟踪器" : "无（达到目标）"]; }));
+  if (shortT.length) h += `<p style="font-size:12.5px;color:var(--sub)">${shortT.map(t => t.id).join("、")} 路线短于 ${f(SHORT, 2)} m（${TARGET} m/s 加、减速分别约需 ${f(RAMP_UP, 2)}、${f(RAMP_DN, 2)} m），本来就跑不到 ${TARGET}，限制环节记「跟踪器」属正常，不算问题。</p>`;
+  if (seg.length) h += `<h4>关键路段（${esc(SEG.from)} → ${esc(SEG.to)}，前 6 次）</h4>` + table(["运行号","圈","方向","长度 (m)","通过用时 (s)","平均 / 最高速度 (m/s)","目标 ±5% 最长连续 / 累计 (s)","限制环节"],
+    seg.slice(0, 6).map(s => [s.run_id, s.lap, `${SEG.from}→${SEG.to}`, f(SEG.len, 2), f(s.dt, 2), `${f(SEG.len / s.dt, 3)} / ${f(s.maxv, 3)}`, `${f(s.steady, 2)} / ${f(s.inband, 2)}`, s.maxv >= TARGET * 0.95 ? "无（达到目标）" : "跟踪器"]));
+  if (SEG_TASK) { const tr = taskTrack(SEG_TASK); const a = sAt(tr, SEG.from), b = sAt(tr, SEG.to);
+    h += `<h4>速度曲线叠加（${esc(SEG_TASK.id)}，每圈一条，模拟）</h4>` + curveSVG(simCurves(SEG_TASK), a !== null && b !== null ? [Math.min(a, b), Math.max(a, b)] : null)
+      + `<p style="font-size:12.5px;color:var(--sub)">真实测试里 nbt speed analyze 生成 analysis/speed_curves.html：每个任务一张、关键路段按方向各一张，每圈一条线（颜色由浅蓝到深橙为圈次先后，不合格 / 受干扰的那次为红色虚线）；横轴可切路程 / 时间，速度可切里程计 / 跟踪器 / 平滑器 / 底盘指令，鼠标停在线上看运行号。加 --png 另出 PNG。这里第 17 圈故意慢了一点，能看到它和其他圈分开。</p>`; }
+  const legs = simLegs();
+  if (legs.length) h += `<h4>各路段实测速度（哪些路段能跑到 ${TARGET} m/s，模拟）</h4>` + table(["路段","样本","最高速度 均值 / 最小 (m/s)","目标 ±5% 最长连续 均值 / 最小 (s)","跑到目标的次数","保持 ≥ 2 s 的次数"],
+    legs.map(g => [g.k, g.n, `${f(g.mv, 3)} / ${f(g.mvmin, 3)}`, `${f(g.st, 2)} / ${f(g.stmin, 2)}`, `${g.reach} / ${g.n}`, `${g.hold} / ${g.n}`]))
+    + `<p style="font-size:12.5px;color:var(--sub)">真实结果在 analysis/legs.csv：按车依次经过点位的时刻切路段。关键路段应选稳态时间长、每次都能保持 ≥ 2 s 的那段；和计划生成时的预估（第 2 步的候选表）对照，看预估准不准。</p>`;
+  if (yourLap.length) h += `<h4>你在筛查里录入的 ${yourLap.length} 条（批次 ${esc(SBATCH)}，不进正式统计）</h4>` + table(["运行号","点位","划线","导航反馈 Δ纵 / Δ横 (mm)"], yourLap.map(x => [x.run_id, x.end, x.mark || "（未录）", `${f(x.lon)} / ${f(x.lat)}`]));
+  return h;
+}
+function openModal(html){ $("#modalBox").innerHTML = html; $("#modal").style.display = "flex"; }
+function closeModal(){ $("#modal").style.display = "none"; }
+function showYaml(){ openModal(`<button class="btn small close" onclick="closeModal()">关闭</button><h3>~/plan.yaml</h3><pre>${esc(PLAN_YAML)}</pre>
+  <p>target_speed 是本批次档位：跟踪器上限不等于它时 run 拒绝开始。key_points 停靠时暂停录入；segment 是分析时统计速度的关键路段。相邻两点之间都是路网里直接相连的边。</p>`); }
+$("#modal").addEventListener("click", e => { if (e.target.id === "modal") closeModal(); });
+
+/* 「指定关键路段」：与 nbt pathnav plan --segment 相同的检查 */
+function parseSegCmd(typed){ const t = typed.replace(/，/g, ","); if (!/^nbt\s+pathnav\s+plan\b/.test(t)) return null;
+  const m = t.match(/--segment\s+([^\s,]+)\s*,\s*([^\s,]+)/); return m ? {a: m[1], b: m[2]} : null; }
+function trackLen(t, a, b){ const tr = taskTrack(t); const sa = sAt(tr, a), sb = sAt(tr, b); return sa !== null && sb !== null ? Math.abs(sb - sa) : 0; }
+function resolveSeg(a, b){
+  if (!P[a] || !P[b]) return null;
+  for (const c of SCENE.segment_runs || SCENE.segment_candidates || []) { const i = c.via.indexOf(a), j = c.via.indexOf(b);
+    if (i >= 0 && j > i) { if (c.from === a && c.to === b) return {from: a, to: b, via: c.via, len: c.len, steady: c.steady, kind: "run"};
+      const t = findSegTask({from: a, to: b}); return {from: a, to: b, via: c.via.slice(i, j + 1), len: t ? trackLen(t, a, b) : 0, steady: null, kind: "subrun"}; } }
+  const t = TASKS.find(q => { const i = q.pts.indexOf(a); return i >= 0 && q.pts.indexOf(b, i + 1) > i; });
+  if (!t) return null;
+  const i = t.pts.indexOf(a), j = t.pts.indexOf(b, i + 1);
+  return {from: a, to: b, via: t.pts.slice(i, j + 1), len: trackLen(t, a, b), steady: null, kind: "notstraight"}; }
+function segNote(sg, auto){ const via = sg.via && sg.via.length > 2 ? `经 ${sg.via.slice(1, -1).join("、")}，` : "";
+  return `${auto ? "自动选取：预计稳态最长的直线前进路段，" : "指定，"}${via}${f(sg.len, 2)} m，` + (sg.steady != null ? `预计 ${TARGET} m/s 保持 ${f(sg.steady, 1)} s` : "未预估稳态时长"); }
+function planTable(){ const nNav = SCENE.edges.filter(e => e.nav && !e.free).length; const C = SCENE.segment_candidates || [];
+  return [`# 地图 ${SCENE.map_name || "现场地图"}：点位 ${Object.keys(P).length} 个，路网边 ${nNav} 条（导航点直连 ${nNav} 条）`,
+    `起点 ${START}；关键点位 ${KEY.join(" → ")}；回到起点`, "", "| 任务 | 点序列 | 路线长度 (m) | 倒车段 | 解析 |", "|---|---|---|---|---|",
+    ...TASKS.map(t => `| ${t.id} | ${t.pts.join(" → ")} | ${f(t.len, 2)} | ${t.back} | ✓ |`),
+    ...(C.length ? ["", `关键路段候选（直线前进路段，相邻共线的边合并；按预计在 ${TARGET} m/s 保持的时长排序）：`,
+      `| # | 路段 | 长度 (m) | 进 / 出 | 预计 ${TARGET} 稳态 (s) | 能否跑到 |`, "|---|---|---|---|---|---|",
+      ...C.map((c, i) => `| ${i + 1} | ${c.via.join(" → ")} | ${f(c.len, 2)} | ${c.v_in ? "拐角" : "起步"} / ${c.v_out ? "拐角" : "停车"} | ${f(c.steady, 1)} | ${c.steady >= 2 ? "✓ 能保持 2 s" : (c.reach ? "只能摸到" : "✗ 跑不到")} |`)] : [])]; }
+function applySeg(sg, auto){ SEG = Object.assign({}, sg); SEG_TASK = findSegTask(SEG);
+  PLAN_YAML = auto ? AUTO_YAML : AUTO_YAML.replace(/^segment: .*$/m, `segment: [${sg.from}, ${sg.to}]   # ${segNote(sg, false)}`);
+  if (SEG_TASK) { const tr = taskTrack(SEG_TASK); const sa = sAt(tr, SEG.from), sb = sAt(tr, SEG.to);
+    if (sa !== null && sb !== null) { const lo = Math.min(sa, sb), hi = Math.max(sa, sb); const pts = tr.filter(p => p[2] >= lo - 1e-6 && p[2] <= hi + 1e-6).map(p => `${p[0]},${p[1]}`);
+      const a = P[SEG.from], b = P[SEG.to]; $("#active").setAttribute("points", [`${a.x},${a.y}`, ...pts, `${b.x},${b.y}`].join(" ")); setTimeout(() => $("#active").setAttribute("points", ""), 3000); } } }
+
+/* ---------------------------------------------------------------- 两门课共用 */
+function stepEnv(kicker){ return {title:"环境：确认 nbt 版本", kicker, cmd:"nbt -h",
+   body:`<div class="blk do"><b>你要做</b>在机器人上 source 环境后，看 nbt 的子命令列表。</div>
+   <span class="cmdline">source /opt/ros/humble/setup.bash
+source ~/w1/install/setup.bash
+source ~/nbt_ws/install/setup.bash
+alias nbt='ros2 run nav_benchmark_tools nbt'</span>
+   <div class="blk see"><b>会看到</b>列表里有 pathnav、navlog convert、speed profile、speed analyze。</div>
+   <div class="blk bad"><b>不对怎么办</b>没有这几项：装的是旧版 nbt。报 No module named nav_interfaces：第二行没 source。</div>`,
+   run: async () => { await out(["用法：nbt <子命令> [参数]，子命令加 -h 看参数", "",
+     "  env             采版本、环境、关键参数（通用约定 3.1）", "  watch           盯建图 / 定位 / 导航 / 系统 / 障碍 / 急停状态变化",
+     "  record          按用例录包（默认话题 + 用例族追加）", "  nav             经导航门面下发任务和控制命令", "  assets          读地图资产（点位 / 路线 / 路网 / 区域）",
+     "  serve           RViz 测试面板的后端（常驻在机器人上）", ["  pathnav         经调度规划器跑路网任务，判停稳、读导航反馈、录划线结果", "ok"],
+     "  brake analyze   离线分析包里的制动段", ["  navlog convert  路网任务录包 → nav_monitor 格式任务文件", "ok"],
+     ["  speed profile   速度档：看 / 改（带门禁）/ 恢复", "ok"], ["  speed analyze   能力摸底速度测试离线分析：关键点位精度、关键路段速度、加减速", "ok"]], 45); }}; }
+function stepMode(kicker){ return {title:"准入：确认导航模式", kicker, cmd:"nbt pathnav mode",
+   body:`<div class="blk do"><b>你要做</b>确认机器人跑的是 path_navigation + path_follower。V0.5.1 有两套路网导航：nav2 路网（bt_navigator → 路网规划器 → controller_server）和 path_navigation（调度规划器 → 跟踪器 path_follower）。速度档改的是跟踪器的参数，别的模式下测出来的数据无效。</div>
+   <div class="blk see"><b>会看到</b>command_board 开机配置的后端、两套导航各节点的 lifecycle 状态（选中的一套 active，另一套 unconfigured）、调度规划器的 mode，最后「✓ 当前导航模式：path_navigation · path_follower」。</div>
+   <div class="blk bad"><b>不对怎么办</b>「nav2 路网」：机器人上 command_board 参数 navigation_backend 改成 path_navigation，重启自动服务（运行中切不了）。「path_navigation · controller」：调度规划器 mode 改回 independence 后重启。提示「绕过 command_board 手动切换过」：重启自动服务恢复。任务跑起来后加 --watch 20，能直接看出是跟踪器（/cmd_vel_nav_path）还是 controller_server（/cmd_vel_nav）在出速度。</div>
+   <p>nbt pathnav run 开始前也会自动做这项检查，模式不对就拒绝开始。</p>`,
+   run: async () => { await out(["command_board 配置的后端：path_navigation", "| 节点 | 所属后端 | lifecycle 状态 |", "|---|---|---|",
+     "| /bt_navigator | nav2 | unconfigured |", "| /planner_server | nav2 | unconfigured |", "| /controller_server | nav2 | unconfigured |",
+     "| /schedule_planner_node | path_navigation | active |", "| /path_follower_node | path_navigation | active |", "| /velocity_smoother_path | path_navigation | active |",
+     "schedule_planner mode：independence", "导航相关动作服务器：/navigate_through_graph_points", "", ["✓ 当前导航模式：path_navigation · path_follower", "ok"]], 60); }}; }
+function stepShow(kicker, body){ return {title:"准入：看当前速度参数", kicker, cmd:"nbt speed profile show",
+   body: body ||`<div class="blk do"><b>你要做</b>按推荐速度方案 6.2 做完准入检查（后端、定位、清场等），再看速度链参数。</div>
+   <div class="blk see"><b>会看到</b>跟踪器和平滑器的速度、加减速参数。注意 max_linear_velocity 现在是 <b>0.7</b>。</div>
+   <div class="blk bad"><b>不对怎么办</b>显示「节点不在线」：导航后端不是 path_navigation，先切后端。</div>`,
+   run: async () => { await out(paramTable(), 40); }}; }
+function stepTargets(batch, kicker){ return {title:"读地图资产点位", kicker, cmd:`nbt pathnav targets --batch ${batch}`,
+   body:`<div class="blk do"><b>你要做</b>把地图资产里的点位坐标和朝向存成 targets.json。导航反馈的「目标位姿」以它为准。</div>
+   <div class="blk see"><b>会看到</b>点位表，最后提示「已保存 …/${esc(batch)}/targets.json」。</div>
+   <div class="blk bad"><b>不对怎么办</b>资产服务不在线：地图没加载或地图服务没起。</div>`,
+   run: async () => { const rows = Object.entries(P).map(([n, p]) => `| ${n} | ${p.type || "—"} | ${p.mx.toFixed(3)} | ${p.my.toFixed(3)} | ${(p.theta * 180 / Math.PI).toFixed(1)} |`);
+     await out([`# 地图 ${SCENE.map_name || "现场地图"}，点位 ${rows.length} 个`, "", "| 名称 | 类型 | x | y | θ(°) |", "|---|---|---|---|---|", ...rows, "", [`已保存 ${HOME}/nbt_eval/capability/${batch}/targets.json`, "ok"]], 40); }}; }
+/* run 的前置检查（打印与真实 nbt 相同）；跟踪器上限 ≠ 计划档位时拒绝开始 */
+async function preflight(batch, sid, sdir, target){
+  await out([`# 批次 ${batch} 会话 ${sid}`, `  输出 ${sdir}（前置检查通过后创建）`, "  导航模式：path_navigation · path_follower",
+    `  跟踪器速度上限 ${pv(sim.gear)}，平滑器上限 [${pv(sim.smoother)}, 0.8, 1.1]`], 110);
+  if (Math.abs(sim.gear - target) > 1e-6) { await out([[`✗ 跟踪器速度上限 ${pv(sim.gear)} ≠ 计划档位 ${target}：先 nbt speed profile set ${target}（不按档位跑加 --speed 当前值）`, "err"]], 160); return false; }
+  await out([...TASKS.map(t => `  ${t.id} 可解析，路线 ${f(t.len, 2)} m` + (t.back ? `，倒车段 ${t.back}` : "")), `  录包 → ${sdir}/rosbag（等 3 s 让录包订阅上话题）`], 110);
+  return true;
+}
+/* 交互运行：逐个任务开、到关键点位停下录入；augment 给每行补上模拟的速度指标 */
+async function screenRun(batch, laps, photo, target, augment){
+  const st = STEPS[cur];
+  st.running = true; ctrlCArmed = false; sim.abort = false; sim.abortAtPrompt = false; setQuick(runQuick());
+  placeAt(START); sim.t = 0; hud(); data.screen = []; data.runs += 1;
+  const sid = `${batch}-${DAY}_0935${String(10 + data.runs * 2).padStart(2, "0")}`, sdir = `${HOME}/nbt_eval/capability/${batch}/sessions/${sid}`, total = laps * TASKS.length;
+  try {
+    if (!await preflight(batch, sid, sdir, target)) { st.running = false; armCmd(); return; }
+    setChip("#cRec", "on"); await simWait(3);
+    let k = 0;
+    for (let lap = 1; lap <= laps; lap++) for (const t of TASKS) { k++; const row = await runTask(t, lap, k, total, batch, true, photo && laps === 1);
+      if (augment) augment(row, t); data.screen.push(row); if (sim.abort) throw new Error("abort"); }
+    print(""); print("  结束录包…"); setChip("#cRec"); await sleep(300);
+    const pr = pointRows(data.screen);
+    await out(["", `共 ${total} 个任务，成功 ${total}；记录 ${sdir}/tasks.csv`, "", "| 关键点位 | 样本 | 合格 | 不合格 | 受干扰 | 纵 max (mm) | 横 max (mm) | 朝向 max (°) |", "|---|---|---|---|---|---|---|---|",
+      ...pr.map(p => `| ${p.kp} | ${p.n} | ${p.pass} | ${p.fail} | ${p.dist} | ${f(p.lon.max)} | ${f(p.lat.max)} | ${f(p.yaw.max, 3)} |`), "",
+      [`离线分析：nbt speed analyze ${HOME}/nbt_eval/capability/${batch}`, "ok"]], 60);
+    data.lines[batch] = data.screen.slice();
+    st.running = false; completeStep();
+  } catch (e) {
+    if (e.message !== "abort") throw e;
+    sim.abort = false;
+    if (sim.abortAtPrompt) print("\n  已中断录入", "warn"); else { print("    取消当前任务…", "warn"); print("  ✗ canceled  ", "err"); }
+    print("\n已停止。"); setChip("#cRun");
+    let v = Math.abs(sim.v); while (v > 0) { await frame(); v = Math.max(0, v - 0.6 * 0.016 * multV()); sim.v = v; hud(); }
+    setChip("#cStill", "ok"); print("  结束录包…"); setChip("#cRec"); await sleep(200);
+    print(`\n共 ${data.screen.length + 1} 个任务，成功 ${data.screen.length + (sim.abortAtPrompt ? 1 : 0)}；记录 ${sdir}/tasks.csv`);
+    sim.abortAtPrompt = false;
+    print("（模拟：Ctrl-C 后已写的记录都保留。再输一次命令可以重跑这一步）", "sys");
+    st.running = false; armCmd();
+  }
+}
+
+/* ================================================================ 推荐速度课程 */
+function paramTable(){ return [
+  "| 节点 | 参数 | 值 |", "|---|---|---|",
+  `| /path_follower_node | max_linear_velocity | ${pv(sim.gear)} |`, "| /path_follower_node | max_linear_acceleration | 0.5 |",
+  "| /path_follower_node | max_linear_deceleration | 0.4 |", "| /path_follower_node | max_linear_jerk | 0.2 |",
+  `| /velocity_smoother_path | max_velocity | [${pv(sim.smoother)}, 0.8, 1.1] |`, "| /velocity_smoother_path | min_velocity | [-0.8, -0.8, -1.1] |",
+  "| /velocity_smoother_path | max_accel | [0.6, 0.6, 0.8] |", "| /velocity_smoother_path | max_decel | [-0.9, -0.9, -1.1] |"]; }
+function quizBlock(qs){ return qs.map((q, i) => `<div class="quiz" data-q="${i}"><div class="qt">${i + 1}. ${esc(q.q)}</div>${q.opts.map((o, j) => `<button data-j="${j}">${esc(o)}</button>`).join("")}<div class="fb"></div></div>`).join(""); }
+function recCourse(){
+const QI = Math.min(3, TASKS.length - 1);                    // 演练：第 17 圈第 QI 个任务完成后中断
+const QUIZ = [
+  {q:`开跑前终端提示「✗ 车离起点 ${START} 1.32 m（> 0.5 m）」，你怎么做？`, opts:["加 --start-tol 2 继续跑", `把车开到${START}，再运行同一条命令`, "把计划里的第一个任务删掉"], a:1, why:"起点不对会让第一个任务的路线和样本都不对。--start-tol 只用于车确实在起点、但定位有小偏差的情况。"},
+  {q:`正式测试跑完第 17 圈的 ${TASKS[QI - 1].id} 后中断了。续跑命令应该是？`, opts:[`nbt pathnav run ~/plan.yaml --batch ${BATCH} --laps 30 --record`, `nbt pathnav run ~/plan.yaml --batch ${BATCH} --laps 14 --start-lap 17 --start-task ${QI + 1} --record（车先开到${TASKS[QI].pts[0]}）`, "换一个批次号重新跑 30 圈"], a:1, why:`--start-lap / --start-task 从中断处接着编号：第 17 圈从 ${TASKS[QI].id} 开始，到第 30 圈共 14 圈。续跑生成新会话，分析时同一批次的会话合在一起。`},
+  {q:"终端出现「⚠ 10 s 内未停稳」，怎么处理？", opts:["把 --still-v 调大到 0.05，让它能判过","让它继续跑，事后回放录包查原因（原地振荡、里程计噪声）","马上按 Ctrl-C 停止整批测试"], a:1, why:"停稳阈值是测量口径，不能为了通过而放宽。这次任务记了备注、不读导航反馈，事后看录包定位原因。"},
+  {q:`车驶向${KEY_DIST}的路上有人走到车前触发了停障，人离开后车走完。到点录入时选？`, opts:["y 合格（反正最后停准了）","x 受干扰","回车跳过"], a:1, why:"受干扰的停靠单列，不进精度统计。"},
+  {q:"改档时提示「✗ 不能改档：有 1 个进行中的路网任务」，怎么做？", opts:["加 --force 强行改","先 nbt pathnav cancel，等车停稳后再改","直接用 ros2 param set 改"], a:1, why:"正在执行的路线不按新档位，强行改会得到混合档位的数据。--force 只用于调试。"},
+  {q:`分析结果里${KEY_FAIL}有 1 次划线「不合格」，其他都合格。结论怎么写？`, opts:[`${TARGET} 判不满足，按推荐速度方案 6.4 先排查原因，再决定修复重测还是降档`, "直接降一档再测一遍", "去掉那一次，按 29/29 合格写"], a:0, why:`任何一次不合格，${TARGET} 就判不满足；先排查原因，不自动降档，也不剔除不合格样本。`},
+  {q:`分析结果里关键路段 ${AUTO_SEG.from} → ${AUTO_SEG.to} 每圈只能保持 1.2 s，各路段实测速度里 ${(SEG_ALT || AUTO_SEG).from} → ${(SEG_ALT || AUTO_SEG).to} 每圈都能保持 5 s 以上。下一轮怎么做？`, opts:["不管它，照旧跑", `重新生成计划：加 --segment ${(SEG_ALT || AUTO_SEG).from},${(SEG_ALT || AUTO_SEG).to} 把关键路段换过去`, "把档位降到 0.7，让它更容易保持"], a:1, why:"关键路段要能跑到目标速度并保持 ≥ 2 s 才判得了稳态。按实测换段，不靠改档位凑。"},
+  {q:"nbt pathnav mode 显示「✗ 当前导航模式：nav2 路网（bt_navigator → planner_server RouteGridPlanner → controller_server）」，怎么办？", opts:["照样开测，反正都是路网导航", "运行中 ros2 param set 把 command_board 的 navigation_backend 改成 path_navigation", "改机器人上 command_board 参数文件的 navigation_backend 为 path_navigation，重启自动服务，再查一次"], a:2, why:"本测试改的是跟踪器（path_follower）的速度参数，nav2 路网用的是 controller_server，测出来的数据无效。后端只在开机时读取，运行中改参数会被拒绝。"},
+  {q:"现场地图的点位、路网和示例图不一样，计划怎么来？", opts:["照示例的计划文件手改点名","在机器人上 nbt pathnav plan 从现场路网生成，看预览图确认后再跑","让 AI 按示例图猜一份"], a:1, why:"plan 按现场路网逐段求最短路，每个任务都用调度规划器实际解析过；预览图给人对照确认。"}
+];
+const setCmd = `nbt speed profile set ${TARGET} --batch ${BATCH}` + (NEEDS_SMOOTHER ? " --with-smoother" : "");
+const STEPS = [
+  {title:"开始之前", kicker:"导读", cmd:null,
+   body:`<p>这是一个<b>模拟</b>：左边讲每一步做什么，中间是场景地图（下方是速度和状态读数），右边是机器人上的终端。终端输出、提示文字与真实 nbt 一致，数据是模拟的。</p>
+   <div class="callout">${esc(SCENE.source || "")}</div>
+   <div class="blk do"><b>你要练的</b>用 nbt 跑完一个推荐速度批次：从现场地图生成计划 → 读点位 → 改档 → 筛查（关键点位录入划线结果）→ 正式 30 圈 → 分析 → 恢复，外加常见异常的处理。</div>
+   <div class="blk see"><b>操作方式</b>每一步在终端输入左侧给出的命令后回车；什么都不输直接回车会自动填入。运行中按下方的按钮可以模拟 Ctrl-C 和人员误入。任何一步都可以点「跳过这一步」，也可以在左侧直接点开后面的步骤（跳过的步骤会自动补上它的效果，比如跳过改档也会按 ${TARGET} 继续）。页面顶部「课程」可以切到直线最大速度。</div>
+   <div class="blk bad"><b>和真实测试的差别</b>筛查这里只跑 1 圈（实际 3 圈）；正式 30 圈用快进代替；划线判定、拍照这些人工动作用输入代替。</div>
+   <p>对应文档：《能力摸底——nbt测试工具操作说明》第 2～4 节；判定以《能力摸底——W1 PRO推荐速度测试方案》为准。</p>`},
+  stepEnv("第 1 步 · 准备"),
+  {title:"从现场地图生成任务计划", kicker:"第 2 步 · 准备", cmd: PLAN_CMD,
+   body:`<div class="blk do"><b>你要做</b>告诉 nbt 起点和关键点位（按经过顺序），它从机器人当前地图的路网生成任务序列：逐段求最短路，每到一个关键点位切出一个任务，再用调度规划器把每个任务实际解析一遍。</div>
+   <div class="blk see"><b>会看到</b>任务表（点序列、长度、倒车段、解析 ✓）、关键路段候选表和选中的关键路段，最后写出 ~/plan.yaml 和预览图 ~/plan.svg。</div>
+   <div class="blk do"><b>关键路段怎么选</b>候选是整圈里的直线前进路段（相邻共线的边合并成一段）。每段按「进、出口速度」估算加减速要占掉的距离：从停车起步或停到底要的多，从拐角接过来、接到拐角去要的少（转角超过 120° 时调度规划器会停车原地转，按停车算）。剩下的长度除以目标速度，就是预计能保持目标速度的时间；选这个时间最长的。要指定就加 --segment 起点,终点。测完后用分析结果里的「各路段实测速度」确认；想换段见下一步（可选）。</div>
+   <div class="blk bad"><b>必须做</b>预览图用浏览器打开，和现场路网图对照：路线走得对、关键点位都是任务终点，才往下做。</div>
+   <div class="blk bad"><b>不对怎么办</b>「地图里没有点位」：点名以 XWiz 为准（提示里会给相近的名字）。「没有直连路线」：检查路网边的方向，或在地图里补边。「解析失败」：不写出计划，按提示修路网。</div>
+   <div class="actions"><button class="btn small" onclick="showYaml()">查看生成的 ~/plan.yaml</button></div>`,
+   run: async () => { const wasManual = !(SEG.from === AUTO_SEG.from && SEG.to === AUTO_SEG.to);
+     await out([...planTable(), "",
+       `关键路段：${(AUTO_SEG.via && AUTO_SEG.via.length ? AUTO_SEG.via : [AUTO_SEG.from, AUTO_SEG.to]).join(" → ")}，${segNote(AUTO_SEG, true)}（从静止起步、停车到底时 2 s 稳态需要 ${f(SEG_NEED, 2)} m）`, "",
+       [`✓ 计划已写入 ${HOME}/plan.yaml`, "ok"], `  预览图 ${HOME}/plan.svg（用浏览器打开，和现场路网图对照）`], 70);
+     applySeg(AUTO_SEG, true); if (wasManual) print("（不带 --segment 重新生成：关键路段回到自动选取）", "sys");
+     $("#active").setAttribute("points", TASKS.flatMap(t => t.groups.flatMap(g => g.path.map(p => p.join(",")))).join(" ")); setTimeout(() => $("#active").setAttribute("points", ""), 2500); }},
+  {title:"（可选）指定关键路段", kicker:"第 2 步补充 · 准备", cmd: SEG_CMD, match: parseSegCmd, noAutoDone: true,
+   body:`<div class="blk do"><b>你要做</b>想换关键路段时（比如分析结果里另一段实测更好，或现场想测某一段），在生成计划的命令里加 <code>--segment 起点,终点</code>，按行驶方向写、起点在前。可以照下面的命令做，也可以换成你想测的两个点：候选表里的路段，或者某个任务里先后经过的两点。</div>
+   <div class="blk see"><b>会看到</b>同样的任务表和候选表，最后一行写「关键路段：…，指定，…」；能估的会给出预计在 ${TARGET} m/s 保持多久。地图上会高亮这一段。</div>
+   <div class="blk bad"><b>会被拦或提醒的情况</b>两点不在同一个任务里先后出现，或者方向写反了 →「✗ 关键路段 … 不在生成的任何任务里」，不写出计划；这一段含弯道或倒车 → 提醒不是直线前进路段、没法预估；预计保持不到 2 s → 提醒判不了稳态。</div>
+   <p>指定之后，后面的分析、速度曲线都按这一段算。想回到自动选取：回第 2 步重新运行不带 --segment 的命令。不需要换段就点「跳过这一步」。</p>`,
+   run: async (args) => {
+     const a = args ? args.a : (SEG_ALT || AUTO_SEG).from, b = args ? args.b : (SEG_ALT || AUTO_SEG).to;
+     const sg = resolveSeg(a, b);
+     await out(planTable(), 50);
+     if (!sg) { await out(["", [`✗ 关键路段 ${a} → ${b} 不在生成的任何任务里（要按行驶方向写，起点在前）`, "err"]], 80);
+       print("（计划没有写出。换两个点再试，或点「跳过这一步」）", "sys"); return; }
+     const warns = [];
+     if (sg.kind === "notstraight") warns.push(`指定的关键路段 ${a} → ${b} 不是一段直线前进路段（含弯道或倒车），稳态时长没有预估`);
+     if (sg.steady != null && sg.steady < 2) warns.push(`指定的关键路段 ${a} → ${b}（${f(sg.len, 2)} m）预计只能在 ${TARGET} m/s 保持 ${f(sg.steady, 1)} s，判不了 2 s 稳态`);
+     await out(["", `关键路段：${sg.via.join(" → ")}，${segNote(sg, false)}（从静止起步、停车到底时 2 s 稳态需要 ${f(SEG_NEED, 2)} m）`, ...warns.map(w => [`⚠ ${w}`, "warn"]), "",
+       [`✓ 计划已写入 ${HOME}/plan.yaml`, "ok"], `  预览图 ${HOME}/plan.svg（用浏览器打开，和现场路网图对照）`], 70);
+     applySeg(sg, false); completeStep();
+   }},
+  stepMode("第 3 步 · 准入"),
+  stepShow("第 3 步 · 准入"),
+  stepTargets(BATCH, "第 4 步 · 测前"),
+  {title:"演练：忘了改档就开跑", kicker:"第 5 步 · 异常演练", cmd:`nbt pathnav run ~/plan.yaml --batch ${SBATCH} --laps 1 --record`,
+   body:`<div class="blk do"><b>你要做</b>故意在没改档的情况下开跑，看 nbt 怎么拦住你。</div>
+   <div class="blk see"><b>会看到</b>前置检查读到跟踪器上限 0.7，和计划里的 target_speed ${TARGET} 不一致，拒绝开始。被拒绝的运行不留会话目录、不占运行号。</div>
+   <p>这道门禁防的是：忘改档，跑出一批 0.7 的数据还以为是 ${TARGET}。</p>`,
+   run: async () => { placeAt(START); const sid = `${SBATCH}-${DAY}_093012`;
+     if (await preflight(SBATCH, sid, `${HOME}/nbt_eval/capability/${SBATCH}/sessions/${sid}`, TARGET)) print("（模拟：已经改过档，前置检查通过了。这个演练要在改档前做）", "sys"); }},
+  {title:`改档到 ${TARGET}`, kicker:"第 6 步 · 改档", cmd: setCmd, skip: () => { sim.gear = TARGET; if (NEEDS_SMOOTHER) sim.smoother = TARGET; hud(); },
+   body:`<div class="blk do"><b>你要做</b>车停稳、没有进行中的任务时改档。${NEEDS_SMOOTHER ? "档位高于平滑器前进上限 0.8，要带 --with-smoother 一起改（先拿到底盘许可）。" : "只改跟踪器速度上限，平滑器前进上限 0.8 不动。"}</div>
+   <div class="blk see"><b>会看到</b>第一次改档会先存一份改档前的参数（profile/original.json），然后打印读回表，最后「✓ 已改档到 ${TARGET} m/s，读回一致」。</div>
+   <div class="blk bad"><b>不对怎么办</b>「不能改档：有进行中的路网任务 / 车没停稳」→ 先 nbt pathnav cancel、等停稳；「读回 …，期望 …」→ 不要开测，查节点状态。</div>`,
+   run: async () => { await sleep(400); await out([`  基线已存 ${HOME}/nbt_eval/capability/${BATCH}/profile/original.json`], 120); sim.gear = TARGET; if (NEEDS_SMOOTHER) sim.smoother = TARGET; hud();
+     await out([...paramTable(), "", [`✓ 已改档到 ${TARGET} m/s，读回一致；存档 ${HOME}/nbt_eval/capability/${BATCH}/profile/${DAY}_093344_set_${TARGET}.json`, "ok"], "  改档后重新下发任务，正在执行的路线不按新档位"], 40); }},
+  {title:"筛查：跑一圈并录入划线", kicker:"第 7 步 · 筛查", cmd:`nbt pathnav run ~/plan.yaml --batch ${SBATCH} --laps 1 --record`, noAutoDone:true,
+   body:`<div class="blk do"><b>你要做</b>车在${esc(START)}，开跑。每停在一个关键点位（橙色虚线圈）：按推荐速度方案 5.1 看划线，在终端输入判定（y / n / x）。只跑 1 圈时 nbt 会先提示拍俯视照片留存。</div>
+   <div class="blk see"><b>会看到</b>地图下方的「上报成功」先亮，过零点几秒「停稳」才亮：V0.5.1 到点即上报、不等停稳，nbt 自己判停稳后才读导航反馈。到点后要转到点位朝向的地方，车会原地转向，这时线速度为 0 但还没停稳。</div>
+   <div class="blk bad"><b>可以试</b>运行中点「模拟人员误入」，车驶向下一个关键点位时有人挡在前面，车停障、人走后继续；到点录入时应该选 x。点「模拟 Ctrl-C」：nbt 取消任务、等停稳、结束录包后退出，已写的记录保留，可以再输一次命令重跑。</div>
+   <p>筛查用了单独的批次号 ${esc(SBATCH)}，正式统计只算 ${esc(BATCH)}。实际筛查跑 3 圈（多圈运行不提示拍照），这里模拟 1 圈。</p>`,
+   run: () => screenRun(SBATCH, 1, true, TARGET)},
+  {title:"正式：30 圈（快进）", kicker:"第 8 步 · 正式", cmd:`nbt pathnav run ~/plan.yaml --batch ${BATCH} --laps 30 --record`, noAutoDone:true,
+   skip: () => { const c = $("#injFail"); if (c) data.injectFail = c.checked; buildFormal(); },
+   body:`<div class="blk do"><b>你要做</b>车开回${esc(START)}，正式跑 30 圈；每个关键点位照样录入判定（多圈运行不提示拍照）。</div>
+   <div class="blk see"><b>会看到</b>同筛查。运行号接着本批次往下编：${esc(BATCH)}-${DAY}-001 … ${String(30 * TASKS.length).padStart(3, "0")}。</div>
+   <div class="blk bad"><b>不对怎么办</b>中途中断：记下最后完成的圈和任务，用 --start-lap / --start-task 续跑（小测里有题）。任务失败：nbt 打印「✗ 结果 原因」，等停稳后停止整个运行。</div>
+   <label class="toggle"><input type="checkbox" id="injFail"> 让模拟在第 21 圈${esc(KEY_FAIL)}出现一次划线不合格（练判定）</label>
+   <p style="color:var(--sub);font-size:12.5px">模拟用快进代替 30 圈，划线结果由模拟器代填：第 12 圈${esc(KEY_DIST)}有一次人员误入（受干扰）。</p>`,
+   run: async () => {
+     const sid = `${BATCH}-${DAY}_094630`, sdir = `${HOME}/nbt_eval/capability/${BATCH}/sessions/${sid}`, n = TASKS.length;
+     placeAt(START); if (!await preflight(BATCH, sid, sdir, TARGET)) { armCmd(); return; }
+     data.injectFail = $("#injFail").checked; buildFormal();
+     setChip("#cRec", "on");
+     for (let lap = 1; lap <= 30; lap++) {
+       const rs = data.formal.filter(x => x.lap === lap); const odd = rs.filter(x => x.mark && x.mark !== "合格");
+       print(`[${(lap - 1) * n + 1}–${lap * n}/${30 * n}] 第 ${lap} 圈 ${TASKS[0].id}～${TASKS[n - 1].id} 完成  运行号 ${rs[0].run_id} … ${rs[n - 1].run_id}` + (odd.length ? `  ⚠ ${odd.map(x => `${x.end} ${x.mark}`).join("、")}` : ""), odd.length ? "warn" : "dim");
+       placeAt(endOf(TASKS[lap % n])); sim.t += 25; hud(); await sleep(lap === 1 ? 300 : 70);
+     }
+     print("  结束录包…"); setChip("#cRec"); await sleep(200);
+     const pr = pointRows(data.formal);
+     await out(["", `共 ${30 * n} 个任务，成功 ${30 * n}；记录 ${sdir}/tasks.csv`, "", "| 关键点位 | 样本 | 合格 | 不合格 | 受干扰 | 纵 max (mm) | 横 max (mm) | 朝向 max (°) |", "|---|---|---|---|---|---|---|---|",
+       ...pr.map(p => `| ${p.kp} | ${p.n} | ${p.pass} | ${p.fail} | ${p.dist} | ${f(p.lon.max)} | ${f(p.lat.max)} | ${f(p.yaw.max, 3)} |`), "", [`离线分析：nbt speed analyze ${HOME}/nbt_eval/capability/${BATCH}`, "ok"]], 50);
+     placeAt(START); completeStep();
+   }},
+  {title:"离线分析", kicker:"第 9 步 · 分析", cmd:`nbt speed analyze ~/nbt_eval/capability/${BATCH}`, skip: () => { if (!data.formal.length) buildFormal(); },
+   body:`<div class="blk do"><b>你要做</b>对整个批次做离线分析。导航反馈以这里从录包重算的值为准，现场读数只作参考。</div>
+   <div class="blk see"><b>会看到</b>终端打印每个关键点位的摘要；详细结果在 analysis/summary.md：关键点位汇总（mean / P95 / max、σ、极差）、表 1、表 2、关键路段（±5% 稳态时长、限制环节）、各路段实测速度。每圈的速度曲线叠加在 analysis/speed_curves.html。点下面的按钮打开（含模拟的曲线叠加图）。</div>
+   <div class="blk bad"><b>换口径重算</b>录包都在，改参数重跑即可，例如 --still-hold 1.0，不用重测。加 --nav-monitor 顺带出路径图和速度曲线。</div>
+   <div class="actions"><button class="btn small" id="openSum" disabled onclick="openModal(summaryHTML())">打开 summary.md</button></div>`,
+   run: async () => { if (!data.formal.length) buildFormal(); const pr = pointRows(data.formal);
+     await out([`分析 ${HOME}/nbt_eval/capability/${BATCH}/sessions/${BATCH}-${DAY}_094630`, "", [`✓ ${30 * TASKS.length} 个任务，${pr.reduce((a, p) => a + p.n, 0)} 次关键点位停靠 → ${HOME}/nbt_eval/capability/${BATCH}/analysis/summary.md`, "ok"], `  速度曲线叠加：${HOME}/nbt_eval/capability/${BATCH}/analysis/speed_curves.html（浏览器打开）`,
+       ...pr.map(p => `  ${p.kp}：停靠 ${p.n}，划线合格 ${p.pass}，不合格 ${p.fail}，受干扰 ${p.dist}；导航反馈 max 纵 ${f(p.lon.max)} / 横 ${f(p.lat.max)} mm、朝向 ${f(p.yaw.max, 2)}°`)], 120);
+     const b = $("#openSum"); if (b) b.disabled = false; openModal(summaryHTML()); }},
+  {title:"异常处理小测", kicker:"第 10 步 · 演练", cmd:null, quiz:true,
+   body:`<p>${QUIZ.length} 道题，覆盖现场最常遇到的情况。选完会显示理由，全部答对后这一步完成；不想做可以点「跳过这一步」。</p>`},
+  {title:"恢复参数", kicker:"第 11 步 · 恢复", cmd:`nbt speed profile restore --batch ${BATCH}`, skip: () => { sim.gear = 0.70; sim.smoother = 0.80; hud(); },
+   body:`<div class="blk do"><b>你要做</b>测完、车停稳后恢复到改档前的参数（profile/original.json）。</div>
+   <div class="blk see"><b>会看到</b>读回表里 max_linear_velocity 回到 0.7，提示「✓ 已恢复基线，读回一致」。</div>
+   <div class="blk bad"><b>还要做</b>再按推荐速度方案 6.6 跑 1 圈确认正常；只恢复了 nbt 改过的速度上限，改过启动配置的按方案附录 A.7 恢复。</div>`,
+   run: async () => { await sleep(300); sim.gear = 0.70; sim.smoother = 0.80; hud(); await out([...paramTable(), "", [`✓ 已恢复基线，读回一致；存档 ${HOME}/nbt_eval/capability/${BATCH}/profile/${DAY}_101208_restore.json`, "ok"], "  改档后重新下发任务，正在执行的路线不按新档位"], 40); }},
+  {title:"完成", kicker:"小结", cmd:null,
+   body:`<div class="callout green">你已经走完一个推荐速度批次的全流程。</div>
+   <table style="border-collapse:collapse;font-size:12.5px;width:100%"><tr><th style="text-align:left;border-bottom:1px solid var(--line)">步骤</th><th style="text-align:left;border-bottom:1px solid var(--line)">命令</th></tr>
+   ${[["确认导航模式", "nbt pathnav mode"],["生成计划", PLAN_CMD],["指定关键路段（可选）", `nbt pathnav plan --start ${START} --key ${KEY.join(",")} --segment 起点,终点 -o ~/plan.yaml`],["读点位",`nbt pathnav targets --batch ${BATCH}`],["改档", setCmd],["筛查",`nbt pathnav run ~/plan.yaml --batch ${SBATCH} --laps 3 --record`],["正式",`nbt pathnav run ~/plan.yaml --batch ${BATCH} --laps 30 --record`],["分析",`nbt speed analyze ~/nbt_eval/capability/${BATCH}`],["恢复",`nbt speed profile restore --batch ${BATCH}`],["急停取消","nbt pathnav cancel"]].map(r => `<tr><td style="padding:3px 0">${esc(r[0])}</td><td><code>${esc(r[1])}</code></td></tr>`).join("")}</table>
+   <p>满载批次把批次号换成 F 开头，双臂摆好持盘姿态、放上满料托盘<b>之后</b>再开始 run（nbt 以会话开头 1 s 的关节位置作参考姿态）。</p>
+   <p>附加项（软件取消停车距离、停障距离、窄道）的做法见《能力摸底——nbt测试工具操作说明》4.4。直线最大速度在页面顶部「课程」里切换过去练，做法见 4.5。</p>`}
+];
+return {QUIZ, STEPS};
+}
+
+/* ================================================================ 直线最大速度课程（直线方案只测 1.0、1.2 两档） */
+const G1 = Number(SCENE.target_speed || 1.0), G2 = 1.2;     // 计划按第一档生成，第二档固定 1.2
+const PFX = (BATCH.match(/^(.*?)\d+$/) || [null, BATCH])[1];
+const bn = g => Math.abs(g - G1) < 1e-9 ? BATCH : PFX + String(Math.round(g * 100)).padStart(3, "0");
+const yf = g => `~/line${Math.round(g * 100)}.yaml`;
+const g1 = v => Number.isInteger(v) ? v.toFixed(1) : String(v);          // 命令和正文里写 1.0
+const gc = () => data.s120 === "pass" ? G2 : G1;                         // 确认档位：1.2 筛查通过就在 1.2 确认，否则回到 1.0
+const LOAD = /^F/.test(PFX) ? "满载" : "空载";
+function linePlanCmd(g){ return `nbt pathnav plan --start ${START} --key ${KEY.join(",")} --segment ${AUTO_SEG.from},${AUTO_SEG.to} --target-speed ${g1(g)} --batch ${bn(g)} -o ${yf(g)}`; }
+function lineSetCmd(g){ return `nbt speed profile set ${g1(g)} --batch ${bn(g)} --with-smoother`; }
+function lineRunCmd(g, sfx, laps, extra = ""){ return `nbt pathnav run ${yf(g)} --batch ${bn(g)}${sfx} --laps ${laps} --record${extra}`; }
+function rampB(v0, v1, a){ const lo = Math.min(Math.max(v0, 0), Math.max(v1, 0)), hi = Math.max(v0, v1, 0); return Math.max(0, ramp(hi, a, 0.2) - ramp(lo, a, 0.2)); }
+function steadyAt(c, g){ return Math.max(0, (c.len - rampB(c.v_in, g, 0.5) - rampB(g, c.v_out, 0.4)) / g); }
+const needAt = g => ramp(g, 0.5, 0.2) + ramp(g, 0.4, 0.2) + 2 * g;
+function segCand(){ const sg = AUTO_SEG; return (SCENE.segment_candidates || []).find(c => c.from === sg.from && c.to === sg.to) || {len: sg.len, v_in: 0, v_out: 0}; }
+function lineYaml(g){ const sg = AUTO_SEG;
+  return (SCENE.plan_yaml || "").replace(/^batch: .*$/m, `batch: ${bn(g)}`).replace(/^target_speed: .*$/m, `target_speed: ${g}`)
+    .replace(/^segment: .*$/m, `segment: [${sg.from}, ${sg.to}]   # ${sg.auto ? "自动选取：预计稳态最长的直线前进路段，" : "指定，"}${f(sg.len, 2)} m，预计 ${g} m/s 保持 ${f(steadyAt(segCand(), g), 1)} s`); }
+function showLineYaml(g){ openModal(`<button class="btn small close" onclick="closeModal()">关闭</button><h3>${esc(yf(g))}</h3><pre>${esc(lineYaml(g))}</pre>
+  <p>target_speed 是本档：跟踪器上限不等于它时 run 拒绝开始，所以每档一份计划。两个测试点都是关键点位，停下就录划线判定；segment 只写一个方向，分析时正反两个方向分开统计。</p>`); }
+const MARGIN = (() => { const a = P[AUTO_SEG.from], b = P[AUTO_SEG.to]; if (!a || !b) return null;
+  const ux = b.mx - a.mx, uy = b.my - a.my, L = Math.hypot(ux, uy) || 1;
+  const z = (SCENE.decor || []).filter(d => d.kind === "zone" && /余量/.test(d.label)); if (!z.length) return null;
+  return Math.min(...z.map(d => { const pr = d.polygon.map(p => (p[0] * ux + p[1] * uy) / L); return Math.max(...pr) - Math.min(...pr); })); })();
+function stamp(){ data.clk = (data.clk || 36000) + 97; const s = data.clk;
+  return `${DAY}_${String(Math.floor(s / 3600)).padStart(2, "0")}${String(Math.floor(s % 3600 / 60)).padStart(2, "0")}${String(s % 60).padStart(2, "0")}`; }
+function gearTo(gear, smoother){ sim.gear = gear; sim.smoother = smoother; if (gear >= G1 - 1e-9) setTarget(gear); hud(); }
+function saveBase(batch){ if (data.baseSaved[batch]) return false; data.baseSaved[batch] = true; data.base[batch] = {gear: sim.gear, smoother: sim.smoother}; return true; }
+function restoreState(batch){ const b = data.base[batch] || {gear: 0.70, smoother: 0.80}; gearTo(b.gear, b.smoother); }
+
+async function linePlanOut(g){
+  const C = (SCENE.segment_candidates || []).map(c => Object.assign({}, c, {steady: steadyAt(c, g)})).sort((a, b) => b.steady - a.steady || b.len - a.len);
+  const sg = AUTO_SEG, st = steadyAt(segCand(), g), nNav = SCENE.edges.filter(e => e.nav && !e.free).length;
+  const lines = [`# 地图 ${SCENE.map_name || "现场地图"}（revision ${SCENE.revision ?? 1}）：点位 ${Object.keys(P).length} 个，路网边 ${SCENE.edges.length} 条（导航点直连 ${nNav} 条）`,
+    `起点 ${START}；关键点位 ${KEY.join(" → ")}；回到起点`, "", "| 任务 | 点序列 | 路线长度 (m) | 倒车段 | 解析 |", "|---|---|---|---|---|",
+    ...TASKS.map(t => `| ${t.id} | ${t.pts.join(" → ")} | ${f(t.len, 2)} | ${t.back} | ✓ |`), "",
+    `关键路段候选（直线前进路段，相邻共线的边合并；按预计在 ${g} m/s 保持的时长排序）：`, `| # | 路段 | 长度 (m) | 进 / 出 | 预计 ${g} 稳态 (s) | 能否跑到 |`, "|---|---|---|---|---|---|",
+    ...C.map((c, i) => `| ${i + 1} | ${c.via.join(" → ")} | ${f(c.len, 2)} | ${c.v_in ? "拐角" : "起步"} / ${c.v_out ? "拐角" : "停车"} | ${f(c.steady, 1)} | ${c.steady >= 2 ? "✓ 能保持 2 s" : (c.len >= rampB(c.v_in, g, 0.5) + rampB(g, c.v_out, 0.4) ? "只能摸到" : "✗ 跑不到")} |`), "",
+    `关键路段：${(sg.via && sg.via.length ? sg.via : [sg.from, sg.to]).join(" → ")}，${sg.auto ? "自动选取：预计稳态最长的直线前进路段，" : "指定，"}${f(sg.len, 2)} m，预计 ${g} m/s 保持 ${f(st, 1)} s（从静止起步、停车到底时 2 s 稳态需要 ${f(needAt(g), 2)} m）`];
+  if (st < 2) lines.push([`⚠ 指定的关键路段 ${sg.from} → ${sg.to}（${f(sg.len, 2)} m）预计只能在 ${g} m/s 保持 ${f(st, 1)} s，判不了 2 s 稳态`, "warn"]);
+  lines.push("", [`✓ 计划已写入 ${HOME}/${yf(g).slice(2)}`, "ok"], `  预览图 ${HOME}/${yf(g).slice(2, -5)}.svg（用浏览器打开，和现场路网图对照）`);
+  await out(lines, 60);
+  $("#active").setAttribute("points", TASKS[0].groups.flatMap(gr => gr.path.map(p => p.join(","))).join(" ")); setTimeout(() => $("#active").setAttribute("points", ""), 2500);
+}
+async function setOut(g){ const batch = bn(g); await sleep(300);
+  if (saveBase(batch)) await out([`  基线已存 ${HOME}/nbt_eval/capability/${batch}/profile/original.json`], 120);
+  gearTo(g, g);
+  await out([...paramTable(), "", [`✓ 已改档到 ${g} m/s，读回一致；存档 ${HOME}/nbt_eval/capability/${batch}/profile/${stamp()}_set_${g}.json`, "ok"], "  改档后重新下发任务，正在执行的路线不按新档位"], 40); }
+async function restoreOut(batch){ await sleep(300);
+  if (!data.baseSaved[batch]) { print(`✗ 没有基线 ${HOME}/nbt_eval/capability/${batch}/profile/original.json（这个批次没用 nbt speed profile set 改过档）`, "err"); return false; }
+  restoreState(batch);
+  await out([...paramTable(), "", [`✓ 已恢复基线，读回一致；存档 ${HOME}/nbt_eval/capability/${batch}/profile/${stamp()}_restore.json`, "ok"], "  改档后重新下发任务，正在执行的路线不按新档位"], 40); return true; }
+
+/* 停止余量：中段按 Ctrl-C，nbt 调 force_cancel，跟踪器指令归零，平滑器按减速度上限 0.9 m/s² 降到 0（约 0.1 s 响应） */
+function brakeOf(g){ return data.brake[g] || (data.brake[g] = {v: g * 0.997, dist: 0.1 * g + g * g / 1.8 + 0.012, stop: 0.1 + g / 0.9 + 0.04,
+  sid: `${bn(g)}A-${stamp()}`, dir: `${TASKS[0].pts[0]}→${endOf(TASKS[0])}`}); }
+function brakeCmd(g){ return `nbt brake analyze ~/nbt_eval/capability/${bn(g)}A/sessions/${brakeOf(g).sid}/rosbag --trigger cmd_zero --cmd-topic /cmd_vel_nav_path`; }
+function marginNote(g){ const b = brakeOf(g);
+  return MARGIN != null ? `（模拟：停车距离 ${f(b.dist, 2)} m ${b.dist <= MARGIN ? "≤" : ">"} 示例场景两端各留的停车余量 ${f(MARGIN, 1)} m，${b.dist <= MARGIN ? "余量够" : "余量不够，这一档不能测"}。实际每个方向各取消 3 次，取最大值比较）`
+    : "（拿停车距离和现场两端留的余量比较，余量要覆盖它。实际每个方向各取消 3 次，取最大值比较）"; }
+async function brakeDrill(g){
+  const st = STEPS[cur], batch = bn(g) + "A";
+  st.running = true; ctrlCArmed = false; sim.abort = false; sim.abortAtPrompt = false; setQuick(runQuick());
+  placeAt(START); sim.t = 0; hud(); data.runs += 1;
+  const sid = `${batch}-${stamp()}`, sdir = `${HOME}/nbt_eval/capability/${batch}/sessions/${sid}`;
+  let done = 0;
+  try {
+    if (!await preflight(batch, sid, sdir, g)) { st.running = false; armCmd(); return; }
+    setChip("#cRec", "on"); await simWait(3);
+    for (let i = 0; i < TASKS.length; i++) { await runTask(TASKS[i], 1, i + 1, TASKS.length, batch, false, false); done++; }
+    print(""); print("  结束录包…"); setChip("#cRec"); await sleep(200);
+    await out(["", `共 ${TASKS.length} 个任务，成功 ${TASKS.length}；记录 ${sdir}/tasks.csv`, "", [`离线分析：nbt speed analyze ${HOME}/nbt_eval/capability/${batch}`, "ok"]], 60);
+    print("（模拟：两个任务都走完了，没在中段取消，这次不算。车已回到起点，再输一次命令）", "sys");
+    st.running = false; armCmd();
+  } catch (e) {
+    if (e.message !== "abort") throw e;
+    sim.abort = false; const v0 = Math.abs(sim.v), sgn = Math.sign(sim.v) || 1, hr = sim.h * Math.PI / 180, task = sim.task;
+    print("    取消当前任务…", "warn"); print("  ✗ canceled  ", "err"); print("\n已停止。"); setChip("#cRun");
+    let v = v0, dist = 0, lat = 0.1, tStop = 0;
+    while (v > 0) { await frame(); const d = 0.016 * multV(); sim.t += d; tStop += d; let step;
+      if (lat > 0) { lat -= d; step = v * d; } else { const nv = Math.max(0, v - 0.9 * d); step = (v + nv) / 2 * d; v = nv; }
+      dist += step; sim.x += Math.cos(hr) * step / PX * sgn; sim.y += Math.sin(hr) * step / PX * sgn; sim.v = sgn * v; hud(); }
+    sim.v = 0; hud(); setChip("#cStill", "ok"); print("  结束录包…"); setChip("#cRec"); await sleep(200);
+    print(`\n共 ${done + 1} 个任务，成功 ${done}；记录 ${sdir}/tasks.csv`);
+    if (v0 >= g * 0.95) {
+      data.brake[g] = {v: v0, dist, stop: tStop, sid, dir: task ? `${task.pts[0]}→${endOf(task)}` : ""};
+      print(`（模拟：取消时 ${f(v0, 3)} m/s，车又走了 ${f(dist, 2)} m 才停下。下一步从录包算停车距离）`, "sys"); st.running = false; completeStep();
+    } else {
+      print(`（模拟：取消时速度 ${f(v0, 3)} m/s，还没稳在本档 ${g1(g)}，这次的停车距离不代表本档。再输一次命令，等车速进入绿带再按）`, "sys"); st.running = false; armCmd();
+    }
+  }
+}
+async function brakeOut(g){
+  const b = brakeOf(g), bag = `${HOME}/nbt_eval/capability/${bn(g)}A/sessions/${b.sid}/rosbag`, dm = b.dist * 1000, resp = 92 + Math.round(g * 6), t0 = 9.8 + 4 * g;
+  await out([`# 制动距离分析：rosbag`, "", `- 录包：\`${bag}\`；识别到 1 次制动`,
+    "- 判定值取定位 TF（`map` → `odom` → `base_link`）；定位话题 `/localization/loc_pose`、里程计、雷达到墙为交叉核对", "",
+    "| # | 触发来源 | 触发前速度 (m/s) | 响应延迟 (ms) | 距离起算 | 制动距离·判定 (mm) | 判定来源 | 定位话题 (mm) | 里程计 (mm) | 雷达到墙 (mm) | 触发到停稳 (s) | 峰值减速度 (m/s²) | 平均减速度 (m/s²) | 备注 |",
+    "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|",
+    `| 1 | 指令归零 | ${f(b.v, 3)} | ${resp} | 触发时刻 | ${f(dm, 0)} | 定位 TF | ${f(dm - 5, 0)} | ${f(dm + 8, 0)} |  | ${f(b.stop, 3)} | 0.94 | ${f(b.v / Math.max(0.1, b.stop - 0.1), 2)} |  |`, "",
+    "G-MOT-04 记录表行（时间、后端、速度档、负载按实际填）：", "",
+    `| 1 | | | 指令归零 | | ${f(b.v, 3)} | | 录包 +${f(t0, 3)} s | 录包 +${f(t0 + b.stop, 3)} s | ${resp} | ${f(dm, 0)} | 0.94 | | rosbag | 距离从触发时刻算、判定取定位 TF  |`], 45);
+  print(marginNote(g), "sys");
+}
+
+/* 模拟数据：直线往返，每个任务就是一次关键路段 */
+function speedPart(g, t, r, cap){
+  const L = t.len, ru = ramp(g, 0.5, 0.2), rd = ramp(g, 0.4, 0.2), top = cap || g, reach = top >= g * 0.95;
+  const odom = top * (1 + 0.0012 * gauss(r)) - (cap ? 0 : 0.0015), pred = Math.max(0, (L - ru - rd) / g), steady = reach ? Math.max(0, pred + 0.6 + gauss(r) * 0.12) : 0;
+  return {dir: `${t.pts[0]}→${endOf(t)}`, dt: (L + ru + rd) / top + gauss(r) * 0.08, maxv: odom, steady, inband: steady ? steady + 0.04 + Math.abs(gauss(r)) * 0.05 : 0,
+    peaks: {follower: g, smoother: g, mux: g - 0.0004, odom}, acc: Math.sqrt(Math.min(g, 1.25) * 0.2) + gauss(r) * 0.008, dec: 0.40 + gauss(r) * 0.006,
+    stage: reach ? "无（达到目标）" : "里程计"}; }
+function synthLine(g, laps, batch, scenario, seed){ const r = rng(seed); data.seq[batch] = 0; const rows = [];
+  for (let lap = 1; lap <= laps; lap++) for (const t of TASKS) { const end = endOf(t), e = navErr(end, r);
+    const row = {run_id: runId(batch), batch, lap, task: t.id, end, len: t.len, settle: e.settle, lon: e.lon + (g - 0.75) * 8, lat: e.lat, yaw: e.yaw, mark: "合格", note: "", disturbed: false};
+    if (scenario === "mark" && lap === 2 && end === KEY[0]) Object.assign(row, {lon: 9.8, lat: 26.4, mark: "不合格", note: "横向超出划线框"});
+    rows.push(Object.assign(row, speedPart(g, t, r, scenario === "speed" ? 1.112 : null))); }
+  return rows; }
+async function ffLine(g, laps, batch, scenario){
+  const sid = `${batch}-${stamp()}`, sdir = `${HOME}/nbt_eval/capability/${batch}/sessions/${sid}`, n = TASKS.length; placeAt(START);
+  if (!await preflight(batch, sid, sdir, g)) { armCmd(); return; }
+  const rows = synthLine(g, laps, batch, scenario, laps === 10 ? 31 : 21); data.lines[batch] = rows;
+  setChip("#cRec", "on");
+  for (let lap = 1; lap <= laps; lap++) { const rs = rows.filter(x => x.lap === lap), odd = rs.filter(x => x.mark && x.mark !== "合格");
+    print(`[${(lap - 1) * n + 1}–${lap * n}/${laps * n}] 第 ${lap} 圈 ${TASKS[0].id}～${TASKS[n - 1].id} 完成  运行号 ${rs[0].run_id} … ${rs[n - 1].run_id}` + (odd.length ? `  ⚠ ${odd.map(x => `${x.end} ${x.mark}`).join("、")}` : ""), odd.length ? "warn" : "dim");
+    placeAt(endOf(TASKS[lap % 2 ? 0 : n - 1])); sim.t += 40; hud(); await sleep(lap === 1 ? 300 : 140); }
+  print("  结束录包…"); setChip("#cRec"); await sleep(200);
+  const pr = pointRows(rows);
+  await out(["", `共 ${laps * n} 个任务，成功 ${laps * n}；记录 ${sdir}/tasks.csv`, "", "| 关键点位 | 样本 | 合格 | 不合格 | 受干扰 | 纵 max (mm) | 横 max (mm) | 朝向 max (°) |", "|---|---|---|---|---|---|---|---|",
+    ...pr.map(p => `| ${p.kp} | ${p.n} | ${p.pass} | ${p.fail} | ${p.dist} | ${f(p.lon.max)} | ${f(p.lat.max)} | ${f(p.yaw.max, 3)} |`), "", [`离线分析：nbt speed analyze ${HOME}/nbt_eval/capability/${batch}`, "ok"]], 50);
+  placeAt(START); completeStep();
+}
+function stageData(stage){
+  if (stage === "s1") { const b = bn(G1) + "S"; if (!data.lines[b]) data.lines[b] = synthLine(G1, 3, b, "pass", 11); return {batch: b, rows: data.lines[b], g: G1}; }
+  if (stage === "s2") { const b = bn(G2) + "S"; if (!data.lines[b]) data.lines[b] = synthLine(G2, 3, b, data.s120, 21); return {batch: b, rows: data.lines[b], g: G2}; }
+  const g = gc(), b = bn(g); if (!data.lines[b]) data.lines[b] = synthLine(g, 10, b, "pass", 31); return {batch: b, rows: data.lines[b], g}; }
+function lineCurves(g, n, cap, seed){ const r = rng(seed), L = AUTO_SEG.len, a = g * g / (ramp(g, 0.5, 0.2) + ramp(g, 0.4, 0.2)), out = [];
+  for (let k = 0; k < n; k++) { const top = (cap || g) * (1 - 0.006 * r()), ak = a * (0.94 + 0.12 * r()), pts = [];
+    for (let s = 0; s <= L + 1e-9; s += L / 250) pts.push([s, Math.min(top, Math.sqrt(2 * ak * s), Math.sqrt(2 * ak * Math.max(L - s, 0)))]); out.push(pts); }
+  return out; }
+async function lineAnalyze(stage){ const {batch, rows} = stageData(stage); const pr = pointRows(rows), adir = `${HOME}/nbt_eval/capability/${batch}/analysis`;
+  await out([`分析 ${HOME}/nbt_eval/capability/${batch}`, "", [`✓ ${rows.length} 个任务，${rows.length} 次关键点位停靠 → ${adir}/summary.md`, "ok"], `  速度曲线叠加：${adir}/speed_curves.html（浏览器打开）`,
+    ...pr.map(p => `  ${p.kp}：停靠 ${p.n}，划线合格 ${p.pass}，不合格 ${p.fail}，受干扰 ${p.dist}；导航反馈 max 纵 ${f(p.lon.max)} / 横 ${f(p.lat.max)} mm、朝向 ${f(p.yaw.max, 2)}°`)], 100);
+  const b = $("#openSumMax"); if (b) b.disabled = false; openModal(maxSummaryHTML(stage)); }
+function maxSummaryHTML(stage){
+  const {batch, rows, g} = stageData(stage), pr = pointRows(rows), n = rows.length, tag = g1(g);
+  const dirs = [...new Set(rows.map(x => x.dir))], by = d => rows.filter(x => x.dir === d), valid = rows.filter(x => x.mark !== "受干扰");
+  const reachAll = rows.every(x => x.steady >= 2), fail = pr.some(p => p.fail > 0);
+  const minSt = Math.min(...rows.map(x => x.steady)), maxV = Math.max(...rows.map(x => x.maxv));
+  let h = `<button class="btn small close" onclick="closeModal()">关闭</button><h3>analysis/summary.md（模拟）</h3>
+  <p class="mono" style="background:none">~/nbt_eval/capability/${esc(batch)}/analysis/summary.md</p>
+  <ul style="line-height:1.7;font-size:13px"><li>目标速度：${g} m/s；停稳判据：线速度 &lt; 0.01 m/s 且角速度 &lt; 0.02 rad/s 持续 0.5 s，导航反馈取停稳后 1.0 s 平均</li>
+  <li>任务 ${n} 个（成功 ${n}），关键点位停靠 ${n} 次；关键路段 ${esc(AUTO_SEG.from)} → ${esc(AUTO_SEG.to)}，正反两个方向分开统计</li></ul>
+  <h4>关键点位汇总</h4>` + table(["点位","停靠","划线 合格 / 不合格 / 受干扰 / 未录","纵 mean / P95 / max (mm)","横 mean / P95 / max (mm)","朝向 mean / P95 / max (°)"],
+    pr.map(p => [p.kp, p.n, `${p.pass} / ${p.fail} / ${p.dist} / ${p.un}`, `${f(p.lon.mean)} / ${f(p.lon.p95)} / ${f(p.lon.max)}`, `${f(p.lat.mean)} / ${f(p.lat.p95)} / ${f(p.lat.max)}`, `${f(p.yaw.mean, 2)} / ${f(p.yaw.p95, 2)} / ${f(p.yaw.max, 2)}`]));
+  const shown = stage === "conf" ? rows.slice(0, 8) : rows;
+  h += `<h4>关键路段（按方向）</h4>` + table(["运行号","圈","方向","长度 (m)","通过用时 (s)","平均 / 最高速度 (m/s)","目标 ±5% 最长连续 / 累计 (s)","四级峰值 跟踪器 / 平滑器 / 底盘指令 / 里程计","限制环节"],
+    shown.map(x => [x.run_id, x.lap, x.dir, f(x.len, 2), f(x.dt, 2), `${f(x.len / x.dt, 3)} / ${f(x.maxv, 3)}`, `${f(x.steady, 2)} / ${f(x.inband, 2)}`,
+      [x.peaks.follower, x.peaks.smoother, x.peaks.mux, x.peaks.odom].map(v => f(v, 3)).join(" / "), x.stage]));
+  if (shown.length < n) h += `<p style="font-size:12.5px;color:var(--sub)">（节选前 ${shown.length} 行，共 ${n} 行）</p>`;
+  let cls = "green", txt;
+  if (stage === "conf") { cls = fail || !reachAll ? "red" : "green";
+    txt = fail || !reachAll ? `确认样本里有不合格或没跑到本档的：${tag} 确认不通过，先排查原因再定结论。` : `确认样本 ${n} 次：两个方向每次都在 ${tag} ±5% 内保持 ≥ 2 s（最短 ${f(minSt, 1)} s），终点全部合格 → ${tag} 确认通过，按直线方案第 6 节写结论。`; }
+  else if (fail) { cls = "red";
+    txt = `有终点划线不合格（${pr.filter(p => p.fail).map(p => `${p.kp} ${p.fail} 次`).join("、")}）：${tag} 筛查不通过。先按推荐速度方案 6.4 排查：看超差方向和点位，对照导航反馈区分控制问题还是定位偏差，再看关键路段速度。`
+      + (stage === "s2" ? `查不出配置问题就判 ${tag} 失败（原因：终点超差），恢复后回到 ${g1(G1)} 做确认（直线方案 5.1 第 8、9 条），${tag} 的证据保留。` : `查清处理后重测 ${tag}，不升档。`); }
+  else if (!reachAll) { cls = "red";
+    txt = `里程计最高只到 ${f(maxV, 3)} m/s，没进 ${tag} ±5%（${f(g * 0.95, 2)}～${f(g * 1.05, 2)}），保持 ${f(minSt, 1)} s：未达到本档。四级峰值里跟踪器、平滑器、底盘指令都到了 ${tag}，只有里程计没到 → 限制在底盘（直线方案附录 A.2：查轮速饱和、打滑、电量 / 温升）。`
+      + `是配置或车况问题就处理后重测 ${tag}（5.1 第 7 条）；确认是底盘跟不上，就判 ${tag} 失败，回到 ${g1(G1)} 做确认。`; }
+  else txt = `两个方向每次都在 ${tag} ±5% 内保持 ≥ 2 s（最短 ${f(minSt, 1)} s），终点全部合格 → ${tag} 筛查通过。`
+    + (stage === "s1" ? `恢复后升到 ${g1(G2)}（直线方案 5.1 第 6 条）。` : `最高通过档就是 ${tag}，下一步在 ${tag} 做 10 次确认。`);
+  h += `<div class="callout ${cls}">怎么判：${txt}</div>`;
+  for (const d of dirs) { const rs = by(d), cap = rs.some(x => x.stage === "里程计") ? Math.max(...rs.map(x => x.maxv)) : null;
+    h += `<h4>速度曲线叠加：关键路段 ${esc(d)}（每次一条，模拟）</h4>` + curveSVG(lineCurves(g, rs.length, cap, 3 + d.charCodeAt(0) + (stage === "s2" ? 7 : 0)), null, g); }
+  h += `<p style="font-size:12.5px;color:var(--sub)">真实结果在 analysis/speed_curves.html：关键路段按方向各一张，每次一条线，绿带是本档 ±5%。没跑到本档时把纵轴切到跟踪器 / 平滑器 / 底盘指令，看是哪一级先掉下来。</p>`;
+  if (stage === "conf") { const b = brakeOf(g), ok = !fail && reachAll, passN = rows.filter(x => x.mark === "合格").length;
+    const vS = rows.reduce((s, x) => s + x.maxv, 0) / n, mLon = Math.max(...valid.map(x => Math.abs(x.lon))), mLat = Math.max(...valid.map(x => Math.abs(x.lat))), mYaw = Math.max(...valid.map(x => Math.abs(x.yaw)));
+    const why = data.s120 === "mark" ? `终点超差（${KEY[0]} 点横向 26.4 mm，超出划线框）` : `里程计跑不到 ${g1(G2)}（最高 1.112 m/s，指令到了、里程计没到，限制在底盘）`;
+    const higher = g >= G2 - 1e-9 ? `本次最高验证 ${g1(G2)} m/s（本方案只测到 ${g1(G2)}，不代表极限）` : `${g1(G1)} 已验证，${g1(G2)} 失败，原因：${why}`;
+    h += `<h4>按直线方案写结论（这一段由测试人员自己写，下面是照这次模拟数据填好的样子）</h4><p style="font-size:12.5px;color:var(--sub);margin:4px 0">第 9 节结果表</p>`
+      + table(["负载","最高通过档 (m/s)","里程计稳态速度 (m/s)","终点划线合格","导航精度 max (mm / °)","状态"], [[LOAD, tag, f(vS, 3), `${passN} / ${n}`, `${f(Math.max(mLon, mLat))} / ${f(mYaw, 2)}`, ok ? "已完成" : "确认未通过"]])
+      + `<div class="callout ${ok ? "green" : "red"}" style="font-size:13px">W1 PRO（SN 按实际填），负载${LOAD}，直线 ${f(AUTO_SEG.len, 2)} m，配置 跟踪器 / 平滑器前进上限 ${tag} m/s、加速度 0.5、减速度 0.4 m/s²、jerk 0.2 m/s³，最高通过档里程计稳态 ${f(vS, 3)} m/s、持续 ${f(minSt, 1)} s（各次最短），终点 ${passN} / ${n} 次落在划线区域内，导航精度最大 纵 ${f(mLon)} / 横 ${f(mLat)} mm、朝向 ${f(mYaw, 2)}°，软件取消停车距离 ${f(b.dist, 2)} m；${higher}。底盘许可上限 按书面许可填；不外推到转弯与窄道。</div>`
+      + `<p style="font-size:12.5px;color:var(--sub)">三个数分开写：底盘许可上限（书面许可）、当前系统限制（${g >= G2 - 1e-9 ? `${g1(G2)} 时四级速度都到了，本次没有碰到` : "这次测到的限制环节"}）、本次最高验证速度（${tag}）。数据都从 summary.md、tasks_metrics.csv 和 brake analyze 的结果抄。</p>`; }
+  return h;
+}
+
+function maxCourse(){
+  const T0 = TASKS[0], T1 = TASKS[1] || TASKS[0];
+  const QUIZ = [
+    {q:`底盘负责人的书面许可只覆盖到 ${g1(G1)}。${g1(G1)} 通过后怎么办？`, opts:[`照样测 ${g1(G2)}，nbt 的门禁会兜底`, `只测 ${g1(G1)}；${g1(G2)} 记「未执行（无许可）」，结论里写明底盘许可上限 ${g1(G1)}`, "改测 1.1 当作中间档"], a:1, why:`${g1(G1)}、${g1(G2)} 都超出规格书额定速度，没有书面许可不得开测；nbt 的门禁只管参数和车况，不管许可。也不插值出中间档。`},
+    {q:`改档时提示「✗ 平滑器前进上限 0.8 < ${g1(G1)}：只改跟踪器跑不到本档；确认底盘许可后加 --with-smoother」，怎么做？`, opts:["用 ros2 param set 单独把平滑器改成目标值", "确认有底盘许可后，命令加 --with-smoother 再改", "加 --force 强行改"], a:1, why:"--with-smoother 让平滑器前进上限和跟踪器一起改、一起存档、一起恢复；手工改的平滑器不会被 restore 恢复。--force 只跳过「无任务 + 停稳」门禁，不解决平滑器上限。"},
+    {q:`${g1(G1)} 测完准备升 ${g1(G2)}，为什么要先 nbt speed profile restore？`, opts:[`不用恢复，直接 set ${g1(G2)} --batch ${bn(G2)} 就行`, `每档测完都要恢复（直线方案 5.3）；而且 ${bn(G2)} 第一次改档会把当时的参数存成基线，不先恢复，存进去的就是 ${g1(G1)}，最后恢复不到正常配置`, "restore 只是为了清日志"], a:1, why:"nbt 在每个批次第一次 set 时存基线、之后不覆盖；restore 回到的就是这份基线。"},
+    {q:`停止余量：${g1(G2)} 软件取消的停车距离 0.92 m，一端的余量只有 0.6 m。怎么办？`, opts:["照测，正常停车用不到余量", "不开测这一档：先加长两端余量（清出空间或换更长的场地），能覆盖停车距离再测", "把减速度调大，让车停得更快"], a:1, why:"余量是给异常停车留的；改加减速度会改变被测对象（直线方案第 2 节：不为达到速度去提高加速度）。"},
+    {q:`${g1(G2)} 筛查结果：限制环节「平滑器」——跟踪器峰值 ${g1(G2)}，平滑器输出只有 0.8。怎么办？`, opts:[`判 ${g1(G2)} 失败，回 ${g1(G1)} 做确认`, "这是配置问题不是能力问题：看平滑器前进上限读回（比如导航重启后回到了默认值），处理好后重测同一档", "降到 1.1 再试"], a:1, why:"直线方案 5.1 第 7 条：参数没生效或其他配置限制导致没到速，先查清处理，再重测同一档，不加其他档。"},
+    {q:`${g1(G2)} 筛查：跟踪器、平滑器、底盘指令都到了 ${g1(G2)}，里程计只到 1.11，±5% 持续 0 s。怎么写？`, opts:[`${g1(G2)} 通过，指令到了就行`, `按附录 A.2 查电量、温升、打滑；不是配置或车况问题，就判 ${g1(G2)} 失败（原因：底盘跟不上指令），回到 ${g1(G1)} 做确认`, "把 ±5% 放宽到 ±10% 再判"], a:1, why:"是否跑到本档按里程计判（直线方案第 4 节），口径不能为通过而放宽。"},
+    {q:`${g1(G2)} 失败、${g1(G1)} 通过，结论里的速度怎么写？`, opts:["写 1.1 m/s（两档取中间）", `写「${g1(G1)} 已验证，${g1(G2)} 失败，原因 …」`, `写 ${g1(G2)}，失败只是偶发`], a:1, why:"直线方案第 6 节：不插值出中间档，两档的证据都保留。"},
+    {q:`${g1(G2)} 确认 10 次全部通过。结论怎么写？`, opts:[`「W1 PRO 最大速度 ${g1(G2)} m/s」`, `「本次最高验证 ${g1(G2)} m/s」，底盘许可上限、当前系统限制、本次最高验证速度三个数分开写，不说 ${g1(G2)} 就是极限`, "再加测 1.4，找到极限再写"], a:1, why:`本方案只测 ${g1(G1)}、${g1(G2)} 两档，没测更高档，不能说 ${g1(G2)} 就是极限；也不在本方案里加档。`},
+    {q:`场地只有 8 m 长的直线，${g1(G2)} 档按直线方案第 2 节需要 8.4 m（建议布场 12.5 m）。怎么办？`, opts:["把加速度调大，缩短加减速距离", `记「场地受限」，${g1(G2)} 不在这块场地测`, "照测，跑不到本档也照写"], a:1, why:"计划生成时预计保持不到 2 s 就判不了稳态；不为达到速度提高加速度。"}
+  ];
+  const STEPS = [
+    {title:"开始之前", kicker:"导读", cmd:null,
+     body:`<p>这是一个<b>模拟</b>：左边讲每一步做什么，中间是场景地图（下方是速度和状态读数），右边是机器人上的终端。终端输出、提示文字与真实 nbt 一致，数据是模拟的。</p>
+     <div class="callout">${esc(SCENE.source || "")}</div>
+     <div class="blk do"><b>你要练的</b>用 nbt 跑完一个负载的直线最大速度测试：每档生成一份计划 → 改档（跟踪器和平滑器一起改）→ 测停止余量 → 筛查 3 圈 → 看两个方向是否都跑到本档、终点是否合格 → 恢复；${g1(G1)} 通过后升到 ${g1(G2)} 再走一遍；最后在最高通过档做 10 次确认、写结论。</div>
+     <div class="blk bad"><b>开测前要有</b>本负载的推荐速度测试已经做完；底盘负责人的书面许可（覆盖 ${g1(G1)} 才测 ${g1(G1)}，覆盖 ${g1(G2)} 才测 ${g1(G2)}）；直线够长（${g1(G1)} 档约 10 m、${g1(G2)} 档约 12.5 m），两端留了停车余量并清场。这几项 nbt 不检查，由测试负责人确认。</div>
+     <div class="blk see"><b>操作方式</b>和推荐速度课程一样：在终端输入左侧给出的命令后回车，直接回车会自动填入；每一步都可以跳过，也可以在左侧直接点开后面的步骤（跳过的步骤会自动补上它的效果）。页面顶部「课程」可以切回推荐速度。</div>
+     <div class="blk bad"><b>和真实测试的差别</b>停止余量这里只取消 1 次（实际每个方向 3 次）；${g1(G2)} 档的停止余量直接给分析结果，${g1(G2)} 筛查和最后的 10 次确认用快进；划线判定用输入代替。</div>
+     <p>对应文档：《能力摸底——nbt测试工具操作说明》4.5；判定以《能力摸底——W1 PRO直线最大速度测试方案》为准。</p>`},
+    stepEnv("第 1 步 · 准备"),
+    stepMode("第 2 步 · 准入"),
+    {title:`生成 ${g1(G1)} 档计划`, kicker:"第 3 步 · 准备", cmd: linePlanCmd(G1), run: () => linePlanOut(G1),
+     body:`<div class="blk do"><b>你要做</b>按现场的两个测试点生成计划：起点 ${esc(START)}，关键点位 ${esc(KEY.join("、"))}，关键路段 ${esc(AUTO_SEG.from)} → ${esc(AUTO_SEG.to)}，档位 ${g1(G1)}。得到两个任务 ${esc(TASKS.map(t => t.pts.join(" → ")).join("、"))}，两端都是关键点位，每次停下都要判划线。</div>
+     <div class="blk see"><b>会看到</b>任务表、关键路段候选（两个方向各一段）和「关键路段：…，指定，… 预计 ${G1} m/s 保持 … s」。关键路段只写一个方向，分析时正反两个方向都统计、分开出结果。</div>
+     <div class="blk bad"><b>必须看</b>预计保持时间要 ≥ 2 s，否则判不了是否跑到本档：记「场地受限」，不为达到速度去提高加速度（直线方案第 2 节）。计划里的 target_speed 就是本档，改档后 run 才肯开始；${g1(G2)} 档要另生成一份。预览图照样要和现场对照。</div>
+     <div class="actions"><button class="btn small" onclick="showLineYaml(${G1})">查看 ${esc(yf(G1))}</button></div>`},
+    stepShow("第 4 步 · 准入", `<div class="blk do"><b>你要做</b>按推荐速度方案 6.2 做完准入检查后，看速度链参数。</div>
+     <div class="blk see"><b>会看到</b>跟踪器 max_linear_velocity <b>0.7</b>，平滑器 max_velocity 第一个数（前进上限）<b>0.8</b>。${g1(G1)}、${g1(G2)} 都高于 0.8：只改跟踪器的话，速度会被平滑器压在 0.8，所以这次要连平滑器一起改。</div>
+     <div class="blk bad"><b>不对怎么办</b>显示「节点不在线」：导航后端不是 path_navigation，回上一步确认导航模式。</div>`),
+    stepTargets(BATCH, "第 5 步 · 测前"),
+    {title:"演练：改档没带 --with-smoother", kicker:"第 6 步 · 异常演练", cmd:`nbt speed profile set ${g1(G1)} --batch ${BATCH}`,
+     body:`<div class="blk do"><b>你要做</b>按推荐速度测试的习惯改档（不带 --with-smoother），看 nbt 怎么拦住你。</div>
+     <div class="blk see"><b>会看到</b>「✗ 平滑器前进上限 0.8 &lt; ${g1(G1)}：只改跟踪器跑不到本档；确认底盘许可后加 --with-smoother」，参数一个都没改。这个批次第一次改档时 nbt 先存一份改档前的参数（profile/original.json），所以被拒绝前基线也已经存好了，存的是正常配置。</div>
+     <p>这道门禁防的是：跟踪器改成 ${g1(G1)}、平滑器还是 0.8，速度被压在 0.8，整批结果无效（直线方案 5.1 第 2 条）。</p>`,
+     run: async () => { await sleep(300); if (saveBase(BATCH)) await out([`  基线已存 ${HOME}/nbt_eval/capability/${BATCH}/profile/original.json`], 120);
+       if (sim.smoother < G1 - 1e-9) await out([[`✗ 平滑器前进上限 ${pv(sim.smoother)} < ${g1(G1)}：只改跟踪器跑不到本档；确认底盘许可后加 --with-smoother`, "err"]], 120);
+       else { gearTo(G1, sim.smoother); await out([...paramTable(), "", [`✓ 已改档到 ${G1} m/s，读回一致`, "ok"]], 40); print("（模拟：平滑器已经改过，这次没被拦。这一步要在改档前做）", "sys"); } }},
+    {title:`改档到 ${g1(G1)}`, kicker:"第 7 步 · 改档", cmd: lineSetCmd(G1), skip: () => { saveBase(bn(G1)); gearTo(G1, G1); }, run: () => setOut(G1),
+     body:`<div class="blk do"><b>你要做</b>确认有底盘负责人覆盖 ${g1(G1)} 的书面许可；车停稳、没有进行中的任务时改档，带 --with-smoother。</div>
+     <div class="blk see"><b>会看到</b>读回表里跟踪器 max_linear_velocity ${g1(G1)}、平滑器 max_velocity [${g1(G1)}, 0.8, 1.1]（只改前进上限；倒车 min_velocity 不动），最后「✓ 已改档到 ${G1} m/s，读回一致」。加减速度、jerk、停障配置都不动。</div>
+     <div class="blk bad"><b>不对怎么办</b>「不能改档：有进行中的路网任务 / 车没停稳」→ 先 nbt pathnav cancel、等停稳；「读回 …，期望 …」→ 不要开测，查节点状态。</div>`},
+    {title:"停止余量：中段取消", kicker:"第 8 步 · 停止余量", cmd: lineRunCmd(G1, "A", 1, " --no-prompt"), noAutoDone:true,
+     quick: () => [{label:"模拟 Ctrl-C（车速进入绿带后按）", cls:"red", fn: ctrlC}], skip: () => brakeOf(G1), run: () => brakeDrill(G1),
+     body:`<div class="blk do"><b>你要做</b>测本档软件取消的停车距离（直线方案 5.2）。车在 ${esc(START)}，开跑；车速进入绿带（本档 ±5%）、车在直线中段时按「模拟 Ctrl-C」。nbt 会取消任务（调用 force_cancel），车减速停下，录包结束后退出。</div>
+     <div class="blk see"><b>会看到</b>「取消当前任务… ✗ canceled … 已停止。」，车停在直线中段。--no-prompt 让到点时不停下来录入，这次只要录包。</div>
+     <div class="blk bad"><b>实际要做</b>每个方向 3 次：${esc(T0.pts.join(" → "))} 方向车放在 ${esc(T0.pts[0])} 跑；${esc(T1.pts.join(" → "))} 方向把车开到 ${esc(T1.pts[0])}，命令加 --start-task 2 再跑。每次取消都是一个新会话、一个录包。批次号用 ${esc(bn(G1))}A，不和样本混在一起。</div>
+     <p>按早了（车速还没进绿带）或者没按（两个任务都走完），这次不算，再输一次命令重来。</p>`},
+    {title:"停止余量：算停车距离", kicker:"第 9 步 · 停止余量", get cmd(){ return brakeCmd(G1); }, run: () => brakeOut(G1),
+     body:`<div class="blk do"><b>你要做</b>从刚才的录包算停车距离。触发时刻取跟踪器输出归零（--trigger cmd_zero --cmd-topic /cmd_vel_nav_path）。</div>
+     <div class="blk see"><b>会看到</b>一行制动结果：触发前速度、响应延迟、制动距离（以定位 TF 为准，定位话题、里程计交叉核对）、触发到停稳的时间、峰值和平均减速度。</div>
+     <div class="blk bad"><b>怎么判</b>两端留的停车余量要覆盖停车距离（取各次最大值），够了才往下做筛查；不够就加长余量或不测这一档，不靠调大减速度来凑（直线方案第 3 节「停止余量」）。</div>`},
+    {title:`筛查 ${g1(G1)}：3 圈并录入划线`, kicker:"第 10 步 · 筛查", cmd: lineRunCmd(G1, "S", 3), noAutoDone:true,
+     skip: () => { const b = bn(G1) + "S"; if (!data.lines[b]) data.lines[b] = synthLine(G1, 3, b, "pass", 11); },
+     run: () => screenRun(bn(G1) + "S", 3, false, G1, (row, t) => Object.assign(row, speedPart(G1, t, R))),
+     body:`<div class="blk do"><b>你要做</b>车在 ${esc(START)}，筛查跑 3 圈：每圈 ${esc(TASKS.map(t => t.pts.join(" → ")).join("、"))}，每个方向 3 次。每停在一个测试点（橙色虚线圈）：按推荐速度方案 5.1 看划线，在终端输入判定（y / n / x）。</div>
+     <div class="blk see"><b>会看到</b>车在两个测试点之间往返，掉头在下一个任务起步时原地转。地图下方「档位 ±5% 最长连续」随车速累计，超过 2 s 时「±5% ≥ 2 s」变绿：这就是「跑到本档」的判据（直线方案第 4 节）。</div>
+     <div class="blk bad"><b>可以试</b>运行中点「模拟人员误入」，车停障、人走后继续，到点录入时选 x。出现失控、打滑、托盘滑落：按 Ctrl-C 停下，结束本负载的升档（${g1(G2)} 记「未执行，前置不通过」）。</div>
+     <p>筛查用单独的批次号 ${esc(bn(G1))}S；结论只用最后确认的样本（${esc(bn(G1))} 或 ${esc(bn(G2))}）。</p>`},
+    {title:`筛查结果：${g1(G1)} 跑到了吗`, kicker:"第 11 步 · 判定", cmd:`nbt speed analyze ~/nbt_eval/capability/${bn(G1)}S`, run: () => lineAnalyze("s1"),
+     body:`<div class="blk do"><b>你要做</b>分析筛查批次，确认两个方向都跑到本档、终点都合格。</div>
+     <div class="blk see"><b>会看到</b>终端打印两个测试点的摘要；summary.md 的「关键路段」按方向列出每次的通过用时、最高速度、目标 ±5% 最长连续时间、四级速度峰值和限制环节。最长连续 ≥ 2 s 才算跑到本档。</div>
+     <div class="blk bad"><b>没跑到怎么办</b>看限制环节：跟踪器、平滑器没到 → 参数或配置问题，查清后重测本档；底盘指令到了、里程计没到 → 查轮速饱和、打滑、电量 / 温升（直线方案附录 A.2）。不加其他档。</div>
+     <div class="actions"><button class="btn small" id="openSumMax" disabled onclick="openModal(maxSummaryHTML('s1'))">打开 summary.md</button></div>`},
+    {title:`恢复（${g1(G1)} 测完）`, kicker:"第 12 步 · 恢复", cmd:`nbt speed profile restore --batch ${bn(G1)}`, skip: () => restoreState(bn(G1)), run: () => restoreOut(bn(G1)),
+     body:`<div class="blk do"><b>你要做</b>${g1(G1)} 测完、车停稳后先恢复，再改下一档（直线方案 5.3：每档测完都恢复）。</div>
+     <div class="blk see"><b>会看到</b>跟踪器回到 0.7、平滑器回到 [0.8, 0.8, 1.1]，「✓ 已恢复基线，读回一致」。</div>
+     <div class="blk bad"><b>为什么不能直接改 ${g1(G2)}</b>${g1(G2)} 用新批次 ${esc(bn(G2))}，它第一次改档时会把当时的参数存成基线。不先恢复，存进去的就是 ${g1(G1)} 的配置，最后「恢复」只能回到 ${g1(G1)}。</div>`},
+    {title:`生成 ${g1(G2)} 档计划`, kicker:"第 13 步 · 升档", cmd: linePlanCmd(G2), run: () => linePlanOut(G2),
+     body:`<div class="blk do"><b>你要做</b>${g1(G1)} 筛查通过后升档：按 ${g1(G2)} 再生成一份计划（批次 ${esc(bn(G2))}）。跟踪器上限要和计划档位一致，run 才肯开始。</div>
+     <div class="blk see"><b>会看到</b>同一条路线，预计保持时间变短（加减速要占掉更多距离），2 s 稳态需要的长度变长。</div>
+     <div class="blk bad"><b>不够长</b>预计保持不到 2 s 时 nbt 会提醒：${g1(G2)} 记「场地受限」，不在这块场地测。</div>
+     <div class="actions"><button class="btn small" onclick="showLineYaml(${G2})">查看 ${esc(yf(G2))}</button></div>`},
+    {title:`改档到 ${g1(G2)}`, kicker:"第 14 步 · 升档", cmd: lineSetCmd(G2), skip: () => { saveBase(bn(G2)); gearTo(G2, G2); }, run: () => setOut(G2),
+     body:`<div class="blk do"><b>你要做</b>底盘许可要覆盖 ${g1(G2)} 才能改；只覆盖 ${g1(G1)} 的话到这里结束，${g1(G2)} 记「未执行（无许可）」。</div>
+     <div class="blk see"><b>会看到</b>新批次第一次改档，先存基线（正常配置），再改到 ${g1(G2)}：跟踪器 ${g1(G2)}、平滑器 [${g1(G2)}, 0.8, 1.1]。</div>`},
+    {title:`停止余量：${g1(G2)}`, kicker:"第 15 步 · 停止余量", get cmd(){ return brakeCmd(G2); }, skip: () => brakeOf(G2), run: () => brakeOut(G2),
+     body:`<div class="blk do"><b>你要做</b>每档开测前都要测停止余量。这里已经按上一档的做法在 ${g1(G2)} 档中段取消过一次（批次 ${esc(bn(G2))}A），直接分析。</div>
+     <div class="blk see"><b>会看到</b>停车距离比 ${g1(G1)} 长：减速段随速度的平方增长。</div>
+     <div class="blk bad"><b>怎么判</b>余量覆盖不了就不测这一档，不调减速度。</div>`},
+    {title:`筛查 ${g1(G2)}：3 圈（快进）`, kicker:"第 16 步 · 筛查", cmd: lineRunCmd(G2, "S", 3), noAutoDone:true,
+     skip: () => { const c = $("#s120"); if (c) data.s120 = c.value; const b = bn(G2) + "S"; data.lines[b] = synthLine(G2, 3, b, data.s120, 21); },
+     run: async () => { const c = $("#s120"); if (c) data.s120 = c.value; for (let j = cur + 1; j < STEPS.length; j++) { STEPS[j].done = false; STEPS[j].skipped = false; }
+       await ffLine(G2, 3, bn(G2) + "S", data.s120); },
+     body:`<div class="blk do"><b>你要做</b>车开回 ${esc(START)}，${g1(G2)} 筛查 3 圈，到点录入同前。先在下面选好这次模拟的结果再运行。</div>
+     <label class="toggle">模拟结果 <select id="s120"><option value="pass">${g1(G2)} 通过</option><option value="mark">${esc(KEY[0])} 点有一次终点超差</option><option value="speed">里程计跑不到 ${g1(G2)}</option></select></label>
+     <div class="blk see"><b>会看到</b>每圈一行。选「里程计跑不到」时 run 的输出和通过时一样：是否跑到本档只能在下一步分析里看。</div>
+     <p style="color:var(--sub);font-size:12.5px">模拟用快进代替 3 圈，划线结果由模拟器代填。想练失败后的处理就选后两项。</p>`},
+    {title:`筛查结果：${g1(G2)} 过了吗`, kicker:"第 17 步 · 判定", cmd:`nbt speed analyze ~/nbt_eval/capability/${bn(G2)}S`, run: () => lineAnalyze("s2"),
+     body:`<div class="blk do"><b>你要做</b>分析 ${g1(G2)} 筛查，决定在哪一档做确认。</div>
+     <div class="blk see"><b>会看到</b>同上一档。通过 → 确认就在 ${g1(G2)} 做；终点超差或没跑到本档 → 先排查，确认是能力问题就判 ${g1(G2)} 失败，回到 ${g1(G1)} 做确认（直线方案 5.1 第 8、9 条），两档证据都保留。</div>
+     <div class="actions"><button class="btn small" id="openSumMax" disabled onclick="openModal(maxSummaryHTML('s2'))">打开 summary.md</button></div>`},
+    {get title(){ return data.s120 === "pass" ? `确认档位：保持 ${g1(G2)}` : `确认档位：回到 ${g1(G1)}`; }, kicker:"第 18 步 · 确认",
+     get cmd(){ return data.s120 === "pass" ? null : `nbt speed profile restore --batch ${bn(G2)} && ${lineSetCmd(G1)}`; },
+     get body(){ return data.s120 === "pass"
+       ? `<div class="blk do"><b>不用操作</b>${g1(G2)} 筛查通过，最高通过档就是 ${g1(G2)}，保持当前档位直接做确认。点「下一步」。</div>`
+       : `<div class="blk do"><b>你要做</b>${g1(G2)} 判失败，回到 ${g1(G1)} 做确认：先恢复 ${g1(G2)} 的改动，再按批次 ${esc(bn(G1))} 改回 ${g1(G1)}。两条命令用 &amp;&amp; 连着输。</div>
+          <div class="blk see"><b>会看到</b>恢复表（回到 0.7 / 0.8），然后改档表（${g1(G1)} / [${g1(G1)}, 0.8, 1.1]）。${esc(bn(G1))} 的基线在第一次改档时已经存过，这次不会再存，也不会被覆盖。</div>`; },
+     skip: () => { if (data.s120 !== "pass") { restoreState(bn(G2)); gearTo(G1, G1); } },
+     run: async () => { if (await restoreOut(bn(G2))) { print(""); await setOut(G1); } }},
+    {get title(){ return `确认：${g1(gc())} 档 10 圈（快进）`; }, kicker:"第 19 步 · 确认", get cmd(){ return lineRunCmd(gc(), "", 10); }, noAutoDone:true,
+     skip: () => { const b = bn(gc()); if (!data.lines[b]) data.lines[b] = synthLine(gc(), 10, b, "pass", 31); }, run: () => ffLine(gc(), 10, bn(gc()), "pass"),
+     get body(){ return `<div class="blk do"><b>你要做</b>车开回 ${esc(START)}，在最高通过档 ${g1(gc())} 每个方向做 10 次（直线方案 5.1 第 8 条），到点照样录入判定（多圈运行不提示拍照）。</div>
+       <div class="blk see"><b>会看到</b>每圈一行，运行号从 ${esc(bn(gc()))}-${DAY}-001 往下编。这 ${10 * TASKS.length} 次就是写结论用的确认样本。</div>
+       <p style="color:var(--sub);font-size:12.5px">模拟用快进代替 10 圈，划线结果由模拟器代填（全部合格）。</p>`; }},
+    {title:"确认结果与结论", kicker:"第 20 步 · 结论", get cmd(){ return `nbt speed analyze ~/nbt_eval/capability/${bn(gc())}`; }, run: () => lineAnalyze("conf"),
+     body:`<div class="blk do"><b>你要做</b>分析确认批次，按直线方案第 6 节写结论、填第 8、9 节的表。</div>
+     <div class="blk see"><b>会看到</b>summary.md 的关键点位和关键路段。窗口最后另外给出照这次模拟数据写好的结论和第 9 节结果表，作对照；真实测试里这段由你自己写。</div>
+     <div class="blk bad"><b>写结论时</b>底盘许可上限、当前系统限制、本次最高验证速度三个数分开写；${g1(G2)} 通过只写「本次最高验证 ${g1(G2)} m/s」，不说它是极限；${g1(G2)} 失败不插值出中间档；不外推到转弯和窄道。</div>
+     <div class="actions"><button class="btn small" id="openSumMax" disabled onclick="openModal(maxSummaryHTML('conf'))">打开 summary.md</button></div>`},
+    {title:"恢复参数", kicker:"第 21 步 · 恢复", get cmd(){ return `nbt speed profile restore --batch ${bn(gc())}`; }, skip: () => restoreState(bn(gc())), run: () => restoreOut(bn(gc())),
+     body:`<div class="blk do"><b>你要做</b>测完、车停稳后恢复到改档前的正常配置。</div>
+     <div class="blk see"><b>会看到</b>跟踪器回到 0.7、平滑器回到 [0.8, 0.8, 1.1]，「✓ 已恢复基线，读回一致」。</div>
+     <div class="blk bad"><b>还要做</b>按推荐速度方案附录 A.7 确认 ${g1(G1)} / ${g1(G2)} 的测试配置没有留成默认值，再按推荐速度方案 6.6 跑 1 圈确认正常。</div>`},
+    {title:"异常处理小测", kicker:"第 22 步 · 演练", cmd:null, quiz:true,
+     body:`<p>${QUIZ.length} 道题，覆盖直线最大速度测试最常遇到的情况。选完会显示理由，全部答对后这一步完成；不想做可以点「跳过这一步」。</p>`},
+    {title:"完成", kicker:"小结", cmd:null,
+     body:`<div class="callout green">你已经走完一个负载的直线最大速度测试。</div>
+     <table style="border-collapse:collapse;font-size:12.5px;width:100%"><tr><th style="text-align:left;border-bottom:1px solid var(--line)">步骤</th><th style="text-align:left;border-bottom:1px solid var(--line)">命令</th></tr>
+     ${[["确认导航模式", "nbt pathnav mode"], ["生成计划（每档一份）", linePlanCmd(G1)], ["改档（连平滑器）", lineSetCmd(G1)],
+        ["停止余量", `${lineRunCmd(G1, "A", 1, " --no-prompt")}（直线中段 Ctrl-C；反方向把车开到 ${T1.pts[0]}、加 --start-task 2）`],
+        ["停车距离", "nbt brake analyze <会话目录>/rosbag --trigger cmd_zero --cmd-topic /cmd_vel_nav_path"], ["筛查", lineRunCmd(G1, "S", 3)],
+        ["筛查结果", `nbt speed analyze ~/nbt_eval/capability/${bn(G1)}S`], ["每档测完恢复", `nbt speed profile restore --batch ${bn(G1)}`],
+        ["升档", `${linePlanCmd(G2)}；${lineSetCmd(G2)}`], ["确认（最高通过档，10 圈）", lineRunCmd(G2, "", 10)],
+        ["确认分析", `nbt speed analyze ~/nbt_eval/capability/${bn(G2)}`], ["急停取消", "nbt pathnav cancel"]].map(r => `<tr><td style="padding:3px 0">${esc(r[0])}</td><td><code>${esc(r[1])}</code></td></tr>`).join("")}</table>
+     <p>满载批次把批次号换成 F 开头（F100、F120），双臂摆好持盘姿态、放上满料托盘<b>之后</b>再开始 run（nbt 以会话开头 1 s 的关节位置作参考姿态）。</p>
+     <p>判定和结论写法以《能力摸底——W1 PRO直线最大速度测试方案》第 6 节为准。推荐速度课程在页面顶部「课程」里切换。</p>`}
+  ];
+  return {QUIZ, STEPS};
+}
+
+const {QUIZ, STEPS} = MAXC ? maxCourse() : recCourse();
+
+/* ---------------------------------------------------------------- 步骤控制 */
+let cur = 0;
+function renderSteps(){
+  const ol = $("#steps"); ol.innerHTML = "";
+  STEPS.forEach((s, i) => { const li = document.createElement("li"); const unlocked = true;      // 每一步都能直接点开；跳过的步骤自动补上它的效果
+    li.className = (i === cur ? "cur " : "") + (s.done ? (s.skipped ? "skipped " : "done ") : "");
+    li.innerHTML = `<span class="n">${String(i).padStart(2, "0")}</span><span>${esc(s.title)}</span>`;
+    li.onclick = () => { if (unlocked && mode !== "busy" && mode !== "prompt") go(i); }; ol.appendChild(li); });
+  $("#progress>div").style.width = `${STEPS.filter(s => s.done).length / STEPS.length * 100}%`;
+}
+function renderCard(){
+  const s = STEPS[cur];
+  let h = `<div class="kicker">${esc(s.kicker)}</div><h2>${esc(s.title)}</h2>${s.body}`;
+  if (s.cmd) h += `<div class="blk do"><b>在终端输入</b><span class="cmdline">${esc(s.cmd)}</span></div>`;
+  if (s.quiz) h += quizBlock(QUIZ);
+  h += `<div class="actions"><button class="btn" id="prevBtn" ${cur === 0 ? "disabled" : ""}>上一步</button><button class="btn primary" id="nextBtn" ${s.done || (!s.cmd && !s.quiz) ? "" : "disabled"}>${cur === STEPS.length - 1 ? "完成" : "下一步"}</button>${(s.cmd || s.quiz) && !s.done ? `<button class="btn" id="skipBtn" title="不做这一步，直接看下一步">跳过这一步</button>` : ""}</div>`;
+  $("#card").innerHTML = h;
+  $("#prevBtn").onclick = () => { if (mode !== "busy" && mode !== "prompt") go(cur - 1); };
+  $("#nextBtn").onclick = () => { if (!s.cmd && !s.quiz) s.done = true; if (cur < STEPS.length - 1) go(cur + 1); else renderSteps(); };
+  if (s.quiz) bindQuiz();
+  const sk = $("#skipBtn"); if (sk) sk.onclick = () => { if (mode === "busy" || mode === "prompt") return; skipStep(cur); if (cur < STEPS.length - 1) go(cur + 1); else { renderSteps(); renderCard(); } };
+  const ob = $("#openSum"); if (ob && data.formal.length && s.done) ob.disabled = false;
+  const inj = $("#injFail"); if (inj) inj.checked = data.injectFail;
+  const om = $("#openSumMax"); if (om) om.disabled = !s.done;
+  const sv = $("#s120"); if (sv) sv.value = data.s120;
+}
+function bindQuiz(){
+  const solved = new Set();
+  document.querySelectorAll(".quiz").forEach(box => { const qi = Number(box.dataset.q), q = QUIZ[qi];
+    box.querySelectorAll("button").forEach(b => b.onclick = () => { const j = Number(b.dataset.j); const fb = box.querySelector(".fb"); fb.style.display = "block";
+      box.querySelectorAll("button").forEach(x => x.classList.remove("right", "wrong"));
+      if (j === q.a) { b.classList.add("right"); fb.textContent = "✓ " + q.why; solved.add(qi); } else { b.classList.add("wrong"); fb.textContent = "✗ 再想想。" + q.why.split("。")[0] + "。"; }
+      if (solved.size === QUIZ.length) { STEPS[cur].done = true; $("#nextBtn").disabled = false; renderSteps(); } }); });
+}
+function skipStep(i){ const s = STEPS[i]; if (s.done) return; if (s.skip) s.skip(); s.done = true; s.skipped = true;
+  if (i === cur) print(`（已跳过：${s.title}）`, "sys"); }
+function go(i){ i = Math.max(0, Math.min(STEPS.length - 1, i)); for (let j = 0; j < i; j++) if (!STEPS[j].done) skipStep(j);
+  cur = i; renderSteps(); renderCard(); armCmd(); }
+function completeStep(){ STEPS[cur].done = true; STEPS[cur].skipped = false; renderSteps(); const nb = $("#nextBtn"); if (nb) nb.disabled = false; const ob = $("#openSum"); if (ob) ob.disabled = false; const om = $("#openSumMax"); if (om) om.disabled = false;
+  print("（这一步完成。点左侧「下一步」继续）", "sys"); mode = "idle"; armCmd(); }
+function reset(){
+  STEPS.forEach(s => { s.done = false; s.running = false; s.skipped = false; }); Object.assign(sim, {v:0, t:0, gear:0.70, smoother:0.80, bandRun:0, bandBest:0, task:null, abort:false, abortAtPrompt:false, intrude:false});
+  data.screen = []; data.formal = []; data.injectFail = false; data.seq = {}; data.runs = 0;
+  data.lines = {}; data.brake = {}; data.base = {}; data.baseSaved = {}; data.s120 = "pass"; data.clk = 0; setTarget(Number(SCENE.target_speed || 0.75));
+  drawMap(); placeAt(START); term.innerHTML = ""; ["#cRec","#cRun","#cRep","#cStill","#cObs","#cBand"].forEach(c => setChip(c)); $("#hTask").textContent = "—";
+  print(`模拟终端：dexforce@w1（W1 PRO，V0.5.1，导航后端 path_navigation）· 场景：${SCENE.title || ""}`, "sys");
+  print("提示：每一步输入左侧给出的命令后回车；直接回车会自动填入。", "sys");
+  mode = "idle"; go(0);
+}
+$("#srcNote").textContent = `场景：${SCENE.title || ""}；所有输出均为模拟，不连接机器人`;
+const ZONES = [...new Set((SCENE.decor || []).filter(d => d.kind === "zone").map(d => d.label))];
+$("#legend").textContent = "绿点：导航点　黄点：工位点　橙色虚线圈：关键点位　浅红线：路网边（箭头为方向）　背景每格约 1 m" + (ZONES.length ? `　粉区：${ZONES.join("、")}` : "");
+const COURSE_NAME = MAXC ? "直线最大速度测试" : "推荐速度测试";
+$("#h1").textContent = `nbt 操作模拟教程 · W1 PRO ${COURSE_NAME}`; document.title = `nbt 操作模拟教程——W1 PRO ${COURSE_NAME}`;
+$("#sMid").textContent = String(VBAR / 2); $("#sMax").textContent = `${VBAR.toFixed(1)} m/s（绿带 = 档位 ±5%）`;
+$("#course").value = COURSE;
+$("#course").onchange = e => { if (STEPS.some(x => x.done) && !confirm("切换课程会清空当前进度，确定？")) { e.target.value = COURSE; return; }
+  location.hash = e.target.value; location.reload(); };
+$("#resetBtn").onclick = () => { if (confirm("重新开始会清空进度，确定？")) { sim.abort = true; setTimeout(reset, 50); } };
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeModal(); if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "c" && STEPS[cur].running && !window.getSelection().toString()) { e.preventDefault(); ctrlC(); } });
+reset();
+</script>
+</body>
+</html>

@@ -1,0 +1,5 @@
+<library path="nav_benchmark_rviz">
+  <class name="nav_benchmark_rviz/BenchmarkPanel" type="nav_benchmark_rviz::BenchmarkPanel" base_class_type="rviz_common::Panel">
+    <description>导航 Benchmark 测试面板：测前检查、状态看板、测试会话与打点、导航任务、硬停（后端 nbt serve）</description>
+  </class>
+</library>

@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>速度曲线叠加</title>
+<!-- nbt speed analyze 生成：替换下方 id="data" 的 JSON -->
+<style>
+  :root{--paper:#f4f2ec;--panel:#fbfaf7;--ink:#1f2428;--sub:#5b636b;--line:#d9d5cc;--orange:#d9480f;--green:#2b8a3e;--red:#c92a2a;
+    --mono:"JetBrains Mono","SFMono-Regular",Menlo,Consolas,"Noto Sans Mono CJK SC",monospace;
+    --sans:"PingFang SC","Noto Sans CJK SC","Source Han Sans SC","Microsoft YaHei",system-ui,sans-serif}
+  *{box-sizing:border-box} body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:14px}
+  header{position:sticky;top:0;z-index:5;display:flex;flex-wrap:wrap;align-items:center;gap:14px;padding:10px 18px;background:var(--panel);border-bottom:2px solid var(--ink)}
+  header h1{font-size:17px;margin:0} header .info{color:var(--sub);font-size:12px}
+  .seg{display:inline-flex;border:1.5px solid var(--ink)} .seg button{font:inherit;font-size:12px;border:none;background:var(--panel);padding:4px 10px;cursor:pointer;border-right:1px solid var(--line)}
+  .seg button:last-child{border-right:none} .seg button.on{background:var(--ink);color:var(--paper)}
+  label.ctl{font-size:12px;color:var(--sub);display:flex;gap:6px;align-items:center}
+  .grad{display:inline-block;width:120px;height:10px;border:1px solid var(--line);vertical-align:middle}
+  main{padding:14px 18px 40px;max-width:1280px;margin:0 auto}
+  section.chart{background:#fff;border:1.5px solid var(--ink);margin:14px 0;padding:10px 14px}
+  section.chart h2{font-size:15px;margin:2px 0 2px} section.chart .sub{color:var(--sub);font-size:12px;margin-bottom:6px}
+  svg{width:100%;height:auto;display:block}
+  .legend{display:flex;flex-wrap:wrap;gap:4px;margin:6px 0}
+  .legend span{font-family:var(--mono);font-size:11px;padding:1px 6px;border:1px solid var(--line);cursor:pointer;user-select:none}
+  .legend span.off{opacity:.3} .legend span.bad{border-color:var(--red);color:var(--red)}
+  .tools button{font:inherit;font-size:12px;border:1px solid var(--ink);background:var(--panel);padding:2px 8px;cursor:pointer;margin-right:4px}
+  details{margin-top:6px} summary{cursor:pointer;color:var(--sub);font-size:12px}
+  table{border-collapse:collapse;font-size:12px;margin-top:6px} th,td{border:1px solid var(--line);padding:3px 7px;text-align:right} th{background:#ece8df} td:first-child,th:first-child{text-align:left}
+  #tip{position:fixed;pointer-events:none;background:var(--ink);color:#fff;font-family:var(--mono);font-size:12px;padding:5px 8px;display:none;z-index:9;white-space:pre}
+  .note{color:var(--sub);font-size:12px;line-height:1.6}
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title">速度曲线叠加</h1>
+  <span class="info" id="info"></span>
+  <span style="flex:1"></span>
+  <label class="ctl">横轴 <span class="seg" id="xsel"><button data-v="s" class="on">路程</button><button data-v="t">时间</button></span></label>
+  <label class="ctl">速度 <span class="seg" id="lsel"><button data-v="odom" class="on">里程计</button><button data-v="follower">跟踪器</button><button data-v="smoother">平滑器</button><button data-v="mux">底盘指令</button></span></label>
+  <label class="ctl">圈次 <span class="grad" id="grad"></span></label>
+</header>
+<main id="main">
+  <p class="note">每条线是一次执行（一圈里的这个任务）；颜色从浅蓝到深橙表示圈次先后，虚线红色是划线不合格或受干扰的那次。绿带是目标速度 ±5%，竖虚线是途经的点位。鼠标停在线上看运行号；点下面的圈次标签可以隐藏 / 显示。</p>
+</main>
+<div id="tip"></div>
+<script id="data" type="application/json">{"tasks":[],"segments":[]}</script>
+<script>
+"use strict";
+const D = JSON.parse(document.getElementById("data").textContent);
+const LV = {odom:"里程计", follower:"跟踪器", smoother:"平滑器", mux:"底盘指令"};
+let X = "s", L = "odom";
+const esc = s => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;");
+const f = (v, n = 3) => v === null || v === undefined || Number.isNaN(v) ? "—" : Number(v).toFixed(n);
+const color = (k, n) => `hsl(${205 - 185 * (n > 1 ? k / (n - 1) : 0)}, 70%, ${55 - 15 * (n > 1 ? k / (n - 1) : 0)}%)`;
+document.getElementById("title").textContent = `速度曲线叠加 · ${D.batch || ""}`;
+document.getElementById("info").textContent = `目标 ${D.target ?? "—"} m/s · ${D.tasks.reduce((a, t) => a + t.runs.length, 0)} 次执行 · ${D.generated || ""}`;
+document.getElementById("grad").style.background = `linear-gradient(90deg, ${color(0, 2)}, ${color(1, 2)})`;
+const charts = [];
+function bandTime(t, v, target){ if (!target) return null; let best = 0, start = null, prev = null;
+  for (let i = 0; i < t.length; i++) { const ok = v[i] !== null && Math.abs(v[i] - target) <= target * 0.05;
+    if (ok && start === null) start = t[i]; if (!ok && start !== null) { best = Math.max(best, prev - start); start = null; } prev = t[i]; }
+  if (start !== null) best = Math.max(best, prev - start); return best; }
+function makeChart(title, sub, runs, pts){
+  const sec = document.createElement("section"); sec.className = "chart";
+  sec.innerHTML = `<h2>${esc(title)}</h2><div class="sub">${esc(sub)}</div><div class="tools"><button data-a="all">全部</button><button data-a="none">全不选</button><button data-a="bad">只看异常</button><button data-a="last5">最后 5 圈</button></div><div class="legend"></div><div class="plot"></div><details><summary>每次执行的数值</summary><div class="tbl"></div></details>`;
+  document.getElementById("main").appendChild(sec);
+  const c = {sec, runs, pts, hidden: new Set()}; charts.push(c);
+  const lg = sec.querySelector(".legend");
+  runs.forEach((r, k) => { const s = document.createElement("span"); s.textContent = `${r.batch ? r.batch + " " : ""}圈${r.lap}`; s.title = r.run_id;
+    if (r.mark === "不合格" || r.mark === "受干扰" || r.result !== "succeeded") s.classList.add("bad");
+    s.style.borderLeft = `4px solid ${color(k, runs.length)}`;
+    s.onclick = () => { c.hidden.has(k) ? c.hidden.delete(k) : c.hidden.add(k); draw(c); }; lg.appendChild(s); });
+  sec.querySelector(".tools").onclick = e => { const a = e.target.dataset.a; if (!a) return; c.hidden.clear();
+    if (a === "none") runs.forEach((_, k) => c.hidden.add(k));
+    if (a === "bad") runs.forEach((r, k) => { if (!(r.mark === "不合格" || r.mark === "受干扰" || r.result !== "succeeded")) c.hidden.add(k); });
+    if (a === "last5") runs.forEach((_, k) => { if (k < runs.length - 5) c.hidden.add(k); }); draw(c); };
+  draw(c);
+}
+function draw(c){
+  const W = 1000, H = 330, ml = 52, mr = 14, mt = 14, mb = 38;
+  const vis = c.runs.map((r, k) => ({r, k})).filter(o => !c.hidden.has(o.k));
+  let xmax = 0, ymax = Math.max(0.3, (D.target || 0) * 1.15);
+  for (const r of c.runs) { const xs = r[X], vs = r.v[L]; for (let i = 0; i < xs.length; i++) { if (xs[i] !== null) xmax = Math.max(xmax, xs[i]); if (vs[i] !== null) ymax = Math.max(ymax, vs[i] * 1.05); } }
+  xmax = xmax || 1;
+  const sx = x => ml + (x / xmax) * (W - ml - mr), sy = v => H - mb - (v / ymax) * (H - mt - mb);
+  let g = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">`;
+  const step = [0.1, 0.2, 0.25, 0.5][ymax > 1.2 ? 3 : ymax > 0.8 ? 1 : 0];
+  for (let v = 0; v <= ymax + 1e-9; v += step) g += `<line x1="${ml}" x2="${W - mr}" y1="${sy(v)}" y2="${sy(v)}" stroke="#eee"/><text x="${ml - 6}" y="${sy(v) + 4}" font-size="11" text-anchor="end" fill="#666">${v.toFixed(2)}</text>`;
+  const xstep = [1, 2, 5, 10, 20, 50].find(s => xmax / s <= 12) || 100;
+  for (let x = 0; x <= xmax + 1e-9; x += xstep) g += `<line y1="${mt}" y2="${H - mb}" x1="${sx(x)}" x2="${sx(x)}" stroke="#f3f3f3"/><text x="${sx(x)}" y="${H - mb + 15}" font-size="11" text-anchor="middle" fill="#666">${x}</text>`;
+  g += `<text x="${(W + ml) / 2}" y="${H - 6}" font-size="12" text-anchor="middle" fill="#444">${X === "s" ? "路程 (m)" : "时间 (s，从受理开始)"}</text><text x="14" y="${(H - mb) / 2}" font-size="12" fill="#444" transform="rotate(-90 14 ${(H - mb) / 2})" text-anchor="middle">${LV[L]}速度 (m/s)</text>`;
+  if (D.target) g += `<rect x="${ml}" y="${sy(D.target * 1.05)}" width="${W - ml - mr}" height="${sy(D.target * 0.95) - sy(D.target * 1.05)}" fill="rgba(43,138,62,.14)"/>`;
+  if (X === "s" && c.pts) c.pts.forEach(p => { if (p.s == null) return; g += `<line x1="${sx(p.s)}" x2="${sx(p.s)}" y1="${mt}" y2="${H - mb}" stroke="#999" stroke-dasharray="4 4"/><text x="${sx(p.s) + 3}" y="${mt + 11}" font-size="11" fill="#777">${esc(p.name)}</text>`; });
+  for (const {r, k} of vis) { const xs = r[X], vs = r.v[L]; const pts = [];
+    for (let i = 0; i < xs.length; i++) if (xs[i] !== null && vs[i] !== null) pts.push(`${sx(xs[i]).toFixed(1)},${sy(vs[i]).toFixed(1)}`);
+    const bad = r.mark === "不合格" || r.mark === "受干扰" || r.result !== "succeeded";
+    g += `<polyline data-k="${k}" points="${pts.join(" ")}" fill="none" stroke="${bad ? "#c92a2a" : color(k, c.runs.length)}" stroke-width="1.5" stroke-opacity=".75" ${bad ? 'stroke-dasharray="6 4"' : ""}/>`;
+    g += `<polyline data-k="${k}" class="hit" points="${pts.join(" ")}" fill="none" stroke="transparent" stroke-width="9"/>`; }
+  g += "</svg>";
+  const plot = c.sec.querySelector(".plot"); plot.innerHTML = g;
+  const tip = document.getElementById("tip");
+  plot.querySelectorAll("polyline.hit").forEach(p => { const k = Number(p.dataset.k), r = c.runs[k];
+    p.onmousemove = e => { const vs = r.v[L].filter(v => v !== null); tip.style.display = "block"; tip.style.left = e.clientX + 12 + "px"; tip.style.top = e.clientY + 12 + "px";
+      tip.textContent = `${r.run_id}  圈 ${r.lap}${r.mark ? "  " + r.mark : ""}\n最高 ${f(Math.max(...vs))} m/s  用时 ${f(r.t[r.t.length - 1], 1)} s`;
+      plot.querySelectorAll(`polyline:not(.hit)`).forEach(q => q.setAttribute("stroke-opacity", q.dataset.k == k ? 1 : .15)); };
+    p.onmouseleave = () => { tip.style.display = "none"; plot.querySelectorAll(`polyline:not(.hit)`).forEach(q => q.setAttribute("stroke-opacity", .75)); }; });
+  c.sec.querySelectorAll(".legend span").forEach((s, k) => s.classList.toggle("off", c.hidden.has(k)));
+  const rows = c.runs.map(r => { const vs = r.v[L].filter(v => v !== null);
+    return `<tr><td>${esc(r.run_id)}</td><td>${r.lap}</td><td>${f(vs.length ? Math.max(...vs) : null)}</td><td>${f(bandTime(r.t, r.v[L], D.target), 2)}</td><td>${f(r.t[r.t.length - 1], 1)}</td><td>${esc(r.mark || "")}</td></tr>`; }).join("");
+  c.sec.querySelector(".tbl").innerHTML = `<table><tr><th>运行号</th><th>圈</th><th>最高速度 (m/s)</th><th>目标 ±5% 最长连续 (s)</th><th>用时 (s)</th><th>划线</th></tr>${rows}</table>`;
+}
+function selector(id, cb){ const el = document.getElementById(id); el.onclick = e => { const v = e.target.dataset.v; if (!v) return; el.querySelectorAll("button").forEach(b => b.classList.toggle("on", b === e.target)); cb(v); charts.forEach(draw); }; }
+selector("xsel", v => { X = v; }); selector("lsel", v => { L = v; });
+for (const sg of D.segments || []) if (sg.runs.length) makeChart(`关键路段 ${sg.from} → ${sg.to}`, `${sg.runs.length} 次通过；横轴「路程」为沿路段的距离`, sg.runs, null);
+for (const t of D.tasks) makeChart(`${t.id}　${t.points.join(" → ")}`, `${t.runs.length} 次执行`, t.runs, t.pts || null);
+</script>
+</body>
+</html>

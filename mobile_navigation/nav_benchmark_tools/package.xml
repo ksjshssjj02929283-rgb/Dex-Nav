@@ -1,0 +1,39 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>nav_benchmark_tools</name>
+  <version>0.1.0</version>
+  <description>
+    导航 Benchmark 测试工具包：统一入口 nbt，子命令覆盖环境采集、状态监视、按用例录包、
+    下发导航任务、读地图资产、资源占用与制动距离测试。只读 / 调用现有接口，不改导航行为。
+  </description>
+  <maintainer email="dexforce@dexforce.com">dexforce</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <buildtool_depend>ament_cmake_python</buildtool_depend>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>rosbag2_py</exec_depend>
+  <exec_depend>ros2bag</exec_depend>
+  <exec_depend>rosidl_runtime_py</exec_depend>
+  <exec_depend>ament_index_python</exec_depend>
+  <exec_depend>rcl_interfaces</exec_depend>
+  <exec_depend>nav_interfaces</exec_depend>
+  <exec_depend>nav_msgs</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>diagnostic_msgs</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
+  <exec_depend>action_msgs</exec_depend>
+  <exec_depend>std_srvs</exec_depend>
+  <exec_depend>tf2_ros_py</exec_depend>
+  <exec_depend>tf2_msgs</exec_depend>
+
+  <test_depend>ament_cmake_pytest</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

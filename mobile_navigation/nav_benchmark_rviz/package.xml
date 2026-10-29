@@ -1,0 +1,27 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>nav_benchmark_rviz</name>
+  <version>0.1.0</version>
+  <description>
+    导航 Benchmark 测试面板（RViz）：nbt 的图形入口。只通过 /nbt/* 话题与机器人上的 nbt serve 通信，
+    提供测前检查、状态看板、测试会话与打点、导航任务、硬停。
+  </description>
+  <maintainer email="dexforce@dexforce.com">dexforce</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>rviz_common</depend>
+  <depend>pluginlib</depend>
+  <depend>std_msgs</depend>
+  <build_depend>qtbase5-dev</build_depend>
+  <exec_depend>libqt5-widgets</exec_depend>
+
+  <test_depend>ament_cmake_gtest</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

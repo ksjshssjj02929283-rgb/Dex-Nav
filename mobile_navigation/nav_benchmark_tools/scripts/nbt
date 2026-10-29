@@ -1,0 +1,8 @@
+#!/usr/bin/env python3
+"""导航 Benchmark 测试工具入口：ros2 run nav_benchmark_tools nbt <子命令>。"""
+import sys
+
+from nav_benchmark_tools.cli import main
+
+if __name__ == "__main__":
+    sys.exit(main())
