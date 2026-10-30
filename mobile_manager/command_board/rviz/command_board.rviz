@@ -1,0 +1,936 @@
+Panels:
+- Class: rviz_common/Displays
+  Name: Displays
+- Class: map_manager_rviz_plugin/MapManagerPanel
+  Name: MapManagerPanel
+  MapManagerPrefix: /map_manager
+  CommandBoardPrefix: /command_board
+- Class: map_asset_rviz_plugin/MapAssetManagerPanel
+  Name: MapAssetManagerPanel
+  service_prefix: /map_asset_manager
+  map_manager_prefix: /map_manager
+- Class: command_board_rviz_plugins/CommandBoardControlPanel
+  Name: CommandBoardControlPanel
+  topic_prefix: /command_board
+- Class: command_board_rviz_plugins/CommandBoardStatusPanel
+  Name: CommandBoardStatusPanel
+  topic_prefix: /command_board
+Visualization Manager:
+  Class: ''
+  Displays:
+  - Class: rviz_default_plugins/Grid
+    Enabled: false
+    Name: Grid
+    Reference Frame: <Fixed Frame>
+    Value: false
+  - Class: rviz_common/Group
+    Displays:
+    - Alpha: 1
+      Class: rviz_default_plugins/RobotModel
+      Collision Enabled: false
+      Description File: ''
+      Description Source: Topic
+      Description Topic:
+        Depth: 5
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /robot_description
+      Enabled: true
+      Links:
+        All Links Enabled: true
+        Expand Joint Details: false
+        Expand Link Details: false
+        Expand Tree: false
+        Link Tree Style: ''
+      Mass Properties:
+        Inertia: false
+        Mass: false
+      Name: RobotModel
+      TF Prefix: ''
+      Update Interval: 0
+      Value: true
+      Visual Enabled: true
+    - Class: rviz_default_plugins/TF
+      Enabled: false
+      Frame Timeout: 15
+      Marker Scale: 0.5
+      Name: TF
+      Show Arrows: false
+      Show Axes: true
+      Show Names: false
+      Update Interval: 0
+      Value: false
+    Enabled: true
+    Name: 机器人
+    Value: true
+  - Class: rviz_common/Group
+    Displays:
+    - Alpha: 1
+      Class: rviz_default_plugins/Map
+      Color Scheme: map
+      Draw Behind: true
+      Enabled: true
+      Name: Map
+      Topic:
+        Depth: 1
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /map
+      Use Timestamp: false
+      Value: true
+    - Alpha: 0.4
+      Class: rviz_default_plugins/Map
+      Color Scheme: costmap
+      Draw Behind: false
+      Enabled: true
+      Name: KeepoutMask
+      Topic:
+        Depth: 1
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /keepout_filter_mask
+      Use Timestamp: false
+      Value: true
+    - Alpha: 0.3
+      Class: rviz_default_plugins/Map
+      Color Scheme: costmap
+      Draw Behind: false
+      Enabled: true
+      Name: SpeedMask
+      Topic:
+        Depth: 1
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /speed_filter_mask
+      Use Timestamp: false
+      Value: true
+    - Alpha: 1
+      Class: rviz_default_plugins/Map
+      Color Scheme: map
+      Draw Behind: false
+      Enabled: false
+      Name: GridEditTarget
+      Topic:
+        Depth: 1
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /map_manager_panel/edit_target_map
+      Use Timestamp: false
+      Value: false
+    - Alpha: 0.7
+      Class: rviz_default_plugins/Map
+      Color Scheme: map
+      Draw Behind: false
+      Enabled: true
+      Name: TargetMapPreview
+      Topic:
+        Depth: 1
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /map_asset_manager_panel/target_map
+      Use Timestamp: false
+      Value: true
+    Enabled: true
+    Name: 地图
+    Value: true
+  - Class: rviz_common/Group
+    Displays:
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: AssetPoints
+      Namespaces: {}
+      Topic:
+        Depth: 5
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /map_asset_manager/nav_points_marker
+      Value: true
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: AssetAreas
+      Namespaces: {}
+      Topic:
+        Depth: 5
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /map_asset_manager/area_markers
+      Value: true
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: AssetRooms
+      Namespaces: {}
+      Topic:
+        Depth: 5
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /map_asset_manager/room_markers
+      Value: true
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: AssetRoutes
+      Namespaces: {}
+      Topic:
+        Depth: 5
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /map_asset_manager/route_markers
+      Value: true
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: AssetRouteGraph
+      Namespaces: {}
+      Topic:
+        Depth: 5
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /map_asset_manager/route_graph_markers
+      Value: true
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: TargetAssetsPreview
+      Namespaces: {}
+      Topic:
+        Depth: 5
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /map_asset_manager_panel/target_assets
+      Value: true
+    Enabled: true
+    Name: 地图资产
+    Value: true
+  - Class: rviz_common/Group
+    Displays:
+    - Class: cartographer_rviz/SubmapsDisplay
+      Enabled: true
+      Fade-out distance: 1
+      High Resolution: true
+      Low Resolution: false
+      Name: LocSubmaps
+      Submap query service: /localization/submap_query
+      Submaps:
+        All: true
+        All Submap Pose Markers: true
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        Filter size: 10
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /localization/submap_list
+      Tracking frame: map
+      Value: true
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: false
+      Name: LocTrajectories
+      Namespaces: {}
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /localization/trajectory_node_list
+      Value: false
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: false
+      Name: LocConstraints
+      Namespaces: {}
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /localization/constraint_list
+      Value: false
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: false
+      Name: LocLandmarks
+      Namespaces: {}
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /localization/landmark_poses_list
+      Value: false
+    - Alpha: 1
+      Autocompute Intensity Bounds: true
+      Autocompute Value Bounds:
+        Max Value: 10
+        Min Value: -10
+        Value: true
+      Axis: Z
+      Channel Name: intensity
+      Class: rviz_default_plugins/PointCloud2
+      Color: 25; 255; 0
+      Color Transformer: FlatColor
+      Decay Time: 0
+      Enabled: true
+      Invert Rainbow: false
+      Max Color: 255; 255; 255
+      Max Intensity: 4096
+      Min Color: 0; 0; 0
+      Min Intensity: 0
+      Name: LocMatchedCloud
+      Position Transformer: XYZ
+      Selectable: true
+      Size (Pixels): 3
+      Size (m): 0.05000000074505806
+      Style: Flat Squares
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        Filter size: 10
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /localization/scan_matched_points2
+      Use Fixed Frame: true
+      Use rainbow: false
+      Value: true
+    - Alpha: 1
+      Axes Length: 1
+      Axes Radius: 0.10000000149011612
+      Class: rviz_default_plugins/PoseWithCovariance
+      Color: 255; 25; 0
+      Covariance:
+        Orientation:
+          Alpha: 0.5
+          Color: 255; 255; 127
+          Color Style: Unique
+          Frame: Local
+          Offset: 1
+          Scale: 1
+          Value: true
+        Position:
+          Alpha: 0.30000001192092896
+          Color: 204; 51; 204
+          Scale: 1
+          Value: true
+        Value: true
+      Enabled: true
+      Head Length: 0.30000001192092896
+      Head Radius: 0.10000000149011612
+      Name: MatchPose
+      Shaft Length: 1
+      Shaft Radius: 0.05000000074505806
+      Shape: Arrow
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        Filter size: 10
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /localization/loc_pose
+      Value: true
+    - Alpha: 1
+      Buffer Length: 1
+      Class: rviz_default_plugins/Path
+      Color: 255; 170; 0
+      Enabled: false
+      Line Style: Lines
+      Line Width: 0.02
+      Name: TrackedPath
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Pose Style: None
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /localization/tracked_path
+      Value: false
+    - Class: rviz_common/Group
+      Displays:
+      - Alpha: 1
+        Autocompute Intensity Bounds: true
+        Autocompute Value Bounds:
+          Max Value: 10
+          Min Value: -10
+          Value: true
+        Axis: Z
+        Channel Name: intensity
+        Class: rviz_default_plugins/PointCloud2
+        Color: 255; 255; 255
+        Color Transformer: Intensity
+        Decay Time: 0
+        Enabled: true
+        Invert Rainbow: false
+        Max Color: 255; 255; 255
+        Max Intensity: 4096
+        Min Color: 0; 0; 0
+        Min Intensity: 0
+        Name: GlobalCloudMap
+        Position Transformer: XYZ
+        Selectable: true
+        Size (Pixels): 3
+        Size (m): 0.03999999910593033
+        Style: Flat Squares
+        Topic:
+          Depth: 5
+          Durability Policy: Transient Local
+          Filter size: 10
+          History Policy: Keep Last
+          Reliability Policy: Reliable
+          Value: /localization/global_cloud_map
+        Use Fixed Frame: true
+        Use rainbow: true
+        Value: true
+      - Alpha: 1
+        Autocompute Intensity Bounds: true
+        Autocompute Value Bounds:
+          Max Value: 10
+          Min Value: -10
+          Value: true
+        Axis: Z
+        Channel Name: intensity
+        Class: rviz_default_plugins/PointCloud2
+        Color: 255; 255; 255
+        Color Transformer: Intensity
+        Decay Time: 0
+        Enabled: false
+        Invert Rainbow: false
+        Max Color: 255; 255; 255
+        Max Intensity: 4096
+        Min Color: 0; 0; 0
+        Min Intensity: 0
+        Name: LocalCloudMap
+        Position Transformer: XYZ
+        Selectable: true
+        Size (Pixels): 3
+        Size (m): 0.03999999910593033
+        Style: Flat Squares
+        Topic:
+          Depth: 5
+          Durability Policy: Volatile
+          Filter size: 10
+          History Policy: Keep Last
+          Reliability Policy: Reliable
+          Value: /localization/local_cloud_map
+        Use Fixed Frame: true
+        Use rainbow: true
+        Value: false
+      - Class: rviz_default_plugins/MarkerArray
+        Enabled: true
+        Name: GlobalFeatureMap
+        Namespaces: {}
+        Topic:
+          Depth: 5
+          Durability Policy: Transient Local
+          History Policy: Keep Last
+          Reliability Policy: Reliable
+          Value: /localization/global_feature_map
+        Value: true
+      - Class: rviz_default_plugins/MarkerArray
+        Enabled: false
+        Name: LocalFeatureMap
+        Namespaces: {}
+        Topic:
+          Depth: 5
+          Durability Policy: Volatile
+          History Policy: Keep Last
+          Reliability Policy: Reliable
+          Value: /localization/local_feature_map
+        Value: false
+      - Class: rviz_default_plugins/MarkerArray
+        Enabled: false
+        Name: MatchedFeature
+        Namespaces: {}
+        Topic:
+          Depth: 5
+          Durability Policy: Volatile
+          History Policy: Keep Last
+          Reliability Policy: Reliable
+          Value: /localization/matched_feature
+        Value: false
+      Enabled: true
+      Name: LocFeatureMap
+    Enabled: true
+    Name: 定位
+    Value: true
+  - Class: rviz_common/Group
+    Displays:
+    - Class: cartographer_rviz/SubmapsDisplay
+      Enabled: true
+      Fade-out distance: 1
+      High Resolution: true
+      Low Resolution: false
+      Name: MapSubmaps
+      Submap query service: /mapping/submap_query
+      Submaps:
+        All: true
+        All Submap Pose Markers: true
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        Filter size: 10
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /mapping/submap_list
+      Tracking frame: map
+      Value: true
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: MapTrajectories
+      Namespaces:
+        Trajectory 0: true
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /mapping/trajectory_node_list
+      Value: true
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: MapConstraints
+      Namespaces:
+        Inter constraints, different trajectories: true
+        Inter constraints, same trajectory: true
+        Inter residuals, different trajectories: true
+        Inter residuals, same trajectory: true
+        Intra constraints: false
+        Intra residuals: false
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /mapping/constraint_list
+      Value: true
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: MapLandmarks
+      Namespaces: {}
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /mapping/landmark_poses_list
+      Value: true
+    - Alpha: 1
+      Autocompute Intensity Bounds: true
+      Autocompute Value Bounds:
+        Max Value: 10
+        Min Value: -10
+        Value: true
+      Axis: Z
+      Channel Name: intensity
+      Class: rviz_default_plugins/PointCloud2
+      Color: 25; 255; 0
+      Color Transformer: FlatColor
+      Decay Time: 0
+      Enabled: true
+      Invert Rainbow: false
+      Max Color: 255; 255; 255
+      Max Intensity: 4096
+      Min Color: 0; 0; 0
+      Min Intensity: 0
+      Name: MapMatchedCloud
+      Position Transformer: XYZ
+      Selectable: true
+      Size (Pixels): 3
+      Size (m): 0.03999999910593033
+      Style: Flat Squares
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        Filter size: 10
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /mapping/scan_matched_points2
+      Use Fixed Frame: true
+      Use rainbow: false
+      Value: true
+    - Class: rviz_common/Group
+      Displays:
+      - Alpha: 1
+        Autocompute Intensity Bounds: true
+        Autocompute Value Bounds:
+          Max Value: 10
+          Min Value: -10
+          Value: true
+        Axis: Z
+        Channel Name: intensity
+        Class: rviz_default_plugins/PointCloud2
+        Color: 255; 255; 255
+        Color Transformer: Intensity
+        Decay Time: 0
+        Enabled: true
+        Invert Rainbow: false
+        Max Color: 255; 255; 255
+        Max Intensity: 4096
+        Min Color: 0; 0; 0
+        Min Intensity: 0
+        Name: LocalCloudMap
+        Position Transformer: XYZ
+        Selectable: true
+        Size (Pixels): 3
+        Size (m): 0.03999999910593033
+        Style: Flat Squares
+        Topic:
+          Depth: 5
+          Durability Policy: Volatile
+          Filter size: 10
+          History Policy: Keep Last
+          Reliability Policy: Reliable
+          Value: /mapping/local_cloud_map
+        Use Fixed Frame: true
+        Use rainbow: true
+        Value: true
+      - Class: rviz_default_plugins/MarkerArray
+        Enabled: true
+        Name: LocalFeatureMap
+        Namespaces: {}
+        Topic:
+          Depth: 5
+          Durability Policy: Volatile
+          History Policy: Keep Last
+          Reliability Policy: Reliable
+          Value: /mapping/local_feature_map
+        Value: true
+      - Class: rviz_default_plugins/MarkerArray
+        Enabled: true
+        Name: MatchedFeature
+        Namespaces: {}
+        Topic:
+          Depth: 5
+          Durability Policy: Volatile
+          History Policy: Keep Last
+          Reliability Policy: Reliable
+          Value: /mapping/matched_feature
+        Value: true
+      Enabled: false
+      Name: MapFeatureMap
+    Enabled: false
+    Name: 建图
+    Value: false
+  - Class: rviz_common/Group
+    Displays:
+    - Alpha: 0.3
+      Class: rviz_default_plugins/Map
+      Color Scheme: costmap
+      Draw Behind: false
+      Enabled: true
+      Name: GlobalCostmap
+      Topic:
+        Depth: 1
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /global_costmap/costmap
+      Update Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /global_costmap/costmap_updates
+      Use Timestamp: false
+      Value: true
+    - Alpha: 0.5
+      Class: rviz_default_plugins/Map
+      Color Scheme: costmap
+      Draw Behind: false
+      Enabled: true
+      Name: LocalCostmap
+      Topic:
+        Depth: 1
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /local_costmap/costmap
+      Update Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /local_costmap/costmap_updates
+      Use Timestamp: false
+      Value: true
+    - Alpha: 1
+      Class: rviz_default_plugins/Polygon
+      Color: 0; 255; 0
+      Enabled: true
+      Name: Footprint
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /local_costmap/published_footprint
+      Value: true
+    - Alpha: 1
+      Buffer Length: 1
+      Class: rviz_default_plugins/Path
+      Color: 0; 170; 255
+      Enabled: true
+      Line Style: Lines
+      Line Width: 0.03
+      Name: GlobalPlan
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Pose Style: None
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /plan
+      Value: true
+    - Alpha: 1
+      Buffer Length: 1
+      Class: rviz_default_plugins/Path
+      Color: 255; 0; 255
+      Enabled: true
+      Line Style: Lines
+      Line Width: 0.03
+      Name: LocalPlan
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Pose Style: None
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /local_plan
+      Value: true
+    - Alpha: 1
+      Class: rviz_default_plugins/Polygon
+      Color: 255; 0; 0
+      Enabled: false
+      Name: CollisionStopZone
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /polygon_stop
+      Value: false
+    - Alpha: 1
+      Class: rviz_default_plugins/Polygon
+      Color: 255; 255; 0
+      Enabled: false
+      Name: CollisionSlowdownZone
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /polygon_slowdown
+      Value: false
+    Enabled: true
+    Name: 导航
+    Value: true
+  - Class: rviz_common/Group
+    Displays:
+    - Alpha: 1
+      Autocompute Intensity Bounds: true
+      Class: rviz_default_plugins/LaserScan
+      Color: 255; 255; 255
+      Color Transformer: FlatColor
+      Decay Time: 0
+      Enabled: true
+      Name: LaserScanFront
+      Position Transformer: XYZ
+      Selectable: true
+      Size (Pixels): 3
+      Size (m): 0.05
+      Style: Flat Squares
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Best Effort
+        Value: /laser_scan/front
+      Use Fixed Frame: true
+      Use rainbow: true
+      Value: true
+    - Alpha: 1
+      Autocompute Intensity Bounds: true
+      Class: rviz_default_plugins/LaserScan
+      Color: 255; 255; 0
+      Color Transformer: FlatColor
+      Decay Time: 0
+      Enabled: true
+      Name: LaserScanRear
+      Position Transformer: XYZ
+      Selectable: true
+      Size (Pixels): 3
+      Size (m): 0.05
+      Style: Flat Squares
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Best Effort
+        Value: /laser_scan/rear
+      Use Fixed Frame: true
+      Use rainbow: true
+      Value: true
+    - Angle Tolerance: 0.10000000149011612
+      Class: rviz_default_plugins/Odometry
+      Covariance:
+        Orientation:
+          Alpha: 0.5
+          Color: 255; 255; 127
+          Color Style: Unique
+          Frame: Local
+          Offset: 1
+          Scale: 0.10000000149011612
+          Value: true
+        Position:
+          Alpha: 0.30000001192092896
+          Color: 204; 51; 204
+          Scale: 0.10000000149011612
+          Value: true
+        Value: true
+      Enabled: false
+      Keep: 100
+      Name: ChassisOdom
+      Position Tolerance: 0.10000000149011612
+      Shape:
+        Alpha: 1
+        Axes Length: 1
+        Axes Radius: 0.10000000149011612
+        Color: 255; 25; 0
+        Head Length: 0.10000000149011612
+        Head Radius: 0.05000000074505806
+        Shaft Length: 0.029999999329447746
+        Shaft Radius: 0.02199999988079071
+        Value: Arrow
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        Filter size: 10
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /feedback/odom
+      Value: false
+    - Angle Tolerance: 0.10000000149011612
+      Class: rviz_default_plugins/Odometry
+      Covariance:
+        Orientation:
+          Alpha: 0.5
+          Color: 255; 255; 127
+          Color Style: Unique
+          Frame: Local
+          Offset: 1
+          Scale: 0.10000000149011612
+          Value: true
+        Position:
+          Alpha: 0.30000001192092896
+          Color: 204; 51; 204
+          Scale: 0.10000000149011612
+          Value: true
+        Value: true
+      Enabled: true
+      Keep: 100
+      Name: FilteredOdom
+      Position Tolerance: 0.10000000149011612
+      Shape:
+        Alpha: 1
+        Axes Length: 1
+        Axes Radius: 0.10000000149011612
+        Color: 0; 255; 0
+        Head Length: 0.10000000149011612
+        Head Radius: 0.05000000074505806
+        Shaft Length: 0.029999999329447746
+        Shaft Radius: 0.02199999988079071
+        Value: Arrow
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        Filter size: 10
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /odometry/filtered
+      Value: true
+    Enabled: true
+    Name: 传感器
+    Value: true
+  Enabled: true
+  Global Options:
+    Background Color: 48; 48; 48
+    Fixed Frame: map
+    Frame Rate: 30
+  Name: root
+  Tools:
+  - Class: rviz_default_plugins/Interact
+    Hide Inactive Objects: true
+  - Class: rviz_default_plugins/MoveCamera
+  - Class: rviz_default_plugins/Measure
+    Line color: 128; 128; 0
+  - Class: rviz_default_plugins/SetInitialPose
+    Covariance x: 0.25
+    Covariance y: 0.25
+    Covariance yaw: 0.06853891909122467
+    Topic:
+      Depth: 5
+      Durability Policy: Volatile
+      History Policy: Keep Last
+      Reliability Policy: Reliable
+      Value: /initialpose
+  - Class: rviz_default_plugins/SetGoal
+    Topic:
+      Depth: 5
+      Durability Policy: Volatile
+      History Policy: Keep Last
+      Reliability Policy: Reliable
+      Value: /goal_pose
+  - Class: map_manager_rviz_plugin/MapEditTool
+  - Class: rviz_default_plugins/Select
+  - Class: rviz_default_plugins/FocusCamera
+  - Class: rviz_default_plugins/PublishPoint
+    Single click: true
+    Topic:
+      Depth: 5
+      Durability Policy: Volatile
+      History Policy: Keep Last
+      Reliability Policy: Reliable
+      Value: /clicked_point
+  Value: true
+  Views:
+    Current:
+      Class: rviz_default_plugins/TopDownOrtho
+      Name: Current View
+      Scale: 20
+      X: 0
+      Y: 0
+    Saved: null
+Window Geometry:
+  Height: 1038
+  Width: 1850
+  X: 0
+  Y: 0
+  Hide Left Dock: false
+  Hide Right Dock: false
+  QMainWindow State: 000000ff00000000fd0000000200000000000001680000040efc0200000001fb000000100044006900730070006c00610079007301000000000000040e0000002c00ffffff00000001000002580000040efc0200000001fc000000000000040e0000004d01000020fa000000000200000004fb00000028004d0061007000410073007300650074004d0061006e006100670065007200500061006e0065006c0100000000ffffffff0000002c00fffffffb0000001e004d00610070004d0061006e006100670065007200500061006e0065006c0100000000ffffffff0000002c00fffffffb000000300043006f006d006d0061006e00640042006f0061007200640043006f006e00740072006f006c00500061006e0065006c0100000000ffffffff0000002c00fffffffb0000002e0043006f006d006d0061006e00640042006f00610072006400530074006100740075007300500061006e0065006c0100000000ffffffff0000002c00ffffff0000036e0000040e00000004000000040000000800000008fc00000000
+  Displays:
+    collapsed: false
+  MapManagerPanel:
+    collapsed: false
+  MapAssetManagerPanel:
+    collapsed: false
+  CommandBoardControlPanel:
+    collapsed: false
+  CommandBoardStatusPanel:
+    collapsed: false

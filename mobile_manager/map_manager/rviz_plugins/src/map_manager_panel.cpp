@@ -450,7 +450,7 @@ QWidget* MapManagerPanel::buildEditTab() {
     v->addWidget(draft_label_);
     v->addWidget(edit_result_label_);
     v->addWidget(new QLabel("提示：Fixed Frame 须为 map；笔画按 map 坐标落盘，红 = 墙体、绿 = 擦除、灰 = 未知。\n"
-                            "每种工具一笔到位：墙体覆盖处全变障碍；擦除把障碍与灰色噪点变为可通行，未知区域保持未知；"
+                            "每种工具一笔到位：墙体覆盖处全变障碍；擦除覆盖处全变可通行（含障碍、灰色噪点和未知区域）；"
                             "未知区域覆盖处全变未知。保存前可随时撤销；保存后可在「地图」页回滚。"));
     v->addStretch();
     setEditingUi(false);
