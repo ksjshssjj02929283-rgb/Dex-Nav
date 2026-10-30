@@ -116,7 +116,7 @@ install(DIRECTORY include/
   DESTINATION include
 )
 
-install(DIRECTORY launch params
+install(DIRECTORY launch params rviz
   DESTINATION share/${PROJECT_NAME}
 )
 

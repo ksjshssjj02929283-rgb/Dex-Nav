@@ -43,7 +43,7 @@ void ApplyPixel(uint8_t* p, uint8_t tool, const GridThresholds& th, uint8_t unkn
     const CellClass c = ClassifyPixel(*p, th);
     switch (tool) {
         case kToolWall:    if (c != CellClass::kOccupied) *p = 0; break;
-        case kToolErase:   if (c == CellClass::kOccupied || c == CellClass::kGraded) *p = 255; break;
+        case kToolErase:   if (c != CellClass::kFree) *p = 255; break;
         case kToolUnknown: if (c != CellClass::kUnknown) *p = unknown_gray; break;
         default: break;
     }
