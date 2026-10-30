@@ -123,6 +123,8 @@ void ControllerServer::startSnapshotWorker()
           boundary.acceleration_valid = request.acceleration_valid;
           boundary.source_stamp = request.pose.header.stamp;
           boundary.terminal_brake_latched = terminal_latched;
+          boundary.should_stop_for_path_obstacle =
+            (avoidance_state_ != AvoidanceFSMState::AVOIDING_OBSTACLE);
 
           // 5. 执行 SpeedPlanner 速度剖面规划（S曲线/Ruckig/加减速生成）
           auto planner = speed_planners_.at(current_speed_planner_);

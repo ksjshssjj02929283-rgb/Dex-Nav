@@ -34,6 +34,7 @@ PARAMS_FILE="${WORKSPACE_DIR}/mobile_navigation/nav2_bringup/params/w1_nav2_para
 
 echo "🧹 清理旧的仿真节点进程..."
 pkill -f "w1_diff_kinematic_emulator" 2>/dev/null || true
+pkill -f "planner_server" 2>/dev/null || true
 pkill -f "controller_server" 2>/dev/null || true
 pkill -f "lifecycle_manager_pure_sim" 2>/dev/null || true
 pkill -f "robot_state_publisher" 2>/dev/null || true

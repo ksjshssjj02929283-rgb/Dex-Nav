@@ -36,6 +36,7 @@
 #include "nav2_speed_planner/core/initial_motion.hpp"
 #include "nav_interfaces/msg/robot_trajectory.hpp"
 #include "nav_interfaces/msg/navigation_status.hpp"
+#include "nav_interfaces/msg/obstacle_monitor_status.hpp"
 #include "tf2_ros/transform_listener.h"
 #include "nav2_msgs/action/follow_path.hpp"
 #include "nav2_msgs/msg/speed_limit.hpp"
@@ -242,6 +243,11 @@ protected:
   /// 仅当可行的障碍停车剖面已要求机器人保持静止时暂停进展检查。
   bool shouldPauseProgressCheckForObstacleStop(
     const geometry_msgs::msg::PoseStamped & pose);
+  /// 外部 collision_monitor 的最新 STOP 状态是否仍然新鲜。
+  bool isExternalCollisionStopActive();
+  /// 接收 /obstacle_status，用于区分安全停障与控制器真实无进展。
+  void collisionMonitorStatusCallback(
+    const nav_interfaces::msg::ObstacleMonitorStatus::SharedPtr msg);
   /// 停障等待时跳过进展检查，恢复后重新建立检查基线。
   bool checkProgress(geometry_msgs::msg::PoseStamped & pose);
   /// 预测本周期将运行的控制器是否能自行绕开参考路径上的局部障碍。
@@ -500,6 +506,12 @@ protected:
   rclcpp_lifecycle::LifecyclePublisher<geometry_msgs::msg::Twist>::SharedPtr vel_publisher_;
   rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::Empty>::SharedPtr hard_stop_publisher_;
   std::string hard_stop_topic_{"cmd_vel_hard_stop"};
+  rclcpp::Subscription<nav_interfaces::msg::ObstacleMonitorStatus>::SharedPtr
+    collision_monitor_status_sub_;
+  std::string collision_monitor_status_topic_{"/obstacle_status"};
+  double collision_monitor_status_timeout_{0.5};
+  std::atomic<bool> external_collision_stop_active_{false};
+  std::atomic<int64_t> external_collision_status_received_ns_{0};
   // PREPARE 与行为树之间只传递单调编号，不跨进程共享可变状态。
   rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::UInt64>::SharedPtr
     prepare_replan_request_pub_;
@@ -567,7 +579,7 @@ protected:
   double avoidance_obstacle_trigger_distance_{2.80};
   double avoidance_rejoin_lateral_threshold_{0.12};
   int avoidance_obstacle_cost_threshold_{253};
-  bool avoidance_emergency_stop_on_no_path_{true};
+  bool avoidance_emergency_stop_on_no_path_{false};
   double avoidance_robot_collision_radius_{0.42};
 
   enum class AvoidanceFSMState {
@@ -579,6 +591,7 @@ protected:
 
   rclcpp::Subscription<std_msgs::msg::String>::SharedPtr set_avoid_planner_sub_;
   rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::String>::SharedPtr avoidance_fsm_state_pub_;
+  rclcpp_lifecycle::LifecyclePublisher<nav_msgs::msg::Path>::SharedPtr transformed_plan_pub_;
 
   bool isReferencePathBlockedAhead(
     const nav_msgs::msg::Path & path,
@@ -679,7 +692,7 @@ protected:
 
 
   bool staged_control_enabled_{true};
-  ControllerPhase controller_phase_{ControllerPhase::TRACK};
+  std::atomic<ControllerPhase> controller_phase_{ControllerPhase::TRACK};
   std::string track_controller_{"MPPIController"};
   std::string approach_controller_{"PIDController"};
   double approach_distance_{0.3};

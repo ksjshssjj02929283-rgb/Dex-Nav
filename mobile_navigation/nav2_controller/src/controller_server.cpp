@@ -34,10 +34,12 @@
 #include "nav2_util/robot_utils.hpp"
 #include "nav2_controller/controller_server.hpp"
 #include "tf2/exceptions.h"
+#include "tf2/LinearMath/Transform.h"
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wpedantic"
 #include "tf2/utils.h"
 #pragma GCC diagnostic pop
+#include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
 
 using namespace std::chrono_literals;
 using rcl_interfaces::msg::ParameterType;
@@ -164,6 +166,9 @@ ControllerServer::ControllerServer(const rclcpp::NodeOptions & options)
 
   declare_parameter("speed_limit_topic", rclcpp::ParameterValue("speed_limit"));
   declare_parameter("hard_stop_topic", rclcpp::ParameterValue("cmd_vel_hard_stop"));
+  declare_parameter(
+    "collision_monitor_status_topic", rclcpp::ParameterValue("/obstacle_status"));
+  declare_parameter("collision_monitor_status_timeout", 0.5);
 
   declare_parameter("failure_tolerance", rclcpp::ParameterValue(0.0));
   declare_parameter("staged_control.enabled", rclcpp::ParameterValue(true));
@@ -520,7 +525,7 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
   get_parameter("avoidance_state_machine.obstacle_cost_threshold", avoidance_obstacle_cost_threshold_);
 
   nav2_util::declare_parameter_if_not_declared(
-    node, "avoidance_state_machine.emergency_stop_on_no_path", rclcpp::ParameterValue(true));
+    node, "avoidance_state_machine.emergency_stop_on_no_path", rclcpp::ParameterValue(false));
   get_parameter("avoidance_state_machine.emergency_stop_on_no_path", avoidance_emergency_stop_on_no_path_);
 
   nav2_util::declare_parameter_if_not_declared(
@@ -627,9 +632,16 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
     longitudinal_state_topic_, rclcpp::SensorDataQoS(),
     std::bind(&ControllerServer::longitudinalStateCallback, this, std::placeholders::_1));
   get_parameter("hard_stop_topic", hard_stop_topic_);
+  get_parameter("collision_monitor_status_topic", collision_monitor_status_topic_);
+  get_parameter("collision_monitor_status_timeout", collision_monitor_status_timeout_);
+  collision_monitor_status_timeout_ = std::max(0.0, collision_monitor_status_timeout_);
   vel_publisher_ = create_publisher<geometry_msgs::msg::Twist>("cmd_vel", 1);
   hard_stop_publisher_ = create_publisher<std_msgs::msg::Empty>(
     hard_stop_topic_, rclcpp::QoS(1).reliable());
+  collision_monitor_status_sub_ =
+    create_subscription<nav_interfaces::msg::ObstacleMonitorStatus>(
+    collision_monitor_status_topic_, rclcpp::QoS(1),
+    std::bind(&ControllerServer::collisionMonitorStatusCallback, this, _1));
   prepare_replan_request_pub_ = create_publisher<std_msgs::msg::UInt64>(
     nav2_util::navigation_protocol::kPrepareReplanTopic,
     nav2_util::navigation_protocol::stateTopicQoS());
@@ -669,6 +681,9 @@ ControllerServer::on_configure(const rclcpp_lifecycle::State & /*state*/)
 
   avoidance_fsm_state_pub_ = create_publisher<std_msgs::msg::String>(
     "/controller_server/avoidance_mode", 10);
+
+  transformed_plan_pub_ = create_publisher<nav_msgs::msg::Path>(
+    "transformed_global_plan", 10);
 
   set_avoid_planner_sub_ = create_subscription<std_msgs::msg::String>(
     "/controller_server/set_avoidance_planner", 10,
@@ -751,6 +766,9 @@ ControllerServer::on_activate(const rclcpp_lifecycle::State & /*state*/)
   if (avoidance_fsm_state_pub_) {
     avoidance_fsm_state_pub_->on_activate();
   }
+  if (transformed_plan_pub_) {
+    transformed_plan_pub_->on_activate();
+  }
   startSnapshotWorker();
   action_server_->activate();
 
@@ -804,6 +822,9 @@ ControllerServer::on_deactivate(const rclcpp_lifecycle::State & /*state*/)
   nav_status_pub_->on_deactivate();
   if (avoidance_fsm_state_pub_) {
     avoidance_fsm_state_pub_->on_deactivate();
+  }
+  if (transformed_plan_pub_) {
+    transformed_plan_pub_->on_deactivate();
   }
   goal_error_publisher_->on_deactivate();
   speed_plan_publisher_->on_deactivate();
@@ -880,6 +901,9 @@ ControllerServer::on_cleanup(const rclcpp_lifecycle::State & /*state*/)
   avoidance_fsm_state_pub_.reset();
   set_avoid_planner_sub_.reset();
   hard_stop_publisher_.reset();
+  collision_monitor_status_sub_.reset();
+  external_collision_stop_active_.store(false);
+  external_collision_status_received_ns_.store(0);
   prepare_replan_request_pub_.reset();
   prepare_session_sub_.reset();
   goal_error_publisher_.reset();
@@ -1145,7 +1169,7 @@ void ControllerServer::commitPlannerPathState(
     RCLCPP_DEBUG_THROTTLE(
       get_logger(), *get_clock(), 1000,
       "Same-goal path update: phase=%s, terminal_brake=%s, collision_stop=%s. State kept.",
-      controllerPhaseName(controller_phase_), terminal_brake_latched_ ? "true" : "false",
+      controllerPhaseName(controller_phase_.load()), terminal_brake_latched_ ? "true" : "false",
       is_collision_stop_active_ ? "true" : "false");
   }
 
@@ -1179,47 +1203,115 @@ bool ControllerServer::isReferencePathBlockedAhead(
   }
 
   auto * cm = costmap_ros_->getCostmap();
+
+  const std::string costmap_frame = costmap_ros_->getGlobalFrameID();
+  const std::string path_frame = path.header.frame_id.empty() ?
+    path.poses.front().header.frame_id : path.header.frame_id;
+  const std::string pose_frame = pose.header.frame_id.empty() ? path_frame : pose.header.frame_id;
+  rclcpp::Clock throttle_clock(get_clock()->get_clock_type());
+
+  const auto frameTransform = [&](const std::string & source_frame,
+      tf2::Transform & frame_to_costmap) -> bool {
+      if (source_frame.empty() || source_frame == costmap_frame) {
+        frame_to_costmap.setIdentity();
+        return true;
+      }
+      try {
+        const auto transform = costmap_ros_->getTfBuffer()->lookupTransform(
+          costmap_frame, source_frame, rclcpp::Time(0),
+          rclcpp::Duration::from_seconds(costmap_ros_->getTransformTolerance()));
+        const auto & translation = transform.transform.translation;
+        const auto & rotation = transform.transform.rotation;
+        frame_to_costmap.setOrigin(
+          tf2::Vector3(translation.x, translation.y, translation.z));
+        frame_to_costmap.setRotation(
+          tf2::Quaternion(rotation.x, rotation.y, rotation.z, rotation.w));
+        return true;
+      } catch (const tf2::TransformException & ex) {
+        RCLCPP_WARN_THROTTLE(
+          get_logger(), throttle_clock, 2000,
+          "Reference-path obstacle check skipped: cannot transform '%s' -> '%s': %s",
+          source_frame.c_str(), costmap_frame.c_str(), ex.what());
+        return false;
+      }
+    };
+
+  tf2::Transform path_to_costmap;
+  tf2::Transform pose_to_costmap;
+  if (!frameTransform(path_frame, path_to_costmap)) {
+    return false;
+  }
+  if (path_frame == pose_frame) {
+    pose_to_costmap = path_to_costmap;
+  } else if (!frameTransform(pose_frame, pose_to_costmap)) {
+    return false;
+  }
+
+  const auto transformPoint = [](const tf2::Transform & transform,
+      const geometry_msgs::msg::Point & point) {
+      const tf2::Vector3 transformed =
+        transform * tf2::Vector3(point.x, point.y, point.z);
+      return std::make_pair(transformed.x(), transformed.y());
+    };
+
+  std::vector<std::pair<double, double>> path_xy;
+  path_xy.reserve(path.poses.size());
+  for (const auto & path_pose : path.poses) {
+    path_xy.push_back(transformPoint(path_to_costmap, path_pose.pose.position));
+  }
+
+  const auto robot_xy = transformPoint(pose_to_costmap, pose.pose.position);
+  const double rx = robot_xy.first;
+  const double ry = robot_xy.second;
+  size_t nearest_idx = 0U;
+  double nearest_distance_squared = std::numeric_limits<double>::infinity();
+  for (size_t index = 0U; index < path_xy.size(); ++index) {
+    const double dx = path_xy[index].first - rx;
+    const double dy = path_xy[index].second - ry;
+    const double distance_squared = dx * dx + dy * dy;
+    if (distance_squared < nearest_distance_squared) {
+      nearest_distance_squared = distance_squared;
+      nearest_idx = index;
+    }
+  }
+
   std::unique_lock<nav2_costmap_2d::Costmap2D::mutex_t> lock(*(cm->getMutex()));
 
-  const size_t nearest_idx = findClosestPoseIndex(pose, path);
-  const auto & pref = path.poses[nearest_idx].pose;
-  const double rx = pose.pose.position.x;
-  const double ry = pose.pose.position.y;
+  const auto & pref_xy = path_xy[nearest_idx];
 
   double yaw = 0.0;
   if (nearest_idx + 1 < path.poses.size()) {
     yaw = std::atan2(
-      path.poses[nearest_idx + 1].pose.position.y - pref.position.y,
-      path.poses[nearest_idx + 1].pose.position.x - pref.position.x);
+      path_xy[nearest_idx + 1].second - pref_xy.second,
+      path_xy[nearest_idx + 1].first - pref_xy.first);
   } else if (nearest_idx > 0) {
     yaw = std::atan2(
-      pref.position.y - path.poses[nearest_idx - 1].pose.position.y,
-      pref.position.x - path.poses[nearest_idx - 1].pose.position.x);
+      pref_xy.second - path_xy[nearest_idx - 1].second,
+      pref_xy.first - path_xy[nearest_idx - 1].first);
   }
 
   const double nx = -std::sin(yaw);
   const double ny = std::cos(yaw);
-  current_lateral_offset = (rx - pref.position.x) * nx + (ry - pref.position.y) * ny;
+  current_lateral_offset = (rx - pref_xy.first) * nx + (ry - pref_xy.second) * ny;
 
   double accum_s = 0.0;
   const double half_width = std::max(0.20, avoidance_robot_collision_radius_ * 0.70);
   for (size_t i = nearest_idx; i < path.poses.size(); ++i) {
     if (i > nearest_idx) {
       accum_s += std::hypot(
-        path.poses[i].pose.position.x - path.poses[i - 1].pose.position.x,
-        path.poses[i].pose.position.y - path.poses[i - 1].pose.position.y);
+        path_xy[i].first - path_xy[i - 1].first,
+        path_xy[i].second - path_xy[i - 1].second);
     }
     if (accum_s > avoidance_obstacle_trigger_distance_) {
       break;
     }
 
-    const double px = path.poses[i].pose.position.x;
-    const double py = path.poses[i].pose.position.y;
+    const double px = path_xy[i].first;
+    const double py = path_xy[i].second;
     double pt_yaw = yaw;
     if (i + 1 < path.poses.size()) {
       pt_yaw = std::atan2(
-        path.poses[i + 1].pose.position.y - py,
-        path.poses[i + 1].pose.position.x - px);
+        path_xy[i + 1].second - py, path_xy[i + 1].first - px);
     }
     const double p_nx = -std::sin(pt_yaw);
     const double p_ny = std::cos(pt_yaw);
@@ -1262,8 +1354,13 @@ bool ControllerServer::computeLocalPath(
   }
 
   // 1. 判断是否能够且需要进行局部动态绕障
+  // 门控约束：仅在宏观阶段处于 TRACK 时允许触发绕障规划器。
+  // PREPARE、ALIGN 和 APPROACH 阶段直接使用基础局部裁剪规划，
+  // 避免自转大偏角几何畸变及进站前的异常摆动。
+  const bool phase_allows_avoidance = !staged_control_enabled_ ||
+    (controller_phase_.load() == ControllerPhase::TRACK);
   double current_d = 0.0;
-  const bool can_avoid = !avoidance_local_planner_.empty() &&
+  const bool can_avoid = phase_allows_avoidance && !avoidance_local_planner_.empty() &&
     (local_planners_.find(avoidance_local_planner_) != local_planners_.end());
   const bool need_avoidance = can_avoid && isReferencePathBlockedAhead(global_path, pose, current_d);
 
@@ -1285,25 +1382,28 @@ bool ControllerServer::computeLocalPath(
           avoid_path.header.frame_id;
         bool frame_ok = true;
         if (!target_frame.empty() && !source_frame.empty() && source_frame != target_frame) {
-          nav_msgs::msg::Path transformed;
-          transformed.header.frame_id = target_frame;
-          transformed.header.stamp = avoid_path.header.stamp;
-          rclcpp::Duration tolerance(
-            rclcpp::Duration::from_seconds(costmap_ros_->getTransformTolerance()));
-          for (const auto & avoid_pose : avoid_path.poses) {
-            geometry_msgs::msg::PoseStamped transformed_pose;
-            if (!nav_2d_utils::transformPose(
-                costmap_ros_->getTfBuffer(), target_frame, avoid_pose,
-                transformed_pose, tolerance))
-            {
-              frame_ok = false;
-              break;
-            }
-            transformed.poses.push_back(transformed_pose);
-          }
-          if (frame_ok) {
+          try {
+            const auto transform = costmap_ros_->getTfBuffer()->lookupTransform(
+              target_frame, source_frame, rclcpp::Time(0),
+              rclcpp::Duration::from_seconds(costmap_ros_->getTransformTolerance()));
+            nav_msgs::msg::Path transformed;
             transformed.header.stamp = this->now();
+            transformed.header.frame_id = target_frame;
+            transformed.poses.reserve(avoid_path.poses.size());
+            for (const auto & avoid_pose : avoid_path.poses) {
+              geometry_msgs::msg::PoseStamped transformed_pose;
+              tf2::doTransform(avoid_pose, transformed_pose, transform);
+              transformed_pose.header.frame_id = target_frame;
+              transformed_pose.header.stamp = avoid_pose.header.stamp;
+              transformed.poses.push_back(std::move(transformed_pose));
+            }
             avoid_path = std::move(transformed);
+          } catch (const tf2::TransformException & exception) {
+            frame_ok = false;
+            RCLCPP_WARN_THROTTLE(
+              get_logger(), *get_clock(), 1000,
+              "Avoidance path transform failed '%s' -> '%s': %s",
+              source_frame.c_str(), target_frame.c_str(), exception.what());
           }
         }
         if (frame_ok) {
@@ -1316,10 +1416,17 @@ bool ControllerServer::computeLocalPath(
       avoidance_state_ = AvoidanceFSMState::OBSTACLE_BLOCKED;
       RCLCPP_WARN_THROTTLE(
         get_logger(), *get_clock(), 1000,
-        "All candidate avoidance paths blocked in '%s', triggering emergency stop.",
+        "No feasible avoidance path from '%s' (planner or geometry failure), "
+        "triggering emergency stop.",
         avoidance_local_planner_.c_str());
       local_path = nav_msgs::msg::Path();
       return false;
+    }
+    if (!avoidance_succeeded) {
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 1000,
+        "No feasible avoidance path from '%s'; falling back to '%s'.",
+        avoidance_local_planner_.c_str(), current_local_planner_.c_str());
     }
   }
 
@@ -1407,8 +1514,8 @@ nav2_core::InitialMotionState ControllerServer::buildInitialMotionState(
   std::string acceleration_source = "planned_continuity";
 
   const bool longitudinal_tracking_phase =
-    controller_phase_ == ControllerPhase::TRACK ||
-    controller_phase_ == ControllerPhase::APPROACH;
+    controller_phase_.load() == ControllerPhase::TRACK ||
+    controller_phase_.load() == ControllerPhase::APPROACH;
   const bool use_planned_correction = planned_acceleration_correction_enabled_ &&
     planned_acceleration_valid && acceleration_usable && longitudinal_tracking_phase &&
     (!velocity_usable || measured_state.velocity >= -0.01);
@@ -1590,8 +1697,8 @@ void ControllerServer::updateSpeedPlanningContinuityAfterControl(
     control_succeeded && trajectory_target_consumed, consumed_target_acceleration,
     consumed_target_velocity);
   const bool longitudinal_tracking_phase =
-    controller_phase_ == ControllerPhase::TRACK ||
-    controller_phase_ == ControllerPhase::APPROACH;
+    controller_phase_.load() == ControllerPhase::TRACK ||
+    controller_phase_.load() == ControllerPhase::APPROACH;
   if (!control_succeeded || !trajectory_target_consumed || !longitudinal_tracking_phase ||
     current_trajectory_.points.empty())
   {
@@ -1615,7 +1722,7 @@ bool ControllerServer::updateTerminalStallRecovery(
     terminal_stall_max_progress_per_cycle_;
   const bool frozen_terminal_brake = terminal_stall_recovery_enabled_ &&
     terminal_stall_recovery_count_ == 0 &&
-    controller_phase_ == ControllerPhase::APPROACH &&
+    controller_phase_.load() == ControllerPhase::APPROACH &&
     terminal_brake_latched_ &&
     speed_plan_cycle_.terminal_valid &&
     speed_plan_cycle_.terminal.terminal_branch ==
@@ -2043,7 +2150,7 @@ void ControllerServer::publishSpeedPlanDiagnostics(
   }
   add_value(
     "controller", control_result == "not_run" ? "not_run" : active_controller_for_log_);
-  add_value("phase", controllerPhaseName(controller_phase_));
+  add_value("phase", controllerPhaseName(controller_phase_.load()));
 
   message.status.push_back(status);
   speed_plan_diagnostics_publisher_->publish(message);
@@ -2125,13 +2232,13 @@ std::string ControllerServer::getGoalCheckerType(const std::string & goal_checke
 
 void ControllerServer::setControllerPhase(ControllerPhase phase, const std::string & reason)
 {
-  if (controller_phase_ == phase) {
+  if (controller_phase_.load() == phase) {
     return;
   }
   RCLCPP_INFO(
     get_logger(),
     "Control phase: %s -> %s, reason=%s.",
-    controllerPhaseName(controller_phase_),
+    controllerPhaseName(controller_phase_.load()),
     controllerPhaseName(phase),
     reason.c_str());
   controller_phase_ = phase;
@@ -2683,8 +2790,29 @@ geometry_msgs::msg::TwistStamped ControllerServer::computeControllerVelocity(
   active_controller_for_log_ = controller_id;
   // 本周期轨迹只发给真正要执行控制的控制器插件。
   if (trajectory_dispatched_to_ != controller_id && !current_trajectory_.points.empty()) {
+    nav_msgs::msg::Path traj_path;
+    traj_path.header = current_trajectory_.header;
+    if (traj_path.header.frame_id.empty() && !current_trajectory_.points.empty()) {
+      traj_path.header.frame_id = current_trajectory_.points.front().pose.header.frame_id;
+    }
+    if (traj_path.header.frame_id.empty()) {
+      traj_path.header.frame_id = current_path_.header.frame_id;
+    }
+    traj_path.poses.reserve(current_trajectory_.points.size());
+    for (const auto & pt : current_trajectory_.points) {
+      auto p = pt.pose;
+      if (p.header.frame_id.empty()) {
+        p.header.frame_id = traj_path.header.frame_id;
+      }
+      traj_path.poses.push_back(std::move(p));
+    }
+    controllers_[controller_id]->setPlan(traj_path);
     controllers_[controller_id]->setTrajectory(current_trajectory_);
     trajectory_dispatched_to_ = controller_id;
+    if (transformed_plan_pub_ && transformed_plan_pub_->is_activated()) {
+      auto pub_path = std::make_unique<nav_msgs::msg::Path>(traj_path);
+      transformed_plan_pub_->publish(std::move(pub_path));
+    }
   }
   updateEndLocalizationGoal(controller_id, pose);
   return controllers_[controller_id]->computeVelocityCommands(
@@ -2856,10 +2984,16 @@ bool ControllerServer::shouldPauseProgressCheckForObstacleStop(
 
 bool ControllerServer::checkProgress(geometry_msgs::msg::PoseStamped & pose)
 {
-  // 正常停障和碰撞急停都不应被误判为“没有进展”。
+  // 正常停障、内部/外部碰撞急停以及 ALIGN 原地对齐调头阶段，都不应被误判为
+  // “没有向前位移进展”。外部 collision_monitor 的 STOP 不经过 controller
+  // 插件，必须通过 /obstacle_status 单独感知。
+  const bool is_align_phase = (controller_phase_.load() == ControllerPhase::ALIGN);
   const bool is_planned_obstacle_stop =
     !is_collision_stop_active_ && shouldPauseProgressCheckForObstacleStop(pose);
-  if (is_collision_stop_active_ || is_planned_obstacle_stop) {
+  const bool is_external_collision_stop = isExternalCollisionStopActive();
+  if (is_collision_stop_active_ || is_external_collision_stop ||
+    is_planned_obstacle_stop || is_align_phase)
+  {
     if (!is_progress_check_paused_for_obstacle_stop_) {
       // 进入时清除旧基线，防止障碍解除后继承停障前已累计的超时时间。
       progress_checker_->reset();
@@ -2868,6 +3002,12 @@ bool ControllerServer::checkProgress(geometry_msgs::msg::PoseStamped & pose)
         RCLCPP_INFO(
           get_logger(),
           "Hard stop active. Progress check paused.");
+      } else if (is_external_collision_stop) {
+        RCLCPP_INFO(
+          get_logger(),
+          "External collision monitor STOP active. Progress check paused.");
+      } else if (is_align_phase) {
+        RCLCPP_INFO(get_logger(), "ALIGN phase. Progress check paused.");
       } else {
         RCLCPP_INFO(
           get_logger(),
@@ -2881,9 +3021,55 @@ bool ControllerServer::checkProgress(geometry_msgs::msg::PoseStamped & pose)
   if (is_progress_check_paused_for_obstacle_stop_) {
     progress_checker_->reset();
     is_progress_check_paused_for_obstacle_stop_ = false;
-    RCLCPP_INFO(get_logger(), "Obstacle stop ended. Progress check restarted.");
+    RCLCPP_INFO(get_logger(), "Progress check resumed with a fresh baseline.");
   }
   return progress_checker_->check(pose);
+}
+
+void ControllerServer::collisionMonitorStatusCallback(
+  const nav_interfaces::msg::ObstacleMonitorStatus::SharedPtr msg)
+{
+  const auto now_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+    std::chrono::steady_clock::now().time_since_epoch()).count();
+  external_collision_status_received_ns_.store(now_ns, std::memory_order_relaxed);
+  const bool stop_active =
+    msg->status == nav_interfaces::msg::ObstacleMonitorStatus::STOP;
+  const bool was_stop_active = external_collision_stop_active_.exchange(
+    stop_active, std::memory_order_relaxed);
+  if (stop_active && !was_stop_active) {
+    if (msg->zone_name.empty()) {
+      RCLCPP_WARN(get_logger(), "External collision monitor STOP observed.");
+    } else {
+      RCLCPP_WARN(
+        get_logger(), "External collision monitor STOP observed: zone='%s'.",
+        msg->zone_name.c_str());
+    }
+  } else if (!stop_active && was_stop_active) {
+    RCLCPP_INFO(get_logger(), "External collision monitor STOP cleared.");
+  }
+}
+
+bool ControllerServer::isExternalCollisionStopActive()
+{
+  if (!external_collision_stop_active_.load(std::memory_order_relaxed)) {
+    return false;
+  }
+  const auto received_ns = external_collision_status_received_ns_.load(
+    std::memory_order_relaxed);
+  if (received_ns <= 0) {
+    return false;
+  }
+  const auto now_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+    std::chrono::steady_clock::now().time_since_epoch()).count();
+  const auto timeout_ns = static_cast<int64_t>(collision_monitor_status_timeout_ * 1e9);
+  if (now_ns - received_ns > timeout_ns) {
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), *get_clock(), 1000,
+      "External collision monitor status is stale (> %.3f s); progress check will resume.",
+      collision_monitor_status_timeout_);
+    return false;
+  }
+  return true;
 }
 
 void ControllerServer::computeAndPublishVelocity()
@@ -2993,8 +3179,8 @@ void ControllerServer::computeAndPublishVelocity()
     throw;
   }
   if (control_succeeded &&
-    (controller_phase_ == ControllerPhase::TRACK ||
-    controller_phase_ == ControllerPhase::APPROACH))
+    (controller_phase_.load() == ControllerPhase::TRACK ||
+    controller_phase_.load() == ControllerPhase::APPROACH))
   {
     const auto controller = controllers_.find(active_controller_for_log_);
     if (controller != controllers_.end()) {
@@ -3092,7 +3278,7 @@ void ControllerServer::computeAndPublishVelocity()
     get_logger(), *get_clock(), 500,
     "Control command: phase=%s, controller=%s, goal_checker=%s, "
     "vx=%.3f, vy=%.3f, wz=%.3f.",
-    controllerPhaseName(controller_phase_),
+    controllerPhaseName(controller_phase_.load()),
     active_controller_for_log_.c_str(),
     current_goal_checker_.c_str(),
     cmd_vel_2d.twist.linear.x,

@@ -38,9 +38,13 @@ public:
   bool checkIfFeasible(
     const frenet_planner::FrenetTrajectory & frenet_trajectory,
     const frenet_planner::CartesianTrajectory & cartesian_trajectory) override;
+  bool findViolation(
+    const frenet_planner::CartesianTrajectory & cartesian_trajectory,
+    frenet_planner::PolicyViolation & violation) const override;
 
 private:
   int obstacle_cost_threshold_{253};
+  double footprint_padding_m_{0.04};
 };
 
 class ConstraintsPolicy : public RclcppNodePolicy
@@ -53,6 +57,9 @@ public:
   bool checkIfFeasible(
     const frenet_planner::FrenetTrajectory & frenet_trajectory,
     const frenet_planner::CartesianTrajectory & cartesian_trajectory) override;
+  bool findViolation(
+    const frenet_planner::CartesianTrajectory & cartesian_trajectory,
+    frenet_planner::PolicyViolation & violation) const override;
 
 private:
   double max_speed_{0.8};

@@ -37,9 +37,11 @@
            重规划成功后暂停检测 2.5 s，让新路径生效。 -->
       <!-- active：恢复分支和 PREPARE 后退完成事件可绕过近目标、偏离量和周期门控请求新路径；
            目标代次由 bt_navigator 统一发布，保证每个导航任务最多后退一次。 -->
-      <AdaptiveReplanning enable_global_replanning="true" goal="{goal}" path="{path}" distance_threshold="0.5" max_deviation="0.5"
-        hz="0.02" path_obstacle_check_hz="2.0" invalid_path_confirmations="4"
-        min_blocked_path_poses="3" obstacle_replan_cooldown="2.5" recovery_replan_mode="active">
+      <!-- 全局路网导航原则：关闭中途全局重规划 (enable_global_replanning=false, path_obstacle_check_hz=0.0)，
+           锁定全局参考线，所有避障由局部规划器完成 -->
+      <AdaptiveReplanning enable_global_replanning="false" goal="{goal}" path="{path}" distance_threshold="0.5" max_deviation="0.5"
+        hz="0.0" path_obstacle_check_hz="0.0" invalid_path_confirmations="4"
+        min_blocked_path_poses="3" obstacle_replan_cooldown="2.5" recovery_replan_mode="disabled">
         <RecoveryNode number_of_retries="10" name="ComputePathToPoseOuterRetry">
 
           <!-- 内层：规划失败后，依次尝试清 global 和 local，然后立即重规划 1 次 -->

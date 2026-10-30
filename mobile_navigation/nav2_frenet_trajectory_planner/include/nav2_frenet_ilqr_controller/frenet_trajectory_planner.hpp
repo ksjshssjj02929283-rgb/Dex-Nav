@@ -31,6 +31,9 @@ struct FrenetTrajectoryPlannerConfig
   double min_time_interval{1.0};
   double max_time_interval{4.0};
   double step_time_interval{0.25};
+  double min_lateral_time_interval{0.0};
+  double max_lateral_time_interval{0.0};
+  double step_lateral_time_interval{0.0};
   int max_state_in_trajectory{120};
   double dt{0.05};
 };
@@ -40,9 +43,35 @@ struct Info
   double arclength{0.0};
 };
 
+struct PolicyViolation
+{
+  bool valid{false};
+  std::size_t state_index{0U};
+  double x{0.0};
+  double y{0.0};
+  int cost{-1};
+  double speed{0.0};
+  double acceleration{0.0};
+  bool non_finite{false};
+};
+
 struct DebugInfo
 {
   std::vector<std::pair<CartesianTrajectory, double>> cartesian_trajectories;
+  std::size_t candidate_count{0U};
+  std::size_t short_candidate_count{0U};
+  std::size_t invalid_cartesian_count{0U};
+  std::size_t feasible_candidate_count{0U};
+  std::size_t nonfinite_cost_count{0U};
+  std::vector<std::size_t> policy_reject_counts;
+  bool has_first_reject{false};
+  std::size_t first_reject_policy{0U};
+  PolicyViolation first_reject_violation;
+  double robot_frenet_s{0.0};
+  double first_candidate_s{0.0};
+  std::size_t segment_count{0U};
+  double frenet_total_length{0.0};
+  std::size_t first_cartesian_size{0U};
 };
 
 class QuarticTrajectoryPlanner
@@ -85,6 +114,14 @@ public:
   virtual bool checkIfFeasible(
     const FrenetTrajectory & frenet_trajectory,
     const CartesianTrajectory & cartesian_trajectory) = 0;
+  virtual bool findViolation(
+    const CartesianTrajectory & cartesian_trajectory,
+    PolicyViolation & violation) const
+  {
+    (void)cartesian_trajectory;
+    (void)violation;
+    return false;
+  }
 };
 }  // namespace policies
 

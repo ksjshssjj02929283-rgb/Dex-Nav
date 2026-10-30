@@ -71,7 +71,10 @@ def generate_launch_description():
             'update_rate_hz': 100.0,
             'joint_state_rate_hz': 30.0,
             'use_sim_time': use_sim_time,
-            'publish_map_odom_tf': True
+            'publish_map_odom_tf': True,
+            'initial_x': 3.50,
+            'initial_y': 15.625,
+            'initial_theta': -0.35
         }]
     )
 
@@ -87,7 +90,31 @@ def generate_launch_description():
         }]
     )
 
-    # 3. 官方 Nav2 ControllerServer (加载 PathPruningLocalPlanner, FrenetLocalPlanner, LexLocalPlanner, SpeedPlanner, RPP)
+    # 3. 官方 Nav2 PlannerServer (加载 RouteGridPlanner / ThetaStarBased + global_costmap)
+    planner_server_node = Node(
+        package='nav2_planner',
+        executable='planner_server',
+        name='planner_server',
+        output='screen',
+        parameters=[
+            params_file,
+            {
+                'use_sim_time': use_sim_time,
+                'planner_plugins': ['RouteGridPlanner', 'ThetaStarBased'],
+                'current_planner': 'RouteGridPlanner',
+                'route_fallback_planner': 'ThetaStarBased',
+                'smoother_enable': False,
+                'goal_line_interp_enable': False,
+                'RouteGridPlanner.enable_route_costmap_avoidance': True,
+                'RouteGridPlanner.theta_star_allow_unknown': True,
+                'RouteGridPlanner.obstacle_cost_threshold': 200.0,
+                'RouteGridPlanner.obstacle_margin_before_m': 0.9,
+                'RouteGridPlanner.obstacle_margin_after_m': 0.9,
+            }
+        ]
+    )
+
+    # 4. 官方 Nav2 ControllerServer (加载 PathPruningLocalPlanner, FrenetLocalPlanner, LexLocalPlanner, SpeedPlanner, RPP)
     controller_server_node = Node(
         package='nav2_controller',
         executable='controller_server',
@@ -99,7 +126,7 @@ def generate_launch_description():
         ]
     )
 
-    # 4. Lifecycle Manager 自动激活 controller_server
+    # 5. Lifecycle Manager 自动激活 planner_server 与 controller_server
     lifecycle_manager_node = Node(
         package='nav2_lifecycle_manager',
         executable='lifecycle_manager',
@@ -108,7 +135,7 @@ def generate_launch_description():
         parameters=[{
             'use_sim_time': use_sim_time,
             'autostart': autostart,
-            'node_names': ['controller_server']
+            'node_names': ['planner_server', 'controller_server']
         }]
     )
 
@@ -135,6 +162,7 @@ def generate_launch_description():
         declare_enable_rosbridge,
         kinematic_emulator_node,
         robot_state_publisher_node,
+        planner_server_node,
         controller_server_node,
         lifecycle_manager_node,
         rosbridge_node,

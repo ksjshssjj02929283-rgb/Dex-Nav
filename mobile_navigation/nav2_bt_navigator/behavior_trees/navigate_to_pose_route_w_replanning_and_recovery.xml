@@ -22,10 +22,12 @@
       
       <!-- AdaptiveReplanning: 自适应路网重规划门控 -->
       <!-- 偏离路网大于 0.6m 时或检测到前方路网被动态障碍物阻塞时触发重规划 -->
-      <AdaptiveReplanning goal="{goal}" path="{path}" enable_global_replanning="true"
+      <!-- 全局路网导航原则：关闭中途全局重规划 (enable_global_replanning=false, path_obstacle_check_hz=0.0)，
+           锁定全局参考线，所有避障由局部规划器完成 -->
+      <AdaptiveReplanning goal="{goal}" path="{path}" enable_global_replanning="false"
         distance_threshold="0.5" max_deviation="0.6"
-        hz="0.01" path_obstacle_check_hz="2.0" invalid_path_confirmations="4"
-        min_blocked_path_poses="3" obstacle_replan_cooldown="2.5" recovery_replan_mode="active">
+        hz="0.0" path_obstacle_check_hz="0.0" invalid_path_confirmations="4"
+        min_blocked_path_poses="3" obstacle_replan_cooldown="2.5" recovery_replan_mode="disabled">
         
         <RecoveryNode number_of_retries="3" name="ComputePathToPoseOuterRetry">
 

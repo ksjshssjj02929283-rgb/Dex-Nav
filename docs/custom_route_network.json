@@ -1,0 +1,311 @@
+{
+  "schema_version": "2.0",
+  "created_at": "2026-10-30T06:31:31.420Z",
+  "canvas_size": {
+    "width": 2006,
+    "height": 1231
+  },
+  "scale_pixels_per_meter": 40,
+  "start": {
+    "pixel": {
+      "x": 1250,
+      "y": 356
+    },
+    "metric": {
+      "x": 31.25,
+      "y": 21.887,
+      "yaw": -0.197,
+      "yaw_deg": -11
+    }
+  },
+  "goal": {
+    "pixel": {
+      "x": 926,
+      "y": 141
+    },
+    "metric": {
+      "x": 23.15,
+      "y": 27.25,
+      "yaw": 2.034,
+      "yaw_deg": 117
+    }
+  },
+  "nodes": {
+    "B": {
+      "name": "Node B",
+      "yaw": 0,
+      "yaw_deg": 0,
+      "pixel": {
+        "x": 898,
+        "y": 346
+      },
+      "metric": {
+        "x": 22.45,
+        "y": 22.125
+      }
+    },
+    "C": {
+      "name": "Node C",
+      "yaw": 0,
+      "yaw_deg": 0,
+      "pixel": {
+        "x": 1213,
+        "y": 364
+      },
+      "metric": {
+        "x": 30.325,
+        "y": 21.675
+      }
+    },
+    "D": {
+      "name": "Node D",
+      "yaw": 0,
+      "yaw_deg": 0,
+      "pixel": {
+        "x": 964,
+        "y": 585
+      },
+      "metric": {
+        "x": 24.1,
+        "y": 16.15
+      }
+    },
+    "E": {
+      "name": "Node E",
+      "yaw": 0,
+      "yaw_deg": 0,
+      "pixel": {
+        "x": 1150,
+        "y": 971
+      },
+      "metric": {
+        "x": 28.75,
+        "y": 6.5
+      }
+    },
+    "F": {
+      "name": "Node F",
+      "yaw": 0,
+      "yaw_deg": 0,
+      "pixel": {
+        "x": 1197,
+        "y": 157
+      },
+      "metric": {
+        "x": 29.925,
+        "y": 26.85
+      }
+    },
+    "A": {
+      "name": "Node A",
+      "yaw": 0,
+      "yaw_deg": 0,
+      "pixel": {
+        "x": 947,
+        "y": 151
+      },
+      "metric": {
+        "x": 23.675,
+        "y": 27
+      }
+    }
+  },
+  "edges": [
+    {
+      "id": "E_AF",
+      "from": "A",
+      "to": "F",
+      "type": "line",
+      "bidirectional": true
+    },
+    {
+      "id": "E_AB",
+      "from": "A",
+      "to": "B",
+      "type": "line",
+      "bidirectional": true
+    },
+    {
+      "id": "E_BD",
+      "from": "B",
+      "to": "D",
+      "type": "line",
+      "bidirectional": true
+    },
+    {
+      "id": "E_BC",
+      "from": "B",
+      "to": "C",
+      "type": "line",
+      "bidirectional": true
+    },
+    {
+      "id": "E_CD",
+      "from": "C",
+      "to": "D",
+      "type": "line",
+      "bidirectional": true
+    },
+    {
+      "id": "E_CE",
+      "from": "C",
+      "to": "E",
+      "type": "line",
+      "bidirectional": false
+    },
+    {
+      "id": "E_ED",
+      "from": "E",
+      "to": "D",
+      "type": "line",
+      "bidirectional": false
+    }
+  ],
+  "route_graph": {
+    "junctions": [
+      {
+        "id": "B",
+        "x": 22.45,
+        "y": 22.125,
+        "yaw": 0
+      },
+      {
+        "id": "C",
+        "x": 30.325,
+        "y": 21.675,
+        "yaw": 0
+      },
+      {
+        "id": "D",
+        "x": 24.1,
+        "y": 16.15,
+        "yaw": 0
+      },
+      {
+        "id": "E",
+        "x": 28.75,
+        "y": 6.5,
+        "yaw": 0
+      },
+      {
+        "id": "F",
+        "x": 29.925,
+        "y": 26.85,
+        "yaw": 0
+      },
+      {
+        "id": "A",
+        "x": 23.675,
+        "y": 27,
+        "yaw": 0
+      }
+    ],
+    "edges": [
+      {
+        "id": "E_AF",
+        "from": {
+          "id": "A",
+          "type": "junction"
+        },
+        "to": {
+          "id": "F",
+          "type": "junction"
+        },
+        "edge_type": "LINE",
+        "bidirectional": true,
+        "lane_width": 0.8,
+        "max_speed": 0.5
+      },
+      {
+        "id": "E_AB",
+        "from": {
+          "id": "A",
+          "type": "junction"
+        },
+        "to": {
+          "id": "B",
+          "type": "junction"
+        },
+        "edge_type": "LINE",
+        "bidirectional": true,
+        "lane_width": 0.8,
+        "max_speed": 0.5
+      },
+      {
+        "id": "E_BD",
+        "from": {
+          "id": "B",
+          "type": "junction"
+        },
+        "to": {
+          "id": "D",
+          "type": "junction"
+        },
+        "edge_type": "LINE",
+        "bidirectional": true,
+        "lane_width": 0.8,
+        "max_speed": 0.5
+      },
+      {
+        "id": "E_BC",
+        "from": {
+          "id": "B",
+          "type": "junction"
+        },
+        "to": {
+          "id": "C",
+          "type": "junction"
+        },
+        "edge_type": "LINE",
+        "bidirectional": true,
+        "lane_width": 0.8,
+        "max_speed": 0.5
+      },
+      {
+        "id": "E_CD",
+        "from": {
+          "id": "C",
+          "type": "junction"
+        },
+        "to": {
+          "id": "D",
+          "type": "junction"
+        },
+        "edge_type": "LINE",
+        "bidirectional": true,
+        "lane_width": 0.8,
+        "max_speed": 0.5
+      },
+      {
+        "id": "E_CE",
+        "from": {
+          "id": "C",
+          "type": "junction"
+        },
+        "to": {
+          "id": "E",
+          "type": "junction"
+        },
+        "edge_type": "LINE",
+        "bidirectional": false,
+        "lane_width": 0.8,
+        "max_speed": 0.5
+      },
+      {
+        "id": "E_ED",
+        "from": {
+          "id": "E",
+          "type": "junction"
+        },
+        "to": {
+          "id": "D",
+          "type": "junction"
+        },
+        "edge_type": "LINE",
+        "bidirectional": false,
+        "lane_width": 0.8,
+        "max_speed": 0.5
+      }
+    ]
+  }
+}

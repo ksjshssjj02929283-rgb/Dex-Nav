@@ -412,6 +412,21 @@ public:
     is_collision_stop_active_ = active;
   }
 
+  void setExternalCollisionStatusForTest(uint8_t status)
+  {
+    auto msg = std::make_shared<nav_interfaces::msg::ObstacleMonitorStatus>();
+    msg->status = status;
+    collisionMonitorStatusCallback(msg);
+  }
+
+  void ageExternalCollisionStatusForTest(double age_seconds)
+  {
+    const auto now_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+      std::chrono::steady_clock::now().time_since_epoch()).count();
+    external_collision_status_received_ns_.store(
+      now_ns - static_cast<int64_t>(age_seconds * 1e9));
+  }
+
   void setControllerForObstaclePolicy(const nav2_core::Controller::Ptr & controller)
   {
     staged_control_enabled_ = false;
@@ -448,7 +463,7 @@ public:
     return activeControllerCanAvoidPathObstacles(pose);
   }
 
-  ControllerPhase phase() const {return controller_phase_;}
+  ControllerPhase phase() const {return controller_phase_.load();}
   size_t goalCheckerResetCount() const {return fake_goal_checker_->resetCount();}
   bool terminalBrakeLatched() const {return terminal_brake_latched_;}
   void configureTerminalStallRecoveryForTest(double duration = 0.3)
@@ -1256,6 +1271,59 @@ TEST(ProgressCheckerObstacleStop, HardStopWaitPausesUntilCollisionRiskClears)
   controller->resetStages();
   EXPECT_FALSE(controller->isCollisionStopActive());
   EXPECT_FALSE(controller->isProgressCheckPaused());
+}
+
+TEST(ProgressCheckerObstacleStop, ExternalCollisionStopPausesUntilStatusClears)
+{
+  auto controller = std::make_shared<ControllerShim>();
+  controller->setProgressPlanningContext(makeTrajectory(), kNoTerminalBranch, false);
+  controller->setProgressCheckResult(false);
+  controller->setExternalCollisionStatusForTest(
+    nav_interfaces::msg::ObstacleMonitorStatus::STOP);
+
+  EXPECT_TRUE(controller->checkProgressForTest(makePose()));
+  EXPECT_TRUE(controller->isProgressCheckPaused());
+  EXPECT_EQ(controller->progressCheckCount(), 0u);
+  EXPECT_EQ(controller->progressResetCount(), 1u);
+
+  EXPECT_TRUE(controller->checkProgressForTest(makePose()));
+  EXPECT_EQ(controller->progressCheckCount(), 0u);
+  EXPECT_EQ(controller->progressResetCount(), 1u);
+
+  controller->setExternalCollisionStatusForTest(
+    nav_interfaces::msg::ObstacleMonitorStatus::FREE);
+  controller->setProgressCheckResult(true);
+  EXPECT_TRUE(controller->checkProgressForTest(makePose()));
+  EXPECT_FALSE(controller->isProgressCheckPaused());
+  EXPECT_EQ(controller->progressCheckCount(), 1u);
+  EXPECT_EQ(controller->progressResetCount(), 2u);
+}
+
+TEST(ProgressCheckerObstacleStop, StaleExternalStopDoesNotPauseProgress)
+{
+  auto controller = std::make_shared<ControllerShim>();
+  controller->setProgressPlanningContext(makeTrajectory(), kNoTerminalBranch, false);
+  controller->setProgressCheckResult(false);
+  controller->setExternalCollisionStatusForTest(
+    nav_interfaces::msg::ObstacleMonitorStatus::STOP);
+  controller->ageExternalCollisionStatusForTest(1.0);
+
+  EXPECT_FALSE(controller->checkProgressForTest(makePose()));
+  EXPECT_FALSE(controller->isProgressCheckPaused());
+  EXPECT_EQ(controller->progressCheckCount(), 1u);
+}
+
+TEST(ProgressCheckerObstacleStop, ExternalSlowdownDoesNotPauseProgress)
+{
+  auto controller = std::make_shared<ControllerShim>();
+  controller->setProgressPlanningContext(makeTrajectory(), kNoTerminalBranch, false);
+  controller->setProgressCheckResult(true);
+  controller->setExternalCollisionStatusForTest(
+    nav_interfaces::msg::ObstacleMonitorStatus::SLOWDOWN);
+
+  EXPECT_TRUE(controller->checkProgressForTest(makePose()));
+  EXPECT_FALSE(controller->isProgressCheckPaused());
+  EXPECT_EQ(controller->progressCheckCount(), 1u);
 }
 
 }  // namespace

@@ -19,6 +19,7 @@
   <depend>nav2_util</depend>
   <depend>nav2_msgs</depend>
   <depend>nav_2d_utils</depend>
+  <depend>tf2_geometry_msgs</depend>
   <depend>nav_2d_msgs</depend>
   <depend>nav2_core</depend>
   <depend>nav2_speed_planner</depend>

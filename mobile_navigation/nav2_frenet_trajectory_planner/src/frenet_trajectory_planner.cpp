@@ -84,12 +84,13 @@ FrenetTrajectory makeKeepVelocityTrajectory(
   std::size_t max_state_number,
   double final_velocity,
   double final_lateral,
-  double time_interval)
+  double lon_time_interval,
+  double lat_time_interval)
 {
   QuarticTrajectoryPlanner longitudinal;
   if (!longitudinal.setCoefficients(
       initial[0], initial[1], initial[2], final_velocity, 0.0, 0.0,
-      time_interval))
+      lon_time_interval))
   {
     return {};
   }
@@ -97,12 +98,13 @@ FrenetTrajectory makeKeepVelocityTrajectory(
   QuinticTrajectoryPlanner lateral;
   if (!lateral.setCoefficients(
       initial[3], initial[4], initial[5], final_lateral, 0.0, 0.0, 0.0,
-      time_interval))
+      lat_time_interval))
   {
     return {};
   }
 
-  return sampleTrajectory(longitudinal, lateral, config, max_state_number, time_interval);
+  const double effective_time = std::max(lon_time_interval, lat_time_interval);
+  return sampleTrajectory(longitudinal, lateral, config, max_state_number, effective_time);
 }
 
 FrenetTrajectory makeMergeAndStopTrajectory(
@@ -111,12 +113,13 @@ FrenetTrajectory makeMergeAndStopTrajectory(
   std::size_t max_state_number,
   double arclength,
   double final_lateral,
-  double time_interval)
+  double lon_time_interval,
+  double lat_time_interval)
 {
   QuinticTrajectoryPlanner longitudinal;
   if (!longitudinal.setCoefficients(
       initial[0], initial[1], initial[2], arclength, 0.0, 0.0, 0.0,
-      time_interval))
+      lon_time_interval))
   {
     return {};
   }
@@ -124,12 +127,13 @@ FrenetTrajectory makeMergeAndStopTrajectory(
   QuinticTrajectoryPlanner lateral;
   if (!lateral.setCoefficients(
       initial[3], initial[4], initial[5], final_lateral, 0.0, 0.0, 0.0,
-      time_interval))
+      lat_time_interval))
   {
     return {};
   }
 
-  return sampleTrajectory(longitudinal, lateral, config, max_state_number, time_interval);
+  const double effective_time = std::max(lon_time_interval, lat_time_interval);
+  return sampleTrajectory(longitudinal, lateral, config, max_state_number, effective_time);
 }
 
 std::vector<FrenetTrajectory> generateKeepVelocityTrajectories(
@@ -137,9 +141,14 @@ std::vector<FrenetTrajectory> generateKeepVelocityTrajectories(
   const FrenetTrajectoryPlannerConfig & config,
   std::size_t max_state_number)
 {
-  const auto times = sampleRange(
+  const auto lon_times = sampleRange(
     config.min_time_interval, config.max_time_interval,
     config.step_time_interval);
+  const auto lat_times =
+    (config.step_lateral_time_interval > 0.0 && config.max_lateral_time_interval >= config.min_lateral_time_interval) ?
+    sampleRange(config.min_lateral_time_interval, config.max_lateral_time_interval, config.step_lateral_time_interval) :
+    std::vector<double>{};
+
   const auto velocities = sampleRange(
     config.min_longitudinal_velocity, config.max_longitudinal_velocity,
     config.step_longitudinal_velocity);
@@ -149,14 +158,19 @@ std::vector<FrenetTrajectory> generateKeepVelocityTrajectories(
     config.step_lateral_distance);
 
   std::vector<FrenetTrajectory> trajectories;
-  trajectories.reserve(times.size() * velocities.size() * laterals.size());
-  for (const double time_interval : times) {
-    for (const double velocity : velocities) {
-      for (const double lateral : laterals) {
-        trajectories.push_back(
-          makeKeepVelocityTrajectory(
-            initial, config, max_state_number, velocity, lateral,
-            time_interval));
+  const std::size_t lat_time_mult = lat_times.empty() ? 1U : lat_times.size();
+  trajectories.reserve(lon_times.size() * lat_time_mult * velocities.size() * laterals.size());
+
+  for (const double lon_time : lon_times) {
+    const std::vector<double> current_lat_times = lat_times.empty() ? std::vector<double>{lon_time} : lat_times;
+    for (const double lat_time : current_lat_times) {
+      for (const double velocity : velocities) {
+        for (const double lateral : laterals) {
+          trajectories.push_back(
+            makeKeepVelocityTrajectory(
+              initial, config, max_state_number, velocity, lateral,
+              lon_time, lat_time));
+        }
       }
     }
   }
@@ -169,22 +183,32 @@ std::vector<FrenetTrajectory> generateMergeAndStopTrajectories(
   std::size_t max_state_number,
   double arclength)
 {
-  const auto times = sampleRange(
+  const auto lon_times = sampleRange(
     config.min_time_interval, config.max_time_interval,
     config.step_time_interval);
+  const auto lat_times =
+    (config.step_lateral_time_interval > 0.0 && config.max_lateral_time_interval >= config.min_lateral_time_interval) ?
+    sampleRange(config.min_lateral_time_interval, config.max_lateral_time_interval, config.step_lateral_time_interval) :
+    std::vector<double>{};
+
   const auto laterals =
     sampleRange(
     config.min_lateral_distance, config.max_lateral_distance,
     config.step_lateral_distance);
 
   std::vector<FrenetTrajectory> trajectories;
-  trajectories.reserve(times.size() * laterals.size());
-  for (const double time_interval : times) {
-    for (const double lateral : laterals) {
-      trajectories.push_back(
-        makeMergeAndStopTrajectory(
-          initial, config, max_state_number, arclength, lateral,
-          time_interval));
+  const std::size_t lat_time_mult = lat_times.empty() ? 1U : lat_times.size();
+  trajectories.reserve(lon_times.size() * lat_time_mult * laterals.size());
+
+  for (const double lon_time : lon_times) {
+    const std::vector<double> current_lat_times = lat_times.empty() ? std::vector<double>{lon_time} : lat_times;
+    for (const double lat_time : current_lat_times) {
+      for (const double lateral : laterals) {
+        trajectories.push_back(
+          makeMergeAndStopTrajectory(
+            initial, config, max_state_number, arclength, lateral,
+            lon_time, lat_time));
+      }
     }
   }
   return trajectories;
@@ -202,18 +226,50 @@ std::optional<FrenetTrajectory> selectBestTrajectory(
   double best_cost = std::numeric_limits<double>::infinity();
 
   for (const auto & candidate : candidates) {
+    if (debug_info) {
+      ++debug_info->candidate_count;
+    }
     if (candidate.size() < 2U) {
+      if (debug_info) {
+        ++debug_info->short_candidate_count;
+      }
       continue;
     }
     const CartesianTrajectory cartesian = frame->convertFrenet2Cartesian(candidate);
+    if (debug_info && debug_info->candidate_count == 1U) {
+      debug_info->first_candidate_s = candidate.front()[0];
+      debug_info->first_cartesian_size = cartesian.size();
+    }
     if (cartesian.size() < 2U) {
+      if (debug_info) {
+        ++debug_info->invalid_cartesian_count;
+      }
       continue;
     }
 
     bool feasible = true;
-    for (const auto & policy : policies) {
+    for (std::size_t policy_index = 0U; policy_index < policies.size(); ++policy_index) {
+      const auto & policy = policies[policy_index];
       if (policy && !policy->checkIfFeasible(candidate, cartesian)) {
         feasible = false;
+        if (debug_info) {
+          if (debug_info->policy_reject_counts.size() <= policy_index) {
+            debug_info->policy_reject_counts.resize(policy_index + 1U, 0U);
+          }
+          ++debug_info->policy_reject_counts[policy_index];
+          if (!debug_info->has_first_reject) {
+            debug_info->has_first_reject = true;
+            debug_info->first_reject_policy = policy_index;
+            PolicyViolation violation;
+            if (!policy->findViolation(cartesian, violation)) {
+              violation.valid = true;
+              violation.state_index = 0U;
+              violation.x = cartesian.front()[0];
+              violation.y = cartesian.front()[3];
+            }
+            debug_info->first_reject_violation = violation;
+          }
+        }
         break;
       }
     }
@@ -222,6 +278,9 @@ std::optional<FrenetTrajectory> selectBestTrajectory(
         debug_info->cartesian_trajectories.emplace_back(cartesian, -1.0);
       }
       continue;
+    }
+    if (debug_info) {
+      ++debug_info->feasible_candidate_count;
     }
 
     double candidate_cost = 0.0;
@@ -233,6 +292,9 @@ std::optional<FrenetTrajectory> selectBestTrajectory(
       candidate_cost += cost->cost(candidate, cartesian);
     }
     if (!std::isfinite(candidate_cost)) {
+      if (debug_info) {
+        ++debug_info->nonfinite_cost_count;
+      }
       continue;
     }
 
@@ -609,7 +671,15 @@ CartesianTrajectory FrenetFrameConverter::convertFrenet2Cartesian(
   std::size_t segment_index = 0U;
   double segment_start = 0.0;
   for (const auto & state : trajectory) {
-    if (!std::isfinite(state[0]) || state[0] < -1e-6 || state[0] > impl_->total_length + 1e-6) {
+    if (!std::isfinite(state[0])) {
+      break;
+    }
+    // 前端容许 -0.10m 以内的微小浮点或投影负误差；严重负越界才终止
+    if (state[0] < -0.10) {
+      break;
+    }
+    // 尾部超界容差：若状态弧长严重超出总长 + 0.50m 则停止扩展后续点（已转换的前段点依然保留）
+    if (state[0] > impl_->total_length + 0.50) {
       break;
     }
     const double s = std::clamp(state[0], 0.0, impl_->total_length);
@@ -753,6 +823,14 @@ FrenetTrajectoryPlanner::PlanResult FrenetTrajectoryPlanner::planByWaypoint(
     result.frame.reset();
     return result;
   }
+  // 显式规整初始弧长非负，消除投影与浮点计算带来的微小负偏差
+  robot_frenet[0] = std::max(0.0, robot_frenet[0]);
+
+  if (debug_info) {
+    debug_info->robot_frenet_s = robot_frenet[0];
+    debug_info->segment_count = frame->segmentCount();
+    debug_info->frenet_total_length = frame->getArclength();
+  }
 
   FrenetTrajectory planned;
   planned.push_back(robot_frenet);
@@ -785,6 +863,9 @@ FrenetTrajectoryPlanner::PlanResult FrenetTrajectoryPlanner::planByWaypoint(
     const double previous_s = planned.back()[0];
     for (std::size_t index = 1U; index < selected->size(); ++index) {
       planned.push_back((*selected)[index]);
+      // 平滑化横向高阶导数残差，避免多轮拼接迭代时大斜率起跳造成 S 弯波束扭曲发散
+      planned.back()[4] *= 0.5;  // 衰减横向速度残差
+      planned.back()[5] = 0.0;   // 规整横向加速度残差
       if (shouldMergeAndStop(planned.back(), result.arclength, config_.max_time_interval)) {
         merge_and_stop = true;
         break;

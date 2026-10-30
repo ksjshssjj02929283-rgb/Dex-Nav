@@ -150,7 +150,7 @@ double ObstacleCost::cost(
   const frenet_planner::FrenetTrajectory &,
   const frenet_planner::CartesianTrajectory & cartesian_trajectory)
 {
-  if (!costmap_) {
+  if (!costmap_ || cartesian_trajectory.empty()) {
     return 0.0;
   }
   double sum = 0.0;
@@ -161,11 +161,44 @@ double ObstacleCost::cost(
       continue;
     }
     const unsigned char cost = costmap_->getCost(map_x, map_y);
-    if (cost == nav2_costmap_2d::NO_INFORMATION) {
+    if (cost == nav2_costmap_2d::NO_INFORMATION || cost == 0) {
       continue;
     }
-    sum += static_cast<double>(cost) / static_cast<double>(nav2_costmap_2d::LETHAL_OBSTACLE);
+    if (cost >= nav2_costmap_2d::INSCRIBED_INFLATED_OBSTACLE) {
+      sum += 100.0;
+    } else {
+      const double norm = static_cast<double>(cost) / 254.0;
+      sum += norm * norm * 15.0;
+    }
   }
+
+  // 前瞻走廊阻挡代价 (Lookahead corridor obstacle cost)：
+  // 沿轨迹末端航向向前探测 3.5m。若轨迹末端正对障碍物（直行走向死胡同），
+  // 施加强大的前瞻惩罚，促使规划器在远处就主动选择向无障碍侧横向变道，
+  // 避免短视 Horizon 下在障碍物鼻尖前因距离不足而无法变道停死。
+  const auto & end_state = cartesian_trajectory.back();
+  const double end_x = end_state[0];
+  const double end_y = end_state[3];
+  const double end_yaw = end_state[6];
+  const double cos_yaw = std::cos(end_yaw);
+  const double sin_yaw = std::sin(end_yaw);
+
+  constexpr double kMaxLookahead = 3.5;
+  constexpr double kStepLookahead = 0.15;
+  for (double dist = 0.2; dist <= kMaxLookahead; dist += kStepLookahead) {
+    const double check_x = end_x + dist * cos_yaw;
+    const double check_y = end_y + dist * sin_yaw;
+    unsigned int map_x = 0U;
+    unsigned int map_y = 0U;
+    if (costmap_->worldToMap(check_x, check_y, map_x, map_y)) {
+      const unsigned char cost = costmap_->getCost(map_x, map_y);
+      if (cost >= 200 && cost != nav2_costmap_2d::NO_INFORMATION) {
+        sum += (kMaxLookahead - dist + 0.5) * 8.0;
+        break;
+      }
+    }
+  }
+
   return obstacle_weight_ * sum;
 }
 

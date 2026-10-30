@@ -107,7 +107,7 @@ controller_server:
     # nav_monitor 全局路径/阶段回显：随 nav2_nav_monitor 记录使用，关闭则零开销
     enable_nav_monitor_echo: true
     planning_frequency: 10.0
-    planning_result_max_age: 0.5
+    planning_result_max_age: 1.0
     controller_frequency: 25.0 # 控制器控制周期 # Related params: model_dt >= controller period; prediction horizon = time_steps * model_dt
     goal_checker_plugins: ["simple_goal_checker", "stopped_goal_checker", "position_goal_checker", "rotation_goal_checker", "longitudinal_goal_checker", "high_precision_goal_checker"] # goal_checker_plugin: "goal_checker" For Galactic and older
     controller_plugins: ["MPPIController", "DWBController", "RPPController", "GracefulController", "RotationShimController", "PIDController", "LatLonController", "PureRotationController", "StraightController"]
@@ -122,7 +122,7 @@ controller_server:
       obstacle_trigger_distance: 2.80   # 前方参考线障碍物触发绕障检测距离 [m]
       rejoin_lateral_threshold: 0.12    # 绕障后切回直通 RPP 的横向偏差阈值 [m]
       obstacle_cost_threshold: 253      # Costmap 触发绕障阈值 (253=INSCRIBED, 254=LETHAL)
-      emergency_stop_on_no_path: true   # 所有候选绕障轨迹均碰撞时强制驻车急停，严禁穿障
+      emergency_stop_on_no_path: false  # 绕障无可行解时不直接驻车，退化为 current_local_planner (PathPruningLocalPlanner)
       robot_collision_radius: 0.42      # 车体碰撞包络半径 (对齐 w1_diff_sim.urdf 0.70x0.50m) [m]
       obstacle_inflation_radius: 0.90   # 障碍物代价膨胀半径 [m]
       goal_xy_tolerance: 0.18           # 终点位置容差 [m]
@@ -136,62 +136,70 @@ controller_server:
       transform_tolerance: 0.2
     FrenetLocalPlanner:
       plugin: "nav2_frenet_ilqr_controller::FrenetLocalPlanner"
-      lateral_sample_min: -1.5          # 最右侧采样偏移 (m)
-      lateral_sample_max: 1.5           # 最左侧采样偏移 (m)
-      lateral_sample_step: 0.25         # 横向采样步长 (m) -> 覆盖左右多条平滑绕行路径
+      lateral_sample_min: -1.2          # 最右侧采样偏移 (m)
+      lateral_sample_max: 1.2           # 最左侧采样偏移 (m)
+      lateral_sample_step: 0.15         # 横向采样步长 (m)
       transition_length: 1.80           # 五次多项式横向过渡段前瞻弧长 (m)
-      rollout_window_distance: 3.80     # 局部绕障重规划窗口弧长 (m) -> 扩大到 3.8m，避免在障碍物处急促回正碰撞
+      rollout_window_distance: 3.50     # 局部绕障重规划窗口弧长 (m) -> 扩大到 3.5m，提供充足的绕行与回正视野
       path_step_s: 0.08                 # 纵向弧长离散分辨率 (m)
-      obstacle_cost_threshold: 253      # 碰撞判定阈值
-      weight_lateral_offset: 2.0        # 偏离全局中心线代价权重
+      obstacle_cost_threshold: 254      # 碰撞判定阈值
+      weight_lateral_offset: 0.8        # 偏离全局中心线代价权重 (调小，鼓励更大绕障净空)
       weight_smoothness: 1.0            # 连续帧横向跳变平滑权重
-      weight_obstacle_clearance: 0.15   # 障碍物膨胀区净空排斥权重
+      weight_obstacle_clearance: 0.50   # 障碍物净空排斥权重 (调大，强力推开远离障碍物)
       # ===== 与上游 frenet_trajectory_planner 对齐的规划参数 =====
-      # 上游论文：Werling, Optimal Trajectory Generation for Dynamic Street Scenarios in a Frenet Frame
       # 纵向四次多项式 + 横向五次多项式，时间/纵向速度/横向偏移三向采样；
-      # 先执行 Policy 可行性过滤，再由 Cost 累加选优。本插件不含 iLQR。
+      # 针对差速底盘：解耦时域，扩大横向采样范围至 ±1.2m，增强障碍物斥力
       time_discretization: 0.05         # 轨迹时间离散步长 (s)
       frenet_trajectory_planner:
-        min_lateral_distance: -1.5      # 横向偏移下界 (m)
-        max_lateral_distance: 1.5       # 横向偏移上界 (m)
-        step_lateral_distance: 0.25     # 横向偏移采样步长 (m)
-        min_longitudinal_velocity: 0.0  # 纵向目标速度下界 (m/s)
-        max_longitudinal_velocity: 0.8  # 纵向目标速度上界 (m/s)
-        step_longitudinal_velocity: 0.20
-        min_time_interval: 2.0          # 规划时域下界 (s)
-        max_time_interval: 8.0          # 规划时域上界 (s)，覆盖 2.8m 触发距离后的绕障段
-        step_time_interval: 1.0
-        max_state_in_trajectory: 180    # 单次最多输出状态数 (180 * 0.05 = 9s 上限)
+        min_lateral_distance: -1.2      # 横向偏移下界: 扩大到 -1.2m
+        max_lateral_distance: 1.2       # 横向偏移上界: 扩大到 +1.2m
+        step_lateral_distance: 0.15     # 横向采样步长: [-1.2, -1.05, -0.9, ..., 0.9, 1.05, 1.2] (17条细密候选)
+        min_longitudinal_velocity: 0.20 # 纵向速度下界: 0.20m/s，差速底盘低速大曲率短距离变向
+        max_longitudinal_velocity: 0.70 # 纵向目标速度上界 (m/s)
+        step_longitudinal_velocity: 0.25 # 纵向速度采样: [0.20, 0.45, 0.70] (3个档位)
+        min_time_interval: 2.5          # 纵向规划时域下界 (s)
+        max_time_interval: 4.5          # 纵向规划时域上界 (s)
+        step_time_interval: 1.0         # 纵向时域采样: [2.5, 3.5, 4.5] (3个档位)
+        # 纵横向时间解耦 (差速底盘短距离绕障核心)：
+        # 横向过渡段采用更紧凑时域 (1.2s~2.4s)，在小纵向位移内快速建立大横向偏移，实现“边走边大偏角变向”
+        min_lateral_time_interval: 1.2
+        max_lateral_time_interval: 2.4
+        step_lateral_time_interval: 0.6 # 横向时域: [1.2, 1.8, 2.4] (3个档位)
+        max_state_in_trajectory: 120    # 单次最多输出状态数 (120 * 0.05 = 6s 上限)
       waypoint_resolution: 0.20         # 进入 Frenet 坐标前参考点最小间距 (m)
-      projection_search_distance: 5.0   # 当前投影点向前的搜索窗口 (m)
+      projection_search_distance: 5.5   # 当前投影点向前的搜索窗口 (m)
       max_backtrack_distance: 0.5       # 允许向后回看的投影距离 (m)
       transform_tolerance: 0.2
-      tail_rejoin_distance: 1.5         # 规划窗口后回并全局参考线的横向恢复距离 (m)
-      visualize_candidate_trajectories: false   # true 时才创建可视化 publisher
+      tail_rejoin_distance: 2.5         # 规划窗口后回并全局参考线的横向恢复距离 (m)
+      visualize_candidate_trajectories: true   # true 时自动发布候选波束至 /controller_server/frenet_rollouts
       max_visualized_candidates: 80              # 单帧最多发布的候选轨迹数
-      candidate_paths_topic: "/frenet_rpp_controller/candidate_paths"
+      candidate_paths_topic: "/controller_server/frenet_rollouts"
       rollouts_topic: "/controller_server/frenet_rollouts"
       policy_plugins: ["ObstaclePolicy", "ConstraintsPolicy"]
       ObstaclePolicy:
         plugin: "nav2_frenet_ilqr_controller::policies::ObstaclePolicy"
-        obstacle_cost_threshold: 253
+        obstacle_cost_threshold: 254    # 254=LETHAL_OBSTACLE
+        footprint_padding_m: 0.01
       ConstraintsPolicy:
         plugin: "nav2_frenet_ilqr_controller::policies::ConstraintsPolicy"
-        max_speed: 0.8
-        max_acceleration: 2.5
-      cost_checker_plugins: ["LateralDistanceCostChecker", "LongitudinalVelocityCostChecker", "LatLonBalanceCostChecker"]
+        max_speed: 1.2
+        max_acceleration: 4.0           # 差速底盘放宽横纵向综合加速度限制至 4.0m/s²
+      cost_checker_plugins: ["ObstacleCostChecker", "LateralDistanceCostChecker", "LongitudinalVelocityCostChecker", "LatLonBalanceCostChecker"]
+      ObstacleCostChecker:
+        plugin: "nav2_frenet_ilqr_controller::costs::ObstacleCost"
+        K_obstacle: 8.0                 # 障碍物排斥权重调大 (由 3.5 -> 8.0)，强力把小车推离障碍物走廊
       LateralDistanceCostChecker:
         plugin: "nav2_frenet_ilqr_controller::costs::LateralDistanceCost"
-        K_lateral_distance: 5.0
+        K_lateral_distance: 0.06        # 降低中线拘束权重 (由 0.15 -> 0.06)，允许且鼓励小车拉大绕障侧向距离
       LongitudinalVelocityCostChecker:
         plugin: "nav2_frenet_ilqr_controller::costs::LongitudinalVelocityCost"
-        K_longitudinal_velocity: 5.0
+        K_longitudinal_velocity: 2.0
         desired_velocity: 0.5
         distance_to_approach: 0.8
         desired_velocity_to_approach: 0.1
       LatLonBalanceCostChecker:
         plugin: "nav2_frenet_ilqr_controller::costs::LatLonBalanceCost"
-        K_latlon_balance: 15.0
+        K_latlon_balance: 1.0
     LexLocalPlanner:
       plugin: "nav2_lex_local_planner::LexLocalPlanner"
       max_speed: 0.8
@@ -417,6 +425,8 @@ controller_server:
         backup_use_distance: false    # true=按 backup_distance 走固定距离；false=按 backup_duration 定时
         backup_distance: 0.3
     odom_topic: /feedback/odom
+    collision_monitor_status_topic: "/obstacle_status"
+    collision_monitor_status_timeout: 0.5  # 超时后不再把过期 STOP 当作安全停障，避免永久暂停进度检查
     progress_checker:
       plugin: "nav2_controller::PoseProgressChecker" # 进展检查插件
       required_movement_radius: 0.03 # 普通模式：判定有进展所需的移动距离，单位 m
@@ -689,7 +699,7 @@ controller_server:
       lookahead_time: 1.5
       use_velocity_scaled_lookahead_dist: True    # 低速时缩短前瞻（lookahead=v×lookahead_time，钳 [min,max]）——弯道跟踪更紧
       use_interpolation: True
-      angular_gain: 1.2    # 角速度增益：>1 收紧转向补偿曲线跟踪滞后（横向误差大→上调，振荡→下调）
+      angular_gain: 1.0    # 角速度增益：适度阻尼，避免转向过冲振荡
       near_curvature_check_dist: 0.3          # 近场固定距离曲率采样点（不随速度缩放）；③角速度饱和联动降速取远端/近场两点曲率中更尖锐者，避免前瞻越远曲率越被稀释而漏看近场路径突变
       traj_speed_lookahead: 0.1    # 轨迹速度目标=最近点之后前方窗内 max（不含状态戳）；静止起步靠前方坡道点破自引用环
       # 0 = 自动取一个控制周期。曾试 0.15 补偿执行延迟，实机实测不改善末端越点，改回 0。
@@ -708,28 +718,28 @@ controller_server:
       lateral_error_threshold: 0.3     # 横向误差减速起始阈值 (m)
       lateral_error_max_dist: 0.3      # 横向误差达此值降到 min_scale (m)
       min_lateral_speed_scale: 0.5      # 横向误差减速下限比例
-      heading_error_scaling_min_angle: 0.35   # 朝向误差减速起始阈值 (rad≈20°)；曲率随前瞻距离衰减，此项不受前瞻长度稀释
-      heading_error_scaling_max_angle: 0.26   # 初始Reach版本参数
-      min_heading_speed_scale: 0.5            # 朝向误差达 heading_error_scaling_max_angle 时降到的下限比例
+      heading_error_scaling_min_angle: 0.35   # 朝向误差减速起始阈值 (rad≈20°)
+      heading_error_scaling_max_angle: 0.785  # 朝向误差减速上限 (rad≈45°)
+      min_heading_speed_scale: 0.5            # 朝向误差达上限时降到的下限比例
       max_angular_vel: 1.5               # 初始Reach版本参数
       # ── 速度环（trackLinearVelocity，恒生效）──
-      desired_linear_vel: 0.8    # 三重角色：无轨迹时的回退目标 / 速度环输出界绝对兜底 / 区域限速(speedLimit)入口——必须 ≥ speed planner max_speed 并留余量，否则会钳低规划巡航速度
-      max_linear_accel: 0.5    # 初始Reach版本参数
-      max_linear_decel: 0.5    # 初始版本使用同一max_v_inc作为加减速上限
+      desired_linear_vel: 0.8    # 三重角色：无轨迹时的回退目标 / 速度环输出界绝对兜底 / 区域限速(speedLimit)入口
+      max_linear_accel: 0.8
+      max_linear_decel: 0.8
       speed_loop_kp: 2.0
       speed_loop_ki: 0.2
       speed_loop_kd: 0.0
-      speed_loop_integrator_saturation: 0.3    # 积分项限幅 (m/s²)，须 >0（0=积分被恒钳零、ki 失效）
-      speed_loop_cmd_reseed_error: 0.3    # 指令积分器与实测偏差超此值时重新对齐（外力/急停兜底）
-      # ── 离散转向模式：rotate_to_path（中途朝向修正）与 rotate_to_goal（终点原地转对齐）参数各自独立 ──
-      use_rotate_to_heading: True
-      max_angular_accel: 0.5    # 两者共用：机器人角加速度物理上限，非行为调参
-      rotate_to_path_entry_angle: 0.26    # 初始Reach版本参数，约15°
-      rotate_to_path_exit_angle: 0.1745  # 初始Reach版本参数，约10°
-      rotate_to_path_angular_vel: 0.5     # 角速度饱和上限（实机现场调值）
-      rotate_to_path_angular_kp: 1.0      # 角速度 = kp·angle_to_path，饱和于上面的 angular_vel
-      rotate_to_goal_angular_vel: 0.5     # 终点原地转对齐目标朝向：角速度饱和上限，与 rotate_to_path 独立（沿用改名前的原值，未改动行为）
-      rotate_to_goal_angular_kp: 1.0      # 终点原地转对齐目标朝向：P 控制增益，与 rotate_to_path 独立
+      speed_loop_integrator_saturation: 0.3
+      speed_loop_cmd_reseed_error: 0.3
+      # ── 转向模式：中途平滑跟踪，禁止避障变道中途刹停原地旋转 ──
+      use_rotate_to_heading: False
+      max_angular_accel: 1.5
+      rotate_to_path_entry_angle: 0.85
+      rotate_to_path_exit_angle: 0.52
+      rotate_to_path_angular_vel: 0.5
+      rotate_to_path_angular_kp: 1.0
+      rotate_to_goal_angular_vel: 0.5
+      rotate_to_goal_angular_kp: 1.0
       allow_reversing: False
       # ── 碰撞检测 ──
       use_collision_detection: True

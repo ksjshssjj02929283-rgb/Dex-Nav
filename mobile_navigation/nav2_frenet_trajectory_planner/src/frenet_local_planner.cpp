@@ -133,6 +133,12 @@ void FrenetLocalPlanner::configure(
     readDoubleWithLegacy(frenet + "max_time_interval", plugin_name_ + ".max_time_interval", 4.0);
   frenet_config_.step_time_interval =
     readDoubleWithLegacy(frenet + "step_time_interval", plugin_name_ + ".step_time_interval", 0.25);
+  frenet_config_.min_lateral_time_interval =
+    readDoubleWithLegacy(frenet + "min_lateral_time_interval", plugin_name_ + ".min_lateral_time_interval", 0.0);
+  frenet_config_.max_lateral_time_interval =
+    readDoubleWithLegacy(frenet + "max_lateral_time_interval", plugin_name_ + ".max_lateral_time_interval", 0.0);
+  frenet_config_.step_lateral_time_interval =
+    readDoubleWithLegacy(frenet + "step_lateral_time_interval", plugin_name_ + ".step_lateral_time_interval", 0.0);
   frenet_config_.dt =
     readDoubleWithLegacy(
     plugin_name_ + ".time_discretization",
@@ -222,12 +228,13 @@ void FrenetLocalPlanner::configure(
   RCLCPP_INFO(
     logger_,
     "[nav2_core::LocalPlanner] Upstream-aligned Frenet planner '%s': lateral=[%.2f, %.2f] "
-    "step=%.2f, longitudinal=[%.2f, %.2f] step=%.2f, time=[%.2f, %.2f] step=%.2f, "
-    "states=%d dt=%.3f, policies=%zu, costs=%zu, iLQR=disabled",
+    "step=%.2f, longitudinal=[%.2f, %.2f] step=%.2f, lon_time=[%.2f, %.2f] step=%.2f, "
+    "lat_time=[%.2f, %.2f] step=%.2f, states=%d dt=%.3f, policies=%zu, costs=%zu, iLQR=disabled",
     plugin_name_.c_str(), frenet_config_.min_lateral_distance, frenet_config_.max_lateral_distance,
     frenet_config_.step_lateral_distance, frenet_config_.min_longitudinal_velocity,
     frenet_config_.max_longitudinal_velocity, frenet_config_.step_longitudinal_velocity,
     frenet_config_.min_time_interval, frenet_config_.max_time_interval, frenet_config_.step_time_interval,
+    frenet_config_.min_lateral_time_interval, frenet_config_.max_lateral_time_interval, frenet_config_.step_lateral_time_interval,
     frenet_config_.max_state_in_trajectory, frenet_config_.dt, policies_.size(), costs_.size());
 }
 
@@ -618,6 +625,17 @@ void FrenetLocalPlanner::appendPathTail(
       arc_offset / tail_rejoin_distance_);
     double lateral = final_lateral * (1.0 - blend);
 
+    // 若参考线该处或其紧邻前方仍存在障碍物，禁止过早向中心线回并，保持横向避障通道
+    if (costmap_ && std::abs(final_lateral) > 1e-4) {
+      unsigned int r_mx = 0U, r_my = 0U;
+      if (costmap_->worldToMap(reference.x, reference.y, r_mx, r_my)) {
+        const unsigned char rc = costmap_->getCost(r_mx, r_my);
+        if (rc >= 80 && rc != nav2_costmap_2d::NO_INFORMATION) {
+          lateral = final_lateral;
+        }
+      }
+    }
+
     Eigen::Vector2d candidate(reference.x, reference.y);
     candidate += lateral * normal;
     bool collision = false;
@@ -808,21 +826,105 @@ bool FrenetLocalPlanner::computeLocalPlan(
     return false;
   }
 
+  // 终点保护：若距终点剩余弧长 < 0.25m，直接输出直通局部路径，交由高精度 GoalChecker 停靠
+  const double remaining_arc = prepared.cumulative_arc.back() - projection.arc_length;
+  if (remaining_arc < 0.25) {
+    local_path.header.frame_id = prepared.path.header.frame_id;
+    local_path.header.stamp = stamp;
+    local_path.poses.reserve(prepared.path.poses.size() - projection.segment_index + 1U);
+    geometry_msgs::msg::PoseStamped proj_pose = prepared.pose;
+    proj_pose.pose.position.x = projection.point.x();
+    proj_pose.pose.position.y = projection.point.y();
+    local_path.poses.push_back(std::move(proj_pose));
+    for (std::size_t i = projection.segment_index + 1U; i < prepared.path.poses.size(); ++i) {
+      local_path.poses.push_back(prepared.path.poses[i]);
+    }
+    return true;
+  }
+
   const auto robot_state = makeCartesianState(prepared.pose, velocity);
   auto debug_info = std::make_shared<frenet_planner::DebugInfo>();
   const auto result = frenet_planner_->planByWaypoint(robot_state, waypoints, debug_info);
   if (result.cartesian.size() < 2U) {
+    int start_cost = -1;
+    unsigned int start_mx = 0U;
+    unsigned int start_my = 0U;
+    if (costmap_ && costmap_->worldToMap(robot_state[0], robot_state[3], start_mx, start_my)) {
+      start_cost = static_cast<int>(costmap_->getCost(start_mx, start_my));
+    }
+
+    std::ostringstream reject_counts;
+    if (debug_info->policy_reject_counts.empty()) {
+      reject_counts << "0";
+    } else {
+      for (std::size_t i = 0U; i < debug_info->policy_reject_counts.size(); ++i) {
+        if (i > 0U) {
+          reject_counts << ",";
+        }
+        reject_counts << debug_info->policy_reject_counts[i];
+      }
+    }
+
+    std::ostringstream first_reject;
+    if (debug_info->has_first_reject) {
+      first_reject << "first_reject_policy=" << debug_info->first_reject_policy;
+      if (debug_info->first_reject_violation.valid) {
+        first_reject << ", violation(x=" << debug_info->first_reject_violation.x
+                     << ", y=" << debug_info->first_reject_violation.y
+                     << ", cost=" << debug_info->first_reject_violation.cost
+                     << ", speed=" << debug_info->first_reject_violation.speed
+                     << ", acc=" << debug_info->first_reject_violation.acceleration
+                     << ", non_finite=" << (debug_info->first_reject_violation.non_finite ? "true" : "false")
+                     << ")";
+      }
+    } else {
+      first_reject << "first_reject=none";
+    }
+
+    std::ostringstream diagnostic;
+    diagnostic << "projection_s=" << projection.arc_length <<
+      ", d=" << projection.lateral_offset <<
+      ", segment=" << projection.segment_index <<
+      ", raw_poses=" << raw_global_plan_.poses.size() <<
+      ", prepared_poses=" << prepared.path.poses.size() <<
+      ", path_arc=" << prepared.cumulative_arc.back() <<
+      ", waypoints=" << waypoints.size() <<
+      ", transformed=" << (prepared.transformed ? "true" : "false") <<
+      ", raw_frame='" << raw_global_plan_.header.frame_id << "'" <<
+      ", costmap_frame='" << prepared.path.header.frame_id << "'" <<
+      ", robot_xy=(" << robot_state[0] << "," << robot_state[3] << ")" <<
+      ", start_cost=" << start_cost <<
+      ", robot_frenet_s=" << debug_info->robot_frenet_s <<
+      ", first_candidate_s=" << debug_info->first_candidate_s <<
+      ", segment_count=" << debug_info->segment_count <<
+      ", frenet_total_length=" << debug_info->frenet_total_length <<
+      ", first_cartesian_size=" << debug_info->first_cartesian_size <<
+      ", candidates=" << debug_info->candidate_count <<
+      ", short=" << debug_info->short_candidate_count <<
+      ", invalid_cartesian=" << debug_info->invalid_cartesian_count <<
+      ", feasible=" << debug_info->feasible_candidate_count <<
+      ", nonfinite_cost=" << debug_info->nonfinite_cost_count <<
+      ", policy_rejects=[" << reject_counts.str() << "]" <<
+      ", " << first_reject.str();
+    const std::string diagnostic_text = diagnostic.str();
     RCLCPP_WARN_THROTTLE(
       logger_, *clock_, 1000,
-      "Frenet planner found no feasible trajectory (projection_s=%.2f, d=%.2f, "
-      "policies=%zu, costs=%zu)",
-      projection.arc_length, projection.lateral_offset, policies_.size(), costs_.size());
+      "Frenet planner found no feasible trajectory: %s", diagnostic_text.c_str());
     publishCandidates(*debug_info, prepared.path.header.frame_id, stamp);
     return false;
   }
 
   local_path.header.frame_id = prepared.path.header.frame_id;
   local_path.header.stamp = stamp;
+
+  RCLCPP_INFO_THROTTLE(
+    logger_, *clock_, 500,
+    "Frenet selected best trajectory: len=%zu, final_s=%.2f, final_d=%.2f, feasible=%zu/%zu",
+    result.cartesian.size(),
+    result.frenet.empty() ? 0.0 : result.frenet.back()[0],
+    result.frenet.empty() ? 0.0 : result.frenet.back()[3],
+    debug_info->feasible_candidate_count,
+    debug_info->candidate_count);
   local_path.poses.reserve(result.cartesian.size() + prepared.path.poses.size());
   for (std::size_t index = 0U; index < result.cartesian.size(); ++index) {
     geometry_msgs::msg::PoseStamped trajectory_pose;

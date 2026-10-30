@@ -16,6 +16,7 @@ find_package(diagnostic_msgs REQUIRED)
 find_package(nav2_util REQUIRED)
 find_package(nav2_msgs REQUIRED)
 find_package(nav_2d_utils REQUIRED)
+find_package(tf2_geometry_msgs REQUIRED)
 find_package(nav_2d_msgs REQUIRED)
 find_package(nav_interfaces REQUIRED)
 find_package(visualization_msgs REQUIRED)
@@ -50,6 +51,7 @@ set(dependencies
   diagnostic_msgs
   nav2_msgs
   nav_2d_utils
+  tf2_geometry_msgs
   nav_2d_msgs
   nav_interfaces
   visualization_msgs
