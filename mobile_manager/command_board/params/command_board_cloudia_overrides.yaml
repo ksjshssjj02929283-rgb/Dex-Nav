@@ -1,0 +1,9 @@
+# 迦智底盘覆盖参数，叠加在 command_board_params.yaml 之后使用。
+/**:
+  ros__parameters:
+    sensor_monitor:
+      enable: false
+    nav2:
+      autostart: false
+    path_navigation:
+      autostart: false
