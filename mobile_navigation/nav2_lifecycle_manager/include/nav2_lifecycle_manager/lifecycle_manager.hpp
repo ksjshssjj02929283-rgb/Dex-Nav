@@ -93,6 +93,10 @@ protected:
    * @return true or false
    */
   bool startup();
+  // 首次建连超时后清理，由外层决定是否重试；运行后恢复仍调用 startup()。
+  bool startupWithCleanup();
+  // 按实际状态回退本轮启动，避免对未激活的节点执行停用。
+  bool cleanupStartup();
   /**
    * @brief Deactivate, clean up and shut down all the managed nodes.
    * @return true or false
@@ -226,10 +230,14 @@ protected:
   bool attempt_respawn_reconnection_;
 
   bool system_active_{false};
+  // 只在本轮 bond 建连超时时触发启动清理。
+  bool bond_connection_failed_{false};
+  // 清理未完成时，后续 STARTUP 必须先清理，不能直接重新激活。
+  bool startup_cleanup_pending_{false};
   diagnostic_updater::Updater diagnostics_updater_;
 
   rclcpp::Time bond_respawn_start_time_{0};
-  rclcpp::Duration bond_respawn_max_duration_{10s};
+  rclcpp::Duration bond_respawn_max_duration_{300s};
 };
 
 }  // namespace nav2_lifecycle_manager

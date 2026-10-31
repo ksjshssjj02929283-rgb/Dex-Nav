@@ -87,6 +87,20 @@ bool LifecycleServiceClient::change_state(
   return change_state_.invoke(request, response);
 }
 
+bool LifecycleServiceClient::change_state_with_timeout(
+  const std::uint8_t transition, const std::chrono::nanoseconds timeout)
+{
+  auto request = std::make_shared<lifecycle_msgs::srv::ChangeState::Request>();
+  request->transition.id = transition;
+  return change_state_.invoke_with_timeout(request, timeout)->success;
+}
+
+uint8_t LifecycleServiceClient::get_state_with_timeout(const std::chrono::nanoseconds timeout)
+{
+  auto request = std::make_shared<lifecycle_msgs::srv::GetState::Request>();
+  return get_state_.invoke_with_timeout(request, timeout)->current_state.id;
+}
+
 uint8_t LifecycleServiceClient::get_state(
   const seconds timeout)
 {

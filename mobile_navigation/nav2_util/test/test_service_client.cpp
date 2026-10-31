@@ -14,6 +14,8 @@
 
 #include <memory>
 #include <string>
+#include "nav2_util/lifecycle_service_client.hpp"
+#include "nav2_util/node_thread.hpp"
 #include "nav2_util/service_client.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "std_srvs/srv/empty.hpp"
@@ -41,6 +43,7 @@ public:
 
   string name() {return node_->get_name();}
   const rclcpp::Node::SharedPtr & getNode() {return node_;}
+  size_t prunePendingRequests() {return client_->prune_pending_requests();}
 };
 
 TEST(ServiceClient, can_ServiceClient_use_passed_in_node)
@@ -96,4 +99,85 @@ TEST(ServiceClient, can_ServiceClient_timeout)
   bool ready = t.wait_for_service(std::chrono::milliseconds(10));
   rclcpp::shutdown();
   ASSERT_EQ(ready, false);
+}
+
+class BoundedServiceClientTest : public ::testing::Test
+{
+protected:
+  void SetUp() override
+  {
+    if (!rclcpp::ok()) {
+      rclcpp::init(0, nullptr);
+    }
+  }
+
+  void TearDown() override {rclcpp::shutdown();}
+};
+
+TEST_F(BoundedServiceClientTest, DiscoveryTimeout)
+{
+  auto node = rclcpp::Node::make_shared("bounded_discovery_client");
+  TestServiceClient client("missing_bounded_service", node);
+  auto request = std::make_shared<std_srvs::srv::Empty::Request>();
+  const auto start = std::chrono::steady_clock::now();
+  EXPECT_THROW(
+    client.invoke_with_timeout(request, std::chrono::milliseconds(100)), std::runtime_error);
+  EXPECT_LT(std::chrono::steady_clock::now() - start, std::chrono::seconds(2));
+}
+
+TEST_F(BoundedServiceClientTest, ResponseTimeoutAndLateReply)
+{
+  auto server = rclcpp::Node::make_shared("bounded_response_server");
+  auto service = server->create_service<std_srvs::srv::Empty>(
+    "bounded_response_service",
+    [](std_srvs::srv::Empty::Request::SharedPtr, std_srvs::srv::Empty::Response::SharedPtr) {});
+  auto node = rclcpp::Node::make_shared("bounded_response_client");
+  TestServiceClient client("bounded_response_service", node);
+  ASSERT_TRUE(client.wait_for_service(std::chrono::seconds(3)));
+  auto request = std::make_shared<std_srvs::srv::Empty::Request>();
+
+  // 服务已被发现，但不执行服务回调，模拟请求没有回复。
+  const auto start = std::chrono::steady_clock::now();
+  EXPECT_THROW(
+    client.invoke_with_timeout(request, std::chrono::milliseconds(100)), std::runtime_error);
+  EXPECT_LT(std::chrono::steady_clock::now() - start, std::chrono::seconds(2));
+  EXPECT_EQ(client.prunePendingRequests(), 0u);
+
+  // 恢复服务处理后，迟到的回复不能干扰下一次请求。
+  nav2_util::NodeThread server_thread(server);
+  EXPECT_NE(client.invoke_with_timeout(request, std::chrono::seconds(2)), nullptr);
+}
+
+TEST_F(BoundedServiceClientTest, RejectNonPositiveTimeout)
+{
+  auto node = rclcpp::Node::make_shared("bounded_invalid_timeout_client");
+  TestServiceClient client("bounded_invalid_timeout_service", node);
+  auto request = std::make_shared<std_srvs::srv::Empty::Request>();
+  EXPECT_THROW(
+    client.invoke_with_timeout(request, std::chrono::nanoseconds(0)), std::invalid_argument);
+  EXPECT_THROW(
+    client.invoke_with_timeout(request, std::chrono::nanoseconds(-1)), std::invalid_argument);
+}
+
+TEST_F(BoundedServiceClientTest, LifecycleResponseFailure)
+{
+  auto server = rclcpp::Node::make_shared("bounded_lifecycle_server");
+  auto get_state = server->create_service<lifecycle_msgs::srv::GetState>(
+    "bounded_lifecycle/get_state",
+    [](lifecycle_msgs::srv::GetState::Request::SharedPtr,
+    lifecycle_msgs::srv::GetState::Response::SharedPtr response) {
+      response->current_state.id = lifecycle_msgs::msg::State::PRIMARY_STATE_ACTIVE;
+    });
+  auto change_state = server->create_service<lifecycle_msgs::srv::ChangeState>(
+    "bounded_lifecycle/change_state",
+    [](lifecycle_msgs::srv::ChangeState::Request::SharedPtr,
+    lifecycle_msgs::srv::ChangeState::Response::SharedPtr response) {
+      response->success = false;
+    });
+  nav2_util::NodeThread server_thread(server);
+  nav2_util::LifecycleServiceClient client("bounded_lifecycle");
+  EXPECT_FALSE(client.change_state_with_timeout(
+      lifecycle_msgs::msg::Transition::TRANSITION_DEACTIVATE, std::chrono::seconds(2)));
+  EXPECT_EQ(client.get_state_with_timeout(std::chrono::seconds(2)),
+    lifecycle_msgs::msg::State::PRIMARY_STATE_ACTIVE);
 }

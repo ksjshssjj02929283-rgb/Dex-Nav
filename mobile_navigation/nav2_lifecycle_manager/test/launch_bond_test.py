@@ -32,7 +32,9 @@ def generate_launch_description():
             output='screen',
             parameters=[{'use_sim_time': False},
                         {'autostart': False},
-                        {'node_names': ['bond_tester']}]),
+                        # 由测试显式请求再次启动，避免自动重连干扰后续用例。
+                        {'attempt_respawn_reconnection': False},
+                        {'node_names': ['bond_before', 'bond_tester', 'bond_after']}]),
     ])
 
 

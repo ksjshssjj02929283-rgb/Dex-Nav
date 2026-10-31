@@ -251,7 +251,7 @@ private:
 
     bool   path_nav_autostart_{true};
     std::string path_nav_manager_service_{"/lifecycle_manager_path_navigation/manage_nodes"};
-    double path_nav_startup_timeout_sec_{60.0};
+    double path_nav_startup_timeout_sec_{300.0};
     /// true = 等到 MapState 有地图名再 STARTUP（路网任务离了地图没意义）；
     /// false = 管理器一就绪就 STARTUP（默认，避免不发 MapState 的机型永远起不来）
     bool   path_nav_require_map_ready_{false};
