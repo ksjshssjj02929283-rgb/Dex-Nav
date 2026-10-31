@@ -27,6 +27,7 @@
 #include <fcntl.h>
 #include <ctime>
 #include <filesystem>
+#include <cstdlib>
 #include <stdexcept>
 #include <algorithm>
 #include <string>
@@ -144,6 +145,15 @@ CommandBoardManagerROS::CommandBoardManagerROS() : rclcpp::Node("command_board_m
     // 状态聚合 + 条件自动保存（StatusMonitor 提供快照，AutoMapSaver 日级触发 + ~/save_map 手动）
     status_monitor_ = std::make_unique<StatusMonitor>(this);
     auto_map_saver_ = std::make_unique<AutoMapSaver>(this, status_monitor_.get());
+
+    const char* backend_env = std::getenv("DEXE_CHASSIS_BACKEND");
+    const auto chassis_backend = this->declare_parameter<std::string>(
+        "chassis_backend", backend_env ? backend_env : "dexe");
+    if (chassis_backend == "cloudia") {
+        cloudia_teleop_manager_ = std::make_unique<CloudiaTeleopManager>(this);
+    } else if (chassis_backend != "dexe") {
+        throw std::invalid_argument("chassis_backend must be dexe or cloudia");
+    }
 
     // ── 传感器监测初始化 ──────────────────────────────────────────
     // 参数不合法（缺 topic/type、超时非法、check_period 过大、名称重复）→ 启动失败。
@@ -636,6 +646,12 @@ void CommandBoardManagerROS::OnRecoverTimer() {
     const bool active = (react_to_estop_ && snap.is_estop_active) ||
                         (react_to_bumper_ && (snap.bumper_front_active || snap.bumper_rear_active)) ||
                         robot_status_fault;
+    if (cloudia_teleop_manager_) {
+        // Preserve the self-developed backend's recovery rules. Cloudia must
+        // additionally withhold grants before the first valid upper-body status.
+        cloudia_teleop_manager_->UpdateSafety(
+            active || (react_to_robot_status_ && !snap.robot_status_valid));
+    }
     if (active && !safety_active_) {
         navigation_action_client_->async_cancel_all_goals();
         // 路网任务跑在 NavigateThroughGraphPoints 上，上面那刀砍不到它
@@ -1031,6 +1047,9 @@ void CommandBoardManagerROS::HandleLocalizationSuccess() {
 }
 
 void CommandBoardManagerROS::StopRobotMovement() {
+    if (cloudia_teleop_manager_) {
+        cloudia_teleop_manager_->RequestStop("command_board stop");
+    }
     // 创建并调用停止运动的服务客户端
     navigation_action_client_->async_cancel_all_goals();
 }

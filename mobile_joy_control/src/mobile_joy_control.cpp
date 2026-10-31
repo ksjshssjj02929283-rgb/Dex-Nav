@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <mutex>
+#include <stdexcept>
 #include <string>
 #include <thread>
 
@@ -26,6 +27,13 @@ class mobile_joy_log_control : public rclcpp::Node {
 public:
     mobile_joy_log_control() : Node("mobile_joy_log_control") {
         RCLCPP_INFO(this->get_logger(), "mobile_joy_log_control");
+
+        const char* backend_env = std::getenv("DEXE_CHASSIS_BACKEND");
+        chassis_backend_ = this->declare_parameter<std::string>(
+            "chassis_backend", backend_env ? backend_env : "dexe");
+        if (chassis_backend_ != "dexe" && chassis_backend_ != "cloudia") {
+            throw std::invalid_argument("chassis_backend must be dexe or cloudia");
+        }
 
         // 声明参数（使用嵌套结构支持logitech和beitong两组参数）
         // 注意：此时不读取参数，等检测到设备后再读取
@@ -109,6 +117,10 @@ public:
         mobile_diff_control_pub_joy_ = this->create_publisher<geometry_msgs::msg::Twist>("/control/cmd_vel_joy", 1);
         mobile_omni_control_pub_joy_ =
             this->create_publisher<geometry_msgs::msg::Twist>("/control/cmd_vel_omni_joy", 1);
+        if (chassis_backend_ == "cloudia") {
+            cloudia_control_pub_joy_ = this->create_publisher<geometry_msgs::msg::Twist>(
+                "/control/cmd_vel_cloudia_joy_raw", 1);
+        }
         pub_joy_in_ = this->create_publisher<std_msgs::msg::Int16>("control/joy_in", 1);
         // 定时发布机器人速度话题
         pub_timer_ = this->create_wall_timer(20ms, std::bind(&mobile_joy_log_control::pub_timer_callback, this));
@@ -426,16 +438,8 @@ private:
         mobile_diff_control_command.linear.y = 0.0;
         mobile_diff_control_command.angular.z = 0.0;
 
-        // 根据当前模式发布到不同话题
-        if (is_omni_mode_) {
-            if (mobile_omni_control_pub_joy_) {
-                mobile_omni_control_pub_joy_->publish(mobile_diff_control_command);
-            }
-        } else {
-            if (mobile_diff_control_pub_joy_) {
-                mobile_diff_control_pub_joy_->publish(mobile_diff_control_command);
-            }
-        }
+        // 零速度与正常速度走同一后端，避免故障/松键时绕过迦智接管组件。
+        publishCurrentCmd();
 
         last_linear_x_ = 0.0;
         last_linear_y_ = 0.0;
@@ -443,7 +447,9 @@ private:
     }
 
     void publishCurrentCmd() {
-        if (is_omni_mode_) {
+        if (cloudia_control_pub_joy_) {
+            cloudia_control_pub_joy_->publish(mobile_diff_control_command);
+        } else if (is_omni_mode_) {
             if (mobile_omni_control_pub_joy_) {
                 mobile_omni_control_pub_joy_->publish(mobile_diff_control_command);
             }
@@ -1067,6 +1073,8 @@ private:
     rclcpp::Subscription<sensor_msgs::msg::Joy>::SharedPtr sub;
     rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr mobile_diff_control_pub_joy_;
     rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr mobile_omni_control_pub_joy_;
+    rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr cloudia_control_pub_joy_;
+    std::string chassis_backend_;
     rclcpp::Publisher<std_msgs::msg::Int16>::SharedPtr pub_joy_in_;
 
     // 是否进入手柄话题

@@ -4,6 +4,8 @@ joy_node:
 
 mobile_joy_control:
   ros__parameters:
+    # launch 的 chassis_backend 参数优先；默认取 DEXE_CHASSIS_BACKEND 或 dexe。迦智取cloudia
+    chassis_backend: dexe
     # Logitech手柄参数（默认）
     logitech:
       # 遥控器按键配置

@@ -24,6 +24,7 @@
   <depend>glog</depend>
   <depend>boost</depend>
   <depend>nlohmann-json-dev</depend>
+  <depend>libcurl-dev</depend>
   <depend>sensor_msgs</depend>
 
   <!-- RViz2 状态显示面板依赖（可选；无 RViz 环境时 CMake QUIET 跳过） -->
