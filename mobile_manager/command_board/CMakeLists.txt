@@ -154,6 +154,15 @@ if(BUILD_TESTING)
 
   ament_add_gtest(cloudia_teleop_manager_test test/cloudia_teleop_manager_test.cpp)
   target_link_libraries(cloudia_teleop_manager_test command_board_cloudia)
+
+  ament_add_gtest(odom_freshness_test
+    test/odom_freshness_test.cpp
+    src/status_monitor.cpp)
+  ament_target_dependencies(odom_freshness_test
+    rclcpp diagnostic_msgs nav_interfaces nav_msgs std_msgs
+    geometry_msgs tf2_ros tf2_geometry_msgs)
+  target_include_directories(odom_freshness_test PRIVATE include)
+  target_link_libraries(odom_freshness_test nlohmann_json::nlohmann_json)
 endif()
 
 # ── RViz2 状态显示面板（command_board_rviz_plugins）──────────────────

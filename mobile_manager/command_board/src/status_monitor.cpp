@@ -39,7 +39,7 @@ StatusMonitor::StatusMonitor(rclcpp::Node* node) : node_(node) {
     auto qos_reliable = rclcpp::QoS(rclcpp::KeepLast(1)).reliable();
 
     odom_sub_ = node_->create_subscription<nav_msgs::msg::Odometry>(
-        "/localization/odometry/filtered", qos_reliable,
+        "/feedback/odom", qos_reliable,
         std::bind(&StatusMonitor::OnOdom, this, std::placeholders::_1));
 
     task_status_sub_ = node_->create_subscription<std_msgs::msg::String>(
@@ -138,6 +138,7 @@ void StatusMonitor::OnOdom(nav_msgs::msg::Odometry::SharedPtr msg) {
     std::lock_guard<std::mutex> lock(mutex_);
     snapshot_.velocity        = msg->twist.twist;
     snapshot_.velocity_valid  = true;
+    snapshot_.odom_received_at = std::chrono::steady_clock::now();
     snapshot_.odom_pose       = msg->pose.pose;
     snapshot_.odom_pose_valid = true;
 }
