@@ -3,6 +3,29 @@
 # 顶层用 /** 通配，匹配任意运行时节点名，确保参数注入。
 /**:
   ros__parameters:
+    # CommandBoardManager 运行时参数
+    pose_cache_min_score: 0.55  # 缓存位姿：score >= 此值
+    reloc_score_good: 0.6      # 恢复成功、解除恢复告警：score >= 此值
+
+    chassis_backend: dexe  # launch 参数/DEXE_CHASSIS_BACKEND 可选择 cloudia
+    cloudia:
+      # 仅 chassis_backend=cloudia 时读取；留空 host 使用 CLOUDIA_HOST。
+      # 不将 Token 写进配置：从 token_env 指定的环境变量读取。
+      token_env: CLOUDIA_TOKEN
+      task_port: 8002
+      state_port: 8852
+      http_timeout_sec: 1.0
+      poll_period_sec: 0.2
+      input_timeout_sec: 0.5
+      safety_timeout_sec: 1.0
+      state_timeout_sec: 1.5
+      takeover_timeout_sec: 8.0
+      stop_repeat_sec: 0.5
+      linear_still_threshold: 0.02
+      angular_still_threshold: 0.02
+      raw_velocity_topic: /control/cmd_vel_cloudia_joy_raw
+      velocity_topic: /control/cmd_vel_cloudia_joy
+      joy_state_topic: /control/joy_in
     # ── AutoMapSaver (DEC-005 + DEC-006 daily trigger) ───────────
     # 自动保存是唯一需运营调整的参数组（日触发时刻 + 6 保存条件阈值），显式暴露。
     auto_map_saver:
@@ -14,7 +37,7 @@
       save_window_end_minute: 0           # 0-59
       check_poll_interval_sec: 60.0       # 窗内轮询周期
       # DEC-017：幂等真值源 = 底图 backup 目录（<map>/slam/backups/backup.<今天>），不再用独立状态文件
-      save_service: "/localization_node/save_map"
+      save_service: "/localization/save_map"
       save_service_timeout_sec: 30.0
       pose_change_threshold_m: 0.10       # skip if no displacement above this
       yaw_change_threshold_rad: 0.05
@@ -23,5 +46,117 @@
       battery_soc_skip_below: 10          # SOC < 此值则跳过；-1 = 禁用电量检查
       skip_when_task_not_idle: true
 
+    # ── 安全响应（代码默认值，需要时才在这里 override）──────────
+    # react_to_estop / react_to_bumper: true  —— 急停、防撞条触发时取消导航
+    # 急停时除了取消 /navigate_to_pose，还会调下面这个服务取消 schedule_planner 的
+    # 路网任务（NavigateThroughGraphPoints）。两者是两套 action，只砍前者的话急停后
+    # 路网 goal 仍是 active：车停了任务没结束，要等 segment_timeout（默认 300 s）才超时；
+    # 期间松开急停且定位恢复，path_follower 会接着原路径继续走。
+    # cancel_schedule_planner: true
+    # schedule_planner_cancel_service: "/schedule_planner/force_cancel"
+
+    # ── 导航后端选择 ────────────────────────────────────────────
+    # 完整说明（切换时序、排查清单、三处配对）见 docs/navigation_backend.md
+    # "nav2"            = 原 Nav2 bringup + /navigate_to_pose（默认）
+    # "path_navigation" = schedule_planner + path_follower 那套；command_board 会在
+    #                     依赖就绪后调 lifecycle_manager_path_navigation 的 STARTUP
+    # 两套 Server 都建议随 launch 常驻，未选中的那套停在 unconfigured：不接任务、不出速度。
+    # 运行中改这个参数**不会**切后端（切换涉及任务取消/零速/速度源互斥/失败回滚）。
+    # **这是开机默认值。** 两套后端都随 auto_mode.sh 常驻（且都以 autostart:=false 起，
+    # 停在 unconfigured），由本节点在启动期把选中的那套 STARTUP 起来；没选中的那套不接任务、
+    # 不出速度。
+    #
+    # 切后端：改本参数后重启 auto 服务。运行中 `ros2 param set` 会被明确拒绝。
+    # 当前版本不提供运行时切换服务。当前生效的后端发布在 /command_board/navigation_backend（latched）。
+    navigation_backend: "nav2"   # "nav2" | "path_navigation"；默认开自主导航
+
+    path_navigation:
+      # 被 navigation_backend 选中时是否自动 STARTUP。两套都留 true：这样切后端只动上面那一行。
+      autostart: true
+      lifecycle_manager_service: "/lifecycle_manager_path_navigation/manage_nodes"
+      # 本后端等待服务就绪及启动重试的预算，秒；不取消已发出的请求。
+      startup_timeout_sec: 300.0
+      # true = 等 MapState 有地图名再 STARTUP（路网任务要靠 map_asset_manager 解析点名）。
+      # 默认 false：有的机型压根不发 MapState，等下去等于永远不激活
+      require_map_ready: false
+
+    nav2:
+      autostart: true
+      lifecycle_manager_service: "/lifecycle_manager_navigation/manage_nodes"
+      # 本后端等待服务就绪及启动重试的预算，秒；不取消已发出的请求。
+      startup_timeout_sec: 60.0
+
+    # ⚠ 三处必须配对，少一处就会两套同时出速度（都落到 cmd_vel_mux 的 control/cmd_vel_nav）：
+    #   auto_mode.sh:  w1_nav2_actual.launch.py           autostart:=false
+    #                  path_navigation_bringup.launch.py  autostart:=false
+    #   本文件:        navigation_backend 选中的那套 autostart: true
+    # 某套 launch 若还带着 autostart:=true，它自己的 lifecycle_manager 会把自己拉到 active，
+    # 本节点管不着。
+
     # ── Phase 3.4 预留（功能未实现，代码暂未 declare）──
     # initial_mode / auto_recover_from_emergency / localization_loss_grace_sec / topic_timeout_sec
+
+    # ── SensorMonitor：导航必要传感器判活（CE「避免危险碰撞」）──────────
+    # 判活依据是话题是否按时到达（接收时刻用单调时钟，不看消息时间戳）。
+    # 停车由 collision_monitor（0.5 s）负责；本模块约 1.0 s 取消任务，
+    # 因此超时先统一 1.0 s，避免高负载下的接收缺口造成误取消。
+    sensor_monitor:
+      enable: false
+      check_period_sec: 0.1
+      startup_grace_sec: 15.0
+      recover_hold_sec: 2.0
+      cancel_repeat_sec: 1.0
+      estop_release_grace_sec: 3.0
+      stats_window_sec: 2.0
+      sensors: ["imu", "odom", "lidar_front", "lidar_rear", "rgbd_front", "rgbd_rear"]
+      imu:
+        topic: "/imu/chassis"
+        type: "sensor_msgs/msg/Imu"
+        timeout_sec: 1.0
+        required: true
+        suppress_on_estop: true
+      odom:
+        # 底盘原始里程计（非 EKF 输出 /localization/odometry/filtered）
+        topic: "/feedback/odom"
+        type: "nav_msgs/msg/Odometry"
+        timeout_sec: 1.0
+        required: true
+        suppress_on_estop: true
+      lidar_front:
+        topic: "/laser_scan/front"
+        type: "sensor_msgs/msg/LaserScan"
+        timeout_sec: 1.0
+        required: true
+        suppress_on_estop: false
+      lidar_rear:
+        topic: "/laser_scan/rear"
+        type: "sensor_msgs/msg/LaserScan"
+        timeout_sec: 1.0
+        required: true
+        suppress_on_estop: false
+      rgbd_front:
+        # 订阅转换后的 laser_scan（导航与 CM 实际使用的输入），不订深度图
+        topic: "/orbbec/front/laser_scan"
+        type: "sensor_msgs/msg/LaserScan"
+        timeout_sec: 1.0
+        required: true
+        suppress_on_estop: false
+      rgbd_rear:
+        topic: "/orbbec/rear/laser_scan"
+        type: "sensor_msgs/msg/LaserScan"
+        timeout_sec: 1.0
+        required: true
+        suppress_on_estop: false
+
+# 导航门面（节点名 navigation，与 command_board 同进程；M5 DEC-035）
+navigation:
+  ros__parameters:
+    require_localization: true      # 定位非 LOC_SUCCESS 时拒绝受理（2201042）
+    preempt_on_new_goal: true       # 新任务抢占当前任务（PRD：即时导航 / 选点导航互相打断）
+    blocked_hold_sec: 3.0           # 停障等待持续多久判 BLOCKED
+    progress_timeout_sec: 0.0       # >0 启用进度看门狗（2201091）
+    local_path_rate_hz: 5.0         # local_path 节流
+    local_path_source_topic: /local_plan   # 控制器局部路径源（当前 MPPI；换控制器改这里）
+    # speed_limit_topic: /speed_limit      # 与 nav2 controller_server 的 speed_limit_topic 一致时不用改；门面是它的唯一发布者
+    # area_speed_limit_topic: /area_speed_limit   # 减速区限速输入（= costmap speed_filter 的 speed_limit_topic），与 X-Wiz 限速取严后转发
+    # estop_topic: /emergency_stop         # 急停位（std_msgs/Bool）；生效时 state=BLOCKED(2201123)

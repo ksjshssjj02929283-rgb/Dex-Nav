@@ -1,0 +1,83 @@
+# 前后相机共用参数；通过 launch 的 params_file 指定其他配置文件。
+/**:
+  ros__parameters:
+    # multi_camera.launch.py 设置 cameras: [front, rear]，在一个节点内处理两路相机。
+    # 多相机话题覆盖使用 front.input_topic / rear.input_topic 等带相机前缀的参数。
+    # 不在公共配置设置 cameras，保留单相机 launch 的兼容性。
+    # auto 模式读取整机硬件版本，<= v0.24 使用高度法，否则使用 UV 图。
+    hardware_path: "/etc/dexe_robot/hardware.yaml"
+
+    # 是否使用仿真时钟
+    use_sim_time: false
+
+    # 点云保留的最大深度（米）
+    depth_max_range: 5.0
+
+    # 是否启用降采样滤波（体素滤波）
+    flag_voxel_filter: true
+
+    # 是否启用最小二乘曲面拟合
+    flag_mls_filter: false
+
+    # 是否启用统计滤波
+    flag_sor_filter: false
+
+    # 降采样体素大小（米）
+    ds_leaf_size: 0.05
+
+    # MLS 多项式阶数
+    mls_polynomial_order: 2
+
+    # MLS 搜索半径（米）
+    mls_search_radius: 0.2
+
+    # 统计滤波平均邻居数
+    sor_mean_k: 50
+
+    # 统计滤波标准差倍数阈值
+    sor_stddev_mul_thresh: 1.0
+
+    # 地面过滤使用的坐标系
+    ground_filter_frame: "base_link"
+
+    # base_link下小于等于该高度的点认为是地面并剔除；调高会过滤更多低矮点，单位米
+    ground_filter_min_height: 0.05
+
+    # base_link下高于该高度的点不作为近地障碍输入；调低会减少高处点进入costmap，单位米
+    ground_filter_max_height: 1.5
+
+    # 障碍物提取方法：auto 按硬件版本选择（<=v0.24 高度法，否则 UV），或显式指定 height_filter / uv_disparity
+    obstacle_extraction_method: "auto"
+
+    # 双视差最小深度
+    uv_disparity_min_z: 0.15
+
+    # 双视差最大深度
+    uv_disparity_max_z: 4.0
+
+    # 双视差深度分辨率
+    uv_disparity_dz: 0.02
+
+    # 双视差地面V向容差
+    uv_disparity_v_margin: 15
+
+    # 双视差U向噪声过滤阈值
+    uv_disparity_min_u_count: 5
+
+    # 双视差地面自适应物理高度Margin(米)
+    uv_disparity_ground_margin_h: 0.025
+
+    # 耗时对比阶段性统计时间窗口（秒）
+    stats_window_sec: 5.0
+
+    # 是否将过滤后的点云压缩并发布为 2D LaserScan
+    enable_laserscan: true
+
+    # 是否处理一帧、跳过一帧；关闭时处理全部输入帧
+    division_mode: true
+
+    # 深度图列采样步长
+    step_u: 2
+
+    # 深度图行采样步长
+    step_v: 3

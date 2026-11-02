@@ -137,8 +137,7 @@ class DataRunner:
     ) -> None:
         from nav_interfaces.msg import MapState
         from nav_interfaces.srv import (
-            LoadMap,
-            RenameMap,
+            MapManagerCommand,
             RollbackMap,
         )
         from nav_msgs.msg import OccupancyGrid
@@ -155,8 +154,7 @@ class DataRunner:
         self.broken = samples["broken_legacy"]["name"]
         self.MapState = MapState
         self.OccupancyGrid = OccupancyGrid
-        self.LoadMap = LoadMap
-        self.RenameMap = RenameMap
+        self.MapManagerCommand = MapManagerCommand   # v1.11：load / remove / rename 合并为 map_command{op}
         self.RollbackMap = RollbackMap
 
     def state(self, after_epoch: int = -1) -> Any:
@@ -182,21 +180,22 @@ class DataRunner:
                 f"target={name}",
             )
         before = self.state()
-        request = self.LoadMap.Request()
+        request = self.MapManagerCommand.Request()
+        request.op = self.MapManagerCommand.Request.OP_LOAD
         request.map_name = name
         if tc:
             self.report.action(
                 tc,
-                "调用 load_map",
-                f"service=/map_manager/load_map, map_name={name}",
+                "调用 map_command{op: LOAD}",
+                f"service=/map_manager/map_command op=1, map_name={name}",
             )
         response = self.harness.call(
-            self.LoadMap, "/map_manager/load_map", request
+            self.MapManagerCommand, "/map_manager/map_command", request
         )
         if tc:
             self.report.action(
                 tc,
-                "读取 load_map 响应",
+                "读取 map_command 响应",
                 (
                     f"success={response.success}, "
                     f"message={getattr(response, 'message', '')}"
@@ -573,15 +572,16 @@ class DataRunner:
         _, before = self.load(self.map_a, "TC-14")
         self.report.action("TC-14", "读取失败前栅格", "计算 OccupancyGrid digest")
         before_grid = grid_digest(self.grid())
-        request = self.LoadMap.Request()
+        request = self.MapManagerCommand.Request()
+        request.op = self.MapManagerCommand.Request.OP_LOAD
         request.map_name = self.broken
         self.report.action(
             "TC-14",
-            "调用损坏地图 load_map",
+            "调用损坏地图 map_command{op: LOAD}",
             f"map_name={self.broken}",
         )
         response = self.harness.call(
-            self.LoadMap, "/map_manager/load_map", request
+            self.MapManagerCommand, "/map_manager/map_command", request
         )
         self.report.action(
             "TC-14",
@@ -613,8 +613,9 @@ class DataRunner:
         _, before = self.load(self.map_a, "TC-15")
         self.report.action("TC-15", "记录 rename 前目录哈希", f"map={self.map_a}")
         original_hashes = tree_hashes(self.maps_root / self.map_a)
-        request = self.RenameMap.Request()
-        request.old_name = self.map_a
+        request = self.MapManagerCommand.Request()
+        request.op = self.MapManagerCommand.Request.OP_RENAME
+        request.map_name = self.map_a
         request.new_name = renamed
         self.report.action(
             "TC-15",
@@ -622,11 +623,12 @@ class DataRunner:
             f"{self.map_a}->{renamed}",
         )
         response = self.harness.call(
-            self.RenameMap, "/map_manager/rename_map", request
+            self.MapManagerCommand, "/map_manager/map_command", request
         )
         renamed_state = self.state(before.epoch)
-        request2 = self.RenameMap.Request()
-        request2.old_name = renamed
+        request2 = self.MapManagerCommand.Request()
+        request2.op = self.MapManagerCommand.Request.OP_RENAME
+        request2.map_name = renamed
         request2.new_name = self.map_a
         self.report.action(
             "TC-15",
@@ -634,7 +636,7 @@ class DataRunner:
             f"{renamed}->{self.map_a}",
         )
         response2 = self.harness.call(
-            self.RenameMap, "/map_manager/rename_map", request2
+            self.MapManagerCommand, "/map_manager/map_command", request2
         )
         restored_state = self.state(renamed_state.epoch)
         restored_hashes = tree_hashes(self.maps_root / self.map_a)

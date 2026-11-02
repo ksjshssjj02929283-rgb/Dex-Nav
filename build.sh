@@ -74,7 +74,11 @@ if ! BUILD_SIMULATION_ENABLED=$(resolve_build_simulation "$BUILD_SIMULATION_MODE
     exit 2
 fi
 
-COLCON_COMMON_BUILD_ARGS=(--parallel-workers 8)
+COLCON_COMMON_BUILD_ARGS=(
+    --parallel-workers 8
+    --cmake-args
+    -DCMAKE_BUILD_TYPE=Release
+)
 COLCON_BUILD_ARGS=("${COLCON_COMMON_BUILD_ARGS[@]}")
 SIMULATION_PACKAGES=()
 
@@ -124,7 +128,7 @@ source "${INSTALL_DIR}/setup.bash"
 
 if [ "$BUILD_SIMULATION_ENABLED" = "false" ]; then
     echo "⚙️ 0.4.6 ARM 过渡：显式编译包含真机入口的 w1_nav2 ..."
-    run_colcon_build --packages-select w1_nav2 "${COLCON_BUILD_ARGS[@]}"
+    run_colcon_build --packages-up-to w1_nav2 "${COLCON_BUILD_ARGS[@]}"
     source "${INSTALL_DIR}/setup.bash"
 fi
 

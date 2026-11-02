@@ -9,6 +9,8 @@
 #include <tf2/utils.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
+#include <nlohmann/json.hpp>
+
 namespace command_board {
 
 using namespace std::chrono_literals;
@@ -22,7 +24,7 @@ bool ParseBoolField(const std::string& value) {
     return lower == "true";
 }
 
-// diagnostics_agg status 段名（PowerBoard 电池 + Safety 安全）。
+// diagnostics_agg status 段名（PowerBoard 电池 + Safety 安全 + 机器人状态）。
 constexpr const char* kPowerBoardName  = "/Devices/System/PowerBoard/collector_node: PowerBoard";
 constexpr const char* kSafetyName      = "/Devices/System/PowerBoard/collector_node: PowerBoard Safety";
 
@@ -37,7 +39,7 @@ StatusMonitor::StatusMonitor(rclcpp::Node* node) : node_(node) {
     auto qos_reliable = rclcpp::QoS(rclcpp::KeepLast(1)).reliable();
 
     odom_sub_ = node_->create_subscription<nav_msgs::msg::Odometry>(
-        "/robot_localization/odometry/filtered", qos_reliable,
+        "/feedback/odom", qos_reliable,
         std::bind(&StatusMonitor::OnOdom, this, std::placeholders::_1));
 
     task_status_sub_ = node_->create_subscription<std_msgs::msg::String>(
@@ -49,12 +51,16 @@ StatusMonitor::StatusMonitor(rclcpp::Node* node) : node_(node) {
         std::bind(&StatusMonitor::OnDiagnosticsAgg, this, std::placeholders::_1));
 
     localization_sub_ = node_->create_subscription<nav_interfaces::msg::LocalizationState>(
-        "/localization_node/state", qos_reliable,
+        "/localization/state", qos_reliable,
         std::bind(&StatusMonitor::OnLocalizationState, this, std::placeholders::_1));
 
     map_state_sub_ = node_->create_subscription<nav_interfaces::msg::MapState>(
         "map_manager/map_state", rclcpp::QoS(rclcpp::KeepLast(1)).transient_local().reliable(),
         std::bind(&StatusMonitor::OnMapState, this, std::placeholders::_1));
+    
+    robot_state_sub_ = node_->create_subscription<std_msgs::msg::String>(
+        "/feedback/robot_server_state", qos_reliable,
+        std::bind(&StatusMonitor::OnRobotServerState, this, std::placeholders::_1));
 
     battery_pub_ = node_->create_publisher<nav_interfaces::msg::BatteryInfo>(
         "/battery_info", qos_reliable);
@@ -66,7 +72,7 @@ StatusMonitor::StatusMonitor(rclcpp::Node* node) : node_(node) {
 
     RCLCPP_INFO(node_->get_logger(),
                 "StatusMonitor ready. Subscribed: /feedback/odom, mission_manager/status, "
-                "/diagnostics_agg, /localization_node/state; pose via TF map->base_link. "
+                "/diagnostics_agg, /localization/state; pose via TF map->base_link. "
                 "Publishing: /battery_info, ~/nav_system_status (1 Hz).");
 }
 
@@ -84,6 +90,24 @@ void StatusMonitor::SetRecoverStatus(const std::string& state, const std::string
     std::lock_guard<std::mutex> lock(mutex_);
     snapshot_.recover_state = state;
     snapshot_.safety_alarm  = alarm;
+}
+
+void StatusMonitor::SetNavFault(
+    const int32_t code, const std::string& detail,
+    const std::vector<nav_interfaces::msg::SensorState>& sensors) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    snapshot_.nav_fault_code   = code;
+    snapshot_.nav_fault_detail = detail;
+    snapshot_.sensors          = sensors;
+}
+
+void StatusMonitor::PublishNow() {
+    PublishNavStatus();
+}
+
+bool StatusMonitor::IsEstopActive() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return snapshot_.is_estop_active;
 }
 
 void StatusMonitor::OnMapState(nav_interfaces::msg::MapState::SharedPtr msg) {
@@ -114,6 +138,7 @@ void StatusMonitor::OnOdom(nav_msgs::msg::Odometry::SharedPtr msg) {
     std::lock_guard<std::mutex> lock(mutex_);
     snapshot_.velocity        = msg->twist.twist;
     snapshot_.velocity_valid  = true;
+    snapshot_.odom_received_at = std::chrono::steady_clock::now();
     snapshot_.odom_pose       = msg->pose.pose;
     snapshot_.odom_pose_valid = true;
 }
@@ -180,6 +205,36 @@ void StatusMonitor::OnDiagnosticsAgg(diagnostic_msgs::msg::DiagnosticArray::Shar
     }
 }
 
+void StatusMonitor::OnRobotServerState(std_msgs::msg::String::SharedPtr msg) {
+    // —— 机器人状态 ——
+    try {
+        // 空消息也表示一次明确的非就绪状态，不能作为无效数据跳过安全判断。
+        const auto data = msg->data.find_first_not_of(" \t\r\n") == std::string::npos
+            ? nlohmann::json::object()
+            : nlohmann::json::parse(msg->data);
+
+        const std::string statusword =
+            data.value("robot_statusword", "");
+
+        std::lock_guard<std::mutex> lock(mutex_);
+        // 空字段（包括缺失字段）按 NOT_READY 处理，复用现有故障/恢复流程。
+        snapshot_.robot_statusword = statusword.empty() ? "NOT_READY" : statusword;
+        snapshot_.robot_status_valid = true;
+        snapshot_.robot_status_stamp = node_->now();
+
+    } catch (const nlohmann::json::exception& e) {
+        RCLCPP_WARN_THROTTLE(
+            node_->get_logger(),
+            *node_->get_clock(),
+            2000,
+            "Failed to parse /feedback/robot_server_state: %s",
+            e.what());
+
+        std::lock_guard<std::mutex> lock(mutex_);
+        snapshot_.robot_status_valid = false;
+    }
+}
+
 void StatusMonitor::PublishNavStatus() {
     const auto snap = GetSnapshot();
 
@@ -205,6 +260,10 @@ void StatusMonitor::PublishNavStatus() {
 
     msg.recover_state = snap.recover_state;
     msg.safety_alarm  = snap.safety_alarm;
+
+    msg.nav_fault_code   = snap.nav_fault_code;
+    msg.nav_fault_detail = snap.nav_fault_detail;
+    msg.sensors          = snap.sensors;
 
     nav_status_pub_->publish(msg);
 }

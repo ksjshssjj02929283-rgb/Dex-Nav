@@ -59,14 +59,40 @@ public:
   void getPolygon(std::vector<Point> & poly) const override;
 
   /**
+   * @brief 取当前生效的轮廓（基础半径 + padding），用于可视化
+   * @param poly Output polygon points (vertices)
+   */
+  void getEffectivePolygon(std::vector<Point> & poly) const override;
+
+  /**
    * @brief Gets number of points inside circle
    * @param points Input array of points to be checked
+   * @param early_exit_threshold If > 0, stops counting and returns immediately when points reach this threshold
    * @return Number of points inside circle. If there are no points,
    * returns zero value.
    */
-  int getPointsInside(const std::vector<Point> & points) const override;
+  int getPointsInside(
+    const std::vector<Point> & points,
+    int early_exit_threshold = -1) const override;
+
+  /**
+   * @brief Gets number of points inside circle across multiple point buffers
+   * @param point_buffers Vector of pointers to point cloud buffers
+   * @param early_exit_threshold If > 0, stops counting and returns immediately when points reach this threshold
+   * @return Number of points inside circle.
+   */
+  int getPointsInside(
+    const std::vector<const std::vector<Point> *> & point_buffers,
+    int early_exit_threshold = -1) const override;
 
 protected:
+  /**
+   * @brief 把给定半径的圆离散成多边形顶点
+   * @param radius 圆半径 m
+   * @param poly 输出顶点
+   */
+  static void discretizeCircle(double radius, std::vector<Point> & poly);
+
   /**
    * @brief Supporting routine obtaining polygon-specific ROS-parameters
    * @param polygon_pub_topic Output name of polygon publishing topic

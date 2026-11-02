@@ -5,6 +5,7 @@
 //   右键（未选起点时）→ 退出工具
 
 #include "map_asset_rviz_plugin/add_edge_tool.hpp"
+#include "map_asset_rviz_plugin/asset_target.hpp"
 #include "map_asset_rviz_plugin/route_graph_tools_common.hpp"
 
 #include <QCheckBox>
@@ -20,7 +21,7 @@
 #include <OgreManualObject.h>
 #include <OgreSceneManager.h>
 
-#include <nav_interfaces/srv/add_route_edge.hpp>
+#include <nav_interfaces/srv/set_assets.hpp>
 #include <rviz_common/display_context.hpp>
 #include <rviz_common/interaction/view_picker_iface.hpp>
 #include <rviz_common/ros_integration/ros_node_abstraction_iface.hpp>
@@ -134,6 +135,12 @@ void AddEdgeTool::activate() {
     setStatus("正在加载端点列表…");
 
     // 异步加载：nav 点和 junction 并行请求，回调到 Qt 主线程刷新预览
+    reloadEndpoints();
+}
+
+void AddEdgeTool::reloadEndpoints() {
+    loaded_gen_ = AssetTarget::generation();
+    loading_ = true;
     loadEndpointsAsync(node_, service_prefix_,
         [this](std::vector<EndpointInfo> eps) {
             QMetaObject::invokeMethod(this,
@@ -158,6 +165,8 @@ void AddEdgeTool::deactivate() {
 
 int AddEdgeTool::processMouseEvent(rviz_common::ViewportMouseEvent& event) {
     if (!s_route_graph_editing) return Render;
+    // 编辑目标切换或目标图数据变了（面板递增代数）→ 重新加载端点，不打断当前选择
+    if (!loading_ && loaded_gen_ != AssetTarget::generation()) reloadEndpoints();
     Ogre::Vector3 pos;
     const bool got3d =
         context_->getViewPicker()->get3DPoint(event.panel, event.x, event.y, pos);
@@ -287,32 +296,34 @@ void AddEdgeTool::clearPreview() {
 
 void AddEdgeTool::submitEdge(const EndpointInfo& from, const EndpointInfo& to,
                               const EdgeConfig& cfg) {
-    auto client = node_->create_client<nav_interfaces::srv::AddRouteEdge>(
-        service_prefix_ + "/add_route_edge");
-    auto req                 = std::make_shared<nav_interfaces::srv::AddRouteEdge::Request>();
-    req->edge.id             = cfg.edge_id;
-    req->edge.from_ep.id     = from.id;
-    req->edge.from_ep.type   = from.type;
-    req->edge.to_ep.id       = to.id;
-    req->edge.to_ep.type     = to.type;
-    req->edge.edge_type      = "LINE";
-    req->edge.bidirectional  = cfg.bidirectional;
-    req->edge.max_speed      = cfg.max_speed;
-    req->edge.xy_tolerance   = cfg.xy_tolerance;
-    req->edge.th_tolerance   = cfg.th_tolerance;
-    req->edge.lane_width     = cfg.lane_width;
-    req->edge.obs_policy     = cfg.obs_policy;
-    applyOptionalEdgeFields(req->edge, cfg);  // 含 max_speed（0=系统默认）/hold_direction/padding/backward
+    auto client = node_->create_client<nav_interfaces::srv::SetAssets>(
+        service_prefix_ + "/set_assets");
+    auto req = std::make_shared<nav_interfaces::srv::SetAssets::Request>(); applyTarget(req); req->edges.resize(1);
+    req->mode                = nav_interfaces::srv::SetAssets::Request::MODE_ADD_ONLY;
+    req->edges[0].id             = cfg.edge_id;
+    req->edges[0].from_ep.id     = from.id;
+    req->edges[0].from_ep.type   = from.type;
+    req->edges[0].to_ep.id       = to.id;
+    req->edges[0].to_ep.type     = to.type;
+    req->edges[0].edge_type      = "LINE";
+    req->edges[0].bidirectional  = cfg.bidirectional;
+    req->edges[0].max_speed      = cfg.max_speed;
+    req->edges[0].xy_tolerance   = cfg.xy_tolerance;
+    req->edges[0].th_tolerance   = cfg.th_tolerance;
+    req->edges[0].lane_width     = cfg.lane_width;
+    req->edges[0].obs_policy     = cfg.obs_policy;
+    applyOptionalEdgeFields(req->edges[0], cfg);  // 含 max_speed（0=系统默认）/hold_direction/padding/backward
 
     const QString eid = QString::fromStdString(cfg.edge_id);
     client->async_send_request(req,
-        [this, eid](rclcpp::Client<nav_interfaces::srv::AddRouteEdge>::SharedFuture fut) {
+        [this, eid](rclcpp::Client<nav_interfaces::srv::SetAssets>::SharedFuture fut) {
             try {
                 auto resp = fut.get();
+                reportResult(*resp, "添加直线边");
                 setStatus(resp->success
                     ? QString("边 '%1' 添加成功").arg(eid)
                     : QString("添加失败: %1").arg(
-                          QString::fromStdString(resp->message)));
+                          assetMessage(*resp)));
             } catch (const std::exception& ex) {
                 setStatus(QString("异常: %1").arg(ex.what()));
             }

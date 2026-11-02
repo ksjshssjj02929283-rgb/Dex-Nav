@@ -6,13 +6,16 @@ from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 from ament_index_python.packages import get_package_share_directory
 import os
-import json
+import yaml
 
 
 def launch_setup(context, *args, **kwargs):
     # 获取启动参数
     joy_dev = LaunchConfiguration('joy_dev').perform(context)
     config_file = LaunchConfiguration('config_file').perform(context)
+    chassis_backend = LaunchConfiguration('chassis_backend').perform(context)
+    if chassis_backend not in ('dexe', 'cloudia'):
+        raise ValueError('chassis_backend must be dexe or cloudia')
     chassis_config_file = LaunchConfiguration('chassis_config_file').perform(
         context)
 
@@ -20,17 +23,17 @@ def launch_setup(context, *args, **kwargs):
     params_mux = os.path.join(cmd_vel_mux_dir, 'config',
                               'cmd_vel_mux_params.yaml')
 
-    # 读取 chassis.cfg 文件（使用绝对路径）
+    # 读取 RobotServer 与 ChassisNode 共用的运行配置。
     robot_type = "diff_drive"  # 默认值
     try:
-        # chassis_config_file 是绝对路径，直接读取
         with open(chassis_config_file, 'r') as f:
-            robot_config = json.load(f)  # .cfg文件内容是JSON格式
-            robot_type = robot_config.get("robot_name", "diff_drive")
+            robot_config = yaml.safe_load(f) or {}
+            chassis_config = robot_config.get("chassis_config", {}) or {}
+            robot_type = chassis_config.get("chassis_type", "diff_drive")
             print(f"[INFO] Detected robot type: {robot_type}")
     except Exception as e:
         print(
-            f"[WARN] Could not read chassis config file {chassis_config_file}: {e}"
+            f"[WARN] Could not read robot config file {chassis_config_file}: {e}"
         )
         print(f"[WARN] Using default robot_type: {robot_type}")
 
@@ -52,17 +55,14 @@ def launch_setup(context, *args, **kwargs):
     mobile_joy_control_node = Node(package='mobile_joy_control',
                                    executable='mobile_joy_control',
                                    name='mobile_joy_control',
-                                   parameters=[config_file],
+                                   parameters=[config_file,
+                                               {'chassis_backend': chassis_backend}],
                                    output='screen')
     nodes.append(mobile_joy_control_node)
 
-    # 创建cmd_vel_mux节点，根据机器人类型设置不同的输出话题
-    if robot_type == "omni":
-        cmd_vel_remapping = [('cmd_vel', 'control/cmd_vel_omni')]
-        print(f"[INFO] cmd_vel_mux output topic: control/cmd_vel_omni")
-    else:
-        cmd_vel_remapping = [('cmd_vel', 'control/cmd_vel')]
-        print(f"[INFO] cmd_vel_mux output topic: control/cmd_vel")
+    # 所有底盘类型统一输出；RobotServer 根据 chassis_type 选择逆解。
+    cmd_vel_remapping = [('cmd_vel', 'control/cmd_vel')]
+    print(f"[INFO] cmd_vel_mux output topic: control/cmd_vel")
 
     cmd_vel_mux_node = Node(package='cmd_vel_mux',
                             executable='cmd_vel_mux_node',
@@ -71,14 +71,15 @@ def launch_setup(context, *args, **kwargs):
                             remappings=cmd_vel_remapping)
     nodes.append(cmd_vel_mux_node)
 
-    # 根据机器人类型决定是否创建mobile_cmd_omni节点
-    if robot_type == "omni":
-        print(f"[INFO] Starting mobile_cmd_omni node...")
-        cmd_omni_vel_node = Node(package='mobile_joy_control',
-                                 executable='mobile_cmd_omni',
-                                 name='mobile_cmd_omni',
-                                 output='screen')
-        nodes.append(cmd_omni_vel_node)
+    # 🔧 STEERING_ACTION_DIRECT: ChassisNode 提供 SteeringAngleControl Action Server；本包只保留导航起步协调客户端。
+    if robot_type == "omni" and chassis_backend == "dexe":
+        start_coordinator_node = Node(
+            package='mobile_joy_control',
+            executable='omni_start_coordinator',
+            name='omni_start_coordinator',
+            parameters=[config_file],
+            output='screen')
+        nodes.append(start_coordinator_node)
 
     return nodes
 
@@ -96,19 +97,26 @@ def generate_launch_description():
         default_value=os.path.join(pkg_share, 'config', 'params.yaml'),
         description='Path to the joy control config file')
 
-    # 声明 chassis.cfg 的绝对路径参数（使用您提供的具体路径）
+    # 与 w1_server/src/main.cpp 使用同一份运行配置。
     chassis_config_file_arg = DeclareLaunchArgument(
         'chassis_config_file',
-        default_value=
-        '/home/dexforce/w1/install/w1_server/share/w1_server/chassis.cfg',
+        default_value=os.path.join(
+            os.path.expanduser('~'),
+            'w1',
+            'dexe_robot_server_data',
+            'robot_config.yaml'),
         description=
-        'Absolute path to the chassis configuration file (.cfg with JSON content)'
+        'Path to the shared w1_server runtime robot_config.yaml'
     )
 
     # 使用OpaqueFunction来在启动时读取配置文件并动态决定启动哪些节点
     opaque_function = OpaqueFunction(function=launch_setup)
 
     return LaunchDescription([
+        DeclareLaunchArgument(
+            'chassis_backend',
+            default_value=os.environ.get('DEXE_CHASSIS_BACKEND', 'dexe'),
+            description='dexe or cloudia; motion/joystick parameters are unchanged'),
         joy_dev_arg,
         config_file_arg,
         chassis_config_file_arg,

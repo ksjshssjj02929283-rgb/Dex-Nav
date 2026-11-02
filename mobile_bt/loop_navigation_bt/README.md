@@ -49,18 +49,7 @@ ros2 action list -t | grep '^/auto_charging '
 ros2 launch auto_charging_bt auto_charging_action.launch.py
 ```
 
-然后确认已经采集回充点，并且文件是有效 JSON：
-
-```bash
-test -s /home/dexforce/w1/install/mobile_perception/lib/mobile_perception/charging_pose.json && \
-  python3 -m json.tool /home/dexforce/w1/install/mobile_perception/lib/mobile_perception/charging_pose.json
-```
-
-如果文件不存在、为空或解析失败，需要先将机器人移动到充电桩前置点，再采集回充点：
-
-```bash
-ros2 service call /save_charging_pose std_srvs/srv/Trigger "{}"
-```
+然后确认当前地图的 `assets/map_assets.json` 中存在且仅存在一个 `type=CHARGING` 点。
 
 以上两项检查通过后，启动循环导航：
 
@@ -68,7 +57,7 @@ ros2 service call /save_charging_pose std_srvs/srv/Trigger "{}"
 ros2 launch loop_navigation_bt loop_navigation_bt.launch.py
 ```
 
-注意：文件存在且 JSON 格式正确，只能证明回充点已经保存，不能证明点位位置和朝向正确；首次使用或充电桩位置变化后仍需现场确认。
+注意：文件存在且 JSON 格式正确，只能证明地图资产可读取，不能证明回充点位置和朝向正确；首次使用或充电桩位置变化后仍需现场确认。
 
 执行流程：
 
@@ -171,15 +160,15 @@ config/navigation_points.json
 nav_error_log.txt
 ```
 
-文件面向现场测试人员，逐次记录轮次、点位、成功或失败、导航耗时、横向误差、
-纵向误差、角度误差、本次行驶距离和累计距离，所有数值都在表头标明单位。横向和
-纵向误差是相对目标朝向的分量，表格中均显示误差绝对值。测试结束或程序退出时
+文件面向现场测试人员，逐次记录轮次、点位、成功或失败、导航耗时、纵向误差、
+横向误差、角度误差、本次行驶距离和累计距离，所有数值都在表头标明单位。纵向和
+横向误差是相对目标朝向的分量，表格中均显示误差绝对值。测试结束或程序退出时
 追加简洁汇总；未获得有效数据时显示“未获取”，不会用 `0` 冒充有效误差。
 明细和汇总表会按终端显示宽度自动补齐空格：中文按双宽字符处理，点位名称按实际
 最长内容扩展，文字列居中或左对齐，数值列右对齐。
 默认每完成 5 个完整轮次，文件会输出从第 1 轮截至当前轮次的总体和各点累计汇总，
 例如第 5 轮统计第 1～5 轮，第 10 轮统计第 1～10 轮。汇总分为成功和失败两张表，
-每张表分别包含次数占比、平均耗时、平均横向误差、平均纵向误差、平均角度误差、
+每张表分别包含次数占比、平均耗时、平均纵向误差、平均横向误差、平均角度误差、
 高精度占比和接收精度占比；所有平均值和精度占比只使用该结果类型的数据，
 成功与失败样本不会混合计算。汇总后在下一轮明细前重新打印表头。平均误差采用
 绝对值；两档精度都要求横向和纵向误差分别不超过对应阈值。统计间隔及两档阈值均在
@@ -233,7 +222,7 @@ ros2 topic info /feedback/odom --verbose
 
 ```bash
 ros2 topic echo --once /map_manager/map_state
-ros2 service call /map_asset_manager/get_all_points nav_interfaces/srv/GetAllNavPoints "{}"
+ros2 service call /map_asset_manager/get_all_nav_points nav_interfaces/srv/GetAllNavPoints "{}"
 ```
 
 ### 7.5 配置修改未生效

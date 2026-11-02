@@ -7,6 +7,8 @@
 
 #include <chrono>
 #include <memory>
+#include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -24,9 +26,9 @@ RouteGraphLoader::RouteGraphLoader(
   auto node = parent_.lock();
   if (!node) {return;}
   // map_asset_manager exposes services under its node name, e.g.
-  // /map_asset_manager/get_route_graph. The response carries junctions,
-  // edges AND nav_points (see GetRouteGraph.srv) — single round-trip.
-  route_graph_srv_name_ = "/" + asset_node_name_ + "/get_route_graph";
+  // /map_asset_manager/get_assets. One request with kinds = points |
+  // junctions | edges returns the whole graph — single round-trip.
+  route_graph_srv_name_ = "/" + asset_node_name_ + "/get_assets";
 
   // Dedicated callback group for syncLoad() — `automatically_add_to_
   // executor_with_node = false` keeps it OFF the planner's main
@@ -118,7 +120,7 @@ void RouteGraphLoader::onTimer()
   // Result-callback variant — executor delivers the response on its own
   // thread; we never block.
   request_in_flight_ = true;
-  auto req = std::make_shared<GetRouteGraph::Request>();
+  auto req = makeGraphRequest();
   route_graph_client_->async_send_request(req,
     [this](rclcpp::Client<GetRouteGraph>::SharedFuture future) {
       this->onGraphResponse(future);
@@ -136,7 +138,7 @@ void RouteGraphLoader::onGraphResponse(
 
   auto resp = future.get();
   if (!resp || !resp->success) {
-    RCLCPP_WARN(logger, "GetRouteGraph reported failure — will retry");
+    RCLCPP_WARN(logger, "get_assets (route graph) reported failure — will retry");
     return;
   }
   rebuild(*resp);
@@ -165,7 +167,7 @@ RouteGraphLoader::LoadResult RouteGraphLoader::syncLoad(
 
   // Send request; future is serviced by `sync_executor_` on its
   // own thread, so wait_for() here cannot deadlock.
-  auto req = std::make_shared<GetRouteGraph::Request>();
+  auto req = makeGraphRequest();
   auto future = route_graph_client_->async_send_request(req);
   const auto status = future.wait_for(timeout);
 
@@ -174,7 +176,7 @@ RouteGraphLoader::LoadResult RouteGraphLoader::syncLoad(
     r.duration_total = std::chrono::duration_cast<std::chrono::milliseconds>(
       std::chrono::steady_clock::now() - t0);
     RCLCPP_WARN(logger,
-      "syncLoad: GetRouteGraph timed out after %ldms — graph not refreshed",
+      "syncLoad: get_assets (route graph) timed out after %ldms — graph not refreshed",
       static_cast<long>(timeout.count()));
     return r;
   }
@@ -185,7 +187,7 @@ RouteGraphLoader::LoadResult RouteGraphLoader::syncLoad(
     r.duration_total = std::chrono::duration_cast<std::chrono::milliseconds>(
       std::chrono::steady_clock::now() - t0);
     RCLCPP_WARN(logger,
-      "syncLoad: GetRouteGraph reported failure — graph not refreshed");
+      "syncLoad: get_assets (route graph) reported failure — graph not refreshed");
     return r;
   }
 
@@ -203,12 +205,31 @@ RouteGraphLoader::LoadResult RouteGraphLoader::syncLoad(
   return r;
 }
 
+std::shared_ptr<RouteGraphLoader::GetRouteGraph::Request> RouteGraphLoader::makeGraphRequest()
+{
+  auto req = std::make_shared<GetRouteGraph::Request>();
+  req->kinds = GetRouteGraph::Request::KIND_POINTS | GetRouteGraph::Request::KIND_JUNCTIONS |
+    GetRouteGraph::Request::KIND_EDGES;  // map_name empty = current map
+  return req;
+}
+
 void RouteGraphLoader::rebuild(const GetRouteGraph::Response & resp)
 {
-  std::vector<TopoNode> nodes;
-  nodes.reserve(resp.nav_points.size() + resp.junctions.size());
+  // Only nav points referenced by an edge become graph nodes (same as the
+  // former get_route_graph response); get_assets returns all points.
+  std::unordered_set<std::string> referenced;
+  for (const auto & em : resp.edges) {
+    if (em.from_ep.type == "nav") {referenced.insert(em.from_ep.id);}
+    if (em.to_ep.type == "nav") {referenced.insert(em.to_ep.id);}
+  }
 
-  for (const auto & np : resp.nav_points) {
+  std::vector<TopoNode> nodes;
+  nodes.reserve(referenced.size() + resp.junctions.size());
+
+  size_t nav_count = 0;
+  for (const auto & np : resp.points) {
+    if (referenced.count(np.name) == 0) {continue;}
+    ++nav_count;
     TopoNode n;
     n.id = np.name;
     n.kind = NodeKind::NAV_POINT;
@@ -253,7 +274,7 @@ void RouteGraphLoader::rebuild(const GetRouteGraph::Response & resp)
   if (auto node = parent_.lock()) {
     RCLCPP_INFO(node->get_logger(),
       "RouteGraph loaded: %zu nodes (%zu nav + %zu junctions), %zu edges",
-      graph_->nodeCount(), resp.nav_points.size(), resp.junctions.size(),
+      graph_->nodeCount(), nav_count, resp.junctions.size(),
       graph_->edgeCount());
   }
 }

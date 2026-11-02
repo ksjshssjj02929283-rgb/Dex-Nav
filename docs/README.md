@@ -73,15 +73,12 @@
 - `mobile_control_node`：订阅 `control/ctrl_pose` 和 `feedback/odom`，输出 `control/cmd_vel`，用于目标位姿下的底盘末端精控。
 - `mobile_control_action_node`：通过 `control/precise_control` action 接收精控目标，执行 TF 转换、控制、反馈和取消处理。
 - `obstacle_detector_node`：订阅局部 costmap，检测车体前方矩形区域是否存在障碍物，并发布 Bool 与 RViz Marker。
-- `charging_pose_service_node`：采样 `map -> base_link` 并保存充电位姿 JSON。
 
 Python 脚本功能：
 
 - `detect_apriltags*.py`：Python 版 AprilTag 检测和服务化调试。
 - `control_robot*.py`、`goal_controller*.py`：早期控制和仿真控制脚本。
-- `nav_then_precise*.py`：Nav2 导航后接 AprilTag 精控的编排脚本。
 - `nav_goal_publisher*.py`、`nav_goal_server.py`：向 Nav2 发送导航目标或提供目标服务。
-- `create_charging_pose.py`、`creat_charging_pose_service.py`：充电位姿采集辅助脚本。
 
 关键接口：
 

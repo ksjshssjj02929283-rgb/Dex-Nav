@@ -118,6 +118,8 @@ public:
     *        作为采样器的前向 vx 上限（叠加在三阶段 profile 约束之上）。
     * @param trajectory 带逐点速度的时空轨迹
     */
+  bool supportsTrajectoryTracking() const override {return true;}
+
   void setTrajectory(const nav_interfaces::msg::RobotTrajectory & trajectory) override;
 
   /**

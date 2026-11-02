@@ -1,8 +1,8 @@
 // command_board_rviz_plugins / CommandBoardControlPanel
 //
-// 独立 RViz 控制 panel：把 command_board 对外服务做成按钮（保存导航地图 / 备份地图与资产 /
-// 回退地图 / 重置原点）+ localization 全局重定位。订阅 NavSystemStatus 拿当前地图名
-// （save / reset 默认作用于当前地图）。
+// 独立 RViz 控制 panel：只放依赖实时定位、作用于当前地图的 command_board 操作——
+// 保存导航地图 / 备份地图与资产 / 按当前位姿重设原点 / 全局重定位（localization 服务）。
+// 作用于任意地图的对齐 / 替换 / 按坐标重设原点 / 底图版本回滚在 Map Manager 面板，资产回滚在 Map Asset Manager 面板。
 //
 // 线程模型：服务响应回调（executor 线程）只写缓存；QTimer(GUI 线程)读缓存刷 widget。
 
@@ -21,8 +21,6 @@
 #include <std_srvs/srv/trigger.hpp>
 #include <nav_interfaces/msg/nav_system_status.hpp>
 #include <nav_interfaces/srv/save_map.hpp>
-#include <nav_interfaces/srv/rollback_map.hpp>
-#include <nav_interfaces/srv/reset_map_origin_by_xy_yaw.hpp>
 
 class QTimer;
 
@@ -44,10 +42,8 @@ private Q_SLOTS:
     void refreshUi();        // QTimer：刷当前地图 + 操作结果
     void onSaveMap();        // ~/save_map（空=当前地图）
     void onBackup();         // ~/backup_unified
-    void onRollback();       // ~/rollback_map（确认）
     void onResetByPose();    // ~/reset_map_origin_by_robot_pose（确认）
-    void onResetByXYYaw();   // ~/reset_map_origin_by_xyyaw（当前地图，确认）
-    void onGlobalReloc();    // /localization_node/trigger_global_relocalization（确认）
+    void onGlobalReloc();    // /localization/trigger_global_relocalization（确认）
 
 private:
     void setupUi();
@@ -59,11 +55,6 @@ private:
 
     QLineEdit* topic_edit_{nullptr};
     QLabel*    map_label_{nullptr};
-    QLineEdit* rollback_mapver_edit_{nullptr};
-    QLineEdit* rollback_assetver_edit_{nullptr};
-    QLineEdit* reset_x_edit_{nullptr};
-    QLineEdit* reset_y_edit_{nullptr};
-    QLineEdit* reset_yaw_edit_{nullptr};
     QLabel*    op_result_label_{nullptr};
     QTimer*    ui_timer_{nullptr};
 
@@ -71,9 +62,7 @@ private:
     rclcpp::Subscription<nav_interfaces::msg::NavSystemStatus>::SharedPtr status_sub_;
     rclcpp::Client<nav_interfaces::srv::SaveMap>::SharedPtr save_map_cli_;
     rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr backup_cli_;
-    rclcpp::Client<nav_interfaces::srv::RollbackMap>::SharedPtr rollback_cli_;
     rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr reset_pose_cli_;
-    rclcpp::Client<nav_interfaces::srv::ResetMapOriginByXYYaw>::SharedPtr reset_xyyaw_cli_;
     rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr global_reloc_cli_;
 
     mutable std::mutex cache_mutex_;

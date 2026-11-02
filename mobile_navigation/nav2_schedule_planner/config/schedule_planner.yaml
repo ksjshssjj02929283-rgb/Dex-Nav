@@ -10,16 +10,56 @@ schedule_planner_node:
     cancel_service_name: "/schedule_planner/force_cancel"  # 终端测试用取消服务（std_srvs/Trigger），无 active goal 也会触发停车
     resolve_service: "/map_asset_manager/resolve_nav_points"  # map_asset_manager 解析服务
     # ---------------- 动态停障膨胀 ----------------
-    padding_service: "/collision_monitor/set_polygon_padding"  # collision_monitor 膨胀设置服务
+    # 服务挂在节点名下。本栈的碰撞监控叫 collision_monitor_path（与 Nav2 栈错开命名，
+    # 见 path_follower/launch/collision_monitor.launch.py 的 node_name 参数），所以这里带后缀。
+    padding_service: "/collision_monitor_path/set_polygon_padding"
     stop_polygon_name: "PolygonStop"   # 只改停障检测器；减速区保持其 default_padding
     padding_timeout: 2.0               # 膨胀服务等待/调用超时 s
     require_padding_service: true      # true=服务失败则中止该段（停障距离未知，保守）
                                        # false=只告警并沿用上一段 padding
     default_mode: 1        # PathSegment 未显式指定 mode 时的默认跟踪方式：1=DIFF, 3=OMNI_TRANS_ROTATION
 
+    # 底盘运动能力，对应 path_follower 的 base_type。决定生成路径段时允许下发的跟踪方式：
+    #   1 = 只能差速。所有段强制 MODE_DIFF，hold_direction 一律清 NaN（该字段在 DIFF 下无意义，
+    #       留着会让下游排查时误判）。backward 保留——差速车支持倒车，那是另一个维度。
+    #   2 = 只用全向平移。所有段强制 MODE_OMNI_TRANSLATION；段若没给 hold_direction，会被
+    #       resolveMode 按既有规则降级为 DIFF 并告警（全向底盘本就能做差速运动，差速是其子集，
+    #       所以这个降级可接受；而 1 那一档是物理硬约束，不存在降级）。
+    #   3 = 全能力，三种模式都允许，按段自身 mode 走（默认，等同于引入该参数之前的行为）。
+    #
+    # 与 default_mode 的区别：default_mode 只在 PathSegment.mode==0 时兜底，段里显式写了
+    # mode=2/3 会绕过它；move_mode 是能力上限，无条件覆盖。因此 move_mode 取 1/2 时
+    # default_mode 自动失效（段 mode 已被归一成具体值），启动时会打一条告警提示。
+    #
+    # 实现上是在 resolveSegments 出口对 segments 就地归一（唯一入口），
+    # path_segment_sampler 与 segment_merger 完全不感知该参数。
+    # 注意：取 1/2 时所有段模式一致，segment_merger 的 mode 一致性判定恒真，段间更容易被合并。
+    move_mode: 1           # 1=DIFF / 2=OMNI_TRANSLATION / 3=不约束
+
     # ---------------- 几何 ----------------
     frame_id: "map"        # 输出 Path 坐标系（需与 path_follower 的定位坐标系一致并有 TF）
-    resolution: 0.01      # 离散弧长间距 m（5mm）
+    resolution: 0.01       # 离散弧长间距 m（1cm）
+
+    # ---------------- 相邻段合并平滑 ----------------
+    # 属性一致（backward / padding / 解析后的 mode）、长度够、转角不过急的连续 LINE 段，
+    # 合并成一条带四次贝塞尔倒角的轨迹一次下发，省掉组内每个途经点的「停车 + 原地旋转」。
+    # 长度门槛由 anchor_spacing 推导，不单独配置：
+    #   退让距离 d = (阶数-2) * anchor_spacing = 0.5 m
+    #   组内首/末段只服务一个拐角  -> 需 d + end_margin = 0.6 m
+    #   组内中间段被两个拐角共享    -> 需 2d = 1.0 m
+    # 长度落在 [0.6, 1.0) 的段只能收尾：它进组后下一轮的中间段门槛不过，组自动封口。
+    # map_asset 插入的归位段（段数 == 点数）永远单独成组，先跑完再开始合并。
+    # controller 模式（mode: "controller"）不参与合并。
+    merge_enable: true
+    merge_bezier_degree: 4        # 只支持 4（与 path_follower 侧锚点方案一致）
+    merge_anchor_spacing: 0.25    # 锚点间距 m；切角深度 = 0.75*anchor*sin(转角/2) <= 0.188m
+    merge_end_margin: 0.1         # 端段长度余量 m
+    # 转角上限：判定用两段**行进方向**的夹角余弦
+    #   dot(unit(前段方向), unit(后段方向)) > cos(merge_max_turn_angle_deg)
+    # 直行余弦=1，转60度=0.5，转90度=0，转120度=-0.5，掉头=-1。
+    # 默认 120 度（cos > -0.5），直角拐角在内；超过则不倒角、拆成两组各自停车转向。
+    # anchor=0.25 时 120 度拐角的 R_min≈0.12m、过弯约 0.12m/s，已经是可用性下限。
+    merge_max_turn_angle_deg: 120.0
 
     # ---------------- 超时 ----------------
     resolve_timeout: 5.0   # 解析服务等待/调用超时 s
@@ -34,7 +74,7 @@ schedule_planner_node:
     bag_trigger_topic: "/mobile_bag_recorder_node/trigger_event"
 
     # ---------------- 执行模式（启动时固定，不支持运行时热切换） ----------------
-    mode: "controller"   # "independence"=上面这套 /tracking_path→path_follower 流程（默认）
+    mode: "independence"   # "independence"=上面这套 /tracking_path→path_follower 流程（默认）
                             # "controller"=改为发 FollowPath action 给 controller_server（走 RPP/SpeedPlanner），
                             #   绕开 bt_navigator，没有 BT 的清 costmap/后退等恢复行为
     # controller 模式专用（mode=independence 时忽略）：

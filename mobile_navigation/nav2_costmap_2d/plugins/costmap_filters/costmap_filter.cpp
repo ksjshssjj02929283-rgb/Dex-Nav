@@ -41,6 +41,7 @@
 #include "nav2_costmap_2d/costmap_filters/costmap_filter.hpp"
 
 #include <exception>
+#include <limits>
 
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
 #include "geometry_msgs/msg/point_stamped.hpp"
@@ -111,7 +112,7 @@ void CostmapFilter::reset()
 
 void CostmapFilter::updateBounds(
   double robot_x, double robot_y, double robot_yaw,
-  double * /*min_x*/, double * /*min_y*/, double * /*max_x*/, double * /*max_y*/)
+  double * min_x, double * min_y, double * max_x, double * max_y)
 {
   if (!enabled_) {
     return;
@@ -120,6 +121,19 @@ void CostmapFilter::updateBounds(
   latest_pose_.x = robot_x;
   latest_pose_.y = robot_y;
   latest_pose_.theta = robot_yaw;
+
+  // 掩膜变化后扩一次范围；LayeredCostmap 会把它裁剪到 costmap 边界
+  if (full_update_requested_.exchange(false)) {
+    *min_x = std::numeric_limits<double>::lowest();
+    *min_y = std::numeric_limits<double>::lowest();
+    *max_x = std::numeric_limits<double>::max();
+    *max_y = std::numeric_limits<double>::max();
+  }
+}
+
+void CostmapFilter::requestFullUpdate()
+{
+  full_update_requested_ = true;
 }
 
 void CostmapFilter::updateCosts(

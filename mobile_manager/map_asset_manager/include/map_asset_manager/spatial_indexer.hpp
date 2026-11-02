@@ -57,7 +57,7 @@ private:
     std::shared_ptr<RoomStore>     room_store_;
     std::shared_ptr<DataEventBus>  event_bus_;
 
-    // 重算完成后回调（触发 publishAreas / publishRooms）
+    // 重算完成后回调（触发快照推送：saveAllAssets → publishStatus）
     std::function<void()>          on_areas_changed_;
     std::function<void()>          on_rooms_changed_;
 

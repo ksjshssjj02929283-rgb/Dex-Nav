@@ -14,7 +14,9 @@
 
 #include "nav2_collision_monitor/pointcloud.hpp"
 
+#include <chrono>
 #include <functional>
+#include <utility>
 
 #include "sensor_msgs/point_cloud2_iterator.hpp"
 
@@ -35,7 +37,7 @@ PointCloud::PointCloud(
 : Source(
     node, source_name, tf_buffer, base_frame_id, global_frame_id,
     transform_tolerance, source_timeout, base_shift_correction),
-  data_(nullptr)
+  data_(nullptr), processed_data_(nullptr)
 {
   RCLCPP_INFO(logger_, "[%s]: Creating PointCloud", source_name_.c_str());
 }
@@ -67,55 +69,17 @@ void PointCloud::getData(
   const rclcpp::Time & curr_time,
   std::vector<Point> & data) const
 {
-  // Ignore data from the source if it is not being published yet or
-  // not published for a long time
-  if (data_ == nullptr) {
+  const auto snapshot = std::atomic_load(&processed_data_);
+
+  // A failed transform invalidates the newly received frame
+  if (snapshot == nullptr || !snapshot->transform_valid) {
     return;
   }
-  if (!sourceValid(data_->header.stamp, curr_time)) {
+  if (!sourceValid(snapshot->source_stamp, curr_time)) {
     return;
   }
 
-  tf2::Transform tf_transform;
-  if (base_shift_correction_) {
-    // Obtaining the transform to get data from source frame and time where it was received
-    // to the base frame and current time
-    if (
-      !nav2_util::getTransform(
-        data_->header.frame_id, data_->header.stamp,
-        base_frame_id_, curr_time, global_frame_id_,
-        transform_tolerance_, tf_buffer_, tf_transform))
-    {
-      return;
-    }
-  } else {
-    // Obtaining the transform to get data from source frame to base frame without time shift
-    // considered. Less accurate but much more faster option not dependent on state estimation
-    // frames.
-    if (
-      !nav2_util::getTransform(
-        data_->header.frame_id, base_frame_id_,
-        transform_tolerance_, tf_buffer_, tf_transform))
-    {
-      return;
-    }
-  }
-
-  sensor_msgs::PointCloud2ConstIterator<float> iter_x(*data_, "x");
-  sensor_msgs::PointCloud2ConstIterator<float> iter_y(*data_, "y");
-  sensor_msgs::PointCloud2ConstIterator<float> iter_z(*data_, "z");
-
-  // Refill data array with PointCloud points in base frame
-  for (; iter_x != iter_x.end(); ++iter_x, ++iter_y, ++iter_z) {
-    // Transform point coordinates from source frame -> to base frame
-    tf2::Vector3 p_v3_s(*iter_x, *iter_y, *iter_z);
-    tf2::Vector3 p_v3_b = tf_transform * p_v3_s;
-
-    // Refill data array
-    if (p_v3_b.z() >= min_height_ && p_v3_b.z() <= max_height_) {
-      data.push_back({p_v3_b.x(), p_v3_b.y()});
-    }
-  }
+  data.insert(data.end(), snapshot->points.begin(), snapshot->points.end());
 }
 
 void PointCloud::getParameters(std::string & source_topic)
@@ -137,7 +101,57 @@ void PointCloud::getParameters(std::string & source_topic)
 
 void PointCloud::dataCallback(sensor_msgs::msg::PointCloud2::ConstSharedPtr msg)
 {
-  data_ = msg;
+  last_source_stamp_ns_.store(
+    rclcpp::Time(msg->header.stamp).nanoseconds(), std::memory_order_release);
+  const auto receipt = std::chrono::steady_clock::now().time_since_epoch();
+  const auto receipt_ns =
+    std::chrono::duration_cast<std::chrono::nanoseconds>(receipt).count();
+  last_received_steady_ns_.store(receipt_ns, std::memory_order_release);
+  std::atomic_store(&data_, msg);
+
+  auto processed = std::make_shared<ProcessedPointCloud>();
+  processed->source_stamp = msg->header.stamp;
+
+  auto node = node_.lock();
+  if (!node) {
+    std::atomic_store(&processed_data_, std::shared_ptr<const ProcessedPointCloud>(processed));
+    data_sequence_.fetch_add(1, std::memory_order_release);
+    return;
+  }
+
+  tf2::Transform tf_transform;
+  if (!getLatestTransform(msg->header.frame_id, rclcpp::Time(msg->header.stamp), tf_transform)) {
+    std::atomic_store(&processed_data_, std::shared_ptr<const ProcessedPointCloud>(processed));
+    data_sequence_.fetch_add(1, std::memory_order_release);
+    return;
+  }
+
+  // 坐标转换成功，记录有效帧单调时间戳 (A3 规范)
+  last_valid_frame_steady_ns_.store(receipt_ns, std::memory_order_release);
+
+  sensor_msgs::PointCloud2ConstIterator<float> iter_x(*msg, "x");
+  sensor_msgs::PointCloud2ConstIterator<float> iter_y(*msg, "y");
+  sensor_msgs::PointCloud2ConstIterator<float> iter_z(*msg, "z");
+
+  // Refill data array with PointCloud points in base frame
+  for (; iter_x != iter_x.end(); ++iter_x, ++iter_y, ++iter_z) {
+    // Transform point coordinates from source frame -> to base frame
+    tf2::Vector3 p_v3_s(*iter_x, *iter_y, *iter_z);
+    tf2::Vector3 p_v3_b = tf_transform * p_v3_s;
+
+    if (p_v3_b.z() >= min_height_ && p_v3_b.z() <= max_height_) {
+      const double px = p_v3_b.x();
+      const double py = p_v3_b.y();
+      // 距离绝对剪枝：超出 max_obstacle_distance_sq_ 的远端点直接剔除
+      if (px * px + py * py <= max_obstacle_distance_sq_) {
+        processed->points.push_back({px, py});
+      }
+    }
+  }
+
+  processed->transform_valid = true;
+  std::atomic_store(&processed_data_, std::shared_ptr<const ProcessedPointCloud>(processed));
+  data_sequence_.fetch_add(1, std::memory_order_release);
 }
 
 }  // namespace nav2_collision_monitor

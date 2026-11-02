@@ -1,11 +1,10 @@
-map_asset_manager_node:
+# 用 /** 匹配：节点名由 launch 给出（map_asset_manager），与可执行文件名不同
+/**:
   ros__parameters:
     use_sim_time: false
-    # 默认宽容度（当 NavPoint.tolerance 为 0 时使用）
-    default_tolerance: 0.05
-    # Nav2 controller_server 节点名称（用于动态设置 lon/lat_goal_tolerance）
-    controller_server_name: "/controller_server"
-    # 是否自动保存（修改后立即持久化到地图目录的 map_assets.json）
+    # 是否自动保存（资产内容变化后立即持久化到 {map_folder}/{map_name}/assets/map_assets.json）
     auto_save: true
-    # 注意：地图名称 + 根目录通过订阅 map_manager/map_state 话题自动获取（folder+name+epoch 原子下发）
-    # 文件保存位置：{map_folder}/{map_name}/map_assets.json
+    # 以下参数用代码默认值，需要时在此覆盖：
+    #   asset_clearance_m: 0.35     # 几何校验安全距离（米）：点位 / 路网离障碍、未知区、禁行区、图幅边界的最小距离
+    #   virtual_wall_width: 0.10    # 虚拟墙在禁行区掩膜里的宽度（米）
+    # 地图名称与根目录通过订阅 map_manager/map_state 自动获取（folder + name + epoch 原子下发）

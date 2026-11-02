@@ -78,8 +78,8 @@ longitudinal_state_estimator:
     use_sim_time: False
     # robot_localization已经融合轮速、雷达Pose和IMU；这里仅做时间戳、方差、
     # 坐标语义和物理范围检查，不再运行第二套EKF或重复融合相同传感器。
-    velocity_topic: /robot_localization/odometry/filtered
-    acceleration_topic: /robot_localization/accel/filtered
+    velocity_topic: /localization/odometry/filtered
+    acceleration_topic: /localization/accel/filtered
     state_topic: /navigation/longitudinal_state
     diagnostics_topic: /navigation/longitudinal_state_diagnostics
     publish_frequency: 25.0
@@ -106,7 +106,9 @@ controller_server:
     failure_tolerance: 0.25  # transient controller/TF miss: publish zero cmd, abort after 250 ms
     # nav_monitor 全局路径/阶段回显：随 nav2_nav_monitor 记录使用，关闭则零开销
     enable_nav_monitor_echo: true
-    controller_frequency: 10.0 # 控制器控制周期 # Related params: model_dt >= controller period; prediction horizon = time_steps * model_dt
+    planning_frequency: 10.0
+    planning_result_max_age: 0.5
+    controller_frequency: 25.0 # 控制器控制周期 # Related params: model_dt >= controller period; prediction horizon = time_steps * model_dt
     goal_checker_plugins: ["simple_goal_checker", "stopped_goal_checker", "position_goal_checker", "rotation_goal_checker", "longitudinal_goal_checker", "high_precision_goal_checker"] # goal_checker_plugin: "goal_checker" For Galactic and older
     controller_plugins: ["MPPIController", "DWBController", "RPPController", "GracefulController", "RotationShimController", "PIDController", "LatLonController", "PureRotationController", "StraightController"]
     speed_planner_plugins: ["TrapezoidalSpeedPlanner", "ReachabilitySpeedPlanner"] # "SCurveSpeedPlanner"
@@ -247,7 +249,7 @@ controller_server:
       constant_velocity_dist_threshold: 0.1
       enable_constant_velocity_while_turning: False
       max_jerk: 0.7
-      control_dt: 0.1
+      control_dt: 0.04
       # 同时用于高速命令提前量与0.05→0最终停车距离；不再叠加额外距离margin。
       terminal_execution_delay: 0.20
     # 纯可达性滤波后端：后向减速 + 前向加速 + 向下可达，均带 jerk 斜率限制。
@@ -296,7 +298,7 @@ controller_server:
       constant_velocity_dist_threshold: 0.1
       enable_constant_velocity_while_turning: False
       max_jerk: 0.5
-      control_dt: 0.1
+      control_dt: 0.04
       terminal_execution_delay: 0.20
 
     staged_control:
@@ -718,7 +720,10 @@ controller_server:
         integrator_saturation_level: 0.3
         kp: 1.0
         ki: 0.01
-        kd: 0.1
+        # 25Hz 控制周期(dt=0.04s)下，相邻两拍位置误差的离散差分噪声较
+        # 10Hz(dt=0.1s)放大约 2.5x。kd 0.1->0.05 仅抑制该高频抖振，
+        # kp/ki 为连续域归一化增益，与控制频率无关，保持不变。
+        kd: 0.05
         kaw: 0.0
       high_speed_pid_conf:
         integrator_enable: True
@@ -732,7 +737,8 @@ controller_server:
         integrator_saturation_level: 0.3
         kp: 1.0
         ki: 0.01
-        kd: 0.1
+        # 同上：25Hz 下速度误差差分(近似加速度反馈)噪声被放大，kd 0.1->0.05。
+        kd: 0.05
         kaw: 0.0
       reverse_station_pid_conf:
         integrator_enable: True
@@ -753,7 +759,8 @@ controller_server:
         integrator_saturation_level: 0.5
         kp: 1.0
         ki: 0.01
-        kd: 0.1
+        # 末端朝向环：25Hz 下 yaw 误差差分噪声放大约 2.5x，kd 0.1->0.05 抑制角度抖振。
+        kd: 0.05
         kaw: 0.0
     LatLonController:
       plugin: "nav2_lat_lon_controller::LatLonController"
@@ -924,6 +931,7 @@ local_costmap:
       # footprint: "[ [0.55, 0.35], [0.55, -0.35], [-0.55, -0.35], [-0.55, 0.35] ]" # 带 padding 的保守选项（1.10×0.70）
       # plugins: ["voxel_layer", "denoise_layer", "inflation_layer"]  output_topic: "control/cmd_vel_nav"
       plugins: ["static_layer", "obstacle_layer", "denoise_layer", "inflation_layer"]   
+      filters: ["keepout_filter", "speed_filter"]   # 禁行区 / 虚拟墙 + 减速区：订阅资产节点发布的 keepout / speed 掩膜
       # plugins: ["obstacle_layer", "voxel_layer", "denoise_layer", "inflation_layer"]
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
@@ -1004,9 +1012,9 @@ local_costmap:
         inflation_radius: 0.35
       speed_filter:
         plugin: "nav2_costmap_2d::SpeedFilter"
-        enabled: False
+        enabled: True
         filter_info_topic: "/speed_costmap_filter_info"
-        speed_limit_topic: "/speed_limit"
+        speed_limit_topic: "/area_speed_limit"   # 只发给导航门面，由门面与 X-Wiz 全局限速取严后统一发 /speed_limit
       always_send_full_costmap: False # True -> False：只发增量更新，减 publish 序列化开销（rolling 下收益有限但无害）
 
 global_costmap:
@@ -1024,6 +1032,8 @@ global_costmap:
       # plugins: ["static_layer", "obstacle_layer",  "denoise_layer", "inflation_layer"]
       # plugins: ["static_layer", "voxel_layer", "denoise_layer", "inflation_layer"]
       plugins: ["static_layer", "obstacle_layer", "denoise_layer", "inflation_layer"]
+      filters: ["keepout_filter"]   # 禁行区 / 虚拟墙：订阅资产节点发布的 /keepout_filter_mask
+      # speed_filter 只放局部 costmap：局部 14 Hz、全局 1 Hz，进出减速区响应更快；两处同开会重复发限速
       denoise_layer:
         plugin: "nav2_costmap_2d::DenoiseLayer"
         enabled: True
@@ -1105,9 +1115,9 @@ global_costmap:
         inflation_radius: 0.35
       speed_filter:
         plugin: "nav2_costmap_2d::SpeedFilter"
-        enabled: True
+        enabled: False
         filter_info_topic: "/speed_costmap_filter_info"
-        speed_limit_topic: "/speed_limit"
+        speed_limit_topic: "/area_speed_limit"
       always_send_full_costmap: True
 
 map_server:
@@ -1308,7 +1318,7 @@ velocity_smoother:
     input_topic: "cmd_vel_nav"
     output_topic: "control/cmd_vel_nav"
     # Test
-    max_velocity: [0.8, 0.0, 0.75]
+    max_velocity: [0.7, 0.0, 0.75]
     min_velocity: [-0.5, 0.0, -0.75]
     max_accel: [0.75, 0.0, 1.0]
     max_decel: [-0.75, 0.0, -1.0]

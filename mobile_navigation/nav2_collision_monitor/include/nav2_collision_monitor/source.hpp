@@ -15,6 +15,9 @@
 #ifndef NAV2_COLLISION_MONITOR__SOURCE_HPP_
 #define NAV2_COLLISION_MONITOR__SOURCE_HPP_
 
+#include <atomic>
+#include <chrono>
+#include <cstdint>
 #include <memory>
 #include <vector>
 #include <string>
@@ -22,6 +25,7 @@
 #include "rclcpp/rclcpp.hpp"
 
 #include "tf2/time.h"
+#include "tf2/LinearMath/Transform.h"
 #include "tf2_ros/buffer.h"
 
 #include "nav2_util/lifecycle_node.hpp"
@@ -44,10 +48,10 @@ public:
    * @param tf_buffer Shared pointer to a TF buffer
    * @param base_frame_id Robot base frame ID. The output data will be transformed into this frame.
    * @param global_frame_id Global frame ID for correct transform calculation
-   * @param transform_tolerance Transform tolerance
+   * @param transform_tolerance Maximum age of latest dynamic base TF (zero-wait lookup)
    * @param source_timeout Maximum time interval in which data is considered valid
    * @param base_shift_correction Whether to correct source data towards to base frame movement,
-   * considering the difference between current time and latest source time
+   * from source acquisition time to latest available base TF time
    */
   Source(
     const nav2_util::LifecycleNode::WeakPtr & node,
@@ -74,6 +78,34 @@ public:
     const rclcpp::Time & curr_time,
     std::vector<Point> & data) const = 0;
 
+  /** @brief Monotonic sequence incremented after every received source message. */
+  std::uint64_t getDataSequence() const
+  {
+    return data_sequence_.load(std::memory_order_acquire);
+  }
+  const std::string & getName() const {return source_name_;}
+  virtual bool isStopOnly() const {return false;}
+  std::int64_t getLastReceivedSteadyNs() const
+  {
+    return last_received_steady_ns_.load(std::memory_order_acquire);
+  }
+  std::int64_t getLastSourceStampNs() const
+  {
+    return last_source_stamp_ns_.load(std::memory_order_acquire);
+  }
+  std::int64_t getLastValidFrameSteadyNs() const
+  {
+    return last_valid_frame_steady_ns_.load(std::memory_order_acquire);
+  }
+  std::int64_t getSensorFaultTimeoutNs() const
+  {
+    return sensor_fault_timeout_ns_;
+  }
+  double getMaxObstacleDistanceSq() const
+  {
+    return max_obstacle_distance_sq_;
+  }
+
 protected:
   /**
    * @brief Supporting routine obtaining ROS-parameters common for all data sources
@@ -90,6 +122,12 @@ protected:
   bool sourceValid(
     const rclcpp::Time & source_time,
     const rclcpp::Time & curr_time) const;
+
+  // Zero-wait source-at-acquisition -> base-at-latest transform. Dynamic base TF
+  // age is bounded by transform_tolerance_; no acquisition-time fallback.
+  bool getLatestTransform(
+    const std::string & source_frame, const rclcpp::Time & source_stamp,
+    tf2::Transform & transform) const;
 
   // ----- Variables -----
 
@@ -109,13 +147,27 @@ protected:
   std::string base_frame_id_;
   /// @brief Global frame ID for correct transform calculation
   std::string global_frame_id_;
-  /// @brief Transform tolerance
+  /// @brief Maximum age of latest dynamic base TF; queries never wait
   tf2::Duration transform_tolerance_;
   /// @brief Maximum time interval in which data is considered valid
   rclcpp::Duration source_timeout_;
+  /// @brief Timeout threshold for sensor fault detection (ns)
+  std::int64_t sensor_fault_timeout_ns_{500000000LL};
   /// @brief Whether to correct source data towards to base frame movement,
-  /// considering the difference between current time and latest source time
+  /// from source acquisition time to latest available base TF time
   bool base_shift_correction_;
+  /// @brief 方案 AB 结合：动态位移校正容差阈值 (秒)，默认 0.030s (30ms)
+  double base_shift_tolerance_{0.030};
+  /// @brief 距离绝对剪枝阈值 (米)，默认 0.0 (不限制)；配置大于 0 时生效 (如生产环境 2.5m)
+  double max_obstacle_distance_{0.0};
+  /// @brief 距离绝对剪枝平方值 (m^2)
+  double max_obstacle_distance_sq_{std::numeric_limits<double>::infinity()};
+
+  /// @brief Lets the control loop skip geometry work until a source receives a new message.
+  std::atomic<std::uint64_t> data_sequence_{0};
+  std::atomic<std::int64_t> last_received_steady_ns_{0};
+  std::atomic<std::int64_t> last_source_stamp_ns_{0};
+  std::atomic<std::int64_t> last_valid_frame_steady_ns_{0};
 };  // class Source
 
 }  // namespace nav2_collision_monitor

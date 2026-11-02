@@ -4,6 +4,7 @@ project(command_board)
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_action REQUIRED)
+find_package(rclcpp_components REQUIRED)
 find_package(nav2_msgs REQUIRED)
 find_package(action_msgs REQUIRED)
 find_package(std_srvs REQUIRED)
@@ -12,6 +13,7 @@ find_package(diagnostic_msgs REQUIRED)
 find_package(nav_interfaces REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
+find_package(sensor_msgs REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
@@ -20,6 +22,7 @@ find_package(Boost REQUIRED COMPONENTS filesystem)
 find_package(PkgConfig REQUIRED)
 find_package(glog REQUIRED)
 find_package(nlohmann_json REQUIRED)
+find_package(CURL REQUIRED)
 
 include_directories(
   include
@@ -44,13 +47,44 @@ target_link_libraries(command_board_core
   yaml-cpp
 )
 
+# 导航门面：独立共享库 + rclcpp_components 组件。宿主可选：command_board 进程（当前，下面直接链接）、
+# 独立可执行 navigation_node（组件宏自动生成）、或任意容器 / mission_manager 进程按组件加载；接口名不随宿主变。
+add_library(navigation_facade SHARED
+  src/navigation_facade.cpp
+)
+ament_target_dependencies(navigation_facade
+  rclcpp
+  rclcpp_action
+  rclcpp_components
+  nav2_msgs
+  diagnostic_msgs
+  std_msgs
+  nav_interfaces
+  tf2
+  tf2_geometry_msgs
+  geometry_msgs
+  nav_msgs
+)
+rclcpp_components_register_node(navigation_facade
+  PLUGIN "command_board::NavigationFacade"
+  EXECUTABLE navigation_node
+)
+add_library(command_board_cloudia STATIC src/cloudia_teleop_manager.cpp)
+target_compile_features(command_board_cloudia PUBLIC cxx_std_17)
+ament_target_dependencies(command_board_cloudia
+  rclcpp geometry_msgs std_msgs)
+target_link_libraries(command_board_cloudia
+  CURL::libcurl nlohmann_json::nlohmann_json)
+
 add_executable(command_board_node
   apps/command_board_node.cpp
   apps/command_board_ros.cpp
   src/map_version_manager.cpp
   src/status_monitor.cpp
+  src/sensor_monitor.cpp
   src/auto_map_saver.cpp
 )
+target_compile_features(command_board_node PRIVATE cxx_std_17)
 
 ament_target_dependencies(command_board_node
   rclcpp
@@ -70,7 +104,16 @@ ament_target_dependencies(command_board_node
 
 target_link_libraries(command_board_node
   command_board_core
+  navigation_facade
+  command_board_cloudia
   nlohmann_json::nlohmann_json
+  CURL::libcurl
+)
+
+install(TARGETS navigation_facade
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin
 )
 
 install(TARGETS
@@ -83,9 +126,47 @@ install(DIRECTORY include/
   DESTINATION include
 )
 
-install(DIRECTORY launch params
+install(DIRECTORY launch params rviz
   DESTINATION share/${PROJECT_NAME}
 )
+
+# ── 单元测试（SensorMonitor）──────────────────────────────────────────
+if(BUILD_TESTING)
+  find_package(ament_cmake_gtest REQUIRED)
+  find_package(ament_cmake_pytest REQUIRED)
+
+  ament_add_pytest_test(test_command_board_launch test/test_command_board_launch.py)
+
+  ament_add_gtest(sensor_monitor_test
+    test/sensor_monitor_test.cpp
+    src/sensor_monitor.cpp)
+
+  ament_target_dependencies(sensor_monitor_test
+    rclcpp
+    nav_interfaces
+    nav_msgs
+    sensor_msgs)
+
+  target_include_directories(sensor_monitor_test PRIVATE include)
+
+  # 导航门面限速仲裁（纯函数）
+  ament_add_gtest(speed_limit_arbiter_test test/speed_limit_arbiter_test.cpp)
+  target_include_directories(speed_limit_arbiter_test PRIVATE include)
+  ament_add_gtest(cloudia_teleop_state_test test/cloudia_teleop_state_test.cpp)
+  target_include_directories(cloudia_teleop_state_test PRIVATE include)
+
+  ament_add_gtest(cloudia_teleop_manager_test test/cloudia_teleop_manager_test.cpp)
+  target_link_libraries(cloudia_teleop_manager_test command_board_cloudia)
+
+  ament_add_gtest(odom_freshness_test
+    test/odom_freshness_test.cpp
+    src/status_monitor.cpp)
+  ament_target_dependencies(odom_freshness_test
+    rclcpp diagnostic_msgs nav_interfaces nav_msgs std_msgs
+    geometry_msgs tf2_ros tf2_geometry_msgs)
+  target_include_directories(odom_freshness_test PRIVATE include)
+  target_link_libraries(odom_freshness_test nlohmann_json::nlohmann_json)
+endif()
 
 # ── RViz2 状态显示面板（command_board_rviz_plugins）──────────────────
 # 订阅 ~/nav_system_status + ~/auto_map_saver_status，分区卡片可视化。

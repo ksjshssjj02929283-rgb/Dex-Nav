@@ -1,4 +1,5 @@
 #include "map_asset_rviz_plugin/route_graph_tab.hpp"
+#include "map_asset_rviz_plugin/asset_target.hpp"
 
 #include <QGroupBox>
 #include <QHBoxLayout>
@@ -61,12 +62,12 @@ void RouteGraphTab::setServicePrefix(const std::string& prefix) {
 }
 
 void RouteGraphTab::rebuildClients() {
-    get_graph_client_      = node_->create_client<nav_interfaces::srv::GetRouteGraph>(
-        prefix_ + "/get_route_graph");
-    remove_edge_client_    = node_->create_client<nav_interfaces::srv::RemoveRouteEdge>(
-        prefix_ + "/remove_route_edge");
-    remove_junction_client_= node_->create_client<nav_interfaces::srv::RemoveRouteJunction>(
-        prefix_ + "/remove_route_junction");
+    get_graph_client_      = node_->create_client<nav_interfaces::srv::GetAssets>(
+        prefix_ + "/get_assets");
+    remove_edge_client_    = node_->create_client<nav_interfaces::srv::SetAssets>(
+        prefix_ + "/set_assets");
+    remove_junction_client_= node_->create_client<nav_interfaces::srv::SetAssets>(
+        prefix_ + "/set_assets");
 }
 
 void RouteGraphTab::onRefresh() {
@@ -74,10 +75,10 @@ void RouteGraphTab::onRefresh() {
     refresh_btn_->setEnabled(false);
     Q_EMIT statusChanged("刷新路网...");
 
-    auto req = std::make_shared<nav_interfaces::srv::GetRouteGraph::Request>();
+    auto req = targetAssetsRequest(nav_interfaces::srv::GetAssets::Request::KIND_POINTS | nav_interfaces::srv::GetAssets::Request::KIND_JUNCTIONS | nav_interfaces::srv::GetAssets::Request::KIND_EDGES);
     get_graph_client_->async_send_request(
         req,
-        [this](rclcpp::Client<nav_interfaces::srv::GetRouteGraph>::SharedFuture fut) {
+        [this](rclcpp::Client<nav_interfaces::srv::GetAssets>::SharedFuture fut) {
             try {
                 auto resp = fut.get();
                 QStringList jcts, edges;
@@ -130,15 +131,16 @@ void RouteGraphTab::onRemoveEdge() {
         return;
     }
 
-    auto req = std::make_shared<nav_interfaces::srv::RemoveRouteEdge::Request>();
-    req->id = id.toStdString();
+    auto req = std::make_shared<nav_interfaces::srv::SetAssets::Request>(); applyTarget(req); req->edges.resize(1);
+    req->mode = nav_interfaces::srv::SetAssets::Request::MODE_REMOVE;
+    req->edges[0].id = id.toStdString();
     remove_edge_client_->async_send_request(req,
-        [this](rclcpp::Client<nav_interfaces::srv::RemoveRouteEdge>::SharedFuture fut) {
+        [this](rclcpp::Client<nav_interfaces::srv::SetAssets>::SharedFuture fut) {
             try {
                 auto resp = fut.get();
                 Q_EMIT statusChanged(resp->success
                     ? "边删除成功"
-                    : QString("删除失败: %1").arg(QString::fromStdString(resp->message)));
+                    : QString("删除失败: %1").arg(assetMessage(*resp)));
                 if (resp->success) {
                     QMetaObject::invokeMethod(this, &RouteGraphTab::onRefresh, Qt::QueuedConnection);
                 }
@@ -163,15 +165,16 @@ void RouteGraphTab::onRemoveJunction() {
         return;
     }
 
-    auto req = std::make_shared<nav_interfaces::srv::RemoveRouteJunction::Request>();
-    req->id = id.toStdString();
+    auto req = std::make_shared<nav_interfaces::srv::SetAssets::Request>(); applyTarget(req); req->junctions.resize(1);
+    req->mode = nav_interfaces::srv::SetAssets::Request::MODE_REMOVE;
+    req->junctions[0].id = id.toStdString();
     remove_junction_client_->async_send_request(req,
-        [this](rclcpp::Client<nav_interfaces::srv::RemoveRouteJunction>::SharedFuture fut) {
+        [this](rclcpp::Client<nav_interfaces::srv::SetAssets>::SharedFuture fut) {
             try {
                 auto resp = fut.get();
                 Q_EMIT statusChanged(resp->success
-                    ? QString("Junction 删除成功: %1").arg(QString::fromStdString(resp->message))
-                    : QString("删除失败: %1").arg(QString::fromStdString(resp->message)));
+                    ? QString("Junction 删除成功: %1").arg(assetMessage(*resp))
+                    : QString("删除失败: %1").arg(assetMessage(*resp)));
                 if (resp->success) {
                     QMetaObject::invokeMethod(this, &RouteGraphTab::onRefresh, Qt::QueuedConnection);
                 }

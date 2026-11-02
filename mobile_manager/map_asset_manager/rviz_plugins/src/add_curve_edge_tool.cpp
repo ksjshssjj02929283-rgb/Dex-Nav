@@ -5,6 +5,7 @@
 //   右键完成：snap 当前鼠标到最近端点为终点 → 弹出配置框 → 提交
 
 #include "map_asset_rviz_plugin/add_curve_edge_tool.hpp"
+#include "map_asset_rviz_plugin/asset_target.hpp"
 #include "map_asset_rviz_plugin/route_graph_tools_common.hpp"
 
 #include <QCheckBox>
@@ -21,7 +22,7 @@
 #include <OgreSceneManager.h>
 
 #include <nav_interfaces/msg/route_edge.hpp>
-#include <nav_interfaces/srv/add_route_edge.hpp>
+#include <nav_interfaces/srv/set_assets.hpp>
 #include <rviz_common/display_context.hpp>
 #include <rviz_common/interaction/view_picker_iface.hpp>
 #include <rviz_common/ros_integration/ros_node_abstraction_iface.hpp>
@@ -135,6 +136,17 @@ void AddCurveEdgeTool::activate() {
     endpoints_.clear();
     setStatus("正在加载端点列表…");
 
+    reloadEndpoints();
+    selecting_ = false;
+    setStatus(endpoints_.empty()
+        ? "当前没有可用端点（先添加 NavPoint 或 Junction）"
+        : QString("左键选择曲线起点（共 %1 个端点），右键退出")
+              .arg(static_cast<int>(endpoints_.size())));
+}
+
+void AddCurveEdgeTool::reloadEndpoints() {
+    loaded_gen_ = AssetTarget::generation();
+    loading_ = true;
     loadEndpointsAsync(node_, service_prefix_,
         [this](std::vector<EndpointInfo> eps) {
             QMetaObject::invokeMethod(this,
@@ -149,11 +161,6 @@ void AddCurveEdgeTool::activate() {
                               .arg(static_cast<int>(endpoints_.size())));
                 }, Qt::QueuedConnection);
         });
-    selecting_ = false;
-    setStatus(endpoints_.empty()
-        ? "当前没有可用端点（先添加 NavPoint 或 Junction）"
-        : QString("左键选择曲线起点（共 %1 个端点），右键退出")
-              .arg(static_cast<int>(endpoints_.size())));
 }
 
 void AddCurveEdgeTool::deactivate() {
@@ -165,6 +172,8 @@ void AddCurveEdgeTool::deactivate() {
 
 int AddCurveEdgeTool::processMouseEvent(rviz_common::ViewportMouseEvent& event) {
     if (!s_route_graph_editing) return Render;
+    // 编辑目标切换或目标图数据变了（面板递增代数）→ 重新加载端点，不打断当前选择
+    if (!loading_ && loaded_gen_ != AssetTarget::generation()) reloadEndpoints();
     Ogre::Vector3 pos;
     const bool got3d =
         context_->getViewPicker()->get3DPoint(event.panel, event.x, event.y, pos);
@@ -305,28 +314,29 @@ void AddCurveEdgeTool::clearPreview() {
 }
 
 void AddCurveEdgeTool::submitEdge(const EdgeConfig& cfg) {
-    auto client = node_->create_client<nav_interfaces::srv::AddRouteEdge>(
-        service_prefix_ + "/add_route_edge");
-    auto req                 = std::make_shared<nav_interfaces::srv::AddRouteEdge::Request>();
-    req->edge.id             = cfg.edge_id;
-    req->edge.from_ep.id     = from_ep_.id;
-    req->edge.from_ep.type   = from_ep_.type;
-    req->edge.to_ep.id       = to_ep_.id;
-    req->edge.to_ep.type     = to_ep_.type;
-    req->edge.edge_type      = "BEZIER";
-    req->edge.bidirectional  = cfg.bidirectional;
-    req->edge.max_speed      = cfg.max_speed;
-    req->edge.xy_tolerance   = cfg.xy_tolerance;
-    req->edge.th_tolerance   = cfg.th_tolerance;
-    req->edge.lane_width     = cfg.lane_width;
-    req->edge.obs_policy     = cfg.obs_policy;
-    applyOptionalEdgeFields(req->edge, cfg);  // 含 max_speed（0=系统默认）/hold_direction/padding/backward
+    auto client = node_->create_client<nav_interfaces::srv::SetAssets>(
+        service_prefix_ + "/set_assets");
+    auto req = std::make_shared<nav_interfaces::srv::SetAssets::Request>(); applyTarget(req); req->edges.resize(1);
+    req->mode                = nav_interfaces::srv::SetAssets::Request::MODE_ADD_ONLY;
+    req->edges[0].id             = cfg.edge_id;
+    req->edges[0].from_ep.id     = from_ep_.id;
+    req->edges[0].from_ep.type   = from_ep_.type;
+    req->edges[0].to_ep.id       = to_ep_.id;
+    req->edges[0].to_ep.type     = to_ep_.type;
+    req->edges[0].edge_type      = "BEZIER";
+    req->edges[0].bidirectional  = cfg.bidirectional;
+    req->edges[0].max_speed      = cfg.max_speed;
+    req->edges[0].xy_tolerance   = cfg.xy_tolerance;
+    req->edges[0].th_tolerance   = cfg.th_tolerance;
+    req->edges[0].lane_width     = cfg.lane_width;
+    req->edges[0].obs_policy     = cfg.obs_policy;
+    applyOptionalEdgeFields(req->edges[0], cfg);  // 含 max_speed（0=系统默认）/hold_direction/padding/backward
 
     // 控制点序列：起点 + 中间控制点 + 终点
     auto addPt = [&](float x, float y) {
         geometry_msgs::msg::Point p;
         p.x = x; p.y = y; p.z = 0.0;
-        req->edge.control_points.push_back(p);
+        req->edges[0].control_points.push_back(p);
     };
     addPt(from_ep_.x, from_ep_.y);
     for (const auto& cp : ctrl_pts_) addPt(cp.first, cp.second);
@@ -334,13 +344,14 @@ void AddCurveEdgeTool::submitEdge(const EdgeConfig& cfg) {
 
     const QString eid = QString::fromStdString(cfg.edge_id);
     client->async_send_request(req,
-        [this, eid](rclcpp::Client<nav_interfaces::srv::AddRouteEdge>::SharedFuture fut) {
+        [this, eid](rclcpp::Client<nav_interfaces::srv::SetAssets>::SharedFuture fut) {
             try {
                 auto resp = fut.get();
+                reportResult(*resp, "添加曲线边");
                 setStatus(resp->success
                     ? QString("曲线边 '%1' 添加成功").arg(eid)
                     : QString("添加失败: %1").arg(
-                          QString::fromStdString(resp->message)));
+                          assetMessage(*resp)));
             } catch (const std::exception& ex) {
                 setStatus(QString("异常: %1").arg(ex.what()));
             }

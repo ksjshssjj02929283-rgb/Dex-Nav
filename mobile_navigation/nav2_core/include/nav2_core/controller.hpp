@@ -130,13 +130,26 @@ public:
   virtual void setPlan(const nav_msgs::msg::Path & path) = 0;
 
   /**
+   * @brief 查询控制器是否原生支持消费带速度的时空轨迹（RobotTrajectory）。
+   *
+   * 轨迹跟踪型控制器（MPPI, PID, Straight, LatLon, PureRotation, RPP 等）应 override 并返回 true。
+   * 控制服务可在 configure 阶段据此提前判定是否与 SpeedPlanner 匹配，避免运行时出现未预期的异常。
+   */
+  virtual bool supportsTrajectoryTracking() const
+  {
+    return false;
+  }
+
+  /**
    * @brief 设置带速度的时空轨迹（五层架构 ④SpeedPlanner 输出，项目 32 / DEC-011）。
    *
    * 轨迹跟踪型 controller override 此方法，消费 per-point longitudinal_velocity / path_kappa
-   * 等做纯跟踪（不再自行决速）。默认空实现，保持对现有几何路径型 controller 向后兼容。
+   * 等做纯跟踪（不再自行决速）。
    * @param trajectory 带速度 / 加速度 / 时间 / 段语义的轨迹（来自 SpeedPlanner）
    */
-  virtual void setTrajectory(const nav_interfaces::msg::RobotTrajectory & /*trajectory*/) {}
+  virtual void setTrajectory(const nav_interfaces::msg::RobotTrajectory & /*trajectory*/)
+  {
+  }
 
   /**
    * @brief Return the trajectory state used by the most recent longitudinal

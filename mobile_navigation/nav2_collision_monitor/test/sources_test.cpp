@@ -17,6 +17,8 @@
 #include <math.h>
 #include <cmath>
 #include <chrono>
+#include <atomic>
+#include <thread>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -165,6 +167,7 @@ private:
 class ScanWrapper : public nav2_collision_monitor::Scan
 {
 public:
+  using nav2_collision_monitor::Scan::dataCallback;
   ScanWrapper(
     const nav2_util::LifecycleNode::WeakPtr & node,
     const std::string & source_name,
@@ -181,13 +184,14 @@ public:
 
   bool dataReceived() const
   {
-    return data_ != nullptr;
+    return std::atomic_load(&data_) != nullptr;
   }
 };  // ScanWrapper
 
 class PointCloudWrapper : public nav2_collision_monitor::PointCloud
 {
 public:
+  using nav2_collision_monitor::PointCloud::dataCallback;
   PointCloudWrapper(
     const nav2_util::LifecycleNode::WeakPtr & node,
     const std::string & source_name,
@@ -204,13 +208,14 @@ public:
 
   bool dataReceived() const
   {
-    return data_ != nullptr;
+    return std::atomic_load(&data_) != nullptr;
   }
 };  // PointCloudWrapper
 
 class RangeWrapper : public nav2_collision_monitor::Range
 {
 public:
+  using nav2_collision_monitor::Range::dataCallback;
   RangeWrapper(
     const nav2_util::LifecycleNode::WeakPtr & node,
     const std::string & source_name,
@@ -227,7 +232,7 @@ public:
 
   bool dataReceived() const
   {
-    return data_ != nullptr;
+    return std::atomic_load(&data_) != nullptr;
   }
 };  // RangeWrapper
 
@@ -257,8 +262,9 @@ protected:
   std::shared_ptr<PointCloudWrapper> pointcloud_;
   std::shared_ptr<RangeWrapper> range_;
 
-private:
   std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
+
+private:
   std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
 };  // Tester
 
@@ -458,6 +464,277 @@ void Tester::checkRange(const std::vector<nav2_collision_monitor::Point> & data)
   ASSERT_NEAR(data[i].y, 1.0 * std::sin(angle) + 0.1, EPSILON);
 }
 
+// Alternate different-sized frames while converting points. Every returned batch must
+// belong to one complete frame, including its metadata and backing storage.
+template<typename SourceT, typename MessageT>
+void checkConcurrentSnapshots(
+  SourceT & source, const std::shared_ptr<MessageT> & first,
+  const std::shared_ptr<MessageT> & second, const rclcpp::Time & stamp,
+  std::size_t first_size, std::size_t second_size)
+{
+  source.dataCallback(first);
+  std::atomic<bool> started{false};
+  std::atomic<bool> stop{false};
+  std::thread writer([&]() {
+      source.dataCallback(second);
+      started.store(true);
+      while (!stop.load()) {
+        source.dataCallback(first);
+        source.dataCallback(second);
+        std::this_thread::yield();
+      }
+    });
+  while (!started.load()) {
+    std::this_thread::yield();
+  }
+  bool consistent = true;
+  for (int iteration = 0; iteration < 2000; ++iteration) {
+    std::vector<nav2_collision_monitor::Point> points;
+    source.getData(stamp, points);
+    if (points.empty()) {
+      consistent = false;
+      break;
+    }
+    const double radius = std::hypot(points.front().x, points.front().y);
+    const bool is_first = std::fabs(radius - 0.5) < 1e-5;
+    const bool is_second = std::fabs(radius - 1.0) < 1e-5;
+    consistent &= (is_first || is_second) &&
+      points.size() == (is_first ? first_size : second_size);
+    for (const auto & point : points) {
+      consistent &= std::fabs(std::hypot(point.x, point.y) - radius) < 1e-5;
+    }
+  }
+  stop.store(true);
+  writer.join();
+  EXPECT_TRUE(consistent);
+}
+
+TEST_F(Tester, testConcurrentScanSnapshots)
+{
+  createSources(false);
+  const auto stamp = test_node_->now();
+  auto first = std::make_shared<sensor_msgs::msg::LaserScan>();
+  first->header.frame_id = BASE_FRAME_ID;
+  first->header.stamp = stamp;
+  first->range_min = 0.1;
+  first->range_max = 2.0;
+  first->angle_increment = 0.01;
+  first->ranges.assign(8, 0.5F);
+  auto second = std::make_shared<sensor_msgs::msg::LaserScan>(*first);
+  second->ranges.assign(128, 1.0F);
+  second->angle_increment = 0.02;
+  checkConcurrentSnapshots(*scan_, first, second, stamp, 8, 128);
+}
+
+TEST_F(Tester, testScanTransformFailureInvalidatesProcessedCache)
+{
+  createSources(false);
+  const auto stamp = test_node_->now();
+  auto scan = std::make_shared<sensor_msgs::msg::LaserScan>();
+  scan->header.frame_id = BASE_FRAME_ID;
+  scan->header.stamp = stamp;
+  scan->range_min = 0.1F;
+  scan->range_max = 2.0F;
+  scan->angle_increment = 0.01F;
+  scan->ranges.assign(8, 0.5F);
+
+  scan_->dataCallback(scan);
+  std::vector<nav2_collision_monitor::Point> points;
+  scan_->getData(stamp, points);
+  ASSERT_EQ(points.size(), 8u);
+
+  // A newer frame with broken TF must not leave the previous valid obstacle set active.
+  auto invalid_scan = std::make_shared<sensor_msgs::msg::LaserScan>(*scan);
+  invalid_scan->header.frame_id = "missing_sensor_frame";
+  scan_->dataCallback(invalid_scan);
+  points.clear();
+  scan_->getData(stamp, points);
+  EXPECT_TRUE(points.empty());
+}
+
+// A delayed TF must still compensate translation and rotation, rather than silently
+// falling back to the acquisition pose or using latest TF for both legs.
+TEST_F(Tester, testScanLatestBasePreservesAcquisitionTime)
+{
+  createSources(true);
+  const auto now = test_node_->now();
+  const auto acquired = now - rclcpp::Duration::from_seconds(0.08);
+  geometry_msgs::msg::TransformStamped tf;
+  tf.header.frame_id = GLOBAL_FRAME_ID;
+  tf.child_frame_id = BASE_FRAME_ID;
+  tf.header.stamp = acquired;
+  tf.transform.rotation.w = 1.0;
+  ASSERT_TRUE(tf_buffer_->setTransform(tf, "test", false));
+  tf.header.stamp = now - rclcpp::Duration::from_seconds(0.01);
+  tf.transform.translation.x = 0.1;
+  tf.transform.rotation.z = std::sqrt(0.5);
+  tf.transform.rotation.w = std::sqrt(0.5);
+  ASSERT_TRUE(tf_buffer_->setTransform(tf, "test", false));
+  auto scan = std::make_shared<sensor_msgs::msg::LaserScan>();
+  scan->header.frame_id = BASE_FRAME_ID;
+  scan->header.stamp = acquired;
+  scan->range_min = 0.01F;
+  scan->range_max = 5.0F;
+  scan->angle_increment = 0.1F;
+  scan->ranges = {1.0F};
+  scan_->dataCallback(scan);
+  std::vector<nav2_collision_monitor::Point> points;
+  scan_->getData(now, points);
+  ASSERT_EQ(points.size(), 1u);
+  EXPECT_NEAR(points[0].x, 0.0, 1e-6);
+  EXPECT_NEAR(points[0].y, -0.9, 1e-6);
+
+  // Missing source-time history must invalidate the old cache, without waiting
+  // for the configured 100 ms transform tolerance.
+  scan->header.stamp = now + rclcpp::Duration::from_seconds(1.0);
+  const auto start = std::chrono::steady_clock::now();
+  scan_->dataCallback(scan);
+  EXPECT_LT(std::chrono::steady_clock::now() - start, 50ms);
+  points.clear();
+  scan_->getData(now, points);
+  EXPECT_TRUE(points.empty());
+}
+
+TEST_F(Tester, testScanRejectsStaleLatestBase)
+{
+  createSources(true);
+  const auto now = test_node_->now();
+  geometry_msgs::msg::TransformStamped tf;
+  tf.header.frame_id = GLOBAL_FRAME_ID;
+  tf.child_frame_id = BASE_FRAME_ID;
+  tf.header.stamp = now - rclcpp::Duration::from_seconds(1.0);
+  tf.transform.rotation.w = 1.0;
+  ASSERT_TRUE(tf_buffer_->setTransform(tf, "test", false));
+  auto scan = std::make_shared<sensor_msgs::msg::LaserScan>();
+  scan->header.frame_id = BASE_FRAME_ID;
+  scan->header.stamp = tf.header.stamp;
+  scan->range_min = 0.01F;
+  scan->range_max = 5.0F;
+  scan->ranges = {1.0F};
+  scan_->dataCallback(scan);
+  std::vector<nav2_collision_monitor::Point> points;
+  scan_->getData(now, points);
+  EXPECT_TRUE(points.empty());
+}
+
+TEST_F(Tester, testPointCloudAndRangeLatestMotionCompensation)
+{
+  createSources(true);
+  const auto now = test_node_->now();
+  const auto acquired = now - rclcpp::Duration::from_seconds(0.08);
+  geometry_msgs::msg::TransformStamped tf;
+  tf.header.frame_id = GLOBAL_FRAME_ID;
+  tf.child_frame_id = BASE_FRAME_ID;
+  tf.header.stamp = acquired;
+  tf.transform.rotation.w = 1.0;
+  ASSERT_TRUE(tf_buffer_->setTransform(tf, "test", false));
+  tf.header.stamp = now - rclcpp::Duration::from_seconds(0.01);
+  tf.transform.translation.x = 0.1;
+  tf.transform.rotation.z = std::sqrt(0.5);
+  tf.transform.rotation.w = std::sqrt(0.5);
+  ASSERT_TRUE(tf_buffer_->setTransform(tf, "test", false));
+
+  auto cloud = std::make_shared<sensor_msgs::msg::PointCloud2>();
+  cloud->header.frame_id = BASE_FRAME_ID;
+  cloud->header.stamp = acquired;
+  sensor_msgs::PointCloud2Modifier modifier(*cloud);
+  modifier.setPointCloud2FieldsByString(1, "xyz");
+  modifier.resize(1);
+  *sensor_msgs::PointCloud2Iterator<float>(*cloud, "x") = 1.0F;
+  *sensor_msgs::PointCloud2Iterator<float>(*cloud, "y") = 0.0F;
+  *sensor_msgs::PointCloud2Iterator<float>(*cloud, "z") = 0.2F;
+  auto range = std::make_shared<sensor_msgs::msg::Range>();
+  range->header = cloud->header;
+  range->min_range = 0.01F;
+  range->max_range = 5.0F;
+  range->range = 1.0F;
+  range->field_of_view = 0.0F;
+  pointcloud_->dataCallback(cloud);
+  range_->dataCallback(range);
+  const std::vector<nav2_collision_monitor::Source *> sources = {
+    pointcloud_.get(), range_.get()};
+  for (auto * source : sources) {
+    std::vector<nav2_collision_monitor::Point> points;
+    source->getData(now, points);
+    ASSERT_EQ(points.size(), 1u);
+    EXPECT_NEAR(points[0].x, 0.0, 1e-6);
+    EXPECT_NEAR(points[0].y, -0.9, 1e-6);
+  }
+
+  // A source timestamp newer than all TF must not block or reuse the old points.
+  cloud->header.stamp = now + rclcpp::Duration::from_seconds(1.0);
+  range->header.stamp = cloud->header.stamp;
+  pointcloud_->dataCallback(cloud);
+  range_->dataCallback(range);
+  for (auto * source : sources) {
+    std::vector<nav2_collision_monitor::Point> points;
+    const auto start = std::chrono::steady_clock::now();
+    source->getData(now, points);
+    EXPECT_LT(std::chrono::steady_clock::now() - start, 50ms);
+    EXPECT_TRUE(points.empty());
+  }
+
+  tf_buffer_->clear();
+  tf.header.stamp = now - rclcpp::Duration::from_seconds(1.0);
+  ASSERT_TRUE(tf_buffer_->setTransform(tf, "test", false));
+  cloud->header.stamp = tf.header.stamp;
+  range->header.stamp = tf.header.stamp;
+  pointcloud_->dataCallback(cloud);
+  range_->dataCallback(range);
+  for (auto * source : sources) {
+    std::vector<nav2_collision_monitor::Point> points;
+    source->getData(now, points);
+    EXPECT_TRUE(points.empty());
+  }
+}
+
+TEST_F(Tester, testConcurrentPointCloudSnapshots)
+{
+  createSources(false);
+  const auto stamp = test_node_->now();
+  const auto make_cloud = [&](std::size_t count, float x) {
+      auto msg = std::make_shared<sensor_msgs::msg::PointCloud2>();
+      msg->header.frame_id = BASE_FRAME_ID;
+      msg->header.stamp = stamp;
+      sensor_msgs::PointCloud2Modifier modifier(*msg);
+      modifier.setPointCloud2FieldsByString(1, "xyz");
+      modifier.resize(count);
+      sensor_msgs::PointCloud2Iterator<float> px(*msg, "x");
+      sensor_msgs::PointCloud2Iterator<float> py(*msg, "y");
+      sensor_msgs::PointCloud2Iterator<float> pz(*msg, "z");
+      for (std::size_t i = 0; i < count; ++i, ++px, ++py, ++pz) {
+        *px = x;
+        *py = 0.0F;
+        *pz = 0.2F;
+      }
+      return msg;
+    };
+  checkConcurrentSnapshots(
+    *pointcloud_, make_cloud(8, 0.5F), make_cloud(128, 1.0F),
+    stamp, 8, 128);
+}
+
+TEST_F(Tester, testConcurrentRangeSnapshots)
+{
+  createSources(false);
+  const auto stamp = test_node_->now();
+  auto first = std::make_shared<sensor_msgs::msg::Range>();
+  first->header.frame_id = BASE_FRAME_ID;
+  first->header.stamp = stamp;
+  first->min_range = 0.1;
+  first->max_range = 2.0;
+  first->range = 0.5;
+  first->field_of_view = 0.0;
+  auto second = std::make_shared<sensor_msgs::msg::Range>(*first);
+  second->range = 1.0;
+  second->field_of_view = 0.1;
+  range_->dataCallback(second);
+  std::vector<nav2_collision_monitor::Point> expected;
+  range_->getData(stamp, expected);
+  ASSERT_GT(expected.size(), 1u);
+  checkConcurrentSnapshots(*range_, first, second, stamp, 1, expected.size());
+}
+
 TEST_F(Tester, testGetData)
 {
   rclcpp::Time curr_time = test_node_->now();
@@ -617,6 +894,69 @@ TEST_F(Tester, testIgnoreTimeShift)
   data.clear();
   range_->getData(curr_time, data);
   checkRange(data);
+}
+
+// 9.3.5 UT-FILTER-05: 探测范围截断断言（0.7m 内有效生成点云，超出 0.8m 被截断过滤）
+TEST_F(Tester, testRangeMaxDetectionRangeTruncation)
+{
+  createSources();
+
+  // 1. 设置 max_detection_range = 0.8m
+  test_node_->set_parameter(
+    rclcpp::Parameter(std::string(RANGE_NAME) + ".max_detection_range", 0.8));
+  range_->configure();
+
+  // 2. 输入 0.70m: 位于量程内，应成功输出障碍点（带基坐标系 0.1m TF 偏移后约 0.80m）
+  const auto stamp1 = test_node_->now();
+  sendTransforms(stamp1);
+  test_node_->publishRange(stamp1, 0.70);
+  ASSERT_TRUE(waitRange(500ms));
+  std::vector<nav2_collision_monitor::Point> data;
+  range_->getData(stamp1, data);
+  EXPECT_FALSE(data.empty());
+  for (const auto & p : data) {
+    EXPECT_NEAR(std::hypot(p.x, p.y), 0.80, 0.05);
+  }
+
+  // 3. 构造 0.90m 消息直接调用 dataCallback: 超出 0.8m 量程，内部应截断忽略
+  const auto stamp2 = test_node_->now();
+  sendTransforms(stamp2);
+  auto out_of_range_msg = std::make_shared<sensor_msgs::msg::Range>();
+  out_of_range_msg->header.frame_id = SOURCE_FRAME_ID;
+  out_of_range_msg->header.stamp = stamp2;
+  out_of_range_msg->radiation_type = 0;
+  out_of_range_msg->field_of_view = M_PI / 10;
+  out_of_range_msg->min_range = 0.1;
+  out_of_range_msg->max_range = 1.1;
+  out_of_range_msg->range = 0.90;
+  range_->dataCallback(out_of_range_msg);
+
+  data.clear();
+  range_->getData(stamp2, data);
+  EXPECT_TRUE(data.empty());
+}
+
+TEST_F(Tester, testMaxObstacleDistanceBoundingPruning)
+{
+  test_node_->declare_parameter(std::string(SCAN_NAME) + ".max_obstacle_distance", 2.0);
+  createSources(false);
+
+  // 1. 注入激光扫描雷达点（0.5m 和 3.0m）
+  const auto stamp = test_node_->now();
+  sendTransforms(stamp);
+  auto scan_msg = std::make_shared<sensor_msgs::msg::LaserScan>();
+  scan_msg->header.frame_id = SOURCE_FRAME_ID;
+  scan_msg->header.stamp = stamp;
+  scan_msg->range_min = 0.1;
+  scan_msg->range_max = 5.0;
+  scan_msg->angle_increment = 0.1;
+  scan_msg->ranges = {0.5F, 3.0F};  // 0.5m 应保留，3.0m 应被 2.0m 阈值剪除
+  scan_->dataCallback(scan_msg);
+
+  std::vector<nav2_collision_monitor::Point> data;
+  scan_->getData(stamp, data);
+  ASSERT_EQ(data.size(), 1u);
+  EXPECT_NEAR(std::hypot(data[0].x, data[0].y), 0.5, 0.15);
 }
 
 int main(int argc, char ** argv)

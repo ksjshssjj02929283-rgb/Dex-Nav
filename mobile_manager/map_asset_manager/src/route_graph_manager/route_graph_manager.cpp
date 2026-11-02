@@ -1,4 +1,5 @@
 #include "map_asset_manager/route_graph_manager/route_graph_manager.hpp"
+#include "map_asset_manager/asset_codec.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -10,86 +11,6 @@
 #include <visualization_msgs/msg/marker.hpp>
 
 namespace map_asset_manager {
-
-static nav_interfaces::msg::RouteEndpoint toMsg(const RouteEndpoint& ep) {
-    nav_interfaces::msg::RouteEndpoint msg;
-    msg.id   = ep.id;
-    msg.type = ep.type;
-    return msg;
-}
-
-static nav_interfaces::msg::RouteJunction toMsg(const RouteJunction& jct) {
-    nav_interfaces::msg::RouteJunction msg;
-    msg.id  = jct.id;
-    msg.x   = jct.x;
-    msg.y   = jct.y;
-    msg.yaw = jct.yaw;
-    return msg;
-}
-
-static nav_interfaces::msg::RouteEdge toMsg(const RouteEdge& e) {
-    nav_interfaces::msg::RouteEdge msg;
-    msg.id            = e.id;
-    msg.from_ep       = toMsg(e.from);
-    msg.to_ep         = toMsg(e.to);
-    msg.edge_type     = e.edge_type;
-    msg.bidirectional = e.bidirectional;
-    msg.max_speed     = e.max_speed;
-    msg.xy_tolerance  = e.xy_tolerance;
-    msg.th_tolerance  = e.th_tolerance;
-    msg.lane_width    = e.lane_width;
-    msg.obs_policy    = e.obs_policy;
-    for (const auto& cp : e.control_points) {
-        geometry_msgs::msg::Point p;
-        p.x = cp.first;
-        p.y = cp.second;
-        p.z = 0.0;
-        msg.control_points.push_back(p);
-    }
-    msg.hold_direction = e.hold_direction.value_or(std::numeric_limits<float>::quiet_NaN());
-    msg.backward = e.backward;
-    msg.padding = e.padding.value_or(std::numeric_limits<float>::quiet_NaN());
-    msg.mode = e.mode;
-    return msg;
-}
-
-static RouteEndpoint fromMsg(const nav_interfaces::msg::RouteEndpoint& msg) {
-    return {msg.id, msg.type};
-}
-
-static RouteJunction fromMsg(const nav_interfaces::msg::RouteJunction& msg) {
-    RouteJunction jct;
-    jct.id  = msg.id;
-    jct.x   = msg.x;
-    jct.y   = msg.y;
-    jct.yaw = msg.yaw;
-    return jct;
-}
-
-static RouteEdge fromMsg(const nav_interfaces::msg::RouteEdge& msg) {
-    RouteEdge e;
-    e.id           = msg.id;
-    e.from         = fromMsg(msg.from_ep);
-    e.to           = fromMsg(msg.to_ep);
-    e.edge_type    = msg.edge_type;
-    e.bidirectional= msg.bidirectional;
-    e.max_speed    = msg.max_speed;
-    e.xy_tolerance = msg.xy_tolerance;
-    e.th_tolerance = msg.th_tolerance;
-    e.lane_width   = msg.lane_width;
-    e.obs_policy   = msg.obs_policy;
-    for (const auto& cp : msg.control_points) {
-        e.control_points.emplace_back(static_cast<float>(cp.x),
-                                      static_cast<float>(cp.y));
-    }
-    e.hold_direction = std::isnan(msg.hold_direction)
-                           ? std::optional<float>{}
-                           : std::optional<float>(static_cast<float>(msg.hold_direction));
-    e.backward = msg.backward;
-    e.padding = std::isnan(msg.padding) ? std::optional<float>{} : std::optional<float>(msg.padding);
-    e.mode = msg.mode;
-    return e;
-}
 
 // ──────────────────────────────────────────────────────────────────────
 // Constructor
@@ -109,36 +30,8 @@ RouteGraphManager::RouteGraphManager(
       event_bus_(event_bus),
       save_fn_(save_fn)
 {
-    add_junction_srv_ = node->create_service<nav_interfaces::srv::AddRouteJunction>(
-        "~/add_route_junction",
-        std::bind(&RouteGraphManager::addJunctionCallback, this,
-                  std::placeholders::_1, std::placeholders::_2));
 
-    remove_junction_srv_ = node->create_service<nav_interfaces::srv::RemoveRouteJunction>(
-        "~/remove_route_junction",
-        std::bind(&RouteGraphManager::removeJunctionCallback, this,
-                  std::placeholders::_1, std::placeholders::_2));
-
-    add_edge_srv_ = node->create_service<nav_interfaces::srv::AddRouteEdge>(
-        "~/add_route_edge",
-        std::bind(&RouteGraphManager::addEdgeCallback, this,
-                  std::placeholders::_1, std::placeholders::_2));
-
-    remove_edge_srv_ = node->create_service<nav_interfaces::srv::RemoveRouteEdge>(
-        "~/remove_route_edge",
-        std::bind(&RouteGraphManager::removeEdgeCallback, this,
-                  std::placeholders::_1, std::placeholders::_2));
-
-    update_edge_srv_ = node->create_service<nav_interfaces::srv::UpdateRouteEdge>(
-        "~/update_route_edge",
-        std::bind(&RouteGraphManager::updateEdgeCallback, this,
-                  std::placeholders::_1, std::placeholders::_2));
-
-    get_graph_srv_ = node->create_service<nav_interfaces::srv::GetRouteGraph>(
-        "~/get_route_graph",
-        std::bind(&RouteGraphManager::getRouteGraphCallback, this,
-                  std::placeholders::_1, std::placeholders::_2));
-
+    // 路网数据的读取统一走 get_assets；这里只保留路径解析这一计算服务
     resolve_nav_points_srv_ = node->create_service<nav_interfaces::srv::ResolveNavPoints>(
         "~/resolve_nav_points",
         std::bind(&RouteGraphManager::resolveNavPointsCallback, this, std::placeholders::_1, std::placeholders::_2));
@@ -151,190 +44,23 @@ RouteGraphManager::RouteGraphManager(
     tf_listener_ = std::make_unique<tf2_ros::TransformListener>(*tf_buffer_, node);
 
     start_tolerance_ = node->declare_parameter<double>("route_start_tolerance", 0.1);
+    narrow_turnaround_tolerance_ =
+        node->declare_parameter<double>("narrow_turnaround_tolerance", 0.3);
 
     RCLCPP_INFO(node->get_logger(),
-                "RouteGraphManager initialized (route_start_tolerance=%.3fm)",
-                start_tolerance_);
+                "RouteGraphManager initialized (route_start_tolerance=%.3fm, "
+                "narrow_turnaround_tolerance=%.3fm)",
+                start_tolerance_, narrow_turnaround_tolerance_);
 }
 
 // ──────────────────────────────────────────────────────────────────────
 // Junction CRUD
 // ──────────────────────────────────────────────────────────────────────
 
-void RouteGraphManager::addJunctionCallback(
-    const std::shared_ptr<nav_interfaces::srv::AddRouteJunction::Request> req,
-    std::shared_ptr<nav_interfaces::srv::AddRouteJunction::Response> res)
-{
-    if (req->junction.id.empty()) {
-        res->success = false;
-        res->message = "Junction id must not be empty";
-        return;
-    }
-    auto jct = fromMsg(req->junction);
-    if (!junction_store_->add(jct)) {
-        res->success = false;
-        res->message = "Junction id '" + jct.id + "' already exists";
-        return;
-    }
-    save_fn_();
-    publishMarkers();
-
-    if (event_bus_) {
-        event_bus_->publish({AssetEventType::JUNCTION_ADDED, jct.id, ""});
-    }
-
-    res->success = true;
-    res->message = "Added junction '" + jct.id + "'";
-    RCLCPP_INFO(node_->get_logger(), "RouteGraph: added junction '%s'", jct.id.c_str());
-}
-
-void RouteGraphManager::removeJunctionCallback(
-    const std::shared_ptr<nav_interfaces::srv::RemoveRouteJunction::Request> req,
-    std::shared_ptr<nav_interfaces::srv::RemoveRouteJunction::Response> res)
-{
-    if (!junction_store_->has(req->id)) {
-        res->success = false;
-        res->message = "Junction '" + req->id + "' not found";
-        return;
-    }
-    auto removed_edges = edge_store_->removeEdgesContainingJunction(req->id);
-    junction_store_->remove(req->id);
-    save_fn_();
-    publishMarkers();
-
-    if (event_bus_) {
-        event_bus_->publish({AssetEventType::JUNCTION_REMOVED, req->id, ""});
-    }
-
-    res->success = true;
-    res->message = "Removed junction '" + req->id + "' and " +
-                   std::to_string(removed_edges.size()) + " edges";
-    RCLCPP_INFO(node_->get_logger(), "RouteGraph: removed junction '%s' + %zu edges",
-                req->id.c_str(), removed_edges.size());
-}
 
 // ──────────────────────────────────────────────────────────────────────
 // Edge CRUD
 // ──────────────────────────────────────────────────────────────────────
-
-void RouteGraphManager::addEdgeCallback(
-    const std::shared_ptr<nav_interfaces::srv::AddRouteEdge::Request> req,
-    std::shared_ptr<nav_interfaces::srv::AddRouteEdge::Response> res)
-{
-    auto edge = fromMsg(req->edge);
-    if (edge.id.empty()) {
-        res->success = false;
-        res->message = "Edge id must not be empty";
-        return;
-    }
-    if (!endpointExists(edge.from)) {
-        res->success = false;
-        res->message = "Edge 'from' endpoint not found: " + edge.from.type + ":" + edge.from.id;
-        return;
-    }
-    if (!endpointExists(edge.to)) {
-        res->success = false;
-        res->message = "Edge 'to' endpoint not found: " + edge.to.type + ":" + edge.to.id;
-        return;
-    }
-    snapEdgeEndpoints(edge);
-    if (!edge_store_->add(edge)) {
-        res->success = false;
-        res->message = "Edge id '" + edge.id + "' already exists";
-        return;
-    }
-    save_fn_();
-    publishMarkers();
-    res->success = true;
-    res->message = "Added edge '" + edge.id + "'";
-    RCLCPP_INFO(node_->get_logger(), "RouteGraph: added edge '%s'", edge.id.c_str());
-}
-
-void RouteGraphManager::removeEdgeCallback(
-    const std::shared_ptr<nav_interfaces::srv::RemoveRouteEdge::Request> req,
-    std::shared_ptr<nav_interfaces::srv::RemoveRouteEdge::Response> res)
-{
-    if (!edge_store_->remove(req->id)) {
-        res->success = false;
-        res->message = "Edge '" + req->id + "' not found";
-        return;
-    }
-    save_fn_();
-    publishMarkers();
-    res->success = true;
-    res->message = "Removed edge '" + req->id + "'";
-}
-
-void RouteGraphManager::updateEdgeCallback(
-    const std::shared_ptr<nav_interfaces::srv::UpdateRouteEdge::Request> req,
-    std::shared_ptr<nav_interfaces::srv::UpdateRouteEdge::Response> res)
-{
-    auto edge = fromMsg(req->edge);
-    if (!endpointExists(edge.from)) {
-        res->success = false;
-        res->message = "Edge 'from' endpoint not found: " + edge.from.type + ":" + edge.from.id;
-        return;
-    }
-    if (!endpointExists(edge.to)) {
-        res->success = false;
-        res->message = "Edge 'to' endpoint not found: " + edge.to.type + ":" + edge.to.id;
-        return;
-    }
-    snapEdgeEndpoints(edge);
-    if (!edge_store_->update(edge)) {
-        res->success = false;
-        res->message = "Edge '" + edge.id + "' not found";
-        return;
-    }
-    save_fn_();
-    publishMarkers();
-    res->success = true;
-    res->message = "Updated edge '" + edge.id + "'";
-}
-
-void RouteGraphManager::getRouteGraphCallback(
-    const std::shared_ptr<nav_interfaces::srv::GetRouteGraph::Request> /*req*/,
-    std::shared_ptr<nav_interfaces::srv::GetRouteGraph::Response> res)
-{
-    for (const auto& jct : junction_store_->getAll()) {
-        res->junctions.push_back(toMsg(jct));
-    }
-
-    // ── D034: 收集被边引用的 NavPoint 名称（去重）──
-    // 边响应只存端点 id（不冗余坐标，避免 NavPoint 移动后边内坐标失效）；
-    // 此处一次性把被引用的 NavPoint 坐标补到 nav_points[]，消费方一次请求即可建图。
-    std::unordered_set<std::string> referenced_nav_names;
-    const auto all_edges = edge_store_->getAll();
-    for (const auto& e : all_edges) {
-        res->edges.push_back(toMsg(e));
-        if (e.from.type == "nav") referenced_nav_names.insert(e.from.id);
-        if (e.to.type   == "nav") referenced_nav_names.insert(e.to.id);
-    }
-
-    // ── D034: 从 PointStore 查坐标，按 nav_interfaces/NavPoint 组装 nav_points ──
-    for (const auto& name : referenced_nav_names) {
-        auto pt_opt = point_store_->getPoint(name);
-        if (!pt_opt.has_value()) {
-            // 被边引用但 NavPoint 已不存在：理论上 EventBus POINT_REMOVED 级联会清掉，
-            // 此处仅作防御；不阻塞响应，但日志记录便于排查脏数据
-            RCLCPP_WARN(node_->get_logger(),
-                        "GetRouteGraph: edge references missing NavPoint '%s' (skipped)",
-                        name.c_str());
-            continue;
-        }
-        nav_interfaces::msg::NavPoint np;
-        np.name      = pt_opt->name;
-        np.type      = pt_opt->type;
-        np.x         = pt_opt->x;
-        np.y         = pt_opt->y;
-        np.theta     = pt_opt->yaw;
-        np.tolerance = pt_opt->tolerance;
-        // np.id 在 PointStore 中无对应字段；msg.id 为可选展示用字段，保持默认 0
-        res->nav_points.push_back(np);
-    }
-
-    res->success = true;
-}
 
 // ──────────────────────────────────────────────────────────────────────
 // EventBus 响应
@@ -827,6 +553,44 @@ std::optional<RouteEdge> RouteGraphManager::findNearestEdgeTo(
     return best;
 }
 
+std::optional<std::pair<RouteEdge, RouteEdge>> RouteGraphManager::findNarrowTurnaround(
+    const RouteEndpoint& p) const {
+    // 先收 P 的全部关联边（无向意义上"挂在 P 上"的边），用来卡死「恰好两条」这个前提。
+    // 窄道端点就该只有一进一出；多于两条说明它是个普通路口，退出方向不唯一，不能替上层做主。
+    std::vector<RouteEdge> incident;
+    for (const auto& e : edge_store_->getAll()) {
+        const bool from_p = (e.from.id == p.id && e.from.type == p.type);
+        const bool to_p   = (e.to.id == p.id && e.to.type == p.type);
+        if (from_p || to_p) incident.push_back(e);
+    }
+    if (incident.size() != 2) {
+        if (incident.size() > 2) {
+            RCLCPP_WARN(node_->get_logger(),
+                        "ResolveNavPoints: nav point '%s' has %zu incident edges (>2), "
+                        "not a narrow turnaround point; falling back to the normal "
+                        "single-point path.",
+                        p.id.c_str(), incident.size());
+        }
+        return std::nullopt;
+    }
+
+    // 两条边里试着配出 out/in（两种配法都试，路网里的存储顺序不作数）：
+    //   out：单向、from==P、backward==true            —— 倒车退出去的那条
+    //   in ：单向、to==P、from==out.to                —— 正向开进来的那条
+    // 最后一条是关键：退出去的终点必须正好是进来那条的起点，否则退出去以后接不回原路。
+    for (int i = 0; i < 2; ++i) {
+        const RouteEdge& out = incident[i];
+        const RouteEdge& in  = incident[1 - i];
+        if (out.bidirectional || !out.backward) continue;
+        if (!(out.from.id == p.id && out.from.type == p.type)) continue;
+        if (in.bidirectional) continue;
+        if (!(in.to.id == p.id && in.to.type == p.type)) continue;
+        if (!(in.from.id == out.to.id && in.from.type == out.to.type)) continue;
+        return std::make_pair(out, in);
+    }
+    return std::nullopt;
+}
+
 nav_interfaces::msg::PathSegment RouteGraphManager::edgeToSegment(const RouteEdge& e, bool reversed) const {
     nav_interfaces::msg::PathSegment seg;
 
@@ -940,28 +704,52 @@ void RouteGraphManager::resolveNavPointsCallback(
             res->message = "no edge ending at nav point " + names[0];
             return;
         }
-        auto seg = edgeToSegment(*ref_edge, ref_reversed);
-        if (robot_to_first < start_tolerance_) {
-            // 车已经压在目标点上：整条跑参考输入边等于先退回边起点再走一遍，
-            // 改成"车体当前位置 → 目标点"的短直线，段级参数（mode/backward/padding…）沿用该边。
-            geometry_msgs::msg::Point p0;
-            p0.x = robot->first;
-            p0.y = robot->second;
-            p0.z = 0.0;
-            geometry_msgs::msg::Point p1;
-            p1.x = static_cast<double>(first_pt->x);
-            p1.y = static_cast<double>(first_pt->y);
-            p1.z = 0.0;
-            seg.type           = nav_interfaces::msg::PathSegment::LINE;
-            seg.control_points = {p0, p1};
-            refreshTargetYaw(seg);
-            decision = "at goal (" + std::to_string(robot_to_first) + "m), rewrote edge " +
-                       ref_edge->id + " as short LINE from robot pose";
-        } else {
-            decision = "nearest incoming edge " + ref_edge->id + " (robot-edge dist " +
-                       std::to_string(ref_dist) + "m)";
+        // ── 窄道点位优先 ──────────────────────────────────────────────
+        // 车已经停在只能倒车退出的死胡同端点上时，不管它对得准不准，都必须
+        // 「先沿倒车边退到 Q，再沿入边正向开回 P」：就地重新对准会让差速车原地旋转，
+        // 而这个点位之所以被配成一进一出 + 出去那条是倒车，就是因为那儿没有旋转空间。
+        // 只在车确实压在 P 上（< narrow_turnaround_tolerance_）时才成立——车还在别处时
+        // 下发一条起点在 P 的路径没有意义。TF 拿不到时 robot_to_first = +inf，自动跳过。
+        std::optional<std::pair<RouteEdge, RouteEdge>> narrow;
+        if (robot_to_first < narrow_turnaround_tolerance_) {
+            narrow = findNarrowTurnaround(first_ep);
         }
-        segments.push_back(std::move(seg));
+
+        if (narrow) {
+            // 两段都按边自身方向下发（out: P→Q 倒车，in: Q→P 正向），不做任何起点吸附：
+            // 车头在整个过程里始终指向 Q→P，两段的 phase1 对准误差都是 0。
+            const RouteEdge& out_edge = narrow->first;
+            const RouteEdge& in_edge  = narrow->second;
+            segments.push_back(edgeToSegment(out_edge, /*reversed=*/false));
+            segments.push_back(edgeToSegment(in_edge, /*reversed=*/false));
+            decision = "narrow turnaround at " + names[0] + " (robot dist " +
+                       std::to_string(robot_to_first) + "m < " +
+                       std::to_string(narrow_turnaround_tolerance_) + "m): reverse out via " +
+                       out_edge.id + ", then re-enter via " + in_edge.id;
+        } else {
+            auto seg = edgeToSegment(*ref_edge, ref_reversed);
+            if (robot_to_first < start_tolerance_) {
+                // 车已经压在目标点上：整条跑参考输入边等于先退回边起点再走一遍，
+                // 改成"车体当前位置 → 目标点"的短直线，段级参数（mode/backward/padding…）沿用该边。
+                geometry_msgs::msg::Point p0;
+                p0.x = robot->first;
+                p0.y = robot->second;
+                p0.z = 0.0;
+                geometry_msgs::msg::Point p1;
+                p1.x = static_cast<double>(first_pt->x);
+                p1.y = static_cast<double>(first_pt->y);
+                p1.z = 0.0;
+                seg.type           = nav_interfaces::msg::PathSegment::LINE;
+                seg.control_points = {p0, p1};
+                refreshTargetYaw(seg);
+                decision = "at goal (" + std::to_string(robot_to_first) + "m), rewrote edge " +
+                           ref_edge->id + " as short LINE from robot pose";
+            } else {
+                decision = "nearest incoming edge " + ref_edge->id + " (robot-edge dist " +
+                           std::to_string(ref_dist) + "m)";
+            }
+            segments.push_back(std::move(seg));
+        }
     } else {
         // 多点：相邻两点各取一条直接边，首段即规划起始边
         std::optional<RouteEdge> start_edge;

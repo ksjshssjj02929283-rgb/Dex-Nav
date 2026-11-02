@@ -4,6 +4,7 @@
 // RouteGraphSaveTool  → s_route_graph_editing = false（保存并锁定）
 
 #include "map_asset_rviz_plugin/route_graph_start_save_tool.hpp"
+#include "map_asset_rviz_plugin/asset_target.hpp"
 #include "map_asset_rviz_plugin/route_graph_tools_common.hpp"  // s_route_graph_editing
 
 #include <std_srvs/srv/trigger.hpp>
@@ -30,6 +31,12 @@ void RouteGraphStartTool::onInitialize() {
 void RouteGraphStartTool::activate() {
     // 先设置编辑标志，再从文件重载数据（对标 create_waypoint::NewWaypointCallBack）
     s_route_graph_editing = true;
+    // 非当前地图没有内存副本，每次读写都直接对文件，无需重载
+    if (!AssetTarget::isCurrent()) {
+        setStatus(QString("✓ 编辑地图 %1 的路网（直接读写文件），使用完毕请保存")
+                      .arg(QString::fromStdString(AssetTarget::label())));
+        return;
+    }
     setStatus("正在加载路网数据，进入编辑模式…");
 
     auto cli = node_->create_client<std_srvs::srv::Trigger>(
@@ -44,12 +51,13 @@ void RouteGraphStartTool::activate() {
         [this](rclcpp::Client<std_srvs::srv::Trigger>::SharedFuture fut) {
             try {
                 auto resp = fut.get();
+                reportResult(*resp, "加载路网");
                 if (resp->success) {
                     setStatus(QString("✓ 路网已加载，进入编辑模式（使用完毕请保存）"));
                 } else {
                     s_route_graph_editing = false;
                     setStatus(QString("加载失败：%1")
-                                  .arg(QString::fromStdString(resp->message)));
+                                  .arg(assetMessage(*resp)));
                 }
             } catch (const std::exception& ex) {
                 s_route_graph_editing = false;
@@ -85,15 +93,16 @@ void RouteGraphSaveTool::activate() {
         setStatus("save_assets 服务不可用（map_asset_manager 是否在运行？）");
         return;
     }
-    auto req = std::make_shared<nav_interfaces::srv::SaveAssets::Request>();
+    auto req = std::make_shared<nav_interfaces::srv::SaveAssets::Request>(); applyTarget(req);
     cli->async_send_request(req,
         [this](rclcpp::Client<nav_interfaces::srv::SaveAssets>::SharedFuture fut) {
             try {
                 auto resp = fut.get();
+                reportResult(*resp, "保存路网");
                 setStatus(resp->success
                     ? QString("✓ 路网已保存，退出编辑模式")
                     : QString("保存失败：%1")
-                          .arg(QString::fromStdString(resp->message)));
+                          .arg(assetMessage(*resp)));
             } catch (const std::exception& ex) {
                 setStatus(QString("异常：%1").arg(ex.what()));
             }

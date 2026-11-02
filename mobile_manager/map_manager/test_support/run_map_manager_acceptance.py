@@ -130,15 +130,10 @@ TC_PLANS = {
     ],
 }
 
-BASELINE_SERVICES = {
+BASELINE_SERVICES = {   # v1.11（DEC-029 / DEC-033）：查询合并 get_maps，写操作合并 map_command
     "/map_manager/get_current_map_data",
-    "/map_manager/get_current_map_info",
-    "/map_manager/get_map_folder",
-    "/map_manager/get_map_name",
-    "/map_manager/get_map_list",
-    "/map_manager/load_map",
-    "/map_manager/remove_map",
-    "/map_manager/rename_map",
+    "/map_manager/get_maps",
+    "/map_manager/map_command",
 }
 
 ROLLBACK_CANDIDATES = (

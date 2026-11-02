@@ -1,6 +1,12 @@
 cmake_minimum_required(VERSION 3.8)
 project(dexe_sensor_process)
 
+# Runtime processing is CPU intensive. Use optimized code for normal builds while
+# still allowing callers to explicitly request Debug or RelWithDebInfo.
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+  set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
+endif()
+
 # 设置 C++17 标准
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -11,6 +17,7 @@ endif()
 
 # find dependencies
 find_package(ament_cmake REQUIRED)
+find_package(yaml-cpp REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
@@ -25,6 +32,7 @@ find_package(tf2_geometry_msgs REQUIRED)
 ## RGBD to PointCloud2 converter
 add_executable(rgbd_to_pointcloud 
   src/rgbd_to_pointcloud.cpp
+  src/obstacle_extractor.cpp
 )
 
 ament_target_dependencies(rgbd_to_pointcloud
@@ -41,6 +49,8 @@ ament_target_dependencies(rgbd_to_pointcloud
 )
 
 target_include_directories(rgbd_to_pointcloud PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
   ${PCL_INCLUDE_DIRS}
 )
 
@@ -49,6 +59,7 @@ target_link_directories(rgbd_to_pointcloud PUBLIC
 )
 
 target_link_libraries(rgbd_to_pointcloud
+  yaml-cpp
   ${PCL_LIBRARIES}
 )
 
@@ -57,20 +68,45 @@ install(TARGETS
   DESTINATION lib/${PROJECT_NAME}
 )
 
+install(DIRECTORY include/ DESTINATION include)
+
 # Install launch files
 install(DIRECTORY
   launch/
   DESTINATION share/${PROJECT_NAME}/launch
 )
 
+install(DIRECTORY config/ DESTINATION share/${PROJECT_NAME}/config)
+
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
+
+  ament_add_gtest(test_multi_camera
+    test/test_multi_camera.cpp src/obstacle_extractor.cpp)
+  target_include_directories(test_multi_camera PRIVATE include src ${PCL_INCLUDE_DIRS})
+  ament_target_dependencies(test_multi_camera
+    rclcpp sensor_msgs std_msgs pcl_conversions tf2_ros tf2_sensor_msgs
+    geometry_msgs tf2_geometry_msgs)
+  target_link_libraries(test_multi_camera yaml-cpp ${PCL_LIBRARIES})
+
+  ament_add_gtest(test_camera_extrinsics test/test_camera_extrinsics.cpp)
+  target_include_directories(test_camera_extrinsics PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+  ament_target_dependencies(test_camera_extrinsics
+    sensor_msgs geometry_msgs tf2_geometry_msgs tf2_sensor_msgs)
+
+  ament_add_gtest(test_hardware_obstacle_method test/test_hardware_obstacle_method.cpp)
+  target_include_directories(test_hardware_obstacle_method PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+  target_link_libraries(test_hardware_obstacle_method yaml-cpp)
+  # 固定样例路径，允许从任意构建目录运行测试。
+  target_compile_definitions(test_hardware_obstacle_method PRIVATE
+    HARDWARE_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/test/data"
+  )
 
   ament_add_gtest(test_rgbd_processing_state
     test/test_rgbd_processing_state.cpp
   )
   target_include_directories(test_rgbd_processing_state PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
   )
 endif()
 

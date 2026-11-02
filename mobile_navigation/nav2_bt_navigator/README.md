@@ -20,6 +20,11 @@ The BT Navigator receives a goal pose and navigates the robot to the specified d
 6. `controller_server` 选择 `FollowPath` 控制器插件，调用 `setPlan()` 后循环计算速度并发布 `/cmd_vel`。
 7. `onLoop()` 每次 BT tick 后发布 `navigate_to_pose` action feedback，包括当前位姿、剩余路径长度、估计剩余时间、恢复次数和导航耗时。
 
-默认 XML 使用 `PipelineSequence` 串联周期性全局规划和局部控制。`RateController hz="0.333"` 约每 3 秒触发一次重规划；新路径写入 `{path}` 后，`FollowPathAction` 会重新发送 `follow_path` goal，`controller_server::updateGlobalPath()` 接收 pending goal 并更新控制器中的路径。
+默认 XML 使用 `PipelineSequence` 串联全局规划和局部控制。`AdaptiveReplanning` 的
+`enable_global_replanning` 是仅用于 `NavigateToPose` 的总开关，默认值为 `true`：开启时保留周期、
+路径偏离、路径障碍和恢复触发的重规划；关闭时只执行首次规划和目标变化后的规划。当前默认
+`hz="0.02"`，即无其他触发条件时每 50 秒周期重规划一次。新路径写入 `{path}` 后，
+`FollowPathAction` 会重新发送 `follow_path` goal，`controller_server::updateGlobalPath()` 接收 pending
+goal 并更新控制器中的路径。
 
 规划失败时，行为树优先清理 global costmap 并重试；控制失败时，行为树优先清理 local costmap、等待后重试。恢复动作只负责重试调度，规划算法仍由 `planner_server` 插件执行，速度控制仍由 `controller_server` 插件执行。

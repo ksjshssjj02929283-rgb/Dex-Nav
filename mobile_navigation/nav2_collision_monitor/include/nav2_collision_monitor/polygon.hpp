@@ -15,6 +15,7 @@
 #ifndef NAV2_COLLISION_MONITOR__POLYGON_HPP_
 #define NAV2_COLLISION_MONITOR__POLYGON_HPP_
 
+#include <atomic>
 #include <memory>
 #include <string>
 #include <vector>
@@ -110,18 +111,100 @@ public:
    */
   virtual void getPolygon(std::vector<Point> & poly) const;
 
+  /** @brief Replace the internally owned base polygon (without padding). */
+  virtual void setPolygon(const geometry_msgs::msg::Polygon & polygon);
+
+  /**
+   * @brief 取当前生效的形状（基础形状按 padding 向外膨胀后的轮廓）。
+   *
+   * 仅用于可视化发布。碰撞判定不走这里——判定在 isPointInside() 里用
+   * "到基础形状边界的距离 < padding" 实现，那是精确的 Minkowski 和，
+   * 对凹多边形同样正确；这里的顶点外推只是它的近似外轮廓。
+   * @param poly 输出膨胀后的多边形顶点
+   */
+  virtual void getEffectivePolygon(std::vector<Point> & poly) const;
+
+  /**
+   * @brief 设置膨胀大小（本仓库相对上游 Nav2 的改动：动态停障距离）
+   * @param padding 膨胀大小 m；NaN 或负数表示恢复 default_padding_
+   */
+  void setPadding(double padding);
+
+  /**
+   * @brief 取当前生效的膨胀大小
+   */
+  double getPadding() const;
+
+  /**
+   * @brief 设置前向额外膨胀大小（本仓库相对上游 Nav2 的改动：速度分档前向停障距离）
+   * @param front_padding 前向额外外扩大小 m；NaN 或负数表示置 0
+   */
+  void setFrontPadding(const double front_padding);
+
+  /**
+   * @brief 取当前生效的前向外扩大小
+   */
+  double getFrontPadding() const;
+
+  /**
+   * @brief 设置后向额外膨胀大小（支持倒车按速度后向外扩停障距离）
+   * @param rear_padding 后向额外外扩大小 m；NaN 或负数表示置 0
+   */
+  void setRearPadding(const double rear_padding);
+
+  /**
+   * @brief 取当前生效的后向外扩大小
+   */
+  double getRearPadding() const;
+
+  /**
+   * @brief 取配置里的默认膨胀大小
+   */
+  double getDefaultPadding() const;
+
+  /**
+   * @brief 取配置里的默认前向额外膨胀大小
+   */
+  double getDefaultFrontPadding() const;
+
+  /**
+   * @brief 取配置里的默认后向额外膨胀大小
+   */
+  double getDefaultRearPadding() const;
+
+  /** @brief 切换仅横向膨胀模式（Y/左右膨胀，X/前后不膨胀）。 */
+  void setLateralPaddingOnly(bool enabled);
+
+  /** @brief 当前是否仅做横向膨胀。 */
+  bool isLateralPaddingOnly() const;
+
   /**
    * @brief Updates polygon from footprint subscriber (if any)
    */
   void updatePolygon();
+  bool missingFootprint() const {return footprint_sub_ != nullptr && poly_.size() < 3;}
 
   /**
    * @brief Gets number of points inside given polygon
    * @param points Input array of points to be checked
+   * @param early_exit_threshold If > 0, stops counting and returns immediately when points reach this threshold
    * @return Number of points inside polygon. If there are no points,
    * returns zero value.
    */
-  virtual int getPointsInside(const std::vector<Point> & points) const;
+  virtual int getPointsInside(
+    const std::vector<Point> & points,
+    int early_exit_threshold = -1) const;
+
+  /**
+   * @brief Gets number of points inside given polygon across multiple point buffers
+   * (Zero-copy optimization: avoids concatenating point clouds).
+   * @param point_buffers Vector of pointers to point cloud buffers
+   * @param early_exit_threshold If > 0, stops counting and returns immediately when points reach this threshold
+   * @return Number of points inside polygon.
+   */
+  virtual int getPointsInside(
+    const std::vector<const std::vector<Point> *> & point_buffers,
+    int early_exit_threshold = -1) const;
 
   /**
    * @brief Obtains estimated (simulated) time before a collision.
@@ -163,6 +246,13 @@ protected:
    */
   bool isPointInside(const Point & point) const;
 
+  /**
+   * @brief 点到基础多边形边界的最短距离（不区分内外，取各边线段距离的最小值）
+   * @param point 待测点
+   * @return 最短距离 m；poly_ 为空时返回 +inf
+   */
+  double distanceToBoundary(const Point & point) const;
+
   // ----- Variables -----
 
   /// @brief Collision Monitor node
@@ -202,8 +292,34 @@ protected:
   /// @brief Polygon publisher for visualization purposes
   rclcpp_lifecycle::LifecyclePublisher<geometry_msgs::msg::PolygonStamped>::SharedPtr polygon_pub_;
 
-  /// @brief Polygon points (vertices)
+  /// @brief Polygon points (vertices)。始终是"基础形状"，不含 padding
   std::vector<Point> poly_;
+
+  /// @brief 基础轮廓 AABB 包围盒（用于快速剪枝过滤远端点）
+  double base_min_x_{0.0};
+  double base_max_x_{0.0};
+  double base_min_y_{0.0};
+  double base_max_y_{0.0};
+  void updateBoundingBox();
+
+  /// @brief 上次可视化多边形发布时间戳（用于 5Hz 节流降频）
+  mutable rclcpp::Time last_publish_time_{0, 0, RCL_ROS_TIME};
+
+  // 动态膨胀（本仓库相对上游 Nav2 的改动）
+  /// @brief 配置项 <name>.default_padding，收到 NaN 时回落到该值
+  double default_padding_{0.0};
+  /// @brief 配置项 <name>.front_padding，默认前向额外外扩大小
+  double default_front_padding_{0.0};
+  /// @brief 配置项 <name>.rear_padding，默认后向额外外扩大小
+  double default_rear_padding_{0.0};
+  /// @brief 当前生效的膨胀大小 m。service 线程写、process() 线程读，故用 atomic
+  std::atomic<double> padding_{0.0};
+  /// @brief true 时 padding 仅作用于 base_link 的 Y 方向
+  std::atomic<bool> lateral_padding_only_{false};
+  /// @brief 当前生效的前向额外膨胀大小 m。主控制循环写、isPointInside() 读，用 atomic
+  std::atomic<double> front_padding_{0.0};
+  /// @brief 当前生效的后向额外膨胀大小 m。主控制循环写、isPointInside() 读，用 atomic
+  std::atomic<double> rear_padding_{0.0};
 };  // class Polygon
 
 }  // namespace nav2_collision_monitor

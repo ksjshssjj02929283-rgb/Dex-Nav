@@ -18,7 +18,7 @@ namespace schedule_planner
     using std::placeholders::_2;
 
     SchedulePlannerNode::SchedulePlannerNode(const rclcpp::NodeOptions& options)
-        : rclcpp::Node("schedule_planner_node", options)
+        : nav2_util::LifecycleNode("schedule_planner_node", "", options)
     {
         // ---------------- 参数 ----------------
         action_name_ = declare_parameter<std::string>("action_name", "navigate_through_graph_points");
@@ -30,7 +30,7 @@ namespace schedule_planner
         cancel_service_name_ = declare_parameter<std::string>(
             "cancel_service_name", "/schedule_planner/force_cancel");
         padding_service_ = declare_parameter<std::string>(
-            "padding_service", "/collision_monitor/set_polygon_padding");
+            "padding_service", "/collision_monitor_path/set_polygon_padding");
         stop_polygon_name_ = declare_parameter<std::string>("stop_polygon_name", "PolygonStop");
         padding_timeout_ = declare_parameter<double>("padding_timeout", 2.0);
         require_padding_service_ = declare_parameter<bool>("require_padding_service", true);
@@ -38,11 +38,52 @@ namespace schedule_planner
         resolution_ = declare_parameter<double>("resolution", 0.005);
         resolve_timeout_ = declare_parameter<double>("resolve_timeout", 5.0);
         segment_timeout_ = declare_parameter<double>("segment_timeout", 300.0);
+        // on_deactivate 等执行线程退出的上限。超时则转换失败（而不是硬等或强行 cleanup —
+        // 线程还在访问的资源被释放会直接段错误）
+        deactivate_timeout_ = declare_parameter<double>("deactivate_timeout", 5.0);
         status_message_timeout_ = declare_parameter<double>("status_message_timeout", 0.3);
         bag_trigger_topic_ = declare_parameter<std::string>(
             "bag_trigger_topic", "/mobile_bag_recorder_node/trigger_event");
         // default_mode：PathSegment 未显式指定 mode 时的默认跟踪方式。1=DIFF, 3=OMNI_TRANS_ROTATION。
         default_mode_ = static_cast<uint8_t>(declare_parameter<int>("default_mode", 1));
+
+        // move_mode：底盘运动能力（对应 path_follower 的 base_type），决定允许下发的跟踪方式。
+        // 与 default_mode 不同——后者只在段没写 mode 时兜底，前者无条件覆盖。默认 3 = 不约束，
+        // 保持引入该参数之前的行为；具体车型在 yaml 里显式指定。
+        {
+            const int mm = declare_parameter<int>("move_mode", 3);
+            if (mm == nav_interfaces::msg::TrackingPath::MODE_DIFF ||
+                mm == nav_interfaces::msg::TrackingPath::MODE_OMNI_TRANSLATION ||
+                mm == nav_interfaces::msg::TrackingPath::MODE_OMNI_TRANS_ROTATION)
+            {
+                move_mode_ = static_cast<uint8_t>(mm);
+            }
+            else
+            {
+                move_mode_ = nav_interfaces::msg::TrackingPath::MODE_OMNI_TRANS_ROTATION;
+                RCLCPP_WARN(get_logger(),
+                            "Invalid move_mode=%d (expect 1/2/3), falling back to 3 (no constraint).",
+                            mm);
+            }
+            // 取 1/2 时段 mode 会被归一成具体值，resolveMode 不再走兜底分支，default_mode 失效。
+            if (move_mode_ != nav_interfaces::msg::TrackingPath::MODE_OMNI_TRANS_ROTATION &&
+                default_mode_ != move_mode_)
+            {
+                RCLCPP_WARN(get_logger(),
+                            "move_mode=%u overrides every segment mode, so default_mode=%u "
+                            "will never take effect.",
+                            move_mode_, default_mode_);
+            }
+        }
+
+        // 相邻段合并平滑：属性一致、长度够的连续 LINE 段并成一条带拐角倒角的轨迹一次下发，
+        // 省掉组内每个途经点的「停车 + 原地旋转」。长度门槛由 anchor_spacing 推导，不单独配。
+        merge_params_.enable = declare_parameter<bool>("merge_enable", true);
+        merge_params_.bezier_degree = declare_parameter<int>("merge_bezier_degree", 4);
+        merge_params_.anchor_spacing = declare_parameter<double>("merge_anchor_spacing", 0.25);
+        merge_params_.end_margin = declare_parameter<double>("merge_end_margin", 0.1);
+        merge_params_.max_turn_angle_deg =
+            declare_parameter<double>("merge_max_turn_angle_deg", 120.0);
 
         // mode：节点启动时固定二选一，不支持运行时热切换。
         const std::string mode = declare_parameter<std::string>("mode", "independence");
@@ -70,41 +111,6 @@ namespace schedule_planner
             resolution_ = declare_parameter<double>("controller_resolution", 0.05);
         }
 
-        // ---------------- ROS 接口 ----------------
-        path_pub_ = create_publisher<nav_interfaces::msg::TrackingPath>(tracking_path_topic_, rclcpp::QoS(1));
-
-        status_sub_ = create_subscription<nav_interfaces::msg::NavigationStatus>(
-            navigation_status_topic_, rclcpp::QoS(10),
-            std::bind(&SchedulePlannerNode::onNavigationStatus, this, _1));
-
-        resolve_client_ = create_client<ResolveNavPoints>(resolve_service_);
-        stop_client_ = create_client<std_srvs::srv::Trigger>(stop_service_);
-        padding_client_ = create_client<SetPolygonPadding>(padding_service_);
-
-        cancel_service_ = create_service<std_srvs::srv::Trigger>(
-            cancel_service_name_,
-            std::bind(&SchedulePlannerNode::onCancelService, this, _1, _2));
-
-        if (!bag_trigger_topic_.empty())
-        {
-            // 在构造期就建好：publisher 建好到 discovery 完成之间有几十到几百 ms，
-            // 等真失败了再现建，第一条上报大概率丢在发现窗口里。
-            bag_trigger_pub_ = create_publisher<std_msgs::msg::String>(
-                bag_trigger_topic_, rclcpp::QoS(10));
-        }
-
-        if (controller_mode_)
-        {
-            follow_path_client_ = rclcpp_action::create_client<FollowPath>(
-                this, follow_path_action_name_);
-        }
-
-        action_server_ = rclcpp_action::create_server<NavigateThroughGraphPoints>(
-            this, action_name_,
-            std::bind(&SchedulePlannerNode::handleGoal, this, _1, _2),
-            std::bind(&SchedulePlannerNode::handleCancel, this, _1),
-            std::bind(&SchedulePlannerNode::handleAccepted, this, _1));
-
         std::string controller_suffix;
         if (controller_mode_)
         {
@@ -113,14 +119,15 @@ namespace schedule_planner
                                  "' goal_checker_id='" + goal_checker_id_ + "'";
         }
         RCLCPP_INFO(get_logger(),
-                    "schedule_planner ready: action=%s mode=%s tracking_path=%s status=%s stop=%s "
+                    "schedule_planner constructed (unconfigured): action=%s mode=%s tracking_path=%s status=%s stop=%s "
                     "cancel=%s resolve=%s frame=%s resolution=%.4fm seg_timeout=%.0fs default_mode=%d "
-                    "bag_trigger=%s%s",
+                    "move_mode=%d bag_trigger=%s%s",
                     action_name_.c_str(), controller_mode_ ? "controller" : "independence",
                     tracking_path_topic_.c_str(), navigation_status_topic_.c_str(),
                     stop_service_.c_str(), cancel_service_name_.c_str(), resolve_service_.c_str(),
                     frame_id_.c_str(), resolution_, segment_timeout_, static_cast<int>(default_mode_),
-                    bag_trigger_pub_ ? bag_trigger_topic_.c_str() : "(disabled)",
+                    static_cast<int>(move_mode_),
+                    bag_trigger_topic_.empty() ? "(disabled)" : bag_trigger_topic_.c_str(),
                     controller_suffix.c_str());
     }
 
@@ -140,6 +147,183 @@ namespace schedule_planner
         }
     }
 
+
+    // ---------------------------------------------------------------------------
+    // 生命周期
+    // ---------------------------------------------------------------------------
+    nav2_util::CallbackReturn SchedulePlannerNode::on_configure(const rclcpp_lifecycle::State&)
+    {
+        // 参数在构造函数里声明并读好了：declare 只能做一次，放这里的话 cleanup->configure
+        // 往返第二次就会抛 already declared。这里只建 ROS 接口。
+        path_pub_ = create_publisher<nav_interfaces::msg::TrackingPath>(
+            tracking_path_topic_, rclcpp::QoS(1));
+
+        status_sub_ = create_subscription<nav_interfaces::msg::NavigationStatus>(
+            navigation_status_topic_, rclcpp::QoS(10),
+            std::bind(&SchedulePlannerNode::onNavigationStatus, this, _1));
+
+        resolve_client_ = create_client<ResolveNavPoints>(resolve_service_);
+        stop_client_ = create_client<std_srvs::srv::Trigger>(stop_service_);
+        padding_client_ = create_client<SetPolygonPadding>(padding_service_);
+
+        cancel_service_ = create_service<std_srvs::srv::Trigger>(
+            cancel_service_name_,
+            std::bind(&SchedulePlannerNode::onCancelService, this, _1, _2));
+
+        if (!bag_trigger_topic_.empty())
+        {
+            // configure 期就建好：publisher 建好到 discovery 完成之间有几十到几百 ms，
+            // 等真失败了再现建，第一条上报大概率丢在发现窗口里。
+            bag_trigger_pub_ = create_publisher<std_msgs::msg::String>(
+                bag_trigger_topic_, rclcpp::QoS(10));
+        }
+
+        if (controller_mode_)
+        {
+            follow_path_client_ = rclcpp_action::create_client<FollowPath>(
+                this, follow_path_action_name_);
+        }
+
+        // action server 建在 configure：rclcpp_action 的 server 没有"失活"概念，
+        // 想拒绝 goal 只能在 handleGoal 里按 active_ 判断（见那里的注释）
+        action_server_ = rclcpp_action::create_server<NavigateThroughGraphPoints>(
+            this, action_name_,
+            std::bind(&SchedulePlannerNode::handleGoal, this, _1, _2),
+            std::bind(&SchedulePlannerNode::handleCancel, this, _1),
+            std::bind(&SchedulePlannerNode::handleAccepted, this, _1));
+
+        RCLCPP_INFO(get_logger(), "Configured: action=%s tracking_path=%s (not accepting goals until active)",
+                    action_name_.c_str(), tracking_path_topic_.c_str());
+        return nav2_util::CallbackReturn::SUCCESS;
+    }
+
+    nav2_util::CallbackReturn SchedulePlannerNode::on_activate(const rclcpp_lifecycle::State&)
+    {
+        path_pub_->on_activate();
+        if (bag_trigger_pub_)
+        {
+            bag_trigger_pub_->on_activate();
+        }
+        // 上一轮 deactivate 置的取消标记不能留到这一轮：否则新 goal 一进等待循环就被判成取消
+        force_cancel_requested_.store(false);
+        active_.store(true);
+
+        createBond();
+        RCLCPP_INFO(get_logger(), "Activated: accepting %s goals", action_name_.c_str());
+        return nav2_util::CallbackReturn::SUCCESS;
+    }
+
+    nav2_util::CallbackReturn SchedulePlannerNode::on_deactivate(const rclcpp_lifecycle::State&)
+    {
+        // 先关门再收口：顺序反过来的话，收口过程中还能进新 goal
+        active_.store(false);
+
+        if (!stopActiveGoalAndJoin(deactivate_timeout_))
+        {
+            // 转换失败而不是硬来：执行线程还在跑，后面 cleanup 释放它正在用的资源就是段错误。
+            // 管理器会把这次 deactivate 记为失败，由上层决定重试还是告警。
+            active_.store(true);
+            return nav2_util::CallbackReturn::FAILURE;
+        }
+
+        path_pub_->on_deactivate();
+        if (bag_trigger_pub_)
+        {
+            bag_trigger_pub_->on_deactivate();
+        }
+
+        destroyBond();
+        RCLCPP_INFO(get_logger(), "Deactivated: goals rejected, path_follower stopped");
+        return nav2_util::CallbackReturn::SUCCESS;
+    }
+
+    nav2_util::CallbackReturn SchedulePlannerNode::on_cleanup(const rclcpp_lifecycle::State&)
+    {
+        // 走到这里时执行线程一定已经退出（on_deactivate join 过且成功），否则不会被允许 cleanup
+        action_server_.reset();
+        cancel_service_.reset();
+        status_sub_.reset();
+        resolve_client_.reset();
+        stop_client_.reset();
+        padding_client_.reset();
+        follow_path_client_.reset();
+        bag_trigger_pub_.reset();
+        path_pub_.reset();
+        RCLCPP_INFO(get_logger(), "Cleaned up");
+        return nav2_util::CallbackReturn::SUCCESS;
+    }
+
+    nav2_util::CallbackReturn SchedulePlannerNode::on_shutdown(const rclcpp_lifecycle::State&)
+    {
+        // 尽力而为：能停车就停，能收口就收口，失败也不阻止关机
+        active_.store(false);
+        shutting_down_.store(true);
+        stopActiveGoalAndJoin(deactivate_timeout_);
+        RCLCPP_INFO(get_logger(), "Shutting down");
+        return nav2_util::CallbackReturn::SUCCESS;
+    }
+
+    bool SchedulePlannerNode::stopActiveGoalAndJoin(double timeout_s)
+    {
+        // 与 force_cancel 服务走同一条路径：置标记唤醒等待循环 -> 返回码 2 -> goal 以 aborted
+        // 收口（EXECUTING 不能直接转 CANCELED），并兜底停一次车
+        force_cancel_requested_.store(true);
+        state_cv_.notify_all();
+        controller_state_cv_.notify_all();
+        if (controller_mode_)
+        {
+            cancelControllerGoal();
+        }
+        else
+        {
+            callStopAsync();
+        }
+
+        // 等 executeGoal 走完收口（finishGoal 会清空 current_goal_）。
+        // 注意：本回调跑在节点执行器线程上，这段等待会占住执行器——执行线程若正卡在
+        // resolve/padding 这类**要靠执行器投递应答**的等待上，就得等到超时才收得回来。
+        // 段跟踪的等待走的是条件变量，不受影响，那才是绝大多数情况。
+        const auto deadline = std::chrono::steady_clock::now() +
+                              std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+                                  std::chrono::duration<double>(timeout_s));
+        while (std::chrono::steady_clock::now() < deadline)
+        {
+            {
+                std::lock_guard<std::mutex> lk(current_goal_mutex_);
+                if (!current_goal_)
+                {
+                    break;
+                }
+            }
+            std::this_thread::sleep_for(50ms);
+        }
+
+        std::thread t;
+        bool still_running = false;
+        {
+            // 不持锁 join：execute() 末尾的 finishGoal() 也要这把锁，会死锁
+            std::lock_guard<std::mutex> lk(current_goal_mutex_);
+            still_running = static_cast<bool>(current_goal_);
+            if (!still_running)
+            {
+                t = std::move(exec_thread_);
+            }
+        }
+        if (still_running)
+        {
+            RCLCPP_ERROR(get_logger(),
+                         "Active goal did not wind up within %.1fs after force-cancel; "
+                         "refusing the transition (cleaning up now would free resources the "
+                         "execution thread is still using)", timeout_s);
+            return false;
+        }
+        if (t.joinable())
+        {
+            t.join();
+        }
+        return true;
+    }
+
     // ---------------------------------------------------------------------------
     // action 回调
     // ---------------------------------------------------------------------------
@@ -147,6 +331,16 @@ namespace schedule_planner
         const rclcpp_action::GoalUUID& /*uuid*/,
         std::shared_ptr<const NavigateThroughGraphPoints::Goal> goal)
     {
+        // active 门。rclcpp_action 的 server 没有"失活"概念，建好就一直在接请求，
+        // 所以 inactive 期间只能在这里明确拒绝——不能让 goal 悄悄排进来
+        if (!active_.load())
+        {
+            RCLCPP_WARN(get_logger(),
+                        "Reject goal: node is not active (current lifecycle state: %s). "
+                        "Activate it via the lifecycle manager first.",
+                        get_current_state().label().c_str());
+            return rclcpp_action::GoalResponse::REJECT;
+        }
         if (goal->nav_point_names.empty())
         {
             RCLCPP_WARN(get_logger(), "Reject goal: need >=1 nav_point_names, got 0.");
@@ -283,13 +477,40 @@ namespace schedule_planner
             return;
         }
 
-        // 2) 逐段执行
+        // 2) 分组：属性一致、长度够的连续 LINE 段合并成一条带倒角的轨迹一次下发。
         const std::size_t total = segments.size();
+        // 首段是不是「必须单独跑完才能开始合并」的引导段。两种来源：
+        //   1) 车离起点太远时 map_asset 在最前面插的归位边，此时段数等于点数
+        //      （正常是点数-1，见 route_graph_manager.cpp 的 "prepended homing edge"）；
+        //   2) 窄道点位的单点请求，1 个点解析出 2 段（倒车退出 + 正向开回，
+        //      见 route_graph_manager.cpp 的 "narrow turnaround"）——这两段方向相反，
+        //      本来就过不了 sameTrackingAttributes/转角判据，这里只是把意图写明。
+        const std::size_t n_names = goal->nav_point_names.size();
+        const std::size_t first_mergeable =
+            ((n_names >= 2 && total == n_names) || (n_names == 1 && total == 2)) ? 1u : 0u;
+        MergeParams mp = merge_params_;
+        // controller 模式走的是 FollowPath + controller_server，离散分辨率与跟踪语义都不同，
+        // 合并暂不覆盖该模式。
+        mp.enable = mp.enable && !controller_mode_;
+        const auto groups = planMergeGroups(segments, first_mergeable, default_mode_, mp);
+        if (mp.enable)
+        {
+            RCLCPP_INFO(get_logger(),
+                        "Merge planning: %zu segments -> %zu groups (first_mergeable=%zu, "
+                        "d=%.2fm, min_end=%.2fm, min_interior=%.2fm, max_turn=%.0fdeg cos>%.3f)",
+                        total, groups.size(), first_mergeable, mp.retreat(),
+                        mp.minEndLength(), mp.minInteriorLength(), mp.max_turn_angle_deg,
+                        std::cos(mp.max_turn_angle_deg * M_PI / 180.0));
+        }
+
+        // 3) 逐组执行
         bool ok = true;
         bool canceled = false;
         std::string fail_msg;
-        for (std::size_t i = 0; i < total; ++i)
+        for (std::size_t gi = 0; gi < groups.size(); ++gi)
         {
+            const auto& g = groups[gi];
+            const std::size_t i = g.begin; // 进度/日志仍按原始段索引报，上层看到的编号不变
             if (shutting_down_.load())
             {
                 fail_msg = "shutdown";
@@ -300,13 +521,31 @@ namespace schedule_planner
                             "executing segment " + std::to_string(i) + "/" + std::to_string(total),
                             i, total);
             RCLCPP_INFO(get_logger(),
-                        "Segment %zu/%zu: type=%u cps=%zu target_yaw=%.3f backward=%d max_speed=%.2f",
-                        i, total, segments[i].type, segments[i].control_points.size(),
-                        segments[i].target_yaw, segments[i].backward, segments[i].max_speed);
+                        "Group %zu/%zu = segments [%zu,%zu): type=%u cps=%zu target_yaw=%.3f "
+                        "backward=%d max_speed=%.2f",
+                        gi + 1, groups.size(), g.begin, g.end, segments[i].type,
+                        segments[i].control_points.size(), segments[i].target_yaw,
+                        segments[i].backward, segments[i].max_speed);
             std::string seg_msg;
-            const int r = controller_mode_
-                ? runSegmentViaController(segments[i], i, total, goal_handle, seg_msg)
-                : runSegment(segments[i], i, total, goal_handle, seg_msg);
+            int r = 0;
+            if (controller_mode_)
+            {
+                r = runSegmentViaController(segments[i], i, total, goal_handle, seg_msg);
+            }
+            else
+            {
+                auto tp = (g.size() > 1)
+                    ? sampler_.discretizeGroup(segments, g.begin, g.end, resolution_,
+                                               mp.anchor_spacing, mp.bezier_degree,
+                                               frame_id_, default_mode_)
+                    : sampler_.discretize(segments[i], resolution_, frame_id_, default_mode_);
+                // 只有最后一组的末段保留 target_yaw，其余置 NaN（到点不做末段旋转）。
+                if (gi + 1 < groups.size())
+                {
+                    tp.target_yaw = std::numeric_limits<double>::quiet_NaN();
+                }
+                r = runSegment(std::move(tp), i, total, g.size(), goal_handle, seg_msg);
+            }
             if (r == 2)
             {
                 fail_msg = "canceled at segment " + std::to_string(i) + ": " + seg_msg;
@@ -397,18 +636,15 @@ namespace schedule_planner
     }
 
     int SchedulePlannerNode::runSegment(
-        const PathSegment& seg, std::size_t idx, std::size_t total,
+        nav_interfaces::msg::TrackingPath tp, std::size_t idx, std::size_t total,
+        std::size_t seg_count,
         const std::shared_ptr<GoalHandleT>& goal_handle, std::string& out_msg)
     {
-        auto tp = sampler_.discretize(seg, resolution_, frame_id_, default_mode_);
         if (tp.poses.empty())
         {
             out_msg = "segment discretized to empty path";
             RCLCPP_ERROR(get_logger(), "Segment discretized to empty path, aborting segment.");
             return 1;
-        }
-        if (idx < total - 1) {
-            tp.target_yaw = std::numeric_limits<double>::quiet_NaN(); // 非末段不指定 target_yaw
         }
         tp.header.stamp = now();
 
@@ -447,9 +683,11 @@ namespace schedule_planner
         }
         path_pub_->publish(tp);
 
+        // 合并后一条轨迹可能由多段拼成，超时按段数等比放宽，否则长路径会被误判超时。
+        const double group_timeout = segment_timeout_ * static_cast<double>(std::max<std::size_t>(1, seg_count));
         const auto deadline = std::chrono::steady_clock::now() +
                               std::chrono::duration_cast<std::chrono::steady_clock::duration>(
-                                  std::chrono::duration<double>(segment_timeout_));
+                                  std::chrono::duration<double>(group_timeout));
         while (rclcpp::ok())
         {
             if (goal_handle->is_canceling() || force_cancel_requested_.load())
@@ -880,7 +1118,56 @@ namespace schedule_planner
             return false;
         }
         segments = std::move(resp->segments);
+        // 这里是 segments 的唯一入口，后续 planMergeGroups / discretize / discretizeGroup /
+        // runSegmentViaController 全部取自它，所以底盘能力约束在这里归一一次就够。
+        applyMoveModeConstraint(segments);
         return true;
+    }
+
+    void SchedulePlannerNode::applyMoveModeConstraint(std::vector<PathSegment>& segments)
+    {
+        using TP = nav_interfaces::msg::TrackingPath;
+        using PS = nav_interfaces::msg::PathSegment;
+
+        if (move_mode_ == TP::MODE_OMNI_TRANS_ROTATION)
+        {
+            return; // 3 = 全能力，三种模式都允许，按段自身的 mode 走（等同于引入该参数之前）
+        }
+
+        const bool to_diff = (move_mode_ == TP::MODE_DIFF);
+        for (auto& s : segments)
+        {
+            const uint8_t before = s.mode;
+            if (to_diff)
+            {
+                s.mode = PS::MODE_DIFF;
+                // 清成 NaN 而不是留着不管：sampler 会把它原样透传进 TrackingPath.hold_direction，
+                // 而该字段在 MODE_DIFF 下无意义，留着只会让下游排查时误判成"还想保向平移"。
+                // backward 保留——差速车支持倒车，那是另一个维度。
+                s.hold_direction = std::numeric_limits<float>::quiet_NaN();
+            }
+            else
+            {
+                s.mode = PS::MODE_OMNI_TRANSLATION;
+                if (std::isnan(s.hold_direction))
+                {
+                    // 全向平移必须有保持朝向，缺了只能由 resolveMode 降级为 DIFF。这不违背
+                    // move_mode=2 的前提：全向底盘本就能做差速运动（差速是全向的子集）；而
+                    // move_mode=1 的差速车不能平移，那才是物理上的硬约束，所以上面那支是强制的。
+                    RCLCPP_WARN_THROTTLE(
+                        get_logger(), *get_clock(), 5000,
+                        "move_mode=2 but segment hold_direction is NaN: this segment will be "
+                        "downgraded to MODE_DIFF by resolveMode.");
+                }
+            }
+            // before==0 是"段未显式指定 mode"，被归一属于预期，不值得告警。
+            if (before != 0 && before != s.mode)
+            {
+                RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
+                                     "move_mode=%u overrides segment mode %u -> %u.",
+                                     move_mode_, before, s.mode);
+            }
+        }
     }
 
     void SchedulePlannerNode::callStop()

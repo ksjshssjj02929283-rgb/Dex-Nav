@@ -604,7 +604,9 @@ def record_command(args, ros_args):
         from lifecycle_msgs.srv import GetState
         from nav_msgs.msg import Odometry
         from nav_interfaces.action import NavigateToPoint
-        from nav_interfaces.srv import GetNavPoint, GetStatus
+        from nav_interfaces.srv import GetAssets
+        from nav_interfaces.msg import NavigationState
+        from rclpy.qos import QoSProfile, DurabilityPolicy, ReliabilityPolicy
         from rclpy.action import ActionClient
         from rclpy.duration import Duration
         from rclpy.node import Node
@@ -670,9 +672,11 @@ def record_command(args, ros_args):
                 self.nav_point_client = ActionClient(
                     self, NavigateToPoint, args.navigate_action)
                 self.get_point_client = self.create_client(
-                    GetNavPoint, args.get_point_service)
-                self.get_status_client = self.create_client(
-                    GetStatus, args.get_status_service)
+                    GetAssets, args.get_assets_service)
+                self.nav_state = None
+                self.create_subscription(
+                    NavigationState, args.nav_state_topic, lambda m: setattr(self, "nav_state", m),
+                    QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL, reliability=ReliabilityPolicy.RELIABLE))
                 self.lifecycle_clients = {
                     name: self.create_client(GetState, f"/{name}/get_state")
                     for name in args.required_lifecycle_nodes
@@ -873,7 +877,7 @@ def record_command(args, ros_args):
         print(
             f"自动路网测试：{args.start_point} -> " + " -> ".join(recorder.route_points))
         preflight_ok = route_preflight(
-            recorder, args, rclpy, GetNavPoint, GetStatus, GetState, State,
+            recorder, args, rclpy, GetAssets, None, GetState, State,
             Time, Duration)
         if preflight_ok:
             recorder.reset_capture()
@@ -933,10 +937,7 @@ def route_preflight(
         return False
     print("  nav2_speed_planner 动态链接检查：通过")
     if not node.get_point_client.wait_for_service(timeout_sec=args.server_timeout):
-        print(f"预检失败：服务不可用：{args.get_point_service}")
-        return False
-    if not node.get_status_client.wait_for_service(timeout_sec=args.server_timeout):
-        print(f"预检失败：服务不可用：{args.get_status_service}")
+        print(f"预检失败：服务不可用：{args.get_assets_service}")
         return False
     if not node.nav_point_client.wait_for_server(timeout_sec=args.server_timeout):
         print(f"预检失败：Action 不可用：{args.navigate_action}")
@@ -957,28 +958,33 @@ def route_preflight(
             return False
         print(f"  Nav2 节点 /{name}: active")
 
-    status_future = node.get_status_client.call_async(get_status_type.Request())
-    rclpy.spin_until_future_complete(node, status_future, timeout_sec=args.server_timeout)
-    if (not status_future.done() or status_future.result() is None or
-            not status_future.result().success):
-        print("预检失败：无法查询当前导航状态。")
+    deadline = node.get_clock().now() + duration_type(seconds=3.0)
+    while node.nav_state is None and node.get_clock().now() < deadline:
+        rclpy.spin_once(node, timeout_sec=0.1)
+    if node.nav_state is None:
+        print(f"预检失败：未收到导航状态：{args.nav_state_topic}")
         return False
-    current_status = status_future.result().status
-    if current_status == "NAVIGATING":
+    current_status = int(node.nav_state.state)
+    if current_status in (1, 2, 3, 4):   # PENDING / RUNNING / PAUSED / BLOCKED
         print("预检失败：当前已有导航任务正在执行，不发送新的路网目标。")
         return False
-    print(f"  当前导航状态：{current_status}")
+    print(f"  当前导航状态：{current_status}（0 IDLE / 5 SUCCEEDED / 6 FAILED / 7 CANCELLED）")
 
+    # 一次 get_assets 取当前地图全部点位，再按名字查
+    request = get_nav_point_type.Request()
+    request.kinds = get_nav_point_type.Request.KIND_POINTS
+    future = node.get_point_client.call_async(request)
+    rclpy.spin_until_future_complete(node, future, timeout_sec=args.server_timeout)
+    if not future.done() or future.result() is None or not future.result().success:
+        print(f"预检失败：无法读取点位：{args.get_assets_service}")
+        return False
+    by_name = {p.name: p for p in future.result().points}
     point_data = {}
     for point_name in dict.fromkeys([args.start_point] + list(args.points)):
-        request = get_nav_point_type.Request()
-        request.name = point_name
-        future = node.get_point_client.call_async(request)
-        rclpy.spin_until_future_complete(node, future, timeout_sec=args.server_timeout)
-        if not future.done() or future.result() is None or not future.result().success:
-            print(f"预检失败：路网点不存在或无法查询：{point_name}")
+        if point_name not in by_name:
+            print(f"预检失败：路网点不存在：{point_name}")
             return False
-        point_data[point_name] = future.result().point
+        point_data[point_name] = by_name[point_name]
         point = point_data[point_name]
         print(f"  点位 {point_name}: x={point.x:.3f}, y={point.y:.3f}, theta={point.theta:.3f}")
 
@@ -1098,9 +1104,9 @@ def build_parser():
     route.add_argument("--start-tolerance", type=float, default=0.35,
                        help="机器人距离L1不超过该值才允许自动开始，单位m")
     route.add_argument("--base-frame", default="base_link")
-    route.add_argument("--navigate-action", default="/map_asset_manager/navigate_to_point")
-    route.add_argument("--get-point-service", default="/map_asset_manager/get_point")
-    route.add_argument("--get-status-service", default="/map_asset_manager/get_status")
+    route.add_argument("--navigate-action", default="/navigation/navigate_to_point")
+    route.add_argument("--get-assets-service", default="/map_asset_manager/get_assets")
+    route.add_argument("--nav-state-topic", default="/navigation/state")
     route.add_argument(
         "--required-lifecycle-nodes", nargs="+",
         default=[

@@ -15,6 +15,8 @@
 #ifndef NAV2_UTIL__SERVICE_CLIENT_HPP_
 #define NAV2_UTIL__SERVICE_CLIENT_HPP_
 
+#include <chrono>
+#include <stdexcept>
 #include <string>
 
 #include "rclcpp/rclcpp.hpp"
@@ -52,6 +54,44 @@ public:
 
   using RequestType = typename ServiceT::Request;
   using ResponseType = typename ServiceT::Response;
+
+  // 服务发现和响应共用同一预算；超时不表示远端操作已取消。
+  typename ResponseType::SharedPtr invoke_with_timeout(
+    typename RequestType::SharedPtr & request,
+    const std::chrono::nanoseconds timeout)
+  {
+    if (timeout <= std::chrono::nanoseconds::zero()) {
+      throw std::invalid_argument("Service timeout must be positive");
+    }
+    const auto start = std::chrono::steady_clock::now();
+    if (!client_->wait_for_service(timeout)) {
+      const auto reason = rclcpp::ok(node_->get_node_base_interface()->get_context()) ?
+        " discovery timed out" : " discovery interrupted";
+      throw std::runtime_error(service_name_ + reason);
+    }
+    if (std::chrono::steady_clock::now() - start >= timeout) {
+      throw std::runtime_error(service_name_ + " call timed out before sending request");
+    }
+
+    auto future_result = client_->async_send_request(request);
+    try {
+      const auto remaining = timeout - std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now() - start);
+      // 负数在执行器中表示无限等待，预算耗尽时不能传给执行器。
+      const auto result = remaining <= std::chrono::nanoseconds::zero() ?
+        rclcpp::FutureReturnCode::TIMEOUT :
+        callback_group_executor_.spin_until_future_complete(future_result, remaining);
+      if (result != rclcpp::FutureReturnCode::SUCCESS) {
+        const auto reason = result == rclcpp::FutureReturnCode::TIMEOUT ?
+          " response timed out" : " response interrupted";
+        throw std::runtime_error(service_name_ + reason);
+      }
+      return future_result.get();
+    } catch (...) {
+      client_->remove_pending_request(future_result);
+      throw;
+    }
+  }
 
   /**
   * @brief Invoke the service and block until completed or timed out

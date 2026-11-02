@@ -31,7 +31,6 @@ dexe_mobile_nav/mobile_perception/
 | `apriltag_detection_node`    | 按服务启动或停止 AprilTag 检测，发布标签位姿。                     |
 | `apriltag_alignment_tf_node` | 发布 AprilTag 原始、对齐和目标位姿 TF，便于调试与目标生成。        |
 | `obstacle_detector_node`     | 根据局部代价地图检测车体前方区域内的障碍物。                       |
-| `charging_pose_service_node` | 采样机器人当前位姿并保存充电位姿。                                 |
 
 `mobile_control_node` 是保留的旧版底盘直控节点。当前建议使用 Action 接口的 `mobile_control_action_node`，不要让两个节点同时向 `/control/cmd_vel` 发布速度。
 
@@ -69,6 +68,12 @@ dexe_mobile_nav/mobile_perception/config/mobile_control_action_params.yaml
 ros2 param get /mobile_control_action_node control_reference_frame
 ros2 param get /mobile_control_action_node xy_tolerance
 ```
+
+## 底盘位姿发布
+
+`pub_current_position.py` 订阅 `/localization/odometry/filtered`，每收到一帧有效
+Odom 就发布一帧 `/feedback/chassis_pose`，发布频率跟随融合 Odom（当前为 25 Hz），
+不再通过 TF 查询位姿。
 
 ## 使用方式
 
@@ -126,9 +131,6 @@ ros2 run mobile_perception apriltag_alignment_tf_node
 # 前方障碍检测
 ros2 run mobile_perception obstacle_detector_node
 
-# 保存充电位姿
-ros2 run mobile_perception charging_pose_service_node
-ros2 service call /save_charging_pose std_srvs/srv/Trigger "{}"
 ```
 
 ## 测试脚本

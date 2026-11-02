@@ -87,6 +87,8 @@ install(DIRECTORY behavior_trees DESTINATION share/${PROJECT_NAME})
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   find_package(ament_cmake_gtest REQUIRED)
+  find_package(tinyxml2_vendor REQUIRED)
+  find_package(TinyXML2 REQUIRED)
   ament_lint_auto_find_test_dependencies()
 
   ament_add_gtest(test_navigation_session_manager
@@ -96,6 +98,20 @@ if(BUILD_TESTING)
     ${dependencies}
   )
   target_link_libraries(test_navigation_session_manager ${library_name})
+
+  ament_add_gtest(test_navigate_to_pose_bt
+    test/test_navigate_to_pose_bt.cpp
+  )
+  ament_target_dependencies(test_navigate_to_pose_bt
+    ${dependencies}
+  )
+  target_link_libraries(test_navigate_to_pose_bt
+    ${library_name}
+    tinyxml2::tinyxml2
+  )
+  target_compile_definitions(test_navigate_to_pose_bt PRIVATE
+    BT_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+  )
 endif()
 
 ament_export_include_directories(include)

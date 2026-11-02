@@ -6,13 +6,18 @@
 
       <!-- 未充电：正常执行完整回充流程 -->
       <Sequence name="ChargingFlow">
-        <!-- 导航到回充点单独最多尝试3次 -->
-        <RetryUntilSuccessful num_attempts="3">
-          <Sequence name="NavigateAttempt">
-            <AttemptLogger label="导航" counter_key="nav_attempt_count" total="3" />
-            <NavigateToCharging goal="{charging_pose}" />
-          </Sequence>
-        </RetryUntilSuccessful>
+        <!-- path_navigation 跳过前置导航；nav2 导航失败时向外返回 FAILURE。 -->
+        <Fallback name="OptionalChargingPointNavigation">
+          <Inverter>
+            <IsChargingNavigationEnabled enabled="{navigate_to_charging}" />
+          </Inverter>
+          <RetryUntilSuccessful num_attempts="3">
+            <Sequence name="NavigateAttempt">
+              <AttemptLogger label="导航" counter_key="nav_attempt_count" total="3" />
+              <NavigateToCharging goal="{charging_pose}" />
+            </Sequence>
+          </RetryUntilSuccessful>
+        </Fallback>
 
         <!-- 导航成功后，回充对接单独最多尝试3次 -->
         <RetryUntilSuccessful num_attempts="3">
@@ -22,7 +27,7 @@
 
             <!-- 二维码检测或视觉对接失败时仅停止检测，不执行退桩。 -->
             <Fallback name="DockOnly">
-              <Dock timeout="60.0" />
+              <Dock timeout="{dock_timeout}" qr_detection_timeout="{qr_detection_timeout}" />
               <Sequence name="StopDetectionAfterDockFailure">
                 <StopDetection />
                 <AlwaysFailure />
@@ -34,7 +39,7 @@
               <CheckCharging timeout="20.0" />
               <Sequence name="UndockAfterChargingFailure">
                 <StopDetection />
-                <Undocking duration="2.0" />
+                <Undocking duration="{undocking_duration}" />
                 <AlwaysFailure />
               </Sequence>
             </Fallback>

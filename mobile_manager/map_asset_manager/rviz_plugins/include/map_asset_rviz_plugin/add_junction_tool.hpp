@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <set>
 #include <string>
 
 #include <OgreManualObject.h>
@@ -31,7 +32,10 @@ public:
 private:
     rclcpp::Node::SharedPtr node_;
     std::string service_prefix_{"/map_asset_manager"};
-    int junction_counter_{0};  ///< auto-ID 计数，用于建议默认名
+    std::set<std::string> used_ids_;  ///< 编辑目标图已有的节点 id（按数据代数重载），自动命名避开它们
+    uint64_t loaded_gen_{0};
+    void reloadIds();
+    std::string nextId();
 
     Ogre::ManualObject* preview_obj_{nullptr};
     Ogre::SceneNode*    preview_node_{nullptr};

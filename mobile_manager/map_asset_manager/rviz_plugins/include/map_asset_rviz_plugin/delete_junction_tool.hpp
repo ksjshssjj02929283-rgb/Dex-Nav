@@ -34,6 +34,7 @@ public:
 private:
     rclcpp::Node::SharedPtr node_;
     std::string service_prefix_{"/map_asset_manager"};
+    uint64_t loaded_gen_{0};
 
     std::vector<EndpointInfo> junctions_;   ///< 当前已加载的 Junction 列表
     const EndpointInfo*       hovered_{nullptr};  ///< 当前高亮的 Junction

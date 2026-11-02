@@ -1,4 +1,14 @@
-"""Launch the schedule_planner node with its parameter file."""
+"""只起 schedule_planner 节点本身（带参数文件）。
+
+注意：schedule_planner_node 现在是 LifecycleNode，**起来后停在 unconfigured**，
+不接 NavigateThroughGraphPoints goal。整栈请用
+`nav2_schedule_planner/path_navigation_bringup.launch.py`（含 path_follower 与
+lifecycle_manager_path_navigation，按 Follower→Schedule 的顺序激活）。
+只想单独调这个节点时，手动驱动：
+
+    ros2 lifecycle set /schedule_planner_node configure
+    ros2 lifecycle set /schedule_planner_node activate
+"""
 
 import os
 
@@ -47,7 +57,7 @@ def generate_launch_description():
 
     return LaunchDescription([
         use_sim_time_arg,
-        # map_asset_manager_params_arg,
-        # map_asset_manager_node,
+        #map_asset_manager_params_arg,
+        #map_asset_manager_node,
         schedule_planner_node,
     ])

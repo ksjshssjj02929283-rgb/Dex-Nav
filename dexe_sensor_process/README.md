@@ -4,11 +4,48 @@
 
 ## 主要文件
 
-- `src/rgbd_to_pointcloud.cpp`：RGBD 深度图转点云、体素降采样、地面高度过滤的核心实现。
+- `src/rgbd_to_pointcloud.cpp`：唯一 ROS 节点，读取公共参数、共享 TF，并管理相机处理通道。
+- `src/camera_pipeline.hpp`：单相机订阅、深度反投影、点云/Scan 发布与独立跨帧状态。
+- `src/obstacle_extractor.hpp` / `.cpp`：`ObstacleExtractor` 多态接口及 `HeightFilterExtractor`、`UVDisparityExtractor` 实现。
 - `launch/rgbd_to_pointcloud.launch.py`：单相机通用启动入口。
-- `launch/multi_camera.launch.py`：前后双 RGBD 相机同时启动入口。
+- `launch/multi_camera.launch.py`：在一个 `rgbd_to_pointcloud` 节点内处理前后双 RGBD 相机。
 - `launch/front_p2c.launch.py`：自动模式中前视 RGBD 点云转换入口。
 - `launch/rear_p2c.launch.py`：自动模式中后视 RGBD 点云转换入口。
+
+## 单节点双相机与算法选择
+
+```bash
+ros2 launch dexe_sensor_process multi_camera.launch.py
+# 只启用前相机
+ros2 launch dexe_sensor_process multi_camera.launch.py enable_rear:=false
+```
+
+双相机入口只创建一个 ROS 节点。前后相机保持各自的输入/输出话题，不拼接点云，也不等待彼此同步。
+两条通道共享 TF Buffer 和公共算法参数，但分别拥有 CameraInfo、外参缓存、分帧计数、Scan 时间基线及算法实例。
+UV 的地面拟合、随机数与查找表缓冲也按相机隔离。相机回调在单线程 executor 中串行执行；同一节点的 TF 订阅使用专用线程，支持带超时的 TF 查询。
+
+- `cameras: [front, rear]` 启用两条通道；相机名称必须非空且不重复，只允许字母、数字和下划线。
+- 多相机话题可通过 `front.input_topic`、`rear.input_topic` 及各自的
+  `<camera>.output_topic_raw` / `output_topic_filtered` / `output_topic_laserscan` 覆盖。
+- `cameras` 默认空列表，兼容原有 `camera_name` 和无前缀话题参数；单相机 launch 入口仍然可用。
+  同时运行 `front_p2c.launch.py` 与 `rear_p2c.launch.py` 仍会产生两个节点，双相机部署应迁移到 `multi_camera.launch.py`。
+- `obstacle_extraction_method` 在启动时选择策略：`height_filter` 先重建 raw 点云，再体素降采样和高度过滤；
+  `uv_disparity` 直接从深度图提取障碍物，无 raw 订阅者时省略 raw 重建。
+- `auto` 仍读取 `hardware_path`：硬件版本 `<= v0.24` 使用高度法，更高版本使用 UV；读取失败回退高度法。
+  不支持的算法名称会使启动失败，避免配置拼写错误被忽略。
+- 双相机 launch 的 `use_sim_time`、`depth_max_range`、`ground_filter_min_height` 参数可覆盖 YAML；
+  不传时保留 YAML 值。`enable_front` / `enable_rear` 都为 false 时不启动处理节点。
+
+例如自定义话题配置：
+
+```yaml
+/**:
+  ros__parameters:
+    cameras: [front, rear]
+    obstacle_extraction_method: height_filter
+    front.input_topic: /orbbec/front
+    rear.input_topic: /orbbec/rear
+```
 
 ## 话题规则
 
@@ -22,6 +59,12 @@
 
 当 `enable_laserscan=true` 时，节点把过滤后的点云转换成 `LaserScan` 并发布；关闭时发布
 `pointcloud2_filtered`。原始点云 `pointcloud2_raw` 在两种模式下都会发布。
+
+每处理一帧深度图都会发布一次 `LaserScan`：即使过滤后点云为 0 点（空旷视野，没有检测到
+障碍），也会发布一帧 `ranges` 全为 `inf` 的 `LaserScan`，并沿用该深度图的采集时间戳。
+因此话题节奏与输入深度图一致，不会因为“这一帧看不到障碍”而停更。下游
+（`collision_monitor`、传感器监测）据此区分“看不到障碍”（有效空帧）和“相机/转换节点
+没有数据”（话题真的停更），不会把空视野误判为数据源失效。
 
 ## 输入帧二分频与时间语义
 
@@ -40,7 +83,7 @@
 3. 根据 encoding 将实机 `16UC1/mono16` 毫米深度或 Gazebo `32FC1` 米深度转换为米；`depth_max_range` 默认值为 `3.0 m`，W1 仿真配置为 `5.0 m`。
 4. 为降低计算量，反投影时按固定像素步长采样。
 5. 发布 `pointcloud2_raw`，该点云不做地面过滤。
-6. 对 raw 点云做体素降采样和地面高度过滤后，发布 `pointcloud2_filtered`。
+6. 高度法对 raw 点云做体素降采样和地面高度过滤；UV 法直接从深度图提取障碍物。按 `enable_laserscan` 发布 Scan 或过滤点云。
 
 节点不接受已有 PointCloud2 作为输入。仿真与真机使用同一条 `Depth + CameraInfo -> PointCloud2` 重建路径；Gazebo 发布的 `/orbbec/{front,rear}/points` 仅可作为仿真测量对照，不属于本包输入接口。
 
@@ -120,4 +163,4 @@ frame_id: 相机深度 frame，例如 chassis_depth_front_link
 - `flag_mls_filter`、`flag_sor_filter`、`mls_*`、`sor_*` 参数目前有声明和传入，但源码未真正执行 MLS/SOR 过滤。
 - TF 失败时，节点会跳过本帧 `pointcloud2_filtered` 发布，避免 costmap 被无效空点云反复清除。
 - 如果 TF 正常但高度过滤后确实没有有效障碍点，节点会发布带 `x/y/z` 字段的合法空点云，避免 Nav2 costmap 因 `Field x does not exist` 崩溃。
-- `pointcloud2_raw` 会随深度图回调发布。如后续需要降低带宽或 CPU 压力，可增加参数控制是否发布 raw，或仅在有订阅者时发布。
+- `pointcloud2_raw` 仅在有订阅者时发布；所有输出均无订阅者时跳过本次处理。

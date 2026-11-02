@@ -36,14 +36,13 @@ find_package(nlohmann_json REQUIRED)
 find_package(std_srvs REQUIRED)
 find_package(nav_interfaces REQUIRED)
 
-add_executable(charging_pose_service_node src/charging_pose_service.cpp)
-ament_target_dependencies(charging_pose_service_node
-  rclcpp std_srvs tf2_ros geometry_msgs tf2_geometry_msgs nlohmann_json
-)
-install( TARGETS
-    charging_pose_service_node
-    DESTINATION lib/${PROJECT_NAME}) 
-
+if(BUILD_TESTING)
+  find_package(ament_cmake_pytest REQUIRED)
+  ament_add_pytest_test(
+    test_pub_current_position
+    test/test_pub_current_position.py
+  )
+endif()
 
 add_executable(apriltag_detection_node
   src/apriltag_detection_node.cpp
@@ -104,6 +103,13 @@ install(TARGETS
   mobile_control_node
   DESTINATION lib/${PROJECT_NAME})
 
+# pub_current_position
+add_executable(pub_current_position src/pub_current_position.cpp)
+ament_target_dependencies(pub_current_position rclcpp geometry_msgs nav_msgs)
+install(TARGETS
+  pub_current_position
+  DESTINATION lib/${PROJECT_NAME})
+
 # mobile_control_action_node
 add_executable(mobile_control_action_node src/mobile_control_action_node.cpp)
 ament_target_dependencies(
@@ -143,8 +149,6 @@ install(PROGRAMS
   scripts/detect_apriltag_nostop.py
   scripts/detect_apriltags_service.py
   scripts/control_robot.py
-  scripts/nav_then_precise.py
-  scripts/nav_then_precise_bt.py
   scripts/goal_controller.py
   scripts/stop_robot.py
   scripts/spin_robot.py
@@ -155,8 +159,6 @@ install(PROGRAMS
   scripts/nav_goal_publisher_loop.py
   scripts/pub_current_position.py
   scripts/pub_goal_loop_office.py
-  scripts/create_charging_pose.py
-  scripts/nav_then_precise_bt.py
   scripts/nav_goal_server.py
   DESTINATION lib/${PROJECT_NAME})
 

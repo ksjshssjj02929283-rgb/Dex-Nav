@@ -62,9 +62,6 @@ bool DockingController::atGoal(const geometry_msgs::msg::Pose& current_pose,
     double dy = std::abs(current_pose.position.y - goal_pose.position.y);
     double dTh = std::abs(normalizePi(yaw));
     bool res = (d < linear_tolerance_ && dTh < angular_tolerance_);
-    // if (res) {
-    std::cout << "dist_err = " << d << ", theta_yaw_err = " << dTh << std::endl;
-    // }
     return res;
 }
 

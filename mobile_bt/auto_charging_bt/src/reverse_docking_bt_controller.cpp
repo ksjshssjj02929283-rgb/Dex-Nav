@@ -17,9 +17,20 @@ ReverseDockingBtController::ReverseDockingBtController(std::shared_ptr<AutoCharg
 
 ReverseDockingBtController::~ReverseDockingBtController() { stop(); }
 
+std::optional<double> ReverseDockingBtController::samplingTargetMissingDuration() const {
+    if (!isSamplingStage() || !sampling_watchdog_start_time_) {
+        return std::nullopt;
+    }
+
+    const rclcpp::Time reference_time =
+        last_valid_target_time_.value_or(sampling_watchdog_start_time_.value());
+    return std::max(0.0, (charging_node_->now() - reference_time).seconds());
+}
+
 void ReverseDockingBtController::start() {
     resetState();
     configureFromParameters();
+    enterSamplingStage(Stage::INITIAL_SAMPLING);
 
     tf_buffer_ = std::make_unique<tf2_ros::Buffer>(charging_node_->get_clock());
     tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
@@ -31,7 +42,8 @@ void ReverseDockingBtController::start() {
 
     double control_rate = charging_node_->get_parameter("dock.reverse.control_rate").as_double();
     if (control_rate <= 0.0) {
-        RCLCPP_WARN(charging_node_->get_logger(), "Invalid dock reverse control_rate %.3f, use 20.0 Hz instead",
+        RCLCPP_WARN(charging_node_->get_logger(),
+                    "Invalid reverse control rate; value=%.3f Hz, fallback=20.0 Hz.",
                     control_rate);
         control_rate = 20.0;
     }
@@ -39,8 +51,6 @@ void ReverseDockingBtController::start() {
     timer_ = charging_node_->create_wall_timer(std::chrono::duration_cast<std::chrono::nanoseconds>(period),
                                                [this]() { controlLoop(); });
 
-    RCLCPP_INFO(charging_node_->get_logger(), "[Dock] start topic=%s base=%s fixed=%s",
-                target_topic_.c_str(), base_frame_.c_str(), fixed_frame_.c_str());
     logStageBanner(stage_);
 }
 
@@ -96,45 +106,45 @@ std::string ReverseDockingBtController::failureReasonSummary() const {
     std::ostringstream stream;
     switch (classifyFailureReason()) {
         case FailureReason::NO_TARGET:
-            return "未收到二维码目标消息，请检查相机、AprilTag 检测节点和目标话题";
+            return "No AprilTag target received.";
         case FailureReason::FRAME_MISMATCH:
-            return "二维码目标坐标系全部不匹配，期望坐标系为 " + base_frame_;
+            return "Target frame mismatch; expected " + base_frame_ + ".";
         case FailureReason::INVALID_SAMPLES:
-            stream << "收到二维码目标，但没有可用样本"
-                   << "（坐标系错误=" << frame_rejected_count_
-                   << "，时间戳过期=" << stale_sample_count_
-                   << "，时间戳超前=" << future_sample_count_
-                   << "，距离超限=" << distance_rejected_count_ << "）";
+            stream << "No valid target samples; frame=" << frame_rejected_count_
+                   << ", stale=" << stale_sample_count_
+                   << ", future=" << future_sample_count_
+                   << ", distance=" << distance_rejected_count_ << ".";
             return stream.str();
         case FailureReason::INSUFFICIENT_SAMPLES:
-            stream << stageDescription() << "阶段有效样本不足，当前 "
-                   << target_samples_.size() << "/" << currentMinValidSampleCount();
+            stream << "Insufficient samples; stage=" << stageName()
+                   << ", valid=" << target_samples_.size() << "/"
+                   << currentMinValidSampleCount();
             if (last_valid_target_time_) {
-                stream << "，最近有效目标距今 "
+                stream << ", last="
                        << std::max(
                               0.0, (charging_node_->now() - last_valid_target_time_.value()).seconds())
-                       << " 秒";
+                       << " s.";
             } else {
-                stream << "，当前采样阶段尚未收到有效目标";
+                stream << ", last=none.";
             }
             return stream.str();
         case FailureReason::FINAL_SAMPLE_UNSTABLE:
-            stream << "最终采样结果相对第二阶段到位结果变差，已触发 "
-                   << final_sample_inconsistent_count_ << " 次重新采样，目标检测结果不稳定";
+            stream << "Final target unstable; resamples="
+                   << final_sample_inconsistent_count_ << ".";
             return stream.str();
         case FailureReason::TF_LOCK_FAILED:
-            return "二维码目标无法锁定到固定坐标系 " + fixed_frame_ + "，请检查 TF";
+            return "Target lock failed; fixed_frame=" + fixed_frame_ + ".";
         case FailureReason::TF_TRACKING_FAILED:
-            return "已锁定二维码目标，但无法转换到机器人坐标系 " + base_frame_ + "，请检查 TF";
+            return "Target tracking failed; base_frame=" + base_frame_ + ".";
         case FailureReason::CONTROL_TIMEOUT:
-            stream << stageDescription();
+            stream << "Docking timed out; stage=" << stageName();
             if (!isSamplingStage()) {
-                stream << "，控制状态为" << controllerStageDescription();
+                stream << ", controller=" << controller_.stageName();
             }
-            stream << "，未在规定时间内完成对接";
+            stream << ".";
             return stream.str();
     }
-    return "未知失败原因";
+    return "Unknown docking failure.";
 }
 
 void ReverseDockingBtController::configureFromParameters() {
@@ -148,7 +158,7 @@ void ReverseDockingBtController::configureFromParameters() {
         charging_node_->get_parameter("dock.reverse.initial_sampling_duration").as_double();
     if (initial_sampling_duration_ <= 0.0) {
         RCLCPP_WARN(charging_node_->get_logger(),
-                    "Invalid initial_sampling_duration %.3f, use 1.0 s instead",
+                    "Invalid initial sampling duration; value=%.3f s, fallback=1.0 s.",
                     initial_sampling_duration_);
         initial_sampling_duration_ = 1.0;
     }
@@ -157,7 +167,7 @@ void ReverseDockingBtController::configureFromParameters() {
         charging_node_->get_parameter("dock.reverse.second_sampling_duration").as_double();
     if (second_sampling_duration_ <= 0.0) {
         RCLCPP_WARN(charging_node_->get_logger(),
-                    "Invalid second_sampling_duration %.3f, use 2.0 s instead",
+                    "Invalid second sampling duration; value=%.3f s, fallback=2.0 s.",
                     second_sampling_duration_);
         second_sampling_duration_ = 2.0;
     }
@@ -166,7 +176,7 @@ void ReverseDockingBtController::configureFromParameters() {
         charging_node_->get_parameter("dock.reverse.final_sampling_duration").as_double();
     if (final_sampling_duration_ <= 0.0) {
         RCLCPP_WARN(charging_node_->get_logger(),
-                    "Invalid final_sampling_duration %.3f, use 1.0 s instead",
+                    "Invalid final sampling duration; value=%.3f s, fallback=1.0 s.",
                     final_sampling_duration_);
         final_sampling_duration_ = 1.0;
     }
@@ -174,7 +184,7 @@ void ReverseDockingBtController::configureFromParameters() {
         charging_node_->get_parameter("dock.reverse.final_resampling_duration").as_double();
     if (final_resampling_duration_ <= 0.0) {
         RCLCPP_WARN(charging_node_->get_logger(),
-                    "Invalid final_resampling_duration %.3f, use 2.0 s instead",
+                    "Invalid final resampling duration; value=%.3f s, fallback=2.0 s.",
                     final_resampling_duration_);
         final_resampling_duration_ = 2.0;
     }
@@ -189,14 +199,15 @@ void ReverseDockingBtController::configureFromParameters() {
     min_valid_sample_count_ = charging_node_->get_parameter("dock.reverse.min_valid_sample_count").as_int();
     if (min_valid_sample_count_ < 1) {
         RCLCPP_WARN(charging_node_->get_logger(),
-                    "Invalid min_valid_sample_count %d, use 1 instead", min_valid_sample_count_);
+                    "Invalid minimum sample count; value=%d, fallback=1.",
+                    min_valid_sample_count_);
         min_valid_sample_count_ = 1;
     }
     initial_min_valid_sample_count_ =
         charging_node_->get_parameter("dock.reverse.initial_min_valid_sample_count").as_int();
     if (initial_min_valid_sample_count_ < 1) {
         RCLCPP_WARN(charging_node_->get_logger(),
-                    "Invalid initial_min_valid_sample_count %d, use %d instead",
+                    "Invalid initial sample count; value=%d, fallback=%d.",
                     initial_min_valid_sample_count_, min_valid_sample_count_);
         initial_min_valid_sample_count_ = min_valid_sample_count_;
     }
@@ -204,7 +215,7 @@ void ReverseDockingBtController::configureFromParameters() {
         charging_node_->get_parameter("dock.reverse.second_min_valid_sample_count").as_int();
     if (second_min_valid_sample_count_ < 1) {
         RCLCPP_WARN(charging_node_->get_logger(),
-                    "Invalid second_min_valid_sample_count %d, use %d instead",
+                    "Invalid second sample count; value=%d, fallback=%d.",
                     second_min_valid_sample_count_, min_valid_sample_count_);
         second_min_valid_sample_count_ = min_valid_sample_count_;
     }
@@ -212,7 +223,7 @@ void ReverseDockingBtController::configureFromParameters() {
         charging_node_->get_parameter("dock.reverse.final_min_valid_sample_count").as_int();
     if (final_min_valid_sample_count_ < 1) {
         RCLCPP_WARN(charging_node_->get_logger(),
-                    "Invalid final_min_valid_sample_count %d, use %d instead",
+                    "Invalid final sample count; value=%d, fallback=%d.",
                     final_min_valid_sample_count_, min_valid_sample_count_);
         final_min_valid_sample_count_ = min_valid_sample_count_;
     }
@@ -220,21 +231,23 @@ void ReverseDockingBtController::configureFromParameters() {
         charging_node_->get_parameter("dock.reverse.final_resample_min_valid_sample_count").as_int();
     if (final_resample_min_valid_sample_count_ < 1) {
         RCLCPP_WARN(charging_node_->get_logger(),
-                    "Invalid final_resample_min_valid_sample_count %d, use %d instead",
+                    "Invalid final resample count; value=%d, fallback=%d.",
                     final_resample_min_valid_sample_count_, final_min_valid_sample_count_);
         final_resample_min_valid_sample_count_ = final_min_valid_sample_count_;
     }
     sample_trim_ratio_ = charging_node_->get_parameter("dock.reverse.sample_trim_ratio").as_double();
     if (sample_trim_ratio_ < 0.0 || sample_trim_ratio_ >= 0.5) {
         RCLCPP_WARN(charging_node_->get_logger(),
-                    "Invalid sample_trim_ratio %.3f, use 0.20 instead", sample_trim_ratio_);
+                    "Invalid sample trim ratio; value=%.3f, fallback=0.20.",
+                    sample_trim_ratio_);
         sample_trim_ratio_ = 0.20;
     }
     final_resample_max_attempts_ =
         charging_node_->get_parameter("dock.reverse.final_resample_max_attempts").as_int();
     if (final_resample_max_attempts_ < 0) {
         RCLCPP_WARN(charging_node_->get_logger(),
-                    "Invalid final_resample_max_attempts %d, use 3 instead", final_resample_max_attempts_);
+                    "Invalid final resample limit; value=%d, fallback=3.",
+                    final_resample_max_attempts_);
         final_resample_max_attempts_ = 3;
     }
     final_resample_linear_margin_ =
@@ -311,6 +324,7 @@ void ReverseDockingBtController::configureFromParameters() {
 }
 
 void ReverseDockingBtController::targetCallback(const geometry_msgs::msg::PoseStamped::SharedPtr msg) {
+    // 运动阶段只跟踪已锁定到 fixed_frame 的目标，不再读取二维码消息。
     if (!isSamplingStage()) {
         return;
     }
@@ -318,8 +332,9 @@ void ReverseDockingBtController::targetCallback(const geometry_msgs::msg::PoseSt
     ++target_message_count_;
     if (!msg->header.frame_id.empty() && msg->header.frame_id != base_frame_) {
         ++frame_rejected_count_;
-        RCLCPP_WARN(charging_node_->get_logger(), "Ignore dock target in frame '%s'; expected '%s'",
-                    msg->header.frame_id.c_str(), base_frame_.c_str());
+        RCLCPP_WARN_THROTTLE(charging_node_->get_logger(), *charging_node_->get_clock(), 3000,
+                             "Dock target ignored; frame=%s, expected=%s.",
+                             msg->header.frame_id.c_str(), base_frame_.c_str());
         return;
     }
 
@@ -337,9 +352,10 @@ void ReverseDockingBtController::targetCallback(const geometry_msgs::msg::PoseSt
         return;
     }
 
+    const auto now = charging_node_->now();
     target_samples_.push_back(msg->pose);
     ++valid_sample_count_;
-    last_valid_target_time_ = charging_node_->now();
+    last_valid_target_time_ = now;
 }
 
 void ReverseDockingBtController::controlLoop() {
@@ -357,11 +373,10 @@ void ReverseDockingBtController::controlLoop() {
 
     if (!locked_target_fixed_) {
         RCLCPP_WARN_THROTTLE(charging_node_->get_logger(), *charging_node_->get_clock(), 3000,
-                             "[Dock] target=none stage=%s，返回 INITIAL_SAMPLING", stageName());
+                             "[Dock] Target missing; stage=%s, next=INITIAL_SAMPLING.",
+                             stageName());
         logStageBanner(Stage::INITIAL_SAMPLING);
-        stage_ = Stage::INITIAL_SAMPLING;
-        target_samples_.clear();
-        sampling_started_ = false;
+        enterSamplingStage(Stage::INITIAL_SAMPLING);
         publishZero();
         return;
     }
@@ -384,17 +399,12 @@ void ReverseDockingBtController::controlLoop() {
         if (stage_ == Stage::SECOND_APPROACH && !second_stage_commanded_ && !second_immediate_recheck_done_) {
             second_immediate_recheck_done_ = true;
             RCLCPP_INFO(charging_node_->get_logger(),
-                        "Second reverse dock target is already within tolerance before moving; resample once for %.2f s",
-                        second_sampling_duration_);
-            RCLCPP_INFO(charging_node_->get_logger(),
-                        "第二阶段刚开始就已满足到位阈值：先不直接结束，重新采样 %.2f 秒确认目标稳定",
+                        "Second target already reached; resampling for %.2f s.",
                         second_sampling_duration_);
             locked_target_fixed_.reset();
-            target_samples_.clear();
-            sampling_started_ = false;
             controller_.reset();
             logStageBanner(Stage::SECOND_SAMPLING);
-            stage_ = Stage::SECOND_SAMPLING;
+            enterSamplingStage(Stage::SECOND_SAMPLING);
             return;
         }
         handleReachedTarget(target_pose_base.value());
@@ -409,7 +419,8 @@ void ReverseDockingBtController::controlLoop() {
     charging_node_->publishTwist(v, w);
 
     RCLCPP_INFO_THROTTLE(charging_node_->get_logger(), *charging_node_->get_clock(), 2000,
-                         "[DockControl] stage=%s state=%s target=(%.3f,%.3f) cmd=(%.3f,%.3f)",
+                         "[DockControl] stage=%s, state=%s, target=(%.3f,%.3f), "
+                         "cmd=(%.3f,%.3f).",
                          stageName(), controller_.stageName().c_str(), target_pose_base->position.x,
                          target_pose_base->position.y, v, w);
 }
@@ -417,7 +428,7 @@ void ReverseDockingBtController::controlLoop() {
 void ReverseDockingBtController::handleSamplingStage() {
     if (!sampling_started_) {
         RCLCPP_INFO_THROTTLE(charging_node_->get_logger(), *charging_node_->get_clock(), 5000,
-                             "[DockSample] stage=%s 等待 topic=%s",
+                             "[DockSample] Waiting; stage=%s, topic=%s.",
                              stageName(), target_topic_.c_str());
         return;
     }
@@ -434,15 +445,15 @@ void ReverseDockingBtController::handleSamplingStage() {
             const double last_valid_age = std::max(
                 0.0, (charging_node_->now() - last_valid_target_time_.value()).seconds());
             RCLCPP_WARN_THROTTLE(charging_node_->get_logger(), *charging_node_->get_clock(), 3000,
-                                 "[DockSample] stage=%s recv=%llu valid=%zu/%d "
-                                 "elapsed=%.1fs last=%.1fs，继续等待",
+                                 "[DockSample] Waiting; stage=%s, recv=%llu, valid=%zu/%d, "
+                                 "elapsed=%.1f s, last=%.1f s.",
                                  stageName(),
                                  static_cast<unsigned long long>(sampling_received_count_),
                                  target_samples_.size(), min_valid_sample_count, elapsed, last_valid_age);
         } else {
             RCLCPP_WARN_THROTTLE(charging_node_->get_logger(), *charging_node_->get_clock(), 3000,
-                                 "[DockSample] stage=%s recv=%llu valid=%zu/%d "
-                                 "elapsed=%.1fs last=none，继续等待",
+                                 "[DockSample] Waiting; stage=%s, recv=%llu, valid=%zu/%d, "
+                                 "elapsed=%.1f s, last=none.",
                                  stageName(),
                                  static_cast<unsigned long long>(sampling_received_count_),
                                  target_samples_.size(), min_valid_sample_count, elapsed);
@@ -453,12 +464,12 @@ void ReverseDockingBtController::handleSamplingStage() {
     const geometry_msgs::msg::Pose averaged_target_base = averageTargetSamples();
     if (!isLockedTargetReasonable(averaged_target_base)) {
         RCLCPP_WARN(charging_node_->get_logger(),
-                    "Reject averaged dock target in %s: base=(%.3f, %.3f), dist=%.3f exceeds max %.3f; restart sampling",
+                    "Averaged dock target rejected; stage=%s, base=(%.3f,%.3f), "
+                    "distance=%.3f/%.3f m.",
                     stageName(), averaged_target_base.position.x, averaged_target_base.position.y,
                     std::hypot(averaged_target_base.position.x, averaged_target_base.position.y),
                     currentSamplingMaxDistance());
-        target_samples_.clear();
-        sampling_started_ = false;
+        enterSamplingStage(stage_);
         publishZero();
         return;
     }
@@ -466,8 +477,7 @@ void ReverseDockingBtController::handleSamplingStage() {
     if (stage_ == Stage::FINAL_SAMPLING && !isFinalSampleConsistentWithSecondReach(averaged_target_base)) {
         ++final_sampling_retry_count_;
         ++final_sample_inconsistent_count_;
-        target_samples_.clear();
-        sampling_started_ = false;
+        enterSamplingStage(stage_);
         publishZero();
         return;
     }
@@ -496,7 +506,8 @@ void ReverseDockingBtController::handleSamplingStage() {
         final_sampling_retry_count_ = 0;
     }
     RCLCPP_INFO(charging_node_->get_logger(),
-                "[DockTarget] stage=%s samples=%zu base=(%.3f,%.3f) fixed=(%.3f,%.3f) next=%s",
+                "[DockTarget] Locked; stage=%s, samples=%zu, base=(%.3f,%.3f), "
+                "fixed=(%.3f,%.3f), next=%s.",
                 stageName(), sample_count, averaged_target_base.position.x, averaged_target_base.position.y,
                 locked_target_fixed_->pose.position.x, locked_target_fixed_->pose.position.y,
                 next_stage == Stage::FIRST_APPROACH ? "FIRST_APPROACH" :
@@ -504,6 +515,7 @@ void ReverseDockingBtController::handleSamplingStage() {
     logTargetError(averaged_target_base, error_prefix);
     logStageBanner(next_stage);
     stage_ = next_stage;
+    sampling_watchdog_start_time_.reset();
 }
 
 void ReverseDockingBtController::handleReachedTarget(const geometry_msgs::msg::Pose& target_pose_base) {
@@ -517,13 +529,11 @@ void ReverseDockingBtController::handleReachedTarget(const geometry_msgs::msg::P
 
     if (stage_ == Stage::FIRST_APPROACH) {
         locked_target_fixed_.reset();
-        target_samples_.clear();
-        sampling_started_ = false;
         second_immediate_recheck_done_ = false;
         second_stage_commanded_ = false;
         controller_.reset();
         logStageBanner(Stage::SECOND_SAMPLING);
-        stage_ = Stage::SECOND_SAMPLING;
+        enterSamplingStage(Stage::SECOND_SAMPLING);
         return;
     }
 
@@ -531,25 +541,26 @@ void ReverseDockingBtController::handleReachedTarget(const geometry_msgs::msg::P
         second_reached_error_ = calculateTargetError(target_pose_base);
         final_sampling_retry_count_ = 0;
         locked_target_fixed_.reset();
-        target_samples_.clear();
-        sampling_started_ = false;
         controller_.reset();
         logStageBanner(Stage::FINAL_SAMPLING);
-        stage_ = Stage::FINAL_SAMPLING;
+        enterSamplingStage(Stage::FINAL_SAMPLING);
         return;
     }
 
     if (stage_ == Stage::FINAL_APPROACH) {
         logStageBanner(Stage::FINISHED);
         stage_ = Stage::FINISHED;
+        sampling_watchdog_start_time_.reset();
         controller_.reset();
         controller_done_ = true;
         return;
     }
 
-    RCLCPP_WARN(charging_node_->get_logger(), "Reached target in unexpected reverse dock stage %s", stageName());
+    RCLCPP_WARN(charging_node_->get_logger(),
+                "Dock target reached in unexpected stage; stage=%s.", stageName());
     logStageBanner(Stage::FINISHED);
     stage_ = Stage::FINISHED;
+    sampling_watchdog_start_time_.reset();
     controller_done_ = true;
 }
 
@@ -607,8 +618,17 @@ void ReverseDockingBtController::startSampling(double duration) {
     last_valid_target_time_.reset();
     target_samples_.clear();
     RCLCPP_INFO(charging_node_->get_logger(),
-                "[DockSample] start stage=%s duration=%.1fs min=%d",
+                "[DockSample] Started; stage=%s, duration=%.1f s, min=%d.",
                 stageName(), duration, currentMinValidSampleCount());
+}
+
+void ReverseDockingBtController::enterSamplingStage(Stage stage) {
+    stage_ = stage;
+    target_samples_.clear();
+    sampling_started_ = false;
+    sampling_received_count_ = 0;
+    last_valid_target_time_.reset();
+    sampling_watchdog_start_time_ = charging_node_->now();
 }
 
 bool ReverseDockingBtController::isSampleFresh(const geometry_msgs::msg::PoseStamped& msg) {
@@ -625,7 +645,8 @@ bool ReverseDockingBtController::isSampleFresh(const geometry_msgs::msg::PoseSta
     if (age > max_sample_age_) {
         ++stale_sample_count_;
         RCLCPP_WARN_THROTTLE(charging_node_->get_logger(), *charging_node_->get_clock(), 3000,
-                             "[DockSample] 丢弃：时间戳过期 stage=%s age=%.2fs limit=%.2fs",
+                             "[DockSample] Rejected; stale stamp, stage=%s, age=%.2f s, "
+                             "limit=%.2f s.",
                              stageName(), age, max_sample_age_);
         return false;
     }
@@ -633,7 +654,7 @@ bool ReverseDockingBtController::isSampleFresh(const geometry_msgs::msg::PoseSta
     if (age < -0.1) {
         ++future_sample_count_;
         RCLCPP_WARN_THROTTLE(charging_node_->get_logger(), *charging_node_->get_clock(), 3000,
-                             "[DockSample] 丢弃：时间戳超前 stage=%s age=%.2fs",
+                             "[DockSample] Rejected; future stamp, stage=%s, age=%.2f s.",
                              stageName(), age);
         return false;
     }
@@ -650,8 +671,10 @@ bool ReverseDockingBtController::isSampleDistanceValid(const geometry_msgs::msg:
     const double distance = std::hypot(pose.position.x, pose.position.y);
     if (distance > max_distance) {
         RCLCPP_WARN_THROTTLE(charging_node_->get_logger(), *charging_node_->get_clock(), 3000,
-                             "[DockSample] 丢弃：距离超限 stage=%s xy=(%.3f,%.3f) dist=%.3fm limit=%.3fm",
-                             stageName(), pose.position.x, pose.position.y, distance, max_distance);
+                             "[DockSample] Rejected; stage=%s, xy=(%.3f,%.3f), "
+                             "distance=%.3f/%.3f m.",
+                             stageName(), pose.position.x, pose.position.y, distance,
+                             max_distance);
         return false;
     }
 
@@ -727,41 +750,41 @@ const char* ReverseDockingBtController::stageDescription() const {
 const char* ReverseDockingBtController::stageDescription(Stage stage) const {
     switch (stage) {
         case Stage::INITIAL_SAMPLING:
-            return "初始采样：停车收集 AprilTag 目标，用于第一阶段粗靠近";
+            return "Collect initial target samples.";
         case Stage::FIRST_APPROACH:
-            return "第一阶段粗靠近：使用初始锁定目标倒车接近";
+            return "Approach the initial target.";
         case Stage::SECOND_SAMPLING:
-            return "二次采样：第一阶段到位后停车，近距离重新采样";
+            return "Collect close-range target samples.";
         case Stage::SECOND_APPROACH:
-            return "第二阶段精靠近：使用二次锁定目标低速靠近";
+            return "Approach the refined target.";
         case Stage::FINAL_SAMPLING:
-            return "最终采样：第二阶段到位后确认最终目标";
+            return "Collect final target samples.";
         case Stage::FINAL_APPROACH:
-            return "最终精调：使用最终锁定目标低速修正位置和姿态";
+            return "Align with the final target.";
         case Stage::FINISHED:
-            return "对接控制完成：持续发布零速度";
+            return "Docking control complete.";
     }
-    return "未知阶段";
+    return "Unknown stage.";
 }
 
 const char* ReverseDockingBtController::controllerStageDescription() const {
     const std::string controller_stage = controller_.stageName();
     if (controller_stage == "APPROACHING") {
-        return "倒车靠近目标";
+        return "Approaching target.";
     }
     if (controller_stage == "ADJUST_HEADING") {
-        return "优先修正倒车方向";
+        return "Adjusting heading.";
     }
     if (controller_stage == "ADJUST_DISTANCE") {
-        return "继续修正距离和横向误差";
+        return "Adjusting distance.";
     }
     if (controller_stage == "ROTATING_TO_GOAL") {
-        return "距离很近，修正最终姿态";
+        return "Adjusting final yaw.";
     }
     if (controller_stage == "FINISH") {
-        return "控制器内部已到位";
+        return "Target reached.";
     }
-    return "未知控制器阶段";
+    return "Unknown controller stage.";
 }
 
 ReverseDockingBtController::FailureReason ReverseDockingBtController::classifyFailureReason() const {
@@ -813,7 +836,8 @@ const char* ReverseDockingBtController::failureReasonCode(FailureReason reason) 
 }
 
 void ReverseDockingBtController::logStageBanner(Stage stage) const {
-    RCLCPP_INFO(charging_node_->get_logger(), "[DockStage] %s：%s", stageName(stage), stageDescription(stage));
+    RCLCPP_INFO(charging_node_->get_logger(), "[DockStage] %s; %s", stageName(stage),
+                stageDescription(stage));
 }
 
 std::optional<geometry_msgs::msg::PoseStamped> ReverseDockingBtController::lockTargetInFixedFrame(
@@ -833,7 +857,8 @@ std::optional<geometry_msgs::msg::PoseStamped> ReverseDockingBtController::lockT
     } catch (const tf2::TransformException& ex) {
         ++lock_tf_failure_count_;
         RCLCPP_WARN_THROTTLE(charging_node_->get_logger(), *charging_node_->get_clock(), 3000,
-                             "[DockTF] 锁定目标失败 fixed=%s error=%s", fixed_frame_.c_str(), ex.what());
+                             "[DockTF] Target lock failed; fixed=%s, error=%s.",
+                             fixed_frame_.c_str(), ex.what());
         return std::nullopt;
     }
 }
@@ -851,7 +876,7 @@ std::optional<geometry_msgs::msg::Pose> ReverseDockingBtController::getLockedTar
     } catch (const tf2::TransformException& ex) {
         ++tracking_tf_failure_count_;
         RCLCPP_WARN_THROTTLE(charging_node_->get_logger(), *charging_node_->get_clock(), 3000,
-                             "[DockTF] 目标转换失败 fixed=%s base=%s error=%s",
+                             "[DockTF] Target transform failed; fixed=%s, base=%s, error=%s.",
                              fixed_frame_.c_str(), base_frame_.c_str(), ex.what());
         return std::nullopt;
     }
@@ -949,9 +974,9 @@ bool ReverseDockingBtController::isFinalSampleConsistentWithSecondReach(
 
     if (final_sampling_retry_count_ >= final_resample_max_attempts_) {
         RCLCPP_WARN(charging_node_->get_logger(),
-                    "Accept final dock target after %d resampling attempts although it is worse than second reached: "
-                    "second=(linear=%.4f lateral=%.4f yaw=%.4f), final=(linear=%.4f lateral=%.4f yaw=%.4f), "
-                    "margin=(linear=%.4f lateral=%.4f yaw=%.4f)",
+                    "Final dock target accepted after resampling; attempts=%d, "
+                    "second=(%.4f,%.4f,%.4f), final=(%.4f,%.4f,%.4f), "
+                    "margin=(%.4f,%.4f,%.4f).",
                     final_sampling_retry_count_, second_reached_error_->linear, second_reached_error_->lateral,
                     second_reached_error_->final_yaw, final_error.linear, final_error.lateral, final_error.final_yaw,
                     final_resample_linear_margin_, final_resample_lateral_margin_, final_resample_yaw_margin_);
@@ -959,9 +984,9 @@ bool ReverseDockingBtController::isFinalSampleConsistentWithSecondReach(
     }
 
     RCLCPP_WARN(charging_node_->get_logger(),
-                "Reject final dock target and resample (%d/%d): error is worse than second reached. "
-                "second=(linear=%.4f lateral=%.4f yaw=%.4f), final=(linear=%.4f lateral=%.4f yaw=%.4f), "
-                "margin=(linear=%.4f lateral=%.4f yaw=%.4f)",
+                "Final dock target rejected; resample=%d/%d, "
+                "second=(%.4f,%.4f,%.4f), final=(%.4f,%.4f,%.4f), "
+                "margin=(%.4f,%.4f,%.4f).",
                 final_sampling_retry_count_ + 1, final_resample_max_attempts_,
                 second_reached_error_->linear, second_reached_error_->lateral, second_reached_error_->final_yaw,
                 final_error.linear, final_error.lateral, final_error.final_yaw,
@@ -1015,7 +1040,8 @@ void ReverseDockingBtController::logTargetError(const geometry_msgs::msg::Pose& 
     const double reverse_heading_error = normalizePi(std::atan2(local_y, local_x) + M_PI);
     const double final_yaw_error = normalizePi(tf2::getYaw(target_pose_base.orientation) - final_yaw_offset_);
     RCLCPP_INFO(charging_node_->get_logger(),
-                "[DockError] point=%s x=%.3f y=%.3f dist=%.3f heading=%.3f yaw=%.3f",
+                "[DockError] point=%s, x=%.3f, y=%.3f, distance=%.3f, "
+                "heading=%.3f, yaw=%.3f.",
                 prefix.c_str(), local_x, local_y, distance, reverse_heading_error, final_yaw_error);
 }
 
@@ -1030,6 +1056,7 @@ void ReverseDockingBtController::resetState() {
     locked_target_fixed_.reset();
     second_reached_error_.reset();
     last_valid_target_time_.reset();
+    sampling_watchdog_start_time_.reset();
     sampling_received_count_ = 0;
     target_message_count_ = 0;
     valid_sample_count_ = 0;

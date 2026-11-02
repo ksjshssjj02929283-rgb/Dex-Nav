@@ -8,6 +8,11 @@ find_package(rclcpp REQUIRED)
 find_package(rclcpp_components REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
+find_package(nav_msgs REQUIRED)
+find_package(std_srvs REQUIRED)
+find_package(visualization_msgs REQUIRED)
+find_package(std_msgs REQUIRED)
+find_package(nav_interfaces REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
@@ -30,6 +35,11 @@ set(dependencies
   rclcpp_components
   sensor_msgs
   geometry_msgs
+  nav_msgs
+  std_srvs
+  visualization_msgs
+  std_msgs
+  nav_interfaces
   tf2
   tf2_ros
   tf2_geometry_msgs
@@ -42,12 +52,14 @@ set(library_name ${executable_name}_core)
 
 add_library(${library_name} SHARED
   src/collision_monitor_node.cpp
+  src/collision_monitor_node_visualization.cpp
   src/polygon.cpp
   src/circle.cpp
   src/source.cpp
   src/scan.cpp
   src/pointcloud.cpp
   src/range.cpp
+  src/range_filter.cpp
   src/kinematics.cpp
 )
 

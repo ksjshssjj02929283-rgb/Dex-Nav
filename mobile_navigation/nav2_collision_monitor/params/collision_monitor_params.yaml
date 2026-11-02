@@ -1,49 +1,178 @@
+# nav2_collision_monitor 配置
+# navigation_type 选择速度下发链路：
+#   auto     —— CM 串联在速度链里，输出过滤后的安全速度（cmd_vel_out_topic）。
+#   schedule —— CM 只旁路观察 cmd_vel_in_topic 做障碍检测并发布 obstacle_status，
+#               减速/停车由 path_follower 执行，CM 不下发调度速度。
+# 两种模式共用 cmd_vel_in_topic 作为速度输入。
+# 底盘: 全向(omni), base_link, 尺寸 0.70×0.58 (半长 ±0.35, 半宽 ±0.29)
+# 数据源: 前后双激光 + 前后 RGBD 转换 LaserScan
 collision_monitor:
   ros__parameters:
-    use_sim_time: True
-    base_frame_id: "base_footprint"
+    use_sim_time: false
+    base_frame_id: "base_link"
     odom_frame_id: "odom"
-    cmd_vel_in_topic: "cmd_vel_raw"
-    cmd_vel_out_topic: "cmd_vel"
-    transform_tolerance: 0.5
-    source_timeout: 5.0
-    base_shift_correction: True
+    navigation_type: "auto"  # 调度部署改为 "schedule"
+    cmd_vel_in_topic: "cmd_vel_nav"
+    cmd_vel_out_topic: "cmd_vel_safe"
+    free_navigation_path_topic: "plan"
+    control_frequency: 100.0
+    cmd_vel_timeout: 0.3
+    idle_grace_period: 5.0
+    # 项目当前关闭 APPROACH；STOP、SLOWDOWN 和贴边路径走廊检测仍启用。
+    approach_enabled: false
+    # PERF 验收埋点：每个窗口输出主循环及各处理阶段的分位数统计。
+    performance_timing_enabled: false
+    performance_report_interval: 60.0
+    # footprint 由 costmap 维护并发布，CM 只订阅 published_footprint。
+    transform_tolerance: 0.1
+    # 任一路 scan 超过该时间未到达或时间戳过旧即停车；source_timeout 取同值，失效判定后不再使用旧点。
+    source_timeout: 0.5
+    sensor_fault_timeout: 0.5
+    # 进入 STOP 时通知 velocity_smoother 立即清零（与 controller_server 共用该话题）。
+    hard_stop_topic: "cmd_vel_hard_stop"
+    base_shift_correction: false # 方案 AB 结合：动态位移校正开关，false 时不做位移校正，true 时启用位移校正
+    base_shift_tolerance: 0.030 # 方案 AB 结合：动态位移校正容差 30ms，时钟轻微超前时自动平滑回退，防止误急停卡顿
     stop_pub_timeout: 2.0
-    # Polygons represent zone around the robot for "stop" and "slowdown" action types,
-    # and robot footprint for "approach" action type.
-    # Footprint could be "polygon" type with dynamically set footprint from footprint_topic
-    # or "circle" type with static footprint set by radius. "footprint_topic" parameter
-    # to be ignored in circular case.
-    polygons: ["PolygonStop"]
+    clear_hold_time: 2.0
+    slowdown_hold_time: 1.0 # 减速防抖释放保持时间（1.0s），防止传感器颠簸漏检时车体突然全速猛冲
+    odom_topic: "feedback/odom"
+    speed_source_timeout: 0.2
+    tier_down_delay: 0.5
+    # 超声波点云发布话题（当有外部订阅时发布 PointCloud2，无订阅时不发布）
+    ultrasonic_points_topic: "ultrasonic_points"
+    # 超声波全局减速测试开关；设为 true 时所有超声波探头点均进入 SLOWDOWN 减速多边形
+    enable_range_slowdown: false
+
+    polygons: ["PolygonStop", "PolygonSlow"]
+
     PolygonStop:
       type: "polygon"
-      points: [0.3, 0.3, 0.3, -0.3, 0.0, -0.3, 0.0, 0.3]
+      use_footprint_topic: true
+      footprint_topic: "local_costmap/published_footprint"
+      # use_footprint_topic 为 true 时不读取 points，仅在关闭订阅时作为固定轮廓。
+      points: [0.35, 0.29, 0.35, -0.29, -0.35, -0.29, -0.35, 0.29]
+      default_padding: 0.2
+      automonous_navigation_padding: 0.1
+      speed_tiers: [0.35, 0.50, 0.70]           # 各档选档速度上限 m/s
+      front_padding_tiers: [0.20, 0.25, 0.3]    # 各档前向外扩 m（低速20cm，中速25cm，高速30cm确保制动余量）
+      rear_padding_tiers: [0.15, 0.20, 0.25]    # 各档后向外扩 m（倒车时从外轮廓后沿起算，支持后退速度自适应扩充）
       action_type: "stop"
       max_points: 3
       visualize: True
       polygon_pub_topic: "polygon_stop"
+      enabled: True
+      # 路径走廊只在 schedule 模式下生效。
+      path_stop_enabled: true
+      tracking_path_topic: "tracking_path"
+      path_stop_distance: 1.0
+      path_stop_radius: 0.36
+      path_point_interval: 0.10
+      path_stop_visualize: false
+      path_stop_marker_pub_rate: 5.0 # 可视化 MarkerArray 发布频率 (Hz)，默认 5.0Hz，降低 CPU 与 DDS 开销
+      path_stop_marker_topic: "path_stop_circles"
+      path_stop_timing_enabled: true
+
     PolygonSlow:
       type: "polygon"
-      points: [0.4, 0.4, 0.4, -0.4, -0.4, -0.4, -0.4, 0.4]
+      use_footprint_topic: true
+      footprint_topic: "local_costmap/published_footprint"
+      # use_footprint_topic 为 true 时不读取 points，仅在关闭订阅时作为固定轮廓。
+      points: [0.35, 0.29, 0.35, -0.29, -0.35, -0.29, -0.35, 0.29]
+      default_padding: 0.1   # 左右后固定 0.1
+      front_padding: 0.55    # 前向 padding 扩大至 0.55m，提供充足减速纵深缓冲
       action_type: "slowdown"
       max_points: 3
-      slowdown_ratio: 0.3
+      slowdown_ratio: 0.5
       visualize: True
       polygon_pub_topic: "polygon_slowdown"
+      enabled: True
+
     FootprintApproach:
       type: "polygon"
+      use_footprint_topic: true
+      footprint_topic: "local_costmap/published_footprint"
+      # use_footprint_topic 为 true 时不读取 points，仅在关闭订阅时作为固定轮廓。
+      points: [0.35, 0.29, 0.35, -0.29, -0.35, -0.29, -0.35, 0.29]
+      default_padding: 0.0
       action_type: "approach"
-      footprint_topic: "/local_costmap/published_footprint"
       time_before_collision: 2.0
       simulation_time_step: 0.1
       max_points: 5
-      visualize: False
-    observation_sources: ["scan"]
-    scan:
+      visualize: True
+      polygon_pub_topic: "polygon_approach"
+      enabled: True
+
+    observation_sources: ["scan_front", "scan_rear", "rgbd_scan_front", "rgbd_scan_rear"]
+    max_obstacle_distance: 2.5       # 全局默认远端距离剪枝：超过 2.5m 的无威胁点在转换阶段直接剔除
+    scan_front:
       type: "scan"
-      topic: "/scan"
-    pointcloud:
-      type: "pointcloud"
-      topic: "/intel_realsense_r200_depth/points"
-      min_height: 0.1
-      max_height: 0.5
+      topic: "/laser_scan/front"
+      enabled: True
+      max_obstacle_distance: 2.5
+      base_shift_correction: true
+    scan_rear:
+      type: "scan"
+      topic: "/laser_scan/rear"
+      enabled: True
+      max_obstacle_distance: 2.5
+      base_shift_correction: true
+    rgbd_scan_front:
+      type: "scan"
+      topic: "/orbbec/front/laser_scan"
+      enabled: True
+      max_obstacle_distance: 2.5
+      source_timeout: 1.0            # 深度相机 7.5Hz 发包周期(135ms)+处理时延，放宽至 1.0s 防抖
+      sensor_fault_timeout: 1.0
+      base_shift_correction: true
+    rgbd_scan_rear:
+      type: "scan"
+      topic: "/orbbec/rear/laser_scan"
+      enabled: True
+      max_obstacle_distance: 2.5
+      source_timeout: 1.0            # 深度相机 7.5Hz 发包周期(135ms)+处理时延，放宽至 1.0s 防抖
+      sensor_fault_timeout: 1.0
+      base_shift_correction: true
+    range_e8:
+      type: "range"
+      topic: "/feedback/ks203_range_e8"
+      enabled: True
+      obstacles_angle: 0.0524        # 3度一个采样点(约 0.0524 rad)，精简点数降低计算开销
+      max_detection_range: 0.7
+      filter_outliers: true          # 启用离群点滑动中值滤波（滤除假回波及脉冲跳变）
+      outlier_filter_window_size: 3
+      max_jump_distance: 0.3
+      low_pass_alpha: 0.5            # 中值滤波后一阶低通平滑，延时 1-2 周期
+      stop_only: false  # 设为 false 可让该探头单独进入减速模块进行测试
+    range_ea:
+      type: "range"
+      topic: "/feedback/ks203_range_ea"
+      enabled: True
+      obstacles_angle: 0.0524        # 3度一个采样点(约 0.0524 rad)，精简点数降低计算开销
+      max_detection_range: 0.7
+      filter_outliers: true          # 启用离群点滑动中值滤波（滤除假回波及脉冲跳变）
+      outlier_filter_window_size: 3
+      max_jump_distance: 0.3
+      low_pass_alpha: 0.5            # 中值滤波后一阶低通平滑，延时 1-2 周期
+      stop_only: false  # 设为 false 可让该探头单独进入减速模块进行测试
+    range_ec:
+      type: "range"
+      topic: "/feedback/ks203_range_ec"
+      enabled: True
+      obstacles_angle: 0.0524        # 3度一个采样点(约 0.0524 rad)，精简点数降低计算开销
+      max_detection_range: 0.7
+      filter_outliers: true          # 启用离群点滑动中值滤波（滤除假回波及脉冲跳变）
+      outlier_filter_window_size: 3
+      max_jump_distance: 0.3
+      low_pass_alpha: 0.5            # 中值滤波后一阶低通平滑，延时 1-2 周期
+      stop_only: false  # 设为 false 可让该探头单独进入减速模块进行测试
+    range_ee:
+      type: "range"
+      topic: "/feedback/ks203_range_ee"
+      enabled: True
+      obstacles_angle: 0.0524        # 3度一个采样点(约 0.0524 rad)，精简点数降低计算开销
+      max_detection_range: 0.7
+      filter_outliers: true          # 启用离群点滑动中值滤波（滤除假回波及脉冲跳变）
+      outlier_filter_window_size: 3
+      max_jump_distance: 0.3
+      low_pass_alpha: 0.5            # 中值滤波后一阶低通平滑，延时 1-2 周期
+      stop_only: false  # 设为 false 可让该探头单独进入减速模块进行测试

@@ -1,122 +1,119 @@
 #!/usr/bin/env python3
-import rclpy
-import rclpy.duration
-from rclpy.node import Node
-from geometry_msgs.msg import PoseStamped
-import rclpy.time
-from tf2_ros import Buffer, TransformListener
-from rclpy.executors import ExternalShutdownException  # 1. 导入 ExternalShutdownException
+"""将融合 Odom 中的底盘位姿发布到 /feedback/chassis_pose。"""
+
 import time
+
+import rclpy
+from geometry_msgs.msg import PoseStamped
+from nav_msgs.msg import Odometry
+from rclpy.executors import ExternalShutdownException
+from rclpy.node import Node
+from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
+
+
+FILTERED_ODOM_TOPIC = '/localization/odometry/filtered'
+POSE_TOPIC = '/feedback/chassis_pose'
+TARGET_FRAME = 'map'
+ALLOWED_CHILD_FRAMES = ('base_link', 'base_footprint')
+LOG_THROTTLE_SEC = 5.0
+ODOM_TIMEOUT_SEC = 2.0
+MONITOR_PERIOD_SEC = 1.0
+
 
 class BaseLinkPosition(Node):
     def __init__(self):
-        super().__init__("baselink_position")
-        # 设置TF buffer cache时间为10秒，减少内存占用和提高查询效率
-        self.tf2_buffer = Buffer(cache_time=rclpy.duration.Duration(seconds=10.0))
-        self.listener = TransformListener(self.tf2_buffer, self)
+        super().__init__('baselink_position')
 
-        self.publisher = self.create_publisher(PoseStamped, '/feedback/chassis_pose', 10)
-        # 不使用定时器，改用手动控制循环频率
+        output_qos = QoSProfile(
+            history=HistoryPolicy.KEEP_LAST,
+            depth=10,
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.VOLATILE,
+        )
+        input_qos = QoSProfile(
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1,
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.VOLATILE,
+        )
 
-        # 错误计数器，避免频繁日志输出
-        self.error_count = 0
-        self.error_log_interval = 50  # 每50次错误才记录一次日志
-        
-        # 发布频率控制（Hz）
-        self.publish_rate = 50.0
-        self.tf_lookup_timeout_sec = 0.01
-        self.cache_timeout_sec = 0.2
-        self.last_pose_msg = None
-        self.last_pose_time = 0.0
-        
-        self.get_logger().info("Publish Chassis Position! ")
+        self.publisher = self.create_publisher(PoseStamped, POSE_TOPIC, output_qos)
+        self.odom_subscription = self.create_subscription(
+            Odometry,
+            FILTERED_ODOM_TOPIC,
+            self._odom_callback,
+            input_qos,
+        )
+        self.monitor_timer = self.create_timer(
+            MONITOR_PERIOD_SEC,
+            self._monitor_odom,
+        )
 
-    def _build_pose_msg(self, translation, orientation):
+        self._last_valid_odom_monotonic = time.monotonic()
+        self._last_problem_log_monotonic = float('-inf')
+        self._has_valid_odom = False
+        self._odom_timeout_active = False
+        self._rejected_odom_count = 0
+
+        self.get_logger().info(
+            f'Chassis pose publisher started; input: {FILTERED_ODOM_TOPIC}; '
+            f'output: {POSE_TOPIC}.')
+
+    def _log_problem(self, message):
+        now = time.monotonic()
+        if now - self._last_problem_log_monotonic < LOG_THROTTLE_SEC:
+            return
+        self.get_logger().warning(message)
+        self._last_problem_log_monotonic = now
+
+    def _monitor_odom(self):
+        elapsed = time.monotonic() - self._last_valid_odom_monotonic
+        if elapsed > ODOM_TIMEOUT_SEC:
+            self._log_problem(
+                f'No valid odometry received for {elapsed:.1f} seconds.')
+            self._odom_timeout_active = True
+
+    def _odom_callback(self, msg):
+        frame_id = msg.header.frame_id.lstrip('/')
+        child_frame_id = msg.child_frame_id.lstrip('/')
+        if frame_id != TARGET_FRAME or child_frame_id not in ALLOWED_CHILD_FRAMES:
+            self._rejected_odom_count += 1
+            self._log_problem(
+                'Rejected odometry; expected map frame with base_link or '
+                f'base_footprint, got {frame_id}/{child_frame_id}. '
+                f'Rejected messages: {self._rejected_odom_count}.')
+            return
+
+        self._last_valid_odom_monotonic = time.monotonic()
+        if not self._has_valid_odom:
+            self.get_logger().info('Received valid odometry.')
+        elif self._odom_timeout_active:
+            self.get_logger().info('Odometry recovered.')
+        self._has_valid_odom = True
+        self._odom_timeout_active = False
+
         pose_msg = PoseStamped()
-        pose_msg.header.frame_id = 'map'
+        pose_msg.header.frame_id = TARGET_FRAME
         pose_msg.header.stamp = self.get_clock().now().to_msg()
-
-        pose_msg.pose.position.x = translation.x
-        pose_msg.pose.position.y = translation.y
+        pose_msg.pose.position.x = msg.pose.pose.position.x
+        pose_msg.pose.position.y = msg.pose.pose.position.y
         pose_msg.pose.position.z = 0.0
-        pose_msg.pose.orientation = orientation
-        return pose_msg
+        pose_msg.pose.orientation = msg.pose.pose.orientation
+        self.publisher.publish(pose_msg)
 
-    def _publish_cached_pose(self):
-        if self.last_pose_msg is None:
-            return False
-
-        if time.time() - self.last_pose_time > self.cache_timeout_sec:
-            return False
-
-        cached_pose = PoseStamped()
-        cached_pose.header.frame_id = self.last_pose_msg.header.frame_id
-        cached_pose.header.stamp = self.get_clock().now().to_msg()
-        cached_pose.pose = self.last_pose_msg.pose
-        self.publisher.publish(cached_pose)
-        return True
-
-    def get_position(self):
-        try:
-            # 直接查询TF，使用最短timeout，避免can_transform的额外开销
-            transform = self.tf2_buffer.lookup_transform(
-                'map',
-                'base_link',
-                rclpy.time.Time(),
-                timeout=rclpy.duration.Duration(
-                    seconds=self.tf_lookup_timeout_sec)
-            )
-            
-            translation = transform.transform.translation
-            orientation = transform.transform.rotation
-
-            pose_msg = self._build_pose_msg(translation, orientation)
-            self.publisher.publish(pose_msg)
-            self.last_pose_msg = pose_msg
-            self.last_pose_time = time.time()
-            
-            # 成功时重置错误计数
-            if self.error_count > 0:
-                self.error_count = 0
-                
-        except Exception as e:
-            self.error_count += 1
-            self._publish_cached_pose()
-            # 减少错误日志频率，避免频繁输出
-            if self.error_count % self.error_log_interval == 0:
-                self.get_logger().error(f'TF error after {self.error_count} attempts: {str(e)}')
-            # 静默失败，不阻塞主循环
 
 def main(args=None):
     rclpy.init(args=args)
     node = BaseLinkPosition()
-    
-    # 计算休眠时间（秒）
-    sleep_duration = 1.0 / node.publish_rate
-    
     try:
-        # 使用spin_once配合休眠，比spin更高效，避免持续轮询
-        while rclpy.ok():
-            # 非阻塞处理ROS2事件（如TF订阅），超时时间很短
-            rclpy.spin_once(node, timeout_sec=0.001)
-            
-            # 执行位置查询和发布
-            node.get_position()
-            
-            # 精确控制频率，使用系统sleep而非ROS2定时器，降低CPU占用
-            time.sleep(sleep_duration)
-            
+        rclpy.spin(node)
     except (KeyboardInterrupt, ExternalShutdownException):
-        # 2. 增加对 ExternalShutdownException 的捕获，防止 Systemd/SIGTERM 关闭时抛出连环崩溃
         pass
     finally:
         node.destroy_node()
-        # 3. 使用 try-except 包裹 shutdown，防止 context 竞争抛出 RCLError
-        try:
-            if rclpy.ok():
-                rclpy.shutdown()
-        except Exception:
-            pass
+        if rclpy.ok():
+            rclpy.shutdown()
+
 
 if __name__ == '__main__':
     main()

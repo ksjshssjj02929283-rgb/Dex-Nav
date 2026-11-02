@@ -57,6 +57,7 @@ private:
 
     rclcpp::Node::SharedPtr      node_;
     std::string                  service_prefix_{"/map_asset_manager"};
+    uint64_t                     loaded_gen_{0};
 
     std::mutex                   data_mutex_;  ///< 保护 junctions_/edges_ 的多线程访问
     std::vector<EndpointInfo>    junctions_;

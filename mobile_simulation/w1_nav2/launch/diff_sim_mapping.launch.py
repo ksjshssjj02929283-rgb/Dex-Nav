@@ -2,7 +2,7 @@
 """W1 差速仿真建图模式：Gazebo + W1 + Rviz，无 Nav2 或 map->odom.
 
 与 diff_sim.launch.py 的区别：
-- 不发静态 map->odom（建图时该 TF 由 dexe cartographer 的 mapping_node 发布，两者会冲突）
+- 不发静态 map->odom（建图时该 TF 由 dexe cartographer 的 mapping 发布，两者会冲突）
 - 不起 Nav2（建图靠 teleop 开车）
 
 配套流程见《全向与差速仿真建图操作手册》；另开终端并 source SLAM 工作区：

@@ -3,6 +3,7 @@
 #include <chrono>
 #include <cmath>
 #include <chrono>
+#include <cmath>
 #include <functional>
 #include <limits>
 #include <mutex>
@@ -21,11 +22,11 @@
 #include <OgreRenderOperation.h>
 
 #include <rclcpp/rclcpp.hpp>
-#include <nav_interfaces/srv/get_all_nav_points.hpp>
-#include <nav_interfaces/srv/get_route_graph.hpp>
+#include "map_asset_rviz_plugin/asset_target.hpp"
+#include <nav_interfaces/srv/get_assets.hpp>
+#include <nav_interfaces/srv/get_assets.hpp>
 #include <nav_interfaces/msg/route_edge.hpp>
 #include <nav_interfaces/srv/get_all_nav_points.hpp>
-#include <nav_interfaces/srv/get_route_graph.hpp>
 #include <optional>
 #include <rclcpp/rclcpp.hpp>
 
@@ -172,10 +173,10 @@ inline std::vector<EndpointInfo> loadEndpoints(
     std::vector<EndpointInfo> eps;
 
     // --- nav points ---
-    auto pts_cli = node->create_client<nav_interfaces::srv::GetAllNavPoints>(
-        prefix + "/get_all_nav_points");
+    auto pts_cli = node->create_client<nav_interfaces::srv::GetAssets>(
+        prefix + "/get_assets");
     if (pts_cli->wait_for_service(std::chrono::milliseconds(800))) {
-        auto req = std::make_shared<nav_interfaces::srv::GetAllNavPoints::Request>();
+        auto req = targetAssetsRequest(nav_interfaces::srv::GetAssets::Request::KIND_POINTS);
         auto fut = pts_cli->async_send_request(req);
         if (fut.wait_for(std::chrono::seconds(2)) == std::future_status::ready) {
             for (const auto& pt : fut.get()->points) {
@@ -190,10 +191,10 @@ inline std::vector<EndpointInfo> loadEndpoints(
     }
 
     // --- junctions ---
-    auto grph_cli = node->create_client<nav_interfaces::srv::GetRouteGraph>(
-        prefix + "/get_route_graph");
+    auto grph_cli = node->create_client<nav_interfaces::srv::GetAssets>(
+        prefix + "/get_assets");
     if (grph_cli->wait_for_service(std::chrono::milliseconds(800))) {
-        auto req = std::make_shared<nav_interfaces::srv::GetRouteGraph::Request>();
+        auto req = targetAssetsRequest(nav_interfaces::srv::GetAssets::Request::KIND_POINTS | nav_interfaces::srv::GetAssets::Request::KIND_JUNCTIONS | nav_interfaces::srv::GetAssets::Request::KIND_EDGES);
         auto fut = grph_cli->async_send_request(req);
         if (fut.wait_for(std::chrono::seconds(2)) == std::future_status::ready) {
             for (const auto& jct : fut.get()->junctions) {
@@ -242,13 +243,13 @@ inline void loadEndpointsAsync(
     state->cb  = std::move(on_done);
 
     // ---- nav points ----
-    auto pts_cli = node->create_client<nav_interfaces::srv::GetAllNavPoints>(
-        prefix + "/get_all_nav_points");
+    auto pts_cli = node->create_client<nav_interfaces::srv::GetAssets>(
+        prefix + "/get_assets");
     if (pts_cli->service_is_ready()) {
         pts_cli->async_send_request(
-            std::make_shared<nav_interfaces::srv::GetAllNavPoints::Request>(),
+            targetAssetsRequest(nav_interfaces::srv::GetAssets::Request::KIND_POINTS),
             [state, pts_cli](
-                rclcpp::Client<nav_interfaces::srv::GetAllNavPoints>::SharedFuture fut) {
+                rclcpp::Client<nav_interfaces::srv::GetAssets>::SharedFuture fut) {
                 std::vector<EndpointInfo> eps;
                 try {
                     for (const auto& pt : fut.get()->points) {
@@ -269,13 +270,13 @@ inline void loadEndpointsAsync(
     }
 
     // ---- junctions ----
-    auto grph_cli = node->create_client<nav_interfaces::srv::GetRouteGraph>(
-        prefix + "/get_route_graph");
+    auto grph_cli = node->create_client<nav_interfaces::srv::GetAssets>(
+        prefix + "/get_assets");
     if (grph_cli->service_is_ready()) {
         grph_cli->async_send_request(
-            std::make_shared<nav_interfaces::srv::GetRouteGraph::Request>(),
+            targetAssetsRequest(nav_interfaces::srv::GetAssets::Request::KIND_POINTS | nav_interfaces::srv::GetAssets::Request::KIND_JUNCTIONS | nav_interfaces::srv::GetAssets::Request::KIND_EDGES),
             [state, grph_cli](
-                rclcpp::Client<nav_interfaces::srv::GetRouteGraph>::SharedFuture fut) {
+                rclcpp::Client<nav_interfaces::srv::GetAssets>::SharedFuture fut) {
                 std::vector<EndpointInfo> eps;
                 try {
                     for (const auto& jct : fut.get()->junctions) {
@@ -301,10 +302,10 @@ inline std::vector<EndpointInfo> loadJunctions(
     rclcpp::Node::SharedPtr node, const std::string& prefix)
 {
     std::vector<EndpointInfo> eps;
-    auto cli = node->create_client<nav_interfaces::srv::GetRouteGraph>(
-        prefix + "/get_route_graph");
+    auto cli = node->create_client<nav_interfaces::srv::GetAssets>(
+        prefix + "/get_assets");
     if (cli->wait_for_service(std::chrono::milliseconds(800))) {
-        auto req = std::make_shared<nav_interfaces::srv::GetRouteGraph::Request>();
+        auto req = targetAssetsRequest(nav_interfaces::srv::GetAssets::Request::KIND_POINTS | nav_interfaces::srv::GetAssets::Request::KIND_JUNCTIONS | nav_interfaces::srv::GetAssets::Request::KIND_EDGES);
         auto fut = cli->async_send_request(req);
         if (fut.wait_for(std::chrono::seconds(2)) == std::future_status::ready) {
             for (const auto& jct : fut.get()->junctions) {

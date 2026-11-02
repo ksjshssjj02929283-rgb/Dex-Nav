@@ -17,12 +17,15 @@
 
 #include <memory>
 #include <vector>
+#include <deque>
+#include <mutex>
 #include <string>
 
 #include "sensor_msgs/msg/range.hpp"
 #include "nav2_util/robot_utils.hpp"
 
 #include "nav2_collision_monitor/source.hpp"
+#include "nav2_collision_monitor/range_filter.hpp"
 
 namespace nav2_collision_monitor
 {
@@ -40,10 +43,10 @@ public:
    * @param tf_buffer Shared pointer to a TF buffer
    * @param base_frame_id Robot base frame ID. The output data will be transformed into this frame.
    * @param global_frame_id Global frame ID for correct transform calculation
-   * @param transform_tolerance Transform tolerance
+   * @param transform_tolerance Maximum age of latest dynamic base TF (zero-wait lookup)
    * @param source_timeout Maximum time interval in which data is considered valid
    * @param base_shift_correction Whether to correct source data towards to base frame movement,
-   * considering the difference between current time and latest source time
+   * from source acquisition time to latest available base TF time
    */
   Range(
     const nav2_util::LifecycleNode::WeakPtr & node,
@@ -73,7 +76,10 @@ public:
    */
   void getData(
     const rclcpp::Time & curr_time,
-    std::vector<Point> & data) const;
+    std::vector<Point> & data) const override;
+
+  bool isStopOnly() const override {return stop_only_;}
+  void setStopOnly(const bool stop_only) {stop_only_ = stop_only;}
 
 protected:
   /**
@@ -96,8 +102,41 @@ protected:
   /// @brief Angle increment (in rad) between two obstacle points at the range arc
   double obstacles_angle_;
 
+  /// @brief Optional maximum distance (in m) beyond which range readings are ignored (0.0 to disable)
+  double max_detection_range_{0.0};
+
+  /// @brief Whether outlier filtering (sliding median) is enabled
+  bool filter_outliers_{true};
+
+  /// @brief Sliding window size for outlier median filter
+  int outlier_filter_window_size_{5};
+
+  /// @brief Maximum jump distance allowed per frame to reject spike outliers (0.0 to disable)
+  double max_jump_distance_{0.30};
+
+  /// @brief Low-pass filter smoothing coefficient (0.0 < alpha <= 1.0, 0.5 corresponds to 1-2 cycle delay)
+  double low_pass_alpha_{0.5};
+
+  /// @brief Whether range readings only trigger STOP actions (skip slowdown/approach)
+  bool stop_only_{false};
+
+  /// @brief Outlier filter instance for sliding median and spike rejection
+  std::unique_ptr<RangeFilter> outlier_filter_;
+
   /// @brief Latest data obtained from range sensor
+  // Access only through std::atomic_load/store; readers retain an immutable snapshot.
   sensor_msgs::msg::Range::ConstSharedPtr data_;
+
+  struct ProcessedRange
+  {
+    rclcpp::Time source_stamp;
+    std::vector<Point> points;
+    bool transform_valid{false};
+  };
+
+  // A callback builds the complete base-frame point set and publishes it atomically.
+  // The 100 Hz safety loop therefore never observes a partially converted range and never performs TF.
+  std::shared_ptr<const ProcessedRange> processed_data_;
 };  // class Range
 
 }  // namespace nav2_collision_monitor

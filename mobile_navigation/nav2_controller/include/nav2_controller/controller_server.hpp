@@ -196,7 +196,16 @@ protected:
    * @param path 规划级输入路径（global path）
    * @return true 表示可继续执行本控制周期；false 表示规划失败，本周期必须零速闭环
    */
-  bool runPlanningPipeline(const nav_msgs::msg::Path & path);
+  struct SnapshotRuntime;
+  std::shared_ptr<SnapshotRuntime> snapshot_runtime_;
+  void configureSnapshotControl();
+  void startSnapshotWorker();
+  bool snapshotMotionAllowed();
+  void snapshotControlFeedback(bool valid, double acceleration, double velocity = 0.0);
+  void stopSnapshotWorker();
+  bool computeControlSnapshot();
+  void queueSnapshotSpeedLimit(const nav2_msgs::msg::SpeedLimit & limit);
+
   /**
    * @brief 执行可选的 ③ LocalPlanner。未配置时保持输入路径直通。
    * @return false 表示已配置插件失败或输出空路径，调用方不得继续消费旧轨迹
@@ -461,7 +470,7 @@ protected:
   // Dynamic parameters handler
   rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr dyn_params_handler_;
   /// 本周期 current_trajectory_ 已分发给哪个 controller（空 = 尚未分发）。
-  /// 每周期由 runPlanningPipeline 清空，由 computeControllerVelocity 按需填充。
+  /// 收到新轨迹快照时清空，由 computeControllerVelocity 按需填充。
   std::string trajectory_dispatched_to_;
   std::mutex dynamic_params_lock_;
 
@@ -559,13 +568,12 @@ protected:
   std::vector<std::string> speed_planner_ids_;
   std::vector<std::string> speed_planner_types_;
   std::string speed_planner_ids_concat_, current_speed_planner_;
-  // 轨迹缓存：规划级产出、控制级消费；规划与控制同在 action 线程逐周期串行执行，
-  // 无并发；将来拆独立规划线程时需加最小临界区保护
+  // 轨迹快照缓存：规划工作线程（10 Hz）产出，控制主线程（25 Hz）消费；
+  // 双方通过 SnapshotRuntime 短临界区互斥交接不可变快照对象。
   nav_interfaces::msg::RobotTrajectory current_trajectory_;
   nav2_speed_planner::InitialMotionArbiter initial_motion_arbiter_;
   // Full trajectory-prefix stitching state prepared by buildInitialMotionState
-  // for the current planning cycle. It is consumed immediately by
-  // runPlanningPipeline; planning/control are serialized in the action loop.
+  // for the current planning cycle.
   nav_interfaces::msg::RobotTrajectory pending_stitching_prefix_;
   nav2_core::InitialMotionState pending_stitching_boundary_;
   double trajectory_stitching_max_path_error_{0.05};
@@ -634,11 +642,6 @@ protected:
     nav2_core::SpeedPlanningDiagnostics terminal;
     bool terminal_valid{false};
   };
-  /// 上一拍的局部路径剩余长度与其 path_id，用于算 local_path_progress_delta。
-  /// path_id 变了（重规划）说明比较基准换了，delta 无意义，置 NaN。
-  double prev_local_path_length_{std::numeric_limits<double>::quiet_NaN()};
-  uint64_t prev_local_path_id_{0};
-  uint64_t speed_plan_cycle_id_{0};
   uint64_t speed_plan_path_id_{0};
   SpeedPlanCycleContext speed_plan_cycle_;
   // RViz 可视化节流（速度剖面每周期重算，但只以 ~2Hz 重画）
@@ -688,6 +691,12 @@ protected:
   bool align_done_{false};
   rclcpp::Time prepare_backup_start_time_;
   geometry_msgs::msg::PoseStamped prepare_backup_start_pose_;
+  // 到位判定去抖：GoalChecker 单拍命中即判到位时，末端位姿噪声/瞬时掠过会在
+  // 容差边界上反复触发"到位-未到位"跳变，导致提前锁存成功或末端抖动。
+  // 这里要求连续 N 个控制拍 isGoalReached() 均为真才确认到位，任一拍为假立即清零。
+  // N=2 时在 25Hz 控制周期下仅引入 40ms 确认延迟，仍远小于终端制动时间尺度。
+  int goal_reached_streak_{0};
+  int goal_reached_required_frames_{2};
 
   /// 安全清理各阶段运行状态并保持 PREPARE 为 DONE；只有新会话可重新武装。
   void resetStagedControlState();

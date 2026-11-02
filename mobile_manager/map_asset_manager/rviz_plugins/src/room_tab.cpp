@@ -1,4 +1,5 @@
 #include "map_asset_rviz_plugin/room_tab.hpp"
+#include "map_asset_rviz_plugin/asset_target.hpp"
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -99,9 +100,9 @@ void RoomTab::setServicePrefix(const std::string& prefix) {
 }
 
 void RoomTab::rebuildClients() {
-    get_client_    = node_->create_client<nav_interfaces::srv::GetAllRooms>(prefix_ + "/get_all_rooms");
-    remove_client_ = node_->create_client<nav_interfaces::srv::RemoveRoom>(prefix_ + "/remove_room");
-    update_client_ = node_->create_client<nav_interfaces::srv::UpdateRoom>(prefix_ + "/update_room");
+    get_client_    = node_->create_client<nav_interfaces::srv::GetAssets>(prefix_ + "/get_assets");
+    remove_client_ = node_->create_client<nav_interfaces::srv::SetAssets>(prefix_ + "/set_assets");
+    update_client_ = node_->create_client<nav_interfaces::srv::SetAssets>(prefix_ + "/set_assets");
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -114,10 +115,11 @@ void RoomTab::onRefresh() {
     remove_btn_->setEnabled(false);
     status_label_->setText("刷新中...");
 
-    auto req = std::make_shared<nav_interfaces::srv::GetAllRooms::Request>();
+    auto req = std::make_shared<nav_interfaces::srv::GetAssets::Request>(); applyTarget(req);
+    req->kinds = nav_interfaces::srv::GetAssets::Request::KIND_ROOMS;
     get_client_->async_send_request(
         req,
-        [this](rclcpp::Client<nav_interfaces::srv::GetAllRooms>::SharedFuture fut) {
+        [this](rclcpp::Client<nav_interfaces::srv::GetAssets>::SharedFuture fut) {
             try {
                 auto resp = fut.get();
                 QMetaObject::invokeMethod(this, [this, resp]() {
@@ -273,12 +275,13 @@ void RoomTab::onRemove() {
     remove_btn_->setEnabled(false);
     status_label_->setText("删除中...");
 
-    auto req = std::make_shared<nav_interfaces::srv::RemoveRoom::Request>();
-    req->name = room_name.toStdString();
+    auto req = std::make_shared<nav_interfaces::srv::SetAssets::Request>(); applyTarget(req); req->rooms.resize(1);
+    req->mode = nav_interfaces::srv::SetAssets::Request::MODE_REMOVE;
+    req->rooms[0].name = room_name.toStdString();
 
     remove_client_->async_send_request(
         req,
-        [this](rclcpp::Client<nav_interfaces::srv::RemoveRoom>::SharedFuture fut) {
+        [this](rclcpp::Client<nav_interfaces::srv::SetAssets>::SharedFuture fut) {
             try {
                 auto resp = fut.get();
                 if (resp->success) {
@@ -286,7 +289,7 @@ void RoomTab::onRemove() {
                     QMetaObject::invokeMethod(this, &RoomTab::onRefresh, Qt::QueuedConnection);
                 } else {
                     Q_EMIT operationFinished(false,
-                        QString("删除失败: %1").arg(QString::fromStdString(resp->message)));
+                        QString("删除失败: %1").arg(assetMessage(*resp)));
                 }
             } catch (const std::exception& ex) {
                 Q_EMIT operationFinished(false, QString("删除异常: %1").arg(ex.what()));
@@ -431,22 +434,23 @@ void RoomTab::onEdit() {
         }
     };
 
-    auto req = std::make_shared<nav_interfaces::srv::UpdateRoom::Request>();
-    req->room.name           = name.toStdString();
-    req->room.type           = type_combo->currentData().toUInt();
-    req->room.semantic_label = semantic_edit->text().trimmed().toStdString();
-    req->room.display_label  = display_edit->text().trimmed().toStdString();
-    req->room.attribute      = attribute_edit->text().trimmed().toStdString();
-    req->room.source         = snap["source"].toString().toStdString();  // 保留原 source
-    split_names(anchor_edit->text(), req->room.manual_anchor_point_names);
+    auto req = std::make_shared<nav_interfaces::srv::SetAssets::Request>(); applyTarget(req); req->rooms.resize(1);
+    req->mode = nav_interfaces::srv::SetAssets::Request::MODE_UPDATE_ONLY;
+    req->rooms[0].name           = name.toStdString();
+    req->rooms[0].type           = type_combo->currentData().toUInt();
+    req->rooms[0].semantic_label = semantic_edit->text().trimmed().toStdString();
+    req->rooms[0].display_label  = display_edit->text().trimmed().toStdString();
+    req->rooms[0].attribute      = attribute_edit->text().trimmed().toStdString();
+    req->rooms[0].source         = snap["source"].toString().toStdString();  // 保留原 source
+    split_names(anchor_edit->text(), req->rooms[0].manual_anchor_point_names);
 
     // 区域属性（RoomBehavior）
-    req->room.behavior.max_speed_m_s      = static_cast<float>(max_speed_spin->value());
-    req->room.behavior.restricted         = restricted_check->isChecked();
-    req->room.behavior.detour_enabled     = detour_check->isChecked();
-    req->room.behavior.stop_distance_m    = static_cast<float>(stop_dist_spin->value());
-    req->room.behavior.depth_min_height_m = static_cast<float>(depth_min_spin->value());
-    split_names(additional_areas_edit->text(), req->room.behavior.additional_area_names);
+    req->rooms[0].behavior.max_speed_m_s      = static_cast<float>(max_speed_spin->value());
+    req->rooms[0].behavior.restricted         = restricted_check->isChecked();
+    req->rooms[0].behavior.detour_enabled     = detour_check->isChecked();
+    req->rooms[0].behavior.stop_distance_m    = static_cast<float>(stop_dist_spin->value());
+    req->rooms[0].behavior.depth_min_height_m = static_cast<float>(depth_min_spin->value());
+    split_names(additional_areas_edit->text(), req->rooms[0].behavior.additional_area_names);
 
     // 保留原 polygon
     QVariantList poly = snap["polygon"].toList();
@@ -456,7 +460,7 @@ void RoomTab::onEdit() {
         pose.x     = pm["x"].toDouble();
         pose.y     = pm["y"].toDouble();
         pose.theta = pm["theta"].toDouble();
-        req->room.polygon.push_back(pose);
+        req->rooms[0].polygon.push_back(pose);
     }
 
     edit_btn_->setEnabled(false);
@@ -464,7 +468,7 @@ void RoomTab::onEdit() {
 
     update_client_->async_send_request(
         req,
-        [this, name](rclcpp::Client<nav_interfaces::srv::UpdateRoom>::SharedFuture fut) {
+        [this, name](rclcpp::Client<nav_interfaces::srv::SetAssets>::SharedFuture fut) {
             try {
                 auto resp = fut.get();
                 if (resp->success) {
@@ -472,7 +476,7 @@ void RoomTab::onEdit() {
                     QMetaObject::invokeMethod(this, &RoomTab::onRefresh, Qt::QueuedConnection);
                 } else {
                     Q_EMIT operationFinished(false,
-                        QString("修改失败: %1").arg(QString::fromStdString(resp->message)));
+                        QString("修改失败: %1").arg(assetMessage(*resp)));
                 }
             } catch (const std::exception& ex) {
                 Q_EMIT operationFinished(false, QString("更新异常: %1").arg(ex.what()));

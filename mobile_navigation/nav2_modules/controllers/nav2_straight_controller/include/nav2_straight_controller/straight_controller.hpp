@@ -107,6 +107,8 @@ public:
    * @brief 设置带速度/曲率的时空轨迹（五层架构 ④SpeedPlanner 输出）
    * @param trajectory 带 longitudinal_velocity / path_kappa 的轨迹
    */
+  bool supportsTrajectoryTracking() const override {return true;}
+
   void setTrajectory(const nav_interfaces::msg::RobotTrajectory & trajectory) override;
 
   /**

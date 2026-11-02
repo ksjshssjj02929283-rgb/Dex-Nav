@@ -16,6 +16,7 @@
 #include "nav2_lifecycle_manager/lifecycle_manager.hpp"
 
 #include <chrono>
+#include <exception>
 #include <memory>
 #include <string>
 #include <vector>
@@ -42,7 +43,8 @@ LifecycleManager::LifecycleManager(const rclcpp::NodeOptions & options)
   declare_parameter("node_names", rclcpp::PARAMETER_STRING_ARRAY);
   declare_parameter("autostart", rclcpp::ParameterValue(false));
   declare_parameter("bond_timeout", 4.0);
-  declare_parameter("bond_respawn_max_duration", 10.0);
+  // 运行后断线等待节点恢复的观察窗口，秒；不负责重启节点进程。
+  declare_parameter("bond_respawn_max_duration", 300.0);
   declare_parameter("attempt_respawn_reconnection", true);
 
   registerRclPreshutdownCallback();
@@ -97,7 +99,7 @@ LifecycleManager::LifecycleManager(const rclcpp::NodeOptions & options)
           0s,
           [this]() -> void {
             init_timer_->cancel();
-            startup();
+            startupWithCleanup();
           },
           callback_group_);
       }
@@ -123,7 +125,7 @@ LifecycleManager::managerCallback(
 {
   switch (request->command) {
     case ManageLifecycleNodes::Request::STARTUP:
-      response->success = startup();
+      response->success = startupWithCleanup();
       break;
     case ManageLifecycleNodes::Request::RESET:
       response->success = reset();
@@ -188,18 +190,23 @@ LifecycleManager::createBondConnection(const std::string & node_name)
   if (bond_map_.find(node_name) == bond_map_.end() && bond_timeout_.count() > 0.0) {
     bond_map_[node_name] =
       std::make_shared<bond::Bond>("bond", node_name, shared_from_this());
+    // 底层默认只等待 10 秒，须与管理器窗口一致，避免较长配置被提前断开。
+    bond_map_[node_name]->setConnectTimeout(timeout_s);
     bond_map_[node_name]->setHeartbeatTimeout(timeout_s);
     bond_map_[node_name]->setHeartbeatPeriod(0.10);
     bond_map_[node_name]->start();
+    // 部分 bond 版本离开等待态就返回 true，连接超时进入断开态也不能算成功。
     if (
       !bond_map_[node_name]->waitUntilFormed(
-        rclcpp::Duration(rclcpp::Duration::from_nanoseconds(timeout_ns / 2))))
+        rclcpp::Duration(rclcpp::Duration::from_nanoseconds(timeout_ns))) ||
+      bond_map_[node_name]->isBroken())
     {
       RCLCPP_ERROR(
         get_logger(),
-        "Server %s was unable to be reached after %0.2fs by bond. "
+        "Server %s was unable to be reached within %0.2fs by bond. "
         "This server may be misconfigured.",
         node_name.c_str(), timeout_s);
+      bond_connection_failed_ = true;
       return false;
     }
     RCLCPP_INFO(get_logger(), "Server %s connected with bond.", node_name.c_str());
@@ -276,6 +283,97 @@ LifecycleManager::shutdownAllNodes()
 }
 
 bool
+LifecycleManager::startupWithCleanup()
+{
+  // 外层可能再次请求启动，必须先完成上一次失败后的清理。
+  if (startup_cleanup_pending_) {
+    if (!cleanupStartup()) {
+      RCLCPP_ERROR(get_logger(), "Startup blocked; cleanup is incomplete.");
+      return false;
+    }
+    startup_cleanup_pending_ = false;
+  }
+
+  bond_connection_failed_ = false;
+  if (startup()) {
+    return true;
+  }
+  // 配置或激活失败沿用原处理，仅对 bond 建连超时回退状态。
+  if (bond_connection_failed_) {
+    startup_cleanup_pending_ = !cleanupStartup();
+    if (startup_cleanup_pending_) {
+      RCLCPP_ERROR(get_logger(), "Startup cleanup failed; cleanup is required before startup.");
+    }
+  }
+  return false;
+}
+
+bool
+LifecycleManager::cleanupStartup()
+{
+  // 清理开始后系统不再可用，避免保留激活标志及旧的心跳检查定时器。
+  system_active_ = false;
+  destroyBondTimer();
+
+  // 每次查询或转换最多等待 5 秒，包含服务发现和响应时间。
+  constexpr auto service_timeout = 5s;
+  bool success = true;
+  // 沿用先全部停用、再全部清理的逆序流程；单个失败不阻断其余节点。
+  for (const auto transition :
+    {Transition::TRANSITION_DEACTIVATE, Transition::TRANSITION_CLEANUP})
+  {
+    const auto source_state = transition == Transition::TRANSITION_DEACTIVATE ?
+      State::PRIMARY_STATE_ACTIVE : State::PRIMARY_STATE_INACTIVE;
+    for (auto it = node_names_.rbegin(); it != node_names_.rend(); ++it) {
+      if (!rclcpp::ok()) {
+        bond_map_.clear();
+        return false;
+      }
+      try {
+        const auto state = node_map_.at(*it)->get_state_with_timeout(service_timeout);
+        if (state == State::PRIMARY_STATE_UNCONFIGURED ||
+          (transition == Transition::TRANSITION_DEACTIVATE &&
+          state == State::PRIMARY_STATE_INACTIVE))
+        {
+          continue;
+        }
+        if (state != source_state) {
+          RCLCPP_ERROR(
+            get_logger(), "Startup cleanup failed for %s; unexpected state %u.",
+            it->c_str(), static_cast<unsigned int>(state));
+          success = false;
+          continue;
+        }
+        message(transition_label_map_[transition] + *it);
+        if (!node_map_.at(*it)->change_state_with_timeout(transition, service_timeout) ||
+          node_map_.at(*it)->get_state_with_timeout(service_timeout) !=
+          transition_state_map_[transition])
+        {
+          RCLCPP_ERROR(
+            get_logger(), "Startup cleanup failed for %s; transition failed.", it->c_str());
+          success = false;
+        } else if (transition == Transition::TRANSITION_DEACTIVATE) {
+          bond_map_.erase(*it);
+        }
+      } catch (const std::exception & e) {
+        // 统一由日志补全句号，避免异常文本末尾已有句号。
+        std::string error = e.what();
+        while (!error.empty() && error.back() == '.') {
+          error.pop_back();
+        }
+        RCLCPP_ERROR(
+          get_logger(), "Startup cleanup failed for %s; %s. Timeout budget: %.1f s.",
+          it->c_str(), error.c_str(), std::chrono::duration<double>(service_timeout).count());
+        success = false;
+      }
+    }
+  }
+  // 包括超时的连接，下一轮必须重新创建 bond。
+  bond_map_.clear();
+  return success;
+}
+
+bool
 LifecycleManager::startup()
 {
   message("Starting managed nodes bringup...");
@@ -344,6 +442,12 @@ LifecycleManager::pause()
 bool
 LifecycleManager::resume()
 {
+  // 清理失败的节点可能仍为 inactive，不能通过 RESUME 绕过清理直接激活。
+  if (startup_cleanup_pending_) {
+    RCLCPP_ERROR(get_logger(), "Resume blocked; startup cleanup is incomplete.");
+    return false;
+  }
+
   message("Resuming managed nodes...");
   if (!changeStateForAllNodes(Transition::TRANSITION_ACTIVATE)) {
     RCLCPP_ERROR(get_logger(), "Failed to resume nodes: aborting resume");

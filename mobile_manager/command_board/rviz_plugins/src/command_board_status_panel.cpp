@@ -18,6 +18,11 @@ namespace command_board_rviz_plugins {
 
 namespace {
 
+// map_manager 的地图目录服务（节点名 map_manager，服务 ~/get_maps）
+constexpr char kGetMapsService[] = "/map_manager/get_maps";
+// 同一张图的数据版本重新查询间隔（地图被离线替换 / 回写后版本会变）
+constexpr double kVersionRefreshSec = 10.0;
+
 struct StatusInfo {
     QString text;
     QString color;
@@ -65,9 +70,12 @@ void CommandBoardStatusPanel::setupUi() {
     // 🗺 当前地图
     {
         auto* box = new QGroupBox("🗺 当前地图");
-        auto* g = new QHBoxLayout(box);
+        auto* g = new QVBoxLayout(box);
         map_label_ = new QLabel("--");
+        map_version_ = new QLabel("数据版本：--");
+        map_version_->setWordWrap(true);
         g->addWidget(map_label_);
+        g->addWidget(map_version_);
         root->addWidget(box);
     }
 
@@ -168,6 +176,8 @@ void CommandBoardStatusPanel::setupUi() {
 void CommandBoardStatusPanel::onInitialize() {
     node_ = getDisplayContext()->getRosNodeAbstraction().lock()->get_raw_node();
     last_recv_ = node_->now();
+    last_version_query_ = node_->now();
+    get_maps_cli_ = node_->create_client<nav_interfaces::srv::GetMaps>(kGetMapsService);
     subscribe();
 
     ui_timer_ = new QTimer(this);
@@ -212,6 +222,88 @@ void CommandBoardStatusPanel::onSaverStatus(std_msgs::msg::String::SharedPtr msg
 void CommandBoardStatusPanel::setLed(QLabel* led, const QString& color) {
     led->setText("●");
     led->setStyleSheet(QString("color: %1; font-size: 16px;").arg(color));
+}
+
+void CommandBoardStatusPanel::queryMapVersion(const std::string& map_name) {
+    {
+        std::lock_guard<std::mutex> lk(cache_mutex_);
+        last_version_query_ = node_->now();
+        if (!get_maps_cli_ || !get_maps_cli_->service_is_ready()) {
+            version_map_name_ = map_name;
+            version_state_ = VersionState::kUnavailable;
+            return;
+        }
+        if (version_map_name_ != map_name) {
+            version_map_name_ = map_name;
+            version_state_ = VersionState::kPending;
+        }
+        version_inflight_ = true;
+    }
+    get_maps_cli_->async_send_request(
+        std::make_shared<nav_interfaces::srv::GetMaps::Request>(),
+        [this, map_name](rclcpp::Client<nav_interfaces::srv::GetMaps>::SharedFuture fut) {
+            auto r = fut.get();
+            std::lock_guard<std::mutex> lk(cache_mutex_);
+            version_inflight_ = false;
+            if (version_map_name_ != map_name) return;  // 查询期间已切换地图，丢弃
+            version_state_ = VersionState::kNotFound;
+            for (const auto& m : r->maps) {
+                if (m.name == map_name) {
+                    version_value_ = m.data_version;
+                    version_state_ = VersionState::kFound;
+                    break;
+                }
+            }
+        });
+}
+
+void CommandBoardStatusPanel::renderMapVersion(const std::string& current_map_name) {
+    if (current_map_name.empty()) {
+        map_version_->setText("数据版本：--");
+        map_version_->setStyleSheet("color: gray;");
+        return;
+    }
+    bool need_query = false;
+    std::string cached_name, value;
+    VersionState state;
+    {
+        std::lock_guard<std::mutex> lk(cache_mutex_);
+        cached_name = version_map_name_;
+        value = version_value_;
+        state = version_state_;
+        need_query = !version_inflight_ &&
+                     (cached_name != current_map_name ||
+                      (node_->now() - last_version_query_).seconds() > kVersionRefreshSec);
+    }
+    if (need_query) queryMapVersion(current_map_name);
+    if (cached_name != current_map_name) state = VersionState::kPending;
+
+    QString text;
+    QString color = "gray";
+    switch (state) {
+        case VersionState::kFound:
+            if (value.empty()) {
+                text = "数据版本：未知（map.yaml 由旧版程序写出）";
+            } else if (value == "legacy") {
+                text = "数据版本：legacy ⚠️ 离线对齐 / 替换会丢有效面积，需新版本重新建图后替换";
+                color = "orange";
+            } else {
+                text = QString("数据版本：%1 ✅ 可无损离线对齐 / 替换").arg(QString::fromStdString(value));
+                color = "green";
+            }
+            break;
+        case VersionState::kNotFound:
+            text = "数据版本：map_manager 地图列表中无此地图";
+            break;
+        case VersionState::kUnavailable:
+            text = "数据版本：map_manager 未就绪";
+            break;
+        default:
+            text = "数据版本：查询中…";
+            break;
+    }
+    map_version_->setText(text);
+    map_version_->setStyleSheet(QString("color: %1;").arg(color));
 }
 
 void CommandBoardStatusPanel::refreshUi() {
@@ -272,6 +364,7 @@ void CommandBoardStatusPanel::refreshUi() {
 
     // 🗺 当前地图
     map_label_->setText(QString::fromStdString(s.current_map_name.empty() ? "（未加载）" : s.current_map_name));
+    renderMapVersion(s.current_map_name);
 
     // 📋 任务
     task_->setText(QString::fromStdString(s.task_status.empty() ? "--" : s.task_status));
