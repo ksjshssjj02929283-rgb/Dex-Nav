@@ -133,6 +133,9 @@ install(DIRECTORY launch params rviz
 # ── 单元测试（SensorMonitor）──────────────────────────────────────────
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
+  find_package(ament_cmake_pytest REQUIRED)
+
+  ament_add_pytest_test(test_command_board_launch test/test_command_board_launch.py)
 
   ament_add_gtest(sensor_monitor_test
     test/sensor_monitor_test.cpp
