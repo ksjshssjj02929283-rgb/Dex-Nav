@@ -265,14 +265,19 @@ void TestG2_Rasterize() {
     EXPECT(map_manager::ApplyStrokes(&m, geo, th, {Stroke(kToolWall, kShapePolyline, {{0.05, 0.55}, {0.95, 0.55}}, 0.1)}) == 30,
            "capsule covers 3 rows x 10 cols");
 
-    // 擦除：障碍 0 与概率灰 150 → 255；未知 128 与已是自由的 230 不变
+    // 擦除是像素覆盖：凡不是自由的（障碍 0、概率灰 150、未知 126 / 127 / 128）都 → 255；已是自由的 230 不变
     m.setTo(128);
     m.at<uint8_t>(5, 5) = 0;
     m.at<uint8_t>(5, 6) = 230;
     m.at<uint8_t>(5, 7) = 150;
+    m.at<uint8_t>(4, 4) = 126;
+    m.at<uint8_t>(4, 5) = 127;
     const int erased = map_manager::ApplyStrokes(&m, geo, th, {Stroke(kToolErase, kShapePolyline, {{0.0, 0.0}, {1.0, 1.0}, {0.0, 1.0}, {1.0, 0.0}}, 3.0)});
-    EXPECT(erased == 2 && m.at<uint8_t>(5, 5) == 255 && m.at<uint8_t>(5, 7) == 255, "erase turns obstacle and graded into free");
-    EXPECT(m.at<uint8_t>(0, 0) == 128 && m.at<uint8_t>(5, 6) == 230, "unknown and free untouched");
+    EXPECT(erased == 99 && m.at<uint8_t>(5, 5) == 255 && m.at<uint8_t>(5, 7) == 255,
+           "erase turns obstacle and graded into free");
+    EXPECT(m.at<uint8_t>(4, 4) == 255 && m.at<uint8_t>(4, 5) == 255 && m.at<uint8_t>(0, 0) == 255,
+           "erase turns unknown (126..128) into free");
+    EXPECT(m.at<uint8_t>(5, 6) == 230, "free pixel keeps its gray under erase");
 
     // 墙体不重写已是障碍的像素（灰度 30 保持 30）
     m.setTo(150);
@@ -403,9 +408,9 @@ void TestG4_EditGrid(const fs::path& maps) {
     for (const auto& e : mm.ScanMapCatalog()) if (e.name == "g4") rev2 = e.grid_revision;
     EXPECT(r.revision == rev2 && rev2 != rev, "new revision returned and visible in catalog");
 
-    // 擦除只扫未知区：无像素变化 → 成功但不备份
+    // 擦除只扫已是自由的区域：无像素变化 → 成功但不备份
     const int backups = CountBackups(slam);
-    EXPECT(mm.EditGridEx("g4", {Stroke(kToolErase, kShapePolyline, {{-0.5, 0.75}}, 0.3)}, rev2, &r, msg) == 0,
+    EXPECT(mm.EditGridEx("g4", {Stroke(kToolErase, kShapePolyline, {{-0.5, -0.25}}, 0.3)}, rev2, &r, msg) == 0,
            "no-op edit ok: " + msg);
     EXPECT(r.changed_pixels == 0 && r.backup_ts.empty() && CountBackups(slam) == backups, "no-op: no backup");
 

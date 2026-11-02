@@ -15,7 +15,7 @@ namespace map_manager {
 
 // 与 nav_interfaces/msg/GridStroke.msg 的常量保持一致；核心层不依赖 ROS msg。
 constexpr uint8_t kToolWall = 1;      // 覆盖到的非障碍格 → 障碍（0）
-constexpr uint8_t kToolErase = 2;     // 覆盖到的障碍格与概率灰格 → 自由（255）；未知保持未知
+constexpr uint8_t kToolErase = 2;     // 覆盖到的非自由格（障碍、概率灰、未知）→ 自由（255）
 constexpr uint8_t kToolUnknown = 3;   // 覆盖到的非未知格 → 未知（128）
 constexpr uint8_t kShapePolyline = 1; // 折线（单点 = 圆点），按笔刷直径画胶囊
 constexpr uint8_t kShapeRect = 2;     // 两个对角点围成的轴对齐填充矩形，忽略宽度
@@ -60,7 +60,7 @@ bool ValidThresholds(const GridThresholds& th);
 std::string ValidateStrokes(const std::vector<GridStrokeSpec>& strokes);
 
 // 按顺序把笔画应用到 8 位单通道灰度图上（原地修改），返回发生变化的像素数。
-// 一笔到位：墙体把非障碍改 0；擦除把障碍和概率灰改 255；未知把非未知改 128。其余像素原样保留；越界部分裁掉。
+// 一笔到位：墙体把非障碍改 0；擦除把非自由改 255；未知把非未知改 128。其余像素原样保留；越界部分裁掉。
 // 调用方须先保证 ValidateStrokes 通过、ValidThresholds 为真、gray 为 CV_8UC1。
 int ApplyStrokes(cv::Mat* gray, const GridGeometry& geo, const GridThresholds& th,
                  const std::vector<GridStrokeSpec>& strokes);

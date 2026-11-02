@@ -1,0 +1,11 @@
+# 迦智底盘覆盖参数，叠加在 command_board_params.yaml 之后使用。
+/**:
+  ros__parameters:
+    # 定位由迦智负责：急停、断链恢复后不调我方的停定位和重定位，避免误报 ALARM
+    enable_loss_recovery: false
+    sensor_monitor:
+      enable: false
+    nav2:
+      autostart: false
+    path_navigation:
+      autostart: false
