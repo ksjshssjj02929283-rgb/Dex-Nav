@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <package format="3">
   <name>command_board</name>
-  <version>0.5.0</version>
+  <version>0.5.1</version>
   <description>导航系统管理</description>
 
   <maintainer email="maintainer@example.com">Maintainer</maintainer>
