@@ -2,7 +2,7 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>nav2_path_smoothers</name>
-  <version>0.5.0</version>
+  <version>0.5.1</version>
   <description>自研路径平滑器插件集（nav2_core::Smoother）：多项式（Savitzky-Golay 5 次）与弹性带（EB）。由 PlannerServer 统一后处理层加载。</description>
   <maintainer email="dev@dexe.local">DEXE Robot Engineer</maintainer>
   <license>Apache-2.0</license>

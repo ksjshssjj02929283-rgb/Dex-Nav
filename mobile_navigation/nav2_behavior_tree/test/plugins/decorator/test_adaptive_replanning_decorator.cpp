@@ -113,6 +113,7 @@ public:
     config_->input_ports.insert(std::make_pair("hz", "10.0"));
     config_->input_ports.insert(std::make_pair("global_frame", "map"));
     config_->input_ports.insert(std::make_pair("robot_base_frame", "base_link"));
+    config_->input_ports.insert(std::make_pair("planning_timeout_s", "0.0"));
     config_->input_ports.insert(std::make_pair("recovery_replan_mode", "active"));
 
     global_replan_context_ = nav2_behavior_tree::getOrCreateGlobalReplanContext(
@@ -169,6 +170,137 @@ TEST_F(AdaptiveReplanningTestFixture, test_rate_limiting)
   // 4. 第三次 tick：应该放行，子节点被重新 tick
   EXPECT_EQ(bt_node_->executeTick(), BT::NodeStatus::SUCCESS);
   EXPECT_EQ(dummy_node_->getTickCount(), 2);  // 运行计数变为 2
+}
+
+TEST_F(AdaptiveReplanningTestFixture, test_planning_timeout_fails_task)
+{
+  geometry_msgs::msg::PoseStamped goal_pose;
+  goal_pose.header.frame_id = "map";
+  goal_pose.pose.position.x = 2.0;
+  config_->blackboard->set("goal", goal_pose);
+
+  nav_msgs::msg::Path path;
+  path.header.frame_id = "map";
+  path.poses.emplace_back();
+  config_->blackboard->set("path", path);
+
+  const auto active_request = global_replan_context_->request(
+    nav2_behavior_tree::GlobalReplanReason::FOLLOW_PATH_FAILED);
+
+  bt_node_.reset();
+  config_->input_ports["planning_timeout_s"] = "0.05";
+  bt_node_ = std::make_shared<nav2_behavior_tree::AdaptiveReplanning>(
+    "adaptive_replanning_timeout", *config_);
+  bt_node_->setChild(dummy_node_.get());
+
+  dummy_node_->setReturnStatus(BT::NodeStatus::RUNNING);
+  EXPECT_EQ(bt_node_->executeTick(), BT::NodeStatus::RUNNING);
+  EXPECT_EQ(dummy_node_->getTickCount(), 1);
+
+  std::this_thread::sleep_for(120ms);
+
+  // 超时后取消当前请求、不再 tick 子节点，而是 halt 并向上返回 FAILURE。
+  EXPECT_EQ(bt_node_->executeTick(), BT::NodeStatus::FAILURE);
+  EXPECT_EQ(dummy_node_->getTickCount(), 1);
+  EXPECT_TRUE(global_replan_context_->isCanceled(active_request));
+}
+
+TEST_F(AdaptiveReplanningTestFixture, test_zero_planning_timeout_disables_timeout)
+{
+  geometry_msgs::msg::PoseStamped goal_pose;
+  goal_pose.header.frame_id = "map";
+  goal_pose.pose.position.x = 2.0;
+  config_->blackboard->set("goal", goal_pose);
+
+  nav_msgs::msg::Path path;
+  path.header.frame_id = "map";
+  path.poses.emplace_back();
+  config_->blackboard->set("path", path);
+
+  bt_node_.reset();
+  config_->input_ports["planning_timeout_s"] = "0.0";
+  bt_node_ = std::make_shared<nav2_behavior_tree::AdaptiveReplanning>(
+    "adaptive_replanning_timeout_disabled", *config_);
+  bt_node_->setChild(dummy_node_.get());
+
+  dummy_node_->setReturnStatus(BT::NodeStatus::RUNNING);
+  EXPECT_EQ(bt_node_->executeTick(), BT::NodeStatus::RUNNING);
+  EXPECT_EQ(dummy_node_->getTickCount(), 1);
+
+  std::this_thread::sleep_for(120ms);
+
+  // 0 表示关闭超时，即使规划持续时间明显超过测试时限也必须继续运行。
+  EXPECT_EQ(bt_node_->executeTick(), BT::NodeStatus::RUNNING);
+  EXPECT_EQ(dummy_node_->getTickCount(), 2);
+
+  dummy_node_->setReturnStatus(BT::NodeStatus::SUCCESS);
+  EXPECT_EQ(bt_node_->executeTick(), BT::NodeStatus::SUCCESS);
+}
+
+TEST_F(AdaptiveReplanningTestFixture, test_negative_planning_timeout_uses_safe_default)
+{
+  geometry_msgs::msg::PoseStamped goal_pose;
+  goal_pose.header.frame_id = "map";
+  goal_pose.pose.position.x = 2.0;
+  config_->blackboard->set("goal", goal_pose);
+
+  nav_msgs::msg::Path path;
+  path.header.frame_id = "map";
+  path.poses.emplace_back();
+  config_->blackboard->set("path", path);
+
+  bt_node_.reset();
+  config_->input_ports["planning_timeout_s"] = "-1.0";
+  bt_node_ = std::make_shared<nav2_behavior_tree::AdaptiveReplanning>(
+    "adaptive_replanning_invalid_timeout", *config_);
+  bt_node_->setChild(dummy_node_.get());
+
+  dummy_node_->setReturnStatus(BT::NodeStatus::RUNNING);
+  EXPECT_EQ(bt_node_->executeTick(), BT::NodeStatus::RUNNING);
+  EXPECT_EQ(dummy_node_->getTickCount(), 1);
+
+  std::this_thread::sleep_for(120ms);
+
+  // 非法负数不能产生“立即超时”，应回退到默认 30s。
+  EXPECT_EQ(bt_node_->executeTick(), BT::NodeStatus::RUNNING);
+  EXPECT_EQ(dummy_node_->getTickCount(), 2);
+}
+
+TEST_F(AdaptiveReplanningTestFixture, test_planning_timeout_restarts_for_next_attempt)
+{
+  geometry_msgs::msg::PoseStamped goal_pose;
+  goal_pose.header.frame_id = "map";
+  goal_pose.pose.position.x = 2.0;
+  config_->blackboard->set("goal", goal_pose);
+
+  nav_msgs::msg::Path path;
+  path.header.frame_id = "map";
+  path.poses.emplace_back();
+  config_->blackboard->set("path", path);
+
+  bt_node_.reset();
+  config_->input_ports["planning_timeout_s"] = "0.2";
+  bt_node_ = std::make_shared<nav2_behavior_tree::AdaptiveReplanning>(
+    "adaptive_replanning_timeout_restart", *config_);
+  bt_node_->setChild(dummy_node_.get());
+
+  dummy_node_->setReturnStatus(BT::NodeStatus::RUNNING);
+  EXPECT_EQ(bt_node_->executeTick(), BT::NodeStatus::RUNNING);
+  std::this_thread::sleep_for(250ms);
+  EXPECT_EQ(bt_node_->executeTick(), BT::NodeStatus::FAILURE);
+  EXPECT_EQ(dummy_node_->getTickCount(), 1);
+
+  // 失败后的下一次 tick 应开启新规划窗口，而不是沿用上一轮的开始时间。
+  EXPECT_EQ(bt_node_->executeTick(), BT::NodeStatus::RUNNING);
+  EXPECT_EQ(dummy_node_->getTickCount(), 2);
+
+  std::this_thread::sleep_for(100ms);
+  EXPECT_EQ(bt_node_->executeTick(), BT::NodeStatus::RUNNING);
+  EXPECT_EQ(dummy_node_->getTickCount(), 3);
+
+  std::this_thread::sleep_for(150ms);
+  EXPECT_EQ(bt_node_->executeTick(), BT::NodeStatus::FAILURE);
+  EXPECT_EQ(dummy_node_->getTickCount(), 3);
 }
 
 TEST_F(AdaptiveReplanningTestFixture, test_global_replanning_disabled_keeps_initial_and_goal_plans)
@@ -694,7 +826,9 @@ TEST_F(AdaptiveReplanningTestFixture, test_prepare_backup_requests_one_replan_pe
 
 TEST_F(AdaptiveReplanningTestFixture, test_prepare_request_during_running_plan_needs_next_plan)
 {
-  constexpr uint64_t kSessionId = 1001;
+  constexpr uint64_t kSessionId = 1002;
+  config_->blackboard->set<uint64_t>(
+    nav2_behavior_tree::kPrepareNavigationSessionKey, kSessionId);
 
   auto request_pub = node_->create_publisher<std_msgs::msg::UInt64>(
     nav2_util::navigation_protocol::kPrepareReplanTopic,
@@ -735,7 +869,9 @@ TEST_F(AdaptiveReplanningTestFixture, test_prepare_request_during_running_plan_n
 
 TEST_F(AdaptiveReplanningTestFixture, test_prepare_replan_supports_multi_pose_goal)
 {
-  constexpr uint64_t kSessionId = 1001;
+  constexpr uint64_t kSessionId = 1003;
+  config_->blackboard->set<uint64_t>(
+    nav2_behavior_tree::kPrepareNavigationSessionKey, kSessionId);
 
   bt_node_.reset();
   config_->input_ports.erase("goal");

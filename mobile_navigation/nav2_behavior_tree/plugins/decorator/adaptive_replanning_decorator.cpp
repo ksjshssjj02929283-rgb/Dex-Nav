@@ -68,6 +68,14 @@ AdaptiveReplanning::AdaptiveReplanning(
   node_->get_parameter("transform_tolerance", transform_tolerance_);
 
   getInput("enable_global_replanning", global_replanning_enabled_);
+  getInput("planning_timeout_s", planning_timeout_s_);
+  if (!std::isfinite(planning_timeout_s_) || planning_timeout_s_ < 0.0) {
+    RCLCPP_WARN(
+      node_->get_logger(),
+      "AdaptiveReplanning: Invalid planning_timeout_s=%.3f; using %.1f s.",
+      planning_timeout_s_, kDefaultPlanningTimeoutS);
+    planning_timeout_s_ = kDefaultPlanningTimeoutS;
+  }
 
   std::string mode_value{"disabled"};
   getInput("recovery_replan_mode", mode_value);
@@ -80,11 +88,15 @@ AdaptiveReplanning::AdaptiveReplanning(
   }
   global_replan_context_->setMode(
     global_replanning_enabled_ ? recovery_replan_mode_ : GlobalReplanMode::DISABLED);
+  const std::string timeout_value = planning_timeout_s_ > 0.0 ?
+    std::to_string(planning_timeout_s_) : std::string("disabled");
   RCLCPP_INFO(
-    node_->get_logger(), "AdaptiveReplanning: Global replanning=%s, recovery mode=%s.",
+    node_->get_logger(),
+    "AdaptiveReplanning: Global replanning=%s, recovery mode=%s, planning timeout=%s.",
     global_replanning_enabled_ ? "enabled" : "disabled",
     nav2_behavior_tree::toString(
-      global_replanning_enabled_ ? recovery_replan_mode_ : GlobalReplanMode::DISABLED));
+      global_replanning_enabled_ ? recovery_replan_mode_ : GlobalReplanMode::DISABLED),
+    timeout_value.c_str());
 
   if (global_replanning_enabled_ && recovery_replan_mode_ == GlobalReplanMode::ACTIVE) {
     // Blackboard 中的 BT client node 不由全局 Executor 驱动，订阅必须使用
@@ -124,6 +136,7 @@ void AdaptiveReplanning::syncPrepareSession()
   has_valid_plan_ = false;
   has_last_goal_ = false;
   planning_in_progress_ = false;
+  planning_started_at_ = std::chrono::steady_clock::time_point{};
   active_replan_request_.reset();
 }
 
@@ -250,6 +263,7 @@ void AdaptiveReplanning::resetPathValidityState()
 void AdaptiveReplanning::beginPlanningAttempt()
 {
   planning_in_progress_ = true;
+  planning_started_at_ = std::chrono::steady_clock::now();
   // 锁存的阻塞判定属于当前旧路径；本次规划成功后必须清除它并进入检测冷却。
   planning_for_blocked_path_ = path_blocked_latched_;
   active_replan_request_ = global_replanning_enabled_ &&
@@ -268,12 +282,37 @@ void AdaptiveReplanning::beginPlanningAttempt()
 
 BT::NodeStatus AdaptiveReplanning::tickPlanningChild()
 {
+  if (planning_timeout_s_ > 0.0 && planning_in_progress_) {
+    const auto now = std::chrono::steady_clock::now();
+    const double elapsed_s =
+      std::chrono::duration<double>(now - planning_started_at_).count();
+    if (elapsed_s >= planning_timeout_s_) {
+      const uint64_t request_id = active_replan_request_ ?
+        active_replan_request_->token.request_id : 0;
+      if (active_replan_request_) {
+        global_replan_context_->cancel(active_replan_request_->token);
+      }
+      RCLCPP_ERROR(
+        node_->get_logger(),
+        "AdaptiveReplanning: Global planning exceeded %.3f s (elapsed=%.3f s, "
+        "request_id=%" PRIu64 "); halting planning and failing the task.",
+        planning_timeout_s_, elapsed_s, request_id);
+      haltChild();
+      planning_in_progress_ = false;
+      planning_started_at_ = std::chrono::steady_clock::time_point{};
+      planning_for_blocked_path_ = false;
+      active_replan_request_.reset();
+      return BT::NodeStatus::FAILURE;
+    }
+  }
+
   const BT::NodeStatus child_state = child_node_->executeTick();
   if (child_state == BT::NodeStatus::RUNNING) {
     return child_state;
   }
 
   planning_in_progress_ = false;
+  planning_started_at_ = std::chrono::steady_clock::time_point{};
 
   if (child_state == BT::NodeStatus::SUCCESS) {
     has_valid_plan_ = true;
@@ -342,6 +381,7 @@ void AdaptiveReplanning::halt()
   has_valid_plan_ = false;
   has_last_goal_ = false;
   planning_in_progress_ = false;
+  planning_started_at_ = std::chrono::steady_clock::time_point{};
   active_replan_request_.reset();
   prepare_session_id_ = 0;
 }
@@ -445,6 +485,7 @@ BT::NodeStatus AdaptiveReplanning::tick()
     if (planning_in_progress_) {
       haltChild();
       planning_in_progress_ = false;
+      planning_started_at_ = std::chrono::steady_clock::time_point{};
       active_replan_request_.reset();
     }
     cancelPendingPrepareReplan();

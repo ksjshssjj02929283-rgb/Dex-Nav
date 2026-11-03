@@ -79,6 +79,12 @@ TEST(WPTest, test_dynamic_parameters)
   EXPECT_EQ(controller->get_parameter("controller_frequency").as_double(), 25.0);
   EXPECT_FALSE(controller->dynamicParamsShim(
     {rclcpp::Parameter("controller_frequency", 100.0)}).successful);
+  EXPECT_FALSE(controller->dynamicParamsShim(
+    {rclcpp::Parameter("local_control_stall_timeout", 20.0)}).successful);
+  EXPECT_FALSE(controller->dynamicParamsShim(
+    {rclcpp::Parameter("stall_linear_velocity_epsilon", 0.02)}).successful);
+  EXPECT_FALSE(controller->dynamicParamsShim(
+    {rclcpp::Parameter("stall_angular_velocity_epsilon", 0.02)}).successful);
   EXPECT_EQ(controller->get_parameter("min_x_velocity_threshold").as_double(), 100.0);
   EXPECT_EQ(controller->get_parameter("min_y_velocity_threshold").as_double(), 100.0);
   EXPECT_EQ(controller->get_parameter("min_theta_velocity_threshold").as_double(), 100.0);

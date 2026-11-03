@@ -58,6 +58,11 @@ struct ControllerServer::SnapshotRuntime
   uint64_t accepted_revision{0}, accepted_session{0}, accepted_limit{0}; ///< 已采纳的版本号
   double planning_hz{10.0};                            ///< 规划工作线程执行频率 (Hz)
   double max_age{0.3};                                 ///< 允许消费的轨迹最大陈旧时长 (s)
+  double local_control_stall_timeout{30.0};             ///< 局部控制连续静止超时 (s)
+  double stall_linear_velocity_epsilon{0.01};          ///< 局部静止判定线速度阈值 (m/s)
+  double stall_angular_velocity_epsilon{0.01};         ///< 局部静止判定角速度阈值 (rad/s)
+  bool local_stall_active{false};                      ///< 是否正在累计局部静止时长
+  SnapshotClock::time_point local_stall_started{};      ///< 本轮连续静止起始时刻
   Request request;                                     ///< 待规划消费的最新请求快照
   bool has_request{false};                             ///< 是否存在待处理请求
   std::shared_ptr<const Result> result;                ///< 供控制线程读取的最新不可变结果快照

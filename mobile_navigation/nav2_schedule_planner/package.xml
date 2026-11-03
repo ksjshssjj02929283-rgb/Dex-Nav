@@ -3,7 +3,7 @@
         schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
     <name>nav2_schedule_planner</name>
-    <version>0.5.0</version>
+    <version>0.5.1</version>
     <description>
         多段路径执行器：托管 NavigateThroughGraphPoints action，调 map_asset_manager
         解析 nav_point_ids 为 PathSegment[]，逐段离散成 5mm 轨迹交 path_follower 跟踪，

@@ -108,6 +108,9 @@ controller_server:
     enable_nav_monitor_echo: true
     planning_frequency: 10.0
     planning_result_max_age: 0.5
+    local_control_stall_timeout: 30.0 # 局部控制连续静止 30s：独立超时上报 FAILED，不受 progress_checker 参数影响
+    stall_linear_velocity_epsilon: 0.01 # 局部静止判定线速度阈值 (m/s)，与角速度阈值同时满足才累计静止时间
+    stall_angular_velocity_epsilon: 0.01 # 局部静止判定角速度阈值 (rad/s)
     controller_frequency: 25.0 # 控制器控制周期 # Related params: model_dt >= controller period; prediction horizon = time_steps * model_dt
     goal_checker_plugins: ["simple_goal_checker", "stopped_goal_checker", "position_goal_checker", "rotation_goal_checker", "longitudinal_goal_checker", "high_precision_goal_checker"] # goal_checker_plugin: "goal_checker" For Galactic and older
     controller_plugins: ["MPPIController", "DWBController", "RPPController", "GracefulController", "RotationShimController", "PIDController", "LatLonController", "PureRotationController", "StraightController"]

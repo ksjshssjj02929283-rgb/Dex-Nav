@@ -13,12 +13,14 @@
   - The outer retry count is intentionally large so temporary dynamic obstacles
     do not make the whole navigation action fail before a later replan succeeds.
 
-  Local control recovery:
-  - If FollowPath fails, wait for the robot to stop, clear the local costmap,
-    and wait for a fresh global path before retrying control once.
+  Local control failure handling:
+  - A FollowPath failure gets one in-place recovery attempt: stop, clear the
+    local costmap, request a fresh global path, then retry FollowPath once.
+  - The controller's dedicated local-stall watchdog owns the 30 s stationary
+    timeout. Its baseline survives this recovery attempt, so a continuous stop
+    still fails the navigation task at 30 s instead of restarting the timer.
+    movement_time_allowance remains the normal 5 s progress-check setting.
   - BackUp recovery is disabled to eliminate reverse blind-spot risks.
-  - The local recovery loop is bounded so an unrecoverable controller failure
-    is reported to the caller instead of spinning indefinitely.
 
   PREPARE 后退完成后的重规划：
   - bt_navigator 为每个已接受的导航任务发布一个独立的会话编号。
@@ -39,8 +41,12 @@
            目标代次由 bt_navigator 统一发布，保证每个导航任务最多后退一次。 -->
       <AdaptiveReplanning enable_global_replanning="true" goal="{goal}" path="{path}" distance_threshold="0.5" max_deviation="0.5"
         hz="0.02" path_obstacle_check_hz="2.0" invalid_path_confirmations="4"
-        min_blocked_path_poses="3" obstacle_replan_cooldown="2.5" recovery_replan_mode="active">
-        <RecoveryNode number_of_retries="10" name="ComputePathToPoseOuterRetry">
+        min_blocked_path_poses="3" obstacle_replan_cooldown="2.5" recovery_replan_mode="active"
+        planning_timeout_s="30.0">
+        <!-- 全局规划总期限：首次规划、清 costmap 和全部恢复重试合计不得超过 30s。
+             超时由 AdaptiveReplanning 内部 halt 重试子树并返回 FAILURE，NavigateToPose 任务随之中止。 -->
+        <!-- 重试次数只作为防御性上限，真正的任务失败边界由 AdaptiveReplanning 的 30s 期限控制。 -->
+        <RecoveryNode number_of_retries="100" name="ComputePathToPoseOuterRetry">
 
           <!-- 内层：规划失败后，依次尝试清 global 和 local，然后立即重规划 1 次 -->
           <RecoveryNode number_of_retries="1" name="ComputePathToPoseInnerRetry">
@@ -82,8 +88,11 @@
       </AdaptiveReplanning>
 
 
-      <!-- 局部控制：FollowPath 失败后等待 0.5 s，与 velocity_smoother 的急停保持时间一致；
-           随后清 local 并等待新全局路径，避免机器人未停稳时立即重试。已移除后退 BackUp 行为。 -->
+      <!-- 局部控制：FollowPath 失败后允许原地恢复并重规划 1 次。
+           30 s 连续静止超时只由 controller_server 的 local_control_stall_timeout 管理；
+           该基线不在 FollowPath 入口重置，因此恢复重试不会重新累计 30 s。
+           movement_time_allowance 保持原有 5 s 进展检查语义。
+           已移除后退 BackUp 行为。 -->
       <RecoveryNode number_of_retries="1" name="FollowPathInnerRetry">
         <!-- 此树由差速和全向共用，因此不固定 Controller ID，统一读取 current_controller：
              差速为 RPPController（近目标由 staged control 切到 PIDController）；
