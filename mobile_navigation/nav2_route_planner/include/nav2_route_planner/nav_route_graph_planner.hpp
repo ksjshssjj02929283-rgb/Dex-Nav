@@ -77,9 +77,10 @@ public:
     double projection_edge_threshold_m{1.0};
     double node_snap_threshold_m{0.1};
 
-    // "Same-side shortcut": when avoidance is enabled and start/goal
-    // projections sit within this distance, skip graph routing and use
-    // Theta\* directly. 0.0 disables independently.
+    // ── Same-side shortcut ──────────────────────────────────────────
+    // Independent switch: when enabled, allows Theta* direct connecting start->goal
+    // when start/goal projections sit very close, bypassing the graph.
+    bool enable_same_side_shortcut{true};
     double shortcut_max_proj_distance_m{0.5};
 
     // Cost

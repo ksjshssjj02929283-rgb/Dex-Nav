@@ -150,10 +150,11 @@ std::string CostmapAwareLayer::describeLastThetaStarFailure() const
 std::optional<std::vector<geometry_msgs::msg::PoseStamped>>
 CostmapAwareLayer::planWithThetaStar(
   const geometry_msgs::msg::PoseStamped & seg_start,
-  const geometry_msgs::msg::PoseStamped & seg_end)
+  const geometry_msgs::msg::PoseStamped & seg_end,
+  bool require_avoidance_enabled)
 {
   last_theta_star_failure_.reset();
-  if (!isEnabled()) {
+  if (require_avoidance_enabled && !isEnabled()) {
     ThetaStarFailureDiagnostic d;
     d.reason = ThetaStarFailureDiagnostic::Reason::DISABLED;
     d.allow_unknown = p_.theta_star_allow_unknown;

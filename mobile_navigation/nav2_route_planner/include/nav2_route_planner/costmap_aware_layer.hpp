@@ -56,6 +56,9 @@ public:
   void updateParams(const Params & p);  // safe to call at runtime
   bool isEnabled() const {return p_.enable_route_costmap_avoidance;}
 
+  /// Query whether the underlying costmap and Theta* planner are ready to plan.
+  bool isThetaStarAvailable() const {return theta_star_ != nullptr && costmap_ != nullptr;}
+
   struct ThetaStarFailureDiagnostic
   {
     enum class Reason
@@ -91,10 +94,16 @@ public:
   /// describeLastThetaStarFailure() explains whether the cause was
   /// out of bounds, unsafe endpoint cost, missing path connectivity, or
   /// unavailable Theta*/costmap state.
+  /// Execute Theta* planning between two poses.
+  /// If `require_avoidance_enabled` is true (default, used for transition rewrite and
+  /// in-graph bypass), planning fails immediately when `isEnabled()` is false.
+  /// If `require_avoidance_enabled` is false (used by same-side shortcut), Theta* planning
+  /// can run regardless of `enable_route_costmap_avoidance`, provided costmap and Theta* are ready.
   std::optional<std::vector<geometry_msgs::msg::PoseStamped>>
   planWithThetaStar(
     const geometry_msgs::msg::PoseStamped & seg_start,
-    const geometry_msgs::msg::PoseStamped & seg_end);
+    const geometry_msgs::msg::PoseStamped & seg_end,
+    bool require_avoidance_enabled = true);
 
   std::string describeLastThetaStarFailure() const;
 

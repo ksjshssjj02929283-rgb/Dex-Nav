@@ -77,6 +77,10 @@ const std::vector<ParamHandler> & paramTable()
       false},
 
     // ── Same-side shortcut ──────────────────────────────────────────
+    {"enable_same_side_shortcut",
+      [](const P & p) {return rclcpp::ParameterValue(p.enable_same_side_shortcut);},
+      [](P & p, const rclcpp::Parameter & v) {p.enable_same_side_shortcut = v.as_bool();},
+      false},
     {"shortcut_max_proj_distance_m",
       [](const P & p) {return rclcpp::ParameterValue(p.shortcut_max_proj_distance_m);},
       [](P & p, const rclcpp::Parameter & v) {p.shortcut_max_proj_distance_m = v.as_double();},
@@ -441,9 +445,11 @@ nav_msgs::msg::Path NavRouteGraphPlanner::createPlan(
     }
   }
 
-  // Step 3 — same-side shortcut: when both projections sit very close,
+  // Step 3 — same-side shortcut: when start and goal projections sit very close,
   // skip the graph and let Theta* connect start→goal directly.
-  if (route_avoidance_enabled) {
+  // This is independently controlled by `enable_same_side_shortcut` and
+  // `shortcut_max_proj_distance_m`, separated from `enable_route_costmap_avoidance`.
+  if (params_.enable_same_side_shortcut) {
     if (auto shortcut = trySameSideShortcut(start, goal, start_proj, goal_proj)) {
       return *shortcut;
     }
@@ -689,7 +695,8 @@ NavRouteGraphPlanner::trySameSideShortcut(
     return std::nullopt;
   }
 
-  auto direct = ca_layer_->planWithThetaStar(start, goal);
+  // Execute Theta* planning for shortcut without requiring `enable_route_costmap_avoidance`.
+  auto direct = ca_layer_->planWithThetaStar(start, goal, false);
   if (!direct || direct->empty()) {
     RCLCPP_WARN(logger_,
       "Same-side shortcut: proj distance %.2fm < threshold but Theta* "

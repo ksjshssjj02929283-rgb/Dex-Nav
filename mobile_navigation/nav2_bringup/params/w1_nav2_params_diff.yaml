@@ -1203,8 +1203,16 @@ planner_server:
       # false=最终朝向用 goal 给定值（默认/我们期望）；true=用路径切线方向
       use_final_approach_orientation: false
 
+      # ── 同侧短距跳过路网直连捷径 (Same-side Shortcut) ──
+      # 独立于 enable_route_costmap_avoidance 开关。
+      # 当起点与终点在路网上的投影点间距 <= shortcut_max_proj_distance_m 时，
+      # 跳过拓扑图搜索，直接由 Theta* 在自由空间无碰撞直连 start -> goal。
+      # 热切换：ros2 param set /planner_server RouteGridPlanner.enable_same_side_shortcut true
+      enable_same_side_shortcut: true
+      shortcut_max_proj_distance_m: 0.5
+
       # ── RouteGridPlanner costmap 避障总开关 ─────────────
-      # false：不做投影滑移、same-side Theta*、起终点 Theta* 接入或路网中段 bypass；
+      # false：不做投影滑移、起终点 Theta* 接入或路网中段 bypass；
       #        路网节点间 A* 仍用于拓扑选路，控制器碰撞保护仍独立生效。
       # true ：启用上述全部 RouteGridPlanner costmap 驱动的路径改写。
       # 热切换：ros2 param set /planner_server RouteGridPlanner.enable_route_costmap_avoidance true

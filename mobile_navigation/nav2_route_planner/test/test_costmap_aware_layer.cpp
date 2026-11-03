@@ -56,6 +56,33 @@ TEST(CostmapAvoidanceSwitchTest, RuntimeEnableRestoresFailClosedSafety)
     std::string::npos);
 }
 
+TEST(CostmapAvoidanceSwitchTest, SameSideShortcutBypassesAvoidanceEnabledCheck)
+{
+  CostmapAwareLayer layer({}, nullptr);
+  CostmapAwareLayer::Params params;
+  layer.configure(params);
+
+  // route_costmap_avoidance is disabled
+  EXPECT_FALSE(layer.isEnabled());
+  EXPECT_FALSE(layer.isThetaStarAvailable());
+
+  // 1. Default planWithThetaStar (require_avoidance_enabled=true) must fail with "disabled"
+  const auto default_result = layer.planWithThetaStar(pose(0.0, 0.0), pose(1.0, 0.0));
+  EXPECT_FALSE(default_result.has_value());
+  EXPECT_NE(
+    layer.describeLastThetaStarFailure().find("disabled"),
+    std::string::npos);
+
+  // 2. Shortcut mode (require_avoidance_enabled=false) bypasses avoidance check,
+  // proceeds to check Theta*/costmap availability, thus reporting "unavailable" instead of "disabled"
+  const auto shortcut_result = layer.planWithThetaStar(
+    pose(0.0, 0.0), pose(1.0, 0.0), /*require_avoidance_enabled=*/ false);
+  EXPECT_FALSE(shortcut_result.has_value());
+  EXPECT_NE(
+    layer.describeLastThetaStarFailure().find("unavailable"),
+    std::string::npos);
+}
+
 int main(int argc, char ** argv)
 {
   ::testing::InitGoogleTest(&argc, argv);
