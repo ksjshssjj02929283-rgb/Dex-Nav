@@ -3,6 +3,7 @@
 #include "nav2_controller/controller_server.hpp"
 #include "nav2_controller/snapshot_validation.hpp"
 #include "nav2_controller/snapshot_runtime.hpp"
+#include "nav2_core/exceptions.hpp"
 #include <chrono>
 #include <condition_variable>
 #include <functional>
@@ -35,6 +36,9 @@ void ControllerServer::configureSnapshotControl()
     };
   r->planning_hz = param("planning_frequency", 25.0);
   r->max_age = param("planning_result_max_age", 0.5);
+  r->local_control_stall_timeout = param("local_control_stall_timeout", 30.0);
+  r->stall_linear_velocity_epsilon = param("stall_linear_velocity_epsilon", 0.01);
+  r->stall_angular_velocity_epsilon = param("stall_angular_velocity_epsilon", 0.01);
   r->publisher = create_publisher<nav_interfaces::msg::RobotTrajectory>("local_trajectory", 1);
 }
 
@@ -249,7 +253,40 @@ bool ControllerServer::computeControlSnapshot()
     }
     updateGlobalPath(); syncPrepareSession();
 
-    // 2. 检查 Costmap 是否新鲜有效（过期时强制发硬刹停）
+    // 2. 局部静止看门狗独立于 progress_checker：所有提前 continue 路径都会经过这里。
+    //    progress_checker.movement_time_allowance 保持原有 5s 语义；连续静止的任务
+    //    失败边界只由 local_control_stall_timeout（默认 30s）管理。
+    const auto twist = getThresholdedTwist(odom_sub_->getTwist());
+    const bool stationary =
+      std::hypot(twist.x, twist.y) <= r->stall_linear_velocity_epsilon &&
+      std::fabs(twist.theta) <= r->stall_angular_velocity_epsilon;
+    const auto stall_now = SnapshotClock::now();
+    if (!stationary) {
+      if (r->local_stall_active) {
+        RCLCPP_INFO_THROTTLE(
+          get_logger(), *get_clock(), 2000,
+          "Local control movement resumed; stall timeout cleared.");
+        r->local_stall_active = false;
+      }
+    } else {
+      if (!r->local_stall_active) {
+        r->local_stall_active = true;
+        r->local_stall_started = stall_now;
+        RCLCPP_WARN_THROTTLE(
+          get_logger(), *get_clock(), 2000,
+          "Local control stationary; task will fail after %.1f s without motion.",
+          r->local_control_stall_timeout);
+      }
+      if (snapshot::stallTimedOut(
+          r->local_stall_started, stall_now, r->local_control_stall_timeout))
+      {
+        throw nav2_core::PlannerException(
+                "Local control remained stationary for " +
+                std::to_string(r->local_control_stall_timeout) + " s.");
+      }
+    }
+
+    // 3. 检查 Costmap 是否新鲜有效（过期时强制发硬刹停）
     if (!costmap_ros_ || !costmap_ros_->getLayeredCostmap() || !costmap_ros_->isCurrent()) {
       {
         std::lock_guard<std::mutex> lock(r->mutex);
@@ -262,7 +299,7 @@ bool ControllerServer::computeControlSnapshot()
       rate.sleep(); continue;
     }
 
-    // 3. 获取机器人当前在全局路径坐标系下的位姿
+    // 4. 获取机器人当前在全局路径坐标系下的位姿
     SnapshotRuntime::Request request;
     if (!nav2_util::getCurrentPose(
         request.pose, *costmap_ros_->getTfBuffer(),
@@ -273,12 +310,12 @@ bool ControllerServer::computeControlSnapshot()
         r->result.reset();}
       publishHardStopVelocity(); rate.sleep(); continue;
     }
-    // 4. 获取当前底盘滤波里程计速度
-    const auto twist = getThresholdedTwist(odom_sub_->getTwist());
+    // 5. 获取当前底盘滤波里程计速度
     request.velocity.linear.x = twist.x; request.velocity.linear.y = twist.y;
     request.velocity.angular.z = twist.theta;
+
     std::shared_ptr<const SnapshotRuntime::Result> result;
-    // 5. 路径几何变更时在锁外预构造不可变对象，避免持锁进行 Path 深拷贝与堆分配
+    // 6. 路径几何变更时在锁外预构造不可变对象，避免持锁进行 Path 深拷贝与堆分配
     if (path_id != speed_plan_path_id_) {
       shared_path = std::make_shared<const nav_msgs::msg::Path>(current_path_);
     }
@@ -312,7 +349,7 @@ bool ControllerServer::computeControlSnapshot()
         c.second->setSpeedLimit(request.limit.speed_limit, request.limit.percentage);
       }
     }
-    // 6. 校验规划结果有效性与时效性（usableResult 检查会话匹配、版本一致、规划成功且未超出 max_age）
+    // 7. 校验规划结果有效性与时效性（usableResult 检查会话匹配、版本一致、规划成功且未超出 max_age）
     if (!result || !snapshot::usableResult(*result, request.session, request.revision, r->max_age))
     {
       publishHardStopVelocity();
@@ -320,7 +357,7 @@ bool ControllerServer::computeControlSnapshot()
       continue;
     }
 
-    // 7. 若规划线程生成了新序号的轨迹，接受并更新当前轨迹与诊断信息，对外分发发布
+    // 8. 若规划线程生成了新序号的轨迹，接受并更新当前轨迹与诊断信息，对外分发发布
     if (accepted != result->sequence) {
       current_trajectory_ = result->trajectory;
       trajectory_dispatched_to_.clear();
@@ -338,10 +375,10 @@ bool ControllerServer::computeControlSnapshot()
     speed_plan_cycle_.planning_succeeded = true;
     speed_plan_cycle_.terminal_valid = true;
 
-    // 8. 驱动下游 Controller 计算速度指令并发布到 cmd_vel
+    // 9. 驱动下游 Controller 计算速度指令并发布到 cmd_vel
     computeAndPublishVelocity();
 
-    // 9. 到点判定：要求连续 goal_reached_required_frames_ 个控制拍 isGoalReached()
+    // 10. 到点判定：要求连续 goal_reached_required_frames_ 个控制拍 isGoalReached()
     //    均为真才确认到位，避免末端位姿噪声/瞬时掠过在容差边界上误判成功。
     //    任一拍未命中立即清零计数，重新开始累计。
     if (isGoalReached()) {

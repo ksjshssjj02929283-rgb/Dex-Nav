@@ -93,6 +93,9 @@ public:
       BT::InputPort<double>(
         "obstacle_replan_cooldown", kDefaultObstacleReplanCooldownS,
         "Seconds to suspend path-validity checks after a successful obstacle-triggered replan"),
+      BT::InputPort<double>(
+        "planning_timeout_s", kDefaultPlanningTimeoutS,
+        "Maximum duration of one global planning attempt in seconds; 0 disables the timeout"),
       BT::InputPort<std::string>(
         "recovery_replan_mode", std::string("disabled"),
         "Recovery replan mode: disabled, observe, or active")
@@ -107,6 +110,7 @@ private:
   static constexpr int kDefaultInvalidPathConfirmations = 4;
   static constexpr int kDefaultMinBlockedPathPoses = 3;
   static constexpr double kDefaultObstacleReplanCooldownS = 2.5;
+  static constexpr double kDefaultPlanningTimeoutS = 30.0;
 
   /**
    * @brief The main override required by a BT action
@@ -140,6 +144,8 @@ private:
   std::chrono::steady_clock::time_point last_planning_time_;
 
   bool planning_in_progress_;
+  std::chrono::steady_clock::time_point planning_started_at_{};
+  double planning_timeout_s_{kDefaultPlanningTimeoutS};
   std::optional<GlobalReplanRequest> active_replan_request_;
 
   rclcpp::CallbackGroup::SharedPtr prepare_replan_callback_group_;
