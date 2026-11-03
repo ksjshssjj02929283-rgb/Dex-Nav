@@ -101,7 +101,7 @@
     # 停车由 collision_monitor（0.5 s）负责；本模块约 1.0 s 取消任务，
     # 因此超时先统一 1.0 s，避免高负载下的接收缺口造成误取消。
     sensor_monitor:
-      enable: false
+      enable: true
       check_period_sec: 0.1
       startup_grace_sec: 15.0
       recover_hold_sec: 2.0
@@ -135,15 +135,15 @@
         required: true
         suppress_on_estop: false
       rgbd_front:
-        # 订阅转换后的 laser_scan（导航与 CM 实际使用的输入），不订深度图
-        topic: "/orbbec/front/laser_scan"
-        type: "sensor_msgs/msg/LaserScan"
+        # 订阅原始深度图，generic subscription 不反序列化像素数据，仅统计断流时间与频率
+        topic: "/orbbec/front/depth"
+        type: "sensor_msgs/msg/Image"
         timeout_sec: 1.0
         required: true
         suppress_on_estop: false
       rgbd_rear:
-        topic: "/orbbec/rear/laser_scan"
-        type: "sensor_msgs/msg/LaserScan"
+        topic: "/orbbec/rear/depth"
+        type: "sensor_msgs/msg/Image"
         timeout_sec: 1.0
         required: true
         suppress_on_estop: false

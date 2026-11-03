@@ -41,13 +41,18 @@ void SensorMonitor::AttachToNode(rclcpp::Node* node, const rclcpp::CallbackGroup
         return;
     }
 
-    // 传感器判活：generic subscription 不反序列化，只记接收时刻与计数；
+    // 传感器判活：generic subscription 不反序列化（不解析消息载荷），只记接收时刻与计数；
+    // keep_last(1) 避免底层缓存多帧大体积消息（如深度图 Image）；
     // 类型由参数给定，换机型不改代码；best-effort 可同时匹配 reliable / best-effort 发布者。
     // 使用索引直达（O(1)），避免高频回调遍历比对字符串。
+    // 注意：/feedback/odom 已由同进程 StatusMonitor 订阅并通过 SetOdomRxHook 转发 OnFrame，此处跳过重复建订。
     for (std::size_t i = 0; i < sensors_.size(); ++i) {
+        if (sensors_[i].config.topic == "/feedback/odom") {
+            continue;
+        }
         const auto options = MakeOptions(group);
         subscriptions_.push_back(node->create_generic_subscription(
-            sensors_[i].config.topic, sensors_[i].config.type, rclcpp::SensorDataQoS(),
+            sensors_[i].config.topic, sensors_[i].config.type, rclcpp::SensorDataQoS().keep_last(1),
             [this, i](std::shared_ptr<rclcpp::SerializedMessage>) { OnFrame(i); }, options));
     }
 
@@ -61,6 +66,7 @@ void SensorMonitor::AttachToNode(rclcpp::Node* node, const rclcpp::CallbackGroup
 }
 
 void SensorMonitor::OnFrame(const std::size_t index) {
+    std::lock_guard<std::mutex> lock(mutex_);
     if (index >= sensors_.size()) {
         return;
     }
@@ -90,6 +96,7 @@ std::string SensorMonitor::FormatAge(const double age_sec) {
 }
 
 std::string SensorMonitor::ComposeFaultDetail() const {
+    std::lock_guard<std::mutex> lock(mutex_);
     std::string detail;
     for (const auto& sensor : sensors_) {
         if (sensor.state != nav_interfaces::msg::SensorState::STATE_FAULT) {
@@ -131,50 +138,53 @@ void SensorMonitor::Tick() {
     sensor_states_.reserve(sensors_.size());
     bool required_fault = false;
     bool states_changed = false;
-    for (auto& sensor : sensors_) {
-        nav_interfaces::msg::SensorState state;
-        state.name = sensor.config.name;
-        state.topic = sensor.config.topic;
-        state.required = sensor.config.required;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        for (auto& sensor : sensors_) {
+            nav_interfaces::msg::SensorState state;
+            state.name = sensor.config.name;
+            state.topic = sensor.config.topic;
+            state.required = sensor.config.required;
 
-        const bool in_release_grace = sensor.config.suppress_on_estop && estop_released_at_ >= 0.0 &&
-                                      (now - estop_released_at_) < config_.estop_release_grace_sec;
+            const bool in_release_grace = sensor.config.suppress_on_estop && estop_released_at_ >= 0.0 &&
+                                          (now - estop_released_at_) < config_.estop_release_grace_sec;
 
-        const uint8_t prev_state = sensor.state;
-        if (estop && sensor.config.suppress_on_estop) {
-            sensor.state = nav_interfaces::msg::SensorState::STATE_SUPPRESSED;
-        } else if (!sensor.ever_received) {
-            sensor.state = (now > start_time_ + config_.startup_grace_sec)
-                                ? nav_interfaces::msg::SensorState::STATE_FAULT
-                                : nav_interfaces::msg::SensorState::STATE_UNKNOWN;
-        } else {
-            const bool stale = (now - sensor.last_rx_steady) > sensor.config.timeout_sec;
-            sensor.state = (stale && !in_release_grace) ? nav_interfaces::msg::SensorState::STATE_FAULT
-                                                        : nav_interfaces::msg::SensorState::STATE_OK;
-        }
-        if (sensor.state != prev_state) {
-            states_changed = true;
-        }
+            const uint8_t prev_state = sensor.state;
+            if (estop && sensor.config.suppress_on_estop) {
+                sensor.state = nav_interfaces::msg::SensorState::STATE_SUPPRESSED;
+            } else if (!sensor.ever_received) {
+                sensor.state = (now > start_time_ + config_.startup_grace_sec)
+                                    ? nav_interfaces::msg::SensorState::STATE_FAULT
+                                    : nav_interfaces::msg::SensorState::STATE_UNKNOWN;
+            } else {
+                const bool stale = (now - sensor.last_rx_steady) > sensor.config.timeout_sec;
+                sensor.state = (stale && !in_release_grace) ? nav_interfaces::msg::SensorState::STATE_FAULT
+                                                            : nav_interfaces::msg::SensorState::STATE_OK;
+            }
+            if (sensor.state != prev_state) {
+                states_changed = true;
+            }
 
-        // 统计窗口内：rate_hz / max_gap_sec
-        while (!sensor.rx_times.empty() && now - sensor.rx_times.front() > config_.stats_window_sec) {
-            sensor.rx_times.pop_front();
-        }
-        if (sensor.rx_times.size() >= 2) {
-            const double span = sensor.rx_times.back() - sensor.rx_times.front();
-            state.rate_hz = span > kEpsilon ? static_cast<float>((sensor.rx_times.size() - 1) / span) : 0.0f;
-        } else {
-            state.rate_hz = 0.0f;
-        }
-        state.max_gap_sec = 0.0f;
-        state.age_sec = sensor.ever_received ? static_cast<float>(now - sensor.last_rx_steady) : -1.0f;
-        state.state = sensor.state;
+            // 统计窗口内：rate_hz / max_gap_sec
+            while (!sensor.rx_times.empty() && now - sensor.rx_times.front() > config_.stats_window_sec) {
+                sensor.rx_times.pop_front();
+            }
+            if (sensor.rx_times.size() >= 2) {
+                const double span = sensor.rx_times.back() - sensor.rx_times.front();
+                state.rate_hz = span > kEpsilon ? static_cast<float>((sensor.rx_times.size() - 1) / span) : 0.0f;
+            } else {
+                state.rate_hz = 0.0f;
+            }
+            state.max_gap_sec = 0.0f;
+            state.age_sec = sensor.ever_received ? static_cast<float>(now - sensor.last_rx_steady) : -1.0f;
+            state.state = sensor.state;
 
-        if (sensor.state == nav_interfaces::msg::SensorState::STATE_FAULT &&
-            sensor.config.required) {
-            required_fault = true;
+            if (sensor.state == nav_interfaces::msg::SensorState::STATE_FAULT &&
+                sensor.config.required) {
+                required_fault = true;
+            }
+            sensor_states_.push_back(state);
         }
-        sensor_states_.push_back(state);
     }
 
     // ── 导航故障判定与状态机处理 ──────────────────────────────

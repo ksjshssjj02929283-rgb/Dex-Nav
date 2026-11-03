@@ -110,6 +110,11 @@ bool StatusMonitor::IsEstopActive() const {
     return snapshot_.is_estop_active;
 }
 
+void StatusMonitor::SetOdomRxHook(std::function<void()> hook) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    odom_rx_hook_ = std::move(hook);
+}
+
 void StatusMonitor::OnMapState(nav_interfaces::msg::MapState::SharedPtr msg) {
     std::lock_guard<std::mutex> lock(mutex_);
     snapshot_.current_map_name = msg->map_name;
@@ -135,12 +140,19 @@ void StatusMonitor::UpdatePoseFromTF() {
 }
 
 void StatusMonitor::OnOdom(nav_msgs::msg::Odometry::SharedPtr msg) {
-    std::lock_guard<std::mutex> lock(mutex_);
-    snapshot_.velocity        = msg->twist.twist;
-    snapshot_.velocity_valid  = true;
-    snapshot_.odom_received_at = std::chrono::steady_clock::now();
-    snapshot_.odom_pose       = msg->pose.pose;
-    snapshot_.odom_pose_valid = true;
+    std::function<void()> hook;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        snapshot_.velocity        = msg->twist.twist;
+        snapshot_.velocity_valid  = true;
+        snapshot_.odom_received_at = std::chrono::steady_clock::now();
+        snapshot_.odom_pose       = msg->pose.pose;
+        snapshot_.odom_pose_valid = true;
+        hook = odom_rx_hook_;
+    }
+    if (hook) {
+        hook();
+    }
 }
 
 void StatusMonitor::OnTaskStatus(std_msgs::msg::String::SharedPtr msg) {
