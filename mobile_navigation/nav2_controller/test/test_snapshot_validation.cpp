@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 #include "nav2_controller/snapshot_validation.hpp"
 using nav2_controller::snapshot::usableResult;
+using nav2_controller::snapshot::stallTimedOut;
 TEST(Snapshot, AcceptsStillValidPreviousPlanWhileNextPlanRuns)
 {
   EXPECT_TRUE(usableResult(2, 3, 2, 3, true, .2, .3));
@@ -16,6 +17,15 @@ TEST(Snapshot, FailureAndExpiryStopImmediately)
 {
   EXPECT_FALSE(usableResult(2, 3, 2, 3, false, .01, .3));
   EXPECT_FALSE(usableResult(2, 3, 2, 3, true, .31, .3));
+}
+
+TEST(Snapshot, LocalControlStallTimeout)
+{
+  const auto started = std::chrono::steady_clock::now();
+  EXPECT_FALSE(stallTimedOut(started, started, 30.0));
+  EXPECT_FALSE(stallTimedOut(started, started + std::chrono::seconds(29), 30.0));
+  EXPECT_TRUE(stallTimedOut(started, started + std::chrono::seconds(30), 30.0));
+  EXPECT_FALSE(stallTimedOut(started, started + std::chrono::seconds(31), 0.0));
 }
 
 struct DummyResult

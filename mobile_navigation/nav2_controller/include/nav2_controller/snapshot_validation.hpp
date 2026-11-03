@@ -9,6 +9,18 @@ namespace nav2_controller
 {
 namespace snapshot
 {
+inline bool stallTimedOut(
+  const std::chrono::steady_clock::time_point & started,
+  const std::chrono::steady_clock::time_point & now,
+  double timeout_s)
+{
+  if (!std::isfinite(timeout_s) || timeout_s <= 0.0) {
+    return false;
+  }
+  const double elapsed_s = std::chrono::duration<double>(now - started).count();
+  return std::isfinite(elapsed_s) && elapsed_s >= timeout_s;
+}
+
 inline bool usableResult(
   uint64_t session, uint64_t revision, uint64_t expected_session,
   uint64_t expected_revision, bool success, double age, double max_age)

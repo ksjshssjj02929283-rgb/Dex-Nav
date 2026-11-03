@@ -315,6 +315,7 @@
       <input_port name="invalid_path_confirmations">Consecutive blocked checks before replanning</input_port>
       <input_port name="min_blocked_path_poses">Minimum consecutive blocked poses treated as a large obstacle</input_port>
       <input_port name="obstacle_replan_cooldown">Seconds to suspend path-validity checks after a successful obstacle-triggered replan</input_port>
+      <input_port name="planning_timeout_s">Maximum duration of one global planning attempt; 0 disables</input_port>
       <input_port name="recovery_replan_mode">Recovery replan mode: disabled, observe, or active</input_port>
     </Decorator>
 

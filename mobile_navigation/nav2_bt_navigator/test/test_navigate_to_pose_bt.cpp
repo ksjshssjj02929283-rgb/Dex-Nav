@@ -67,8 +67,8 @@ protected:
   tinyxml2::XMLDocument doc_;
 };
 
-// 1. 验证全局路径规划重试次数已配置为 10 次
-TEST_F(NavigateToPoseBTTest, GlobalPlanningOuterRetryCountIsTen)
+// 1. 验证全局路径规划外层重试次数与任务级 30s 规划期限配置一致
+TEST_F(NavigateToPoseBTTest, GlobalPlanningOuterRetryCountIsHundred)
 {
   const auto * root = doc_.RootElement();
   ASSERT_NE(root, nullptr);
@@ -83,8 +83,8 @@ TEST_F(NavigateToPoseBTTest, GlobalPlanningOuterRetryCountIsTen)
   ASSERT_NE(retries_attr, nullptr)
     << "ComputePathToPoseOuterRetry must specify 'number_of_retries' attribute";
 
-  EXPECT_STREQ(retries_attr, "10")
-    << "Global planning outer retry count must be exactly 10";
+  EXPECT_STREQ(retries_attr, "100")
+    << "Global planning outer retry count must be exactly 100";
 }
 
 // 2. 验证行为树中彻底不包含任何 BackUp 后退动作节点（杜绝倒车盲区风险）
@@ -109,8 +109,8 @@ TEST_F(NavigateToPoseBTTest, BackUpActionCompletelyRemoved)
     << "Found legacy <BackUpAfterLocalRetries> node! It should be removed.";
 }
 
-// 3. 验证局部控制恢复分支保留了 FollowPathInnerRetry 且重试策略为原地停稳清图重规划
-TEST_F(NavigateToPoseBTTest, LocalControlRecoveryIsSafeInPlaceRetry)
+// 3. 验证局部控制保留 1 次原地恢复重规划
+TEST_F(NavigateToPoseBTTest, LocalControlRecoveryUsesSingleReplan)
 {
   const auto * root = doc_.RootElement();
   ASSERT_NE(root, nullptr);
@@ -120,7 +120,8 @@ TEST_F(NavigateToPoseBTTest, LocalControlRecoveryIsSafeInPlaceRetry)
     << "Could not find <RecoveryNode name=\"FollowPathInnerRetry\"> in behavior tree XML";
 
   EXPECT_STREQ(inner_retry->Value(), "RecoveryNode");
-  EXPECT_STREQ(inner_retry->Attribute("number_of_retries"), "1");
+  EXPECT_STREQ(inner_retry->Attribute("number_of_retries"), "1")
+    << "FollowPath failure must keep exactly one local recovery/replan attempt";
 
   // 验证恢复序列为 WaitStopBeforeFollowPathRetry
   const auto * wait_stop_seq = findElementByNameAttribute(inner_retry, "WaitStopBeforeFollowPathRetry");

@@ -33,6 +33,7 @@
 #include "nav2_util/geometry_utils.hpp"
 #include "nav2_util/robot_utils.hpp"
 #include "nav2_controller/controller_server.hpp"
+#include "nav2_controller/snapshot_runtime.hpp"
 #include "tf2/exceptions.h"
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wpedantic"
@@ -2197,6 +2198,12 @@ void ControllerServer::armStagedControlForNewSession(uint64_t session_id)
 {
   active_prepare_session_id_ = session_id;
   resetStagedControlState();
+  // 新导航任务才重置局部 30s 静止基线；同任务内的 FollowPath 恢复重试
+  // 必须沿用原基线，避免一次本地重规划把连续停车计时清零。
+  if (snapshot_runtime_) {
+    snapshot_runtime_->local_stall_active = false;
+    snapshot_runtime_->local_stall_started = std::chrono::steady_clock::time_point{};
+  }
 
   // transient-local Topic需要在任务边界清除旧请求，避免晚加入者读取上一任务状态。
   if (prepare_replan_request_pub_ && prepare_replan_request_pub_->is_activated()) {
@@ -2662,20 +2669,37 @@ void ControllerServer::computeAndPublishVelocity()
   auto t_pose_end = std::chrono::high_resolution_clock::now();
   auto pose_ms = std::chrono::duration<double, std::milli>(t_pose_end - t_pose_start).count();
 
-  auto t_progress_start = std::chrono::high_resolution_clock::now();
-  if (!checkProgress(pose)) {
-    publish_control_failure("progress_failed");
-    throw nav2_core::PlannerException(
-            "Progress check failed. Robot did not move enough in time.");
-  }
-  auto t_progress_end = std::chrono::high_resolution_clock::now();
-  auto progress_ms = std::chrono::duration<double, std::milli>(t_progress_end - t_progress_start).count();
-
   auto t_odom_start = std::chrono::high_resolution_clock::now();
   const nav_2d_msgs::msg::Twist2D raw_twist = odom_sub_->getTwist();
   nav_2d_msgs::msg::Twist2D twist = getThresholdedTwist(raw_twist);
   auto t_odom_end = std::chrono::high_resolution_clock::now();
   auto odom_ms = std::chrono::duration<double, std::milli>(t_odom_end - t_odom_start).count();
+
+  auto t_progress_start = std::chrono::high_resolution_clock::now();
+  if (!checkProgress(pose)) {
+    const double lin_eps =
+      snapshot_runtime_ ? snapshot_runtime_->stall_linear_velocity_epsilon : 0.01;
+    const double ang_eps =
+      snapshot_runtime_ ? snapshot_runtime_->stall_angular_velocity_epsilon : 0.01;
+    const bool stationary =
+      std::hypot(twist.x, twist.y) <= lin_eps &&
+      std::fabs(twist.theta) <= ang_eps;
+    if (stationary) {
+      // movement_time_allowance 保持原有 5s 语义；连续静止的任务失败边界
+      // 统一交给 snapshot 控制循环中的 local_control_stall_timeout（30s）。
+      progress_checker_->reset();
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 5000,
+        "Progress checker timed out while stationary; deferring failure to the "
+        "local_control_stall_timeout watchdog.");
+    } else {
+      publish_control_failure("progress_failed");
+      throw nav2_core::PlannerException(
+              "Progress check failed. Robot did not move enough in time.");
+    }
+  }
+  auto t_progress_end = std::chrono::high_resolution_clock::now();
+  auto progress_ms = std::chrono::duration<double, std::milli>(t_progress_end - t_progress_start).count();
 
   geometry_msgs::msg::TwistStamped cmd_vel_2d;
   bool control_succeeded = false;
@@ -2856,15 +2880,15 @@ void ControllerServer::computeAndPublishVelocity()
 
   auto t_total_end = std::chrono::high_resolution_clock::now();
   auto total_ms = std::chrono::duration<double, std::milli>(t_total_end - t_total_start).count();
-  auto measured_ms = pose_ms + progress_ms + odom_ms + compute_ms + feedback_ms + publish_ms;
+  auto measured_ms = pose_ms + odom_ms + progress_ms + compute_ms + feedback_ms + publish_ms;
   auto unaccounted_ms = total_ms - measured_ms;
 
   if (total_ms >= kSlowTimingWarnMs) {
     RCLCPP_WARN(
       get_logger(),
-      "Slow control (ms): total=%.3f pose=%.3f progress=%.3f odom=%.3f "
+      "Slow control (ms): total=%.3f pose=%.3f odom=%.3f progress=%.3f "
       "compute=%.3f feedback=%.3f publish=%.3f unaccounted=%.3f",
-      total_ms, pose_ms, progress_ms, odom_ms, compute_ms, feedback_ms, publish_ms,
+      total_ms, pose_ms, odom_ms, progress_ms, compute_ms, feedback_ms, publish_ms,
       unaccounted_ms);
   }
 }
@@ -3073,7 +3097,8 @@ ControllerServer::dynamicParametersCallback(std::vector<rclcpp::Parameter> param
   for (const auto & parameter : parameters) {
     const auto & name = parameter.get_name();
     if (name == "planning_frequency" || name == "controller_frequency" ||
-      name == "planning_result_max_age") {
+      name == "planning_result_max_age" || name == "local_control_stall_timeout" ||
+      name == "stall_linear_velocity_epsilon" || name == "stall_angular_velocity_epsilon") {
       result.successful = false;
       result.reason = "Snapshot scheduling and sensor parameters require lifecycle reconfiguration";
       return result;
