@@ -178,6 +178,14 @@ CommandBoardManagerROS::CommandBoardManagerROS() : rclcpp::Node("command_board_m
                 status_monitor_->SetNavFault(code, detail, sensors);
             };
         sensor_monitor_ = std::make_unique<SensorMonitor>(sensor_config, std::move(hooks));
+        if (sensor_monitor_->Enabled()) {
+            for (std::size_t i = 0; i < sensor_config.sensors.size(); ++i) {
+                if (sensor_config.sensors[i].topic == "/feedback/odom") {
+                    status_monitor_->SetOdomRxHook([this, i]() { sensor_monitor_->OnFrame(i); });
+                    break;
+                }
+            }
+        }
         sensor_monitor_callback_group_ =
             this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
         sensor_monitor_->AttachToNode(this, sensor_monitor_callback_group_);

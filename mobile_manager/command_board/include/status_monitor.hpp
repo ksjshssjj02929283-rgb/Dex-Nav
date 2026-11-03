@@ -10,6 +10,7 @@
 #pragma once
 
 #include <chrono>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -101,6 +102,9 @@ public:
     // 轻量急停查询：只读聚合快照，不做 TF 查询（10 Hz 判定周期用）。
     bool IsEstopActive() const;
 
+    // 注册 /feedback/odom 到达回调（供 SensorMonitor 复用已有的里程计订阅，避免同进程重复创建 100Hz DDS 订阅）。
+    void SetOdomRxHook(std::function<void()> hook);
+
 private:
     void OnOdom(nav_msgs::msg::Odometry::SharedPtr msg);
     void OnTaskStatus(std_msgs::msg::String::SharedPtr msg);
@@ -114,6 +118,7 @@ private:
     rclcpp::Node* node_;
     mutable std::mutex mutex_;
     Snapshot snapshot_;
+    std::function<void()> odom_rx_hook_;
 
     std::shared_ptr<tf2_ros::Buffer>            tf_buffer_;
     std::shared_ptr<tf2_ros::TransformListener> tf_listener_;

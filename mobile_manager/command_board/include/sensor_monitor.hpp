@@ -16,6 +16,7 @@
 #include <deque>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <rclcpp/rclcpp.hpp>
 #include <string>
 #include <vector>
@@ -103,6 +104,7 @@ private:
     Config config_;
     Hooks hooks_;
     ClockFn clock_;
+    mutable std::mutex mutex_;
 
     std::vector<SensorRuntime> sensors_;
     std::vector<nav_interfaces::msg::SensorState> sensor_states_;
