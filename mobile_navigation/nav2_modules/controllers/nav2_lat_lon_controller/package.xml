@@ -2,7 +2,7 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>nav2_lat_lon_controller</name>
-  <version>0.5.0</version>
+  <version>0.5.1</version>
   <description>
     纵横解耦 PID 跟踪 controller（nav2_core::Controller 插件）。横向 PID 纠偏 +
     纵向 PID 前进，五阶段状态机（APPROACHING / ADJUST_HEADING / ADJUST_DISTANCE /

@@ -3,7 +3,7 @@
         schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
     <name>path_follower</name>
-    <version>1.0.0</version>
+    <version>0.5.1</version>
     <description>
         PID path follower for omni-directional (and differential-drive) AGVs.
         Subscribes to an oriented path (nav_msgs/Path), follows it with a
