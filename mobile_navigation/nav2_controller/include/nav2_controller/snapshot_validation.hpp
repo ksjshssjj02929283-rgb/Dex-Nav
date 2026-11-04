@@ -25,8 +25,13 @@ inline bool usableResult(
   uint64_t session, uint64_t revision, uint64_t expected_session,
   uint64_t expected_revision, bool success, double age, double max_age)
 {
-  return session == expected_session && revision == expected_revision && success &&
-         std::isfinite(age) && age <= max_age;
+  // 必须处于相同任务会话 session
+  if (session != expected_session || !success || !std::isfinite(age) || age > max_age) {
+    return false;
+  }
+  // 允许在同一 session 下新版本 revision 计算完成前，平滑复用旧版本 revision（revision <= expected_revision），
+  // 避免同任务局部重规划计算耗时引发瞬间急刹。
+  return revision <= expected_revision;
 }
 
 template<typename ResultT>

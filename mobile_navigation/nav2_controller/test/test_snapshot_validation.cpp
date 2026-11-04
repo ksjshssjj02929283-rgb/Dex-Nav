@@ -7,11 +7,14 @@ using nav2_controller::snapshot::stallTimedOut;
 TEST(Snapshot, AcceptsStillValidPreviousPlanWhileNextPlanRuns)
 {
   EXPECT_TRUE(usableResult(2, 3, 2, 3, true, .2, .3));
+  // 同一 session 下，新 revision 规划中（expected_revision=4），旧 revision=3 在时效内仍可用
+  EXPECT_TRUE(usableResult(2, 3, 2, 4, true, .2, .3));
 }
-TEST(Snapshot, RejectsLatePreviousSessionAndPath)
+TEST(Snapshot, RejectsLatePreviousSessionAndFutureRevision)
 {
   EXPECT_FALSE(usableResult(1, 3, 2, 3, true, .01, .3));
-  EXPECT_FALSE(usableResult(2, 2, 2, 3, true, .01, .3));
+  // 迟到的超前版本（或不匹配会话）拒绝
+  EXPECT_FALSE(usableResult(2, 4, 2, 3, true, .01, .3));
 }
 TEST(Snapshot, FailureAndExpiryStopImmediately)
 {
@@ -54,8 +57,10 @@ TEST(Snapshot, ObjectOverloadValidation)
   // Session mismatch -> FALSE
   EXPECT_FALSE(usableResult(res, 11, 5, 0.3, now));
 
-  // Revision mismatch -> FALSE
-  EXPECT_FALSE(usableResult(res, 10, 6, 0.3, now));
+  // Revision transition: res.revision=5, expected=6 is allowed if within age
+  EXPECT_TRUE(usableResult(res, 10, 6, 0.3, now));
+  // But future revision in result (expected=4 < res.revision=5) -> FALSE
+  EXPECT_FALSE(usableResult(res, 10, 4, 0.3, now));
 
   // Unsuccessful -> FALSE
   res.success = false;

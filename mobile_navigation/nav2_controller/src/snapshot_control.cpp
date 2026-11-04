@@ -328,7 +328,9 @@ bool ControllerServer::computeControlSnapshot()
       }
       limit_changed = limit_id != r->limit_revision;
       if (path_id != speed_plan_path_id_ || limit_changed) {
-        ++r->revision; r->result.reset();
+        ++r->revision;
+        // 同一目标下的重规划/限速调整保留上一次的规划结果，避免在后台重规划耗时的极短窗口内（几十毫秒）
+        // 瞬间触发 usableResult 校验失败导致机器人高速急刹顿挫；仅在真正换目标 (session 变更) 时才 reset。
         path_id = speed_plan_path_id_; limit_id = r->limit_revision;
       }
       request.path = shared_path;
@@ -425,8 +427,9 @@ bool ControllerServer::snapshotMotionAllowed()
   if (!r) {return false;}
   std::lock_guard<std::mutex> lock(r->mutex);
   return r->has_request && r->result && r->result->success &&
-         r->accepted_revision == r->revision && r->accepted_session == r->session &&
-         r->accepted_limit == r->limit_revision &&
+         r->accepted_session == r->session &&
+         r->accepted_revision <= r->revision &&
+         r->accepted_limit <= r->limit_revision &&
          std::chrono::duration<double>(SnapshotClock::now() - r->accepted_completed).count() <=
          r->max_age;
 }
